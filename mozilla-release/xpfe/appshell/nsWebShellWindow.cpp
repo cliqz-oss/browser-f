@@ -7,6 +7,7 @@
 
 #include "nsLayoutCID.h"
 #include "nsContentCID.h"
+#include "nsContentList.h"
 #include "nsIWeakReference.h"
 #include "nsIContentViewer.h"
 #include "nsIComponentManager.h"
@@ -39,7 +40,7 @@
 #include "nsIWebProgress.h"
 #include "nsIWebProgressListener.h"
 
-#include "nsIDocument.h"
+#include "mozilla/dom/Document.h"
 #include "nsIDocumentLoaderFactory.h"
 #include "nsIObserverService.h"
 
@@ -63,14 +64,15 @@
 #include "mozilla/MouseEvents.h"
 
 #include "mozilla/dom/BrowsingContext.h"
+#include "mozilla/dom/LoadURIOptionsBinding.h"
 
 #include "nsPIWindowRoot.h"
 
 #include "gfxPlatform.h"
 
 #ifdef XP_MACOSX
-#include "nsINativeMenuService.h"
-#define USE_NATIVE_MENUS
+#  include "nsINativeMenuService.h"
+#  define USE_NATIVE_MENUS
 #endif
 
 using namespace mozilla;
@@ -230,7 +232,7 @@ nsresult nsWebShellWindow::Initialize(
     }
     rv = mDocShell->CreateAboutBlankContentViewer(principal);
     NS_ENSURE_SUCCESS(rv, rv);
-    nsCOMPtr<nsIDocument> doc = mDocShell->GetDocument();
+    RefPtr<Document> doc = mDocShell->GetDocument();
     NS_ENSURE_TRUE(!!doc, NS_ERROR_FAILURE);
     doc->SetIsInitialDocument(true);
   }
@@ -244,9 +246,11 @@ nsresult nsWebShellWindow::Initialize(
     NS_ConvertUTF8toUTF16 urlString(tmpStr);
     nsCOMPtr<nsIWebNavigation> webNav(do_QueryInterface(mDocShell));
     NS_ENSURE_TRUE(webNav, NS_ERROR_FAILURE);
-    rv =
-        webNav->LoadURI(urlString, nsIWebNavigation::LOAD_FLAGS_NONE, nullptr,
-                        nullptr, nullptr, nsContentUtils::GetSystemPrincipal());
+
+    LoadURIOptions loadURIOptions;
+    loadURIOptions.mTriggeringPrincipal = nsContentUtils::GetSystemPrincipal();
+
+    rv = webNav->LoadURI(urlString, loadURIOptions);
     NS_ENSURE_SUCCESS(rv, rv);
   }
 
@@ -467,7 +471,7 @@ void nsWebShellWindow::WindowDeactivated() {
 }
 
 #ifdef USE_NATIVE_MENUS
-static void LoadNativeMenus(nsIDocument* aDoc, nsIWidget* aParentWindow) {
+static void LoadNativeMenus(Document* aDoc, nsIWidget* aParentWindow) {
   if (gfxPlatform::IsHeadless()) {
     return;
   }
@@ -601,7 +605,7 @@ nsWebShellWindow::OnStateChange(nsIWebProgress* aProgress, nsIRequest* aRequest,
   nsCOMPtr<nsIContentViewer> cv;
   mDocShell->GetContentViewer(getter_AddRefs(cv));
   if (cv) {
-    nsCOMPtr<nsIDocument> menubarDoc = cv->GetDocument();
+    RefPtr<Document> menubarDoc = cv->GetDocument();
     if (menubarDoc) LoadNativeMenus(menubarDoc, mWindow);
   }
 #endif  // USE_NATIVE_MENUS
@@ -629,7 +633,15 @@ nsWebShellWindow::OnStatusChange(nsIWebProgress* aWebProgress,
 
 NS_IMETHODIMP
 nsWebShellWindow::OnSecurityChange(nsIWebProgress* aWebProgress,
-                                   nsIRequest* aRequest, uint32_t state) {
+                                   nsIRequest* aRequest, uint32_t aState) {
+  MOZ_ASSERT_UNREACHABLE("notification excluded in AddProgressListener(...)");
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+nsWebShellWindow::OnContentBlockingEvent(nsIWebProgress* aWebProgress,
+                                         nsIRequest* aRequest,
+                                         uint32_t aEvent) {
   MOZ_ASSERT_UNREACHABLE("notification excluded in AddProgressListener(...)");
   return NS_OK;
 }

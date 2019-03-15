@@ -10,24 +10,24 @@
 ChromeUtils.import("resource://gre/modules/PromiseUtils.jsm");
 
 const TEST_URL = "http://example.com";
-const match = new UrlbarMatch(UrlbarUtils.MATCH_TYPE.TAB_SWITCH,
-                              UrlbarUtils.MATCH_SOURCE.TABS,
-                              { url: TEST_URL });
+const match = new UrlbarResult(UrlbarUtils.RESULT_TYPE.TAB_SWITCH,
+                               UrlbarUtils.MATCH_SOURCE.TABS,
+                               { url: TEST_URL });
 let controller;
 
 /**
  * Asserts that the query context has the expected values.
  *
- * @param {QueryContext} context
- * @param {object} expectedValues The expected values for the QueryContext.
+ * @param {UrlbarQueryContext} context
+ * @param {object} expectedValues The expected values for the UrlbarQueryContext.
  */
 function assertContextMatches(context, expectedValues) {
-  Assert.ok(context instanceof QueryContext,
-    "Should be a QueryContext");
+  Assert.ok(context instanceof UrlbarQueryContext,
+    "Should be a UrlbarQueryContext");
 
   for (let [key, value] of Object.entries(expectedValues)) {
     Assert.equal(context[key], value,
-      `Should have the expected value for ${key} in the QueryContext`);
+      `Should have the expected value for ${key} in the UrlbarQueryContext`);
   }
 }
 
@@ -42,9 +42,8 @@ add_task(async function setup() {
 });
 
 add_task(async function test_basic_search() {
-  const context = createContext(TEST_URL);
-
-  registerBasicTestProvider([match]);
+  let providerName = registerBasicTestProvider([match]);
+  const context = createContext(TEST_URL, {providers: [providerName]});
 
   let startedPromise = promiseControllerNotification(controller, "onQueryStarted");
   let resultsPromise = promiseControllerNotification(controller, "onQueryResults");
@@ -62,13 +61,12 @@ add_task(async function test_basic_search() {
 });
 
 add_task(async function test_cancel_search() {
-  const context = createContext(TEST_URL);
-
-  let providerCanceledPromise = PromiseUtils.defer();
-  registerBasicTestProvider([match], providerCanceledPromise.resolve);
+  let providerCanceledDeferred = PromiseUtils.defer();
+  let providerName = registerBasicTestProvider([match], providerCanceledDeferred.resolve);
+  const context = createContext(TEST_URL, {providers: [providerName]});
 
   let startedPromise = promiseControllerNotification(controller, "onQueryStarted");
-  let cancelPromise = promiseControllerNotification(controller, "onQueryResults");
+  let cancelPromise = promiseControllerNotification(controller, "onQueryCancelled");
 
   await controller.startQuery(context);
 
@@ -79,7 +77,7 @@ add_task(async function test_cancel_search() {
   Assert.equal(params[0], context);
 
   info("Should tell the provider the query is canceled");
-  await providerCanceledPromise;
+  await providerCanceledDeferred.promise;
 
   params = await cancelPromise;
 });

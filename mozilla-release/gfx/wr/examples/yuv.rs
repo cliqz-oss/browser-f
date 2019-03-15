@@ -88,18 +88,16 @@ impl Example for App {
         builder: &mut DisplayListBuilder,
         txn: &mut Transaction,
         _framebuffer_size: DeviceIntSize,
-        _pipeline_id: PipelineId,
+        pipeline_id: PipelineId,
         _document_id: DocumentId,
     ) {
         let bounds = LayoutRect::new(LayoutPoint::zero(), builder.content_size());
         let info = LayoutPrimitiveInfo::new(bounds);
-        builder.push_stacking_context(
+        let space_and_clip = SpaceAndClipInfo::root_scroll(pipeline_id);
+
+        builder.push_simple_stacking_context(
             &info,
-            None,
-            TransformStyle::Flat,
-            MixBlendMode::Normal,
-            &[],
-            RasterSpace::Screen,
+            space_and_clip.spatial_id,
         );
 
         let yuv_chanel1 = api.generate_image_key();
@@ -161,6 +159,7 @@ impl Example for App {
         );
         builder.push_yuv_image(
             &info,
+            &space_and_clip,
             YuvData::NV12(yuv_chanel1, yuv_chanel2),
             ColorDepth::Color8,
             YuvColorSpace::Rec601,
@@ -173,6 +172,7 @@ impl Example for App {
         );
         builder.push_yuv_image(
             &info,
+            &space_and_clip,
             YuvData::PlanarYCbCr(yuv_chanel1, yuv_chanel2_1, yuv_chanel3),
             ColorDepth::Color8,
             YuvColorSpace::Rec601,

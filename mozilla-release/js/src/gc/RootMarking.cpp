@@ -5,7 +5,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #ifdef MOZ_VALGRIND
-#include <valgrind/memcheck.h>
+#  include <valgrind/memcheck.h>
 #endif
 
 #include "jstypes.h"
@@ -550,7 +550,7 @@ inline void BufferGrayRootsTracer::bufferRoot(T* thing) {
 
 void GCRuntime::markBufferedGrayRoots(JS::Zone* zone) {
   MOZ_ASSERT(grayBufferState == GrayBufferState::Okay);
-  MOZ_ASSERT(zone->isGCMarkingGray() || zone->isGCCompacting());
+  MOZ_ASSERT(zone->isGCMarkingBlackAndGray() || zone->isGCCompacting());
 
   auto& roots = zone->gcGrayRoots();
   if (roots.empty()) {

@@ -45,7 +45,7 @@ namespace mozilla {
 // GetTickCount() and conflicts with MediaDecoder::GetCurrentTime
 // implementation.
 #ifdef GetCurrentTime
-#undef GetCurrentTime
+#  undef GetCurrentTime
 #endif
 
 // avoid redefined macro in unified build
@@ -346,7 +346,6 @@ MediaDecoder::MediaDecoder(MediaDecoderInit& aInit)
   mWatchManager.Watch(mIsAudioDataAudible,
                       &MediaDecoder::NotifyAudibleStateChanged);
 
-  MediaShutdownManager::InitStatics();
   mVideoDecodingOberver->RegisterEvent();
 }
 
@@ -474,7 +473,7 @@ void MediaDecoder::OnDecoderDoctorEvent(DecoderDoctorEvent aEvent) {
   MOZ_ASSERT(NS_IsMainThread());
   // OnDecoderDoctorEvent is disconnected at shutdown time.
   MOZ_DIAGNOSTIC_ASSERT(!IsShutdown());
-  nsIDocument* doc = GetOwner()->GetDocument();
+  Document* doc = GetOwner()->GetDocument();
   if (!doc) {
     return;
   }
@@ -922,7 +921,7 @@ void MediaDecoder::DurationChanged() {
 
 already_AddRefed<KnowsCompositor> MediaDecoder::GetCompositor() {
   MediaDecoderOwner* owner = GetOwner();
-  nsIDocument* ownerDoc = owner ? owner->GetDocument() : nullptr;
+  Document* ownerDoc = owner ? owner->GetDocument() : nullptr;
   RefPtr<LayerManager> layerManager =
       ownerDoc ? nsContentUtils::LayerManagerForDocument(ownerDoc) : nullptr;
   RefPtr<KnowsCompositor> knows =
@@ -970,6 +969,14 @@ void MediaDecoder::UpdateVideoDecodeMode() {
   // The MDSM may yet be set.
   if (!mDecoderStateMachine) {
     LOG("UpdateVideoDecodeMode(), early return because we don't have MDSM.");
+    return;
+  }
+
+  // Seeking is required when leaving suspend mode.
+  if (!mMediaSeekable) {
+    LOG("UpdateVideoDecodeMode(), set Normal because the media is not "
+        "seekable");
+    mDecoderStateMachine->SetVideoDecodeMode(VideoDecodeMode::Normal);
     return;
   }
 

@@ -13,7 +13,9 @@
 
 #include "ds/TraceableFifo.h"
 #include "js/CharacterEncoding.h"
+#include "js/ContextOptions.h"  // JS::ContextOptions
 #include "js/GCVector.h"
+#include "js/Promise.h"
 #include "js/Result.h"
 #include "js/Utility.h"
 #include "js/Vector.h"
@@ -163,13 +165,13 @@ struct JSContext : public JS::RootingContext,
     return thing->compartment() == compartment();
   }
 
-  void* onOutOfMemory(js::AllocFunction allocFunc, size_t nbytes,
-                      void* reallocPtr = nullptr) {
+  void* onOutOfMemory(js::AllocFunction allocFunc, arena_id_t arena,
+                      size_t nbytes, void* reallocPtr = nullptr) {
     if (helperThread()) {
       addPendingOutOfMemory();
       return nullptr;
     }
-    return runtime_->onOutOfMemory(allocFunc, nbytes, reallocPtr, this);
+    return runtime_->onOutOfMemory(allocFunc, arena, nbytes, reallocPtr, this);
   }
 
   /* Clear the pending exception (if any) due to OOM. */
@@ -191,7 +193,7 @@ struct JSContext : public JS::RootingContext,
       return nullptr;
     }
     p = static_cast<T*>(
-        runtime()->onOutOfMemoryCanGC(js::AllocFunction::Calloc, bytes));
+        runtime()->onOutOfMemoryCanGC(js::AllocFunction::Calloc, arena, bytes));
     if (!p) {
       return nullptr;
     }
@@ -739,7 +741,7 @@ struct JSContext : public JS::RootingContext,
       AllowCrossRealm allowCrossRealm = AllowCrossRealm::DontAllow) const;
 
   inline js::Nursery& nursery();
-  inline void minorGC(JS::gcreason::Reason reason);
+  inline void minorGC(JS::GCReason reason);
 
  public:
   bool isExceptionPending() const { return throwing; }
@@ -842,6 +844,7 @@ struct JSContext : public JS::RootingContext,
   void* addressOfJitStackLimitNoInterrupt() {
     return &jitStackLimitNoInterrupt;
   }
+  void* addressOfZone() { return &zone_; }
 
   // Futex state, used by Atomics.wait() and Atomics.wake() on the Atomics
   // object.
@@ -890,8 +893,8 @@ struct JSContext : public JS::RootingContext,
   js::ThreadData<uintptr_t> jitStackLimitNoInterrupt;
 
   // Promise callbacks.
-  js::ThreadData<JSGetIncumbentGlobalCallback> getIncumbentGlobalCallback;
-  js::ThreadData<JSEnqueuePromiseJobCallback> enqueuePromiseJobCallback;
+  js::ThreadData<JS::GetIncumbentGlobalCallback> getIncumbentGlobalCallback;
+  js::ThreadData<JS::EnqueuePromiseJobCallback> enqueuePromiseJobCallback;
   js::ThreadData<void*> enqueuePromiseJobCallbackData;
 
   // Queue of pending jobs as described in ES2016 section 8.4.
@@ -902,7 +905,7 @@ struct JSContext : public JS::RootingContext,
   js::ThreadData<bool> stopDrainingJobQueue;
   js::ThreadData<bool> canSkipEnqueuingJobs;
 
-  js::ThreadData<JSPromiseRejectionTrackerCallback>
+  js::ThreadData<JS::PromiseRejectionTrackerCallback>
       promiseRejectionTrackerCallback;
   js::ThreadData<void*> promiseRejectionTrackerCallbackData;
 

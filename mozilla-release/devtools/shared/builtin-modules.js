@@ -24,6 +24,7 @@ const {
   DOMQuad,
   DOMRect,
   HeapSnapshot,
+  NodeFilter,
   StructuredCloneHolder,
   TelemetryStopwatch,
 } = Cu.getGlobalForObject(jsmScope);
@@ -33,6 +34,7 @@ const {
 const {
   atob,
   btoa,
+  Blob,
   ChromeUtils,
   CSS,
   CSSRule,
@@ -52,6 +54,7 @@ const {
   wantGlobalProperties: [
     "atob",
     "btoa",
+    "Blob",
     "ChromeUtils",
     "CSS",
     "CSSRule",
@@ -213,7 +216,6 @@ function lazyRequireGetter(obj, property, module, destructure) {
 // List of pseudo modules exposed to all devtools modules.
 exports.modules = {
   ChromeUtils,
-  FileReader,
   HeapSnapshot,
   InspectorUtils,
   promise,
@@ -265,6 +267,7 @@ defineLazyGetter(exports.modules, "xpcInspector", () => {
 // Changes here should be mirrored to devtools/.eslintrc.
 exports.globals = {
   atob,
+  Blob,
   btoa,
   console,
   CSS,
@@ -288,9 +291,11 @@ exports.globals = {
   DOMParser,
   DOMPoint,
   DOMQuad,
+  NodeFilter,
   DOMRect,
   Element,
   Event,
+  FileReader,
   FormData,
   isWorker: false,
   loader: {

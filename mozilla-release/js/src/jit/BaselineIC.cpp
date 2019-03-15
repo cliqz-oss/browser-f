@@ -26,7 +26,7 @@
 #include "jit/Linker.h"
 #include "jit/Lowering.h"
 #ifdef JS_ION_PERF
-#include "jit/PerfSpewer.h"
+#  include "jit/PerfSpewer.h"
 #endif
 #include "jit/SharedICHelpers.h"
 #include "jit/VMFunctions.h"
@@ -168,7 +168,9 @@ void ICEntry::trace(JSTracer* trc) {
         break;
       }
       case JSOP_BITNOT:
-      case JSOP_NEG: {
+      case JSOP_NEG:
+      case JSOP_INC:
+      case JSOP_DEC: {
         ICUnaryArith_Fallback::Compiler stubCompiler(cx);
         if (!addIC(pc, stubCompiler.getStub(&stubSpace))) {
           return nullptr;
@@ -256,9 +258,7 @@ void ICEntry::trace(JSTracer* trc) {
       case JSOP_INITPROP:
       case JSOP_INITLOCKEDPROP:
       case JSOP_INITHIDDENPROP:
-      case JSOP_SETALIASEDVAR:
       case JSOP_INITGLEXICAL:
-      case JSOP_INITALIASEDLEXICAL:
       case JSOP_SETPROP:
       case JSOP_STRICTSETPROP:
       case JSOP_SETNAME:
@@ -1748,7 +1748,8 @@ static bool DoTypeUpdateFallback(JSContext* cx, BaselineFrame* frame,
         addType = false;
       }
     } else {
-      MOZ_ASSERT(type == ReferenceType::TYPE_OBJECT);
+      MOZ_ASSERT(type == ReferenceType::TYPE_OBJECT ||
+                 type == ReferenceType::TYPE_WASM_ANYREF);
 
       // Ignore null values being written here. Null is included
       // implicitly in type information for this property. Note that
@@ -2239,6 +2240,7 @@ static bool DoSetElemFallback(JSContext* cx, BaselineFrame* frame,
   }
 
   bool isTemporarilyUnoptimizable = false;
+  bool canAddSlot = false;
   bool attached = false;
 
   if (stub->state().maybeTransition()) {
@@ -2248,7 +2250,7 @@ static bool DoSetElemFallback(JSContext* cx, BaselineFrame* frame,
   if (stub->state().canAttachStub()) {
     SetPropIRGenerator gen(cx, script, pc, CacheKind::SetElem,
                            stub->state().mode(), &isTemporarilyUnoptimizable,
-                           objv, index, rhs);
+                           &canAddSlot, objv, index, rhs);
     if (gen.tryAttachStub()) {
       ICStub* newStub = AttachBaselineCacheIRStub(
           cx, gen.writerRef(), gen.cacheKind(),
@@ -2318,8 +2320,8 @@ static bool DoSetElemFallback(JSContext* cx, BaselineFrame* frame,
   if (stub->state().canAttachStub()) {
     SetPropIRGenerator gen(cx, script, pc, CacheKind::SetElem,
                            stub->state().mode(), &isTemporarilyUnoptimizable,
-                           objv, index, rhs);
-    if (gen.tryAttachAddSlotStub(oldGroup, oldShape)) {
+                           &canAddSlot, objv, index, rhs);
+    if (canAddSlot && gen.tryAttachAddSlotStub(oldGroup, oldShape)) {
       ICStub* newStub = AttachBaselineCacheIRStub(
           cx, gen.writerRef(), gen.cacheKind(),
           BaselineCacheIRStubKind::Updated, frame->script(), stub, &attached);
@@ -2996,16 +2998,9 @@ static bool DoSetPropFallback(JSContext* cx, BaselineFrame* frame,
              op == JSOP_SETNAME || op == JSOP_STRICTSETNAME ||
              op == JSOP_SETGNAME || op == JSOP_STRICTSETGNAME ||
              op == JSOP_INITPROP || op == JSOP_INITLOCKEDPROP ||
-             op == JSOP_INITHIDDENPROP || op == JSOP_SETALIASEDVAR ||
-             op == JSOP_INITALIASEDLEXICAL || op == JSOP_INITGLEXICAL);
+             op == JSOP_INITHIDDENPROP || op == JSOP_INITGLEXICAL);
 
-  RootedPropertyName name(cx);
-  if (op == JSOP_SETALIASEDVAR || op == JSOP_INITALIASEDLEXICAL) {
-    name = EnvironmentCoordinateName(cx->caches().envCoordinateNameCache,
-                                     script, pc);
-  } else {
-    name = script->getName(pc);
-  }
+  RootedPropertyName name(cx, script->getName(pc));
   RootedId id(cx, NameToId(name));
 
   RootedObject obj(cx, ToObjectFromStack(cx, lhs));
@@ -3031,6 +3026,7 @@ static bool DoSetPropFallback(JSContext* cx, BaselineFrame* frame,
   // failed to attach a stub is one of those temporary reasons, since we might
   // end up attaching a stub for the exact same access later.
   bool isTemporarilyUnoptimizable = false;
+  bool canAddSlot = false;
 
   bool attached = false;
   if (stub->state().maybeTransition()) {
@@ -3041,7 +3037,7 @@ static bool DoSetPropFallback(JSContext* cx, BaselineFrame* frame,
     RootedValue idVal(cx, StringValue(name));
     SetPropIRGenerator gen(cx, script, pc, CacheKind::SetProp,
                            stub->state().mode(), &isTemporarilyUnoptimizable,
-                           lhs, idVal, rhs);
+                           &canAddSlot, lhs, idVal, rhs);
     if (gen.tryAttachStub()) {
       ICStub* newStub = AttachBaselineCacheIRStub(
           cx, gen.writerRef(), gen.cacheKind(),
@@ -3070,9 +3066,6 @@ static bool DoSetPropFallback(JSContext* cx, BaselineFrame* frame,
     if (!SetNameOperation(cx, script, pc, obj, rhs)) {
       return false;
     }
-  } else if (op == JSOP_SETALIASEDVAR || op == JSOP_INITALIASEDLEXICAL) {
-    obj->as<EnvironmentObject>().setAliasedBinding(
-        cx, EnvironmentCoordinate(pc), name, rhs);
   } else if (op == JSOP_INITGLEXICAL) {
     RootedValue v(cx, rhs);
     LexicalEnvironmentObject* lexicalEnv;
@@ -3112,8 +3105,8 @@ static bool DoSetPropFallback(JSContext* cx, BaselineFrame* frame,
     RootedValue idVal(cx, StringValue(name));
     SetPropIRGenerator gen(cx, script, pc, CacheKind::SetProp,
                            stub->state().mode(), &isTemporarilyUnoptimizable,
-                           lhs, idVal, rhs);
-    if (gen.tryAttachAddSlotStub(oldGroup, oldShape)) {
+                           &canAddSlot, lhs, idVal, rhs);
+    if (canAddSlot && gen.tryAttachAddSlotStub(oldGroup, oldShape)) {
       ICStub* newStub = AttachBaselineCacheIRStub(
           cx, gen.writerRef(), gen.cacheKind(),
           BaselineCacheIRStubKind::Updated, frame->script(), stub, &attached);
@@ -3291,8 +3284,7 @@ static bool TryAttachFunCallStub(JSContext* cx, ICCall_Fallback* stub,
 
 static bool GetTemplateObjectForNative(JSContext* cx, HandleFunction target,
                                        const CallArgs& args,
-                                       MutableHandleObject res,
-                                       bool* skipAttach) {
+                                       MutableHandleObject res) {
   Native native = target->native();
 
   // Check for natives to which template objects can be attached. This is
@@ -3311,16 +3303,6 @@ static bool GetTemplateObjectForNative(JSContext* cx, HandleFunction target,
     }
 
     if (count <= ArrayObject::EagerAllocationMaxLength) {
-      ObjectGroup* group =
-          ObjectGroup::callingAllocationSiteGroup(cx, JSProto_Array);
-      if (!group) {
-        return false;
-      }
-      if (group->maybePreliminaryObjectsDontCheckGeneration()) {
-        *skipAttach = true;
-        return true;
-      }
-
       // With this and other array templates, analyze the group so that
       // we don't end up with a template whose structure might change later.
       res.set(NewFullyAllocatedArrayForCallingAllocationSite(cx, count,
@@ -3348,10 +3330,6 @@ static bool GetTemplateObjectForNative(JSContext* cx, HandleFunction target,
     if (args.thisv().isObject()) {
       RootedObject obj(cx, &args.thisv().toObject());
       if (!obj->isSingleton()) {
-        if (obj->group()->maybePreliminaryObjectsDontCheckGeneration()) {
-          *skipAttach = true;
-          return true;
-        }
         res.set(NewFullyAllocatedArrayTryReuseGroup(cx, obj, 0, TenuredObject));
         return !!res;
       }
@@ -3378,6 +3356,11 @@ static bool GetTemplateObjectForNative(JSContext* cx, HandleFunction target,
 
   if (native == js::intrinsic_NewStringIterator) {
     res.set(NewStringIteratorObject(cx, TenuredObject));
+    return !!res;
+  }
+
+  if (native == js::intrinsic_NewRegExpStringIterator) {
+    res.set(NewRegExpStringIteratorObject(cx, TenuredObject));
     return !!res;
   }
 
@@ -3686,15 +3669,9 @@ static bool TryAttachCallStub(JSContext* cx, ICCall_Fallback* stub,
 
     RootedObject templateObject(cx);
     if (MOZ_LIKELY(!isSpread && !isSuper && !isCrossRealm)) {
-      bool skipAttach = false;
       CallArgs args = CallArgsFromVp(argc, vp);
-      if (!GetTemplateObjectForNative(cx, fun, args, &templateObject,
-                                      &skipAttach)) {
+      if (!GetTemplateObjectForNative(cx, fun, args, &templateObject)) {
         return false;
-      }
-      if (skipAttach) {
-        *handled = true;
-        return true;
       }
       MOZ_ASSERT_IF(templateObject,
                     !templateObject->group()
@@ -5741,18 +5718,30 @@ static bool DoUnaryArithFallback(JSContext* cx, BaselineFrame* frame,
   JSOp op = JSOp(*pc);
   FallbackICSpew(cx, stub, "UnaryArith(%s)", CodeName[op]);
 
+  // The unary operations take a copied val because the original value is needed
+  // below.
+  RootedValue valCopy(cx, val);
   switch (op) {
     case JSOP_BITNOT: {
-      RootedValue valCopy(cx, val);
       if (!BitNot(cx, &valCopy, res)) {
         return false;
       }
       break;
     }
     case JSOP_NEG: {
-      // We copy val here because the original value is needed below.
-      RootedValue valCopy(cx, val);
       if (!NegOperation(cx, &valCopy, res)) {
+        return false;
+      }
+      break;
+    }
+    case JSOP_INC: {
+      if (!IncOperation(cx, &valCopy, res)) {
+        return false;
+      }
+      break;
+    }
+    case JSOP_DEC: {
+      if (!DecOperation(cx, &valCopy, res)) {
         return false;
       }
       break;
@@ -6052,8 +6041,7 @@ static bool DoNewArray(JSContext* cx, BaselineFrame* frame,
       return false;
     }
 
-    if (!obj->isSingleton() &&
-        !obj->group()->maybePreliminaryObjectsDontCheckGeneration()) {
+    if (!obj->isSingleton()) {
       JSObject* templateObject =
           NewArrayOperation(cx, script, pc, length, TenuredObject);
       if (!templateObject) {

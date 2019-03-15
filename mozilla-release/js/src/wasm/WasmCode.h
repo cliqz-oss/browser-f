@@ -312,7 +312,6 @@ enum class MemoryUsage { None = false, Unshared = 1, Shared = 2 };
 struct MetadataCacheablePod {
   ModuleKind kind;
   MemoryUsage memoryUsage;
-  HasGcTypes temporaryGcTypesConfigured;
   uint32_t minMemoryLength;
   uint32_t globalDataLength;
   Maybe<uint32_t> maxMemoryLength;
@@ -323,7 +322,6 @@ struct MetadataCacheablePod {
   explicit MetadataCacheablePod(ModuleKind kind)
       : kind(kind),
         memoryUsage(MemoryUsage::None),
-        temporaryGcTypesConfigured(HasGcTypes::False),
         minMemoryLength(0),
         globalDataLength(0),
         filenameIsURL(false) {}
@@ -411,6 +409,7 @@ struct MetadataTier {
   TrapSiteVectorArray trapSites;
   FuncImportVector funcImports;
   FuncExportVector funcExports;
+  StackMaps stackMaps;
 
   // Debug information, not serialized.
   Uint32Vector debugTrapFarJumpOffsets;
@@ -500,8 +499,7 @@ class LazyStubTier {
   LazyFuncExportVector exports_;
   size_t lastStubSegmentIndex_;
 
-  bool createMany(HasGcTypes gcTypesEnabled,
-                  const Uint32Vector& funcExportIndices,
+  bool createMany(const Uint32Vector& funcExportIndices,
                   const CodeTier& codeTier, size_t* stubSegmentIndex);
 
  public:
@@ -522,8 +520,7 @@ class LazyStubTier {
   // them in a single stub. Jit entries won't be used until
   // setJitEntries() is actually called, after the Code owner has committed
   // tier2.
-  bool createTier2(HasGcTypes gcTypesConfigured,
-                   const Uint32Vector& funcExportIndices,
+  bool createTier2(const Uint32Vector& funcExportIndices,
                    const CodeTier& codeTier, Maybe<size_t>* stubSegmentIndex);
   void setJitEntries(const Maybe<size_t>& stubSegmentIndex, const Code& code);
 
@@ -699,6 +696,7 @@ class Code : public ShareableBase<Code> {
 
   const CallSite* lookupCallSite(void* returnAddress) const;
   const CodeRange* lookupFuncRange(void* pc) const;
+  const StackMap* lookupStackMap(uint8_t* nextPC) const;
   bool containsCodePC(const void* pc) const;
   bool lookupTrap(void* pc, Trap* trap, BytecodeOffset* bytecode) const;
 

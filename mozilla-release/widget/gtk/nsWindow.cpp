@@ -1,5 +1,5 @@
-/* -*- Mode: C++; tab-width: 4; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
-/* vim:expandtab:shiftwidth=4:tabstop=4:
+/* -*- Mode: C++; tab-width: 2; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
+/* vim:expandtab:shiftwidth=2:tabstop=2:
  */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
@@ -12,7 +12,6 @@
 #include "mozilla/MiscEvents.h"
 #include "mozilla/MouseEvents.h"
 #include "mozilla/RefPtr.h"
-#include "mozilla/TextEventDispatcher.h"
 #include "mozilla/TextEvents.h"
 #include "mozilla/TimeStamp.h"
 #include "mozilla/TouchEvents.h"
@@ -44,29 +43,29 @@
 #include <gtk/gtkx.h>
 
 #ifdef MOZ_WAYLAND
-#include <gdk/gdkwayland.h>
+#  include <gdk/gdkwayland.h>
 #endif /* MOZ_WAYLAND */
 
 #ifdef MOZ_X11
-#include <gdk/gdkx.h>
-#include <X11/Xatom.h>
-#include <X11/extensions/XShm.h>
-#include <X11/extensions/shape.h>
-#include <gdk/gdkkeysyms-compat.h>
+#  include <gdk/gdkx.h>
+#  include <X11/Xatom.h>
+#  include <X11/extensions/XShm.h>
+#  include <X11/extensions/shape.h>
+#  include <gdk/gdkkeysyms-compat.h>
 #endif /* MOZ_X11 */
 
 #include <gdk/gdkkeysyms.h>
 
 #if defined(MOZ_WAYLAND)
-#include <gdk/gdkwayland.h>
-#include "nsView.h"
+#  include <gdk/gdkwayland.h>
+#  include "nsView.h"
 #endif
 
 #include "nsGkAtoms.h"
 
 #ifdef MOZ_ENABLE_STARTUP_NOTIFICATION
-#define SN_API_NOT_YET_FROZEN
-#include <startup-notification-1.0/libsn/sn.h>
+#  define SN_API_NOT_YET_FROZEN
+#  include <startup-notification-1.0/libsn/sn.h>
 #endif
 
 #include "mozilla/Assertions.h"
@@ -85,9 +84,9 @@
 #include "gfx2DGlue.h"
 
 #ifdef ACCESSIBILITY
-#include "mozilla/a11y/Accessible.h"
-#include "mozilla/a11y/Platform.h"
-#include "nsAccessibilityService.h"
+#  include "mozilla/a11y/Accessible.h"
+#  include "mozilla/a11y/Platform.h"
+#  include "nsAccessibilityService.h"
 
 using namespace mozilla;
 using namespace mozilla::widget;
@@ -120,15 +119,15 @@ using namespace mozilla::widget;
 #include "mozilla/layers/CompositorThread.h"
 
 #ifdef MOZ_X11
-#include "GLContextGLX.h"  // for GLContextGLX::FindVisual()
-#include "GtkCompositorWidget.h"
-#include "gfxXlibSurface.h"
-#include "WindowSurfaceX11Image.h"
-#include "WindowSurfaceX11SHM.h"
-#include "WindowSurfaceXRender.h"
+#  include "GLContextGLX.h"  // for GLContextGLX::FindVisual()
+#  include "GtkCompositorWidget.h"
+#  include "gfxXlibSurface.h"
+#  include "WindowSurfaceX11Image.h"
+#  include "WindowSurfaceX11SHM.h"
+#  include "WindowSurfaceXRender.h"
 #endif  // MOZ_X11
 #ifdef MOZ_WAYLAND
-#include "nsIClipboard.h"
+#  include "nsIClipboard.h"
 #endif
 
 #include "nsShmImage.h"
@@ -426,6 +425,7 @@ nsWindow::nsWindow() {
 
   mIsTransparent = false;
   mTransparencyBitmap = nullptr;
+  mTransparencyBitmapForTitlebar = false;
 
   mTransparencyBitmapWidth = 0;
   mTransparencyBitmapHeight = 0;
@@ -1434,61 +1434,31 @@ gboolean nsWindow::OnPropertyNotifyEvent(GtkWidget *aWidget,
   return FALSE;
 }
 
-void nsWindow::SetCursor(nsCursor aCursor) {
-  // if we're not the toplevel window pass up the cursor request to
-  // the toplevel window to handle it.
-  if (!mContainer && mGdkWindow) {
-    nsWindow *window = GetContainerWindow();
-    if (!window) return;
-
-    window->SetCursor(aCursor);
-    return;
+static GdkCursor *GetCursorForImage(imgIContainer *aCursorImage,
+                                    uint32_t aHotspotX, uint32_t aHotspotY) {
+  if (!aCursorImage) {
+    return nullptr;
   }
-
-  // Only change cursor if it's actually been changed
-  if (aCursor != mCursor || mUpdateCursor) {
-    GdkCursor *newCursor = nullptr;
-    mUpdateCursor = false;
-
-    newCursor = get_gtk_cursor(aCursor);
-
-    if (nullptr != newCursor) {
-      mCursor = aCursor;
-
-      if (!mContainer) return;
-
-      gdk_window_set_cursor(gtk_widget_get_window(GTK_WIDGET(mContainer)),
-                            newCursor);
-    }
+  GdkPixbuf *pixbuf = nsImageToPixbuf::ImageToPixbuf(aCursorImage);
+  if (!pixbuf) {
+    return nullptr;
   }
-}
-
-nsresult nsWindow::SetCursor(imgIContainer *aCursor, uint32_t aHotspotX,
-                             uint32_t aHotspotY) {
-  // if we're not the toplevel window pass up the cursor request to
-  // the toplevel window to handle it.
-  if (!mContainer && mGdkWindow) {
-    nsWindow *window = GetContainerWindow();
-    if (!window) return NS_ERROR_FAILURE;
-
-    return window->SetCursor(aCursor, aHotspotX, aHotspotY);
-  }
-
-  mCursor = eCursorInvalid;
-
-  // Get the image's current frame
-  GdkPixbuf *pixbuf = nsImageToPixbuf::ImageToPixbuf(aCursor);
-  if (!pixbuf) return NS_ERROR_NOT_AVAILABLE;
 
   int width = gdk_pixbuf_get_width(pixbuf);
   int height = gdk_pixbuf_get_height(pixbuf);
+
+  auto CleanupPixBuf =
+      mozilla::MakeScopeExit([&]() { g_object_unref(pixbuf); });
+
   // Reject cursors greater than 128 pixels in some direction, to prevent
   // spoofing.
   // XXX ideally we should rescale. Also, we could modify the API to
   // allow trusted content to set larger cursors.
+  //
+  // TODO(emilio, bug 1445844): Unify the solution for this with other
+  // platforms.
   if (width > 128 || height > 128) {
-    g_object_unref(pixbuf);
-    return NS_ERROR_NOT_AVAILABLE;
+    return nullptr;
   }
 
   // Looks like all cursors need an alpha channel (tested on Gtk 2.4.4). This
@@ -1497,26 +1467,58 @@ nsresult nsWindow::SetCursor(imgIContainer *aCursor, uint32_t aHotspotX,
   if (!gdk_pixbuf_get_has_alpha(pixbuf)) {
     GdkPixbuf *alphaBuf = gdk_pixbuf_add_alpha(pixbuf, FALSE, 0, 0, 0);
     g_object_unref(pixbuf);
-    if (!alphaBuf) {
-      return NS_ERROR_OUT_OF_MEMORY;
-    }
     pixbuf = alphaBuf;
-  }
-
-  GdkCursor *cursor = gdk_cursor_new_from_pixbuf(gdk_display_get_default(),
-                                                 pixbuf, aHotspotX, aHotspotY);
-  g_object_unref(pixbuf);
-  nsresult rv = NS_ERROR_OUT_OF_MEMORY;
-  if (cursor) {
-    if (mContainer) {
-      gdk_window_set_cursor(gtk_widget_get_window(GTK_WIDGET(mContainer)),
-                            cursor);
-      rv = NS_OK;
+    if (!alphaBuf) {
+      return nullptr;
     }
-    g_object_unref(cursor);
   }
 
-  return rv;
+  return gdk_cursor_new_from_pixbuf(gdk_display_get_default(), pixbuf,
+                                    aHotspotX, aHotspotY);
+}
+
+void nsWindow::SetCursor(nsCursor aDefaultCursor, imgIContainer *aCursorImage,
+                         uint32_t aHotspotX, uint32_t aHotspotY) {
+  // if we're not the toplevel window pass up the cursor request to
+  // the toplevel window to handle it.
+  if (!mContainer && mGdkWindow) {
+    nsWindow *window = GetContainerWindow();
+    if (!window) return;
+
+    window->SetCursor(aDefaultCursor, aCursorImage, aHotspotX, aHotspotY);
+    return;
+  }
+
+  // Only change cursor if it's actually been changed
+  if (!aCursorImage && aDefaultCursor == mCursor && !mUpdateCursor) {
+    return;
+  }
+
+  mUpdateCursor = false;
+  mCursor = eCursorInvalid;
+
+  // Try to set the cursor image first, and fall back to the numeric cursor.
+  GdkCursor *newCursor = GetCursorForImage(aCursorImage, aHotspotX, aHotspotY);
+  if (!newCursor) {
+    newCursor = get_gtk_cursor(aDefaultCursor);
+    if (newCursor) {
+      mCursor = aDefaultCursor;
+    }
+  }
+
+  auto CleanupCursor = mozilla::MakeScopeExit([&]() {
+    // get_gtk_cursor returns a weak reference, which we shouldn't unref.
+    if (newCursor && mCursor == eCursorInvalid) {
+      g_object_unref(newCursor);
+    }
+  });
+
+  if (!newCursor || !mContainer) {
+    return;
+  }
+
+  gdk_window_set_cursor(gtk_widget_get_window(GTK_WIDGET(mContainer)),
+                        newCursor);
 }
 
 void nsWindow::Invalidate(const LayoutDeviceIntRect &aRect) {
@@ -1770,15 +1772,15 @@ bool nsWindow::HasPendingInputEvent() {
 }
 
 #if 0
-#ifdef DEBUG
+#  ifdef DEBUG
 // Paint flashing code (disabled for cairo - see below)
 
-#define CAPS_LOCK_IS_ON \
-  (KeymapWrapper::AreModifiersCurrentlyActive(KeymapWrapper::CAPS_LOCK))
+#    define CAPS_LOCK_IS_ON \
+      (KeymapWrapper::AreModifiersCurrentlyActive(KeymapWrapper::CAPS_LOCK))
 
-#define WANT_PAINT_FLASHING (debug_WantPaintFlashing() && CAPS_LOCK_IS_ON)
+#    define WANT_PAINT_FLASHING (debug_WantPaintFlashing() && CAPS_LOCK_IS_ON)
 
-#ifdef MOZ_X11
+#    ifdef MOZ_X11
 static void
 gdk_window_flash(GdkWindow *    aGdkWindow,
                  unsigned int   aTimes,
@@ -1833,12 +1835,12 @@ gdk_window_flash(GdkWindow *    aGdkWindow,
 
   gdk_region_offset(aRegion, -x, -y);
 }
-#endif  /* MOZ_X11 */
-#endif  // DEBUG
+#    endif /* MOZ_X11 */
+#  endif   // DEBUG
 #endif
 
 #ifdef cairo_copy_clip_rectangle_list
-#error "Looks like we're including Mozilla's cairo instead of system cairo"
+#  error "Looks like we're including Mozilla's cairo instead of system cairo"
 #endif
 static bool ExtractExposeRegion(LayoutDeviceIntRegion &aRegion, cairo_t *cr) {
   cairo_rectangle_list_t *rects = cairo_copy_clip_rectangle_list(cr);
@@ -1926,12 +1928,21 @@ gboolean nsWindow::OnExposeEvent(cairo_t *cr) {
 
   bool shaped = false;
   if (eTransparencyTransparent == GetTransparencyMode()) {
-    if (mHasAlphaVisual) {
-      // Remove possible shape mask from when window manger was not
-      // previously compositing.
-      static_cast<nsWindow *>(GetTopLevelWidget())->ClearTransparencyBitmap();
+    auto window = static_cast<nsWindow *>(GetTopLevelWidget());
+    if (mTransparencyBitmapForTitlebar) {
+      if (mSizeState == nsSizeMode_Normal) {
+        window->UpdateTitlebarTransparencyBitmap();
+      } else {
+        window->ClearTransparencyBitmap();
+      }
     } else {
-      shaped = true;
+      if (mHasAlphaVisual) {
+        // Remove possible shape mask from when window manger was not
+        // previously compositing.
+        window->ClearTransparencyBitmap();
+      } else {
+        shaped = true;
+      }
     }
   }
 
@@ -2009,16 +2020,16 @@ gboolean nsWindow::OnExposeEvent(cairo_t *cr) {
   }
   MOZ_ASSERT(ctx);  // checked both dt and destDT valid draw target above
 
-#if 0
+#  if 0
     // NOTE: Paint flashing region would be wrong for cairo, since
     // cairo inflates the update region, etc.  So don't paint flash
     // for cairo.
-#ifdef DEBUG
+#    ifdef DEBUG
     // XXX aEvent->region may refer to a newly-invalid area.  FIXME
     if (0 && WANT_PAINT_FLASHING && gtk_widget_get_window(aEvent))
         gdk_window_flash(mGdkWindow, 1, 100, aEvent->region);
-#endif
-#endif
+#    endif
+#  endif
 
 #endif  // MOZ_X11
 
@@ -2311,6 +2322,31 @@ static LayoutDeviceIntPoint GetRefPoint(nsWindow *aWindow, Event *aEvent) {
 }
 
 void nsWindow::OnMotionNotifyEvent(GdkEventMotion *aEvent) {
+  if (mWindowShouldStartDragging) {
+    mWindowShouldStartDragging = false;
+    // find the top-level window
+    GdkWindow *gdk_window = gdk_window_get_toplevel(mGdkWindow);
+    MOZ_ASSERT(gdk_window, "gdk_window_get_toplevel should not return null");
+
+    bool canDrag = true;
+    if (mIsX11Display) {
+      // Workaround for https://bugzilla.gnome.org/show_bug.cgi?id=789054
+      // To avoid crashes disable double-click on WM without _NET_WM_MOVERESIZE.
+      // See _should_perform_ewmh_drag() at gdkwindow-x11.c
+      GdkScreen *screen = gdk_window_get_screen(gdk_window);
+      GdkAtom atom = gdk_atom_intern("_NET_WM_MOVERESIZE", FALSE);
+      if (!gdk_x11_screen_supports_net_wm_hint(screen, atom)) {
+        canDrag = false;
+      }
+    }
+
+    if (canDrag) {
+      gdk_window_begin_move_drag(gdk_window, 1, aEvent->x_root, aEvent->y_root,
+                                 aEvent->time);
+      return;
+    }
+  }
+
   // see if we can compress this event
   // XXXldb Why skip every other motion event when we have multiple,
   // but not more than that?
@@ -2539,7 +2575,15 @@ void nsWindow::OnButtonPressEvent(GdkEventButton *aEvent) {
   InitButtonEvent(event, aEvent);
   event.pressure = mLastMotionPressure;
 
-  DispatchInputEvent(&event);
+  nsEventStatus eventStatus = DispatchInputEvent(&event);
+
+  LayoutDeviceIntPoint refPoint =
+      GdkEventCoordsToDevicePixels(aEvent->x, aEvent->y);
+  if (mDraggableRegion.Contains(refPoint.x, refPoint.y) &&
+      domButton == WidgetMouseEvent::eLeftButton &&
+      eventStatus != nsEventStatus_eConsumeNoDefault) {
+    mWindowShouldStartDragging = true;
+  }
 
   // right menu click on linux should also pop up a context menu
   if (!nsBaseWidget::ShowContextMenuAfterMouseUp()) {
@@ -2549,6 +2593,10 @@ void nsWindow::OnButtonPressEvent(GdkEventButton *aEvent) {
 
 void nsWindow::OnButtonReleaseEvent(GdkEventButton *aEvent) {
   LOG(("Button %u release on %p\n", aEvent->button, (void *)this));
+
+  if (mWindowShouldStartDragging) {
+    mWindowShouldStartDragging = false;
+  }
 
   uint16_t domButton;
   switch (aEvent->button) {
@@ -2684,47 +2732,6 @@ bool nsWindow::DispatchContentCommandEvent(EventMessage aMsg) {
   return TRUE;
 }
 
-static bool IsCtrlAltTab(GdkEventKey *aEvent) {
-  return aEvent->keyval == GDK_Tab &&
-         KeymapWrapper::AreModifiersActive(
-             KeymapWrapper::CTRL | KeymapWrapper::ALT, aEvent->state);
-}
-
-bool nsWindow::DispatchKeyDownOrKeyUpEvent(GdkEventKey *aEvent,
-                                           bool aIsProcessedByIME,
-                                           bool *aIsCancelled) {
-  MOZ_ASSERT(aIsCancelled, "aIsCancelled must not be nullptr");
-
-  *aIsCancelled = false;
-
-  if (aEvent->type == GDK_KEY_PRESS && IsCtrlAltTab(aEvent)) {
-    return false;
-  }
-
-  EventMessage message = aEvent->type == GDK_KEY_PRESS ? eKeyDown : eKeyUp;
-  WidgetKeyboardEvent keyEvent(true, message, this);
-  KeymapWrapper::InitKeyEvent(keyEvent, aEvent, aIsProcessedByIME);
-  return DispatchKeyDownOrKeyUpEvent(keyEvent, aIsCancelled);
-}
-bool nsWindow::DispatchKeyDownOrKeyUpEvent(WidgetKeyboardEvent &aKeyboardEvent,
-                                           bool *aIsCancelled) {
-  MOZ_ASSERT(aIsCancelled, "aIsCancelled must not be nullptr");
-
-  *aIsCancelled = false;
-
-  RefPtr<TextEventDispatcher> dispatcher = GetTextEventDispatcher();
-  nsresult rv = dispatcher->BeginNativeInputTransaction();
-  if (NS_WARN_IF(NS_FAILED(rv))) {
-    return FALSE;
-  }
-
-  nsEventStatus status = nsEventStatus_eIgnore;
-  bool dispatched = dispatcher->DispatchKeyboardEvent(
-      aKeyboardEvent.mMessage, aKeyboardEvent, status, nullptr);
-  *aIsCancelled = (status == nsEventStatus_eConsumeNoDefault);
-  return dispatched;
-}
-
 WidgetEventTime nsWindow::GetWidgetEventTime(guint32 aEventTime) {
   return WidgetEventTime(aEventTime, GetEventTimeStamp(aEventTime));
 }
@@ -2773,182 +2780,18 @@ mozilla::CurrentX11TimeGetter *nsWindow::GetCurrentTimeGetter() {
 gboolean nsWindow::OnKeyPressEvent(GdkEventKey *aEvent) {
   LOGFOCUS(("OnKeyPressEvent [%p]\n", (void *)this));
 
-  // if we are in the middle of composing text, XIM gets to see it
-  // before mozilla does.
-  // FYI: Don't dispatch keydown event before notifying IME of the event
-  //      because IME may send a key event synchronously and consume the
-  //      original event.
-  bool IMEWasEnabled = false;
-  KeyHandlingState handlingState = KeyHandlingState::eNotHandled;
-  if (mIMContext) {
-    IMEWasEnabled = mIMContext->IsEnabled();
-    handlingState = mIMContext->OnKeyEvent(this, aEvent);
-    if (handlingState == KeyHandlingState::eHandled) {
-      return TRUE;
-    }
-  }
-
-  // work around for annoying things.
-  if (IsCtrlAltTab(aEvent)) {
-    return TRUE;
-  }
-
-  nsCOMPtr<nsIWidget> kungFuDeathGrip = this;
-
-  // Dispatch keydown event always.  At auto repeating, we should send
-  // KEYDOWN -> KEYPRESS -> KEYDOWN -> KEYPRESS ... -> KEYUP
-  // However, old distributions (e.g., Ubuntu 9.10) sent native key
-  // release event, so, on such platform, the DOM events will be:
-  // KEYDOWN -> KEYPRESS -> KEYUP -> KEYDOWN -> KEYPRESS -> KEYUP...
-
-  bool isKeyDownCancelled = false;
-  if (handlingState == KeyHandlingState::eNotHandled) {
-    if (DispatchKeyDownOrKeyUpEvent(aEvent, false, &isKeyDownCancelled) &&
-        (MOZ_UNLIKELY(mIsDestroyed) || isKeyDownCancelled)) {
-      return TRUE;
-    }
-    handlingState = KeyHandlingState::eNotHandledButEventDispatched;
-  }
-
-  // If a keydown event handler causes to enable IME, i.e., it moves
-  // focus from IME unusable content to IME usable editor, we should
-  // send the native key event to IME for the first input on the editor.
-  if (!IMEWasEnabled && mIMContext && mIMContext->IsEnabled()) {
-    // Notice our keydown event was already dispatched.  This prevents
-    // unnecessary DOM keydown event in the editor.
-    handlingState = mIMContext->OnKeyEvent(this, aEvent, true);
-    if (handlingState == KeyHandlingState::eHandled) {
-      return TRUE;
-    }
-  }
-
-  // Look for specialized app-command keys
-  switch (aEvent->keyval) {
-    case GDK_Back:
-      return DispatchCommandEvent(nsGkAtoms::Back);
-    case GDK_Forward:
-      return DispatchCommandEvent(nsGkAtoms::Forward);
-    case GDK_Refresh:
-      return DispatchCommandEvent(nsGkAtoms::Reload);
-    case GDK_Stop:
-      return DispatchCommandEvent(nsGkAtoms::Stop);
-    case GDK_Search:
-      return DispatchCommandEvent(nsGkAtoms::Search);
-    case GDK_Favorites:
-      return DispatchCommandEvent(nsGkAtoms::Bookmarks);
-    case GDK_HomePage:
-      return DispatchCommandEvent(nsGkAtoms::Home);
-    case GDK_Copy:
-    case GDK_F16:  // F16, F20, F18, F14 are old keysyms for Copy Cut Paste Undo
-      return DispatchContentCommandEvent(eContentCommandCopy);
-    case GDK_Cut:
-    case GDK_F20:
-      return DispatchContentCommandEvent(eContentCommandCut);
-    case GDK_Paste:
-    case GDK_F18:
-      return DispatchContentCommandEvent(eContentCommandPaste);
-    case GDK_Redo:
-      return DispatchContentCommandEvent(eContentCommandRedo);
-    case GDK_Undo:
-    case GDK_F14:
-      return DispatchContentCommandEvent(eContentCommandUndo);
-  }
-
-  WidgetKeyboardEvent keypressEvent(true, eKeyPress, this);
-  KeymapWrapper::InitKeyEvent(keypressEvent, aEvent, false);
-
-  // before we dispatch a key, check if it's the context menu key.
-  // If so, send a context menu key event instead.
-  if (MaybeDispatchContextMenuEvent(aEvent)) {
-    return TRUE;
-  }
-
-  RefPtr<TextEventDispatcher> dispatcher = GetTextEventDispatcher();
-  nsresult rv = dispatcher->BeginNativeInputTransaction();
-  if (NS_WARN_IF(NS_FAILED(rv))) {
-    return TRUE;
-  }
-
-  // If the character code is in the BMP, send the key press event.
-  // Otherwise, send a compositionchange event with the equivalent UTF-16
-  // string.
-  // TODO: Investigate other browser's behavior in this case because
-  //       this hack is odd for UI Events.
-  nsEventStatus status = nsEventStatus_eIgnore;
-  if (keypressEvent.mKeyNameIndex != KEY_NAME_INDEX_USE_STRING ||
-      keypressEvent.mKeyValue.Length() == 1) {
-    dispatcher->MaybeDispatchKeypressEvents(keypressEvent, status, aEvent);
-  } else {
-    WidgetEventTime eventTime = GetWidgetEventTime(aEvent->time);
-    dispatcher->CommitComposition(status, &keypressEvent.mKeyValue, &eventTime);
-  }
-
+  RefPtr<nsWindow> self(this);
+  KeymapWrapper::HandleKeyPressEvent(self, aEvent);
   return TRUE;
-}
-
-bool nsWindow::MaybeDispatchContextMenuEvent(const GdkEventKey *aEvent) {
-  KeyNameIndex keyNameIndex = KeymapWrapper::ComputeDOMKeyNameIndex(aEvent);
-
-  // Shift+F10 and ContextMenu should cause eContextMenu event.
-  if (keyNameIndex != KEY_NAME_INDEX_F10 &&
-      keyNameIndex != KEY_NAME_INDEX_ContextMenu) {
-    return false;
-  }
-
-  WidgetMouseEvent contextMenuEvent(true, eContextMenu, this,
-                                    WidgetMouseEvent::eReal,
-                                    WidgetMouseEvent::eContextMenuKey);
-
-  contextMenuEvent.mRefPoint = LayoutDeviceIntPoint(0, 0);
-  contextMenuEvent.AssignEventTime(GetWidgetEventTime(aEvent->time));
-  contextMenuEvent.mClickCount = 1;
-  KeymapWrapper::InitInputEvent(contextMenuEvent, aEvent->state);
-
-  if (contextMenuEvent.IsControl() || contextMenuEvent.IsMeta() ||
-      contextMenuEvent.IsAlt()) {
-    return false;
-  }
-
-  // If the key is ContextMenu, then an eContextMenu mouse event is
-  // dispatched regardless of the state of the Shift modifier.  When it is
-  // pressed without the Shift modifier, a web page can prevent the default
-  // context menu action.  When pressed with the Shift modifier, the web page
-  // cannot prevent the default context menu action.
-  // (PresShell::HandleEventInternal() sets mOnlyChromeDispatch to true.)
-
-  // If the key is F10, it needs Shift state because Shift+F10 is well-known
-  // shortcut key on Linux.  However, eContextMenu with Shift state is
-  // special.  It won't fire "contextmenu" event in the web content for
-  // blocking web page to prevent its default.  Therefore, this combination
-  // should work same as ContextMenu key.
-  // XXX Should we allow to block web page to prevent its default with
-  //     Ctrl+Shift+F10 or Alt+Shift+F10 instead?
-  if (keyNameIndex == KEY_NAME_INDEX_F10) {
-    if (!contextMenuEvent.IsShift()) {
-      return false;
-    }
-    contextMenuEvent.mModifiers &= ~MODIFIER_SHIFT;
-  }
-
-  DispatchInputEvent(&contextMenuEvent);
-  return true;
 }
 
 gboolean nsWindow::OnKeyReleaseEvent(GdkEventKey *aEvent) {
   LOGFOCUS(("OnKeyReleaseEvent [%p]\n", (void *)this));
 
-  if (mIMContext) {
-    KeyHandlingState handlingState = mIMContext->OnKeyEvent(this, aEvent);
-    if (handlingState != KeyHandlingState::eNotHandled) {
-      return TRUE;
-    }
-  }
-
-  bool isCancelled = false;
-  if (NS_WARN_IF(!DispatchKeyDownOrKeyUpEvent(aEvent, false, &isCancelled))) {
+  RefPtr<nsWindow> self(this);
+  if (NS_WARN_IF(!KeymapWrapper::HandleKeyReleaseEvent(self, aEvent))) {
     return FALSE;
   }
-
   return TRUE;
 }
 
@@ -3096,7 +2939,6 @@ void nsWindow::OnWindowStateEvent(GtkWidget *aWidget,
         !(aEvent->new_window_state & GDK_WINDOW_STATE_FOCUSED);
 
     ForceTitlebarRedraw();
-    return;
   }
 
   // We don't care about anything but changes in the maximized/icon/fullscreen
@@ -3188,6 +3030,22 @@ void nsWindow::OnCompositedChanged() {
       presShell->ThemeChanged();
     }
   }
+}
+
+void nsWindow::OnScaleChanged(GtkAllocation *aAllocation) {
+#ifdef MOZ_WAYLAND
+  if (mContainer && moz_container_has_wl_egl_window(mContainer)) {
+    // We need to resize wl_egl_window when scale changes.
+    moz_container_scale_changed(mContainer, aAllocation);
+  }
+#endif
+
+  // This eventually propagate new scale to the PuppetWidgets
+  OnDPIChanged();
+
+  // configure_event is already fired before scale-factor signal,
+  // but size-allocate isn't fired by changing scale
+  OnSizeAllocate(aAllocation);
 }
 
 void nsWindow::DispatchDragEvent(EventMessage aMsg,
@@ -3420,15 +3278,38 @@ nsresult nsWindow::Create(nsIWidget *aParent, nsNativeWidget aNativeParent,
       bool shouldAccelerate = ComputeShouldAccelerate();
       MOZ_ASSERT(shouldAccelerate | !useWebRender);
 
-      // Some Gtk+ themes use non-rectangular toplevel windows. To fully support
-      // such themes we need to make toplevel window transparent with ARGB visual.
-      // It may cause performanance issue so make it configurable
-      // and enable it by default for selected window managers.
-      // Also disable it for X11 SW rendering (Bug 1516224) by default.
-      if (mWindowType == eWindowType_toplevel &&
-          (shouldAccelerate || !mIsX11Display ||
-            Preferences::HasUserValue("mozilla.widget.use-argb-visuals"))) {
-          needsAlphaVisual = TopLevelWindowUseARGBVisual();
+      if (mWindowType == eWindowType_toplevel) {
+        // We enable titlebar rendering for toplevel windows only.
+        mCSDSupportLevel = GetSystemCSDSupportLevel();
+
+        // There's no point to configure transparency
+        // on non-composited screens.
+        GdkScreen *screen = gdk_screen_get_default();
+        if (gdk_screen_is_composited(screen)) {
+          // Some Gtk+ themes use non-rectangular toplevel windows. To fully
+          // support such themes we need to make toplevel window transparent
+          // with ARGB visual.
+          // It may cause performanance issue so make it configurable
+          // and enable it by default for selected window managers.
+          if (Preferences::HasUserValue("mozilla.widget.use-argb-visuals")) {
+            // argb visual is explicitly required so use it
+            needsAlphaVisual =
+                Preferences::GetBool("mozilla.widget.use-argb-visuals");
+          } else if (!mIsX11Display) {
+            // Wayland uses ARGB visual by default
+            needsAlphaVisual = true;
+          } else if (mCSDSupportLevel != CSD_SUPPORT_NONE) {
+            if (shouldAccelerate) {
+              needsAlphaVisual = true;
+            } else {
+              // We want to draw a transparent titlebar but we can't use
+              // ARGB visual due to Bug 1516224.
+              // If we're on Mutter/X.org (Bug 1530252) just give up
+              // and don't render transparent corners at all.
+              mTransparencyBitmapForTitlebar = TitlebarCanUseShapeMask();
+            }
+          }
+        }
       }
 
       bool isSetVisual = false;
@@ -3470,7 +3351,8 @@ nsresult nsWindow::Create(nsIWidget *aParent, nsNativeWidget aNativeParent,
       // We have a toplevel window with transparency. Mark it as transparent
       // now as nsWindow::SetTransparencyMode() can't be called after
       // nsWindow is created (Bug 1344839).
-      if (mWindowType == eWindowType_toplevel && mHasAlphaVisual) {
+      if (mWindowType == eWindowType_toplevel &&
+          (mHasAlphaVisual || mTransparencyBitmapForTitlebar)) {
         mIsTransparent = true;
       }
 
@@ -3559,9 +3441,6 @@ nsresult nsWindow::Create(nsIWidget *aParent, nsNativeWidget aNativeParent,
         GtkWindowGroup *group = gtk_window_group_new();
         gtk_window_group_add_window(group, GTK_WINDOW(mShell));
         g_object_unref(group);
-
-        // We enable titlebar rendering for toplevel windows only.
-        mCSDSupportLevel = GetSystemCSDSupportLevel();
       }
 
       // Create a container to hold child windows and child GtkWidgets.
@@ -3597,6 +3476,9 @@ nsresult nsWindow::Create(nsIWidget *aParent, nsNativeWidget aNativeParent,
         gtk_widget_add_events(mShell, GDK_PROPERTY_CHANGE_MASK);
         gtk_widget_set_app_paintable(mShell, TRUE);
       }
+      if (mTransparencyBitmapForTitlebar) {
+        moz_container_force_default_visual(mContainer);
+      }
 
       // If we draw to mContainer window then configure it now because
       // gtk_container_add() realizes the child widget.
@@ -3620,7 +3502,7 @@ nsresult nsWindow::Create(nsIWidget *aParent, nsNativeWidget aNativeParent,
                                  // cursor, even though our internal state
                                  // indicates that we already have the
                                  // standard cursor.
-        SetCursor(eCursor_standard);
+        SetCursor(eCursor_standard, nullptr, 0, 0);
 
         if (aInitData->mNoAutoHide) {
           gint wmd = ConvertBorderStyles(mBorderStyle);
@@ -3838,11 +3720,11 @@ nsresult nsWindow::Create(nsIWidget *aParent, nsNativeWidget aNativeParent,
       SetCompositorHint(GTK_WIDGET_COMPOSIDED_ENABLED);
     }
   }
-#ifdef MOZ_WAYLAND
+#  ifdef MOZ_WAYLAND
   else if (!mIsX11Display) {
     mSurfaceProvider.Initialize(this);
   }
-#endif
+#  endif
 #endif
   return NS_OK;
 }
@@ -4450,6 +4332,8 @@ nsresult nsWindow::UpdateTranslucentWindowAlphaInternal(const nsIntRect &aRect,
   }
 
   NS_ASSERTION(mIsTransparent, "Window is not transparent");
+  NS_ASSERTION(!mTransparencyBitmapForTitlebar,
+               "Transparency bitmap is already used for titlebar rendering");
 
   if (mTransparencyBitmap == nullptr) {
     int32_t size = GetBitmapStride(mBounds.width) * mBounds.height;
@@ -4477,6 +4361,91 @@ nsresult nsWindow::UpdateTranslucentWindowAlphaInternal(const nsIntRect &aRect,
     ApplyTransparencyBitmap();
   }
   return NS_OK;
+}
+
+// We need to shape only a few pixels of the titlebar as we care about
+// the corners only
+#define TITLEBAR_SHAPE_MASK_HEIGHT 10
+
+void nsWindow::UpdateTitlebarTransparencyBitmap() {
+  NS_ASSERTION(mTransparencyBitmapForTitlebar,
+               "Transparency bitmap is already used to draw window shape");
+
+  if (!mDrawInTitlebar || (mBounds.width == mTransparencyBitmapWidth &&
+                           mBounds.height == mTransparencyBitmapHeight)) {
+    return;
+  }
+
+  bool maskCreate =
+      !mTransparencyBitmap || mBounds.width > mTransparencyBitmapWidth;
+
+  bool maskUpdate =
+      !mTransparencyBitmap || mBounds.width != mTransparencyBitmapWidth;
+
+  if (maskCreate) {
+    if (mTransparencyBitmap) {
+      delete[] mTransparencyBitmap;
+    }
+    int32_t size = GetBitmapStride(mBounds.width) * TITLEBAR_SHAPE_MASK_HEIGHT;
+    mTransparencyBitmap = new gchar[size];
+    mTransparencyBitmapWidth = mBounds.width;
+  } else {
+    mTransparencyBitmapWidth = mBounds.width;
+  }
+  mTransparencyBitmapHeight = mBounds.height;
+
+  if (maskUpdate) {
+    cairo_surface_t *surface = cairo_image_surface_create(
+        CAIRO_FORMAT_A8, mTransparencyBitmapWidth, TITLEBAR_SHAPE_MASK_HEIGHT);
+    if (!surface) return;
+
+    cairo_t *cr = cairo_create(surface);
+
+    GtkWidgetState state;
+    memset((void *)&state, 0, sizeof(state));
+    GdkRectangle rect = {0, 0, mTransparencyBitmapWidth,
+                         TITLEBAR_SHAPE_MASK_HEIGHT};
+
+    moz_gtk_widget_paint(MOZ_GTK_HEADER_BAR, cr, &rect, &state, 0,
+                         GTK_TEXT_DIR_NONE);
+
+    cairo_destroy(cr);
+    cairo_surface_mark_dirty(surface);
+    cairo_surface_flush(surface);
+
+    UpdateMaskBits(
+        mTransparencyBitmap, mTransparencyBitmapWidth,
+        TITLEBAR_SHAPE_MASK_HEIGHT,
+        nsIntRect(0, 0, mTransparencyBitmapWidth, TITLEBAR_SHAPE_MASK_HEIGHT),
+        cairo_image_surface_get_data(surface),
+        cairo_format_stride_for_width(CAIRO_FORMAT_A8,
+                                      mTransparencyBitmapWidth));
+
+    cairo_surface_destroy(surface);
+  }
+
+  if (!mNeedsShow) {
+    Display *xDisplay = GDK_WINDOW_XDISPLAY(mGdkWindow);
+    Window xDrawable = GDK_WINDOW_XID(mGdkWindow);
+
+    Pixmap maskPixmap = XCreateBitmapFromData(
+        xDisplay, xDrawable, mTransparencyBitmap, mTransparencyBitmapWidth,
+        TITLEBAR_SHAPE_MASK_HEIGHT);
+
+    XShapeCombineMask(xDisplay, xDrawable, ShapeBounding, 0, 0, maskPixmap,
+                      ShapeSet);
+
+    if (mTransparencyBitmapHeight > TITLEBAR_SHAPE_MASK_HEIGHT) {
+      XRectangle rect = {0, 0, (unsigned short)mTransparencyBitmapWidth,
+                         (unsigned short)(mTransparencyBitmapHeight -
+                                          TITLEBAR_SHAPE_MASK_HEIGHT)};
+      XShapeCombineRectangles(xDisplay, xDrawable, ShapeBounding, 0,
+                              TITLEBAR_SHAPE_MASK_HEIGHT, &rect, 1, ShapeUnion,
+                              0);
+    }
+
+    XFreePixmap(xDisplay, maskPixmap);
+  }
 }
 
 void nsWindow::GrabPointer(guint32 aTime) {
@@ -5415,7 +5384,7 @@ static gboolean key_press_event_cb(GtkWidget *widget, GdkEventKey *event) {
   // We use the event time of the last one.
   // Note: GDK calls XkbSetDetectableAutorepeat so that KeyRelease events
   // are generated only when the key is physically released.
-#define NS_GDKEVENT_MATCH_MASK 0x1FFF /* GDK_SHIFT_MASK .. GDK_BUTTON5_MASK */
+#  define NS_GDKEVENT_MATCH_MASK 0x1FFF  // GDK_SHIFT_MASK .. GDK_BUTTON5_MASK
   GdkDisplay *gdkDisplay = gtk_widget_get_display(widget);
   if (GDK_IS_X11_DISPLAY(gdkDisplay)) {
     Display *dpy = GDK_DISPLAY_XDISPLAY(gdkDisplay);
@@ -5566,14 +5535,10 @@ static void scale_changed_cb(GtkWidget *widget, GParamSpec *aPSpec,
   if (!window) {
     return;
   }
-  // This eventually propagate new scale to the PuppetWidgets
-  window->OnDPIChanged();
 
-  // configure_event is already fired before scale-factor signal,
-  // but size-allocate isn't fired by changing scale
   GtkAllocation allocation;
   gtk_widget_get_allocation(widget, &allocation);
-  window->OnSizeAllocate(&allocation);
+  window->OnScaleChanged(&allocation);
 }
 
 #if GTK_CHECK_VERSION(3, 4, 0)
@@ -5975,26 +5940,6 @@ bool nsWindow::GetDragInfo(WidgetMouseEvent *aMouseEvent, GdkWindow **aWindow,
   return true;
 }
 
-nsresult nsWindow::BeginMoveDrag(WidgetMouseEvent *aEvent) {
-  MOZ_ASSERT(aEvent, "must have event");
-  MOZ_ASSERT(aEvent->mClass == eMouseEventClass,
-             "event must have correct struct type");
-
-  GdkWindow *gdk_window;
-  gint button, screenX, screenY;
-  if (!GetDragInfo(aEvent, &gdk_window, &button, &screenX, &screenY)) {
-    return NS_ERROR_FAILURE;
-  }
-
-  // tell the window manager to start the move
-  screenX = DevicePixelsToGdkCoordRoundDown(screenX);
-  screenY = DevicePixelsToGdkCoordRoundDown(screenY);
-  gdk_window_begin_move_drag(gdk_window, button, screenX, screenY,
-                             aEvent->mTime);
-
-  return NS_OK;
-}
-
 nsresult nsWindow::BeginResizeDrag(WidgetGUIEvent *aEvent, int32_t aHorizontal,
                                    int32_t aVertical) {
   NS_ENSURE_ARG_POINTER(aEvent);
@@ -6206,6 +6151,14 @@ void nsWindow::SetDrawsInTitlebar(bool aState) {
   }
 
   mDrawInTitlebar = aState;
+
+  if (mTransparencyBitmapForTitlebar) {
+    if (mDrawInTitlebar && mSizeState == nsSizeMode_Normal) {
+      UpdateTitlebarTransparencyBitmap();
+    } else {
+      ClearTransparencyBitmap();
+    }
+  }
 }
 
 gint nsWindow::GdkScaleFactor() {
@@ -6460,11 +6413,30 @@ nsWindow::CSDSupportLevel nsWindow::GetSystemCSDSupportLevel() {
     return sCSDSupportLevel;
   }
 
+  // Allow MOZ_GTK_TITLEBAR_DECORATION to override our heuristics
+  const char *decorationOverride = getenv("MOZ_GTK_TITLEBAR_DECORATION");
+  if (decorationOverride) {
+    if (strcmp(decorationOverride, "none") == 0) {
+      sCSDSupportLevel = CSD_SUPPORT_NONE;
+    } else if (strcmp(decorationOverride, "client") == 0) {
+      sCSDSupportLevel = CSD_SUPPORT_CLIENT;
+    } else if (strcmp(decorationOverride, "system") == 0) {
+      sCSDSupportLevel = CSD_SUPPORT_SYSTEM;
+    }
+    return sCSDSupportLevel;
+  }
+
+  // We use CSD titlebar mode on Wayland only
+  if (!GDK_IS_X11_DISPLAY(gdk_display_get_default())) {
+    sCSDSupportLevel = CSD_SUPPORT_CLIENT;
+    return sCSDSupportLevel;
+  }
+
   const char *currentDesktop = getenv("XDG_CURRENT_DESKTOP");
   if (currentDesktop) {
     // GNOME Flashback (fallback)
     if (strstr(currentDesktop, "GNOME-Flashback:GNOME") != nullptr) {
-      sCSDSupportLevel = CSD_SUPPORT_CLIENT;
+      sCSDSupportLevel = CSD_SUPPORT_SYSTEM;
       // gnome-shell
     } else if (strstr(currentDesktop, "GNOME") != nullptr) {
       sCSDSupportLevel = CSD_SUPPORT_SYSTEM;
@@ -6508,12 +6480,6 @@ nsWindow::CSDSupportLevel nsWindow::GetSystemCSDSupportLevel() {
     sCSDSupportLevel = CSD_SUPPORT_NONE;
   }
 
-  // We don't support CSD_SUPPORT_SYSTEM on Wayland
-  if (!GDK_IS_X11_DISPLAY(gdk_display_get_default()) &&
-      sCSDSupportLevel == CSD_SUPPORT_SYSTEM) {
-    sCSDSupportLevel = CSD_SUPPORT_CLIENT;
-  }
-
   // GTK_CSD forces CSD mode - use also CSD because window manager
   // decorations does not work with CSD.
   // We check GTK_CSD as well as gtk_window_should_use_csd() does.
@@ -6524,43 +6490,65 @@ nsWindow::CSDSupportLevel nsWindow::GetSystemCSDSupportLevel() {
     }
   }
 
-  // Allow MOZ_GTK_TITLEBAR_DECORATION to override our heuristics
-  const char *decorationOverride = getenv("MOZ_GTK_TITLEBAR_DECORATION");
-  if (decorationOverride) {
-    if (strcmp(decorationOverride, "none") == 0) {
-      sCSDSupportLevel = CSD_SUPPORT_NONE;
-    } else if (strcmp(decorationOverride, "client") == 0) {
-      sCSDSupportLevel = CSD_SUPPORT_CLIENT;
-    } else if (strcmp(decorationOverride, "system") == 0) {
-      sCSDSupportLevel = CSD_SUPPORT_SYSTEM;
-    }
-  }
-
   return sCSDSupportLevel;
 }
 
-bool nsWindow::TopLevelWindowUseARGBVisual() {
-  static int useARGBVisual = -1;
-  if (useARGBVisual != -1) {
-    return useARGBVisual;
+// Check for Mutter regression on X.org (Bug 1530252). In that case we
+// don't hide system titlebar by default as we can't draw transparent
+// corners reliably.
+bool nsWindow::TitlebarCanUseShapeMask()
+{
+  static int canUseShapeMask = -1;
+  if (canUseShapeMask != -1) {
+    return canUseShapeMask;
+  }
+  canUseShapeMask = true;
+
+  const char *currentDesktop = getenv("XDG_CURRENT_DESKTOP");
+  if (!currentDesktop) {
+    return canUseShapeMask;
   }
 
-  if (Preferences::HasUserValue("mozilla.widget.use-argb-visuals")) {
-    useARGBVisual =
-        Preferences::GetBool("mozilla.widget.use-argb-visuals", false);
-  } else {
-    const char *currentDesktop = getenv("XDG_CURRENT_DESKTOP");
-    useARGBVisual =
-        (currentDesktop && GetSystemCSDSupportLevel() != CSD_SUPPORT_NONE);
-
-    if (useARGBVisual) {
-      useARGBVisual =
-          (strstr(currentDesktop, "GNOME-Flashback:GNOME") != nullptr ||
-           strstr(currentDesktop, "GNOME") != nullptr);
-    }
+  if (strstr(currentDesktop, "GNOME-Flashback:GNOME") != nullptr ||
+      strstr(currentDesktop, "GNOME") != nullptr) {
+    const char *sessionType = getenv("XDG_SESSION_TYPE");
+    canUseShapeMask = (sessionType && strstr(sessionType, "x11") == nullptr);
   }
 
-  return useARGBVisual;
+  return canUseShapeMask;
+}
+
+bool nsWindow::HideTitlebarByDefault() {
+  static int hideTitlebar = -1;
+  if (hideTitlebar != -1) {
+    return hideTitlebar;
+  }
+
+  // When user defined widget.default-hidden-titlebar don't do any
+  // heuristics and just follow it.
+  if (Preferences::HasUserValue("widget.default-hidden-titlebar")) {
+    hideTitlebar = Preferences::GetBool("widget.default-hidden-titlebar", false);
+    return hideTitlebar;
+  }
+
+  const char *currentDesktop = getenv("XDG_CURRENT_DESKTOP");
+  hideTitlebar =
+      (currentDesktop && GetSystemCSDSupportLevel() != CSD_SUPPORT_NONE);
+
+  // Disable system titlebar for Gnome only for now. It uses window
+  // manager decorations and does not suffer from CSD Bugs #1525850, #1527837.
+  if (hideTitlebar) {
+    hideTitlebar =
+        (strstr(currentDesktop, "GNOME-Flashback:GNOME") != nullptr ||
+         strstr(currentDesktop, "GNOME") != nullptr);
+  }
+
+  // We use shape mask to render the titlebar by default so check for it.
+  if (hideTitlebar) {
+    hideTitlebar = TitlebarCanUseShapeMask();
+  }
+
+  return hideTitlebar;
 }
 
 int32_t nsWindow::RoundsWidgetCoordinatesTo() { return GdkScaleFactor(); }
@@ -6576,7 +6564,8 @@ void nsWindow::GetCompositorWidgetInitData(
   *aInitData = mozilla::widget::GtkCompositorWidgetInitData(
       (mXWindow != X11None) ? mXWindow : (uintptr_t) nullptr,
       mXDisplay ? nsCString(XDisplayString(mXDisplay)) : nsCString(),
-      mIsTransparent && !mHasAlphaVisual, GetClientSize());
+      mIsTransparent && !mHasAlphaVisual && !mTransparencyBitmapForTitlebar,
+      GetClientSize());
 }
 
 #ifdef MOZ_WAYLAND
@@ -6613,7 +6602,7 @@ bool nsWindow::WaylandSurfaceNeedsClear() {
  * for further details.
  */
 
-#define PROGRESS_HINT "_NET_WM_XAPP_PROGRESS"
+#  define PROGRESS_HINT "_NET_WM_XAPP_PROGRESS"
 
 static void set_window_hint_cardinal(Window xid, const gchar *atom_name,
                                      gulong cardinal) {

@@ -10,8 +10,6 @@
   --table-zebra-background: rgba(255,255,255,0.05);
   --sidemenu-selected-arrow: url(images/item-arrow-dark-ltr.svg);
   --sidemenu-selected-arrow-rtl: url(images/item-arrow-dark-rtl.svg);
-  --delete-icon: url(chrome://devtools/skin/images/vview-delete.png);
-  --delete-icon-2x: url(chrome://devtools/skin/images/vview-delete@2x.png);
 }
 
 .theme-light {
@@ -19,8 +17,6 @@
   --table-zebra-background: rgba(0,0,0,0.05);
   --sidemenu-selected-arrow: url(images/item-arrow-ltr.svg);
   --sidemenu-selected-arrow-rtl: url(images/item-arrow-rtl.svg);
-  --delete-icon: url(chrome://devtools/skin/images/vview-delete.png);
-  --delete-icon-2x: url(chrome://devtools/skin/images/vview-delete@2x.png);
 }
 
 /* Generic pane helpers */
@@ -473,52 +469,35 @@
   cursor: pointer;
 }
 
+.variables-view-open-inspector {
+  background-size: 15px;
+  background-repeat: no-repeat;
+  -moz-context-properties: fill;
+  fill: var(--theme-icon-dimmed-color);
+}
+
 .variables-view-delete:hover,
 .variables-view-edit:hover,
 .variables-view-open-inspector:hover {
-  filter: var(--theme-icon-checked-filter);
+  fill: var(--theme-icon-color);
 }
 
 .variables-view-delete:active,
 .variables-view-edit:active,
 .variables-view-open-inspector:active {
-  filter: var(--theme-icon-checked-filter) brightness(0.9);
-}
-
-.variable-or-property:focus > .title > .variables-view-delete,
-.variable-or-property:focus > .title > .variables-view-edit,
-.variable-or-property:focus > .title > .variables-view-open-inspector {
-  filter: none;
+  fill: var(--theme-icon-checked-color);
 }
 
 .variables-view-delete {
-  background-image: var(--delete-icon);
-}
-
-@media (min-resolution: 1.1dppx) {
-  .variables-view-delete {
-    background-image: var(--delete-icon-2x);
-  }
+  background-image: url("chrome://devtools/skin/images/vview-delete.svg");
 }
 
 .variables-view-edit {
-  background-image: url("chrome://devtools/skin/images/vview-edit.png");
-}
-
-@media (min-resolution: 1.1dppx) {
-  .variables-view-edit {
-    background-image: url("chrome://devtools/skin/images/vview-edit@2x.png");
-  }
+  background-image: url("chrome://devtools/skin/images/vview-edit.svg");
 }
 
 .variables-view-open-inspector {
-  background-image: url("chrome://devtools/skin/images/vview-open-inspector.png");
-}
-
-@media (min-resolution: 1.1dppx) {
-  .variables-view-open-inspector {
-    background-image: url("chrome://devtools/skin/images/vview-open-inspector@2x.png");
-  }
+  background-image: url("chrome://devtools/skin/images/open-inspector.svg");
 }
 
 /* Variables and properties input boxes */
@@ -960,7 +939,7 @@
   background-repeat: no-repeat;
   background-size: 10px;
   -moz-context-properties: fill;
-  fill: var(--theme-twisty-fill);
+  fill: var(--theme-icon-dimmed-color);
   cursor: pointer;
   transition: transform 125ms ease;
   transform: rotate(-90deg);

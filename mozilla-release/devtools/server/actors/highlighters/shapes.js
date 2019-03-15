@@ -66,6 +66,12 @@ const _dragging = Symbol("shapes/dragging");
  *
  * A refresher for coordinates and change of basis that may be helpful:
  * https://www.math.ubc.ca/~behrend/math221/Coords.pdf
+ *
+ * @param {String} options.hoverPoint
+ *        The point to highlight.
+ * @param {Boolean} options.transformMode
+ *        Whether to show the highlighter in transforms mode.
+ * @param {} options.mode
  */
 class ShapesHighlighter extends AutoRefreshHighlighter {
   constructor(highlighterEnv) {
@@ -1939,8 +1945,8 @@ class ShapesHighlighter extends AutoRefreshHighlighter {
   }
 
   /**
-   * Parses the definition of the CSS ellipse() function and returns the x/y radiuses and
-   * center coordinates, converted to percentages.
+   * Parses the computed style definition of the CSS ellipse() function and returns the
+   * x/y radii and center coordinates, converted to percentages.
    * @param {String} definition the arguments of the ellipse() function
    * @returns {Object} an object of the form { rx, ry, cx, cy }, where rx and ry are the
    *          radiuses for the x and y axes, and cx and cy are the x/y coordinates for the
@@ -1951,7 +1957,14 @@ class ShapesHighlighter extends AutoRefreshHighlighter {
     if (!this.origCoordUnits) {
       this.origCoordUnits = this.coordUnits;
     }
-    const values = definition.split(" at ");
+    let values = definition.split(" at ");
+
+    // Until Bug 1521508 is fixed, we need to shim the computed style value of empty
+    // ellipse() declarations because they're missing the "closest-side" default radii.
+    if (values[0] === definition) {
+      values = `closest-side closest-side ${definition}`.split(" at ");
+    }
+
     const center = splitCoords(values[1]).map(this.convertCoordsToPercent.bind(this));
 
     const radii = splitCoords(values[0]).map((radius, i) => {
@@ -2760,6 +2773,7 @@ const isUnitless = (point) => {
          // If zero doesn't have a unit, its numeric and string forms should be equal.
          (parseFloat(point) === 0 && (parseFloat(point).toString() === point)) ||
          point.includes("(") ||
+         point === "center" ||
          point === "closest-side" ||
          point === "farthest-side";
 };

@@ -145,7 +145,7 @@ void nsSVGForeignObjectFrame::Reflow(nsPresContext* aPresContext,
 
 void nsSVGForeignObjectFrame::BuildDisplayList(nsDisplayListBuilder* aBuilder,
                                                const nsDisplayListSet& aLists) {
-  if (!static_cast<const nsSVGElement*>(GetContent())->HasValidDimensions()) {
+  if (!static_cast<const SVGElement*>(GetContent())->HasValidDimensions()) {
     return;
   }
   nsDisplayList newList;
@@ -170,9 +170,8 @@ bool nsSVGForeignObjectFrame::IsSVGTransformed(
             aFromParentTransform);
   }
 
-  nsSVGElement* content = static_cast<nsSVGElement*>(GetContent());
-  nsSVGAnimatedTransformList* transformList =
-      content->GetAnimatedTransformList();
+  SVGElement* content = static_cast<SVGElement*>(GetContent());
+  SVGAnimatedTransformList* transformList = content->GetAnimatedTransformList();
   if ((transformList && transformList->HasTransform()) ||
       content->GetAnimateMotionTransform()) {
     if (aOwnTransform) {
@@ -231,14 +230,16 @@ void nsSVGForeignObjectFrame::PaintSVG(gfxContext& aContext,
     // not with kidDirtyRect. I.e.
     // int32_t appUnitsPerDevPx = PresContext()->AppUnitsPerDevPixel();
     // mRect.ToOutsidePixels(appUnitsPerDevPx).Intersects(*aDirtyRect)
-    if (kidDirtyRect.IsEmpty()) return;
+    if (kidDirtyRect.IsEmpty()) {
+      return;
+    }
   }
 
   aContext.Save();
 
   if (StyleDisplay()->IsScrollableOverflow()) {
     float x, y, width, height;
-    static_cast<nsSVGElement*>(GetContent())
+    static_cast<SVGElement*>(GetContent())
         ->GetAnimatedLengthValues(&x, &y, &width, &height, nullptr);
 
     gfxRect clipRect =
@@ -277,13 +278,17 @@ nsIFrame* nsSVGForeignObjectFrame::GetFrameForPoint(const gfxPoint& aPoint) {
                "If display lists are enabled, only hit-testing of a "
                "clipPath's contents should take this code path");
 
-  if (IsDisabled() || (GetStateBits() & NS_FRAME_IS_NONDISPLAY)) return nullptr;
+  if (IsDisabled() || (GetStateBits() & NS_FRAME_IS_NONDISPLAY)) {
+    return nullptr;
+  }
 
   nsIFrame* kid = PrincipalChildList().FirstChild();
-  if (!kid) return nullptr;
+  if (!kid) {
+    return nullptr;
+  }
 
   float x, y, width, height;
-  static_cast<nsSVGElement*>(GetContent())
+  static_cast<SVGElement*>(GetContent())
       ->GetAnimatedLengthValues(&x, &y, &width, &height, nullptr);
 
   if (!gfxRect(x, y, width, height).Contains(aPoint) ||
@@ -475,7 +480,9 @@ void nsSVGForeignObjectFrame::RequestReflow(
     return;
 
   nsIFrame* kid = PrincipalChildList().FirstChild();
-  if (!kid) return;
+  if (!kid) {
+    return;
+  }
 
   PresShell()->FrameNeedsReflow(kid, aType, NS_FRAME_IS_DIRTY);
 }
@@ -483,11 +490,15 @@ void nsSVGForeignObjectFrame::RequestReflow(
 void nsSVGForeignObjectFrame::DoReflow() {
   MarkInReflow();
   // Skip reflow if we're zero-sized, unless this is our first reflow.
-  if (IsDisabled() && !(GetStateBits() & NS_FRAME_FIRST_REFLOW)) return;
+  if (IsDisabled() && !(GetStateBits() & NS_FRAME_FIRST_REFLOW)) {
+    return;
+  }
 
   nsPresContext* presContext = PresContext();
   nsIFrame* kid = PrincipalChildList().FirstChild();
-  if (!kid) return;
+  if (!kid) {
+    return;
+  }
 
   // initiate a synchronous reflow here and now:
   RefPtr<gfxContext> renderingContext =

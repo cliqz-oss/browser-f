@@ -84,8 +84,12 @@ static int parse_seq_hdr(Dav1dContext *const c, GetBits *const gb,
             hdr->num_units_in_tick = dav1d_get_bits(gb, 32);
             hdr->time_scale = dav1d_get_bits(gb, 32);
             hdr->equal_picture_interval = dav1d_get_bits(gb, 1);
-            if (hdr->equal_picture_interval)
-                hdr->num_ticks_per_picture = dav1d_get_vlc(gb) + 1;
+            if (hdr->equal_picture_interval) {
+                unsigned num_ticks_per_picture = dav1d_get_vlc(gb);
+                if (num_ticks_per_picture == 0xFFFFFFFFU)
+                    goto error;
+                hdr->num_ticks_per_picture = num_ticks_per_picture + 1;
+            }
 
             hdr->decoder_model_info_present = dav1d_get_bits(gb, 1);
             if (hdr->decoder_model_info_present) {
@@ -217,7 +221,7 @@ static int parse_seq_hdr(Dav1dContext *const c, GetBits *const gb,
     if (hdr->monochrome) {
         hdr->color_range = dav1d_get_bits(gb, 1);
         hdr->layout = DAV1D_PIXEL_LAYOUT_I400;
-        hdr->ss_hor = hdr->ss_ver = 0;
+        hdr->ss_hor = hdr->ss_ver = 1;
         hdr->chr = DAV1D_CHR_UNKNOWN;
         hdr->separate_uv_delta_q = 0;
     } else if (hdr->pri == DAV1D_COLOR_PRI_BT709 &&
@@ -225,7 +229,7 @@ static int parse_seq_hdr(Dav1dContext *const c, GetBits *const gb,
                hdr->mtrx == DAV1D_MC_IDENTITY)
     {
         hdr->layout = DAV1D_PIXEL_LAYOUT_I444;
-        hdr->ss_hor = hdr->ss_ver = 1;
+        hdr->ss_hor = hdr->ss_ver = 0;
         hdr->color_range = 1;
         if (hdr->profile != 1 && !(hdr->profile == 2 && hdr->hbd == 2))
             goto error;
@@ -254,8 +258,8 @@ static int parse_seq_hdr(Dav1dContext *const c, GetBits *const gb,
         }
         hdr->chr = hdr->ss_hor == 1 && hdr->ss_ver == 1 ?
                    dav1d_get_bits(gb, 2) : DAV1D_CHR_UNKNOWN;
-        hdr->separate_uv_delta_q = dav1d_get_bits(gb, 1);
     }
+    hdr->separate_uv_delta_q = !hdr->monochrome && dav1d_get_bits(gb, 1);
 #if DEBUG_SEQ_HDR
     printf("SEQHDR: post-colorinfo: off=%ld\n",
            dav1d_get_bits_pos(gb) - init_bit_pos);
@@ -1229,7 +1233,6 @@ int dav1d_parse_obus(Dav1dContext *const c, Dav1dData *const in, int global) {
         if (!ref) return -ENOMEM;
         Dav1dSequenceHeader *seq_hdr = ref->data;
         memset(seq_hdr, 0, sizeof(*seq_hdr));
-        c->frame_hdr = NULL;
         if ((res = parse_seq_hdr(c, &gb, seq_hdr)) < 0) {
             dav1d_ref_dec(&ref);
             return res;
@@ -1241,14 +1244,16 @@ int dav1d_parse_obus(Dav1dContext *const c, Dav1dData *const in, int global) {
         // If we have read a sequence header which is different from
         // the old one, this is a new video sequence and can't use any
         // previous state. Free that state.
-        if (c->seq_hdr && memcmp(seq_hdr, c->seq_hdr, sizeof(*seq_hdr))) {
+        if (!c->seq_hdr)
+            c->frame_hdr = NULL;
+        else if (memcmp(seq_hdr, c->seq_hdr, sizeof(*seq_hdr))) {
+            c->frame_hdr = NULL;
             for (int i = 0; i < 8; i++) {
                 if (c->refs[i].p.p.data[0])
                     dav1d_thread_picture_unref(&c->refs[i].p);
                 dav1d_ref_dec(&c->refs[i].segmap);
                 dav1d_ref_dec(&c->refs[i].refmvs);
-                if (c->cdf[i].cdf)
-                    dav1d_cdf_thread_unref(&c->cdf[i]);
+                dav1d_cdf_thread_unref(&c->cdf[i]);
             }
         }
         dav1d_ref_dec(&c->seq_hdr_ref);
@@ -1278,7 +1283,7 @@ int dav1d_parse_obus(Dav1dContext *const c, Dav1dData *const in, int global) {
             return res;
         }
         for (int n = 0; n < c->n_tile_data; n++)
-            dav1d_data_unref(&c->tile[n].data);
+            dav1d_data_unref_internal(&c->tile[n].data);
         c->n_tile_data = 0;
         c->n_tiles = 0;
         if (type != OBU_FRAME) {
@@ -1318,17 +1323,15 @@ int dav1d_parse_obus(Dav1dContext *const c, Dav1dData *const in, int global) {
         const unsigned bit_pos = dav1d_get_bits_pos(&gb);
         assert((bit_pos & 7) == 0);
         assert(pkt_bytelen >= (bit_pos >> 3));
-        dav1d_ref_inc(in->ref);
-        c->tile[c->n_tile_data].data.ref = in->ref;
-        c->tile[c->n_tile_data].data.m = in->m;
-        c->tile[c->n_tile_data].data.data = in->data + (bit_pos >> 3);
+        dav1d_data_ref(&c->tile[c->n_tile_data].data, in);
+        c->tile[c->n_tile_data].data.data += bit_pos >> 3;
         c->tile[c->n_tile_data].data.sz = pkt_bytelen - (bit_pos >> 3);
         // ensure tile groups are in order and sane, see 6.10.1
         if (c->tile[c->n_tile_data].start > c->tile[c->n_tile_data].end ||
             c->tile[c->n_tile_data].start != c->n_tiles)
         {
             for (int i = 0; i <= c->n_tile_data; i++)
-                dav1d_data_unref(&c->tile[i].data);
+                dav1d_data_unref_internal(&c->tile[i].data);
             c->n_tile_data = 0;
             c->n_tiles = 0;
             goto error;
@@ -1354,7 +1357,7 @@ int dav1d_parse_obus(Dav1dContext *const c, Dav1dData *const in, int global) {
             if (c->n_fc == 1) {
                 dav1d_picture_ref(&c->out,
                                   &c->refs[c->frame_hdr->existing_frame_idx].p.p);
-                c->out.m = in->m;
+                dav1d_data_props_copy(&c->out.m, &in->m);
             } else {
                 // need to append this to the frame output queue
                 const unsigned next = c->frame_thread.next++;
@@ -1378,20 +1381,20 @@ int dav1d_parse_obus(Dav1dContext *const c, Dav1dData *const in, int global) {
                 dav1d_thread_picture_ref(out_delayed,
                                          &c->refs[c->frame_hdr->existing_frame_idx].p);
                 out_delayed->visible = 1;
-                out_delayed->p.m = in->m;
+                dav1d_data_props_copy(&out_delayed->p.m, &in->m);
                 pthread_mutex_unlock(&f->frame_thread.td.lock);
             }
             if (c->refs[c->frame_hdr->existing_frame_idx].p.p.frame_hdr->frame_type == DAV1D_FRAME_TYPE_KEY) {
                 const int r = c->frame_hdr->existing_frame_idx;
                 for (int i = 0; i < 8; i++) {
-                    if (i == c->frame_hdr->existing_frame_idx) continue;
+                    if (i == r) continue;
 
                     if (c->refs[i].p.p.data[0])
                         dav1d_thread_picture_unref(&c->refs[i].p);
                     dav1d_thread_picture_ref(&c->refs[i].p, &c->refs[r].p);
 
-                    if (c->cdf[i].cdf) dav1d_cdf_thread_unref(&c->cdf[i]);
-                    dav1d_init_states(&c->cdf[i], c->refs[r].p.p.frame_hdr->quant.yac);
+                    dav1d_cdf_thread_unref(&c->cdf[i]);
+                    dav1d_cdf_thread_ref(&c->cdf[i], &c->cdf[r]);
 
                     dav1d_ref_dec(&c->refs[i].segmap);
                     c->refs[i].segmap = c->refs[r].segmap;

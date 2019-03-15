@@ -5,6 +5,7 @@
 "use strict";
 
 const { RUNTIME_PREFERENCE } = require("../constants");
+const { WorkersListener } = require("./workers-listener");
 
 const PREF_TYPES = {
   BOOL: "BOOL",
@@ -18,10 +19,7 @@ const PREF_TO_TYPE = {
 // Some events are fired by mainRoot rather than client.
 const MAIN_ROOT_EVENTS = [
   "addonListChanged",
-  "processListChanged",
-  "serviceWorkerRegistrationListChanged",
   "tabListChanged",
-  "workerListChanged",
 ];
 
 /**
@@ -31,6 +29,7 @@ const MAIN_ROOT_EVENTS = [
 class ClientWrapper {
   constructor(client) {
     this.client = client;
+    this.workersListener = new WorkersListener(client.mainRoot);
   }
 
   addOneTimeListener(evt, listener) {
@@ -42,7 +41,9 @@ class ClientWrapper {
   }
 
   addListener(evt, listener) {
-    if (MAIN_ROOT_EVENTS.includes(evt)) {
+    if (evt === "workersUpdated") {
+      this.workersListener.addListener(listener);
+    } else if (MAIN_ROOT_EVENTS.includes(evt)) {
       this.client.mainRoot.on(evt, listener);
     } else {
       this.client.addListener(evt, listener);
@@ -50,21 +51,32 @@ class ClientWrapper {
   }
 
   removeListener(evt, listener) {
-    if (MAIN_ROOT_EVENTS.includes(evt)) {
+    if (evt === "workersUpdated") {
+      this.workersListener.removeListener(listener);
+    } else if (MAIN_ROOT_EVENTS.includes(evt)) {
       this.client.mainRoot.off(evt, listener);
     } else {
       this.client.removeListener(evt, listener);
     }
   }
 
+  async getFront(typeName) {
+    return this.client.mainRoot.getFront(typeName);
+  }
+
+  onFront(typeName, listener) {
+    this.client.mainRoot.onFront(typeName, listener);
+  }
+
   async getDeviceDescription() {
-    const deviceFront = await this.client.mainRoot.getFront("device");
-    const { brandName, channel, deviceName, version } =
+    const deviceFront = await this.getFront("device");
+    const { brandName, channel, deviceName, isMultiE10s, version } =
       await deviceFront.getDescription();
     // Only expose a specific set of properties.
     return {
       channel,
       deviceName,
+      isMultiE10s,
       name: brandName,
       version,
     };
@@ -93,15 +105,21 @@ class ClientWrapper {
   }
 
   async listTabs(options) {
-    return this.client.listTabs(options);
+    return this.client.mainRoot.listTabs(options);
   }
 
-  async listAddons() {
-    return this.client.mainRoot.listAddons();
+  async listAddons(options) {
+    return this.client.mainRoot.listAddons(options);
   }
 
   async getAddon({ id }) {
     return this.client.mainRoot.getAddon({ id });
+  }
+
+  async getServiceWorkerFront({ id }) {
+    const { serviceWorkers } = await this.listWorkers();
+    const workerFronts = serviceWorkers.map(sw => sw.workerTargetFront);
+    return workerFronts.find(front => front && front.actorID === id);
   }
 
   async listWorkers() {
@@ -114,12 +132,12 @@ class ClientWrapper {
     };
   }
 
-  async request(options) {
-    return this.client.request(options);
-  }
-
   async close() {
     return this.client.close();
+  }
+
+  isClosed() {
+    return this.client._closed;
   }
 }
 

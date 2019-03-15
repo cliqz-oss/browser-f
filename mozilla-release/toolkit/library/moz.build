@@ -65,7 +65,8 @@ def Libxul(name, output_category=None):
     # the linker script is given after crtbegin.o, and even past that, replaces
     # the default section rules with those from the script instead of
     # supplementing them. Which leads to a lib with a huge load of sections.
-    if CONFIG['OS_TARGET'] not in ('OpenBSD', 'WINNT') and CONFIG['LD_IS_BFD']:
+    if CONFIG['OS_TARGET'] not in ('OpenBSD', 'WINNT') and \
+            CONFIG['LINKER_KIND'] == 'bfd':
         LDFLAGS += [TOPSRCDIR + '/toolkit/library/StaticXULComponents.ld']
 
     Libxul_defines()
@@ -73,14 +74,21 @@ def Libxul(name, output_category=None):
     if CONFIG['MOZ_NEEDS_LIBATOMIC']:
         OS_LIBS += ['atomic']
 
-    # This option should go away in bug 1290972, but we need to wait until
-    # Rust 1.12 has been released.
+    # TouchBar-related classes are only available in the 10.12.2 SDK and later.
+    # We need to weak link these classes until we've upgraded our SDK to at
+    # least 10.12.2.
     # We're also linking against libresolv to solve bug 1367932.
     if CONFIG['OS_ARCH'] == 'Darwin':
+        LDFLAGS += ['-Wl,-U,_OBJC_CLASS_$_NSTouchBar']
+        LDFLAGS += ['-Wl,-U,_OBJC_CLASS_$_NSSharingServicePickerTouchBarItem']
+        LDFLAGS += ['-Wl,-U,_OBJC_METACLASS_$_NSTouchBar']
+        LDFLAGS += ['-Wl,-U,_OBJC_CLASS_$_NSCustomTouchBarItem']
         LDFLAGS += ['-lresolv']
 
     if CONFIG['MOZ_DEBUG_SYMBOLS'] and CONFIG['CC_TYPE'] in ('msvc', 'clang-cl'):
         LDFLAGS += ['-NATVIS:%s/toolkit/library/gecko.natvis' % TOPSRCDIR]
+    if CONFIG['RUSTC_NATVIS_LDFLAGS']:
+        LDFLAGS += CONFIG['RUSTC_NATVIS_LDFLAGS']
 
 Libxul('xul')
 
@@ -213,9 +221,6 @@ if CONFIG['MOZ_ANDROID_GOOGLE_VR']:
 
 OS_LIBS += CONFIG['MOZ_CAIRO_OSLIBS']
 OS_LIBS += CONFIG['MOZ_WEBRTC_X11_LIBS']
-
-if CONFIG['MOZ_LIB_SECRET']:
-    OS_LIBS += CONFIG['MOZ_LIB_SECRET_LIBS']
 
 if CONFIG['MOZ_SYSTEM_JPEG']:
     OS_LIBS += CONFIG['MOZ_JPEG_LIBS']

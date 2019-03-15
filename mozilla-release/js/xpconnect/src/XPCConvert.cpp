@@ -38,9 +38,9 @@ using namespace JS;
 
 //#define STRICT_CHECK_OF_UNICODE
 #ifdef STRICT_CHECK_OF_UNICODE
-#define ILLEGAL_RANGE(c) (0 != ((c)&0xFF80))
+#  define ILLEGAL_RANGE(c) (0 != ((c)&0xFF80))
 #else  // STRICT_CHECK_OF_UNICODE
-#define ILLEGAL_RANGE(c) (0 != ((c)&0xFF00))
+#  define ILLEGAL_RANGE(c) (0 != ((c)&0xFF00))
 #endif  // STRICT_CHECK_OF_UNICODE
 
 #define ILLEGAL_CHAR_RANGE(c) (0 != ((c)&0x80))
@@ -182,14 +182,7 @@ bool XPCConvert::NativeData2JS(MutableHandleValue d, const void* s,
         return true;
       }
 
-      RootedObject scope(cx, JS::CurrentGlobalOrNull(cx));
-      JSObject* obj = xpc_NewIDObject(cx, scope, *iid2);
-      if (!obj) {
-        return false;
-      }
-
-      d.setObject(*obj);
-      return true;
+      return xpc::ID2JSValue(cx, *iid2, d);
     }
 
     case nsXPTType::T_ASTRING: {
@@ -548,23 +541,13 @@ bool XPCConvert::JSData2Native(JSContext* cx, void* d, HandleValue s,
       XPC_LOG_ERROR(("XPCConvert::JSData2Native : void* params not supported"));
       NS_ERROR("void* params not supported");
       return false;
-    case nsXPTType::T_IID: {
-      const nsID* pid = nullptr;
 
-      // There's no good reason to pass a null IID.
-      if (s.isNullOrUndefined()) {
-        if (pErr) {
-          *pErr = NS_ERROR_XPC_BAD_CONVERT_JS;
-        }
-        return false;
+    case nsXPTType::T_IID:
+      if (Maybe<nsID> id = xpc::JSValue2ID(cx, s)) {
+        *((const nsID**)d) = id.ref().Clone();
+        return true;
       }
-
-      if (!s.isObject() || !(pid = xpc_JSObjectToID(cx, &s.toObject()))) {
-        return false;
-      }
-      *((const nsID**)d) = pid->Clone();
-      return true;
-    }
+      return false;
 
     case nsXPTType::T_ASTRING: {
       nsAString* ws = (nsAString*)d;
@@ -954,6 +937,8 @@ bool XPCConvert::NativeInterface2JSObject(MutableHandleValue d,
     return false;
   }
 
+  JSAutoRealm ar(cx, xpcscope->GetGlobalForWrappedNatives());
+
   // First, see if this object supports the wrapper cache. In that case, the
   // object to use is found as cache->GetWrapper(). If that is null, then the
   // object will create (and fill the cache) from its WrapObject call.
@@ -961,8 +946,7 @@ bool XPCConvert::NativeInterface2JSObject(MutableHandleValue d,
 
   RootedObject flat(cx, cache ? cache->GetWrapper() : nullptr);
   if (!flat && cache) {
-    RootedObject global(cx, xpcscope->GetGlobalJSObject());
-    js::AssertSameCompartment(cx, global);
+    RootedObject global(cx, CurrentGlobalOrNull(cx));
     flat = cache->WrapObject(cx, nullptr);
     if (!flat) {
       return false;
@@ -1157,7 +1141,7 @@ bool XPCConvert::JSObject2NativeInterface(JSContext* cx, void** dest,
 
   // We need to go through the QueryInterface logic to make this return
   // the right thing for the various 'special' interfaces; e.g.
-  // nsIPropertyBag. We must use AggregatedQueryInterface in cases where
+  // nsISimpleEnumerator. We must use AggregatedQueryInterface in cases where
   // there is an outer to avoid nasty recursion.
   rv = aOuter ? wrapper->AggregatedQueryInterface(*iid, dest)
               : wrapper->QueryInterface(*iid, dest);

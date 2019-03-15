@@ -30,7 +30,7 @@
 #include "mozilla/gfx/Types.h"
 #include "mozilla/FloatingPoint.h"
 #include "mozilla/ComputedStyle.h"
-#include "nsSVGPathDataParser.h"
+#include "SVGPathDataParser.h"
 #include "SVGPathData.h"
 #include "SVGPathElement.h"
 
@@ -39,7 +39,93 @@ using namespace mozilla::dom;
 using namespace mozilla::dom::SVGPreserveAspectRatio_Binding;
 using namespace mozilla::gfx;
 
-SVGSVGElement* SVGContentUtils::GetOuterSVGElement(nsSVGElement* aSVGElement) {
+static bool ParseNumber(RangedPtr<const char16_t>& aIter,
+                        const RangedPtr<const char16_t>& aEnd, double& aValue) {
+  int32_t sign;
+  if (!SVGContentUtils::ParseOptionalSign(aIter, aEnd, sign)) {
+    return false;
+  }
+
+  // Absolute value of the integer part of the mantissa.
+  double intPart = 0.0;
+
+  bool gotDot = *aIter == '.';
+
+  if (!gotDot) {
+    if (!mozilla::IsAsciiDigit(*aIter)) {
+      return false;
+    }
+    do {
+      intPart = 10.0 * intPart + mozilla::AsciiAlphanumericToNumber(*aIter);
+      ++aIter;
+    } while (aIter != aEnd && mozilla::IsAsciiDigit(*aIter));
+
+    if (aIter != aEnd) {
+      gotDot = *aIter == '.';
+    }
+  }
+
+  // Fractional part of the mantissa.
+  double fracPart = 0.0;
+
+  if (gotDot) {
+    ++aIter;
+    if (aIter == aEnd || !mozilla::IsAsciiDigit(*aIter)) {
+      return false;
+    }
+
+    // Power of ten by which we need to divide the fraction
+    double divisor = 1.0;
+
+    do {
+      fracPart = 10.0 * fracPart + mozilla::AsciiAlphanumericToNumber(*aIter);
+      divisor *= 10.0;
+      ++aIter;
+    } while (aIter != aEnd && mozilla::IsAsciiDigit(*aIter));
+
+    fracPart /= divisor;
+  }
+
+  bool gotE = false;
+  int32_t exponent = 0;
+  int32_t expSign;
+
+  if (aIter != aEnd && (*aIter == 'e' || *aIter == 'E')) {
+    RangedPtr<const char16_t> expIter(aIter);
+
+    ++expIter;
+    if (expIter != aEnd) {
+      expSign = *expIter == '-' ? -1 : 1;
+      if (*expIter == '-' || *expIter == '+') {
+        ++expIter;
+      }
+      if (expIter != aEnd && mozilla::IsAsciiDigit(*expIter)) {
+        // At this point we're sure this is an exponent
+        // and not the start of a unit such as em or ex.
+        gotE = true;
+      }
+    }
+
+    if (gotE) {
+      aIter = expIter;
+      do {
+        exponent = 10.0 * exponent + mozilla::AsciiAlphanumericToNumber(*aIter);
+        ++aIter;
+      } while (aIter != aEnd && mozilla::IsAsciiDigit(*aIter));
+    }
+  }
+
+  // Assemble the number
+  aValue = sign * (intPart + fracPart);
+  if (gotE) {
+    aValue *= pow(10.0, expSign * exponent);
+  }
+  return true;
+}
+
+namespace mozilla {
+
+SVGSVGElement* SVGContentUtils::GetOuterSVGElement(SVGElement* aSVGElement) {
   Element* element = nullptr;
   Element* ancestor = aSVGElement->GetParentElementCrossingShadowRoot();
 
@@ -69,7 +155,7 @@ enum DashState {
 };
 
 static DashState GetStrokeDashData(
-    SVGContentUtils::AutoStrokeOptions* aStrokeOptions, nsSVGElement* aElement,
+    SVGContentUtils::AutoStrokeOptions* aStrokeOptions, SVGElement* aElement,
     const nsStyleSVG* aStyleSVG, SVGContextPaint* aContextPaint) {
   size_t dashArrayLength;
   Float totalLengthOfDashes = 0.0, totalLengthOfGaps = 0.0;
@@ -164,7 +250,7 @@ static DashState GetStrokeDashData(
 }
 
 void SVGContentUtils::GetStrokeOptions(AutoStrokeOptions* aStrokeOptions,
-                                       nsSVGElement* aElement,
+                                       SVGElement* aElement,
                                        ComputedStyle* aComputedStyle,
                                        SVGContextPaint* aContextPaint,
                                        StrokeOptionFlags aFlags) {
@@ -236,7 +322,7 @@ void SVGContentUtils::GetStrokeOptions(AutoStrokeOptions* aStrokeOptions,
   }
 }
 
-Float SVGContentUtils::GetStrokeWidth(nsSVGElement* aElement,
+Float SVGContentUtils::GetStrokeWidth(SVGElement* aElement,
                                       ComputedStyle* aComputedStyle,
                                       SVGContextPaint* aContextPaint) {
   RefPtr<ComputedStyle> computedStyle;
@@ -340,8 +426,7 @@ float SVGContentUtils::GetFontXHeight(ComputedStyle* aComputedStyle,
   return nsPresContext::AppUnitsToFloatCSSPixels(xHeight) /
          aPresContext->EffectiveTextZoom();
 }
-nsresult SVGContentUtils::ReportToConsole(nsIDocument* doc,
-                                          const char* aWarning,
+nsresult SVGContentUtils::ReportToConsole(Document* doc, const char* aWarning,
                                           const char16_t** aParams,
                                           uint32_t aParamsLength) {
   return nsContentUtils::ReportToConsole(
@@ -377,16 +462,16 @@ SVGViewportElement* SVGContentUtils::GetNearestViewportElement(
   return nullptr;
 }
 
-static gfx::Matrix GetCTMInternal(nsSVGElement* aElement, bool aScreenCTM,
+static gfx::Matrix GetCTMInternal(SVGElement* aElement, bool aScreenCTM,
                                   bool aHaveRecursed) {
   gfxMatrix matrix = aElement->PrependLocalTransformsTo(
       gfxMatrix(), aHaveRecursed ? eAllTransforms : eUserSpaceToParent);
-  nsSVGElement* element = aElement;
+  SVGElement* element = aElement;
   nsIContent* ancestor = aElement->GetFlattenedTreeParent();
 
   while (ancestor && ancestor->IsSVGElement() &&
          !ancestor->IsSVGElement(nsGkAtoms::foreignObject)) {
-    element = static_cast<nsSVGElement*>(ancestor);
+    element = static_cast<SVGElement*>(ancestor);
     matrix *= element->PrependLocalTransformsTo(gfxMatrix());  // i.e. *A*ppend
     if (!aScreenCTM && SVGContentUtils::EstablishesViewport(element)) {
       if (!element->NodeInfo()->Equals(nsGkAtoms::svg, kNameSpaceID_SVG) &&
@@ -421,12 +506,12 @@ static gfx::Matrix GetCTMInternal(nsSVGElement* aElement, bool aScreenCTM,
   }
   if (ancestor->IsSVGElement()) {
     return gfx::ToMatrix(matrix) *
-           GetCTMInternal(static_cast<nsSVGElement*>(ancestor), true, true);
+           GetCTMInternal(static_cast<SVGElement*>(ancestor), true, true);
   }
 
   // XXX this does not take into account CSS transform, or that the non-SVG
   // content that we've hit may itself be inside an SVG foreignObject higher up
-  nsIDocument* currentDoc = aElement->GetComposedDoc();
+  Document* currentDoc = aElement->GetComposedDoc();
   float x = 0.0f, y = 0.0f;
   if (currentDoc &&
       element->NodeInfo()->Equals(nsGkAtoms::svg, kNameSpaceID_SVG)) {
@@ -444,7 +529,7 @@ static gfx::Matrix GetCTMInternal(nsSVGElement* aElement, bool aScreenCTM,
   return ToMatrix(matrix).PostTranslate(x, y);
 }
 
-gfx::Matrix SVGContentUtils::GetCTM(nsSVGElement* aElement, bool aScreenCTM) {
+gfx::Matrix SVGContentUtils::GetCTM(SVGElement* aElement, bool aScreenCTM) {
   return GetCTMInternal(aElement, aScreenCTM, false);
 }
 
@@ -588,90 +673,6 @@ gfx::Matrix SVGContentUtils::GetViewBoxTransform(
   return gfx::Matrix(a, 0.0f, 0.0f, d, e, f);
 }
 
-static bool ParseNumber(RangedPtr<const char16_t>& aIter,
-                        const RangedPtr<const char16_t>& aEnd, double& aValue) {
-  int32_t sign;
-  if (!SVGContentUtils::ParseOptionalSign(aIter, aEnd, sign)) {
-    return false;
-  }
-
-  // Absolute value of the integer part of the mantissa.
-  double intPart = 0.0;
-
-  bool gotDot = *aIter == '.';
-
-  if (!gotDot) {
-    if (!mozilla::IsAsciiDigit(*aIter)) {
-      return false;
-    }
-    do {
-      intPart = 10.0 * intPart + mozilla::AsciiAlphanumericToNumber(*aIter);
-      ++aIter;
-    } while (aIter != aEnd && mozilla::IsAsciiDigit(*aIter));
-
-    if (aIter != aEnd) {
-      gotDot = *aIter == '.';
-    }
-  }
-
-  // Fractional part of the mantissa.
-  double fracPart = 0.0;
-
-  if (gotDot) {
-    ++aIter;
-    if (aIter == aEnd || !mozilla::IsAsciiDigit(*aIter)) {
-      return false;
-    }
-
-    // Power of ten by which we need to divide the fraction
-    double divisor = 1.0;
-
-    do {
-      fracPart = 10.0 * fracPart + mozilla::AsciiAlphanumericToNumber(*aIter);
-      divisor *= 10.0;
-      ++aIter;
-    } while (aIter != aEnd && mozilla::IsAsciiDigit(*aIter));
-
-    fracPart /= divisor;
-  }
-
-  bool gotE = false;
-  int32_t exponent = 0;
-  int32_t expSign;
-
-  if (aIter != aEnd && (*aIter == 'e' || *aIter == 'E')) {
-    RangedPtr<const char16_t> expIter(aIter);
-
-    ++expIter;
-    if (expIter != aEnd) {
-      expSign = *expIter == '-' ? -1 : 1;
-      if (*expIter == '-' || *expIter == '+') {
-        ++expIter;
-      }
-      if (expIter != aEnd && mozilla::IsAsciiDigit(*expIter)) {
-        // At this point we're sure this is an exponent
-        // and not the start of a unit such as em or ex.
-        gotE = true;
-      }
-    }
-
-    if (gotE) {
-      aIter = expIter;
-      do {
-        exponent = 10.0 * exponent + mozilla::AsciiAlphanumericToNumber(*aIter);
-        ++aIter;
-      } while (aIter != aEnd && mozilla::IsAsciiDigit(*aIter));
-    }
-  }
-
-  // Assemble the number
-  aValue = sign * (intPart + fracPart);
-  if (gotE) {
-    aValue *= pow(10.0, expSign * exponent);
-  }
-  return true;
-}
-
 template <class floatType>
 bool SVGContentUtils::ParseNumber(RangedPtr<const char16_t>& aIter,
                                   const RangedPtr<const char16_t>& aEnd,
@@ -762,7 +763,7 @@ bool SVGContentUtils::ParseInteger(const nsAString& aString, int32_t& aValue) {
   return ParseInteger(iter, end, aValue) && iter == end;
 }
 
-float SVGContentUtils::CoordToFloat(nsSVGElement* aContent,
+float SVGContentUtils::CoordToFloat(SVGElement* aContent,
                                     const nsStyleCoord& aCoord) {
   switch (aCoord.GetUnit()) {
     case eStyleUnit_Factor:
@@ -786,7 +787,7 @@ float SVGContentUtils::CoordToFloat(nsSVGElement* aContent,
 already_AddRefed<gfx::Path> SVGContentUtils::GetPath(
     const nsAString& aPathString) {
   SVGPathData pathData;
-  nsSVGPathDataParser parser(aPathString, &pathData);
+  SVGPathDataParser parser(aPathString, &pathData);
   if (!parser.Parse()) {
     return NULL;
   }
@@ -803,3 +804,5 @@ bool SVGContentUtils::ShapeTypeHasNoCorners(const nsIContent* aContent) {
   return aContent &&
          aContent->IsAnyOfSVGElements(nsGkAtoms::circle, nsGkAtoms::ellipse);
 }
+
+}  // namespace mozilla

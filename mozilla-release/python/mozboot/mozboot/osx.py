@@ -24,14 +24,15 @@ XCODE_LEGACY = ('https://developer.apple.com/downloads/download.action?path=Deve
                 'xcode_3.2.6_and_ios_sdk_4.3__final/xcode_3.2.6_and_ios_sdk_4.3.dmg')
 
 MACPORTS_URL = {
-    '13': 'https://distfiles.macports.org/MacPorts/MacPorts-2.5.3-10.13-HighSierra.pkg',
-    '12': 'https://distfiles.macports.org/MacPorts/MacPorts-2.5.3-10.12-Sierra.pkg',
-    '11': 'https://distfiles.macports.org/MacPorts/MacPorts-2.5.3-10.11-ElCapitan.pkg',
-    '10': 'https://distfiles.macports.org/MacPorts/MacPorts-2.5.3-10.10-Yosemite.pkg',
-    '9': 'https://distfiles.macports.org/MacPorts/MacPorts-2.5.3-10.9-Mavericks.pkg',
-    '8': 'https://distfiles.macports.org/MacPorts/MacPorts-2.5.3-10.8-MountainLion.pkg',
-    '7': 'https://distfiles.macports.org/MacPorts/MacPorts-2.5.3-10.7-Lion.pkg',
-    '6': 'https://distfiles.macports.org/MacPorts/MacPorts-2.5.3-10.6-SnowLeopard.pkg', }
+    '14': 'https://distfiles.macports.org/MacPorts/MacPorts-2.5.4-10.14-Mojave.pkg',
+    '13': 'https://distfiles.macports.org/MacPorts/MacPorts-2.5.4-10.13-HighSierra.pkg',
+    '12': 'https://distfiles.macports.org/MacPorts/MacPorts-2.5.4-10.12-Sierra.pkg',
+    '11': 'https://distfiles.macports.org/MacPorts/MacPorts-2.5.4-10.11-ElCapitan.pkg',
+    '10': 'https://distfiles.macports.org/MacPorts/MacPorts-2.5.4-10.10-Yosemite.pkg',
+    '9': 'https://distfiles.macports.org/MacPorts/MacPorts-2.5.4-10.9-Mavericks.pkg',
+    '8': 'https://distfiles.macports.org/MacPorts/MacPorts-2.5.4-10.8-MountainLion.pkg',
+    '7': 'https://distfiles.macports.org/MacPorts/MacPorts-2.5.4-10.7-Lion.pkg',
+    '6': 'https://distfiles.macports.org/MacPorts/MacPorts-2.5.4-10.6-SnowLeopard.pkg', }
 
 RE_CLANG_VERSION = re.compile('Apple (?:clang|LLVM) version (\d+\.\d+)')
 
@@ -110,7 +111,7 @@ We will install a modern version of Clang through %s.
 PACKAGE_MANAGER_CHOICE = '''
 Please choose a package manager you'd like:
 1. Homebrew
-2. MacPorts (Does not yet support bootstrapping Firefox for Android.)
+2. MacPorts (Does not yet support bootstrapping GeckoView/Firefox for Android.)
 Your choice:
 '''
 
@@ -339,7 +340,7 @@ class OSXBootstrapper(BaseBootstrapper):
             'mercurial',
             'node',
             'python',
-            'python3',
+            'python@2',
             'terminal-notifier',
             'watchman',
         ]
@@ -373,16 +374,22 @@ class OSXBootstrapper(BaseBootstrapper):
 
         is_64bits = sys.maxsize > 2**32
         if not is_64bits:
-            raise Exception('You need a 64-bit version of Mac OS X to build Firefox for Android.')
+            raise Exception('You need a 64-bit version of Mac OS X to build '
+                            'GeckoView/Firefox for Android.')
 
         # 2. Android pieces.
+        # Prefer homebrew's java binary by putting it on the path first.
+        os.environ['PATH'] = \
+            '{}{}{}'.format('/Library/Java/Home/bin', os.pathsep, os.environ['PATH'])
+        self.ensure_java()
         from mozboot import android
+
         android.ensure_android('macosx', artifact_mode=artifact_mode,
                                no_interactive=self.no_interactive)
 
     def suggest_homebrew_mobile_android_mozconfig(self, artifact_mode=False):
         from mozboot import android
-        # Path to java and javac from the caskroom/versions/java8 cask.
+        # Path to java from the caskroom/versions/java8 cask.
         android.suggest_mozconfig('macosx', artifact_mode=artifact_mode,
                                   java_bin_path='/Library/Java/Home/bin')
 
@@ -443,17 +450,13 @@ class OSXBootstrapper(BaseBootstrapper):
         ]
         self._ensure_macports_packages(packages)
 
-        # Verify the presence of java and javac.
-        if not self.which('java') or not self.which('javac'):
-            raise Exception('You need to have Java version 1.7 or later installed. '
-                            'Please visit http://www.java.com/en/download/mac_download.jsp '
-                            'to get the latest version.')
-
         is_64bits = sys.maxsize > 2**32
         if not is_64bits:
-            raise Exception('You need a 64-bit version of Mac OS X to build Firefox for Android.')
+            raise Exception('You need a 64-bit version of Mac OS X to build '
+                            'GeckoView/Firefox for Android.')
 
         # 2. Android pieces.
+        self.ensure_java()
         from mozboot import android
         android.ensure_android('macosx', artifact_mode=artifact_mode,
                                no_interactive=self.no_interactive)
@@ -518,7 +521,10 @@ class OSXBootstrapper(BaseBootstrapper):
 
     def ensure_stylo_packages(self, state_dir, checkout_root):
         from mozboot import stylo
-        # We installed clang via homebrew earlier.
+        # We installed clang via homebrew earlier.  However, on Android, we're
+        # seeing many compiler errors so we use our own toolchain clang.
+        if 'mobile_android' in self.application:
+            self.install_toolchain_artifact(state_dir, checkout_root, stylo.MACOS_CLANG)
         self.install_toolchain_artifact(state_dir, checkout_root, stylo.MACOS_CBINDGEN)
 
     def ensure_node_packages(self, state_dir, checkout_root):

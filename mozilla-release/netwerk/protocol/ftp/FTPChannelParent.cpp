@@ -264,8 +264,9 @@ void FTPChannelParent::DivertOnDataAvailable(const nsCString& data,
   }
 
   nsCOMPtr<nsIInputStream> stringStream;
-  nsresult rv = NS_NewByteInputStream(getter_AddRefs(stringStream), data.get(),
-                                      count, NS_ASSIGNMENT_DEPEND);
+  nsresult rv =
+      NS_NewByteInputStream(getter_AddRefs(stringStream),
+                            MakeSpan(data).To(count), NS_ASSIGNMENT_DEPEND);
   if (NS_FAILED(rv)) {
     if (mChannel) {
       mChannel->Cancel(rv);
@@ -519,6 +520,13 @@ FTPChannelParent::NotifyTrackingCookieBlocked(uint32_t aRejectedReason) {
 
 NS_IMETHODIMP
 FTPChannelParent::NotifyTrackingResource(bool aIsThirdParty) {
+  // One day, this should probably be filled in.
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+FTPChannelParent::NotifyFlashPluginStateChanged(
+    nsIHttpChannel::FlashPluginState aState) {
   // One day, this should probably be filled in.
   return NS_OK;
 }

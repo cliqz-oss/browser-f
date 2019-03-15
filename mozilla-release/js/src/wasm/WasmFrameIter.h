@@ -69,6 +69,7 @@ class WasmFrameIter {
   jit::FrameType unwoundIonFrameType_;
   Unwind unwind_;
   void** unwoundAddressOfReturnAddress_;
+  uint8_t* resumePCinCurrentFrame_;
 
   void popFrame();
 
@@ -93,6 +94,11 @@ class WasmFrameIter {
   DebugFrame* debugFrame() const;
   jit::FrameType unwoundIonFrameType() const;
   uint8_t* unwoundIonCallerFP() const { return unwoundIonCallerFP_; }
+  Frame* frame() const { return fp_; }
+
+  // Returns the address of the next instruction that will execute in this
+  // frame, once control returns to this frame.
+  uint8_t* resumePCinCurrentFrame() const;
 };
 
 enum class SymbolicAddress;

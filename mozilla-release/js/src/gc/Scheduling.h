@@ -90,13 +90,13 @@
  *
  *  While code generally takes the above factors into account in only an ad-hoc
  *  fashion, the API forces the user to pick a "reason" for the GC. We have a
- *  bunch of JS::gcreason reasons in GCAPI.h. These fall into a few categories
+ *  bunch of JS::GCReason reasons in GCAPI.h. These fall into a few categories
  *  that generally coincide with one or more of the above factors.
  *
  *  Embedding reasons:
  *
  *   1) Do a GC now because the embedding knows something useful about the
- *      zone's memory retention state. These are gcreasons like LOAD_END,
+ *      zone's memory retention state. These are GCReasons like LOAD_END,
  *      PAGE_HIDE, SET_NEW_DOCUMENT, DOM_UTILS. Mostly, Gecko uses these to
  *      indicate that a significant fraction of the scheduled zone's memory is
  *      probably reclaimable.
@@ -433,6 +433,24 @@ class GCSchedulingTunables {
    */
   UnprotectedData<uint32_t> nurseryFreeThresholdForIdleCollection_;
 
+  /*
+   * JSGC_PRETENURE_THRESHOLD
+   *
+   * Fraction of objects tenured to trigger pretenuring (between 0 and 1). If
+   * this fraction is met, the GC proceeds to calculate which objects will be
+   * tenured. If this is 1.0f (actually if it is not < 1.0f) then pretenuring
+   * is disabled.
+   */
+  UnprotectedData<float> pretenureThreshold_;
+
+  /*
+   * JSGC_PRETENURE_GROUP_THRESHOLD
+   *
+   * During a single nursery collection, if this many objects from the same
+   * object group are tenured, then that group will be pretenured.
+   */
+  UnprotectedData<uint32_t> pretenureGroupThreshold_;
+
  public:
   GCSchedulingTunables();
 
@@ -470,6 +488,10 @@ class GCSchedulingTunables {
   uint32_t nurseryFreeThresholdForIdleCollection() const {
     return nurseryFreeThresholdForIdleCollection_;
   }
+
+  bool attemptPretenuring() const { return pretenureThreshold_ < 1.0f; }
+  float pretenureThreshold() const { return pretenureThreshold_; }
+  uint32_t pretenureGroupThreshold() const { return pretenureGroupThreshold_; }
 
   MOZ_MUST_USE bool setParameter(JSGCParamKey key, uint32_t value,
                                  const AutoLockGC& lock);

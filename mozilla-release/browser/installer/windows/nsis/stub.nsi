@@ -109,6 +109,14 @@ Var ProfileCleanupHeaderString
 Var ProfileCleanupButtonString
 Var AppLaunchWaitTickCount
 
+; Cliqz. Still use only two platform, x86 and x64. ARM not supported yet.
+; A lot of related code removed from script for now. After starting support
+; for ARM - uncomment this and put other related code back.
+; !define ARCH_X86 1
+; !define ARCH_AMD64 2
+; !define ARCH_AARCH64 3
+; Var ArchToInstall
+
 ; Uncomment the following to prevent pinging the metrics server when testing
 ; the stub installer
 ;!define STUB_DEBUG
@@ -256,18 +264,20 @@ Var AppLaunchWaitTickCount
 ; Beta since they share the same branding when building with other branches that
 ; set the update channel to beta.
 ; Cliqz: do not support beta version distributon with mini_installer
-; !ifdef OFFICIAL
-; !ifdef BETA_UPDATE_CHANNEL
-; !undef URLStubDownload32
-; !undef URLStubDownload64
-; !define URLStubDownload32 "https://download.mozilla.org/?os=win&lang=${AB_CD}&product=firefox-beta-latest"
-; !define URLStubDownload64 "https://download.mozilla.org/?os=win64&lang=${AB_CD}&product=firefox-beta-latest"
-; !undef URLManualDownload
-; !define URLManualDownload "https://www.mozilla.org/${AB_CD}/firefox/installer-help/?channel=beta&installer_lang=${AB_CD}"
-; !undef Channel
-; !define Channel "beta"
-; !endif
-; !endif
+;!ifdef OFFICIAL
+;!ifdef BETA_UPDATE_CHANNEL
+;!undef URLStubDownloadX86
+;!undef URLStubDownloadAMD64
+;!undef URLStubDownloadAArch64
+;!define URLStubDownloadX86 "https://download.mozilla.org/?os=win&lang=${AB_CD}&product=firefox-beta-latest"
+;!define URLStubDownloadAMD64 "https://download.mozilla.org/?os=win64&lang=${AB_CD}&product=firefox-beta-latest"
+;!define URLStubDownloadAArch64 "https://download.mozilla.org/?os=win64-aarch64&lang=${AB_CD}&product=firefox-beta-latest"
+;!undef URLManualDownload
+;!define URLManualDownload "https://www.mozilla.org/${AB_CD}/firefox/installer-help/?channel=beta&installer_lang=${AB_CD}"
+;!undef Channel
+;!define Channel "beta"
+;!endif
+;!endif
 
 !undef INSTALL_BLURB_TEXT_COLOR
 !define INSTALL_BLURB_TEXT_COLOR 0xFFFFFF

@@ -12,7 +12,7 @@
 #include "ContentChild.h"
 
 #if defined(XP_WIN)
-#include "mozilla/mscom/MainThreadRuntime.h"
+#  include "mozilla/mscom/MainThreadRuntime.h"
 #endif
 
 namespace mozilla {
@@ -44,13 +44,6 @@ class ContentProcess : public mozilla::ipc::ProcessChild {
 
   DISALLOW_EVIL_CONSTRUCTORS(ContentProcess);
 };
-
-#ifdef ANDROID
-// Android doesn't use -prefsHandle or -prefMapHandle. It gets those FDs
-// another way.
-void SetPrefsFd(int aFd);
-void SetPrefMapFd(int aFd);
-#endif
 
 }  // namespace dom
 }  // namespace mozilla

@@ -362,6 +362,8 @@ update-application-manual =
     .label = Never check for updates (not recommended)
     .accesskey = N
 
+update-application-warning-cross-user-setting = This setting will apply to all Windows accounts and { -brand-short-name } profiles using this installation of { -brand-short-name }.
+
 update-application-use-service =
     .label = Use a background service to install updates
     .accesskey = b
@@ -913,24 +915,13 @@ permissions-notification-pause =
     .label = Pause notifications until { -brand-short-name } restarts
     .accesskey = n
 
-permissions-block-autoplay-media =
-    .label = Block websites from automatically playing media with sound
+permissions-block-autoplay-media2 =
+    .label = Block websites from automatically playing sound
     .accesskey = B
-
-permissions-block-autoplay-media-menu = For websites that autoplay sound
 
 permissions-block-autoplay-media-exceptions =
     .label = Exceptions…
     .accesskey = E
-
-autoplay-option-ask =
-    .label = Always Ask
-autoplay-option-allow =
-    .label = Allow Autoplay
-autoplay-option-dont =
-    .label = Don't Autoplay
-
-permissions-autoplay-link = Learn more
 
 permissions-block-popups =
     .label = Block pop-up windows
@@ -977,11 +968,6 @@ addon-recommendations-link = Learn more
 # This message is displayed above disabled data sharing options in developer builds
 # or builds with no Telemetry support available.
 collection-health-report-disabled = Data reporting is disabled for this build configuration
-
-collection-browser-errors =
-    .label = Allow { -brand-short-name } to send browser error reports (including error messages) to { -vendor-short-name }
-    .accesskey = b
-collection-browser-errors-link = Learn more
 
 collection-backlogged-crash-reports =
     .label = Allow { -brand-short-name } to send backlogged crash reports on your behalf

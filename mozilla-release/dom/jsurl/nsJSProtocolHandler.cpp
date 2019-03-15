@@ -38,7 +38,7 @@
 #include "nsJSUtils.h"
 #include "nsThreadUtils.h"
 #include "nsIScriptChannel.h"
-#include "nsIDocument.h"
+#include "mozilla/dom/Document.h"
 #include "nsILoadInfo.h"
 #include "nsIObjectInputStream.h"
 #include "nsIObjectOutputStream.h"
@@ -47,6 +47,7 @@
 #include "nsSandboxFlags.h"
 #include "mozilla/CycleCollectedJSContext.h"
 #include "mozilla/dom/ScriptSettings.h"
+#include "mozilla/dom/PopupBlocker.h"
 #include "nsILoadInfo.h"
 #include "nsContentSecurityManager.h"
 
@@ -64,9 +65,10 @@ class nsJSThunk : public nsIInputStream {
   NS_FORWARD_SAFE_NSIINPUTSTREAM(mInnerStream)
 
   nsresult Init(nsIURI* uri);
-  nsresult EvaluateScript(nsIChannel* aChannel, PopupControlState aPopupState,
-                          uint32_t aExecutionPolicy,
-                          nsPIDOMWindowInner* aOriginalInnerWindow);
+  nsresult EvaluateScript(
+      nsIChannel* aChannel,
+      mozilla::dom::PopupBlocker::PopupControlState aPopupState,
+      uint32_t aExecutionPolicy, nsPIDOMWindowInner* aOriginalInnerWindow);
 
  protected:
   virtual ~nsJSThunk();
@@ -126,10 +128,10 @@ static nsIScriptGlobalObject* GetGlobalObject(nsIChannel* aChannel) {
   return global;
 }
 
-nsresult nsJSThunk::EvaluateScript(nsIChannel* aChannel,
-                                   PopupControlState aPopupState,
-                                   uint32_t aExecutionPolicy,
-                                   nsPIDOMWindowInner* aOriginalInnerWindow) {
+nsresult nsJSThunk::EvaluateScript(
+    nsIChannel* aChannel,
+    mozilla::dom::PopupBlocker::PopupControlState aPopupState,
+    uint32_t aExecutionPolicy, nsPIDOMWindowInner* aOriginalInnerWindow) {
   if (aExecutionPolicy == nsIScriptChannel::NO_EXECUTION) {
     // Nothing to do here.
     return NS_ERROR_DOM_RETVAL_UNDEFINED;
@@ -187,7 +189,7 @@ nsresult nsJSThunk::EvaluateScript(nsIChannel* aChannel,
 
   // Sandboxed document check: javascript: URI's are disabled
   // in a sandboxed document unless 'allow-scripts' was specified.
-  nsIDocument* doc = aOriginalInnerWindow->GetExtantDoc();
+  mozilla::dom::Document* doc = aOriginalInnerWindow->GetExtantDoc();
   if (doc && doc->HasScriptsBlockedBySandbox()) {
     return NS_ERROR_DOM_RETVAL_UNDEFINED;
   }
@@ -252,8 +254,8 @@ nsresult nsJSThunk::EvaluateScript(nsIChannel* aChannel,
   {
     nsJSUtils::ExecutionContext exec(cx, globalJSObject);
     exec.SetCoerceToString(true);
-    exec.CompileAndExec(options, NS_ConvertUTF8toUTF16(script));
-    rv = exec.ExtractReturnValue(&v);
+    exec.Compile(options, NS_ConvertUTF8toUTF16(script));
+    rv = exec.ExecScript(&v);
   }
 
   js::AssertSameCompartment(cx, v);
@@ -288,7 +290,8 @@ nsresult nsJSThunk::EvaluateScript(nsIChannel* aChannel,
     }
     aChannel->SetContentCharset(*charset);
     if (bytes)
-      rv = NS_NewByteInputStream(getter_AddRefs(mInnerStream), bytes, bytesLen,
+      rv = NS_NewByteInputStream(getter_AddRefs(mInnerStream),
+                                 mozilla::MakeSpan(bytes, bytesLen),
                                  NS_ASSIGNMENT_ADOPT);
     else
       rv = NS_ERROR_OUT_OF_MEMORY;
@@ -337,7 +340,7 @@ class nsJSChannel : public nsIChannel,
                                                       // load started against.
   // If we blocked onload on a document in AsyncOpen2, this is the document we
   // did it on.
-  nsCOMPtr<nsIDocument> mDocumentOnloadBlockedOn;
+  RefPtr<mozilla::dom::Document> mDocumentOnloadBlockedOn;
 
   nsresult mStatus;  // Our status
 
@@ -345,7 +348,7 @@ class nsJSChannel : public nsIChannel,
   nsLoadFlags mActualLoadFlags;  // See AsyncOpen2
 
   RefPtr<nsJSThunk> mIOThunk;
-  PopupControlState mPopupState;
+  mozilla::dom::PopupBlocker::PopupControlState mPopupState;
   uint32_t mExecutionPolicy;
   bool mIsAsync;
   bool mIsActive;
@@ -356,7 +359,7 @@ nsJSChannel::nsJSChannel()
     : mStatus(NS_OK),
       mLoadFlags(LOAD_NORMAL),
       mActualLoadFlags(LOAD_NORMAL),
-      mPopupState(openOverridden),
+      mPopupState(mozilla::dom::PopupBlocker::openOverridden),
       mExecutionPolicy(NO_EXECUTION),
       mIsAsync(true),
       mIsActive(false),
@@ -573,7 +576,7 @@ nsJSChannel::AsyncOpen(nsIStreamListener* aListener, nsISupports* aContext) {
     mDocumentOnloadBlockedOn->BlockOnload();
   }
 
-  mPopupState = win->GetPopupControlState();
+  mPopupState = mozilla::dom::PopupBlocker::GetPopupControlState();
 
   void (nsJSChannel::*method)();
   const char* name;
@@ -1225,8 +1228,7 @@ nsJSURI::Write(nsIObjectOutputStream* aStream) {
   return NS_OK;
 }
 
-// nsIIPCSerializableURI
-void nsJSURI::Serialize(mozilla::ipc::URIParams& aParams) {
+NS_IMETHODIMP_(void) nsJSURI::Serialize(mozilla::ipc::URIParams& aParams) {
   using namespace mozilla::ipc;
 
   JSURIParams jsParams;

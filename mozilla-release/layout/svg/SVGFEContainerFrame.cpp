@@ -10,7 +10,7 @@
 #include "nsIFrame.h"
 #include "nsLiteralString.h"
 #include "SVGObserverUtils.h"
-#include "nsSVGFilters.h"
+#include "SVGFilters.h"
 
 using namespace mozilla;
 
@@ -81,7 +81,7 @@ void SVGFEContainerFrame::Init(nsIContent* aContent, nsContainerFrame* aParent,
 nsresult SVGFEContainerFrame::AttributeChanged(int32_t aNameSpaceID,
                                                nsAtom* aAttribute,
                                                int32_t aModType) {
-  nsSVGFE* element = static_cast<nsSVGFE*>(GetContent());
+  dom::SVGFE* element = static_cast<dom::SVGFE*>(GetContent());
   if (element->AttributeAffectsRendering(aNameSpaceID, aAttribute)) {
     MOZ_ASSERT(
         GetParent()->IsSVGFilterFrame(),

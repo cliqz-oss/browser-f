@@ -8,23 +8,25 @@
 #define mozilla_dom_SVGMarkerElement_h
 
 #include "nsAutoPtr.h"
-#include "nsSVGAngle.h"
-#include "nsSVGEnum.h"
-#include "nsSVGLength2.h"
-#include "nsSVGViewBox.h"
+#include "SVGAngle.h"
 #include "SVGAnimatedPreserveAspectRatio.h"
-#include "nsSVGElement.h"
+#include "SVGEnum.h"
+#include "nsSVGLength2.h"
+#include "SVGViewBox.h"
 #include "mozilla/Attributes.h"
 #include "mozilla/dom/SVGAnimatedEnumeration.h"
+#include "mozilla/dom/SVGElement.h"
 #include "mozilla/dom/SVGMarkerElementBinding.h"
 
 class nsSVGMarkerFrame;
-struct nsSVGMark;
 
 nsresult NS_NewSVGMarkerElement(
     nsIContent** aResult, already_AddRefed<mozilla::dom::NodeInfo>&& aNodeInfo);
 
 namespace mozilla {
+
+struct SVGMark;
+
 namespace dom {
 
 // Non-Exposed Marker Orientation Types
@@ -36,12 +38,12 @@ class nsSVGOrientType {
       : mAnimVal(SVGMarkerElement_Binding::SVG_MARKER_ORIENT_ANGLE),
         mBaseVal(SVGMarkerElement_Binding::SVG_MARKER_ORIENT_ANGLE) {}
 
-  nsresult SetBaseValue(uint16_t aValue, nsSVGElement* aSVGElement);
+  nsresult SetBaseValue(uint16_t aValue, SVGElement* aSVGElement);
 
   // XXX FIXME like https://bugzilla.mozilla.org/show_bug.cgi?id=545550 but
   // without adding an mIsAnimated member...?
   void SetBaseValue(uint16_t aValue) { mAnimVal = mBaseVal = uint8_t(aValue); }
-  // no need to notify, since nsSVGAngle does that
+  // no need to notify, since SVGAngle does that
   void SetAnimValue(uint16_t aValue) { mAnimVal = uint8_t(aValue); }
 
   // we want to avoid exposing SVG_MARKER_ORIENT_AUTO_START_REVERSE to
@@ -59,14 +61,14 @@ class nsSVGOrientType {
   uint16_t GetAnimValueInternal() const { return mAnimVal; }
 
   already_AddRefed<SVGAnimatedEnumeration> ToDOMAnimatedEnum(
-      nsSVGElement* aSVGElement);
+      SVGElement* aSVGElement);
 
  private:
-  nsSVGEnumValue mAnimVal;
-  nsSVGEnumValue mBaseVal;
+  SVGEnumValue mAnimVal;
+  SVGEnumValue mBaseVal;
 
   struct DOMAnimatedEnum final : public SVGAnimatedEnumeration {
-    DOMAnimatedEnum(nsSVGOrientType* aVal, nsSVGElement* aSVGElement)
+    DOMAnimatedEnum(nsSVGOrientType* aVal, SVGElement* aSVGElement)
         : SVGAnimatedEnumeration(aSVGElement), mVal(aVal) {}
 
     nsSVGOrientType* mVal;  // kept alive because it belongs to content
@@ -80,7 +82,7 @@ class nsSVGOrientType {
   };
 };
 
-typedef nsSVGElement SVGMarkerElementBase;
+typedef SVGElement SVGMarkerElementBase;
 
 class SVGMarkerElement : public SVGMarkerElementBase {
   friend class ::nsSVGMarkerFrame;
@@ -108,8 +110,8 @@ class SVGMarkerElement : public SVGMarkerElementBase {
   virtual bool HasValidDimensions() const override;
 
   // public helpers
-  gfx::Matrix GetMarkerTransform(float aStrokeWidth, const nsSVGMark& aMark);
-  nsSVGViewBoxRect GetViewBoxRect();
+  gfx::Matrix GetMarkerTransform(float aStrokeWidth, const SVGMark& aMark);
+  SVGViewBoxRect GetViewBoxRect();
   gfx::Matrix GetViewBoxTransform();
 
   virtual nsresult Clone(dom::NodeInfo*, nsINode** aResult) const override;
@@ -127,7 +129,7 @@ class SVGMarkerElement : public SVGMarkerElementBase {
   already_AddRefed<SVGAnimatedEnumeration> OrientType();
   already_AddRefed<SVGAnimatedAngle> OrientAngle();
   void SetOrientToAuto();
-  void SetOrientToAngle(SVGAngle& angle, ErrorResult& rv);
+  void SetOrientToAngle(DOMSVGAngle& angle, ErrorResult& rv);
 
  protected:
   virtual bool ParseAttribute(int32_t aNameSpaceID, nsAtom* aName,
@@ -140,7 +142,7 @@ class SVGMarkerElement : public SVGMarkerElementBase {
   virtual LengthAttributesInfo GetLengthInfo() override;
   virtual AngleAttributesInfo GetAngleInfo() override;
   virtual EnumAttributesInfo GetEnumInfo() override;
-  virtual nsSVGViewBox* GetViewBox() override;
+  virtual SVGViewBox* GetViewBox() override;
   virtual SVGAnimatedPreserveAspectRatio* GetPreserveAspectRatio() override;
 
   enum { REFX, REFY, MARKERWIDTH, MARKERHEIGHT };
@@ -148,15 +150,15 @@ class SVGMarkerElement : public SVGMarkerElementBase {
   static LengthInfo sLengthInfo[4];
 
   enum { MARKERUNITS };
-  nsSVGEnum mEnumAttributes[1];
-  static nsSVGEnumMapping sUnitsMap[];
+  SVGEnum mEnumAttributes[1];
+  static SVGEnumMapping sUnitsMap[];
   static EnumInfo sEnumInfo[1];
 
   enum { ORIENT };
-  nsSVGAngle mAngleAttributes[1];
+  SVGAngle mAngleAttributes[1];
   static AngleInfo sAngleInfo[1];
 
-  nsSVGViewBox mViewBox;
+  SVGViewBox mViewBox;
   SVGAnimatedPreserveAspectRatio mPreserveAspectRatio;
 
   // derived properties (from 'orient') handled separately

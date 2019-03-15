@@ -16,6 +16,9 @@ namespace mozilla {
 namespace dom {
 
 class HTMLFormSubmission;
+template <typename T>
+struct Nullable;
+class WindowProxyHolder;
 
 class HTMLObjectElement final : public nsGenericHTMLFormElement,
                                 public nsObjectLoadingContent,
@@ -49,7 +52,7 @@ class HTMLObjectElement final : public nsGenericHTMLFormElement,
   // EventTarget
   virtual void AsyncEventRunning(AsyncEventDispatcher* aEvent) override;
 
-  virtual nsresult BindToTree(nsIDocument* aDocument, nsIContent* aParent,
+  virtual nsresult BindToTree(Document* aDocument, nsIContent* aParent,
                               nsIContent* aBindingParent) override;
   virtual void UnbindFromTree(bool aDeep = true,
                               bool aNullParent = true) override;
@@ -121,7 +124,7 @@ class HTMLObjectElement final : public nsGenericHTMLFormElement,
   }
   using nsObjectLoadingContent::GetContentDocument;
 
-  nsPIDOMWindowOuter* GetContentWindow(nsIPrincipal& aSubjectPrincipal);
+  Nullable<WindowProxyHolder> GetContentWindow(nsIPrincipal& aSubjectPrincipal);
 
   using nsIConstraintValidation::GetValidationMessage;
   using nsIConstraintValidation::SetCustomValidity;
@@ -174,7 +177,7 @@ class HTMLObjectElement final : public nsGenericHTMLFormElement,
     SetHTMLAttr(nsGkAtoms::border, aValue, aRv);
   }
 
-  nsIDocument* GetSVGDocument(nsIPrincipal& aSubjectPrincipal) {
+  Document* GetSVGDocument(nsIPrincipal& aSubjectPrincipal) {
     return GetContentDocument(aSubjectPrincipal);
   }
 

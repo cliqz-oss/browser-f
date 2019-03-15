@@ -86,9 +86,11 @@ class nsLookAndFeel final : public nsXPLookAndFeel {
   float mCaretRatio;
   bool mMenuSupportsDrag;
   bool mCSDAvailable;
+  bool mCSDHideTitlebarByDefault;
   bool mCSDMaximizeButton;
   bool mCSDMinimizeButton;
   bool mCSDCloseButton;
+  bool mCSDReversedPlacement;
   bool mInitialized;
 
   void EnsureInit();

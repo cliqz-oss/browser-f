@@ -13,12 +13,14 @@ namespace gfx {
 
 using namespace ipc;
 
-VRGPUParent::VRGPUParent(ProcessId aChildProcessId) {
+VRGPUParent::VRGPUParent(ProcessId aChildProcessId) : mClosed(false) {
   MOZ_COUNT_CTOR(VRGPUParent);
   MOZ_ASSERT(NS_IsMainThread());
 
   SetOtherProcessId(aChildProcessId);
 }
+
+VRGPUParent::~VRGPUParent() { MOZ_COUNT_DTOR(VRGPUParent); }
 
 void VRGPUParent::ActorDestroy(ActorDestroyReason aWhy) {
 #if !defined(MOZ_WIDGET_ANDROID)
@@ -28,6 +30,7 @@ void VRGPUParent::ActorDestroy(ActorDestroyReason aWhy) {
   }
 #endif
 
+  mClosed = true;
   MessageLoop::current()->PostTask(
       NewRunnableMethod("gfx::VRGPUParent::DeferredDestroy", this,
                         &VRGPUParent::DeferredDestroy));
@@ -41,7 +44,7 @@ void VRGPUParent::DeferredDestroy() { mSelfRef = nullptr; }
   MessageLoop::current()->PostTask(NewRunnableMethod<Endpoint<PVRGPUParent>&&>(
       "gfx::VRGPUParent::Bind", vcp, &VRGPUParent::Bind, std::move(aEndpoint)));
 
-  return vcp;
+  return vcp.forget();
 }
 
 void VRGPUParent::Bind(Endpoint<PVRGPUParent>&& aEndpoint) {
@@ -73,6 +76,8 @@ mozilla::ipc::IPCResult VRGPUParent::RecvStopVRService() {
 
   return IPC_OK();
 }
+
+bool VRGPUParent::IsClosed() { return mClosed; }
 
 }  // namespace gfx
 }  // namespace mozilla

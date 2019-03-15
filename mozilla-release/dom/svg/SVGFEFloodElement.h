@@ -7,7 +7,7 @@
 #ifndef mozilla_dom_SVGFEFloodElement_h
 #define mozilla_dom_SVGFEFloodElement_h
 
-#include "nsSVGFilters.h"
+#include "SVGFilters.h"
 
 nsresult NS_NewSVGFEFloodElement(
     nsIContent** aResult, already_AddRefed<mozilla::dom::NodeInfo>&& aNodeInfo);
@@ -15,7 +15,7 @@ nsresult NS_NewSVGFEFloodElement(
 namespace mozilla {
 namespace dom {
 
-typedef nsSVGFE SVGFEFloodElementBase;
+typedef SVGFE SVGFEFloodElementBase;
 
 class SVGFEFloodElement : public SVGFEFloodElementBase {
   friend nsresult(::NS_NewSVGFEFloodElement(
@@ -36,7 +36,7 @@ class SVGFEFloodElement : public SVGFEFloodElementBase {
       nsSVGFilterInstance* aInstance, const IntRect& aFilterSubregion,
       const nsTArray<bool>& aInputsAreTainted,
       nsTArray<RefPtr<SourceSurface>>& aInputImages) override;
-  virtual nsSVGString& GetResultImageName() override {
+  virtual SVGString& GetResultImageName() override {
     return mStringAttributes[RESULT];
   }
 
@@ -51,7 +51,7 @@ class SVGFEFloodElement : public SVGFEFloodElementBase {
   virtual StringAttributesInfo GetStringInfo() override;
 
   enum { RESULT };
-  nsSVGString mStringAttributes[1];
+  SVGString mStringAttributes[1];
   static StringInfo sStringInfo[1];
 };
 

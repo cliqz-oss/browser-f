@@ -33,7 +33,7 @@
 #include "nsROCSSPrimitiveValue.h"
 
 #include "nsPresContext.h"
-#include "nsIDocument.h"
+#include "mozilla/dom/Document.h"
 
 #include "nsCSSProps.h"
 #include "nsCSSPseudoElements.h"
@@ -60,7 +60,7 @@ using namespace mozilla;
 using namespace mozilla::dom;
 
 #if defined(DEBUG_bzbarsky) || defined(DEBUG_caillon)
-#define DEBUG_ComputedDOMStyle
+#  define DEBUG_ComputedDOMStyle
 #endif
 
 /*
@@ -69,7 +69,7 @@ using namespace mozilla::dom;
  */
 
 already_AddRefed<nsComputedDOMStyle> NS_NewComputedDOMStyle(
-    dom::Element* aElement, const nsAString& aPseudoElt, nsIDocument* aDocument,
+    dom::Element* aElement, const nsAString& aPseudoElt, Document* aDocument,
     nsComputedDOMStyle::StyleType aStyleType) {
   RefPtr<nsComputedDOMStyle> computedStyle =
       new nsComputedDOMStyle(aElement, aPseudoElt, aDocument, aStyleType);
@@ -97,8 +97,8 @@ already_AddRefed<CSSValue> GetBackgroundList(
 }
 
 // Whether aDocument needs to restyle for aElement
-static bool DocumentNeedsRestyle(const nsIDocument* aDocument,
-                                 Element* aElement, nsAtom* aPseudo) {
+static bool DocumentNeedsRestyle(const Document* aDocument, Element* aElement,
+                                 nsAtom* aPseudo) {
   nsIPresShell* shell = aDocument->GetShell();
   if (!shell) {
     return true;
@@ -283,7 +283,7 @@ void ComputedStyleMap::Update() {
 
 nsComputedDOMStyle::nsComputedDOMStyle(dom::Element* aElement,
                                        const nsAString& aPseudoElt,
-                                       nsIDocument* aDocument,
+                                       Document* aDocument,
                                        StyleType aStyleType)
     : mDocumentWeak(nullptr),
       mOuterFrame(nullptr),
@@ -453,7 +453,7 @@ nsComputedDOMStyle::GetPropertyValue(const nsAString& aPropertyName,
 /* static */
 already_AddRefed<ComputedStyle> nsComputedDOMStyle::GetComputedStyle(
     Element* aElement, nsAtom* aPseudo, StyleType aStyleType) {
-  if (nsIDocument* doc = aElement->GetComposedDoc()) {
+  if (Document* doc = aElement->GetComposedDoc()) {
     doc->FlushPendingNotifications(FlushType::Style);
   }
   return GetComputedStyleNoFlush(aElement, aPseudo, aStyleType);
@@ -720,7 +720,7 @@ nsresult nsComputedDOMStyle::SetCSSDeclaration(DeclarationBlock*,
   MOZ_CRASH("called nsComputedDOMStyle::SetCSSDeclaration");
 }
 
-nsIDocument* nsComputedDOMStyle::DocToUpdate() {
+Document* nsComputedDOMStyle::DocToUpdate() {
   MOZ_CRASH("called nsComputedDOMStyle::DocToUpdate");
 }
 
@@ -755,7 +755,7 @@ void nsComputedDOMStyle::SetFrameComputedStyle(mozilla::ComputedStyle* aStyle,
   mComputedStyleGeneration = aGeneration;
 }
 
-bool nsComputedDOMStyle::NeedsToFlush(nsIDocument* aDocument) const {
+bool nsComputedDOMStyle::NeedsToFlush(Document* aDocument) const {
   // If mElement is not in the same document, we could do some checks to know if
   // there are some pending restyles can be ignored across documents (since we
   // will use the caller document's style), but it can be complicated and should
@@ -772,7 +772,7 @@ bool nsComputedDOMStyle::NeedsToFlush(nsIDocument* aDocument) const {
   }
   // If parent document is there, also needs to check if there is some change
   // that needs to flush this document (e.g. size change for iframe).
-  while (nsIDocument* parentDocument = aDocument->GetParentDocument()) {
+  while (Document* parentDocument = aDocument->GetParentDocument()) {
     Element* element = parentDocument->FindContentForSubDocument(aDocument);
     if (DocumentNeedsRestyle(parentDocument, element, nullptr)) {
       return true;
@@ -784,7 +784,7 @@ bool nsComputedDOMStyle::NeedsToFlush(nsIDocument* aDocument) const {
 }
 
 void nsComputedDOMStyle::UpdateCurrentStyleSources(bool aNeedsLayoutFlush) {
-  nsCOMPtr<nsIDocument> document = do_QueryReferent(mDocumentWeak);
+  nsCOMPtr<Document> document = do_QueryReferent(mDocumentWeak);
   if (!document) {
     ClearComputedStyle();
     return;
@@ -2261,38 +2261,6 @@ already_AddRefed<CSSValue> nsComputedDOMStyle::DoGetCaretColor() {
   return val.forget();
 }
 
-already_AddRefed<CSSValue> nsComputedDOMStyle::DoGetCursor() {
-  RefPtr<nsDOMCSSValueList> valueList = GetROCSSValueList(true);
-
-  const nsStyleUI* ui = StyleUI();
-
-  for (const nsCursorImage& item : ui->mCursorImages) {
-    RefPtr<nsDOMCSSValueList> itemList = GetROCSSValueList(false);
-
-    RefPtr<nsROCSSPrimitiveValue> val = new nsROCSSPrimitiveValue;
-    SetValueToURLValue(item.mImage->GetImageValue(), val);
-    itemList->AppendCSSValue(val.forget());
-
-    if (item.mHaveHotspot) {
-      RefPtr<nsROCSSPrimitiveValue> valX = new nsROCSSPrimitiveValue;
-      RefPtr<nsROCSSPrimitiveValue> valY = new nsROCSSPrimitiveValue;
-
-      valX->SetNumber(item.mHotspotX);
-      valY->SetNumber(item.mHotspotY);
-
-      itemList->AppendCSSValue(valX.forget());
-      itemList->AppendCSSValue(valY.forget());
-    }
-    valueList->AppendCSSValue(itemList.forget());
-  }
-
-  RefPtr<nsROCSSPrimitiveValue> val = new nsROCSSPrimitiveValue;
-  val->SetIdent(
-      nsCSSProps::ValueToKeywordEnum(ui->mCursor, nsCSSProps::kCursorKTable));
-  valueList->AppendCSSValue(val.forget());
-  return valueList.forget();
-}
-
 already_AddRefed<CSSValue> nsComputedDOMStyle::DoGetBoxFlex() {
   RefPtr<nsROCSSPrimitiveValue> val = new nsROCSSPrimitiveValue;
   val->SetNumber(StyleXUL()->mBoxFlex);
@@ -2385,76 +2353,6 @@ already_AddRefed<CSSValue> nsComputedDOMStyle::DoGetFlexShrink() {
   return val.forget();
 }
 
-already_AddRefed<CSSValue> nsComputedDOMStyle::DoGetAlignContent() {
-  RefPtr<nsROCSSPrimitiveValue> val = new nsROCSSPrimitiveValue;
-  nsAutoString str;
-  auto align = StylePosition()->mAlignContent;
-  nsCSSValue::AppendAlignJustifyValueToString(align & NS_STYLE_ALIGN_ALL_BITS,
-                                              str);
-  auto fallback = align >> NS_STYLE_ALIGN_ALL_SHIFT;
-  if (fallback) {
-    str.Append(' ');
-    nsCSSValue::AppendAlignJustifyValueToString(fallback, str);
-  }
-  val->SetString(str);
-  return val.forget();
-}
-
-already_AddRefed<CSSValue> nsComputedDOMStyle::DoGetAlignItems() {
-  RefPtr<nsROCSSPrimitiveValue> val = new nsROCSSPrimitiveValue;
-  nsAutoString str;
-  auto align = StylePosition()->mAlignItems;
-  nsCSSValue::AppendAlignJustifyValueToString(align, str);
-  val->SetString(str);
-  return val.forget();
-}
-
-already_AddRefed<CSSValue> nsComputedDOMStyle::DoGetAlignSelf() {
-  RefPtr<nsROCSSPrimitiveValue> val = new nsROCSSPrimitiveValue;
-  nsAutoString str;
-  auto align = StylePosition()->mAlignSelf;
-  nsCSSValue::AppendAlignJustifyValueToString(align, str);
-  val->SetString(str);
-  return val.forget();
-}
-
-already_AddRefed<CSSValue> nsComputedDOMStyle::DoGetJustifyContent() {
-  RefPtr<nsROCSSPrimitiveValue> val = new nsROCSSPrimitiveValue;
-  nsAutoString str;
-  auto justify = StylePosition()->mJustifyContent;
-  nsCSSValue::AppendAlignJustifyValueToString(
-      justify & NS_STYLE_JUSTIFY_ALL_BITS, str);
-  auto fallback = justify >> NS_STYLE_JUSTIFY_ALL_SHIFT;
-  if (fallback) {
-    MOZ_ASSERT(nsCSSProps::ValueToKeywordEnum(
-                   fallback & ~NS_STYLE_JUSTIFY_FLAG_BITS,
-                   nsCSSProps::kAlignSelfPosition) != eCSSKeyword_UNKNOWN,
-               "unknown fallback value");
-    str.Append(' ');
-    nsCSSValue::AppendAlignJustifyValueToString(fallback, str);
-  }
-  val->SetString(str);
-  return val.forget();
-}
-
-already_AddRefed<CSSValue> nsComputedDOMStyle::DoGetJustifyItems() {
-  RefPtr<nsROCSSPrimitiveValue> val = new nsROCSSPrimitiveValue;
-  nsAutoString str;
-  auto justify = StylePosition()->mJustifyItems;
-  nsCSSValue::AppendAlignJustifyValueToString(justify, str);
-  val->SetString(str);
-  return val.forget();
-}
-
-already_AddRefed<CSSValue> nsComputedDOMStyle::DoGetJustifySelf() {
-  RefPtr<nsROCSSPrimitiveValue> val = new nsROCSSPrimitiveValue;
-  nsAutoString str;
-  auto justify = StylePosition()->mJustifySelf;
-  nsCSSValue::AppendAlignJustifyValueToString(justify, str);
-  val->SetString(str);
-  return val.forget();
-}
-
 already_AddRefed<CSSValue> nsComputedDOMStyle::DoGetForceBrokenImageIcon() {
   RefPtr<nsROCSSPrimitiveValue> val = new nsROCSSPrimitiveValue;
   val->SetNumber(StyleUIReset()->mForceBrokenImageIcon);
@@ -2513,13 +2411,6 @@ already_AddRefed<CSSValue> nsComputedDOMStyle::DoGetWillChange() {
   }
 
   return valueList.forget();
-}
-
-already_AddRefed<CSSValue> nsComputedDOMStyle::DoGetOverflowY() {
-  RefPtr<nsROCSSPrimitiveValue> val = new nsROCSSPrimitiveValue;
-  val->SetIdent(nsCSSProps::ValueToKeywordEnum(StyleDisplay()->mOverflowY,
-                                               nsCSSProps::kOverflowSubKTable));
-  return val.forget();
 }
 
 already_AddRefed<CSSValue> nsComputedDOMStyle::DoGetTouchAction() {

@@ -20,13 +20,13 @@
 #include "mozilla/a11y/DocManager.h"
 
 #ifdef DEBUG
-#include <android/log.h>
-#define AALOG(args...) \
-  __android_log_print(ANDROID_LOG_INFO, "GeckoAccessibilityNative", ##args)
+#  include <android/log.h>
+#  define AALOG(args...) \
+    __android_log_print(ANDROID_LOG_INFO, "GeckoAccessibilityNative", ##args)
 #else
-#define AALOG(args...) \
-  do {                 \
-  } while (0)
+#  define AALOG(args...) \
+    do {                 \
+    } while (0)
 #endif
 
 template <>
@@ -332,10 +332,12 @@ void SessionAccessibility::ReplaceViewportCache(
     AccessibleWrap* acc = aAccessibles.ElementAt(i);
     if (aData.Length() == aAccessibles.Length()) {
       const BatchData& data = aData.ElementAt(i);
-      auto bundle = acc->ToSmallBundle(data.State(), data.Bounds(), data.ActionCount());
+      auto bundle =
+          acc->ToBundle(data.State(), data.Bounds(), data.ActionCount(),
+                        data.Name(), data.TextValue(), data.DOMNodeID());
       infos->SetElement(i, bundle);
     } else {
-      infos->SetElement(i, acc->ToSmallBundle());
+      infos->SetElement(i, acc->ToBundle(true));
     }
   }
 
@@ -379,10 +381,11 @@ void SessionAccessibility::UpdateCachedBounds(
     if (aData.Length() == aAccessibles.Length()) {
       const BatchData& data = aData.ElementAt(i);
       auto bundle =
-          acc->ToSmallBundle(data.State(), data.Bounds(), data.ActionCount());
+          acc->ToBundle(data.State(), data.Bounds(), data.ActionCount(),
+                        data.Name(), data.TextValue(), data.DOMNodeID());
       infos->SetElement(i, bundle);
     } else {
-      infos->SetElement(i, acc->ToSmallBundle());
+      infos->SetElement(i, acc->ToBundle(true));
     }
   }
 

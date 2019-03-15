@@ -113,11 +113,11 @@ public class GeckoMediaControlAgent {
             return;
         }
 
-        mContext = context;
+        mContext = context.getApplicationContext();
         initialize();
     }
 
-    private boolean isAttachedToContext() {
+    public boolean isAttachedToContext() {
         return (mContext != null);
     }
 
@@ -297,12 +297,7 @@ public class GeckoMediaControlAgent {
             return;
         }
 
-        ThreadUtils.postToBackgroundThread(new Runnable() {
-            @Override
-            public void run() {
-                updateNotification(tab);
-            }
-        });
+        ThreadUtils.postToBackgroundThread(() -> updateNotification(tab));
     }
 
     /* package */ static boolean isMediaPlaying() {
@@ -322,7 +317,7 @@ public class GeckoMediaControlAgent {
             return;
         }
 
-        Log.d(LOGTAG, "HandleAction, action = " + action + ", mediaState = " + sMediaState);
+        Log.d(LOGTAG, "handleAction, action = " + action + ", mediaState = " + sMediaState);
         switch (action) {
             case ACTION_RESUME :
                 mController.getTransportControls().play();

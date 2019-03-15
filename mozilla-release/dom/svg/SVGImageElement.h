@@ -9,7 +9,7 @@
 
 #include "nsImageLoadingContent.h"
 #include "nsSVGLength2.h"
-#include "nsSVGString.h"
+#include "SVGString.h"
 #include "SVGGeometryElement.h"
 #include "SVGAnimatedPreserveAspectRatio.h"
 
@@ -56,7 +56,7 @@ class SVGImageElement : public SVGImageElementBase,
                                 const nsAttrValue* aOldValue,
                                 nsIPrincipal* aSubjectPrincipal,
                                 bool aNotify) override;
-  virtual nsresult BindToTree(nsIDocument* aDocument, nsIContent* aParent,
+  virtual nsresult BindToTree(Document* aDocument, nsIContent* aParent,
                               nsIContent* aBindingParent) override;
   virtual void UnbindFromTree(bool aDeep, bool aNullParent) override;
 
@@ -110,7 +110,7 @@ class SVGImageElement : public SVGImageElementBase,
   SVGAnimatedPreserveAspectRatio mPreserveAspectRatio;
 
   enum { HREF, XLINK_HREF };
-  nsSVGString mStringAttributes[2];
+  SVGString mStringAttributes[2];
   static StringInfo sStringInfo[2];
 };
 

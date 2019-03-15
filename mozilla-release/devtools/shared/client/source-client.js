@@ -4,7 +4,7 @@
 
 "use strict";
 
-const {DebuggerClient} = require("devtools/shared/client/debugger-client");
+const {arg, DebuggerClient} = require("devtools/shared/client/debugger-client");
 loader.lazyRequireGetter(this, "BreakpointClient", "devtools/shared/client/breakpoint-client");
 
 const noop = () => {};
@@ -20,7 +20,6 @@ const noop = () => {};
 function SourceClient(client, form) {
   this._form = form;
   this._isBlackBoxed = form.isBlackBoxed;
-  this._isPrettyPrinted = form.isPrettyPrinted;
   this._activeThread = client;
   this._client = client.client;
 }
@@ -31,9 +30,6 @@ SourceClient.prototype = {
   },
   get isBlackBoxed() {
     return this._isBlackBoxed;
-  },
-  get isPrettyPrinted() {
-    return this._isPrettyPrinted;
   },
   get actor() {
     return this._form.actor;
@@ -48,36 +44,46 @@ SourceClient.prototype = {
   /**
    * Black box this SourceClient's source.
    */
-  blackBox: DebuggerClient.requester({
-    type: "blackbox",
-  }, {
-    after: function(response) {
-      if (!response.error) {
-        this._isBlackBoxed = true;
-        if (this._activeThread) {
-          this._activeThread.emit("blackboxchange", this);
-        }
-      }
-      return response;
+  blackBox: DebuggerClient.requester(
+    {
+      type: "blackbox",
+      range: arg(0),
     },
-  }),
+    {
+      telemetry: "BLACKBOX",
+      after: function(response) {
+        if (!response.error) {
+          this._isBlackBoxed = true;
+          if (this._activeThread) {
+            this._activeThread.emit("blackboxchange", this);
+          }
+        }
+        return response;
+      },
+    },
+  ),
 
   /**
    * Un-black box this SourceClient's source.
    */
-  unblackBox: DebuggerClient.requester({
-    type: "unblackbox",
-  }, {
-    after: function(response) {
-      if (!response.error) {
-        this._isBlackBoxed = false;
-        if (this._activeThread) {
-          this._activeThread.emit("blackboxchange", this);
-        }
-      }
-      return response;
+  unblackBox: DebuggerClient.requester(
+    {
+      type: "unblackbox",
+      range: arg(0),
     },
-  }),
+    {
+      telemetry: "UNBLACKBOX",
+      after: function(response) {
+        if (!response.error) {
+          this._isBlackBoxed = false;
+          if (this._activeThread) {
+            this._activeThread.emit("blackboxchange", this);
+          }
+        }
+        return response;
+      },
+    },
+  ),
 
   /**
    * Get Executable Lines from a source
@@ -94,6 +100,24 @@ SourceClient.prototype = {
     });
   },
 
+  getBreakpointPositions: function(query) {
+    const packet = {
+      to: this._form.actor,
+      type: "getBreakpointPositions",
+      query,
+    };
+    return this._client.request(packet);
+  },
+
+  getBreakpointPositionsCompressed: function(query) {
+    const packet = {
+      to: this._form.actor,
+      type: "getBreakpointPositionsCompressed",
+      query,
+    };
+    return this._client.request(packet);
+  },
+
   /**
    * Get a long string grip for this SourceClient's source.
    */
@@ -103,39 +127,6 @@ SourceClient.prototype = {
       type: "source",
     };
     return this._client.request(packet).then(response => {
-      return this._onSourceResponse(response);
-    });
-  },
-
-  /**
-   * Pretty print this source's text.
-   */
-  prettyPrint: function(indent) {
-    const packet = {
-      to: this._form.actor,
-      type: "prettyPrint",
-      indent,
-    };
-    return this._client.request(packet).then(response => {
-      this._isPrettyPrinted = true;
-      this._activeThread._clearFrames();
-      this._activeThread.emit("prettyprintchange", this);
-      return this._onSourceResponse(response);
-    });
-  },
-
-  /**
-   * Stop pretty printing this source's text.
-   */
-  disablePrettyPrint: function() {
-    const packet = {
-      to: this._form.actor,
-      type: "disablePrettyPrint",
-    };
-    return this._client.request(packet).then(response => {
-      this._isPrettyPrinted = false;
-      this._activeThread._clearFrames();
-      this._activeThread.emit("prettyprintchange", this);
       return this._onSourceResponse(response);
     });
   },
@@ -230,6 +221,12 @@ SourceClient.prototype = {
         return [response, bpClient];
       });
     };
+
+    // With async sourcemap processing removed from the server, it is not
+    // necessary for clients to pause the debuggee before adding breakpoints.
+    if (this._client.mainRoot.traits.breakpointWhileRunning) {
+      return doSetBreakpoint();
+    }
 
     // If the debuggee is paused, just set the breakpoint.
     if (this._activeThread.paused) {

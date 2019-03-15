@@ -68,8 +68,7 @@ class PageAction {
     // Wait for layout to flush to avoid a synchronous reflow then calculate the
     // label width. We can safely get the width even though the recommendation is
     // collapsed; the label itself remains full width (with its overflow hidden)
-    await this.window.promiseDocumentFlushed;
-    const [{width}] = this.label.getClientRects();
+    let [{width}] = await this.window.promiseDocumentFlushed(() => this.label.getClientRects());
     this.urlbar.style.setProperty("--cfr-label-width", `${width}px`);
 
     this.container.addEventListener("click", this._handleClick);
@@ -244,7 +243,6 @@ class PageAction {
     // See https://searchfox.org/mozilla-central/rev/847b64cc28b74b44c379f9bff4f415b97da1c6d7/toolkit/modules/PopupNotifications.jsm#42
     browser.cfrpopupnotificationanchor = this.container;
 
-    const notification = this.window.document.getElementById("contextual-feature-recommendation-notification");
     const headerLabel = this.window.document.getElementById("cfr-notification-header-label");
     const headerLink = this.window.document.getElementById("cfr-notification-header-link");
     const headerImage = this.window.document.getElementById("cfr-notification-header-image");
@@ -258,9 +256,7 @@ class PageAction {
 
     headerLabel.value = await this.getStrings(content.heading_text);
     headerLink.setAttribute("href", SUMO_BASE_URL + content.info_icon.sumo_path);
-    const isRTL = this.window.getComputedStyle(notification).direction === "rtl";
-    const attribute = isRTL ? "left" : "right";
-    headerLink.setAttribute(attribute, 0);
+    headerLink.setAttribute(this.window.RTL_UI ? "left" : "right", 0);
     headerImage.setAttribute("tooltiptext", await this.getStrings(content.info_icon.label, "tooltiptext"));
     headerLink.onclick = () => this._sendTelemetry({message_id: id, bucket_id: content.bucket_id, event: "RATIONALE"});
 
@@ -329,7 +325,8 @@ class PageAction {
     const mainAction = {
       label: primaryBtnStrings,
       accessKey: primaryBtnStrings.attributes.accesskey,
-      callback: () => {
+      callback: async () => {
+        primary.action.data.url = await CFRPageActions._fetchLatestAddonVersion(content.addon.id); // eslint-disable-line no-use-before-define
         this._blockMessage(id);
         this.dispatchUserAction(primary.action);
         this.hide();
@@ -426,13 +423,13 @@ const CFRPageActions = {
 
   /**
    * Fetch the URL to the latest add-on xpi so the recommendation can download it.
-   * @param addon          The add-on provided by the CFRMessageProvider
-   * @return               A string for the URL that was fetched
+   * @param id          The add-on ID
+   * @return            A string for the URL that was fetched
    */
-  async _fetchLatestAddonVersion({id}) {
+  async _fetchLatestAddonVersion(id) {
     let url = null;
     try {
-      const response = await fetch(`${ADDONS_API_URL}/${id}`);
+      const response = await fetch(`${ADDONS_API_URL}/${id}/`, {credentials: "omit"});
       if (response.status !== 204 && response.ok) {
         const json = await response.json();
         url = json.current_version.files[0].url;
@@ -443,51 +440,16 @@ const CFRPageActions = {
     return url;
   },
 
-  async _maybeAddAddonInstallURL(recommendation) {
-    const {content, template} = recommendation;
-    // If this is CFR is not for an add-on, return the original recommendation
-    if (template !== "cfr_doorhanger") {
-      return recommendation;
-    }
-
-    const url = await this._fetchLatestAddonVersion(content.addon);
-    // If we failed to get a url to the latest xpi, return false so we know not to show
-    // a recommendation
-    if (!url) {
-      return false;
-    }
-
-    // Update the action's data with the url to the latest xpi, leave the rest
-    // of the recommendation properties intact
-    return {
-      ...recommendation,
-      content: {
-        ...content,
-        buttons: {
-          ...content.buttons,
-          primary: {
-            ...content.buttons.primary,
-            action: {...content.buttons.primary.action, data: {url}},
-          },
-        },
-      },
-    };
-  },
-
   /**
    * Force a recommendation to be shown. Should only happen via the Admin page.
    * @param browser                 The browser for the recommendation
-   * @param originalRecommendation  The recommendation to show
+   * @param recommendation  The recommendation to show
    * @param dispatchToASRouter      A function to dispatch resulting actions to
    * @return                        Did adding the recommendation succeed?
    */
-  async forceRecommendation(browser, originalRecommendation, dispatchToASRouter) {
+  async forceRecommendation(browser, recommendation, dispatchToASRouter) {
     // If we are forcing via the Admin page, the browser comes in a different format
     const win = browser.browser.ownerGlobal;
-    const recommendation = await this._maybeAddAddonInstallURL(originalRecommendation);
-    if (!recommendation) {
-      return false;
-    }
     const {id, content} = recommendation;
     RecommendationMap.set(browser.browser, {id, content});
     if (!PageActionMap.has(win)) {
@@ -501,20 +463,16 @@ const CFRPageActions = {
    * Add a recommendation specific to the given browser and host.
    * @param browser                 The browser for the recommendation
    * @param host                    The host for the recommendation
-   * @param originalRecommendation  The recommendation to show
+   * @param recommendation  The recommendation to show
    * @param dispatchToASRouter      A function to dispatch resulting actions to
    * @return                        Did adding the recommendation succeed?
    */
-  async addRecommendation(browser, host, originalRecommendation, dispatchToASRouter) {
+  async addRecommendation(browser, host, recommendation, dispatchToASRouter) {
     const win = browser.ownerGlobal;
     if (PrivateBrowsingUtils.isWindowPrivate(win)) {
       return false;
     }
     if (browser !== win.gBrowser.selectedBrowser || !isHostMatch(browser, host)) {
-      return false;
-    }
-    const recommendation = await this._maybeAddAddonInstallURL(originalRecommendation);
-    if (!recommendation) {
       return false;
     }
     const {id, content} = recommendation;

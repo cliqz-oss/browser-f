@@ -37,7 +37,7 @@ static already_AddRefed<LayerManager> GetLayerManager(
     }
   }
 
-  nsIDocument* doc = aFrameLoader->GetOwnerDoc();
+  Document* doc = aFrameLoader->GetOwnerDoc();
   if (!doc) {
     return nullptr;
   }
@@ -282,7 +282,7 @@ bool nsDisplayRemote::CreateWebRenderCommands(
     mozilla::wr::DisplayListBuilder& aBuilder,
     mozilla::wr::IpcResourceUpdateQueue& aResources,
     const StackingContextHelper& aSc,
-    mozilla::layers::WebRenderLayerManager* aManager,
+    mozilla::layers::RenderRootStateManager* aManager,
     nsDisplayListBuilder* aDisplayListBuilder) {
   mOffset = GetContentRectLayerOffset(mFrame, aDisplayListBuilder);
 

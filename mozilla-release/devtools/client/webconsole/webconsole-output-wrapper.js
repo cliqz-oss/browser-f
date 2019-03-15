@@ -22,6 +22,8 @@ const EventEmitter = require("devtools/shared/event-emitter");
 const App = createFactory(require("devtools/client/webconsole/components/App"));
 const ObjectClient = require("devtools/shared/client/object-client");
 const LongStringClient = require("devtools/shared/client/long-string-client");
+loader.lazyRequireGetter(this, "Constants", "devtools/client/webconsole/constants");
+loader.lazyRequireGetter(this, "getElementText", "devtools/client/webconsole/utils/clipboard", true);
 
 let store = null;
 
@@ -108,6 +110,60 @@ WebConsoleOutputWrapper.prototype = {
 
           return debuggerClient.release(actor);
         },
+
+        getWebConsoleClient: () => {
+          return hud.webConsoleClient;
+        },
+
+        /**
+         * Retrieve the FrameActor ID given a frame depth, or the selected one if no
+         * frame depth given.
+         *
+         * @param {Number} frame: optional frame depth.
+         * @return {String|null}: The FrameActor ID for the given frame depth (or the
+         *                        selected frame if it exists).
+         */
+        getFrameActor: (frame = null) => {
+          const state = this.owner.getDebuggerFrames();
+          if (!state) {
+            return null;
+          }
+
+          const grip = Number.isInteger(frame)
+            ? state.frames[frame]
+            : state.frames[state.selected];
+          return grip ? grip.actor : null;
+        },
+
+        inputHasSelection: () => {
+          const {editor, inputNode} = hud.jsterm || {};
+          return editor
+            ? !!editor.getSelection()
+            : (inputNode && inputNode.selectionStart !== inputNode.selectionEnd);
+        },
+
+        getInputValue: () => {
+          return hud.jsterm && hud.jsterm.getInputValue();
+        },
+
+        getInputCursor: () => {
+          return hud.jsterm && hud.jsterm.getSelectionStart();
+        },
+
+        getSelectedNodeActor: () => {
+          const inspectorSelection = this.owner.getInspectorSelection();
+          if (inspectorSelection && inspectorSelection.nodeFront) {
+            return inspectorSelection.nodeFront.actorID;
+          }
+          return null;
+        },
+
+        getJsTermTooltipAnchor: () => {
+          if (jstermCodeMirror) {
+            return hud.jsterm.node.querySelector(".CodeMirror-cursor");
+          }
+          return hud.jsterm.completeNode;
+        },
       };
 
       // Set `openContextMenu` this way so, `serviceContainer` variable
@@ -117,7 +173,7 @@ WebConsoleOutputWrapper.prototype = {
         const { screenX, screenY, target } = e;
 
         const messageEl = target.closest(".message");
-        const clipboardText = messageEl ? messageEl.textContent : null;
+        const clipboardText = getElementText(messageEl);
 
         const messageVariable = target.closest(".objectBox");
         // Ensure that console.group and console.groupCollapsed commands are not captured
@@ -255,15 +311,16 @@ WebConsoleOutputWrapper.prototype = {
       });
 
       const {prefs} = store.getState();
+      const jstermCodeMirror = prefs.jstermCodeMirror
+        && !Services.appinfo.accessibilityEnabled;
+
       const app = App({
         attachRefToHud,
         serviceContainer,
         hud,
         onFirstMeaningfulPaint: resolve,
         closeSplitConsole: this.closeSplitConsole.bind(this),
-        jstermCodeMirror: prefs.jstermCodeMirror
-          && !Services.appinfo.accessibilityEnabled,
-        jstermReverseSearch: prefs.jstermReverseSearch,
+        jstermCodeMirror,
       });
 
       // Render the root Application component.
@@ -320,6 +377,7 @@ WebConsoleOutputWrapper.prototype = {
     this.queuedMessageUpdates = [];
     this.queuedRequestUpdates = [];
     store.dispatch(actions.messagesClear());
+    this.hud.emit("messages-cleared");
   },
 
   dispatchPrivateMessagesClear: function() {
@@ -416,6 +474,27 @@ WebConsoleOutputWrapper.prototype = {
   dispatchSplitConsoleCloseButtonToggle: function() {
     store.dispatch(actions.splitConsoleCloseButtonToggle(
       this.toolbox && this.toolbox.currentToolId !== "webconsole"));
+  },
+
+  dispatchTabWillNavigate: function(packet) {
+    const { ui } = store.getState();
+
+    // For the browser console, we receive tab navigation
+    // when the original top level window we attached to is closed,
+    // but we don't want to reset console history and just switch to
+    // the next available window.
+    if (ui.persistLogs || this.hud.isBrowserConsole) {
+      // Add a type in order for this event packet to be identified by
+      // utils/messages.js's `transformPacket`
+      packet.type = "will-navigate";
+      this.dispatchMessageAdd(packet);
+    } else {
+      this.hud.webConsoleClient.clearNetworkRequests();
+      this.dispatchMessagesClear();
+      store.dispatch({
+        type: Constants.WILL_NAVIGATE,
+      });
+    }
   },
 
   batchedMessageUpdates: function(info) {

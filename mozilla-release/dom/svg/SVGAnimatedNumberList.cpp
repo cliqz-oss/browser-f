@@ -6,12 +6,13 @@
 
 #include "SVGAnimatedNumberList.h"
 
-#include "DOMSVGAnimatedNumberList.h"
+#include "mozilla/dom/SVGElement.h"
 #include "mozilla/Move.h"
-#include "nsSVGElement.h"
-#include "nsSVGAttrTearoffTable.h"
-#include "nsSMILValue.h"
+#include "mozilla/SMILValue.h"
+#include "DOMSVGAnimatedNumberList.h"
 #include "SVGNumberListSMILType.h"
+
+using namespace mozilla::dom;
 
 namespace mozilla {
 
@@ -34,7 +35,7 @@ nsresult SVGAnimatedNumberList::SetBaseValueString(const nsAString &aValue) {
   }
 
   // We don't need to call DidChange* here - we're only called by
-  // nsSVGElement::ParseAttribute under Element::SetAttr,
+  // SVGElement::ParseAttribute under Element::SetAttr,
   // which takes care of notifying.
 
   mIsBaseSet = true;
@@ -60,7 +61,7 @@ void SVGAnimatedNumberList::ClearBaseValue(uint32_t aAttrEnum) {
 }
 
 nsresult SVGAnimatedNumberList::SetAnimValue(const SVGNumberList &aNewAnimValue,
-                                             nsSVGElement *aElement,
+                                             SVGElement *aElement,
                                              uint32_t aAttrEnum) {
   DOMSVGAnimatedNumberList *domWrapper =
       DOMSVGAnimatedNumberList::GetDOMWrapperIfExists(this);
@@ -97,7 +98,7 @@ nsresult SVGAnimatedNumberList::SetAnimValue(const SVGNumberList &aNewAnimValue,
   return NS_OK;
 }
 
-void SVGAnimatedNumberList::ClearAnimValue(nsSVGElement *aElement,
+void SVGAnimatedNumberList::ClearAnimValue(SVGElement *aElement,
                                            uint32_t aAttrEnum) {
   DOMSVGAnimatedNumberList *domWrapper =
       DOMSVGAnimatedNumberList::GetDOMWrapperIfExists(this);
@@ -113,15 +114,15 @@ void SVGAnimatedNumberList::ClearAnimValue(nsSVGElement *aElement,
   aElement->DidAnimateNumberList(aAttrEnum);
 }
 
-UniquePtr<nsISMILAttr> SVGAnimatedNumberList::ToSMILAttr(
-    nsSVGElement *aSVGElement, uint8_t aAttrEnum) {
+UniquePtr<SMILAttr> SVGAnimatedNumberList::ToSMILAttr(SVGElement *aSVGElement,
+                                                      uint8_t aAttrEnum) {
   return MakeUnique<SMILAnimatedNumberList>(this, aSVGElement, aAttrEnum);
 }
 
 nsresult SVGAnimatedNumberList::SMILAnimatedNumberList::ValueFromString(
     const nsAString &aStr, const dom::SVGAnimationElement * /*aSrcElement*/,
-    nsSMILValue &aValue, bool &aPreventCachingOfSandwich) const {
-  nsSMILValue val(&SVGNumberListSMILType::sSingleton);
+    SMILValue &aValue, bool &aPreventCachingOfSandwich) const {
+  SMILValue val(&SVGNumberListSMILType::sSingleton);
   SVGNumberListAndInfo *nlai = static_cast<SVGNumberListAndInfo *>(val.mU.mPtr);
   nsresult rv = nlai->SetValueFromString(aStr);
   if (NS_SUCCEEDED(rv)) {
@@ -132,14 +133,13 @@ nsresult SVGAnimatedNumberList::SMILAnimatedNumberList::ValueFromString(
   return rv;
 }
 
-nsSMILValue SVGAnimatedNumberList::SMILAnimatedNumberList::GetBaseValue()
-    const {
+SMILValue SVGAnimatedNumberList::SMILAnimatedNumberList::GetBaseValue() const {
   // To benefit from Return Value Optimization and avoid copy constructor calls
   // due to our use of return-by-value, we must return the exact same object
   // from ALL return points. This function must only return THIS variable:
-  nsSMILValue val;
+  SMILValue val;
 
-  nsSMILValue tmp(&SVGNumberListSMILType::sSingleton);
+  SMILValue tmp(&SVGNumberListSMILType::sSingleton);
   SVGNumberListAndInfo *nlai = static_cast<SVGNumberListAndInfo *>(tmp.mU.mPtr);
   nsresult rv = nlai->CopyFrom(mVal->mBaseVal);
   if (NS_SUCCEEDED(rv)) {
@@ -150,7 +150,7 @@ nsSMILValue SVGAnimatedNumberList::SMILAnimatedNumberList::GetBaseValue()
 }
 
 nsresult SVGAnimatedNumberList::SMILAnimatedNumberList::SetAnimValue(
-    const nsSMILValue &aValue) {
+    const SMILValue &aValue) {
   NS_ASSERTION(aValue.mType == &SVGNumberListSMILType::sSingleton,
                "Unexpected type to assign animated value");
   if (aValue.mType == &SVGNumberListSMILType::sSingleton) {

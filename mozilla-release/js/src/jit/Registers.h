@@ -11,19 +11,19 @@
 
 #include "jit/IonTypes.h"
 #if defined(JS_CODEGEN_X86) || defined(JS_CODEGEN_X64)
-#include "jit/x86-shared/Architecture-x86-shared.h"
+#  include "jit/x86-shared/Architecture-x86-shared.h"
 #elif defined(JS_CODEGEN_ARM)
-#include "jit/arm/Architecture-arm.h"
+#  include "jit/arm/Architecture-arm.h"
 #elif defined(JS_CODEGEN_ARM64)
-#include "jit/arm64/Architecture-arm64.h"
+#  include "jit/arm64/Architecture-arm64.h"
 #elif defined(JS_CODEGEN_MIPS32)
-#include "jit/mips32/Architecture-mips32.h"
+#  include "jit/mips32/Architecture-mips32.h"
 #elif defined(JS_CODEGEN_MIPS64)
-#include "jit/mips64/Architecture-mips64.h"
+#  include "jit/mips64/Architecture-mips64.h"
 #elif defined(JS_CODEGEN_NONE)
-#include "jit/none/Architecture-none.h"
+#  include "jit/none/Architecture-none.h"
 #else
-#error "Unknown architecture!"
+#  error "Unknown architecture!"
 #endif
 
 namespace js {
@@ -262,6 +262,9 @@ class MachineState {
   double read(FloatRegister reg) const { return fpregs_[reg.code()]->d; }
   void write(Register reg, uintptr_t value) const {
     regs_[reg.code()]->r = value;
+  }
+  const Registers::RegisterContent* address(Register reg) const {
+    return regs_[reg.code()];
   }
   const FloatRegisters::RegisterContent* address(FloatRegister reg) const {
     return fpregs_[reg.code()];

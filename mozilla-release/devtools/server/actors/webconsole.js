@@ -93,7 +93,6 @@ function WebConsoleActor(connection, parentActor) {
   }
 
   this.traits = {
-    evaluateJSAsync: true,
     transferredResponseSize: true,
     selectedObjectActor: true, // 44+
     fetchCacheDescriptor: true,
@@ -329,39 +328,6 @@ WebConsoleActor.prototype =
    * Destroy the current WebConsoleActor instance.
    */
   destroy() {
-    if (this.consoleServiceListener) {
-      this.consoleServiceListener.destroy();
-      this.consoleServiceListener = null;
-    }
-    if (this.netmonitors) {
-      for (const { messageManager } of this.netmonitors) {
-        messageManager.sendAsyncMessage("debug:destroy-network-monitor", {
-          actorID: this.actorID,
-        });
-      }
-      this.netmonitors = null;
-    }
-    if (this.consoleAPIListener) {
-      this.consoleAPIListener.destroy();
-      this.consoleAPIListener = null;
-    }
-    if (this.stackTraceCollector) {
-      this.stackTraceCollector.destroy();
-      this.stackTraceCollector = null;
-    }
-    if (this.consoleProgressListener) {
-      this.consoleProgressListener.destroy();
-      this.consoleProgressListener = null;
-    }
-    if (this.consoleReflowListener) {
-      this.consoleReflowListener.destroy();
-      this.consoleReflowListener = null;
-    }
-    if (this.contentProcessListener) {
-      this.contentProcessListener.destroy();
-      this.contentProcessListener = null;
-    }
-
     EventEmitter.off(this.parentActor, "changed-toplevel-document",
                this._onChangedToplevelDocument);
 
@@ -376,6 +342,7 @@ WebConsoleActor.prototype =
       this.dbg.onConsoleMessage = null;
     }
 
+    this.stopListeners({ listeners: null });
     this._actorPool = null;
     this._webConsoleCommandsCache = null;
     this._lastConsoleInputEvaluation = null;
@@ -741,8 +708,8 @@ WebConsoleActor.prototype =
     // If no specific listeners are requested to be detached, we stop all
     // listeners.
     const toDetach = request.listeners ||
-      ["PageError", "ConsoleAPI", "NetworkActivity",
-       "FileActivity", "ContentProcessMessages"];
+      ["PageError", "ConsoleAPI", "NetworkActivity", "FileActivity",
+       "ReflowActivity", "ContentProcessMessages", "DocumentEvents"];
 
     while (toDetach.length > 0) {
       const listener = toDetach.shift();
@@ -1031,7 +998,14 @@ WebConsoleActor.prototype =
     };
     const {mapped} = request;
 
+    // Set a flag on the thread actor which indicates an evaluation is being
+    // done for the client. This can affect how debugger handlers behave.
+    this.parentActor.threadActor.insideClientEvaluation = true;
+
     const evalInfo = evalWithDebugger(input, evalOptions, this);
+
+    this.parentActor.threadActor.insideClientEvaluation = false;
+
     const evalResult = evalInfo.result;
     const helperResult = evalInfo.helperResult;
 
@@ -1214,9 +1188,9 @@ WebConsoleActor.prototype =
         environment,
         inputValue: request.text,
         cursor: request.cursor,
-        invokeUnsafeGetter: false,
         webconsoleActor: this,
         selectedNodeActor: request.selectedNodeActor,
+        authorizedEvaluations: request.authorizedEvaluations,
       });
 
       if (!hadDebuggee && dbgObject) {
@@ -1227,6 +1201,14 @@ WebConsoleActor.prototype =
         return {
           from: this.actorID,
           matches: null,
+        };
+      }
+
+      if (result && result.isUnsafeGetter === true) {
+        return {
+          from: this.actorID,
+          isUnsafeGetter: true,
+          getterPath: result.getterPath,
         };
       }
 

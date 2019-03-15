@@ -14,7 +14,7 @@
   --accessibility-arrow-horizontal-padding: 4px;
   --accessibility-tree-row-height: 21px;
   --accessibility-unfocused-tree-focused-node-background: var(--grey-20);
-  --accessibility-unfocused-tree-focused-node-twisty-fill: var(--theme-twisty-fill);
+  --accessibility-unfocused-tree-focused-node-twisty-fill: var(--theme-icon-dimmed-color);
   --accessibility-link-color: var(--blue-60);
   --accessibility-link-color-active: var(--blue-70);
   --accessible-role-active-background-color: var(--blue-50);
@@ -26,7 +26,7 @@
 
 :root.theme-dark {
   --accessibility-unfocused-tree-focused-node-background: var(--grey-70);
-  --accessibility-unfocused-tree-focused-node-twisty-fill: var(--theme-twisty-selected-fill);
+  --accessibility-unfocused-tree-focused-node-twisty-fill: var(--theme-selection-color);
   --accessibility-link-color: var(--theme-highlight-blue);
   --accessibility-link-color-active: var(--blue-40);
   --accessible-role-active-background-color: var(--blue-60);
@@ -57,7 +57,7 @@ body {
 
 .accessible .tree .node.focused .theme-twisty,
 .treeTable .treeRow.selected .theme-twisty {
-  fill: var(--theme-twisty-selected-fill);
+  fill: var(--theme-selection-color);
 }
 
 .mainFrame .main-panel {
@@ -228,30 +228,28 @@ body {
   min-width: 50%;
 }
 
-.treeTable:focus,
-.treeTable > tbody:focus {
+.treeTable:focus {
   outline: 0;
 }
 
-.treeTable::-moz-focus-inner,
-.treeTable > tbody::-moz-focus-inner {
+.treeTable::-moz-focus-inner {
   border: 0;
 }
 
-.treeTable:not(:focus) tbody:not(:focus) .treeRow.selected {
+.treeTable:not(:focus) .treeRow.selected {
   background-color: var(--accessibility-unfocused-tree-focused-node-background);
 }
 
-.treeTable:not(:focus) tbody:not(:focus) .treeRow.selected .theme-twisty {
+.treeTable:not(:focus) .treeRow.selected .theme-twisty {
   fill: var(--accessibility-unfocused-tree-focused-node-twisty-fill);
 }
 
-.treeTable:not(:focus) tbody:not(:focus) .treeRow.selected *,
-.treeTable:not(:focus) tbody:not(:focus) .treeRow.selected .treeLabelCell:after {
+.treeTable:not(:focus) .treeRow.selected *,
+.treeTable:not(:focus) .treeRow.selected .treeLabelCell:after {
   color: inherit;
 }
 
-.treeTable:not(:focus) tbody:not(:focus) .treeRow.selected .objectBox-string {
+.treeTable:not(:focus) .treeRow.selected .objectBox-string {
   color: var(--string-color);
 }
 

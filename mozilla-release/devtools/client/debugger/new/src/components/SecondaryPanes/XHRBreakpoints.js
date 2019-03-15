@@ -5,7 +5,7 @@
 // @flow
 
 import React, { Component } from "react";
-import { connect } from "react-redux";
+import { connect } from "../../utils/connect";
 import classnames from "classnames";
 import actions from "../../actions";
 
@@ -37,6 +37,12 @@ type State = {
   editIndex: number,
   focused: boolean
 };
+
+// At present, the "Pause on any URL" checkbox creates an xhrBreakpoint
+// of "ANY" with no path, so we can remove that before creating the list
+function getExplicitXHRBreakpoints(xhrBreakpoints) {
+  return xhrBreakpoints.filter(bp => bp.path !== "");
+}
 
 class XHRBreakpoints extends Component<Props, State> {
   _input: ?HTMLInputElement;
@@ -83,7 +89,7 @@ class XHRBreakpoints extends Component<Props, State> {
 
     const { editIndex, inputValue, inputMethod } = this.state;
     const { xhrBreakpoints } = this.props;
-    const { path, method } = xhrBreakpoints.get(editIndex);
+    const { path, method } = xhrBreakpoints[editIndex];
 
     if (path !== inputValue || method != inputMethod) {
       this.props.updateXHRBreakpoint(editIndex, inputValue, inputMethod);
@@ -114,7 +120,7 @@ class XHRBreakpoints extends Component<Props, State> {
 
   editExpression = index => {
     const { xhrBreakpoints } = this.props;
-    const { path, method } = xhrBreakpoints.get(index);
+    const { path, method } = xhrBreakpoints[index];
     this.setState({
       inputValue: path,
       inputMethod: method,
@@ -125,7 +131,6 @@ class XHRBreakpoints extends Component<Props, State> {
 
   renderXHRInput(onSubmit) {
     const { focused, inputValue } = this.state;
-    const { showInput } = this.props;
     const placeholder = L10N.getStr("xhrBreakpoints.placeholder");
 
     return (
@@ -141,7 +146,6 @@ class XHRBreakpoints extends Component<Props, State> {
             onChange={this.handleChange}
             onBlur={this.hideInput}
             onFocus={this.onFocus}
-            autoFocus={showInput}
             value={inputValue}
             ref={c => (this._input = c)}
           />
@@ -156,7 +160,7 @@ class XHRBreakpoints extends Component<Props, State> {
       enableXHRBreakpoint,
       disableXHRBreakpoint
     } = this.props;
-    const breakpoint = xhrBreakpoints.get(index);
+    const breakpoint = xhrBreakpoints[index];
     if (breakpoint.disabled) {
       enableXHRBreakpoint(index);
     } else {
@@ -207,15 +211,12 @@ class XHRBreakpoints extends Component<Props, State> {
 
   renderBreakpoints = () => {
     const { showInput, xhrBreakpoints } = this.props;
-
-    // At present, the "Pause on any URL" checkbox creates an xhrBreakpoint
-    // of "ANY" with no path, so we can remove that before creating the list
-    const explicitXhrBreakpoints = xhrBreakpoints.filter(bp => bp.path !== "");
+    const explicitXhrBreakpoints = getExplicitXHRBreakpoints(xhrBreakpoints);
 
     return (
       <ul className="pane expressions-list">
         {explicitXhrBreakpoints.map(this.renderBreakpoint)}
-        {(showInput || explicitXhrBreakpoints.size === 0) &&
+        {(showInput || explicitXhrBreakpoints.length === 0) &&
           this.renderXHRInput(this.handleNewSubmit)}
       </ul>
     );
@@ -223,11 +224,12 @@ class XHRBreakpoints extends Component<Props, State> {
 
   renderCheckbox = () => {
     const { shouldPauseOnAny, togglePauseOnAny, xhrBreakpoints } = this.props;
+    const explicitXhrBreakpoints = getExplicitXHRBreakpoints(xhrBreakpoints);
 
     return (
       <div
         className={classnames("breakpoints-exceptions-options", {
-          empty: xhrBreakpoints.size === 0
+          empty: explicitXhrBreakpoints.length === 0
         })}
       >
         <ExceptionOption

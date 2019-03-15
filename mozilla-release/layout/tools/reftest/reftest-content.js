@@ -277,6 +277,7 @@ function printToPdf(callback) {
         onLocationChange: function () {},
         onStatusChange: function () {},
         onSecurityChange: function () {},
+        onContentBlockingEvent: function () {},
     });
 }
 
@@ -1080,9 +1081,10 @@ function DoAssertionCheck()
 
 function LoadURI(uri)
 {
-    var flags = webNavigation().LOAD_FLAGS_NONE;
-    var systemPrincipal = Services.scriptSecurityManager.getSystemPrincipal();
-    webNavigation().loadURI(uri, flags, null, null, null, systemPrincipal);
+    let loadURIOptions = {
+      triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal(),
+    };
+    webNavigation().loadURI(uri, loadURIOptions);
 }
 
 function LogWarning(str)

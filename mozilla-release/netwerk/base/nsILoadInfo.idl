@@ -14,6 +14,7 @@ interface nsIPrincipal;
 interface nsIRedirectHistoryEntry;
 interface nsIURI;
 webidl Document;
+webidl BrowsingContext;
 native LoadContextRef(already_AddRefed<nsISupports>);
 %{C++
 #include "nsTArray.h"
@@ -628,6 +629,12 @@ interface nsILoadInfo : nsISupports
   [infallible] readonly attribute unsigned long long frameOuterWindowID;
 
   /**
+   * The BrowsingContext performing the load for this nsILoadInfo object.
+   */
+  [infallible] readonly attribute unsigned long long browsingContextID;
+  readonly attribute BrowsingContext browsingContext;
+
+  /**
    * Resets the PrincipalToInherit to a freshly created NullPrincipal
    * which inherits the origin attributes from the loadInfo.
    *
@@ -762,7 +769,7 @@ interface nsILoadInfo : nsISupports
    * The ancestorPrincipals[0] entry for an image loaded in an iframe will be the
    * principal of the iframe element's owner document.
    *
-   * See nsIDocument::AncestorPrincipals for more information.
+   * See Document::AncestorPrincipals for more information.
    *
    * Please note that this array has the same lifetime as the
    * loadInfo object - use with caution!

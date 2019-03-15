@@ -19,15 +19,17 @@
 #include "mozilla/dom/Promise.h"
 #include "mozilla/dom/Promise-inl.h"
 #include "mozIExtensionProcessScript.h"
+#include "nsDocShell.h"
 #include "nsEscape.h"
 #include "nsGkAtoms.h"
 #include "nsIChannel.h"
 #include "nsIContentPolicy.h"
 #include "nsIDocShell.h"
-#include "nsIDocument.h"
+#include "mozilla/dom/Document.h"
 #include "nsGlobalWindowOuter.h"
 #include "nsILoadInfo.h"
 #include "nsIXULRuntime.h"
+#include "nsImportModule.h"
 #include "nsNetUtil.h"
 #include "nsPrintfCString.h"
 #include "nsPIDOMWindow.h"
@@ -40,6 +42,7 @@ using namespace extensions;
 
 using dom::AutoJSAPI;
 using dom::ContentFrameMessageManager;
+using dom::Document;
 using dom::Promise;
 
 #define DEFAULT_BASE_CSP                                          \
@@ -56,8 +59,11 @@ static mozIExtensionProcessScript& ProcessScript() {
   static nsCOMPtr<mozIExtensionProcessScript> sProcessScript;
 
   if (MOZ_UNLIKELY(!sProcessScript)) {
-    sProcessScript =
-        do_GetService("@mozilla.org/webextensions/extension-process-script;1");
+    nsCOMPtr<mozIExtensionProcessScriptJSM> jsm =
+        do_ImportModule("resource://gre/modules/ExtensionProcessScript.jsm");
+    MOZ_RELEASE_ASSERT(jsm);
+
+    Unused << jsm->GetExtensionProcessScript(getter_AddRefs(sProcessScript));
     MOZ_RELEASE_ASSERT(sProcessScript);
     ClearOnShutdown(&sProcessScript);
   }
@@ -255,7 +261,7 @@ nsresult ExtensionPolicyService::Observe(nsISupports* aSubject,
       CheckWindow(win);
     }
   } else if (!strcmp(aTopic, "document-element-inserted")) {
-    nsCOMPtr<nsIDocument> doc = do_QueryInterface(aSubject);
+    nsCOMPtr<Document> doc = do_QueryInterface(aSubject);
     if (doc) {
       CheckDocument(doc);
     }
@@ -447,7 +453,7 @@ static bool CheckParentFrames(nsPIDOMWindowOuter* aWindow,
 // Checks a document, just after the document element has been inserted, for
 // matching content scripts or extension principals, and loads them if
 // necessary.
-void ExtensionPolicyService::CheckDocument(nsIDocument* aDocument) {
+void ExtensionPolicyService::CheckDocument(Document* aDocument) {
   nsCOMPtr<nsPIDOMWindowOuter> win = aDocument->GetWindow();
   if (win) {
     nsIDocShell* docShell = win->GetDocShell();
@@ -479,9 +485,9 @@ void ExtensionPolicyService::CheckDocument(nsIDocument* aDocument) {
 void ExtensionPolicyService::CheckWindow(nsPIDOMWindowOuter* aWindow) {
   // We only care about non-initial document loads here. The initial
   // about:blank document will usually be re-used to load another document.
-  nsCOMPtr<nsIDocument> doc = aWindow->GetExtantDoc();
+  RefPtr<Document> doc = aWindow->GetExtantDoc();
   if (!doc || doc->IsInitialDocument() ||
-      doc->GetReadyStateEnum() == nsIDocument::READYSTATE_UNINITIALIZED) {
+      doc->GetReadyStateEnum() == Document::READYSTATE_UNINITIALIZED) {
     return;
   }
 

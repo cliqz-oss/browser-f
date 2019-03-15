@@ -86,7 +86,7 @@ RefPtr<ChromiumCDMParent::InitPromise> ChromiumCDMParent::Init(
                 "ChromiumCDMParent::Init() succeeded with callback from child");
             self->mInitPromise.ResolveIfExists(true /* unused */, __func__);
           },
-          [self](ResponseRejectReason aReason) {
+          [self](ResponseRejectReason&& aReason) {
             RefPtr<gmp::GeckoMediaPluginService> service =
                 gmp::GeckoMediaPluginService::GetGeckoMediaPluginService();
             bool xpcomWillShutdown =
@@ -245,20 +245,43 @@ bool ChromiumCDMParent::InitCDMInputBuffer(gmp::CDMInputBuffer& aBuffer,
     return false;
   }
   memcpy(shmem.get<uint8_t>(), aSample->Data(), aSample->Size());
+  GMPEncryptionScheme encryptionScheme =
+      GMPEncryptionScheme::kGMPEncryptionNone;
+  switch (crypto.mCryptoScheme) {
+    case CryptoScheme::None:
+      break;  // Default to none
+    case CryptoScheme::Cenc:
+      encryptionScheme = GMPEncryptionScheme::kGMPEncryptionCenc;
+      break;
+    case CryptoScheme::Cbcs:
+      encryptionScheme = GMPEncryptionScheme::kGMPEncryptionCbcs;
+      break;
+    default:
+      GMP_LOG(
+          "InitCDMInputBuffer got unexpected encryption scheme with "
+          "value of %" PRIu8 ". Treating as no encryption.",
+          static_cast<uint8_t>(crypto.mCryptoScheme));
+      MOZ_ASSERT_UNREACHABLE("Should not have unrecognized encryption type");
+      break;
+  }
 
+  const nsTArray<uint8_t>& iv =
+      encryptionScheme != GMPEncryptionScheme::kGMPEncryptionCbcs
+          ? crypto.mIV
+          : crypto.mConstantIV;
   aBuffer = gmp::CDMInputBuffer(
-      shmem, crypto.mKeyId, crypto.mIV, aSample->mTime.ToMicroseconds(),
+      shmem, crypto.mKeyId, iv, aSample->mTime.ToMicroseconds(),
       aSample->mDuration.ToMicroseconds(), crypto.mPlainSizes,
-      crypto.mEncryptedSizes,
-      crypto.mValid ? GMPEncryptionScheme::kGMPEncryptionCenc
-                    : GMPEncryptionScheme::kGMPEncryptionNone);
+      crypto.mEncryptedSizes, crypto.mCryptByteBlock, crypto.mSkipByteBlock,
+      encryptionScheme);
   MOZ_ASSERT(
       aBuffer.mEncryptionScheme() == GMPEncryptionScheme::kGMPEncryptionNone ||
           aBuffer.mEncryptionScheme() ==
-              GMPEncryptionScheme::kGMPEncryptionCenc,
-      "aBuffer should use either no encryption or cenc, other kinds are not "
-      "yet "
-      "supported");
+              GMPEncryptionScheme::kGMPEncryptionCenc ||
+          aBuffer.mEncryptionScheme() ==
+              GMPEncryptionScheme::kGMPEncryptionCbcs,
+      "aBuffer should use no encryption, cenc, or cbcs, other kinds are not "
+      "yet supported");
   return true;
 }
 

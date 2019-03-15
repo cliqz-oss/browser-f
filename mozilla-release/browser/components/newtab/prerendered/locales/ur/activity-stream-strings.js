@@ -40,6 +40,9 @@ window.gActivityStreamStrings = {
   "section_disclaimer_topstories_buttontext": "ٹھیک ہے مجھے سمجھ آگئی ہے",
   "prefs_home_header": "Firefox ابتائی مواد",
   "prefs_home_description": "Choose what content you want on your Firefox Home screen.",
+  "prefs_content_discovery_header": "Firefox Home",
+  "prefs_content_discovery_description": "Content Discovery in Firefox Home allows you to discover high-quality, relevant articles from across the web.",
+  "prefs_content_discovery_button": "Turn Off Content Discovery",
   "prefs_section_rows_option": "{num} row;{num} rows",
   "prefs_search_header": "وءب تلاش",
   "prefs_topsites_description": "سائٹس جو آُپ سب سے زیادہ ملاحظہ کرتے ہیں",
@@ -48,7 +51,7 @@ window.gActivityStreamStrings = {
   "prefs_topstories_sponsored_learn_more": "مزید سیکھیں",
   "prefs_highlights_description": "A selection of sites that you’ve saved or visited",
   "prefs_highlights_options_visited_label": "دورہ کردہ صفحہات",
-  "prefs_highlights_options_download_label": "Most Recent Download",
+  "prefs_highlights_options_download_label": "حالیہ ڈاؤن لوڈ شدہ",
   "prefs_highlights_options_pocket_label": "صفحات Pocket میں محفوظ کر دیئے گئے ہیں",
   "prefs_snippets_description": "Mozilla اورFirefox کی جانب سے تازہ کاریاں",
   "settings_pane_button_label": "اپنے نئے ٹیب کہ صفحہ کی تخصیص کریں",
@@ -107,6 +110,5 @@ window.gActivityStreamStrings = {
   "firstrun_privacy_notice": "رازداری کا نوٹس",
   "firstrun_continue_to_login": "جاری رکھیں",
   "firstrun_skip_login": "Skip this step",
-  "context_menu_title": "مینیو کھولیں",
-  "pocket_learn_more": "مزید سیکھیں"
+  "context_menu_title": "مینیو کھولیں"
 };

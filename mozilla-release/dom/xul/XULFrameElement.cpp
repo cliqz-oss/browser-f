@@ -9,6 +9,7 @@
 #include "nsFrameLoader.h"
 #include "mozilla/AsyncEventDispatcher.h"
 #include "mozilla/dom/HTMLIFrameElement.h"
+#include "mozilla/dom/WindowProxyHolder.h"
 #include "mozilla/dom/XULFrameElement.h"
 #include "mozilla/dom/XULFrameElementBinding.h"
 
@@ -37,7 +38,7 @@ JSObject* XULFrameElement::WrapNode(JSContext* aCx,
   return XULFrameElement_Binding::Wrap(aCx, this, aGivenProto);
 }
 
-nsIDocShell* XULFrameElement::GetDocShell() {
+nsDocShell* XULFrameElement::GetDocShell() {
   RefPtr<nsFrameLoader> frameLoader = GetFrameLoader();
   return frameLoader ? frameLoader->GetDocShell(IgnoreErrors()) : nullptr;
 }
@@ -48,19 +49,24 @@ already_AddRefed<nsIWebNavigation> XULFrameElement::GetWebNavigation() {
   return webnav.forget();
 }
 
-already_AddRefed<nsPIDOMWindowOuter> XULFrameElement::GetContentWindow() {
-  nsCOMPtr<nsIDocShell> docShell = GetDocShell();
+Nullable<WindowProxyHolder> XULFrameElement::GetContentWindow() {
+  RefPtr<nsDocShell> docShell = GetDocShell();
   if (docShell) {
-    nsCOMPtr<nsPIDOMWindowOuter> win = docShell->GetWindow();
-    return win.forget();
+    return WindowProxyHolder(docShell->GetWindowProxy());
   }
 
   return nullptr;
 }
 
-nsIDocument* XULFrameElement::GetContentDocument() {
-  nsCOMPtr<nsPIDOMWindowOuter> win = GetContentWindow();
-  return win ? win->GetDoc() : nullptr;
+Document* XULFrameElement::GetContentDocument() {
+  nsCOMPtr<nsIDocShell> docShell = GetDocShell();
+  if (docShell) {
+    nsCOMPtr<nsPIDOMWindowOuter> win = docShell->GetWindow();
+    if (win) {
+      return win->GetDoc();
+    }
+  }
+  return nullptr;
 }
 
 void XULFrameElement::LoadSrc() {
@@ -70,7 +76,7 @@ void XULFrameElement::LoadSrc() {
   RefPtr<nsFrameLoader> frameLoader = GetFrameLoader();
   if (!frameLoader) {
     // Check if we have an opener we need to be setting
-    nsCOMPtr<nsPIDOMWindowOuter> opener = mOpener;
+    RefPtr<BrowsingContext> opener = mOpener;
     if (!opener) {
       // If we are a primary xul-browser, we want to take the opener property!
       nsCOMPtr<nsPIDOMWindowOuter> window = OwnerDoc()->GetWindow();
@@ -86,7 +92,8 @@ void XULFrameElement::LoadSrc() {
     // session history handling works like dynamic html:iframes.
     // Usually xul elements are used in chrome, which doesn't have
     // session history at all.
-    mFrameLoader = nsFrameLoader::Create(this, opener, false);
+    mFrameLoader = nsFrameLoader::Create(
+        this, opener ? opener->GetDOMWindow() : nullptr, false);
     if (NS_WARN_IF(!mFrameLoader)) {
       return;
     }
@@ -126,8 +133,7 @@ void XULFrameElement::SwapFrameLoaders(nsIFrameLoaderOwner* aOtherLoaderOwner,
   rv = loader->SwapWithOtherLoader(otherLoader, this, aOtherLoaderOwner);
 }
 
-nsresult XULFrameElement::BindToTree(nsIDocument* aDocument,
-                                     nsIContent* aParent,
+nsresult XULFrameElement::BindToTree(Document* aDocument, nsIContent* aParent,
                                      nsIContent* aBindingParent) {
   nsresult rv = nsXULElement::BindToTree(aDocument, aParent, aBindingParent);
   NS_ENSURE_SUCCESS(rv, rv);

@@ -23,7 +23,7 @@
 #include "XREShellData.h"
 
 #if defined(MOZ_WIDGET_ANDROID)
-#include <jni.h>
+#  include <jni.h>
 #endif
 
 /**
@@ -118,8 +118,8 @@
  * directories where native manifests used by the WebExtensions
  * native messaging and managed storage features are found.
  */
-#define XRE_SYS_NATIVE_MANIFESTS "XRESysNativeManifests"
-#define XRE_USER_NATIVE_MANIFESTS "XREUserNativeManifests"
+#  define XRE_SYS_NATIVE_MANIFESTS "XRESysNativeManifests"
+#  define XRE_USER_NATIVE_MANIFESTS "XREUserNativeManifests"
 #endif
 
 /**
@@ -365,25 +365,19 @@ XRE_API(nsresult, XRE_ParseAppData,
         (nsIFile * aINIFile, mozilla::XREAppData& aAppData))
 
 enum GeckoProcessType {
-  GeckoProcessType_Default = 0,
-
-  GeckoProcessType_Plugin,
-  GeckoProcessType_Content,
-
-  GeckoProcessType_IPDLUnitTest,
-
-  GeckoProcessType_GMPlugin,  // Gecko Media Plugin
-
-  GeckoProcessType_GPU,  // GPU and compositor process
-  GeckoProcessType_VR,   // VR process
-  GeckoProcessType_RDD,  // RDD (RemoteDataDecoder process)
+#define GECKO_PROCESS_TYPE(enum_name, string_name, xre_name) \
+  GeckoProcessType_##enum_name,
+#include "mozilla/GeckoProcessTypes.h"
+#undef GECKO_PROCESS_TYPE
   GeckoProcessType_End,
   GeckoProcessType_Invalid = GeckoProcessType_End
 };
 
 static const char* const kGeckoProcessTypeString[] = {
-    "default",          "plugin", "tab", "ipdlunittest",
-    "geckomediaplugin", "gpu",    "vr",  "rdd"};
+#define GECKO_PROCESS_TYPE(enum_name, string_name, xre_name) string_name,
+#include "mozilla/GeckoProcessTypes.h"
+#undef GECKO_PROCESS_TYPE
+};
 
 static_assert(MOZ_ARRAY_LENGTH(kGeckoProcessTypeString) == GeckoProcessType_End,
               "Array length mismatch");
@@ -438,20 +432,18 @@ XRE_API(GeckoProcessType, XRE_GetProcessType, ())
 XRE_API(bool, XRE_IsE10sParentProcess, ())
 
 /**
- * Returns true when called in the e10s parent process or called in the main
- * process when e10s is disabled.
+ * Defines XRE_IsParentProcess, XRE_IsContentProcess, etc.
+ *
+ * XRE_IsParentProcess is unique in that it returns true when called in
+ * the e10s parent process or called in the main process when e10s is
+ * disabled.
  */
-XRE_API(bool, XRE_IsParentProcess, ())
+#define GECKO_PROCESS_TYPE(enum_name, string_name, xre_name) \
+  XRE_API(bool, XRE_Is##xre_name##Process, ())
+#include "mozilla/GeckoProcessTypes.h"
+#undef GECKO_PROCESS_TYPE
 
-XRE_API(bool, XRE_IsContentProcess, ())
-
-XRE_API(bool, XRE_IsGPUProcess, ())
-
-XRE_API(bool, XRE_IsRDDProcess, ())
-
-XRE_API(bool, XRE_IsVRProcess, ())
-
-XRE_API(bool, XRE_IsPluginProcess, ())
+XRE_API(bool, XRE_IsSocketProcess, ())
 
 /**
  * Returns true if the appshell should run its own native event loop. Returns
@@ -498,7 +490,7 @@ XRE_API(int, XRE_XPCShellMain,
         (int argc, char** argv, char** envp, const XREShellData* aShellData))
 
 #ifdef LIBFUZZER
-#include "FuzzerRegistry.h"
+#  include "FuzzerRegistry.h"
 
 XRE_API(void, XRE_LibFuzzerSetDriver, (LibFuzzerDriver))
 

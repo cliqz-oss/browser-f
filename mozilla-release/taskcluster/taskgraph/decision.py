@@ -20,7 +20,7 @@ from .parameters import Parameters, get_version, get_app_version
 from .taskgraph import TaskGraph
 from .try_option_syntax import parse_message
 from .util.schema import validate_schema, Schema
-from taskgraph.util.hg import get_hg_revision_branch
+from taskgraph.util.hg import get_hg_revision_branch, get_hg_commit_message
 from taskgraph.util.partials import populate_release_history
 from taskgraph.util.yaml import load_yaml
 from voluptuous import Required, Optional
@@ -43,70 +43,63 @@ PER_PROJECT_PARAMETERS = {
 
     'ash': {
         'target_tasks_method': 'ash_tasks',
-        'optimize_target_tasks': True,
     },
 
     'cedar': {
         'target_tasks_method': 'cedar_tasks',
-        'optimize_target_tasks': True,
+    },
+
+    'oak': {
+        'target_tasks_method': 'nightly_desktop',
+        'release_type': 'nightly-oak',
     },
 
     'graphics': {
         'target_tasks_method': 'graphics_tasks',
-        'optimize_target_tasks': True,
     },
 
     'mozilla-central': {
         'target_tasks_method': 'default',
-        'optimize_target_tasks': True,
         'release_type': 'nightly',
     },
 
     'mozilla-beta': {
         'target_tasks_method': 'mozilla_beta_tasks',
-        'optimize_target_tasks': True,
         'release_type': 'beta',
     },
 
     'mozilla-release': {
         'target_tasks_method': 'mozilla_release_tasks',
-        'optimize_target_tasks': True,
         'release_type': 'release',
     },
 
     'mozilla-esr60': {
         'target_tasks_method': 'mozilla_esr60_tasks',
-        'optimize_target_tasks': True,
         'release_type': 'esr60',
     },
 
     'comm-central': {
         'target_tasks_method': 'default',
-        'optimize_target_tasks': True,
         'release_type': 'nightly',
     },
 
     'comm-beta': {
         'target_tasks_method': 'mozilla_beta_tasks',
-        'optimize_target_tasks': True,
         'release_type': 'beta',
     },
 
     'comm-esr60': {
         'target_tasks_method': 'mozilla_esr60_tasks',
-        'optimize_target_tasks': True,
         'release_type': 'release',
     },
 
     'pine': {
         'target_tasks_method': 'pine_tasks',
-        'optimize_target_tasks': True,
     },
 
     # the default parameters are used for projects that do not match above.
     'default': {
         'target_tasks_method': 'default',
-        'optimize_target_tasks': True,
     }
 }
 
@@ -170,7 +163,6 @@ def taskgraph_decision(options, parameters=None):
     write_artifact('full-task-graph.json', full_task_json)
 
     # write out the public/runnable-jobs.json file
-    write_artifact('runnable-jobs.json.gz', full_task_graph_to_runnable_jobs(full_task_json))
     write_artifact('runnable-jobs.json', full_task_graph_to_runnable_jobs(full_task_json))
 
     # this is just a test to check whether the from_json() function is working
@@ -201,7 +193,6 @@ def get_decision_parameters(config, options):
         'head_repository',
         'head_rev',
         'head_ref',
-        'message',
         'project',
         'pushlog_id',
         'pushdate',
@@ -224,11 +215,13 @@ def get_decision_parameters(config, options):
     parameters['filters'] = [
         'target_tasks_method',
     ]
+    parameters['optimize_target_tasks'] = True
     parameters['existing_tasks'] = {}
     parameters['do_not_optimize'] = []
     parameters['build_number'] = 1
     parameters['version'] = get_version(product_dir)
     parameters['app_version'] = get_app_version(product_dir)
+    parameters['message'] = get_hg_commit_message(GECKO)
     parameters['hg_branch'] = get_hg_revision_branch(GECKO, revision=parameters['head_rev'])
     parameters['next_version'] = None
     parameters['release_type'] = ''
@@ -286,6 +279,9 @@ def get_decision_parameters(config, options):
     if 'try' in project:
         set_try_config(parameters, task_config_file)
 
+    if options.get('optimize_target_tasks') is not None:
+        parameters['optimize_target_tasks'] = options['optimize_target_tasks']
+
     result = Parameters(**parameters)
     result.check()
     return result
@@ -307,7 +303,7 @@ def set_try_config(parameters, task_config_file):
         elif task_config_version == 2:
             validate_schema(
                 try_task_config_schema_v2, task_config,
-                "Invalid v1 `try_task_config.json`.",
+                "Invalid v2 `try_task_config.json`.",
             )
             parameters.update(task_config['parameters'])
             return

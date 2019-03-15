@@ -35,10 +35,10 @@ add_task(async function test_uniqueDomainsVisitedInPast24Hours() {
   // Set the expiry time to 1 second
   await SpecialPowers.pushPrefEnv({set: [["browser.engagement.recent_visited_origins.expiry", 1]]});
 
-  // http://www.exÃ¤mple.test
+  // http://www.exämple.test
   await BrowserTestUtils.openNewForegroundTab(win.gBrowser, "http://xn--exmple-cua.test");
   is(URICountListener.uniqueDomainsVisitedInPast24Hours, startingCount + 2,
-     "www.exÃ¤mple.test should count as a unique visit");
+     "www.exämple.test should count as a unique visit");
 
   let countBefore = URICountListener.uniqueDomainsVisitedInPast24Hours;
 
@@ -55,3 +55,4 @@ add_task(async function test_uniqueDomainsVisitedInPast24Hours() {
   BrowserTestUtils.removeTab(win.gBrowser.selectedTab);
   await BrowserTestUtils.closeWindow(win);
 });
+

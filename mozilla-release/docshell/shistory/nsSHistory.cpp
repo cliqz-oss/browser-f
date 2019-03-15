@@ -225,9 +225,9 @@ uint32_t nsSHistory::CalcMaxTotalViewers() {
 // This value allows tweaking how fast the allowed amount of content viewers
 // grows with increasing amounts of memory. Larger values mean slower growth.
 #ifdef ANDROID
-#define MAX_TOTAL_VIEWERS_BIAS 15.9
+#  define MAX_TOTAL_VIEWERS_BIAS 15.9
 #else
-#define MAX_TOTAL_VIEWERS_BIAS 14
+#  define MAX_TOTAL_VIEWERS_BIAS 14
 #endif
 
   // Calculate an estimate of how many ContentViewers we should cache based
@@ -660,7 +660,7 @@ nsresult nsSHistory::PrintHistory() {
     nsString title;
     entry->GetTitle(title);
 
-#if 0
+#  if 0
     nsAutoCString url;
     if (uri) {
       uri->GetSpec(url);
@@ -671,7 +671,7 @@ nsresult nsSHistory::PrintHistory() {
 
     printf("\t\t Title = %s\n", NS_LossyConvertUTF16toASCII(title).get());
     printf("\t\t layout History Data = %x\n", layoutHistoryState.get());
-#endif
+#  endif
   }
 
   return NS_OK;
@@ -1468,7 +1468,8 @@ nsresult nsSHistory::InitiateLoad(nsISHEntry* aFrameEntry,
                                   nsIDocShell* aFrameDS, long aLoadType) {
   NS_ENSURE_STATE(aFrameDS && aFrameEntry);
 
-  RefPtr<nsDocShellLoadState> loadState = new nsDocShellLoadState();
+  nsCOMPtr<nsIURI> newURI = aFrameEntry->GetURI();
+  RefPtr<nsDocShellLoadState> loadState = new nsDocShellLoadState(newURI);
 
   /* Set the loadType in the SHEntry too to  what was passed on.
    * This will be passed on to child subframes later in nsDocShell,
@@ -1484,11 +1485,10 @@ nsresult nsSHistory::InitiateLoad(nsISHEntry* aFrameEntry,
 
   loadState->SetLoadReplace(aFrameEntry->GetLoadReplace());
 
-  nsCOMPtr<nsIURI> newURI = aFrameEntry->GetURI();
-  loadState->SetURI(newURI);
   loadState->SetLoadFlags(nsIWebNavigation::LOAD_FLAGS_NONE);
-  // TODO fix principal here in Bug 1508642
-  loadState->SetTriggeringPrincipal(nsContentUtils::GetSystemPrincipal());
+  nsCOMPtr<nsIPrincipal> triggeringPrincipal =
+      aFrameEntry->GetTriggeringPrincipal();
+  loadState->SetTriggeringPrincipal(triggeringPrincipal);
   loadState->SetFirstParty(false);
 
   // Time to initiate a document load

@@ -22,6 +22,7 @@
 #include "mozilla/Alignment.h"
 #include "mozilla/ArrayUtils.h"
 #include "mozilla/Atomics.h"
+#include "mozilla/BinarySearch.h"
 #include "mozilla/EnumeratedArray.h"
 #include "mozilla/HashFunctions.h"
 #include "mozilla/Maybe.h"
@@ -524,6 +525,88 @@ static inline const char* ToCString(ValType type) {
   return ToCString(ExprType(type));
 }
 
+// An AnyRef is a boxed value that can represent any wasm reference type and any
+// host type that the host system allows to flow into and out of wasm
+// transparently.  It is a pointer-sized datum that has the same representation
+// as all its subtypes (funcref, eqref, (ref T), et al) due to the non-coercive
+// subtyping of the wasm type system.  Its current representation is a plain
+// JSObject*, and the private JSObject subtype WasmValueBox is used to box
+// non-object JS values.
+//
+// The C++/wasm boundary always uses a 'void*' type to express AnyRef values, to
+// emphasize the pointer-ness of the value.  The C++ code must transform the
+// void* into an AnyRef by calling AnyRef::fromCompiledCode(), and transform an
+// AnyRef into a void* by calling AnyRef::toCompiledCode().  Once in C++, we use
+// AnyRef everywhere.  A JS Value is transformed into an AnyRef by calling
+// AnyRef::box(), and the AnyRef is transformed into a JS Value by calling
+// AnyRef::unbox().
+//
+// NOTE that AnyRef values may point to GC'd storage and as such need to be
+// rooted if they are kept live in boxed form across code that may cause GC!
+// Use RootedAnyRef / HandleAnyRef / MutableHandleAnyRef where necessary.
+//
+// The lowest bits of the pointer value are used for tagging, to allow for some
+// representation optimizations and to distinguish various types.
+
+// For version 0, we simply equate AnyRef and JSObject* (this means that there
+// are technically no tags at all yet).  We use a simple boxing scheme that
+// wraps a JS value that is not already JSObject in a distinguishable JSObject
+// that holds the value, see WasmTypes.cpp for details.
+
+class AnyRef {
+  JSObject* value_;
+
+  explicit AnyRef(JSObject* p) : value_(p) {
+    MOZ_ASSERT(((uintptr_t)p & 0x03) == 0);
+  }
+
+ public:
+  // Given a void* that comes from compiled wasm code, turn it into AnyRef.
+  static AnyRef fromCompiledCode(void* p) { return AnyRef((JSObject*)p); }
+
+  // Given a JSObject* that comes from JS, turn it into AnyRef.
+  static AnyRef fromJSObject(JSObject* p) { return AnyRef(p); }
+
+  // Generate an AnyRef null pointer.
+  static AnyRef null() { return AnyRef(nullptr); }
+
+  bool isNull() { return value_ == nullptr; }
+
+  void* forCompiledCode() const { return value_; }
+
+  JSObject* asJSObject() { return value_; }
+
+  JSObject** asJSObjectAddress() { return &value_; }
+
+  void trace(JSTracer* trc);
+
+  // Tags (to be developed further)
+  static constexpr uintptr_t AnyRefTagMask = 1;
+  static constexpr uintptr_t AnyRefObjTag = 0;
+};
+
+typedef Rooted<AnyRef> RootedAnyRef;
+typedef Handle<AnyRef> HandleAnyRef;
+typedef MutableHandle<AnyRef> MutableHandleAnyRef;
+
+// TODO/AnyRef-boxing: With boxed immediates and strings, these will be defined
+// as MOZ_CRASH or similar so that we can find all locations that need to be
+// fixed.
+
+#define ASSERT_ANYREF_IS_JSOBJECT (void)(0)
+#define STATIC_ASSERT_ANYREF_IS_JSOBJECT static_assert(1, "AnyRef is JSObject")
+
+// Given any JS value, box it as an AnyRef and store it in *result.  Returns
+// false on OOM.
+
+bool BoxAnyRef(JSContext* cx, HandleValue val, MutableHandleAnyRef result);
+
+// Given any AnyRef, unbox it as a JS Value.  If it is a reference to a wasm
+// object it will be reflected as a JSObject* representing some TypedObject
+// instance.
+
+Value UnboxAnyRef(AnyRef val);
+
 // Code can be compiled either with the Baseline compiler or the Ion compiler,
 // and tier-variant data are tagged with the Tier value.
 //
@@ -583,8 +666,6 @@ enum ModuleKind { Wasm, AsmJS };
 
 enum class Shareable { False, True };
 
-enum class HasGcTypes { False, True };
-
 // The LitVal class represents a single WebAssembly value of a given value
 // type, mostly for the purpose of numeric literals and initializers. A LitVal
 // does not directly map to a JS value since there is not (currently) a precise
@@ -596,11 +677,13 @@ class LitVal {
  protected:
   ValType type_;
   union U {
+    U() : i32_(0) {}
     uint32_t i32_;
     uint64_t i64_;
     float f32_;
     double f64_;
-    JSObject* ptr_;
+    JSObject* ref_;  // Note, this breaks an abstraction boundary
+    AnyRef anyref_;
   } u;
 
  public:
@@ -612,12 +695,17 @@ class LitVal {
   explicit LitVal(float f32) : type_(ValType::F32) { u.f32_ = f32; }
   explicit LitVal(double f64) : type_(ValType::F64) { u.f64_ = f64; }
 
-  explicit LitVal(ValType refType, JSObject* ptr) : type_(refType) {
-    MOZ_ASSERT(refType.isReference());
-    MOZ_ASSERT(refType != ValType::NullRef);
-    MOZ_ASSERT(ptr == nullptr,
+  explicit LitVal(AnyRef any) : type_(ValType::AnyRef) {
+    MOZ_ASSERT(any.isNull(),
                "use Val for non-nullptr ref types to get tracing");
-    u.ptr_ = ptr;
+    u.anyref_ = any;
+  }
+
+  explicit LitVal(ValType refType, JSObject* ref) : type_(refType) {
+    MOZ_ASSERT(refType.isRef());
+    MOZ_ASSERT(ref == nullptr,
+               "use Val for non-nullptr ref types to get tracing");
+    u.ref_ = ref;
   }
 
   ValType type() const { return type_; }
@@ -639,13 +727,15 @@ class LitVal {
     MOZ_ASSERT(type_ == ValType::F64);
     return u.f64_;
   }
-  JSObject* ptr() const {
-    MOZ_ASSERT(type_.isReference());
-    return u.ptr_;
+  JSObject* ref() const {
+    MOZ_ASSERT(type_.isRef());
+    return u.ref_;
+  }
+  AnyRef anyref() const {
+    MOZ_ASSERT(type_ == ValType::AnyRef);
+    return u.anyref_;
   }
 };
-
-typedef Vector<LitVal, 0, SystemAllocPolicy> LitValVector;
 
 // A Val is a LitVal that can contain pointers to JSObjects, thanks to their
 // trace implementation. Since a Val is able to store a pointer to a JSObject,
@@ -661,10 +751,10 @@ class MOZ_NON_PARAM Val : public LitVal {
   explicit Val(uint64_t i64) : LitVal(i64) {}
   explicit Val(float f32) : LitVal(f32) {}
   explicit Val(double f64) : LitVal(f64) {}
-  explicit Val(ValType type, JSObject* obj) : LitVal(type, nullptr) {
-    u.ptr_ = obj;
+  explicit Val(AnyRef val) : LitVal(AnyRef::null()) { u.anyref_ = val; }
+  explicit Val(ValType type, JSObject* obj) : LitVal(type, (JSObject*)nullptr) {
+    u.ref_ = obj;
   }
-  void writePayload(uint8_t* dst) const;
   void trace(JSTracer* trc);
 };
 
@@ -1060,7 +1150,7 @@ typedef Vector<GlobalDesc, 0, SystemAllocPolicy> GlobalDescVector;
 
 // When a ElemSegment is "passive" it is shared between a wasm::Module and its
 // wasm::Instances. To allow each segment to be released as soon as the last
-// Instance table.drops it and the Module is destroyed, each ElemSegment is
+// Instance elem.drops it and the Module is destroyed, each ElemSegment is
 // individually atomically ref-counted.
 
 struct ElemSegment : AtomicRefCounted<ElemSegment> {
@@ -1709,6 +1799,212 @@ class CallSiteTarget {
 
 typedef Vector<CallSiteTarget, 0, SystemAllocPolicy> CallSiteTargetVector;
 
+typedef Vector<bool, 32, SystemAllocPolicy> ExitStubMapVector;
+
+struct StackMap final {
+  // A StackMap is a bit-array containing numMappedWords bits, one bit per
+  // word of stack.  Bit index zero is for the lowest addressed word in the
+  // range.
+  //
+  // This is a variable-length structure whose size must be known at creation
+  // time.
+  //
+  // Users of the map will know the address of the wasm::Frame that is covered
+  // by this map.  In order that they can calculate the exact address range
+  // covered by the map, the map also stores the offset, from the highest
+  // addressed word of the map, of the embedded wasm::Frame.  This is an
+  // offset down from the highest address, rather than up from the lowest, so
+  // as to limit its range to 11 bits, where
+  // 11 == ceil(log2(MaxParams * sizeof-biggest-param-type-in-words))
+  //
+  // The map may also cover a ref-typed DebugFrame.  If so that can be noted,
+  // since users of the map need to trace pointers in such a DebugFrame.
+  //
+  // Finally, for sanity checking only, for stack maps associated with a wasm
+  // trap exit stub, the number of words used by the trap exit stub save area
+  // is also noted.  This is used in Instance::traceFrame to check that the
+  // TrapExitDummyValue is in the expected place in the frame.
+
+  // The total number of stack words covered by the map ..
+  uint32_t numMappedWords : 30;
+
+  // .. of which this many are "exit stub" extras
+  uint32_t numExitStubWords : 6;
+
+  // Where is Frame* relative to the top?  This is an offset in words.
+  uint32_t frameOffsetFromTop : 11;
+
+  // Notes the presence of a ref-typed DebugFrame.
+  uint32_t hasRefTypedDebugFrame : 1;
+
+ private:
+  static constexpr uint32_t maxMappedWords = (1 << 30) - 1;
+  static constexpr uint32_t maxExitStubWords = (1 << 6) - 1;
+  static constexpr uint32_t maxFrameOffsetFromTop = (1 << 11) - 1;
+
+  uint32_t bitmap[1];
+
+  explicit StackMap(uint32_t numMappedWords)
+      : numMappedWords(numMappedWords),
+        numExitStubWords(0),
+        frameOffsetFromTop(0),
+        hasRefTypedDebugFrame(0) {
+    const uint32_t nBitmap = calcNBitmap(numMappedWords);
+    memset(bitmap, 0, nBitmap * sizeof(bitmap[0]));
+  }
+
+ public:
+  static StackMap* create(uint32_t numMappedWords) {
+    uint32_t nBitmap = calcNBitmap(numMappedWords);
+    char* buf =
+        (char*)js_malloc(sizeof(StackMap) + (nBitmap - 1) * sizeof(bitmap[0]));
+    if (!buf) {
+      return nullptr;
+    }
+    return ::new (buf) StackMap(numMappedWords);
+  }
+
+  void destroy() { js_free((char*)this); }
+
+  // Record the number of words in the map used as a wasm trap exit stub
+  // save area.  See comment above.
+  void setExitStubWords(uint32_t nWords) {
+    MOZ_ASSERT(numExitStubWords == 0);
+    MOZ_RELEASE_ASSERT(nWords <= maxExitStubWords);
+    MOZ_ASSERT(nWords <= numMappedWords);
+    numExitStubWords = nWords;
+  }
+
+  // Record the offset from the highest-addressed word of the map, that the
+  // wasm::Frame lives at.  See comment above.
+  void setFrameOffsetFromTop(uint32_t nWords) {
+    MOZ_ASSERT(frameOffsetFromTop == 0);
+    MOZ_RELEASE_ASSERT(nWords <= maxFrameOffsetFromTop);
+    MOZ_ASSERT(frameOffsetFromTop < numMappedWords);
+    frameOffsetFromTop = nWords;
+  }
+
+  // If the frame described by this StackMap includes a DebugFrame for a
+  // ref-typed return value, call here to record that fact.
+  void setHasRefTypedDebugFrame() {
+    MOZ_ASSERT(hasRefTypedDebugFrame == 0);
+    hasRefTypedDebugFrame = 1;
+  }
+
+  inline void setBit(uint32_t bitIndex) {
+    MOZ_ASSERT(bitIndex < numMappedWords);
+    uint32_t wordIndex = bitIndex / wordsPerBitmapElem;
+    uint32_t wordOffset = bitIndex % wordsPerBitmapElem;
+    bitmap[wordIndex] |= (1 << wordOffset);
+  }
+
+  inline uint32_t getBit(uint32_t bitIndex) const {
+    MOZ_ASSERT(bitIndex < numMappedWords);
+    uint32_t wordIndex = bitIndex / wordsPerBitmapElem;
+    uint32_t wordOffset = bitIndex % wordsPerBitmapElem;
+    return (bitmap[wordIndex] >> wordOffset) & 1;
+  }
+
+ private:
+  static constexpr uint32_t wordsPerBitmapElem = sizeof(bitmap[0]) * 8;
+
+  static uint32_t calcNBitmap(uint32_t numMappedWords) {
+    MOZ_RELEASE_ASSERT(numMappedWords <= maxMappedWords);
+    uint32_t nBitmap =
+        (numMappedWords + wordsPerBitmapElem - 1) / wordsPerBitmapElem;
+    return nBitmap == 0 ? 1 : nBitmap;
+  }
+};
+
+// This is the expected size for a map that covers 32 or fewer words.
+static_assert(sizeof(StackMap) == 12, "wasm::StackMap has unexpected size");
+
+class StackMaps {
+ public:
+  // A Maplet holds a single code-address-to-map binding.  Note that the
+  // code address is the lowest address of the instruction immediately
+  // following the instruction of interest, not of the instruction of
+  // interest itself.  In practice (at least for the Wasm Baseline compiler)
+  // this means that |nextInsnAddr| points either immediately after a call
+  // instruction, after a trap instruction or after a no-op.
+  struct Maplet {
+    uint8_t* nextInsnAddr;
+    StackMap* map;
+    Maplet(uint8_t* nextInsnAddr, StackMap* map)
+        : nextInsnAddr(nextInsnAddr), map(map) {}
+    void offsetBy(uintptr_t delta) { nextInsnAddr += delta; }
+    bool operator<(const Maplet& other) const {
+      return uintptr_t(nextInsnAddr) < uintptr_t(other.nextInsnAddr);
+    }
+  };
+
+ private:
+  bool sorted_;
+  Vector<Maplet, 0, SystemAllocPolicy> mapping_;
+
+ public:
+  StackMaps() : sorted_(false) {}
+  ~StackMaps() {
+    for (size_t i = 0; i < mapping_.length(); i++) {
+      mapping_[i].map->destroy();
+      mapping_[i].map = nullptr;
+    }
+  }
+  MOZ_MUST_USE bool add(uint8_t* nextInsnAddr, StackMap* map) {
+    MOZ_ASSERT(!sorted_);
+    return mapping_.append(Maplet(nextInsnAddr, map));
+  }
+  MOZ_MUST_USE bool add(const Maplet& maplet) {
+    return add(maplet.nextInsnAddr, maplet.map);
+  }
+  void clear() {
+    for (size_t i = 0; i < mapping_.length(); i++) {
+      mapping_[i].nextInsnAddr = nullptr;
+      mapping_[i].map = nullptr;
+    }
+    mapping_.clear();
+  }
+  bool empty() const { return mapping_.empty(); }
+  size_t length() const { return mapping_.length(); }
+  Maplet get(size_t i) const { return mapping_[i]; }
+  Maplet move(size_t i) {
+    Maplet m = mapping_[i];
+    mapping_[i].map = nullptr;
+    return m;
+  }
+  void offsetBy(uintptr_t delta) {
+    for (size_t i = 0; i < mapping_.length(); i++) mapping_[i].offsetBy(delta);
+  }
+  void sort() {
+    MOZ_ASSERT(!sorted_);
+    std::sort(mapping_.begin(), mapping_.end());
+    sorted_ = true;
+  }
+  const StackMap* findMap(uint8_t* nextInsnAddr) const {
+    struct Comparator {
+      int operator()(Maplet aVal) const {
+        if (uintptr_t(mTarget) < uintptr_t(aVal.nextInsnAddr)) {
+          return -1;
+        }
+        if (uintptr_t(mTarget) > uintptr_t(aVal.nextInsnAddr)) {
+          return 1;
+        }
+        return 0;
+      }
+      explicit Comparator(uint8_t* aTarget) : mTarget(aTarget) {}
+      const uint8_t* mTarget;
+    };
+
+    size_t result;
+    if (BinarySearchIf(mapping_, 0, mapping_.length(), Comparator(nextInsnAddr),
+                       &result)) {
+      return mapping_[result].map;
+    }
+
+    return nullptr;
+  }
+};
+
 // A wasm::SymbolicAddress represents a pointer to a well-known function that is
 // embedded in wasm code. Since wasm code is serialized and later deserialized
 // into a different address space, symbolic addresses must be used for *all*
@@ -1749,7 +2045,7 @@ enum class SymbolicAddress {
   CallImport_I32,
   CallImport_I64,
   CallImport_F64,
-  CallImport_Ref,
+  CallImport_AnyRef,
   CoerceInPlace_ToInt32,
   CoerceInPlace_ToNumber,
   CoerceInPlace_JitEntry,
@@ -1771,11 +2067,11 @@ enum class SymbolicAddress {
   WaitI64,
   Wake,
   MemCopy,
-  MemDrop,
+  DataDrop,
   MemFill,
   MemInit,
   TableCopy,
-  TableDrop,
+  ElemDrop,
   TableGet,
   TableGrow,
   TableInit,
@@ -2204,6 +2500,7 @@ class DebugFrame {
     int32_t resultI32_;
     int64_t resultI64_;
     intptr_t resultRef_;
+    AnyRef resultAnyRef_;
     float resultF32_;
     double resultF64_;
   };
@@ -2246,6 +2543,7 @@ class DebugFrame {
   uint32_t funcIndex() const { return funcIndex_; }
   Instance* instance() const { return frame_.instance(); }
   GlobalObject* global() const;
+  bool hasGlobal(const GlobalObject* global) const;
   JSObject* environmentChain() const;
   bool getLocal(uint32_t localIndex, MutableHandleValue vp);
 
@@ -2253,6 +2551,7 @@ class DebugFrame {
   // results union into cachedReturnJSValue_ by updateReturnJSValue() before
   // returnValue() can return a Handle to it.
 
+  bool hasCachedReturnJSValue() const { return hasCachedReturnJSValue_; }
   void updateReturnJSValue();
   HandleValue returnValue() const;
   void clearReturnJSValue();
@@ -2291,6 +2590,9 @@ class DebugFrame {
   static constexpr size_t offsetOfResults() {
     return offsetof(DebugFrame, resultI32_);
   }
+  static constexpr size_t offsetOfCachedReturnJSValue() {
+    return offsetof(DebugFrame, cachedReturnJSValue_);
+  }
   static constexpr size_t offsetOfFlagsWord() {
     return offsetof(DebugFrame, flagsWord_);
   }
@@ -2307,6 +2609,10 @@ class DebugFrame {
   static const unsigned Alignment = 8;
   static void alignmentStaticAsserts();
 };
+
+// Verbose logging support.
+
+extern void Log(JSContext* cx, const char* fmt, ...) MOZ_FORMAT_PRINTF(2, 3);
 
 }  // namespace wasm
 }  // namespace js

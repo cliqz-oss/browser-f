@@ -12,9 +12,9 @@
  * See devtools/docs/backend/actor-hierarchy.md for more details.
  */
 
-const {DebuggerServer} = require("devtools/server/main");
 const protocol = require("devtools/shared/protocol");
-const {webExtensionSpec} = require("devtools/shared/specs/addon/webextension");
+const { webExtensionSpec } = require("devtools/shared/specs/addon/webextension");
+const { WebExtensionTargetActorProxy } = require("devtools/server/actors/targets/webextension-proxy");
 
 loader.lazyImporter(this, "AddonManager", "resource://gre/modules/AddonManager.jsm");
 loader.lazyImporter(this, "ExtensionParent", "resource://gre/modules/ExtensionParent.jsm");
@@ -60,11 +60,6 @@ const WebExtensionActor = protocol.ActorClassWithSpec(webExtensionSpec, {
     }
   },
 
-  setOptions() {
-    // NOTE: not used anymore for webextensions, still used in the legacy addons,
-    // addon manager is currently going to call it automatically on every addon.
-  },
-
   reload() {
     return this.addon.reload().then(() => {
       return {};
@@ -78,6 +73,8 @@ const WebExtensionActor = protocol.ActorClassWithSpec(webExtensionSpec, {
       id: this.addonId,
       name: this.addon.name,
       url: this.addon.sourceURI ? this.addon.sourceURI.spec : undefined,
+      // iconDataURL is available after calling loadIconDataURL
+      iconDataURL: this._iconDataURL,
       iconURL: this.addon.iconURL,
       isSystem: this.addon.isSystem,
       debuggable: this.addon.isDebuggable,
@@ -112,6 +109,45 @@ const WebExtensionActor = protocol.ActorClassWithSpec(webExtensionSpec, {
     return this._childFormPromise;
   },
 
+  // This function will be called from RootActor in case that the debugger client
+  // retrieves list of addons with `iconDataURL` option.
+  async loadIconDataURL() {
+    this._iconDataURL = await this.getIconDataURL();
+  },
+
+  async getIconDataURL() {
+    if (!this.addon.iconURL) {
+      return null;
+    }
+
+    const xhr = new XMLHttpRequest();
+    xhr.responseType = "blob";
+    xhr.open("GET", this.addon.iconURL, true);
+
+    if (this.addon.iconURL.toLowerCase().endsWith(".svg")) {
+      // Maybe SVG, thus force to change mime type.
+      xhr.overrideMimeType("image/svg+xml");
+    }
+
+    try {
+      const blob = await new Promise((resolve, reject) => {
+        xhr.onload = () => resolve(xhr.response);
+        xhr.onerror = reject;
+        xhr.send();
+      });
+
+      const reader = new FileReader();
+      return await new Promise((resolve, reject) => {
+        reader.onloadend = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+    } catch (_) {
+      console.warn(`Failed to create data url from [${ this.addon.iconURL }]`);
+      return null;
+    }
+  },
+
   // WebExtensionTargetActorProxy callbacks.
 
   onProxyDestroy() {
@@ -142,84 +178,3 @@ const WebExtensionActor = protocol.ActorClassWithSpec(webExtensionSpec, {
 });
 
 exports.WebExtensionActor = WebExtensionActor;
-
-function WebExtensionTargetActorProxy(connection, parentActor) {
-  this._conn = connection;
-  this._parentActor = parentActor;
-  this.addonId = parentActor.addonId;
-
-  this._onChildExit = this._onChildExit.bind(this);
-
-  this._form = null;
-  this._browser = null;
-  this._childActorID = null;
-}
-
-WebExtensionTargetActorProxy.prototype = {
-  /**
-   * Connect the webextension child actor.
-   */
-  async connect() {
-    if (this._browser) {
-      throw new Error("This actor is already connected to the extension process");
-    }
-
-    // Called when the debug browser element has been destroyed
-    // (no actor is using it anymore to connect the child extension process).
-    const onDestroy = this.destroy.bind(this);
-
-    this._browser = await ExtensionParent.DebugUtils.getExtensionProcessBrowser(this);
-
-    this._form = await DebuggerServer.connectToFrame(this._conn, this._browser, onDestroy,
-                                                     {addonId: this.addonId});
-
-    this._childActorID = this._form.actor;
-
-    // Exit the proxy child actor if the child actor has been destroyed.
-    this._mm.addMessageListener("debug:webext_child_exit", this._onChildExit);
-
-    return this._form;
-  },
-
-  get isOOP() {
-    return this._browser ? this._browser.isRemoteBrowser : undefined;
-  },
-
-  get _mm() {
-    return this._browser && (
-      this._browser.messageManager ||
-      this._browser.frameLoader.messageManager);
-  },
-
-  destroy() {
-    if (this._mm) {
-      this._mm.removeMessageListener("debug:webext_child_exit", this._onChildExit);
-
-      this._mm.sendAsyncMessage("debug:webext_parent_exit", {
-        actor: this._childActorID,
-      });
-
-      ExtensionParent.DebugUtils.releaseExtensionProcessBrowser(this);
-    }
-
-    if (this._parentActor) {
-      this._parentActor.onProxyDestroy();
-    }
-
-    this._parentActor = null;
-    this._browser = null;
-    this._childActorID = null;
-    this._form = null;
-  },
-
-  /**
-   * Handle the child actor exit.
-   */
-  _onChildExit(msg) {
-    if (msg.json.actor !== this._childActorID) {
-      return;
-    }
-
-    this.destroy();
-  },
-};

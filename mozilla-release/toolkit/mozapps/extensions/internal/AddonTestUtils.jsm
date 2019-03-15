@@ -11,7 +11,7 @@ var EXPORTED_SYMBOLS = ["AddonTestUtils", "MockAsyncShutdown"];
 
 const CERTDB_CONTRACTID = "@mozilla.org/security/x509certdb;1";
 
-Cu.importGlobalProperties(["fetch", "TextEncoder"]);
+Cu.importGlobalProperties(["fetch"]);
 
 ChromeUtils.import("resource://gre/modules/AsyncShutdown.jsm");
 ChromeUtils.import("resource://gre/modules/FileUtils.jsm");
@@ -802,7 +802,7 @@ var AddonTestUtils = {
 
     // Wait for all add-ons to finish starting up before resolving.
     const {XPIProvider} = ChromeUtils.import("resource://gre/modules/addons/XPIProvider.jsm", null);
-    await Promise.all(Array.from(XPIProvider.activeAddons,
+    await Promise.all(Array.from(XPIProvider.activeAddons.values(),
                                  addon => addon.startupPromise));
   },
 
@@ -1526,8 +1526,7 @@ var AddonTestUtils = {
    *
    * @param {function} task
    *        The task to run while monitoring console output. May be
-   *        either a generator function, per Task.jsm, or an ordinary
-   *        function which returns promose.
+   *        an async function, or an ordinary function which returns a promose.
    * @return {Promise<[Array<nsIConsoleMessage>, *]>}
    *        Resolves to an object containing a `messages` property, with
    *        the array of console messages emitted during the execution

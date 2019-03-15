@@ -22,7 +22,7 @@
               !this.parentNode.pageUpOrDownMovesSelection) &&
             !event.shiftKey && !event.metaKey) ||
           this.parentNode.view.selection.single) {
-          var b = this.parentNode.treeBoxObject;
+          var b = this.parentNode;
           var cell = b.getCellAt(event.clientX, event.clientY);
           var view = this.parentNode.view;
 
@@ -65,7 +65,7 @@
         if (event.button != 0) { return; }
         if (this.parentNode.disabled)
           return;
-        var b = this.parentNode.treeBoxObject;
+        var b = this.parentNode;
         var cell = b.getCellAt(event.clientX, event.clientY);
         var view = this.parentNode.view;
 
@@ -126,14 +126,14 @@
       this.addEventListener("dblclick", (event) => {
         if (this.parentNode.disabled)
           return;
-        var tbo = this.parentNode.treeBoxObject;
+        var tree = this.parentNode;
         var view = this.parentNode.view;
         var row = view.selection.currentIndex;
 
         if (row == -1)
           return;
 
-        var cell = tbo.getCellAt(event.clientX, event.clientY);
+        var cell = tree.getCellAt(event.clientX, event.clientY);
 
         if (cell.childElt != "twisty") {
           this.parentNode.startEditing(row, cell.col);
@@ -163,6 +163,93 @@
   }
 
   customElements.define("treechildren", MozTreeChildren);
+
+  class MozTreecolPicker extends MozElements.BaseControl {
+    constructor() {
+      super();
+
+      this.addEventListener("command", (event) => {
+        if (event.originalTarget == this) {
+          var popup = this.querySelector("[anonid=\"popup\"]");
+          this.buildPopup(popup);
+          popup.openPopup(this, "after_end");
+        } else {
+          var tree = this.parentNode.parentNode;
+          tree.stopEditing(true);
+          var menuitem = this.querySelector("[anonid=\"menuitem\"]");
+          if (event.originalTarget == menuitem) {
+            tree.columns.restoreNaturalOrder();
+            this.removeAttribute("ordinal");
+            tree._ensureColumnOrder();
+          } else {
+            var colindex = event.originalTarget.getAttribute("colindex");
+            var column = tree.columns[colindex];
+            if (column) {
+              var element = column.element;
+              if (element.getAttribute("hidden") == "true")
+                element.setAttribute("hidden", "false");
+              else
+                element.setAttribute("hidden", "true");
+            }
+          }
+        }
+      });
+
+    }
+
+    connectedCallback() {
+      if (this.delayConnectedCallback()) {
+        return;
+      }
+
+      this.textContent = "";
+      this.appendChild(MozXULElement.parseXULToFragment(`
+        <image class="tree-columnpicker-icon"></image>
+        <menupopup anonid="popup">
+          <menuseparator anonid="menuseparator"></menuseparator>
+          <menuitem anonid="menuitem" label="&restoreColumnOrder.label;"></menuitem>
+        </menupopup>
+      `, ["chrome://global/locale/tree.dtd"]));
+
+    }
+
+    buildPopup(aPopup) {
+      // We no longer cache the picker content, remove the old content.
+      while (aPopup.childNodes.length > 2)
+        aPopup.firstChild.remove();
+
+      var refChild = aPopup.firstChild;
+
+      var tree = this.parentNode.parentNode;
+      for (var currCol = tree.columns.getFirstColumn(); currCol; currCol = currCol.getNext()) {
+        // Construct an entry for each column in the row, unless
+        // it is not being shown.
+        var currElement = currCol.element;
+        if (!currElement.hasAttribute("ignoreincolumnpicker")) {
+          var popupChild = document.createElement("menuitem");
+          popupChild.setAttribute("type", "checkbox");
+          var columnName = currElement.getAttribute("display") ||
+            currElement.getAttribute("label");
+          popupChild.setAttribute("label", columnName);
+          popupChild.setAttribute("colindex", currCol.index);
+          if (currElement.getAttribute("hidden") != "true")
+            popupChild.setAttribute("checked", "true");
+          if (currCol.primary)
+            popupChild.setAttribute("disabled", "true");
+          aPopup.insertBefore(popupChild, refChild);
+        }
+      }
+
+      var hidden = !tree.enableColumnDrag;
+      const anonids = ["menuseparator", "menuitem"];
+      for (var i = 0; i < anonids.length; i++) {
+        var element = this.querySelector(`[anonid=\"${anonids[i]}\"]`);
+        element.hidden = hidden;
+      }
+    }
+  }
+
+  customElements.define("treecolpicker", MozTreecolPicker);
 
   class MozTreecol extends MozElements.BaseControl {
     static get observedAttributes() {
@@ -316,12 +403,12 @@
         col.mTargetCol.removeAttribute("insertbefore");
         col.mTargetCol.removeAttribute("insertafter");
         column = tree.columns.getColumnFor(col.mTargetCol);
-        tree.treeBoxObject.invalidateColumn(column);
+        tree.invalidateColumn(column);
         sib = col.mTargetCol._previousVisibleColumn;
         if (sib) {
           sib.removeAttribute("insertafter");
           column = tree.columns.getColumnFor(sib);
-          tree.treeBoxObject.invalidateColumn(column);
+          tree.invalidateColumn(column);
         }
         col.mTargetCol = null;
         col.mTargetDir = null;
@@ -337,11 +424,11 @@
           if (sib) {
             sib.setAttribute("insertafter", "true");
             column = tree.columns.getColumnFor(sib);
-            tree.treeBoxObject.invalidateColumn(column);
+            tree.invalidateColumn(column);
           }
         }
         column = tree.columns.getColumnFor(targetCol);
-        tree.treeBoxObject.invalidateColumn(column);
+        tree.invalidateColumn(column);
         col.mTargetCol = targetCol;
         col.mTargetDir = pos.value;
       }
@@ -381,7 +468,7 @@
           }
 
           // repaint to remove lines
-          col.parentNode.parentNode.treeBoxObject.invalidate();
+          col.parentNode.parentNode.invalidate();
 
           col.mTargetCol = null;
         }

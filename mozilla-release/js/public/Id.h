@@ -53,6 +53,11 @@ struct PropertyKey {
 
   bool operator==(const PropertyKey& rhs) const { return asBits == rhs.asBits; }
   bool operator!=(const PropertyKey& rhs) const { return asBits != rhs.asBits; }
+
+  MOZ_ALWAYS_INLINE bool isInt() const {
+    return !!(asBits & JSID_TYPE_INT_BIT);
+  }
+
 } JS_HAZ_GC_POINTER;
 
 }  // namespace JS
@@ -91,6 +96,7 @@ static MOZ_ALWAYS_INLINE bool JSID_IS_INT(jsid id) {
 
 static MOZ_ALWAYS_INLINE int32_t JSID_TO_INT(jsid id) {
   MOZ_ASSERT(JSID_IS_INT(id));
+  MOZ_ASSERT(id.isInt());
   uint32_t bits = static_cast<uint32_t>(JSID_BITS(id)) >> 1;
   return static_cast<int32_t>(bits);
 }
@@ -171,12 +177,10 @@ struct GCPolicy<jsid> {
 };
 
 #ifdef DEBUG
-MOZ_ALWAYS_INLINE bool IdIsNotGray(jsid id) {
-  if (!JSID_IS_GCTHING(id)) {
-    return true;
+MOZ_ALWAYS_INLINE void AssertIdIsNotGray(jsid id) {
+  if (JSID_IS_GCTHING(id)) {
+    AssertCellIsNotGray(JSID_TO_GCTHING(id).asCell());
   }
-
-  return CellIsNotGray(JSID_TO_GCTHING(id).asCell());
 }
 #endif
 

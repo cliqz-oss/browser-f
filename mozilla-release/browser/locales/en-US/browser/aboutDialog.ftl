@@ -50,7 +50,6 @@ bottomLinks-privacy = Privacy Policy
 aboutDialog-architecture-sixtyFourBit = 64-bit
 aboutDialog-architecture-thirtyTwoBit = 32-bit
 
-version-based-on = based on Firefox
 cliqz-headline = We Redesign the Internet
 cliqz-description-1 = The protection of your data has priority for us. As a company based in Germany we are bound by strict data security regulations and also by our own high standards and policies. Our primary principle: Cliqz does not store any data on our servers that could be used to identify you or your equipment. Want to know all the details? Read about our <label data-l10n-name="cliqz-desc1-privacy">privacy standards</label>, check our <label data-l10n-name="cliqz-desc1-policy">privacy policy</label> or <label data-l10n-name="cliqz-desc1-contact">get in contact</label>.
 

@@ -1,4 +1,4 @@
-// |jit-test| test-also-no-wasm-baseline; skip-if: !wasmDebuggingIsSupported()
+// |jit-test| test-also-wasm-compiler-ion; skip-if: !wasmDebuggingIsSupported()
 
 // Tests that wasm module scripts have column and line to bytecode offset
 // information when source text is generated.
@@ -8,7 +8,7 @@ load(libdir + "asserts.js");
 // Checking if experimental format generates internal source map to binary file
 // by querying debugger scripts getAllColumnOffsets.
 function getAllOffsets(wast) {
-  var sandbox = newGlobal('');
+  var sandbox = newGlobal({newCompartment: true});
   var dbg = new Debugger();
   dbg.addDebuggee(sandbox);
   dbg.allowWasmBinarySource = true;

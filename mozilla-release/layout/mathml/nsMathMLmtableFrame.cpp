@@ -310,19 +310,19 @@ class nsDisplaymtdBorder final : public nsDisplayBorder {
       mozilla::wr::DisplayListBuilder& aBuilder,
       mozilla::wr::IpcResourceUpdateQueue& aResources,
       const StackingContextHelper& aSc,
-      mozilla::layers::WebRenderLayerManager* aManager,
+      mozilla::layers::RenderRootStateManager* aManager,
       nsDisplayListBuilder* aDisplayListBuilder) override {
     return false;
   }
 };
 
 #ifdef DEBUG
-#define DEBUG_VERIFY_THAT_FRAME_IS(_frame, _expected)                       \
-  MOZ_ASSERT(                                                               \
-      mozilla::StyleDisplay::_expected == _frame->StyleDisplay()->mDisplay, \
-      "internal error");
+#  define DEBUG_VERIFY_THAT_FRAME_IS(_frame, _expected)                       \
+    MOZ_ASSERT(                                                               \
+        mozilla::StyleDisplay::_expected == _frame->StyleDisplay()->mDisplay, \
+        "internal error");
 #else
-#define DEBUG_VERIFY_THAT_FRAME_IS(_frame, _expected)
+#  define DEBUG_VERIFY_THAT_FRAME_IS(_frame, _expected)
 #endif
 
 static void ParseFrameAttribute(nsIFrame* aFrame, nsAtom* aAttribute,

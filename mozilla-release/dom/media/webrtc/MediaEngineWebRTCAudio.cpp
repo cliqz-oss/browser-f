@@ -20,7 +20,7 @@
 
 // scoped_ptr.h uses FF
 #ifdef FF
-#undef FF
+#  undef FF
 #endif
 #include "webrtc/voice_engine/voice_engine_defines.h"
 #include "webrtc/modules/audio_processing/include/audio_processing.h"
@@ -34,14 +34,11 @@ using namespace webrtc;
 
 namespace mozilla {
 
-#ifdef LOG
-#undef LOG
-#endif
-
-LogModule* GetMediaManagerLog();
-#define LOG(msg) MOZ_LOG(GetMediaManagerLog(), mozilla::LogLevel::Debug, msg)
-#define LOG_FRAMES(msg) \
-  MOZ_LOG(GetMediaManagerLog(), mozilla::LogLevel::Verbose, msg)
+extern LazyLogModule gMediaManagerLog;
+#define LOG(...) MOZ_LOG(gMediaManagerLog, LogLevel::Debug, (__VA_ARGS__))
+#define LOG_FRAME(...) \
+  MOZ_LOG(gMediaManagerLog, LogLevel::Verbose, (__VA_ARGS__))
+#define LOG_ERROR(...) MOZ_LOG(gMediaManagerLog, LogLevel::Error, (__VA_ARGS__))
 
 /**
  * WebRTC Microphone MediaEngineSource.
@@ -144,9 +141,9 @@ nsresult MediaEngineWebRTCMicrophoneSource::EvaluateSettings(
       c.mChannelCount.Get(std::min(aInPrefs.mChannels, maxChannels));
   prefs.mChannels = std::max(1, std::min(prefs.mChannels, maxChannels));
 
-  LOG(("Audio config: aec: %d, agc: %d, noise: %d, channels: %d",
-       prefs.mAecOn ? prefs.mAec : -1, prefs.mAgcOn ? prefs.mAgc : -1,
-       prefs.mNoiseOn ? prefs.mNoise : -1, prefs.mChannels));
+  LOG("Audio config: aec: %d, agc: %d, noise: %d, channels: %d",
+      prefs.mAecOn ? prefs.mAec : -1, prefs.mAgcOn ? prefs.mAgc : -1,
+      prefs.mNoiseOn ? prefs.mNoise : -1, prefs.mChannels);
 
   *aOutPrefs = prefs;
 
@@ -161,7 +158,7 @@ nsresult MediaEngineWebRTCMicrophoneSource::Reconfigure(
   AssertIsOnOwningThread();
   MOZ_ASSERT(mStream);
 
-  LOG(("Mic source %p Reconfigure ", this));
+  LOG("Mic source %p Reconfigure ", this);
 
   NormalizedConstraints constraints(aConstraints);
   MediaEnginePrefs outputPrefs;
@@ -174,8 +171,8 @@ nsresult MediaEngineWebRTCMicrophoneSource::Reconfigure(
 
     nsAutoCString name;
     GetErrorName(rv, name);
-    LOG(("Mic source %p Reconfigure() failed unexpectedly. rv=%s", this,
-         name.Data()));
+    LOG("Mic source %p Reconfigure() failed unexpectedly. rv=%s", this,
+        name.Data());
     Stop(nullptr);
     return NS_ERROR_UNEXPECTED;
   }
@@ -499,9 +496,7 @@ nsresult MediaEngineWebRTCMicrophoneSource::Deallocate(
   MOZ_ASSERT(mState != kStarted, "Source not stopped");
 
   mState = kReleased;
-  LOG(("Audio device %s deallocated",
-       NS_ConvertUTF16toUTF8(mDeviceName).get()));
-
+  LOG("Audio device %s deallocated", NS_ConvertUTF16toUTF8(mDeviceName).get());
   return NS_OK;
 }
 
@@ -528,7 +523,7 @@ void MediaEngineWebRTCMicrophoneSource::SetTrack(
   mInputProcessing = new AudioInputProcessing(mDeviceMaxChannelCount, mStream,
                                               mTrackID, mPrincipal);
 
-  LOG(("Stream %p registered for microphone capture", aStream.get()));
+  LOG("Stream %p registered for microphone capture", aStream.get());
 }
 
 class StartStopMessage : public ControlMessage {
@@ -601,8 +596,7 @@ nsresult MediaEngineWebRTCMicrophoneSource::Stop(
     const RefPtr<const AllocationHandle>&) {
   AssertIsOnOwningThread();
 
-  LOG(("Mic source %p Stop()", this));
-
+  LOG("Mic source %p Stop()", this);
   MOZ_ASSERT(mStream, "SetTrack must have been called before ::Stop");
 
   if (mState == kStopped) {
@@ -611,20 +605,19 @@ nsresult MediaEngineWebRTCMicrophoneSource::Stop(
   }
 
   RefPtr<MediaEngineWebRTCMicrophoneSource> that = this;
-  NS_DispatchToMainThread(
-      media::NewRunnableFrom([that, stream = mStream]() {
-        if (stream->IsDestroyed()) {
-          return NS_OK;
-        }
+  NS_DispatchToMainThread(media::NewRunnableFrom([that, stream = mStream]() {
+    if (stream->IsDestroyed()) {
+      return NS_OK;
+    }
 
-        stream->GraphImpl()->AppendMessage(MakeUnique<StartStopMessage>(
-            that->mInputProcessing, StartStopMessage::Stop));
-        CubebUtils::AudioDeviceID deviceID = that->mDeviceInfo->DeviceID();
-        Maybe<CubebUtils::AudioDeviceID> id = Some(deviceID);
-        stream->CloseAudioInput(id, that->mInputProcessing);
+    stream->GraphImpl()->AppendMessage(MakeUnique<StartStopMessage>(
+        that->mInputProcessing, StartStopMessage::Stop));
+    CubebUtils::AudioDeviceID deviceID = that->mDeviceInfo->DeviceID();
+    Maybe<CubebUtils::AudioDeviceID> id = Some(deviceID);
+    stream->CloseAudioInput(id, that->mInputProcessing);
 
-        return NS_OK;
-      }));
+    return NS_OK;
+  }));
 
   MOZ_ASSERT(mState == kStarted, "Should be started when stopping");
   mState = kStopped;
@@ -718,9 +711,8 @@ void AudioInputProcessing::UpdateAECSettings(
     if (aLevel != EchoCancellation::SuppressionLevel::kLowSuppression &&
         aLevel != EchoCancellation::SuppressionLevel::kModerateSuppression &&
         aLevel != EchoCancellation::SuppressionLevel::kHighSuppression) {
-      MOZ_LOG(GetMediaManagerLog(), LogLevel::Error,
-              ("Attempt to set invalid AEC suppression level %d",
-               static_cast<int>(aLevel)));
+      LOG_ERROR("Attempt to set invalid AEC suppression level %d",
+                static_cast<int>(aLevel));
 
       aLevel = EchoCancellation::SuppressionLevel::kModerateSuppression;
     }
@@ -737,16 +729,14 @@ void AudioInputProcessing::UpdateAGCSettings(bool aEnable,
   if (aMode != GainControl::Mode::kAdaptiveAnalog &&
       aMode != GainControl::Mode::kAdaptiveDigital &&
       aMode != GainControl::Mode::kFixedDigital) {
-    MOZ_LOG(GetMediaManagerLog(), LogLevel::Error,
-            ("Attempt to set invalid AGC mode %d", static_cast<int>(aMode)));
+    LOG_ERROR("Attempt to set invalid AGC mode %d", static_cast<int>(aMode));
 
     aMode = GainControl::Mode::kAdaptiveDigital;
   }
 
 #if defined(WEBRTC_IOS) || defined(ATA) || defined(WEBRTC_ANDROID)
   if (aMode == GainControl::Mode::kAdaptiveAnalog) {
-    MOZ_LOG(GetMediaManagerLog(), LogLevel::Error,
-            ("Invalid AGC mode kAgcAdaptiveAnalog on mobile"));
+    LOG_ERROR("Invalid AGC mode kAgcAdaptiveAnalog on mobile");
     MOZ_ASSERT_UNREACHABLE(
         "Bad pref set in all.js or in about:config"
         " for the auto gain, on mobile.");
@@ -763,9 +753,8 @@ void AudioInputProcessing::UpdateNSSettings(
       aLevel != NoiseSuppression::Level::kModerate &&
       aLevel != NoiseSuppression::Level::kHigh &&
       aLevel != NoiseSuppression::Level::kVeryHigh) {
-    MOZ_LOG(GetMediaManagerLog(), LogLevel::Error,
-            ("Attempt to set invalid noise suppression level %d",
-             static_cast<int>(aLevel)));
+    LOG_ERROR("Attempt to set invalid noise suppression level %d",
+              static_cast<int>(aLevel));
 
     aLevel = NoiseSuppression::Level::kModerate;
   }
@@ -835,7 +824,7 @@ void AudioInputProcessing::Pull(const RefPtr<SourceMediaStream>& aStream,
     }
   }
 
-  LOG_FRAMES(("Pulling %" PRId64 " frames of silence.", delta));
+  LOG_FRAME("Pulling %" PRId64 " frames of silence.", delta);
 
   // This assertion fails when we append silence here in the same iteration
   // as there were real audio samples already appended by the audio callback.
@@ -1034,8 +1023,8 @@ void AudioInputProcessing::PacketizeAndProcess(MediaStreamGraphImpl* aGraph,
       continue;
     }
 
-    LOG_FRAMES(("Appending %" PRIu32 " frames of packetized audio",
-                mPacketizerInput->PacketSize()));
+    LOG_FRAME("Appending %" PRIu32 " frames of packetized audio",
+              mPacketizerInput->PacketSize());
 
 #ifdef DEBUG
     mLastCallbackAppendTime = mStream->GraphImpl()->IterationEnd();
@@ -1093,7 +1082,7 @@ void AudioInputProcessing::InsertInGraph(const T* aBuffer, size_t aFrames,
                                  write_channels.Elements());
   }
 
-  LOG_FRAMES(("Appending %zu frames of raw audio", aFrames));
+  LOG_FRAME("Appending %zu frames of raw audio", aFrames);
 
   MOZ_ASSERT(aChannels == channels.Length());
   segment.AppendFrames(buffer.forget(), channels, aFrames, mPrincipal);

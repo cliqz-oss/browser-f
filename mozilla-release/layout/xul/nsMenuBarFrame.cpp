@@ -12,7 +12,7 @@
 #include "mozilla/ComputedStyle.h"
 #include "nsCSSRendering.h"
 #include "nsNameSpaceManager.h"
-#include "nsIDocument.h"
+#include "mozilla/dom/Document.h"
 #include "nsGkAtoms.h"
 #include "nsMenuFrame.h"
 #include "nsMenuPopupFrame.h"
@@ -21,8 +21,8 @@
 #include "nsIInterfaceRequestorUtils.h"
 #include "nsCSSFrameConstructor.h"
 #ifdef XP_WIN
-#include "nsISound.h"
-#include "nsWidgetsCID.h"
+#  include "nsISound.h"
+#  include "nsWidgetsCID.h"
 #endif
 #include "nsUTF8Utils.h"
 #include "mozilla/TextEvents.h"

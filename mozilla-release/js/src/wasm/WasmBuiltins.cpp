@@ -493,9 +493,9 @@ static void* AddressOf(SymbolicAddress imm, ABIFunctionType* abiType) {
     case SymbolicAddress::CallImport_F64:
       *abiType = Args_General4;
       return FuncCast(Instance::callImport_f64, *abiType);
-    case SymbolicAddress::CallImport_Ref:
+    case SymbolicAddress::CallImport_AnyRef:
       *abiType = Args_General4;
-      return FuncCast(Instance::callImport_ref, *abiType);
+      return FuncCast(Instance::callImport_anyref, *abiType);
     case SymbolicAddress::CoerceInPlace_ToInt32:
       *abiType = Args_General1;
       return FuncCast(CoerceInPlace_ToInt32, *abiType);
@@ -627,9 +627,9 @@ static void* AddressOf(SymbolicAddress imm, ABIFunctionType* abiType) {
     case SymbolicAddress::MemCopy:
       *abiType = Args_General4;
       return FuncCast(Instance::memCopy, *abiType);
-    case SymbolicAddress::MemDrop:
+    case SymbolicAddress::DataDrop:
       *abiType = Args_General2;
-      return FuncCast(Instance::memDrop, *abiType);
+      return FuncCast(Instance::dataDrop, *abiType);
     case SymbolicAddress::MemFill:
       *abiType = Args_General4;
       return FuncCast(Instance::memFill, *abiType);
@@ -639,9 +639,9 @@ static void* AddressOf(SymbolicAddress imm, ABIFunctionType* abiType) {
     case SymbolicAddress::TableCopy:
       *abiType = Args_General6;
       return FuncCast(Instance::tableCopy, *abiType);
-    case SymbolicAddress::TableDrop:
+    case SymbolicAddress::ElemDrop:
       *abiType = Args_General2;
-      return FuncCast(Instance::tableDrop, *abiType);
+      return FuncCast(Instance::elemDrop, *abiType);
     case SymbolicAddress::TableInit:
       *abiType = Args_General6;
       return FuncCast(Instance::tableInit, *abiType);
@@ -688,7 +688,7 @@ bool wasm::NeedsBuiltinThunk(SymbolicAddress sym) {
     case SymbolicAddress::CallImport_I32:
     case SymbolicAddress::CallImport_I64:
     case SymbolicAddress::CallImport_F64:
-    case SymbolicAddress::CallImport_Ref:
+    case SymbolicAddress::CallImport_AnyRef:
     case SymbolicAddress::CoerceInPlace_ToInt32:  // GenerateImportJitExit
     case SymbolicAddress::CoerceInPlace_ToNumber:
 #if defined(JS_CODEGEN_MIPS32)
@@ -739,11 +739,11 @@ bool wasm::NeedsBuiltinThunk(SymbolicAddress sym) {
     case SymbolicAddress::CoerceInPlace_JitEntry:
     case SymbolicAddress::ReportInt64JSCall:
     case SymbolicAddress::MemCopy:
-    case SymbolicAddress::MemDrop:
+    case SymbolicAddress::DataDrop:
     case SymbolicAddress::MemFill:
     case SymbolicAddress::MemInit:
     case SymbolicAddress::TableCopy:
-    case SymbolicAddress::TableDrop:
+    case SymbolicAddress::ElemDrop:
     case SymbolicAddress::TableGet:
     case SymbolicAddress::TableGrow:
     case SymbolicAddress::TableInit:

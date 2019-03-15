@@ -194,6 +194,7 @@ Section "MaintenanceService"
   ; Since the Maintenance service can be installed either x86 or x64,
   ; always use the 64-bit registry for checking if an attempt was made.
   ${If} ${RunningX64}
+  ${OrIf} ${IsNativeARM64}
     SetRegView 64
   ${EndIf}
   WriteRegDWORD HKLM "Software\CLIQZ\MaintenanceService" "Attempted" 1
@@ -206,6 +207,7 @@ Section "MaintenanceService"
   WriteRegStr HKLM "${FallbackKey}\0" "name" "Cliqz GmbH"
   WriteRegStr HKLM "${FallbackKey}\0" "issuer" "DigiCert SHA2 Assured ID Code Signing CA"
   ${If} ${RunningX64}
+  ${OrIf} ${IsNativeARM64}
     SetRegView lastused
   ${EndIf}
 SectionEnd
@@ -251,12 +253,14 @@ Section "Uninstall"
   DeleteRegKey HKLM "${MaintUninstallKey}"
 
   ${If} ${RunningX64}
+  ${OrIf} ${IsNativeARM64}
     SetRegView 64
   ${EndIf}
   DeleteRegValue HKLM "Software\CLIQZ\MaintenanceService" "Installed"
   DeleteRegValue HKLM "Software\CLIQZ\MaintenanceService" "FFPrefetchDisabled"
   DeleteRegKey HKLM "${FallbackKey}\"
   ${If} ${RunningX64}
+  ${OrIf} ${IsNativeARM64}
     SetRegView lastused
   ${EndIf}
 SectionEnd

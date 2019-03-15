@@ -2,12 +2,12 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-use api::{ExternalScrollId, LayoutPoint, LayoutRect, LayoutVector2D};
-use api::{PipelineId, ScrollClamping, ScrollNodeState, ScrollLocation};
-use api::{LayoutSize, LayoutTransform, PropertyBinding, ScrollSensitivity, WorldPoint};
+use api::{ExternalScrollId, LayoutPoint, LayoutRect, LayoutVector2D, ReferenceFrameKind};
+use api::{PipelineId, ScrollClamping, ScrollNodeState, ScrollLocation, ScrollSensitivity};
+use api::{LayoutSize, LayoutTransform, PropertyBinding, TransformStyle, WorldPoint};
 use gpu_types::TransformPalette;
 use internal_types::{FastHashMap, FastHashSet};
-use print_tree::{PrintTree, PrintTreePrinter};
+use print_tree::{PrintableTree, PrintTree, PrintTreePrinter};
 use scene::SceneProperties;
 use smallvec::SmallVec;
 use spatial_node::{ScrollFrameInfo, SpatialNode, SpatialNodeType, StickyFrameInfo, ScrollFrameKind};
@@ -41,13 +41,21 @@ impl CoordinateSystem {
     }
 }
 
-#[derive(Debug, Copy, Clone, Eq, Hash, PartialEq, PartialOrd, Ord)]
+#[derive(Debug, Copy, Clone, Eq, Hash, MallocSizeOf, PartialEq, PartialOrd, Ord)]
 #[cfg_attr(feature = "capture", derive(Serialize))]
 #[cfg_attr(feature = "replay", derive(Deserialize))]
-pub struct SpatialNodeIndex(pub usize);
+pub struct SpatialNodeIndex(pub u32);
 
+//Note: these have to match ROOT_REFERENCE_FRAME_SPATIAL_ID and ROOT_SCROLL_NODE_SPATIAL_ID
 pub const ROOT_SPATIAL_NODE_INDEX: SpatialNodeIndex = SpatialNodeIndex(0);
 const TOPMOST_SCROLL_NODE_INDEX: SpatialNodeIndex = SpatialNodeIndex(1);
+
+impl SpatialNodeIndex {
+    pub fn new(index: usize) -> Self {
+        debug_assert!(index < ::std::u32::MAX as usize);
+        SpatialNodeIndex(index as u32)
+    }
+}
 
 impl CoordinateSystemId {
     pub fn root() -> Self {
@@ -108,17 +116,17 @@ impl ClipScrollTree {
         }
     }
 
-    /// Calculate the relative transform from `ref_node_index`
-    /// to `target_node_index`. It's assumed that `ref_node_index`
-    /// is a parent of `target_node_index`. This method will
+    /// Calculate the relative transform from `from_node_index`
+    /// to `to_node_index`. It's assumed that `from_node_index`
+    /// is an ancestor or a descendant of `to_node_index`. This method will
     /// panic if that invariant isn't true!
     pub fn get_relative_transform(
         &self,
         from_node_index: SpatialNodeIndex,
         to_node_index: SpatialNodeIndex,
     ) -> Option<LayoutTransform> {
-        let from_node = &self.spatial_nodes[from_node_index.0];
-        let to_node = &self.spatial_nodes[to_node_index.0];
+        let from_node = &self.spatial_nodes[from_node_index.0 as usize];
+        let to_node = &self.spatial_nodes[to_node_index.0 as usize];
 
         let (child, parent, inverse) = if from_node_index.0 > to_node_index.0 {
             (from_node, to_node, false)
@@ -154,6 +162,27 @@ impl ClipScrollTree {
             transform.inverse()
         } else {
             Some(transform)
+        }
+    }
+
+    /// Returns true if the spatial node is the same as the parent, or is
+    /// a child of the parent.
+    pub fn is_same_or_child_of(
+        &self,
+        spatial_node_index: SpatialNodeIndex,
+        parent_spatial_node_index: SpatialNodeIndex,
+    ) -> bool {
+        let mut index = spatial_node_index;
+
+        loop {
+            if index == parent_spatial_node_index {
+                return true;
+            }
+
+            index = match self.spatial_nodes[index.0 as usize].parent {
+                Some(parent) => parent,
+                None => return false,
+            }
         }
     }
 
@@ -230,7 +259,7 @@ impl ClipScrollTree {
             None => return self.topmost_scroll_node_index(),
         };
 
-        let node = &self.spatial_nodes[index.0];
+        let node = &self.spatial_nodes[index.0 as usize];
         match node.node_type {
             SpatialNodeType::ScrollFrame(state) if state.sensitive_to_input_events() => index,
             _ => self.find_nearest_scrolling_ancestor(node.parent)
@@ -246,7 +275,7 @@ impl ClipScrollTree {
             return false;
         }
         let node_index = self.find_nearest_scrolling_ancestor(node_index);
-        self.spatial_nodes[node_index.0].scroll(scroll_location)
+        self.spatial_nodes[node_index.0 as usize].scroll(scroll_location)
     }
 
     pub fn update_tree(
@@ -280,12 +309,13 @@ impl ClipScrollTree {
         self.nodes_to_update.push((root_node_index, state));
 
         while let Some((node_index, mut state)) = self.nodes_to_update.pop() {
-            let node = match self.spatial_nodes.get_mut(node_index.0) {
+            let (previous, following) = self.spatial_nodes.split_at_mut(node_index.0 as usize);
+            let node = match following.get_mut(0) {
                 Some(node) => node,
                 None => continue,
             };
 
-            node.update(&mut state, &mut self.coord_systems, scene_properties);
+            node.update(&mut state, &mut self.coord_systems, scene_properties, &*previous);
             if let Some(ref mut palette) = transform_palette {
                 node.push_gpu_data(palette, node_index);
             }
@@ -343,15 +373,17 @@ impl ClipScrollTree {
     pub fn add_reference_frame(
         &mut self,
         parent_index: Option<SpatialNodeIndex>,
-        source_transform: Option<PropertyBinding<LayoutTransform>>,
-        source_perspective: Option<LayoutTransform>,
+        transform_style: TransformStyle,
+        source_transform: PropertyBinding<LayoutTransform>,
+        kind: ReferenceFrameKind,
         origin_in_parent_reference_frame: LayoutVector2D,
         pipeline_id: PipelineId,
     ) -> SpatialNodeIndex {
         let node = SpatialNode::new_reference_frame(
             parent_index,
+            transform_style,
             source_transform,
-            source_perspective,
+            kind,
             origin_in_parent_reference_frame,
             pipeline_id,
         );
@@ -373,11 +405,11 @@ impl ClipScrollTree {
     }
 
     pub fn add_spatial_node(&mut self, node: SpatialNode) -> SpatialNodeIndex {
-        let index = SpatialNodeIndex(self.spatial_nodes.len());
+        let index = SpatialNodeIndex::new(self.spatial_nodes.len());
 
         // When the parent node is None this means we are adding the root.
         if let Some(parent_index) = node.parent {
-            self.spatial_nodes[parent_index.0].add_child(index);
+            self.spatial_nodes[parent_index.0 as usize].add_child(index);
         }
 
         self.spatial_nodes.push(node);
@@ -393,7 +425,7 @@ impl ClipScrollTree {
         index: SpatialNodeIndex,
         pt: &mut T,
     ) {
-        let node = &self.spatial_nodes[index.0];
+        let node = &self.spatial_nodes[index.0 as usize];
         match node.node_type {
             SpatialNodeType::StickyFrame(ref sticky_frame_info) => {
                 pt.new_level(format!("StickyFrame"));
@@ -432,12 +464,6 @@ impl ClipScrollTree {
         }
     }
 
-    pub fn print_with<T: PrintTreePrinter>(&self, pt: &mut T) {
-        if !self.spatial_nodes.is_empty() {
-            self.print_node(self.root_reference_frame_index(), pt);
-        }
-    }
-
     /// Return true if this is a guaranteed identity transform. This
     /// is conservative, it assumes not identity if a property
     /// binding animation, or scroll frame is found, for example.
@@ -448,14 +474,10 @@ impl ClipScrollTree {
         let mut current = spatial_node_index;
 
         while current != ROOT_SPATIAL_NODE_INDEX {
-            let node = &self.spatial_nodes[current.0];
+            let node = &self.spatial_nodes[current.0 as usize];
 
             match node.node_type {
                 SpatialNodeType::ReferenceFrame(ref info) => {
-                    if !info.source_perspective.is_identity() {
-                        return false;
-                    }
-
                     match info.source_transform {
                         PropertyBinding::Value(transform) => {
                             if transform != LayoutTransform::identity() {
@@ -486,6 +508,14 @@ impl ClipScrollTree {
     }
 }
 
+impl PrintableTree for ClipScrollTree {
+    fn print_with<T: PrintTreePrinter>(&self, pt: &mut T) {
+        if !self.spatial_nodes.is_empty() {
+            self.print_node(self.root_reference_frame_index(), pt);
+        }
+    }
+}
+
 #[cfg(test)]
 fn add_reference_frame(
     cst: &mut ClipScrollTree,
@@ -495,8 +525,9 @@ fn add_reference_frame(
 ) -> SpatialNodeIndex {
     cst.add_reference_frame(
         parent,
-        Some(PropertyBinding::Value(transform)),
-        None,
+        TransformStyle::Preserve3D,
+        PropertyBinding::Value(transform),
+        ReferenceFrameKind::Transform,
         origin_in_parent_reference_frame,
         PipelineId::dummy(),
     )

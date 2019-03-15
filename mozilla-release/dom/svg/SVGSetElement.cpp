@@ -7,7 +7,7 @@
 #include "mozilla/dom/SVGSetElement.h"
 #include "mozilla/dom/SVGSetElementBinding.h"
 
-NS_IMPL_NS_NEW_NAMESPACED_SVG_ELEMENT(Set)
+NS_IMPL_NS_NEW_SVG_ELEMENT(Set)
 
 namespace mozilla {
 namespace dom {
@@ -31,7 +31,7 @@ NS_IMPL_ELEMENT_CLONE_WITH_INIT(SVGSetElement)
 
 //----------------------------------------------------------------------
 
-nsSMILAnimationFunction& SVGSetElement::AnimationFunction() {
+SMILAnimationFunction& SVGSetElement::AnimationFunction() {
   return mAnimationFunction;
 }
 

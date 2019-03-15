@@ -19,10 +19,10 @@
 #include "WorkerRunnable.h"
 #include "WorkerScope.h"
 #if defined(XP_WIN)
-#include <processthreadsapi.h>  // for GetCurrentProcessId()
+#  include <processthreadsapi.h>  // for GetCurrentProcessId()
 #else
-#include <unistd.h>  // for getpid()
-#endif               // defined(XP_WIN)
+#  include <unistd.h>  // for getpid()
+#endif                 // defined(XP_WIN)
 
 namespace mozilla {
 namespace dom {
@@ -460,8 +460,7 @@ RefPtr<PerformanceInfoPromise> WorkerDebugger::ReportPerformanceInfo() {
   RefPtr<nsIURI> scriptURI = mWorkerPrivate->GetResolvedScriptURI();
   if (NS_WARN_IF(!scriptURI)) {
     // This can happen at shutdown, let's stop here.
-    return PerformanceInfoPromise::CreateAndReject(NS_ERROR_FAILURE,
-                                                   __func__);
+    return PerformanceInfoPromise::CreateAndReject(NS_ERROR_FAILURE, __func__);
   }
   nsCString url = scriptURI->GetSpecOrDefault();
 

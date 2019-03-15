@@ -231,6 +231,7 @@ class JSFunction : public js::NativeObject {
     return needsFunctionEnvironmentObjects() || needsExtraBodyVarEnvironment();
   }
 
+  static constexpr size_t NArgsBits = sizeof(nargs_) * CHAR_BIT;
   size_t nargs() const { return nargs_; }
 
   uint16_t flags() const { return flags_; }
@@ -971,8 +972,8 @@ extern JSFunction* CloneFunctionReuseScript(
 // Functions whose scripts are cloned are always given singleton types.
 extern JSFunction* CloneFunctionAndScript(
     JSContext* cx, HandleFunction fun, HandleObject parent,
-    HandleScope newScope, gc::AllocKind kind = gc::AllocKind::FUNCTION,
-    HandleObject proto = nullptr);
+    HandleScope newScope, Handle<ScriptSourceObject*> sourceObject,
+    gc::AllocKind kind = gc::AllocKind::FUNCTION, HandleObject proto = nullptr);
 
 extern JSFunction* CloneAsmJSModuleFunction(JSContext* cx, HandleFunction fun);
 

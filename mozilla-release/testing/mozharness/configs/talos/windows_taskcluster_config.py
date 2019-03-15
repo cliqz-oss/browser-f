@@ -22,8 +22,6 @@ config = {
         "setup-mitmproxy",
         "run-tests",
     ],
-    "metro_harness_path_frmt": "%(metro_base_path)s/metro/metrotestharness.exe",
-    "download_minidump_stackwalk": True,
     "tooltool_cache": os.path.join('Y:\\', 'tooltool-cache'),
     "minidump_stackwalk_path": "win32-minidump_stackwalk.exe",
     "minidump_tooltool_manifest_path": "config/tooltool-manifests/win32/releng.manifest",

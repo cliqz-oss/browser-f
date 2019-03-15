@@ -19,6 +19,7 @@ import mozinfo
 from mozharness.base.errors import BaseErrorList
 from mozharness.base.script import PreScriptAction
 from mozharness.base.vcs.vcsbase import MercurialScript
+from mozharness.mozilla.automation import TBPL_RETRY
 from mozharness.mozilla.testing.android import AndroidMixin
 from mozharness.mozilla.testing.testbase import TestingMixin, testing_config_options
 from mozharness.mozilla.testing.codecoverage import (
@@ -221,7 +222,7 @@ class WebPlatformTest(TestingMixin, MercurialScript, CodeCoverageMixin, AndroidM
                 "--log-errorsummary=%s" % os.path.join(dirs["abs_blob_upload_dir"],
                                                        "wpt_errorsummary.log"),
                 "--binary=%s" % self.binary_path,
-                "--symbols-path=%s" % self.query_symbols_url(),
+                "--symbols-path=%s" % self.symbols_path,
                 "--stackwalk-binary=%s" % self.query_minidump_stackwalk(),
                 "--stackfix-dir=%s" % os.path.join(dirs["abs_test_install_dir"], "bin"),
                 "--run-by-dir=%i" % (3 if not mozinfo.info["asan"] else 0),
@@ -253,12 +254,16 @@ class WebPlatformTest(TestingMixin, MercurialScript, CodeCoverageMixin, AndroidM
 
         if not (self.verify_enabled or self.per_test_coverage):
             test_paths = json.loads(os.environ.get('MOZHARNESS_TEST_PATHS', '""'))
-            if test_paths and 'web-platform-tests' in test_paths:
-                relpaths = [os.path.relpath(p, 'testing/web-platform')
-                            for p in test_paths['web-platform-tests']]
-                paths = [os.path.join(dirs["abs_wpttest_dir"], relpath)
-                         for relpath in relpaths]
-                cmd.extend(paths)
+            if test_paths:
+                keys = (['web-platform-tests-%s' % test_type for test_type in test_types] +
+                        ['web-platform-tests'])
+                for key in keys:
+                    if key in test_paths:
+                        relpaths = [os.path.relpath(p, 'testing/web-platform')
+                                    for p in test_paths.get(key, [])]
+                        paths = [os.path.join(dirs["abs_wpttest_dir"], relpath)
+                                 for relpath in relpaths]
+                        cmd.extend(paths)
             else:
                 for opt in ["total_chunks", "this_chunk"]:
                     val = c.get(opt)
@@ -337,7 +342,8 @@ class WebPlatformTest(TestingMixin, MercurialScript, CodeCoverageMixin, AndroidM
         parser = StructuredOutputParser(config=self.config,
                                         log_obj=self.log_obj,
                                         log_compact=True,
-                                        error_list=BaseErrorList + HarnessErrorList)
+                                        error_list=BaseErrorList + HarnessErrorList,
+                                        allow_crashes=True)
 
         env = {'MINIDUMP_SAVE_PATH': dirs['abs_blob_upload_dir']}
         env['RUST_BACKTRACE'] = 'full'
@@ -440,6 +446,9 @@ class WebPlatformTest(TestingMixin, MercurialScript, CodeCoverageMixin, AndroidM
 
                 if len(per_test_args) > 0:
                     self.log_per_test_status(per_test_args[-1], tbpl_status, log_level)
+                    if tbpl_status == TBPL_RETRY:
+                        self.info("Per-test run abandoned due to RETRY status")
+                        return
 
 
 # main {{{1

@@ -10,12 +10,11 @@ const dom = require("devtools/client/shared/vendor/react-dom-factories");
 const PropTypes = require("devtools/client/shared/vendor/react-prop-types");
 
 const FluentReact = require("devtools/client/shared/vendor/fluent-react");
-const LocalizationProvider = createFactory(FluentReact.LocalizationProvider);
+const Localized = createFactory(FluentReact.Localized);
 
 const Route = createFactory(require("devtools/client/shared/vendor/react-router-dom").Route);
 const Switch = createFactory(require("devtools/client/shared/vendor/react-router-dom").Switch);
 const Redirect = createFactory(require("devtools/client/shared/vendor/react-router-dom").Redirect);
-const { withRouter } = require("devtools/client/shared/vendor/react-router-dom");
 
 const Types = require("../types/index");
 const { RUNTIMES } = require("../constants");
@@ -32,16 +31,37 @@ class App extends PureComponent {
       // From that point, components are responsible for forwarding the dispatch
       // property to all components who need to dispatch actions.
       dispatch: PropTypes.func.isRequired,
-      fluentBundles: PropTypes.arrayOf(PropTypes.object).isRequired,
+      // getString prop is injected by the withLocalization wrapper
+      getString: PropTypes.func.isRequired,
       isScanningUsb: PropTypes.bool.isRequired,
       networkEnabled: PropTypes.bool.isRequired,
       networkLocations: PropTypes.arrayOf(PropTypes.string).isRequired,
       networkRuntimes: PropTypes.arrayOf(Types.runtime).isRequired,
       selectedPage: PropTypes.string,
-      selectedRuntime: PropTypes.string,
+      selectedRuntimeId: PropTypes.string,
       usbRuntimes: PropTypes.arrayOf(Types.runtime).isRequired,
       wifiEnabled: PropTypes.bool.isRequired,
     };
+  }
+
+  componentDidUpdate() {
+    this.updateTitle();
+  }
+
+  updateTitle() {
+    const { getString, selectedPage, selectedRuntimeId } = this.props;
+
+    const runtimeTitle = selectedRuntimeId ?
+                          getString(
+                            "about-debugging-page-title-with-runtime",
+                            { selectedPage, selectedRuntimeId }
+                          )
+                          : getString(
+                            "about-debugging-page-title",
+                            { selectedPage }
+                          );
+
+    document.title = runtimeTitle;
   }
 
   renderConnect() {
@@ -71,7 +91,7 @@ class App extends PureComponent {
     // - If the runtimepage for a device is the first page shown (since we can't
     //   keep connections open between page reloads).
     // - If no runtimeId is given.
-    // - If runtime is not found in the runtimes list (this is handled later)
+    // - If runtime is not in the runtimes list or disconnected (this is handled later)
     const isDeviceFirstPage =
       !this.props.selectedPage &&
       match.params.runtimeId !== RUNTIMES.THIS_FIREFOX;
@@ -84,7 +104,8 @@ class App extends PureComponent {
         ...this.props.networkRuntimes,
         ...this.props.usbRuntimes,
       ];
-      return !!runtimes.find(x => x.id === id);
+      const runtime = runtimes.find(x => x.id === id);
+      return runtime && runtime.runtimeDetails;
     };
 
     const { dispatch } = this.props;
@@ -135,16 +156,15 @@ class App extends PureComponent {
     const {
       adbAddonStatus,
       dispatch,
-      fluentBundles,
       isScanningUsb,
       networkRuntimes,
       selectedPage,
-      selectedRuntime,
+      selectedRuntimeId,
       usbRuntimes,
     } = this.props;
 
-    return LocalizationProvider(
-      { messages: fluentBundles },
+    return Localized(
+      { },
       dom.div(
         { className: "app" },
         Sidebar({
@@ -154,7 +174,7 @@ class App extends PureComponent {
           isScanningUsb,
           networkRuntimes,
           selectedPage,
-          selectedRuntime,
+          selectedRuntimeId,
           usbRuntimes,
         }),
         dom.main({ className: "app__content" }, this.renderRoutes())
@@ -171,7 +191,7 @@ const mapStateToProps = state => {
     networkLocations: state.ui.networkLocations,
     networkRuntimes: state.runtimes.networkRuntimes,
     selectedPage: state.ui.selectedPage,
-    selectedRuntime: state.ui.selectedRuntime,
+    selectedRuntimeId: state.runtimes.selectedRuntimeId,
     usbRuntimes: state.runtimes.usbRuntimes,
     wifiEnabled: state.ui.wifiEnabled,
   };
@@ -181,4 +201,6 @@ const mapDispatchToProps = dispatch => ({
   dispatch,
 });
 
-module.exports = withRouter(connect(mapStateToProps, mapDispatchToProps)(App));
+module.exports = FluentReact
+  .withLocalization(
+      connect(mapStateToProps, mapDispatchToProps)(App));

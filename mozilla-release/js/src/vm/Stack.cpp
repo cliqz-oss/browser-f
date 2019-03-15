@@ -198,31 +198,9 @@ bool InterpreterFrame::prologue(JSContext* cx) {
   MOZ_ASSERT(cx->interpreterRegs().pc == script->code());
   MOZ_ASSERT(cx->realm() == script->realm());
 
-  if (isEvalFrame()) {
-    if (!script->bodyScope()->hasEnvironment()) {
-      MOZ_ASSERT(!script->strict());
-      // Non-strict eval may introduce var bindings that conflict with
-      // lexical bindings in an enclosing lexical scope.
-      RootedObject varObjRoot(cx, &varObj());
-      if (!CheckEvalDeclarationConflicts(cx, script, environmentChain(),
-                                         varObjRoot)) {
-        return false;
-      }
-    }
-    return probes::EnterScript(cx, script, nullptr, this);
-  }
-
-  if (isGlobalFrame()) {
-    Rooted<LexicalEnvironmentObject*> lexicalEnv(cx);
-    RootedObject varObjRoot(cx);
-    if (script->hasNonSyntacticScope()) {
-      lexicalEnv = &extensibleLexicalEnvironment();
-      varObjRoot = &varObj();
-    } else {
-      lexicalEnv = &cx->global()->lexicalEnvironment();
-      varObjRoot = cx->global();
-    }
-    if (!CheckGlobalDeclarationConflicts(cx, script, lexicalEnv, varObjRoot)) {
+  if (isEvalFrame() || isGlobalFrame()) {
+    HandleObject env = environmentChain();
+    if (!CheckGlobalOrEvalDeclarationConflicts(cx, env, script)) {
       // Treat this as a script entry, for consistency with Ion.
       if (script->trackRecordReplayProgress()) {
         mozilla::recordreplay::AdvanceExecutionProgressCounter();
@@ -236,11 +214,12 @@ bool InterpreterFrame::prologue(JSContext* cx) {
     return probes::EnterScript(cx, script, nullptr, this);
   }
 
+  MOZ_ASSERT(isFunctionFrame());
+
   // At this point, we've yet to push any environments. Check that they
   // match the enclosing scope.
   AssertScopeMatchesEnvironment(script->enclosingScope(), environmentChain());
 
-  MOZ_ASSERT(isFunctionFrame());
   if (callee().needsFunctionEnvironmentObjects() &&
       !initFunctionEnvironmentObjects(cx)) {
     return false;
@@ -538,6 +517,13 @@ JS::Realm* JitFrameIter::realm() const {
   }
 
   return asJSJit().script()->realm();
+}
+
+uint8_t* JitFrameIter::resumePCinCurrentFrame() const {
+  if (isWasm()) {
+    return asWasm().resumePCinCurrentFrame();
+  }
+  return asJSJit().resumePCinCurrentFrame();
 }
 
 bool JitFrameIter::done() const {
@@ -1961,7 +1947,7 @@ JS::ProfilingFrameIterator::getPhysicalFrameAndEntry(
   MOZ_ASSERT(isJSJit());
 
   // Look up an entry for the return address.
-  void* returnAddr = jsJitIter().returnAddressToFp();
+  void* returnAddr = jsJitIter().resumePCinCurrentFrame();
   jit::JitcodeGlobalTable* table =
       cx_->runtime()->jitRuntime()->getJitcodeGlobalTable();
   if (samplePositionInProfilerBuffer_) {
@@ -2012,9 +1998,9 @@ uint32_t JS::ProfilingFrameIterator::extractStack(Frame* frames,
 
   // Extract the stack for the entry.  Assume maximum inlining depth is <64
   const char* labels[64];
-  uint32_t depth =
-      entry.callStackAtAddr(cx_->runtime(), jsJitIter().returnAddressToFp(),
-                            labels, ArrayLength(labels));
+  uint32_t depth = entry.callStackAtAddr(cx_->runtime(),
+                                         jsJitIter().resumePCinCurrentFrame(),
+                                         labels, ArrayLength(labels));
   MOZ_ASSERT(depth < ArrayLength(labels));
   for (uint32_t i = 0; i < depth; i++) {
     if (offset + i >= end) {

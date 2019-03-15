@@ -299,6 +299,22 @@ class WidgetKeyboardEvent : public WidgetInputEvent {
     return result;
   }
 
+  bool CanUserGestureActivateTarget() const {
+    // Printable keys, 'carriage return' and 'space' are supported user gestures
+    // for activating the document. However, if supported key is being pressed
+    // combining with other operation keys, such like alt, control ..etc., we
+    // won't activate the target for them because at that time user might
+    // interact with browser or window manager which doesn't necessarily
+    // demonstrate user's intent to play media.
+    const bool isCombiningWithOperationKeys = (IsControl() && !IsAltGraph()) ||
+                                              (IsAlt() && !IsAltGraph()) ||
+                                              IsMeta() || IsOS();
+    const bool isEnterOrSpaceKey =
+        mKeyNameIndex == KEY_NAME_INDEX_Enter || mKeyCode == NS_VK_SPACE;
+    return (PseudoCharCode() || isEnterOrSpaceKey) &&
+           !isCombiningWithOperationKeys;
+  }
+
   // OS translated Unicode chars which are used for accesskey and accelkey
   // handling. The handlers will try from first character to last character.
   nsTArray<AlternativeCharCode> mAlternativeCharCodes;
@@ -1139,7 +1155,8 @@ class WidgetSelectionEvent : public WidgetGUIEvent {
 
 class InternalEditorInputEvent : public InternalUIEvent {
  private:
-  InternalEditorInputEvent() : mIsComposing(false) {}
+  InternalEditorInputEvent()
+      : mInputType(EditorInputType::eUnknown), mIsComposing(false) {}
 
  public:
   virtual InternalEditorInputEvent* AsEditorInputEvent() override {
@@ -1149,7 +1166,7 @@ class InternalEditorInputEvent : public InternalUIEvent {
   InternalEditorInputEvent(bool aIsTrusted, EventMessage aMessage,
                            nsIWidget* aWidget = nullptr)
       : InternalUIEvent(aIsTrusted, aMessage, aWidget, eEditorInputEventClass),
-        mIsComposing(false) {}
+        mInputType(EditorInputType::eUnknown) {}
 
   virtual WidgetEvent* Duplicate() const override {
     MOZ_ASSERT(mClass == eEditorInputEventClass,
@@ -1162,14 +1179,31 @@ class InternalEditorInputEvent : public InternalUIEvent {
     return result;
   }
 
+  EditorInputType mInputType;
+
   bool mIsComposing;
 
   void AssignEditorInputEventData(const InternalEditorInputEvent& aEvent,
                                   bool aCopyTargets) {
     AssignUIEventData(aEvent, aCopyTargets);
 
+    mInputType = aEvent.mInputType;
     mIsComposing = aEvent.mIsComposing;
   }
+
+  void GetDOMInputTypeName(nsAString& aInputTypeName) {
+    GetDOMInputTypeName(mInputType, aInputTypeName);
+  }
+  static void GetDOMInputTypeName(EditorInputType aInputType,
+                                  nsAString& aInputTypeName);
+  static EditorInputType GetEditorInputType(const nsAString& aInputType);
+
+  static void Shutdown();
+
+ private:
+  static const char16_t* const kInputTypeNames[];
+  typedef nsDataHashtable<nsStringHashKey, EditorInputType> InputTypeHashtable;
+  static InputTypeHashtable* sInputTypeHashtable;
 };
 
 }  // namespace mozilla

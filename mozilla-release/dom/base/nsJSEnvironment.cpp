@@ -38,16 +38,17 @@
 #include "nsIXULRuntime.h"
 #include "nsTextFormatter.h"
 #ifdef XP_WIN
-#include <process.h>
-#define getpid _getpid
+#  include <process.h>
+#  define getpid _getpid
 #else
-#include <unistd.h>  // for getpid()
+#  include <unistd.h>  // for getpid()
 #endif
 #include "xpcpublic.h"
 
 #include "jsapi.h"
-#include "js/Wrapper.h"
+#include "js/PropertySpec.h"
 #include "js/SliceBudget.h"
+#include "js/Wrapper.h"
 #include "nsIArray.h"
 #include "nsIObjectInputStream.h"
 #include "nsIObjectOutputStream.h"
@@ -70,7 +71,7 @@
 
 #ifdef XP_MACOSX
 // AssertMacros.h defines 'check' and conflicts with AccessCheck.h
-#undef check
+#  undef check
 #endif
 #include "AccessCheck.h"
 
@@ -100,7 +101,7 @@ const size_t gStackSize = 8192;
 
 // Thank you Microsoft!
 #ifdef CompareString
-#undef CompareString
+#  undef CompareString
 #endif
 
 #define NS_SHRINK_GC_BUFFERS_DELAY 4000  // ms
@@ -323,12 +324,12 @@ nsJSEnvironmentObserver::Observe(nsISupports* aSubject, const char* aTopic,
         // slow and it likely won't help us anyway.
         return NS_OK;
       }
-      nsJSContext::GarbageCollectNow(JS::gcreason::MEM_PRESSURE,
+      nsJSContext::GarbageCollectNow(JS::GCReason::MEM_PRESSURE,
                                      nsJSContext::NonIncrementalGC,
                                      nsJSContext::ShrinkingGC);
       nsJSContext::CycleCollectNow();
       if (NeedsGCAfterCC()) {
-        nsJSContext::GarbageCollectNow(JS::gcreason::MEM_PRESSURE,
+        nsJSContext::GarbageCollectNow(JS::GCReason::MEM_PRESSURE,
                                        nsJSContext::NonIncrementalGC,
                                        nsJSContext::ShrinkingGC);
       }
@@ -501,7 +502,7 @@ void PrintWinURI(T* win) {
     return;
   }
 
-  nsCOMPtr<nsIDocument> doc = win->GetExtantDoc();
+  nsCOMPtr<Document> doc = win->GetExtantDoc();
   if (!doc) {
     printf("No document in the window.\n");
     return;
@@ -576,7 +577,7 @@ nsJSContext::~nsJSContext() {
 
 void nsJSContext::Destroy() {
   if (mGCOnDestruction) {
-    PokeGC(JS::gcreason::NSJSCONTEXT_DESTROY, mWindowProxy);
+    PokeGC(JS::GCReason::NSJSCONTEXT_DESTROY, mWindowProxy);
   }
 
   DropJSObjects(this);
@@ -960,7 +961,7 @@ nsresult nsJSContext::AddSupportsPrimitiveTojsvals(nsISupports* aArg,
 
 #ifdef MOZ_JPROF
 
-#include <signal.h>
+#  include <signal.h>
 
 inline bool IsJProfAction(struct sigaction* action) {
   return (action->sa_sigaction &&
@@ -1078,17 +1079,17 @@ void nsJSContext::SetProcessingScriptTag(bool aFlag) {
 void FullGCTimerFired(nsITimer* aTimer, void* aClosure) {
   nsJSContext::KillFullGCTimer();
   MOZ_ASSERT(!aClosure, "Don't pass a closure to FullGCTimerFired");
-  nsJSContext::GarbageCollectNow(JS::gcreason::FULL_GC_TIMER,
+  nsJSContext::GarbageCollectNow(JS::GCReason::FULL_GC_TIMER,
                                  nsJSContext::IncrementalGC);
 }
 
 // static
-void nsJSContext::GarbageCollectNow(JS::gcreason::Reason aReason,
+void nsJSContext::GarbageCollectNow(JS::GCReason aReason,
                                     IsIncremental aIncremental,
                                     IsShrinking aShrinking,
                                     int64_t aSliceMillis) {
   AUTO_PROFILER_LABEL_DYNAMIC_CSTR("nsJSContext::GarbageCollectNow", GCCC,
-                                   JS::gcreason::ExplainReason(aReason));
+                                   JS::ExplainGCReason(aReason));
 
   MOZ_ASSERT_IF(aSliceMillis, aIncremental == IncrementalGC);
 
@@ -1112,7 +1113,7 @@ void nsJSContext::GarbageCollectNow(JS::gcreason::Reason aReason,
   JSGCInvocationKind gckind = aShrinking == ShrinkingGC ? GC_SHRINK : GC_NORMAL;
 
   if (aIncremental == NonIncrementalGC ||
-      aReason == JS::gcreason::FULL_GC_TIMER) {
+      aReason == JS::GCReason::FULL_GC_TIMER) {
     sNeedsFullGC = true;
   }
 
@@ -1138,14 +1139,15 @@ static void FinishAnyIncrementalGC() {
 
     // We're in the middle of an incremental GC, so finish it.
     JS::PrepareForIncrementalGC(jsapi.cx());
-    JS::FinishIncrementalGC(jsapi.cx(), JS::gcreason::CC_FORCED);
+    JS::FinishIncrementalGC(jsapi.cx(), JS::GCReason::CC_FORCED);
   }
 }
 
 static void FireForgetSkippable(uint32_t aSuspected, bool aRemoveChildless,
                                 TimeStamp aDeadline) {
   AUTO_PROFILER_TRACING(
-      "CC", aDeadline.IsNull() ? "ForgetSkippable" : "IdleForgetSkippable");
+      "CC", aDeadline.IsNull() ? "ForgetSkippable" : "IdleForgetSkippable",
+      GCCC);
   PRTime startTime = PR_Now();
   TimeStamp startTimeStamp = TimeStamp::Now();
 
@@ -1420,7 +1422,8 @@ void nsJSContext::RunCycleCollectorSlice(TimeStamp aDeadline) {
     return;
   }
 
-  AUTO_PROFILER_TRACING("CC", aDeadline.IsNull() ? "CCSlice" : "IdleCCSlice");
+  AUTO_PROFILER_TRACING("CC", aDeadline.IsNull() ? "CCSlice" : "IdleCCSlice",
+                        GCCC);
 
   AUTO_PROFILER_LABEL("nsJSContext::RunCycleCollectorSlice", GCCC);
 
@@ -1570,7 +1573,7 @@ void nsJSContext::EndCycleCollectionCallback(CycleCollectorResults& aResults) {
   uint32_t ccNowDuration = TimeBetween(gCCStats.mBeginTime, endCCTimeStamp);
 
   if (NeedsGCAfterCC()) {
-    PokeGC(JS::gcreason::CC_WAITING, nullptr,
+    PokeGC(JS::GCReason::CC_WAITING, nullptr,
            NS_GC_DELAY - std::min(ccNowDuration, kMaxICCDuration));
   }
 
@@ -1727,8 +1730,7 @@ bool InterSliceGCRunnerFired(TimeStamp aDeadline, void* aData) {
   TimeDuration duration = sGCUnnotifiedTotalTime;
   uintptr_t reason = reinterpret_cast<uintptr_t>(aData);
   nsJSContext::GarbageCollectNow(
-      aData ? static_cast<JS::gcreason::Reason>(reason)
-            : JS::gcreason::INTER_SLICE_GC,
+      aData ? static_cast<JS::GCReason>(reason) : JS::GCReason::INTER_SLICE_GC,
       nsJSContext::IncrementalGC, nsJSContext::NonShrinkingGC, budget);
 
   sGCUnnotifiedTotalTime = TimeDuration();
@@ -1777,7 +1779,7 @@ void GCTimerFired(nsITimer* aTimer, void* aClosure) {
 void ShrinkingGCTimerFired(nsITimer* aTimer, void* aClosure) {
   nsJSContext::KillShrinkingGCTimer();
   sIsCompactingOnUserInactive = true;
-  nsJSContext::GarbageCollectNow(JS::gcreason::USER_INACTIVE,
+  nsJSContext::GarbageCollectNow(JS::GCReason::USER_INACTIVE,
                                  nsJSContext::IncrementalGC,
                                  nsJSContext::ShrinkingGC);
 }
@@ -1883,7 +1885,7 @@ uint32_t nsJSContext::CleanupsSinceLastGC() { return sCleanupsSinceLastGC; }
 // collection we run on a long timer.
 
 // static
-void nsJSContext::RunNextCollectorTimer(JS::gcreason::Reason aReason,
+void nsJSContext::RunNextCollectorTimer(JS::GCReason aReason,
                                         mozilla::TimeStamp aDeadline) {
   if (sShuttingDown) {
     return;
@@ -1922,7 +1924,7 @@ void nsJSContext::RunNextCollectorTimer(JS::gcreason::Reason aReason,
 
 // static
 void nsJSContext::MaybeRunNextCollectorSlice(nsIDocShell* aDocShell,
-                                             JS::gcreason::Reason aReason) {
+                                             JS::GCReason aReason) {
   if (!aDocShell || !XRE_IsContentProcess()) {
     return;
   }
@@ -1934,9 +1936,9 @@ void nsJSContext::MaybeRunNextCollectorSlice(nsIDocShell* aDocShell,
     return;
   }
 
-  nsIDocument* rootDocument = root->GetDocument();
+  Document* rootDocument = root->GetDocument();
   if (!rootDocument ||
-      rootDocument->GetReadyStateEnum() != nsIDocument::READYSTATE_COMPLETE ||
+      rootDocument->GetReadyStateEnum() != Document::READYSTATE_COMPLETE ||
       rootDocument->IsInBackgroundWindow()) {
     return;
   }
@@ -1969,8 +1971,7 @@ void nsJSContext::MaybeRunNextCollectorSlice(nsIDocShell* aDocShell,
 }
 
 // static
-void nsJSContext::PokeGC(JS::gcreason::Reason aReason, JSObject* aObj,
-                         int aDelay) {
+void nsJSContext::PokeGC(JS::GCReason aReason, JSObject* aObj, int aDelay) {
   if (sShuttingDown) {
     return;
   }
@@ -1978,7 +1979,7 @@ void nsJSContext::PokeGC(JS::gcreason::Reason aReason, JSObject* aObj,
   if (aObj) {
     JS::Zone* zone = JS::GetObjectZone(aObj);
     CycleCollectedJSRuntime::Get()->AddZoneWaitingForGC(zone);
-  } else if (aReason != JS::gcreason::CC_WAITING) {
+  } else if (aReason != JS::GCReason::CC_WAITING) {
     sNeedsFullGC = true;
   }
 
@@ -2173,7 +2174,7 @@ static void DOMGCSliceCallback(JSContext* aCx, JS::GCProgress aProgress,
         if (StaticPrefs::javascript_options_mem_notify() ||
             Telemetry::CanRecordExtended()) {
           nsString json;
-          json.Adopt(aDesc.formatJSON(aCx, PR_Now()));
+          json.Adopt(aDesc.formatJSONTelemetry(aCx, PR_Now()));
           RefPtr<NotifyGCEndRunnable> notify =
               new NotifyGCEndRunnable(std::move(json));
           SystemGroup::Dispatch(TaskCategory::GarbageCollection,
@@ -2729,7 +2730,8 @@ NS_IMETHODIMP nsJSArgArray::IndexOf(uint32_t startIndex, nsISupports* element,
   return NS_ERROR_NOT_IMPLEMENTED;
 }
 
-NS_IMETHODIMP nsJSArgArray::ScriptedEnumerate(nsIJSIID* aElemIID, uint8_t aArgc,
+NS_IMETHODIMP nsJSArgArray::ScriptedEnumerate(const nsIID& aElemIID,
+                                              uint8_t aArgc,
                                               nsISimpleEnumerator** aResult) {
   return NS_ERROR_NOT_IMPLEMENTED;
 }

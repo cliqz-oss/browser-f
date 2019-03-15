@@ -296,7 +296,7 @@ Editor.prototype = {
 
         Services.scriptloader.loadSubScript(
           "chrome://devtools/content/shared/theme-switching.js",
-          win, "utf8"
+          win
         );
         this.container = env;
         this._setup(win.document.body, el.ownerDocument);
@@ -329,7 +329,7 @@ Editor.prototype = {
     const scriptsToInject = CM_SCRIPTS.concat(this.config.externalScripts);
     scriptsToInject.forEach(url => {
       if (url.startsWith("chrome://")) {
-        Services.scriptloader.loadSubScript(url, win, "utf8");
+        Services.scriptloader.loadSubScript(url, win);
       }
     });
 
@@ -433,6 +433,19 @@ Editor.prototype = {
 
     if (!this.config.disableSearchAddon) {
       this._initSearchShortcuts(win);
+    } else {
+      // Hotfix for Bug 1527898. We should remove those overrides as part of Bug 1527903.
+      Object.assign(win.CodeMirror.commands, {
+        find: null,
+        findPersistent: null,
+        findPersistentNext: null,
+        findPersistentPrev: null,
+        findNext: null,
+        findPrev: null,
+        clearSearch: null,
+        replace: null,
+        replaceAll: null,
+      });
     }
 
     editors.set(this, cm);
@@ -478,7 +491,7 @@ Editor.prototype = {
       throw new Error("Can't load a script until the editor is loaded.");
     }
     const win = this.container.contentWindow.wrappedJSObject;
-    Services.scriptloader.loadSubScript(url, win, "utf8");
+    Services.scriptloader.loadSubScript(url, win);
   },
 
   /**

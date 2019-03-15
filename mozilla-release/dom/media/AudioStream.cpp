@@ -21,7 +21,7 @@
 #include "gfxPrefs.h"
 #include "AudioConverter.h"
 #if defined(XP_WIN)
-#include "nsXULAppAPI.h"
+#  include "nsXULAppAPI.h"
 #endif
 
 namespace mozilla {
@@ -396,6 +396,14 @@ nsresult AudioStream::OpenCubeb(cubeb* aContext, cubeb_stream_params& aParams,
 
 void AudioStream::SetVolume(double aVolume) {
   MOZ_ASSERT(aVolume >= 0.0 && aVolume <= 1.0, "Invalid volume");
+
+  {
+    MonitorAutoLock mon(mMonitor);
+    MOZ_ASSERT(mState != SHUTDOWN, "Don't set volume after shutdown.");
+    if (mState == ERRORED) {
+      return;
+    }
+  }
 
   if (cubeb_stream_set_volume(mCubebStream.get(),
                               aVolume * CubebUtils::GetVolumeScale()) !=

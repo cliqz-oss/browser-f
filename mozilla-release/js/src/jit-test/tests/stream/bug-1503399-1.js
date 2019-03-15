@@ -2,7 +2,9 @@
 
 load(libdir + "asserts.js");
 
-let g = newGlobal();
+ignoreUnhandledRejections();
+
+let g = newGlobal({newCompartment: true});
 let stream = new ReadableStream({
     start(controller) {
         controller.enqueue("ponies");

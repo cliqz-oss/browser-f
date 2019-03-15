@@ -261,9 +261,7 @@ static nscoord AppUnitsFromMM(nsIFrame* aFrame, uint32_t aMM) {
   nsIPresShell* presShell = pc->PresShell();
   float result = float(aMM) * (pc->DeviceContext()->AppUnitsPerPhysicalInch() /
                                MM_PER_INCH_FLOAT);
-  if (presShell->ScaleToResolution()) {
-    result = result / presShell->GetResolution();
-  }
+  result = result / presShell->GetResolution();
   return NSToCoordRound(result);
 }
 
@@ -541,11 +539,13 @@ static bool IsElementClickableAndReadable(nsIFrame* aFrame,
 nsIFrame* FindFrameTargetedByInputEvent(
     WidgetGUIEvent* aEvent, nsIFrame* aRootFrame,
     const nsPoint& aPointRelativeToRootFrame, uint32_t aFlags) {
-  uint32_t flags = (aFlags & INPUT_IGNORE_ROOT_SCROLL_FRAME)
-                       ? nsLayoutUtils::IGNORE_ROOT_SCROLL_FRAME
-                       : 0;
+  using FrameForPointOption = nsLayoutUtils::FrameForPointOption;
+  EnumSet<FrameForPointOption> options;
+  if (aFlags & INPUT_IGNORE_ROOT_SCROLL_FRAME) {
+    options += FrameForPointOption::IgnoreRootScrollFrame;
+  }
   nsIFrame* target = nsLayoutUtils::GetFrameForPoint(
-      aRootFrame, aPointRelativeToRootFrame, flags);
+      aRootFrame, aPointRelativeToRootFrame, options);
   PET_LOG(
       "Found initial target %p for event class %s point %s relative to root "
       "frame %p\n",
@@ -600,7 +600,7 @@ nsIFrame* FindFrameTargetedByInputEvent(
           mozilla::layers::Stringify(targetRect).c_str());
   AutoTArray<nsIFrame*, 8> candidates;
   nsresult rv = nsLayoutUtils::GetFramesForArea(aRootFrame, targetRect,
-                                                candidates, flags);
+                                                candidates, options);
   if (NS_FAILED(rv)) {
     return target;
   }

@@ -25,17 +25,28 @@ import {
 import type { Action } from "../actions/types";
 import type { SourcesState } from "./sources";
 import type { Source } from "../types";
+import type { Selector } from "./types";
 
 export type Tab = {
   url: string,
   framework?: string | null,
   isOriginal: boolean,
-  sourceId?: string
+  sourceId?: string,
+  thread: string
 };
 export type TabList = Tab[];
 
-function isSimilarTab(tab: Tab, url: string, isOriginal: boolean) {
-  return tab.url === url && tab.isOriginal === isOriginal;
+function isSimilarTab(
+  tab: Tab,
+  url: string,
+  isOriginal: boolean,
+  thread: string
+) {
+  return (
+    tab.url === url &&
+    tab.isOriginal === isOriginal &&
+    (!thread || !tab.thread || thread == tab.thread)
+  );
 }
 
 function update(state: TabList = [], action: Action): TabList {
@@ -62,7 +73,10 @@ export function removeSourceFromTabList(
   source: Source
 ): TabList {
   return tabs.filter(
-    tab => tab.url !== source.url || tab.isOriginal != isOriginalId(source.id)
+    tab =>
+      tab.url !== source.url ||
+      tab.isOriginal != isOriginalId(source.id) ||
+      (tab.thread && tab.thread !== source.thread)
   );
 }
 
@@ -80,16 +94,16 @@ export function removeSourcesFromTabList(tabs: TabList, sources: Source[]) {
  */
 function updateTabList(
   tabs: TabList,
-  { url, framework = null, sourceId, isOriginal = false }
+  { url, framework = null, sourceId, isOriginal = false, thread = "" }
 ) {
   // Set currentIndex to -1 for URL-less tabs so that they aren't
   // filtered by isSimilarTab
   const currentIndex = url
-    ? tabs.findIndex(tab => isSimilarTab(tab, url, isOriginal))
+    ? tabs.findIndex(tab => isSimilarTab(tab, url, isOriginal, thread))
     : -1;
 
   if (currentIndex === -1) {
-    tabs = [{ url, framework, sourceId, isOriginal }, ...tabs];
+    tabs = [{ url, framework, sourceId, isOriginal, thread }, ...tabs];
   } else if (framework) {
     tabs[currentIndex].framework = framework;
   }
@@ -137,7 +151,12 @@ export function getNewSelectedSourceId(
   }
 
   const matchingTab = availableTabs.find(tab =>
-    isSimilarTab(tab, selectedTab.url, isOriginalId(selectedLocation.sourceId))
+    isSimilarTab(
+      tab,
+      selectedTab.url,
+      isOriginalId(selectedLocation.sourceId),
+      selectedTab.thread
+    )
   );
 
   if (matchingTab) {
@@ -170,7 +189,8 @@ export function getNewSelectedSourceId(
       getSources(state),
       getUrls(state),
       availableTab.url,
-      availableTab.isOriginal
+      availableTab.isOriginal,
+      availableTab.thread
     );
 
     if (tabSource) {
@@ -194,7 +214,7 @@ type OuterState = { tabs: TabList, sources: SourcesState };
 
 export const getTabs = (state: OuterState): TabList => state.tabs;
 
-export const getSourceTabs = createSelector(
+export const getSourceTabs: Selector<Tab[]> = createSelector(
   getTabs,
   getSources,
   getUrls,
@@ -202,7 +222,7 @@ export const getSourceTabs = createSelector(
     tabs.filter(tab => getTabWithOrWithoutUrl(tab, sources, urls))
 );
 
-export const getSourcesForTabs = createSelector(
+export const getSourcesForTabs: Selector<Source[]> = createSelector(
   getSourceTabs,
   getSources,
   getUrls,
@@ -216,7 +236,8 @@ function getTabWithOrWithoutUrl(tab, sources, urls) {
       sources,
       urls,
       tab.url,
-      tab.isOriginal
+      tab.isOriginal,
+      tab.thread
     );
   }
 

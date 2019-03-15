@@ -8,7 +8,7 @@
 #include "nsString.h"
 #include "jsapi.h"
 #include "nsIContent.h"
-#include "nsIDocument.h"
+#include "mozilla/dom/Document.h"
 #include "nsIGlobalObject.h"
 #include "nsUnicharUtils.h"
 #include "nsReadableUtils.h"
@@ -19,6 +19,7 @@
 #include "nsIXPConnect.h"
 #include "xpcpublic.h"
 #include "nsXBLPrototypeBinding.h"
+#include "mozilla/CycleCollectedJSContext.h"
 #include "mozilla/dom/Element.h"
 #include "mozilla/dom/ScriptSettings.h"
 
@@ -248,7 +249,7 @@ nsresult nsXBLProtoImplAnonymousMethod::Execute(
 
   // Get the script context the same way
   // nsXBLProtoImpl::InstallImplementation does.
-  nsIDocument* document = aBoundElement->OwnerDoc();
+  Document* document = aBoundElement->OwnerDoc();
 
   nsCOMPtr<nsIGlobalObject> global =
       do_QueryInterface(document->GetInnerWindow());

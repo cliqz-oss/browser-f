@@ -157,6 +157,7 @@ TESTING_JS_MODULES += [
     'HiddenFrame.jsm',
     'tests/modules/MockDocument.jsm',
     'tests/modules/PromiseTestUtils.jsm',
+    'tests/modules/Task.jsm',
     'tests/xpcshell/TestIntegration.jsm',
 ]
 
@@ -197,6 +198,7 @@ EXTRA_JS_MODULES += [
     'Console.jsm',
     'CreditCard.jsm',
     'css-selector.js',
+    'DateTimePickerPanel.jsm',
     'DateTimePickerParent.jsm',
     'DeferredTask.jsm',
     'DependencyManager.jsm',
@@ -225,7 +227,6 @@ EXTRA_JS_MODULES += [
     'ObjectUtils.jsm',
     'offlineAppCache.jsm',
     'PageMenu.jsm',
-    'PageMetadata.jsm',
     'PermissionsUtils.jsm',
     'PopupNotifications.jsm',
     'Preferences.jsm',
@@ -246,13 +247,11 @@ EXTRA_JS_MODULES += [
     'sessionstore/FormData.jsm',
     'ShortcutUtils.jsm',
     'Sqlite.jsm',
-    'Task.jsm',
     'Timer.jsm',
     'Troubleshoot.jsm',
     'UpdateUtils.jsm',
     'WebChannel.jsm',
     'WebProgressChild.jsm',
-    'WindowDraggingUtils.jsm',
     'ZipUtils.jsm',
 ]
 

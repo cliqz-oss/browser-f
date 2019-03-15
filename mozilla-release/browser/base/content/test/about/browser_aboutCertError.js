@@ -11,6 +11,7 @@ const BAD_CERT = "https://expired.example.com/";
 const UNKNOWN_ISSUER = "https://self-signed.example.com ";
 const BAD_STS_CERT = "https://badchain.include-subdomains.pinning.example.com:443";
 const {TabStateFlusher} = ChromeUtils.import("resource:///modules/sessionstore/TabStateFlusher.jsm", {});
+const PREF_NEW_CERT_ERRORS = "browser.security.newcerterrorpage.enabled";
 
 add_task(async function checkReturnToAboutHome() {
   info("Loading a bad cert page directly and making sure 'return to previous page' goes to about:home");
@@ -49,34 +50,6 @@ add_task(async function checkReturnToAboutHome() {
 
     BrowserTestUtils.removeTab(gBrowser.selectedTab);
   }
-});
-
-add_task(async function checkExceptionDialogButton() {
-  Services.prefs.setBoolPref("browser.security.newcerterrorpage.enabled", true);
-  info("Loading a bad cert page and making sure the exceptionDialogButton directly adds an exception");
-  let tab = await openErrorPage(BAD_CERT);
-  let browser = tab.linkedBrowser;
-  let loaded = BrowserTestUtils.browserLoaded(browser, false, BAD_CERT);
-  info("Clicking the exceptionDialogButton in advanced panel");
-  await ContentTask.spawn(browser, null, async function() {
-    let doc = content.document;
-    let exceptionButton = doc.getElementById("exceptionDialogButton");
-    exceptionButton.click();
-  });
-
-  info("Loading the url after adding exception");
-  await loaded;
-
-  await ContentTask.spawn(browser, null, async function() {
-    let doc = content.document;
-    ok(!doc.documentURI.startsWith("about:certerror"), "Exception has been added");
-  });
-
-  let certOverrideService = Cc["@mozilla.org/security/certoverride;1"]
-                              .getService(Ci.nsICertOverrideService);
-  certOverrideService.clearValidityOverride("expired.example.com", -1);
-  BrowserTestUtils.removeTab(gBrowser.selectedTab);
-  Services.prefs.clearUserPref("browser.security.newcerterrorpage.enabled");
 });
 
 add_task(async function checkReturnToPreviousPage() {
@@ -127,43 +100,6 @@ add_task(async function checkReturnToPreviousPage() {
   }
 });
 
-add_task(async function checkBadStsCert() {
-  info("Loading a badStsCert and making sure exception button doesn't show up");
-
-  for (let useFrame of [false, true]) {
-    let tab = await openErrorPage(BAD_STS_CERT, useFrame);
-    let browser = tab.linkedBrowser;
-
-    await ContentTask.spawn(browser, {frame: useFrame}, async function({frame}) {
-      let doc = frame ? content.document.querySelector("iframe").contentDocument : content.document;
-      let exceptionButton = doc.getElementById("exceptionDialogButton");
-      ok(ContentTaskUtils.is_hidden(exceptionButton), "Exception button is hidden.");
-    });
-
-    let message = await ContentTask.spawn(browser, {frame: useFrame}, async function({frame}) {
-      let doc = frame ? content.document.querySelector("iframe").contentDocument : content.document;
-      let advancedButton = doc.getElementById("advancedButton");
-      advancedButton.click();
-      return doc.getElementById("badCertTechnicalInfo").textContent;
-    });
-    if (Services.prefs.getBoolPref("browser.security.newcerterrorpage.enabled", false)) {
-      ok(message.includes("SSL_ERROR_BAD_CERT_DOMAIN"), "Didn't find SSL_ERROR_BAD_CERT_DOMAIN.");
-      ok(message.includes("The certificate is only valid for"), "Didn't find error message.");
-      ok(message.includes("a certificate that is not valid for"), "Didn't find error message.");
-      ok(message.includes("badchain.include-subdomains.pinning.example.com"), "Didn't find domain in error message.");
-
-      BrowserTestUtils.removeTab(gBrowser.selectedTab);
-      return;
-    }
-    ok(message.includes("SSL_ERROR_BAD_CERT_DOMAIN"), "Didn't find SSL_ERROR_BAD_CERT_DOMAIN.");
-    ok(message.includes("The certificate is only valid for"), "Didn't find error message.");
-    ok(message.includes("uses an invalid security certificate"), "Didn't find error message.");
-    ok(message.includes("badchain.include-subdomains.pinning.example.com"), "Didn't find domain in error message.");
-
-    BrowserTestUtils.removeTab(gBrowser.selectedTab);
-  }
-});
-
 // This checks that the appinfo.appBuildID starts with a date string,
 // which is required for the misconfigured system time check.
 add_task(async function checkAppBuildIDIsDate() {
@@ -176,106 +112,6 @@ add_task(async function checkAppBuildIDIsDate() {
   ok(month >= 1 && month <= 12, "appBuildID contains a valid month");
   ok(day >= 1 && day <= 31, "appBuildID contains a valid day");
 });
-
-const PREF_SERVICES_SETTINGS_CLOCK_SKEW_SECONDS = "services.settings.clock_skew_seconds";
-
-add_task(async function checkWrongSystemTimeWarning() {
-  async function setUpPage() {
-    let browser;
-    let certErrorLoaded;
-    await BrowserTestUtils.openNewForegroundTab(gBrowser, () => {
-      gBrowser.selectedTab = BrowserTestUtils.addTab(gBrowser, BAD_CERT);
-      browser = gBrowser.selectedBrowser;
-      certErrorLoaded = BrowserTestUtils.waitForErrorPage(browser);
-    }, false);
-
-    info("Loading and waiting for the cert error");
-    await certErrorLoaded;
-
-    return ContentTask.spawn(browser, null, async function() {
-      let doc = content.document;
-      let div = doc.getElementById("wrongSystemTimePanel");
-      let systemDateDiv = doc.getElementById("wrongSystemTime_systemDate");
-      let actualDateDiv = doc.getElementById("wrongSystemTime_actualDate");
-      let learnMoreLink = doc.getElementById("learnMoreLink");
-
-      return {
-        divDisplay: content.getComputedStyle(div).display,
-        text: div.textContent,
-        systemDate: systemDateDiv.textContent,
-        actualDate: actualDateDiv.textContent,
-        learnMoreLink: learnMoreLink.href,
-      };
-    });
-  }
-
-  let formatter = new Services.intl.DateTimeFormat(undefined, {
-    dateStyle: "short",
-  });
-
-  // pretend we have a positively skewed (ahead) system time
-  let serverDate = new Date("2015/10/27");
-  let serverDateFmt = formatter.format(serverDate);
-  let localDateFmt = formatter.format(new Date());
-
-  let skew = Math.floor((Date.now() - serverDate.getTime()) / 1000);
-  await SpecialPowers.pushPrefEnv({set: [[PREF_SERVICES_SETTINGS_CLOCK_SKEW_SECONDS, skew]]});
-
-  info("Loading a bad cert page with a skewed clock");
-  let message = await setUpPage();
-
-  isnot(message.divDisplay, "none", "Wrong time message information is visible");
-  ok(message.text.includes("clock appears to show the wrong time"),
-     "Correct error message found");
-  ok(message.text.includes("expired.example.com"), "URL found in error message");
-  ok(message.systemDate.includes(localDateFmt), "correct local date displayed");
-  ok(message.actualDate.includes(serverDateFmt), "correct server date displayed");
-  ok(message.learnMoreLink.includes("time-errors"), "time-errors in the Learn More URL");
-
-  BrowserTestUtils.removeTab(gBrowser.selectedTab);
-
-  // pretend we have a negatively skewed (behind) system time
-  serverDate = new Date();
-  serverDate.setYear(serverDate.getFullYear() + 1);
-  serverDateFmt = formatter.format(serverDate);
-
-  skew = Math.floor((Date.now() - serverDate.getTime()) / 1000);
-  await SpecialPowers.pushPrefEnv({set: [[PREF_SERVICES_SETTINGS_CLOCK_SKEW_SECONDS, skew]]});
-
-  info("Loading a bad cert page with a skewed clock");
-  message = await setUpPage();
-
-  isnot(message.divDisplay, "none", "Wrong time message information is visible");
-  ok(message.text.includes("clock appears to show the wrong time"),
-     "Correct error message found");
-  ok(message.text.includes("expired.example.com"), "URL found in error message");
-  ok(message.systemDate.includes(localDateFmt), "correct local date displayed");
-  ok(message.actualDate.includes(serverDateFmt), "correct server date displayed");
-
-  BrowserTestUtils.removeTab(gBrowser.selectedTab);
-
-  // pretend we only have a slightly skewed system time, four hours
-  skew = 60 * 60 * 4;
-  await SpecialPowers.pushPrefEnv({set: [[PREF_SERVICES_SETTINGS_CLOCK_SKEW_SECONDS, skew]]});
-
-  info("Loading a bad cert page with an only slightly skewed clock");
-  message = await setUpPage();
-
-  is(message.divDisplay, "none", "Wrong time message information is not visible");
-
-  BrowserTestUtils.removeTab(gBrowser.selectedTab);
-
-  // now pretend we have no skewed system time
-  skew = 0;
-  await SpecialPowers.pushPrefEnv({set: [[PREF_SERVICES_SETTINGS_CLOCK_SKEW_SECONDS, skew]]});
-
-  info("Loading a bad cert page with no skewed clock");
-  message = await setUpPage();
-
-  is(message.divDisplay, "none", "Wrong time message information is not visible");
-
-  BrowserTestUtils.removeTab(gBrowser.selectedTab);
-}).skip(); // Skipping because of bug 1414804.
 
 add_task(async function checkAdvancedDetails() {
   info("Loading a bad cert page and verifying the main error and advanced details section");
@@ -337,41 +173,6 @@ add_task(async function checkAdvancedDetails() {
 
     BrowserTestUtils.removeTab(gBrowser.selectedTab);
   }
-});
-
-add_task(async function checkhideAddExceptionButtonViaPref() {
-  info("Loading a bad cert page and verifying the pref security.certerror.hideAddException");
-  Services.prefs.setBoolPref("security.certerror.hideAddException", true);
-
-  for (let useFrame of [false, true]) {
-    let tab = await openErrorPage(BAD_CERT, useFrame);
-    let browser = tab.linkedBrowser;
-
-    await ContentTask.spawn(browser, {frame: useFrame}, async function({frame}) {
-      let doc = frame ? content.document.querySelector("iframe").contentDocument : content.document;
-
-      let exceptionButton = doc.querySelector(".exceptionDialogButtonContainer");
-      ok(ContentTaskUtils.is_hidden(exceptionButton), "Exception button is hidden.");
-    });
-
-    BrowserTestUtils.removeTab(gBrowser.selectedTab);
-  }
-
-  Services.prefs.clearUserPref("security.certerror.hideAddException");
-});
-
-add_task(async function checkhideAddExceptionButtonInFrames() {
-  info("Loading a bad cert page in a frame and verifying it's hidden.");
-  let tab = await openErrorPage(BAD_CERT, true);
-  let browser = tab.linkedBrowser;
-
-  await ContentTask.spawn(browser, null, async function() {
-    let doc = content.document.querySelector("iframe").contentDocument;
-    let exceptionButton = doc.getElementById("exceptionDialogButton");
-    ok(ContentTaskUtils.is_hidden(exceptionButton), "Exception button is hidden.");
-  });
-
-  BrowserTestUtils.removeTab(gBrowser.selectedTab);
 });
 
 add_task(async function checkAdvancedDetailsForHSTS() {
@@ -458,7 +259,7 @@ add_task(async function checkUnknownIssuerLearnMoreLink() {
 });
 
 add_task(async function checkCautionClass() {
-  Services.prefs.setBoolPref("browser.security.newcerterrorpage.enabled", true);
+  Services.prefs.setBoolPref(PREF_NEW_CERT_ERRORS, true);
   info("Checking that are potentially more dangerous get a 'caution' class");
   for (let useFrame of [false, true]) {
     let tab = await openErrorPage(UNKNOWN_ISSUER, useFrame);
@@ -481,11 +282,11 @@ add_task(async function checkCautionClass() {
 
     BrowserTestUtils.removeTab(gBrowser.selectedTab);
   }
-  Services.prefs.clearUserPref("browser.security.newcerterrorpage.enabled");
+  Services.prefs.clearUserPref(PREF_NEW_CERT_ERRORS);
 });
 
 add_task(async function checkViewCertificate() {
-  Services.prefs.setBoolPref("browser.security.newcerterrorpage.enabled", true);
+  Services.prefs.setBoolPref(PREF_NEW_CERT_ERRORS, true);
   info("Loading a cert error and checking that the certificate can be shown.");
   for (let useFrame of [false, true]) {
     let tab = await openErrorPage(UNKNOWN_ISSUER, useFrame);
@@ -509,37 +310,5 @@ add_task(async function checkViewCertificate() {
 
     BrowserTestUtils.removeTab(gBrowser.selectedTab);
   }
-  Services.prefs.clearUserPref("browser.security.newcerterrorpage.enabled");
+  Services.prefs.clearUserPref(PREF_NEW_CERT_ERRORS);
 });
-
-function getCertChain(securityInfoAsString) {
-  let certChain = "";
-  const serhelper = Cc["@mozilla.org/network/serialization-helper;1"]
-                       .getService(Ci.nsISerializationHelper);
-  let securityInfo = serhelper.deserializeObject(securityInfoAsString);
-  securityInfo.QueryInterface(Ci.nsITransportSecurityInfo);
-  for (let cert of securityInfo.failedCertChain.getEnumerator()) {
-    certChain += getPEMString(cert);
-  }
-  return certChain;
-}
-
-function getDERString(cert) {
-  var length = {};
-  var derArray = cert.getRawDER(length);
-  var derString = "";
-  for (var i = 0; i < derArray.length; i++) {
-    derString += String.fromCharCode(derArray[i]);
-  }
-  return derString;
-}
-
-function getPEMString(cert) {
-  var derb64 = btoa(getDERString(cert));
-  // Wrap the Base64 string into lines of 64 characters,
-  // with CRLF line breaks (as specified in RFC 1421).
-  var wrapped = derb64.replace(/(\S{64}(?!$))/g, "$1\r\n");
-  return "-----BEGIN CERTIFICATE-----\r\n"
-         + wrapped
-         + "\r\n-----END CERTIFICATE-----\r\n";
-}

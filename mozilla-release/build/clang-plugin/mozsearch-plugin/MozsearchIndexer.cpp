@@ -34,7 +34,7 @@
 #include "JSONFormatter.h"
 #include "StringOperations.h"
 
-#if CLANG_VERSION_FULL < 800
+#if CLANG_VERSION_MAJOR < 8
 // Starting with Clang 8.0 some basic functions have been renamed
 #define getBeginLoc getLocStart
 #define getEndLoc getLocEnd
@@ -137,13 +137,8 @@ public:
 
   virtual void MacroExpands(const Token &Tok, const MacroDefinition &Md,
                             SourceRange Range, const MacroArgs *Ma) override;
-#if CLANG_VERSION_MAJOR >= 5
   virtual void MacroUndefined(const Token &Tok, const MacroDefinition &Md,
                               const MacroDirective *Undef) override;
-#else
-  virtual void MacroUndefined(const Token &Tok,
-                              const MacroDefinition &Md) override;
-#endif
   virtual void Defined(const Token &Tok, const MacroDefinition &Md,
                        SourceRange Range) override;
   virtual void Ifdef(SourceLocation Loc, const Token &Tok,
@@ -282,18 +277,8 @@ private:
           std::string Backing;
           llvm::raw_string_ostream Stream(Backing);
           const TemplateArgumentList &TemplateArgs = Spec->getTemplateArgs();
-#if CLANG_VERSION_MAJOR > 5
           printTemplateArgumentList(
               Stream, TemplateArgs.asArray(), PrintingPolicy(CI.getLangOpts()));
-#elif CLANG_VERSION_MAJOR > 3 ||                                                 \
-    (CLANG_VERSION_MAJOR == 3 && CLANG_VERSION_MINOR >= 9)
-          TemplateSpecializationType::PrintTemplateArgumentList(
-              Stream, TemplateArgs.asArray(), PrintingPolicy(CI.getLangOpts()));
-#else
-          TemplateSpecializationType::PrintTemplateArgumentList(
-              stream, templateArgs.data(), templateArgs.size(),
-              PrintingPolicy(CI.getLangOpts()));
-#endif
           Result += Stream.str();
         }
       } else if (const auto *Nd = dyn_cast<NamespaceDecl>(DC)) {
@@ -1012,7 +997,7 @@ public:
   SourceRange getFunctionPeekRange(FunctionDecl* D) {
     // We always start at the start of the function decl, which may include the
     // return type on a separate line.
-    SourceLocation Start = D->getLocStart();
+    SourceLocation Start = D->getBeginLoc();
 
     // By default, we end at the line containing the function's name.
     SourceLocation End = D->getLocation();
@@ -1035,7 +1020,7 @@ public:
   }
 
   SourceRange getTagPeekRange(TagDecl* D) {
-    SourceLocation Start = D->getLocStart();
+    SourceLocation Start = D->getBeginLoc();
 
     // By default, we end at the line containing the name.
     SourceLocation End = D->getLocation();
@@ -1192,7 +1177,7 @@ public:
     // class name.
     if (isa<CXXDestructorDecl>(D)) {
       const char *P = SM.getCharacterData(Loc);
-      assert(*p == '~');
+      assert(*P == '~');
       P++;
 
       unsigned Skipped = 1;
@@ -1213,7 +1198,7 @@ public:
   }
 
   bool VisitCXXConstructExpr(CXXConstructExpr *E) {
-    SourceLocation Loc = E->getLocStart();
+    SourceLocation Loc = E->getBeginLoc();
     normalizeLocation(&Loc);
     if (!isInterestingLocation(Loc)) {
       return true;
@@ -1491,14 +1476,9 @@ void PreprocessorHook::MacroExpands(const Token &Tok, const MacroDefinition &Md,
   Indexer->macroUsed(Tok, Md.getMacroInfo());
 }
 
-#if CLANG_VERSION_MAJOR >= 5
 void PreprocessorHook::MacroUndefined(const Token &Tok,
                                       const MacroDefinition &Md,
                                       const MacroDirective *Undef)
-#else
-void PreprocessorHook::MacroUndefined(const Token &Tok,
-                                      const MacroDefinition &Md)
-#endif
 {
   Indexer->macroUsed(Tok, Md.getMacroInfo());
 }

@@ -84,6 +84,17 @@ class Instance {
             const ElemSegmentVector& elemSegments);
   void trace(JSTracer* trc);
 
+  // Trace any GC roots on the stack, for the frame associated with |wfi|,
+  // whose next instruction to execute is |nextPC|.
+  //
+  // For consistency checking of StackMap sizes in debug builds, this also
+  // takes |highestByteVisitedInPrevFrame|, which is the address of the
+  // highest byte scanned in the frame below this one on the stack, and in
+  // turn it returns the address of the highest byte scanned in this frame.
+  uintptr_t traceFrame(JSTracer* trc, const wasm::WasmFrameIter& wfi,
+                       uint8_t* nextPC,
+                       uintptr_t highestByteVisitedInPrevFrame);
+
   JS::Realm* realm() const { return realm_; }
   const Code& code() const { return *code_; }
   const CodeTier& code(Tier t) const { return code_->codeTier(t); }
@@ -102,6 +113,7 @@ class Instance {
   size_t memoryMappedSize() const;
   SharedArrayRawBuffer* sharedMemoryBuffer() const;  // never null
   bool memoryAccessInGuardRegion(uint8_t* addr, unsigned numBytes) const;
+  bool memoryAccessInBounds(uint8_t* addr, unsigned numBytes) const;
   const StructTypeVector& structTypes() const { return code_->structTypes(); }
 
   static constexpr size_t offsetOfJSJitArgsRectifier() {
@@ -170,7 +182,7 @@ class Instance {
   static int32_t callImport_i32(Instance*, int32_t, int32_t, uint64_t*);
   static int32_t callImport_i64(Instance*, int32_t, int32_t, uint64_t*);
   static int32_t callImport_f64(Instance*, int32_t, int32_t, uint64_t*);
-  static int32_t callImport_ref(Instance*, int32_t, int32_t, uint64_t*);
+  static int32_t callImport_anyref(Instance*, int32_t, int32_t, uint64_t*);
   static uint32_t growMemory_i32(Instance* instance, uint32_t delta);
   static uint32_t currentMemory_i32(Instance* instance);
   static int32_t wait_i32(Instance* instance, uint32_t byteOffset,
@@ -180,7 +192,7 @@ class Instance {
   static int32_t wake(Instance* instance, uint32_t byteOffset, int32_t count);
   static int32_t memCopy(Instance* instance, uint32_t destByteOffset,
                          uint32_t srcByteOffset, uint32_t len);
-  static int32_t memDrop(Instance* instance, uint32_t segIndex);
+  static int32_t dataDrop(Instance* instance, uint32_t segIndex);
   static int32_t memFill(Instance* instance, uint32_t byteOffset,
                          uint32_t value, uint32_t len);
   static int32_t memInit(Instance* instance, uint32_t dstOffset,
@@ -188,7 +200,7 @@ class Instance {
   static int32_t tableCopy(Instance* instance, uint32_t dstOffset,
                            uint32_t srcOffset, uint32_t len,
                            uint32_t dstTableIndex, uint32_t srcTableIndex);
-  static int32_t tableDrop(Instance* instance, uint32_t segIndex);
+  static int32_t elemDrop(Instance* instance, uint32_t segIndex);
   static void* tableGet(Instance* instance, uint32_t index,
                         uint32_t tableIndex);
   static uint32_t tableGrow(Instance* instance, uint32_t delta, void* initValue,

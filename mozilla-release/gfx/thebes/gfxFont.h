@@ -41,7 +41,7 @@ typedef struct _cairo_scaled_font cairo_scaled_font_t;
 // typedef struct gr_face            gr_face;
 
 #ifdef DEBUG
-#include <stdio.h>
+#  include <stdio.h>
 #endif
 
 class gfxContext;
@@ -60,11 +60,11 @@ class gfxMathTable;
 // The skew factor used for synthetic-italic [oblique] fonts;
 // we use a platform-dependent value to harmonize with the platform's own APIs.
 #ifdef XP_WIN
-#define OBLIQUE_SKEW_FACTOR 0.3f
+#  define OBLIQUE_SKEW_FACTOR 0.3f
 #elif defined(MOZ_WIDGET_GTK)
-#define OBLIQUE_SKEW_FACTOR 0.2f
+#  define OBLIQUE_SKEW_FACTOR 0.2f
 #else
-#define OBLIQUE_SKEW_FACTOR 0.25f
+#  define OBLIQUE_SKEW_FACTOR 0.25f
 #endif
 
 struct gfxTextRunDrawCallbacks;
@@ -1940,9 +1940,7 @@ class gfxFont {
 
   // The return value is interpreted as a horizontal advance in 16.16 fixed
   // point format.
-  virtual int32_t GetGlyphWidth(DrawTarget& aDrawTarget, uint16_t aGID) {
-    return -1;
-  }
+  virtual int32_t GetGlyphWidth(uint16_t aGID) { return -1; }
 
   bool IsSpaceGlyphInvisible(DrawTarget* aRefDrawTarget,
                              const gfxTextRun* aTextRun);

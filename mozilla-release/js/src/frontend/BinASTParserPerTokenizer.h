@@ -21,7 +21,6 @@
 #include "frontend/BinASTParserBase.h"
 #include "frontend/BinToken.h"
 #include "frontend/BinTokenReaderMultipart.h"
-#include "frontend/BinTokenReaderTester.h"
 #include "frontend/FullParseHandler.h"
 #include "frontend/ParseContext.h"
 #include "frontend/ParseNode.h"
@@ -31,6 +30,8 @@
 #include "js/GCHashTable.h"
 #include "js/GCVector.h"
 #include "js/Result.h"
+
+#include "vm/ErrorReporting.h"
 
 namespace js {
 namespace frontend {
@@ -194,13 +195,24 @@ class BinASTParserPerTokenizer : public BinASTParserBase,
   // a strict directive.
   void forceStrictIfNecessary(SharedContext* sc, ListNode* directives);
 
- protected:  // Implement ErrorReporter
+ protected:
+  // Implement ErrorReportMixin.
   const JS::ReadOnlyCompileOptions& options_;
 
   const JS::ReadOnlyCompileOptions& options() const override {
     return this->options_;
   }
 
+  JSContext* getContext() const override { return cx_; };
+
+  MOZ_MUST_USE bool strictMode() const override {
+    return parseContext_->sc()->strict();
+  }
+
+  MOZ_MUST_USE bool computeErrorMetadata(ErrorMetadata* err,
+                                         const ErrorOffset& offset) override;
+
+ private:
   void doTrace(JSTracer* trc) final;
 
  public:
@@ -230,6 +242,9 @@ class BinASTParserPerTokenizer : public BinASTParserBase,
   virtual const ErrorReporter& errorReporter() const override { return *this; }
 
   virtual FullParseHandler& astGenerator() override { return factory_; }
+
+ public:
+  // Implement ErrorReporter.
 
   virtual void lineAndColumnAt(size_t offset, uint32_t* line,
                                uint32_t* column) const override {
@@ -263,19 +278,11 @@ class BinASTParserPerTokenizer : public BinASTParserBase,
   virtual bool hasTokenizationStarted() const override {
     return tokenizer_.isSome();
   }
-  virtual void reportErrorNoOffsetVA(unsigned errorNumber,
-                                     va_list args) override;
-  virtual void errorAtVA(uint32_t offset, unsigned errorNumber,
-                         va_list* args) override;
-  virtual bool reportExtraWarningErrorNumberVA(UniquePtr<JSErrorNotes> notes,
-                                               uint32_t offset,
-                                               unsigned errorNumber,
-                                               va_list* args) override;
   virtual const char* getFilename() const override {
     return this->options_.filename();
   }
 
- protected:  // Implement ErrorReporter
+ protected:
   mozilla::Maybe<Tokenizer> tokenizer_;
   VariableDeclarationKind variableDeclarationKind_;
 
@@ -319,7 +326,6 @@ class BinParseContext : public ParseContext {
 };
 
 extern template class BinASTParserPerTokenizer<BinTokenReaderMultipart>;
-extern template class BinASTParserPerTokenizer<BinTokenReaderTester>;
 
 }  // namespace frontend
 }  // namespace js

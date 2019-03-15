@@ -37,7 +37,7 @@
 #include "shellapi.h"
 
 #ifdef _WIN32_WINNT
-#undef _WIN32_WINNT
+#  undef _WIN32_WINNT
 #endif
 #define _WIN32_WINNT 0x0600
 #define INITGUID
@@ -54,7 +54,7 @@
 #undef ACCESS_READ
 
 #ifndef MAX_BUF
-#define MAX_BUF 4096
+#  define MAX_BUF 4096
 #endif
 
 #define REG_SUCCEEDED(val) (val == ERROR_SUCCESS)
@@ -67,7 +67,7 @@ using mozilla::IsWin8OrLater;
 using namespace mozilla;
 using namespace mozilla::widget;
 
-NS_IMPL_ISUPPORTS(nsWindowsShellService, nsIShellService)
+NS_IMPL_ISUPPORTS(nsWindowsShellService, nsIToolkitShellService, nsIShellService)
 
 static nsresult OpenKeyForReading(HKEY aKeyRoot, const nsAString& aKeyName,
                                   HKEY* aKey) {
@@ -200,10 +200,8 @@ static nsresult GetAppRegName(nsAutoString& aAppRegName) {
 }
 
 NS_IMETHODIMP
-nsWindowsShellService::IsDefaultBrowser(bool aStartupCheck, bool aForAllTypes,
+nsWindowsShellService::IsDefaultBrowser(bool aForAllTypes,
                                         bool* aIsDefaultBrowser) {
-  mozilla::Unused << aStartupCheck;
-
   *aIsDefaultBrowser = false;
 
   RefPtr<IApplicationAssociationRegistration> pAAR;

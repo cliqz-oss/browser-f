@@ -16,7 +16,6 @@ XPCOMUtils.defineLazyModuleGetters(this, {
   AddonManagerPrivate: "resource://gre/modules/AddonManager.jsm",
   TelemetryController: "resource://gre/modules/TelemetryController.jsm",
   TelemetryStorage: "resource://gre/modules/TelemetryStorage.jsm",
-  MemoryTelemetry: "resource://gre/modules/MemoryTelemetry.jsm",
   UITelemetry: "resource://gre/modules/UITelemetry.jsm",
   GCTelemetry: "resource://gre/modules/GCTelemetry.jsm",
   TelemetryEnvironment: "resource://gre/modules/TelemetryEnvironment.jsm",
@@ -924,11 +923,18 @@ var Impl = {
       .keys(measurements)
       .some(key => "gpu" in measurements[key]);
 
+    let measurementsContainSocket = Object
+      .keys(measurements)
+      .some(key => "socket" in measurements[key]);
+
     payloadObj.processes = {};
     let processTypes = ["parent", "content", "extension", "dynamic"];
     // Only include the GPU process if we've accumulated data for it.
     if (measurementsContainGPU) {
       processTypes.push("gpu");
+    }
+    if (measurementsContainSocket) {
+      processTypes.push("socket");
     }
 
     // Collect per-process measurements.
@@ -1048,10 +1054,10 @@ var Impl = {
   /**
    * Send data to the server. Record success/send-time in histograms
    */
-  send: function send(reason) {
+  send: async function send(reason) {
     this._log.trace("send - Reason " + reason);
     // populate histograms one last time
-    MemoryTelemetry.gatherMemory();
+    await Services.telemetry.gatherMemory();
 
     const isSubsession = !this._isClassicReason(reason);
     let payload = this.getSessionPayload(reason, isSubsession);
@@ -1138,7 +1144,7 @@ var Impl = {
         await TelemetryStorage.saveSessionData(this._getSessionDataObject());
 
         this.addObserver("idle-daily");
-        MemoryTelemetry.gatherMemory();
+        await Services.telemetry.gatherMemory();
 
         Telemetry.asyncFetchTelemetryData(function() {});
 
@@ -1284,7 +1290,7 @@ var Impl = {
     if (Object.keys(this._slowSQLStartup).length == 0) {
       this._slowSQLStartup = Telemetry.slowSQL;
     }
-    MemoryTelemetry.gatherMemory();
+    Services.telemetry.gatherMemory();
     return this.getSessionPayload(reason, clearSubsession);
   },
 

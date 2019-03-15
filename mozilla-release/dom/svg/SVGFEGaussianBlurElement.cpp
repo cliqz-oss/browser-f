@@ -9,7 +9,7 @@
 #include "nsSVGFilterInstance.h"
 #include "nsSVGUtils.h"
 
-NS_IMPL_NS_NEW_NAMESPACED_SVG_ELEMENT(FEGaussianBlur)
+NS_IMPL_NS_NEW_SVG_ELEMENT(FEGaussianBlur)
 
 using namespace mozilla::gfx;
 
@@ -21,10 +21,10 @@ JSObject* SVGFEGaussianBlurElement::WrapNode(
   return SVGFEGaussianBlurElement_Binding::Wrap(aCx, this, aGivenProto);
 }
 
-nsSVGElement::NumberPairInfo SVGFEGaussianBlurElement::sNumberPairInfo[1] = {
+SVGElement::NumberPairInfo SVGFEGaussianBlurElement::sNumberPairInfo[1] = {
     {nsGkAtoms::stdDeviation, 0, 0}};
 
-nsSVGElement::StringInfo SVGFEGaussianBlurElement::sStringInfo[2] = {
+SVGElement::StringInfo SVGFEGaussianBlurElement::sStringInfo[2] = {
     {nsGkAtoms::result, kNameSpaceID_None, true},
     {nsGkAtoms::in, kNameSpaceID_None, true}};
 
@@ -41,12 +41,12 @@ already_AddRefed<SVGAnimatedString> SVGFEGaussianBlurElement::In1() {
 
 already_AddRefed<SVGAnimatedNumber> SVGFEGaussianBlurElement::StdDeviationX() {
   return mNumberPairAttributes[STD_DEV].ToDOMAnimatedNumber(
-      nsSVGNumberPair::eFirst, this);
+      SVGNumberPair::eFirst, this);
 }
 
 already_AddRefed<SVGAnimatedNumber> SVGFEGaussianBlurElement::StdDeviationY() {
   return mNumberPairAttributes[STD_DEV].ToDOMAnimatedNumber(
-      nsSVGNumberPair::eSecond, this);
+      SVGNumberPair::eSecond, this);
 }
 
 void SVGFEGaussianBlurElement::SetStdDeviation(float stdDeviationX,
@@ -61,10 +61,10 @@ FilterPrimitiveDescription SVGFEGaussianBlurElement::GetPrimitiveDescription(
     nsTArray<RefPtr<SourceSurface>>& aInputImages) {
   float stdX = aInstance->GetPrimitiveNumber(SVGContentUtils::X,
                                              &mNumberPairAttributes[STD_DEV],
-                                             nsSVGNumberPair::eFirst);
+                                             SVGNumberPair::eFirst);
   float stdY = aInstance->GetPrimitiveNumber(SVGContentUtils::Y,
                                              &mNumberPairAttributes[STD_DEV],
-                                             nsSVGNumberPair::eSecond);
+                                             SVGNumberPair::eSecond);
   if (stdX < 0 || stdY < 0) {
     return FilterPrimitiveDescription();
   }
@@ -84,20 +84,20 @@ bool SVGFEGaussianBlurElement::AttributeAffectsRendering(
 }
 
 void SVGFEGaussianBlurElement::GetSourceImageNames(
-    nsTArray<nsSVGStringInfo>& aSources) {
-  aSources.AppendElement(nsSVGStringInfo(&mStringAttributes[IN1], this));
+    nsTArray<SVGStringInfo>& aSources) {
+  aSources.AppendElement(SVGStringInfo(&mStringAttributes[IN1], this));
 }
 
 //----------------------------------------------------------------------
-// nsSVGElement methods
+// SVGElement methods
 
-nsSVGElement::NumberPairAttributesInfo
+SVGElement::NumberPairAttributesInfo
 SVGFEGaussianBlurElement::GetNumberPairInfo() {
   return NumberPairAttributesInfo(mNumberPairAttributes, sNumberPairInfo,
                                   ArrayLength(sNumberPairInfo));
 }
 
-nsSVGElement::StringAttributesInfo SVGFEGaussianBlurElement::GetStringInfo() {
+SVGElement::StringAttributesInfo SVGFEGaussianBlurElement::GetStringInfo() {
   return StringAttributesInfo(mStringAttributes, sStringInfo,
                               ArrayLength(sStringInfo));
 }

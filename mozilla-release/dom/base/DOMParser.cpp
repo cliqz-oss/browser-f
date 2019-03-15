@@ -55,11 +55,11 @@ static const char* StringFromSupportedType(SupportedType aType) {
   return SupportedTypeValues::strings[static_cast<int>(aType)].value;
 }
 
-already_AddRefed<nsIDocument> DOMParser::ParseFromString(const nsAString& aStr,
-                                                         SupportedType aType,
-                                                         ErrorResult& aRv) {
+already_AddRefed<Document> DOMParser::ParseFromString(const nsAString& aStr,
+                                                      SupportedType aType,
+                                                      ErrorResult& aRv) {
   if (aType == SupportedType::Text_html) {
-    nsCOMPtr<nsIDocument> document = SetUpDocument(DocumentFlavorHTML, aRv);
+    nsCOMPtr<Document> document = SetUpDocument(DocumentFlavorHTML, aRv);
     if (NS_WARN_IF(aRv.Failed())) {
       return nullptr;
     }
@@ -87,8 +87,8 @@ already_AddRefed<nsIDocument> DOMParser::ParseFromString(const nsAString& aStr,
 
   // The new stream holds a reference to the buffer
   nsCOMPtr<nsIInputStream> stream;
-  nsresult rv = NS_NewByteInputStream(getter_AddRefs(stream), utf8str.get(),
-                                      utf8str.Length(), NS_ASSIGNMENT_DEPEND);
+  nsresult rv = NS_NewByteInputStream(getter_AddRefs(stream), utf8str,
+                                      NS_ASSIGNMENT_DEPEND);
   if (NS_WARN_IF(NS_FAILED(rv))) {
     aRv.Throw(rv);
     return nullptr;
@@ -98,20 +98,22 @@ already_AddRefed<nsIDocument> DOMParser::ParseFromString(const nsAString& aStr,
                          aType, aRv);
 }
 
-already_AddRefed<nsIDocument> DOMParser::ParseFromBuffer(const Uint8Array& aBuf,
-                                                         SupportedType aType,
-                                                         ErrorResult& aRv) {
+already_AddRefed<Document> DOMParser::ParseFromBuffer(const Uint8Array& aBuf,
+                                                      SupportedType aType,
+                                                      ErrorResult& aRv) {
   aBuf.ComputeLengthAndData();
   return ParseFromBuffer(MakeSpan(aBuf.Data(), aBuf.Length()), aType, aRv);
 }
 
-already_AddRefed<nsIDocument> DOMParser::ParseFromBuffer(
-    Span<const uint8_t> aBuf, SupportedType aType, ErrorResult& aRv) {
+already_AddRefed<Document> DOMParser::ParseFromBuffer(Span<const uint8_t> aBuf,
+                                                      SupportedType aType,
+                                                      ErrorResult& aRv) {
   // The new stream holds a reference to the buffer
   nsCOMPtr<nsIInputStream> stream;
   nsresult rv = NS_NewByteInputStream(
-      getter_AddRefs(stream), reinterpret_cast<const char*>(aBuf.Elements()),
-      aBuf.Length(), NS_ASSIGNMENT_DEPEND);
+      getter_AddRefs(stream),
+      MakeSpan(reinterpret_cast<const char*>(aBuf.Elements()), aBuf.Length()),
+      NS_ASSIGNMENT_DEPEND);
   if (NS_FAILED(rv)) {
     aRv.Throw(rv);
     return nullptr;
@@ -120,9 +122,11 @@ already_AddRefed<nsIDocument> DOMParser::ParseFromBuffer(
   return ParseFromStream(stream, VoidString(), aBuf.Length(), aType, aRv);
 }
 
-already_AddRefed<nsIDocument> DOMParser::ParseFromStream(
-    nsIInputStream* aStream, const nsAString& aCharset, int32_t aContentLength,
-    SupportedType aType, ErrorResult& aRv) {
+already_AddRefed<Document> DOMParser::ParseFromStream(nsIInputStream* aStream,
+                                                      const nsAString& aCharset,
+                                                      int32_t aContentLength,
+                                                      SupportedType aType,
+                                                      ErrorResult& aRv) {
   bool svg = (aType == SupportedType::Image_svg_xml);
 
   // For now, we can only create XML documents.
@@ -149,7 +153,7 @@ already_AddRefed<nsIDocument> DOMParser::ParseFromStream(
     stream = bufferedStream;
   }
 
-  nsCOMPtr<nsIDocument> document =
+  nsCOMPtr<Document> document =
       SetUpDocument(svg ? DocumentFlavorSVG : DocumentFlavorLegacyGuess, aRv);
   if (NS_WARN_IF(aRv.Failed())) {
     return nullptr;
@@ -269,13 +273,13 @@ already_AddRefed<DOMParser> DOMParser::CreateWithoutGlobal(ErrorResult& aRv) {
   return domParser.forget();
 }
 
-already_AddRefed<nsIDocument> DOMParser::SetUpDocument(DocumentFlavor aFlavor,
-                                                       ErrorResult& aRv) {
-  // We should really just use mOwner here, but nsDocument gets confused
+already_AddRefed<Document> DOMParser::SetUpDocument(DocumentFlavor aFlavor,
+                                                    ErrorResult& aRv) {
+  // We should really just use mOwner here, but Document gets confused
   // if we pass it a scriptHandlingObject that doesn't QI to
   // nsIScriptGlobalObject, and test_isequalnode.js (an xpcshell test without
-  // a window global) breaks. The correct solution is just to wean nsDocument
-  // off of nsIScriptGlobalObject, but that's a yak to shave another day.
+  // a window global) breaks. The correct solution is just to wean Document off
+  // of nsIScriptGlobalObject, but that's a yak to shave another day.
   nsCOMPtr<nsIScriptGlobalObject> scriptHandlingObject =
       do_QueryInterface(mOwner);
 
@@ -283,7 +287,7 @@ already_AddRefed<nsIDocument> DOMParser::SetUpDocument(DocumentFlavor aFlavor,
   NS_ASSERTION(mPrincipal, "Must have principal by now");
   NS_ASSERTION(mDocumentURI, "Must have document URI by now");
 
-  nsCOMPtr<nsIDocument> doc;
+  nsCOMPtr<Document> doc;
   nsresult rv = NS_NewDOMDocument(
       getter_AddRefs(doc), EmptyString(), EmptyString(), nullptr, mDocumentURI,
       mBaseURI, mPrincipal, true, scriptHandlingObject, aFlavor);

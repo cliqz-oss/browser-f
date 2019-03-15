@@ -1,24 +1,30 @@
 //! "Dummy" implementations of `ModuleEnvironment` and `FuncEnvironment` for testing
-//! wasm translation.
+//! wasm translation. For complete implementations of `ModuleEnvironment` and
+//! `FuncEnvironment`, see [wasmtime-environ] in [Wasmtime].
+//!
+//! [wasmtime-environ]: https://crates.io/crates/wasmtime-environ
+//! [Wasmtime]: https://github.com/CraneStation/wasmtime
 
+use crate::environ::{FuncEnvironment, GlobalVariable, ModuleEnvironment, ReturnMode, WasmResult};
+use crate::func_translator::FuncTranslator;
+use crate::translation_utils::{
+    DefinedFuncIndex, FuncIndex, Global, GlobalIndex, Memory, MemoryIndex, SignatureIndex, Table,
+    TableIndex,
+};
+use cast;
 use cranelift_codegen::cursor::FuncCursor;
-use cranelift_codegen::ir::immediates::{Imm64, Offset32};
+use cranelift_codegen::ir::immediates::{Offset32, Uimm64};
 use cranelift_codegen::ir::types::*;
 use cranelift_codegen::ir::{self, InstBuilder};
 use cranelift_codegen::isa::TargetFrontendConfig;
 use cranelift_entity::{EntityRef, PrimaryMap};
-use environ::{FuncEnvironment, GlobalVariable, ModuleEnvironment, ReturnMode, WasmResult};
-use func_translator::FuncTranslator;
+use std::boxed::Box;
 use std::string::String;
 use std::vec::Vec;
-use translation_utils::{
-    DefinedFuncIndex, FuncIndex, Global, GlobalIndex, Memory, MemoryIndex, SignatureIndex, Table,
-    TableIndex,
-};
 
 /// Compute a `ir::ExternalName` for a given wasm function index.
 fn get_func_name(func_index: FuncIndex) -> ir::ExternalName {
-    ir::ExternalName::user(0, func_index.index() as u32)
+    ir::ExternalName::user(0, func_index.as_u32())
 }
 
 /// A collection of names under which a given entity is exported.
@@ -133,6 +139,15 @@ impl DummyEnvironment {
     pub fn func_env(&self) -> DummyFuncEnvironment {
         DummyFuncEnvironment::new(&self.info, self.return_mode)
     }
+
+    fn get_func_type(&self, func_index: FuncIndex) -> SignatureIndex {
+        self.info.functions[func_index].entity
+    }
+
+    /// Return the number of imported functions within this `DummyEnvironment`.
+    pub fn get_num_func_imports(&self) -> usize {
+        self.info.imported_funcs.len()
+    }
 }
 
 /// The `FuncEnvironment` implementation for use by the `DummyEnvironment`.
@@ -169,15 +184,11 @@ impl<'dummy_environment> FuncEnvironment for DummyFuncEnvironment<'dummy_environ
 
     fn make_global(&mut self, func: &mut ir::Function, index: GlobalIndex) -> GlobalVariable {
         // Just create a dummy `vmctx` global.
-        let offset = ((index.index() * 8) as i64 + 8).into();
+        let offset = cast::i32((index.index() * 8) + 8).unwrap().into();
         let vmctx = func.create_global_value(ir::GlobalValueData::VMContext {});
-        let iadd = func.create_global_value(ir::GlobalValueData::IAddImm {
-            base: vmctx,
-            offset,
-            global_type: self.pointer_type(),
-        });
         GlobalVariable::Memory {
-            gv: iadd,
+            gv: vmctx,
+            offset,
             ty: self.mod_info.globals[index].entity.ty,
         }
     }
@@ -195,7 +206,7 @@ impl<'dummy_environment> FuncEnvironment for DummyFuncEnvironment<'dummy_environ
         func.create_heap(ir::HeapData {
             base: gv,
             min_size: 0.into(),
-            guard_size: 0x8000_0000.into(),
+            offset_guard_size: 0x8000_0000.into(),
             style: ir::HeapStyle::Static {
                 bound: 0x1_0000_0000.into(),
             },
@@ -221,9 +232,9 @@ impl<'dummy_environment> FuncEnvironment for DummyFuncEnvironment<'dummy_environ
 
         func.create_table(ir::TableData {
             base_gv,
-            min_size: Imm64::new(0),
+            min_size: Uimm64::new(0),
             bound_gv,
-            element_size: Imm64::new(i64::from(self.pointer_bytes()) * 2),
+            element_size: Uimm64::from(u64::from(self.pointer_bytes()) * 2),
             index_type: I32,
         })
     }
@@ -273,9 +284,7 @@ impl<'dummy_environment> FuncEnvironment for DummyFuncEnvironment<'dummy_environ
             let ext = pos.ins().uextend(I64, callee);
             pos.ins().imul_imm(ext, 4)
         };
-        let mut mflags = ir::MemFlags::new();
-        mflags.set_notrap();
-        mflags.set_aligned();
+        let mflags = ir::MemFlags::trusted();
         let func_ptr = pos.ins().load(ptr, mflags, callee_offset, 0);
 
         // Build a value list for the indirect call instruction containing the callee, call_args,
@@ -342,16 +351,8 @@ impl<'data> ModuleEnvironment<'data> for DummyEnvironment {
         self.info.config
     }
 
-    fn get_func_name(&self, func_index: FuncIndex) -> ir::ExternalName {
-        get_func_name(func_index)
-    }
-
-    fn declare_signature(&mut self, sig: &ir::Signature) {
-        self.info.signatures.push(sig.clone());
-    }
-
-    fn get_signature(&self, sig_index: SignatureIndex) -> &ir::Signature {
-        &self.info.signatures[sig_index]
+    fn declare_signature(&mut self, sig: ir::Signature) {
+        self.info.signatures.push(sig);
     }
 
     fn declare_func_import(
@@ -371,16 +372,8 @@ impl<'data> ModuleEnvironment<'data> for DummyEnvironment {
             .push((String::from(module), String::from(field)));
     }
 
-    fn get_num_func_imports(&self) -> usize {
-        self.info.imported_funcs.len()
-    }
-
     fn declare_func_type(&mut self, sig_index: SignatureIndex) {
         self.info.functions.push(Exportable::new(sig_index));
-    }
-
-    fn get_func_type(&self, func_index: FuncIndex) -> SignatureIndex {
-        self.info.functions[func_index].entity
     }
 
     fn declare_global(&mut self, global: Global) {
@@ -392,10 +385,6 @@ impl<'data> ModuleEnvironment<'data> for DummyEnvironment {
         self.info
             .imported_globals
             .push((String::from(module), String::from(field)));
-    }
-
-    fn get_global(&self, global_index: GlobalIndex) -> &Global {
-        &self.info.globals[global_index].entity
     }
 
     fn declare_table(&mut self, table: Table) {
@@ -414,7 +403,7 @@ impl<'data> ModuleEnvironment<'data> for DummyEnvironment {
         _table_index: TableIndex,
         _base: Option<GlobalIndex>,
         _offset: usize,
-        _elements: Vec<FuncIndex>,
+        _elements: Box<[FuncIndex]>,
     ) {
         // We do nothing
     }

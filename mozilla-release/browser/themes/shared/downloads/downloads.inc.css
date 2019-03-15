@@ -30,24 +30,12 @@
   margin: 0;
 }
 
-.downloadsPanelFooter {
-  border-top: 1px solid var(--panel-separator-color);
-}
-
-.downloadsPanelFooter toolbarseparator,
 @item@ > toolbarseparator {
   margin: 0;
   border: 0;
   min-width: 0;
   border-left: 1px solid var(--panel-separator-color);
   -moz-appearance: none;
-}
-
-.downloadsPanelFooterButton {
-  margin: 0;
-  padding: 0;
-  min-width: 0;
-  min-height: 40px;
 }
 
 .downloadsPanelFooterButton:hover {
@@ -57,14 +45,15 @@
 .downloadsPanelFooterButton:hover:active,
 .downloadsPanelFooterButton[open="true"] {
   outline: 1px solid var(--arrowpanel-dimmed-further);
-  box-shadow: 0 1px 0 hsla(210,4%,10%,.05) inset;
 }
 
-.downloadsPanelFooterButton > .button-box {
-  padding: 0;
+@notKeyfocus@ .downloadsPanelFooterButton:-moz-focusring {
+  outline: none;
 }
 
 #downloadsSummary {
+  background: var(--arrowpanel-dimmed);
+  border-top: 1px solid var(--panel-separator-color);
   /* Reserve the same space as the button and separator in download items. */
   padding-inline-end: 59px;
 }

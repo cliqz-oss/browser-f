@@ -7,7 +7,7 @@
 #ifndef mozilla_dom_SVGFESpotLightElement_h
 #define mozilla_dom_SVGFESpotLightElement_h
 
-#include "nsSVGFilters.h"
+#include "SVGFilters.h"
 #include "nsSVGNumber2.h"
 
 nsresult NS_NewSVGFESpotLightElement(
@@ -22,7 +22,7 @@ class SVGFESpotLightElement : public SVGFESpotLightElementBase {
   friend nsresult(::NS_NewSVGFESpotLightElement(
       nsIContent** aResult,
       already_AddRefed<mozilla::dom::NodeInfo>&& aNodeInfo));
-  friend class ::nsSVGFELightingElement;
+  friend class SVGFELightingElement;
 
  protected:
   explicit SVGFESpotLightElement(

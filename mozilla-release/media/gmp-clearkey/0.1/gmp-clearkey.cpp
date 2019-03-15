@@ -28,13 +28,13 @@
 #include "content_decryption_module_ext.h"
 
 #ifndef XP_WIN
-#include <sys/types.h>
-#include <sys/stat.h>
-#include <unistd.h>
+#  include <sys/types.h>
+#  include <sys/stat.h>
+#  include <unistd.h>
 #endif
 
 #ifdef ENABLE_WMF
-#include "WMFUtils.h"
+#  include "WMFUtils.h"
 #endif  // ENABLE_WMF
 
 extern "C" {
@@ -50,7 +50,7 @@ void* CreateCdmInstance(int cdm_interface_version, const char* key_system,
                         GetCdmHostFunc get_cdm_host_func, void* user_data) {
   CK_LOGE("ClearKey CreateCDMInstance");
 
-  if (cdm_interface_version != cdm::ContentDecryptionModule_9::kVersion) {
+  if (cdm_interface_version != cdm::ContentDecryptionModule_10::kVersion) {
     CK_LOGE(
         "ClearKey CreateCDMInstance failed due to requesting unsupported "
         "version %d.",
@@ -71,7 +71,7 @@ void* CreateCdmInstance(int cdm_interface_version, const char* key_system,
   }
 #endif
 
-  cdm::Host_9* host = static_cast<cdm::Host_9*>(
+  cdm::Host_10* host = static_cast<cdm::Host_10*>(
       get_cdm_host_func(cdm_interface_version, user_data));
   ClearKeyCDM* clearKey = new ClearKeyCDM(host);
 

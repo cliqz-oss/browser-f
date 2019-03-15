@@ -18,6 +18,7 @@ win32/debug:
         using: mozharness
         options: [append-env-variables-from-configs]
         script: mozharness/scripts/fx_desktop_build.py
+        secrets: true
         config:
             - builds/releng_base_firefox.py
             - builds/taskcluster_base_windows.py
@@ -52,6 +53,7 @@ win32/opt:
         using: mozharness
         options: [append-env-variables-from-configs]
         script: mozharness/scripts/fx_desktop_build.py
+        secrets: true
         config:
             - builds/releng_base_firefox.py
             - builds/taskcluster_base_windows.py
@@ -86,6 +88,7 @@ win32/pgo:
         using: mozharness
         options: [enable-pgo, append-env-variables-from-configs]
         script: mozharness/scripts/fx_desktop_build.py
+        secrets: true
         config:
             - builds/releng_base_firefox.py
             - builds/taskcluster_base_windows.py
@@ -120,12 +123,50 @@ win64/debug:
         using: mozharness
         options: [append-env-variables-from-configs]
         script: mozharness/scripts/fx_desktop_build.py
+        secrets: true
         config:
             - builds/releng_base_firefox.py
             - builds/taskcluster_base_windows.py
             - builds/taskcluster_base_win64.py
             - builds/taskcluster_sub_win64/debug.py
         mozconfig-variant: debug
+    toolchains:
+        - win64-clang-cl
+        - win64-rust
+        - win64-rust-size
+        - win64-cbindgen
+        - win64-sccache
+        - win64-node
+
+win64-fuzzing/debug:
+    description: "Win64 Fuzzing Debug"
+    index:
+        product: firefox
+        job-name: win64-fuzzing-debug
+    attributes:
+        enable-full-crashsymbols: true
+    treeherder:
+        platform: windows2012-64/debug
+        symbol: Bf
+        tier: 1
+    worker-type: aws-provisioner-v1/gecko-{level}-b-win2012
+    worker:
+        max-run-time: 7200
+        env:
+            PERFHERDER_EXTRA_OPTIONS: fuzzing
+            TOOLTOOL_MANIFEST: "browser/config/tooltool-manifests/win64/releng.manifest"
+    run:
+        using: mozharness
+        options: [append-env-variables-from-configs]
+        script: mozharness/scripts/fx_desktop_build.py
+        secrets: true
+        config:
+            - builds/releng_base_firefox.py
+            - builds/taskcluster_base_windows.py
+            - builds/taskcluster_base_win64.py
+            - builds/taskcluster_sub_win64/debug.py
+        mozconfig-variant: debug-fuzzing
+    run-on-projects: ['trunk', 'try']
     toolchains:
         - win64-clang-cl
         - win64-rust
@@ -151,6 +192,7 @@ win64-plain/debug:
             TOOLTOOL_MANIFEST: "browser/config/tooltool-manifests/win64/releng.manifest"
     run:
         using: mozharness
+        actions: [build, check-test]
         options: [append-env-variables-from-configs]
         script: mozharness/scripts/fx_desktop_build.py
         config:
@@ -188,6 +230,7 @@ win64/opt:
         using: mozharness
         options: [append-env-variables-from-configs]
         script: mozharness/scripts/fx_desktop_build.py
+        secrets: true
         config:
             - builds/releng_base_firefox.py
             - builds/taskcluster_base_windows.py
@@ -266,9 +309,9 @@ win32-nightly/opt:
             TOOLTOOL_MANIFEST: "browser/config/tooltool-manifests/win32/releng.manifest"
     run:
         using: mozharness
-        actions: [build, check-test]
         options: [append-env-variables-from-configs]
         script: mozharness/scripts/fx_desktop_build.py
+        secrets: true
         config:
             - builds/releng_base_firefox.py
             - builds/taskcluster_base_windows.py
@@ -306,9 +349,9 @@ win64-nightly/opt:
             TOOLTOOL_MANIFEST: "browser/config/tooltool-manifests/win64/releng.manifest"
     run:
         using: mozharness
-        actions: [build, check-test]
         options: [append-env-variables-from-configs]
         script: mozharness/scripts/fx_desktop_build.py
+        secrets: true
         config:
             - builds/releng_base_firefox.py
             - builds/taskcluster_base_windows.py
@@ -344,6 +387,7 @@ win64/pgo:
         using: mozharness
         options: [enable-pgo, append-env-variables-from-configs]
         script: mozharness/scripts/fx_desktop_build.py
+        secrets: true
         config:
             - builds/releng_base_firefox.py
             - builds/taskcluster_base_windows.py
@@ -376,6 +420,7 @@ win32-add-on-devel/opt:
         using: mozharness
         options: [append-env-variables-from-configs]
         script: "mozharness/scripts/fx_desktop_build.py"
+        secrets: true
         config:
             - builds/releng_base_firefox.py
             - builds/taskcluster_base_windows.py
@@ -410,6 +455,7 @@ win64-add-on-devel/opt:
         using: mozharness
         options: [append-env-variables-from-configs]
         script: "mozharness/scripts/fx_desktop_build.py"
+        secrets: true
         config:
             - builds/releng_base_firefox.py
             - builds/taskcluster_base_windows.py
@@ -444,6 +490,7 @@ win64-noopt/debug:
         using: mozharness
         options: [append-env-variables-from-configs]
         script: mozharness/scripts/fx_desktop_build.py
+        secrets: true
         config:
             - builds/releng_base_firefox.py
             - builds/taskcluster_base_windows.py
@@ -477,6 +524,7 @@ win32-noopt/debug:
         using: mozharness
         options: [append-env-variables-from-configs]
         script: mozharness/scripts/fx_desktop_build.py
+        secrets: true
         config:
             - builds/releng_base_firefox.py
             - builds/taskcluster_base_windows.py
@@ -509,9 +557,10 @@ win32-rusttests/opt:
             TOOLTOOL_MANIFEST: "browser/config/tooltool-manifests/win32/releng.manifest"
     run:
         using: mozharness
-        actions: [build]
+        actions: [get-secrets, build]
         options: [append-env-variables-from-configs]
         script: mozharness/scripts/fx_desktop_build.py
+        secrets: true
         config:
             - builds/releng_base_firefox.py
             - builds/taskcluster_base_windows.py
@@ -547,9 +596,10 @@ win32-rusttests/debug:
             TOOLTOOL_MANIFEST: "browser/config/tooltool-manifests/win32/releng.manifest"
     run:
         using: mozharness
-        actions: [build]
+        actions: [get-secrets, build]
         options: [append-env-variables-from-configs]
         script: mozharness/scripts/fx_desktop_build.py
+        secrets: true
         config:
             - builds/releng_base_firefox.py
             - builds/taskcluster_base_windows.py
@@ -585,8 +635,10 @@ win64-rusttests/opt:
             TOOLTOOL_MANIFEST: "browser/config/tooltool-manifests/win64/releng.manifest"
     run:
         using: mozharness
+        actions: [get-secrets, build]
         options: [append-env-variables-from-configs]
         script: mozharness/scripts/fx_desktop_build.py
+        secrets: true
         config:
             - builds/releng_base_firefox.py
             - builds/taskcluster_base_windows.py
@@ -618,8 +670,10 @@ win64-rusttests/debug:
             TOOLTOOL_MANIFEST: "browser/config/tooltool-manifests/win64/releng.manifest"
     run:
         using: mozharness
+        actions: [get-secrets, build]
         options: [append-env-variables-from-configs]
         script: mozharness/scripts/fx_desktop_build.py
+        secrets: true
         config:
             - builds/releng_base_firefox.py
             - builds/taskcluster_base_windows.py
@@ -645,6 +699,10 @@ win64-ccov/debug:
         tier: 2
     worker-type: aws-provisioner-v1/gecko-{level}-b-win2012
     worker:
+        artifacts:
+            - name: public/code-coverage-grcov.zip
+              path: build\src\obj-firefox\code-coverage-grcov.zip
+              type: file
         max-run-time: 7200
         env:
             TOOLTOOL_MANIFEST: "browser/config/tooltool-manifests/win64/releng.manifest"
@@ -652,6 +710,7 @@ win64-ccov/debug:
         using: mozharness
         options: [append-env-variables-from-configs]
         script: mozharness/scripts/fx_desktop_build.py
+        secrets: true
         config:
             - builds/releng_base_firefox.py
             - builds/taskcluster_base_windows.py
@@ -689,6 +748,7 @@ win64-asan/debug:
         using: mozharness
         options: [append-env-variables-from-configs]
         script: mozharness/scripts/fx_desktop_build.py
+        secrets: true
         config:
             - builds/releng_base_firefox.py
             - builds/taskcluster_base_windows.py
@@ -723,6 +783,7 @@ win64-asan/opt:
         using: mozharness
         options: [append-env-variables-from-configs]
         script: mozharness/scripts/fx_desktop_build.py
+        secrets: true
         config:
             - builds/releng_base_firefox.py
             - builds/taskcluster_base_windows.py
@@ -760,6 +821,7 @@ win64-asan-reporter-nightly/opt:
         using: mozharness
         options: [append-env-variables-from-configs]
         script: mozharness/scripts/fx_desktop_build.py
+        secrets: true
         config:
             - builds/releng_base_firefox.py
             - builds/taskcluster_base_windows.py
@@ -770,6 +832,41 @@ win64-asan-reporter-nightly/opt:
             stage_platform: win64-asan-reporter
         mozconfig-variant: nightly-asan-reporter
     run-on-projects: ['mozilla-central']
+    toolchains:
+        - win64-clang-cl
+        - win64-rust
+        - win64-rust-size
+        - win64-cbindgen
+        - win64-sccache
+        - win64-node
+
+win64-asan-fuzzing/opt:
+    description: "Win64 Fuzzing Opt ASAN"
+    index:
+        product: firefox
+        job-name: win64-fuzzing-asan-opt
+    treeherder:
+        platform: windows2012-64/asan
+        symbol: Bof
+    worker-type: aws-provisioner-v1/gecko-{level}-b-win2012
+    worker:
+        max-run-time: 7200
+        env:
+            TOOLTOOL_MANIFEST: "browser/config/tooltool-manifests/win64/releng.manifest"
+            PERFHERDER_EXTRA_OPTIONS: fuzzing-asan
+    run:
+        using: mozharness
+        options: [append-env-variables-from-configs]
+        script: mozharness/scripts/fx_desktop_build.py
+        secrets: true
+        config:
+            - builds/releng_base_firefox.py
+            - builds/taskcluster_base_windows.py
+            - builds/taskcluster_base_win64.py
+        extra-config:
+            stage_platform: win64-fuzzing-asan
+        mozconfig-variant: nightly-fuzzing-asan
+    run-on-projects: ['trunk', 'try']
     toolchains:
         - win64-clang-cl
         - win64-rust
@@ -808,6 +905,7 @@ win32-devedition-nightly/opt:
     run:
         using: mozharness
         script: mozharness/scripts/fx_desktop_build.py
+        secrets: true
         options: [enable-pgo, append-env-variables-from-configs]
         config:
             - builds/releng_base_firefox.py
@@ -850,6 +948,7 @@ win64-devedition-nightly/opt:
         using: mozharness
         options: [append-env-variables-from-configs]
         script: mozharness/scripts/fx_desktop_build.py
+        secrets: true
         config:
             - builds/releng_base_firefox.py
             - builds/taskcluster_base_windows.py
@@ -886,6 +985,7 @@ win32-msvc/debug:
         using: mozharness
         options: [append-env-variables-from-configs]
         script: mozharness/scripts/fx_desktop_build.py
+        secrets: true
         config:
             - builds/releng_base_firefox.py
             - builds/taskcluster_base_windows.py
@@ -918,6 +1018,7 @@ win32-msvc/opt:
         using: mozharness
         options: [append-env-variables-from-configs]
         script: mozharness/scripts/fx_desktop_build.py
+        secrets: true
         config:
             - builds/releng_base_firefox.py
             - builds/taskcluster_base_windows.py
@@ -951,6 +1052,7 @@ win64-msvc/debug:
         using: mozharness
         options: [append-env-variables-from-configs]
         script: mozharness/scripts/fx_desktop_build.py
+        secrets: true
         config:
             - builds/releng_base_firefox.py
             - builds/taskcluster_base_windows.py
@@ -983,6 +1085,7 @@ win64-msvc/opt:
         using: mozharness
         options: [append-env-variables-from-configs]
         script: mozharness/scripts/fx_desktop_build.py
+        secrets: true
         config:
             - builds/releng_base_firefox.py
             - builds/taskcluster_base_windows.py
@@ -997,72 +1100,116 @@ win64-msvc/opt:
         - win64-sccache
         - win64-node
 
-win64-aarch64-msvc/debug:
-    description: "AArch64 Win64 MSVC Debug"
+win64-aarch64/debug:
+    description: "AArch64 Win64 Debug"
     index:
         product: firefox
-        job-name: win64-aarch64-msvc-debug
+        job-name: win64-aarch64-debug
+    attributes:
+        enable-full-crashsymbols: true
     treeherder:
         platform: windows2012-aarch64/debug
-        symbol: Bmsvc
+        symbol: B
         tier: 1
     worker-type: aws-provisioner-v1/gecko-{level}-b-win2012
     worker:
         max-run-time: 7200
         env:
             TOOLTOOL_MANIFEST: "browser/config/tooltool-manifests/win64/aarch64.manifest"
-            PERFHERDER_EXTRA_OPTIONS: msvc-aarch64
+            PERFHERDER_EXTRA_OPTIONS: aarch64
     run:
         using: mozharness
         actions: [get-secrets, build]
         options: [append-env-variables-from-configs]
         script: mozharness/scripts/fx_desktop_build.py
+        secrets: true
         config:
             - builds/releng_base_firefox.py
             - builds/taskcluster_base_windows.py
             - builds/taskcluster_sub_win64/debug.py
         extra-config:
             mozconfig_platform: win64-aarch64
-        mozconfig-variant: debug-msvc
-    run-on-projects: ['mozilla-central', 'trunk', 'try']
+        mozconfig-variant: debug
     toolchains:
         - win64-clang-cl
-        - win64-aarch64-rust-nightly
+        - win64-aarch64-rust
         - win64-cbindgen
         - win64-sccache
         - win64-node
 
-win64-aarch64-msvc/opt:
-    description: "AArch64 Win64 MSVC Opt"
+win64-aarch64/opt:
+    description: "AArch64 Win64 Opt"
     index:
         product: firefox
-        job-name: win64-aarch64-msvc-opt
+        job-name: win64-aarch64-opt
+    attributes:
+        enable-full-crashsymbols: true
     treeherder:
         platform: windows2012-aarch64/opt
-        symbol: Bmsvc
+        symbol: B
         tier: 1
     worker-type: aws-provisioner-v1/gecko-{level}-b-win2012
     worker:
         max-run-time: 7200
         env:
             TOOLTOOL_MANIFEST: "browser/config/tooltool-manifests/win64/aarch64.manifest"
-            PERFHERDER_EXTRA_OPTIONS: msvc-aarch64
+            PERFHERDER_EXTRA_OPTIONS: aarch64
     run:
         using: mozharness
         actions: [get-secrets, build]
         options: [append-env-variables-from-configs]
         script: mozharness/scripts/fx_desktop_build.py
+        secrets: true
         config:
             - builds/releng_base_firefox.py
             - builds/taskcluster_base_windows.py
         extra-config:
-            stage_platform: win64
+            stage_platform: win64-aarch64
             mozconfig_platform: win64-aarch64
-        mozconfig-variant: opt-msvc
-    run-on-projects: ['mozilla-central', 'trunk', 'try']
     toolchains:
         - win64-clang-cl
-        - win64-aarch64-rust-nightly
+        - win64-aarch64-rust
+        - win64-cbindgen
+        - win64-sccache
+        - win64-node
+
+win64-aarch64-nightly/opt:
+    description: "AArch64 Win64 Nightly"
+    index:
+        product: firefox
+        job-name: win64-aarch64-opt
+        type: nightly
+    attributes:
+        nightly: true
+        enable-full-crashsymbols: true
+    shipping-phase: build
+    shipping-product: firefox
+    treeherder:
+        platform: windows2012-aarch64/opt
+        symbol: N
+        tier: 1
+    worker-type: aws-provisioner-v1/gecko-{level}-b-win2012
+    worker:
+        max-run-time: 7200
+        env:
+            TOOLTOOL_MANIFEST: "browser/config/tooltool-manifests/win64/aarch64.manifest"
+            PERFHERDER_EXTRA_OPTIONS: aarch64
+    run:
+        using: mozharness
+        actions: [get-secrets, build]
+        options: [append-env-variables-from-configs]
+        script: mozharness/scripts/fx_desktop_build.py
+        secrets: true
+        config:
+            - builds/releng_base_firefox.py
+            - builds/taskcluster_base_windows.py
+            - taskcluster_nightly.py
+        extra-config:
+            stage_platform: win64-aarch64
+            mozconfig_platform: win64-aarch64
+    toolchains:
+        - win64-clang-cl
+        - win64-aarch64-rust
         - win64-cbindgen
         - win64-sccache
         - win64-node

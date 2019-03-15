@@ -6,7 +6,6 @@ codespell:
         - browser/branding/
         - browser/components/newtab/prerendered/locales/en-US/
         - browser/extensions/formautofill/locales/en-US/
-        - browser/components/pocket/locale/en-US/
         - browser/extensions/webcompat-reporter/locales/en-US/
         - browser/locales/en-US/
         - build/docs/
@@ -25,6 +24,7 @@ codespell:
         - mobile/locales/en-US/
         - netwerk/locales/en-US/
         - python/docs/
+        - python/mach/docs/
         - python/mozlint/
         - python/safety/
         - services/sync/locales/en-US/
@@ -34,6 +34,7 @@ codespell:
         - toolkit/components/telemetry/docs/
         - toolkit/crashreporter/docs/
         - tools/lint/
+        - tools/tryselect/
     # List of extensions coming from:
     # tools/lint/{flake8,eslint}.yml
     # tools/mach_commands.py (clang-format)

@@ -20,7 +20,7 @@ const contentScripts = {
       runAt: "document_start",
     },
     {
-      matches: ["http://histography.io/*"],
+      matches: ["*://histography.io/*"],
       js: [{file: "injections/js/bug1457335-histography.io-ua-change.js"}],
       runAt: "document_start",
     },
@@ -40,6 +40,10 @@ const contentScripts = {
       js: [{file: "injections/js/bug1482066-portalminasnet.com-window.sidebar-shim.js"}],
       runAt: "document_start",
       allFrames: true,
+    },
+    {
+      matches: ["*://*.sreedharscce.in/authenticate"],
+      css: [{file: "injections/css/bug1526977-sreedharscce.in-login-fix.css"}],
     },
   ],
   android: [],

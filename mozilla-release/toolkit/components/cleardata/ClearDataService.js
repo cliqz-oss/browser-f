@@ -291,13 +291,15 @@ const AppCacheCleaner = {
 
 const QuotaCleaner = {
   deleteByPrincipal(aPrincipal) {
-    if (!Services.lsm.nextGenLocalStorageEnabled) {
-      // localStorage: The legacy LocalStorage implementation that will
-      // eventually be removed depends on this observer notification to clear by
-      // principal.  Only generate it if we're using the legacy implementation.
-      Services.obs.notifyObservers(null, "browser:purge-domain-data",
-                                   aPrincipal.URI.host);
-    }
+    // localStorage: The legacy LocalStorage implementation that will
+    // eventually be removed depends on this observer notification to clear by
+    // principal.
+    Services.obs.notifyObservers(null, "extension:purge-localStorage",
+                                 aPrincipal.URI.host);
+
+    // Clear sessionStorage
+    Services.obs.notifyObservers(null, "browser:purge-sessionStorage",
+                                 aPrincipal.URI.host);
 
     // ServiceWorkers: they must be removed before cleaning QuotaManager.
     return ServiceWorkerCleanUp.removeFromPrincipal(aPrincipal)
@@ -319,12 +321,13 @@ const QuotaCleaner = {
   },
 
   deleteByHost(aHost, aOriginAttributes) {
-    if (!Services.lsm.nextGenLocalStorageEnabled) {
-      // localStorage: The legacy LocalStorage implementation that will
-      // eventually be removed depends on this observer notification to clear by
-      // principal.  Only generate it if we're using the legacy implementation.
-      Services.obs.notifyObservers(null, "browser:purge-domain-data", aHost);
-    }
+    // localStorage: The legacy LocalStorage implementation that will
+    // eventually be removed depends on this observer notification to clear by
+    // host.  Some other subsystems like Reporting headers depend on this too.
+    Services.obs.notifyObservers(null, "extension:purge-localStorage", aHost);
+
+    // Clear sessionStorage
+    Services.obs.notifyObservers(null, "browser:purge-sessionStorage", aHost);
 
     let exceptionThrown = false;
 
@@ -425,8 +428,11 @@ const QuotaCleaner = {
   },
 
   deleteAll() {
-    // localStorage, Reporting headers, etc.
+    // localStorage
     Services.obs.notifyObservers(null, "extension:purge-localStorage");
+
+    // sessionStorage
+    Services.obs.notifyObservers(null, "browser:purge-sessionStorage");
 
     // ServiceWorkers
     return ServiceWorkerCleanUp.removeAll()
@@ -534,6 +540,14 @@ const HistoryCleaner = {
 };
 
 const SessionHistoryCleaner = {
+  deleteByHost(aHost, aOriginAttributes) {
+    return new Promise(aResolve => {
+      Services.obs.notifyObservers(null, "browser:purge-sessionStorage", aHost);
+      Services.obs.notifyObservers(null, "browser:purge-session-history-for-domain", aHost);
+      aResolve();
+    });
+  },
+
   deleteByRange(aFrom, aTo) {
     return new Promise(aResolve => {
       Services.obs.notifyObservers(null, "browser:purge-session-history", String(aFrom));
@@ -631,9 +645,6 @@ const PreferencesCleaner = {
                    .getService(Ci.nsIContentPrefService2);
       cps2.removeBySubdomain(aHost, null, {
         handleCompletion: aReason => {
-          // Notify other consumers, including extensions
-          Services.obs.notifyObservers(null, "browser:purge-domain-data",
-                                       aHost);
           if (aReason === cps2.COMPLETE_ERROR) {
             aReject();
           } else {
@@ -715,6 +726,22 @@ const EMECleaner = {
   },
 };
 
+const ReportsCleaner = {
+  deleteByHost(aHost, aOriginAttributes) {
+    return new Promise(aResolve => {
+      Services.obs.notifyObservers(null, "reporting:purge-host", aHost);
+      aResolve();
+    });
+  },
+
+  deleteAll() {
+    return new Promise(aResolve => {
+      Services.obs.notifyObservers(null, "reporting:purge-all");
+      aResolve();
+    });
+  },
+};
+
 // Here the map of Flags-Cleaner.
 const FLAGS_MAP = [
  { flag: Ci.nsIClearDataService.CLEAR_COOKIES,
@@ -773,6 +800,9 @@ const FLAGS_MAP = [
 
  { flag: Ci.nsIClearDataService.CLEAR_EME,
    cleaner: EMECleaner },
+
+ { flag: Ci.nsIClearDataService.CLEAR_REPORTS,
+   cleaner: ReportsCleaner },
 ];
 
 this.ClearDataService = function() {};

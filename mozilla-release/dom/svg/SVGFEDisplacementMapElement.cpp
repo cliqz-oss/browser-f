@@ -9,7 +9,7 @@
 #include "nsSVGFilterInstance.h"
 #include "nsSVGUtils.h"
 
-NS_IMPL_NS_NEW_NAMESPACED_SVG_ELEMENT(FEDisplacementMap)
+NS_IMPL_NS_NEW_SVG_ELEMENT(FEDisplacementMap)
 
 using namespace mozilla::gfx;
 
@@ -21,22 +21,22 @@ JSObject* SVGFEDisplacementMapElement::WrapNode(
   return SVGFEDisplacementMapElement_Binding::Wrap(aCx, this, aGivenProto);
 }
 
-nsSVGElement::NumberInfo SVGFEDisplacementMapElement::sNumberInfo[1] = {
+SVGElement::NumberInfo SVGFEDisplacementMapElement::sNumberInfo[1] = {
     {nsGkAtoms::scale, 0, false},
 };
 
-nsSVGEnumMapping SVGFEDisplacementMapElement::sChannelMap[] = {
+SVGEnumMapping SVGFEDisplacementMapElement::sChannelMap[] = {
     {nsGkAtoms::R, SVG_CHANNEL_R},
     {nsGkAtoms::G, SVG_CHANNEL_G},
     {nsGkAtoms::B, SVG_CHANNEL_B},
     {nsGkAtoms::A, SVG_CHANNEL_A},
     {nullptr, 0}};
 
-nsSVGElement::EnumInfo SVGFEDisplacementMapElement::sEnumInfo[2] = {
+SVGElement::EnumInfo SVGFEDisplacementMapElement::sEnumInfo[2] = {
     {nsGkAtoms::xChannelSelector, sChannelMap, SVG_CHANNEL_A},
     {nsGkAtoms::yChannelSelector, sChannelMap, SVG_CHANNEL_A}};
 
-nsSVGElement::StringInfo SVGFEDisplacementMapElement::sStringInfo[3] = {
+SVGElement::StringInfo SVGFEDisplacementMapElement::sStringInfo[3] = {
     {nsGkAtoms::result, kNameSpaceID_None, true},
     {nsGkAtoms::in, kNameSpaceID_None, true},
     {nsGkAtoms::in2, kNameSpaceID_None, true}};
@@ -105,26 +105,24 @@ bool SVGFEDisplacementMapElement::AttributeAffectsRendering(
 }
 
 void SVGFEDisplacementMapElement::GetSourceImageNames(
-    nsTArray<nsSVGStringInfo>& aSources) {
-  aSources.AppendElement(nsSVGStringInfo(&mStringAttributes[IN1], this));
-  aSources.AppendElement(nsSVGStringInfo(&mStringAttributes[IN2], this));
+    nsTArray<SVGStringInfo>& aSources) {
+  aSources.AppendElement(SVGStringInfo(&mStringAttributes[IN1], this));
+  aSources.AppendElement(SVGStringInfo(&mStringAttributes[IN2], this));
 }
 
 //----------------------------------------------------------------------
-// nsSVGElement methods
+// SVGElement methods
 
-nsSVGElement::NumberAttributesInfo
-SVGFEDisplacementMapElement::GetNumberInfo() {
+SVGElement::NumberAttributesInfo SVGFEDisplacementMapElement::GetNumberInfo() {
   return NumberAttributesInfo(mNumberAttributes, sNumberInfo,
                               ArrayLength(sNumberInfo));
 }
 
-nsSVGElement::EnumAttributesInfo SVGFEDisplacementMapElement::GetEnumInfo() {
+SVGElement::EnumAttributesInfo SVGFEDisplacementMapElement::GetEnumInfo() {
   return EnumAttributesInfo(mEnumAttributes, sEnumInfo, ArrayLength(sEnumInfo));
 }
 
-nsSVGElement::StringAttributesInfo
-SVGFEDisplacementMapElement::GetStringInfo() {
+SVGElement::StringAttributesInfo SVGFEDisplacementMapElement::GetStringInfo() {
   return StringAttributesInfo(mStringAttributes, sStringInfo,
                               ArrayLength(sStringInfo));
 }

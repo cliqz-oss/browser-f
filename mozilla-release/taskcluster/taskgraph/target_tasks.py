@@ -60,16 +60,13 @@ def filter_release_tasks(task, parameters):
             # On beta, Nightly builds are already PGOs
             'linux-pgo', 'linux64-pgo',
             'win32-pgo', 'win64-pgo',
-            # ASAN is central-only
-            'linux64-asan-reporter-nightly',
-            'win64-asan-reporter-nightly',
             ):
         return False
 
     if platform in (
             'linux', 'linux64',
             'macosx64',
-            'win32', 'win64',
+            'win32', 'win64', 'win64-aarch64',
             ):
         if task.attributes['kind'] == 'l10n':
             # This is on-change l10n
@@ -528,6 +525,15 @@ def target_tasks_nightly_win64(full_task_graph, parameters, graph_config):
     return [l for l, t in full_task_graph.tasks.iteritems() if filter(t, parameters)]
 
 
+@_target_task('nightly_win64_aarch64')
+def target_tasks_nightly_win64_aarch64(full_task_graph, parameters, graph_config):
+    """Select the set of tasks required for a nightly build of win32 and win64.
+    The nightly build process involves a pipeline of builds, signing,
+    and, eventually, uploading the tasks to balrog."""
+    filter = make_nightly_filter({'win64-aarch64-nightly'})
+    return [l for l, t in full_task_graph.tasks.iteritems() if filter(t, parameters)]
+
+
 @_target_task('nightly_asan')
 def target_tasks_nightly_asan(full_task_graph, parameters, graph_config):
     """Select the set of tasks required for a nightly build of asan. The
@@ -545,6 +551,7 @@ def target_tasks_nightly_desktop(full_task_graph, parameters, graph_config):
     return list(
         set(target_tasks_nightly_win32(full_task_graph, parameters, graph_config))
         | set(target_tasks_nightly_win64(full_task_graph, parameters, graph_config))
+        | set(target_tasks_nightly_win64_aarch64(full_task_graph, parameters, graph_config))
         | set(target_tasks_nightly_macosx(full_task_graph, parameters, graph_config))
         | set(target_tasks_nightly_linux(full_task_graph, parameters, graph_config))
         | set(target_tasks_nightly_asan(full_task_graph, parameters, graph_config))
@@ -558,6 +565,12 @@ def target_tasks_searchfox(full_task_graph, parameters, graph_config):
     return ['searchfox-linux64-searchfox/debug',
             'searchfox-macosx64-searchfox/debug',
             'searchfox-win64-searchfox/debug']
+
+
+@_target_task('customv8_update')
+def target_tasks_customv8_update(full_task_graph, parameters, graph_config):
+    """Select tasks required for building latest d8/v8 version."""
+    return ['toolchain-linux64-custom-v8']
 
 
 @_target_task('pipfile_update')

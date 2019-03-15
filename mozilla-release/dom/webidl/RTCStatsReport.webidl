@@ -11,6 +11,8 @@
 enum RTCStatsType {
   "inbound-rtp",
   "outbound-rtp",
+  "remote-inbound-rtp",
+  "remote-outbound-rtp",
   "csrc",
   "session",
   "track",
@@ -30,23 +32,24 @@ dictionary RTCRtpStreamStats : RTCStats {
   unsigned long ssrc;
   DOMString mediaType;
   DOMString kind;
-  DOMString remoteId;
-  boolean isRemote = false;
-  DOMString mediaTrackId;
   DOMString transportId;
   DOMString codecId;
+  // Local only measurements, RTCP related but not communicated via RTCP. Not
+  // present in RTCP case. See Bug 1367562
+  unsigned long firCount;
+  unsigned long pliCount;
+  unsigned long nackCount;
+  unsigned long long qpSum;
+
+  DOMString remoteId; // See Bug 1515716
+  DOMString localId;  // See Bug 1515716
+  DOMString mediaTrackId;
 
   // Video encoder/decoder measurements, not present in RTCP case
   double bitrateMean;
   double bitrateStdDev;
   double framerateMean;
   double framerateStdDev;
-
-  // Local only measurements, RTCP related but not communicated via RTCP. Not
-  // present in RTCP case.
-  unsigned long firCount;
-  unsigned long pliCount;
-  unsigned long nackCount;
 };
 
 dictionary RTCInboundRTPStreamStats : RTCRtpStreamStats {
@@ -54,14 +57,13 @@ dictionary RTCInboundRTPStreamStats : RTCRtpStreamStats {
   unsigned long long bytesReceived;
   double jitter;
   unsigned long packetsLost;
-  long mozAvSyncDelay;
-  long mozJitterBufferDelay;
   long roundTripTime;
 
   // Video decoder measurement, not present in RTCP case
   unsigned long discardedPackets;
   unsigned long framesDecoded;
 };
+
 
 dictionary RTCOutboundRTPStreamStats : RTCRtpStreamStats {
   unsigned long packetsSent;

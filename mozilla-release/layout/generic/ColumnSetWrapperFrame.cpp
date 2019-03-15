@@ -63,7 +63,20 @@ void ColumnSetWrapperFrame::AppendDirectlyOwnedAnonBoxes(
   // Thus, no need to restyle them. AssertColumnSpanWrapperSubtreeIsSane()
   // asserts all the conditions above which allow us to skip appending
   // -moz-column-span-wrappers.
-  nsIFrame* columnSet = PrincipalChildList().FirstChild();
+  auto FindFirstChildInChildLists = [this]() -> nsIFrame* {
+    const ChildListID listIDs[] = {kPrincipalList, kOverflowList};
+    for (nsIFrame* frag = this; frag; frag = frag->GetNextInFlow()) {
+      for (ChildListID id : listIDs) {
+        const nsFrameList& list = frag->GetChildList(id);
+        if (nsIFrame* firstChild = list.FirstChild()) {
+          return firstChild;
+        }
+      }
+    }
+    return nullptr;
+  };
+
+  nsIFrame* columnSet = FindFirstChildInChildLists();
   MOZ_ASSERT(columnSet && columnSet->IsColumnSetFrame(),
              "The first child should always be ColumnSet!");
   aResult.AppendElement(OwnedAnonBox(columnSet));
@@ -120,9 +133,10 @@ void ColumnSetWrapperFrame::RemoveFrame(ChildListID aListID,
     const nsIFrame* aFrame) {
   MOZ_ASSERT(aFrame->IsColumnSpan(), "aFrame is not column-span?");
 
-  if (!aFrame->Style()->IsAnonBox()) {
-    // aFrame is the primary frame of the element having "column-span: all".
-    // Traverse no further.
+  if (!nsLayoutUtils::GetStyleFrame(const_cast<nsIFrame*>(aFrame))
+           ->Style()
+           ->IsAnonBox()) {
+    // aFrame's style frame has "column-span: all". Traverse no further.
     return;
   }
 

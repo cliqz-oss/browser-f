@@ -10,14 +10,14 @@
 #include "mozilla/dom/ContentChild.h"
 
 #if defined(GP_OS_darwin)
-#include <pthread.h>
+#  include <pthread.h>
 #endif
 
 #ifdef XP_WIN
-#include <process.h>
-#define getpid _getpid
+#  include <process.h>
+#  define getpid _getpid
 #else
-#include <unistd.h>  // for getpid()
+#  include <unistd.h>  // for getpid()
 #endif
 
 ProfiledThreadData::ProfiledThreadData(ThreadInfo* aThreadInfo,
@@ -265,6 +265,7 @@ void StreamSamplesAndMarkers(const char* aName, int aThreadId,
       JSONSchemaWriter schema(aWriter);
       schema.WriteField("name");
       schema.WriteField("time");
+      schema.WriteField("category");
       schema.WriteField("data");
     }
 

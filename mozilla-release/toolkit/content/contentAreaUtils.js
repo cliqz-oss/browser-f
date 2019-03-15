@@ -94,7 +94,7 @@ const nsISupportsCString = Ci.nsISupportsCString;
  * @param aReferrer (nsIURI, optional)
  *        The referrer URI object (not a URL string) to use, or null
  *        if no referrer should be sent.
- * @param aDoc (nsIDocument, deprecated, optional)
+ * @param aDoc (Document, deprecated, optional)
  *        The content document that the save is being initiated from. If this
  *        is omitted, then aIsContentWindowPrivate must be provided.
  * @param aContentType (string, optional)
@@ -212,7 +212,7 @@ function saveDocument(aDocument, aSkipPrompt) {
     contentDisposition = aDocument.contentDisposition;
     cacheKey = aDocument.cacheKey;
   } else if (aDocument.nodeType == 9 /* DOCUMENT_NODE */) {
-    // Otherwise it's an actual nsDocument (and possibly a CPOW).
+    // Otherwise it's an actual document (and possibly a CPOW).
     // We want to use cached data because the document is currently visible.
     let win = aDocument.defaultView;
 

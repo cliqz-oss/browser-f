@@ -112,8 +112,6 @@
 #endif
 @BINPATH@/components/BrowserElementParent.manifest
 @BINPATH@/components/BrowserElementParent.js
-@BINPATH@/components/FeedProcessor.manifest
-@BINPATH@/components/FeedProcessor.js
 @BINPATH@/components/UAOverridesBootstrapper.js
 @BINPATH@/components/UAOverridesBootstrapper.manifest
 @BINPATH@/components/WellKnownOpportunisticUtils.js
@@ -169,7 +167,6 @@
 @BINPATH@/components/nsUpdateTimerManager.manifest
 @BINPATH@/components/nsUpdateTimerManager.js
 
-@BINPATH@/components/pluginGlue.manifest
 @BINPATH@/components/ProcessSingleton.manifest
 @BINPATH@/components/MainProcessSingleton.js
 @BINPATH@/components/ContentProcessSingleton.js
@@ -187,8 +184,6 @@
 @BINPATH@/components/nsInputListAutoComplete.js
 @BINPATH@/components/contentAreaDropListener.manifest
 @BINPATH@/components/contentAreaDropListener.js
-@BINPATH@/components/nsINIProcessor.manifest
-@BINPATH@/components/nsINIProcessor.js
 @BINPATH@/components/servicesComponents.manifest
 @BINPATH@/components/servicesSettings.manifest
 @BINPATH@/components/RemoteSettingsComponents.js
@@ -202,11 +197,6 @@
 @BINPATH@/components/XULStore.manifest
 @BINPATH@/components/htmlMenuBuilder.js
 @BINPATH@/components/htmlMenuBuilder.manifest
-
-@BINPATH@/components/SystemMessageInternal.js
-@BINPATH@/components/SystemMessageManager.js
-@BINPATH@/components/SystemMessageCache.js
-@BINPATH@/components/SystemMessageManager.manifest
 
 #ifdef MOZ_WEBRTC
 @BINPATH@/components/PeerConnection.js
@@ -266,7 +256,6 @@
 ; [Extensions]
 @BINPATH@/components/extensions-toolkit.manifest
 @BINPATH@/components/extensions-mobile.manifest
-@BINPATH@/components/extension-process-script.js
 
 ; Features
 @BINPATH@/features/*

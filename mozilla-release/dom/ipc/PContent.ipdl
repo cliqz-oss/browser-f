@@ -60,6 +60,8 @@ include GraphicsMessages;
 include MemoryReportTypes;
 include ClientIPCTypes;
 include HangTypes;
+include PrefsTypes;
+include NeckoChannelParams;
 
 // Workaround to prevent error if PContentChild.cpp & PContentBridgeParent.cpp
 // are put into different UnifiedProtocolsXX.cpp files.
@@ -75,7 +77,6 @@ using struct OverrideMapping from "mozilla/chrome/RegistryMessageUtils.h";
 using base::ProcessId from "base/process.h";
 using struct IPC::Permission from "mozilla/net/NeckoMessageUtils.h";
 using class IPC::Principal from "mozilla/dom/PermissionMessageUtils.h";
-using struct mozilla::null_t from "ipc/IPCMessageUtils.h";
 using mozilla::a11y::IHandlerControlHolder from "mozilla/a11y/IPCTypes.h";
 using mozilla::dom::NativeThreadId from "mozilla/dom/TabMessageUtils.h";
 using mozilla::hal::ProcessPriority from "mozilla/HalTypes.h";
@@ -144,30 +145,6 @@ struct FontPatternListEntry {
 union SystemFontListEntry {
     FontFamilyListEntry;
     FontPatternListEntry;
-};
-
-union PrefValue {
-  nsCString;
-  int32_t;
-  bool;
-};
-
-union MaybePrefValue {
-  PrefValue;
-  null_t;
-};
-
-// This serialization form mirrors that used in mozilla::Pref in
-// Preferences.cpp. The two should be kept in sync, e.g. if something is added
-// to one it should also be added to the other.
-//
-// Note: there is no need to pass the isSticky attribute because that's an
-// immutable attribute obtained from file at startup.
-struct Pref {
-  nsCString name;
-  bool isLocked;
-  MaybePrefValue defaultValue;
-  MaybePrefValue userValue;
 };
 
 struct DataStorageItem {
@@ -295,6 +272,43 @@ struct StringBundleDescriptor
     nsCString bundleURL;
     FileDescriptor mapFile;
     uint32_t mapSize;
+};
+
+struct IPCURLClassifierFeature
+{
+    nsCString featureName;
+    nsCString[] tables;
+    nsCString skipHostList;
+};
+
+// Transport structure for Notifications API notifications
+// (https://developer.mozilla.org/en-US/docs/Web/API/notification) instances
+// used exclusively by the NotificationEvent PContent method.
+struct NotificationEventData
+{
+    nsCString originSuffix;
+    nsCString scope;
+    nsString ID;
+    nsString title;
+    nsString dir;
+    nsString lang;
+    nsString body;
+    nsString tag;
+    nsString icon;
+    nsString data;
+    nsString behavior;
+};
+
+struct PostMessageData
+{
+    BrowsingContextId source;
+    nsString origin;
+    nsString targetOrigin;
+    nsIURI targetOriginURI;
+    nsIPrincipal callerPrincipal;
+    nsIPrincipal subjectPrincipal;
+    nsIURI callerDocumentURI;
+    bool isFromPrivateWindow;
 };
 
 /**
@@ -650,6 +664,8 @@ child:
     async ShareCodeCoverageMutex(CrossProcessMutexHandle handle);
     async FlushCodeCoverageCounters() returns (bool unused);
 
+    async GetMemoryUniqueSetSize() returns (int64_t uss);
+
     /*
      * IPC message to enable the input event queue on the main thread of the
      * content process.
@@ -727,6 +743,18 @@ child:
     /* Save the execution up to the current point in a recording process. */
     async SaveRecording(FileDescriptor file);
 
+    // This message is sent to content processes, and triggers the creation of a
+    // new HttpChannelChild that will be connected to the parent channel
+    // represented by registrarId.
+    // This is on PContent not PNecko, as PNecko may not be initialized yet.
+    async CrossProcessRedirect(uint32_t aRegistrarId,
+                               nsIURI aURI,
+                               uint32_t aNewLoadFlags,
+                               OptionalLoadInfoArgs aLoadInfo,
+                               uint64_t aChannelId,
+                               nsIURI aOriginalURI,
+                               uint64_t aIdentifier);
+
 parent:
     async InitBackground(Endpoint<PBackgroundParent> aEndpoint);
 
@@ -801,12 +829,10 @@ parent:
 
     async CreateAudioIPCConnection() returns (FileDescriptor fd);
 
-    sync PURLClassifier(Principal principal, bool useTrackingProtection)
+    sync PURLClassifier(Principal principal)
         returns (bool success);
-    sync ClassifyLocal(URIParams uri, nsCString tables)
-        returns (nsresult rv, nsCString[] results);
-    // The async version of ClassifyLocal.
-    async PURLClassifierLocal(URIParams uri, nsCString tables);
+
+    async PURLClassifierLocal(URIParams uri, IPCURLClassifierFeature[] features);
 
     async PLoginReputation(URIParams formURI);
 
@@ -838,6 +864,22 @@ parent:
     async DisableNotifications(Principal principal);
 
     async OpenNotificationSettings(Principal principal);
+
+    // Request that the ServiceWorkerManager in the parent process create a
+    // notification "click" or "close" event and dispatch it on the relevant
+    // ServiceWorker. This needs to happen because when a notification is
+    // created it is tied to a specific content process and when the user clicks
+    // on the notification, it will be that content process that is notified.
+    // However, even if the ServiceWorker lives in that process (it may no
+    // longer be in that process, or may have never lived there), the right/only
+    // way to talk through the ServiceWorker is through the parent.
+    //
+    // This happens on PContent because the ServiceWorkerManager lives on the
+    // main thread and bouncing this off of PBackground would be silly and
+    // complex. In the long run, the notification implementation will be
+    // overhauled to directly process the notification click/close and directly
+    // translate that to a ServiceWorker event.
+    async NotificationEvent(nsString type, NotificationEventData data);
 
     async PPSMContentDownloader(uint32_t aCertType);
 
@@ -1205,6 +1247,12 @@ parent:
     async SetOpenerBrowsingContext(BrowsingContextId aContextId,
                                    BrowsingContextId aOpenerContextId);
 
+    /**
+     * Notify parent to update user gesture activation flag.
+     */
+    async SetUserGestureActivation(BrowsingContextId aContextId,
+                                   bool aNewValue);
+
 both:
      async AsyncMessage(nsString aMessage, CpowEntry[] aCpows,
                         Principal aPrincipal, ClonedMessageData aData);
@@ -1214,6 +1262,13 @@ both:
      */
     async NotifyPushSubscriptionModifiedObservers(nsCString scope,
                                                   Principal principal);
+
+    async WindowClose(BrowsingContextId aContextId,
+                      bool aTrustedCaller);
+    async WindowFocus(BrowsingContextId aContextId);
+    async WindowBlur(BrowsingContextId aContextId);
+    async WindowPostMessage(BrowsingContextId aContextId, ClonedMessageData aMessage,
+                            PostMessageData aData);
 };
 
 }

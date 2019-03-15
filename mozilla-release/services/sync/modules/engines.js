@@ -785,6 +785,8 @@ SyncEngine.prototype = {
   // Which sortindex to use when retrieving records for this engine.
   _defaultSort: undefined,
 
+  _hasSyncedThisSession: false,
+
   _metadataPostProcessor(json) {
     if (Array.isArray(json)) {
       // Pre-`JSONFile` storage stored an array, but `JSONFile` defaults to
@@ -975,6 +977,14 @@ SyncEngine.prototype = {
   async resetLastSync() {
     this._log.debug("Resetting " + this.name + " last sync time");
     await this.setLastSync(0);
+  },
+
+  get hasSyncedThisSession() {
+    return this._hasSyncedThisSession;
+  },
+
+  set hasSyncedThisSession(hasSynced) {
+    this._hasSyncedThisSession = hasSynced;
   },
 
   get toFetch() {
@@ -1680,7 +1690,7 @@ SyncEngine.prototype = {
       let failed = [];
       let successful = [];
       let lastSync = await this.getLastSync();
-      let handleResponse = async (resp, batchOngoing = false) => {
+      let handleResponse = async (postQueue, resp, batchOngoing) => {
         // Note: We don't want to update this.lastSync, or this._modified until
         // the batch is complete, however we want to remember success/failure
         // indicators for when that happens.
@@ -1698,7 +1708,6 @@ SyncEngine.prototype = {
           // Nothing to do yet
           return;
         }
-        let serverModifiedTime = parseFloat(resp.headers["x-weave-timestamp"]);
 
         if (failed.length && this._log.level <= Log.Level.Debug) {
           this._log.debug("Records that will be uploaded again because "
@@ -1712,11 +1721,11 @@ SyncEngine.prototype = {
           this._modified.delete(id);
         }
 
-        await this._onRecordsWritten(successful, failed, serverModifiedTime);
+        await this._onRecordsWritten(successful, failed, postQueue.lastModified);
 
         // Advance lastSync since we've finished the batch.
-        if (serverModifiedTime > lastSync) {
-          lastSync = serverModifiedTime;
+        if (postQueue.lastModified > lastSync) {
+          lastSync = postQueue.lastModified;
           await this.setLastSync(lastSync);
         }
 
@@ -1809,6 +1818,7 @@ SyncEngine.prototype = {
         }
       }
     }
+    this.hasSyncedThisSession = true;
     await this._tracker.asyncObserver.promiseObserversComplete();
   },
 
@@ -1986,6 +1996,7 @@ SyncEngine.prototype = {
 
   async _resetClient() {
     await this.resetLastSync();
+    this.hasSyncedThisSession = false;
     this.previousFailed = new SerializableSet();
     this.toFetch = new SerializableSet();
     this._needWeakUpload.clear();

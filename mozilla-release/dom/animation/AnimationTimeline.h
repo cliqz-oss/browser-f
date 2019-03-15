@@ -17,12 +17,11 @@
 #include "nsIGlobalObject.h"
 #include "nsTHashtable.h"
 
-class nsIDocument;
-
 namespace mozilla {
 namespace dom {
 
 class Animation;
+class Document;
 
 class AnimationTimeline : public nsISupports, public nsWrapperCache {
  public:
@@ -31,7 +30,7 @@ class AnimationTimeline : public nsISupports, public nsWrapperCache {
   }
 
  protected:
-  virtual ~AnimationTimeline() { mAnimationOrder.clear(); }
+  virtual ~AnimationTimeline();
 
  public:
   NS_DECL_CYCLE_COLLECTING_ISUPPORTS
@@ -96,7 +95,7 @@ class AnimationTimeline : public nsISupports, public nsWrapperCache {
 
   virtual void RemoveAnimation(Animation* aAnimation);
 
-  virtual nsIDocument* GetDocument() const = 0;
+  virtual Document* GetDocument() const = 0;
 
  protected:
   nsCOMPtr<nsIGlobalObject> mWindow;

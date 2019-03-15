@@ -44,18 +44,13 @@ class JSObject2JSObjectMap;
 
 class nsXPCComponents;
 class nsXPCComponents_Interfaces;
-class nsXPCComponents_InterfacesByID;
 class nsXPCComponents_Classes;
-class nsXPCComponents_ClassesByID;
 class nsXPCComponents_Results;
 class nsXPCComponents_ID;
 class nsXPCComponents_Exception;
 class nsXPCComponents_Constructor;
 class nsXPCComponents_Utils;
-class nsXPCConstructor;
 
 class AutoMarkingPtr;
-
-class xpcProperty;
 
 #endif /* xpcforwards_h___ */

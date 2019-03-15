@@ -7,7 +7,7 @@
 #include "mozilla/dom/SVGViewElement.h"
 #include "mozilla/dom/SVGViewElementBinding.h"
 
-NS_IMPL_NS_NEW_NAMESPACED_SVG_ELEMENT(View)
+NS_IMPL_NS_NEW_SVG_ELEMENT(View)
 
 namespace mozilla {
 namespace dom {
@@ -19,12 +19,12 @@ JSObject* SVGViewElement::WrapNode(JSContext* aCx,
   return SVGViewElement_Binding::Wrap(aCx, this, aGivenProto);
 }
 
-nsSVGEnumMapping SVGViewElement::sZoomAndPanMap[] = {
+SVGEnumMapping SVGViewElement::sZoomAndPanMap[] = {
     {nsGkAtoms::disable, SVG_ZOOMANDPAN_DISABLE},
     {nsGkAtoms::magnify, SVG_ZOOMANDPAN_MAGNIFY},
     {nullptr, 0}};
 
-nsSVGElement::EnumInfo SVGViewElement::sEnumInfo[1] = {
+SVGElement::EnumInfo SVGViewElement::sEnumInfo[1] = {
     {nsGkAtoms::zoomAndPan, sZoomAndPanMap, SVG_ZOOMANDPAN_MAGNIFY}};
 
 //----------------------------------------------------------------------
@@ -61,13 +61,13 @@ SVGViewElement::PreserveAspectRatio() {
 }
 
 //----------------------------------------------------------------------
-// nsSVGElement methods
+// SVGElement methods
 
-nsSVGElement::EnumAttributesInfo SVGViewElement::GetEnumInfo() {
+SVGElement::EnumAttributesInfo SVGViewElement::GetEnumInfo() {
   return EnumAttributesInfo(mEnumAttributes, sEnumInfo, ArrayLength(sEnumInfo));
 }
 
-nsSVGViewBox* SVGViewElement::GetViewBox() { return &mViewBox; }
+SVGViewBox* SVGViewElement::GetViewBox() { return &mViewBox; }
 
 SVGAnimatedPreserveAspectRatio* SVGViewElement::GetPreserveAspectRatio() {
   return &mPreserveAspectRatio;

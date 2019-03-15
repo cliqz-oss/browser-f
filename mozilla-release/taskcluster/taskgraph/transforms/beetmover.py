@@ -7,7 +7,7 @@ Transform the beetmover task into an actual task description.
 
 from __future__ import absolute_import, print_function, unicode_literals
 
-from voluptuous import Any, Optional, Required
+from voluptuous import Optional, Required
 
 from taskgraph.loader.single_dep import schema
 from taskgraph.transforms.base import TransformSequence
@@ -20,6 +20,7 @@ from taskgraph.util.scriptworker import (generate_beetmover_artifact_map,
                                          get_worker_type_for_scope,
                                          should_use_artifact_map)
 from taskgraph.util.taskcluster import get_artifact_prefix
+from taskgraph.util.treeherder import replace_group
 
 # Until bug 1331141 is fixed, if you are adding any new artifacts here that
 # need to be transfered to S3, please be aware you also need to follow-up
@@ -119,11 +120,6 @@ task_description_schema = {str(k): v for k, v in task_description_schema.schema.
 
 transforms = TransformSequence()
 
-# shortcut for a string where task references are allowed
-taskref_or_string = Any(
-    basestring,
-    {Required('task-reference'): basestring})
-
 beetmover_description_schema = schema.extend({
     # depname is used in taskref's to identify the taskID of the unsigned things
     Required('depname', default='build'): basestring,
@@ -155,7 +151,10 @@ def make_task_description(config, jobs):
         attributes = dep_job.attributes
 
         treeherder = job.get('treeherder', {})
-        treeherder.setdefault('symbol', 'BM-S')
+        treeherder.setdefault(
+            'symbol',
+            replace_group(dep_job.task['extra']['treeherder']['symbol'], 'BM')
+        )
         dep_th_platform = dep_job.task.get('extra', {}).get(
             'treeherder', {}).get('machine', {}).get('platform', '')
         treeherder.setdefault('platform',

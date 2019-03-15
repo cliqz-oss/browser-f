@@ -6,6 +6,7 @@
 import React, { PureComponent } from "react";
 import ReactDOM from "react-dom";
 import classnames from "classnames";
+import actions from "../../actions";
 import { getDocument } from "../../utils/editor";
 import Svg from "../shared/Svg";
 
@@ -17,40 +18,56 @@ type Bookmark = {
 };
 
 type Props = {
-  callSite: Object,
   editor: Object,
   source: Object,
   enabled: boolean,
-  toggleBreakpoint: (number, number) => void,
+  toggleBreakpoint: typeof actions.toggleBreakpoint,
   columnBreakpoint: ColumnBreakpointType
 };
 
 const breakpointImg = document.createElement("div");
 ReactDOM.render(<Svg name={"column-marker"} />, breakpointImg);
-function makeBookmark(isActive, { onClick }) {
+function makeBookmark({ breakpoint }, { onClick }) {
   const bp = breakpointImg.cloneNode(true);
-  const className = isActive ? "active" : "disabled";
-  bp.className = classnames("call-site", className);
+  const isActive = breakpoint && !breakpoint.disabled;
+  const condition = breakpoint && breakpoint.condition;
+
+  bp.className = classnames("column-breakpoint", {
+    "has-condition": condition,
+    active: isActive,
+    disabled: !isActive
+  });
+
+  if (condition) {
+    bp.setAttribute("title", condition);
+  }
   bp.onclick = onClick;
+
   return bp;
 }
 
-export default class CallSite extends PureComponent<Props> {
-  addCallSite: Function;
+export default class ColumnBreakpoint extends PureComponent<Props> {
+  addColumnBreakpoint: Function;
   bookmark: ?Bookmark;
 
-  addCallSite = (nextProps: ?Props) => {
+  addColumnBreakpoint = (nextProps: ?Props) => {
     const { columnBreakpoint, source } = nextProps || this.props;
+
     const sourceId = source.id;
+    const doc = getDocument(sourceId);
+    if (!doc) {
+      return;
+    }
+
     const { line, column } = columnBreakpoint.location;
-    const widget = makeBookmark(columnBreakpoint.enabled, {
+    const widget = makeBookmark(columnBreakpoint, {
       onClick: this.toggleBreakpoint
     });
-    const doc = getDocument(sourceId);
+
     this.bookmark = doc.setBookmark({ line: line - 1, ch: column }, { widget });
   };
 
-  clearCallSite = () => {
+  clearColumnBreakpoint = () => {
     if (this.bookmark) {
       this.bookmark.clear();
       this.bookmark = null;
@@ -64,16 +81,16 @@ export default class CallSite extends PureComponent<Props> {
   };
 
   componentDidMount() {
-    this.addCallSite();
+    this.addColumnBreakpoint();
   }
 
   componentWillUnmount() {
-    this.clearCallSite();
+    this.clearColumnBreakpoint();
   }
 
   componentDidUpdate() {
-    this.clearCallSite();
-    this.addCallSite();
+    this.clearColumnBreakpoint();
+    this.addColumnBreakpoint();
   }
 
   render() {

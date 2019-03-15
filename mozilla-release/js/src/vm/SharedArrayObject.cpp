@@ -13,6 +13,7 @@
 
 #include "gc/FreeOp.h"
 #include "jit/AtomicOperations.h"
+#include "js/PropertySpec.h"
 #include "js/Wrapper.h"
 #include "vm/SharedMem.h"
 #include "wasm/WasmSignalHandlers.h"
@@ -197,7 +198,8 @@ bool SharedArrayBufferObject::class_constructor(JSContext* cx, unsigned argc,
   // Step 3 (Inlined 24.2.1.1 AllocateSharedArrayBuffer).
   // 24.2.1.1, step 1 (Inlined 9.1.14 OrdinaryCreateFromConstructor).
   RootedObject proto(cx);
-  if (!GetPrototypeFromBuiltinConstructor(cx, args, &proto)) {
+  if (!GetPrototypeFromBuiltinConstructor(cx, args, JSProto_SharedArrayBuffer,
+                                          &proto)) {
     return false;
   }
 

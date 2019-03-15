@@ -21,7 +21,7 @@
 #include "mozilla/layers/LayersSurfaces.h"  // for SurfaceDescriptor
 
 #if defined(XP_WIN)
-#include <d3d11_1.h>
+#  include <d3d11_1.h>
 #elif defined(XP_MACOSX)
 class MacIOSurface;
 #endif
@@ -91,7 +91,7 @@ class VRDisplayHost {
   // VRLayerParent destructor
 
  protected:
-  virtual VRHMDSensorState GetSensorState() = 0;
+  virtual VRHMDSensorState& GetSensorState() = 0;
 
   RefPtr<VRThread> mSubmitThread;
 

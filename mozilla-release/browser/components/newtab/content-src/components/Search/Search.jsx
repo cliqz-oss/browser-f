@@ -1,8 +1,8 @@
 /* globals ContentSearchUIController */
 "use strict";
 
+import {actionCreators as ac, actionTypes as at} from "common/Actions.jsm";
 import {FormattedMessage, injectIntl} from "react-intl";
-import {actionCreators as ac} from "common/Actions.jsm";
 import {connect} from "react-redux";
 import {IS_NEWTAB} from "content-src/lib/constants";
 import React from "react";
@@ -10,8 +10,12 @@ import React from "react";
 export class _Search extends React.PureComponent {
   constructor(props) {
     super(props);
-    this.onClick = this.onClick.bind(this);
+    this.onSearchClick = this.onSearchClick.bind(this);
+    this.onSearchHandoffClick = this.onSearchHandoffClick.bind(this);
+    this.onSearchHandoffPaste = this.onSearchHandoffPaste.bind(this);
+    this.onSearchHandoffDrop = this.onSearchHandoffDrop.bind(this);
     this.onInputMount = this.onInputMount.bind(this);
+    this.onSearchHandoffButtonMount = this.onSearchHandoffButtonMount.bind(this);
   }
 
   handleEvent(event) {
@@ -21,8 +25,39 @@ export class _Search extends React.PureComponent {
     }
   }
 
-  onClick(event) {
+  onSearchClick(event) {
     window.gContentSearchController.search(event);
+  }
+
+  doSearchHandoff(text) {
+    this.props.dispatch(ac.OnlyToMain({type: at.HANDOFF_SEARCH_TO_AWESOMEBAR, data: {text}}));
+    this.props.dispatch({type: at.FAKE_FOCUS_SEARCH});
+    this.props.dispatch(ac.UserEvent({event: "SEARCH_HANDOFF"}));
+    if (text) {
+      this.props.dispatch({type: at.HIDE_SEARCH});
+    }
+  }
+
+  onSearchHandoffClick(event) {
+    // When search hand-off is enabled, we render a big button that is styled to
+    // look like a search textbox. If the button is clicked, we style
+    // the button as if it was a focused search box and show a fake cursor but
+    // really focus the awesomebar without the focus styles ("hidden focus").
+    event.preventDefault();
+    this.doSearchHandoff();
+  }
+
+  onSearchHandoffPaste(event) {
+    event.preventDefault();
+    this.doSearchHandoff(event.clipboardData.getData("Text"));
+  }
+
+  onSearchHandoffDrop(event) {
+    event.preventDefault();
+    let text = event.dataTransfer.getData("text");
+    if (text) {
+      this.doSearchHandoff(text);
+    }
   }
 
   componentWillUnmount() {
@@ -57,19 +92,31 @@ export class _Search extends React.PureComponent {
     }
   }
 
+  onSearchHandoffButtonMount(button) {
+    // Keep a reference to the button for use during "paste" event handling.
+    this._searchHandoffButton = button;
+  }
+
   /*
    * Do not change the ID on the input field, as legacy newtab code
    * specifically looks for the id 'newtab-search-text' on input fields
    * in order to execute searches in various tests
    */
   render() {
-    return (<div className="search-wrapper">
+    const wrapperClassName = [
+      "search-wrapper",
+      this.props.hide && "search-hidden",
+      this.props.fakeFocus && "fake-focus",
+    ].filter(v => v).join(" ");
+
+    return (<div className={wrapperClassName}>
       {this.props.showLogo &&
         <div className="logo-and-wordmark">
           <div className="logo" />
           <div className="wordmark" />
         </div>
       }
+      {!this.props.handoffEnabled &&
       <div className="search-inner-wrapper">
         <label htmlFor="newtab-search-text" className="search-label">
           <span className="sr-only"><FormattedMessage id="search_web_placeholder" /></span>
@@ -84,11 +131,34 @@ export class _Search extends React.PureComponent {
         <button
           id="searchSubmit"
           className="search-button"
-          onClick={this.onClick}
+          onClick={this.onSearchClick}
           title={this.props.intl.formatMessage({id: "search_button"})}>
           <span className="sr-only"><FormattedMessage id="search_button" /></span>
         </button>
       </div>
+      }
+      {this.props.handoffEnabled &&
+        <div className="search-inner-wrapper">
+          <button
+            className="search-handoff-button"
+            ref={this.onSearchHandoffButtonMount}
+            onClick={this.onSearchHandoffClick}
+            tabIndex="-1"
+            title={this.props.intl.formatMessage({id: "search_web_placeholder"})}>
+            <div className="fake-textbox">{this.props.intl.formatMessage({id: "search_web_placeholder"})}</div>
+            <input type="search" className="fake-editable" tabIndex="-1" aria-hidden="true" onDrop={this.onSearchHandoffDrop} onPaste={this.onSearchHandoffPaste} />
+            <div className="fake-caret" />
+          </button>
+          {/*
+            This dummy and hidden input below is so we can load ContentSearchUIController.
+            Why? It sets --newtab-search-icon for us and it isn't trivial to port over.
+          */}
+          <input
+            type="search"
+            style={{display: "none"}}
+            ref={this.onInputMount} />
+        </div>
+      }
     </div>);
   }
 }

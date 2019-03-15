@@ -9,7 +9,7 @@
 
 #include "nsCycleCollectionParticipant.h"
 #include "nsIContent.h"
-#include "nsIDocument.h"
+#include "mozilla/dom/Document.h"
 #include "nsIFocusManager.h"
 #include "nsIObserver.h"
 #include "nsIWidget.h"
@@ -44,6 +44,7 @@ class nsFocusManager final : public nsIFocusManager,
                              public nsIObserver,
                              public nsSupportsWeakReference {
   typedef mozilla::widget::InputContextAction InputContextAction;
+  typedef mozilla::dom::Document Document;
 
  public:
   NS_DECL_CYCLE_COLLECTION_CLASS_AMBIGUOUS(nsFocusManager, nsIFocusManager)
@@ -92,14 +93,14 @@ class nsFocusManager final : public nsIFocusManager,
   /**
    * Called when content has been removed.
    */
-  nsresult ContentRemoved(nsIDocument* aDocument, nsIContent* aContent);
+  nsresult ContentRemoved(Document* aDocument, nsIContent* aContent);
 
   /**
    * Called when mouse button event handling is started and finished.
    */
-  already_AddRefed<nsIDocument> SetMouseButtonHandlingDocument(
-      nsIDocument* aDocument) {
-    nsCOMPtr<nsIDocument> handlingDocument = mMouseButtonEventHandlingDocument;
+  already_AddRefed<Document> SetMouseButtonHandlingDocument(
+      Document* aDocument) {
+    RefPtr<Document> handlingDocument = mMouseButtonEventHandlingDocument;
     mMouseButtonEventHandlingDocument = aDocument;
     return handlingDocument.forget();
   }
@@ -114,7 +115,7 @@ class nsFocusManager final : public nsIFocusManager,
 
   void FlushBeforeEventHandlingIfNeeded(nsIContent* aContent) {
     if (mEventHandlingNeedsFlush) {
-      nsCOMPtr<nsIDocument> doc = aContent->GetComposedDoc();
+      nsCOMPtr<Document> doc = aContent->GetComposedDoc();
       if (doc) {
         mEventHandlingNeedsFlush = false;
         doc->FlushPendingNotifications(mozilla::FlushType::Layout);
@@ -319,7 +320,7 @@ class nsFocusManager final : public nsIFocusManager,
    */
   void SendFocusOrBlurEvent(
       mozilla::EventMessage aEventMessage, nsIPresShell* aPresShell,
-      nsIDocument* aDocument, nsISupports* aTarget, uint32_t aFocusMethod,
+      Document* aDocument, nsISupports* aTarget, uint32_t aFocusMethod,
       bool aWindowRaised, bool aIsRefocus = false,
       mozilla::dom::EventTarget* aRelatedTarget = nullptr);
 
@@ -398,8 +399,7 @@ class nsFocusManager final : public nsIFocusManager,
    * Retrieves the start and end points of the current selection for
    * aDocument and stores them in aStartContent and aEndContent.
    */
-  nsresult GetSelectionLocation(nsIDocument* aDocument,
-                                nsIPresShell* aPresShell,
+  nsresult GetSelectionLocation(Document* aDocument, nsIPresShell* aPresShell,
                                 nsIContent** aStartContent,
                                 nsIContent** aEndContent);
 
@@ -419,26 +419,6 @@ class nsFocusManager final : public nsIFocusManager,
                                        nsIContent* aStart, int32_t aType,
                                        bool aNoParentTraversal,
                                        nsIContent** aNextContent);
-
-  /**
-   * Returns scope owner of aContent.
-   * A scope owner is either a document root, shadow host, or slot.
-   */
-  nsIContent* FindOwner(nsIContent* aContent);
-
-  /**
-   * Returns true if aContent is a shadow host or slot
-   */
-  bool IsHostOrSlot(nsIContent* aContent);
-
-  /**
-   * Host and Slot elements need to be handled as if they had tabindex 0 even
-   * when they don't have the attribute. This is a helper method to get the
-   * right value for focus navigation. If aIsFocusable is passed, it is set to
-   * true if the element itself is focusable.
-   */
-  int32_t HostOrSlotTabIndexValue(nsIContent* aContent,
-                                  bool* aIsFocusable = nullptr);
 
   /**
    * Retrieve the next tabbable element in scope owned by aOwner, using
@@ -480,6 +460,8 @@ class nsFocusManager final : public nsIFocusManager,
    * and the scope's ancestor scopes, using focusability and tabindex to
    * determine the tab order.
    *
+   * aStartOwner is the scope owner of the aStartContent.
+   *
    * aStartContent an in/out paremeter. It as input is the starting point
    * for this call of this method; as output it is the shadow host in
    * light DOM if the next tabbable element is not found in shadow DOM,
@@ -507,8 +489,9 @@ class nsFocusManager final : public nsIFocusManager,
    *   the flattened subtree rooted at shadow host in light DOM.
    */
   nsIContent* GetNextTabbableContentInAncestorScopes(
-      nsIContent** aStartContent, nsIContent* aOriginalStartContent,
-      bool aForward, int32_t* aCurrentTabIndex, bool aIgnoreTabIndex,
+      nsIContent* aStartOwner, nsIContent** aStartContent,
+      nsIContent* aOriginalStartContent, bool aForward,
+      int32_t* aCurrentTabIndex, bool aIgnoreTabIndex,
       bool aForDocumentNavigation);
 
   /**
@@ -587,7 +570,7 @@ class nsFocusManager final : public nsIFocusManager,
    * - if aDocument is a frameset document.
    */
   mozilla::dom::Element* GetRootForFocus(nsPIDOMWindowOuter* aWindow,
-                                         nsIDocument* aDocument,
+                                         Document* aDocument,
                                          bool aForDocumentNavigation,
                                          bool aCheckVisibility);
 
@@ -669,7 +652,7 @@ class nsFocusManager final : public nsIFocusManager,
   // elements even if focus is in chrome content.  So, if this isn't nullptr
   // and the caller can access the document node, the caller should succeed in
   // moving focus.
-  nsCOMPtr<nsIDocument> mMouseButtonEventHandlingDocument;
+  RefPtr<Document> mMouseButtonEventHandlingDocument;
 
   // If set to true, layout of the document of the event target should be
   // flushed before handling focus depending events.

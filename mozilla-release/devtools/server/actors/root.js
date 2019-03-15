@@ -132,9 +132,13 @@ RootActor.prototype = {
     // Whether the director scripts are supported
     directorScripts: true,
     // Whether the debugger server supports
-    // blackboxing/pretty-printing (not supported in Fever Dream yet)
+    // blackboxing (not supported in Fever Dream yet)
     noBlackBoxing: false,
-    noPrettyPrinting: false,
+    // Support for server pretty-printing has been removed.
+    noPrettyPrinting: true,
+    // Added in Firefox 66. Indicates that clients do not need to pause the
+    // debuggee before adding breakpoints.
+    breakpointWhileRunning: true,
     // Trait added in Gecko 38, indicating that all features necessary for
     // grabbing allocations from the MemoryActor are available for the performance tool
     memoryActorAllocations: true,
@@ -166,10 +170,10 @@ RootActor.prototype = {
     // to retrieve the extension child process target actors.
     webExtensionAddonConnect: true,
     // Version of perf actor. Fx65+
-    // Version 1 - Firefox 65: Introduces a duration-based buffer. With that change
-    // Services.profiler.StartProfiler method accepts an additional parameter called
-    // `window-length`. This is an optional parameter but it will throw an error if the
-    // profiled Firefox doesn't accept it.
+    // Version 1 - Firefox 65: Introduces a duration-based buffer. It can be controlled
+    // by adding a `duration` property (in seconds) to the options passed to
+    // `front.startProfiler`. This is an optional parameter but it will throw an error if
+    // the profiled Firefox doesn't accept it.
     perfActorVersion: 1,
   },
 
@@ -341,7 +345,7 @@ RootActor.prototype = {
 
     let targetActor;
     try {
-      targetActor = await tabList.getTab(options);
+      targetActor = await tabList.getTab(options, { forceUnzombify: true });
     } catch (error) {
       if (error.error) {
         // Pipe expected errors as-is to the client
@@ -396,7 +400,17 @@ RootActor.prototype = {
     this._parameters.tabList.onListChanged = null;
   },
 
-  onListAddons: function() {
+  /**
+   * This function can receive the following option from debugger client.
+   *
+   * @param {Object} option
+   *        - iconDataURL: {boolean}
+   *            When true, make data url from the icon of addon, then make possible to
+   *            access by iconDataURL in the actor. The iconDataURL is useful when
+   *            retrieving addons from a remote device, because the raw iconURL might not
+   *            be accessible on the client.
+   */
+  onListAddons: async function(option) {
     const addonList = this._parameters.addonList;
     if (!addonList) {
       return { from: this.actorID, error: "noAddons",
@@ -406,22 +420,25 @@ RootActor.prototype = {
     // Reattach the onListChanged listener now that a client requested the list.
     addonList.onListChanged = this._onAddonListChanged;
 
-    return addonList.getList().then((addonTargetActors) => {
-      const addonTargetActorPool = new Pool(this.conn);
-      for (const addonTargetActor of addonTargetActors) {
-        addonTargetActorPool.manage(addonTargetActor);
+    const addonTargetActors = await addonList.getList();
+    const addonTargetActorPool = new Pool(this.conn);
+    for (const addonTargetActor of addonTargetActors) {
+      if (option.iconDataURL) {
+        await addonTargetActor.loadIconDataURL();
       }
 
-      if (this._addonTargetActorPool) {
-        this._addonTargetActorPool.destroy();
-      }
-      this._addonTargetActorPool = addonTargetActorPool;
+      addonTargetActorPool.manage(addonTargetActor);
+    }
 
-      return {
-        "from": this.actorID,
-        "addons": addonTargetActors.map(addonTargetActor => addonTargetActor.form()),
-      };
-    });
+    if (this._addonTargetActorPool) {
+      this._addonTargetActorPool.destroy();
+    }
+    this._addonTargetActorPool = addonTargetActorPool;
+
+    return {
+      "from": this.actorID,
+      "addons": addonTargetActors.map(addonTargetActor => addonTargetActor.form()),
+    };
   },
 
   onAddonListChanged: function() {

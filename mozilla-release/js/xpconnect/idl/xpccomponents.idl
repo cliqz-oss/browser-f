@@ -20,20 +20,9 @@ interface nsIFile;
 interface nsILoadContext;
 interface nsIPersistentProperties;
 interface nsIURI;
-interface nsIJSCID;
-interface nsIJSIID;
 interface nsIPrincipal;
 interface nsIStackFrame;
 webidl Element;
-
-/**
-* interface of Components.interfacesByID
-* (interesting stuff only reflected into JavaScript)
-*/
-[scriptable, builtinclass, uuid(f235ef76-9919-478b-aa0f-282d994ddf76)]
-interface nsIXPCComponents_InterfacesByID : nsISupports
-{
-};
 
 /**
 * interface of Components.interfaces
@@ -50,17 +39,6 @@ interface nsIXPCComponents_Interfaces : nsISupports
 */
 [scriptable, builtinclass, uuid(978ff520-d26c-11d2-9842-006008962422)]
 interface nsIXPCComponents_Classes : nsISupports
-{
-  // Make it so that |cid| gets mapped to |idString|.
-  void initialize(in nsIJSCID cid, in string idString);
-};
-
-/**
-* interface of Components.classesByID
-* (interesting stuff only reflected into JavaScript)
-*/
-[scriptable, builtinclass, uuid(336a9590-4d19-11d3-9893-006008962422)]
-interface nsIXPCComponents_ClassesByID : nsISupports
 {
 };
 
@@ -101,18 +79,6 @@ interface nsIXPCComponents_Constructor : nsISupports
 };
 
 /**
-* interface of object returned by Components.Constructor
-* (additional interesting stuff only reflected into JavaScript)
-*/
-[scriptable, builtinclass, uuid(c814ca20-e0dc-11d3-8f5f-0010a4e73d9a)]
-interface nsIXPCConstructor : nsISupports
-{
-    readonly attribute nsIJSCID classID;
-    readonly attribute nsIJSIID interfaceID;
-    readonly attribute string   initializer;
-};
-
-/**
 * interface of object returned by Components.utils.Sandbox.
 */
 [scriptable, builtinclass, uuid(4f8ae0dc-d266-4a32-875b-6a9de71a8ce9)]
@@ -125,15 +91,6 @@ interface nsIXPCComponents_utils_Sandbox : nsISupports
  */
 [scriptable, function, uuid(71000535-b0fd-44d1-8ce0-909760e3953c)]
 interface ScheduledGCCallback : nsISupports
-{
-    void callback();
-};
-
-/**
- * Interface for callback to be passed to Cu.blockThreadedExecution.
- */
-[scriptable, function, uuid(c3b85a5c-c328-47d4-aaaf-384c4ff9d77d)]
-interface nsIBlockThreadedExecutionCallback : nsISupports
 {
     void callback();
 };
@@ -366,6 +323,12 @@ interface nsIXPCComponents_Utils : nsISupports
      */
     void unlinkGhostWindows();
 
+    /*
+     * In an NS_FREE_PERMANENT_DATA build, intentionally leak a C++ object. This
+     * is needed to test leak checking.
+     */
+    void intentionallyLeak();
+
     [implicit_jscontext]
     jsval getJSTestingFunctions();
 
@@ -492,6 +455,8 @@ interface nsIXPCComponents_Utils : nsISupports
      *
      * Enables Xray vision for same-compartment access for the compartment
      * indicated by |vscope|. All outgoing wrappers are recomputed.
+     *
+     * This must not be called on chrome (system-principal) scopes.
      */
     [implicit_jscontext]
     void setWantXrays(in jsval vscope);
@@ -704,21 +669,6 @@ interface nsIXPCComponents_Utils : nsISupports
      */
     AUTF8String readUTF8URI(in nsIURI url);
 
-    /**
-     * If the main thread is using any kind of fancy cooperative
-     * scheduling (e.g., Quantum DOM scheduling),
-     * blockThreadedExecution disables it temporarily. The
-     * aBlockedCallback is called when it has been completely disabled
-     * and events are back to running sequentially on a single main
-     * thread. Calling unblockThreadedExecution will re-enable thread
-     * scheduling of the main thread. Multiple calls to
-     * blockThreadedExecution will require the same number of calls to
-     * unblockThreadedExecution in order to resume cooperative
-     * scheduling.
-     */
-    void blockThreadedExecution(in nsIBlockThreadedExecutionCallback aBlockedCallback);
-    void unblockThreadedExecution();
-
     /* Give a directive to the record/replay system. */
     void recordReplayDirective(in long directive);
 
@@ -770,7 +720,6 @@ interface nsIXPCComponents_Utils : nsISupports
 interface nsIXPCComponentsBase : nsISupports
 {
     readonly attribute nsIXPCComponents_Interfaces      interfaces;
-    readonly attribute nsIXPCComponents_InterfacesByID  interfacesByID;
     readonly attribute nsIXPCComponents_Results         results;
 
     boolean isSuccessCode(in nsresult result);
@@ -781,7 +730,6 @@ interface nsIXPCComponentsBase : nsISupports
 interface nsIXPCComponents : nsIXPCComponentsBase
 {
     readonly attribute nsIXPCComponents_Classes         classes;
-    readonly attribute nsIXPCComponents_ClassesByID     classesByID;
     // Will return null if there is no JS stack right now.
     readonly attribute nsIStackFrame                    stack;
     readonly attribute nsIComponentManager              manager;

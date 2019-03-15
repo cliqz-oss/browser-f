@@ -7,9 +7,9 @@
 #ifndef mozilla_dom_SVGFEGaussianBlurElement_h
 #define mozilla_dom_SVGFEGaussianBlurElement_h
 
-#include "nsSVGFilters.h"
-#include "nsSVGNumberPair.h"
-#include "nsSVGString.h"
+#include "SVGFilters.h"
+#include "SVGNumberPair.h"
+#include "SVGString.h"
 
 nsresult NS_NewSVGFEGaussianBlurElement(
     nsIContent** aResult, already_AddRefed<mozilla::dom::NodeInfo>&& aNodeInfo);
@@ -17,7 +17,7 @@ nsresult NS_NewSVGFEGaussianBlurElement(
 namespace mozilla {
 namespace dom {
 
-typedef nsSVGFE SVGFEGaussianBlurElementBase;
+typedef SVGFE SVGFEGaussianBlurElementBase;
 
 class SVGFEGaussianBlurElement : public SVGFEGaussianBlurElementBase {
   friend nsresult(::NS_NewSVGFEGaussianBlurElement(
@@ -38,11 +38,10 @@ class SVGFEGaussianBlurElement : public SVGFEGaussianBlurElementBase {
       nsTArray<RefPtr<SourceSurface>>& aInputImages) override;
   virtual bool AttributeAffectsRendering(int32_t aNameSpaceID,
                                          nsAtom* aAttribute) const override;
-  virtual nsSVGString& GetResultImageName() override {
+  virtual SVGString& GetResultImageName() override {
     return mStringAttributes[RESULT];
   }
-  virtual void GetSourceImageNames(
-      nsTArray<nsSVGStringInfo>& aSources) override;
+  virtual void GetSourceImageNames(nsTArray<SVGStringInfo>& aSources) override;
 
   virtual nsresult Clone(dom::NodeInfo*, nsINode** aResult) const override;
 
@@ -57,11 +56,11 @@ class SVGFEGaussianBlurElement : public SVGFEGaussianBlurElementBase {
   virtual StringAttributesInfo GetStringInfo() override;
 
   enum { STD_DEV };
-  nsSVGNumberPair mNumberPairAttributes[1];
+  SVGNumberPair mNumberPairAttributes[1];
   static NumberPairInfo sNumberPairInfo[1];
 
   enum { RESULT, IN1 };
-  nsSVGString mStringAttributes[2];
+  SVGString mStringAttributes[2];
   static StringInfo sStringInfo[2];
 };
 

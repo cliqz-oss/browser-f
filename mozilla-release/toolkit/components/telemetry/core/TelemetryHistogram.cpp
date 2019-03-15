@@ -24,7 +24,6 @@
 #include "nsHashKeys.h"
 #include "nsITelemetry.h"
 #include "nsPrintfCString.h"
-#include "TelemetryCommon.h"
 #include "TelemetryHistogramNameMap.h"
 #include "TelemetryScalar.h"
 
@@ -49,6 +48,7 @@ using mozilla::Telemetry::Common::IsExpiredVersion;
 using mozilla::Telemetry::Common::IsInDataset;
 using mozilla::Telemetry::Common::LogToBrowserConsole;
 using mozilla::Telemetry::Common::RecordedProcessType;
+using mozilla::Telemetry::Common::StringHashSet;
 using mozilla::Telemetry::Common::SupportedProduct;
 using mozilla::Telemetry::Common::ToJSString;
 
@@ -1420,17 +1420,13 @@ nsresult KeyedHistogram::GetSnapshot(const StaticMutexAutoLock& aLock,
  * @param {aIncludeGPU} whether or not to include data for the GPU.
  * @param {aOutSnapshot} the container in which the snapshot data will be
  *                       stored.
- * @param {aSkipEmpty} whether or not to skip empty keyed histograms from the
- *        snapshot. Can't always assume "true" for consistency with the other
- *        callers.
  * @return {nsresult} NS_OK if the snapshot was successfully taken or
  *         NS_ERROR_OUT_OF_MEMORY if it failed to allocate memory.
  */
 nsresult internal_GetKeyedHistogramsSnapshot(
     const StaticMutexAutoLock& aLock, const nsACString& aStore,
     unsigned int aDataset, bool aClearSubsession, bool aIncludeGPU,
-    bool aFilterTest, KeyedHistogramProcessSnapshotsArray& aOutSnapshot,
-    bool aSkipEmpty = false) {
+    bool aFilterTest, KeyedHistogramProcessSnapshotsArray& aOutSnapshot) {
   if (!aOutSnapshot.resize(static_cast<uint32_t>(ProcessID::Count))) {
     return NS_ERROR_OUT_OF_MEMORY;
   }
@@ -1458,8 +1454,7 @@ nsresult internal_GetKeyedHistogramsSnapshot(
       KeyedHistogram* keyed =
           internal_GetKeyedHistogramById(id, ProcessID(process),
                                          /* instantiate = */ false);
-      if (!keyed || (aSkipEmpty && keyed->IsEmpty(aStore)) ||
-          keyed->IsExpired()) {
+      if (!keyed || keyed->IsEmpty(aStore) || keyed->IsExpired()) {
         continue;
       }
 
@@ -2347,11 +2342,11 @@ void TelemetryHistogram::InitializeGlobalState(bool canRecordBase,
   // We add static asserts here for those values to match so that future changes
   // don't go unnoticed.
   // clang-format off
-  static_assert((JS::gcreason::NUM_TELEMETRY_REASONS + 1) ==
+  static_assert((uint32_t(JS::GCReason::NUM_TELEMETRY_REASONS) + 1) ==
       gHistogramInfos[mozilla::Telemetry::GC_MINOR_REASON].bucketCount &&
-      (JS::gcreason::NUM_TELEMETRY_REASONS + 1) ==
+      (uint32_t(JS::GCReason::NUM_TELEMETRY_REASONS) + 1) ==
       gHistogramInfos[mozilla::Telemetry::GC_MINOR_REASON_LONG].bucketCount &&
-      (JS::gcreason::NUM_TELEMETRY_REASONS + 1) ==
+      (uint32_t(JS::GCReason::NUM_TELEMETRY_REASONS) + 1) ==
       gHistogramInfos[mozilla::Telemetry::GC_REASON_2].bucketCount,
       "NUM_TELEMETRY_REASONS is assumed to be a fixed value in Histograms.json."
       " If this was an intentional change, update the n_values for the "
@@ -2693,6 +2688,18 @@ void TelemetryHistogram::AccumulateChildKeyed(
   }
 }
 
+nsresult TelemetryHistogram::GetAllStores(StringHashSet& set) {
+  for (uint32_t storeIdx : gHistogramStoresTable) {
+    const char* name = &gHistogramStringTable[storeIdx];
+    nsAutoCString store;
+    store.AssignASCII(name);
+    if (!set.PutEntry(store)) {
+      return NS_ERROR_FAILURE;
+    }
+  }
+  return NS_OK;
+}
+
 nsresult TelemetryHistogram::GetHistogramById(
     const nsACString& name, JSContext* cx, JS::MutableHandle<JS::Value> ret) {
   HistogramID id;
@@ -2819,7 +2826,7 @@ nsresult TelemetryHistogram::GetKeyedHistogramSnapshots(
     StaticMutexAutoLock locker(gTelemetryHistogramMutex);
     nsresult rv = internal_GetKeyedHistogramsSnapshot(
         locker, aStore, aDataset, aClearSubsession, includeGPUProcess,
-        aFilterTest, processHistArray, true /* skipEmpty */);
+        aFilterTest, processHistArray);
     if (NS_FAILED(rv)) {
       return rv;
     }
@@ -3121,8 +3128,7 @@ nsresult TelemetryHistogram::SerializeKeyedHistograms(
             locker, NS_LITERAL_CSTRING("main"),
             nsITelemetry::DATASET_RELEASE_CHANNEL_OPTIN,
             false /* aClearSubsession */, includeGPUProcess,
-            false /* aFilterTest */, processHistArray,
-            true /* aSkipEmpty */))) {
+            false /* aFilterTest */, processHistArray))) {
       return NS_ERROR_FAILURE;
     }
   }

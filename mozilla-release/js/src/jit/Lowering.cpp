@@ -63,13 +63,13 @@ void LIRGenerator::visitParameter(MParameter* param) {
 
   offset *= sizeof(Value);
 #if defined(JS_NUNBOX32)
-#if MOZ_BIG_ENDIAN
+#  if MOZ_BIG_ENDIAN
   ins->getDef(0)->setOutput(LArgument(offset));
   ins->getDef(1)->setOutput(LArgument(offset + 4));
-#else
+#  else
   ins->getDef(0)->setOutput(LArgument(offset + 4));
   ins->getDef(1)->setOutput(LArgument(offset));
-#endif
+#  endif
 #elif defined(JS_PUNBOX64)
   ins->getDef(0)->setOutput(LArgument(offset));
 #endif
@@ -141,7 +141,8 @@ void LIRGenerator::visitDefVar(MDefVar* ins) {
 }
 
 void LIRGenerator::visitDefLexical(MDefLexical* ins) {
-  LDefLexical* lir = new (alloc()) LDefLexical();
+  LDefLexical* lir =
+      new (alloc()) LDefLexical(useRegisterAtStart(ins->environmentChain()));
   add(lir, ins);
   assignSafepoint(lir, ins);
 }
@@ -221,12 +222,6 @@ void LIRGenerator::visitNewNamedLambdaObject(MNewNamedLambdaObject* ins) {
 
 void LIRGenerator::visitNewCallObject(MNewCallObject* ins) {
   LNewCallObject* lir = new (alloc()) LNewCallObject(temp());
-  define(lir, ins);
-  assignSafepoint(lir, ins);
-}
-
-void LIRGenerator::visitNewSingletonCallObject(MNewSingletonCallObject* ins) {
-  LNewSingletonCallObject* lir = new (alloc()) LNewSingletonCallObject(temp());
   define(lir, ins);
   assignSafepoint(lir, ins);
 }
@@ -2371,8 +2366,7 @@ void LIRGenerator::visitModuleMetadata(MModuleMetadata* ins) {
 
 void LIRGenerator::visitDynamicImport(MDynamicImport* ins) {
   LDynamicImport* lir =
-      new (alloc()) LDynamicImport(useBoxAtStart(ins->referencingPrivate()),
-                                   useBoxAtStart(ins->specifier()));
+      new (alloc()) LDynamicImport(useBoxAtStart(ins->specifier()));
   defineReturn(lir, ins);
   assignSafepoint(lir, ins);
 }
@@ -4036,12 +4030,6 @@ void LIRGenerator::visitSetFrameArgument(MSetFrameArgument* ins) {
   }
 }
 
-void LIRGenerator::visitRunOncePrologue(MRunOncePrologue* ins) {
-  LRunOncePrologue* lir = new (alloc()) LRunOncePrologue;
-  add(lir, ins);
-  assignSafepoint(lir, ins);
-}
-
 void LIRGenerator::visitRest(MRest* ins) {
   MOZ_ASSERT(ins->numActuals()->type() == MIRType::Int32);
 
@@ -4206,12 +4194,11 @@ void LIRGenerator::visitHasClass(MHasClass* ins) {
 
 void LIRGenerator::visitGuardToClass(MGuardToClass* ins) {
   MOZ_ASSERT(ins->object()->type() == MIRType::Object);
-  MOZ_ASSERT(ins->type() == MIRType::ObjectOrNull ||
-             ins->type() == MIRType::Object);
+  MOZ_ASSERT(ins->type() == MIRType::Object);
   LGuardToClass* lir =
-      new (alloc()) LGuardToClass(useRegister(ins->object()), temp());
+      new (alloc()) LGuardToClass(useRegisterAtStart(ins->object()), temp());
   assignSnapshot(lir, Bailout_TypeBarrierO);
-  define(lir, ins);
+  defineReuseInput(lir, ins, 0);
 }
 
 void LIRGenerator::visitObjectClassToString(MObjectClassToString* ins) {
@@ -4730,12 +4717,12 @@ void LIRGenerator::visitInstructionDispatch(MInstruction* ins) {
   MOZ_CRASH();
 #else
   switch (ins->op()) {
-#define MIR_OP(op)              \
-  case MDefinition::Opcode::op: \
-    visit##op(ins->to##op());   \
-    break;
+#  define MIR_OP(op)              \
+    case MDefinition::Opcode::op: \
+      visit##op(ins->to##op());   \
+      break;
     MIR_OPCODE_LIST(MIR_OP)
-#undef MIR_OP
+#  undef MIR_OP
     default:
       MOZ_CRASH("Invalid instruction");
   }

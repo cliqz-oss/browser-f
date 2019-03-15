@@ -4,7 +4,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 #ifdef XP_WIN
-#include "WMF.h"
+#  include "WMF.h"
 #endif
 #include "GPUParent.h"
 #include "gfxConfig.h"
@@ -17,9 +17,9 @@
 #include "mozilla/Assertions.h"
 #include "mozilla/Telemetry.h"
 #include "mozilla/TimeStamp.h"
+#include "mozilla/VideoDecoderManagerChild.h"
+#include "mozilla/VideoDecoderManagerParent.h"
 #include "mozilla/dom/MemoryReportRequest.h"
-#include "mozilla/dom/VideoDecoderManagerChild.h"
-#include "mozilla/dom/VideoDecoderManagerParent.h"
 #include "mozilla/gfx/2D.h"
 #include "mozilla/gfx/gfxVars.h"
 #include "mozilla/image/ImageMemoryReporter.h"
@@ -51,16 +51,16 @@
 #include "cairo.h"
 #include "skia/include/core/SkGraphics.h"
 #if defined(XP_WIN)
-#include "mozilla/gfx/DeviceManagerDx.h"
-#include <process.h>
-#include <dwrite.h>
+#  include "mozilla/gfx/DeviceManagerDx.h"
+#  include <process.h>
+#  include <dwrite.h>
 #endif
 #ifdef MOZ_WIDGET_GTK
-#include <gtk/gtk.h>
-#include "skia/include/ports/SkTypeface_cairo.h"
+#  include <gtk/gtk.h>
+#  include "skia/include/ports/SkTypeface_cairo.h"
 #endif
 #ifdef MOZ_GECKO_PROFILER
-#include "ChildProfilerController.h"
+#  include "ChildProfilerController.h"
 #endif
 
 namespace mozilla {
@@ -397,7 +397,7 @@ mozilla::ipc::IPCResult GPUParent::RecvNewContentVRManager(
 
 mozilla::ipc::IPCResult GPUParent::RecvNewContentVideoDecoderManager(
     Endpoint<PVideoDecoderManagerParent>&& aEndpoint) {
-  if (!dom::VideoDecoderManagerParent::CreateForContent(std::move(aEndpoint))) {
+  if (!VideoDecoderManagerParent::CreateForContent(std::move(aEndpoint))) {
     return IPC_FAIL_NO_REASON(this);
   }
   return IPC_OK();
@@ -447,14 +447,22 @@ mozilla::ipc::IPCResult GPUParent::RecvRequestMemoryReport(
   GetGPUProcessName(processName);
 
   mozilla::dom::MemoryReportRequestClient::Start(
-      aGeneration, aAnonymize, aMinimizeMemoryUsage, aDMDFile, processName);
+      aGeneration, aAnonymize, aMinimizeMemoryUsage, aDMDFile, processName,
+      [&](const MemoryReport& aReport) {
+        Unused << GetSingleton()->SendAddMemoryReport(aReport);
+      },
+      [&](const uint32_t& aGeneration) {
+        return GetSingleton()->SendFinishMemoryReport(aGeneration);
+      });
   return IPC_OK();
 }
 
 mozilla::ipc::IPCResult GPUParent::RecvShutdownVR() {
   if (gfxPrefs::VRProcessEnabled()) {
-    VRGPUChild::ShutDown();
+    VRGPUChild::Shutdown();
   }
+  VRManager* vm = VRManager::Get();
+  vm->Destroy();
   return IPC_OK();
 }
 
@@ -485,7 +493,7 @@ void GPUParent::ActorDestroy(ActorDestroyReason aWhy) {
     mVsyncBridge->Shutdown();
     mVsyncBridge = nullptr;
   }
-  dom::VideoDecoderManagerParent::ShutdownVideoBridge();
+  VideoDecoderManagerParent::ShutdownVideoBridge();
   CompositorThreadHolder::Shutdown();
   // There is a case that RenderThread exists when gfxVars::UseWebRender() is
   // false. This could happen when WebRender was fallbacked to compositor.

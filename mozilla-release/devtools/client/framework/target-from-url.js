@@ -58,7 +58,7 @@ exports.targetFromURL = async function targetFromURL(url) {
   // (handy to debug chrome stuff in a content process)
   let chrome = params.has("chrome");
 
-  let form, front;
+  let front;
   if (type === "tab") {
     // Fetch target for a remote tab
     id = parseInt(id, 10);
@@ -66,8 +66,7 @@ exports.targetFromURL = async function targetFromURL(url) {
       throw new Error(`targetFromURL, wrong tab id '${id}', should be a number`);
     }
     try {
-      const response = await client.getTab({ outerWindowID: id });
-      form = response.tab;
+      front = await client.mainRoot.getTab({ outerWindowID: id });
     } catch (ex) {
       if (ex.startsWith("Protocol error (noTab)")) {
         throw new Error(`targetFromURL, tab with outerWindowID '${id}' doesn't exist`);
@@ -98,10 +97,9 @@ exports.targetFromURL = async function targetFromURL(url) {
       if (isNaN(id)) {
         throw new Error("targetFromURL, window requires id parameter");
       }
-      const response = await client.mainRoot.getWindow({
+      front = await client.mainRoot.getWindow({
         outerWindowID: id,
       });
-      form = response.window;
       chrome = true;
     } catch (ex) {
       if (ex.error == "notFound") {
@@ -113,7 +111,7 @@ exports.targetFromURL = async function targetFromURL(url) {
     throw new Error(`targetFromURL, unsupported type '${type}' parameter`);
   }
 
-  return TargetFactory.forRemoteTab({ client, form, activeTab: front, chrome });
+  return TargetFactory.forRemoteTab({ client, activeTab: front, chrome });
 };
 
 /**

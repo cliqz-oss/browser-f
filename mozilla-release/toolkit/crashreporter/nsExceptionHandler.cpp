@@ -19,6 +19,7 @@
 #include "mozilla/Unused.h"
 #include "mozilla/Printf.h"
 #include "mozilla/Sprintf.h"
+#include "mozilla/StaticMutex.h"
 #include "mozilla/SyncRunnable.h"
 #include "mozilla/TimeStamp.h"
 #include "mozilla/ipc/CrashReporterClient.h"
@@ -30,54 +31,54 @@
 #include "private/pprio.h"
 
 #if defined(XP_WIN32)
-#ifdef WIN32_LEAN_AND_MEAN
-#undef WIN32_LEAN_AND_MEAN
-#endif
+#  ifdef WIN32_LEAN_AND_MEAN
+#    undef WIN32_LEAN_AND_MEAN
+#  endif
 
-#include "nsXULAppAPI.h"
-#include "nsIXULAppInfo.h"
-#include "nsIWindowsRegKey.h"
-#include "breakpad-client/windows/crash_generation/client_info.h"
-#include "breakpad-client/windows/crash_generation/crash_generation_server.h"
-#include "breakpad-client/windows/handler/exception_handler.h"
-#include <dbghelp.h>
-#include <string.h>
-#include "nsDirectoryServiceUtils.h"
+#  include "nsXULAppAPI.h"
+#  include "nsIXULAppInfo.h"
+#  include "nsIWindowsRegKey.h"
+#  include "breakpad-client/windows/crash_generation/client_info.h"
+#  include "breakpad-client/windows/crash_generation/crash_generation_server.h"
+#  include "breakpad-client/windows/handler/exception_handler.h"
+#  include <dbghelp.h>
+#  include <string.h>
+#  include "nsDirectoryServiceUtils.h"
 
-#include "nsWindowsDllInterceptor.h"
-#include "mozilla/WindowsVersion.h"
+#  include "nsWindowsDllInterceptor.h"
+#  include "mozilla/WindowsVersion.h"
 #elif defined(XP_MACOSX)
-#include "breakpad-client/mac/crash_generation/client_info.h"
-#include "breakpad-client/mac/crash_generation/crash_generation_server.h"
-#include "breakpad-client/mac/handler/exception_handler.h"
-#include <string>
-#include <Carbon/Carbon.h>
-#include <CoreFoundation/CoreFoundation.h>
-#include <crt_externs.h>
-#include <fcntl.h>
-#include <mach/mach.h>
-#include <sys/types.h>
-#include <spawn.h>
-#include <unistd.h>
-#include "mac_utils.h"
+#  include "breakpad-client/mac/crash_generation/client_info.h"
+#  include "breakpad-client/mac/crash_generation/crash_generation_server.h"
+#  include "breakpad-client/mac/handler/exception_handler.h"
+#  include <string>
+#  include <Carbon/Carbon.h>
+#  include <CoreFoundation/CoreFoundation.h>
+#  include <crt_externs.h>
+#  include <fcntl.h>
+#  include <mach/mach.h>
+#  include <sys/types.h>
+#  include <spawn.h>
+#  include <unistd.h>
+#  include "mac_utils.h"
 #elif defined(XP_LINUX)
-#include "nsIINIParser.h"
-#include "common/linux/linux_libc_support.h"
-#include "third_party/lss/linux_syscall_support.h"
-#include "breakpad-client/linux/crash_generation/client_info.h"
-#include "breakpad-client/linux/crash_generation/crash_generation_server.h"
-#include "breakpad-client/linux/handler/exception_handler.h"
-#include "common/linux/eintr_wrapper.h"
-#include <fcntl.h>
-#include <sys/types.h>
-#include <sys/wait.h>
-#include <unistd.h>
+#  include "nsIINIParser.h"
+#  include "common/linux/linux_libc_support.h"
+#  include "third_party/lss/linux_syscall_support.h"
+#  include "breakpad-client/linux/crash_generation/client_info.h"
+#  include "breakpad-client/linux/crash_generation/crash_generation_server.h"
+#  include "breakpad-client/linux/handler/exception_handler.h"
+#  include "common/linux/eintr_wrapper.h"
+#  include <fcntl.h>
+#  include <sys/types.h>
+#  include <sys/wait.h>
+#  include <unistd.h>
 #else
-#error "Not yet implemented for this platform"
+#  error "Not yet implemented for this platform"
 #endif  // defined(XP_WIN32)
 
 #ifdef MOZ_CRASHREPORTER_INJECTOR
-#include "InjectCrashReporter.h"
+#  include "InjectCrashReporter.h"
 using mozilla::InjectCrashRunnable;
 #endif
 
@@ -101,7 +102,7 @@ using mozilla::InjectCrashRunnable;
 CFStringRef reporterClientAppID = CFSTR("org.mozilla.crashreporter");
 #endif
 #if defined(MOZ_WIDGET_ANDROID)
-#include "common/linux/file_id.h"
+#  include "common/linux/file_id.h"
 #endif
 
 using google_breakpad::ClientInfo;
@@ -118,66 +119,63 @@ using google_breakpad::PageAllocator;
 using namespace mozilla;
 using mozilla::ipc::CrashReporterClient;
 
-// From toolkit/library/rust/shared/lib.rs
-extern "C" {
-void install_rust_oom_hook();
-}
-
 namespace CrashReporter {
 
 #ifdef XP_WIN32
 typedef wchar_t XP_CHAR;
 typedef std::wstring xpstring;
-#define XP_TEXT(x) L##x
-#define CONVERT_XP_CHAR_TO_UTF16(x) x
-#define XP_STRLEN(x) wcslen(x)
-#define my_strlen strlen
-#define CRASH_REPORTER_FILENAME "crashreporter.exe"
-#define MINIDUMP_ANALYZER_FILENAME "minidump-analyzer.exe"
-#define PATH_SEPARATOR "\\"
-#define XP_PATH_SEPARATOR L"\\"
-#define XP_PATH_SEPARATOR_CHAR L'\\'
-#define XP_PATH_MAX (MAX_PATH + 1)
+#  define XP_TEXT(x) L##x
+#  define CONVERT_XP_CHAR_TO_UTF16(x) x
+#  define XP_STRLEN(x) wcslen(x)
+#  define my_strlen strlen
+#  define CRASH_REPORTER_FILENAME "crashreporter.exe"
+#  define MINIDUMP_ANALYZER_FILENAME "minidump-analyzer.exe"
+#  define PATH_SEPARATOR "\\"
+#  define XP_PATH_SEPARATOR L"\\"
+#  define XP_PATH_SEPARATOR_CHAR L'\\'
+#  define XP_PATH_MAX (MAX_PATH + 1)
 // "<reporter path>" "<minidump path>"
-#define CMDLINE_SIZE ((XP_PATH_MAX * 2) + 6)
-#ifdef _USE_32BIT_TIME_T
-#define XP_TTOA(time, buffer, base) ltoa(time, buffer, base)
-#else
-#define XP_TTOA(time, buffer, base) _i64toa(time, buffer, base)
-#endif
-#define XP_STOA(size, buffer, base) _ui64toa(size, buffer, base)
+#  define CMDLINE_SIZE ((XP_PATH_MAX * 2) + 6)
+#  ifdef _USE_32BIT_TIME_T
+#    define XP_TTOA(time, buffer, base) ltoa(time, buffer, base)
+#  else
+#    define XP_TTOA(time, buffer, base) _i64toa(time, buffer, base)
+#  endif
+#  define XP_STOA(size, buffer, base) _ui64toa(size, buffer, base)
 #else
 typedef char XP_CHAR;
 typedef std::string xpstring;
-#define XP_TEXT(x) x
-#define CONVERT_XP_CHAR_TO_UTF16(x) NS_ConvertUTF8toUTF16(x)
-#define CRASH_REPORTER_FILENAME "crashreporter"
-#define MINIDUMP_ANALYZER_FILENAME "minidump-analyzer"
-#define PATH_SEPARATOR "/"
-#define XP_PATH_SEPARATOR "/"
-#define XP_PATH_SEPARATOR_CHAR '/'
-#define XP_PATH_MAX PATH_MAX
-#ifdef XP_LINUX
-#define XP_STRLEN(x) my_strlen(x)
-#define XP_TTOA(time, buffer, base) my_inttostring(time, buffer, sizeof(buffer))
-#define XP_STOA(size, buffer, base) my_inttostring(size, buffer, sizeof(buffer))
-#else
-#define XP_STRLEN(x) strlen(x)
-#define XP_TTOA(time, buffer, base) sprintf(buffer, "%ld", time)
-#define XP_STOA(size, buffer, base) sprintf(buffer, "%zu", (size_t)size)
-#define my_strlen strlen
-#define sys_close close
-#define sys_fork fork
-#define sys_open open
-#define sys_read read
-#define sys_write write
-#endif
+#  define XP_TEXT(x) x
+#  define CONVERT_XP_CHAR_TO_UTF16(x) NS_ConvertUTF8toUTF16(x)
+#  define CRASH_REPORTER_FILENAME "crashreporter"
+#  define MINIDUMP_ANALYZER_FILENAME "minidump-analyzer"
+#  define PATH_SEPARATOR "/"
+#  define XP_PATH_SEPARATOR "/"
+#  define XP_PATH_SEPARATOR_CHAR '/'
+#  define XP_PATH_MAX PATH_MAX
+#  ifdef XP_LINUX
+#    define XP_STRLEN(x) my_strlen(x)
+#    define XP_TTOA(time, buffer, base) \
+      my_inttostring(time, buffer, sizeof(buffer))
+#    define XP_STOA(size, buffer, base) \
+      my_inttostring(size, buffer, sizeof(buffer))
+#  else
+#    define XP_STRLEN(x) strlen(x)
+#    define XP_TTOA(time, buffer, base) sprintf(buffer, "%ld", time)
+#    define XP_STOA(size, buffer, base) sprintf(buffer, "%zu", (size_t)size)
+#    define my_strlen strlen
+#    define sys_close close
+#    define sys_fork fork
+#    define sys_open open
+#    define sys_read read
+#    define sys_write write
+#  endif
 #endif  // XP_WIN32
 
 #if defined(__GNUC__)
-#define MAYBE_UNUSED __attribute__((unused))
+#  define MAYBE_UNUSED __attribute__((unused))
 #else
-#define MAYBE_UNUSED
+#  define MAYBE_UNUSED
 #endif  // defined(__GNUC__)
 
 #ifndef XP_LINUX
@@ -248,14 +246,10 @@ static bool sIncludeContextHeap = false;
 
 // OOP crash reporting
 static CrashGenerationServer* crashServer;  // chrome process has this
+static StaticMutex processMapLock;
 static std::map<ProcessId, PRFileDesc*> processToCrashFd;
 
 static std::terminate_handler oldTerminateHandler = nullptr;
-
-#if (defined(XP_MACOSX) || defined(XP_WIN))
-// This field is valid in both chrome and content processes.
-static xpstring* childProcessTmpDir = nullptr;
-#endif
 
 #if defined(XP_WIN) || defined(XP_MACOSX)
 // If crash reporting is disabled, we hand out this "null" pipe to the
@@ -267,12 +261,12 @@ static char* childCrashNotifyPipe;
 static int serverSocketFd = -1;
 static int clientSocketFd = -1;
 static int gMagicChildCrashReportFd =
-#if defined(MOZ_WIDGET_ANDROID)
+#  if defined(MOZ_WIDGET_ANDROID)
     // On android the fd is set at the time of child creation.
     -1
-#else
+#  else
     4
-#endif  // defined(MOZ_WIDGET_ANDROID)
+#  endif  // defined(MOZ_WIDGET_ANDROID)
     ;
 #endif
 
@@ -365,7 +359,7 @@ static LPTOP_LEVEL_EXCEPTION_FILTER WINAPI patched_SetUnhandledExceptionFilter(
   return nullptr;
 }
 
-#ifdef _WIN64
+#  if defined(HAVE_64BIT_BUILD)
 static LPTOP_LEVEL_EXCEPTION_FILTER sUnhandledExceptionFilter = nullptr;
 
 static long JitExceptionHandler(void* exceptionRecord, void* context) {
@@ -379,7 +373,7 @@ static void SetJitExceptionHandler() {
   if (sUnhandledExceptionFilter)
     js::SetJitExceptionHandler(JitExceptionHandler);
 }
-#endif
+#  endif
 
 /**
  * Reserve some VM space. In the event that we crash because VM space is
@@ -610,7 +604,7 @@ class PlatformWriter {
 };
 
 #else
-#error "Need implementation of PlatformWrite for this platform"
+#  error "Need implementation of PlatformWrite for this platform"
 #endif
 
 template <int N>
@@ -674,14 +668,14 @@ static void WriteGlobalMemoryStatus(PlatformWriter* apiData,
   MEMORYSTATUSEX statex;
   statex.dwLength = sizeof(statex);
   if (GlobalMemoryStatusEx(&statex)) {
-#define WRITE_STATEX_FIELD(field, name, conversionFunc) \
-  conversionFunc(statex.field, buffer, 10);             \
-  if (apiData) {                                        \
-    WriteAnnotation(*apiData, name, buffer);            \
-  }                                                     \
-  if (eventFile) {                                      \
-    WriteAnnotation(*eventFile, name, buffer);          \
-  }
+#  define WRITE_STATEX_FIELD(field, name, conversionFunc) \
+    conversionFunc(statex.field, buffer, 10);             \
+    if (apiData) {                                        \
+      WriteAnnotation(*apiData, name, buffer);            \
+    }                                                     \
+    if (eventFile) {                                      \
+      WriteAnnotation(*eventFile, name, buffer);          \
+    }
 
     WRITE_STATEX_FIELD(dwMemoryLoad, Annotation::SystemMemoryUsePercentage,
                        ltoa);
@@ -696,7 +690,7 @@ static void WriteGlobalMemoryStatus(PlatformWriter* apiData,
     WRITE_STATEX_FIELD(ullAvailPhys, Annotation::AvailablePhysicalMemory,
                        _ui64toa);
 
-#undef WRITE_STATEX_FIELD
+#  undef WRITE_STATEX_FIELD
   }
 }
 #endif
@@ -713,7 +707,7 @@ static void WriteGlobalMemoryStatus(PlatformWriter* apiData,
  */
 static bool LaunchProgram(const XP_CHAR* aProgramPath,
                           const XP_CHAR* aMinidumpPath) {
-#ifdef XP_WIN
+#  ifdef XP_WIN
   XP_CHAR cmdLine[CMDLINE_SIZE];
   XP_CHAR* p;
 
@@ -735,7 +729,7 @@ static bool LaunchProgram(const XP_CHAR* aProgramPath,
     CloseHandle(pi.hProcess);
     CloseHandle(pi.hThread);
   }
-#elif defined(XP_MACOSX)
+#  elif defined(XP_MACOSX)
   // Needed to locate NSS and its dependencies
   setenv("DYLD_LIBRARY_PATH", libraryPath, /* overwrite */ 1);
 
@@ -754,20 +748,16 @@ static bool LaunchProgram(const XP_CHAR* aProgramPath,
   if (rv != 0) {
     return false;
   }
-#else   // !XP_MACOSX
+#  else   // !XP_MACOSX
   pid_t pid = sys_fork();
 
   if (pid == -1) {
     return false;
   } else if (pid == 0) {
-    // need to clobber this, as libcurl might load NSS,
-    // and we want it to load the system NSS.
-    unsetenv("LD_LIBRARY_PATH");
-
     Unused << execl(aProgramPath, aProgramPath, aMinidumpPath, nullptr);
     _exit(1);
   }
-#endif  // XP_MACOSX
+#  endif  // XP_MACOSX
 
   return true;
 }
@@ -1046,12 +1036,12 @@ bool MinidumpCallback(
       WriteAnnotation(apiData, Annotation::BreakpadReserveSize, buffer);
     }
 
-#ifdef HAS_DLL_BLOCKLIST
+#  ifdef HAS_DLL_BLOCKLIST
     if (apiData.Valid()) {
       DllBlocklist_WriteNotes(apiData.Handle());
       DllBlocklist_WriteNotes(eventFile.Handle());
     }
-#endif
+#  endif
     WriteGlobalMemoryStatus(&apiData, &eventFile);
 #endif  // XP_WIN
 
@@ -1097,9 +1087,9 @@ bool MinidumpCallback(
       LaunchCrashHandlerService(crashReporterPath, minidumpPath, succeeded);
 #else  // Windows, Mac, Linux, etc...
   returnValue = LaunchProgram(crashReporterPath, minidumpPath);
-#ifdef XP_WIN
+#  ifdef XP_WIN
   TerminateProcess(GetCurrentProcess(), 1);
-#endif
+#  endif
 #endif
 
   return returnValue;
@@ -1183,7 +1173,7 @@ static size_t BuildTempPath(char* aBuf, size_t aBufLen) {
 }
 
 #else
-#error "Implement this for your platform"
+#  error "Implement this for your platform"
 #endif
 
 template <typename CharT, size_t N>
@@ -1256,7 +1246,7 @@ static void FreeBreakpadVM() {
   }
 }
 
-#if defined(XP_WIN)
+#  if defined(XP_WIN)
 
 /**
  * Filters out floating point exceptions which are handled by nsSigHandlers.cpp
@@ -1268,9 +1258,9 @@ static bool FPEFilter(void* context, EXCEPTION_POINTERS* exinfo,
                       MDRawAssertionInfo* assertion) {
   if (!exinfo) {
     mozilla::IOInterposer::Disable();
-#if defined(DEBUG) && defined(HAS_DLL_BLOCKLIST)
+#    if defined(DEBUG) && defined(HAS_DLL_BLOCKLIST)
     DllBlocklist_Shutdown();
-#endif
+#    endif
     FreeBreakpadVM();
     return true;
   }
@@ -1289,9 +1279,9 @@ static bool FPEFilter(void* context, EXCEPTION_POINTERS* exinfo,
       return false;  // Don't write minidump, continue exception search
   }
   mozilla::IOInterposer::Disable();
-#if defined(DEBUG) && defined(HAS_DLL_BLOCKLIST)
+#    if defined(DEBUG) && defined(HAS_DLL_BLOCKLIST)
   DllBlocklist_Shutdown();
-#endif
+#    endif
   FreeBreakpadVM();
   return true;
 }
@@ -1305,13 +1295,13 @@ static bool ChildFPEFilter(void* context, EXCEPTION_POINTERS* exinfo,
   return result;
 }
 
-#endif  // defined(XP_WIN)
+#  endif  // defined(XP_WIN)
 
 static MINIDUMP_TYPE GetMinidumpType() {
   MINIDUMP_TYPE minidump_type = static_cast<MINIDUMP_TYPE>(
       MiniDumpWithFullMemoryInfo | MiniDumpWithUnloadedModules);
 
-#ifdef NIGHTLY_BUILD
+#  ifdef NIGHTLY_BUILD
   // This is Nightly only because this doubles the size of minidumps based
   // on the experimental data.
   minidump_type =
@@ -1326,7 +1316,7 @@ static MINIDUMP_TYPE GetMinidumpType() {
         // at the cost of further doubling the size of minidumps.
         MiniDumpWithIndirectlyReferencedMemory);
   }
-#endif
+#  endif
 
   const char* e = PR_GetEnv("MOZ_CRASHREPORTER_FULLDUMP");
   if (e && *e) {
@@ -1358,9 +1348,9 @@ static bool ShouldReport() {
 
 static bool Filter(void* context) {
   mozilla::IOInterposer::Disable();
-#if defined(DEBUG) && defined(HAS_DLL_BLOCKLIST)
+#  if defined(DEBUG) && defined(HAS_DLL_BLOCKLIST)
   DllBlocklist_Shutdown();
-#endif
+#  endif
   return true;
 }
 
@@ -1386,12 +1376,12 @@ static nsresult LocateExecutable(nsIFile* aXREDirectory,
   nsresult rv = aXREDirectory->Clone(getter_AddRefs(exePath));
   NS_ENSURE_SUCCESS(rv, rv);
 
-#ifdef XP_MACOSX
+#  ifdef XP_MACOSX
   exePath->SetNativeLeafName(NS_LITERAL_CSTRING("MacOS"));
   exePath->Append(NS_LITERAL_STRING("crashreporter.app"));
   exePath->Append(NS_LITERAL_STRING("Contents"));
   exePath->Append(NS_LITERAL_STRING("MacOS"));
-#endif
+#  endif
 
   exePath->AppendNative(aName);
   exePath->GetPath(aPath);
@@ -1403,16 +1393,16 @@ static nsresult LocateExecutable(nsIFile* aXREDirectory,
 nsresult SetExceptionHandler(nsIFile* aXREDirectory, bool force /*=false*/) {
   if (gExceptionHandler) return NS_ERROR_ALREADY_INITIALIZED;
 
-#if !defined(DEBUG)
-  // In non-debug builds, enable the crash reporter by default, and allow
-  // disabling it with the MOZ_CRASHREPORTER_DISABLE environment variable.
-  const char* envvar = PR_GetEnv("MOZ_CRASHREPORTER_DISABLE");
-  if (envvar && *envvar && !force) return NS_OK;
-#else
+#if defined(DEBUG)
   // In debug builds, disable the crash reporter by default, and allow to
   // enable it with the MOZ_CRASHREPORTER environment variable.
   const char* envvar = PR_GetEnv("MOZ_CRASHREPORTER");
   if ((!envvar || !*envvar) && !force) return NS_OK;
+#else
+  // In other builds, enable the crash reporter by default, and allow
+  // disabling it with the MOZ_CRASHREPORTER_DISABLE environment variable.
+  const char* envvar = PR_GetEnv("MOZ_CRASHREPORTER_DISABLE");
+  if (envvar && *envvar && !force) return NS_OK;
 #endif
 
 #if defined(XP_WIN)
@@ -1445,7 +1435,7 @@ nsresult SetExceptionHandler(nsIFile* aXREDirectory, bool force /*=false*/) {
     return rv;
   }
 
-#ifdef XP_MACOSX
+#  ifdef XP_MACOSX
   nsCOMPtr<nsIFile> libPath;
   rv = aXREDirectory->Clone(getter_AddRefs(libPath));
   if (NS_WARN_IF(NS_FAILED(rv))) {
@@ -1457,17 +1447,17 @@ nsresult SetExceptionHandler(nsIFile* aXREDirectory, bool force /*=false*/) {
   if (NS_WARN_IF(NS_FAILED(rv))) {
     return rv;
   }
-#endif  // XP_MACOSX
+#  endif  // XP_MACOSX
 
-#ifdef XP_WIN32
+#  ifdef XP_WIN32
   crashReporterPath =
       reinterpret_cast<wchar_t*>(ToNewUnicode(crashReporterPath_temp));
-#else
+#  else
   crashReporterPath = ToNewCString(crashReporterPath_temp);
-#ifdef XP_MACOSX
+#    ifdef XP_MACOSX
   libraryPath = ToNewCString(libraryPath_temp);
-#endif
-#endif  // XP_WIN32
+#    endif
+#  endif  // XP_WIN32
 #else
   // On Android, we launch a service defined via MOZ_ANDROID_CRASH_HANDLER
   const char* androidCrashHandler = PR_GetEnv("MOZ_ANDROID_CRASH_HANDLER");
@@ -1549,14 +1539,14 @@ nsresult SetExceptionHandler(nsIFile* aXREDirectory, bool force /*=false*/) {
       (const wchar_t*)nullptr, nullptr);
 #else
       true
-#ifdef XP_MACOSX
+#  ifdef XP_MACOSX
       ,
       nullptr
-#endif
-#ifdef XP_LINUX
+#  endif
+#  ifdef XP_LINUX
       ,
       -1
-#endif
+#  endif
   );
 #endif  // XP_WIN32
 
@@ -1568,10 +1558,10 @@ nsresult SetExceptionHandler(nsIFile* aXREDirectory, bool force /*=false*/) {
   // Initially set sIncludeContextHeap to true for debugging startup crashes
   // even if the controlling pref value is false.
   SetIncludeContextHeap(true);
-#ifdef _WIN64
+#  if defined(HAVE_64BIT_BUILD)
   // Tell JS about the new filter before we disable SetUnhandledExceptionFilter
   SetJitExceptionHandler();
-#endif
+#  endif
 
   // protect the crash reporter from being unloaded
   gBlockUnhandledExceptionFilter = true;
@@ -1580,12 +1570,12 @@ nsresult SetExceptionHandler(nsIFile* aXREDirectory, bool force /*=false*/) {
       gKernel32Intercept, "SetUnhandledExceptionFilter",
       &patched_SetUnhandledExceptionFilter);
 
-#ifdef DEBUG
+#  ifdef DEBUG
   if (!ok)
     printf_stderr(
         "SetUnhandledExceptionFilter hook failed; crash reporter is "
         "vulnerable.\n");
-#endif
+#  endif
 #endif
 
   // store application start time
@@ -1612,8 +1602,6 @@ nsresult SetExceptionHandler(nsIFile* aXREDirectory, bool force /*=false*/) {
   mozalloc_set_oom_abort_handler(AnnotateOOMAllocationSize);
 
   oldTerminateHandler = std::set_terminate(&TerminateHandler);
-
-  install_rust_oom_hook();
 
   InitThreadAnnotation();
 
@@ -2896,6 +2884,7 @@ static bool WriteExtraForMinidump(nsIFile* minidump, uint32_t pid, bool content,
     }
   }
 
+  StaticMutexAutoLock pidMapLock(processMapLock);
   if (pid && processToCrashFd.count(pid)) {
     PRFileDesc* prFd = processToCrashFd[pid];
     processToCrashFd.erase(pid);
@@ -3071,26 +3060,6 @@ void OOPInit() {
              "attempt to initialize OOP crash reporter before in-process "
              "crashreporter!");
 
-#if (defined(XP_WIN) || defined(XP_MACOSX))
-  nsCOMPtr<nsIFile> tmpDir;
-#if defined(MOZ_CONTENT_SANDBOX)
-  nsresult rv = NS_GetSpecialDirectory(NS_APP_CONTENT_PROCESS_TEMP_DIR,
-                                       getter_AddRefs(tmpDir));
-  if (NS_FAILED(rv) && PR_GetEnv("XPCSHELL_TEST_PROFILE_DIR")) {
-    // Temporary hack for xpcshell, will be fixed in bug 1257098
-    rv = NS_GetSpecialDirectory(NS_OS_TEMP_DIR, getter_AddRefs(tmpDir));
-  }
-  if (NS_SUCCEEDED(rv)) {
-    childProcessTmpDir = CreatePathFromFile(tmpDir);
-  }
-#else
-  if (NS_SUCCEEDED(
-          NS_GetSpecialDirectory(NS_OS_TEMP_DIR, getter_AddRefs(tmpDir)))) {
-    childProcessTmpDir = CreatePathFromFile(tmpDir);
-  }
-#endif  // defined(MOZ_CONTENT_SANDBOX)
-#endif  // (defined(XP_WIN) || defined(XP_MACOSX))
-
 #if defined(XP_WIN)
   childCrashNotifyPipe =
       mozilla::Smprintf("\\\\.\\pipe\\gecko-crash-server-pipe.%i",
@@ -3179,15 +3148,6 @@ static void OOPDeinit() {
 #endif
 }
 
-void GetChildProcessTmpDir(nsIFile** aOutTmpDir) {
-  MOZ_ASSERT(XRE_IsParentProcess());
-#if (defined(XP_MACOSX) || defined(XP_WIN))
-  if (childProcessTmpDir) {
-    CreateFileFromPath(*childProcessTmpDir, aOutTmpDir);
-  }
-#endif
-}
-
 #if defined(XP_WIN) || defined(XP_MACOSX)
 // Parent-side API for children
 const char* GetChildNotificationPipe() {
@@ -3253,20 +3213,22 @@ void UnregisterInjectorCallback(DWORD processID) {
 
 #if !defined(XP_WIN)
 int GetAnnotationTimeCrashFd() {
-#if defined(MOZ_WIDGET_ANDROID)
+#  if defined(MOZ_WIDGET_ANDROID)
   return gChildCrashAnnotationReportFd;
-#else
+#  else
   return 7;
-#endif  // defined(MOZ_WIDGET_ANDROID)
+#  endif  // defined(MOZ_WIDGET_ANDROID)
 }
 #endif
 
 void RegisterChildCrashAnnotationFileDescriptor(ProcessId aProcess,
                                                 PRFileDesc* aFd) {
+  StaticMutexAutoLock pidMapLock(processMapLock);
   processToCrashFd[aProcess] = aFd;
 }
 
 void DeregisterChildCrashAnnotationFileDescriptor(ProcessId aProcess) {
+  StaticMutexAutoLock pidMapLock(processMapLock);
   auto it = processToCrashFd.find(aProcess);
   if (it != processToCrashFd.end()) {
     PR_Close(it->second);
@@ -3291,9 +3253,9 @@ bool SetRemoteExceptionHandler(const nsACString& crashPipe,
       NS_ConvertASCIItoUTF16(crashPipe).get(), nullptr);
   gExceptionHandler->set_handle_debug_exceptions(true);
 
-#ifdef _WIN64
+#  if defined(HAVE_64BIT_BUILD)
   SetJitExceptionHandler();
-#endif
+#  endif
 
   mozalloc_set_oom_abort_handler(AnnotateOOMAllocationSize);
 
@@ -3484,7 +3446,7 @@ ThreadId CurrentThreadId() {
   }
   abort();
 #else
-#error "Unsupported platform"
+#  error "Unsupported platform"
 #endif
 }
 

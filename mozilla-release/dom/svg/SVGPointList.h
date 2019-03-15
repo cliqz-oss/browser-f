@@ -12,7 +12,7 @@
 #include "nsIContent.h"
 #include "nsINode.h"
 #include "nsIWeakReferenceUtils.h"
-#include "nsSVGElement.h"
+#include "SVGElement.h"
 #include "nsTArray.h"
 #include "SVGPoint.h"
 
@@ -136,22 +136,22 @@ class SVGPointList {
  *
  * This class contains a strong reference to the element that instances of
  * this class are being used to animate. This is because the SMIL code stores
- * instances of this class in nsSMILValue objects, some of which are cached.
+ * instances of this class in SMILValue objects, some of which are cached.
  * Holding a strong reference to the element here prevents the element from
  * disappearing out from under the SMIL code unexpectedly.
  */
 class SVGPointListAndInfo : public SVGPointList {
  public:
-  explicit SVGPointListAndInfo(nsSVGElement* aElement = nullptr)
+  explicit SVGPointListAndInfo(dom::SVGElement* aElement = nullptr)
       : mElement(do_GetWeakReference(static_cast<nsINode*>(aElement))) {}
 
-  void SetInfo(nsSVGElement* aElement) {
+  void SetInfo(dom::SVGElement* aElement) {
     mElement = do_GetWeakReference(static_cast<nsINode*>(aElement));
   }
 
-  nsSVGElement* Element() const {
+  dom::SVGElement* Element() const {
     nsCOMPtr<nsIContent> e = do_QueryReferent(mElement);
-    return static_cast<nsSVGElement*>(e.get());
+    return static_cast<dom::SVGElement*>(e.get());
   }
 
   /**
@@ -192,7 +192,7 @@ class SVGPointListAndInfo : public SVGPointList {
 
  private:
   // We must keep a weak reference to our element because we may belong to a
-  // cached baseVal nsSMILValue. See the comments starting at:
+  // cached baseVal SMILValue. See the comments starting at:
   // https://bugzilla.mozilla.org/show_bug.cgi?id=515116#c15
   // See also https://bugzilla.mozilla.org/show_bug.cgi?id=653497
   nsWeakPtr mElement;

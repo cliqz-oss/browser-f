@@ -376,7 +376,7 @@ void VRDisplay::UpdateFrameInfo() {
    * should return the latest frame data always.
    */
   if (mFrameInfo.IsDirty() || !mPresentation) {
-    gfx::VRHMDSensorState state = mClient->GetSensorState();
+    const gfx::VRHMDSensorState& state = mClient->GetSensorState();
     const gfx::VRDisplayInfo& info = mClient->GetDisplayInfo();
     mFrameInfo.Update(info, state, mDepthNear, mDepthFar);
   }
@@ -586,7 +586,7 @@ void VRDisplay::GetLayers(nsTArray<VRLayer>& result) {
 }
 
 void VRDisplay::SubmitFrame() {
-  AUTO_PROFILER_TRACING("VR", "SubmitFrameAtVRDisplay");
+  AUTO_PROFILER_TRACING("VR", "SubmitFrameAtVRDisplay", OTHER);
 
   if (mClient && !mClient->IsPresentationGenerationCurrent()) {
     mPresentation = nullptr;
@@ -802,11 +802,11 @@ void VRFrameInfo::Update(const gfx::VRDisplayInfo& aInfo,
   }
 
   const gfx::VRFieldOfView leftFOV =
-      aInfo.mDisplayState.mEyeFOV[gfx::VRDisplayState::Eye_Left];
+      aInfo.mDisplayState.eyeFOV[gfx::VRDisplayState::Eye_Left];
   mLeftProjection =
       leftFOV.ConstructProjectionMatrix(aDepthNear, aDepthFar, true);
   const gfx::VRFieldOfView rightFOV =
-      aInfo.mDisplayState.mEyeFOV[gfx::VRDisplayState::Eye_Right];
+      aInfo.mDisplayState.eyeFOV[gfx::VRDisplayState::Eye_Right];
   mRightProjection =
       rightFOV.ConstructProjectionMatrix(aDepthNear, aDepthFar, true);
   memcpy(mLeftView.components, aState.leftViewMatrix,

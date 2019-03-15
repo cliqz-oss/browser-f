@@ -11,6 +11,7 @@
 #include "TextEditUtils.h"
 #include "gfxFontUtils.h"
 #include "mozilla/Assertions.h"
+#include "mozilla/ContentIterator.h"
 #include "mozilla/EditAction.h"
 #include "mozilla/EditorDOMPoint.h"
 #include "mozilla/HTMLEditor.h"
@@ -39,7 +40,6 @@
 #include "nsIAbsorbingTransaction.h"
 #include "nsIClipboard.h"
 #include "nsIContent.h"
-#include "nsIContentIterator.h"
 #include "nsIDocumentEncoder.h"
 #include "nsINode.h"
 #include "nsIPresShell.h"
@@ -120,7 +120,7 @@ NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(TextEditor)
   NS_INTERFACE_MAP_ENTRY(nsIPlaintextEditor)
 NS_INTERFACE_MAP_END_INHERITING(EditorBase)
 
-nsresult TextEditor::Init(nsIDocument& aDoc, Element* aRoot,
+nsresult TextEditor::Init(Document& aDoc, Element* aRoot,
                           nsISelectionController* aSelCon, uint32_t aFlags,
                           const nsAString& aInitialValue) {
   if (mRules) {
@@ -219,7 +219,7 @@ TextEditor::SetDocumentCharacterSet(const nsACString& characterSet) {
   NS_ENSURE_SUCCESS(rv, rv);
 
   // Update META charset element.
-  nsCOMPtr<nsIDocument> doc = GetDocument();
+  RefPtr<Document> doc = GetDocument();
   if (NS_WARN_IF(!doc)) {
     return NS_ERROR_NOT_INITIALIZED;
   }
@@ -262,7 +262,7 @@ TextEditor::SetDocumentCharacterSet(const nsACString& characterSet) {
   return NS_OK;
 }
 
-bool TextEditor::UpdateMetaCharset(nsIDocument& aDocument,
+bool TextEditor::UpdateMetaCharset(Document& aDocument,
                                    const nsACString& aCharacterSet) {
   // get a list of META tags
   RefPtr<nsContentList> metaList =
@@ -1455,12 +1455,11 @@ TextEditor::GetTextLength(int32_t* aCount) {
     return NS_ERROR_FAILURE;
   }
 
-  nsCOMPtr<nsIContentIterator> iter = NS_NewContentIterator();
-
   uint32_t totalLength = 0;
-  iter->Init(rootElement);
-  for (; !iter->IsDone(); iter->Next()) {
-    nsCOMPtr<nsINode> currentNode = iter->GetCurrentNode();
+  PostContentIterator postOrderIter;
+  postOrderIter.Init(rootElement);
+  for (; !postOrderIter.IsDone(); postOrderIter.Next()) {
+    nsCOMPtr<nsINode> currentNode = postOrderIter.GetCurrentNode();
     if (IsTextNode(currentNode) && IsEditable(currentNode)) {
       totalLength += currentNode->Length();
     }
@@ -1759,7 +1758,7 @@ TextEditor::CanCut(bool* aCanCut) {
   }
 
   // Cut is always enabled in HTML documents
-  nsCOMPtr<nsIDocument> doc = GetDocument();
+  RefPtr<Document> doc = GetDocument();
   *aCanCut = (doc && doc->IsHTMLOrXHTML()) ||
              (IsModifiable() && CanCutOrCopy(ePasswordFieldNotAllowed));
   return NS_OK;
@@ -1790,7 +1789,7 @@ TextEditor::CanCopy(bool* aCanCopy) {
   }
 
   // Copy is always enabled in HTML documents
-  nsCOMPtr<nsIDocument> doc = GetDocument();
+  RefPtr<Document> doc = GetDocument();
   *aCanCopy =
       (doc && doc->IsHTMLOrXHTML()) || CanCutOrCopy(ePasswordFieldNotAllowed);
   return NS_OK;
@@ -1831,7 +1830,7 @@ already_AddRefed<nsIDocumentEncoder> TextEditor::GetAndInitDocEncoder(
     docEncoder = mCachedDocumentEncoder;
   }
 
-  nsCOMPtr<nsIDocument> doc = GetDocument();
+  RefPtr<Document> doc = GetDocument();
   NS_ASSERTION(doc, "Need a document");
 
   nsresult rv = docEncoder->NativeInit(

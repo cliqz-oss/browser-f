@@ -22,7 +22,6 @@ XPCOMUtils.defineLazyServiceGetter(this, "aboutNewTabService",
                                    "nsIAboutNewTabService");
 
 Object.defineProperty(this, "BROWSER_NEW_TAB_URL", {
-  configurable: true,
   enumerable: true,
   get() {
     if (PrivateBrowsingUtils.isWindowPrivate(window) &&
@@ -342,7 +341,7 @@ function openLinkIn(url, where, params) {
         userContextId: aUserContextId,
         privateBrowsingId: aIsPrivate || (w && PrivateBrowsingUtils.isWindowPrivate(w)),
       };
-      return Services.scriptSecurityManager.createCodebasePrincipal(principal.URI, attrs);
+      return Services.scriptSecurityManager.principalWithOA(principal, attrs);
     }
     return principal;
   }

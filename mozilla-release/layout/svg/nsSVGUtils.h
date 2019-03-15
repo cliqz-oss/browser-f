@@ -31,13 +31,11 @@
 class gfxContext;
 class nsFrameList;
 class nsIContent;
-class nsIDocument;
+
 class nsIFrame;
 class nsPresContext;
 class nsStyleSVGPaint;
 class nsSVGDisplayContainerFrame;
-class nsSVGElement;
-class nsSVGEnum;
 class nsSVGLength2;
 class nsSVGOuterSVGFrame;
 class nsTextFrame;
@@ -48,9 +46,11 @@ struct nsRect;
 namespace mozilla {
 class SVGContextPaint;
 struct SVGContextPaintImpl;
+class SVGEnum;
 class SVGGeometryFrame;
 namespace dom {
 class Element;
+class SVGElement;
 class UserSpaceMetrics;
 }  // namespace dom
 namespace gfx {
@@ -154,6 +154,7 @@ class MOZ_RAII SVGAutoRenderState {
 class nsSVGUtils {
  public:
   typedef mozilla::dom::Element Element;
+  typedef mozilla::dom::SVGElement SVGElement;
   typedef mozilla::gfx::AntialiasMode AntialiasMode;
   typedef mozilla::gfx::DrawTarget DrawTarget;
   typedef mozilla::gfx::FillRule FillRule;
@@ -230,8 +231,7 @@ class nsSVGUtils {
      Input: content - object to be used for determining user space
      Input: length - length to be converted
   */
-  static float UserSpace(nsSVGElement* aSVGElement,
-                         const nsSVGLength2* aLength);
+  static float UserSpace(SVGElement* aSVGElement, const nsSVGLength2* aLength);
   static float UserSpace(nsIFrame* aFrame, const nsSVGLength2* aLength);
   static float UserSpace(const mozilla::dom::UserSpaceMetrics& aMetrics,
                          const nsSVGLength2* aLength);
@@ -344,8 +344,8 @@ class nsSVGUtils {
    * @param aFlags One or more of the BBoxFlags values defined below.
    */
   static gfxMatrix AdjustMatrixForUnits(const gfxMatrix& aMatrix,
-                                        nsSVGEnum* aUnits, nsIFrame* aFrame,
-                                        uint32_t aFlags);
+                                        mozilla::SVGEnum* aUnits,
+                                        nsIFrame* aFrame, uint32_t aFlags);
 
   enum BBoxFlags {
     eBBoxIncludeFill = 1 << 0,

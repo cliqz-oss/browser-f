@@ -21,6 +21,7 @@
 #include "jit/JitOptions.h"
 #include "jit/Lowering.h"
 #include "jit/MIR.h"
+#include "jit/MoveEmitter.h"
 #include "js/Conversions.h"
 #include "js/Printf.h"
 #include "vm/TraceLogging.h"
@@ -767,7 +768,7 @@ void MacroAssembler::checkAllocatorState(Label* fail) {
   // Don't execute the inline path if the realm has an object metadata callback,
   // as the metadata to use for the object may vary between executions of the
   // op.
-  if (GetJitContext()->realm->hasAllocationMetadataBuilder()) {
+  if (GetJitContext()->realm()->hasAllocationMetadataBuilder()) {
     jump(fail);
   }
 }
@@ -800,7 +801,7 @@ void MacroAssembler::nurseryAllocateObject(Register result, Register temp,
 
   // No explicit check for nursery.isEnabled() is needed, as the comparison
   // with the nursery's end will always fail in such cases.
-  CompileZone* zone = GetJitContext()->realm->zone();
+  CompileZone* zone = GetJitContext()->realm()->zone();
   size_t thingSize = gc::Arena::thingSize(allocKind);
   size_t totalSize = thingSize + nDynamicSlots * sizeof(HeapSlot);
   MOZ_ASSERT(totalSize < INT32_MAX);
@@ -818,7 +819,7 @@ void MacroAssembler::nurseryAllocateObject(Register result, Register temp,
 // Inlined version of FreeSpan::allocate. This does not fill in slots_.
 void MacroAssembler::freeListAllocate(Register result, Register temp,
                                       gc::AllocKind allocKind, Label* fail) {
-  CompileZone* zone = GetJitContext()->realm->zone();
+  CompileZone* zone = GetJitContext()->realm()->zone();
   int thingSize = int(gc::Arena::thingSize(allocKind));
 
   Label fallback;
@@ -881,7 +882,7 @@ void MacroAssembler::callMallocStub(size_t nbytes, Register result,
   }
 
   move32(Imm32(nbytes), regNBytes);
-  movePtr(ImmPtr(GetJitContext()->realm->zone()), regZone);
+  movePtr(ImmPtr(GetJitContext()->realm()->zone()), regZone);
   call(GetJitContext()->runtime->jitRuntime()->mallocStub());
   if (regReturn != result) {
     movePtr(regReturn, result);
@@ -991,7 +992,7 @@ void MacroAssembler::nurseryAllocateString(Register result, Register temp,
   // No explicit check for nursery.isEnabled() is needed, as the comparison
   // with the nursery's end will always fail in such cases.
 
-  CompileZone* zone = GetJitContext()->realm->zone();
+  CompileZone* zone = GetJitContext()->realm()->zone();
   size_t thingSize = gc::Arena::thingSize(allocKind);
   size_t totalSize = js::Nursery::stringHeaderSize() + thingSize;
   MOZ_ASSERT(totalSize < INT32_MAX, "Nursery allocation too large");
@@ -1027,7 +1028,7 @@ void MacroAssembler::bumpPointerAllocate(Register result, Register temp,
   subPtr(Imm32(size), result);
 
   if (GetJitContext()->runtime->geckoProfiler().enabled()) {
-    CompileZone* zone = GetJitContext()->realm->zone();
+    CompileZone* zone = GetJitContext()->realm()->zone();
     uint32_t* countAddress = zone->addressOfNurseryAllocCount();
     CheckedInt<int32_t> counterOffset =
         (CheckedInt<uintptr_t>(uintptr_t(countAddress)) -
@@ -1175,26 +1176,16 @@ static void AllocateObjectBufferWithInit(JSContext* cx, TypedArrayObject* obj,
   }
 
   obj->setFixedSlot(TypedArrayObject::LENGTH_SLOT, Int32Value(count));
-  size_t nbytes;
 
-  switch (obj->type()) {
-#define CREATE_TYPED_ARRAY(T, N)                                \
-  case Scalar::N:                                               \
-    MOZ_ALWAYS_TRUE(js::CalculateAllocSize<T>(count, &nbytes)); \
-    break;
-    JS_FOR_EACH_TYPED_ARRAY(CREATE_TYPED_ARRAY)
-#undef CREATE_TYPED_ARRAY
-    default:
-      MOZ_CRASH("Unsupported TypedArray type");
-  }
-
-  MOZ_ASSERT((CheckedUint32(nbytes) + sizeof(Value)).isValid());
+  size_t nbytes = count * obj->bytesPerElement();
+  MOZ_ASSERT((CheckedUint32(nbytes) + sizeof(Value)).isValid(),
+             "JS_ROUNDUP must not overflow");
 
   nbytes = JS_ROUNDUP(nbytes, sizeof(Value));
-  void* buf = cx->nursery().allocateBuffer(obj, nbytes);
+  void* buf = cx->nursery().allocateZeroedBuffer(obj, nbytes,
+                                                 js::ArrayBufferContentsArena);
   if (buf) {
     obj->initPrivate(buf);
-    memset(buf, 0, nbytes);
   }
 }
 
@@ -1206,19 +1197,24 @@ void MacroAssembler::initTypedArraySlots(Register obj, Register temp,
   MOZ_ASSERT(templateObj->hasPrivate());
   MOZ_ASSERT(!templateObj->hasBuffer());
 
-  size_t dataSlotOffset = TypedArrayObject::dataOffset();
-  size_t dataOffset = TypedArrayObject::dataOffset() + sizeof(HeapSlot);
+  constexpr size_t dataSlotOffset = TypedArrayObject::dataOffset();
+  constexpr size_t dataOffset = dataSlotOffset + sizeof(HeapSlot);
 
   static_assert(
       TypedArrayObject::FIXED_DATA_START == TypedArrayObject::DATA_SLOT + 1,
       "fixed inline element data assumed to begin after the data slot");
+
+  static_assert(
+      TypedArrayObject::INLINE_BUFFER_LIMIT ==
+          JSObject::MAX_BYTE_SIZE - dataOffset,
+      "typed array inline buffer is limited by the maximum object byte size");
 
   // Initialise data elements to zero.
   int32_t length = templateObj->length();
   size_t nbytes = length * templateObj->bytesPerElement();
 
   if (lengthKind == TypedArrayLength::Fixed &&
-      dataOffset + nbytes <= JSObject::MAX_BYTE_SIZE) {
+      nbytes <= TypedArrayObject::INLINE_BUFFER_LIMIT) {
     MOZ_ASSERT(dataOffset + nbytes <= templateObj->tenuredSizeOfThis());
 
     // Store data elements inside the remaining JSObject slots.
@@ -3044,13 +3040,13 @@ void MacroAssembler::setupABICall() {
 #if defined(JS_CODEGEN_ARM)
   // On ARM, we need to know what ABI we are using, either in the
   // simulator, or based on the configure flags.
-#if defined(JS_SIMULATOR_ARM)
+#  if defined(JS_SIMULATOR_ARM)
   abiArgs_.setUseHardFp(UseHardFpABI());
-#elif defined(JS_CODEGEN_ARM_HARDFP)
+#  elif defined(JS_CODEGEN_ARM_HARDFP)
   abiArgs_.setUseHardFp(true);
-#else
+#  else
   abiArgs_.setUseHardFp(false);
-#endif
+#  endif
 #endif
 
 #if defined(JS_CODEGEN_MIPS32)
@@ -3152,9 +3148,9 @@ void MacroAssembler::callWithABINoProfiler(void* fun, MoveOp::Type result,
 #endif
 }
 
-void MacroAssembler::callWithABI(wasm::BytecodeOffset bytecode,
-                                 wasm::SymbolicAddress imm,
-                                 MoveOp::Type result) {
+CodeOffset MacroAssembler::callWithABI(wasm::BytecodeOffset bytecode,
+                                       wasm::SymbolicAddress imm,
+                                       MoveOp::Type result) {
   MOZ_ASSERT(wasm::NeedsBuiltinThunk(imm));
 
   // We clobber WasmTlsReg below in the loadWasmTlsRegFromFrame(), but Ion
@@ -3169,10 +3165,14 @@ void MacroAssembler::callWithABI(wasm::BytecodeOffset bytecode,
   // points when placing arguments.
   loadWasmTlsRegFromFrame();
 
-  call(wasm::CallSiteDesc(bytecode.offset(), wasm::CallSite::Symbolic), imm);
+  CodeOffset raOffset = call(
+      wasm::CallSiteDesc(bytecode.offset(), wasm::CallSite::Symbolic), imm);
+
   callWithABIPost(stackAdjust, result, /* callFromWasm = */ true);
 
   Pop(WasmTlsReg);
+
+  return raOffset;
 }
 
 // ===============================================================
@@ -3181,6 +3181,29 @@ void MacroAssembler::callWithABI(wasm::BytecodeOffset bytecode,
 void MacroAssembler::linkExitFrame(Register cxreg, Register scratch) {
   loadPtr(Address(cxreg, JSContext::offsetOfActivation()), scratch);
   storeStackPtr(Address(scratch, JitActivation::offsetOfPackedExitFP()));
+}
+
+// ===============================================================
+// Simple value-shuffling helpers, to hide MoveResolver verbosity
+// in common cases.
+
+void MacroAssembler::moveRegPair(Register src0, Register src1, Register dst0,
+                                 Register dst1, MoveOp::Type type) {
+  MoveResolver& moves = moveResolver();
+  if (src0 != dst0) {
+    propagateOOM(moves.addMove(MoveOperand(src0), MoveOperand(dst0), type));
+  }
+  if (src1 != dst1) {
+    propagateOOM(moves.addMove(MoveOperand(src1), MoveOperand(dst1), type));
+  }
+  propagateOOM(moves.resolve());
+  if (oom()) {
+    return;
+  }
+
+  MoveEmitter emitter(*this);
+  emitter.emit(moves);
+  emitter.finish();
 }
 
 // ===============================================================
@@ -3394,8 +3417,8 @@ void MacroAssembler::wasmReserveStackChecked(uint32_t amount,
   }
 }
 
-void MacroAssembler::wasmCallImport(const wasm::CallSiteDesc& desc,
-                                    const wasm::CalleeDesc& callee) {
+CodeOffset MacroAssembler::wasmCallImport(const wasm::CallSiteDesc& desc,
+                                          const wasm::CalleeDesc& callee) {
   // Load the callee, before the caller's registers are clobbered.
   uint32_t globalDataOffset = callee.importGlobalDataOffset();
   loadWasmGlobalPtr(globalDataOffset + offsetof(wasm::FuncImportTls, code),
@@ -3416,10 +3439,10 @@ void MacroAssembler::wasmCallImport(const wasm::CallSiteDesc& desc,
                     WasmTlsReg);
   loadWasmPinnedRegsFromTls();
 
-  call(desc, ABINonArgReg0);
+  return call(desc, ABINonArgReg0);
 }
 
-void MacroAssembler::wasmCallBuiltinInstanceMethod(
+CodeOffset MacroAssembler::wasmCallBuiltinInstanceMethod(
     const wasm::CallSiteDesc& desc, const ABIArg& instanceArg,
     wasm::SymbolicAddress builtin) {
   MOZ_ASSERT(instanceArg != ABIArg());
@@ -3437,12 +3460,12 @@ void MacroAssembler::wasmCallBuiltinInstanceMethod(
     MOZ_CRASH("Unknown abi passing style for pointer");
   }
 
-  call(desc, builtin);
+  return call(desc, builtin);
 }
 
-void MacroAssembler::wasmCallIndirect(const wasm::CallSiteDesc& desc,
-                                      const wasm::CalleeDesc& callee,
-                                      bool needsBoundsCheck) {
+CodeOffset MacroAssembler::wasmCallIndirect(const wasm::CallSiteDesc& desc,
+                                            const wasm::CalleeDesc& callee,
+                                            bool needsBoundsCheck) {
   Register scratch = WasmTableCallScratchReg0;
   Register index = WasmTableCallIndexReg;
 
@@ -3465,8 +3488,7 @@ void MacroAssembler::wasmCallIndirect(const wasm::CallSiteDesc& desc,
       addPtr(index, scratch);
     }
     loadPtr(Address(scratch, offsetof(wasm::FunctionTableElem, code)), scratch);
-    call(desc, scratch);
-    return;
+    return call(desc, scratch);
   }
 
   MOZ_ASSERT(callee.which() == wasm::CalleeDesc::WasmTable);
@@ -3519,7 +3541,7 @@ void MacroAssembler::wasmCallIndirect(const wasm::CallSiteDesc& desc,
 
   loadPtr(Address(scratch, offsetof(wasm::FunctionTableElem, code)), scratch);
 
-  call(desc, scratch);
+  return call(desc, scratch);
 }
 
 void MacroAssembler::emitPreBarrierFastPath(JSRuntime* rt, MIRType type,
@@ -3629,7 +3651,7 @@ void MacroAssembler::emitPreBarrierFastPath(JSRuntime* rt, MIRType type,
 #elif JS_CODEGEN_NONE
   MOZ_CRASH();
 #else
-#error "Unknown architecture"
+#  error "Unknown architecture"
 #endif
 
   // No barrier is needed if the bit is set, |word & mask != 0|.

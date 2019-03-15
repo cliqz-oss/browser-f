@@ -20,8 +20,8 @@
 <!ENTITY aboutPrivateBrowsing.info.saved.before          "&brandShortName; wird ">
 <!ENTITY aboutPrivateBrowsing.info.saved.emphasize       "Folgendes speichern">
 <!ENTITY aboutPrivateBrowsing.info.saved.after2          ":">
-<!ENTITY aboutPrivateBrowsing.info.downloads   "Downloads">
-<!ENTITY aboutPrivateBrowsing.info.bookmarks   "Lesezeichen">
+<!ENTITY aboutPrivateBrowsing.info.downloads             "Downloads">
+<!ENTITY aboutPrivateBrowsing.info.bookmarks             "Lesezeichen">
 <!ENTITY aboutPrivateBrowsing.info.clipboard             "Kopierten Text">
 <!ENTITY aboutPrivateBrowsing.note.before                "Privates Surfen ">
 <!ENTITY aboutPrivateBrowsing.note.emphasize             "anonymisiert Sie nicht">
@@ -36,3 +36,13 @@
 
 <!ENTITY contentBlocking.title                           "Blockieren von Seitenelementen">
 <!ENTITY contentBlocking.description                     "Einige Websites verwenden Elemente zur Aktivitätenverfolgung, um Ihr Surfverhalten quer über das Internet zu verfolgen. In privaten Fenstern ist Firefoxs Blockieren von Seitenelementen automatisch aktiv und verhindert das Laden vieler Elemente zur Aktivitätenverfolgung, welche sonst Informationen über Ihr Surfverhalten sammeln können.">
+
+<!-- Strings for new Private Browsing with Search -->
+<!-- LOCALIZATION NOTE (aboutPrivateBrowsing.search.placeholder): This is the placeholder
+                       text for the search box.   -->
+<!ENTITY aboutPrivateBrowsing.search.placeholder         "Das Web durchsuchen">
+<!ENTITY aboutPrivateBrowsing.info.title                 "Dies ist ein privates Fenster">
+<!ENTITY aboutPrivateBrowsing.info.description           "&brandShortName; leert die eingegebenen Suchbegriffe und besuchten Webseiten beim Beenden der Anwendung oder wenn alle privaten Tabs und Fenster geschlossen wurden. Das macht Sie gegenüber Website-Betreibern und Internetanbietern nicht anonym, aber erleichtert es Ihnen, dass andere Nutzer des Computers Ihre Aktivitäten nicht einsehen können.">
+<!-- LOCALIZATION NOTE (aboutPrivateBrowsing.info.myths): This is a link to a SUMO article
+                       about private browsing myths.   -->
+<!ENTITY aboutPrivateBrowsing.info.myths                 "Häufige Missverständnisse über das Surfen im Privaten Modus">

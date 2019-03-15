@@ -35,7 +35,7 @@ static ToolbarGTKMetrics sToolbarMetrics;
 #define ARROW_LEFT (G_PI + G_PI_2)
 
 #if !GTK_CHECK_VERSION(3, 14, 0)
-#define GTK_STATE_FLAG_CHECKED (1 << 11)
+#  define GTK_STATE_FLAG_CHECKED (1 << 11)
 #endif
 
 #if 0
@@ -381,9 +381,6 @@ static void CalculateToolbarButtonSpacing(WidgetNodeType aAppearance,
     aMetrics->buttonMargin.right += buttonSpacing;
   }
 
-  aMetrics->iconXPosition += aMetrics->buttonMargin.left;
-  aMetrics->iconYPosition += aMetrics->buttonMargin.top;
-
   aMetrics->minSizeWithBorderMargin.width +=
       aMetrics->buttonMargin.right + aMetrics->buttonMargin.left;
   aMetrics->minSizeWithBorderMargin.height +=
@@ -391,9 +388,15 @@ static void CalculateToolbarButtonSpacing(WidgetNodeType aAppearance,
 }
 
 int GetGtkHeaderBarButtonLayout(WidgetNodeType* aButtonLayout,
-                                int aMaxButtonNums) {
-  NS_ASSERTION(aMaxButtonNums >= TOOLBAR_BUTTONS,
-               "Requested number of buttons is higher than storage capacity!");
+                                int aMaxButtonNums,
+                                bool* aReversedButtonsPlacement) {
+#if DEBUG
+  if (aButtonLayout) {
+    NS_ASSERTION(
+        aMaxButtonNums >= TOOLBAR_BUTTONS,
+        "Requested number of buttons is higher than storage capacity!");
+  }
+#endif
 
   const gchar* decorationLayout = nullptr;
   GtkSettings* settings = gtk_settings_get_for_screen(gdk_screen_get_default());
@@ -401,20 +404,41 @@ int GetGtkHeaderBarButtonLayout(WidgetNodeType* aButtonLayout,
 
   // Use a default layout
   if (!decorationLayout) {
-    decorationLayout = "minimize,maximize,close";
+    decorationLayout = "menu:minimize,maximize,close";
+  }
+
+  // "minimize,maximize,close:" layout means buttons are on the opposite
+  // titlebar side. close button is always there.
+  bool reversedButtonsPlacement = false;
+  const char *closeButton = strstr(decorationLayout, "close");
+  const char *separator = strchr(decorationLayout, ':');
+  if (closeButton != nullptr && separator != nullptr) {
+    reversedButtonsPlacement = closeButton < separator;
   }
 
   // We support only default button order now:
-  // minimize/maximize/close
+  // minimize/maximize/close for right placement
+  // close/minimize/maximize for left placement
   int activeButtonNums = 0;
-  if (strstr(decorationLayout, "minimize") != nullptr) {
-    aButtonLayout[activeButtonNums++] = MOZ_GTK_HEADER_BAR_BUTTON_MINIMIZE;
+  if (aButtonLayout) {
+    if (reversedButtonsPlacement &&
+        strstr(decorationLayout, "close") != nullptr) {
+      aButtonLayout[activeButtonNums++] = MOZ_GTK_HEADER_BAR_BUTTON_CLOSE;
+    }
+    if (strstr(decorationLayout, "minimize") != nullptr) {
+      aButtonLayout[activeButtonNums++] = MOZ_GTK_HEADER_BAR_BUTTON_MINIMIZE;
+    }
+    if (strstr(decorationLayout, "maximize") != nullptr) {
+      aButtonLayout[activeButtonNums++] = MOZ_GTK_HEADER_BAR_BUTTON_MAXIMIZE;
+    }
+    if (!reversedButtonsPlacement &&
+        strstr(decorationLayout, "close") != nullptr) {
+      aButtonLayout[activeButtonNums++] = MOZ_GTK_HEADER_BAR_BUTTON_CLOSE;
+    }
   }
-  if (strstr(decorationLayout, "maximize") != nullptr) {
-    aButtonLayout[activeButtonNums++] = MOZ_GTK_HEADER_BAR_BUTTON_MAXIMIZE;
-  }
-  if (strstr(decorationLayout, "close") != nullptr) {
-    aButtonLayout[activeButtonNums++] = MOZ_GTK_HEADER_BAR_BUTTON_CLOSE;
+
+  if (aReversedButtonsPlacement) {
+    *aReversedButtonsPlacement = reversedButtonsPlacement;
   }
 
   return activeButtonNums;
@@ -435,7 +459,7 @@ static void EnsureToolbarMetrics(void) {
     // Calculate titlebar button visibility and positions.
     WidgetNodeType aButtonLayout[TOOLBAR_BUTTONS];
     int activeButtonNums =
-        GetGtkHeaderBarButtonLayout(aButtonLayout, TOOLBAR_BUTTONS);
+        GetGtkHeaderBarButtonLayout(aButtonLayout, TOOLBAR_BUTTONS, nullptr);
 
     for (int i = 0; i < activeButtonNums; i++) {
       int buttonIndex = (aButtonLayout[i] - MOZ_GTK_HEADER_BAR_BUTTON_CLOSE);
@@ -570,8 +594,9 @@ static gint moz_gtk_header_bar_button_paint(cairo_t* cr, GdkRectangle* rect,
         (void (*)(GtkStyleContext*, cairo_t*, cairo_surface_t*, gdouble,
                   gdouble))dlsym(RTLD_DEFAULT, "gtk_render_icon_surface");
 
-    sGtkRenderIconSurfacePtr(style, cr, surface, metrics->iconXPosition,
-                             metrics->iconYPosition);
+    sGtkRenderIconSurfacePtr(style, cr, surface,
+                             rect->x + metrics->iconXPosition,
+                             rect->y + metrics->iconYPosition);
     gtk_style_context_restore(style);
   }
 
@@ -2348,7 +2373,12 @@ gint moz_gtk_get_widget_border(WidgetNodeType widget, gint* left, gint* top,
       style = GetStyleContext(MOZ_GTK_HEADER_BAR);
       moz_gtk_add_border_padding(style, left, top, right, bottom);
       *top = *bottom = 0;
+      bool leftButtonsPlacement;
+      GetGtkHeaderBarButtonLayout(nullptr, 0, &leftButtonsPlacement);
       if (direction == GTK_TEXT_DIR_RTL) {
+        leftButtonsPlacement = !leftButtonsPlacement;
+      }
+      if (leftButtonsPlacement) {
         *right = 0;
       } else {
         *left = 0;

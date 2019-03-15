@@ -36,11 +36,7 @@ inline GlobalObject& InterpreterFrame::global() const {
 }
 
 inline JSObject& InterpreterFrame::varObj() const {
-  JSObject* obj = environmentChain();
-  while (!obj->isQualifiedVarObj()) {
-    obj = obj->enclosingEnvironment();
-  }
-  return *obj;
+  return GetVariablesObject(environmentChain());
 }
 
 inline LexicalEnvironmentObject&
@@ -195,7 +191,7 @@ inline void InterpreterFrame::unsetIsDebuggee() {
 /*****************************************************************************/
 
 inline void InterpreterStack::purge(JSRuntime* rt) {
-  rt->gc.freeUnusedLifoBlocksAfterSweeping(&allocator_);
+  rt->gc.queueUnusedLifoBlocksForFree(&allocator_);
 }
 
 uint8_t* InterpreterStack::allocateFrame(JSContext* cx, size_t size) {
@@ -657,6 +653,13 @@ inline GlobalObject* AbstractFramePtr::global() const {
   return &script()->global();
 }
 
+inline bool AbstractFramePtr::hasGlobal(const GlobalObject* global) const {
+  if (isWasmDebugFrame()) {
+    return asWasmDebugFrame()->hasGlobal(global);
+  }
+  return script()->hasGlobal(global);
+}
+
 inline JSFunction* AbstractFramePtr::callee() const {
   if (isInterpreterFrame()) {
     return &asInterpreterFrame()->callee();
@@ -921,7 +924,6 @@ InterpreterActivation::InterpreterActivation(RunState& state, JSContext* cx,
 {
   regs_.prepareToRun(*entryFrame, state.script());
   MOZ_ASSERT(regs_.pc == state.script()->code());
-  MOZ_ASSERT_IF(entryFrame_->isEvalFrame(), state.script()->isActiveEval());
 }
 
 InterpreterActivation::~InterpreterActivation() {

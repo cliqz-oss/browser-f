@@ -14,6 +14,7 @@ $grey-70: #38383D;
 $grey-80: #2A2A2E;
 $grey-90: #0C0C0D;
 $teal-70: #008EA4;
+$teal-80: #005A71;
 $red-60: #D70022;
 $yellow-50: #FFE900;
 
@@ -45,6 +46,7 @@ $grey-90-90: rgba($grey-90, 0.9);
 $black: #000;
 $black-5: rgba($black, 0.05);
 $black-10: rgba($black, 0.1);
+$black-12: rgba($black, 0.12);
 $black-15: rgba($black, 0.15);
 $black-20: rgba($black, 0.2);
 $black-25: rgba($black, 0.25);
@@ -96,6 +98,8 @@ $wrapper-max-width-widest: $grid-unit * 8 + $base-gutter * 7 + $section-horizont
 // layout issues when the scrollbar is visible. 16px is wide enough to cover all
 // OSes and keeps it simpler than a per-OS value.
 $scrollbar-width: 16px;
+
+// Breakpoints
 $break-point-medium: $wrapper-max-width-medium + $base-gutter * 2 + $scrollbar-width;
 $break-point-large: $wrapper-max-width-large + $base-gutter * 2 + $scrollbar-width;
 $break-point-widest: $wrapper-max-width-widest + $base-gutter * 2 + $scrollbar-width;

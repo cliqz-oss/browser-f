@@ -33,7 +33,7 @@
 #include "mozilla/layers/PTextureChild.h"
 #include "mozilla/layers/SyncObject.h"
 #ifdef XP_DARWIN
-#include "mozilla/layers/TextureSync.h"
+#  include "mozilla/layers/TextureSync.h"
 #endif
 #include "ShadowLayerUtils.h"
 #include "mozilla/layers/TextureClient.h"  // for TextureClient
@@ -529,9 +529,11 @@ bool ShadowLayerForwarder::EndTransaction(
     const nsIntRegion& aRegionToClear, TransactionId aId,
     bool aScheduleComposite, uint32_t aPaintSequenceNumber,
     bool aIsRepeatTransaction, const mozilla::VsyncId& aVsyncId,
+    const mozilla::TimeStamp& aVsyncStart,
     const mozilla::TimeStamp& aRefreshStart,
-    const mozilla::TimeStamp& aTransactionStart, const nsCString& aURL,
-    bool* aSent) {
+    const mozilla::TimeStamp& aTransactionStart, bool aContainsSVG,
+    const nsCString& aURL, bool* aSent,
+    const InfallibleTArray<CompositionPayload>& aPayload) {
   *aSent = false;
 
   TransactionInfo info;
@@ -672,12 +674,15 @@ bool ShadowLayerForwarder::EndTransaction(
   info.paintSequenceNumber() = aPaintSequenceNumber;
   info.isRepeatTransaction() = aIsRepeatTransaction;
   info.vsyncId() = aVsyncId;
+  info.vsyncStart() = aVsyncStart;
   info.refreshStart() = aRefreshStart;
   info.transactionStart() = aTransactionStart;
   info.url() = aURL;
+  info.containsSVG() = aContainsSVG;
 #if defined(ENABLE_FRAME_LATENCY_LOG)
   info.fwdTime() = TimeStamp::Now();
 #endif
+  info.payload() = aPayload;
 
   TargetConfig targetConfig(mTxn->mTargetBounds, mTxn->mTargetRotation,
                             mTxn->mTargetOrientation, aRegionToClear);

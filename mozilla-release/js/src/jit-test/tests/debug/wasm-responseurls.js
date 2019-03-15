@@ -1,6 +1,8 @@
-// |jit-test| test-also-no-wasm-baseline; skip-if: !wasmDebuggingIsSupported()
+// |jit-test| test-also-wasm-compiler-ion; skip-if: !wasmDebuggingIsSupported()
 // Tests that wasm module can accept URL and sourceMapURL from response
 // when instantiateStreaming is used.
+
+ignoreUnhandledRejections();
 
 try {
     WebAssembly.compileStreaming();
@@ -11,7 +13,7 @@ try {
 
 load(libdir + "asserts.js");
 
-var g = newGlobal();
+var g = newGlobal({newCompartment: true});
 
 var source = new g.Uint8Array(wasmTextToBinary('(module (func unreachable))'));
 source.url = "http://example.org/test.wasm";

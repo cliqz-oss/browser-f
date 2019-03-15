@@ -16,9 +16,13 @@
 #include "nsJSUtils.h"
 #include "jsfriendapi.h"
 #include "js/CompilationAndEvaluation.h"
+#include "js/PropertySpec.h"
+#include "js/SourceText.h"
+#include "js/Utility.h"
 #include "prnetdb.h"
 #include "nsITimer.h"
 #include "mozilla/net/DNS.h"
+#include "mozilla/Utf8.h"
 #include "nsServiceManagerUtils.h"
 #include "nsNetCID.h"
 
@@ -30,8 +34,10 @@ namespace net {
 // evaluations. Additionally dnsResolve(host) and myIpAddress() are supplied in
 // the same context but are implemented as c++ helpers. alert(msg) is similarly
 // defined.
+//
+// Per ProxyAutoConfig::Init, this data must be ASCII.
 
-static const char *sPacUtils =
+static const char sAsciiPacUtils[] =
     "function dnsDomainIs(host, domain) {\n"
     "    return (host.length >= domain.length &&\n"
     "            host.substring(host.length - domain.length) == domain);\n"
@@ -655,14 +661,28 @@ void ProxyAutoConfig::SetThreadLocalIndex(uint32_t index) {
 }
 
 nsresult ProxyAutoConfig::Init(const nsCString &aPACURI,
-                               const nsCString &aPACScript, bool aIncludePath,
-                               uint32_t aExtraHeapSize,
+                               const nsCString &aPACScriptData,
+                               bool aIncludePath, uint32_t aExtraHeapSize,
                                nsIEventTarget *aEventTarget) {
   mShutdown = false;  // Shutdown needs to be called prior to destruction
 
   mPACURI = aPACURI;
-  mPACScript = sPacUtils;
-  mPACScript.Append(aPACScript);
+
+  // The full PAC script data is the concatenation of 1) the various functions
+  // exposed to PAC scripts in |sAsciiPacUtils| and 2) the user-provided PAC
+  // script data.  Historically this was single-byte Latin-1 text (usually just
+  // ASCII, but bug 296163 has a real-world Latin-1 example).  We now support
+  // UTF-8 if the full data validates as UTF-8, before falling back to Latin-1.
+  // (Technically this is a breaking change: intentional Latin-1 scripts that
+  // happen to be valid UTF-8 may have different behavior.  We assume such cases
+  // are vanishingly rare.)
+  //
+  // Supporting both UTF-8 and Latin-1 requires that the functions exposed to
+  // PAC scripts be both UTF-8- and Latin-1-compatible: that is, they must be
+  // ASCII.
+  mConcatenatedPACData = sAsciiPacUtils;
+  mConcatenatedPACData.Append(aPACScriptData);
+
   mIncludePath = aIncludePath;
   mExtraHeapSize = aExtraHeapSize;
   mMainThreadEventTarget = aEventTarget;
@@ -680,7 +700,7 @@ nsresult ProxyAutoConfig::SetupJS() {
   delete mJSContext;
   mJSContext = nullptr;
 
-  if (mPACScript.IsEmpty()) return NS_ERROR_FAILURE;
+  if (mConcatenatedPACData.IsEmpty()) return NS_ERROR_FAILURE;
 
   NS_GetCurrentThread()->SetCanInvokeJS(true);
 
@@ -701,13 +721,34 @@ nsresult ProxyAutoConfig::SetupJS() {
 
   JS::Rooted<JSObject *> global(cx, mJSContext->Global());
 
-  JS::CompileOptions options(cx);
-  options.setFileAndLine(mPACURI.get(), 1);
+  auto CompilePACScript = [this](JSContext *cx,
+                                 JS::MutableHandle<JSScript *> script) {
+    JS::CompileOptions options(cx);
+    options.setFileAndLine(this->mPACURI.get(), 1);
+
+    // Per ProxyAutoConfig::Init, compile as UTF-8 if the full data is UTF-8,
+    // and otherwise inflate Latin-1 to UTF-16 and compile that.
+    const char *scriptData = this->mConcatenatedPACData.get();
+    size_t scriptLength = this->mConcatenatedPACData.Length();
+    if (mozilla::IsValidUtf8(scriptData, scriptLength)) {
+      return JS::CompileUtf8(cx, options, scriptData, scriptLength, script);
+    }
+
+    // nsReadableUtils.h says that "ASCII" is a misnomer "for legacy reasons",
+    // and this handles not just ASCII but Latin-1 too.
+    NS_ConvertASCIItoUTF16 inflated(this->mConcatenatedPACData);
+
+    JS::SourceText<char16_t> source;
+    if (!source.init(cx, inflated.get(), inflated.Length(),
+                     JS::SourceOwnership::Borrowed)) {
+      return false;
+    }
+
+    return JS::Compile(cx, options, source, script);
+  };
 
   JS::Rooted<JSScript *> script(cx);
-  if (!JS::CompileLatin1(cx, options, mPACScript.get(), mPACScript.Length(),
-                         &script) ||
-      !JS_ExecuteScript(cx, script)) {
+  if (!CompilePACScript(cx, &script) || !JS_ExecuteScript(cx, script)) {
     nsString alertMessage(
         NS_LITERAL_STRING("PAC file failed to install from "));
     if (isDataURI) {
@@ -731,7 +772,7 @@ nsresult ProxyAutoConfig::SetupJS() {
   PACLogToConsole(alertMessage);
 
   // we don't need these now
-  mPACScript.Truncate();
+  mConcatenatedPACData.Truncate();
   mPACURI.Truncate();
 
   return NS_OK;

@@ -39,5 +39,18 @@ module.exports = {
     "env": {
       "mozilla/browser-window": true
     }
+  }, {
+    // TODO: Bug 1513639. Temporarily turn off reject-importGlobalProperties
+    // due to other ESLint enabling happening in DOM.
+    "files": "dom/**",
+    "rules": {
+      "mozilla/reject-importGlobalProperties": "off",
+    }
+  }, {
+    // TODO: Bug 1515949. Enable no-undef for gfx/
+    "files": "gfx/layers/apz/test/mochitest/**",
+    "rules": {
+      "no-undef": "off",
+    }
   }]
 };

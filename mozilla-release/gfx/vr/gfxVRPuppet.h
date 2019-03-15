@@ -15,7 +15,7 @@
 #include "VRDisplayLocal.h"
 
 #if defined(XP_WIN)
-#include "CompositorD3D11.h"
+#  include "CompositorD3D11.h"
 #endif
 
 #if defined(XP_MACOSX)
@@ -36,7 +36,7 @@ class VRDisplayPuppet : public VRDisplayLocal {
   void ZeroSensor() override;
 
  protected:
-  virtual VRHMDSensorState GetSensorState() override;
+  virtual VRHMDSensorState& GetSensorState() override;
   virtual void StartPresentation() override;
   virtual void StopPresentation() override;
 #if defined(XP_WIN)

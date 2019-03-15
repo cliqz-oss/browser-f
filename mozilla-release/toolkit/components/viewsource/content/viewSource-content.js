@@ -287,7 +287,11 @@ var ViewSourceContent = {
 
     // CLIQZ-SPECIAL: trying to load view-source of moz-extension here results in getting error
     // NS_ERROR_DOM_BAD_URI "Component returned failure code: 0x805303f4 [nsIWebNavigation.loadURI]"
-    webNav.loadURI(URL, loadFlags, null, null, null, Services.scriptSecurityManager.getSystemPrincipal());
+    let loadURIOptions = {
+      triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal(),
+      loadFlags,
+    };
+    webNav.loadURI(URL, loadURIOptions);
   },
 
   /**
@@ -607,12 +611,14 @@ var ViewSourceContent = {
     let loadFlags = Ci.nsIWebNavigation.LOAD_FLAGS_NONE;
     let referrerPolicy = Ci.nsIHttpChannel.REFERRER_POLICY_UNSET;
     let webNav = docShell.QueryInterface(Ci.nsIWebNavigation);
-    webNav.loadURIWithOptions(uri, loadFlags,
-                              null, referrerPolicy, // referrer
-                              null, null, // postData, headers
-                              Services.io.newURI(baseURI),
-                              Services.scriptSecurityManager.getSystemPrincipal(),
-                              false);
+    let loadURIOptions = {
+      triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal(),
+      loadFlags,
+      referrerPolicy,
+      baseURI: Services.io.newURI(baseURI),
+      ensurePrivate: false,
+    };
+    webNav.loadURI(uri, loadURIOptions);
   },
 
   /**

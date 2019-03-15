@@ -8,14 +8,16 @@
 #include "DOMSVGNumberList.h"
 #include "DOMSVGAnimatedNumberList.h"
 #include "SVGAnimatedNumberList.h"
-#include "nsSVGElement.h"
+#include "SVGElement.h"
 #include "nsError.h"
 #include "nsContentUtils.h"  // for NS_ENSURE_FINITE
 #include "mozilla/dom/SVGNumberBinding.h"
+#include "mozilla/dom/SVGSVGElement.h"
 
 // See the architecture comment in DOMSVGAnimatedNumberList.h.
 
 namespace mozilla {
+namespace dom {
 
 // We could use NS_IMPL_CYCLE_COLLECTION(, except that in Unlink() we need to
 // clear our list's weak ref to us to be safe. (The other option would be to
@@ -104,6 +106,14 @@ DOMSVGNumber::DOMSVGNumber(nsISupports* aParent)
       mIsAnimValItem(false),
       mValue(0.0f) {}
 
+DOMSVGNumber::DOMSVGNumber(SVGSVGElement* aParent)
+    : mList(nullptr),
+      mParent(ToSupports(aParent)),
+      mListIndex(0),
+      mAttrEnum(0),
+      mIsAnimValItem(false),
+      mValue(0.0f) {}
+
 float DOMSVGNumber::Value() {
   if (mIsAnimValItem && HasOwner()) {
     Element()->FlushAnimations();  // May make HasOwner() == false
@@ -167,7 +177,8 @@ bool DOMSVGNumber::IndexIsValid() {
 
 JSObject* DOMSVGNumber::WrapObject(JSContext* aCx,
                                    JS::Handle<JSObject*> aGivenProto) {
-  return dom::SVGNumber_Binding::Wrap(aCx, this, aGivenProto);
+  return SVGNumber_Binding::Wrap(aCx, this, aGivenProto);
 }
 
+}  // namespace dom
 }  // namespace mozilla

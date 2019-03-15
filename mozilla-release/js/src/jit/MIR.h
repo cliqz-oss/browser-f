@@ -115,9 +115,11 @@ static inline MIRType MIRTypeFromValue(const js::Value& vp) {
    */                                                                          \
   _(GuardRangeBailouts)                                                        \
                                                                                \
-  /* Keep the flagged instruction in resume points and do not substitute this  \
-   * instruction by an UndefinedValue. This might be used by call inlining     \
-   * when a function argument is not used by the inlined instructions.         \
+  /* Some instructions have uses that aren't directly represented in the graph,\
+   * and need to be handled specially. As an example, this is used to keep the \
+   * flagged instruction in resume points, not substituting with an            \
+   * UndefinedValue. This can be used by call inlining when a function argument\
+   * is not used by the inlined instructions.                                  \
    */                                                                          \
   _(ImplicitlyUsed)                                                            \
                                                                                \
@@ -2230,6 +2232,7 @@ class MNewIterator : public MUnaryInstruction, public NoTypePolicy::Data {
   enum Type {
     ArrayIterator,
     StringIterator,
+    RegExpStringIterator,
   };
 
  private:
@@ -3571,17 +3574,6 @@ class MSetArgumentsObjectArg
   AliasSet getAliasSet() const override {
     return AliasSet::Store(AliasSet::Any);
   }
-};
-
-class MRunOncePrologue : public MNullaryInstruction {
- protected:
-  MRunOncePrologue() : MNullaryInstruction(classOpcode) { setGuard(); }
-
- public:
-  INSTRUCTION_HEADER(RunOncePrologue)
-  TRIVIAL_NEW_WRAPPERS
-
-  bool possiblyCalls() const override { return true; }
 };
 
 // Given a MIRType::Value A and a MIRType::Object B:
@@ -6305,44 +6297,29 @@ class MGlobalNameConflictsCheck : public MNullaryInstruction {
 
 // If not defined, set a global variable to |undefined|.
 class MDefVar : public MUnaryInstruction, public NoTypePolicy::Data {
-  CompilerPropertyName name_;  // Target name to be defined.
-  unsigned attrs_;             // Attributes to be set.
-
  private:
-  MDefVar(PropertyName* name, unsigned attrs, MDefinition* envChain)
-      : MUnaryInstruction(classOpcode, envChain), name_(name), attrs_(attrs) {}
+  explicit MDefVar(MDefinition* envChain)
+      : MUnaryInstruction(classOpcode, envChain) {}
 
  public:
   INSTRUCTION_HEADER(DefVar)
   TRIVIAL_NEW_WRAPPERS
   NAMED_OPERANDS((0, environmentChain))
 
-  PropertyName* name() const { return name_; }
-  unsigned attrs() const { return attrs_; }
-
   bool possiblyCalls() const override { return true; }
-  bool appendRoots(MRootList& roots) const override {
-    return roots.append(name_);
-  }
 };
 
-class MDefLexical : public MNullaryInstruction {
-  CompilerPropertyName name_;  // Target name to be defined.
-  unsigned attrs_;             // Attributes to be set.
-
+class MDefLexical : public MUnaryInstruction, public NoTypePolicy::Data {
  private:
-  MDefLexical(PropertyName* name, unsigned attrs)
-      : MNullaryInstruction(classOpcode), name_(name), attrs_(attrs) {}
+  explicit MDefLexical(MDefinition* envChain)
+      : MUnaryInstruction(classOpcode, envChain) {}
 
  public:
   INSTRUCTION_HEADER(DefLexical)
   TRIVIAL_NEW_WRAPPERS
+  NAMED_OPERANDS((0, environmentChain))
 
-  PropertyName* name() const { return name_; }
-  unsigned attrs() const { return attrs_; }
-  bool appendRoots(MRootList& roots) const override {
-    return roots.append(name_);
-  }
+  bool possiblyCalls() const override { return true; }
 };
 
 class MDefFun : public MBinaryInstruction, public ObjectPolicy<0>::Data {
@@ -6621,18 +6598,16 @@ class MModuleMetadata : public MNullaryInstruction {
   }
 };
 
-class MDynamicImport : public MBinaryInstruction, public BoxInputsPolicy::Data {
-  explicit MDynamicImport(MDefinition* referencingPrivate,
-                          MDefinition* specifier)
-      : MBinaryInstruction(classOpcode, referencingPrivate, specifier) {
+class MDynamicImport : public MUnaryInstruction, public BoxInputsPolicy::Data {
+  explicit MDynamicImport(MDefinition* specifier)
+      : MUnaryInstruction(classOpcode, specifier) {
     setResultType(MIRType::Object);
   }
 
  public:
   INSTRUCTION_HEADER(DynamicImport)
   TRIVIAL_NEW_WRAPPERS
-  NAMED_OPERANDS((0, referencingPrivate))
-  NAMED_OPERANDS((1, specifier))
+  NAMED_OPERANDS((0, specifier))
 };
 
 struct LambdaFunctionInfo {
@@ -10408,43 +10383,26 @@ class MNewNamedLambdaObject : public MNullaryInstruction {
   }
 };
 
-class MNewCallObjectBase : public MUnaryInstruction,
-                           public SingleObjectPolicy::Data {
- protected:
-  MNewCallObjectBase(Opcode op, MConstant* templateObj)
-      : MUnaryInstruction(op, templateObj) {
-    setResultType(MIRType::Object);
-  }
-
- public:
-  CallObject* templateObject() const {
-    return &getOperand(0)->toConstant()->toObject().as<CallObject>();
-  }
-  AliasSet getAliasSet() const override { return AliasSet::None(); }
-};
-
-class MNewCallObject : public MNewCallObjectBase {
+class MNewCallObject : public MUnaryInstruction,
+                       public SingleObjectPolicy::Data {
  public:
   INSTRUCTION_HEADER(NewCallObject)
   TRIVIAL_NEW_WRAPPERS
 
   explicit MNewCallObject(MConstant* templateObj)
-      : MNewCallObjectBase(classOpcode, templateObj) {
+      : MUnaryInstruction(classOpcode, templateObj) {
     MOZ_ASSERT(!templateObject()->isSingleton());
+    setResultType(MIRType::Object);
   }
+
+  CallObject* templateObject() const {
+    return &getOperand(0)->toConstant()->toObject().as<CallObject>();
+  }
+  AliasSet getAliasSet() const override { return AliasSet::None(); }
 
   MOZ_MUST_USE bool writeRecoverData(
       CompactBufferWriter& writer) const override;
   bool canRecoverOnBailout() const override { return true; }
-};
-
-class MNewSingletonCallObject : public MNewCallObjectBase {
- public:
-  INSTRUCTION_HEADER(NewSingletonCallObject)
-  TRIVIAL_NEW_WRAPPERS
-
-  explicit MNewSingletonCallObject(MConstant* templateObj)
-      : MNewCallObjectBase(classOpcode, templateObj) {}
 };
 
 class MNewStringObject : public MUnaryInstruction,
@@ -10726,20 +10684,15 @@ class MGuardToClass : public MUnaryInstruction,
                       public SingleObjectPolicy::Data {
   const Class* class_;
 
-  MGuardToClass(MDefinition* object, const Class* clasp, MIRType resultType)
+  MGuardToClass(MDefinition* object, const Class* clasp)
       : MUnaryInstruction(classOpcode, object), class_(clasp) {
-    MOZ_ASSERT(object->type() == MIRType::Object ||
-               (object->type() == MIRType::Value &&
-                object->mightBeType(MIRType::Object)));
-    MOZ_ASSERT(resultType == MIRType::Object ||
-               resultType == MIRType::ObjectOrNull);
-    setResultType(resultType);
+    MOZ_ASSERT(object->type() == MIRType::Object);
+    setResultType(MIRType::Object);
     setMovable();
-    if (resultType == MIRType::Object) {
-      // We will bail out if the class type is incorrect,
-      // so we need to ensure we don't eliminate this instruction
-      setGuard();
-    }
+
+    // We will bail out if the class type is incorrect, so we need to ensure we
+    // don't eliminate this instruction
+    setGuard();
   }
 
  public:

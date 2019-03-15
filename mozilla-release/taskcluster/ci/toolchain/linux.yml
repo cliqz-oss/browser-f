@@ -55,7 +55,7 @@ linux64-clang-trunk-mingw-x86:
         kind: build
         platform: toolchains/opt
         symbol: TMW(clang-x86)
-        tier: 2
+        tier: 1
     worker-type: aws-provisioner-v1/gecko-{level}-b-linux-xlarge
     worker:
         max-run-time: 7200
@@ -96,6 +96,29 @@ linux64-clang-trunk-mingw-x64:
         toolchain-artifact: public/build/clangmingw.tar.xz
     toolchains:
         - linux64-gcc-4.9
+
+linux64-clang-7-android-cross:
+    description: "Clang 7 toolchain build"
+    treeherder:
+        kind: build
+        platform: toolchains/opt
+        symbol: TL(clang7-android)
+        tier: 1
+    worker-type: aws-provisioner-v1/gecko-{level}-b-linux-xlarge
+    worker:
+        max-run-time: 7200
+    run:
+        using: toolchain-script
+        script: build-clang-7-android.sh
+        resources:
+            - 'build/build-clang/build-clang.py'
+            - 'build/build-clang/clang-7-android.json'
+            - 'taskcluster/scripts/misc/tooltool-download.sh'
+        toolchain-alias: linux64-clang-android-cross
+        toolchain-artifact: public/build/clang.tar.xz
+    toolchains:
+        - linux64-gcc-4.9
+        - linux64-android-ndk-linux-repack
 
 linux64-clang-7-macosx-cross:
     description: "Clang 7 toolchain build with MacOS Compiler RT libs"
@@ -141,7 +164,12 @@ linux64-clang-tidy:
         using: toolchain-script
         script: build-clang-tidy-linux.sh
         resources:
-            - 'build/clang-plugin/**'
+            - 'build/clang-plugin/**/*.cpp'
+            - 'build/clang-plugin/**/*.h'
+            - 'build/clang-plugin/*.inc'
+            - 'build/clang-plugin/*.py'
+            - 'build/clang-plugin/moz.build'
+            - 'build/clang-plugin/Makefile.in'
             - 'build/build-clang/build-clang.py'
             - 'build/build-clang/clang-tidy-linux64.json'
             - 'taskcluster/scripts/misc/tooltool-download.sh'
@@ -488,7 +516,7 @@ linux64-rust-1.28:
         ]
         toolchain-artifact: public/build/rustc.tar.xz
 
-linux64-rust-1.30:
+linux64-rust-1.31:
     description: "rust repack"
     treeherder:
         kind: build
@@ -504,7 +532,7 @@ linux64-rust-1.30:
         using: toolchain-script
         script: repack_rust.py
         arguments: [
-            '--channel', '1.30.0',
+            '--channel', '1.31.0',
             '--host', 'x86_64-unknown-linux-gnu',
             '--target', 'x86_64-unknown-linux-gnu',
             '--target', 'i686-unknown-linux-gnu',
@@ -535,7 +563,7 @@ linux64-rust-nightly:
         ]
         toolchain-artifact: public/build/rustc.tar.xz
 
-linux64-rust-macos-1.30:
+linux64-rust-macos-1.31:
     description: "rust repack with macos-cross support"
     treeherder:
         kind: build
@@ -551,7 +579,7 @@ linux64-rust-macos-1.30:
         using: toolchain-script
         script: repack_rust.py
         arguments: [
-            '--channel', '1.30.0',
+            '--channel', '1.31.0',
             '--host', 'x86_64-unknown-linux-gnu',
             '--target', 'x86_64-unknown-linux-gnu',
             '--target', 'x86_64-apple-darwin',
@@ -582,7 +610,7 @@ linux64-rust-nightly-macos:
         ]
         toolchain-artifact: public/build/rustc.tar.xz
 
-linux64-rust-android-1.30:
+linux64-rust-android-1.31:
     description: "rust repack with android-cross support"
     treeherder:
         kind: build
@@ -598,7 +626,7 @@ linux64-rust-android-1.30:
         using: toolchain-script
         script: repack_rust.py
         arguments: [
-            '--channel', '1.30.0',
+            '--channel', '1.31.0',
             '--host', 'x86_64-unknown-linux-gnu',
             '--target', 'x86_64-unknown-linux-gnu',
             '--target', 'armv7-linux-androideabi',
@@ -834,3 +862,68 @@ linux64-mingw-fxc2-x86:
         toolchain-artifact: public/build/fxc2.tar.xz
     toolchains:
         - linux64-clang-trunk-mingw-x86
+
+linux64-custom-v8:
+    description: "Custom v8 build"
+    treeherder:
+        kind: build
+        platform: toolchains/opt
+        symbol: TL(custom-v8)
+        tier: 1
+    worker-type: aws-provisioner-v1/gecko-{level}-b-linux
+    worker:
+        docker-image: {in-tree: custom-v8}
+        max-run-time: 3600
+    run:
+        using: toolchain-script
+        script: build-custom-v8.sh
+        arguments: [
+            d8.zip,
+            is_debug=false,
+            target_cpu="x64"
+        ]
+        toolchain-artifact: public/build/d8.zip
+
+wrench-deps:
+    description: "Downloads all the crates needed for building wrench"
+    treeherder:
+        kind: build
+        platform: toolchains/opt
+        symbol: WR(wrench-deps)
+        tier: 1
+    worker-type: aws-provisioner-v1/gecko-{level}-b-linux
+    worker:
+        docker-image: {in-tree: webrender}
+        max-run-time: 1800
+    run:
+        using: toolchain-script
+        script: wrench-deps-vendoring.sh
+        sparse-profile: null  # need all of gfx/wr checked out for this script
+        resources:
+            - 'gfx/wr/Cargo.lock'
+            - 'taskcluster/scripts/misc/tooltool-download.sh'
+        toolchain-artifact: public/build/wrench-deps.tar.bz2
+    toolchains:
+        - linux64-rust-1.31  # whatever m-c is built with
+
+linux64-minidump-stackwalk:
+    description: "minidump_stackwalk toolchain build"
+    treeherder:
+        kind: build
+        platform: toolchains/opt
+        symbol: TL(stackwalk)
+        tier: 1
+    worker-type: aws-provisioner-v1/gecko-{level}-b-linux
+    worker:
+        max-run-time: 1800
+    run:
+        using: toolchain-script
+        script: build-minidump-stackwalk.sh
+        sparse-profile: null
+        resources:
+            - 'taskcluster/scripts/misc/tooltool-download.sh'
+        toolchain-artifact: public/build/minidump_stackwalk.tar.xz
+    toolchains:
+        - linux64-clang-7
+        - linux64-binutils
+        - linux64-rust-1.31

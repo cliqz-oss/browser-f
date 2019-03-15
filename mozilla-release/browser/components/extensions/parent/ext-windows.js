@@ -30,7 +30,11 @@ var {
  */
 function WindowEventManager(context, name, event, listener) {
   let register = fire => {
-    let listener2 = listener.bind(null, fire);
+    let listener2 = (window, ...args) => {
+      if (context.canAccessWindow(window)) {
+        listener(fire, window, ...args);
+      }
+    };
 
     windowTracker.addListener(event, listener2);
     return () => {
@@ -68,8 +72,14 @@ this.windows = class extends ExtensionAPI {
               // Wait a tick to avoid firing a superfluous WINDOW_ID_NONE
               // event when switching focus between two Firefox windows.
               Promise.resolve().then(() => {
+                let windowId = Window.WINDOW_ID_NONE;
                 let window = Services.focus.activeWindow;
-                let windowId = window ? windowTracker.getId(window) : Window.WINDOW_ID_NONE;
+                if (window) {
+                  if (!context.canAccessWindow(window)) {
+                    return;
+                  }
+                  windowId = windowTracker.getId(window);
+                }
                 if (windowId !== lastOnFocusChangedWindowId) {
                   fire.async(windowId);
                   lastOnFocusChangedWindowId = windowId;
@@ -87,7 +97,7 @@ this.windows = class extends ExtensionAPI {
 
         get: function(windowId, getInfo) {
           let window = windowTracker.getWindow(windowId, context);
-          if (!window) {
+          if (!window || !context.canAccessWindow(window)) {
             return Promise.reject({message: `Invalid window ID: ${windowId}`});
           }
           return Promise.resolve(windowManager.convert(window, getInfo));
@@ -95,17 +105,24 @@ this.windows = class extends ExtensionAPI {
 
         getCurrent: function(getInfo) {
           let window = context.currentWindow || windowTracker.topWindow;
+          if (!context.canAccessWindow(window)) {
+            return Promise.reject({message: `Invalid window`});
+          }
           return Promise.resolve(windowManager.convert(window, getInfo));
         },
 
         getLastFocused: function(getInfo) {
           let window = windowTracker.topWindow;
+          if (!context.canAccessWindow(window)) {
+            return Promise.reject({message: `Invalid window`});
+          }
           return Promise.resolve(windowManager.convert(window, getInfo));
         },
 
         getAll: function(getInfo) {
           let doNotCheckTypes = getInfo === null || getInfo.windowTypes === null;
           let windows = [];
+          // incognito access is checked in getAll
           for (let win of windowManager.getAll()) {
             if (doNotCheckTypes || getInfo.windowTypes.includes(win.type)) {
               windows.push(win.convert(getInfo));
@@ -117,6 +134,9 @@ this.windows = class extends ExtensionAPI {
         create: function(createData) {
           let needResize = (createData.left !== null || createData.top !== null ||
                             createData.width !== null || createData.height !== null);
+          if (createData.incognito && !context.privateBrowsingAllowed) {
+            return Promise.reject({message: "Extension does not have permission for incognito mode"});
+          }
 
           if (needResize) {
             if (createData.state !== null && createData.state != "normal") {
@@ -144,7 +164,9 @@ this.windows = class extends ExtensionAPI {
             }
 
             let tab = tabTracker.getTab(createData.tabId);
-
+            if (!context.canAccessWindow(tab.ownerGlobal)) {
+              return Promise.reject({message: `Invalid tab ID: ${createData.tabId}`});
+            }
             // Private browsing tabs can only be moved to private browsing
             // windows.
             let incognito = PrivateBrowsingUtils.isBrowserPrivate(tab.linkedBrowser);
@@ -260,6 +282,9 @@ this.windows = class extends ExtensionAPI {
           }
 
           let win = windowManager.get(windowId, context);
+          if (!win) {
+            return Promise.reject({message: `Invalid window ID: ${windowId}`});
+          }
           if (updateInfo.focused) {
             Services.focus.activeWindow = win.window;
           }
@@ -287,6 +312,9 @@ this.windows = class extends ExtensionAPI {
 
         remove: function(windowId) {
           let window = windowTracker.getWindow(windowId, context);
+          if (!context.canAccessWindow(window)) {
+            return Promise.reject({message: `Invalid window ID: ${windowId}`});
+          }
           window.close();
 
           return new Promise(resolve => {

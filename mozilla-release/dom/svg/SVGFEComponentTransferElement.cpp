@@ -4,13 +4,14 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-#include "mozilla/dom/SVGComponentTransferFunctionElement.h"
 #include "mozilla/dom/SVGFEComponentTransferElement.h"
+
+#include "mozilla/dom/SVGComponentTransferFunctionElement.h"
 #include "mozilla/dom/SVGFEComponentTransferElementBinding.h"
 #include "nsSVGUtils.h"
 #include "mozilla/gfx/2D.h"
 
-NS_IMPL_NS_NEW_NAMESPACED_SVG_ELEMENT(FEComponentTransfer)
+NS_IMPL_NS_NEW_SVG_ELEMENT(FEComponentTransfer)
 
 using namespace mozilla::gfx;
 ;
@@ -23,7 +24,7 @@ JSObject* SVGFEComponentTransferElement::WrapNode(
   return SVGFEComponentTransferElement_Binding::Wrap(aCx, this, aGivenProto);
 }
 
-nsSVGElement::StringInfo SVGFEComponentTransferElement::sStringInfo[2] = {
+SVGElement::StringInfo SVGFEComponentTransferElement::sStringInfo[2] = {
     {nsGkAtoms::result, kNameSpaceID_None, true},
     {nsGkAtoms::in, kNameSpaceID_None, true}};
 
@@ -37,9 +38,9 @@ already_AddRefed<SVGAnimatedString> SVGFEComponentTransferElement::In1() {
 }
 
 //----------------------------------------------------------------------
-// nsSVGElement methods
+// SVGElement methods
 
-nsSVGElement::StringAttributesInfo
+SVGElement::StringAttributesInfo
 SVGFEComponentTransferElement::GetStringInfo() {
   return StringAttributesInfo(mStringAttributes, sStringInfo,
                               ArrayLength(sStringInfo));
@@ -84,8 +85,8 @@ bool SVGFEComponentTransferElement::AttributeAffectsRendering(
 }
 
 void SVGFEComponentTransferElement::GetSourceImageNames(
-    nsTArray<nsSVGStringInfo>& aSources) {
-  aSources.AppendElement(nsSVGStringInfo(&mStringAttributes[IN1], this));
+    nsTArray<SVGStringInfo>& aSources) {
+  aSources.AppendElement(SVGStringInfo(&mStringAttributes[IN1], this));
 }
 
 }  // namespace dom

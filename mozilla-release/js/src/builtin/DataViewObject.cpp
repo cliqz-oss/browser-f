@@ -18,6 +18,7 @@
 #include "builtin/Array.h"
 #include "jit/AtomicOperations.h"
 #include "js/Conversions.h"
+#include "js/PropertySpec.h"
 #include "js/Wrapper.h"
 #include "util/Windows.h"
 #include "vm/ArrayBufferObject.h"
@@ -136,7 +137,7 @@ bool DataViewObject::constructSameCompartment(JSContext* cx,
   }
 
   RootedObject proto(cx);
-  if (!GetPrototypeFromBuiltinConstructor(cx, args, &proto)) {
+  if (!GetPrototypeFromBuiltinConstructor(cx, args, JSProto_DataView, &proto)) {
     return false;
   }
 
@@ -185,7 +186,7 @@ bool DataViewObject::constructWrapped(JSContext* cx, HandleObject bufobj,
   // Make sure to get the [[Prototype]] for the created view from this
   // compartment.
   RootedObject proto(cx);
-  if (!GetPrototypeFromBuiltinConstructor(cx, args, &proto)) {
+  if (!GetPrototypeFromBuiltinConstructor(cx, args, JSProto_DataView, &proto)) {
     return false;
   }
 
@@ -932,7 +933,7 @@ JS_FRIEND_API uint32_t JS_GetDataViewByteLength(JSObject* obj) {
 JS_FRIEND_API JSObject* JS_NewDataView(JSContext* cx, HandleObject buffer,
                                        uint32_t byteOffset,
                                        int32_t byteLength) {
-  JSProtoKey key = JSCLASS_CACHED_PROTO_KEY(&DataViewObject::class_);
+  JSProtoKey key = JSProto_DataView;
   RootedObject constructor(cx, GlobalObject::getOrCreateConstructor(cx, key));
   if (!constructor) {
     return nullptr;

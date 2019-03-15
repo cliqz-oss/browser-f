@@ -8,6 +8,7 @@
 #include "mozilla/Assertions.h"
 #include "mozilla/Logging.h"
 #include "mozilla/Unused.h"
+#include "mozilla/dom/Document.h"
 #include "nsContentUtils.h"
 #include "nsIChannel.h"
 #include "nsIDocShell.h"
@@ -21,7 +22,7 @@ using namespace mozilla;
 
 LazyLogModule gSecureBrowserUILog("nsSecureBrowserUI");
 
-nsSecureBrowserUIImpl::nsSecureBrowserUIImpl() : mState(0) {
+nsSecureBrowserUIImpl::nsSecureBrowserUIImpl() : mState(0), mEvent(0) {
   MOZ_ASSERT(NS_IsMainThread());
 }
 
@@ -66,10 +67,27 @@ nsSecureBrowserUIImpl::GetState(uint32_t* aState) {
   // With respect to mixed content and tracking protection, we won't know when
   // the state of our document (or a subdocument) has changed, so we ask the
   // docShell.
-  CheckForBlockedContent();
+  CheckForMixedContent();
   MOZ_LOG(gSecureBrowserUILog, LogLevel::Debug, ("  mState: %x", mState));
 
   *aState = mState;
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+nsSecureBrowserUIImpl::GetContentBlockingEvent(uint32_t* aEvent) {
+  MOZ_ASSERT(NS_IsMainThread());
+  NS_ENSURE_ARG(aEvent);
+
+  MOZ_LOG(gSecureBrowserUILog, LogLevel::Debug,
+          ("GetContentBlockingEvent %p", this));
+  // With respect to mixed content and tracking protection, we won't know when
+  // the state of our document (or a subdocument) has changed, so we ask the
+  // docShell.
+  CheckForContentBlockingEvents();
+  MOZ_LOG(gSecureBrowserUILog, LogLevel::Debug, ("  mEvent: %x", mEvent));
+
+  *aEvent = mEvent;
   return NS_OK;
 }
 
@@ -84,11 +102,11 @@ nsSecureBrowserUIImpl::GetSecInfo(nsITransportSecurityInfo** result) {
   return NS_OK;
 }
 
-// Ask the docShell if we've blocked or loaded any mixed or tracking content.
-void nsSecureBrowserUIImpl::CheckForBlockedContent() {
+already_AddRefed<dom::Document>
+nsSecureBrowserUIImpl::PrepareForContentChecks() {
   nsCOMPtr<nsIDocShell> docShell = do_QueryReferent(mDocShell);
   if (!docShell) {
-    return;
+    return nullptr;
   }
 
   // For content docShells, the mixed content security state is set on the root
@@ -103,8 +121,20 @@ void nsSecureBrowserUIImpl::CheckForBlockedContent() {
         "No document shell root tree item from document shell tree item!");
     docShell = do_QueryInterface(sameTypeRoot);
     if (!docShell) {
-      return;
+      return nullptr;
     }
+  }
+
+  RefPtr<dom::Document> doc = docShell->GetDocument();
+  return doc.forget();
+}
+
+// Ask the docShell if we've blocked or loaded any mixed content.
+void nsSecureBrowserUIImpl::CheckForMixedContent() {
+  RefPtr<dom::Document> doc = PrepareForContentChecks();
+  if (!doc) {
+    // If the docshell has no document, then there is no need to update mState.
+    return;
   }
 
   // Has mixed content been loaded or blocked in nsMixedContentBlocker?
@@ -112,54 +142,61 @@ void nsSecureBrowserUIImpl::CheckForBlockedContent() {
   // content blocking in which case the STATE_IS_BROKEN bit would be set rather
   // than STATE_IS_SECURE.
   if (((mState & STATE_IS_SECURE) != 0) || ((mState & STATE_IS_BROKEN) != 0)) {
-    if (docShell->GetHasMixedActiveContentLoaded()) {
+    if (doc->GetHasMixedActiveContentLoaded()) {
       mState |= STATE_IS_BROKEN | STATE_LOADED_MIXED_ACTIVE_CONTENT;
       mState &= ~STATE_IS_SECURE;
-      mState &= ~STATE_SECURE_HIGH;
     }
 
-    if (docShell->GetHasMixedDisplayContentLoaded()) {
+    if (doc->GetHasMixedDisplayContentLoaded()) {
       mState |= STATE_IS_BROKEN | STATE_LOADED_MIXED_DISPLAY_CONTENT;
       mState &= ~STATE_IS_SECURE;
-      mState &= ~STATE_SECURE_HIGH;
     }
 
-    if (docShell->GetHasMixedActiveContentBlocked()) {
+    if (doc->GetHasMixedActiveContentBlocked()) {
       mState |= STATE_BLOCKED_MIXED_ACTIVE_CONTENT;
     }
 
-    if (docShell->GetHasMixedDisplayContentBlocked()) {
+    if (doc->GetHasMixedDisplayContentBlocked()) {
       mState |= STATE_BLOCKED_MIXED_DISPLAY_CONTENT;
     }
   }
+}
+
+// Ask the docShell if we have any content blocking events.
+void nsSecureBrowserUIImpl::CheckForContentBlockingEvents() {
+  RefPtr<dom::Document> doc = PrepareForContentChecks();
+  if (!doc) {
+    // If the docshell has no document, then there is no need to update mState.
+    return;
+  }
 
   // Has tracking content been blocked or loaded?
-  if (docShell->GetHasTrackingContentBlocked()) {
-    mState |= STATE_BLOCKED_TRACKING_CONTENT;
+  if (doc->GetHasTrackingContentBlocked()) {
+    mEvent |= STATE_BLOCKED_TRACKING_CONTENT;
   }
 
-  if (docShell->GetHasTrackingContentLoaded()) {
-    mState |= STATE_LOADED_TRACKING_CONTENT;
+  if (doc->GetHasTrackingContentLoaded()) {
+    mEvent |= STATE_LOADED_TRACKING_CONTENT;
   }
 
-  if (docShell->GetHasCookiesBlockedByPermission()) {
-    mState |= STATE_COOKIES_BLOCKED_BY_PERMISSION;
+  if (doc->GetHasCookiesBlockedByPermission()) {
+    mEvent |= STATE_COOKIES_BLOCKED_BY_PERMISSION;
   }
 
-  if (docShell->GetHasCookiesBlockedDueToTrackers()) {
-    mState |= STATE_COOKIES_BLOCKED_TRACKER;
+  if (doc->GetHasTrackingCookiesBlocked()) {
+    mEvent |= STATE_COOKIES_BLOCKED_TRACKER;
   }
 
-  if (docShell->GetHasForeignCookiesBeenBlocked()) {
-    mState |= STATE_COOKIES_BLOCKED_FOREIGN;
+  if (doc->GetHasForeignCookiesBlocked()) {
+    mEvent |= STATE_COOKIES_BLOCKED_FOREIGN;
   }
 
-  if (docShell->GetHasAllCookiesBeenBlocked()) {
-    mState |= STATE_COOKIES_BLOCKED_ALL;
+  if (doc->GetHasAllCookiesBlocked()) {
+    mEvent |= STATE_COOKIES_BLOCKED_ALL;
   }
 
-  if (docShell->GetHasCookiesLoaded()) {
-    mState |= STATE_COOKIES_LOADED;
+  if (doc->GetHasCookiesLoaded()) {
+    mEvent |= STATE_COOKIES_LOADED;
   }
 }
 
@@ -316,7 +353,7 @@ nsresult nsSecureBrowserUIImpl::UpdateStateAndSecurityInfo(nsIChannel* channel,
 // that nsIWebProgress. We ignore notifications from children because they don't
 // change the top-level state (if children load mixed or tracking content, the
 // docShell will know and will tell us in GetState when we call
-// CheckForBlockedContent).
+// CheckForMixedContent).
 // When we receive a notification from the top-level nsIWebProgress, we extract
 // any relevant security information and set our state accordingly. We then call
 // OnSecurityChange on the docShell corresponding to the nsIWebProgress we were
@@ -352,6 +389,7 @@ nsSecureBrowserUIImpl::OnLocationChange(nsIWebProgress* aWebProgress,
   }
 
   mState = 0;
+  mEvent = 0;
   mTopLevelSecurityInfo = nullptr;
 
   if (aFlags & LOCATION_CHANGE_ERROR_PAGE) {
@@ -414,6 +452,12 @@ nsSecureBrowserUIImpl::OnStatusChange(nsIWebProgress*, nsIRequest*, nsresult,
 
 nsresult nsSecureBrowserUIImpl::OnSecurityChange(nsIWebProgress*, nsIRequest*,
                                                  uint32_t) {
+  MOZ_ASSERT_UNREACHABLE("Should have been excluded in AddProgressListener()");
+  return NS_OK;
+}
+
+nsresult nsSecureBrowserUIImpl::OnContentBlockingEvent(nsIWebProgress*,
+                                                       nsIRequest*, uint32_t) {
   MOZ_ASSERT_UNREACHABLE("Should have been excluded in AddProgressListener()");
   return NS_OK;
 }

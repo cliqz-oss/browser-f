@@ -156,14 +156,12 @@
   display: inline;
   padding-inline-end: 25px;
   padding-inline-start: 0px;
-  color: var(--panel-disabled-color);
 }
 
 /* CONTENT */
 
 .identity-popup-content-blocking-empty-label,
 #tracking-protection-preferences-button > .toolbarbutton-text,
-.identity-popup-footer,
 .tracking-protection-button,
 #identity-popup-trackersView-strict-info > label,
 .identity-popup-cookiesView-list-header,
@@ -175,7 +173,6 @@
 #identity-popup-content-blocking-report-breakage,
 .identity-popup-content-blocking-category-label,
 .identity-popup-content-blocking-category-state-label,
-.identity-popup-content-blocking-category-add-blocking,
 .identity-popup-permission-label,
 .identity-popup-permission-state-label,
 .identity-popup-security-content > description,
@@ -313,12 +310,6 @@
   margin-top: 1em;
 }
 
-.identity-popup-footer > button {
-  margin: 0;
-  border-top: 1px solid var(--panel-separator-color);
-  padding: 8px 20px;
-}
-
 #identity-popup-content-verifier ~ description {
   margin-top: 1em;
   color: var(--panel-disabled-color);
@@ -449,6 +440,11 @@ description#identity-popup-content-verifier,
 
 .identity-popup-content-blocking-list-host-label {
   -moz-box-flex: 1;
+  direction: ltr;
+}
+
+.identity-popup-content-blocking-list-host-label:-moz-locale-dir(rtl) {
+  text-align: right;
 }
 
 .identity-popup-content-blocking-list-state-label {
@@ -683,15 +679,9 @@ description#identity-popup-content-verifier,
 }
 
 .identity-popup-content-blocking-category-state-label,
-.identity-popup-content-blocking-category-add-blocking,
 .identity-popup-permission-state-label {
   margin-inline-end: 5px;
   text-align: end;
-}
-
-.identity-popup-content-blocking-category-state-label,
-.identity-popup-permission-state-label {
-  color: var(--panel-disabled-color);
 }
 
 #identity-popup-content-blocking-content[hasException] .identity-popup-content-blocking-category-state-label {

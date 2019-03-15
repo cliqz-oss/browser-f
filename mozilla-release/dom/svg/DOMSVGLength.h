@@ -15,8 +15,6 @@
 #include "mozilla/Attributes.h"
 #include "nsWrapperCache.h"
 
-class nsSVGElement;
-
 // We make DOMSVGLength a pseudo-interface to allow us to QI to it in order to
 // check that the objects that scripts pass to DOMSVGLengthList methods are our
 // *native* length objects.
@@ -34,6 +32,9 @@ class nsSVGElement;
 namespace mozilla {
 
 class ErrorResult;
+
+namespace dom {
+class SVGElement;
 
 /**
  * Class DOMSVGLength
@@ -84,7 +85,7 @@ class DOMSVGLength final : public nsISupports, public nsWrapperCache {
    * Ctor for creating the object returned by
    * nsSVGLength2::ToDOMBaseVal/ToDOMAnimVal
    */
-  DOMSVGLength(nsSVGLength2* aVal, nsSVGElement* aSVGElement, bool aAnimVal);
+  DOMSVGLength(nsSVGLength2* aVal, dom::SVGElement* aSVGElement, bool aAnimVal);
 
   ~DOMSVGLength();
 
@@ -106,7 +107,7 @@ class DOMSVGLength final : public nsISupports, public nsWrapperCache {
   DOMSVGLength();
 
   static already_AddRefed<DOMSVGLength> GetTearOff(nsSVGLength2* aVal,
-                                                   nsSVGElement* aSVGElement,
+                                                   dom::SVGElement* aSVGElement,
                                                    bool aAnimVal);
 
   /**
@@ -180,7 +181,7 @@ class DOMSVGLength final : public nsISupports, public nsWrapperCache {
                        JS::Handle<JSObject*> aGivenProto) override;
 
  private:
-  nsSVGElement* Element() const { return mList->Element(); }
+  dom::SVGElement* Element() const { return mList->Element(); }
 
   uint8_t AttrEnum() const { return mAttrEnum; }
 
@@ -228,11 +229,12 @@ class DOMSVGLength final : public nsISupports, public nsWrapperCache {
 
   // The following members are only used when we have an nsSVGLength2
   nsSVGLength2* mVal;  // kept alive because it belongs to mSVGElement
-  RefPtr<nsSVGElement> mSVGElement;
+  RefPtr<dom::SVGElement> mSVGElement;
 };
 
 NS_DEFINE_STATIC_IID_ACCESSOR(DOMSVGLength, MOZILLA_DOMSVGLENGTH_IID)
 
+}  // namespace dom
 }  // namespace mozilla
 
 #undef MOZ_SVG_LIST_INDEX_BIT_COUNT

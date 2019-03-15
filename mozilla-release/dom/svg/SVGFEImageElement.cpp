@@ -20,7 +20,7 @@
 #include "imgIContainer.h"
 #include "gfx2DGlue.h"
 
-NS_IMPL_NS_NEW_NAMESPACED_SVG_ELEMENT(FEImage)
+NS_IMPL_NS_NEW_SVG_ELEMENT(FEImage)
 
 using namespace mozilla::gfx;
 
@@ -32,7 +32,7 @@ JSObject* SVGFEImageElement::WrapNode(JSContext* aCx,
   return SVGFEImageElement_Binding::Wrap(aCx, this, aGivenProto);
 }
 
-nsSVGElement::StringInfo SVGFEImageElement::sStringInfo[3] = {
+SVGElement::StringInfo SVGFEImageElement::sStringInfo[3] = {
     {nsGkAtoms::result, kNameSpaceID_None, true},
     {nsGkAtoms::href, kNameSpaceID_None, true},
     {nsGkAtoms::href, kNameSpaceID_XLink, true}};
@@ -72,7 +72,7 @@ nsresult SVGFEImageElement::LoadSVGImage(bool aForce, bool aNotify) {
   if (baseURI && !href.IsEmpty()) NS_MakeAbsoluteURI(href, href, baseURI);
 
   // Make sure we don't get in a recursive death-spiral
-  nsIDocument* doc = OwnerDoc();
+  Document* doc = OwnerDoc();
   nsCOMPtr<nsIURI> hrefAsURI;
   if (NS_SUCCEEDED(StringToURI(href, doc, getter_AddRefs(hrefAsURI)))) {
     bool isEqual;
@@ -132,8 +132,7 @@ void SVGFEImageElement::MaybeLoadSVGImage() {
   }
 }
 
-nsresult SVGFEImageElement::BindToTree(nsIDocument* aDocument,
-                                       nsIContent* aParent,
+nsresult SVGFEImageElement::BindToTree(Document* aDocument, nsIContent* aParent,
                                        nsIContent* aBindingParent) {
   nsresult rv =
       SVGFEImageElementBase::BindToTree(aDocument, aParent, aBindingParent);
@@ -143,10 +142,6 @@ nsresult SVGFEImageElement::BindToTree(nsIDocument* aDocument,
 
   if (mStringAttributes[HREF].IsExplicitlySet() ||
       mStringAttributes[XLINK_HREF].IsExplicitlySet()) {
-    // FIXME: Bug 660963 it would be nice if we could just have
-    // ClearBrokenState update our state and do it fast...
-    ClearBrokenState();
-    RemoveStatesSilently(NS_EVENT_STATE_BROKEN);
     nsContentUtils::AddScriptRunner(
         NewRunnableMethod("dom::SVGFEImageElement::MaybeLoadSVGImage", this,
                           &SVGFEImageElement::MaybeLoadSVGImage));
@@ -282,7 +277,7 @@ bool SVGFEImageElement::OutputIsTainted(const nsTArray<bool>& aInputsAreTainted,
 }
 
 //----------------------------------------------------------------------
-// nsSVGElement methods
+// SVGElement methods
 
 already_AddRefed<DOMSVGAnimatedPreserveAspectRatio>
 SVGFEImageElement::PreserveAspectRatio() {
@@ -293,7 +288,7 @@ SVGAnimatedPreserveAspectRatio* SVGFEImageElement::GetPreserveAspectRatio() {
   return &mPreserveAspectRatio;
 }
 
-nsSVGElement::StringAttributesInfo SVGFEImageElement::GetStringInfo() {
+SVGElement::StringAttributesInfo SVGFEImageElement::GetStringInfo() {
   return StringAttributesInfo(mStringAttributes, sStringInfo,
                               ArrayLength(sStringInfo));
 }

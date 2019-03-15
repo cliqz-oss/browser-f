@@ -11,11 +11,9 @@
 #include "mozIDOMWindow.h"
 
 #include "nsCOMPtr.h"
-#include "nsDataHashtable.h"
 #include "nsTArray.h"
 #include "mozilla/dom/EventTarget.h"
 #include "mozilla/TaskCategory.h"
-#include "mozilla/TimeStamp.h"
 #include "js/TypeDecls.h"
 #include "nsRefPtrHashtable.h"
 
@@ -34,7 +32,6 @@ class nsIContent;
 class nsICSSDeclaration;
 class nsIDocShell;
 class nsDocShellLoadState;
-class nsIDocument;
 class nsIPrincipal;
 class nsIScriptTimeoutHandler;
 class nsISerialEventTarget;
@@ -47,7 +44,6 @@ class nsXBLPrototypeHandler;
 typedef uint32_t SuspendTypes;
 
 namespace mozilla {
-class AutoplayPermissionManager;
 namespace dom {
 class AudioContext;
 class BrowsingContext;
@@ -55,6 +51,7 @@ class ClientInfo;
 class ClientState;
 class ContentFrameMessageManager;
 class DocGroup;
+class Document;
 class TabGroup;
 class Element;
 class MozIdleObserver;
@@ -73,19 +70,6 @@ class CustomElementRegistry;
 enum class CallerType : uint32_t;
 }  // namespace dom
 }  // namespace mozilla
-
-// Popup control state enum. The values in this enum must go from most
-// permissive to least permissive so that it's safe to push state in
-// all situations. Pushing popup state onto the stack never makes the
-// current popup state less permissive (see
-// nsGlobalWindow::PushPopupControlState()).
-enum PopupControlState {
-  openAllowed = 0,  // open that window without worries
-  openControlled,   // it's a popup, but allow it
-  openBlocked,      // it's a popup, but not from an allowed event
-  openAbused,       // it's a popup. disallow it, but allow domain override.
-  openOverridden    // disallow window open
-};
 
 enum UIStateChangeType {
   UIStateChangeType_NoChange,
@@ -150,6 +134,7 @@ enum class LargeAllocStatus : uint8_t {
 
 class nsPIDOMWindowInner : public mozIDOMWindow {
  protected:
+  typedef mozilla::dom::Document Document;
   friend nsGlobalWindowInner;
   friend nsGlobalWindowOuter;
 
@@ -184,9 +169,13 @@ class nsPIDOMWindowInner : public mozIDOMWindow {
   // Returns true if this window is the same as mTopInnerWindow
   inline bool IsTopInnerWindow() const;
 
-  // Check whether a document is currently loading
+  // Check whether a document is currently loading (really checks if the
+  // load event has completed).  May not be reset to false on errors.
   inline bool IsLoading() const;
   inline bool IsHandlingResizeEvent() const;
+
+  // Note: not related to IsLoading.  Set to false if there's an error, etc.
+  void SetActiveLoadingState(bool aIsActiveLoading);
 
   bool AddAudioContext(mozilla::dom::AudioContext* aAudioContext);
   void RemoveAudioContext(mozilla::dom::AudioContext* aAudioContext);
@@ -368,11 +357,11 @@ class nsPIDOMWindowInner : public mozIDOMWindow {
 
   virtual void MaybeUpdateTouchState() {}
 
-  nsIDocument* GetExtantDoc() const { return mDoc; }
+  Document* GetExtantDoc() const { return mDoc; }
   nsIURI* GetDocumentURI() const;
   nsIURI* GetDocBaseURI() const;
 
-  nsIDocument* GetDoc() {
+  Document* GetDoc() {
     if (!mDoc) {
       MaybeCreateDoc();
     }
@@ -382,8 +371,6 @@ class nsPIDOMWindowInner : public mozIDOMWindow {
   mozilla::dom::WindowGlobalChild* GetWindowGlobalChild() {
     return mWindowGlobalChild;
   }
-
-  virtual PopupControlState GetPopupControlState() const = 0;
 
   // Determine if the window is suspended or frozen.  Outer windows
   // will forward this call to the inner window for convenience.  If
@@ -411,7 +398,7 @@ class nsPIDOMWindowInner : public mozIDOMWindow {
    *
    * aDocument must not be null.
    */
-  virtual nsresult SetNewDocument(nsIDocument* aDocument, nsISupports* aState,
+  virtual nsresult SetNewDocument(Document* aDocument, nsISupports* aState,
                                   bool aForceReuseInnerWindow) = 0;
 
   /**
@@ -554,7 +541,7 @@ class nsPIDOMWindowInner : public mozIDOMWindow {
   uint32_t GetMarkedCCGeneration() { return mMarkedCCGeneration; }
 
   mozilla::dom::Navigator* Navigator();
-  virtual mozilla::dom::Location* GetLocation() = 0;
+  virtual mozilla::dom::Location* Location() = 0;
 
   virtual nsresult GetControllers(nsIControllers** aControllers) = 0;
 
@@ -579,11 +566,6 @@ class nsPIDOMWindowInner : public mozIDOMWindow {
   mozilla::dom::DocGroup* GetDocGroup() const;
   virtual nsISerialEventTarget* EventTargetFor(
       mozilla::TaskCategory aCategory) const = 0;
-
-  // Returns the AutoplayPermissionManager that documents in this window should
-  // use to request permission to autoplay.
-  already_AddRefed<mozilla::AutoplayPermissionManager>
-  GetAutoplayPermissionManager();
 
   void RegisterReportingObserver(mozilla::dom::ReportingObserver* aObserver,
                                  bool aBuffered);
@@ -618,7 +600,7 @@ class nsPIDOMWindowInner : public mozIDOMWindow {
   // value on both the outer window and the current inner window. Make
   // sure you keep them in sync!
   nsCOMPtr<mozilla::dom::EventTarget> mChromeEventHandler;  // strong
-  nsCOMPtr<nsIDocument> mDoc;                               // strong
+  RefPtr<Document> mDoc;
   // Cache the URI when mDoc is cleared.
   nsCOMPtr<nsIURI> mDocumentURI;  // strong
   nsCOMPtr<nsIURI> mDocBaseURI;   // strong
@@ -683,11 +665,6 @@ class nsPIDOMWindowInner : public mozIDOMWindow {
   // The number of open WebSockets.
   uint32_t mNumOfOpenWebSockets;
 
-  // If we're in the process of requesting permission for this window to
-  // play audible media, or we've already been granted permission by the
-  // user, this is non-null, and encapsulates the request.
-  RefPtr<mozilla::AutoplayPermissionManager> mAutoplayPermissionManager;
-
   // The event dispatch code sets and unsets this while keeping
   // the event object alive.
   mozilla::dom::Event* mEvent;
@@ -712,6 +689,8 @@ NS_DEFINE_STATIC_IID_ACCESSOR(nsPIDOMWindowInner, NS_PIDOMWINDOWINNER_IID)
 
 class nsPIDOMWindowOuter : public mozIDOMWindowProxy {
  protected:
+  typedef mozilla::dom::Document Document;
+
   explicit nsPIDOMWindowOuter(uint64_t aWindowID);
 
   ~nsPIDOMWindowOuter();
@@ -802,13 +781,6 @@ class nsPIDOMWindowOuter : public mozIDOMWindowProxy {
   virtual void ActivateOrDeactivate(bool aActivate) = 0;
 
   /**
-   * These functions are used to modify and check temporary autoplay permission.
-   */
-  void NotifyTemporaryAutoplayPermissionChanged(int32_t aState,
-                                                const nsAString& aPrePath);
-  bool HasTemporaryAutoplayPermission();
-
-  /**
    * |top| gets the root of the window hierarchy.
    *
    * This function does not cross chrome-content boundaries, so if this
@@ -861,10 +833,10 @@ class nsPIDOMWindowOuter : public mozIDOMWindowProxy {
     return mMessageManager;
   }
 
-  nsIDocument* GetExtantDoc() const { return mDoc; }
+  Document* GetExtantDoc() const { return mDoc; }
   nsIURI* GetDocumentURI() const;
 
-  nsIDocument* GetDoc() {
+  Document* GetDoc() {
     if (!mDoc) {
       MaybeCreateDoc();
     }
@@ -874,11 +846,6 @@ class nsPIDOMWindowOuter : public mozIDOMWindowProxy {
   // Set the window up with an about:blank document with the current subject
   // principal.
   virtual void SetInitialPrincipalToSubject() = 0;
-
-  virtual PopupControlState PushPopupControlState(PopupControlState aState,
-                                                  bool aForce) const = 0;
-  virtual void PopPopupControlState(PopupControlState state) const = 0;
-  virtual PopupControlState GetPopupControlState() const = 0;
 
   // Returns an object containing the window's state.  This also suspends
   // all running timeouts in the window.
@@ -903,7 +870,10 @@ class nsPIDOMWindowOuter : public mozIDOMWindowProxy {
    */
   inline nsIDocShell* GetDocShell() const;
 
-  mozilla::dom::BrowsingContext* GetBrowsingContext() const;
+  /**
+   * Get the browsing context in this window.
+   */
+  inline mozilla::dom::BrowsingContext* GetBrowsingContext() const;
 
   /**
    * Set a new document in the window. Calling this method will in most cases
@@ -913,7 +883,7 @@ class nsPIDOMWindowOuter : public mozIDOMWindowProxy {
    *
    * aDocument must not be null.
    */
-  virtual nsresult SetNewDocument(nsIDocument* aDocument, nsISupports* aState,
+  virtual nsresult SetNewDocument(Document* aDocument, nsISupports* aState,
                                   bool aForceReuseInnerWindow) = 0;
 
   /**
@@ -1053,11 +1023,11 @@ class nsPIDOMWindowOuter : public mozIDOMWindowProxy {
   /**
    * Fire a popup blocked event on the document.
    */
-  virtual void FirePopupBlockedEvent(nsIDocument* aDoc, nsIURI* aPopupURI,
+  virtual void FirePopupBlockedEvent(Document* aDoc, nsIURI* aPopupURI,
                                      const nsAString& aPopupWindowName,
                                      const nsAString& aPopupWindowFeatures) = 0;
 
-  virtual void NotifyContentBlockingState(unsigned aState, nsIChannel* aChannel,
+  virtual void NotifyContentBlockingEvent(unsigned aEvent, nsIChannel* aChannel,
                                           bool aBlocked, nsIURI* aURIHint) = 0;
 
   // WebIDL-ish APIs
@@ -1123,8 +1093,10 @@ class nsPIDOMWindowOuter : public mozIDOMWindowProxy {
    * and TakeOpenerForInitialContentBrowser is used by nsXULElement in order to
    * take the value set earlier, and null out the value in the window.
    */
-  void SetOpenerForInitialContentBrowser(nsPIDOMWindowOuter* aOpener);
-  already_AddRefed<nsPIDOMWindowOuter> TakeOpenerForInitialContentBrowser();
+  void SetOpenerForInitialContentBrowser(
+      mozilla::dom::BrowsingContext* aOpener);
+  already_AddRefed<mozilla::dom::BrowsingContext>
+  TakeOpenerForInitialContentBrowser();
 
  protected:
   // Lazily instantiate an about:blank document if necessary, and if
@@ -1140,7 +1112,7 @@ class nsPIDOMWindowOuter : public mozIDOMWindowProxy {
   // value on both the outer window and the current inner window. Make
   // sure you keep them in sync!
   nsCOMPtr<mozilla::dom::EventTarget> mChromeEventHandler;  // strong
-  nsCOMPtr<nsIDocument> mDoc;                               // strong
+  RefPtr<Document> mDoc;
   // Cache the URI when mDoc is cleared.
   nsCOMPtr<nsIURI> mDocumentURI;  // strong
 
@@ -1149,8 +1121,9 @@ class nsPIDOMWindowOuter : public mozIDOMWindowProxy {
 
   nsCOMPtr<mozilla::dom::Element> mFrameElement;
 
-  // This reference is used by nsGlobalWindow.
+  // These references are used by nsGlobalWindow.
   nsCOMPtr<nsIDocShell> mDocShell;
+  RefPtr<mozilla::dom::BrowsingContext> mBrowsingContext;
 
   uint32_t mModalStateDepth;
 
@@ -1200,62 +1173,11 @@ class nsPIDOMWindowOuter : public mozIDOMWindowProxy {
 
   mozilla::dom::LargeAllocStatus mLargeAllocStatus;
 
-  nsCOMPtr<nsPIDOMWindowOuter> mOpenerForInitialContentBrowser;
-
-  using PermissionInfo = std::pair<bool, mozilla::TimeStamp>;
-  nsDataHashtable<nsStringHashKey, PermissionInfo> mAutoplayTemporaryPermission;
+  RefPtr<mozilla::dom::BrowsingContext> mOpenerForInitialContentBrowser;
 };
 
 NS_DEFINE_STATIC_IID_ACCESSOR(nsPIDOMWindowOuter, NS_PIDOMWINDOWOUTER_IID)
 
 #include "nsPIDOMWindowInlines.h"
-
-#ifdef MOZILLA_INTERNAL_API
-#define NS_AUTO_POPUP_STATE_PUSHER nsAutoPopupStatePusherInternal
-#else
-#define NS_AUTO_POPUP_STATE_PUSHER nsAutoPopupStatePusherExternal
-#endif
-
-// Helper class that helps with pushing and popping popup control
-// state. Note that this class looks different from within code that's
-// part of the layout library than it does in code outside the layout
-// library.  We give the two object layouts different names so the symbols
-// don't conflict, but code should always use the name
-// |nsAutoPopupStatePusher|.
-class NS_AUTO_POPUP_STATE_PUSHER {
- public:
-#ifdef MOZILLA_INTERNAL_API
-  explicit NS_AUTO_POPUP_STATE_PUSHER(PopupControlState aState,
-                                      bool aForce = false);
-  ~NS_AUTO_POPUP_STATE_PUSHER();
-#else
-  NS_AUTO_POPUP_STATE_PUSHER(nsPIDOMWindowOuter* aWindow,
-                             PopupControlState aState)
-      : mWindow(aWindow), mOldState(openAbused) {
-    if (aWindow) {
-      mOldState = aWindow->PushPopupControlState(aState, false);
-    }
-  }
-
-  ~NS_AUTO_POPUP_STATE_PUSHER() {
-    if (mWindow) {
-      mWindow->PopPopupControlState(mOldState);
-    }
-  }
-#endif
-
- protected:
-#ifndef MOZILLA_INTERNAL_API
-  nsCOMPtr<nsPIDOMWindowOuter> mWindow;
-#endif
-  PopupControlState mOldState;
-
- private:
-  // Hide so that this class can only be stack-allocated
-  static void* operator new(size_t /*size*/) CPP_THROW_NEW { return nullptr; }
-  static void operator delete(void* /*memory*/) {}
-};
-
-#define nsAutoPopupStatePusher NS_AUTO_POPUP_STATE_PUSHER
 
 #endif  // nsPIDOMWindow_h__

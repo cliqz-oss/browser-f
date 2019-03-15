@@ -29,7 +29,7 @@
 #include "nsPIDOMWindow.h"
 #include "nsIWebNavigation.h"
 #include "nsIContentViewer.h"
-#include "nsIDocument.h"
+#include "mozilla/dom/Document.h"
 #include "nsIContent.h"
 #include "nsIPresShell.h"
 #include "nsRect.h"
@@ -608,7 +608,7 @@ nsFormFillController::GetInPrivateContext(bool* aInPrivateContext) {
     return NS_OK;
   }
 
-  nsCOMPtr<nsIDocument> doc = mFocusedInput->OwnerDoc();
+  RefPtr<Document> doc = mFocusedInput->OwnerDoc();
   nsCOMPtr<nsILoadContext> loadContext = doc->GetLoadContext();
   *aInPrivateContext = loadContext && loadContext->UsePrivateBrowsing();
   return NS_OK;
@@ -789,7 +789,7 @@ nsFormFillController::HandleEvent(Event* aEvent) {
     case eKeyPress:
       return KeyPress(aEvent);
     case eEditorInput: {
-      nsCOMPtr<nsINode> input = do_QueryInterface(aEvent->GetTarget());
+      nsCOMPtr<nsINode> input = do_QueryInterface(aEvent->GetComposedTarget());
       if (!IsTextControl(input)) {
         return NS_OK;
       }
@@ -822,7 +822,7 @@ nsFormFillController::HandleEvent(Event* aEvent) {
       }
       return NS_OK;
     case ePageHide: {
-      nsCOMPtr<nsIDocument> doc = do_QueryInterface(aEvent->GetTarget());
+      nsCOMPtr<Document> doc = do_QueryInterface(aEvent->GetTarget());
       if (!doc) {
         return NS_OK;
       }
@@ -850,7 +850,7 @@ nsFormFillController::HandleEvent(Event* aEvent) {
   return NS_OK;
 }
 
-void nsFormFillController::RemoveForDocument(nsIDocument* aDoc) {
+void nsFormFillController::RemoveForDocument(Document* aDoc) {
   MOZ_LOG(sLogger, LogLevel::Verbose, ("RemoveForDocument: %p", aDoc));
   for (auto iter = mPwmgrInputs.Iter(); !iter.Done(); iter.Next()) {
     const nsINode* key = iter.Key();
@@ -927,7 +927,7 @@ void nsFormFillController::MaybeStartControllingInput(
 }
 
 nsresult nsFormFillController::Focus(Event* aEvent) {
-  nsCOMPtr<nsIContent> input = do_QueryInterface(aEvent->GetTarget());
+  nsCOMPtr<nsIContent> input = do_QueryInterface(aEvent->GetComposedTarget());
   MaybeStartControllingInput(HTMLInputElement::FromNodeOrNull(input));
 
   // Bail if we didn't start controlling the input.
@@ -1094,7 +1094,7 @@ nsresult nsFormFillController::MouseDown(Event* aEvent) {
     return NS_ERROR_FAILURE;
   }
 
-  nsCOMPtr<nsINode> targetNode = do_QueryInterface(aEvent->GetTarget());
+  nsCOMPtr<nsINode> targetNode = do_QueryInterface(aEvent->GetComposedTarget());
   if (!HTMLInputElement::FromNodeOrNull(targetNode)) {
     return NS_OK;
   }
@@ -1202,7 +1202,7 @@ void nsFormFillController::RemoveWindowListeners(nsPIDOMWindowOuter* aWindow) {
 
   StopControllingInput();
 
-  nsCOMPtr<nsIDocument> doc = aWindow->GetDoc();
+  RefPtr<Document> doc = aWindow->GetDoc();
   RemoveForDocument(doc);
 
   EventTarget* target = aWindow->GetChromeEventHandler();
@@ -1319,7 +1319,7 @@ nsPIDOMWindowOuter* nsFormFillController::GetWindowForDocShell(
   aDocShell->GetContentViewer(getter_AddRefs(contentViewer));
   NS_ENSURE_TRUE(contentViewer, nullptr);
 
-  nsCOMPtr<nsIDocument> doc = contentViewer->GetDocument();
+  RefPtr<Document> doc = contentViewer->GetDocument();
   NS_ENSURE_TRUE(doc, nullptr);
 
   return doc->GetWindow();

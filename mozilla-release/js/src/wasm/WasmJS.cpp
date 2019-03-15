@@ -29,12 +29,14 @@
 #include "jit/AtomicOperations.h"
 #include "jit/JitOptions.h"
 #include "js/Printf.h"
+#include "js/PropertySpec.h"  // JS_{PS,FN}{,_END}
 #include "util/StringBuffer.h"
 #include "util/Text.h"
 #include "vm/Interpreter.h"
 #include "vm/StringType.h"
 #include "wasm/WasmBaselineCompile.h"
 #include "wasm/WasmCompile.h"
+#include "wasm/WasmCraneliftCompile.h"
 #include "wasm/WasmInstance.h"
 #include "wasm/WasmIonCompile.h"
 #include "wasm/WasmModule.h"
@@ -55,6 +57,19 @@ using mozilla::Nothing;
 using mozilla::RangedPtr;
 
 extern mozilla::Atomic<bool> fuzzingSafe;
+
+bool wasm::HasReftypesSupport(JSContext* cx) {
+#ifdef ENABLE_WASM_CRANELIFT
+  if (cx->options().wasmCranelift()) {
+    return false;
+  }
+#endif
+#ifdef ENABLE_WASM_REFTYPES
+  return cx->options().wasmGc() && cx->options().wasmBaseline();
+#else
+  return false;
+#endif
+}
 
 bool wasm::HasCompilerSupport(JSContext* cx) {
 #if !MOZ_LITTLE_ENDIAN || defined(JS_CODEGEN_NONE)
@@ -88,14 +103,22 @@ bool wasm::HasCompilerSupport(JSContext* cx) {
   }
 #endif
 
-  return BaselineCanCompile() || IonCanCompile();
+  return BaselineCanCompile() || IonCanCompile() || CraneliftCanCompile();
+}
+
+bool wasm::HasOptimizedCompilerTier(JSContext* cx) {
+  return (cx->options().wasmIon() && IonCanCompile())
+#ifdef ENABLE_WASM_CRANELIFT
+         || (cx->options().wasmCranelift() && CraneliftCanCompile())
+#endif
+  ;
 }
 
 // Return whether wasm compilation is allowed by prefs.  This check
 // only makes sense if HasCompilerSupport() is true.
 static bool HasAvailableCompilerTier(JSContext* cx) {
   return (cx->options().wasmBaseline() && BaselineCanCompile()) ||
-         (cx->options().wasmIon() && IonCanCompile());
+         HasOptimizedCompilerTier(cx);
 }
 
 bool wasm::HasSupport(JSContext* cx) {
@@ -105,7 +128,6 @@ bool wasm::HasSupport(JSContext* cx) {
 
 bool wasm::HasStreamingSupport(JSContext* cx) {
   // This should match EnsureStreamSupport().
-
   return HasSupport(cx) &&
          cx->runtime()->offThreadPromiseState.ref().initialized() &&
          CanUseExtraThreads() && cx->runtime()->consumeStreamCallback &&
@@ -113,7 +135,7 @@ bool wasm::HasStreamingSupport(JSContext* cx) {
 }
 
 bool wasm::HasCachingSupport(JSContext* cx) {
-  return HasStreamingSupport(cx) && cx->options().wasmIon() && IonCanCompile();
+  return HasStreamingSupport(cx) && HasOptimizedCompilerTier(cx);
 }
 
 static bool ToWebAssemblyValue(JSContext* cx, ValType targetType, HandleValue v,
@@ -144,16 +166,11 @@ static bool ToWebAssemblyValue(JSContext* cx, ValType targetType, HandleValue v,
       return true;
     }
     case ValType::AnyRef: {
-      if (v.isNull()) {
-        val.set(Val(targetType, nullptr));
-      } else {
-        JSObject* obj = ToObject(cx, v);
-        if (!obj) {
-          return false;
-        }
-        MOZ_ASSERT(obj->compartment() == cx->compartment());
-        val.set(Val(targetType, obj));
+      RootedAnyRef tmp(cx, AnyRef::null());
+      if (!BoxAnyRef(cx, v, &tmp)) {
+        return false;
       }
+      val.set(Val(tmp));
       return true;
     }
     case ValType::Ref:
@@ -174,10 +191,7 @@ static Value ToJSValue(const Val& val) {
     case ValType::F64:
       return DoubleValue(JS::CanonicalizeNaN(val.f64()));
     case ValType::AnyRef:
-      if (!val.ptr()) {
-        return NullValue();
-      }
-      return ObjectValue(*(JSObject*)val.ptr());
+      return UnboxAnyRef(val.anyref());
     case ValType::Ref:
     case ValType::NullRef:
     case ValType::I64:
@@ -321,7 +335,7 @@ static bool GetImports(JSContext* cx, const Module& module,
             }
           } else {
             MOZ_ASSERT(global.type().isReference());
-            if (!v.isNull() && !v.isObject()) {
+            if (!v.isNull() && !v.isObject() && global.type().isRef()) {
               return ThrowBadImportType(cx, import.field.get(),
                                         "Object-or-null");
             }
@@ -403,8 +417,7 @@ bool wasm::Eval(JSContext* cx, Handle<TypedArrayObject*> code,
     return false;
   }
 
-  MutableCompileArgs compileArgs =
-      cx->new_<CompileArgs>(cx, std::move(scriptedCaller));
+  SharedCompileArgs compileArgs = CompileArgs::build(cx, std::move(scriptedCaller));
   if (!compileArgs) {
     return false;
   }
@@ -1026,14 +1039,14 @@ static bool GetBufferSource(JSContext* cx, JSObject* obj, unsigned errorNumber,
   return true;
 }
 
-static MutableCompileArgs InitCompileArgs(JSContext* cx,
-                                          const char* introducer) {
+static SharedCompileArgs InitCompileArgs(JSContext* cx,
+                                         const char* introducer) {
   ScriptedCaller scriptedCaller;
   if (!DescribeScriptedCaller(cx, &scriptedCaller, introducer)) {
     return nullptr;
   }
 
-  return cx->new_<CompileArgs>(cx, std::move(scriptedCaller));
+  return CompileArgs::build(cx, std::move(scriptedCaller));
 }
 
 static bool ReportCompileWarnings(JSContext* cx,
@@ -1061,6 +1074,8 @@ static bool ReportCompileWarnings(JSContext* cx,
 /* static */ bool WasmModuleObject::construct(JSContext* cx, unsigned argc,
                                               Value* vp) {
   CallArgs callArgs = CallArgsFromVp(argc, vp);
+
+  Log(cx, "sync new Module() started");
 
   if (!ThrowIfNotConstructing(cx, callArgs, "Module")) {
     return false;
@@ -1111,6 +1126,8 @@ static bool ReportCompileWarnings(JSContext* cx,
   if (!moduleObj) {
     return false;
   }
+
+  Log(cx, "sync new Module() succeded");
 
   callArgs.rval().setObject(*moduleObj);
   return true;
@@ -1317,6 +1334,8 @@ static bool Instantiate(JSContext* cx, const Module& module,
                                                 Value* vp) {
   CallArgs args = CallArgsFromVp(argc, vp);
 
+  Log(cx, "sync new Instance() started");
+
   if (!ThrowIfNotConstructing(cx, args, "Instance")) {
     return false;
   }
@@ -1341,6 +1360,8 @@ static bool Instantiate(JSContext* cx, const Module& module,
   if (!Instantiate(cx, *module, importObj, &instanceObj)) {
     return false;
   }
+
+  Log(cx, "sync new Instance() succeeded");
 
   args.rval().setObject(*instanceObj);
   return true;
@@ -2046,7 +2067,7 @@ bool WasmTableObject::isNewborn() const {
     tableKind = TableKind::AnyFunction;
 #ifdef ENABLE_WASM_GENERALIZED_TABLES
   } else if (StringEqualsAscii(elementLinearStr, "anyref")) {
-    if (!cx->options().wasmGc()) {
+    if (!HasReftypesSupport(cx)) {
       JS_ReportErrorNumberUTF8(cx, GetErrorMessage, nullptr,
                                JSMSG_WASM_BAD_ELEMENT);
       return false;
@@ -2153,7 +2174,7 @@ static bool ToTableIndex(JSContext* cx, HandleValue v, const Table& table,
       break;
     }
     case TableKind::AnyRef: {
-      args.rval().setObjectOrNull(table.getAnyRef(index));
+      args.rval().set(UnboxAnyRef(table.getAnyRef(index)));
       break;
     }
     default: { MOZ_CRASH("Unexpected table kind"); }
@@ -2216,15 +2237,11 @@ static bool ToTableIndex(JSContext* cx, HandleValue v, const Table& table,
       break;
     }
     case TableKind::AnyRef: {
-      if (args[1].isNull()) {
-        table.setNull(index);
-      } else {
-        RootedObject value(cx, ToObject(cx, args[1]));
-        if (!value) {
-          return false;
-        }
-        table.setAnyRef(index, value.get());
+      RootedAnyRef tmp(cx, AnyRef::null());
+      if (!BoxAnyRef(cx, args[1], &tmp)) {
+        return false;
       }
+      table.setAnyRef(index, tmp);
       break;
     }
     default: { MOZ_CRASH("Unexpected table kind"); }
@@ -2314,8 +2331,12 @@ const Class WasmGlobalObject::class_ = {
   }
   switch (global->type().code()) {
     case ValType::AnyRef:
-      if (global->cell()->ptr) {
-        TraceManuallyBarrieredEdge(trc, &global->cell()->ptr,
+      if (!global->cell()->anyref.isNull()) {
+        // TODO/AnyRef-boxing: With boxed immediates and strings, the write
+        // barrier is going to have to be more complicated.
+        ASSERT_ANYREF_IS_JSOBJECT;
+        TraceManuallyBarrieredEdge(trc,
+                                   global->cell()->anyref.asJSObjectAddress(),
                                    "wasm anyref global");
       }
       break;
@@ -2378,13 +2399,17 @@ const Class WasmGlobalObject::class_ = {
       cell->f64 = val.f64();
       break;
     case ValType::NullRef:
-      MOZ_ASSERT(!cell->ptr, "value should be null already");
+      MOZ_ASSERT(!cell->ref, "value should be null already");
       break;
     case ValType::AnyRef:
-      MOZ_ASSERT(!cell->ptr, "no prebarriers needed");
-      cell->ptr = val.ptr();
-      if (cell->ptr) {
-        JSObject::writeBarrierPost(&cell->ptr, nullptr, cell->ptr);
+      MOZ_ASSERT(cell->anyref.isNull(), "no prebarriers needed");
+      cell->anyref = val.anyref();
+      if (!cell->anyref.isNull()) {
+        // TODO/AnyRef-boxing: With boxed immediates and strings, the write
+        // barrier is going to have to be more complicated.
+        ASSERT_ANYREF_IS_JSOBJECT;
+        JSObject::writeBarrierPost(&cell->anyref, nullptr,
+                                   cell->anyref.asJSObject());
       }
       break;
     case ValType::Ref:
@@ -2454,8 +2479,8 @@ const Class WasmGlobalObject::class_ = {
     globalType = ValType::F32;
   } else if (StringEqualsAscii(typeLinearStr, "f64")) {
     globalType = ValType::F64;
-#ifdef ENABLE_WASM_GC
-  } else if (cx->options().wasmGc() &&
+#ifdef ENABLE_WASM_REFTYPES
+  } else if (HasReftypesSupport(cx) &&
              StringEqualsAscii(typeLinearStr, "anyref")) {
     globalType = ValType::AnyRef;
 #endif
@@ -2485,7 +2510,7 @@ const Class WasmGlobalObject::class_ = {
       globalVal = Val(double(0.0));
       break;
     case ValType::AnyRef:
-      globalVal = Val(ValType::AnyRef, nullptr);
+      globalVal = Val(AnyRef::null());
       break;
     case ValType::Ref:
       MOZ_CRASH("Ref NYI");
@@ -2495,7 +2520,8 @@ const Class WasmGlobalObject::class_ = {
 
   // Override with non-undefined value, if provided.
   RootedValue valueVal(cx, args.get(1));
-  if (!valueVal.isUndefined()) {
+  if (!valueVal.isUndefined() ||
+      (args.length() >= 2 && globalType == ValType::AnyRef)) {
     if (!ToWebAssemblyValue(cx, globalType, valueVal, &globalVal)) {
       return false;
     }
@@ -2578,11 +2604,16 @@ static bool IsGlobal(HandleValue v) {
       cell->f64 = val.get().f64();
       break;
     case ValType::AnyRef: {
-      JSObject* prevPtr = cell->ptr;
-      JSObject::writeBarrierPre(prevPtr);
-      cell->ptr = val.get().ptr();
-      if (cell->ptr) {
-        JSObject::writeBarrierPost(&cell->ptr, prevPtr, cell->ptr);
+      AnyRef prevPtr = cell->anyref;
+      // TODO/AnyRef-boxing: With boxed immediates and strings, the write
+      // barrier is going to have to be more complicated.
+      ASSERT_ANYREF_IS_JSOBJECT;
+      JSObject::writeBarrierPre(prevPtr.asJSObject());
+      cell->anyref = val.get().anyref();
+      if (!cell->anyref.isNull()) {
+        JSObject::writeBarrierPost(cell->anyref.asJSObjectAddress(),
+                                   prevPtr.asJSObject(),
+                                   cell->anyref.asJSObject());
       }
       break;
     }
@@ -2639,7 +2670,7 @@ void WasmGlobalObject::val(MutableHandleVal outval) const {
       outval.set(Val(cell->f64));
       return;
     case ValType::AnyRef:
-      outval.set(Val(ValType::AnyRef, cell->ptr));
+      outval.set(Val(cell->anyref));
       return;
     case ValType::Ref:
       MOZ_CRASH("Ref NYI");
@@ -2725,7 +2756,8 @@ static bool Reject(JSContext* cx, const CompileArgs& args,
 
 static bool Resolve(JSContext* cx, const Module& module,
                     Handle<PromiseObject*> promise, bool instantiate,
-                    HandleObject importObj, const UniqueCharsVector& warnings) {
+                    HandleObject importObj, const UniqueCharsVector& warnings,
+                    const char* methodSuffix = "") {
   if (!ReportCompileWarnings(cx, warnings)) {
     return false;
   }
@@ -2768,6 +2800,9 @@ static bool Resolve(JSContext* cx, const Module& module,
   if (!PromiseObject::resolve(cx, promise, resolutionValue)) {
     return RejectWithPendingException(cx, promise);
   }
+
+  Log(cx, "async %s%s() succeeded", (instantiate ? "instantiate" : "compile"),
+      methodSuffix);
 
   return true;
 }
@@ -2850,6 +2885,8 @@ static bool WebAssembly_compile(JSContext* cx, unsigned argc, Value* vp) {
     return false;
   }
 
+  Log(cx, "async compile() started");
+
   Rooted<PromiseObject*> promise(cx, PromiseObject::createSkippingExecutor(cx));
   if (!promise) {
     return false;
@@ -2897,6 +2934,8 @@ static bool WebAssembly_instantiate(JSContext* cx, unsigned argc, Value* vp) {
     return false;
   }
 
+  Log(cx, "async instantiate() started");
+
   Rooted<PromiseObject*> promise(cx, PromiseObject::createSkippingExecutor(cx));
   if (!promise) {
     return false;
@@ -2921,6 +2960,8 @@ static bool WebAssembly_instantiate(JSContext* cx, unsigned argc, Value* vp) {
     if (!PromiseObject::resolve(cx, promise, resolutionValue)) {
       return false;
     }
+
+    Log(cx, "async instantiate() succeeded");
   } else {
     auto task = cx->make_unique<CompileBufferTask>(cx, promise, importObj);
     if (!task || !task->init(cx, "WebAssembly.instantiate")) {
@@ -2958,6 +2999,11 @@ static bool WebAssembly_validate(JSContext* cx, unsigned argc, Value* vp) {
   if (!validated && !error) {
     ReportOutOfMemory(cx);
     return false;
+  }
+
+  if (error) {
+    MOZ_ASSERT(!validated);
+    Log(cx, "validate() failed with: %s", error.get());
   }
 
   callArgs.rval().setBoolean(validated);
@@ -3001,31 +3047,42 @@ static bool RejectWithStreamErrorNumber(JSContext* cx, size_t errorCode,
 }
 
 class CompileStreamTask : public PromiseHelperTask, public JS::StreamConsumer {
+  // The stream progresses monotonically through these states; the helper
+  // thread wait()s for streamState_ to reach Closed.
   enum StreamState { Env, Code, Tail, Closed };
-  typedef ExclusiveWaitableData<StreamState> ExclusiveStreamState;
+  ExclusiveWaitableData<StreamState> streamState_;
 
   // Immutable:
-  const MutableCompileArgs compileArgs_;  // immutable during streaming
   const bool instantiate_;
   const PersistentRootedObject importObj_;
 
-  // Mutated on a stream thread (consumeChunk(), streamEnd(), streamError()):
-  ExclusiveStreamState streamState_;
-  Bytes envBytes_;            // immutable after Env state
-  SectionRange codeSection_;  // immutable after Env state
-  Bytes codeBytes_;           // not resized after Env state
+  // Immutable after noteResponseURLs() which is called at most once before
+  // first call on stream thread:
+  const MutableCompileArgs compileArgs_;
+
+  // Immutable after Env state:
+  Bytes envBytes_;
+  SectionRange codeSection_;
+
+  // The code section vector is resized once during the Env state and filled
+  // in chunk by chunk during the Code state, updating the end-pointer after
+  // each chunk:
+  Bytes codeBytes_;
   uint8_t* codeBytesEnd_;
   ExclusiveBytesPtr exclusiveCodeBytesEnd_;
-  Bytes tailBytes_;  // immutable after Tail state
-  ExclusiveStreamEndData exclusiveStreamEnd_;
-  Maybe<size_t> streamError_;
-  Atomic<bool> streamFailed_;
-  Tier2Listener tier2Listener_;
 
-  // Mutated on helper thread (execute()):
+  // Immutable after Tail state:
+  Bytes tailBytes_;
+  ExclusiveStreamEndData exclusiveStreamEnd_;
+
+  // Written once before Closed state and read in Closed state on main thread:
   SharedModule module_;
+  Maybe<size_t> streamError_;
   UniqueChars compileError_;
   UniqueCharsVector warnings_;
+
+  // Set on stream thread and read racily on helper thread to abort compilation:
+  Atomic<bool> streamFailed_;
 
   // Called on some thread before consumeChunk(), streamEnd(), streamError()):
 
@@ -3178,14 +3235,16 @@ class CompileStreamTask : public PromiseHelperTask, public JS::StreamConsumer {
         return;
       }
       case Code:
-      case Tail: {
-        auto streamEnd = exclusiveStreamEnd_.lock();
-        MOZ_ASSERT(!streamEnd->reached);
-        streamEnd->reached = true;
-        streamEnd->tailBytes = &tailBytes_;
-        streamEnd->tier2Listener = tier2Listener;
-        streamEnd.notify_one();
-      }
+      case Tail:
+        // Unlock exclusiveStreamEnd_ before locking streamState_.
+        {
+          auto streamEnd = exclusiveStreamEnd_.lock();
+          MOZ_ASSERT(!streamEnd->reached);
+          streamEnd->reached = true;
+          streamEnd->tailBytes = &tailBytes_;
+          streamEnd->tier2Listener = tier2Listener;
+          streamEnd.notify_one();
+        }
         setClosedAndDestroyAfterHelperThreadStarted();
         return;
       case Closed:
@@ -3236,13 +3295,18 @@ class CompileStreamTask : public PromiseHelperTask, public JS::StreamConsumer {
 
   bool resolve(JSContext* cx, Handle<PromiseObject*> promise) override {
     MOZ_ASSERT(streamState_.lock() == Closed);
-    MOZ_ASSERT_IF(module_, !streamFailed_ && !streamError_ && !compileError_);
-    return module_
-               ? Resolve(cx, *module_, promise, instantiate_, importObj_,
-                         warnings_)
-               : streamError_
-                     ? RejectWithStreamErrorNumber(cx, *streamError_, promise)
-                     : Reject(cx, *compileArgs_, promise, compileError_);
+
+    if (module_) {
+      MOZ_ASSERT(!streamFailed_ && !streamError_ && !compileError_);
+      return Resolve(cx, *module_, promise, instantiate_, importObj_, warnings_,
+                     "Streaming");
+    }
+
+    if (streamError_) {
+      return RejectWithStreamErrorNumber(cx, *streamError_, promise);
+    }
+
+    return Reject(cx, *compileArgs_, promise, compileError_);
   }
 
  public:
@@ -3250,10 +3314,10 @@ class CompileStreamTask : public PromiseHelperTask, public JS::StreamConsumer {
                     CompileArgs& compileArgs, bool instantiate,
                     HandleObject importObj)
       : PromiseHelperTask(cx, promise),
-        compileArgs_(&compileArgs),
+        streamState_(mutexid::WasmStreamStatus, Env),
         instantiate_(instantiate),
         importObj_(cx, importObj),
-        streamState_(mutexid::WasmStreamStatus, Env),
+        compileArgs_(&compileArgs),
         codeSection_{},
         codeBytesEnd_(nullptr),
         exclusiveCodeBytesEnd_(mutexid::WasmCodeBytesEnd, nullptr),
@@ -3281,7 +3345,7 @@ class ResolveResponseClosure : public NativeObject {
   static const unsigned RESERVED_SLOTS = 4;
   static const Class class_;
 
-  static ResolveResponseClosure* create(JSContext* cx, CompileArgs& args,
+  static ResolveResponseClosure* create(JSContext* cx, const CompileArgs& args,
                                         HandleObject promise, bool instantiate,
                                         HandleObject importObj) {
     MOZ_ASSERT_IF(importObj, instantiate);
@@ -3293,7 +3357,7 @@ class ResolveResponseClosure : public NativeObject {
     }
 
     args.AddRef();
-    obj->setReservedSlot(COMPILE_ARGS_SLOT, PrivateValue(&args));
+    obj->setReservedSlot(COMPILE_ARGS_SLOT, PrivateValue((void*)&args));
     obj->setReservedSlot(PROMISE_OBJ_SLOT, ObjectValue(*promise));
     obj->setReservedSlot(INSTANTIATE_SLOT, BooleanValue(instantiate));
     obj->setReservedSlot(IMPORT_OBJ_SLOT, ObjectOrNullValue(importObj));
@@ -3402,7 +3466,7 @@ static bool ResolveResponse(JSContext* cx, CallArgs callArgs,
   const char* introducer = instantiate ? "WebAssembly.instantiateStreaming"
                                        : "WebAssembly.compileStreaming";
 
-  MutableCompileArgs compileArgs = InitCompileArgs(cx, introducer);
+  SharedCompileArgs compileArgs = InitCompileArgs(cx, introducer);
   if (!compileArgs) {
     return false;
   }
@@ -3446,6 +3510,8 @@ static bool WebAssembly_compileStreaming(JSContext* cx, unsigned argc,
     return false;
   }
 
+  Log(cx, "async compileStreaming() started");
+
   Rooted<PromiseObject*> promise(cx, PromiseObject::createSkippingExecutor(cx));
   if (!promise) {
     return false;
@@ -3466,6 +3532,8 @@ static bool WebAssembly_instantiateStreaming(JSContext* cx, unsigned argc,
   if (!EnsureStreamSupport(cx)) {
     return false;
   }
+
+  Log(cx, "async instantiateStreaming() started");
 
   Rooted<PromiseObject*> promise(cx, PromiseObject::createSkippingExecutor(cx));
   if (!promise) {

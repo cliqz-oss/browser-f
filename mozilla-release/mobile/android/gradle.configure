@@ -272,6 +272,26 @@ set_config('GRADLE_ANDROID_ARCHIVE_GECKOVIEW_TASKS', gradle_android_archive_geck
 
 
 @depends(gradle_android_build_config)
+def gradle_android_geckoview_docs_tasks(build_config):
+    '''Gradle tasks run by |mach android geckoview-docs|.'''
+    return [
+        'geckoview:javadoc{geckoview.variant.name}'.format(geckoview=build_config.geckoview),
+    ]
+
+set_config('GRADLE_ANDROID_GECKOVIEW_DOCS_TASKS', gradle_android_geckoview_docs_tasks)
+
+
+@depends(gradle_android_build_config)
+def gradle_android_geckoview_docs_archive_tasks(build_config):
+    '''Gradle tasks run by |mach android geckoview-docs --archive| or |... --upload.'''
+    return [
+        'geckoview:javadocCopyJar{geckoview.variant.name}'.format(geckoview=build_config.geckoview),
+    ]
+
+set_config('GRADLE_ANDROID_GECKOVIEW_DOCS_ARCHIVE_TASKS', gradle_android_geckoview_docs_archive_tasks)
+
+
+@depends(gradle_android_build_config)
 def gradle_android_archive_coverage_artifacts_tasks(build_config):
     '''Gradle tasks run by |mach android archive-coverage-artifacts|.'''
     return [
@@ -306,18 +326,20 @@ def gradle_android_install_geckoview_example_tasks(build_config):
 set_config('GRADLE_ANDROID_INSTALL_GECKOVIEW_EXAMPLE_TASKS', gradle_android_install_geckoview_example_tasks)
 
 
+@dependable
+def gradle_android_dependencies():
+    '''Gradle tasks that download all dependencies.'''
+    # These tasks download most dependencies from each configuration, the
+    # notable exception is dependencies added at runtime by gradle plugins
+    return [
+        'downloadDependencies',
+    ]
+
 @depends(
-    gradle_android_app_tasks,
     gradle_android_api_lint_tasks,
-    gradle_android_test_tasks,
-    gradle_android_lint_tasks,
     gradle_android_checkstyle_tasks,
     gradle_android_findbugs_tasks,
-    gradle_android_archive_geckoview_tasks,
-    gradle_android_generate_sdk_bindings_tasks,
-    gradle_android_generate_generated_jni_wrappers_tasks,
-    gradle_android_generate_fennec_jni_wrappers_tasks,
-    gradle_android_archive_coverage_artifacts_tasks,
+    gradle_android_dependencies,
 )
 @imports(_from='itertools', _import='imap')
 @imports(_from='itertools', _import='chain')

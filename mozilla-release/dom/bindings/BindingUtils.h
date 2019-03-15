@@ -31,7 +31,7 @@
 #include "mozilla/Likely.h"
 #include "mozilla/MemoryReporting.h"
 #include "nsAutoPtr.h"
-#include "nsIDocument.h"
+#include "mozilla/dom/Document.h"
 #include "nsIGlobalObject.h"
 #include "nsIXPConnect.h"
 #include "nsJSUtils.h"
@@ -44,7 +44,6 @@
 #include "nsWrapperCacheInlines.h"
 
 class nsGenericHTMLElement;
-class nsIJSID;
 
 namespace mozilla {
 
@@ -55,12 +54,10 @@ class CustomElementReactionsStack;
 class MessageManagerGlobal;
 template <typename KeyType, typename ValueType>
 class Record;
+class WindowProxyHolder;
 
 nsresult UnwrapArgImpl(JSContext* cx, JS::Handle<JSObject*> src,
                        const nsIID& iid, void** ppArg);
-
-nsresult UnwrapWindowProxyImpl(JSContext* cx, JS::Handle<JSObject*> src,
-                               nsPIDOMWindowOuter** ppArg);
 
 /** Convert a jsval to an XPCOM pointer. Caller must not assume that src will
     keep the XPCOM pointer rooted. */
@@ -71,12 +68,8 @@ inline nsresult UnwrapArg(JSContext* cx, JS::Handle<JSObject*> src,
                        reinterpret_cast<void**>(ppArg));
 }
 
-template <>
-inline nsresult UnwrapArg<nsPIDOMWindowOuter>(JSContext* cx,
-                                              JS::Handle<JSObject*> src,
-                                              nsPIDOMWindowOuter** ppArg) {
-  return UnwrapWindowProxyImpl(cx, src, ppArg);
-}
+nsresult UnwrapWindowProxyArg(JSContext* cx, JS::Handle<JSObject*> src,
+                              WindowProxyHolder& ppArg);
 
 bool ThrowInvalidThis(JSContext* aCx, const JS::CallArgs& aArgs,
                       bool aSecurityError, const char* aInterfaceName);
@@ -709,13 +702,13 @@ bool DefineUnforgeableAttributes(JSContext* cx, JS::Handle<JSObject*> obj,
   typedef char no[2]
 
 #ifdef _MSC_VER
-#define HAS_MEMBER_CHECK(_name) \
-  template <typename V>         \
-  static yes& Check##_name(char(*)[(&V::_name == 0) + 1])
+#  define HAS_MEMBER_CHECK(_name) \
+    template <typename V>         \
+    static yes& Check##_name(char(*)[(&V::_name == 0) + 1])
 #else
-#define HAS_MEMBER_CHECK(_name) \
-  template <typename V>         \
-  static yes& Check##_name(char(*)[sizeof(&V::_name) + 1])
+#  define HAS_MEMBER_CHECK(_name) \
+    template <typename V>         \
+    static yes& Check##_name(char(*)[sizeof(&V::_name) + 1])
 #endif
 
 #define HAS_MEMBER(_memberName, _valueName) \
@@ -789,6 +782,16 @@ inline bool TryToOuterize(JS::MutableHandle<JS::Value> rval) {
   return true;
 }
 
+inline bool TryToOuterize(JS::MutableHandle<JSObject*> obj) {
+  if (js::IsWindow(obj)) {
+    JSObject* proxy = js::ToWindowProxyIfWindow(obj);
+    MOZ_ASSERT(proxy);
+    obj.set(proxy);
+  }
+
+  return true;
+}
+
 // Make sure to wrap the given string value into the right compartment, as
 // needed.
 MOZ_ALWAYS_INLINE
@@ -817,6 +820,25 @@ bool MaybeWrapObjectValue(JSContext* cx, JS::MutableHandle<JS::Value> rval) {
   // objects specially.  Check for that.
   if (IsDOMObject(obj)) {
     return TryToOuterize(rval);
+  }
+
+  // It's not a WebIDL object, so it's OK to just leave it as-is: only WebIDL
+  // objects (specifically only windows) require outerization.
+  return true;
+}
+
+// Like MaybeWrapObjectValue, but working with a
+// JS::MutableHandle<JSObject*> which must be non-null.
+MOZ_ALWAYS_INLINE
+bool MaybeWrapObject(JSContext* cx, JS::MutableHandle<JSObject*> obj) {
+  if (js::GetObjectCompartment(obj) != js::GetContextCompartment(cx)) {
+    return JS_WrapObject(cx, obj);
+  }
+
+  // We're same-compartment, but even then we might need to wrap
+  // objects specially.  Check for that.
+  if (IsDOMObject(obj)) {
+    return TryToOuterize(obj);
   }
 
   // It's not a WebIDL object, so it's OK to just leave it as-is: only WebIDL
@@ -1425,6 +1447,9 @@ inline bool WrapObject(JSContext* cx, JSObject& p,
   return true;
 }
 
+bool WrapObject(JSContext* cx, const WindowProxyHolder& p,
+                JS::MutableHandle<JS::Value> rval);
+
 // Given an object "p" that inherits from nsISupports, wrap it and return the
 // result.  Null is returned on wrapping failure.  This is somewhat similar to
 // WrapObject() above, but does NOT allow Xrays around the result, since we
@@ -1450,13 +1475,13 @@ struct WrapNativeHelper {
     JSObject* obj;
     if ((obj = cache->GetWrapper())) {
       // GetWrapper always unmarks gray.
-      MOZ_ASSERT(JS::ObjectIsNotGray(obj));
+      JS::AssertObjectIsNotGray(obj);
       return obj;
     }
 
     // WrapObject never returns a gray thing.
     obj = parent->WrapObject(cx, nullptr);
-    MOZ_ASSERT(JS::ObjectIsNotGray(obj));
+    JS::AssertObjectIsNotGray(obj);
 
     return obj;
   }
@@ -1476,12 +1501,12 @@ struct WrapNativeHelper<T, false> {
                    "Unexpected object in nsWrapperCache");
       obj = rootedObj;
 #endif
-      MOZ_ASSERT(JS::ObjectIsNotGray(obj));
+      JS::AssertObjectIsNotGray(obj);
       return obj;
     }
 
     obj = WrapNativeISupports(cx, parent, cache);
-    MOZ_ASSERT(JS::ObjectIsNotGray(obj));
+    JS::AssertObjectIsNotGray(obj);
     return obj;
   }
 };
@@ -1500,7 +1525,7 @@ static inline JSObject* FindAssociatedGlobal(
   if (!obj) {
     return nullptr;
   }
-  MOZ_ASSERT(JS::ObjectIsNotGray(obj));
+  JS::AssertObjectIsNotGray(obj);
 
   // The object is never a CCW but it may not be in the current compartment of
   // the JSContext.
@@ -1517,7 +1542,7 @@ static inline JSObject* FindAssociatedGlobal(
       JS::Rooted<JSObject*> rootedObj(cx, obj);
       JSObject* xblScope = xpc::GetXBLScope(cx, rootedObj);
       MOZ_ASSERT_IF(xblScope, JS_IsGlobalObject(xblScope));
-      MOZ_ASSERT(JS::ObjectIsNotGray(xblScope));
+      JS::AssertObjectIsNotGray(xblScope);
       return xblScope;
     }
 
@@ -1530,7 +1555,7 @@ static inline JSObject* FindAssociatedGlobal(
       JS::Rooted<JSObject*> rootedObj(cx, obj);
       JSObject* uaWidgetScope = xpc::GetUAWidgetScope(cx, rootedObj);
       MOZ_ASSERT_IF(uaWidgetScope, JS_IsGlobalObject(uaWidgetScope));
-      MOZ_ASSERT(JS::ObjectIsNotGray(uaWidgetScope));
+      JS::AssertObjectIsNotGray(uaWidgetScope);
       return uaWidgetScope;
     }
 
@@ -1695,12 +1720,12 @@ struct WantsQueryInterface {
 };
 
 void GetInterfaceImpl(JSContext* aCx, nsIInterfaceRequestor* aRequestor,
-                      nsWrapperCache* aCache, nsIJSID* aIID,
+                      nsWrapperCache* aCache, JS::Handle<JS::Value> aIID,
                       JS::MutableHandle<JS::Value> aRetval,
                       ErrorResult& aError);
 
 template <class T>
-void GetInterface(JSContext* aCx, T* aThis, nsIJSID* aIID,
+void GetInterface(JSContext* aCx, T* aThis, JS::Handle<JS::Value> aIID,
                   JS::MutableHandle<JS::Value> aRetval, ErrorResult& aError) {
   GetInterfaceImpl(aCx, aThis, aThis, aIID, aRetval, aError);
 }
@@ -2327,10 +2352,16 @@ const nsAString& NonNullHelper(const binding_detail::FakeString& aArg) {
   return aArg;
 }
 
-// Reparent the wrapper of aObj to whatever its native now thinks its
-// parent should be.
-void ReparentWrapper(JSContext* aCx, JS::Handle<JSObject*> aObj,
-                     ErrorResult& aError);
+// Given a DOM reflector aObj, give its underlying DOM object a reflector in
+// whatever global that underlying DOM object now thinks it should be in.  If
+// this is in a different compartment from aObj, aObj will become a
+// cross-compatment wrapper for the new object.  Otherwise, aObj will become the
+// new object (via a brain transplant).  If the new global is the same as the
+// old global, we just keep using the same object.
+//
+// On entry to this method, aCx and aObj must be same-compartment.
+void UpdateReflectorGlobal(JSContext* aCx, JS::Handle<JSObject*> aObj,
+                           ErrorResult& aError);
 
 /**
  * Used to implement the Symbol.hasInstance property of an interface object.
@@ -2465,11 +2496,13 @@ class MOZ_STACK_CLASS BindingJSObjectCreator {
 
   void CreateProxyObject(JSContext* aCx, const js::Class* aClass,
                          const DOMProxyHandler* aHandler,
-                         JS::Handle<JSObject*> aProto, T* aNative,
-                         JS::Handle<JS::Value> aExpandoValue,
+                         JS::Handle<JSObject*> aProto, bool aLazyProto,
+                         T* aNative, JS::Handle<JS::Value> aExpandoValue,
                          JS::MutableHandle<JSObject*> aReflector) {
     js::ProxyOptions options;
     options.setClass(aClass);
+    options.setLazyProto(aLazyProto);
+
     aReflector.set(
         js::NewProxyObject(aCx, aHandler, aExpandoValue, aProto, options));
     if (aReflector) {
@@ -2966,10 +2999,10 @@ void SetDocumentAndPageUseCounter(JSObject* aObject, UseCounter aUseCounter);
 
 // Warnings
 void DeprecationWarning(JSContext* aCx, JSObject* aObject,
-                        nsIDocument::DeprecatedOperations aOperation);
+                        Document::DeprecatedOperations aOperation);
 
 void DeprecationWarning(const GlobalObject& aGlobal,
-                        nsIDocument::DeprecatedOperations aOperation);
+                        Document::DeprecatedOperations aOperation);
 
 // A callback to perform funToString on an interface object
 JSString* InterfaceObjectToString(JSContext* aCx, JS::Handle<JSObject*> aObject,

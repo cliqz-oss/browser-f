@@ -77,8 +77,8 @@ class nsComputedDOMStyle final : public nsDOMCSSDeclaration,
   };
 
   nsComputedDOMStyle(mozilla::dom::Element* aElement,
-                     const nsAString& aPseudoElt, nsIDocument* aDocument,
-                     StyleType aStyleType);
+                     const nsAString& aPseudoElt,
+                     mozilla::dom::Document* aDocument, StyleType aStyleType);
 
   nsINode* GetParentObject() override { return mElement; }
 
@@ -115,7 +115,7 @@ class nsComputedDOMStyle final : public nsDOMCSSDeclaration,
       Operation aOperation, mozilla::DeclarationBlock** aCreated) final;
   virtual nsresult SetCSSDeclaration(mozilla::DeclarationBlock*,
                                      mozilla::MutationClosureData*) override;
-  virtual nsIDocument* DocToUpdate() override;
+  virtual mozilla::dom::Document* DocToUpdate() override;
 
   nsDOMCSSDeclaration::ParsingEnvironment GetParsingEnvironment(
       nsIPrincipal* aSubjectPrincipal) const final;
@@ -333,7 +333,6 @@ class nsComputedDOMStyle final : public nsDOMCSSDeclaration,
   already_AddRefed<CSSValue> DoGetDisplay();
   already_AddRefed<CSSValue> DoGetContain();
   already_AddRefed<CSSValue> DoGetWillChange();
-  already_AddRefed<CSSValue> DoGetOverflowY();
   already_AddRefed<CSSValue> DoGetTouchAction();
   already_AddRefed<CSSValue> DoGetTransform();
   already_AddRefed<CSSValue> DoGetTransformOrigin();
@@ -345,7 +344,6 @@ class nsComputedDOMStyle final : public nsDOMCSSDeclaration,
 
   /* User interface properties */
   already_AddRefed<CSSValue> DoGetCaretColor();
-  already_AddRefed<CSSValue> DoGetCursor();
   already_AddRefed<CSSValue> DoGetForceBrokenImageIcon();
 
   /* Column properties */
@@ -369,15 +367,7 @@ class nsComputedDOMStyle final : public nsDOMCSSDeclaration,
   already_AddRefed<CSSValue> DoGetFlexGrow();
   already_AddRefed<CSSValue> DoGetFlexShrink();
 
-  /* CSS Flexbox/Grid properties */
-
   /* CSS Box Alignment properties */
-  already_AddRefed<CSSValue> DoGetAlignContent();
-  already_AddRefed<CSSValue> DoGetAlignItems();
-  already_AddRefed<CSSValue> DoGetAlignSelf();
-  already_AddRefed<CSSValue> DoGetJustifyContent();
-  already_AddRefed<CSSValue> DoGetJustifyItems();
-  already_AddRefed<CSSValue> DoGetJustifySelf();
   already_AddRefed<CSSValue> DoGetColumnGap();
   already_AddRefed<CSSValue> DoGetRowGap();
 
@@ -487,7 +477,7 @@ class nsComputedDOMStyle final : public nsDOMCSSDeclaration,
 
   // Find out if we can safely skip flushing for aDocument (i.e. pending
   // restyles does not affect mContent).
-  bool NeedsToFlush(nsIDocument* aDocument) const;
+  bool NeedsToFlush(mozilla::dom::Document*) const;
 
   static ComputedStyleMap* GetComputedStyleMap();
 
@@ -562,7 +552,7 @@ class nsComputedDOMStyle final : public nsDOMCSSDeclaration,
 
 already_AddRefed<nsComputedDOMStyle> NS_NewComputedDOMStyle(
     mozilla::dom::Element* aElement, const nsAString& aPseudoElt,
-    nsIDocument* aDocument,
+    mozilla::dom::Document* aDocument,
     nsComputedDOMStyle::StyleType aStyleType = nsComputedDOMStyle::eAll);
 
 #endif /* nsComputedDOMStyle_h__ */

@@ -4,10 +4,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-#include "NativeNt.h"
 #include "nsWindowsDllInterceptor.h"
 #include "mozilla/ArrayUtils.h"
 #include "mozilla/Attributes.h"
+#include "mozilla/NativeNt.h"
 #include "mozilla/Types.h"
 #include "mozilla/WindowsDllBlocklist.h"
 #include "mozilla/WinHeaderOnlyUtils.h"
@@ -26,9 +26,9 @@
 #define DLL_BLOCKLIST_STRING_TYPE UNICODE_STRING
 
 #if defined(MOZ_LAUNCHER_PROCESS) || defined(NIGHTLY_BUILD)
-#include "mozilla/WindowsDllBlocklistDefs.h"
+#  include "mozilla/WindowsDllBlocklistDefs.h"
 #else
-#include "mozilla/WindowsDllBlocklistCommon.h"
+#  include "mozilla/WindowsDllBlocklistCommon.h"
 DLL_BLOCKLIST_DEFINITIONS_BEGIN
 DLL_BLOCKLIST_DEFINITIONS_END
 #endif

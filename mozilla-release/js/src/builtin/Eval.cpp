@@ -105,7 +105,6 @@ class EvalScriptGuard {
     if (*p_) {
       script_ = (*p_)->script;
       p_->remove(cx_, cx_->caches().evalCache, lookup_);
-      script_->uncacheForEval();
     }
   }
 
@@ -113,7 +112,6 @@ class EvalScriptGuard {
     // JSScript::initFromEmitter has already called js_CallNewScriptHook.
     MOZ_ASSERT(!script_ && script);
     script_ = script;
-    script_->setActiveEval();
   }
 
   bool foundScript() { return !!script_; }
@@ -285,7 +283,8 @@ static bool EvalKernel(JSContext* cx, HandleValue v, EvalType evalType,
     options.setIsRunOnce(true)
         .setNoScriptRval(false)
         .setMutedErrors(mutedErrors)
-        .maybeMakeStrictMode(evalType == DIRECT_EVAL && IsStrictEvalPC(pc));
+        .maybeMakeStrictMode(evalType == DIRECT_EVAL && IsStrictEvalPC(pc))
+        .setScriptOrModule(maybeScript);
 
     if (introducerFilename) {
       options.setFileAndLine(filename, 1);
@@ -312,7 +311,7 @@ static bool EvalKernel(JSContext* cx, HandleValue v, EvalType evalType,
     }
 
     frontend::EvalScriptInfo info(cx, options, env, enclosing);
-    JSScript* compiled = frontend::CompileEvalScript(info, srcBuf);
+    RootedScript compiled(cx, frontend::CompileEvalScript(info, srcBuf));
     if (!compiled) {
       return false;
     }

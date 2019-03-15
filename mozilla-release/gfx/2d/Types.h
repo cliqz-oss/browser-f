@@ -34,7 +34,8 @@ enum class SurfaceType : int8_t {
   TILED,                  /* Surface from a tiled DrawTarget */
   DATA_SHARED,            /* Data surface using shared memory */
   CAPTURE,                /* Data from a DrawTargetCapture */
-  DATA_RECYCLING_SHARED   /* Data surface using shared memory */
+  DATA_RECYCLING_SHARED,  /* Data surface using shared memory */
+  OFFSET,                 /* Offset */
 };
 
 enum class SurfaceFormat : int8_t {
@@ -90,7 +91,7 @@ enum class SurfaceFormat : int8_t {
   A8R8G8B8_UINT32 = A8R8G8B8,  // 0xAARRGGBB
   X8R8G8B8_UINT32 = X8R8G8B8   // 0x00RRGGBB
 #else
-#error "bad endianness"
+#  error "bad endianness"
 #endif
 };
 
@@ -266,6 +267,7 @@ enum class BackendType : int8_t {
   RECORDING,
   DIRECT2D1_1,
   WEBRENDER_TEXT,
+  CAPTURE,  // Used for paths
 
   // Add new entries above this line.
   BACKEND_LAST
@@ -442,13 +444,13 @@ enum class JobStatus { Complete, Wait, Yield, Error };
 typedef mozilla::gfx::SurfaceFormat gfxImageFormat;
 
 #if defined(XP_WIN) && defined(MOZ_GFX)
-#ifdef GFX2D_INTERNAL
-#define GFX2D_API __declspec(dllexport)
+#  ifdef GFX2D_INTERNAL
+#    define GFX2D_API __declspec(dllexport)
+#  else
+#    define GFX2D_API __declspec(dllimport)
+#  endif
 #else
-#define GFX2D_API __declspec(dllimport)
-#endif
-#else
-#define GFX2D_API
+#  define GFX2D_API
 #endif
 
 namespace mozilla {

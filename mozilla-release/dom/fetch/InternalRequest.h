@@ -17,9 +17,9 @@
 #include "nsIInputStream.h"
 #include "nsISupportsImpl.h"
 #ifdef DEBUG
-#include "nsIURLParser.h"
-#include "nsNetCID.h"
-#include "nsServiceManagerUtils.h"
+#  include "nsIURLParser.h"
+#  include "nsNetCID.h"
+#  include "nsServiceManagerUtils.h"
 #endif
 
 namespace mozilla {
@@ -68,7 +68,6 @@ namespace dom {
  */
 
 class Request;
-class IPCInternalRequest;
 
 #define kFETCH_CLIENT_REFERRER_STR "about:client"
 class InternalRequest final {
@@ -86,10 +85,6 @@ class InternalRequest final {
                   const nsAString& aReferrer, ReferrerPolicy aReferrerPolicy,
                   nsContentPolicyType aContentPolicyType,
                   const nsAString& aIntegrity);
-
-  explicit InternalRequest(const IPCInternalRequest& aIPCRequest);
-
-  void ToIPC(IPCInternalRequest* aIPCRequest);
 
   already_AddRefed<InternalRequest> Clone();
 

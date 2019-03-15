@@ -29,7 +29,7 @@
 #include "nsIBufferedStreams.h"
 #include "nsIChannelEventSink.h"
 #include "nsIContentSniffer.h"
-#include "nsIDocument.h"
+#include "mozilla/dom/Document.h"
 #include "nsIDownloader.h"
 #include "nsIFileProtocolHandler.h"
 #include "nsIFileStreams.h"
@@ -264,7 +264,7 @@ void AssertLoadingPrincipalAndClientInfoMatch(
   //     Equals().
 
   // Allow worker debugger to load with a system principal.
-  if (aLoadingPrincipal->GetIsSystemPrincipal() &&
+  if (aLoadingPrincipal->IsSystemPrincipal() &&
       (aType == nsIContentPolicy::TYPE_INTERNAL_WORKER ||
        aType == nsIContentPolicy::TYPE_INTERNAL_SHARED_WORKER ||
        aType == nsIContentPolicy::TYPE_INTERNAL_SERVICE_WORKER ||
@@ -2580,7 +2580,7 @@ nsresult NS_ShouldSecureUpgrade(nsIURI *aURI, nsILoadInfo *aLoadInfo,
           Telemetry::AccumulateCategorical(
               Telemetry::LABELS_HTTP_SCHEME_UPGRADE_TYPE::CSP);
         } else {
-          nsCOMPtr<nsIDocument> doc;
+          RefPtr<dom::Document> doc;
           nsINode *node = aLoadInfo->LoadingNode();
           if (node) {
             doc = node->OwnerDoc();
@@ -2709,12 +2709,9 @@ nsresult NS_CompareLoadInfoAndLoadContext(nsIChannel *aChannel) {
   bool isAboutPage = false;
   nsINode *node = loadInfo->LoadingNode();
   if (node) {
-    nsIDocument *doc = node->OwnerDoc();
-    if (doc) {
-      nsIURI *uri = doc->GetDocumentURI();
-      nsresult rv = uri->SchemeIs("about", &isAboutPage);
-      NS_ENSURE_SUCCESS(rv, rv);
-    }
+    nsIURI *uri = node->OwnerDoc()->GetDocumentURI();
+    nsresult rv = uri->SchemeIs("about", &isAboutPage);
+    NS_ENSURE_SUCCESS(rv, rv);
   }
 
   if (isAboutPage) {
@@ -2825,6 +2822,66 @@ nsresult GetParameterHTTP(const nsACString &aHeaderVal, const char *aParamName,
                           nsAString &aResult) {
   return nsMIMEHeaderParamImpl::GetParameterHTTP(aHeaderVal, aParamName,
                                                  aResult);
+}
+
+bool SchemeIsHTTP(nsIURI *aURI) {
+  MOZ_ASSERT(aURI);
+  return aURI->SchemeIs("http");
+}
+
+bool SchemeIsHTTPS(nsIURI *aURI) {
+  MOZ_ASSERT(aURI);
+  return aURI->SchemeIs("https");
+}
+
+bool SchemeIsJavascript(nsIURI *aURI) {
+  MOZ_ASSERT(aURI);
+  return aURI->SchemeIs("javascript");
+}
+
+bool SchemeIsChrome(nsIURI *aURI) {
+  MOZ_ASSERT(aURI);
+  return aURI->SchemeIs("chrome");
+}
+
+bool SchemeIsAbout(nsIURI *aURI) {
+  MOZ_ASSERT(aURI);
+  return aURI->SchemeIs("about");
+}
+
+bool SchemeIsBlob(nsIURI *aURI) {
+  MOZ_ASSERT(aURI);
+  return aURI->SchemeIs("blob");
+}
+
+bool SchemeIsFile(nsIURI *aURI) {
+  MOZ_ASSERT(aURI);
+  return aURI->SchemeIs("file");
+}
+
+bool SchemeIsData(nsIURI *aURI) {
+  MOZ_ASSERT(aURI);
+  return aURI->SchemeIs("data");
+}
+
+bool SchemeIsWYCIWYG(nsIURI *aURI) {
+  MOZ_ASSERT(aURI);
+  return aURI->SchemeIs("wyciwyg");
+}
+
+bool SchemeIsViewSource(nsIURI *aURI) {
+  MOZ_ASSERT(aURI);
+  return aURI->SchemeIs("view-source");
+}
+
+bool SchemeIsResource(nsIURI *aURI) {
+  MOZ_ASSERT(aURI);
+  return aURI->SchemeIs("resource");
+}
+
+bool SchemeIsFTP(nsIURI *aURI) {
+  MOZ_ASSERT(aURI);
+  return aURI->SchemeIs("ftp");
 }
 
 }  // namespace net

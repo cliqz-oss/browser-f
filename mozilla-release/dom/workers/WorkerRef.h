@@ -108,7 +108,7 @@ class WeakWorkerRef final : public WorkerRef {
  public:
   static already_AddRefed<WeakWorkerRef> Create(
       WorkerPrivate* aWorkerPrivate,
-      const std::function<void()>& aCallback = nullptr);
+      std::function<void()>&& aCallback = nullptr);
 
   WorkerPrivate* GetPrivate() const;
 
@@ -127,13 +127,32 @@ class StrongWorkerRef final : public WorkerRef {
  public:
   static already_AddRefed<StrongWorkerRef> Create(
       WorkerPrivate* aWorkerPrivate, const char* aName,
-      const std::function<void()>& aCallback = nullptr);
+      std::function<void()>&& aCallback = nullptr);
+
+  // This function creates a StrongWorkerRef even when in the Canceling state of
+  // the worker's lifecycle. It's intended to be used by system code, e.g. code
+  // that needs to perform IPC.
+  //
+  // This method should only be used in cases where the StrongWorkerRef will be
+  // used for an extremely bounded duration that cannot be impacted by content.
+  // For example, IPCStreams use this type of ref in order to immediately
+  // migrate to an actor on another thread. Whether the IPCStream ever actually
+  // is streamed does not matter; the ref will be dropped once the new actor is
+  // created. For this reason, this method does not take a callback. It's
+  // expected and required that callers will drop the reference when they are
+  // done.
+  static already_AddRefed<StrongWorkerRef> CreateForcibly(
+      WorkerPrivate* aWorkerPrivate, const char* aName);
 
   WorkerPrivate* Private() const;
 
  private:
   friend class WeakWorkerRef;
   friend class ThreadSafeWorkerRef;
+
+  static already_AddRefed<StrongWorkerRef> CreateImpl(
+      WorkerPrivate* aWorkerPrivate, const char* aName,
+      WorkerStatus aFailStatus);
 
   explicit StrongWorkerRef(WorkerPrivate* aWorkerPrivate);
   ~StrongWorkerRef();

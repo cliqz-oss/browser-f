@@ -29,7 +29,7 @@
 #include "nsPIDOMWindow.h"
 
 #ifdef XP_WIN
-#undef PostMessage
+#  undef PostMessage
 #endif
 
 using namespace mozilla;
@@ -37,34 +37,6 @@ using namespace mozilla::dom;
 using namespace mozilla::ipc;
 
 namespace {
-
-nsresult PopulateContentSecurityPolicies(
-    nsIContentSecurityPolicy* aCSP,
-    nsTArray<ContentSecurityPolicy>& aPolicies) {
-  MOZ_ASSERT(NS_IsMainThread());
-  MOZ_ASSERT(aCSP);
-  MOZ_ASSERT(aPolicies.IsEmpty());
-
-  uint32_t count = 0;
-  nsresult rv = aCSP->GetPolicyCount(&count);
-  if (NS_WARN_IF(NS_FAILED(rv))) {
-    return rv;
-  }
-
-  for (uint32_t i = 0; i < count; ++i) {
-    const nsCSPPolicy* policy = aCSP->GetPolicy(i);
-    MOZ_ASSERT(policy);
-
-    nsAutoString policyString;
-    policy->toString(policyString);
-
-    aPolicies.AppendElement(
-        ContentSecurityPolicy(policyString, policy->getReportOnlyFlag(),
-                              policy->getDeliveredViaMetaTagFlag()));
-  }
-
-  return NS_OK;
-}
 
 nsresult PopulateContentSecurityPolicyArray(
     nsIPrincipal* aPrincipal, nsTArray<ContentSecurityPolicy>& policies,
@@ -146,7 +118,7 @@ already_AddRefed<SharedWorker> SharedWorker::Constructor(
   // StorageAccess value.
 #ifdef MOZ_DIAGNOSTIC_ASSERT_ENABLED
   if (storageAllowed == nsContentUtils::StorageAccess::ePrivateBrowsing) {
-    nsCOMPtr<nsIDocument> doc = window->GetExtantDoc();
+    nsCOMPtr<Document> doc = window->GetExtantDoc();
     nsCOMPtr<nsIPrincipal> principal = doc ? doc->NodePrincipal() : nullptr;
     uint32_t privateBrowsingId = 0;
     if (principal) {

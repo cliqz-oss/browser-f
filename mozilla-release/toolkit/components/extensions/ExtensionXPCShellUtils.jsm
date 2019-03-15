@@ -114,15 +114,22 @@ function promiseBrowserLoaded(browser, url, redirectUrl) {
 }
 
 class ContentPage {
-  constructor(remote = REMOTE_CONTENT_SCRIPTS, extension = null) {
+  constructor(remote = REMOTE_CONTENT_SCRIPTS, extension = null, privateBrowsing = false) {
     this.remote = remote;
     this.extension = extension;
+    this.privateBrowsing = privateBrowsing;
 
     this.browserReady = this._initBrowser();
   }
 
   async _initBrowser() {
     this.windowlessBrowser = Services.appShell.createWindowlessBrowser(true);
+
+    if (this.privateBrowsing) {
+      let loadContext = this.windowlessBrowser.docShell
+                            .QueryInterface(Ci.nsILoadContext);
+      loadContext.usePrivateBrowsing = true;
+    }
 
     let system = Services.scriptSecurityManager.getSystemPrincipal();
 
@@ -131,7 +138,10 @@ class ContentPage {
 
     chromeShell.createAboutBlankContentViewer(system);
     chromeShell.useGlobalHistory = false;
-    chromeShell.loadURI("chrome://extensions/content/dummy.xul", 0, null, null, null, system);
+    let loadURIOptions = {
+      triggeringPrincipal: system,
+    };
+    chromeShell.loadURI("chrome://extensions/content/dummy.xul", loadURIOptions);
 
     await promiseObserved("chrome-document-global-created",
                           win => win.document == chromeShell.document);
@@ -828,10 +838,10 @@ var ExtensionTestUtils = {
    *
    * @returns {ContentPage}
    */
-  loadContentPage(url, {extension = undefined, remote = undefined, redirectUrl = undefined} = {}) {
+  loadContentPage(url, {extension = undefined, remote = undefined, redirectUrl = undefined, privateBrowsing = false} = {}) {
     ContentTask.setTestScope(this.currentScope);
 
-    let contentPage = new ContentPage(remote, extension && extension.extension);
+    let contentPage = new ContentPage(remote, extension && extension.extension, privateBrowsing);
 
     return contentPage.loadURL(url, redirectUrl).then(() => {
       return contentPage;

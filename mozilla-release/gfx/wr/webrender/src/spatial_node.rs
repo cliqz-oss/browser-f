@@ -4,8 +4,8 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 use api::{ExternalScrollId, LayoutPixel, LayoutPoint, LayoutRect, LayoutSize, LayoutTransform};
-use api::{LayoutVector2D, PipelineId, PropertyBinding, ScrollClamping, ScrollLocation};
-use api::{ScrollSensitivity, StickyOffsetBounds};
+use api::{LayoutVector2D, PipelineId, PropertyBinding, ReferenceFrameKind, ScrollClamping, ScrollLocation};
+use api::{TransformStyle, ScrollSensitivity, StickyOffsetBounds};
 use clip_scroll_tree::{CoordinateSystem, CoordinateSystemId, SpatialNodeIndex, TransformUpdateState};
 use euclid::SideOffsets2D;
 use gpu_types::TransformPalette;
@@ -69,6 +69,36 @@ pub struct SpatialNode {
     pub coordinate_system_relative_scale_offset: ScaleOffset,
 }
 
+fn compute_offset_from(
+    mut current: Option<SpatialNodeIndex>,
+    external_id: ExternalScrollId,
+    previous_spatial_nodes: &[SpatialNode],
+) -> LayoutVector2D {
+    let mut offset = LayoutVector2D::zero();
+    while let Some(parent_index) = current {
+        let ancestor = &previous_spatial_nodes[parent_index.0 as usize];
+        match ancestor.node_type {
+            SpatialNodeType::ReferenceFrame(..) => {
+                // FIXME(emilio, bug 1523436): Breaking here is technically
+                // wrong and can happen if the perspective frame is transformed
+                // as well.
+                break;
+            },
+            SpatialNodeType::ScrollFrame(ref info) => {
+                if info.external_id == Some(external_id) {
+                    break;
+                }
+                offset += info.offset;
+            },
+            SpatialNodeType::StickyFrame(ref info) => {
+                offset += info.current_offset;
+            },
+        }
+        current = ancestor.parent;
+    }
+    offset
+}
+
 impl SpatialNode {
     pub fn new(
         pipeline_id: PipelineId,
@@ -115,21 +145,20 @@ impl SpatialNode {
 
     pub fn new_reference_frame(
         parent_index: Option<SpatialNodeIndex>,
-        source_transform: Option<PropertyBinding<LayoutTransform>>,
-        source_perspective: Option<LayoutTransform>,
+        transform_style: TransformStyle,
+        source_transform: PropertyBinding<LayoutTransform>,
+        kind: ReferenceFrameKind,
         origin_in_parent_reference_frame: LayoutVector2D,
         pipeline_id: PipelineId,
     ) -> Self {
-        let identity = LayoutTransform::identity();
-        let source_perspective = source_perspective.map_or_else(
-            LayoutFastTransform::identity, |perspective| perspective.into());
         let info = ReferenceFrameInfo {
-            source_transform: source_transform.unwrap_or(PropertyBinding::Value(identity)),
-            source_perspective,
+            transform_style,
+            source_transform,
+            kind,
             origin_in_parent_reference_frame,
             invertible: true,
         };
-        Self::new(pipeline_id, parent_index, SpatialNodeType:: ReferenceFrame(info))
+        Self::new(pipeline_id, parent_index, SpatialNodeType::ReferenceFrame(info))
     }
 
     pub fn new_sticky_frame(
@@ -139,7 +168,6 @@ impl SpatialNode {
     ) -> Self {
         Self::new(pipeline_id, Some(parent_index), SpatialNodeType::StickyFrame(sticky_frame_info))
     }
-
 
     pub fn add_child(&mut self, child: SpatialNodeIndex) {
         self.children.push(child);
@@ -223,6 +251,7 @@ impl SpatialNode {
         state: &mut TransformUpdateState,
         coord_systems: &mut Vec<CoordinateSystem>,
         scene_properties: &SceneProperties,
+        previous_spatial_nodes: &[SpatialNode],
     ) {
         // If any of our parents was not rendered, we are not rendered either and can just
         // quit here.
@@ -231,7 +260,7 @@ impl SpatialNode {
             return;
         }
 
-        self.update_transform(state, coord_systems, scene_properties);
+        self.update_transform(state, coord_systems, scene_properties, previous_spatial_nodes);
         self.transform_kind = self.world_content_transform.kind();
 
         // If this node is a reference frame, we check if it has a non-invertible matrix.
@@ -251,20 +280,38 @@ impl SpatialNode {
         state: &mut TransformUpdateState,
         coord_systems: &mut Vec<CoordinateSystem>,
         scene_properties: &SceneProperties,
+        previous_spatial_nodes: &[SpatialNode],
     ) {
         match self.node_type {
             SpatialNodeType::ReferenceFrame(ref mut info) => {
                 // Resolve the transform against any property bindings.
-                let source_transform = scene_properties.resolve_layout_transform(&info.source_transform);
+                let source_transform = LayoutFastTransform::from(
+                    scene_properties.resolve_layout_transform(&info.source_transform)
+                );
+
                 // Do a change-basis operation on the perspective matrix using
                 // the scroll offset.
-                let scrolled_perspective = info.source_perspective
-                    .pre_translate(&state.parent_accumulated_scroll_offset)
-                    .post_translate(-state.parent_accumulated_scroll_offset);
+                let source_transform = match info.kind {
+                    ReferenceFrameKind::Perspective { scrolling_relative_to: Some(external_id) } => {
+                        let scroll_offset = compute_offset_from(
+                            self.parent,
+                            external_id,
+                            previous_spatial_nodes,
+                        );
+
+                        // Do a change-basis operation on the
+                        // perspective matrix using the scroll offset.
+                        source_transform
+                            .pre_translate(&scroll_offset)
+                            .post_translate(-scroll_offset)
+                    }
+                    ReferenceFrameKind::Perspective { scrolling_relative_to: None } |
+                    ReferenceFrameKind::Transform => source_transform,
+                };
+
                 let resolved_transform =
                     LayoutFastTransform::with_vector(info.origin_in_parent_reference_frame)
-                    .pre_mul(&source_transform.into())
-                    .pre_mul(&scrolled_perspective);
+                        .pre_mul(&source_transform);
 
                 // The transformation for this viewport in world coordinates is the transformation for
                 // our parent reference frame, plus any accumulated scrolling offsets from nodes
@@ -274,6 +321,7 @@ impl SpatialNode {
                     .post_translate(state.parent_accumulated_scroll_offset)
                     .to_transform()
                     .with_destination::<LayoutPixel>();
+
                 self.world_viewport_transform =
                     state.parent_reference_frame_transform.pre_mul(&relative_transform.into());
                 self.world_content_transform = self.world_viewport_transform;
@@ -477,6 +525,9 @@ impl SpatialNode {
                 // offsets actually adjust the node position itself, whereas scroll offsets
                 // only apply to contents inside the node.
                 state.parent_accumulated_scroll_offset += info.current_offset;
+                // We want nested sticky items to take into account the shift
+                // we applied as well.
+                state.nearest_scrolling_ancestor_offset += info.current_offset;
             }
             SpatialNodeType::ScrollFrame(ref scrolling) => {
                 state.parent_accumulated_scroll_offset += scrolling.offset;
@@ -485,6 +536,15 @@ impl SpatialNode {
             }
             SpatialNodeType::ReferenceFrame(ref info) => {
                 state.parent_reference_frame_transform = self.world_viewport_transform;
+
+                let should_flatten =
+                    info.kind == ReferenceFrameKind::Transform &&
+                    info.transform_style == TransformStyle::Flat;
+
+                if should_flatten {
+                    state.parent_reference_frame_transform = state.parent_reference_frame_transform.project_to_2d();
+                }
+
                 state.parent_accumulated_scroll_offset = LayoutVector2D::zero();
                 state.coordinate_system_relative_scale_offset = self.coordinate_system_relative_scale_offset;
                 let translation = -info.origin_in_parent_reference_frame;
@@ -644,7 +704,8 @@ pub struct ReferenceFrameInfo {
     /// here so that we can resolve the animated transform and update the tree each
     /// frame.
     pub source_transform: PropertyBinding<LayoutTransform>,
-    pub source_perspective: LayoutFastTransform,
+    pub transform_style: TransformStyle,
+    pub kind: ReferenceFrameKind,
 
     /// The original, not including the transform and relative to the parent reference frame,
     /// origin of this reference frame. This is already rolled into the `transform' property, but

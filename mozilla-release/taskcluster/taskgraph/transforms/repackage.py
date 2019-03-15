@@ -17,20 +17,15 @@ from taskgraph.util.schema import (
     resolve_keyed_by,
 )
 from taskgraph.util.taskcluster import get_artifact_prefix
-from taskgraph.util.platforms import archive_format, executable_extension
+from taskgraph.util.platforms import archive_format, executable_extension, architecture
 from taskgraph.util.workertypes import worker_type_implementation
 from taskgraph.transforms.job import job_description_schema
-from voluptuous import Any, Required, Optional
+from voluptuous import Required, Optional
 
 # Voluptuous uses marker objects as dictionary *keys*, but they are not
 # comparable, so we cast all of the keys back to regular strings
 job_description_schema = {str(k): v for k, v in job_description_schema.schema.iteritems()}
 
-
-# shortcut for a string where task references are allowed
-taskref_or_string = Any(
-    basestring,
-    {Required('task-reference'): basestring})
 
 packaging_description_schema = schema.extend({
     # depname is used in taskref's to identify the taskID of the signed things
@@ -60,7 +55,8 @@ packaging_description_schema = schema.extend({
     Optional('shipping-product'): job_description_schema['shipping-product'],
     Optional('shipping-phase'): job_description_schema['shipping-phase'],
 
-    Required('package-formats'): optionally_keyed_by('build-platform', 'project', [basestring]),
+    Required('package-formats'): optionally_keyed_by(
+        'build-platform', 'release-type', [basestring]),
 
     # All l10n jobs use mozharness
     Required('mozharness'): {
@@ -89,7 +85,10 @@ packaging_description_schema = schema.extend({
 #   directory.
 PACKAGE_FORMATS = {
     'mar': {
-        'args': ['mar'],
+        'args': [
+            'mar',
+            '--arch', '{architecture}',
+        ],
         'inputs': {
             'input': 'target{archive_format}',
             'mar': 'mar{executable_extension}',
@@ -97,7 +96,10 @@ PACKAGE_FORMATS = {
         'output': "target.complete.mar",
     },
     'mar-bz2': {
-        'args': ['mar', "--format", "bz2"],
+        'args': [
+            'mar', "--format", "bz2",
+            '--arch', '{architecture}',
+        ],
         'inputs': {
             'input': 'target{archive_format}',
             'mar': 'mar{executable_extension}',
@@ -108,7 +110,7 @@ PACKAGE_FORMATS = {
         'args': ['msi', '--wsx', '{wsx-stub}',
                  '--version', '{version_display}',
                  '--locale', '{_locale}',
-                 '--arch', '{_arch}',
+                 '--arch', '{architecture}',
                  '--candle', '{fetch-dir}/candle.exe',
                  '--light', '{fetch-dir}/light.exe'],
         'inputs': {
@@ -178,8 +180,10 @@ def handle_keyed_by(config, jobs):
         for field in fields:
             resolve_keyed_by(
                 item=job, field=field,
-                project=config.params['project'],
                 item_name="?",
+                **{
+                    'release-type': config.params['release_type'],
+                }
             )
         yield job
 
@@ -263,14 +267,13 @@ def make_job_description(config, jobs):
         if use_stub and not repackage_signing_task:
             # if repackage_signing_task doesn't exists, generate the stub installer
             package_formats += ['installer-stub']
-        _fetch_subst_arch = 'x86' if 'win32' in build_platform else 'x64'
         for format in package_formats:
             command = copy.deepcopy(PACKAGE_FORMATS[format])
             substs = {
                 'archive_format': archive_format(build_platform),
                 'executable_extension': executable_extension(build_platform),
                 '_locale': _fetch_subst_locale,
-                '_arch': _fetch_subst_arch,
+                'architecture': architecture(build_platform),
                 'version_display': config.params['version'],
             }
             # Allow us to replace args a well, but specifying things expanded in mozharness
@@ -284,6 +287,8 @@ def make_job_description(config, jobs):
             command['args'] = [
                 arg.format(**substs) for arg in command['args']
             ]
+            if 'installer' in format and 'aarch64' not in build_platform:
+                command['args'].append('--use-upx')
             repackage_config.append(command)
 
         run = job.get('mozharness', {})

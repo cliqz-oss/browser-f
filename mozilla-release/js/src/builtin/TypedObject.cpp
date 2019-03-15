@@ -13,10 +13,12 @@
 
 #include "gc/Marking.h"
 #include "js/CharacterEncoding.h"
+#include "js/PropertySpec.h"
 #include "js/Vector.h"
 #include "util/StringBuffer.h"
 #include "vm/GlobalObject.h"
 #include "vm/JSFunction.h"
+#include "vm/JSObject.h"
 #include "vm/Realm.h"
 #include "vm/SelfHosting.h"
 #include "vm/StringType.h"
@@ -224,10 +226,7 @@ uint32_t ScalarTypeDescr::alignment(Type t) {
 
 bool ScalarTypeDescr::call(JSContext* cx, unsigned argc, Value* vp) {
   CallArgs args = CallArgsFromVp(argc, vp);
-  if (args.length() < 1) {
-    JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr,
-                              JSMSG_MORE_ARGS_NEEDED,
-                              args.callee().getClass()->name, "0", "s");
+  if (!args.requireAtLeast(cx, args.callee().getClass()->name, 1)) {
     return false;
   }
 
@@ -294,6 +293,9 @@ bool ScalarTypeDescr::call(JSContext* cx, unsigned argc, Value* vp) {
   switch (type) {
     case ReferenceType::TYPE_OBJECT:
       slot = TypedObjectModuleObject::ObjectDesc;
+      break;
+    case ReferenceType::TYPE_WASM_ANYREF:
+      slot = TypedObjectModuleObject::WasmAnyRefDesc;
       break;
     default:
       MOZ_CRASH("NYI");
@@ -370,15 +372,17 @@ bool js::ReferenceTypeDescr::call(JSContext* cx, unsigned argc, Value* vp) {
   Rooted<ReferenceTypeDescr*> descr(cx,
                                     &args.callee().as<ReferenceTypeDescr>());
 
-  if (args.length() < 1) {
-    JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr,
-                              JSMSG_MORE_ARGS_NEEDED, descr->typeName(), "0",
-                              "s");
+  if (!args.requireAtLeast(cx, descr->typeName(), 1)) {
     return false;
   }
 
   switch (descr->type()) {
     case ReferenceType::TYPE_ANY:
+      args.rval().set(args[0]);
+      return true;
+
+    case ReferenceType::TYPE_WASM_ANYREF:
+      // As a cast in JS, anyref is an identity operation.
       args.rval().set(args[0]);
       return true;
 
@@ -615,9 +619,7 @@ bool ArrayMetaTypeDescr::construct(JSContext* cx, unsigned argc, Value* vp) {
   RootedObject arrayTypeGlobal(cx, &args.callee());
 
   // Expect two arguments. The first is a type object, the second is a length.
-  if (args.length() < 2) {
-    JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr,
-                              JSMSG_MORE_ARGS_NEEDED, "ArrayType", "1", "");
+  if (!args.requireAtLeast(cx, "ArrayType", 2)) {
     return false;
   }
 
@@ -1374,6 +1376,11 @@ static JSObject* DefineMetaTypeDescr(JSContext* cx, const char* name,
   }
   module->initReservedSlot(TypedObjectModuleObject::ObjectDesc, typeDescr);
 
+  if (!JS_GetProperty(cx, module, "WasmAnyRef", &typeDescr)) {
+    return false;
+  }
+  module->initReservedSlot(TypedObjectModuleObject::WasmAnyRefDesc, typeDescr);
+
   // ArrayType.
 
   RootedObject arrayType(cx);
@@ -2068,15 +2075,7 @@ static bool IsOwnId(JSContext* cx, HandleObject obj, HandleId id) {
 bool TypedObject::obj_deleteProperty(JSContext* cx, HandleObject obj,
                                      HandleId id, ObjectOpResult& result) {
   if (IsOwnId(cx, obj, id)) {
-    UniqueChars propName =
-        IdToPrintableUTF8(cx, id, IdToPrintableBehavior::IdIsPropertyKey);
-    if (!propName) {
-      return false;
-    }
-
-    JS_ReportErrorNumberUTF8(cx, GetErrorMessage, nullptr, JSMSG_CANT_DELETE,
-                             propName.get());
-    return false;
+    return Throw(cx, id, JSMSG_CANT_DELETE);
   }
 
   RootedObject proto(cx, obj->staticPrototype());
@@ -2309,8 +2308,7 @@ const ObjectOps TypedObject::objectOps_ = {
       Trace,                                                               \
   };                                                                       \
   static const ClassExtension Name##ClassExt = {                           \
-      nullptr, /* weakmapKeyDelegateOp */                                  \
-      Moved    /* objectMovedOp */                                         \
+      Moved /* objectMovedOp */                                            \
   };                                                                       \
   const Class Name::class_ = {                                             \
       #Name,           Class::NON_NATIVE | JSCLASS_DELAY_METADATA_BUILDER, \
@@ -2689,6 +2687,24 @@ bool StoreReferenceObject::store(JSContext* cx, GCPtrObject* heap,
   return true;
 }
 
+bool StoreReferenceWasmAnyRef::store(JSContext* cx, GCPtrObject* heap,
+                                     const Value& v, TypedObject* obj,
+                                     jsid id) {
+  // At the moment, we allow:
+  // - null
+  // - a WasmValueBox object (a NativeObject subtype)
+  // - any other JSObject* that JS can talk about
+  //
+  // TODO/AnyRef-boxing: With boxed immediates and strings this will change.
+
+  MOZ_ASSERT(v.isObjectOrNull());
+
+  // We do not add any type information for anyref at this time.
+
+  *heap = v.toObjectOrNull();
+  return true;
+}
+
 bool StoreReferencestring::store(JSContext* cx, GCPtrString* heap,
                                  const Value& v, TypedObject* obj, jsid id) {
   MOZ_ASSERT(v.isString());  // or else Store_string is being misused
@@ -2705,6 +2721,16 @@ void LoadReferenceAny::load(GCPtrValue* heap, MutableHandleValue v) {
 }
 
 void LoadReferenceObject::load(GCPtrObject* heap, MutableHandleValue v) {
+  if (*heap) {
+    v.setObject(**heap);
+  } else {
+    v.setNull();
+  }
+}
+
+void LoadReferenceWasmAnyRef::load(GCPtrObject* heap, MutableHandleValue v) {
+  // TODO/AnyRef-boxing: With boxed immediates and strings this will change.
+
   if (*heap) {
     v.setObject(**heap);
   } else {
@@ -2789,6 +2815,7 @@ void MemoryInitVisitor::visitReference(ReferenceTypeDescr& descr,
       return;
     }
 
+    case ReferenceType::TYPE_WASM_ANYREF:
     case ReferenceType::TYPE_OBJECT: {
       js::GCPtrObject* objectPtr = reinterpret_cast<js::GCPtrObject*>(mem);
       objectPtr->init(nullptr);
@@ -2850,6 +2877,9 @@ void MemoryTracingVisitor::visitReference(ReferenceTypeDescr& descr,
       return;
     }
 
+    case ReferenceType::TYPE_WASM_ANYREF:
+      // TODO/AnyRef-boxing: With boxed immediates and strings the tracing code
+      // will be more complicated.  For now, tracing as an object is fine.
     case ReferenceType::TYPE_OBJECT: {
       GCPtrObject* objectPtr = reinterpret_cast<js::GCPtrObject*>(mem);
       TraceNullableEdge(trace_, objectPtr, "reference-obj");
@@ -2890,11 +2920,16 @@ struct TraceListVisitor {
 
 void TraceListVisitor::visitReference(ReferenceTypeDescr& descr, uint8_t* mem) {
   VectorType* offsets;
+  // TODO/AnyRef-boxing: Once a WasmAnyRef is no longer just a JSObject*
+  // we must revisit this structure.
   switch (descr.type()) {
     case ReferenceType::TYPE_ANY:
       offsets = &valueOffsets;
       break;
     case ReferenceType::TYPE_OBJECT:
+      offsets = &objectOffsets;
+      break;
+    case ReferenceType::TYPE_WASM_ANYREF:
       offsets = &objectOffsets;
       break;
     case ReferenceType::TYPE_STRING:

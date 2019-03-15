@@ -7,7 +7,8 @@
 #define nsHTMLDocument_h___
 
 #include "mozilla/Attributes.h"
-#include "nsDocument.h"
+#include "nsContentList.h"
+#include "mozilla/dom/Document.h"
 #include "nsIHTMLDocument.h"
 #include "nsIHTMLCollection.h"
 #include "nsIScriptElement.h"
@@ -29,21 +30,31 @@ class nsILoadGroup;
 namespace mozilla {
 namespace dom {
 class HTMLAllCollection;
+template <typename T>
+struct Nullable;
+class WindowProxyHolder;
 }  // namespace dom
 }  // namespace mozilla
 
-class nsHTMLDocument : public nsDocument, public nsIHTMLDocument {
+class nsHTMLDocument : public mozilla::dom::Document, public nsIHTMLDocument {
+ protected:
+  typedef mozilla::net::ReferrerPolicy ReferrerPolicy;
+  typedef mozilla::dom::Document Document;
+  typedef mozilla::Encoding Encoding;
+  template <typename T>
+  using NotNull = mozilla::NotNull<T>;
+
  public:
-  using nsDocument::GetPlugins;
-  using nsDocument::SetDocumentURI;
+  using Document::GetPlugins;
+  using Document::SetDocumentURI;
 
   nsHTMLDocument();
   virtual nsresult Init() override;
 
   NS_DECL_ISUPPORTS_INHERITED
-  NS_DECL_CYCLE_COLLECTION_CLASS_INHERITED(nsHTMLDocument, nsDocument)
+  NS_DECL_CYCLE_COLLECTION_CLASS_INHERITED(nsHTMLDocument, Document)
 
-  // nsIDocument
+  // Document
   virtual void Reset(nsIChannel* aChannel, nsILoadGroup* aLoadGroup) override;
   virtual void ResetToURI(nsIURI* aURI, nsILoadGroup* aLoadGroup,
                           nsIPrincipal* aPrincipal) override;
@@ -122,7 +133,7 @@ class nsHTMLDocument : public nsDocument, public nsIHTMLDocument {
 
   virtual void DocAddSizeOfExcludingThis(
       nsWindowSizes& aWindowSizes) const override;
-  // DocAddSizeOfIncludingThis is inherited from nsIDocument.
+  // DocAddSizeOfIncludingThis is inherited from Document.
 
   virtual bool WillIgnoreCharsetOverride() override;
 
@@ -144,10 +155,10 @@ class nsHTMLDocument : public nsDocument, public nsIHTMLDocument {
     }
   }
   void GetSupportedNames(nsTArray<nsString>& aNames);
-  already_AddRefed<nsIDocument> Open(
+  already_AddRefed<Document> Open(
       JSContext* cx, const mozilla::dom::Optional<nsAString>& /* unused */,
       const nsAString& aReplace, mozilla::ErrorResult& aError);
-  already_AddRefed<nsPIDOMWindowOuter> Open(
+  mozilla::dom::Nullable<mozilla::dom::WindowProxyHolder> Open(
       JSContext* cx, const nsAString& aURL, const nsAString& aName,
       const nsAString& aFeatures, bool aReplace, mozilla::ErrorResult& rv);
   void Close(mozilla::ErrorResult& rv);
@@ -191,7 +202,7 @@ class nsHTMLDocument : public nsDocument, public nsIHTMLDocument {
   void ReleaseEvents();
   // We're picking up GetLocation from Document
   already_AddRefed<mozilla::dom::Location> GetLocation() const {
-    return nsIDocument::GetLocation();
+    return Document::GetLocation();
   }
 
   static bool MatchFormControls(Element* aElement, int32_t aNamespaceID,
@@ -201,6 +212,8 @@ class nsHTMLDocument : public nsDocument, public nsIHTMLDocument {
                                nsContentList** aFormControlList);
 
   void UserInteractionForTesting();
+
+  void SetKeyPressEventModel(uint16_t aKeyPressEventModel);
 
  protected:
   ~nsHTMLDocument();
@@ -282,12 +295,21 @@ class nsHTMLDocument : public nsDocument, public nsIHTMLDocument {
   void TryParentCharset(nsIDocShell* aDocShell, int32_t& charsetSource,
                         NotNull<const Encoding*>& aEncoding);
   void TryTLD(int32_t& aCharsetSource, NotNull<const Encoding*>& aCharset);
-  void TryFallback(int32_t& aCharsetSource,
-                   NotNull<const Encoding*>& aEncoding);
+  static void TryFallback(int32_t& aCharsetSource,
+                          NotNull<const Encoding*>& aEncoding);
 
   // Override so we can munge the charset on our wyciwyg channel as needed.
   virtual void SetDocumentCharacterSet(
       NotNull<const Encoding*> aEncoding) override;
+
+  /**
+   * MaybeDispatchCheckKeyPressEventModelEvent() dispatches
+   * "CheckKeyPressEventModel" event to check whether we should dispatch
+   * keypress events in confluent model or split model.  This should be
+   * called only when mEditingState is changed to eDesignMode or
+   * eConentEditable at first time.
+   */
+  void MaybeDispatchCheckKeyPressEventModelEvent();
 
   // Tracks if we are currently processing any document.write calls (either
   // implicit or explicit). Note that if a write call writes out something which
@@ -326,12 +348,22 @@ class nsHTMLDocument : public nsDocument, public nsIHTMLDocument {
    * MaybeEditingStateChanged() script runners from a nested scope.
    */
   bool mPendingMaybeEditingStateChanged;
+
+  // mHasBeenEditable is set to true when mEditingState is firstly set to
+  // eDesignMode or eContentEditable.
+  bool mHasBeenEditable;
 };
 
-inline nsHTMLDocument* nsIDocument::AsHTMLDocument() {
+namespace mozilla {
+namespace dom {
+
+inline nsHTMLDocument* Document::AsHTMLDocument() {
   MOZ_ASSERT(IsHTMLOrXHTML());
   return static_cast<nsHTMLDocument*>(this);
 }
+
+}  // namespace dom
+}  // namespace mozilla
 
 #define NS_HTML_DOCUMENT_INTERFACE_TABLE_BEGIN(_class) \
   NS_DOCUMENT_INTERFACE_TABLE_BEGIN(_class)            \

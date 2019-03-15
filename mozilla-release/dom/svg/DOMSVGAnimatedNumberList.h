@@ -7,17 +7,20 @@
 #ifndef MOZILLA_DOMSVGANIMATEDNUMBERLIST_H__
 #define MOZILLA_DOMSVGANIMATEDNUMBERLIST_H__
 
-#include "nsCOMPtr.h"
 #include "nsCycleCollectionParticipant.h"
-#include "nsSVGElement.h"
+#include "SVGElement.h"
 #include "nsWrapperCache.h"
 #include "mozilla/Attributes.h"
+#include "mozilla/RefPtr.h"
 
 namespace mozilla {
 
-class DOMSVGNumberList;
 class SVGAnimatedNumberList;
 class SVGNumberList;
+
+namespace dom {
+
+class DOMSVGNumberList;
 
 /**
  * Class DOMSVGAnimatedNumberList
@@ -54,7 +57,8 @@ class DOMSVGAnimatedNumberList final : public nsISupports,
    * DOMSVGAnimatedNumberList being returned.
    */
   static already_AddRefed<DOMSVGAnimatedNumberList> GetDOMWrapper(
-      SVGAnimatedNumberList* aList, nsSVGElement* aElement, uint8_t aAttrEnum);
+      SVGAnimatedNumberList* aList, dom::SVGElement* aElement,
+      uint8_t aAttrEnum);
 
   /**
    * This method returns the DOMSVGAnimatedNumberList wrapper for an internal
@@ -86,7 +90,7 @@ class DOMSVGAnimatedNumberList final : public nsISupports,
   bool IsAnimating() const;
 
   // WebIDL
-  nsSVGElement* GetParentObject() const { return mElement; }
+  dom::SVGElement* GetParentObject() const { return mElement; }
   virtual JSObject* WrapObject(JSContext* aCx,
                                JS::Handle<JSObject*> aGivenProto) override;
   // These aren't weak refs because mBaseVal and mAnimVal are weak
@@ -98,7 +102,7 @@ class DOMSVGAnimatedNumberList final : public nsISupports,
    * Only our static GetDOMWrapper() factory method may create objects of our
    * type.
    */
-  DOMSVGAnimatedNumberList(nsSVGElement* aElement, uint8_t aAttrEnum)
+  DOMSVGAnimatedNumberList(dom::SVGElement* aElement, uint8_t aAttrEnum)
       : mBaseVal(nullptr),
         mAnimVal(nullptr),
         mElement(aElement),
@@ -118,11 +122,12 @@ class DOMSVGAnimatedNumberList final : public nsISupports,
 
   // Strong ref to our element to keep it alive. We hold this not only for
   // ourself, but also for our base/animVal and all of their items.
-  RefPtr<nsSVGElement> mElement;
+  RefPtr<dom::SVGElement> mElement;
 
   uint8_t mAttrEnum;
 };
 
+}  // namespace dom
 }  // namespace mozilla
 
 #endif  // MOZILLA_DOMSVGANIMATEDNUMBERLIST_H__

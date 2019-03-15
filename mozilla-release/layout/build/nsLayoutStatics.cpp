@@ -25,7 +25,7 @@
 #include "nsCSSRendering.h"
 #include "nsGenericHTMLFrameElement.h"
 #include "mozilla/dom/Attr.h"
-#include "mozilla/EventListenerManager.h"
+#include "mozilla/dom/PopupBlocker.h"
 #include "nsFrame.h"
 #include "nsFrameState.h"
 #include "nsGlobalWindow.h"
@@ -73,12 +73,12 @@
 #include "mozilla/dom/WebCryptoThreadPool.h"
 
 #ifdef MOZ_XUL
-#include "nsXULPopupManager.h"
-#include "nsXULContentUtils.h"
-#include "nsXULPrototypeCache.h"
-#include "nsXULTooltipListener.h"
+#  include "nsXULPopupManager.h"
+#  include "nsXULContentUtils.h"
+#  include "nsXULPrototypeCache.h"
+#  include "nsXULTooltipListener.h"
 
-#include "nsMenuBarListener.h"
+#  include "nsMenuBarListener.h"
 #endif
 
 #include "CubebUtils.h"
@@ -111,10 +111,14 @@
 #include "mozilla/dom/WebIDLGlobalNameHash.h"
 #include "mozilla/dom/ipc/IPCBlobInputStreamStorage.h"
 #include "mozilla/dom/U2FTokenManager.h"
+#ifdef OS_WIN
+#  include "mozilla/dom/WinWebAuthnManager.h"
+#endif
 #include "mozilla/dom/PointerEventHandler.h"
 #include "mozilla/dom/RemoteWorkerService.h"
 #include "mozilla/dom/BlobURLProtocolHandler.h"
 #include "mozilla/dom/ReportingHeader.h"
+#include "mozilla/net/UrlClassifierFeatureFactory.h"
 #include "nsThreadManager.h"
 #include "mozilla/css/ImageLoader.h"
 
@@ -191,6 +195,8 @@ nsresult nsLayoutStatics::Initialize() {
   nsFrame::DisplayReflowStartup();
 #endif
   Attr::Initialize();
+
+  PopupBlocker::Initialize();
 
   rv = txMozillaXSLTProcessor::Startup();
   if (NS_FAILED(rv)) {
@@ -276,6 +282,10 @@ nsresult nsLayoutStatics::Initialize() {
 
   mozilla::dom::U2FTokenManager::Initialize();
 
+#ifdef OS_WIN
+  mozilla::dom::WinWebAuthnManager::Initialize();
+#endif
+
   if (XRE_IsParentProcess()) {
     // On content process we initialize these components when PContentChild is
     // fully initialized.
@@ -312,7 +322,7 @@ void nsLayoutStatics::Shutdown() {
   StorageObserver::Shutdown();
   txMozillaXSLTProcessor::Shutdown();
   Attr::Shutdown();
-  EventListenerManager::Shutdown();
+  PopupBlocker::Shutdown();
   IMEStateManager::Shutdown();
   nsMediaFeatures::Shutdown();
   nsHTMLDNSPrefetch::Shutdown();
@@ -397,4 +407,6 @@ void nsLayoutStatics::Shutdown() {
   BlobURLProtocolHandler::RemoveDataEntries();
 
   css::ImageLoader::Shutdown();
+
+  mozilla::net::UrlClassifierFeatureFactory::Shutdown();
 }

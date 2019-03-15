@@ -4,15 +4,15 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+#include "mozilla/dom/SVGUseElement.h"
+
 #include "mozilla/ArrayUtils.h"
 #include "mozilla/ErrorResult.h"
-
-#include "mozilla/dom/SVGUseElement.h"
 #include "mozilla/dom/SVGLengthBinding.h"
 #include "mozilla/dom/SVGUseElementBinding.h"
 #include "nsGkAtoms.h"
 #include "mozilla/dom/SVGSVGElement.h"
-#include "nsIDocument.h"
+#include "mozilla/dom/Document.h"
 #include "nsIPresShell.h"
 #include "mozilla/dom/Element.h"
 #include "nsContentUtils.h"
@@ -22,7 +22,7 @@
 #include "nsSVGUseFrame.h"
 #include "mozilla/net/ReferrerPolicy.h"
 
-NS_IMPL_NS_NEW_NAMESPACED_SVG_ELEMENT(Use)
+NS_IMPL_NS_NEW_SVG_ELEMENT(Use)
 
 namespace mozilla {
 namespace dom {
@@ -35,7 +35,7 @@ JSObject* SVGUseElement::WrapNode(JSContext* aCx,
 ////////////////////////////////////////////////////////////////////////
 // implementation
 
-nsSVGElement::LengthInfo SVGUseElement::sLengthInfo[4] = {
+SVGElement::LengthInfo SVGUseElement::sLengthInfo[4] = {
     {nsGkAtoms::x, 0, SVGLength_Binding::SVG_LENGTHTYPE_NUMBER,
      SVGContentUtils::X},
     {nsGkAtoms::y, 0, SVGLength_Binding::SVG_LENGTHTYPE_NUMBER,
@@ -46,7 +46,7 @@ nsSVGElement::LengthInfo SVGUseElement::sLengthInfo[4] = {
      SVGContentUtils::Y},
 };
 
-nsSVGElement::StringInfo SVGUseElement::sStringInfo[2] = {
+SVGElement::StringInfo SVGUseElement::sStringInfo[2] = {
     {nsGkAtoms::href, kNameSpaceID_None, true},
     {nsGkAtoms::href, kNameSpaceID_XLink, true}};
 
@@ -150,7 +150,7 @@ nsresult SVGUseElement::Clone(dom::NodeInfo* aNodeInfo,
   return NS_FAILED(rv1) ? rv1 : rv2;
 }
 
-nsresult SVGUseElement::BindToTree(nsIDocument* aDocument, nsIContent* aParent,
+nsresult SVGUseElement::BindToTree(Document* aDocument, nsIContent* aParent,
                                    nsIContent* aBindingParent) {
   nsresult rv =
       SVGUseElementBase::BindToTree(aDocument, aParent, aBindingParent);
@@ -319,7 +319,7 @@ void SVGUseElement::UpdateShadowTree() {
   }
 
   if (newElement->IsAnyOfSVGElements(nsGkAtoms::svg, nsGkAtoms::symbol)) {
-    auto* newSVGElement = static_cast<nsSVGElement*>(newElement.get());
+    auto* newSVGElement = static_cast<SVGElement*>(newElement.get());
     if (mLengthAttributes[ATTR_WIDTH].IsExplicitlySet())
       newSVGElement->SetLength(nsGkAtoms::width, mLengthAttributes[ATTR_WIDTH]);
     if (mLengthAttributes[ATTR_HEIGHT].IsExplicitlySet())
@@ -368,7 +368,7 @@ void SVGUseElement::SyncWidthOrHeight(nsAtom* aName) {
     return;
   }
 
-  auto* target = nsSVGElement::FromNode(GetClonedChild(*this));
+  auto* target = SVGElement::FromNode(GetClonedChild(*this));
   uint32_t index =
       sLengthInfo[ATTR_WIDTH].mName == aName ? ATTR_WIDTH : ATTR_HEIGHT;
 
@@ -420,7 +420,7 @@ void SVGUseElement::LookupHref() {
 }
 
 void SVGUseElement::TriggerReclone() {
-  if (nsIDocument* doc = GetComposedDoc()) {
+  if (Document* doc = GetComposedDoc()) {
     doc->ScheduleSVGUseElementShadowTreeUpdate(*this);
   }
 }
@@ -433,7 +433,7 @@ void SVGUseElement::UnlinkSource() {
 }
 
 //----------------------------------------------------------------------
-// nsSVGElement methods
+// SVGElement methods
 
 /* virtual */ gfxMatrix SVGUseElement::PrependLocalTransformsTo(
     const gfxMatrix& aMatrix, SVGTransformTypes aWhich) const {
@@ -477,12 +477,12 @@ void SVGUseElement::UnlinkSource() {
           mLengthAttributes[ATTR_HEIGHT].GetAnimValInSpecifiedUnits() > 0);
 }
 
-nsSVGElement::LengthAttributesInfo SVGUseElement::GetLengthInfo() {
+SVGElement::LengthAttributesInfo SVGUseElement::GetLengthInfo() {
   return LengthAttributesInfo(mLengthAttributes, sLengthInfo,
                               ArrayLength(sLengthInfo));
 }
 
-nsSVGElement::StringAttributesInfo SVGUseElement::GetStringInfo() {
+SVGElement::StringAttributesInfo SVGUseElement::GetStringInfo() {
   return StringAttributesInfo(mStringAttributes, sStringInfo,
                               ArrayLength(sStringInfo));
 }

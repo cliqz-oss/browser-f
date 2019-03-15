@@ -4,20 +4,20 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-#include "mozilla/ArrayUtils.h"
-
 #include "nsSVGLength2.h"
+
+#include "mozilla/ArrayUtils.h"
+#include "mozilla/SMILValue.h"
 #include "mozilla/dom/SVGAnimatedLength.h"
 #include "mozilla/dom/SVGViewportElement.h"
-#include "nsContentUtils.h"  // NS_ENSURE_FINITE
+#include "nsContentUtils.h"
+#include "DOMSVGLength.h"
 #include "nsIFrame.h"
-#include "nsSMILFloatType.h"
-#include "nsSMILValue.h"
-#include "nsSVGAttrTearoffTable.h"
+#include "LayoutLogging.h"
+#include "SMILFloatType.h"
+#include "SVGAttrTearoffTable.h"
 #include "nsSVGIntegrationUtils.h"
 #include "nsTextFormatter.h"
-#include "DOMSVGLength.h"
-#include "LayoutLogging.h"
 
 using namespace mozilla;
 using namespace mozilla::dom;
@@ -35,7 +35,7 @@ static const nsStaticAtom* const unitMap[] = {
     nsGkAtoms::pt,
     nsGkAtoms::pc};
 
-static nsSVGAttrTearoffTable<nsSVGLength2, SVGAnimatedLength>
+static SVGAttrTearoffTable<nsSVGLength2, SVGAnimatedLength>
     sSVGAnimatedLengthTearoffTable;
 
 /* Helper functions */
@@ -105,7 +105,7 @@ static float FixAxisLength(float aLength) {
   return aLength;
 }
 
-SVGElementMetrics::SVGElementMetrics(nsSVGElement* aSVGElement,
+SVGElementMetrics::SVGElementMetrics(SVGElement* aSVGElement,
                                      SVGViewportElement* aCtx)
     : mSVGElement(aSVGElement), mCtx(aCtx) {}
 
@@ -173,7 +173,7 @@ float UserSpaceMetricsWithSize::GetAxisLength(uint8_t aCtxType) const {
   return FixAxisLength(length);
 }
 
-float nsSVGLength2::GetPixelsPerUnit(nsSVGElement* aSVGElement,
+float nsSVGLength2::GetPixelsPerUnit(SVGElement* aSVGElement,
                                      uint8_t aUnitType) const {
   return GetPixelsPerUnit(SVGElementMetrics(aSVGElement), aUnitType);
 }
@@ -188,7 +188,7 @@ float nsSVGLength2::GetPixelsPerUnit(nsIFrame* aFrame,
   nsIContent* content = aFrame->GetContent();
   if (content->IsSVGElement()) {
     return GetPixelsPerUnit(
-        SVGElementMetrics(static_cast<nsSVGElement*>(content)), aUnitType);
+        SVGElementMetrics(static_cast<SVGElement*>(content)), aUnitType);
   }
   return GetPixelsPerUnit(NonSVGFrameUserSpaceMetrics(aFrame), aUnitType);
 }
@@ -225,7 +225,7 @@ float nsSVGLength2::GetPixelsPerUnit(const UserSpaceMetrics& aMetrics,
 }
 
 void nsSVGLength2::SetBaseValueInSpecifiedUnits(float aValue,
-                                                nsSVGElement* aSVGElement,
+                                                SVGElement* aSVGElement,
                                                 bool aDoSetAttr) {
   if (mIsBaseSet && mBaseVal == aValue) {
     return;
@@ -248,7 +248,7 @@ void nsSVGLength2::SetBaseValueInSpecifiedUnits(float aValue,
 }
 
 nsresult nsSVGLength2::ConvertToSpecifiedUnits(uint16_t unitType,
-                                               nsSVGElement* aSVGElement) {
+                                               SVGElement* aSVGElement) {
   if (!IsValidUnitType(unitType)) return NS_ERROR_DOM_NOT_SUPPORTED_ERR;
 
   if (mIsBaseSet && mSpecifiedUnitType == uint8_t(unitType)) return NS_OK;
@@ -284,7 +284,7 @@ nsresult nsSVGLength2::ConvertToSpecifiedUnits(uint16_t unitType,
 
 nsresult nsSVGLength2::NewValueSpecifiedUnits(uint16_t unitType,
                                               float valueInSpecifiedUnits,
-                                              nsSVGElement* aSVGElement) {
+                                              SVGElement* aSVGElement) {
   NS_ENSURE_FINITE(valueInSpecifiedUnits, NS_ERROR_ILLEGAL_VALUE);
 
   if (!IsValidUnitType(unitType)) return NS_ERROR_DOM_NOT_SUPPORTED_ERR;
@@ -307,28 +307,20 @@ nsresult nsSVGLength2::NewValueSpecifiedUnits(uint16_t unitType,
   return NS_OK;
 }
 
-nsresult nsSVGLength2::ToDOMBaseVal(DOMSVGLength** aResult,
-                                    nsSVGElement* aSVGElement) {
-  RefPtr<DOMSVGLength> domBaseVal =
-      DOMSVGLength::GetTearOff(this, aSVGElement, false);
-
-  domBaseVal.forget(aResult);
-  return NS_OK;
+already_AddRefed<DOMSVGLength> nsSVGLength2::ToDOMBaseVal(
+    SVGElement* aSVGElement) {
+  return DOMSVGLength::GetTearOff(this, aSVGElement, false);
 }
 
-nsresult nsSVGLength2::ToDOMAnimVal(DOMSVGLength** aResult,
-                                    nsSVGElement* aSVGElement) {
-  RefPtr<DOMSVGLength> domAnimVal =
-      DOMSVGLength::GetTearOff(this, aSVGElement, true);
-
-  domAnimVal.forget(aResult);
-  return NS_OK;
+already_AddRefed<DOMSVGLength> nsSVGLength2::ToDOMAnimVal(
+    SVGElement* aSVGElement) {
+  return DOMSVGLength::GetTearOff(this, aSVGElement, true);
 }
 
 /* Implementation */
 
 nsresult nsSVGLength2::SetBaseValueString(const nsAString& aValueAsString,
-                                          nsSVGElement* aSVGElement,
+                                          SVGElement* aSVGElement,
                                           bool aDoSetAttr) {
   float value;
   uint16_t unitType;
@@ -369,7 +361,7 @@ void nsSVGLength2::GetAnimValueString(nsAString& aValueAsString) const {
   GetValueString(aValueAsString, mAnimVal, mSpecifiedUnitType);
 }
 
-nsresult nsSVGLength2::SetBaseValue(float aValue, nsSVGElement* aSVGElement,
+nsresult nsSVGLength2::SetBaseValue(float aValue, SVGElement* aSVGElement,
                                     bool aDoSetAttr) {
   float pixelsPerUnit = GetPixelsPerUnit(aSVGElement, mSpecifiedUnitType);
   if (pixelsPerUnit == 0.0f) {
@@ -386,7 +378,7 @@ nsresult nsSVGLength2::SetBaseValue(float aValue, nsSVGElement* aSVGElement,
 }
 
 void nsSVGLength2::SetAnimValueInSpecifiedUnits(float aValue,
-                                                nsSVGElement* aSVGElement) {
+                                                SVGElement* aSVGElement) {
   if (mAnimVal == aValue && mIsAnimated) {
     return;
   }
@@ -395,7 +387,7 @@ void nsSVGLength2::SetAnimValueInSpecifiedUnits(float aValue,
   aSVGElement->DidAnimateLength(mAttrEnum);
 }
 
-nsresult nsSVGLength2::SetAnimValue(float aValue, nsSVGElement* aSVGElement) {
+nsresult nsSVGLength2::SetAnimValue(float aValue, SVGElement* aSVGElement) {
   float valueInSpecifiedUnits =
       aValue / GetPixelsPerUnit(aSVGElement, mSpecifiedUnitType);
 
@@ -407,7 +399,7 @@ nsresult nsSVGLength2::SetAnimValue(float aValue, nsSVGElement* aSVGElement) {
 }
 
 already_AddRefed<SVGAnimatedLength> nsSVGLength2::ToDOMAnimatedLength(
-    nsSVGElement* aSVGElement) {
+    SVGElement* aSVGElement) {
   RefPtr<SVGAnimatedLength> svgAnimatedLength =
       sSVGAnimatedLengthTearoffTable.GetTearoff(this);
   if (!svgAnimatedLength) {
@@ -422,13 +414,13 @@ SVGAnimatedLength::~SVGAnimatedLength() {
   sSVGAnimatedLengthTearoffTable.RemoveTearoff(mVal);
 }
 
-UniquePtr<nsISMILAttr> nsSVGLength2::ToSMILAttr(nsSVGElement* aSVGElement) {
+UniquePtr<SMILAttr> nsSVGLength2::ToSMILAttr(SVGElement* aSVGElement) {
   return MakeUnique<SMILLength>(this, aSVGElement);
 }
 
 nsresult nsSVGLength2::SMILLength::ValueFromString(
     const nsAString& aStr, const SVGAnimationElement* /*aSrcElement*/,
-    nsSMILValue& aValue, bool& aPreventCachingOfSandwich) const {
+    SMILValue& aValue, bool& aPreventCachingOfSandwich) const {
   float value;
   uint16_t unitType;
 
@@ -436,7 +428,7 @@ nsresult nsSVGLength2::SMILLength::ValueFromString(
     return NS_ERROR_DOM_SYNTAX_ERR;
   }
 
-  nsSMILValue val(nsSMILFloatType::Singleton());
+  SMILValue val(SMILFloatType::Singleton());
   val.mU.mDouble = value * mVal->GetPixelsPerUnit(mSVGElement, unitType);
   aValue = val;
   aPreventCachingOfSandwich =
@@ -447,8 +439,8 @@ nsresult nsSVGLength2::SMILLength::ValueFromString(
   return NS_OK;
 }
 
-nsSMILValue nsSVGLength2::SMILLength::GetBaseValue() const {
-  nsSMILValue val(nsSMILFloatType::Singleton());
+SMILValue nsSVGLength2::SMILLength::GetBaseValue() const {
+  SMILValue val(SMILFloatType::Singleton());
   val.mU.mDouble = mVal->GetBaseValue(mSVGElement);
   return val;
 }
@@ -461,10 +453,10 @@ void nsSVGLength2::SMILLength::ClearAnimValue() {
   }
 }
 
-nsresult nsSVGLength2::SMILLength::SetAnimValue(const nsSMILValue& aValue) {
-  NS_ASSERTION(aValue.mType == nsSMILFloatType::Singleton(),
+nsresult nsSVGLength2::SMILLength::SetAnimValue(const SMILValue& aValue) {
+  NS_ASSERTION(aValue.mType == SMILFloatType::Singleton(),
                "Unexpected type to assign animated value");
-  if (aValue.mType == nsSMILFloatType::Singleton()) {
+  if (aValue.mType == SMILFloatType::Singleton()) {
     return mVal->SetAnimValue(float(aValue.mU.mDouble), mSVGElement);
   }
   return NS_OK;

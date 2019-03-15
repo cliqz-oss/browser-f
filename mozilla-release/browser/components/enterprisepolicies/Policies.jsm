@@ -264,26 +264,6 @@ var Policies = {
     },
   },
 
-  "DNSOverHTTPS": {
-    onBeforeAddons(manager, param) {
-      if ("Enabled" in param) {
-        let mode = param.Enabled ? 2 : 5;
-        if (param.Locked) {
-          setAndLockPref("network.trr.mode", mode);
-        } else {
-          setDefaultPref("network.trr.mode", mode);
-        }
-      }
-      if (param.ProviderURL) {
-        if (param.Locked) {
-          setAndLockPref("network.trr.uri", param.ProviderURL.href);
-        } else {
-          setDefaultPref("network.trr.uri", param.ProviderURL.href);
-        }
-      }
-    },
-  },
-
   "DisableAppUpdate": {
     onBeforeAddons(manager, param) {
       if (param) {
@@ -342,6 +322,7 @@ var Policies = {
     onBeforeAddons(manager, param) {
       if (param) {
         manager.disallowFeature("Shield");
+        setAndLockPref("browser.newtabpage.activity-stream.asrouter.userprefs.cfr", false);
       }
     },
   },
@@ -476,9 +457,29 @@ var Policies = {
     },
   },
 
+  "DNSOverHTTPS": {
+    onBeforeAddons(manager, param) {
+      if ("Enabled" in param) {
+        let mode = param.Enabled ? 2 : 5;
+        if (param.Locked) {
+          setAndLockPref("network.trr.mode", mode);
+        } else {
+          setDefaultPref("network.trr.mode", mode);
+        }
+      }
+      if (param.ProviderURL) {
+        if (param.Locked) {
+          setAndLockPref("network.trr.uri", param.ProviderURL.href);
+        } else {
+          setDefaultPref("network.trr.uri", param.ProviderURL.href);
+        }
+      }
+    },
+  },
+
   "DontCheckDefaultBrowser": {
     onBeforeUIStartup(manager, param) {
-      setAndLockPref("browser.shell.checkDefaultBrowser", false);
+      setAndLockPref("browser.shell.checkDefaultBrowser", !param);
     },
   },
 
@@ -685,6 +686,8 @@ var Policies = {
         setAndLockPref("xpinstall.enabled", param.Default);
         if (!param.Default) {
           blockAboutPage(manager, "about:debugging");
+          setAndLockPref("browser.newtabpage.activity-stream.asrouter.userprefs.cfr", false);
+          manager.disallowFeature("xpinstall");
         }
       }
     },
@@ -911,6 +914,48 @@ var Policies = {
           log.debug(ex);
         }
       }
+    },
+  },
+
+  "SSLVersionMax": {
+    onBeforeAddons(manager, param) {
+      let tlsVersion;
+      switch (param) {
+        case "tls1":
+          tlsVersion = 1;
+          break;
+        case "tls1.1":
+          tlsVersion = 2;
+          break;
+        case "tls1.2":
+          tlsVersion = 3;
+          break;
+        case "tls1.3":
+          tlsVersion = 4;
+          break;
+      }
+      setAndLockPref("security.tls.version.max", tlsVersion);
+    },
+  },
+
+  "SSLVersionMin": {
+    onBeforeAddons(manager, param) {
+      let tlsVersion;
+      switch (param) {
+        case "tls1":
+          tlsVersion = 1;
+          break;
+        case "tls1.1":
+          tlsVersion = 2;
+          break;
+        case "tls1.2":
+          tlsVersion = 3;
+          break;
+        case "tls1.3":
+          tlsVersion = 4;
+          break;
+      }
+      setAndLockPref("security.tls.version.min", tlsVersion);
     },
   },
 

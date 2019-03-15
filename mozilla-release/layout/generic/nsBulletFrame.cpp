@@ -16,7 +16,7 @@
 #include "mozilla/gfx/PathHelpers.h"
 #include "mozilla/layers/LayersMessages.h"
 #include "mozilla/layers/StackingContextHelper.h"
-#include "mozilla/layers/WebRenderLayerManager.h"
+#include "mozilla/layers/RenderRootStateManager.h"
 #include "mozilla/layers/WebRenderMessages.h"
 #include "mozilla/MathAlgorithms.h"
 #include "mozilla/Move.h"
@@ -27,7 +27,7 @@
 #include "nsAttrValueInlines.h"
 #include "nsPresContext.h"
 #include "nsIPresShell.h"
-#include "nsIDocument.h"
+#include "mozilla/dom/Document.h"
 #include "nsDisplayList.h"
 #include "nsCounterManager.h"
 #include "nsBidiUtils.h"
@@ -45,7 +45,7 @@
 #include <algorithm>
 
 #ifdef ACCESSIBILITY
-#include "nsAccessibilityService.h"
+#  include "nsAccessibilityService.h"
 #endif
 
 using namespace mozilla;
@@ -216,7 +216,7 @@ class BulletRenderer final {
       nsDisplayItem* aItem, wr::DisplayListBuilder& aBuilder,
       wr::IpcResourceUpdateQueue& aResources,
       const layers::StackingContextHelper& aSc,
-      mozilla::layers::WebRenderLayerManager* aManager,
+      mozilla::layers::RenderRootStateManager* aManager,
       nsDisplayListBuilder* aDisplayListBuilder);
 
   ImgDrawResult Paint(gfxContext& aRenderingContext, nsPoint aPt,
@@ -256,21 +256,21 @@ class BulletRenderer final {
       nsDisplayItem* aItem, wr::DisplayListBuilder& aBuilder,
       wr::IpcResourceUpdateQueue& aResources,
       const layers::StackingContextHelper& aSc,
-      mozilla::layers::WebRenderLayerManager* aManager,
+      mozilla::layers::RenderRootStateManager* aManager,
       nsDisplayListBuilder* aDisplayListBuilder);
 
   bool CreateWebRenderCommandsForPath(
       nsDisplayItem* aItem, wr::DisplayListBuilder& aBuilder,
       wr::IpcResourceUpdateQueue& aResources,
       const layers::StackingContextHelper& aSc,
-      mozilla::layers::WebRenderLayerManager* aManager,
+      mozilla::layers::RenderRootStateManager* aManager,
       nsDisplayListBuilder* aDisplayListBuilder);
 
   bool CreateWebRenderCommandsForText(
       nsDisplayItem* aItem, wr::DisplayListBuilder& aBuilder,
       wr::IpcResourceUpdateQueue& aResources,
       const layers::StackingContextHelper& aSc,
-      mozilla::layers::WebRenderLayerManager* aManager,
+      mozilla::layers::RenderRootStateManager* aManager,
       nsDisplayListBuilder* aDisplayListBuilder);
 
  private:
@@ -289,7 +289,7 @@ class BulletRenderer final {
   LayoutDeviceRect mPathRect;
 
   // mColor indicate the color of list-style. Both text and path type would use
-  // this memeber.
+  // this member.
   nscolor mColor;
 
   // mPath record the path of the list-style for later drawing.
@@ -313,7 +313,7 @@ ImgDrawResult BulletRenderer::CreateWebRenderCommands(
     nsDisplayItem* aItem, wr::DisplayListBuilder& aBuilder,
     wr::IpcResourceUpdateQueue& aResources,
     const layers::StackingContextHelper& aSc,
-    mozilla::layers::WebRenderLayerManager* aManager,
+    mozilla::layers::RenderRootStateManager* aManager,
     nsDisplayListBuilder* aDisplayListBuilder) {
   if (IsImageType()) {
     return CreateWebRenderCommandsForImage(aItem, aBuilder, aResources, aSc,
@@ -415,7 +415,7 @@ ImgDrawResult BulletRenderer::CreateWebRenderCommandsForImage(
     nsDisplayItem* aItem, wr::DisplayListBuilder& aBuilder,
     wr::IpcResourceUpdateQueue& aResources,
     const layers::StackingContextHelper& aSc,
-    mozilla::layers::WebRenderLayerManager* aManager,
+    mozilla::layers::RenderRootStateManager* aManager,
     nsDisplayListBuilder* aDisplayListBuilder) {
   MOZ_RELEASE_ASSERT(IsImageType());
   MOZ_RELEASE_ASSERT(mImage);
@@ -432,6 +432,8 @@ ImgDrawResult BulletRenderer::CreateWebRenderCommandsForImage(
       aItem->Frame()->PresContext()->AppUnitsPerDevPixel();
   LayoutDeviceRect destRect =
       LayoutDeviceRect::FromAppUnits(mDest, appUnitsPerDevPixel);
+  destRect.Round();
+
   Maybe<SVGImageContext> svgContext;
   gfx::IntSize decodeSize =
       nsLayoutUtils::ComputeImageContainerDrawingParameters(
@@ -439,7 +441,8 @@ ImgDrawResult BulletRenderer::CreateWebRenderCommandsForImage(
 
   RefPtr<layers::ImageContainer> container;
   ImgDrawResult drawResult = mImage->GetImageContainerAtSize(
-      aManager, decodeSize, svgContext, flags, getter_AddRefs(container));
+      aManager->LayerManager(), decodeSize, svgContext, flags,
+      getter_AddRefs(container));
   if (!container) {
     return drawResult;
   }
@@ -453,7 +456,7 @@ ImgDrawResult BulletRenderer::CreateWebRenderCommandsForImage(
     return drawResult;
   }
 
-  wr::LayoutRect dest = wr::ToRoundedLayoutRect(destRect);
+  wr::LayoutRect dest = wr::ToLayoutRect(destRect);
 
   aBuilder.PushImage(dest, dest, !aItem->BackfaceIsHidden(), rendering,
                      key.value());
@@ -465,7 +468,7 @@ bool BulletRenderer::CreateWebRenderCommandsForPath(
     nsDisplayItem* aItem, wr::DisplayListBuilder& aBuilder,
     wr::IpcResourceUpdateQueue& aResources,
     const layers::StackingContextHelper& aSc,
-    mozilla::layers::WebRenderLayerManager* aManager,
+    mozilla::layers::RenderRootStateManager* aManager,
     nsDisplayListBuilder* aDisplayListBuilder) {
   MOZ_ASSERT(IsPathType());
   wr::LayoutRect dest = wr::ToRoundedLayoutRect(mPathRect);
@@ -484,12 +487,7 @@ bool BulletRenderer::CreateWebRenderCommandsForPath(
       return true;
     }
     case NS_STYLE_LIST_STYLE_DISC: {
-      AutoTArray<wr::ComplexClipRegion, 1> clips;
-      clips.AppendElement(wr::SimpleRadii(dest, dest.size.width / 2));
-      auto clipId = aBuilder.DefineClip(Nothing(), dest, &clips, nullptr);
-      aBuilder.PushClip(clipId);
-      aBuilder.PushRect(dest, dest, isBackfaceVisible, color);
-      aBuilder.PopClip();
+      aBuilder.PushRoundedRect(dest, dest, isBackfaceVisible, color);
       return true;
     }
     case NS_STYLE_LIST_STYLE_SQUARE: {
@@ -511,7 +509,7 @@ bool BulletRenderer::CreateWebRenderCommandsForText(
     nsDisplayItem* aItem, wr::DisplayListBuilder& aBuilder,
     wr::IpcResourceUpdateQueue& aResources,
     const layers::StackingContextHelper& aSc,
-    mozilla::layers::WebRenderLayerManager* aManager,
+    mozilla::layers::RenderRootStateManager* aManager,
     nsDisplayListBuilder* aDisplayListBuilder) {
   MOZ_ASSERT(IsTextType());
 
@@ -550,7 +548,7 @@ class nsDisplayBullet final : public nsDisplayItem {
   virtual bool CreateWebRenderCommands(
       mozilla::wr::DisplayListBuilder& aBuilder,
       mozilla::wr::IpcResourceUpdateQueue&, const StackingContextHelper& aSc,
-      mozilla::layers::WebRenderLayerManager* aManager,
+      mozilla::layers::RenderRootStateManager* aManager,
       nsDisplayListBuilder* aDisplayListBuilder) override;
 
   virtual void HitTest(nsDisplayListBuilder* aBuilder, const nsRect& aRect,
@@ -603,7 +601,7 @@ class nsDisplayBullet final : public nsDisplayItem {
 bool nsDisplayBullet::CreateWebRenderCommands(
     wr::DisplayListBuilder& aBuilder, wr::IpcResourceUpdateQueue& aResources,
     const StackingContextHelper& aSc,
-    mozilla::layers::WebRenderLayerManager* aManager,
+    mozilla::layers::RenderRootStateManager* aManager,
     nsDisplayListBuilder* aDisplayListBuilder) {
   // FIXME: avoid needing to make this target if we're drawing text
   // (non-trivial refactor of all this code)
@@ -1105,7 +1103,7 @@ nsBulletFrame::Notify(imgIRequest* aRequest, int32_t aType,
   }
 
   if (aType == imgINotificationObserver::DECODE_COMPLETE) {
-    if (nsIDocument* parent = GetOurCurrentDoc()) {
+    if (Document* parent = GetOurCurrentDoc()) {
       nsCOMPtr<imgIContainer> container;
       aRequest->GetImage(getter_AddRefs(container));
       if (container) {
@@ -1117,7 +1115,7 @@ nsBulletFrame::Notify(imgIRequest* aRequest, int32_t aType,
   return NS_OK;
 }
 
-nsIDocument* nsBulletFrame::GetOurCurrentDoc() const {
+Document* nsBulletFrame::GetOurCurrentDoc() const {
   nsIContent* parentContent = GetParent()->GetContent();
   return parentContent ? parentContent->GetComposedDoc() : nullptr;
 }
@@ -1175,7 +1173,7 @@ void nsBulletFrame::GetLoadGroup(nsPresContext* aPresContext,
 
   if (!shell) return;
 
-  nsIDocument* doc = shell->GetDocument();
+  Document* doc = shell->GetDocument();
   if (!doc) return;
 
   *aLoadGroup = doc->GetDocumentLoadGroup().take();

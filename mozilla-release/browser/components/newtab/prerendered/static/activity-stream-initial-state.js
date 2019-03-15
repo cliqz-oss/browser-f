@@ -27,7 +27,10 @@ window.gActivityStreamPrerenderedState = {
       "feeds.section.topstories": true,
       "feeds.section.highlights": true,
       "sectionOrder": "topsites,topstories,highlights",
-      "collapsed": false
+      "collapsed": false,
+      "discoverystream.config": {
+        "enabled": false
+      }
     }
   },
   "Dialog": {
@@ -65,5 +68,27 @@ window.gActivityStreamPrerenderedState = {
     "isUserLoggedIn": null,
     "pocketCta": {},
     "waitingForSpoc": true
+  },
+  "DiscoveryStream": {
+    "config": {
+      "enabled": false,
+      "layout_endpoint": ""
+    },
+    "layout": [],
+    "lastUpdated": null,
+    "feeds": {
+      "data": {},
+      "loaded": false
+    },
+    "spocs": {
+      "spocs_endpoint": "",
+      "lastUpdated": null,
+      "data": {},
+      "loaded": false
+    }
+  },
+  "Search": {
+    "fakeFocus": false,
+    "hide": false
   }
 };

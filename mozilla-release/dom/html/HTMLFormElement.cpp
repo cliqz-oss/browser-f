@@ -22,7 +22,7 @@
 #include "nsGkAtoms.h"
 #include "nsStyleConsts.h"
 #include "nsPresContext.h"
-#include "nsIDocument.h"
+#include "mozilla/dom/Document.h"
 #include "nsIFormControlFrame.h"
 #include "nsError.h"
 #include "nsContentUtils.h"
@@ -109,7 +109,7 @@ HTMLFormElement::HTMLFormElement(
       mFirstSubmitNotInElements(nullptr),
       mImageNameLookupTable(FORM_CONTROL_LIST_HASHTABLE_LENGTH),
       mPastNameLookupTable(FORM_CONTROL_LIST_HASHTABLE_LENGTH),
-      mSubmitPopupState(openAbused),
+      mSubmitPopupState(PopupBlocker::openAbused),
       mInvalidElementsCount(0),
       mGeneratingSubmit(false),
       mGeneratingReset(false),
@@ -255,8 +255,7 @@ bool HTMLFormElement::ParseAttribute(int32_t aNamespaceID, nsAtom* aAttribute,
                                               aMaybeScriptedPrincipal, aResult);
 }
 
-nsresult HTMLFormElement::BindToTree(nsIDocument* aDocument,
-                                     nsIContent* aParent,
+nsresult HTMLFormElement::BindToTree(Document* aDocument, nsIContent* aParent,
                                      nsIContent* aBindingParent) {
   nsresult rv =
       nsGenericHTMLElement::BindToTree(aDocument, aParent, aBindingParent);
@@ -494,7 +493,7 @@ nsresult HTMLFormElement::PostHandleEvent(EventChainPostVisitor& aVisitor) {
 nsresult HTMLFormElement::DoSubmitOrReset(WidgetEvent* aEvent,
                                           EventMessage aMessage) {
   // Make sure the presentation is up-to-date
-  nsIDocument* doc = GetComposedDoc();
+  Document* doc = GetComposedDoc();
   if (doc) {
     doc->FlushPendingNotifications(FlushType::ContentAndNotify);
   }
@@ -568,11 +567,10 @@ nsresult HTMLFormElement::DoSubmit(WidgetEvent* aEvent) {
   // XXXbz if the script global is that for an sXBL/XBL2 doc, it won't
   // be a window...
   nsPIDOMWindowOuter* window = OwnerDoc()->GetWindow();
-
   if (window) {
-    mSubmitPopupState = window->GetPopupControlState();
+    mSubmitPopupState = PopupBlocker::GetPopupControlState();
   } else {
-    mSubmitPopupState = openAbused;
+    mSubmitPopupState = PopupBlocker::openAbused;
   }
 
   mSubmitInitiatedFromUserInput = EventStateManager::IsHandlingUserInput();
@@ -641,7 +639,7 @@ nsresult HTMLFormElement::SubmitSubmission(
   }
 
   // If there is no link handler, then we won't actually be able to submit.
-  nsIDocument* doc = GetComposedDoc();
+  Document* doc = GetComposedDoc();
   nsCOMPtr<nsISupports> container = doc ? doc->GetContainer() : nullptr;
   nsCOMPtr<nsILinkHandler> linkHandler(do_QueryInterface(container));
   if (!linkHandler || IsEditable()) {
@@ -748,7 +746,7 @@ nsresult HTMLFormElement::DoSecureToInsecureSubmitCheck(nsIURI* aActionURL,
   // Only ask the user about posting from a secure URI to an insecure URI if
   // this element is in the root document. When this is not the case, the mixed
   // content blocker will take care of security for us.
-  nsIDocument* parent = OwnerDoc()->GetParentDocument();
+  Document* parent = OwnerDoc()->GetParentDocument();
   bool isRootDocument = (!parent || nsContentUtils::IsChromeDoc(parent));
   if (!isRootDocument) {
     return NS_OK;
@@ -1450,7 +1448,7 @@ void HTMLFormElement::FlushPendingSubmission() {
 void HTMLFormElement::GetAction(nsString& aValue) {
   if (!GetAttr(kNameSpaceID_None, nsGkAtoms::action, aValue) ||
       aValue.IsEmpty()) {
-    nsIDocument* document = OwnerDoc();
+    Document* document = OwnerDoc();
     nsIURI* docURI = document->GetDocumentURI();
     if (docURI) {
       nsAutoCString spec;
@@ -1519,7 +1517,7 @@ nsresult HTMLFormElement::GetActionURL(nsIURI** aActionURL,
   }
 
   // Get base URL
-  nsIDocument* document = OwnerDoc();
+  Document* document = OwnerDoc();
   nsIURI* docURI = document->GetDocumentURI();
   NS_ENSURE_TRUE(docURI, NS_ERROR_UNEXPECTED);
 
@@ -1560,25 +1558,6 @@ nsresult HTMLFormElement::GetActionURL(nsIURI** aActionURL,
   rv = securityManager->CheckLoadURIWithPrincipal(
       NodePrincipal(), actionURL, nsIScriptSecurityManager::STANDARD);
   NS_ENSURE_SUCCESS(rv, rv);
-
-  // Check if CSP allows this form-action
-  nsCOMPtr<nsIContentSecurityPolicy> csp;
-  rv = NodePrincipal()->GetCsp(getter_AddRefs(csp));
-  NS_ENSURE_SUCCESS(rv, rv);
-  if (csp) {
-    bool permitsFormAction = true;
-
-    // form-action is only enforced if explicitly defined in the
-    // policy - do *not* consult default-src, see:
-    // http://www.w3.org/TR/CSP2/#directive-default-src
-    rv = csp->Permits(this, nullptr /* nsICSPEventListener */, actionURL,
-                      nsIContentSecurityPolicy::FORM_ACTION_DIRECTIVE, true,
-                      &permitsFormAction);
-    NS_ENSURE_SUCCESS(rv, rv);
-    if (!permitsFormAction) {
-      return NS_ERROR_CSP_FORM_ACTION_VIOLATION;
-    }
-  }
 
   // Potentially the page uses the CSP directive 'upgrade-insecure-requests'. In
   // such a case we have to upgrade the action url from http:// to https://.
@@ -1995,7 +1974,14 @@ HTMLFormElement::OnStatusChange(nsIWebProgress* aWebProgress,
 
 NS_IMETHODIMP
 HTMLFormElement::OnSecurityChange(nsIWebProgress* aWebProgress,
-                                  nsIRequest* aRequest, uint32_t state) {
+                                  nsIRequest* aRequest, uint32_t aState) {
+  MOZ_ASSERT_UNREACHABLE("notification excluded in AddProgressListener(...)");
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+HTMLFormElement::OnContentBlockingEvent(nsIWebProgress* aWebProgress,
+                                        nsIRequest* aRequest, uint32_t aEvent) {
   MOZ_ASSERT_UNREACHABLE("notification excluded in AddProgressListener(...)");
   return NS_OK;
 }

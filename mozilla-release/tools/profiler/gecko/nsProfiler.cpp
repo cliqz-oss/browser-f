@@ -154,7 +154,7 @@ nsProfiler::ResumeSampling() {
 
 NS_IMETHODIMP
 nsProfiler::AddMarker(const char* aMarker) {
-  profiler_add_marker(aMarker);
+  profiler_add_marker(aMarker, js::ProfilingStackFrame::Category::OTHER);
   return NS_OK;
 }
 
@@ -634,12 +634,12 @@ RefPtr<nsProfiler::GatheringPromise> nsProfiler::StartGathering(
   RefPtr<nsProfiler> self = this;
   for (auto profile : profiles) {
     profile->Then(GetMainThreadSerialEventTarget(), __func__,
-                  [self](const mozilla::ipc::Shmem& aResult) {
+                  [self](mozilla::ipc::Shmem&& aResult) {
                     const nsDependentCSubstring profileString(
                         aResult.get<char>(), aResult.Size<char>() - 1);
                     self->GatheredOOPProfile(profileString);
                   },
-                  [self](ipc::ResponseRejectReason aReason) {
+                  [self](ipc::ResponseRejectReason&& aReason) {
                     self->GatheredOOPProfile(NS_LITERAL_CSTRING(""));
                   });
   }
@@ -703,8 +703,10 @@ void nsProfiler::FinishGathering() {
   mWriter->End();
 
   UniquePtr<char[]> buf = mWriter->WriteFunc()->CopyData();
-  nsCString result(buf.get());
-  mPromiseHolder->Resolve(result, __func__);
+  size_t len = strlen(buf.get());
+  nsCString result;
+  result.Adopt(buf.release(), len);
+  mPromiseHolder->Resolve(std::move(result), __func__);
 
   ResetGathering();
 }

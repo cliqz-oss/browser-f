@@ -68,7 +68,7 @@ var navigateTo = async function(inspector, url) {
 var startPicker = async function(toolbox, skipFocus) {
   info("Start the element picker");
   toolbox.win.focus();
-  await toolbox.highlighterUtils.startPicker();
+  await toolbox.inspector.nodePicker.start();
   if (!skipFocus) {
     // By default make sure the content window is focused since the picker may not focus
     // the content window by default.
@@ -121,7 +121,7 @@ function pickElement(inspector, testActor, selector, x, y) {
  */
 function hoverElement(inspector, testActor, selector, x, y) {
   info("Waiting for element " + selector + " to be hovered");
-  const onHovered = inspector.toolbox.once("picker-node-hovered");
+  const onHovered = inspector.inspector.nodePicker.once("picker-node-hovered");
   testActor.synthesizeMouse({selector, x, y, options: {type: "mousemove"}});
   return onHovered;
 }
@@ -175,7 +175,7 @@ function clearCurrentNodeSelection(inspector) {
  * @param {string} url  The URL to open.
  * @param {String} hostType Optional hostType, as defined in Toolbox.HostType
  * @return A promise that is resolved once the tab and inspector have loaded
- *         with an object: { tab, toolbox, inspector }.
+ *         with an object: { tab, toolbox, inspector }.
  */
 var openInspectorForURL = async function(url, hostType) {
   const tab = await addTab(url);
@@ -865,7 +865,7 @@ async function getDisplayedNodeTextContent(selector, inspector) {
  *        If true, the shapes highlighter is being shown. If false, it is being hidden
  * @param {Options} options
  *        Config option for the shapes highlighter. Contains:
- *        - {Boolean} transformMode: wether to show the highlighter in transforms mode
+ *        - {Boolean} transformMode: whether to show the highlighter in transforms mode
  */
 async function toggleShapesHighlighter(view, selector, property, show, options = {}) {
   info(`Toggle shapes highlighter ${show ? "on" : "off"} for ${property} on ${selector}`);

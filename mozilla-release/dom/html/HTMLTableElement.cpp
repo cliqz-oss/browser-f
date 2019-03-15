@@ -589,11 +589,10 @@ already_AddRefed<nsGenericHTMLElement> HTMLTableElement::CreateTHead() {
 }
 
 void HTMLTableElement::DeleteTHead() {
-  HTMLTableSectionElement* tHead = GetTHead();
+  RefPtr<HTMLTableSectionElement> tHead = GetTHead();
   if (tHead) {
-    mozilla::ErrorResult rv;
+    mozilla::IgnoredErrorResult rv;
     nsINode::RemoveChild(*tHead, rv);
-    MOZ_ASSERT(!rv.Failed());
   }
 }
 
@@ -616,11 +615,10 @@ already_AddRefed<nsGenericHTMLElement> HTMLTableElement::CreateTFoot() {
 }
 
 void HTMLTableElement::DeleteTFoot() {
-  HTMLTableSectionElement* tFoot = GetTFoot();
+  RefPtr<HTMLTableSectionElement> tFoot = GetTFoot();
   if (tFoot) {
-    mozilla::ErrorResult rv;
+    mozilla::IgnoredErrorResult rv;
     nsINode::RemoveChild(*tFoot, rv);
-    MOZ_ASSERT(!rv.Failed());
   }
 }
 
@@ -644,11 +642,10 @@ already_AddRefed<nsGenericHTMLElement> HTMLTableElement::CreateCaption() {
 }
 
 void HTMLTableElement::DeleteCaption() {
-  HTMLTableCaptionElement* caption = GetCaption();
+  RefPtr<HTMLTableCaptionElement> caption = GetCaption();
   if (caption) {
-    mozilla::ErrorResult rv;
+    mozilla::IgnoredErrorResult rv;
     nsINode::RemoveChild(*caption, rv);
-    MOZ_ASSERT(!rv.Failed());
   }
 }
 
@@ -989,7 +986,7 @@ void HTMLTableElement::BuildInheritedAttributes() {
   NS_ASSERTION(!mTableInheritedAttributes,
                "potential leak, plus waste of work");
   MOZ_ASSERT(NS_IsMainThread());
-  nsIDocument* document = GetComposedDoc();
+  Document* document = GetComposedDoc();
   nsHTMLStyleSheet* sheet =
       document ? document->GetAttributeStyleSheet() : nullptr;
   RefPtr<nsMappedAttributes> newAttrs;
@@ -1026,8 +1023,7 @@ void HTMLTableElement::ReleaseInheritedAttributes() {
   NS_IF_RELEASE(mTableInheritedAttributes);
 }
 
-nsresult HTMLTableElement::BindToTree(nsIDocument* aDocument,
-                                      nsIContent* aParent,
+nsresult HTMLTableElement::BindToTree(Document* aDocument, nsIContent* aParent,
                                       nsIContent* aBindingParent) {
   ReleaseInheritedAttributes();
   nsresult rv =

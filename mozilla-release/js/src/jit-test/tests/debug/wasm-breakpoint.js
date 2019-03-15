@@ -1,10 +1,10 @@
-// |jit-test| test-also-no-wasm-baseline; skip-if: !wasmDebuggingIsSupported()
+// |jit-test| test-also-wasm-compiler-ion; skip-if: !wasmDebuggingIsSupported()
 // Tests that wasm module scripts handles basic breakpoint operations.
 
 load(libdir + "wasm.js");
 
 function runTest(wast, initFunc, doneFunc) {
-    let g = newGlobal('');
+    let g = newGlobal({newCompartment: true});
     let dbg = new Debugger(g);
 
     g.eval(`

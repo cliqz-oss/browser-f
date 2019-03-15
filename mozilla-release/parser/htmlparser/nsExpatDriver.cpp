@@ -32,6 +32,7 @@
 using mozilla::fallible;
 using mozilla::LogLevel;
 using mozilla::MakeStringSpan;
+using mozilla::dom::Document;
 
 #define kExpatSeparatorChar 0xFFFF
 
@@ -601,7 +602,7 @@ nsresult nsExpatDriver::OpenInputStreamFromExternalDTD(const char16_t *aFPIStr,
         "mOriginalSink not the same object as mSink?");
     nsCOMPtr<nsIPrincipal> loadingPrincipal;
     if (mOriginalSink) {
-      nsCOMPtr<nsIDocument> doc;
+      nsCOMPtr<Document> doc;
       doc = do_QueryInterface(mOriginalSink->GetTarget());
       if (doc) {
         loadingPrincipal = doc->NodePrincipal();
@@ -731,8 +732,6 @@ nsresult nsExpatDriver::HandleError() {
   CreateErrorText(description.get(), XML_GetBase(mExpatParser), lineNumber,
                   colNumber, errorText);
 
-  NS_ASSERTION(mSink, "no sink?");
-
   nsAutoString sourceText(mLastLine);
   AppendErrorPointer(colNumber, mLastLine.get(), sourceText);
 
@@ -748,6 +747,7 @@ nsresult nsExpatDriver::HandleError() {
   // If it didn't initialize, we can't do any logging.
   bool shouldReportError = NS_SUCCEEDED(rv);
 
+  // mSink might be null here if our parser was terminated.
   if (mSink && shouldReportError) {
     rv = mSink->ReportError(errorText.get(), sourceText.get(), serr,
                             &shouldReportError);
@@ -756,8 +756,9 @@ nsresult nsExpatDriver::HandleError() {
     }
   }
 
+  // mOriginalSink might be null here if our parser was terminated.
   if (mOriginalSink) {
-    nsCOMPtr<nsIDocument> doc = do_QueryInterface(mOriginalSink->GetTarget());
+    nsCOMPtr<Document> doc = do_QueryInterface(mOriginalSink->GetTarget());
     if (doc && doc->SuppressParserErrorConsoleMessages()) {
       shouldReportError = false;
     }
@@ -1019,7 +1020,7 @@ nsExpatDriver::WillBuildModel(const CParserContext &aParserContext,
 
   XML_SetBase(mExpatParser, mURISpec.get());
 
-  nsCOMPtr<nsIDocument> doc = do_QueryInterface(mOriginalSink->GetTarget());
+  nsCOMPtr<Document> doc = do_QueryInterface(mOriginalSink->GetTarget());
   if (doc) {
     nsCOMPtr<nsPIDOMWindowOuter> win = doc->GetWindow();
     nsCOMPtr<nsPIDOMWindowInner> inner;

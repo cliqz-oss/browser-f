@@ -9,6 +9,7 @@
 #include "mozilla/a11y/Accessible.h"
 #include "mozilla/a11y/DocManager.h"
 
+#include "AccessibleOrProxy.h"
 #include "nsAccessibilityService.h"
 #include "nsCoreUtils.h"
 
@@ -251,10 +252,16 @@ class nsAccUtils {
    * Return true if the given accessible can't have children. Used when exposing
    * to platform accessibility APIs, should the children be pruned off?
    */
-  static bool MustPrune(Accessible* aAccessible);
+  static bool MustPrune(AccessibleOrProxy aAccessible);
 
   static bool PersistentPropertiesToArray(nsIPersistentProperties* aProps,
                                           nsTArray<Attribute>* aAttributes);
+
+  /**
+   * Return true if the given accessible is within an ARIA live region; i.e.
+   * the container-live attribute would be something other than "off" or empty.
+   */
+  static bool IsARIALive(const Accessible* aAccessible);
 };
 
 }  // namespace a11y

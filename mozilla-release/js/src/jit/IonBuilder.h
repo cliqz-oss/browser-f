@@ -143,7 +143,7 @@ class IonBuilder : public MIRGenerator,
   AbortReasonOr<Ok> resumeAfter(MInstruction* ins);
   AbortReasonOr<Ok> maybeInsertResume();
 
-  bool blockIsOSREntry(const CFGBlock* block, const CFGBlock* predecessor);
+  AbortReasonOr<Ok> emitGoto(CFGBlock* successor, size_t popAmount);
 
   void insertRecompileCheck();
 
@@ -235,7 +235,6 @@ class IonBuilder : public MIRGenerator,
 
   bool invalidatedIdempotentCache();
 
-  bool hasStaticEnvironmentObject(JSObject** pcall);
   AbortReasonOr<Ok> loadSlot(MDefinition* obj, size_t slot, size_t nfixed,
                              MIRType rvalType, BarrierKind barrier,
                              TemporaryTypeSet* types);
@@ -535,10 +534,11 @@ class IonBuilder : public MIRGenerator,
   AbortReasonOr<Ok> jsop_pow();
   AbortReasonOr<Ok> jsop_pos();
   AbortReasonOr<Ok> jsop_neg();
+  AbortReasonOr<Ok> jsop_inc_or_dec(JSOp op);
   AbortReasonOr<Ok> jsop_tostring();
   AbortReasonOr<Ok> jsop_setarg(uint32_t arg);
-  AbortReasonOr<Ok> jsop_defvar(uint32_t index);
-  AbortReasonOr<Ok> jsop_deflexical(uint32_t index);
+  AbortReasonOr<Ok> jsop_defvar();
+  AbortReasonOr<Ok> jsop_deflexical();
   AbortReasonOr<Ok> jsop_deffun();
   AbortReasonOr<Ok> jsop_notearg();
   AbortReasonOr<Ok> jsop_throwsetconst();
@@ -587,7 +587,6 @@ class IonBuilder : public MIRGenerator,
   bool jsop_length_fastPath();
   AbortReasonOr<Ok> jsop_arguments();
   AbortReasonOr<Ok> jsop_arguments_getelem();
-  AbortReasonOr<Ok> jsop_runonce();
   AbortReasonOr<Ok> jsop_rest();
   AbortReasonOr<Ok> jsop_not();
   AbortReasonOr<Ok> jsop_envcallee();
@@ -1029,8 +1028,6 @@ class IonBuilder : public MIRGenerator,
   TemporaryTypeSet* typeArray;
   uint32_t typeArrayHint;
   uint32_t* bytecodeTypeMap;
-
-  EnvironmentCoordinateNameCache envCoordinateNameCache;
 
   jsbytecode* pc;
   MBasicBlock* current;

@@ -10,9 +10,35 @@ XPCOMUtils.defineLazyModuleGetters(this, {
   GeckoViewUtils: "resource://gre/modules/GeckoViewUtils.jsm",
 });
 
+XPCOMUtils.defineLazyGetter(
+  this, "MOBILE_USER_AGENT",
+  function() {
+    return Cc["@mozilla.org/network/protocol;1?name=http"]
+           .getService(Ci.nsIHttpProtocolHandler).userAgent;
+  });
+
+XPCOMUtils.defineLazyGetter(
+  this, "DESKTOP_USER_AGENT",
+  function() {
+    return MOBILE_USER_AGENT
+           .replace(/Android \d.+?; [a-zA-Z]+/, "X11; Linux x86_64")
+           .replace(/Gecko\/[0-9\.]+/, "Gecko/20100101");
+  });
+
+XPCOMUtils.defineLazyGetter(
+  this, "VR_USER_AGENT",
+  function() {
+    return MOBILE_USER_AGENT.replace(/Mobile/, "Mobile VR");
+  });
+
 // This needs to match GeckoSessionSettings.java
 const USER_AGENT_MODE_MOBILE = 0;
 const USER_AGENT_MODE_DESKTOP = 1;
+const USER_AGENT_MODE_VR = 2;
+
+// This needs to match GeckoSessionSettings.java
+const VIEWPORT_MODE_MOBILE = 0;
+const VIEWPORT_MODE_DESKTOP = 1;
 
 // Handles GeckoView content settings including:
 // * tracking protection
@@ -22,6 +48,7 @@ class GeckoViewSettingsChild extends GeckoViewChildModule {
     debug `onInit`;
     this._userAgentMode = USER_AGENT_MODE_MOBILE;
     this._userAgentOverride = null;
+    this._viewportMode = VIEWPORT_MODE_MOBILE;
   }
 
   onSettingsUpdate() {
@@ -31,6 +58,7 @@ class GeckoViewSettingsChild extends GeckoViewChildModule {
     this.useTrackingProtection = !!this.settings.useTrackingProtection;
     this.userAgentMode = this.settings.userAgentMode;
     this.userAgentOverride = this.settings.userAgentOverride;
+    this.viewportMode = this.settings.viewportMode;
     this.allowJavascript = this.settings.allowJavascript;
   }
 
@@ -42,6 +70,19 @@ class GeckoViewSettingsChild extends GeckoViewChildModule {
     docShell.useTrackingProtection = aUse;
   }
 
+  get userAgent() {
+    if (this.userAgentOverride !== null) {
+      return this.userAgentOverride;
+    }
+    if (this.userAgentMode === USER_AGENT_MODE_DESKTOP) {
+      return DESKTOP_USER_AGENT;
+    }
+    if (this.userAgentMode === USER_AGENT_MODE_VR) {
+      return VR_USER_AGENT;
+    }
+    return null;
+  }
+
   get userAgentMode() {
     return this._userAgentMode;
   }
@@ -51,11 +92,12 @@ class GeckoViewSettingsChild extends GeckoViewChildModule {
       return;
     }
     this._userAgentMode = aMode;
-    if (this._userAgentOverride !== null) {
-      return;
+    const docShell = content && GeckoViewUtils.getRootDocShell(content);
+    if (docShell) {
+      docShell.customUserAgent = this.userAgent;
+    } else {
+      warn `Failed to set custom user agent. Doc shell not found`;
     }
-    const utils = content.windowUtils;
-    utils.setDesktopModeViewport(aMode === USER_AGENT_MODE_DESKTOP);
   }
 
   get userAgentOverride() {
@@ -67,12 +109,12 @@ class GeckoViewSettingsChild extends GeckoViewChildModule {
       return;
     }
     this._userAgentOverride = aUserAgent;
-    const utils = content.windowUtils;
-    if (aUserAgent === null) {
-      utils.setDesktopModeViewport(this._userAgentMode === USER_AGENT_MODE_DESKTOP);
-      return;
+    const docShell = content && GeckoViewUtils.getRootDocShell(content);
+    if (docShell) {
+      docShell.customUserAgent = this.userAgent;
+    } else {
+      warn `Failed to set custom user agent. Doc shell not found`;
     }
-    utils.setDesktopModeViewport(false);
   }
 
   get displayMode() {
@@ -86,6 +128,19 @@ class GeckoViewSettingsChild extends GeckoViewChildModule {
     if (docShell) {
       docShell.displayMode = aMode;
     }
+  }
+
+  get viewportMode() {
+    return this._viewportMode;
+  }
+
+  set viewportMode(aMode) {
+    if (aMode === this._viewportMode) {
+      return;
+    }
+    this._viewportMode = aMode;
+    const utils = content.windowUtils;
+    utils.setDesktopModeViewport(aMode === VIEWPORT_MODE_DESKTOP);
   }
 
   get allowJavascript() {

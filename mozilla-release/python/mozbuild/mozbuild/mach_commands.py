@@ -9,6 +9,7 @@ import hashlib
 import itertools
 import json
 import logging
+import ntpath
 import operator
 import os
 import re
@@ -988,9 +989,10 @@ class RunProgram(MachCommandBase):
 
             if debugger:
                 self.debuggerInfo = mozdebug.get_debugger_info(debugger, debugger_args)
-                if not self.debuggerInfo:
-                    print("Could not find a suitable debugger in your PATH.")
-                    return 1
+
+            if not debugger or not self.debuggerInfo:
+                print("Could not find a suitable debugger in your PATH.")
+                return 1
 
             # Parameters come from the CLI. We need to convert them before
             # their use.
@@ -1381,16 +1383,21 @@ class PackageFrontend(MachCommandBase):
 
                 digest = algorithm = None
                 data = {}
-                # The file is GPG-signed, but we don't care about validating
-                # that. Instead of parsing the PGP signature, we just take
-                # the one line we're interested in, which starts with a `{`.
-                for l in cot.content.splitlines():
-                    if l.startswith('{'):
-                        try:
-                            data = json.loads(l)
-                            break
-                        except Exception:
-                            pass
+                # The file is GPG-signed, but we don't care about validating that.
+                # The data looks like:
+                #     -----BEGIN PGP SIGNED MESSAGE-----
+                #     Hash: SHA256
+                #
+                #     {
+                #       ...
+                #     }
+                #     -----BEGIN PGP SIGNATURE-----
+                #     <signature data>
+                #     -----END PGP SIGNATURE-----
+                # The following code extracts the json from there.
+                data = json.loads(
+                    cot.content.partition("-----BEGIN PGP SIGNATURE-----")[0]
+                               .partition("Hash: SHA256")[2])
                 for algorithm, digest in (data.get('artifacts', {})
                                               .get(artifact_name, {}).items()):
                     pass
@@ -1520,7 +1527,7 @@ class PackageFrontend(MachCommandBase):
                     os.unlink(record.filename)
                     if attempt < retry:
                         self.log(logging.INFO, 'artifact', {},
-                                 'Will retry in a moment...')
+                                 'Corrupt download. Will retry in a moment...')
                     continue
 
                 downloaded.append(record)
@@ -1646,7 +1653,7 @@ class StaticAnalysis(MachCommandBase):
     """Utilities for running C++ static analysis checks and format."""
 
     # List of file extension to consider (should start with dot)
-    _format_include_extensions = ('.cpp', '.c', '.cc', '.h', '.java')
+    _format_include_extensions = ('.cpp', '.c', '.cc', '.h', '.m', '.mm')
     # File contaning all paths to exclude from formatting
     _format_ignore_file = '.clang-format-ignore'
 
@@ -2856,7 +2863,7 @@ class StaticAnalysis(MachCommandBase):
                 # and run clang-format on the temp directory
                 # and show the diff
                 original_path = l[0]
-                local_path = original_path.replace(self.topsrcdir, ".")
+                local_path = ntpath.basename(original_path)
                 target_file = os.path.join(tmpdir, local_path)
                 faketmpdir = os.path.dirname(target_file)
                 if not os.path.isdir(faketmpdir):
@@ -3052,7 +3059,9 @@ class Repackage(MachCommandBase):
         help='Name of the package being rebuilt')
     @CommandArgument('--sfx-stub', type=str, required=True,
         help='Path to the self-extraction stub.')
-    def repackage_installer(self, tag, setupexe, package, output, package_name, sfx_stub):
+    @CommandArgument('--use-upx', required=False, action='store_true',
+        help='Run UPX on the self-extraction stub.')
+    def repackage_installer(self, tag, setupexe, package, output, package_name, sfx_stub, use_upx):
         from mozbuild.repackaging.installer import repackage_installer
         repackage_installer(
             topsrcdir=self.topsrcdir,
@@ -3062,6 +3071,7 @@ class Repackage(MachCommandBase):
             output=output,
             package_name=package_name,
             sfx_stub=sfx_stub,
+            use_upx=use_upx,
         )
 
     @SubCommand('repackage', 'msi',
@@ -3073,7 +3083,7 @@ class Repackage(MachCommandBase):
     @CommandArgument('--locale', type=str, required=True,
         help='The locale of the installer')
     @CommandArgument('--arch', type=str, required=True,
-        help='The archtecture you are building x64 or x32')
+        help='The archtecture you are building.')
     @CommandArgument('--setupexe', type=str, required=True,
         help='setup.exe installer')
     @CommandArgument('--candle', type=str, required=False,
@@ -3107,9 +3117,11 @@ class Repackage(MachCommandBase):
     @CommandArgument('--format', type=str, default='lzma',
         choices=('lzma', 'bz2'),
         help='Mar format')
-    def repackage_mar(self, input, mar, output, format):
+    @CommandArgument('--arch', type=str, required=True,
+        help='The archtecture you are building.')
+    def repackage_mar(self, input, mar, output, format, arch):
         from mozbuild.repackaging.mar import repackage_mar
-        repackage_mar(self.topsrcdir, input, mar, output, format)
+        repackage_mar(self.topsrcdir, input, mar, output, format, arch=arch)
 
 @CommandProvider
 class Analyze(MachCommandBase):
@@ -3187,3 +3199,79 @@ class TelemetrySettings():
 Enable submission of build system telemetry.
         """.strip(), False),
     ]
+
+
+@CommandProvider
+class L10NCommands(MachCommandBase):
+    @Command('package-multi-locale', category='post-build',
+             description='Package a multi-locale version of the built product '
+                         'for distribution as an APK, DMG, etc.')
+    @CommandArgument('--locales', metavar='LOCALES', nargs='+',
+                     required=True,
+                     help='List of locales to package, including "en-US"')
+    @CommandArgument('--verbose', action='store_true',
+                     help='Log informative status messages.')
+    def package_l10n(self, verbose=False, locales=[]):
+        backends = self.substs['BUILD_BACKENDS']
+        if 'RecursiveMake' not in backends:
+            self.log(logging.ERROR, 'package-multi-locale', {'backends': backends},
+                     "Multi-locale packaging requires the full (non-artifact) "
+                     "'RecursiveMake' build backend; got {backends}.")
+            return 1
+
+        if 'en-US' not in locales:
+            self.log(logging.WARN, 'package-multi-locale', {'locales': locales},
+                     'List of locales does not include default locale "en-US": '
+                     '{locales}; adding "en-US"')
+            locales.append('en-US')
+        locales = list(sorted(locales))
+
+        append_env = {
+            'MOZ_CHROME_MULTILOCALE': ' '.join(locales),
+        }
+
+        for locale in locales:
+            if locale == 'en-US':
+                self.log(logging.INFO, 'package-multi-locale', {'locale': locale},
+                         'Skipping default locale {locale}')
+                continue
+
+            self.log(logging.INFO, 'package-multi-locale', {'locale': locale},
+                     'Processing chrome Gecko resources for locale {locale}')
+            self.run_process(
+                [mozpath.join(self.topsrcdir, 'mach'), 'build', 'chrome-{}'.format(locale)],
+                append_env=append_env,
+                pass_thru=True,
+                ensure_exit_code=True,
+                cwd=mozpath.join(self.topsrcdir))
+
+        if self.substs['MOZ_BUILD_APP'] == 'mobile/android':
+            self.log(logging.INFO, 'package-multi-locale', {},
+                     'Invoking `mach android assemble-app`')
+            self.run_process(
+                [mozpath.join(self.topsrcdir, 'mach'), 'android', 'assemble-app'],
+                append_env=append_env,
+                pass_thru=True,
+                ensure_exit_code=True,
+                cwd=mozpath.join(self.topsrcdir))
+
+        self.log(logging.INFO, 'package-multi-locale', {},
+                 'Invoking multi-locale `mach package`')
+        self._run_make(
+            directory=self.topobjdir,
+            target=['package', 'AB_CD=multi'],
+            append_env=append_env,
+            pass_thru=True,
+            ensure_exit_code=True)
+
+        if self.substs['MOZ_BUILD_APP'] == 'mobile/android':
+            self.log(logging.INFO, 'package-multi-locale', {},
+                     'Invoking `mach android archive-geckoview`')
+            self.run_process(
+                [mozpath.join(self.topsrcdir, 'mach'), 'android', 'archive-geckoview'.format(locale)],
+                append_env=append_env,
+                pass_thru=True,
+                ensure_exit_code=True,
+                cwd=mozpath.join(self.topsrcdir))
+
+        return 0

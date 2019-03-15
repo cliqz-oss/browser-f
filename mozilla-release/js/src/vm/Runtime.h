@@ -30,11 +30,12 @@
 #include "gc/GCRuntime.h"
 #include "gc/Tracer.h"
 #include "irregexp/RegExpStack.h"
+#include "js/BuildId.h"  // JS::BuildIdOp
 #include "js/Debug.h"
 #include "js/GCVector.h"
 #include "js/HashTable.h"
 #ifdef DEBUG
-#include "js/Proxy.h"  // For AutoEnterPolicy
+#  include "js/Proxy.h"  // For AutoEnterPolicy
 #endif
 #include "js/Stream.h"
 #include "js/Symbol.h"
@@ -51,7 +52,6 @@
 #include "vm/Scope.h"
 #include "vm/SharedImmutableStringsCache.h"
 #include "vm/Stack.h"
-#include "vm/Stopwatch.h"
 #include "vm/SymbolType.h"
 #include "wasm/WasmTypes.h"
 
@@ -562,12 +562,8 @@ struct JSRuntime : public js::MallocProvider<JSRuntime> {
   JSFunction* getUnclonedSelfHostedFunction(JSContext* cx,
                                             js::HandlePropertyName name);
 
-  js::jit::JitRuntime* createJitRuntime(JSContext* cx);
-
  public:
-  js::jit::JitRuntime* getJitRuntime(JSContext* cx) {
-    return jitRuntime_ ? jitRuntime_.ref() : createJitRuntime(cx);
-  }
+  MOZ_MUST_USE bool createJitRuntime(JSContext* cx);
   js::jit::JitRuntime* jitRuntime() const { return jitRuntime_.ref(); }
   bool hasJitRuntime() const { return !!jitRuntime_; }
 
@@ -837,13 +833,14 @@ struct JSRuntime : public js::MallocProvider<JSRuntime> {
    *
    * The function must be called outside the GC lock.
    */
-  JS_FRIEND_API void* onOutOfMemory(js::AllocFunction allocator, size_t nbytes,
+  JS_FRIEND_API void* onOutOfMemory(js::AllocFunction allocator,
+                                    arena_id_t arena, size_t nbytes,
                                     void* reallocPtr = nullptr,
                                     JSContext* maybecx = nullptr);
 
   /*  onOutOfMemory but can call OnLargeAllocationFailure. */
   JS_FRIEND_API void* onOutOfMemoryCanGC(js::AllocFunction allocator,
-                                         size_t nbytes,
+                                         arena_id_t arena, size_t nbytes,
                                          void* reallocPtr = nullptr);
 
   static const unsigned LARGE_ALLOCATION = 25 * 1024 * 1024;
@@ -924,14 +921,6 @@ struct JSRuntime : public js::MallocProvider<JSRuntime> {
   js::MainThreadData<mozilla::TimeStamp> lastAnimationTime;
 
  private:
-  js::MainThreadData<js::PerformanceMonitoring> performanceMonitoring_;
-
- public:
-  js::PerformanceMonitoring& performanceMonitoring() {
-    return performanceMonitoring_.ref();
-  }
-
- private:
   /* The stack format for the current runtime.  Only valid on non-child
    * runtimes. */
   mozilla::Atomic<js::StackFormat, mozilla::ReleaseAcquire> stackFormat_;
@@ -979,6 +968,22 @@ struct JSRuntime : public js::MallocProvider<JSRuntime> {
   // module import and can accessed by off-thread parsing.
   mozilla::Atomic<JS::ModuleDynamicImportHook> moduleDynamicImportHook;
 
+  // Hooks called when script private references are created and destroyed.
+  js::MainThreadData<JS::ScriptPrivateReferenceHook> scriptPrivateAddRefHook;
+  js::MainThreadData<JS::ScriptPrivateReferenceHook> scriptPrivateReleaseHook;
+
+  void addRefScriptPrivate(const JS::Value& value) {
+    if (!value.isUndefined() && scriptPrivateAddRefHook) {
+      scriptPrivateAddRefHook(value);
+    }
+  }
+
+  void releaseScriptPrivate(const JS::Value& value) {
+    if (!value.isUndefined() && scriptPrivateReleaseHook) {
+      scriptPrivateReleaseHook(value);
+    }
+  }
+
  public:
 #if defined(JS_BUILD_BINAST)
   js::BinaryASTSupport& binast() { return binast_; }
@@ -1010,104 +1015,6 @@ struct JSRuntime : public js::MallocProvider<JSRuntime> {
 };
 
 namespace js {
-
-/*
- * RAII class that takes the GC lock while it is live.
- *
- * Usually functions will pass const references of this class.  However
- * non-const references can be used to either temporarily release the lock by
- * use of AutoUnlockGC or to start background allocation when the lock is
- * released.
- */
-class MOZ_RAII AutoLockGC {
- public:
-  explicit AutoLockGC(JSRuntime* rt MOZ_GUARD_OBJECT_NOTIFIER_PARAM)
-      : runtime_(rt) {
-    MOZ_GUARD_OBJECT_NOTIFIER_INIT;
-    lock();
-  }
-
-  ~AutoLockGC() { lockGuard_.reset(); }
-
-  void lock() {
-    MOZ_ASSERT(lockGuard_.isNothing());
-    lockGuard_.emplace(runtime_->gc.lock);
-  }
-
-  void unlock() {
-    MOZ_ASSERT(lockGuard_.isSome());
-    lockGuard_.reset();
-  }
-
-  js::LockGuard<js::Mutex>& guard() { return lockGuard_.ref(); }
-
- protected:
-  JSRuntime* runtime() const { return runtime_; }
-
- private:
-  JSRuntime* runtime_;
-  mozilla::Maybe<js::LockGuard<js::Mutex>> lockGuard_;
-  MOZ_DECL_USE_GUARD_OBJECT_NOTIFIER
-
-  AutoLockGC(const AutoLockGC&) = delete;
-  AutoLockGC& operator=(const AutoLockGC&) = delete;
-};
-
-/*
- * Same as AutoLockGC except it can optionally start a background chunk
- * allocation task when the lock is released.
- */
-class MOZ_RAII AutoLockGCBgAlloc : public AutoLockGC {
- public:
-  explicit AutoLockGCBgAlloc(JSRuntime* rt)
-      : AutoLockGC(rt), startBgAlloc(false) {}
-
-  ~AutoLockGCBgAlloc() {
-    unlock();
-
-    /*
-     * We have to do this after releasing the lock because it may acquire
-     * the helper lock which could cause lock inversion if we still held
-     * the GC lock.
-     */
-    if (startBgAlloc) {
-      runtime()->gc.startBackgroundAllocTaskIfIdle();  // Ignore failure.
-    }
-  }
-
-  /*
-   * This can be used to start a background allocation task (if one isn't
-   * already running) that allocates chunks and makes them available in the
-   * free chunks list.  This happens after the lock is released in order to
-   * avoid lock inversion.
-   */
-  void tryToStartBackgroundAllocation() { startBgAlloc = true; }
-
- private:
-  // true if we should start a background chunk allocation task after the
-  // lock is released.
-  bool startBgAlloc;
-};
-
-class MOZ_RAII AutoUnlockGC {
- public:
-  explicit AutoUnlockGC(AutoLockGC& lock MOZ_GUARD_OBJECT_NOTIFIER_PARAM)
-      : lock(lock) {
-    MOZ_GUARD_OBJECT_NOTIFIER_INIT;
-    lock.unlock();
-  }
-
-  ~AutoUnlockGC() { lock.lock(); }
-
- private:
-  AutoLockGC& lock;
-  MOZ_DECL_USE_GUARD_OBJECT_NOTIFIER
-
-  AutoUnlockGC(const AutoUnlockGC&) = delete;
-  AutoUnlockGC& operator=(const AutoUnlockGC&) = delete;
-};
-
-/************************************************************************/
 
 static MOZ_ALWAYS_INLINE void MakeRangeGCSafe(Value* vec, size_t len) {
   // Don't PodZero here because JS::Value is non-trivial.

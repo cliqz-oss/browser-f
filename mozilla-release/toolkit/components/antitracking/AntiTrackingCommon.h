@@ -120,6 +120,8 @@ class AntiTrackingCommon final {
     eStorageChecks,
     eTrackingProtection,
     eTrackingAnnotations,
+    eFingerprinting,
+    eCryptomining,
   };
 
   // Check whether a top window URI is on the content blocking allow list.
@@ -151,6 +153,10 @@ class AntiTrackingCommon final {
   static void NotifyBlockingDecision(nsPIDOMWindowInner* aWindow,
                                      BlockingDecision aDecision,
                                      uint32_t aRejectedReason);
+
+  // Get the current document URI from a document channel as it is being loaded.
+  static already_AddRefed<nsIURI> MaybeGetDocumentURIBeingLoaded(
+      nsIChannel* aChannel);
 };
 
 }  // namespace mozilla

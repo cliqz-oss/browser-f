@@ -1630,7 +1630,6 @@ BufferOffset MacroAssemblerARM::ma_vstr(VFPRegister src, Register base,
 }
 
 bool MacroAssemblerARMCompat::buildOOLFakeExitFrame(void* fakeReturnAddr) {
-  DebugOnly<uint32_t> initialDepth = asMasm().framePushed();
   uint32_t descriptor = MakeFrameDescriptor(
       asMasm().framePushed(), FrameType::IonJS, ExitFrameLayout::Size());
 
@@ -4177,9 +4176,9 @@ void MacroAssembler::call(ImmPtr imm) {
   ma_call(imm);
 }
 
-void MacroAssembler::call(wasm::SymbolicAddress imm) {
+CodeOffset MacroAssembler::call(wasm::SymbolicAddress imm) {
   movePtr(imm, CallReg);
-  call(CallReg);
+  return call(CallReg);
 }
 
 void MacroAssembler::call(const Address& addr) {
@@ -5291,10 +5290,11 @@ void MacroAssembler::wasmAtomicLoad64(const wasm::MemoryAccessDesc& access,
 }
 
 template <typename T>
-static void WasmCompareExchange64(MacroAssembler& masm,
-                                  const wasm::MemoryAccessDesc& access,
-                                  const T& mem, Register64 expect,
-                                  Register64 replace, Register64 output) {
+static void CompareExchange64(MacroAssembler& masm,
+                              const wasm::MemoryAccessDesc* access,
+                              const Synchronization& sync, const T& mem,
+                              Register64 expect, Register64 replace,
+                              Register64 output) {
   MOZ_ASSERT(expect != replace && replace != output && output != expect);
 
   MOZ_ASSERT((replace.low.code() & 1) == 0);
@@ -5309,11 +5309,13 @@ static void WasmCompareExchange64(MacroAssembler& masm,
   SecondScratchRegisterScope scratch2(masm);
   Register ptr = ComputePointerForAtomic(masm, mem, scratch2);
 
-  masm.memoryBarrierBefore(access.sync());
+  masm.memoryBarrierBefore(sync);
 
   masm.bind(&again);
   BufferOffset load = masm.as_ldrexd(output.low, output.high, ptr);
-  masm.append(access, load.getOffset());
+  if (access) {
+    masm.append(*access, load.getOffset());
+  }
 
   masm.as_cmp(output.low, O2Reg(expect.low));
   masm.as_cmp(output.high, O2Reg(expect.high), MacroAssembler::Equal);
@@ -5327,7 +5329,7 @@ static void WasmCompareExchange64(MacroAssembler& masm,
   masm.as_b(&again, MacroAssembler::Equal);
   masm.bind(&done);
 
-  masm.memoryBarrierAfter(access.sync());
+  masm.memoryBarrierAfter(sync);
 }
 
 void MacroAssembler::wasmCompareExchange64(const wasm::MemoryAccessDesc& access,
@@ -5335,7 +5337,8 @@ void MacroAssembler::wasmCompareExchange64(const wasm::MemoryAccessDesc& access,
                                            Register64 expect,
                                            Register64 replace,
                                            Register64 output) {
-  WasmCompareExchange64(*this, access, mem, expect, replace, output);
+  CompareExchange64(*this, &access, access.sync(), mem, expect, replace,
+                    output);
 }
 
 void MacroAssembler::wasmCompareExchange64(const wasm::MemoryAccessDesc& access,
@@ -5343,7 +5346,14 @@ void MacroAssembler::wasmCompareExchange64(const wasm::MemoryAccessDesc& access,
                                            Register64 expect,
                                            Register64 replace,
                                            Register64 output) {
-  WasmCompareExchange64(*this, access, mem, expect, replace, output);
+  CompareExchange64(*this, &access, access.sync(), mem, expect, replace,
+                    output);
+}
+
+void MacroAssembler::compareExchange64(const Synchronization& sync,
+                                       const Address& mem, Register64 expect,
+                                       Register64 replace, Register64 output) {
+  CompareExchange64(*this, nullptr, sync, mem, expect, replace, output);
 }
 
 template <typename T>
@@ -5674,8 +5684,7 @@ void MacroAssembler::flexibleDivMod32(Register rhs, Register lhsOutput,
     callWithABI(isUnsigned ? JS_FUNC_TO_DATA_PTR(void*, __aeabi_uidivmod)
                            : JS_FUNC_TO_DATA_PTR(void*, __aeabi_idivmod),
                 MoveOp::GENERAL, CheckUnsafeCallWithABI::DontCheckOther);
-    mov(ReturnRegVal1, remOutput);
-    mov(ReturnRegVal0, lhsOutput);
+    moveRegPair(ReturnRegVal0, ReturnRegVal1, lhsOutput, remOutput);
 
     LiveRegisterSet ignore;
     ignore.add(remOutput);
@@ -5908,6 +5917,8 @@ void MacroAssemblerARM::wasmLoadImpl(const wasm::MemoryAccessDesc& access,
       ScratchRegisterScope scratch(asMasm());
       ma_add(memoryBase, ptr, scratch);
 
+      // See HandleUnalignedTrap() in WasmSignalHandler.cpp.  We depend on this
+      // being a single, unconditional VLDR with a base pointer other than PC.
       load = ma_vldr(Operand(Address(scratch, 0)).toVFPAddr(), output.fpu());
       append(access, load.getOffset());
     } else {
@@ -5962,6 +5973,8 @@ void MacroAssemblerARM::wasmStoreImpl(const wasm::MemoryAccessDesc& access,
       MOZ_ASSERT((byteSize == 4) == val.isSingle());
       ma_add(memoryBase, ptr, scratch);
 
+      // See HandleUnalignedTrap() in WasmSignalHandler.cpp.  We depend on this
+      // being a single, unconditional VLDR with a base pointer other than PC.
       store = ma_vstr(val, Operand(Address(scratch, 0)).toVFPAddr());
       append(access, store.getOffset());
     } else {

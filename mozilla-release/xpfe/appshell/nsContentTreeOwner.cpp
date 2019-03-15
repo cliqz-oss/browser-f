@@ -33,13 +33,14 @@
 #include "nsWindowWatcher.h"
 #include "mozilla/BrowserElementParent.h"
 #include "mozilla/NullPrincipal.h"
+#include "nsDocShell.h"
 #include "nsDocShellLoadState.h"
 
 #include "nsIScriptObjectPrincipal.h"
 #include "nsIURI.h"
-#include "nsIDocument.h"
+#include "mozilla/dom/Document.h"
 #if defined(XP_MACOSX)
-#include "nsThreadUtils.h"
+#  include "nsThreadUtils.h"
 #endif
 
 #include "mozilla/Preferences.h"
@@ -649,8 +650,7 @@ NS_IMETHODIMP nsContentTreeOwner::SetTitle(const nsAString& aTitle) {
       //
       nsCOMPtr<nsIDocShellTreeItem> dsitem;
       GetPrimaryContentShell(getter_AddRefs(dsitem));
-      nsCOMPtr<nsIScriptObjectPrincipal> doc =
-          do_QueryInterface(dsitem ? dsitem->GetDocument() : nullptr);
+      RefPtr<dom::Document> doc = dsitem ? dsitem->GetDocument() : nullptr;
       if (doc) {
         nsCOMPtr<nsIURI> uri;
         nsIPrincipal* principal = doc->GetPrincipal();
@@ -684,7 +684,7 @@ NS_IMETHODIMP nsContentTreeOwner::SetTitle(const nsAString& aTitle) {
         }
       }
     }
-    nsIDocument* document = docShellElement->OwnerDoc();
+    dom::Document* document = docShellElement->OwnerDoc();
     ErrorResult rv;
     document->SetTitle(title, rv);
     return rv.StealNSResult();
@@ -705,7 +705,9 @@ nsContentTreeOwner::ProvideWindow(
     mozIDOMWindowProxy** aReturn) {
   NS_ENSURE_ARG_POINTER(aParent);
 
-  auto* parent = nsPIDOMWindowOuter::From(aParent);
+  auto* parentWin = nsPIDOMWindowOuter::From(aParent);
+  dom::BrowsingContext* parent =
+      parentWin ? parentWin->GetBrowsingContext() : nullptr;
 
   *aReturn = nullptr;
 
@@ -760,7 +762,8 @@ nsContentTreeOwner::ProvideWindow(
   }
 
   int32_t openLocation = nsWindowWatcher::GetWindowOpenLocation(
-      parent, aChromeFlags, aCalledFromJS, aPositionSpecified, aSizeSpecified);
+      parentWin, aChromeFlags, aCalledFromJS, aPositionSpecified,
+      aSizeSpecified);
 
   if (openLocation != nsIBrowserDOMWindow::OPEN_NEWTAB &&
       openLocation != nsIBrowserDOMWindow::OPEN_CURRENTWINDOW) {

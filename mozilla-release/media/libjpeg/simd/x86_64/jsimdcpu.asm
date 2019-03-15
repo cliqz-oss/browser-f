@@ -38,14 +38,20 @@ EXTN(jpeg_simd_cpu_support):
 
     xor         rdi, rdi                ; simd support flag
 
+    ; Check for level 7 support
+    xor         rax, rax
+    cpuid
+
+    or          rdi, JSIMD_SSE2
+    or          rdi, JSIMD_SSE
+    cmp         rax, 7
+    jl          short .return
+
     ; Check for AVX2 instruction support
     mov         rax, 7
     xor         rcx, rcx
     cpuid
     mov         rax, rbx                ; rax = Extended feature flags
-
-    or          rdi, JSIMD_SSE2
-    or          rdi, JSIMD_SSE
     test        rax, 1<<5               ; bit5:AVX2
     jz          short .return
 
@@ -53,8 +59,10 @@ EXTN(jpeg_simd_cpu_support):
     mov         rax, 1
     xor         rcx, rcx
     cpuid
-    test        rcx, 1<<27
+    test        rcx, 1<<26
     jz          short .return           ; O/S does not support XSAVE
+    test        rcx, 1<<27
+    jz          short .return           ; O/S does not support OSXSAVE
     test        rcx, 1<<28
     jz          short .return           ; CPU does not support AVX2
 

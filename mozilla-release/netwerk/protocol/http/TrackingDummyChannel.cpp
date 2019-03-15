@@ -13,29 +13,10 @@
 #include "mozilla/Preferences.h"
 #include "nsIChannel.h"
 #include "nsIURI.h"
+#include "nsProxyRelease.h"
 
 namespace mozilla {
 namespace net {
-
-namespace {
-
-// We need TrackingDummyChannel any time
-// privacy.trackingprotection.annotate_channels prefs is set to true.
-bool ChannelNeedsToBeAnnotated() {
-  static bool sChannelAnnotationNeededInited = false;
-  static bool sChannelAnnotationNeeded = false;
-
-  if (!sChannelAnnotationNeededInited) {
-    sChannelAnnotationNeededInited = true;
-    Preferences::AddBoolVarCache(
-        &sChannelAnnotationNeeded,
-        "privacy.trackingprotection.annotate_channels");
-  }
-
-  return sChannelAnnotationNeeded;
-}
-
-}  // namespace
 
 /* static */ TrackingDummyChannel::StorageAllowedState
 TrackingDummyChannel::StorageAllowed(
@@ -61,7 +42,7 @@ TrackingDummyChannel::StorageAllowed(
   nsCOMPtr<nsIURI> uri;
   aChannel->GetURI(getter_AddRefs(uri));
 
-  if (ChannelNeedsToBeAnnotated()) {
+  if (StaticPrefs::privacy_trackingprotection_annotate_channels()) {
     ContentChild* cc = static_cast<ContentChild*>(gNeckoChild->Manager());
     if (cc->IsShuttingDown()) {
       return eStorageDenied;
@@ -104,7 +85,14 @@ TrackingDummyChannel::TrackingDummyChannel(nsIURI* aURI, nsIURI* aTopWindowURI,
   SetLoadInfo(aLoadInfo);
 }
 
-TrackingDummyChannel::~TrackingDummyChannel() = default;
+TrackingDummyChannel::~TrackingDummyChannel() {
+  NS_ReleaseOnMainThreadSystemGroup("TrackingDummyChannel::mLoadInfo",
+                                    mLoadInfo.forget());
+  NS_ReleaseOnMainThreadSystemGroup("TrackingDummyChannel::mURI",
+                                    mURI.forget());
+  NS_ReleaseOnMainThreadSystemGroup("TrackingDummyChannel::mTopWindowURI",
+                                    mTopWindowURI.forget());
+}
 
 bool TrackingDummyChannel::IsTrackingResource() const {
   return mIsTrackingResource;

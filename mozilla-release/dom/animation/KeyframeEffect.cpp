@@ -63,14 +63,13 @@ NS_INTERFACE_MAP_END_INHERITING(AnimationEffect)
 NS_IMPL_ADDREF_INHERITED(KeyframeEffect, AnimationEffect)
 NS_IMPL_RELEASE_INHERITED(KeyframeEffect, AnimationEffect)
 
-KeyframeEffect::KeyframeEffect(nsIDocument* aDocument,
+KeyframeEffect::KeyframeEffect(Document* aDocument,
                                const Maybe<OwningAnimationTarget>& aTarget,
                                TimingParams&& aTiming,
                                const KeyframeEffectParams& aOptions)
     : AnimationEffect(aDocument, std::move(aTiming)),
       mTarget(aTarget),
       mEffectOptions(aOptions),
-      mInEffectOnLastAnimationTimingUpdate(false),
       mCumulativeChangeHint(nsChangeHint(0)) {}
 
 JSObject* KeyframeEffect::WrapObject(JSContext* aCx,
@@ -631,7 +630,7 @@ KeyframeEffect::ConstructKeyframeEffect(
   // In Xray case, the new objects should be created using the document of
   // the target global, but the KeyframeEffect constructors are called in the
   // caller's compartment to access `aKeyframes` object.
-  nsIDocument* doc = AnimationUtils::GetDocumentFromGlobal(aGlobal.Get());
+  Document* doc = AnimationUtils::GetDocumentFromGlobal(aGlobal.Get());
   if (!doc) {
     aRv.Throw(NS_ERROR_FAILURE);
     return nullptr;
@@ -763,7 +762,7 @@ void KeyframeEffect::RequestRestyle(
   }
 }
 
-already_AddRefed<ComputedStyle> KeyframeEffect::GetTargetComputedStyle() {
+already_AddRefed<ComputedStyle> KeyframeEffect::GetTargetComputedStyle() const {
   if (!GetRenderedDocument()) {
     return nullptr;
   }
@@ -819,7 +818,7 @@ void DumpAnimationProperties(
 
 /* static */ already_AddRefed<KeyframeEffect> KeyframeEffect::Constructor(
     const GlobalObject& aGlobal, KeyframeEffect& aSource, ErrorResult& aRv) {
-  nsIDocument* doc = AnimationUtils::GetCurrentRealmDocument(aGlobal.Context());
+  Document* doc = AnimationUtils::GetCurrentRealmDocument(aGlobal.Context());
   if (!doc) {
     aRv.Throw(NS_ERROR_FAILURE);
     return nullptr;
@@ -995,7 +994,7 @@ void KeyframeEffect::GetProperties(
 }
 
 void KeyframeEffect::GetKeyframes(JSContext*& aCx, nsTArray<JSObject*>& aResult,
-                                  ErrorResult& aRv) {
+                                  ErrorResult& aRv) const {
   MOZ_ASSERT(aResult.IsEmpty());
   MOZ_ASSERT(!aRv.Failed());
 
@@ -1241,7 +1240,7 @@ bool KeyframeEffect::CanThrottleOverflowChangesInScrollable(
     nsIFrame& aFrame) const {
   // If the target element is not associated with any documents, we don't care
   // it.
-  nsIDocument* doc = GetRenderedDocument();
+  Document* doc = GetRenderedDocument();
   if (!doc) {
     return true;
   }
@@ -1277,8 +1276,8 @@ bool KeyframeEffect::CanThrottleOverflowChangesInScrollable(
   }
 
   ScrollStyles ss = scrollable->GetScrollStyles();
-  if (ss.mVertical == NS_STYLE_OVERFLOW_HIDDEN &&
-      ss.mHorizontal == NS_STYLE_OVERFLOW_HIDDEN &&
+  if (ss.mVertical == StyleOverflow::Hidden &&
+      ss.mHorizontal == StyleOverflow::Hidden &&
       scrollable->GetLogicalScrollPosition() == nsPoint(0, 0)) {
     return true;
   }
@@ -1314,7 +1313,7 @@ nsIFrame* KeyframeEffect::GetPrimaryFrame() const {
   return frame;
 }
 
-nsIDocument* KeyframeEffect::GetRenderedDocument() const {
+Document* KeyframeEffect::GetRenderedDocument() const {
   if (!mTarget) {
     return nullptr;
   }
@@ -1322,7 +1321,7 @@ nsIDocument* KeyframeEffect::GetRenderedDocument() const {
 }
 
 nsIPresShell* KeyframeEffect::GetPresShell() const {
-  nsIDocument* doc = GetRenderedDocument();
+  Document* doc = GetRenderedDocument();
   if (!doc) {
     return nullptr;
   }

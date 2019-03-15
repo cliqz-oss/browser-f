@@ -31,6 +31,7 @@ import android.widget.EditText
 import android.widget.FrameLayout
 
 import org.hamcrest.Matchers.*
+import org.junit.Assume.assumeThat
 import org.junit.Test
 import org.junit.Before
 import org.junit.After
@@ -92,6 +93,7 @@ class AccessibilityTest : BaseSessionTest() {
 
     private interface EventDelegate {
         fun onAccessibilityFocused(event: AccessibilityEvent) { }
+        fun onAccessibilityFocusCleared(event: AccessibilityEvent) { }
         fun onClicked(event: AccessibilityEvent) { }
         fun onFocused(event: AccessibilityEvent) { }
         fun onSelected(event: AccessibilityEvent) { }
@@ -124,6 +126,7 @@ class AccessibilityTest : BaseSessionTest() {
                     AccessibilityEvent.TYPE_VIEW_FOCUSED -> newDelegate.onFocused(event)
                     AccessibilityEvent.TYPE_VIEW_CLICKED -> newDelegate.onClicked(event)
                     AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUSED -> newDelegate.onAccessibilityFocused(event)
+                    AccessibilityEvent.TYPE_VIEW_ACCESSIBILITY_FOCUS_CLEARED -> newDelegate.onAccessibilityFocusCleared(event)
                     AccessibilityEvent.TYPE_VIEW_SELECTED -> newDelegate.onSelected(event)
                     AccessibilityEvent.TYPE_VIEW_SCROLLED -> newDelegate.onScrolled(event)
                     AccessibilityEvent.TYPE_VIEW_TEXT_SELECTION_CHANGED -> newDelegate.onTextSelectionChanged(event)
@@ -191,6 +194,7 @@ class AccessibilityTest : BaseSessionTest() {
                 assertThat("Label accessibility focused", node.className.toString(),
                         equalTo("android.view.View"))
                 assertThat("Text node should not be focusable", node.isFocusable, equalTo(false))
+                assertThat("Text node should be a11y focused", node.isAccessibilityFocused, equalTo(true))
                 assertThat("Text node should not be clickable", node.isClickable, equalTo(false))
             }
         })
@@ -206,7 +210,20 @@ class AccessibilityTest : BaseSessionTest() {
                 assertThat("Editbox accessibility focused", node.className.toString(),
                         equalTo("android.widget.EditText"))
                 assertThat("Entry node should be focusable", node.isFocusable, equalTo(true))
+                assertThat("Entry node should be a11y focused", node.isAccessibilityFocused, equalTo(true))
                 assertThat("Entry node should be clickable", node.isClickable, equalTo(true))
+            }
+        })
+
+        provider.performAction(nodeId,
+                AccessibilityNodeInfo.ACTION_CLEAR_ACCESSIBILITY_FOCUS, null)
+
+        sessionRule.waitUntilCalled(object : EventDelegate {
+            @AssertCalled(count = 1)
+            override fun onAccessibilityFocusCleared(event: AccessibilityEvent) {
+                assertThat("Accessibility focused node is now cleared", getSourceId(event), equalTo(nodeId))
+                val node = createNodeInfo(nodeId)
+                assertThat("Entry node should node be a11y focused", node.isAccessibilityFocused, equalTo(false))
             }
         })
     }
@@ -739,6 +756,8 @@ class AccessibilityTest : BaseSessionTest() {
 
     @Setting(key = Setting.Key.FULL_ACCESSIBILITY_TREE, value = "true")
     @Test fun autoFill_navigation() {
+        // disable test on debug for frequently failing #Bug 1505353
+        assumeThat(sessionRule.env.isDebugBuild, equalTo(false))
         fun countAutoFillNodes(cond: (AccessibilityNodeInfo) -> Boolean =
                                        { it.className == "android.widget.EditText" },
                                id: Int = View.NO_ID): Int {
@@ -820,12 +839,9 @@ class AccessibilityTest : BaseSessionTest() {
 
         val buttonNode = createNodeInfo(rootNode.getChildId(2))
         assertThat("Last node is a button", buttonNode.className.toString(), equalTo("android.widget.Button"))
-        assertThat("Button has a single text leaf", buttonNode.childCount, equalTo(1))
+        // The child text leaf is pruned, so this button is childless.
+        assertThat("Button has a single text leaf", buttonNode.childCount, equalTo(0))
         assertThat("Button has correct text", buttonNode.text.toString(), equalTo("Submit"))
-
-        val textLeaf = createNodeInfo(buttonNode.getChildId(0))
-        assertThat("First node is a label", textLeaf.className.toString(), equalTo("android.view.View"))
-        assertThat("Text leaf has correct text", textLeaf.text.toString(), equalTo("Submit"))
     }
 
     @Setting(key = Setting.Key.FULL_ACCESSIBILITY_TREE, value = "true")

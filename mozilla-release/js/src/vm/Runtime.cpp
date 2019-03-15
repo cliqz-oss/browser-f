@@ -12,14 +12,14 @@
 #include "mozilla/Unused.h"
 
 #if defined(XP_DARWIN)
-#include <mach/mach.h>
+#  include <mach/mach.h>
 #elif defined(XP_UNIX)
-#include <sys/resource.h>
+#  include <sys/resource.h>
 #endif  // defined(XP_DARWIN) || defined(XP_UNIX) || defined(XP_WIN)
 #include <locale.h>
 #include <string.h>
 #ifdef JS_CAN_CHECK_THREADSAFE_ACCESSES
-#include <sys/mman.h>
+#  include <sys/mman.h>
 #endif
 
 #include "jsfriendapi.h"
@@ -66,7 +66,6 @@ using mozilla::PositiveInfinity;
 /* static */ MOZ_THREAD_LOCAL(JSContext*) js::TlsContext;
 /* static */ Atomic<size_t> JSRuntime::liveRuntimesCount;
 Atomic<JS::LargeAllocationFailureCallback> js::OnLargeAllocationFailure;
-Atomic<JS::BuildIdOp> js::GetBuildId;
 
 namespace js {
 bool gCanUseExtraThreads = true;
@@ -157,13 +156,14 @@ JSRuntime::JSRuntime(JSRuntime* parentRuntime)
       autoWritableJitCodeActive_(false),
       oomCallback(nullptr),
       debuggerMallocSizeOf(ReturnZeroSize),
-      performanceMonitoring_(),
       stackFormat_(parentRuntime ? js::StackFormat::Default
                                  : js::StackFormat::SpiderMonkey),
       wasmInstances(mutexid::WasmRuntimeInstances),
       moduleResolveHook(),
       moduleMetadataHook(),
-      moduleDynamicImportHook() {
+      moduleDynamicImportHook(),
+      scriptPrivateAddRefHook(),
+      scriptPrivateReleaseHook() {
   JS_COUNT_CTOR(JSRuntime);
   liveRuntimesCount++;
 
@@ -280,7 +280,7 @@ void JSRuntime::destroyRuntime() {
     profilingScripts = false;
 
     JS::PrepareForFullGC(cx);
-    gc.gc(GC_NORMAL, JS::gcreason::DESTROY_RUNTIME);
+    gc.gc(GC_NORMAL, JS::GCReason::DESTROY_RUNTIME);
   }
 
   AutoNoteSingleThreadedRegion anstr;
@@ -690,7 +690,8 @@ void JSRuntime::updateMallocCounter(size_t nbytes) {
 }
 
 JS_FRIEND_API void* JSRuntime::onOutOfMemory(AllocFunction allocFunc,
-                                             size_t nbytes, void* reallocPtr,
+                                             arena_id_t arena, size_t nbytes,
+                                             void* reallocPtr,
                                              JSContext* maybecx) {
   MOZ_ASSERT_IF(allocFunc != AllocFunction::Realloc, !reallocPtr);
 
@@ -707,10 +708,10 @@ JS_FRIEND_API void* JSRuntime::onOutOfMemory(AllocFunction allocFunc,
     void* p;
     switch (allocFunc) {
       case AllocFunction::Malloc:
-        p = js_malloc(nbytes);
+        p = js_arena_malloc(arena, nbytes);
         break;
       case AllocFunction::Calloc:
-        p = js_calloc(nbytes);
+        p = js_arena_calloc(arena, nbytes, 1);
         break;
       case AllocFunction::Realloc:
         p = js_realloc(reallocPtr, nbytes);
@@ -729,12 +730,12 @@ JS_FRIEND_API void* JSRuntime::onOutOfMemory(AllocFunction allocFunc,
   return nullptr;
 }
 
-void* JSRuntime::onOutOfMemoryCanGC(AllocFunction allocFunc, size_t bytes,
-                                    void* reallocPtr) {
+void* JSRuntime::onOutOfMemoryCanGC(AllocFunction allocFunc, arena_id_t arena,
+                                    size_t bytes, void* reallocPtr) {
   if (OnLargeAllocationFailure && bytes >= LARGE_ALLOCATION) {
     OnLargeAllocationFailure();
   }
-  return onOutOfMemory(allocFunc, bytes, reallocPtr);
+  return onOutOfMemory(allocFunc, arena, bytes, reallocPtr);
 }
 
 bool JSRuntime::activeGCInAtomsZone() {

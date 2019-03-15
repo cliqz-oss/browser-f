@@ -7,8 +7,11 @@
 const { createFactory, PureComponent } = require("devtools/client/shared/vendor/react");
 const dom = require("devtools/client/shared/vendor/react-dom-factories");
 const PropTypes = require("devtools/client/shared/vendor/react-prop-types");
+const { connect } = require("devtools/client/shared/vendor/react-redux");
 
 const FluentReact = require("devtools/client/shared/vendor/fluent-react");
+
+const { getCurrentRuntimeDetails } = require("../../modules/runtimes-state-helper");
 
 const InspectAction = createFactory(require("./InspectAction"));
 
@@ -24,6 +27,8 @@ class ServiceWorkerAction extends PureComponent {
       dispatch: PropTypes.func.isRequired,
       // Provided by wrapping the component with FluentReact.withLocalization.
       getString: PropTypes.func.isRequired,
+      // Provided by redux state
+      runtimeDetails: Types.runtimeDetails.isRequired,
       target: Types.debugTarget.isRequired,
     };
   }
@@ -35,34 +40,46 @@ class ServiceWorkerAction extends PureComponent {
 
   start() {
     const { dispatch, target } = this.props;
-    dispatch(Actions.startServiceWorker(target.details.registrationActor));
+    dispatch(Actions.startServiceWorker(target.details.registrationFront));
   }
 
   _renderAction() {
-    const { dispatch, target } = this.props;
+    const { dispatch, runtimeDetails, target } = this.props;
     const { isActive, isRunning } = target.details;
+    const { isMultiE10s } = runtimeDetails;
 
     if (!isRunning) {
       const startLabel = this.props.getString("about-debugging-worker-action-start");
-      return this._renderButton(startLabel, this.start.bind(this));
+      return this._renderButton({
+        className: "default-button js-start-button",
+        disabled: isMultiE10s,
+        label: startLabel,
+        onClick: this.start.bind(this),
+      });
     }
 
     if (!isActive) {
       // Only debug button is available if the service worker is not active.
-      return InspectAction({ dispatch, target });
+      return InspectAction({ disabled: isMultiE10s, dispatch, target });
     }
 
     const pushLabel = this.props.getString("about-debugging-worker-action-push");
     return [
-      this._renderButton(pushLabel, this.push.bind(this)),
-      InspectAction({ dispatch, target }),
+      this._renderButton({
+        className: "default-button js-push-button",
+        disabled: isMultiE10s,
+        label: pushLabel,
+        onClick: this.push.bind(this),
+      }),
+      InspectAction({ disabled: isMultiE10s, dispatch, target }),
     ];
   }
 
-  _renderButton(label, onClick) {
+  _renderButton({ className, disabled, label, onClick }) {
     return dom.button(
       {
-        className: "default-button",
+        className,
+        disabled,
         onClick: e => onClick(),
       },
       label,
@@ -79,4 +96,11 @@ class ServiceWorkerAction extends PureComponent {
   }
 }
 
-module.exports = FluentReact.withLocalization(ServiceWorkerAction);
+const mapStateToProps = state => {
+  return {
+    runtimeDetails: getCurrentRuntimeDetails(state.runtimes),
+  };
+};
+
+module.exports = FluentReact.withLocalization(
+  connect(mapStateToProps)(ServiceWorkerAction));

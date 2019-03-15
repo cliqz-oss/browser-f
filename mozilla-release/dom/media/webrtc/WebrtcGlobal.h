@@ -270,11 +270,11 @@ static void WriteRTCRtpStreamStats(
   WriteParam(aMsg, aParam.mCodecId);
   WriteParam(aMsg, aParam.mFramerateMean);
   WriteParam(aMsg, aParam.mFramerateStdDev);
-  WriteParam(aMsg, aParam.mIsRemote);
   WriteParam(aMsg, aParam.mMediaTrackId);
   WriteParam(aMsg, aParam.mMediaType);
   WriteParam(aMsg, aParam.mKind);
   WriteParam(aMsg, aParam.mRemoteId);
+  WriteParam(aMsg, aParam.mLocalId);
   WriteParam(aMsg, aParam.mSsrc);
   WriteParam(aMsg, aParam.mTransportId);
 }
@@ -286,11 +286,11 @@ static bool ReadRTCRtpStreamStats(const Message* aMsg, PickleIterator* aIter,
       !ReadParam(aMsg, aIter, &(aResult->mCodecId)) ||
       !ReadParam(aMsg, aIter, &(aResult->mFramerateMean)) ||
       !ReadParam(aMsg, aIter, &(aResult->mFramerateStdDev)) ||
-      !ReadParam(aMsg, aIter, &(aResult->mIsRemote)) ||
       !ReadParam(aMsg, aIter, &(aResult->mMediaTrackId)) ||
       !ReadParam(aMsg, aIter, &(aResult->mMediaType)) ||
       !ReadParam(aMsg, aIter, &(aResult->mKind)) ||
       !ReadParam(aMsg, aIter, &(aResult->mRemoteId)) ||
+      !ReadParam(aMsg, aIter, &(aResult->mLocalId)) ||
       !ReadParam(aMsg, aIter, &(aResult->mSsrc)) ||
       !ReadParam(aMsg, aIter, &(aResult->mTransportId))) {
     return false;
@@ -308,8 +308,6 @@ struct ParamTraits<mozilla::dom::RTCInboundRTPStreamStats> {
     WriteParam(aMsg, aParam.mDiscardedPackets);
     WriteParam(aMsg, aParam.mFramesDecoded);
     WriteParam(aMsg, aParam.mJitter);
-    WriteParam(aMsg, aParam.mMozAvSyncDelay);
-    WriteParam(aMsg, aParam.mMozJitterBufferDelay);
     WriteParam(aMsg, aParam.mRoundTripTime);
     WriteParam(aMsg, aParam.mPacketsLost);
     WriteParam(aMsg, aParam.mPacketsReceived);
@@ -323,8 +321,6 @@ struct ParamTraits<mozilla::dom::RTCInboundRTPStreamStats> {
         !ReadParam(aMsg, aIter, &(aResult->mDiscardedPackets)) ||
         !ReadParam(aMsg, aIter, &(aResult->mFramesDecoded)) ||
         !ReadParam(aMsg, aIter, &(aResult->mJitter)) ||
-        !ReadParam(aMsg, aIter, &(aResult->mMozAvSyncDelay)) ||
-        !ReadParam(aMsg, aIter, &(aResult->mMozJitterBufferDelay)) ||
         !ReadParam(aMsg, aIter, &(aResult->mRoundTripTime)) ||
         !ReadParam(aMsg, aIter, &(aResult->mPacketsLost)) ||
         !ReadParam(aMsg, aIter, &(aResult->mPacketsReceived)) ||

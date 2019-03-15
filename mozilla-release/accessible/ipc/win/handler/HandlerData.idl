@@ -8,7 +8,7 @@
 #include "AccessibleHandler.h"
 
 import "ocidl.idl";
-import "ServProv.idl";
+import "servprov.idl";
 
 import "Accessible2_3.idl";
 import "AccessibleHypertext2.idl";
@@ -187,6 +187,8 @@ interface IGeckoBackChannel : IUnknown
 [uuid(98c6b50d-7967-49c9-b76b-92aaf91e491b)]
 library AccessibleHandlerTypeLib
 {
+  importlib("stdole2.tlb");
+
   /**
    * This definition is required in order for the handler implementation to
    * support IDispatch (aka Automation). This is used by interpreted language

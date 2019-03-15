@@ -2,58 +2,65 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 
-import React, { PureComponent } from "react";
-import { connect } from "react-redux";
-import type { List } from "immutable";
+// @flow
+
+import React, { Component } from "react";
+import { connect } from "../../utils/connect";
+
+import actions from "../../actions";
+import { getThreads } from "../../selectors";
+import { getDisplayName } from "../../utils/workers";
+import { features } from "../../utils/prefs";
+import Worker from "./Worker";
+import AccessibleImage from "../shared/AccessibleImage";
+
+import type { Thread, Worker as WorkerType } from "../../types";
 
 import "./Workers.css";
 
-import actions from "../../actions";
-import { getWorkers } from "../../selectors";
-import { basename } from "../../utils/path";
-import type { Worker } from "../../types";
+type Props = {
+  threads: Thread[],
+  openWorkerToolbox: typeof actions.openWorkerToolbox
+};
 
-export class Workers extends PureComponent {
-  props: {
-    workers: List<Worker>,
-    openWorkerToolbox: object => void
-  };
-
-  renderWorkers(workers) {
+export class Workers extends Component<Props> {
+  renderWorker(thread: WorkerType) {
     const { openWorkerToolbox } = this.props;
-    return workers.map(worker => (
+
+    return (
       <div
         className="worker"
-        key={worker.actor}
-        onClick={() => openWorkerToolbox(worker)}
+        key={thread.actor}
+        onClick={() => openWorkerToolbox(thread)}
       >
-        <img className="domain" />
-        {basename(worker.url)}
+        <div className="icon">
+          <AccessibleImage className={"worker"} />
+        </div>
+        <div className="label">{getDisplayName(thread)}</div>
       </div>
-    ));
-  }
-
-  renderNoWorkersPlaceholder() {
-    return <div className="pane-info">{L10N.getStr("noWorkersText")}</div>;
+    );
   }
 
   render() {
-    const { workers } = this.props;
-    return (
-      <div className="pane workers-list">
-        {workers && workers.size > 0
-          ? this.renderWorkers(workers)
-          : this.renderNoWorkersPlaceholder()}
-      </div>
-    );
+    const { threads } = this.props;
+
+    const workerList = features.windowlessWorkers
+      ? threads.map(thread => <Worker thread={thread} key={thread.actor} />)
+      : threads
+          .filter((thread: any) => thread.actorID)
+          .map(worker => this.renderWorker((worker: any)));
+
+    return <div className="pane workers-list">{workerList}</div>;
   }
 }
 
 const mapStateToProps = state => ({
-  workers: getWorkers(state)
+  threads: getThreads(state)
 });
 
 export default connect(
   mapStateToProps,
-  actions
+  {
+    openWorkerToolbox: actions.openWorkerToolbox
+  }
 )(Workers);

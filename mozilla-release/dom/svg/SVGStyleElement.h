@@ -8,17 +8,17 @@
 #define mozilla_dom_SVGStyleElement_h
 
 #include "mozilla/Attributes.h"
-#include "nsSVGElement.h"
+#include "SVGElement.h"
 #include "nsStyleLinkElement.h"
 #include "nsStubMutationObserver.h"
 
 nsresult NS_NewSVGStyleElement(
     nsIContent** aResult, already_AddRefed<mozilla::dom::NodeInfo>&& aNodeInfo);
 
-typedef nsSVGElement SVGStyleElementBase;
-
 namespace mozilla {
 namespace dom {
+
+typedef SVGElement SVGStyleElementBase;
 
 class SVGStyleElement final : public SVGStyleElementBase,
                               public nsStyleLinkElement,
@@ -40,7 +40,7 @@ class SVGStyleElement final : public SVGStyleElementBase,
   NS_DECL_CYCLE_COLLECTION_CLASS_INHERITED(SVGStyleElement, SVGStyleElementBase)
 
   // nsIContent
-  virtual nsresult BindToTree(nsIDocument* aDocument, nsIContent* aParent,
+  virtual nsresult BindToTree(Document* aDocument, nsIContent* aParent,
                               nsIContent* aBindingParent) override;
   virtual void UnbindFromTree(bool aDeep = true,
                               bool aNullParent = true) override;

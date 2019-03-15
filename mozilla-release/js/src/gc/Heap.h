@@ -166,7 +166,7 @@ class FreeSpan {
       return nullptr;  // The span is empty.
     }
     checkSpan(arena);
-    JS_EXTRA_POISON(reinterpret_cast<void*>(thing),
+    DebugOnlyPoison(reinterpret_cast<void*>(thing),
                     JS_ALLOCATED_TENURED_PATTERN, thingSize,
                     MemCheckKind::MakeUndefined);
     return reinterpret_cast<TenuredCell*>(thing);
@@ -230,19 +230,24 @@ class Arena {
    */
   size_t allocKind : 8;
 
- public:
+ private:
   /*
    * When recursive marking uses too much stack we delay marking of
    * arenas and link them into a list for later processing. This
    * uses the following fields.
    */
-  size_t hasDelayedMarking : 1;
-  size_t auxNextLink : JS_BITS_PER_WORD - 8 - 1;
-  static_assert(ArenaShift >= 8 + 1,
-                "Arena::auxNextLink packing assumes that ArenaShift has "
-                "enough bits to cover allocKind and hasDelayedMarking.");
+  static const size_t DELAYED_MARKING_FLAG_BITS = 3;
+  static const size_t DELAYED_MARKING_ARENA_BITS =
+      JS_BITS_PER_WORD - 8 - DELAYED_MARKING_FLAG_BITS;
+  size_t onDelayedMarkingList_ : 1;
+  size_t hasDelayedBlackMarking_ : 1;
+  size_t hasDelayedGrayMarking_ : 1;
+  size_t nextDelayedMarkingArena_ : DELAYED_MARKING_ARENA_BITS;
+  static_assert(
+      DELAYED_MARKING_ARENA_BITS >= JS_BITS_PER_WORD - ArenaShift,
+      "Arena::nextDelayedMarkingArena_ packing assumes that ArenaShift has "
+      "enough bits to cover allocKind and delayed marking state.");
 
- private:
   union {
     /*
      * For arenas in zones other than the atoms zone, if non-null, points
@@ -287,8 +292,10 @@ class Arena {
     firstFreeSpan.initAsEmpty();
     zone = nullptr;
     allocKind = size_t(AllocKind::LIMIT);
-    hasDelayedMarking = 0;
-    auxNextLink = 0;
+    onDelayedMarkingList_ = 0;
+    hasDelayedBlackMarking_ = 0;
+    hasDelayedGrayMarking_ = 0;
+    nextDelayedMarkingArena_ = 0;
     bufferedCells_ = nullptr;
   }
 
@@ -387,24 +394,57 @@ class Arena {
     return tailOffset % thingSize == 0;
   }
 
+  bool onDelayedMarkingList() const { return onDelayedMarkingList_; }
+
   Arena* getNextDelayedMarking() const {
-    MOZ_ASSERT(hasDelayedMarking);
-    return reinterpret_cast<Arena*>(auxNextLink << ArenaShift);
+    MOZ_ASSERT(onDelayedMarkingList_);
+    return reinterpret_cast<Arena*>(nextDelayedMarkingArena_ << ArenaShift);
   }
 
-  void setNextDelayedMarking(Arena* arena) {
+  void setNextDelayedMarkingArena(Arena* arena) {
     MOZ_ASSERT(!(uintptr_t(arena) & ArenaMask));
-    MOZ_ASSERT(!auxNextLink && !hasDelayedMarking);
-    hasDelayedMarking = 1;
+    MOZ_ASSERT(!onDelayedMarkingList_);
+    MOZ_ASSERT(!hasDelayedBlackMarking_);
+    MOZ_ASSERT(!hasDelayedGrayMarking_);
+    MOZ_ASSERT(!nextDelayedMarkingArena_);
+    onDelayedMarkingList_ = 1;
     if (arena) {
-      auxNextLink = arena->address() >> ArenaShift;
+      nextDelayedMarkingArena_ = arena->address() >> ArenaShift;
     }
   }
 
-  void unsetDelayedMarking() {
-    MOZ_ASSERT(hasDelayedMarking);
-    hasDelayedMarking = 0;
-    auxNextLink = 0;
+  void updateNextDelayedMarkingArena(Arena* arena) {
+    MOZ_ASSERT(!(uintptr_t(arena) & ArenaMask));
+    MOZ_ASSERT(onDelayedMarkingList_);
+    nextDelayedMarkingArena_ = arena ? arena->address() >> ArenaShift : 0;
+  }
+
+  bool hasDelayedMarking(MarkColor color) const {
+    MOZ_ASSERT(onDelayedMarkingList_);
+    return color == MarkColor::Black ? hasDelayedBlackMarking_
+                                     : hasDelayedGrayMarking_;
+  }
+
+  bool hasAnyDelayedMarking() const {
+    MOZ_ASSERT(onDelayedMarkingList_);
+    return hasDelayedBlackMarking_ || hasDelayedGrayMarking_;
+  }
+
+  void setHasDelayedMarking(MarkColor color, bool value) {
+    MOZ_ASSERT(onDelayedMarkingList_);
+    if (color == MarkColor::Black) {
+      hasDelayedBlackMarking_ = value;
+    } else {
+      hasDelayedGrayMarking_ = value;
+    }
+  }
+
+  void clearDelayedMarkingState() {
+    MOZ_ASSERT(onDelayedMarkingList_);
+    onDelayedMarkingList_ = 0;
+    hasDelayedBlackMarking_ = 0;
+    hasDelayedGrayMarking_ = 0;
+    nextDelayedMarkingArena_ = 0;
   }
 
   inline ArenaCellSet*& bufferedCells();
@@ -802,12 +842,12 @@ static_assert(
  * Tracks the used sizes for owned heap data and automatically maintains the
  * memory usage relationship between GCRuntime and Zones.
  */
-class HeapUsage {
+class HeapSize {
   /*
    * A heap usage that contains our parent's heap usage, or null if this is
    * the top-level usage container.
    */
-  HeapUsage* const parent_;
+  HeapSize* const parent_;
 
   /*
    * The approximate number of bytes in use on the GC heap, to the nearest
@@ -821,7 +861,7 @@ class HeapUsage {
       gcBytes_;
 
  public:
-  explicit HeapUsage(HeapUsage* parent) : parent_(parent), gcBytes_(0) {}
+  explicit HeapSize(HeapSize* parent) : parent_(parent), gcBytes_(0) {}
 
   size_t gcBytes() const { return gcBytes_; }
 
@@ -840,7 +880,7 @@ class HeapUsage {
   }
 
   /* Pair to adoptArenas. Adopts the attendant usage statistics. */
-  void adopt(HeapUsage& other) {
+  void adopt(HeapSize& other) {
     gcBytes_ += other.gcBytes_;
     other.gcBytes_ = 0;
   }

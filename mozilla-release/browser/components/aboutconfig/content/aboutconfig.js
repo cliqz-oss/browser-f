@@ -2,314 +2,425 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+ChromeUtils.import("resource://gre/modules/DeferredTask.jsm");
 ChromeUtils.import("resource://gre/modules/Services.jsm");
 ChromeUtils.import("resource://gre/modules/Preferences.jsm");
 
+const SEARCH_TIMEOUT_MS = 500;
+
+const GETTERS_BY_PREF_TYPE = {
+  [Ci.nsIPrefBranch.PREF_BOOL]: "getBoolPref",
+  [Ci.nsIPrefBranch.PREF_INT]: "getIntPref",
+  [Ci.nsIPrefBranch.PREF_STRING]: "getStringPref",
+};
+
 let gDefaultBranch = Services.prefs.getDefaultBranch("");
-let gPrefArray;
-let gPrefRowInEdit;
-let gPrefInEdit;
+let gFilterPrefsTask = new DeferredTask(() => filterPrefs(), SEARCH_TIMEOUT_MS);
 
-function getPrefName(prefRow) {
-  return prefRow.getAttribute("aria-label");
-}
+/**
+ * Maps the name of each preference in the back-end to its PrefRow object,
+ * separating the preferences that actually exist. This is as an optimization to
+ * avoid querying the preferences service each time the list is filtered.
+ */
+let gExistingPrefs = new Map();
+let gDeletedPrefs = new Map();
 
-function onLoad() {
-  gPrefArray = Services.prefs.getChildList("").map(function(name) {
-    let hasUserValue = Services.prefs.prefHasUserValue(name);
-    let pref = {
-      name,
-      hasUserValue,
-      hasDefaultValue: hasUserValue ? prefHasDefaultValue(name) : true,
-      isLocked: Services.prefs.prefIsLocked(name),
-    };
-    // Try in case it's a localized string or locked user added pref
-    // If an execption is thrown the pref value is set to the empty string.
+/**
+ * Maps each row element currently in the table to its PrefRow object.
+ */
+let gElementToPrefMap = new WeakMap();
+
+/**
+ * Reference to the PrefRow currently being edited, if any.
+ */
+let gPrefInEdit = null;
+
+/**
+ * Lowercase substring that should be contained in the preference name.
+ */
+let gFilterString = null;
+
+class PrefRow {
+  constructor(name) {
+    this.name = name;
+    this.value = true;
+    this.editing = false;
+    this.refreshValue();
+  }
+
+  refreshValue() {
+    let prefType = Services.prefs.getPrefType(this.name);
+
+    // If this preference has been deleted, we keep its last known value.
+    if (prefType == Ci.nsIPrefBranch.PREF_INVALID) {
+      this.hasDefaultValue = false;
+      this.hasUserValue = false;
+      this.isLocked = false;
+      gExistingPrefs.delete(this.name);
+      gDeletedPrefs.set(this.name, this);
+      return;
+    }
+
+    gExistingPrefs.set(this.name, this);
+    gDeletedPrefs.delete(this.name);
+
     try {
-      // Throws an exception in case locked user added pref without default value
-      pref.value = Preferences.get(name);
-      // Throws an exception if there is no equivalent value in the localized files for the pref.
-      if (!pref.hasUserValue && /^chrome:\/\/.+\/locale\/.+\.properties/.test(pref.value)) {
-        pref.value = Services.prefs.getComplexValue(name, Ci.nsIPrefLocalizedString).data;
+      this.value = gDefaultBranch[GETTERS_BY_PREF_TYPE[prefType]](this.name);
+      this.hasDefaultValue = true;
+    } catch (ex) {
+      this.hasDefaultValue = false;
+    }
+    this.hasUserValue = Services.prefs.prefHasUserValue(this.name);
+    this.isLocked = Services.prefs.prefIsLocked(this.name);
+
+    try {
+      if (this.hasUserValue) {
+        // This can throw for locked preferences without a default value.
+        this.value = Services.prefs[GETTERS_BY_PREF_TYPE[prefType]](this.name);
+      } else if (/^chrome:\/\/.+\/locale\/.+\.properties/.test(this.value)) {
+        // We don't know which preferences should be read using getComplexValue,
+        // so we use a heuristic to determine if this is a localized preference.
+        // This can throw if there is no value in the localized files.
+        this.value = Services.prefs.getComplexValue(this.name,
+          Ci.nsIPrefLocalizedString).data;
       }
     } catch (ex) {
-      pref.value = "";
+      this.value = "";
     }
-    return pref;
-  });
+  }
 
-  gPrefArray.sort((a, b) => a.name > b.name);
+  get type() {
+    return this.value.constructor.name;
+  }
 
-  document.getElementById("search").addEventListener("keypress", function(e) {
-    if (e.key == "Enter") {
+  get exists() {
+    return this.hasDefaultValue || this.hasUserValue;
+  }
+
+  get matchesFilter() {
+    return !gFilterString || this.name.toLowerCase().includes(gFilterString);
+  }
+
+  /**
+   * Returns a reference to the table row element to be added to the document,
+   * constructing and initializing it the first time this method is called.
+   */
+  getElement() {
+    if (this._element) {
+      return this._element;
+    }
+
+    this._element = document.createElement("tr");
+    gElementToPrefMap.set(this._element, this);
+
+    let nameCell = document.createElement("th");
+    this._element.append(
+      nameCell,
+      this.valueCell = document.createElement("td"),
+      this.editCell = document.createElement("td"),
+      this.resetCell = document.createElement("td")
+    );
+    this.editCell.appendChild(
+      this.editButton = document.createElement("button")
+    );
+    delete this.resetButton;
+
+    nameCell.setAttribute("scope", "row");
+    this.valueCell.className = "cell-value";
+    this.editCell.className = "cell-edit";
+
+    // Add <wbr> behind dots to prevent line breaking in random mid-word places.
+    let parts = this.name.split(".");
+    for (let i = 0; i < parts.length - 1; i++) {
+      nameCell.append(parts[i] + ".", document.createElement("wbr"));
+    }
+    nameCell.append(parts[parts.length - 1]);
+
+    this.refreshElement();
+
+    return this._element;
+  }
+
+  refreshElement() {
+    if (!this._element) {
+      // No need to update if this preference was never added to the table.
+      return;
+    }
+
+    this._element.classList.toggle("has-user-value", !!this.hasUserValue);
+    this._element.classList.toggle("locked", !!this.isLocked);
+    this._element.classList.toggle("deleted", !this.exists);
+    if (this.exists && !this.editing) {
+      // We need to place the text inside a "span" element to ensure that the
+      // text copied to the clipboard includes all whitespace.
+      let span = document.createElement("span");
+      span.textContent = this.value;
+      // We additionally need to wrap this with another "span" element to convey
+      // the state to screen readers without affecting the visual presentation.
+      span.setAttribute("aria-hidden", "true");
+      let outerSpan = document.createElement("span");
+      let spanL10nId = this.hasUserValue
+                       ? "about-config-pref-accessible-value-custom"
+                       : "about-config-pref-accessible-value-default";
+      document.l10n.setAttributes(outerSpan, spanL10nId,
+                                  { value: "" + this.value });
+      outerSpan.appendChild(span);
+      this.valueCell.textContent = "";
+      this.valueCell.append(outerSpan);
+      if (this.type == "Boolean") {
+        document.l10n.setAttributes(this.editButton, "about-config-pref-toggle");
+        this.editButton.className = "button-toggle";
+      } else {
+        document.l10n.setAttributes(this.editButton, "about-config-pref-edit");
+        this.editButton.className = "button-edit";
+      }
+      this.editButton.removeAttribute("form");
+      delete this.inputField;
+    } else {
+      this.valueCell.textContent = "";
+      // The form is needed for the validation report to appear, but we need to
+      // prevent the associated button from reloading the page.
+      let form = document.createElement("form");
+      form.addEventListener("submit", event => event.preventDefault());
+      form.id = "form-edit";
+      if (this.editing) {
+        this.inputField = document.createElement("input");
+        this.inputField.value = this.value;
+        if (this.type == "Number") {
+          this.inputField.type = "number";
+          this.inputField.required = true;
+          this.inputField.min = -2147483648;
+          this.inputField.max = 2147483647;
+        } else {
+          this.inputField.type = "text";
+        }
+        form.appendChild(this.inputField);
+        document.l10n.setAttributes(this.editButton, "about-config-pref-save");
+        this.editButton.className = "primary button-save";
+      } else {
+        delete this.inputField;
+        for (let type of ["Boolean", "Number", "String"]) {
+          let radio = document.createElement("input");
+          radio.type = "radio";
+          radio.name = "type";
+          radio.value = type;
+          radio.checked = this.type == type;
+          form.appendChild(radio);
+          let radioLabel = document.createElement("span");
+          radioLabel.textContent = type;
+          form.appendChild(radioLabel);
+        }
+        form.addEventListener("click", event => {
+          if (event.target.name != "type") {
+            return;
+          }
+          let type = event.target.value;
+          if (this.type != type) {
+            if (type == "Boolean") {
+              this.value = true;
+            } else if (type == "Number") {
+              this.value = 0;
+            } else {
+              this.value = "";
+            }
+          }
+        });
+        document.l10n.setAttributes(this.editButton, "about-config-pref-add");
+        this.editButton.className = "button-add";
+      }
+      this.valueCell.appendChild(form);
+      this.editButton.setAttribute("form", "form-edit");
+    }
+    this.editButton.disabled = this.isLocked;
+    if (!this.isLocked && this.hasUserValue) {
+      if (!this.resetButton) {
+        this.resetButton = document.createElement("button");
+        this.resetCell.appendChild(this.resetButton);
+      }
+      if (!this.hasDefaultValue) {
+        document.l10n.setAttributes(this.resetButton,
+                                    "about-config-pref-delete");
+        this.resetButton.className = "";
+      } else {
+        document.l10n.setAttributes(this.resetButton,
+                                    "about-config-pref-reset");
+        this.resetButton.className = "button-reset";
+      }
+    } else if (this.resetButton) {
+      this.resetButton.remove();
+      delete this.resetButton;
+    }
+  }
+
+  edit() {
+    if (gPrefInEdit) {
+      gPrefInEdit.endEdit();
+    }
+    gPrefInEdit = this;
+    this.editing = true;
+    this.refreshElement();
+    this.inputField.focus();
+  }
+
+  save() {
+    if (this.type == "Number") {
+      if (!this.inputField.reportValidity()) {
+        return;
+      }
+      Services.prefs.setIntPref(this.name, parseInt(this.inputField.value));
+    } else {
+      Services.prefs.setStringPref(this.name, this.inputField.value);
+    }
+    this.refreshValue();
+    this.endEdit();
+    this.editButton.focus();
+  }
+
+  endEdit() {
+    this.editing = false;
+    this.refreshElement();
+    gPrefInEdit = null;
+  }
+}
+
+let gPrefObserverRegistered = false;
+let gPrefObserver = {
+  observe(subject, topic, data) {
+    let pref = gExistingPrefs.get(data) || gDeletedPrefs.get(data);
+    if (pref) {
+      pref.refreshValue();
+      if (!pref.editing) {
+        pref.refreshElement();
+      }
+      return;
+    }
+
+    let newPref = new PrefRow(data);
+    if (newPref.matchesFilter) {
+      document.getElementById("prefs").appendChild(newPref.getElement());
+    }
+  },
+};
+
+if (!Preferences.get("browser.aboutConfig.showWarning")) {
+  // When showing the filtered preferences directly, remove the warning elements
+  // immediately to prevent flickering, but wait to filter the preferences until
+  // the value of the textbox has been restored from previous sessions.
+  document.addEventListener("DOMContentLoaded", loadPrefs, { once: true });
+  window.addEventListener("load", () => {
+    if (document.getElementById("search").value) {
       filterPrefs();
     }
+  }, { once: true });
+}
+
+function onWarningButtonClick() {
+  Services.prefs.setBoolPref("browser.aboutConfig.showWarning",
+    document.getElementById("showWarningNextTime").checked);
+  loadPrefs();
+}
+
+function loadPrefs() {
+  document.body.className = "config-background";
+  [...document.styleSheets].find(s => s.title == "infop").disabled = true;
+
+  document.body.textContent = "";
+  let searchContainer = document.createElement("div");
+  searchContainer.id = "search-container";
+  let search = document.createElement("input");
+  search.type = "text";
+  search.id = "search";
+  document.l10n.setAttributes(search, "about-config-search");
+  searchContainer.appendChild(search);
+  document.body.appendChild(searchContainer);
+  search.focus();
+
+  let prefs = document.createElement("table");
+  prefs.id = "prefs";
+  document.body.appendChild(prefs);
+
+  for (let name of Services.prefs.getChildList("")) {
+    new PrefRow(name);
+  }
+
+  search.addEventListener("keypress", event => {
+    switch (event.key) {
+      case "Escape":
+        search.value = "";
+        // Fall through.
+      case "Enter":
+        gFilterPrefsTask.disarm();
+        filterPrefs();
+    }
   });
 
-  document.getElementById("prefs").addEventListener("click", (event) => {
+  search.addEventListener("input", () => {
+    // We call "disarm" to restart the timer at every input.
+    gFilterPrefsTask.disarm();
+    gFilterPrefsTask.arm();
+  });
+
+  prefs.addEventListener("click", event => {
     if (event.target.localName != "button") {
       return;
     }
-    let prefRow = event.target.closest("tr");
-    let prefName = getPrefName(prefRow);
-    let pref = gPrefArray.find(p => p.name == prefName);
+    let pref = gElementToPrefMap.get(event.target.closest("tr"));
     let button = event.target.closest("button");
-    if (button.classList.contains("button-reset")) {
-      // Reset pref and update gPrefArray.
-      Services.prefs.clearUserPref(prefName);
-      pref.value = Preferences.get(prefName);
-      pref.hasUserValue = false;
-      // Update UI.
-      prefRow.textContent = "";
-      prefRow.classList.remove("has-user-value");
-      prefRow.appendChild(getPrefRow(pref));
-      prefRow.querySelector("td.cell-edit").firstChild.focus();
-    } else if (button.classList.contains("add-true")) {
-      addNewPref(prefRow.firstChild.innerHTML, true);
-    } else if (button.classList.contains("add-false")) {
-      addNewPref(prefRow.firstChild.innerHTML, false);
-    } else if (button.classList.contains("add-Number") ||
-               button.classList.contains("add-String")) {
-      addNewPref(prefRow.firstChild.innerHTML,
-                 button.classList.contains("add-Number") ? 0 : "");
-      prefRow = [...document.getElementById("prefs").getElementsByTagName("tr")]
-                .find(row => row.querySelector("td").textContent == prefName);
-      startEditingPref(prefRow, gPrefArray.find(p => p.name == prefName));
-      prefRow.querySelector("td.cell-value").firstChild.firstChild.focus();
-    } else if (button.classList.contains("button-toggle")) {
-      // Toggle the pref and update gPrefArray.
-      Services.prefs.setBoolPref(prefName, !pref.value);
-      pref.value = !pref.value;
-      pref.hasUserValue = Services.prefs.prefHasUserValue(pref.name);
-      // Update UI.
-      prefRow.textContent = "";
-      if (pref.hasUserValue) {
-        prefRow.classList.add("has-user-value");
-      } else {
-        prefRow.classList.remove("has-user-value");
+    if (button.classList.contains("button-add")) {
+      Preferences.set(pref.name, pref.value);
+      if (pref.type != "Boolean") {
+        pref.edit();
       }
-      prefRow.appendChild(getPrefRow(pref));
-      prefRow.querySelector("td.cell-edit").firstChild.focus();
+    } else if (button.classList.contains("button-toggle")) {
+      Services.prefs.setBoolPref(pref.name, !pref.value);
     } else if (button.classList.contains("button-edit")) {
-      startEditingPref(prefRow, pref);
-      prefRow.querySelector("td.cell-value").firstChild.firstChild.focus();
+      pref.edit();
     } else if (button.classList.contains("button-save")) {
-      endEditingPref(prefRow);
-      prefRow.querySelector("td.cell-edit").firstChild.focus();
+      pref.save();
     } else {
-      Services.prefs.clearUserPref(prefName);
-      gPrefArray.splice(gPrefArray.findIndex(p => p.name == prefName), 1);
-      prefRow.remove();
+      // This is "button-reset" or "button-delete".
+      pref.editing = false;
+      Services.prefs.clearUserPref(pref.name);
+      pref.editButton.focus();
     }
   });
-
-  filterPrefs();
 }
 
 function filterPrefs() {
-  let substring = document.getElementById("search").value.trim();
-  document.getElementById("prefs").textContent = "";
-  if (substring && !gPrefArray.some(pref => pref.name == substring)) {
-    document.getElementById("prefs").appendChild(createNewPrefFragment(substring));
+  if (gPrefInEdit) {
+    gPrefInEdit.endEdit();
   }
-  let fragment = createPrefsFragment(gPrefArray.filter(pref => pref.name.includes(substring)));
-  document.getElementById("prefs").appendChild(fragment);
-}
+  gDeletedPrefs.clear();
 
-function createPrefsFragment(prefArray) {
+  let searchName = document.getElementById("search").value.trim();
+  gFilterString = searchName.toLowerCase();
+  let prefArray = [...gExistingPrefs.values()];
+  if (gFilterString) {
+    prefArray = prefArray.filter(pref => pref.matchesFilter);
+  }
+  prefArray.sort((a, b) => a.name > b.name);
+  if (searchName && !gExistingPrefs.has(searchName)) {
+    prefArray.push(new PrefRow(searchName));
+  }
+
+  let prefsElement = document.getElementById("prefs");
+  prefsElement.textContent = "";
   let fragment = document.createDocumentFragment();
   for (let pref of prefArray) {
-    let row = document.createElement("tr");
-    if (pref.hasUserValue) {
-      row.classList.add("has-user-value");
-    }
-    if (pref.isLocked) {
-      row.classList.add("locked");
-    }
-    row.setAttribute("aria-label", pref.name);
-
-    row.appendChild(getPrefRow(pref));
-    fragment.appendChild(row);
+    fragment.appendChild(pref.getElement());
   }
-  return fragment;
-}
+  prefsElement.appendChild(fragment);
 
-function createNewPrefFragment(name) {
-  let fragment = document.createDocumentFragment();
-  let row = document.createElement("tr");
-  row.classList.add("has-user-value");
-  row.setAttribute("aria-label", name);
-  let nameCell = document.createElement("td");
-  nameCell.className = "cell-name";
-  nameCell.append(name);
-  row.appendChild(nameCell);
-
-  let valueCell = document.createElement("td");
-  valueCell.classList.add("cell-value");
-  let guideText = document.createElement("span");
-  document.l10n.setAttributes(guideText, "about-config-pref-add");
-  valueCell.appendChild(guideText);
-  for (let item of ["true", "false", "Number", "String"]) {
-    let optionBtn = document.createElement("button");
-    optionBtn.textContent = item;
-    optionBtn.classList.add("add-" + item);
-    valueCell.appendChild(optionBtn);
-  }
-  row.appendChild(valueCell);
-
-  let editCell = document.createElement("td");
-  row.appendChild(editCell);
-
-  let buttonCell = document.createElement("td");
-  row.appendChild(buttonCell);
-
-  fragment.appendChild(row);
-  return fragment;
-}
-
-function getPrefRow(pref) {
-  let rowFragment = document.createDocumentFragment();
-  let nameCell = document.createElement("td");
-  nameCell.className = "cell-name";
-  // Add <wbr> behind dots to prevent line breaking in random mid-word places.
-  let parts = pref.name.split(".");
-  for (let i = 0; i < parts.length - 1; i++) {
-    nameCell.append(parts[i] + ".", document.createElement("wbr"));
-  }
-  nameCell.append(parts[parts.length - 1]);
-  rowFragment.appendChild(nameCell);
-
-  let valueCell = document.createElement("td");
-  valueCell.classList.add("cell-value");
-  valueCell.textContent = pref.value;
-  rowFragment.appendChild(valueCell);
-
-  let editCell = document.createElement("td");
-  editCell.className = "cell-edit";
-  let button = document.createElement("button");
-  if (Services.prefs.getPrefType(pref.name) == Services.prefs.PREF_BOOL) {
-    document.l10n.setAttributes(button, "about-config-pref-toggle");
-    button.className = "button-toggle";
-  } else {
-    document.l10n.setAttributes(button, "about-config-pref-edit");
-    button.className = "button-edit";
-  }
-  if (pref.isLocked) {
-    button.disabled = true;
-  }
-  editCell.appendChild(button);
-  rowFragment.appendChild(editCell);
-
-  let buttonCell = document.createElement("td");
-  if (!pref.isLocked && pref.hasUserValue) {
-    let resetButton = document.createElement("button");
-    if (!pref.hasDefaultValue) {
-      document.l10n.setAttributes(resetButton, "about-config-pref-delete");
-    } else {
-      document.l10n.setAttributes(resetButton, "about-config-pref-reset");
-      resetButton.className = "button-reset";
-    }
-    buttonCell.appendChild(resetButton);
+  // We only start observing preference changes after the first search is done,
+  // so that newly added preferences won't appear while the page is still empty.
+  if (!gPrefObserverRegistered) {
+    gPrefObserverRegistered = true;
+    Services.prefs.addObserver("", gPrefObserver);
+    window.addEventListener("unload", () => {
+      Services.prefs.removeObserver("", gPrefObserver);
+    }, { once: true });
   }
 
-  rowFragment.appendChild(buttonCell);
-  return rowFragment;
-}
-
-function startEditingPref(row, arrayEntry) {
-  if (gPrefRowInEdit != undefined) {
-    // Abort editing-process first.
-    gPrefRowInEdit.textContent = "";
-    gPrefRowInEdit.appendChild(getPrefRow(gPrefInEdit));
-  }
-  gPrefRowInEdit = row;
-
-  let name = getPrefName(row);
-  gPrefInEdit = arrayEntry;
-
-  let valueCell = row.querySelector("td.cell-value");
-  let oldValue = valueCell.textContent;
-  valueCell.textContent = "";
-  // The form is needed for the invalid-tooltip to appear.
-  let form = document.createElement("form");
-  form.id = "form-" + name;
-  let inputField = document.createElement("input");
-  inputField.type = "text";
-  inputField.value = oldValue;
-  if (Services.prefs.getPrefType(name) == Services.prefs.PREF_INT) {
-    inputField.setAttribute("pattern", "-?[0-9]*");
-    document.l10n.setAttributes(inputField, "about-config-pref-input-number");
-  } else {
-    document.l10n.setAttributes(inputField, "about-config-pref-input-string");
-  }
-  inputField.placeholder = oldValue;
-  form.appendChild(inputField);
-  valueCell.appendChild(form);
-
-  let buttonCell = row.querySelector("td.cell-edit");
-  buttonCell.childNodes[0].remove();
-  let button = document.createElement("button");
-  button.classList.add("primary", "button-save");
-  document.l10n.setAttributes(button, "about-config-pref-save");
-  button.setAttribute("form", form.id);
-  buttonCell.appendChild(button);
-}
-
-function endEditingPref(row) {
-  let name = gPrefInEdit.name;
-  let input = row.querySelector("td.cell-value").firstChild.firstChild;
-  let newValue = input.value;
-
-  if (Services.prefs.getPrefType(name) == Services.prefs.PREF_INT) {
-    let numberValue = parseInt(newValue);
-    if (!/^-?[0-9]*$/.test(newValue) || isNaN(numberValue)) {
-      input.setCustomValidity(input.title);
-      return;
-    }
-    newValue = numberValue;
-    Services.prefs.setIntPref(name, newValue);
-  } else {
-    Services.prefs.setStringPref(name, newValue);
-  }
-
-  // Update gPrefArray.
-  gPrefInEdit.value = newValue;
-  gPrefInEdit.hasUserValue = Services.prefs.prefHasUserValue(name);
-  // Update UI.
-  row.textContent = "";
-  if (gPrefInEdit.hasUserValue) {
-    row.classList.add("has-user-value");
-  } else {
-    row.classList.remove("has-user-value");
-  }
-  row.appendChild(getPrefRow(gPrefInEdit));
-}
-
-function prefHasDefaultValue(name) {
-  try {
-    switch (Services.prefs.getPrefType(name)) {
-      case Ci.nsIPrefBranch.PREF_STRING:
-        gDefaultBranch.getStringPref(name);
-        return true;
-      case Ci.nsIPrefBranch.PREF_INT:
-        gDefaultBranch.getIntPref(name);
-        return true;
-      case Ci.nsIPrefBranch.PREF_BOOL:
-        gDefaultBranch.getBoolPref(name);
-        return true;
-    }
-  } catch (ex) {}
-  return false;
-}
-
-function addNewPref(name, value) {
-  Preferences.set(name, value);
-  gPrefArray.push({
-    name,
-    value,
-    hasUserValue: true,
-    hasDefaultValue: false,
-  });
-  gPrefArray.sort((a, b) => a.name > b.name);
-  filterPrefs();
+  document.body.classList.toggle("config-warning",
+    location.href.split(":").every(l => gFilterString.includes(l)));
 }

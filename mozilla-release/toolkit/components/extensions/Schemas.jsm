@@ -15,7 +15,6 @@ XPCOMUtils.defineLazyGlobalGetters(this, ["URL"]);
 
 ChromeUtils.import("resource://gre/modules/ExtensionUtils.jsm");
 var {
-  chromeModifierKeyMap,
   DefaultMap,
   DefaultWeakMap,
 } = ExtensionUtils;
@@ -24,6 +23,8 @@ ChromeUtils.defineModuleGetter(this, "ExtensionParent",
                                "resource://gre/modules/ExtensionParent.jsm");
 ChromeUtils.defineModuleGetter(this, "NetUtil",
                                "resource://gre/modules/NetUtil.jsm");
+ChromeUtils.defineModuleGetter(this, "ShortcutUtils",
+                               "resource://gre/modules/ShortcutUtils.jsm");
 XPCOMUtils.defineLazyServiceGetter(this, "contentPolicyService",
                                    "@mozilla.org/addons/content-policy;1",
                                    "nsIAddonContentPolicy");
@@ -232,6 +233,14 @@ const POSTPROCESSORS = {
     canvas.getContext("2d").putImageData(imageData, 0, 0);
 
     return canvas.toDataURL("image/png");
+  },
+  webRequestBlockingPermissionRequired(string, context) {
+    if (string === "blocking" && !context.hasPermission("webRequestBlocking")) {
+      throw new context.cloneScope.Error("Using webRequest.addListener with the " +
+                                         "blocking option requires the 'webRequestBlocking' permission.");
+    }
+
+    return string;
   },
 };
 
@@ -985,55 +994,15 @@ const FORMATS = {
   },
 
   manifestShortcutKey(string, context) {
-    // A valid shortcut key for a webextension manifest
-    const MEDIA_KEYS = /^(MediaNextTrack|MediaPlayPause|MediaPrevTrack|MediaStop)$/;
-    const BASIC_KEYS = /^([A-Z0-9]|Comma|Period|Home|End|PageUp|PageDown|Space|Insert|Delete|Up|Down|Left|Right)$/;
-    const FUNCTION_KEYS = /^(F[1-9]|F1[0-2])$/;
+    if (ShortcutUtils.validate(string) == ShortcutUtils.IS_VALID) {
+      return string;
+    }
     let errorMessage = (`Value "${string}" must consist of `
                         + `either a combination of one or two modifiers, including `
                         + `a mandatory primary modifier and a key, separated by '+', `
                         + `or a media key. For details see: `
                         + `https://developer.mozilla.org/en-US/Add-ons/WebExtensions/manifest.json/commands#Key_combinations`);
-    if (MEDIA_KEYS.test(string.trim())) {
-      return string;
-    }
-
-    let modifiers = string.split("+").map(s => s.trim());
-    let key = modifiers.pop();
-
-    if (!BASIC_KEYS.test(key) && !FUNCTION_KEYS.test(key)) {
-      throw new Error(errorMessage);
-    }
-
-    let chromeModifiers = modifiers.map(m => chromeModifierKeyMap[m]);
-    // If the modifier wasn't found it will be undefined.
-    if (chromeModifiers.some(modifier => !modifier)) {
-      throw new Error(errorMessage);
-    }
-
-    switch (modifiers.length) {
-      case 0:
-        // A lack of modifiers is only allowed with function keys.
-        if (!FUNCTION_KEYS.test(key)) {
-          throw new Error(errorMessage);
-        }
-        break;
-      case 1:
-        // Shift is only allowed on its own with function keys.
-        if (chromeModifiers[0] == "shift" && !FUNCTION_KEYS.test(key)) {
-          throw new Error(errorMessage);
-        }
-        break;
-      case 2:
-        if (chromeModifiers[0] == chromeModifiers[1]) {
-          throw new Error(errorMessage);
-        }
-        break;
-      default:
-        throw new Error(errorMessage);
-    }
-
-    return string;
+    throw new Error(errorMessage);
   },
 };
 
@@ -1896,8 +1865,33 @@ class IntegerType extends Type {
 }
 
 class BooleanType extends Type {
+  static get EXTRA_PROPERTIES() {
+    return ["enum", ...super.EXTRA_PROPERTIES];
+  }
+
+  static parseSchema(root, schema, path, extraProperties = []) {
+    this.checkSchemaProperties(schema, path, extraProperties);
+    let enumeration = schema.enum || null;
+    return new this(schema, enumeration);
+  }
+
+  constructor(schema, enumeration) {
+    super(schema);
+    this.enumeration = enumeration;
+  }
+
   normalize(value, context) {
-    return this.normalizeBase("boolean", value, context);
+    if (!this.checkBaseType(getValueBaseType(value))) {
+      return context.error(() => `Expected boolean instead of ${JSON.stringify(value)}`,
+                           `be a boolean`);
+    }
+    value = this.preprocess(value, context);
+    if (this.enumeration && !this.enumeration.includes(value)) {
+      return context.error(() => `Invalid value ${JSON.stringify(value)}`,
+                           `be ${this.enumeration}`);
+    }
+    this.checkDeprecated(context, value);
+    return {value};
   }
 
   checkBaseType(baseType) {
@@ -2956,7 +2950,7 @@ class SchemaRoot extends Namespace {
     for (let [key, schema] of this.schemaJSON.entries()) {
       try {
         if (typeof schema.deserialize === "function") {
-          schema = schema.deserialize(global);
+          schema = schema.deserialize(global, isParentProcess);
 
           // If we're in the parent process, we need to keep the
           // StructuredCloneHolder blob around in order to send to future child

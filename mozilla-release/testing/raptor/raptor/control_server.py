@@ -68,17 +68,25 @@ def MakeCustomHandlerClass(results_handler, shutdown_browser, write_raw_gecko_pr
                 _raw_profile = data['data'][2]
                 LOG.info("received gecko profile for test %s pagecycle %s" % (_test, _pagecycle))
                 self.write_raw_gecko_profile(_test, _pagecycle, _raw_profile)
+            elif data['type'] == 'webext_results':
+                LOG.info("received " + data['type'] + ": " + str(data['data']))
+                self.results_handler.add(data['data'])
+            elif data['type'] == "webext_raptor-page-timeout":
+                LOG.info("received " + data['type'] + ": " + str(data['data']))
+                # pageload test has timed out; record it as a failure
+                self.results_handler.add_page_timeout(str(data['data'][0]),
+                                                      str(data['data'][1]))
+            elif data['data'] == "__raptor_shutdownBrowser":
+                LOG.info("received " + data['type'] + ": " + str(data['data']))
+                # webext is telling us it's done, and time to shutdown the browser
+                self.shutdown_browser()
+            elif data['type'] == 'webext_screenshot':
+                LOG.info("received " + data['type'])
+                self.results_handler.add_image(str(data['data'][0]),
+                                               str(data['data'][1]),
+                                               str(data['data'][2]))
             else:
                 LOG.info("received " + data['type'] + ": " + str(data['data']))
-                if data['type'] == 'webext_results':
-                    self.results_handler.add(data['data'])
-                elif data['type'] == "webext_raptor-page-timeout":
-                    # pageload test has timed out; record it as a failure
-                    self.results_handler.add_page_timeout(str(data['data'][0]),
-                                                          str(data['data'][1]))
-                elif data['data'] == "__raptor_shutdownBrowser":
-                    # webext is telling us it's done, and time to shutdown the browser
-                    self.shutdown_browser()
 
         def do_OPTIONS(self):
             self.send_response(200, "ok")
@@ -170,6 +178,15 @@ class RaptorControlServer():
             if self.browser_proc.poll() is None:
                 self.browser_proc.kill()
         self._finished = True
+
+    def submit_supporting_data(self, supporting_data):
+        '''
+        Allow the submission of supporting data i.e. power data.
+        This type of data is measured outside of the webext; so
+        we can submit directly to the control server instead of
+        doing an http post.
+        '''
+        self.results_handler.add_supporting_data(supporting_data)
 
     def stop(self):
         LOG.info("shutting down control server")

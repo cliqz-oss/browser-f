@@ -14,8 +14,8 @@
 #include "mozilla/layers/ZoomConstraints.h"
 #include "mozilla/Preferences.h"
 #include "mozilla/PresShell.h"
+#include "mozilla/dom/Document.h"
 #include "mozilla/dom/Event.h"
-#include "nsDocument.h"
 #include "nsIFrame.h"
 #include "nsLayoutUtils.h"
 #include "nsPoint.h"
@@ -96,7 +96,7 @@ void ZoomConstraintsClient::Destroy() {
 }
 
 void ZoomConstraintsClient::Init(nsIPresShell* aPresShell,
-                                 nsIDocument* aDocument) {
+                                 Document* aDocument) {
   if (!(aPresShell && aDocument)) {
     return;
   }
@@ -144,7 +144,7 @@ ZoomConstraintsClient::HandleEvent(dom::Event* event) {
 NS_IMETHODIMP
 ZoomConstraintsClient::Observe(nsISupports* aSubject, const char* aTopic,
                                const char16_t* aData) {
-  if (SameCOMIdentity(aSubject, mDocument) &&
+  if (SameCOMIdentity(aSubject, ToSupports(mDocument)) &&
       BEFORE_FIRST_PAINT.EqualsASCII(aTopic)) {
     ZCC_LOG("Got a before-first-paint event in %p\n", this);
     RefreshZoomConstraints();

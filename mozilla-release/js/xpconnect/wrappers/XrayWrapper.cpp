@@ -17,11 +17,13 @@
 #include "xpcprivate.h"
 
 #include "jsapi.h"
+#include "js/PropertySpec.h"
 #include "nsJSUtils.h"
 #include "nsPrintfCString.h"
 
 #include "mozilla/FloatingPoint.h"
 #include "mozilla/dom/BindingUtils.h"
+#include "mozilla/dom/BrowsingContext.h"
 #include "mozilla/dom/WindowBinding.h"
 #include "mozilla/dom/XrayExpandoClass.h"
 #include "nsGlobalWindow.h"
@@ -535,7 +537,7 @@ bool JSXrayTraits::resolveOwnProperty(JSContext* cx, HandleObject wrapper,
       return getOwnPropertyFromWrapperIfSafe(cx, wrapper, id, desc);
     }
     if (IsTypedArrayKey(key)) {
-      if (IsArrayIndex(GetArrayIndexFromId(cx, id))) {
+      if (IsArrayIndex(GetArrayIndexFromId(id))) {
         // WebExtensions can't use cloneInto(), so we just let them do
         // the slow thing to maximize compatibility.
         if (CompartmentPrivate::Get(CurrentGlobalOrNull(cx))
@@ -814,7 +816,7 @@ bool JSXrayTraits::defineProperty(JSContext* cx, HandleObject wrapper,
           ->isWebExtensionContentScript &&
       desc.isDataDescriptor() &&
       (desc.value().isNumber() || desc.value().isUndefined()) &&
-      IsArrayIndex(GetArrayIndexFromId(cx, id))) {
+      IsArrayIndex(GetArrayIndexFromId(id))) {
     RootedObject target(cx, getTargetObject(wrapper));
     JSAutoRealm ar(cx, target);
     JS_MarkCrossZoneId(cx, id);
@@ -1124,7 +1126,9 @@ XrayTraits* GetXrayTraits(JSObject* obj) {
 // one such wrapper which can create or access the expando. This allows for
 // faster access to the expando, including through JIT inline caches.
 static inline bool CompartmentHasExclusiveExpandos(JSObject* obj) {
-  return IsInSandboxCompartment(obj);
+  JS::Compartment* comp = js::GetObjectCompartment(obj);
+  CompartmentPrivate* priv = CompartmentPrivate::Get(comp);
+  return priv && priv->hasExclusiveExpandos;
 }
 
 static inline JSObject* GetCachedXrayExpando(JSObject* wrapper);
@@ -1631,7 +1635,7 @@ bool DOMXrayTraits::resolveOwnProperty(JSContext* cx, HandleObject wrapper,
   }
 
   // Check for indexed access on a window.
-  uint32_t index = GetArrayIndexFromId(cx, id);
+  uint32_t index = GetArrayIndexFromId(id);
   if (IsArrayIndex(index)) {
     nsGlobalWindowInner* win = AsWindow(cx, wrapper);
     // Note: As() unwraps outer windows to get to the inner window.
@@ -1690,7 +1694,7 @@ bool DOMXrayTraits::defineProperty(JSContext* cx, HandleObject wrapper,
   // Check for an indexed property on a Window.  If that's happening, do
   // nothing but claim we defined it so it won't get added as an expando.
   if (IsWindow(cx, wrapper)) {
-    if (IsArrayIndex(GetArrayIndexFromId(cx, id))) {
+    if (IsArrayIndex(GetArrayIndexFromId(id))) {
       *defined = true;
       return result.succeed();
     }
@@ -1870,77 +1874,8 @@ template <typename Base, typename Traits>
 bool XrayWrapper<Base, Traits>::getPropertyDescriptor(
     JSContext* cx, HandleObject wrapper, HandleId id,
     JS::MutableHandle<PropertyDescriptor> desc) const {
-  // CrossOriginXrayWrapper::getOwnPropertyDescriptor calls this.
-
-  assertEnteredPolicy(cx, wrapper, id,
-                      BaseProxyHandler::GET | BaseProxyHandler::SET |
-                          BaseProxyHandler::GET_PROPERTY_DESCRIPTOR);
-  RootedObject target(cx, Traits::getTargetObject(wrapper));
-  RootedObject holder(cx, Traits::singleton.ensureHolder(cx, wrapper));
-
-  if (!holder) {
-    return false;
-  }
-
-  // Ordering is important here.
-  //
-  // We first need to call resolveOwnProperty, even before checking the holder,
-  // because there might be a new dynamic |own| property that appears and
-  // shadows a previously-resolved non-own property that we cached on the
-  // holder. This can happen with indexed properties on NodeLists, for example,
-  // which are |own| value props.
-  //
-  // resolveOwnProperty may or may not cache what it finds on the holder,
-  // depending on how ephemeral it decides the property is. This means that we
-  // have to first check the result of resolveOwnProperty, and _then_, if that
-  // comes up blank, check the holder for any cached native properties.
-
-  // Check resolveOwnProperty.
-  if (!Traits::singleton.resolveOwnProperty(cx, wrapper, target, holder, id,
-                                            desc)) {
-    return false;
-  }
-
-  // Check the holder.
-  if (!desc.object() &&
-      !JS_GetOwnPropertyDescriptorById(cx, holder, id, desc)) {
-    return false;
-  }
-  if (desc.object()) {
-    desc.object().set(wrapper);
-    return true;
-  }
-
-  // We need to handle named access on the Window somewhere other than
-  // Traits::resolveOwnProperty, because per spec it happens on the Global
-  // Scope Polluter and thus the resulting properties are non-|own|. However,
-  // we're set up (above) to cache (on the holder),
-  // which we don't want for something dynamic like named access.
-  // So we just handle it separately here.  Note that this is
-  // only relevant for CrossOriginXrayWrapper, which calls
-  // getPropertyDescriptor from getOwnPropertyDescriptor.
-  nsGlobalWindowInner* win = nullptr;
-  if (!desc.object() && JSID_IS_STRING(id) && (win = AsWindow(cx, wrapper))) {
-    nsAutoJSString name;
-    if (!name.init(cx, JSID_TO_STRING(id))) {
-      return false;
-    }
-    if (nsCOMPtr<nsPIDOMWindowOuter> childDOMWin = win->GetChildWindow(name)) {
-      auto* cwin = nsGlobalWindowOuter::Cast(childDOMWin);
-      JSObject* childObj = cwin->FastGetGlobalJSObject();
-      if (MOZ_UNLIKELY(!childObj)) {
-        return xpc::Throw(cx, NS_ERROR_FAILURE);
-      }
-      ExposeObjectToActiveJS(childObj);
-      FillPropertyDescriptor(desc, wrapper, ObjectValue(*childObj),
-                             /* readOnly = */ true);
-      return JS_WrapPropertyDescriptor(cx, desc);
-    }
-  }
-
-  // We found nothing, we're done.
-  MOZ_ASSERT(!desc.object());
-  return true;
+  MOZ_CRASH("Shouldn't be called: we return true for hasPrototype()");
+  return false;
 }
 
 template <typename Base, typename Traits>
@@ -2135,20 +2070,19 @@ template <typename Base, typename Traits>
 bool XrayWrapper<Base, Traits>::get(JSContext* cx, HandleObject wrapper,
                                     HandleValue receiver, HandleId id,
                                     MutableHandleValue vp) const {
-  // Skip our Base if it isn't already ProxyHandler.
-
-  // This uses getPropertyDescriptor for backward compatibility with
-  // the old BaseProxyHandler::get implementation.
+  // This is called by Proxy::get, but since we return true for hasPrototype()
+  // it's only called for properties that hasOwn() claims we have as own
+  // properties.  Since we only need to worry about own properties, we can use
+  // getOwnPropertyDescriptor here.
   Rooted<PropertyDescriptor> desc(cx);
-  if (!getPropertyDescriptor(cx, wrapper, id, &desc)) {
+  if (!getOwnPropertyDescriptor(cx, wrapper, id, &desc)) {
     return false;
   }
   desc.assertCompleteIfFound();
 
-  if (!desc.object()) {
-    vp.setUndefined();
-    return true;
-  }
+  MOZ_ASSERT(desc.object(),
+             "hasOwn() claimed we have this property, so why would we not get "
+             "a descriptor here?");
 
   // Everything after here follows [[Get]] for ordinary objects.
   if (desc.isDataDescriptor()) {
@@ -2172,22 +2106,15 @@ bool XrayWrapper<Base, Traits>::set(JSContext* cx, HandleObject wrapper,
                                     HandleId id, HandleValue v,
                                     HandleValue receiver,
                                     ObjectOpResult& result) const {
-  MOZ_CRASH("Shouldn't be called");
+  MOZ_CRASH("Shouldn't be called: we return true for hasPrototype()");
   return false;
 }
 
 template <typename Base, typename Traits>
 bool XrayWrapper<Base, Traits>::has(JSContext* cx, HandleObject wrapper,
                                     HandleId id, bool* bp) const {
-  // This uses getPropertyDescriptor for backward compatibility with
-  // the old BaseProxyHandler::has implementation.
-  Rooted<PropertyDescriptor> desc(cx);
-  if (!getPropertyDescriptor(cx, wrapper, id, &desc)) {
-    return false;
-  }
-
-  *bp = !!desc.object();
-  return true;
+  MOZ_CRASH("Shouldn't be called: we return true for hasPrototype()");
+  return false;
 }
 
 template <typename Base, typename Traits>
@@ -2207,7 +2134,7 @@ bool XrayWrapper<Base, Traits>::getOwnEnumerablePropertyKeys(
 template <typename Base, typename Traits>
 JSObject* XrayWrapper<Base, Traits>::enumerate(JSContext* cx,
                                                HandleObject wrapper) const {
-  MOZ_CRASH("Shouldn't be called");
+  MOZ_CRASH("Shouldn't be called: we return true for hasPrototype()");
   return nullptr;
 }
 
@@ -2403,7 +2330,6 @@ const xpc::XrayWrapper<Base, Traits> xpc::XrayWrapper<Base, Traits>::singleton(
     0);
 
 template class PermissiveXrayDOM;
-template class SecurityXrayDOM;
 template class PermissiveXrayJS;
 template class PermissiveXrayOpaque;
 

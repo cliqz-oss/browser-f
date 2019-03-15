@@ -172,6 +172,58 @@ impl WritingMode {
     }
 
     #[inline]
+    fn physical_sides_to_corner(
+        block_side: PhysicalSide,
+        inline_side: PhysicalSide,
+    ) -> PhysicalCorner {
+        match (block_side, inline_side) {
+            (PhysicalSide::Top, PhysicalSide::Left) | (PhysicalSide::Left, PhysicalSide::Top) => {
+                PhysicalCorner::TopLeft
+            },
+            (PhysicalSide::Top, PhysicalSide::Right) | (PhysicalSide::Right, PhysicalSide::Top) => {
+                PhysicalCorner::TopRight
+            },
+            (PhysicalSide::Bottom, PhysicalSide::Right) |
+            (PhysicalSide::Right, PhysicalSide::Bottom) => PhysicalCorner::BottomRight,
+            (PhysicalSide::Bottom, PhysicalSide::Left) |
+            (PhysicalSide::Left, PhysicalSide::Bottom) => PhysicalCorner::BottomLeft,
+            _ => unreachable!("block and inline sides must be orthogonal"),
+        }
+    }
+
+    #[inline]
+    pub fn start_start_physical_corner(&self) -> PhysicalCorner {
+        WritingMode::physical_sides_to_corner(
+            self.block_start_physical_side(),
+            self.inline_start_physical_side(),
+        )
+    }
+
+    #[inline]
+    pub fn start_end_physical_corner(&self) -> PhysicalCorner {
+        WritingMode::physical_sides_to_corner(
+            self.block_start_physical_side(),
+            self.inline_end_physical_side(),
+        )
+    }
+
+    #[inline]
+    pub fn end_start_physical_corner(&self) -> PhysicalCorner {
+        WritingMode::physical_sides_to_corner(
+            self.block_end_physical_side(),
+            self.inline_start_physical_side(),
+        )
+    }
+
+    #[inline]
+    pub fn end_end_physical_corner(&self) -> PhysicalCorner {
+        WritingMode::physical_sides_to_corner(
+            self.block_end_physical_side(),
+            self.inline_end_physical_side(),
+        )
+    }
+
+    #[inline]
     pub fn block_flow_direction(&self) -> BlockFlowDirection {
         match (self.is_vertical(), self.is_vertical_lr()) {
             (false, _) => BlockFlowDirection::TopToBottom,
@@ -1221,11 +1273,12 @@ impl<T: Copy + Add<T, Output = T> + Sub<T, Output = T>> LogicalRect<T> {
 
     pub fn translate(&self, offset: &LogicalPoint<T>) -> LogicalRect<T> {
         LogicalRect {
-            start: self.start + LogicalSize {
-                inline: offset.i,
-                block: offset.b,
-                debug_writing_mode: offset.debug_writing_mode,
-            },
+            start: self.start +
+                LogicalSize {
+                    inline: offset.i,
+                    block: offset.b,
+                    debug_writing_mode: offset.debug_writing_mode,
+                },
             size: self.size,
             debug_writing_mode: self.debug_writing_mode,
         }
@@ -1312,4 +1365,12 @@ pub enum PhysicalSide {
     Right,
     Bottom,
     Left,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum PhysicalCorner {
+    TopLeft,
+    TopRight,
+    BottomRight,
+    BottomLeft,
 }

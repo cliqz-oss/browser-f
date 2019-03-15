@@ -33,7 +33,6 @@ bottomLinks-privacy = Datenschutzbestimmungen
 aboutDialog-architecture-sixtyFourBit = 64-Bit
 aboutDialog-architecture-thirtyTwoBit = 32-Bit
 
-version-based-on = nutzt Firefox
 cliqz-headline = We Redesign the Internet
 cliqz-description-1 = Cliqz respektiert deine Privatsphäre. Der Schutz deiner Daten ist uns wichtig. Als Unternehmen mit Sitz in Deutschland sind wir den besonders strengen deutschen Datenschutzgesetzen und unseren eigenen hohen Ansprüchen verpflichtet. Unser oberstes Prinzip: Cliqz speichert keinerlei Daten auf unseren Servern, anhand derer du oder dein Gerät oder dein Verhalten im Web identifizierbar wären. Erfahre mehr über <label data-l10n-name="cliqz-desc1-privacy">Datenschutz und Privatsphäre</label>, überprüfe unsere <label data-l10n-name="cliqz-desc1-policy">Datenschutzerklärung</label> oder <label data-l10n-name="cliqz-desc1-contact">sprich direkt mit uns</label>.
 

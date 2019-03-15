@@ -23,7 +23,7 @@
 #include "nsIMutableArray.h"
 #include "nsICommandManager.h"
 #include "nsIDocShell.h"
-#include "nsIDocument.h"
+#include "mozilla/dom/Document.h"
 #include "nsPIDOMWindow.h"
 #include "nsIEditingSession.h"
 #include "nsIFrame.h"
@@ -70,7 +70,7 @@ static const uint32_t kRelationAttrsLen = ArrayLength(kRelationAttrs);
 ////////////////////////////////////////////////////////////////////////////////
 // Constructor/desctructor
 
-DocAccessible::DocAccessible(nsIDocument* aDocument, nsIPresShell* aPresShell)
+DocAccessible::DocAccessible(dom::Document* aDocument, nsIPresShell* aPresShell)
     :  // XXX don't pass a document to the Accessible constructor so that we
        // don't set mDoc until our vtable is fully setup.  If we set mDoc before
        // setting up the vtable we will call Accessible::AddRef() but not the
@@ -372,7 +372,7 @@ void DocAccessible::Init() {
   // Mark the document accessible as loaded if its DOM document was loaded at
   // this point (this can happen because a11y is started late or DOM document
   // having no container was loaded.
-  if (mDocumentNode->GetReadyStateEnum() == nsIDocument::READYSTATE_COMPLETE)
+  if (mDocumentNode->GetReadyStateEnum() == dom::Document::READYSTATE_COMPLETE)
     mLoadState |= eDOMLoaded;
 
   AddEventListeners();
@@ -461,8 +461,8 @@ nsIFrame* DocAccessible::GetFrame() const {
 nsRect DocAccessible::RelativeBounds(nsIFrame** aRelativeFrame) const {
   *aRelativeFrame = GetFrame();
 
-  nsIDocument* document = mDocumentNode;
-  nsIDocument* parentDoc = nullptr;
+  dom::Document* document = mDocumentNode;
+  dom::Document* parentDoc = nullptr;
 
   nsRect bounds;
   while (document) {
@@ -1020,7 +1020,7 @@ void DocAccessible::ARIAActiveDescendantChanged(Accessible* aAccessible) {
 
 void DocAccessible::ContentAppended(nsIContent* aFirstNewContent) {}
 
-void DocAccessible::ContentStateChanged(nsIDocument* aDocument,
+void DocAccessible::ContentStateChanged(dom::Document* aDocument,
                                         nsIContent* aContent,
                                         EventStates aStateMask) {
   Accessible* accessible = GetAccessible(aContent);
@@ -1058,7 +1058,7 @@ void DocAccessible::ContentStateChanged(nsIDocument* aDocument,
   }
 }
 
-void DocAccessible::DocumentStatesChanged(nsIDocument* aDocument,
+void DocAccessible::DocumentStatesChanged(dom::Document* aDocument,
                                           EventStates aStateMask) {}
 
 void DocAccessible::CharacterDataWillChange(nsIContent* aContent,
@@ -1339,21 +1339,26 @@ void DocAccessible::DoInitialUpdate() {
     if (IPCAccessibilityActive()) {
       nsIDocShell* docShell = mDocumentNode->GetDocShell();
       if (RefPtr<dom::TabChild> tabChild = dom::TabChild::GetFrom(docShell)) {
-        DocAccessibleChild* ipcDoc = new DocAccessibleChild(this, tabChild);
-        SetIPCDoc(ipcDoc);
+        DocAccessibleChild* ipcDoc = IPCDoc();
+        if (!ipcDoc) {
+          ipcDoc = new DocAccessibleChild(this, tabChild);
+          SetIPCDoc(ipcDoc);
+
+#if defined(XP_WIN)
+          IAccessibleHolder holder(
+              CreateHolderFromAccessible(WrapNotNull(this)));
+          MOZ_ASSERT(!holder.IsNull());
+          int32_t childID = AccessibleWrap::GetChildIDFor(this);
+#else
+          int32_t holder = 0, childID = 0;
+#endif
+          tabChild->SendPDocAccessibleConstructor(ipcDoc, nullptr, 0, childID,
+                                                  holder);
+        }
+
         if (IsRoot()) {
           tabChild->SetTopLevelDocAccessibleChild(ipcDoc);
         }
-
-#if defined(XP_WIN)
-        IAccessibleHolder holder(CreateHolderFromAccessible(WrapNotNull(this)));
-        MOZ_ASSERT(!holder.IsNull());
-        int32_t childID = AccessibleWrap::GetChildIDFor(this);
-#else
-        int32_t holder = 0, childID = 0;
-#endif
-        tabChild->SendPDocAccessibleConstructor(ipcDoc, nullptr, 0, childID,
-                                                holder);
       }
     }
   }
@@ -2252,6 +2257,11 @@ bool DocAccessible::IsLoadEventTarget() const {
 
   // It's content (not chrome) root document.
   return (treeItem->ItemType() == nsIDocShellTreeItem::typeContent);
+}
+
+void DocAccessible::SetIPCDoc(DocAccessibleChild* aIPCDoc) {
+  MOZ_ASSERT(!mIPCDoc || !aIPCDoc, "Clobbering an attached IPCDoc!");
+  mIPCDoc = aIPCDoc;
 }
 
 void DocAccessible::DispatchScrollingEvent(uint32_t aEventType) {

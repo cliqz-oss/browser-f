@@ -64,8 +64,9 @@ class nsHttpHandler final : public nsIHttpProtocolHandler,
 
   static already_AddRefed<nsHttpHandler> GetInstance();
 
-  MOZ_MUST_USE nsresult AddStandardRequestHeaders(nsHttpRequestHead *,
-                                                  bool isSecure);
+  MOZ_MUST_USE nsresult
+  AddStandardRequestHeaders(nsHttpRequestHead *, bool isSecure,
+                            nsContentPolicyType aContentPolicyType);
   MOZ_MUST_USE nsresult AddConnectionHeader(nsHttpRequestHead *,
                                             uint32_t capabilities);
   bool IsAcceptableEncoding(const char *encoding, bool isSecure);
@@ -105,8 +106,6 @@ class nsHttpHandler final : public nsIHttpProtocolHandler,
   bool IsPersistentHttpsCachingEnabled() {
     return mEnablePersistentHttpsCaching;
   }
-  bool IsTelemetryEnabled() { return mTelemetryEnabled; }
-  bool AllowExperiments() { return mTelemetryEnabled && mAllowExperiments; }
 
   bool IsSpdyEnabled() { return mEnableSpdy; }
   bool IsHttp2Enabled() { return mHttp2Enabled; }
@@ -413,7 +412,6 @@ class nsHttpHandler final : public nsIHttpProtocolHandler,
   void InitUserAgentComponents();
   void PrefsChanged(const char *pref);
 
-  MOZ_MUST_USE nsresult SetAccept(const char *);
   MOZ_MUST_USE nsresult SetAcceptLanguages();
   MOZ_MUST_USE nsresult SetAcceptEncodings(const char *, bool mIsSecure);
 
@@ -500,7 +498,6 @@ class nsHttpHandler final : public nsIHttpProtocolHandler,
 
   bool mEnforceAssocReq;
 
-  nsCString mAccept;
   nsCString mAcceptLanguages;
   nsCString mHttpAcceptEncodings;
   nsCString mHttpsAcceptEncodings;
@@ -546,12 +543,6 @@ class nsHttpHandler final : public nsIHttpProtocolHandler,
 
   // true in between init and shutdown states
   Atomic<bool, Relaxed> mHandlerActive;
-
-  // Whether telemetry is reported or not
-  uint32_t mTelemetryEnabled : 1;
-
-  // The value of network.allow-experiments
-  uint32_t mAllowExperiments : 1;
 
   // The value of 'hidden' network.http.debug-observations : 1;
   uint32_t mDebugObservations : 1;

@@ -233,11 +233,8 @@ class BrowserManager(object):
         if self.init_timer is not None:
             self.init_timer.cancel()
 
-    def check_for_crashes(self):
-        return self.browser.check_for_crashes()
-
-    def log_crash(self, test_id):
-        return self.browser.log_crash(process=self.browser_pid, test=test_id)
+    def check_crash(self, test_id):
+        return self.browser.check_crash(process=self.browser_pid, test=test_id)
 
     def is_alive(self):
         return self.browser.is_alive()
@@ -504,8 +501,7 @@ class TestRunnerManager(threading.Thread):
 
     def init_failed(self):
         assert isinstance(self.state, RunnerManagerState.initializing)
-        if self.browser.check_for_crashes():
-            self.browser.log_crash(None)
+        self.browser.check_crash(None)
         self.browser.after_init()
         self.stop_runner(force=True)
         return RunnerManagerState.initializing(self.state.test,
@@ -580,16 +576,14 @@ class TestRunnerManager(threading.Thread):
         expected = test.expected()
         status = status_subns.get(file_result.status, file_result.status)
 
-        if self.browser.check_for_crashes():
-            status = "CRASH"
+        if self.browser.check_crash(test.id) and status != "CRASH":
+            self.logger.info("Found a crash dump; should change status from %s to CRASH but this causes instability" % (status,))
 
         self.test_count += 1
         is_unexpected = expected != status
         if is_unexpected:
             self.unexpected_count += 1
             self.logger.debug("Unexpected count in this thread %i" % self.unexpected_count)
-        if status == "CRASH":
-            self.browser.log_crash(test.id)
 
         if "assertion_count" in file_result.extra:
             assertion_count = file_result.extra.pop("assertion_count")

@@ -86,6 +86,8 @@ class ChannelEventQueue final {
         mSuspended(false),
         mForcedCount(0),
         mFlushing(false),
+        mHasCheckedForXMLHttpRequest(false),
+        mForXMLHttpRequest(false),
         mOwner(owner),
         mMutex("ChannelEventQueue::mMutex"),
         mRunningMutex("ChannelEventQueue::mRunningMutex") {}
@@ -126,6 +128,8 @@ class ChannelEventQueue final {
   void SuspendInternal();
   void ResumeInternal();
 
+  bool MaybeSuspendIfEventsAreSuppressed();
+
   inline void MaybeFlushQueue();
   void FlushQueue();
   inline void CompleteResume();
@@ -138,6 +142,11 @@ class ChannelEventQueue final {
   bool mSuspended;
   uint32_t mForcedCount;  // Support ForcedQueueing on multiple thread.
   bool mFlushing;
+
+  // Whether the queue is associated with an XHR. This is lazily instantiated
+  // the first time it is needed.
+  bool mHasCheckedForXMLHttpRequest;
+  bool mForXMLHttpRequest;
 
   // Keep ptr to avoid refcount cycle: only grab ref during flushing.
   nsISupports* mOwner;
@@ -171,8 +180,9 @@ inline void ChannelEventQueue::RunOrEnqueue(ChannelEvent* aCallback,
   {
     MutexAutoLock lock(mMutex);
 
-    bool enqueue =
-        !!mForcedCount || mSuspended || mFlushing || !mEventQueue.IsEmpty();
+    bool enqueue = !!mForcedCount || mSuspended || mFlushing ||
+                   !mEventQueue.IsEmpty() ||
+                   MaybeSuspendIfEventsAreSuppressed();
 
     if (enqueue) {
       mEventQueue.AppendElement(std::move(event));
@@ -291,8 +301,8 @@ inline void ChannelEventQueue::MaybeFlushQueue() {
 
   {
     MutexAutoLock lock(mMutex);
-    flushQueue =
-        !mForcedCount && !mFlushing && !mSuspended && !mEventQueue.IsEmpty();
+    flushQueue = !mForcedCount && !mFlushing && !mSuspended &&
+                 !mEventQueue.IsEmpty() && !MaybeSuspendIfEventsAreSuppressed();
 
     // Only one thread is allowed to run FlushQueue at a time.
     if (flushQueue) {

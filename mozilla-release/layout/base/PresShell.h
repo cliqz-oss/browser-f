@@ -12,6 +12,7 @@
 #include "MobileViewportManager.h"
 #include "mozilla/Attributes.h"
 #include "mozilla/EventForwards.h"
+#include "mozilla/dom/HTMLDocumentBinding.h"
 #include "mozilla/layers/FocusTarget.h"
 #include "mozilla/MemoryReporting.h"
 #include "mozilla/ServoStyleSet.h"
@@ -51,6 +52,7 @@ class Selection;
 }  // namespace dom
 
 class EventDispatchingCallback;
+class OverflowChangedTracker;
 
 // A set type for tracking visible frames, for use by the visibility code in
 // PresShell. The set contains nsIFrame* pointers.
@@ -59,9 +61,9 @@ typedef nsTHashtable<nsPtrHashKey<nsIFrame>> VisibleFrames;
 // This is actually pref-controlled, but we use this value if we fail
 // to get the pref for any reason.
 #ifdef MOZ_WIDGET_ANDROID
-#define PAINTLOCK_EVENT_DELAY 250
+#  define PAINTLOCK_EVENT_DELAY 250
 #else
-#define PAINTLOCK_EVENT_DELAY 5
+#  define PAINTLOCK_EVENT_DELAY 5
 #endif
 
 class PresShell final : public nsIPresShell,
@@ -78,7 +80,7 @@ class PresShell final : public nsIPresShell,
 
   static bool AccessibleCaretEnabled(nsIDocShell* aDocShell);
 
-  void Init(nsIDocument* aDocument, nsPresContext* aPresContext,
+  void Init(Document* aDocument, nsPresContext* aPresContext,
             nsViewManager* aViewManager, UniquePtr<ServoStyleSet> aStyleSet);
   void Destroy() override;
 
@@ -111,6 +113,13 @@ class PresShell final : public nsIPresShell,
       ResizeReflowOptions aOptions = ResizeReflowOptions::eBSizeExact) override;
   nsIPageSequenceFrame* GetPageSequenceFrame() const override;
   nsCanvasFrame* GetCanvasFrame() const override;
+
+  void PostPendingScrollAnchorSelection(
+      mozilla::layout::ScrollAnchorContainer* aContainer) override;
+  void FlushPendingScrollAnchorSelections() override;
+  void PostPendingScrollAnchorAdjustment(
+      mozilla::layout::ScrollAnchorContainer* aContainer) override;
+  void FlushPendingScrollAnchorAdjustments();
 
   void FrameNeedsReflow(
       nsIFrame* aFrame, IntrinsicDirty aIntrinsicDirty, nsFrameState aBitToAdd,
@@ -194,20 +203,8 @@ class PresShell final : public nsIPresShell,
 
   void SetIgnoreViewportScrolling(bool aIgnore) override;
 
-  nsresult SetResolution(float aResolution) override {
-    return SetResolutionImpl(aResolution, /* aScaleToResolution = */ false,
-                             nsGkAtoms::other);
-  }
   nsresult SetResolutionAndScaleTo(float aResolution,
-                                   nsAtom* aOrigin) override {
-    return SetResolutionImpl(aResolution, /* aScaleToResolution = */ true,
-                             aOrigin);
-  }
-  bool ScaleToResolution() const override;
-  bool IsResolutionUpdated() const override { return mResolutionUpdated; }
-  void SetResolutionUpdated(bool aUpdated) override {
-    mResolutionUpdated = aUpdated;
-  }
+                                   ChangeOrigin aOrigin) override;
   float GetCumulativeResolution() override;
   float GetCumulativeNonRootScaleResolution() override;
   void SetRestoreResolution(float aResolution,
@@ -387,6 +384,12 @@ class PresShell final : public nsIPresShell,
 
   void FireResizeEvent() override;
 
+  void SetKeyPressEventModel(uint16_t aKeyPressEventModel) override {
+    mForceUseLegacyKeyCodeAndCharCodeValues |=
+        aKeyPressEventModel ==
+        dom::HTMLDocument_Binding::KEYPRESS_EVENT_MODEL_SPLIT;
+  }
+
   static PresShell* GetShellForEventTarget(nsIFrame* aFrame,
                                            nsIContent* aContent);
   static PresShell* GetShellForTouchEvent(WidgetGUIEvent* aEvent);
@@ -434,7 +437,10 @@ class PresShell final : public nsIPresShell,
   void ScheduleReflow();
 
   // DoReflow returns whether the reflow finished without interruption
-  bool DoReflow(nsIFrame* aFrame, bool aInterruptible);
+  // If aFrame is not the root frame, the caller must pass a non-null
+  // aOverflowTracker.
+  bool DoReflow(nsIFrame* aFrame, bool aInterruptible,
+                mozilla::OverflowChangedTracker* aOverflowTracker);
 #ifdef DEBUG
   void DoVerifyReflow();
   void VerifyHasDirtyRootAncestor(nsIFrame* aFrame);
@@ -686,7 +692,7 @@ class PresShell final : public nsIPresShell,
   void BackingScaleFactorChanged() override {
     mPresContext->UIResolutionChangedSync();
   }
-  nsIDocument* GetPrimaryContentDocument() override;
+  Document* GetPrimaryContentDocument() override;
 
   void PausePainting() override;
   void ResumePainting() override;
@@ -752,6 +758,8 @@ class PresShell final : public nsIPresShell,
   // Set of frames that we should mark with NS_FRAME_HAS_DIRTY_CHILDREN after
   // we finish reflowing mCurrentReflowRoot.
   nsTHashtable<nsPtrHashKey<nsIFrame>> mFramesToDirty;
+  nsTHashtable<nsPtrHashKey<nsIScrollableFrame>> mPendingScrollAnchorSelection;
+  nsTHashtable<nsPtrHashKey<nsIScrollableFrame>> mPendingScrollAnchorAdjustment;
 
   nsTArray<UniquePtr<DelayedEvent>> mDelayedEvents;
 
@@ -820,11 +828,6 @@ class PresShell final : public nsIPresShell,
 
   bool mHasCSSBackgroundColor : 1;
 
-  // Whether content should be scaled by the resolution amount. If this is
-  // not set, a transform that scales by the inverse of the resolution is
-  // applied to rendered layers.
-  bool mScaleToResolution : 1;
-
   // Whether the last chrome-only escape key event is consumed.
   bool mIsLastChromeOnlyEscapeKeyConsumed : 1;
 
@@ -835,10 +838,6 @@ class PresShell final : public nsIPresShell,
 
   // Whether we have ever handled a user input event
   bool mHasHandledUserInput : 1;
-
-  // Whether the most recent change to the pres shell resolution was
-  // originated by the main thread.
-  bool mResolutionUpdated : 1;
 
   // Whether we should dispatch keypress events even for non-printable keys
   // for keeping backward compatibility.

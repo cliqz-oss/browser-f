@@ -8,7 +8,6 @@ package org.mozilla.geckoview.test
 import android.os.Parcel
 import android.support.test.InstrumentationRegistry
 import org.mozilla.geckoview.GeckoSession
-import org.mozilla.geckoview.GeckoSessionSettings
 import org.mozilla.geckoview.test.rule.GeckoSessionTestRule
 
 import org.hamcrest.Matcher
@@ -48,6 +47,7 @@ open class BaseSessionTest(noErrorCollector: Boolean = false) {
         const val VIDEO_BAD_PATH = "/assets/www/badVideoPath.html"
         const val UNKNOWN_HOST_URI = "http://www.test.invalid/"
         const val FULLSCREEN_PATH = "/assets/www/fullscreen.html"
+        const val VEIWPORT_PATH = "/assets/www/viewport.html"
     }
 
     @get:Rule val sessionRule = GeckoSessionTestRule()
@@ -74,7 +74,7 @@ open class BaseSessionTest(noErrorCollector: Boolean = false) {
                     .open(path.removePrefix("/assets/")).readBytes()
 
     val GeckoSession.isRemote
-        get() = this.settings.getBoolean(GeckoSessionSettings.USE_MULTIPROCESS)
+        get() = this.settings.getUseMultiprocess()
 
     fun createTestUrl(path: String) =
             GeckoSessionTestRule.APK_URI_PREFIX + path.removePrefix("/")

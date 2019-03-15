@@ -42,12 +42,6 @@ AC_DEFUN([MOZ_CROSS_COMPILER],
 [
 echo "cross compiling from $host to $target"
 
-if test -z "$HOST_AR_FLAGS"; then
-    HOST_AR_FLAGS="$AR_FLAGS"
-fi
-AC_CHECK_PROGS(HOST_RANLIB, $HOST_RANLIB ranlib, ranlib, :)
-AC_CHECK_PROGS(HOST_AR, $HOST_AR ar, ar, :)
-
 dnl AC_CHECK_PROGS manually goes through $PATH, and as such fails to handle
 dnl absolute or relative paths. Relative paths wouldn't work anyways, but
 dnl absolute paths would. Trick AC_CHECK_PROGS into working in that case by
@@ -63,11 +57,9 @@ AC_PROG_CC
 AC_PROG_CXX
 
 AC_CHECK_PROGS(RANLIB, "${TOOLCHAIN_PREFIX}ranlib", :)
-AC_CHECK_PROGS(AR, "${TOOLCHAIN_PREFIX}ar", :)
 AC_CHECK_PROGS(AS, "${TOOLCHAIN_PREFIX}as", :)
 AC_CHECK_PROGS(LIPO, "${TOOLCHAIN_PREFIX}lipo", :)
 AC_CHECK_PROGS(STRIP, "${TOOLCHAIN_PREFIX}strip", :)
-AC_CHECK_PROGS(WINDRES, "${TOOLCHAIN_PREFIX}windres", :)
 AC_CHECK_PROGS(OTOOL, "${TOOLCHAIN_PREFIX}otool", :)
 AC_CHECK_PROGS(INSTALL_NAME_TOOL, "${TOOLCHAIN_PREFIX}install_name_tool", :)
 AC_CHECK_PROGS(OBJCOPY, "${TOOLCHAIN_PREFIX}objcopy", :)

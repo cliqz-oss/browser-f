@@ -2,33 +2,21 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-use api::ColorF;
-use device::query::{GpuTimer, NamedTag};
+use api::{ColorF, ColorU};
+use debug_render::DebugRenderer;
+use device::query::{GpuSampler, GpuTimer, NamedTag};
+use euclid::{Point2D, Rect, Size2D, vec2};
+use internal_types::FastHashMap;
+use renderer::MAX_VERTEX_TEXTURE_WIDTH;
 use std::collections::vec_deque::VecDeque;
-use std::f32;
+use std::{f32, mem};
 use time::precise_time_ns;
 
-cfg_if! {
-    if #[cfg(feature = "debug_renderer")] {
-        use api::ColorU;
-        use debug_render::DebugRenderer;
-        use euclid::{Point2D, Rect, Size2D, vec2};
-        use device::query::GpuSampler;
-        use internal_types::FastHashMap;
-        use renderer::MAX_VERTEX_TEXTURE_WIDTH;
-        use std::mem;
-    }
-}
-
-cfg_if! {
-    if #[cfg(feature = "debug_renderer")] {
-        const GRAPH_WIDTH: f32 = 1024.0;
-        const GRAPH_HEIGHT: f32 = 320.0;
-        const GRAPH_PADDING: f32 = 8.0;
-        const GRAPH_FRAME_HEIGHT: f32 = 16.0;
-        const PROFILE_PADDING: f32 = 10.0;
-    }
-}
+const GRAPH_WIDTH: f32 = 1024.0;
+const GRAPH_HEIGHT: f32 = 320.0;
+const GRAPH_PADDING: f32 = 8.0;
+const GRAPH_FRAME_HEIGHT: f32 = 16.0;
+const PROFILE_PADDING: f32 = 10.0;
 
 const ONE_SECOND_NS: u64 = 1000000000;
 
@@ -97,13 +85,11 @@ impl ProfileCounter for IntProfileCounter {
     }
 }
 
-#[cfg(feature = "debug_renderer")]
 pub struct PercentageProfileCounter {
     description: &'static str,
     value: f32,
 }
 
-#[cfg(feature = "debug_renderer")]
 impl ProfileCounter for PercentageProfileCounter {
     fn description(&self) -> &'static str {
         self.description
@@ -401,14 +387,37 @@ pub struct IpcProfileCounters {
     pub display_lists: ResourceProfileCounter,
 }
 
-#[derive(Clone)]
-pub struct InternProfileCounters {
-    pub prims: ResourceProfileCounter,
-    pub linear_gradients: ResourceProfileCounter,
-    pub radial_gradients: ResourceProfileCounter,
-    pub text_runs: ResourceProfileCounter,
-    pub clips: ResourceProfileCounter,
+macro_rules! declare_intern_profile_counters {
+    ( $( $name: ident, )+ ) => {
+        #[derive(Clone)]
+        pub struct InternProfileCounters {
+            $(
+                pub $name: ResourceProfileCounter,
+            )+
+        }
+
+        impl InternProfileCounters {
+            fn draw(
+                &self,
+                debug_renderer: &mut DebugRenderer,
+                draw_state: &mut DrawState,
+            ) {
+                Profiler::draw_counters(
+                    &[
+                        $(
+                            &self.$name,
+                        )+
+                    ],
+                    debug_renderer,
+                    true,
+                    draw_state,
+                );
+            }
+        }
+    }
 }
+
+enumerate_interners!(declare_intern_profile_counters);
 
 impl IpcProfileCounters {
     pub fn set(
@@ -449,11 +458,17 @@ impl BackendProfileCounters {
                 display_lists: ResourceProfileCounter::new("Display Lists Sent"),
             },
             intern: InternProfileCounters {
-                prims: ResourceProfileCounter::new("Interned primitives"),
-                linear_gradients: ResourceProfileCounter::new("Interned linear gradients"),
-                radial_gradients: ResourceProfileCounter::new("Interned radial gradients"),
-                text_runs: ResourceProfileCounter::new("Interned text runs"),
-                clips: ResourceProfileCounter::new("Interned clips"),
+                prim: ResourceProfileCounter::new("Interned primitives"),
+                image: ResourceProfileCounter::new("Interned images"),
+                image_border: ResourceProfileCounter::new("Interned image borders"),
+                line_decoration: ResourceProfileCounter::new("Interned line decorations"),
+                linear_grad: ResourceProfileCounter::new("Interned linear gradients"),
+                normal_border: ResourceProfileCounter::new("Interned normal borders"),
+                picture: ResourceProfileCounter::new("Interned pictures"),
+                radial_grad: ResourceProfileCounter::new("Interned radial gradients"),
+                text_run: ResourceProfileCounter::new("Interned text runs"),
+                yuv_image: ResourceProfileCounter::new("Interned YUV images"),
+                clip: ResourceProfileCounter::new("Interned clips"),
             },
         }
     }
@@ -525,14 +540,12 @@ struct GraphStats {
 }
 
 struct ProfileGraph {
-    #[cfg(feature = "debug_renderer")]
     max_samples: usize,
     values: VecDeque<f32>,
     short_description: &'static str,
 }
 
 impl ProfileGraph {
-    #[cfg(feature = "debug_renderer")]
     fn new(
         max_samples: usize,
         short_description: &'static str,
@@ -544,7 +557,6 @@ impl ProfileGraph {
         }
     }
 
-    #[cfg(feature = "debug_renderer")]
     fn push(&mut self, ns: u64) {
         let ms = ns as f64 / 1000000.0;
         if self.values.len() == self.max_samples {
@@ -573,7 +585,6 @@ impl ProfileGraph {
         stats
     }
 
-    #[cfg(feature = "debug_renderer")]
     fn draw_graph(
         &self,
         x: f32,
@@ -677,18 +688,15 @@ impl ProfileCounter for ProfileGraph {
     }
 }
 
-#[cfg(feature = "debug_renderer")]
 struct GpuFrame {
     total_time: u64,
     samples: Vec<GpuTimer<GpuProfileTag>>,
 }
 
-#[cfg(feature = "debug_renderer")]
 struct GpuFrameCollection {
     frames: VecDeque<GpuFrame>,
 }
 
-#[cfg(feature = "debug_renderer")]
 impl GpuFrameCollection {
     fn new() -> Self {
         GpuFrameCollection {
@@ -707,7 +715,6 @@ impl GpuFrameCollection {
     }
 }
 
-#[cfg(feature = "debug_renderer")]
 impl GpuFrameCollection {
     fn draw(&self, x: f32, y: f32, debug_renderer: &mut DebugRenderer) -> Rect<f32> {
         let graph_rect = Rect::new(
@@ -799,7 +806,6 @@ impl GpuFrameCollection {
     }
 }
 
-#[cfg(feature = "debug_renderer")]
 struct DrawState {
     x_left: f32,
     y_left: f32,
@@ -807,7 +813,6 @@ struct DrawState {
     y_right: f32,
 }
 
-#[cfg(feature = "debug_renderer")]
 pub struct Profiler {
     draw_state: DrawState,
     backend_time: ProfileGraph,
@@ -817,7 +822,6 @@ pub struct Profiler {
     ipc_time: ProfileGraph,
 }
 
-#[cfg(feature = "debug_renderer")]
 impl Profiler {
     pub fn new() -> Self {
         Profiler {
@@ -1099,18 +1103,7 @@ impl Profiler {
             &mut self.draw_state
         );
 
-        Profiler::draw_counters(
-            &[
-                &backend_profile.intern.clips,
-                &backend_profile.intern.prims,
-                &backend_profile.intern.linear_gradients,
-                &backend_profile.intern.radial_gradients,
-                &backend_profile.intern.text_runs,
-            ],
-            debug_renderer,
-            true,
-            &mut self.draw_state
-        );
+        backend_profile.intern.draw(debug_renderer, &mut self.draw_state);
 
         Profiler::draw_counters(
             &[
@@ -1265,12 +1258,10 @@ impl Profiler {
     }
 }
 
-#[cfg(feature = "debug_renderer")]
 pub struct ChangeIndicator {
     counter: u32,
 }
 
-#[cfg(feature = "debug_renderer")]
 impl ChangeIndicator {
     pub fn new() -> Self {
         ChangeIndicator {

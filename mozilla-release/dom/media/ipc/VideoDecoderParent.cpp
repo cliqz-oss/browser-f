@@ -13,11 +13,10 @@
 #include "MediaInfo.h"
 #include "VideoDecoderManagerParent.h"
 #ifdef XP_WIN
-#include "WMFDecoderModule.h"
+#  include "WMFDecoderModule.h"
 #endif
 
 namespace mozilla {
-namespace dom {
 
 using base::Thread;
 using media::TimeUnit;
@@ -253,7 +252,9 @@ mozilla::ipc::IPCResult VideoDecoderParent::RecvSetSeekThreshold(
     const int64_t& aTime) {
   MOZ_ASSERT(!mDestroyed);
   MOZ_ASSERT(OnManagerThread());
-  mDecoder->SetSeekThreshold(TimeUnit::FromMicroseconds(aTime));
+  mDecoder->SetSeekThreshold(aTime == INT64_MIN
+                                 ? TimeUnit::Invalid()
+                                 : TimeUnit::FromMicroseconds(aTime));
   return IPC_OK();
 }
 
@@ -280,5 +281,4 @@ bool VideoDecoderParent::OnManagerThread() {
   return mParent->OnManagerThread();
 }
 
-}  // namespace dom
 }  // namespace mozilla

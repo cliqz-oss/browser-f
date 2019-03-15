@@ -445,6 +445,19 @@ interface nsIHttpChannel : nsIChannel
     [must_use] void redirectTo(in nsIURI aTargetURI);
 
     /**
+     * Instructs the channel to be loaded in a new process. Like 'redirectTo'
+     * this can only be used on channels that have not yet called their
+     * listener's OnStartRequest().
+     *
+     * @param aTabPromise   a promise which resolves to a nsITabParent object
+     *                      which the load will proceed in.
+     * @param aIdentifier   a 64-bit ID which will be provided to the
+     *                      ChildProcessChannelListener.
+     */
+    [must_use] void switchProcessTo(in Promise aTabPromise,
+                                    in unsigned long long aIdentifier);
+
+    /**
      * Flags a channel to be upgraded to HTTPS.
      *
      * Upgrading to a secure channel must happen before or during
@@ -496,6 +509,20 @@ interface nsIHttpChannel : nsIChannel
     [infallible] readonly attribute boolean isThirdPartyTrackingResource;
 
     /**
+     * Returns the allowing status for flash plugin for this channel.
+     */
+    cenum FlashPluginState : 8 {
+      FlashPluginUnknown = 0,
+      FlashPluginAllowed = 1,
+      FlashPluginDenied = 2,
+      FlashPluginDeniedInSubdocuments = 3,
+
+      // Keep this equal to the last value.
+      FlashPluginLastValue = 3,
+    };
+    [infallible] readonly attribute nsIHttpChannel_FlashPluginState flashPluginState;
+
+    /**
      * This method is used by the document.cookie call site in order
      * to override the tracking status of an HTTP channel. This should
      * only be called by Gecko under certain circumstances when Gecko
@@ -531,4 +558,9 @@ interface nsIHttpChannel : nsIChannel
      *        The category under which the message should be displayed.
      */
     void logBlockedCORSRequest(in AString aMessage, in ACString aCategory);
+
+    void logMimeTypeMismatch(in ACString aMessageName,
+                             in boolean aWarning,
+                             in AString aURL,
+                             in AString aContentType);
 };

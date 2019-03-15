@@ -305,7 +305,12 @@ nsresult imgFrame::InitForDecoderRecycle(const AnimationParams& aAnimParams) {
   MOZ_ASSERT(mIsFullFrame);
   MOZ_ASSERT(mLockCount > 0);
   MOZ_ASSERT(mLockedSurface);
-  MOZ_ASSERT(mShouldRecycle);
+
+  if (!mShouldRecycle) {
+    // This frame either was never marked as recyclable, or the flag was cleared
+    // for a caller which does not support recycling.
+    return NS_ERROR_NOT_AVAILABLE;
+  }
 
   if (mRecycleLockCount > 0) {
     if (NS_IsMainThread()) {
@@ -358,12 +363,10 @@ nsresult imgFrame::InitForDecoderRecycle(const AnimationParams& aAnimParams) {
   return NS_OK;
 }
 
-nsresult imgFrame::InitWithDrawable(gfxDrawable* aDrawable,
-                                    const nsIntSize& aSize,
-                                    const SurfaceFormat aFormat,
-                                    SamplingFilter aSamplingFilter,
-                                    uint32_t aImageFlags,
-                                    gfx::BackendType aBackend) {
+nsresult imgFrame::InitWithDrawable(
+    gfxDrawable* aDrawable, const nsIntSize& aSize, const SurfaceFormat aFormat,
+    SamplingFilter aSamplingFilter, uint32_t aImageFlags,
+    gfx::BackendType aBackend, DrawTarget* aTargetDT) {
   // Assert for properties that should be verified by decoders,
   // warn for properties related to bad content.
   if (!SurfaceCache::IsLegalSize(aSize)) {
@@ -416,12 +419,16 @@ nsresult imgFrame::InitWithDrawable(gfxDrawable* aDrawable,
     // the documentation for this method.
     MOZ_ASSERT(!mOptSurface, "Called imgFrame::InitWithDrawable() twice?");
 
-    if (gfxPlatform::GetPlatform()->SupportsAzureContentForType(aBackend)) {
-      target = gfxPlatform::GetPlatform()->CreateDrawTargetForBackend(
-          aBackend, mFrameRect.Size(), mFormat);
+    if (aTargetDT && !gfxVars::UseWebRender()) {
+      target = aTargetDT->CreateSimilarDrawTarget(mFrameRect.Size(), mFormat);
     } else {
-      target = gfxPlatform::GetPlatform()->CreateOffscreenContentDrawTarget(
-          mFrameRect.Size(), mFormat);
+      if (gfxPlatform::GetPlatform()->SupportsAzureContentForType(aBackend)) {
+        target = gfxPlatform::GetPlatform()->CreateDrawTargetForBackend(
+            aBackend, mFrameRect.Size(), mFormat);
+      } else {
+        target = gfxPlatform::GetPlatform()->CreateOffscreenContentDrawTarget(
+            mFrameRect.Size(), mFormat);
+      }
     }
   }
 
@@ -500,10 +507,13 @@ nsresult imgFrame::Optimize(DrawTarget* aTarget) {
   if (mNonPremult) {
     return NS_OK;
   }
-
-  mOptSurface = gfxPlatform::GetPlatform()
-                    ->ScreenReferenceDrawTarget()
-                    ->OptimizeSourceSurface(mLockedSurface);
+  if (!gfxVars::UseWebRender()) {
+    mOptSurface = aTarget->OptimizeSourceSurface(mLockedSurface);
+  } else {
+    mOptSurface = gfxPlatform::GetPlatform()
+                      ->ScreenReferenceDrawTarget()
+                      ->OptimizeSourceSurface(mLockedSurface);
+  }
   if (mOptSurface == mLockedSurface) {
     mOptSurface = nullptr;
   }
@@ -624,8 +634,8 @@ bool imgFrame::Draw(gfxContext* aContext, const ImageRegion& aRegion,
     // this frame is the current frame of the animation. Since we can only
     // advance on the main thread, we know nothing else will try to use it.
     DrawTarget* drawTarget = aContext->GetDrawTarget();
-    bool temporary = !drawTarget->IsCaptureDT() &&
-                     drawTarget->GetBackendType() != BackendType::RECORDING;
+    bool recording = drawTarget->GetBackendType() == BackendType::RECORDING;
+    bool temporary = !drawTarget->IsCaptureDT() && !recording;
     RefPtr<SourceSurface> surf = GetSourceSurfaceInternal(temporary);
     if (!surf) {
       return false;
@@ -635,6 +645,14 @@ bool imgFrame::Draw(gfxContext* aContext, const ImageRegion& aRegion,
                   !(aImageFlags & imgIContainer::FLAG_CLAMP);
 
     surfaceResult = SurfaceForDrawing(doPartialDecode, doTile, region, surf);
+
+    // If we are recording, then we cannot recycle the surface. The blob
+    // rasterizer is not properly synchronized for recycling in the compositor
+    // process. The easiest thing to do is just mark the frames it consumes as
+    // non-recyclable.
+    if (recording && surfaceResult.IsValid()) {
+      mShouldRecycle = false;
+    }
   }
 
   if (surfaceResult.IsValid()) {

@@ -12,19 +12,18 @@
   <binding id="autocomplete"
            extends="chrome://global/content/bindings/textbox.xml#textbox">
     <content sizetopopup="pref">
-      <children includes="image|deck|stack|box"/>
+      <children includes="image|box"/>
 
       <xul:moz-input-box anonid="moz-input-box" flex="1">
         <children/>
         <html:input anonid="input" class="textbox-input"
                     allowevents="true"
+                    autocomplete="off"
                     xbl:inherits="value,type=inputtype,maxlength,disabled,size,readonly,placeholder,tabindex,accesskey,mozactionhint"/>
       </xul:moz-input-box>
       <children includes="hbox"/>
 
       <xul:popupset anonid="popupset" class="autocomplete-result-popupset"/>
-
-      <children includes="toolbarbutton"/>
     </content>
 
     <implementation implements="nsIAutoCompleteInput, nsIDOMXULMenuListElement">
@@ -308,11 +307,6 @@
                 onset="this.setAttribute('ignoreblurwhilesearching', val); return val;"
                 onget="return this.getAttribute('ignoreblurwhilesearching') == 'true';"/>
 
-      <!-- disable key navigation handling in the popup results -->
-      <property name="disableKeyNavigation"
-                onset="this.setAttribute('disablekeynavigation', val); return val;"
-                onget="return this.getAttribute('disablekeynavigation') == 'true';"/>
-
       <!-- option to highlight entries that don't have any matches -->
       <property name="highlightNonMatches"
                 onset="this.setAttribute('highlightnonmatches', val); return val;"
@@ -403,6 +397,7 @@
 
       <method name="handleKeyPress">
         <parameter name="aEvent"/>
+        <parameter name="aOptions"/>
         <body><![CDATA[
           if (aEvent.target.localName != "textbox")
             return true; // Let child buttons of autocomplete take input
@@ -419,7 +414,7 @@
           // used in combination with these keys on Windows and Linux; and Alt
           // can be used on OS X, so make sure the unused one isn't used.
           let metaKey = isMac ? aEvent.ctrlKey : aEvent.altKey;
-          if (!this.disableKeyNavigation && !metaKey) {
+          if (!metaKey) {
             switch (aEvent.keyCode) {
               case KeyEvent.DOM_VK_LEFT:
               case KeyEvent.DOM_VK_RIGHT:
@@ -430,7 +425,7 @@
           }
 
           // Handle keys that are not part of a keyboard shortcut (no Ctrl or Alt)
-          if (!this.disableKeyNavigation && !aEvent.ctrlKey && !aEvent.altKey) {
+          if (!aEvent.ctrlKey && !aEvent.altKey) {
             switch (aEvent.keyCode) {
               case KeyEvent.DOM_VK_TAB:
                 if (this.tabScrolling && this.popup.popupOpen)
@@ -451,7 +446,6 @@
 
           // Handle readline/emacs-style navigation bindings on Mac.
           if (isMac &&
-              !this.disableKeyNavigation &&
               this.popup.popupOpen &&
               aEvent.ctrlKey &&
               (aEvent.key === "n" || aEvent.key === "p")) {
@@ -480,7 +474,7 @@
                   kind: "key",
                 };
               }
-              cancel = this.handleEnter(aEvent);
+              cancel = this.handleEnter(aEvent, aOptions);
               break;
             case KeyEvent.DOM_VK_DELETE:
               if (isMac && !aEvent.shiftKey) {
@@ -672,6 +666,63 @@
       <field name="mPopupOpen">false</field>
       <field name="_currentIndex">0</field>
 
+      <constructor><![CDATA[
+        if (!this.listEvents) {
+          this.listEvents = {
+            handleEvent: event => {
+              if (!this.parentNode) {
+                return;
+              }
+
+              switch (event.type) {
+                case "mouseup":
+                  // Don't call onPopupClick for the scrollbar buttons, thumb,
+                  // slider, etc. If we hit the richlistbox and not a
+                  // richlistitem, we ignore the event.
+                  if (event.target.closest("richlistbox,richlistitem")
+                                  .localName == "richlistitem") {
+                    this.onPopupClick(event);
+                  }
+                  break;
+                case "mousemove":
+                  if (Date.now() - this.mLastMoveTime <= 30) {
+                    return;
+                  }
+
+                  let item = event.target.closest("richlistbox,richlistitem");
+
+                  // If we hit the richlistbox and not a richlistitem, we ignore
+                  // the event.
+                  if (item.localName == "richlistbox") {
+                    return;
+                  }
+
+                  let index = this.richlistbox.getIndexOfItem(item);
+
+                  this.mousedOverIndex = index;
+
+                  if (item.selectedByMouseOver) {
+                    this.richlistbox.selectedIndex = index;
+                  }
+
+                  this.mLastMoveTime = Date.now();
+                  break;
+              }
+            },
+          };
+          this.richlistbox.addEventListener("mouseup", this.listEvents);
+          this.richlistbox.addEventListener("mousemove", this.listEvents);
+        }
+      ]]></constructor>
+
+      <destructor><![CDATA[
+        if (this.listEvents) {
+          this.richlistbox.removeEventListener("mouseup", this.listEvents);
+          this.richlistbox.removeEventListener("mousemove", this.listEvents);
+          delete this.listEvents;
+        }
+      ]]></destructor>
+
       <!-- =================== nsIAutoCompletePopup =================== -->
 
       <property name="input" readonly="true"
@@ -774,10 +825,12 @@
       </property>
 
       <field name="_previousSelectedIndex">-1</field>
+      <field name="mLastMoveTime">Date.now()</field>
+      <field name="mousedOverIndex">-1</field>
 
       <method name="onSearchBegin">
         <body><![CDATA[
-          this.richlistbox.mousedOverIndex = -1;
+          this.mousedOverIndex = -1;
 
           if (typeof this._onSearchBegin == "function") {
             this._onSearchBegin();
@@ -943,7 +996,11 @@
             this._collapseUnusedItems();
           }
           this.richlistbox.style.removeProperty("height");
-          this.richlistbox.height = height;
+          // We need to get the ceiling of the calculated value to ensure that the box fully contains
+          // all of its contents and doesn't cause a scrollbar since nsIBoxObject only expects a
+          // `long`. e.g. if `height` is 99.5 the richlistbox would render at height 99px with a
+          // scrollbar for the extra 0.5px.
+          this.richlistbox.height = Math.ceil(height);
           ]]>
         </body>
       </method>
@@ -1019,7 +1076,7 @@
                 originalText == trimmedSearchString &&
                 invalidateReason == iface.INVALIDATE_REASON_NEW_RESULT &&
                 (originalValue == value ||
-                 this.richlistbox.mousedOverIndex === this._currentIndex)) {
+                 this.mousedOverIndex === this._currentIndex)) {
 
               // try to re-use the existing item
               let reused = item._reuseAcItem();
@@ -1054,8 +1111,12 @@
             this._currentIndex++;
           }
 
-          if (typeof this.onResultsAdded == "function")
-            this.onResultsAdded();
+          if (typeof this.onResultsAdded == "function") {
+            // The items bindings may not be attached yet, so we must delay this
+            // before we can properly handle items properly without breaking
+            // the richlistbox.
+            Services.tm.dispatchToMainThread(() => this.onResultsAdded());
+          }
 
           if (this._currentIndex < matchCount) {
             // yield after each batch of items so that typing the url bar is
@@ -2238,51 +2299,6 @@
         }
         control.currentItem = this;
       ]]></handler>
-    </handlers>
-  </binding>
-
-  <binding id="autocomplete-richlistbox" extends="chrome://global/content/bindings/richlistbox.xml#richlistbox">
-    <implementation>
-      <field name="mLastMoveTime">Date.now()</field>
-      <field name="mousedOverIndex">-1</field>
-    </implementation>
-    <handlers>
-      <handler event="mouseup">
-        <![CDATA[
-        // Don't call onPopupClick for the scrollbar buttons, thumb, slider, etc.
-        // If we hit the richlistbox and not a richlistitem, we ignore the event.
-        if (event.originalTarget.closest("richlistbox,richlistitem").localName == "richlistbox") {
-          return;
-        }
-
-        this.parentNode.onPopupClick(event);
-      ]]>
-      </handler>
-
-      <handler event="mousemove">
-        <![CDATA[
-        if (Date.now() - this.mLastMoveTime <= 30) {
-          return;
-        }
-
-        let item = event.target.closest("richlistbox,richlistitem");
-
-        // If we hit the richlistbox and not a richlistitem, we ignore the event.
-        if (item.localName == "richlistbox") {
-          return;
-        }
-
-        let index = this.getIndexOfItem(item);
-
-        this.mousedOverIndex = index;
-
-        if (item.selectedByMouseOver) {
-          this.selectedIndex = index;
-        }
-
-        this.mLastMoveTime = Date.now();
-      ]]>
-      </handler>
     </handlers>
   </binding>
 </bindings>

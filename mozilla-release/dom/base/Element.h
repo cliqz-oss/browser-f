@@ -13,37 +13,37 @@
 #ifndef mozilla_dom_Element_h__
 #define mozilla_dom_Element_h__
 
-#include "mozilla/dom/FragmentOrElement.h"  // for base class
-#include "nsChangeHint.h"                   // for enum
-#include "mozilla/EventStates.h"            // for member
-#include "mozilla/RustCell.h"
-#include "mozilla/dom/DirectionalityUtils.h"
-#include "nsILinkHandler.h"
-#include "nsINodeList.h"
-#include "nsNodeUtils.h"
 #include "AttrArray.h"
-#include "mozilla/FlushType.h"
-#include "nsDOMAttributeMap.h"
-#include "nsPresContext.h"
-#include "mozilla/CORSMode.h"
-#include "mozilla/Attributes.h"
-#include "nsIScrollableFrame.h"
-#include "mozilla/dom/Attr.h"
-#include "nsISMILAttr.h"
-#include "mozilla/dom/DOMRect.h"
+#include "DOMIntersectionObserver.h"
 #include "nsAttrValue.h"
 #include "nsAttrValueInlines.h"
+#include "nsChangeHint.h"
+#include "nsContentUtils.h"
+#include "nsDOMAttributeMap.h"
+#include "nsILinkHandler.h"
+#include "nsINodeList.h"
+#include "nsIScrollableFrame.h"
+#include "nsNodeUtils.h"
+#include "nsPresContext.h"
+#include "Units.h"
+#include "mozilla/Attributes.h"
+#include "mozilla/CORSMode.h"
 #include "mozilla/EventForwards.h"
+#include "mozilla/EventStates.h"
+#include "mozilla/FlushType.h"
+#include "mozilla/RustCell.h"
+#include "mozilla/SMILAttr.h"
+#include "mozilla/UniquePtr.h"
+#include "mozilla/dom/Attr.h"
 #include "mozilla/dom/BindingDeclarations.h"
+#include "mozilla/dom/DirectionalityUtils.h"
+#include "mozilla/dom/FragmentOrElement.h"
+#include "mozilla/dom/DOMRect.h"
 #include "mozilla/dom/DOMTokenListSupportedTokens.h"
-#include "mozilla/dom/WindowBinding.h"
 #include "mozilla/dom/ElementBinding.h"
 #include "mozilla/dom/Nullable.h"
 #include "mozilla/dom/PointerEventHandler.h"
-#include "mozilla/UniquePtr.h"
-#include "Units.h"
-#include "DOMIntersectionObserver.h"
-#include "nsContentUtils.h"
+#include "mozilla/dom/WindowBinding.h"
 
 class mozAutoDocUpdate;
 class nsIFrame;
@@ -58,10 +58,20 @@ class nsFocusManager;
 class nsGlobalWindowInner;
 class nsGlobalWindowOuter;
 class nsDOMCSSAttributeDeclaration;
-class nsISMILAttr;
-class nsDocument;
 class nsDOMStringMap;
 struct ServoNodeData;
+
+class nsIDOMXULButtonElement;
+class nsIDOMXULContainerElement;
+class nsIDOMXULContainerItemElement;
+class nsIDOMXULControlElement;
+class nsIDOMXULMenuListElement;
+class nsIDOMXULMultiSelectControlElement;
+class nsIDOMXULRadioGroupElement;
+class nsIDOMXULRelatedElement;
+class nsIDOMXULSelectControlElement;
+class nsIDOMXULSelectControlItemElement;
+class nsIBrowser;
 
 namespace mozilla {
 class DeclarationBlock;
@@ -345,11 +355,11 @@ class Element : public FragmentOrElement {
                                            bool aNotify);
 
   /**
-   * Returns a new nsISMILAttr that allows the caller to animate the given
+   * Returns a new SMILAttr that allows the caller to animate the given
    * attribute on this element.
    */
-  virtual UniquePtr<nsISMILAttr> GetAnimatedAttr(int32_t aNamespaceID,
-                                                 nsAtom* aName) {
+  virtual UniquePtr<SMILAttr> GetAnimatedAttr(int32_t aNamespaceID,
+                                              nsAtom* aName) {
     return nullptr;
   }
 
@@ -448,7 +458,7 @@ class Element : public FragmentOrElement {
     }
   }
 
-  bool GetBindingURL(nsIDocument* aDocument, css::URLValue** aResult);
+  bool GetBindingURL(Document* aDocument, css::URLValue** aResult);
 
   Directionality GetComputedDirectionality() const;
 
@@ -498,7 +508,7 @@ class Element : public FragmentOrElement {
   bool HasServoData() const { return !!mServoData.Get(); }
 
   void ClearServoData() { ClearServoData(GetComposedDoc()); }
-  void ClearServoData(nsIDocument* aDocument);
+  void ClearServoData(Document* aDocument);
 
   /**
    * Gets the custom element data used by web components custom element.
@@ -641,7 +651,7 @@ class Element : public FragmentOrElement {
 
   void UpdateEditableState(bool aNotify) override;
 
-  nsresult BindToTree(nsIDocument* aDocument, nsIContent* aParent,
+  nsresult BindToTree(Document* aDocument, nsIContent* aParent,
                       nsIContent* aBindingParent) override;
 
   void UnbindFromTree(bool aDeep = true, bool aNullParent = true) override;
@@ -1445,7 +1455,7 @@ class Element : public FragmentOrElement {
    *
    * If you change this, change also the similar method in Link.
    */
-  virtual void NodeInfoChanged(nsIDocument* aOldDoc) {}
+  virtual void NodeInfoChanged(Document* aOldDoc) {}
 
   /**
    * Parse a string into an nsAttrValue for a CORS attribute.  This
@@ -1584,6 +1594,21 @@ class Element : public FragmentOrElement {
   bool UpdateIntersectionObservation(DOMIntersectionObserver* aObserver,
                                      int32_t threshold);
 
+  // A number of methods to cast to various XUL interfaces. They return a
+  // pointer only if the element implements that interface.
+  already_AddRefed<nsIDOMXULButtonElement> AsXULButton();
+  already_AddRefed<nsIDOMXULContainerElement> AsXULContainer();
+  already_AddRefed<nsIDOMXULContainerItemElement> AsXULContainerItem();
+  already_AddRefed<nsIDOMXULControlElement> AsXULControl();
+  already_AddRefed<nsIDOMXULMenuListElement> AsXULMenuList();
+  already_AddRefed<nsIDOMXULMultiSelectControlElement>
+  AsXULMultiSelectControl();
+  already_AddRefed<nsIDOMXULRadioGroupElement> AsXULRadioGroup();
+  already_AddRefed<nsIDOMXULRelatedElement> AsXULRelated();
+  already_AddRefed<nsIDOMXULSelectControlElement> AsXULSelectControl();
+  already_AddRefed<nsIDOMXULSelectControlItemElement> AsXULSelectControlItem();
+  already_AddRefed<nsIBrowser> AsBrowser();
+
  protected:
   /*
    * Named-bools for use with SetAttrAndNotify to make call sites easier to
@@ -1641,8 +1666,7 @@ class Element : public FragmentOrElement {
                             nsAttrValue& aParsedValue,
                             nsIPrincipal* aMaybeScriptedPrincipal,
                             uint8_t aModType, bool aFireMutation, bool aNotify,
-                            bool aCallAfterSetAttr,
-                            nsIDocument* aComposedDocument,
+                            bool aCallAfterSetAttr, Document* aComposedDocument,
                             const mozAutoDocUpdate& aGuard);
 
   /**
@@ -1914,7 +1938,7 @@ class Element : public FragmentOrElement {
   // descendants of display: none elements.
   mozilla::RustCell<ServoNodeData*> mServoData;
 
-protected:
+ protected:
   // Array containing all attributes for this element
   AttrArray mAttrs;
 };
@@ -1922,7 +1946,7 @@ protected:
 class RemoveFromBindingManagerRunnable : public mozilla::Runnable {
  public:
   RemoveFromBindingManagerRunnable(nsBindingManager* aManager,
-                                   nsIContent* aContent, nsIDocument* aDoc);
+                                   nsIContent* aContent, Document* aDoc);
 
   NS_IMETHOD Run() override;
 
@@ -1930,7 +1954,7 @@ class RemoveFromBindingManagerRunnable : public mozilla::Runnable {
   virtual ~RemoveFromBindingManagerRunnable();
   RefPtr<nsBindingManager> mManager;
   RefPtr<nsIContent> mContent;
-  nsCOMPtr<nsIDocument> mDoc;
+  RefPtr<Document> mDoc;
 };
 
 NS_DEFINE_STATIC_IID_ACCESSOR(Element, NS_ELEMENT_IID)

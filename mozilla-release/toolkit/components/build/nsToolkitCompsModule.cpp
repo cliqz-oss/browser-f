@@ -9,11 +9,11 @@
 #include "nsToolkitCompsCID.h"
 #include "nsFindService.h"
 #if defined(MOZ_UPDATER) && !defined(MOZ_WIDGET_ANDROID)
-#include "nsUpdateDriver.h"
+#  include "nsUpdateDriver.h"
 #endif
 
 #if !defined(MOZ_DISABLE_PARENTAL_CONTROLS)
-#include "nsParentalControlsService.h"
+#  include "nsParentalControlsService.h"
 #endif
 
 #include "mozilla/AlertNotification.h"
@@ -37,30 +37,22 @@
 #include "mozilla/AddonManagerStartup.h"
 #include "mozilla/ExtensionPolicyService.h"
 
-#include "nsSessionStoreUtils.h"
-
 #if defined(XP_WIN)
-#include "NativeFileWatcherWin.h"
+#  include "NativeFileWatcherWin.h"
 #else
-#include "NativeFileWatcherNotSupported.h"
+#  include "NativeFileWatcherNotSupported.h"
 #endif  // (XP_WIN)
 
 #if !defined(MOZ_WIDGET_ANDROID)
-#define MOZ_HAS_TERMINATOR
+#  define MOZ_HAS_TERMINATOR
 #endif
 
 #if defined(MOZ_HAS_TERMINATOR)
-#include "nsTerminator.h"
+#  include "nsTerminator.h"
 #endif
 
-#define MOZ_HAS_PERFSTATS
-
-#if defined(MOZ_HAS_PERFSTATS)
-#include "nsPerformanceStats.h"
-#endif  // defined (MOZ_HAS_PERFSTATS)
-
 #if defined(ENABLE_TESTS)
-#include "geckoview/TelemetryGeckoViewTesting.h"
+#  include "geckoview/TelemetryGeckoViewTesting.h"
 #endif
 
 using namespace mozilla;
@@ -68,10 +60,6 @@ using namespace mozilla;
 /////////////////////////////////////////////////////////////////////////////
 
 NS_GENERIC_FACTORY_CONSTRUCTOR_INIT(nsAppStartup, Init)
-
-#if defined(MOZ_HAS_PERFSTATS)
-NS_GENERIC_FACTORY_CONSTRUCTOR_INIT(nsPerformanceStatsService, Init)
-#endif  // defined (MOZ_HAS_PERFSTATS)
 
 #if defined(MOZ_HAS_TERMINATOR)
 NS_GENERIC_FACTORY_CONSTRUCTOR(nsTerminator)
@@ -131,17 +119,11 @@ NS_GENERIC_FACTORY_SINGLETON_CONSTRUCTOR(AddonManagerStartup,
 NS_GENERIC_FACTORY_SINGLETON_CONSTRUCTOR(ExtensionPolicyService,
                                          ExtensionPolicyService::GetInstance)
 
-NS_GENERIC_FACTORY_CONSTRUCTOR(nsSessionStoreUtils)
-
 #if defined(ENABLE_TESTS)
 NS_GENERIC_FACTORY_CONSTRUCTOR(TelemetryGeckoViewTestingImpl)
 #endif
 
 NS_DEFINE_NAMED_CID(NS_TOOLKIT_APPSTARTUP_CID);
-#if defined(MOZ_HAS_PERFSTATS)
-NS_DEFINE_NAMED_CID(NS_TOOLKIT_PERFORMANCESTATSSERVICE_CID);
-#endif  // defined (MOZ_HAS_PERFSTATS)
-
 #if defined(MOZ_HAS_TERMINATOR)
 NS_DEFINE_NAMED_CID(NS_TOOLKIT_TERMINATOR_CID);
 #endif
@@ -169,7 +151,6 @@ NS_DEFINE_NAMED_CID(NATIVE_OSFILE_INTERNALS_SERVICE_CID);
 NS_DEFINE_NAMED_CID(NS_ADDONCONTENTPOLICY_CID);
 NS_DEFINE_NAMED_CID(NS_ADDON_MANAGER_STARTUP_CID);
 NS_DEFINE_NAMED_CID(NS_ADDON_POLICY_SERVICE_CID);
-NS_DEFINE_NAMED_CID(NS_SESSIONSTOREUTILS_CID);
 NS_DEFINE_NAMED_CID(NATIVE_FILEWATCHER_SERVICE_CID);
 #if defined(ENABLE_TESTS)
 NS_DEFINE_NAMED_CID(NS_TELEMETRYGECKOVIEWTESTING_CID);
@@ -180,10 +161,6 @@ static const Module::CIDEntry kToolkitCIDs[] = {
 #if defined(MOZ_HAS_TERMINATOR)
     {&kNS_TOOLKIT_TERMINATOR_CID, false, nullptr, nsTerminatorConstructor},
 #endif
-#if defined(MOZ_HAS_PERFSTATS)
-    {&kNS_TOOLKIT_PERFORMANCESTATSSERVICE_CID, false, nullptr,
-     nsPerformanceStatsServiceConstructor},
-#endif  // defined (MOZ_HAS_PERFSTATS)
     {&kNS_USERINFO_CID, false, nullptr, nsUserInfoConstructor},
     {&kALERT_NOTIFICATION_CID, false, nullptr, AlertNotificationConstructor},
     {&kNS_ALERTSSERVICE_CID, false, nullptr, nsAlertsServiceConstructor},
@@ -221,8 +198,6 @@ static const Module::CIDEntry kToolkitCIDs[] = {
      AddonManagerStartupConstructor},
     {&kNS_ADDON_POLICY_SERVICE_CID, false, nullptr,
      ExtensionPolicyServiceConstructor},
-    {&kNS_SESSIONSTOREUTILS_CID, false, nullptr,
-     nsSessionStoreUtilsConstructor},
     {&kNATIVE_FILEWATCHER_SERVICE_CID, false, nullptr,
      NativeFileWatcherServiceConstructor},
 #if defined(ENABLE_TESTS)
@@ -236,10 +211,6 @@ static const Module::ContractIDEntry kToolkitContracts[] = {
 #if defined(MOZ_HAS_TERMINATOR)
     {NS_TOOLKIT_TERMINATOR_CONTRACTID, &kNS_TOOLKIT_TERMINATOR_CID},
 #endif
-#if defined(MOZ_HAS_PERFSTATS)
-    {NS_TOOLKIT_PERFORMANCESTATSSERVICE_CONTRACTID,
-     &kNS_TOOLKIT_PERFORMANCESTATSSERVICE_CID},
-#endif  // defined (MOZ_HAS_PERFSTATS)
     {NS_USERINFO_CONTRACTID, &kNS_USERINFO_CID},
     {ALERT_NOTIFICATION_CONTRACTID, &kALERT_NOTIFICATION_CID},
     {NS_ALERTSERVICE_CONTRACTID, &kNS_ALERTSSERVICE_CID},
@@ -268,7 +239,6 @@ static const Module::ContractIDEntry kToolkitContracts[] = {
     {NS_ADDONCONTENTPOLICY_CONTRACTID, &kNS_ADDONCONTENTPOLICY_CID},
     {NS_ADDONMANAGERSTARTUP_CONTRACTID, &kNS_ADDON_MANAGER_STARTUP_CID},
     {NS_ADDON_POLICY_SERVICE_CONTRACTID, &kNS_ADDON_POLICY_SERVICE_CID},
-    {NS_SESSIONSTOREUTILS_CONTRACTID, &kNS_SESSIONSTOREUTILS_CID},
     {NATIVE_FILEWATCHER_SERVICE_CONTRACTID, &kNATIVE_FILEWATCHER_SERVICE_CID},
 #if defined(ENABLE_TESTS)
     {NS_TELEMETRYGECKOVIEWTESTING_CONTRACTID,

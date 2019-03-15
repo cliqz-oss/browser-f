@@ -125,6 +125,9 @@ const SNAPSHOT_SCHEMA = {
         supportURL: {
           type: "string",
         },
+        launcherProcessState: {
+          type: "number",
+        },
         remoteAutoStart: {
           type: "boolean",
           required: true,
@@ -283,7 +286,17 @@ const SNAPSHOT_SCHEMA = {
           type: "boolean",
         },
         numAcceleratedWindowsMessage: {
-          type: "array",
+          type: "object",
+          properties: {
+            key: {
+              required: true,
+              type: "string",
+            },
+            args: {
+              required: false,
+              type: "object",
+            },
+          },
         },
         adapterDescription: {
           type: "string",
@@ -394,9 +407,16 @@ const SNAPSHOT_SCHEMA = {
           type: "object",
         },
         failures: {
-          type: "array",
-          items: {
-            type: "string",
+          type: "object",
+          properties: {
+            key: {
+              required: true,
+              type: "string",
+            },
+            args: {
+              required: false,
+              type: "object",
+            },
           },
         },
         indices: {
@@ -412,7 +432,23 @@ const SNAPSHOT_SCHEMA = {
           type: "array",
         },
         direct2DEnabledMessage: {
-          type: "array",
+          type: "object",
+          properties: {
+            key: {
+              required: true,
+              type: "string",
+            },
+            args: {
+              required: false,
+              type: "object",
+            },
+          },
+        },
+        lowEndMachine: {
+          type: "boolean",
+        },
+        targetFrameRate: {
+          type: "number",
         },
       },
     },

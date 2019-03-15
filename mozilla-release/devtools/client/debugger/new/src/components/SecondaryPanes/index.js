@@ -5,7 +5,7 @@
 // @flow
 
 import React, { Component } from "react";
-import { connect } from "react-redux";
+import { connect } from "../../utils/connect";
 import { List } from "immutable";
 
 import actions from "../../actions";
@@ -18,11 +18,10 @@ import {
   getIsWaitingOnBreak,
   getShouldPauseOnExceptions,
   getShouldPauseOnCaughtExceptions,
-  getWorkers,
-  getExtra
+  getWorkers
 } from "../../selectors";
 
-import Svg from "../shared/Svg";
+import AccessibleImage from "../shared/AccessibleImage";
 import { prefs, features } from "../../utils/prefs";
 
 import Breakpoints from "./Breakpoints";
@@ -33,15 +32,14 @@ import Workers from "./Workers";
 import Accordion from "../shared/Accordion";
 import CommandBar from "./CommandBar";
 import UtilsBar from "./UtilsBar";
-import FrameworkComponent from "./FrameworkComponent";
 import XHRBreakpoints from "./XHRBreakpoints";
+import EventListeners from "./EventListeners";
 
 import Scopes from "./Scopes";
 
 import "./SecondaryPanes.css";
 
-import type { Expression } from "../../types";
-import type { WorkersList } from "../../reducers/types";
+import type { Expression, WorkerList } from "../../types";
 
 type AccordionPaneItem = {
   header: string,
@@ -60,7 +58,7 @@ function debugBtn(onClick, type, className, tooltip) {
       key={type}
       title={tooltip}
     >
-      <Svg name={type} title={tooltip} aria-label={tooltip} />
+      <AccessibleImage className={type} title={tooltip} aria-label={tooltip} />
     </button>
   );
 }
@@ -72,7 +70,6 @@ type State = {
 
 type Props = {
   expressions: List<Expression>,
-  extra: Object,
   hasFrames: boolean,
   horizontal: boolean,
   breakpoints: Object,
@@ -81,12 +78,12 @@ type Props = {
   isWaitingOnBreak: boolean,
   shouldPauseOnExceptions: boolean,
   shouldPauseOnCaughtExceptions: boolean,
-  workers: WorkersList,
-  toggleAllBreakpoints: Function,
-  toggleShortcutsModal: Function,
-  evaluateExpressions: Function,
-  pauseOnExceptions: (boolean, boolean) => void,
-  breakOnNext: () => void
+  workers: WorkerList,
+  toggleShortcutsModal: () => void,
+  toggleAllBreakpoints: typeof actions.toggleAllBreakpoints,
+  evaluateExpressions: typeof actions.evaluateExpressions,
+  pauseOnExceptions: typeof actions.pauseOnExceptions,
+  breakOnNext: typeof actions.breakOnNext
 };
 
 class SecondaryPanes extends Component<Props, State> {
@@ -190,14 +187,14 @@ class SecondaryPanes extends Component<Props, State> {
     buttons.push(
       debugBtn(
         evt => {
-          if (prefs.expressionsVisible) {
+          if (prefs.xhrBreakpointsVisible) {
             evt.stopPropagation();
           }
           this.setState({ showXHRInput: true });
         },
         "plus",
         "plus",
-        L10N.getStr("xhrBreakpoints.placeholder")
+        L10N.getStr("xhrBreakpoints.label")
       )
     );
 
@@ -212,22 +209,6 @@ class SecondaryPanes extends Component<Props, State> {
       opened: prefs.scopesVisible,
       onToggle: opened => {
         prefs.scopesVisible = opened;
-      }
-    };
-  }
-
-  getComponentItem() {
-    const {
-      extra: { react }
-    } = this.props;
-
-    return {
-      header: react.displayName,
-      className: "component-pane",
-      component: <FrameworkComponent />,
-      opened: prefs.componentVisible,
-      onToggle: opened => {
-        prefs.componentVisible = opened;
       }
     };
   }
@@ -282,7 +263,9 @@ class SecondaryPanes extends Component<Props, State> {
 
   getWorkersItem(): AccordionPaneItem {
     return {
-      header: L10N.getStr("workersHeader"),
+      header: features.windowlessWorkers
+        ? L10N.getStr("threadsHeader")
+        : L10N.getStr("workersHeader"),
       className: "workers-pane",
       component: <Workers />,
       opened: prefs.workersVisible,
@@ -317,12 +300,25 @@ class SecondaryPanes extends Component<Props, State> {
     };
   }
 
+  getEventListenersItem() {
+    return {
+      header: L10N.getStr("eventListenersHeader"),
+      className: "event-listeners-pane",
+      buttons: [],
+      component: <EventListeners />,
+      opened: prefs.eventListenersVisible,
+      onToggle: opened => {
+        prefs.eventListenersVisible = opened;
+      }
+    };
+  }
+
   getStartItems() {
-    const { extra, workers } = this.props;
+    const { workers } = this.props;
 
     const items: Array<AccordionPaneItem> = [];
     if (this.props.horizontal) {
-      if (features.workers && workers.size > 0) {
+      if (features.workers && workers.length > 0) {
         items.push(this.getWorkersItem());
       }
 
@@ -335,16 +331,16 @@ class SecondaryPanes extends Component<Props, State> {
       items.push(this.getCallStackItem());
 
       if (this.props.horizontal) {
-        if (features.componentPane && extra && extra.react) {
-          items.push(this.getComponentItem());
-        }
-
         items.push(this.getScopeItem());
       }
     }
 
     if (features.xhrBreakpoints) {
       items.push(this.getXHRItem());
+    }
+
+    if (features.eventListenersBreakpoints) {
+      items.push(this.getEventListenersItem());
     }
 
     return items.filter(item => item);
@@ -355,7 +351,7 @@ class SecondaryPanes extends Component<Props, State> {
   }
 
   getEndItems() {
-    const { extra, workers } = this.props;
+    const { workers } = this.props;
 
     let items: Array<AccordionPaneItem> = [];
 
@@ -363,15 +359,11 @@ class SecondaryPanes extends Component<Props, State> {
       return [];
     }
 
-    if (features.workers && workers.size > 0) {
+    if (features.workers && workers.length > 0) {
       items.push(this.getWorkersItem());
     }
 
     items.push(this.getWatchItem());
-
-    if (features.componentPane && extra && extra.react) {
-      items.push(this.getComponentItem());
-    }
 
     if (this.props.hasFrames) {
       items = [...items, this.getScopeItem()];
@@ -427,7 +419,6 @@ class SecondaryPanes extends Component<Props, State> {
 
 const mapStateToProps = state => ({
   expressions: getExpressions(state),
-  extra: getExtra(state),
   hasFrames: !!getTopFrame(state),
   breakpoints: getBreakpointsList(state),
   breakpointsDisabled: getBreakpointsDisabled(state),
@@ -442,7 +433,6 @@ export default connect(
   mapStateToProps,
   {
     toggleAllBreakpoints: actions.toggleAllBreakpoints,
-    toggleShortcutsModal: actions.toggleShortcutsModal,
     evaluateExpressions: actions.evaluateExpressions,
     pauseOnExceptions: actions.pauseOnExceptions,
     breakOnNext: actions.breakOnNext

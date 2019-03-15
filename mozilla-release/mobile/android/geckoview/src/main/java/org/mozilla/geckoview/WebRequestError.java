@@ -8,6 +8,8 @@ package org.mozilla.geckoview;
 
 import org.mozilla.gecko.annotation.WrapForJNI;
 
+import android.annotation.SuppressLint;
+import android.support.annotation.AnyThread;
 import android.support.annotation.IntDef;
 
 import java.lang.annotation.Retention;
@@ -17,6 +19,7 @@ import java.lang.annotation.RetentionPolicy;
  * WebRequestError is simply a container for error codes and categories used by
  * {@link GeckoSession.NavigationDelegate#onLoadError(GeckoSession, String, WebRequestError)}.
  */
+@AnyThread
 public class WebRequestError extends Exception {
     @Retention(RetentionPolicy.SOURCE)
     @IntDef({ERROR_CATEGORY_UNKNOWN, ERROR_CATEGORY_SECURITY,
@@ -250,6 +253,7 @@ public class WebRequestError extends Exception {
         return new WebRequestError(code, category);
     }
 
+    @SuppressLint("WrongConstant")
     @WrapForJNI
     /* package */ static @ErrorCategory int getErrorCategory(
             long errorModule, @Error int error) {

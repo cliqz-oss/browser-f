@@ -1,11 +1,11 @@
-// |jit-test| test-also-no-wasm-baseline; skip-if: !wasmDebuggingIsSupported()
+// |jit-test| test-also-wasm-compiler-ion; skip-if: !wasmDebuggingIsSupported()
 
 // Tests that wasm module sourceMappingURL section is parsed.
 
 load(libdir + "asserts.js");
 load(libdir + "wasm-binary.js");
 
-var g = newGlobal();
+var g = newGlobal({newCompartment: true});
 var dbg = new Debugger(g);
 
 var gotScript;

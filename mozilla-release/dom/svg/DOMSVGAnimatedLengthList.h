@@ -7,15 +7,18 @@
 #ifndef MOZILLA_DOMSVGANIMATEDLENGTHLIST_H__
 #define MOZILLA_DOMSVGANIMATEDLENGTHLIST_H__
 
-#include "nsCOMPtr.h"
 #include "nsCycleCollectionParticipant.h"
-#include "nsSVGElement.h"
+#include "SVGElement.h"
 #include "mozilla/Attributes.h"
+#include "mozilla/RefPtr.h"
 
 namespace mozilla {
 
 class SVGAnimatedLengthList;
 class SVGLengthList;
+
+namespace dom {
+
 class DOMSVGLengthList;
 
 /**
@@ -122,8 +125,8 @@ class DOMSVGAnimatedLengthList final : public nsWrapperCache {
    * DOMSVGAnimatedLengthList being returned.
    */
   static already_AddRefed<DOMSVGAnimatedLengthList> GetDOMWrapper(
-      SVGAnimatedLengthList* aList, nsSVGElement* aElement, uint8_t aAttrEnum,
-      uint8_t aAxis);
+      SVGAnimatedLengthList* aList, dom::SVGElement* aElement,
+      uint8_t aAttrEnum, uint8_t aAxis);
 
   /**
    * This method returns the DOMSVGAnimatedLengthList wrapper for an internal
@@ -155,7 +158,7 @@ class DOMSVGAnimatedLengthList final : public nsWrapperCache {
   bool IsAnimating() const;
 
   // WebIDL
-  nsSVGElement* GetParentObject() const { return mElement; }
+  dom::SVGElement* GetParentObject() const { return mElement; }
   virtual JSObject* WrapObject(JSContext* aCx,
                                JS::Handle<JSObject*> aGivenProto) override;
   // These aren't weak refs because mBaseVal and mAnimVal are weak
@@ -167,7 +170,7 @@ class DOMSVGAnimatedLengthList final : public nsWrapperCache {
    * Only our static GetDOMWrapper() factory method may create objects of our
    * type.
    */
-  DOMSVGAnimatedLengthList(nsSVGElement* aElement, uint8_t aAttrEnum,
+  DOMSVGAnimatedLengthList(dom::SVGElement* aElement, uint8_t aAttrEnum,
                            uint8_t aAxis)
       : mBaseVal(nullptr),
         mAnimVal(nullptr),
@@ -189,12 +192,13 @@ class DOMSVGAnimatedLengthList final : public nsWrapperCache {
 
   // Strong ref to our element to keep it alive. We hold this not only for
   // ourself, but also for our base/animVal and all of their items.
-  RefPtr<nsSVGElement> mElement;
+  RefPtr<dom::SVGElement> mElement;
 
   uint8_t mAttrEnum;
   uint8_t mAxis;
 };
 
+}  // namespace dom
 }  // namespace mozilla
 
 #endif  // MOZILLA_DOMSVGANIMATEDLENGTHLIST_H__

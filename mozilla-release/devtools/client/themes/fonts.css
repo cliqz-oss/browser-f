@@ -254,6 +254,13 @@
   background-color: var(--input-background-color);
 }
 
+/* Styles for disabled input fields */
+.font-value-input[disabled],
+.font-value-select[disabled],
+.font-value-slider[disabled] {
+  opacity: 0.5;
+}
+
 /* Do not use browser "invalid" state */
 .font-value-slider:-moz-ui-invalid,
 .font-value-input:-moz-ui-invalid {
@@ -290,10 +297,10 @@
 
 /* Custom styles for <select> elements within the font editor. */
 .font-value-select {
-  background-image: var(--select-arrow-image);
+  background-image: url(chrome://devtools/skin/images/select-arrow.svg);
   background-repeat: no-repeat;
   background-position: right 4px center;
-  fill: var(--theme-toolbar-photon-icon-color);
+  fill: var(--theme-icon-color);
   -moz-context-properties: fill;
   -moz-appearance: none;
   box-shadow: none;

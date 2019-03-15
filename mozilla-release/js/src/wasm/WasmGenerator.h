@@ -65,6 +65,7 @@ struct CompiledCode {
   CallFarJumpVector callFarJumps;
   SymbolicAccessVector symbolicAccesses;
   jit::CodeLabelVector codeLabels;
+  StackMaps stackMaps;
 
   MOZ_MUST_USE bool swap(jit::MacroAssembler& masm);
 
@@ -77,6 +78,7 @@ struct CompiledCode {
     callFarJumps.clear();
     symbolicAccesses.clear();
     codeLabels.clear();
+    stackMaps.clear();
     MOZ_ASSERT(empty());
   }
 
@@ -84,7 +86,7 @@ struct CompiledCode {
     return bytes.empty() && codeRanges.empty() && callSites.empty() &&
            callSiteTargets.empty() && trapSites.empty() &&
            callFarJumps.empty() && symbolicAccesses.empty() &&
-           codeLabels.empty();
+           codeLabels.empty() && stackMaps.empty();
   }
 
   size_t sizeOfExcludingThis(mozilla::MallocSizeOf mallocSizeOf) const;
@@ -115,14 +117,13 @@ typedef ExclusiveWaitableData<CompileTaskState> ExclusiveCompileTaskState;
 struct CompileTask {
   const ModuleEnvironment& env;
   ExclusiveCompileTaskState& state;
-  ExclusiveDeferredValidationState& dvs;
   LifoAlloc lifo;
   FuncCompileInputVector inputs;
   CompiledCode output;
 
   CompileTask(const ModuleEnvironment& env, ExclusiveCompileTaskState& state,
-              ExclusiveDeferredValidationState& dvs, size_t defaultChunkSize)
-      : env(env), state(state), dvs(dvs), lifo(defaultChunkSize) {}
+              size_t defaultChunkSize)
+      : env(env), state(state), lifo(defaultChunkSize) {}
 
   size_t sizeOfExcludingThis(mozilla::MallocSizeOf mallocSizeOf) const;
 };
@@ -162,9 +163,6 @@ class MOZ_STACK_CLASS ModuleGenerator {
   uint32_t startOfUnpatchedCallsites_;
   CodeOffsetVector debugTrapFarJumps_;
 
-  // Data accumulated for deferred validation.  Is shared and mutable.
-  ExclusiveDeferredValidationState deferredValidationState_;
-
   // Parallel compilation
   bool parallel_;
   uint32_t outstanding_;
@@ -183,7 +181,7 @@ class MOZ_STACK_CLASS ModuleGenerator {
   const CodeRange& funcCodeRange(uint32_t funcIndex) const;
   bool linkCallSites();
   void noteCodeRange(uint32_t codeRangeIndex, const CodeRange& codeRange);
-  bool linkCompiledCode(const CompiledCode& code);
+  bool linkCompiledCode(CompiledCode& code);
   bool locallyCompileCurrentTask();
   bool finishTask(CompileTask* task);
   bool launchBatchCompile();
@@ -225,10 +223,6 @@ class MOZ_STACK_CLASS ModuleGenerator {
       JS::OptimizedEncodingListener* maybeTier2Listener = nullptr,
       UniqueLinkData* maybeLinkData = nullptr);
   MOZ_MUST_USE bool finishTier2(const Module& module);
-
-  ExclusiveDeferredValidationState& deferredValidationState() {
-    return deferredValidationState_;
-  }
 };
 
 }  // namespace wasm

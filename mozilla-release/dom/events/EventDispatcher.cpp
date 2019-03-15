@@ -11,7 +11,7 @@
 #include <new>
 #include "nsIContent.h"
 #include "nsIContentInlines.h"
-#include "nsIDocument.h"
+#include "mozilla/dom/Document.h"
 #include "nsINode.h"
 #include "nsIScriptObjectPrincipal.h"
 #include "nsPIDOMWindow.h"
@@ -24,6 +24,7 @@
 #include "DragEvent.h"
 #include "GeckoProfiler.h"
 #include "KeyboardEvent.h"
+#include "Layers.h"
 #include "mozilla/ContentEvents.h"
 #include "mozilla/dom/CloseEvent.h"
 #include "mozilla/dom/CustomEvent.h"
@@ -61,14 +62,14 @@
 #include "mozilla/Unused.h"
 
 #ifdef MOZ_TASK_TRACER
-#include "GeckoTaskTracer.h"
-#include "mozilla/dom/Element.h"
-#include "mozilla/Likely.h"
+#  include "GeckoTaskTracer.h"
+#  include "mozilla/dom/Element.h"
+#  include "mozilla/Likely.h"
 using namespace mozilla::tasktracer;
 #endif
 
 #ifdef MOZ_GECKO_PROFILER
-#include "ProfilerMarkerPayload.h"
+#  include "ProfilerMarkerPayload.h"
 #endif
 
 namespace mozilla {
@@ -97,12 +98,12 @@ class ELMCreationDetector {
 };
 
 static bool IsEventTargetChrome(EventTarget* aEventTarget,
-                                nsIDocument** aDocument = nullptr) {
+                                Document** aDocument = nullptr) {
   if (aDocument) {
     *aDocument = nullptr;
   }
 
-  nsIDocument* doc = nullptr;
+  Document* doc = nullptr;
   if (nsCOMPtr<nsINode> node = do_QueryInterface(aEventTarget)) {
     doc = node->OwnerDoc();
   } else if (nsCOMPtr<nsPIDOMWindowInner> window =
@@ -115,7 +116,7 @@ static bool IsEventTargetChrome(EventTarget* aEventTarget,
   if (doc) {
     isChrome = nsContentUtils::IsChromeDoc(doc);
     if (aDocument) {
-      nsCOMPtr<nsIDocument> retVal = doc;
+      nsCOMPtr<Document> retVal = doc;
       retVal.swap(*aDocument);
     }
   } else if (nsCOMPtr<nsIScriptObjectPrincipal> sop =
@@ -328,6 +329,10 @@ class EventTargetChainItem {
       mTarget->WillHandleEvent(aVisitor);
     }
     if (aVisitor.mEvent->PropagationStopped()) {
+      return;
+    }
+    if (aVisitor.mEvent->mFlags.mOnlySystemGroupDispatch &&
+        !aVisitor.mEvent->mFlags.mInSystemGroup) {
       return;
     }
     if (aVisitor.mEvent->mFlags.mOnlySystemGroupDispatchInContent &&
@@ -768,7 +773,7 @@ static bool ShouldClearTargets(WidgetEvent* aEvent) {
   }
 
   if (aEvent->mFlags.mOnlyChromeDispatch) {
-    nsCOMPtr<nsIDocument> doc;
+    nsCOMPtr<Document> doc;
     if (!IsEventTargetChrome(target, getter_AddRefs(doc)) && doc) {
       nsPIDOMWindowInner* win = doc->GetInnerWindow();
       // If we can't dispatch the event to chrome, do nothing.
@@ -803,7 +808,7 @@ static bool ShouldClearTargets(WidgetEvent* aEvent) {
       // if there might be actual scripted listeners for this event, so restrict
       // the warnings/asserts to the case when script can or once could touch
       // this node's document.
-      nsIDocument* doc = node->OwnerDoc();
+      Document* doc = node->OwnerDoc();
       bool hasHadScriptHandlingObject;
       nsIGlobalObject* global =
           doc->GetScriptHandlingObject(hasHadScriptHandlingObject);
@@ -1020,7 +1025,7 @@ static bool ShouldClearTargets(WidgetEvent* aEvent) {
           docShell = nsContentUtils::GetDocShellForEventTarget(aEvent->mTarget);
           DECLARE_DOCSHELL_AND_HISTORY_ID(docShell);
           profiler_add_marker(
-              "DOMEvent",
+              "DOMEvent", js::ProfilingStackFrame::Category::DOM,
               MakeUnique<DOMEventMarkerPayload>(
                   typeStr, aEvent->mTimeStamp, "DOMEvent",
                   TRACING_INTERVAL_START, docShellId, docShellHistoryId));
@@ -1028,10 +1033,11 @@ static bool ShouldClearTargets(WidgetEvent* aEvent) {
           EventTargetChainItem::HandleEventTargetChain(chain, postVisitor,
                                                        aCallback, cd);
 
-          profiler_add_marker("DOMEvent", MakeUnique<DOMEventMarkerPayload>(
-                                              typeStr, aEvent->mTimeStamp,
-                                              "DOMEvent", TRACING_INTERVAL_END,
-                                              docShellId, docShellHistoryId));
+          profiler_add_marker(
+              "DOMEvent", js::ProfilingStackFrame::Category::DOM,
+              MakeUnique<DOMEventMarkerPayload>(
+                  typeStr, aEvent->mTimeStamp, "DOMEvent", TRACING_INTERVAL_END,
+                  docShellId, docShellHistoryId));
         } else
 #endif
         {
@@ -1039,6 +1045,22 @@ static bool ShouldClearTargets(WidgetEvent* aEvent) {
                                                        aCallback, cd);
         }
         aEvent->mPath = nullptr;
+
+        if (aEvent->mMessage == eKeyPress && aEvent->IsTrusted()) {
+          if (aPresContext && aPresContext->GetRootPresContext()) {
+            nsRefreshDriver* driver =
+                aPresContext->GetRootPresContext()->RefreshDriver();
+            if (driver && driver->ViewManagerFlushIsPending()) {
+              nsIWidget* widget = aPresContext->GetRootWidget();
+              layers::LayerManager* lm =
+                  widget ? widget->GetLayerManager() : nullptr;
+              if (lm) {
+                lm->RegisterPayload({layers::CompositionPayloadType::eKeyPress,
+                                     aEvent->mTimeStamp});
+              }
+            }
+          }
+        }
 
         preVisitor.mEventStatus = postVisitor.mEventStatus;
         // If the DOM event was created during event flow.

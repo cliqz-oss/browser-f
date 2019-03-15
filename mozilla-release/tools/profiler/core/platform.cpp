@@ -36,6 +36,7 @@
 #include "PlatformMacros.h"
 #include "mozilla/ArrayUtils.h"
 #include "mozilla/Atomics.h"
+#include "mozilla/Printf.h"
 #include "mozilla/UniquePtr.h"
 #include "mozilla/Vector.h"
 #include "GeckoProfiler.h"
@@ -44,7 +45,6 @@
 #include "ProfilerIOInterposeObserver.h"
 #include "mozilla/AutoProfilerLabel.h"
 #include "mozilla/ExtensionPolicyService.h"
-#include "mozilla/Scheduler.h"
 #include "mozilla/StackWalk.h"
 #include "mozilla/StaticPtr.h"
 #include "mozilla/SystemGroup.h"
@@ -76,63 +76,64 @@
 #include "js/TraceLoggerAPI.h"
 
 #if defined(XP_WIN)
-#include <processthreadsapi.h>  // for GetCurrentProcessId()
+#  include <processthreadsapi.h>  // for GetCurrentProcessId()
 #else
-#include <unistd.h>  // for getpid()
-#endif               // defined(XP_WIN)
+#  include <unistd.h>  // for getpid()
+#endif                 // defined(XP_WIN)
 
 #ifdef MOZ_TASK_TRACER
-#include "GeckoTaskTracer.h"
+#  include "GeckoTaskTracer.h"
 #endif
 
 #if defined(GP_OS_android)
-#include "FennecJNINatives.h"
-#include "FennecJNIWrappers.h"
+#  include "FennecJNINatives.h"
+#  include "FennecJNIWrappers.h"
 #endif
 
 // Win32 builds always have frame pointers, so FramePointerStackWalk() always
 // works.
 #if defined(GP_PLAT_x86_windows)
-#define HAVE_NATIVE_UNWIND
-#define USE_FRAME_POINTER_STACK_WALK
+#  define HAVE_NATIVE_UNWIND
+#  define USE_FRAME_POINTER_STACK_WALK
 #endif
 
 // Win64 builds always omit frame pointers, so we use the slower
 // MozStackWalk(), which works in that case.
 #if defined(GP_PLAT_amd64_windows)
-#define HAVE_NATIVE_UNWIND
-#define USE_MOZ_STACK_WALK
+#  define HAVE_NATIVE_UNWIND
+#  define USE_MOZ_STACK_WALK
 #endif
 
-// AArch64 Win64 builds use frame pointers.
+// AArch64 Win64 doesn't seem to use frame pointers, so we use the slower
+// MozStackWalk().
 #if defined(GP_PLAT_arm64_windows)
-#define HAVE_NATIVE_UNWIND
-#define USE_FRAME_POINTER_STACK_WALK
+#  define HAVE_NATIVE_UNWIND
+#  define USE_MOZ_STACK_WALK
 #endif
 
 // Mac builds only have frame pointers when MOZ_PROFILING is specified, so
 // FramePointerStackWalk() only works in that case. We don't use MozStackWalk()
 // on Mac.
 #if defined(GP_OS_darwin) && defined(MOZ_PROFILING)
-#define HAVE_NATIVE_UNWIND
-#define USE_FRAME_POINTER_STACK_WALK
+#  define HAVE_NATIVE_UNWIND
+#  define USE_FRAME_POINTER_STACK_WALK
 #endif
 
 // Android builds use the ARM Exception Handling ABI to unwind.
 #if defined(GP_PLAT_arm_linux) || defined(GP_PLAT_arm_android)
-#define HAVE_NATIVE_UNWIND
-#define USE_EHABI_STACKWALK
-#include "EHABIStackWalk.h"
+#  define HAVE_NATIVE_UNWIND
+#  define USE_EHABI_STACKWALK
+#  include "EHABIStackWalk.h"
 #endif
 
 // Linux builds use LUL, which uses DWARF info to unwind stacks.
 #if defined(GP_PLAT_amd64_linux) || defined(GP_PLAT_x86_linux) ||    \
     defined(GP_PLAT_x86_android) || defined(GP_PLAT_mips64_linux) || \
     defined(GP_PLAT_arm64_linux) || defined(GP_PLAT_arm64_android)
-#define HAVE_NATIVE_UNWIND
-#define USE_LUL_STACKWALK
-#include "lul/LulMain.h"
-#include "lul/platform-linux-lul.h"
+#  define HAVE_NATIVE_UNWIND
+#  define USE_LUL_STACKWALK
+#  include "lul/LulMain.h"
+#  include "lul/platform-linux-lul.h"
 
 // On linux we use LUL for periodic samples and synchronous samples, but we use
 // FramePointerStackWalk for backtrace samples when MOZ_PROFILING is enabled.
@@ -143,9 +144,9 @@
 // in a shared library without framepointers, however LUL can take a long time
 // to initialize, which is undesirable for consumers of
 // profiler_suspend_and_sample_thread like the Background Hang Reporter.
-#if defined(MOZ_PROFILING)
-#define USE_FRAME_POINTER_STACK_WALK
-#endif
+#  if defined(MOZ_PROFILING)
+#    define USE_FRAME_POINTER_STACK_WALK
+#  endif
 #endif
 
 // We can only stackwalk without expensive initialization on platforms which
@@ -153,17 +154,17 @@
 // initializing LUL, and EHABIStackWalk requires initializing EHABI, both of
 // which can be expensive.
 #if defined(USE_FRAME_POINTER_STACK_WALK) || defined(USE_MOZ_STACK_WALK)
-#define HAVE_FASTINIT_NATIVE_UNWIND
+#  define HAVE_FASTINIT_NATIVE_UNWIND
 #endif
 
 #ifdef MOZ_VALGRIND
-#include <valgrind/memcheck.h>
+#  include <valgrind/memcheck.h>
 #else
-#define VALGRIND_MAKE_MEM_DEFINED(_addr, _len) ((void)0)
+#  define VALGRIND_MAKE_MEM_DEFINED(_addr, _len) ((void)0)
 #endif
 
 #if defined(GP_OS_linux) || defined(GP_OS_android)
-#include <ucontext.h>
+#  include <ucontext.h>
 #endif
 
 using namespace mozilla;
@@ -444,22 +445,29 @@ class ActivePS {
       mFilters[i] = aFilters[i];
     }
 
+#if !defined(RELEASE_OR_BETA)
     if (mInterposeObserver) {
       // We need to register the observer on the main thread, because we want
       // to observe IO that happens on the main thread.
+      // IOInterposer needs to be initialized before calling
+      // IOInterposer::Register or our observer will be silently dropped.
       if (NS_IsMainThread()) {
+        IOInterposer::Init();
         IOInterposer::Register(IOInterposeObserver::OpAll, mInterposeObserver);
       } else {
         RefPtr<ProfilerIOInterposeObserver> observer = mInterposeObserver;
         NS_DispatchToMainThread(
             NS_NewRunnableFunction("ActivePS::ActivePS", [=]() {
+              IOInterposer::Init();
               IOInterposer::Register(IOInterposeObserver::OpAll, observer);
             }));
       }
     }
+#endif
   }
 
   ~ActivePS() {
+#if !defined(RELEASE_OR_BETA)
     if (mInterposeObserver) {
       // We need to unregister the observer on the main thread, because that's
       // where we've registered it.
@@ -474,6 +482,7 @@ class ActivePS {
             }));
       }
     }
+#endif
   }
 
   bool ThreadSelected(const char* aThreadName) {
@@ -781,7 +790,7 @@ class ActivePS {
   // The maximum number of entries in mBuffer.
   const uint32_t mCapacity;
 
-  // The maximum duration of entries in mBuffer.
+  // The maximum duration of entries in mBuffer, in seconds.
   const Maybe<double> mDuration;
 
   // The interval between samples, measured in milliseconds.
@@ -1326,7 +1335,7 @@ static void DoEHABIBacktrace(PSLockRef aLock,
 #ifdef USE_LUL_STACKWALK
 
 // See the comment at the callsite for why this function is necessary.
-#if defined(MOZ_HAVE_ASAN_BLACKLIST)
+#  if defined(MOZ_HAVE_ASAN_BLACKLIST)
 MOZ_ASAN_BLACKLIST static void ASAN_memcpy(void* aDst, const void* aSrc,
                                            size_t aLen) {
   // The obvious thing to do here is call memcpy(). However, although
@@ -1340,7 +1349,7 @@ MOZ_ASAN_BLACKLIST static void ASAN_memcpy(void* aDst, const void* aSrc,
     dst[i] = src[i];
   }
 }
-#endif
+#  endif
 
 static void DoLULBacktrace(PSLockRef aLock,
                            const RegisteredThread& aRegisteredThread,
@@ -1354,33 +1363,33 @@ static void DoLULBacktrace(PSLockRef aLock,
   lul::UnwindRegs startRegs;
   memset(&startRegs, 0, sizeof(startRegs));
 
-#if defined(GP_PLAT_amd64_linux)
+#  if defined(GP_PLAT_amd64_linux)
   startRegs.xip = lul::TaggedUWord(mc->gregs[REG_RIP]);
   startRegs.xsp = lul::TaggedUWord(mc->gregs[REG_RSP]);
   startRegs.xbp = lul::TaggedUWord(mc->gregs[REG_RBP]);
-#elif defined(GP_PLAT_arm_linux) || defined(GP_PLAT_arm_android)
+#  elif defined(GP_PLAT_arm_linux) || defined(GP_PLAT_arm_android)
   startRegs.r15 = lul::TaggedUWord(mc->arm_pc);
   startRegs.r14 = lul::TaggedUWord(mc->arm_lr);
   startRegs.r13 = lul::TaggedUWord(mc->arm_sp);
   startRegs.r12 = lul::TaggedUWord(mc->arm_ip);
   startRegs.r11 = lul::TaggedUWord(mc->arm_fp);
   startRegs.r7 = lul::TaggedUWord(mc->arm_r7);
-#elif defined(GP_PLAT_arm64_linux) || defined(GP_PLAT_arm64_android)
+#  elif defined(GP_PLAT_arm64_linux) || defined(GP_PLAT_arm64_android)
   startRegs.pc = lul::TaggedUWord(mc->pc);
   startRegs.x29 = lul::TaggedUWord(mc->regs[29]);
   startRegs.x30 = lul::TaggedUWord(mc->regs[30]);
   startRegs.sp = lul::TaggedUWord(mc->sp);
-#elif defined(GP_PLAT_x86_linux) || defined(GP_PLAT_x86_android)
+#  elif defined(GP_PLAT_x86_linux) || defined(GP_PLAT_x86_android)
   startRegs.xip = lul::TaggedUWord(mc->gregs[REG_EIP]);
   startRegs.xsp = lul::TaggedUWord(mc->gregs[REG_ESP]);
   startRegs.xbp = lul::TaggedUWord(mc->gregs[REG_EBP]);
-#elif defined(GP_PLAT_mips64_linux)
+#  elif defined(GP_PLAT_mips64_linux)
   startRegs.pc = lul::TaggedUWord(mc->pc);
   startRegs.sp = lul::TaggedUWord(mc->gregs[29]);
   startRegs.fp = lul::TaggedUWord(mc->gregs[30]);
-#else
-#error "Unknown plat"
-#endif
+#  else
+#    error "Unknown plat"
+#  endif
 
   // Copy up to N_STACK_BYTES from rsp-REDZONE upwards, but not going past the
   // stack's registered top point.  Do some basic sanity checks too.  This
@@ -1416,24 +1425,24 @@ static void DoLULBacktrace(PSLockRef aLock,
   lul::StackImage stackImg;
 
   {
-#if defined(GP_PLAT_amd64_linux)
+#  if defined(GP_PLAT_amd64_linux)
     uintptr_t rEDZONE_SIZE = 128;
     uintptr_t start = startRegs.xsp.Value() - rEDZONE_SIZE;
-#elif defined(GP_PLAT_arm_linux) || defined(GP_PLAT_arm_android)
+#  elif defined(GP_PLAT_arm_linux) || defined(GP_PLAT_arm_android)
     uintptr_t rEDZONE_SIZE = 0;
     uintptr_t start = startRegs.r13.Value() - rEDZONE_SIZE;
-#elif defined(GP_PLAT_arm64_linux) || defined(GP_PLAT_arm64_android)
+#  elif defined(GP_PLAT_arm64_linux) || defined(GP_PLAT_arm64_android)
     uintptr_t rEDZONE_SIZE = 0;
     uintptr_t start = startRegs.sp.Value() - rEDZONE_SIZE;
-#elif defined(GP_PLAT_x86_linux) || defined(GP_PLAT_x86_android)
+#  elif defined(GP_PLAT_x86_linux) || defined(GP_PLAT_x86_android)
     uintptr_t rEDZONE_SIZE = 0;
     uintptr_t start = startRegs.xsp.Value() - rEDZONE_SIZE;
-#elif defined(GP_PLAT_mips64_linux)
+#  elif defined(GP_PLAT_mips64_linux)
     uintptr_t rEDZONE_SIZE = 0;
     uintptr_t start = startRegs.sp.Value() - rEDZONE_SIZE;
-#else
-#error "Unknown plat"
-#endif
+#  else
+#    error "Unknown plat"
+#  endif
     uintptr_t end = reinterpret_cast<uintptr_t>(aRegisteredThread.StackTop());
     uintptr_t ws = sizeof(void*);
     start &= ~(ws - 1);
@@ -1456,11 +1465,11 @@ static void DoLULBacktrace(PSLockRef aLock,
       //
       // This code is very much a custom stack unwind mechanism! So we use an
       // alternative memcpy() implementation that is ignored by ASAN.
-#if defined(MOZ_HAVE_ASAN_BLACKLIST)
+#  if defined(MOZ_HAVE_ASAN_BLACKLIST)
       ASAN_memcpy(&stackImg.mContents[0], (void*)start, nToCopy);
-#else
+#  else
       memcpy(&stackImg.mContents[0], (void*)start, nToCopy);
-#endif
+#  endif
       (void)VALGRIND_MAKE_MEM_DEFINED(&stackImg.mContents[0], nToCopy);
     }
   }
@@ -1491,17 +1500,17 @@ static void DoNativeBacktrace(PSLockRef aLock,
   // profiler_suspend_and_sample_thread() for details). The only part of the
   // ordering that matters is that LUL must precede FRAME_POINTER, because on
   // Linux they can both be present.
-#if defined(USE_LUL_STACKWALK)
+#  if defined(USE_LUL_STACKWALK)
   DoLULBacktrace(aLock, aRegisteredThread, aRegs, aNativeStack);
-#elif defined(USE_EHABI_STACKWALK)
+#  elif defined(USE_EHABI_STACKWALK)
   DoEHABIBacktrace(aLock, aRegisteredThread, aRegs, aNativeStack);
-#elif defined(USE_FRAME_POINTER_STACK_WALK)
+#  elif defined(USE_FRAME_POINTER_STACK_WALK)
   DoFramePointerBacktrace(aLock, aRegisteredThread, aRegs, aNativeStack);
-#elif defined(USE_MOZ_STACK_WALK)
+#  elif defined(USE_MOZ_STACK_WALK)
   DoMozStackWalkBacktrace(aLock, aRegisteredThread, aRegs, aNativeStack);
-#else
-#error "Invalid configuration"
-#endif
+#  else
+#    error "Invalid configuration"
+#  endif
 }
 #endif
 
@@ -2076,11 +2085,12 @@ static void PrintUsageThenExit(int aExitCode) {
       "  If unset, the platform default is used.\n"
       "\n"
       "  MOZ_PROFILER_STARTUP_DURATION=<1..>\n"
-      "  If MOZ_PROFILER_STARTUP is set, specifies the duration of entries in\n"
-      "  the profiler's circular buffer when the profiler is first started.\n"
-      "  If unset, duration of the entries will be restricted by.\n"
-      "  MOZ_PROFILER_STARTUP_ENTRIES or its default value instead of a time "
-      "duration."
+      "  If MOZ_PROFILER_STARTUP is set, specifies the maximum life time of\n"
+      "  entries in the the profiler's circular buffer when the profiler is\n"
+      "  first started, in seconds.\n"
+      "  If unset, the life time of the entries will only be restricted by\n"
+      "  MOZ_PROFILER_STARTUP_ENTRIES (or its default value), and no\n"
+      "  additional time duration restriction will be applied.\n"
       "\n"
       "  MOZ_PROFILER_STARTUP_INTERVAL=<1..1000>\n"
       "  If MOZ_PROFILER_STARTUP is set, specifies the sample interval,\n"
@@ -2100,10 +2110,9 @@ static void PrintUsageThenExit(int aExitCode) {
       "\n"
       "  MOZ_PROFILER_STARTUP_FILTERS=<Filters>\n"
       "  If MOZ_PROFILER_STARTUP is set, specifies the thread filters, as a\n"
-      "  comma-separated list of strings. A given thread will be sampled if "
-      "any\n"
-      "  of the filters is a case-insensitive substring of the thread name.\n"
-      "  If unset, a default is used.\n"
+      "  comma-separated list of strings. A given thread will be sampled if\n"
+      "  any of the filters is a case-insensitive substring of the thread\n"
+      "  name. If unset, a default is used.\n"
       "\n"
       "  MOZ_PROFILER_SHUTDOWN\n"
       "  If set, the profiler saves a profile to the named file on shutdown.\n"
@@ -2389,13 +2398,13 @@ void SamplerThread::Run() {
 // declarations from this file trivially.  These provide target-specific
 // implementations of all SamplerThread methods except Run().
 #if defined(GP_OS_windows)
-#include "platform-win32.cpp"
+#  include "platform-win32.cpp"
 #elif defined(GP_OS_darwin)
-#include "platform-macos.cpp"
+#  include "platform-macos.cpp"
 #elif defined(GP_OS_linux) || defined(GP_OS_android)
-#include "platform-linux-android.cpp"
+#  include "platform-linux-android.cpp"
 #else
-#error "bad platform"
+#  error "bad platform"
 #endif
 
 UniquePlatformData AllocPlatformData(int aThreadId) {
@@ -2906,40 +2915,33 @@ void profiler_get_start_params(int* aCapacity, Maybe<double>* aDuration,
   }
 }
 
-AutoSetProfilerEnvVarsForChildProcess::AutoSetProfilerEnvVarsForChildProcess(
-    MOZ_GUARD_OBJECT_NOTIFIER_ONLY_PARAM_IN_IMPL)
-    : mSetCapacity(), mSetInterval(), mSetFeaturesBitfield(), mSetFilters() {
-  MOZ_GUARD_OBJECT_NOTIFIER_INIT;
+namespace mozilla {
 
+void GetProfilerEnvVarsForChildProcess(
+    std::function<void(const char* key, const char* value)>&& aSetEnv) {
   MOZ_RELEASE_ASSERT(CorePS::Exists());
 
   PSAutoLock lock(gPSMutex);
 
   if (!ActivePS::Exists(lock)) {
-    PR_SetEnv("MOZ_PROFILER_STARTUP=");
+    aSetEnv("MOZ_PROFILER_STARTUP", "");
     return;
   }
 
-  PR_SetEnv("MOZ_PROFILER_STARTUP=1");
-  SprintfLiteral(mSetCapacity, "MOZ_PROFILER_STARTUP_ENTRIES=%d",
-                 ActivePS::Capacity(lock));
-  PR_SetEnv(mSetCapacity);
+  aSetEnv("MOZ_PROFILER_STARTUP", "1");
+  auto capacityString = Smprintf("%d", ActivePS::Capacity(lock));
+  aSetEnv("MOZ_PROFILER_STARTUP_ENTRIES", capacityString.get());
 
-  // Use AppendFloat instead of SprintfLiteral with %f because the decimal
+  // Use AppendFloat instead of Smprintf with %f because the decimal
   // separator used by %f is locale-dependent. But the string we produce needs
   // to be parseable by strtod, which only accepts the period character as a
   // decimal separator. AppendFloat always uses the period character.
-  nsCString setInterval;
-  setInterval.AppendLiteral("MOZ_PROFILER_STARTUP_INTERVAL=");
-  setInterval.AppendFloat(ActivePS::Interval(lock));
-  strncpy(mSetInterval, setInterval.get(), MOZ_ARRAY_LENGTH(mSetInterval));
-  mSetInterval[MOZ_ARRAY_LENGTH(mSetInterval) - 1] = '\0';
-  PR_SetEnv(mSetInterval);
+  nsCString intervalString;
+  intervalString.AppendFloat(ActivePS::Interval(lock));
+  aSetEnv("MOZ_PROFILER_STARTUP_INTERVAL", intervalString.get());
 
-  SprintfLiteral(mSetFeaturesBitfield,
-                 "MOZ_PROFILER_STARTUP_FEATURES_BITFIELD=%d",
-                 ActivePS::Features(lock));
-  PR_SetEnv(mSetFeaturesBitfield);
+  auto featuresString = Smprintf("%d", ActivePS::Features(lock));
+  aSetEnv("MOZ_PROFILER_STARTUP_FEATURES_BITFIELD", featuresString.get());
 
   std::string filtersString;
   const Vector<std::string>& filters = ActivePS::Filters(lock);
@@ -2949,23 +2951,10 @@ AutoSetProfilerEnvVarsForChildProcess::AutoSetProfilerEnvVarsForChildProcess(
       filtersString += ",";
     }
   }
-  SprintfLiteral(mSetFilters, "MOZ_PROFILER_STARTUP_FILTERS=%s",
-                 filtersString.c_str());
-  PR_SetEnv(mSetFilters);
+  aSetEnv("MOZ_PROFILER_STARTUP_FILTERS", filtersString.c_str());
 }
 
-AutoSetProfilerEnvVarsForChildProcess::
-    ~AutoSetProfilerEnvVarsForChildProcess() {
-  // Our current process doesn't look at these variables after startup, so we
-  // can just unset all the variables. This allows us to use literal strings,
-  // which will be valid for the whole life time of the program and can be
-  // passed to PR_SetEnv without problems.
-  PR_SetEnv("MOZ_PROFILER_STARTUP=");
-  PR_SetEnv("MOZ_PROFILER_STARTUP_ENTRIES=");
-  PR_SetEnv("MOZ_PROFILER_STARTUP_INTERVAL=");
-  PR_SetEnv("MOZ_PROFILER_STARTUP_FEATURES_BITFIELD=");
-  PR_SetEnv("MOZ_PROFILER_STARTUP_FILTERS=");
-}
+}  // namespace mozilla
 
 static void locked_profiler_save_profile_to_file(PSLockRef aLock,
                                                  const char* aFilename,
@@ -3441,7 +3430,6 @@ ProfilingStack* profiler_register_thread(const char* aName,
                                          void* aGuessStackTop) {
   DEBUG_LOG("profiler_register_thread(%s)", aName);
 
-  MOZ_ASSERT_IF(NS_IsMainThread(), Scheduler::IsCooperativeThread());
   MOZ_RELEASE_ASSERT(CorePS::Exists());
 
   // Make sure we have a nsThread wrapper for the current thread, and that NSPR
@@ -3456,8 +3444,6 @@ ProfilingStack* profiler_register_thread(const char* aName,
 }
 
 void profiler_unregister_thread() {
-  MOZ_ASSERT_IF(NS_IsMainThread(), Scheduler::IsCooperativeThread());
-
   if (!CorePS::Exists()) {
     // This function can be called after the main thread has already shut down.
     return;
@@ -3646,7 +3632,8 @@ void ProfilerBacktraceDestructor::operator()(ProfilerBacktrace* aBacktrace) {
 }
 
 static void racy_profiler_add_marker(
-    const char* aMarkerName, UniquePtr<ProfilerMarkerPayload> aPayload) {
+    const char* aMarkerName, js::ProfilingStackFrame::Category aCategory,
+    UniquePtr<ProfilerMarkerPayload> aPayload) {
   MOZ_RELEASE_ASSERT(CorePS::Exists());
 
   // We don't assert that RacyFeatures::IsActiveWithoutPrivacy() or
@@ -3666,11 +3653,12 @@ static void racy_profiler_add_marker(
                          ? aPayload->GetStartTime()
                          : TimeStamp::Now();
   TimeDuration delta = origin - CorePS::ProcessStartTime();
-  racyRegisteredThread->AddPendingMarker(aMarkerName, std::move(aPayload),
-                                         delta.ToMilliseconds());
+  racyRegisteredThread->AddPendingMarker(
+      aMarkerName, aCategory, std::move(aPayload), delta.ToMilliseconds());
 }
 
 void profiler_add_marker(const char* aMarkerName,
+                         js::ProfilingStackFrame::Category aCategory,
                          UniquePtr<ProfilerMarkerPayload> aPayload) {
   MOZ_RELEASE_ASSERT(CorePS::Exists());
 
@@ -3679,11 +3667,19 @@ void profiler_add_marker(const char* aMarkerName,
     return;
   }
 
-  racy_profiler_add_marker(aMarkerName, std::move(aPayload));
+  racy_profiler_add_marker(aMarkerName, aCategory, std::move(aPayload));
 }
 
-void profiler_add_marker(const char* aMarkerName) {
-  profiler_add_marker(aMarkerName, nullptr);
+void profiler_add_marker(const char* aMarkerName,
+                         js::ProfilingStackFrame::Category aCategory) {
+  profiler_add_marker(aMarkerName, aCategory, nullptr);
+}
+
+// This is a simplified version of profiler_add_marker that can be easily passed
+// into the JS engine.
+void profiler_add_js_marker(const char* aMarkerName) {
+  profiler_add_marker(aMarkerName, js::ProfilingStackFrame::Category::JS,
+                      nullptr);
 }
 
 void profiler_add_network_marker(
@@ -3708,7 +3704,7 @@ void profiler_add_network_marker(
   char name[2048];
   SprintfLiteral(name, "Load %d: %s", id, PromiseFlatCString(spec).get());
   profiler_add_marker(
-      name,
+      name, js::ProfilingStackFrame::Category::NETWORK,
       MakeUnique<NetworkMarkerPayload>(
           static_cast<int64_t>(aChannelId), PromiseFlatCString(spec).get(),
           aType, aStart, aEnd, aPriority, aCount, aCacheDisposition, aTimings,
@@ -3717,7 +3713,9 @@ void profiler_add_network_marker(
 
 // This logic needs to add a marker for a different thread, so we actually need
 // to lock here.
-void profiler_add_marker_for_thread(int aThreadId, const char* aMarkerName,
+void profiler_add_marker_for_thread(int aThreadId,
+                                    js::ProfilingStackFrame::Category aCategory,
+                                    const char* aMarkerName,
                                     UniquePtr<ProfilerMarkerPayload> aPayload) {
   MOZ_RELEASE_ASSERT(CorePS::Exists());
 
@@ -3731,8 +3729,9 @@ void profiler_add_marker_for_thread(int aThreadId, const char* aMarkerName,
                          ? aPayload->GetStartTime()
                          : TimeStamp::Now();
   TimeDuration delta = origin - CorePS::ProcessStartTime();
-  ProfilerMarker* marker = new ProfilerMarker(
-      aMarkerName, aThreadId, std::move(aPayload), delta.ToMilliseconds());
+  ProfilerMarker* marker =
+      new ProfilerMarker(aMarkerName, aCategory, aThreadId, std::move(aPayload),
+                         delta.ToMilliseconds());
 
 #ifdef DEBUG
   // Assert that our thread ID makes sense
@@ -3755,7 +3754,8 @@ void profiler_add_marker_for_thread(int aThreadId, const char* aMarkerName,
   buffer.AddEntry(ProfileBufferEntry::Marker(marker));
 }
 
-void profiler_tracing(const char* aCategory, const char* aMarkerName,
+void profiler_tracing(const char* aCategoryString, const char* aMarkerName,
+                      js::ProfilingStackFrame::Category aCategory,
                       TracingKind aKind, const Maybe<nsID>& aDocShellId,
                       const Maybe<uint32_t>& aDocShellHistoryId) {
   MOZ_RELEASE_ASSERT(CorePS::Exists());
@@ -3767,12 +3767,13 @@ void profiler_tracing(const char* aCategory, const char* aMarkerName,
     return;
   }
 
-  auto payload = MakeUnique<TracingMarkerPayload>(aCategory, aKind, aDocShellId,
-                                                  aDocShellHistoryId);
-  racy_profiler_add_marker(aMarkerName, std::move(payload));
+  auto payload = MakeUnique<TracingMarkerPayload>(
+      aCategoryString, aKind, aDocShellId, aDocShellHistoryId);
+  racy_profiler_add_marker(aMarkerName, aCategory, std::move(payload));
 }
 
-void profiler_tracing(const char* aCategory, const char* aMarkerName,
+void profiler_tracing(const char* aCategoryString, const char* aMarkerName,
+                      js::ProfilingStackFrame::Category aCategory,
                       TracingKind aKind, UniqueProfilerBacktrace aCause,
                       const Maybe<nsID>& aDocShellId,
                       const Maybe<uint32_t>& aDocShellHistoryId) {
@@ -3785,9 +3786,10 @@ void profiler_tracing(const char* aCategory, const char* aMarkerName,
     return;
   }
 
-  auto payload = MakeUnique<TracingMarkerPayload>(
-      aCategory, aKind, aDocShellId, aDocShellHistoryId, std::move(aCause));
-  racy_profiler_add_marker(aMarkerName, std::move(payload));
+  auto payload =
+      MakeUnique<TracingMarkerPayload>(aCategoryString, aKind, aDocShellId,
+                                       aDocShellHistoryId, std::move(aCause));
+  racy_profiler_add_marker(aMarkerName, aCategory, std::move(payload));
 }
 
 void profiler_set_js_context(JSContext* aCx) {
@@ -3895,14 +3897,14 @@ void profiler_suspend_and_sample_thread(int aThreadId, uint32_t aFeatures,
           // We can only use FramePointerStackWalk or MozStackWalk from
           // suspend_and_sample_thread as other stackwalking methods may not be
           // initialized.
-#if defined(USE_FRAME_POINTER_STACK_WALK)
+#  if defined(USE_FRAME_POINTER_STACK_WALK)
               DoFramePointerBacktrace(lock, registeredThread, aRegs,
                                       nativeStack);
-#elif defined(USE_MOZ_STACK_WALK)
+#  elif defined(USE_MOZ_STACK_WALK)
           DoMozStackWalkBacktrace(lock, registeredThread, aRegs, nativeStack);
-#else
-#error "Invalid configuration"
-#endif
+#  else
+#    error "Invalid configuration"
+#  endif
 
               MergeStacks(aFeatures, isSynchronous, registeredThread, aRegs,
                           nativeStack, aCollector);

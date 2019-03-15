@@ -8,6 +8,7 @@ import React, { Component } from "react";
 
 import { CloseButton } from "./Button";
 
+import AccessibleImage from "./AccessibleImage";
 import Svg from "./Svg";
 import classnames from "classnames";
 import "./SearchInput.css";
@@ -23,7 +24,7 @@ const arrowBtn = (onClick, type, className, tooltip) => {
 
   return (
     <button {...props}>
-      <Svg name={type} />
+      <AccessibleImage className={type} />
     </button>
   );
 };
@@ -48,7 +49,8 @@ type Props = {
   showErrorEmoji: boolean,
   size: string,
   summaryMsg: string,
-  showClose: boolean
+  showClose: boolean,
+  isLoading: boolean
 };
 
 type State = {
@@ -103,8 +105,7 @@ class SearchInput extends Component<Props, State> {
   }
 
   renderSvg() {
-    const svgName = this.props.showErrorEmoji ? "sad-face" : "magnifying-glass";
-    return <Svg name={svgName} />;
+    return <Svg name="magnifying-glass" />;
   }
 
   renderArrowButtons() {
@@ -199,6 +200,13 @@ class SearchInput extends Component<Props, State> {
     return <div className="summary">{summaryMsg}</div>;
   }
 
+  renderSpinner() {
+    const { isLoading } = this.props;
+    if (isLoading) {
+      return <AccessibleImage className="loader" />;
+    }
+  }
+
   renderNav() {
     const { count, handleNext, handlePrev } = this.props;
     if ((!handleNext && !handlePrev) || (!count || count == 1)) {
@@ -258,6 +266,7 @@ class SearchInput extends Component<Props, State> {
         >
           {this.renderSvg()}
           <input {...inputProps} />
+          {this.renderSpinner()}
           {this.renderSummaryMsg()}
           {this.renderNav()}
           {showClose && (

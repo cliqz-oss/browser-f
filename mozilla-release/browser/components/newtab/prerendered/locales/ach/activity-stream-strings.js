@@ -21,7 +21,7 @@ window.gActivityStreamStrings = {
   "menu_action_unpin": "War",
   "confirm_history_delete_p1": "Imoko ni imito kwanyo nyig jami weng me potbuk man ki i gin mukato mamegi?",
   "confirm_history_delete_notice_p2": "Pe ki twero gonyo tic man.",
-  "menu_action_save_to_pocket": "Gwoki i jaba",
+  "menu_action_save_to_pocket": "Gwok i Pocket",
   "menu_action_delete_pocket": "Kwany ki ii Pocket",
   "menu_action_archive_pocket": "Kan i Pocket",
   "menu_action_show_file_mac_os": "Nyut i Gin nongo",
@@ -40,6 +40,9 @@ window.gActivityStreamStrings = {
   "section_disclaimer_topstories_buttontext": "Eyo, aniang",
   "prefs_home_header": "Jami me Acakki Firefox",
   "prefs_home_description": "Yer jami ma imito ii kio me Acakki Firefox.",
+  "prefs_content_discovery_header": "Firefox Home",
+  "prefs_content_discovery_description": "Content Discovery in Firefox Home allows you to discover high-quality, relevant articles from across the web.",
+  "prefs_content_discovery_button": "Turn Off Content Discovery",
   "prefs_section_rows_option": "{num} row;{num} rows",
   "prefs_search_header": "Yeny me kakube",
   "prefs_topsites_description": "Kakube ma ilimo loyo",
@@ -107,6 +110,5 @@ window.gActivityStreamStrings = {
   "firstrun_privacy_notice": "Ngec me mung",
   "firstrun_continue_to_login": "Mede",
   "firstrun_skip_login": "Kal citep man",
-  "context_menu_title": "Yab jami ayera",
-  "pocket_learn_more": "Nong ngec mapol"
+  "context_menu_title": "Yab jami ayera"
 };

@@ -15,6 +15,7 @@
 #include "nsNetUtil.h"
 #include "nsQueryObject.h"
 #include "mozilla/dom/nsCSPUtils.h"
+#include "mozilla/dom/LoadURIOptionsBinding.h"
 #include "mozilla/NullPrincipal.h"
 
 using namespace mozilla;
@@ -67,7 +68,7 @@ using namespace mozilla;
   nsCOMPtr<nsIDocShellTreeItem> thisDocShellItem(aDocShell);
   nsCOMPtr<nsIDocShellTreeItem> parentDocShellItem;
   nsCOMPtr<nsIDocShellTreeItem> curDocShellItem = thisDocShellItem;
-  nsCOMPtr<nsIDocument> topDoc;
+  nsCOMPtr<Document> topDoc;
   nsresult rv;
   nsCOMPtr<nsIScriptSecurityManager> ssm =
       do_GetService(NS_SCRIPTSECURITYMANAGER_CONTRACTID, &rv);
@@ -257,8 +258,10 @@ static bool ShouldIgnoreFrameOptions(nsIChannel* aChannel,
           RefPtr<NullPrincipal> principal =
               NullPrincipal::CreateWithInheritedAttributes(
                   loadInfo->TriggeringPrincipal());
-          webNav->LoadURI(NS_LITERAL_STRING("about:blank"), 0, nullptr, nullptr,
-                          nullptr, principal);
+
+          LoadURIOptions loadURIOptions;
+          loadURIOptions.mTriggeringPrincipal = principal;
+          webNav->LoadURI(NS_LITERAL_STRING("about:blank"), loadURIOptions);
         }
       }
       return false;
@@ -285,7 +288,7 @@ static bool ShouldIgnoreFrameOptions(nsIChannel* aChannel,
 
   nsCOMPtr<nsIURI> topURI;
 
-  nsCOMPtr<nsIDocument> document = aTopDocShellItem->GetDocument();
+  nsCOMPtr<Document> document = aTopDocShellItem->GetDocument();
   nsresult rv = document->NodePrincipal()->GetURI(getter_AddRefs(topURI));
   if (NS_FAILED(rv)) {
     return;

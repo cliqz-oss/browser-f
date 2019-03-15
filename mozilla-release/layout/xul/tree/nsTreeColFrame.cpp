@@ -10,15 +10,15 @@
 #include "nsIContent.h"
 #include "mozilla/ComputedStyle.h"
 #include "nsNameSpaceManager.h"
-#include "nsIBoxObject.h"
 #include "mozilla/ErrorResult.h"
-#include "mozilla/dom/TreeBoxObject.h"
 #include "nsTreeColumns.h"
 #include "nsDisplayList.h"
 #include "nsTreeBodyFrame.h"
 #include "nsXULElement.h"
+#include "mozilla/dom/XULTreeElement.h"
 
 using namespace mozilla;
+using namespace mozilla::dom;
 
 //
 // NS_NewTreeColFrame
@@ -139,48 +139,36 @@ void nsTreeColFrame::SetXULBounds(nsBoxLayoutState& aBoxLayoutState,
 
   nsBoxFrame::SetXULBounds(aBoxLayoutState, aRect, aRemoveOverflowArea);
   if (mRect.width != oldWidth) {
-    nsITreeBoxObject* treeBoxObject = GetTreeBoxObject();
-    if (treeBoxObject) {
-      treeBoxObject->Invalidate();
+    RefPtr<XULTreeElement> tree = GetTree();
+    if (tree) {
+      tree->Invalidate();
     }
   }
 }
 
-nsITreeBoxObject* nsTreeColFrame::GetTreeBoxObject() {
-  nsITreeBoxObject* result = nullptr;
-
+XULTreeElement* nsTreeColFrame::GetTree() {
   nsIContent* parent = mContent->GetParent();
-  if (parent) {
-    nsIContent* grandParent = parent->GetParent();
-    RefPtr<nsXULElement> treeElement =
-        nsXULElement::FromNodeOrNull(grandParent);
-    if (treeElement) {
-      nsCOMPtr<nsIBoxObject> boxObject =
-          treeElement->GetBoxObject(IgnoreErrors());
-
-      nsCOMPtr<nsITreeBoxObject> treeBoxObject = do_QueryInterface(boxObject);
-      result = treeBoxObject.get();
-    }
-  }
-  return result;
+  return parent ? XULTreeElement::FromNodeOrNull(parent->GetParent()) : nullptr;
 }
 
 void nsTreeColFrame::InvalidateColumns(bool aCanWalkFrameTree) {
-  nsITreeBoxObject* treeBoxObject = GetTreeBoxObject();
-  if (treeBoxObject) {
-    RefPtr<nsTreeColumns> columns;
-
-    if (aCanWalkFrameTree) {
-      treeBoxObject->GetColumns(getter_AddRefs(columns));
-    } else {
-      nsTreeBodyFrame* body =
-          static_cast<mozilla::dom::TreeBoxObject*>(treeBoxObject)
-              ->GetCachedTreeBodyFrame();
-      if (body) {
-        columns = body->Columns();
-      }
-    }
-
-    if (columns) columns->InvalidateColumns();
+  RefPtr<XULTreeElement> tree = GetTree();
+  if (!tree) {
+    return;
   }
+
+  nsTreeBodyFrame* body = aCanWalkFrameTree
+                              ? tree->GetTreeBodyFrame(FlushType::None)
+                              : tree->GetCachedTreeBodyFrame();
+
+  if (!body) {
+    return;
+  }
+
+  RefPtr<nsTreeColumns> columns = body->Columns();
+  if (!columns) {
+    return;
+  }
+
+  columns->InvalidateColumns();
 }

@@ -3,7 +3,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
-// IWYU pragma: private, include "nsIDocument.h"
+// IWYU pragma: private, include "mozilla/dom/Document.h"
 
 /*
  * This file contains the list of deprecated DOM operations.  It is
@@ -32,7 +32,6 @@ DEPRECATED_OPERATION(AppCacheInsecure)
 DEPRECATED_OPERATION(PrefixedImageSmoothingEnabled)
 DEPRECATED_OPERATION(LenientSetter)
 DEPRECATED_OPERATION(ImageBitmapRenderingContext_TransferImageBitmap)
-DEPRECATED_OPERATION(XMLBaseAttribute)
 DEPRECATED_OPERATION(WindowContentUntrusted)
 DEPRECATED_OPERATION(RegisterProtocolHandlerInsecure)
 DEPRECATED_OPERATION(MixedDisplayObjectSubrequest)
@@ -51,3 +50,4 @@ DEPRECATED_OPERATION(CreateImageBitmapCanvasRenderingContext2D)
 DEPRECATED_OPERATION(MozRequestFullScreenDeprecatedPrefix)
 DEPRECATED_OPERATION(MozfullscreenchangeDeprecatedPrefix)
 DEPRECATED_OPERATION(MozfullscreenerrorDeprecatedPrefix)
+DEPRECATED_OPERATION(External_AddSearchProvider)

@@ -49,7 +49,7 @@ config = {
     # "log_format": "%(levelname)8s - %(message)s",
     "log_tbpl_level": "info",
     "log_raw_level": "info",
-    "minidump_stackwalk_path": "/usr/local/bin/linux64-minidump_stackwalk",
+    "minidump_stackwalk_path": "linux64-minidump_stackwalk",
     "marionette_address": "localhost:2828",
     "marionette_test_manifest": "unit-tests.ini",
     # To take device screenshots at timed intervals (each time in seconds, relative
@@ -336,6 +336,7 @@ config = {
                 "--symbols-path=%(symbols_path)s",
                 "--utility-path=%(utility_path)s",
                 "--deviceSerial=%(device_serial)s",
+                "--log-raw=%(raw_log_file)s",
             ],
         },
 

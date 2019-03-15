@@ -4,12 +4,18 @@
 
 "use strict";
 
+const { clearInterval, setInterval } = require("resource://gre/modules/Timer.jsm");
+
 const EventEmitter = require("devtools/shared/event-emitter");
 const { adbProcess } = require("devtools/shared/adb/adb-process");
 const { adbAddon } = require("devtools/shared/adb/adb-addon");
 const AdbDevice = require("devtools/shared/adb/adb-device");
-const { AdbRuntime } = require("devtools/shared/adb/adb-runtime");
+const { AdbRuntime, UnknownAdbRuntime } = require("devtools/shared/adb/adb-runtime");
 const { TrackDevicesCommand } = require("devtools/shared/adb/commands/track-devices");
+
+// Duration in milliseconds of the runtime polling. We resort to polling here because we
+// have no event to know when a runtime started on an already discovered ADB device.
+const UPDATE_RUNTIMES_INTERVAL = 3000;
 
 class Adb extends EventEmitter {
   constructor() {
@@ -67,9 +73,14 @@ class Adb extends EventEmitter {
     await adbProcess.start();
 
     this._trackDevicesCommand.run();
+
+    // Device runtimes are detected by running a shell command and checking for
+    // "firefox-debugger-socket" in the list of currently running processes.
+    this._timer = setInterval(this.updateRuntimes.bind(this), UPDATE_RUNTIMES_INTERVAL);
   }
 
   async _stopAdb() {
+    clearInterval(this._timer);
     this._isTrackingDevices = false;
     this._trackDevicesCommand.stop();
     await adbProcess.stop();
@@ -91,8 +102,10 @@ class Adb extends EventEmitter {
     }
   }
 
-  _onDeviceConnected(deviceId) {
-    this._devices.set(deviceId, new AdbDevice(deviceId));
+  async _onDeviceConnected(deviceId) {
+    const adbDevice = new AdbDevice(deviceId);
+    await adbDevice.initialize();
+    this._devices.set(deviceId, adbDevice);
     this.updateRuntimes();
   }
 
@@ -102,9 +115,11 @@ class Adb extends EventEmitter {
   }
 
   async _getDeviceRuntimes(device) {
-    const model = await device.getModel();
-    const socketPaths = await device.getRuntimeSocketPaths();
-    return [...socketPaths].map(socketPath => new AdbRuntime(device, model, socketPath));
+    const socketPaths = [...await device.getRuntimeSocketPaths()];
+    if (socketPaths.length === 0) {
+      return [new UnknownAdbRuntime(device)];
+    }
+    return socketPaths.map(socketPath => new AdbRuntime(device, socketPath));
   }
 }
 

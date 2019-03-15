@@ -1,12 +1,11 @@
 /* Any copyright is dedicated to the Public Domain.
    http://creativecommons.org/publicdomain/zero/1.0/ */
 
+"use strict";
+
 /* eslint-env browser */
 /* eslint no-unused-vars: [2, {"vars": "local"}] */
 /* import-globals-from ../../../shared/test/shared-head.js */
-/* import-globals-from debug-target-pane_collapsibilities_head.js */
-
-"use strict";
 
 // Load the shared-head file first.
 Services.scriptloader.loadSubScript(
@@ -18,9 +17,8 @@ Services.scriptloader.loadSubScript(
   "chrome://mochitests/content/browser/devtools/client/shared/test/shared-redux-head.js",
   this);
 
-// Load collapsibilities helpers
-Services.scriptloader.loadSubScript(
-  CHROME_URL_ROOT + "debug-target-pane_collapsibilities_head.js", this);
+/* import-globals-from helper-mocks.js */
+Services.scriptloader.loadSubScript(CHROME_URL_ROOT + "helper-mocks.js", this);
 
 // Make sure the ADB addon is removed and ADB is stopped when the test ends.
 registerCleanupFunction(async function() {
@@ -46,12 +44,16 @@ async function enableNewAboutDebugging() {
   await pushPref("devtools.aboutdebugging.network", true);
 }
 
-async function openAboutDebugging(page, win) {
+async function openAboutDebugging({ enableWorkerUpdates } = {}) {
+  if (!enableWorkerUpdates) {
+    silenceWorkerUpdates();
+  }
+
   await enableNewAboutDebugging();
 
   info("opening about:debugging");
 
-  const tab = await addTab("about:debugging", { window: win });
+  const tab = await addTab("about:debugging");
   const browser = tab.linkedBrowser;
   const document = browser.contentDocument;
   const window = browser.contentWindow;
@@ -59,6 +61,17 @@ async function openAboutDebugging(page, win) {
   await waitForRequestsSuccess(window);
 
   return { tab, document, window };
+}
+
+async function closeAboutDevtoolsToolbox(devtoolsTab, win) {
+  info("Close about:devtools-toolbox page");
+  const onToolboxDestroyed = gDevTools.once("toolbox-destroyed");
+  await removeTab(devtoolsTab);
+  await onToolboxDestroyed;
+  // Changing the tab will also trigger a request to list tabs, so wait until the selected
+  // tab has changed to wait for requests to settle.
+  await waitUntil(() => gBrowser.selectedTab !== devtoolsTab);
+  await waitForRequestsToSettle(win.AboutDebugging.store);
 }
 
 async function reloadAboutDebugging(tab) {
@@ -135,6 +148,18 @@ function waitForDispatch(store, type) {
 }
 
 /**
+ * Navigate to "This Firefox"
+ */
+async function selectThisFirefoxPage(doc, store) {
+  info("Select This Firefox page");
+  doc.location.hash = "#/runtime/this-firefox";
+  info("Wait for requests to settle");
+  await waitForRequestsToSettle(store);
+  info("Wait for runtime page to be rendered");
+  await waitUntil(() => doc.querySelector(".js-runtime-page"));
+}
+
+/**
  * Navigate to the Connect page. Resolves when the Connect page is rendered.
  */
 async function selectConnectPage(doc) {
@@ -153,6 +178,24 @@ async function selectConnectPage(doc) {
   await waitUntil(() => doc.querySelector(".js-connect-page"));
 }
 
+function getDebugTargetPane(title, document) {
+  // removes the suffix "(<NUMBER>)" in debug target pane's title, if needed
+  const sanitizeTitle = (x) => {
+    return x.replace(/\s+\(\d+\)$/, "");
+  };
+
+  const targetTitle = sanitizeTitle(title);
+  for (const titleEl of document.querySelectorAll(".js-debug-target-pane-title")) {
+    if (sanitizeTitle(titleEl.textContent) !== targetTitle) {
+      continue;
+    }
+
+    return titleEl.closest(".js-debug-target-pane");
+  }
+
+  return null;
+}
+
 function findDebugTargetByText(text, document) {
   const targets = [...document.querySelectorAll(".js-debug-target-item")];
   return targets.find(target => target.textContent.includes(text));
@@ -161,6 +204,13 @@ function findDebugTargetByText(text, document) {
 function findSidebarItemByText(text, document) {
   const sidebarItems = document.querySelectorAll(".js-sidebar-item");
   return [...sidebarItems].find(element => {
+    return element.textContent.includes(text);
+  });
+}
+
+function findSidebarItemLinkByText(text, document) {
+  const links = document.querySelectorAll(".js-sidebar-link");
+  return [...links].find(element => {
     return element.textContent.includes(text);
   });
 }

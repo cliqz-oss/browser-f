@@ -5,20 +5,18 @@
 
 const { types, generateActorSpec, RetVal, Arg, Option } = require("devtools/shared/protocol");
 
-types.addDictType("root.getTab", {
-  tab: "json",
-});
-types.addDictType("root.getWindow", {
-  window: "json",
-});
 types.addDictType("root.listWorkers", {
   workers: "array:workerTarget",
 });
 types.addDictType("root.listServiceWorkerRegistrations", {
-  registrations: "array:json",
+  registrations: "array:serviceWorkerRegistration",
 });
 types.addDictType("root.listProcesses", {
   processes: "array:json",
+});
+types.addDictType("root.listTabs", {
+  tabs: "array:browsingContextTarget",
+  selected: "number",
 });
 
 const rootSpecPrototype = {
@@ -34,7 +32,7 @@ const rootSpecPrototype = {
       request: {
         favicons: Option(0, "boolean"),
       },
-      response: RetVal("json"),
+      response: RetVal("root.listTabs"),
     },
 
     getTab: {
@@ -42,18 +40,24 @@ const rootSpecPrototype = {
         outerWindowID: Option(0, "number"),
         tabId: Option(0, "number"),
       },
-      response: RetVal("root.getTab"),
+      response: {
+        tab: RetVal("browsingContextTarget"),
+      },
     },
 
     getWindow: {
       request: {
         outerWindowID: Option(0, "number"),
       },
-      response: RetVal("root.getWindow"),
+      response: {
+        window: RetVal("browsingContextTarget"),
+      },
     },
 
     listAddons: {
-      request: {},
+      request: {
+        iconDataURL: Option(0, "boolean"),
+      },
       response: {
         addons: RetVal("array:addonTarget"),
       },

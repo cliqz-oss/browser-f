@@ -4,17 +4,17 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-#include "mozilla/ArrayUtils.h"
-
 #include "mozilla/dom/SVGMPathElement.h"
+
 #include "nsDebug.h"
+#include "mozilla/ArrayUtils.h"
 #include "mozilla/dom/SVGAnimateMotionElement.h"
 #include "mozilla/dom/SVGPathElement.h"
 #include "nsContentUtils.h"
 #include "mozilla/dom/SVGMPathElementBinding.h"
 #include "nsIURI.h"
 
-NS_IMPL_NS_NEW_NAMESPACED_SVG_ELEMENT(MPath)
+NS_IMPL_NS_NEW_SVG_ELEMENT(MPath)
 
 namespace mozilla {
 namespace dom {
@@ -24,7 +24,7 @@ JSObject* SVGMPathElement::WrapNode(JSContext* aCx,
   return SVGMPathElement_Binding::Wrap(aCx, this, aGivenProto);
 }
 
-nsSVGElement::StringInfo SVGMPathElement::sStringInfo[2] = {
+SVGElement::StringInfo SVGMPathElement::sStringInfo[2] = {
     {nsGkAtoms::href, kNameSpaceID_None, false},
     {nsGkAtoms::href, kNameSpaceID_XLink, false}};
 
@@ -69,8 +69,7 @@ already_AddRefed<SVGAnimatedString> SVGMPathElement::Href() {
 //----------------------------------------------------------------------
 // nsIContent methods
 
-nsresult SVGMPathElement::BindToTree(nsIDocument* aDocument,
-                                     nsIContent* aParent,
+nsresult SVGMPathElement::BindToTree(Document* aDocument, nsIContent* aParent,
                                      nsIContent* aBindingParent) {
   MOZ_ASSERT(!mPathTracker.get(),
              "Shouldn't have href-target yet (or it should've been cleared)");
@@ -148,9 +147,9 @@ nsresult SVGMPathElement::AfterSetAttr(int32_t aNamespaceID, nsAtom* aName,
 }
 
 //----------------------------------------------------------------------
-// nsSVGElement methods
+// SVGElement methods
 
-nsSVGElement::StringAttributesInfo SVGMPathElement::GetStringInfo() {
+SVGElement::StringAttributesInfo SVGMPathElement::GetStringInfo() {
   return StringAttributesInfo(mStringAttributes, sStringInfo,
                               ArrayLength(sStringInfo));
 }
