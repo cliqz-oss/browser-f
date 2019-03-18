@@ -27,7 +27,7 @@ CROSS_CCTOOLS_PATH=$TOOLCHAIN/cctools
 # `browser/config/tooltool-manifests/macosx64/cross-releng.manifest`.
 CROSS_SYSROOT=$TOOLCHAIN/MacOSX10.11.sdk
 CROSS_PRIVATE_FRAMEWORKS=$CROSS_SYSROOT/System/Library/PrivateFrameworks
-FLAGS="-target x86_64-apple-darwin11 -B $CROSS_CCTOOLS_PATH/bin -isysroot $CROSS_SYSROOT"
+FLAGS="-target x86_64-darwin11 -B $CROSS_CCTOOLS_PATH/bin -isysroot $CROSS_SYSROOT"
 
 export LLVM_CONFIG="$TOOLCHAIN/clang/bin/llvm-config"
 export CC="$TOOLCHAIN/clang/bin/clang $FLAGS"
@@ -36,7 +36,7 @@ export CPP="$TOOLCHAIN/clang/bin/clang $FLAGS -E"
 export LLVMCONFIG=$TOOLCHAIN/clang/bin/llvm-config
 export LDFLAGS="-Wl,-syslibroot,$CROSS_SYSROOT -Wl,-dead_strip"
 export BINDGEN_CFLAGS="$FLAGS"
-export TOOLCHAIN_PREFIX=$CROSS_CCTOOLS_PATH/bin/x86_64-apple-darwin11-
+export TOOLCHAIN_PREFIX=$CROSS_CCTOOLS_PATH/bin/x86_64-darwin11-
 export DSYMUTIL=$topsrcdir/build/macosx/llvm-dsymutil
 mk_add_options "export REAL_DSYMUTIL=$TOOLCHAIN/llvm-dsymutil/bin/dsymutil"
 export MKFSHFS=$TOOLCHAIN/hfsplus-tools/newfs_hfs
@@ -50,5 +50,5 @@ export HOST_CPP="$TOOLCHAIN/clang/bin/clang -E"
 #export HOST_CXXFLAGS="-g"
 #export HOST_LDFLAGS="-g"
 
-ac_add_options --target=x86_64-apple-darwin
+ac_add_options --target=x86_64-darwin
 ac_add_options --with-macos-private-frameworks=$CROSS_PRIVATE_FRAMEWORKS
