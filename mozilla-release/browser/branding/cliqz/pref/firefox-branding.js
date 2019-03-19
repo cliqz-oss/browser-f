@@ -2,7 +2,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-pref("startup.homepage_override_url","");
+// CLIQZ-SPECIAL:
+// DB-2064: startup.homepage_override_url should be assigned a url address leading to Cliqz
+// actual What's new page.
+pref("startup.homepage_override_url","https://cliqz.com/desktop/whatsnew/?version=%VERSION%&oldversion=%OLD_VERSION%");
 pref("startup.homepage_welcome_url","");
 pref("startup.homepage_welcome_url.additional", "");
 
