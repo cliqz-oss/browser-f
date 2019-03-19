@@ -208,16 +208,20 @@ let gHomePane = {
     const customSettingsContainerEl = document.getElementById("customSettings");
     const customUrlEl = customSettingsContainerEl.querySelector("#homePageUrl");
     const homePref = HomePage.getAsString();
-    const homePrefDefault = HomePage.getAsString(true);
 
     const isHomePageCustom = isControlled || (!this._isHomePageDefaultValue() && !this.isHomePageBlank());
     if (shouldShow == null) {
-      shouldShow = isHomePageCustom;
+      // CLIQZ-SPECIAL:
+      // DB-2079:
+      // We need to show `Set Custom URL` if isHomePageCustom equals true OR
+      // if the textfield itself is empty AND is not hidden at the time (meaning it was opened before that).
+      // The last check here is for making sure this function was not called for very first time.
+      shouldShow = isHomePageCustom || !customUrlEl.value.trim() && !customSettingsContainerEl.hidden;
     }
     customSettingsContainerEl.hidden = !shouldShow;
 
     let newValue;
-    if (homePref !== homePrefDefault && homePref !== ABOUT_BLANK_URL) {
+    if (!this._isHomePageDefaultValue() && homePref !== ABOUT_BLANK_URL) {
       newValue = homePref;
     } else {
       newValue = "";
