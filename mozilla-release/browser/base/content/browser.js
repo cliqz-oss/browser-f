@@ -385,6 +385,24 @@ try {
     return !branch.prefHasUserValue(THEME_PREF) || branch.getBoolPref(THEME_PREF);
   }
 
+  function getThemeInitialState() {
+    // set the current state of the Blue theme
+    var freshtabConfig = branch.prefHasUserValue(FRESHTAB_CONFIG) ? branch.getStringPref(FRESHTAB_CONFIG) : '{}';
+    var freshtabBackground = JSON.parse(freshtabConfig).background || {};
+    var themeEnabled = false;
+
+    if (branch.prefHasUserValue(THEME_PREF)) {
+      themeEnabled = branch.getBoolPref(THEME_PREF);
+    } else if (Object.keys(freshtabBackground).length === 0) {
+      // we also set the blue theme if the user did not set any freshtab background
+      themeEnabled = true;
+      // once we decided should user see the theme or not, save the result in prefs
+      branch.setBoolPref(THEME_PREF, true);
+    }
+
+    return themeEnabled;
+  }
+
   function setThemeState(enabled) {
     var win = window.document.getElementById('main-window');
     const env = Cc['@mozilla.org/process/environment;1'].getService(Ci.nsIEnvironment);
@@ -398,22 +416,6 @@ try {
 
   // handles changes
   branch.addObserver(THEME_PREF, { observe:observe }, false);
-
-  // set the current state of the Blue theme
-  var freshtabConfig = branch.prefHasUserValue(FRESHTAB_CONFIG) ? branch.getStringPref(FRESHTAB_CONFIG) : '{}';
-  var freshtabBackground = JSON.parse(freshtabConfig).background || {};
-  var themeEnabled = false;
-
-  if (branch.prefHasUserValue(THEME_PREF)) {
-    themeEnabled = branch.getBoolPref(THEME_PREF);
-  } else if (Object.keys(freshtabBackground).length === 0) {
-    // we also set the blue theme if the user did not set any freshtab background
-    themeEnabled = true;
-    // once we decided should user see the theme or not, save the result in prefs
-    branch.setBoolPref(THEME_PREF, true);
-  }
-
-  setThemeState(themeEnabled);
 } catch (e) {
   Cu.reportError(e);
 }
@@ -1396,6 +1398,13 @@ var gBrowserInit = {
     gBrowser.init();
 
     BrowserWindowTracker.track(window);
+
+    // CLIQZ-SPECIAL:
+    // DB-1913: set blue theme initial state.
+    // Since the method is trying to get access to DOM element
+    // we need to make sure it actually exists.
+    // onDOMContentLoaded event trigger is a good place to do that.
+    setThemeState(getThemeInitialState());
 
     gNavToolbox.palette = document.getElementById("BrowserToolbarPalette");
     gNavToolbox.palette.remove();
