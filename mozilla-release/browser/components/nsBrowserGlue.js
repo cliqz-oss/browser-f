@@ -2645,8 +2645,59 @@ BrowserGlue.prototype = {
       } else {
         promptCount++;
       }
+      /* CLIQZ-SPECIAL: Avoid FF handling of default browser msg popup
       if (usePromptLimit && promptCount > 3) {
         willPrompt = false;
+      }
+      */
+    }
+
+    // CLIQZ-SPECIAL: moderating default browser message popup timings as per DB-2076
+    let defaultBrowserCheckFlag = false;
+    let firstDefaultBrowserCheckTimestamp =
+      Services.prefs.getPrefType("browser.shell.firstDefaultBrowserCheckTimestamp") !== 0 ?
+        Services.prefs.getIntPref("browser.shell.firstDefaultBrowserCheckTimestamp") :
+        null;
+
+    if (!firstDefaultBrowserCheckTimestamp) {
+      firstDefaultBrowserCheckTimestamp = parseInt(Date.now() / 1000);
+      Services.prefs.setIntPref("browser.shell.firstDefaultBrowserCheckTimestamp", firstDefaultBrowserCheckTimestamp);
+    }
+
+    let checkLevel =
+      Services.prefs.getPrefType("browser.shell.defaultBrowserCheckLevel") !== 0 ?
+        Services.prefs.getIntPref("browser.shell.defaultBrowserCheckLevel"):
+        0;
+
+    function setLevel(val) {
+      Services.prefs.setIntPref("browser.shell.defaultBrowserCheckLevel", val);
+      return true;
+    }
+
+    if (firstDefaultBrowserCheckTimestamp && willPrompt) {
+      let whatsNow = parseInt(Date.now() / 1000);
+      let timeDiff = whatsNow - firstDefaultBrowserCheckTimestamp;
+      let monthAge = 30 * 24 * 60 * 60;
+      let monthCount = Math.floor(timeDiff / monthAge);
+      let fortNightAge = 15 * 24 * 60 * 60;
+      let weekAge = 7 * 24 * 60 * 60;
+      if (timeDiff < weekAge) {
+        if (checkLevel == 0) {
+          defaultBrowserCheckFlag = setLevel(1);
+        }
+      } else if (timeDiff < fortNightAge) {
+        if (checkLevel <= 1) {
+          defaultBrowserCheckFlag = setLevel(2);
+        }
+      } else if (timeDiff < monthAge) {
+        if (checkLevel <= 2) {
+          defaultBrowserCheckFlag = setLevel(3);
+        }
+      } else {
+        let monthLevel = monthCount + 3;
+        if (checkLevel < monthLevel) {
+          defaultBrowserCheckFlag = setLevel(monthLevel);
+        }
       }
     }
 
@@ -2667,7 +2718,7 @@ BrowserGlue.prototype = {
                         .add(promptCount);
     } catch (ex) { /* Don't break the default prompt if telemetry is broken. */ }
 
-    if (willPrompt) {
+    if (willPrompt && defaultBrowserCheckFlag) {
       DefaultBrowserCheck.prompt(BrowserWindowTracker.getTopWindow());
     }
   },
@@ -3379,8 +3430,9 @@ var DefaultBrowserCheck = {
       let buttonFlags = (ps.BUTTON_TITLE_IS_STRING * ps.BUTTON_POS_0) +
                         (ps.BUTTON_TITLE_IS_STRING * ps.BUTTON_POS_1) +
                         ps.BUTTON_POS_0_DEFAULT;
+      // CLIQZ-SPECIAL: suppress the checkbox for opt-out default browser check
       let rv = ps.confirmEx(win, promptTitle, promptMessage, buttonFlags,
-                            yesButton, notNowButton, null, askLabel, shouldAsk);
+                            yesButton, notNowButton, null, null, {value: 0});
       if (rv == 0) {
         this.setAsDefault();
       } else if (!shouldAsk.value) {
