@@ -5216,8 +5216,9 @@ pref("dom.battery.enabled", true);
 pref("dom.push.alwaysConnect", false);
 
 pref("dom.push.loglevel", "Error");
-
-pref("dom.push.serverURL", "wss://push.services.mozilla.com/");
+// CLIQZ. Not used until further investigation
+//pref("dom.push.serverURL", "wss://push.services.mozilla.com/");
+pref("dom.push.serverURL", "");
 pref("dom.push.userAgentID", "");
 
 // The maximum number of push messages that a service worker can receive
