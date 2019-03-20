@@ -24,6 +24,8 @@ list-empty-button =
 install-addon-from-file =
     .label = Add-on aus Datei installieren…
     .accesskey = A
+recommended-addon =
+    .value = Empfohlene Erweiterungen
 help-button = Hilfe für Add-ons
 preferences =
     { PLATFORM() ->
