@@ -2645,9 +2645,11 @@ BrowserGlue.prototype = {
       } else {
         promptCount++;
       }
+      /* CLIQZ-SPECIAL: Avoid FF handling of default browser msg popup
       if (usePromptLimit && promptCount > 3) {
         willPrompt = false;
       }
+      */
     }
 
     // CLIQZ-SPECIAL: moderating default browser message popup timings as per DB-2076
@@ -2691,7 +2693,7 @@ BrowserGlue.prototype = {
         if (checkLevel <= 2) {
           defaultBrowserCheckFlag = setLevel(3);
         }
-      } else if (timeDiff >= monthAge) {
+      } else {
         let monthLevel = monthCount + 3;
         if (checkLevel < monthLevel) {
           defaultBrowserCheckFlag = setLevel(monthLevel);
