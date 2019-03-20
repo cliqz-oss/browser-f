@@ -123,3 +123,12 @@ RUN mkdir -p /home/$user/clang; \
     mkdir -p lib/gcc/x86_64-linux-gnu/; \
     cd lib/gcc/x86_64-linux-gnu/; \
     ln -s /usr/lib/gcc/x86_64-linux-gnu/$GCC_VERSION $GCC_VERSION
+
+#Install nasm 2.13
+RUN mkdir -p /home/$user/nasm; \
+    cd /home/$user/nasm; \
+    wget --output-document=nasm.tar.xz --quiet "https://www.nasm.us/pub/nasm/releasebuilds/2.13.03/nasm-2.13.03.tar.xz"; \
+    tar xf nasm.tar.xz; \
+    cd nasm-2.13.03; \
+    sh configure; \
+    sudo make install
