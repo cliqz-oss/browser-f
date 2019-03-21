@@ -94,7 +94,7 @@ node('gideon') {
     vagrant.inside(
         'Vagrantfile', 
         '/jenkins',
-        4, // CPU
+        2, // CPU
         8000, // MEMORY
         7000, // VNCPORT
         false, // rebuild image
@@ -104,7 +104,7 @@ node('gideon') {
                 stage('Checkout'){
                     checkout([
                         $class: 'GitSCM', 
-                        branches: [[name: '*/osxcrossbuild']], 
+                        branches: [[name: '*/master']], 
                         doGenerateSubmoduleConfigurations: false, 
                         extensions: [], 
                         submoduleCfg: [], 
