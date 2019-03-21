@@ -200,14 +200,15 @@ richlistitem:not([selected]) * {
 }
 
 #recommended-addon-list {
-  margin-bottom: 25px;
-  padding: 0 24px;
-}
-
-#recommended-addon-list .scrollbox-innerbox {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
+  margin-bottom: 25px;
   max-width: 675px;
+}
+
+#recommended-addon-list-holder {
+  margin-inline-start: 24px;
+  width: 672px;
 }
 
 .cliqz-recommended-addons {
