@@ -432,7 +432,7 @@ class WindowsGPOPoliciesProvider {
 
   _readData(wrk, root) {
     wrk.open(root, "SOFTWARE\\Policies", wrk.ACCESS_READ);
-    if (wrk.hasChild("Mozilla\\Firefox")) {
+    if (wrk.hasChild("Cliqz")) {
       this._policies = WindowsGPOParser.readPolicies(wrk, this._policies);
     }
     wrk.close();

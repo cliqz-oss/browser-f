@@ -23,7 +23,7 @@ var EXPORTED_SYMBOLS = ["WindowsGPOParser"];
 
 var WindowsGPOParser = {
   readPolicies(wrk, policies) {
-    let childWrk = wrk.openChild("Mozilla\\Firefox", wrk.ACCESS_READ);
+    let childWrk = wrk.openChild("Cliqz", wrk.ACCESS_READ);
     if (!policies) {
       policies = {};
     }
