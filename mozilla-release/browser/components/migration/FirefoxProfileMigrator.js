@@ -17,9 +17,10 @@
 ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 ChromeUtils.import("resource:///modules/MigrationUtils.jsm");
 ChromeUtils.import("resource://gre/modules/Services.jsm");
-ChromeUtils.import("resource://gre/modules/Task.jsm");
 ChromeUtils.import("resource://gre/modules/NetUtil.jsm");
 
+ChromeUtils.defineModuleGetter(this, "Task",
+                               "resource://gre/modules/Task.jsm");
 ChromeUtils.defineModuleGetter(this, "PlacesBackups",
                                "resource://gre/modules/PlacesBackups.jsm");
 ChromeUtils.defineModuleGetter(this, "SessionMigration",
