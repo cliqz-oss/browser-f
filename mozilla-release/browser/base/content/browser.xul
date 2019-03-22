@@ -595,7 +595,9 @@ xmlns="http://www.w3.org/1999/xhtml"
            position="bottomcenter topright"
            tabspecific="true"
            noautofocus="true"
+#ifdef 0
            pocket-title="&saveToPocketCmd.label;"
+#endif
            copyURL-title="&pageAction.copyLink.label;"
            emailLink-title="&emailPageCmd.label;"
            sendToDevice-notReadyTitle="&sendToDevice.syncNotReady.label;"
@@ -1058,6 +1060,7 @@ xmlns="http://www.w3.org/1999/xhtml"
                        tooltiptext="&pageActionButton.tooltip;"
                        onmousedown="BrowserPageActions.mainButtonClicked(event);"
                        onkeypress="BrowserPageActions.mainButtonClicked(event);"/>
+#ifdef 0
                 <hbox id="pocket-button-box"
                       hidden="true"
                       class="urlbar-icon-wrapper urlbar-page-action"
@@ -1072,6 +1075,7 @@ xmlns="http://www.w3.org/1999/xhtml"
                            role="presentation"/>
                   </hbox>
                 </hbox>
+#endif
                 <hbox id="star-button-box"
                       hidden="true"
                       class="urlbar-icon-wrapper urlbar-page-action"
