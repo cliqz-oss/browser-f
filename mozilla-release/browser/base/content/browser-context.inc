@@ -95,10 +95,12 @@
                 label="&saveLinkCmd.label;"
                 accesskey="&saveLinkCmd.accesskey;"
                 oncommand="gContextMenu.saveLink();"/>
+#ifdef 0
       <menuitem id="context-savelinktopocket"
                 label="&saveLinkToPocketCmd.label;"
                 accesskey="&saveLinkToPocketCmd.accesskey;"
                 oncommand= "Pocket.savePage(gContextMenu.browser, gContextMenu.linkURL);"/>
+#endif
       <menuitem id="context-copyemail"
                 label="&copyEmailCmd.label;"
                 accesskey="&copyEmailCmd.accesskey;"
@@ -268,10 +270,12 @@
                 label="&savePageCmd.label;"
                 accesskey="&savePageCmd.accesskey2;"
                 oncommand="gContextMenu.savePageAs();"/>
+#ifdef 0
       <menuitem id="context-pocket"
                 label="&saveToPocketCmd.label;"
                 accesskey="&saveToPocketCmd.accesskey;"
                 oncommand="Pocket.savePage(gContextMenu.browser, gContextMenu.browser.currentURI.spec, gContextMenu.browser.contentTitle);"/>
+#endif
       <menuseparator id="context-sep-sendpagetodevice" class="sync-ui-item"
                      hidden="true"/>
       <menu id="context-sendpagetodevice"

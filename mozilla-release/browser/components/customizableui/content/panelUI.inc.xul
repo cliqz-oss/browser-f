@@ -677,10 +677,12 @@
                        label="&bookmarksSubview.label;"
                        closemenu="none"
                        oncommand="BookmarkingUI.showSubView(this);"/>
+#ifdef 0
         <toolbarbutton id="appMenu-library-pocket-button"
                        class="subviewbutton subviewbutton-iconic"
                        label="&pocketMenuitem.label;"
                        oncommand="Pocket.openList(event)"/>
+#endif
         <toolbarbutton id="appMenu-library-history-button"
                        class="subviewbutton subviewbutton-iconic subviewbutton-nav"
                        label="&historyMenu.label;"
