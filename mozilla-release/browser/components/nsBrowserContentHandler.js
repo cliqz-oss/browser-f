@@ -520,14 +520,23 @@ nsBrowserContentHandler.prototype = {
       // URL if we do end up showing an overridePage. This makes it possible
       // to have the overridePage's content vary depending on the version we're
       // upgrading from.
-      let old_mstone = Services.prefs.getCharPref("browser.startup.homepage_override.mstone", "unknown");
       let override = needHomepageOverride(Services.prefs);
-
       if (override === OVERRIDE_NEW_MSTONE) {
+        let old_cliqz_mstone = Services.prefs.getCharPref("distribution.previous_version", "");
+        let new_cliqz_mstone = Services.prefs.getCharPref("distribution.version", "");
+
+        overridePage = Services.prefs.getStringPref("startup.homepage_override_url");
+#if 0
         // %VERSION% placeholder gets formatted by Services.urlFormatter internally
         // https://dxr.mozilla.org/mozilla-central/source/toolkit/components/urlformatter/URLFormatter.jsm#96
         overridePage = Services.urlFormatter.formatURLPref("startup.homepage_override_url");
         overridePage = overridePage.replace("%OLD_VERSION%", old_mstone);
+#endif
+
+        overridePage = overridePage.replace("%VERSION%", new_cliqz_mstone);
+        overridePage = overridePage.replace("%OLD_VERSION%", old_cliqz_mstone);
+
+        Services.prefs.setCharPref("distribution.previous_version", new_cliqz_mstone);
       }
     } catch (ex) {}
 
