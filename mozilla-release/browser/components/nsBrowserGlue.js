@@ -2564,6 +2564,23 @@ BrowserGlue.prototype = {
       }
     }
 
+    // CLIQZ-SPECIAL:
+    // DB-2064:
+    // Unfortunately, I disabled method needHomepageOverride in nsBrowserContentHandler.js for
+    // 1.24.0 - 1.25.3 versions inclusively.
+    // This created a problem of showing WhatsNew page for users after update to 1.26.x
+    // Here we set mstone version for those which would allow them to see
+    // WhatsNew page after the browser has been updated to 1.26.x
+    // 1.24.0 <--> UI_VERSION = 74;
+    // 1.25.3 <--> UI_VERSION = 77;
+    if (currentUIVersion >= 74 && currentUIVersion <= 77) {
+      let platformVersion = "64.0.2";
+      if (currentUIVersion === 77) {
+        platformVersion = "65.0.3";
+      }
+      Services.prefs.setCharPref("browser.startup.homepage_override.mstone", platformVersion);
+    }
+
     if (currentUIVersion < 75) {
       // Ensure we try to migrate any live bookmarks the user might have, trying up to
       // 5 times. We set this early, and here, to avoid running the migration on
