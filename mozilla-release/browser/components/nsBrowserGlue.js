@@ -2232,6 +2232,13 @@ BrowserGlue.prototype = {
       // This is a new profile, nothing to migrate.
       Services.prefs.setIntPref("browser.migration.version", UI_VERSION);
 
+      // CLIQZ-SPECIAL:
+      // DB-2097: in case a user has a new profile we set a previous version of
+      // Cliqz distribution to the current one (if exists) so later after update
+      // we could compare it against a new one in nsBrowserContentHandler.js
+      Services.prefs.setCharPref("distribution.previous_version",
+        Services.prefs.getCharPref("distribution.version", ""));
+
       // CLIQZ-SPECIAL: Default disabled AFT for new users.
       Services.prefs.setBoolPref("browser.privatebrowsing.apt", false);
 
