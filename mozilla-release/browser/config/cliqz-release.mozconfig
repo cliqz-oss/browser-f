@@ -21,6 +21,3 @@ export MOZ_REQUIRE_SIGNING=1
 # safeguard against someone forgetting to re-set EARLY_BETA_OR_EARLIER in
 # defines.sh during the beta cycle
 export BUILDING_RELEASE=1
-
-ac_add_options --target=i686-pc-mingw32
-ac_add_options --host=i686-pc-mingw32
