@@ -90,6 +90,11 @@ IF "%CQZ_BUILD_64BIT_WINDOWS%"=="1" (
 ) ELSE (
   SET WIN32_REDIST_DIR=c:\build\redist\msvc\x86\
   SET WIN_UCRT_REDIST_DIR=c:\build\redist\ucrt\DLLs\x86\
+  ECHO !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+  ECHO !! Remove after merge with Firefox 67.0 !!
+  ECHO !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+  SET LINKER=C:/PROGRA~2/MICROS~1/2017/PROFES~1/VC/Tools/MSVC/1415~1.267/bin/HostX64/x86/link.exe
+  SET HOST_LINKER=C:/PROGRA~2/MICROS~1/2017/PROFES~1/VC/Tools/MSVC/1415~1.267/bin/HostX64/x86/link.exe
 )
 
 :::::::::::::::::::::::::::::::::::
