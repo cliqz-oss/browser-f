@@ -26,6 +26,7 @@ install-addon-from-file =
     .accesskey = A
 recommended-addon =
     .value = Empfohlene Erweiterungen
+install-addon-disclaimer = Vorsicht beim Installieren von Add-ons. <label data-l10n-name="addon-risks">Erfahre mehr über die Risiken.</label>
 help-button = Hilfe für Add-ons
 preferences =
     { PLATFORM() ->
