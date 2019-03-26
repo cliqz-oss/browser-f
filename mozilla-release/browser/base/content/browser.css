@@ -375,8 +375,8 @@ toolbarpaletteitem {
 /* Rules to help integrate WebExtension buttons */
 
 .webextension-browser-action > .toolbarbutton-badge-stack > .toolbarbutton-icon {
-  height: 15px;
-  width: 14px;
+  height: 16px;
+  width: 16px;
 }
 
 @media not all and (min-resolution: 1.1dppx) {
