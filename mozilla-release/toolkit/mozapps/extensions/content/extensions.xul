@@ -370,7 +370,7 @@
                 <hbox class="message-bar">
                   <image class="message-bar-icon"/>
                   <description class="message-bar-description" data-l10n-id="install-addon-disclaimer">
-                    <label class="text-link plain" id="installAddonDisclaimer-learnmore-link" data-l10n-id="install-addon-disclaimer-learn-more"/>
+                    <label class="text-link" href="https://cliqz.com/en/support/add-ons" data-l10n-name="addon-risks"></label>
                   </description>
                 </hbox>
               </vbox>
