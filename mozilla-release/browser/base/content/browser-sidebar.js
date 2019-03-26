@@ -327,7 +327,7 @@ var SidebarUI = {
    * True if the sidebar is currently open.
    */
   get isOpen() {
-    return !this._box.hidden;
+    return this._box != null && !this._box.hidden;
   },
 
   /**
