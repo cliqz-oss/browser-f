@@ -533,8 +533,9 @@ nsBrowserContentHandler.prototype = {
         overridePage = overridePage.replace("%OLD_VERSION%", old_mstone);
 #endif
 
-        overridePage = overridePage.replace("%VERSION%", new_cliqz_mstone);
-        overridePage = overridePage.replace("%OLD_VERSION%", old_cliqz_mstone);
+        overridePage = overridePage.replace("/%LOCALE%/", Services.locale.defaultLocale === "de" ? "/" : "/en/")
+                                   .replace("%VERSION%", new_cliqz_mstone)
+                                   .replace("%OLD_VERSION%", old_cliqz_mstone);
 
         Services.prefs.setCharPref("distribution.previous_version", new_cliqz_mstone);
       }
