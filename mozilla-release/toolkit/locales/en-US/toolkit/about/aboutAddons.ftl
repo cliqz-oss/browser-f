@@ -37,7 +37,7 @@ install-addon-from-file =
 recommended-addon =
     .value = Recommended Extensions
 
-install-addon-disclaimer = Proceed with caution when installing add-ons. <label data-l10n-name="addon-risks">Learn more about the risks.</label>.
+install-addon-disclaimer = Proceed with caution when installing add-ons. <label data-l10n-name="addon-risks">Learn more about the risks.</label>
 
 help-button = Add-ons Support
 
