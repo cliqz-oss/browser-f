@@ -19,8 +19,6 @@ ChromeUtils.import("resource:///modules/MigrationUtils.jsm");
 ChromeUtils.import("resource://gre/modules/Services.jsm");
 ChromeUtils.import("resource://gre/modules/NetUtil.jsm");
 
-ChromeUtils.defineModuleGetter(this, "Task",
-                               "resource://gre/modules/Task.jsm");
 ChromeUtils.defineModuleGetter(this, "PlacesBackups",
                                "resource://gre/modules/PlacesBackups.jsm");
 ChromeUtils.defineModuleGetter(this, "SessionMigration",
@@ -60,7 +58,7 @@ function getFile(path) {
   return file;
 }
 
-function* insertWholeBookmarkFolder(db, aId, aGuid) {
+async function insertWholeBookmarkFolder(db, aId, aGuid) {
   let query = `SELECT b.id, h.url, COALESCE(b.title, h.title) AS title,
     b.type, k.keyword, b.dateAdded, b.lastModified
     FROM moz_bookmarks b
@@ -68,7 +66,7 @@ function* insertWholeBookmarkFolder(db, aId, aGuid) {
     LEFT JOIN moz_keywords k ON k.id = b.keyword_id
     WHERE b.type IN (1,2) AND b.parent = ${aId}
     ORDER BY b.position;`;
-  let rows = yield db.execute(query);
+  let rows = await db.execute(query);
   let yieldCounter = 0;
   for (let row of rows) {
     let type = row.getResultByName("type");
@@ -79,26 +77,26 @@ function* insertWholeBookmarkFolder(db, aId, aGuid) {
       case PlacesUtils.bookmarks.TYPE_BOOKMARK: // Bookmark Url - Handle keyword and favicon
         let url = row.getResultByName("url");
         if (isValidUrl(url)) {
-          yield PlacesUtils.bookmarks.insert({ parentGuid: aGuid,
+          await PlacesUtils.bookmarks.insert({ parentGuid: aGuid,
                                                url,
                                                title,
                                              });
         }
         break;
       case PlacesUtils.bookmarks.TYPE_FOLDER: // Bookmark Folder - Handle Tag and Livemark (later)
-        let newFolderGuid = (yield PlacesUtils.bookmarks.insert({
+        let newFolderGuid = (await PlacesUtils.bookmarks.insert({
           parentGuid: aGuid,
           type: PlacesUtils.bookmarks.TYPE_FOLDER,
           title,
         })).guid;
-        yield insertWholeBookmarkFolder(db, id, newFolderGuid); // Recursive insert bookmarks
+        await insertWholeBookmarkFolder(db, id, newFolderGuid); // Recursive insert bookmarks
         break;
     }
 
     // With many bookmarks we end up stealing the CPU - even with yielding!
     // So we let everyone else have a go every few items (bug 1186714).
     if (++yieldCounter % 50 == 0) {
-      yield new Promise(resolve => {
+      await new Promise(resolve => {
         Services.tm.currentThread.dispatch(resolve, Ci.nsIThread.DISPATCH_NORMAL);
       });
     }
@@ -290,94 +288,79 @@ FirefoxProfileMigrator.prototype._getResourcesInternal = async function(sourcePr
 
     return {
       type: MigrationUtils.resourceTypes.HISTORY,
+      migrate: async (aCallback) => {
+        let db = await Sqlite.openConnection({
+          path: placesFile.path
+        });
 
-      migrate(aCallback) {
-        return Task.spawn(function* () {
-          let db = yield Sqlite.openConnection({
-            path: placesFile.path
-          });
-
-          try {
-            // IMPORT BOOKMARKS
-            const topBookmarkFolderGuids = [
-                                            "menu________",
-                                            "toolbar_____",
-                                            "unfiled_____"
-                                            ];
-            let parentGuid = PlacesUtils.bookmarks.menuGuid;
-            // Create Firefox bookmarks folder on Bookmarks Menu
-            parentGuid = (yield PlacesUtils.bookmarks.insert({
-              parentGuid,
-              type: PlacesUtils.bookmarks.TYPE_FOLDER,
-              title: "Firefox",
-            })).guid;
-            // Create top bookmarks folders on Firefox bookmarks folder and recursively insert child bookmarks
-            for (let guid of topBookmarkFolderGuids) {
-              let query = `SELECT b.id, b.title
-                          FROM moz_bookmarks b
-                          WHERE b.type = 2 AND b.guid = '${guid}'
-                          ORDER BY b.position`;
-              let rows = yield db.execute(query);
-              if (rows.length > 0) {
-                let title = rows[0].getResultByName("title");
-                let id = rows[0].getResultByName("id");
-                let folderGuid = (yield PlacesUtils.bookmarks.insert({
-                  parentGuid,
-                  type: PlacesUtils.bookmarks.TYPE_FOLDER,
-                  title,
-                })).guid;
-                yield insertWholeBookmarkFolder(db, id, folderGuid);
-              }
+        try {
+          // IMPORT BOOKMARKS
+          const topBookmarkFolderGuids = [
+                                          "menu________",
+                                          "toolbar_____",
+                                          "unfiled_____"
+                                          ];
+          let parentGuid = PlacesUtils.bookmarks.menuGuid;
+          // Create Firefox bookmarks folder on Bookmarks Menu
+          parentGuid = (await PlacesUtils.bookmarks.insert({
+            parentGuid,
+            type: PlacesUtils.bookmarks.TYPE_FOLDER,
+            title: "Firefox",
+          })).guid;
+          // Create top bookmarks folders on Firefox bookmarks folder and recursively insert child bookmarks
+          for (let guid of topBookmarkFolderGuids) {
+            let query = `SELECT b.id, b.title
+                        FROM moz_bookmarks b
+                        WHERE b.type = 2 AND b.guid = '${guid}'
+                        ORDER BY b.position`;
+            let rows = await db.execute(query);
+            if (rows.length > 0) {
+              let title = rows[0].getResultByName("title");
+              let id = rows[0].getResultByName("id");
+              let folderGuid = (await PlacesUtils.bookmarks.insert({
+                parentGuid,
+                type: PlacesUtils.bookmarks.TYPE_FOLDER,
+                title,
+              })).guid;
+              await insertWholeBookmarkFolder(db, id, folderGuid);
             }
-
-            // IMPORT HISTORY
-            let rows = yield db.execute(`SELECT h.url, h.title, v.visit_type, v.visit_date
-                                        FROM moz_places h JOIN moz_historyvisits v
-                                        ON h.id = v.place_id
-                                        WHERE v.visit_type <= 3;`);
-            let places = [];
-            for (let row of rows) {
-              try {
-                places.push({
-                  uri: NetUtil.newURI(row.getResultByName("url")),
-                  title: row.getResultByName("title"),
-                  visits: [{
-                    transitionType: row.getResultByName("visit_type"),
-                    visitDate: row.getResultByName("visit_date"),
-                  }],
-                });
-              } catch (e) {
-                Cu.reportError(e);
-              }
-            }
-
-            if (places.length > 0) {
-              yield new Promise((resolve, reject) => {
-                PlacesUtils.asyncHistory.updatePlaces(places, {
-                  _success: false,
-                  handleResult: function() {
-                    // Importing any entry is considered a successful import.
-                    this._success = true;
-                  },
-                  handleError: function() {},
-                  handleCompletion: function() {
-                    if (this._success) {
-                      resolve();
-                    } else {
-                      reject(new Error("Couldn't add visits"));
-                    }
-                  }
-                });
-              });
-            }
-          } finally {
-            yield db.close();
           }
-        }).then(() => { aCallback(true); },
-                ex => {
-                  Cu.reportError(ex);
-                  aCallback(false);
-                });
+
+          // IMPORT HISTORY
+          let rows = await db.execute(`SELECT h.url, h.title, v.visit_type, v.visit_date, h.typed
+                                      FROM moz_places h JOIN moz_historyvisits v
+                                      ON h.id = v.place_id
+                                      WHERE v.visit_type <= 3;`);
+          let pageInfos = [];
+          for (let row of rows) {
+            try {
+              // if having typed_count, we changes transition type to typed.
+              let transition = PlacesUtils.history.TRANSITIONS.LINK;
+              if (row.getResultByName("typed") > 0)
+                transition = PlacesUtils.history.TRANSITIONS.TYPED;
+              pageInfos.push({
+                title: row.getResultByName("title"),
+                url: new URL(row.getResultByName("url")),
+                visits: [{
+                  transition,
+                  date: row.getResultByName("visit_date"),
+                }],
+              });
+            } catch (e) {
+              Cu.reportError(e);
+            }
+          }
+
+          if (pageInfos.length > 0) {
+            await MigrationUtils.insertVisitsWrapper(pageInfos);
+          }
+        } catch(e){
+          aCallback(false);
+        } finally {
+          await db.close();
+          aCallback(true);
+          return;
+        }
       }
     };
   }.bind(this);
@@ -390,63 +373,64 @@ FirefoxProfileMigrator.prototype._getResourcesInternal = async function(sourcePr
     return {
       type: MigrationUtils.resourceTypes.PASSWORDS,
 
-      migrate(aCallback) {
-        return Task.spawn(function* () {
-          let jsonStream = yield new Promise(resolve =>
-            NetUtil.asyncFetch({ uri: NetUtil.newURI(passwordsFile),
-                                 loadUsingSystemPrincipal: true
-                               },
-                               (inputStream, resultCode) => {
-                                 if (Components.isSuccessCode(resultCode)) {
-                                   resolve(inputStream);
-                                 } else {
-                                   reject(new Error("Could not read Passwords file"));
-                                 }
-                               }
-            )
-          );
+      migrate: async (aCallback) => {
+        let jsonStream = await new Promise(resolve =>
+          NetUtil.asyncFetch({ uri: NetUtil.newURI(passwordsFile),
+                                loadUsingSystemPrincipal: true
+                              },
+                              (inputStream, resultCode) => {
+                                if (Components.isSuccessCode(resultCode)) {
+                                  resolve(inputStream);
+                                } else {
+                                  reject(new Error("Could not read Passwords file"));
+                                }
+                              }
+          )
+        );
 
-          // Parse password file that is JSON format
-          let passwordJSON = NetUtil.readInputStreamToString(
-            jsonStream, jsonStream.available(), { charset : "UTF-8" });
-          let logins = JSON.parse(passwordJSON).logins;
-          const ff_importer = Cc["@mozilla.org/profile/ff-pass-migrator;1"].createInstance(Ci.nsIFirefoxPasswordMigrator);
-          try {
-            if (ff_importer.init(sourceProfileDir.path)) {
-              // Importing password items
-              if (logins && logins.length > 0) {
-                for (let loginInfo of logins) {
-                  let login = Cc["@mozilla.org/login-manager/loginInfo;1"].createInstance(Ci.nsILoginInfo);
-                  let username = ff_importer.decrypt(loginInfo.encryptedUsername);
-                  let pass = ff_importer.decrypt(loginInfo.encryptedPassword);
-                  if (username.length && pass.length) {
-                    login.init(loginInfo.hostname, loginInfo.formSubmitURL, loginInfo.httpRealm,
-                               username, pass, loginInfo.usernameField, loginInfo.passwordField);
-                    login.QueryInterface(Ci.nsILoginMetaInfo);
-                    login.timeCreated = loginInfo.timeCreated;
-                    login.timeLastUsed = loginInfo.timeLastUsed;
-                    login.timePasswordChanged = loginInfo.timePasswordChanged;
-                    login.timesUsed = loginInfo.timesUsed;
-                    //login.encType will be automatic generated;
+        // Parse password file that is JSON format
+        let passwordJSON = NetUtil.readInputStreamToString(
+          jsonStream, jsonStream.available(), { charset : "UTF-8" });
+        let logins = JSON.parse(passwordJSON).logins;
+        const ff_importer = Cc["@mozilla.org/profile/ff-pass-migrator;1"].createInstance(Ci.nsIFirefoxPasswordMigrator);
+        try {
+          if (ff_importer.init(sourceProfileDir.path)) {
+            // Importing password items
+            if (logins && logins.length > 0) {
+              for (let loginInfo of logins) {
+                let login = Cc["@mozilla.org/login-manager/loginInfo;1"].createInstance(Ci.nsILoginInfo);
+                let username = ff_importer.decrypt(loginInfo.encryptedUsername);
+                let pass = ff_importer.decrypt(loginInfo.encryptedPassword);
+                if (username.length && pass.length) {
+                  login.init(loginInfo.hostname, loginInfo.formSubmitURL, loginInfo.httpRealm,
+                              username, pass, loginInfo.usernameField, loginInfo.passwordField);
+                  login.QueryInterface(Ci.nsILoginMetaInfo);
+                  login.timeCreated = loginInfo.timeCreated;
+                  login.timeLastUsed = loginInfo.timeLastUsed;
+                  login.timePasswordChanged = loginInfo.timePasswordChanged;
+                  login.timesUsed = loginInfo.timesUsed;
+                  //login.encType will be automatic generated;
 
-                    // Add the login only if there's not an existing entry
-                    let logins = Services.logins.findLogins({}, login.hostname,
-                                                            login.formSubmitURL,
-                                                            login.httpRealm);
+                  // Add the login only if there's not an existing entry
+                  let logins = Services.logins.findLogins({}, login.hostname,
+                                                          login.formSubmitURL,
+                                                          login.httpRealm);
 
-                    // Bug 1187190: Password changes should be propagated depending on timestamps.
-                    if (!logins.some(l => login.matches(l, true))) {
-                      Services.logins.addLogin(login);
-                    }
+                  // Bug 1187190: Password changes should be propagated depending on timestamps.
+                  if (!logins.some(l => login.matches(l, true))) {
+                    Services.logins.addLogin(login);
                   }
                 }
               }
             }
-          } finally {
-            yield jsonStream.close(); // Re-Check if it's necessary to close or not
           }
-        }).then(() => aCallback(true),
-        e => { Cu.reportError(e); aCallback(false) });
+        } catch(e){
+          Cu.reportError(e);
+          aCallback(false);
+        } finally {
+          await jsonStream.close(); // Re-Check if it's necessary to close or not
+          aCallback(true)
+        }
       }
     };
   }.bind(this);
@@ -459,35 +443,36 @@ FirefoxProfileMigrator.prototype._getResourcesInternal = async function(sourcePr
     return {
       type: MigrationUtils.resourceTypes.COOKIES,
 
-      migrate(aCallback) {
-        return Task.spawn(function* () {
-          let db = yield Sqlite.openConnection({
-            path: cookiesFile.path
-          });
+      migrate: async (aCallback) => {
+        let db = await Sqlite.openConnection({
+          path: cookiesFile.path
+        });
 
-          try {
-            let rows = yield db.execute(`SELECT name, value,
-                                                host, path,
-                                                expiry, isSecure,
-                                                isHttpOnly
-                                          FROM moz_cookies`);
-            for(let row of rows) {
-              Services.cookies.add(row.getResultByName("host"),
-                                   row.getResultByName("path"),
-                                   row.getResultByName("name"),
-                                   row.getResultByName("value"),
-                                   row.getResultByName("isSecure"),
-                                   row.getResultByName("isHttpOnly"),
-                                   false,
-                                   row.getResultByName("expiry"),
-                                   {},
-                                   Ci.nsICookie2.SAMESITE_UNSET);
-            }
-          } finally {
-            yield db.close();
+        try {
+          let rows = await db.execute(`SELECT name, value,
+                                              host, path,
+                                              expiry, isSecure,
+                                              isHttpOnly
+                                        FROM moz_cookies`);
+          for(let row of rows) {
+            Services.cookies.add(row.getResultByName("host"),
+                                  row.getResultByName("path"),
+                                  row.getResultByName("name"),
+                                  row.getResultByName("value"),
+                                  row.getResultByName("isSecure"),
+                                  row.getResultByName("isHttpOnly"),
+                                  false,
+                                  row.getResultByName("expiry"),
+                                  {},
+                                  Ci.nsICookie2.SAMESITE_UNSET);
           }
-        }).then(() => aCallback(true),
-        e => { Cu.reportError(e); aCallback(false) });
+        } catch(e) {
+          Cu.reportError(e);
+          aCallback(false);
+        } finally {
+          await db.close();
+          aCallback(true);
+        }
       }
     };
   }.bind(this);
@@ -500,36 +485,37 @@ FirefoxProfileMigrator.prototype._getResourcesInternal = async function(sourcePr
     return {
       type: MigrationUtils.resourceTypes.FORMDATA,
 
-      migrate(aCallback) {
-        return Task.spawn(function* () {
-          let db = yield Sqlite.openConnection({
-            path: formDataFile.path
-          });
+      migrate: async (aCallback) => {
+        let db = await Sqlite.openConnection({
+          path: formDataFile.path
+        });
 
-          try {
-            let rows = yield db.execute(`SELECT fieldname,
-                                                value,
-                                                timesUsed,
-                                                firstUsed,
-                                                lastUsed
-                                        FROM moz_formhistory`);
-            let changes = [];
-            for(let row of rows) {
-              changes.push({
-                            op: "add",
-                            fieldname: row.getResultByName("fieldname"),
-                            value:     row.getResultByName("value"),
-                            timesUsed: row.getResultByName("timesUsed"),
-                            firstUsed: row.getResultByName("firstUsed"),
-                            lastUsed:  row.getResultByName("lastUsed"),
-                          });
-            }
-            FormHistory.update(changes);
-          } finally {
-            yield db.close();
+        try {
+          let rows = await db.execute(`SELECT fieldname,
+                                              value,
+                                              timesUsed,
+                                              firstUsed,
+                                              lastUsed
+                                      FROM moz_formhistory`);
+          let changes = [];
+          for(let row of rows) {
+            changes.push({
+                          op: "add",
+                          fieldname: row.getResultByName("fieldname"),
+                          value:     row.getResultByName("value"),
+                          timesUsed: row.getResultByName("timesUsed"),
+                          firstUsed: row.getResultByName("firstUsed"),
+                          lastUsed:  row.getResultByName("lastUsed"),
+                        });
           }
-        }).then(() => aCallback(true),
-        e => { Cu.reportError(e); aCallback(false) });
+          FormHistory.update(changes);
+        } catch(e) {
+          Cu.reportError(e);
+          aCallback(false);
+        } finally {
+          await db.close();
+          aCallback(true);
+        }
       }
     };
   }.bind(this);
