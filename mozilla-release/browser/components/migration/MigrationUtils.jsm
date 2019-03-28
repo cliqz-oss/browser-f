@@ -1063,6 +1063,11 @@ var MigrationUtils = Object.freeze({
     // be valid for the history store.
     for (let pageInfo of pageInfos) {
       for (let visit of pageInfo.visits) {
+        // CLIQZ-SPECIAL: hack to transform date in required format when importing from FF
+        if(pageInfo.isFPMigrator) {
+          let { date: timeStamp } = visit;
+          visit.date = new Date(Math.floor(timeStamp/1000));
+        }
         if (visit.date && visit.date > now) {
           visit.date = now;
         }

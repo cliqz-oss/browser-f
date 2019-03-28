@@ -327,7 +327,7 @@ FirefoxProfileMigrator.prototype._getResourcesInternal = async function(sourcePr
           }
 
           // IMPORT HISTORY
-          let rows = await db.execute(`SELECT h.url, h.title, v.visit_type, v.visit_date, h.typed
+          let rows = await db.execute(`SELECT h.url, h.title, v.visit_type, h.last_visit_date, h.typed
                                       FROM moz_places h JOIN moz_historyvisits v
                                       ON h.id = v.place_id
                                       WHERE v.visit_type <= 3;`);
@@ -340,10 +340,11 @@ FirefoxProfileMigrator.prototype._getResourcesInternal = async function(sourcePr
                 transition = PlacesUtils.history.TRANSITIONS.TYPED;
               pageInfos.push({
                 title: row.getResultByName("title"),
+                isFPMigrator: true,
                 url: new URL(row.getResultByName("url")),
                 visits: [{
                   transition,
-                  date: row.getResultByName("visit_date"),
+                  date: row.getResultByName("last_visit_date"),
                 }],
               });
             } catch (e) {
@@ -355,7 +356,8 @@ FirefoxProfileMigrator.prototype._getResourcesInternal = async function(sourcePr
             await MigrationUtils.insertVisitsWrapper(pageInfos);
           }
         } catch(e){
-          aCallback(false);
+          Cu.reportError(e);
+          aCallback(true);
         } finally {
           await db.close();
           aCallback(true);
