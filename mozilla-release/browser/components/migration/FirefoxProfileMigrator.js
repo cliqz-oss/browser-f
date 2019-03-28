@@ -289,11 +289,11 @@ FirefoxProfileMigrator.prototype._getResourcesInternal = async function(sourcePr
     return {
       type: MigrationUtils.resourceTypes.HISTORY,
       migrate: async (aCallback) => {
-        let db = await Sqlite.openConnection({
-          path: placesFile.path
-        });
-
+        let db;
         try {
+          db = await Sqlite.openConnection({
+            path: placesFile.path
+          });
           // IMPORT BOOKMARKS
           const topBookmarkFolderGuids = [
                                           "menu________",
@@ -359,7 +359,9 @@ FirefoxProfileMigrator.prototype._getResourcesInternal = async function(sourcePr
           Cu.reportError(e);
           aCallback(true);
         } finally {
-          await db.close();
+          if(db) {
+            await db.close();
+          }
           aCallback(true);
           return;
         }
@@ -446,11 +448,12 @@ FirefoxProfileMigrator.prototype._getResourcesInternal = async function(sourcePr
       type: MigrationUtils.resourceTypes.COOKIES,
 
       migrate: async (aCallback) => {
-        let db = await Sqlite.openConnection({
-          path: cookiesFile.path
-        });
+        let db;
 
         try {
+          db = await Sqlite.openConnection({
+            path: cookiesFile.path
+          });
           let rows = await db.execute(`SELECT name, value,
                                               host, path,
                                               expiry, isSecure,
@@ -472,7 +475,9 @@ FirefoxProfileMigrator.prototype._getResourcesInternal = async function(sourcePr
           Cu.reportError(e);
           aCallback(false);
         } finally {
-          await db.close();
+          if (db) {
+            await db.close();
+          }
           aCallback(true);
         }
       }
@@ -488,11 +493,11 @@ FirefoxProfileMigrator.prototype._getResourcesInternal = async function(sourcePr
       type: MigrationUtils.resourceTypes.FORMDATA,
 
       migrate: async (aCallback) => {
-        let db = await Sqlite.openConnection({
-          path: formDataFile.path
-        });
-
+        let db;
         try {
+          db = await Sqlite.openConnection({
+            path: formDataFile.path
+          });
           let rows = await db.execute(`SELECT fieldname,
                                               value,
                                               timesUsed,
@@ -515,7 +520,9 @@ FirefoxProfileMigrator.prototype._getResourcesInternal = async function(sourcePr
           Cu.reportError(e);
           aCallback(false);
         } finally {
-          await db.close();
+          if (db) {
+            await db.close();
+          }
           aCallback(true);
         }
       }
