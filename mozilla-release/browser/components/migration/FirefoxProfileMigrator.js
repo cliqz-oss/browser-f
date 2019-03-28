@@ -334,6 +334,14 @@ FirefoxProfileMigrator.prototype._getResourcesInternal = async function(sourcePr
           let pageInfos = [];
           for (let row of rows) {
             try {
+              // CLIQZ-SPECIAL: hack to transform date in required format when importing from FF
+              let timeStamp = row.getResultByName("last_visit_date");
+              try {
+                timeStamp = new Date(Math.floor(timeStamp/1000));
+              } catch(e) {
+                console.log('Erro in histry import')
+              }
+
               // if having typed_count, we changes transition type to typed.
               let transition = PlacesUtils.history.TRANSITIONS.LINK;
               if (row.getResultByName("typed") > 0)
@@ -344,7 +352,7 @@ FirefoxProfileMigrator.prototype._getResourcesInternal = async function(sourcePr
                 url: new URL(row.getResultByName("url")),
                 visits: [{
                   transition,
-                  date: row.getResultByName("last_visit_date"),
+                  date: timeStamp,
                 }],
               });
             } catch (e) {
