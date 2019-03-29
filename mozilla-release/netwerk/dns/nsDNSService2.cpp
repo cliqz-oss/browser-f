@@ -1157,7 +1157,7 @@ nsDNSService::Observe(nsISupports *subject, const char *topic,
   }
 
   if (flushCache) {
-    mResolver->FlushCache();
+    mResolver->FlushCache(false);
     return NS_OK;
   }
 
@@ -1221,6 +1221,12 @@ nsDNSService::GetDNSCacheEntries(
     nsTArray<mozilla::net::DNSCacheEntries> *args) {
   NS_ENSURE_TRUE(mResolver, NS_ERROR_NOT_INITIALIZED);
   mResolver->GetDNSCacheEntries(args);
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+nsDNSService::ClearCache(bool aTrrToo) {
+  mResolver->FlushCache(aTrrToo);
   return NS_OK;
 }
 
