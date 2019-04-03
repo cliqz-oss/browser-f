@@ -192,6 +192,15 @@ AutoForgetTabsService.prototype = {
         "chrome://browser/skin/privatebrowsing-eraser.svg",
         browserStrings.GetStringFromName("apt.notification.label"),
         buttons);
+
+    let event = new CustomEvent("TabPrivateModeChanged", {
+      bubbles: true,
+      cancelable: false,
+      detail: {
+        private: true,
+      },
+    });
+    browser.dispatchEvent(event);
   },
 
   // nsISupports:

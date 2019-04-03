@@ -169,14 +169,17 @@ function gotoPref(aCategory) {
     gSearchResultsPane.query = null;
   }
 
-  if (category === "paneConnect" && gConnectPane && gConnectPane.loadFrame) {
-    gConnectPane.loadFrame();
-  }
-
   // Updating the hash (below) or changing the selected category
   // will re-enter gotoPref.
   if (gLastHash == category && !subcategory)
     return;
+
+  // CLIQZ-SPECIAL:
+  // I have put it here after the previous IF-CLAUSE because otherwise
+  // connect page gets rendered twice on every demand.
+  if (category === "paneConnect" && gConnectPane && gConnectPane.loadFrame) {
+    gConnectPane.loadFrame();
+  }
 
   let item;
   if (category != "paneSearchResults") {
