@@ -2640,6 +2640,7 @@ BrowserGlue.prototype = {
     const usePromptLimit = !AppConstants.RELEASE_OR_BETA;
     let promptCount =
       usePromptLimit ? Services.prefs.getIntPref("browser.shell.defaultBrowserCheckCount") : 0;
+    let popupCount = Services.prefs.getIntPref("browser.shell.defaultBrowserCheckCount");
 
     let willRecoverSession =
       (SessionStartup.sessionType == SessionStartup.RECOVER_SESSION);
@@ -2695,6 +2696,8 @@ BrowserGlue.prototype = {
 
     function setLevel(val) {
       Services.prefs.setIntPref("browser.shell.defaultBrowserCheckLevel", val);
+      popupCount++;
+      Services.prefs.setIntPref("browser.shell.defaultBrowserCheckCount", popupCount);
       return true;
     }
 
@@ -2725,9 +2728,11 @@ BrowserGlue.prototype = {
       }
     }
 
+    /* CLIQZ-SPECIAL: Avoid FF handling of default browser msg popup
     if (usePromptLimit && willPrompt) {
       Services.prefs.setIntPref("browser.shell.defaultBrowserCheckCount", promptCount);
     }
+    */
 
     try {
       // Report default browser status on startup to telemetry

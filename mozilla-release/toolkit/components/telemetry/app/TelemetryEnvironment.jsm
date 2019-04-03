@@ -213,6 +213,7 @@ const DEFAULT_ENVIRONMENT_PREFS = new Map([
   ["browser.formfill.enable", {what: RECORD_PREF_VALUE}],
   ["browser.newtabpage.enabled", {what: RECORD_PREF_VALUE}],
   ["browser.shell.checkDefaultBrowser", {what: RECORD_PREF_VALUE}],
+  ["browser.shell.defaultBrowserCheckCount", {what: RECORD_PREF_VALUE}],
   ["browser.shell.defaultBrowserCheckLevel", {what: RECORD_PREF_VALUE}],
   ["browser.shell.didSkipDefaultBrowserCheckOnFirstRun", {what: RECORD_PREF_VALUE}],
   ["browser.shell.skipDefaultBrowserCheckOnFirstRun", {what: RECORD_PREF_VALUE}],
