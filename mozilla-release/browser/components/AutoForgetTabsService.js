@@ -77,10 +77,12 @@ AutoForgetTabsService.prototype = {
         removeNotificationIfAny(browser, this._consts.AUTO_SWITCHED_TO_FORGET);
       }
       finally {
+        this._notifyTabModeChanges(browser, {private: false});
         this._reloadBrowserAsNormal(browser, rememberDomain);
       }
     }
     else {
+      this._notifyTabModeChanges(browser, {private: true});
       this._reloadBrowserAsPrivate(browser, rememberDomain);
     }
   },
@@ -156,6 +158,7 @@ AutoForgetTabsService.prototype = {
         popup: null,
         callback: (notification, descr) => {
           this._reloadBrowserAsNormal(browser);
+          this._notifyTabModeChanges(browser, {private: false});
           telemetry.updateHistogram(telemetry.states.USER_PICKED_RELOAD_IN_NORMAL_MODE);
           return false;
         }
@@ -168,6 +171,7 @@ AutoForgetTabsService.prototype = {
         popup: null,
         callback: (notification, descr) => {
           this._reloadBrowserAsNormal(browser, true);
+          this._notifyTabModeChanges(browser, {private: false});
           telemetry.updateHistogram(telemetry.states.USER_PICKED_ALWAYS_LOAD_IN_NORMAL_MODE);
           return false;
         }
@@ -193,14 +197,7 @@ AutoForgetTabsService.prototype = {
         browserStrings.GetStringFromName("apt.notification.label"),
         buttons);
 
-    let event = new CustomEvent("TabPrivateModeChanged", {
-      bubbles: true,
-      cancelable: false,
-      detail: {
-        private: true,
-      },
-    });
-    browser.dispatchEvent(event);
+    this._notifyTabModeChanges(browser, {private: true});
   },
 
   // nsISupports:
@@ -231,6 +228,17 @@ AutoForgetTabsService.prototype = {
   },
 
   // PRIVATE:
+
+  _notifyTabModeChanges: function AFTSvc__notifyTabModeChanges(browser, detail = {}) {
+    let event = new CustomEvent("TabPrivateModeChanged", {
+      bubbles: true,
+      cancelable: false,
+      detail: {
+        private: detail.private,
+      },
+    });
+    browser.dispatchEvent(event);
+  },
 
   _onProfileAfterChange: function AFTSvc__onProfileAfterChange() {
     Services.obs.addObserver(this, "profile-before-change", false);
