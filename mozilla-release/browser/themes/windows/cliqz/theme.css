@@ -90,7 +90,7 @@
   margin-bottom: 0;
 }
 toolbar .toolbarbutton-1 > .toolbarbutton-icon {
-  padding: 6px;
+  padding: var(--toolbarbutton-inner-padding, 6px);
 }
 #navigator-toolbox #TabsToolbar #tabbrowser-tabs .tabbrowser-tab {
   /* Remove the tab-line effect on top when hovering a tab */
