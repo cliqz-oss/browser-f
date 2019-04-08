@@ -957,7 +957,7 @@ you can use these alternative items. Otherwise, their values should be empty.  -
 <!ENTITY customizeMode.lwthemes.menuGetMore.accessKey "W">
 <!ENTITY customizeMode.overflowList.title2 "Überhangmenü">
 <!ENTITY customizeMode.overflowList.description "Ziehe Elemente hier her und lasse dann los, um schnell auf sie zugreifen zu können, sie aber außerhalb der Symbolleiste zu lassen.">
-<!ENTITY customizeMode.uidensity "Dichte">
+<!ENTITY customizeMode.uidensity "Abstände">
 <!-- LOCALIZATION NOTE (customizeMode.uidensity.menuNormal.*):
      “Normal” is displayed in the Customize screen, under the Density menu. -->
 <!ENTITY customizeMode.uidensity.menuNormal.label "Normal">
