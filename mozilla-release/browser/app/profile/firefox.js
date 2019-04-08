@@ -1499,7 +1499,8 @@ pref("media.autoplay.enabled.user-gestures-needed", true);
 pref("media.autoplay.default", 1); // 0=Allowed, 1=Blocked
 #else
 // Set Firefox to block autoplay, asking for permission by default.
-pref("media.autoplay.default", 0); // 0=Allowed, 1=Blocked
+// CLIQZ-SPECIAL: blocked by default
+pref("media.autoplay.default", 1); // 0=Allowed, 1=Blocked
 #endif
 
 
