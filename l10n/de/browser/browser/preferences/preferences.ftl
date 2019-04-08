@@ -612,6 +612,8 @@ sitedata-total-size-calculating = Größe von Website-Daten und Cache wird berec
 #   $unit (String) - Name of the unit (for example: "bytes", "KB")
 sitedata-total-size = Die gespeicherten Cookies, Website-Daten und der Cache belegen derzeit { $value } { $unit } Speicherplatz.
 sitedata-learn-more = Weitere Informationen
+sitedata-keep-until = Behalten, bis:
+    .accesskey = i
 sitedata-delete-on-close =
     .label = Cookies und Website-Daten beim Beenden von { -brand-short-name } löschen
     .accesskey = B
