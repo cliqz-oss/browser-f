@@ -345,12 +345,13 @@ class AddonInternal {
   get isCorrectlySigned() {
     switch (this.location.name) {
       case KEY_APP_SYSTEM_ADDONS:
-        // System add-ons must be signed by the system key.
+      // CLIQZ-SPECIAL: check signature for built in addons too!
+      case KEY_APP_SYSTEM_DEFAULTS:
+        // System and built-in add-ons must be signed by the system key.
         return this.signedState == AddonManager.SIGNEDSTATE_SYSTEM;
 
-      case KEY_APP_SYSTEM_DEFAULTS:
       case KEY_APP_TEMPORARY:
-        // Temporary and built-in system add-ons do not require signing.
+        // Temporary add-ons do not require signing.
         return true;
 
       case KEY_APP_SYSTEM_SHARE:
