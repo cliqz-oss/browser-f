@@ -348,6 +348,7 @@ var gPrivacyPane = {
     document.getElementById("forgetMode").hidden = !autoForgetTabs.hasDatabase;
 #endif
 
+    this.blockAutoplayReadPrefs();
     /* Initialize Content Blocking */
 #if 0
     this.initContentBlocking();
