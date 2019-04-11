@@ -8,6 +8,8 @@ ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 ChromeUtils.import("resource://gre/modules/Services.jsm");
 ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
 
+ChromeUtils.defineModuleGetter(this, "PermissionsUtils",
+                               "resource://gre/modules/PermissionsUtils.jsm");
 ChromeUtils.defineModuleGetter(this, "ActorManagerParent",
                                "resource://gre/modules/ActorManagerParent.jsm");
 
@@ -2226,6 +2228,7 @@ BrowserGlue.prototype = {
     const BROWSER_DOCURL = AppConstants.BROWSER_CHROME_URL;
 
     let currentUIVersion;
+    PermissionsUtils.importFromPrefs("blockautoplay.", "autoplay-media");
     if (Services.prefs.prefHasUserValue("browser.migration.version")) {
       currentUIVersion = Services.prefs.getIntPref("browser.migration.version");
     } else {

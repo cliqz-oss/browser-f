@@ -1502,7 +1502,8 @@ pref("media.autoplay.default", 1); // 0=Allowed, 1=Blocked
 // CLIQZ-SPECIAL: blocked by default
 pref("media.autoplay.default", 1); // 0=Allowed, 1=Blocked
 #endif
-
+// CLIQZ-SPECIAL: whitelist for unblocking autoplay.
+pref("blockautoplay.whitelist.add", "https://www.youtube.com/");
 
 #ifdef NIGHTLY_BUILD
 // Block WebAudio from playing automatically.
