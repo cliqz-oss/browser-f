@@ -349,6 +349,9 @@ var gPrivacyPane = {
 #endif
 
     this.blockAutoplayReadPrefs();
+    Preferences.get("media.autoplay.default").on("change",
+      gPrivacyPane.blockAutoplayReadPrefs.bind(gPrivacyPane));
+
     /* Initialize Content Blocking */
 #if 0
     this.initContentBlocking();
