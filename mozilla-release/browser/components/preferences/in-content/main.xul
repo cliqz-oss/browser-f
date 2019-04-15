@@ -43,7 +43,7 @@
   </vbox>
 #endif
 
-  <vbox id="startupPageBox">
+  <vbox id="startupPageBox" class="formatBoxSize">
 #if 0
     <checkbox id="browserRestoreSession"
               data-l10n-id="startup-restore-previous-session"/>
@@ -65,8 +65,10 @@
 
 #ifdef HAVE_SHELL_SERVICE
   <vbox id="defaultBrowserBox">
+    <hbox>
     <checkbox id="alwaysCheckDefault" preference="browser.shell.checkDefaultBrowser"
               data-l10n-id="always-check-default"/>
+    </hbox>
     <deck id="setDefaultPane">
       <hbox align="center" class="indent">
 #if 0
@@ -143,6 +145,7 @@
 #include cliqz.home.xul
 <!-- Tab preferences -->
 <groupbox data-category="paneGeneral"
+          class="formatBoxSize"
           hidden="true">
     <label><html:h2 data-l10n-id="tabs-group-header"/></label>
 
@@ -412,11 +415,13 @@
             class="accessory-button"
             data-l10n-id="translate-exceptions"/>
   </hbox>
+  <hbox flex="1">
   <checkbox id="checkSpelling"
           data-l10n-id="check-user-spelling"
           onsyncfrompreference="return gMainPane.readCheckSpelling();"
           onsynctopreference="return gMainPane.writeCheckSpelling();"
           preference="layout.spellcheckDefault"/>
+  </hbox>
 </groupbox>
 
 <!-- Files and Applications -->
@@ -446,12 +451,14 @@
               data-l10n-id="download-choose-folder"/>
     </hbox>
     <!-- Additional radio button added to support CloudStorage - Bug 1357171 -->
+    <vbox class="formatBoxSize">
     <radio id="saveToCloud"
            value="true"
            hidden="true"/>
     <radio id="alwaysAsk"
            value="false"
            data-l10n-id="download-always-ask-where"/>
+    </vbox>
   </radiogroup>
 </groupbox>
 
@@ -623,7 +630,7 @@
 #ifdef MOZ_UPDATER
   <description id="updateAllowDescription" data-l10n-id="update-application-allow-description"></description>
   <vbox id="updateSettingsContainer">
-    <radiogroup id="updateRadioGroup">
+    <radiogroup id="updateRadioGroup" class="formatBoxSize">
       <radio id="autoDesktop"
              value="true"
              data-l10n-id="update-application-auto"/>
@@ -636,14 +643,18 @@
     </description>
   </vbox>
 #ifdef MOZ_MAINTENANCE_SERVICE
+  <hbox>
   <checkbox id="useService"
             data-l10n-id="update-application-use-service"
             preference="app.update.service.enabled"/>
+  </hbox>
 #endif
 #endif
+  <hbox>
   <checkbox id="enableSearchUpdate"
             data-l10n-id="update-enable-search-update"
             preference="browser.search.update"/>
+  </hbox>
 </groupbox>
 
 <hbox id="performanceCategory"
@@ -666,7 +677,7 @@
   </hbox>
   <description class="indent tip-caption" data-l10n-id="performance-use-recommended-settings-desc"/>
 
-  <vbox id="performanceSettings" class="indent" hidden="true">
+  <vbox id="performanceSettings" class="indent formatBoxSize" hidden="true">
     <checkbox id="allowHWAccel"
               data-l10n-id="performance-allow-hw-accel"
               preference="layers.acceleration.disabled"/>
@@ -700,7 +711,7 @@
 </hbox>
 
 <!-- Browsing -->
-<groupbox id="browsingGroup" data-category="paneGeneral" hidden="true">
+<groupbox id="browsingGroup" data-category="paneGeneral" hidden="true" class="formatBoxSize">
   <label class="search-header" hidden="true"><html:h2 data-l10n-id="browsing-title"/></label>
 
   <checkbox id="useAutoScroll"
