@@ -221,6 +221,7 @@
                    flex="1" hidden="true" id="blockCookiesWarning"
                    data-l10n-id="sitedata-warning-your-settings-prevent-changes"/>
       <radiogroup id="blockCookies"
+                  class="formatBoxSize"
                   preference="network.cookie.cookieBehavior"
                   onsyncfrompreference="return gPrivacyPane.readBlockCookies();"
                   onsynctopreference="return gPrivacyPane.writeBlockCookies(this.value);">
@@ -318,11 +319,13 @@
 
   <vbox id="passwordSettings">
     <hbox id="savePasswordsBox">
+      <hbox flex="1">
       <checkbox id="savePasswords"
                 data-l10n-id="forms-ask-to-save-logins"
                 preference="signon.rememberSignons"
                 onsyncfrompreference="return gPrivacyPane.readSavePasswords();"
-                flex="1" />
+                />
+      </hbox>
       <!-- Please don't remove the wrapping hbox/vbox/box for these elements. It's used to properly compute the search tooltip position. -->
       <hbox>
         <button id="passwordExceptions"
@@ -353,9 +356,11 @@
     </hbox>
   </vbox>
   <hbox id="masterPasswordRow">
+    <hbox flex="1">
     <checkbox id="useMasterPassword"
               data-l10n-id="forms-master-pw-use"
-              flex="1"/>
+              />
+    </hbox>
     <!-- Please don't remove the wrapping hbox/vbox/box for these elements. It's used to properly compute the search tooltip position. -->
     <hbox>
       <button id="changeMasterPassword"
@@ -366,7 +371,7 @@
 </groupbox>
 
 <!-- Consentric -->
-<groupbox id="consentricGroup" data-category="panePrivacy" hidden="true">
+<groupbox id="consentricGroup" data-category="panePrivacy" hidden="true" class="formatBoxSize">
   <label><html:h2 data-l10n-id="consentric-header"/></label>
   <checkbox id="consentricEnable"
             data-l10n-id="consentric-enable"
@@ -485,7 +490,7 @@
 #if CQZ_AUTO_PRIVATE_TAB
 <!-- Forget mode tabs -->
 <vbox data-category="panePrivacy" hidden="true">
-  <groupbox id="forgetMode" hidden="true">
+  <groupbox id="forgetMode" hidden="true" class="formatBoxSize">
     <label><html:h2 data-l10n-id="forget-mode-header"/></label>
     <checkbox
         id="forgetModeEnable"
@@ -507,6 +512,7 @@
 <!-- Address Bar -->
 <groupbox id="locationBarGroup"
           data-category="panePrivacy"
+          class="formatBoxSize"
           hidden="true">
   <label><html:h2 data-l10n-id="addressbar-header"/></label>
   <label id="locationBarSuggestionLabel" data-l10n-id="addressbar-suggest"/>
@@ -652,9 +658,11 @@
   <separator flex="1"/>
 
   <hbox align="start" id="autoplayMediaCheckboxWrapper">
+    <hbox flex="1">
     <checkbox id="autoplayMediaCheckbox"
               data-l10n-id="permissions-block-autoplay-media2"
-              flex="1" />
+              />
+    </hbox>
     <!-- Please don't remove the wrapping hbox/vbox/box for these elements. It's used to properly compute the search tooltip position. -->
     <hbox>
       <button id="autoplayMediaPolicyButton"
@@ -670,11 +678,13 @@
   </hbox>
 
   <hbox data-subcategory="permissions-block-popups">
+    <hbox flex="1">
     <checkbox id="popupPolicy" preference="dom.disable_open_during_load"
               data-l10n-id="permissions-block-popups"
               onsyncfrompreference="return gPrivacyPane.updateButtons('popupPolicyButton',
                                          'dom.disable_open_during_load');"
-              flex="1" />
+              />
+    </hbox>
     <!-- Please don't remove the wrapping hbox/vbox/box for these elements. It's used to properly compute the search tooltip position. -->
     <hbox>
       <button id="popupPolicyButton"
@@ -735,7 +745,7 @@
   <html:h1 data-l10n-id="collection-header"/>
 </hbox>
 
-<groupbox id="dataCollectionGroup" data-category="panePrivacy" hidden="true">
+<groupbox id="dataCollectionGroup" data-category="panePrivacy" hidden="true" class="formatBoxSize">
   <label class="search-header" hidden="true"><html:h2 data-l10n-id="collection-header"/></label>
 
 #if 0
@@ -794,7 +804,7 @@
 #endif
                 preference="browser.crashReports.unsubmittedCheck.autoSubmit2"
                 data-l10n-id="collection-backlogged-crash-reports"
-                flex="1"/>
+                />
 #if 0
       <label id="crashReporterLearnMore"
              class="learnMore text-link" data-l10n-id="collection-backlogged-crash-reports-link"/>
@@ -827,7 +837,7 @@
     <label id="enableSafeBrowsingLearnMore"
            class="learnMore text-link" data-l10n-id="security-enable-safe-browsing-link"/>
   </hbox>
-  <vbox class="indent">
+  <vbox class="indent formatBoxSize">
     <checkbox id="blockDownloads"
               data-l10n-id="security-block-downloads"/>
     <checkbox id="blockUncommonUnwanted"
@@ -836,7 +846,7 @@
 </groupbox>
 
 <!-- HTTPS Everywhere -->
-<groupbox id="httpsEverywhereGroup" data-category="panePrivacy" hidden="true">
+<groupbox id="httpsEverywhereGroup" data-category="panePrivacy" hidden="true"  class="formatBoxSize">
   <label><html:h2 data-l10n-id="https-everywhere-header"/></label>
   <checkbox id="httpsEverywhereEnable"
             data-l10n-id="https-everywhere-checkbox"
@@ -861,6 +871,7 @@
     I KID YOU NOT.
   -->
   <radiogroup id="certSelection"
+              class="formatBoxSize"
               preftype="string"
               preference="security.default_personal_cert"
               aria-labelledby="CertSelectionDesc">
@@ -870,12 +881,14 @@
            value="Ask Every Time"/>
   </radiogroup>
   <hbox align="start">
+    <hbox flex="1">
     <checkbox id="enableOCSP"
               data-l10n-id="certs-enable-ocsp"
               onsyncfrompreference="return gPrivacyPane.readEnableOCSP();"
               onsynctopreference="return gPrivacyPane.writeEnableOCSP();"
               preference="security.OCSP.enabled"
-              flex="1" />
+              />
+    </hbox>
     <vbox>
       <!-- Please don't remove the wrapping hbox/vbox/box for these elements. It's used to properly compute the search tooltip position. -->
       <hbox pack="end">

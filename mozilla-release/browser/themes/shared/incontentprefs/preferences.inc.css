@@ -965,3 +965,7 @@ menulist[indicator=true] > menupopup menuitem[indicator=true]:not([image]) > .me
 #updateSettingCrossUserWarning:-moz-locale-dir(rtl) {
   background-position-x: right 2px;
 }
+
+.formatBoxSize {
+  -moz-box-align: start;
+}
