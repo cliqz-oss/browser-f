@@ -78,6 +78,15 @@ extensions.on("page-shutdown", (type, context) => {
       // WebExtension as an embedded inline options page.
       return;
     }
+    // CLIQZ-SPECIAL
+    // DB-2057:
+    // We do not need to shutdown extension pages in case a user has refreshed one's profile.
+    // Since it takes to display those pages in the list of ones which could be restored.
+    let env = Cc["@mozilla.org/process/environment;1"].getService(Ci.nsIEnvironment);
+    if (env.exists('MOZ_RESET_PROFILE_RESTART') && env.get('MOZ_RESET_PROFILE_RESTART') === '1') {
+      return;
+    }
+
     let {gBrowser} = context.xulBrowser.ownerGlobal;
     if (gBrowser && gBrowser.getTabForBrowser) {
       let nativeTab = gBrowser.getTabForBrowser(context.xulBrowser);
