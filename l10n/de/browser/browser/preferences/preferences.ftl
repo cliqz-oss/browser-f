@@ -904,7 +904,7 @@ https-everywhere-header = HTTPS everywhere
 https-everywhere-checkbox =
     .label = HTTPS Everywhere aktivieren
     .accesskey = H
-https-everywhere-desc = HTTPS Everywhere ist ein Dritt-Anbieter-Service, der verschlüsselte Website-Verbindungen anfordert. <label data-l10n-name="https-everywhere-learn-more">Learn more</label>
+https-everywhere-desc = HTTPS Everywhere ist ein Dritt-Anbieter-Service, der verschlüsselte Website-Verbindungen anfordert. <label data-l10n-name="https-everywhere-learn-more">Weitere Informationen</label>
 
 consentric-header = re:consent
 consentric-enable =
