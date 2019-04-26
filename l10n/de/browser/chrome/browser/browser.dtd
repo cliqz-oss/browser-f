@@ -1075,7 +1075,7 @@ you can use these alternative items. Otherwise, their values should be empty.  -
 <!ENTITY updateAvailable.cancelButton.accesskey "N">
 <!ENTITY updateAvailable.panelUI.label "&brandShorterName;-Update herunterladen">
 
-<!ENTITY updateManual.message "Lade dich die aktuelle Version von &brandShorterName; herunter und wir helfen dir bei der Installation.">
+<!ENTITY updateManual.message "Lade dir die aktuelle Version von &brandShorterName; herunter, und wir helfen dir bei der Installation.">
 <!ENTITY updateManual.whatsnew.label "Die Änderungen im Detail.">
 <!ENTITY updateManual.header.message "&brandShorterName; kann nicht auf die neueste Version aktualisieren.">
 <!ENTITY updateManual.acceptButton.label "&brandShorterName; herunterladen">
