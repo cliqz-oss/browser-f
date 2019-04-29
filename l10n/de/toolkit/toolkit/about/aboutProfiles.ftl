@@ -22,12 +22,18 @@ profiles-rootdir = Wurzelordner
 profiles-localdir = Lokaler Ordner
 profiles-current-profile = Dieses Profil wird derzeit verwendet und kann daher nicht gelöscht werden.
 profiles-in-use-profile = Dieses Profil wird derzeit durch eine andere Anwendung verwendet und kann daher nicht gelöscht werden.
+
 profiles-rename = Umbenennen
 profiles-remove = Löschen
 profiles-set-as-default = Als Standardprofil festlegen
 profiles-launch-profile = Profil zusätzlich ausführen
+
+profiles-cannot-set-as-default-title = Standard konnte nicht geändert werden.
+profiles-cannot-set-as-default-message = Das Standardprofil für { -brand-short-name } konnte nicht geändert werden.
+
 profiles-yes = ja
 profiles-no = nein
+
 profiles-rename-profile-title = Profil umbenennen
 # Variables:
 #   $name (String) - Name of the profile

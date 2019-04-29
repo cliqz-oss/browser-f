@@ -18,7 +18,7 @@ window.gActivityStreamStrings = {
   "menu_action_dismiss": "Avvis",
   "menu_action_delete": "Slett frå historikk",
   "menu_action_pin": "Fest",
-  "menu_action_unpin": "L:ys",
+  "menu_action_unpin": "Løys",
   "confirm_history_delete_p1": "Er du sikker på at du vil slette alle førekomstar av denne sida frå historikken din?",
   "confirm_history_delete_notice_p2": "Denne handlinga kan ikkje angrast.",
   "menu_action_save_to_pocket": "Lagre til Pocket",
@@ -40,9 +40,9 @@ window.gActivityStreamStrings = {
   "section_disclaimer_topstories_buttontext": "OK, eg forstår det!",
   "prefs_home_header": "Innhald Firefox-startside",
   "prefs_home_description": "Vel kva for innhald du vil ha på Firefox-startsida di.",
-  "prefs_content_discovery_header": "Firefox Home",
-  "prefs_content_discovery_description": "Content Discovery in Firefox Home allows you to discover high-quality, relevant articles from across the web.",
-  "prefs_content_discovery_button": "Turn Off Content Discovery",
+  "prefs_content_discovery_header": "Firefox startside",
+  "prefs_content_discovery_description": "Innhaldsoppdaging på Firefox startside lèt deg oppdage relevante artiklar av høg kvalitet frå nettet.",
+  "prefs_content_discovery_button": "Slå av innhaldsoppdaging",
   "prefs_section_rows_option": "{num} rekkje;{num} rekkjer",
   "prefs_search_header": "Nettsøk",
   "prefs_topsites_description": "Sidene du besøkjer mest",
@@ -110,6 +110,5 @@ window.gActivityStreamStrings = {
   "firstrun_privacy_notice": "Personvernpraksis",
   "firstrun_continue_to_login": "Fortset",
   "firstrun_skip_login": "Hopp over dette steget",
-  "context_menu_title": "Opne meny",
-  "pocket_learn_more": "Les meir"
+  "context_menu_title": "Opne meny"
 };

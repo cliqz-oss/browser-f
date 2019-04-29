@@ -59,6 +59,7 @@ jobs:
             - linux64-rust
             - linux64-sccache
             - linux64-cbindgen
+            - linux64-nasm
             - linux64-node
 
     win64-st-autotest/debug:
@@ -86,4 +87,5 @@ jobs:
             - win64-sccache
             - win64-cbindgen
             - win64-clang-tidy
+            - win64-nasm
             - win64-node

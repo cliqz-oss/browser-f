@@ -131,6 +131,9 @@ when there are no windows but Firefox is still running. -->
 <!ENTITY printCmd.accesskey "D">
 <!ENTITY printCmd.commandkey "p">
 
+<!ENTITY importFromAnotherBrowserCmd.label "Daten aus einem anderen Browser importieren…">
+<!ENTITY importFromAnotherBrowserCmd.accesskey "r">
+
 <!ENTITY taskManagerCmd.label "Task-Manager">
 
 <!ENTITY goOfflineCmd.label "Offline arbeiten">
@@ -212,6 +215,27 @@ These should match what Safari and other Apple applications use on OS X Lion. --
 <!ENTITY fullScreenAutohide.accesskey "a">
 <!ENTITY fullScreenExit.label "Vollbild beenden">
 <!ENTITY fullScreenExit.accesskey "V">
+
+ <!-- LOCALIZATION NOTE (fxa.signin) Used to define the different labels
+     for the Firefox Account toolbar signin menu screen. -->
+<!ENTITY fxa.signin.callout.label "Haben Sie alles parat mit Firefox">
+<!ENTITY fxa.signin.description.label "Nehmen Sie Ihre Lesezeichen, Chronik, Passwörter und andere Einstellungen auf allen Geräte mit.">
+<!ENTITY fxa.signin.button.label "&syncBrand.shortName.label; aktivieren…">
+
+<!-- LOCALIZATION NOTE (fxa.unverified) Used to define the different labels
+     for the Firefox Account toolbar unverified menu screen. -->
+<!ENTITY fxa.unverified.callout.label "Rufen Sie jetzt Ihre E-Mails ab.">
+<!ENTITY fxa.unverified.description.label "Sie müssen Ihr Konto erst bestätigen, damit die Synchronisation gestart werden kann.">
+<!ENTITY fxa.unverified.button.label "Einstellungen für &syncBrand.shortName.label; öffnen…">
+
+<!-- LOCALIZATION NOTE (fxa.menu) Used to define the different labels
+     for the Firefox Account toolbart menu screen. The `Signed in as` text is
+     followed by the user's email. -->
+<!ENTITY fxa.menu.signedInAs.label "Angemeldet als">
+<!ENTITY fxa.menu.manageAccount.label "Konto verwalten…">
+<!ENTITY fxa.menu.syncSettings.label "&syncBrand.shortName.label;-Einstellungen…">
+<!ENTITY fxa.menu.connectAnotherDevice.label "&syncedTabs.sidebar.connectAnotherDevice;">
+<!ENTITY fxa.menu.firefoxAccount "&syncBrand.fxAccount.label;">
 
 <!-- LOCALIZATION NOTE (fullscreenWarning.beforeDomain.label,
      fullscreenWarning.afterDomain.label): these two strings are used
@@ -407,6 +431,8 @@ These should match what Safari and other Apple applications use on OS X Lion. --
 <!ENTITY preferencesCmd2.accesskey     "E">
 <!ENTITY preferencesCmdUnix.label       "Einstellungen">
 <!ENTITY preferencesCmdUnix.accesskey     "E">
+
+<!ENTITY logins.label                           "Zugangsdaten und Passwörter">
 
 <!ENTITY clearRecentHistory.label               "Neueste Chronik löschen…">
 
@@ -931,6 +957,7 @@ you can use these alternative items. Otherwise, their values should be empty.  -
 <!ENTITY syncSignIn.label             "Bei &syncBrand.shortName.label; anmelden…">
 <!ENTITY syncSignIn.accesskey         "Y">
 <!ENTITY syncSyncNowItem.label        "Jetzt synchronisieren">
+<!ENTITY syncSyncNowItemSyncing.label "Wird synchronisiert…">
 <!ENTITY syncSyncNowItem.accesskey    "J">
 <!ENTITY syncReAuthItem.label         "Wieder mit &syncBrand.shortName.label; verbinden…">
 <!ENTITY syncReAuthItem.accesskey     "v">
@@ -995,6 +1022,12 @@ you can use these alternative items. Otherwise, their values should be empty.  -
 
 <!ENTITY contentBlocking.cookies.label "Cookies">
 <!ENTITY contentBlocking.cookiesView.label "Cookies und Website-Daten">
+
+<!ENTITY contentBlocking.cryptominers.label "Währungsberechner (Cryptominer)">
+<!ENTITY contentBlocking.cryptominersView.label "Währungsberechner (Cryptominer)">
+
+<!ENTITY contentBlocking.fingerprinters.label "Identifizierer (Fingerprinter)">
+<!ENTITY contentBlocking.fingerprintersView.label "Identifizierer (Fingerprinter)">
 
 <!ENTITY contentBlocking.openBreakageReportView2.label "Problem melden">
 <!ENTITY contentBlocking.breakageReportView.label "Probleme melden">
@@ -1127,5 +1160,13 @@ you can use these alternative items. Otherwise, their values should be empty.  -
      The first <image> tag is replaced with the icon for the add-ons menu.
      The second <image> tag is replaced with the icon for the toolbar menu. -->
 <!ENTITY addonPostInstallMessage.label "Die Add-ons lassen sich durch Klicken auf <image class='addon-addon-icon'/> im <image class='addon-toolbar-icon'/>-Menü verwalten.">
+<!ENTITY addonPostInstall.incognito.checkbox.label "Ausführen der Erweiterung auch in privaten Fenstern erlauben">
+<!ENTITY addonPostInstall.incognito.checkbox.accesskey "p">
 
+<!ENTITY addonPrivateBrowsing.header2.label "Änderung an Ausführung von Erweiterungen in privaten Fenstern">
+<!ENTITY addonPrivateBrowsing.body2.label "In &brandShorterName; neu installierte Erweiterungen werden in privaten Fenstern nicht ausgeführt, außer dies wird in den Einstellungen aktiviert.">
+<!ENTITY addonPrivateBrowsing.learnMore.label "Weitere Informationen zur Verwaltung von Erweiterungseinstellungen">
+<!ENTITY addonPrivateBrowsing.okButton.label "OK">
+<!ENTITY addonPrivateBrowsing.okButton.accesskey "O">
 <!ENTITY addonPrivateBrowsing.manageButton.label "Erweiterungen verwalten">
+<!ENTITY addonPrivateBrowsing.manageButton.accesskey "w">

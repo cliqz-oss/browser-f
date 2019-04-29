@@ -10,6 +10,8 @@
 ## These are short descriptions for individual policies, to be displayed
 ## in the documentation section in about:policies.
 
+policy-3rdparty = Für WebExtensions mittels chrome.storage.managed zugängliche Richtlinien festlegen
+
 policy-AppUpdateURL = Anwendungsaktualisierung über benutzerdefinierte Adresse festlegen
 policy-Authentication = Integrierte Authentifizierung für Websites, welche dies unterstützen, konfigurieren
 policy-BlockAboutAddons = Add-ons-Verwaltung-Seitenzugriff (about:addons) blockieren
@@ -17,6 +19,9 @@ policy-BlockAboutConfig = about:config-Seitenzugriff (erweiterte Einstellungen o
 policy-BlockAboutProfiles = about:profiles-Seitenzugriff (Profilverwaltung) blockieren
 policy-BlockAboutSupport = about:support-Seitenzugriff (Informationen zur Fehlerbehebung) blockieren
 policy-Bookmarks = Lesezeichen erstellen in der Lesezeichen-Symbolleiste, im Lesezeichen-Menü oder in einem vorgegebenen Ordner in diesen
+
+policy-CaptivePortal = Erkennung von Anmelde- oder Bestätigungspflicht für Internetzugriff aktivieren oder deaktivieren
+
 policy-Certificates = Ob eingebaute Zertifikate verwendet werden sollen. Diese Richtlinie wird derzeit nur unter Windows unterstützt.
 policy-CertificatesDescription = Zertifikate hinzufügen oder eingebaute Zertifikate verwenden
 policy-Cookies = Cookies setzen durch Websites erlauben oder verbieten
@@ -51,11 +56,17 @@ policy-EnableTrackingProtection = Seitenelementeblockierung aktivieren oder deak
 # takes 3 keys (“Install”, ”Uninstall”, ”Locked”), you can either keep them in
 # English or translate them as verbs.
 policy-Extensions = Installieren, Deinstallieren oder Fixieren von Erweiterungen. Die Install-Option akzeptiert Adressen und Pfade als Werte. Die Uninstall- und Locked-Optionen erfordern Erweiterungs-IDs.
+
+policy-ExtensionUpdate = Automatische Add-on-Updates aktivieren oder deaktivieren
+
 policy-FlashPlugin = Flash-Plugin-Verwendung erlauben oder verbieten
 policy-HardwareAcceleration = Hardwarebeschleunigung deaktiviert, falls false
 # “lock” means that the user won’t be able to change this setting
 policy-Homepage = Startseite festlegen und optional zusätzlich unveränderbar setzen
 policy-InstallAddonsPermission = Add-on-Installation von festgelegten Websites erlauben
+
+policy-NetworkPrediction = Spekulative DNS-Abfragen für noch nicht angeforderte Ressourcen ("DNS-Prefetching") aktivieren oder deaktivieren
+
 policy-NoDefaultBookmarks = Standardlesezeichen von { -brand-short-name } und Intelligente Lesezeichenordner ("Meistbesucht", "Kürzlich verwendete Schlagwörter") nicht erstellen. Hinweis: Diese Richtlinie findet nur Anwendung, wenn sie vor dem ersten Ausführen des Profils aktiv wurde.
 policy-OfferToSaveLogins = Frage zum Speichern von Zugangsdaten durch { -brand-short-name } anzeigen. Die Werte true und false werden akzeptiert.
 policy-OverrideFirstRunPage = Einmalig geöffnete Einführungsseite beim Starten eines neuen Profils festlegen. Ein leerer Wert deaktiviert das Öffnen der Seite.
@@ -73,6 +84,8 @@ policy-SecurityDevices = PKCS#11-Module installieren
 policy-SSLVersionMax = Höchste zu verwendende SSL-Version festlegen
 
 policy-SSLVersionMin = Niedrigste zu verwendende SSL-Version festlegen
+
+policy-SupportMenu = Benutzerdefinierten Eintrag zum Menü "Hilfe" hinzufügen
 
 # “format” refers to the format used for the value of this policy.
 policy-WebsiteFilter = Bestimmte Website-Aufrufe blockieren. Weitere Details in der Dokumentation.

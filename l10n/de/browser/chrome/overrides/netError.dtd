@@ -10,7 +10,6 @@
 <!ENTITY returnToPreviousPage.label "Zurück">
 <!ENTITY returnToPreviousPage1.label "Zurück (empfohlen)">
 <!ENTITY advanced.label "Erweitert">
-<!ENTITY continue2.label "Mehr…">
 <!ENTITY advanced2.label "Erweitert…">
 <!ENTITY moreInformation.label "Weitere Informationen">
 <!ENTITY viewCertificate.label "Zertifikat anzeigen">
@@ -158,9 +157,6 @@ will be replaced at runtime with the name of the server to which the user
 was trying to connect. -->
 <!ENTITY certerror.introPara "Der Inhaber von <span class='hostname'/> hat die Website nicht richtig konfiguriert. &brandShortName; hat keine Verbindung mit dieser Website aufgebaut, um Ihre Informationen vor Diebstahl zu schützen.">
 <!ENTITY certerror.introPara2 "&brandShortName; hat ein mögliches Sicherheitsrisiko erkannt und <span class='hostname'/> nicht geladen. Falls Sie die Website besuchen, könnten Angreifer versuchen, Passwörter, E-Mails oder Kreditkartendaten zu stehlen.">
-
-<!ENTITY certerror.expiredCert.secondPara "Am wahrscheinlichsten sind Datum- und/oder Uhrzeit auf Ihrem Computer nicht korrekt, was &brandShortName; daran hindert, eine gesicherte Verbindung zu nutzen.">
-
 <!ENTITY certerror.sts.introPara "&brandShortName; hat ein mögliches Sicherheitsrisiko erkannt und daher <span class='hostname'/> nicht aufgerufen, denn die Website benötigt eine verschlüsselte Verbindung.">
 
 <!ENTITY certerror.expiredCert.introPara "&brandShortName; hat ein Problem erkannt und <span class='hostname'/> nicht aufgerufen. Entweder ist die Website falsch eingerichtet oder Datum und/oder Uhrzeit auf diesem Computer sind nicht korrekt.">
@@ -242,8 +238,8 @@ was trying to connect. -->
 <!ENTITY certerror.mitm.whatCanYouDoAboutIt3 "Falls Sie mit <span class='mitm-name'/> nicht vertraut sind, könnte dies ein Angriff sein und Sie sollten nicht mit dem Laden dieser Website fortfahren.">
 <!ENTITY certerror.mitm.sts.whatCanYouDoAboutIt3 "Falls Sie mit <span class='mitm-name'/> nicht vertraut sind, könnte dies ein Angriff sein und Sie können nichts unternehmen, um diese Seite zu laden.">
 
-<!ENTITY clockSkewError.title "Datum- und/oder Uhrzeit Ihres Computers sind nicht korrekt">
-<!ENTITY clockSkewError.longDesc "Datum- und Uhrzeit Ihres Computer sind auf <span id='wrongSystemTime_systemDate1'/> gesetzt, was &brandShortName; am Herstellen einer gesicherten Verbindung hindert. Setzen Sie Datum, Uhrzeit und Zeitzone in den Systemeinstellungen korrekt und laden Sie anschließend <span class='hostname'></span> neu.">
+<!ENTITY clockSkewError.title "Datum und/oder Uhrzeit Ihres Computers sind nicht korrekt">
+<!ENTITY clockSkewError.longDesc "Datum und Uhrzeit Ihres Computers sind auf <span id='wrongSystemTime_systemDate1'/> gesetzt, was &brandShortName; am Herstellen einer gesicherten Verbindung hindert. Setzen Sie Datum, Uhrzeit und Zeitzone in den Systemeinstellungen korrekt und laden Sie anschließend <span class='hostname'></span> neu.">
 
 <!ENTITY prefReset.longDesc "Dies könnte durch die Netzwerk-Sicherheitseinstellungen verursacht werden. Sollen die Standardeinstellungen wiederhergestellt werden?">
 <!ENTITY prefReset.label "Standardeinstellungen wiederherstellen">

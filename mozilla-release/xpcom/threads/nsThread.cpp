@@ -47,6 +47,7 @@
 #  include "ProfilerMarkerPayload.h"
 #endif
 #include "InputEventStatistics.h"
+#include "ThreadEventQueue.h"
 #include "ThreadEventTarget.h"
 #include "ThreadDelay.h"
 
@@ -140,8 +141,8 @@ nsThreadClassInfo::Release() { return 1; }
 NS_IMPL_QUERY_INTERFACE(nsThreadClassInfo, nsIClassInfo)
 
 NS_IMETHODIMP
-nsThreadClassInfo::GetInterfaces(uint32_t* aCount, nsIID*** aArray) {
-  return NS_CI_INTERFACE_GETTER_NAME(nsThread)(aCount, aArray);
+nsThreadClassInfo::GetInterfaces(nsTArray<nsIID>& aArray) {
+  return NS_CI_INTERFACE_GETTER_NAME(nsThread)(aArray);
 }
 
 NS_IMETHODIMP
@@ -368,15 +369,18 @@ struct ThreadInitData {
   return sList;
 }
 
-/* static */ void nsThread::ClearThreadList() {
+/* static */
+void nsThread::ClearThreadList() {
   OffTheBooksMutexAutoLock mal(ThreadListMutex());
   while (ThreadList().popFirst()) {
   }
 }
 
-/* static */ nsThreadEnumerator nsThread::Enumerate() { return {}; }
+/* static */
+nsThreadEnumerator nsThread::Enumerate() { return {}; }
 
-/* static */ uint32_t nsThread::MaxActiveThreads() {
+/* static */
+uint32_t nsThread::MaxActiveThreads() {
   OffTheBooksMutexAutoLock mal(ThreadListMutex());
   return sMaxActiveThreads;
 }
@@ -399,7 +403,8 @@ void nsThread::MaybeRemoveFromThreadList() {
   }
 }
 
-/*static*/ void nsThread::ThreadFunc(void* aArg) {
+/*static*/
+void nsThread::ThreadFunc(void* aArg) {
   using mozilla::ipc::BackgroundChild;
 
   ThreadInitData* initData = static_cast<ThreadInitData*>(aArg);
@@ -866,7 +871,8 @@ nsThread::Shutdown() {
   }
 
   nsThreadShutdownContext* maybeContext = ShutdownInternal(/* aSync = */ true);
-  NS_ENSURE_TRUE(maybeContext, NS_ERROR_UNEXPECTED);
+  if (!maybeContext) return NS_ERROR_UNEXPECTED;
+
   NotNull<nsThreadShutdownContext*> context = WrapNotNull(maybeContext);
 
   // Process events on the current thread until we receive a shutdown ACK.
@@ -1052,6 +1058,18 @@ nsThread::ProcessNextEvent(bool aMayWait, bool* aResult) {
   // yet.
   bool reallyWait = aMayWait && (mNestedEventLoopDepth > 0 || !ShuttingDown());
 
+  if (mIsInLocalExecutionMode) {
+    EventQueuePriority priority;
+    if (const nsCOMPtr<nsIRunnable> event =
+            mEvents->GetEvent(reallyWait, &priority)) {
+      *aResult = true;
+      event->Run();
+    } else {
+      *aResult = false;
+    }
+    return NS_OK;
+  }
+
   if (IsMainThread()) {
     DoMainThreadSpecificProcessing(reallyWait);
   }
@@ -1176,7 +1194,7 @@ nsThread::ProcessNextEvent(bool aMayWait, bool* aResult) {
             profiler_add_marker(
                 (priority != EventQueuePriority::Idle) ? "LongTask"
                                                        : "LongIdleTask",
-                js::ProfilingStackFrame::Category::OTHER,
+                JS::ProfilingCategoryPair::OTHER,
                 MakeUnique<LongTaskMarkerPayload>(mCurrentEventStart, now));
           }
 #endif
@@ -1389,3 +1407,26 @@ nsThread::GetEventTarget(nsIEventTarget** aEventTarget) {
 nsIEventTarget* nsThread::EventTarget() { return this; }
 
 nsISerialEventTarget* nsThread::SerialEventTarget() { return this; }
+
+nsLocalExecutionRecord nsThread::EnterLocalExecution() {
+  MOZ_RELEASE_ASSERT(!mIsInLocalExecutionMode);
+  MOZ_ASSERT(IsOnCurrentThread());
+  MOZ_ASSERT(EventQueue());
+  return nsLocalExecutionRecord(*EventQueue(), mIsInLocalExecutionMode);
+}
+
+nsLocalExecutionGuard::nsLocalExecutionGuard(
+    nsLocalExecutionRecord&& aLocalExecutionRecord)
+    : mEventQueueStack(aLocalExecutionRecord.mEventQueueStack),
+      mLocalEventTarget(mEventQueueStack.PushEventQueue()),
+      mLocalExecutionFlag(aLocalExecutionRecord.mLocalExecutionFlag) {
+  MOZ_ASSERT(mLocalEventTarget);
+  MOZ_ASSERT(!mLocalExecutionFlag);
+  mLocalExecutionFlag = true;
+}
+
+nsLocalExecutionGuard::~nsLocalExecutionGuard() {
+  MOZ_ASSERT(mLocalExecutionFlag);
+  mLocalExecutionFlag = false;
+  mEventQueueStack.PopEventQueue(mLocalEventTarget);
+}

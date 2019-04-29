@@ -31,7 +31,7 @@
 <!ENTITY importBookmarksFromHTML.accesskey "L">
 <!ENTITY exportBookmarksToHTML.label       "Lesezeichen nach HTML exportieren…">
 <!ENTITY exportBookmarksToHTML.accesskey   "n">
-<!ENTITY importOtherBrowser.label          "Daten von einem anderen Browser importieren…">
+<!ENTITY importOtherBrowser.label          "Daten aus einem anderen Browser importieren…">
 <!ENTITY importOtherBrowser.accesskey      "D">
 
 <!ENTITY cmd.backup.label               "Sichern…">

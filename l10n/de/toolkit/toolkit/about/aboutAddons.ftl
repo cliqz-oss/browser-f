@@ -93,6 +93,29 @@ detail-update-automatic =
 detail-update-manual =
     .label = Aus
     .tooltiptext = Updates nicht automatisch installieren
+
+# Used as a description for the option to allow or block an add-on in private windows.
+detail-private-browsing-label = In privaten Fenstern ausführen
+
+detail-private-browsing-description2 = Falls erlaubt, hat die Erweiterung Zugriff auf Ihre Online-Aktivitäten im Privaten Modus. <label data-l10n-name="detail-private-browsing-learn-more">Weitere Informationen</label>
+
+# Some add-ons may elect to not run in private windows by setting incognito: not_allowed in the manifest.  This
+# cannot be overriden by the user.
+detail-private-disallowed-label = In privaten Fenstern nicht erlaubt
+detail-private-disallowed-description = Die Erweiterung wird im Privaten Modus nicht ausgeführt. <label data-l10n-name="detail-private-browsing-learn-more">Weitere Informationen</label>
+
+# Some special add-ons are privileged, run in private windows automatically, and this permission can't be revoked
+detail-private-required-label = Benötigt Zugriff auf private Fenster
+detail-private-required-description = Die Erweiterung hat Zugriff auf Ihre Online-Aktivitäten im Privaten Modus. <label data-l10n-name="detail-private-browsing-learn-more">Weitere Informationen</label>
+
+detail-private-browsing-on =
+    .label = Erlauben
+    .tooltiptext = Aktivieren im privaten Modus
+
+detail-private-browsing-off =
+    .label = Nicht erlauben
+    .tooltiptext = Deaktivieren im privaten Modus
+
 detail-home =
     .label = Homepage
 detail-home-value =
@@ -135,6 +158,12 @@ legacy-warning-show-legacy = Erweiterungen des alten Add-on-Typs anzeigen
 legacy-extensions =
     .value = Alter Add-on-Typ
 legacy-extensions-description = Diese Erweiterungen erfüllen nicht die aktuellen Standards von { -brand-short-name } und wurden deshalb deaktiviert. <label data-l10n-name="legacy-learn-more">Weitere Informationen über Änderungen bei der Unterstützung von Add-ons für Firefox</label>
+private-browsing-description2 =
+    { -brand-short-name } ändert die Verwendung von Erweiterungen im Privaten Modus.
+    Neu in { -brand-short-name } installierte Erweiterungen werden standardmäßig in privaten Fenstern nicht ausgeführt und haben keine Zugriff auf die Online-Aktivitäten in diesen, außer gibt die Erweiterung wird in den Einstellungen für die Verwendung im Privaten Modus freigegeben.
+    Diese Änderung dient Ihrem Datenschutz im Privaten Modus.
+    <label data-l10n-name="private-browsing-learn-more">Weitere Informationen zur Verwaltung der Erweiterungseinstellungen</label>
+
 extensions-view-discover =
     .name = Add-ons entdecken
     .tooltiptext = { extensions-view-discover.name }
@@ -220,6 +249,7 @@ manage-extensions-shortcuts =
     .accesskey = T
 shortcuts-empty-message = Diese Erweiterung verfügt über keine Tastenkombinationen.
 shortcuts-no-addons = Es sind keine Erweiterungen installiert.
+shortcuts-no-commands = Folgende Erweiterungen verfügen über keine Tastenkombinationen:
 shortcuts-input =
   .placeholder = Tastenkombination drücken
 
@@ -233,5 +263,22 @@ shortcuts-invalid = Ungültige Kombination
 shortcuts-letter = Zeichen eingeben
 shortcuts-system = { -brand-short-name }-Tastenkombinationen können nicht überschrieben werden.
 
+shortcuts-card-expand-button =
+    { $numberToShow ->
+        *[other] { $numberToShow } weitere anzeigen
+    }
+
+shortcuts-card-collapse-button = Weniger anzeigen
+
 go-back-button =
     .tooltiptext = Zurück
+
+## Add-on actions
+remove-addon-button = Entfernen
+disable-addon-button = Deaktivieren
+enable-addon-button = Aktivieren
+expand-addon-button = Weitere Einstellungen
+
+addons-enabled-heading = Aktiviert
+addons-disabled-heading = Deaktiviert
+

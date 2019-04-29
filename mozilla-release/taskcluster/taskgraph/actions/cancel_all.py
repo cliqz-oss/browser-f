@@ -23,7 +23,6 @@ logger = logging.getLogger(__name__)
 @register_callback_action(
     title='Cancel All',
     name='cancel-all',
-    kind='hook',
     generic=True,
     symbol='cAll',
     description=(
@@ -33,7 +32,7 @@ logger = logging.getLogger(__name__)
     order=400,
     context=[]
 )
-def cancel_all_action(parameters, graph_config, input, task_group_id, task_id, task):
+def cancel_all_action(parameters, graph_config, input, task_group_id, task_id):
     def do_cancel_task(task_id):
         logger.info('Cancelling task {}'.format(task_id))
         cancel_task(task_id, use_proxy=True)

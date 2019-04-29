@@ -27,7 +27,7 @@ describe("TelemetryFeed", () => {
   let fakeHomePageUrl;
   let fakeHomePage;
   let fakeExtensionSettingsStore;
-  class PingCentre {sendPing() {} uninit() {}}
+  class PingCentre {sendPing() {} uninit() {} sendStructuredIngestionPing() {}}
   class UTEventReporting {sendUserEvent() {} sendSessionEndEvent() {} uninit() {}}
   class PerfService {
     getMostRecentAbsMarkStartByName() { return 1234; }
@@ -42,6 +42,8 @@ describe("TelemetryFeed", () => {
     PREF_IMPRESSION_ID,
     TELEMETRY_PREF,
     EVENTS_TELEMETRY_PREF,
+    STRUCTURED_INGESTION_TELEMETRY_PREF,
+    STRUCTURED_INGESTION_ENDPOINT_PREF,
   } = injector({
     "common/PerfService.jsm": {perfService},
     "lib/UTEventReporting.jsm": {UTEventReporting},
@@ -97,9 +99,31 @@ describe("TelemetryFeed", () => {
 
       instance.init();
 
-      assert.calledOnce(Services.obs.addObserver);
+      assert.calledTwice(Services.obs.addObserver);
       assert.calledWithExactly(Services.obs.addObserver,
         instance.browserOpenNewtabStart, "browser-open-newtab-start");
+    });
+    it("should add window open listener", () => {
+      sandbox.spy(Services.obs, "addObserver");
+
+      instance.init();
+
+      assert.calledTwice(Services.obs.addObserver);
+      assert.calledWithExactly(Services.obs.addObserver,
+        instance._addWindowListeners, "domwindowopened");
+    });
+    it("should add TabPinned event listener on new windows", () => {
+      const stub = {addEventListener: sandbox.stub()};
+      sandbox.spy(Services.obs, "addObserver");
+
+      instance.init();
+
+      assert.calledTwice(Services.obs.addObserver);
+      const [cb] = Services.obs.addObserver.secondCall.args;
+      cb(stub);
+      assert.calledTwice(stub.addEventListener);
+      assert.calledWithExactly(stub.addEventListener, "unload", instance.handleEvent);
+      assert.calledWithExactly(stub.addEventListener, "TabPinned", instance.handleEvent);
     });
     it("should create impression id if none exists", () => {
       assert.equal(instance._impressionId, FAKE_UUID);
@@ -108,6 +132,21 @@ describe("TelemetryFeed", () => {
       FakePrefs.prototype.prefs = {};
       FakePrefs.prototype.prefs[PREF_IMPRESSION_ID] = "fakeImpressionId";
       assert.equal(new TelemetryFeed()._impressionId, "fakeImpressionId");
+    });
+    it("should register listeners on existing windows", () => {
+      const stub = sandbox.stub();
+      globals.set({
+        Services: {
+          ...Services,
+          wm: {getEnumerator: () => [{addEventListener: stub}]},
+        },
+      });
+
+      instance.init();
+
+      assert.calledTwice(stub);
+      assert.calledWithExactly(stub, "unload", instance.handleEvent);
+      assert.calledWithExactly(stub, "TabPinned", instance.handleEvent);
     });
     describe("telemetry pref changes from false to true", () => {
       beforeEach(() => {
@@ -138,6 +177,103 @@ describe("TelemetryFeed", () => {
 
         assert.propertyVal(instance, "eventTelemetryEnabled", true);
       });
+    });
+    describe("Structured Ingestion telemetry pref changes from false to true", () => {
+      beforeEach(() => {
+        FakePrefs.prototype.prefs = {};
+        FakePrefs.prototype.prefs[STRUCTURED_INGESTION_TELEMETRY_PREF] = false;
+        instance = new TelemetryFeed();
+
+        assert.propertyVal(instance, "structuredIngestionTelemetryEnabled", false);
+      });
+
+      it("should set the enabled property to true", () => {
+        instance._prefs.set(STRUCTURED_INGESTION_TELEMETRY_PREF, true);
+
+        assert.propertyVal(instance, "structuredIngestionTelemetryEnabled", true);
+      });
+    });
+  });
+  describe("#handleEvent", () => {
+    it("should dispatch a TAB_PINNED_EVENT", () => {
+      sandbox.stub(instance, "sendEvent");
+      globals.set({
+        Services: {
+          ...Services,
+          wm: {getEnumerator: () => [{gBrowser: {tabs: [{pinned: true}]}}]},
+        },
+      });
+
+      instance.handleEvent({type: "TabPinned", target: {}});
+
+      assert.calledOnce(instance.sendEvent);
+      const [ping] = instance.sendEvent.firstCall.args;
+      assert.propertyVal(ping, "event", "TABPINNED");
+      assert.propertyVal(ping, "source", "TAB_CONTEXT_MENU");
+      assert.propertyVal(ping, "session_id", "n/a");
+      assert.propertyVal(ping.value, "total_pinned_tabs", 1);
+    });
+    it("should skip private windows", () => {
+      sandbox.stub(instance, "sendEvent");
+      globals.set({PrivateBrowsingUtils: {isWindowPrivate: () => true}});
+
+      instance.handleEvent({type: "TabPinned", target: {}});
+
+      assert.notCalled(instance.sendEvent);
+    });
+    it("should return the correct value for total_pinned_tabs", () => {
+      sandbox.stub(instance, "sendEvent");
+      globals.set({
+        Services: {
+          ...Services,
+          wm: {
+            getEnumerator: () => [{
+              gBrowser: {tabs: [{pinned: true}, {pinned: false}]},
+            }],
+          },
+        },
+      });
+
+      instance.handleEvent({type: "TabPinned", target: {}});
+
+      assert.calledOnce(instance.sendEvent);
+      const [ping] = instance.sendEvent.firstCall.args;
+      assert.propertyVal(ping, "event", "TABPINNED");
+      assert.propertyVal(ping, "source", "TAB_CONTEXT_MENU");
+      assert.propertyVal(ping, "session_id", "n/a");
+      assert.propertyVal(ping.value, "total_pinned_tabs", 1);
+    });
+    it("should return the correct value for total_pinned_tabs (when private windows are open)", () => {
+      sandbox.stub(instance, "sendEvent");
+      const privateWinStub = sandbox.stub().onCall(0).returns(false)
+        .onCall(1)
+        .returns(true);
+      globals.set({PrivateBrowsingUtils: {isWindowPrivate: privateWinStub}});
+      globals.set({
+        Services: {
+          ...Services,
+          wm: {
+            getEnumerator: () => [{
+              gBrowser: {tabs: [{pinned: true}, {pinned: true}]},
+            }],
+          },
+        },
+      });
+
+      instance.handleEvent({type: "TabPinned", target: {}});
+
+      assert.calledOnce(instance.sendEvent);
+      const [ping] = instance.sendEvent.firstCall.args;
+      assert.propertyVal(ping.value, "total_pinned_tabs", 0);
+    });
+    it("should unregister the event listeners", () => {
+      const stub = {removeEventListener: sandbox.stub()};
+
+      instance.handleEvent({type: "unload", target: stub});
+
+      assert.calledTwice(stub.removeEventListener);
+      assert.calledWithExactly(stub.removeEventListener, "unload", instance.handleEvent);
+      assert.calledWithExactly(stub.removeEventListener, "TabPinned", instance.handleEvent);
     });
   });
   describe("#addSession", () => {
@@ -668,6 +804,19 @@ describe("TelemetryFeed", () => {
       assert.calledWith(instance.utEvents.sendUserEvent, event);
     });
   });
+  describe("#sendStructuredIngestionEvent", () => {
+    it("should call PingCentre sendStructuredIngestionPing", async () => {
+      FakePrefs.prototype.prefs[TELEMETRY_PREF] = true;
+      FakePrefs.prototype.prefs[STRUCTURED_INGESTION_TELEMETRY_PREF] = true;
+      const event = {};
+      instance = new TelemetryFeed();
+      sandbox.stub(instance.pingCentre, "sendStructuredIngestionPing");
+
+      await instance.sendStructuredIngestionEvent(event, "http://foo.com/base/");
+
+      assert.calledWith(instance.pingCentre.sendStructuredIngestionPing, event);
+    });
+  });
   describe("#sendASRouterEvent", () => {
     it("should call PingCentre for AS Router", async () => {
       FakePrefs.prototype.prefs.telemetry = true;
@@ -747,6 +896,24 @@ describe("TelemetryFeed", () => {
 
       assert.notCalled(instance.setLoadTriggerInfo);
     });
+
+    it("should call maybeRecordTopsitesPainted when url is about:home and topsites_first_painted_ts is given", () => {
+      const topsites_first_painted_ts = 44455;
+      const data = {topsites_first_painted_ts};
+      const spy = sandbox.spy();
+
+      sandbox.stub(Services.prefs, "getIntPref").returns(1);
+      globals.set("aboutNewTabService", {
+        overridden: false,
+        newTabURL: "",
+        maybeRecordTopsitesPainted: spy,
+      });
+      instance.addSession("port123", "about:home");
+      instance.saveSessionPerfData("port123", data);
+
+      assert.calledOnce(spy);
+      assert.calledWith(spy, topsites_first_painted_ts);
+    });
   });
   describe("#uninit", () => {
     it("should call .pingCentre.uninit", () => {
@@ -770,44 +937,18 @@ describe("TelemetryFeed", () => {
 
       assert.calledOnce(stub);
     });
-    it("should remove the a-s telemetry pref listener", () => {
-      FakePrefs.prototype.prefs[TELEMETRY_PREF] = true;
-      instance = new TelemetryFeed();
-
-      assert.property(instance._prefs.observers, TELEMETRY_PREF);
-
-      instance.uninit();
-
-      assert.notProperty(instance._prefs.observers, TELEMETRY_PREF);
-    });
-    it("should remove the a-s ut telemetry pref listener", () => {
-      FakePrefs.prototype.prefs[EVENTS_TELEMETRY_PREF] = true;
-      instance = new TelemetryFeed();
-
-      assert.property(instance._prefs.observers, EVENTS_TELEMETRY_PREF);
-
-      instance.uninit();
-
-      assert.notProperty(instance._prefs.observers, EVENTS_TELEMETRY_PREF);
-    });
-    it("should call Cu.reportError if this._prefs.ignore throws", () => {
-      globals.sandbox.stub(FakePrefs.prototype, "ignore").throws("Some Error");
-      instance = new TelemetryFeed();
-
-      instance.uninit();
-
-      assert.called(global.Cu.reportError);
-    });
-    it("should make this.browserOpenNewtabStart() stop observing browser-open-newtab-start", async () => {
+    it("should make this.browserOpenNewtabStart() stop observing browser-open-newtab-start and domwindowopened", async () => {
       await instance.init();
       sandbox.spy(Services.obs, "removeObserver");
       sandbox.stub(instance.pingCentre, "uninit");
 
       await instance.uninit();
 
-      assert.calledOnce(Services.obs.removeObserver);
+      assert.calledTwice(Services.obs.removeObserver);
       assert.calledWithExactly(Services.obs.removeObserver,
         instance.browserOpenNewtabStart, "browser-open-newtab-start");
+      assert.calledWithExactly(Services.obs.removeObserver,
+        instance._addWindowListeners, "domwindowopened");
     });
   });
   describe("#onAction", () => {
@@ -1099,6 +1240,20 @@ describe("TelemetryFeed", () => {
       assert.equal(Object.keys(session.impressionSets).length, 2);
       assert.deepEqual(session.impressionSets.foo, [{id: 1, pos: 0}, {id: 2, pos: 1}]);
       assert.deepEqual(session.impressionSets.bar, [{id: 3, pos: 2}]);
+    });
+  });
+  describe("#_generateStructuredIngestionEndpoint", () => {
+    it("should generate a valid endpoint", () => {
+      const fakeEndpoint = "http://fakeendpoint.com/base/";
+      const fakeUUID = "{34f24486-f01a-9749-9c5b-21476af1fa77}";
+      const fakeUUIDWithoutBraces = fakeUUID.substring(1, fakeUUID.length - 1);
+      FakePrefs.prototype.prefs = {};
+      FakePrefs.prototype.prefs[STRUCTURED_INGESTION_ENDPOINT_PREF] = fakeEndpoint;
+      sandbox.stub(global.gUUIDGenerator, "generateUUID").returns(fakeUUID);
+      const feed = new TelemetryFeed();
+      const url = feed._generateStructuredIngestionEndpoint("testPingType", "1");
+
+      assert.equal(url, `${fakeEndpoint}/testPingType/1/${fakeUUIDWithoutBraces}`);
     });
   });
 });

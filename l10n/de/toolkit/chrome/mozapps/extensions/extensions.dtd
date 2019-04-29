@@ -176,6 +176,7 @@ einige der besten und populärsten Add-ons zum Ausprobieren anbieten.">
      to the add-on name for extensions that are not webextensions, which
      will stop working in Firefox 57. -->
 <!ENTITY addon.legacy.label                   "Alter Add-on-Typ">
+<!ENTITY addon.privateBrowsing.label          "In privaten Fenstern erlaubt">
 <!-- LOCALIZATION NOTE (addon.disabled.postfix): This is used in a normal list
      to signify that an add-on is disabled, in the form
      "<Addon name> <1.0> (disabled)" -->

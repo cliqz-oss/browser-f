@@ -35,6 +35,8 @@
 <!ENTITY error.noSource2 "Kein Video mit unterstütztem Format und MIME-Typ gefunden.">
 <!ENTITY error.generic "Abspielen des Videos wegen eines unbekannten Fehlers abgebrochen.">
 
+<!ENTITY status.pictureInPicture "Dieses Video wird im Modus &quot;Bild im Bild&quot; (PiP) wiedergegeben.">
+
 <!-- LOCALIZATION NOTE (scrubberScale.nameFormat): the #1 string is the current
 media position, and the #2 string is the total duration. For example, when at
 the 5 minute mark in a 6 hour long video, #1 would be "5:00" and #2 would be
