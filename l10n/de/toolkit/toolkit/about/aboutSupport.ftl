@@ -51,6 +51,8 @@ app-basics-launcher-process-status = Starter-Prozess
 app-basics-multi-process-support = Fenster mit mehreren Prozessen
 app-basics-process-count = Web-Inhaltsprozesse
 app-basics-enterprise-policies = Unternehmensrichtlinien
+app-basics-location-service-key-google = Google-Location-Service-Schlüssel
+app-basics-safebrowsing-key-google = Google-Safebrowsing-Schlüssel
 app-basics-key-google = Google-Schlüssel
 app-basics-key-mozilla = Mozilla-Location-Service-Schlüssel
 app-basics-safe-mode = Abgesicherter Modus
@@ -247,6 +249,8 @@ effective-content-sandbox-level = Effektive Ebene der isolierten Umgebung
 sandbox-proc-type-content = Inhalt
 sandbox-proc-type-file = Dateiinhalt
 sandbox-proc-type-media-plugin = Medienplugin
+
+sandbox-proc-type-data-decoder = Datendekoder
 
 launcher-process-status-0 = Aktiviert
 launcher-process-status-1 = Deaktiviert nach Fehler

@@ -53,6 +53,7 @@ category-privacy =
 pane-sync-title = Firefox-Konto
 category-sync =
     .tooltiptext = { pane-sync-title }
+<<<<<<< HEAD
 
 pane-connect-title = Connect
 category-connect =
@@ -60,6 +61,18 @@ category-connect =
 
 help-button-label = Mozilla Support
 addons-button-label = Erweiterungen
+||||||| merged common ancestors
+help-button-label = Hilfe für { -brand-short-name }
+addons-button-label = Erweiterungen & Themes
+=======
+
+pane-sync-title2 = { -sync-brand-short-name }
+category-sync2 =
+    .tooltiptext = { pane-sync-title2 }
+
+help-button-label = Hilfe für { -brand-short-name }
+addons-button-label = Erweiterungen & Themes
+>>>>>>> origin/upstream-releases
 focus-search =
     .key = f
 close-button =
@@ -342,6 +355,11 @@ browsing-search-on-start-typing =
 browsing-cfr-recommendations =
     .label = Erweiterungen während des Surfens empfehlen
     .accesskey = h
+
+browsing-cfr-features =
+    .label = Funktionen während des Surfens empfehlen
+    .accesskey = F
+
 browsing-cfr-recommendations-learn-more = Weitere Informationen
 
 ## General Section - Proxy
@@ -536,6 +554,13 @@ sync-device-name-save =
     .accesskey = S
 sync-mobilepromo-single = Weiteres Gerät verbinden
 sync-mobilepromo-multi = Geräte verwalten
+
+sync-connect-another-device = Weiteres Gerät verbinden
+
+sync-manage-devices = Geräte verwalten
+
+sync-fxa-begin-pairing = Gerät verbinden
+
 sync-tos-link = Nutzungsbedingungen
 sync-fxa-privacy-notice = Datenschutzhinweis
 
@@ -690,7 +715,14 @@ content-blocking-all-windows-trackers = Erkannte Elemente zur Aktivitätenverfol
 content-blocking-all-third-party-cookies = Alle Cookies von Drittanbietern
 content-blocking-warning-title = Achtung!
 content-blocking-warning-desc = Das Blockieren von Cookies und Elementen zur Aktivitätenverfolgung kann zu Problemen mit einigen Websites führen. Deshalb können Sie die Funktion für Websites, denen Sie vertrauen, leicht deaktivieren.
+content-blocking-warning-description = Das Blockieren von Inhalten kann bei einigen Websites zu Problemen führen. Das Deaktivieren des Blockierens für von Ihnen vertraute Seiten ist ganz einfach.
 content-blocking-learn-how = Erfahren Sie mehr
+
+content-blocking-reload-description = Um die Änderungen anzuwenden, müssen alle Tabs neu geladen werden.
+content-blocking-reload-tabs-button =
+  .label = Alle Tabs neu laden
+  .accesskey = T
+
 content-blocking-trackers-label =
     .label = Elemente zur Aktivitätenverfolgung
     .accesskey = E
@@ -704,6 +736,20 @@ content-blocking-tracking-protection-change-block-list = Blockierliste ändern
 content-blocking-cookies-label =
     .label = Cookies
     .accesskey = C
+
+content-blocking-expand-section = 
+  .tooltiptext = Weitere Informationen
+
+# Cryptomining refers to using scripts on websites that can use a computer’s resources to mine cryptocurrency without a user’s knowledge.
+content-blocking-cryptominers-label =
+  .label = Währungsberechner (Cryptominer)
+  .accesskey = W
+
+# Browser fingerprinting is a method of tracking users by the configuration and settings information (their "digital fingerprint")
+# that is visible to websites they browse, rather than traditional tracking methods such as IP addresses and unique cookies.
+content-blocking-fingerprinters-label =
+  .label = Identifizierer (Fingerprinter)
+  .accesskey = d
 
 ## Privacy Section - Tracking
 tracking-header-donottrack = Do Not Track

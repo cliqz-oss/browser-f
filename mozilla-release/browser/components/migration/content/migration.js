@@ -7,8 +7,8 @@
 const kIMig = Ci.nsIBrowserProfileMigrator;
 const kIPStartup = Ci.nsIProfileStartup;
 
-ChromeUtils.import("resource://gre/modules/Services.jsm");
-ChromeUtils.import("resource:///modules/MigrationUtils.jsm");
+const {Services} = ChromeUtils.import("resource://gre/modules/Services.jsm");
+const {MigrationUtils} = ChromeUtils.import("resource:///modules/MigrationUtils.jsm");
 
 // For yet undiscovered reason `Cu.reportError()` doesn't work in this file.
 // Same as `dump()` :-/

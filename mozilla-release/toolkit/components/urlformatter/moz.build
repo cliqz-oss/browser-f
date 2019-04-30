@@ -15,8 +15,21 @@ XPIDL_SOURCES += [
 
 XPIDL_MODULE = 'urlformatter'
 
+<<<<<<< HEAD
 EXTRA_COMPONENTS += [
     'nsURLFormatter.manifest',
+||||||| merged common ancestors
+EXTRA_COMPONENTS += [
+    'nsURLFormatter.js',
+    'nsURLFormatter.manifest',
+=======
+EXTRA_JS_MODULES += [
+    'URLFormatter.jsm',
+]
+
+XPCOM_MANIFESTS += [
+    'components.conf',
+>>>>>>> origin/upstream-releases
 ]
 
 EXTRA_PP_COMPONENTS += [

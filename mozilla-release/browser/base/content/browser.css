@@ -275,8 +275,8 @@ window:not([chromehidden~="toolbar"]) #nav-bar[nonemptyoverflow] > .overflow-but
 
 
 %ifdef MENUBAR_CAN_AUTOHIDE
-#toolbar-menubar:not([autohide=true]) + #TabsToolbar > .titlebar-buttonbox-container,
-#toolbar-menubar:not([autohide=true]) + #TabsToolbar .titlebar-spacer,
+:root:not([chromehidden~="menubar"]) #toolbar-menubar:not([autohide=true]) + #TabsToolbar > .titlebar-buttonbox-container,
+:root:not([chromehidden~="menubar"]) #toolbar-menubar:not([autohide=true]) + #TabsToolbar .titlebar-spacer,
 %endif
 %ifndef MOZ_WIDGET_COCOA
 %ifndef MOZ_WIDGET_GTK
@@ -545,14 +545,12 @@ toolbar:not(#TabsToolbar) > #personal-bookmarks {
   min-width: 1px;
 }
 
-#urlbar {
+#urlbar[quantumbar="false"] {
   -moz-binding: url(chrome://browser/content/urlbarBindings.xml#legacy-urlbar);
 }
 
-@supports -moz-bool-pref("browser.urlbar.quantumbar") {
-  #urlbar {
-    -moz-binding: url(chrome://browser/content/urlbarBindings.xml#urlbar);
-  }
+#urlbar[quantumbar="true"] {
+  -moz-binding: url(chrome://browser/content/urlbarBindings.xml#urlbar);
 }
 
 /* DB-652: Short-term design for (automatic) forget tabs */
@@ -700,10 +698,24 @@ html|input.urlbar-input {
   list-style-image: none;
 }
 
+#urlbar[actionoverride] > #urlbar-display-box,
 #urlbar:not([actiontype="switchtab"]):not([actiontype="extension"]) > #urlbar-display-box,
 #urlbar:not([actiontype="switchtab"]) > #urlbar-display-box > #switchtab,
 #urlbar:not([actiontype="extension"]) > #urlbar-display-box > #extension {
   display: none;
+}
+
+#PopupAutoComplete > richlistbox > richlistitem[originaltype="loginsFooter"] {
+  -moz-box-pack: center;
+  color: -moz-fieldText;
+  min-height: 40px;
+  border-top: 1px solid rgba(38,38,38,.15);
+  background-color: hsla(0,0%,80%,.35); /* match arrowpanel-dimmed */;
+}
+
+#PopupAutoComplete > richlistbox > richlistitem[originaltype="loginsFooter"]:hover,
+#PopupAutoComplete > richlistbox > richlistitem[originaltype="loginsFooter"][selected] {
+  background-color: hsla(0,0%,80%,.5); /* match arrowpanel-dimmed-further */
 }
 
 #PopupAutoComplete[firstresultstyle="insecureWarning"] {
@@ -711,7 +723,7 @@ html|input.urlbar-input {
 }
 
 #PopupAutoComplete > richlistbox > richlistitem[originaltype="insecureWarning"] {
-  -moz-binding: url("chrome://global/content/bindings/autocomplete.xml#autocomplete-richlistitem-insecure-field");
+  -moz-binding: none;
   height: auto;
 }
 
@@ -727,10 +739,6 @@ html|input.urlbar-input {
 
 #PopupAutoComplete > richlistbox > richlistitem[originaltype="insecureWarning"] > .ac-title > label {
   margin-inline-start: 0;
-}
-
-#PopupSearchAutoComplete {
-  -moz-binding: url("chrome://browser/content/search/search.xml#browser-search-autocomplete-result-popup");
 }
 
 #PopupAutoCompleteRichResult {
@@ -762,22 +770,13 @@ html|input.urlbar-input {
 #identity-box.chromeUI ~ #page-action-buttons > .urlbar-page-action:not(#star-button-box),
 .urlbar-history-dropmarker[usertyping],
 .urlbar-go-button:not([usertyping]),
-.urlbar-go-button:not([parentfocused="true"]),
-#urlbar[pageproxystate="invalid"] > #identity-box > #blocked-permissions-container,
-#urlbar[pageproxystate="invalid"] > #identity-box > #notification-popup-box,
-#urlbar[pageproxystate="invalid"] > #identity-box > #identity-icon-labels {
+.urlbar-go-button:not([parentfocused="true"]) {
   display: none;
 }
 
-#identity-box {
+#nav-bar:not([keyNav=true]) #identity-box {
   -moz-user-focus: normal;
 }
-
-#urlbar[pageproxystate="invalid"] > #identity-box {
-  pointer-events: none;
-  -moz-user-focus: ignore;
-}
-
 
 /* We leave 49ch plus whatever space the download button will need when it
  * appears. Normally this should be 16px for the icon, plus 2 * 2px padding
@@ -978,7 +977,7 @@ html|*#fullscreen-exit-button {
 
 /* notification anchors should only be visible when their associated
    notifications are */
-.notification-anchor-icon {
+#nav-bar:not([keyNav=true]) .notification-anchor-icon {
   -moz-user-focus: normal;
 }
 
@@ -996,10 +995,6 @@ html|*#fullscreen-exit-button {
   opacity: 0;
   pointer-events: none;
   -moz-stack-sizing: ignore;
-}
-
-#addon-progress-notification {
-  -moz-binding: url("chrome://browser/content/urlbarBindings.xml#addon-progress-notification");
 }
 
 browser[tabmodalPromptShowing] {
@@ -1451,6 +1446,7 @@ toolbarpaletteitem > toolbaritem {
   }
 }
 
+<<<<<<< HEAD
 /* Cliqz - Hide https everywhere toolbar button */
 #https-everywhere_cliqz_com-browser-action, #https-everywhere_cliqz_com-browser-action * {
   visibility: hidden;
@@ -1463,4 +1459,11 @@ toolbarpaletteitem > toolbaritem {
   display: none;
 }
 
+||||||| merged common ancestors
+=======
+toolbar[keyNav=true]:not([collapsed=true]):not([customizing=true]) toolbartabstop {
+  -moz-user-focus: normal;
+}
+
+>>>>>>> origin/upstream-releases
 %include theme-vars.inc.css

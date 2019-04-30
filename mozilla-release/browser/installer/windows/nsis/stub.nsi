@@ -2051,8 +2051,30 @@ FunctionEnd
 ; 2) An amount of RAM strictly greater than RAM_NEEDED_FOR_64BIT
 ; 3) No third-party products installed that cause issues with the 64-bit build.
 ;    Currently this includes Lenovo OneKey Theater and Lenovo Energy Management.
+<<<<<<< HEAD
 Function ShouldInstall64Bit
   StrCpy $0 0
+||||||| merged common ancestors
+; If any of those checks fail, the 32-bit x86 build is selected.
+Function GetArchToInstall
+  StrCpy $ArchToInstall ${ARCH_X86}
+
+  ${If} ${IsNativeARM64}
+    ; Disable installing the AArch64 build for this version
+    ; because we aren't publishing those builds yet.
+    ;StrCpy $ArchToInstall ${ARCH_AARCH64}
+    Return
+  ${EndIf}
+=======
+; If any of those checks fail, the 32-bit x86 build is selected.
+Function GetArchToInstall
+  StrCpy $ArchToInstall ${ARCH_X86}
+
+  ${If} ${IsNativeARM64}
+    StrCpy $ArchToInstall ${ARCH_AARCH64}
+    Return
+  ${EndIf}
+>>>>>>> origin/upstream-releases
 
   ${IfNot} ${RunningX64}
     Return

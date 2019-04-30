@@ -5,7 +5,6 @@
 /* import-globals-from extensionControlled.js */
 /* import-globals-from preferences.js */
 
-ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 ChromeUtils.defineModuleGetter(this, "PlacesUtils",
                                "resource://gre/modules/PlacesUtils.jsm");
 ChromeUtils.defineModuleGetter(this, "ExtensionSettingsStore",
@@ -147,14 +146,16 @@ var gSearchPane = {
     permanentPBLabel.hidden = urlbarSuggests.hidden || !permanentPB;
   },
 
-  buildDefaultEngineDropDown() {
+  async buildDefaultEngineDropDown() {
     // This is called each time something affects the list of engines.
     let list = document.getElementById("defaultEngine");
     // Set selection to the current default engine.
-    let currentEngine = Services.search.defaultEngine.name;
+    let currentEngine = (await Services.search.getDefault()).name;
 
     // If the current engine isn't in the list any more, select the first item.
     let engines = gEngineView._engineStore._engines;
+    if (!engines.length)
+      return;
     if (!engines.some(e => e.name == currentEngine))
       currentEngine = engines[0].name;
 
@@ -320,8 +321,8 @@ var gSearchPane = {
     }
   },
 
-  onRestoreDefaults() {
-    let num = gEngineView._engineStore.restoreDefaultEngines();
+  async onRestoreDefaults() {
+    let num = await gEngineView._engineStore.restoreDefaultEngines();
     gEngineView.rowCountChanged(0, num);
     gEngineView.invalidate();
   },
@@ -392,9 +393,8 @@ var gSearchPane = {
       hiddenList.join(",");
   },
 
-  setDefaultEngine() {
-    Services.search.defaultEngine =
-      document.getElementById("defaultEngine").selectedItem.engine;
+  async setDefaultEngine() {
+    await Services.search.setDefault(document.getElementById("defaultEngine").selectedItem.engine);
     ExtensionSettingsStore.setByUser(SEARCH_TYPE, SEARCH_KEY);
   },
 };
@@ -414,12 +414,21 @@ function EngineStore() {
   let pref = Preferences.get("browser.search.hiddenOneOffs").value;
   this.hiddenList = pref ? pref.split(",") : [];
 
-  this._engines = Services.search.getVisibleEngines().map(this._cloneEngine, this);
-  this._defaultEngines = Services.search.getDefaultEngines().map(this._cloneEngine, this);
+  this._engines = [];
+  this._defaultEngines = [];
+  Promise.all([Services.search.getVisibleEngines(),
+    Services.search.getDefaultEngines()]).then(([visibleEngines, defaultEngines]) => {
+      for (let engine of visibleEngines) {
+        this.addEngine(engine);
+        gEngineView.rowCountChanged(gEngineView.lastIndex, 1);
+      }
+      this._defaultEngines = defaultEngines.map(this._cloneEngine, this);
+      gSearchPane.buildDefaultEngineDropDown();
 
-  // check if we need to disable the restore defaults button
-  var someHidden = this._defaultEngines.some(e => e.hidden);
-  gSearchPane.showRestoreDefaults(someHidden);
+      // check if we need to disable the restore defaults button
+      var someHidden = this._defaultEngines.some(e => e.hidden);
+      gSearchPane.showRestoreDefaults(someHidden);
+    });
 }
 EngineStore.prototype = {
   _engines: null,
@@ -467,13 +476,13 @@ EngineStore.prototype = {
       throw new Error("ES_moveEngine: invalid engine?");
 
     if (index == aNewIndex)
-      return; // nothing to do
+      return Promise.resolve(); // nothing to do
 
     // Move the engine in our internal store
     var removedEngine = this._engines.splice(index, 1)[0];
     this._engines.splice(aNewIndex, 0, removedEngine);
 
-    Services.search.moveEngine(aEngine.originalEngine, aNewIndex);
+    return Services.search.moveEngine(aEngine.originalEngine, aNewIndex);
   },
 
   removeEngine(aEngine) {
@@ -495,7 +504,7 @@ EngineStore.prototype = {
     return index;
   },
 
-  restoreDefaultEngines() {
+  async restoreDefaultEngines() {
     var added = 0;
 
     for (var i = 0; i < this._defaultEngines.length; ++i) {
@@ -503,7 +512,7 @@ EngineStore.prototype = {
 
       // If the engine is already in the list, just move it.
       if (this._engines.some(this._isSameEngine, e)) {
-        this.moveEngine(this._getEngineByName(e.name), i);
+        await this.moveEngine(this._getEngineByName(e.name), i);
       } else {
         // Otherwise, add it back to our internal store
 
@@ -514,7 +523,7 @@ EngineStore.prototype = {
         this._engines.splice(i, 0, e);
         let engine = e.originalEngine;
         engine.hidden = false;
-        Services.search.moveEngine(engine, i);
+        await Services.search.moveEngine(engine, i);
         added++;
       }
     }
@@ -565,7 +574,8 @@ EngineView.prototype = {
 
   // Helpers
   rowCountChanged(index, count) {
-    this.tree.rowCountChanged(index, count);
+    if (this.tree)
+      this.tree.rowCountChanged(index, count);
   },
 
   invalidate() {
@@ -625,7 +635,7 @@ EngineView.prototype = {
             sourceIndex != targetIndex + orientation);
   },
 
-  drop(dropIndex, orientation, dataTransfer) {
+  async drop(dropIndex, orientation, dataTransfer) {
     var sourceIndex = this.getSourceIndexFromDrag(dataTransfer);
     var sourceEngine = this._engineStore.engines[sourceIndex];
 
@@ -637,7 +647,7 @@ EngineView.prototype = {
       dropIndex++;
     }
 
-    this._engineStore.moveEngine(sourceEngine, dropIndex);
+    await this._engineStore.moveEngine(sourceEngine, dropIndex);
     gSearchPane.showRestoreDefaults(true);
     gSearchPane.buildDefaultEngineDropDown();
 

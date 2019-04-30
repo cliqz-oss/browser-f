@@ -4,12 +4,13 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-ChromeUtils.import("resource://gre/modules/PrivateBrowsingUtils.jsm");
-ChromeUtils.import("resource://gre/modules/BrowserUtils.jsm");
-ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
-ChromeUtils.import("resource://gre/modules/Services.jsm");
+var {PrivateBrowsingUtils} = ChromeUtils.import("resource://gre/modules/PrivateBrowsingUtils.jsm");
+var {BrowserUtils} = ChromeUtils.import("resource://gre/modules/BrowserUtils.jsm");
+var {XPCOMUtils} = ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+var {Services} = ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 XPCOMUtils.defineLazyModuleGetters(this, {
+  E10SUtils: "resource://gre/modules/E10SUtils.jsm",
   SpellCheckHelper: "resource://gre/modules/InlineSpellChecker.jsm",
   LoginHelper: "resource://gre/modules/LoginHelper.jsm",
   LoginManagerContextMenu: "resource://gre/modules/LoginManagerContextMenu.jsm",
@@ -44,6 +45,17 @@ function openContextMenu(aMessage) {
   let documentURIObject = makeURI(data.docLocation,
                                   data.charSet,
                                   makeURI(data.baseURI));
+  let ReferrerInfo = Components.Constructor("@mozilla.org/referrer-info;1",
+                                        "nsIReferrerInfo",
+                                        "init");
+  let referrerInfo = new ReferrerInfo(
+    data.referrerPolicy,
+    !data.context.linkHasNoReferrer,
+    documentURIObject);
+  let frameReferrerInfo = new ReferrerInfo(
+    data.referrerPolicy,
+    !data.context.linkHasNoReferrer,
+    data.referrer ? makeURI(data.referrer) : null);
   gContextMenuContentData = { context: data.context,
                               isRemote: data.isRemote,
                               popupNodeSelectors: data.popupNodeSelectors,
@@ -55,8 +67,8 @@ function openContextMenu(aMessage) {
                               documentURIObject,
                               docLocation: data.docLocation,
                               charSet: data.charSet,
-                              referrer: data.referrer,
-                              referrerPolicy: data.referrerPolicy,
+                              referrerInfo,
+                              frameReferrerInfo,
                               contentType: data.contentType,
                               contentDisposition: data.contentDisposition,
                               frameOuterWindowID: data.frameOuterWindowID,
@@ -193,7 +205,6 @@ nsContextMenu.prototype = {
 
     this.link                = context.link;
     this.linkDownload        = context.linkDownload;
-    this.linkHasNoReferrer   = context.linkHasNoReferrer;
     this.linkProtocol        = context.linkProtocol;
     this.linkTextStr         = context.linkTextStr;
     this.linkURL             = context.linkURL;
@@ -225,9 +236,13 @@ nsContextMenu.prototype = {
     this.frameOuterWindowID = context.frameOuterWindowID;
 
     this.inSyntheticDoc = context.inSyntheticDoc;
+    this.inAboutDevtoolsToolbox = context.inAboutDevtoolsToolbox;
+
 
     // Everything after this isn't sent directly from ContextMenu
     this.ownerDoc = this.target.ownerDocument;
+
+    this.csp = E10SUtils.deserializeCSP(context.csp);
 
     // Remember the CSS selectors corresponding to clicked node. gContextMenuContentData
     // can be null if the menu was triggered by tests in which case use an empty array.
@@ -429,23 +444,14 @@ nsContextMenu.prototype = {
   initViewItems: function CM_initViewItems() {
     // View source is always OK, unless in directory listing.
     this.showItem("context-viewpartialsource-selection",
-                  this.isContentSelected);
-
-    const {gBrowser} = this.browser.ownerGlobal;
-    // Hide menu that opens devtools when the window is showing `about:devtools-toolbox`.
-    // This is to avoid displaying multiple devtools at the same time. See bug 1495944.
-    const isAboutDevtoolsToolbox = gBrowser &&
-                                   gBrowser.currentURI &&
-                                   gBrowser.currentURI.scheme === "about" &&
-                                   gBrowser.currentURI.filePath === "devtools-toolbox";
+                  !this.inAboutDevtoolsToolbox && this.isContentSelected);
 
     var shouldShow = !(this.isContentSelected ||
                        this.onImage || this.onCanvas ||
                        this.onVideo || this.onAudio ||
                        this.onLink || this.onTextInput);
 
-    var showInspect = this.inTabBrowser &&
-                      !isAboutDevtoolsToolbox &&
+    var showInspect = this.inTabBrowser && !this.inAboutDevtoolsToolbox &&
                       Services.prefs.getBoolPref("devtools.inspector.enabled", true) &&
                       !Services.prefs.getBoolPref("devtools.policy.disabled", false);
 
@@ -533,7 +539,8 @@ nsContextMenu.prototype = {
                   this.onTextInput && this.onKeywordField);
     this.showItem("frame", this.inFrame);
 
-    let showSearchSelect = (this.isTextSelected || this.onLink) && !this.onImage;
+    let showSearchSelect = !this.inAboutDevtoolsToolbox &&
+                           (this.isTextSelected || this.onLink) && !this.onImage;
     this.showItem("context-searchselect", showSearchSelect);
     if (showSearchSelect) {
       this.formatSearchContextItem();
@@ -634,7 +641,8 @@ nsContextMenu.prototype = {
                                          this.onVideo || this.onAudio ||
                                          this.inSyntheticDoc) ||
                                        this.isDesignMode);
-    this.showItem("context-sep-selectall", this.isContentSelected );
+    this.showItem("context-sep-selectall",
+                  !this.inAboutDevtoolsToolbox && this.isContentSelected);
 
     // XXX dr
     // ------
@@ -676,6 +684,12 @@ nsContextMenu.prototype = {
     this.showItem("context-media-showcontrols", onMedia && !this.target.controls);
     this.showItem("context-media-hidecontrols", this.target.controls && (this.onVideo || (this.onAudio && !this.inSyntheticDoc)));
     this.showItem("context-video-fullscreen", this.onVideo && !this.target.ownerDocument.fullscreen);
+    if (AppConstants.NIGHTLY_BUILD) {
+      let shouldDisplay = Services.prefs.getBoolPref("media.videocontrols.picture-in-picture.enabled") &&
+                          this.onVideo &&
+                          !this.target.ownerDocument.fullscreen;
+      this.showItem("context-video-pictureinpicture", shouldDisplay);
+    }
     this.showItem("context-media-eme-learnmore", this.onDRMMedia);
     this.showItem("context-media-eme-separator", this.onDRMMedia);
 
@@ -723,8 +737,9 @@ nsContextMenu.prototype = {
     // don't want to show the form fill option.
     let showFill = loginFillInfo && loginFillInfo.passwordField.found;
 
-    // Disable the fill option if the user has set a master password
+    // Disable the fill option if the user hasn't unlocked with their master password
     // or if the password field or target field are disabled.
+    // XXX: Bug 1529025 to respect signon.rememberSignons
     let disableFill = !loginFillInfo ||
                       !Services.logins ||
                       !Services.logins.isLoggedIn ||
@@ -781,12 +796,22 @@ nsContextMenu.prototype = {
     let params = { charset: gContextMenuContentData.charSet,
                    originPrincipal: this.principal,
                    triggeringPrincipal: this.principal,
+<<<<<<< HEAD
                    referrerURI: gContextMenuContentData.documentURIObject,
                    referrerPolicy: gContextMenuContentData.referrerPolicy,
                    frameOuterWindowID: gContextMenuContentData.frameOuterWindowID,
                    noReferrer: this.linkHasNoReferrer || this.onPlainTextLink,
                    private: this.browser.loadContext.usePrivateBrowsing
     };
+||||||| merged common ancestors
+                   referrerURI: gContextMenuContentData.documentURIObject,
+                   referrerPolicy: gContextMenuContentData.referrerPolicy,
+                   frameOuterWindowID: gContextMenuContentData.frameOuterWindowID,
+                   noReferrer: this.linkHasNoReferrer || this.onPlainTextLink };
+=======
+                   csp: this.csp,
+                   frameOuterWindowID: gContextMenuContentData.frameOuterWindowID};
+>>>>>>> origin/upstream-releases
     for (let p in extra) {
       params[p] = extra[p];
     }
@@ -797,13 +822,16 @@ nsContextMenu.prototype = {
       params.frameOuterWindowID = this.frameOuterWindowID;
     }
 
+    let referrerInfo = gContextMenuContentData.referrerInfo;
     // If we want to change userContextId, we must be sure that we don't
     // propagate the referrer.
-    if ("userContextId" in params &&
-        params.userContextId != gContextMenuContentData.userContextId) {
-      params.noReferrer = true;
+    if (("userContextId" in params &&
+        params.userContextId != gContextMenuContentData.userContextId) ||
+      this.onPlainTextLink) {
+      referrerInfo.sendReferrer = false;
     }
 
+    params.referrerInfo = referrerInfo;
     return params;
   },
 
@@ -852,11 +880,10 @@ nsContextMenu.prototype = {
 
   // Open frame in a new tab.
   openFrameInTab() {
-    let referrer = gContextMenuContentData.referrer;
     openLinkIn(gContextMenuContentData.docLocation, "tab",
                { charset: gContextMenuContentData.charSet,
                  triggeringPrincipal: this.browser.contentPrincipal,
-                 referrerURI: referrer ? makeURI(referrer) : null });
+                 referrerInfo: gContextMenuContentData.frameReferrerInfo });
   },
 
   // Reload clicked-in frame.
@@ -868,11 +895,10 @@ nsContextMenu.prototype = {
 
   // Open clicked-in frame in its own window.
   openFrame() {
-    let referrer = gContextMenuContentData.referrer;
     openLinkIn(gContextMenuContentData.docLocation, "window",
                { charset: gContextMenuContentData.charSet,
                  triggeringPrincipal: this.browser.contentPrincipal,
-                 referrerURI: referrer ? makeURI(referrer) : null });
+                 referrerInfo: gContextMenuContentData.frameReferrerInfo });
   },
 
   // Open clicked-in frame in the same window.
@@ -880,15 +906,10 @@ nsContextMenu.prototype = {
     urlSecurityCheck(gContextMenuContentData.docLocation,
                      this.browser.contentPrincipal,
                      Ci.nsIScriptSecurityManager.DISALLOW_SCRIPT);
-    let referrer = gContextMenuContentData.referrer;
     openWebLinkIn(gContextMenuContentData.docLocation, "current", {
-      referrerURI: referrer ? makeURI(referrer) : null,
+      referrerInfo: gContextMenuContentData.frameReferrerInfo,
       triggeringPrincipal: this.browser.contentPrincipal,
     });
-  },
-
-  reload(event) {
-    BrowserReloadOrDuplicate(event);
   },
 
   // View Partial Source
@@ -939,7 +960,7 @@ nsContextMenu.prototype = {
     urlSecurityCheck(this.imageDescURL,
                      this.principal,
                      Ci.nsIScriptSecurityManager.DISALLOW_SCRIPT);
-    openUILink(this.imageDescURL, e, { referrerURI: gContextMenuContentData.documentURIObject,
+    openUILink(this.imageDescURL, e, { referrerInfo: gContextMenuContentData.referrerInfo,
                                        triggeringPrincipal: this.principal,
     });
   },
@@ -973,18 +994,18 @@ nsContextMenu.prototype = {
 
   // Change current window to the URL of the image, video, or audio.
   viewMedia(e) {
-    let referrerURI = gContextMenuContentData.documentURIObject;
+    let referrerInfo = gContextMenuContentData.referrerInfo;
     let systemPrincipal = Services.scriptSecurityManager.getSystemPrincipal();
     if (this.onCanvas) {
       this._canvasToBlobURL(this.target).then(function(blobURL) {
-        openUILink(blobURL, e, { referrerURI,
+        openUILink(blobURL, e, { referrerInfo,
                                  triggeringPrincipal: systemPrincipal});
       }, Cu.reportError);
     } else {
       urlSecurityCheck(this.mediaURL,
                        this.principal,
                        Ci.nsIScriptSecurityManager.DISALLOW_SCRIPT);
-      openUILink(this.mediaURL, e, { referrerURI,
+      openUILink(this.mediaURL, e, { referrerInfo,
                                      forceAllowDataURI: true,
                                      triggeringPrincipal: this.principal,
       });
@@ -1041,7 +1062,7 @@ nsContextMenu.prototype = {
                      this.principal,
                      Ci.nsIScriptSecurityManager.DISALLOW_SCRIPT);
 
-    openUILink(this.bgImageURL, e, { referrerURI: gContextMenuContentData.documentURIObject,
+    openUILink(this.bgImageURL, e, { referrerInfo: gContextMenuContentData.referrerInfo,
                                      triggeringPrincipal: this.principal,
     });
   },
@@ -1108,12 +1129,13 @@ nsContextMenu.prototype = {
     // nsIExternalHelperAppService.doContent, which will wait for the
     // appropriate MIME-type headers and then prompt the user with a
     // file picker
-    function saveAsListener() {}
+    function saveAsListener(principal) {
+      this._triggeringPrincipal = principal;
+    }
     saveAsListener.prototype = {
       extListener: null,
 
-      onStartRequest: function saveLinkAs_onStartRequest(aRequest, aContext) {
-
+      onStartRequest: function saveLinkAs_onStartRequest(aRequest) {
         // if the timer fired, the error status will have been caused by that,
         // and we'll be restarting in onStopRequest, so no reason to notify
         // the user
@@ -1144,25 +1166,25 @@ nsContextMenu.prototype = {
         this.extListener =
           extHelperAppSvc.doContent(channel.contentType, aRequest,
                                     null, true, window);
-        this.extListener.onStartRequest(aRequest, aContext);
+        this.extListener.onStartRequest(aRequest);
       },
 
-      onStopRequest: function saveLinkAs_onStopRequest(aRequest, aContext,
+      onStopRequest: function saveLinkAs_onStopRequest(aRequest,
                                                        aStatusCode) {
         if (aStatusCode == NS_ERROR_SAVE_LINK_AS_TIMEOUT) {
           // do it the old fashioned way, which will pick the best filename
           // it can without waiting.
           saveURL(linkURL, linkText, dialogTitle, bypassCache, false, docURI,
-                  doc, isContentWindowPrivate);
+                  doc, isContentWindowPrivate, this._triggeringPrincipal);
         }
         if (this.extListener)
-          this.extListener.onStopRequest(aRequest, aContext, aStatusCode);
+          this.extListener.onStopRequest(aRequest, aStatusCode);
       },
 
-      onDataAvailable: function saveLinkAs_onDataAvailable(aRequest, aContext,
+      onDataAvailable: function saveLinkAs_onDataAvailable(aRequest,
                                                            aInputStream,
                                                            aOffset, aCount) {
-        this.extListener.onDataAvailable(aRequest, aContext, aInputStream,
+        this.extListener.onDataAvailable(aRequest, aInputStream,
                                          aOffset, aCount);
       },
     };
@@ -1233,7 +1255,7 @@ nsContextMenu.prototype = {
                            timer.TYPE_ONE_SHOT);
 
     // kick off the channel with our proxy object as the listener
-    channel.asyncOpen2(new saveAsListener());
+    channel.asyncOpen(new saveAsListener(this.principal));
   },
 
   // Save URL of clicked-on link.

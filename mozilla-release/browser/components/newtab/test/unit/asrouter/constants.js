@@ -32,6 +32,13 @@ export class FakeRemotePageManager {
         openLinkIn: sinon.stub(),
         OpenBrowserWindow: sinon.stub(),
         openPreferences: sinon.stub(),
+        gBrowser: {
+          pinTab: sinon.stub(),
+          selectedTab: {},
+        },
+        ConfirmationHint: {
+          show: sinon.stub(),
+        },
       },
     };
     this.portID = "6000:2";

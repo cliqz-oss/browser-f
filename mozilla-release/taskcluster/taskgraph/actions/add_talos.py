@@ -17,7 +17,6 @@ logger = logging.getLogger(__name__)
 @register_callback_action(
     name='run-all-talos',
     title='Run All Talos Tests',
-    kind='hook',
     generic=True,
     symbol='raT',
     description="Add all Talos tasks to a push.",
@@ -38,7 +37,7 @@ logger = logging.getLogger(__name__)
         'additionalProperties': False
     },
 )
-def add_all_talos(parameters, graph_config, input, task_group_id, task_id, task):
+def add_all_talos(parameters, graph_config, input, task_group_id, task_id):
     decision_task_id, full_task_graph, label_to_taskid = fetch_graph_and_labels(
         parameters, graph_config)
 
@@ -48,5 +47,12 @@ def add_all_talos(parameters, graph_config, input, task_group_id, task_id, task)
                   for label, entry
                   in full_task_graph.tasks.iteritems() if 'talos_try_name' in entry.attributes]
 
-        create_tasks(to_run, full_task_graph, label_to_taskid, parameters, decision_task_id)
+        create_tasks(
+            graph_config,
+            to_run,
+            full_task_graph,
+            label_to_taskid,
+            parameters,
+            decision_task_id,
+        )
         logger.info('Scheduled {} talos tasks (time {}/{})'.format(len(to_run), i+1, times))

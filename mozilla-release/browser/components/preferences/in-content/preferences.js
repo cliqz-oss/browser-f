@@ -14,17 +14,28 @@
 /* import-globals-from findInPage.js */
 /* import-globals-from ../../../base/content/utilityOverlay.js */
 /* import-globals-from ../../../../toolkit/content/preferencesBindings.js */
+/* global MozXULElement */
 
 "use strict";
 
+<<<<<<< HEAD
 ChromeUtils.import("resource://gre/modules/Services.jsm");
 ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
 ChromeUtils.import("resource:///modules/CliqzResources.jsm");
+||||||| merged common ancestors
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
+=======
+var {Services} = ChromeUtils.import("resource://gre/modules/Services.jsm");
+>>>>>>> origin/upstream-releases
 
+ChromeUtils.defineModuleGetter(this, "AMTelemetry",
+                               "resource://gre/modules/AddonManager.jsm");
 ChromeUtils.defineModuleGetter(this, "formAutofillParent",
                                "resource://formautofill/FormAutofillParent.jsm");
 
-var gLastHash = "";
+var gLastCategory = {category: undefined, subcategory: undefined};
+const gXULDOMParser = new DOMParser();
 
 var gCategoryInits = new Map();
 function init_category_if_required(category) {
@@ -33,15 +44,33 @@ function init_category_if_required(category) {
     throw "Unknown in-content prefs category! Can't init " + category;
   }
   if (categoryInfo.inited) {
-    return;
+    return null;
   }
-  categoryInfo.init();
+  return categoryInfo.init();
 }
 
 function register_module(categoryName, categoryObject) {
   gCategoryInits.set(categoryName, {
     inited: false,
-    init() {
+    async init() {
+      let template = document.getElementById("template-" + categoryName);
+      if (template) {
+        // Replace the template element with the nodes from the parsed comment
+        // string.
+        let frag = MozXULElement.parseXULToFragment(template.firstChild.data);
+
+        await document.l10n.translateFragment(frag);
+
+        // Actually insert them into the DOM.
+        document.l10n.pauseObserving();
+        template.replaceWith(frag);
+        document.l10n.resumeObserving();
+
+        // Asks Preferences to update the attribute value of the entire
+        // document again (this can be simplified if we could seperate the
+        // preferences of each pane.)
+        Preferences.updateAllElements();
+      }
       categoryObject.init();
       this.inited = true;
     },
@@ -65,8 +94,10 @@ function init_all() {
 #if MOZ_SERVICES_SYNC
   if (Services.prefs.getBoolPref("identity.fxaccounts.enabled")) {
     document.getElementById("category-sync").hidden = false;
-    document.getElementById("weavePrefsDeck").removeAttribute("data-hidden-from-search");
     register_module("paneSync", gSyncPane);
+  } else {
+    // Remove the pane from the DOM so it doesn't get incorrectly included in search results.
+    document.getElementById("template-paneSync").remove();
   }
 #endif
   // Cliqz. DB-1230: Display the rich list item when connect module is available
@@ -101,22 +132,27 @@ function init_all() {
   maybeDisplayPoliciesNotice();
 
   window.addEventListener("hashchange", onHashChange);
-  gotoPref();
 
-  let helpButton = document.getElementById("helpButton");
-  let helpUrl = Services.urlFormatter.formatURLPref("app.support.baseURL") + "preferences";
-  helpButton.setAttribute("href", helpUrl);
+  gotoPref().then(() => {
+    let helpButton = document.getElementById("helpButton");
+    let helpUrl = Services.urlFormatter.formatURLPref("app.support.baseURL") + "preferences";
+    helpButton.setAttribute("href", helpUrl);
 
-  document.getElementById("addonsButton")
-    .addEventListener("click", () => {
-      let mainWindow = window.docShell.rootTreeItem.domWindow;
-      mainWindow.BrowserOpenAddonsMgr();
-    });
+    document.getElementById("addonsButton")
+      .addEventListener("click", () => {
+        let mainWindow = window.docShell.rootTreeItem.domWindow;
+        mainWindow.BrowserOpenAddonsMgr();
+        AMTelemetry.recordLinkEvent({
+          object: "aboutPreferences",
+          value: "about:addons",
+        });
+      });
 
-  document.dispatchEvent(new CustomEvent("Initialized", {
-    "bubbles": true,
-    "cancelable": true,
-  }));
+    document.dispatchEvent(new CustomEvent("Initialized", {
+      "bubbles": true,
+      "cancelable": true,
+    }));
+  });
 }
 
 function telemetryBucketForCategory(category) {
@@ -140,7 +176,7 @@ function onHashChange() {
   gotoPref();
 }
 
-function gotoPref(aCategory) {
+async function gotoPref(aCategory) {
   let categories = document.getElementById("categories");
   const kDefaultCategoryInternalName = "paneGeneral";
   const kDefaultCategory = "general";
@@ -171,7 +207,7 @@ function gotoPref(aCategory) {
 
   // Updating the hash (below) or changing the selected category
   // will re-enter gotoPref.
-  if (gLastHash == category && !subcategory)
+  if (gLastCategory.category == category && !subcategory)
     return;
 
   // CLIQZ-SPECIAL:
@@ -190,32 +226,41 @@ function gotoPref(aCategory) {
     }
   }
 
-  try {
-    init_category_if_required(category);
-  } catch (ex) {
-    Cu.reportError("Error initializing preference category " + category + ": " + ex);
-    throw ex;
-  }
-
-  let friendlyName = internalPrefCategoryNameToFriendlyName(category);
-  if (gLastHash || category != kDefaultCategoryInternalName || subcategory) {
+  if (gLastCategory.category || category != kDefaultCategoryInternalName || subcategory) {
+    let friendlyName = internalPrefCategoryNameToFriendlyName(category);
     document.location.hash = friendlyName;
   }
-  // Need to set the gLastHash before setting categories.selectedItem since
+  // Need to set the gLastCategory before setting categories.selectedItem since
   // the categories 'select' event will re-enter the gotoPref codepath.
-  gLastHash = category;
+  gLastCategory.category = category;
+  gLastCategory.subcategory = subcategory;
   if (item) {
     categories.selectedItem = item;
   } else {
     categories.clearSelection();
   }
   window.history.replaceState(category, document.title);
+
+  try {
+    await init_category_if_required(category);
+  } catch (ex) {
+    Cu.reportError(new Error("Error initializing preference category " + category + ": " + ex));
+    throw ex;
+  }
+
+  // Bail out of this goToPref if the category
+  // or subcategory changed during async operation.
+  if (gLastCategory.category !== category ||
+      gLastCategory.subcategory !== subcategory) {
+    return;
+  }
+
   search(category, "data-category");
 
   let mainContent = document.querySelector(".main-content");
   mainContent.scrollTop = 0;
 
-  spotlight(subcategory);
+  spotlight(subcategory, category);
 }
 
 function search(aQuery, aAttribute) {
@@ -249,7 +294,7 @@ function search(aQuery, aAttribute) {
   }
 }
 
-async function spotlight(subcategory) {
+async function spotlight(subcategory, category) {
   let highlightedElements = document.querySelectorAll(".spotlight");
   if (highlightedElements.length) {
     for (let element of highlightedElements) {
@@ -257,6 +302,7 @@ async function spotlight(subcategory) {
     }
   }
   if (subcategory) {
+<<<<<<< HEAD
 #if 0
     if (!gSearchResultsPane.categoriesInitialized) {
       await waitForSystemAddonInjectionsFinished([{
@@ -314,16 +360,77 @@ async function spotlight(subcategory) {
         resolve();
       }
     });
+||||||| merged common ancestors
+    if (!gSearchResultsPane.categoriesInitialized) {
+      await waitForSystemAddonInjectionsFinished([{
+        isGoingToInject: formAutofillParent.initialized,
+        elementId: "formAutofillGroup",
+      }]);
+    }
+    scrollAndHighlight(subcategory);
+  }
+
+  /**
+   * Wait for system addons finished their dom injections.
+   * @param {Array} addons - The system addon information array.
+   * For example, the element is looked like
+   * { isGoingToInject: true, elementId: "formAutofillGroup" }.
+   * The `isGoingToInject` means the system addon will be visible or not,
+   * and the `elementId` means the id of the element will be injected into the dom
+   * if the `isGoingToInject` is true.
+   * @returns {Promise} Will resolve once all injections are finished.
+   */
+  function waitForSystemAddonInjectionsFinished(addons) {
+    return new Promise(resolve => {
+      let elementIdSet = new Set();
+      for (let addon of addons) {
+        if (addon.isGoingToInject) {
+          elementIdSet.add(addon.elementId);
+        }
+      }
+      if (elementIdSet.size) {
+        let observer = new MutationObserver(mutations => {
+          for (let mutation of mutations) {
+            for (let node of mutation.addedNodes) {
+              elementIdSet.delete(node.id);
+              if (elementIdSet.size === 0) {
+                observer.disconnect();
+                resolve();
+              }
+            }
+          }
+        });
+        let mainContent = document.querySelector(".main-content");
+        observer.observe(mainContent, {childList: true, subtree: true});
+        // Disconnect the mutation observer once there is any user input.
+        mainContent.addEventListener("scroll", disconnectMutationObserver);
+        window.addEventListener("mousedown", disconnectMutationObserver);
+        window.addEventListener("keydown", disconnectMutationObserver);
+        function disconnectMutationObserver() {
+          mainContent.removeEventListener("scroll", disconnectMutationObserver);
+          window.removeEventListener("mousedown", disconnectMutationObserver);
+          window.removeEventListener("keydown", disconnectMutationObserver);
+          observer.disconnect();
+        }
+      } else {
+        resolve();
+      }
+    });
+=======
+    scrollAndHighlight(subcategory, category);
+>>>>>>> origin/upstream-releases
   }
 }
 
-function scrollAndHighlight(subcategory) {
+async function scrollAndHighlight(subcategory, category) {
   let element = document.querySelector(`[data-subcategory="${subcategory}"]`);
-  if (element) {
-    let header = getClosestDisplayedHeader(element);
-    scrollContentTo(header);
-    element.classList.add("spotlight");
+  if (!element) {
+    return;
   }
+  let header = getClosestDisplayedHeader(element);
+
+  scrollContentTo(header);
+  element.classList.add("spotlight");
 }
 
 /**
@@ -335,8 +442,8 @@ function getClosestDisplayedHeader(element) {
   let header = element.closest("groupbox");
   let searchHeader = header.querySelector(".search-header");
   if (searchHeader && searchHeader.hidden &&
-      header.previousSibling.classList.contains("subcategory")) {
-    header = header.previousSibling;
+      header.previousElementSibling.classList.contains("subcategory")) {
+    header = header.previousElementSibling;
   }
   return header;
 }

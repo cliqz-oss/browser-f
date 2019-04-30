@@ -7,7 +7,6 @@
 from __future__ import absolute_import, print_function, unicode_literals
 
 import logging
-import sys
 
 from taskgraph.util.taskcluster import (
     status_task,
@@ -15,6 +14,7 @@ from taskgraph.util.taskcluster import (
 )
 from .registry import register_callback_action
 from .util import fetch_graph_and_labels
+from taskgraph.util import taskcluster
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +24,6 @@ RERUN_STATES = ('exception', 'failed')
 @register_callback_action(
     title='Rerun',
     name='rerun',
-    kind='hook',
     generic=True,
     symbol='rr',
     description=(
@@ -39,7 +38,8 @@ RERUN_STATES = ('exception', 'failed')
         'properties': {}
     }
 )
-def rerun_action(parameters, graph_config, input, task_group_id, task_id, task):
+def rerun_action(parameters, graph_config, input, task_group_id, task_id):
+    task = taskcluster.get_task_definition(task_id)
     parameters = dict(parameters)
     decision_task_id, full_task_graph, label_to_taskid = fetch_graph_and_labels(
         parameters, graph_config)
@@ -53,9 +53,9 @@ def rerun_action(parameters, graph_config, input, task_group_id, task_id, task):
 
     status = status_task(task_id)
     if status not in RERUN_STATES:
-        logger.error(
-            "Refusing to rerun {}: state {} not in {}!".format(label, status, RERUN_STATES)
+        logger.warning(
+            "No need to to rerun {}: state '{}' not in {}!".format(label, status, RERUN_STATES)
         )
-        sys.exit(1)
+        return
     rerun_task(task_id)
     logger.info('Reran {}'.format(label))

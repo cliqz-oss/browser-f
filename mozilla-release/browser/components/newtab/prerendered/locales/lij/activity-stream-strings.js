@@ -1,6 +1,6 @@
 // Note - this is a generated lij file.
 window.gActivityStreamStrings = {
-  "newtab_page_title": "Neuvo Feuggio",
+  "newtab_page_title": "Neuvo feuggio",
   "header_top_sites": "I megio sciti",
   "header_highlights": "In evidensa",
   "header_recommended_by": "Consegiou da {provider}",
@@ -27,8 +27,8 @@ window.gActivityStreamStrings = {
   "menu_action_show_file_mac_os": "Fanni vedde in Finder",
   "menu_action_show_file_windows": "Arvi cartella",
   "menu_action_show_file_linux": "Arvi cartella",
-  "menu_action_show_file_default": "Fanni vedde file",
-  "menu_action_open_file": "Arvi file",
+  "menu_action_show_file_default": "Mostra o schedaio",
+  "menu_action_open_file": "Arvi schedaio",
   "menu_action_copy_download_link": "Còpia indirisso òrigine",
   "menu_action_go_to_download_page": "Vanni a-a pagina de descaregamento",
   "menu_action_remove_download": "Scancella da-a stöia",
@@ -40,9 +40,9 @@ window.gActivityStreamStrings = {
   "section_disclaimer_topstories_buttontext": "Va ben, ò capio",
   "prefs_home_header": "Pagina iniçiâ de Firefox",
   "prefs_home_description": "Çerni i contegnui che ti veu vedde inta pagina iniçiâ de Firefox.",
-  "prefs_content_discovery_header": "Firefox Home",
+  "prefs_content_discovery_header": "Pagina iniçiâ de Firefox",
   "prefs_content_discovery_description": "Content Discovery in Firefox Home allows you to discover high-quality, relevant articles from across the web.",
-  "prefs_content_discovery_button": "Turn Off Content Discovery",
+  "prefs_content_discovery_button": "Dizabilita a descoverta de neuvi contegnui",
   "prefs_section_rows_option": "{num} riga;{num} righe",
   "prefs_search_header": "Çerca into Web",
   "prefs_topsites_description": "I sciti che ti vixiti de ciù",
@@ -110,6 +110,5 @@ window.gActivityStreamStrings = {
   "firstrun_privacy_notice": "Informativa in sciâ privacy",
   "firstrun_continue_to_login": "Continoa",
   "firstrun_skip_login": "Sata sto passo",
-  "context_menu_title": "Open menu",
-  "pocket_learn_more": "Atre informaçioin"
+  "context_menu_title": "Arvi menû"
 };

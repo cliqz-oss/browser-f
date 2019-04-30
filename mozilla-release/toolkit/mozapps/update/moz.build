@@ -18,7 +18,6 @@ TEST_DIRS += ['tests']
 
 EXTRA_COMPONENTS += [
     'nsUpdateService.manifest',
-    'nsUpdateServiceStub.js',
 ]
 
 EXTRA_PP_COMPONENTS += [
@@ -27,7 +26,13 @@ EXTRA_PP_COMPONENTS += [
 
 EXTRA_JS_MODULES += [
     'UpdateListener.jsm',
+    'UpdateService.jsm',
+    'UpdateServiceStub.jsm',
     'UpdateTelemetry.jsm',
+]
+
+XPCOM_MANIFESTS += [
+    'components.conf',
 ]
 
 JAR_MANIFESTS += ['jar.mn']

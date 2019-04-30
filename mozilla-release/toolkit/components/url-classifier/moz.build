@@ -53,6 +53,7 @@ SOURCES += [
     'HashStore.cpp',
 ]
 
+<<<<<<< HEAD
 EXTRA_COMPONENTS += [
     'nsURLClassifier.manifest',
     'nsUrlClassifierHashCompleter.js',
@@ -61,7 +62,26 @@ EXTRA_COMPONENTS += [
 ]
 
 EXTRA_PP_JS_MODULES += [
+||||||| merged common ancestors
+EXTRA_COMPONENTS += [
+    'nsURLClassifier.manifest',
+    'nsUrlClassifierHashCompleter.js',
+    'nsUrlClassifierLib.js',
+    'nsUrlClassifierListManager.js',
+]
+
+EXTRA_JS_MODULES += [
+=======
+EXTRA_JS_MODULES += [
+>>>>>>> origin/upstream-releases
     'SafeBrowsing.jsm',
+    'UrlClassifierHashCompleter.jsm',
+    'UrlClassifierLib.jsm',
+    'UrlClassifierListManager.jsm',
+]
+
+XPCOM_MANIFESTS += [
+    'components.conf',
 ]
 
 EXPORTS += [
@@ -98,6 +118,3 @@ with Files('docs/**'):
     SCHEDULES.exclusive = ['docs']
 
 include('/ipc/chromium/chromium-config.mozbuild')
-
-if CONFIG['CC_TYPE'] == 'clang-cl':
-    AllowCompilerWarnings()  # workaround for bug 1090497

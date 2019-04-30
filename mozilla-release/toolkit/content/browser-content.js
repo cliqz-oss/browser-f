@@ -7,10 +7,20 @@
 /* eslint no-unused-vars: ["error", {args: "none"}] */
 /* global sendAsyncMessage */
 
+<<<<<<< HEAD
 ChromeUtils.import("resource://gre/modules/Services.jsm");
 ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 ChromeUtils.import("resource:///modules/AutoForgetTabsMonitor.jsm");
 ChromeUtils.import("resource://gre/modules/ActorManagerChild.jsm");
+||||||| merged common ancestors
+ChromeUtils.import("resource://gre/modules/Services.jsm");
+ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+ChromeUtils.import("resource://gre/modules/ActorManagerChild.jsm");
+=======
+var {Services} = ChromeUtils.import("resource://gre/modules/Services.jsm");
+var {XPCOMUtils} = ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+var {ActorManagerChild} = ChromeUtils.import("resource://gre/modules/ActorManagerChild.jsm");
+>>>>>>> origin/upstream-releases
 
 ActorManagerChild.attach(this);
 

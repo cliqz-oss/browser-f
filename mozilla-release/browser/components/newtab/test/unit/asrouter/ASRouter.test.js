@@ -382,6 +382,44 @@ describe("ASRouter", () => {
       assert.equal(Router.state.providers.length, 1);
       assert.equal(Router.state.providers[0].id, providers[1].id);
     });
+    it("should return provider `foo` because both categories are enabled", () => {
+      const providers = [
+        {id: "foo", enabled: true, categories: ["cfrFeatures", "cfrAddons"], type: "remote", url: "https://www.foo.com/"},
+      ];
+      sandbox.stub(ASRouterPreferences, "providers").value(providers);
+      sandbox.stub(ASRouterPreferences, "getUserPreference")
+        .withArgs("cfrFeatures").returns(true)
+        .withArgs("cfrAddons")
+        .returns(true);
+      Router._updateMessageProviders();
+      assert.equal(Router.state.providers.length, 1);
+      assert.equal(Router.state.providers[0].id, providers[0].id);
+    });
+    it("should return provider `foo` because at least 1 category is enabled", () => {
+      const providers = [
+        {id: "foo", enabled: true, categories: ["cfrFeatures", "cfrAddons"], type: "remote", url: "https://www.foo.com/"},
+      ];
+      sandbox.stub(ASRouterPreferences, "providers").value(providers);
+      sandbox.stub(ASRouterPreferences, "getUserPreference")
+        .withArgs("cfrFeatures").returns(false)
+        .withArgs("cfrAddons")
+        .returns(true);
+      Router._updateMessageProviders();
+      assert.equal(Router.state.providers.length, 1);
+      assert.equal(Router.state.providers[0].id, providers[0].id);
+    });
+    it("should not return provider `foo` because no categories are enabled", () => {
+      const providers = [
+        {id: "foo", enabled: true, categories: ["cfrFeatures", "cfrAddons"], type: "remote", url: "https://www.foo.com/"},
+      ];
+      sandbox.stub(ASRouterPreferences, "providers").value(providers);
+      sandbox.stub(ASRouterPreferences, "getUserPreference")
+        .withArgs("cfrFeatures").returns(false)
+        .withArgs("cfrAddons")
+        .returns(false);
+      Router._updateMessageProviders();
+      assert.equal(Router.state.providers.length, 0);
+    });
   });
 
   describe("blocking", () => {
@@ -923,6 +961,20 @@ describe("ASRouter", () => {
         assert.calledOnce(channel.sendAsyncMessage);
         assert.calledOnce(Router.blockMessageById);
         assert.calledWithExactly(Router.blockMessageById, "RETURN_TO_AMO_1");
+      });
+    });
+
+    describe("#onMessage: PIN_CURRENT_TAB", () => {
+      it("should call pin tab with the selectedTab", async () => {
+        const msg = fakeExecuteUserAction({type: "PIN_CURRENT_TAB"});
+        const {gBrowser, ConfirmationHint} = msg.target.browser.ownerGlobal;
+
+        await Router.onMessage(msg);
+
+        assert.calledOnce(gBrowser.pinTab);
+        assert.calledWithExactly(gBrowser.pinTab, gBrowser.selectedTab);
+        assert.calledOnce(ConfirmationHint.show);
+        assert.calledWithExactly(ConfirmationHint.show, gBrowser.selectedTab, "pinTab", {showDescription: true});
       });
     });
 
