@@ -796,22 +796,10 @@ nsContextMenu.prototype = {
     let params = { charset: gContextMenuContentData.charSet,
                    originPrincipal: this.principal,
                    triggeringPrincipal: this.principal,
-<<<<<<< HEAD
-                   referrerURI: gContextMenuContentData.documentURIObject,
-                   referrerPolicy: gContextMenuContentData.referrerPolicy,
+                   csp: this.csp,
                    frameOuterWindowID: gContextMenuContentData.frameOuterWindowID,
-                   noReferrer: this.linkHasNoReferrer || this.onPlainTextLink,
                    private: this.browser.loadContext.usePrivateBrowsing
     };
-||||||| merged common ancestors
-                   referrerURI: gContextMenuContentData.documentURIObject,
-                   referrerPolicy: gContextMenuContentData.referrerPolicy,
-                   frameOuterWindowID: gContextMenuContentData.frameOuterWindowID,
-                   noReferrer: this.linkHasNoReferrer || this.onPlainTextLink };
-=======
-                   csp: this.csp,
-                   frameOuterWindowID: gContextMenuContentData.frameOuterWindowID};
->>>>>>> origin/upstream-releases
     for (let p in extra) {
       params[p] = extra[p];
     }

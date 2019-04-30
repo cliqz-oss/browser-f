@@ -2,6 +2,47 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+rights-intro-point2a = You are not granted any trademark rights or licenses
+    to the trademarks of Cliqz GmbH or any party, including without limitation
+    the Cliqz name or logo.
+# point 2.5 text for official branded builds
+rights-intro-point2-5 = Some features in { -brand-short-name }, such as the
+    Crash Reporter, give you the option to provide feedback to { -brand-short-name }.
+    By choosing to submit feedback, you give { -brand-short-name } permission
+    to use the feedback to improve its products, to publish the feedback on
+    its websites, and to distribute the feedback.
+# point 3 text for Cliqz branded builds
+rights-intro-point3a = The protection of your data has priority for us.
+    As a company based in Germany we are bound by strict data security regulations
+    and also by our own high standards and policies. Our primary principle:
+    Cliqz does not store any data on our servers that could be used to identify
+    you or your equipment. Want to know all the details? Read about our
+    <a data-l10n-name="rights-intro-point3b">privacy standards</a>,
+    check our <a data-l10n-name="rights-intro-point3c">privacy policy</a>
+    or <a data-l10n-name="rights-intro-point3d">get in contact</a>.
+# point 4 text for official branded builds
+rights-intro-point4a = Some { -brand-short-name } features make use of web-based
+    information services, however, we cannot guarantee they are 100&#37; accurate
+    or error-free. More details, including information on how to disable the features
+    that use these services, can be found in the
+    <a data-l10n-name="rights-intro-point4b">service terms</a>.
+# point 5
+rights-intro-point5 = In order to play back certain types of video content,
+    { -brand-short-name } downloads certain content decryption modules from
+    third parties.
+#intro paragraph for branded builds
+rights2-webservices-cliqz = Parts of the Cliqz Browser are building upon the
+    Mozilla open source project. Cliqz uses web-based information services
+    provided by Mozilla Firefox.
+rights2-webservices-a = Mozilla Firefox uses web-based information services
+    (&quot;Services&quot;) to provide some of the features provided for your
+    use with this binary version of Firefox under the terms described below.
+    If you do not want to use one or more of the Services or the terms below
+    are unacceptable, you may disable the feature or Service(s).
+    Instructions on how to disable a particular feature or Service may be found
+    <a data-l10n-name="rights2-webservices-b">here</a>. Other features and Services
+    can be disabled in the application preferences.
+
 rights-title = About Your Rights
 rights-intro =
     { -brand-full-name } is free and open source software, built by a community
@@ -14,48 +55,14 @@ rights-intro-point-1 =
     others. You are also welcome to modify the source code of
     { -brand-short-name } as you want to meet your needs. The Mozilla Public
     License also gives you the right to distribute your modified versions.
-rights-intro-point-2 =
-    You are not granted any trademark rights or licenses to the trademarks of
-    the Mozilla Foundation or any party, including without limitation the
-    Firefox name or logo. Additional information on trademarks may be found
-    <a data-l10n-name="mozilla-trademarks-link">here</a>.
-rights-intro-point-3 =
-    Some features in { -brand-short-name }, such as the Crash Reporter, give
-    you the option to provide feedback to { -vendor-short-name }. By choosing
-    to submit feedback, you give { -vendor-short-name } permission to use the
-    feedback to improve its products, to publish the feedback on its websites,
-    and to distribute the feedback.
-rights-intro-point-4 =
-    How we use your personal information and feedback submitted to
-    { -vendor-short-name } through { -brand-short-name } is described in the
-    <a data-l10n-name="mozilla-privacy-policy-link">{ -brand-short-name }
-    Privacy Policy</a>.
 rights-intro-point-4-unbranded =
     Any applicable privacy policies for this product should be listed here.
-rights-intro-point-5 =
-    Some { -brand-short-name } features make use of web-based information
-    services, however, we cannot guarantee they are 100% accurate or
-    error-free. More details, including information on how to disable the
-    features that use these services, can be found in the
-    <a data-l10n-name="mozilla-service-terms-link">service terms</a>.
 rights-intro-point-5-unbranded =
     If this product incorporates web services, any applicable service terms for
     the service(s) should be linked to the
     <a data-l10n-name="mozilla-website-services-link"> Website Services</a>
     section.
-rights-intro-point-6 =
-    In order to play back certain types of video content, { -brand-short-name }
-    downloads certain content decryption modules from third parties.
 rights-webservices-header = { -brand-full-name } Web-Based Information Services
-rights-webservices =
-    { -brand-full-name } uses web-based information services (“Services”) to
-    provide some of the features provided for your use with this binary version
-    of { -brand-short-name } under the terms described below. If you do not
-    want to use one or more of the Services or the terms below are
-    unacceptable, you may disable the feature or Service(s). Instructions on
-    how to disable a particular feature or Service may be found
-    <a data-l10n-name="mozilla-disable-service-link">here</a>. Other features
-    and Services can be disabled in the application preferences.
 rights-safebrowsing =
     <strong>SafeBrowsing: </strong>Disabling the Safe Browsing feature is not
     recommended as it may result in you going to unsafe sites. If you wish to

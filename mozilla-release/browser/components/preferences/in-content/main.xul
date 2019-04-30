@@ -30,42 +30,8 @@
           hidden="true">
   <label><html:h2 data-l10n-id="startup-header"/></label>
 
-<<<<<<< HEAD
-#ifdef MOZ_DEV_EDITION
-  <vbox id="separateProfileBox">
-    <checkbox id="separateProfileMode"
-              data-l10n-id="separate-profile-mode"/>
-    <hbox id="sync-dev-edition-root" align="center" class="indent" hidden="true">
-      <label id="useFirefoxSync" data-l10n-id="use-firefox-sync"/>
-      <deck id="getStarted">
-        <label class="text-link" data-l10n-id="get-started-not-logged-in"/>
-        <label class="text-link" data-l10n-id="get-started-configured"/>
-      </deck>
-    </hbox>
-  </vbox>
-#endif
-
   <vbox id="startupPageBox" class="formatBoxSize">
 #if 0
-||||||| merged common ancestors
-#ifdef MOZ_DEV_EDITION
-  <vbox id="separateProfileBox">
-    <checkbox id="separateProfileMode"
-              data-l10n-id="separate-profile-mode"/>
-    <hbox id="sync-dev-edition-root" align="center" class="indent" hidden="true">
-      <label id="useFirefoxSync" data-l10n-id="use-firefox-sync"/>
-      <deck id="getStarted">
-        <label class="text-link" data-l10n-id="get-started-not-logged-in"/>
-        <label class="text-link" data-l10n-id="get-started-configured"/>
-      </deck>
-    </hbox>
-  </vbox>
-#endif
-
-  <vbox id="startupPageBox">
-=======
-  <vbox id="startupPageBox">
->>>>>>> origin/upstream-releases
     <checkbox id="browserRestoreSession"
               data-l10n-id="startup-restore-previous-session"/>
 #endif
@@ -754,14 +720,8 @@
   <checkbox id="searchStartTyping"
             data-l10n-id="browsing-search-on-start-typing"
             preference="accessibility.typeaheadfind"/>
-<<<<<<< HEAD
 #if 0
-  <hbox align="center" data-subcategory="cfr">
-||||||| merged common ancestors
-  <hbox align="center" data-subcategory="cfr">
-=======
   <hbox align="center" data-subcategory="cfraddons">
->>>>>>> origin/upstream-releases
     <checkbox id="cfrRecommendations"
             class="tail-with-learn-more"
             data-l10n-id="browsing-cfr-recommendations"

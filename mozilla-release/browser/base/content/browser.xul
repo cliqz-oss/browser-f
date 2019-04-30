@@ -564,13 +564,9 @@
            position="bottomcenter topright"
            tabspecific="true"
            noautofocus="true"
-<<<<<<< HEAD
 #ifdef 0
-||||||| merged common ancestors
-=======
            pinTab-title="&pinTab.label;"
            unpinTab-title="&unpinTab.label;"
->>>>>>> origin/upstream-releases
            pocket-title="&saveToPocketCmd.label;"
 #endif
            copyURL-title="&pageAction.copyLink.label;"

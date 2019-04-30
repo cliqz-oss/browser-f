@@ -74,50 +74,28 @@ XPIDL_SOURCES += [
 
 XPIDL_MODULE = 'browsercompsbase'
 
-<<<<<<< HEAD
-EXTRA_PP_COMPONENTS += [
-||||||| merged common ancestors
-EXTRA_COMPONENTS += [
-=======
 XPCOM_MANIFESTS += [
     'components.conf',
 ]
 
 EXTRA_COMPONENTS += [
->>>>>>> origin/upstream-releases
-    'BrowserComponents.manifest',
-<<<<<<< HEAD
     'newtab/lib/TopStoriesFeed.jsm',
-    'nsBrowserContentHandler.js',
-    'nsBrowserGlue.js',
-]
-
-EXTRA_COMPONENTS += [
-||||||| merged common ancestors
-    'nsBrowserContentHandler.js',
-    'nsBrowserGlue.js',
-=======
->>>>>>> origin/upstream-releases
     'tests/startupRecorder.js',
     'tests/testComponents.manifest',
 ]
 
 EXTRA_JS_MODULES += [
-<<<<<<< HEAD
     'CliqzResources.jsm',
-||||||| merged common ancestors
-=======
     'BrowserContentHandler.jsm',
     'BrowserGlue.jsm',
->>>>>>> origin/upstream-releases
     'distribution.js',
 ]
 
 if CONFIG['CQZ_AUTO_PRIVATE_TAB']:
-    EXTRA_COMPONENTS += ['AutoForgetTabsService.js']
     EXTRA_JS_MODULES += [
         'AutoForgetTabs-utils.jsm',
         'AutoForgetTabsMonitor.jsm',
+        'AutoForgetTabsService.jsm',
     ]
 
 BROWSER_CHROME_MANIFESTS += [

@@ -61,8 +61,17 @@ const CliqzResources = {
   },
   // CLIQZ-SPECIAL: we do not need BROWSER_NEW_TAB_URL check as we never change it
   // return gInitialPages.includes(url) || url == BROWSER_NEW_TAB_URL;
-  isInitialPage: function(uri) {
-    return this.isCliqzPage(uri) || INITIAL_PAGES.includes(uri);
+  isInitialPage: function(url) {
+    if (!(url instanceof Ci.nsIURI)) {
+      try {
+        url = Services.io.newURI(url);
+      } catch (ex) {
+        return false;
+      }
+    }
+
+    let nonQuery = url.prePath + url.filePath;
+    return this.isCliqzPage(nonQuery) || INITIAL_PAGES.includes(nonQuery);
   },
   isCliqzPage: function(uri) {
     return typeof uri == 'string' && uri.indexOf(getWebExtPrefix()) === 0;

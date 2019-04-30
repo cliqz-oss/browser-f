@@ -308,20 +308,6 @@ interface nsIWebNavigation : nsISupports
    * The currently loaded URI or null.
    */
   readonly attribute nsIURI currentURI;
-<<<<<<< HEAD
-
-  /**
-   * The referring URI for the currently loaded URI or null.
-   */
-  readonly attribute nsIURI referringURI;
-||||||| merged common ancestors
- 
-  /**
-   * The referring URI for the currently loaded URI or null.
-   */
-  readonly attribute nsIURI referringURI;
-=======
->>>>>>> origin/upstream-releases
 
   /**
    * The session history object used by this web navigation instance. This

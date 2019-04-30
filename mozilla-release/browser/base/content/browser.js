@@ -79,13 +79,7 @@ XPCOMUtils.defineLazyModuleGetters(this, {
   UrlbarTokenizer: "resource:///modules/UrlbarTokenizer.jsm",
   UrlbarUtils: "resource:///modules/UrlbarUtils.jsm",
   UrlbarValueFormatter: "resource:///modules/UrlbarValueFormatter.jsm",
-<<<<<<< HEAD
-  Utils: "resource://gre/modules/sessionstore/Utils.jsm",
 #ifdef MOZ_SERVICES_SYNC
-||||||| merged common ancestors
-  Utils: "resource://gre/modules/sessionstore/Utils.jsm",
-=======
->>>>>>> origin/upstream-releases
   Weave: "resource://services-sync/main.js",
 #endif
   WebNavigationFrames: "resource://gre/modules/WebNavigationFrames.jsm",
@@ -99,7 +93,6 @@ if (AppConstants.MOZ_CRASHREPORTER) {
     "resource:///modules/ContentCrashHandlers.jsm");
 }
 
-<<<<<<< HEAD
 XPCOMUtils.defineLazyScriptGetter(this, ["isBlankPageURL"],
                                   "chrome://browser/content/utilityOverlay.js");
 #if 0
@@ -117,20 +110,11 @@ XPCOMUtils.defineLazyScriptGetter(this, "gPluginHandler",
 XPCOMUtils.defineLazyScriptGetter(this, "TabsInTitlebar",
                                   "chrome://browser/content/browser-tabsintitlebar.js");
 
-// CLIQZ-MERGE: we need to understand why FF guys added the following check + ReaderMode
 if (!Services.prefs.getBoolPref("browser.urlbar.quantumbar", false)) {
   ChromeUtils.defineModuleGetter(this, "ReaderMode",
     "resource://gre/modules/ReaderMode.jsm");
 }
 
-||||||| merged common ancestors
-if (!Services.prefs.getBoolPref("browser.urlbar.quantumbar", false)) {
-  ChromeUtils.defineModuleGetter(this, "ReaderMode",
-    "resource://gre/modules/ReaderMode.jsm");
-}
-
-=======
->>>>>>> origin/upstream-releases
 XPCOMUtils.defineLazyScriptGetter(this, "PlacesTreeView",
                                   "chrome://browser/content/places/treeView.js");
 XPCOMUtils.defineLazyScriptGetter(this, ["PlacesInsertionPoint", "PlacesController",
@@ -470,7 +454,6 @@ async function gLazyFindCommand(cmd, ...args) {
   }
 }
 
-<<<<<<< HEAD
 #if CQZ_AUTO_PRIVATE_TAB
 let autoForgetTabs= Cc["@cliqz.com/browser/auto_forget_tabs_service;1"].
     getService(Ci.nsISupports).wrappedJSObject;
@@ -524,16 +507,13 @@ try {
       win.classList.remove(themeClass);
     }
   }
-||||||| merged common ancestors
-=======
-var gPageIcons = {
-  "about:home": "chrome://branding/content/icon32.png",
-  "about:newtab": "chrome://branding/content/icon32.png",
-  "about:welcome": "chrome://branding/content/icon32.png",
-  "about:newinstall": "chrome://branding/content/icon32.png",
-  "about:privatebrowsing": "chrome://browser/skin/privatebrowsing/favicon.svg",
-};
->>>>>>> origin/upstream-releases
+  var gPageIcons = {
+    "about:home": "chrome://branding/content/icon32.png",
+    "about:newtab": "chrome://branding/content/icon32.png",
+    "about:welcome": "chrome://branding/content/icon32.png",
+    "about:newinstall": "chrome://branding/content/icon32.png",
+    "about:privatebrowsing": "chrome://browser/skin/privatebrowsing/favicon.svg",
+  };
 
   // handles changes
   branch.addObserver(THEME_PREF, { observe:observe }, false);
@@ -559,25 +539,14 @@ var gInitialPages = [
   "about:sessionrestore",
   "about:cliqz",
   "about:welcome",
-<<<<<<< HEAD
 #endif
   CliqzResources.getFreshTabUrl(),
   CliqzResources.getWelcomeUrl(),
-#if 0
-||||||| merged common ancestors
-=======
   "about:newinstall",
->>>>>>> origin/upstream-releases
+#if 0
 ];
 
 function isInitialPage(url) {
-<<<<<<< HEAD
-  // CLIQZ-SPECIAL: we do not need BROWSER_NEW_TAB_URL check as we never change it
-  // return gInitialPages.includes(url) || url == BROWSER_NEW_TAB_URL;
-  return gInitialPages.includes(url);
-||||||| merged common ancestors
-  return gInitialPages.includes(url) || url == BROWSER_NEW_TAB_URL;
-=======
   if (!(url instanceof Ci.nsIURI)) {
     try {
       url = Services.io.newURI(url);
@@ -588,7 +557,6 @@ function isInitialPage(url) {
 
   let nonQuery = url.prePath + url.filePath;
   return gInitialPages.includes(nonQuery) || nonQuery == BROWSER_NEW_TAB_URL;
->>>>>>> origin/upstream-releases
 }
 #endif
 ].concat(CliqzResources.INITIAL_PAGES);
@@ -2473,7 +2441,7 @@ function BrowserHome(aEvent) {
     // If we're going to load an initial page in the current tab as the
     // home page, we set initialPageLoadedFromURLBar so that the URL
     // bar is cleared properly (even during a remoteness flip).
-    if (isInitialPage(homePage)) {
+    if (CliqzResources.isInitialPage(homePage)) {
       gBrowser.selectedBrowser.initialPageLoadedFromUserAction = homePage;
     }
     loadOneOrMoreURIs(homePage, Services.scriptSecurityManager.getSystemPrincipal());
@@ -2972,13 +2940,7 @@ function URLBarSetURI(aURI, updatePopupNotifications) {
 
     // Replace initial page URIs with an empty string
     // only if there's no opener (bug 370555).
-<<<<<<< HEAD
-    if (CliqzResources.isInitialPage(uri.spec) &&
-||||||| merged common ancestors
-    if (isInitialPage(uri.spec) &&
-=======
-    if (isInitialPage(uri) &&
->>>>>>> origin/upstream-releases
+    if (CliqzResources.isInitialPage(uri) &&
         checkEmptyPageOrigin(gBrowser.selectedBrowser, uri)) {
       value = "";
     } else {

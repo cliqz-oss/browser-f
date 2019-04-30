@@ -3,35 +3,4 @@
    - You can obtain one at http://mozilla.org/MPL/2.0/.  -->
 
 <!ENTITY refreshProfile.dialog.title         "Refresh &brandShortName;">
-<<<<<<< HEAD
-<!ENTITY refreshProfile.dialog.description1  "Start fresh to fix problems and restore performance.">
-<!ENTITY refreshProfile.dialog.description2  "This will:">
-<!ENTITY refreshProfile.dialog.items.label1  "Remove your add-ons and customizations">
-<!ENTITY refreshProfile.dialog.items.label2  "Restore your browser settings to their defaults.">
-<!ENTITY refreshProfile.dialog.items.label3  "The following items will be reset:">
-<!ENTITY refreshProfile.dialog.items.label4  "• Website permissions">
-<!ENTITY refreshProfile.dialog.items.label5  "• Modified preferences (incl. Cliqz Tab)">
-<!ENTITY refreshProfile.dialog.items.label6  "• Cliqz Tab Favorites">
-<!ENTITY refreshProfile.dialog.items.label7  "• Added Search Engines">
-<!ENTITY refreshProfile.dialog.items.label8  "• Toolbar customizations">
-<!ENTITY refreshProfile.dialog.items.label9  "• Security certificate and device settings">
-<!ENTITY refreshProfile.dialog.items.label10 "• Download actions">
-<!ENTITY refreshProfile.dialog.items.label11 "• DOM storage">
-<!ENTITY refreshProfile.dialog.button.label  "Refresh &brandShortName;">
-
-<!ENTITY refreshProfile.title                "Give &brandShortName; a tune up">
-<!ENTITY refreshProfile.button.label         "Refresh &brandShortName;…">
-
-||||||| merged common ancestors
-<!ENTITY refreshProfile.dialog.description1  "Start fresh to fix problems and restore performance.">
-<!ENTITY refreshProfile.dialog.description2  "This will:">
-<!ENTITY refreshProfile.dialog.items.label1  "Remove your add-ons and customizations">
-<!ENTITY refreshProfile.dialog.items.label2  "Restore your browser settings to their defaults">
-<!ENTITY refreshProfile.dialog.button.label  "Refresh &brandShortName;">
-
-<!ENTITY refreshProfile.title                "Give &brandShortName; a tune up">
-<!ENTITY refreshProfile.button.label         "Refresh &brandShortName;…">
-
-=======
->>>>>>> origin/upstream-releases
 <!ENTITY refreshProfile.cleaning.description "Almost done…">

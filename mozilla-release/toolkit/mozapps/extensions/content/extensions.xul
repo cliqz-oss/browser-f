@@ -143,14 +143,9 @@
                       priority="1000"/>
         <richlistitem id="category-legacy" value="addons://legacy/"
                       class="category" priority="20000"
-<<<<<<< HEAD
-                      disabled="true"/>
-#endif
-||||||| merged common ancestors
-                      disabled="true"/>
-=======
+                      disabled="true"
                       hidden="true"/>
->>>>>>> origin/upstream-releases
+#endif
         <richlistitem id="category-availableUpdates" value="addons://updates/available"
                       class="category"
                       data-l10n-id="extensions-view-available-updates"

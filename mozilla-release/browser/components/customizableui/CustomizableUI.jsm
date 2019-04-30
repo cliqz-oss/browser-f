@@ -199,15 +199,9 @@ var CustomizableUIInternal = {
       "bookmarks-menu-button",
       "home-button",
       "downloads-button",
-<<<<<<< HEAD
-||||||| merged common ancestors
-      "library-button",
-      "sidebar-button",
-=======
       "library-button",
       "sidebar-button",
       "fxa-toolbar-menu-button",
->>>>>>> origin/upstream-releases
     ];
 
     if (AppConstants.MOZ_DEV_EDITION) {

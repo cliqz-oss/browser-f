@@ -133,33 +133,13 @@
               <label is="text-link" useoriginprincipal="true" href="about:credits" data-l10n-name="community-exp-creditsLink"></label>
             </description>
           </vbox>
-<<<<<<< HEAD
           <description class="text-blurb" id="communityDesc" data-l10n-id="community-2"  hidden="true">
-            <label class="text-link" href="http://www.cliqz.com/" data-l10n-name="community-mozillaLink"></label>
-            <label class="text-link" useoriginprincipal="true" href="about:credits" data-l10n-name="community-creditsLink"></label>
-||||||| merged common ancestors
-          <description class="text-blurb" id="communityDesc" data-l10n-id="community-2">
-            <label class="text-link" href="http://www.mozilla.org/" data-l10n-name="community-mozillaLink"></label>
-            <label class="text-link" useoriginprincipal="true" href="about:credits" data-l10n-name="community-creditsLink"></label>
-=======
-          <description class="text-blurb" id="communityDesc" data-l10n-id="community-2">
-            <label is="text-link" href="http://www.mozilla.org/" data-l10n-name="community-mozillaLink"></label>
+            <label is="text-link" href="http://www.cliqz.com/" data-l10n-name="community-mozillaLink"></label>
             <label is="text-link" useoriginprincipal="true" href="about:credits" data-l10n-name="community-creditsLink"></label>
->>>>>>> origin/upstream-releases
           </description>
-<<<<<<< HEAD
           <description class="text-blurb" id="contributeDesc" data-l10n-id="helpus" hidden="true">
-            <label class="text-link" href="https://donate.mozilla.org/?utm_source=firefox&#38;utm_medium=referral&#38;utm_campaign=firefox_about&#38;utm_content=firefox_about" data-l10n-name="helpus-donateLink"></label>
-            <label class="text-link" href="http://www.mozilla.org/contribute/" data-l10n-name="helpus-getInvolvedLink"></label>
-||||||| merged common ancestors
-          <description class="text-blurb" id="contributeDesc" data-l10n-id="helpus">
-            <label class="text-link" href="https://donate.mozilla.org/?utm_source=firefox&#38;utm_medium=referral&#38;utm_campaign=firefox_about&#38;utm_content=firefox_about" data-l10n-name="helpus-donateLink"></label>
-            <label class="text-link" href="http://www.mozilla.org/contribute/" data-l10n-name="helpus-getInvolvedLink"></label>
-=======
-          <description class="text-blurb" id="contributeDesc" data-l10n-id="helpus">
             <label is="text-link" href="https://donate.mozilla.org/?utm_source=firefox&#38;utm_medium=referral&#38;utm_campaign=firefox_about&#38;utm_content=firefox_about" data-l10n-name="helpus-donateLink"></label>
             <label is="text-link" href="http://www.mozilla.org/contribute/" data-l10n-name="helpus-getInvolvedLink"></label>
->>>>>>> origin/upstream-releases
           </description>
           <description class="text-blurb" data-l10n-id="cliqz-headline"/>
           <description class="text-blurb" data-l10n-id="cliqz-description-1">
@@ -175,22 +155,10 @@
       </vbox>
     </hbox>
     <vbox id="bottomBox">
-<<<<<<< HEAD
       <hbox pack="center" hidden="true">
-        <label class="text-link bottom-link" useoriginprincipal="true" href="about:license" data-l10n-id="bottomLinks-license"/>
-        <label class="text-link bottom-link" useoriginprincipal="true" href="about:rights" data-l10n-id="bottomLinks-rights"/>
-        <label class="text-link bottom-link" href="https://www.mozilla.org/privacy/" data-l10n-id="bottomLinks-privacy"/>
-||||||| merged common ancestors
-      <hbox pack="center">
-        <label class="text-link bottom-link" useoriginprincipal="true" href="about:license" data-l10n-id="bottomLinks-license"></label>
-        <label class="text-link bottom-link" useoriginprincipal="true" href="about:rights" data-l10n-id="bottomLinks-rights"></label>
-        <label class="text-link bottom-link" href="https://www.mozilla.org/privacy/" data-l10n-id="bottomLinks-privacy"></label>
-=======
-      <hbox pack="center">
-        <label is="text-link" class="bottom-link" useoriginprincipal="true" href="about:license" data-l10n-id="bottomLinks-license"></label>
-        <label is="text-link" class="bottom-link" useoriginprincipal="true" href="about:rights" data-l10n-id="bottomLinks-rights"></label>
-        <label is="text-link" class="bottom-link" href="https://www.mozilla.org/privacy/" data-l10n-id="bottomLinks-privacy"></label>
->>>>>>> origin/upstream-releases
+        <label is="text-link bottom-link" useoriginprincipal="true" href="about:license" data-l10n-id="bottomLinks-license"/>
+        <label is="text-link bottom-link" useoriginprincipal="true" href="about:rights" data-l10n-id="bottomLinks-rights"/>
+        <label is="text-link bottom-link" href="https://www.mozilla.org/privacy/" data-l10n-id="bottomLinks-privacy"/>
       </hbox>
       <description id="trademark" data-l10n-id="trademarkInfo"></description>
     </vbox>

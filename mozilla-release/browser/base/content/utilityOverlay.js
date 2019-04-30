@@ -277,14 +277,8 @@ function openWebLinkIn(url, where, params) {
  *   targetBrowser        (XUL browser)
  *   private              (boolean)
  */
-<<<<<<< HEAD
 function openUILinkIn(url, where, aAllowThirdPartyFixup, aPostData,
     aReferrerURI, aPrivate) {
-||||||| merged common ancestors
-function openUILinkIn(url, where, aAllowThirdPartyFixup, aPostData, aReferrerURI) {
-=======
-function openUILinkIn(url, where, aAllowThirdPartyFixup, aPostData, aReferrerInfo) {
->>>>>>> origin/upstream-releases
   var params;
 
   if (arguments.length == 3 && typeof arguments[2] == "object") {

@@ -487,7 +487,6 @@
   </hbox>
 </groupbox>
 
-<<<<<<< HEAD
 <!-- Consentric -->
 <groupbox id="consentricGroup" data-category="panePrivacy" hidden="true" class="formatBoxSize">
   <label><html:h2 data-l10n-id="consentric-header"/></label>
@@ -502,19 +501,6 @@
     </description>
   </vbox>
 </groupbox>
-||||||| merged common ancestors
-<!-- The form autofill section is inserted in to this box
-     after the form autofill extension has initialized. -->
-<groupbox id="formAutofillGroupBox"
-          data-category="panePrivacy"
-          data-subcategory="form-autofill"></groupbox>
-=======
-<!-- The form autofill section is inserted in to this box
-     after the form autofill extension has initialized. -->
-<groupbox id="formAutofillGroupBox"
-          data-category="panePrivacy"
-          data-subcategory="form-autofill" hidden="true"></groupbox>
->>>>>>> origin/upstream-releases
 
 <!-- History -->
 <groupbox id="historyGroup" data-category="panePrivacy" hidden="true">
@@ -939,14 +925,8 @@
                 />
 #if 0
       <label id="crashReporterLearnMore"
-<<<<<<< HEAD
-             class="learnMore text-link" data-l10n-id="collection-backlogged-crash-reports-link"/>
+                class="learnMore" is="text-link" data-l10n-id="collection-backlogged-crash-reports-link"/>
 #endif
-||||||| merged common ancestors
-              class="learnMore text-link" data-l10n-id="collection-backlogged-crash-reports-link"/>
-=======
-              class="learnMore" is="text-link" data-l10n-id="collection-backlogged-crash-reports-link"/>
->>>>>>> origin/upstream-releases
     </hbox>
 #endif
   <description data-l10n-id="cliqz-firefox-privacy">

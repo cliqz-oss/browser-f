@@ -3062,14 +3062,8 @@ class SystemAddonInstaller extends DirectoryInstaller {
     // Remove any add-ons that are no longer part of the set.
     const ids = aAddons.map(a => a.id);
     for (let addonID of Object.keys(addonSet.addons)) {
-<<<<<<< HEAD
       // CLIQZ-SPECIAL: compare to array of ids, not array of addon-object
       if (!addonIds.includes(addonID)) {
-||||||| merged common ancestors
-      if (!aAddons.includes(addonID)) {
-=======
-      if (!ids.includes(addonID)) {
->>>>>>> origin/upstream-releases
         AddonManager.getAddonByID(addonID).then(a => a.uninstall());
       }
     }

@@ -16,14 +16,6 @@ XPIDL_SOURCES += [
 
 TEST_DIRS += ['tests']
 
-EXTRA_COMPONENTS += [
-    'nsUpdateService.manifest',
-]
-
-EXTRA_PP_COMPONENTS += [
-    'nsUpdateService.js',
-]
-
 EXTRA_JS_MODULES += [
     'UpdateListener.jsm',
     'UpdateService.jsm',
@@ -31,9 +23,10 @@ EXTRA_JS_MODULES += [
     'UpdateTelemetry.jsm',
 ]
 
-XPCOM_MANIFESTS += [
-    'components.conf',
-]
+if CONFIG['MOZ_UPDATER']:
+    XPCOM_MANIFESTS += [
+        'components.conf',
+    ]
 
 JAR_MANIFESTS += ['jar.mn']
 

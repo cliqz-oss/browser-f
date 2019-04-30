@@ -349,24 +349,12 @@ class AddonInternal {
       case KEY_APP_SYSTEM_ADDONS:
       // CLIQZ-SPECIAL: check signature for built in addons too!
       case KEY_APP_SYSTEM_DEFAULTS:
+      case KEY_APP_BUILTINS:
         // System and built-in add-ons must be signed by the system key.
         return this.signedState == AddonManager.SIGNEDSTATE_SYSTEM;
 
-<<<<<<< HEAD
-||||||| merged common ancestors
-      case KEY_APP_SYSTEM_DEFAULTS:
-=======
-      case KEY_APP_SYSTEM_DEFAULTS:
-      case KEY_APP_BUILTINS:
->>>>>>> origin/upstream-releases
       case KEY_APP_TEMPORARY:
-<<<<<<< HEAD
         // Temporary add-ons do not require signing.
-||||||| merged common ancestors
-        // Temporary and built-in system add-ons do not require signing.
-=======
-        // Temporary and built-in add-ons do not require signing.
->>>>>>> origin/upstream-releases
         return true;
 
       case KEY_APP_SYSTEM_SHARE:

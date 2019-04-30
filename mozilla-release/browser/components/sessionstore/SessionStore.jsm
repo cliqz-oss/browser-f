@@ -3352,19 +3352,9 @@ var SessionStoreInternal = {
     let homePages = ["about:blank"];
     let removableTabs = [];
     let tabbrowser = aWindow.gBrowser;
-<<<<<<< HEAD
     let addFreshTab = this._prefBranch.getBoolPref("startup.addFreshTab");
     if (addFreshTab)
-      homePages = homePages.concat(HomePage.get().split("|"));
-||||||| merged common ancestors
-    let startupPref = this._prefBranch.getIntPref("startup.page");
-    if (startupPref == 1)
-      homePages = homePages.concat(HomePage.get().split("|"));
-=======
-    let startupPref = this._prefBranch.getIntPref("startup.page");
-    if (startupPref == 1)
       homePages = homePages.concat(HomePage.get(aWindow).split("|"));
->>>>>>> origin/upstream-releases
 
     for (let i = tabbrowser._numPinnedTabs; i < tabbrowser.tabs.length; i++) {
       let tab = tabbrowser.tabs[i];

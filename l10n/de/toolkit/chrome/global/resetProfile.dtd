@@ -3,22 +3,4 @@
    - You can obtain one at http://mozilla.org/MPL/2.0/.  -->
 
 <!ENTITY refreshProfile.dialog.title         "&brandShorterName; bereinigen">
-<!ENTITY refreshProfile.dialog.description1  "Ein Neuanfang kann &brandShorterName;-Probleme lösen und die Leistung wieder herstellen.">
-<!ENTITY refreshProfile.dialog.description2  "Dies wird:">
-<!ENTITY refreshProfile.dialog.items.label1  "Deine Add-ons und Anpassungen entfernen">
-<!ENTITY refreshProfile.dialog.items.label2  "Die Browser-Einstellungen auf den Standard zurücksetzen.">
-<!ENTITY refreshProfile.dialog.items.label3  "Folgende Daten werden zurückgesetzt:">
-<!ENTITY refreshProfile.dialog.items.label4  "• Website-Berechtigungen">
-<!ENTITY refreshProfile.dialog.items.label5  "• Angepasste Einstellungen (inkl. Cliqz Tab)">
-<!ENTITY refreshProfile.dialog.items.label6  "• Cliqz Tab Favoriten">
-<!ENTITY refreshProfile.dialog.items.label7  "• Hinzugefügte Suchmaschinen">
-<!ENTITY refreshProfile.dialog.items.label8  "• Einstellungen der Symbolleisten">
-<!ENTITY refreshProfile.dialog.items.label9  "• Sicherheits-, Zertifikats- und Geräteeinstellungen">
-<!ENTITY refreshProfile.dialog.items.label10 "• Download-Aktionen">
-<!ENTITY refreshProfile.dialog.items.label11 "• DOM-Speicher">
-<!ENTITY refreshProfile.dialog.button.label  "&brandShorterName; bereinigen">
-
-<!ENTITY refreshProfile.title                "&brandShorterName; wieder flott machen.">
-<!ENTITY refreshProfile.button.label         "&brandShorterName; bereinigen…">
-
 <!ENTITY refreshProfile.cleaning.description "Fast fertig…">

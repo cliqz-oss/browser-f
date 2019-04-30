@@ -77,16 +77,11 @@ function setNewTabURL(extensionId, url, isSystem) {
   if (url) {
     aboutNewTabService.newTabURL = url;
   }
-<<<<<<< HEAD
   */
 
   if (isSystem) {
     aboutNewTabService.newTabURL = url;
   }
-||||||| merged common ancestors
-  aboutNewTabService.newTabURL = url;
-=======
->>>>>>> origin/upstream-releases
 }
 
 // eslint-disable-next-line mozilla/balanced-listeners

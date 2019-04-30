@@ -14,14 +14,8 @@ ChromeUtils.defineModuleGetter(this, "LoginHelper",
 ChromeUtils.defineModuleGetter(this, "SiteDataManager",
   "resource:///modules/SiteDataManager.jsm");
 
-<<<<<<< HEAD
-ChromeUtils.import("resource://gre/modules/PrivateBrowsingUtils.jsm");
-ChromeUtils.import("resource://gre/modules/AddonManager.jsm");
-||||||| merged common ancestors
-ChromeUtils.import("resource://gre/modules/PrivateBrowsingUtils.jsm");
-=======
 var {PrivateBrowsingUtils} = ChromeUtils.import("resource://gre/modules/PrivateBrowsingUtils.jsm");
->>>>>>> origin/upstream-releases
+var {AddonManager} = ChromeUtils.import("resource://gre/modules/AddonManager.jsm");
 
 const PREF_UPLOAD_ENABLED = "datareporting.healthreport.uploadEnabled";
 

@@ -1527,7 +1527,6 @@ pref("media.gmp-gmpopenh264.enabled", true);
 pref("media.autoplay.enabled.user-gestures-needed", true);
 // Set Firefox to block autoplay, asking for permission by default.
 pref("media.autoplay.default", 1); // 0=Allowed, 1=Blocked
-<<<<<<< HEAD
 #else
 // Set Firefox to block autoplay, asking for permission by default.
 // CLIQZ-SPECIAL: blocked by default
@@ -1535,14 +1534,6 @@ pref("media.autoplay.default", 1); // 0=Allowed, 1=Blocked
 #endif
 // CLIQZ-SPECIAL: whitelist for unblocking autoplay.
 pref("blockautoplay.whitelist.add", "https://www.youtube.com/");
-||||||| merged common ancestors
-#else
-// Set Firefox to block autoplay, asking for permission by default.
-pref("media.autoplay.default", 0); // 0=Allowed, 1=Blocked
-#endif
-
-=======
->>>>>>> origin/upstream-releases
 
 #ifdef NIGHTLY_BUILD
 // Block WebAudio from playing automatically.

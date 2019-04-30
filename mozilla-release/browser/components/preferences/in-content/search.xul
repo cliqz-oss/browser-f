@@ -7,16 +7,8 @@
           data-category="paneSearch">
       <html:h1 data-l10n-id="pane-search-title"/>
     </hbox>
-<<<<<<< HEAD
 #if 0
-    <groupbox id="searchbarGroup" data-category="paneSearch">
-||||||| merged common ancestors
-
-    <groupbox id="searchbarGroup" data-category="paneSearch">
-=======
-
     <groupbox id="searchbarGroup" data-category="paneSearch" hidden="true">
->>>>>>> origin/upstream-releases
       <label control="searchBarVisibleGroup"><html:h2 data-l10n-id="search-bar-header"/></label>
       <radiogroup id="searchBarVisibleGroup" preference="browser.search.widget.inNavBar">
         <radio id="searchBarHiddenRadio" value="false" data-l10n-id="search-bar-hidden"/>
@@ -85,19 +77,9 @@
                 disabled="true"
                 />
       </hbox>
-<<<<<<< HEAD
       <vbox id="addEnginesBox" pack="start">
-        <label id="addEngines" class="text-link" data-l10n-id="search-find-more-link"></label>
+        <label id="addEngines" data-l10n-id="search-find-more-link" is="text-link"></label>
         <label data-l10n-id="search-find-more-desc"/>
       </vbox>
-||||||| merged common ancestors
-      <hbox id="addEnginesBox" pack="start">
-        <label id="addEngines" class="text-link" data-l10n-id="search-find-more-link"></label>
-      </hbox>
-=======
-      <hbox id="addEnginesBox" pack="start">
-        <label id="addEngines" data-l10n-id="search-find-more-link" is="text-link"></label>
-      </hbox>
->>>>>>> origin/upstream-releases
     </groupbox>
     ]]></box>

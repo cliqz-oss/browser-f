@@ -224,12 +224,8 @@ ContentRestoreInternal.prototype = {
           loadFlags: loadArguments.flags,
           referrerInfo,
           postData,
-<<<<<<< HEAD
           ensurePrivate: false,
-||||||| merged common ancestors
-=======
           csp,
->>>>>>> origin/upstream-releases
         };
         webNavigation.loadURI(loadArguments.uri, loadURIOptions);
       } else if (tabData.userTypedValue && tabData.userTypedClear) {

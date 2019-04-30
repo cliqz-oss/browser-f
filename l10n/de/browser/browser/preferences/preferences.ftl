@@ -49,30 +49,15 @@ category-search =
 pane-privacy-title = Datenschutz & Sicherheit
 category-privacy =
     .tooltiptext = { pane-privacy-title }
-# The word "account" can be translated, do not translate or transliterate "Firefox".
-pane-sync-title = Firefox-Konto
-category-sync =
-    .tooltiptext = { pane-sync-title }
-<<<<<<< HEAD
-
-pane-connect-title = Connect
-category-connect =
-    .tooltiptext = { pane-connect-title }
-
-help-button-label = Mozilla Support
-addons-button-label = Erweiterungen
-||||||| merged common ancestors
-help-button-label = Hilfe für { -brand-short-name }
-addons-button-label = Erweiterungen & Themes
-=======
-
 pane-sync-title2 = { -sync-brand-short-name }
 category-sync2 =
     .tooltiptext = { pane-sync-title2 }
-
+# The word "account" can be translated, do not translate or transliterate "Firefox".
 help-button-label = Hilfe für { -brand-short-name }
 addons-button-label = Erweiterungen & Themes
->>>>>>> origin/upstream-releases
+pane-connect-title = Connect
+category-connect =
+    .tooltiptext = { pane-connect-title }
 focus-search =
     .key = f
 close-button =

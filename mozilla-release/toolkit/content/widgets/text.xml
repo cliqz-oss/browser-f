@@ -24,40 +24,6 @@
         <parameter name="firstTime"/>
         <body>
           <![CDATA[
-<<<<<<< HEAD
-            var control = this.labeledControlElement;
-            if (!control) {
-              var bindingParent = document.getBindingParent(this);
-              if (bindingParent != null && "accessKey" in bindingParent) {
-                control = bindingParent; // For controls that make the <label> an anon child
-              }
-            }
-            if (control) {
-              control.labelElement = this;
-              var controlAccessKey = control.getAttribute("accesskey");
-              if (controlAccessKey) {
-                this.setAttribute("accesskey", controlAccessKey);
-              }
-            }
-
-||||||| merged common ancestors
-            var control = this.labeledControlElement;
-            if (!control) {
-              var bindingParent = document.getBindingParent(this);
-              if ("accessKey" in bindingParent) {
-                control = bindingParent; // For controls that make the <label> an anon child
-              }
-            }
-            if (control) {
-              control.labelElement = this;
-              var controlAccessKey = control.getAttribute("accesskey");
-              if (controlAccessKey) {
-                this.setAttribute("accesskey", controlAccessKey);
-              }
-            }
-
-=======
->>>>>>> origin/upstream-releases
             var accessKey = this.accessKey;
             // No need to remove existing formatting the first time.
             if (firstTime && !accessKey)

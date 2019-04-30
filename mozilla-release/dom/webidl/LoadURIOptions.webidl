@@ -25,13 +25,7 @@ dictionary LoadURIOptions {
    * upgrade-insecure-requests, then the new top-level load will
    * be upgraded to HTTPS.
    */
-<<<<<<< HEAD
-  long loadFlags = 0;
-||||||| merged common ancestors
-   long loadFlags = 0;
-=======
-  ContentSecurityPolicy? csp = null;
->>>>>>> origin/upstream-releases
+   ContentSecurityPolicy? csp = null;
 
   /**
    * Flags modifying load behaviour.  This parameter is a bitwise
@@ -67,7 +61,6 @@ dictionary LoadURIOptions {
    * and cannot be used to resolve aURI.
    */
   URI? baseURI = null;
-<<<<<<< HEAD
 
   /**
    * Set whether to switch into private mode before loading.
@@ -76,8 +69,3 @@ dictionary LoadURIOptions {
    */
   boolean ensurePrivate = false;
 };
-||||||| merged common ancestors
-};
-=======
-};
->>>>>>> origin/upstream-releases

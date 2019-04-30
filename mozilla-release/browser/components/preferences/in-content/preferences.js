@@ -18,16 +18,9 @@
 
 "use strict";
 
-<<<<<<< HEAD
-ChromeUtils.import("resource://gre/modules/Services.jsm");
-ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
-ChromeUtils.import("resource:///modules/CliqzResources.jsm");
-||||||| merged common ancestors
-ChromeUtils.import("resource://gre/modules/Services.jsm");
-ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
-=======
 var {Services} = ChromeUtils.import("resource://gre/modules/Services.jsm");
->>>>>>> origin/upstream-releases
+var {AppConstants} = ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
+var {CliqzResources} = ChromeUtils.import("resource:///modules/CliqzResources.jsm");
 
 ChromeUtils.defineModuleGetter(this, "AMTelemetry",
                                "resource://gre/modules/AddonManager.jsm");
@@ -302,123 +295,7 @@ async function spotlight(subcategory, category) {
     }
   }
   if (subcategory) {
-<<<<<<< HEAD
-#if 0
-    if (!gSearchResultsPane.categoriesInitialized) {
-      await waitForSystemAddonInjectionsFinished([{
-        isGoingToInject: formAutofillParent.initialized,
-        elementId: "formAutofillGroup",
-      }]);
-    }
-#endif
     scrollAndHighlight(subcategory);
-  }
-
-  /**
-   * Wait for system addons finished their dom injections.
-   * @param {Array} addons - The system addon information array.
-   * For example, the element is looked like
-   * { isGoingToInject: true, elementId: "formAutofillGroup" }.
-   * The `isGoingToInject` means the system addon will be visible or not,
-   * and the `elementId` means the id of the element will be injected into the dom
-   * if the `isGoingToInject` is true.
-   * @returns {Promise} Will resolve once all injections are finished.
-   */
-  function waitForSystemAddonInjectionsFinished(addons) {
-    return new Promise(resolve => {
-      let elementIdSet = new Set();
-      for (let addon of addons) {
-        if (addon.isGoingToInject) {
-          elementIdSet.add(addon.elementId);
-        }
-      }
-      if (elementIdSet.size) {
-        let observer = new MutationObserver(mutations => {
-          for (let mutation of mutations) {
-            for (let node of mutation.addedNodes) {
-              elementIdSet.delete(node.id);
-              if (elementIdSet.size === 0) {
-                observer.disconnect();
-                resolve();
-              }
-            }
-          }
-        });
-        let mainContent = document.querySelector(".main-content");
-        observer.observe(mainContent, {childList: true, subtree: true});
-        // Disconnect the mutation observer once there is any user input.
-        mainContent.addEventListener("scroll", disconnectMutationObserver);
-        window.addEventListener("mousedown", disconnectMutationObserver);
-        window.addEventListener("keydown", disconnectMutationObserver);
-        function disconnectMutationObserver() {
-          mainContent.removeEventListener("scroll", disconnectMutationObserver);
-          window.removeEventListener("mousedown", disconnectMutationObserver);
-          window.removeEventListener("keydown", disconnectMutationObserver);
-          observer.disconnect();
-        }
-      } else {
-        resolve();
-      }
-    });
-||||||| merged common ancestors
-    if (!gSearchResultsPane.categoriesInitialized) {
-      await waitForSystemAddonInjectionsFinished([{
-        isGoingToInject: formAutofillParent.initialized,
-        elementId: "formAutofillGroup",
-      }]);
-    }
-    scrollAndHighlight(subcategory);
-  }
-
-  /**
-   * Wait for system addons finished their dom injections.
-   * @param {Array} addons - The system addon information array.
-   * For example, the element is looked like
-   * { isGoingToInject: true, elementId: "formAutofillGroup" }.
-   * The `isGoingToInject` means the system addon will be visible or not,
-   * and the `elementId` means the id of the element will be injected into the dom
-   * if the `isGoingToInject` is true.
-   * @returns {Promise} Will resolve once all injections are finished.
-   */
-  function waitForSystemAddonInjectionsFinished(addons) {
-    return new Promise(resolve => {
-      let elementIdSet = new Set();
-      for (let addon of addons) {
-        if (addon.isGoingToInject) {
-          elementIdSet.add(addon.elementId);
-        }
-      }
-      if (elementIdSet.size) {
-        let observer = new MutationObserver(mutations => {
-          for (let mutation of mutations) {
-            for (let node of mutation.addedNodes) {
-              elementIdSet.delete(node.id);
-              if (elementIdSet.size === 0) {
-                observer.disconnect();
-                resolve();
-              }
-            }
-          }
-        });
-        let mainContent = document.querySelector(".main-content");
-        observer.observe(mainContent, {childList: true, subtree: true});
-        // Disconnect the mutation observer once there is any user input.
-        mainContent.addEventListener("scroll", disconnectMutationObserver);
-        window.addEventListener("mousedown", disconnectMutationObserver);
-        window.addEventListener("keydown", disconnectMutationObserver);
-        function disconnectMutationObserver() {
-          mainContent.removeEventListener("scroll", disconnectMutationObserver);
-          window.removeEventListener("mousedown", disconnectMutationObserver);
-          window.removeEventListener("keydown", disconnectMutationObserver);
-          observer.disconnect();
-        }
-      } else {
-        resolve();
-      }
-    });
-=======
-    scrollAndHighlight(subcategory, category);
->>>>>>> origin/upstream-releases
   }
 }
 

@@ -56,15 +56,9 @@ browser.jar:
         content/browser/browser-siteIdentity.js       (content/browser-siteIdentity.js)
 #ifdef MOZ_SERVICES_SYNC
         content/browser/browser-sync.js               (content/browser-sync.js)
-<<<<<<< HEAD
 #endif
-        content/browser/browser-tabsintitlebar.js       (content/browser-tabsintitlebar.js)
-||||||| merged common ancestors
-        content/browser/browser-tabsintitlebar.js       (content/browser-tabsintitlebar.js)
-=======
         content/browser/browser-tabsintitlebar.js     (content/browser-tabsintitlebar.js)
         content/browser/browser-toolbarKeyNav.js      (content/browser-toolbarKeyNav.js)
->>>>>>> origin/upstream-releases
         content/browser/browser-thumbnails.js         (content/browser-thumbnails.js)
         content/browser/browser-webrender.js          (content/browser-webrender.js)
         content/browser/tab-content.js                (content/tab-content.js)

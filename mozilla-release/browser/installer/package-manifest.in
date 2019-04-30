@@ -205,9 +205,6 @@
 @RESPATH@/browser/components/EnterprisePolicies.manifest
 @RESPATH@/components/toolkitsearch.manifest
 @RESPATH@/components/extensions.manifest
-#ifdef MOZ_UPDATER
-@RESPATH@/components/nsUpdateService.manifest
-#endif
 @RESPATH@/components/ProcessSingleton.manifest
 @RESPATH@/components/HandlerService.manifest
 @RESPATH@/components/HandlerService.js
