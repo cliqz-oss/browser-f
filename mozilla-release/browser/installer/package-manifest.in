@@ -168,38 +168,6 @@
 #endif
 
 ; JavaScript components
-<<<<<<< HEAD
-@RESPATH@/components/ConsoleAPI.manifest
-@RESPATH@/components/ConsoleAPIStorage.js
-@RESPATH@/components/BrowserElementParent.manifest
-@RESPATH@/components/BrowserElementParent.js
-@RESPATH@/components/UAOverridesBootstrapper.js
-@RESPATH@/components/UAOverridesBootstrapper.manifest
-@RESPATH@/components/WellKnownOpportunisticUtils.js
-@RESPATH@/components/WellKnownOpportunisticUtils.manifest
-#ifndef XP_MACOSX
-; OSX uses native platform impl.  Windows, Linux, and Android uses fallback JS impl.
-@BINPATH@/components/nsDNSServiceDiscovery.manifest
-@BINPATH@/components/nsDNSServiceDiscovery.js
-#endif
-@RESPATH@/browser/components/AutoForgetTabsService.js
-||||||| merged common ancestors
-@RESPATH@/components/ConsoleAPI.manifest
-@RESPATH@/components/ConsoleAPIStorage.js
-@RESPATH@/components/BrowserElementParent.manifest
-@RESPATH@/components/BrowserElementParent.js
-@RESPATH@/components/UAOverridesBootstrapper.js
-@RESPATH@/components/UAOverridesBootstrapper.manifest
-@RESPATH@/components/WellKnownOpportunisticUtils.js
-@RESPATH@/components/WellKnownOpportunisticUtils.manifest
-#ifndef XP_MACOSX
-; OSX uses native platform impl.  Windows, Linux, and Android uses fallback JS impl.
-@BINPATH@/components/nsDNSServiceDiscovery.manifest
-@BINPATH@/components/nsDNSServiceDiscovery.js
-#endif
-=======
->>>>>>> origin/upstream-releases
-@RESPATH@/browser/components/BrowserComponents.manifest
 @RESPATH@/browser/components/EnterprisePolicies.js
 @RESPATH@/browser/components/EnterprisePoliciesContent.js
 @RESPATH@/browser/components/EnterprisePolicies.manifest
@@ -212,31 +180,10 @@
 @RESPATH@/browser/components/MacTouchBar.manifest
 @RESPATH@/browser/components/MacTouchBar.js
 #endif
-<<<<<<< HEAD
-@RESPATH@/components/nsPrompter.manifest
-@RESPATH@/components/nsPrompter.js
 #ifdef MOZ_SERVICES_SYNC
-||||||| merged common ancestors
-@RESPATH@/components/nsPrompter.manifest
-@RESPATH@/components/nsPrompter.js
-=======
->>>>>>> origin/upstream-releases
 @RESPATH@/components/SyncComponents.manifest
-<<<<<<< HEAD
 @RESPATH@/components/Weave.js
 #endif
-@RESPATH@/components/FxAccountsComponents.manifest
-@RESPATH@/components/FxAccountsPush.js
-@RESPATH@/components/CaptivePortalDetectComponents.manifest
-@RESPATH@/components/captivedetect.js
-||||||| merged common ancestors
-@RESPATH@/components/Weave.js
-@RESPATH@/components/FxAccountsComponents.manifest
-@RESPATH@/components/FxAccountsPush.js
-@RESPATH@/components/CaptivePortalDetectComponents.manifest
-@RESPATH@/components/captivedetect.js
-=======
->>>>>>> origin/upstream-releases
 @RESPATH@/components/servicesComponents.manifest
 @RESPATH@/components/servicesSettings.manifest
 @RESPATH@/components/cryptoComponents.manifest
@@ -518,12 +465,9 @@ bin/libfreebl_32int64_3.so
 #ifdef PKG_LOCALE_MANIFEST
 #include @PKG_LOCALE_MANIFEST@
 #endif
-<<<<<<< HEAD
 
 ; Extra distrubution files
 @RESPATH@/cliqz.cfg
-||||||| merged common ancestors
-=======
 
 #ifdef MOZ_EME_WIN32_ARTIFACT
 i686/plugin-container.exe
@@ -539,4 +483,3 @@ i686/gmp-clearkey/0.1/clearkey.dll
 ; build, which, practically speaking, is the case.
 @BINPATH@/gmp-clearkey/0.1/manifest.json
 #endif
->>>>>>> origin/upstream-releases

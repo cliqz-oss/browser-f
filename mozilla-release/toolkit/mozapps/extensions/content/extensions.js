@@ -4054,7 +4054,6 @@ var gBrowser = {
     updatePositionTask.arm();
   }, true);
 }
-<<<<<<< HEAD
 
 function ItemHandler(addon) {
   this._addon = addon;
@@ -4119,8 +4118,6 @@ ItemHandler.prototype = {
   // CLIQZ-TODO: if we need to something extra on install/download failure
   onFaliure: function(failedItem, reloadTimeout) {console.log('failed', failedItem)}
 }
-||||||| merged common ancestors
-=======
 
 // View wrappers for the HTML version of about:addons. These delegate to an
 // HTML browser that renders the actual views.
@@ -4164,4 +4161,3 @@ function htmlView(type) {
     },
   };
 }
->>>>>>> origin/upstream-releases

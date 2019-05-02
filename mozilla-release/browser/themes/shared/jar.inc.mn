@@ -27,13 +27,9 @@
   skin/classic/browser/controlcenter/3rdpartycookies-disabled.svg (../shared/controlcenter/3rdpartycookies-disabled.svg)
   skin/classic/browser/controlcenter/conn-not-secure.svg       (../shared/controlcenter/conn-not-secure.svg)
   skin/classic/browser/controlcenter/connection.svg            (../shared/controlcenter/connection.svg)
-<<<<<<< HEAD
   skin/classic/browser/controlcenter/relay.svg                 (../shared/controlcenter/relay.svg)
-||||||| merged common ancestors
-=======
   skin/classic/browser/controlcenter/cryptominers.svg          (../shared/controlcenter/cryptominers.svg)
   skin/classic/browser/controlcenter/cryptominers-disabled.svg (../shared/controlcenter/cryptominers-disabled.svg)
->>>>>>> origin/upstream-releases
   skin/classic/browser/controlcenter/mcb-disabled.svg          (../shared/controlcenter/mcb-disabled.svg)
   skin/classic/browser/controlcenter/extension.svg             (../shared/controlcenter/extension.svg)
   skin/classic/browser/controlcenter/fingerprinters.svg        (../shared/controlcenter/fingerprinters.svg)
@@ -111,32 +107,15 @@
   skin/classic/browser/panel-icon-magnifier.svg                (../shared/panel-icon-magnifier.svg)
 #endif
   skin/classic/browser/panel-icon-retry.svg                    (../shared/panel-icon-retry.svg)
-<<<<<<< HEAD
   skin/classic/browser/preferences/in-content/connect.svg      (../shared/incontentprefs/connect.svg)
   skin/classic/browser/preferences/in-content/face-sad.svg     (../shared/incontentprefs/face-sad.svg)
   skin/classic/browser/preferences/in-content/face-smile.svg   (../shared/incontentprefs/face-smile.svg)
   skin/classic/browser/preferences/in-content/fxa-avatar.svg   (../shared/incontentprefs/fxa-avatar.svg)
-  skin/classic/browser/preferences/in-content/general.svg      (../shared/incontentprefs/general.svg)
-  skin/classic/browser/preferences/in-content/logo-android.svg (../shared/incontentprefs/logo-android.svg)
-  skin/classic/browser/preferences/in-content/logo-ios.svg     (../shared/incontentprefs/logo-ios.svg)
-||||||| merged common ancestors
-  skin/classic/browser/preferences/in-content/critters-postcard.jpg       (../shared/incontentprefs/critters-postcard.jpg)
-  skin/classic/browser/preferences/in-content/face-sad.svg     (../shared/incontentprefs/face-sad.svg)
-  skin/classic/browser/preferences/in-content/face-smile.svg   (../shared/incontentprefs/face-smile.svg)
-  skin/classic/browser/preferences/in-content/fxa-avatar.svg   (../shared/incontentprefs/fxa-avatar.svg)
-  skin/classic/browser/preferences/in-content/general.svg      (../shared/incontentprefs/general.svg)
-  skin/classic/browser/preferences/in-content/logo-android.svg (../shared/incontentprefs/logo-android.svg)
-  skin/classic/browser/preferences/in-content/logo-ios.svg     (../shared/incontentprefs/logo-ios.svg)
-=======
-  skin/classic/browser/preferences/in-content/critters-postcard.jpg       (../shared/incontentprefs/critters-postcard.jpg)
-  skin/classic/browser/preferences/in-content/face-sad.svg      (../shared/incontentprefs/face-sad.svg)
-  skin/classic/browser/preferences/in-content/face-smile.svg    (../shared/incontentprefs/face-smile.svg)
-  skin/classic/browser/preferences/in-content/fxa-avatar.svg    (../shared/incontentprefs/fxa-avatar.svg)
   skin/classic/browser/preferences/in-content/fxaPairDevice.css (../shared/incontentprefs/fxaPairDevice.css)
-  skin/classic/browser/preferences/in-content/general.svg       (../shared/incontentprefs/general.svg)
-  skin/classic/browser/preferences/in-content/logo-android.svg  (../shared/incontentprefs/logo-android.svg)
-  skin/classic/browser/preferences/in-content/logo-ios.svg      (../shared/incontentprefs/logo-ios.svg)
->>>>>>> origin/upstream-releases
+  skin/classic/browser/preferences/in-content/general.svg      (../shared/incontentprefs/general.svg)
+  skin/classic/browser/preferences/in-content/logo-android.svg (../shared/incontentprefs/logo-android.svg)
+  skin/classic/browser/preferences/in-content/logo-ios.svg     (../shared/incontentprefs/logo-ios.svg)
+  skin/classic/browser/preferences/in-content/critters-postcard.jpg       (../shared/incontentprefs/critters-postcard.jpg)
   skin/classic/browser/preferences/in-content/no-search-bar.svg           (../shared/incontentprefs/no-search-bar.svg)
   skin/classic/browser/preferences/in-content/no-search-results.svg       (../shared/incontentprefs/no-search-results.svg)
   skin/classic/browser/preferences/in-content/privacy-security.svg        (../shared/incontentprefs/privacy-security.svg)

@@ -6,20 +6,9 @@
 
 var EXPORTED_SYMBOLS = ["WebNavigationChild"];
 
-<<<<<<< HEAD
-ChromeUtils.import("resource://gre/modules/ActorChild.jsm");
-ChromeUtils.import("resource://gre/modules/Services.jsm");
-ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
-ChromeUtils.import("resource://gre/modules/Timer.jsm");
-||||||| merged common ancestors
-ChromeUtils.import("resource://gre/modules/ActorChild.jsm");
-ChromeUtils.import("resource://gre/modules/Services.jsm");
-ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
-=======
 const {ActorChild} = ChromeUtils.import("resource://gre/modules/ActorChild.jsm");
 const {Services} = ChromeUtils.import("resource://gre/modules/Services.jsm");
 const {XPCOMUtils} = ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
->>>>>>> origin/upstream-releases
 
 ChromeUtils.defineModuleGetter(this, "AppConstants",
                                "resource://gre/modules/AppConstants.jsm");
@@ -51,21 +40,7 @@ class WebNavigationChild extends ActorChild {
         histogram.add("WebNavigation:LoadURI",
                       Services.telemetry.msSystemNow() - message.data.requestTime);
 
-<<<<<<< HEAD
-        this.loadURI(message.data.uri, message.data.flags,
-                     message.data.referrer, message.data.referrerPolicy,
-                     message.data.postData, message.data.headers,
-                     message.data.baseURI, message.data.triggeringPrincipal,
-                     message.data.ensurePrivate);
-||||||| merged common ancestors
-        this.loadURI(message.data.uri, message.data.flags,
-                     message.data.referrer, message.data.referrerPolicy,
-                     message.data.postData, message.data.headers,
-                     message.data.baseURI, message.data.triggeringPrincipal);
-=======
         this.loadURI(message.data);
-
->>>>>>> origin/upstream-releases
         break;
       case "WebNavigation:SetOriginAttributes":
         this.setOriginAttributes(message.data.originAttributes);
@@ -105,11 +80,6 @@ class WebNavigationChild extends ActorChild {
     this._wrapURIChangeCall(() => this.webNavigation.gotoIndex(index));
   }
 
-<<<<<<< HEAD
-  loadURI(uri, flags, referrer, referrerPolicy, postData, headers, baseURI, triggeringPrincipal, ensurePrivate) {
-||||||| merged common ancestors
-  loadURI(uri, flags, referrer, referrerPolicy, postData, headers, baseURI, triggeringPrincipal) {
-=======
   loadURI(params) {
     let {
       uri,
@@ -119,10 +89,10 @@ class WebNavigationChild extends ActorChild {
       headers,
       baseURI,
       triggeringPrincipal,
+      ensurePrivate,
       csp,
     } = params || {};
 
->>>>>>> origin/upstream-releases
     if (AppConstants.MOZ_CRASHREPORTER && CrashReporter.enabled) {
       let annotation = uri;
       try {

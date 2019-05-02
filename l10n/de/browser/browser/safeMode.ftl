@@ -10,7 +10,7 @@ start-safe-mode =
 refresh-profile =
     .label = { -brand-short-name } bereinigen
 safe-mode-description = Der Abgesicherte Modus ist ein spezieller Modus von { -brand-short-name }, der zur Problembehebung genutzt werden kann.
-safe-mode-description-details = Ihre Add-ons werden temporär deaktiviert und Ihre Einstellungen vorübergehend zurückgesetzt, sodass sich Funktionen von { -brand-short-name } möglicherweise nicht wie gewohnt verhalten.
-refresh-profile-instead = Sie können auch die Problembehebung überspringen und versuchen, { -brand-short-name } zu bereinigen.
+safe-mode-description-details = Deine Add-ons werden temporär deaktiviert und deine Einstellungen vorübergehend zurückgesetzt, sodass sich Funktionen von { -brand-short-name } möglicherweise nicht wie gewohnt verhalten.
+refresh-profile-instead = Du kannst auch die Problembehebung überspringen und versuchen, { -brand-short-name } zu bereinigen.
 # Shown on the safe mode dialog after multiple startup crashes. 
-auto-safe-mode-description = { -brand-short-name } wurde beim Starten unerwartet beendet. Dies kann durch Add-ons oder andere Probleme verursacht werden. Sie können versuchen, das Problem zu beheben, indem Sie im Abgesicherten Modus starten.
+auto-safe-mode-description = { -brand-short-name } wurde beim Starten unerwartet beendet. Dies kann durch Add-ons oder andere Probleme verursacht werden. Du kannst versuchen, das Problem zu beheben, indem du im Abgesicherten Modus startest.

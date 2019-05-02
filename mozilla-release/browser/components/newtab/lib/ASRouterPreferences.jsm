@@ -23,16 +23,10 @@ const MIGRATE_PREFS = [
 
 const USER_PREFERENCES = {
   snippets: "browser.newtabpage.activity-stream.feeds.snippets",
-<<<<<<< HEAD
 #if 0
-  cfr: "browser.newtabpage.activity-stream.asrouter.userprefs.cfr",
-#endif
-||||||| merged common ancestors
-  cfr: "browser.newtabpage.activity-stream.asrouter.userprefs.cfr",
-=======
   cfrAddons: "browser.newtabpage.activity-stream.asrouter.userprefs.cfr.addons",
   cfrFeatures: "browser.newtabpage.activity-stream.asrouter.userprefs.cfr.features",
->>>>>>> origin/upstream-releases
+#endif
 };
 
 const TEST_PROVIDER = {

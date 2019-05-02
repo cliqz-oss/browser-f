@@ -17,34 +17,10 @@ XPIDL_SOURCES += [
 
 XPIDL_MODULE = 'migration'
 
-<<<<<<< HEAD
 UNIFIED_SOURCES += [
     'nsFirefoxPasswordMigrator.cpp'
 ]
 
-EXTRA_COMPONENTS += [
-    'ChromeProfileMigrator.js',
-    'ProfileMigrator.js',
-]
-
-EXTRA_PP_COMPONENTS += [
-    'BrowserProfileMigrators.manifest',
-    'FirefoxProfileMigrator.js',
-]
-
-||||||| merged common ancestors
-EXTRA_COMPONENTS += [
-    'ChromeProfileMigrator.js',
-    'FirefoxProfileMigrator.js',
-    'ProfileMigrator.js',
-]
-
-EXTRA_PP_COMPONENTS += [
-    'BrowserProfileMigrators.manifest',
-]
-
-=======
->>>>>>> origin/upstream-releases
 EXTRA_JS_MODULES += [
     'ChromeMigrationUtils.jsm',
     'ChromeProfileMigrator.jsm',

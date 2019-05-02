@@ -53,27 +53,7 @@ SOURCES += [
     'HashStore.cpp',
 ]
 
-<<<<<<< HEAD
-EXTRA_COMPONENTS += [
-    'nsURLClassifier.manifest',
-    'nsUrlClassifierHashCompleter.js',
-    'nsUrlClassifierLib.js',
-    'nsUrlClassifierListManager.js',
-]
-
-EXTRA_PP_JS_MODULES += [
-||||||| merged common ancestors
-EXTRA_COMPONENTS += [
-    'nsURLClassifier.manifest',
-    'nsUrlClassifierHashCompleter.js',
-    'nsUrlClassifierLib.js',
-    'nsUrlClassifierListManager.js',
-]
-
 EXTRA_JS_MODULES += [
-=======
-EXTRA_JS_MODULES += [
->>>>>>> origin/upstream-releases
     'SafeBrowsing.jsm',
     'UrlClassifierHashCompleter.jsm',
     'UrlClassifierLib.jsm',

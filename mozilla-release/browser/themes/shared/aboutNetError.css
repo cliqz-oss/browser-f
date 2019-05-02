@@ -175,65 +175,7 @@ span#hostname {
   display: none;
 }
 
-<<<<<<< HEAD
-.illustrated #errorPageContainer {
-  min-height: 300px;
-  display: flex;
-  flex-direction: column;
-  background-position: left center;
-}
-
-.illustrated[dir="rtl"] #errorPageContainer {
-  background-position: right center;
-}
-
-.illustrated .title {
-  background: none;
-  padding-inline-start: 0;
-  margin-inline-start: 0;
-}
-
-.illustrated #text-container {
-  margin: auto;
-  padding-inline-start: 38%;
-}
-
-.illustrated #errorPageContainer {
-  background-repeat: no-repeat;
-  background-size: 38%;
-}
-
 %if 0
-||||||| merged common ancestors
-.illustrated #errorPageContainer {
-  min-height: 300px;
-  display: flex;
-  flex-direction: column;
-  background-position: left center;
-}
-
-.illustrated[dir="rtl"] #errorPageContainer {
-  background-position: right center;
-}
-
-.illustrated .title {
-  background: none;
-  padding-inline-start: 0;
-  margin-inline-start: 0;
-}
-
-.illustrated #text-container {
-  margin: auto;
-  padding-inline-start: 38%;
-}
-
-.illustrated #errorPageContainer {
-  background-repeat: no-repeat;
-  background-size: 38%;
-}
-
-=======
->>>>>>> origin/upstream-releases
 .connectionFailure #errorPageContainer,
 .netInterrupt #errorPageContainer,
 .netTimeout #errorPageContainer,

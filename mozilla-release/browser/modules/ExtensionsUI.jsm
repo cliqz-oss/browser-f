@@ -217,11 +217,6 @@ var ExtensionsUI = {
         histkey = "installWeb";
       }
 
-<<<<<<< HEAD
-      this.showPermissionsPrompt(browser, strings, icon, histkey, info.changesNewTab)
-||||||| merged common ancestors
-      this.showPermissionsPrompt(browser, strings, icon, histkey)
-=======
       if (info.type == "sideload") {
         AMTelemetry.recordManageEvent(info.addon, "sideload_prompt", {
           num_strings: strings.msgs.length,
@@ -233,8 +228,7 @@ var ExtensionsUI = {
         });
       }
 
-      this.showPermissionsPrompt(browser, strings, icon, histkey)
->>>>>>> origin/upstream-releases
+      this.showPermissionsPrompt(browser, strings, icon, histkey, info.changesNewTab)
           .then(answer => {
             if (answer) {
               info.resolve();
@@ -312,12 +306,8 @@ var ExtensionsUI = {
 
     let strings = ExtensionData.formatPermissionStrings(info2, bundle);
     strings.addonName = info.addon.name;
-<<<<<<< HEAD
     strings.warningText = bundle.GetStringFromName("webext.changesNewTab.text");
-||||||| merged common ancestors
-=======
     strings.learnMore = bundle.GetStringFromName("webextPerms.learnMore");
->>>>>>> origin/upstream-releases
     return strings;
   },
 

@@ -8601,20 +8601,7 @@ nsresult nsDocShell::PerformRetargeting(nsDocShellLoadState* aLoadState,
   MOZ_ASSERT(aLoadState, "need a load state!");
   MOZ_ASSERT(!aLoadState->Target().IsEmpty(), "should have a target here!");
 
-<<<<<<< HEAD
-#if defined(DEBUG)
-  nsAutoCString logSpec;
-  aURI->GetSpec(logSpec);
-  MOZ_LOG(gDocShellLog, LogLevel::Debug,
-          ("nsDocShell[%p]::InternalLoad(%s)\n", this, logSpec.get()));
-#endif
-
-  bool isTargetTopLevelDocShell = false;
-||||||| merged common ancestors
-  bool isTargetTopLevelDocShell = false;
-=======
   nsresult rv;
->>>>>>> origin/upstream-releases
   nsCOMPtr<nsIDocShell> targetDocShell;
 
   // Locate the target DocShell.

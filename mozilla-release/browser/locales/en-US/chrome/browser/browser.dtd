@@ -1168,8 +1168,7 @@ you can use these alternative items. Otherwise, their values should be empty.  -
 <!ENTITY allowAddons.panelUI.label "Cliqz now supports Firefox add-ons">
 <!ENTITY connect.panelUI.label "Connect">
 <!ENTITY torbrowsing.panelUI.label "New Tor Window">
-||||||| merged common ancestors
-=======
+
 <!ENTITY addonPostInstall.incognito.checkbox.label "Allow this extension to run in Private Windows">
 <!ENTITY addonPostInstall.incognito.checkbox.accesskey "A">
 
@@ -1180,4 +1179,3 @@ you can use these alternative items. Otherwise, their values should be empty.  -
 <!ENTITY addonPrivateBrowsing.okButton.accesskey "O">
 <!ENTITY addonPrivateBrowsing.manageButton.label "Manage Extensions">
 <!ENTITY addonPrivateBrowsing.manageButton.accesskey "M">
->>>>>>> origin/upstream-releases

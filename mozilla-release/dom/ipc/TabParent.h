@@ -284,19 +284,11 @@ class TabParent final : public PBrowserParent,
 
   mozilla::ipc::IPCResult RecvDispatchFocusToTopLevelWindow();
 
-<<<<<<< HEAD
   virtual mozilla::ipc::IPCResult RecvLoadContextPrivatenessChanged(
       const bool& isPrivate) override;
 
-  virtual mozilla::ipc::IPCResult RecvRespondStartSwipeEvent(
-      const uint64_t& aInputBlockId, const bool& aStartSwipe) override;
-||||||| merged common ancestors
-  virtual mozilla::ipc::IPCResult RecvRespondStartSwipeEvent(
-      const uint64_t& aInputBlockId, const bool& aStartSwipe) override;
-=======
   mozilla::ipc::IPCResult RecvRespondStartSwipeEvent(
       const uint64_t& aInputBlockId, const bool& aStartSwipe);
->>>>>>> origin/upstream-releases
 
   mozilla::ipc::IPCResult RecvDispatchWheelEvent(
       const mozilla::WidgetWheelEvent& aEvent);
