@@ -18,15 +18,17 @@ TEST_DIRS += ['tests']
 
 EXTRA_JS_MODULES += [
     'UpdateListener.jsm',
-    'UpdateService.jsm',
     'UpdateServiceStub.jsm',
     'UpdateTelemetry.jsm',
 ]
 
-if CONFIG['MOZ_UPDATER']:
-    XPCOM_MANIFESTS += [
-        'components.conf',
-    ]
+EXTRA_PP_JS_MODULES += [
+    'UpdateService.jsm',
+]
+
+XPCOM_MANIFESTS += [
+    'components.conf',
+]
 
 JAR_MANIFESTS += ['jar.mn']
 

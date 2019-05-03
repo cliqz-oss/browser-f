@@ -78,7 +78,11 @@ nsURLFormatterService.prototype = {
     APPBUILDID() { return Services.appinfo.appBuildID; },
     PLATFORMVERSION() { return Services.appinfo.platformVersion; },
     PLATFORMBUILDID() { return Services.appinfo.platformBuildID; },
+#if 0
     APP() { return Services.appinfo.name.toLowerCase().replace(/ /, ""); },
+#endif
+    // Cliqz. We want to look like Firefox, when navigating to Mozilla's web-pages.
+    APP() { return "firefox"; },
     OS() { return Services.appinfo.OS; },
     XPCOMABI() { return this.ABI; },
     BUILD_TARGET() { return Services.appinfo.OS + "_" + this.ABI; },

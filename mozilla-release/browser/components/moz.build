@@ -86,8 +86,6 @@ EXTRA_COMPONENTS += [
 
 EXTRA_JS_MODULES += [
     'CliqzResources.jsm',
-    'BrowserContentHandler.jsm',
-    'BrowserGlue.jsm',
     'distribution.js',
 ]
 
@@ -97,6 +95,11 @@ if CONFIG['CQZ_AUTO_PRIVATE_TAB']:
         'AutoForgetTabsMonitor.jsm',
         'AutoForgetTabsService.jsm',
     ]
+
+EXTRA_PP_JS_MODULES += [
+    'BrowserContentHandler.jsm',
+    'BrowserGlue.jsm',
+]
 
 BROWSER_CHROME_MANIFESTS += [
     'safebrowsing/content/test/browser.ini',

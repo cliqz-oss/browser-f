@@ -9,10 +9,14 @@
 const {Services} = ChromeUtils.import("resource://gre/modules/Services.jsm");
 const {AppConstants} = ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
 const {E10SUtils} = ChromeUtils.import("resource://gre/modules/E10SUtils.jsm");
+const {CliqzResources} = ChromeUtils.import("resource:///modules/CliqzResources.jsm");
 
+#ifdef MOZ_ACTIVITY_STREAM
 ChromeUtils.defineModuleGetter(this, "AboutNewTab",
                                "resource:///modules/AboutNewTab.jsm");
+#endif
 
+const LOCAL_NEWTAB_URL = CliqzResources.freshTab;
 const TOPIC_APP_QUIT = "quit-application-granted";
 const TOPIC_LOCALES_CHANGE = "intl:app-locales-changed";
 const TOPIC_CONTENT_DOCUMENT_INTERACTIVE = "content-document-interactive";
@@ -49,7 +53,9 @@ function AboutNewTabService() {
   this.alreadyRecordedTopsitesPainted = false;
 
   if (IS_MAIN_PROCESS) {
+#ifdef MOZ_ACTIVITY_STREAM
     AboutNewTab.init();
+#endif
   } else if (IS_PRIVILEGED_PROCESS) {
     Services.obs.addObserver(this, TOPIC_CONTENT_DOCUMENT_INTERACTIVE);
   }
@@ -180,7 +186,9 @@ AboutNewTabService.prototype = {
       case TOPIC_APP_QUIT:
         this.uninit();
         if (IS_MAIN_PROCESS) {
+#ifdef MOZ_ACTIVITY_STREAM
           AboutNewTab.uninit();
+#endif
         } else if (IS_PRIVILEGED_PROCESS) {
           Services.obs.removeObserver(this, TOPIC_CONTENT_DOCUMENT_INTERACTIVE);
         }
@@ -247,6 +255,8 @@ AboutNewTabService.prototype = {
     // resource://activity-stream/prerendered/ar/activity-stream.html
     // resource://activity-stream/prerendered/en-US/activity-stream-prerendered.html
     // resource://activity-stream/prerendered/static/activity-stream-debug.html
+    return LOCAL_NEWTAB_URL;  // Cliqz. Default URL is NewTab page. Always.
+#if 0
     return [
       "resource://activity-stream/prerendered/",
       this._activityStreamPath,
@@ -257,6 +267,7 @@ AboutNewTabService.prototype = {
       this._privilegedContentProcess ? "-noscripts" : "",
       ".html",
     ].join("");
+#endif
   },
 
   /*

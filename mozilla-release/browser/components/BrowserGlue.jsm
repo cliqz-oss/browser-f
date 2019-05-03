@@ -9,6 +9,7 @@ const XULNS = "http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul";
 const {XPCOMUtils} = ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 const {Services} = ChromeUtils.import("resource://gre/modules/Services.jsm");
 const {AppConstants} = ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
+const {PermissionsUtils} = ChromeUtils.import("resource://gre/modules/PermissionsUtils.jsm");
 
 ChromeUtils.defineModuleGetter(this, "ActorManagerParent",
                                "resource://gre/modules/ActorManagerParent.jsm");
@@ -383,9 +384,11 @@ let ACTORS = {
 XPCOMUtils.defineLazyServiceGetters(this, {
   aboutNewTabService: ["@mozilla.org/browser/aboutnewtab-service;1", "nsIAboutNewTabService"],
 });
+#ifdef MOZ_SERVICES_SYNC
 XPCOMUtils.defineLazyGetter(this, "WeaveService", () =>
   Cc["@mozilla.org/weave/service;1"].getService().wrappedJSObject
 );
+#endif
 
 // lazy module getters
 
@@ -430,7 +433,9 @@ XPCOMUtils.defineLazyModuleGetters(this, {
   RFPHelper: "resource://gre/modules/RFPHelper.jsm",
   SafeBrowsing: "resource://gre/modules/SafeBrowsing.jsm",
   Sanitizer: "resource:///modules/Sanitizer.jsm",
+#if 0
   SaveToPocket: "chrome://pocket/content/SaveToPocket.jsm",
+#endif
   SearchTelemetry: "resource:///modules/SearchTelemetry.jsm",
   SessionStartup: "resource:///modules/sessionstore/SessionStartup.jsm",
   SessionStore: "resource:///modules/sessionstore/SessionStore.jsm",
@@ -641,6 +646,7 @@ BrowserGlue.prototype = {
     Services.prefs.savePrefFile(null);
   },
 
+#ifdef MOZ_SERVICES_SYNC
   _setSyncAutoconnectDelay: function BG__setSyncAutoconnectDelay() {
     // Assume that a non-zero value for services.sync.autoconnectDelay should override
     if (Services.prefs.prefHasUserValue("services.sync.autoconnectDelay")) {
@@ -666,6 +672,7 @@ BrowserGlue.prototype = {
     const {Weave} = ChromeUtils.import("resource://services-sync/main.js");
     Weave.Service.scheduler.delayedAutoConnect(delay);
   },
+#endif
 
   /**
    * Lazily initialize PingCentre
@@ -766,6 +773,7 @@ BrowserGlue.prototype = {
           this._setPrefToSaveSession();
         }
         break;
+#ifdef MOZ_SERVICES_SYNC
       case "weave:service:ready":
         this._setSyncAutoconnectDelay();
         break;
@@ -788,6 +796,7 @@ BrowserGlue.prototype = {
       case "weave:engine:clients:display-uris":
         this._onDisplaySyncURIs(subject);
         break;
+#endif
       case "session-save":
         this._setPrefToSaveSession(true);
         subject.QueryInterface(Ci.nsISupportsPRBool);
@@ -909,7 +918,9 @@ BrowserGlue.prototype = {
         break;
       case "shield-init-complete":
         this._shieldInitComplete = true;
+#if 0
         this._sendMainPingCentrePing();
+#endif
         break;
     }
   },
@@ -928,6 +939,7 @@ BrowserGlue.prototype = {
       os.addObserver(this, "browser-lastwindow-close-requested");
       os.addObserver(this, "browser-lastwindow-close-granted");
     }
+#ifdef MOZ_SERVICES_SYNC
     os.addObserver(this, "weave:service:ready");
     os.addObserver(this, "fxaccounts:onverified");
     os.addObserver(this, "fxaccounts:device_connected");
@@ -935,6 +947,7 @@ BrowserGlue.prototype = {
     os.addObserver(this, "fxaccounts:device_disconnected");
     os.addObserver(this, "fxaccounts:commands:open-uri");
     os.addObserver(this, "weave:engine:clients:display-uris");
+#endif
     os.addObserver(this, "session-save");
     os.addObserver(this, "places-init-complete");
     os.addObserver(this, "distribution-customization-complete");
@@ -973,6 +986,7 @@ BrowserGlue.prototype = {
       os.removeObserver(this, "browser-lastwindow-close-requested");
       os.removeObserver(this, "browser-lastwindow-close-granted");
     }
+#ifdef MOZ_SERVICES_SYNC
     os.removeObserver(this, "weave:service:ready");
     os.removeObserver(this, "fxaccounts:onverified");
     os.removeObserver(this, "fxaccounts:device_connected");
@@ -980,6 +994,7 @@ BrowserGlue.prototype = {
     os.removeObserver(this, "fxaccounts:device_disconnected");
     os.removeObserver(this, "fxaccounts:commands:open-uri");
     os.removeObserver(this, "weave:engine:clients:display-uris");
+#endif
     os.removeObserver(this, "session-save");
     if (this._bookmarksBackupIdleTime) {
       this._idleService.removeIdleObserver(this, this._bookmarksBackupIdleTime);
@@ -1099,7 +1114,9 @@ BrowserGlue.prototype = {
 
     Normandy.init();
 
+#if 0
     SaveToPocket.init();
+#endif
     Services.obs.notifyObservers(null, "browser-ui-startup-complete");
   },
 
@@ -1285,7 +1302,7 @@ BrowserGlue.prototype = {
         label:     win.gNavigatorBundle.getString("unsignedAddonsDisabled.learnMore.label"),
         accessKey: win.gNavigatorBundle.getString("unsignedAddonsDisabled.learnMore.accesskey"),
         callback() {
-          win.BrowserOpenAddonsMgr("addons://list/extension?unsigned=true");
+          win.openUILinkIn("https://cliqz.com/support/wieso-keine-addons", "tab")
         },
       },
     ];
@@ -1345,11 +1362,11 @@ BrowserGlue.prototype = {
       if (updateChannel) {
         let uninstalledValue =
           WindowsRegistry.readRegKey(Ci.nsIWindowsRegKey.ROOT_KEY_CURRENT_USER,
-                                     "Software\\Mozilla\\Firefox",
+                                     "Software\\Cliqz",
                                      `Uninstalled-${updateChannel}`);
         let removalSuccessful =
           WindowsRegistry.removeRegKey(Ci.nsIWindowsRegKey.ROOT_KEY_CURRENT_USER,
-                                       "Software\\Mozilla\\Firefox",
+                                       "Software\\Cliqz",
                                        `Uninstalled-${updateChannel}`);
         if (removalSuccessful && uninstalledValue == "True") {
           this._resetProfileNotification("uninstall");
@@ -1363,7 +1380,9 @@ BrowserGlue.prototype = {
     DateTimePickerParent.init();
     // Check if Sync is configured
     if (Services.prefs.prefHasUserValue("services.sync.username")) {
+#ifdef MOZ_SERVICES_SYNC
       WeaveService.init();
+#endif
     }
 
     PageThumbs.init();
@@ -1544,7 +1563,7 @@ BrowserGlue.prototype = {
       }
     });
   },
-
+#if 0
   _showNewInstallModal() {
     // Allow other observers of the same topic to run while we open the dialog.
     Services.tm.dispatchToMainThread(() => {
@@ -1560,7 +1579,7 @@ BrowserGlue.prototype = {
       mask.remove();
     });
   },
-
+#endif
   // All initial windows have opened.
   _onWindowsRestored: function BG__onWindowsRestored() {
     if (this._windowsWereRestored) {
@@ -1613,6 +1632,7 @@ BrowserGlue.prototype = {
     this._idleService.addIdleObserver(
       this._lateTasksIdleObserver, LATE_TASKS_IDLE_TIME_SEC);
 
+#if 0
     this._monitorScreenshotsPref();
     this._monitorWebcompatReporterPref();
 
@@ -1621,6 +1641,7 @@ BrowserGlue.prototype = {
     if (pService.createdAlternateProfile) {
       this._showNewInstallModal();
     }
+#endif
   },
 
   /**
@@ -1745,11 +1766,12 @@ BrowserGlue.prototype = {
     Services.tm.idleDispatchToMainThread(() => {
       TabUnloader.init();
     });
-
+#if 0
     // Marionette needs to be initialized as very last step
     Services.tm.idleDispatchToMainThread(() => {
       Services.obs.notifyObservers(null, "marionette-startup-requested");
     });
+#endif
   },
 
   /**
@@ -1843,8 +1865,9 @@ BrowserGlue.prototype = {
       return;
 
     // If we're going to automatically restore the session, only warn if the user asked for that.
-    let sessionWillBeRestored = Services.prefs.getIntPref("browser.startup.page") == 3 ||
-                                Services.prefs.getBoolPref("browser.sessionstore.resume_session_once");
+    let sessionWillBeRestored =
+        Services.prefs.getBoolPref("browser.startup.restoreTabs") ||
+        Services.prefs.getBoolPref("browser.sessionstore.resume_session_once");
     // In the sessionWillBeRestored case, we only check the sessionstore-specific pref:
     if (sessionWillBeRestored) {
       if (!Services.prefs.getBoolPref("browser.sessionstore.warnOnQuit", false)) {
@@ -2296,11 +2319,15 @@ BrowserGlue.prototype = {
     const BROWSER_DOCURL = AppConstants.BROWSER_CHROME_URL;
 
     let currentUIVersion;
+    PermissionsUtils.importFromPrefs("blockautoplay.", "autoplay-media");
     if (Services.prefs.prefHasUserValue("browser.migration.version")) {
       currentUIVersion = Services.prefs.getIntPref("browser.migration.version");
     } else {
       // This is a new profile, nothing to migrate.
       Services.prefs.setIntPref("browser.migration.version", UI_VERSION);
+
+      // CLIQZ-SPECIAL: Default disabled AFT for new users.
+      Services.prefs.setBoolPref("browser.privatebrowsing.apt", false);
 
       try {
         // New profiles may have existing bookmarks (imported from another browser or
@@ -2647,6 +2674,8 @@ BrowserGlue.prototype = {
           Services.prefs.clearUserPref("browser.onboarding." + item);
         }
       }
+      // CLIQZ: Initiate doorhanger notification if its update from <1.24.0
+      AppMenuNotifications.showNotification("allow-addons", null, null, {dismissed: true});
     }
 
     if (currentUIVersion < 77) {
@@ -2695,6 +2724,7 @@ BrowserGlue.prototype = {
     const usePromptLimit = !AppConstants.RELEASE_OR_BETA;
     let promptCount =
       usePromptLimit ? Services.prefs.getIntPref("browser.shell.defaultBrowserCheckCount") : 0;
+    let popupCount = Services.prefs.getIntPref("browser.shell.defaultBrowserCheckCount");
 
     let willRecoverSession =
       (SessionStartup.sessionType == SessionStartup.RECOVER_SESSION);
@@ -2724,14 +2754,69 @@ BrowserGlue.prototype = {
       } else {
         promptCount++;
       }
+      /* CLIQZ-SPECIAL: Avoid FF handling of default browser msg popup
       if (usePromptLimit && promptCount > 3) {
         willPrompt = false;
       }
+      */
     }
 
+    // CLIQZ-SPECIAL: moderating default browser message popup timings as per DB-2076
+    let defaultBrowserCheckFlag = false;
+    let firstDefaultBrowserCheckTimestamp =
+      Services.prefs.getPrefType("browser.shell.firstDefaultBrowserCheckTimestamp") !== 0 ?
+        Services.prefs.getIntPref("browser.shell.firstDefaultBrowserCheckTimestamp") :
+        null;
+
+    if (!firstDefaultBrowserCheckTimestamp) {
+      firstDefaultBrowserCheckTimestamp = parseInt(Date.now() / 1000);
+      Services.prefs.setIntPref("browser.shell.firstDefaultBrowserCheckTimestamp", firstDefaultBrowserCheckTimestamp);
+    }
+
+    let checkLevel =
+      Services.prefs.getPrefType("browser.shell.defaultBrowserCheckLevel") !== 0 ?
+        Services.prefs.getIntPref("browser.shell.defaultBrowserCheckLevel"):
+        0;
+
+    function setLevel(val) {
+      Services.prefs.setIntPref("browser.shell.defaultBrowserCheckLevel", val);
+      popupCount++;
+      Services.prefs.setIntPref("browser.shell.defaultBrowserCheckCount", popupCount);
+      return true;
+    }
+
+    if (firstDefaultBrowserCheckTimestamp && willPrompt) {
+      let whatsNow = parseInt(Date.now() / 1000);
+      let timeDiff = whatsNow - firstDefaultBrowserCheckTimestamp;
+      let monthAge = 30 * 24 * 60 * 60;
+      let monthCount = Math.floor(timeDiff / monthAge);
+      let fortNightAge = 15 * 24 * 60 * 60;
+      let weekAge = 7 * 24 * 60 * 60;
+      if (timeDiff < weekAge) {
+        if (checkLevel == 0) {
+          defaultBrowserCheckFlag = setLevel(1);
+        }
+      } else if (timeDiff < fortNightAge) {
+        if (checkLevel <= 1) {
+          defaultBrowserCheckFlag = setLevel(2);
+        }
+      } else if (timeDiff < monthAge) {
+        if (checkLevel <= 2) {
+          defaultBrowserCheckFlag = setLevel(3);
+        }
+      } else {
+        let monthLevel = monthCount + 3;
+        if (checkLevel < monthLevel) {
+          defaultBrowserCheckFlag = setLevel(monthLevel);
+        }
+      }
+    }
+
+    /* CLIQZ-SPECIAL: Avoid FF handling of default browser msg popup
     if (usePromptLimit && willPrompt) {
       Services.prefs.setIntPref("browser.shell.defaultBrowserCheckCount", promptCount);
     }
+    */
 
     try {
       // Report default browser status on startup to telemetry
@@ -2746,7 +2831,7 @@ BrowserGlue.prototype = {
                         .add(promptCount);
     } catch (ex) { /* Don't break the default prompt if telemetry is broken. */ }
 
-    if (willPrompt) {
+    if (willPrompt && defaultBrowserCheckFlag) {
       DefaultBrowserCheck.prompt(BrowserWindowTracker.getTopWindow());
     }
   },
@@ -2857,6 +2942,7 @@ BrowserGlue.prototype = {
     });
   },
 
+#ifdef MOZ_SERVICES_SYNC
   /**
    * Called as an observer when Sync's "display URIs" notification is fired.
    *
@@ -2946,6 +3032,7 @@ BrowserGlue.prototype = {
       Cu.reportError("Error displaying tab(s) received by Sync: " + ex);
     }
   },
+#endif
 
   async _onVerifyLoginNotification({body, title, url}) {
     let tab;
@@ -3467,8 +3554,9 @@ var DefaultBrowserCheck = {
       let buttonFlags = (ps.BUTTON_TITLE_IS_STRING * ps.BUTTON_POS_0) +
                         (ps.BUTTON_TITLE_IS_STRING * ps.BUTTON_POS_1) +
                         ps.BUTTON_POS_0_DEFAULT;
+      // CLIQZ-SPECIAL: suppress the checkbox for opt-out default browser check
       let rv = ps.confirmEx(win, promptTitle, promptMessage, buttonFlags,
-                            yesButton, notNowButton, null, askLabel, shouldAsk);
+                            yesButton, notNowButton, null, null, {value: 0});
       if (rv == 0) {
         this.setAsDefault();
       } else if (!shouldAsk.value) {

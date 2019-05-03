@@ -323,7 +323,7 @@ function getPerInstallationMutexName(aGlobal = true) {
   var data = converter.convertToByteArray(exeFile.path.toLowerCase());
 
   hasher.update(data, data.length);
-  return (aGlobal ? "Global\\" : "") + "MozillaUpdateMutex-" + hasher.finish(true);
+  return (aGlobal ? "Global\\" : "") + "CliqzUpdateMutex-" + hasher.finish(true);
 }
 
 /**
@@ -787,7 +787,7 @@ function isServiceInstalled() {
     let wrk = Cc["@mozilla.org/windows-registry-key;1"].
               createInstance(Ci.nsIWindowsRegKey);
     wrk.open(wrk.ROOT_KEY_LOCAL_MACHINE,
-             "SOFTWARE\\Mozilla\\MaintenanceService",
+             "SOFTWARE\\CLIQZ\\MaintenanceService",
              wrk.ACCESS_READ | wrk.WOW64_64);
     installed = wrk.readIntValue("Installed");
     wrk.close();
@@ -1520,7 +1520,8 @@ function Update(update) {
   if (!this.displayVersion) {
     this.displayVersion = this.appVersion;
   }
-
+  
+#if 0
   if (!this.name) {
     // When the update doesn't provide a name fallback to using
     // "<App Name> <Update App Version>"
@@ -1529,6 +1530,11 @@ function Update(update) {
     this.name = gUpdateBundle.formatStringFromName("updateName",
                                                    [appName, this.displayVersion], 2);
   }
+  this.name = name;
+#endif
+  // In Cliqz we always use just the current product name.
+  var brandBundle = Services.strings.createBundle(URI_BRAND_PROPERTIES);
+  this.name = brandBundle.GetStringFromName("brandShortName");
 }
 Update.prototype = {
   // nsIUpdate attribute names used to prevent nsIWritablePropertyBag from over
@@ -3201,7 +3207,7 @@ Checker.prototype = {
     let wrk = Cc["@mozilla.org/windows-registry-key;1"].
               createInstance(Ci.nsIWindowsRegKey);
 
-    let regPath = "SOFTWARE\\Mozilla\\" + Services.appinfo.name +
+    let regPath = "SOFTWARE\\" + Services.appinfo.name +
                   "\\32to64DidMigrate";
     let regValHKCU = WindowsRegistry.readRegKey(wrk.ROOT_KEY_CURRENT_USER,
                                                 regPath, "Never", wrk.WOW64_32);
