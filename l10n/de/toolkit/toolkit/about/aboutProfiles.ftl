@@ -2,12 +2,20 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+
 profiles-title = Über Profile
 profiles-subtitle = Diese Seite hilft Ihnen beim Verwalten Ihrer Profile. Jedes Profil stellt eine eigene Umgebung dar, in der Chronik, Lesezeichen, Einstellungen und Add-ons unabhängig von anderen Profilen sind.
 profiles-create = Neues Profil anlegen
 profiles-restart-title = Neu starten
 profiles-restart-in-safe-mode = Mit deaktivierten Add-ons neu starten…
 profiles-restart-normal = Normal neu starten…
+
+profiles-conflict = Ein anderer { -brand-product-name }-Prozess hat Änderungen an Profilen vorgenommen. { -brand-short-name } muss neu gestartet werden, bevor weitere Änderungen möglich sind.
+profiles-flush-fail-title = Änderungen nicht gespeichert
+profiles-flush-conflict = { profiles-conflict }
+profiles-flush-failed = Ein unerwarteter Fehler verhinderte das Speichern der Änderungen.
+profiles-flush-restart-button = { -brand-short-name } neu starten
+
 # Variables:
 #   $name (String) - Name of the profile
 profiles-name = Profil: { $name }
