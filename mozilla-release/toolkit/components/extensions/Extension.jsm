@@ -5,7 +5,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 "use strict";
 
-var EXPORTED_SYMBOLS = ["Dictionary", "Extension", "ExtensionData", "Langpack"];
+var EXPORTED_SYMBOLS = ["Dictionary", "Extension", "ExtensionData", "Langpack", "getExtensionUUID"];
 
 /* exported Extension, ExtensionData */
 /* globals Extension ExtensionData */
@@ -213,6 +213,10 @@ var UUIDMap = {
     delete map[id];
     this._write(map);
   },
+};
+
+var getExtensionUUID = function(id) {
+  return UUIDMap.get(id, false);
 };
 
 // For extensions that have called setUninstallURL(), send an event

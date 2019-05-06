@@ -24,8 +24,8 @@ const INITIAL_PAGES = [
 ];
 
 const getWebExtId = function() {
-  const UUIDMap = DependencyManager.get("UUIDMap", "resource://gre/modules/Extension.jsm");
-  return UUIDMap.get("cliqz@cliqz.com");
+  const getExtensionUUID = DependencyManager.get("getExtensionUUID", "resource://gre/modules/Extension.jsm");
+  return getExtensionUUID("cliqz@cliqz.com");
 };
 
 const getWebExtPrefix = function() {

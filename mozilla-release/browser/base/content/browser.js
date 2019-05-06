@@ -6,11 +6,11 @@
 var {XPCOMUtils} = ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 var {Services} = ChromeUtils.import("resource://gre/modules/Services.jsm");
 var {AppConstants} = ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
-ChromeUtils.import("resource://gre/modules/NotificationDB.jsm");
+var {NotificationDB} = ChromeUtils.import("resource://gre/modules/NotificationDB.jsm");
 
-ChromeUtils.import("resource:///modules/CliqzResources.jsm");
+var {CliqzResources} = ChromeUtils.import("resource:///modules/CliqzResources.jsm");
 #ifdef CQZ_TOR_MODE
-ChromeUtils.import("resource://gre/modules/ExtensionUtils.jsm");
+var {ExtensionUtils} = ChromeUtils.import("resource://gre/modules/ExtensionUtils.jsm");
 #endif
 
 // lazy module getters

@@ -1112,7 +1112,7 @@
                        cui-areatype="toolbar"
                        tooltiptext="&libraryButton.tooltip;"
                        label="&places.library.title;"/>
-
+#if 0
         <toolbarbutton id="fxa-toolbar-menu-button" class="toolbarbutton-1 badged-button chromeclass-toolbar-additional subviewbutton-nav"
                        onmousedown="gSync.toggleAccountPanel('PanelUI-fxa', event)"
                        onkeypress="gSync.toggleAccountPanel('PanelUI-fxa', event)"
@@ -1126,6 +1126,7 @@
                         <image id="fxa-avatar-image"/>
                        </vbox>
         </toolbarbutton>
+#endif
       </hbox>
 
       <toolbarbutton id="nav-bar-overflow-button"

@@ -1162,7 +1162,6 @@ you can use these alternative items. Otherwise, their values should be empty.  -
      The first <image> tag is replaced with the icon for the add-ons menu.
      The second <image> tag is replaced with the icon for the toolbar menu. -->
 <!ENTITY addonPostInstallMessage.label "Manage your add-ons by clicking <image class='addon-addon-icon'/> in the <image class='addon-toolbar-icon'/> menu.">
-<<<<<<< HEAD
 
 <!-- Cliqz -->
 <!ENTITY allowAddons.panelUI.label "Cliqz now supports Firefox add-ons">
