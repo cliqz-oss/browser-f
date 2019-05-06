@@ -41,10 +41,11 @@ LoadContext::LoadContext(nsIPrincipal* aPrincipal,
       aOptionalBase->GetUseTrackingProtection(&mUseTrackingProtection));
 }
 
-void LoadContext::SetPrivateness(bool enable) {
+NS_IMETHODIMP
+LoadContext::SetPrivateness(bool enable) {
   const bool privateness = mOriginAttributes.mPrivateBrowsingId > 0;
   if (privateness == enable)
-    return;
+    return NS_OK;
   mOriginAttributes.mPrivateBrowsingId = enable ? 1 : 0;
   nsTObserverArray<nsWeakPtr>::ForwardIterator iter(mPrivacyObservers);
   while (iter.HasMore()) {
@@ -56,6 +57,7 @@ void LoadContext::SetPrivateness(bool enable) {
       obs->PrivateModeChanged(mOriginAttributes.mPrivateBrowsingId > 0);
     }
   }
+  return NS_OK;
 }
 
 NS_IMETHODIMP

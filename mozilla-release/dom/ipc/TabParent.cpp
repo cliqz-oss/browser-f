@@ -2664,7 +2664,8 @@ mozilla::ipc::IPCResult TabParent::RecvRespondStartSwipeEvent(
 
 already_AddRefed<nsILoadContext> TabParent::GetLoadContext() {
   CreateLoadContext();
-  RefPtr<LoadContext> loadContext;
+  //RefPtr<LoadContext> loadContext;
+  nsCOMPtr<nsILoadContext> loadContext;
   loadContext = mLoadContext;
   return loadContext.forget();
 }
@@ -3161,6 +3162,7 @@ class FakeChannel final : public nsIChannel,
       GetUsePrivateBrowsing(bool*) NO_IMPL NS_IMETHOD
       SetUsePrivateBrowsing(bool) NO_IMPL NS_IMETHOD
       SetPrivateBrowsing(bool) NO_IMPL NS_IMETHOD
+      SetPrivateness(bool) NO_IMPL NS_IMETHOD
       GetIsInIsolatedMozBrowserElement(bool*) NO_IMPL NS_IMETHOD
       GetScriptableOriginAttributes(JSContext*, JS::MutableHandleValue) NO_IMPL
   NS_IMETHOD

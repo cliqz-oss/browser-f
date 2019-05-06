@@ -284,7 +284,7 @@ class TabParent final : public PBrowserParent,
 
   mozilla::ipc::IPCResult RecvDispatchFocusToTopLevelWindow();
 
-  virtual mozilla::ipc::IPCResult RecvLoadContextPrivatenessChanged(
+  mozilla::ipc::IPCResult RecvLoadContextPrivatenessChanged(
       const bool& isPrivate);
 
   mozilla::ipc::IPCResult RecvRespondStartSwipeEvent(
@@ -709,7 +709,9 @@ class TabParent final : public PBrowserParent,
   LayoutDeviceIntRect mDragRect;
   nsCOMPtr<nsIPrincipal> mDragPrincipal;
 
-  RefPtr<LoadContext> mLoadContext;
+  //RefPtr<LoadContext> mLoadContext;
+  nsCOMPtr<nsILoadContext> mLoadContext;
+
 
   // We keep a strong reference to the frameloader after we've sent the
   // Destroy message and before we've received __delete__. This allows us to

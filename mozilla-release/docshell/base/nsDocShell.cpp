@@ -1504,6 +1504,11 @@ nsDocShell::SetPrivateBrowsing(bool aUsePrivateBrowsing) {
 }
 
 NS_IMETHODIMP
+nsDocShell::SetPrivateness(bool mBool) {
+  return NS_OK;
+}
+
+NS_IMETHODIMP
 nsDocShell::GetHasLoadedNonBlankURI(bool* aResult) {
   NS_ENSURE_ARG_POINTER(aResult);
 

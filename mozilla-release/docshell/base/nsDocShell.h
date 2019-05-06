@@ -243,6 +243,7 @@ class nsDocShell final : public nsDocLoader,
   NS_IMETHOD SetPrivateBrowsing(bool) override;
   NS_IMETHOD GetUseRemoteTabs(bool*) override;
   NS_IMETHOD SetRemoteTabs(bool) override;
+  NS_IMETHOD SetPrivateness(bool) override;
   NS_IMETHOD GetScriptableOriginAttributes(
       JSContext*, JS::MutableHandle<JS::Value>) override;
   NS_IMETHOD_(void)

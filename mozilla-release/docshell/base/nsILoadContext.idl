@@ -142,6 +142,8 @@ interface nsILoadContext : nsISupports
 
   void addWeakPrivacyTransitionObserver(in nsIPrivacyTransitionObserver obs);
 
+  void SetPrivateness(in boolean enable);
+
   /**
    * The C++ getter for origin attributes.
    */
