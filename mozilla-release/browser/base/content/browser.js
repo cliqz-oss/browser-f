@@ -148,8 +148,10 @@ XPCOMUtils.defineLazyScriptGetter(this, ["gGestureSupport", "gHistorySwipeAnimat
                                   "chrome://browser/content/browser-gestureSupport.js");
 XPCOMUtils.defineLazyScriptGetter(this, "gSafeBrowsing",
                                   "chrome://browser/content/browser-safebrowsing.js");
+#ifdef MOZ_SERVICES_SYNC
 XPCOMUtils.defineLazyScriptGetter(this, "gSync",
                                   "chrome://browser/content/browser-sync.js");
+#endif
 XPCOMUtils.defineLazyScriptGetter(this, "gBrowserThumbnails",
                                   "chrome://browser/content/browser-thumbnails.js");
 XPCOMUtils.defineLazyScriptGetter(this, ["setContextMenuContentData",
@@ -392,6 +394,7 @@ XPCOMUtils.defineLazyPreferenceGetter(this, "gToolbarKeyNavEnabled",
     }
   });
 
+#ifdef MOZ_SERVICES_SYNC
 XPCOMUtils.defineLazyPreferenceGetter(this, "gFxaToolbarEnabled",
   "identity.fxaccounts.toolbar.enabled", false, (aPref, aOldVal, aNewVal) => {
     showFxaToolbarMenu(aNewVal);
@@ -401,6 +404,7 @@ XPCOMUtils.defineLazyPreferenceGetter(this, "gFxaToolbarAccessed",
   "identity.fxaccounts.toolbar.accessed", false, (aPref, aOldVal, aNewVal) => {
     showFxaToolbarMenu(gFxaToolbarEnabled);
   });
+#endif
 
 customElements.setElementCreationCallback("translation-notification", () => {
   Services.scriptloader.loadSubScript(
@@ -576,6 +580,7 @@ var gNavigatorBundle = {
   },
 };
 
+#ifdef MOZ_SERVICES_SYNC
 function showFxaToolbarMenu(enable) {
   // We only show the Firefox Account toolbar menu if the feature is enabled and
   // if sync is enabled.
@@ -603,6 +608,7 @@ function showFxaToolbarMenu(enable) {
     fxaPanelEl.removeEventListener("ViewShowing", gSync.updateSendToDeviceTitle);
   }
 }
+#endif
 
 function UpdateBackForwardCommands(aWebNavigation) {
   var backCommand = document.getElementById("Browser:Back");
@@ -1565,7 +1571,9 @@ var gBrowserInit = {
 
     this._setInitialFocus();
 
+#ifdef MOZ_SERVICES_SYNC
     showFxaToolbarMenu(gFxaToolbarEnabled);
+#endif
   },
 
   onLoad() {
