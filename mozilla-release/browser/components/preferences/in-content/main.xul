@@ -16,7 +16,15 @@
 
 <stringbundle id="bundlePreferences" src="chrome://browser/locale/preferences.properties"/>
 
+#if 0
+<!--
+  CLIQZ-TODO: since FF67 added CDATA syntax
+  #include cliqz.home.xul
+  does not work anymore.
+  This is a reason to put CDATA under comments until we find a workaround.
+-->
 <box id="template-paneGeneral" hidden="true"><![CDATA[
+#endif
 <hbox id="generalCategory"
       class="subcategory"
       hidden="true"
@@ -793,4 +801,6 @@
     </hbox>
   </hbox>
 </groupbox>
+#if 0
 ]]></box>
+#endif

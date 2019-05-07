@@ -276,9 +276,7 @@ var ActorManagerChild = {
   singletons: new Map(),
 
   init() {
-    let singletons = sharedData.has("ChildSingletonActors")
-      ? sharedData.get("ChildSingletonActors")
-      : new Map();
+    let singletons = sharedData.get("ChildSingletonActors");
 
     for (let [filter, data] of singletons.entries()) {
       let options = {

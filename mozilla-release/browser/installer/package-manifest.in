@@ -168,11 +168,16 @@
 #endif
 
 ; JavaScript components
+@RESPATH@/browser/components/AutoForgetTabsService.js
+@RESPATH@/browser/components/BrowserComponents.manifest
 @RESPATH@/browser/components/EnterprisePolicies.js
 @RESPATH@/browser/components/EnterprisePoliciesContent.js
 @RESPATH@/browser/components/EnterprisePolicies.manifest
 @RESPATH@/components/toolkitsearch.manifest
 @RESPATH@/components/extensions.manifest
+#ifdef MOZ_UPDATER
+@RESPATH@/components/nsUpdateService.manifest
+#endif
 @RESPATH@/components/ProcessSingleton.manifest
 @RESPATH@/components/HandlerService.manifest
 @RESPATH@/components/HandlerService.js
@@ -182,7 +187,6 @@
 #endif
 #ifdef MOZ_SERVICES_SYNC
 @RESPATH@/components/SyncComponents.manifest
-@RESPATH@/components/Weave.js
 #endif
 @RESPATH@/components/servicesComponents.manifest
 @RESPATH@/components/servicesSettings.manifest
@@ -468,7 +472,6 @@ bin/libfreebl_32int64_3.so
 
 ; Extra distrubution files
 @RESPATH@/cliqz.cfg
-
 #ifdef MOZ_EME_WIN32_ARTIFACT
 i686/plugin-container.exe
 i686/xul.dll

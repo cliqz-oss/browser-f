@@ -16,6 +16,10 @@ XPIDL_SOURCES += [
 
 TEST_DIRS += ['tests']
 
+EXTRA_COMPONENTS += [
+    'nsUpdateService.manifest',
+]
+
 EXTRA_JS_MODULES += [
     'UpdateListener.jsm',
     'UpdateServiceStub.jsm',

@@ -124,6 +124,7 @@ Preferences.addAll([
   // CFR
   {id: "browser.newtabpage.activity-stream.asrouter.userprefs.cfr.addons", type: "bool"},
   {id: "browser.newtabpage.activity-stream.asrouter.userprefs.cfr.features", type: "bool"},
+#endif
 
   // Fonts
   { id: "font.language.group", type: "wstring" },
