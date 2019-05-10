@@ -564,9 +564,9 @@
            position="bottomcenter topright"
            tabspecific="true"
            noautofocus="true"
-#ifdef 0
            pinTab-title="&pinTab.label;"
            unpinTab-title="&unpinTab.label;"
+#ifdef 0
            pocket-title="&saveToPocketCmd.label;"
 #endif
            copyURL-title="&pageAction.copyLink.label;"

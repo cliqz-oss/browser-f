@@ -460,7 +460,7 @@
       <!-- Please don't remove the wrapping hbox/vbox/box for these elements. It's used to properly compute the search tooltip position. -->
       <hbox flex="1">
         <description id="passwordsBoxHint" hidden="true" data-l10n-id="remember-logins-2-hint">
-          <label data-l10n-name="remember-logins-2-jump" class='text-link' id='jumpToHistory'/>
+          <label data-l10n-name="remember-logins-2-jump" is="text-link" id="jumpToHistory"/>
         </description>
       </hbox>
       <hbox>
@@ -495,12 +495,20 @@
             oncommand="gPrivacyPane.toggleConsentric();"/>
   <vbox>
     <description class="tail-with-learn-more" data-l10n-id="consentric-desc">
-      <label class="learnMore text-link"
+      <label class="learnMore" is="text-link"
             href="http://cliqz.com/magazine/re-consent"
             data-l10n-name="consentric-learn-more"/>
     </description>
   </vbox>
 </groupbox>
+
+#if 0
+<!-- The form autofill section is inserted in to this box
+     after the form autofill extension has initialized. -->
+<groupbox id="formAutofillGroupBox"
+          data-category="panePrivacy"
+          data-subcategory="form-autofill" hidden="true"></groupbox>
+#endif
 
 <!-- History -->
 <groupbox id="historyGroup" data-category="panePrivacy" hidden="true">
@@ -621,7 +629,7 @@
     <separator class="thin"/>
     <description data-l10n-id="forget-mode-note"/>
     <separator class="thin"/>
-    <label href="https://cliqz.com/support/automatic-forget-mode" class="text-link" data-l10n-id="forget-mode-learn-more"/>
+    <label href="https://cliqz.com/support/automatic-forget-mode" is="text-link" data-l10n-id="forget-mode-learn-more"/>
   </groupbox>
 </vbox>
 #endif
@@ -651,7 +659,7 @@
                 preference="privacy.donottrackheader.enabled"
                 data-l10n-id="do-not-track-checkbox-description"
                 class="tail-with-learn-more"/>
-      <label class="learnMore text-link"
+      <label class="learnMore" is="text-link"
              data-l10n-id="do-not-track-learn-more"
              href="https://www.mozilla.org/dnt"/>
     </hbox>
@@ -930,9 +938,9 @@
     </hbox>
 #endif
   <description data-l10n-id="cliqz-firefox-privacy">
-    <label data-l10n-name="cliqz-firefox-privacy-mozilla" class='text-link' href='https://www.mozilla.org'/>
-    <label data-l10n-name="cliqz-firefox-privacy-mozilla-privacy" class='text-link' href='https://www.mozilla.org/en-US/privacy/firefox'/>
-    <label data-l10n-name="cliqz-firefox-privacy-privacy-browser" class='text-link' href='https://cliqz.com/en/privacy-browser'/>
+    <label data-l10n-name="cliqz-firefox-privacy-mozilla" is="text-link" href="https://www.mozilla.org"/>
+    <label data-l10n-name="cliqz-firefox-privacy-mozilla-privacy" is="text-link" href="https://www.mozilla.org/en-US/privacy/firefox"/>
+    <label data-l10n-name="cliqz-firefox-privacy-privacy-browser" is="text-link" href="https://cliqz.com/en/privacy-browser"/>
   </description>
   </vbox>
 </groupbox>
@@ -971,7 +979,7 @@
             oncommand="gPrivacyPane.toggleHttpsEverywhere();"/>
   <hbox>
     <description class="tail-with-learn-more" data-l10n-id="https-everywhere-desc">
-      <label class="learnMore text-link"
+      <label class="learnMore" is="text-link"
             href="https://www.eff.org/https-everywhere"
             data-l10n-name="https-everywhere-learn-more"/>
     </description>

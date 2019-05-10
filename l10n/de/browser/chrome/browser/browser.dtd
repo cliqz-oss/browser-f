@@ -1166,12 +1166,6 @@ you can use these alternative items. Otherwise, their values should be empty.  -
      The first <image> tag is replaced with the icon for the add-ons menu.
      The second <image> tag is replaced with the icon for the toolbar menu. -->
 <!ENTITY addonPostInstallMessage.label "Die Add-ons lassen sich durch Klicken auf <image class='addon-addon-icon'/> im <image class='addon-toolbar-icon'/>-Menü verwalten.">
-
-<!-- Cliqz -->
-<!ENTITY allowAddons.panelUI.label "Cliqz lässt ab sofort Firefox Add-ons zu">
-<!ENTITY connect.panelUI.label "Connect">
-<!ENTITY torbrowsing.panelUI.label "Neues Tor Fenster">
-
 <!ENTITY addonPostInstall.incognito.checkbox.label "Ausführen der Erweiterung auch in privaten Fenstern erlauben">
 <!ENTITY addonPostInstall.incognito.checkbox.accesskey "p">
 
@@ -1182,3 +1176,8 @@ you can use these alternative items. Otherwise, their values should be empty.  -
 <!ENTITY addonPrivateBrowsing.okButton.accesskey "O">
 <!ENTITY addonPrivateBrowsing.manageButton.label "Erweiterungen verwalten">
 <!ENTITY addonPrivateBrowsing.manageButton.accesskey "w">
+
+<!-- Cliqz -->
+<!ENTITY allowAddons.panelUI.label "Cliqz lässt ab sofort Firefox Add-ons zu">
+<!ENTITY connect.panelUI.label "Connect">
+<!ENTITY torbrowsing.panelUI.label "Neues Tor Fenster">

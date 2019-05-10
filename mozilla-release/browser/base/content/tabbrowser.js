@@ -1405,8 +1405,8 @@ window._gBrowser = {
     var aNextTabParentId;
     var aFocusUrlBar;
     var aName;
-    var aPrivate;
     var aCsp;
+    var aPrivate;
     if (arguments.length == 2 &&
         typeof arguments[1] == "object" &&
         !(arguments[1] instanceof Ci.nsIURI)) {
@@ -1433,8 +1433,8 @@ window._gBrowser = {
       aNextTabParentId = params.nextTabParentId;
       aFocusUrlBar = params.focusUrlBar;
       aName = params.name;
-      aPrivate = params.private;
       aCsp = params.csp;
+      aPrivate = params.private;
     }
 
     // all callers of loadOneTab need to pass a valid triggeringPrincipal.
@@ -1469,8 +1469,8 @@ window._gBrowser = {
       nextTabParentId: aNextTabParentId,
       focusUrlBar: aFocusUrlBar,
       name: aName,
-      private: aPrivate,
       csp: aCsp,
+      private: aPrivate,
     });
     if (!bgLoad)
       this.selectedTab = tab;
@@ -2680,8 +2680,8 @@ window._gBrowser = {
           referrerInfo,
           charset,
           postData,
-          private,
           csp,
+          private,
         });
       } catch (ex) {
         Cu.reportError(ex);
@@ -3885,9 +3885,9 @@ window._gBrowser = {
       sameProcessAsFrameLoader: linkedBrowser.frameLoader,
       skipAnimation: true,
       index: aIndex,
-      private: !!aTab.private,
       createLazyBrowser,
       allowInheritPrincipal: createLazyBrowser,
+      private: !!aTab.private,
     };
 
     let numPinned = this._numPinnedTabs;

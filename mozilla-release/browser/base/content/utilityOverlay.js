@@ -278,7 +278,7 @@ function openWebLinkIn(url, where, params) {
  *   private              (boolean)
  */
 function openUILinkIn(url, where, aAllowThirdPartyFixup, aPostData,
-    aReferrerURI, aPrivate) {
+    aReferrerInfo, aPrivate) {
   var params;
 
   if (arguments.length == 3 && typeof arguments[2] == "object") {

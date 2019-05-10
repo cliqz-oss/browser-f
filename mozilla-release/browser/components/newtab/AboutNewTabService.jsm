@@ -50,7 +50,8 @@ function AboutNewTabService() {
   // More initialization happens here
   this.toggleActivityStream(true);
   this.initialized = true;
-  this.alreadyRecordedTopsitesPainted = false;
+  // CLIQZ: don't do this in Cliqz browser
+  this.alreadyRecordedTopsitesPainted = true;
 
   if (IS_MAIN_PROCESS) {
 #ifdef MOZ_ACTIVITY_STREAM

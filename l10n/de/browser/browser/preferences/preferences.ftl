@@ -49,15 +49,21 @@ category-search =
 pane-privacy-title = Datenschutz & Sicherheit
 category-privacy =
     .tooltiptext = { pane-privacy-title }
+# The word "account" can be translated, do not translate or transliterate "Firefox".
+pane-sync-title = Firefox-Konto
+category-sync =
+    .tooltiptext = { pane-sync-title }
+
 pane-sync-title2 = { -sync-brand-short-name }
 category-sync2 =
     .tooltiptext = { pane-sync-title2 }
-# The word "account" can be translated, do not translate or transliterate "Firefox".
-help-button-label = Hilfe für { -brand-short-name }
-addons-button-label = Erweiterungen & Themes
+
 pane-connect-title = Connect
 category-connect =
     .tooltiptext = { pane-connect-title }
+
+help-button-label = Mozilla Support
+addons-button-label = Erweiterungen
 focus-search =
     .key = f
 close-button =
@@ -722,7 +728,7 @@ content-blocking-cookies-label =
     .label = Cookies
     .accesskey = C
 
-content-blocking-expand-section = 
+content-blocking-expand-section =
   .tooltiptext = Weitere Informationen
 
 # Cryptomining refers to using scripts on websites that can use a computer’s resources to mine cryptocurrency without a user’s knowledge.

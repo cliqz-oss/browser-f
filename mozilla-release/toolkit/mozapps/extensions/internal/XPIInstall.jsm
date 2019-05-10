@@ -3055,15 +3055,10 @@ class SystemAddonInstaller extends DirectoryInstaller {
 
     let addonSet = SystemAddonInstaller._loadAddonSet();
 
-    // CLIQZ-SPECIAL: Firefox bug, comparing object to string hence uninstall all of system addon at system addon update
-    // so instead of comparing addonID to aAddons(array of objects) we compare to array of addonIds, so as to uninstall only those addons which are not part of recieved set.
-    const addonIds = aAddons.map(a => a.id);
-
     // Remove any add-ons that are no longer part of the set.
     const ids = aAddons.map(a => a.id);
     for (let addonID of Object.keys(addonSet.addons)) {
-      // CLIQZ-SPECIAL: compare to array of ids, not array of addon-object
-      if (!addonIds.includes(addonID)) {
+      if (!ids.includes(addonID)) {
         AddonManager.getAddonByID(addonID).then(a => a.uninstall());
       }
     }

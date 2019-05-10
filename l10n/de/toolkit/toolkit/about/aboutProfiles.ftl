@@ -54,13 +54,13 @@ profiles-delete-profile-title = Profil löschen
 # Variables:
 #   $dir (String) - Path to be displayed
 profiles-delete-profile-confirm =
-    Das Löschen eines Profils entfernt dieses aus der Liste der verfügbaren Profile und kann NICHT rückgängig gemacht werden. Sie können optional auch alle Dateien des Profils löschen, inklusive Ihrer gespeicherten Einstellungen und persönlichen Daten. Diese Option löscht folgenden Ordner inkl. des kompletten Inhalts:
-    
+    Das Löschen eines Profils entfernt dieses aus der Liste der verfügbaren Profile und kann NICHT rückgängig gemacht werden. Du kannst optional auch alle Dateien des Profils löschen, inklusive deiner gespeicherten Einstellungen und persönlichen Daten. Diese Option löscht folgenden Ordner inkl. des kompletten Inhalts:
+
     "{ $dir }"
-    
+
     ACHTUNG: Dies kann NICHT rückgängig gemacht werden!
-    
-    Möchten Sie die Daten des Profils löschen?
+
+    Möchtest du die Daten des Profils löschen?
 profiles-delete-files = Dateien löschen
 profiles-dont-delete-files = Dateien nicht löschen
 profiles-delete-profile-failed-title = Fehler

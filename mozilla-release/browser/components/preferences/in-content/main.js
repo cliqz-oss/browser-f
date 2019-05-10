@@ -10,7 +10,6 @@
 var {Services} = ChromeUtils.import("resource://gre/modules/Services.jsm");
 var {Downloads} = ChromeUtils.import("resource://gre/modules/Downloads.jsm");
 var {FileUtils} = ChromeUtils.import("resource://gre/modules/FileUtils.jsm");
-var {ShellService} = ChromeUtils.import("resource:///modules/ShellService.jsm");
 var {TransientPrefs} = ChromeUtils.import("resource:///modules/TransientPrefs.jsm");
 var {AddonManager} = ChromeUtils.import("resource://gre/modules/AddonManager.jsm");
 var {AppConstants} = ChromeUtils.import("resource://gre/modules/AppConstants.jsm");

@@ -19,7 +19,6 @@
 "use strict";
 
 var {Services} = ChromeUtils.import("resource://gre/modules/Services.jsm");
-var {AppConstants} = ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
 var {CliqzResources} = ChromeUtils.import("resource:///modules/CliqzResources.jsm");
 
 ChromeUtils.defineModuleGetter(this, "AMTelemetry",

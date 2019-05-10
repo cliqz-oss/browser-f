@@ -95,10 +95,6 @@ if (AppConstants.MOZ_CRASHREPORTER) {
 
 XPCOMUtils.defineLazyScriptGetter(this, ["isBlankPageURL"],
                                   "chrome://browser/content/utilityOverlay.js");
-#if 0
-XPCOMUtils.defineLazyScriptGetter(this, "gDataNotificationInfoBar",
-                                  "chrome://browser/content/browser-data-submission-info-bar.js");
-#endif
 XPCOMUtils.defineLazyScriptGetter(this, "BookmarkingUI",
                                   "chrome://browser/content/browser-places.js");
 XPCOMUtils.defineLazyScriptGetter(this, "BrowserPageActions",
@@ -109,11 +105,6 @@ XPCOMUtils.defineLazyScriptGetter(this, "gPluginHandler",
                                   "chrome://browser/content/browser-plugins.js");
 XPCOMUtils.defineLazyScriptGetter(this, "TabsInTitlebar",
                                   "chrome://browser/content/browser-tabsintitlebar.js");
-
-if (!Services.prefs.getBoolPref("browser.urlbar.quantumbar", false)) {
-  ChromeUtils.defineModuleGetter(this, "ReaderMode",
-    "resource://gre/modules/ReaderMode.jsm");
-}
 
 XPCOMUtils.defineLazyScriptGetter(this, "PlacesTreeView",
                                   "chrome://browser/content/places/treeView.js");
@@ -511,20 +502,20 @@ try {
       win.classList.remove(themeClass);
     }
   }
-  var gPageIcons = {
-    "about:home": "chrome://branding/content/icon32.png",
-    "about:newtab": "chrome://branding/content/icon32.png",
-    "about:welcome": "chrome://branding/content/icon32.png",
-    "about:newinstall": "chrome://branding/content/icon32.png",
-    "about:privatebrowsing": "chrome://browser/skin/privatebrowsing/favicon.svg",
-  };
-
   // handles changes
   branch.addObserver(THEME_PREF, { observe:observe }, false);
 } catch (e) {
   Cu.reportError(e);
 }
 // CLIQZ Blue Theme end
+
+var gPageIcons = {
+  "about:home": "chrome://branding/content/icon32.png",
+  "about:newtab": "chrome://branding/content/icon32.png",
+  "about:welcome": "chrome://branding/content/icon32.png",
+  "about:newinstall": "chrome://branding/content/icon32.png",
+  "about:privatebrowsing": "chrome://browser/skin/privatebrowsing/favicon.svg",
+};
 
 // CLIQZ-SPECIAL:
 // This variable is a pretty magical thing.
@@ -543,10 +534,10 @@ var gInitialPages = [
   "about:sessionrestore",
   "about:cliqz",
   "about:welcome",
+  "about:newinstall",
 #endif
   CliqzResources.getFreshTabUrl(),
   CliqzResources.getWelcomeUrl(),
-  "about:newinstall",
 #if 0
 ];
 

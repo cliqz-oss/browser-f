@@ -224,8 +224,8 @@ ContentRestoreInternal.prototype = {
           loadFlags: loadArguments.flags,
           referrerInfo,
           postData,
-          ensurePrivate: false,
           csp,
+          ensurePrivate: false,
         };
         webNavigation.loadURI(loadArguments.uri, loadURIOptions);
       } else if (tabData.userTypedValue && tabData.userTypedClear) {

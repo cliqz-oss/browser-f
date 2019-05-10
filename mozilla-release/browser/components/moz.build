@@ -85,9 +85,11 @@ if CONFIG['CQZ_AUTO_PRIVATE_TAB']:
         'AutoForgetTabsMonitor.jsm',
     ]
 
-EXTRA_COMPONENTS += [
+EXTRA_PP_COMPONENTS += [
     'BrowserComponents.manifest',
-    'newtab/lib/TopStoriesFeed.jsm',
+]
+
+EXTRA_COMPONENTS += [
     'tests/startupRecorder.js',
     'tests/testComponents.manifest',
 ]

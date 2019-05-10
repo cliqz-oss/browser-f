@@ -143,7 +143,6 @@
                       priority="1000"/>
         <richlistitem id="category-legacy" value="addons://legacy/"
                       class="category" priority="20000"
-                      disabled="true"
                       hidden="true"/>
 #endif
         <richlistitem id="category-availableUpdates" value="addons://updates/available"

@@ -143,22 +143,22 @@
           </description>
           <description class="text-blurb" data-l10n-id="cliqz-headline"/>
           <description class="text-blurb" data-l10n-id="cliqz-description-1">
-            <label class="text-link" href="https://cliqz.com/privacy" data-l10n-name="cliqz-desc1-privacy"></label>
-            <label class="text-link" href="https://cliqz.com/privacy-browser" data-l10n-name="cliqz-desc1-policy"></label>
-            <label class="text-link" href="https://cliqz.com/support" data-l10n-name="cliqz-desc1-contact"></label>
+            <label is="text-link" href="https://cliqz.com/privacy" data-l10n-name="cliqz-desc1-privacy"></label>
+            <label is="text-link" href="https://cliqz.com/privacy-browser" data-l10n-name="cliqz-desc1-policy"></label>
+            <label is="text-link" href="https://cliqz.com/support" data-l10n-name="cliqz-desc1-contact"></label>
           </description>
           <description class="text-blurb" data-l10n-id="cliqz-description-2">
-            <label class="text-link" href="https://mozilla.org" data-l10n-name="cliqz-desc2-mozilla"></label>
-            <label class="text-link" href="about:license" data-l10n-name="cliqz-desc2-here"></label>
+            <label is="text-link" href="https://mozilla.org" data-l10n-name="cliqz-desc2-mozilla"></label>
+            <label is="text-link" href="about:license" data-l10n-name="cliqz-desc2-here"></label>
           </description>
         </vbox>
       </vbox>
     </hbox>
     <vbox id="bottomBox">
       <hbox pack="center" hidden="true">
-        <label is="text-link bottom-link" useoriginprincipal="true" href="about:license" data-l10n-id="bottomLinks-license"/>
-        <label is="text-link bottom-link" useoriginprincipal="true" href="about:rights" data-l10n-id="bottomLinks-rights"/>
-        <label is="text-link bottom-link" href="https://www.mozilla.org/privacy/" data-l10n-id="bottomLinks-privacy"/>
+        <label is="text-link" class="bottom-link" useoriginprincipal="true" href="about:license" data-l10n-id="bottomLinks-license"/>
+        <label is="text-link" class="bottom-link" useoriginprincipal="true" href="about:rights" data-l10n-id="bottomLinks-rights"/>
+        <label is="text-link" class="bottom-link" href="https://www.mozilla.org/privacy/" data-l10n-id="bottomLinks-privacy"/>
       </hbox>
       <description id="trademark" data-l10n-id="trademarkInfo"></description>
     </vbox>

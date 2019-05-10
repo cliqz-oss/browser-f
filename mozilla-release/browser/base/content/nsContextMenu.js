@@ -798,8 +798,7 @@ nsContextMenu.prototype = {
                    triggeringPrincipal: this.principal,
                    csp: this.csp,
                    frameOuterWindowID: gContextMenuContentData.frameOuterWindowID,
-                   private: this.browser.loadContext.usePrivateBrowsing
-    };
+                   private: this.browser.loadContext.usePrivateBrowsing};
     for (let p in extra) {
       params[p] = extra[p];
     }

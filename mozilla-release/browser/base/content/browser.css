@@ -1446,6 +1446,10 @@ toolbarpaletteitem > toolbaritem {
   }
 }
 
+toolbar[keyNav=true]:not([collapsed=true]):not([customizing=true]) toolbartabstop {
+  -moz-user-focus: normal;
+}
+
 /* Cliqz - Hide https everywhere toolbar button */
 #https-everywhere_cliqz_com-browser-action, #https-everywhere_cliqz_com-browser-action * {
   visibility: hidden;
@@ -1458,7 +1462,4 @@ toolbarpaletteitem > toolbaritem {
   display: none;
 }
 
-toolbar[keyNav=true]:not([collapsed=true]):not([customizing=true]) toolbartabstop {
-  -moz-user-focus: normal;
-}
 %include theme-vars.inc.css

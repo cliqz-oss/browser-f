@@ -199,9 +199,11 @@ var CustomizableUIInternal = {
       "bookmarks-menu-button",
       "home-button",
       "downloads-button",
+#if 0
       "library-button",
       "sidebar-button",
       "fxa-toolbar-menu-button",
+#endif
     ];
 
     if (AppConstants.MOZ_DEV_EDITION) {
@@ -379,9 +381,9 @@ var CustomizableUIInternal = {
       }
     }
 
+#if 0
     if (currentVersion < 9 && gSavedState.placements && gSavedState.placements["nav-bar"]) {
       let placements = gSavedState.placements["nav-bar"];
-#if 0
       if (placements.includes("urlbar-container")) {
         let urlbarIndex = placements.indexOf("urlbar-container");
         let secondSpringIndex = urlbarIndex + 1;
@@ -412,8 +414,8 @@ var CustomizableUIInternal = {
         let libraryIndex = downloadButtonIndex == -1 ? bmbIndex : (downloadButtonIndex + 1);
         placements.splice(libraryIndex, 0, "library-button");
       }
-#endif
     }
+#endif
 
     if (currentVersion < 10 && gSavedState.placements) {
       for (let placements of Object.values(gSavedState.placements)) {
@@ -496,7 +498,7 @@ var CustomizableUIInternal = {
         }
       }
     }
-
+#if 0
     // Add the FxA toolbar menu as the right most button item
     if (currentVersion < 16 && gSavedState.placements) {
       let navbarPlacements = gSavedState.placements[CustomizableUI.AREA_NAVBAR];
@@ -505,6 +507,7 @@ var CustomizableUIInternal = {
         navbarPlacements.push("fxa-toolbar-menu-button");
       }
     }
+#endif
   },
 
   /**

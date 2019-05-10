@@ -6,7 +6,7 @@ page-title = Informationen zur Fehlerbehebung
 page-subtitle =
     Diese Seite enthält technische Informationen, die nützlich sein könnten,
     wenn du versuchst, ein Problem zu lösen. Wenn du nach Antworten auf häufig
-    gestellte Fragen zu { -brand-short-name } suchst, besuche bitte unsere  <a data-l10n-name="support-link">Hilfeseite</a>.
+    gestellte Fragen zu { -brand-short-name } suchst, besuche bitte unsere <a data-l10n-name="support-link">Hilfeseite</a>.
 crashes-title = Absturzberichte
 crashes-id = Meldungs-ID
 crashes-send-date = Gesendet
