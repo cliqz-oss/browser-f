@@ -108,18 +108,46 @@ function FirefoxProfileMigrator() {
 FirefoxProfileMigrator.prototype = Object.create(MigratorPrototype);
 
 FirefoxProfileMigrator.prototype._getAllProfiles = function() {
-  let allProfiles = new Map();
-  let profileService = Cc["@mozilla.org/toolkit/profile-service;1"]
-      .getService(Ci.nsIToolkitProfileService);
-  for (let profile of profileService.profiles) {
-    let rootDir = profile.rootDir;
+  const profiles = new Map();
 
-    if (rootDir.exists() && rootDir.isReadable() &&
-        !rootDir.equals(MigrationUtils.profileStartup.directory)) {
-      allProfiles.set(profile.name, rootDir);
+  const profilesIni = fxProductDir.clone();
+  profilesIni.append("profiles.ini");
+  if (!(profilesIni.exists() &&
+        profilesIni.isFile() &&
+        profilesIni.isReadable()))
+    return profiles;
+  const factory = Cc["@mozilla.org/xpcom/ini-parser-factory;1"].
+                getService(Ci.nsIINIParserFactory);
+  const iniParser = factory.createINIParser(profilesIni);
+
+  const sections = iniParser.getSections();
+  const profileSectionNameRE = /^Profile\d+$/;
+  while (sections.hasMore()) {
+    const section = sections.getNext();
+    if (!profileSectionNameRE.test(section))
+      continue;
+    try {
+      // The following code tries to replicate one in
+      // toolkit/profile/nsToolkitProfileService.cpp, Init() method.
+      const path = iniParser.getString(section, "Path");
+      const isRelative = iniParser.getString(section, "IsRelative") == "1";
+      let profileDir = fxProductDir.clone();
+      if (isRelative) {
+        profileDir.setRelativeDescriptor(fxProductDir, path);
+      }
+      else {
+        // TODO: Never saw absolute paths and never tested this.
+        profileDir.persistentDescriptor = path;
+      }
+
+      profiles.set(iniParser.getString(section, "Name"), profileDir);
+    }
+    catch (e) {
+      dump("Profiles.ini section: '" + section + "', error: " + e + "\n");
     }
   }
-  return allProfiles;
+
+  return profiles;
 };
 
 // This migrator is used for profile refresh.
@@ -155,6 +183,21 @@ async function installAddons(ids) {
 CliqzProfileMigrator.prototype =
     Object.create(FirefoxProfileMigrator.prototype);
 
+CliqzProfileMigrator.prototype._getAllProfiles = function() {
+  let allProfiles = new Map();
+  let profileService = Cc["@mozilla.org/toolkit/profile-service;1"]
+      .getService(Ci.nsIToolkitProfileService);
+  for (let profile of profileService.profiles) {
+    let rootDir = profile.rootDir;
+
+    if (rootDir.exists() && rootDir.isReadable() &&
+        !rootDir.equals(MigrationUtils.profileStartup.directory)) {
+      allProfiles.set(profile.name, rootDir);
+    }
+  }
+  return allProfiles;
+};
+
 function sorter(a, b) {
   return a.id.toLocaleLowerCase().localeCompare(b.id.toLocaleLowerCase());
 }
@@ -173,7 +216,7 @@ FirefoxProfileMigrator.prototype._getFileObject = function(dir, fileName) {
   return file.exists() ? file : null;
 };
 
-FirefoxProfileMigrator.prototype.getResources = function(aProfile) {
+FirefoxProfileMigrator.prototype.getResources = async function(aProfile) {
   let sourceProfileDir = aProfile ? this._getAllProfiles().get(aProfile.id) :
     Cc["@mozilla.org/toolkit/profile-service;1"]
       .getService(Ci.nsIToolkitProfileService)
@@ -184,13 +227,19 @@ FirefoxProfileMigrator.prototype.getResources = function(aProfile) {
 
   // Being a startup-only migrator, we can rely on
   // MigrationUtils.profileStartup being set.
-  let currentProfileDir = MigrationUtils.profileStartup.directory;
+  let currentProfileDir = null;
+  if (!this.startupOnlyMigrator && !MigrationUtils.isStartupMigration) {
+    currentProfileDir = FileUtils.getDir("ProfD","");
+  }
+  else {
+    currentProfileDir = MigrationUtils.profileStartup.directory;
+  }
 
   // Surely data cannot be imported from the current profile.
   if (sourceProfileDir.equals(currentProfileDir))
     return null;
 
-  return this._getResourcesInternal(sourceProfileDir, currentProfileDir);
+  return await this._getResourcesInternal(sourceProfileDir, currentProfileDir);
 };
 
 FirefoxProfileMigrator.prototype.getLastUsedDate = function() {
@@ -200,7 +249,7 @@ FirefoxProfileMigrator.prototype.getLastUsedDate = function() {
   return Promise.resolve(new Date(0));
 };
 
-FirefoxProfileMigrator.prototype._getResourcesInternal = function(sourceProfileDir, currentProfileDir) {
+FirefoxProfileMigrator.prototype._getResourcesInternal = async function(sourceProfileDir, currentProfileDir) {
   let getFileResource = (aMigrationType, aFileNames) => {
     let files = [];
     for (let fileName of aFileNames) {
