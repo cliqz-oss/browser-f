@@ -2673,7 +2673,6 @@ var gListView = {
       document.getElementById('installAddonDisclaimer').hidden = false;
       this.toggleRecommended(false);
     }
-    
 
     this._listBox.textContent = "";
 
@@ -4055,6 +4054,49 @@ var gBrowser = {
   }, true);
 }
 
+// View wrappers for the HTML version of about:addons. These delegate to an
+// HTML browser that renders the actual views.
+let htmlBrowser;
+let htmlBrowserLoaded;
+function getHtmlBrowser() {
+  if (!htmlBrowser) {
+    htmlBrowser = document.getElementById("html-view-browser");
+    htmlBrowser.loadURI("chrome://mozapps/content/extensions/aboutaddons.html", {
+      triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal(),
+    });
+    htmlBrowserLoaded = new Promise(
+      resolve => htmlBrowser.addEventListener("load", resolve, {once: true})
+    ).then(() => htmlBrowser.contentWindow.initialize());
+  }
+  return htmlBrowser;
+}
+
+function htmlView(type) {
+  return {
+    node: null,
+    isRoot: true,
+
+    initialize() {
+      this.node = getHtmlBrowser();
+    },
+
+    async show(param, request, state, refresh) {
+      await htmlBrowserLoaded;
+      await this.node.contentWindow.show(type, param);
+      gViewController.notifyViewChanged();
+    },
+
+    async hide() {
+      await htmlBrowserLoaded;
+      return this.node.contentWindow.hide();
+    },
+
+    getSelectedAddon() {
+      return null;
+    },
+  };
+}
+
 function ItemHandler(addon) {
   this._addon = addon;
   this._listItem = this.createItem(addon);
@@ -4117,47 +4159,4 @@ ItemHandler.prototype = {
 
   // CLIQZ-TODO: if we need to something extra on install/download failure
   onFaliure: function(failedItem, reloadTimeout) {console.log('failed', failedItem)}
-}
-
-// View wrappers for the HTML version of about:addons. These delegate to an
-// HTML browser that renders the actual views.
-let htmlBrowser;
-let htmlBrowserLoaded;
-function getHtmlBrowser() {
-  if (!htmlBrowser) {
-    htmlBrowser = document.getElementById("html-view-browser");
-    htmlBrowser.loadURI("chrome://mozapps/content/extensions/aboutaddons.html", {
-      triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal(),
-    });
-    htmlBrowserLoaded = new Promise(
-      resolve => htmlBrowser.addEventListener("load", resolve, {once: true})
-    ).then(() => htmlBrowser.contentWindow.initialize());
-  }
-  return htmlBrowser;
-}
-
-function htmlView(type) {
-  return {
-    node: null,
-    isRoot: true,
-
-    initialize() {
-      this.node = getHtmlBrowser();
-    },
-
-    async show(param, request, state, refresh) {
-      await htmlBrowserLoaded;
-      await this.node.contentWindow.show(type, param);
-      gViewController.notifyViewChanged();
-    },
-
-    async hide() {
-      await htmlBrowserLoaded;
-      return this.node.contentWindow.hide();
-    },
-
-    getSelectedAddon() {
-      return null;
-    },
-  };
 }

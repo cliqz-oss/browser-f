@@ -854,12 +854,12 @@ content-blocking-setting-custom =
   .label = Custom
   .accesskey = C
 
-content-blocking-standard-description = Only blocks known trackers in Private Windows.
+content-blocking-standard-description = Only blocks known trackers in Forget Mode.
 content-blocking-standard-desc = Balanced for protection and performance. Allows some trackers so websites function properly.
 content-blocking-strict-desc = Blocks all trackers { -brand-short-name } detects. May cause some sites to break.
 content-blocking-custom-desc = Choose what to block.
 
-content-blocking-private-trackers = Known trackers only in Private Windows
+content-blocking-private-trackers = Known trackers only in Forget Mode
 content-blocking-third-party-cookies = Third-party tracking cookies
 content-blocking-all-windows-trackers = Known trackers in all windows
 content-blocking-all-third-party-cookies = All third-party cookies
@@ -880,7 +880,7 @@ content-blocking-tracking-protection-option-all-windows =
   .label = In all windows
   .accesskey = A
 content-blocking-option-private =
-  .label = Only in Private Windows
+  .label = Only in Forget Mode
   .accesskey = p
 content-blocking-tracking-protection-change-block-list = Change block list
 
@@ -888,7 +888,7 @@ content-blocking-cookies-label =
   .label = Cookies
   .accesskey = C
 
-content-blocking-expand-section = 
+content-blocking-expand-section =
   .tooltiptext = More information
 
 # Cryptomining refers to using scripts on websites that can use a computer’s resources to mine cryptocurrency without a user’s knowledge.

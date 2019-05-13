@@ -89,8 +89,8 @@ class WebNavigationChild extends ActorChild {
       headers,
       baseURI,
       triggeringPrincipal,
-      ensurePrivate,
       csp,
+      ensurePrivate,
     } = params || {};
 
     if (AppConstants.MOZ_CRASHREPORTER && CrashReporter.enabled) {

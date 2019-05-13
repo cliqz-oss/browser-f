@@ -1520,7 +1520,7 @@ function Update(update) {
   if (!this.displayVersion) {
     this.displayVersion = this.appVersion;
   }
-  
+
 #if 0
   if (!this.name) {
     // When the update doesn't provide a name fallback to using
