@@ -4132,7 +4132,7 @@ ItemHandler.prototype = {
       }
     }
 
-    AddonManager.getInstallForURL(addonURI, "application/x-xpinstall")
+    AddonManager.getInstallForURL(addonURI)
       .then((addon) => {
         addon.addListener({
           onDownloadProgress: function(aInstall) {
