@@ -35,7 +35,7 @@ download() {
 download_internal() {
     package="$1"
 
-    wget -O "${ARTIFACT_PATH}/${package}" "ftp://cliqznas/cliqzwinbuild/${package}"
+    wget -O "${ARTIFACT_PATH}/${package}" "ftp://cliqznas/cliqz-browser-build-artifacts/${package}"
     tar xjvf ${ARTIFACT_PATH}/${package} -C $ARTIFACT_PATH
 }
 
