@@ -1,6 +1,7 @@
 VERBOSE=false
 CLOBBER=false
 TEST=false
+BUILD_SYMBOLS=false
 
 if [ -z "$LANG" ]; then
   LANG='en-US'
@@ -26,6 +27,10 @@ do
 
     --test)
     TEST=true
+    ;;
+
+    --symbols)
+    BUILD_SYMBOLS=true
     ;;
 
     *)
