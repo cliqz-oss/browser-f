@@ -1,7 +1,7 @@
 VERBOSE=false
 CLOBBER=false
-TEST=false
-BUILD_SYMBOLS=false
+CQZ_BUILD_TESTS=false
+CQZ_BUILD_SYMBOLS=false
 
 if [ -z "$LANG" ]; then
   LANG='en-US'
@@ -25,12 +25,12 @@ do
     CLOBBER=true
     ;;
 
-    --test)
-    TEST=true
+    --tests)
+    CQZ_BUILD_TESTS=true
     ;;
 
     --symbols)
-    BUILD_SYMBOLS=true
+    CQZ_BUILD_SYMBOLS=true
     ;;
 
     *)
@@ -63,6 +63,7 @@ fi
 if [ $IS_WIN ]; then
   MAKE=mozmake
   export USE_STUB_INSTALLER=1
+  export TOOLTOOL_DIR=/c/build
 else
   MAKE=make
 fi
@@ -82,12 +83,17 @@ if [ "$CQZ_RELEASE_CHANNEL" == "release" ]; then
 fi
 
 export MOZ_OBJDIR=../obj
-if [ "$CQZ_BUILD_64BIT_WINDOWS" == "1" ]; then
-  export MOZCONFIG=browser/config/cliqz-release-64.mozconfig
+# Set proper mozconfig
+if [ $IS_WIN ]; then
+  if [ "$CQZ_BUILD_64BIT_WINDOWS" == "1" ]; then
+    export MOZCONFIG=browser/config/cliqz-release-64.mozconfig
+  else
+    export MOZCONFIG=browser/config/cliqz-release-32.mozconfig
+  fi
 elif [ "$OSX_CROSS_BUILD" == "true" ]; then
   export MOZCONFIG=browser/config/cliqz-release-cross.mozconfig
 else
-  export MOZCONFIG=browser/config/cliqz-release.mozconfig
+  export MOZCONFIG=browser/config/cliqz.mozconfig
 fi
 
 export CQZ_VERSION=$(cat ./mozilla-release/browser/config/version_display.txt)

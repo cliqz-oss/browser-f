@@ -43,7 +43,7 @@ fi
 echo '***** Building *****'
 ./mach build
 
-if $TEST; then
+if $CQZ_BUILD_TESTS; then
   echo '***** Building tests *****'
   ./mach build package-tests
 fi
@@ -51,7 +51,7 @@ fi
 echo '***** Packaging *****'
 ./mach package
 
-if $BUILD_SYMBOLS; then
+if $CQZ_BUILD_SYMBOLS; then
   echo '***** Prepare build symbols *****'
   # Because of Rust problem with dsymutil on Mac (stylo) - only for Windows or mac cross builds
   if [[ $IS_WIN==true || $OSX_CROSS_BUILD==true ]]; then

@@ -32,16 +32,31 @@ download() {
     tar xjvf ${ARTIFACT_PATH}/${package} -C $ARTIFACT_PATH
 }
 
+download_internal() {
+    package="$1"
+
+    wget -O "${ARTIFACT_PATH}/${package}" "ftp://cliqznas/cliqzwinbuild/${package}"
+    tar xjvf ${ARTIFACT_PATH}/${package} -C $ARTIFACT_PATH
+}
+
 main() {
     if [ "$CQZ_VERSION" != "$ARTIFACT_VERSION" ]; then
         rm -rf $ARTIFACT_PATH
     fi
     mkdir -p $ARTIFACT_PATH
 
-    packages=("rustc.tar.bz2" "clang.tar.bz2" "redist.tar.bz2" "cbindgen.tar.bz2" "node.tar.bz2")
+    packages=("rustc.tar.bz2" "clang.tar.bz2" "nasm.tar.bz2" "cbindgen.tar.bz2" "node.tar.bz2")
     for package in ${packages[@]}; do
         if [ ! -s "$ARTIFACT_PATH/$package" ]; then
             retry "download $package"
+        fi
+    done
+
+    # TODO: remove copy-paste here
+    packages_internal=("vs2017_15.9.10.tar.bz2")
+    for package in ${packages_internal[@]}; do
+        if [ ! -s "$ARTIFACT_PATH/$package" ]; then
+            retry "download_internal $package"
         fi
     done
 

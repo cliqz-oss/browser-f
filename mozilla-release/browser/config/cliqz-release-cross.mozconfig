@@ -1,6 +1,5 @@
 # mozconfig to cross build on osx
-. $topsrcdir/browser/config/cliqz-release.mozconfig
-
+. $topsrcdir/browser/config/cliqz.mozconfig
 
 export NODEJS=$TOOLCHAIN/node/bin/node
 RUSTC="$TOOLCHAIN/rustc/bin/rustc"

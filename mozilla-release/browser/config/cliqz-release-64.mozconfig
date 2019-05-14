@@ -1,6 +1,7 @@
 # Copyright Cliqz GmbH 2016.
 
-. $topsrcdir/browser/config/cliqz-release.mozconfig
-
-ac_add_options --target=x86_64-pc-mingw32
-ac_add_options --host=x86_64-pc-mingw32
+. $topsrcdir/browser/config/cliqz.mozconfig
+. $topsrcdir/build/mozconfig.nasm
+. $topsrcdir/build/mozconfig.node
+. $topsrcdir/build/mozconfig.rust
+. $topsrcdir/build/win64/mozconfig.vs-latest

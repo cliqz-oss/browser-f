@@ -4,7 +4,7 @@
 
 case "$(uname -s)" in
 MINGW*)
-    export NASM=$topsrcdir/nasm/nasm.exe
+    export NASM=$TOOLTOOL_DIR/nasm/nasm.exe
     ;;
 *)
     export NASM=$topsrcdir/nasm/nasm

@@ -4,7 +4,7 @@
 
 case "$(uname -s)" in
 MINGW*)
-    export NODEJS=$topsrcdir/node/node.exe
+    export NODEJS=$TOOLTOOL_DIR/node/node.exe
     ;;
 *)
     export NODEJS=$topsrcdir/node/bin/node

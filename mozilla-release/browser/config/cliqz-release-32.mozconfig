@@ -1,0 +1,7 @@
+# Copyright Cliqz GmbH 2016.
+
+. $topsrcdir/browser/config/cliqz.mozconfig
+. $topsrcdir/build/mozconfig.nasm
+. $topsrcdir/build/mozconfig.node
+. $topsrcdir/build/mozconfig.rust
+. $topsrcdir/build/win32/mozconfig.vs-latest
