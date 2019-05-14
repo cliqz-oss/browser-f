@@ -1,5 +1,6 @@
 VERBOSE=false
 CLOBBER=false
+TEST=false
 
 if [ -z "$LANG" ]; then
   LANG='en-US'
@@ -21,6 +22,10 @@ do
 
     --clobber)
     CLOBBER=true
+    ;;
+
+    --test)
+    TEST=true
     ;;
 
     *)

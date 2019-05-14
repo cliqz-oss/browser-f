@@ -43,8 +43,10 @@ fi
 echo '***** Building *****'
 ./mach build
 
-echo '***** Building tests *****'
-./mach build package-tests
+if $TEST; then
+  echo '***** Building tests *****'
+  ./mach build package-tests
+fi
 
 echo '***** Packaging *****'
 ./mach package
