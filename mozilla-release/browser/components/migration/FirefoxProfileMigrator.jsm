@@ -163,7 +163,11 @@ function CliqzProfileMigrator() {
 **/
 function getInstall(addon) {
   return AddonManager.getInstallForURL(
-    addon.sourceURI.spec, "application/x-xpinstall", undefined, addon.name, addon.iconURL, addon.version
+    addon.sourceURI.spec, {
+      name: addon.name,
+      icons: addon.iconURL,
+      version: addon.version
+    }
   );
 }
 
