@@ -521,7 +521,8 @@ static void CollectFromInputElement(JSContext* aCx, Document& aDocument,
           nsAutoCString url;
           Unused << aDocument.GetDocumentURI()->GetSpecIgnoringRef(url);
           if (url.EqualsLiteral("about:sessionrestore") ||
-              url.EqualsLiteral("about:welcomeback")) {
+              url.EqualsLiteral("about:welcomeback") ||
+              url.EqualsLiteral("about:importedtabs")) {
             JS::Rooted<JS::Value> jsval(aCx);
             if (JS_ParseJSON(aCx, value.get(), value.Length(), &jsval) &&
                 jsval.isObject()) {
@@ -974,7 +975,7 @@ bool SessionStoreUtils::RestoreFormData(const GlobalObject& aGlobal,
       } else if (entry.mValue.IsBoolean()) {
         SetElementAsBool(node, entry.mValue.GetAsBoolean());
       } else {
-        // For about:{sessionrestore,welcomeback} we saved the field as JSON to
+        // For about:{sessionrestore,welcomeback,importedtabs} we saved the field as JSON to
         // avoid nested instances causing humongous sessionstore.js files.
         // cf. bug 467409
         JSContext* cx = aGlobal.Context();
@@ -982,7 +983,8 @@ bool SessionStoreUtils::RestoreFormData(const GlobalObject& aGlobal,
           nsAutoCString url;
           Unused << aDocument.GetDocumentURI()->GetSpecIgnoringRef(url);
           if (url.EqualsLiteral("about:sessionrestore") ||
-              url.EqualsLiteral("about:welcomeback")) {
+              url.EqualsLiteral("about:welcomeback") ||
+              url.EqualsLiteral("about:importedtabs")) {
             JS::Rooted<JS::Value> object(
                 cx, JS::ObjectValue(*entry.mValue.GetAsObject()));
             SetRestoreData(cx, node, &object);
