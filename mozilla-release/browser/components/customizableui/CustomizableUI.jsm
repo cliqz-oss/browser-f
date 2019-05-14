@@ -356,7 +356,7 @@ var CustomizableUIInternal = {
         "preferences-button",
         "add-ons-button",
         "https-everywhere_cliqz_com-browser-action",
-#if 0
+#ifdef MOZ_SERVICES_SYNC
         "sync-button",
 #endif
         "mobilepairing_btn", // Cliqz connect/pairing
