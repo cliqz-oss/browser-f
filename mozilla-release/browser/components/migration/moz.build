@@ -21,43 +21,41 @@ UNIFIED_SOURCES += [
     'nsFirefoxPasswordMigrator.cpp'
 ]
 
-EXTRA_COMPONENTS += [
-    'ChromeProfileMigrator.js',
-    'ProfileMigrator.js',
-]
-
-EXTRA_PP_COMPONENTS += [
-    'BrowserProfileMigrators.manifest',
-    'FirefoxProfileMigrator.js',
-]
-
 EXTRA_JS_MODULES += [
     'ChromeMigrationUtils.jsm',
+    'ChromeProfileMigrator.jsm',
     'MigrationUtils.jsm',
+    'ProfileMigrator.jsm',
+]
+
+EXTRA_PP_JS_MODULES += [
+    'FirefoxProfileMigrator.jsm',
 ]
 
 if CONFIG['OS_ARCH'] == 'WINNT':
+    if CONFIG['ENABLE_TESTS']:
+        DIRS += [
+            'tests/unit/insertIEHistory',
+        ]
     SOURCES += [
         'nsIEHistoryEnumerator.cpp',
     ]
-    EXTRA_COMPONENTS += [
-        '360seProfileMigrator.js',
-        'EdgeProfileMigrator.js',
-        'IEProfileMigrator.js',
-    ]
     EXTRA_JS_MODULES += [
+        '360seProfileMigrator.jsm',
+        'EdgeProfileMigrator.jsm',
         'ESEDBReader.jsm',
+        'IEProfileMigrator.jsm',
         'MSMigrationUtils.jsm',
     ]
-    DEFINES['HAS_360SE_MIGRATOR'] = True
-    DEFINES['HAS_IE_MIGRATOR'] = True
-    DEFINES['HAS_EDGE_MIGRATOR'] = True
 
 if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'cocoa':
-    EXTRA_COMPONENTS += [
-        'SafariProfileMigrator.js',
+    EXTRA_JS_MODULES += [
+        'SafariProfileMigrator.jsm',
     ]
-    DEFINES['HAS_SAFARI_MIGRATOR'] = True
+
+XPCOM_MANIFESTS += [
+    'components.conf',
+]
 
 FINAL_LIBRARY = 'browsercomps'
 

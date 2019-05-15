@@ -10,6 +10,7 @@ import logging
 
 from taskgraph.util.taskcluster import purge_cache
 from .registry import register_callback_action
+from taskgraph.util import taskcluster
 
 logger = logging.getLogger(__name__)
 
@@ -18,7 +19,6 @@ logger = logging.getLogger(__name__)
     title='Purge Worker Caches',
     name='purge-cache',
     symbol='purge-cache',
-    kind='hook',
     generic=True,
     description=(
         'Purge any caches associated with this task '
@@ -27,7 +27,8 @@ logger = logging.getLogger(__name__)
     order=450,
     context=[{'worker-implementation': 'docker-worker'}]
 )
-def purge_caches_action(parameters, graph_config, input, task_group_id, task_id, task):
+def purge_caches_action(parameters, graph_config, input, task_group_id, task_id):
+    task = taskcluster.get_task_definition(task_id)
     if task['payload'].get('cache'):
         for cache in task['payload']['cache']:
             purge_cache(task['provisionerId'], task['workerType'], cache, use_proxy=True)

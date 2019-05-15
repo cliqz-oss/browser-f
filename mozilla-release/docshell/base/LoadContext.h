@@ -105,8 +105,6 @@ class LoadContext final : public nsILoadContext, public nsIInterfaceRequestor {
   explicit LoadContext(nsIPrincipal* aPrincipal,
                        nsILoadContext* aOptionalBase = nullptr);
 
-  void SetPrivateness(bool);
-
  private:
   ~LoadContext() {}
 

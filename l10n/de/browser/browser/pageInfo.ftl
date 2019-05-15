@@ -147,6 +147,50 @@ media-unknown-not-cached =
 permissions-use-default =
     .label = Standard verwenden
 security-no-visits = Nein
+
+# This string is used to display the number of meta tags
+# in the General Tab
+# Variables:
+#   $tags (number) - The number of meta tags
+general-meta-tags =
+    .value =
+        { $tags ->
+             [one] Meta (1 Schlagwort)
+            *[other] Meta ({ $tags } Schlagwörter)
+        }
+
+# This string is used to display the number of times
+# the user has visited the website prior
+# Variables:
+#   $visits (number) - The number of previous visits
+security-visits-number =
+    { $visits ->
+         [0] Nein
+         [one] Ja, ein Mal
+        *[other] Ja, { $visits } Mal
+    }
+
+# This string is used to display the size of a media file
+# Variables:
+#   $kb (number) - The size of an image in Kilobytes
+#   $bytes (number) - The size of an image in Bytes
+properties-general-size =
+    .value = { $bytes ->
+         [one] { $kb } KB ({ $bytes } Byte)
+        *[other] { $kb } KB ({ $bytes } Bytes)
+    }
+
+# This string is used to display the type and number
+# of frames of a animated image
+# Variables:
+#   $type (string) - The type of a animated image
+#   $frames (number) - The number of frames in an animated image
+media-animated-image-type =
+    .value = { $frames ->
+         [one] { $type } Grafik (animiert, { $frames } Frame)
+        *[other] { $type } Grafik (animiert, { $frames } Frames)
+    }
+
 # This string is used to display the type of
 # an image
 # Variables:

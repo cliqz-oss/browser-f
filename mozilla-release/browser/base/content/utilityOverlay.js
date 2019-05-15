@@ -4,16 +4,15 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 // Services = object with smart getters for common XPCOM services
-ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
-ChromeUtils.import("resource://gre/modules/Services.jsm");
-ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
-
-ChromeUtils.defineModuleGetter(this, "PrivateBrowsingUtils",
-                               "resource://gre/modules/PrivateBrowsingUtils.jsm");
+var {AppConstants} = ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
+var {Services} = ChromeUtils.import("resource://gre/modules/Services.jsm");
+var {XPCOMUtils} = ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
 XPCOMUtils.defineLazyModuleGetters(this, {
   BrowserWindowTracker: "resource:///modules/BrowserWindowTracker.jsm",
   ContextualIdentityService: "resource://gre/modules/ContextualIdentityService.jsm",
+  ExtensionSettingsStore: "resource://gre/modules/ExtensionSettingsStore.jsm",
+  PrivateBrowsingUtils: "resource://gre/modules/PrivateBrowsingUtils.jsm",
   ShellService: "resource:///modules/ShellService.jsm",
 });
 
@@ -24,10 +23,20 @@ XPCOMUtils.defineLazyServiceGetter(this, "aboutNewTabService",
 Object.defineProperty(this, "BROWSER_NEW_TAB_URL", {
   enumerable: true,
   get() {
-    if (PrivateBrowsingUtils.isWindowPrivate(window) &&
-        !PrivateBrowsingUtils.permanentPrivateBrowsing &&
-        !aboutNewTabService.overridden) {
-      return "about:privatebrowsing";
+    if (PrivateBrowsingUtils.isWindowPrivate(window)) {
+      if (!PrivateBrowsingUtils.permanentPrivateBrowsing &&
+          !aboutNewTabService.overridden) {
+        return "about:privatebrowsing";
+      }
+      // If an extension controls the setting and does not have private
+      // browsing permission, use the default setting.
+      let extensionControlled = Services.prefs.getBoolPref("browser.newtab.extensionControlled", false);
+      let privateAllowed = Services.prefs.getBoolPref("browser.newtab.privateAllowed", false);
+      // There is a potential on upgrade that the prefs are not set yet, so we double check
+      // for moz-extension.
+      if (!privateAllowed && (extensionControlled || aboutNewTabService.newTabURL.startsWith("moz-extension://"))) {
+        return "about:privatebrowsing";
+      }
     }
     return aboutNewTabService.newTabURL;
   },
@@ -82,10 +91,11 @@ function doGetProtocolFlags(aURI) {
  * @param {Boolean} aIgnoreAlt
  * @param {Boolean} aAllowThirdPartyFixup
  * @param {Object} aPostData
- * @param {nsIURI} aReferrerURI
+ * @param {Object} aReferrerInfo
  */
 function openUILink(url, event, aIgnoreButton, aIgnoreAlt, aAllowThirdPartyFixup,
-                    aPostData, aReferrerURI) {
+                    aPostData, aReferrerInfo) {
+  event = getRootEvent(event);
   let params;
 
   if (aIgnoreButton && typeof aIgnoreButton == "object") {
@@ -100,8 +110,7 @@ function openUILink(url, event, aIgnoreButton, aIgnoreAlt, aAllowThirdPartyFixup
     params = {
       allowThirdPartyFixup: aAllowThirdPartyFixup,
       postData: aPostData,
-      referrerURI: aReferrerURI,
-      referrerPolicy: Ci.nsIHttpChannel.REFERRER_POLICY_UNSET,
+      referrerInfo: aReferrerInfo,
       initiatingDoc: event ? event.target.ownerDocument : null,
     };
   }
@@ -114,6 +123,26 @@ function openUILink(url, event, aIgnoreButton, aIgnoreAlt, aAllowThirdPartyFixup
   openUILinkIn(url, where, params);
 }
 
+
+// Utility function to check command events for potential middle-click events
+// from checkForMiddleClick and unwrap them.
+function getRootEvent(aEvent) {
+  // Part of the fix for Bug 1523813.
+  // Middle-click events arrive here wrapped in different numbers (1-2) of
+  // command events, depending on the button originally clicked.
+  if (!aEvent) {
+    return aEvent;
+  }
+  let tempEvent = aEvent;
+  while (tempEvent.sourceEvent) {
+    if (tempEvent.sourceEvent.button == 1) {
+      aEvent = tempEvent.sourceEvent;
+      break;
+    }
+    tempEvent = tempEvent.sourceEvent;
+  }
+  return aEvent;
+}
 
 /**
  * whereToOpenLink() looks at an event to decide where to open a link.
@@ -146,6 +175,8 @@ function whereToOpenLink(e, ignoreButton, ignoreAlt) {
   // for compatibility purposes.
   if (!e)
     return "current";
+
+  e = getRootEvent(e);
 
   var shift = e.shiftKey;
   var ctrl =  e.ctrlKey;
@@ -237,7 +268,7 @@ function openWebLinkIn(url, where, params) {
  * these properties:
  *   allowThirdPartyFixup (boolean)
  *   postData             (nsIInputStream)
- *   referrerURI          (nsIURI)
+ *   referrerInfo         (nsIReferrerInfo)
  *   relatedToCurrent     (boolean)
  *   skipTabAnimation     (boolean)
  *   allowPinnedTabHostChange (boolean)
@@ -247,7 +278,7 @@ function openWebLinkIn(url, where, params) {
  *   private              (boolean)
  */
 function openUILinkIn(url, where, aAllowThirdPartyFixup, aPostData,
-    aReferrerURI, aPrivate) {
+    aReferrerInfo, aPrivate) {
   var params;
 
   if (arguments.length == 3 && typeof arguments[2] == "object") {
@@ -266,14 +297,16 @@ function openUILinkIn(url, where, aAllowThirdPartyFixup, aPostData,
 function openLinkIn(url, where, params) {
   if (!where || !url)
     return;
+  let ReferrerInfo = Components.Constructor("@mozilla.org/referrer-info;1",
+                                            "nsIReferrerInfo",
+                                            "init");
 
   var aFromChrome           = params.fromChrome;
   var aAllowThirdPartyFixup = params.allowThirdPartyFixup;
   var aPostData             = params.postData;
   var aCharset              = params.charset;
-  var aReferrerURI          = params.referrerURI;
-  var aReferrerPolicy       = ("referrerPolicy" in params ?
-      params.referrerPolicy : Ci.nsIHttpChannel.REFERRER_POLICY_UNSET);
+  var aReferrerInfo       = params.referrerInfo ? params.referrerInfo
+    : new ReferrerInfo(Ci.nsIHttpChannel.REFERRER_POLICY_UNSET, true, null);
   var aRelatedToCurrent     = params.relatedToCurrent;
   var aAllowInheritPrincipal = !!params.allowInheritPrincipal;
   var aAllowMixedContent    = params.allowMixedContent;
@@ -283,12 +316,12 @@ function openLinkIn(url, where, params) {
   var aIsPrivate            = params.private || params.isContentWindowPrivate;
   var aSkipTabAnimation     = params.skipTabAnimation;
   var aAllowPinnedTabHostChange = !!params.allowPinnedTabHostChange;
-  var aNoReferrer           = params.noReferrer;
   var aAllowPopups          = !!params.allowPopups;
   var aUserContextId        = params.userContextId;
   var aIndicateErrorPageLoad = params.indicateErrorPageLoad;
   var aPrincipal            = params.originPrincipal;
   var aTriggeringPrincipal  = params.triggeringPrincipal;
+  var aCsp                  = params.csp;
   var aForceAboutBlankViewerInCurrent =
       params.forceAboutBlankViewerInCurrent;
   var aResolveOnNewTabCreated = params.resolveOnNewTabCreated;
@@ -299,10 +332,9 @@ function openLinkIn(url, where, params) {
 
   if (where == "save") {
     // TODO(1073187): propagate referrerPolicy.
-
     // ContentClick.jsm passes isContentWindowPrivate for saveURL instead of passing a CPOW initiatingDoc
     if ("isContentWindowPrivate" in params) {
-      saveURL(url, null, null, true, true, aNoReferrer ? null : aReferrerURI,
+      saveURL(url, null, null, true, true, aReferrerInfo.sendReferrer ? aReferrerInfo.originalReferrer : null,
               null, params.isContentWindowPrivate, aPrincipal);
     } else {
       if (!aInitiatingDoc) {
@@ -310,7 +342,7 @@ function openLinkIn(url, where, params) {
           "where == 'save' but without initiatingDoc.  See bug 814264.");
         return;
       }
-      saveURL(url, null, null, true, true, aNoReferrer ? null : aReferrerURI, aInitiatingDoc);
+      saveURL(url, null, null, true, true, aReferrerInfo.sendReferrer ? aReferrerInfo.originalReferrer : null, aInitiatingDoc);
     }
     return;
   }
@@ -354,7 +386,7 @@ function openLinkIn(url, where, params) {
       features += ",private";
       // To prevent regular browsing data from leaking to private browsing sites,
       // strip the referrer when opening a new private window. (See Bug: 1409226)
-      aNoReferrer = true;
+      aReferrerInfo.sendReferrer = false;
     }
 
     // This propagates to window.arguments.
@@ -376,30 +408,20 @@ function openLinkIn(url, where, params) {
                                        createInstance(Ci.nsISupportsPRBool);
     allowThirdPartyFixupSupports.data = aAllowThirdPartyFixup;
 
-    var referrerURISupports = null;
-    if (aReferrerURI && !aNoReferrer) {
-      referrerURISupports = Cc["@mozilla.org/supports-string;1"].
-                            createInstance(Ci.nsISupportsString);
-      referrerURISupports.data = aReferrerURI.spec;
-    }
-
-    var referrerPolicySupports = Cc["@mozilla.org/supports-PRUint32;1"].
-                                 createInstance(Ci.nsISupportsPRUint32);
-    referrerPolicySupports.data = aReferrerPolicy;
-
     var userContextIdSupports = Cc["@mozilla.org/supports-PRUint32;1"].
                                  createInstance(Ci.nsISupportsPRUint32);
     userContextIdSupports.data = aUserContextId;
 
     sa.appendElement(wuri);
     sa.appendElement(charset);
-    sa.appendElement(referrerURISupports);
+    sa.appendElement(aReferrerInfo);
     sa.appendElement(aPostData);
     sa.appendElement(allowThirdPartyFixupSupports);
-    sa.appendElement(referrerPolicySupports);
     sa.appendElement(userContextIdSupports);
     sa.appendElement(aPrincipal);
     sa.appendElement(aTriggeringPrincipal);
+    sa.appendElement(null); // allowInheritPrincipal
+    sa.appendElement(aCsp);
 
     const sourceWindow = (w || window);
     let win;
@@ -509,15 +531,16 @@ function openLinkIn(url, where, params) {
     // start a new recording.
     if (targetBrowser.hasAttribute("recordExecution") &&
         targetBrowser.currentURI.spec != "about:blank") {
-      w.gBrowser.updateBrowserRemoteness(targetBrowser, true,
-                                         { recordExecution: "*", newFrameloader: true });
+      w.gBrowser.updateBrowserRemoteness(targetBrowser,
+                                         { recordExecution: "*", newFrameloader: true,
+                                           remoteType: E10SUtils.DEFAULT_REMOTE_TYPE });
     }
 
     targetBrowser.loadURI(url, {
       triggeringPrincipal: aTriggeringPrincipal,
+      csp: aCsp,
       flags,
-      referrerURI: aNoReferrer ? null : aReferrerURI,
-      referrerPolicy: aReferrerPolicy,
+      referrerInfo: aReferrerInfo,
       postData: aPostData,
       userContextId: aUserContextId,
     });
@@ -535,8 +558,7 @@ function openLinkIn(url, where, params) {
       && !aboutNewTabService.willNotifyUser;
 
     let tabUsedForLoad = w.gBrowser.loadOneTab(url, {
-      referrerURI: aReferrerURI,
-      referrerPolicy: aReferrerPolicy,
+      referrerInfo: aReferrerInfo,
       charset: aCharset,
       postData: aPostData,
       inBackground: loadInBackground,
@@ -544,11 +566,11 @@ function openLinkIn(url, where, params) {
       relatedToCurrent: aRelatedToCurrent,
       skipAnimation: aSkipTabAnimation,
       allowMixedContent: aAllowMixedContent,
-      noReferrer: aNoReferrer,
       userContextId: aUserContextId,
       originPrincipal: aPrincipal,
       triggeringPrincipal: aTriggeringPrincipal,
       allowInheritPrincipal: aAllowInheritPrincipal,
+      csp: aCsp,
       focusUrlBar,
       private: aIsPrivate
     });
@@ -592,13 +614,13 @@ function checkForMiddleClick(node, event) {
 
   if (event.button == 1) {
     /* Execute the node's oncommand or command.
-     *
-     * XXX: we should use node.oncommand(event) once bug 246720 is fixed.
      */
-    var target = node.hasAttribute("oncommand") ? node :
-                 node.ownerDocument.getElementById(node.getAttribute("command"));
-    var fn = new Function("event", target.getAttribute("oncommand"));
-    fn.call(target, event);
+
+    let cmdEvent = document.createEvent("xulcommandevent");
+    cmdEvent.initCommandEvent("command", true, true, window, 0,
+                         event.ctrlKey, event.altKey, event.shiftKey,
+                         event.metaKey, event, event.mozInputSource);
+    node.dispatchEvent(cmdEvent);
 
     // If the middle-click was on part of a menu, close the menu.
     // (Menus close automatically with left-click but not with middle-click.)
@@ -652,13 +674,13 @@ function createUserContextMenu(event, {
     }
 
     menuitem.classList.add("menuitem-iconic");
-    menuitem.setAttribute("data-identity-color", identity.color);
+    menuitem.classList.add("identity-color-" + identity.color);
 
     if (!isContextMenu) {
       menuitem.setAttribute("command", "Browser:NewUserContextTab");
     }
 
-    menuitem.setAttribute("data-identity-icon", identity.icon);
+    menuitem.classList.add("identity-icon-" + identity.icon);
 
     docfrag.appendChild(menuitem);
   });
@@ -907,6 +929,18 @@ function buildHelpMenu() {
   document.getElementById("helpSafeMode")
           .disabled = !Services.policies.isAllowed("safeMode");
 
+  let supportMenu = Services.policies.getSupportMenu();
+  if (supportMenu) {
+    let menuitem = document.getElementById("helpPolicySupport");
+    menuitem.hidden = false;
+    menuitem.setAttribute("label", supportMenu.Title);
+    menuitem.setAttribute("href", supportMenu.URL);
+    if ("AccessKey" in supportMenu) {
+      menuitem.setAttribute("accesskey", supportMenu.AccessKey);
+    }
+    document.getElementById("helpPolicySeparator").hidden = false;
+  }
+
   // Enable/disable the "Report Web Forgery" menu item.
   if (typeof gSafeBrowsing != "undefined") {
     gSafeBrowsing.setReportPhishingMenu();
@@ -919,8 +953,8 @@ function isElementVisible(aElement) {
 
   // If aElement or a direct or indirect parent is hidden or collapsed,
   // height, width or both will be 0.
-  var bo = aElement.boxObject;
-  return (bo.height > 0 && bo.width > 0);
+  var rect = aElement.getBoundingClientRect();
+  return (rect.height > 0 && rect.width > 0);
 }
 
 function makeURLAbsolute(aBase, aUrl) {
@@ -940,7 +974,6 @@ function makeURLAbsolute(aBase, aUrl) {
  *        parameters passed to openLinkIn
  */
 function openNewTabWith(aURL, aShiftKey, aParams = {}) {
-
   // As in openNewWindowWith(), we want to pass the charset of the
   // current document over to a new tab.
   if (document.documentElement.getAttribute("windowtype") == "navigator:browser")
@@ -1008,4 +1041,15 @@ function trimURL(aURL) {
     return urlWithoutProtocol;
   }
   return url;
+}
+
+/**
+ * Updates visibility of "Import From Another Browser" command depending on
+ * the DisableProfileImport policy.
+ */
+function updateFileMenuImportUIVisibility(id) {
+  if (!Services.policies.isAllowed("profileImport")) {
+    let command = document.getElementById(id);
+    command.setAttribute("disabled", "true");
+  }
 }

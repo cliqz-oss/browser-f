@@ -78,30 +78,13 @@ certutil -N -d %CQZ_CERT_DB_PATH% -f emptypw.txt
 ECHO [%TIME%] INFO: Launch bootstrap stage
 
 ECHO cd $CQZ_WORKSPACE ^^^&^^^& ./download_windows_artifacts.sh | call %BUILD_SHELL%
-
-SET RUSTC=c:\build\rustc\bin\rustc
-SET CARGO=c:\build\rustc\bin\cargo
-SET LLVM_CONFIG=c:\build\clang\bin\llvm-config
-SET CBINDGEN=c:\build\cbindgen\cbindgen
-SET NODEJS=c:\build\node\node.exe
-IF "%CQZ_BUILD_64BIT_WINDOWS%"=="1" (
-  SET WIN32_REDIST_DIR=c:\build\redist\msvc\x64\
-  SET WIN_UCRT_REDIST_DIR=c:\build\redist\ucrt\DLLs\x64\
-) ELSE (
-  SET WIN32_REDIST_DIR=c:\build\redist\msvc\x86\
-  SET WIN_UCRT_REDIST_DIR=c:\build\redist\ucrt\DLLs\x86\
-  ECHO !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-  ECHO !! Remove after merge with Firefox 67.0 !!
-  ECHO !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
-  SET LINKER=C:/PROGRA~2/MICROS~1/2017/PROFES~1/VC/Tools/MSVC/1415~1.267/bin/HostX64/x86/link.exe
-  SET HOST_LINKER=C:/PROGRA~2/MICROS~1/2017/PROFES~1/VC/Tools/MSVC/1415~1.267/bin/HostX64/x86/link.exe
-)
+:: All paths specifying in mozconfig files now for Windows
 
 :::::::::::::::::::::::::::::::::::
 :: BUILD
 :::::::::::::::::::::::::::::::::::
 ECHO [%TIME%] INFO: Starting build
-ECHO cd $CQZ_WORKSPACE ^^^&^^^& ./magic_build_and_package.sh --clobber | call %BUILD_SHELL%
+ECHO cd $CQZ_WORKSPACE ^^^&^^^& ./magic_build_and_package.sh --clobber --tests --symbols | call %BUILD_SHELL%
 
 IF ERRORLEVEL 1 (
   ECHO [%TIME%] ERROR: Build failed! Exiting.

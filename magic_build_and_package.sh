@@ -43,17 +43,21 @@ fi
 echo '***** Building *****'
 ./mach build
 
-echo '***** Building tests *****'
-./mach build package-tests
+if $CQZ_BUILD_TESTS; then
+  echo '***** Building tests *****'
+  ./mach build package-tests
+fi
 
 echo '***** Packaging *****'
 ./mach package
 
-echo '***** Prepare build symbols *****'
-# Because of Rust problem with dsymutil on Mac (stylo) - only for Windows or mac cross builds
-if [[ $IS_WIN==true || $OSX_CROSS_BUILD==true ]]; then
-  if [ "$MOZ_UPDATE_CHANNEL" == "release" ] || [ "$MOZ_UPDATE_CHANNEL" == "beta" ]; then
-    ./mach buildsymbols
+if $CQZ_BUILD_SYMBOLS; then
+  echo '***** Prepare build symbols *****'
+  # Because of Rust problem with dsymutil on Mac (stylo) - only for Windows or mac cross builds
+  if [[ $IS_WIN==true || $OSX_CROSS_BUILD==true ]]; then
+    if [ "$MOZ_UPDATE_CHANNEL" == "release" ] || [ "$MOZ_UPDATE_CHANNEL" == "beta" ]; then
+      ./mach buildsymbols
+    fi
   fi
 fi
 

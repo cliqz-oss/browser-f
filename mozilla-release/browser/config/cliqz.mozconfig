@@ -1,17 +1,32 @@
 # Copyright (c) 2016 Cliqz GmbH. All rights reserved.
 # Author: Max Breev <maxim@cliqz.com>
 
-. $topsrcdir/browser/config/mozconfig
-
+ac_add_options --enable-application=browser
 ac_add_options --enable-signmar
-
 ac_add_options --with-branding=browser/branding/cliqz
 ac_add_options --enable-official-branding
 ac_add_options --with-app-name=cliqz  # name for binaries
 ac_add_options --enable-crashreporter
 ac_add_options --enable-js-shell
+ac_add_options --enable-update-channel=${MOZ_UPDATE_CHANNEL}
+ac_add_options --enable-release
+ac_add_options --enable-verify-mar
+ac_add_options --with-mozilla-api-keyfile=$ROOT_PATH/mozilla-desktop-geoloc-api.key
+ac_add_options --with-google-safebrowsing-api-keyfile=$ROOT_PATH/google-desktop-api.key
+ac_add_options "MOZ_ALLOW_LEGACY_EXTENSIONS=1"
 
 export MOZ_APP_PROFILE=CLIQZ
 export MOZ_AUTOMATION_UPLOAD=1
+export MOZ_TELEMETRY_REPORTING=1
+export MOZ_ADDON_SIGNING=1
+export MOZ_REQUIRE_SIGNING=1
+export MOZ_PACKAGE_JSSHELL=1
+# safeguard against someone forgetting to re-set EARLY_BETA_OR_EARLIER in
+# defines.sh during the beta cycle
+export BUILDING_RELEASE=1
 
-ac_add_options "MOZ_ALLOW_LEGACY_EXTENSIONS=1"
+if echo $OSTYPE | grep -q "msys"; then
+  # Windows specific flags
+  ac_add_options --enable-warnings-as-errors
+  ac_add_options --enable-jemalloc
+fi

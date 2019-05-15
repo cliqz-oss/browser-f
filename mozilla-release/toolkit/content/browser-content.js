@@ -7,10 +7,10 @@
 /* eslint no-unused-vars: ["error", {args: "none"}] */
 /* global sendAsyncMessage */
 
-ChromeUtils.import("resource://gre/modules/Services.jsm");
-ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
-ChromeUtils.import("resource:///modules/AutoForgetTabsMonitor.jsm");
-ChromeUtils.import("resource://gre/modules/ActorManagerChild.jsm");
+var {Services} = ChromeUtils.import("resource://gre/modules/Services.jsm");
+var {XPCOMUtils} = ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+var {AutoForgetTabsMonitor} = ChromeUtils.import("resource:///modules/AutoForgetTabsMonitor.jsm");
+var {ActorManagerChild} = ChromeUtils.import("resource://gre/modules/ActorManagerChild.jsm");
 
 ActorManagerChild.attach(this);
 

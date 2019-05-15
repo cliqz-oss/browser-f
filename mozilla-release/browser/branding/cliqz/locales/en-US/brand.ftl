@@ -12,8 +12,11 @@
 ##
 ## Reference: https://www.mozilla.org/styleguide/communications/translation/
 
--brand-short-name = Cliqz
--vendor-short-name = Cliqz GmbH
--brand-full-name = Cliqz
 -brand-shorter-name = Cliqz
+-brand-short-name = Cliqz
+-brand-full-name = Cliqz
+# This brand name can be used in messages where the product name needs to
+# remain unchanged across different versions (Nightly, Beta, etc.).
+-brand-product-name = Cliqz
+-vendor-short-name = Cliqz GmbH
 trademarkInfo = Cliqz and the Cliqz logos are trademarks of the Cliqz GmbH.

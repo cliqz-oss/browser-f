@@ -54,6 +54,10 @@ pane-sync-title = Firefox-Konto
 category-sync =
     .tooltiptext = { pane-sync-title }
 
+pane-sync-title2 = { -sync-brand-short-name }
+category-sync2 =
+    .tooltiptext = { pane-sync-title2 }
+
 pane-connect-title = Connect
 category-connect =
     .tooltiptext = { pane-connect-title }
@@ -342,6 +346,11 @@ browsing-search-on-start-typing =
 browsing-cfr-recommendations =
     .label = Erweiterungen während des Surfens empfehlen
     .accesskey = h
+
+browsing-cfr-features =
+    .label = Funktionen während des Surfens empfehlen
+    .accesskey = F
+
 browsing-cfr-recommendations-learn-more = Weitere Informationen
 
 ## General Section - Proxy
@@ -536,6 +545,13 @@ sync-device-name-save =
     .accesskey = S
 sync-mobilepromo-single = Weiteres Gerät verbinden
 sync-mobilepromo-multi = Geräte verwalten
+
+sync-connect-another-device = Weiteres Gerät verbinden
+
+sync-manage-devices = Geräte verwalten
+
+sync-fxa-begin-pairing = Gerät verbinden
+
 sync-tos-link = Nutzungsbedingungen
 sync-fxa-privacy-notice = Datenschutzhinweis
 
@@ -680,17 +696,24 @@ content-blocking-setting-strict =
 content-blocking-setting-custom =
     .label = Benutzerdefiniert
     .accesskey = B
-content-blocking-standard-description = Nur in privaten Fenstern bekannte Elemente zur Aktivitätenverfolgung blockieren
+content-blocking-standard-description = Nur in Vergessen Modus bekannte Elemente zur Aktivitätenverfolgung blockieren
 content-blocking-standard-desc = Ausgewogenes Blockieren für gleichzeitigen Schutz und Leistung. Einige Elemente zur Aktivitätenverfolgung werden erlaubt, damit Websites funktionieren.
 content-blocking-strict-desc = Alle von { -brand-short-name } erkannten Elemente zur Aktivitätenverfolgung blockieren. Einige Websites funktionieren dann eventuell nicht richtig.
 content-blocking-custom-desc = Entsprechend den Einstellungen blockieren:
-content-blocking-private-trackers = Bekannte Elemente zur Aktivitätenverfolgung nur in privaten Fenstern
+content-blocking-private-trackers = Bekannte Elemente zur Aktivitätenverfolgung nur in Vergessen Modus
 content-blocking-third-party-cookies = Cookies zur Aktivitätenverfolgung von Drittanbietern
 content-blocking-all-windows-trackers = Erkannte Elemente zur Aktivitätenverfolgung in allen Fenstern
 content-blocking-all-third-party-cookies = Alle Cookies von Drittanbietern
 content-blocking-warning-title = Achtung!
 content-blocking-warning-desc = Das Blockieren von Cookies und Elementen zur Aktivitätenverfolgung kann zu Problemen mit einigen Websites führen. Deshalb können Sie die Funktion für Websites, denen Sie vertrauen, leicht deaktivieren.
+content-blocking-warning-description = Das Blockieren von Inhalten kann bei einigen Websites zu Problemen führen. Das Deaktivieren des Blockierens für von Ihnen vertraute Seiten ist ganz einfach.
 content-blocking-learn-how = Erfahren Sie mehr
+
+content-blocking-reload-description = Um die Änderungen anzuwenden, müssen alle Tabs neu geladen werden.
+content-blocking-reload-tabs-button =
+  .label = Alle Tabs neu laden
+  .accesskey = T
+
 content-blocking-trackers-label =
     .label = Elemente zur Aktivitätenverfolgung
     .accesskey = E
@@ -698,12 +721,26 @@ content-blocking-tracking-protection-option-all-windows =
     .label = In allen Fenstern
     .accesskey = a
 content-blocking-option-private =
-    .label = Nur in privaten Fenstern
+    .label = Nur in Vergessen Modus
     .accesskey = p
 content-blocking-tracking-protection-change-block-list = Blockierliste ändern
 content-blocking-cookies-label =
     .label = Cookies
     .accesskey = C
+
+content-blocking-expand-section =
+  .tooltiptext = Weitere Informationen
+
+# Cryptomining refers to using scripts on websites that can use a computer’s resources to mine cryptocurrency without a user’s knowledge.
+content-blocking-cryptominers-label =
+  .label = Währungsberechner (Cryptominer)
+  .accesskey = W
+
+# Browser fingerprinting is a method of tracking users by the configuration and settings information (their "digital fingerprint")
+# that is visible to websites they browse, rather than traditional tracking methods such as IP addresses and unique cookies.
+content-blocking-fingerprinters-label =
+  .label = Identifizierer (Fingerprinter)
+  .accesskey = d
 
 ## Privacy Section - Tracking
 tracking-header-donottrack = Do Not Track

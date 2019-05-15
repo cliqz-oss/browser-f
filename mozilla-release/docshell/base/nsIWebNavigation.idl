@@ -238,7 +238,7 @@ interface nsIWebNavigation : nsISupports
    *        escaped per the rules of RFC 2396.
    * @param aLoadURIOptions
    *        A JSObject defined in LoadURIOptions.webidl holding info like e.g.
-   *        the triggeringPrincipal, the referrer URI, the referrer policy.
+   *        the triggeringPrincipal, the referrer info.
    */
   [implicit_jscontext, binaryname(LoadURIFromScript)]
   void loadURI(in AString aURI,
@@ -310,11 +310,6 @@ interface nsIWebNavigation : nsISupports
   readonly attribute nsIURI currentURI;
 
   /**
-   * The referring URI for the currently loaded URI or null.
-   */
-  readonly attribute nsIURI referringURI;
-
-  /**
    * The session history object used by this web navigation instance. This
    * object will be a mozilla::dom::ChildSHistory object, but is returned as
    * nsISupports so it can be called from JS code.
@@ -347,6 +342,10 @@ interface nsIWebNavigation : nsISupports
 
   /**
    * Resume a load which has been redirected from another process.
+   *
+   * A negative |aHistoryIndex| value corresponds to a non-history load being
+   * resumed.
    */
-  void resumeRedirectedLoad(in unsigned long long aLoadIdentifier);
+  void resumeRedirectedLoad(in unsigned long long aLoadIdentifier,
+                            in long aHistoryIndex);
 };

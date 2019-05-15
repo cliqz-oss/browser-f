@@ -15,12 +15,12 @@ XPIDL_SOURCES += [
 
 XPIDL_MODULE = 'urlformatter'
 
-EXTRA_COMPONENTS += [
-    'nsURLFormatter.manifest',
+EXTRA_PP_JS_MODULES += [
+    'URLFormatter.jsm',
 ]
 
-EXTRA_PP_COMPONENTS += [
-    'nsURLFormatter.js',
+XPCOM_MANIFESTS += [
+    'components.conf',
 ]
 
 DEFINES['OBJDIR'] = OBJDIR

@@ -63,7 +63,7 @@ connection-proxy-socks5 =
 connection-proxy-noproxy = No proxy for
     .accesskey = N
 
-connection-proxy-noproxy-desc = Example: .mozilla.org, .net.nz, 192.168.1.0/24
+connection-proxy-noproxy-desc = Example: .cliqz.com, .net.nz, 192.168.1.0/24
 
 connection-proxy-autotype =
     .label = Automatic proxy configuration URL

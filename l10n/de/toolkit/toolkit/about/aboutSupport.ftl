@@ -5,8 +5,8 @@
 page-title = Informationen zur Fehlerbehebung
 page-subtitle =
     Diese Seite enthält technische Informationen, die nützlich sein könnten,
-    wenn Sie versuchen, ein Problem zu lösen. Wenn Sie nach Antworten auf häufig
-    gestellte Fragen zu { -brand-short-name } suchen, besuchen Sie bitte unsere  <a data-l10n-name="support-link">Hilfeseite</a>.
+    wenn du versuchst, ein Problem zu lösen. Wenn du nach Antworten auf häufig
+    gestellte Fragen zu { -brand-short-name } suchst, besuche bitte unsere <a data-l10n-name="support-link">Hilfeseite</a>.
 crashes-title = Absturzberichte
 crashes-id = Meldungs-ID
 crashes-send-date = Gesendet
@@ -51,6 +51,8 @@ app-basics-launcher-process-status = Starter-Prozess
 app-basics-multi-process-support = Fenster mit mehreren Prozessen
 app-basics-process-count = Web-Inhaltsprozesse
 app-basics-enterprise-policies = Unternehmensrichtlinien
+app-basics-location-service-key-google = Google-Location-Service-Schlüssel
+app-basics-safebrowsing-key-google = Google-Safebrowsing-Schlüssel
 app-basics-key-google = Google-Schlüssel
 app-basics-key-mozilla = Mozilla-Location-Service-Schlüssel
 app-basics-safe-mode = Abgesicherter Modus
@@ -162,13 +164,13 @@ text-copied = Text in die Zwischenablage kopiert
 
 ## The verb "blocked" here refers to a graphics feature such as "Direct2D" or "OpenGL layers".
 
-blocked-driver = Wurde auf Grund Ihrer Grafiktreiberversion blockiert.
-blocked-gfx-card = Wurde auf Grund Ihrer Grafikkarte blockiert, da ungelöste Treiberprobleme bestehen.
-blocked-os-version = Wurde auf Grund Ihrer Betriebssystemversion blockiert.
+blocked-driver = Wurde auf Grund deiner Grafiktreiberversion blockiert.
+blocked-gfx-card = Wurde auf Grund deiner Grafikkarte blockiert, da ungelöste Treiberprobleme bestehen.
+blocked-os-version = Wurde auf Grund deiner Betriebssystemversion blockiert.
 blocked-mismatched-version = Wurde auf Grund unterschiedlicher Grafiktreiberversionen in der Registrierung und der DLL-Datei blockiert.
 # Variables
 # $driverVersion - The graphics driver version string
-try-newer-driver = Wurde auf Grund Ihrer Grafiktreiberversion blockiert. Versuchen Sie, Ihren Grafiktreiber auf mindestens Version { $driverVersion } zu aktualisieren.
+try-newer-driver = Wurde auf Grund deiner Grafiktreiberversion blockiert. Versuche, deinen Grafiktreiber auf mindestens Version { $driverVersion } zu aktualisieren.
 # "ClearType" is a proper noun and should not be translated. Feel free to leave English strings if
 # there are no good translations, these are only used in about:support
 clear-type-parameters = ClearType-Parameter
@@ -247,6 +249,8 @@ effective-content-sandbox-level = Effektive Ebene der isolierten Umgebung
 sandbox-proc-type-content = Inhalt
 sandbox-proc-type-file = Dateiinhalt
 sandbox-proc-type-media-plugin = Medienplugin
+
+sandbox-proc-type-data-decoder = Datendekoder
 
 launcher-process-status-0 = Aktiviert
 launcher-process-status-1 = Deaktiviert nach Fehler

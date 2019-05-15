@@ -10,19 +10,19 @@ var DependencyManager = {
       return deps[depPath][depName];
     }
 
-    let depValue;
+    let dependency;
     try {
-      depValue = ChromeUtils.import(depPath, {})[depName];
+      dependency = ChromeUtils.import(depPath, {});
     } catch (e) {
-      throw new Error(`DependencyManager#get: can not find module at ${depPath}`);
+      throw new Error(`DependencyManager#get: can not find dependency at ${depPath}`);
     }
 
-    return this.inject(depName, depPath, depValue);
+    return this.inject(depName, depPath, dependency[depName]);
   },
   inject: function(depName, depPath, depValue) {
     if (depValue == null) {
       throw new Error(`DependencyManager#inject:
-        can not set ${depValue} as a dependency (null and undefined are not allowed)`);
+        can not import ${depName} from ${depPath} as a dependency (${depValue} is not allowed)`);
     }
 
     if (deps[depPath] == null) {

@@ -19,12 +19,12 @@ XPIDL_SOURCES += [
 
 XPIDL_MODULE = 'browser-newtab'
 
-EXTRA_COMPONENTS += [
-    'NewTabComponents.manifest',
+EXTRA_PP_JS_MODULES += [
+    'AboutNewTabService.jsm',
 ]
 
-EXTRA_PP_COMPONENTS += [
-    'aboutNewTabService.js',
+XPCOM_MANIFESTS += [
+    'components.conf',
 ]
 
 JAR_MANIFESTS += ['jar.mn']

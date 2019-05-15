@@ -57,7 +57,8 @@ browser.jar:
 #ifdef MOZ_SERVICES_SYNC
         content/browser/browser-sync.js               (content/browser-sync.js)
 #endif
-        content/browser/browser-tabsintitlebar.js       (content/browser-tabsintitlebar.js)
+        content/browser/browser-tabsintitlebar.js     (content/browser-tabsintitlebar.js)
+        content/browser/browser-toolbarKeyNav.js      (content/browser-toolbarKeyNav.js)
         content/browser/browser-thumbnails.js         (content/browser-thumbnails.js)
         content/browser/browser-webrender.js          (content/browser-webrender.js)
         content/browser/tab-content.js                (content/tab-content.js)
@@ -122,6 +123,12 @@ browser.jar:
 % override chrome://global/content/license.html chrome://browser/content/license.html
         content/browser/blockedSite.xhtml               (content/blockedSite.xhtml)
         content/browser/blockedSite.js                  (content/blockedSite.js)
+        content/browser/newInstall.xul                (content/newInstall.xul)
+        content/browser/newInstall.js                 (content/newInstall.js)
+#ifdef MOZ_SERVICES_SYNC
+        content/browser/newInstallPage.html           (content/newInstallPage.html)
+        content/browser/newInstallPage.js             (content/newInstallPage.js)
+#endif
 
 % override chrome://global/content/netError.xhtml chrome://browser/content/aboutNetError.xhtml
 

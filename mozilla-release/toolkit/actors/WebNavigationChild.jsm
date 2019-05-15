@@ -6,15 +6,14 @@
 
 var EXPORTED_SYMBOLS = ["WebNavigationChild"];
 
-ChromeUtils.import("resource://gre/modules/ActorChild.jsm");
-ChromeUtils.import("resource://gre/modules/Services.jsm");
-ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
-ChromeUtils.import("resource://gre/modules/Timer.jsm");
+const {ActorChild} = ChromeUtils.import("resource://gre/modules/ActorChild.jsm");
+const {Services} = ChromeUtils.import("resource://gre/modules/Services.jsm");
+const {XPCOMUtils} = ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
 ChromeUtils.defineModuleGetter(this, "AppConstants",
                                "resource://gre/modules/AppConstants.jsm");
-ChromeUtils.defineModuleGetter(this, "Utils",
-                               "resource://gre/modules/sessionstore/Utils.jsm");
+ChromeUtils.defineModuleGetter(this, "E10SUtils",
+                               "resource://gre/modules/E10SUtils.jsm");
 
 XPCOMUtils.defineLazyServiceGetter(this, "CrashReporter",
                                    "@mozilla.org/xre/app-info;1",
@@ -41,11 +40,7 @@ class WebNavigationChild extends ActorChild {
         histogram.add("WebNavigation:LoadURI",
                       Services.telemetry.msSystemNow() - message.data.requestTime);
 
-        this.loadURI(message.data.uri, message.data.flags,
-                     message.data.referrer, message.data.referrerPolicy,
-                     message.data.postData, message.data.headers,
-                     message.data.baseURI, message.data.triggeringPrincipal,
-                     message.data.ensurePrivate);
+        this.loadURI(message.data);
         break;
       case "WebNavigation:SetOriginAttributes":
         this.setOriginAttributes(message.data.originAttributes);
@@ -85,7 +80,19 @@ class WebNavigationChild extends ActorChild {
     this._wrapURIChangeCall(() => this.webNavigation.gotoIndex(index));
   }
 
-  loadURI(uri, flags, referrer, referrerPolicy, postData, headers, baseURI, triggeringPrincipal, ensurePrivate) {
+  loadURI(params) {
+    let {
+      uri,
+      flags,
+      referrerInfo,
+      postData,
+      headers,
+      baseURI,
+      triggeringPrincipal,
+      csp,
+      ensurePrivate,
+    } = params || {};
+
     if (AppConstants.MOZ_CRASHREPORTER && CrashReporter.enabled) {
       let annotation = uri;
       try {
@@ -99,27 +106,27 @@ class WebNavigationChild extends ActorChild {
                       on about: URIs. */ }
       CrashReporter.annotateCrashReport("URL", annotation);
     }
-    if (referrer)
-      referrer = Services.io.newURI(referrer);
     if (postData)
-      postData = Utils.makeInputStream(postData);
+      postData = E10SUtils.makeInputStream(postData);
     if (headers)
-      headers = Utils.makeInputStream(headers);
+      headers = E10SUtils.makeInputStream(headers);
     if (baseURI)
       baseURI = Services.io.newURI(baseURI);
     this._assert(triggeringPrincipal, "We need a triggering principal to continue loading", new Error().lineNumber);
-    if (triggeringPrincipal)
-      triggeringPrincipal = Utils.deserializePrincipal(triggeringPrincipal);
-    this._assert(triggeringPrincipal, "Unable to deserialize passed triggering principal", new Error().lineNumber);
-    if (!triggeringPrincipal) {
-      triggeringPrincipal = Services.scriptSecurityManager.getSystemPrincipal({});
+
+    triggeringPrincipal = E10SUtils.deserializePrincipal(triggeringPrincipal, () => {
+      this._assert(false, "Unable to deserialize passed triggering principal", new Error().lineNumber);
+      return Services.scriptSecurityManager.getSystemPrincipal({});
+    });
+    if (csp) {
+      csp = E10SUtils.deserializeCSP(csp);
     }
 
     let loadURIOptions = {
       triggeringPrincipal,
+      csp,
       loadFlags: flags,
-      referrerURI: referrer,
-      referrerPolicy,
+      referrerInfo: E10SUtils.deserializeReferrerInfo(referrerInfo),
       postData,
       headers,
       baseURI,

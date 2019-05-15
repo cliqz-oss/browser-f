@@ -1,8 +1,6 @@
-if test -d "$topsrcdir/clang/bin"; then
-    CLANG_DIR=`cd "$topsrcdir/clang/bin" ; pwd`
+if test -d "$TOOLTOOL_DIR/clang/bin"; then
+    CLANG_DIR=`cd "$TOOLTOOL_DIR/clang/bin" ; pwd`
     export PATH="${CLANG_DIR}:${PATH}"
-
-    mk_export_correct_style PATH
 fi
 
 export LINKER=lld-link

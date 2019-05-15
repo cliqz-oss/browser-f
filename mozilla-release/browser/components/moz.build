@@ -74,11 +74,19 @@ XPIDL_SOURCES += [
 
 XPIDL_MODULE = 'browsercompsbase'
 
+XPCOM_MANIFESTS += [
+    'components.conf',
+]
+
+if CONFIG['CQZ_AUTO_PRIVATE_TAB']:
+    EXTRA_COMPONENTS += ['AutoForgetTabsService.js']
+    EXTRA_JS_MODULES += [
+        'AutoForgetTabs-utils.jsm',
+        'AutoForgetTabsMonitor.jsm',
+    ]
+
 EXTRA_PP_COMPONENTS += [
     'BrowserComponents.manifest',
-    'newtab/lib/TopStoriesFeed.jsm',
-    'nsBrowserContentHandler.js',
-    'nsBrowserGlue.js',
 ]
 
 EXTRA_COMPONENTS += [
@@ -91,12 +99,10 @@ EXTRA_JS_MODULES += [
     'distribution.js',
 ]
 
-if CONFIG['CQZ_AUTO_PRIVATE_TAB']:
-    EXTRA_COMPONENTS += ['AutoForgetTabsService.js']
-    EXTRA_JS_MODULES += [
-        'AutoForgetTabs-utils.jsm',
-        'AutoForgetTabsMonitor.jsm',
-    ]
+EXTRA_PP_JS_MODULES += [
+    'BrowserContentHandler.jsm',
+    'BrowserGlue.jsm',
+]
 
 BROWSER_CHROME_MANIFESTS += [
     'safebrowsing/content/test/browser.ini',

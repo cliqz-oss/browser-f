@@ -6,7 +6,7 @@
 
 var EXPORTED_SYMBOLS = ["SearchTelemetry"];
 
-const {XPCOMUtils} = ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm", null);
+const {XPCOMUtils} = ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
 XPCOMUtils.defineLazyModuleGetters(this, {
   Services: "resource://gre/modules/Services.jsm",
@@ -60,7 +60,7 @@ const SEARCH_PROVIDER_INFO = {
     "regexp": /^https:\/\/www\.baidu\.com\/(?:s|baidu)/,
     "queryParam": "wd",
     "codeParam": "tn",
-    "codePrefixes": ["monline_dg"],
+    "codePrefixes": ["34046034_", "monline_"],
     "followonParams": ["oq"],
   },
   "bing": {

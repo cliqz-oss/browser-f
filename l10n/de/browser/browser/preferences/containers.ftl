@@ -52,6 +52,12 @@ containers-color-pink =
     .label = Pink
 containers-color-purple =
     .label = Purpur
+
+containers-color-toolbar =
+    .label = An Symbolleiste anpassen
+
+containers-icon-fence =
+    .label = Zaun
 containers-icon-fingerprint =
     .label = Fingerabdruck
 containers-icon-briefcase =

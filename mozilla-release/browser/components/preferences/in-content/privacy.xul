@@ -8,7 +8,7 @@
         src="chrome://browser/content/preferences/in-content/privacy.js"/>
 <stringbundle id="bundlePreferences" src="chrome://browser/locale/preferences/preferences.properties"/>
 <stringbundle id="signonBundle" src="chrome://passwordmgr/locale/passwordmgr.properties"/>
-
+<box id="template-panePrivacy" hidden="true"><![CDATA[
 <hbox id="browserPrivacyCategory"
       class="subcategory"
       hidden="true"
@@ -26,7 +26,7 @@
       <vbox flex="1">
         <description class="description-with-side-element">
           <html:span id="contentBlockingDescription" class="tail-with-learn-more" data-l10n-id="content-blocking-description"></html:span>
-          <label id="contentBlockingLearnMore" class="learnMore text-link" data-l10n-id="content-blocking-learn-more"/>
+          <label id="contentBlockingLearnMore" class="learnMore" data-l10n-id="content-blocking-learn-more" is="text-link"/>
         </description>
       </vbox>
       <vbox>
@@ -58,7 +58,10 @@
                      value="standard"
                      data-l10n-id="content-blocking-setting-standard"
                      flex="1"/>
-              <button id="standardArrow" class="arrowhead default-content-blocking-ui"/>
+              <button id="standardArrow"
+                      class="arrowhead default-content-blocking-ui"
+                      data-l10n-id="content-blocking-expand-section"
+                      aria-expanded="false"/>
             </hbox>
             <vbox class="indent default-content-blocking-ui">
               <description data-l10n-id="content-blocking-standard-desc"></description>
@@ -73,10 +76,58 @@
                     <label data-l10n-id="content-blocking-third-party-cookies"/>
                   </hbox>
                 </vbox>
+                <vbox class="content-blocking-warning reload-tabs" hidden="true">
+                  <hbox class="indent">
+                    <vbox>
+                      <spacer flex="1"/>
+                      <hbox>
+                        <vbox>
+                          <image class="content-blocking-info-image"/>
+                          <spacer flex="1"/>
+                        </vbox>
+                        <description>
+                          <html:span data-l10n-id="content-blocking-reload-description"></html:span>
+                        </description>
+                      </hbox>
+                      <spacer flex="1"/>
+                    </vbox>
+                    <vbox>
+                      <spacer flex="1"/>
+                      <button class="accessory-button reload-tabs-button"
+                              data-l10n-id="content-blocking-reload-tabs-button"/>
+                      <spacer flex="1"/>
+                    </vbox>
+                  </hbox>
+                </vbox>
               </vbox>
             </vbox>
             <vbox class="indent fallback-content-blocking-ui">
               <description data-l10n-id="content-blocking-standard-description"/>
+              <vbox class="content-blocking-extra-information">
+                <vbox class="content-blocking-warning reload-tabs" hidden="true">
+                  <hbox class="indent">
+                    <vbox>
+                      <spacer flex="1"/>
+                      <hbox>
+                        <vbox>
+                          <image class="content-blocking-info-image"/>
+                          <spacer flex="1"/>
+                        </vbox>
+                        <description>
+                          <html:span data-l10n-id="content-blocking-reload-description"></html:span>
+                        </description>
+                      </hbox>
+                      <spacer flex="1"/>
+                    </vbox>
+                    <vbox>
+                      <spacer flex="1"/>
+                      <button class="accessory-button reload-tabs-button"
+                              data-l10n-id="content-blocking-reload-tabs-button"/>
+                      <spacer flex="1"/>
+                    </vbox>
+                  </hbox>
+                </vbox>
+              </vbox>
             </vbox>
           </vbox>
           <vbox id="contentBlockingOptionStrict" class="content-blocking-category">
@@ -85,7 +136,10 @@
                      value="strict"
                      data-l10n-id="content-blocking-setting-strict"
                      flex="1"/>
-              <button id="strictArrow" class="arrowhead"/>
+              <button id="strictArrow"
+                      class="arrowhead"
+                      data-l10n-id="content-blocking-expand-section"
+                      aria-expanded="false"/>
             </hbox>
             <vbox class="indent">
               <label data-l10n-id="content-blocking-strict-desc"></label>
@@ -100,6 +154,29 @@
                     <label data-l10n-id="content-blocking-third-party-cookies"/>
                   </hbox>
                 </vbox>
+                <vbox class="content-blocking-warning reload-tabs" hidden="true">
+                  <hbox class="indent">
+                    <vbox>
+                      <spacer flex="1"/>
+                      <hbox>
+                        <vbox>
+                          <image class="content-blocking-info-image"/>
+                          <spacer flex="1"/>
+                        </vbox>
+                        <description>
+                          <html:span data-l10n-id="content-blocking-reload-description"></html:span>
+                        </description>
+                      </hbox>
+                      <spacer flex="1"/>
+                    </vbox>
+                    <vbox>
+                      <spacer flex="1"/>
+                      <button class="accessory-button reload-tabs-button"
+                              data-l10n-id="content-blocking-reload-tabs-button"/>
+                      <spacer flex="1"/>
+                    </vbox>
+                  </hbox>
+                </vbox>
                 <vbox class="content-blocking-warning">
                   <vbox class="indent">
                     <hbox>
@@ -107,8 +184,8 @@
                       <label class="content-blocking-warning-title" data-l10n-id="content-blocking-warning-title"/>
                     </hbox>
                     <description class="indent">
-                      <html:span class="tail-with-learn-more" data-l10n-id="content-blocking-warning-desc"></html:span>
-                      <label class="text-link content-blocking-warning-learn-how" data-l10n-id="content-blocking-learn-how"/>
+                      <html:span class="tail-with-learn-more" data-l10n-id="content-blocking-warning-description"></html:span>
+                      <label class="content-blocking-warning-learn-how" data-l10n-id="content-blocking-learn-how" is="text-link"/>
                     </description>
                   </vbox>
                 </vbox>
@@ -121,7 +198,10 @@
                    value="custom"
                    data-l10n-id="content-blocking-setting-custom"
                    flex="1"/>
-            <button id="customArrow" class="arrowhead"/>
+            <button id="customArrow"
+                    class="arrowhead"
+                    data-l10n-id="content-blocking-expand-section"
+                    aria-expanded="false"/>
           </hbox>
           <vbox class="indent">
             <description id="contentBlockingCustomDesc" data-l10n-id="content-blocking-custom-desc"></description>
@@ -149,7 +229,7 @@
                 </hbox>
                 <label id="changeBlockListLink"
                        data-l10n-id="content-blocking-tracking-protection-change-block-list"
-                       class="text-link"
+                       is="text-link"
                        search-l10n-ids="blocklist-window.title, blocklist-description, blocklist-button-cancel.label, blocklist-button-ok.label"/>
                 <hbox class="reject-trackers-ui custom-option">
                   <checkbox id="contentBlockingBlockCookiesCheckbox"
@@ -176,6 +256,43 @@
                     </hbox>
                   </vbox>
                 </hbox>
+                <hbox class="custom-option" id="contentBlockingCryptominersOption">
+                  <checkbox id="contentBlockingCryptominersCheckbox"
+                            class="content-blocking-checkbox" flex="1"
+                            preference="privacy.trackingprotection.cryptomining.enabled"
+                            data-l10n-id="content-blocking-cryptominers-label"
+                            aria-describedby="contentBlockingCustomDesc"/>
+                </hbox>
+                <hbox class="custom-option" id="contentBlockingFingerprintersOption">
+                  <checkbox id="contentBlockingFingerprintersCheckbox"
+                            class="content-blocking-checkbox" flex="1"
+                            preference="privacy.trackingprotection.fingerprinting.enabled"
+                            data-l10n-id="content-blocking-fingerprinters-label"
+                            aria-describedby="contentBlockingCustomDesc"/>
+                </hbox>
+              <vbox class="content-blocking-warning reload-tabs" hidden="true">
+                <hbox class="indent">
+                  <vbox>
+                    <spacer flex="1"/>
+                    <hbox>
+                      <vbox>
+                        <image class="content-blocking-info-image"/>
+                        <spacer flex="1"/>
+                      </vbox>
+                      <description>
+                        <html:span data-l10n-id="content-blocking-reload-description"></html:span>
+                      </description>
+                    </hbox>
+                    <spacer flex="1"/>
+                  </vbox>
+                  <vbox>
+                    <spacer flex="1"/>
+                    <button class="accessory-button reload-tabs-button"
+                            data-l10n-id="content-blocking-reload-tabs-button"/>
+                    <spacer flex="1"/>
+                  </vbox>
+                </hbox>
+              </vbox>
               <vbox class="content-blocking-warning">
                 <vbox class="indent">
                   <hbox>
@@ -183,8 +300,8 @@
                     <label class="content-blocking-warning-title" data-l10n-id="content-blocking-warning-title"/>
                   </hbox>
                   <description class="indent">
-                    <html:span class="tail-with-learn-more" data-l10n-id="content-blocking-warning-desc"></html:span>
-                    <label class="text-link content-blocking-warning-learn-how" data-l10n-id="content-blocking-learn-how"/>
+                    <html:span class="tail-with-learn-more" data-l10n-id="content-blocking-warning-description"></html:span>
+                    <label class="content-blocking-warning-learn-how" data-l10n-id="content-blocking-learn-how" is="text-link"/>
                   </description>
                 </vbox>
               </vbox>
@@ -195,7 +312,7 @@
     </vbox>
     <vbox id="doNotTrackLearnMoreBox">
       <label><label class="tail-with-learn-more" data-l10n-id="do-not-track-description" id="doNotTrackDesc"></label><label
-      class="learnMore text-link" href="https://www.mozilla.org/dnt"
+      class="learnMore" is="text-link" href="https://www.mozilla.org/dnt"
       data-l10n-id="do-not-track-learn-more"></label></label>
       <radiogroup id="doNotTrackRadioGroup" aria-labelledby="doNotTrackDesc" preference="privacy.donottrackheader.enabled">
         <radio value="true" data-l10n-id="do-not-track-option-always"/>
@@ -215,7 +332,7 @@
       <description class="description-with-side-element" flex="1">
         <html:span id="totalSiteDataSize" class="tail-with-learn-more"></html:span>
         <label id="siteDataLearnMoreLink"
-          class="learnMore text-link" data-l10n-id="sitedata-learn-more"/>
+          class="learnMore" is="text-link" data-l10n-id="sitedata-learn-more"/>
       </description>
       <description class="description-with-side-element warning-description"
                    flex="1" hidden="true" id="blockCookiesWarning"
@@ -343,7 +460,7 @@
       <!-- Please don't remove the wrapping hbox/vbox/box for these elements. It's used to properly compute the search tooltip position. -->
       <hbox flex="1">
         <description id="passwordsBoxHint" hidden="true" data-l10n-id="remember-logins-2-hint">
-          <label data-l10n-name="remember-logins-2-jump" class='text-link' id='jumpToHistory'/>
+          <label data-l10n-name="remember-logins-2-jump" is="text-link" id="jumpToHistory"/>
         </description>
       </hbox>
       <hbox>
@@ -378,12 +495,20 @@
             oncommand="gPrivacyPane.toggleConsentric();"/>
   <vbox>
     <description class="tail-with-learn-more" data-l10n-id="consentric-desc">
-      <label class="learnMore text-link"
+      <label class="learnMore" is="text-link"
             href="http://cliqz.com/magazine/re-consent"
             data-l10n-name="consentric-learn-more"/>
     </description>
   </vbox>
 </groupbox>
+
+#if 0
+<!-- The form autofill section is inserted in to this box
+     after the form autofill extension has initialized. -->
+<groupbox id="formAutofillGroupBox"
+          data-category="panePrivacy"
+          data-subcategory="form-autofill" hidden="true"></groupbox>
+#endif
 
 <!-- History -->
 <groupbox id="historyGroup" data-category="panePrivacy" hidden="true">
@@ -504,7 +629,7 @@
     <separator class="thin"/>
     <description data-l10n-id="forget-mode-note"/>
     <separator class="thin"/>
-    <label href="https://cliqz.com/support/automatic-forget-mode" class="text-link" data-l10n-id="forget-mode-learn-more"/>
+    <label href="https://cliqz.com/support/automatic-forget-mode" is="text-link" data-l10n-id="forget-mode-learn-more"/>
   </groupbox>
 </vbox>
 #endif
@@ -522,7 +647,7 @@
             preference="browser.urlbar.suggest.bookmark"/>
   <checkbox id="openpageSuggestion" data-l10n-id="addressbar-locbar-openpage-option"
             preference="browser.urlbar.suggest.openpage"/>
-  <label class="text-link" id="openSearchEnginePreferences"
+  <label id="openSearchEnginePreferences" is="text-link"
          data-l10n-id="addressbar-suggestions-settings"/>
 </groupbox>
 
@@ -534,7 +659,7 @@
                 preference="privacy.donottrackheader.enabled"
                 data-l10n-id="do-not-track-checkbox-description"
                 class="tail-with-learn-more"/>
-      <label class="learnMore text-link"
+      <label class="learnMore" is="text-link"
              data-l10n-id="do-not-track-learn-more"
              href="https://www.mozilla.org/dnt"/>
     </hbox>
@@ -630,7 +755,8 @@
                class="tail-with-learn-more"
                data-l10n-id="permissions-notification"/>
         <label id="notificationPermissionsLearnMore"
-               class="learnMore text-link"
+               class="learnMore"
+               is="text-link"
                data-l10n-id="permissions-notification-link"/>
       </description>
       <hbox pack="end">
@@ -729,7 +855,7 @@
       <checkbox id="a11yPrivacyCheckbox" class="tail-with-learn-more"
                 data-l10n-id="permissions-a11y-privacy-checkbox"
                 oncommand="return gPrivacyPane.updateA11yPrefs(this.checked)"/>
-      <label id="a11yLearnMoreLink" class="learnMore text-link"
+      <label id="a11yLearnMoreLink" class="learnMore" is="text-link"
              data-l10n-id="permissions-a11y-privacy-link"/>
     </hbox>
   </vbox>
@@ -752,7 +878,7 @@
   <description>
     <label class="tail-with-learn-more" data-l10n-id="collection-description"/>
     <label id="dataCollectionPrivacyNotice"
-           class="learnMore text-link"
+           class="learnMore" is="text-link"
            data-l10n-id="collection-privacy-notice"/>
   </description>
 #endif
@@ -765,7 +891,7 @@
                 data-l10n-id="collection-health-report"/>
 #if 0
       <label id="FHRLearnMore"
-             class="learnMore text-link"
+             class="learnMore" is="text-link"
              data-l10n-id="collection-health-report-link"/>
       <vbox class="indent">
         <hbox align="center">
@@ -775,7 +901,7 @@
           <label id="viewShieldStudies"
                  href="about:studies"
                  useoriginprincipal="true"
-                 class="learnMore text-link"
+                 class="learnMore" is="text-link"
                  data-l10n-id="collection-studies-link"/>
         </hbox>
 
@@ -784,7 +910,7 @@
                     class="tail-with-learn-more"
                     data-l10n-id="addon-recommendations"/>
           <label id="addonRecommendationLearnMore"
-                 class="learnMore text-link"
+                 class="learnMore" is="text-link"
                  data-l10n-id="addon-recommendations-link"/>
         </hbox>
       </vbox>
@@ -807,14 +933,14 @@
                 />
 #if 0
       <label id="crashReporterLearnMore"
-             class="learnMore text-link" data-l10n-id="collection-backlogged-crash-reports-link"/>
+                class="learnMore" is="text-link" data-l10n-id="collection-backlogged-crash-reports-link"/>
 #endif
     </hbox>
 #endif
   <description data-l10n-id="cliqz-firefox-privacy">
-    <label data-l10n-name="cliqz-firefox-privacy-mozilla" class='text-link' href='https://www.mozilla.org'/>
-    <label data-l10n-name="cliqz-firefox-privacy-mozilla-privacy" class='text-link' href='https://www.mozilla.org/en-US/privacy/firefox'/>
-    <label data-l10n-name="cliqz-firefox-privacy-privacy-browser" class='text-link' href='https://cliqz.com/en/privacy-browser'/>
+    <label data-l10n-name="cliqz-firefox-privacy-mozilla" is="text-link" href="https://www.mozilla.org"/>
+    <label data-l10n-name="cliqz-firefox-privacy-mozilla-privacy" is="text-link" href="https://www.mozilla.org/en-US/privacy/firefox"/>
+    <label data-l10n-name="cliqz-firefox-privacy-privacy-browser" is="text-link" href="https://cliqz.com/en/privacy-browser"/>
   </description>
   </vbox>
 </groupbox>
@@ -835,7 +961,7 @@
               data-l10n-id="security-enable-safe-browsing"
               class="tail-with-learn-more"/>
     <label id="enableSafeBrowsingLearnMore"
-           class="learnMore text-link" data-l10n-id="security-enable-safe-browsing-link"/>
+           class="learnMore" is="text-link" data-l10n-id="security-enable-safe-browsing-link"/>
   </hbox>
   <vbox class="indent formatBoxSize">
     <checkbox id="blockDownloads"
@@ -853,7 +979,7 @@
             oncommand="gPrivacyPane.toggleHttpsEverywhere();"/>
   <hbox>
     <description class="tail-with-learn-more" data-l10n-id="https-everywhere-desc">
-      <label class="learnMore text-link"
+      <label class="learnMore" is="text-link"
             href="https://www.eff.org/https-everywhere"
             data-l10n-name="https-everywhere-learn-more"/>
     </description>
@@ -933,3 +1059,4 @@
     </vbox>
   </hbox>
 </groupbox>
+]]></box>

@@ -2,12 +2,20 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+
 profiles-title = Über Profile
 profiles-subtitle = Diese Seite hilft Ihnen beim Verwalten Ihrer Profile. Jedes Profil stellt eine eigene Umgebung dar, in der Chronik, Lesezeichen, Einstellungen und Add-ons unabhängig von anderen Profilen sind.
 profiles-create = Neues Profil anlegen
 profiles-restart-title = Neu starten
 profiles-restart-in-safe-mode = Mit deaktivierten Add-ons neu starten…
 profiles-restart-normal = Normal neu starten…
+
+profiles-conflict = Ein anderer { -brand-product-name }-Prozess hat Änderungen an Profilen vorgenommen. { -brand-short-name } muss neu gestartet werden, bevor weitere Änderungen möglich sind.
+profiles-flush-fail-title = Änderungen nicht gespeichert
+profiles-flush-conflict = { profiles-conflict }
+profiles-flush-failed = Ein unerwarteter Fehler verhinderte das Speichern der Änderungen.
+profiles-flush-restart-button = { -brand-short-name } neu starten
+
 # Variables:
 #   $name (String) - Name of the profile
 profiles-name = Profil: { $name }
@@ -22,12 +30,18 @@ profiles-rootdir = Wurzelordner
 profiles-localdir = Lokaler Ordner
 profiles-current-profile = Dieses Profil wird derzeit verwendet und kann daher nicht gelöscht werden.
 profiles-in-use-profile = Dieses Profil wird derzeit durch eine andere Anwendung verwendet und kann daher nicht gelöscht werden.
+
 profiles-rename = Umbenennen
 profiles-remove = Löschen
 profiles-set-as-default = Als Standardprofil festlegen
 profiles-launch-profile = Profil zusätzlich ausführen
+
+profiles-cannot-set-as-default-title = Standard konnte nicht geändert werden.
+profiles-cannot-set-as-default-message = Das Standardprofil für { -brand-short-name } konnte nicht geändert werden.
+
 profiles-yes = ja
 profiles-no = nein
+
 profiles-rename-profile-title = Profil umbenennen
 # Variables:
 #   $name (String) - Name of the profile
@@ -40,13 +54,13 @@ profiles-delete-profile-title = Profil löschen
 # Variables:
 #   $dir (String) - Path to be displayed
 profiles-delete-profile-confirm =
-    Das Löschen eines Profils entfernt dieses aus der Liste der verfügbaren Profile und kann NICHT rückgängig gemacht werden. Sie können optional auch alle Dateien des Profils löschen, inklusive Ihrer gespeicherten Einstellungen und persönlichen Daten. Diese Option löscht folgenden Ordner inkl. des kompletten Inhalts:
-    
+    Das Löschen eines Profils entfernt dieses aus der Liste der verfügbaren Profile und kann NICHT rückgängig gemacht werden. Du kannst optional auch alle Dateien des Profils löschen, inklusive deiner gespeicherten Einstellungen und persönlichen Daten. Diese Option löscht folgenden Ordner inkl. des kompletten Inhalts:
+
     "{ $dir }"
-    
+
     ACHTUNG: Dies kann NICHT rückgängig gemacht werden!
-    
-    Möchten Sie die Daten des Profils löschen?
+
+    Möchtest du die Daten des Profils löschen?
 profiles-delete-files = Dateien löschen
 profiles-dont-delete-files = Dateien nicht löschen
 profiles-delete-profile-failed-title = Fehler
