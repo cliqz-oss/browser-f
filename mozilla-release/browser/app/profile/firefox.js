@@ -502,8 +502,12 @@ pref("browser.tabs.delayHidingAudioPlayingIconMS", 3000);
 pref("browser.tabs.remote.separatePrivilegedContentProcess", true);
 #endif
 
+// CLIQZ-SPECIAL:
+// DB-2143: this flag was false by default before Cliqz 1.27.x
 // Turn on HTTP response process selection.
+#if 0
 pref("browser.tabs.remote.useHTTPResponseProcessSelection", true);
+#endif
 
 // Unload tabs when available memory is running low
 pref("browser.tabs.unloadOnLowMemory", true);
