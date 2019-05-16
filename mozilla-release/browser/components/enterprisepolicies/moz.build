@@ -22,7 +22,7 @@ EXTRA_COMPONENTS += [
     'EnterprisePoliciesContent.js',
 ]
 
-EXTRA_JS_MODULES.policies += [
+EXTRA_PP_JS_MODULES.policies += [
     'Policies.jsm',
 ]
 
