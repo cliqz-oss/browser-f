@@ -7,6 +7,7 @@ CARGO="$TOOLCHAIN/rustc/bin/cargo"
 RUSTDOC="$TOOLCHAIN/rustc/bin/rustdoc"
 RUSTFMT="$TOOLCHAIN/rustc/bin/rustfmt"
 CBINDGEN="$TOOLCHAIN/cbindgen/cbindgen"
+NASM="$TOOLCHAIN/nasm/nasm"
 
 ac_add_options --enable-rust-simd
 ac_add_options --enable-crashreporter
