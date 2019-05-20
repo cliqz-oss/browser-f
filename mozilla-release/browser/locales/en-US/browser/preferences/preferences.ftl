@@ -265,7 +265,7 @@ choose-button =
     .label = Choose…
     .accesskey = o
 
-choose-browser-language-description = Choose the languages used to display menus, messages, and notifications from { -brand-short-name }.
+choose-browser-language-description = Choose the languages used to display menus, messages and notifications from { -brand-short-name }.
 manage-browser-languages-button =
   .label = Set Alternatives…
   .accesskey = l
@@ -730,7 +730,7 @@ history-remember-option-never =
 history-remember-option-custom =
     .label = Use custom settings for history
 
-history-remember-description = { -brand-short-name } will remember your browsing, download, form, and search history.
+history-remember-description = { -brand-short-name } will remember your browsing, download, form and search history.
 history-dontremember-description = { -brand-short-name } will use the same settings as private browsing, and will not remember any history as you browse the Web.
 
 history-private-browsing-permanent =
