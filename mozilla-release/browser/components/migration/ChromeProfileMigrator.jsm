@@ -290,7 +290,7 @@ async function GetCookiesResource(aProfileFolder) {
     async migrate(aCallback) {
       // We don't support decrypting cookies yet so only import plaintext ones.
       let rows = await MigrationUtils.getRowsFromDBWithoutLocks(cookiesPath, "Chrome cookies",
-       `SELECT host_key, name, value, path, expires_utc, secure, httponly, encrypted_value
+       `SELECT host_key, name, value, path, expires_utc, is_secure, is_httponly, encrypted_value
         FROM cookies
         WHERE length(encrypted_value) = 0`).catch(ex => {
           Cu.reportError(ex);
@@ -316,8 +316,8 @@ async function GetCookiesResource(aProfileFolder) {
                                row.getResultByName("path"),
                                row.getResultByName("name"),
                                row.getResultByName("value"),
-                               row.getResultByName("secure"),
-                               row.getResultByName("httponly"),
+                               row.getResultByName("is_secure"),
+                               row.getResultByName("is_httponly"),
                                false,
                                parseInt(expiresUtc),
                                {},
