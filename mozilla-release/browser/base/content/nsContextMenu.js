@@ -541,6 +541,13 @@ nsContextMenu.prototype = {
 
     let showSearchSelect = !this.inAboutDevtoolsToolbox &&
                            (this.isTextSelected || this.onLink) && !this.onImage;
+    // CLIQZ-SPECIAL:
+    // DB-2138
+    // We should not show an option to search for with another engine if
+    // a context menu is initiated over our extension dropdown.
+    if (gContextMenuContentData != null && gContextMenuContentData.browser != null) {
+      showSearchSelect = showSearchSelect && gContextMenuContentData.browser.id !== 'cliqz-popup';
+    }
     this.showItem("context-searchselect", showSearchSelect);
     if (showSearchSelect) {
       this.formatSearchContextItem();
