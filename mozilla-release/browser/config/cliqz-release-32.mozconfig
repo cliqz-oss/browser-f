@@ -5,3 +5,5 @@
 . $topsrcdir/build/mozconfig.node
 . $topsrcdir/build/mozconfig.rust
 . $topsrcdir/build/win32/mozconfig.vs-latest
+
+export USE_STUB_INSTALLER=1

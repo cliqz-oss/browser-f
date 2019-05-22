@@ -15,6 +15,7 @@ IF "%CQZ_BUILD_64BIT_WINDOWS%"=="1" (
 )
 
 set installer=dist\install\sea\cliqz-%ff_exe%.%platform_prefix%.installer.exe
+set installer_msi=dist\install\sea\cliqz-%ff_exe%.%platform_prefix%.installer_msi.exe
 set tmp_installer=dist\install\sea\cliqz-%ff_exe%.%platform_prefix%.installer_tmp.exe
 set clean_installer=dist\install\sea\cliqz-%ff_exe%.%platform_prefix%.installer_clean.exe
 
@@ -27,9 +28,11 @@ del %installer%
 
 rem inject template information
 ..\cliqz-helpers\ApplyTag.exe %tmp_installer% %installer% "brand=XXXXXXXXXX"
+..\cliqz-helpers\ApplyTag.exe %tmp_installer% %installer_msi% "brand=MSI0002"
 del %tmp_installer%
 
 rem check installer still exist
 if not exist %installer% set ERRORLEVEL=1
+if not exist %installer_msi% set ERRORLEVEL=1
 
 exit /b %ERRORLEVEL%
