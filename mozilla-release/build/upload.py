@@ -244,7 +244,7 @@ def UploadFilesToS3(s3_bucket, s3_path, files, package, verbose=False):
         source_file = os.path.abspath(source_file)
         if not os.path.isfile(source_file):
             raise IOError("File not found: %s" % source_file)
-        if not re.search('(\w+)\.(mar|dmg|rpm|deb|exe|tar\.bz2)$', source_file):
+        if not re.search('(\w+)\.(mar|dmg|rpm|deb|exe|msi|tar\.bz2)$', source_file):
             continue
 
         dest_file = os.path.basename(source_file)
@@ -283,7 +283,7 @@ def UploadServiceFilesToS3(s3_bucket, s3_path, files, verbose=False):
         source_file = os.path.abspath(source_file)
         if not os.path.isfile(source_file):
             raise IOError("File not found: %s" % source_file)
-        if re.search('(\w+)\.(mar|dmg|rpm|deb|exe|tar\.bz2)$', source_file):
+        if re.search('(\w+)\.(mar|dmg|rpm|deb|exe|msi|tar\.bz2)$', source_file):
             continue
 
         dest_file = os.path.basename(source_file)

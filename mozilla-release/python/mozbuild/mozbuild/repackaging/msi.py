@@ -78,8 +78,8 @@ def repackage_msi(topsrcdir, wsx, version, locale, arch, setupexe, candle, light
             shutil.copy(wsx, tmpdir)
             temp_wsx_file  = os.path.join(tmpdir, wsx_file)
             temp_wsx_file  = mozpath.realpath(temp_wsx_file)
-            pre_values = {'Vendor': 'Mozilla',
-                          'BrandFullName': 'Mozilla Firefox',
+            pre_values = {'Vendor': 'Cliqz GmbH',
+                          'BrandFullName': 'Cliqz',
                           'Version': version,
                           'AB_CD':  locale,
                           'Architecture': _MSI_ARCH[arch],

@@ -36,11 +36,13 @@ ECHO [%TIME%] BUILD.CMD STARTS =========
 ::  CQZ_BUILD_DE_LOCALIZATION - flag to build DE localization together with en-US
 ::                              Default: not specified
 ::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::::
-IF "%CQZ_WORKSPACE%"=="" SET CQZ_WORKSPACE=%cd%
+IF "%CQZ_WORKSPACE%"=="" SET CQZ_WORKSPACE=%CD%
 SET LANG=en-US
 SET CQZ_CERT_DB_PATH=c:\certdb
 SET BUILD_SHELL=c:\mozilla-build\start-shell.bat
-SET CLZ_SIGNTOOL_PATH=C:\Program Files (x86)\Windows Kits\10\bin\x64\signtool.exe
+:: Paths for build tools
+SET TOOLTOOL_DIR=c:\build
+SET CLZ_SIGNTOOL_PATH=%TOOLTOOL_DIR%\vs2017_15.9.10\SDK\bin\10.0.17763.0\x64\signtool.exe
 
 :::::::::::::::::::::::::::::::::::
 :: Information about build
@@ -67,18 +69,20 @@ ECHO INFO: Build configuration - %CHANNEL_INFO% channel, %PLATFORM_INFO% (%LOCAL
 ECHO INFO: Setting up cert db
 
 MD %CQZ_CERT_DB_PATH%
-C:
-CD C:\nss
+CD /D C:\nss
 certutil -N -d %CQZ_CERT_DB_PATH% -f emptypw.txt
 @pk12util -i %MAR_CERT% -W %MAR_CERT_PASS% -d %CQZ_CERT_DB_PATH%
 
 :::::::::::::::::::::::::::::::::::
-:: BOOTSTRAP
+:: Check and download build tools
 :::::::::::::::::::::::::::::::::::
-ECHO [%TIME%] INFO: Launch bootstrap stage
-
+ECHO [%TIME%] INFO: Download build tools stage
 ECHO cd $CQZ_WORKSPACE ^^^&^^^& ./download_windows_artifacts.sh | call %BUILD_SHELL%
-:: All paths specifying in mozconfig files now for Windows
+
+IF ERRORLEVEL 1 (
+  ECHO [%TIME%] ERROR: Build failed! Exiting.
+  EXIT 1
+)
 
 :::::::::::::::::::::::::::::::::::
 :: BUILD
@@ -95,7 +99,7 @@ IF ERRORLEVEL 1 (
 :: SIGNING
 :::::::::::::::::::::::::::::::::::
 ECHO [%TIME%] INFO: Build successful. Signing...
-CD %CQZ_WORKSPACE%
+CD /D %CQZ_WORKSPACE%
 CALL sign_win.bat
 
 IF ERRORLEVEL 1 (
@@ -106,7 +110,7 @@ IF ERRORLEVEL 1 (
 SET OLD_LANG=%LANG%
 SET LANG=de
 IF "%CQZ_BUILD_DE_LOCALIZATION%"=="1" (
-  CD %CQZ_WORKSPACE%
+  CD /D %CQZ_WORKSPACE%
   CALL sign_win.bat
 
   IF ERRORLEVEL 1 (
@@ -122,7 +126,7 @@ SET LANG=%OLD_LANG%
 IF "%CQZ_BUILD_64BIT_WINDOWS%"=="1" GOTO inject_tag_area
 
 ECHO [%TIME%] INFO: Build successful. Signing...
-CD %CQZ_WORKSPACE%
+CD /D %CQZ_WORKSPACE%
 set STUB_PREFIX=-stub
 CALL sign_win.bat
 
@@ -134,7 +138,7 @@ IF ERRORLEVEL 1 (
 SET OLD_LANG=%LANG%
 SET LANG=de
 IF "%CQZ_BUILD_DE_LOCALIZATION%"=="1" (
-  CD %CQZ_WORKSPACE%
+  CD /D %CQZ_WORKSPACE%
   CALL sign_win.bat
 
   IF ERRORLEVEL 1 (
@@ -148,10 +152,9 @@ set STUB_PREFIX=
 :::::::::::::::::::::::::::::::::::
 :: INJECT TAG AREA
 :::::::::::::::::::::::::::::::::::
-:inject_tag_area
 ECHO [%TIME%] INFO: Signing complete successful. Inject tagged area...
 SET GOROOT=C:\Go
-CD %CQZ_WORKSPACE%
+CD /D %CQZ_WORKSPACE%
 CALL inject_tag_info.bat
 
 IF ERRORLEVEL 1 (
@@ -162,11 +165,37 @@ IF ERRORLEVEL 1 (
 SET OLD_LANG=%LANG%
 SET LANG=de
 IF "%CQZ_BUILD_DE_LOCALIZATION%"=="1" (
-  CD %CQZ_WORKSPACE%
+  CD /D %CQZ_WORKSPACE%
   CALL inject_tag_info.bat
 
   IF ERRORLEVEL 1 (
     ECHO [%TIME%] ERROR: Inject tag area into DE failed! Exiting.
+    EXIT 1
+  )
+)
+SET LANG=%OLD_LANG%
+
+::::::::::::::::::::::::::::::::::::::::::::
+:: Create and sign MSI installer (MSI0002)
+::::::::::::::::::::::::::::::::::::::::::::
+
+ECHO [%TIME%] INFO: Create and sign MSI package(s)
+CD /D %CQZ_WORKSPACE%
+CALL build_msi.bat
+
+IF ERRORLEVEL 1 (
+  ECHO [%TIME%] ERROR: Create MSI failed! Exiting.
+  EXIT 1
+)
+
+SET OLD_LANG=%LANG%
+SET LANG=de
+IF "%CQZ_BUILD_DE_LOCALIZATION%"=="1" (
+  CD /D %CQZ_WORKSPACE%
+  CALL build_msi.bat
+
+  IF ERRORLEVEL 1 (
+    ECHO [%TIME%] ERROR: Create MSI failed! Exiting.
     EXIT 1
   )
 )
