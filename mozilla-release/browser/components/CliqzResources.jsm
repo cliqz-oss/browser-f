@@ -38,6 +38,7 @@ const CliqzResources = {
       case 'about:cliqz':
       case 'about:home':
       case 'about:newtab':
+      case 'about:privatebrowsing':
       case 'resource://cliqz/freshtab/home.html':
         return this.getFreshTabUrl();
 
