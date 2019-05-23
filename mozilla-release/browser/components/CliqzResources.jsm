@@ -63,6 +63,9 @@ const CliqzResources = {
   // CLIQZ-SPECIAL: we do not need BROWSER_NEW_TAB_URL check as we never change it
   // return gInitialPages.includes(url) || url == BROWSER_NEW_TAB_URL;
   isInitialPage: function(url) {
+    const Services = DependencyManager.get("Services",
+      "resource://gre/modules/Services.jsm");
+
     if (!(url instanceof Ci.nsIURI)) {
       try {
         url = Services.io.newURI(url);
