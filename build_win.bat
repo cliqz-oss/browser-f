@@ -152,6 +152,7 @@ set STUB_PREFIX=
 :::::::::::::::::::::::::::::::::::
 :: INJECT TAG AREA
 :::::::::::::::::::::::::::::::::::
+:inject_tag_area
 ECHO [%TIME%] INFO: Signing complete successful. Inject tagged area...
 SET GOROOT=C:\Go
 CD /D %CQZ_WORKSPACE%
