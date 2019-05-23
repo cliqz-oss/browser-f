@@ -280,7 +280,6 @@ toolbar .toolbarbutton-1 > .toolbarbutton-icon {
 
 #main-window.cliqz-blue {
   /* Override light theme variables */
-  background-color: #00ADEF !important;
 }
 #main-window.cliqz-blue:-moz-lwtheme-darktext, #main-window.cliqz-blue:-moz-lwtheme {
   --chrome-background-color: #00ADEF;
