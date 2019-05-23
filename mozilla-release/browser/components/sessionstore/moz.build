@@ -21,13 +21,16 @@ EXTRA_JS_MODULES.sessionstore = [
     'SessionSaver.jsm',
     'SessionStartup.jsm',
     'SessionStore.jsm',
-    'SessionWorker.js',
     'SessionWorker.jsm',
     'StartupPerformance.jsm',
     'TabAttributes.jsm',
     'TabState.jsm',
     'TabStateCache.jsm',
     'TabStateFlusher.jsm',
+]
+
+EXTRA_PP_JS_MODULES.sessionstore = [
+    'SessionWorker.js'
 ]
 
 with Files('**'):
