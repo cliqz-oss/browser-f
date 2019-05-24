@@ -180,18 +180,6 @@
       "type": "boolean"
     },
 
-    "DisableFirefoxAccounts": {
-      "type": "boolean"
-    },
-
-    "DisableFirefoxScreenshots": {
-      "type": "boolean"
-    },
-
-    "DisableFirefoxStudies": {
-      "type": "boolean"
-    },
-
     "DisableForgetButton": {
       "type": "boolean"
     },
@@ -201,10 +189,6 @@
     },
 
     "DisableMasterPasswordCreation": {
-      "type": "boolean"
-    },
-
-    "DisablePocket": {
       "type": "boolean"
     },
 
@@ -276,19 +260,6 @@
       "type": "boolean"
     },
 
-    "EnableTrackingProtection": {
-      "type": "object",
-      "properties": {
-        "Value": {
-          "type": "boolean"
-        },
-        "Locked": {
-          "type": "boolean"
-        }
-      },
-      "required": ["Value"]
-    },
-
     "Extensions": {
       "type": "object",
       "properties": {
@@ -350,25 +321,28 @@
       "type": "boolean"
     },
 
-    "Homepage": {
+    "Startup": {
       "type": "object",
       "properties": {
-        "URL": {
-          "type": "URL"
-        },
-        "Locked": {
+        "RestoreLastSession": {
           "type": "boolean"
         },
-        "Additional": {
+        "ShowHomepage": {
+          "type": "boolean"
+        },
+        "URLs": {
           "type": "array",
           "strict": false,
           "items": {
             "type": "URL"
           }
         },
-        "StartPage": {
+        "Locked": {
+          "type": "boolean"
+        },
+        "Homepage": {
           "type": "string",
-          "enum": ["none", "homepage", "previous-session"]
+          "enum": ["default", "urls", "blank"]
         }
       }
     },
@@ -606,75 +580,8 @@
       }
     },
 
-    "RequestedLocales": {
-      "type": "array",
-      "items": {
-        "type": "string"
-      }
-    },
-
     "SanitizeOnShutdown": {
       "type": "boolean"
-    },
-
-    "SearchBar": {
-      "type": "string",
-      "enum": ["unified", "separate"]
-    },
-
-    "SearchEngines": {
-      "enterprise_only": true,
-
-      "type": "object",
-      "properties": {
-        "Add": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "required": ["Name", "URLTemplate"],
-
-            "properties": {
-              "Name": {
-                "type": "string"
-              },
-              "IconURL": {
-                "type": "URLorEmpty"
-              },
-              "Alias": {
-                "type": "string"
-              },
-              "Description": {
-                "type": "string"
-              },
-              "Method": {
-                "type": "string",
-                "enum": ["GET", "POST"]
-              },
-              "URLTemplate": {
-                "type": "string"
-              },
-              "PostData": {
-                "type": "string"
-              },
-              "SuggestURLTemplate": {
-                "type": "string"
-              }
-            }
-          }
-        },
-        "Default": {
-          "type": "string"
-        },
-        "PreventInstalls": {
-          "type": "boolean"
-        },
-        "Remove": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
-        }
-      }
     },
 
     "SecurityDevices": {

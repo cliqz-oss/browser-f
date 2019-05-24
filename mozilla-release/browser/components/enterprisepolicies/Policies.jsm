@@ -655,63 +655,41 @@ var Policies = {
     },
   },
 
-  "Homepage": {
+  "Startup": {
     onBeforeUIStartup(manager, param) {
       // |homepages| will be a string containing a pipe-separated ('|') list of
-      // URLs because that is what the "Home page" section of about:preferences
+      // URLs because that is what the "Custom URLs..." section of about:preferences
       // (and therefore what the pref |browser.startup.homepage|) accepts.
-      if (param.URL) {
-        let homepages = param.URL.href;
-        if (param.Additional && param.Additional.length > 0) {
-          homepages += "|" + param.Additional.map(url => url.href).join("|");
-        }
-        if (param.Locked) {
-          setAndLockPref("browser.startup.homepage", homepages);
-          setAndLockPref("pref.browser.homepage.disable_button.current_page", true);
-          setAndLockPref("pref.browser.homepage.disable_button.bookmark_page", true);
-          setAndLockPref("pref.browser.homepage.disable_button.restore_default", true);
-        } else {
-          setDefaultPref("browser.startup.homepage", homepages);
-          runOncePerModification("setHomepage", homepages, () => {
-            Services.prefs.clearUserPref("browser.startup.homepage");
-          });
+      let homepages = "about:home";
+      if (param.Homepage) {
+        switch (param.Homepage) {
+          case "default":
+            homepages = "about:home";
+            break;
+          case "urls":
+            if (param.URLs && param.URLs.length > 0) {
+              homepages = param.URLs.map(url => url.href).join("|");
+            }
+            break;
+          case "blank":
+            homepages = "about:blank";
+            break;
         }
       }
+
       if (param.Locked) {
+        setAndLockPref("browser.startup.restoreTabs", param.RestoreLastSession);
+        setAndLockPref("browser.startup.addFreshTab", param.ShowHomepage);
         setAndLockPref("browser.startup.homepage", homepages);
-#if 0
-// Since we do not need a browser.startup.page pref;
-      if (param.StartPage) {
-        let prefValue;
-        switch (param.StartPage) {
-          case "none":
-            prefValue = 0;
-            break;
-          case "homepage":
-            prefValue = 1;
-            break;
-          case "previous-session":
-            prefValue = 3;
-            break;
-        }
-        if (param.Locked) {
-          setAndLockPref("browser.startup.page", prefValue);
-        } else {
-          setDefaultPref("browser.startup.page", prefValue);
-        }
-      }
-#endif
         setAndLockPref("pref.browser.homepage.disable_button.current_page", true);
         setAndLockPref("pref.browser.homepage.disable_button.bookmark_page", true);
         setAndLockPref("pref.browser.homepage.disable_button.restore_default", true);
       } else {
+        setDefaultPref("browser.startup.restoreTabs", param.RestoreLastSession);
+        setDefaultPref("browser.startup.addFreshTab", param.ShowHomepage);
         setDefaultPref("browser.startup.homepage", homepages);
         runOncePerModification("setHomepage", homepages, () => {
           Services.prefs.clearUserPref("browser.startup.homepage");
-#if 0
-// Since we do not need a browser.startup.page pref;
-          Services.prefs.clearUserPref("browser.startup.page");
-#endif
         });
       }
     },

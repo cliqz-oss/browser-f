@@ -62,7 +62,7 @@ policy-ExtensionUpdate = Automatische Add-on-Updates aktivieren oder deaktiviere
 policy-FlashPlugin = Flash-Plugin-Verwendung erlauben oder verbieten
 policy-HardwareAcceleration = Hardwarebeschleunigung deaktiviert, falls false
 # “lock” means that the user won’t be able to change this setting
-policy-Homepage = Startseite festlegen und optional zusätzlich unveränderbar setzen
+policy-Startup = Startseite festlegen und optional zusätzlich unveränderbar setzen
 policy-InstallAddonsPermission = Add-on-Installation von festgelegten Websites erlauben
 
 policy-NetworkPrediction = Spekulative DNS-Abfragen für noch nicht angeforderte Ressourcen ("DNS-Prefetching") aktivieren oder deaktivieren

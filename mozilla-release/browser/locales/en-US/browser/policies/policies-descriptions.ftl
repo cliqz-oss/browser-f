@@ -93,7 +93,7 @@ policy-FlashPlugin = Allow or deny usage of the Flash plugin.
 policy-HardwareAcceleration = If false, turn off hardware acceleration.
 
 # “lock” means that the user won’t be able to change this setting
-policy-Homepage = Set and optionally lock the homepage.
+policy-Startup = Set and optionally lock the homepage.
 
 policy-InstallAddonsPermission = Allow certain websites to install add-ons.
 
