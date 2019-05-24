@@ -1577,7 +1577,7 @@
           <xul:hbox class="advancedinfo-container" flex="1">
             <xul:vbox class="description-outer-container" flex="1">
               <xul:hbox class="description-container">
-                <xul:label anonid="homepage" class="description text-link" crop="end" flex="1"
+                <xul:label anonid="homepage" is="text-link" class="description" crop="end" flex="1"
                       tooltip="addonitem-tooltip" xbl:inherits="value=homepage"
                       value="&setting.learnmore;"/>
                 <xul:spacer flex="5000"/> <!-- Necessary to make the description crop -->
