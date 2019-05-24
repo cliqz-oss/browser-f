@@ -560,11 +560,11 @@
         </hbox>
       </vbox>
       <vbox id="historyCustomPane">
-        <vbox>
+        <vbox class="formatBoxSize">
           <checkbox id="privateBrowsingAutoStart"
                     data-l10n-id="history-private-browsing-permanent"
                     preference="browser.privatebrowsing.autostart"/>
-          <vbox class="indent">
+          <vbox class="indent formatBoxSize">
             <checkbox id="rememberHistory"
                       data-l10n-id="history-remember-browser-option"
                       onsyncfrompreference="return gPrivacyPane.ensurePrivacyMicroControlUncheckedWhenDisabled(this)"
