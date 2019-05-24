@@ -1166,11 +1166,11 @@ you can use these alternative items. Otherwise, their values should be empty.  -
      The first <image> tag is replaced with the icon for the add-ons menu.
      The second <image> tag is replaced with the icon for the toolbar menu. -->
 <!ENTITY addonPostInstallMessage.label "Die Add-ons lassen sich durch Klicken auf <image class='addon-addon-icon'/> im <image class='addon-toolbar-icon'/>-Menü verwalten.">
-<!ENTITY addonPostInstall.incognito.checkbox.label "Ausführen der Erweiterung auch in privaten Fenstern erlauben">
+<!ENTITY addonPostInstall.incognito.checkbox.label "Ausführen der Erweiterung auch in Vergessen-Fenstern erlauben">
 <!ENTITY addonPostInstall.incognito.checkbox.accesskey "p">
 
-<!ENTITY addonPrivateBrowsing.header2.label "Änderung an Ausführung von Erweiterungen in privaten Fenstern">
-<!ENTITY addonPrivateBrowsing.body2.label "In &brandShorterName; neu installierte Erweiterungen werden in privaten Fenstern nicht ausgeführt, außer dies wird in den Einstellungen aktiviert.">
+<!ENTITY addonPrivateBrowsing.header2.label "Änderung an Ausführung von Erweiterungen in Vergessen-Fenstern">
+<!ENTITY addonPrivateBrowsing.body2.label "In &brandShorterName; neu installierte Erweiterungen werden in Vergessen-Fenstern nicht ausgeführt, außer dies wird in den Einstellungen aktiviert.">
 <!ENTITY addonPrivateBrowsing.learnMore.label "Weitere Informationen zur Verwaltung von Erweiterungseinstellungen">
 <!ENTITY addonPrivateBrowsing.okButton.label "OK">
 <!ENTITY addonPrivateBrowsing.okButton.accesskey "O">

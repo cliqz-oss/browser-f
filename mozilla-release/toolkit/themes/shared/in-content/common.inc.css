@@ -72,8 +72,9 @@
   --grey-90-a30: rgba(12, 12, 13, 0.3);
   --grey-90-a40: rgba(12, 12, 13, 0.4);
   --grey-90-a50: rgba(12, 12, 13, 0.5);
-  --purple-70: #6200a4;
-  --purple-70-a40: rgba(98, 0, 164, 0.4);
+  /* CLIQZ-SPECIAL This is on purpose to overwrite forget mode color everywhere */
+  --purple-70: #BBC6D4;
+  --purple-70-a40: rgba(187, 198, 212, 0.4);
   --red-50: #ff0039;
   --red-50-a30: rgba(255, 0, 57, 0.3);
   --red-60: #d70022;

@@ -132,26 +132,26 @@ detail-update-manual =
     .tooltiptext = Don’t automatically install updates
 
 # Used as a description for the option to allow or block an add-on in private windows.
-detail-private-browsing-label = Run in Private Windows
+detail-private-browsing-label = Run in Forget Windows
 
 detail-private-browsing-description2 = When allowed, the extension will have access to your online activities while private browsing. <label data-l10n-name="detail-private-browsing-learn-more">Learn more</label>
 
-# Some add-ons may elect to not run in private windows by setting incognito: not_allowed in the manifest.  This
+# Some add-ons may elect to not run in Forget Windows by setting incognito: not_allowed in the manifest.  This
 # cannot be overriden by the user.
-detail-private-disallowed-label = Not Allowed in Private Windows
+detail-private-disallowed-label = Not Allowed in Forget Windows
 detail-private-disallowed-description = This extension does not run while private browsing. <label data-l10n-name="detail-private-browsing-learn-more">Learn more</label>
 
-# Some special add-ons are privileged, run in private windows automatically, and this permission can't be revoked
-detail-private-required-label = Requires Access to Private Windows
+# Some special add-ons are privileged, run in Forget mode automatically, and this permission can't be revoked
+detail-private-required-label = Requires Access to Forget mode
 detail-private-required-description = This extension has access to your online activities while private browsing. <label data-l10n-name="detail-private-browsing-learn-more">Learn more</label>
 
 detail-private-browsing-on =
     .label = Allow
-    .tooltiptext = Enable in Private Browsing
+    .tooltiptext = Enable in Forget Windows
 
 detail-private-browsing-off =
     .label = Don’t Allow
-    .tooltiptext = Disable in Private Browsing
+    .tooltiptext = Disable in Forget Windows
 
 detail-home =
     .label = Homepage
@@ -219,7 +219,7 @@ legacy-extensions-description =
 
 private-browsing-description2 =
     { -brand-short-name } is changing how extensions work in private browsing. Any new extensions you add to
-    { -brand-short-name } won’t run by default in Private Windows. Unless you allow it in settings, the
+    { -brand-short-name } won’t run by default in Forget Windows. Unless you allow it in settings, the
     extension won’t work while private browsing, and won’t have access to your online activities
     there. We’ve made this change to keep your private browsing private.
     <label data-l10n-name="private-browsing-learn-more">Learn how to manage extension settings</label>
