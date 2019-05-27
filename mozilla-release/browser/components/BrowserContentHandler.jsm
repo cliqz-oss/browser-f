@@ -145,7 +145,7 @@ function needHomepageOverride(prefb) {
   // For those we display WhatsNewPage by default (but still only for 1.27.x);
   // So the following clause gets executed only for users who HAVE GOT
   // browser.startup.homepage_override.mstone initially set in their preferences.
-  if (!isNaN(SAVED_MSTONE_MAJOR)) {
+  if (SAVED_MSTONE_MAJOR > 0) {
     if (isNaN(MSTONE_MAJOR) || SAVED_MSTONE_MAJOR >= MSTONE_MAJOR) {
       return OVERRIDE_NONE;
     }
@@ -160,7 +160,7 @@ function needHomepageOverride(prefb) {
 
     prefb.setCharPref("browser.startup.homepage_override.mstone", mstone);
     prefb.setCharPref("browser.startup.homepage_override.buildID", buildID);
-    return (savedmstone || isNaN(SAVED_MSTONE_MAJOR) ? OVERRIDE_NEW_MSTONE : OVERRIDE_NEW_PROFILE);
+    return (savedmstone || !SAVED_MSTONE_MAJOR ? OVERRIDE_NEW_MSTONE : OVERRIDE_NEW_PROFILE);
   }
 
   if (buildID != savedBuildID) {
