@@ -10,6 +10,7 @@
 var EXPORTED_SYMBOLS = ["HomePage"];
 
 const {Services} = ChromeUtils.import("resource://gre/modules/Services.jsm");
+const DependencyManager = ChromeUtils.import("resource://gre/modules/DependencyManager.jsm", {}).DependencyManager;
 ChromeUtils.defineModuleGetter(this, "PrivateBrowsingUtils",
                                "resource://gre/modules/PrivateBrowsingUtils.jsm");
 
@@ -79,7 +80,9 @@ let HomePage = {
   },
 
   getDefault() {
-    return getHomepagePref(true);
+    const CliqzResources = DependencyManager.get("CliqzResources",
+      "resource:///modules/CliqzResources.jsm");
+    return getHomepagePref(true) === CliqzResources.getFreshTabUrl();
   },
 
   get overridden() {
