@@ -28,6 +28,7 @@ Object.defineProperty(this, "BROWSER_NEW_TAB_URL", {
           !aboutNewTabService.overridden) {
         return "about:privatebrowsing";
       }
+      /* CLIQZ-SPECIAL - we allow cliqz tab to load in private mode
       // If an extension controls the setting and does not have private
       // browsing permission, use the default setting.
       let extensionControlled = Services.prefs.getBoolPref("browser.newtab.extensionControlled", false);
@@ -36,7 +37,7 @@ Object.defineProperty(this, "BROWSER_NEW_TAB_URL", {
       // for moz-extension.
       if (!privateAllowed && (extensionControlled || aboutNewTabService.newTabURL.startsWith("moz-extension://"))) {
         return "about:privatebrowsing";
-      }
+      }*/
     }
     return aboutNewTabService.newTabURL;
   },
