@@ -2343,6 +2343,9 @@ BrowserGlue.prototype = {
     if (currentUIVersion >= UI_VERSION)
       return;
 
+    // CLIQZ-SPECIAL: Show whats new page on every update
+    Services.prefs.setBoolPref("browser.migration.showWhatsNew", true);
+
     let xulStore = Services.xulStore;
 
     if (currentUIVersion < 44) {
