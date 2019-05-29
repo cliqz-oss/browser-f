@@ -1866,6 +1866,10 @@ var AddonManagerInternal = {
     install.install();
   },
 
+  isAMOOrigin(installingPrincipal) {
+    return !!(installingPrincipal && installingPrincipal.origin === "https://addons.mozilla.org");
+  },
+
   /**
    * Starts installation of an AddonInstall notifying the registered
    * web install listener of blocked or started installs.
@@ -1914,7 +1918,11 @@ var AddonManagerInternal = {
         this.installNotifyObservers("addon-install-disabled", topBrowser,
                                     aInstallingPrincipal.URI, aInstall);
         return;
-      } else if (aInstallingPrincipal.isNullPrincipal || !aBrowser.contentPrincipal || !aInstallingPrincipal.subsumes(aBrowser.contentPrincipal)) {
+        // CLIQZ-SPECIAL: Mark AMO as safe site
+      } else if (!this.isAMOOrigin(aInstallingPrincipal) &&
+                 (aInstallingPrincipal.isNullPrincipal ||
+                  !aBrowser.contentPrincipal ||
+                  !aInstallingPrincipal.subsumes(aBrowser.contentPrincipal))) {
         aInstall.cancel();
 
         this.installNotifyObservers("addon-install-origin-blocked", topBrowser,
@@ -1932,7 +1940,9 @@ var AddonManagerInternal = {
 
         AddonManagerInternal.startInstall(aBrowser, aInstallingPrincipal.URI, aInstall);
       };
-      if (!this.isInstallAllowed(aMimetype, aInstallingPrincipal)) {
+      // CLIQZ-SPECIAL: Mark AMO as safe site
+      if (!this.isAMOOrigin(aInstallingPrincipal) &&
+          !this.isInstallAllowed(aMimetype, aInstallingPrincipal)) {
         this.installNotifyObservers("addon-install-blocked", topBrowser,
                                     aInstallingPrincipal.URI, aInstall,
                                     () => startInstall("other"));
