@@ -115,15 +115,14 @@ function needHomepageOverride(prefb) {
   // Thus we can rely on "browser.migration.version" preference which is greater than or equal 80
   // for FF 67.x.x (we definitely know we would like to promote 1.27.x for users).
   //
-  // Please see nsBrowserGlue.js file for checking next const UIVersion.
-  // For example, let FF 68.x.x have UIVersion = 81 set by default.
-  // Then if we need to show WhatsNewPage for our release 1.28.x then cliqzUIVersionFlag should not
-  // be less than 81 (meaning to assign 81 to CLIQZ_WHATS_NEW_PAGE_UI_VERSION below).
-  const CLIQZ_WHATS_NEW_PAGE_UI_VERSION = 80;
-  var cliqzUIVersionFlag = prefb.getIntPref("browser.migration.version", -1);
-  if (cliqzUIVersionFlag < CLIQZ_WHATS_NEW_PAGE_UI_VERSION) {
+  // infer `browser.migration.showWhatsNew` from browserGlue.jsm
+  // to decide whether to whats new page show or not
+  const shouldShowWhatsNew = prefb.getBoolPref("browser.migration.showWhatsNew", false);
+  if (!shouldShowWhatsNew) {
     return OVERRIDE_NONE;
   }
+  // set the flag to false to not show next time
+  Services.prefs.setBoolPref("browser.migration.showWhatsNew", false);
 
   if (savedmstone == "ignore")
     return OVERRIDE_NONE;

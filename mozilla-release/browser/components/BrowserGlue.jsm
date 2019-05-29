@@ -2702,10 +2702,17 @@ BrowserGlue.prototype = {
       const kLocalHosts = new Set(["localhost", "127.0.0.1"]);
       hosts = hosts.split(/[ ,]+/).filter(host => !kLocalHosts.has(host)).join(", ");
       Services.prefs.setCharPref("network.proxy.no_proxies_on", hosts);
+
+      // Show whats new page on udate to 1.27
+      this._setShowWhatsNewPage();
     }
 
     // Update the migration version.
     Services.prefs.setIntPref("browser.migration.version", UI_VERSION);
+  },
+
+  _setShowWhatsNewPage() {
+    Services.prefs.setBoolPref("browser.migration.showWhatsNew", true);
   },
 
   _checkForDefaultBrowser() {
