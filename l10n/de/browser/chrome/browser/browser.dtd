@@ -1023,8 +1023,8 @@ you can use these alternative items. Otherwise, their values should be empty.  -
 <!ENTITY contentBlocking.cookies.label "Cookies">
 <!ENTITY contentBlocking.cookiesView.label "Cookies und Website-Daten">
 
-<!ENTITY contentBlocking.cryptominers.label "Währungsberechner (Cryptominer)">
-<!ENTITY contentBlocking.cryptominersView.label "Währungsberechner (Cryptominer)">
+<!ENTITY contentBlocking.cryptominers.label "Heimliche Digitalwährungsberechner (Krypto-Miner)">
+<!ENTITY contentBlocking.cryptominersView.label "Heimliche Digitalwährungsberechner (Krypto-Miner)">
 
 <!ENTITY contentBlocking.fingerprinters.label "Identifizierer (Fingerprinter)">
 <!ENTITY contentBlocking.fingerprintersView.label "Identifizierer (Fingerprinter)">
