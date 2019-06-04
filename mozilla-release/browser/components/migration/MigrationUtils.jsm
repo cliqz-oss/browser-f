@@ -256,6 +256,12 @@ var MigratorPrototype = {
       if (resourceType == MigrationUtils.resourceTypes.PASSWORDS) {
         return template.replace("*", "LOGINS");
       }
+      if (resourceType == MigrationUtils.resourceTypes.ADDONS) {
+        return template.replace("*", "ADDONS");
+      }
+      if (resourceType == MigrationUtils.resourceTypes.COOKIES) {
+        return template.replace("*", "COOKIES");
+      }
       return null;
     };
 
