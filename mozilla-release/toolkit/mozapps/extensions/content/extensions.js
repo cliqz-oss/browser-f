@@ -13,6 +13,9 @@ const {AddonManager} = ChromeUtils.import("resource://gre/modules/AddonManager.j
 const {AddonRepository} = ChromeUtils.import("resource://gre/modules/addons/AddonRepository.jsm");
 const {AddonSettings} = ChromeUtils.import("resource://gre/modules/addons/AddonSettings.jsm");
 
+const DependencyManager = ChromeUtils.import(
+  "resource://gre/modules/DependencyManager.jsm", {}).DependencyManager;
+
 ChromeUtils.defineModuleGetter(this, "AMTelemetry",
                                "resource://gre/modules/AddonManager.jsm");
 ChromeUtils.defineModuleGetter(this, "E10SUtils", "resource://gre/modules/E10SUtils.jsm");
@@ -1344,7 +1347,36 @@ var gViewController = {
             return;
           }
         }
-        aAddon.enable();
+        aAddon.enable().then(() => {
+          if (aAddon.id !== 'cliqz@cliqz.com') {
+            return;
+          }
+
+          // CLIQZ-SPECIAL:
+          // DB-2180
+          // If a user disabled CliqzExtension and then opened several new tabs then
+          // all of them would be blank.
+          // If a user turns CliqzExtension on again then those blank tabs have to be
+          // loaded as freshtabs meaning a current value of Home page (set via Preferences).
+          const BrowserWindowTracker = DependencyManager.get("BrowserWindowTracker",
+                                       "resource:///modules/BrowserWindowTracker.jsm");
+          const browser = BrowserWindowTracker.getTopWindow().getBrowser();
+          let HomePage = null;
+
+          for (let tab of browser.tabs) {
+            const tabBrowser = browser.getBrowserForTab(tab);
+            const uri = tabBrowser.currentURI.spec;
+            if (uri !== 'about:blank') {
+              continue;
+            }
+
+            HomePage = HomePage || DependencyManager.get("HomePage",
+                                   "resource:///modules/HomePage.jsm");
+            tabBrowser.loadURI(HomePage.getAsString(), {
+              triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal(),
+            });
+          }
+        });
         recordActionTelemetry({action: "enable", addon: aAddon});
       },
       getTooltip(aAddon) {
