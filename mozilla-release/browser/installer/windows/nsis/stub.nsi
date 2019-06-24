@@ -775,7 +775,7 @@ Function createProfileCleanup
 ;  !endif
   Pop $0
   SendMessage $0 ${WM_SETFONT} $FontFooter 0
-  SetCtlColors $0 ${INSTALL_BLURB_TEXT_COLOR} transparent
+  SetCtlColors $0 ${INSTALL_FOOTER_TEXT_COLOR} transparent
 
   Call DrawBackgroundImage
 
@@ -852,7 +852,7 @@ Function createInstall
   ${NSD_CreateLabel} 60% ${INSTALL_FOOTER_TOP_DU} 35% 60u "$(STUB_BLURB_FOOTER2)"
   Pop $0
   SendMessage $0 ${WM_SETFONT} $FontFooter 0
-  SetCtlColors $0 ${INSTALL_BLURB_TEXT_COLOR} transparent
+  SetCtlColors $0 ${INSTALL_FOOTER_TEXT_COLOR} transparent
 
   ; load all images
   ${NSD_CreateBitmap} 29u 52u 210u 141u ""
