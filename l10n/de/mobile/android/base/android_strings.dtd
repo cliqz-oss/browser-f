@@ -4,10 +4,13 @@
 
 <!ENTITY firstrun_panel_title_welcome "Willkommen">
 <!ENTITY firstrun_urlbar_message2 "Danke für die Nutzung von &brandShortName;">
+<!ENTITY newfirstrun_urlbar_message "Willkommen bei &brandShortName;">
 <!ENTITY firstrun_urlbar_subtext2 "Ein moderner mobiler Browser von Mozilla, der gemeinnützigen Organisation, die sich für ein frei zugängliches und offenes Web einsetzt.">
+<!ENTITY newfirstrun_urlbar_subtext "Schnell, privat und auf Ihrer Seite">
 <!ENTITY firstrun_panel_title_privacy "Datenschutz">
 <!ENTITY firstrun_privacy_message "Surfen Sie so, als würde Sie niemand beobachten.">
 <!ENTITY firstrun_privacy_subtext "Privates Surfen schützt Sie vor Webinhalten, welche Ihre Aktivitäten verfolgen, und löscht die Seitenbesuche der Sitzung, wenn Sie die App schließen.">
+<!ENTITY newfirstrun_privacy_subtext "Privates Surfen blockiert Werbeskripte, die Ihre Aktivitäten quer über viele Websites hinweg verfolgen.">
 <!ENTITY firstrun_panel_title_customize "Anpassen">
 <!ENTITY firstrun_customize_message "Machen Sie &brandShortName; so, wie Sie ihn sich wünschen.">
 <!ENTITY firstrun_customize_subtext "Passen Sie &brandShortName; mit Add-ons an. Blockieren Sie Werbung, fügen Sie Funktionen hinzu oder wählen Sie ein neues Erscheinungsbild, um Ihre Persönlichkeit zur Geltung zu bringen.">
@@ -20,8 +23,10 @@
 <!ENTITY firstrun_sync_title "Sync">
 <!ENTITY firstrun_sync_message2 "Machen Sie da weiter, wo Sie aufgehört haben.">
 <!ENTITY firstrun_sync_subtext2 "Mit Sync können Sie jederzeit auf alle Ihre Lesezeichen, Passwörter und anderen Dinge zugreifen, die Sie in &brandShortName; auf anderen Geräten speichern.">
+<!ENTITY newfirstrun_sync_subtext "Synchronisieren Sie in Firefox für Android gespeicherte Einträge mit Firefox für Windows, macOS oder Linux - privat und sicher.">
 <!ENTITY firstrun_signin_message "Verbinden Sie und legen Sie los">
 <!ENTITY firstrun_signin_button "Bei Sync anmelden">
+<!ENTITY newfirstrun_signin_button "Sync aktivieren">
 <!ENTITY  onboard_start_button_browser "Mit dem Surfen beginnen">
 <!ENTITY firstrun_button_notnow "Nicht sofort">
 <!ENTITY firstrun_button_next "Weiter">
@@ -424,6 +429,12 @@ shown from Android O while a tab is being queued.-->
 <!ENTITY pref_private_data_syncedTabs "Synchronisierte Tabs">
 
 <!ENTITY pref_default_browser "Als Standardbrowser verwenden">
+
+<!ENTITY pref_default_browser2 "&brandShortName; als Standardbrowser verwenden">
+<!-- LOCALIZATION NOTE (default_browser_system_settings_toast):
+    Message of an Android Toast that appears after our app opens "Android System Settings -> Apps -> Default apps"
+    and instruct users to tap on the "Browser app" option on that settings screen to choose a default browser app. -->
+<!ENTITY default_browser_system_settings_toast "Tippen Sie auf \&quot;Browser-App\&quot; &amp; wählen Sie &brandShortName;.">
 <!ENTITY pref_default_browser_mozilla_support_tablet "Mozilla-Hilfe aufrufen">
 <!ENTITY pref_about_firefox "Über &brandShortName;">
 <!ENTITY pref_vendor_faqs "Häufig gestellte Fragen">
