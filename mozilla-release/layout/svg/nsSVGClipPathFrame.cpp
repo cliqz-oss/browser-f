@@ -11,6 +11,7 @@
 #include "AutoReferenceChainGuard.h"
 #include "ImgDrawResult.h"
 #include "gfxContext.h"
+#include "mozilla/PresShell.h"
 #include "mozilla/dom/SVGClipPathElement.h"
 #include "nsGkAtoms.h"
 #include "SVGObserverUtils.h"
@@ -26,8 +27,7 @@ using namespace mozilla::image;
 //----------------------------------------------------------------------
 // Implementation
 
-nsIFrame* NS_NewSVGClipPathFrame(nsIPresShell* aPresShell,
-                                 ComputedStyle* aStyle) {
+nsIFrame* NS_NewSVGClipPathFrame(PresShell* aPresShell, ComputedStyle* aStyle) {
   return new (aPresShell)
       nsSVGClipPathFrame(aStyle, aPresShell->GetPresContext());
 }
@@ -57,8 +57,11 @@ void nsSVGClipPathFrame::ApplyClipPath(gfxContext& aContext,
     if (pathFrame && pathFrame->StyleVisibility()->IsVisible()) {
       SVGGeometryElement* pathElement =
           static_cast<SVGGeometryElement*>(pathFrame->GetContent());
-      gfxMatrix toChildsUserSpace = pathElement->PrependLocalTransformsTo(
-          GetClipPathTransform(aClippedFrame) * aMatrix, eUserSpaceToParent);
+
+      gfxMatrix toChildsUserSpace =
+          nsSVGUtils::GetTransformMatrixInUserSpace(pathFrame) *
+          (GetClipPathTransform(aClippedFrame) * aMatrix);
+
       gfxMatrix newMatrix = aContext.CurrentMatrixDouble()
                                 .PreMultiply(toChildsUserSpace)
                                 .NudgeToIntegers();
@@ -157,7 +160,7 @@ void nsSVGClipPathFrame::PaintClipMask(gfxContext& aMaskContext,
 
   // Paint our children into the mask:
   for (nsIFrame* kid = mFrames.FirstChild(); kid; kid = kid->GetNextSibling()) {
-    PaintFrameIntoMask(kid, aClippedFrame, aMaskContext, aMatrix);
+    PaintFrameIntoMask(kid, aClippedFrame, aMaskContext);
   }
 
   if (maskUsage.shouldGenerateClipMaskLayer) {
@@ -179,8 +182,7 @@ void nsSVGClipPathFrame::PaintClipMask(gfxContext& aMaskContext,
 
 void nsSVGClipPathFrame::PaintFrameIntoMask(nsIFrame* aFrame,
                                             nsIFrame* aClippedFrame,
-                                            gfxContext& aTarget,
-                                            const gfxMatrix& aMatrix) {
+                                            gfxContext& aTarget) {
   nsSVGDisplayableFrame* frame = do_QueryFrame(aFrame);
   if (!frame) {
     return;
@@ -201,11 +203,12 @@ void nsSVGClipPathFrame::PaintFrameIntoMask(nsIFrame* aFrame,
   nsSVGUtils::MaskUsage maskUsage;
   nsSVGUtils::DetermineMaskUsage(aFrame, true, maskUsage);
   if (maskUsage.shouldApplyClipPath) {
-    clipPathThatClipsChild->ApplyClipPath(aTarget, aClippedFrame, aMatrix);
+    clipPathThatClipsChild->ApplyClipPath(aTarget, aClippedFrame,
+                                          mMatrixForChildren);
   } else if (maskUsage.shouldGenerateClipMaskLayer) {
     Matrix maskTransform;
     RefPtr<SourceSurface> maskSurface = clipPathThatClipsChild->GetClipMask(
-        aTarget, aClippedFrame, aMatrix, &maskTransform);
+        aTarget, aClippedFrame, mMatrixForChildren, &maskTransform);
     aTarget.PushGroupForBlendBack(gfxContentType::ALPHA, 1.0, maskSurface,
                                   maskTransform);
     // The corresponding PopGroupAndBlend call below will mask the
@@ -217,8 +220,7 @@ void nsSVGClipPathFrame::PaintFrameIntoMask(nsIFrame* aFrame,
   nsIContent* childContent = child->GetContent();
   if (childContent->IsSVGElement()) {
     toChildsUserSpace =
-        static_cast<const SVGElement*>(childContent)
-            ->PrependLocalTransformsTo(mMatrixForChildren, eUserSpaceToParent);
+        nsSVGUtils::GetTransformMatrixInUserSpace(child) * mMatrixForChildren;
   }
 
   // clipPath does not result in any image rendering, so we just use a dummy
@@ -298,9 +300,8 @@ bool nsSVGClipPathFrame::PointIsInsideClipPath(nsIFrame* aClippedFrame,
     nsSVGDisplayableFrame* SVGFrame = do_QueryFrame(kid);
     if (SVGFrame) {
       gfxPoint pointForChild = point;
-      gfxMatrix m =
-          static_cast<SVGElement*>(kid->GetContent())
-              ->PrependLocalTransformsTo(gfxMatrix(), eUserSpaceToParent);
+
+      gfxMatrix m = nsSVGUtils::GetTransformMatrixInUserSpace(kid);
       if (!m.IsIdentity()) {
         if (!m.Invert()) {
           return false;
@@ -426,9 +427,10 @@ gfxMatrix nsSVGClipPathFrame::GetCanvasTM() { return mMatrixForChildren; }
 gfxMatrix nsSVGClipPathFrame::GetClipPathTransform(nsIFrame* aClippedFrame) {
   SVGClipPathElement* content = static_cast<SVGClipPathElement*>(GetContent());
 
-  gfxMatrix tm = content->PrependLocalTransformsTo(gfxMatrix());
+  gfxMatrix tm = content->PrependLocalTransformsTo({}, eChildToUserSpace) *
+                 nsSVGUtils::GetTransformMatrixInUserSpace(this);
 
-  SVGEnum* clipPathUnits =
+  SVGAnimatedEnumeration* clipPathUnits =
       &content->mEnumAttributes[SVGClipPathElement::CLIPPATHUNITS];
 
   uint32_t flags = nsSVGUtils::eBBoxIncludeFillGeometry |
@@ -460,7 +462,7 @@ SVGBBox nsSVGClipPathFrame::GetBBoxForClipPathFrame(const SVGBBox& aBBox,
       nsSVGDisplayableFrame* svg = do_QueryFrame(frame);
       if (svg) {
         gfxMatrix matrix =
-            svgNode->PrependLocalTransformsTo(aMatrix, eUserSpaceToParent);
+            nsSVGUtils::GetTransformMatrixInUserSpace(frame) * aMatrix;
         tmpBBox = svg->GetBBoxContribution(mozilla::gfx::ToMatrix(matrix),
                                            nsSVGUtils::eBBoxIncludeFill);
         nsSVGClipPathFrame* clipPathFrame;
@@ -484,4 +486,20 @@ SVGBBox nsSVGClipPathFrame::GetBBoxForClipPathFrame(const SVGBBox& aBBox,
     unionBBox.Intersect(tmpBBox);
   }
   return unionBBox;
+}
+
+bool nsSVGClipPathFrame::IsSVGTransformed(Matrix* aOwnTransforms,
+                                          Matrix* aFromParentTransforms) const {
+  auto e = static_cast<SVGElement const*>(GetContent());
+  Matrix m = ToMatrix(e->PrependLocalTransformsTo({}, eUserSpaceToParent));
+
+  if (m.IsIdentity()) {
+    return false;
+  }
+
+  if (aOwnTransforms) {
+    *aOwnTransforms = m;
+  }
+
+  return true;
 }

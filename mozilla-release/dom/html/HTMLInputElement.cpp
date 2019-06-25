@@ -16,6 +16,7 @@
 #include "mozilla/dom/FileSystemUtils.h"
 #include "mozilla/dom/GetFilesHelper.h"
 #include "mozilla/dom/WheelEventBinding.h"
+#include "mozilla/PresShell.h"
 #include "mozilla/StaticPrefs.h"
 #include "nsAttrValueInlines.h"
 #include "nsCRTGlue.h"
@@ -27,7 +28,7 @@
 
 #include "HTMLFormSubmissionConstants.h"
 #include "mozilla/Telemetry.h"
-#include "nsIControllers.h"
+#include "nsBaseCommandController.h"
 #include "nsIStringBundle.h"
 #include "nsFocusManager.h"
 #include "nsColorControlFrame.h"
@@ -43,7 +44,6 @@
 #include "nsMappedAttributes.h"
 #include "nsIFormControl.h"
 #include "mozilla/dom/Document.h"
-#include "nsIPresShell.h"
 #include "nsIFormControlFrame.h"
 #include "nsITextControlFrame.h"
 #include "nsIFrame.h"
@@ -109,7 +109,6 @@
 #include "nsIColorPicker.h"
 #include "nsIStringEnumerator.h"
 #include "HTMLSplitOnSpacesTokenizer.h"
-#include "nsIController.h"
 #include "nsIMIMEInfo.h"
 #include "nsFrameSelection.h"
 #include "nsBaseCommandController.h"
@@ -128,16 +127,15 @@ namespace dom {
 // First bits are needed for the control type.
 #define NS_OUTER_ACTIVATE_EVENT (1 << 9)
 #define NS_ORIGINAL_CHECKED_VALUE (1 << 10)
-#define NS_NO_CONTENT_DISPATCH (1 << 11)
+// (1 << 11 is unused)
 #define NS_ORIGINAL_INDETERMINATE_VALUE (1 << 12)
 #define NS_PRE_HANDLE_BLUR_EVENT (1 << 13)
 #define NS_PRE_HANDLE_INPUT_EVENT (1 << 14)
 #define NS_IN_SUBMIT_CLICK (1 << 15)
-#define NS_CONTROL_TYPE(bits)                                            \
-  ((bits) & ~(NS_OUTER_ACTIVATE_EVENT | NS_ORIGINAL_CHECKED_VALUE |      \
-              NS_NO_CONTENT_DISPATCH | NS_ORIGINAL_INDETERMINATE_VALUE | \
-              NS_PRE_HANDLE_BLUR_EVENT | NS_PRE_HANDLE_INPUT_EVENT |     \
-              NS_IN_SUBMIT_CLICK))
+#define NS_CONTROL_TYPE(bits)                                              \
+  ((bits) & ~(NS_OUTER_ACTIVATE_EVENT | NS_ORIGINAL_CHECKED_VALUE |        \
+              NS_ORIGINAL_INDETERMINATE_VALUE | NS_PRE_HANDLE_BLUR_EVENT | \
+              NS_PRE_HANDLE_INPUT_EVENT | NS_IN_SUBMIT_CLICK))
 
 // whether textfields should be selected once focused:
 //  -1: no, 1: yes, 0: uninitialized
@@ -655,7 +653,7 @@ bool HTMLInputElement::IsPopupBlocked() const {
 
   // Check if page can open a popup without abuse regardless of allowed events
   if (PopupBlocker::GetPopupControlState() <= PopupBlocker::openBlocked) {
-    return !PopupBlocker::TryUsePopupOpeningToken();
+    return !PopupBlocker::TryUsePopupOpeningToken(OwnerDoc()->NodePrincipal());
   }
 
   return !PopupBlocker::CanShowPopupByPermission(OwnerDoc()->NodePrincipal());
@@ -1531,7 +1529,7 @@ void HTMLInputElement::SetValue(const nsAString& aValue, CallerType aCallerType,
       if (aCallerType != CallerType::System) {
         // setting the value of a "FILE" input widget requires
         // chrome privilege
-        aRv.Throw(NS_ERROR_DOM_SECURITY_ERR);
+        aRv.Throw(NS_ERROR_DOM_INVALID_STATE_ERR);
         return;
       }
       Sequence<nsString> list;
@@ -2370,6 +2368,10 @@ HTMLInputElement::GetFilesOrDirectoriesInternal() const {
 void HTMLInputElement::SetFilesOrDirectories(
     const nsTArray<OwningFileOrDirectory>& aFilesOrDirectories,
     bool aSetValueChanged) {
+  if (NS_WARN_IF(mType != NS_FORM_INPUT_FILE)) {
+    return;
+  }
+
   MOZ_ASSERT(mFileData);
 
   mFileData->ClearGetFilesHelpers();
@@ -2856,8 +2858,8 @@ nsresult HTMLInputElement::MaybeSubmitForm(nsPresContext* aPresContext) {
     return NS_OK;
   }
 
-  nsCOMPtr<nsIPresShell> shell = aPresContext->GetPresShell();
-  if (!shell) {
+  RefPtr<PresShell> presShell = aPresContext->GetPresShell();
+  if (!presShell) {
     return NS_OK;
   }
 
@@ -2870,7 +2872,7 @@ nsresult HTMLInputElement::MaybeSubmitForm(nsPresContext* aPresContext) {
     // submitting the form.
     WidgetMouseEvent event(true, eMouseClick, nullptr, WidgetMouseEvent::eReal);
     nsEventStatus status = nsEventStatus_eIgnore;
-    shell->HandleDOMEventWithTarget(submitContent, &event, &status);
+    presShell->HandleDOMEventWithTarget(submitContent, &event, &status);
   } else if (!mForm->ImplicitSubmissionIsDisabled() &&
              mForm->SubmissionCanProceed(nullptr)) {
     // TODO: removing this code and have the submit event sent by the form,
@@ -2880,7 +2882,7 @@ nsresult HTMLInputElement::MaybeSubmitForm(nsPresContext* aPresContext) {
     RefPtr<mozilla::dom::HTMLFormElement> form = mForm;
     InternalFormEvent event(true, eFormSubmit);
     nsEventStatus status = nsEventStatus_eIgnore;
-    shell->HandleDOMEventWithTarget(form, &event, &status);
+    presShell->HandleDOMEventWithTarget(form, &event, &status);
   }
 
   return NS_OK;
@@ -2942,7 +2944,8 @@ void HTMLInputElement::Blur(ErrorResult& aError) {
   nsGenericHTMLElement::Blur(aError);
 }
 
-void HTMLInputElement::Focus(ErrorResult& aError) {
+void HTMLInputElement::Focus(const FocusOptions& aOptions,
+                             ErrorResult& aError) {
   if (mType == NS_FORM_INPUT_NUMBER) {
     // Focus our anonymous text control, if we have one.
     nsNumberControlFrame* numberControlFrame = do_QueryFrame(GetPrimaryFrame());
@@ -2950,7 +2953,7 @@ void HTMLInputElement::Focus(ErrorResult& aError) {
       RefPtr<HTMLInputElement> textControl =
           numberControlFrame->GetAnonTextControl();
       if (textControl) {
-        textControl->Focus(aError);
+        textControl->Focus(aOptions, aError);
         return;
       }
     }
@@ -2967,30 +2970,7 @@ void HTMLInputElement::Focus(ErrorResult& aError) {
     }
   }
 
-  if (mType != NS_FORM_INPUT_FILE) {
-    nsGenericHTMLElement::Focus(aError);
-    return;
-  }
-
-  // For file inputs, focus the first button instead. In the case of there
-  // being two buttons (when the picker is a directory picker) the user can
-  // tab to the next one.
-  nsIFrame* frame = GetPrimaryFrame();
-  if (frame) {
-    for (nsIFrame* childFrame : frame->PrincipalChildList()) {
-      // See if the child is a button control.
-      nsCOMPtr<nsIFormControl> formCtrl =
-          do_QueryInterface(childFrame->GetContent());
-      if (formCtrl && formCtrl->ControlType() == NS_FORM_BUTTON_BUTTON) {
-        nsCOMPtr<Element> element = do_QueryInterface(formCtrl);
-        nsIFocusManager* fm = nsFocusManager::GetFocusManager();
-        if (fm && element) {
-          fm->SetFocus(element, 0);
-        }
-        break;
-      }
-    }
-  }
+  nsGenericHTMLElement::Focus(aOptions, aError);
 }
 
 #if !defined(ANDROID) && !defined(XP_MACOSX)
@@ -3225,19 +3205,6 @@ void HTMLInputElement::GetEventTargetParent(EventChainPreVisitor& aVisitor) {
     aVisitor.mItemFlags |= NS_ORIGINAL_CHECKED_VALUE;
   }
 
-  // If mNoContentDispatch is true we will not allow content to handle
-  // this event.  But to allow middle mouse button paste to work we must allow
-  // middle clicks to go to text fields anyway.
-  if (aVisitor.mEvent->mFlags.mNoContentDispatch) {
-    aVisitor.mItemFlags |= NS_NO_CONTENT_DISPATCH;
-  }
-  if (IsSingleLineTextControl(false) &&
-      aVisitor.mEvent->mMessage == eMouseClick &&
-      aVisitor.mEvent->AsMouseEvent()->button ==
-          WidgetMouseEvent::eMiddleButton) {
-    aVisitor.mEvent->mFlags.mNoContentDispatch = false;
-  }
-
   // We must cache type because mType may change during JS event (bug 2369)
   aVisitor.mItemFlags |= mType;
 
@@ -3445,12 +3412,16 @@ nsresult HTMLInputElement::PreHandleEvent(EventChainVisitor& aVisitor) {
 }
 
 void HTMLInputElement::StartRangeThumbDrag(WidgetGUIEvent* aEvent) {
+  nsRangeFrame* rangeFrame = do_QueryFrame(GetPrimaryFrame());
+  if (!rangeFrame) {
+    return;
+  }
+
   mIsDraggingRange = true;
   mRangeThumbDragStartValue = GetValueAsDecimal();
-  // Don't use CAPTURE_RETARGETTOELEMENT, as that breaks pseudo-class styling
-  // of the thumb.
-  nsIPresShell::SetCapturingContent(this, CAPTURE_IGNOREALLOWED);
-  nsRangeFrame* rangeFrame = do_QueryFrame(GetPrimaryFrame());
+  // Don't use CaptureFlags::RetargetToElement, as that breaks pseudo-class
+  // styling of the thumb.
+  PresShell::SetCapturingContent(this, CaptureFlags::IgnoreAllowedState);
 
   // Before we change the value, record the current value so that we'll
   // correctly send a 'change' event if appropriate. We need to do this here
@@ -3465,8 +3436,8 @@ void HTMLInputElement::StartRangeThumbDrag(WidgetGUIEvent* aEvent) {
 void HTMLInputElement::FinishRangeThumbDrag(WidgetGUIEvent* aEvent) {
   MOZ_ASSERT(mIsDraggingRange);
 
-  if (nsIPresShell::GetCapturingContent() == this) {
-    nsIPresShell::SetCapturingContent(nullptr, 0);  // cancel capture
+  if (PresShell::GetCapturingContent() == this) {
+    PresShell::ReleaseCapturingContent();
   }
   if (aEvent) {
     nsRangeFrame* rangeFrame = do_QueryFrame(GetPrimaryFrame());
@@ -3480,8 +3451,8 @@ void HTMLInputElement::CancelRangeThumbDrag(bool aIsForUserEvent) {
   MOZ_ASSERT(mIsDraggingRange);
 
   mIsDraggingRange = false;
-  if (nsIPresShell::GetCapturingContent() == this) {
-    nsIPresShell::SetCapturingContent(nullptr, 0);  // cancel capture
+  if (PresShell::GetCapturingContent() == this) {
+    PresShell::ReleaseCapturingContent();
   }
   if (aIsForUserEvent) {
     SetValueOfRangeForUserEvent(mRangeThumbDragStartValue);
@@ -3539,7 +3510,7 @@ void HTMLInputElement::StartNumberControlSpinnerSpin() {
 
   // Capture the mouse so that we can tell if the pointer moves from one
   // spin button to the other, or to some other element:
-  nsIPresShell::SetCapturingContent(this, CAPTURE_IGNOREALLOWED);
+  PresShell::SetCapturingContent(this, CaptureFlags::IgnoreAllowedState);
 
   nsNumberControlFrame* numberControlFrame = do_QueryFrame(GetPrimaryFrame());
   if (numberControlFrame) {
@@ -3549,8 +3520,8 @@ void HTMLInputElement::StartNumberControlSpinnerSpin() {
 
 void HTMLInputElement::StopNumberControlSpinnerSpin(SpinnerStopState aState) {
   if (mNumberControlSpinnerIsSpinning) {
-    if (nsIPresShell::GetCapturingContent() == this) {
-      nsIPresShell::SetCapturingContent(nullptr, 0);  // cancel capture
+    if (PresShell::GetCapturingContent() == this) {
+      PresShell::ReleaseCapturingContent();
     }
 
     nsRepeatService::GetInstance()->Stop(HandleNumberControlSpin, this);
@@ -3652,8 +3623,7 @@ bool HTMLInputElement::ShouldPreventDOMActivateDispatch(
 
   return target->GetParent() == this &&
          target->IsRootOfNativeAnonymousSubtree() &&
-         target->AttrValueIs(kNameSpaceID_None, nsGkAtoms::type,
-                             nsGkAtoms::button, eCaseMatters);
+         target->IsHTMLElement(nsGkAtoms::button);
 }
 
 nsresult HTMLInputElement::MaybeInitPickers(EventChainPostVisitor& aVisitor) {
@@ -3729,7 +3699,6 @@ nsresult HTMLInputElement::PostHandleEvent(EventChainPostVisitor& aVisitor) {
   bool outerActivateEvent = !!(aVisitor.mItemFlags & NS_OUTER_ACTIVATE_EVENT);
   bool originalCheckedValue =
       !!(aVisitor.mItemFlags & NS_ORIGINAL_CHECKED_VALUE);
-  bool noContentDispatch = !!(aVisitor.mItemFlags & NS_NO_CONTENT_DISPATCH);
   uint8_t oldType = NS_CONTROL_TYPE(aVisitor.mItemFlags);
 
   // Ideally we would make the default action for click and space just dispatch
@@ -3749,11 +3718,10 @@ nsresult HTMLInputElement::PostHandleEvent(EventChainPostVisitor& aVisitor) {
       InternalUIEvent actEvent(true, eLegacyDOMActivate, mouseEvent);
       actEvent.mDetail = 1;
 
-      nsCOMPtr<nsIPresShell> shell = aVisitor.mPresContext->GetPresShell();
-      if (shell) {
+      if (RefPtr<PresShell> presShell = aVisitor.mPresContext->GetPresShell()) {
         nsEventStatus status = nsEventStatus_eIgnore;
         mInInternalActivate = true;
-        rv = shell->HandleDOMEventWithTarget(this, &actEvent, &status);
+        rv = presShell->HandleDOMEventWithTarget(this, &actEvent, &status);
         mInInternalActivate = false;
 
         // If activate is cancelled, we must do the same as when click is
@@ -3779,9 +3747,6 @@ nsresult HTMLInputElement::PostHandleEvent(EventChainPostVisitor& aVisitor) {
         break;
     }
   }
-
-  // Reset the flag for other content besides this text field
-  aVisitor.mEvent->mFlags.mNoContentDispatch = noContentDispatch;
 
   // now check to see if the event was "cancelled"
   if (mCheckedIsToggled && outerActivateEvent) {
@@ -3901,7 +3866,7 @@ nsresult HTMLInputElement::PostHandleEvent(EventChainPostVisitor& aVisitor) {
               case NS_FORM_INPUT_RADIO: {
                 // Checkbox and Radio try to submit on Enter press
                 if (keyEvent->mKeyCode != NS_VK_SPACE) {
-                  MaybeSubmitForm(aVisitor.mPresContext);
+                  MaybeSubmitForm(MOZ_KnownLive(aVisitor.mPresContext));
 
                   break;  // If we are submitting, do not send click event
                 }
@@ -3911,6 +3876,7 @@ nsresult HTMLInputElement::PostHandleEvent(EventChainPostVisitor& aVisitor) {
               case NS_FORM_INPUT_BUTTON:
               case NS_FORM_INPUT_RESET:
               case NS_FORM_INPUT_SUBMIT:
+              case NS_FORM_INPUT_FILE:
               case NS_FORM_INPUT_IMAGE:  // Bug 34418
               case NS_FORM_INPUT_COLOR: {
                 DispatchSimulatedClick(this, aVisitor.mEvent->IsTrusted(),
@@ -3940,8 +3906,10 @@ nsresult HTMLInputElement::PostHandleEvent(EventChainPostVisitor& aVisitor) {
                       name, isMovingBack, this,
                       getter_AddRefs(selectedRadioButton));
                   if (selectedRadioButton) {
+                    FocusOptions options;
                     ErrorResult error;
-                    selectedRadioButton->Focus(error);
+
+                    selectedRadioButton->Focus(options, error);
                     rv = error.StealNSResult();
                     if (NS_SUCCEEDED(rv)) {
                       rv = DispatchSimulatedClick(selectedRadioButton,
@@ -3975,7 +3943,7 @@ nsresult HTMLInputElement::PostHandleEvent(EventChainPostVisitor& aVisitor) {
                mType == NS_FORM_INPUT_NUMBER ||
                IsExperimentalMobileType(mType) || IsDateTimeInputType(mType))) {
             FireChangeEventIfNeeded();
-            rv = MaybeSubmitForm(aVisitor.mPresContext);
+            rv = MaybeSubmitForm(MOZ_KnownLive(aVisitor.mPresContext));
             NS_ENSURE_SUCCESS(rv, rv);
           }
 
@@ -4051,8 +4019,8 @@ nsresult HTMLInputElement::PostHandleEvent(EventChainPostVisitor& aVisitor) {
           // cancel all of these events for buttons
           // XXXsmaug Why?
           WidgetMouseEvent* mouseEvent = aVisitor.mEvent->AsMouseEvent();
-          if (mouseEvent->button == WidgetMouseEvent::eMiddleButton ||
-              mouseEvent->button == WidgetMouseEvent::eRightButton) {
+          if (mouseEvent->mButton == MouseButton::eMiddle ||
+              mouseEvent->mButton == MouseButton::eRight) {
             if (mType == NS_FORM_INPUT_BUTTON || mType == NS_FORM_INPUT_RESET ||
                 mType == NS_FORM_INPUT_SUBMIT) {
               if (aVisitor.mDOMEvent) {
@@ -4063,7 +4031,7 @@ nsresult HTMLInputElement::PostHandleEvent(EventChainPostVisitor& aVisitor) {
             }
           }
           if (mType == NS_FORM_INPUT_NUMBER && aVisitor.mEvent->IsTrusted()) {
-            if (mouseEvent->button == WidgetMouseEvent::eLeftButton &&
+            if (mouseEvent->mButton == MouseButton::eLeft &&
                 !IgnoreInputEventWithModifier(mouseEvent, false)) {
               nsNumberControlFrame* numberControlFrame =
                   do_QueryFrame(GetPrimaryFrame());
@@ -4158,10 +4126,10 @@ nsresult HTMLInputElement::PostHandleEvent(EventChainPostVisitor& aVisitor) {
               event.mOriginator = this;
               nsEventStatus status = nsEventStatus_eIgnore;
 
-              nsCOMPtr<nsIPresShell> presShell =
+              RefPtr<PresShell> presShell =
                   aVisitor.mPresContext->GetPresShell();
 
-              // If |nsIPresShell::Destroy| has been called due to
+              // If |PresShell::Destroy| has been called due to
               // handling the event the pres context will return a null
               // pres shell.  See bug 125624.
               // TODO: removing this code and have the submit event sent by the
@@ -4222,7 +4190,7 @@ void HTMLInputElement::PostHandleEventForRangeThumb(
       if (mIsDraggingRange) {
         break;
       }
-      if (nsIPresShell::GetCapturingContent()) {
+      if (PresShell::GetCapturingContent()) {
         break;  // don't start drag if someone else is already capturing
       }
       WidgetInputEvent* inputEvent = aVisitor.mEvent->AsInputEvent();
@@ -4230,8 +4198,8 @@ void HTMLInputElement::PostHandleEventForRangeThumb(
         break;  // ignore
       }
       if (aVisitor.mEvent->mMessage == eMouseDown) {
-        if (aVisitor.mEvent->AsMouseEvent()->buttons ==
-            WidgetMouseEvent::eLeftButtonFlag) {
+        if (aVisitor.mEvent->AsMouseEvent()->mButtons ==
+            MouseButtonsFlag::eLeftFlag) {
           StartRangeThumbDrag(inputEvent);
         } else if (mIsDraggingRange) {
           CancelRangeThumbDrag();
@@ -4251,7 +4219,7 @@ void HTMLInputElement::PostHandleEventForRangeThumb(
       if (!mIsDraggingRange) {
         break;
       }
-      if (nsIPresShell::GetCapturingContent() != this) {
+      if (PresShell::GetCapturingContent() != this) {
         // Someone else grabbed capture.
         CancelRangeThumbDrag();
         break;
@@ -4402,6 +4370,45 @@ void HTMLInputElement::UnbindFromTree(bool aDeep, bool aNullParent) {
   UpdateState(false);
 }
 
+namespace {
+class TypeChangeSelectionRangeFlagDeterminer {
+ public:
+  // @param aOldType InputElementTypes
+  // @param aNewType InputElementTypes
+  TypeChangeSelectionRangeFlagDeterminer(uint8_t aOldType, uint8_t aNewType)
+      : mOldType(aOldType), mNewType(aNewType) {}
+
+  // @return nsTextEditorState::SetValueFlags
+  uint32_t GetFlag() const {
+    const bool previouslySelectable = DoesSetRangeTextApply(mOldType);
+    const bool nowSelectable = DoesSetRangeTextApply(mNewType);
+    const bool moveCursorToBeginAndSetDirectionForward =
+        !previouslySelectable && nowSelectable;
+    const uint32_t flag =
+        moveCursorToBeginAndSetDirectionForward
+            ? nsTextEditorState::
+                  eSetValue_MoveCursorToBeginSetSelectionDirectionForward
+            : 0;
+    return flag;
+  }
+
+ private:
+  /**
+   * @param aType InputElementTypes
+   * @return true, iff SetRangeText applies to aType as specified at
+   * https://html.spec.whatwg.org/multipage/input.html#concept-input-apply.
+   */
+  static bool DoesSetRangeTextApply(uint8_t aType) {
+    return aType == NS_FORM_INPUT_TEXT || aType == NS_FORM_INPUT_SEARCH ||
+           aType == NS_FORM_INPUT_URL || aType == NS_FORM_INPUT_TEL ||
+           aType == NS_FORM_INPUT_PASSWORD;
+  }
+
+  const uint8_t mOldType;
+  const uint8_t mNewType;
+};
+}  // anonymous namespace
+
 void HTMLInputElement::HandleTypeChange(uint8_t aNewType, bool aNotify) {
   uint8_t oldType = mType;
   MOZ_ASSERT(oldType != aNewType);
@@ -4485,10 +4492,16 @@ void HTMLInputElement::HandleTypeChange(uint8_t aNewType, bool aNotify) {
         } else {
           value = aOldValue;
         }
+
+        const TypeChangeSelectionRangeFlagDeterminer flagDeterminer(oldType,
+                                                                    mType);
+        const uint32_t selectionRangeFlag = flagDeterminer.GetFlag();
+
         // TODO: What should we do if SetValueInternal fails?  (The allocation
         // may potentially be big, but most likely we've failed to allocate
         // before the type change.)
-        SetValueInternal(value, nsTextEditorState::eSetValue_Internal);
+        SetValueInternal(
+            value, nsTextEditorState::eSetValue_Internal | selectionRangeFlag);
       }
       break;
     case VALUE_MODE_FILENAME:
@@ -5448,22 +5461,22 @@ nsIControllers* HTMLInputElement::GetControllers(ErrorResult& aRv) {
         return nullptr;
       }
 
-      nsCOMPtr<nsIController> controller =
+      RefPtr<nsBaseCommandController> commandController =
           nsBaseCommandController::CreateEditorController();
-      if (!controller) {
+      if (!commandController) {
         aRv.Throw(NS_ERROR_FAILURE);
         return nullptr;
       }
 
-      mControllers->AppendController(controller);
+      mControllers->AppendController(commandController);
 
-      controller = nsBaseCommandController::CreateEditingController();
-      if (!controller) {
+      commandController = nsBaseCommandController::CreateEditingController();
+      if (!commandController) {
         aRv.Throw(NS_ERROR_FAILURE);
         return nullptr;
       }
 
-      mControllers->AppendController(controller);
+      mControllers->AppendController(commandController);
     }
   }
 
@@ -5662,6 +5675,7 @@ nsresult HTMLInputElement::SetDefaultValueAsValue() {
   GetDefaultValue(resetVal);
 
   // SetValueInternal is going to sanitize the value.
+  // TODO(mbrodesser): sanitizing will only happen if `mDoneCreating` is true.
   return SetValueInternal(resetVal, nsTextEditorState::eSetValue_Internal);
 }
 
@@ -5673,6 +5687,14 @@ void HTMLInputElement::SetDirectionFromValue(bool aNotify) {
   }
 }
 
+namespace {
+
+bool IsDateOrTime(uint8_t aType) {
+  return (aType == NS_FORM_INPUT_DATE) || (aType == NS_FORM_INPUT_TIME);
+}
+
+}  // namespace
+
 NS_IMETHODIMP
 HTMLInputElement::Reset() {
   // We should be able to reset all dirty flags regardless of the type.
@@ -5681,8 +5703,15 @@ HTMLInputElement::Reset() {
   mLastValueChangeWasInteractive = false;
 
   switch (GetValueMode()) {
-    case VALUE_MODE_VALUE:
-      return SetDefaultValueAsValue();
+    case VALUE_MODE_VALUE: {
+      nsresult result = SetDefaultValueAsValue();
+      if (IsDateOrTime(mType)) {
+        // mFocusedValue has to be set here, so that `FireChangeEventIfNeeded`
+        // can fire a change event if necessary.
+        GetValue(mFocusedValue, CallerType::System);
+      }
+      return result;
+    }
     case VALUE_MODE_DEFAULT_ON:
       DoSetChecked(DefaultChecked(), true, false);
       return NS_OK;
@@ -5917,7 +5946,7 @@ void HTMLInputElement::DoneCreatingElement() {
     DoSetChecked(DefaultChecked(), false, false);
   }
 
-  // Sanitize the value.
+  // Sanitize the value and potentially set mFocusedValue.
   if (GetValueMode() == VALUE_MODE_VALUE) {
     nsAutoString aValue;
     GetValue(aValue, CallerType::System);
@@ -5925,6 +5954,12 @@ void HTMLInputElement::DoneCreatingElement() {
     // may potentially be big, but most likely we've failed to allocate
     // before the type change.)
     SetValueInternal(aValue, nsTextEditorState::eSetValue_Internal);
+
+    if (IsDateOrTime(mType)) {
+      // mFocusedValue has to be set here, so that `FireChangeEventIfNeeded` can
+      // fire a change event if necessary.
+      mFocusedValue = aValue;
+    }
   }
 
   mShouldInitChecked = false;
@@ -6258,18 +6293,13 @@ bool HTMLInputElement::IsHTMLFocusable(bool aWithMouse, bool* aIsFocusable,
   const bool defaultFocusable = true;
 #endif
 
-  if (mType == NS_FORM_INPUT_FILE || mType == NS_FORM_INPUT_NUMBER ||
-      mType == NS_FORM_INPUT_TIME || mType == NS_FORM_INPUT_DATE) {
+  if (mType == NS_FORM_INPUT_NUMBER || mType == NS_FORM_INPUT_TIME ||
+      mType == NS_FORM_INPUT_DATE) {
     if (aTabIndex) {
       // We only want our native anonymous child to be tabable to, not ourself.
       *aTabIndex = -1;
     }
-    if (mType == NS_FORM_INPUT_NUMBER || mType == NS_FORM_INPUT_TIME ||
-        mType == NS_FORM_INPUT_DATE) {
-      *aIsFocusable = true;
-    } else {
-      *aIsFocusable = defaultFocusable;
-    }
+    *aIsFocusable = true;
     return true;
   }
 

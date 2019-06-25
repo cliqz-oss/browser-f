@@ -19,6 +19,7 @@
 #include "mozilla/gfx/2D.h"
 #include "mozilla/gfx/PatternHelpers.h"
 #include "mozilla/Likely.h"
+#include "mozilla/PresShell.h"
 #include "nsAlgorithm.h"
 #include "nsBidiPresUtils.h"
 #include "nsBlockFrame.h"
@@ -215,11 +216,7 @@ static bool IsTextContentElement(nsIContent* aContent) {
     return parent && parent->IsSVGElement(nsGkAtoms::text);
   }
 
-  if (aContent->IsAnyOfSVGElements(nsGkAtoms::a, nsGkAtoms::tspan)) {
-    return true;
-  }
-
-  return false;
+  return aContent->IsAnyOfSVGElements(nsGkAtoms::a, nsGkAtoms::tspan);
 }
 
 /**
@@ -556,13 +553,10 @@ struct TextRenderedRun {
    * GetTransformFromRunUserSpaceToUserSpace should be used.
    *
    * @param aContext The context to use for unit conversions.
-   * @param aItem The nsCharClipDisplayItem that holds the amount of clipping
-   *   from the left and right edges of the text frame for this rendered run.
-   *   An appropriate nsCharClipDisplayItem can be obtained by constructing an
-   *   SVGCharClipDisplayItem for the TextRenderedRun.
    */
   gfxMatrix GetTransformFromUserSpaceForPainting(
-      nsPresContext* aContext, const nsCharClipDisplayItem& aItem) const;
+      nsPresContext* aContext, const nscoord aVisIStartEdge,
+      const nscoord aVisIEndEdge) const;
 
   /**
    * Returns the transform that converts from "run user space" to a <text>
@@ -744,7 +738,8 @@ struct TextRenderedRun {
 };
 
 gfxMatrix TextRenderedRun::GetTransformFromUserSpaceForPainting(
-    nsPresContext* aContext, const nsCharClipDisplayItem& aItem) const {
+    nsPresContext* aContext, const nscoord aVisIStartEdge,
+    const nscoord aVisIEndEdge) const {
   // We transform to device pixels positioned such that painting the text frame
   // at (0,0) with aItem will result in the text being in the right place.
 
@@ -769,13 +764,14 @@ gfxMatrix TextRenderedRun::GetTransformFromUserSpaceForPainting(
 
   // Translation to get the text frame in the right place.
   nsPoint t;
+
   if (IsVertical()) {
     t = nsPoint(-mBaseline, IsRightToLeft()
-                                ? -mFrame->GetRect().height + aItem.mVisIEndEdge
-                                : -aItem.mVisIStartEdge);
+                                ? -mFrame->GetRect().height + aVisIEndEdge
+                                : -aVisIStartEdge);
   } else {
-    t = nsPoint(IsRightToLeft() ? -mFrame->GetRect().width + aItem.mVisIEndEdge
-                                : -aItem.mVisIStartEdge,
+    t = nsPoint(IsRightToLeft() ? -mFrame->GetRect().width + aVisIEndEdge
+                                : -aVisIStartEdge,
                 -mBaseline);
   }
   m.PreTranslate(AppUnitsToGfxUnits(t, aContext));
@@ -2371,8 +2367,8 @@ bool CharIterator::IsOriginalCharTrimmed() const {
     nsIContent* content = mFrameForTrimCheck->GetContent();
     nsTextFrame::TrimmedOffsets trim = mFrameForTrimCheck->GetTrimmedOffsets(
         content->GetText(),
-        (mPostReflow ? nsTextFrame::TrimmedOffsetFlags::kDefaultTrimFlags
-                     : nsTextFrame::TrimmedOffsetFlags::kNotPostReflow));
+        (mPostReflow ? nsTextFrame::TrimmedOffsetFlags::Default
+                     : nsTextFrame::TrimmedOffsetFlags::NotPostReflow));
     TrimOffsets(offset, length, trim);
     mTrimmedOffset = offset;
     mTrimmedLength = length;
@@ -2511,23 +2507,6 @@ bool CharIterator::MatchesFilter() const {
   return (mFilter == eClusterAndLigatureGroupStart) ==
          IsClusterAndLigatureGroupStart();
 }
-
-// -----------------------------------------------------------------------------
-// nsCharClipDisplayItem
-
-/**
- * An nsCharClipDisplayItem that obtains its left and right clip edges from a
- * TextRenderedRun object.
- */
-class SVGCharClipDisplayItem final : public nsCharClipDisplayItem {
- public:
-  explicit SVGCharClipDisplayItem(const TextRenderedRun& aRun)
-      : nsCharClipDisplayItem(aRun.mFrame) {
-    aRun.GetClipEdges(mVisIStartEdge, mVisIEndEdge);
-  }
-
-  NS_DISPLAY_DECL_NAME("SVGCharClip", TYPE_SVG_CHAR_CLIP)
-};
 
 // -----------------------------------------------------------------------------
 // SVGTextDrawPathCallbacks
@@ -2828,10 +2807,10 @@ void SVGTextDrawPathCallbacks::StrokeGeometry() {
 // ----------------------------------------------------------------------------
 // Display list item
 
-class nsDisplaySVGText final : public nsDisplayItem {
+class nsDisplaySVGText final : public nsPaintedDisplayItem {
  public:
   nsDisplaySVGText(nsDisplayListBuilder* aBuilder, SVGTextFrame* aFrame)
-      : nsDisplayItem(aBuilder, aFrame) {
+      : nsPaintedDisplayItem(aBuilder, aFrame) {
     MOZ_COUNT_CTOR(nsDisplaySVGText);
     MOZ_ASSERT(aFrame, "Must have a frame!");
   }
@@ -2878,7 +2857,7 @@ void nsDisplaySVGText::HitTest(nsDisplayListBuilder* aBuilder,
 
 void nsDisplaySVGText::Paint(nsDisplayListBuilder* aBuilder, gfxContext* aCtx) {
   DrawTargetAutoDisableSubpixelAntialiasing disable(aCtx->GetDrawTarget(),
-                                                    mDisableSubpixelAA);
+                                                    IsSubpixelAADisabled());
 
   uint32_t appUnitsPerDevPixel = mFrame->PresContext()->AppUnitsPerDevPixel();
 
@@ -2909,7 +2888,7 @@ NS_QUERYFRAME_TAIL_INHERITING(nsSVGDisplayContainerFrame)
 // ---------------------------------------------------------------------
 // Implementation
 
-nsIFrame* NS_NewSVGTextFrame(nsIPresShell* aPresShell, ComputedStyle* aStyle) {
+nsIFrame* NS_NewSVGTextFrame(PresShell* aPresShell, ComputedStyle* aStyle) {
   return new (aPresShell) SVGTextFrame(aStyle, aPresShell->GetPresContext());
 }
 
@@ -2942,8 +2921,7 @@ void SVGTextFrame::BuildDisplayList(nsDisplayListBuilder* aBuilder,
     return;
   }
   DisplayOutline(aBuilder, aLists);
-  aLists.Content()->AppendToTop(
-      MakeDisplayItem<nsDisplaySVGText>(aBuilder, this));
+  aLists.Content()->AppendNewToTop<nsDisplaySVGText>(aBuilder, this);
 }
 
 nsresult SVGTextFrame::AttributeChanged(int32_t aNameSpaceID,
@@ -2995,7 +2973,7 @@ void SVGTextFrame::DidSetComputedStyle(ComputedStyle* aOldComputedStyle) {
     // child to be reflowed when it is next painted, and (b) not cause the
     // <text> to be repainted anyway since the user of the <mask> would not
     // know it needs to be repainted.
-    ScheduleReflowSVGNonDisplayText(nsIPresShell::eStyleChange);
+    ScheduleReflowSVGNonDisplayText(IntrinsicDirty::StyleChange);
   }
 }
 
@@ -3024,8 +3002,7 @@ void SVGTextFrame::ReflowSVGNonDisplayText() {
   UpdateGlyphPositioning();
 }
 
-void SVGTextFrame::ScheduleReflowSVGNonDisplayText(
-    nsIPresShell::IntrinsicDirty aReason) {
+void SVGTextFrame::ScheduleReflowSVGNonDisplayText(IntrinsicDirty aReason) {
   MOZ_ASSERT(!nsSVGUtils::OuterSVGIsCallingReflowSVG(this),
              "do not call ScheduleReflowSVGNonDisplayText when the outer SVG "
              "frame is under ReflowSVG");
@@ -3051,8 +3028,7 @@ void SVGTextFrame::ScheduleReflowSVGNonDisplayText(
         // reflowed soon anyway.  No need to call FrameNeedsReflow again, then.
         return;
       }
-      if (!f->IsFrameOfType(eSVG) ||
-          (f->GetStateBits() & NS_STATE_IS_OUTER_SVG)) {
+      if (!f->IsFrameOfType(eSVG) || f->IsSVGOuterSVGFrame()) {
         break;
       }
       f->AddStateBits(NS_FRAME_HAS_DIRTY_CHILDREN);
@@ -3260,13 +3236,9 @@ static bool ShouldPaintCaret(const TextRenderedRun& aThisRun, nsCaret* aCaret) {
     return false;
   }
 
-  if (uint32_t(caretOffset) >= aThisRun.mTextFrameContentOffset &&
-      uint32_t(caretOffset) <
-          aThisRun.mTextFrameContentOffset + aThisRun.mTextFrameContentLength) {
-    return true;
-  }
-
-  return false;
+  return uint32_t(caretOffset) >= aThisRun.mTextFrameContentOffset &&
+         uint32_t(caretOffset) < aThisRun.mTextFrameContentOffset +
+                                     aThisRun.mTextFrameContentLength;
 }
 
 void SVGTextFrame::PaintSVG(gfxContext& aContext, const gfxMatrix& aTransform,
@@ -3356,10 +3328,6 @@ void SVGTextFrame::PaintSVG(gfxContext& aContext, const gfxMatrix& aTransform,
   while (run.mFrame) {
     nsTextFrame* frame = run.mFrame;
 
-    // Determine how much of the left and right edges of the text frame we
-    // need to ignore.
-    SVGCharClipDisplayItem item(run);
-
     RefPtr<SVGContextPaintImpl> contextPaint = new SVGContextPaintImpl();
     DrawMode drawMode = contextPaint->Init(&aDrawTarget, initialMatrix, frame,
                                            outerContextPaint, aImgParams);
@@ -3370,11 +3338,14 @@ void SVGTextFrame::PaintSVG(gfxContext& aContext, const gfxMatrix& aTransform,
       nsSVGUtils::SetupStrokeGeometry(frame, &aContext, outerContextPaint);
     }
 
+    nscoord startEdge, endEdge;
+    run.GetClipEdges(startEdge, endEdge);
+
     // Set up the transform for painting the text frame for the substring
     // indicated by the run.
-    gfxMatrix runTransform =
-        run.GetTransformFromUserSpaceForPainting(presContext, item) *
-        currentMatrix;
+    gfxMatrix runTransform = run.GetTransformFromUserSpaceForPainting(
+                                 presContext, startEdge, endEdge) *
+                             currentMatrix;
     aContext.SetMatrixDouble(runTransform);
 
     if (drawMode != DrawMode(0)) {
@@ -3384,14 +3355,17 @@ void SVGTextFrame::PaintSVG(gfxContext& aContext, const gfxMatrix& aTransform,
       params.dirtyRect = LayoutDevicePixel::FromAppUnits(
           frame->GetVisualOverflowRect(), auPerDevPx);
       params.contextPaint = contextPaint;
+
+      const bool isSelected = frame->IsSelected();
+
       if (ShouldRenderAsPath(frame, paintSVGGlyphs)) {
         SVGTextDrawPathCallbacks callbacks(this, aContext, frame,
                                            matrixForPaintServers, aImgParams,
                                            paintSVGGlyphs);
         params.callbacks = &callbacks;
-        frame->PaintText(params, item);
+        frame->PaintText(params, startEdge, endEdge, nsPoint(), isSelected);
       } else {
-        frame->PaintText(params, item);
+        frame->PaintText(params, startEdge, endEdge, nsPoint(), isSelected);
       }
     }
 
@@ -3488,7 +3462,7 @@ void SVGTextFrame::ReflowSVG() {
     }
     if (nsSVGUtils::HasStroke(run.mFrame)) {
       runFlags |=
-          TextRenderedRun::eIncludeFill | TextRenderedRun::eIncludeTextShadow;
+          TextRenderedRun::eIncludeStroke | TextRenderedRun::eIncludeTextShadow;
     }
     // Our "visual" overflow rect needs to be valid for building display lists
     // for hit testing, which means that for certain values of 'pointer-events'
@@ -3692,9 +3666,19 @@ uint32_t SVGTextFrame::GetNumberOfChars(nsIContent* aContent) {
  * text child element.
  */
 float SVGTextFrame::GetComputedTextLength(nsIContent* aContent) {
+  nsIFrame* kid = PrincipalChildList().FirstChild();
+  if (NS_SUBTREE_DIRTY(kid)) {
+    // We're never reflowed if we're under a non-SVG element that is
+    // never reflowed (such as the HTML 'caption' element).
+    //
+    // If we ever decide that we need to return accurate values here,
+    // we could do similar work to GetSubStringLength.
+    return 0;
+  }
+
   UpdateGlyphPositioning();
 
-  float cssPxPerDevPx = PresContext()->AppUnitsToFloatCSSPixels(
+  float cssPxPerDevPx = nsPresContext::AppUnitsToFloatCSSPixels(
       PresContext()->AppUnitsPerDevPixel());
 
   nscoord length = 0;
@@ -3821,7 +3805,7 @@ nsresult SVGTextFrame::GetSubStringLength(nsIContent* aContent,
     uint32_t trimmedLength = untrimmedLength;
     nsTextFrame::TrimmedOffsets trimmedOffsets = frame->GetTrimmedOffsets(
         frame->GetContent()->GetText(),
-        nsTextFrame::TrimmedOffsetFlags::kNotPostReflow);
+        nsTextFrame::TrimmedOffsetFlags::NotPostReflow);
     TrimOffsets(trimmedOffset, trimmedLength, trimmedOffsets);
 
     textElementCharIndex += trimmedOffset - untrimmedOffset;
@@ -3873,7 +3857,8 @@ nsresult SVGTextFrame::GetSubStringLengthSlowFallback(nsIContent* aContent,
   // but we would still need to resort to full reflow for percentage
   // positioning attributes.  For now we just do a full reflow regardless since
   // the cases that would cause us to be called are relatively uncommon.
-  PresShell()->FlushPendingNotifications(FlushType::Layout);
+  RefPtr<mozilla::PresShell> presShell = PresShell();
+  presShell->FlushPendingNotifications(FlushType::Layout);
 
   UpdateGlyphPositioning();
 
@@ -4670,7 +4655,7 @@ gfxFloat SVGTextFrame::GetOffsetScale(nsIFrame* aTextPathFrame) {
 gfxFloat SVGTextFrame::GetStartOffset(nsIFrame* aTextPathFrame) {
   SVGTextPathElement* tp =
       static_cast<SVGTextPathElement*>(aTextPathFrame->GetContent());
-  nsSVGLength2* length =
+  SVGAnimatedLength* length =
       &tp->mLengthAttributes[SVGTextPathElement::STARTOFFSET];
 
   if (length->IsPercentage()) {
@@ -4847,7 +4832,7 @@ void SVGTextFrame::DoGlyphPositioning() {
   // to record that a new run starts with each glyph.
   SVGTextContentElement* element =
       static_cast<SVGTextContentElement*>(GetContent());
-  nsSVGLength2* textLengthAttr =
+  SVGAnimatedLength* textLengthAttr =
       element->GetAnimatedLength(nsGkAtoms::textLength);
   uint16_t lengthAdjust =
       element->EnumAttributes()[SVGTextContentElement::LENGTHADJUST]
@@ -5012,7 +4997,7 @@ bool SVGTextFrame::ShouldRenderAsPath(nsTextFrame* aFrame,
 
 void SVGTextFrame::ScheduleReflowSVG() {
   if (mState & NS_FRAME_IS_NONDISPLAY) {
-    ScheduleReflowSVGNonDisplayText(nsIPresShell::eStyleChange);
+    ScheduleReflowSVGNonDisplayText(IntrinsicDirty::StyleChange);
   } else {
     nsSVGUtils::ScheduleReflowSVG(this);
   }
@@ -5069,16 +5054,27 @@ void SVGTextFrame::MaybeReflowAnonymousBlockChild() {
       kid->AddStateBits(NS_FRAME_IS_DIRTY);
     }
 
+    // The RecordCorrespondence and DoReflow calls can result in new text frames
+    // being created (due to bidi resolution or reflow).  We set this bit to
+    // guard against unnecessarily calling back in to
+    // ScheduleReflowSVGNonDisplayText from nsFrame::DidSetComputedStyle on
+    // those new text frames.
+    AddStateBits(NS_STATE_SVG_TEXT_IN_REFLOW);
+
     TextNodeCorrespondenceRecorder::RecordCorrespondence(this);
 
     MOZ_ASSERT(nsSVGUtils::AnyOuterSVGIsCallingReflowSVG(this),
                "should be under ReflowSVG");
     nsPresContext::InterruptPreventer noInterrupts(PresContext());
     DoReflow();
+
+    RemoveStateBits(NS_STATE_SVG_TEXT_IN_REFLOW);
   }
 }
 
 void SVGTextFrame::DoReflow() {
+  MOZ_ASSERT(HasAnyStateBits(NS_STATE_SVG_TEXT_IN_REFLOW));
+
   // Since we are going to reflow the anonymous block frame, we will
   // need to update mPositions.
   // We also mark our text correspondence as dirty since we can end up needing
@@ -5116,8 +5112,6 @@ void SVGTextFrame::DoReflow() {
     kid->MarkIntrinsicISizesDirty();
   }
 
-  AddStateBits(NS_STATE_SVG_TEXT_IN_REFLOW);
-
   nscoord inlineSize = kid->GetPrefISize(renderingContext);
   WritingMode wm = kid->GetWritingMode();
   ReflowInput reflowInput(presContext, kid, renderingContext,
@@ -5134,8 +5128,6 @@ void SVGTextFrame::DoReflow() {
   kid->Reflow(presContext, desiredSize, reflowInput, status);
   kid->DidReflow(presContext, &reflowInput);
   kid->SetSize(wm, desiredSize.Size(wm));
-
-  RemoveStateBits(NS_STATE_SVG_TEXT_IN_REFLOW);
 }
 
 // Usable font size range in devpixels / user-units
@@ -5217,9 +5209,20 @@ bool SVGTextFrame::UpdateFontSizeScaleFactor() {
     mFontSizeScaleFactor = contextScale;
   } else if (maxSize / minSize > CLAMP_MAX_SIZE / CLAMP_MIN_SIZE) {
     // We can't scale the font sizes so that all of the text frames lie
-    // within our ideal font size range, so we treat the minimum as more
-    // important and just scale so that minSize = CLAMP_MIN_SIZE.
-    mFontSizeScaleFactor = CLAMP_MIN_SIZE / minSize;
+    // within our ideal font size range.
+    // Heuristically, if the maxTextRunSize is within the CLAMP_MAX_SIZE
+    // as a reasonable value, it's likely to be the user's intent to
+    // get a valid font for the maxTextRunSize one, we should honor it.
+    // The same for minTextRunSize.
+    if (maxTextRunSize <= CLAMP_MAX_SIZE) {
+      mFontSizeScaleFactor = CLAMP_MAX_SIZE / maxSize;
+    } else if (minTextRunSize >= CLAMP_MIN_SIZE) {
+      mFontSizeScaleFactor = CLAMP_MIN_SIZE / minSize;
+    } else {
+      // So maxTextRunSize is too big, minTextRunSize is too small,
+      // we can't really do anything for this case, just leave it as is.
+      mFontSizeScaleFactor = contextScale;
+    }
   } else if (minTextRunSize < CLAMP_MIN_SIZE) {
     mFontSizeScaleFactor = CLAMP_MIN_SIZE / minSize;
   } else {
@@ -5348,10 +5351,8 @@ gfxRect SVGTextFrame::TransformFrameRectFromTextChild(
     if (rectInFrameUserSpace.IntersectRect(
             rectInFrameUserSpace,
             run.GetFrameUserSpaceRect(presContext, flags).ToThebesRect())) {
-      // Transform it up to user space of the <text>, also taking into
-      // account the font size scale.
+      // Transform it up to user space of the <text>
       gfxMatrix m = run.GetTransformFromRunUserSpaceToUserSpace(presContext);
-      m.PreScale(mFontSizeScaleFactor, mFontSizeScaleFactor);
       gfxRect rectInUserSpace = m.TransformRect(rectInFrameUserSpace);
 
       // Union it into the result.

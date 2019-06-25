@@ -40,9 +40,7 @@ window.gActivityStreamStrings = {
   "section_disclaimer_topstories_buttontext": "Labi, sapratu",
   "prefs_home_header": "Firefox sākuma saturs",
   "prefs_home_description": "Izvēlieties, ko redzēt Firefox sākuma lapā.",
-  "prefs_content_discovery_header": "Firefox Home",
   "prefs_content_discovery_description": "Content Discovery in Firefox Home allows you to discover high-quality, relevant articles from across the web.",
-  "prefs_content_discovery_button": "Turn Off Content Discovery",
   "prefs_section_rows_option": "{num} rindu;{num} rinda;{num} rindas",
   "prefs_search_header": "Tīmekļa meklēšana",
   "prefs_topsites_description": "Biežāk apmeklētās lapas",
@@ -107,9 +105,5 @@ window.gActivityStreamStrings = {
   "firstrun_privacy_notice": "Privātuma politikai",
   "firstrun_continue_to_login": "Turpināt",
   "firstrun_skip_login": "Izlaist šo soli",
-  "context_menu_title": "Atvērt izvēlni",
-  "pocket_learn_more": "Uzzināt vairāk",
-  "manual_migration_explanation2": "Izmēģiniet Firefox ar grāmatzīmēm, vēsturi un parolēm no cita pārlūka.",
-  "manual_migration_cancel_button": "Nē, paldies",
-  "manual_migration_import_button": "Importē tagad"
+  "context_menu_title": "Atvērt izvēlni"
 };

@@ -2,24 +2,26 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-use api::{ColorF, GlyphInstance, LayoutPrimitiveInfo, RasterSpace, Shadow};
+use api::{ColorF, GlyphInstance, RasterSpace, Shadow};
 use api::units::{DevicePixelScale, LayoutToWorldTransform, LayoutVector2D};
-use display_list_flattener::{CreateShadow, IsVisible};
-use frame_builder::{FrameBuildingState, PictureContext};
-use glyph_rasterizer::{FontInstance, FontTransform, GlyphKey, FONT_SIZE_LIMIT};
-use gpu_cache::GpuCache;
-use intern;
-use prim_store::{PrimitiveOpacity, PrimitiveSceneData,  PrimitiveScratchBuffer};
-use prim_store::{PrimitiveStore, PrimKeyCommonData, PrimTemplateCommonData};
-use render_task::{RenderTaskTree};
-use renderer::{MAX_VERTEX_TEXTURE_WIDTH};
-use resource_cache::{ResourceCache};
-use util::{MatrixHelpers};
-use prim_store::{InternablePrimitive, PrimitiveInstanceKind};
+use crate::display_list_flattener::{CreateShadow, IsVisible};
+use crate::frame_builder::FrameBuildingState;
+use crate::glyph_rasterizer::{FontInstance, FontTransform, GlyphKey, FONT_SIZE_LIMIT};
+use crate::gpu_cache::GpuCache;
+use crate::intern;
+use crate::internal_types::LayoutPrimitiveInfo;
+use crate::picture::SurfaceInfo;
+use crate::prim_store::{PrimitiveOpacity, PrimitiveSceneData,  PrimitiveScratchBuffer};
+use crate::prim_store::{PrimitiveStore, PrimKeyCommonData, PrimTemplateCommonData};
+use crate::render_task::{RenderTaskGraph};
+use crate::renderer::{MAX_VERTEX_TEXTURE_WIDTH};
+use crate::resource_cache::{ResourceCache};
+use crate::util::{MatrixHelpers};
+use crate::prim_store::{InternablePrimitive, PrimitiveInstanceKind};
 use std::ops;
 use std::sync::Arc;
-use storage;
-use util::PrimaryArc;
+use crate::storage;
+use crate::util::PrimaryArc;
 
 /// A run of glyphs, with associated font information.
 #[cfg_attr(feature = "capture", derive(Serialize))]
@@ -192,7 +194,7 @@ impl CreateShadow for TextRun {
         TextRun {
             font,
             glyphs: self.glyphs.clone(),
-            shadow: true
+            shadow: true,
         }
     }
 }
@@ -281,25 +283,27 @@ impl TextRunPrimitive {
         cache_dirty
     }
 
-    pub fn prepare_for_render(
+    pub fn request_resources(
         &mut self,
         prim_offset: LayoutVector2D,
         specified_font: &FontInstance,
         glyphs: &[GlyphInstance],
-        device_pixel_scale: DevicePixelScale,
         transform: &LayoutToWorldTransform,
-        pic_context: &PictureContext,
+        surface: &SurfaceInfo,
+        raster_space: RasterSpace,
         resource_cache: &mut ResourceCache,
         gpu_cache: &mut GpuCache,
-        render_tasks: &mut RenderTaskTree,
+        render_tasks: &mut RenderTaskGraph,
         scratch: &mut PrimitiveScratchBuffer,
     ) {
+        let device_pixel_scale = surface.device_pixel_scale;
+
         let cache_dirty = self.update_font_instance(
             specified_font,
             device_pixel_scale,
             transform,
-            pic_context.allow_subpixel_aa,
-            pic_context.raster_space,
+            surface.allow_subpixel_aa,
+            raster_space,
         );
 
         if self.glyph_keys_range.is_empty() || cache_dirty {

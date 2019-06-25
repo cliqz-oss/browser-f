@@ -15,7 +15,7 @@ const kFontNameListFmtSerif     = "font.name-list.serif.%LANG%";
 const kFontNameListFmtSansSerif = "font.name-list.sans-serif.%LANG%";
 const kFontNameListFmtMonospace = "font.name-list.monospace.%LANG%";
 const kFontSizeFmtVariable      = "font.size.variable.%LANG%";
-const kFontSizeFmtFixed         = "font.size.fixed.%LANG%";
+const kFontSizeFmtFixed         = "font.size.monospace.%LANG%";
 const kFontMinSizeFmt           = "font.minimum-size.%LANG%";
 
 document.documentElement.addEventListener("dialoghelp", window.top.openPrefsHelp);
@@ -90,31 +90,5 @@ var gFontsDialog = {
   writeUseDocumentFonts() {
     var useDocumentFonts = document.getElementById("useDocumentFonts");
     return useDocumentFonts.checked ? 1 : 0;
-  },
-
-  async confirmMinSizeChange() {
-    let menulist = document.getElementById("minSize");
-    let preference = menulist.getAttribute("preference");
-    let defaultValue = Preferences.get(preference).valueFromPreferences;
-    let oldValue = Preferences.get(preference).value;
-    let newValue = menulist.value;
-
-    if (newValue <= 24 || newValue == defaultValue) {
-      return;
-    }
-
-    let [title, warningMessage, confirmLabel] = await document.l10n.formatValues([
-      {id: "fonts-very-large-warning-title"},
-      {id: "fonts-very-large-warning-message"},
-      {id: "fonts-very-large-warning-accept"},
-    ]);
-    let {Services} = ChromeUtils.import("resource://gre/modules/Services.jsm");
-    let flags = Services.prompt.BUTTON_POS_1 * Services.prompt.BUTTON_TITLE_CANCEL |
-                Services.prompt.BUTTON_POS_0 * Services.prompt.BUTTON_TITLE_IS_STRING |
-                Services.prompt.BUTTON_POS_1_DEFAULT;
-    let buttonChosen = Services.prompt.confirmEx(window, title, warningMessage, flags, confirmLabel, null, "", "", {});
-    if (buttonChosen != 0) {
-      menulist.value = oldValue;
-    }
   },
 };

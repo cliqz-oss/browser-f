@@ -47,6 +47,7 @@
 #include "mozilla/Attributes.h"
 #include "nsError.h"
 #include "mozilla/Encoding.h"
+#include "ReferrerInfo.h"
 
 namespace mozilla {
 namespace dom {
@@ -94,7 +95,7 @@ class EventSourceImpl final : public nsIObserver,
   nsresult GetBaseURI(nsIURI** aBaseURI);
 
   void SetupHttpChannel();
-  nsresult SetupReferrerPolicy();
+  nsresult SetupReferrerInfo();
   nsresult InitChannelAndRequestEventSource();
   nsresult ResetConnection();
   void ResetDecoder();
@@ -797,7 +798,7 @@ EventSourceImpl::AsyncOnChannelRedirect(
       (NS_SUCCEEDED(newURI->SchemeIs("https", &isValidScheme)) &&
        isValidScheme);
 
-  rv = mEventSource->CheckInnerWindowCorrectness();
+  rv = mEventSource->CheckCurrentGlobalCorrectness();
   if (NS_FAILED(rv) || !isValidScheme) {
     DispatchFailConnection();
     return NS_ERROR_DOM_SECURITY_ERR;
@@ -809,8 +810,8 @@ EventSourceImpl::AsyncOnChannelRedirect(
   NS_ENSURE_STATE(mHttpChannel);
 
   SetupHttpChannel();
-  // The HTTP impl already copies over the referrer and referrer policy on
-  // redirects, so we don't need to SetupReferrerPolicy().
+  // The HTTP impl already copies over the referrer info on
+  // redirects, so we don't need to SetupReferrerInfo().
 
   if ((aFlags & nsIChannelEventSink::REDIRECT_PERMANENT) != 0) {
     rv = NS_GetFinalChannelURI(mHttpChannel, getter_AddRefs(mSrc));
@@ -842,7 +843,7 @@ EventSourceImpl::GetInterface(const nsIID& aIID, void** aResult) {
 
   if (aIID.Equals(NS_GET_IID(nsIAuthPrompt)) ||
       aIID.Equals(NS_GET_IID(nsIAuthPrompt2))) {
-    nsresult rv = mEventSource->CheckInnerWindowCorrectness();
+    nsresult rv = mEventSource->CheckCurrentGlobalCorrectness();
     NS_ENSURE_SUCCESS(rv, NS_ERROR_UNEXPECTED);
 
     nsCOMPtr<nsIPromptFactory> wwatch =
@@ -929,13 +930,14 @@ void EventSourceImpl::SetupHttpChannel() {
   Unused << rv;
 }
 
-nsresult EventSourceImpl::SetupReferrerPolicy() {
+nsresult EventSourceImpl::SetupReferrerInfo() {
   AssertIsOnMainThread();
   MOZ_ASSERT(!IsShutDown());
   nsCOMPtr<Document> doc = mEventSource->GetDocumentIfCurrent();
   if (doc) {
-    nsresult rv = mHttpChannel->SetReferrerWithPolicy(doc->GetDocumentURI(),
-                                                      doc->GetReferrerPolicy());
+    nsCOMPtr<nsIReferrerInfo> referrerInfo =
+        new ReferrerInfo(doc->GetDocumentURI(), doc->GetReferrerPolicy());
+    nsresult rv = mHttpChannel->SetReferrerInfoWithoutClone(referrerInfo);
     NS_ENSURE_SUCCESS(rv, rv);
   }
 
@@ -952,7 +954,7 @@ nsresult EventSourceImpl::InitChannelAndRequestEventSource() {
       (NS_SUCCEEDED(mSrc->SchemeIs("http", &isValidScheme)) && isValidScheme) ||
       (NS_SUCCEEDED(mSrc->SchemeIs("https", &isValidScheme)) && isValidScheme);
 
-  nsresult rv = mEventSource->CheckInnerWindowCorrectness();
+  nsresult rv = mEventSource->CheckCurrentGlobalCorrectness();
   if (NS_FAILED(rv) || !isValidScheme) {
     DispatchFailConnection();
     return NS_ERROR_DOM_SECURITY_ERR;
@@ -1001,7 +1003,7 @@ nsresult EventSourceImpl::InitChannelAndRequestEventSource() {
   NS_ENSURE_TRUE(mHttpChannel, NS_ERROR_NO_INTERFACE);
 
   SetupHttpChannel();
-  rv = SetupReferrerPolicy();
+  rv = SetupReferrerInfo();
   NS_ENSURE_SUCCESS(rv, rv);
 
 #ifdef DEBUG
@@ -1039,7 +1041,7 @@ void EventSourceImpl::AnnounceConnection() {
 
   SetReadyState(OPEN);
 
-  nsresult rv = mEventSource->CheckInnerWindowCorrectness();
+  nsresult rv = mEventSource->CheckCurrentGlobalCorrectness();
   if (NS_FAILED(rv)) {
     return;
   }
@@ -1120,7 +1122,7 @@ void EventSourceImpl::ReestablishConnection() {
     return;
   }
 
-  rv = mEventSource->CheckInnerWindowCorrectness();
+  rv = mEventSource->CheckCurrentGlobalCorrectness();
   if (NS_FAILED(rv)) {
     return;
   }
@@ -1252,7 +1254,7 @@ void EventSourceImpl::FailConnection() {
   // When a user agent is to fail the connection, the user agent must set the
   // readyState attribute to CLOSED and queue a task to fire a simple event
   // named error at the EventSource object.
-  nsresult rv = mEventSource->CheckInnerWindowCorrectness();
+  nsresult rv = mEventSource->CheckCurrentGlobalCorrectness();
   if (NS_SUCCEEDED(rv)) {
     rv = mEventSource->CreateAndDispatchSimpleEvent(NS_LITERAL_STRING("error"));
     if (NS_FAILED(rv)) {
@@ -1370,22 +1372,16 @@ void EventSourceImpl::DispatchAllMessageEvents() {
     return;
   }
 
-  nsresult rv = mEventSource->CheckInnerWindowCorrectness();
+  nsresult rv = mEventSource->CheckCurrentGlobalCorrectness();
   if (NS_FAILED(rv)) {
     return;
   }
 
   AutoJSAPI jsapi;
-  if (mIsMainThread) {
-    if (NS_WARN_IF(!jsapi.Init(mEventSource->GetOwner()))) {
-      return;
-    }
-  } else {
-    MOZ_ASSERT(mWorkerRef);
-    if (NS_WARN_IF(!jsapi.Init(mWorkerRef->Private()->GlobalScope()))) {
-      return;
-    }
+  if (NS_WARN_IF(!jsapi.Init(mEventSource->GetOwnerGlobal()))) {
+    return;
   }
+
   JSContext* cx = jsapi.cx();
 
   while (mMessagesToDispatch.GetSize() > 0) {
@@ -1783,13 +1779,14 @@ EventSourceImpl::CheckListenerChain() {
 // EventSource
 ////////////////////////////////////////////////////////////////////////////////
 
-EventSource::EventSource(nsPIDOMWindowInner* aOwnerWindow,
+EventSource::EventSource(nsIGlobalObject* aGlobal,
                          nsICookieSettings* aCookieSettings,
                          bool aWithCredentials)
-    : DOMEventTargetHelper(aOwnerWindow),
+    : DOMEventTargetHelper(aGlobal),
       mWithCredentials(aWithCredentials),
       mIsMainThread(true),
       mKeepingAlive(false) {
+  MOZ_ASSERT(aGlobal);
   MOZ_ASSERT(aCookieSettings);
   mImpl = new EventSourceImpl(this, aCookieSettings);
 }
@@ -1810,12 +1807,14 @@ nsresult EventSource::CreateAndDispatchSimpleEvent(const nsAString& aName) {
 already_AddRefed<EventSource> EventSource::Constructor(
     const GlobalObject& aGlobal, const nsAString& aURL,
     const EventSourceInit& aEventSourceInitDict, ErrorResult& aRv) {
-  nsCOMPtr<nsPIDOMWindowInner> ownerWindow =
-      do_QueryInterface(aGlobal.GetAsSupports());
-
-  MOZ_ASSERT(!NS_IsMainThread() || ownerWindow);
+  nsCOMPtr<nsIGlobalObject> global = do_QueryInterface(aGlobal.GetAsSupports());
+  if (NS_WARN_IF(!global)) {
+    aRv.Throw(NS_ERROR_FAILURE);
+    return nullptr;
+  }
 
   nsCOMPtr<nsICookieSettings> cookieSettings;
+  nsCOMPtr<nsPIDOMWindowInner> ownerWindow = do_QueryInterface(global);
   if (ownerWindow) {
     Document* doc = ownerWindow->GetExtantDoc();
     if (NS_WARN_IF(!doc)) {
@@ -1832,7 +1831,7 @@ already_AddRefed<EventSource> EventSource::Constructor(
   }
 
   RefPtr<EventSource> eventSource = new EventSource(
-      ownerWindow, cookieSettings, aEventSourceInitDict.mWithCredentials);
+      global, cookieSettings, aEventSourceInitDict.mWithCredentials);
   RefPtr<EventSourceImpl> eventSourceImp = eventSource->mImpl;
 
   if (NS_IsMainThread()) {

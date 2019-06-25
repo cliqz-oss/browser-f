@@ -121,14 +121,13 @@ WebGLContext::WebGLContext()
       mMaxAcceptableFBStatusInvals(
           gfxPrefs::WebGLMaxAcceptableFBStatusInvals()),
       mDataAllocGLCallCount(0),
-      mBypassShaderValidation(false),
       mEmptyTFO(0),
       mContextLossHandler(this),
       mNeedsFakeNoAlpha(false),
       mNeedsFakeNoDepth(false),
       mNeedsFakeNoStencil(false),
       mAllowFBInvalidation(gfxPrefs::WebGLFBInvalidation()),
-      mMsaaSamples(gfxPrefs::WebGLMsaaSamples()) {
+      mMsaaSamples((uint8_t)gfxPrefs::WebGLMsaaSamples()) {
   mGeneration = 0;
   mInvalidated = false;
   mCapturedFrameInvalidated = false;
@@ -1069,7 +1068,7 @@ UniquePtr<uint8_t[]> WebGLContext::GetImageBuffer(int32_t* out_format) {
 
 NS_IMETHODIMP
 WebGLContext::GetInputStream(const char* mimeType,
-                             const char16_t* encoderOptions,
+                             const nsAString& encoderOptions,
                              nsIInputStream** out_stream) {
   NS_ASSERTION(gl, "GetInputStream on invalid context?");
   if (!gl) return NS_ERROR_FAILURE;

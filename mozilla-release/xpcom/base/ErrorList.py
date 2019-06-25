@@ -642,6 +642,11 @@ with modules["DOM"]:
     # decoding process.
     errors["NS_ERROR_DOM_JS_DECODING_ERROR"] = FAILURE(1026)
 
+    # Image decode errors.
+    errors["NS_ERROR_DOM_IMAGE_INACTIVE_DOCUMENT"] = FAILURE(1027)
+    errors["NS_ERROR_DOM_IMAGE_INVALID_REQUEST"] = FAILURE(1028)
+    errors["NS_ERROR_DOM_IMAGE_BROKEN"] = FAILURE(1029)
+
     # May be used to indicate when e.g. setting a property value didn't
     # actually change the value, like for obj.foo = "bar"; obj.foo = "bar";
     # the second assignment throws NS_SUCCESS_DOM_NO_OPERATION.
@@ -674,11 +679,17 @@ with modules["IMGLIB"]:
 with modules["EDITOR"]:
     errors["NS_ERROR_EDITOR_DESTROYED"] = FAILURE(1)
 
-    # A error code that indicates that the DOM tree has been modified by
+    # An error code that indicates that the DOM tree has been modified by
     # web app or add-on while the editor modifying the tree.  However,
     # this shouldn't be exposed to the web because the result should've
     # been expected by the web app.
     errors["NS_ERROR_EDITOR_UNEXPECTED_DOM_TREE"] = FAILURE(2)
+
+    # An error code that indicates that the edit action canceled by
+    # clipboard event listener or beforeinput event listener.  Note that
+    # don't make this as a success code since it's not check with NS_FAILED()
+    # and may keep handling the operation unexpectedly.
+    errors["NS_ERROR_EDITOR_ACTION_CANCELED"] = FAILURE(3)
 
     errors["NS_SUCCESS_EDITOR_ELEMENT_NOT_FOUND"] = SUCCESS(1)
     errors["NS_SUCCESS_EDITOR_FOUND_TARGET"] = SUCCESS(2)
@@ -841,6 +852,8 @@ with modules["CONTENT"]:
     errors["NS_ERROR_XBL_BLOCKED"] = FAILURE(15)
     # Error code for when the content process crashed
     errors["NS_ERROR_CONTENT_CRASHED"] = FAILURE(16)
+    # Error code for when a subframe process crashed
+    errors["NS_ERROR_FRAME_CRASHED"] = FAILURE(14)
     # Error code for when the content process had a different buildID than the
     # parent
     errors["NS_ERROR_BUILDID_MISMATCH"] = FAILURE(17)
@@ -1123,7 +1136,6 @@ with modules["GENERAL"]:
     # the application should be restarted.  This condition corresponds to the
     # case in which nsIAppStartup::Quit was called with the eRestart flag.
     errors["NS_SUCCESS_RESTART_APP"] = SUCCESS(1)
-    errors["NS_SUCCESS_RESTART_APP_NOT_SAME_PROFILE"] = SUCCESS(3)
 
     # a11y
     # raised when current pivot's position is needed but it's not in the tree

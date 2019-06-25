@@ -31,13 +31,13 @@
   <linkset>
     <html:link rel="localization" href="browser/pageInfo.ftl"/>
   </linkset>
-  <script type="application/javascript" src="chrome://global/content/globalOverlay.js"/>
-  <script type="application/javascript" src="chrome://global/content/contentAreaUtils.js"/>
-  <script type="application/javascript" src="chrome://global/content/treeUtils.js"/>
-  <script type="application/javascript" src="chrome://browser/content/pageinfo/pageInfo.js"/>
-  <script type="application/javascript" src="chrome://browser/content/pageinfo/permissions.js"/>
-  <script type="application/javascript" src="chrome://browser/content/pageinfo/security.js"/>
-  <script type="application/javascript" src="chrome://browser/content/utilityOverlay.js"/>
+  <script src="chrome://global/content/globalOverlay.js"/>
+  <script src="chrome://global/content/contentAreaUtils.js"/>
+  <script src="chrome://global/content/treeUtils.js"/>
+  <script src="chrome://browser/content/pageinfo/pageInfo.js"/>
+  <script src="chrome://browser/content/pageinfo/permissions.js"/>
+  <script src="chrome://browser/content/pageinfo/security.js"/>
+  <script src="chrome://browser/content/utilityOverlay.js"/>
 
   <stringbundleset id="pageinfobundleset">
     <stringbundle id="pkiBundle" src="chrome://pippki/locale/pippki.properties"/>
@@ -164,7 +164,7 @@
     <!-- Media information -->
     <vbox id="mediaPanel">
       <tree id="imagetree" onselect="onImageSelect();" contextmenu="picontext"
-            ondragstart="onBeginLinkDrag(event,'image-address','image-alt')">
+            ondragstart="onBeginLinkDrag(event, 'image-address', 'image-alt')">
         <treecols>
           <treecol primary="true" persist="width" flex="10"
                         width="10" id="image-address" data-l10n-id="media-address"
@@ -232,7 +232,7 @@
         <hbox id="imageSaveBox" align="end">
           <vbox id="blockImageBox">
             <checkbox id="blockImage" hidden="true" oncommand="onBlockImage()"
-                      data-l10n-id="media-block-image"/>
+                      data-l10n-id="media-block-image" data-l10n-args='{"website":""}'/>
             <label control="thepreviewimage" data-l10n-id="media-preview" class="header"/>
           </vbox>
           <spacer id="imageSaveBoxSpacer" flex="1"/>

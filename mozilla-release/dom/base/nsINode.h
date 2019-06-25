@@ -45,7 +45,6 @@ class nsIHTMLCollection;
 class nsIMutationObserver;
 class nsINode;
 class nsINodeList;
-class nsIPresShell;
 class nsIPrincipal;
 class nsIURI;
 class nsNodeSupportsWeakRefTearoff;
@@ -56,6 +55,7 @@ struct RawServoSelectorList;
 
 namespace mozilla {
 class EventListenerManager;
+class PresShell;
 class TextEditor;
 namespace dom {
 /**
@@ -82,11 +82,9 @@ class DOMQuad;
 class DOMRectReadOnly;
 class Element;
 class EventHandlerNonNull;
-class L10nCallback;
 template <typename T>
 class Optional;
 class OwningNodeOrString;
-class Promise;
 template <typename>
 class Sequence;
 class SVGUseElement;
@@ -948,6 +946,7 @@ class nsINode : public mozilla::dom::EventTarget {
                      mozilla::dom::CallerType aCallerType,
                      mozilla::ErrorResult& aRv) override;
 
+  MOZ_CAN_RUN_SCRIPT
   nsresult PostHandleEvent(mozilla::EventChainPostVisitor& aVisitor) override;
 
   /**
@@ -1181,7 +1180,7 @@ class nsINode : public mozilla::dom::EventTarget {
    * node. Be aware that if this node and the computed selection limiter are
    * not in same subtree, this returns the root content of the closeset subtree.
    */
-  nsIContent* GetSelectionRootContent(nsIPresShell* aPresShell);
+  nsIContent* GetSelectionRootContent(mozilla::PresShell* aPresShell);
 
   nsINodeList* ChildNodes();
 
@@ -1637,10 +1636,6 @@ class nsINode : public mozilla::dom::EventTarget {
   void UnbindObject(nsISupports* aObject);
 
   void GenerateXPath(nsAString& aResult);
-
-  already_AddRefed<mozilla::dom::Promise> Localize(
-      JSContext* aCx, mozilla::dom::L10nCallback& aCallback,
-      mozilla::ErrorResult& aRv);
 
   already_AddRefed<mozilla::dom::AccessibleNode> GetAccessibleNode();
 

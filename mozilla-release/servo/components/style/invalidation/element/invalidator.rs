@@ -158,7 +158,10 @@ impl<'a> Invalidation<'a> {
         // We should be able to do better here!
         match self.selector.combinator_at_parse_order(self.offset - 1) {
             Combinator::Descendant | Combinator::LaterSibling | Combinator::PseudoElement => true,
-            Combinator::SlotAssignment | Combinator::NextSibling | Combinator::Child => false,
+            Combinator::Part |
+            Combinator::SlotAssignment |
+            Combinator::NextSibling |
+            Combinator::Child => false,
         }
     }
 
@@ -170,6 +173,9 @@ impl<'a> Invalidation<'a> {
         match self.selector.combinator_at_parse_order(self.offset - 1) {
             Combinator::Child | Combinator::Descendant | Combinator::PseudoElement => {
                 InvalidationKind::Descendant(DescendantInvalidationKind::Dom)
+            },
+            Combinator::Part => {
+                unimplemented!("Need to add invalidation for shadow parts");
             },
             Combinator::SlotAssignment => {
                 InvalidationKind::Descendant(DescendantInvalidationKind::Slotted)
@@ -542,6 +548,10 @@ where
             any_descendant |= self.invalidate_dom_descendants_of(anon_content, invalidations);
         }
 
+        if let Some(marker) = self.element.marker_pseudo_element() {
+            any_descendant |= self.invalidate_pseudo_element_or_nac(marker, invalidations);
+        }
+
         if let Some(before) = self.element.before_pseudo_element() {
             any_descendant |= self.invalidate_pseudo_element_or_nac(before, invalidations);
         }
@@ -746,8 +756,19 @@ where
                     //
                     // Note that we'll also restyle the pseudo-element because
                     // it would match this invalidation.
-                    if self.processor.invalidates_on_eager_pseudo_element() && pseudo.is_eager() {
-                        invalidated_self = true;
+                    if self.processor.invalidates_on_eager_pseudo_element() {
+                        if pseudo.is_eager() {
+                            invalidated_self = true;
+                        }
+                        // If we start or stop matching some marker rules, and
+                        // don't have a marker, then we need to restyle the
+                        // element to potentially create one.
+                        //
+                        // Same caveats as for other eager pseudos apply, this
+                        // could be more fine-grained.
+                        if pseudo.is_marker() && self.element.marker_pseudo_element().is_none() {
+                            invalidated_self = true;
+                        }
                     }
                 }
 

@@ -40,7 +40,7 @@
 #include "mozilla/dom/File.h"
 #include "mozilla/dom/FileBlobImpl.h"
 #include "mozilla/dom/StructuredCloneTags.h"
-#include "mozilla/dom/TabParent.h"
+#include "mozilla/dom/BrowserParent.h"
 #include "mozilla/dom/filehandle/ActorsParent.h"
 #include "mozilla/dom/indexedDB/PBackgroundIDBCursorParent.h"
 #include "mozilla/dom/indexedDB/PBackgroundIDBDatabaseParent.h"
@@ -52,9 +52,9 @@
 #include "mozilla/dom/indexedDB/PBackgroundIDBTransactionParent.h"
 #include "mozilla/dom/indexedDB/PBackgroundIDBVersionChangeTransactionParent.h"
 #include "mozilla/dom/indexedDB/PBackgroundIndexedDBUtilsParent.h"
-#include "mozilla/dom/indexedDB/PIndexedDBPermissionRequestParent.h"
+#include "mozilla/dom/IPCBlobInputStreamParent.h"
 #include "mozilla/dom/IPCBlobUtils.h"
-#include "mozilla/dom/ipc/IPCBlobInputStreamParent.h"
+#include "mozilla/dom/quota/CheckedUnsafePtr.h"
 #include "mozilla/dom/quota/Client.h"
 #include "mozilla/dom/quota/FileStreams.h"
 #include "mozilla/dom/quota/OriginScope.h"
@@ -75,6 +75,7 @@
 #include "nsCOMPtr.h"
 #include "nsDataHashtable.h"
 #include "nsEscape.h"
+#include "nsExceptionHandler.h"
 #include "nsHashKeys.h"
 #include "nsNetUtil.h"
 #include "nsIAsyncInputStream.h"
@@ -273,6 +274,20 @@ const char kPrefFileHandleEnabled[] = "dom.fileHandle.enabled";
 #define IDB_DELETION_MARKER_FILE_PREFIX "idb-deleting-"
 
 const uint32_t kDeleteTimeoutMs = 1000;
+
+/**
+ * Automatically crash the browser if IndexedDB shutdown takes this long.  We've
+ * chosen a value that is longer than the value for QuotaManager shutdown timer
+ * which is currently set to 30 seconds.  We've also chosen a value that is long
+ * long enough that it is unlikely for the problem to be falsely triggered by
+ * slow system I/O.  We've also chosen a value long enough so that automated
+ * tests should time out and fail if IndexedDB shutdown hangs.  Also, this value
+ * is long enough so that testers can notice the IndexedDB shutdown hang; we
+ * want to know about the hangs, not hide them.  On the other hand this value is
+ * less than 60 seconds which is used by nsTerminator to crash a hung main
+ * process.
+ */
+#define SHUTDOWN_TIMEOUT_MS 50000
 
 #ifdef DEBUG
 
@@ -5654,7 +5669,9 @@ class WaitForTransactionsHelper final : public Runnable {
   NS_DECL_NSIRUNNABLE
 };
 
-class Database final : public PBackgroundIDBDatabaseParent {
+class Database final
+    : public PBackgroundIDBDatabaseParent,
+      public SupportsCheckedUnsafePtr<CheckIf<DiagnosticAssertEnabled>> {
   friend class VersionChangeTransaction;
 
   class StartTransactionOp;
@@ -6451,9 +6468,11 @@ class MutableFile : public BackgroundMutableFileParentBase {
   mozilla::ipc::IPCResult RecvGetFileId(int64_t* aFileId) override;
 };
 
-class FactoryOp : public DatabaseOperationBase,
-                  public OpenDirectoryListener,
-                  public PBackgroundIDBFactoryRequestParent {
+class FactoryOp
+    : public DatabaseOperationBase,
+      public OpenDirectoryListener,
+      public PBackgroundIDBFactoryRequestParent,
+      public SupportsCheckedUnsafePtr<CheckIf<DiagnosticAssertEnabled>> {
  public:
   struct MaybeBlockedDatabaseInfo;
 
@@ -6577,6 +6596,12 @@ class FactoryOp : public DatabaseOperationBase,
 
     return mDatabaseFilePath;
   }
+
+  void StringifyPersistenceType(nsCString& aResult) const;
+
+  void GetSanitizedOrigin(nsCString& aResult) const;
+
+  void StringifyState(nsCString& aResult) const;
 
  protected:
   FactoryOp(Factory* aFactory, already_AddRefed<ContentParent> aContentParent,
@@ -7677,24 +7702,6 @@ class GetFileReferencesHelper final : public Runnable {
   NS_DECL_NSIRUNNABLE
 };
 
-class PermissionRequestHelper final : public PermissionRequestBase,
-                                      public PIndexedDBPermissionRequestParent {
-  bool mActorDestroyed;
-
- public:
-  PermissionRequestHelper(Element* aOwnerElement, nsIPrincipal* aPrincipal)
-      : PermissionRequestBase(aOwnerElement, aPrincipal),
-        mActorDestroyed(false) {}
-
- protected:
-  ~PermissionRequestHelper() override = default;
-
- private:
-  void OnPromptComplete(PermissionValue aPermissionValue) override;
-
-  void ActorDestroy(ActorDestroyReason aWhy) override;
-};
-
 /*******************************************************************************
  * Other class declarations
  ******************************************************************************/
@@ -7703,7 +7710,7 @@ struct DatabaseActorInfo final {
   friend class nsAutoPtr<DatabaseActorInfo>;
 
   RefPtr<FullDatabaseMetadata> mMetadata;
-  nsTArray<Database*> mLiveDatabases;
+  nsTArray<CheckedUnsafePtr<Database>> mLiveDatabases;
   RefPtr<FactoryOp> mWaitingFactoryOp;
 
   DatabaseActorInfo(FullDatabaseMetadata* aMetadata, Database* aDatabase)
@@ -7848,10 +7855,12 @@ class QuotaClient final : public mozilla::dom::quota::Client {
 
   nsresult UpgradeStorageFrom1_0To2_0(nsIFile* aDirectory) override;
 
+  nsresult UpgradeStorageFrom2_1To2_2(nsIFile* aDirectory) override;
+
   nsresult InitOrigin(PersistenceType aPersistenceType,
                       const nsACString& aGroup, const nsACString& aOrigin,
-                      const AtomicBool& aCanceled,
-                      UsageInfo* aUsageInfo) override;
+                      const AtomicBool& aCanceled, UsageInfo* aUsageInfo,
+                      bool aForGetUsage) override;
 
   nsresult GetUsageForOrigin(PersistenceType aPersistenceType,
                              const nsACString& aGroup,
@@ -7876,6 +7885,8 @@ class QuotaClient final : public mozilla::dom::quota::Client {
 
  private:
   ~QuotaClient() override;
+
+  void ShutdownTimedOut();
 
   static void DeleteTimerCallback(nsITimer* aTimer, void* aClosure);
 
@@ -8943,6 +8954,23 @@ nsresult RemoveDatabaseFilesAndDirectory(nsIFile* aBaseDirectory,
   return NS_OK;
 }
 
+void SanitizeString(nsACString& aOrigin) {
+  char* iter = aOrigin.BeginWriting();
+  char* end = aOrigin.EndWriting();
+
+  while (iter != end) {
+    char c = *iter;
+
+    if (IsAsciiAlpha(c)) {
+      *iter = 'a';
+    } else if (IsAsciiDigit(c)) {
+      *iter = 'D';
+    }
+
+    ++iter;
+  }
+}
+
 /*******************************************************************************
  * Globals
  ******************************************************************************/
@@ -8950,7 +8978,7 @@ nsresult RemoveDatabaseFilesAndDirectory(nsIFile* aBaseDirectory,
 // Counts the number of "live" Factory, FactoryOp and Database instances.
 uint64_t gBusyCount = 0;
 
-typedef nsTArray<RefPtr<FactoryOp>> FactoryOpArray;
+typedef nsTArray<CheckedUnsafePtr<FactoryOp>> FactoryOpArray;
 
 StaticAutoPtr<FactoryOpArray> gFactoryOps;
 
@@ -9221,46 +9249,6 @@ bool RecvFlushPendingFileDeletions() {
   return true;
 }
 
-PIndexedDBPermissionRequestParent* AllocPIndexedDBPermissionRequestParent(
-    Element* aOwnerElement, nsIPrincipal* aPrincipal) {
-  MOZ_ASSERT(NS_IsMainThread());
-
-  RefPtr<PermissionRequestHelper> actor =
-      new PermissionRequestHelper(aOwnerElement, aPrincipal);
-  return actor.forget().take();
-}
-
-bool RecvPIndexedDBPermissionRequestConstructor(
-    PIndexedDBPermissionRequestParent* aActor) {
-  MOZ_ASSERT(NS_IsMainThread());
-  MOZ_ASSERT(aActor);
-
-  auto* actor = static_cast<PermissionRequestHelper*>(aActor);
-
-  PermissionRequestBase::PermissionValue permission;
-  nsresult rv = actor->PromptIfNeeded(&permission);
-  if (NS_FAILED(rv)) {
-    return false;
-  }
-
-  if (permission != PermissionRequestBase::kPermissionPrompt) {
-    Unused << PIndexedDBPermissionRequestParent::Send__delete__(actor,
-                                                                permission);
-  }
-
-  return true;
-}
-
-bool DeallocPIndexedDBPermissionRequestParent(
-    PIndexedDBPermissionRequestParent* aActor) {
-  MOZ_ASSERT(NS_IsMainThread());
-  MOZ_ASSERT(aActor);
-
-  RefPtr<PermissionRequestHelper> actor =
-      dont_AddRef(static_cast<PermissionRequestHelper*>(aActor));
-  return true;
-}
-
 already_AddRefed<mozilla::dom::quota::Client> CreateQuotaClient() {
   AssertIsOnBackgroundThread();
 
@@ -9323,7 +9311,7 @@ DatabaseConnection::~DatabaseConnection() {
   MOZ_ASSERT(!mFileManager);
   MOZ_ASSERT(!mCachedStatements.Count());
   MOZ_ASSERT(!mUpdateRefcountFunction);
-  MOZ_ASSERT(!mInWriteTransaction);
+  MOZ_DIAGNOSTIC_ASSERT(!mInWriteTransaction);
   MOZ_ASSERT(!mDEBUGSavepointCount);
 }
 
@@ -9890,7 +9878,7 @@ void DatabaseConnection::Close() {
   AssertIsOnConnectionThread();
   MOZ_ASSERT(mStorageConnection);
   MOZ_ASSERT(!mDEBUGSavepointCount);
-  MOZ_ASSERT(!mInWriteTransaction);
+  MOZ_DIAGNOSTIC_ASSERT(!mInWriteTransaction);
 
   AUTO_PROFILER_LABEL("DatabaseConnection::Close", DOM);
 
@@ -11567,7 +11555,7 @@ void ConnectionPool::PerformIdleDatabaseMaintenance(
 void ConnectionPool::CloseDatabase(DatabaseInfo* aDatabaseInfo) {
   AssertIsOnOwningThread();
   MOZ_ASSERT(aDatabaseInfo);
-  MOZ_ASSERT(!aDatabaseInfo->TotalTransactionCount());
+  MOZ_DIAGNOSTIC_ASSERT(!aDatabaseInfo->TotalTransactionCount());
   MOZ_ASSERT(aDatabaseInfo->mThreadInfo.mThread);
   MOZ_ASSERT(aDatabaseInfo->mThreadInfo.mRunnable);
   MOZ_ASSERT(!aDatabaseInfo->mClosing);
@@ -15945,11 +15933,58 @@ nsresult QuotaClient::UpgradeStorageFrom1_0To2_0(nsIFile* aDirectory) {
   return NS_OK;
 }
 
+nsresult QuotaClient::UpgradeStorageFrom2_1To2_2(nsIFile* aDirectory) {
+  AssertIsOnIOThread();
+  MOZ_ASSERT(aDirectory);
+
+  nsCOMPtr<nsIDirectoryEnumerator> entries;
+  nsresult rv = aDirectory->GetDirectoryEntries(getter_AddRefs(entries));
+  if (NS_WARN_IF(NS_FAILED(rv))) {
+    return rv;
+  }
+
+  nsCOMPtr<nsIFile> file;
+  while (NS_SUCCEEDED((rv = entries->GetNextFile(getter_AddRefs(file)))) &&
+         file) {
+    nsString leafName;
+    rv = file->GetLeafName(leafName);
+    if (NS_WARN_IF(NS_FAILED(rv))) {
+      return rv;
+    }
+
+    bool isDirectory;
+    rv = file->IsDirectory(&isDirectory);
+    if (NS_WARN_IF(NS_FAILED(rv))) {
+      return rv;
+    }
+
+    if (isDirectory) {
+      continue;
+    }
+
+    // It's reported that files ending with ".tmp" somehow live in the indexedDB
+    // directories in Bug 1503883. Such files shouldn't exist in the indexedDB
+    // directory so remove them in this upgrade.
+    if (StringEndsWith(leafName, NS_LITERAL_STRING(".tmp"))) {
+      rv = file->Remove(false);
+      if (NS_WARN_IF(NS_FAILED(rv))) {
+        return rv;
+      }
+    }
+  }
+
+  if (NS_WARN_IF(NS_FAILED(rv))) {
+    return rv;
+  }
+
+  return NS_OK;
+}
+
 nsresult QuotaClient::InitOrigin(PersistenceType aPersistenceType,
                                  const nsACString& aGroup,
                                  const nsACString& aOrigin,
                                  const AtomicBool& aCanceled,
-                                 UsageInfo* aUsageInfo) {
+                                 UsageInfo* aUsageInfo, bool aForGetUsage) {
   AssertIsOnIOThread();
 
   nsCOMPtr<nsIFile> directory;
@@ -16238,12 +16273,25 @@ void QuotaClient::ShutdownWorkThreads() {
 
   AbortOperations(VoidCString());
 
+  nsCOMPtr<nsITimer> timer = NS_NewTimer();
+
+  MOZ_ALWAYS_SUCCEEDS(timer->InitWithNamedFuncCallback(
+      [](nsITimer* aTimer, void* aClosure) {
+        auto quotaClient = static_cast<QuotaClient*>(aClosure);
+
+        quotaClient->ShutdownTimedOut();
+      },
+      this, SHUTDOWN_TIMEOUT_MS, nsITimer::TYPE_ONE_SHOT,
+      "indexeddb::QuotaClient::ShutdownWorkThreads::SpinEventLoopTimer"));
+
   // This should release any IDB related quota objects or directory locks.
   MOZ_ALWAYS_TRUE(SpinEventLoopUntil([&]() {
     return (!gFactoryOps || gFactoryOps->IsEmpty()) &&
            (!gLiveDatabaseHashtable || !gLiveDatabaseHashtable->Count()) &&
            !mCurrentMaintenance;
   }));
+
+  MOZ_ALWAYS_SUCCEEDS(timer->Cancel());
 
   // And finally, shutdown all threads.
   RefPtr<ConnectionPool> connectionPool = gConnectionPool.get();
@@ -16270,6 +16318,73 @@ void QuotaClient::ShutdownWorkThreads() {
     MOZ_ALWAYS_SUCCEEDS(mDeleteTimer->Cancel());
     mDeleteTimer = nullptr;
   }
+}
+
+void QuotaClient::ShutdownTimedOut() {
+  AssertIsOnBackgroundThread();
+  MOZ_DIAGNOSTIC_ASSERT(
+      (gFactoryOps && !gFactoryOps->IsEmpty()) ||
+      (gLiveDatabaseHashtable && gLiveDatabaseHashtable->Count()) ||
+      mCurrentMaintenance);
+
+  nsCString data;
+
+  if (gFactoryOps && !gFactoryOps->IsEmpty()) {
+    data.Append("gFactoryOps: ");
+    data.AppendInt(static_cast<uint32_t>(gFactoryOps->Length()));
+
+    nsTHashtable<nsCStringHashKey> ids;
+    for (uint32_t index = 0; index < gFactoryOps->Length(); index++) {
+      CheckedUnsafePtr<FactoryOp>& factoryOp = (*gFactoryOps)[index];
+
+      nsCString persistenceType;
+      factoryOp->StringifyPersistenceType(persistenceType);
+
+      nsCString origin;
+      factoryOp->GetSanitizedOrigin(origin);
+
+      nsCString state;
+      factoryOp->StringifyState(state);
+
+      NS_NAMED_LITERAL_CSTRING(delimiter, "*");
+
+      nsCString id = persistenceType + delimiter + origin + delimiter + state;
+
+      ids.PutEntry(id);
+    }
+
+    data.Append(" (");
+
+    bool first = true;
+    for (auto iter = ids.ConstIter(); !iter.Done(); iter.Next()) {
+      if (first) {
+        first = false;
+      } else {
+        data.Append(", ");
+      }
+
+      const nsACString& id = iter.Get()->GetKey();
+
+      data.Append(id);
+    }
+
+    data.Append(")\n");
+  }
+
+  if (gLiveDatabaseHashtable && gLiveDatabaseHashtable->Count()) {
+    data.Append("gLiveDatabaseHashtable: ");
+    data.AppendInt(gLiveDatabaseHashtable->Count());
+    data.Append("\n");
+  }
+
+  if (mCurrentMaintenance) {
+    data.Append("mCurrentMaintenance\n");
+  }
+
+  CrashReporter::AnnotateCrashReport(
+      CrashReporter::Annotation::IndexedDBShutdownTimeout, data);
+
+  MOZ_CRASH("IndexedDB shutdown timed out");
 }
 
 void QuotaClient::DeleteTimerCallback(nsITimer* aTimer, void* aClosure) {
@@ -16902,7 +17017,8 @@ nsresult Maintenance::DirectoryWork() {
 
   for (const PersistenceType persistenceType : kPersistenceTypes) {
     // Loop over "<persistence>" directories.
-    if (IsAborted()) {
+    if (NS_WARN_IF(QuotaClient::IsShuttingDownOnNonBackgroundThread()) ||
+        IsAborted()) {
       return NS_ERROR_ABORT;
     }
 
@@ -16956,7 +17072,8 @@ nsresult Maintenance::DirectoryWork() {
 
     while (true) {
       // Loop over "<origin>/idb" directories.
-      if (IsAborted()) {
+      if (NS_WARN_IF(QuotaClient::IsShuttingDownOnNonBackgroundThread()) ||
+          IsAborted()) {
         return NS_ERROR_ABORT;
       }
 
@@ -17032,7 +17149,8 @@ nsresult Maintenance::DirectoryWork() {
 
       while (true) {
         // Loop over files in the "idb" directory.
-        if (IsAborted()) {
+        if (NS_WARN_IF(QuotaClient::IsShuttingDownOnNonBackgroundThread()) ||
+            IsAborted()) {
           return NS_ERROR_ABORT;
         }
 
@@ -17103,8 +17221,7 @@ nsresult Maintenance::DirectoryWork() {
         // Ensure origin is initialized first. It will initialize all origins
         // for temporary storage including IDB origins.
         rv = quotaManager->EnsureOriginIsInitialized(
-            persistenceType, suffix, group, origin,
-            /* aCreateIfNotExists */ true, getter_AddRefs(directory));
+            persistenceType, suffix, group, origin, getter_AddRefs(directory));
 
         if (NS_WARN_IF(NS_FAILED(rv))) {
           return rv;
@@ -17130,7 +17247,7 @@ nsresult Maintenance::BeginDatabaseMaintenance() {
     static bool IsSafeToRunMaintenance(const nsAString& aDatabasePath) {
       if (gFactoryOps) {
         for (uint32_t index = gFactoryOps->Length(); index > 0; index--) {
-          RefPtr<FactoryOp>& existingOp = (*gFactoryOps)[index - 1];
+          CheckedUnsafePtr<FactoryOp>& existingOp = (*gFactoryOps)[index - 1];
 
           if (!existingOp->DatabaseFilePathIsKnown()) {
             continue;
@@ -17877,7 +17994,8 @@ DatabaseMaintenance::AutoProgressHandler::OnProgress(
   MOZ_ASSERT(mConnection == aConnection);
   MOZ_ASSERT(_retval);
 
-  *_retval = mMaintenance->IsAborted();
+  *_retval = QuotaClient::IsShuttingDownOnNonBackgroundThread() ||
+             mMaintenance->IsAborted();
 
   return NS_OK;
 }
@@ -18803,7 +18921,8 @@ DatabaseOperationBase::OnProgress(mozIStorageConnection* aConnection,
   MOZ_ASSERT(_retval);
 
   // This is intentionally racy.
-  *_retval = !OperationMayProceed();
+  *_retval = QuotaClient::IsShuttingDownOnNonBackgroundThread() ||
+             !OperationMayProceed();
   return NS_OK;
 }
 
@@ -19020,6 +19139,98 @@ FactoryOp::FactoryOp(Factory* aFactory,
   MOZ_ASSERT(!QuotaClient::IsShuttingDownOnBackgroundThread());
 }
 
+void FactoryOp::StringifyPersistenceType(nsCString& aResult) const {
+  AssertIsOnOwningThread();
+
+  PersistenceType persistenceType = mCommonParams.metadata().persistenceType();
+
+  PersistenceTypeToText(persistenceType, aResult);
+}
+
+void FactoryOp::GetSanitizedOrigin(nsCString& aResult) const {
+  AssertIsOnOwningThread();
+
+  int32_t colonPos = mOrigin.FindChar(':');
+  if (colonPos >= 0) {
+    const nsACString& prefix = Substring(mOrigin, 0, colonPos);
+
+    nsCString normSuffix(Substring(mOrigin, colonPos));
+    SanitizeString(normSuffix);
+
+    aResult = prefix + normSuffix;
+  } else {
+    nsCString origin(mOrigin);
+    SanitizeString(origin);
+
+    aResult = origin;
+  }
+}
+
+void FactoryOp::StringifyState(nsCString& aResult) const {
+  AssertIsOnOwningThread();
+
+  switch (mState) {
+    case State::Initial:
+      aResult.AssignLiteral("Initial");
+      return;
+
+    case State::PermissionChallenge:
+      aResult.AssignLiteral("PermissionChallenge");
+      return;
+
+    case State::PermissionRetry:
+      aResult.AssignLiteral("PermissionRetry");
+      return;
+
+    case State::FinishOpen:
+      aResult.AssignLiteral("FinishOpen");
+      return;
+
+    case State::QuotaManagerPending:
+      aResult.AssignLiteral("QuotaManagerPending");
+      return;
+
+    case State::DirectoryOpenPending:
+      aResult.AssignLiteral("DirectoryOpenPending");
+      return;
+
+    case State::DatabaseOpenPending:
+      aResult.AssignLiteral("DatabaseOpenPending");
+      return;
+
+    case State::DatabaseWorkOpen:
+      aResult.AssignLiteral("DatabaseWorkOpen");
+      return;
+
+    case State::BeginVersionChange:
+      aResult.AssignLiteral("BeginVersionChange");
+      return;
+
+    case State::WaitingForOtherDatabasesToClose:
+      aResult.AssignLiteral("WaitingForOtherDatabasesToClose");
+      return;
+
+    case State::WaitingForTransactionsToComplete:
+      aResult.AssignLiteral("WaitingForTransactionsToComplete");
+      return;
+
+    case State::DatabaseWorkVersionChange:
+      aResult.AssignLiteral("DatabaseWorkVersionChange");
+      return;
+
+    case State::SendingResults:
+      aResult.AssignLiteral("SendingResults");
+      return;
+
+    case State::Completed:
+      aResult.AssignLiteral("Completed");
+      return;
+
+    default:
+      MOZ_CRASH("Bad state!");
+  }
+}
+
 nsresult FactoryOp::Open() {
   MOZ_ASSERT(NS_IsMainThread());
   MOZ_ASSERT(mState == State::Initial);
@@ -19165,7 +19376,7 @@ nsresult FactoryOp::DirectoryOpen() {
   bool delayed = false;
   bool foundThis = false;
   for (uint32_t index = gFactoryOps->Length(); index > 0; index--) {
-    RefPtr<FactoryOp>& existingOp = (*gFactoryOps)[index - 1];
+    CheckedUnsafePtr<FactoryOp>& existingOp = (*gFactoryOps)[index - 1];
 
     if (existingOp == this) {
       foundThis = true;
@@ -19813,8 +20024,7 @@ nsresult OpenDatabaseOp::DoDatabaseWork() {
   nsCOMPtr<nsIFile> dbDirectory;
 
   nsresult rv = quotaManager->EnsureOriginIsInitialized(
-      persistenceType, mSuffix, mGroup, mOrigin,
-      /* aCreateIfNotExists */ true, getter_AddRefs(dbDirectory));
+      persistenceType, mSuffix, mGroup, mOrigin, getter_AddRefs(dbDirectory));
   if (NS_WARN_IF(NS_FAILED(rv))) {
     return rv;
   }
@@ -22928,11 +23138,13 @@ CreateIndexOp::UpdateIndexDataValuesFunction::OnFunctionCall(
   const int64_t& objectStoreId = mOp->mObjectStoreId;
 
   AutoTArray<IndexUpdateInfo, 32> updateInfos;
-  rv = IDBObjectStore::DeserializeIndexValueToUpdateInfos(
+  ErrorResult errorResult;
+  IDBObjectStore::DeserializeIndexValueToUpdateInfos(
       metadata.id(), metadata.keyPath(), metadata.unique(),
-      metadata.multiEntry(), metadata.locale(), cloneInfo, updateInfos);
-  if (NS_WARN_IF(NS_FAILED(rv))) {
-    return rv;
+      metadata.multiEntry(), metadata.locale(), cloneInfo, updateInfos,
+      errorResult);
+  if (NS_WARN_IF(errorResult.Failed())) {
+    return errorResult.StealNSResult();
   }
 
   if (updateInfos.IsEmpty()) {
@@ -24097,7 +24309,10 @@ nsresult ObjectStoreAddOrPutRequestOp::DoDatabaseWork(
     nsCString flatCloneData;
     flatCloneData.SetLength(cloneDataSize);
     auto iter = cloneData.Start();
-    cloneData.ReadBytes(iter, flatCloneData.BeginWriting(), cloneDataSize);
+    if (NS_WARN_IF(!cloneData.ReadBytes(iter, flatCloneData.BeginWriting(),
+                                        cloneDataSize))) {
+      return NS_ERROR_OUT_OF_MEMORY;
+    }
 
     // Compress the bytes before adding into the database.
     const char* uncompressed = flatCloneData.BeginReading();
@@ -24336,7 +24551,10 @@ ObjectStoreAddOrPutRequestOp::SCInputStream::ReadSegments(
     *_retval += count;
     aCount -= count;
 
-    mData.Advance(mIter, count);
+    if (NS_WARN_IF(!mData.Advance(mIter, count))) {
+      // InputStreams do not propagate errors to caller.
+      return NS_OK;
+    }
   }
 
   return NS_OK;
@@ -26649,17 +26867,7 @@ void PermissionRequestHelper::OnPromptComplete(
     PermissionValue aPermissionValue) {
   MOZ_ASSERT(NS_IsMainThread());
 
-  if (!mActorDestroyed) {
-    Unused << PIndexedDBPermissionRequestParent::Send__delete__(
-        this, aPermissionValue);
-  }
-}
-
-void PermissionRequestHelper::ActorDestroy(ActorDestroyReason aWhy) {
-  MOZ_ASSERT(NS_IsMainThread());
-  MOZ_ASSERT(!mActorDestroyed);
-
-  mActorDestroyed = true;
+  mResolver(aPermissionValue);
 }
 
 #ifdef DEBUG

@@ -37,6 +37,9 @@ var AboutReader = function(mm, win, articlePromise) {
   this._mm.addMessageListener("Reader:AddButton", this);
   this._mm.addMessageListener("Reader:RemoveButton", this);
   this._mm.addMessageListener("Reader:GetStoredArticleData", this);
+  this._mm.addMessageListener("Reader:ZoomIn", this);
+  this._mm.addMessageListener("Reader:ZoomOut", this);
+  this._mm.addMessageListener("Reader:ResetZoom", this);
 
   this._docRef = Cu.getWeakReference(doc);
   this._winRef = Cu.getWeakReference(win);
@@ -63,7 +66,9 @@ var AboutReader = function(mm, win, articlePromise) {
 
   this._scrollOffset = win.pageYOffset;
 
+  doc.addEventListener("mousedown", this);
   doc.addEventListener("click", this);
+  doc.addEventListener("touchstart", this);
 
   win.addEventListener("pagehide", this);
   win.addEventListener("mozvisualscroll", this, { mozSystemGroup: true });
@@ -150,6 +155,10 @@ AboutReader.prototype = {
                           ".content figure img",
 
   PLATFORM_HAS_CACHE: AppConstants.platform == "android",
+
+  FONT_SIZE_MIN: 1,
+
+  FONT_SIZE_MAX: 9,
 
   get _doc() {
     return this._docRef.get();
@@ -251,6 +260,19 @@ AboutReader.prototype = {
       }
       case "Reader:GetStoredArticleData": {
         this._mm.sendAsyncMessage("Reader:StoredArticleData", { article: this._article });
+        break;
+      }
+      case "Reader:ZoomIn": {
+        this._changeFontSize(+1);
+        break;
+      }
+      case "Reader:ZoomOut": {
+        this._changeFontSize(-1);
+        break;
+      }
+      case "Reader:ResetZoom": {
+        this._resetFontSize();
+        break;
       }
     }
   },
@@ -259,23 +281,38 @@ AboutReader.prototype = {
     if (!aEvent.isTrusted)
       return;
 
+    let target = aEvent.target;
     switch (aEvent.type) {
-      case "click":
-        let target = aEvent.target;
-        if (target.classList.contains("dropdown-toggle")) {
-          this._toggleDropdownClicked(aEvent);
-        } else if (!target.closest(".dropdown-popup")) {
+      case "touchstart":
+      /* fall through */
+      case "mousedown":
+        if (!target.closest(".dropdown-popup")) {
           this._closeDropdowns();
         }
         break;
+      case "click":
+        if (target.classList.contains("dropdown-toggle")) {
+          this._toggleDropdownClicked(aEvent);
+        }
+        break;
       case "mozvisualscroll":
-        this._closeDropdowns(true);
         const vv = aEvent.originalTarget; // VisualViewport
-        if (!gIsFirefoxDesktop && this._scrollOffset != vv.pageTop) {
+
+        if (gIsFirefoxDesktop) {
+          this._closeDropdowns(true);
+        } else if (this._scrollOffset != vv.pageTop) {
+          // hide the system UI and the "reader-toolbar" only if the dropdown is not opened
+          let selector = ".dropdown.open";
+          let openDropdowns = this._doc.querySelectorAll(selector);
+          if (openDropdowns.length) {
+            break;
+          }
+
           let isScrollingUp = this._scrollOffset > vv.pageTop;
           this._setSystemUIVisibility(isScrollingUp);
           this._setToolbarVisibility(isScrollingUp);
         }
+
         this._scrollOffset = vv.pageTop;
         break;
       case "resize":
@@ -305,6 +342,9 @@ AboutReader.prototype = {
         this._mm.removeMessageListener("Reader:AddButton", this);
         this._mm.removeMessageListener("Reader:RemoveButton", this);
         this._mm.removeMessageListener("Reader:GetStoredArticleData", this);
+        this._mm.removeMessageListener("Reader:ZoomIn", this);
+        this._mm.removeMessageListener("Reader:ZoomOut", this);
+        this._mm.removeMessageListener("Reader:ResetZoom", this);
         this._windowUnloaded = true;
         break;
     }
@@ -327,6 +367,12 @@ AboutReader.prototype = {
     ReaderMode.leaveReaderMode(this._mm.docShell, this._win);
   },
 
+  async _resetFontSize() {
+    await AsyncPrefs.reset("reader.font_size");
+    let currentSize = Services.prefs.getIntPref("reader.font_size");
+    this._setFontSize(currentSize);
+  },
+
   _setFontSize(newFontSize) {
     this._fontSize = newFontSize;
     let size = (10 + 2 * this._fontSize) + "px";
@@ -336,48 +382,25 @@ AboutReader.prototype = {
   },
 
   _setupFontSizeButtons() {
-    const FONT_SIZE_MIN = 1;
-    const FONT_SIZE_MAX = 9;
-
     // Sample text shown in Android UI.
     let sampleText = this._doc.querySelector(".font-size-sample");
     sampleText.textContent = gStrings.GetStringFromName("aboutReader.fontTypeSample");
 
     let currentSize = Services.prefs.getIntPref("reader.font_size");
-    currentSize = Math.max(FONT_SIZE_MIN, Math.min(FONT_SIZE_MAX, currentSize));
+    currentSize = Math.max(this.FONT_SIZE_MIN, Math.min(this.FONT_SIZE_MAX, currentSize));
 
     let plusButton = this._doc.querySelector(".plus-button");
     let minusButton = this._doc.querySelector(".minus-button");
 
-    function updateControls() {
-      if (currentSize === FONT_SIZE_MIN) {
-        minusButton.setAttribute("disabled", true);
-      } else {
-        minusButton.removeAttribute("disabled");
-      }
-      if (currentSize === FONT_SIZE_MAX) {
-        plusButton.setAttribute("disabled", true);
-      } else {
-        plusButton.removeAttribute("disabled");
-      }
-    }
-
-    updateControls();
     this._setFontSize(currentSize);
+    this._updateFontSizeButtonControls();
 
     plusButton.addEventListener("click", (event) => {
       if (!event.isTrusted) {
         return;
       }
       event.stopPropagation();
-
-      if (currentSize >= FONT_SIZE_MAX) {
-        return;
-      }
-
-      currentSize++;
-      updateControls();
-      this._setFontSize(currentSize);
+      this._changeFontSize(+1);
     }, true);
 
     minusButton.addEventListener("click", (event) => {
@@ -385,15 +408,34 @@ AboutReader.prototype = {
         return;
       }
       event.stopPropagation();
-
-      if (currentSize <= FONT_SIZE_MIN) {
-        return;
-      }
-
-      currentSize--;
-      updateControls();
-      this._setFontSize(currentSize);
+      this._changeFontSize(-1);
     }, true);
+  },
+
+  _updateFontSizeButtonControls() {
+    let plusButton = this._doc.querySelector(".plus-button");
+    let minusButton = this._doc.querySelector(".minus-button");
+
+    let currentSize = Services.prefs.getIntPref("reader.font_size");
+
+    if (currentSize === this.FONT_SIZE_MIN) {
+      minusButton.setAttribute("disabled", true);
+    } else {
+      minusButton.removeAttribute("disabled");
+    }
+    if (currentSize === this.FONT_SIZE_MAX) {
+      plusButton.setAttribute("disabled", true);
+    } else {
+      plusButton.removeAttribute("disabled");
+    }
+  },
+
+  _changeFontSize(changeAmount) {
+    let currentSize = Services.prefs.getIntPref("reader.font_size");
+    currentSize = Math.max(this.FONT_SIZE_MIN, Math.min(this.FONT_SIZE_MAX, currentSize + changeAmount));
+
+    this._setFontSize(currentSize);
+    this._updateFontSizeButtonControls();
   },
 
   _setContentWidth(newContentWidth) {

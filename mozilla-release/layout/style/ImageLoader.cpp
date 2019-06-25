@@ -20,6 +20,7 @@
 #include "imgIContainer.h"
 #include "Image.h"
 #include "GeckoProfiler.h"
+#include "mozilla/PresShell.h"
 #include "mozilla/layers/WebRenderUserData.h"
 
 using namespace mozilla::dom;
@@ -608,7 +609,7 @@ void ImageLoader::RequestReflowOnFrame(FrameWithFlags* aFwf,
 
   // Actually request the reflow.
   nsIFrame* parent = frame->GetInFlowParent();
-  parent->PresShell()->FrameNeedsReflow(parent, nsIPresShell::eStyleChange,
+  parent->PresShell()->FrameNeedsReflow(parent, IntrinsicDirty::StyleChange,
                                         NS_FRAME_IS_DIRTY);
 
   // We'll respond to the reflow events by unblocking onload, regardless

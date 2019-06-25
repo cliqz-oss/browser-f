@@ -91,7 +91,7 @@ struct CompositableTransaction {
   bool mFinished;
 };
 
-struct AutoEndTransaction {
+struct AutoEndTransaction final {
   explicit AutoEndTransaction(CompositableTransaction* aTxn) : mTxn(aTxn) {}
   ~AutoEndTransaction() { mTxn->End(); }
   CompositableTransaction* mTxn;
@@ -99,7 +99,8 @@ struct AutoEndTransaction {
 
 void ImageBridgeChild::UseTextures(
     CompositableClient* aCompositable,
-    const nsTArray<TimedTextureClient>& aTextures) {
+    const nsTArray<TimedTextureClient>& aTextures,
+    const Maybe<wr::RenderRoot>& aRenderRoot) {
   MOZ_ASSERT(aCompositable);
   MOZ_ASSERT(aCompositable->GetIPCHandle());
   MOZ_ASSERT(aCompositable->IsConnected());
@@ -321,7 +322,7 @@ void ImageBridgeChild::UpdateImageClient(RefPtr<ImageContainer> aContainer) {
   }
 
   BeginTransaction();
-  client->UpdateImage(aContainer, Layer::CONTENT_OPAQUE);
+  client->UpdateImage(aContainer, Layer::CONTENT_OPAQUE, Nothing());
   EndTransaction();
 }
 
@@ -360,7 +361,8 @@ void ImageBridgeChild::UpdateAsyncCanvasRendererNow(
   }
 
   BeginTransaction();
-  aWrapper->GetCanvasClient()->Updated();
+  // TODO wr::RenderRoot::Unknown
+  aWrapper->GetCanvasClient()->Updated(wr::RenderRoot::Default);
   EndTransaction();
 }
 
@@ -625,6 +627,17 @@ void ImageBridgeChild::UpdateTextureFactoryIdentifier(
   bool disablingWebRender =
       GetCompositorBackendType() == LayersBackend::LAYERS_WR &&
       aIdentifier.mParentBackend != LayersBackend::LAYERS_WR;
+
+  // Do not update TextureFactoryIdentifier if aIdentifier is going to disable
+  // WebRender, but gecko is still using WebRender. Since gecko uses different
+  // incompatible ImageHost and TextureHost between WebRender and non-WebRender.
+  //
+  // Even when WebRender is still in use, if non-accelerated widget is opened,
+  // aIdentifier disables WebRender at ImageBridgeChild.
+  if (disablingWebRender && gfxVars::UseWebRender()) {
+    return;
+  }
+
   // D3DTexture might become obsolte. To prevent to use obsoleted D3DTexture,
   // drop all ImageContainers' ImageClients.
 
@@ -942,7 +955,8 @@ bool ImageBridgeChild::DestroyInTransaction(const CompositableHandle& aHandle) {
 }
 
 void ImageBridgeChild::RemoveTextureFromCompositable(
-    CompositableClient* aCompositable, TextureClient* aTexture) {
+    CompositableClient* aCompositable, TextureClient* aTexture,
+    const Maybe<wr::RenderRoot>& aRenderRoot) {
   MOZ_ASSERT(CanSend());
   MOZ_ASSERT(aTexture);
   MOZ_ASSERT(aTexture->IsSharedWithCompositor());

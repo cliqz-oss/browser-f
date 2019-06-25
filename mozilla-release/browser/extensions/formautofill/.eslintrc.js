@@ -88,10 +88,6 @@ module.exports = {
     // single line of code to have only one easily predictable effect.
     "no-return-assign": "error",
 
-    // Disallow throwing literals (eg. throw "error" instead of
-    // throw new Error("error")).
-    "no-throw-literal": "error",
-
     // Require use of the second argument for parseInt().
     "radix": "error",
 
@@ -107,4 +103,14 @@ module.exports = {
     // Disallow function or variable declarations in nested blocks
     "no-inner-declarations": "error",
   },
+
+  "overrides": [{
+    "files": "test/unit/head.js",
+    "rules": {
+      "no-unused-vars": ["error", {
+        "args": "none",
+        "vars": "local",
+      }],
+    },
+  }],
 };

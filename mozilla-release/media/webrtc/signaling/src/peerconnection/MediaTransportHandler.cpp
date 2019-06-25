@@ -160,7 +160,8 @@ already_AddRefed<MediaTransportHandler> MediaTransportHandler::Create(
     nsISerialEventTarget* aCallbackThread) {
   RefPtr<MediaTransportHandler> result;
   if (XRE_IsContentProcess() &&
-      Preferences::GetBool("media.peerconnection.mtransport_process")) {
+      Preferences::GetBool("media.peerconnection.mtransport_process") &&
+      Preferences::GetBool("network.process.enabled")) {
     result = new MediaTransportHandlerIPC(aCallbackThread);
   } else {
     result = new MediaTransportHandlerSTS(aCallbackThread);
@@ -1152,13 +1153,6 @@ static mozilla::dom::PCImplIceGatheringState toDomIceGatheringState(
 
 void MediaTransportHandlerSTS::OnGatheringStateChange(
     NrIceCtx* aIceCtx, NrIceCtx::GatheringState aState) {
-  if (aState == NrIceCtx::ICE_CTX_GATHER_COMPLETE) {
-    for (const auto& stream : mIceCtx->GetStreams()) {
-      // TODO: Do we need to set the ufrag here? Do we need to fire more than
-      // once if we have an ICE restart in progress?
-      OnCandidateFound(stream, "", "");
-    }
-  }
   OnGatheringStateChange(toDomIceGatheringState(aState));
 }
 
@@ -1194,6 +1188,7 @@ void MediaTransportHandlerSTS::OnCandidateFound(NrIceMediaStream* aStream,
                                                 const std::string& aUfrag) {
   CandidateInfo info;
   info.mCandidate = aCandidate;
+  MOZ_ASSERT(!aUfrag.empty());
   info.mUfrag = aUfrag;
   NrIceCandidate defaultRtpCandidate;
   NrIceCandidate defaultRtcpCandidate;

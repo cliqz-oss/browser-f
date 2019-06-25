@@ -8,11 +8,16 @@
 #define mozilla_dom_BrowserBridgeParent_h
 
 #include "mozilla/dom/PBrowserBridgeParent.h"
-#include "mozilla/dom/TabParent.h"
 
 namespace mozilla {
 namespace dom {
 
+class BrowserParent;
+
+/**
+ * BrowserBridgeParent implements the parent actor part of the PBrowserBridge
+ * protocol. See PBrowserBridge for more information.
+ */
 class BrowserBridgeParent : public PBrowserBridgeParent {
  public:
   NS_INLINE_DECL_REFCOUNTING(BrowserBridgeParent);
@@ -21,19 +26,18 @@ class BrowserBridgeParent : public PBrowserBridgeParent {
 
   // Initialize this actor after performing startup.
   nsresult Init(const nsString& aPresentationURL, const nsString& aRemoteType,
-                CanonicalBrowsingContext* aBrowsingContext);
+                CanonicalBrowsingContext* aBrowsingContext,
+                const uint32_t& aChromeFlags);
 
-  TabParent* GetTabParent() { return mTabParent; }
+  BrowserParent* GetBrowserParent() { return mBrowserParent; }
 
-  CanonicalBrowsingContext* GetBrowsingContext() {
-    return mTabParent->GetBrowsingContext();
-  }
+  CanonicalBrowsingContext* GetBrowsingContext();
 
   // Get our manager actor.
-  TabParent* Manager() {
-    MOZ_ASSERT(mIPCOpen);
-    return static_cast<TabParent*>(PBrowserBridgeParent::Manager());
-  }
+  BrowserParent* Manager();
+
+  // Tear down this BrowserBridgeParent.
+  void Destroy();
 
  protected:
   friend class PBrowserBridgeParent;
@@ -42,18 +46,34 @@ class BrowserBridgeParent : public PBrowserBridgeParent {
                                    const bool& aParentIsActive,
                                    const nsSizeMode& aSizeMode);
   mozilla::ipc::IPCResult RecvLoadURL(const nsCString& aUrl);
+  mozilla::ipc::IPCResult RecvResumeLoad(uint64_t aPendingSwitchID);
   mozilla::ipc::IPCResult RecvUpdateDimensions(
       const DimensionInfo& aDimensions);
   mozilla::ipc::IPCResult RecvRenderLayers(const bool& aEnabled,
                                            const bool& aForceRepaint,
                                            const LayersObserverEpoch& aEpoch);
 
+  mozilla::ipc::IPCResult RecvNavigateByKey(const bool& aForward,
+                                            const bool& aForDocumentNavigation);
+
+  mozilla::ipc::IPCResult RecvDispatchSynthesizedMouseEvent(
+      const WidgetMouseEvent& aEvent);
+
+  mozilla::ipc::IPCResult RecvSkipBrowsingContextDetach();
+
+  mozilla::ipc::IPCResult RecvActivate();
+
+  mozilla::ipc::IPCResult RecvDeactivate(const bool& aWindowLowering);
+
+  mozilla::ipc::IPCResult RecvSetIsUnderHiddenEmbedderElement(
+      const bool& aIsUnderHiddenEmbedderElement);
+
   void ActorDestroy(ActorDestroyReason aWhy) override;
 
  private:
   ~BrowserBridgeParent();
 
-  RefPtr<TabParent> mTabParent;
+  RefPtr<BrowserParent> mBrowserParent;
   bool mIPCOpen;
 };
 

@@ -248,8 +248,16 @@ class PlacesFeed {
     // Always include the referrer (even for http links) if we have one
     const {event, referrer, typedBonus} = action.data;
     if (referrer) {
-      params.referrerPolicy = Ci.nsIHttpChannel.REFERRER_POLICY_UNSAFE_URL;
-      params.referrerURI = Services.io.newURI(referrer);
+      const ReferrerInfo = Components.Constructor(
+        "@mozilla.org/referrer-info;1",
+        "nsIReferrerInfo",
+        "init"
+      );
+      params.referrerInfo = new ReferrerInfo(
+        Ci.nsIHttpChannel.REFERRER_POLICY_UNSAFE_URL,
+        true,
+        Services.io.newURI(referrer)
+      );
     }
 
     // Pocket gives us a special reader URL to open their stories in
@@ -274,6 +282,34 @@ class PlacesFeed {
           data: {url, open_url: data.item.open_url, title, pocket_id: data.item.item_id},
         }));
       }
+    } catch (err) {
+      Cu.reportError(err);
+    }
+  }
+
+  /**
+   * Deletes an item from a user's saved to Pocket feed
+   * @param {int} itemID
+   *  The unique ID given by Pocket for that item; used to look the item up when deleting
+   */
+  async deleteFromPocket(itemID) {
+    try {
+      await NewTabUtils.activityStreamLinks.deletePocketEntry(itemID);
+      this.store.dispatch({type: at.POCKET_LINK_DELETED_OR_ARCHIVED});
+    } catch (err) {
+      Cu.reportError(err);
+    }
+  }
+
+  /**
+   * Archives an item from a user's saved to Pocket feed
+   * @param {int} itemID
+   *  The unique ID given by Pocket for that item; used to look the item up when archiving
+   */
+  async archiveFromPocket(itemID) {
+    try {
+      await NewTabUtils.activityStreamLinks.archivePocketEntry(itemID);
+      this.store.dispatch({type: at.POCKET_LINK_DELETED_OR_ARCHIVED});
     } catch (err) {
       Cu.reportError(err);
     }
@@ -384,6 +420,12 @@ class PlacesFeed {
         break;
       case at.SAVE_TO_POCKET:
         this.saveToPocket(action.data.site, action._target.browser);
+        break;
+      case at.DELETE_FROM_POCKET:
+        this.deleteFromPocket(action.data.pocket_id);
+        break;
+      case at.ARCHIVE_FROM_POCKET:
+        this.archiveFromPocket(action.data.pocket_id);
         break;
       case at.FILL_SEARCH_TERM:
         this.fillSearchTopSiteTerm(action);

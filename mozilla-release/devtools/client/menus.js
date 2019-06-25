@@ -29,6 +29,7 @@
  */
 
 const { Cu } = require("chrome");
+const Services = require("Services");
 
 loader.lazyRequireGetter(this, "gDevToolsBrowser", "devtools/client/framework/devtools-browser", true);
 loader.lazyRequireGetter(this, "TargetFactory", "devtools/client/framework/target", true);
@@ -37,6 +38,18 @@ loader.lazyRequireGetter(this, "openDocLink", "devtools/client/shared/link", tru
 
 loader.lazyImporter(this, "BrowserToolboxProcess", "resource://devtools/client/framework/ToolboxProcess.jsm");
 loader.lazyImporter(this, "ScratchpadManager", "resource://devtools/client/scratchpad/scratchpad-manager.jsm");
+
+const isAboutDebuggingEnabled =
+  Services.prefs.getBoolPref("devtools.aboutdebugging.new-enabled", false);
+const aboutDebuggingItem = {
+  id: "menu_devtools_remotedebugging",
+  l10nKey: "devtoolsRemoteDebugging",
+  disabled: true,
+  oncommand(event) {
+    const window = event.target.ownerDocument.defaultView;
+    gDevToolsBrowser.openAboutDebugging(window.gBrowser);
+  },
+};
 
 exports.menuitems = [
   { id: "menu_devToolbox",
@@ -54,6 +67,7 @@ exports.menuitems = [
   },
   { id: "menu_devtools_separator",
     separator: true },
+  ...(isAboutDebuggingEnabled ? [aboutDebuggingItem] : []),
   { id: "menu_webide",
     l10nKey: "webide",
     disabled: true,
@@ -117,14 +131,6 @@ exports.menuitems = [
       ScratchpadManager.openScratchpad();
     },
     keyId: "scratchpad",
-  },
-  { id: "menu_devtools_serviceworkers",
-    l10nKey: "devtoolsServiceWorkers",
-    disabled: true,
-    oncommand(event) {
-      const window = event.target.ownerDocument.defaultView;
-      gDevToolsBrowser.openAboutDebugging(window.gBrowser, "workers");
-    },
   },
   { id: "menu_devtools_connect",
     l10nKey: "devtoolsConnect",

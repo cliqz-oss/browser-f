@@ -15,6 +15,7 @@
  * https://wicg.github.io/feature-policy/#policy
  */
 
+interface Principal;
 interface WindowProxy;
 interface nsISupports;
 interface URI;
@@ -117,7 +118,7 @@ partial interface Document {
   [PutForwards=href, Unforgeable] readonly attribute Location? location;
   //(HTML only)         attribute DOMString domain;
   readonly attribute DOMString referrer;
-  //(HTML only)         attribute DOMString cookie;
+  [Throws] attribute DOMString cookie;
   readonly attribute DOMString lastModified;
   readonly attribute DOMString readyState;
 
@@ -357,6 +358,13 @@ partial interface Document {
   // Creates a new XUL element regardless of the document's default type.
   [CEReactions, NewObject, Throws, Func="IsChromeOrXBL"]
   Element createXULElement(DOMString localName, optional (ElementCreationOptions or DOMString) options);
+  // Wether the document was loaded using a nsXULPrototypeDocument.
+  [ChromeOnly]
+  readonly attribute boolean loadedFromPrototype;
+
+  // The principal to use for the storage area of this document
+  [ChromeOnly]
+  readonly attribute Principal effectiveStoragePrincipal;
 
   // Touch bits
   // XXXbz I can't find the sane spec for this stuff, so just cribbing
@@ -566,4 +574,18 @@ Document implements DocumentOrShadowRoot;
 partial interface Document {
     [SameObject, Pref="dom.security.featurePolicy.webidl.enabled"]
     readonly attribute Policy policy;
+};
+
+/**
+ * Document extensions to support devtools.
+ */
+partial interface Document {
+  // Is the Document embedded in a Responsive Design Mode pane. This property
+  // is not propegated to descendant Documents upon settting.
+  [ChromeOnly]
+  attribute boolean inRDMPane;
+  // Extension to give chrome JS the ability to set the window screen
+  // orientation while in RDM.
+  [ChromeOnly]
+  void setRDMPaneOrientation(OrientationType type, float rotationAngle);
 };

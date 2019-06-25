@@ -40,9 +40,7 @@ window.gActivityStreamStrings = {
   "section_disclaimer_topstories_buttontext": "சரி, புரிந்தது",
   "prefs_home_header": "Firefox முகப்பு உள்ளடக்கம்",
   "prefs_home_description": "உங்கள் பயர்பாக்ஸ் முகப்புத் திரையில் என்ன உள்ளடக்கம் வேண்டுமென்று தேர்ந்தெடு.",
-  "prefs_content_discovery_header": "பயர்பாஃசு முகப்பு",
   "prefs_content_discovery_description": "பயர்பாஃசு முகப்பில் உள்ள உள்ளடக்க கண்டுபிடிப்பு, வலைத்தளங்களில் உள்ள உயர் தர, தொடர்புடைய கட்டுரைகளைக் கண்டறிய அனுமதிக்கிறது.",
-  "prefs_content_discovery_button": "உள்ளடக்க கண்டுபிடிப்பை முடக்கு",
   "prefs_section_rows_option": "{num} வரிசை;{num} வரிசைகள்",
   "prefs_search_header": "Web Search",
   "prefs_topsites_description": "The sites you visit most",
@@ -107,8 +105,5 @@ window.gActivityStreamStrings = {
   "firstrun_privacy_notice": "தனியுரிமை அறிவிப்பு",
   "firstrun_continue_to_login": "தொடர்க",
   "firstrun_skip_login": "இந்த படிநிலையைத் தவிர்",
-  "context_menu_title": "பட்டியைத் திற",
-  "manual_migration_explanation2": "மற்றொரு உலாவியின் புத்தகக்குறிகள், வரலாறு மற்றும் கடவுச்சொற்களுடன் பயர்பாக்சை முயற்சித்துப் பாருங்கள்.",
-  "manual_migration_cancel_button": "பரவாயில்லை",
-  "manual_migration_import_button": "இப்போது இறக்கு"
+  "context_menu_title": "பட்டியைத் திற"
 };

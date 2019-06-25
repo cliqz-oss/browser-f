@@ -76,11 +76,11 @@
             '__SSSE3__',
           ],
         }],
-        [ 'OS=="android"', {
-          # On Android we can't use any of the hardware acceleration :(
-          'defines!': [
-            '__ARM_NEON__',
-            '__ARM_NEON',
+        [ 'target_arch=="arm"', {
+          # Gecko doesn't support non-NEON platform on Android, but tier-3
+          # platform such as Linux/arm will need it
+          'cflags_mozilla': [
+            '-mfpu=neon'
           ],
         }],
       ],
@@ -107,7 +107,7 @@
           ],
         }],
         # macOS build doesn't use cflags.
-        [ 'OS=="mac"', {
+        [ 'OS=="mac" or OS=="ios"', {
           'xcode_settings': {
             'OTHER_CFLAGS': [
               '-mpclmul', '-maes'

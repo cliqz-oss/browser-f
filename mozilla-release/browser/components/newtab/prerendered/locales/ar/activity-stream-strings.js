@@ -40,9 +40,7 @@ window.gActivityStreamStrings = {
   "section_disclaimer_topstories_buttontext": "حسنًا، فهمت",
   "prefs_home_header": "محتوى فَيَرفُكس الرئيسي",
   "prefs_home_description": "اختر المحتوى الذي تريد عرضه في شاشة بداية فَيَرفُكس.",
-  "prefs_content_discovery_header": "شاشة بداية فَيَرفُكس",
   "prefs_content_discovery_description": "تتيح لك ميزة ”اكتشاف المحتوى“ في صفحة بداية فَيَرفُكس رؤية مقالات عالية الجودة لها علاقة بما تتابع، تأتيك من أرجاء الوِب.",
-  "prefs_content_discovery_button": "عطّل اكتشاف المحتوى",
   "prefs_section_rows_option": "صف واحد;صفان;{num} صفوف;{num} صفا;{num} صف;لا صفوف",
   "prefs_search_header": "ابحث في الوِب",
   "prefs_topsites_description": "أكثر المواقع المزارة",
@@ -107,8 +105,5 @@ window.gActivityStreamStrings = {
   "firstrun_privacy_notice": "تنويه الخصوصية",
   "firstrun_continue_to_login": "تابِع",
   "firstrun_skip_login": "تجاوز هذه الخطوة",
-  "context_menu_title": "افتح القائمة",
-  "manual_migration_explanation2": "جرب فَيَرفُكس مع العلامات، و التأريخ، و كلمات السر من متصفح آخر.",
-  "manual_migration_cancel_button": "لا شكرًا",
-  "manual_migration_import_button": "استورد الآن"
+  "context_menu_title": "افتح القائمة"
 };

@@ -45,7 +45,7 @@ namespace wr {
 class DisplayListBuilder;
 }  // namespace wr
 
-enum class PaintBorderFlags : uint8_t { SYNC_DECODE_IMAGES = 1 << 0 };
+enum class PaintBorderFlags : uint8_t { SyncDecodeImages = 1 << 0 };
 MOZ_MAKE_ENUM_CLASS_BITWISE_OPERATORS(PaintBorderFlags)
 
 }  // namespace mozilla
@@ -141,7 +141,7 @@ struct nsCSSRendering {
                              RectCornerRadii& aOutRadii);
   static nsRect GetShadowRect(const nsRect& aFrameArea, bool aNativeTheme,
                               nsIFrame* aForFrame);
-  static mozilla::gfx::Color GetShadowColor(nsCSSShadowItem* aShadow,
+  static mozilla::gfx::Color GetShadowColor(const mozilla::StyleSimpleShadow&,
                                             nsIFrame* aFrame, float aOpacity);
   // Returns if the frame has a themed frame.
   // aMaybeHasBorderRadius will return false if we can early detect
@@ -572,10 +572,9 @@ struct nsCSSRendering {
     // strikeout line and overline too.
     Float descentLimit = -1.0f;
     // Which line will be painted. The value can be
-    // NS_STYLE_TEXT_DECORATION_LINE_UNDERLINE or
-    // NS_STYLE_TEXT_DECORATION_LINE_OVERLINE or
-    // NS_STYLE_TEXT_DECORATION_LINE_LINE_THROUGH.
-    uint8_t decoration = NS_STYLE_TEXT_DECORATION_LINE_UNDERLINE;
+    // UNDERLINE or OVERLINE or LINE_THROUGH.
+    mozilla::StyleTextDecorationLine decoration =
+        mozilla::StyleTextDecorationLine_UNDERLINE;
     // The style of the decoration line such as
     // NS_STYLE_TEXT_DECORATION_STYLE_*.
     uint8_t style = NS_STYLE_TEXT_DECORATION_STYLE_NONE;

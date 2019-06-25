@@ -85,7 +85,7 @@ body {
   --trailhead-card-button-background-hover-color: #{$grey-90-20};
   --trailhead-card-button-background-active-color: #{$grey-90-30};
 
-  &[lwt-newtab-brighttext]:not(.force-light-theme) {
+  &[lwt-newtab-brighttext] {
     // General styles
     --newtab-background-color: #{$grey-80};
     --newtab-border-primary-color: #{$grey-10-80};

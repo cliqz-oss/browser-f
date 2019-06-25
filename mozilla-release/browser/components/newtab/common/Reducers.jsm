@@ -16,10 +16,7 @@ const INITIAL_STATE = {
     // Have we received real data from the app yet?
     initialized: false,
   },
-  ASRouter: {
-    initialized: false,
-    allowLegacySnippets: null,
-  },
+  ASRouter: {initialized: false},
   Snippets: {initialized: false},
   TopSites: {
     // Have we received real data from history yet?
@@ -64,6 +61,7 @@ const INITIAL_STATE = {
       lastUpdated: null,
       data: {}, // {spocs: []}
       loaded: false,
+      frequency_caps: [],
     },
   },
   Search: {
@@ -90,8 +88,6 @@ function ASRouter(prevState = INITIAL_STATE.ASRouter, action) {
   switch (action.type) {
     case at.AS_ROUTER_INITIALIZED:
       return {...action.data, initialized: true};
-    case at.AS_ROUTER_PREF_CHANGED:
-      return {...prevState, ...action.data};
     default:
       return prevState;
   }
@@ -458,6 +454,33 @@ function Pocket(prevState = INITIAL_STATE.Pocket, action) {
 }
 
 function DiscoveryStream(prevState = INITIAL_STATE.DiscoveryStream, action) {
+  // Return if action data is empty, or spocs or feeds data is not loaded
+  const isNotReady = () =>
+    !action.data || !prevState.spocs.loaded || !prevState.feeds.loaded;
+
+  const nextState = handleSites => (
+    {
+      ...prevState,
+      spocs: {
+        ...prevState.spocs,
+        data: prevState.spocs.data.spocs ? {
+          spocs: handleSites(prevState.spocs.data.spocs),
+        } : {},
+      },
+      feeds: {
+        ...prevState.feeds,
+        data: Object.keys(prevState.feeds.data).reduce((accumulator, feed_url) => {
+          accumulator[feed_url] = {
+            data: {
+              ...prevState.feeds.data[feed_url].data,
+              recommendations: handleSites(prevState.feeds.data[feed_url].data.recommendations),
+            },
+          };
+          return accumulator;
+        }, {}),
+      },
+    });
+
   switch (action.type) {
     case at.DISCOVERY_STREAM_CONFIG_CHANGE:
     // The reason this is a separate action is so it doesn't trigger a listener update on init
@@ -466,14 +489,34 @@ function DiscoveryStream(prevState = INITIAL_STATE.DiscoveryStream, action) {
     case at.DISCOVERY_STREAM_LAYOUT_UPDATE:
       return {...prevState, lastUpdated: action.data.lastUpdated || null, layout: action.data.layout || []};
     case at.DISCOVERY_STREAM_LAYOUT_RESET:
-      return {...prevState, lastUpdated: INITIAL_STATE.DiscoveryStream.lastUpdated, layout: INITIAL_STATE.DiscoveryStream.layout};
+      return {...INITIAL_STATE.DiscoveryStream, config: prevState.config};
     case at.DISCOVERY_STREAM_FEEDS_UPDATE:
       return {
         ...prevState,
         feeds: {
           ...prevState.feeds,
-          data: action.data || prevState.feeds.data,
           loaded: true,
+        },
+      };
+    case at.DISCOVERY_STREAM_FEED_UPDATE:
+      const newData = {};
+      newData[action.data.url] = action.data.feed;
+      return {
+        ...prevState,
+        feeds: {
+          ...prevState.feeds,
+          data: {
+            ...prevState.feeds.data,
+            ...newData,
+          },
+        },
+      };
+    case at.DISCOVERY_STREAM_SPOCS_CAPS:
+      return {
+        ...prevState,
+        spocs: {
+          ...prevState.spocs,
+          frequency_caps: [...prevState.spocs.frequency_caps, ...action.data],
         },
       };
     case at.DISCOVERY_STREAM_SPOCS_ENDPOINT:
@@ -482,34 +525,6 @@ function DiscoveryStream(prevState = INITIAL_STATE.DiscoveryStream, action) {
         spocs: {
           ...INITIAL_STATE.DiscoveryStream.spocs,
           spocs_endpoint: action.data || INITIAL_STATE.DiscoveryStream.spocs.spocs_endpoint,
-        },
-      };
-    case at.PLACES_LINK_BLOCKED:
-      // Return if action data is empty, or spocs or feeds data is not loaded
-      if (!action.data || !prevState.spocs.loaded || !prevState.feeds.loaded) {
-        return prevState;
-      }
-      // Filter spocs and recommendations data inside feeds by removing action.data.url
-      // received on PLACES_LINK_BLOCKED triggered by dismiss link menu option
-      return {
-        ...prevState,
-        spocs: {
-          ...prevState.spocs,
-          data: prevState.spocs.data.spocs ? {
-            spocs: prevState.spocs.data.spocs.filter(s => s.url !== action.data.url),
-          } : {},
-        },
-        feeds: {
-          ...prevState.feeds,
-          data: Object.keys(prevState.feeds.data).reduce((accumulator, feed_url) => {
-            accumulator[feed_url] = {
-              data: {
-                ...prevState.feeds.data[feed_url].data,
-                recommendations: prevState.feeds.data[feed_url].data.recommendations.filter(r => r.url !== action.data.url),
-              },
-            };
-            return accumulator;
-          }, {}),
         },
       };
     case at.DISCOVERY_STREAM_SPOCS_UPDATE:
@@ -525,6 +540,57 @@ function DiscoveryStream(prevState = INITIAL_STATE.DiscoveryStream, action) {
         };
       }
       return prevState;
+    case at.DISCOVERY_STREAM_LINK_BLOCKED:
+      return isNotReady() ? prevState :
+        nextState(items => items.filter(item => item.url !== action.data.url));
+
+    case at.PLACES_SAVED_TO_POCKET:
+      const addPocketInfo = item => {
+        if (item.url === action.data.url) {
+          return Object.assign({}, item, {
+            open_url: action.data.open_url,
+            pocket_id: action.data.pocket_id,
+          });
+        }
+        return item;
+      };
+      return isNotReady() ? prevState :
+        nextState(items => items.map(addPocketInfo));
+
+    case at.DELETE_FROM_POCKET:
+    case at.ARCHIVE_FROM_POCKET:
+      return isNotReady() ? prevState :
+        nextState(items => items.filter(item => item.pocket_id !== action.data.pocket_id));
+
+    case at.PLACES_BOOKMARK_ADDED:
+      const updateBookmarkInfo = item => {
+        if (item.url === action.data.url) {
+          const {bookmarkGuid, bookmarkTitle, dateAdded} = action.data;
+          return Object.assign({}, item, {
+            bookmarkGuid,
+            bookmarkTitle,
+            bookmarkDateCreated: dateAdded,
+          });
+        }
+        return item;
+      };
+      return isNotReady() ? prevState :
+        nextState(items => items.map(updateBookmarkInfo));
+
+    case at.PLACES_BOOKMARK_REMOVED:
+      const removeBookmarkInfo = item => {
+        if (item.url === action.data.url) {
+          const newSite = Object.assign({}, item);
+          delete newSite.bookmarkGuid;
+          delete newSite.bookmarkTitle;
+          delete newSite.bookmarkDateCreated;
+          return newSite;
+        }
+        return item;
+      };
+      return isNotReady() ? prevState :
+        nextState(items => items.map(removeBookmarkInfo));
+
     default:
       return prevState;
   }

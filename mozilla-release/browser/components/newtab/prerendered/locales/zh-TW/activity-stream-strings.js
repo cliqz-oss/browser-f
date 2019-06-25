@@ -40,9 +40,7 @@ window.gActivityStreamStrings = {
   "section_disclaimer_topstories_buttontext": "好的，知道了",
   "prefs_home_header": "Firefox 首頁內容",
   "prefs_home_description": "選擇要在您的 Firefox 首頁顯示哪些內容。",
-  "prefs_content_discovery_header": "Firefox 首頁",
   "prefs_content_discovery_description": "Firefox Home 的內容探索功能可隨您上網，為您尋找高品質而與您有關的文章。",
-  "prefs_content_discovery_button": "關閉內容探索功能",
   "prefs_section_rows_option": "{num} 行",
   "prefs_search_header": "網頁搜尋",
   "prefs_topsites_description": "最常造訪的網站",
@@ -107,8 +105,5 @@ window.gActivityStreamStrings = {
   "firstrun_privacy_notice": "隱私權公告",
   "firstrun_continue_to_login": "繼續",
   "firstrun_skip_login": "跳過這步",
-  "context_menu_title": "開啟選單",
-  "manual_migration_explanation2": "試試將其他瀏覽器的書籤、瀏覽記錄與密碼匯入 Firefox。",
-  "manual_migration_cancel_button": "不要，謝謝",
-  "manual_migration_import_button": "立即匯入"
+  "context_menu_title": "開啟選單"
 };

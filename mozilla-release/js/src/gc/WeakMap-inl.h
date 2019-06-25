@@ -15,7 +15,7 @@
 namespace js {
 
 template <typename T>
-static T extractUnbarriered(const WriteBarrieredBase<T>& v) {
+static T extractUnbarriered(const WriteBarriered<T>& v) {
   return v.get();
 }
 
@@ -41,8 +41,11 @@ WeakMap<K, V>::WeakMap(JSContext* cx, JSObject* memOf)
     : Base(cx->zone()), WeakMapBase(memOf, cx->zone()) {
   using ElemType = typename K::ElementType;
   using NonPtrType = typename mozilla::RemovePointer<ElemType>::Type;
+
   // The object's TraceKind needs to be added to CC graph if this object is
-  // used as a WeakMap key. See the comments for IsCCTraceKind for details.
+  // used as a WeakMap key, otherwise the key is considered to be pointed from
+  // somewhere unknown, and results in leaking the subgraph which contains the
+  // key. See the comments in NoteWeakMapsTracer::trace for more details.
   static_assert(JS::IsCCTraceKind(NonPtrType::TraceKind),
                 "Object's TraceKind should be added to CC graph.");
 
@@ -93,6 +96,15 @@ void WeakMap<K, V>::trace(JSTracer* trc) {
   if (trc->isMarkingTracer()) {
     MOZ_ASSERT(trc->weakMapAction() == ExpandWeakMaps);
     auto marker = GCMarker::fromTracer(trc);
+
+    // Don't change the map color from black to gray. This can happen when a
+    // barrier pushes the map object onto the black mark stack when it's already
+    // present on the gray mark stack, which is marked later.
+    if (marked && markColor == gc::MarkColor::Black &&
+        marker->markColor() == gc::MarkColor::Gray) {
+      return;
+    }
+
     marked = true;
     markColor = marker->markColor();
     (void)markIteratively(marker);

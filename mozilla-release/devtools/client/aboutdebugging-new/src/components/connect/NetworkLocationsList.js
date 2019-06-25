@@ -28,12 +28,12 @@ class NetworkLocationsList extends PureComponent {
       this.props.networkLocations.map(location =>
         dom.li(
           {
-            className: "connect-page__network-location js-network-location",
+            className: "network-location qa-network-location",
             key: location,
           },
           dom.span(
             {
-              className: "ellipsis-text js-network-location-value",
+              className: "ellipsis-text qa-network-location-value",
             },
             location
           ),
@@ -43,34 +43,22 @@ class NetworkLocationsList extends PureComponent {
             },
             dom.button(
               {
-                className: "default-button js-network-location-remove-button",
+                className: "default-button qa-network-location-remove-button",
                 onClick: () => {
                   this.props.dispatch(Actions.removeNetworkLocation(location));
                 },
               },
-              "Remove"
-            )
+              "Remove",
+            ),
           )
         )
       )
     );
   }
 
-  renderEmpty() {
-    return Localized(
-      {
-        id: "about-debugging-network-locations-empty-text",
-      },
-      dom.p(
-        {},
-        "No network locations have been added yet."
-      )
-    );
-  }
-
   render() {
     return this.props.networkLocations.length > 0 ?
-      this.renderList() : this.renderEmpty();
+      this.renderList() : null;
   }
 }
 

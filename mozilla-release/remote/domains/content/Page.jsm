@@ -14,19 +14,12 @@ class Page extends ContentProcessDomain {
   constructor(session) {
     super(session);
     this.enabled = false;
+
+    this.onFrameNavigated = this.onFrameNavigated.bind(this);
   }
 
   destructor() {
     this.disable();
-  }
-
-  QueryInterface(iid) {
-    if (iid.equals(Ci.nsIWebProgressListener) ||
-      iid.equals(Ci.nsISupportsWeakReference) ||
-      iid.equals(Ci.nsIObserver)) {
-      return this;
-    }
-    throw Cr.NS_ERROR_NO_INTERFACE;
   }
 
   // commands
@@ -34,6 +27,8 @@ class Page extends ContentProcessDomain {
   async enable() {
     if (!this.enabled) {
       this.enabled = true;
+      this.contextObserver.on("frame-navigated", this.onFrameNavigated);
+
       this.chromeEventHandler.addEventListener("DOMContentLoaded", this,
         {mozSystemGroup: true});
       this.chromeEventHandler.addEventListener("pageshow", this,
@@ -43,6 +38,8 @@ class Page extends ContentProcessDomain {
 
   disable() {
     if (this.enabled) {
+      this.contextObserver.off("frame-navigated", this.onFrameNavigated);
+
       this.chromeEventHandler.removeEventListener("DOMContentLoaded", this,
         {mozSystemGroup: true});
       this.chromeEventHandler.removeEventListener("pageshow", this,
@@ -61,17 +58,27 @@ class Page extends ContentProcessDomain {
       referrerURI: referrer,
       triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal(),
     };
-    this.docShell.QueryInterface(Ci.nsIWebNavigation);
     this.docShell.loadURI(url, opts);
 
-    return {frameId: "42"};
+    return {
+      frameId: this.content.windowUtils.outerWindowID,
+    };
+  }
+
+  async reload() {
+    this.docShell.reload(Ci.nsIWebNavigation.LOAD_FLAGS_NONE);
   }
 
   getFrameTree() {
+    const frameId = this.content.windowUtils.outerWindowID;
     return {
       frameTree: {
         frame: {
-          // id, parentId
+          id: frameId,
+          url: this.content.location.href,
+          loaderId: null,
+          securityOrigin: null,
+          mimeType: null,
         },
         childFrames: [],
       },
@@ -86,8 +93,28 @@ class Page extends ContentProcessDomain {
     return this.content.location.href;
   }
 
-  handleEvent({type}) {
+  onFrameNavigated(name, { frameId, window }) {
+    const url = window.location.href;
+    this.emit("Page.frameNavigated", {
+      frame: {
+        id: frameId,
+        // frameNavigated is only emitted for the top level document
+        // so that it never has a parent.
+        parentId: null,
+        url,
+      },
+    });
+  }
+
+  handleEvent({type, target}) {
+    if (target.defaultView != this.content) {
+      // Ignore iframes for now
+      return;
+    }
+
     const timestamp = Date.now();
+    const frameId = target.defaultView.windowUtils.outerWindowID;
+    const url = target.location.href;
 
     switch (type) {
     case "DOMContentLoaded":
@@ -95,10 +122,10 @@ class Page extends ContentProcessDomain {
       break;
 
     case "pageshow":
-      this.emit("Page.loadEventFired", {timestamp});
+      this.emit("Page.loadEventFired", {timestamp, frameId});
       // XXX this should most likely be sent differently
-      this.emit("Page.navigatedWithinDocument", {timestamp});
-      this.emit("Page.frameStoppedLoading", {timestamp});
+      this.emit("Page.navigatedWithinDocument", {timestamp, frameId, url});
+      this.emit("Page.frameStoppedLoading", {timestamp, frameId});
       break;
     }
   }

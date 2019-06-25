@@ -6,7 +6,8 @@
 
 /* global waitUntilState, gBrowser */
 /* exported addTestTab, checkTreeState, checkSidebarState, checkAuditState, selectRow,
-            toggleRow, addA11yPanelTestsTask, reload, navigate */
+            toggleRow, toggleFilter, addA11yPanelTestsTask, reload,
+            navigate */
 
 "use strict";
 
@@ -162,6 +163,98 @@ async function initAccessibilityPanel(tab = gBrowser.selectedTab) {
 }
 
 /**
+ * Compare text within the list of potential badges rendered for accessibility
+ * tree row when its accessible object has accessibility failures.
+ * @param {DOMNode} badges
+ *        Container element that contains badge elements.
+ * @param {Array|null} expected
+ *        List of expected badge labels for failing accessibility checks.
+ */
+function compareBadges(badges, expected = []) {
+  const badgeEls = badges ? [...badges.querySelectorAll(".badge")] : [];
+  return badgeEls.length === expected.length &&
+         badgeEls.every((badge, i) => badge.textContent === expected[i]);
+}
+
+/**
+ * Find an ancestor that is scrolled for a given DOMNode.
+ *
+ * @param {DOMNode} node
+ *        DOMNode that to find an ancestor for that is scrolled.
+ */
+function closestScrolledParent(node) {
+  if (node == null) {
+    return null;
+  }
+
+  if (node.scrollHeight > node.clientHeight) {
+    return node;
+  }
+
+  return closestScrolledParent(node.parentNode);
+}
+
+/**
+ * Check if a given element is visible to the user and is not scrolled off
+ * because of the overflow.
+ *
+ * @param   {Element} element
+ *          Element to be checked whether it is visible and is not scrolled off.
+ *
+ * @returns {Boolean}
+ *          True if the element is visible.
+ */
+function isVisible(element) {
+  const { top, bottom } = element.getBoundingClientRect();
+  const scrolledParent = closestScrolledParent(element.parentNode);
+  const scrolledParentRect = scrolledParent ? scrolledParent.getBoundingClientRect() :
+                                              null;
+  return !scrolledParent ||
+         (top >= scrolledParentRect.top && bottom <= scrolledParentRect.bottom);
+}
+
+/**
+ * Check selected styling and visibility for a given row in the accessibility
+ * tree.
+ * @param   {DOMNode} row
+ *          DOMNode for a given accessibility row.
+ * @param   {Boolean} expected
+ *          Expected selected state.
+ *
+ * @returns {Boolean}
+ *          True if visibility and styling matches expected selected state.
+ */
+function checkSelected(row, expected) {
+  if (!expected) {
+    return true;
+  }
+
+  if (row.classList.contains("selected") !== expected) {
+    return false;
+  }
+
+  return isVisible(row);
+}
+
+/**
+ * Check level for a given row in the accessibility tree.
+ * @param   {DOMNode} row
+ *          DOMNode for a given accessibility row.
+ * @param   {Boolean} expected
+ *          Expected row level (aria-level).
+ *
+ * @returns {Boolean}
+ *          True if the aria-level for the row is as expected.
+ */
+function checkLevel(row, expected) {
+  if (!expected) {
+    return true;
+  }
+
+  return parseInt(row.getAttribute("aria-level"), 10) === expected;
+}
+
+/**
  * Check the state of the accessibility tree.
  * @param  {document} doc       panel documnent.
  * @param  {Array}    expected  an array that represents an expected row list.
@@ -169,10 +262,14 @@ async function initAccessibilityPanel(tab = gBrowser.selectedTab) {
 async function checkTreeState(doc, expected) {
   info("Checking tree state.");
   const hasExpectedStructure = await BrowserTestUtils.waitForCondition(() =>
-    [...doc.querySelectorAll(".treeRow")].every((row, i) =>
-      row.querySelector(".treeLabelCell").textContent === expected[i].role &&
-      row.querySelector(".treeValueCell").textContent === expected[i].name),
-    "Wait for the right tree update.");
+    [...doc.querySelectorAll(".treeRow")].every((row, i) => {
+      const { role, name, badges, selected, level } = expected[i];
+      return row.querySelector(".treeLabelCell").textContent === role &&
+        row.querySelector(".treeValueCell").textContent === name &&
+        compareBadges(row.querySelector(".badges"), badges) &&
+        checkSelected(row, selected) &&
+        checkLevel(row, level);
+    }), "Wait for the right tree update.");
 
   ok(hasExpectedStructure, "Tree structure is correct.");
 }
@@ -359,6 +456,39 @@ async function toggleRow(doc, rowNumber) {
   await BrowserTestUtils.waitForCondition(() =>
     !twisty.classList.contains("devtools-throbber") &&
     expected === twisty.classList.contains("open"), "Twisty updated.");
+}
+
+/**
+ * Toggle an accessibility audit filter based on its index in the toolbar.
+ * @param  {document} doc         panel documnent.
+ * @param  {Number}   filterIndex index of the filter to be toggled.
+ */
+async function toggleFilter(doc, filterIndex) {
+  const win = doc.defaultView;
+  const filter = doc.querySelectorAll(
+    ".devtools-toolbar .badge.toggle-button")[filterIndex];
+  const expected = !filter.classList.contains("checked");
+
+  EventUtils.synthesizeMouseAtCenter(filter, {}, win);
+  await BrowserTestUtils.waitForCondition(() =>
+    expected === filter.classList.contains("checked"), "Filter updated.");
+}
+
+async function findAccessibleFor({
+  toolbox: { walker: domWalker },
+  panel: { walker: a11yWalker },
+}, selector) {
+  const node = await domWalker.querySelector(domWalker.rootNode, selector);
+  return a11yWalker.getAccessibleFor(node);
+}
+
+async function selectAccessibleForNode(env, selector) {
+  const { panel, win } = env;
+  const front = await findAccessibleFor(env, selector);
+  const { EVENTS } = win;
+  const onSelected = win.once(EVENTS.NEW_ACCESSIBLE_FRONT_SELECTED);
+  panel.selectAccessible(front);
+  await onSelected;
 }
 
 /**

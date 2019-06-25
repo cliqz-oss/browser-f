@@ -1,4 +1,5 @@
 // -*- indent-tabs-mode: nil; js-indent-level: 2 -*-
+/* vim: set ts=2 et sw=2 tw=80 filetype=javascript: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -408,7 +409,7 @@ var ActionBarHandler = {
         }
 
         // Close ActionBarHandler, then selectAll, and display handles.
-        ActionBarHandler._getSelectAllController(element, win).selectAll();
+        ActionBarHandler._getDocShell(win).doCommand("cmd_selectAll");
         UITelemetry.addEvent("action.1", "actionbar", null, "select_all");
       },
     },
@@ -442,17 +443,10 @@ var ActionBarHandler = {
       },
 
       action: function(element, win) {
-        // First copy the selection text to the clipboard.
-        let selectedText = ActionBarHandler._getSelectedText();
-        let clipboard = Cc["@mozilla.org/widget/clipboardhelper;1"].
-          getService(Ci.nsIClipboardHelper);
-        clipboard.copyString(selectedText);
+        ActionBarHandler._getEditor(element, win).cut();
 
         let msg = Strings.browser.GetStringFromName("selectionHelper.textCopied");
         Snackbars.show(msg, Snackbars.LENGTH_LONG);
-
-        // Then cut the selection text.
-        ActionBarHandler._getSelection(element, win).deleteFromDocument();
 
         ActionBarHandler._uninit();
         UITelemetry.addEvent("action.1", "actionbar", null, "cut");
@@ -480,10 +474,7 @@ var ActionBarHandler = {
       },
 
       action: function(element, win) {
-        let selectedText = ActionBarHandler._getSelectedText();
-        let clipboard = Cc["@mozilla.org/widget/clipboardhelper;1"].
-          getService(Ci.nsIClipboardHelper);
-        clipboard.copyString(selectedText);
+        ActionBarHandler._getDocShell(win).doCommand("cmd_copy");
 
         let msg = Strings.browser.GetStringFromName("selectionHelper.textCopied");
         Snackbars.show(msg, Snackbars.LENGTH_LONG);
@@ -742,6 +733,13 @@ var ActionBarHandler = {
   },
 
   /**
+   * Get current DocShell object.
+   */
+  _getDocShell: function(win) {
+    return win.docShell;
+  },
+
+  /**
    * Provides the currently selected text, for either an editable,
    * or for the default contentWindow.
    */
@@ -797,28 +795,6 @@ var ActionBarHandler = {
     }
 
     return win.docShell.editingSession.getEditorForWindow(win);
-  },
-
-  /**
-   * Returns a selection controller.
-   */
-  _getSelectionController: function(element = this._targetElement, win = this._contentWindow) {
-    if (this._isElementEditable(element)) {
-      return this._getEditor(element, win).selectionController;
-    }
-
-    return win.docShell.
-               QueryInterface(Ci.nsIInterfaceRequestor).getInterface(Ci.nsISelectionDisplay).
-               QueryInterface(Ci.nsISelectionController);
-  },
-
-  /**
-   * For selectAll(), provides the editor, or the default window selection Controller.
-   */
-  _getSelectAllController: function(element = this._targetElement, win = this._contentWindow) {
-    let editor = this._getEditor(element, win);
-    return (editor) ?
-      editor : this._getSelectionController(element, win);
   },
 
   /**

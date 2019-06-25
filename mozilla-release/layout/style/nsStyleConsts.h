@@ -168,12 +168,6 @@ enum class StyleScrollbarWidth : uint8_t {
   None,
 };
 
-// <shape-radius> for <basic-shape>
-enum class StyleShapeRadius : uint8_t {
-  ClosestSide,
-  FarthestSide,
-};
-
 // Shape source type
 enum class StyleShapeSourceType : uint8_t {
   None,
@@ -240,16 +234,6 @@ enum class StyleOrient : uint8_t {
   Vertical,
 };
 
-// See nsStyleDisplay
-//
-// These need to be in sync with WillChangeBits in box.rs.
-#define NS_STYLE_WILL_CHANGE_STACKING_CONTEXT (1 << 0)
-#define NS_STYLE_WILL_CHANGE_TRANSFORM (1 << 1)
-#define NS_STYLE_WILL_CHANGE_SCROLL (1 << 2)
-#define NS_STYLE_WILL_CHANGE_OPACITY (1 << 3)
-#define NS_STYLE_WILL_CHANGE_FIXPOS_CB (1 << 4)
-#define NS_STYLE_WILL_CHANGE_ABSPOS_CB (1 << 5)
-
 // See AnimationEffect.webidl
 // and mozilla/dom/AnimationEffectBinding.h
 namespace dom {
@@ -277,8 +261,7 @@ enum class StyleImageLayerRepeat : uint8_t {
 enum class StyleMaskMode : uint8_t { Alpha = 0, Luminance, MatchSource };
 
 // See nsStyleTable
-#define NS_STYLE_BORDER_COLLAPSE 0
-#define NS_STYLE_BORDER_SEPARATE 1
+enum class StyleBorderCollapse : uint8_t { Collapse, Separate };
 
 // border-image-repeat
 enum class StyleBorderImageRepeat : uint8_t { Stretch, Repeat, Round, Space };
@@ -559,23 +542,6 @@ enum class StyleGridTrackBreadth : uint8_t {
 #define NS_STYLE_TEXT_ALIGN_MOZ_RIGHT 9
 #define NS_STYLE_TEXT_ALIGN_MOZ_LEFT 10
 
-// Note: make sure that the largest NS_STYLE_TEXT_ALIGN_* value is smaller than
-// the smallest NS_STYLE_VERTICAL_ALIGN_* value below!
-
-// See nsStyleText, nsStyleFont
-#define NS_STYLE_TEXT_DECORATION_LINE_NONE 0
-#define NS_STYLE_TEXT_DECORATION_LINE_UNDERLINE 0x01
-#define NS_STYLE_TEXT_DECORATION_LINE_OVERLINE 0x02
-#define NS_STYLE_TEXT_DECORATION_LINE_LINE_THROUGH 0x04
-#define NS_STYLE_TEXT_DECORATION_LINE_BLINK 0x08
-// OVERRIDE_ALL does not occur in stylesheets; it only comes from HTML
-// attribute mapping (and thus appears in computed data)
-#define NS_STYLE_TEXT_DECORATION_LINE_OVERRIDE_ALL 0x10
-#define NS_STYLE_TEXT_DECORATION_LINE_LINES_MASK \
-  (NS_STYLE_TEXT_DECORATION_LINE_UNDERLINE |     \
-   NS_STYLE_TEXT_DECORATION_LINE_OVERLINE |      \
-   NS_STYLE_TEXT_DECORATION_LINE_LINE_THROUGH)
-
 // See nsStyleText
 #define NS_STYLE_TEXT_DECORATION_STYLE_NONE \
   0  // not in CSS spec, mapped to -moz-none
@@ -600,29 +566,8 @@ enum class StyleGridTrackBreadth : uint8_t {
 #define NS_STYLE_TEXT_TRANSFORM_FULL_SIZE_KANA 5
 
 // See nsStyleDisplay
-#define NS_STYLE_TOUCH_ACTION_NONE (1 << 0)
-#define NS_STYLE_TOUCH_ACTION_AUTO (1 << 1)
-#define NS_STYLE_TOUCH_ACTION_PAN_X (1 << 2)
-#define NS_STYLE_TOUCH_ACTION_PAN_Y (1 << 3)
-#define NS_STYLE_TOUCH_ACTION_MANIPULATION (1 << 4)
-
-// See nsStyleDisplay
 #define NS_STYLE_TOP_LAYER_NONE 0  // not in the top layer
 #define NS_STYLE_TOP_LAYER_TOP 1   // in the top layer
-
-// See nsStyleText
-// Note: these values pickup after the text-align values because there
-// are a few html cases where an object can have both types of
-// alignment applied with a single attribute
-#define NS_STYLE_VERTICAL_ALIGN_BASELINE 14
-#define NS_STYLE_VERTICAL_ALIGN_SUB 15
-#define NS_STYLE_VERTICAL_ALIGN_SUPER 16
-#define NS_STYLE_VERTICAL_ALIGN_TOP 17
-#define NS_STYLE_VERTICAL_ALIGN_TEXT_TOP 18
-#define NS_STYLE_VERTICAL_ALIGN_MIDDLE 19
-#define NS_STYLE_VERTICAL_ALIGN_TEXT_BOTTOM 20
-#define NS_STYLE_VERTICAL_ALIGN_BOTTOM 21
-#define NS_STYLE_VERTICAL_ALIGN_MIDDLE_WITH_BASELINE 22
 
 // See nsStyleVisibility
 #define NS_STYLE_VISIBILITY_HIDDEN 0
@@ -736,12 +681,6 @@ enum class StyleWhiteSpace : uint8_t {
 #define NS_STYLE_GRADIENT_SIZE_EXPLICIT_SIZE 4
 
 // See nsStyleSVG
-
-// -moz-context-properties
-#define NS_STYLE_CONTEXT_PROPERTY_FILL (1 << 0)
-#define NS_STYLE_CONTEXT_PROPERTY_STROKE (1 << 1)
-#define NS_STYLE_CONTEXT_PROPERTY_FILL_OPACITY (1 << 2)
-#define NS_STYLE_CONTEXT_PROPERTY_STROKE_OPACITY (1 << 3)
 
 /*
  * -moz-window-shadow

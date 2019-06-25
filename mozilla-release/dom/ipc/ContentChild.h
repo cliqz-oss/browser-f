@@ -7,6 +7,7 @@
 #ifndef mozilla_dom_ContentChild_h
 #define mozilla_dom_ContentChild_h
 
+#include "base/shared_memory.h"
 #include "mozilla/Atomics.h"
 #include "mozilla/Attributes.h"
 #include "mozilla/dom/PBrowserOrId.h"
@@ -25,7 +26,7 @@
 
 #include "nsIWindowProvider.h"
 
-#if defined(XP_MACOSX) && defined(MOZ_CONTENT_SANDBOX)
+#if defined(XP_MACOSX) && defined(MOZ_SANDBOX)
 #  include "nsIFile.h"
 #endif
 
@@ -74,9 +75,8 @@ class SharedMap;
 class AlertObserver;
 class ConsoleListener;
 class ClonedMessageData;
-class TabChild;
+class BrowserChild;
 class GetFilesHelperChild;
-class FileCreatorHelper;
 
 class ContentChild final : public PContentChild,
                            public nsIWindowProvider,
@@ -108,15 +108,13 @@ class ContentChild final : public PContentChild,
     nsCString sourceURL;
   };
 
-  nsresult ProvideWindowCommon(TabChild* aTabOpener,
-                               mozIDOMWindowProxy* aOpener, bool aIframeMoz,
-                               uint32_t aChromeFlags, bool aCalledFromJS,
-                               bool aPositionSpecified, bool aSizeSpecified,
-                               nsIURI* aURI, const nsAString& aName,
-                               const nsACString& aFeatures, bool aForceNoOpener,
-                               nsDocShellLoadState* aLoadState,
-                               bool* aWindowIsNew,
-                               mozIDOMWindowProxy** aReturn);
+  nsresult ProvideWindowCommon(
+      BrowserChild* aTabOpener, mozIDOMWindowProxy* aParent, bool aIframeMoz,
+      uint32_t aChromeFlags, bool aCalledFromJS, bool aPositionSpecified,
+      bool aSizeSpecified, nsIURI* aURI, const nsAString& aName,
+      const nsACString& aFeatures, bool aForceNoOpener, bool aForceNoReferrer,
+      nsDocShellLoadState* aLoadState, bool* aWindowIsNew,
+      mozIDOMWindowProxy** aReturn);
 
   bool Init(MessageLoop* aIOLoop, base::ProcessId aParentPid,
             const char* aParentBuildID, IPC::Channel* aChannel,
@@ -124,6 +122,9 @@ class ContentChild final : public PContentChild,
 
   void InitXPCOM(const XPCOMInitData& aXPCOMInit,
                  const mozilla::dom::ipc::StructuredCloneData& aInitialData);
+
+  void InitSharedUASheets(const Maybe<base::SharedMemoryHandle>& aHandle,
+                          uintptr_t aAddress);
 
   void InitGraphicsDeviceData(const ContentDeviceData& aData);
 
@@ -139,7 +140,7 @@ class ContentChild final : public PContentChild,
 
   void LaunchRDDProcess();
 
-#if defined(XP_MACOSX) && defined(MOZ_CONTENT_SANDBOX)
+#if defined(XP_MACOSX) && defined(MOZ_SANDBOX)
   void GetProfileDir(nsIFile** aProfileDir) const {
     *aProfileDir = mProfileDir;
     NS_IF_ADDREF(*aProfileDir);
@@ -192,14 +193,6 @@ class ContentChild final : public PContentChild,
 
   mozilla::ipc::IPCResult RecvSetProcessSandbox(
       const Maybe<FileDescriptor>& aBroker);
-
-  PBrowserChild* AllocPBrowserChild(const TabId& aTabId,
-                                    const TabId& aSameTabGroupAs,
-                                    const IPCTabContext& aContext,
-                                    const uint32_t& aChromeFlags,
-                                    const ContentParentId& aCpID,
-                                    BrowsingContext* aBrowsingContext,
-                                    const bool& aIsForBrowser);
 
   bool DeallocPBrowserChild(PBrowserChild*);
 
@@ -374,8 +367,13 @@ class ContentChild final : public PContentChild,
       const FileDescriptor& aMapFile, const uint32_t& aMapSize,
       nsTArray<IPCBlob>&& aBlobs, nsTArray<nsCString>&& aChangedKeys);
 
+  mozilla::ipc::IPCResult RecvFontListChanged();
+
   mozilla::ipc::IPCResult RecvGeolocationUpdate(nsIDOMGeoPosition* aPosition);
 
+  // MOZ_CAN_RUN_SCRIPT_BOUNDARY because we don't have MOZ_CAN_RUN_SCRIPT bits
+  // in IPC code yet.
+  MOZ_CAN_RUN_SCRIPT_BOUNDARY
   mozilla::ipc::IPCResult RecvGeolocationError(const uint16_t& errorCode);
 
   mozilla::ipc::IPCResult RecvUpdateDictionaryList(
@@ -383,14 +381,12 @@ class ContentChild final : public PContentChild,
 
   mozilla::ipc::IPCResult RecvUpdateFontList(
       InfallibleTArray<SystemFontListEntry>&& aFontList);
+  mozilla::ipc::IPCResult RecvRebuildFontList();
 
   mozilla::ipc::IPCResult RecvUpdateAppLocales(
       nsTArray<nsCString>&& aAppLocales);
   mozilla::ipc::IPCResult RecvUpdateRequestedLocales(
       nsTArray<nsCString>&& aRequestedLocales);
-
-  mozilla::ipc::IPCResult RecvClearSiteDataReloadNeeded(
-      const nsString& aOrigin);
 
   mozilla::ipc::IPCResult RecvAddPermission(const IPC::Permission& permission);
 
@@ -458,6 +454,7 @@ class ContentChild final : public PContentChild,
   mozilla::ipc::IPCResult RecvInvokeDragSession(
       nsTArray<IPCDataTransfer>&& aTransfers, const uint32_t& aAction);
 
+  MOZ_CAN_RUN_SCRIPT_BOUNDARY
   mozilla::ipc::IPCResult RecvEndDragSession(
       const bool& aDoneDrag, const bool& aUserCancelled,
       const mozilla::LayoutDeviceIntPoint& aEndDragPoint,
@@ -490,6 +487,9 @@ class ContentChild final : public PContentChild,
   mozilla::ipc::IPCResult RecvRefreshScreens(
       nsTArray<ScreenDetails>&& aScreens);
 
+  mozilla::ipc::IPCResult RecvNetworkLinkTypeChange(const uint32_t& aType);
+  uint32_t NetworkLinkType() const { return mNetworkLinkType; }
+
   // Get the directory for IndexedDB files. We query the parent for this and
   // cache the value
   nsString& GetIndexedDBPath();
@@ -511,25 +511,17 @@ class ContentChild final : public PContentChild,
 
   bool DeallocPFileDescriptorSetChild(PFileDescriptorSetChild*);
 
-  bool SendPBrowserConstructor(PBrowserChild* actor, const TabId& aTabId,
-                               const TabId& aSameTabGroupAs,
-                               const IPCTabContext& context,
-                               const uint32_t& chromeFlags,
-                               const ContentParentId& aCpID,
-                               BrowsingContext* aBrowsingContext,
-                               const bool& aIsForBrowser);
-
-  virtual mozilla::ipc::IPCResult RecvPBrowserConstructor(
-      PBrowserChild* aCctor, const TabId& aTabId, const TabId& aSameTabGroupAs,
-      const IPCTabContext& aContext, const uint32_t& aChromeFlags,
-      const ContentParentId& aCpID, BrowsingContext* aBrowsingContext,
-      const bool& aIsForBrowser) override;
+  mozilla::ipc::IPCResult RecvConstructBrowser(
+      ManagedEndpoint<PBrowserChild>&& aBrowserEp, const TabId& aTabId,
+      const TabId& aSameTabGroupAs, const IPCTabContext& aContext,
+      BrowsingContext* aBrowsingContext, const uint32_t& aChromeFlags,
+      const ContentParentId& aCpID, const bool& aIsForBrowser);
 
   FORWARD_SHMEM_ALLOCATOR_TO(PContentChild)
 
   void GetAvailableDictionaries(InfallibleTArray<nsString>& aDictionaries);
 
-  PBrowserOrId GetBrowserOrId(TabChild* aTabChild);
+  PBrowserOrId GetBrowserOrId(BrowserChild* aBrowserChild);
 
   POfflineCacheUpdateChild* AllocPOfflineCacheUpdateChild(
       const URIParams& manifestURI, const URIParams& documentURI,
@@ -573,9 +565,6 @@ class ContentChild final : public PContentChild,
 
   mozilla::ipc::IPCResult RecvBlobURLUnregistration(const nsCString& aURI);
 
-  mozilla::ipc::IPCResult RecvFileCreationResponse(
-      const nsID& aUUID, const FileCreationResult& aResult);
-
   mozilla::ipc::IPCResult RecvRequestMemoryReport(
       const uint32_t& generation, const bool& anonymize,
       const bool& minimizeMemoryUsage, const Maybe<FileDescriptor>& DMDFile);
@@ -583,7 +572,9 @@ class ContentChild final : public PContentChild,
   mozilla::ipc::IPCResult RecvSetXPCOMProcessAttributes(
       const XPCOMInitData& aXPCOMInit, const StructuredCloneData& aInitialData,
       nsTArray<LookAndFeelInt>&& aLookAndFeelIntCache,
-      nsTArray<SystemFontListEntry>&& aFontList);
+      nsTArray<SystemFontListEntry>&& aFontList,
+      const Maybe<base::SharedMemoryHandle>& aSharedUASheetHandle,
+      const uintptr_t& aSharedUASheetAddress);
 
   mozilla::ipc::IPCResult RecvProvideAnonymousTemporaryFile(
       const uint64_t& aID, const FileDescOrError& aFD);
@@ -652,18 +643,12 @@ class ContentChild final : public PContentChild,
   static void FatalErrorIfNotUsingGPUProcess(const char* const aErrorMsg,
                                              base::ProcessId aOtherPid);
 
-  // This method is used by FileCreatorHelper for the creation of a BlobImpl.
-  void FileCreationRequest(nsID& aUUID, FileCreatorHelper* aHelper,
-                           const nsAString& aFullPath, const nsAString& aType,
-                           const nsAString& aName,
-                           const Optional<int64_t>& aLastModified,
-                           bool aExistenceCheck, bool aIsFromNsIFile);
-
   typedef std::function<void(PRFileDesc*)> AnonymousTemporaryFileCallback;
   nsresult AsyncOpenAnonymousTemporaryFile(
       const AnonymousTemporaryFileCallback& aCallback);
 
-  already_AddRefed<nsIEventTarget> GetEventTargetFor(TabChild* aTabChild);
+  already_AddRefed<nsIEventTarget> GetEventTargetFor(
+      BrowserChild* aBrowserChild);
 
   mozilla::ipc::IPCResult RecvSetPluginList(
       const uint32_t& aPluginEpoch, nsTArray<PluginTag>&& aPluginTags,
@@ -686,6 +671,11 @@ class ContentChild final : public PContentChild,
       nsIURI* aOriginalURI, const uint64_t& aIdentifier,
       const uint32_t& aRedirectMode);
 
+  mozilla::ipc::IPCResult RecvStartDelayedAutoplayMediaComponents(
+      BrowsingContext* aContext);
+
+  void HoldBrowsingContextGroup(BrowsingContextGroup* aBCG);
+
 #ifdef NIGHTLY_BUILD
   // Fetch the current number of pending input events.
   //
@@ -707,9 +697,6 @@ class ContentChild final : public PContentChild,
 
   virtual void ProcessingError(Result aCode, const char* aReason) override;
 
-  virtual already_AddRefed<nsIEventTarget> GetConstructedEventTarget(
-      const Message& aMsg) override;
-
   virtual already_AddRefed<nsIEventTarget> GetSpecificMessageEventTarget(
       const Message& aMsg) override;
 
@@ -718,8 +705,13 @@ class ContentChild final : public PContentChild,
   mozilla::ipc::IPCResult RecvAttachBrowsingContext(
       BrowsingContext::IPCInitializer&& aInit);
 
-  mozilla::ipc::IPCResult RecvDetachBrowsingContext(BrowsingContext* aContext,
-                                                    bool aMoveToBFCache);
+  mozilla::ipc::IPCResult RecvDetachBrowsingContext(BrowsingContext* aContext);
+
+  mozilla::ipc::IPCResult RecvCacheBrowsingContextChildren(
+      BrowsingContext* aContext);
+
+  mozilla::ipc::IPCResult RecvRestoreBrowsingContextChildren(
+      BrowsingContext* aContext, nsTArray<BrowsingContextId>&& aChildren);
 
   mozilla::ipc::IPCResult RecvRegisterBrowsingContextGroup(
       nsTArray<BrowsingContext::IPCInitializer>&& aInits);
@@ -733,7 +725,8 @@ class ContentChild final : public PContentChild,
       const PostMessageData& aData);
 
   mozilla::ipc::IPCResult RecvCommitBrowsingContextTransaction(
-      BrowsingContext* aContext, BrowsingContext::Transaction&& aTransaction);
+      BrowsingContext* aContext, BrowsingContext::Transaction&& aTransaction,
+      BrowsingContext::FieldEpochs&& aEpochs);
 
 #ifdef NIGHTLY_BUILD
   virtual PContentChild::Result OnMessageReceived(const Message& aMsg) override;
@@ -801,7 +794,7 @@ class ContentChild final : public PContentChild,
   RefPtr<ChildProfilerController> mProfilerController;
 #endif
 
-#if defined(XP_MACOSX) && defined(MOZ_CONTENT_SANDBOX)
+#if defined(XP_MACOSX) && defined(MOZ_SANDBOX)
   nsCOMPtr<nsIFile> mProfileDir;
 #endif
 
@@ -809,10 +802,6 @@ class ContentChild final : public PContentChild,
   // This GetFilesHelperChild objects are removed when RecvGetFilesResponse is
   // received.
   nsRefPtrHashtable<nsIDHashKey, GetFilesHelperChild> mGetFilesPendingRequests;
-
-  // Hashtable to keep track of the pending file creation.
-  // These items are removed when RecvFileCreationResponse is received.
-  nsRefPtrHashtable<nsIDHashKey, FileCreatorHelper> mFileCreationPending;
 
   nsClassHashtable<nsUint64HashKey, AnonymousTemporaryFileCallback>
       mPendingAnonymousTemporaryFiles;
@@ -824,6 +813,10 @@ class ContentChild final : public PContentChild,
   // off-main-thread.
   mozilla::Atomic<uint32_t> mPendingInputEvents;
 #endif
+
+  uint32_t mNetworkLinkType = 0;
+
+  nsTArray<RefPtr<BrowsingContextGroup>> mBrowsingContextGroupHolder;
 
   DISALLOW_EVIL_CONSTRUCTORS(ContentChild);
 };

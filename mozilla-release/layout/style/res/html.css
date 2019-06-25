@@ -579,6 +579,15 @@ menu[type="context"] {
   display: none !important;
 }
 
+ul, ol, menu {
+  counter-reset: list-item;
+  -moz-list-reversed: false;
+}
+
+ol[reversed] {
+  -moz-list-reversed: true;
+}
+
 ol {
   display: block;
   list-style-type: decimal;
@@ -639,8 +648,7 @@ hr[size="1"] {
 }
 
 img:-moz-broken::before, input:-moz-broken::before,
-img:-moz-user-disabled::before, input:-moz-user-disabled::before,
-img:-moz-loading::before, input:-moz-loading::before {
+img:-moz-user-disabled::before, input:-moz-user-disabled::before {
   content: -moz-alt-content !important;
   unicode-bidi: isolate;
 }
@@ -707,7 +715,8 @@ canvas {
 /* focusable content: anything w/ tabindex >=0 is focusable, but we
    skip drawing a focus outline on a few things that handle it
    themselves. */
-:-moz-focusring:not(input):not(button):not(select):not(textarea):not(iframe):not(frame):not(body):not(html) {
+:-moz-focusring:not(input):not(button):not(select):not(textarea):not(iframe):not(frame):not(body):not(html),
+input[type="file"]:-moz-focusring {
   /* Don't specify the outline-color, we should always use initial value. */
    outline: 1px dotted;
 }
@@ -776,6 +785,7 @@ video > .caption-box {
 details > summary:first-of-type,
 details > summary:-moz-native-anonymous {
   display: list-item;
+  counter-increment: list-item 0;
   list-style: disclosure-closed inside;
 }
 
@@ -819,13 +829,6 @@ marquee {
 
 marquee[direction="up"], marquee[direction="down"] {
   block-size: 200px;
-}
-
-/* PRINT ONLY rules follow */
-@media print {
-
-  marquee { -moz-binding: none; }
-
 }
 
 /* Ruby */

@@ -27,6 +27,9 @@ XPCOMUtils.defineLazyServiceGetter(this, "ProxyService",
 XPCOMUtils.defineLazyGetter(this, "tabTracker", () => {
   return ExtensionParent.apiManager.global.tabTracker;
 });
+XPCOMUtils.defineLazyGetter(this, "getCookieStoreIdForOriginAttributes", () => {
+  return ExtensionParent.apiManager.global.getCookieStoreIdForOriginAttributes;
+});
 
 const CATEGORY_EXTENSION_SCRIPTS_CONTENT = "webextension-scripts-content";
 
@@ -62,7 +65,7 @@ const ProxyInfoData = {
     if (proxyData.type && proxyData.type.toLowerCase() === "direct") {
       return {type: proxyData.type};
     }
-    for (let prop of ["type", "host", "port", "username", "password", "proxyDNS", "failoverTimeout"]) {
+    for (let prop of ["type", "host", "port", "username", "password", "proxyDNS", "failoverTimeout", "proxyAuthorizationHeader", "connectionIsolationKey"]) {
       this[prop](proxyData);
     }
     return proxyData;
@@ -132,6 +135,20 @@ const ProxyInfoData = {
     }
   },
 
+  proxyAuthorizationHeader(proxyData) {
+    let {proxyauthorizationheader} = proxyData;
+    if (proxyauthorizationheader !== undefined && typeof username !== "string") {
+      throw new ExtensionError(`ProxyInfoData: Invalid proxy server authorization header: "${proxyauthorizationheader}"`);
+    }
+  },
+
+  connectionIsolationKey(proxyData) {
+    let {connectionisolationkey} = proxyData;
+    if (connectionisolationkey !== undefined && typeof username !== "string") {
+      throw new ExtensionError(`ProxyInfoData: Invalid proxy server authorization header: "${connectionisolationkey}"`);
+    }
+  },
+
   createProxyInfoFromData(proxyDataList, defaultProxyInfo, proxyDataListIndex = 0) {
     if (proxyDataListIndex >= proxyDataList.length) {
       return defaultProxyInfo;
@@ -140,7 +157,7 @@ const ProxyInfoData = {
     if (proxyData == null) {
       return null;
     }
-    let {type, host, port, username, password, proxyDNS, failoverTimeout} =
+    let {type, host, port, username, password, proxyDNS, failoverTimeout, proxyAuthorizationHeader, connectionIsolationKey} =
         ProxyInfoData.validate(proxyData);
     if (type === PROXY_TYPES.DIRECT) {
       return defaultProxyInfo;
@@ -149,13 +166,13 @@ const ProxyInfoData = {
 
     if (type === PROXY_TYPES.SOCKS || type === PROXY_TYPES.SOCKS4) {
       return ProxyService.newProxyInfoWithAuth(
-        type, host, port, username, password,
-        proxyDNS ? TRANSPARENT_PROXY_RESOLVES_HOST : 0,
-        failoverTimeout ? failoverTimeout : PROXY_TIMEOUT_SEC,
-        failoverProxy);
+        type, host, port, username, password, proxyAuthorizationHeader,
+        connectionIsolationKey, proxyDNS ? TRANSPARENT_PROXY_RESOLVES_HOST : 0,
+        failoverTimeout ? failoverTimeout : PROXY_TIMEOUT_SEC, failoverProxy);
     }
     return ProxyService.newProxyInfo(
       type, host, port,
+      proxyAuthorizationHeader, connectionIsolationKey,
       proxyDNS ? TRANSPARENT_PROXY_RESOLVES_HOST : 0,
       failoverTimeout ? failoverTimeout : PROXY_TIMEOUT_SEC,
       failoverProxy);
@@ -239,7 +256,8 @@ function normalizeFilter(filter) {
     filter = {};
   }
 
-  return {urls: filter.urls || null, types: filter.types || null};
+  return {urls: filter.urls || null, types: filter.types || null,
+          incognito: filter.incognito !== undefined ? filter.incognito : null};
 }
 
 class ProxyChannelFilter {
@@ -256,14 +274,18 @@ class ProxyChannelFilter {
     );
   }
 
-  // Copy from WebRequest.jsm with small changes.
+  // Originally duplicated from WebRequest.jsm with small changes.  Keep this
+  // in sync with WebRequest.jsm as well as parent/ext-webRequest.js when
+  // apropiate.
   getRequestData(channel, extraData) {
+    let originAttributes = channel.loadInfo && channel.loadInfo.originAttributes;
     let data = {
       requestId: String(channel.id),
       url: channel.finalURL,
       method: channel.method,
       type: channel.type,
       fromCache: !!channel.fromCache,
+      incognito: originAttributes && originAttributes.privateBrowsingId > 0,
 
       originUrl: channel.originURL || undefined,
       documentUrl: channel.documentURL || undefined,
@@ -277,6 +299,9 @@ class ProxyChannelFilter {
 
       ...extraData,
     };
+    if (originAttributes && this.extension.hasPermission("cookies")) {
+      data.cookieStoreId = getCookieStoreIdForOriginAttributes(originAttributes);
+    }
     if (this.extraInfoSpec.includes("requestHeaders")) {
       data.requestHeaders = channel.getRequestHeaders();
     }

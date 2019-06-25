@@ -865,7 +865,7 @@ Shape* js::ReshapeForAllocKind(JSContext* cx, Shape* shape, TaggedProto proto,
   size_t nfixed = gc::GetGCKindSlots(allocKind, shape->getObjectClass());
 
   // Get all the ids in the shape, in order.
-  js::AutoIdVector ids(cx);
+  js::RootedIdVector ids(cx);
   {
     for (unsigned i = 0; i < shape->slotSpan(); i++) {
       if (!ids.append(JSID_VOID)) {
@@ -1471,7 +1471,7 @@ bool JSObject::setFlags(JSContext* cx, HandleObject obj, BaseShape::Flag flags,
     return true;
   }
 
-  Shape* existingShape = obj->ensureShape(cx);
+  Shape* existingShape = obj->shape();
   if (!existingShape) {
     return false;
   }
@@ -1499,10 +1499,7 @@ bool JSObject::setFlags(JSContext* cx, HandleObject obj, BaseShape::Flag flags,
     return false;
   }
 
-  // The success of the |JSObject::ensureShape| call above means that |obj|
-  // can be assumed to have a shape.
-  obj->as<ShapedObject>().setShape(newShape);
-
+  obj->as<JSObject>().setShape(newShape);
   return true;
 }
 
@@ -1913,7 +1910,7 @@ void Shape::fixupDictionaryShapeAfterMovingGC() {
     }
   } else {
     // listp points to the shape_ field of an object.
-    JSObject* last = ShapedObject::fromShapeFieldPointer(uintptr_t(listp));
+    JSObject* last = JSObject::fromShapeFieldPointer(uintptr_t(listp));
     if (gc::IsForwarded(last)) {
       listp = gc::Forwarded(last)->as<NativeObject>().shapePtr();
     }
@@ -2230,7 +2227,7 @@ void EmptyShape::insertInitialShape(JSContext* cx, HandleShape shape,
   MOZ_ASSERT(nshape == entry.shape);
 #endif
 
-  entry.shape = ReadBarrieredShape(shape);
+  entry.shape = WeakHeapPtrShape(shape);
 
   /*
    * This affects the shape that will be produced by the various NewObject

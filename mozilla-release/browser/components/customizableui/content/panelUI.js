@@ -737,6 +737,17 @@ const PanelUI = {
     let anchor = this._getPanelAnchor(this.menuButton);
 
     this.notificationPanel.hidden = false;
+
+    // Insert Fluent files when needed before notification is opened
+    MozXULElement.insertFTLIfNeeded("branding/brand.ftl");
+    MozXULElement.insertFTLIfNeeded("browser/appMenuNotifications.ftl");
+
+    // After Fluent files are loaded into document replace data-lazy-l10n-ids with actual ones
+    document.getElementById("appMenu-notification-popup").querySelectorAll("[data-lazy-l10n-id]").forEach(el => {
+      el.setAttribute("data-l10n-id", el.getAttribute("data-lazy-l10n-id"));
+      el.removeAttribute("data-lazy-l10n-id");
+    });
+
     this.notificationPanel.openPopup(anchor, "bottomcenter topright");
   },
 
@@ -827,10 +838,10 @@ const PanelUI = {
     let notificationEl = getNotificationFromElement(event.originalTarget);
 
     if (!notificationEl)
-      throw "PanelUI._onNotificationButtonEvent: couldn't find notification element";
+      throw new Error("PanelUI._onNotificationButtonEvent: couldn't find notification element");
 
     if (!notificationEl.notification)
-      throw "PanelUI._onNotificationButtonEvent: couldn't find notification";
+      throw new Error("PanelUI._onNotificationButtonEvent: couldn't find notification");
 
     let notification = notificationEl.notification;
 
@@ -844,7 +855,7 @@ const PanelUI = {
   _onBannerItemSelected(event) {
     let target = event.originalTarget;
     if (!target.notification)
-      throw "menucommand target has no associated action/notification";
+      throw new Error("menucommand target has no associated action/notification");
 
     event.stopPropagation();
     AppMenuNotifications.callMainAction(window, target.notification, false);

@@ -9,7 +9,7 @@ var EXPORTED_SYMBOLS = ["PictureInPicture"];
 const {Services} = ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 const PLAYER_URI = "chrome://global/content/pictureinpicture/player.xhtml";
-const PLAYER_FEATURES = `chrome,titlebar=no,alwaysontop,resizable`;
+const PLAYER_FEATURES = `chrome,titlebar=no,alwaysontop,lockaspectratio,resizable`;
 const WINDOW_TYPE = "Toolkit:PictureInPicture";
 
 /**
@@ -35,21 +35,45 @@ var PictureInPicture = {
         this.closePipWindow();
         break;
       }
+      case "PictureInPicture:Playing": {
+        let controls = this.weakPipControls && this.weakPipControls.get();
+        if (controls) {
+          controls.classList.add("playing");
+        }
+        break;
+      }
+      case "PictureInPicture:Paused": {
+        let controls = this.weakPipControls && this.weakPipControls.get();
+        if (controls) {
+          controls.classList.remove("playing");
+        }
+        break;
+      }
     }
+  },
+
+  async focusTabAndClosePip() {
+    let gBrowser = this.browser.ownerGlobal.gBrowser;
+    let tab = gBrowser.getTabForBrowser(this.browser);
+    gBrowser.selectedTab = tab;
+    await this.closePipWindow();
   },
 
   /**
    * Find and close any pre-existing Picture in Picture windows.
    */
-  closePipWindow() {
+  async closePipWindow() {
     // This uses an enumerator, but there really should only be one of
     // these things.
     for (let win of Services.wm.getEnumerator(WINDOW_TYPE)) {
       if (win.closed) {
         continue;
       }
-
+      let closedPromise = new Promise(resolve => {
+        win.addEventListener("unload", resolve, {once: true});
+      });
       win.close();
+      await closedPromise;
     }
   },
 
@@ -74,10 +98,27 @@ var PictureInPicture = {
    *   the player component inside it has finished loading.
    */
   async handlePictureInPictureRequest(browser, videoData) {
+    // If there's a pre-existing PiP window, close it first.
+    await this.closePipWindow();
+
     let parentWin = browser.ownerGlobal;
-    this.closePipWindow();
+    this.browser = browser;
     let win = await this.openPipWindow(parentWin, videoData);
+    let controls = win.document.getElementById("controls");
+    this.weakPipControls = Cu.getWeakReference(controls);
+    if (videoData.playing) {
+      controls.classList.add("playing");
+    }
     win.setupPlayer(browser, videoData);
+  },
+
+  /**
+   * unload event has been called in player.js, cleanup our preserved
+   * browser object.
+   */
+  unload() {
+    delete this.weakPipControls;
+    delete this.browser;
   },
 
   /**
@@ -116,6 +157,12 @@ var PictureInPicture = {
     screen.GetAvailRectDisplayPix(screenLeft, screenTop, screenWidth,
                                   screenHeight);
 
+    // We have to divide these dimensions by the CSS scale factor for the
+    // display in order for the video to be positioned correctly on displays
+    // that are not at a 1.0 scaling.
+    screenWidth.value = screenWidth.value / screen.defaultCSSScaleFactor;
+    screenHeight.value = screenHeight.value / screen.defaultCSSScaleFactor;
+
     // For now, the Picture in Picture window will be a maximum of a quarter
     // of the screen height, and a third of the screen width.
     const MAX_HEIGHT = screenHeight.value / 4;
@@ -135,14 +182,14 @@ var PictureInPicture = {
         // that means we need to _divide_ the MAX_WIDTH by the aspect ratio to
         // calculate the appropriate height.
         resultWidth = MAX_WIDTH;
-        resultHeight = Math.floor(MAX_WIDTH / aspectRatio);
+        resultHeight = Math.round(MAX_WIDTH / aspectRatio);
       } else {
         // We're clamping the height, so the width must be adjusted to match
         // the original aspect ratio. Since aspect ratio is width over height,
         // this means we need to _multiply_ the MAX_HEIGHT by the aspect ratio
         // to calculate the appropriate width.
         resultHeight = MAX_HEIGHT;
-        resultWidth = Math.floor(MAX_HEIGHT * aspectRatio);
+        resultWidth = Math.round(MAX_HEIGHT * aspectRatio);
       }
     }
 
@@ -153,7 +200,7 @@ var PictureInPicture = {
     let pipLeft = screenWidth.value - resultWidth;
     let pipTop = screenHeight.value - resultHeight;
     let features = `${PLAYER_FEATURES},top=${pipTop},left=${pipLeft},` +
-                   `width=${resultWidth},height=${resultHeight}`;
+                   `outerWidth=${resultWidth},outerHeight=${resultHeight}`;
 
     let pipWindow =
       Services.ww.openWindow(parentWin, PLAYER_URI, null, features, null);

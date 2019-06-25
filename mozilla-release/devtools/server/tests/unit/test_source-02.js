@@ -9,7 +9,7 @@ var gDebuggee;
 var gClient;
 var gThreadClient;
 
-// This test ensures that we can create SourceActors and SourceClients properly,
+// This test ensures that we can create SourceActors and SourceFronts properly,
 // and that they can communicate over the protocol to fetch the source text for
 // a given script.
 
@@ -48,7 +48,7 @@ function test_source() {
   DebuggerServer.LONG_STRING_LENGTH = 200;
 
   gThreadClient.addOneTimeListener("paused", function(event, packet) {
-    gThreadClient.getSources(async function(response) {
+    gThreadClient.getSources().then(async function(response) {
       Assert.ok(!!response);
       Assert.ok(!!response.sources);
 
@@ -58,12 +58,11 @@ function test_source() {
 
       Assert.ok(!!source);
 
-      const sourceClient = gThreadClient.source(source);
-      response = await sourceClient.getBreakpointPositions();
+      const sourceFront = gThreadClient.source(source);
+      response = await sourceFront.getBreakpointPositions();
       Assert.ok(!!response);
-      Assert.ok(!!response.positions);
       Assert.deepEqual(
-        response.positions,
+        response,
         [{
           line: 2,
           column: 2,
@@ -85,11 +84,10 @@ function test_source() {
         }]
       );
 
-      response = await sourceClient.getBreakpointPositionsCompressed();
+      response = await sourceFront.getBreakpointPositionsCompressed();
       Assert.ok(!!response);
-      Assert.ok(!!response.positions);
       Assert.deepEqual(
-        response.positions,
+        response,
         {
           2: [2],
           3: [14, 17, 24],

@@ -49,6 +49,7 @@ const webconsoleSpecPrototype = {
       exception: Option(0, "nullable:json"),
       exceptionMessage: Option(0, "nullable:string"),
       exceptionDocURL: Option(0, "nullable:string"),
+      exceptionStack: Option(0, "nullable:json"),
       frame: Option(0, "nullable:json"),
       helperResult: Option(0, "nullable:json"),
       input: Option(0, "nullable:string"),
@@ -233,6 +234,18 @@ const webconsoleSpecPrototype = {
         request: Arg(0, "json"),
       },
       response: RetVal("json"),
+    },
+
+    blockRequest: {
+      request: {
+        filter: Arg(0, "json"),
+      },
+    },
+
+    unblockRequest: {
+      request: {
+        filter: Arg(0, "json"),
+      },
     },
   },
 };

@@ -2,7 +2,6 @@
 /* globals user_pref */
 user_pref("app.normandy.api_url", "https://127.0.0.1/selfsupport-dummy/");
 user_pref("browser.EULA.override", true);
-user_pref("browser.aboutHomeSnippets.updateUrl", "https://127.0.0.1/about-dummy/");
 user_pref("browser.addon-watch.interval", -1); // Deactivate add-on watching
 // Disable Bookmark backups by default.
 user_pref("browser.bookmarks.max_backups", 0);
@@ -66,9 +65,6 @@ user_pref("identity.fxaccounts.migrateToDevEdition", false);
 // Avoid idle-daily notifications, to avoid expensive operations that may
 // cause unexpected test timeouts.
 user_pref("idle.lastDailyNotification", -1);
-// Make tests run consistently on DevEdition (which has a lightweight theme
-// selected by default).
-user_pref("lightweightThemes.selectedThemeID", "");
 user_pref("media.capturestream_hints.enabled", true);
 user_pref("media.gmp-manager.url", "http://127.0.0.1/gmpmanager-dummy/update.xml");
 // Don't block old libavcodec libraries when testing, because our test systems

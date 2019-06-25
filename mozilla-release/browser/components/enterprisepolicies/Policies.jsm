@@ -17,6 +17,7 @@ XPCOMUtils.defineLazyModuleGetters(this, {
   AddonManager: "resource://gre/modules/AddonManager.jsm",
   BookmarksPolicies: "resource:///modules/policies/BookmarksPolicies.jsm",
   CustomizableUI: "resource:///modules/CustomizableUI.jsm",
+  FileUtils: "resource://gre/modules/FileUtils.jsm",
   ProxyPolicies: "resource:///modules/policies/ProxyPolicies.jsm",
   WebsiteFilter: "resource:///modules/policies/WebsiteFilter.jsm",
 });
@@ -269,11 +270,7 @@ var Policies = {
           newCookieBehavior = REJECT_TRACKER;
         }
 
-        if (param.Locked) {
-          setAndLockPref("network.cookie.cookieBehavior", newCookieBehavior);
-        } else {
-          setDefaultPref("network.cookie.cookieBehavior", newCookieBehavior);
-        }
+        setDefaultPref("network.cookie.cookieBehavior", newCookieBehavior, param.Locked);
       }
 
       const KEEP_COOKIES_UNTIL_EXPIRATION = 0;
@@ -285,12 +282,16 @@ var Policies = {
           newLifetimePolicy = KEEP_COOKIES_UNTIL_END_OF_SESSION;
         }
 
-        if (param.Locked) {
-          setAndLockPref("network.cookie.lifetimePolicy", newLifetimePolicy);
-        } else {
-          setDefaultPref("network.cookie.lifetimePolicy", newLifetimePolicy);
-        }
+        setDefaultPref("network.cookie.lifetimePolicy", newLifetimePolicy, param.Locked);
       }
+    },
+  },
+
+  "DefaultDownloadDirectory": {
+    onBeforeAddons(manager, param) {
+      setDefaultPref("browser.download.dir", replacePathVariables(param));
+      // If a custom download directory is being used, just lock folder list to 2.
+      setAndLockPref("browser.download.folderList", 2);
     },
   },
 
@@ -492,18 +493,10 @@ var Policies = {
     onBeforeAddons(manager, param) {
       if ("Enabled" in param) {
         let mode = param.Enabled ? 2 : 5;
-        if (param.Locked) {
-          setAndLockPref("network.trr.mode", mode);
-        } else {
-          setDefaultPref("network.trr.mode", mode);
-        }
+        setDefaultPref("network.trr.mode", mode, param.Locked);
       }
       if (param.ProviderURL) {
-        if (param.Locked) {
-          setAndLockPref("network.trr.uri", param.ProviderURL.href);
-        } else {
-          setDefaultPref("network.trr.uri", param.ProviderURL.href);
-        }
+        setDefaultPref("network.trr.uri", param.ProviderURL.href, param.Locked);
       }
     },
   },
@@ -514,16 +507,22 @@ var Policies = {
     },
   },
 
+  "DownloadDirectory": {
+    onBeforeAddons(manager, param) {
+      setAndLockPref("browser.download.dir", replacePathVariables(param));
+      // If a custom download directory is being used, just lock folder list to 2.
+      setAndLockPref("browser.download.folderList", 2);
+      // Per Chrome spec, user can't choose to download every time
+      // if this is set.
+      setAndLockPref("browser.download.useDownloadDir", true);
+    },
+  },
+
   "EnableTrackingProtection": {
     onBeforeUIStartup(manager, param) {
       if (param.Value) {
-        if (param.Locked) {
-          setAndLockPref("privacy.trackingprotection.enabled", true);
-          setAndLockPref("privacy.trackingprotection.pbmode.enabled", true);
-        } else {
-          setDefaultPref("privacy.trackingprotection.enabled", true);
-          setDefaultPref("privacy.trackingprotection.pbmode.enabled", true);
-        }
+        setDefaultPref("privacy.trackingprotection.enabled", true, param.Locked);
+        setDefaultPref("privacy.trackingprotection.pbmode.enabled", true, param.Locked);
       } else {
         setAndLockPref("privacy.trackingprotection.enabled", false);
         setAndLockPref("privacy.trackingprotection.pbmode.enabled", false);
@@ -546,7 +545,7 @@ var Policies = {
                 await addon.uninstall();
               } catch (e) {
                 // This can fail for add-ons that can't be uninstalled.
-                // Just ignore.
+                log.debug(`Add-on ID (${addon.id}) couldn't be uninstalled.`);
               }
             }
           }
@@ -556,60 +555,107 @@ var Policies = {
         runOncePerModification("extensionsInstall", JSON.stringify(param.Install), async () => {
           await uninstallingPromise;
           for (let location of param.Install) {
-            let url;
-            if (location.includes("://")) {
-              // Assume location is an URI
-              url = location;
-            } else {
+            let uri;
+            try {
+              uri = Services.io.newURI(location);
+            } catch (e) {
+              // If it's not a URL, it's probably a file path.
               // Assume location is a file path
-              let xpiFile = Cc["@mozilla.org/file/local;1"].createInstance(Ci.nsIFile);
+              // This is done for legacy support (old API)
               try {
-                xpiFile.initWithPath(location);
-              } catch (e) {
+                let xpiFile = new FileUtils.File(location);
+                uri = Services.io.newFileURI(xpiFile);
+              } catch (ex) {
                 log.error(`Invalid extension path location - ${location}`);
-                continue;
-              }
-              url = Services.io.newFileURI(xpiFile).spec;
-            }
-            AddonManager.getInstallForURL(url, {
-              telemetryInfo: {source: "enterprise-policy"},
-            }).then(install => {
-              if (install.addon && install.addon.appDisabled) {
-                log.error(`Incompatible add-on - ${location}`);
-                install.cancel();
                 return;
               }
-              let listener = {
-              /* eslint-disable-next-line no-shadow */
-                onDownloadEnded: (install) => {
-                  if (install.addon && install.addon.appDisabled) {
-                    log.error(`Incompatible add-on - ${location}`);
-                    install.removeListener(listener);
-                    install.cancel();
-                  }
-                },
-                onDownloadFailed: () => {
-                  install.removeListener(listener);
-                  log.error(`Download failed - ${location}`);
-                },
-                onInstallFailed: () => {
-                  install.removeListener(listener);
-                  log.error(`Installation failed - ${location}`);
-                },
-                onInstallEnded: () => {
-                  install.removeListener(listener);
-                  log.debug(`Installation succeeded - ${location}`);
-                },
-              };
-              install.addListener(listener);
-              install.install();
-            });
+            }
+            installAddonFromURL(uri.spec);
           }
         });
       }
       if ("Locked" in param) {
         for (let ID of param.Locked) {
-          manager.disallowFeature(`modify-extension:${ID}`);
+          manager.disallowFeature(`uninstall-extension:${ID}`);
+          manager.disallowFeature(`disable-extension:${ID}`);
+        }
+      }
+    },
+  },
+
+  "ExtensionSettings": {
+    onBeforeAddons(manager, param) {
+      try {
+        manager.setExtensionSettings(param);
+      } catch (e) {
+       log.error("Invalid ExtensionSettings");
+      }
+    },
+    async onBeforeUIStartup(manager, param) {
+      let extensionSettings = param;
+      let blockAllExtensions = false;
+      if ("*" in extensionSettings) {
+        if ("installation_mode" in extensionSettings["*"] &&
+            extensionSettings["*"].installation_mode == "blocked") {
+          blockAllExtensions = true;
+          // Turn off discovery pane in about:addons
+          setAndLockPref("extensions.getAddons.showPane", false);
+          // Block about:debugging
+          blockAboutPage(manager, "about:debugging");
+        }
+      }
+      let {addons} = await AddonManager.getActiveAddons();
+      let allowedExtensions = [];
+      for (let extensionID in extensionSettings) {
+        if (extensionID == "*") {
+          // Ignore global settings
+          continue;
+        }
+        if ("installation_mode" in extensionSettings[extensionID]) {
+          if (extensionSettings[extensionID].installation_mode == "force_installed" ||
+              extensionSettings[extensionID].installation_mode == "normal_installed") {
+            if (!extensionSettings[extensionID].install_url) {
+              throw new Error(`Missing install_url for ${extensionID}`);
+            }
+            if (!addons.find(addon => addon.id == extensionID)) {
+              installAddonFromURL(extensionSettings[extensionID].install_url, extensionID);
+            }
+            manager.disallowFeature(`uninstall-extension:${extensionID}`);
+            if (extensionSettings[extensionID].installation_mode == "force_installed") {
+              manager.disallowFeature(`disable-extension:${extensionID}`);
+            }
+            allowedExtensions.push(extensionID);
+          } else if (extensionSettings[extensionID].installation_mode == "allowed") {
+            allowedExtensions.push(extensionID);
+          } else if (extensionSettings[extensionID].installation_mode == "blocked") {
+            if (addons.find(addon => addon.id == extensionID)) {
+              // Can't use the addon from getActiveAddons since it doesn't have uninstall.
+              let addon = await AddonManager.getAddonByID(extensionID);
+              try {
+                await addon.uninstall();
+              } catch (e) {
+                // This can fail for add-ons that can't be uninstalled.
+                log.debug(`Add-on ID (${addon.id}) couldn't be uninstalled.`);
+              }
+            }
+          }
+        }
+      }
+      if (blockAllExtensions) {
+        for (let addon of addons) {
+          if (addon.isSystem || addon.isBuiltin) {
+            continue;
+          }
+          if (!allowedExtensions.includes(addon.id)) {
+            try {
+              // Can't use the addon from getActiveAddons since it doesn't have uninstall.
+              let addonToUninstall = await AddonManager.getAddonByID(addon.id);
+              await addonToUninstall.uninstall();
+            } catch (e) {
+              // This can fail for add-ons that can't be uninstalled.
+              log.debug(`Add-on ID (${addon.id}) couldn't be uninstalled.`);
+            }
+          }
         }
       }
     },
@@ -619,6 +665,27 @@ var Policies = {
     onBeforeAddons(manager, param) {
       if (!param) {
         setAndLockPref("extensions.update.enabled", param);
+      }
+    },
+  },
+
+  "FirefoxHome": {
+    onBeforeAddons(manager, param) {
+      let locked = param.Locked || false;
+      if ("Search" in param) {
+        setDefaultPref("browser.newtabpage.activity-stream.showSearch", param.Search, locked);
+      }
+      if ("TopSites" in param) {
+        setDefaultPref("browser.newtabpage.activity-stream.feeds.topsites", param.TopSites, locked);
+      }
+      if ("Highlights" in param) {
+        setDefaultPref("browser.newtabpage.activity-stream.feeds.section.highlights", param.Highlights, locked);
+      }
+      if ("Pocket" in param) {
+        setDefaultPref("browser.newtabpage.activity-stream.feeds.section.topstories", param.Pocket, locked);
+      }
+      if ("Snippets" in param) {
+        setDefaultPref("browser.newtabpage.activity-stream.feeds.snippets", param.Snippets, locked);
       }
     },
   },
@@ -665,13 +732,12 @@ var Policies = {
         if (param.Additional && param.Additional.length > 0) {
           homepages += "|" + param.Additional.map(url => url.href).join("|");
         }
+        setDefaultPref("browser.startup.homepage", homepages, param.Locked);
         if (param.Locked) {
-          setAndLockPref("browser.startup.homepage", homepages);
           setAndLockPref("pref.browser.homepage.disable_button.current_page", true);
           setAndLockPref("pref.browser.homepage.disable_button.bookmark_page", true);
           setAndLockPref("pref.browser.homepage.disable_button.restore_default", true);
         } else {
-          setDefaultPref("browser.startup.homepage", homepages);
           runOncePerModification("setHomepage", homepages, () => {
             Services.prefs.clearUserPref("browser.startup.homepage");
           });
@@ -690,11 +756,7 @@ var Policies = {
             prefValue = 3;
             break;
         }
-        if (param.Locked) {
-          setAndLockPref("browser.startup.page", prefValue);
-        } else {
-          setDefaultPref("browser.startup.page", prefValue);
-        }
+        setDefaultPref("browser.startup.page", prefValue, param.Locked);
       }
     },
   },
@@ -716,10 +778,27 @@ var Policies = {
     },
   },
 
+  "LocalFileLinks": {
+    onBeforeAddons(manager, param) {
+      // If there are existing capabilities, lock them with the policy pref.
+      let policyNames = Services.prefs.getCharPref("capability.policy.policynames", "").split(" ");
+      policyNames.push("localfilelinks_policy");
+      setAndLockPref("capability.policy.policynames", policyNames.join(" "));
+      setAndLockPref("capability.policy.localfilelinks_policy.checkloaduri.enabled", "allAccess");
+      setAndLockPref("capability.policy.localfilelinks_policy.sites", param.join(" "));
+    },
+  },
+
   "NetworkPrediction": {
     onBeforeAddons(manager, param) {
       setAndLockPref("network.dns.disablePrefetch", !param);
       setAndLockPref("network.dns.disablePrefetchFromHTTPS", !param);
+    },
+  },
+
+  "NewTabPage": {
+    onBeforeAddons(manager, param) {
+      setAndLockPref("browser.newtabpage.enabled", param);
     },
   },
 
@@ -795,6 +874,20 @@ var Policies = {
     },
   },
 
+  "Preferences": {
+    onBeforeAddons(manager, param) {
+      for (let preference in param) {
+        setAndLockPref(preference, param[preference]);
+      }
+    },
+  },
+
+  "PromptForDownloadLocation": {
+    onBeforeAddons(manager, param) {
+      setAndLockPref("browser.download.useDownloadDir", !param);
+    },
+  },
+
   "Proxy": {
     onBeforeAddons(manager, param) {
       if (param.Locked) {
@@ -808,22 +901,66 @@ var Policies = {
 
   "RequestedLocales": {
     onBeforeAddons(manager, param) {
-      Services.locale.requestedLocales = param;
+      if (Array.isArray(param)) {
+        Services.locale.requestedLocales = param;
+      } else {
+        Services.locale.requestedLocales = param.split(",");
+      }
     },
   },
 
   "SanitizeOnShutdown": {
     onBeforeUIStartup(manager, param) {
-      setAndLockPref("privacy.sanitize.sanitizeOnShutdown", param);
-      if (param) {
-        setAndLockPref("privacy.clearOnShutdown.cache", true);
-        setAndLockPref("privacy.clearOnShutdown.cookies", true);
-        setAndLockPref("privacy.clearOnShutdown.downloads", true);
-        setAndLockPref("privacy.clearOnShutdown.formdata", true);
-        setAndLockPref("privacy.clearOnShutdown.history", true);
-        setAndLockPref("privacy.clearOnShutdown.sessions", true);
-        setAndLockPref("privacy.clearOnShutdown.siteSettings", true);
-        setAndLockPref("privacy.clearOnShutdown.offlineApps", true);
+      if (typeof param === "boolean") {
+        setAndLockPref("privacy.sanitize.sanitizeOnShutdown", param);
+        if (param) {
+          setAndLockPref("privacy.clearOnShutdown.cache", true);
+          setAndLockPref("privacy.clearOnShutdown.cookies", true);
+          setAndLockPref("privacy.clearOnShutdown.downloads", true);
+          setAndLockPref("privacy.clearOnShutdown.formdata", true);
+          setAndLockPref("privacy.clearOnShutdown.history", true);
+          setAndLockPref("privacy.clearOnShutdown.sessions", true);
+          setAndLockPref("privacy.clearOnShutdown.siteSettings", true);
+          setAndLockPref("privacy.clearOnShutdown.offlineApps", true);
+        }
+      } else {
+        setAndLockPref("privacy.sanitize.sanitizeOnShutdown", true);
+        if ("Cache" in param) {
+          setAndLockPref("privacy.clearOnShutdown.cache", param.Cache);
+        } else {
+          setAndLockPref("privacy.clearOnShutdown.cache", false);
+        }
+        if ("Cookies" in param) {
+          setAndLockPref("privacy.clearOnShutdown.cookies", param.Cookies);
+        } else {
+          setAndLockPref("privacy.clearOnShutdown.cookies", false);
+        }
+        if ("Downloads" in param) {
+          setAndLockPref("privacy.clearOnShutdown.downloads", param.Downloads);
+        } else {
+          setAndLockPref("privacy.clearOnShutdown.downloads", false);
+        }
+        if ("FormData" in param) {
+          setAndLockPref("privacy.clearOnShutdown.formdata", param.FormData);
+        } else {
+          setAndLockPref("privacy.clearOnShutdown.formdata", false);
+        }
+        if ("History" in param) {
+          setAndLockPref("privacy.clearOnShutdown.history", param.History);
+        } else {
+          setAndLockPref("privacy.clearOnShutdown.history", false);
+        }
+        if ("Sessions" in param) {
+          setAndLockPref("privacy.clearOnShutdown.sessions", param.Sessions);
+        } else {
+          setAndLockPref("privacy.clearOnShutdown.sessions", false);
+        }
+        if ("SiteSettings" in param) {
+          setAndLockPref("privacy.clearOnShutdown.siteSettings", param.SiteSettings);
+        }
+        if ("OfflineApps" in param) {
+          setAndLockPref("privacy.clearOnShutdown.offlineApps", param.OfflineApps);
+        }
       }
     },
   },
@@ -902,7 +1039,7 @@ var Policies = {
             try {
               defaultEngine = Services.search.getEngineByName(param.Default);
               if (!defaultEngine) {
-                throw "No engine by that name could be found";
+                throw new Error("No engine by that name could be found");
               }
             } catch (ex) {
               log.error(`Search engine lookup failed when attempting to set ` +
@@ -919,6 +1056,13 @@ var Policies = {
           });
         }
       });
+    },
+  },
+
+  "SearchSuggestEnabled": {
+    onBeforeAddons(manager, param) {
+      setAndLockPref("browser.urlbar.suggest.searches", param);
+      setAndLockPref("browser.search.suggest.enabled", param);
     },
   },
 
@@ -1026,27 +1170,27 @@ var Policies = {
  *        The value to set and lock
  */
 function setAndLockPref(prefName, prefValue) {
-  if (Services.prefs.prefIsLocked(prefName)) {
-    Services.prefs.unlockPref(prefName);
-  }
-
-  setDefaultPref(prefName, prefValue);
-
-  Services.prefs.lockPref(prefName);
+  setDefaultPref(prefName, prefValue, true);
 }
 
 /**
  * setDefaultPref
  *
- * Sets the _default_ value of a pref.
+ * Sets the _default_ value of a pref and optionally locks it.
  * The value is only changed in memory, and not stored to disk.
  *
  * @param {string} prefName
  *        The pref to be changed
  * @param {boolean,number,string} prefValue
  *        The value to set
+ * @param {boolean} locked
+ *        Optionally lock the pref
  */
-function setDefaultPref(prefName, prefValue) {
+function setDefaultPref(prefName, prefValue, locked = false) {
+  if (Services.prefs.prefIsLocked(prefName)) {
+    Services.prefs.unlockPref(prefName);
+  }
+
   let defaults = Services.prefs.getDefaultBranch("");
 
   switch (typeof(prefValue)) {
@@ -1066,6 +1210,10 @@ function setDefaultPref(prefName, prefValue) {
       defaults.setStringPref(prefName, prefValue);
       break;
   }
+
+  if (locked) {
+    Services.prefs.lockPref(prefName);
+  }
 }
 
 /**
@@ -1083,15 +1231,9 @@ function setDefaultPermission(policyName, policyParam) {
     let prefName = "permissions.default." + policyName;
 
     if (policyParam.BlockNewRequests) {
-      if (policyParam.Locked) {
-        setAndLockPref(prefName, 2);
-      } else {
-        setDefaultPref(prefName, 2);
-      }
-    } else if (policyParam.Locked) {
-      setAndLockPref(prefName, 0);
+      setDefaultPref(prefName, 2, policyParam.Locked);
     } else {
-      setDefaultPref(prefName, 0);
+      setDefaultPref(prefName, 0, policyParam.Locked);
     }
   }
 }
@@ -1187,6 +1329,71 @@ async function runOncePerModification(actionName, policyValue, callback) {
   }
   Services.prefs.setStringPref(prefName, policyValue);
   return callback();
+}
+
+/**
+ * clearRunOnceModification
+ *
+ * Helper function that clears a runOnce policy.
+*/
+function clearRunOnceModification(actionName) {
+  let prefName = `browser.policies.runOncePerModification.${actionName}`;
+  Services.prefs.clearUserPref(prefName);
+}
+
+function replacePathVariables(path) {
+  if (path.includes("${home}")) {
+    return path.replace("${home}", FileUtils.getFile("Home", []).path);
+  }
+  return path;
+}
+
+/**
+ * installAddonFromURL
+ *
+ * Helper function that installs an addon from a URL
+ * and verifies that the addon ID matches.
+*/
+function installAddonFromURL(url, extensionID) {
+  AddonManager.getInstallForURL(url, {
+    telemetryInfo: {source: "enterprise-policy"},
+  }).then(install => {
+    if (install.addon && install.addon.appDisabled) {
+      log.error(`Incompatible add-on - ${location}`);
+      install.cancel();
+      return;
+    }
+    let listener = {
+    /* eslint-disable-next-line no-shadow */
+      onDownloadEnded: (install) => {
+        if (extensionID && install.addon.id != extensionID) {
+          log.error(`Add-on downloaded from ${url} had unexpected id (got ${install.addon.id} expected ${extensionID})`);
+          install.removeListener(listener);
+          install.cancel();
+        }
+        if (install.addon && install.addon.appDisabled) {
+          log.error(`Incompatible add-on - ${url}`);
+          install.removeListener(listener);
+          install.cancel();
+        }
+      },
+      onDownloadFailed: () => {
+        install.removeListener(listener);
+        log.error(`Download failed - ${url}`);
+        clearRunOnceModification("extensionsInstall");
+      },
+      onInstallFailed: () => {
+        install.removeListener(listener);
+        log.error(`Installation failed - ${url}`);
+      },
+      onInstallEnded: () => {
+        install.removeListener(listener);
+        log.debug(`Installation succeeded - ${url}`);
+      },
+    };
+    install.addListener(listener);
+    install.install();
+  });
 }
 
 let gChromeURLSBlocked = false;

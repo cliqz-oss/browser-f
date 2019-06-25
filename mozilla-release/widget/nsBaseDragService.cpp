@@ -18,7 +18,6 @@
 #include "nsFrameLoaderOwner.h"
 #include "mozilla/dom/Document.h"
 #include "nsIContent.h"
-#include "nsIPresShell.h"
 #include "nsViewManager.h"
 #include "nsINode.h"
 #include "nsPresContext.h"
@@ -36,6 +35,7 @@
 #endif
 #include "mozilla/MouseEvents.h"
 #include "mozilla/Preferences.h"
+#include "mozilla/PresShell.h"
 #include "mozilla/dom/BindingDeclarations.h"
 #include "mozilla/dom/DataTransferItemList.h"
 #include "mozilla/dom/DataTransfer.h"
@@ -45,7 +45,7 @@
 #include "mozilla/gfx/2D.h"
 #include "mozilla/Unused.h"
 #include "nsFrameLoader.h"
-#include "TabParent.h"
+#include "BrowserParent.h"
 
 #include "gfxContext.h"
 #include "gfxPlatform.h"
@@ -205,6 +205,23 @@ nsBaseDragService::InvokeDragSession(
     nsContentPolicyType aContentPolicyType = nsIContentPolicy::TYPE_OTHER) {
   AUTO_PROFILER_LABEL("nsBaseDragService::InvokeDragSession", OTHER);
 
+  // If you're hitting this, a test is causing the browser to attempt to enter
+  // the drag-drop native nested event loop, which will put the browser in a
+  // state that won't run tests properly until there's manual intervention
+  // to exit the drag-drop loop (either by moving the mouse or hitting escape),
+  // which can't be done from script since we're in the nested loop.
+  //
+  // The best way to avoid this is to catch the dragstart event on the item
+  // being dragged, and then to call preventDefault() and stopPropagating() on
+  // it. Alternatively, use EventUtils.synthesizeDragStart, which will do this
+  // for you.
+  if (XRE_IsParentProcess()) {
+    MOZ_ASSERT(
+        !xpc::IsInAutomation(),
+        "About to start drag-drop native loop on which will prevent later "
+        "tests from running properly.");
+  }
+
   NS_ENSURE_TRUE(aDOMNode, NS_ERROR_INVALID_ARG);
   NS_ENSURE_TRUE(mSuppressLevel == 0, NS_ERROR_FAILURE);
 
@@ -219,7 +236,7 @@ nsBaseDragService::InvokeDragSession(
   // capture. However, this gets in the way of determining drag
   // feedback for things like trees because the event coordinates
   // are in the wrong coord system, so turn off mouse capture.
-  nsIPresShell::ClearMouseCapture(nullptr);
+  PresShell::ClearMouseCapture(nullptr);
 
   uint32_t length = 0;
   mozilla::Unused << aTransferableArray->GetLength(&length);
@@ -458,11 +475,11 @@ NS_IMETHODIMP
 nsBaseDragService::FireDragEventAtSource(EventMessage aEventMessage,
                                          uint32_t aKeyModifiers) {
   if (mSourceNode && mSourceDocument && !mSuppressLevel) {
-    nsCOMPtr<nsIPresShell> presShell = mSourceDocument->GetShell();
+    RefPtr<PresShell> presShell = mSourceDocument->GetPresShell();
     if (presShell) {
       nsEventStatus status = nsEventStatus_eIgnore;
       WidgetDragEvent event(true, aEventMessage, nullptr);
-      event.inputSource = mInputSource;
+      event.mInputSource = mInputSource;
       if (aEventMessage == eDragEnd) {
         event.mRefPoint = mEndDragPoint;
         event.mUserCancelled = mUserCancelled;
@@ -504,14 +521,14 @@ nsBaseDragService::DragMoved(int32_t aX, int32_t aY) {
   return NS_OK;
 }
 
-static nsIPresShell* GetPresShellForContent(nsINode* aDOMNode) {
+static PresShell* GetPresShellForContent(nsINode* aDOMNode) {
   nsCOMPtr<nsIContent> content = do_QueryInterface(aDOMNode);
   if (!content) return nullptr;
 
   RefPtr<Document> document = content->GetComposedDoc();
   if (document) {
     document->FlushPendingNotifications(FlushType::Display);
-    return document->GetShell();
+    return document->GetPresShell();
   }
 
   return nullptr;
@@ -535,9 +552,13 @@ nsresult nsBaseDragService::DrawDrag(nsINode* aDOMNode,
 
   // get the presshell for the node being dragged. If the drag image is not in
   // a document or has no frame, get the presshell from the source drag node
-  nsIPresShell* presShell = GetPresShellForContent(dragNode);
-  if (!presShell && mImage) presShell = GetPresShellForContent(aDOMNode);
-  if (!presShell) return NS_ERROR_FAILURE;
+  PresShell* presShell = GetPresShellForContent(dragNode);
+  if (!presShell && mImage) {
+    presShell = GetPresShellForContent(aDOMNode);
+  }
+  if (!presShell) {
+    return NS_ERROR_FAILURE;
+  }
 
   *aPresContext = presShell->GetPresContext();
 
@@ -545,7 +566,8 @@ nsresult nsBaseDragService::DrawDrag(nsINode* aDOMNode,
   if (flo) {
     RefPtr<nsFrameLoader> fl = flo->GetFrameLoader();
     if (fl) {
-      auto* tp = static_cast<mozilla::dom::TabParent*>(fl->GetRemoteBrowser());
+      auto* tp =
+          static_cast<mozilla::dom::BrowserParent*>(fl->GetRemoteBrowser());
       if (tp && tp->TakeDragVisualization(*aSurface, aScreenDragRect)) {
         if (mImage) {
           // Just clear the surface if chrome has overridden it with an image.
@@ -602,7 +624,7 @@ nsresult nsBaseDragService::DrawDrag(nsINode* aDOMNode,
     LayoutDeviceIntPoint pnt(aScreenDragRect->TopLeft());
     *aSurface = presShell->RenderSelection(
         mSelection, pnt, aScreenDragRect,
-        mImage ? 0 : nsIPresShell::RENDER_AUTO_SCALE);
+        mImage ? RenderImageFlags::None : RenderImageFlags::AutoScale);
     return NS_OK;
   }
 
@@ -637,11 +659,12 @@ nsresult nsBaseDragService::DrawDrag(nsINode* aDOMNode,
 
   if (!mDragPopup) {
     // otherwise, just draw the node
-    uint32_t renderFlags = mImage ? 0 : nsIPresShell::RENDER_AUTO_SCALE;
-    if (renderFlags) {
+    RenderImageFlags renderFlags =
+        mImage ? RenderImageFlags::None : RenderImageFlags::AutoScale;
+    if (renderFlags != RenderImageFlags::None) {
       // check if the dragged node itself is an img element
       if (dragNode->NodeName().LowerCaseEqualsLiteral("img")) {
-        renderFlags = renderFlags | nsIPresShell::RENDER_IS_IMAGE;
+        renderFlags = renderFlags | RenderImageFlags::IsImage;
       } else {
         nsINodeList* childList = dragNode->ChildNodes();
         uint32_t length = childList->Length();
@@ -650,8 +673,9 @@ nsresult nsBaseDragService::DrawDrag(nsINode* aDOMNode,
         for (uint32_t count = 0; count < length; ++count) {
           if (childList->Item(count)->NodeName().LowerCaseEqualsLiteral(
                   "img")) {
-            // if the dragnode contains an image, set RENDER_IS_IMAGE flag
-            renderFlags = renderFlags | nsIPresShell::RENDER_IS_IMAGE;
+            // if the dragnode contains an image, set RenderImageFlags::IsImage
+            // flag
+            renderFlags = renderFlags | RenderImageFlags::IsImage;
             break;
           }
         }

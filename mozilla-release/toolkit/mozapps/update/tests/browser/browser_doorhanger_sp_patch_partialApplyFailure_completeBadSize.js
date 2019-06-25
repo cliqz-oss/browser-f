@@ -1,9 +1,16 @@
-add_task(async function testPartialPatchApplyFailureWithCompleteValidationFailure() {
-  // because of the way we're simulating failure, we have to just pretend we've already
-  // retried.
-  SpecialPowers.pushPrefEnv({set: [
-    [PREF_APP_UPDATE_DOWNLOADPROMPT_MAXATTEMPTS, 0],
-  ]});
+/* Any copyright is dedicated to the Public Domain.
+ * http://creativecommons.org/publicdomain/zero/1.0/ */
+
+"use strict";
+
+add_task(async function doorhanger_sp_patch_partialApplyFailure_completeBadSize() {
+  // Because of the way the test is simulating failure it has to pretend it has
+  // already retried.
+  await SpecialPowers.pushPrefEnv({
+    set: [
+      [PREF_APP_UPDATE_DOWNLOAD_MAXATTEMPTS, 0],
+    ],
+  });
 
   let patchProps = {type: "partial",
                     state: STATE_PENDING};
@@ -14,22 +21,15 @@ add_task(async function testPartialPatchApplyFailureWithCompleteValidationFailur
   let updateProps = {isCompleteUpdate: "false"};
   let updates = getLocalUpdateString(updateProps, patches);
 
-  await runUpdateProcessingTest(updates, [
+  let params = {updates};
+  await runDoorhangerUpdateTest(params, [
     {
-      // if we have only an invalid patch, then something's wrong and we don't
-      // have an automatic way to fix it, so show the manual update
-      // doorhanger.
+      // If there is only an invalid patch show the manual update doorhanger.
       notificationId: "update-manual",
       button: "button",
-      beforeClick() {
-        checkWhatsNewLink(window, "update-manual-whats-new");
-      },
-      async cleanup() {
-        await BrowserTestUtils.browserLoaded(gBrowser.selectedBrowser);
-        is(gBrowser.selectedBrowser.currentURI.spec,
-           URL_MANUAL_UPDATE, "Landed on manual update page.");
-        gBrowser.removeTab(gBrowser.selectedTab);
-      },
+      checkActiveUpdate: null,
+      pageURLs: {whatsNew: gDefaultWhatsNewURL,
+                 manual: URL_MANUAL_UPDATE},
     },
   ]);
 });

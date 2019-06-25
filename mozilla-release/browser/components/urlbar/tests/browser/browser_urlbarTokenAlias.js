@@ -15,9 +15,6 @@ add_task(async function init() {
   registerCleanupFunction(async function() {
     let engine = Services.search.getEngineByName("Test");
     await Services.search.removeEngine(engine);
-    // Make sure the popup is closed for the next test.
-    gURLBar.handleRevert();
-    await UrlbarTestUtils.promisePopupClose(window, () => gURLBar.blur());
   });
 
   // Search results aren't shown in quantumbar unless search suggestions are
@@ -311,6 +308,36 @@ add_task(async function enterAndFillAlias() {
 });
 
 
+// Pressing enter on an @ alias autofill should fill it in the urlbar input
+// with a trailing space and move the caret at the end.
+add_task(async function enterAutofillsAlias() {
+  let expectedString = `${ALIAS} `;
+  for (let value of [ALIAS.substring(0, ALIAS.length - 1), ALIAS]) {
+    await UrlbarTestUtils.promiseAutocompleteResultPopup({
+      window,
+      waitForFocus,
+      value,
+      selectionStart: value.length,
+      selectionEnd: value.length,
+    });
+    await waitForAutocompleteResultAt(0);
+
+    // Press Enter.
+    EventUtils.synthesizeKey("KEY_Enter");
+    await waitForAutocompleteResultAt(0);
+
+    // The urlbar input value should be the alias followed by a space so that it's
+    // ready for the user to start typing.
+    Assert.equal(gURLBar.textValue, expectedString);
+    Assert.equal(gURLBar.selectionStart, expectedString.length);
+    Assert.equal(gURLBar.selectionEnd, expectedString.length);
+    await assertAlias(true);
+  }
+  await UrlbarTestUtils.promisePopupClose(window,
+    () => EventUtils.synthesizeKey("KEY_Escape"));
+});
+
+
 async function doSimpleTest(revertBetweenSteps) {
   // When autofill is enabled, searching for "@tes" will autofill to "@test",
   // which gets in the way of this test task, so temporarily disable it.
@@ -320,8 +347,8 @@ async function doSimpleTest(revertBetweenSteps) {
   });
 
   // "@tes" -- not an alias, no highlight
-  gURLBar.search(ALIAS.substr(0, ALIAS.length - 1));
-  await promiseSearchComplete();
+  await promiseAutocompleteResultPopup(ALIAS.substr(0, ALIAS.length - 1),
+                                       window, true);
   await waitForAutocompleteResultAt(0);
   await assertAlias(false);
 
@@ -331,8 +358,7 @@ async function doSimpleTest(revertBetweenSteps) {
   }
 
   // "@test" -- alias, highlight
-  gURLBar.search(ALIAS);
-  await promiseSearchComplete();
+  await promiseAutocompleteResultPopup(ALIAS, window, true);
   await waitForAutocompleteResultAt(0);
   await assertAlias(true);
 
@@ -342,8 +368,7 @@ async function doSimpleTest(revertBetweenSteps) {
   }
 
   // "@test foo" -- alias, highlight
-  gURLBar.search(ALIAS + " foo");
-  await promiseSearchComplete();
+  await promiseAutocompleteResultPopup(ALIAS + " foo", window, true);
   await waitForAutocompleteResultAt(0);
   await assertAlias(true);
 
@@ -353,8 +378,7 @@ async function doSimpleTest(revertBetweenSteps) {
   }
 
   // "@test" -- alias, highlight
-  gURLBar.search(ALIAS);
-  await promiseSearchComplete();
+  await promiseAutocompleteResultPopup(ALIAS, window, true);
   await waitForAutocompleteResultAt(0);
   await assertAlias(true);
 
@@ -364,8 +388,8 @@ async function doSimpleTest(revertBetweenSteps) {
   }
 
   // "@tes" -- not an alias, no highlight
-  gURLBar.search(ALIAS.substr(0, ALIAS.length - 1));
-  await promiseSearchComplete();
+  await promiseAutocompleteResultPopup(ALIAS.substr(0, ALIAS.length - 1),
+                                       window, true);
   await waitForAutocompleteResultAt(0);
   await assertAlias(false);
 

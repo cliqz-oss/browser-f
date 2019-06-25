@@ -58,29 +58,10 @@ bool nsDocShellEditorData::GetEditable() {
   return mMakeEditable || (mHTMLEditor != nullptr);
 }
 
-nsresult nsDocShellEditorData::CreateEditor() {
-  nsCOMPtr<nsIEditingSession> editingSession;
-  nsresult rv = GetEditingSession(getter_AddRefs(editingSession));
-  if (NS_FAILED(rv)) {
-    return rv;
-  }
-
-  nsCOMPtr<nsPIDOMWindowOuter> domWindow =
-      mDocShell ? mDocShell->GetWindow() : nullptr;
-  rv = editingSession->SetupEditorOnWindow(domWindow);
-  if (NS_FAILED(rv)) {
-    return rv;
-  }
-
-  return NS_OK;
-}
-
-nsresult nsDocShellEditorData::GetEditingSession(nsIEditingSession** aResult) {
+nsEditingSession* nsDocShellEditorData::GetEditingSession() {
   EnsureEditingSession();
 
-  NS_ADDREF(*aResult = mEditingSession);
-
-  return NS_OK;
+  return mEditingSession.get();
 }
 
 nsresult nsDocShellEditorData::SetHTMLEditor(HTMLEditor* aHTMLEditor) {

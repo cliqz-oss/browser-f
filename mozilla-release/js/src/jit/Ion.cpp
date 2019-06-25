@@ -102,6 +102,7 @@ JitContext::JitContext(CompileRuntime* rt, CompileRealm* realm,
       realm_(realm),
 #ifdef DEBUG
       isCompilingWasm_(!realm),
+      oom_(false),
 #endif
       assemblerCount_(0) {
   SetJitContext(this);
@@ -115,6 +116,7 @@ JitContext::JitContext(JSContext* cx, TempAllocator* temp)
       realm_(CompileRealm::get(cx->realm())),
 #ifdef DEBUG
       isCompilingWasm_(false),
+      oom_(false),
 #endif
       assemblerCount_(0) {
   SetJitContext(this);
@@ -162,8 +164,9 @@ JitRuntime::JitRuntime()
       lazyLinkStubOffset_(0),
       interpreterStubOffset_(0),
       doubleToInt32ValueStubOffset_(0),
-      debugTrapHandler_(nullptr),
+      debugTrapHandlers_(),
       baselineDebugModeOSRHandler_(nullptr),
+      baselineInterpreter_(),
       trampolineCode_(nullptr),
       jitcodeGlobalTable_(nullptr),
 #ifdef DEBUG
@@ -198,6 +201,27 @@ bool JitRuntime::initialize(JSContext* cx) {
 
   JitContext jctx(cx, nullptr);
 
+  if (!generateTrampolines(cx)) {
+    return false;
+  }
+
+  if (!generateBaselineICFallbackCode(cx)) {
+    return false;
+  }
+
+  jitcodeGlobalTable_ = cx->new_<JitcodeGlobalTable>();
+  if (!jitcodeGlobalTable_) {
+    return false;
+  }
+
+  if (!GenerateBaselineInterpreter(cx, baselineInterpreter_)) {
+    return false;
+  }
+
+  return true;
+}
+
+bool JitRuntime::generateTrampolines(JSContext* cx) {
   StackMacroAssembler masm;
 
   Label bailoutTail;
@@ -303,22 +327,21 @@ bool JitRuntime::initialize(JSContext* cx) {
   vtune::MarkStub(trampolineCode_, "Trampolines");
 #endif
 
-  jitcodeGlobalTable_ = cx->new_<JitcodeGlobalTable>();
-  if (!jitcodeGlobalTable_) {
-    return false;
-  }
-
   return true;
 }
 
-JitCode* JitRuntime::debugTrapHandler(JSContext* cx) {
-  if (!debugTrapHandler_) {
+JitCode* JitRuntime::debugTrapHandler(JSContext* cx,
+                                      DebugTrapHandlerKind kind) {
+  if (!debugTrapHandlers_[kind]) {
     // JitRuntime code stubs are shared across compartments and have to
     // be allocated in the atoms zone.
-    AutoAllocInAtomsZone az(cx);
-    debugTrapHandler_ = generateDebugTrapHandler(cx);
+    mozilla::Maybe<AutoAllocInAtomsZone> az;
+    if (!cx->zone()->isAtomsZone()) {
+      az.emplace(cx);
+    }
+    debugTrapHandlers_[kind] = generateDebugTrapHandler(cx, kind);
   }
-  return debugTrapHandler_;
+  return debugTrapHandlers_[kind];
 }
 
 JitRuntime::IonBuilderList& JitRuntime::ionLazyLinkList(JSRuntime* rt) {
@@ -385,7 +408,7 @@ static T PopNextBitmaskValue(uint32_t* bitmask) {
 void JitRealm::performStubReadBarriers(uint32_t stubsToBarrier) const {
   while (stubsToBarrier) {
     auto stub = PopNextBitmaskValue<StubIndex>(&stubsToBarrier);
-    const ReadBarrieredJitCode& jitCode = stubs_[stub];
+    const WeakHeapPtrJitCode& jitCode = stubs_[stub];
     MOZ_ASSERT(jitCode);
     jitCode.get();
   }
@@ -559,15 +582,7 @@ void JitRealm::sweep(JS::Realm* realm) {
 
   stubCodes_->sweep();
 
-  // If the sweep removed a bailout Fallback stub, nullptr the corresponding
-  // return addr.
-  for (auto& it : bailoutReturnStubInfo_) {
-    if (!stubCodes_->lookup(it.key)) {
-      it = BailoutReturnStubInfo();
-    }
-  }
-
-  for (ReadBarrieredJitCode& stub : stubs_) {
+  for (WeakHeapPtrJitCode& stub : stubs_) {
     if (stub && IsAboutToBeFinalized(&stub)) {
       stub.set(nullptr);
     }
@@ -2152,16 +2167,21 @@ static bool ScriptIsTooLarge(JSContext* cx, JSScript* script) {
     return false;
   }
 
-  uint32_t numLocalsAndArgs = NumLocalsAndArgs(script);
+  size_t numLocalsAndArgs = NumLocalsAndArgs(script);
 
-  if (script->length() > MAX_MAIN_THREAD_SCRIPT_SIZE ||
-      numLocalsAndArgs > MAX_MAIN_THREAD_LOCALS_AND_ARGS) {
-    if (!OffThreadCompilationAvailable(cx)) {
-      JitSpew(JitSpew_IonAbort, "Script too large (%zu bytes) (%u locals/args)",
-              script->length(), numLocalsAndArgs);
-      TrackIonAbort(cx, script, script->code(), "too large");
-      return true;
-    }
+  bool canCompileOffThread = OffThreadCompilationAvailable(cx);
+  size_t maxScriptSize = canCompileOffThread
+                             ? JitOptions.ionMaxScriptSize
+                             : JitOptions.ionMaxScriptSizeMainThread;
+  size_t maxLocalsAndArgs = canCompileOffThread
+                                ? JitOptions.ionMaxLocalsAndArgs
+                                : JitOptions.ionMaxLocalsAndArgsMainThread;
+
+  if (script->length() > maxScriptSize || numLocalsAndArgs > maxLocalsAndArgs) {
+    JitSpew(JitSpew_IonAbort, "Script too large (%zu bytes) (%zu locals/args)",
+            script->length(), numLocalsAndArgs);
+    TrackIonAbort(cx, script, script->code(), "too large");
+    return true;
   }
 
   return false;
@@ -2210,7 +2230,9 @@ static MethodStatus Compile(JSContext* cx, HandleScript script,
   MOZ_ASSERT(jit::IsIonEnabled(cx));
   MOZ_ASSERT(jit::IsBaselineEnabled(cx));
   MOZ_ASSERT_IF(osrPc != nullptr, LoopEntryCanIonOsr(osrPc));
-  AutoGeckoProfilerEntry pseudoFrame(cx, "Ion script compilation");
+  AutoGeckoProfilerEntry pseudoFrame(
+      cx, "Ion script compilation",
+      JS::ProfilingCategoryPair::JS_IonCompilation);
 
   if (!script->hasBaselineScript()) {
     return Method_Skipped;
@@ -2234,7 +2256,7 @@ static MethodStatus Compile(JSContext* cx, HandleScript script,
   }
 
   if (!CanLikelyAllocateMoreExecutableMemory()) {
-    script->resetWarmUpCounter();
+    script->resetWarmUpCounterToDelayIonCompilation();
     return Method_Skipped;
   }
 
@@ -2347,7 +2369,8 @@ MethodStatus jit::CanEnterIon(JSContext* cx, RunState& state) {
   // If --ion-eager is used, compile with Baseline first, so that we
   // can directly enter IonMonkey.
   if (JitOptions.eagerIonCompilation() && !script->hasBaselineScript()) {
-    MethodStatus status = CanEnterBaselineMethod(cx, state);
+    MethodStatus status =
+        CanEnterBaselineMethod<BaselineTier::Compiler>(cx, state);
     if (status != Method_Compiled) {
       return status;
     }
@@ -2494,7 +2517,7 @@ bool jit::IonCompileScriptForBaseline(JSContext* cx, BaselineFrame* frame,
     // TODO: ASSERT that ion-compilation-disabled checker stub doesn't exist.
     // TODO: Clear all optimized stubs.
     // TODO: Add a ion-compilation-disabled checker IC stub
-    script->resetWarmUpCounter();
+    script->resetWarmUpCounterToDelayIonCompilation();
     return true;
   }
 
@@ -2557,7 +2580,7 @@ bool jit::IonCompileScriptForBaseline(JSContext* cx, BaselineFrame* frame,
               "  Reset WarmUpCounter cantCompile=%s bailoutExpected=%s!",
               stat == Method_CantCompile ? "yes" : "no",
               bailoutExpected ? "yes" : "no");
-      script->resetWarmUpCounter();
+      script->resetWarmUpCounterToDelayIonCompilation();
     }
     return true;
   }
@@ -2780,7 +2803,7 @@ static void ClearIonScriptAfterInvalidation(JSContext* cx, JSScript* script,
   // compile, unless we are recompiling *because* a script got hot
   // (resetUses is false).
   if (resetUses) {
-    script->resetWarmUpCounter();
+    script->resetWarmUpCounterToDelayIonCompilation();
   }
 }
 

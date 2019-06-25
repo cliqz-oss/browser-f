@@ -247,7 +247,7 @@ class GCRuntime {
   uint32_t getParameter(JSGCParamKey key, const AutoLockGC& lock);
 
   MOZ_MUST_USE bool triggerGC(JS::GCReason reason);
-  void maybeAllocTriggerZoneGC(Zone* zone, const AutoLockGC& lock);
+  void maybeAllocTriggerZoneGC(Zone* zone);
   // The return value indicates if we were able to do the GC.
   bool triggerZoneGC(Zone* zone, JS::GCReason reason, size_t usedBytes,
                      size_t thresholdBytes);
@@ -308,12 +308,9 @@ class GCRuntime {
   State state() const { return incrementalState; }
   bool isHeapCompacting() const { return state() == State::Compact; }
   bool isForegroundSweeping() const { return state() == State::Sweep; }
-  bool isBackgroundSweeping() { return sweepTask.isRunning(); }
+  bool isBackgroundSweeping() const { return sweepTask.isRunning(); }
   void waitBackgroundSweepEnd();
-  void waitBackgroundSweepOrAllocEnd() {
-    waitBackgroundSweepEnd();
-    allocTask.cancelAndWait();
-  }
+  void waitBackgroundAllocEnd() { allocTask.cancelAndWait(); }
   void waitBackgroundFreeEnd();
 
   void lockGC() { lock.lock(); }
@@ -330,9 +327,12 @@ class GCRuntime {
   void disallowIncrementalGC() { incrementalAllowed = false; }
 
   bool isIncrementalGCEnabled() const {
-    return mode == JSGC_MODE_INCREMENTAL && incrementalAllowed;
+    return (mode == JSGC_MODE_INCREMENTAL ||
+            mode == JSGC_MODE_ZONE_INCREMENTAL) &&
+           incrementalAllowed;
   }
   bool isIncrementalGCInProgress() const { return state() != State::NotActive; }
+  bool hasForegroundWork() const;
 
   bool isCompactingGCEnabled() const;
 
@@ -533,6 +533,7 @@ class GCRuntime {
                                                    AllocKind thingKind);
   static TenuredCell* refillFreeListFromHelperThread(JSContext* cx,
                                                      AllocKind thingKind);
+  void attemptLastDitchGC(JSContext* cx);
 
   /*
    * Return the list of chunks that can be released outside the GC lock.
@@ -1042,6 +1043,8 @@ class GCRuntime {
   void evictNursery(JS::GCReason reason = JS::GCReason::EVICT_NURSERY) {
     minorGC(reason, gcstats::PhaseKind::EVICT_NURSERY);
   }
+
+  mozilla::TimeStamp lastLastDitchTime;
 
   friend class MarkingValidator;
   friend class AutoEnterIteration;

@@ -8,7 +8,7 @@
 
 // There are shutdown issues for which multiple rejections are left uncaught.
 // See bug 1018184 for resolving these issues.
-const { PromiseTestUtils } = scopedCuImport("resource://testing-common/PromiseTestUtils.jsm");
+const { PromiseTestUtils } = ChromeUtils.import("resource://testing-common/PromiseTestUtils.jsm");
 PromiseTestUtils.whitelistRejectionsGlobally(/Connection closed/);
 
 add_task(async function() {
@@ -81,7 +81,7 @@ add_task(async function() {
 });
 
 async function checkTextBox(textBox, toolbox) {
-  let textboxContextMenu = toolbox.doc.getElementById("toolbox-menu");
+  let textboxContextMenu = toolbox.getTextBoxContextMenu();
   ok(!textboxContextMenu, "The menu is closed");
 
   info("Simulating context click on the textbox and expecting the menu to open");
@@ -89,7 +89,7 @@ async function checkTextBox(textBox, toolbox) {
   synthesizeContextMenuEvent(textBox);
   await onContextMenu;
 
-  textboxContextMenu = toolbox.doc.getElementById("toolbox-menu");
+  textboxContextMenu = toolbox.getTextBoxContextMenu();
   ok(textboxContextMenu, "The menu is now visible");
 
   info("Closing the menu");
@@ -97,6 +97,6 @@ async function checkTextBox(textBox, toolbox) {
   EventUtils.sendKey("ESCAPE", toolbox.win);
   await onContextMenuHidden;
 
-  textboxContextMenu = toolbox.doc.getElementById("toolbox-menu");
+  textboxContextMenu = toolbox.getTextBoxContextMenu();
   ok(!textboxContextMenu, "The menu is closed again");
 }

@@ -32,11 +32,7 @@ search-input-box =
            *[other] Find in Preferences
         }
 
-policies-notice =
-    { PLATFORM() ->
-        [windows] Your organization has disabled the ability to change some options.
-       *[other] Your organization has disabled the ability to change some preferences.
-    }
+managed-notice = Your browser is being managed by your organization.
 
 pane-general-title = General
 category-general =
@@ -824,7 +820,7 @@ addressbar-suggestions-settings = Change preferences for search engine suggestio
 
 content-blocking-header = Content Blocking
 
-content-blocking-description = Block third-party content that tracks you around the web. Control how much of your online activity gets stored and shared between websites.
+content-blocking-section-description = Protect your privacy while you browse. Block invisible content that tracks the sites you visit and profiles you. Blocking some of this content may make pages load faster.
 
 content-blocking-learn-more = Learn more
 
@@ -840,15 +836,18 @@ content-blocking-setting-custom =
   .label = Custom
   .accesskey = C
 
-content-blocking-standard-description = Only blocks known trackers in Private Windows.
 content-blocking-standard-desc = Balanced for protection and performance. Allows some trackers so websites function properly.
-content-blocking-strict-desc = Blocks all trackers { -brand-short-name } detects. May cause some sites to break.
+content-blocking-strict-description = Stronger protection, may cause some sites to break.
 content-blocking-custom-desc = Choose what to block.
 
 content-blocking-private-trackers = Known trackers only in Private Windows
 content-blocking-third-party-cookies = Third-party tracking cookies
+content-blocking-all-cookies = All cookies
+content-blocking-unvisited-cookies = Cookies from unvisited sites
 content-blocking-all-windows-trackers = Known trackers in all windows
 content-blocking-all-third-party-cookies = All third-party cookies
+content-blocking-cryptominers = Cryptominers
+content-blocking-fingerprinters = Fingerprinters
 
 content-blocking-warning-title = Heads up!
 content-blocking-warning-description = Blocking content can cause some websites to break. It’s easy to disable blocking for sites you trust.

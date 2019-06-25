@@ -10,10 +10,6 @@
  * removed from the whitelist, thus ensuring there are no stale entries. */
 let gWhitelist = [{
     file: "netError.dtd",
-    key: "certerror.introPara",
-    type: "single-quote",
-  }, {
-    file: "netError.dtd",
     key: "certerror.introPara2",
     type: "single-quote",
   }, {
@@ -38,14 +34,6 @@ let gWhitelist = [{
     type: "single-quote",
   }, {
     file: "netError.dtd",
-    key: "certerror.wrongSystemTime2",
-    type: "single-quote",
-  }, {
-    file: "netError.dtd",
-    key: "certerror.wrongSystemTimeWithoutReference",
-    type: "single-quote",
-  }, {
-    file: "netError.dtd",
     key: "clockSkewError.longDesc",
     type: "single-quote",
   }, {
@@ -59,58 +47,6 @@ let gWhitelist = [{
   }, {
     file: "netError.dtd",
     key: "certerror.mitm.sts.whatCanYouDoAboutIt3",
-    type: "single-quote",
-  }, {
-    file: "phishing-afterload-warning-message.dtd",
-    key: "safeb.palm.advisory.desc2",
-    type: "single-quote",
-  }, {
-    file: "phishing-afterload-warning-message.dtd",
-    key: "safeb.blocked.malwarePage.errorDesc.override",
-    type: "single-quote",
-  }, {
-    file: "phishing-afterload-warning-message.dtd",
-    key: "safeb.blocked.malwarePage.errorDesc.noOverride",
-    type: "single-quote",
-  }, {
-    file: "phishing-afterload-warning-message.dtd",
-    key: "safeb.blocked.malwarePage.learnMore",
-    type: "single-quote",
-  }, {
-    file: "phishing-afterload-warning-message.dtd",
-    key: "safeb.blocked.unwantedPage.errorDesc.override",
-    type: "single-quote",
-  }, {
-    file: "phishing-afterload-warning-message.dtd",
-    key: "safeb.blocked.unwantedPage.errorDesc.noOverride",
-    type: "single-quote",
-  }, {
-    file: "phishing-afterload-warning-message.dtd",
-    key: "safeb.blocked.unwantedPage.learnMore",
-    type: "single-quote",
-  }, {
-    file: "phishing-afterload-warning-message.dtd",
-    key: "safeb.blocked.phishingPage.errorDesc.override",
-    type: "single-quote",
-  }, {
-    file: "phishing-afterload-warning-message.dtd",
-    key: "safeb.blocked.phishingPage.errorDesc.noOverride",
-    type: "single-quote",
-  }, {
-    file: "phishing-afterload-warning-message.dtd",
-    key: "safeb.blocked.phishingPage.learnMore",
-    type: "single-quote",
-  }, {
-    file: "phishing-afterload-warning-message.dtd",
-    key: "safeb.blocked.harmfulPage.errorDesc.override",
-    type: "single-quote",
-  }, {
-    file: "phishing-afterload-warning-message.dtd",
-    key: "safeb.blocked.harmfulPage.errorDesc.noOverride",
-    type: "single-quote",
-  }, {
-    file: "phishing-afterload-warning-message.dtd",
-    key: "safeb.blocked.harmfulPage.learnMore",
     type: "single-quote",
   }, {
     file: "mathfont.properties",
@@ -156,10 +92,6 @@ let gWhitelist = [{
     file: "pocket.properties",
     key: "tos",
     type: "double-quote",
-  }, {
-    file: "browser.dtd",
-    key: "addonPostInstallMessage.label",
-    type: "single-quote",
   },
 ];
 

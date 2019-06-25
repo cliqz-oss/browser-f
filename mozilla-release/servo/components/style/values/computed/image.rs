@@ -36,7 +36,7 @@ pub type GradientKind =
     generic::GradientKind<LineDirection, Length, LengthPercentage, Position, Angle>;
 
 /// A computed gradient line direction.
-#[derive(Clone, Copy, Debug, MallocSizeOf, PartialEq)]
+#[derive(Clone, Copy, Debug, MallocSizeOf, PartialEq, ToResolvedValue)]
 pub enum LineDirection {
     /// An angle.
     Angle(Angle),
@@ -55,7 +55,7 @@ pub enum LineDirection {
 pub type EndingShape = generic::EndingShape<Length, LengthPercentage>;
 
 /// A computed gradient item.
-pub type GradientItem = generic::GradientItem<Color, LengthPercentage>;
+pub type GradientItem = generic::GenericGradientItem<Color, LengthPercentage>;
 
 /// A computed color stop.
 pub type ColorStop = generic::ColorStop<Color, LengthPercentage>;

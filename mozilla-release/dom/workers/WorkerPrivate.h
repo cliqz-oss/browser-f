@@ -8,9 +8,11 @@
 #define mozilla_dom_workers_workerprivate_h__
 
 #include "mozilla/dom/WorkerCommon.h"
+#include "mozilla/Attributes.h"
 #include "mozilla/CondVar.h"
 #include "mozilla/DOMEventTargetHelper.h"
 #include "mozilla/RelativeTimeline.h"
+#include "nsContentUtils.h"
 #include "nsIContentSecurityPolicy.h"
 #include "nsIEventTarget.h"
 #include "nsTObserverArray.h"
@@ -131,8 +133,6 @@ class WorkerPrivate : public RelativeTimeline {
 
   bool Cancel() { return Notify(Canceling); }
 
-  bool Kill() { return Notify(Killing); }
-
   bool Close();
 
   // The passed principal must be the Worker principal in case of a
@@ -193,6 +193,7 @@ class WorkerPrivate : public RelativeTimeline {
     return std::move(mDefaultLocale);
   }
 
+  MOZ_CAN_RUN_SCRIPT
   void DoRunLoop(JSContext* aCx);
 
   bool InterruptCallback(JSContext* aCx);
@@ -226,7 +227,7 @@ class WorkerPrivate : public RelativeTimeline {
                                       const Sequence<JSObject*>& aTransferable,
                                       ErrorResult& aRv);
 
-  void EnterDebuggerEventLoop();
+  MOZ_CAN_RUN_SCRIPT void EnterDebuggerEventLoop();
 
   void LeaveDebuggerEventLoop();
 
@@ -252,7 +253,7 @@ class WorkerPrivate : public RelativeTimeline {
 
   void ClearTimeout(int32_t aId);
 
-  bool RunExpiredTimeouts(JSContext* aCx);
+  MOZ_CAN_RUN_SCRIPT bool RunExpiredTimeouts(JSContext* aCx);
 
   bool RescheduleTimeoutTimer(JSContext* aCx);
 
@@ -659,6 +660,11 @@ class WorkerPrivate : public RelativeTimeline {
     return mLoadInfo.mPrincipal;
   }
 
+  nsIPrincipal* GetEffectiveStoragePrincipal() const {
+    AssertIsOnMainThread();
+    return mLoadInfo.mStoragePrincipal;
+  }
+
   nsIPrincipal* GetLoadingPrincipal() const {
     AssertIsOnMainThread();
     return mLoadInfo.mLoadingPrincipal;
@@ -671,17 +677,22 @@ class WorkerPrivate : public RelativeTimeline {
     return mLoadInfo.mLoadGroup;
   }
 
-  // This method allows the principal to be retrieved off the main thread.
-  // Principals are main-thread objects so the caller must ensure that all
-  // access occurs on the main thread.
-  nsIPrincipal* GetPrincipalDontAssertMainThread() const {
-    return mLoadInfo.mPrincipal;
-  }
-
   bool UsesSystemPrincipal() const { return mLoadInfo.mPrincipalIsSystem; }
 
   const mozilla::ipc::PrincipalInfo& GetPrincipalInfo() const {
     return *mLoadInfo.mPrincipalInfo;
+  }
+
+  // The CSPInfo returned is the same CSP as stored inside the Principal
+  // returned from GetPrincipalInfo. Please note that after Bug 965637
+  // we do not have a a CSP stored inside the Principal anymore which
+  // allows us to clean that part up.
+  const nsTArray<mozilla::ipc::ContentSecurityPolicy>& GetCSPInfos() const {
+    return mLoadInfo.mCSPInfos;
+  }
+
+  const mozilla::ipc::PrincipalInfo& GetEffectiveStoragePrincipalInfo() const {
+    return *mLoadInfo.mStoragePrincipalInfo;
   }
 
   already_AddRefed<nsIChannel> ForgetWorkerChannel() {
@@ -733,10 +744,13 @@ class WorkerPrivate : public RelativeTimeline {
     mLoadInfo.mXHRParamsAllowed = aAllowed;
   }
 
-  bool IsStorageAllowed() const {
+  nsContentUtils::StorageAccess StorageAccess() const {
     AssertIsOnWorkerThread();
-    return mLoadInfo.mStorageAllowed ||
-           mLoadInfo.mFirstPartyStorageAccessGranted;
+    if (mLoadInfo.mFirstPartyStorageAccessGranted) {
+      return nsContentUtils::StorageAccess::eAllow;
+    }
+
+    return mLoadInfo.mStorageAccess;
   }
 
   nsICookieSettings* CookieSettings() const {
@@ -752,6 +766,10 @@ class WorkerPrivate : public RelativeTimeline {
   // Determine if the SW testing per-window flag is set by devtools
   bool ServiceWorkersTestingInWindow() const {
     return mLoadInfo.mServiceWorkersTestingInWindow;
+  }
+
+  bool IsWatchedByDevtools() const {
+    return mLoadInfo.mWatchedByDevtools;
   }
 
   // Determine if the worker is currently loading its top level script.
@@ -789,10 +807,11 @@ class WorkerPrivate : public RelativeTimeline {
 
   void CycleCollect(bool aDummy);
 
-  nsresult SetPrincipalOnMainThread(nsIPrincipal* aPrincipal,
-                                    nsILoadGroup* aLoadGroup);
+  nsresult SetPrincipalsOnMainThread(nsIPrincipal* aPrincipal,
+                                     nsIPrincipal* aStoragePrincipal,
+                                     nsILoadGroup* aLoadGroup);
 
-  nsresult SetPrincipalFromChannel(nsIChannel* aChannel);
+  nsresult SetPrincipalsFromChannel(nsIChannel* aChannel);
 
   bool FinalChannelPrincipalIsValid(nsIChannel* aChannel);
 
@@ -844,6 +863,8 @@ class WorkerPrivate : public RelativeTimeline {
 #endif
 
   void StartCancelingTimer();
+
+  nsAString& Id();
 
  private:
   WorkerPrivate(WorkerPrivate* aParent, const nsAString& aScriptURL,
@@ -929,6 +950,13 @@ class WorkerPrivate : public RelativeTimeline {
   nsresult DispatchLockHeld(already_AddRefed<WorkerRunnable> aRunnable,
                             nsIEventTarget* aSyncLoopTarget,
                             const MutexAutoLock& aProofOfLock);
+
+  // This method dispatches a simple runnable that starts the shutdown procedure
+  // after a self.close(). This method is called after a ClearMainEventQueue()
+  // to be sure that the canceling runnable is the only one in the queue.  We
+  // need this async operation to be sure that all the current JS code is
+  // executed.
+  void DispatchCancelingRunnable();
 
   class EventTarget;
   friend class EventTarget;
@@ -1078,9 +1106,16 @@ class WorkerPrivate : public RelativeTimeline {
   };
   ThreadBound<WorkerThreadAccessible> mWorkerThreadAccessible;
 
+  uint32_t mPostSyncLoopOperations;
+
+  // List of operations to do at the end of the last sync event loop.
+  enum {
+    ePendingEventQueueClearing = 0x01,
+    eDispatchCancelingRunnable = 0x02,
+  };
+
   bool mParentWindowPaused;
 
-  bool mPendingEventQueueClearing;
   bool mCancelAllPendingRunnables;
   bool mWorkerScriptExecutedSuccessfully;
   bool mFetchHandlerWasAdded;
@@ -1110,6 +1145,8 @@ class WorkerPrivate : public RelativeTimeline {
   bool mIsInAutomation;
 
   RefPtr<mozilla::PerformanceCounter> mPerformanceCounter;
+
+  nsString mID;
 };
 
 class AutoSyncLoopHolder {

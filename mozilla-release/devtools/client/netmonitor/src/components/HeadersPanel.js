@@ -63,6 +63,10 @@ const SUMMARY_REFERRER_POLICY = L10N.getStr("netmonitor.summary.referrerPolicy")
 /**
  * Headers panel component
  * Lists basic information about the request
+ *
+ * In http/2 all response headers are in small case.
+ * See: https://developer.mozilla.org/en-US/docs/Tools/Network_Monitor/request_details#Headers
+ * RFC: https://tools.ietf.org/html/rfc7540#section-8.1.2
  */
 class HeadersPanel extends Component {
   static get propTypes() {
@@ -379,8 +383,8 @@ class HeadersPanel extends Component {
     );
 
     // not showing #hash in url
-    const summaryUrl = urlDetails.unicodeUrl ?
-      this.renderSummary(SUMMARY_URL, urlDetails.unicodeUrl.split("#")[0]) : null;
+    const summaryUrl = urlDetails.url ?
+      this.renderSummary(SUMMARY_URL, urlDetails.url.split("#")[0]) : null;
 
     const summaryMethod = method ?
       this.renderSummary(SUMMARY_METHOD, method) : null;

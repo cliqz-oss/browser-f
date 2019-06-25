@@ -6,12 +6,13 @@
 #ifndef mozilla_dom_Document_h___
 #define mozilla_dom_Document_h___
 
-#include "mozilla/FlushType.h"  // for enum
-#include "mozilla/Pair.h"       // for Pair
-#include "nsAutoPtr.h"          // for member
-#include "nsCOMArray.h"         // for member
-#include "nsCompatibility.h"    // for member
-#include "nsCOMPtr.h"           // for member
+#include "mozilla/EventStates.h"  // for EventStates
+#include "mozilla/FlushType.h"    // for enum
+#include "mozilla/Pair.h"         // for Pair
+#include "nsAutoPtr.h"            // for member
+#include "nsCOMArray.h"           // for member
+#include "nsCompatibility.h"      // for member
+#include "nsCOMPtr.h"             // for member
 #include "nsICookieSettings.h"
 #include "nsGkAtoms.h"  // for static class members
 #include "nsIApplicationCache.h"
@@ -23,7 +24,6 @@
 #include "nsILoadGroup.h"  // for member (in nsCOMPtr)
 #include "nsINode.h"       // for base class
 #include "nsIParser.h"
-#include "nsIPresShell.h"
 #include "nsIChannelEventSink.h"
 #include "nsIProgressEventSink.h"
 #include "nsIRadioGroupContainer.h"
@@ -48,11 +48,13 @@
 #include "nsContentListDeclarations.h"
 #include "nsExpirationTracker.h"
 #include "nsClassHashtable.h"
+#include "mozilla/Attributes.h"
 #include "mozilla/CORSMode.h"
 #include "mozilla/dom/BrowsingContext.h"
 #include "mozilla/dom/ContentBlockingLog.h"
 #include "mozilla/dom/DispatcherTrait.h"
 #include "mozilla/dom/DocumentOrShadowRoot.h"
+#include "mozilla/HashTable.h"
 #include "mozilla/LinkedList.h"
 #include "mozilla/NotNull.h"
 #include "mozilla/SegmentedVector.h"
@@ -137,6 +139,7 @@ class EventListenerManager;
 class FullscreenExit;
 class FullscreenRequest;
 class PendingAnimationTracker;
+class PresShell;
 class ServoStyleSet;
 class SMILAnimationController;
 enum class StyleCursorKind : uint8_t;
@@ -218,6 +221,20 @@ class CallbackObjectHolder;
 
 enum class CallerType : uint32_t;
 
+enum BFCacheStatus {
+  NOT_ALLOWED = 1 << 0,                  // Status 0
+  EVENT_HANDLING_SUPPRESSED = 1 << 1,    // Status 1
+  SUSPENDED = 1 << 2,                    // Status 2
+  UNLOAD_LISTENER = 1 << 3,              // Status 3
+  REQUEST = 1 << 4,                      // Status 4
+  ACTIVE_GET_USER_MEDIA = 1 << 5,        // Status 5
+  ACTIVE_PEER_CONNECTION = 1 << 6,       // Status 6
+  CONTAINS_EME_CONTENT = 1 << 7,         // Status 7
+  CONTAINS_MSE_CONTENT = 1 << 8,         // Status 8
+  HAS_ACTIVE_SPEECH_SYNTHESIS = 1 << 9,  // Status 9
+  HAS_USED_VR = 1 << 10,                 // Status 10
+};
+
 }  // namespace dom
 }  // namespace mozilla
 
@@ -240,6 +257,8 @@ namespace dom {
 
 class Document;
 class DOMStyleSheetSetList;
+class ResizeObserver;
+class ResizeObserverController;
 
 // Document states
 
@@ -469,8 +488,8 @@ class Document : public nsINode,
                                              func_, params_);                 \
     /* FIXME(emilio): Apparently we can keep observing from the BFCache? That \
        looks bogus. */                                                        \
-    if (nsIPresShell* shell = GetObservingShell()) {                          \
-      shell->func_ params_;                                                   \
+    if (PresShell* presShell = GetObservingPresShell()) {                     \
+      presShell->func_ params_;                                               \
     }                                                                         \
   } while (0)
 
@@ -520,8 +539,14 @@ class Document : public nsINode,
     return DocumentOrShadowRoot::SetValueMissingState(aName, aValue);
   }
 
+  nsIPrincipal* EffectiveStoragePrincipal() const;
+
   // nsIScriptObjectPrincipal
   nsIPrincipal* GetPrincipal() final { return NodePrincipal(); }
+
+  nsIPrincipal* GetEffectiveStoragePrincipal() final {
+    return EffectiveStoragePrincipal();
+  }
 
   // EventTarget
   void GetEventTargetParent(EventChainPreVisitor& aVisitor) override;
@@ -722,10 +747,10 @@ class Document : public nsINode,
   void SetReferrer(const nsACString& aReferrer) { mReferrer = aReferrer; }
 
   /**
-   * Set the principal responsible for this document.  Chances are,
-   * you do not want to be using this.
+   * Set the principals responsible for this document.  Chances are, you do not
+   * want to be using this.
    */
-  void SetPrincipal(nsIPrincipal* aPrincipal);
+  void SetPrincipals(nsIPrincipal* aPrincipal, nsIPrincipal* aStoragePrincipal);
 
   /**
    * Get the list of ancestor principals for a document.  This is the same as
@@ -772,8 +797,8 @@ class Document : public nsINode,
    * Return the referrer from document URI as defined in the Referrer Policy
    * specification.
    * https://w3c.github.io/webappsec-referrer-policy/#determine-requests-referrer
-   * While document is an iframe srcdoc document, let document be document’s
-   * browsing context’s browsing context container’s node document.
+   * While document is an iframe srcdoc document, let document be document???s
+   * browsing context???s browsing context container???s node document.
    * Then referrer should be document's URL
    */
 
@@ -1103,11 +1128,13 @@ class Document : public nsINode,
   /**
    * Set the tracking cookies blocked flag for this document.
    */
-  void SetHasTrackingCookiesBlocked(bool aHasTrackingCookiesBlocked,
-                                    const nsACString& aOriginBlocked) {
+  void SetHasTrackingCookiesBlocked(
+      bool aHasTrackingCookiesBlocked, const nsACString& aOriginBlocked,
+      const Maybe<AntiTrackingCommon::StorageAccessGrantedReason>& aReason,
+      const nsTArray<nsCString>& aTrackingFullHashes) {
     RecordContentBlockingLog(
         aOriginBlocked, nsIWebProgressListener::STATE_COOKIES_BLOCKED_TRACKER,
-        aHasTrackingCookiesBlocked);
+        aHasTrackingCookiesBlocked, aReason, aTrackingFullHashes);
   }
 
   /**
@@ -1229,6 +1256,12 @@ class Document : public nsINode,
   void EnableEncodingMenu() { mEncodingMenuDisabled = false; }
 
   /**
+   * Called to disable client access to cookies through the document.cookie API
+   * from user JavaScript code.
+   */
+  void DisableCookieAccess() { mDisableCookieAccess = true; }
+
+  /**
    * Access HTTP header data (this may also get set from other
    * sources, like HTML META tags).
    */
@@ -1242,27 +1275,20 @@ class Document : public nsINode,
    * method is responsible for calling BeginObservingDocument() on the
    * presshell if the presshell should observe document mutations.
    */
-  already_AddRefed<nsIPresShell> CreateShell(
-      nsPresContext* aContext, nsViewManager* aViewManager,
-      UniquePtr<ServoStyleSet> aStyleSet);
-  void DeleteShell();
+  already_AddRefed<PresShell> CreatePresShell(nsPresContext* aContext,
+                                              nsViewManager* aViewManager);
+  void DeletePresShell();
 
-  nsIPresShell* GetShell() const {
+  PresShell* GetPresShell() const {
     return GetBFCacheEntry() ? nullptr : mPresShell;
   }
 
-  nsIPresShell* GetObservingShell() const {
-    return mPresShell && mPresShell->IsObservingDocument() ? mPresShell
-                                                           : nullptr;
-  }
+  inline PresShell* GetObservingPresShell() const;
 
   // Return whether the presshell for this document is safe to flush.
   bool IsSafeToFlush() const;
 
-  nsPresContext* GetPresContext() const {
-    nsIPresShell* shell = GetShell();
-    return shell ? shell->GetPresContext() : nullptr;
-  }
+  inline nsPresContext* GetPresContext() const;
 
   bool HasShellOrBFCacheEntry() const { return mPresShell || mBFCacheEntry; }
 
@@ -1352,17 +1378,6 @@ class Document : public nsINode,
    * will return viewport information that specifies default information.
    */
   nsViewportInfo GetViewportInfo(const ScreenIntSize& aDisplaySize);
-
-  /**
-   * It updates the viewport overflow type with the given two widths
-   * and the viewport setting of the document.
-   * This should only be called when there is out-of-reach overflow
-   * happens on the viewport, i.e. the viewport should be using
-   * `overflow: hidden`. And it should only be called on a top level
-   * content document.
-   */
-  void UpdateViewportOverflowType(nscoord aScrolledWidth,
-                                  nscoord aScrollportWidth);
 
   void UpdateForScrollAnchorAdjustment(nscoord aLength);
 
@@ -1635,6 +1650,22 @@ class Document : public nsINode,
   // Get the "head" element in the sense of document.head.
   HTMLSharedElement* GetHead();
 
+  ServoStyleSet* StyleSetForPresShellOrMediaQueryEvaluation() const {
+    return mStyleSet.get();
+  }
+
+  // ShadowRoot has APIs that can change styles. This notifies the shell that
+  // stlyes applicable in the shadow tree have potentially changed.
+  void RecordShadowStyleChange(ShadowRoot&);
+
+  // Needs to be called any time the applicable style can has changed, in order
+  // to schedule a style flush and setup all the relevant state.
+  void ApplicableStylesChanged();
+
+  // Whether we filled the style set with any style sheet. Only meant to be used
+  // from DocumentOrShadowRoot::Traverse.
+  bool StyleSetFilled() const { return mStyleSetFilled; }
+
   /**
    * Accessors to the collection of stylesheets owned by this document.
    * Style sheets are ordered, most significant last.
@@ -1645,17 +1676,6 @@ class Document : public nsINode,
   }
 
   void InsertSheetAt(size_t aIndex, StyleSheet&);
-
-  /**
-   * Replace the stylesheets in aOldSheets with the stylesheets in
-   * aNewSheets. The two lists must have equal length, and the sheet
-   * at positon J in the first list will be replaced by the sheet at
-   * position J in the second list.  Some sheets in the second list
-   * may be null; if so the corresponding sheets in the first list
-   * will simply be removed.
-   */
-  void UpdateStyleSheets(nsTArray<RefPtr<StyleSheet>>& aOldSheets,
-                         nsTArray<RefPtr<StyleSheet>>& aNewSheets);
 
   /**
    * Add a stylesheet to the document
@@ -1697,17 +1717,10 @@ class Document : public nsINode,
   }
 
   /**
-   * Assuming that aDocSheets is an array of document-level style
-   * sheets for this document, returns the index that aSheet should
-   * be inserted at to maintain document ordering.
-   *
-   * Type T has to cast to StyleSheet*.
-   *
-   * Defined in DocumentInlines.h.
+   * Returns the index that aSheet should be inserted at to maintain document
+   * ordering.
    */
-  template <typename T>
-  size_t FindDocStyleSheetInsertionPoint(const nsTArray<T>& aDocSheets,
-                                         const StyleSheet& aSheet);
+  size_t FindDocStyleSheetInsertionPoint(const StyleSheet& aSheet);
 
   /**
    * Get this document's CSSLoader.  This is guaranteed to not return null.
@@ -1941,8 +1954,9 @@ class Document : public nsINode,
   static bool HandlePendingFullscreenRequests(Document* aDocument);
 
   void RequestPointerLock(Element* aElement, CallerType);
-  bool SetPointerLock(Element* aElement, StyleCursorKind);
+  MOZ_CAN_RUN_SCRIPT bool SetPointerLock(Element* aElement, StyleCursorKind);
 
+  MOZ_CAN_RUN_SCRIPT_BOUNDARY
   static void UnlockPointer(Document* aDoc = nullptr);
 
   // ScreenOrientation related APIs
@@ -1959,6 +1973,12 @@ class Document : public nsINode,
   void SetOrientationPendingPromise(Promise* aPromise);
   Promise* GetOrientationPendingPromise() const {
     return mOrientationPendingPromise;
+  }
+
+  void SetRDMPaneOrientation(OrientationType aType, uint16_t aAngle) {
+    if (mInRDMPane) {
+      SetCurrentOrientation(aType, aAngle);
+    }
   }
 
   //----------------------------------------------------------------------
@@ -2013,10 +2033,14 @@ class Document : public nsINode,
   // a scriptblocker but NOT within a begin/end update.
   void ContentStateChanged(nsIContent* aContent, EventStates aStateMask);
 
-  // Notify that a document state has changed.
+  // Update a set of document states that may have changed.
   // This should only be called by callers whose state is also reflected in the
   // implementation of Document::GetDocumentState.
-  void DocumentStatesChanged(EventStates aStateMask);
+  //
+  // aNotify controls whether we notify our DocumentStatesChanged observers.
+  void UpdateDocumentStates(EventStates aStateMask, bool aNotify);
+
+  void ResetDocumentDirection();
 
   // Observation hooks for style data to propagate notifications
   // to document observers
@@ -2036,6 +2060,7 @@ class Document : public nsINode,
    * or not.
    * If in doublt, use the above FlushPendingNotifications.
    */
+  MOZ_CAN_RUN_SCRIPT_BOUNDARY
   void FlushPendingNotifications(ChangesToFlush aFlush);
 
   /**
@@ -2072,12 +2097,13 @@ class Document : public nsINode,
   virtual void Reset(nsIChannel* aChannel, nsILoadGroup* aLoadGroup);
 
   /**
-   * Reset this document to aURI, aLoadGroup, and aPrincipal.  aURI must not be
-   * null.  If aPrincipal is null, a codebase principal based on aURI will be
-   * used.
+   * Reset this document to aURI, aLoadGroup, aPrincipal and aStoragePrincipal.
+   * aURI must not be null.  If aPrincipal is null, a codebase principal based
+   * on aURI will be used.
    */
   virtual void ResetToURI(nsIURI* aURI, nsILoadGroup* aLoadGroup,
-                          nsIPrincipal* aPrincipal);
+                          nsIPrincipal* aPrincipal,
+                          nsIPrincipal* aStoragePrincipal);
 
   /**
    * Set the container (docshell) for this document. Virtual so that
@@ -2136,6 +2162,11 @@ class Document : public nsINode,
   }
 
   bool IsScriptEnabled();
+
+  /**
+   * Returns true if this document was created from a nsXULPrototypeDocument.
+   */
+  bool LoadedFromPrototype() const { return mPrototypeDocument; }
 
   bool IsTopLevelContentDocument() const { return mIsTopLevelContentDocument; }
   void SetIsTopLevelContentDocument(bool aIsTopLevelContentDocument) {
@@ -2241,8 +2272,12 @@ class Document : public nsINode,
    * replace this document in the docshell.  The new document's request
    * will be ignored when checking for active requests.  If there is no
    * request associated with the new document, this parameter may be null.
+   *
+   * |aBFCacheCombo| is used as a bitmask to indicate what the status
+   * combination is when we try to BFCache aNewRequest
    */
-  virtual bool CanSavePresentation(nsIRequest* aNewRequest);
+  virtual bool CanSavePresentation(nsIRequest* aNewRequest,
+                                   uint16_t& aBFCacheCombo);
 
   virtual nsresult Init();
 
@@ -2398,11 +2433,6 @@ class Document : public nsINode,
                                           const nsAString& aAttrValue) const;
 
   /**
-   * See FlushSkinBindings on nsBindingManager
-   */
-  void FlushSkinBindings();
-
-  /**
    * To batch DOMSubtreeModified, document needs to be informed when
    * a mutation event might be dispatched, even if the event isn't actually
    * created because there are no listeners for it.
@@ -2517,7 +2547,7 @@ class Document : public nsINode,
    * null.
    */
   void SetDisplayDocument(Document* aDisplayDocument) {
-    MOZ_ASSERT(!GetShell() && !GetContainer() && !GetWindow(),
+    MOZ_ASSERT(!GetPresShell() && !GetContainer() && !GetWindow(),
                "Shouldn't set mDisplayDocument on documents that already "
                "have a presentation or a docshell or a window");
     MOZ_ASSERT(aDisplayDocument, "Must not be null");
@@ -2835,9 +2865,8 @@ class Document : public nsINode,
   void ForgetImagePreload(nsIURI* aURI);
 
   /**
-   * Called by nsParser to preload style sheets.  Can also be merged into the
-   * parser if and when the parser is merged with libgklayout.  aCrossOriginAttr
-   * should be a void string if the attr is not present.
+   * Called by nsParser to preload style sheets.  aCrossOriginAttr should be a
+   * void string if the attr is not present.
    */
   void PreloadStyle(nsIURI* aURI, const Encoding* aEncoding,
                     const nsAString& aCrossOriginAttr,
@@ -2845,15 +2874,11 @@ class Document : public nsINode,
                     const nsAString& aIntegrity);
 
   /**
-   * Called by the chrome registry to load style sheets.  Can be put
-   * back there if and when when that module is merged with libgklayout.
+   * Called by the chrome registry to load style sheets.
    *
-   * This always does a synchronous load.  If aIsAgentSheet is true,
-   * it also uses the system principal and enables unsafe rules.
-   * DO NOT USE FOR UNTRUSTED CONTENT.
+   * This always does a synchronous load, and parses as a normal document sheet.
    */
-  nsresult LoadChromeSheetSync(nsIURI* aURI, bool aIsAgentSheet,
-                               RefPtr<StyleSheet>* aSheet);
+  RefPtr<StyleSheet> LoadChromeSheetSync(nsIURI* aURI);
 
   /**
    * Returns true if the locale used for the document specifies a direction of
@@ -2862,7 +2887,7 @@ class Document : public nsINode,
    * pseudoclass so once can know whether a document is expected to be rendered
    * left-to-right or right-to-left.
    */
-  virtual bool IsDocumentRightToLeft() { return false; }
+  bool IsDocumentRightToLeft();
 
   /**
    * Called by Parser for link rel=preconnect
@@ -2882,6 +2907,14 @@ class Document : public nsINode,
    * clone).
    */
   void SetStateObject(nsIStructuredCloneContainer* scContainer);
+
+  /**
+   * Set the document's pending state object to the same state object as
+   * aDocument.
+   */
+  void SetStateObjectFrom(Document* aDocument) {
+    SetStateObject(aDocument->mStateObjectContainer);
+  }
 
   /**
    * Returns Doc_Theme_None if there is no lightweight theme specified,
@@ -2918,7 +2951,7 @@ class Document : public nsINode,
   void TriggerAutoFocus();
 
   void SetScrollToRef(nsIURI* aDocumentURI);
-  void ScrollToRef();
+  MOZ_CAN_RUN_SCRIPT void ScrollToRef();
   void ResetScrolledToRefAlready() { mScrolledToRefAlready = false; }
 
   void SetChangeScrollPosWhenScrollingToRef(bool aValue) {
@@ -2937,16 +2970,34 @@ class Document : public nsINode,
 
   SVGSVGElement* GetSVGRootElement() const;
 
+  struct FrameRequest {
+    FrameRequest(FrameRequestCallback& aCallback, int32_t aHandle);
+
+    // Comparator operators to allow RemoveElementSorted with an
+    // integer argument on arrays of FrameRequest
+    bool operator==(int32_t aHandle) const { return mHandle == aHandle; }
+    bool operator<(int32_t aHandle) const { return mHandle < aHandle; }
+
+    RefPtr<FrameRequestCallback> mCallback;
+    int32_t mHandle;
+  };
+
   nsresult ScheduleFrameRequestCallback(FrameRequestCallback& aCallback,
                                         int32_t* aHandle);
   void CancelFrameRequestCallback(int32_t aHandle);
 
-  typedef nsTArray<RefPtr<FrameRequestCallback>> FrameRequestCallbackList;
+  /**
+   * Returns true if the handle refers to a callback that was canceled that
+   * we did not find in our list of callbacks (e.g. because it is one of those
+   * in the set of callbacks currently queued to be run).
+   */
+  bool IsCanceledFrameRequestCallback(int32_t aHandle) const;
+
   /**
    * Put this document's frame request callbacks into the provided
    * list, and forget about them.
    */
-  void TakeFrameRequestCallbacks(FrameRequestCallbackList& aCallbacks);
+  void TakeFrameRequestCallbacks(nsTArray<FrameRequest>& aCallbacks);
 
   /**
    * @return true if this document's frame request callbacks should be
@@ -3196,6 +3247,8 @@ class Document : public nsINode,
                                            ErrorResult& rv);
   void GetInputEncoding(nsAString& aInputEncoding) const;
   already_AddRefed<Location> GetLocation() const;
+  void GetCookie(nsAString& aCookie, mozilla::ErrorResult& rv);
+  void SetCookie(const nsAString& aCookie, mozilla::ErrorResult& rv);
   void GetReferrer(nsAString& aReferrer) const;
   void GetLastModified(nsAString& aLastModified) const;
   void GetReadyState(nsAString& aReadyState) const;
@@ -3469,7 +3522,30 @@ class Document : public nsINode,
   void ReportHasScrollLinkedEffect();
   bool HasScrollLinkedEffect() const { return mHasScrollLinkedEffect; }
 
-  DocGroup* GetDocGroup() const;
+#ifdef DEBUG
+  void AssertDocGroupMatchesKey() const;
+#endif
+
+  DocGroup* GetDocGroup() const {
+#ifdef DEBUG
+    AssertDocGroupMatchesKey();
+#endif
+    return mDocGroup;
+  }
+
+  /**
+   * If we're a sub-document, the parent document's layout can affect our style
+   * and layout (due to the viewport size, viewport units, media queries...).
+   *
+   * This function returns true if our parent document and our child document
+   * can observe each other. If they cannot, then we don't need to synchronously
+   * update the parent document layout every time the child document may need
+   * up-to-date layout information.
+   */
+  bool StyleOrLayoutObservablyDependsOnParentDocumentLayout() const {
+    return GetParentDocument() &&
+           GetDocGroup() == GetParentDocument()->GetDocGroup();
+  }
 
   void AddIntersectionObserver(DOMIntersectionObserver* aObserver) {
     MOZ_ASSERT(!mIntersectionObservers.Contains(aObserver),
@@ -3487,7 +3563,7 @@ class Document : public nsINode,
 
   void UpdateIntersectionObservations();
   void ScheduleIntersectionObserverNotification();
-  void NotifyIntersectionObservers();
+  MOZ_CAN_RUN_SCRIPT void NotifyIntersectionObservers();
 
   // Dispatch a runnable related to the document.
   nsresult Dispatch(TaskCategory aCategory,
@@ -3508,6 +3584,10 @@ class Document : public nsINode,
   // For more information on Flash classification, see
   // toolkit/components/url-classifier/flash-block-lists.rst
   FlashClassification DocumentFlashClassification();
+
+  // ResizeObserver usage.
+  void AddResizeObserver(ResizeObserver* aResizeObserver);
+  void ScheduleResizeObserversNotification() const;
 
   /**
    * Localization
@@ -3606,10 +3686,9 @@ class Document : public nsINode,
   void RecomputeLanguageFromCharset();
 
  public:
-  void ResetLangPrefs() {
-    mLangGroupFontPrefs.Reset();
-    mFontGroupCacheDirty = true;
-  }
+  void SetMayNeedFontPrefsUpdate() { mMayNeedFontPrefsUpdate = true; }
+
+  bool MayNeedFontPrefsUpdate() { return mMayNeedFontPrefsUpdate; }
 
   already_AddRefed<nsAtom> GetContentLanguageAsAtomForStyle() const;
   already_AddRefed<nsAtom> GetLanguageForStyle() const;
@@ -3629,7 +3708,7 @@ class Document : public nsINode,
   }
 
   void CacheAllKnownLangPrefs() {
-    if (!mFontGroupCacheDirty) {
+    if (!mMayNeedFontPrefsUpdate) {
       return;
     }
     DoCacheAllKnownLangPrefs();
@@ -3715,6 +3794,9 @@ class Document : public nsINode,
 
   void SetPrototypeDocument(nsXULPrototypeDocument* aPrototype);
 
+  bool InRDMPane() const { return mInRDMPane; }
+  void SetInRDMPane(bool aInRDMPane) { mInRDMPane = aInRDMPane; }
+
  protected:
   void DoUpdateSVGUseElementShadowTrees();
 
@@ -3772,13 +3854,21 @@ class Document : public nsINode,
     return mChildDocumentUseCounters[aUseCounter];
   }
 
-  void UpdateDocumentStates(EventStates);
-
   void RemoveDocStyleSheetsFromStyleSets();
   void RemoveStyleSheetsFromStyleSets(
-      const nsTArray<RefPtr<StyleSheet>>& aSheets, SheetType aType);
+      const nsTArray<RefPtr<StyleSheet>>& aSheets, StyleOrigin);
   void ResetStylesheetsToURI(nsIURI* aURI);
-  void FillStyleSet(ServoStyleSet* aStyleSet);
+  void FillStyleSet();
+  void FillStyleSetUserAndUASheets();
+  void FillStyleSetDocumentSheets();
+  void CompatibilityModeChanged();
+  bool NeedsQuirksSheet() const {
+    // SVG documents never load quirk.css.
+    // FIXME(emilio): Can SVG documents be in quirks mode anyway?
+    return mCompatMode == eCompatibility_NavQuirks && !IsSVGDocument();
+  }
+  void AddContentEditableStyleSheetsToStyleSet(bool aDesignMode);
+  void RemoveContentEditableStyleSheets();
   void AddStyleSheetToStyleSets(StyleSheet* aSheet);
   void RemoveStyleSheetFromStyleSets(StyleSheet* aSheet);
   void NotifyStyleSheetAdded(StyleSheet* aSheet, bool aDocumentSheet);
@@ -3791,9 +3881,13 @@ class Document : public nsINode,
                                        bool aUpdateCSSLoader);
 
  private:
-  void RecordContentBlockingLog(const nsACString& aOrigin, uint32_t aType,
-                                bool aBlocked) {
-    mContentBlockingLog.RecordLog(aOrigin, aType, aBlocked);
+  void RecordContentBlockingLog(
+      const nsACString& aOrigin, uint32_t aType, bool aBlocked,
+      const Maybe<AntiTrackingCommon::StorageAccessGrantedReason>& aReason =
+          Nothing(),
+      const nsTArray<nsCString>& aTrackingFullHashes = nsTArray<nsCString>()) {
+    mContentBlockingLog.RecordLog(aOrigin, aType, aBlocked, aReason,
+                                  aTrackingFullHashes);
   }
 
   mutable std::bitset<eDeprecatedOperationCount> mDeprecationWarnedAbout;
@@ -3802,6 +3896,7 @@ class Document : public nsINode,
   // Lazy-initialization to have mDocGroup initialized in prior to the
   // SelectorCaches.
   UniquePtr<SelectorCache> mSelectorCache;
+  UniquePtr<ServoStyleSet> mStyleSet;
 
  protected:
   friend class nsDocumentOnStack;
@@ -3846,7 +3941,7 @@ class Document : public nsINode,
   // mPresShell is becoming null; in that case it will be used to get hold of
   // the relevant refresh driver.
   void UpdateFrameRequestCallbackSchedulingState(
-      nsIPresShell* aOldShell = nullptr);
+      PresShell* aOldPresShell = nullptr);
 
   // Helper for GetScrollingElement/IsScrollingElement.
   bool IsPotentiallyScrollable(HTMLBodyElement* aBody);
@@ -3864,6 +3959,10 @@ class Document : public nsINode,
   static void* UseExistingNameString(nsINode* aRootNode, const nsString* aName);
 
   void MaybeResolveReadyForIdle();
+
+  // This should *ONLY* be used in GetCookie/SetCookie.
+  already_AddRefed<nsIChannel> CreateDummyChannelForCookies(
+      nsIURI* aCodebaseURI);
 
   nsCString mReferrer;
   nsString mLastModified;
@@ -3981,10 +4080,12 @@ class Document : public nsINode,
 
   RefPtr<FeaturePolicy> mFeaturePolicy;
 
+  UniquePtr<ResizeObserverController> mResizeObserverController;
+
   // True if BIDI is enabled.
   bool mBidiEnabled : 1;
-  // True if mLangGroupFontPrefs is not initialized or dirty in some other way.
-  bool mFontGroupCacheDirty : 1;
+  // True if we may need to recompute the language prefs for this document.
+  bool mMayNeedFontPrefsUpdate : 1;
   // True if a MathML element has ever been owned by this document.
   bool mMathMLEnabled : 1;
 
@@ -4159,9 +4260,17 @@ class Document : public nsINode,
 
   bool mNeedsReleaseAfterStackRefCntRelease : 1;
 
-  // Whether we have filled our pres shell's style set with the document's
-  // additional sheets and sheets from the nsStyleSheetService.
+  // Whether we have filled our style set with all the stylesheets.
   bool mStyleSetFilled : 1;
+
+  // Whether we have a quirks mode stylesheet in the style set.
+  bool mQuirkSheetAdded : 1;
+
+  // Whether we have a contenteditable.css stylesheet in the style set.
+  bool mContentEditableSheetAdded : 1;
+
+  // Whether we have a designmode.css stylesheet in the style set.
+  bool mDesignModeSheetAdded : 1;
 
   // Keeps track of whether we have a pending
   // 'style-sheet-applicable-state-changed' notification.
@@ -4239,6 +4348,9 @@ class Document : public nsINode,
   // flag is only relevant for HTML documents, but lives here for reasons that
   // are documented above on SkipLoadEventAfterClose().
   bool mSkipLoadEventAfterClose : 1;
+
+  // When false, the .cookies property is completely disabled
+  bool mDisableCookieAccess : 1;
 
   uint8_t mPendingFullscreenRequests;
 
@@ -4326,7 +4438,7 @@ class Document : public nsINode,
   // won't be collected
   uint32_t mMarkedCCGeneration;
 
-  nsIPresShell* mPresShell;
+  PresShell* mPresShell;
 
   nsCOMArray<nsINode> mSubtreeModifiedTargets;
   uint32_t mSubtreeModifiedDepth;
@@ -4392,9 +4504,11 @@ class Document : public nsINode,
 
   nsCOMPtr<nsIDocumentEncoder> mCachedEncoder;
 
-  struct FrameRequest;
-
   nsTArray<FrameRequest> mFrameRequestCallbacks;
+
+  // The set of frame request callbacks that were canceled but which we failed
+  // to find in mFrameRequestCallbacks.
+  HashSet<int32_t> mCanceledFrameRequestCallbacks;
 
   // This object allows us to evict ourself from the back/forward cache.  The
   // pointer is non-null iff we're currently in the bfcache.
@@ -4477,33 +4591,9 @@ class Document : public nsINode,
   // Our update nesting level
   uint32_t mUpdateNestLevel;
 
-  enum ViewportType : uint8_t { DisplayWidthHeight, Specified, Unknown };
+  enum ViewportType : uint8_t { DisplayWidthHeight, Specified, Unknown, Empty };
 
   ViewportType mViewportType;
-
-  // Enum for how content in this document overflows viewport causing
-  // out-of-reach issue. Currently it only takes horizontal overflow
-  // into consideration. This enum and the corresponding field is only
-  // set and read on a top level content document.
-  enum class ViewportOverflowType : uint8_t {
-    // Viewport doesn't have out-of-reach overflow content, either
-    // because the content doesn't overflow, or the viewport doesn't
-    // have "overflow: hidden".
-    NoOverflow,
-
-    // All following items indicates that the content overflows the
-    // scroll port which causing out-of-reach content.
-
-    // Meta viewport is disabled or the document is in desktop mode.
-    Desktop,
-    // The content does not overflow the minimum-scale size. When there
-    // is no minimum scale specified, the default value used by Blink,
-    // 0.25, is used for this matter.
-    ButNotMinScaleSize,
-    // The content overflows the minimum-scale size.
-    MinScaleSize,
-  };
-  ViewportOverflowType mViewportOverflowType;
 
   PLDHashTable* mSubDocuments;
 
@@ -4677,6 +4767,11 @@ class Document : public nsINode,
   // Cached TabSizes values for the document.
   int32_t mCachedTabSizeGeneration;
   nsTabSizes mCachedTabSizes;
+
+  bool mInRDMPane;
+
+  // The principal to use for the storage area of this document.
+  nsCOMPtr<nsIPrincipal> mIntrinsicStoragePrincipal;
 
  public:
   // Needs to be public because the bindings code pokes at it.

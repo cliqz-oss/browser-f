@@ -20,6 +20,11 @@ XPCOMUtils.defineLazyServiceGetter(this, "aboutNewTabService",
                                    "@mozilla.org/browser/aboutnewtab-service;1",
                                    "nsIAboutNewTabService");
 
+XPCOMUtils.defineLazyGetter(this, "ReferrerInfo", () =>
+  Components.Constructor("@mozilla.org/referrer-info;1",
+                         "nsIReferrerInfo",
+                         "init"));
+
 Object.defineProperty(this, "BROWSER_NEW_TAB_URL", {
   enumerable: true,
   get() {
@@ -234,7 +239,7 @@ function openWebLinkIn(url, where, params) {
   if (!params.triggeringPrincipal) {
     params.triggeringPrincipal = Services.scriptSecurityManager.createNullPrincipal({});
   }
-  if (Services.scriptSecurityManager.isSystemPrincipal(params.triggeringPrincipal)) {
+  if (params.triggeringPrincipal.isSystemPrincipal) {
     throw new Error("System principal should never be passed into openWebLinkIn()");
   }
 
@@ -295,9 +300,6 @@ function openUILinkIn(url, where, aAllowThirdPartyFixup, aPostData, aReferrerInf
 function openLinkIn(url, where, params) {
   if (!where || !url)
     return;
-  let ReferrerInfo = Components.Constructor("@mozilla.org/referrer-info;1",
-                                            "nsIReferrerInfo",
-                                            "init");
 
   var aFromChrome           = params.fromChrome;
   var aAllowThirdPartyFixup = params.allowThirdPartyFixup;
@@ -384,7 +386,8 @@ function openLinkIn(url, where, params) {
       features += ",private";
       // To prevent regular browsing data from leaking to private browsing sites,
       // strip the referrer when opening a new private window. (See Bug: 1409226)
-      aReferrerInfo.sendReferrer = false;
+      aReferrerInfo = new ReferrerInfo(aReferrerInfo.referrerPolicy, false,
+        aReferrerInfo.originalReferrer);
     }
 
     // This propagates to window.arguments.
@@ -833,13 +836,6 @@ function openAboutDialog() {
 }
 
 function openPreferences(paneID, extraArgs) {
-  let histogram = Services.telemetry.getHistogramById("FX_PREFERENCES_OPENED_VIA");
-  if (extraArgs && extraArgs.origin) {
-    histogram.add(extraArgs.origin);
-  } else {
-    histogram.add("other");
-  }
-
   // This function is duplicated from preferences.js.
   function internalPrefCategoryNameToFriendlyName(aName) {
     return (aName || "").replace(/^pane./, function(toReplace) { return toReplace[4].toLowerCase(); });
@@ -1009,34 +1005,6 @@ function openHelpLink(aHelpTopic, aCalledFromModal, aWhere) {
 function openPrefsHelp(aEvent) {
   let helpTopic = aEvent.target.getAttribute("helpTopic");
   openHelpLink(helpTopic);
-}
-
-function trimURL(aURL) {
-  // This function must not modify the given URL such that calling
-  // nsIURIFixup::createFixupURI with the result will produce a different URI.
-
-  // remove single trailing slash for http/https/ftp URLs
-  let url = aURL.replace(/^((?:http|https|ftp):\/\/[^/]+)\/$/, "$1");
-
-  // remove http://
-  if (!url.startsWith("http://")) {
-    return url;
-  }
-  let urlWithoutProtocol = url.substring(7);
-
-  let flags = Services.uriFixup.FIXUP_FLAG_ALLOW_KEYWORD_LOOKUP |
-              Services.uriFixup.FIXUP_FLAG_FIX_SCHEME_TYPOS;
-  let fixedUpURL, expectedURLSpec;
-  try {
-    fixedUpURL = Services.uriFixup.createFixupURI(urlWithoutProtocol, flags);
-    expectedURLSpec = makeURI(aURL).displaySpec;
-  } catch (ex) {
-    return url;
-  }
-  if (fixedUpURL.displaySpec == expectedURLSpec) {
-    return urlWithoutProtocol;
-  }
-  return url;
 }
 
 /**

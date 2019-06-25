@@ -13,6 +13,7 @@
 #include <string.h>
 
 #include "frontend/ParseNode.h"
+#include "frontend/TokenStream.h"
 #include "js/GCAnnotations.h"
 #include "vm/JSContext.h"
 
@@ -286,10 +287,16 @@ class SyntaxParseHandler {
   void addArrayElement(ListNodeType literal, Node element) {}
 
   ListNodeType newArguments(const TokenPos& pos) { return NodeGeneric; }
-  BinaryNodeType newCall(Node callee, Node args) { return NodeFunctionCall; }
+  CallNodeType newCall(Node callee, Node args, JSOp callOp) {
+    return NodeFunctionCall;
+  }
 
-  BinaryNodeType newSuperCall(Node callee, Node args) { return NodeGeneric; }
-  BinaryNodeType newTaggedTemplate(Node tag, Node args) { return NodeGeneric; }
+  CallNodeType newSuperCall(Node callee, Node args, bool isSpread) {
+    return NodeGeneric;
+  }
+  CallNodeType newTaggedTemplate(Node tag, Node args, JSOp callOp) {
+    return NodeGeneric;
+  }
 
   ListNodeType newObjectLiteral(uint32_t begin) {
     return NodeUnparenthesizedObject;
@@ -573,7 +580,8 @@ class SyntaxParseHandler {
                list == NodeFunctionCall);
   }
 
-  BinaryNodeType newNewExpression(uint32_t begin, Node ctor, Node args) {
+  CallNodeType newNewExpression(uint32_t begin, Node ctor, Node args,
+                                bool isSpread) {
     return NodeGeneric;
   }
 
@@ -600,7 +608,6 @@ class SyntaxParseHandler {
 
   bool isSuperBase(Node pn) { return pn == NodeSuperBase; }
 
-  void setOp(Node pn, JSOp op) {}
   void setListHasNonConstInitializer(ListNodeType literal) {}
   MOZ_MUST_USE Node parenthesize(Node node) {
     // A number of nodes have different behavior upon parenthesization, but
@@ -677,8 +684,6 @@ class SyntaxParseHandler {
     MOZ_CRASH(
         "SyntaxParseHandler::canSkipLazyClosedOverBindings must return false");
   }
-
-  void adjustGetToSet(Node node) {}
 } JS_HAZ_ROOTED;  // See the top of SyntaxParseHandler for why this is safe.
 
 }  // namespace frontend

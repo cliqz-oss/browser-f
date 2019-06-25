@@ -6,6 +6,7 @@
 
 /* Per JSRuntime object */
 
+#include "mozilla/ArrayUtils.h"
 #include "mozilla/MemoryReporting.h"
 #include "mozilla/UniquePtr.h"
 
@@ -43,6 +44,7 @@
 #include "nsCycleCollector.h"
 #include "jsapi.h"
 #include "js/BuildId.h"  // JS::BuildIdCharVector, JS::SetProcessBuildIdOp
+#include "js/experimental/SourceHook.h"  // js::{,Set}SourceHook
 #include "js/MemoryFunctions.h"
 #include "js/MemoryMetrics.h"
 #include "js/UbiNode.h"
@@ -375,7 +377,7 @@ bool RealmPrivate::TryParseLocationURI(RealmPrivate::LocationHint aLocationHint,
 
 static bool PrincipalImmuneToScriptPolicy(nsIPrincipal* aPrincipal) {
   // System principal gets a free pass.
-  if (nsXPConnect::SecurityManager()->IsSystemPrincipal(aPrincipal)) {
+  if (aPrincipal->IsSystemPrincipal()) {
     return true;
   }
 
@@ -757,12 +759,6 @@ void XPCJSRuntime::TraverseAdditionalNativeRoots(
 
   for (XPCRootSetElem* e = mVariantRoots; e; e = e->GetNextRoot()) {
     XPCTraceableVariant* v = static_cast<XPCTraceableVariant*>(e);
-    if (nsCCUncollectableMarker::InGeneration(cb, v->CCGeneration())) {
-      JS::Value val = v->GetJSValPreserveColor();
-      if (val.isObject() && !JS::ObjectIsMarkedGray(&val.toObject())) {
-        continue;
-      }
-    }
     cb.NoteXPCOMRoot(
         v,
         XPCTraceableVariant::NS_CYCLE_COLLECTION_INNERCLASS::GetParticipant());
@@ -1144,9 +1140,6 @@ void XPCJSRuntime::Shutdown(JSContext* cx) {
   delete mWrappedJSMap;
   mWrappedJSMap = nullptr;
 
-  delete mWrappedJSClassMap;
-  mWrappedJSClassMap = nullptr;
-
   delete mIID2NativeInterfaceMap;
   mIID2NativeInterfaceMap = nullptr;
 
@@ -1219,10 +1212,10 @@ static void GetRealmName(JS::Realm* realm, nsCString& name, int* anonymizeID,
       }
 
       // We might have a location like this:
-      //   inProcessTabChildGlobal?ownedBy=http://www.example.com/
+      //   inProcessBrowserChildGlobal?ownedBy=http://www.example.com/
       // The owner should be omitted if it's not a chrome: URI and we're
       // anonymizing.
-      static const char* ownedByPrefix = "inProcessTabChildGlobal?ownedBy=";
+      static const char* ownedByPrefix = "inProcessBrowserChildGlobal?ownedBy=";
       int ownedByPos = name.Find(ownedByPrefix);
       if (ownedByPos >= 0) {
         const char* chrome = "chrome:";
@@ -2756,8 +2749,8 @@ static void AccumulateTelemetryCallback(int id, uint32_t sample,
     case JS_TELEMETRY_GC_MARK_RATE:
       Telemetry::Accumulate(Telemetry::GC_MARK_RATE, sample);
       break;
-    case JS_TELEMETRY_DEPRECATED_STRING_GENERICS:
-      Telemetry::Accumulate(Telemetry::JS_DEPRECATED_STRING_GENERICS, sample);
+    case JS_TELEMETRY_DEPRECATED_ARRAY_GENERICS:
+      Telemetry::Accumulate(Telemetry::JS_DEPRECATED_ARRAY_GENERICS, sample);
       break;
     default:
       MOZ_ASSERT_UNREACHABLE("Unexpected JS_TELEMETRY id");
@@ -2800,14 +2793,20 @@ static void DestroyRealm(JSFreeOp* fop, JS::Realm* realm) {
 static bool PreserveWrapper(JSContext* cx, JS::Handle<JSObject*> obj) {
   MOZ_ASSERT(cx);
   MOZ_ASSERT(obj);
-  MOZ_ASSERT(IS_WN_REFLECTOR(obj) || mozilla::dom::IsDOMObject(obj));
+  MOZ_ASSERT(mozilla::dom::IsDOMObject(obj));
 
-  return mozilla::dom::IsDOMObject(obj) &&
-         mozilla::dom::TryPreserveWrapper(obj);
+  return mozilla::dom::TryPreserveWrapper(obj);
 }
 
 static nsresult ReadSourceFromFilename(JSContext* cx, const char* filename,
-                                       char16_t** src, size_t* len) {
+                                       char16_t** twoByteSource,
+                                       char** utf8Source, size_t* len) {
+  MOZ_ASSERT(*len == 0);
+  MOZ_ASSERT((twoByteSource != nullptr) != (utf8Source != nullptr),
+             "must be called requesting only one of UTF-8 or UTF-16 source");
+  MOZ_ASSERT_IF(twoByteSource, !*twoByteSource);
+  MOZ_ASSERT_IF(utf8Source, !*utf8Source);
+
   nsresult rv;
 
   // mozJSSubScriptLoader prefixes the filenames of the scripts it loads with
@@ -2862,18 +2861,19 @@ static nsresult ReadSourceFromFilename(JSContext* cx, const char* filename,
     return NS_ERROR_FILE_TOO_BIG;
   }
 
-  // Allocate an internal buf the size of the file.
-  auto buf = MakeUniqueFallible<unsigned char[]>(rawLen);
+  // Allocate a buffer the size of the file to initially fill with the UTF-8
+  // contents of the file.  Use the JS allocator so that if UTF-8 source was
+  // requested, we can return this memory directly.
+  JS::UniqueChars buf(js_pod_malloc<char>(rawLen));
   if (!buf) {
     return NS_ERROR_OUT_OF_MEMORY;
   }
 
-  unsigned char* ptr = buf.get();
-  unsigned char* end = ptr + rawLen;
+  char* ptr = buf.get();
+  char* end = ptr + rawLen;
   while (ptr < end) {
     uint32_t bytesRead;
-    rv =
-        scriptStream->Read(reinterpret_cast<char*>(ptr), end - ptr, &bytesRead);
+    rv = scriptStream->Read(ptr, PointerRangeSize(ptr, end), &bytesRead);
     if (NS_FAILED(rv)) {
       return rv;
     }
@@ -2881,19 +2881,28 @@ static nsresult ReadSourceFromFilename(JSContext* cx, const char* filename,
     ptr += bytesRead;
   }
 
-  rv = ScriptLoader::ConvertToUTF16(scriptChannel, buf.get(), rawLen,
-                                    NS_LITERAL_STRING("UTF-8"), nullptr, *src,
-                                    *len);
-  NS_ENSURE_SUCCESS(rv, rv);
+  size_t bytesAllocated;
+  if (utf8Source) {
+    // |buf| is already UTF-8, so we can directly return it.
+    *len = bytesAllocated = rawLen;
+    *utf8Source = buf.release();
+  } else {
+    MOZ_ASSERT(twoByteSource != nullptr);
 
-  if (!*src) {
-    return NS_ERROR_FAILURE;
+    // |buf| can't be directly returned -- convert it to UTF-16.
+
+    // On success this overwrites |*twoByteSource| and |*len|.
+    rv = ScriptLoader::ConvertToUTF16(
+        scriptChannel, reinterpret_cast<const unsigned char*>(buf.get()),
+        rawLen, NS_LITERAL_STRING("UTF-8"), nullptr, *twoByteSource, *len);
+    NS_ENSURE_SUCCESS(rv, rv);
+
+    if (!*twoByteSource) {
+      return NS_ERROR_FAILURE;
+    }
+
+    bytesAllocated = *len * sizeof(char16_t);
   }
-
-  // Historically this method used JS_malloc() which updates the GC memory
-  // accounting.  Since ConvertToUTF16() now uses js_malloc() instead we
-  // update the accounting manually after the fact.
-  JS_updateMallocCounter(cx, *len);
 
   return NS_OK;
 }
@@ -2902,10 +2911,17 @@ static nsresult ReadSourceFromFilename(JSContext* cx, const char* filename,
 // the source for a chrome JS function. See the comment in the XPCJSRuntime
 // constructor.
 class XPCJSSourceHook : public js::SourceHook {
-  bool load(JSContext* cx, const char* filename, char16_t** src,
-            size_t* length) override {
-    *src = nullptr;
+  bool load(JSContext* cx, const char* filename, char16_t** twoByteSource,
+            char** utf8Source, size_t* length) override {
+    MOZ_ASSERT((twoByteSource != nullptr) != (utf8Source != nullptr),
+               "must be called requesting only one of UTF-8 or UTF-16 source");
+
     *length = 0;
+    if (twoByteSource) {
+      *twoByteSource = nullptr;
+    } else {
+      *utf8Source = nullptr;
+    }
 
     if (!nsContentUtils::IsSystemCaller(cx)) {
       return true;
@@ -2915,7 +2931,8 @@ class XPCJSSourceHook : public js::SourceHook {
       return true;
     }
 
-    nsresult rv = ReadSourceFromFilename(cx, filename, src, length);
+    nsresult rv =
+        ReadSourceFromFilename(cx, filename, twoByteSource, utf8Source, length);
     if (NS_FAILED(rv)) {
       xpc::Throw(cx, rv);
       return false;
@@ -2931,8 +2948,6 @@ static const JSWrapObjectCallbacks WrapObjectCallbacks = {
 XPCJSRuntime::XPCJSRuntime(JSContext* aCx)
     : CycleCollectedJSRuntime(aCx),
       mWrappedJSMap(JSObject2WrappedJSMap::newMap(XPC_JS_MAP_LENGTH)),
-      mWrappedJSClassMap(
-          IID2WrappedJSClassMap::newMap(XPC_JS_CLASS_MAP_LENGTH)),
       mIID2NativeInterfaceMap(
           IID2NativeInterfaceMap::newMap(XPC_NATIVE_INTERFACE_MAP_LENGTH)),
       mClassInfo2NativeSetMap(
@@ -3139,7 +3154,8 @@ bool XPCJSRuntime::NoteCustomGCThingXPCOMChildren(
 
   // A tearoff holds a strong reference to its native object
   // (see XPCWrappedNative::FlatJSObjectFinalized). Its XPCWrappedNative
-  // will be held alive through the parent of the JSObject of the tearoff.
+  // will be held alive through tearoff's XPC_WN_TEAROFF_FLAT_OBJECT_SLOT,
+  // which points to the XPCWrappedNative's mFlatJSObject.
   XPCWrappedNativeTearOff* to =
       static_cast<XPCWrappedNativeTearOff*>(xpc_GetJSPrivate(obj));
   NS_CYCLE_COLLECTION_NOTE_EDGE_NAME(cb, "xpc_GetJSPrivate(obj)->mNative");
@@ -3154,18 +3170,6 @@ void XPCJSRuntime::DebugDump(int16_t depth) {
   depth--;
   XPC_LOG_ALWAYS(("XPCJSRuntime @ %p", this));
   XPC_LOG_INDENT();
-
-  XPC_LOG_ALWAYS(("mWrappedJSClassMap @ %p with %d wrapperclasses(s)",
-                  mWrappedJSClassMap, mWrappedJSClassMap->Count()));
-  // iterate wrappersclasses...
-  if (depth && mWrappedJSClassMap->Count()) {
-    XPC_LOG_INDENT();
-    for (auto i = mWrappedJSClassMap->Iter(); !i.Done(); i.Next()) {
-      auto entry = static_cast<IID2WrappedJSClassMap::Entry*>(i.Get());
-      entry->value->DebugDump(depth);
-    }
-    XPC_LOG_OUTDENT();
-  }
 
   // iterate wrappers...
   XPC_LOG_ALWAYS(("mWrappedJSMap @ %p with %d wrappers(s)", mWrappedJSMap,

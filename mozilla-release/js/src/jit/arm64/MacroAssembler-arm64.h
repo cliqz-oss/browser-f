@@ -10,10 +10,10 @@
 #include "jit/arm64/Assembler-arm64.h"
 #include "jit/arm64/vixl/Debugger-vixl.h"
 #include "jit/arm64/vixl/MacroAssembler-vixl.h"
-
 #include "jit/AtomicOp.h"
 #include "jit/JitFrames.h"
 #include "jit/MoveResolver.h"
+#include "vm/BigIntType.h"  // JS::BigInt
 
 #ifdef _M_ARM64
 #  ifdef move32
@@ -296,6 +296,9 @@ class MacroAssemblerCompat : public vixl::MacroAssembler {
   }
   void loadValue(const BaseIndex& src, ValueOperand val) {
     doBaseIndex(ARMRegister(val.valueReg(), 64), src, vixl::LDR_x);
+  }
+  void loadUnalignedValue(const Address& src, ValueOperand dest) {
+    loadValue(src, dest);
   }
   void tagValue(JSValueType type, Register payload, ValueOperand dest) {
     // This could be cleverer, but the first attempt had bugs.
@@ -694,9 +697,7 @@ class MacroAssemblerCompat : public vixl::MacroAssembler {
   void align(int alignment) { armbuffer_.align(alignment); }
 
   void haltingAlign(int alignment) {
-    // TODO: Implement a proper halting align.
-    // ARM doesn't have one either.
-    armbuffer_.align(alignment);
+    armbuffer_.align(alignment, vixl::HLT | ImmException(0xBAAD));
   }
   void nopAlign(int alignment) { armbuffer_.align(alignment); }
 

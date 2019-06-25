@@ -36,6 +36,7 @@ NS_IMPL_ISUPPORTS(ZoomConstraintsClient, nsIDOMEventListener, nsIObserver)
 #define NS_PREF_CHANGED NS_LITERAL_CSTRING("nsPref:changed")
 
 using namespace mozilla;
+using namespace mozilla::dom;
 using namespace mozilla::layers;
 
 ZoomConstraintsClient::ZoomConstraintsClient()
@@ -43,11 +44,11 @@ ZoomConstraintsClient::ZoomConstraintsClient()
 
 ZoomConstraintsClient::~ZoomConstraintsClient() {}
 
-static nsIWidget* GetWidget(nsIPresShell* aShell) {
-  if (!aShell) {
+static nsIWidget* GetWidget(PresShell* aPresShell) {
+  if (!aPresShell) {
     return nullptr;
   }
-  if (nsIFrame* rootFrame = aShell->GetRootFrame()) {
+  if (nsIFrame* rootFrame = aPresShell->GetRootFrame()) {
 #if defined(MOZ_WIDGET_ANDROID) || defined(MOZ_WIDGET_UIKIT)
     return rootFrame->GetNearestWidget();
 #else
@@ -95,8 +96,7 @@ void ZoomConstraintsClient::Destroy() {
   mPresShell = nullptr;
 }
 
-void ZoomConstraintsClient::Init(nsIPresShell* aPresShell,
-                                 Document* aDocument) {
+void ZoomConstraintsClient::Init(PresShell* aPresShell, Document* aDocument) {
   if (!(aPresShell && aDocument)) {
     return;
   }
@@ -168,10 +168,10 @@ void ZoomConstraintsClient::ScreenSizeChanged() {
 }
 
 static mozilla::layers::ZoomConstraints ComputeZoomConstraintsFromViewportInfo(
-    const nsViewportInfo& aViewportInfo) {
+    const nsViewportInfo& aViewportInfo, Document* aDocument) {
   mozilla::layers::ZoomConstraints constraints;
-  constraints.mAllowZoom =
-      aViewportInfo.IsZoomAllowed() && gfxPrefs::APZAllowZooming();
+  constraints.mAllowZoom = aViewportInfo.IsZoomAllowed() &&
+                           nsLayoutUtils::AllowZoomingForDocument(aDocument);
   constraints.mAllowDoubleTapZoom =
       constraints.mAllowZoom && gfxPrefs::APZAllowDoubleTapZooming();
   if (constraints.mAllowZoom) {
@@ -209,7 +209,7 @@ void ZoomConstraintsClient::RefreshZoomConstraints() {
       screenSize, PixelCastJustification::LayoutDeviceIsScreenForBounds));
 
   mozilla::layers::ZoomConstraints zoomConstraints =
-      ComputeZoomConstraintsFromViewportInfo(viewportInfo);
+      ComputeZoomConstraintsFromViewportInfo(viewportInfo, mDocument);
 
   if (mDocument->Fullscreen()) {
     ZCC_LOG("%p is in fullscreen, disallowing zooming\n", this);

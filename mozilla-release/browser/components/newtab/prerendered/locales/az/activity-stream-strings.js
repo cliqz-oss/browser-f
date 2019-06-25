@@ -40,9 +40,7 @@ window.gActivityStreamStrings = {
   "section_disclaimer_topstories_buttontext": "Tamam, başa düşdüm",
   "prefs_home_header": "Firefox Ev Məzmunu",
   "prefs_home_description": "Firefox Evdə hansı məzmunları görmək istədiyinizi seçin.",
-  "prefs_content_discovery_header": "Firefox Ev",
   "prefs_content_discovery_description": "Firefox Evdəki Məzmun Kəşfi yüksək keyfiyyətli və sizə uyğun internet məqalələrini kəşf etməyinizə imkan verir.",
-  "prefs_content_discovery_button": "Məzmun Kəşfini Söndür",
   "prefs_section_rows_option": "{num} sətir;{num} sətir",
   "prefs_search_header": "Web Axtarış",
   "prefs_topsites_description": "Ən çox ziyarət etdiyiniz saytlar",
@@ -107,8 +105,5 @@ window.gActivityStreamStrings = {
   "firstrun_privacy_notice": "Məxfilik Bildirişi",
   "firstrun_continue_to_login": "Davam et",
   "firstrun_skip_login": "Bu addımı keç",
-  "context_menu_title": "Menyunu aç",
-  "manual_migration_explanation2": "Firefox səyyahını digər səyyahlardan olan əlfəcin, tarixçə və parollar ilə yoxlayın.",
-  "manual_migration_cancel_button": "Xeyr, Təşəkkürlər",
-  "manual_migration_import_button": "İndi idxal et"
+  "context_menu_title": "Menyunu aç"
 };

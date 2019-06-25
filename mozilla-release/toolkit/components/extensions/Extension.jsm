@@ -49,6 +49,7 @@ XPCOMUtils.defineLazyModuleGetters(this, {
   ExtensionTelemetry: "resource://gre/modules/ExtensionTelemetry.jsm",
   FileSource: "resource://gre/modules/L10nRegistry.jsm",
   L10nRegistry: "resource://gre/modules/L10nRegistry.jsm",
+  LightweightThemeManager: "resource://gre/modules/LightweightThemeManager.jsm",
   Log: "resource://gre/modules/Log.jsm",
   MessageChannel: "resource://gre/modules/MessageChannel.jsm",
   NetUtil: "resource://gre/modules/NetUtil.jsm",
@@ -120,12 +121,16 @@ const WEBEXT_STORAGE_USER_CONTEXT_ID = -1 >>> 0;
 // The maximum time to wait for extension child shutdown blockers to complete.
 const CHILD_SHUTDOWN_TIMEOUT_MS = 8000;
 
+// Permissions that are only available to privileged extensions.
+const PRIVILEGED_PERMS = new Set(["mozillaAddons", "geckoViewAddons", "telemetry"]);
+
 /**
  * Classify an individual permission from a webextension manifest
  * as a host/origin permission, an api permission, or a regular permission.
  *
  * @param {string} perm  The permission string to classify
  * @param {boolean} restrictSchemes
+ * @param {boolean} isPrivileged whether or not the webextension is privileged
  *
  * @returns {object}
  *          An object with exactly one of the following properties:
@@ -135,7 +140,7 @@ const CHILD_SHUTDOWN_TIMEOUT_MS = 8000;
  *          "permission" to indicate this is a regular permission.
  *          "invalid" to indicate that the given permission cannot be used.
  */
-function classifyPermission(perm, restrictSchemes) {
+function classifyPermission(perm, restrictSchemes, isPrivileged) {
   let match = /^(\w+)(?:\.(\w+)(?:\.\w+)*)?$/.exec(perm);
   if (!match) {
     try {
@@ -146,7 +151,7 @@ function classifyPermission(perm, restrictSchemes) {
     }
   } else if (match[1] == "experiments" && match[2]) {
     return {api: match[2]};
-  } else if (perm === "mozillaAddons" && restrictSchemes) {
+  } else if (!isPrivileged && PRIVILEGED_PERMS.has(match[1])) {
     return {invalid: perm};
   }
   return {permission: perm};
@@ -267,7 +272,7 @@ var UninstallObserver = {
       // the old API.
       if (!Services.lsm.nextGenLocalStorageEnabled) {
         // Clear localStorage created by the extension
-        let storage = Services.domStorageManager.getStorage(null, principal);
+        let storage = Services.domStorageManager.getStorage(null, principal, storagePrincipal);
         if (storage) {
           storage.clear();
         }
@@ -423,28 +428,22 @@ class ExtensionData {
     }
 
     let uri = this.rootURI.QueryInterface(Ci.nsIJARURI);
-    let file = uri.JARFile.QueryInterface(Ci.nsIFileURL).file;
 
-    // Normalize the directory path.
-    path = `${uri.JAREntry}/${path}`;
-    path = path.replace(/\/\/+/g, "/").replace(/^\/|\/$/g, "") + "/";
-    if (path === "/") {
-      path = "";
-    }
-
-    // Escape pattern metacharacters.
-    let pattern = path.replace(/[[\]()?*~|$\\]/g, "\\$&") + "*";
+    // Append the sub-directory path to the base JAR URI and normalize the
+    // result.
+    let entry = `${uri.JAREntry}/${path}/`.replace(/\/\/+/g, "/").replace(/^\//, "");
+    uri = Services.io.newURI(`jar:${uri.JARFile.spec}!/${entry}`);
 
     let results = [];
-    for (let name of aomStartup.enumerateZipFile(file, pattern)) {
-      if (!name.startsWith(path)) {
+    for (let name of aomStartup.enumerateJARSubtree(uri)) {
+      if (!name.startsWith(entry)) {
         throw new Error("Unexpected ZipReader entry");
       }
 
       // The enumerator returns the full path of all entries.
       // Trim off the leading path, and filter out entries from
       // subdirectories.
-      name = name.slice(path.length);
+      name = name.slice(entry.length);
       if (name && !/\/./.test(name)) {
         results.push({
           name: name.replace("/", ""),
@@ -502,9 +501,9 @@ class ExtensionData {
 
     let permissions = new Set();
     let origins = new Set();
-    let {restrictSchemes} = this;
+    let {restrictSchemes, isPrivileged} = this;
     for (let perm of this.manifest.permissions || []) {
-      let type = classifyPermission(perm, restrictSchemes);
+      let type = classifyPermission(perm, restrictSchemes, isPrivileged);
       if (type.origin) {
         origins.add(perm);
       } else if (type.permission) {
@@ -578,6 +577,13 @@ class ExtensionData {
     if (!this.type || !this.localeData) {
       throw new Error("The extension has not been initialized.");
     }
+    // Upon update or reinstall, the Extension.manifest may be read from
+    // StartupCache.manifest, however rawManifest is *not*.  We need the
+    // raw manifest in order to get a localized manifest.
+    if (!this.rawManifest) {
+      this.rawManifest = await this.readJSON("manifest.json");
+    }
+
     if (!this.localeData.has(locale)) {
       // Locales are not avialable until some additional
       // initialization is done.  We could just call initAllLocales,
@@ -689,10 +695,11 @@ class ExtensionData {
     };
 
     if (this.type === "extension") {
-      let restrictSchemes = !(this.isPrivileged && manifest.permissions.includes("mozillaAddons"));
+      let {isPrivileged} = this;
+      let restrictSchemes = !(isPrivileged && manifest.permissions.includes("mozillaAddons"));
 
       for (let perm of manifest.permissions) {
-        if (perm === "geckoProfiler" && !this.isPrivileged) {
+        if (perm === "geckoProfiler" && !isPrivileged) {
           const acceptedExtensions = Services.prefs.getStringPref("extensions.geckoProfiler.acceptedExtensionIds", "");
           if (!acceptedExtensions.split(",").includes(id)) {
             this.manifestError("Only whitelisted extensions are allowed to access the geckoProfiler.");
@@ -700,7 +707,7 @@ class ExtensionData {
           }
         }
 
-        let type = classifyPermission(perm, restrictSchemes);
+        let type = classifyPermission(perm, restrictSchemes, isPrivileged);
         if (type.origin) {
           perm = type.origin;
           originPermissions.add(perm);
@@ -1373,6 +1380,7 @@ class Extension extends ExtensionData {
   constructor(addonData, startupReason) {
     super(addonData.resourceURI);
 
+    this.startupStates = new Set();
     this.state = "Not started";
 
     this.sharedDataKeys = new Set();
@@ -1434,6 +1442,10 @@ class Extension extends ExtensionData {
 
     this.emitter = new EventEmitter();
 
+    if (this.startupData.lwtData && this.startupReason == "APP_STARTUP") {
+      LightweightThemeManager.fallbackThemeData = this.startupData.lwtData;
+    }
+
     /* eslint-disable mozilla/balanced-listeners */
     this.on("add-permissions", (ignoreEvent, permissions) => {
       for (let perm of permissions.permissions) {
@@ -1473,6 +1485,24 @@ class Extension extends ExtensionData {
       this.cachePermissions();
     });
     /* eslint-enable mozilla/balanced-listeners */
+  }
+
+  set state(startupState) {
+    this.startupStates.clear();
+    this.startupStates.add(startupState);
+  }
+
+  get state() {
+    return `${Array.from(this.startupStates).join(", ")}`;
+  }
+
+  async addStartupStatePromise(name, fn) {
+    this.startupStates.add(name);
+    try {
+      await fn();
+    } finally {
+      this.startupStates.delete(name);
+    }
   }
 
   get restrictSchemes() {
@@ -1726,34 +1756,17 @@ class Extension extends ExtensionData {
   }
 
   runManifest(manifest) {
-    let state = new Set();
-    let updateState = () => {
-      this.state = `Startup: Run manifest: ${Array.from(state)}`;
-    };
-
     let promises = [];
-    let addPromise = (name, promise) => {
-      if (promise) {
-        promises.push(promise);
-
-        state.add(name);
-        promise.finally(() => {
-          state.delete(name);
-          updateState();
-        });
-      }
+    let addPromise = (name, fn) => {
+      promises.push(this.addStartupStatePromise(name, fn));
     };
 
     for (let directive in manifest) {
       if (manifest[directive] !== null) {
-        addPromise(`manifest_${directive}`,
-                   Management.emit(`manifest_${directive}`, directive, this, manifest));
-
         addPromise(`asyncEmitManifestEntry("${directive}")`,
-                   Management.asyncEmitManifestEntry(this, directive));
+                   () => Management.asyncEmitManifestEntry(this, directive));
       }
     }
-    updateState();
 
     activeExtensionIDs.add(this.id);
     sharedData.set("extensions/activeIDs", activeExtensionIDs);
@@ -1956,17 +1969,12 @@ class Extension extends ExtensionData {
       // any of the "startup" listeners.
       this.emit("startup", this);
 
-      let state = new Set(["Emit startup", "Run manifest"]);
-      this.state = `Startup: ${Array.from(state)}`;
+      this.startupStates.clear();
       await Promise.all([
-        Management.emit("startup", this).finally(() => {
-          state.delete("Emit startup");
-          this.state = `Startup: ${Array.from(state)}`;
-        }),
-        this.runManifest(this.manifest).finally(() => {
-          state.delete("Run manifest");
-          this.state = `Startup: ${Array.from(state)}`;
-        }),
+        this.addStartupStatePromise("Startup: Emit startup",
+                                    () => Management.emit("startup", this)),
+        this.addStartupStatePromise("Startup: Run manifest",
+                                    () => this.runManifest(this.manifest)),
       ]);
       this.state = "Startup: Ran manifest";
 
@@ -2016,7 +2024,6 @@ class Extension extends ExtensionData {
   async shutdown(reason) {
     this.state = "Shutdown";
 
-    this.shutdownReason = reason;
     this.hasShutdown = true;
 
     if (!this.policy) {
@@ -2044,7 +2051,8 @@ class Extension extends ExtensionData {
       this.state = "Shutdown: Flushed jar cache";
     }
 
-    if (this.cleanupFile || reason !== "APP_SHUTDOWN") {
+    const isAppShutdown = reason === "APP_SHUTDOWN";
+    if (this.cleanupFile || !isAppShutdown) {
       StartupCache.clearAddonData(this.id);
     }
 
@@ -2057,7 +2065,7 @@ class Extension extends ExtensionData {
 
     Services.ppmm.removeMessageListener(this.MESSAGE_EMIT_EVENT, this);
 
-    this.updatePermissions(this.shutdownReason);
+    this.updatePermissions(reason);
 
     if (!this.manifest) {
       this.state = "Shutdown: Complete: No manifest";
@@ -2072,10 +2080,10 @@ class Extension extends ExtensionData {
       obj.close();
     }
 
-    ParentAPIManager.shutdownExtension(this.id);
+    ParentAPIManager.shutdownExtension(this.id, reason);
 
     Management.emit("shutdown", this);
-    this.emit("shutdown");
+    this.emit("shutdown", isAppShutdown);
 
     const TIMED_OUT = Symbol();
 
@@ -2109,8 +2117,9 @@ class Extension extends ExtensionData {
 
   get optionalOrigins() {
     if (this._optionalOrigins == null) {
-      let {restrictSchemes} = this;
-      let origins = this.manifest.optional_permissions.filter(perm => classifyPermission(perm, restrictSchemes).origin);
+      let {restrictSchemes, isPrivileged} = this;
+      let origins = this.manifest.optional_permissions.filter(perm =>
+        classifyPermission(perm, restrictSchemes, isPrivileged).origin);
       this._optionalOrigins = new MatchPatternSet(origins, {restrictSchemes, ignorePath: true});
     }
     return this._optionalOrigins;

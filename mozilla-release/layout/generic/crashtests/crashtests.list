@@ -37,7 +37,7 @@ load 331292.html
 load 334105-1.xhtml
 load 334107-1.xhtml
 load 334147-1.xhtml
-load 334148-1.xhtml
+asserts(1-18) load 334148-1.xhtml # XBL interacts poorly with CSS counters.
 load 334602-1.html
 load 337412-1.html
 load 337883-1.html
@@ -181,7 +181,7 @@ load 398332-1.html
 load 398332-2.html
 asserts(0-2) load 398332-3.html # bug 436123 and bug 457397
 load 399407-1.xhtml
-asserts(1) load 399412-1.html # bug 574889
+load 399412-1.html
 load 399843-1.html
 load 400078-1.html
 load 400190.html
@@ -584,7 +584,7 @@ load 1003441.xul
 load 1015562.html
 asserts(1-2) load 1015563-1.html
 asserts(1-2) load 1015563-2.html
-asserts(11) asserts-if(Android,274) load 1015844.html # bug 574889, bug 1374479
+load 1015844.html
 pref(font.size.inflation.minTwips,200) load 1032450.html
 load 1032613-1.svg
 load 1032613-2.html
@@ -614,6 +614,7 @@ load 1169420-2.html
 load 1178783-1.html
 load 1183431.html
 load 1186147-1.html
+skip-if(Android) load 1209952.html # test is slow - times out on Android
 load 1221112-1.html
 load 1221112-2.html
 load 1221874-1.html
@@ -721,7 +722,12 @@ load 1505817.html
 pref(layout.css.column-span.enabled,true) load 1506216.html
 pref(layout.css.column-span.enabled,true) load 1506306.html
 pref(layout.css.column-span.enabled,true) load 1507196.html
+load 1515124.html
 pref(layout.css.column-span.enabled,true) load 1517033.html
 pref(layout.css.column-span.enabled,true) load 1517297.html
 load 1520798-1.xul
 load 1520798-2.html
+load 1539656.html
+load 1544060-1.html
+load 1544060-2.html
+load 1542441.html

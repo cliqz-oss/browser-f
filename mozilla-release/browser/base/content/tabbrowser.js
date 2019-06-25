@@ -30,6 +30,7 @@ window._gBrowser = {
     }
     window.addEventListener("sizemodechange", this);
     window.addEventListener("occlusionstatechange", this);
+    window.addEventListener("framefocusrequested", this);
 
     this._setupInitialBrowserAndTab();
 
@@ -112,8 +113,6 @@ window._gBrowser = {
    */
   _tabForBrowser: new WeakMap(),
 
-  _preloadedBrowser: null,
-
   /**
    * `_createLazyBrowser` will define properties on the unbound lazy browser
    * which correspond to properties defined in MozBrowser which will be bound to
@@ -161,6 +160,8 @@ window._gBrowser = {
    * e.g. when holding Ctrl+W.
    */
   _windowIsClosing: false,
+
+  preloadedBrowser: null,
 
   /**
    * This defines a proxy which allows us to access browsers by
@@ -235,9 +236,10 @@ window._gBrowser = {
   },
 
   get visibleTabs() {
-    if (!this._visibleTabs)
-      this._visibleTabs = Array.filter(this.tabs,
-        tab => !tab.hidden && !tab.closing);
+    if (!this._visibleTabs) {
+      this._visibleTabs =
+        Array.prototype.filter.call(this.tabs, tab => !tab.hidden && !tab.closing);
+    }
     return this._visibleTabs;
   },
 
@@ -309,6 +311,7 @@ window._gBrowser = {
         remoteType = E10SUtils.getRemoteTypeForURI(
           uriToLoad,
           gMultiProcessBrowser,
+          gFissionBrowser,
           E10SUtils.DEFAULT_REMOTE_TYPE
         );
       } else {
@@ -329,7 +332,7 @@ window._gBrowser = {
       sameProcessAsFrameLoader,
       remoteType,
     };
-    let browser = this._createBrowser(createOptions);
+    let browser = this.createBrowser(createOptions);
     browser.setAttribute("primary", "true");
     if (!tabArgument) {
       browser.setAttribute("blank", "true");
@@ -1176,7 +1179,9 @@ window._gBrowser = {
     // if the tab is a blank one.
     if (newBrowser._urlbarFocused && gURLBar) {
       // Explicitly close the popup if the URL bar retains focus
-      gURLBar.closePopup();
+      if (!gURLBar.openViewOnFocus) {
+        gURLBar.closePopup();
+      }
 
       // If the user happened to type into the URL bar for this browser
       // by the time we got here, focusing will cause the text to be
@@ -1402,7 +1407,7 @@ window._gBrowser = {
     var aOpener;
     var aOpenerBrowser;
     var aCreateLazyBrowser;
-    var aNextTabParentId;
+    var aNextRemoteTabId;
     var aFocusUrlBar;
     var aName;
     var aCsp;
@@ -1429,7 +1434,7 @@ window._gBrowser = {
       aOpener = params.opener;
       aOpenerBrowser = params.openerBrowser;
       aCreateLazyBrowser = params.createLazyBrowser;
-      aNextTabParentId = params.nextTabParentId;
+      aNextRemoteTabId = params.nextRemoteTabId;
       aFocusUrlBar = params.focusUrlBar;
       aName = params.name;
       aCsp = params.csp;
@@ -1464,7 +1469,7 @@ window._gBrowser = {
       sameProcessAsFrameLoader: aSameProcessAsFrameLoader,
       opener: aOpener,
       openerBrowser: aOpenerBrowser,
-      nextTabParentId: aNextTabParentId,
+      nextRemoteTabId: aNextRemoteTabId,
       focusUrlBar: aFocusUrlBar,
       name: aName,
       csp: aCsp,
@@ -1604,6 +1609,7 @@ window._gBrowser = {
     remoteType,
     sameProcessAsFrameLoader,
     recordExecution,
+    replaceBrowsingContext,
   } = {}) {
     let isRemote = aBrowser.getAttribute("remote") == "true";
 
@@ -1724,8 +1730,11 @@ window._gBrowser = {
       // This call actually switches out our frameloaders. Do this as late as
       // possible before rebuilding the browser, as we'll need the new browser
       // state set up completely first.
-      aBrowser.changeRemoteness({ remoteType });
+      aBrowser.changeRemoteness({ remoteType, replaceBrowsingContext });
       // Once we have new frameloaders, this call sets the browser back up.
+      //
+      // FIXME(emilio): Shouldn't we call destroy() first? What hides the
+      // select pop-ups and such otherwise?
       aBrowser.construct();
     }
 
@@ -1807,6 +1816,7 @@ window._gBrowser = {
     aOptions.remoteType =
       E10SUtils.getRemoteTypeForURI(aURL,
         gMultiProcessBrowser,
+        gFissionBrowser,
         oldRemoteType,
         aBrowser.currentURI);
 
@@ -1820,90 +1830,10 @@ window._gBrowser = {
     return false;
   },
 
-  removePreloadedBrowser() {
-    if (!this._isPreloadingEnabled()) {
-      return;
-    }
-
-    let browser = this._getPreloadedBrowser();
-
-    if (browser) {
-      this.getPanel(browser).remove();
-    }
-  },
-
-  _getPreloadedBrowser() {
-    if (!this._isPreloadingEnabled()) {
-      return null;
-    }
-
-    // The preloaded browser might be null.
-    let browser = this._preloadedBrowser;
-
-    // Consume the browser.
-    this._preloadedBrowser = null;
-
-    // Attach the nsIFormFillController now that we know the browser
-    // will be used. If we do that before and the preloaded browser
-    // won't be consumed until shutdown then we leak a docShell.
-    // Also, we do not need to take care of attaching nsIFormFillControllers
-    // in the case that the browser is remote, as remote browsers take
-    // care of that themselves.
-    if (browser) {
-      browser.setAttribute("preloadedState", "consumed");
-      browser.setAttribute("autocompletepopup", "PopupAutoComplete");
-    }
-
-    return browser;
-  },
-
-  _isPreloadingEnabled() {
-    // Preloading for the newtab page is enabled when the prefs are true
-    // and the URL is "about:newtab". We do not support preloading for
-    // custom newtab URLs -- only for the default Firefox Home page.
-    return Services.prefs.getBoolPref("browser.newtab.preload") &&
-      Services.prefs.getBoolPref("browser.newtabpage.enabled") &&
-      !aboutNewTabService.overridden;
-  },
-
-  _createPreloadBrowser() {
-    // Do nothing if we have a preloaded browser already
-    // or preloading of newtab pages is disabled.
-    if (this._preloadedBrowser || !this._isPreloadingEnabled()) {
-      return;
-    }
-
-    let remoteType =
-      E10SUtils.getRemoteTypeForURI(BROWSER_NEW_TAB_URL,
-        gMultiProcessBrowser);
-    let browser = this._createBrowser({ isPreloadBrowser: true, remoteType });
-    this._preloadedBrowser = browser;
-
-    let panel = this.getPanel(browser);
-    this.tabpanels.appendChild(panel);
-
-    if (remoteType != E10SUtils.NOT_REMOTE) {
-      // For remote browsers, we need to make sure that the webProgress is
-      // instantiated, otherwise the parent won't get informed about the state
-      // of the preloaded browser until it gets attached to a tab.
-      browser.webProgress;
-    }
-
-    browser.loadURI(BROWSER_NEW_TAB_URL, {
-      triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal(),
-    });
-    browser.docShellIsActive = false;
-    browser._urlbarFocused = true;
-
-    // Make sure the preloaded browser is loaded with desired zoom level
-    let tabURI = Services.io.newURI(BROWSER_NEW_TAB_URL);
-    FullZoom.onLocationChange(tabURI, false, browser);
-  },
-
-  _createBrowser({
+  createBrowser({
     isPreloadBrowser,
     name,
-    nextTabParentId,
+    nextRemoteTabId,
     openerWindow,
     recordExecution,
     remoteType,
@@ -1982,12 +1912,12 @@ window._gBrowser = {
       b.setAttribute("preloadedState", "preloaded");
     }
 
-    if (nextTabParentId) {
+    if (nextRemoteTabId) {
       if (!remoteType) {
-        throw new Error("Cannot have nextTabParentId without a remoteType");
+        throw new Error("Cannot have nextRemoteTabId without a remoteType");
       }
       // Gecko is going to read this attribute and use it.
-      b.setAttribute("nextTabParentId", nextTabParentId.toString());
+      b.setAttribute("nextRemoteTabId", nextRemoteTabId.toString());
     }
 
     if (sameProcessAsFrameLoader) {
@@ -2101,6 +2031,7 @@ window._gBrowser = {
             }
             return E10SUtils.getRemoteTypeForURI(url,
                                                  gMultiProcessBrowser,
+                                                 gFissionBrowser,
                                                  undefined,
                                                  uri);
           };
@@ -2155,8 +2086,7 @@ window._gBrowser = {
       }
     }
 
-    let { uriIsAboutBlank, remoteType, usingPreloadedContent } =
-    aTab._browserParams;
+    let { uriIsAboutBlank, remoteType, usingPreloadedContent } = aTab._browserParams;
     delete aTab._browserParams;
     delete aTab._cachedCurrentURI;
 
@@ -2307,7 +2237,7 @@ window._gBrowser = {
         userContextId: params.userContextId,
       });
     }
-    if (Services.scriptSecurityManager.isSystemPrincipal(params.triggeringPrincipal)) {
+    if (params.triggeringPrincipal.isSystemPrincipal) {
       throw new Error("System principal should never be passed into addWebTab()");
     }
     return this.addTab(aURI, params);
@@ -2337,7 +2267,7 @@ window._gBrowser = {
     index,
     lazyTabTitle,
     name,
-    nextTabParentId,
+    nextRemoteTabId,
     noInitialLabel,
     opener,
     openerBrowser,
@@ -2467,8 +2397,7 @@ window._gBrowser = {
         t.owner = ownerTab;
       }
 
-      // Ensure we have an index if one was not provided. _insertTabAt
-      // will do some additional validation.
+      // Ensure we have an index if one was not provided.
       if (typeof index != "number") {
         // Move the new tab after another tab if needed.
         if (!bulkOrderedOpen &&
@@ -2493,19 +2422,20 @@ window._gBrowser = {
             this._lastRelatedTabMap.set(openerTab, t);
           }
         } else {
-          // This is intentionally past bounds, see the comment below on insertBefore.
-          index = this.tabs.length;
+          index = Infinity;
         }
       }
-      // Ensure position respectes tab pinned state.
+      // Ensure index is within bounds.
       if (pinned) {
+        index = Math.max(index, 0);
         index = Math.min(index, this._numPinnedTabs);
       } else {
         index = Math.max(index, this._numPinnedTabs);
+        index = Math.min(index, this.tabs.length);
       }
 
-      // use .item() instead of [] because dragging to the end of the strip goes out of
-      // bounds: .item() returns null (so it acts like appendChild), but [] throws
+      // Use .item() instead of [] because we need .item() to return null in
+      // order to append the tab at the end in case index == tabs.length.
       let tabAfter = this.tabs.item(index);
       this.tabContainer.insertBefore(t, tabAfter);
       if (tabAfter) {
@@ -2534,24 +2464,22 @@ window._gBrowser = {
           referrerInfo.originalReferrer) {
         preferredRemoteType =
           E10SUtils.getRemoteTypeForURI(referrerInfo.originalReferrer.spec,
-                                        gMultiProcessBrowser);
+                                        gMultiProcessBrowser, gFissionBrowser);
       }
 
       let remoteType =
         forceNotRemote ? E10SUtils.NOT_REMOTE :
         E10SUtils.getRemoteTypeForURI(aURI, gMultiProcessBrowser,
-          preferredRemoteType);
+                                      gFissionBrowser,
+                                      preferredRemoteType);
 
       // If we open a new tab with the newtab URL in the default
       // userContext, check if there is a preloaded browser ready.
-      // Private windows are not included because both the label and the
-      // icon for the tab would be set incorrectly (see bug 1195981).
       if (aURI == BROWSER_NEW_TAB_URL &&
           !userContextId &&
-          !PrivateBrowsingUtils.isWindowPrivate(window) &&
           !recordExecution &&
           !replayExecution) {
-        b = this._getPreloadedBrowser();
+        b = NewTabPagePreloading.getPreloadedBrowser(window);
         if (b) {
           usingPreloadedContent = true;
         }
@@ -2559,13 +2487,13 @@ window._gBrowser = {
 
       if (!b) {
         // No preloaded browser found, create one.
-        b = this._createBrowser({
+        b = this.createBrowser({
           remoteType,
           uriIsAboutBlank,
           userContextId,
           sameProcessAsFrameLoader,
           openerWindow: opener,
-          nextTabParentId,
+          nextRemoteTabId,
           name,
           recordExecution,
           replayExecution,
@@ -2943,8 +2871,8 @@ window._gBrowser = {
   _hasBeforeUnload(aTab) {
     let browser = aTab.linkedBrowser;
     return browser.isRemoteBrowser && browser.frameLoader &&
-           browser.frameLoader.tabParent &&
-           browser.frameLoader.tabParent.hasBeforeUnload;
+           browser.frameLoader.remoteTab &&
+           browser.frameLoader.remoteTab.hasBeforeUnload;
   },
 
   _beginRemoveTab(aTab, {
@@ -3265,9 +3193,7 @@ window._gBrowser = {
     let remainingTabs = this.visibleTabs;
     let numTabs = remainingTabs.length;
     if (numTabs == 0 || numTabs == 1 && remainingTabs[0] == aTab) {
-      remainingTabs = Array.filter(this.tabs, function(tab) {
-        return !tab.closing;
-      }, this);
+      remainingTabs = Array.prototype.filter.call(this.tabs, tab => !tab.closing);
     }
 
     // Try to find a remaining tab that comes after the given tab
@@ -3402,7 +3328,7 @@ window._gBrowser = {
           this._isBusy = true;
       }
 
-      this._swapBrowserDocShells(aOurTab, otherBrowser, Ci.nsIBrowser.SWAP_DEFAULT, stateFlags);
+      this._swapBrowserDocShells(aOurTab, otherBrowser, stateFlags);
     }
 
     // Unregister the previously opened URI
@@ -3451,7 +3377,7 @@ window._gBrowser = {
     return true;
   },
 
-  swapBrowsers(aOurTab, aOtherTab, aFlags) {
+  swapBrowsers(aOurTab, aOtherTab) {
     let otherBrowser = aOtherTab.linkedBrowser;
     let otherTabBrowser = otherBrowser.getTabBrowser();
 
@@ -3462,7 +3388,7 @@ window._gBrowser = {
     filter.removeProgressListener(tabListener);
 
     // Perform the docshell swap through the common mechanism.
-    this._swapBrowserDocShells(aOurTab, otherBrowser, aFlags);
+    this._swapBrowserDocShells(aOurTab, otherBrowser);
 
     // Restore the listeners for the swapped in tab.
     tabListener = new otherTabBrowser.ownerGlobal.TabProgressListener(aOtherTab, otherBrowser, false, false);
@@ -3473,7 +3399,7 @@ window._gBrowser = {
     otherBrowser.webProgress.addProgressListener(filter, notifyAll);
   },
 
-  _swapBrowserDocShells(aOurTab, aOtherBrowser, aFlags, aStateFlags) {
+  _swapBrowserDocShells(aOurTab, aOtherBrowser, aStateFlags) {
     // aOurTab's browser needs to be inserted now if it hasn't already.
     this._insertBrowser(aOurTab);
 
@@ -3516,17 +3442,15 @@ window._gBrowser = {
       remoteBrowser._outerWindowIDBrowserMap.set(aOtherBrowser.outerWindowID, aOtherBrowser);
     }
 
-    if (!(aFlags & Ci.nsIBrowser.SWAP_KEEP_PERMANENT_KEY)) {
-      // Swap permanentKey properties.
-      let ourPermanentKey = ourBrowser.permanentKey;
-      ourBrowser.permanentKey = aOtherBrowser.permanentKey;
-      aOtherBrowser.permanentKey = ourPermanentKey;
-      aOurTab.permanentKey = ourBrowser.permanentKey;
-      if (remoteBrowser) {
-        let otherTab = remoteBrowser.getTabForBrowser(aOtherBrowser);
-        if (otherTab) {
-          otherTab.permanentKey = aOtherBrowser.permanentKey;
-        }
+    // Swap permanentKey properties.
+    let ourPermanentKey = ourBrowser.permanentKey;
+    ourBrowser.permanentKey = aOtherBrowser.permanentKey;
+    aOtherBrowser.permanentKey = ourPermanentKey;
+    aOurTab.permanentKey = ourBrowser.permanentKey;
+    if (remoteBrowser) {
+      let otherTab = remoteBrowser.getTabForBrowser(aOtherBrowser);
+      if (otherTab) {
+        otherTab.permanentKey = aOtherBrowser.permanentKey;
       }
     }
 
@@ -4348,11 +4272,16 @@ window._gBrowser = {
       }
     } else {
       label = tab._fullLabel || tab.getAttribute("label");
-      if (AppConstants.NIGHTLY_BUILD &&
-          tab.linkedBrowser &&
-          tab.linkedBrowser.isRemoteBrowser &&
-          tab.linkedBrowser.frameLoader) {
-        label += " (pid " + tab.linkedBrowser.frameLoader.tabParent.osPid + ")";
+      if (AppConstants.NIGHTLY_BUILD) {
+        if (tab.linkedBrowser &&
+            tab.linkedBrowser.isRemoteBrowser &&
+            tab.linkedBrowser.frameLoader) {
+          label += " (pid " + tab.linkedBrowser.frameLoader.remoteTab.osPid + ")";
+
+          if (window.docShell.QueryInterface(Ci.nsILoadContext).useRemoteSubframes) {
+            label += " [F]";
+          }
+        }
       }
       if (tab.userContextId) {
         label = gTabBrowserBundle.formatStringFromName("tabs.containers.tooltip", [label, ContextualIdentityService.getUserContextLabel(tab.userContextId)], 2);
@@ -4370,6 +4299,18 @@ window._gBrowser = {
       case "keypress":
         this._handleKeyPressEventMac(aEvent);
         break;
+      case "framefocusrequested": {
+        let tab = this.getTabForBrowser(aEvent.target);
+        if (!tab || tab == this.selectedTab) {
+          // Let the focus manager try to do its thing by not calling
+          // preventDefault(). It will still raise the window if appropriate.
+          break;
+        }
+        this.selectedTab = tab;
+        window.focus();
+        aEvent.preventDefault();
+        break;
+      }
       case "sizemodechange":
       case "occlusionstatechange":
         if (aEvent.target == window && !this._switcher) {
@@ -4580,6 +4521,7 @@ window._gBrowser = {
     }
     window.removeEventListener("sizemodechange", this);
     window.removeEventListener("occlusionstatechange", this);
+    window.removeEventListener("framefocusrequested", this);
 
     if (gMultiProcessBrowser) {
       let messageManager = window.getGroupMessageManager("browsers");
@@ -4667,7 +4609,7 @@ window._gBrowser = {
 
         // For non-system/expanded principals, we bail and show the checkbox
         if (promptPrincipal.URI &&
-            !Services.scriptSecurityManager.isSystemPrincipal(promptPrincipal)) {
+            !promptPrincipal.isSystemPrincipal) {
           let permission = Services.perms.testPermissionFromPrincipal(promptPrincipal,
             "focus-tab-by-prompt");
           if (permission != Services.perms.ALLOW_ACTION) {
@@ -4706,15 +4648,22 @@ window._gBrowser = {
     });
 
     this.addEventListener("oop-browser-crashed", (event) => {
-      if (!event.isTrusted)
+      if (!event.isTrusted) {
         return;
+      }
+
+      if (!event.isTopFrame) {
+        let bc = BrowsingContext.get(event.browsingContextId);
+        SubframeCrashHandler.onSubframeCrash(bc);
+        return;
+      }
 
       let browser = event.originalTarget;
 
       // Preloaded browsers do not actually have any tabs. If one crashes,
       // it should be released and removed.
-      if (browser === this._preloadedBrowser) {
-        this.removePreloadedBrowser();
+      if (browser === this.preloadedBrowser) {
+        NewTabPagePreloading.removePreloadedBrowser(window);
         return;
       }
 
@@ -4831,6 +4780,21 @@ window._gBrowser = {
                           SitePermissions.SCOPE_GLOBAL,
                           browser);
     });
+
+    let tabContextFTLInserter = () => {
+      MozXULElement.insertFTLIfNeeded("browser/tabContextMenu.ftl");
+      // Un-lazify the l10n-ids now that the FTL file has been inserted.
+      document.getElementById("tabContextMenu").querySelectorAll("[data-lazy-l10n-id]").forEach(el => {
+        el.setAttribute("data-l10n-id", el.getAttribute("data-lazy-l10n-id"));
+        el.removeAttribute("data-lazy-l10n-id");
+      });
+      this.tabContainer.removeEventListener("contextmenu", tabContextFTLInserter, true);
+      this.tabContainer.removeEventListener("mouseover", tabContextFTLInserter);
+      this.tabContainer.removeEventListener("focus", tabContextFTLInserter, true);
+    };
+    this.tabContainer.addEventListener("contextmenu", tabContextFTLInserter, true);
+    this.tabContainer.addEventListener("mouseover", tabContextFTLInserter);
+    this.tabContainer.addEventListener("focus", tabContextFTLInserter, true);
   },
 
   setSuccessor(aTab, successorTab) {
@@ -4903,9 +4867,9 @@ class TabProgressListener {
     delete this.mBrowser;
   }
 
-  _callProgressListeners() {
-    Array.unshift(arguments, this.mBrowser);
-    return gBrowser._callProgressListeners.apply(gBrowser, arguments);
+  _callProgressListeners(...args) {
+    args.unshift(this.mBrowser);
+    return gBrowser._callProgressListeners.apply(gBrowser, args);
   }
 
   _shouldShowProgress(aRequest) {
@@ -5488,11 +5452,7 @@ var TabContextMenu = {
 
     let contextMoveTabOptions = document.getElementById("context_moveTabOptions");
     contextMoveTabOptions.disabled = gBrowser.allTabsSelected();
-    let moveTabOptionsStringPrefix = multiselectionContext ? "multiselectcontext" : "nonmultiselectcontext";
-    let moveTabOptionsLabel = contextMoveTabOptions.getAttribute(moveTabOptionsStringPrefix + "label");
-    let moveTabOptionsAccessKey = contextMoveTabOptions.getAttribute(moveTabOptionsStringPrefix + "accesskey");
-    contextMoveTabOptions.setAttribute("label", moveTabOptionsLabel);
-    contextMoveTabOptions.setAttribute("accesskey", moveTabOptionsAccessKey);
+    document.l10n.setAttributes(contextMoveTabOptions, multiselectionContext ? "move-tabs" : "move-tab");
     let selectedTabs = gBrowser.selectedTabs;
     let contextMoveTabToEnd = document.getElementById("context_moveToEnd");
     let allSelectedTabsAdjacent = selectedTabs.every((element, index, array) => {

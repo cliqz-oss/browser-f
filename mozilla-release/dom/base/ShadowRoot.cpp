@@ -15,8 +15,10 @@
 #include "mozilla/dom/DirectionalityUtils.h"
 #include "mozilla/dom/Element.h"
 #include "mozilla/dom/HTMLSlotElement.h"
+#include "mozilla/dom/TreeOrderedArrayInlines.h"
 #include "mozilla/EventDispatcher.h"
 #include "mozilla/IdentifierMapEntry.h"
+#include "mozilla/PresShell.h"
 #include "mozilla/ServoStyleRuleMap.h"
 #include "mozilla/StyleSheet.h"
 #include "mozilla/StyleSheetInlines.h"
@@ -28,19 +30,6 @@ using namespace mozilla::dom;
 NS_IMPL_CYCLE_COLLECTION_CLASS(ShadowRoot)
 
 NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN_INHERITED(ShadowRoot, DocumentFragment)
-  NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mStyleSheets)
-  for (StyleSheet* sheet : tmp->mStyleSheets) {
-    // mServoStyles keeps another reference to it if applicable.
-    if (sheet->IsApplicable()) {
-      MOZ_ASSERT(tmp->mServoStyles);
-      NS_CYCLE_COLLECTION_NOTE_EDGE_NAME(cb, "mServoStyles->sheets[i]");
-      cb.NoteXPCOMChild(sheet);
-    }
-  }
-  NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mDOMStyleSheets)
-  for (auto iter = tmp->mIdentifierMap.ConstIter(); !iter.Done(); iter.Next()) {
-    iter.Get()->Traverse(&cb);
-  }
   DocumentOrShadowRoot::Traverse(tmp, cb);
 NS_IMPL_CYCLE_COLLECTION_TRAVERSE_END
 
@@ -48,8 +37,6 @@ NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN(ShadowRoot)
   if (tmp->GetHost()) {
     tmp->GetHost()->RemoveMutationObserver(tmp);
   }
-  NS_IMPL_CYCLE_COLLECTION_UNLINK(mDOMStyleSheets)
-  tmp->mIdentifierMap.Clear();
   DocumentOrShadowRoot::Unlink(tmp);
 NS_IMPL_CYCLE_COLLECTION_UNLINK_END_INHERITED(DocumentFragment)
 
@@ -185,12 +172,12 @@ void ShadowRoot::InvalidateStyleAndLayoutOnSubtree(Element* aElement) {
     return;
   }
 
-  nsIPresShell* shell = doc->GetShell();
-  if (!shell) {
+  PresShell* presShell = doc->GetPresShell();
+  if (!presShell) {
     return;
   }
 
-  shell->DestroyFramesForAndRestyle(aElement);
+  presShell->DestroyFramesForAndRestyle(aElement);
 }
 
 void ShadowRoot::AddSlot(HTMLSlotElement* aSlot) {
@@ -200,20 +187,17 @@ void ShadowRoot::AddSlot(HTMLSlotElement* aSlot) {
   nsAutoString name;
   aSlot->GetName(name);
 
-  nsTArray<HTMLSlotElement*>* currentSlots = mSlotMap.LookupOrAdd(name);
-  MOZ_ASSERT(currentSlots);
+  SlotArray& currentSlots = *mSlotMap.LookupOrAdd(name);
 
-  HTMLSlotElement* oldSlot = currentSlots->SafeElementAt(0);
-
-  TreeOrderComparator comparator;
-  currentSlots->InsertElementSorted(aSlot, comparator);
-
-  HTMLSlotElement* currentSlot = currentSlots->ElementAt(0);
-  if (currentSlot != aSlot) {
+  size_t index = currentSlots.Insert(*aSlot);
+  if (index != 0) {
     return;
   }
 
-  if (oldSlot && oldSlot != currentSlot) {
+  HTMLSlotElement* oldSlot = currentSlots->SafeElementAt(1);
+  if (oldSlot) {
+    MOZ_DIAGNOSTIC_ASSERT(oldSlot != aSlot);
+
     // Move assigned nodes from old slot to new slot.
     InvalidateStyleAndLayoutOnSubtree(oldSlot);
     const nsTArray<RefPtr<nsINode>>& assignedNodes = oldSlot->AssignedNodes();
@@ -222,15 +206,15 @@ void ShadowRoot::AddSlot(HTMLSlotElement* aSlot) {
       nsINode* assignedNode = assignedNodes[0];
 
       oldSlot->RemoveAssignedNode(assignedNode);
-      currentSlot->AppendAssignedNode(assignedNode);
+      aSlot->AppendAssignedNode(assignedNode);
       doEnqueueSlotChange = true;
     }
 
     if (doEnqueueSlotChange) {
       oldSlot->EnqueueSlotChangeEvent();
-      currentSlot->EnqueueSlotChangeEvent();
+      aSlot->EnqueueSlotChangeEvent();
       SlotStateChanged(oldSlot);
-      SlotStateChanged(currentSlot);
+      SlotStateChanged(aSlot);
     }
   } else {
     bool doEnqueueSlotChange = false;
@@ -246,12 +230,12 @@ void ShadowRoot::AddSlot(HTMLSlotElement* aSlot) {
         continue;
       }
       doEnqueueSlotChange = true;
-      currentSlot->AppendAssignedNode(child);
+      aSlot->AppendAssignedNode(child);
     }
 
     if (doEnqueueSlotChange) {
-      currentSlot->EnqueueSlotChangeEvent();
-      SlotStateChanged(currentSlot);
+      aSlot->EnqueueSlotChangeEvent();
+      SlotStateChanged(aSlot);
     }
   }
 }
@@ -262,9 +246,11 @@ void ShadowRoot::RemoveSlot(HTMLSlotElement* aSlot) {
   nsAutoString name;
   aSlot->GetName(name);
 
-  SlotArray* currentSlots = mSlotMap.Get(name);
-  MOZ_DIAGNOSTIC_ASSERT(currentSlots && currentSlots->Contains(aSlot),
-                        "Slot to deregister wasn't found?");
+  MOZ_ASSERT(mSlotMap.Get(name));
+
+  SlotArray& currentSlots = *mSlotMap.Get(name);
+  MOZ_DIAGNOSTIC_ASSERT(currentSlots->Contains(aSlot),
+                        "Slot to de-register wasn't found?");
   if (currentSlots->Length() == 1) {
     MOZ_ASSERT(currentSlots->ElementAt(0) == aSlot);
 
@@ -280,18 +266,21 @@ void ShadowRoot::RemoveSlot(HTMLSlotElement* aSlot) {
   }
 
   const bool wasFirstSlot = currentSlots->ElementAt(0) == aSlot;
-  currentSlots->RemoveElement(aSlot);
-
-  // Move assigned nodes from removed slot to the next slot in
-  // tree order with the same name.
+  currentSlots.RemoveElement(*aSlot);
   if (!wasFirstSlot) {
     return;
   }
 
+  // Move assigned nodes from removed slot to the next slot in
+  // tree order with the same name.
   InvalidateStyleAndLayoutOnSubtree(aSlot);
   HTMLSlotElement* replacementSlot = currentSlots->ElementAt(0);
   const nsTArray<RefPtr<nsINode>>& assignedNodes = aSlot->AssignedNodes();
-  bool slottedNodesChanged = !assignedNodes.IsEmpty();
+  if (assignedNodes.IsEmpty()) {
+    return;
+  }
+
+  InvalidateStyleAndLayoutOnSubtree(replacementSlot);
   while (!assignedNodes.IsEmpty()) {
     nsINode* assignedNode = assignedNodes[0];
 
@@ -299,10 +288,8 @@ void ShadowRoot::RemoveSlot(HTMLSlotElement* aSlot) {
     replacementSlot->AppendAssignedNode(assignedNode);
   }
 
-  if (slottedNodesChanged) {
-    aSlot->EnqueueSlotChangeEvent();
-    replacementSlot->EnqueueSlotChangeEvent();
-  }
+  aSlot->EnqueueSlotChangeEvent();
+  replacementSlot->EnqueueSlotChangeEvent();
 }
 
 // FIXME(emilio): There's a bit of code duplication between this and the
@@ -344,13 +331,8 @@ void ShadowRoot::RuleChanged(StyleSheet& aSheet, css::Rule*) {
 }
 
 void ShadowRoot::ApplicableRulesChanged() {
-  Document* doc = GetComposedDoc();
-  if (!doc) {
-    return;
-  }
-
-  if (nsIPresShell* shell = doc->GetShell()) {
-    shell->RecordShadowStyleChange(*this);
+  if (Document* doc = GetComposedDoc()) {
+    doc->RecordShadowStyleChange(*this);
   }
 }
 
@@ -366,7 +348,7 @@ void ShadowRoot::InsertSheetIntoAuthorData(size_t aIndex, StyleSheet& aSheet) {
   MOZ_ASSERT(aSheet.IsApplicable());
 
   if (!mServoStyles) {
-    mServoStyles.reset(Servo_AuthorStyles_Create());
+    mServoStyles = Servo_AuthorStyles_Create().Consume();
   }
 
   if (mStyleRuleMap) {
@@ -490,12 +472,12 @@ ShadowRoot::SlotAssignment ShadowRoot::SlotAssignmentFor(nsIContent* aContent) {
                                    slotName);
   }
 
-  nsTArray<HTMLSlotElement*>* slots = mSlotMap.Get(slotName);
+  SlotArray* slots = mSlotMap.Get(slotName);
   if (!slots) {
     return {};
   }
 
-  HTMLSlotElement* slot = slots->ElementAt(0);
+  HTMLSlotElement* slot = (*slots)->ElementAt(0);
   MOZ_ASSERT(slot);
 
   // Find the appropriate position in the assigned node list for the
@@ -534,8 +516,8 @@ void ShadowRoot::MaybeReassignElement(Element* aElement) {
   }
 
   if (Document* doc = GetComposedDoc()) {
-    if (nsIPresShell* shell = doc->GetShell()) {
-      shell->SlotAssignmentWillChange(*aElement, oldSlot, assignment.mSlot);
+    if (RefPtr<PresShell> presShell = doc->GetPresShell()) {
+      presShell->SlotAssignmentWillChange(*aElement, oldSlot, assignment.mSlot);
     }
   }
 

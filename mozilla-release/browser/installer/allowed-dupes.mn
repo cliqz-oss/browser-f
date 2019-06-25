@@ -149,10 +149,13 @@ browser/chrome/browser/res/payments/formautofill/autofillEditForms.js
 # Bug 1451050 - Remote settings empty dumps (will be populated with data eventually)
 browser/defaults/settings/pinning/pins.json
 browser/defaults/settings/main/example.json
-# Bug 1463748 - Fork and pref-off the new error pages
-browser/chrome/browser/content/browser/aboutNetError-new.xhtml
-browser/chrome/browser/content/browser/aboutNetError.xhtml
 #ifdef MOZ_EME_WIN32_ARTIFACT
 gmp-clearkey/0.1/manifest.json
 i686/gmp-clearkey/0.1/manifest.json
 #endif
+# Bug 1496075 - Switch searchplugins to Web Extensions
+browser/chrome/browser/search-extensions/amazon/favicon.ico
+browser/chrome/browser/search-extensions/amazondotcn/favicon.ico
+browser/chrome/browser/search-extensions/amazondotcom/favicon.ico
+browser/chrome/browser/search-extensions/mercadolibre/favicon.ico
+browser/chrome/browser/search-extensions/mercadolivre/favicon.ico

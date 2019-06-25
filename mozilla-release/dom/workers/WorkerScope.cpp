@@ -80,6 +80,10 @@ WorkerGlobalScope::WorkerGlobalScope(WorkerPrivate* aWorkerPrivate)
 
   // We should always have an event target when the global is created.
   MOZ_DIAGNOSTIC_ASSERT(mSerialEventTarget);
+
+  // In workers, each DETH must have an owner. Because the global scope doesn't
+  // have one, let's set it as owner of itself.
+  BindToOwner(static_cast<nsIGlobalObject*>(this));
 }
 
 WorkerGlobalScope::~WorkerGlobalScope() {
@@ -231,10 +235,18 @@ void WorkerGlobalScope::SetOnerror(OnErrorEventHandlerNonNull* aHandler) {
   }
 }
 
-void WorkerGlobalScope::ImportScripts(const Sequence<nsString>& aScriptURLs,
+void WorkerGlobalScope::ImportScripts(JSContext* aCx,
+                                      const Sequence<nsString>& aScriptURLs,
                                       ErrorResult& aRv) {
   mWorkerPrivate->AssertIsOnWorkerThread();
-  workerinternals::Load(mWorkerPrivate, aScriptURLs, WorkerScript, aRv);
+
+  UniquePtr<SerializedStackHolder> stack;
+  if (mWorkerPrivate->IsWatchedByDevtools()) {
+    stack = GetCurrentStackForNetMonitor(aCx);
+  }
+
+  workerinternals::Load(mWorkerPrivate, std::move(stack), aScriptURLs,
+                        WorkerScript, aRv);
 }
 
 int32_t WorkerGlobalScope::SetTimeout(JSContext* aCx, Function& aHandler,
@@ -389,21 +401,25 @@ already_AddRefed<IDBFactory> WorkerGlobalScope::GetIndexedDB(
   RefPtr<IDBFactory> indexedDB = mIndexedDB;
 
   if (!indexedDB) {
-    if (!mWorkerPrivate->IsStorageAllowed()) {
+    nsContentUtils::StorageAccess access = mWorkerPrivate->StorageAccess();
+
+    if (access == nsContentUtils::StorageAccess::eDeny) {
       NS_WARNING("IndexedDB is not allowed in this worker!");
       aErrorResult = NS_ERROR_DOM_SECURITY_ERR;
       return nullptr;
     }
 
-    JSContext* cx = mWorkerPrivate->GetJSContext();
-    MOZ_ASSERT(cx);
+    if (access == nsContentUtils::StorageAccess::ePartitionedOrDeny &&
+        !StaticPrefs::privacy_storagePrincipal_enabledForTrackers()) {
+      NS_WARNING("IndexedDB is not allowed in this worker!");
+      aErrorResult = NS_ERROR_DOM_SECURITY_ERR;
+      return nullptr;
+    }
 
-    JS::Rooted<JSObject*> owningObject(cx, GetGlobalJSObject());
-    MOZ_ASSERT(owningObject);
+    const PrincipalInfo& principalInfo =
+        mWorkerPrivate->GetEffectiveStoragePrincipalInfo();
 
-    const PrincipalInfo& principalInfo = mWorkerPrivate->GetPrincipalInfo();
-
-    nsresult rv = IDBFactory::CreateForWorker(cx, owningObject, principalInfo,
+    nsresult rv = IDBFactory::CreateForWorker(this, principalInfo,
                                               mWorkerPrivate->WindowID(),
                                               getter_AddRefs(indexedDB));
     if (NS_WARN_IF(NS_FAILED(rv))) {
@@ -487,6 +503,10 @@ WorkerGlobalScope::GetOrCreateServiceWorkerRegistration(
                                                      aDescriptor);
   }
   return ref.forget();
+}
+
+void WorkerGlobalScope::FirstPartyStorageAccessGranted() {
+  mIndexedDB = nullptr;
 }
 
 DedicatedWorkerGlobalScope::DedicatedWorkerGlobalScope(
@@ -787,6 +807,10 @@ WorkerDebuggerGlobalScope::WorkerDebuggerGlobalScope(
 
   // We should always have an event target when the global is created.
   MOZ_DIAGNOSTIC_ASSERT(mSerialEventTarget);
+
+  // In workers, each DETH must have an owner. Because the global scope doesn't
+  // have an owner, let's set it as owner of itself.
+  BindToOwner(static_cast<nsIGlobalObject*>(this));
 }
 
 WorkerDebuggerGlobalScope::~WorkerDebuggerGlobalScope() {
@@ -890,11 +914,15 @@ void WorkerDebuggerGlobalScope::LoadSubScript(
 
   nsTArray<nsString> urls;
   urls.AppendElement(aURL);
-  workerinternals::Load(mWorkerPrivate, urls, DebuggerScript, aRv);
+  workerinternals::Load(mWorkerPrivate, nullptr, urls, DebuggerScript, aRv);
 }
 
 void WorkerDebuggerGlobalScope::EnterEventLoop() {
-  mWorkerPrivate->EnterDebuggerEventLoop();
+  // We're on the worker thread here, and WorkerPrivate's refcounting is
+  // non-threadsafe: you can only do it on the parent thread.  What that
+  // means in practice is that we're relying on it being kept alive while
+  // we run.  Hopefully.
+  MOZ_KnownLive(mWorkerPrivate)->EnterDebuggerEventLoop();
 }
 
 void WorkerDebuggerGlobalScope::LeaveEventLoop() {

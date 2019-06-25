@@ -124,13 +124,20 @@ this.chrome_settings_overrides = class extends ExtensionAPI {
     if (item) {
       ExtensionSettingsStore.removeSetting(
         id, DEFAULT_SEARCH_STORE_TYPE, ENGINE_ADDED_SETTING_NAME);
-      await searchInitialized;
-      let engine = Services.search.getEngineByName(item.value);
-      try {
-        await Services.search.removeEngine(engine);
-      } catch (e) {
-        Cu.reportError(e);
+    }
+    // We can call removeEngine in nsSearchService startup, if so we dont
+    // need to reforward the call, just disable the web extension.
+    if (!Services.search.isInitialized) {
+      return;
+    }
+
+    try {
+      let engines = await Services.search.getEnginesByExtensionID(id);
+      if (engines.length > 0) {
+        await Services.search.removeWebExtensionEngine(id);
       }
+    } catch (e) {
+      Cu.reportError(e);
     }
   }
 
@@ -168,6 +175,13 @@ this.chrome_settings_overrides = class extends ExtensionAPI {
     }
   }
 
+  static onDisable(id) {
+    homepagePopup.clearConfirmation(id);
+
+    chrome_settings_overrides.processDefaultSearchSetting("disable", id);
+    chrome_settings_overrides.removeEngine(id);
+  }
+
   async onManifestEntry(entryName) {
     let {extension} = this;
     let {manifest} = extension;
@@ -186,8 +200,7 @@ this.chrome_settings_overrides = class extends ExtensionAPI {
         let item = await ExtensionPreferencesManager.getSetting("homepage_override");
         inControl = item && item.id == extension.id;
       }
-      // We need to add the listener here too since onPrefsChanged won't trigger on a
-      // restart (the prefs are already set).
+
       if (inControl) {
         Services.prefs.setBoolPref(HOMEPAGE_PRIVATE_ALLOWED, extension.privateBrowsingAllowed);
         // Also set this now as an upgraded browser will need this.
@@ -218,14 +231,6 @@ this.chrome_settings_overrides = class extends ExtensionAPI {
           }
         }
       });
-
-      extension.callOnClose({
-        close: () => {
-          if (extension.shutdownReason == "ADDON_DISABLE") {
-            homepagePopup.clearConfirmation(extension.id);
-          }
-        },
-      });
     }
     if (manifest.chrome_settings_overrides.search_provider) {
       // Registering a search engine can potentially take a long while,
@@ -244,24 +249,17 @@ this.chrome_settings_overrides = class extends ExtensionAPI {
   }
 
   async processSearchProviderManifestEntry() {
-    await searchInitialized;
-
     let {extension} = this;
-    if (!extension) {
-      Cu.reportError(`Extension shut down before search provider was registered`);
-      return;
-    }
-    extension.callOnClose({
-      close: () => {
-        if (extension.shutdownReason == "ADDON_DISABLE") {
-          chrome_settings_overrides.processDefaultSearchSetting("disable", extension.id);
-          chrome_settings_overrides.removeEngine(extension.id);
-        }
-      },
-    });
-
     let {manifest} = extension;
     let searchProvider = manifest.chrome_settings_overrides.search_provider;
+    if (searchProvider.is_default) {
+      await searchInitialized;
+      if (!this.extension) {
+        Cu.reportError(`Extension shut down before search provider was registered`);
+        return;
+      }
+    }
+
     let engineName = searchProvider.name.trim();
     if (searchProvider.is_default) {
       let engine = Services.search.getEngineByName(engineName);
@@ -331,7 +329,8 @@ this.chrome_settings_overrides = class extends ExtensionAPI {
     let {extension} = this;
     let isCurrent = false;
     let index = -1;
-    if (extension.startupReason === "ADDON_UPGRADE") {
+    if (extension.startupReason === "ADDON_UPGRADE" &&
+        !extension.addonData.builtIn) {
       let engines = await Services.search.getEnginesByExtensionID(extension.id);
       if (engines.length > 0) {
         let firstEngine = engines[0];
@@ -344,14 +343,15 @@ this.chrome_settings_overrides = class extends ExtensionAPI {
       }
     }
     try {
-      await Services.search.addEnginesFromExtension(extension);
-      // Bug 1488516.  Preparing to support multiple engines per extension so
-      // multiple locales can be loaded.
-      let engines = await Services.search.getEnginesByExtensionID(extension.id);
-      await ExtensionSettingsStore.addSetting(
-        extension.id, DEFAULT_SEARCH_STORE_TYPE, ENGINE_ADDED_SETTING_NAME,
-        engines[0].name);
-      if (extension.startupReason === "ADDON_UPGRADE") {
+      let engines = await Services.search.addEnginesFromExtension(extension);
+      if (engines.length > 0) {
+        await ExtensionSettingsStore.addSetting(
+          extension.id, DEFAULT_SEARCH_STORE_TYPE, ENGINE_ADDED_SETTING_NAME,
+          engines[0].name);
+      }
+      if (extension.startupReason === "ADDON_UPGRADE" &&
+          !extension.addonData.builtIn) {
+        let engines = await Services.search.getEnginesByExtensionID(extension.id);
         let engine = Services.search.getEngineByName(engines[0].name);
         if (isCurrent) {
           await Services.search.setDefault(engine);

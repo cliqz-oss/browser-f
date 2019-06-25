@@ -8,10 +8,19 @@
 add_task(async function aboutDialog_foregroundCheck_downloadOptIn() {
   await UpdateUtils.setAppUpdateAutoEnabled(false);
 
+  let downloadInfo = [];
+  if (Services.prefs.getBoolPref(PREF_APP_UPDATE_BITS_ENABLED)) {
+    downloadInfo[0] = {patchType: "partial",
+                       bitsResult: "0"};
+  } else {
+    downloadInfo[0] = {patchType: "partial",
+                       internalResult: "0"};
+  }
+
   // Since the partial should be successful specify an invalid size for the
   // complete update.
-  let updateParams = "&invalidCompleteSize=1";
-  await runAboutDialogUpdateTest(updateParams, false, [
+  let params = {queryString: "&invalidCompleteSize=1"};
+  await runAboutDialogUpdateTest(params, [
     {
       panelId: "checkingForUpdates",
       checkActiveUpdate: null,
@@ -26,6 +35,7 @@ add_task(async function aboutDialog_foregroundCheck_downloadOptIn() {
       panelId: "downloading",
       checkActiveUpdate: {state: STATE_DOWNLOADING},
       continueFile: CONTINUE_DOWNLOAD,
+      downloadInfo,
     },
     {
       panelId: "apply",

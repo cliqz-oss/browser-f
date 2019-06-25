@@ -14,6 +14,7 @@ var {TransientPrefs} = ChromeUtils.import("resource:///modules/TransientPrefs.js
 var {AppConstants} = ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
 var {L10nRegistry} = ChromeUtils.import("resource://gre/modules/L10nRegistry.jsm");
 var {Localization} = ChromeUtils.import("resource://gre/modules/Localization.jsm");
+var {HomePage} = ChromeUtils.import("resource:///modules/HomePage.jsm");
 ChromeUtils.defineModuleGetter(this, "CloudStorage",
   "resource://gre/modules/CloudStorage.jsm");
 ChromeUtils.defineModuleGetter(this, "SelectionChangedMenulist",
@@ -644,54 +645,6 @@ var gMainPane = {
     this.readBrowserContainersCheckbox();
   },
 
-  async separateProfileModeChange() {
-    if (AppConstants.MOZ_DEV_EDITION) {
-      function quitApp() {
-        Services.startup.quit(Ci.nsIAppStartup.eAttemptQuit | Ci.nsIAppStartup.eRestartNotSameProfile);
-      }
-      function revertCheckbox(error) {
-        separateProfileModeCheckbox.checked = !separateProfileModeCheckbox.checked;
-        if (error) {
-          Cu.reportError("Failed to toggle separate profile mode: " + error);
-        }
-      }
-      function createOrRemoveSpecialDevEditionFile(onSuccess) {
-        let uAppData = OS.Constants.Path.userApplicationDataDir;
-        let ignoreSeparateProfile = OS.Path.join(uAppData, "ignore-dev-edition-profile");
-
-        if (separateProfileModeCheckbox.checked) {
-          OS.File.remove(ignoreSeparateProfile).then(onSuccess, revertCheckbox);
-        } else {
-          OS.File.writeAtomic(ignoreSeparateProfile, new Uint8Array()).then(onSuccess, revertCheckbox);
-        }
-      }
-
-      let separateProfileModeCheckbox = document.getElementById("separateProfileMode");
-      let button_index = await confirmRestartPrompt(separateProfileModeCheckbox.checked,
-        0, false, true);
-      switch (button_index) {
-        case CONFIRM_RESTART_PROMPT_CANCEL:
-          revertCheckbox();
-          return;
-        case CONFIRM_RESTART_PROMPT_RESTART_NOW:
-          let cancelQuit = Cc["@mozilla.org/supports-PRBool;1"]
-            .createInstance(Ci.nsISupportsPRBool);
-          Services.obs.notifyObservers(cancelQuit, "quit-application-requested",
-            "restart");
-          if (!cancelQuit.data) {
-            createOrRemoveSpecialDevEditionFile(quitApp);
-            return;
-          }
-
-          // Revert the checkbox in case we didn't quit
-          revertCheckbox();
-          return;
-        case CONFIRM_RESTART_PROMPT_RESTART_LATER:
-          createOrRemoveSpecialDevEditionFile();
-      }
-    }
-  },
-
   async onGetStarted(aEvent) {
     if (!AppConstants.MOZ_DEV_EDITION) {
       return;
@@ -926,7 +879,7 @@ var gMainPane = {
     if (value) {
       // We need to restore the blank homepage setting in our other pref
       if (startupPref.value === this.STARTUP_PREF_BLANK) {
-        Preferences.get("browser.startup.homepage").value = "about:blank";
+        HomePage.set("about:blank");
       }
       newValue = this.STARTUP_PREF_RESTORE_SESSION;
       let warnOnQuitPref = Preferences.get("browser.sessionstore.warnOnQuit");
@@ -1484,6 +1437,9 @@ var gMainPane = {
   handleEvent(aEvent) {
     if (aEvent.type == "unload") {
       this.destroy();
+      if (AppConstants.MOZ_UPDATER) {
+        onUnload();
+      }
     }
   },
 
@@ -2247,9 +2203,11 @@ var gMainPane = {
   readUseDownloadDir() {
     var downloadFolder = document.getElementById("downloadFolder");
     var chooseFolder = document.getElementById("chooseFolder");
-    var preference = Preferences.get("browser.download.useDownloadDir");
-    downloadFolder.disabled = !preference.value || preference.locked;
-    chooseFolder.disabled = !preference.value || preference.locked;
+    var useDownloadDirPreference = Preferences.get("browser.download.useDownloadDir");
+    var dirPreference = Preferences.get("browser.download.dir");
+
+    downloadFolder.disabled = !useDownloadDirPreference.value || dirPreference.locked;
+    chooseFolder.disabled = !useDownloadDirPreference.value || dirPreference.locked;
 
     this.readCloudStorage().catch(Cu.reportError);
     // don't override the preference's value in UI
@@ -2444,7 +2402,7 @@ var gMainPane = {
         let downloadsDir = await Downloads.getSystemDownloadsDirectory();
         return new FileUtils.File(downloadsDir);
     }
-    throw "ASSERTION FAILED: folder type should be 'Desktop' or 'Downloads'";
+    throw new Error("ASSERTION FAILED: folder type should be 'Desktop' or 'Downloads'");
   },
 
   /**

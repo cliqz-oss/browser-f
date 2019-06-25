@@ -40,9 +40,7 @@ window.gActivityStreamStrings = {
   "section_disclaimer_topstories_buttontext": "Tamam, añladım",
   "prefs_home_header": "Firefox Ev Muhtevası",
   "prefs_home_description": "Firefox Ev saifesinde körmege istegeniñiz muhtevanı saylañız.",
-  "prefs_content_discovery_header": "Firefox Home",
   "prefs_content_discovery_description": "Content Discovery in Firefox Home allows you to discover high-quality, relevant articles from across the web.",
-  "prefs_content_discovery_button": "Turn Off Content Discovery",
   "prefs_section_rows_option": "{num} satır;{num} satır",
   "prefs_search_header": "Ağ Qıdırması",
   "prefs_topsites_description": "En çoq ziyaret etkeniñiz saytlar",
@@ -107,6 +105,5 @@ window.gActivityStreamStrings = {
   "firstrun_privacy_notice": "Privacy Notice",
   "firstrun_continue_to_login": "Continue",
   "firstrun_skip_login": "Skip this step",
-  "context_menu_title": "Open menu",
-  "manual_migration_cancel_button": "Hayır, Teşekkürler"
+  "context_menu_title": "Open menu"
 };

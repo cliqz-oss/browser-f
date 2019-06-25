@@ -5,12 +5,6 @@
 
 const { Services } = ChromeUtils.import("resource://gre/modules/Services.jsm");
 
-const nsIPK11TokenDB = Ci.nsIPK11TokenDB;
-const nsPKCS11ModuleDB = "@mozilla.org/security/pkcs11moduledb;1";
-const nsIPKCS11ModuleDB = Ci.nsIPKCS11ModuleDB;
-const nsIPKCS11Slot = Ci.nsIPKCS11Slot;
-const nsIPK11Token = Ci.nsIPK11Token;
-
 var params;
 var token;
 var pw1;
@@ -21,6 +15,7 @@ function doPrompt(msg) {
 
 function onLoad() {
   document.documentElement.getButton("accept").disabled = true;
+  document.addEventListener("dialogaccept", setPassword);
 
   pw1 = document.getElementById("pw1");
   params = window.arguments[0].QueryInterface(Ci.nsIDialogParamBlock);
@@ -64,7 +59,7 @@ function process() {
   checkPasswords();
 }
 
-function setPassword() {
+function setPassword(event) {
   var oldpwbox = document.getElementById("oldpw");
   var initpw = oldpwbox.getAttribute("inited");
   var bundle = document.getElementById("pippki_bundle");
@@ -88,7 +83,7 @@ function setPassword() {
           // checkPasswords() should have prevented this path from being reached.
         } else {
           if (pw1.value == "") {
-            var secmoddb = Cc[nsPKCS11ModuleDB].getService(nsIPKCS11ModuleDB);
+            var secmoddb = Cc["@mozilla.org/security/pkcs11moduledb;1"].getService(Ci.nsIPKCS11ModuleDB);
             if (secmoddb.isFIPSEnabled) {
               // empty passwords are not allowed in FIPS mode
               doPrompt(bundle.getString("pw_change2empty_in_fips_mode"));
@@ -130,7 +125,9 @@ function setPassword() {
   }
 
   // Terminate dialog
-  return success;
+  if (!success) {
+    event.preventDefault();
+  }
 }
 
 function setPasswordStrength() {

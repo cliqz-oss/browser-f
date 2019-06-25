@@ -35,7 +35,9 @@ const {
   removeUSBRuntimesObserver,
 } = require("./src/modules/usb-runtimes");
 
+loader.lazyRequireGetter(this, "adb", "devtools/shared/adb/adb", true);
 loader.lazyRequireGetter(this, "adbAddon", "devtools/shared/adb/adb-addon", true);
+loader.lazyRequireGetter(this, "adbProcess", "devtools/shared/adb/adb-process", true);
 
 const Router = createFactory(require("devtools/client/shared/vendor/react-router-dom").HashRouter);
 const App = createFactory(require("./src/components/App"));
@@ -49,6 +51,7 @@ const AboutDebugging = {
     }
 
     this.onAdbAddonUpdated = this.onAdbAddonUpdated.bind(this);
+    this.onAdbProcessReady = this.onAdbProcessReady.bind(this);
     this.onNetworkLocationsUpdated = this.onNetworkLocationsUpdated.bind(this);
     this.onUSBRuntimesUpdated = this.onUSBRuntimesUpdated.bind(this);
 
@@ -61,6 +64,21 @@ const AboutDebugging = {
     await l10n.init();
 
     this.actions.createThisFirefoxRuntime();
+
+    // Listen to Network locations updates and retrieve the initial list of locations.
+    addNetworkLocationsObserver(this.onNetworkLocationsUpdated);
+    await this.onNetworkLocationsUpdated();
+
+    // Listen to USB runtime updates and retrieve the initial list of runtimes.
+
+    // If ADB is already started, wait for the initial runtime list to be able to restore
+    // already connected runtimes.
+    const isProcessStarted = await adb.isProcessStarted();
+    const onAdbRuntimesReady = isProcessStarted ? adb.once("runtime-list-ready") : null;
+    addUSBRuntimesObserver(this.onUSBRuntimesUpdated);
+    await onAdbRuntimesReady;
+
+    await this.onUSBRuntimesUpdated();
 
     render(
       Provider(
@@ -80,15 +98,11 @@ const AboutDebugging = {
       this.mount
     );
 
-    this.onNetworkLocationsUpdated();
-    addNetworkLocationsObserver(this.onNetworkLocationsUpdated);
-
-    // Listen to USB runtime updates and retrieve the initial list of runtimes.
-    this.onUSBRuntimesUpdated();
-    addUSBRuntimesObserver(this.onUSBRuntimesUpdated);
-
     adbAddon.on("update", this.onAdbAddonUpdated);
     this.onAdbAddonUpdated();
+    adbProcess.on("adb-ready", this.onAdbProcessReady);
+    // get the initial status of adb process, in case it's already started
+    this.onAdbProcessReady();
 
     // Remove deprecated remote debugging extensions.
     await adbAddon.uninstallUnsupportedExtensions();
@@ -98,18 +112,22 @@ const AboutDebugging = {
     this.actions.updateAdbAddonStatus(adbAddon.status);
   },
 
-  onNetworkLocationsUpdated() {
-    this.actions.updateNetworkLocations(getNetworkLocations());
+  onAdbProcessReady() {
+    this.actions.updateAdbReady(adbProcess.ready);
   },
 
-  onUSBRuntimesUpdated() {
-    this.actions.updateUSBRuntimes(getUSBRuntimes());
+  onNetworkLocationsUpdated() {
+    return this.actions.updateNetworkLocations(getNetworkLocations());
+  },
+
+  async onUSBRuntimesUpdated() {
+    const runtimes = await getUSBRuntimes();
+    return this.actions.updateUSBRuntimes(runtimes);
   },
 
   async destroy() {
     const width = this.getRoundedViewportWidth();
     this.actions.recordTelemetryEvent("close_adbg", { width });
-    l10n.destroy();
 
     const state = this.store.getState();
     const currentRuntimeId = state.runtimes.selectedRuntimeId;
@@ -123,6 +141,7 @@ const AboutDebugging = {
     removeNetworkLocationsObserver(this.onNetworkLocationsUpdated);
     removeUSBRuntimesObserver(this.onUSBRuntimesUpdated);
     adbAddon.off("update", this.onAdbAddonUpdated);
+    adbProcess.off("adb-ready", this.onAdbProcessReady);
     setDebugTargetCollapsibilities(state.ui.debugTargetCollapsibilities);
     unmountComponentAtNode(this.mount);
   },

@@ -10,6 +10,11 @@
 #include "mozilla/dom/WindowGlobalParent.h"
 #include "mozilla/dom/ContentProcessManager.h"
 
+extern mozilla::LazyLogModule gAutoplayPermissionLog;
+
+#define AUTOPLAY_LOG(msg, ...) \
+  MOZ_LOG(gAutoplayPermissionLog, LogLevel::Debug, (msg, ##__VA_ARGS__))
+
 namespace mozilla {
 namespace dom {
 
@@ -60,6 +65,23 @@ ContentParent* CanonicalBrowsingContext::GetContentParent() const {
   return cpm->GetContentProcessById(ContentParentId(mProcessId));
 }
 
+void CanonicalBrowsingContext::GetCurrentRemoteType(nsAString& aRemoteType,
+                                                    ErrorResult& aRv) const {
+  // If we're in the parent process, dump out the void string.
+  if (mProcessId == 0) {
+    aRemoteType.Assign(VoidString());
+    return;
+  }
+
+  ContentParent* cp = GetContentParent();
+  if (!cp) {
+    aRv.Throw(NS_ERROR_UNEXPECTED);
+    return;
+  }
+
+  aRemoteType.Assign(cp->GetRemoteType());
+}
+
 void CanonicalBrowsingContext::GetWindowGlobals(
     nsTArray<RefPtr<WindowGlobalParent>>& aWindows) {
   aWindows.SetCapacity(mWindowGlobals.Count());
@@ -94,10 +116,25 @@ void CanonicalBrowsingContext::SetCurrentWindowGlobal(
   mCurrentWindowGlobal = aGlobal;
 }
 
+void CanonicalBrowsingContext::SetEmbedderWindowGlobal(
+    WindowGlobalParent* aGlobal) {
+  MOZ_RELEASE_ASSERT(aGlobal, "null embedder");
+  if (RefPtr<BrowsingContext> parent = GetParent()) {
+    MOZ_RELEASE_ASSERT(aGlobal->BrowsingContext() == parent,
+                       "Embedder has incorrect browsing context");
+  }
+
+  mEmbedderWindowGlobal = aGlobal;
+}
+
 bool CanonicalBrowsingContext::ValidateTransaction(
     const Transaction& aTransaction, ContentParent* aProcess) {
-  if (NS_WARN_IF(aProcess && mProcessId != aProcess->ChildID())) {
-    return false;
+  // Check that the correct process is performing sets for transactions with
+  // non-racy fields.
+  if (aTransaction.HasNonRacyField()) {
+    if (NS_WARN_IF(aProcess && mProcessId != aProcess->ChildID())) {
+      return false;
+    }
   }
 
   return true;
@@ -111,12 +148,49 @@ JSObject* CanonicalBrowsingContext::WrapObject(
 void CanonicalBrowsingContext::Traverse(
     nsCycleCollectionTraversalCallback& cb) {
   CanonicalBrowsingContext* tmp = this;
-  NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mWindowGlobals);
+  NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mWindowGlobals, mCurrentWindowGlobal,
+                                    mEmbedderWindowGlobal);
 }
 
 void CanonicalBrowsingContext::Unlink() {
   CanonicalBrowsingContext* tmp = this;
-  NS_IMPL_CYCLE_COLLECTION_UNLINK(mWindowGlobals);
+  NS_IMPL_CYCLE_COLLECTION_UNLINK(mWindowGlobals, mCurrentWindowGlobal,
+                                  mEmbedderWindowGlobal);
+}
+
+void CanonicalBrowsingContext::NotifyStartDelayedAutoplayMedia() {
+  if (!mCurrentWindowGlobal) {
+    return;
+  }
+
+  // As this function would only be called when user click the play icon on the
+  // tab bar. That's clear user intent to play, so gesture activate the browsing
+  // context so that the block-autoplay logic allows the media to autoplay.
+  NotifyUserGestureActivation();
+  AUTOPLAY_LOG("NotifyStartDelayedAutoplayMedia for chrome bc 0x%08" PRIx64,
+               Id());
+  StartDelayedAutoplayMediaComponents();
+  // Notfiy all content browsing contexts which are related with the canonical
+  // browsing content tree to start delayed autoplay media.
+
+  Group()->EachParent([&](ContentParent* aParent) {
+    Unused << aParent->SendStartDelayedAutoplayMediaComponents(this);
+  });
+}
+
+void CanonicalBrowsingContext::SetFieldEpochsForChild(
+    ContentParent* aChild, const BrowsingContext::FieldEpochs& aEpochs) {
+  mChildFieldEpochs.Put(aChild->ChildID(), aEpochs);
+}
+
+const BrowsingContext::FieldEpochs&
+CanonicalBrowsingContext::GetFieldEpochsForChild(ContentParent* aChild) {
+  static const BrowsingContext::FieldEpochs sDefaultFieldEpochs;
+
+  if (auto entry = mChildFieldEpochs.Lookup(aChild->ChildID())) {
+    return entry.Data();
+  }
+  return sDefaultFieldEpochs;
 }
 
 }  // namespace dom

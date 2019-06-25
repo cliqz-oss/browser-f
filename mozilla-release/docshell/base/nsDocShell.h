@@ -34,7 +34,7 @@
 #include "nsINetworkInterceptController.h"
 #include "nsIRefreshURI.h"
 #include "nsIScrollable.h"
-#include "nsITabParent.h"
+#include "nsIRemoteTab.h"
 #include "nsIWebNavigation.h"
 #include "nsIWebPageDescriptor.h"
 #include "nsIWebProgressListener.h"
@@ -73,7 +73,6 @@ class EventTarget;
 }  // namespace dom
 }  // namespace mozilla
 
-class nsICommandManager;
 class nsIContentViewer;
 class nsIController;
 class nsIDocShellTreeOwner;
@@ -90,6 +89,7 @@ class nsIWebBrowserFind;
 class nsIWidget;
 class nsIReferrerInfo;
 
+class nsCommandManager;
 class nsDocShell;
 class nsDocShellEditorData;
 class nsDOMNavigationTiming;
@@ -232,7 +232,7 @@ class nsDocShell final : public nsDocLoader,
   NS_IMETHOD OnLeaveLink() override;
 
   // Don't use NS_DECL_NSILOADCONTEXT because some of nsILoadContext's methods
-  // are shared with nsIDocShell (appID, etc.) and can't be declared twice.
+  // are shared with nsIDocShell and can't be declared twice.
   NS_IMETHOD GetAssociatedWindow(mozIDOMWindowProxy**) override;
   NS_IMETHOD GetTopWindow(mozIDOMWindowProxy**) override;
   NS_IMETHOD GetTopFrameElement(mozilla::dom::Element**) override;
@@ -243,6 +243,8 @@ class nsDocShell final : public nsDocLoader,
   NS_IMETHOD SetPrivateBrowsing(bool) override;
   NS_IMETHOD GetUseRemoteTabs(bool*) override;
   NS_IMETHOD SetRemoteTabs(bool) override;
+  NS_IMETHOD GetUseRemoteSubframes(bool*) override;
+  NS_IMETHOD SetRemoteSubframes(bool) override;
   NS_IMETHOD GetScriptableOriginAttributes(
       JSContext*, JS::MutableHandle<JS::Value>) override;
   NS_IMETHOD_(void)
@@ -396,8 +398,16 @@ class nsDocShell final : public nsDocLoader,
    * information on information used. aDocShell and aRequest come from
    * onLinkClickSync, which is triggered during form submission.
    */
+  MOZ_CAN_RUN_SCRIPT_BOUNDARY
   nsresult InternalLoad(nsDocShellLoadState* aLoadState,
                         nsIDocShell** aDocShell, nsIRequest** aRequest);
+
+  // Clear the document's storage access flag if needed.
+  void MaybeClearStorageAccessFlag();
+
+  void SkipBrowsingContextDetach() {
+    mSkipBrowsingContextDetachOnDestroy = true;
+  }
 
  private:  // member functions
   friend class nsDSURIContentListener;
@@ -557,6 +567,7 @@ class nsDocShell final : public nsDocLoader,
                                   nsIURILoader* aURILoader,
                                   uint32_t aOpenFlags);
 
+  MOZ_CAN_RUN_SCRIPT
   nsresult ScrollToAnchor(bool aCurHasRef, bool aNewHasRef,
                           nsACString& aNewHash, uint32_t aLoadType);
 
@@ -590,6 +601,7 @@ class nsDocShell final : public nsDocLoader,
 
   // Helper method that is called when a new document (including any
   // sub-documents - ie. frames) has been completely loaded.
+  MOZ_CAN_RUN_SCRIPT_BOUNDARY
   nsresult EndPageLoad(nsIWebProgress* aProgress, nsIChannel* aChannel,
                        nsresult aResult);
 
@@ -742,6 +754,37 @@ class nsDocShell final : public nsDocLoader,
   // replace the current document.
   bool CanSavePresentation(uint32_t aLoadType, nsIRequest* aNewRequest,
                            mozilla::dom::Document* aNewDocument);
+
+  // There are 11 possible reasons to make a request fails to use BFCache
+  // (see BFCacheStatus in dom/base/Document.h), and we'd like to record
+  // the common combinations for reasons which make requests fail to use
+  // BFCache. These combinations are generated based on some local browsings,
+  // we need to adjust them when necessary.
+  enum BFCacheStatusCombo : uint16_t {
+    BFCACHE_SUCCESS,
+    UNLOAD = mozilla::dom::BFCacheStatus::UNLOAD_LISTENER,
+    UNLOAD_REQUEST = mozilla::dom::BFCacheStatus::UNLOAD_LISTENER |
+                              mozilla::dom::BFCacheStatus::REQUEST,
+    REQUEST = mozilla::dom::BFCacheStatus::REQUEST,
+    UNLOAD_REQUEST_PEER = mozilla::dom::BFCacheStatus::UNLOAD_LISTENER |
+                          mozilla::dom::BFCacheStatus::REQUEST |
+                          mozilla::dom::BFCacheStatus::ACTIVE_PEER_CONNECTION,
+    UNLOAD_REQUEST_PEER_MSE =
+      mozilla::dom::BFCacheStatus::UNLOAD_LISTENER |
+      mozilla::dom::BFCacheStatus::REQUEST |
+      mozilla::dom::BFCacheStatus::ACTIVE_PEER_CONNECTION |
+      mozilla::dom::BFCacheStatus::CONTAINS_MSE_CONTENT,
+    UNLOAD_REQUEST_MSE = mozilla::dom::BFCacheStatus::UNLOAD_LISTENER |
+                         mozilla::dom::BFCacheStatus::REQUEST |
+                         mozilla::dom::BFCacheStatus::CONTAINS_MSE_CONTENT,
+    SUSPENDED_UNLOAD_REQUEST_PEER =
+      mozilla::dom::BFCacheStatus::SUSPENDED |
+      mozilla::dom::BFCacheStatus::UNLOAD_LISTENER |
+      mozilla::dom::BFCacheStatus::REQUEST |
+      mozilla::dom::BFCacheStatus::ACTIVE_PEER_CONNECTION,
+  };
+
+  void ReportBFCacheComboTelemetry(uint16_t aCombo);
 
   // Captures the state of the supporting elements of the presentation
   // (the "window" object, docshell tree, meta-refresh loads, and security
@@ -915,6 +958,7 @@ class nsDocShell final : public nsDocLoader,
   // Check to see if we're loading a prior history entry in the same document.
   // If so, handle the scrolling or other action required instead of continuing
   // with new document navigation.
+  MOZ_CAN_RUN_SCRIPT
   nsresult MaybeHandleSameDocumentNavigation(nsDocShellLoadState* aLoadState,
                                              bool* aWasSameDocument);
 
@@ -954,11 +998,11 @@ class nsDocShell final : public nsDocLoader,
   nsCOMPtr<nsIWidget> mParentWidget;
   RefPtr<mozilla::dom::ChildSHistory> mSessionHistory;
   nsCOMPtr<nsIWebBrowserFind> mFind;
-  nsCOMPtr<nsICommandManager> mCommandManager;
+  RefPtr<nsCommandManager> mCommandManager;
   RefPtr<mozilla::dom::BrowsingContext> mBrowsingContext;
 
-  // Weak reference to our TabChild actor.
-  nsWeakPtr mTabChild;
+  // Weak reference to our BrowserChild actor.
+  nsWeakPtr mBrowserChild;
 
   // Dimensions of the docshell
   nsIntRect mBounds;
@@ -1145,6 +1189,7 @@ class nsDocShell final : public nsDocLoader,
   bool mIsAppTab : 1;
   bool mUseGlobalHistory : 1;
   bool mUseRemoteTabs : 1;
+  bool mUseRemoteSubframes : 1;
   bool mUseTrackingProtection : 1;
   bool mDeviceSizeIsPageSize : 1;
   bool mWindowDraggingAllowed : 1;
@@ -1195,6 +1240,14 @@ class nsDocShell final : public nsDocLoader,
   bool mTitleValidForCurrentURI : 1;
 
   bool mIsFrame : 1;
+
+  // If mSkipBrowsingContextDetachOnDestroy is set to true, then when the
+  // docshell is destroyed, the browsing context will not be detached. This is
+  // for cases where we want to preserve the BC for future use.
+  bool mSkipBrowsingContextDetachOnDestroy : 1;
+
+  // Set when activity in this docshell is being watched by the developer tools.
+  bool mWatchedByDevtools : 1;
 };
 
 #endif /* nsDocShell_h__ */

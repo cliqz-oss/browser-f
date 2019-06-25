@@ -47,10 +47,12 @@ class App extends Component {
       serviceContainer: PropTypes.object.isRequired,
       closeSplitConsole: PropTypes.func.isRequired,
       jstermCodeMirror: PropTypes.bool,
+      autocomplete: PropTypes.bool,
       currentReverseSearchEntry: PropTypes.string,
       reverseSearchInputVisible: PropTypes.bool,
       reverseSearchInitialValue: PropTypes.string,
       editorMode: PropTypes.bool,
+      hideShowContentMessagesCheckbox: PropTypes.bool,
     };
   }
 
@@ -200,8 +202,10 @@ class App extends Component {
       serviceContainer,
       closeSplitConsole,
       jstermCodeMirror,
+      autocomplete,
       reverseSearchInitialValue,
       editorMode,
+      hideShowContentMessagesCheckbox,
     } = this.props;
 
     const classNames = ["webconsole-app"];
@@ -231,6 +235,7 @@ class App extends Component {
         div({className: "webconsole-flex-wrapper"},
           FilterBar({
             hidePersistLogsCheckbox: webConsoleUI.isBrowserConsole,
+            hideShowContentMessagesCheckbox,
             attachRefToWebConsoleUI,
             closeSplitConsole,
           }),
@@ -240,6 +245,7 @@ class App extends Component {
           }),
           NotificationBox({
             id: "webconsole-notificationbox",
+            wrapping: true,
             notifications,
           }),
           JSTerm({
@@ -247,6 +253,7 @@ class App extends Component {
             serviceContainer,
             onPaste: this.onPaste,
             codeMirrorEnabled: jstermCodeMirror,
+            autocomplete,
             editorMode,
           }),
           ReverseSearchInput({

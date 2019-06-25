@@ -55,6 +55,7 @@ const THREE_PANE_ENABLED_PREF = "devtools.inspector.three-pane-enabled";
 const THREE_PANE_ENABLED_SCALAR = "devtools.inspector.three_pane_enabled";
 const THREE_PANE_CHROME_ENABLED_PREF = "devtools.inspector.chrome.three-pane-enabled";
 const TELEMETRY_EYEDROPPER_OPENED = "devtools.toolbar.eyedropper.opened";
+const TELEMETRY_SCALAR_NODE_SELECTION_COUNT = "devtools.inspector.node_selection_count";
 
 /**
  * Represents an open instance of the Inspector for a tab.
@@ -135,6 +136,7 @@ function Inspector(toolbox) {
   this.onSidebarSelect = this.onSidebarSelect.bind(this);
   this.onSidebarShown = this.onSidebarShown.bind(this);
   this.onSidebarToggle = this.onSidebarToggle.bind(this);
+  this.handleThreadState = this.handleThreadState.bind(this);
 
   this._target.on("will-navigate", this._onBeforeNavigate);
 }
@@ -146,6 +148,18 @@ Inspector.prototype = {
   async init() {
     // Localize all the nodes containing a data-localization attribute.
     localizeMarkup(this.panelDoc);
+
+    // When replaying, we need to listen to changes in the target's pause state.
+    if (this._target.isReplayEnabled()) {
+      let dbg = this._toolbox.getPanel("jsdebugger");
+      if (!dbg) {
+        dbg = await this._toolbox.loadTool("jsdebugger");
+      }
+      this._replayResumed = !dbg.isPaused();
+
+      this._target.threadClient.addListener("paused", this.handleThreadState);
+      this._target.threadClient.addListener("resumed", this.handleThreadState);
+    }
 
     await Promise.all([
       this._getCssProperties(),
@@ -349,7 +363,11 @@ Inspector.prototype = {
 
     // A helper to tell if the target has or is about to navigate.
     // this._pendingSelection changes on "will-navigate" and "new-root" events.
-    const hasNavigated = () => pendingSelection !== this._pendingSelection;
+    // When replaying, if the target is unpaused then we consider it to be
+    // navigating so that its tree will not be constructed.
+    const hasNavigated = () => {
+      return pendingSelection !== this._pendingSelection || this._replayResumed;
+    };
 
     // If available, set either the previously selected node or the body
     // as default selected, else set documentElement
@@ -410,6 +428,8 @@ Inspector.prototype = {
   setupSearchBox: function() {
     this.searchBox = this.panelDoc.getElementById("inspector-searchbox");
     this.searchClearButton = this.panelDoc.getElementById("inspector-searchinput-clear");
+    this.searchResultsContainer =
+      this.panelDoc.getElementById("inspector-searchlabel-container");
     this.searchResultsLabel = this.panelDoc.getElementById("inspector-searchlabel");
 
     this.searchBox.addEventListener("focus", () => {
@@ -417,11 +437,19 @@ Inspector.prototype = {
       this.search.on("search-result", this._updateSearchResultsLabel);
     }, { once: true });
 
-    const shortcuts = new KeyShortcuts({
+    this.createSearchBoxShortcuts();
+  },
+
+  createSearchBoxShortcuts() {
+    this.searchboxShortcuts = new KeyShortcuts({
       window: this.panelDoc.defaultView,
+      // The inspector search shortcuts need to be available from everywhere in the
+      // inspector, and the inspector uses iframes (markupview, sidepanel webextensions).
+      // Use the chromeEventHandler as the target to catch events from all frames.
+      target: this.toolbox.getChromeEventHandler(),
     });
     const key = INSPECTOR_L10N.getStr("inspector.searchHTML.key");
-    shortcuts.on(key, event => {
+    this.searchboxShortcuts.on(key, event => {
       // Prevent overriding same shortcut from the computed/rule views
       if (event.target.closest("#sidebar-panel-ruleview") ||
           event.target.closest("#sidebar-panel-computedview")) {
@@ -449,6 +477,10 @@ Inspector.prototype = {
       } else {
         str = INSPECTOR_L10N.getStr("inspector.searchResultsNone");
       }
+
+      this.searchResultsContainer.hidden = false;
+    } else {
+      this.searchResultsContainer.hidden = true;
     }
 
     this.searchResultsLabel.textContent = str;
@@ -1106,6 +1138,14 @@ Inspector.prototype = {
   },
 
   /**
+   * When replaying, reset the inspector whenever the target paused or unpauses.
+   */
+  handleThreadState(event) {
+    this._replayResumed = event != "paused";
+    this.onNewRoot();
+  },
+
+  /**
    * Handler for "markuploaded" event fired on a new root mutation and after the markup
    * view is initialized. Expands the current selected node and restores the saved
    * highlighter state.
@@ -1237,6 +1277,11 @@ Inspector.prototype = {
       return;
     }
 
+    // When changing hosts, the toolbox chromeEventHandler might change, for instance when
+    // switching from docked to window hosts. Recreate the searchbox shortcuts.
+    this.searchboxShortcuts.destroy();
+    this.createSearchBoxShortcuts();
+
     this.setSidebarSplitBoxState();
   },
 
@@ -1255,6 +1300,7 @@ Inspector.prototype = {
     executeSoon(() => {
       try {
         selfUpdate(this.selection.nodeFront);
+        this.telemetry.scalarAdd(TELEMETRY_SCALAR_NODE_SELECTION_COUNT, 1);
       } catch (ex) {
         console.error(ex);
       }
@@ -1380,6 +1426,7 @@ Inspector.prototype = {
     this.breadcrumbs.destroy();
     this.reflowTracker.destroy();
     this.styleChangeTracker.destroy();
+    this.searchboxShortcuts.destroy();
 
     this._is3PaneModeChromeEnabled = null;
     this._is3PaneModeEnabled = null;

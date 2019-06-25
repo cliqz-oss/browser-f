@@ -6,7 +6,6 @@ ChromeUtils.import("resource://normandy/lib/RecipeRunner.jsm", this);
 ChromeUtils.import("resource://normandy/lib/ClientEnvironment.jsm", this);
 ChromeUtils.import("resource://normandy/lib/CleanupManager.jsm", this);
 ChromeUtils.import("resource://normandy/lib/NormandyApi.jsm", this);
-ChromeUtils.import("resource://normandy/lib/ActionSandboxManager.jsm", this);
 ChromeUtils.import("resource://normandy/lib/ActionsManager.jsm", this);
 ChromeUtils.import("resource://normandy/lib/AddonStudies.jsm", this);
 ChromeUtils.import("resource://normandy/lib/Uptake.jsm", this);
@@ -128,39 +127,20 @@ decorate_task(
   }
 );
 
-/**
- * Mocks RecipeRunner.loadActionSandboxManagers for testing run.
- */
-async function withMockActionSandboxManagers(actions, testFunction) {
-  const managers = {};
-  for (const action of actions) {
-    const manager = new ActionSandboxManager("");
-    manager.addHold("testing");
-    managers[action.name] = manager;
-    sinon.stub(managers[action.name], "runAsyncCallback");
-  }
-
-  await testFunction(managers);
-
-  for (const manager of Object.values(managers)) {
-    manager.removeHold("testing");
-    await manager.isNuked();
-  }
-}
-
 decorate_task(
+  withPrefEnv({
+    set: [
+      ["features.normandy-remote-settings.enabled", false],
+    ],
+  }),
   withStub(Uptake, "reportRunner"),
   withStub(NormandyApi, "fetchRecipes"),
-  withStub(ActionsManager.prototype, "fetchRemoteActions"),
-  withStub(ActionsManager.prototype, "preExecution"),
   withStub(ActionsManager.prototype, "runRecipe"),
   withStub(ActionsManager.prototype, "finalize"),
   withStub(Uptake, "reportRecipe"),
   async function testRun(
     reportRunnerStub,
     fetchRecipesStub,
-    fetchRemoteActionsStub,
-    preExecutionStub,
     runRecipeStub,
     finalizeStub,
     reportRecipeStub,
@@ -176,8 +156,6 @@ decorate_task(
 
     await RecipeRunner.run();
 
-    ok(fetchRemoteActionsStub.calledOnce, "remote actions should be fetched");
-    ok(preExecutionStub.calledOnce, "pre-execution hooks should be run");
     Assert.deepEqual(
       runRecipeStub.args,
       [[matchRecipe], [missingRecipe]],
@@ -205,33 +183,40 @@ decorate_task(
       ["features.normandy-remote-settings.enabled", true],
     ],
   }),
+  withStub(NormandyApi, "verifyObjectSignature"),
   withStub(ActionsManager.prototype, "runRecipe"),
-  withStub(ActionsManager.prototype, "fetchRemoteActions"),
   withStub(ActionsManager.prototype, "finalize"),
   withStub(Uptake, "reportRecipe"),
   async function testReadFromRemoteSettings(
+    verifyObjectSignatureStub,
     runRecipeStub,
-    fetchRemoteActionsStub,
     finalizeStub,
     reportRecipeStub,
   ) {
-    const matchRecipe = { id: "match", action: "matchAction", filter_expression: "true", _status: "synced", enabled: true };
-    const noMatchRecipe = { id: "noMatch", action: "noMatchAction", filter_expression: "false", _status: "synced", enabled: true };
-    const missingRecipe = { id: "missing", action: "missingAction", filter_expression: "true", _status: "synced", enabled: true };
+    const matchRecipe =  { name: "match", action: "matchAction", filter_expression: "true" };
+    const noMatchRecipe = { name: "noMatch", action: "noMatchAction", filter_expression: "false" };
+    const missingRecipe = { name: "missing", action: "missingAction", filter_expression: "true" };
 
     const rsCollection = await RecipeRunner._remoteSettingsClientForTesting.openCollection();
-    await rsCollection.create(matchRecipe, { synced: true });
-    await rsCollection.create(noMatchRecipe, { synced: true });
-    await rsCollection.create(missingRecipe, { synced: true });
+    await rsCollection.clear();
+    const fakeSig = { signature: "abc" };
+    await rsCollection.create({ id: "match", recipe: matchRecipe, signature: fakeSig }, { synced: true });
+    await rsCollection.create({ id: "noMatch", recipe: noMatchRecipe, signature: fakeSig }, { synced: true });
+    await rsCollection.create({ id: "missing", recipe: missingRecipe, signature: fakeSig }, { synced: true });
     await rsCollection.db.saveLastModified(42);
     rsCollection.db.close();
 
     await RecipeRunner.run();
 
     Assert.deepEqual(
+      verifyObjectSignatureStub.args,
+      [[matchRecipe, fakeSig, "recipe"], [missingRecipe, fakeSig, "recipe"]],
+      "recipes with matching filters should have their signature verified",
+    );
+    Assert.deepEqual(
       runRecipeStub.args,
       [[matchRecipe], [missingRecipe]],
-      "recipe with matching filters should be executed",
+      "recipes with matching filters should be executed",
     );
     Assert.deepEqual(
       reportRecipeStub.args,
@@ -242,34 +227,68 @@ decorate_task(
 );
 
 decorate_task(
+  withPrefEnv({
+    set: [
+      ["features.normandy-remote-settings.enabled", true],
+    ],
+  }),
+  withStub(ActionsManager.prototype, "runRecipe"),
+  withStub(NormandyApi, "get"),
+  withStub(Uptake, "reportRunner"),
+  async function testBadSignatureFromRemoteSettings(
+    runRecipeStub,
+    normandyGetStub,
+    reportRunnerStub,
+  ) {
+    normandyGetStub.resolves({ async text() { return "---CERT x5u----"; } });
+
+    const matchRecipe = { name: "badSig", action: "matchAction", filter_expression: "true" };
+
+    const rsCollection = await RecipeRunner._remoteSettingsClientForTesting.openCollection();
+    await rsCollection.clear();
+    const badSig = { x5u: "http://localhost/x5u", signature: "abc" };
+    await rsCollection.create({ id: "badSig", recipe: matchRecipe, signature: badSig }, { synced: true });
+    await rsCollection.db.saveLastModified(42);
+    rsCollection.db.close();
+
+    await RecipeRunner.run();
+
+    ok(!runRecipeStub.called, "no recipe is executed");
+    Assert.deepEqual(
+      reportRunnerStub.args,
+      [[Uptake.RUNNER_INVALID_SIGNATURE]],
+      "RecipeRunner should report uptake telemetry",
+    );
+  }
+);
+
+decorate_task(
+  withPrefEnv({
+    set: [
+      ["features.normandy-remote-settings.enabled", false],
+    ],
+  }),
   withMockNormandyApi,
   async function testRunFetchFail(mockApi) {
     const reportRunner = sinon.stub(Uptake, "reportRunner");
-
-    const action = {name: "action"};
-    mockApi.actions = [action];
     mockApi.fetchRecipes.rejects(new Error("Signature not valid"));
 
-    await withMockActionSandboxManagers(mockApi.actions, async managers => {
-      const manager = managers.action;
-      await RecipeRunner.run();
+    await RecipeRunner.run();
 
-      // If the recipe fetch failed, do not run anything.
-      sinon.assert.notCalled(manager.runAsyncCallback);
-      sinon.assert.calledWith(reportRunner, Uptake.RUNNER_SERVER_ERROR);
+    // If the recipe fetch failed, report a server error
+    sinon.assert.calledWith(reportRunner, Uptake.RUNNER_SERVER_ERROR);
 
-      // Test that network errors report a specific uptake error
-      reportRunner.reset();
-      mockApi.fetchRecipes.rejects(new Error("NetworkError: The system was down"));
-      await RecipeRunner.run();
-      sinon.assert.calledWith(reportRunner, Uptake.RUNNER_NETWORK_ERROR);
+    // Test that network errors report a specific uptake error
+    reportRunner.reset();
+    mockApi.fetchRecipes.rejects(new Error("NetworkError: The system was down"));
+    await RecipeRunner.run();
+    sinon.assert.calledWith(reportRunner, Uptake.RUNNER_NETWORK_ERROR);
 
-      // Test that signature issues report a specific uptake error
-      reportRunner.reset();
-      mockApi.fetchRecipes.rejects(new NormandyApi.InvalidSignatureError("Signature fail"));
-      await RecipeRunner.run();
-      sinon.assert.calledWith(reportRunner, Uptake.RUNNER_INVALID_SIGNATURE);
-    });
+    // Test that signature issues report a specific uptake error
+    reportRunner.reset();
+    mockApi.fetchRecipes.rejects(new NormandyApi.InvalidSignatureError("Signature fail"));
+    await RecipeRunner.run();
+    sinon.assert.calledWith(reportRunner, Uptake.RUNNER_INVALID_SIGNATURE);
 
     reportRunner.restore();
   }
@@ -286,10 +305,12 @@ decorate_task(
   }),
   withStub(RecipeRunner, "run"),
   withStub(RecipeRunner, "registerTimer"),
-  async function testInitDevMode(runStub, registerTimerStub, updateRunIntervalStub) {
+  withStub(RecipeRunner._remoteSettingsClientForTesting, "sync"),
+  async function testInitDevMode(runStub, registerTimerStub, syncStub) {
     await RecipeRunner.init();
-    ok(runStub.called, "RecipeRunner.run is called immediately when in dev mode");
-    ok(registerTimerStub.called, "RecipeRunner.init registers a timer");
+    ok(runStub.called, "RecipeRunner.run should be called immediately when in dev mode");
+    ok(registerTimerStub.called, "RecipeRunner.init should register a timer");
+    ok(syncStub.called, "RecipeRunner.init should sync remote settings in dev mode");
   }
 );
 

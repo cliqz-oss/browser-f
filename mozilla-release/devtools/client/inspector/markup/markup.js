@@ -148,7 +148,9 @@ function MarkupView(inspector, frame, controllerWindow) {
   }
 
   this._onNewSelection();
-  this.expandNode(this.inspector.selection.nodeFront);
+  if (this.inspector.selection.nodeFront) {
+    this.expandNode(this.inspector.selection.nodeFront);
+  }
 
   this._prefObserver = new PrefObserver("devtools.markup");
   this._prefObserver.on(ATTR_COLLAPSE_ENABLED_PREF, this._onCollapseAttributesPrefChange);
@@ -2180,12 +2182,16 @@ MarkupView.prototype = {
       nextSibling = target.parentNode.container.node;
     }
 
-    if (nextSibling && nextSibling.isBeforePseudoElement) {
-      nextSibling = target.parentNode.parentNode.children[1].container.node;
-    }
-    if (nextSibling && nextSibling.isAfterPseudoElement) {
-      parent = target.parentNode.container.node.parentNode();
-      nextSibling = null;
+    if (nextSibling) {
+      while (
+        nextSibling.isMarkerPseudoElement || nextSibling.isBeforePseudoElement
+      ) {
+        nextSibling = this.getContainer(nextSibling).elt.nextSibling.container.node;
+      }
+      if (nextSibling.isAfterPseudoElement) {
+        parent = target.parentNode.container.node.parentNode();
+        nextSibling = null;
+      }
     }
 
     if (parent.nodeType !== nodeConstants.ELEMENT_NODE) {

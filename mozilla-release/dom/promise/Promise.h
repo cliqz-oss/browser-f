@@ -103,6 +103,9 @@ class Promise : public nsISupports, public SupportsWeakPtr<Promise> {
 
   void MaybeRejectWithUndefined();
 
+  void MaybeResolveWithClone(JSContext* aCx, JS::Handle<JS::Value> aValue);
+  void MaybeRejectWithClone(JSContext* aCx, JS::Handle<JS::Value> aValue);
+
   // DO NOT USE MaybeRejectBrokenly with in new code.  Promises should be
   // rejected with Error instances.
   // Note: MaybeRejectBrokenly is a template so we can use it with DOMException
@@ -117,7 +120,7 @@ class Promise : public nsISupports, public SupportsWeakPtr<Promise> {
 
   // WebIDL
 
-  nsIGlobalObject* GetParentObject() const { return mGlobal; }
+  nsIGlobalObject* GetParentObject() const { return GetGlobalObject(); }
 
   // Do the equivalent of Promise.resolve in the compartment of aGlobal.  The
   // compartment of aCx is ignored.  Errors are reported on the ErrorResult; if
@@ -197,9 +200,7 @@ class Promise : public nsISupports, public SupportsWeakPtr<Promise> {
 
   void AppendNativeHandler(PromiseNativeHandler* aRunnable);
 
-  JSObject* GlobalJSObject() const;
-
-  JS::Compartment* Compartment() const;
+  nsIGlobalObject* GetGlobalObject() const { return mGlobal; }
 
   // Create a dom::Promise from a given SpiderMonkey Promise object.
   // aPromiseObj MUST be in the compartment of aGlobal's global JS object.

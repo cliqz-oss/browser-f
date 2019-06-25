@@ -313,9 +313,8 @@ bool PluginModuleChild::InitForChrome(const std::string& aPluginFilename,
 #if defined(XP_MACOSX) && defined(MOZ_SANDBOX)
   if (mFlashSandboxLevel > 0) {
     MacSandboxInfo flashSandboxInfo;
-    flashSandboxInfo.type = MacSandboxType_Plugin;
-    flashSandboxInfo.pluginInfo.type = MacSandboxPluginType_Flash;
-    flashSandboxInfo.pluginInfo.pluginBinaryPath = aPluginFilename;
+    flashSandboxInfo.type = MacSandboxType_Flash;
+    flashSandboxInfo.pluginBinaryPath = aPluginFilename;
     flashSandboxInfo.level = mFlashSandboxLevel;
     flashSandboxInfo.shouldLog = mEnableFlashSandboxLogging;
 
@@ -432,15 +431,15 @@ static gboolean gtk_plug_scroll_event(GtkWidget* widget,
   xevent.xbutton.y_root = gdk_event->y_root;
   xevent.xbutton.state = gdk_event->state;
   xevent.xbutton.button = button;
-  xevent.xbutton.same_screen = True;
+  xevent.xbutton.same_screen = X11True;
 
   gdk_error_trap_push();
 
-  XSendEvent(dpy, xevent.xbutton.window, True, ButtonPressMask, &xevent);
+  XSendEvent(dpy, xevent.xbutton.window, X11True, ButtonPressMask, &xevent);
 
   xevent.xbutton.type = ButtonRelease;
   xevent.xbutton.state |= button_mask;
-  XSendEvent(dpy, xevent.xbutton.window, True, ButtonReleaseMask, &xevent);
+  XSendEvent(dpy, xevent.xbutton.window, X11True, ButtonReleaseMask, &xevent);
 
   gdk_display_sync(gdk_screen_get_display(screen));
   gdk_error_trap_pop();
@@ -979,8 +978,10 @@ NPError _geturlnotify(NPP aNPP, const char* aRelativeURL, const char* aTarget,
   auto* sn = new StreamNotifyChild(url);
 
   NPError err;
-  InstCast(aNPP)->CallPStreamNotifyConstructor(sn, url, NullableString(aTarget),
-                                               false, nsCString(), false, &err);
+  if (!InstCast(aNPP)->CallPStreamNotifyConstructor(
+          sn, url, NullableString(aTarget), false, nsCString(), false, &err)) {
+    return NPERR_GENERIC_ERROR;
+  }
 
   if (NPERR_NO_ERROR == err) {
     // If NPN_PostURLNotify fails, the parent will immediately send us
@@ -1082,9 +1083,11 @@ NPError _posturlnotify(NPP aNPP, const char* aRelativeURL, const char* aTarget,
   auto* sn = new StreamNotifyChild(url);
 
   NPError err;
-  InstCast(aNPP)->CallPStreamNotifyConstructor(
-      sn, url, NullableString(aTarget), true, nsCString(aBuffer, aLength),
-      aIsFile, &err);
+  if (!InstCast(aNPP)->CallPStreamNotifyConstructor(
+          sn, url, NullableString(aTarget), true, nsCString(aBuffer, aLength),
+          aIsFile, &err)) {
+    return NPERR_GENERIC_ERROR;
+  }
 
   if (NPERR_NO_ERROR == err) {
     // If NPN_PostURLNotify fails, the parent will immediately send us
@@ -1672,6 +1675,10 @@ NPObject* PluginModuleChild::NPN_CreateObject(NPP aNPP, NPClass* aClass) {
 
 NPObject* PluginModuleChild::NPN_RetainObject(NPObject* aNPObj) {
   AssertPluginThread();
+
+  if (NS_WARN_IF(!aNPObj)) {
+    return nullptr;
+  }
 
 #ifdef NS_BUILD_REFCNT_LOGGING
   int32_t refCnt =

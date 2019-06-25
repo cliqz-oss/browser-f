@@ -175,13 +175,11 @@
                 accesskey="&leaveDOMFullScreen.accesskey;"
                 label="&leaveDOMFullScreen.label;"
                 oncommand="gContextMenu.leaveDOMFullScreen();"/>
-#ifdef NIGHTLY_BUILD
-      <!-- Don't forget to add a properly localized label and access key
-           before letting this ride up to beta. -->
       <menuitem id="context-video-pictureinpicture"
-                label="Picture in Picture"
+                accesskey="&pictureInPicture.accesskey;"
+                label="&pictureInPicture.label;"
+                type="checkbox"
                 oncommand="gContextMenu.mediaCommand('pictureinpicture');"/>
-#endif
       <menuseparator id="context-media-sep-commands"/>
       <menuitem id="context-reloadimage"
                 label="&reloadImageCmd.label;"
@@ -322,7 +320,7 @@
                 accesskey="&keywordfield.accesskey;"
                 oncommand="AddKeywordForSearchField();"/>
       <menuitem id="context-searchselect"
-                oncommand="BrowserSearch.loadSearchFromContext(this.searchTerms, this.principal);"/>
+                oncommand="BrowserSearch.loadSearchFromContext(this.searchTerms, this.principal, this.csp);"/>
       <menuseparator id="context-sep-sendlinktodevice" class="sync-ui-item"
                      hidden="true"/>
       <menu id="context-sendlinktodevice"

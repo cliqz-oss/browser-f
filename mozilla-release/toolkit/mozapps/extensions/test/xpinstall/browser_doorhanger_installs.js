@@ -9,8 +9,6 @@ const PROGRESS_NOTIFICATION = "addon-progress";
 
 const CHROMEROOT = extractChromeRoot(gTestPath);
 
-var gApp = document.getElementById("bundle_brand").getString("brandShortName");
-
 AddonTestUtils.initMochitest(this);
 AddonTestUtils.hookAMTelemetryEvents();
 
@@ -274,11 +272,10 @@ async function test_blockedInstall() {
   let panel = await notificationPromise;
 
   let notification = panel.childNodes[0];
-  is(notification.button.label, "Allow", "Should have seen the right button");
-  is(notification.getAttribute("origin"), "example.com",
-     "Should have seen the right origin host");
-  is(notification.getAttribute("label"),
-     gApp + " prevented this site from asking you to install software on your computer.",
+  is(notification.button.label, "Continue to Installation", "Should have seen the right button");
+  let message = panel.ownerDocument.getElementById("addon-install-blocked-message");
+  is(message.textContent,
+     "You are attempting to install an add-on from example.com. Make sure you trust this site before continuing.",
      "Should have seen the right message");
 
   let dialogPromise = waitForInstallDialog();
@@ -302,6 +299,57 @@ async function test_blockedInstall() {
   addon.uninstall();
 
   await BrowserTestUtils.removeTab(gBrowser.selectedTab);
+},
+
+async function test_permaBlockInstall() {
+  let notificationPromise = waitForNotification("addon-install-blocked");
+  let triggers = encodeURIComponent(JSON.stringify({
+    "XPI": "amosigned.xpi",
+  }));
+  let target = TESTROOT + "installtrigger.html?" + triggers;
+
+  BrowserTestUtils.openNewForegroundTab(gBrowser, target);
+  let notification = (await notificationPromise).firstElementChild;
+  let neverAllowBtn = notification.menupopup.firstElementChild;
+
+  neverAllowBtn.click();
+
+  await TestUtils.waitForCondition(() => !PopupNotifications.isPanelOpen, "Waiting for notification to close");
+
+  let installs = await AddonManager.getAllInstalls();
+  is(installs.length, 0, "Should be no pending installs");
+
+  let installPerm = Services.perms.testPermission(gBrowser.currentURI, "install");
+  is(installPerm, Ci.nsIPermissionManager.DENY_ACTION, "Addon installation should be blocked for site");
+
+  await BrowserTestUtils.removeTab(gBrowser.selectedTab);
+
+  SitePermissions.remove(NetUtil.newURI(target), "install");
+},
+
+async function test_permaBlockedInstallNoPrompt() {
+  let triggers = encodeURIComponent(JSON.stringify({
+    "XPI": "amosigned.xpi",
+  }));
+  let target = TESTROOT + "installtrigger.html?" + triggers;
+
+  SitePermissions.set(NetUtil.newURI(target), "install", SitePermissions.BLOCK);
+  await BrowserTestUtils.openNewForegroundTab(gBrowser, target);
+
+  let panelOpened;
+  try {
+    panelOpened = await TestUtils.waitForCondition(() => PopupNotifications.isPanelOpen, 100, 10);
+  } catch (ex) {
+    panelOpened = false;
+  }
+  is(panelOpened, false, "Addon prompt should not open");
+
+  let installs = await AddonManager.getAllInstalls();
+  is(installs.length, 0, "Should be no pending installs");
+
+  await BrowserTestUtils.removeTab(gBrowser.selectedTab);
+
+  SitePermissions.remove(NetUtil.newURI(target), "install");
 },
 
 async function test_whitelistedInstall() {

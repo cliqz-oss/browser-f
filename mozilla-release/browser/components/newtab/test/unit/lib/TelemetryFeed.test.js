@@ -6,6 +6,7 @@ import {
   ImpressionStatsPing,
   PerfPing,
   SessionPing,
+  SpocsFillPing,
   UndesiredPing,
   UserEventPing,
 } from "test/schemas/pings";
@@ -407,13 +408,14 @@ describe("TelemetryFeed", () => {
       assert.ok(Number.isInteger(session.session_duration),
         "session_duration should be an integer");
     });
-    it("shouldn't add session_duration if there's no visibility_event_rcvd_ts", () => {
+    it("shouldn't send session ping if there's no visibility_event_rcvd_ts", () => {
       sandbox.stub(instance, "sendEvent");
-      const session = instance.addSession("foo");
+      instance.addSession("foo");
 
       instance.endSession("foo");
 
-      assert.notProperty(session, "session_duration");
+      assert.notCalled(instance.sendEvent);
+      assert.isFalse(instance.sessions.has("foo"));
     });
     it("should remove the session from .sessions", () => {
       sandbox.stub(instance, "sendEvent");
@@ -432,6 +434,7 @@ describe("TelemetryFeed", () => {
       sandbox.stub(instance, "createSessionEndEvent");
       sandbox.stub(instance.utEvents, "sendSessionEndEvent");
       const session = instance.addSession("foo");
+      session.perf.visibility_event_rcvd_ts = 444.4732;
 
       instance.endSession("foo");
 
@@ -635,6 +638,20 @@ describe("TelemetryFeed", () => {
       assert.validate(ping, ImpressionStatsPing);
       assert.propertyVal(ping, "pocket", 0);
       assert.propertyVal(ping, "tiles", tiles);
+    });
+  });
+  describe("#createSpocsFillPing", () => {
+    it("should create a valid SPOCS Fill ping", async () => {
+      const spocFills = [
+        {id: 10001, displayed: 0, reason: "frequency_cap", full_recalc: 1},
+        {id: 10002, displayed: 0, reason: "blocked_by_user", full_recalc: 1},
+        {id: 10003, displayed: 1, reason: "n/a", full_recalc: 1},
+      ];
+      const action = ac.DiscoveryStreamSpocsFill({spoc_fills: spocFills});
+      const ping = await instance.createSpocsFillPing(action.data);
+
+      assert.validate(ping, SpocsFillPing);
+      assert.propertyVal(ping, "spoc_fills", spocFills);
     });
   });
   describe("#applyCFRPolicy", () => {
@@ -1094,6 +1111,32 @@ describe("TelemetryFeed", () => {
 
       assert.calledWith(instance.handleDiscoveryStreamImpressionStats, "port123", data);
     });
+    it("should call .handleDiscoveryStreamLoadedContent on a DISCOVERY_STREAM_LOADED_CONTENT action", () => {
+      const session = {};
+      sandbox.stub(instance.sessions, "get").returns(session);
+      const data = {source: "foo", tiles: [{id: 1}]};
+      const action = {type: at.DISCOVERY_STREAM_LOADED_CONTENT, data};
+      sandbox.spy(instance, "handleDiscoveryStreamLoadedContent");
+
+      instance.onAction(ac.AlsoToMain(action, "port123"));
+
+      assert.calledWith(instance.handleDiscoveryStreamLoadedContent, "port123", data);
+    });
+    it("should send an event on a DISCOVERY_STREAM_SPOCS_FILL action", () => {
+      const sendEvent = sandbox.stub(instance, "sendStructuredIngestionEvent");
+      const eventCreator = sandbox.stub(instance, "createSpocsFillPing");
+      const spocFills = [
+        {id: 10001, displayed: 0, reason: "frequency_cap", full_recalc: 1},
+        {id: 10002, displayed: 0, reason: "blocked_by_user", full_recalc: 1},
+        {id: 10003, displayed: 1, reason: "n/a", full_recalc: 1},
+      ];
+      const action = ac.DiscoveryStreamSpocsFill({spoc_fills: spocFills});
+
+      instance.onAction(action);
+
+      assert.calledWith(eventCreator, action.data);
+      assert.calledWith(sendEvent, eventCreator.returnValue);
+    });
     it("should call .handleTrailheadEnrollEvent on a TRAILHEAD_ENROLL_EVENT action", () => {
       const data = {experiment: "foo", type: "bar", branch: "baz"};
       const action = {type: at.TRAILHEAD_ENROLL_EVENT, data};
@@ -1226,6 +1269,40 @@ describe("TelemetryFeed", () => {
       assert.calledTwice(spy);
     });
   });
+  describe("#sendDiscoveryStreamLoadedContent", () => {
+    it("should not send loaded content pings if there is no loaded content data", () => {
+      const spy = sandbox.spy(instance, "sendEvent");
+      const session = {};
+      instance.sendDiscoveryStreamLoadedContent("foo", session);
+
+      assert.notCalled(spy);
+    });
+    it("should send loaded content pings if there is loaded content data", () => {
+      const spy = sandbox.spy(instance, "sendEvent");
+      const session = {
+        loadedContentSets: {
+          source_foo: [{id: 1, pos: 0}, {id: 2, pos: 1}],
+          source_bar: [{id: 3, pos: 0}, {id: 4, pos: 1}],
+        },
+      };
+      instance.sendDiscoveryStreamLoadedContent("foo", session);
+
+      assert.calledTwice(spy);
+
+      let [payload] = spy.firstCall.args;
+      let sources = new Set([]);
+      sources.add(payload.source);
+      assert.equal(payload.loaded, 2);
+      assert.deepEqual(payload.tiles, session.loadedContentSets[payload.source]);
+
+      [payload] = spy.secondCall.args;
+      sources.add(payload.source);
+      assert.equal(payload.loaded, 2);
+      assert.deepEqual(payload.tiles, session.loadedContentSets[payload.source]);
+
+      assert.deepEqual(sources, new Set(["source_foo", "source_bar"]));
+    });
+  });
   describe("#handleDiscoveryStreamImpressionStats", () => {
     it("should throw for a missing session", () => {
       assert.throws(() => {
@@ -1254,6 +1331,36 @@ describe("TelemetryFeed", () => {
       assert.equal(Object.keys(session.impressionSets).length, 2);
       assert.deepEqual(session.impressionSets.foo, [{id: 1, pos: 0}, {id: 2, pos: 1}]);
       assert.deepEqual(session.impressionSets.bar, [{id: 3, pos: 2}]);
+    });
+  });
+  describe("#handleDiscoveryStreamLoadedContent", () => {
+    it("should throw for a missing session", () => {
+      assert.throws(() => {
+        instance.handleDiscoveryStreamLoadedContent("a_missing_port", {});
+      }, "Session does not exist.");
+    });
+    it("should store loaded content to loadedContentSets", () => {
+      const session = instance.addSession("new_session", "about:newtab");
+      instance.handleDiscoveryStreamLoadedContent("new_session",
+        {source: "foo", tiles: [{id: 1, pos: 0}]});
+
+      assert.equal(Object.keys(session.loadedContentSets).length, 1);
+      assert.deepEqual(session.loadedContentSets.foo, [{id: 1, pos: 0}]);
+
+      // Add another ping with the same source
+      instance.handleDiscoveryStreamLoadedContent("new_session",
+        {source: "foo", tiles: [{id: 2, pos: 1}]});
+
+      assert.deepEqual(session.loadedContentSets.foo,
+        [{id: 1, pos: 0}, {id: 2, pos: 1}]);
+
+      // Add another ping with a different source
+      instance.handleDiscoveryStreamLoadedContent("new_session",
+        {source: "bar", tiles: [{id: 3, pos: 2}]});
+
+      assert.equal(Object.keys(session.loadedContentSets).length, 2);
+      assert.deepEqual(session.loadedContentSets.foo, [{id: 1, pos: 0}, {id: 2, pos: 1}]);
+      assert.deepEqual(session.loadedContentSets.bar, [{id: 3, pos: 2}]);
     });
   });
   describe("#_generateStructuredIngestionEndpoint", () => {

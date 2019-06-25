@@ -7,6 +7,7 @@ const {Services} = ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 const PROVIDER_PREF_BRANCH = "browser.newtabpage.activity-stream.asrouter.providers.";
 const DEVTOOLS_PREF = "browser.newtabpage.activity-stream.asrouter.devtoolsEnabled";
+const FXA_USERNAME_PREF = "services.sync.username";
 
 const DEFAULT_STATE = {
   _initialized: false,
@@ -27,12 +28,21 @@ const USER_PREFERENCES = {
   cfrFeatures: "browser.newtabpage.activity-stream.asrouter.userprefs.cfr.features",
 };
 
-const TEST_PROVIDER = {
+// Preferences that influence targeting attributes. When these change we need
+// to re-evaluate if the message targeting still matches
+const TARGETING_PREFERENCES = [FXA_USERNAME_PREF];
+
+const TEST_PROVIDERS = [{
   id: "snippets_local_testing",
   type: "local",
   localProvider: "SnippetsTestMessageProvider",
   enabled: true,
-};
+}, {
+  id: "panel_local_testing",
+  type: "local",
+  localProvider: "PanelTestProvider",
+  enabled: true,
+}];
 
 class _ASRouterPreferences {
   constructor() {
@@ -79,7 +89,7 @@ class _ASRouterPreferences {
       const config = this._getProviderConfig();
       const providers = config.map(provider => Object.freeze(provider));
       if (this.devtoolsEnabled) {
-        providers.unshift(TEST_PROVIDER);
+        providers.unshift(...TEST_PROVIDERS);
       }
       this._providers = Object.freeze(providers);
     }
@@ -112,16 +122,6 @@ class _ASRouterPreferences {
       this._devtoolsEnabled = Services.prefs.getBoolPref(this._devtoolsPref, false);
     }
     return this._devtoolsEnabled;
-  }
-
-  get specialConditions() {
-    let allowLegacySnippets = true;
-    for (const provider of this.providers) {
-      if (provider.id === "snippets" && provider.enabled) {
-        allowLegacySnippets = false;
-      }
-    }
-    return {allowLegacySnippets};
   }
 
   observe(aSubject, aTopic, aPrefName) {
@@ -174,6 +174,9 @@ class _ASRouterPreferences {
     for (const id of Object.keys(USER_PREFERENCES)) {
       Services.prefs.addObserver(USER_PREFERENCES[id], this);
     }
+    for (const targetingPref of TARGETING_PREFERENCES) {
+      Services.prefs.addObserver(targetingPref, this);
+    }
     this._initialized = true;
   }
 
@@ -184,6 +187,9 @@ class _ASRouterPreferences {
       for (const id of Object.keys(USER_PREFERENCES)) {
         Services.prefs.removeObserver(USER_PREFERENCES[id], this);
       }
+      for (const targetingPref of TARGETING_PREFERENCES) {
+        Services.prefs.removeObserver(targetingPref, this);
+      }
     }
     Object.assign(this, DEFAULT_STATE);
     this._callbacks.clear();
@@ -192,6 +198,7 @@ class _ASRouterPreferences {
 this._ASRouterPreferences = _ASRouterPreferences;
 
 this.ASRouterPreferences = new _ASRouterPreferences();
-this.TEST_PROVIDER = TEST_PROVIDER;
+this.TEST_PROVIDERS = TEST_PROVIDERS;
+this.TARGETING_PREFERENCES = TARGETING_PREFERENCES;
 
-const EXPORTED_SYMBOLS = ["_ASRouterPreferences", "ASRouterPreferences", "TEST_PROVIDER"];
+const EXPORTED_SYMBOLS = ["_ASRouterPreferences", "ASRouterPreferences", "TEST_PROVIDERS", "TARGETING_PREFERENCES"];

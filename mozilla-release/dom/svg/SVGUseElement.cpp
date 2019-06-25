@@ -13,7 +13,6 @@
 #include "nsGkAtoms.h"
 #include "mozilla/dom/SVGSVGElement.h"
 #include "mozilla/dom/Document.h"
-#include "nsIPresShell.h"
 #include "mozilla/dom/Element.h"
 #include "nsContentUtils.h"
 #include "nsIURI.h"
@@ -165,7 +164,7 @@ void SVGUseElement::UnbindFromTree(bool aDeep, bool aNullParent) {
   OwnerDoc()->UnscheduleSVGUseElementShadowTreeUpdate(*this);
 }
 
-already_AddRefed<SVGAnimatedString> SVGUseElement::Href() {
+already_AddRefed<DOMSVGAnimatedString> SVGUseElement::Href() {
   return mStringAttributes[HREF].IsExplicitlySet()
              ? mStringAttributes[HREF].ToDOMAnimatedString(this)
              : mStringAttributes[XLINK_HREF].ToDOMAnimatedString(this);
@@ -173,19 +172,19 @@ already_AddRefed<SVGAnimatedString> SVGUseElement::Href() {
 
 //----------------------------------------------------------------------
 
-already_AddRefed<SVGAnimatedLength> SVGUseElement::X() {
+already_AddRefed<DOMSVGAnimatedLength> SVGUseElement::X() {
   return mLengthAttributes[ATTR_X].ToDOMAnimatedLength(this);
 }
 
-already_AddRefed<SVGAnimatedLength> SVGUseElement::Y() {
+already_AddRefed<DOMSVGAnimatedLength> SVGUseElement::Y() {
   return mLengthAttributes[ATTR_Y].ToDOMAnimatedLength(this);
 }
 
-already_AddRefed<SVGAnimatedLength> SVGUseElement::Width() {
+already_AddRefed<DOMSVGAnimatedLength> SVGUseElement::Width() {
   return mLengthAttributes[ATTR_WIDTH].ToDOMAnimatedLength(this);
 }
 
-already_AddRefed<SVGAnimatedLength> SVGUseElement::Height() {
+already_AddRefed<DOMSVGAnimatedLength> SVGUseElement::Height() {
   return mLengthAttributes[ATTR_HEIGHT].ToDOMAnimatedLength(this);
 }
 
@@ -393,7 +392,7 @@ void SVGUseElement::SyncWidthOrHeight(nsAtom* aName) {
   }
   // Our width/height attribute is now no longer explicitly set, so we
   // need to set the value to 100%
-  nsSVGLength2 length;
+  SVGAnimatedLength length;
   length.Init(SVGContentUtils::XY, 0xff, 100,
               SVGLength_Binding::SVG_LENGTHTYPE_PERCENTAGE);
   target->SetLength(aName, length);

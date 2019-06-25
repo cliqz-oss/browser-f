@@ -2302,7 +2302,12 @@ static bool IsRegExpHoistableCall(CompileRuntime* runtime, MCall* call,
     if (!fun->isSelfHostedBuiltin()) {
       return false;
     }
-    name = GetSelfHostedFunctionName(fun->rawJSFunction());
+
+    // Avoid accessing `JSFunction.flags_` via `JSFunction::isExtended`.
+    if (!fun->isExtended()) {
+      return false;
+    }
+    name = GetClonedSelfHostedFunctionNameOffMainThread(fun->rawJSFunction());
   } else {
     MDefinition* funDef = call->getFunction();
     if (funDef->isDebugCheckSelfHosted()) {
@@ -2361,8 +2366,7 @@ static bool CanCompareRegExp(MCompare* compare, MDefinition* def) {
 
   if (op != JSOP_EQ && op != JSOP_NE) {
     // Relational comparison always invoke @@toPrimitive.
-    MOZ_ASSERT(op == JSOP_GT || op == JSOP_GE || op == JSOP_LT ||
-               op == JSOP_LE);
+    MOZ_ASSERT(IsRelationalOp(op));
     return false;
   }
 
@@ -3872,13 +3876,6 @@ static inline MDefinition* PassthroughOperand(MDefinition* def) {
   if (def->isMaybeCopyElementsForWrite()) {
     return def->toMaybeCopyElementsForWrite()->object();
   }
-  if (!JitOptions.spectreObjectMitigationsMisc) {
-    // If Spectre mitigations are enabled, LConvertUnboxedObjectToNative
-    // needs to have its own def.
-    if (def->isConvertUnboxedObjectToNative()) {
-      return def->toConvertUnboxedObjectToNative()->object();
-    }
-  }
   return nullptr;
 }
 
@@ -5112,7 +5109,7 @@ bool jit::MakeLoopsContiguous(MIRGraph& graph) {
 }
 
 MRootList::MRootList(TempAllocator& alloc) {
-#define INIT_VECTOR(name, _0, _1) roots_[JS::RootKind::name].emplace(alloc);
+#define INIT_VECTOR(name, _0, _1, _2) roots_[JS::RootKind::name].emplace(alloc);
   JS_FOR_EACH_TRACEKIND(INIT_VECTOR)
 #undef INIT_VECTOR
 }
@@ -5128,7 +5125,7 @@ static void TraceVector(JSTracer* trc, const MRootList::RootVector& vector,
 }
 
 void MRootList::trace(JSTracer* trc) {
-#define TRACE_ROOTS(name, type, _) \
+#define TRACE_ROOTS(name, type, _, _1) \
   TraceVector<type*>(trc, *roots_[JS::RootKind::name], "mir-root-" #name);
   JS_FOR_EACH_TRACEKIND(TRACE_ROOTS)
 #undef TRACE_ROOTS

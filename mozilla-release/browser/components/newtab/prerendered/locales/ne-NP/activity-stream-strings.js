@@ -40,9 +40,7 @@ window.gActivityStreamStrings = {
   "section_disclaimer_topstories_buttontext": "बुझेँ",
   "prefs_home_header": "Firefox गृह सामग्री",
   "prefs_home_description": "तपाईंको Firefox गृह पृष्ठमा तपाईँ कुन सामग्री राख्न चाहनुहुन्छ छान्नुहोस् ।",
-  "prefs_content_discovery_header": "Firefox Home",
   "prefs_content_discovery_description": "Content Discovery in Firefox Home allows you to discover high-quality, relevant articles from across the web.",
-  "prefs_content_discovery_button": "Turn Off Content Discovery",
   "prefs_section_rows_option": "{num} पक्ति;{num} पक्ति",
   "prefs_search_header": "वेब खोजि",
   "prefs_topsites_description": "तपाईंले धेरै भ्रमण गर्नुभएका साइटहरू",
@@ -107,8 +105,5 @@ window.gActivityStreamStrings = {
   "firstrun_privacy_notice": "Privacy Notice",
   "firstrun_continue_to_login": "Continue",
   "firstrun_skip_login": "Skip this step",
-  "context_menu_title": "Open menu",
-  "manual_migration_explanation2": "अन्य ब्राउजरका पुस्तकचिनोहरु, इतिहास र गोप्यशब्दहरु सहित Firefox प्रयोग गर्नुहोस् ।",
-  "manual_migration_cancel_button": "पर्दैन, धन्यबाद",
-  "manual_migration_import_button": "अहिले आयात गर्नुहोस्"
+  "context_menu_title": "Open menu"
 };

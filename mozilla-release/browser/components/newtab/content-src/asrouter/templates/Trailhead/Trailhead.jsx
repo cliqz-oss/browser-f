@@ -233,7 +233,7 @@ export class _Trailhead extends React.PureComponent {
       "trailhead",
       content && content.className,
     ].filter(v => v).join(" ");
-    return (<React.Fragment>
+    return (<>
     {this.state.isModalOpen && content ? <ModalOverlayWrapper innerClassName={innerClassName} onClose={this.closeModal} id="trailheadDialog" headerId="trailheadHeader">
       <div className="trailheadInner">
         <div className="trailheadContent">
@@ -317,7 +317,7 @@ export class _Trailhead extends React.PureComponent {
         }
       </div>
     </div> : null}
-    </React.Fragment>);
+    </>);
   }
 }
 

@@ -9,6 +9,7 @@
 #include "nsTouchBarUpdater.h"
 
 #include "nsCocoaWindow.h"
+#include "nsIArray.h"
 #include "nsIBaseWindow.h"
 #include "nsIWidget.h"
 
@@ -21,7 +22,8 @@
 NS_IMPL_ISUPPORTS(nsTouchBarUpdater, nsITouchBarUpdater);
 
 NS_IMETHODIMP
-nsTouchBarUpdater::UpdateTouchBarInput(nsIBaseWindow* aWindow, nsITouchBarInput* aInput) {
+nsTouchBarUpdater::UpdateTouchBarInputs(nsIBaseWindow* aWindow,
+                                        const nsTArray<RefPtr<nsITouchBarInput>>& aInputs) {
   nsCOMPtr<nsIWidget> widget = nullptr;
   aWindow->GetMainWidget(getter_AddRefs(widget));
   if (!widget) {
@@ -33,8 +35,16 @@ nsTouchBarUpdater::UpdateTouchBarInput(nsIBaseWindow* aWindow, nsITouchBarInput*
   }
 
   if ([cocoaWin respondsToSelector:@selector(touchBar)]) {
-    TouchBarInput* convertedInput = [[TouchBarInput alloc] initWithXPCOM:aInput];
-    [(nsTouchBar*)cocoaWin.touchBar updateItem:convertedInput];
+    size_t itemCount = aInputs.Length();
+    for (size_t i = 0; i < itemCount; ++i) {
+      nsCOMPtr<nsITouchBarInput> input(aInputs.ElementAt(i));
+      if (!input) {
+        continue;
+      }
+
+      TouchBarInput* convertedInput = [[TouchBarInput alloc] initWithXPCOM:input];
+      [(nsTouchBar*)cocoaWin.touchBar updateItem:convertedInput];
+    }
   }
 
   return NS_OK;

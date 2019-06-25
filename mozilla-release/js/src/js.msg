@@ -64,6 +64,7 @@ MSG_DEF(JSMSG_SPREAD_TOO_LARGE,        0, JSEXN_RANGEERR, "array too large due t
 MSG_DEF(JSMSG_BAD_WEAKMAP_KEY,         0, JSEXN_TYPEERR, "cannot use the given object as a weak map key")
 MSG_DEF(JSMSG_BAD_GETTER_OR_SETTER,    1, JSEXN_TYPEERR, "invalid {0} usage")
 MSG_DEF(JSMSG_BAD_ARRAY_LENGTH,        0, JSEXN_RANGEERR, "invalid array length")
+MSG_DEF(JSMSG_SOURCE_ARRAY_TOO_LONG,   0, JSEXN_RANGEERR, "source array is too long")
 MSG_DEF(JSMSG_REDECLARED_PREV,         2, JSEXN_NOTE, "Previously declared at line {0}, column {1}")
 MSG_DEF(JSMSG_REDECLARED_VAR,          2, JSEXN_SYNTAXERR, "redeclaration of {0} {1}")
 MSG_DEF(JSMSG_UNDECLARED_VAR,          1, JSEXN_REFERENCEERR, "assignment to undeclared variable {0}")
@@ -103,9 +104,8 @@ MSG_DEF(JSMSG_CANT_SET_PROTO_OF,       1, JSEXN_TYPEERR, "can't set prototype of
 MSG_DEF(JSMSG_CANT_SET_PROTO_CYCLE,    0, JSEXN_TYPEERR, "can't set prototype: it would cause a prototype chain cycle")
 MSG_DEF(JSMSG_INVALID_ARG_TYPE,        3, JSEXN_TYPEERR, "Invalid type: {0} can't be a{1} {2}")
 MSG_DEF(JSMSG_TERMINATED,              1, JSEXN_ERR, "Script terminated by timeout at:\n{0}")
-MSG_DEF(JSMSG_CANT_CALL_CLASS_CONSTRUCTOR, 0, JSEXN_TYPEERR, "class constructors must be invoked with |new|")
-MSG_DEF(JSMSG_UNINITIALIZED_THIS,      1, JSEXN_REFERENCEERR, "must call super constructor before using |this| in {0} class constructor")
-MSG_DEF(JSMSG_UNINITIALIZED_THIS_ARROW, 0, JSEXN_REFERENCEERR, "must call super constructor before using |this| in arrow function in derived class constructor")
+MSG_DEF(JSMSG_CANT_CALL_CLASS_CONSTRUCTOR, 0, JSEXN_TYPEERR, "class constructors must be invoked with 'new'")
+MSG_DEF(JSMSG_UNINITIALIZED_THIS,      0, JSEXN_REFERENCEERR, "must call super constructor before using 'this' in derived class constructor")
 MSG_DEF(JSMSG_BAD_DERIVED_RETURN,      1, JSEXN_TYPEERR, "derived class constructor returned invalid value {0}")
 MSG_DEF(JSMSG_BAD_HERITAGE,            2, JSEXN_TYPEERR, "class heritage {0} is {1}")
 MSG_DEF(JSMSG_NOT_OBJORNULL,           1, JSEXN_TYPEERR, "{0} is not an object or null")
@@ -137,7 +137,6 @@ MSG_DEF(JSMSG_INVALID_NORMALIZE_FORM,  0, JSEXN_RANGEERR, "form must be one of '
 MSG_DEF(JSMSG_NEGATIVE_REPETITION_COUNT, 0, JSEXN_RANGEERR, "repeat count must be non-negative")
 MSG_DEF(JSMSG_NOT_A_CODEPOINT,         1, JSEXN_RANGEERR, "{0} is not a valid code point")
 MSG_DEF(JSMSG_RESULTING_STRING_TOO_LARGE, 0, JSEXN_RANGEERR, "repeat count must be less than infinity and not overflow maximum string size")
-MSG_DEF(JSMSG_DEPRECATED_STRING_METHOD, 2, JSEXN_WARN, "String.{0} is deprecated; use String.prototype.{1} instead")
 
 // Number
 MSG_DEF(JSMSG_BAD_RADIX,               0, JSEXN_RANGEERR, "radix must be an integer at least 2 and no greater than 36")
@@ -206,7 +205,6 @@ MSG_DEF(JSMSG_LEXICAL_DECL_DEFINES_LET,0, JSEXN_SYNTAXERR, "a lexical declaratio
 MSG_DEF(JSMSG_LET_STARTING_FOROF_LHS,  0, JSEXN_SYNTAXERR, "an expression X in 'for (X of Y)' must not start with 'let'")
 MSG_DEF(JSMSG_BAD_INCOP_OPERAND,       0, JSEXN_SYNTAXERR, "invalid increment/decrement operand")
 MSG_DEF(JSMSG_BAD_METHOD_DEF,          0, JSEXN_SYNTAXERR, "bad method definition")
-MSG_DEF(JSMSG_BAD_OCTAL,               1, JSEXN_SYNTAXERR, "{0} is not a legal ECMA-262 octal constant")
 MSG_DEF(JSMSG_BAD_POW_LEFTSIDE,        0, JSEXN_SYNTAXERR, "unparenthesized unary expression can't appear on the left-hand side of '**'")
 MSG_DEF(JSMSG_BAD_PROP_ID,             0, JSEXN_SYNTAXERR, "invalid property id")
 MSG_DEF(JSMSG_BAD_RETURN_OR_YIELD,     1, JSEXN_SYNTAXERR, "{0} not in function")
@@ -217,6 +215,7 @@ MSG_DEF(JSMSG_BAD_SWITCH,              0, JSEXN_SYNTAXERR, "invalid switch state
 MSG_DEF(JSMSG_BAD_SUPER,               0, JSEXN_SYNTAXERR, "invalid use of keyword 'super'")
 MSG_DEF(JSMSG_BAD_SUPERPROP,           1, JSEXN_SYNTAXERR, "use of super {0} accesses only valid within methods or eval code within methods")
 MSG_DEF(JSMSG_BAD_SUPERCALL,           0, JSEXN_SYNTAXERR, "super() is only valid in derived class constructors")
+MSG_DEF(JSMSG_BAD_ARGUMENTS,           0, JSEXN_SYNTAXERR, "arguments is not valid in fields")
 MSG_DEF(JSMSG_BRACKET_AFTER_LIST,      0, JSEXN_SYNTAXERR, "missing ] after element list")
 MSG_DEF(JSMSG_BRACKET_IN_INDEX,        0, JSEXN_SYNTAXERR, "missing ] in index expression")
 MSG_DEF(JSMSG_BRACKET_OPENED,          2, JSEXN_NOTE, "[ opened at line {0}, column {1}")
@@ -271,6 +270,7 @@ MSG_DEF(JSMSG_OF_AFTER_FOR_LOOP_DECL,  0, JSEXN_SYNTAXERR, "a declaration in the
 MSG_DEF(JSMSG_IN_AFTER_LEXICAL_FOR_DECL,0,JSEXN_SYNTAXERR, "a lexical declaration in the head of a for-in loop can't have an initializer")
 MSG_DEF(JSMSG_INVALID_FOR_IN_DECL_WITH_INIT,0,JSEXN_SYNTAXERR,"for-in loop head declarations may not have initializers")
 MSG_DEF(JSMSG_INVALID_ID,              1, JSEXN_SYNTAXERR, "{0} is an invalid identifier")
+MSG_DEF(JSMSG_SEPARATOR_IN_ZERO_PREFIXED_NUMBER, 0, JSEXN_SYNTAXERR, "numeric separators '_' are not allowed in numbers that start with '0'")
 MSG_DEF(JSMSG_LABEL_NOT_FOUND,         0, JSEXN_SYNTAXERR, "label not found")
 MSG_DEF(JSMSG_LEXICAL_DECL_NOT_IN_BLOCK,   1, JSEXN_SYNTAXERR, "{0} declaration not directly within block")
 MSG_DEF(JSMSG_LEXICAL_DECL_LABEL,      1, JSEXN_SYNTAXERR, "{0} declarations cannot be labelled")
@@ -286,6 +286,7 @@ MSG_DEF(JSMSG_MISSING_EXPR_AFTER_THROW,0, JSEXN_SYNTAXERR, "throw statement is m
 MSG_DEF(JSMSG_MISSING_FORMAL,          0, JSEXN_SYNTAXERR, "missing formal parameter")
 MSG_DEF(JSMSG_MISSING_HEXDIGITS,       0, JSEXN_SYNTAXERR, "missing hexadecimal digits after '0x'")
 MSG_DEF(JSMSG_MISSING_OCTAL_DIGITS,    0, JSEXN_SYNTAXERR, "missing octal digits after '0o'")
+MSG_DEF(JSMSG_MISSING_DIGIT_AFTER_SEPARATOR, 0, JSEXN_SYNTAXERR, "missing digit after '_' numeric separator")
 MSG_DEF(JSMSG_MODULE_SPEC_AFTER_FROM,  0, JSEXN_SYNTAXERR, "missing module specifier after 'from' keyword")
 MSG_DEF(JSMSG_NAME_AFTER_DOT,          0, JSEXN_SYNTAXERR, "missing name after . operator")
 MSG_DEF(JSMSG_NAMED_IMPORTS_OR_NAMESPACE_IMPORT, 0, JSEXN_SYNTAXERR, "expected named imports or namespace import after comma")
@@ -354,7 +355,6 @@ MSG_DEF(JSMSG_COMPUTED_NAME_IN_PATTERN,0, JSEXN_SYNTAXERR, "computed property na
 MSG_DEF(JSMSG_DEFAULT_IN_PATTERN,      0, JSEXN_SYNTAXERR, "destructuring defaults aren't supported in this destructuring declaration")
 MSG_DEF(JSMSG_BAD_NEWTARGET,           0, JSEXN_SYNTAXERR, "new.target only allowed within functions")
 MSG_DEF(JSMSG_ESCAPED_KEYWORD,         0, JSEXN_SYNTAXERR, "keywords must be written literally, without embedded escapes")
-MSG_DEF(JSMSG_MISSING_SEMI_FIELD,      0, JSEXN_SYNTAXERR, "missing ; after field definition")
 MSG_DEF(JSMSG_FIELDS_NOT_SUPPORTED,    0, JSEXN_SYNTAXERR, "fields are not currently supported")
 
 // UTF-8 source text encoding errors
@@ -401,7 +401,6 @@ MSG_DEF(JSMSG_WASM_DROPPED_ELEM_SEG,   0, JSEXN_WASMRUNTIMEERROR, "use of droppe
 MSG_DEF(JSMSG_WASM_DEREF_NULL,         0, JSEXN_WASMRUNTIMEERROR, "dereferencing null pointer")
 MSG_DEF(JSMSG_WASM_BAD_RANGE ,         2, JSEXN_RANGEERR,    "bad {0} {1}")
 MSG_DEF(JSMSG_WASM_BAD_GROW,           1, JSEXN_RANGEERR,    "failed to grow {0}")
-MSG_DEF(JSMSG_WASM_BAD_TBL_GROW_INIT,  1, JSEXN_TYPEERR,     "bad initializer to {0} table")
 MSG_DEF(JSMSG_WASM_TABLE_OUT_OF_BOUNDS, 0, JSEXN_RANGEERR,   "table index out of bounds")
 MSG_DEF(JSMSG_WASM_BAD_UINT32,         2, JSEXN_TYPEERR,     "bad {0} {1}")
 MSG_DEF(JSMSG_WASM_BAD_BUF_ARG,        0, JSEXN_TYPEERR,     "first argument must be an ArrayBuffer or typed array object")
@@ -412,7 +411,7 @@ MSG_DEF(JSMSG_WASM_BAD_ELEMENT,        0, JSEXN_TYPEERR,     "\"element\" proper
 MSG_DEF(JSMSG_WASM_BAD_ELEMENT_GENERALIZED, 0, JSEXN_TYPEERR, "\"element\" property of table descriptor must be \"funcref\" or \"anyref\"")
 MSG_DEF(JSMSG_WASM_BAD_IMPORT_ARG,     0, JSEXN_TYPEERR,     "second argument must be an object")
 MSG_DEF(JSMSG_WASM_BAD_IMPORT_FIELD,   1, JSEXN_TYPEERR,     "import object field '{0}' is not an Object")
-MSG_DEF(JSMSG_WASM_BAD_TABLE_VALUE,    0, JSEXN_TYPEERR,     "can only assign WebAssembly exported functions to Table")
+MSG_DEF(JSMSG_WASM_BAD_FUNCREF_VALUE,  0, JSEXN_TYPEERR,     "can only pass WebAssembly exported functions to funcref")
 MSG_DEF(JSMSG_WASM_BAD_I64_TYPE,       0, JSEXN_TYPEERR,     "cannot pass i64 to or from JS")
 MSG_DEF(JSMSG_WASM_BAD_GLOBAL_TYPE,    0, JSEXN_TYPEERR,     "bad type for a WebAssembly.Global")
 MSG_DEF(JSMSG_WASM_NO_TRANSFER,        0, JSEXN_TYPEERR,     "cannot transfer WebAssembly/asm.js ArrayBuffer")
@@ -489,6 +488,7 @@ MSG_DEF(JSMSG_DEBUG_PROTO,             2, JSEXN_TYPEERR, "{0}.prototype is not a
 MSG_DEF(JSMSG_DEBUG_WRONG_OWNER,       1, JSEXN_TYPEERR, "{0} belongs to a different Debugger")
 MSG_DEF(JSMSG_DEBUG_OPTIMIZED_OUT,     1, JSEXN_ERR, "variable `{0}' has been optimized out")
 MSG_DEF(JSMSG_DEBUG_OPTIMIZED_OUT_FUN, 0, JSEXN_ERR, "function is optimized out")
+MSG_DEF(JSMSG_DEBUG_FORCED_RETURN_DISALLOWED, 0, JSEXN_TYPEERR, "can't force return from a generator before the initial yield")
 MSG_DEF(JSMSG_DEBUG_RESUMPTION_VALUE_DISALLOWED, 0, JSEXN_TYPEERR, "resumption values are disallowed in this hook")
 MSG_DEF(JSMSG_DEBUG_VARIABLE_NOT_FOUND,0, JSEXN_TYPEERR, "variable not found in environment")
 MSG_DEF(JSMSG_DEBUG_WRAPPER_IN_WAY,    3, JSEXN_TYPEERR, "{0} is {1}{2}a global object, but a direct reference is required")
@@ -564,6 +564,7 @@ MSG_DEF(JSMSG_TYPEDOBJECT_NOT_CONSTRUCTIBLE, 0, JSEXN_TYPEERR, "not constructibl
 
 // Array
 MSG_DEF(JSMSG_TOO_LONG_ARRAY,         0, JSEXN_TYPEERR, "Too long array")
+MSG_DEF(JSMSG_DEPRECATED_ARRAY_METHOD, 2, JSEXN_WARN, "Array.{0} is deprecated; use Array.prototype.{1} instead")
 
 // Typed array
 MSG_DEF(JSMSG_BAD_INDEX,               0, JSEXN_RANGEERR, "invalid or out-of-range index")

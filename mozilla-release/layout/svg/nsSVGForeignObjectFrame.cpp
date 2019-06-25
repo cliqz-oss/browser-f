@@ -10,6 +10,9 @@
 // Keep others in (case-insensitive) order:
 #include "ImgDrawResult.h"
 #include "gfxContext.h"
+#include "mozilla/AutoRestore.h"
+#include "mozilla/PresShell.h"
+#include "mozilla/dom/SVGForeignObjectElement.h"
 #include "nsDisplayList.h"
 #include "nsGkAtoms.h"
 #include "nsNameSpaceManager.h"
@@ -17,11 +20,9 @@
 #include "nsRegion.h"
 #include "nsSVGContainerFrame.h"
 #include "SVGObserverUtils.h"
-#include "mozilla/dom/SVGForeignObjectElement.h"
 #include "nsSVGIntegrationUtils.h"
 #include "nsSVGOuterSVGFrame.h"
 #include "nsSVGUtils.h"
-#include "mozilla/AutoRestore.h"
 
 using namespace mozilla;
 using namespace mozilla::dom;
@@ -30,7 +31,7 @@ using namespace mozilla::image;
 //----------------------------------------------------------------------
 // Implementation
 
-nsContainerFrame* NS_NewSVGForeignObjectFrame(nsIPresShell* aPresShell,
+nsContainerFrame* NS_NewSVGForeignObjectFrame(PresShell* aPresShell,
                                               ComputedStyle* aStyle) {
   return new (aPresShell)
       nsSVGForeignObjectFrame(aStyle, aPresShell->GetPresContext());
@@ -86,7 +87,7 @@ nsresult nsSVGForeignObjectFrame::AttributeChanged(int32_t aNameSpaceID,
           nsChangeHint_InvalidateRenderingObservers);
       nsSVGUtils::ScheduleReflowSVG(this);
       // XXXjwatt: why mark intrinsic widths dirty? can't we just use eResize?
-      RequestReflow(nsIPresShell::eStyleChange);
+      RequestReflow(IntrinsicDirty::StyleChange);
     } else if (aAttribute == nsGkAtoms::x || aAttribute == nsGkAtoms::y) {
       // make sure our cached transform matrix gets (lazily) updated
       mCanvasTM = nullptr;
@@ -155,8 +156,8 @@ void nsSVGForeignObjectFrame::BuildDisplayList(nsDisplayListBuilder* aBuilder,
                        &newList);
   DisplayOutline(aBuilder, set);
   BuildDisplayListForNonBlockChildren(aBuilder, set);
-  aLists.Content()->AppendToTop(
-      MakeDisplayItem<nsDisplayForeignObject>(aBuilder, this, &newList));
+  aLists.Content()->AppendNewToTop<nsDisplayForeignObject>(aBuilder, this,
+                                                           &newList);
 }
 
 bool nsSVGForeignObjectFrame::IsSVGTransformed(
@@ -252,7 +253,7 @@ void nsSVGForeignObjectFrame::PaintSVG(gfxContext& aContext,
   // SVG paints in CSS px, but normally frames paint in dev pixels. Here we
   // multiply a CSS-px-to-dev-pixel factor onto aTransform so our children
   // paint correctly.
-  float cssPxPerDevPx = PresContext()->AppUnitsToFloatCSSPixels(
+  float cssPxPerDevPx = nsPresContext::AppUnitsToFloatCSSPixels(
       PresContext()->AppUnitsPerDevPixel());
   gfxMatrix canvasTMForChildren = aTransform;
   canvasTMForChildren.PreScale(cssPxPerDevPx, cssPxPerDevPx);
@@ -260,16 +261,16 @@ void nsSVGForeignObjectFrame::PaintSVG(gfxContext& aContext,
   aContext.Multiply(canvasTMForChildren);
 
   using PaintFrameFlags = nsLayoutUtils::PaintFrameFlags;
-  PaintFrameFlags flags = PaintFrameFlags::PAINT_IN_TRANSFORM;
+  PaintFrameFlags flags = PaintFrameFlags::InTransform;
   if (SVGAutoRenderState::IsPaintingToWindow(aContext.GetDrawTarget())) {
-    flags |= PaintFrameFlags::PAINT_TO_WINDOW;
+    flags |= PaintFrameFlags::ToWindow;
   }
   if (aImgParams.imageFlags & imgIContainer::FLAG_SYNC_DECODE) {
-    flags |= PaintFrameFlags::PAINT_SYNC_DECODE_IMAGES;
+    flags |= PaintFrameFlags::SyncDecodeImages;
   }
   Unused << nsLayoutUtils::PaintFrame(
       &aContext, kid, nsRegion(kidDirtyRect), NS_RGBA(0, 0, 0, 0),
-      nsDisplayListBuilderMode::PAINTING, flags);
+      nsDisplayListBuilderMode::Painting, flags);
 
   aContext.Restore();
 }
@@ -426,7 +427,7 @@ void nsSVGForeignObjectFrame::NotifySVGChanged(uint32_t aFlags) {
   // that, nsSVGOuterSVGFrame::DidReflow will take care of reflowing us
   // synchronously, so there's no need.
   if (needReflow && !PresShell()->IsReflowLocked()) {
-    RequestReflow(nsIPresShell::eResize);
+    RequestReflow(IntrinsicDirty::Resize);
   }
 
   if (needNewCanvasTM) {
@@ -475,8 +476,7 @@ gfxMatrix nsSVGForeignObjectFrame::GetCanvasTM() {
 //----------------------------------------------------------------------
 // Implementation helpers
 
-void nsSVGForeignObjectFrame::RequestReflow(
-    nsIPresShell::IntrinsicDirty aType) {
+void nsSVGForeignObjectFrame::RequestReflow(IntrinsicDirty aType) {
   if (GetStateBits() & NS_FRAME_FIRST_REFLOW)
     // If we haven't had a ReflowSVG() yet, nothing to do.
     return;
@@ -522,7 +522,7 @@ void nsSVGForeignObjectFrame::DoReflow() {
       "style system should ensure that :-moz-svg-foreign-content "
       "does not get styled");
   NS_ASSERTION(reflowInput.ComputedISize() == ISize(wm),
-               "reflow state made child wrong size");
+               "reflow input made child wrong size");
   reflowInput.SetComputedBSize(BSize(wm));
 
   ReflowChild(kid, presContext, desiredSize, reflowInput, 0, 0,

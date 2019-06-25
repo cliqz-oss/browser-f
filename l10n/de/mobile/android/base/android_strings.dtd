@@ -24,9 +24,11 @@
 <!ENTITY firstrun_sync_message2 "Machen Sie da weiter, wo Sie aufgehört haben.">
 <!ENTITY firstrun_sync_subtext2 "Mit Sync können Sie jederzeit auf alle Ihre Lesezeichen, Passwörter und anderen Dinge zugreifen, die Sie in &brandShortName; auf anderen Geräten speichern.">
 <!ENTITY newfirstrun_sync_subtext "Synchronisieren Sie in Firefox für Android gespeicherte Einträge mit Firefox für Windows, macOS oder Linux - privat und sicher.">
+<!ENTITY updatednewfirstrun_sync_subtext "Melden Sie sich mit Ihrem Konto an und nutzen Sie &brandShortName; effektiver.">
 <!ENTITY firstrun_signin_message "Verbinden Sie und legen Sie los">
 <!ENTITY firstrun_signin_button "Bei Sync anmelden">
 <!ENTITY newfirstrun_signin_button "Sync aktivieren">
+<!ENTITY updatednewfirstrun_signin_button "In &brandShortName; anmelden">
 <!ENTITY  onboard_start_button_browser "Mit dem Surfen beginnen">
 <!ENTITY firstrun_button_notnow "Nicht sofort">
 <!ENTITY firstrun_button_next "Weiter">
@@ -530,6 +532,10 @@ shown from Android O while a tab is being queued.-->
 <!ENTITY find_next "Weitersuchen">
 <!ENTITY find_close "Schließen">
 
+<!-- Localization note (find_error) : Error message shown when there is no result for the
+     searched for text in this webpage -->
+<!ENTITY find_error "Suchbegriff nicht gefunden">
+
 <!-- Localization note (media_sending_to, media_play, media_pause, media_stop) : These strings are used
      as alternate text for accessibility. They are not visible in the UI. -->
 <!ENTITY media_sending_to "An Gerät senden">
@@ -690,6 +696,8 @@ shown from Android O while a tab is being queued.-->
 <!ENTITY filepicker_audio_title "Einen Ton auswählen oder aufnehmen">
 <!ENTITY filepicker_image_title "Ein Bild auswählen oder aufnehmen">
 <!ENTITY filepicker_video_title "Ein Video auswählen oder aufnehmen">
+
+<!ENTITY filepicker_permission_denied "Benötigte Berechtigungen nicht gewährt, Dateiauswahl des Systems wird verwendet">
 
 <!-- Site identity popup -->
 <!ENTITY identity_connected_to "Sie sind verbunden mit">
@@ -937,6 +945,7 @@ Picture-in-picture mini window -->
 <!-- Notification channels names -->
 <!ENTITY default_notification_channel "&brandShortName;">
 
+<!ENTITY pref_notification_settings_link "Benachrichtigungs-Einstellungen verwalten">
 <!-- Notification channels names -->
 <!ENTITY default_notification_channel2 "Browser">
 <!ENTITY mls_notification_channel "&vendorShortName;-Standortdienst">

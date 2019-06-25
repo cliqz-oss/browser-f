@@ -23,6 +23,7 @@ const Types = require("../../types/index");
 class ExtensionDetail extends PureComponent {
   static get propTypes() {
     return {
+      children: PropTypes.node,
       // Provided by wrapping the component with FluentReact.withLocalization.
       getString: PropTypes.func.isRequired,
       target: Types.debugTarget.isRequired,
@@ -31,14 +32,20 @@ class ExtensionDetail extends PureComponent {
 
   renderWarnings() {
     const { warnings } = this.props.target.details;
+
+    if (!warnings.length) {
+      return null;
+    }
+
     return dom.section(
       {
-        key: "extension-warnings",
+        className: "debug-target-item__messages",
       },
       warnings.map((warning, index) => {
         return Message(
           {
             level: MESSAGE_LEVEL.WARNING,
+            isCloseable: true,
             key: `warning-${index}`,
           },
           dom.p(
@@ -53,28 +60,10 @@ class ExtensionDetail extends PureComponent {
   }
 
   renderUUID() {
-    const { manifestURL, uuid } = this.props.target.details;
+    const { uuid } = this.props.target.details;
     if (!uuid) {
       return null;
     }
-
-    const value = [
-      uuid,
-      Localized(
-        {
-          id: "about-debugging-extension-manifest-link",
-          key: "manifest",
-        },
-        dom.a(
-          {
-            className: "extension-detail__manifest js-manifest-url",
-            href: manifestURL,
-            target: "_blank",
-          },
-          "Manifest URL",
-        )
-      ),
-    ];
 
     return Localized(
       {
@@ -83,9 +72,8 @@ class ExtensionDetail extends PureComponent {
       },
       FieldPair(
         {
-          slug: "uuid",
           label: "Internal UUID",
-          value,
+          value: uuid,
         }
       )
     );
@@ -101,7 +89,6 @@ class ExtensionDetail extends PureComponent {
       },
       FieldPair(
         {
-          slug: "extension",
           label: "Extension ID",
           value: id,
         }
@@ -122,7 +109,6 @@ class ExtensionDetail extends PureComponent {
       },
       FieldPair(
         {
-          slug: "location",
           label: "Location",
           value: location,
         }
@@ -130,19 +116,50 @@ class ExtensionDetail extends PureComponent {
     );
   }
 
+  renderManifest() {
+    const { manifestURL } = this.props.target.details;
+    if (!manifestURL) {
+      return null;
+    }
+
+    const link = dom.a(
+      {
+        className: "qa-manifest-url",
+        href: manifestURL,
+        target: "_blank",
+      },
+      manifestURL,
+    );
+
+    return Localized(
+      {
+        id: "about-debugging-extension-manifest-url",
+        attrs: { label: true },
+      },
+      FieldPair(
+        {
+          label: "Manifest URL",
+          value: link,
+        }
+      )
+    );
+  }
+
   render() {
-    return [
+    return dom.section(
+      {
+        className: "debug-target-item__detail",
+      },
       this.renderWarnings(),
       dom.dl(
-        {
-          key: "extension-detail",
-          className: "extension-detail",
-        },
+        {},
         this.renderLocation(),
         this.renderExtensionId(),
         this.renderUUID(),
+        this.renderManifest(),
+        this.props.children,
       ),
-    ];
+    );
   }
 }
 

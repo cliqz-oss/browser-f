@@ -80,6 +80,9 @@
 
 #include "mozilla/ipc/TestShellParent.h"
 #include "mozilla/ipc/XPCShellEnvironment.h"
+#if defined(XP_WIN)
+#  include "mozilla/WindowsConsole.h"
+#endif
 #include "mozilla/WindowsDllBlocklist.h"
 
 #include "GMPProcessChild.h"
@@ -94,7 +97,7 @@
 #  include "mozilla/RemoteSandboxBrokerProcessChild.h"
 #endif
 
-#if defined(MOZ_CONTENT_SANDBOX)
+#if defined(MOZ_SANDBOX)
 #  include "mozilla/SandboxSettings.h"
 #  include "mozilla/Preferences.h"
 #endif
@@ -259,14 +262,6 @@ void XRE_SetProcessType(const char* aProcessTypeString) {
   }
 }
 
-// FIXME/bug 539522: this out-of-place function is stuck here because
-// IPDL wants access to this crashreporter interface, and
-// crashreporter is built in such a way to make that awkward
-bool XRE_TakeMinidumpForChild(uint32_t aChildPid, nsIFile** aDump,
-                              uint32_t* aSequence) {
-  return CrashReporter::TakeMinidumpForChild(aChildPid, aDump, aSequence);
-}
-
 bool
 #if defined(XP_WIN)
 XRE_SetRemoteExceptionHandler(const char* aPipe /*= 0*/,
@@ -295,7 +290,7 @@ void SetTaskbarGroupId(const nsString& aId) {
 }
 #endif
 
-#if defined(MOZ_CONTENT_SANDBOX)
+#if defined(MOZ_SANDBOX)
 void AddContentSandboxLevelAnnotation() {
   if (XRE_GetProcessType() == GeckoProcessType_Content) {
     int level = GetEffectiveContentSandboxLevel();
@@ -303,7 +298,7 @@ void AddContentSandboxLevelAnnotation() {
         CrashReporter::Annotation::ContentSandboxLevel, level);
   }
 }
-#endif /* MOZ_CONTENT_SANDBOX */
+#endif /* MOZ_SANDBOX */
 
 namespace {
 
@@ -381,19 +376,7 @@ nsresult XRE_InitChildProcess(int aArgc, char* aArgv[],
   // Try to attach console to the parent process.
   // It will succeed when the parent process is a command line,
   // so that stdio will be displayed in it.
-  if (AttachConsole(ATTACH_PARENT_PROCESS)) {
-    // Change std handles to refer to new console handles.
-    // Before doing so, ensure that stdout/stderr haven't been
-    // redirected to a valid file
-    if (_fileno(stdout) == -1 || _get_osfhandle(fileno(stdout)) == -1)
-      freopen("CONOUT$", "w", stdout);
-    // Merge stderr into CONOUT$ since there isn't any `CONERR$`.
-    // http://msdn.microsoft.com/en-us/library/windows/desktop/ms683231%28v=vs.85%29.aspx
-    if (_fileno(stderr) == -1 || _get_osfhandle(fileno(stderr)) == -1)
-      freopen("CONOUT$", "w", stderr);
-    if (_fileno(stdin) == -1 || _get_osfhandle(fileno(stdin)) == -1)
-      freopen("CONIN$", "r", stdin);
-  }
+  UseParentConsole();
 
 #  if defined(MOZ_SANDBOX)
   if (aChildData->sandboxTargetServices) {
@@ -420,11 +403,11 @@ nsresult XRE_InitChildProcess(int aArgc, char* aArgv[],
 #ifdef XP_MACOSX
   if (aArgc < 1) return NS_ERROR_FAILURE;
 
-#  if defined(MOZ_CONTENT_SANDBOX)
+#  if defined(MOZ_SANDBOX)
   // Save the original number of arguments to pass to the sandbox
   // setup routine which also uses the crash server argument.
   int allArgc = aArgc;
-#  endif /* MOZ_CONTENT_SANDBOX */
+#  endif /* MOZ_SANDBOX */
 
   const char* const mach_port_name = aArgv[--aArgc];
 
@@ -502,13 +485,13 @@ nsresult XRE_InitChildProcess(int aArgc, char* aArgv[],
     return NS_ERROR_FAILURE;
   }
 
-#  if defined(MOZ_CONTENT_SANDBOX)
+#  if defined(MOZ_SANDBOX)
   std::string sandboxError;
-  if (!EarlyStartMacSandboxIfEnabled(allArgc, aArgv, sandboxError)) {
+  if (!GeckoChildProcessHost::StartMacSandbox(allArgc, aArgv, sandboxError)) {
     printf_stderr("Sandbox error: %s\n", sandboxError.c_str());
     MOZ_CRASH("Sandbox initialization failed");
   }
-#  endif /* MOZ_CONTENT_SANDBOX */
+#  endif /* MOZ_SANDBOX */
 
   pt.reset();
 #endif /* XP_MACOSX */
@@ -683,11 +666,6 @@ nsresult XRE_InitChildProcess(int aArgc, char* aArgv[],
     MessageLoop uiMessageLoop(uiLoopType);
     {
       nsAutoPtr<ProcessChild> process;
-
-#ifdef XP_WIN
-      mozilla::ipc::windows::InitUIThread();
-#endif
-
       switch (XRE_GetProcessType()) {
         case GeckoProcessType_Default:
           MOZ_CRASH("This makes no sense");
@@ -763,7 +741,7 @@ nsresult XRE_InitChildProcess(int aArgc, char* aArgv[],
         OverrideDefaultLocaleIfNeeded();
       }
 
-#if defined(MOZ_CONTENT_SANDBOX)
+#if defined(MOZ_SANDBOX)
       AddContentSandboxLevelAnnotation();
 #endif
 

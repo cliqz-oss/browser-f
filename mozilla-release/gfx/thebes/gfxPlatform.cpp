@@ -70,6 +70,10 @@
 #  include "mozilla/gfx/DeviceManagerDx.h"
 #endif
 
+#ifdef MOZ_WAYLAND
+#  include "mozilla/widget/nsWaylandDisplayShutdown.h"
+#endif
+
 #include "nsGkAtoms.h"
 #include "gfxPlatformFontList.h"
 #include "gfxContext.h"
@@ -83,7 +87,6 @@
 #include "gfxFontMissingGlyphs.h"
 
 #include "nsExceptionHandler.h"
-#include "nsUnicodeRange.h"
 #include "nsServiceManagerUtils.h"
 #include "nsTArray.h"
 #include "nsIObserverService.h"
@@ -296,7 +299,7 @@ void CrashStatsLogForwarder::UpdateCrashReport() {
 }
 
 class LogForwarderEvent : public Runnable {
-  ~LogForwarderEvent() override = default;
+  virtual ~LogForwarderEvent() = default;
 
  public:
   NS_INLINE_DECL_REFCOUNTING_INHERITED(LogForwarderEvent, Runnable)
@@ -349,7 +352,7 @@ void CrashStatsLogForwarder::Log(const std::string& aString) {
 }
 
 class CrashTelemetryEvent : public Runnable {
-  ~CrashTelemetryEvent() override = default;
+  virtual ~CrashTelemetryEvent() = default;
 
  public:
   NS_INLINE_DECL_REFCOUNTING_INHERITED(CrashTelemetryEvent, Runnable)
@@ -568,12 +571,17 @@ static void WebRenderDebugPrefChangeCallback(const char* aPrefName, void*) {
   GFX_WEBRENDER_DEBUG(".texture-cache.clear-evicted",
                       wr::DebugFlags_TEXTURE_CACHE_DBG_CLEAR_EVICTED)
   GFX_WEBRENDER_DEBUG(".picture-caching", wr::DebugFlags_PICTURE_CACHING_DBG)
-  GFX_WEBRENDER_DEBUG(".texture-cache.disable-shrink",
-                      wr::DebugFlags_TEXTURE_CACHE_DBG_DISABLE_SHRINK)
   GFX_WEBRENDER_DEBUG(".primitives", wr::DebugFlags_PRIMITIVE_DBG)
   // Bit 18 is for the zoom display, which requires the mouse position and thus
   // currently only works in wrench.
   GFX_WEBRENDER_DEBUG(".small-screen", wr::DebugFlags_SMALL_SCREEN)
+  GFX_WEBRENDER_DEBUG(".disable-opaque-pass",
+                      wr::DebugFlags_DISABLE_OPAQUE_PASS)
+  GFX_WEBRENDER_DEBUG(".disable-alpha-pass", wr::DebugFlags_DISABLE_ALPHA_PASS)
+  GFX_WEBRENDER_DEBUG(".disable-clip-masks", wr::DebugFlags_DISABLE_CLIP_MASKS)
+  GFX_WEBRENDER_DEBUG(".disable-text-prims", wr::DebugFlags_DISABLE_TEXT_PRIMS)
+  GFX_WEBRENDER_DEBUG(".disable-gradient-prims",
+                      wr::DebugFlags_DISABLE_GRADIENT_PRIMS)
 #undef GFX_WEBRENDER_DEBUG
 
   gfx::gfxVars::SetWebRenderDebugFlags(flags.bits);
@@ -858,6 +866,19 @@ void gfxPlatform::Init() {
 
   if (XRE_IsParentProcess()) {
     WrRolloutPrefShutdownSaver::AddShutdownObserver();
+
+    nsCOMPtr<nsIFile> profDir;
+    nsresult rv = NS_GetSpecialDirectory(NS_APP_PROFILE_DIR_STARTUP,
+                                         getter_AddRefs(profDir));
+    if (NS_FAILED(rv)) {
+      gfxVars::SetProfDirectory(nsString());
+    } else {
+      nsAutoString path;
+      profDir->GetPath(path);
+      gfxVars::SetProfDirectory(nsString(path));
+    }
+
+    gfxUtils::RemoveShaderCacheFromDiskIfNecessary();
   }
 
   // Drop a note in the crash report if we end up forcing an option that could
@@ -923,6 +944,7 @@ void gfxPlatform::Init() {
 #else
 #  error "No gfxPlatform implementation available"
 #endif
+  gPlatform->PopulateScreenInfo();
   gPlatform->InitAcceleration();
   gPlatform->InitWebRenderConfig();
   // When using WebRender, we defer initialization of the D3D11 devices until
@@ -948,10 +970,6 @@ void gfxPlatform::Init() {
     }
   };
   gfxPrefs::SetLayoutFrameRateChangeCallback(updateFrameRateCallback);
-  gfxPrefs::SetIsLowEndMachineDoNotUseDirectlyChangeCallback(
-      updateFrameRateCallback);
-  gfxPrefs::SetAdjustToMachineChangeCallback(updateFrameRateCallback);
-  gfxPrefs::SetResistFingerprintingChangeCallback(updateFrameRateCallback);
   // Set up the vsync source for the parent process.
   ReInitFrameRate();
 
@@ -964,7 +982,6 @@ void gfxPlatform::Init() {
 
   InitLayersIPC();
 
-  gPlatform->PopulateScreenInfo();
   gPlatform->ComputeTileSize();
 
 #ifdef MOZ_ENABLE_FREETYPE
@@ -1055,19 +1072,6 @@ void gfxPlatform::Init() {
       Preferences::SetBool(FONT_VARIATIONS_PREF, false);
       Preferences::Lock(FONT_VARIATIONS_PREF);
     }
-
-    nsCOMPtr<nsIFile> profDir;
-    rv = NS_GetSpecialDirectory(NS_APP_PROFILE_DIR_STARTUP,
-                                getter_AddRefs(profDir));
-    if (NS_FAILED(rv)) {
-      gfxVars::SetProfDirectory(nsString());
-    } else {
-      nsAutoString path;
-      profDir->GetPath(path);
-      gfxVars::SetProfDirectory(nsString(path));
-    }
-
-    gfxUtils::RemoveShaderCacheFromDiskIfNecessary();
   }
 
   nsCOMPtr<nsIObserverService> obs = services::GetObserverService();
@@ -1276,6 +1280,9 @@ void gfxPlatform::ShutdownLayersIPC() {
       layers::PaintThread::Shutdown();
     }
   } else if (XRE_IsParentProcess()) {
+#ifdef MOZ_WAYLAND
+    widget::WaylandDisplayShutdown();
+#endif
     gfx::VRManagerChild::ShutDown();
     layers::CompositorManagerChild::Shutdown();
     layers::ImageBridgeChild::ShutDown();
@@ -1715,11 +1722,17 @@ nsAutoCString gfxPlatform::GetDefaultFontName(
   // this one variable:
   nsAutoCString result;
 
-  gfxFontFamily* fontFamily =
+  FamilyAndGeneric fam =
       gfxPlatformFontList::PlatformFontList()->GetDefaultFontFamily(
           aLangGroup, aGenericFamily);
-  if (fontFamily) {
-    fontFamily->LocalizedName(result);
+  if (fam.mFamily.mIsShared) {
+    if (fam.mFamily.mShared) {
+      fontlist::FontList* fontList =
+          gfxPlatformFontList::PlatformFontList()->SharedFontList();
+      result = fam.mFamily.mShared->DisplayName().AsString(fontList);
+    }
+  } else if (fam.mFamily.mUnshared) {
+    fam.mFamily.mUnshared->LocalizedName(result);
   }  // (else, leave 'result' empty)
 
   return result;
@@ -2151,23 +2164,6 @@ static void ShutdownCMS() {
   gCMSInitialized = false;
 }
 
-// default SetupClusterBoundaries, based on Unicode properties;
-// platform subclasses may override if they wish
-void gfxPlatform::SetupClusterBoundaries(gfxTextRun* aTextRun,
-                                         const char16_t* aString) {
-  if (aTextRun->GetFlags() & gfx::ShapedTextFlags::TEXT_IS_8BIT) {
-    // 8-bit text doesn't have clusters.
-    // XXX is this true in all languages???
-    // behdad: don't think so.  Czech for example IIRC has a
-    // 'ch' grapheme.
-    // jfkthame: but that's not expected to behave as a grapheme cluster
-    // for selection/editing/etc.
-    return;
-  }
-
-  aTextRun->SetupClusterBoundaries(0, aString, aTextRun->GetLength());
-}
-
 int32_t gfxPlatform::GetBidiNumeralOption() {
   if (mBidiNumeralOption == UNINITIALIZED_VALUE) {
     mBidiNumeralOption = Preferences::GetInt(BIDI_NUMERAL_PREF, 0);
@@ -2532,7 +2528,7 @@ static bool CalculateWrQualifiedPrefValue() {
 }
 
 static FeatureState& WebRenderHardwareQualificationStatus(
-    bool aHasBattery, nsCString& aOutFailureId) {
+    const IntSize& aScreenSize, bool aHasBattery, nsCString& aOutFailureId) {
   FeatureState& featureWebRenderQualified =
       gfxConfig::GetFeature(Feature::WEBRENDER_QUALIFIED);
   featureWebRenderQualified.EnableByDefault();
@@ -2540,7 +2536,7 @@ static FeatureState& WebRenderHardwareQualificationStatus(
   if (Preferences::HasUserValue(WR_ROLLOUT_HW_QUALIFIED_OVERRIDE)) {
     if (!Preferences::GetBool(WR_ROLLOUT_HW_QUALIFIED_OVERRIDE)) {
       featureWebRenderQualified.Disable(
-          FeatureStatus::Blocked, "HW qualification pref override",
+          FeatureStatus::BlockedOverride, "HW qualification pref override",
           NS_LITERAL_CSTRING("FEATURE_FAILURE_WR_QUALIFICATION_OVERRIDE"));
     }
     return featureWebRenderQualified;
@@ -2551,12 +2547,8 @@ static FeatureState& WebRenderHardwareQualificationStatus(
   if (NS_SUCCEEDED(gfxInfo->GetFeatureStatus(nsIGfxInfo::FEATURE_WEBRENDER,
                                              aOutFailureId, &status))) {
     if (status != nsIGfxInfo::FEATURE_STATUS_OK) {
-      featureWebRenderQualified.Disable(FeatureStatus::Blocked,
+      featureWebRenderQualified.Disable(FeatureStatus::Blacklisted,
                                         "No qualified hardware", aOutFailureId);
-    } else if (aHasBattery) {
-      featureWebRenderQualified.Disable(
-          FeatureStatus::Blocked, "Has battery",
-          NS_LITERAL_CSTRING("FEATURE_FAILURE_WR_HAS_BATTERY"));
     } else {
       nsAutoString adapterVendorID;
       gfxInfo->GetAdapterVendorID(adapterVendorID);
@@ -2567,41 +2559,129 @@ static FeatureState& WebRenderHardwareQualificationStatus(
       int32_t deviceID = adapterDeviceID.ToInteger(&valid, 16);
       if (valid != NS_OK) {
         featureWebRenderQualified.Disable(
-            FeatureStatus::Blocked, "Bad device id",
+            FeatureStatus::BlockedDeviceUnknown, "Bad device id",
             NS_LITERAL_CSTRING("FEATURE_FAILURE_BAD_DEVICE_ID"));
       } else {
-        if (adapterVendorID == u"0x10de") {
+#ifdef NIGHTLY_BUILD
+        // For Intel devices, if we have a battery, ignore it if the screen is
+        // small enough. Note that we always check for a battery with NVIDIA
+        // because we do not have a limited/curated set of devices to support
+        // WebRender on.
+        const int32_t kMaxPixelsBattery = 1920 * 1200;  // WUXGA
+        const int32_t screenPixels = aScreenSize.width * aScreenSize.height;
+        bool disableForBattery = aHasBattery;
+        if (adapterVendorID == u"0x8086" && screenPixels > 0 &&
+            screenPixels <= kMaxPixelsBattery) {
+          disableForBattery = false;
+        }
+#else
+        bool disableForBattery = aHasBattery;
+#endif
+
+        if (disableForBattery) {
+          featureWebRenderQualified.Disable(
+              FeatureStatus::BlockedHasBattery, "Has battery",
+              NS_LITERAL_CSTRING("FEATURE_FAILURE_WR_HAS_BATTERY"));
+        } else if (adapterVendorID == u"0x10de") {
           if (deviceID < 0x6c0) {
             // 0x6c0 is the lowest Fermi device id. Unfortunately some Tesla
             // devices that don't support D3D 10.1 have higher deviceIDs. They
             // will be included, but blocked by ANGLE.
             featureWebRenderQualified.Disable(
-                FeatureStatus::Blocked, "Device too old",
+                FeatureStatus::BlockedDeviceTooOld, "Device too old",
                 NS_LITERAL_CSTRING("FEATURE_FAILURE_DEVICE_TOO_OLD"));
           }
-#ifdef NIGHTLY_BUILD
         } else if (adapterVendorID == u"0x1002") {  // AMD
           // AMD deviceIDs are not very well ordered. This
           // condition is based off the information in gpu-db
           if ((deviceID >= 0x6600 && deviceID < 0x66b0) ||
+              (deviceID >= 0x6700 && deviceID < 0x6720) ||
               (deviceID >= 0x6780 && deviceID < 0x6840) ||
               (deviceID >= 0x6860 && deviceID < 0x6880) ||
               (deviceID >= 0x6900 && deviceID < 0x6a00) ||
               (deviceID == 0x7300) ||
-              (deviceID >= 0x9830 && deviceID < 0x9870)) {
-            // we have a desktop SI, CIK, VI, or GFX9 device
+              (deviceID >= 0x9830 && deviceID < 0x9870) ||
+              (deviceID >= 0x9900 && deviceID < 0x9a00)) {
+            // we have a desktop CAYMAN, SI, CIK, VI, or GFX9 device
+            // so treat the device as qualified.
           } else {
             featureWebRenderQualified.Disable(
-                FeatureStatus::Blocked, "Device too old",
+                FeatureStatus::BlockedDeviceTooOld, "Device too old",
                 NS_LITERAL_CSTRING("FEATURE_FAILURE_DEVICE_TOO_OLD"));
           }
+#ifdef NIGHTLY_BUILD
         } else if (adapterVendorID == u"0x8086") {  // Intel
           const uint16_t supportedDevices[] = {
-              0x191d,  // HD Graphics P530
-              0x192d,  // Iris Pro Graphics P555
-              0x1912,  // HD Graphics 530
-              0x5912,  // HD Graphics 630
-              0x3e92,  // UHD Graphics 630
+              // skylake gt2+
+              0x1912,
+              0x1913,
+              0x1915,
+              0x1916,
+              0x1917,
+              0x191a,
+              0x191b,
+              0x191d,
+              0x191e,
+              0x1921,
+              0x1923,
+              0x1926,
+              0x1927,
+              0x192b,
+              0x1932,
+              0x193b,
+              0x193d,
+
+              // kabylake gt2+
+              0x5912,
+              0x5916,
+              0x5917,
+              0x591a,
+              0x591b,
+              0x591c,
+              0x591d,
+              0x591e,
+              0x5921,
+              0x5926,
+              0x5923,
+              0x5927,
+              0x593b,
+
+              // coffeelake gt2+
+              0x3e91,
+              0x3e92,
+              0x3e96,
+              0x3e98,
+              0x3e9a,
+              0x3e9b,
+              0x3e94,
+              0x3ea0,
+              0x3ea9,
+              0x3ea2,
+              0x3ea6,
+              0x3ea7,
+              0x3ea8,
+              0x3ea5,
+
+              // broadwell gt2+
+              0x1612,
+              0x1616,
+              0x161a,
+              0x161b,
+              0x161d,
+              0x161e,
+              0x1622,
+              0x1626,
+              0x162a,
+              0x162b,
+              0x162d,
+              0x162e,
+              0x1632,
+              0x1636,
+              0x163a,
+              0x163b,
+              0x163d,
+              0x163e,
+
               // HD Graphics 4600
               0x0412,
               0x0416,
@@ -2618,24 +2698,41 @@ static FeatureState& WebRenderHardwareQualificationStatus(
           for (uint16_t id : supportedDevices) {
             if (deviceID == id) {
               supported = true;
+              break;
             }
           }
           if (!supported) {
             featureWebRenderQualified.Disable(
-                FeatureStatus::Blocked, "Device too old",
+                FeatureStatus::BlockedDeviceTooOld, "Device too old",
                 NS_LITERAL_CSTRING("FEATURE_FAILURE_DEVICE_TOO_OLD"));
           }
-#endif
+#  ifdef MOZ_WIDGET_GTK
+          else {
+            // Performance is not great on 4k screens with WebRender + Linux.
+            // Disable it for now if it is too large.
+            const int32_t kMaxPixelsLinux = 3440 * 1440;  // UWQHD
+            if (screenPixels > kMaxPixelsLinux) {
+              featureWebRenderQualified.Disable(
+                  FeatureStatus::BlockedScreenTooLarge, "Screen size too large",
+                  NS_LITERAL_CSTRING("FEATURE_FAILURE_SCREEN_SIZE_TOO_LARGE"));
+            } else if (screenPixels <= 0) {
+              featureWebRenderQualified.Disable(
+                  FeatureStatus::BlockedScreenUnknown, "Screen size unknown",
+                  NS_LITERAL_CSTRING("FEATURE_FAILURE_SCREEN_SIZE_UNKNOWN"));
+            }
+          }
+#  endif  // MOZ_WIDGET_GTK
+#endif    // NIGHTLY_BUILD
         } else {
           featureWebRenderQualified.Disable(
-              FeatureStatus::Blocked, "Unsupported vendor",
+              FeatureStatus::BlockedVendorUnsupported, "Unsupported vendor",
               NS_LITERAL_CSTRING("FEATURE_FAILURE_UNSUPPORTED_VENDOR"));
         }
       }
     }
   } else {
     featureWebRenderQualified.Disable(
-        FeatureStatus::Blocked, "gfxInfo is broken",
+        FeatureStatus::BlockedNoGfxInfo, "gfxInfo is broken",
         NS_LITERAL_CSTRING("FEATURE_FAILURE_WR_NO_GFX_INFO"));
   }
   return featureWebRenderQualified;
@@ -2672,7 +2769,8 @@ void gfxPlatform::InitWebRenderConfig() {
 
   nsCString failureId;
   FeatureState& featureWebRenderQualified =
-      WebRenderHardwareQualificationStatus(HasBattery(), failureId);
+      WebRenderHardwareQualificationStatus(GetScreenSize(), HasBattery(),
+                                           failureId);
   FeatureState& featureWebRender = gfxConfig::GetFeature(Feature::WEBRENDER);
 
   featureWebRender.DisableByDefault(
@@ -2705,7 +2803,8 @@ void gfxPlatform::InitWebRenderConfig() {
   // HW_COMPOSITING being disabled implies interfacing with the GPU might break
   if (!gfxConfig::IsEnabled(Feature::HW_COMPOSITING)) {
     featureWebRender.ForceDisable(
-        FeatureStatus::Unavailable, "Hardware compositing is disabled",
+        FeatureStatus::UnavailableNoHwCompositing,
+        "Hardware compositing is disabled",
         NS_LITERAL_CSTRING("FEATURE_FAILURE_WEBRENDER_NEED_HWCOMP"));
   }
 
@@ -2713,20 +2812,20 @@ void gfxPlatform::InitWebRenderConfig() {
 #ifdef XP_WIN
   if (!gfxConfig::IsEnabled(Feature::GPU_PROCESS)) {
     featureWebRender.ForceDisable(
-        FeatureStatus::Unavailable, "GPU Process is disabled",
+        FeatureStatus::UnavailableNoGpuProcess, "GPU Process is disabled",
         NS_LITERAL_CSTRING("FEATURE_FAILURE_GPU_PROCESS_DISABLED"));
   }
 #endif
 
   if (InSafeMode()) {
     featureWebRender.ForceDisable(
-        FeatureStatus::Unavailable, "Safe-mode is enabled",
+        FeatureStatus::UnavailableInSafeMode, "Safe-mode is enabled",
         NS_LITERAL_CSTRING("FEATURE_FAILURE_SAFE_MODE"));
   }
 
 #ifndef MOZ_BUILD_WEBRENDER
   featureWebRender.ForceDisable(
-      FeatureStatus::Unavailable, "Build doesn't include WebRender",
+      FeatureStatus::UnavailableNotBuilt, "Build doesn't include WebRender",
       NS_LITERAL_CSTRING("FEATURE_FAILURE_NO_WEBRENDER"));
 #endif
 
@@ -2734,7 +2833,7 @@ void gfxPlatform::InitWebRenderConfig() {
   if (Preferences::GetBool("gfx.webrender.force-angle", false)) {
     if (!gfxConfig::IsEnabled(Feature::D3D11_HW_ANGLE)) {
       featureWebRender.ForceDisable(
-          FeatureStatus::Unavailable, "ANGLE is disabled",
+          FeatureStatus::UnavailableNoAngle, "ANGLE is disabled",
           NS_LITERAL_CSTRING("FEATURE_FAILURE_ANGLE_DISABLED"));
     } else {
       gfxVars::SetUseWebRenderANGLE(gfxConfig::IsEnabled(Feature::WEBRENDER));
@@ -2742,13 +2841,9 @@ void gfxPlatform::InitWebRenderConfig() {
   }
 #endif
 
-  if (Preferences::GetBool("gfx.webrender.program-binary", false)) {
-    gfxVars::SetUseWebRenderProgramBinary(
+  if (Preferences::GetBool("gfx.webrender.program-binary-disk", false)) {
+    gfxVars::SetUseWebRenderProgramBinaryDisk(
         gfxConfig::IsEnabled(Feature::WEBRENDER));
-    if (Preferences::GetBool("gfx.webrender.program-binary-disk", false)) {
-      gfxVars::SetUseWebRenderProgramBinaryDisk(
-          gfxConfig::IsEnabled(Feature::WEBRENDER));
-    }
   }
 
 #ifdef MOZ_WIDGET_ANDROID
@@ -2771,6 +2866,16 @@ void gfxPlatform::InitWebRenderConfig() {
           WebRenderDebugPrefChangeCallback, WR_DEBUG_PREF);
     }
   }
+#if defined(MOZ_WIDGET_GTK)
+  else if (gfxConfig::IsEnabled(Feature::HW_COMPOSITING)) {
+    // Hardware compositing should be disabled by default if we aren't using
+    // WebRender. We had to check if it is enabled at all, because it may
+    // already have been forced disabled (e.g. safe mode, headless). It may
+    // still be forced on by the user, and if so, this should have no effect.
+    gfxConfig::Disable(Feature::HW_COMPOSITING, FeatureStatus::Blocked,
+                       "Acceleration blocked by platform");
+  }
+#endif
 
 #ifdef XP_WIN
   if (Preferences::GetBool("gfx.webrender.dcomp-win.enabled", false)) {
@@ -2916,12 +3021,6 @@ bool gfxPlatform::ContentUsesTiling() const {
           contentUsesPOMTP);
 }
 
-/* static */
-bool gfxPlatform::ShouldAdjustForLowEndMachine() {
-  return gfxPrefs::AdjustToMachine() && !gfxPrefs::ResistFingerprinting() &&
-         gfxPrefs::IsLowEndMachineDoNotUseDirectly();
-}
-
 /***
  * The preference "layout.frame_rate" has 3 meanings depending on the value:
  *
@@ -2948,7 +3047,7 @@ bool gfxPlatform::IsInLayoutAsapMode() {
 
 /* static */
 bool gfxPlatform::ForceSoftwareVsync() {
-  return ShouldAdjustForLowEndMachine() || gfxPrefs::LayoutFrameRate() > 0 ||
+  return gfxPrefs::LayoutFrameRate() > 0 ||
          recordreplay::IsRecordingOrReplaying();
 }
 
@@ -2962,9 +3061,7 @@ int gfxPlatform::GetSoftwareVsyncRate() {
 }
 
 /* static */
-int gfxPlatform::GetDefaultFrameRate() {
-  return ShouldAdjustForLowEndMachine() ? 30 : 60;
-}
+int gfxPlatform::GetDefaultFrameRate() { return 60; }
 
 /* static */
 void gfxPlatform::ReInitFrameRate() {
@@ -3091,6 +3188,10 @@ class FrameStatsComparator {
 };
 
 void gfxPlatform::NotifyFrameStats(nsTArray<FrameStats>&& aFrameStats) {
+  if (!gfxPrefs::LoggingSlowFramesEnabled()) {
+    return;
+  }
+
   FrameStatsComparator comp;
   for (FrameStats& f : aFrameStats) {
     mFrameStats.InsertElementSorted(f, comp);

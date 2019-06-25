@@ -5,14 +5,14 @@
 
 // This test will be idle for a long period to give a chance to the service worker to
 // timeout.
-requestLongerTimeout(2);
+requestLongerTimeout(3);
 
 /* import-globals-from helper-serviceworker.js */
 Services.scriptloader.loadSubScript(CHROME_URL_ROOT + "helper-serviceworker.js", this);
 
 const SW_TAB_URL = URL_ROOT + "resources/service-workers/empty-sw.html";
 const SW_URL = URL_ROOT + "resources/service-workers/empty-sw.js";
-const SW_TIMEOUT = 1000;
+const SW_TIMEOUT = 4000;
 
 // This is a migration from:
 // https://searchfox.org/mozilla-central/source/devtools/client/aboutdebugging/test/browser_service_workers_timeout.js
@@ -57,19 +57,20 @@ add_task(async function() {
   info("Click on inspect and wait for the toolbox to open");
   const onToolboxReady = gDevTools.once("toolbox-ready");
   inspectButton.click();
-  const toolbox = await onToolboxReady;
+  await onToolboxReady;
 
-  // Wait for more 10 times the service worker timeout to check that the toolbox prevents
+  // Wait for more 5 times the service worker timeout to check that the toolbox prevents
   // the worker from being destroyed.
-  await wait(SW_TIMEOUT * 10);
+  await wait(SW_TIMEOUT * 5);
 
-  // Check that the service worker is still running, even after waiting 10 times the
+  // Check that the service worker is still running, even after waiting 5 times the
   // service worker timeout.
   const hasInspectButton = !!getInspectButton(SW_URL, document);
   ok(hasInspectButton, "Service worker target still has an inspect button");
 
   info("Destroy the toolbox");
-  await toolbox.destroy();
+  const devtoolsTab = gBrowser.selectedTab;
+  await closeAboutDevtoolsToolbox(document, devtoolsTab, window);
 
   // After stopping the toolbox, the service worker instance should be released and the
   // service worker registration should be displayed as stopped again.
@@ -89,10 +90,10 @@ add_task(async function() {
 
 function getStartButton(workerText, doc) {
   const target = findDebugTargetByText(workerText, doc);
-  return target ? target.querySelector(".js-start-button") : null;
+  return target ? target.querySelector(".qa-start-button") : null;
 }
 
 function getInspectButton(workerText, doc) {
   const target = findDebugTargetByText(workerText, doc);
-  return target ? target.querySelector(".js-debug-target-inspect-button") : null;
+  return target ? target.querySelector(".qa-debug-target-inspect-button") : null;
 }

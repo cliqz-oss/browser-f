@@ -45,8 +45,8 @@ namespace mozilla {
 class MediaContainerType;
 
 // EME Key System String.
-extern const nsLiteralCString kEMEKeySystemClearkey;
-extern const nsLiteralCString kEMEKeySystemWidevine;
+#define EME_KEY_SYSTEM_CLEARKEY "org.w3.clearkey"
+#define EME_KEY_SYSTEM_WIDEVINE "com.widevine.alpha"
 
 /**
  * ReentrantMonitorConditionallyEnter
@@ -544,6 +544,10 @@ inline void AppendStringIfNotEmpty(nsACString& aDest, nsACString&& aSrc) {
     aDest.Append(aSrc);
   }
 }
+
+// Returns true if we're running on a cellular connection; 2G, 3G, etc.
+// Main thread only.
+bool OnCellularConnection();
 
 }  // end namespace mozilla
 

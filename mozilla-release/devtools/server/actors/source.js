@@ -8,15 +8,14 @@
 
 const { Ci } = require("chrome");
 const { setBreakpointAtEntryPoints } = require("devtools/server/actors/breakpoint");
-const { createValueGrip } = require("devtools/server/actors/object/utils");
 const { ActorClassWithSpec } = require("devtools/shared/protocol");
 const DevToolsUtils = require("devtools/shared/DevToolsUtils");
 const { assert, fetch } = DevToolsUtils;
 const { joinURI } = require("devtools/shared/path");
 const { sourceSpec } = require("devtools/shared/specs/source");
-const { findClosestScriptBySource } = require("devtools/server/actors/utils/closest-scripts");
 
-loader.lazyRequireGetter(this, "arrayBufferGrip", "devtools/server/actors/array-buffer", true);
+loader.lazyRequireGetter(this, "ArrayBufferActor", "devtools/server/actors/array-buffer", true);
+loader.lazyRequireGetter(this, "LongStringActor", "devtools/server/actors/string", true);
 
 function isEvalSource(source) {
   const introType = source.introductionType;
@@ -261,23 +260,16 @@ const SourceActor = ActorClassWithSpec(sourceSpec, {
       });
   },
 
-  /**
-   * Get all executable lines from the current source
-   * @return Array - Executable lines of the current script
-   */
-  getExecutableLines: async function() {
-    const offsetsLines = new Set();
-    for (const s of this._findDebuggeeScripts()) {
-      for (const offset of s.getPossibleBreakpoints()) {
-        offsetsLines.add(offset.lineNumber);
+  getBreakableLines() {
+    const positions = this.getBreakpointPositions();
+    const lines = new Set();
+    for (const position of positions) {
+      if (!lines.has(position.line)) {
+        lines.add(position.line);
       }
     }
 
-    const lines = [...offsetsLines];
-    lines.sort((a, b) => {
-      return a - b;
-    });
-    return lines;
+    return Array.from(lines);
   },
 
   getBreakpointPositions(query) {
@@ -311,7 +303,7 @@ const SourceActor = ActorClassWithSpec(sourceSpec, {
           lineNumber < startLine ||
           (lineNumber === startLine && columnNumber < startColumn) ||
           lineNumber > endLine ||
-          (lineNumber === endLine && columnNumber > endColumn)
+          (lineNumber === endLine && columnNumber >= endColumn)
         ) {
           continue;
         }
@@ -344,7 +336,11 @@ const SourceActor = ActorClassWithSpec(sourceSpec, {
   },
 
   /**
-   * Handler for the "source" packet.
+   * Handler for the "onSource" packet.
+   * @return Object
+   *         The return of this function contains a field `contentType`, and
+   *         a field `source`. `source` can either be an ArrayBuffer or
+   *         a LongString.
    */
   onSource: function() {
     return Promise.resolve(this._init)
@@ -353,14 +349,14 @@ const SourceActor = ActorClassWithSpec(sourceSpec, {
         if (typeof content === "object" && content && content.constructor &&
             content.constructor.name === "ArrayBuffer") {
           return {
-            source: arrayBufferGrip(content, this.threadActor.threadLifetimePool),
+            source: new ArrayBufferActor(this.threadActor.conn, content),
             contentType,
           };
         }
+
         return {
-          source: createValueGrip(content, this.threadActor.threadLifetimePool,
-            this.threadActor.objectGrip),
-          contentType: contentType,
+          source: new LongStringActor(this.threadActor.conn, content),
+          contentType,
         };
       })
       .catch(error => {
@@ -433,14 +429,14 @@ const SourceActor = ActorClassWithSpec(sourceSpec, {
   applyBreakpoint: function(actor) {
     const { line, column } = actor.location;
 
-    // Find all scripts that match the given source actor and line
-    // number.
-    let scripts = this._findDebuggeeScripts({ line });
-    scripts = scripts.filter((script) => !actor.hasScript(script));
-
     // Find all entry points that correspond to the given location.
     const entryPoints = [];
     if (column === undefined) {
+      // Find all scripts that match the given source actor and line
+      // number.
+      const scripts = this._findDebuggeeScripts({ line })
+        .filter((script) => !actor.hasScript(script));
+
       // This is a line breakpoint, so we add a breakpoint on the first
       // breakpoint on the line.
       const lineMatches = [];
@@ -466,54 +462,23 @@ const SourceActor = ActorClassWithSpec(sourceSpec, {
         }
       }
     } else {
-      // Compute columnToOffsetMaps for each script so that we can
-      // find matching entrypoints for the column breakpoint.
-      const columnToOffsetMaps = scripts.map(script =>
-        [
-          script,
-          script.getPossibleBreakpoints({ line }),
-        ]
-      );
+      // Find all scripts that match the given source actor, line,
+      // and column number.
+      const scripts = this._findDebuggeeScripts({ line, column })
+        .filter((script) => !actor.hasScript(script));
 
-      // This is a column breakpoint, so we are interested in all column
-      // offsets that correspond to the given line *and* column number.
-      for (const [script, columnToOffsetMap] of columnToOffsetMaps) {
-        for (const { columnNumber, offset } of columnToOffsetMap) {
-          if (columnNumber >= column && columnNumber <= column + 1) {
-            entryPoints.push({ script, offsets: [offset] });
-          }
-        }
-      }
-
-      // If we don't find any matching entrypoints,
-      // then we should see if the breakpoint comes before or after the column offsets.
-      if (entryPoints.length === 0) {
-        // It's not entirely clear if the scripts that make it here can come
-        // from a variety of sources. This function allows filtering by URL
-        // so it seems like it may be possible and we are erring on the side
-        // of caution by handling it here.
-        const closestScripts = findClosestScriptBySource(
-          columnToOffsetMaps.map(pair => pair[0]),
+      for (const script of scripts) {
+        // Check to see if the script contains a breakpoint position at
+        // this line and column.
+        const possibleBreakpoint = script.getPossibleBreakpoints({
           line,
-          column,
-        );
+          minColumn: column,
+          maxColumn: column + 1,
+        }).pop();
 
-        const columnToOffsetLookup = new Map(columnToOffsetMaps);
-        for (const script of closestScripts) {
-          const columnToOffsetMap = columnToOffsetLookup.get(script);
-
-          if (columnToOffsetMap.length > 0) {
-            const firstColumnOffset = columnToOffsetMap[0];
-            const lastColumnOffset = columnToOffsetMap[columnToOffsetMap.length - 1];
-
-            if (column < firstColumnOffset.columnNumber) {
-              entryPoints.push({ script, offsets: [firstColumnOffset.offset] });
-            }
-
-            if (column > lastColumnOffset.columnNumber) {
-              entryPoints.push({ script, offsets: [lastColumnOffset.offset] });
-            }
-          }
+        if (possibleBreakpoint) {
+          const { offset } = possibleBreakpoint;
+          entryPoints.push({ script, offsets: [offset] });
         }
       }
     }

@@ -11,6 +11,7 @@
 #include "gfxPrefs.h"
 #include "GLBlitHelper.h"
 #include "GLContext.h"
+#include "mozilla/Casting.h"
 #include "mozilla/gfx/2D.h"
 #include "mozilla/dom/HTMLCanvasElement.h"
 #include "mozilla/dom/HTMLVideoElement.h"
@@ -1124,7 +1125,7 @@ void WebGLTexture::TexStorage(TexTarget target, GLsizei levels,
   }
 
   mImmutable = true;
-  mImmutableLevelCount = levels;
+  mImmutableLevelCount = AutoAssertCast(levels);
   ClampLevelBaseAndMax();
 }
 
@@ -1951,12 +1952,12 @@ static bool DoCopyTexOrSubImage(WebGLContext* webgl, bool isSubImage,
 
       if (uint32_t(rwWidth) != dstWidth || uint32_t(rwHeight) != dstHeight) {
         const auto& pi = idealUnpack->ToPacking();
-        CheckedUint32 byteCount = BytesPerPixel(pi);
+        CheckedInt<size_t> byteCount = BytesPerPixel(pi);
         byteCount *= dstWidth;
         byteCount *= dstHeight;
 
         if (byteCount.isValid()) {
-          buffer = calloc(1, byteCount.value());
+          buffer = calloc(1u, byteCount.value());
         }
 
         if (!buffer.get()) {

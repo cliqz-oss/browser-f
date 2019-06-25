@@ -554,6 +554,7 @@ this.worker = new WorkerDebuggerLoader({
   createSandbox: createSandbox,
   globals: {
     "isWorker": true,
+    "isReplaying": false,
     "dump": dump,
     "loader": loader,
     "reportError": reportError,
@@ -574,6 +575,7 @@ this.worker = new WorkerDebuggerLoader({
     "Services": Object.create(null),
     "chrome": chrome,
     "xpcInspector": xpcInspector,
+    "ChromeUtils": ChromeUtils,
   },
   paths: {
     // ⚠ DISCUSSION ON DEV-DEVELOPER-TOOLS REQUIRED BEFORE MODIFYING ⚠

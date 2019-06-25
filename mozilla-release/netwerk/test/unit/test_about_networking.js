@@ -4,7 +4,6 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 const {HttpServer} = ChromeUtils.import("resource://testing-common/httpd.js");
-const {NetUtil} = ChromeUtils.import("resource://gre/modules/NetUtil.jsm");
 
 const gDashboard = Cc['@mozilla.org/network/dashboard;1']
   .getService(Ci.nsIDashboard);
@@ -78,6 +77,8 @@ add_test(function test_sockets() {
 });
 
 function run_test() {
+  Services.prefs.setBoolPref("network.cookieSettings.unblocked_for_testing", true);
+
   let ioService = Cc["@mozilla.org/network/io-service;1"]
     .getService(Ci.nsIIOService);
 

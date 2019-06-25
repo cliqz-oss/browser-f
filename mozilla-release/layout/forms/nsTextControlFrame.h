@@ -62,7 +62,7 @@ class nsTextControlFrame final : public nsContainerFrame,
 
   bool GetVerticalAlignBaseline(mozilla::WritingMode aWM,
                                 nscoord* aBaseline) const override {
-    return GetNaturalBaselineBOffset(aWM, BaselineSharingGroup::eFirst,
+    return GetNaturalBaselineBOffset(aWM, BaselineSharingGroup::First,
                                      aBaseline);
   }
 
@@ -72,9 +72,9 @@ class nsTextControlFrame final : public nsContainerFrame,
     if (!IsSingleLineTextControl()) {
       return false;
     }
-    NS_ASSERTION(mFirstBaseline != NS_INTRINSIC_WIDTH_UNKNOWN,
+    NS_ASSERTION(mFirstBaseline != NS_INTRINSIC_ISIZE_UNKNOWN,
                  "please call Reflow before asking for the baseline");
-    if (aBaselineGroup == BaselineSharingGroup::eFirst) {
+    if (aBaselineGroup == BaselineSharingGroup::First) {
       *aBaseline = mFirstBaseline;
     } else {
       *aBaseline = BSize(aWM) - mFirstBaseline;
@@ -106,7 +106,7 @@ class nsTextControlFrame final : public nsContainerFrame,
 #ifdef DEBUG
   void MarkIntrinsicISizesDirty() override {
     // Need another Reflow to have a correct baseline value again.
-    mFirstBaseline = NS_INTRINSIC_WIDTH_UNKNOWN;
+    mFirstBaseline = NS_INTRINSIC_ISIZE_UNKNOWN;
   }
 #endif
 
@@ -336,7 +336,7 @@ class nsTextControlFrame final : public nsContainerFrame,
   // FIXME(bug 1402545): Consider using an nsAutoString here.
   nsString mCachedValue;
 
-  // Our first baseline, or NS_INTRINSIC_WIDTH_UNKNOWN if we have a pending
+  // Our first baseline, or NS_INTRINSIC_ISIZE_UNKNOWN if we have a pending
   // Reflow.
   nscoord mFirstBaseline;
 

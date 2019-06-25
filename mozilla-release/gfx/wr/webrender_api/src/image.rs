@@ -8,9 +8,9 @@ use euclid::{size2, TypedRect, num::Zero};
 use std::ops::{Add, Sub};
 use std::sync::Arc;
 // local imports
-use api::{IdNamespace, TileSize};
-use font::{FontInstanceKey, FontInstanceData, FontKey, FontTemplate};
-use units::*;
+use crate::api::{IdNamespace, TileSize};
+use crate::font::{FontInstanceKey, FontInstanceData, FontKey, FontTemplate};
+use crate::units::*;
 
 /// An opaque identifier describing an image registered with WebRender.
 /// This is used as a handle to reference images, and is used as the
@@ -74,7 +74,7 @@ pub enum TextureTarget {
 }
 
 /// Storage format identifier for externally-managed images.
-#[repr(u32)]
+#[repr(u8)]
 #[derive(Debug, Copy, Clone, Eq, Hash, PartialEq, Serialize, Deserialize)]
 pub enum ExternalImageType {
     /// The image is texture-backed.
@@ -97,7 +97,7 @@ pub struct ExternalImageData {
 }
 
 /// Specifies the format of a series of pixels, in driver terms.
-#[repr(u32)]
+#[repr(u8)]
 #[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, PartialEq, Serialize)]
 pub enum ImageFormat {
     /// One-channel, byte storage. The "red" doesn't map to the color
@@ -113,10 +113,14 @@ pub enum ImageFormat {
     /// Two-channels, byte storage. Similar to `R8`, this just means
     /// "two channels" rather than "red and green".
     RG8 = 5,
+    /// Two-channels, byte storage. Similar to `R16`, this just means
+    /// "two channels" rather than "red and green".
+    RG16 = 6,
+
     /// Four channels, signed integer storage.
-    RGBAI32 = 6,
+    RGBAI32 = 7,
     /// Four channels, byte storage.
-    RGBA8 = 7,
+    RGBA8 = 8,
 }
 
 impl ImageFormat {
@@ -128,6 +132,7 @@ impl ImageFormat {
             ImageFormat::BGRA8 => 4,
             ImageFormat::RGBAF32 => 16,
             ImageFormat::RG8 => 2,
+            ImageFormat::RG16 => 4,
             ImageFormat::RGBAI32 => 16,
             ImageFormat::RGBA8 => 4,
         }
@@ -393,7 +398,7 @@ where
     pub fn map<F>(self, func: F) -> Self
         where F: FnOnce(TypedRect<T, U>) -> TypedRect<T, U>,
     {
-        use DirtyRect::*;
+        use crate::DirtyRect::*;
 
         match self {
             All        => All,
@@ -403,7 +408,7 @@ where
 
     /// Unions the dirty rects.
     pub fn union(&self, other: &Self) -> Self {
-        use DirtyRect::*;
+        use crate::DirtyRect::*;
 
         match (*self, *other) {
             (All, _) | (_, All)        => All,
@@ -413,7 +418,7 @@ where
 
     /// Intersects the dirty rects.
     pub fn intersection(&self, other: &Self) -> Self {
-        use DirtyRect::*;
+        use crate::DirtyRect::*;
 
         match (*self, *other) {
             (All, rect) | (rect, All)  => rect,
@@ -424,7 +429,7 @@ where
 
     /// Converts the dirty rect into a subrect of the given one via intersection.
     pub fn to_subrect_of(&self, rect: &TypedRect<T, U>) -> TypedRect<T, U> {
-        use DirtyRect::*;
+        use crate::DirtyRect::*;
 
         match *self {
             All              => *rect,

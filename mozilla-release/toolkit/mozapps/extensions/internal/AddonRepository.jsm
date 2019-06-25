@@ -629,6 +629,7 @@ var AddonRepository = {
 
     switch (aEntry.type) {
       case "persona":
+      case "statictheme":
         addon.type = "theme";
         break;
 
@@ -786,7 +787,7 @@ var AddonRepository = {
     // http://addons-server.readthedocs.io/en/latest/topics/api/addons.html#language-tools
     let url = this._formatURLPref(PREF_GET_LANGPACKS);
 
-    let response = await fetch(url);
+    let response = await fetch(url, {credentials: "omit"});
     if (!response.ok) {
       throw new Error("fetching available language packs failed");
     }

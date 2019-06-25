@@ -126,6 +126,27 @@ gfxUserFontEntry::gfxUserFontEntry(
   mRangeFlags = aRangeFlags;
 }
 
+void gfxUserFontEntry::UpdateAttributes(
+    WeightRange aWeight, StretchRange aStretch, SlantStyleRange aStyle,
+    const nsTArray<gfxFontFeature>& aFeatureSettings,
+    const nsTArray<gfxFontVariation>& aVariationSettings,
+    uint32_t aLanguageOverride, gfxCharacterMap* aUnicodeRanges,
+    StyleFontDisplay aFontDisplay, RangeFlags aRangeFlags) {
+  // Remove the entry from the user font cache, if present there, as the cache
+  // key may no longer be correct with the new attributes.
+  gfxUserFontSet::UserFontCache::ForgetFont(this);
+
+  mFontDisplay = aFontDisplay;
+  mWeightRange = aWeight;
+  mStretchRange = aStretch;
+  mStyleRange = aStyle;
+  mFeatureSettings = aFeatureSettings;
+  mVariationSettings = aVariationSettings;
+  mLanguageOverride = aLanguageOverride;
+  mCharacterMap = aUnicodeRanges;
+  mRangeFlags = aRangeFlags;
+}
+
 gfxUserFontEntry::~gfxUserFontEntry() {
   // Assert that we don't drop any gfxUserFontEntry objects during a Servo
   // traversal, since PostTraversalTask objects can hold raw pointers to
@@ -976,19 +997,6 @@ gfxUserFontFamily* gfxUserFontSet::LookupFamily(
   ToLowerCase(key);
 
   return mFontFamilies.GetWeak(key);
-}
-
-bool gfxUserFontSet::ContainsUserFontSetFonts(
-    const FontFamilyList& aFontList) const {
-  for (const FontFamilyName& name : aFontList.GetFontlist()->mNames) {
-    if (!name.IsNamed()) {
-      continue;
-    }
-    if (LookupFamily(nsAtomCString(name.mName))) {
-      return true;
-    }
-  }
-  return false;
 }
 
 gfxUserFontFamily* gfxUserFontSet::GetFamily(const nsACString& aFamilyName) {

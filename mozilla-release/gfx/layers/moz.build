@@ -95,6 +95,7 @@ EXPORTS.mozilla.layers += [
     'AnimationInfo.h',
     'apz/public/APZInputBridge.h',
     'apz/public/APZSampler.h',
+    'apz/public/APZTypes.h',
     'apz/public/APZUpdater.h',
     'apz/public/CompositorController.h',
     'apz/public/GeckoContentController.h',
@@ -160,6 +161,7 @@ EXPORTS.mozilla.layers += [
     'composite/TextRenderer.h',
     'composite/TextureHost.h',
     'composite/TiledContentHost.h',
+    'CompositionRecorder.h',
     'Compositor.h',
     'CompositorTypes.h',
     'CopyableCanvasRenderer.h',
@@ -245,7 +247,9 @@ EXPORTS.mozilla.layers += [
     'wr/AsyncImagePipelineManager.h',
     'wr/ClipManager.h',
     'wr/IpcResourceUpdateQueue.h',
+    'wr/RenderRootBoundary.h',
     'wr/RenderRootStateManager.h',
+    'wr/RenderRootTypes.h',
     'wr/StackingContextHelper.h',
     'wr/WebRenderBridgeChild.h',
     'wr/WebRenderBridgeParent.h',
@@ -406,6 +410,7 @@ UNIFIED_SOURCES += [
     'composite/TextRenderer.cpp',
     'composite/TextureHost.cpp',
     'composite/TiledContentHost.cpp',
+    'CompositionRecorder.cpp',
     'Compositor.cpp',
     'CopyableCanvasRenderer.cpp',
     'Effects.cpp',
@@ -492,6 +497,7 @@ UNIFIED_SOURCES += [
     'wr/ClipManager.cpp',
     'wr/IpcResourceUpdateQueue.cpp',
     'wr/RenderRootStateManager.cpp',
+    'wr/RenderRootTypes.cpp',
     'wr/StackingContextHelper.cpp',
     'wr/WebRenderBridgeChild.cpp',
     'wr/WebRenderBridgeParent.cpp',
@@ -575,6 +581,7 @@ if CONFIG['MOZ_ENABLE_D3D10_LAYER']:
 
 if CONFIG['ENABLE_TESTS']:
     DIRS += ['apz/test/gtest']
+    DIRS += ['apz/test/gtest/mvm']
 
 MOCHITEST_MANIFESTS += ['apz/test/mochitest/mochitest.ini']
 MOCHITEST_CHROME_MANIFESTS += ['apz/test/mochitest/chrome.ini']

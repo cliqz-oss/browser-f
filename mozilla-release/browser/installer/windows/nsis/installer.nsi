@@ -166,6 +166,7 @@ ShowInstDetails nevershow
  */
 ; Welcome Page
 !define MUI_PAGE_CUSTOMFUNCTION_PRE preWelcome
+!define MUI_PAGE_CUSTOMFUNCTION_LEAVE leaveWelcome
 !insertmacro MUI_PAGE_WELCOME
 
 ; Custom Options Page
@@ -490,7 +491,13 @@ Section "-Application" APP_IDX
   ${EndIf}
 
 !ifdef MOZ_LAUNCHER_PROCESS
-  ${DisableLauncherProcessByDefault}
+  ; Launcher telemetry is opt-out, so we always enable it by default in new
+  ; installs. We always use HKCU because this value is a reflection of a pref
+  ; from the user profile. While this is not a perfect abstraction (given the
+  ; possibility of multiple Firefox profiles owned by the same Windows user), it
+  ; is more accurate than a machine-wide setting, and should be accurate in the
+  ; majority of cases.
+  WriteRegDWORD HKCU ${MOZ_LAUNCHER_SUBKEY} "$INSTDIR\${FileMainEXE}|Telemetry" 1
 !endif
 
   ; Create shortcuts
@@ -1137,8 +1144,18 @@ Function preWelcome
     CopyFiles /SILENT "$EXEDIR\core\distribution\modern-wizard.bmp" "$PLUGINSDIR\modern-wizard.bmp"
   ${EndIf}
 
+  ; We don't want the header bitmap showing on the welcome page.
+  GetDlgItem $0 $HWNDPARENT 1046
+  ShowWindow $0 ${SW_HIDE}
+
   System::Call "kernel32::GetTickCount()l .s"
   Pop $IntroPhaseStart
+FunctionEnd
+
+Function leaveWelcome
+  ; Bring back the header bitmap for the next pages.
+  GetDlgItem $0 $HWNDPARENT 1046
+  ShowWindow $0 ${SW_SHOW}
 FunctionEnd
 
 Function preOptions
@@ -1499,6 +1516,10 @@ Function preFinish
   StrCpy $PageName ""
   ${EndInstallLog} "${BrandFullName}"
   !insertmacro MUI_INSTALLOPTIONS_WRITE "ioSpecial.ini" "settings" "cancelenabled" "0"
+
+  ; We don't want the header bitmap showing on the finish page.
+  GetDlgItem $0 $HWNDPARENT 1046
+  ShowWindow $0 ${SW_HIDE}
 FunctionEnd
 
 Function postFinish

@@ -35,6 +35,7 @@
 #include "mozilla/AntiTrackingCommon.h"
 #include "mozilla/ArrayUtils.h"
 #include "mozilla/Atomics.h"
+#include "mozilla/Attributes.h"
 #include "mozilla/CycleCollectedJSContext.h"
 #include "mozilla/CycleCollectedJSRuntime.h"
 #include "mozilla/Telemetry.h"
@@ -69,6 +70,10 @@
 #include "nsXPCOMPrivate.h"
 #include "OSFileConstants.h"
 #include "xpcpublic.h"
+
+#if defined(XP_MACOSX)
+# include "nsMacUtilsImpl.h"
+#endif
 
 #include "Principal.h"
 #include "WorkerDebuggerManager.h"
@@ -931,7 +936,10 @@ class WorkerJSContext final : public mozilla::CycleCollectedJSContext {
     SetTargetedMicroTaskRecursionDepth(2);
   }
 
-  ~WorkerJSContext() {
+  // MOZ_CAN_RUN_SCRIPT_BOUNDARY because otherwise we have to annotate the
+  // SpiderMonkey JS::JobQueue's destructor as MOZ_CAN_RUN_SCRIPT, which is a
+  // bit of a pain.
+  MOZ_CAN_RUN_SCRIPT_BOUNDARY ~WorkerJSContext() {
     MOZ_COUNT_DTOR_INHERITED(WorkerJSContext, CycleCollectedJSContext);
     JSContext* cx = MaybeContext();
     if (!cx) {
@@ -1664,7 +1672,7 @@ void RuntimeService::Shutdown() {
         MutexAutoUnlock unlock(mMutex);
 
         for (uint32_t index = 0; index < workers.Length(); index++) {
-          if (!workers[index]->Kill()) {
+          if (!workers[index]->Cancel()) {
             NS_WARNING("Failed to cancel worker!");
           }
         }
@@ -2146,7 +2154,17 @@ uint32_t RuntimeService::ClampedHardwareConcurrency() const {
   // No need to loop here: if compareExchange fails, that just means that some
   // other worker has initialized numberOfProcessors, so we're good to go.
   if (!clampedHardwareConcurrency) {
-    int32_t numberOfProcessors = PR_GetNumberOfProcessors();
+    int32_t numberOfProcessors = 0;
+#if defined(XP_MACOSX)
+    if (nsMacUtilsImpl::IsTCSMAvailable()) {
+      // On failure, zero is returned from GetPhysicalCPUCount()
+      // and we fallback to PR_GetNumberOfProcessors below.
+      numberOfProcessors = nsMacUtilsImpl::GetPhysicalCPUCount();
+    }
+#endif
+    if (numberOfProcessors == 0) {
+      numberOfProcessors = PR_GetNumberOfProcessors();
+    }
     if (numberOfProcessors <= 0) {
       numberOfProcessors = 1;  // Must be one there somewhere
     }
@@ -2215,6 +2233,9 @@ bool LogViolationDetailsRunnable::MainThreadRun() {
   return true;
 }
 
+// MOZ_CAN_RUN_SCRIPT_BOUNDARY until Runnable::Run is MOZ_CAN_RUN_SCRIPT.  See
+// bug 1535398.
+MOZ_CAN_RUN_SCRIPT_BOUNDARY
 NS_IMETHODIMP
 WorkerThreadPrimaryRunnable::Run() {
   AUTO_PROFILER_LABEL_DYNAMIC_LOSSY_NSSTRING(
@@ -2291,7 +2312,11 @@ WorkerThreadPrimaryRunnable::Run() {
       PROFILER_SET_JS_CONTEXT(cx);
 
       {
-        mWorkerPrivate->DoRunLoop(cx);
+        // We're on the worker thread here, and WorkerPrivate's refcounting is
+        // non-threadsafe: you can only do it on the parent thread.  What that
+        // means in practice is that we're relying on it being kept alive while
+        // we run.  Hopefully.
+        MOZ_KnownLive(mWorkerPrivate)->DoRunLoop(cx);
         // The AutoJSAPI in DoRunLoop should have reported any exceptions left
         // on cx.
         MOZ_ASSERT(!JS_IsExceptionPending(cx));

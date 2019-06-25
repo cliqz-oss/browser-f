@@ -40,9 +40,7 @@ window.gActivityStreamStrings = {
   "section_disclaimer_topstories_buttontext": "Mat eo, komprenet am eus",
   "prefs_home_header": "Endalc'had Degemer Firefox",
   "prefs_home_description": "Dibabit peseurt endalc'had a fell deoc'h kaout war ho skramm Firefox Degemer.",
-  "prefs_content_discovery_header": "Degemer Firefox",
   "prefs_content_discovery_description": "Gant ann dizoloadenn endalc'hadoù e Firefox Home e c'hallit dizoloiñ pennadoù a berzhded uhel eus pep lec'h er web.",
-  "prefs_content_discovery_button": "Diweredekaat an dizoloadenn endalc'hadoù",
   "prefs_section_rows_option": "{num} renk;{num} renk;{num} renk;{num} a renkoù;{num} renk",
   "prefs_search_header": "Klask web",
   "prefs_topsites_description": "Al lec'hiennoù a weladennit ar muiañ",
@@ -107,8 +105,5 @@ window.gActivityStreamStrings = {
   "firstrun_privacy_notice": "evezhiadennoù a-fet buhez prevez",
   "firstrun_continue_to_login": "Kenderc'hel",
   "firstrun_skip_login": "Tremen ar bazenn-mañ",
-  "context_menu_title": "Digeriñ al lañser",
-  "manual_migration_explanation2": "Amprouit Firefox gant sinedoù, roll istor ha gerioù-tremen ur merdeer all.",
-  "manual_migration_cancel_button": "N'am bo ket",
-  "manual_migration_import_button": "Enporzhiañ bremañ"
+  "context_menu_title": "Digeriñ al lañser"
 };

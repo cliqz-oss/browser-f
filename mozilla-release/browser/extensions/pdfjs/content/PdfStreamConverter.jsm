@@ -173,6 +173,9 @@ PdfDataListener.prototype = {
     }
     return combinedArray;
   },
+  get isDone() {
+    return !!this.isDataReady;
+  },
   finish: function PdfDataListener_finish() {
     this.isDataReady = true;
     if (this.oncompleteCallback) {
@@ -218,6 +221,14 @@ class ChromeActions {
 
   isInPrivateBrowsing() {
     return PrivateBrowsingUtils.isContentWindowPrivate(this.domWindow);
+  }
+
+  getWindowOriginAttributes() {
+    try {
+      return this.domWindow.document.nodePrincipal.originAttributes;
+    } catch (err) {
+      return {};
+    }
   }
 
   download(data, sendResponse) {
@@ -579,6 +590,9 @@ class RangedChromeActions extends ChromeActions {
     var xhr_onreadystatechange = function xhr_onreadystatechange() {
       if (this.readyState === 1) { // LOADING
         var netChannel = this.channel;
+        // override this XMLHttpRequest's OriginAttributes with our cached parent window's
+        // OriginAttributes, as we are currently running under the SystemPrincipal
+        this.setOriginAttributes(self.getWindowOriginAttributes());
         if ("nsIPrivateBrowsingChannel" in Ci &&
             netChannel instanceof Ci.nsIPrivateBrowsingChannel) {
           var docIsPrivate = self.isInPrivateBrowsing();
@@ -606,14 +620,16 @@ class RangedChromeActions extends ChromeActions {
   }
 
   initPassiveLoading() {
-    var data;
+    let data, done;
     if (!this.streamingEnabled) {
       this.originalRequest.cancel(Cr.NS_BINDING_ABORTED);
       this.originalRequest = null;
       data = this.dataListener.readData();
+      done = this.dataListener.isDone;
       this.dataListener = null;
     } else {
       data = this.dataListener.readData();
+      done = this.dataListener.isDone;
 
       this.dataListener.onprogress = (loaded, total) => {
         this.domWindow.postMessage({
@@ -624,6 +640,11 @@ class RangedChromeActions extends ChromeActions {
         }, PDF_VIEWER_ORIGIN);
       };
       this.dataListener.oncomplete = () => {
+        if (!done && this.dataListener.isDone) {
+          this.domWindow.postMessage({
+            pdfjsLoadAction: "progressiveDone",
+          }, PDF_VIEWER_ORIGIN);
+        }
         this.dataListener = null;
       };
     }
@@ -635,6 +656,7 @@ class RangedChromeActions extends ChromeActions {
       pdfUrl: this.pdfUrl,
       length: this.contentLength,
       data,
+      done,
     }, PDF_VIEWER_ORIGIN);
 
     return true;

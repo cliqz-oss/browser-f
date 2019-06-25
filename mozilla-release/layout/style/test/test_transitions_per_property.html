@@ -6,7 +6,7 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=435441
 <head>
   <title>Test for Bug 435441</title>
   <meta charset=utf-8>
-  <script type="application/javascript" src="/tests/SimpleTest/SimpleTest.js"></script>
+  <script src="/tests/SimpleTest/SimpleTest.js"></script>
   <script type="text/javascript" src="property_database.js"></script>
   <script type="text/javascript" src="animation_utils.js"></script>
   <link rel="stylesheet" type="text/css" href="/tests/SimpleTest/test.css"/>
@@ -298,6 +298,7 @@ var supported_properties = {
                test_length_clamped, test_percent_clamped ],
     "word-spacing": [ test_length_transition, test_length_unclamped ],
     "z-index": [ test_integer_transition, test_pos_integer_or_auto_transition ],
+    "-webkit-line-clamp": [ test_pos_integer_or_none_transition ],
     "-webkit-text-fill-color": [ test_color_transition,
                                  test_currentcolor_transition ],
     "-webkit-text-stroke-color": [ test_color_transition,
@@ -2254,7 +2255,7 @@ function test_grid_gap(prop) {
   test_percent_clamped(prop);
 }
 
-function test_pos_integer_or_auto_transition(prop) {
+function test_pos_integer_or_keyword_transition(prop, keyword) {
   div.style.setProperty("transition-property", "none", "");
   div.style.setProperty(prop, "4", "");
   is(cs.getPropertyValue(prop), "4",
@@ -2264,9 +2265,9 @@ function test_pos_integer_or_auto_transition(prop) {
   is(cs.getPropertyValue(prop), "6",
      "integer-valued property " + prop + ": interpolation of integers");
   check_distance(prop, "4", "6", "12");
-  div.style.setProperty(prop, "auto", "");
-  is(cs.getPropertyValue(prop), "auto",
-     "integer-valued property " + prop + ": auto not interpolable");
+  div.style.setProperty(prop, keyword, "");
+  is(cs.getPropertyValue(prop), keyword,
+     "integer-valued property " + prop + ": " + keyword + " not interpolable");
   div.style.setProperty(prop, "8", "");
   is(cs.getPropertyValue(prop), "8",
      "integer-valued property " + prop + ": computed value before transition");
@@ -2274,6 +2275,14 @@ function test_pos_integer_or_auto_transition(prop) {
   is(cs.getPropertyValue(prop), "7",
      "integer-valued property " + prop + ": interpolation of integers");
   check_distance(prop, "8", "7", "4");
+}
+
+function test_pos_integer_or_auto_transition(prop) {
+  return test_pos_integer_or_keyword_transition(prop, "auto");
+}
+
+function test_pos_integer_or_none_transition(prop) {
+  return test_pos_integer_or_keyword_transition(prop, "none");
 }
 
 function test_integer_at_least_one_clamping(prop) {
@@ -2841,11 +2850,11 @@ function test_rotate_transition(prop) {
   // properties we expect them to.
   div.style.transitionProperty = 'none';
   div.style[prop] = '0 1 0 45deg';
-  is(cs[prop], '0 1 0 45deg',
+  is(cs[prop], 'y 45deg',
      `rotate property ${prop}: computed value before transition`);
   div.style.transitionProperty = prop;
   div.style[prop] = '0 1 0 145deg';
-  is(cs[prop], '0 1 0 70deg',
+  is(cs[prop], 'y 70deg',
      `rotate property ${prop}: interpolation of angles`);
   check_distance(prop, '0 1 0 45deg', '0 1 0 70deg', '0 1 0 145deg');
 }
@@ -2883,9 +2892,31 @@ function test_translate_transition(prop) {
   test_percent_unclamped(prop);
 
   // Two values: <length-percentage> <length-percentage>
+  // Note: Cannot use test_length_percent_pair_transition(prop) and
+  // test_length_percent_calc_transition(prop) because we don't resolve the
+  // percentage.
   test_length_pair_transition(prop);
-  test_length_percent_pair_transition(prop);
-  test_length_percent_calc_transition(prop);
+
+  div.style.setProperty("transition-property", "none", "");
+  div.style.setProperty(prop, "4px 50%", "");
+  is(cs.getPropertyValue(prop), "4px 50%",
+    `length-valued property ${prop}: computed value before transition`);
+  div.style.setProperty("transition-property", prop, "");
+  div.style.setProperty(prop, "12px 70%", "");
+  is(cs.getPropertyValue(prop), "6px 55%",
+    `length-valued property ${prop}: interpolation of lengths`);
+  check_distance(prop, "4px 50%", "6px 55%", "12px 70%");
+
+  div.style.setProperty("transition-property", "none", "");
+  div.style.setProperty(prop, "4px 50%", "");
+  is(cs.getPropertyValue(prop), "4px 50%",
+    `length-valued property ${prop}: computed value before transition`);
+  div.style.setProperty("transition-property", prop, "");
+  div.style.setProperty(prop, "20% 20px", "");
+  is(cs.getPropertyValue(prop), "calc(5% + 3px) calc(37.5% + 5px)",
+    `length-valued property ${prop}: interpolation of lengths`);
+  check_distance(prop, "4px 50%", "calc(5% + 3px) calc(37.5% + 5px)",
+                 "20% 20px");
   // We can't use test_length_percent_pair_unclamped here since
   // it assumes that "0px 0px" is serialized as "0px 0px" but
   // translate should serialize it as "0px".
@@ -2893,11 +2924,11 @@ function test_translate_transition(prop) {
   // Three values: <length-percentage> <length-percentage> <length>
   div.style.transitionProperty = 'none';
   div.style[prop] = '10px 200% 30px';
-  is(cs[prop], '10px 20px 30px',
+  is(cs[prop], '10px 200% 30px',
      `translate property ${prop}: computed value before transition`);
   div.style.transitionProperty = prop;
   div.style[prop] = '50px 600% 70px';
-  is(cs[prop], '20px 30px 40px',
+  is(cs[prop], '20px 300% 40px',
      `translate property ${prop}: interpolation of three values`);
   check_distance(prop, '10px 20px 30px', '20px 30px 40px', '50px 60px 70px');
 }

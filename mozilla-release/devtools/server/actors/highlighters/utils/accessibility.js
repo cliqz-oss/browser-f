@@ -9,9 +9,13 @@ const { getCurrentZoom, getViewportDimensions } = require("devtools/shared/layou
 const { moveInfobar, createNode } = require("./markup");
 const { truncateString } = require("devtools/shared/inspector/utils");
 
+const { accessibility: { SCORES } } = require("devtools/shared/constants");
+
 const STRINGS_URI = "devtools/shared/locales/accessibility.properties";
 loader.lazyRequireGetter(this, "LocalizationHelper", "devtools/shared/l10n", true);
 DevToolsUtils.defineLazyGetter(this, "L10N", () => new LocalizationHelper(STRINGS_URI));
+
+const { accessibility: { AUDIT_TYPE } } = require("devtools/shared/constants");
 
 // Max string length for truncating accessible name values.
 const MAX_STRING_LENGTH = 50;
@@ -523,11 +527,10 @@ class ContrastRatio extends AuditReport {
     });
   }
 
-  _fillAndStyleContrastValue(el, { value, isLargeText, color, backgroundColor }) {
+  _fillAndStyleContrastValue(el, { value, className, color, backgroundColor }) {
     value = value.toFixed(2);
-    const style = getContrastRatioScoreStyle(value, isLargeText);
     this.setTextContent(el, value);
-    el.classList.add(style);
+    el.classList.add(className);
     el.setAttribute("style",
       `--accessibility-highlighter-contrast-ratio-color: rgba(${color});` +
       `--accessibility-highlighter-contrast-ratio-bg: rgba(${backgroundColor});`);
@@ -542,12 +545,13 @@ class ContrastRatio extends AuditReport {
    *         True if the contrast ratio markup was updated correctly and infobar audit
    *         block should be visible.
    */
-  update({ contrastRatio }) {
+  update({ [AUDIT_TYPE.CONTRAST]: contrastRatio }) {
     const els = {};
     for (const key of ["label", "min", "max", "error", "separator"]) {
       const el = els[key] = this.getElement(`contrast-ratio-${key}`);
       if (["min", "max"].includes(key)) {
-        ["fail", "AA", "AAA"].forEach(className => el.classList.remove(className));
+        Object.values(SCORES).forEach(
+          className => el.classList.remove(className));
         this.setTextContent(el, "");
       }
 
@@ -569,18 +573,20 @@ class ContrastRatio extends AuditReport {
     }
 
     if (contrastRatio.value) {
-      const { value, color, backgroundColor } = contrastRatio;
+      const { value, color, score, backgroundColor } = contrastRatio;
       this._fillAndStyleContrastValue(els.min,
-        { value, isLargeText, color, backgroundColor });
+        { value, className: score, color, backgroundColor });
       return true;
     }
 
-    const { min, max, color, backgroundColorMin, backgroundColorMax } = contrastRatio;
+    const {
+      min, max, color, backgroundColorMin, backgroundColorMax, scoreMin, scoreMax,
+    } = contrastRatio;
     this._fillAndStyleContrastValue(els.min,
-      { value: min, isLargeText, color, backgroundColor: backgroundColorMin });
+      { value: min, className: scoreMin, color, backgroundColor: backgroundColorMin });
     els.separator.removeAttribute("hidden");
     this._fillAndStyleContrastValue(els.max,
-      { value: max, isLargeText, color, backgroundColor: backgroundColorMax });
+      { value: max, className: scoreMax, color, backgroundColor: backgroundColorMax });
 
     return true;
   }
@@ -639,29 +645,6 @@ function getBounds(win, { x, y, w, h, zoom }) {
   const height = bottom - top;
 
   return { left, right, top, bottom, width, height };
-}
-
-/**
- * Get contrast ratio score styling to be applied on the element that renders the contrast
- * ratio.
- * @param  {Number} ratio
- *         Value of the contrast ratio for a given accessible object.
- * @param  {Boolean} isLargeText
- *         True if the accessible object contains large text.
- * @return {String}
- *         CSS class that represents the appropriate contrast ratio score styling.
- */
-function getContrastRatioScoreStyle(ratio, isLargeText) {
-  const levels = isLargeText ? { AA: 3, AAA: 4.5 } : { AA: 4.5, AAA: 7 };
-
-  let style = "fail";
-  if (ratio >= levels.AAA) {
-    style = "AAA";
-  } else if (ratio >= levels.AA) {
-    style = "AA";
-  }
-
-  return style;
 }
 
 exports.MAX_STRING_LENGTH = MAX_STRING_LENGTH;

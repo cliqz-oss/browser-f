@@ -11,16 +11,19 @@ const {initialize} = require("devtools/client/webconsole/actions/ui");
 const {
   getAllMessagesById,
   getAllMessagesUiById,
+  getAllMessagesPayloadById,
   getAllMessagesTableDataById,
   getAllNetworkMessagesUpdateById,
   getVisibleMessages,
   getPausedExecutionPoint,
   getAllRepeatById,
+  getAllWarningGroupsById,
+  isMessageInWarningGroup,
 } = require("devtools/client/webconsole/selectors/messages");
 
 loader.lazyRequireGetter(this, "PropTypes", "devtools/client/shared/vendor/react-prop-types");
-loader.lazyRequireGetter(this, "sortBy", "devtools/client/shared/vendor/lodash", true);
 loader.lazyRequireGetter(this, "MessageContainer", "devtools/client/webconsole/components/MessageContainer", true);
+ChromeUtils.defineModuleGetter(this, "pointPrecedes", "resource://devtools/shared/execution-point-utils.js");
 
 const {
   MESSAGE_TYPE,
@@ -34,13 +37,18 @@ function getClosestMessage(visibleMessages, messages, executionPoint) {
     return null;
   }
 
-  const { progress } = executionPoint;
-  const getProgress = m => m && m.executionPoint && m.executionPoint.progress;
-
-  return sortBy(
-    visibleMessages.map(id => messages.get(id)),
-    m => Math.abs(progress - getProgress(m))
-  )[0];
+  const messageList = visibleMessages.map(id => messages.get(id));
+  const precedingMessages = messageList.filter(m => {
+    return m && m.executionPoint && pointPrecedes(m.executionPoint, executionPoint);
+  });
+  if (precedingMessages.length != 0) {
+    return precedingMessages.sort((a, b) => {
+      return pointPrecedes(a.executionPoint, b.executionPoint);
+    })[0];
+  }
+  return messageList.filter(m => m && m.executionPoint).sort((a, b) => {
+    return pointPrecedes(b.executionPoint, a.executionPoint);
+  })[0];
 }
 
 class ConsoleOutput extends Component {
@@ -56,8 +64,11 @@ class ConsoleOutput extends Component {
       }),
       dispatch: PropTypes.func.isRequired,
       timestampsVisible: PropTypes.bool,
+      messagesPayload: PropTypes.object.isRequired,
       messagesTableData: PropTypes.object.isRequired,
       messagesRepeat: PropTypes.object.isRequired,
+      warningGroups: PropTypes.object.isRequired,
+      isInWarningGroup: PropTypes.func,
       networkMessagesUpdate: PropTypes.object.isRequired,
       visibleMessages: PropTypes.array.isRequired,
       networkMessageActiveTabId: PropTypes.string.isRequired,
@@ -108,22 +119,30 @@ class ConsoleOutput extends Component {
       return;
     }
 
+    // We need to scroll to the bottom if:
+    // - we are reacting to "initialize" action, and we are already scrolled to the bottom
+    // - the number of messages displayed changed and we are already scrolled to the
+    //   bottom, but not if we are reacting to a group opening.
+    // - the number of messages in the store changed and the new message is an evaluation
+    //   result.
+
     const lastChild = outputNode.lastChild;
     const visibleMessagesDelta =
       nextProps.visibleMessages.length - this.props.visibleMessages.length;
     const messagesDelta =
       nextProps.messages.size - this.props.messages.size;
-
-    // We need to scroll to the bottom if:
-    // - we are reacting to the "initialize" action,
-    //   and we are already scrolled to the bottom
-    // - the number of messages displayed changed
-    //   and we are already scrolled to the bottom
-    // - the number of messages in the store changed
-    //   and the new message is an evaluation result.
     const isNewMessageEvaluationResult = messagesDelta > 0 &&
       [...nextProps.messages.values()][nextProps.messages.size - 1].type
         === MESSAGE_TYPE.RESULT;
+
+    const messagesUiDelta =
+      nextProps.messagesUi.length - this.props.messagesUi.length;
+    const isOpeningGroup = messagesUiDelta > 0 &&
+      nextProps.messagesUi.some(id =>
+        !this.props.messagesUi.includes(id) &&
+        nextProps.messagesUi.includes(id) &&
+        this.props.visibleMessages.includes(id) &&
+        nextProps.visibleMessages.includes(id));
 
     this.shouldScrollBottom =
       (
@@ -132,7 +151,11 @@ class ConsoleOutput extends Component {
         isScrolledToBottom(lastChild, outputNode)
       ) ||
       (isNewMessageEvaluationResult) ||
-      (visibleMessagesDelta > 0 && isScrolledToBottom(lastChild, outputNode));
+      (
+        isScrolledToBottom(lastChild, outputNode) &&
+        visibleMessagesDelta > 0 &&
+        !isOpeningGroup
+      );
   }
 
   componentDidUpdate() {
@@ -157,8 +180,11 @@ class ConsoleOutput extends Component {
       visibleMessages,
       messages,
       messagesUi,
+      messagesPayload,
       messagesTableData,
       messagesRepeat,
+      warningGroups,
+      isInWarningGroup,
       networkMessagesUpdate,
       networkMessageActiveTabId,
       serviceContainer,
@@ -185,9 +211,14 @@ class ConsoleOutput extends Component {
         messageId,
         serviceContainer,
         open: messagesUi.includes(messageId),
+        payload: messagesPayload.get(messageId),
         tableData: messagesTableData.get(messageId),
         timestampsVisible,
         repeat: messagesRepeat[messageId],
+        badge: warningGroups.has(messageId) ? warningGroups.get(messageId).length : null,
+        inWarningGroup: isInWarningGroup
+          ? isInWarningGroup(messages.get(messageId))
+          : false,
         networkMessageUpdate: networkMessagesUpdate[messageId],
         networkMessageActiveTabId,
         pausedExecutionPoint,
@@ -230,8 +261,13 @@ function mapStateToProps(state, props) {
     messages: getAllMessagesById(state),
     visibleMessages: getVisibleMessages(state),
     messagesUi: getAllMessagesUiById(state),
+    messagesPayload: getAllMessagesPayloadById(state),
     messagesTableData: getAllMessagesTableDataById(state),
     messagesRepeat: getAllRepeatById(state),
+    warningGroups: getAllWarningGroupsById(state),
+    isInWarningGroup: state.prefs.groupWarnings
+      ? message => isMessageInWarningGroup(state, message)
+      : null,
     networkMessagesUpdate: getAllNetworkMessagesUpdateById(state),
     timestampsVisible: state.ui.timestampsVisible,
     networkMessageActiveTabId: state.ui.networkMessageActiveTabId,

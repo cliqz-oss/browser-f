@@ -40,14 +40,17 @@ var LoginManagerParent = {
   // to avoid spamming master password prompts on autocomplete searches.
   _lastMPLoginCancelled: Math.NEGATIVE_INFINITY,
 
-  _searchAndDedupeLogins(formOrigin, actionOrigin) {
+  _searchAndDedupeLogins(formOrigin, actionOrigin, {looseActionOriginMatch} = {}) {
     let logins;
+    let matchData = {
+      hostname: formOrigin,
+      schemeUpgrades: LoginHelper.schemeUpgrades,
+    };
+    if (!looseActionOriginMatch) {
+      matchData.formSubmitURL = actionOrigin;
+    }
     try {
-      logins = LoginHelper.searchLoginsWithObject({
-        hostname: formOrigin,
-        formSubmitURL: actionOrigin,
-        schemeUpgrades: LoginHelper.schemeUpgrades,
-      });
+      logins = LoginHelper.searchLoginsWithObject(matchData);
     } catch (e) {
       // Record the last time the user cancelled the MP prompt
       // to avoid spamming them with MP prompts for autocomplete.
@@ -61,10 +64,11 @@ var LoginManagerParent = {
 
     // Dedupe so the length checks below still make sense with scheme upgrades.
     let resolveBy = [
+      "actionOrigin",
       "scheme",
       "timePasswordChanged",
     ];
-    return LoginHelper.dedupeLogins(logins, ["username"], resolveBy, formOrigin);
+    return LoginHelper.dedupeLogins(logins, ["username"], resolveBy, formOrigin, actionOrigin);
   },
 
   // Listeners are added in BrowserGlue.jsm on desktop
@@ -96,6 +100,7 @@ var LoginManagerParent = {
                            newPasswordField: data.newPasswordField,
                            oldPasswordField: data.oldPasswordField,
                            openerTopWindowID: data.openerTopWindowID,
+                           dismissedPrompt: data.dismissedPrompt,
                            target: msg.target});
         break;
       }
@@ -117,7 +122,10 @@ var LoginManagerParent = {
       }
 
       case "PasswordManager:OpenPreferences": {
-        LoginHelper.openPasswordManager(msg.target.ownerGlobal, msg.data.hostname);
+        LoginHelper.openPasswordManager(msg.target.ownerGlobal, {
+          filterString: msg.data.hostname,
+          entryPoint: msg.data.entryPoint,
+        });
         break;
       }
     }
@@ -222,7 +230,8 @@ var LoginManagerParent = {
       return;
     }
 
-    let logins = this._searchAndDedupeLogins(formOrigin, actionOrigin);
+    // Autocomplete results do not need to match actionOrigin.
+    let logins = this._searchAndDedupeLogins(formOrigin, actionOrigin, {looseActionOriginMatch: true});
 
     log("sendLoginDataToChild:", logins.length, "deduped logins");
     // Convert the array of nsILoginInfo to vanilla JS objects since nsILoginInfo
@@ -270,7 +279,8 @@ var LoginManagerParent = {
     } else {
       log("Creating new autocomplete search result.");
 
-      logins = this._searchAndDedupeLogins(formOrigin, actionOrigin);
+      // Autocomplete results do not need to match actionOrigin.
+      logins = this._searchAndDedupeLogins(formOrigin, actionOrigin, {looseActionOriginMatch: true});
     }
 
     let matchingLogins = logins.filter(function(fullMatch) {
@@ -297,7 +307,7 @@ var LoginManagerParent = {
   onFormSubmit({hostname, formSubmitURL, autoFilledLoginGuid,
                 usernameField, newPasswordField,
                 oldPasswordField, openerTopWindowID,
-                target}) {
+                dismissedPrompt, target}) {
     function getPrompter() {
       var prompterSvc = Cc["@mozilla.org/login-manager/prompter;1"].
                         createInstance(Ci.nsILoginManagerPrompter);
@@ -305,11 +315,7 @@ var LoginManagerParent = {
       prompterSvc.browser = target;
 
       for (let win of Services.wm.getEnumerator(null)) {
-        if (!win.gBrowser && !win.getBrowser) {
-          continue;
-        }
-
-        let tabbrowser = win.gBrowser || win.getBrowser();
+        let tabbrowser = win.gBrowser;
         if (tabbrowser) {
           let browser = tabbrowser.getBrowserForOuterWindowID(openerTopWindowID);
           if (browser) {
@@ -385,14 +391,13 @@ var LoginManagerParent = {
         formLogin.username      = oldLogin.username;
         formLogin.usernameField = oldLogin.usernameField;
 
-        prompter.promptToChangePassword(oldLogin, formLogin);
+        prompter.promptToChangePassword(oldLogin, formLogin, dismissedPrompt);
       } else {
         // Note: It's possible that that we already have the correct u+p saved
         // but since we don't have the username, we don't know if the user is
         // changing a second account to the new password so we ask anyways.
 
-        prompter.promptToChangePasswordWithUsernames(
-          logins, logins.length, formLogin);
+        prompter.promptToChangePasswordWithUsernames(logins, formLogin);
       }
 
       return;
@@ -443,11 +448,11 @@ var LoginManagerParent = {
       if (existingLogin.password != formLogin.password) {
         log("...passwords differ, prompting to change.");
         prompter = getPrompter();
-        prompter.promptToChangePassword(existingLogin, formLogin);
+        prompter.promptToChangePassword(existingLogin, formLogin, dismissedPrompt);
       } else if (!existingLogin.username && formLogin.username) {
         log("...empty username update, prompting to change.");
         prompter = getPrompter();
-        prompter.promptToChangePassword(existingLogin, formLogin);
+        prompter.promptToChangePassword(existingLogin, formLogin, dismissedPrompt);
       } else {
         recordLoginUse(existingLogin);
       }
@@ -455,10 +460,9 @@ var LoginManagerParent = {
       return;
     }
 
-
     // Prompt user to save login (via dialog or notification bar)
     prompter = getPrompter();
-    prompter.promptToSavePassword(formLogin);
+    prompter.promptToSavePassword(formLogin, dismissedPrompt);
   },
 
   /**

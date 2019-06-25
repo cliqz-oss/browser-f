@@ -325,7 +325,8 @@ var WebBrowserChrome = {
   },
 
   shouldLoadURIInThisProcess(URI) {
-    return E10SUtils.shouldLoadURIInThisProcess(URI);
+    let remoteSubframes = docShell.QueryInterface(Ci.nsILoadContext).useRemoteSubframes;
+    return E10SUtils.shouldLoadURIInThisProcess(URI, remoteSubframes);
   },
 
   reloadInFreshProcess(docShell, URI, referrer, triggeringPrincipal, loadFlags) {
@@ -335,6 +336,6 @@ var WebBrowserChrome = {
 
 if (Services.appinfo.processType == Services.appinfo.PROCESS_TYPE_CONTENT) {
   let tabchild = docShell.QueryInterface(Ci.nsIInterfaceRequestor)
-                         .getInterface(Ci.nsITabChild);
+                         .getInterface(Ci.nsIBrowserChild);
   tabchild.webBrowserChrome = WebBrowserChrome;
 }

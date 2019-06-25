@@ -133,10 +133,9 @@ bool CompositableParentManager::ReceiveCompositableUpdate(
           // because the recycling logic depends on it.
           MOZ_ASSERT(texture->NumCompositableRefs() > 0);
         }
-        if (texturedDesc.textureOnWhite().type() ==
-            MaybeTexture::TPTextureParent) {
+        if (texturedDesc.textureOnWhiteParent().isSome()) {
           texture = TextureHost::AsTextureHost(
-              texturedDesc.textureOnWhite().get_PTextureParent());
+              texturedDesc.textureOnWhiteParent().ref());
           if (texture) {
             texture->SetLastFwdTransactionId(mFwdTransactionId);
             // Make sure that each texture was handled by the compositable
@@ -231,7 +230,9 @@ bool CompositableParentManager::ReceiveCompositableUpdate(
       }
       break;
     }
-    default: { MOZ_ASSERT(false, "bad type"); }
+    default: {
+      MOZ_ASSERT(false, "bad type");
+    }
   }
 
   return true;
@@ -248,7 +249,9 @@ void CompositableParentManager::DestroyActor(const OpDestroy& aOp) {
       ReleaseCompositable(aOp.get_CompositableHandle());
       break;
     }
-    default: { MOZ_ASSERT(false, "unsupported type"); }
+    default: {
+      MOZ_ASSERT(false, "unsupported type");
+    }
   }
 }
 

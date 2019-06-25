@@ -40,9 +40,7 @@ window.gActivityStreamStrings = {
   "section_disclaimer_topstories_buttontext": "Ütz, xno' pa nuwi'",
   "prefs_home_header": "Etamab'äl pa ri Rutikirib'al Firefox",
   "prefs_home_description": "Tacha' achike etamab'äl nawajo' pa ri Rutikirib'al Firefox ruwäch.",
-  "prefs_content_discovery_header": "Rutikirib'al Firefox",
   "prefs_content_discovery_description": "Content Discovery pa Rutikirib'al Firefox nuya' q'ij chawe richin ye'awïl nima'q taq cholna'oj ri nïm kejqalem pa ronojel ajk'amaya'l.",
-  "prefs_content_discovery_button": "Tichup Content Discovery",
   "prefs_section_rows_option": "{num} cholaj;{num} taq cholaj",
   "prefs_search_header": "Ajk'amaya'l Kanoxïk",
   "prefs_topsites_description": "Taq ruxaq yalan ye'atz'ët",
@@ -107,8 +105,5 @@ window.gActivityStreamStrings = {
   "firstrun_privacy_notice": "Ichinan Na'oj",
   "firstrun_continue_to_login": "Titikïr chik el",
   "firstrun_skip_login": "Tixakalüx re jun ruxak re'",
-  "context_menu_title": "Tijaq k'utüy samaj",
-  "manual_migration_explanation2": "Tatojtob'ej Firefox kik'in ri taq ruyaketal, runatab'äl chuqa' taq ewan rutzij jun chik okik'amaya'l.",
-  "manual_migration_cancel_button": "Mani matyox",
-  "manual_migration_import_button": "Tijik' pe"
+  "context_menu_title": "Tijaq k'utüy samaj"
 };

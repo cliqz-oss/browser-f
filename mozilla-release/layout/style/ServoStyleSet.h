@@ -14,7 +14,6 @@
 #include "mozilla/PostTraversalTask.h"
 #include "mozilla/ServoBindingTypes.h"
 #include "mozilla/ServoUtils.h"
-#include "mozilla/SheetType.h"
 #include "mozilla/UniquePtr.h"
 #include "MainThreadUtils.h"
 #include "nsCSSPseudoElements.h"
@@ -45,7 +44,6 @@ class nsIContent;
 
 class nsPresContext;
 struct nsTimingFunction;
-struct RawServoRuleNode;
 struct TreeMatchContext;
 
 namespace mozilla {
@@ -59,9 +57,9 @@ enum class StylistState : uint8_t {
   // The style sheets have changed, so we need to update the style data.
   StyleSheetsDirty = 1 << 0,
 
-  // Some of the style sheets of the bound elements in binding manager have
-  // changed, so we need to tell the binding manager to update style data.
-  XBLStyleSheetsDirty = 1 << 1,
+  // Some of the style sheets of the shadow trees in the document have
+  // changed.
+  ShadowDOMStyleSheetsDirty = 1 << 1,
 };
 
 MOZ_MAKE_ENUM_CLASS_BITWISE_OPERATORS(StylistState)
@@ -84,7 +82,12 @@ class ServoStyleSet {
   friend class RestyleManager;
   typedef ServoElementSnapshotTable SnapshotTable;
 
+  using Origin = StyleOrigin;
+
  public:
+  static constexpr const StyleOrigin kOrigins[] = {
+      StyleOrigin::UserAgent, StyleOrigin::User, StyleOrigin::Author};
+
   static bool IsInServoTraversal() { return mozilla::IsInServoTraversal(); }
 
 #ifdef DEBUG
@@ -96,12 +99,10 @@ class ServoStyleSet {
 
   static ServoStyleSet* Current() { return sInServoTraversal; }
 
-  ServoStyleSet();
+  explicit ServoStyleSet(dom::Document&);
   ~ServoStyleSet();
 
-  void Init(nsPresContext* aPresContext);
-  void BeginShutdown() {}
-  void Shutdown();
+  void ShellDetachedFromDocument();
 
   // Called when a rules in a stylesheet in this set, or a child sheet of that,
   // are mutated from CSSOM.
@@ -132,10 +133,6 @@ class ServoStyleSet {
   bool GetAuthorStyleDisabled() const { return mAuthorStyleDisabled; }
 
   void SetAuthorStyleDisabled(bool aStyleDisabled);
-
-  // FIXME(emilio): All the callers pass Allow here
-  already_AddRefed<ComputedStyle> ResolveStyleFor(
-      dom::Element* aElement, LazyComputeBehavior aMayCompute);
 
   // Get a CopmutedStyle for a text node (which no rules will match).
   //
@@ -182,11 +179,13 @@ class ServoStyleSet {
 
   // Resolves style for a (possibly-pseudo) Element without assuming that the
   // style has been resolved. If the element was unstyled and a new style
-  // context was resolved, it is not stored in the DOM. (That is, the element
-  // remains unstyled.)
+  // was resolved, it is not stored in the DOM. (That is, the element remains
+  // unstyled.)
+  //
+  // TODO(emilio): Element argument should be `const`.
   already_AddRefed<ComputedStyle> ResolveStyleLazily(
-      dom::Element* aElement, PseudoStyleType,
-      StyleRuleInclusion aRules = StyleRuleInclusion::All);
+      dom::Element&, PseudoStyleType = PseudoStyleType::NotPseudo,
+      StyleRuleInclusion = StyleRuleInclusion::All);
 
   // Get a ComputedStyle for an anonymous box. The pseudo type must be an
   // inheriting anon box.
@@ -205,27 +204,20 @@ class ServoStyleSet {
 #endif
 
   // manage the set of style sheets in the style set
-  nsresult AppendStyleSheet(SheetType aType, StyleSheet* aSheet);
-  nsresult RemoveStyleSheet(SheetType aType, StyleSheet* aSheet);
-  nsresult ReplaceSheets(SheetType aType,
-                         const nsTArray<RefPtr<StyleSheet>>& aNewSheets);
-  nsresult InsertStyleSheetBefore(SheetType aType, StyleSheet* aNewSheet,
-                                  StyleSheet* aReferenceSheet);
+  void AppendStyleSheet(Origin, StyleSheet*);
+  void RemoveStyleSheet(Origin, StyleSheet*);
+  void InsertStyleSheetBefore(Origin, StyleSheet*, StyleSheet* aReferenceSheet);
 
-  int32_t SheetCount(SheetType aType) const;
-  StyleSheet* StyleSheetAt(SheetType aType, int32_t aIndex) const;
+  size_t SheetCount(Origin) const;
+  StyleSheet* SheetAt(Origin, size_t aIndex) const;
 
   void AppendAllNonDocumentAuthorSheets(nsTArray<StyleSheet*>& aArray) const;
 
-  template <typename Func>
-  void EnumerateStyleSheetArrays(Func aCallback) const {
-    for (const auto& sheetArray : mSheets) {
-      aCallback(sheetArray);
-    }
+  void RemoveDocStyleSheet(StyleSheet* aSheet) {
+    RemoveStyleSheet(StyleOrigin::Author, aSheet);
   }
 
-  nsresult RemoveDocStyleSheet(StyleSheet* aSheet);
-  nsresult AddDocStyleSheet(StyleSheet* aSheet, dom::Document* aDocument);
+  void AddDocStyleSheet(StyleSheet* aSheet);
 
   // check whether there is ::before/::after style for an element
   already_AddRefed<ComputedStyle> ProbePseudoElementStyle(
@@ -302,6 +294,15 @@ class ServoStyleSet {
    */
   void CompatibilityModeChanged();
 
+  template <typename T>
+  void EnumerateStyleSheets(T aCb) {
+    for (auto origin : kOrigins) {
+      for (size_t i = 0, count = SheetCount(origin); i < count; ++i) {
+        aCb(*SheetAt(origin, i));
+      }
+    }
+  }
+
   /**
    * Resolve style for the given element, and return it as a
    * ComputedStyle.
@@ -324,7 +325,7 @@ class ServoStyleSet {
       const mozilla::ComputedStyle* aStyle,
       nsTArray<RefPtr<RawServoAnimationValue>>& aAnimationValues);
 
-  bool AppendFontFaceRules(nsTArray<nsFontFaceRuleContainer>& aArray);
+  void AppendFontFaceRules(nsTArray<nsFontFaceRuleContainer>& aArray);
 
   const RawServoCounterStyleRule* CounterStyleRuleForName(nsAtom* aName);
 
@@ -356,7 +357,7 @@ class ServoStyleSet {
    */
   already_AddRefed<ComputedStyle> ResolveForDeclarations(
       const ComputedStyle* aParentOrNull,
-      RawServoDeclarationBlockBorrowed aDeclarations);
+      const RawServoDeclarationBlock* aDeclarations);
 
   already_AddRefed<RawServoAnimationValue> ComputeAnimationValue(
       dom::Element* aElement, RawServoDeclarationBlock* aDeclaration,
@@ -430,6 +431,7 @@ class ServoStyleSet {
  private:
   friend class AutoSetInServoTraversal;
   friend class AutoPrepareTraversal;
+  friend class PostTraversalTask;
 
   bool ShouldTraverseInParallel() const;
 
@@ -478,7 +480,7 @@ class ServoStyleSet {
    */
   void SetStylistStyleSheetsDirty();
 
-  void SetStylistXBLStyleSheetsDirty();
+  void SetStylistShadowDOMStyleSheetsDirty();
 
   bool StylistNeedsUpdate() const {
     return mStylistState != StylistState::NotDirty;
@@ -491,26 +493,12 @@ class ServoStyleSet {
    */
   void UpdateStylist();
 
-  already_AddRefed<ComputedStyle> ResolveStyleLazilyInternal(
-      dom::Element* aElement, PseudoStyleType aPseudoType,
-      StyleRuleInclusion aRules = StyleRuleInclusion::All);
-
   void RunPostTraversalTasks();
 
-  void PrependSheetOfType(SheetType aType, StyleSheet* aSheet);
-
-  void AppendSheetOfType(SheetType aType, StyleSheet* aSheet);
-
-  void InsertSheetOfType(SheetType aType, StyleSheet* aSheet,
-                         StyleSheet* aBeforeSheet);
-
-  void RemoveSheetOfType(SheetType aType, StyleSheet* aSheet);
-
-  // The owner document of this style set. Null if this is an XBL style set.
-  //
-  // TODO(emilio): This should become a DocumentOrShadowRoot, and be owned by it
-  // directly instead of the shell, eventually.
-  dom::Document* mDocument;
+  void PrependSheetOfType(Origin, StyleSheet*);
+  void AppendSheetOfType(Origin, StyleSheet*);
+  void InsertSheetOfType(Origin, StyleSheet*, StyleSheet* aBeforeSheet);
+  void RemoveSheetOfType(Origin, StyleSheet*);
 
   const nsPresContext* GetPresContext() const {
     return const_cast<ServoStyleSet*>(this)->GetPresContext();
@@ -522,20 +510,15 @@ class ServoStyleSet {
    */
   nsPresContext* GetPresContext();
 
+  // The owner document of this style set. Never null, and always outlives the
+  // StyleSet.
+  dom::Document* mDocument;
   UniquePtr<RawServoStyleSet> mRawSet;
-  EnumeratedArray<SheetType, SheetType::Count, nsTArray<RefPtr<StyleSheet>>>
-      mSheets;
-  bool mAuthorStyleDisabled;
-  StylistState mStylistState;
-  uint64_t mUserFontSetUpdateGeneration;
 
-  bool mNeedsRestyleAfterEnsureUniqueInner;
-
-  // Stores pointers to our cached ComputedStyles for non-inheriting anonymous
-  // boxes.
-  EnumeratedArray<nsCSSAnonBoxes::NonInheriting,
-                  nsCSSAnonBoxes::NonInheriting::_Count, RefPtr<ComputedStyle>>
-      mNonInheritingComputedStyles;
+  // Map from raw Servo style rule to Gecko's wrapper object.
+  // Constructed lazily when requested by devtools.
+  UniquePtr<ServoStyleRuleMap> mStyleRuleMap;
+  uint64_t mUserFontSetUpdateGeneration = 0;
 
   // Tasks to perform after a traversal, back on the main thread.
   //
@@ -543,9 +526,15 @@ class ServoStyleSet {
   // posted by C++ code running on style worker threads.
   nsTArray<PostTraversalTask> mPostTraversalTasks;
 
-  // Map from raw Servo style rule to Gecko's wrapper object.
-  // Constructed lazily when requested by devtools.
-  UniquePtr<ServoStyleRuleMap> mStyleRuleMap;
+  // Stores pointers to our cached ComputedStyles for non-inheriting anonymous
+  // boxes.
+  EnumeratedArray<nsCSSAnonBoxes::NonInheriting,
+                  nsCSSAnonBoxes::NonInheriting::_Count, RefPtr<ComputedStyle>>
+      mNonInheritingComputedStyles;
+
+  StylistState mStylistState = StylistState::NotDirty;
+  bool mAuthorStyleDisabled = false;
+  bool mNeedsRestyleAfterEnsureUniqueInner = false;
 };
 
 class UACacheReporter final : public nsIMemoryReporter {

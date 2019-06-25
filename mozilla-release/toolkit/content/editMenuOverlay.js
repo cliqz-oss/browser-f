@@ -35,14 +35,38 @@ function goUpdatePasteMenuItems() {
   goUpdateCommand("cmd_paste");
 }
 
+// Inject the commandset here instead of relying on preprocessor to share this across documents.
+window.addEventListener("DOMContentLoaded", () => {
+  let container = document.querySelector("commandset") || document.documentElement;
+  container.appendChild(MozXULElement.parseXULToFragment(`
+    <commandset id="editMenuCommands">
+      <commandset id="editMenuCommandSetAll" commandupdater="true" events="focus,select"
+                  oncommandupdate="goUpdateGlobalEditMenuItems()"/>
+      <commandset id="editMenuCommandSetUndo" commandupdater="true" events="undo"
+                  oncommandupdate="goUpdateUndoEditMenuItems()"/>
+      <commandset id="editMenuCommandSetPaste" commandupdater="true" events="clipboard"
+                  oncommandupdate="goUpdatePasteMenuItems()"/>
+      <command id="cmd_undo" oncommand="goDoCommand('cmd_undo')"/>
+      <command id="cmd_redo" oncommand="goDoCommand('cmd_redo')"/>
+      <command id="cmd_cut" oncommand="goDoCommand('cmd_cut')"/>
+      <command id="cmd_copy" oncommand="goDoCommand('cmd_copy')"/>
+      <command id="cmd_paste" oncommand="goDoCommand('cmd_paste')"/>
+      <command id="cmd_delete" oncommand="goDoCommand('cmd_delete')"/>
+      <command id="cmd_selectAll" oncommand="goDoCommand('cmd_selectAll')"/>
+      <command id="cmd_switchTextDirection" oncommand="goDoCommand('cmd_switchTextDirection');"/>
+    </commandset>
+  `));
+}, { once: true });
+
 // Support context menus on html textareas in the parent process:
 window.addEventListener("contextmenu", (e) => {
+  const HTML_NS = "http://www.w3.org/1999/xhtml";
   // Note that there's not a risk of e.target being XBL anonymous content for <textbox> (which manages
   // its own context menu), because e.target will be the XBL binding parent in that case.
-  let needsContextMenu = e.target.ownerDocument == document &&
-                         !e.defaultPrevented &&
-                         e.target.localName == "textarea" &&
-                         e.target.namespaceURI == "http://www.w3.org/1999/xhtml";
+  let needsContextMenu = e.target.ownerDocument == document && !e.defaultPrevented && (
+    (["textarea", "input"].includes(e.target.localName) && e.target.namespaceURI == HTML_NS)
+    || e.target.closest("textbox[is='search-textbox']")
+  );
 
   if (!needsContextMenu) {
     return;
@@ -68,4 +92,7 @@ window.addEventListener("contextmenu", (e) => {
 
   goUpdateGlobalEditMenuItems(true);
   popup.openPopupAtScreen(e.screenX, e.screenY, true);
+  // Don't show any other context menu at the same time. There can be a
+  // context menu from an ancestor too but we only want to show this one.
+  e.preventDefault();
 });

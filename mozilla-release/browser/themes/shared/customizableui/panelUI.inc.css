@@ -68,8 +68,8 @@
 
 #PanelUI-menu-button[badge-status="update-available"] > .toolbarbutton-badge-stack > .toolbarbutton-badge,
 #PanelUI-menu-button[badge-status="update-manual"] > .toolbarbutton-badge-stack > .toolbarbutton-badge,
-#PanelUI-menu-button[badge-status="update-restart"] > .toolbarbutton-badge-stack > .toolbarbutton-badge {
-  background: #74BF43 url(chrome://browser/skin/update-badge.svg) no-repeat center;
+#PanelUI-menu-button[badge-status="update-restart"] > .toolbarbutton-badge-stack > .toolbarbutton-badge,
+#PanelUI-menu-button[badge-status="update-unsupported"] > .toolbarbutton-badge-stack > .toolbarbutton-badge {
   border-radius: 50%;
   box-shadow: none;
   /* "!important" is necessary to override the rule in toolbarbutton.css */
@@ -79,8 +79,25 @@
   min-height: 12px;
 }
 
-.panel-banner-item[notificationid^=update]::after {
+#PanelUI-menu-button[badge-status="update-available"] > .toolbarbutton-badge-stack > .toolbarbutton-badge,
+#PanelUI-menu-button[badge-status="update-manual"] > .toolbarbutton-badge-stack > .toolbarbutton-badge,
+#PanelUI-menu-button[badge-status="update-restart"] > .toolbarbutton-badge-stack > .toolbarbutton-badge {
   background: #74BF43 url(chrome://browser/skin/update-badge.svg) no-repeat center;
+}
+
+#PanelUI-menu-button[badge-status="update-unsupported"] > .toolbarbutton-badge-stack > .toolbarbutton-badge {
+  background: #FFE900 url(chrome://browser/skin/update-badge.svg) no-repeat center;
+}
+
+.panel-banner-item[notificationid="update-available"]::after,
+.panel-banner-item[notificationid="update-manual"]::after,
+.panel-banner-item[notificationid="update-restart"]::after {
+  background: #74BF43 url(chrome://browser/skin/update-badge.svg) no-repeat center;
+  border-radius: 50%;
+}
+
+.panel-banner-item[notificationid="update-unsupported"]::after {
+  background: #FFE900 url(chrome://browser/skin/update-badge.svg) no-repeat center;
   border-radius: 50%;
 }
 
@@ -450,6 +467,7 @@ toolbarbutton[constrain-size="true"][cui-areatype="menu-panel"] > .toolbarbutton
   border-bottom: 1px solid @appmenuWarningBorderColor@;
 }
 
+.addon-banner-item:focus,
 .addon-banner-item:hover {
   background-color: @appmenuWarningBackgroundColorHover@;
 }
@@ -517,14 +535,7 @@ toolbarbutton[constrain-size="true"][cui-areatype="menu-panel"] > .toolbarbutton
 
 /* FxAccount indicator bits. */
 
-/* Add the .toolbaritem-combined-buttons class to increase the specificity so as
- * to override the end margin for .toolbaritem-combined-buttons items further down. */
-#appMenu-fxa-container.toolbaritem-combined-buttons:not([fxastatus="signedin"]) {
-  margin-inline-end: 0;
-}
-
-#appMenu-fxa-label,
-#appMenu-fxa-icon {
+#appMenu-fxa-label {
   -moz-context-properties: fill;
   fill: currentColor;
   list-style-image: url(chrome://browser/skin/sync.svg);
@@ -539,7 +550,6 @@ toolbarbutton[constrain-size="true"][cui-areatype="menu-panel"] > .toolbarbutton
   to { transform: rotate(360deg); }
 }
 
-#appMenu-fxa-icon[syncstatus="active"] > .toolbarbutton-icon,
 #PanelUI-fxa-menu-syncnow-button[syncstatus="active"] > .toolbarbutton-icon,
 #PanelUI-remotetabs-syncnow[syncstatus="active"] > .toolbarbutton-icon {
   animation: syncRotate 0.8s linear infinite;
@@ -557,8 +567,6 @@ toolbarbutton[constrain-size="true"][cui-areatype="menu-panel"] > .toolbarbutton
 
 /* Handle different UI states. */
 #appMenu-fxa-container[fxastatus="signedin"] > #appMenu-fxa-status > #appMenu-fxa-label > .toolbarbutton-icon,
-#appMenu-fxa-container:not([fxastatus="signedin"]) > toolbarseparator,
-#appMenu-fxa-container:not([fxastatus="signedin"]) > #appMenu-fxa-icon,
 #appMenu-fxa-container:not([fxastatus="signedin"]) > #appMenu-fxa-status > #appMenu-fxa-avatar {
   display: none;
 }
@@ -695,7 +703,7 @@ toolbarbutton[constrain-size="true"][cui-areatype="menu-panel"] > .toolbarbutton
   list-style-image: url(chrome://browser/skin/fxa/avatar-empty-badged.svg);
 }
 
-:root:not([fxastatus]) #fxa-toolbar-menu-button {
+:root:not([fxatoolbarmenu]) #fxa-toolbar-menu-button {
   display: none;
 }
 
@@ -934,6 +942,7 @@ panelmultiview[mainViewId="PanelUI-fxa"] #PanelUI-remotetabs-syncnow {
   background-color: hsla(96,65%,75%,.5);
 }
 
+.panel-banner-item:not([disabled]):focus,
 .panel-banner-item:not([disabled]):hover {
   background-color: hsla(96,65%,75%,.8);
 }
@@ -944,15 +953,42 @@ panelmultiview[mainViewId="PanelUI-fxa"] #PanelUI-remotetabs-syncnow {
 
 :root[lwt-popup-brighttext] .panel-banner-item:not([disabled]) {
   background-color: rgba(48,230,11,.1);
-  color: #F9F9FA !important;
+  color: @appmenuWarningColorBrightText@ !important;
 }
 
+:root[lwt-popup-brighttext] .panel-banner-item:not([disabled]):focus,
 :root[lwt-popup-brighttext] .panel-banner-item:not([disabled]):hover {
   background-color: rgba(48,230,11,.15);
 }
 
 :root[lwt-popup-brighttext] .panel-banner-item:not([disabled]):active {
   background-color: rgba(48,230,11,.2);
+}
+
+.panel-banner-item[notificationid="update-unsupported"] {
+  background-color: @appmenuWarningBackgroundColor@;
+}
+
+.panel-banner-item[notificationid="update-unsupported"]:not([disabled]):focus,
+.panel-banner-item[notificationid="update-unsupported"]:not([disabled]):hover {
+  background-color: @appmenuWarningBackgroundColorHover@;
+}
+
+.panel-banner-item[notificationid="update-unsupported"]:not([disabled]):hover:active {
+  background-color: @appmenuWarningBackgroundColorActive@;
+}
+
+:root[lwt-popup-brighttext] .panel-banner-item[notificationid="update-unsupported"]:not([disabled]) {
+  background-color: @appmenuWarningBackgroundColorBrightText@;
+}
+
+:root[lwt-popup-brighttext] .panel-banner-item[notificationid="update-unsupported"]:not([disabled]):focus,
+:root[lwt-popup-brighttext] .panel-banner-item[notificationid="update-unsupported"]:not([disabled]):hover {
+  background-color: @appmenuWarningBackgroundColorHoverBrightText@;
+}
+
+:root[lwt-popup-brighttext] .panel-banner-item[notificationid="update-unsupported"]:not([disabled]):active {
+  background-color: @appmenuWarningBackgroundColorActiveBrightText@;
 }
 
 #customization-palette .toolbarbutton-multiline-text,
@@ -1169,7 +1205,6 @@ panelmultiview .toolbaritem-combined-buttons > spacer.after-label {
   text-align: center;
 }
 
-.toolbaritem-combined-buttons > toolbarseparator[orient="vertical"] + .subviewbutton,
 #appMenu-zoom-controls > toolbarseparator[orient="vertical"] + .subviewbutton {
   margin-inline-start: 0;
 }
@@ -1330,7 +1365,6 @@ menuitem.panel-subview-footer@menuStateActive@,
 
 #appMenu-fxa-avatar,
 #appMenu-fxa-label > .toolbarbutton-icon,
-#appMenu-fxa-icon > .toolbarbutton-icon,
 #PanelUI-containersItems > .subviewbutton > .toolbarbutton-icon,
 #PanelUI-remotetabs-tabslist > toolbarbutton[itemtype="tab"] > .toolbarbutton-icon,
 #PanelUI-recentlyClosedWindows > toolbarbutton > .toolbarbutton-icon,

@@ -22,6 +22,7 @@ loader.lazyRequireGetter(this, "isXUL", "devtools/server/actors/highlighters/uti
 loader.lazyRequireGetter(this, "loadSheet", "devtools/shared/layout/utils", true);
 loader.lazyRequireGetter(this, "register", "devtools/server/actors/highlighters", true);
 loader.lazyRequireGetter(this, "removeSheet", "devtools/shared/layout/utils", true);
+loader.lazyRequireGetter(this, "accessibility", "devtools/shared/constants", true);
 
 const kStateHover = 0x00000004; // NS_EVENT_STATE_HOVER
 
@@ -34,10 +35,6 @@ const HIGHLIGHTER_STYLES_SHEET = `data:text/css;charset=utf-8,
   color: transparent !important;
   text-shadow: none !important;
 }`;
-
-const nsIAccessibleEvent = Ci.nsIAccessibleEvent;
-const nsIAccessibleStateChangeEvent = Ci.nsIAccessibleStateChangeEvent;
-const nsIAccessibleRole = Ci.nsIAccessibleRole;
 
 const {
   EVENT_TEXT_CHANGED,
@@ -55,56 +52,56 @@ const {
   EVENT_STATE_CHANGE,
   EVENT_TEXT_ATTRIBUTE_CHANGED,
   EVENT_VALUE_CHANGE,
-} = nsIAccessibleEvent;
+} = Ci.nsIAccessibleEvent;
 
 // TODO: We do not need this once bug 1422913 is fixed. We also would not need
 // to fire a name change event for an accessible that has an updated subtree and
 // that has its name calculated from the said subtree.
 const NAME_FROM_SUBTREE_RULE_ROLES = new Set([
-  nsIAccessibleRole.ROLE_BUTTONDROPDOWN,
-  nsIAccessibleRole.ROLE_BUTTONDROPDOWNGRID,
-  nsIAccessibleRole.ROLE_BUTTONMENU,
-  nsIAccessibleRole.ROLE_CELL,
-  nsIAccessibleRole.ROLE_CHECKBUTTON,
-  nsIAccessibleRole.ROLE_CHECK_MENU_ITEM,
-  nsIAccessibleRole.ROLE_CHECK_RICH_OPTION,
-  nsIAccessibleRole.ROLE_COLUMN,
-  nsIAccessibleRole.ROLE_COLUMNHEADER,
-  nsIAccessibleRole.ROLE_COMBOBOX_OPTION,
-  nsIAccessibleRole.ROLE_DEFINITION,
-  nsIAccessibleRole.ROLE_GRID_CELL,
-  nsIAccessibleRole.ROLE_HEADING,
-  nsIAccessibleRole.ROLE_HELPBALLOON,
-  nsIAccessibleRole.ROLE_HTML_CONTAINER,
-  nsIAccessibleRole.ROLE_KEY,
-  nsIAccessibleRole.ROLE_LABEL,
-  nsIAccessibleRole.ROLE_LINK,
-  nsIAccessibleRole.ROLE_LISTITEM,
-  nsIAccessibleRole.ROLE_MATHML_IDENTIFIER,
-  nsIAccessibleRole.ROLE_MATHML_NUMBER,
-  nsIAccessibleRole.ROLE_MATHML_OPERATOR,
-  nsIAccessibleRole.ROLE_MATHML_TEXT,
-  nsIAccessibleRole.ROLE_MATHML_STRING_LITERAL,
-  nsIAccessibleRole.ROLE_MATHML_GLYPH,
-  nsIAccessibleRole.ROLE_MENUITEM,
-  nsIAccessibleRole.ROLE_OPTION,
-  nsIAccessibleRole.ROLE_OUTLINEITEM,
-  nsIAccessibleRole.ROLE_PAGETAB,
-  nsIAccessibleRole.ROLE_PARENT_MENUITEM,
-  nsIAccessibleRole.ROLE_PUSHBUTTON,
-  nsIAccessibleRole.ROLE_RADIOBUTTON,
-  nsIAccessibleRole.ROLE_RADIO_MENU_ITEM,
-  nsIAccessibleRole.ROLE_RICH_OPTION,
-  nsIAccessibleRole.ROLE_ROW,
-  nsIAccessibleRole.ROLE_ROWHEADER,
-  nsIAccessibleRole.ROLE_SUMMARY,
-  nsIAccessibleRole.ROLE_SWITCH,
-  nsIAccessibleRole.ROLE_TABLE_COLUMN_HEADER,
-  nsIAccessibleRole.ROLE_TABLE_ROW_HEADER,
-  nsIAccessibleRole.ROLE_TEAR_OFF_MENU_ITEM,
-  nsIAccessibleRole.ROLE_TERM,
-  nsIAccessibleRole.ROLE_TOGGLE_BUTTON,
-  nsIAccessibleRole.ROLE_TOOLTIP,
+  Ci.nsIAccessibleRole.ROLE_BUTTONDROPDOWN,
+  Ci.nsIAccessibleRole.ROLE_BUTTONDROPDOWNGRID,
+  Ci.nsIAccessibleRole.ROLE_BUTTONMENU,
+  Ci.nsIAccessibleRole.ROLE_CELL,
+  Ci.nsIAccessibleRole.ROLE_CHECKBUTTON,
+  Ci.nsIAccessibleRole.ROLE_CHECK_MENU_ITEM,
+  Ci.nsIAccessibleRole.ROLE_CHECK_RICH_OPTION,
+  Ci.nsIAccessibleRole.ROLE_COLUMN,
+  Ci.nsIAccessibleRole.ROLE_COLUMNHEADER,
+  Ci.nsIAccessibleRole.ROLE_COMBOBOX_OPTION,
+  Ci.nsIAccessibleRole.ROLE_DEFINITION,
+  Ci.nsIAccessibleRole.ROLE_GRID_CELL,
+  Ci.nsIAccessibleRole.ROLE_HEADING,
+  Ci.nsIAccessibleRole.ROLE_HELPBALLOON,
+  Ci.nsIAccessibleRole.ROLE_HTML_CONTAINER,
+  Ci.nsIAccessibleRole.ROLE_KEY,
+  Ci.nsIAccessibleRole.ROLE_LABEL,
+  Ci.nsIAccessibleRole.ROLE_LINK,
+  Ci.nsIAccessibleRole.ROLE_LISTITEM,
+  Ci.nsIAccessibleRole.ROLE_MATHML_IDENTIFIER,
+  Ci.nsIAccessibleRole.ROLE_MATHML_NUMBER,
+  Ci.nsIAccessibleRole.ROLE_MATHML_OPERATOR,
+  Ci.nsIAccessibleRole.ROLE_MATHML_TEXT,
+  Ci.nsIAccessibleRole.ROLE_MATHML_STRING_LITERAL,
+  Ci.nsIAccessibleRole.ROLE_MATHML_GLYPH,
+  Ci.nsIAccessibleRole.ROLE_MENUITEM,
+  Ci.nsIAccessibleRole.ROLE_OPTION,
+  Ci.nsIAccessibleRole.ROLE_OUTLINEITEM,
+  Ci.nsIAccessibleRole.ROLE_PAGETAB,
+  Ci.nsIAccessibleRole.ROLE_PARENT_MENUITEM,
+  Ci.nsIAccessibleRole.ROLE_PUSHBUTTON,
+  Ci.nsIAccessibleRole.ROLE_RADIOBUTTON,
+  Ci.nsIAccessibleRole.ROLE_RADIO_MENU_ITEM,
+  Ci.nsIAccessibleRole.ROLE_RICH_OPTION,
+  Ci.nsIAccessibleRole.ROLE_ROW,
+  Ci.nsIAccessibleRole.ROLE_ROWHEADER,
+  Ci.nsIAccessibleRole.ROLE_SUMMARY,
+  Ci.nsIAccessibleRole.ROLE_SWITCH,
+  Ci.nsIAccessibleRole.ROLE_TABLE_COLUMN_HEADER,
+  Ci.nsIAccessibleRole.ROLE_TABLE_ROW_HEADER,
+  Ci.nsIAccessibleRole.ROLE_TEAR_OFF_MENU_ITEM,
+  Ci.nsIAccessibleRole.ROLE_TERM,
+  Ci.nsIAccessibleRole.ROLE_TOGGLE_BUTTON,
+  Ci.nsIAccessibleRole.ROLE_TOOLTIP,
 ]);
 
 const IS_OSX = Services.appinfo.OS === "Darwin";
@@ -127,6 +124,77 @@ function isStale(accessible) {
 }
 
 /**
+ * Get accessibility audit starting with the passed accessible object as a root.
+ *
+ * @param {Object} acc
+ *        AccessibileActor to be used as the root for the audit.
+ * @param {Map} report
+ *        An accumulator map to be used to store audit information.
+ * @param {Object} progress
+ *        An audit project object that is used to track the progress of the
+ *        audit and send progress "audit-event" events to the client.
+ */
+function getAudit(acc, report, progress) {
+  if (acc.isDefunct) {
+    return;
+  }
+
+  // Audit returns a promise, save the actual value in the report.
+  report.set(acc, acc.audit().then(result => {
+    report.set(acc, result);
+    progress.increment();
+  }));
+
+  for (const child of acc.children()) {
+    getAudit(child, report, progress);
+  }
+}
+
+/**
+ * A helper class that is used to track audit progress and send progress events
+ * to the client.
+ */
+class AuditProgress {
+  constructor(walker) {
+    this.completed = 0;
+    this.percentage = 0;
+    this.walker = walker;
+  }
+
+  setTotal(size) {
+    this.size = size;
+  }
+
+  notify() {
+    this.walker.emit("audit-event", {
+      type: "progress",
+      progress: {
+        total: this.size,
+        percentage: this.percentage,
+      },
+    });
+  }
+
+  increment() {
+    this.completed++;
+    const { completed, size } = this;
+    if (!size) {
+      return;
+    }
+
+    const percentage = Math.round(completed / size * 100);
+    if (percentage > this.percentage) {
+      this.percentage = percentage;
+      this.notify();
+    }
+  }
+
+  destroy() {
+    this.walker = null;
+  }
+}
+
+/**
  * The AccessibleWalkerActor stores a cache of AccessibleActors that represent
  * accessible objects in a given document.
  *
@@ -139,6 +207,7 @@ const AccessibleWalkerActor = ActorClassWithSpec(accessibleWalkerSpec, {
     Actor.prototype.initialize.call(this, conn);
     this.targetActor = targetActor;
     this.refMap = new Map();
+    this._loadedSheets = new WeakMap();
     this.setA11yServiceGetter();
     this.onPick = this.onPick.bind(this);
     this.onHovered = this.onHovered.bind(this);
@@ -371,6 +440,61 @@ const AccessibleWalkerActor = ActorClassWithSpec(accessibleWalkerSpec, {
       { accessible: parent, children: parent.children() }));
   },
 
+  /**
+   * Run accessibility audit and return relevant ancestries for AccessibleActors
+   * that have non-empty audit checks.
+   *
+   * @return {Promise}
+   *         A promise that resolves when the audit is complete and all relevant
+   *         ancestries are calculated.
+   */
+  async audit() {
+    const doc = await this.getDocument();
+    const report = new Map();
+    this._auditProgress = new AuditProgress(this);
+    getAudit(doc, report, this._auditProgress);
+    this._auditProgress.setTotal(report.size);
+    await Promise.all(report.values());
+
+    const ancestries = [];
+    for (const [acc, audit] of report.entries()) {
+      // Filter out audits that have no failing checks.
+      if (audit &&
+          Object.values(audit).some(check => check != null && !check.error &&
+            check.score === accessibility.SCORES.FAIL)) {
+        ancestries.push(this.getAncestry(acc));
+      }
+    }
+
+    return Promise.all(ancestries);
+  },
+
+  /**
+   * Start accessibility audit. The result of this function will not be an audit
+   * report. Instead, an "audit-event" event will be fired when the audit is
+   * completed or fails.
+   */
+  startAudit() {
+    // Audit is already running, wait for the "audit-event" event.
+    if (this._auditing) {
+      return;
+    }
+
+    this._auditing = this.audit()
+      // We do not want to block on audit request, instead fire "audit-event"
+      // event when internal audit is finished or failed.
+      .then(ancestries => this.emit("audit-event", {
+        type: "completed",
+        ancestries,
+      }))
+      .catch(() => this.emit("audit-event", { type: "error" }))
+      .finally(() => {
+        this._auditing = null;
+        this._auditProgress.destroy();
+        this._auditProgress = null;
+      });
+  },
+
   onHighlighterEvent: function(data) {
     this.emit("highlighter-event", data);
   },
@@ -378,11 +502,11 @@ const AccessibleWalkerActor = ActorClassWithSpec(accessibleWalkerSpec, {
   /**
    * Accessible event observer function.
    *
-   * @param {nsIAccessibleEvent} subject
+   * @param {Ci.nsIAccessibleEvent} subject
    *                                      accessible event object.
    */
   observe(subject) {
-    const event = subject.QueryInterface(nsIAccessibleEvent);
+    const event = subject.QueryInterface(Ci.nsIAccessibleEvent);
     const rawAccessible = event.accessible;
     const accessible = this.getRef(rawAccessible);
 
@@ -398,7 +522,8 @@ const AccessibleWalkerActor = ActorClassWithSpec(accessibleWalkerSpec, {
 
     switch (event.eventType) {
       case EVENT_STATE_CHANGE:
-        const { state, isEnabled } = event.QueryInterface(nsIAccessibleStateChangeEvent);
+        const { state, isEnabled } =
+          event.QueryInterface(Ci.nsIAccessibleStateChangeEvent);
         const isBusy = state & Ci.nsIAccessibleStates.STATE_BUSY;
         if (accessible) {
           // Only propagate state change events for active accessibles.
@@ -477,13 +602,17 @@ const AccessibleWalkerActor = ActorClassWithSpec(accessibleWalkerSpec, {
   },
 
   /**
-   * Load accessibility highlighter style sheet used for preventing transitions and
-   * applying transparency when calculating colour contrast.
+   * Ensure that nothing interferes with the audit for an accessible object
+   * (CSS, overlays) by load accessibility highlighter style sheet used for
+   * preventing transitions and applying transparency when calculating colour
+   * contrast as well as temporarily hiding accessible highlighter overlay.
    * @param  {Object} win
    *         Window where highlighting happens.
    */
-  loadTransitionDisablingStyleSheet(win) {
-    if (this._sheetLoaded) {
+  clearStyles(win) {
+    const requests = this._loadedSheets.get(win);
+    if (requests != null) {
+      this._loadedSheets.set(win, requests + 1);
       return;
     }
 
@@ -492,22 +621,50 @@ const AccessibleWalkerActor = ActorClassWithSpec(accessibleWalkerSpec, {
     // there are transitions that affect them, there might be unexpected side effects when
     // taking a snapshot for contrast measurement).
     loadSheet(win, HIGHLIGHTER_STYLES_SHEET);
-    this._sheetLoaded = true;
+    this._loadedSheets.set(win, 1);
+    this.hideHighlighter();
   },
 
   /**
-   * Unload accessibility highlighter style sheet used for preventing transitions and
-   * applying transparency when calculating colour contrast.
+   * Restore CSS and overlays that could've interfered with the audit for an
+   * accessible object by unloading accessibility highlighter style sheet used
+   * for preventing transitions and applying transparency when calculating
+   * colour contrast and potentially restoring accessible highlighter overlay.
    * @param  {Object} win
    *         Window where highlighting was happenning.
    */
-  removeTransitionDisablingStyleSheet(win) {
-    if (!this._sheetLoaded) {
+  restoreStyles(win) {
+    const requests = this._loadedSheets.get(win);
+    if (!requests) {
       return;
     }
 
+    if (requests > 1) {
+      this._loadedSheets.set(win, requests - 1);
+      return;
+    }
+
+    this.showHighlighter();
     removeSheet(win, HIGHLIGHTER_STYLES_SHEET);
-    this._sheetLoaded = false;
+    this._loadedSheets.delete(win);
+  },
+
+  hideHighlighter() {
+    // TODO: Fix this workaround that temporarily removes higlighter bounds
+    // overlay that can interfere with the contrast ratio calculation.
+    if (this._highlighter) {
+      const highlighter = this._highlighter.instance;
+      highlighter.hideAccessibleBounds();
+    }
+  },
+
+  showHighlighter() {
+    // TODO: Fix this workaround that temporarily removes higlighter bounds
+    // overlay that can interfere with the contrast ratio calculation.
+    if (this._highlighter) {
+      const highlighter = this._highlighter.instance;
+      highlighter.showAccessibleBounds();
+    }
   },
 
   /**

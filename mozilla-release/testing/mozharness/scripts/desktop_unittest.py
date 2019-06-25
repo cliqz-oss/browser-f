@@ -23,7 +23,8 @@ import platform
 from datetime import datetime, timedelta
 
 # load modules from parent dir
-sys.path.insert(1, os.path.dirname(sys.path[0]))
+here = os.path.abspath(os.path.dirname(__file__))
+sys.path.insert(1, os.path.dirname(here))
 
 from mozharness.base.errors import BaseErrorList
 from mozharness.base.log import INFO
@@ -114,11 +115,11 @@ class DesktopUnittest(TestingMixin, MercurialScript, MozbaseMixin,
                     "in the config file. You do not need to specify "
                     "any other suites.\nBeware, this may take a while ;)"}
          ],
-        [['--e10s', ], {
-            "action": "store_true",
+        [['--disable-e10s', ], {
+            "action": "store_false",
             "dest": "e10s",
-            "default": False,
-            "help": "Run tests with multiple processes."}
+            "default": True,
+            "help": "Run tests without multiple processes (e10s)."}
          ],
         [['--headless', ], {
             "action": "store_true",
@@ -362,6 +363,12 @@ class DesktopUnittest(TestingMixin, MercurialScript, MozbaseMixin,
 
     def _get_mozharness_test_paths(self, suite_category, suite):
         test_paths = json.loads(os.environ.get('MOZHARNESS_TEST_PATHS', '""'))
+
+        if '-chunked' in suite:
+            suite = suite[:suite.index('-chunked')]
+
+        if '-coverage' in suite:
+            suite = suite[:suite.index('-coverage')]
 
         if not test_paths or suite not in test_paths:
             return None

@@ -125,6 +125,8 @@ static const char* const sExtensionNames[] = {
     "GL_ARB_transform_feedback2",
     "GL_ARB_uniform_buffer_object",
     "GL_ARB_vertex_array_object",
+    "GL_CHROMIUM_color_buffer_float_rgb",
+    "GL_CHROMIUM_color_buffer_float_rgba",
     "GL_EXT_bgra",
     "GL_EXT_blend_minmax",
     "GL_EXT_color_buffer_float",
@@ -2877,13 +2879,16 @@ void GLContext::AfterGLCall_Debug(const char* const funcName) const {
   }
 
   if (err && !mLocalErrorScopeStack.size()) {
-    printf_stderr("[gl:%p] %s: Generated unexpected %s error.\n", this,
-                  funcName, GLErrorToString(err).c_str());
+    const auto errStr = GLErrorToString(err);
+    const auto text = nsPrintfCString("%s: Generated unexpected %s error",
+                                      funcName, errStr.c_str());
+    printf_stderr("[gl:%p] %s.\n", this, text.BeginReading());
 
-    if (mDebugFlags & DebugFlagAbortOnError) {
+    const bool abortOnError = mDebugFlags & DebugFlagAbortOnError;
+    if (abortOnError && err != LOCAL_GL_CONTEXT_LOST) {
+      gfxCriticalErrorOnce() << text.BeginReading();
       MOZ_CRASH(
-          "Unexpected error with MOZ_GL_DEBUG_ABORT_ON_ERROR. (Run"
-          " with MOZ_GL_DEBUG_ABORT_ON_ERROR=0 to disable)");
+          "Aborting... (Run with MOZ_GL_DEBUG_ABORT_ON_ERROR=0 to disable)");
     }
   }
 }

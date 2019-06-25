@@ -15,11 +15,23 @@ const SAME_SITE_STATUSES = [
   "strict",         // Index 2 = Ci.nsICookie2.SAMESITE_STRICT
 ];
 
+const isIPv4 = (host) => {
+  let match = /^(\d+)\.(\d+)\.(\d+)\.(\d+)$/.exec(host);
+
+  if (match) {
+    return match[1] < 256 && match[2] < 256 && match[3] < 256 && match[4] < 256;
+  }
+  return false;
+};
+const isIPv6 = (host) => host.includes(":");
+const addBracketIfIPv6 = (host) => (isIPv6(host) && !host.startsWith("[")) ? `[${host}]` : host;
+const dropBracketIfIPv6 = (host) => (isIPv6(host) && host.startsWith("[") && host.endsWith("]")) ? host.slice(1, -1) : host;
+
 const convertCookie = ({cookie, isPrivate}) => {
   let result = {
     name: cookie.name,
     value: cookie.value,
-    domain: cookie.host,
+    domain: addBracketIfIPv6(cookie.host),
     hostOnly: !cookie.isDomain,
     path: cookie.path,
     secure: cookie.isSecure,
@@ -96,6 +108,7 @@ const checkSetCookiePermissions = (extension, uri, cookie) => {
     cookie.host = cookie.host.replace(/^\./, "");
   }
   cookie.host = cookie.host.toLowerCase();
+  cookie.host = dropBracketIfIPv6(cookie.host);
 
   if (cookie.host != uri.host) {
     // Not an exact match, so check for a valid subdomain.
@@ -127,6 +140,12 @@ const checkSetCookiePermissions = (extension, uri, cookie) => {
     // below us, but enforcing that would break the web, so we don't.
   }
 
+  // If the host is an IP address, avoid adding a leading ".".
+  // An IP address is not a domain name, and only supports host-only cookies.
+  if (isIPv6(cookie.host) || isIPv4(cookie.host)) {
+    return true;
+  }
+
   // An explicit domain was passed, so add a leading "." to make this a
   // domain cookie.
   cookie.host = "." + cookie.host;
@@ -154,6 +173,7 @@ const query = function* (detailsIn, props, context) {
 
   if ("domain" in details) {
     details.domain = details.domain.toLowerCase().replace(/^\./, "");
+    details.domain = dropBracketIfIPv6(details.domain);
   }
 
   let userContextId = 0;
@@ -200,7 +220,7 @@ const query = function* (detailsIn, props, context) {
   if ("url" in details) {
     try {
       url = new URL(details.url);
-      host = url.hostname;
+      host = dropBracketIfIPv6(url.hostname);
     } catch (ex) {
       // This often happens for about: URLs
       return;
@@ -242,7 +262,7 @@ const query = function* (detailsIn, props, context) {
 
     // "Restricts the retrieved cookies to those that would match the given URL."
     if (url) {
-      if (!domainMatches(url.hostname)) {
+      if (!domainMatches(host)) {
         return false;
       }
 

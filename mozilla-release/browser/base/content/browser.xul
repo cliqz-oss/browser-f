@@ -29,7 +29,6 @@
 <?xml-stylesheet href="chrome://browser/skin/searchbar.css" type="text/css"?>
 <?xml-stylesheet href="chrome://browser/skin/places/tree-icons.css" type="text/css"?>
 <?xml-stylesheet href="chrome://browser/skin/places/editBookmark.css" type="text/css"?>
-<?xml-stylesheet href="chrome://browser/skin/compacttheme.css" type="text/css" alternate="yes" title="Light/Dark"?>
 
 # All DTD information is stored in a separate file so that it can be shared by
 # hiddenWindow.xul.
@@ -81,10 +80,9 @@
 # that they can be shared with macWindow.inc.xul.
 #include global-scripts.inc
 
-<script type="application/javascript">
+<script>
   Services.scriptloader.loadSubScript("chrome://global/content/contentAreaUtils.js", this);
   Services.scriptloader.loadSubScript("chrome://browser/content/browser-captivePortal.js", this);
-  Services.scriptloader.loadSubScript("chrome://browser/content/browser-compacttheme.js", this);
   Services.scriptloader.loadSubScript("chrome://browser/content/browser-contentblocking.js", this);
 #ifdef MOZ_DATA_REPORTING
   Services.scriptloader.loadSubScript("chrome://browser/content/browser-data-submission-info-bar.js", this);
@@ -125,69 +123,52 @@
     <menupopup id="tabContextMenu"
                onpopupshowing="if (event.target == this) TabContextMenu.updateContextMenu(this);"
                onpopuphidden="if (event.target == this) TabContextMenu.contextTab = null;">
-      <menuitem id="context_reloadTab" label="&reloadTab.label;" accesskey="&reloadTab.accesskey;"
+      <menuitem id="context_reloadTab" data-lazy-l10n-id="reload-tab"
                 oncommand="gBrowser.reloadTab(TabContextMenu.contextTab);"/>
-      <menuitem id="context_reloadSelectedTabs" label="&reloadTabs.label;" hidden="true"
-                accesskey="&reloadTabs.accesskey;"
+      <menuitem id="context_reloadSelectedTabs" data-lazy-l10n-id="reload-tabs" hidden="true"
                 oncommand="gBrowser.reloadMultiSelectedTabs();"/>
       <menuitem id="context_toggleMuteTab" oncommand="TabContextMenu.contextTab.toggleMuteAudio();"/>
       <menuitem id="context_toggleMuteSelectedTabs" hidden="true"
                 oncommand="gBrowser.toggleMuteAudioOnMultiSelectedTabs(TabContextMenu.contextTab);"/>
-      <menuitem id="context_pinTab" label="&pinTab.label;"
-                accesskey="&pinTab.accesskey;"
+      <menuitem id="context_pinTab" data-lazy-l10n-id="pin-tab"
                 oncommand="gBrowser.pinTab(TabContextMenu.contextTab);"/>
-      <menuitem id="context_unpinTab" label="&unpinTab.label;" hidden="true"
-                accesskey="&unpinTab.accesskey;"
+      <menuitem id="context_unpinTab" data-lazy-l10n-id="unpin-tab" hidden="true"
                 oncommand="gBrowser.unpinTab(TabContextMenu.contextTab);"/>
-      <menuitem id="context_pinSelectedTabs" label="&pinSelectedTabs.label;" hidden="true"
-                accesskey="&pinSelectedTabs.accesskey;"
+      <menuitem id="context_pinSelectedTabs" data-lazy-l10n-id="pin-selected-tabs" hidden="true"
                 oncommand="gBrowser.pinMultiSelectedTabs();"/>
-      <menuitem id="context_unpinSelectedTabs" label="&unpinSelectedTabs.label;" hidden="true"
-                accesskey="&unpinSelectedTabs.accesskey;"
+      <menuitem id="context_unpinSelectedTabs" data-lazy-l10n-id="unpin-selected-tabs" hidden="true"
                 oncommand="gBrowser.unpinMultiSelectedTabs();"/>
-      <menuitem id="context_duplicateTab" label="&duplicateTab.label;"
-                accesskey="&duplicateTab.accesskey;"
+      <menuitem id="context_duplicateTab" data-lazy-l10n-id="duplicate-tab"
                 oncommand="duplicateTabIn(TabContextMenu.contextTab, 'tab');"/>
-      <menuitem id="context_duplicateTabs" label="&duplicateTabs.label;"
-                accesskey="&duplicateTabs.accesskey;"
+      <menuitem id="context_duplicateTabs" data-lazy-l10n-id="duplicate-tabs"
                 oncommand="TabContextMenu.duplicateSelectedTabs();"/>
       <menuseparator/>
-      <menuitem id="context_selectAllTabs" label="&selectAllTabs.label;" accesskey="&selectAllTabs.accesskey;"
+      <menuitem id="context_selectAllTabs" data-lazy-l10n-id="select-all-tabs"
                 oncommand="gBrowser.selectAllTabs();"/>
       <menuitem id="context_bookmarkSelectedTabs"
                 hidden="true"
-                label="&bookmarkSelectedTabs.label;"
-                accesskey="&bookmarkSelectedTabs.accesskey;"
+                data-lazy-l10n-id="bookmark-selected-tabs"
                 oncommand="PlacesCommandHook.bookmarkPages(PlacesCommandHook.uniqueSelectedPages);"/>
       <menuitem id="context_bookmarkTab"
-                label="&bookmarkTab.label;"
-                accesskey="&bookmarkTab.accesskey;"
+                data-lazy-l10n-id="bookmark-tab"
                 oncommand="PlacesCommandHook.bookmarkPages(PlacesCommandHook.getUniquePages([TabContextMenu.contextTab]));"/>
       <menu id="context_reopenInContainer"
-            label="&reopenInContainer.label;"
-            accesskey="&reopenInContainer.accesskey;"
+            data-lazy-l10n-id="reopen-in-container"
             hidden="true">
         <menupopup oncommand="TabContextMenu.reopenInContainer(event);"
                    onpopupshowing="TabContextMenu.createReopenInContainerMenu(event);"/>
       </menu>
-      <menu id="context_moveTabOptions"
-            multiselectcontextlabel="&moveSelectedTabOptions.label;"
-            multiselectcontextaccesskey="&moveSelectedTabOptions.accesskey;"
-            nonmultiselectcontextlabel="&moveTabOptions.label;"
-            nonmultiselectcontextaccesskey="&moveTabOptions.accesskey;">
+      <menu id="context_moveTabOptions">
         <menupopup id="moveTabOptionsMenu">
           <menuitem id="context_moveToStart"
-                    label="&moveToStart.label;"
-                    accesskey="&moveToStart.accesskey;"
+                    data-lazy-l10n-id="move-to-start"
                     tbattr="tabbrowser-multiple"
                     oncommand="gBrowser.moveTabsToStart(TabContextMenu.contextTab);"/>
           <menuitem id="context_moveToEnd"
-                    label="&moveToEnd.label;"
-                    accesskey="&moveToEnd.accesskey;"
+                    data-lazy-l10n-id="move-to-end"
                     tbattr="tabbrowser-multiple"
                     oncommand="gBrowser.moveTabsToEnd(TabContextMenu.contextTab);"/>
-          <menuitem id="context_openTabInWindow" label="&moveToNewWindow.label;"
-                    accesskey="&moveToNewWindow.accesskey;"
+          <menuitem id="context_openTabInWindow" data-lazy-l10n-id="move-to-new-window"
                     tbattr="tabbrowser-multiple"
                     oncommand="gBrowser.replaceTabsWithWindow(TabContextMenu.contextTab);"/>
         </menupopup>
@@ -198,18 +179,17 @@
                    onpopupshowing="gSync.populateSendTabToDevicesMenu(event.target, TabContextMenu.contextTab.linkedBrowser.currentURI.spec, TabContextMenu.contextTab.linkedBrowser.contentTitle, TabContextMenu.contextTab.multiselected);"/>
       </menu>
       <menuseparator/>
-      <menuitem id="context_closeTabsToTheEnd" label="&closeTabsToTheEnd.label;" accesskey="&closeTabsToTheEnd.accesskey;"
+      <menuitem id="context_closeTabsToTheEnd" data-lazy-l10n-id="close-tabs-to-the-end"
                 oncommand="gBrowser.removeTabsToTheEndFrom(TabContextMenu.contextTab, {animate: true});"/>
-      <menuitem id="context_closeOtherTabs" label="&closeOtherTabs.label;" accesskey="&closeOtherTabs.accesskey;"
+      <menuitem id="context_closeOtherTabs" data-lazy-l10n-id="close-other-tabs"
                 oncommand="gBrowser.removeAllTabsBut(TabContextMenu.contextTab);"/>
       <menuitem id="context_undoCloseTab"
-                label="&undoCloseTab.label;"
-                accesskey="&undoCloseTab.accesskey;"
+                data-lazy-l10n-id="undo-close-tab"
                 observes="History:UndoCloseTab"/>
-      <menuitem id="context_closeTab" label="&closeTab.label;" accesskey="&closeTab.accesskey;"
+      <menuitem id="context_closeTab" data-lazy-l10n-id="close-tab"
                 oncommand="gBrowser.removeTab(TabContextMenu.contextTab, { animate: true });"/>
-      <menuitem id="context_closeSelectedTabs" label="&closeTabs.label;"
-                hidden="true" accesskey="&closeTabs.accesskey;"
+      <menuitem id="context_closeSelectedTabs" data-lazy-l10n-id="close-tabs"
+                hidden="true"
                 oncommand="gBrowser.removeMultiSelectedTabs();"/>
     </menupopup>
 
@@ -293,11 +273,17 @@
            aria-labelledby="editBookmarkPanelTitle">
       <box class="panel-header">
         <label id="editBookmarkPanelTitle"/>
+        <toolbarbutton id="editBookmarkPanelInfoButton" oncommand="StarUI.toggleRecommendation();" >
+          <image/>
+        </toolbarbutton>
       </box>
-      <html:div id="editBookmarkPanelFaviconContainer">
-        <html:img id="editBookmarkPanelFavicon"/>
+      <html:div id="editBookmarkPanelInfoArea">
+        <html:div id="editBookmarkPanelRecommendation"></html:div>
+        <html:div id="editBookmarkPanelFaviconContainer">
+          <html:img id="editBookmarkPanelFavicon"/>
+        </html:div>
+        <html:div id="editBookmarkPanelImage"></html:div>
       </html:div>
-      <box id="editBookmarkPanelImage"/>
 #include ../../components/places/content/editBookmarkPanel.inc.xul
       <vbox id="editBookmarkPanelBottomContent"
             flex="1">
@@ -416,6 +402,11 @@
                 label="&customizeMenu.removeExtension.label;"
                 contexttype="toolbaritem"
                 class="customize-context-removeExtension"/>
+      <menuitem oncommand="ToolbarContextMenu.reportExtensionForContextAction(this.parentElement, 'toolbar_context_menu')"
+                accesskey="&customizeMenu.reportExtension.accesskey;"
+                label="&customizeMenu.reportExtension.label;"
+                contexttype="toolbaritem"
+                class="customize-context-reportExtension"/>
       <menuseparator/>
       <menuitem oncommand="gCustomizeMode.addToPanel(document.popupNode)"
                 accesskey="&customizeMenu.pinToOverflowMenu.accesskey;"
@@ -436,32 +427,26 @@
       <menuitem id="toolbar-context-reloadSelectedTab"
                 contexttype="tabbar"
                 oncommand="gBrowser.reloadMultiSelectedTabs();"
-                label="&toolbarContextMenu.reloadSelectedTab.label;"
-                accesskey="&toolbarContextMenu.reloadSelectedTab.accesskey;"/>
+                data-lazy-l10n-id="toolbar-context-menu-reload-selected-tab"/>
       <menuitem id="toolbar-context-reloadSelectedTabs"
                 contexttype="tabbar"
                 oncommand="gBrowser.reloadMultiSelectedTabs();"
-                label="&toolbarContextMenu.reloadSelectedTabs.label;"
-                accesskey="&toolbarContextMenu.reloadSelectedTabs.accesskey;"/>
+                data-lazy-l10n-id="toolbar-context-menu-reload-selected-tabs"/>
       <menuitem id="toolbar-context-bookmarkSelectedTab"
                 contexttype="tabbar"
                 oncommand="PlacesCommandHook.bookmarkPages(PlacesCommandHook.uniqueSelectedPages);"
-                label="&toolbarContextMenu.bookmarkSelectedTab.label;"
-                accesskey="&toolbarContextMenu.bookmarkSelectedTab.accesskey;"/>
+                data-lazy-l10n-id="toolbar-context-menu-bookmark-selected-tab"/>
       <menuitem id="toolbar-context-bookmarkSelectedTabs"
                 contexttype="tabbar"
                 oncommand="PlacesCommandHook.bookmarkPages(PlacesCommandHook.uniqueSelectedPages);"
-                label="&toolbarContextMenu.bookmarkSelectedTabs.label;"
-                accesskey="&toolbarContextMenu.bookmarkSelectedTabs.accesskey;"/>
+                data-lazy-l10n-id="toolbar-context-menu-bookmark-selected-tabs"/>
       <menuitem id="toolbar-context-selectAllTabs"
                 contexttype="tabbar"
                 oncommand="gBrowser.selectAllTabs();"
-                label="&toolbarContextMenu.selectAllTabs.label;"
-                accesskey="&toolbarContextMenu.selectAllTabs.accesskey;"/>
+                data-lazy-l10n-id="toolbar-context-menu-select-all-tabs"/>
       <menuitem id="toolbar-context-undoCloseTab"
                 contexttype="tabbar"
-                label="&toolbarContextMenu.undoCloseTab.label;"
-                accesskey="&toolbarContextMenu.undoCloseTab.accesskey;"
+                data-lazy-l10n-id="toolbar-context-menu-undo-close-tab"
                 observes="History:UndoCloseTab"/>
       <menuseparator/>
       <menuseparator id="viewToolbarsMenuSeparator"/>
@@ -623,7 +608,8 @@
 #include popup-notifications.inc
 
 #include ../../components/customizableui/content/panelUI.inc.xul
-#include ../../components/controlcenter/content/panel.inc.xul
+#include ../../components/controlcenter/content/identityPanel.inc.xul
+#include ../../components/controlcenter/content/protectionsPanel.inc.xul
 #include ../../components/downloads/content/downloadsPanel.inc.xul
 #include browser-allTabsMenu.inc.xul
 
@@ -637,31 +623,23 @@
              onpopupshowing="UpdateDynamicShortcutTooltipText(this);"/>
 
     <menupopup id="SyncedTabsSidebarContext">
-      <menuitem label="&syncedTabs.context.open.label;"
-                accesskey="&syncedTabs.context.open.accesskey;"
+      <menuitem data-lazy-l10n-id="synced-tabs-context-open"
                 id="syncedTabsOpenSelected" where="current"/>
-      <menuitem label="&syncedTabs.context.openInNewTab.label;"
-                accesskey="&syncedTabs.context.openInNewTab.accesskey;"
+      <menuitem data-lazy-l10n-id="synced-tabs-context-open-in-new-tab"
                 id="syncedTabsOpenSelectedInTab" where="tab"/>
-      <menuitem label="&syncedTabs.context.openInNewWindow.label;"
-                accesskey="&syncedTabs.context.openInNewWindow.accesskey;"
+      <menuitem data-lazy-l10n-id="synced-tabs-context-open-in-new-window"
                 id="syncedTabsOpenSelectedInWindow" where="window"/>
-      <menuitem label="&syncedTabs.context.openInNewPrivateWindow.label;"
-                accesskey="&syncedTabs.context.openInNewPrivateWindow.accesskey;"
+      <menuitem data-lazy-l10n-id="synced-tabs-context-open-in-new-private-window"
                 id="syncedTabsOpenSelectedInPrivateWindow" where="window" private="true"/>
       <menuseparator/>
-      <menuitem label="&syncedTabs.context.bookmarkSingleTab.label;"
-                accesskey="&syncedTabs.context.bookmarkSingleTab.accesskey;"
+      <menuitem data-lazy-l10n-id="synced-tabs-context-bookmark-single-tab"
                 id="syncedTabsBookmarkSelected"/>
-      <menuitem label="&syncedTabs.context.copy.label;"
-                accesskey="&syncedTabs.context.copy.accesskey;"
+      <menuitem data-lazy-l10n-id="synced-tabs-context-copy"
                 id="syncedTabsCopySelected"/>
       <menuseparator/>
-      <menuitem label="&syncedTabs.context.openAllInTabs.label;"
-                accesskey="&syncedTabs.context.openAllInTabs.accesskey;"
+      <menuitem data-lazy-l10n-id="synced-tabs-context-open-all-in-tabs"
                 id="syncedTabsOpenAllInTabs"/>
-      <menuitem label="&syncedTabs.context.managedevices.label;"
-                accesskey="&syncedTabs.context.managedevices.accesskey;"
+      <menuitem data-lazy-l10n-id="synced-tabs-context-manage-devices"
                 id="syncedTabsManageDevices"
                 oncommand="gSync.openDevicesManagementPage('syncedtabs-sidebar');"/>
       <menuitem label="&syncSyncNowItem.label;"
@@ -696,7 +674,7 @@
                 id="syncedTabsRefreshFilter"/>
     </menupopup>
 
-    <hbox id="statuspanel" inactive="true" layer="true">
+    <hbox id="statuspanel" inactive="true" renderroot="content">
       <hbox id="statuspanel-inner">
         <label id="statuspanel-label"
                role="status"
@@ -868,16 +846,6 @@
                      placeholder="&urlbar.placeholder2;"
                      defaultPlaceholder="&urlbar.placeholder2;"
                      focused="true"
-                     type="autocomplete"
-                     quantumbar="false"
-                     autocompletesearch="unifiedcomplete"
-                     autocompletesearchparam="enable-actions"
-                     autocompletepopup="PopupAutoCompleteRichResult"
-                     completeselectedindex="true"
-                     tabscrolling="true"
-                     newlines="stripsurroundingwhitespace"
-                     ontextentered="this.handleCommand(param);"
-                     ontextreverted="return this.handleRevert();"
                      pageproxystate="invalid">
               <!-- Use onclick instead of normal popup= syntax since the popup
                    code fires onmousedown, and hence eats our favicon drag events. -->
@@ -920,6 +888,8 @@
                          tooltiptext="&urlbar.flashPluginBlocked.tooltip;"/>
                   <image data-permission-id="midi" class="blocked-permission-icon midi-icon" role="button"
                          tooltiptext="&urlbar.midiBlocked.tooltip;"/>
+                  <image data-permission-id="install" class="blocked-permission-icon install-icon" role="button"
+                         tooltiptext="&urlbar.installBlocked.tooltip;"/>
                 </box>
                 <box id="notification-popup-box"
                      hidden="true"
@@ -1331,7 +1301,7 @@
 
   <hbox id="fullscr-toggler" hidden="true"/>
 
-  <deck id="content-deck" flex="1">
+  <deck id="content-deck" flex="1" renderroot="content">
     <hbox flex="1" id="browser">
       <vbox id="browser-border-start" hidden="true" layer="true"/>
       <vbox id="sidebar-box" hidden="true" class="chromeclass-extrachrome">
@@ -1364,10 +1334,12 @@
       </vbox>
       <vbox id="browser-border-end" hidden="true" layer="true"/>
     </hbox>
+    <box id="customization-container" flex="1" hidden="true"><![CDATA[
 #include ../../components/customizableui/content/customizeMode.inc.xul
+    ]]></box>
   </deck>
 
-  <html:div id="fullscreen-warning" class="pointerlockfswarning" hidden="true">
+  <html:div id="fullscreen-warning" class="pointerlockfswarning" hidden="true" renderroot="content">
     <html:div class="pointerlockfswarning-domain-text">
       &fullscreenWarning.beforeDomain.label;
       <html:span class="pointerlockfswarning-domain"/>
@@ -1386,7 +1358,7 @@
     </html:button>
   </html:div>
 
-  <html:div id="pointerlock-warning" class="pointerlockfswarning" hidden="true">
+  <html:div id="pointerlock-warning" class="pointerlockfswarning" hidden="true" renderroot="content">
     <html:div class="pointerlockfswarning-domain-text">
       &pointerlockWarning.beforeDomain.label;
       <html:span class="pointerlockfswarning-domain"/>
@@ -1397,8 +1369,7 @@
     </html:div>
   </html:div>
 
-  <vbox id="browser-bottombox" layer="true">
+  <vbox id="browser-bottombox" layer="true" renderroot="content">
     <!-- gNotificationBox will be added here lazily. -->
   </vbox>
-
 </window>

@@ -42,17 +42,14 @@
         toggletoolbar="true"
         persist="width height screenX screenY sizemode">
 
-  <script type="application/javascript"
-          src="chrome://browser/content/places/places.js"/>
+  <script src="chrome://browser/content/places/places.js"/>
+  <script src="chrome://global/content/editMenuOverlay.js"/>
 #ifndef XP_MACOSX
   <!-- On Mac, this is included via macWindow.inc.xul -> global-scripts.inc -> browser.js -> defineLazyScriptGetter -->
-  <script type="application/javascript"
-          src="chrome://browser/content/places/editBookmark.js"/>
+  <script src="chrome://browser/content/places/editBookmark.js"/>
   <!-- On Mac, thes are included via macWindow.inc.xul -> global-scripts.inc -->
-  <script type="application/javascript"
-          src="chrome://global/content/globalOverlay.js"/>
-  <script type="application/javascript"
-          src="chrome://browser/content/utilityOverlay.js"/>
+  <script src="chrome://global/content/globalOverlay.js"/>
+  <script src="chrome://browser/content/utilityOverlay.js"/>
 #endif
 
   <stringbundleset id="placesStringSet">
@@ -62,17 +59,13 @@
 #ifdef XP_MACOSX
 #include ../../../base/content/macWindow.inc.xul
 #else
-#include ../../../../toolkit/content/editMenuCommands.inc.xul
 #include placesCommands.inc.xul
 #endif
 
   <!-- This must be included after macWindow.inc.xul to override DownloadsView -->
-  <script type="application/javascript"
-          src="chrome://browser/content/downloads/allDownloadsView.js"/>
-  <script type="application/javascript"
-          src="chrome://global/content/contentAreaUtils.js"/>
-  <script type="application/javascript"
-          src="chrome://browser/content/places/places-tree.js"/>
+  <script src="chrome://browser/content/downloads/allDownloadsView.js"/>
+  <script src="chrome://global/content/contentAreaUtils.js"/>
+  <script src="chrome://browser/content/places/places-tree.js"/>
 
   <commandset id="organizerCommandSet">
     <command id="OrganizerCommand_find:all"
@@ -340,7 +333,7 @@
 
       <textbox id="searchFilter"
                flex="1"
-               type="search"
+               is="search-textbox"
                aria-controls="placeContent"
                oncommand="PlacesSearchBox.search(this.value);"
                collection="bookmarks">

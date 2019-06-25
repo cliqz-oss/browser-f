@@ -12,6 +12,7 @@
 #include "mozilla/EventStates.h"
 #include "mozilla/MemoryReporting.h"
 #include "mozilla/Preferences.h"
+#include "mozilla/dom/DocumentInlines.h"
 #include "mozilla/dom/HTMLLinkElementBinding.h"
 #include "nsContentUtils.h"
 #include "nsGenericHTMLElement.h"
@@ -84,12 +85,18 @@ NS_IMPL_ISUPPORTS_CYCLE_COLLECTION_INHERITED(HTMLLinkElement,
 
 NS_IMPL_ELEMENT_CLONE(HTMLLinkElement)
 
-bool HTMLLinkElement::Disabled() {
+bool HTMLLinkElement::Disabled() const {
+  if (StaticPrefs::dom_link_disabled_attribute_enabled()) {
+    return GetBoolAttr(nsGkAtoms::disabled);
+  }
   StyleSheet* ss = GetSheet();
   return ss && ss->Disabled();
 }
 
-void HTMLLinkElement::SetDisabled(bool aDisabled) {
+void HTMLLinkElement::SetDisabled(bool aDisabled, ErrorResult& aRv) {
+  if (StaticPrefs::dom_link_disabled_attribute_enabled()) {
+    return SetHTMLBoolAttr(nsGkAtoms::disabled, aDisabled, aRv);
+  }
   if (StyleSheet* ss = GetSheet()) {
     ss->SetDisabled(aDisabled);
   }
@@ -118,7 +125,9 @@ nsresult HTMLLinkElement::BindToTree(Document* aDocument, nsIContent* aParent,
   NS_ENSURE_SUCCESS(rv, rv);
 
   if (Document* doc = GetComposedDoc()) {
-    doc->RegisterPendingLinkUpdate(this);
+    if (!doc->NodePrincipal()->IsSystemPrincipal()) {
+      doc->RegisterPendingLinkUpdate(this);
+    }
     TryDNSPrefetchOrPreconnectOrPrefetchOrPreloadOrPrerender();
   }
 
@@ -127,8 +136,8 @@ nsresult HTMLLinkElement::BindToTree(Document* aDocument, nsIContent* aParent,
   nsContentUtils::AddScriptRunner(
       NewRunnableMethod("dom::HTMLLinkElement::BindToTree", this, update));
 
-  if (aDocument && this->AttrValueIs(kNameSpaceID_None, nsGkAtoms::rel,
-                                     nsGkAtoms::localization, eIgnoreCase)) {
+  if (aDocument && AttrValueIs(kNameSpaceID_None, nsGkAtoms::rel,
+                               nsGkAtoms::localization, eIgnoreCase)) {
     aDocument->LocalizationLinkAdded(this);
   }
 
@@ -311,7 +320,9 @@ nsresult HTMLLinkElement::AfterSetAttr(int32_t aNameSpaceID, nsAtom* aName,
         (aName == nsGkAtoms::href || aName == nsGkAtoms::rel ||
          aName == nsGkAtoms::title || aName == nsGkAtoms::media ||
          aName == nsGkAtoms::type || aName == nsGkAtoms::as ||
-         aName == nsGkAtoms::crossorigin)) {
+         aName == nsGkAtoms::crossorigin ||
+         (aName == nsGkAtoms::disabled &&
+          StaticPrefs::dom_link_disabled_attribute_enabled()))) {
       bool dropSheet = false;
       if (aName == nsGkAtoms::rel) {
         nsAutoString value;
@@ -333,20 +344,26 @@ nsresult HTMLLinkElement::AfterSetAttr(int32_t aNameSpaceID, nsAtom* aName,
         UpdatePreload(aName, aValue, aOldValue);
       }
 
-      const bool forceUpdate = dropSheet || aName == nsGkAtoms::title ||
-                               aName == nsGkAtoms::media ||
-                               aName == nsGkAtoms::type;
+      const bool forceUpdate =
+          dropSheet || aName == nsGkAtoms::title || aName == nsGkAtoms::media ||
+          aName == nsGkAtoms::type || aName == nsGkAtoms::disabled;
 
       Unused << UpdateStyleSheetInternal(
           nullptr, nullptr, forceUpdate ? ForceUpdate::Yes : ForceUpdate::No);
     }
   } else {
-    // Since removing href or rel makes us no longer link to a
-    // stylesheet, force updates for those too.
     if (aNameSpaceID == kNameSpaceID_None) {
+      if (aName == nsGkAtoms::disabled &&
+          StaticPrefs::dom_link_disabled_attribute_enabled()) {
+        mExplicitlyEnabled = true;
+      }
+      // Since removing href or rel makes us no longer link to a stylesheet,
+      // force updates for those too.
       if (aName == nsGkAtoms::href || aName == nsGkAtoms::rel ||
           aName == nsGkAtoms::title || aName == nsGkAtoms::media ||
-          aName == nsGkAtoms::type) {
+          aName == nsGkAtoms::type ||
+          (aName == nsGkAtoms::disabled &&
+           StaticPrefs::dom_link_disabled_attribute_enabled())) {
         Unused << UpdateStyleSheetInternal(nullptr, nullptr, ForceUpdate::Yes);
       }
       if ((aName == nsGkAtoms::as || aName == nsGkAtoms::type ||
@@ -412,6 +429,10 @@ Maybe<nsStyleLinkElement::SheetInfo> HTMLLinkElement::GetStyleSheetInfo() {
     return Nothing();
   }
 
+  if (StaticPrefs::dom_link_disabled_attribute_enabled() && Disabled()) {
+    return Nothing();
+  }
+
   nsAutoString title;
   nsAutoString media;
   GetTitleAndMediaForElement(*this, title, media);
@@ -441,6 +462,7 @@ Maybe<nsStyleLinkElement::SheetInfo> HTMLLinkElement::GetStyleSheetInfo() {
       media,
       alternate ? HasAlternateRel::Yes : HasAlternateRel::No,
       IsInline::No,
+      mExplicitlyEnabled ? IsExplicitlyEnabled::Yes : IsExplicitlyEnabled::No,
   });
 }
 
@@ -495,11 +517,7 @@ bool HTMLLinkElement::CheckPreloadAttrs(const nsAttrValue& aAs,
   // Check if media attribute is valid.
   if (!aMedia.IsEmpty()) {
     RefPtr<MediaList> mediaList = MediaList::Create(aMedia);
-    nsPresContext* presContext = aDocument->GetPresContext();
-    if (!presContext) {
-      return false;
-    }
-    if (!mediaList->Matches(presContext)) {
+    if (!mediaList->Matches(*aDocument)) {
       return false;
     }
   }

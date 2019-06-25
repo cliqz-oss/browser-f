@@ -95,7 +95,7 @@ class PreEffectsVisualOverflowCollector : public nsLayoutUtils::BoxCallback {
     if (nsSVGIntegrationUtils::UsingOverflowAffectingEffects(aFrame) &&
         !aInReflow) {
       nsOverflowAreas* preTransformOverflows =
-          aFrame->GetProperty(aFrame->PreTransformOverflowAreasProperty());
+          aFrame->GetProperty(nsIFrame::PreTransformOverflowAreasProperty());
 
       MOZ_ASSERT(!preTransformOverflows,
                  "GetVisualOverflowRect() won't return the pre-effects rect!");
@@ -167,6 +167,22 @@ bool nsSVGIntegrationUtils::UsingMaskOrClipPathForFrame(
     const nsIFrame* aFrame) {
   const nsStyleSVGReset* style = aFrame->StyleSVGReset();
   return style->HasClipPath() || style->HasMask();
+}
+
+bool nsSVGIntegrationUtils::UsingSimpleClipPathForFrame(
+    const nsIFrame* aFrame) {
+  const nsStyleSVGReset* style = aFrame->StyleSVGReset();
+  if (!style->HasClipPath() || style->HasMask()) {
+    return false;
+  }
+
+  const auto& clipPath = style->mClipPath;
+  if (clipPath.GetType() != StyleShapeSourceType::Shape) {
+    return false;
+  }
+
+  const auto& shape = clipPath.BasicShape();
+  return !shape.IsPolygon();
 }
 
 nsPoint nsSVGIntegrationUtils::GetOffsetToBoundingBox(nsIFrame* aFrame) {
@@ -787,7 +803,8 @@ bool nsSVGIntegrationUtils::PaintMask(const PaintFramesParams& aParams) {
     MoveContextOriginToUserSpace(firstFrame, aParams);
 
     basicShapeSR.SetContext(&ctx);
-    nsCSSClipPathInstance::ApplyBasicShapeOrPathClip(ctx, frame);
+    nsCSSClipPathInstance::ApplyBasicShapeOrPathClip(
+        ctx, frame, nsSVGUtils::GetCSSPxToDevPxMatrix(frame));
     if (!maskUsage.shouldGenerateMaskLayer) {
       // Only have basic-shape clip-path effect. Fill clipped region by
       // opaque white.
@@ -979,7 +996,8 @@ void PaintMaskAndClipPathInternal(const PaintFramesParams& aParams,
     if (maskUsage.shouldApplyClipPath) {
       clipPathFrame->ApplyClipPath(context, frame, cssPxToDevPxMatrix);
     } else {
-      nsCSSClipPathInstance::ApplyBasicShapeOrPathClip(context, frame);
+      nsCSSClipPathInstance::ApplyBasicShapeOrPathClip(context, frame,
+                                                       cssPxToDevPxMatrix);
     }
   }
 
@@ -1158,12 +1176,12 @@ bool PaintFrameCallback::operator()(gfxContext* aContext,
                mPaintServerSize.height);
 
   using PaintFrameFlags = nsLayoutUtils::PaintFrameFlags;
-  PaintFrameFlags flags = PaintFrameFlags::PAINT_IN_TRANSFORM;
+  PaintFrameFlags flags = PaintFrameFlags::InTransform;
   if (mFlags & nsSVGIntegrationUtils::FLAG_SYNC_DECODE_IMAGES) {
-    flags |= PaintFrameFlags::PAINT_SYNC_DECODE_IMAGES;
+    flags |= PaintFrameFlags::SyncDecodeImages;
   }
   nsLayoutUtils::PaintFrame(aContext, mFrame, dirty, NS_RGBA(0, 0, 0, 0),
-                            nsDisplayListBuilderMode::PAINTING, flags);
+                            nsDisplayListBuilderMode::Painting, flags);
 
   nsIFrame* currentFrame = mFrame;
   while ((currentFrame = currentFrame->GetNextContinuation()) != nullptr) {
@@ -1177,7 +1195,7 @@ bool PaintFrameCallback::operator()(gfxContext* aContext,
 
     nsLayoutUtils::PaintFrame(aContext, currentFrame, dirty - offset,
                               NS_RGBA(0, 0, 0, 0),
-                              nsDisplayListBuilderMode::PAINTING, flags);
+                              nsDisplayListBuilderMode::Painting, flags);
 
     aContext->Restore();
   }

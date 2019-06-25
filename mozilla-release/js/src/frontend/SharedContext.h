@@ -12,7 +12,6 @@
 
 #include "ds/InlineTable.h"
 #include "frontend/ParseNode.h"
-#include "frontend/TokenStream.h"
 #include "vm/BytecodeUtil.h"
 #include "vm/JSFunction.h"
 #include "vm/JSScript.h"
@@ -115,6 +114,7 @@ class SharedContext {
   bool allowNewTarget_ : 1;
   bool allowSuperProperty_ : 1;
   bool allowSuperCall_ : 1;
+  bool allowArguments_ : 1;
   bool inWith_ : 1;
   bool needsThisTDZChecks_ : 1;
 
@@ -164,6 +164,7 @@ class SharedContext {
         allowNewTarget_(false),
         allowSuperProperty_(false),
         allowSuperCall_(false),
+        allowArguments_(true),
         inWith_(false),
         needsThisTDZChecks_(false),
         hasExplicitUseStrict_(false),
@@ -202,6 +203,7 @@ class SharedContext {
   bool allowNewTarget() const { return allowNewTarget_; }
   bool allowSuperProperty() const { return allowSuperProperty_; }
   bool allowSuperCall() const { return allowSuperCall_; }
+  bool allowArguments() const { return allowArguments_; }
   bool inWith() const { return inWith_; }
   bool needsThisTDZChecks() const { return needsThisTDZChecks_; }
 
@@ -273,6 +275,8 @@ inline EvalSharedContext* SharedContext::asEvalContext() {
   MOZ_ASSERT(isEvalContext());
   return static_cast<EvalSharedContext*>(this);
 }
+
+enum class HasHeritage : bool { No, Yes };
 
 class FunctionBox : public ObjectBox, public SharedContext {
   // The parser handles tracing the fields below via the TraceListNode linked
@@ -420,6 +424,7 @@ class FunctionBox : public ObjectBox, public SharedContext {
   void initStandaloneFunction(Scope* enclosingScope);
   void initWithEnclosingParseContext(ParseContext* enclosing,
                                      FunctionSyntaxKind kind);
+  void initFieldInitializer(ParseContext* enclosing, HasHeritage hasHeritage);
 
   inline bool isLazyFunctionWithoutEnclosingScope() const {
     return function()->isInterpretedLazy() &&
@@ -489,7 +494,7 @@ class FunctionBox : public ObjectBox, public SharedContext {
 
   bool needsFinalYield() const { return isGenerator() || isAsync(); }
   bool needsDotGeneratorName() const { return isGenerator() || isAsync(); }
-  bool needsIteratorResult() const { return isGenerator(); }
+  bool needsIteratorResult() const { return isGenerator() && !isAsync(); }
   bool needsPromiseResult() const { return isAsync() && !isGenerator(); }
 
   bool isArrow() const { return function()->isArrow(); }
@@ -549,30 +554,15 @@ class FunctionBox : public ObjectBox, public SharedContext {
     startColumn = column;
   }
 
-  void setEnd(const TokenStreamAnyChars& anyChars) {
+  void setEnd(uint32_t end) {
     // For all functions except class constructors, the buffer and
     // toString ending positions are the same. Class constructors override
     // the toString ending position with the end of the class definition.
-    uint32_t offset = anyChars.currentToken().pos.end;
-    bufEnd = offset;
-    toStringEnd = offset;
+    bufEnd = toStringEnd = end;
   }
 
   void trace(JSTracer* trc) override;
 };
-
-template <typename Unit, class AnyCharsAccess>
-inline void GeneralTokenStreamChars<Unit, AnyCharsAccess>::setFunctionStart(
-    FunctionBox* funbox) const {
-  const TokenStreamAnyChars& anyChars = anyCharsAccess();
-
-  uint32_t bufStart = anyChars.currentToken().pos.begin;
-
-  uint32_t startLine, startColumn;
-  computeLineAndColumn(bufStart, &startLine, &startColumn);
-
-  funbox->setStart(bufStart, startLine, startColumn);
-}
 
 inline FunctionBox* SharedContext::asFunctionBox() {
   MOZ_ASSERT(isFunctionBox());

@@ -664,6 +664,7 @@ bool FrameIter::principalsSubsumeFrame() const {
     return true;
   }
 
+  JS::AutoSuppressGCAnalysis nogc;
   return subsumes(data_.principals_, realm()->principals());
 }
 
@@ -752,8 +753,6 @@ FrameIter::Data::Data(const FrameIter::Data& other)
 FrameIter::FrameIter(JSContext* cx, DebuggerEvalOption debuggerEvalOption)
     : data_(cx, debuggerEvalOption, nullptr),
       ionInlineFrames_(cx, (js::jit::JSJitFrameIter*)nullptr) {
-  // settleOnActivation can only GC if principals are given.
-  JS::AutoSuppressGCAnalysis nogc;
   settleOnActivation();
 
   // No principals so we can see all frames.
@@ -1541,7 +1540,6 @@ void jit::JitActivation::removeRematerializedFrame(uint8_t* top) {
   }
 
   if (RematerializedFrameTable::Ptr p = rematerializedFrames_->lookup(top)) {
-    RematerializedFrame::FreeInVector(p->value());
     rematerializedFrames_->remove(p);
   }
 }
@@ -1553,7 +1551,6 @@ void jit::JitActivation::clearRematerializedFrames() {
 
   for (RematerializedFrameTable::Enum e(*rematerializedFrames_); !e.empty();
        e.popFront()) {
-    RematerializedFrame::FreeInVector(e.front().value());
     e.removeFront();
   }
 }
@@ -1599,10 +1596,11 @@ jit::RematerializedFrame* jit::JitActivation::getRematerializedFrame(
     }
 
     // See comment in unsetPrevUpToDateUntil.
-    DebugEnvironments::unsetPrevUpToDateUntil(cx, p->value()[inlineDepth]);
+    DebugEnvironments::unsetPrevUpToDateUntil(cx,
+                                              p->value()[inlineDepth].get());
   }
 
-  return p->value()[inlineDepth];
+  return p->value()[inlineDepth].get();
 }
 
 jit::RematerializedFrame* jit::JitActivation::lookupRematerializedFrame(
@@ -1611,7 +1609,7 @@ jit::RematerializedFrame* jit::JitActivation::lookupRematerializedFrame(
     return nullptr;
   }
   if (RematerializedFrameTable::Ptr p = rematerializedFrames_->lookup(top)) {
-    return inlineDepth < p->value().length() ? p->value()[inlineDepth]
+    return inlineDepth < p->value().length() ? p->value()[inlineDepth].get()
                                              : nullptr;
   }
   return nullptr;
@@ -1627,9 +1625,8 @@ void jit::JitActivation::removeRematerializedFramesFromDebugger(JSContext* cx,
   }
   if (RematerializedFrameTable::Ptr p = rematerializedFrames_->lookup(top)) {
     for (uint32_t i = 0; i < p->value().length(); i++) {
-      Debugger::handleUnrecoverableIonBailoutError(cx, p->value()[i]);
+      Debugger::handleUnrecoverableIonBailoutError(cx, p->value()[i].get());
     }
-    RematerializedFrame::FreeInVector(p->value());
     rematerializedFrames_->remove(p);
   }
 }

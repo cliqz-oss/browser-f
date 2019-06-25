@@ -16,27 +16,24 @@ XPCOMUtils.defineLazyModuleGetters(this, {
 class GeckoViewContent extends GeckoViewModule {
   onInit() {
     this.registerListener([
-        "GeckoViewContent:ExitFullScreen",
-        "GeckoView:ClearMatches",
-        "GeckoView:DisplayMatches",
-        "GeckoView:FindInPage",
-        "GeckoView:RestoreState",
-        "GeckoView:SaveState",
-        "GeckoView:SetActive",
-        "GeckoView:SetFocused",
-        "GeckoView:ZoomToInput",
-        "GeckoView:ScrollBy",
-        "GeckoView:ScrollTo",
+      "GeckoViewContent:ExitFullScreen",
+      "GeckoView:ClearMatches",
+      "GeckoView:DisplayMatches",
+      "GeckoView:FindInPage",
+      "GeckoView:RestoreState",
+      "GeckoView:SetActive",
+      "GeckoView:SetFocused",
+      "GeckoView:ZoomToInput",
+      "GeckoView:ScrollBy",
+      "GeckoView:ScrollTo",
     ]);
-
-    this.messageManager.addMessageListener("GeckoView:SaveStateFinish", this);
   }
 
   onEnable() {
     this.window.addEventListener("MozDOMFullscreen:Entered", this,
-                                 /* capture */ true, /* untrusted */ false);
+      /* capture */ true, /* untrusted */ false);
     this.window.addEventListener("MozDOMFullscreen:Exited", this,
-                                 /* capture */ true, /* untrusted */ false);
+      /* capture */ true, /* untrusted */ false);
 
     this.messageManager.addMessageListener("GeckoView:DOMFullscreenExit", this);
     this.messageManager.addMessageListener("GeckoView:DOMFullscreenRequest", this);
@@ -46,9 +43,9 @@ class GeckoViewContent extends GeckoViewModule {
 
   onDisable() {
     this.window.removeEventListener("MozDOMFullscreen:Entered", this,
-                                    /* capture */ true);
+      /* capture */ true);
     this.window.removeEventListener("MozDOMFullscreen:Exited", this,
-                                    /* capture */ true);
+      /* capture */ true);
 
     this.messageManager.removeMessageListener("GeckoView:DOMFullscreenExit", this);
     this.messageManager.removeMessageListener("GeckoView:DOMFullscreenRequest", this);
@@ -106,17 +103,8 @@ class GeckoViewContent extends GeckoViewModule {
           this.browser.blur();
         }
         break;
-      case "GeckoView:SaveState":
-        if (!this._saveStateCallbacks) {
-          this._saveStateCallbacks = new Map();
-          this._saveStateNextId = 0;
-        }
-        this._saveStateCallbacks.set(this._saveStateNextId, aCallback);
-        this.messageManager.sendAsyncMessage("GeckoView:SaveState", {id: this._saveStateNextId});
-        this._saveStateNextId++;
-        break;
       case "GeckoView:RestoreState":
-        this.messageManager.sendAsyncMessage("GeckoView:RestoreState", {state: aData.state});
+        this.messageManager.sendAsyncMessage("GeckoView:RestoreState", aData);
         break;
     }
   }
@@ -151,20 +139,6 @@ class GeckoViewContent extends GeckoViewModule {
         this.window.windowUtils
                    .remoteFrameFullscreenChanged(aMsg.target);
         break;
-      case "GeckoView:SaveStateFinish":
-        if (!this._saveStateCallbacks || !this._saveStateCallbacks.has(aMsg.data.id)) {
-          warn `Failed to save state due to missing callback`;
-          return;
-        }
-
-        const callback = this._saveStateCallbacks.get(aMsg.data.id);
-        if (aMsg.data.error) {
-          callback.onError(aMsg.data.error);
-        } else {
-          callback.onSuccess(aMsg.data.state);
-        }
-        this._saveStateCallbacks.delete(aMsg.data.id);
-        break;
     }
   }
 
@@ -182,8 +156,8 @@ class GeckoViewContent extends GeckoViewModule {
         this.eventDispatcher.sendRequest({
           type: "GeckoView:ContentCrash",
         });
+        break;
       }
-      break;
     }
   }
 

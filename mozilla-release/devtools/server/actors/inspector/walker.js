@@ -11,12 +11,14 @@ const protocol = require("devtools/shared/protocol");
 const {walkerSpec} = require("devtools/shared/specs/inspector");
 const {LongStringActor} = require("devtools/server/actors/string");
 const InspectorUtils = require("InspectorUtils");
+const ReplayInspector = require("devtools/server/actors/replay/inspector");
 
 loader.lazyRequireGetter(this, "getFrameElement", "devtools/shared/layout/utils", true);
 loader.lazyRequireGetter(this, "isAfterPseudoElement", "devtools/shared/layout/utils", true);
 loader.lazyRequireGetter(this, "isAnonymous", "devtools/shared/layout/utils", true);
 loader.lazyRequireGetter(this, "isBeforePseudoElement", "devtools/shared/layout/utils", true);
 loader.lazyRequireGetter(this, "isDirectShadowHostChild", "devtools/shared/layout/utils", true);
+loader.lazyRequireGetter(this, "isMarkerPseudoElement", "devtools/shared/layout/utils", true);
 loader.lazyRequireGetter(this, "isNativeAnonymous", "devtools/shared/layout/utils", true);
 loader.lazyRequireGetter(this, "isShadowHost", "devtools/shared/layout/utils", true);
 loader.lazyRequireGetter(this, "isShadowRoot", "devtools/shared/layout/utils", true);
@@ -87,6 +89,7 @@ const PSEUDO_SELECTORS = [
   [":disabled", 0],
   [":checked", 1],
   ["::selection", 0],
+  ["::marker", 0],
 ];
 
 const HELPER_SHEET = "data:text/css;charset=utf-8," + encodeURIComponent(`
@@ -132,7 +135,7 @@ var WalkerActor = protocol.ActorClassWithSpec(walkerSpec, {
   initialize: function(conn, targetActor, options) {
     protocol.Actor.prototype.initialize.call(this, conn);
     this.targetActor = targetActor;
-    this.rootWin = targetActor.window;
+    this.rootWin = isReplaying ? ReplayInspector.window : targetActor.window;
     this.rootDoc = this.rootWin.document;
     this._refMap = new Map();
     this._pendingMutations = [];
@@ -223,7 +226,7 @@ var WalkerActor = protocol.ActorClassWithSpec(walkerSpec, {
     return "[WalkerActor " + this.actorID + "]";
   },
 
-  getDocumentWalker: function(node, whatToShow, skipTo) {
+  getAnonymousDocumentWalker: function(node, whatToShow, skipTo) {
     // Allow native anon content (like <video> controls) if preffed on
     const filter = this.showAllAnonymousContent
                     ? allAnonymousContentTreeWalkerFilter
@@ -233,11 +236,23 @@ var WalkerActor = protocol.ActorClassWithSpec(walkerSpec, {
       {whatToShow, filter, skipTo, showAnonymousContent: true});
   },
 
-  getNonAnonymousWalker: function(node, whatToShow, skipTo) {
+  getNonAnonymousDocumentWalker: function(node, whatToShow, skipTo) {
     const nodeFilter = standardTreeWalkerFilter;
 
     return new DocumentWalker(node, this.rootWin,
       {whatToShow, nodeFilter, skipTo, showAnonymousContent: false});
+  },
+
+  /**
+   * Will first try to create a regular anonymous document walker. If it fails, will fall
+   * back on a non-anonymous walker.
+   */
+  getDocumentWalker: function(node, whatToShow, skipTo) {
+    try {
+      return this.getAnonymousDocumentWalker(node, whatToShow, skipTo);
+    } catch (e) {
+      return this.getNonAnonymousDocumentWalker(node, whatToShow, skipTo);
+    }
   },
 
   destroy: function() {
@@ -502,14 +517,14 @@ var WalkerActor = protocol.ActorClassWithSpec(walkerSpec, {
       // If the node is the child of a shadow host, we can not use an anonymous walker to
       // get the shadow host parent.
       const walker = isDirectShadowHostChild(node.rawNode)
-        ? this.getNonAnonymousWalker(node.rawNode)
-        : this.getDocumentWalker(node.rawNode);
+        ? this.getNonAnonymousDocumentWalker(node.rawNode)
+        : this.getAnonymousDocumentWalker(node.rawNode);
       parent = walker.parentNode();
     } catch (e) {
       // When getting the parent node for a child of a non-slotted shadow host child,
       // walker.parentNode() will throw if the walker is anonymous, because non-slotted
       // shadow host children are not accessible anywhere in the anonymous tree.
-      const walker = this.getNonAnonymousWalker(node.rawNode);
+      const walker = this.getNonAnonymousDocumentWalker(node.rawNode);
       parent = walker.parentNode();
     }
 
@@ -524,7 +539,8 @@ var WalkerActor = protocol.ActorClassWithSpec(walkerSpec, {
    */
   inlineTextChild: function({ rawNode }) {
     // Quick checks to prevent creating a new walker if possible.
-    if (isBeforePseudoElement(rawNode) ||
+    if (isMarkerPseudoElement(rawNode) ||
+        isBeforePseudoElement(rawNode) ||
         isAfterPseudoElement(rawNode) ||
         isShadowHost(rawNode) ||
         rawNode.nodeType != Node.ELEMENT_NODE ||
@@ -532,18 +548,7 @@ var WalkerActor = protocol.ActorClassWithSpec(walkerSpec, {
       return undefined;
     }
 
-    let walker;
-    try {
-      // By default always try to use an anonymous walker. Even for DirectShadowHostChild,
-      // children should be available through an anonymous walker (unless the child is not
-      // slotted, see catch block).
-      walker = this.getDocumentWalker(rawNode);
-    } catch (e) {
-      // Using an anonymous walker might throw, for instance on unslotted shadow host
-      // children.
-      walker = this.getNonAnonymousWalker(rawNode);
-    }
-
+    const walker = this.getDocumentWalker(rawNode);
     const firstChild = walker.firstChild();
 
     // Bail out if:
@@ -789,7 +794,7 @@ var WalkerActor = protocol.ActorClassWithSpec(walkerSpec, {
         //   while we want to return the direct children of the shadow host.
         // - unslotted host child: if a shadow host child is not slotted, it is not part
         //   of any anonymous tree and cannot be used with anonymous tree walkers.
-        return this.getNonAnonymousWalker(documentWalkerNode, whatToShow, skipTo);
+        return this.getNonAnonymousDocumentWalker(documentWalkerNode, whatToShow, skipTo);
       }
       return this.getDocumentWalker(documentWalkerNode, whatToShow, skipTo);
     };
@@ -864,10 +869,14 @@ var WalkerActor = protocol.ActorClassWithSpec(walkerSpec, {
     }
 
     if (shadowHost) {
-      // Use anonymous walkers to fetch ::before / ::after pseudo elements
+      // Use anonymous walkers to fetch ::marker / ::before / ::after pseudo
+      // elements
       const firstChildWalker = this.getDocumentWalker(node.rawNode);
       const first = firstChildWalker.firstChild();
-      const hasBefore = first && first.nodeName === "_moz_generated_content_before";
+      const hasMarker = first && first.nodeName === "_moz_generated_content_marker";
+      const maybeBeforeNode = hasMarker ? firstChildWalker.nextSibling() : first;
+      const hasBefore = maybeBeforeNode &&
+        maybeBeforeNode.nodeName === "_moz_generated_content_before";
 
       const lastChildWalker = this.getDocumentWalker(node.rawNode);
       const last = lastChildWalker.lastChild();
@@ -876,8 +885,10 @@ var WalkerActor = protocol.ActorClassWithSpec(walkerSpec, {
       nodes = [
         // #shadow-root
         ...(hideShadowRoot ? [] : [node.rawNode.openOrClosedShadowRoot]),
+        // ::marker
+        ...(hasMarker ? [first] : []),
         // ::before
-        ...(hasBefore ? [first] : []),
+        ...(hasBefore ? [maybeBeforeNode] : []),
         // shadow host direct children
         ...nodes,
         // native anonymous content for UA widgets

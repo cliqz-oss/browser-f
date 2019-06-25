@@ -50,8 +50,12 @@ const PREFS_TO_WATCH = [
 
 XPCOMUtils.defineLazyGetter(this, "gRemoteSettingsClient", () => {
   return RemoteSettings(REMOTE_SETTINGS_COLLECTION, {
-    filterFunc: async recipe => (await RecipeRunner.checkFilter(recipe)) ? recipe : null,
+    filterFunc: async entry => (await RecipeRunner.checkFilter(entry.recipe)) ? entry : null,
   });
+});
+
+XPCOMUtils.defineLazyGetter(this, "gRemoteSettingsGate", () => {
+  return FeatureGate.fromId("normandy-remote-settings");
 });
 
 /**
@@ -75,13 +79,31 @@ var RecipeRunner = {
     this.checkPrefs(); // sets this.enabled
     this.watchPrefs();
 
-    // Run if enabled immediately on first run, or if dev mode is enabled.
+    // Here "first run" means the first run this profile has ever done. This
+    // preference is set to true at the end of this function, and never reset to
+    // false.
     const firstRun = Services.prefs.getBoolPref(FIRST_RUN_PREF, true);
+
+    // Dev mode is a mode used for development and QA that bypasses the normal
+    // timer function of Normandy, to make testing more convenient.
     const devMode = Services.prefs.getBoolPref(DEV_MODE_PREF, false);
 
     if (this.enabled && (devMode || firstRun)) {
+      // In dev mode, if remote settings is enabled, force an immediate sync
+      // before running. This ensures that the latest data is used for testing.
+      // This is not needed for the first run case, because remote settings
+      // already handles empty collections well.
+      if (devMode) {
+        let remoteSettingsGate = await gRemoteSettingsGate;
+        if (await remoteSettingsGate.isEnabled()) {
+          await gRemoteSettingsClient.sync();
+        }
+      }
       await this.run();
     }
+
+    // Update the firstRun pref, to indicate that Normandy has run at least once
+    // on this profile.
     if (firstRun) {
       Services.prefs.setBoolPref(FIRST_RUN_PREF, false);
     }
@@ -215,13 +237,19 @@ var RecipeRunner = {
     try {
       recipesToRun = await this.loadRecipes();
     } catch (e) {
-      // The legacy call to `Normandy.fetchRecipes()` can throw.
+      // Either we failed at fetching the recipes from server (legacy),
+      // or the recipes signature verification failed.
+      let status = Uptake.RUNNER_SERVER_ERROR;
+      if (/NetworkError/.test(e)) {
+        status = Uptake.RUNNER_NETWORK_ERROR;
+      } else if (e instanceof NormandyApi.InvalidSignatureError) {
+        status = Uptake.RUNNER_INVALID_SIGNATURE;
+      }
+      await Uptake.reportRunner(status);
       return;
     }
 
     const actions = new ActionsManager();
-    await actions.fetchRemoteActions();
-    await actions.preExecution();
 
     // Execute recipes, if we have any.
     if (recipesToRun.length === 0) {
@@ -242,10 +270,17 @@ var RecipeRunner = {
    */
   async loadRecipes() {
     // If RemoteSettings is enabled, we read the list of recipes from there.
-    // The JEXL filtering is done via the provided callback.
+    // The JEXL filtering is done via the provided callback (see `gRemoteSettingsClient`).
     if (await FeatureGate.isEnabled("normandy-remote-settings")) {
-      return gRemoteSettingsClient.get();
+      // First, fetch recipes whose JEXL filters match.
+      const entries = await gRemoteSettingsClient.get();
+      // Then, verify the signature of each recipe. It will throw if invalid.
+      return Promise.all(entries.map(async ( { recipe, signature } ) => {
+        await NormandyApi.verifyObjectSignature(recipe, signature, "recipe");
+        return recipe;
+      }));
     }
+
     // Obtain the recipes from the Normandy server (legacy).
     let recipes;
     try {
@@ -257,14 +292,6 @@ var RecipeRunner = {
     } catch (e) {
       const apiUrl = Services.prefs.getCharPref(API_URL_PREF);
       log.error(`Could not fetch recipes from ${apiUrl}: "${e}"`);
-
-      let status = Uptake.RUNNER_SERVER_ERROR;
-      if (/NetworkError/.test(e)) {
-        status = Uptake.RUNNER_NETWORK_ERROR;
-      } else if (e instanceof NormandyApi.InvalidSignatureError) {
-        status = Uptake.RUNNER_INVALID_SIGNATURE;
-      }
-      await Uptake.reportRunner(status);
       throw e;
     }
     // Evaluate recipe filters

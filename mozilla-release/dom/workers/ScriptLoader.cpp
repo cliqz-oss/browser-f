@@ -147,7 +147,6 @@ nsresult ChannelFromScriptURL(
     parentDoc = nullptr;
   }
 
-  aLoadFlags |= nsIChannel::LOAD_CLASSIFY_URI;
   uint32_t secFlags = aIsMainScript
                           ? nsILoadInfo::SEC_REQUIRE_SAME_ORIGIN_DATA_IS_BLOCKED
                           : nsILoadInfo::SEC_ALLOW_CROSS_ORIGIN_DATA_INHERITS;
@@ -550,6 +549,8 @@ class ScriptLoaderRunnable final : public nsIRunnable, public nsINamed {
   friend class LoaderListener;
 
   WorkerPrivate* mWorkerPrivate;
+  UniquePtr<SerializedStackHolder> mOriginStack;
+  nsString mOriginStackJSON;
   nsCOMPtr<nsIEventTarget> mSyncLoopTarget;
   nsTArray<ScriptLoadInfo> mLoadInfos;
   RefPtr<CacheCreator> mCacheCreator;
@@ -564,6 +565,7 @@ class ScriptLoaderRunnable final : public nsIRunnable, public nsINamed {
   NS_DECL_THREADSAFE_ISUPPORTS
 
   ScriptLoaderRunnable(WorkerPrivate* aWorkerPrivate,
+                       UniquePtr<SerializedStackHolder> aOriginStack,
                        nsIEventTarget* aSyncLoopTarget,
                        nsTArray<ScriptLoadInfo>& aLoadInfos,
                        const Maybe<ClientInfo>& aClientInfo,
@@ -571,6 +573,7 @@ class ScriptLoaderRunnable final : public nsIRunnable, public nsINamed {
                        bool aIsMainScript, WorkerScriptType aWorkerScriptType,
                        ErrorResult& aRv)
       : mWorkerPrivate(aWorkerPrivate),
+        mOriginStack(std::move(aOriginStack)),
         mSyncLoopTarget(aSyncLoopTarget),
         mClientInfo(aClientInfo),
         mController(aController),
@@ -837,6 +840,14 @@ class ScriptLoaderRunnable final : public nsIRunnable, public nsINamed {
       mWorkerPrivate->SetLoadingWorkerScript(true);
     }
 
+    // Convert the origin stack to JSON (which must be done on the main
+    // thread) explicitly, so that we can use the stack to notify the net
+    // monitor about every script we load.
+    if (mOriginStack) {
+      ConvertSerializedStackToJSON(std::move(mOriginStack),
+                                   mOriginStackJSON);
+    }
+
     if (!mWorkerPrivate->IsServiceWorker() || IsDebuggerScript()) {
       for (uint32_t index = 0, len = mLoadInfos.Length(); index < len;
            ++index) {
@@ -961,6 +972,11 @@ class ScriptLoaderRunnable final : public nsIRunnable, public nsINamed {
       if (NS_WARN_IF(NS_FAILED(rv))) {
         return rv;
       }
+    }
+
+    // Associate any originating stack with the channel.
+    if (!mOriginStackJSON.IsEmpty()) {
+      NotifyNetworkMonitorAlternateStack(channel, mOriginStackJSON);
     }
 
     // We need to know which index we're on in OnStreamComplete so we know
@@ -1145,29 +1161,6 @@ class ScriptLoaderRunnable final : public nsIRunnable, public nsINamed {
       aLoadInfo.mURL.Assign(NS_ConvertUTF8toUTF16(filename));
     }
 
-    nsCOMPtr<nsILoadInfo> chanLoadInfo = channel->LoadInfo();
-    if (chanLoadInfo->GetEnforceSRI()) {
-      // importScripts() and the Worker constructor do not support integrity
-      // metadata
-      //  (or any fetch options). Until then, we can just block.
-      //  If we ever have those data in the future, we'll have to the check to
-      //  by using the SRICheck module
-      MOZ_LOG(
-          SRILogHelper::GetSriLog(), mozilla::LogLevel::Debug,
-          ("Scriptloader::Load, SRI required but not supported in workers"));
-      nsCOMPtr<nsIContentSecurityPolicy> wcsp;
-      chanLoadInfo->LoadingPrincipal()->GetCsp(getter_AddRefs(wcsp));
-      MOZ_ASSERT(wcsp, "We should have a CSP for the worker here");
-      if (wcsp) {
-        wcsp->LogViolationDetails(
-            nsIContentSecurityPolicy::VIOLATION_TYPE_REQUIRE_SRI_FOR_SCRIPT,
-            nullptr,  // triggering element
-            mWorkerPrivate->CSPEventListener(), aLoadInfo.mURL, EmptyString(),
-            0, 0, EmptyString(), EmptyString());
-      }
-      return NS_ERROR_SRI_CORRUPT;
-    }
-
     // Update the principal of the worker and its base URI if we just loaded the
     // worker's primary script.
     if (IsMainWorkerScript()) {
@@ -1189,7 +1182,7 @@ class ScriptLoaderRunnable final : public nsIRunnable, public nsINamed {
       // URL must exactly match the final worker script URL in order to
       // properly set the referrer header on fetch/xhr requests.  If bug 1340694
       // is ever fixed this can be removed.
-      rv = mWorkerPrivate->SetPrincipalFromChannel(channel);
+      rv = mWorkerPrivate->SetPrincipalsFromChannel(channel);
       NS_ENSURE_SUCCESS(rv, rv);
 
       nsCOMPtr<nsIContentSecurityPolicy> csp = mWorkerPrivate->GetCSP();
@@ -1213,6 +1206,7 @@ class ScriptLoaderRunnable final : public nsIRunnable, public nsINamed {
         mWorkerPrivate->SetXHRParamsAllowed(parent->XHRParamsAllowed());
       }
 
+      nsCOMPtr<nsILoadInfo> chanLoadInfo = channel->LoadInfo();
       if (chanLoadInfo) {
         mController = chanLoadInfo->GetController();
       }
@@ -1297,8 +1291,11 @@ class ScriptLoaderRunnable final : public nsIRunnable, public nsINamed {
       // referrer logic depends on the WorkerPrivate principal having a URL
       // that matches the worker script URL.  If bug 1340694 is ever fixed
       // this can be removed.
-      rv = mWorkerPrivate->SetPrincipalOnMainThread(responsePrincipal,
-                                                    loadGroup);
+      // XXX: force the storagePrincipal to be equal to the response one. This
+      // is OK for now because we don't want to expose storagePrincipal
+      // functionality in ServiceWorkers yet.
+      rv = mWorkerPrivate->SetPrincipalsOnMainThread(
+          responsePrincipal, responsePrincipal, loadGroup);
       MOZ_DIAGNOSTIC_ASSERT(NS_SUCCEEDED(rv));
 
       rv = mWorkerPrivate->SetCSPFromHeaderValues(aCSPHeaderValue,
@@ -1842,7 +1839,7 @@ class ChannelGetterRunnable final : public WorkerMainThreadRunnable {
         getter_AddRefs(channel));
     NS_ENSURE_SUCCESS(mResult, true);
 
-    mResult = mLoadInfo.SetPrincipalFromChannel(channel);
+    mResult = mLoadInfo.SetPrincipalsFromChannel(channel);
     NS_ENSURE_SUCCESS(mResult, true);
 
     mLoadInfo.mChannel = channel.forget();
@@ -2101,6 +2098,7 @@ void ScriptExecutorRunnable::LogExceptionToConsole(
 }
 
 void LoadAllScripts(WorkerPrivate* aWorkerPrivate,
+                    UniquePtr<SerializedStackHolder> aOriginStack,
                     nsTArray<ScriptLoadInfo>& aLoadInfos, bool aIsMainScript,
                     WorkerScriptType aWorkerScriptType, ErrorResult& aRv) {
   aWorkerPrivate->AssertIsOnWorkerThread();
@@ -2121,8 +2119,8 @@ void LoadAllScripts(WorkerPrivate* aWorkerPrivate,
   }
 
   RefPtr<ScriptLoaderRunnable> loader = new ScriptLoaderRunnable(
-      aWorkerPrivate, syncLoopTarget, aLoadInfos, clientInfo, controller,
-      aIsMainScript, aWorkerScriptType, aRv);
+      aWorkerPrivate, std::move(aOriginStack), syncLoopTarget, aLoadInfos, clientInfo,
+      controller, aIsMainScript, aWorkerScriptType, aRv);
 
   NS_ASSERTION(aLoadInfos.IsEmpty(), "Should have swapped!");
 
@@ -2242,7 +2240,9 @@ void ReportLoadError(ErrorResult& aRv, nsresult aLoadResult,
                        NS_LITERAL_CSTRING("\""));
 }
 
-void LoadMainScript(WorkerPrivate* aWorkerPrivate, const nsAString& aScriptURL,
+void LoadMainScript(WorkerPrivate* aWorkerPrivate,
+                    UniquePtr<SerializedStackHolder> aOriginStack,
+                    const nsAString& aScriptURL,
                     WorkerScriptType aWorkerScriptType, ErrorResult& aRv) {
   nsTArray<ScriptLoadInfo> loadInfos;
 
@@ -2254,10 +2254,13 @@ void LoadMainScript(WorkerPrivate* aWorkerPrivate, const nsAString& aScriptURL,
   // reserved.
   info->mReservedClientInfo = aWorkerPrivate->GetClientInfo();
 
-  LoadAllScripts(aWorkerPrivate, loadInfos, true, aWorkerScriptType, aRv);
+  LoadAllScripts(aWorkerPrivate, std::move(aOriginStack), loadInfos, true,
+                 aWorkerScriptType, aRv);
 }
 
-void Load(WorkerPrivate* aWorkerPrivate, const nsTArray<nsString>& aScriptURLs,
+void Load(WorkerPrivate* aWorkerPrivate,
+          UniquePtr<SerializedStackHolder> aOriginStack,
+          const nsTArray<nsString>& aScriptURLs,
           WorkerScriptType aWorkerScriptType, ErrorResult& aRv) {
   const uint32_t urlCount = aScriptURLs.Length();
 
@@ -2278,7 +2281,8 @@ void Load(WorkerPrivate* aWorkerPrivate, const nsTArray<nsString>& aScriptURLs,
     loadInfos[index].mLoadFlags = aWorkerPrivate->GetLoadFlags();
   }
 
-  LoadAllScripts(aWorkerPrivate, loadInfos, false, aWorkerScriptType, aRv);
+  LoadAllScripts(aWorkerPrivate, std::move(aOriginStack), loadInfos, false,
+                 aWorkerScriptType, aRv);
 }
 
 }  // namespace workerinternals

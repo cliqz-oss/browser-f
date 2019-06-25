@@ -15,7 +15,6 @@ add_task(async function init() {
   gMaxResults = Services.prefs.getIntPref("browser.urlbar.maxRichResults");
 
   registerCleanupFunction(async function() {
-    await UrlbarTestUtils.promisePopupClose(window);
     await PlacesUtils.history.clear();
   });
 
@@ -36,10 +35,7 @@ add_task(async function init() {
 
 async function selectSettings(activateFn) {
   await BrowserTestUtils.withNewTab({gBrowser, url: "about:blank"}, async browser => {
-    await UrlbarTestUtils.promisePopupOpen(window, () => {
-      gURLBar.focus();
-      EventUtils.synthesizeKey("KEY_ArrowDown");
-    });
+    await promiseAutocompleteResultPopup("example.com");
     await waitForAutocompleteResultAt(gMaxResults - 1);
 
     await UrlbarTestUtils.promisePopupClose(window, async () => {

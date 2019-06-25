@@ -17,8 +17,6 @@ user_pref("app.update.url.android", "");
 // bug 1210465.
 user_pref("apz.content_response_timeout", 60000);
 user_pref("browser.EULA.override", true);
-// Make sure we don't try to load snippets from the network.
-user_pref("browser.aboutHomeSnippets.updateUrl", "nonexistent://test");
 // Disable Bookmark backups by default.
 user_pref("browser.bookmarks.max_backups", 0);
 user_pref("browser.console.showInPanel", true);
@@ -158,9 +156,6 @@ user_pref("javascript.options.showInConsole", true);
 user_pref("layout.css.report_errors", true);
 // Disable spammy layout warnings because they pollute test logs
 user_pref("layout.spammy_warnings.enabled", false);
-// Make tests run consistently on DevEdition (which has a lightweight theme
-// selected by default).
-user_pref("lightweightThemes.selectedThemeID", "");
 // Disable all recommended Marionette preferences for Gecko tests.
 // The prefs recommended by Marionette are typically geared towards
 // consumer automation; not vendor testing.
@@ -182,6 +177,7 @@ user_pref("media.memory_caches_combined_limit_kb", 256);
 user_pref("media.openUnsupportedTypeWithExternalApp", false);
 user_pref("media.preload.auto", 3); // auto = enough
 user_pref("media.preload.default", 2); // default = metadata
+user_pref("media.preload.default.cellular", 2); // default = metadata
 user_pref("media.suspend-bkgnd-video.enabled", false);
 user_pref("media.test.dumpDebugInfo", true);
 user_pref("media.volume_scale", "0.01");

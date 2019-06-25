@@ -264,17 +264,17 @@ bool nsFilterInstance::BuildWebRenderFilters(nsIFrame* aFilteredFrame,
         return false;
       }
 
-      wr::LayoutVector2D offset = {(float)shadow.mOffset.x,
-                                   (float)shadow.mOffset.y};
-      float radius = stdDev.width;
       Color color = shadow.mColor;
       if (!primNeedsSrgb) {
         color = Color(gsRGBToLinearRGBMap[uint8_t(color.r * 255)],
                       gsRGBToLinearRGBMap[uint8_t(color.g * 255)],
                       gsRGBToLinearRGBMap[uint8_t(color.b * 255)], color.a);
       }
-      wr::FilterOp filterOp = wr::FilterOp::DropShadow(
-          offset, radius, wr::ToColorF(ToDeviceColor(color)));
+      wr::Shadow wrShadow;
+      wrShadow.offset = {(float)shadow.mOffset.x, (float)shadow.mOffset.y};
+      wrShadow.color = wr::ToColorF(ToDeviceColor(color));
+      wrShadow.blur_radius = stdDev.width;
+      wr::FilterOp filterOp = wr::FilterOp::DropShadow(wrShadow);
 
       aWrFilters.filters.AppendElement(filterOp);
     } else if (attr.is<ComponentTransferAttributes>()) {
@@ -601,7 +601,8 @@ nsresult nsFilterInstance::BuildPrimitivesForFilter(
   // If we don't have a frame, use opaque black for shadows with unspecified
   // shadow colors.
   nscolor shadowFallbackColor =
-      mTargetFrame ? mTargetFrame->StyleColor()->mColor : NS_RGB(0, 0, 0);
+      mTargetFrame ? mTargetFrame->StyleColor()->mColor.ToColor()
+                   : NS_RGB(0, 0, 0);
 
   nsCSSFilterInstance cssFilterInstance(
       aFilter, shadowFallbackColor, mTargetBounds,
@@ -704,8 +705,7 @@ void nsFilterInstance::BuildSourceImage(DrawTarget* aDest,
   SurfaceFormat format = SurfaceFormat::B8G8R8A8;
   if (aDest->CanCreateSimilarDrawTarget(neededRect.Size(), format)) {
     offscreenDT = aDest->CreateSimilarDrawTargetForFilter(
-      neededRect.Size(), format, aFilter, aSource, aSourceRect,
-      Point(0, 0));
+        neededRect.Size(), format, aFilter, aSource, aSourceRect, Point(0, 0));
   }
   if (!offscreenDT || !offscreenDT->IsValid()) {
     return;

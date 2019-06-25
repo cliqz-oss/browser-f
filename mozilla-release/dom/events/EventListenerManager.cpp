@@ -18,6 +18,7 @@
 #include "mozilla/Maybe.h"
 #include "mozilla/MemoryReporting.h"
 #include "mozilla/Preferences.h"
+#include "mozilla/PresShell.h"
 #include "mozilla/dom/BindingUtils.h"
 #include "mozilla/dom/Element.h"
 #include "mozilla/dom/Event.h"
@@ -32,7 +33,6 @@
 #include "mozilla/TimeStamp.h"
 
 #include "EventListenerService.h"
-#include "nsCOMArray.h"
 #include "nsCOMPtr.h"
 #include "nsContentUtils.h"
 #include "nsDOMCID.h"
@@ -445,9 +445,9 @@ void EventListenerManager::ProcessApzAwareEventListenerAdd() {
   }
 
   if (doc && gfxPlatform::AsyncPanZoomEnabled()) {
-    nsIPresShell* ps = doc->GetShell();
-    if (ps) {
-      nsIFrame* f = ps->GetRootFrame();
+    PresShell* presShell = doc->GetPresShell();
+    if (presShell) {
+      nsIFrame* f = presShell->GetRootFrame();
       if (f) {
         f->SchedulePaint();
       }
@@ -632,7 +632,7 @@ bool EventListenerManager::ListenerCanHandle(const Listener* aListener,
   if (aEvent->mMessage == eUnidentifiedEvent) {
     return aListener->mTypeAtom == aEvent->mSpecifiedEventType;
   }
-  if (MOZ_UNLIKELY(!nsContentUtils::IsUnprefixedFullscreenApiEnabled() &&
+  if (MOZ_UNLIKELY(!StaticPrefs::full_screen_api_unprefix_enabled() &&
                    aEvent->IsTrusted() &&
                    (aEventMessage == eFullscreenChange ||
                     aEventMessage == eFullscreenError))) {
@@ -824,7 +824,7 @@ nsresult EventListenerManager::SetEventHandler(nsAtom* aName,
 
   nsIScriptContext* context = global->GetScriptContext();
   NS_ENSURE_TRUE(context, NS_ERROR_FAILURE);
-  NS_ENSURE_STATE(global->GetGlobalJSObject());
+  NS_ENSURE_STATE(global->HasJSGlobal());
 
   Listener* listener = SetEventHandlerInternal(aName, TypedEventHandler(),
                                                aPermitUntrustedEvents);
@@ -958,8 +958,8 @@ nsresult EventListenerManager::CompileEventHandlerInternal(
   // mTarget is different from aElement in the <body> case, where mTarget is a
   // Window, and in that case we do not want the scope chain to include the body
   // or the document.
-  JS::AutoObjectVector scopeChain(cx);
-  if (!nsJSUtils::GetScopeChainForElement(cx, element, scopeChain)) {
+  JS::RootedVector<JSObject*> scopeChain(cx);
+  if (!nsJSUtils::GetScopeChainForElement(cx, element, &scopeChain)) {
     return NS_ERROR_OUT_OF_MEMORY;
   }
 
@@ -1459,10 +1459,10 @@ bool EventListenerManager::HasListeners() const {
 }
 
 nsresult EventListenerManager::GetListenerInfo(
-    nsCOMArray<nsIEventListenerInfo>* aList) {
+    nsTArray<RefPtr<nsIEventListenerInfo>>& aList) {
   nsCOMPtr<EventTarget> target = mTarget;
   NS_ENSURE_STATE(target);
-  aList->Clear();
+  aList.Clear();
   nsAutoTObserverArray<Listener, 2>::ForwardIterator iter(mListeners);
   while (iter.HasMore()) {
     const Listener& listener = iter.GetNext();
@@ -1509,7 +1509,7 @@ nsresult EventListenerManager::GetListenerInfo(
     RefPtr<EventListenerInfo> info = new EventListenerInfo(
         eventType, callback, callbackGlobal, listener.mFlags.mCapture,
         listener.mFlags.mAllowUntrustedEvents, listener.mFlags.mInSystemGroup);
-    aList->AppendElement(info.forget());
+    aList.AppendElement(info.forget());
   }
   return NS_OK;
 }

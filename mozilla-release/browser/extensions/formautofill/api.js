@@ -130,7 +130,11 @@ this.formautofill = class extends ExtensionAPI {
     Services.mm.loadFrameScript("chrome://formautofill/content/FormAutofillFrameScript.js", true, true);
   }
 
-  onShutdown() {
+  onShutdown(isAppShutdown) {
+    if (isAppShutdown) {
+      return;
+    }
+
     resProto.setSubstitution(RESOURCE_HOST, null);
 
     this.chromeHandle.destruct();

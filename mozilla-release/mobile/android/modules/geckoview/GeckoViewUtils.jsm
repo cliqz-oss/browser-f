@@ -103,7 +103,7 @@ var GeckoViewUtils = {
     });
 
     if (observers) {
-      let observer = (subject, topic, data) => {
+      const observer = (subject, topic, data) => {
         Services.obs.removeObserver(observer, topic);
         if (!once) {
           Services.obs.addObserver(scope[name], topic);
@@ -118,8 +118,8 @@ var GeckoViewUtils = {
       return;
     }
 
-    let addMMListener = (target, names) => {
-      let listener = msg => {
+    const addMMListener = (target, names) => {
+      const listener = msg => {
         target.removeMessageListener(msg.name, listener);
         if (!once) {
           target.addMessageListener(msg.name, scope[name]);
@@ -136,7 +136,7 @@ var GeckoViewUtils = {
     }
 
     if (ged) {
-      let listener = (event, data, callback) => {
+      const listener = (event, data, callback) => {
         EventDispatcher.instance.unregisterListener(listener, event);
         if (!once) {
           EventDispatcher.instance.registerListener(scope[name], event);
@@ -151,10 +151,10 @@ var GeckoViewUtils = {
     if (!handler) {
       handler = (_ => Array.isArray(name) ? name.map(n => scope[n]) : scope[name]);
     }
-    let listener = (...args) => {
+    const listener = (...args) => {
       let handlers = handler(...args);
       if (!handlers) {
-          return;
+        return;
       }
       if (!Array.isArray(handlers)) {
         handlers = [handlers];
@@ -183,7 +183,8 @@ var GeckoViewUtils = {
    * @param options Options for addEventListener.
    */
   addLazyEventListener: function(target, events, {handler, scope, name, options}) {
-    this._addLazyListeners(events, handler, scope, name,
+    this._addLazyListeners(
+      events, handler, scope, name,
       (events, listener) => {
         events.forEach(event => target.addEventListener(event, listener, options));
       },
@@ -213,9 +214,10 @@ var GeckoViewUtils = {
    */
   registerLazyWindowEventListener: function(window, events,
                                             {handler, scope, name, once}) {
-    let dispatcher = this.getDispatcherForWindow(window);
+    const dispatcher = this.getDispatcherForWindow(window);
 
-    this._addLazyListeners(events, handler, scope, name,
+    this._addLazyListeners(
+      events, handler, scope, name,
       (events, listener) => {
         dispatcher.registerListener(listener, events);
       },
@@ -246,7 +248,8 @@ var GeckoViewUtils = {
    * @param once    If true, only observe the specified prefs once.
    */
   addLazyPrefObserver: function(aPrefs, {handler, scope, name, once}) {
-    this._addLazyListeners(aPrefs, handler, scope, name,
+    this._addLazyListeners(
+      aPrefs, handler, scope, name,
       (prefs, observer) => {
         prefs.forEach(pref => Services.prefs.addObserver(pref.name, observer));
         prefs.forEach(pref => {
@@ -314,7 +317,7 @@ var GeckoViewUtils = {
    */
   getContentFrameMessageManager: function(aWin) {
     const docShell = this.getRootDocShell(aWin);
-    return docShell && docShell.getInterface(Ci.nsITabChild).messageManager;
+    return docShell && docShell.getInterface(Ci.nsIBrowserChild).messageManager;
   },
 
   /**
@@ -339,13 +342,13 @@ var GeckoViewUtils = {
   },
 
   getActiveDispatcherAndWindow: function() {
-    let win = Services.focus.activeWindow;
+    const win = Services.focus.activeWindow;
     let dispatcher = this.getDispatcherForWindow(win);
     if (dispatcher) {
       return [dispatcher, win];
     }
 
-    for (let win of Services.wm.getEnumerator(/* windowType */ null)) {
+    for (const win of Services.wm.getEnumerator(/* windowType */ null)) {
       dispatcher = this.getDispatcherForWindow(win);
       if (dispatcher) {
         return [dispatcher, win];
@@ -383,7 +386,7 @@ var GeckoViewUtils = {
     // For "error", throw an actual JS error instead.
     for (const level of ["DEBUG", "WARN"]) {
       const log = (strings, ...exprs) =>
-          this._log(log.logger, level, strings, exprs);
+        this._log(log.logger, level, strings, exprs);
 
       XPCOMUtils.defineLazyGetter(log, "logger", _ => {
         const logger = Log.repository.getLogger(tag);
@@ -458,4 +461,4 @@ var GeckoViewUtils = {
 };
 
 XPCOMUtils.defineLazyGetter(GeckoViewUtils, "IS_PARENT_PROCESS", _ =>
-    Services.appinfo.processType == Services.appinfo.PROCESS_TYPE_DEFAULT);
+  Services.appinfo.processType == Services.appinfo.PROCESS_TYPE_DEFAULT);

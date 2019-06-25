@@ -9,7 +9,7 @@ const {setTimeout} = ChromeUtils.import("resource://gre/modules/Timer.jsm");
 let delay = () => new Promise(resolve => setTimeout(resolve, 0));
 
 const kSearchEngineURL = "https://example.com/?search={searchTerms}";
-const kSearchSuggestURL = "http://example.com/?suggest={searchTerms}";
+const kSearchSuggestURL = "https://example.com/?suggest={searchTerms}";
 const kSearchTerm = "foo";
 const kSearchTermIntl = "日";
 const URLTYPE_SUGGEST_JSON = "application/x-suggestions+json";
@@ -194,4 +194,40 @@ add_task(async function test_extension_post_params() {
   equal(submissionSuggest.postData.data.data, "foo=bar&bar=foo", "Suggest postData should match");
 
   await ext1.unload();
+});
+
+add_task(async function test_extension_no_query_params() {
+  const ext1 = ExtensionTestUtils.loadExtension({
+    manifest: {
+      "chrome_settings_overrides": {
+        "search_provider": {
+          "name": "MozSearch",
+          "keyword": "MozSearch",
+          "search_url": "https://example.com/{searchTerms}",
+          "suggest_url": "https://example.com/suggest/{searchTerms}",
+        },
+      },
+    },
+    useAddonManager: "temporary",
+  });
+
+  await ext1.startup();
+  await AddonTestUtils.waitForSearchProviderStartup(ext1);
+
+  let engine = Services.search.getEngineByName("MozSearch");
+  ok(engine, "Engine should exist.");
+
+  const encodedSubmissionURL = engine.getSubmission(kSearchTermIntl).uri.spec;
+  const testSubmissionURL = "https://example.com/" + encodeURIComponent(kSearchTermIntl);
+  equal(encodedSubmissionURL, testSubmissionURL, "Encoded UTF-8 URLs should match");
+
+  const expectedSuggestURL = "https://example.com/suggest/" + kSearchTerm;
+  let submissionSuggest = engine.getSubmission(kSearchTerm, URLTYPE_SUGGEST_JSON);
+  equal(submissionSuggest.uri.spec, expectedSuggestURL, "Suggest URLs should match");
+
+  await ext1.unload();
+  await delay();
+
+  engine = Services.search.getEngineByName("MozSearch");
+  ok(!engine, "Engine should not exist");
 });

@@ -8,8 +8,10 @@
 
 #include "nsIContentPolicy.h"
 #include "mozilla/DebugOnly.h"
+#include "mozilla/PresShell.h"
 #include "mozilla/dom/HTMLAllCollection.h"
 #include "mozilla/dom/FeaturePolicyUtils.h"
+#include "nsCommandManager.h"
 #include "nsCOMPtr.h"
 #include "nsGlobalWindow.h"
 #include "nsString.h"
@@ -23,7 +25,6 @@
 #include "nsHTMLParts.h"
 #include "nsHTMLStyleSheet.h"
 #include "nsGkAtoms.h"
-#include "nsIPresShell.h"
 #include "nsPresContext.h"
 #include "nsPIDOMWindow.h"
 #include "nsDOMString.h"
@@ -32,7 +33,6 @@
 #include "nsIURIMutator.h"
 #include "nsIIOService.h"
 #include "nsNetUtil.h"
-#include "nsIPrivateBrowsingChannel.h"
 #include "nsIContentViewer.h"
 #include "nsDocShell.h"
 #include "nsDocShellLoadTypes.h"
@@ -49,8 +49,6 @@
 #include "nsNodeUtils.h"
 
 #include "nsNetCID.h"
-#include "nsICookieService.h"
-
 #include "nsIServiceManager.h"
 #include "nsIConsoleService.h"
 #include "nsIComponentManager.h"
@@ -179,7 +177,6 @@ nsHTMLDocument::nsHTMLDocument()
       mWarnedWidthHeight(false),
       mContentEditableCount(0),
       mEditingState(EditingState::eOff),
-      mDisableCookieAccess(false),
       mPendingMaybeEditingStateChanged(false),
       mHasBeenEditable(false),
       mIsPlainText(false) {
@@ -221,10 +218,11 @@ void nsHTMLDocument::Reset(nsIChannel* aChannel, nsILoadGroup* aLoadGroup) {
 }
 
 void nsHTMLDocument::ResetToURI(nsIURI* aURI, nsILoadGroup* aLoadGroup,
-                                nsIPrincipal* aPrincipal) {
+                                nsIPrincipal* aPrincipal,
+                                nsIPrincipal* aStoragePrincipal) {
   mLoadFlags = nsIRequest::LOAD_NORMAL;
 
-  Document::ResetToURI(aURI, aLoadGroup, aPrincipal);
+  Document::ResetToURI(aURI, aLoadGroup, aPrincipal, aStoragePrincipal);
 
   mImages = nullptr;
   mApplets = nullptr;
@@ -442,20 +440,18 @@ void nsHTMLDocument::TryFallback(int32_t& aCharsetSource,
   aEncoding = FallbackEncoding::FromLocale();
 }
 
-// Using a prototype document is currently only allowed with browser.xhtml.
-bool ShouldUsePrototypeDocument(nsIChannel* aChannel, nsIDocShell* aDocShell) {
-  if (!aChannel || !aDocShell ||
+// Using a prototype document is only allowed with chrome privilege.
+bool ShouldUsePrototypeDocument(nsIChannel* aChannel, Document* aDoc) {
+  if (!aChannel || !aDoc ||
       !StaticPrefs::dom_prototype_document_cache_enabled()) {
     return false;
   }
-  if (aDocShell->ItemType() != nsIDocShellTreeItem::typeChrome) {
+  if (!nsContentUtils::IsChromeDoc(aDoc)) {
     return false;
   }
   nsCOMPtr<nsIURI> originalURI;
   aChannel->GetOriginalURI(getter_AddRefs(originalURI));
-  return IsChromeURI(originalURI) &&
-         originalURI->GetSpecOrDefault().EqualsLiteral(
-             BROWSER_CHROME_URL_QUOTED);
+  return IsChromeURI(originalURI);
 }
 
 nsresult nsHTMLDocument::StartDocumentLoad(const char* aCommand,
@@ -508,7 +504,7 @@ nsresult nsHTMLDocument::StartDocumentLoad(const char* aCommand,
   if (!viewSource && xhtml) {
     // We're parsing XHTML as XML, remember that.
     mType = eXHTML;
-    mCompatMode = eCompatibility_FullStandards;
+    SetCompatibilityMode(eCompatibility_FullStandards);
     loadAsHtml5 = false;
   }
 
@@ -526,8 +522,6 @@ nsresult nsHTMLDocument::StartDocumentLoad(const char* aCommand,
       }
     }
   }
-
-  CSSLoader()->SetCompatibilityMode(mCompatMode);
 
   nsresult rv = Document::StartDocumentLoad(aCommand, aChannel, aLoadGroup,
                                             aContainer, aDocListener, aReset);
@@ -561,7 +555,7 @@ nsresult nsHTMLDocument::StartDocumentLoad(const char* aCommand,
     } else {
       mParser->MarkAsNotScriptCreated(aCommand);
     }
-  } else if (ShouldUsePrototypeDocument(aChannel, docShell)) {
+  } else if (xhtml && ShouldUsePrototypeDocument(aChannel, this)) {
     loadWithPrototype = true;
     nsCOMPtr<nsIURI> originalURI;
     aChannel->GetOriginalURI(getter_AddRefs(originalURI));
@@ -707,25 +701,6 @@ nsresult nsHTMLDocument::StartDocumentLoad(const char* aCommand,
     }
   }
 
-  if (mIsPlainText && !nsContentUtils::IsChildOfSameType(this) &&
-      Preferences::GetBool("plain_text.wrap_long_lines")) {
-    nsCOMPtr<nsIStringBundleService> bundleService =
-        do_GetService(NS_STRINGBUNDLE_CONTRACTID, &rv);
-    NS_ASSERTION(NS_SUCCEEDED(rv) && bundleService,
-                 "The bundle service could not be loaded");
-    nsCOMPtr<nsIStringBundle> bundle;
-    rv = bundleService->CreateBundle(
-        "chrome://global/locale/browser.properties", getter_AddRefs(bundle));
-    NS_ASSERTION(
-        NS_SUCCEEDED(rv) && bundle,
-        "chrome://global/locale/browser.properties could not be loaded");
-    nsAutoString title;
-    if (bundle) {
-      bundle->GetStringFromName("plainText.wordWrap", title);
-    }
-    SetSelectedStyleSheetSet(title);
-  }
-
   // parser the content of the URI
   mParser->Parse(uri, nullptr, (void*)this);
 
@@ -781,10 +756,7 @@ void nsHTMLDocument::SetCompatibilityMode(nsCompatibility aMode) {
     return;
   }
   mCompatMode = aMode;
-  CSSLoader()->SetCompatibilityMode(mCompatMode);
-  if (nsPresContext* pc = GetPresContext()) {
-    pc->CompatibilityModeChanged();
-  }
+  CompatibilityModeChanged();
 }
 
 bool nsHTMLDocument::UseWidthDeviceWidthFallbackViewport() const {
@@ -972,155 +944,6 @@ void nsHTMLDocument::SetDomain(const nsAString& aDomain, ErrorResult& rv) {
   }
 
   rv = NodePrincipal()->SetDomain(newURI);
-}
-
-already_AddRefed<nsIChannel> nsHTMLDocument::CreateDummyChannelForCookies(
-    nsIURI* aCodebaseURI) {
-  // The cookie service reads the privacy status of the channel we pass to it in
-  // order to determine which cookie database to query.  In some cases we don't
-  // have a proper channel to hand it to the cookie service though.  This
-  // function creates a dummy channel that is not used to load anything, for the
-  // sole purpose of handing it to the cookie service.  DO NOT USE THIS CHANNEL
-  // FOR ANY OTHER PURPOSE.
-  MOZ_ASSERT(!mChannel);
-
-  // The following channel is never openend, so it does not matter what
-  // securityFlags we pass; let's follow the principle of least privilege.
-  nsCOMPtr<nsIChannel> channel;
-  NS_NewChannel(getter_AddRefs(channel), aCodebaseURI, this,
-                nsILoadInfo::SEC_REQUIRE_SAME_ORIGIN_DATA_IS_BLOCKED,
-                nsIContentPolicy::TYPE_INVALID);
-  nsCOMPtr<nsIPrivateBrowsingChannel> pbChannel = do_QueryInterface(channel);
-  nsCOMPtr<nsIDocShell> docShell(mDocumentContainer);
-  nsCOMPtr<nsILoadContext> loadContext = do_QueryInterface(docShell);
-  if (!pbChannel || !loadContext) {
-    return nullptr;
-  }
-  pbChannel->SetPrivate(loadContext->UsePrivateBrowsing());
-
-  nsCOMPtr<nsIHttpChannel> docHTTPChannel = do_QueryInterface(GetChannel());
-  if (docHTTPChannel) {
-    bool isTracking = docHTTPChannel->IsTrackingResource();
-    if (isTracking) {
-      // If our document channel is from a tracking resource, we must
-      // override our channel's tracking status.
-      nsCOMPtr<nsIHttpChannel> httpChannel = do_QueryInterface(channel);
-      MOZ_ASSERT(httpChannel,
-                 "How come we're coming from an HTTP doc but "
-                 "we don't have an HTTP channel here?");
-      if (httpChannel) {
-        httpChannel->OverrideTrackingFlagsForDocumentCookieAccessor(
-            docHTTPChannel);
-      }
-    }
-  }
-
-  return channel.forget();
-}
-
-void nsHTMLDocument::GetCookie(nsAString& aCookie, ErrorResult& rv) {
-  aCookie.Truncate();  // clear current cookie in case service fails;
-                       // no cookie isn't an error condition.
-
-  if (mDisableCookieAccess) {
-    return;
-  }
-
-  // If the document's sandboxed origin flag is set, access to read cookies
-  // is prohibited.
-  if (mSandboxFlags & SANDBOXED_ORIGIN) {
-    rv.Throw(NS_ERROR_DOM_SECURITY_ERR);
-    return;
-  }
-
-  if (nsContentUtils::StorageDisabledByAntiTracking(this, nullptr)) {
-    return;
-  }
-
-  // If the document is a cookie-averse Document... return the empty string.
-  if (IsCookieAverse()) {
-    return;
-  }
-
-  // not having a cookie service isn't an error
-  nsCOMPtr<nsICookieService> service =
-      do_GetService(NS_COOKIESERVICE_CONTRACTID);
-  if (service) {
-    // Get a URI from the document principal. We use the original
-    // codebase in case the codebase was changed by SetDomain
-    nsCOMPtr<nsIURI> codebaseURI;
-    NodePrincipal()->GetURI(getter_AddRefs(codebaseURI));
-
-    if (!codebaseURI) {
-      // Document's principal is not a codebase (may be system), so
-      // can't set cookies
-
-      return;
-    }
-
-    nsCOMPtr<nsIChannel> channel(mChannel);
-    if (!channel) {
-      channel = CreateDummyChannelForCookies(codebaseURI);
-      if (!channel) {
-        return;
-      }
-    }
-
-    nsCString cookie;
-    service->GetCookieString(codebaseURI, channel, getter_Copies(cookie));
-    // CopyUTF8toUTF16 doesn't handle error
-    // because it assumes that the input is valid.
-    UTF_8_ENCODING->DecodeWithoutBOMHandling(cookie, aCookie);
-  }
-}
-
-void nsHTMLDocument::SetCookie(const nsAString& aCookie, ErrorResult& rv) {
-  if (mDisableCookieAccess) {
-    return;
-  }
-
-  // If the document's sandboxed origin flag is set, access to write cookies
-  // is prohibited.
-  if (mSandboxFlags & SANDBOXED_ORIGIN) {
-    rv.Throw(NS_ERROR_DOM_SECURITY_ERR);
-    return;
-  }
-
-  if (nsContentUtils::StorageDisabledByAntiTracking(this, nullptr)) {
-    return;
-  }
-
-  // If the document is a cookie-averse Document... do nothing.
-  if (IsCookieAverse()) {
-    return;
-  }
-
-  // not having a cookie service isn't an error
-  nsCOMPtr<nsICookieService> service =
-      do_GetService(NS_COOKIESERVICE_CONTRACTID);
-  if (service && mDocumentURI) {
-    // The for getting the URI matches nsNavigator::GetCookieEnabled
-    nsCOMPtr<nsIURI> codebaseURI;
-    NodePrincipal()->GetURI(getter_AddRefs(codebaseURI));
-
-    if (!codebaseURI) {
-      // Document's principal is not a codebase (may be system), so
-      // can't set cookies
-
-      return;
-    }
-
-    nsCOMPtr<nsIChannel> channel(mChannel);
-    if (!channel) {
-      channel = CreateDummyChannelForCookies(codebaseURI);
-      if (!channel) {
-        return;
-      }
-    }
-
-    NS_ConvertUTF16toUTF8 cookie(aCookie);
-    service->SetCookieString(codebaseURI, nullptr, cookie.get(), channel);
-  }
 }
 
 mozilla::dom::Nullable<mozilla::dom::WindowProxyHolder> nsHTMLDocument::Open(
@@ -1432,7 +1255,7 @@ void nsHTMLDocument::Close(ErrorResult& rv) {
   // above about reusing frames applies.
   //
   // XXXhsivonen keeping this around for bug 577508 / 253951 still :-(
-  if (GetShell()) {
+  if (GetPresShell()) {
     FlushPendingNotifications(FlushType::Layout);
   }
 }
@@ -1870,24 +1693,8 @@ static void NotifyEditableStateChange(nsINode* aNode, Document* aDocument) {
 
 void nsHTMLDocument::TearingDownEditor() {
   if (IsEditingOn()) {
-    EditingState oldState = mEditingState;
     mEditingState = eTearingDown;
-
-    nsCOMPtr<nsIPresShell> presShell = GetShell();
-    if (!presShell) return;
-
-    nsTArray<RefPtr<StyleSheet>> agentSheets;
-    presShell->GetAgentStyleSheets(agentSheets);
-
-    auto cache = nsLayoutStylesheetCache::Singleton();
-
-    agentSheets.RemoveElement(cache->ContentEditableSheet());
-    if (oldState == eDesignMode)
-      agentSheets.RemoveElement(cache->DesignModeSheet());
-
-    presShell->SetAgentStyleSheets(agentSheets);
-
-    presShell->ApplicableStylesChanged();
+    RemoveContentEditableStyleSheets();
   }
 }
 
@@ -2018,46 +1825,24 @@ nsresult nsHTMLDocument::EditingStateChanged() {
     EditingState oldState = mEditingState;
     nsAutoEditingState push(this, eSettingUp);
 
-    nsCOMPtr<nsIPresShell> presShell = GetShell();
+    RefPtr<PresShell> presShell = GetPresShell();
     NS_ENSURE_TRUE(presShell, NS_ERROR_FAILURE);
+
+    MOZ_ASSERT(mStyleSetFilled);
 
     // Before making this window editable, we need to modify UA style sheet
     // because new style may change whether focused element will be focusable
     // or not.
-    nsTArray<RefPtr<StyleSheet>> agentSheets;
-    rv = presShell->GetAgentStyleSheets(agentSheets);
-    NS_ENSURE_SUCCESS(rv, rv);
-
-    auto cache = nsLayoutStylesheetCache::Singleton();
-
-    StyleSheet* contentEditableSheet = cache->ContentEditableSheet();
-
-    if (!agentSheets.Contains(contentEditableSheet)) {
-      agentSheets.AppendElement(contentEditableSheet);
-    }
+    AddContentEditableStyleSheetsToStyleSet(designMode);
 
     // Should we update the editable state of all the nodes in the document? We
     // need to do this when the designMode value changes, as that overrides
     // specific states on the elements.
+    updateState = designMode || oldState == eDesignMode;
     if (designMode) {
       // designMode is being turned on (overrides contentEditable).
-      StyleSheet* designModeSheet = cache->DesignModeSheet();
-      if (!agentSheets.Contains(designModeSheet)) {
-        agentSheets.AppendElement(designModeSheet);
-      }
-
-      updateState = true;
       spellRecheckAll = oldState == eContentEditable;
-    } else if (oldState == eDesignMode) {
-      // designMode is being turned off (contentEditable is still on).
-      agentSheets.RemoveElement(cache->DesignModeSheet());
-      updateState = true;
     }
-
-    rv = presShell->SetAgentStyleSheets(agentSheets);
-    NS_ENSURE_SUCCESS(rv, rv);
-
-    presShell->ApplicableStylesChanged();
 
     // Adjust focused element with new style but blur event shouldn't be fired
     // until mEditingState is modified with newState.
@@ -2200,7 +1985,7 @@ void nsHTMLDocument::MaybeDispatchCheckKeyPressEventModelEvent() {
 }
 
 void nsHTMLDocument::SetKeyPressEventModel(uint16_t aKeyPressEventModel) {
-  nsIPresShell* presShell = GetShell();
+  PresShell* presShell = GetPresShell();
   if (!presShell) {
     return;
   }
@@ -2229,30 +2014,24 @@ void nsHTMLDocument::SetDesignMode(
   }
 }
 
-nsresult nsHTMLDocument::GetMidasCommandManager(nsICommandManager** aCmdMgr) {
-  // initialize return value
-  NS_ENSURE_ARG_POINTER(aCmdMgr);
-
+nsCommandManager* nsHTMLDocument::GetMidasCommandManager() {
   // check if we have it cached
   if (mMidasCommandManager) {
-    NS_ADDREF(*aCmdMgr = mMidasCommandManager);
-    return NS_OK;
+    return mMidasCommandManager;
   }
 
-  *aCmdMgr = nullptr;
-
   nsPIDOMWindowOuter* window = GetWindow();
-  if (!window) return NS_ERROR_FAILURE;
+  if (!window) {
+    return nullptr;
+  }
 
   nsIDocShell* docshell = window->GetDocShell();
-  if (!docshell) return NS_ERROR_FAILURE;
+  if (!docshell) {
+    return nullptr;
+  }
 
   mMidasCommandManager = docshell->GetCommandManager();
-  if (!mMidasCommandManager) return NS_ERROR_FAILURE;
-
-  NS_ADDREF(*aCmdMgr = mMidasCommandManager);
-
-  return NS_OK;
+  return mMidasCommandManager;
 }
 
 struct MidasCommand {
@@ -2545,9 +2324,8 @@ bool nsHTMLDocument::ExecCommand(const nsAString& commandID, bool doShowUI,
   }
 
   // get command manager and dispatch command to our window if it's acceptable
-  nsCOMPtr<nsICommandManager> cmdMgr;
-  GetMidasCommandManager(getter_AddRefs(cmdMgr));
-  if (!cmdMgr) {
+  RefPtr<nsCommandManager> commandManager = GetMidasCommandManager();
+  if (!commandManager) {
     rv.Throw(NS_ERROR_FAILURE);
     return false;
   }
@@ -2576,14 +2354,12 @@ bool nsHTMLDocument::ExecCommand(const nsAString& commandID, bool doShowUI,
   }
 
   // Return false for disabled commands (bug 760052)
-  bool enabled = false;
-  cmdMgr->IsCommandEnabled(cmdToDispatch.get(), window, &enabled);
-  if (!enabled) {
+  if (!commandManager->IsCommandEnabled(cmdToDispatch, window)) {
     return false;
   }
 
   if (!isBool && paramStr.IsEmpty()) {
-    rv = cmdMgr->DoCommand(cmdToDispatch.get(), nullptr, window);
+    rv = commandManager->DoCommand(cmdToDispatch.get(), nullptr, window);
   } else {
     // we have a command that requires a parameter, create params
     RefPtr<nsCommandParams> params = new nsCommandParams();
@@ -2602,7 +2378,7 @@ bool nsHTMLDocument::ExecCommand(const nsAString& commandID, bool doShowUI,
     if (rv.Failed()) {
       return false;
     }
-    rv = cmdMgr->DoCommand(cmdToDispatch.get(), params, window);
+    rv = commandManager->DoCommand(cmdToDispatch.get(), params, window);
   }
 
   return !rv.Failed();
@@ -2635,9 +2411,8 @@ bool nsHTMLDocument::QueryCommandEnabled(const nsAString& commandID,
   }
 
   // get command manager and dispatch command to our window if it's acceptable
-  nsCOMPtr<nsICommandManager> cmdMgr;
-  GetMidasCommandManager(getter_AddRefs(cmdMgr));
-  if (!cmdMgr) {
+  RefPtr<nsCommandManager> commandManager = GetMidasCommandManager();
+  if (!commandManager) {
     rv.Throw(NS_ERROR_FAILURE);
     return false;
   }
@@ -2648,9 +2423,7 @@ bool nsHTMLDocument::QueryCommandEnabled(const nsAString& commandID,
     return false;
   }
 
-  bool retval;
-  rv = cmdMgr->IsCommandEnabled(cmdToDispatch.get(), window, &retval);
-  return retval;
+  return commandManager->IsCommandEnabled(cmdToDispatch, window);
 }
 
 bool nsHTMLDocument::QueryCommandIndeterm(const nsAString& commandID,
@@ -2666,9 +2439,8 @@ bool nsHTMLDocument::QueryCommandIndeterm(const nsAString& commandID,
   }
 
   // get command manager and dispatch command to our window if it's acceptable
-  nsCOMPtr<nsICommandManager> cmdMgr;
-  GetMidasCommandManager(getter_AddRefs(cmdMgr));
-  if (!cmdMgr) {
+  RefPtr<nsCommandManager> commandManager = GetMidasCommandManager();
+  if (!commandManager) {
     rv.Throw(NS_ERROR_FAILURE);
     return false;
   }
@@ -2680,7 +2452,7 @@ bool nsHTMLDocument::QueryCommandIndeterm(const nsAString& commandID,
   }
 
   RefPtr<nsCommandParams> params = new nsCommandParams();
-  rv = cmdMgr->GetCommandState(cmdToDispatch.get(), window, params);
+  rv = commandManager->GetCommandState(cmdToDispatch.get(), window, params);
   if (rv.Failed()) {
     return false;
   }
@@ -2706,9 +2478,8 @@ bool nsHTMLDocument::QueryCommandState(const nsAString& commandID,
   }
 
   // get command manager and dispatch command to our window if it's acceptable
-  nsCOMPtr<nsICommandManager> cmdMgr;
-  GetMidasCommandManager(getter_AddRefs(cmdMgr));
-  if (!cmdMgr) {
+  RefPtr<nsCommandManager> commandManager = GetMidasCommandManager();
+  if (!commandManager) {
     rv.Throw(NS_ERROR_FAILURE);
     return false;
   }
@@ -2726,7 +2497,7 @@ bool nsHTMLDocument::QueryCommandState(const nsAString& commandID,
   }
 
   RefPtr<nsCommandParams> params = new nsCommandParams();
-  rv = cmdMgr->GetCommandState(cmdToDispatch.get(), window, params);
+  rv = commandManager->GetCommandState(cmdToDispatch.get(), window, params);
   if (rv.Failed()) {
     return false;
   }
@@ -2762,7 +2533,7 @@ bool nsHTMLDocument::QueryCommandSupported(const nsAString& commandID,
     if (commandID.LowerCaseEqualsLiteral("paste")) {
       return false;
     }
-    if (nsContentUtils::IsCutCopyRestricted()) {
+    if (!StaticPrefs::dom_allow_cut_copy()) {
       // XXXbz should we worry about correctly reporting "true" in the
       // "restricted, but we're an addon with clipboardWrite permissions" case?
       // See also nsContentUtils::IsCutCopyAllowed.
@@ -2794,9 +2565,8 @@ void nsHTMLDocument::QueryCommandValue(const nsAString& commandID,
   }
 
   // get command manager and dispatch command to our window if it's acceptable
-  nsCOMPtr<nsICommandManager> cmdMgr;
-  GetMidasCommandManager(getter_AddRefs(cmdMgr));
-  if (!cmdMgr) {
+  RefPtr<nsCommandManager> commandManager = GetMidasCommandManager();
+  if (!commandManager) {
     rv.Throw(NS_ERROR_FAILURE);
     return;
   }
@@ -2819,7 +2589,7 @@ void nsHTMLDocument::QueryCommandValue(const nsAString& commandID,
     if (rv.Failed()) {
       return;
     }
-    rv = cmdMgr->DoCommand(cmdToDispatch.get(), params, window);
+    rv = commandManager->DoCommand(cmdToDispatch.get(), params, window);
     if (rv.Failed()) {
       return;
     }
@@ -2832,7 +2602,7 @@ void nsHTMLDocument::QueryCommandValue(const nsAString& commandID,
     return;
   }
 
-  rv = cmdMgr->GetCommandState(cmdToDispatch.get(), window, params);
+  rv = commandManager->GetCommandState(cmdToDispatch.get(), window, params);
   if (rv.Failed()) {
     return;
   }

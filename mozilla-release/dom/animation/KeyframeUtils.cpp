@@ -22,13 +22,15 @@
 #include "mozilla/dom/KeyframeEffectBinding.h"
 #include "mozilla/dom/KeyframeEffect.h"  // For PropertyValuesPair etc.
 #include "mozilla/dom/Nullable.h"
-#include "jsapi.h"  // For ForOfIterator etc.
+#include "jsapi.h"             // For most JSAPI
+#include "js/ForOfIterator.h"  // For JS::ForOfIterator
 #include "nsClassHashtable.h"
 #include "nsContentUtils.h"  // For GetContextForContent
 #include "nsCSSPropertyIDSet.h"
 #include "nsCSSProps.h"
 #include "nsCSSPseudoElements.h"  // For PseudoStyleType
 #include "nsIScriptError.h"
+#include "nsPresContextInlines.h"
 #include "nsTArray.h"
 #include <algorithm>  // For std::stable_sort, std::min
 
@@ -505,7 +507,7 @@ static bool GetPropertyValuesPairs(JSContext* aCx,
       return false;
     }
     nsCSSPropertyID property = nsCSSProps::LookupPropertyByIDLName(
-        propName, CSSEnabledState::eForAllContent);
+        propName, CSSEnabledState::ForAllContent);
     if (KeyframeUtils::IsAnimatableProperty(property)) {
       AdditionalProperty* p = properties.AppendElement();
       p->mProperty = property;
@@ -1186,7 +1188,7 @@ static bool HasImplicitKeyframeValues(const nsTArray<Keyframe>& aKeyframes,
       if (nsCSSProps::IsShorthand(pair.mProperty)) {
         MOZ_ASSERT(pair.mServoDeclarationBlock);
         CSSPROPS_FOR_SHORTHAND_SUBPROPERTIES(prop, pair.mProperty,
-                                             CSSEnabledState::eForAllContent) {
+                                             CSSEnabledState::ForAllContent) {
           addToPropertySets(*prop, offsetToUse);
         }
       } else {

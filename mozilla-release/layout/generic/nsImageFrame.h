@@ -84,7 +84,7 @@ class nsImageFrame : public nsAtomicContainerFrame, public nsIReflowCallback {
   virtual nscoord GetMinISize(gfxContext* aRenderingContext) override;
   virtual nscoord GetPrefISize(gfxContext* aRenderingContext) override;
   virtual mozilla::IntrinsicSize GetIntrinsicSize() override;
-  virtual nsSize GetIntrinsicRatio() override;
+  virtual mozilla::AspectRatio GetIntrinsicRatio() override;
   virtual void Reflow(nsPresContext* aPresContext, ReflowOutput& aDesiredSize,
                       const ReflowInput& aReflowInput,
                       nsReflowStatus& aStatus) override;
@@ -133,6 +133,9 @@ class nsImageFrame : public nsAtomicContainerFrame, public nsIReflowCallback {
     }
     NS_IF_RELEASE(sIOService);
   }
+
+  virtual nsresult RestartAnimation();
+  virtual nsresult StopAnimation();
 
   already_AddRefed<imgIRequest> GetCurrentRequest() const;
   nsresult Notify(imgIRequest* aRequest, int32_t aType, const nsIntRect* aData);
@@ -192,13 +195,14 @@ class nsImageFrame : public nsAtomicContainerFrame, public nsIReflowCallback {
   };
 
   // Creates a suitable continuing frame for this frame.
-  nsImageFrame* CreateContinuingFrame(nsIPresShell*, ComputedStyle*) const;
+  nsImageFrame* CreateContinuingFrame(mozilla::PresShell*,
+                                      ComputedStyle*) const;
 
  private:
-  friend nsIFrame* NS_NewImageFrame(nsIPresShell*, ComputedStyle*);
-  friend nsIFrame* NS_NewImageFrameForContentProperty(nsIPresShell*,
+  friend nsIFrame* NS_NewImageFrame(mozilla::PresShell*, ComputedStyle*);
+  friend nsIFrame* NS_NewImageFrameForContentProperty(mozilla::PresShell*,
                                                       ComputedStyle*);
-  friend nsIFrame* NS_NewImageFrameForGeneratedContentIndex(nsIPresShell*,
+  friend nsIFrame* NS_NewImageFrameForGeneratedContentIndex(mozilla::PresShell*,
                                                             ComputedStyle*);
 
   nsImageFrame(ComputedStyle* aStyle, nsPresContext* aPresContext, Kind aKind)
@@ -358,7 +362,7 @@ class nsImageFrame : public nsAtomicContainerFrame, public nsIReflowCallback {
   nsCOMPtr<imgIContainer> mPrevImage;
   nsSize mComputedSize;
   mozilla::IntrinsicSize mIntrinsicSize;
-  nsSize mIntrinsicRatio;
+  mozilla::AspectRatio mIntrinsicRatio;
 
   const Kind mKind;
   bool mContentURLRequestRegistered;

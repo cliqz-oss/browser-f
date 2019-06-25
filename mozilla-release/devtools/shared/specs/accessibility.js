@@ -21,6 +21,19 @@ types.addDictType("accessibleWithChildren", {
 });
 
 /**
+ * Data passed via "audit-event" to the client. It may include type, a list of
+ * ancestries for accessible actors that have failing accessibility checks or
+ * a progress information.
+ */
+types.addDictType("auditEventData", {
+  type: "string",
+  // List of ancestries (array:accessibleWithChildren)
+  ancestries: "nullable:array:array:accessibleWithChildren",
+  // Audit progress information
+  progress: "nullable:json",
+});
+
+/**
  * Accessible relation object described by its type that also includes relation targets.
  */
 types.addDictType("accessibleRelation", {
@@ -77,6 +90,10 @@ const accessibleSpec = generateActorSpec({
       type: "indexInParentChange",
       indexInParent: Arg(0, "number"),
     },
+    "audited": {
+      type: "audited",
+      audit: Arg(0, "nullable:json"),
+    },
   },
 
   methods: {
@@ -96,6 +113,12 @@ const accessibleSpec = generateActorSpec({
       request: {},
       response: {
         relations: RetVal("array:accessibleRelation"),
+      },
+    },
+    hydrate: {
+      request: {},
+      response: {
+        properties: RetVal("json"),
       },
     },
     snapshot: {
@@ -137,6 +160,10 @@ const accessibleWalkerSpec = generateActorSpec({
       type: "highlighter-event",
       data: Arg(0, "json"),
     },
+    "audit-event": {
+      type: "audit-event",
+      audit: Arg(0, "auditEventData"),
+    },
   },
 
   methods: {
@@ -158,6 +185,7 @@ const accessibleWalkerSpec = generateActorSpec({
         ancestry: RetVal("array:accessibleWithChildren"),
       },
     },
+    startAudit: {},
     highlightAccessible: {
       request: {
         accessible: Arg(0, "accessible"),

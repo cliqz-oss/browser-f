@@ -16,7 +16,7 @@ from mozterm import Terminal
 
 from ..cli import BaseTryParser
 from ..tasks import generate_tasks, filter_tasks_by_paths
-from ..push import check_working_directory, push_to_try, vcs
+from ..push import check_working_directory, push_to_try
 
 terminal = Terminal()
 
@@ -26,6 +26,7 @@ here = os.path.abspath(os.path.dirname(__file__))
 # or uncommon enough that they should only be selectable with --full.
 TARGET_TASK_FILTERS = (
     '.*-ccov\/.*',
+    'windows10-aarch64/opt.*'
 )
 
 
@@ -86,10 +87,17 @@ class FuzzyParser(BaseTryParser):
         [['-q', '--query'],
          {'metavar': 'STR',
           'action': 'append',
+          'default': [],
           'help': "Use the given query instead of entering the selection "
                   "interface. Equivalent to typing <query><ctrl-a><enter> "
                   "from the interface. Specifying multiple times schedules "
                   "the union of computed tasks.",
+          }],
+        [['-i', '--interactive'],
+         {'action': 'store_true',
+          'default': False,
+          'help': "Force running fzf interactively even when using presets or "
+                  "queries with -q/--query."
           }],
         [['-x', '--and'],
          {'dest': 'intersection',
@@ -220,7 +228,7 @@ def run(update=False, query=None, intersect_query=None, templates=None, full=Fal
         return 1
 
     check_working_directory(push)
-    tg = generate_tasks(parameters, full, root=vcs.path)
+    tg = generate_tasks(parameters, full)
     all_tasks = sorted(tg.tasks.keys())
 
     if not full:
@@ -249,12 +257,12 @@ def run(update=False, query=None, intersect_query=None, templates=None, full=Fal
     selected = set()
     queries = []
 
-    def get_tasks(query_arg=None):
+    def get_tasks(query_arg=None, candidate_tasks=all_tasks):
         cmd = base_cmd[:]
-        if query_arg:
+        if query_arg and query_arg != 'INTERACTIVE':
             cmd.extend(['-f', query_arg])
 
-        query_str, tasks = run_fzf(cmd, all_tasks)
+        query_str, tasks = run_fzf(cmd, sorted(candidate_tasks))
         queries.append(query_str)
         return set(tasks)
 
@@ -262,10 +270,11 @@ def run(update=False, query=None, intersect_query=None, templates=None, full=Fal
         selected |= get_tasks(q)
 
     for q in intersect_query or []:
-        tasks = get_tasks(q)
         if not selected:
+            tasks = get_tasks(q)
             selected |= tasks
         else:
+            tasks = get_tasks(q, selected)
             selected &= tasks
 
     if not queries:

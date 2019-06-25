@@ -171,7 +171,7 @@
 !endif
 
 !ifdef MOZ_LAUNCHER_PROCESS
-  ${DisableLauncherProcessByDefault}
+  ${ResetLauncherProcessDefaults}
 !endif
 
 !macroend
@@ -1192,9 +1192,22 @@
               InvokeShellVerb::DoIt "$SMPROGRAMS" "$1" "5381"
             ${EndUnless}
 
-            ; Pin the shortcut to the TaskBar. 5386 is the shell32.dll resource
-            ; id for the "Pin to Taskbar" string.
-            InvokeShellVerb::DoIt "$SMPROGRAMS" "$1" "5386"
+            ${If} ${AtMostWin2012R2}
+              ; Pin the shortcut to the TaskBar. 5386 is the shell32.dll
+              ; resource id for the "Pin to Taskbar" string.
+              InvokeShellVerb::DoIt "$SMPROGRAMS" "$1" "5386"
+            ${Else}
+              ; In Windows 10 the "Pin to Taskbar" resource was removed, so we
+              ; can't access the verb that way anymore. We have a create a
+              ; command key using the GUID that's assigned to this action and
+              ; then invoke that as a verb.
+              ReadRegStr $R9 HKLM \
+                "Software\Microsoft\Windows\CurrentVersion\Explorer\CommandStore\shell\Windows.taskbarpin" \
+                "ExplorerCommandHandler"
+              WriteRegStr HKCU "Software\Classes\*\shell\${AppRegName}-$AppUserModelID" "ExplorerCommandHandler" $R9
+              InvokeShellVerb::DoIt "$SMPROGRAMS" "$1" "${AppRegName}-$AppUserModelID"
+              DeleteRegKey HKCU "Software\Classes\*\shell\${AppRegName}-$AppUserModelID"
+            ${EndIf}
 
             ; Delete the shortcut if it was created
             ${If} "$8" == "true"
@@ -1569,22 +1582,13 @@ FunctionEnd
 !endif ; NO_LOG
 
 !ifdef MOZ_LAUNCHER_PROCESS
-!macro DisableLauncherProcessByDefault
-  ClearErrors
-  ${ReadRegQWORD} $0 HKCU ${MOZ_LAUNCHER_SUBKEY} "$INSTDIR\${FileMainEXE}|Launcher"
-  ${If} ${Errors}
-    ClearErrors
-    ${ReadRegQWORD} $0 HKCU ${MOZ_LAUNCHER_SUBKEY} "$INSTDIR\${FileMainEXE}|Browser"
-    ${If} ${Errors}
-      ClearErrors
-      ReadRegDWORD $0 HKCU ${MOZ_LAUNCHER_SUBKEY} "$INSTDIR\${FileMainEXE}|Image"
-      ${If} ${Errors}
-        ClearErrors
-        ; New install that hasn't seen this yet; disable by default
-        ${WriteRegQWORD} HKCU ${MOZ_LAUNCHER_SUBKEY} "$INSTDIR\${FileMainEXE}|Browser" 0
-      ${EndIf}
-    ${EndIf}
-  ${EndIf}
+!macro ResetLauncherProcessDefaults
+  # By deleting these values, we remove remnants of any force-disable settings
+  # that may have been set during the SHIELD study in 67. Note that this setting
+  # was only intended to distinguish between test and control groups for the
+  # purposes of the study, not as a user preference.
+  DeleteRegValue HKCU ${MOZ_LAUNCHER_SUBKEY} "$INSTDIR\${FileMainEXE}|Launcher"
+  DeleteRegValue HKCU ${MOZ_LAUNCHER_SUBKEY} "$INSTDIR\${FileMainEXE}|Browser"
 !macroend
-!define DisableLauncherProcessByDefault "!insertmacro DisableLauncherProcessByDefault"
+!define ResetLauncherProcessDefaults "!insertmacro ResetLauncherProcessDefaults"
 !endif

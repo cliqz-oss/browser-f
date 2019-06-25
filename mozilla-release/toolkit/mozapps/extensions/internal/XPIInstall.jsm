@@ -33,6 +33,7 @@ XPCOMUtils.defineLazyGlobalGetters(this, ["TextDecoder", "TextEncoder", "fetch"]
 
 XPCOMUtils.defineLazyModuleGetters(this, {
   AddonRepository: "resource://gre/modules/addons/AddonRepository.jsm",
+  AddonSettings: "resource://gre/modules/addons/AddonSettings.jsm",
   AppConstants: "resource://gre/modules/AppConstants.jsm",
   CertUtils: "resource://gre/modules/CertUtils.jsm",
   ExtensionData: "resource://gre/modules/Extension.jsm",
@@ -81,6 +82,8 @@ const PREF_XPI_ENABLED                = "xpinstall.enabled";
 const PREF_XPI_DIRECT_WHITELISTED     = "xpinstall.whitelist.directRequest";
 const PREF_XPI_FILE_WHITELISTED       = "xpinstall.whitelist.fileRequest";
 const PREF_XPI_WHITELIST_REQUIRED     = "xpinstall.whitelist.required";
+
+const PREF_SELECTED_LWT               = "lightweightThemes.selectedThemeID";
 
 const TOOLKIT_ID                      = "toolkit@mozilla.org";
 
@@ -176,6 +179,11 @@ const LOGGER_ID = "addons.xpi";
 // Create a new logger for use by all objects in this Addons XPI Provider module
 // (Requires AddonManager.jsm)
 var logger = Log.repository.getLogger(LOGGER_ID);
+
+// Stores the ID of the lightweight theme which was selected during the
+// last session, if any. When installing a new built-in theme with this
+// ID, it will be automatically enabled.
+let lastLightweightTheme = null;
 
 function getJarURI(file, path = "") {
   if (file instanceof Ci.nsIFile) {
@@ -332,6 +340,36 @@ XPIPackage = class XPIPackage extends Package {
 };
 
 /**
+ * Return an object that implements enough of the Package interface
+ * to allow loadManifest() to work for a built-in addon (ie, one loaded
+ * from a resource: url)
+ *
+ * @param {nsIURL} baseURL The URL for the root of the add-on.
+ * @returns {object}
+ */
+function builtinPackage(baseURL) {
+  return {
+    rootURI: baseURL,
+    filePath: baseURL.spec,
+    file: null,
+    verifySignedState() {
+      return {
+        signedState: AddonManager.SIGNEDSTATE_NOT_REQUIRED,
+        cert: null,
+      };
+    },
+    async hasResource(path) {
+      try {
+        let response = await fetch(this.rootURI.resolve(path));
+        return response.ok;
+      } catch (e) {
+        return false;
+      }
+    },
+  };
+}
+
+/**
  * Determine the reason to pass to an extension's bootstrap methods when
  * switch between versions.
  *
@@ -375,7 +413,7 @@ function waitForAllPromises(promises) {
  *         be read
  */
 async function loadManifestFromWebManifest(aPackage) {
-  let extension = new ExtensionData(aPackage.rootURI);
+  let extension = new ExtensionData(XPIInternal.maybeResolveURI(aPackage.rootURI));
 
   let manifest = await extension.loadManifest();
 
@@ -495,6 +533,36 @@ async function loadManifestFromWebManifest(aPackage) {
   return addon;
 }
 
+async function readRecommendationStates(aPackage, aAddonID) {
+  let recommendationData;
+  try {
+    recommendationData = JSON.parse(await aPackage.readString("mozilla-recommendation.json"));
+  } catch (e) {
+    if (e.result != Cr.NS_ERROR_FILE_NOT_FOUND) {
+      logger.warn("Failed to parse recommendation", e);
+    }
+  }
+
+  if (recommendationData) {
+    let {addon_id, states, validity} = recommendationData;
+
+    if (addon_id === aAddonID && Array.isArray(states) && validity) {
+      let validNotAfter = Date.parse(validity.not_after);
+      let validNotBefore = Date.parse(validity.not_before);
+      if (validNotAfter && validNotBefore) {
+        return {
+          validNotAfter,
+          validNotBefore,
+          states,
+        };
+      }
+    }
+    logger.warn(`Invalid recommendation for ${aAddonID}: ${JSON.stringify(recommendationData)}`);
+  }
+
+  return null;
+}
+
 function defineSyncGUID(aAddon) {
   // Define .syncGUID as a lazy property which is also settable
   Object.defineProperty(aAddon, "syncGUID", {
@@ -548,7 +616,7 @@ var loadManifest = async function(aPackage, aLocation, aOldAddon) {
 
   let {signedState, cert} = await aPackage.verifySignedState(addon);
   addon.signedState = signedState;
-  if (signedState != AddonManager.SIGNEDSTATE_PRIVILEGED) {
+  if (!addon.isPrivileged) {
     addon.hidden = false;
   }
 
@@ -562,6 +630,10 @@ var loadManifest = async function(aPackage, aLocation, aOldAddon) {
     if (!addon.id && aLocation.isTemporary) {
       addon.id = generateTemporaryInstallID(aPackage.file);
     }
+  }
+
+  if (addon.type === "extension" && !addon.location.isBuiltin) {
+    addon.recommendationState = await readRecommendationStates(aPackage, addon.id);
   }
 
   addon.propagateDisabledState(aOldAddon);
@@ -602,8 +674,23 @@ var loadManifestFromFile = async function(aFile, aLocation, aOldAddon) {
  * A synchronous method for loading an add-on's manifest. Do not use
  * this.
  */
-function syncLoadManifestFromFile(aFile, aLocation, aOldAddon) {
-  return XPIInternal.awaitPromise(loadManifestFromFile(aFile, aLocation, aOldAddon));
+function syncLoadManifest(state, location, oldAddon) {
+  if (location.name == "app-builtin") {
+    let pkg = builtinPackage(Services.io.newURI(state.rootURI));
+    return XPIInternal.awaitPromise(loadManifest(pkg, location, oldAddon));
+  }
+
+  let file = new nsIFile(state.path);
+  let pkg = Package.get(file);
+  return XPIInternal.awaitPromise((async () => {
+    try {
+      let addon = await loadManifest(pkg, location, oldAddon);
+      addon.rootURI = getURIForResourceInFile(file, "").spec;
+      return addon;
+    } finally {
+      pkg.close();
+    }
+  })());
 }
 
 /**
@@ -1047,6 +1134,8 @@ class AddonInstall {
    *        included in the addon manager telemetry events.
    * @param {boolean} [options.isUserRequestedUpdate]
    *        An optional boolean, true if the install object is related to a user triggered update.
+   * @param {nsIURL} [options.releaseNotesURI]
+   *        An optional nsIURL that release notes where release notes can be retrieved.
    * @param {function(string) : Promise<void>} [options.promptHandler]
    *        A callback to prompt the user before installing.
    */
@@ -1065,7 +1154,7 @@ class AddonInstall {
     this.hash = this.originalHash;
     this.existingAddon = options.existingAddon || null;
     this.promptHandler = options.promptHandler || (() => Promise.resolve());
-    this.releaseNotesURI = null;
+    this.releaseNotesURI = options.releaseNotesURI || null;
 
     this._startupPromise = null;
 
@@ -1098,6 +1187,7 @@ class AddonInstall {
       // Inherits the installTelemetryInfo on updates (so that the source of the original
       // installation telemetry data is being preserved across the extension updates).
       this.installTelemetryInfo = this.existingAddon.installTelemetryInfo;
+      this.existingAddon._updateInstall = this;
     }
 
     this.file = null;
@@ -1107,6 +1197,28 @@ class AddonInstall {
     this.state = null;
 
     XPIInstall.installs.add(this);
+  }
+
+  /**
+   * Called when we are finished with this install and are ready to remove
+   * any external references to it.
+   */
+  _cleanup() {
+    XPIInstall.installs.delete(this);
+    if (this.addon && this.addon._install) {
+      if (this.addon._install === this) {
+        this.addon._install = null;
+      } else {
+        Cu.reportError(new Error("AddonInstall mismatch"));
+      }
+    }
+    if (this.existingAddon && this.existingAddon._updateInstall) {
+      if (this.existingAddon._updateInstall === this) {
+        this.existingAddon._updateInstall = null;
+      } else {
+        Cu.reportError(new Error("AddonInstall existingAddon mismatch"));
+      }
+    }
   }
 
   /**
@@ -1170,7 +1282,7 @@ class AddonInstall {
     case AddonManager.STATE_DOWNLOADED:
       logger.debug("Cancelling download of " + this.sourceURI.spec);
       this.state = AddonManager.STATE_CANCELLED;
-      XPIInstall.installs.delete(this);
+      this._cleanup();
       this._callInstallListeners("onDownloadCancelled");
       this.removeTemporaryFile();
       break;
@@ -1180,7 +1292,7 @@ class AddonInstall {
       flushJarCache(xpi);
       this.location.installer.cleanStagingDir([`${this.addon.id}.xpi`]);
       this.state = AddonManager.STATE_CANCELLED;
-      XPIInstall.installs.delete(this);
+      this._cleanup();
 
       if (this.existingAddon) {
         delete this.existingAddon.pendingUpgrade;
@@ -1194,7 +1306,7 @@ class AddonInstall {
     case AddonManager.STATE_POSTPONED:
       logger.debug(`Cancelling postponed install of ${this.addon.id}`);
       this.state = AddonManager.STATE_CANCELLED;
-      XPIInstall.installs.delete(this);
+      this._cleanup();
       this._callInstallListeners("onInstallCancelled");
       this.removeTemporaryFile();
 
@@ -1392,7 +1504,7 @@ class AddonInstall {
         } catch (err) {
           logger.info(`Install of ${this.addon.id} cancelled by user`);
           this.state = AddonManager.STATE_CANCELLED;
-          XPIInstall.installs.delete(this);
+          this._cleanup();
           this._callInstallListeners("onInstallCancelled");
           return;
         }
@@ -1437,7 +1549,7 @@ class AddonInstall {
     if (!this._callInstallListeners("onInstallStarted")) {
       this.state = AddonManager.STATE_DOWNLOADED;
       this.removeTemporaryFile();
-      XPIInstall.installs.delete(this);
+      this._cleanup();
       this._callInstallListeners("onInstallCancelled");
       return;
     }
@@ -1486,8 +1598,7 @@ class AddonInstall {
 
       await this.stageInstall(false, stagedAddon, isUpgrade);
 
-      // The install is completed so it should be removed from the active list
-      XPIInstall.installs.delete(this);
+      this._cleanup();
 
       let install = async () => {
         if (this.existingAddon && this.existingAddon.active && !isUpgrade) {
@@ -1503,8 +1614,7 @@ class AddonInstall {
         });
 
         // Update the metadata in the database
-        this.addon._sourceBundle = file;
-        this.addon.rootURI = getURIForResourceInFile(file, "").spec;
+        this.addon.sourceBundle = file;
         this.addon.visible = true;
 
         if (isUpgrade) {
@@ -1560,7 +1670,6 @@ class AddonInstall {
         recursiveRemove(stagedAddon);
       this.state = AddonManager.STATE_INSTALL_FAILED;
       this.error = AddonManager.ERROR_FILE_ACCESS;
-      XPIInstall.installs.delete(this);
       AddonManagerPrivate.callAddonListeners("onOperationCancelled",
                                              this.addon.wrapper);
       this._callInstallListeners("onInstallFailed");
@@ -1590,7 +1699,7 @@ class AddonInstall {
 
     if (restartRequired) {
       // Point the add-on to its extracted files as the xpi may get deleted
-      this.addon._sourceBundle = stagedAddon;
+      this.addon.sourceBundle = stagedAddon;
 
       // Cache the AddonInternal as it may have updated compatibility info
       this.location.stageAddon(this.addon.id, this.addon.toJSON());
@@ -1695,7 +1804,7 @@ var LocalAddonInstall = class extends AddonInstall {
       logger.warn("XPI file " + this.file.path + " does not exist");
       this.state = AddonManager.STATE_DOWNLOAD_FAILED;
       this.error = AddonManager.ERROR_NETWORK_FAILURE;
-      XPIInstall.installs.delete(this);
+      this._cleanup();
       return;
     }
 
@@ -1711,7 +1820,7 @@ var LocalAddonInstall = class extends AddonInstall {
         logger.warn("Unknown hash algorithm '" + this.hash.algorithm + "' for addon " + this.sourceURI.spec, e);
         this.state = AddonManager.STATE_DOWNLOAD_FAILED;
         this.error = AddonManager.ERROR_INCORRECT_HASH;
-        XPIInstall.installs.delete(this);
+        this._cleanup();
         return;
       }
 
@@ -1723,7 +1832,7 @@ var LocalAddonInstall = class extends AddonInstall {
                     this.hash.data + ")");
         this.state = AddonManager.STATE_DOWNLOAD_FAILED;
         this.error = AddonManager.ERROR_INCORRECT_HASH;
-        XPIInstall.installs.delete(this);
+        this._cleanup();
         return;
       }
     }
@@ -1734,7 +1843,7 @@ var LocalAddonInstall = class extends AddonInstall {
       logger.warn("Invalid XPI", message);
       this.state = AddonManager.STATE_DOWNLOAD_FAILED;
       this.error = error;
-      XPIInstall.installs.delete(this);
+      this._cleanup();
       this._callInstallListeners("onNewInstall");
       flushJarCache(this.file);
       return;
@@ -1796,6 +1905,8 @@ var DownloadAddonInstall = class extends AddonInstall {
    * @param {XULElement} [options.browser]
    *        The browser performing the install, used to display
    *        authentication prompts.
+   * @param {nsIPrincipal} [options.principal]
+   *        The principal to use. If not present, will default to browser.contentPrincipal.
    * @param {string} [options.name]
    *        An optional name for the add-on
    * @param {string} [options.type]
@@ -1813,6 +1924,10 @@ var DownloadAddonInstall = class extends AddonInstall {
     super(installLocation, url, options);
 
     this.browser = options.browser;
+    this.loadingPrincipal =
+      options.triggeringPrincipal ||
+      (this.browser && this.browser.contentPrincipal) ||
+      Services.scriptSecurityManager.getSystemPrincipal();
     this.sendCookies = Boolean(options.sendCookies);
 
     this.state = AddonManager.STATE_AVAILABLE;
@@ -1874,7 +1989,7 @@ var DownloadAddonInstall = class extends AddonInstall {
     if (!this._callInstallListeners("onDownloadStarted")) {
       logger.debug("onDownloadStarted listeners cancelled installation of addon " + this.sourceURI.spec);
       this.state = AddonManager.STATE_CANCELLED;
-      XPIInstall.installs.delete(this);
+      this._cleanup();
       this._callInstallListeners("onDownloadCancelled");
       return;
     }
@@ -1908,7 +2023,7 @@ var DownloadAddonInstall = class extends AddonInstall {
       logger.warn("Failed to start download for addon " + this.sourceURI.spec, e);
       this.state = AddonManager.STATE_DOWNLOAD_FAILED;
       this.error = AddonManager.ERROR_FILE_ACCESS;
-      XPIInstall.installs.delete(this);
+      this._cleanup();
       this._callInstallListeners("onDownloadFailed");
       return;
     }
@@ -1921,7 +2036,9 @@ var DownloadAddonInstall = class extends AddonInstall {
 
       this.channel = NetUtil.newChannel({
         uri: this.sourceURI,
-        loadUsingSystemPrincipal: true,
+        securityFlags: Ci.nsILoadInfo.SEC_ALLOW_CROSS_ORIGIN_DATA_INHERITS,
+        contentPolicyType: Ci.nsIContentPolicy.TYPE_SAVEAS_DOWNLOAD,
+        loadingPrincipal: this.loadingPrincipal,
       });
       this.channel.notificationCallbacks = this;
       if (this.sendCookies) {
@@ -1938,7 +2055,7 @@ var DownloadAddonInstall = class extends AddonInstall {
       logger.warn("Failed to start download for addon " + this.sourceURI.spec, e);
       this.state = AddonManager.STATE_DOWNLOAD_FAILED;
       this.error = AddonManager.ERROR_NETWORK_FAILURE;
-      XPIInstall.installs.delete(this);
+      this._cleanup();
       this._callInstallListeners("onDownloadFailed");
     }
   }
@@ -1999,7 +2116,7 @@ var DownloadAddonInstall = class extends AddonInstall {
         logger.warn("Unknown hash algorithm '" + this.hash.algorithm + "' for addon " + this.sourceURI.spec, e);
         this.state = AddonManager.STATE_DOWNLOAD_FAILED;
         this.error = AddonManager.ERROR_INCORRECT_HASH;
-        XPIInstall.installs.delete(this);
+        this._cleanup();
         this._callInstallListeners("onDownloadFailed");
         aRequest.cancel(Cr.NS_BINDING_ABORTED);
         return;
@@ -2037,7 +2154,7 @@ var DownloadAddonInstall = class extends AddonInstall {
       if (this.state == AddonManager.STATE_DOWNLOADING) {
         logger.debug("Cancelled download of " + this.sourceURI.spec);
         this.state = AddonManager.STATE_CANCELLED;
-        XPIInstall.installs.delete(this);
+        this._cleanup();
         this._callInstallListeners("onDownloadCancelled");
         // If a listener restarted the download then there is no need to
         // remove the temporary file
@@ -2113,7 +2230,7 @@ var DownloadAddonInstall = class extends AddonInstall {
     logger.warn("Download of " + this.sourceURI.spec + " failed", aError);
     this.state = AddonManager.STATE_DOWNLOAD_FAILED;
     this.error = aReason;
-    XPIInstall.installs.delete(this);
+    this._cleanup();
     this._callInstallListeners("onDownloadFailed");
 
     // If the listener hasn't restarted the download then remove any temporary
@@ -2205,18 +2322,19 @@ function createUpdate(aCallback, aAddon, aUpdate, isUserRequested) {
       isUserRequestedUpdate: isUserRequested,
     };
 
+    try {
+      if (aUpdate.updateInfoURL)
+        opts.releaseNotesURI = Services.io.newURI(escapeAddonURI(aAddon, aUpdate.updateInfoURL));
+    } catch (e) {
+      // If the releaseNotesURI cannot be parsed then just ignore it.
+    }
+
     let install;
     if (url instanceof Ci.nsIFileURL) {
       install = new LocalAddonInstall(aAddon.location, url, opts);
       await install.init();
     } else {
       install = new DownloadAddonInstall(aAddon.location, url, opts);
-    }
-    try {
-      if (aUpdate.updateInfoURL)
-        install.releaseNotesURI = Services.io.newURI(escapeAddonURI(aAddon, aUpdate.updateInfoURL));
-    } catch (e) {
-      // If the releaseNotesURI cannot be parsed then just ignore it.
     }
 
     aCallback(install);
@@ -2539,7 +2657,6 @@ function createLocalInstall(file, location, telemetryInfo) {
     return install.init().then(() => install);
   } catch (e) {
     logger.error("Error creating install", e);
-    XPIInstall.installs.delete(this);
     return Promise.resolve(null);
   }
 }
@@ -3191,7 +3308,7 @@ var XPIInstall = {
   flushJarCache,
   newVersionReason,
   recursiveRemove,
-  syncLoadManifestFromFile,
+  syncLoadManifest,
 
   // Keep track of in-progress operations that support cancel()
   _inProgress: [],
@@ -3264,8 +3381,7 @@ var XPIInstall = {
     }
 
     // Install the add-on
-    addon._sourceBundle = location.installer.installAddon({ id, source: file, action: "copy" });
-    addon.rootURI = XPIInternal.getURIForResourceInFile(addon._sourceBundle, "").spec;
+    addon.sourceBundle = location.installer.installAddon({ id, source: file, action: "copy" });
 
     XPIStates.addAddon(addon);
     logger.debug(`Installed distribution add-on ${id}`);
@@ -3323,7 +3439,7 @@ var XPIInstall = {
     }
 
     try {
-      addon._sourceBundle = location.installer.installAddon({
+      addon.sourceBundle = location.installer.installAddon({
         id, source, existingAddonID: id,
       });
       XPIStates.addAddon(addon);
@@ -3653,6 +3769,11 @@ var XPIInstall = {
    *          A Promise that resolves when the addon is installed.
    */
   async installBuiltinAddon(base) {
+    if (lastLightweightTheme === null) {
+      lastLightweightTheme = Services.prefs.getCharPref(PREF_SELECTED_LWT, "");
+      Services.prefs.clearUserPref(PREF_SELECTED_LWT);
+    }
+
     let baseURL = Services.io.newURI(base);
 
     // WebExtensions need to be able to iterate through the contents of
@@ -3663,30 +3784,31 @@ var XPIInstall = {
       throw new Error("Built-in addons must use resource: URLS");
     }
 
-    let root = Services.io.getProtocolHandler("resource")
-                       .QueryInterface(Ci.nsISubstitutingProtocolHandler)
-                       .resolveURI(baseURL);
-    let rootURI = Services.io.newURI(root);
-
-    // Enough of the Package interface to allow loadManifest() to work.
-    let pkg = {
-      rootURI,
-      filePath: baseURL,
-      file: null,
-      verifySignedState() {
-        return {
-          signedState: AddonManager.SIGNEDSTATE_NOT_REQUIRED,
-          cert: null,
-        };
-      },
-      async hasResource(path) {
-        let response = await fetch(this.rootURI.resolve(path));
-        return response.ok;
-      },
-    };
-
+    let pkg = builtinPackage(baseURL);
     let addon = await loadManifest(pkg, XPIInternal.BuiltInLocation);
-    addon.rootURI = root;
+    addon.rootURI = base;
+
+    // If this is a theme, decide whether to enable it. Themes are
+    // disabled by default. However:
+    //
+    // If a lightweight theme was selected in the last session, and this
+    // theme has the same ID, then we clearly want to enable it.
+    //
+    // If it is the default theme, more specialized behavior applies:
+    //
+    // We always want one theme to be active, falling back to the
+    // default theme when the active theme is disabled. The first time
+    // we install the default theme, though, there likely aren't any
+    // other theme add-ons installed yet, in which case we want to
+    // enable it immediately.
+    if (addon.type === "theme") {
+      if (addon.id === lastLightweightTheme ||
+          (!lastLightweightTheme.endsWith("@mozilla.org") &&
+           addon.id === AddonSettings.DEFAULT_THEME_ID &&
+           !XPIDatabase.getAddonsByType("theme").some(theme => !theme.disabled))) {
+        addon.userDisabled = false;
+      }
+    }
     await this._activateAddon(addon);
   },
 
@@ -3724,8 +3846,13 @@ var XPIInstall = {
 
     let install = () => {
       addon.visible = true;
-      addon.active = true;
-      addon.userDisabled = false;
+      // Themes are generally not enabled by default at install time,
+      // unless enabled by the front-end code. If they are meant to be
+      // enabled, they will already have been enabled by this point.
+      if (addon.type !== "theme" || addon.location.isTemporary) {
+        addon.userDisabled = false;
+      }
+      addon.active = !addon.disabled;
 
       addon = XPIDatabase.addToDatabase(addon, addon._sourceBundle ? addon._sourceBundle.path : null);
 
@@ -3758,7 +3885,7 @@ var XPIInstall = {
     AddonManagerPrivate.callAddonListeners("onInstalled", addon.wrapper);
 
     // Notify providers that a new theme has been enabled.
-    if (addon.type === "theme")
+    if (addon.type === "theme" && !addon.userDisabled)
       AddonManagerPrivate.notifyAddonChanged(addon.id, addon.type, false);
   },
 
@@ -3904,14 +4031,13 @@ var XPIInstall = {
 
     Services.prefs.setBoolPref(PREF_PENDING_OPERATIONS, true);
 
-    // TODO hide hidden add-ons (bug 557710)
-    let wrapper = aAddon.wrapper;
-    AddonManagerPrivate.callAddonListeners("onOperationCancelled", wrapper);
-
     if (!aAddon.disabled) {
       XPIInternal.BootstrapScope.get(aAddon).startup(BOOTSTRAP_REASONS.ADDON_INSTALL);
       XPIDatabase.updateAddonActive(aAddon, true);
     }
+
+    let wrapper = aAddon.wrapper;
+    AddonManagerPrivate.callAddonListeners("onOperationCancelled", wrapper);
 
     // Notify any other providers that this theme is now enabled again.
     if (aAddon.type === "theme" && aAddon.active)

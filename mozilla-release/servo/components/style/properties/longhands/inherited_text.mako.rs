@@ -19,11 +19,10 @@ ${helpers.predefined_type(
 
 // CSS Text Module Level 3
 
-// TODO(pcwalton): `full-width`
-${helpers.single_keyword(
+${helpers.predefined_type(
     "text-transform",
-    "none capitalize uppercase lowercase",
-    extra_gecko_values="full-width full-size-kana",
+    "TextTransform",
+    "computed::TextTransform::none()",
     animation_value_type="discrete",
     flags="APPLIES_TO_FIRST_LETTER APPLIES_TO_FIRST_LINE APPLIES_TO_PLACEHOLDER",
     spec="https://drafts.csswg.org/css-text/#propdef-text-transform",
@@ -219,6 +218,7 @@ ${helpers.predefined_type(
     vector_animation_type="with_zero",
     animation_value_type="AnimatedTextShadowList",
     ignored_when_colors_disabled=True,
+    simple_vector_bindings=True,
     flags="APPLIES_TO_FIRST_LETTER APPLIES_TO_FIRST_LINE APPLIES_TO_PLACEHOLDER",
     spec="https://drafts.csswg.org/css-text-decor-3/#text-shadow-property",
 )}

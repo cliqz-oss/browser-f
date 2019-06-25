@@ -17,10 +17,12 @@ from taskgraph.transforms.job.common import (
     docker_worker_add_tooltool,
     support_vcs_checkout,
 )
+import json
 import os
 
 VARIANTS = [
     'nightly',
+    'shippable',
     'devedition',
     'pgo',
     'asan',
@@ -53,7 +55,8 @@ def test_packages_url(taskdesc):
                                     'target.test_packages.json'))
     # for android nightly we need to add 'en-US' to the artifact url
     test = taskdesc['run']['test']
-    if get_variant(test['test-platform']) == "nightly" and 'android' in test['test-platform']:
+    if 'android' in test['test-platform'] and (
+            get_variant(test['test-platform']) in ("nightly", 'shippable')):
         head, tail = os.path.split(artifact_url)
         artifact_url = os.path.join(head, 'en-US', tail)
     return artifact_url
@@ -83,7 +86,11 @@ def mozharness_test_on_docker(config, job, taskdesc):
         ("public/test_info/", "{workdir}/workspace/build/blobber_upload_dir/".format(**run)),
     ]
 
-    installer_url = get_artifact_url('<build>', mozharness['build-artifact-name'])
+    if 'installer-url' in mozharness:
+        installer_url = mozharness['installer-url']
+    else:
+        installer_url = get_artifact_url('<build>', mozharness['build-artifact-name'])
+
     mozharness_url = get_artifact_url('<build>',
                                       get_artifact_path(taskdesc, 'mozharness.zip'))
 
@@ -143,14 +150,15 @@ def mozharness_test_on_docker(config, job, taskdesc):
     else:
         env['MOZHARNESS_URL'] = {'task-reference': mozharness_url}
 
+    extra_config = {
+        'installer_url': installer_url,
+        'test_packages_url': test_packages_url(taskdesc),
+    }
+    env['EXTRA_MOZHARNESS_CONFIG'] = {'task-reference': json.dumps(extra_config)}
+
     command.extend([
         '--',
         '{workdir}/bin/test-linux.sh'.format(**run),
-    ])
-
-    command.extend([
-        {"task-reference": "--installer-url=" + installer_url},
-        {"task-reference": "--test-packages-url=" + test_packages_url(taskdesc)},
     ])
     command.extend(mozharness.get('extra-options', []))
 
@@ -180,9 +188,13 @@ def mozharness_test_on_generic_worker(config, job, taskdesc):
     mozharness = test['mozharness']
     worker = taskdesc['worker']
 
+    bitbar_script = 'test-linux.sh'
+    bitbar_wrapper = '/builds/taskcluster/script.py'
+
     is_macosx = worker['os'] == 'macosx'
     is_windows = worker['os'] == 'windows'
-    is_linux = worker['os'] == 'linux'
+    is_linux = worker['os'] == 'linux' or worker['os'] == 'linux-bitbar'
+    is_bitbar = worker['os'] == 'linux-bitbar'
     assert is_macosx or is_windows or is_linux
 
     artifacts = [
@@ -201,8 +213,30 @@ def mozharness_test_on_generic_worker(config, job, taskdesc):
             'type': 'directory'
         })
 
-    upstream_task = '<build-signing>' if mozharness['requires-signed-builds'] else '<build>'
-    installer_url = get_artifact_url(upstream_task, mozharness['build-artifact-name'])
+    if is_bitbar:
+        artifacts = [
+            {
+                'name': 'public/test/',
+                'path': 'artifacts/public',
+                'type': 'directory'
+            },
+            {
+                'name': 'public/logs/',
+                'path': 'workspace/logs',
+                'type': 'directory'
+            },
+            {
+                'name': 'public/test_info/',
+                'path': 'workspace/build/blobber_upload_dir',
+                'type': 'directory'
+            },
+        ]
+
+    if 'installer-url' in mozharness:
+        installer_url = mozharness['installer-url']
+    else:
+        upstream_task = '<build-signing>' if mozharness['requires-signed-builds'] else '<build>'
+        installer_url = get_artifact_url(upstream_task, mozharness['build-artifact-name'])
 
     worker['os-groups'] = test['os-groups']
 
@@ -213,7 +247,7 @@ def mozharness_test_on_generic_worker(config, job, taskdesc):
     # See https://docs.microsoft.com/en-us/windows/desktop/secauthz/user-account-control
     # for more information about UAC.
     if test.get('run-as-administrator', False):
-        if job['worker-type'].startswith('aws-provisioner-v1/gecko-t-win10-64'):
+        if job['worker-type'].startswith('t-win10-64'):
             worker['run-as-administrator'] = True
         else:
             raise Exception('run-as-administrator not supported on {}'.format(job['worker-type']))
@@ -245,12 +279,44 @@ def mozharness_test_on_generic_worker(config, job, taskdesc):
             'XPC_FLAGS': '0x0',
             'XPC_SERVICE_NAME': '0',
         })
+    elif is_bitbar:
+        env.update({
+            'MOZHARNESS_CONFIG': ' '.join(mozharness['config']),
+            'MOZHARNESS_SCRIPT': mozharness['script'],
+            'MOZHARNESS_URL': {'artifact-reference': '<build/public/build/mozharness.zip>'},
+            'MOZILLA_BUILD_URL': {'task-reference': installer_url},
+            "MOZ_NO_REMOTE": '1',
+            "NEED_XVFB": "false",
+            "XPCOM_DEBUG_BREAK": 'warn',
+            "NO_FAIL_ON_TEST_ERRORS": '1',
+            "MOZ_HIDE_RESULTS_TABLE": '1',
+            "MOZ_NODE_PATH": "/usr/local/bin/node",
+            'TASKCLUSTER_WORKER_TYPE': job['worker-type'],
+        })
+
+    extra_config = {
+        'installer_url': installer_url,
+        'test_packages_url': test_packages_url(taskdesc),
+    }
+    env['EXTRA_MOZHARNESS_CONFIG'] = {'task-reference': json.dumps(extra_config)}
 
     if is_windows:
         mh_command = [
             'c:\\mozilla-build\\python\\python.exe',
             '-u',
             'mozharness\\scripts\\' + normpath(mozharness['script'])
+        ]
+    elif is_bitbar:
+        mh_command = [
+            bitbar_wrapper,
+            'bash',
+            "./{}".format(bitbar_script)
+        ]
+    elif is_macosx and 'macosx1014-64' in test['test-platform']:
+        mh_command = [
+            '/usr/local/bin/python2',
+            '-u',
+            'mozharness/scripts/' + mozharness['script']
         ]
     else:
         # is_linux or is_macosx
@@ -266,8 +332,6 @@ def mozharness_test_on_generic_worker(config, job, taskdesc):
             cfg_path = normpath(cfg_path)
         mh_command.extend(['--cfg', cfg_path])
     mh_command.extend(mozharness.get('extra-options', []))
-    mh_command.extend(['--installer-url', installer_url])
-    mh_command.extend(['--test-packages-url', test_packages_url(taskdesc)])
     if mozharness.get('download-symbols'):
         if isinstance(mozharness['download-symbols'], basestring):
             mh_command.extend(['--download-symbols', mozharness['download-symbols']])
@@ -302,18 +366,21 @@ def mozharness_test_on_generic_worker(config, job, taskdesc):
         },
         'format': 'zip'
     }]
+    if is_bitbar:
+        a_url = '{}/raw-file/{}/taskcluster/scripts/tester/{}'.format(
+            config.params['head_repository'], config.params['head_rev'], bitbar_script
+        )
+        worker['mounts'] = [{
+            'file': bitbar_script,
+            'content': {
+                'url': a_url,
+            },
+        }]
 
     if is_windows:
-        worker['command'] = [
-            {'task-reference': ' '.join(mh_command)}
-        ]
+        worker['command'] = [' '.join(mh_command)]
     else:  # is_macosx
-        mh_command_task_ref = []
-        for token in mh_command:
-            mh_command_task_ref.append({'task-reference': token})
-        worker['command'] = [
-            mh_command_task_ref
-        ]
+        worker['command'] = [mh_command]
 
 
 @run_job_using('script-engine-autophone', 'mozharness-test', schema=mozharness_test_run_schema)
@@ -325,7 +392,10 @@ def mozharness_test_on_script_engine_autophone(config, job, taskdesc):
     if worker['os'] != 'linux':
         raise Exception('os: {} not supported on script-engine-autophone'.format(worker['os']))
 
-    installer_url = get_artifact_url('<build>', mozharness['build-artifact-name'])
+    if 'installer-url' in mozharness:
+        installer_url = mozharness['installer-url']
+    else:
+        installer_url = get_artifact_url('<build>', mozharness['build-artifact-name'])
     mozharness_url = get_artifact_url('<build>',
                                       'public/build/mozharness.zip')
 
@@ -372,16 +442,18 @@ def mozharness_test_on_script_engine_autophone(config, job, taskdesc):
     if is_talos:
         env['NEED_XVFB'] = 'false'
 
+    extra_config = {
+        'installer_url': installer_url,
+        'test_packages_url': test_packages_url(taskdesc),
+    }
+    env['EXTRA_MOZHARNESS_CONFIG'] = {'task-reference': json.dumps(extra_config)}
+
     script = 'test-linux.sh'
     worker['context'] = '{}/raw-file/{}/taskcluster/scripts/tester/{}'.format(
         config.params['head_repository'], config.params['head_rev'], script
     )
 
     command = worker['command'] = ["./{}".format(script)]
-    command.extend([
-        {"task-reference": "--installer-url=" + installer_url},
-        {"task-reference": "--test-packages-url=" + test_packages_url(taskdesc)},
-    ])
     if mozharness.get('include-blob-upload-branch'):
         command.append('--blob-upload-branch=' + config.params['project'])
     command.extend(mozharness.get('extra-options', []))

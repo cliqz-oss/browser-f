@@ -323,15 +323,13 @@ nsresult TextServicesDocument::SetFilterType(uint32_t aFilterType) {
   return NS_OK;
 }
 
-nsresult TextServicesDocument::GetCurrentTextBlock(nsString* aStr) {
-  NS_ENSURE_TRUE(aStr, NS_ERROR_NULL_POINTER);
-
-  aStr->Truncate();
+nsresult TextServicesDocument::GetCurrentTextBlock(nsAString& aStr) {
+  aStr.Truncate();
 
   NS_ENSURE_TRUE(mFilteredIter, NS_ERROR_FAILURE);
 
   nsresult rv = CreateOffsetTable(&mOffsetTable, mFilteredIter,
-                                  &mIteratorStatus, mExtent, aStr);
+                                  &mIteratorStatus, mExtent, &aStr);
   if (NS_WARN_IF(NS_FAILED(rv))) {
     return rv;
   }
@@ -1064,11 +1062,7 @@ nsresult TextServicesDocument::DeleteSelection() {
   return rv;
 }
 
-nsresult TextServicesDocument::InsertText(const nsString* aText) {
-  if (NS_WARN_IF(!aText)) {
-    return NS_ERROR_INVALID_ARG;
-  }
-
+nsresult TextServicesDocument::InsertText(const nsAString& aText) {
   if (NS_WARN_IF(!mTextEditor) || NS_WARN_IF(!SelectionIsValid())) {
     return NS_ERROR_FAILURE;
   }
@@ -1095,14 +1089,15 @@ nsresult TextServicesDocument::InsertText(const nsString* aText) {
 
   // AutoTransactionBatchExternal grabs mTextEditor, so, we don't need to grab
   // the instance with local variable here.
-  AutoTransactionBatchExternal treatAsOneTransaction(*mTextEditor);
+  RefPtr<TextEditor> textEditor = mTextEditor;
+  AutoTransactionBatchExternal treatAsOneTransaction(*textEditor);
 
-  nsresult rv = mTextEditor->InsertTextAsAction(*aText);
+  nsresult rv = textEditor->InsertTextAsAction(aText);
   if (NS_FAILED(rv)) {
     return rv;
   }
 
-  int32_t strLength = aText->Length();
+  int32_t strLength = aText.Length();
 
   OffsetEntry* itEntry;
   OffsetEntry* entry = mOffsetTable[mSelStartIndex];
@@ -1666,7 +1661,10 @@ bool TextServicesDocument::IsTextNode(nsIContent* aContent) {
 nsresult TextServicesDocument::SetSelectionInternal(int32_t aOffset,
                                                     int32_t aLength,
                                                     bool aDoUpdate) {
-  NS_ENSURE_TRUE(mSelCon && aOffset >= 0 && aLength >= 0, NS_ERROR_FAILURE);
+  if (NS_WARN_IF(!mSelCon) || NS_WARN_IF(aOffset < 0) ||
+      NS_WARN_IF(aLength < 0)) {
+    return NS_ERROR_INVALID_ARG;
+  }
 
   nsCOMPtr<nsINode> startNode;
   int32_t startNodeOffset = 0;
@@ -1728,26 +1726,22 @@ nsresult TextServicesDocument::SetSelectionInternal(int32_t aOffset,
   //      use it.
 
   RefPtr<Selection> selection;
-
   if (aDoUpdate) {
     selection = mSelCon->GetSelection(nsISelectionController::SELECTION_NORMAL);
-    NS_ENSURE_STATE(selection);
-
-    nsresult rv = selection->Collapse(startNode, startNodeOffset);
-    NS_ENSURE_SUCCESS(rv, rv);
+    if (NS_WARN_IF(!selection)) {
+      return NS_ERROR_FAILURE;
+    }
   }
 
-  if (aLength <= 0) {
-    // We have a collapsed selection. (Caret)
-
+  if (!aLength) {
+    if (aDoUpdate) {
+      nsresult rv = selection->Collapse(startNode, startNodeOffset);
+      if (NS_WARN_IF(NS_FAILED(rv))) {
+        return rv;
+      }
+    }
     mSelEndIndex = mSelStartIndex;
     mSelEndOffset = mSelStartOffset;
-
-    //**** KDEBUG ****
-    // printf("\n* Sel: (%2d, %4d) (%2d, %4d)\n", mSelStartIndex,
-    //        mSelStartOffset, mSelEndIndex, mSelEndOffset);
-    //**** KDEBUG ****
-
     return NS_OK;
   }
 
@@ -1780,18 +1774,22 @@ nsresult TextServicesDocument::SetSelectionInternal(int32_t aOffset,
     }
   }
 
-  if (aDoUpdate && endNode) {
-    nsresult rv = selection->Extend(endNode, endNodeOffset);
-
-    NS_ENSURE_SUCCESS(rv, rv);
+  if (!aDoUpdate) {
+    return NS_OK;
   }
 
-  //**** KDEBUG ****
-  // printf("\n * Sel: (%2d, %4d) (%2d, %4d)\n", mSelStartIndex,
-  //        mSelStartOffset, mSelEndIndex, mSelEndOffset);
-  //**** KDEBUG ****
+  if (!endNode) {
+    nsresult rv = selection->Collapse(startNode, startNodeOffset);
+    NS_WARNING_ASSERTION(NS_SUCCEEDED(rv), "Failed to collapse selection");
+    return rv;
+  }
 
-  return NS_OK;
+  ErrorResult error;
+  selection->SetStartAndEndInLimiter(
+      RawRangeBoundary(startNode, startNodeOffset),
+      RawRangeBoundary(endNode, endNodeOffset), error);
+  NS_WARNING_ASSERTION(!error.Failed(), "Failed to set selection");
+  return error.StealNSResult();
 }
 
 nsresult TextServicesDocument::GetSelection(BlockSelectionStatus* aSelStatus,
@@ -2476,7 +2474,7 @@ nsresult TextServicesDocument::GetFirstTextNodeInNextBlock(
 nsresult TextServicesDocument::CreateOffsetTable(
     nsTArray<OffsetEntry*>* aOffsetTable,
     FilteredContentIterator* aFilteredIter, IteratorStatus* aIteratorStatus,
-    nsRange* aIterRange, nsString* aStr) {
+    nsRange* aIterRange, nsAString* aStr) {
   nsCOMPtr<nsIContent> first;
   nsCOMPtr<nsIContent> prev;
 

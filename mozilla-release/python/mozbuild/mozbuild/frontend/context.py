@@ -1872,6 +1872,10 @@ VARIABLES = {
         """List of manifest files defining mochitest chrome tests.
         """),
 
+    'MARIONETTE_DOM_MEDIA_MANIFESTS': (ManifestparserManifestList, list,
+        """List of manifest files defining marionette-media tests.
+        """),
+
     'MOCHITEST_MANIFESTS': (ManifestparserManifestList, list,
         """List of manifest files defining mochitest tests.
         """),
@@ -2174,6 +2178,14 @@ VARIABLES = {
 
         If yasm is not available on this system, or does not support the
         current target architecture, an error will be raised.
+        """),
+
+    'USE_INTEGRATED_CLANGCL_AS': (bool, bool,
+        """Use the integrated clang-cl assembler to assemble assembly files from SOURCES.
+
+        This allows using clang-cl to assemble assembly files which is useful
+        on platforms like aarch64 where the alternative is to have to run a
+        pre-processor to generate files with suitable syntax.
         """),
 }
 

@@ -759,6 +759,30 @@ These report any failures during domain affinity v2 calculations, and where it f
 }
 ```
 
+### Discovery Stream loaded content
+
+This reports all the loaded content (a list of `id`s and positions) when the user opens a newtab page and the page becomes visible. Note that this ping is a superset of the Discovery Stream impression ping, as impression pings are also subject to the individual visibility.
+
+```js
+{
+  "action": "activity_stream_impression_stats",
+
+  // Both "client_id" and "session_id" are set to "n/a" in this ping.
+  "client_id": "n/a",
+  "session_id": "n/a",
+  "impression_id": "{005deed0-e3e4-4c02-a041-17405fd703f6}",
+  "addon_version": "20180710100040",
+  "locale": "en-US",
+  "source": ["HERO" | "CARDGRID" | "LIST"],
+  "page": ["about:newtab" | "about:home" | "about:welcome" | "unknown"],
+  "user_prefs": 7,
+
+  // Indicating this is a `loaded content` ping (as opposed to impression) as well as the size of `tiles`
+  "loaded": 3,
+  "tiles": [{"id": 10000, "pos": 0}, {"id": 10001, "pos": 1}, {"id": 10002, "pos": 2}]
+}
+```
+
 ### Discovery Stream performance pings
 
 #### Request time of layout feed in ms
@@ -831,6 +855,32 @@ These report any failures during domain affinity v2 calculations, and where it f
 }
 ```
 
+### Discovery Stream SPOCS Fill ping
+
+This reports the internal status of Pocket SPOCS (Sponsored Contents).
+
+```js
+{
+  // both "client_id" and "session_id" are set to "n/a" in this ping.
+  "client_id": "n/a",
+  "session_id": "n/a",
+  "impression_id": "{005deed0-e3e4-4c02-a041-17405fd703f6}",
+  "addon_version": "20180710100040",
+  "locale": "en-US",
+  "version": "68",
+  "release_channel": "release",
+  "spoc_fills": [
+    {"id": 10000, displayed: 0, reason: "frequency_cap", full_recalc: 1},
+    {"id": 10001, displayed: 0, reason: "blocked_by_user", full_recalc: 1},
+    {"id": 10002, displayed: 0, reason: "below_min_score", full_recalc: 1},
+    {"id": 10003, displayed: 0, reason: "campaign_duplicate", full_recalc: 1},
+    {"id": 10004, displayed: 0, reason: "probability_selection", full_recalc: 0},
+    {"id": 10004, displayed: 0, reason: "out_of_position", full_recalc: 0},
+    {"id": 10005, displayed: 1, reason: "n/a", full_recalc: 0}
+  ]
+}
+```
+
 ## Undesired event pings
 
 These pings record the undesired events happen in the addon for further investigation.
@@ -850,6 +900,7 @@ This reports when the addon fails to initialize
   "value": -1
 }
 ```
+
 ## Activity Stream Router pings
 
 These pings record the impression and user interactions within Activity Stream Router.
@@ -934,7 +985,7 @@ This reports the user's interaction with Activity Stream Router.
   "locale": "en-US",
   "source": "ONBOARDING",
   "message_id": "onboarding_message_1",
-  "event": "CLICK_BUTTION"
+  "event": ["IMPRESSION" | "CLICK_BUTTION" | "INSTALL" | "BLOCK"]
 }
 ```
 
@@ -949,7 +1000,7 @@ This reports the user's interaction with Activity Stream Router.
   "source": "CFR",
   // message_id could be the ID of the recommendation, such as "wikipedia_addon"
   "message_id": "wikipedia_addon",
-  "event": "[INSTALL | PIN | BLOCK | DISMISS | RATIONALE | LEARN_MORE | CLICK_DOORHANGER | MANAGE]"
+  "event": "[IMPRESSION | INSTALL | PIN | BLOCK | DISMISS | RATIONALE | LEARN_MORE | CLICK | CLICK_DOORHANGER | MANAGE]"
 }
 ```
 
@@ -965,7 +1016,7 @@ This reports the user's interaction with Activity Stream Router.
   // message_id should be a bucket ID in the release channel, we may not use the
   // individual ID, such as addon ID, per legal's request
   "message_id": "bucket_id",
-  "event": "[INSTALL | PIN | BLOCK | DISMISS | RATIONALE | LEARN_MORE | CLICK_DOORHANGER | MANAGE]"
+  "event": "[IMPRESSION | INSTALL | PIN | BLOCK | DISMISS | RATIONALE | LEARN_MORE | CLICK | CLICK_DOORHANGER | MANAGE]"
 }
 ```
 
@@ -983,6 +1034,23 @@ This reports when an error has occurred when parsing/evaluating a JEXL targeting
   "message_id": "some_message_id",
   "event": "TARGETING_EXPRESSION_ERROR",
   "value": ["MALFORMED_EXPRESSION" | "OTHER_ERROR"]
+}
+```
+
+### Remote Settings error pings
+
+This reports a failure in the Remote Settings loader to load messages for Activity Stream Router.
+
+```js
+{
+  "action": "asrouter_undesired_event",
+  "client_id": "n/a",
+  "addon_version": "20180710100040",
+  "locale": "en-US",
+  "user_prefs": 7,
+  "event": ["ASR_RS_NO_MESSAGES" | "ASR_RS_ERROR"],
+  // The value is set to the ID of the message provider. For example: remote-cfr, remote-onboarding, etc.
+  "value": "REMOTE_PROVIDER_ID"
 }
 ```
 

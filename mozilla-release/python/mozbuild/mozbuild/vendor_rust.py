@@ -52,7 +52,7 @@ class VendorRust(MozbuildObject):
             m = re.match('cargo-vendor v((\d+\.)*\d+)', l)
             if m:
                 version = m.group(1)
-                return LooseVersion(version) >= b'0.1.21'
+                return LooseVersion(version) >= b'0.1.23'
         return False
 
     def check_modified_files(self):
@@ -119,7 +119,7 @@ Please commit or stash these changes before vendoring, or re-run with `--ignore-
             self.run_process(args=[cargo, 'install', 'cargo-vendor'],
                              append_env=env)
         elif not self.check_cargo_vendor_version(cargo):
-            self.log(logging.INFO, 'cargo_vendor', {}, 'cargo-vendor >= 0.1.21 required; force-reinstalling (this may take a few minutes)...')
+            self.log(logging.INFO, 'cargo_vendor', {}, 'cargo-vendor >= 0.1.23 required; force-reinstalling (this may take a few minutes)...')
             env = self.check_openssl()
             self.run_process(args=[cargo, 'install', '--force', 'cargo-vendor'],
                              append_env=env)
@@ -146,6 +146,10 @@ Please commit or stash these changes before vendoring, or re-run with `--ignore-
         'Apache-2.0',
         'Apache-2.0 WITH LLVM-exception',
         'BSD-2-Clause',
+        # BSD-3-Clause is ok, but packages using it must be added to the
+        # appropriate section of about:licenses. To encourage people to remember
+        # to do that, we do not whitelist the license itself and we require the
+        # packages to be added to RUNTIME_LICENSE_PACKAGE_WHITELIST below.
         'CC0-1.0',
         'ISC',
         'MIT',
@@ -161,6 +165,14 @@ Please commit or stash these changes before vendoring, or re-run with `--ignore-
             'bindgen',
             'fuchsia-zircon',
             'fuchsia-zircon-sys',
+            'fuchsia-cprng',
+        ]
+    }
+
+    # This whitelist should only be used for packages that use an acceptable
+    # license, but that also need to explicitly mentioned in about:license.
+    RUNTIME_LICENSE_PACKAGE_WHITELIST = {
+        'BSD-3-Clause': [
         ]
     }
 
@@ -178,7 +190,7 @@ Please commit or stash these changes before vendoring, or re-run with `--ignore-
     }
 
     @staticmethod
-    def runtime_license(license_string):
+    def runtime_license(package, license_string):
         """Cargo docs say:
         ---
         https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -200,8 +212,11 @@ Please commit or stash these changes before vendoring, or re-run with `--ignore-
             return False
 
         license_list = re.split(r'\s*/\s*|\s+OR\s+', license_string)
-        if any(license in VendorRust.RUNTIME_LICENSE_WHITELIST for license in license_list):
-            return True
+        for license in license_list:
+            if license in VendorRust.RUNTIME_LICENSE_WHITELIST:
+                return True
+            if package in VendorRust.RUNTIME_LICENSE_PACKAGE_WHITELIST.get(license, []):
+                return True
         return False
 
     def _check_licenses(self, vendor_dir):
@@ -212,7 +227,7 @@ Please commit or stash these changes before vendoring, or re-run with `--ignore-
             self.log(logging.DEBUG, 'package_license', {},
                      'has license {}'.format(license))
 
-            if not self.runtime_license(license):
+            if not self.runtime_license(package, license):
                 if license not in self.BUILDTIME_LICENSE_WHITELIST:
                     self.log(logging.ERROR, 'package_license_error', {},
                             '''Package {} has a non-approved license: {}.

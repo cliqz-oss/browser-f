@@ -15,8 +15,12 @@
 class gfxContext;
 class nsSVGDisplayableFrame;
 
+namespace mozilla {
+class PresShell;
+}  // namespace mozilla
+
 class nsSVGClipPathFrame final : public nsSVGContainerFrame {
-  friend nsIFrame* NS_NewSVGClipPathFrame(nsIPresShell* aPresShell,
+  friend nsIFrame* NS_NewSVGClipPathFrame(mozilla::PresShell* aPresShell,
                                           ComputedStyle* aStyle);
 
   typedef mozilla::gfx::Matrix Matrix;
@@ -37,6 +41,9 @@ class nsSVGClipPathFrame final : public nsSVGContainerFrame {
   // nsIFrame methods:
   virtual void BuildDisplayList(nsDisplayListBuilder* aBuilder,
                                 const nsDisplayListSet& aLists) override {}
+
+  virtual bool IsSVGTransformed(Matrix* aOwnTransforms,
+                                Matrix* aFromParentTransforms) const override;
 
   // nsSVGClipPathFrame methods:
 
@@ -145,7 +152,7 @@ class nsSVGClipPathFrame final : public nsSVGContainerFrame {
                                               mozilla::gfx::IntPoint& aOffset);
 
   void PaintFrameIntoMask(nsIFrame* aFrame, nsIFrame* aClippedFrame,
-                          gfxContext& aTarget, const gfxMatrix& aMatrix);
+                          gfxContext& aTarget);
 
   // Set, during a GetClipMask() call, to the transform that still needs to be
   // concatenated to the transform of the DrawTarget that was passed to

@@ -338,7 +338,7 @@ nsresult HTMLEditor::DoInsertHTMLWithContext(
     if (wsObj.mEndReasonNode && TextEditUtils::IsBreak(wsObj.mEndReasonNode) &&
         !IsVisibleBRElement(wsObj.mEndReasonNode)) {
       AutoEditorDOMPointChildInvalidator lockOffset(pointToInsert);
-      rv = DeleteNodeWithTransaction(*wsObj.mEndReasonNode);
+      rv = DeleteNodeWithTransaction(MOZ_KnownLive(*wsObj.mEndReasonNode));
       if (NS_WARN_IF(NS_FAILED(rv))) {
         return rv;
       }
@@ -350,7 +350,7 @@ nsresult HTMLEditor::DoInsertHTMLWithContext(
     // Are we in a text node? If so, split it.
     if (pointToInsert.IsInTextNode()) {
       SplitNodeResult splitNodeResult = SplitNodeDeepWithTransaction(
-          *pointToInsert.GetContainerAsContent(), pointToInsert,
+          MOZ_KnownLive(*pointToInsert.GetContainerAsContent()), pointToInsert,
           SplitAtEdges::eAllowToCreateEmptyContainer);
       if (NS_WARN_IF(splitNodeResult.Failed())) {
         return splitNodeResult.Rv();
@@ -469,7 +469,8 @@ nsresult HTMLEditor::DoInsertHTMLWithContext(
                         !pointToInsert.GetContainer()->GetParentNode())) {
                   // Is it an orphan node?
                 } else {
-                  DeleteNodeWithTransaction(*pointToInsert.GetContainer());
+                  DeleteNodeWithTransaction(
+                      MOZ_KnownLive(*pointToInsert.GetContainer()));
                   pointToInsert.Set(pointToInsert.GetContainer());
                 }
               }
@@ -523,7 +524,7 @@ nsresult HTMLEditor::DoInsertHTMLWithContext(
         // Try to insert.
         EditorDOMPoint insertedPoint =
             InsertNodeIntoProperAncestorWithTransaction(
-                *curNode->AsContent(), pointToInsert,
+                MOZ_KnownLive(*curNode->AsContent()), pointToInsert,
                 SplitAtEdges::eDoNotCreateEmptyContainer);
         if (insertedPoint.IsSet()) {
           lastInsertNode = curNode->AsContent();
@@ -542,7 +543,7 @@ nsresult HTMLEditor::DoInsertHTMLWithContext(
           }
           nsCOMPtr<nsINode> oldParent = content->GetParentNode();
           insertedPoint = InsertNodeIntoProperAncestorWithTransaction(
-              *content->GetParent(), pointToInsert,
+              MOZ_KnownLive(*content->GetParent()), pointToInsert,
               SplitAtEdges::eDoNotCreateEmptyContainer);
           if (insertedPoint.IsSet()) {
             insertedContextParent = oldParent;
@@ -645,7 +646,7 @@ nsresult HTMLEditor::DoInsertHTMLWithContext(
         // in a BR that is not visible.  If so, the code above just placed
         // selection inside that.  So I split it instead.
         SplitNodeResult splitLinkResult = SplitNodeDeepWithTransaction(
-            *linkContent, EditorRawDOMPoint(selNode, selOffset),
+            *linkContent, EditorDOMPoint(selNode, selOffset),
             SplitAtEdges::eDoNotCreateEmptyContainer);
         NS_WARNING_ASSERTION(splitLinkResult.Succeeded(),
                              "Failed to split the link");
@@ -982,9 +983,13 @@ nsresult HTMLEditor::BlobReader::OnResult(const nsACString& aResult) {
   }
 
   AutoPlaceholderBatch treatAsOneTransaction(*mHTMLEditor);
-  rv = mHTMLEditor->DoInsertHTMLWithContext(
-      stuffToPaste, EmptyString(), EmptyString(), NS_LITERAL_STRING(kFileMime),
-      mSourceDoc, mPointToInsert, mDoDeleteSelection, mIsSafe, false);
+  RefPtr<Document> sourceDocument(mSourceDoc);
+  EditorDOMPoint pointToInsert(mPointToInsert);
+  rv = MOZ_KnownLive(mHTMLEditor)
+           ->DoInsertHTMLWithContext(stuffToPaste, EmptyString(), EmptyString(),
+                                     NS_LITERAL_STRING(kFileMime),
+                                     sourceDocument, pointToInsert,
+                                     mDoDeleteSelection, mIsSafe, false);
   if (NS_WARN_IF(NS_FAILED(rv))) {
     return EditorBase::ToGenericNSResult(rv);
   }
@@ -1009,6 +1014,7 @@ class SlurpBlobEventListener final : public nsIDOMEventListener {
   explicit SlurpBlobEventListener(HTMLEditor::BlobReader* aListener)
       : mListener(aListener) {}
 
+  MOZ_CAN_RUN_SCRIPT
   NS_IMETHOD HandleEvent(Event* aEvent) override;
 
  private:
@@ -1041,16 +1047,17 @@ SlurpBlobEventListener::HandleEvent(Event* aEvent) {
 
   EventMessage message = aEvent->WidgetEventPtr()->mMessage;
 
+  RefPtr<HTMLEditor::BlobReader> listener(mListener);
   if (message == eLoad) {
     MOZ_ASSERT(reader->DataFormat() == FileReader::FILE_AS_BINARY);
 
     // The original data has been converted from Latin1 to UTF-16, this just
     // undoes that conversion.
-    mListener->OnResult(NS_LossyConvertUTF16toASCII(reader->Result()));
+    listener->OnResult(NS_LossyConvertUTF16toASCII(reader->Result()));
   } else if (message == eLoadError) {
     nsAutoString errorMessage;
     reader->GetError()->GetErrorMessage(errorMessage);
-    mListener->OnError(errorMessage);
+    listener->OnError(errorMessage);
   }
 
   return NS_OK;
@@ -1448,7 +1455,7 @@ nsresult HTMLEditor::PasteInternal(int32_t aClipboardType,
   MOZ_ASSERT(IsEditActionDataAvailable());
 
   if (aDispatchPasteEvent && !FireClipboardEvent(ePaste, aClipboardType)) {
-    return NS_OK;
+    return NS_ERROR_EDITOR_ACTION_CANCELED;
   }
 
   // Get Clipboard Service
@@ -1540,7 +1547,7 @@ nsresult HTMLEditor::PasteTransferable(nsITransferable* aTransferable) {
   // aTransferable and we don't currently implement a way to put that in the
   // data transfer yet.
   if (!FireClipboardEvent(ePaste, nsIClipboard::kGlobalClipboard)) {
-    return NS_OK;
+    return EditorBase::ToGenericNSResult(NS_ERROR_EDITOR_ACTION_CANCELED);
   }
 
   nsAutoString contextStr, infoStr;
@@ -1565,7 +1572,7 @@ HTMLEditor::PasteNoFormatting(int32_t aSelectionType) {
       SettingDataTransfer::eWithoutFormat, aSelectionType);
 
   if (!FireClipboardEvent(ePasteNoFormatting, aSelectionType)) {
-    return NS_OK;
+    return EditorBase::ToGenericNSResult(NS_ERROR_EDITOR_ACTION_CANCELED);
   }
 
   CommitComposition();
@@ -1615,44 +1622,45 @@ static const char* textHtmlEditorFlavors[] = {kUnicodeMime,   kHTMLMime,
                                               kJPEGImageMime, kJPGImageMime,
                                               kPNGImageMime,  kGIFImageMime};
 
-NS_IMETHODIMP
-HTMLEditor::CanPaste(int32_t aSelectionType, bool* aCanPaste) {
-  NS_ENSURE_ARG_POINTER(aCanPaste);
-  *aCanPaste = false;
-
+bool HTMLEditor::CanPaste(int32_t aClipboardType) const {
   // Always enable the paste command when inside of a HTML or XHTML document.
-  RefPtr<Document> doc = GetDocument();
-  if (doc && doc->IsHTMLOrXHTML()) {
-    *aCanPaste = true;
-    return NS_OK;
+  Document* document = GetDocument();
+  if (document && document->IsHTMLOrXHTML()) {
+    return true;
   }
 
   // can't paste if readonly
   if (!IsModifiable()) {
-    return NS_OK;
+    return false;
   }
 
   nsresult rv;
   nsCOMPtr<nsIClipboard> clipboard(
       do_GetService("@mozilla.org/widget/clipboard;1", &rv));
-  NS_ENSURE_SUCCESS(rv, rv);
-
-  bool haveFlavors;
+  if (NS_WARN_IF(NS_FAILED(rv))) {
+    return false;
+  }
 
   // Use the flavors depending on the current editor mask
   if (IsPlaintextEditor()) {
+    bool haveFlavors;
     rv = clipboard->HasDataMatchingFlavors(textEditorFlavors,
                                            ArrayLength(textEditorFlavors),
-                                           aSelectionType, &haveFlavors);
-  } else {
-    rv = clipboard->HasDataMatchingFlavors(textHtmlEditorFlavors,
-                                           ArrayLength(textHtmlEditorFlavors),
-                                           aSelectionType, &haveFlavors);
+                                           aClipboardType, &haveFlavors);
+    if (NS_WARN_IF(NS_FAILED(rv))) {
+      return false;
+    }
+    return haveFlavors;
   }
-  NS_ENSURE_SUCCESS(rv, rv);
 
-  *aCanPaste = haveFlavors;
-  return NS_OK;
+  bool haveFlavors;
+  rv = clipboard->HasDataMatchingFlavors(textHtmlEditorFlavors,
+                                         ArrayLength(textHtmlEditorFlavors),
+                                         aClipboardType, &haveFlavors);
+  if (NS_WARN_IF(NS_FAILED(rv))) {
+    return false;
+  }
+  return haveFlavors;
 }
 
 bool HTMLEditor::CanPasteTransferable(nsITransferable* aTransferable) {

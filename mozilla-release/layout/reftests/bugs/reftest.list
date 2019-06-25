@@ -999,8 +999,8 @@ fuzzy-if(Android,0-11,0-17) fuzzy-if(webrender,0-1,0-10) == 413361-1.html 413361
 == 417178-1.html 417178-1-ref.html
 == 417246-1.html 417246-1-ref.html
 == 417676.html 417676-ref.html
-asserts(1) == 418574-1.html 418574-1-ref.html # bug 478135
-asserts(1) == 418574-2.html 418574-2-ref.html # bug 478135
+== 418574-1.html 418574-1-ref.html
+== 418574-2.html 418574-2-ref.html
 == 418766-1a.html 418766-1-ref.html
 == 418766-1b.html 418766-1-ref.html
 == 419060.html 419060-ref.html
@@ -1243,7 +1243,7 @@ fuzzy-if(skiaContent||webrender,0-1,0-31200) == 461512-1.html 461512-1-ref.html
 == 462844-3.html 462844-ref.html
 == 462844-4.html 462844-ref.html
 == 463204-1.html 463204-1-ref.html
-fuzzy-if(webrender,16-16,3425-3483) == 463217-1.xul 463217-1-ref.xul
+fuzzy-if(webrender,16-16,3392-3483) == 463217-1.xul 463217-1-ref.xul
 == 463952-1.html 463952-1-ref.html
 == 464811-1.html 464811-1-ref.html
 == 465574-1.html 465574-1-ref.html # bug 421436
@@ -2008,7 +2008,7 @@ fuzzy(0-8,0-1900) fails-if(webrender) == 1291528.html 1291528-ref.html
 # should be same.  |fuzzy()| here allows the difference in border, but not
 # background color.
 fuzzy(0-255,0-1000) skip-if(!cocoaWidget) == 1294102-1.html 1294102-1-ref.html
-random-if(Android) fuzzy-if(skiaContent,0-15,0-50) == 1295466-1.xhtml 1295466-1-ref.xhtml #bug 982547
+random-if(Android) fuzzy-if(skiaContent,0-15,0-50) fuzzy-if(gtkWidget,0-14,0-215) == 1295466-1.xhtml 1295466-1-ref.xhtml #bug 982547 #bug 1540635
 fuzzy-if(Android,0-27,0-874) fuzzy-if(!Android,0-14,0-43) == 1313772.xhtml 1313772-ref.xhtml # Bug 1128229, Bug 1389319
 fuzzy(0-3,0-320000) == 1315113-1.html 1315113-1-ref.html
 fuzzy(0-3,0-20000) == 1315113-2.html 1315113-2-ref.html
@@ -2054,7 +2054,6 @@ skip-if(isDebugBuild&&winWidget) == 1330051.svg 1330051-ref.svg
 == 1375315-11.html 1375315-11-ref.html
 == 1375315-12.html 1375315-12-ref.html
 == 1374062.html 1374062-ref.html
-== 1375513.html 1375513-ref.html
 == 1375674.html 1375674-ref.html
 == 1372041.html 1372041-ref.html
 == 1376092.html 1376092-ref.html
@@ -2090,7 +2089,6 @@ fuzzy-if(Android,0-66,0-574) fuzzy-if(d2d,0-89,0-777) fuzzy-if(!Android&&!d2d,0-
 == 1432541.html 1432541-ref.html
 pref(layout.css.moz-document.url-prefix-hack.enabled,true) == 1446470.html 1035091-ref.html
 pref(layout.css.moz-document.url-prefix-hack.enabled,false) == 1446470-2.html 1035091-ref.html
-test-pref(layout.css.prefixes.gradients,false) == 1451874.html 1451874-ref.html
 == 1456111-1.html about:blank
 test-pref(layout.css.contain.enabled,false) == 1466008.html 1466008-ref.html
 fuzzy(0-1,0-625) == 1466638-1.html 1466638-1-ref.html
@@ -2104,5 +2102,10 @@ pref(layout.css.supports-selector.enabled,true) == 1499386.html 1499386-ref.html
 pref(layout.css.supports-selector.enabled,false) != 1499386.html 1499386-ref.html
 == 1509425-1.html 1509425-1-ref.html
 == 1511570.html 1511570-ref.html
+fuzzy-if(!webrender,1-5,66-547) == 1529992-1.html 1529992-1-ref.html
+fuzzy-if(!webrender,0-6,0-34) fails-if(webrender) == 1529992-2.html 1529992-2-ref.html
 == 1535040-1.html 1535040-1-ref.html
 == 1545360-1.xhtml 1545360-1-ref.xhtml
+skip-if(!asyncPan) == 1544895.html 1544895-ref.html
+== 1548809.html 1548809-ref.html
+!= 1552789-1.html 1552789-ref-1.html

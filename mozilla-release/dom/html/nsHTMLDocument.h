@@ -17,10 +17,10 @@
 #include "PLDHashTable.h"
 #include "nsIHttpChannel.h"
 #include "nsThreadUtils.h"
-#include "nsICommandManager.h"
 #include "mozilla/dom/HTMLSharedElement.h"
 #include "mozilla/dom/BindingDeclarations.h"
 
+class nsCommandManager;
 class nsIURI;
 class nsIDocShell;
 class nsICachingChannel;
@@ -56,7 +56,8 @@ class nsHTMLDocument : public mozilla::dom::Document, public nsIHTMLDocument {
   // Document
   virtual void Reset(nsIChannel* aChannel, nsILoadGroup* aLoadGroup) override;
   virtual void ResetToURI(nsIURI* aURI, nsILoadGroup* aLoadGroup,
-                          nsIPrincipal* aPrincipal) override;
+                          nsIPrincipal* aPrincipal,
+                          nsIPrincipal* aStoragePrincipal) override;
 
   virtual nsresult StartDocumentLoad(const char* aCommand, nsIChannel* aChannel,
                                      nsILoadGroup* aLoadGroup,
@@ -105,8 +106,6 @@ class nsHTMLDocument : public mozilla::dom::Document, public nsIHTMLDocument {
 
   virtual EditingState GetEditingState() override { return mEditingState; }
 
-  virtual void DisableCookieAccess() override { mDisableCookieAccess = true; }
-
   class nsAutoEditingState {
    public:
     nsAutoEditingState(nsHTMLDocument* aDoc, EditingState aState)
@@ -146,8 +145,6 @@ class nsHTMLDocument : public mozilla::dom::Document, public nsIHTMLDocument {
   void SetDomain(const nsAString& aDomain, mozilla::ErrorResult& rv);
   bool IsRegistrableDomainSuffixOfOrEqualTo(const nsAString& aHostSuffixString,
                                             const nsACString& aOrigHost);
-  void GetCookie(nsAString& aCookie, mozilla::ErrorResult& rv);
-  void SetCookie(const nsAString& aCookie, mozilla::ErrorResult& rv);
   void NamedGetter(JSContext* cx, const nsAString& aName, bool& aFound,
                    JS::MutableHandle<JSObject*> aRetval,
                    mozilla::ErrorResult& rv) {
@@ -173,10 +170,7 @@ class nsHTMLDocument : public mozilla::dom::Document, public nsIHTMLDocument {
   void SetDesignMode(const nsAString& aDesignMode,
                      const mozilla::Maybe<nsIPrincipal*>& aSubjectPrincipal,
                      mozilla::ErrorResult& rv);
-  // MOZ_CAN_RUN_SCRIPT_BOUNDARY because I haven't figured out how to teach the
-  // analysis that a MOZ_KnownLive(NonNull<T>) being passed as T& is OK.  See
-  // bug 1534383.
-  MOZ_CAN_RUN_SCRIPT_BOUNDARY
+  MOZ_CAN_RUN_SCRIPT
   bool ExecCommand(const nsAString& aCommandID, bool aDoShowUI,
                    const nsAString& aValue, nsIPrincipal& aSubjectPrincipal,
                    mozilla::ErrorResult& rv);
@@ -241,10 +235,6 @@ class nsHTMLDocument : public mozilla::dom::Document, public nsIHTMLDocument {
   // A version of WriteCommon used by WebIDL bindings
   void WriteCommon(const mozilla::dom::Sequence<nsString>& aText,
                    bool aNewlineTerminate, mozilla::ErrorResult& rv);
-
-  // This should *ONLY* be used in GetCookie/SetCookie.
-  already_AddRefed<nsIChannel> CreateDummyChannelForCookies(
-      nsIURI* aCodebaseURI);
 
   /**
    * Like IsEditingOn(), but will flush as needed first.
@@ -324,19 +314,19 @@ class nsHTMLDocument : public mozilla::dom::Document, public nsIHTMLDocument {
   bool mWarnedWidthHeight;
 
   /* Midas implementation */
-  nsresult GetMidasCommandManager(nsICommandManager** aCommandManager);
+  nsCommandManager* GetMidasCommandManager();
 
-  nsCOMPtr<nsICommandManager> mMidasCommandManager;
+  RefPtr<nsCommandManager> mMidasCommandManager;
 
   nsresult TurnEditingOff();
-  nsresult EditingStateChanged();
+  // MOZ_CAN_RUN_SCRIPT_BOUNDARY because this is called from all sorts
+  // of places, and I'm pretty sure the exact ExecCommand call it
+  // makes cannot actually run script.
+  MOZ_CAN_RUN_SCRIPT_BOUNDARY nsresult EditingStateChanged();
   void MaybeEditingStateChanged();
 
   uint32_t mContentEditableCount;
   EditingState mEditingState;
-
-  // When false, the .cookies property is completely disabled
-  bool mDisableCookieAccess;
 
   /**
    * Temporary flag that is set in EndUpdate() to ignore

@@ -521,6 +521,11 @@ void IProtocol::ReplaceEventTargetForActor(IProtocol* aActor,
   mState->ReplaceEventTargetForActor(aActor, aEventTarget);
 }
 
+void IProtocol::SetEventTargetForRoute(int32_t aRoute,
+                                       nsIEventTarget* aEventTarget) {
+  mState->SetEventTargetForRoute(aRoute, aEventTarget);
+}
+
 nsIEventTarget* IProtocol::GetActorEventTarget() {
   return mState->GetActorEventTarget();
 }
@@ -549,6 +554,11 @@ void IProtocol::ManagedState::SetEventTargetForActor(
 void IProtocol::ManagedState::ReplaceEventTargetForActor(
     IProtocol* aActor, nsIEventTarget* aEventTarget) {
   mProtocol->Manager()->ReplaceEventTargetForActor(aActor, aEventTarget);
+}
+
+void IProtocol::ManagedState::SetEventTargetForRoute(
+    int32_t aRoute, nsIEventTarget* aEventTarget) {
+  mProtocol->Manager()->SetEventTargetForRoute(aRoute, aEventTarget);
 }
 
 already_AddRefed<nsIEventTarget> IProtocol::ManagedState::GetActorEventTarget(
@@ -592,11 +602,6 @@ void IToplevelProtocol::SetOtherProcessId(base::ProcessId aOtherPid) {
   } else {
     mOtherPid = aOtherPid;
   }
-}
-
-bool IToplevelProtocol::TakeMinidump(nsIFile** aDump, uint32_t* aSequence) {
-  MOZ_RELEASE_ASSERT(GetSide() == ParentSide);
-  return XRE_TakeMinidumpForChild(OtherPid(), aDump, aSequence);
 }
 
 bool IToplevelProtocol::Open(mozilla::ipc::Transport* aTransport,
@@ -653,6 +658,9 @@ int32_t IToplevelProtocol::ToplevelState::NextId() {
   if (mProtocol->GetSide() == ParentSide) {
     tag |= 1 << 1;
   }
+
+  // Check any overflow
+  MOZ_RELEASE_ASSERT(mLastLocalId < (1 << 29));
 
   // Compute the ID to use with the low two bits as our tag, and the remaining
   // bits as a monotonic.
@@ -900,6 +908,16 @@ void IToplevelProtocol::ToplevelState::ReplaceEventTargetForActor(
 
   MutexAutoLock lock(mEventTargetMutex);
   mEventTargetMap.ReplaceWithID(aEventTarget, id);
+}
+
+void IToplevelProtocol::ToplevelState::SetEventTargetForRoute(
+    int32_t aRoute, nsIEventTarget* aEventTarget) {
+  MOZ_RELEASE_ASSERT(aRoute != mProtocol->Id());
+  MOZ_RELEASE_ASSERT(aRoute != kNullActorId && aRoute != kFreedActorId);
+
+  MutexAutoLock lock(mEventTargetMutex);
+  MOZ_ASSERT(!mEventTargetMap.Lookup(aRoute));
+  mEventTargetMap.AddWithID(aEventTarget, aRoute);
 }
 
 const MessageChannel* IToplevelProtocol::ToplevelState::GetIPCChannel() const {

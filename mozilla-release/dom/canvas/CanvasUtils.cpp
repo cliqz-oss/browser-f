@@ -12,7 +12,7 @@
 #include "nsICanvasRenderingContextInternal.h"
 #include "nsIHTMLCollection.h"
 #include "mozilla/dom/HTMLCanvasElement.h"
-#include "mozilla/dom/TabChild.h"
+#include "mozilla/dom/BrowserChild.h"
 #include "mozilla/EventStateManager.h"
 #include "mozilla/StaticPrefs.h"
 #include "nsIPrincipal.h"
@@ -25,6 +25,7 @@
 #include "mozilla/gfx/Matrix.h"
 #include "WebGL2Context.h"
 
+#include "nsIScriptError.h"
 #include "nsIScriptObjectPrincipal.h"
 #include "nsIPermissionManager.h"
 #include "nsIObserverService.h"
@@ -80,17 +81,11 @@ bool IsImageExtractionAllowed(Document* aDocument, JSContext* aCx,
     return true;
   }
 
-  // Get calling script file and line for logging.
+  // Don't show canvas prompt for PDF.js
   JS::AutoFilename scriptFile;
-  unsigned scriptLine = 0;
-  bool isScriptKnown = false;
-  if (JS::DescribeScriptedCaller(aCx, &scriptFile, &scriptLine)) {
-    isScriptKnown = true;
-    // Don't show canvas prompt for PDF.js
-    if (scriptFile.get() &&
-        strcmp(scriptFile.get(), "resource://pdf.js/build/pdf.js") == 0) {
-      return true;
-    }
+  if (JS::DescribeScriptedCaller(aCx, &scriptFile) && scriptFile.get() &&
+      strcmp(scriptFile.get(), "resource://pdf.js/build/pdf.js") == 0) {
+    return true;
   }
 
   Document* topLevelDocument = aDocument->GetTopLevelContentDocument();
@@ -112,14 +107,12 @@ bool IsImageExtractionAllowed(Document* aDocument, JSContext* aCx,
   rv = thirdPartyUtil->IsThirdPartyURI(topLevelDocURI, docURI, &isThirdParty);
   NS_ENSURE_SUCCESS(rv, false);
   if (isThirdParty) {
-    nsAutoCString message;
-    message.AppendPrintf(
-        "Blocked third party %s in page %s from extracting canvas data.",
-        docURISpec.get(), topLevelDocURISpec.get());
-    if (isScriptKnown) {
-      message.AppendPrintf(" %s:%u.", scriptFile.get(), scriptLine);
-    }
-    nsContentUtils::LogMessageToConsole(message.get());
+    nsAutoString message;
+    message.AppendPrintf("Blocked third party %s from extracting canvas data.",
+                         docURISpec.get());
+    nsContentUtils::ReportToConsoleNonLocalized(
+        message, nsIScriptError::warningFlag, NS_LITERAL_CSTRING("Security"),
+        aDocument);
     return false;
   }
 
@@ -153,35 +146,32 @@ bool IsImageExtractionAllowed(Document* aDocument, JSContext* aCx,
       !EventStateManager::IsHandlingUserInput();
 
   if (isAutoBlockCanvas) {
-    nsAutoCString message;
+    nsAutoString message;
     message.AppendPrintf(
-        "Blocked %s in page %s from extracting canvas data because no user "
-        "input was detected.",
-        docURISpec.get(), topLevelDocURISpec.get());
-    if (isScriptKnown) {
-      message.AppendPrintf(" %s:%u.", scriptFile.get(), scriptLine);
-    }
-    nsContentUtils::LogMessageToConsole(message.get());
+        "Blocked %s from extracting canvas data because no user input was "
+        "detected.",
+        docURISpec.get());
+    nsContentUtils::ReportToConsoleNonLocalized(
+        message, nsIScriptError::warningFlag, NS_LITERAL_CSTRING("Security"),
+        aDocument);
   } else {
     // It was in response to user input, so log and display the prompt.
-    nsAutoCString message;
+    nsAutoString message;
     message.AppendPrintf(
-        "Blocked %s in page %s from extracting canvas data, but prompting the "
-        "user.",
-        docURISpec.get(), topLevelDocURISpec.get());
-    if (isScriptKnown) {
-      message.AppendPrintf(" %s:%u.", scriptFile.get(), scriptLine);
-    }
-    nsContentUtils::LogMessageToConsole(message.get());
+        "Blocked %s from extracting canvas data, but prompting the user.",
+        docURISpec.get());
+    nsContentUtils::ReportToConsoleNonLocalized(
+        message, nsIScriptError::warningFlag, NS_LITERAL_CSTRING("Security"),
+        aDocument);
   }
 
   // Prompt the user (asynchronous).
   nsPIDOMWindowOuter* win = aDocument->GetWindow();
   if (XRE_IsContentProcess()) {
-    TabChild* tabChild = TabChild::GetFrom(win);
-    if (tabChild) {
-      tabChild->SendShowCanvasPermissionPrompt(topLevelDocURISpec,
-                                               isAutoBlockCanvas);
+    BrowserChild* browserChild = BrowserChild::GetFrom(win);
+    if (browserChild) {
+      browserChild->SendShowCanvasPermissionPrompt(topLevelDocURISpec,
+                                                   isAutoBlockCanvas);
     }
   } else {
     nsCOMPtr<nsIObserverService> obs = mozilla::services::GetObserverService();

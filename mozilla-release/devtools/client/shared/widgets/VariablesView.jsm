@@ -424,7 +424,7 @@ VariablesView.prototype = {
     const ownerNode = this._parent.parentNode;
 
     const container = this._searchboxContainer = document.createXULElement("hbox");
-    container.className = "devtools-toolbar";
+    container.className = "devtools-toolbar devtools-input-toolbar";
 
     // Hide the variables searchbox container if there are no variables or
     // properties to display.
@@ -787,6 +787,16 @@ VariablesView.prototype = {
   },
 
   /**
+   * Copy current selection to clipboard.
+   */
+  _copyItem: function() {
+    const item = this.getFocusedItem();
+    clipboardHelper.copyString(
+      item._nameString + item.separatorStr + item._valueString
+    );
+  },
+
+  /**
    * Listener handling a key down event on the view.
    */
   _onViewKeyDown: function(e) {
@@ -797,12 +807,8 @@ VariablesView.prototype = {
 
     switch (e.keyCode) {
       case KeyCodes.DOM_VK_C:
-        // Copy current selection to clipboard.
         if (e.ctrlKey || e.metaKey) {
-          const item = this.getFocusedItem();
-          clipboardHelper.copyString(
-            item._nameString + item.separatorStr + item._valueString
-          );
+          this._copyItem();
         }
         return;
 

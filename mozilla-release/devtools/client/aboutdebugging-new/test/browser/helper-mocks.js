@@ -6,13 +6,13 @@
 /* import-globals-from ../../../shared/test/shared-head.js */
 
 const MOCKS_ROOT = CHROME_URL_ROOT + "mocks/";
+/* import-globals-from mocks/helper-adb-mock.js */
+Services.scriptloader.loadSubScript(MOCKS_ROOT + "helper-adb-mock.js", this);
 /* import-globals-from mocks/helper-client-wrapper-mock.js */
 Services.scriptloader.loadSubScript(MOCKS_ROOT + "helper-client-wrapper-mock.js", this);
 /* import-globals-from mocks/helper-runtime-client-factory-mock.js */
 Services.scriptloader.loadSubScript(MOCKS_ROOT + "helper-runtime-client-factory-mock.js",
   this);
-/* import-globals-from mocks/helper-usb-runtimes-mock.js */
-Services.scriptloader.loadSubScript(MOCKS_ROOT + "helper-usb-runtimes-mock.js", this);
 
 const { RUNTIMES } = require("devtools/client/aboutdebugging-new/src/constants");
 
@@ -23,21 +23,30 @@ const { RUNTIMES } = require("devtools/client/aboutdebugging-new/src/constants")
  */
 class Mocks {
   constructor() {
-    // Setup the usb-runtimes mock to rely on the internal _usbRuntimes array.
-    this.usbRuntimesMock = createUsbRuntimesMock();
+    // Setup the adb mock to rely on internal arrays.
+    this.adbMock = createAdbMock();
+    this.adbProcessMock = createAdbProcessMock();
     this._usbRuntimes = [];
-    this.usbRuntimesMock.getUSBRuntimes = () => {
+    this._usbDevices = [];
+    this.adbMock.adb.getRuntimes = () => {
       return this._usbRuntimes;
     };
+    this.adbMock.adb.getDevices = () => {
+      const runtimeDevices = this._usbRuntimes.map(r => {
+        return { id: r.deviceId, name: r.deviceName };
+      });
+      return runtimeDevices.concat(this._usbDevices);
+    };
 
-    // refreshUSBRuntimes normally starts scan, which should ultimately fire the
-    // "runtime-list-updated" event.
-    this.usbRuntimesMock.refreshUSBRuntimes = () => {
+    // adb.updateRuntimes should ultimately fire the "runtime-list-updated" event.
+    this.adbMock.adb.updateRuntimes = () => {
       this.emitUSBUpdate();
     };
 
+    this.adbMock.adb.isProcessStarted = () => true;
+
     // Prepare a fake observer to be able to emit events from this mock.
-    this._observerMock = addObserverMock(this.usbRuntimesMock);
+    this._observerMock = addObserverMock(this.adbMock.adb);
 
     // Setup the runtime-client-factory mock to rely on the internal _clients map.
     this.runtimeClientFactoryMock = createRuntimeClientFactoryMock();
@@ -65,12 +74,14 @@ class Mocks {
   }
 
   enableMocks() {
-    enableUsbRuntimesMock(this.usbRuntimesMock);
+    enableAdbMock(this.adbMock);
+    enableAdbProcessMock(this.adbProcessMock);
     enableRuntimeClientFactoryMock(this.runtimeClientFactoryMock);
   }
 
   disableMocks() {
-    disableUsbRuntimesMock();
+    disableAdbMock();
+    disableAdbProcessMock();
     disableRuntimeClientFactoryMock();
 
     for (const host of Object.keys(this._clients[RUNTIMES.NETWORK])) {
@@ -115,34 +126,44 @@ class Mocks {
    *        The id of the runtime.
    * @param {Object} optional object used to create the fake runtime & device
    *        - channel: {String} Release channel, for instance "release", "nightly"
+   *        - clientWrapper: {ClientWrapper} optional ClientWrapper for this runtime
+   *        - deviceId: {String} Device id
    *        - deviceName: {String} Device name
-   *        - isUnknown: {Function} should return a boolean, true for unknown runtimes
+   *        - isFenix: {Boolean} set by ADB if the package name matches a Fenix package
    *        - name: {String} Application name, for instance "Firefox"
    *        - shortName: {String} Short name for the device
    *        - socketPath: {String} (should only be used for connecting, so not here)
    *        - version: {String} Version, for instance "63.0a"
+   *        - versionName: {String} Version return by ADB "63.0a"
    * @return {Object} Returns the mock client created for this runtime so that methods
    * can be overridden on it.
    */
   createUSBRuntime(id, runtimeInfo = {}) {
     // Add a new runtime to the list of scanned runtimes.
     this._usbRuntimes.push({
-      id: id,
-      _socketPath: runtimeInfo.socketPath || "test/path",
+      deviceId: runtimeInfo.deviceId || "test device id",
       deviceName: runtimeInfo.deviceName || "test device name",
-      isUnknown: runtimeInfo.isUnknown || (() => false),
+      id: id,
+      isFenix: runtimeInfo.isFenix,
       shortName: runtimeInfo.shortName || "testshort",
+      socketPath: runtimeInfo.socketPath || "test/path",
+      versionName: runtimeInfo.versionName || "1.0",
     });
 
     // Add a valid client that can be returned for this particular runtime id.
-    const mockUsbClient = createClientMock();
-    mockUsbClient.getDeviceDescription = () => {
-      return {
-        channel: runtimeInfo.channel || "release",
-        name: runtimeInfo.name || "TestBrand",
-        version: runtimeInfo.version || "1.0",
+    let mockUsbClient = runtimeInfo.clientWrapper;
+    if (!mockUsbClient) {
+      // If no clientWrapper was provided, create a mock client here.
+      mockUsbClient = createClientMock();
+      mockUsbClient.getDeviceDescription = () => {
+        return {
+          channel: runtimeInfo.channel || "release",
+          name: runtimeInfo.name || "TestBrand",
+          version: runtimeInfo.version || "1.0",
+        };
       };
-    };
+    }
+
     this._clients[RUNTIMES.USB][id] = mockUsbClient;
 
     return mockUsbClient;
@@ -151,6 +172,19 @@ class Mocks {
   removeUSBRuntime(id) {
     this._usbRuntimes = this._usbRuntimes.filter(runtime => runtime.id !== id);
     delete this._clients[RUNTIMES.USB][id];
+  }
+
+  addDevice(deviceId, deviceName) {
+    this._usbDevices.push({
+      id: deviceId,
+      name: deviceName,
+    });
+  }
+
+  removeDevice(deviceId) {
+    this._usbDevices = this._usbDevices.filter(d => {
+      return d.id !== deviceId;
+    });
   }
 
   removeRuntime(id) {

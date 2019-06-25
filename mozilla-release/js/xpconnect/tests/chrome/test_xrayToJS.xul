@@ -6,7 +6,7 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=933681
 -->
 <window title="Mozilla Bug 933681"
         xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul">
-  <script type="application/javascript" src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js"/>
+  <script src="chrome://mochikit/content/tests/SimpleTest/SimpleTest.js"/>
 
   <!-- test results are displayed in the html:body -->
   <body xmlns="http://www.w3.org/1999/xhtml">
@@ -170,9 +170,9 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=933681
   // Xray-safe.
   //
   // DO NOT CHANGE WTIHOUT REVIEW FROM AN XPCONNECT PEER.
-  var version = Cc["@mozilla.org/xre/app-info;1"].getService(Ci.nsIXULAppInfo).version;
-  var isNightlyBuild = version.endsWith("a1");
-  var isReleaseOrBeta = !version.includes("a");
+  var {AppConstants} = SpecialPowers.Cu.import("resource://gre/modules/AppConstants.jsm", {});
+  var isNightlyBuild = AppConstants.NIGHTLY_BUILD;
+  var isReleaseOrBeta = AppConstants.RELEASE_OR_BETA;
   var gPrototypeProperties = {};
   var gConstructorProperties = {};
   function constructorProps(arr) {
@@ -254,6 +254,9 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=933681
     ["constructor", "catch", "then", "finally", Symbol.toStringTag];
   gConstructorProperties['Promise'] =
     constructorProps(["resolve", "reject", "all", "race", Symbol.species]);
+  if (isNightlyBuild) {
+    gConstructorProperties['Promise'].push("allSettled");
+  }
 
   gPrototypeProperties['ArrayBuffer'] =
     ["constructor", "byteLength", "slice", Symbol.toStringTag];
@@ -289,7 +292,8 @@ https://bugzilla.mozilla.org/show_bug.cgi?id=933681
      "getInt8", "getUint8", "getInt16", "getUint16",
      "getInt32", "getUint32", "getFloat32", "getFloat64",
      "setInt8", "setUint8", "setInt16", "setUint16",
-     "setInt32", "setUint32", "setFloat32", "setFloat64"];
+     "setInt32", "setUint32", "setFloat32", "setFloat64",
+     "getBigInt64", "getBigUint64", "setBigInt64", "setBigUint64"]
   gConstructorProperties['DataView'] = constructorProps([]);
 
   // Sort an array that may contain symbols as well as strings.
@@ -1075,12 +1079,25 @@ for (var prop of props) {
                    "setInt32", "setUint32", "setFloat32", "setFloat64"];
 
       for (const f of get) {
-        is(t[f](0), 0, `${f} is 0 for "${constructor}"`);
+        let x = t[f](0);
+        is(x, 0, `${f} is 0 for "${constructor}"`);
+        is(typeof x, 'number', `typeof ${f} is number for "${constructor}"`);
+      }
+
+      for (const f of ["getBigInt64", "getBigUint64"]) {
+        let x = t[f](0);
+        is(x, BigInt(0), `${f} is 0n for "${constructor}"`);
+        is(typeof x, 'bigint', `typeof ${f} is bigint for "${constructor}"`);
       }
 
       for (let i = 0; i < set.length; i++) {
         t[set[i]](0, 13);
         is(t[get[i]](0), 13, `${get[i]}(0) afer ${set[i]}(0, 13) is 13 for "${constructor}"`);
+      }
+
+      for (const k of ["BigInt64", "BigUint64"]) {
+        t["set" + k](0, BigInt(13));
+        is(t["get" + k](0), BigInt(13), `get${k}(0) afer set${k}(0, 13n) is 13n for "${constructor}"`);
       }
     }
   }

@@ -35,7 +35,7 @@ const SOURCE_URL = "http://example.com/source.js";
 function test_black_box() {
   gClient.addOneTimeListener("paused", async function(event, packet) {
     gThreadClient.setBreakpoint({ sourceUrl: BLACK_BOXED_URL, line: 2 }, {});
-    gThreadClient.resume(test_black_box_breakpoint);
+    gThreadClient.resume().then(test_black_box_breakpoint);
   });
 
   /* eslint-disable no-multi-spaces, no-undef */
@@ -68,26 +68,26 @@ function test_black_box() {
 }
 
 function test_black_box_breakpoint() {
-  gThreadClient.getSources(async function({error, sources}) {
+  gThreadClient.getSources().then(async function({error, sources}) {
     Assert.ok(!error, "Should not get an error: " + error);
-    const sourceClient = gThreadClient.source(
+    const sourceFront = gThreadClient.source(
       sources.filter(s => s.url == BLACK_BOXED_URL)[0]
     );
 
-    await blackBox(sourceClient);
+    await blackBox(sourceFront);
 
     gClient.addOneTimeListener("paused", function(event, packet) {
       Assert.equal(
         packet.why.type, "debuggerStatement",
         "We should pass over the breakpoint since the source is black boxed.");
-      gThreadClient.resume(test_unblack_box_breakpoint.bind(null, sourceClient));
+      gThreadClient.resume().then(test_unblack_box_breakpoint.bind(null, sourceFront));
     });
     gDebuggee.runTest();
   });
 }
 
-async function test_unblack_box_breakpoint(sourceClient) {
-  await unBlackBox(sourceClient);
+async function test_unblack_box_breakpoint(sourceFront) {
+  await unBlackBox(sourceFront);
   gClient.addOneTimeListener("paused", function(event, packet) {
     Assert.equal(packet.why.type, "breakpoint",
                  "We should hit the breakpoint again");
@@ -96,9 +96,11 @@ async function test_unblack_box_breakpoint(sourceClient) {
     // nastiness to skip over it.
     gClient.addOneTimeListener(
       "paused",
-      gThreadClient.resume.bind(
-        gThreadClient,
-        finishClient.bind(null, gClient)));
+      async () => {
+        await gThreadClient.resume();
+        finishClient(gClient);
+      }
+    );
     gThreadClient.resume();
   });
   gDebuggee.runTest();

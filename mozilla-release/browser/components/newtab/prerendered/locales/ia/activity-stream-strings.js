@@ -40,9 +40,7 @@ window.gActivityStreamStrings = {
   "section_disclaimer_topstories_buttontext": "Ok, io comprende",
   "prefs_home_header": "Pagina initial de Firefox",
   "prefs_home_description": "Elige qual contento tu desira pro tu pagina initial de Firefox.",
-  "prefs_content_discovery_header": "Pagina initial de Firefox",
   "prefs_content_discovery_description": "Content Discovery in Firefox Home te consenti de discoperir articulos pertinente, de alte qualitate, in le Web.",
-  "prefs_content_discovery_button": "Clauder Content Discovery",
   "prefs_section_rows_option": "{num} riga;{num} rigas",
   "prefs_search_header": "Recerca del Web",
   "prefs_topsites_description": "Le sitos que tu visita plus",
@@ -107,8 +105,5 @@ window.gActivityStreamStrings = {
   "firstrun_privacy_notice": "Notification de confidentialitate",
   "firstrun_continue_to_login": "Continuar",
   "firstrun_skip_login": "Saltar iste grado",
-  "context_menu_title": "Aperir le menu",
-  "manual_migration_explanation2": "Essaya Firefox con le marcapaginas, le chronologia e le contrasignos de un altere navigator.",
-  "manual_migration_cancel_button": "No, gratias",
-  "manual_migration_import_button": "Importar ora"
+  "context_menu_title": "Aperir le menu"
 };

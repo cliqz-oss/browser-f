@@ -349,6 +349,28 @@ var gXPInstallObserver = {
             .add(Ci.nsISecurityUITelemetry.WARNING_CONFIRM_ADDON_INSTALL);
   },
 
+  // IDs of addon install related notifications
+  NOTIFICATION_IDS: [
+    "addon-install-blocked",
+    "addon-install-complete",
+    "addon-install-confirmation",
+    "addon-install-failed",
+    "addon-install-origin-blocked",
+    "addon-progress",
+    "addon-webext-permissions",
+    "xpinstall-disabled",
+  ],
+
+  // Remove all opened addon installation notifications
+  removeAllNotifications(browser) {
+    this.NOTIFICATION_IDS.forEach((id) => {
+      let notification = PopupNotifications.getNotification(id, browser);
+      if (notification) {
+        PopupNotifications.remove(notification);
+      }
+    });
+  },
+
   observe(aSubject, aTopic, aData) {
     var brandBundle = document.getElementById("bundle_brand");
     var installInfo = aSubject.wrappedJSObject;
@@ -414,22 +436,66 @@ var gXPInstallObserver = {
       removeNotificationOnEnd(popup, installInfo.installs);
       break; }
     case "addon-install-blocked": {
-      messageString = gNavigatorBundle.getFormattedString("xpinstallPromptMessage",
-                        [brandShortName]);
+      let hasHost = !!options.displayURI;
+      if (hasHost) {
+        messageString = gNavigatorBundle.getFormattedString("xpinstallPromptMessage.header", ["<>"]);
+        options.name = options.displayURI.displayHost;
+      } else {
+        messageString = gNavigatorBundle.getString("xpinstallPromptMessage.header.unknown");
+      }
+      // displayURI becomes it's own label, so we unset it for this panel. It will become part of the
+      // messageString above.
+      options.displayURI = undefined;
+
+      options.eventCallback = (topic) => {
+        if (topic !== "showing") {
+          return;
+        }
+        let doc = browser.ownerDocument;
+        let message = doc.getElementById("addon-install-blocked-message");
+        // We must remove any prior use of this panel message in this window.
+        while (message.firstChild) {
+          message.firstChild.remove();
+        }
+        if (hasHost) {
+          let text = gNavigatorBundle.getString("xpinstallPromptMessage.message");
+          let b = doc.createElementNS("http://www.w3.org/1999/xhtml", "b");
+          b.textContent = options.name;
+          let fragment = BrowserUtils.getLocalizedFragment(doc, text, b);
+          message.appendChild(fragment);
+        } else {
+          message.textContent = gNavigatorBundle.getString("xpinstallPromptMessage.message.unknown");
+        }
+        let learnMore = doc.getElementById("addon-install-blocked-info");
+        learnMore.textContent = gNavigatorBundle.getString("xpinstallPromptMessage.learnMore");
+        learnMore.setAttribute("href", Services.urlFormatter.formatURLPref("app.support.baseURL") + "unlisted-extensions-risks");
+      };
 
       let secHistogram = Services.telemetry.getHistogramById("SECURITY_UI");
       action = {
-        label: gNavigatorBundle.getString("xpinstallPromptAllowButton"),
-        accessKey: gNavigatorBundle.getString("xpinstallPromptAllowButton.accesskey"),
+        label: gNavigatorBundle.getString("xpinstallPromptMessage.install"),
+        accessKey: gNavigatorBundle.getString("xpinstallPromptMessage.install.accesskey"),
         callback() {
           secHistogram.add(Ci.nsISecurityUITelemetry.WARNING_ADDON_ASKING_PREVENTED_CLICK_THROUGH);
           installInfo.install();
         },
       };
-      let secondaryAction = {
+      let dontAllowAction = {
         label: gNavigatorBundle.getString("xpinstallPromptMessage.dontAllow"),
         accessKey: gNavigatorBundle.getString("xpinstallPromptMessage.dontAllow.accesskey"),
         callback: () => {
+          for (let install of installInfo.installs) {
+            if (install.state != AddonManager.STATE_CANCELLED) {
+              install.cancel();
+            }
+          }
+        },
+      };
+      let neverAllowAction = {
+        label: gNavigatorBundle.getString("xpinstallPromptMessage.neverAllow"),
+        accessKey: gNavigatorBundle.getString("xpinstallPromptMessage.neverAllow.accesskey"),
+        callback: () => {
+          SitePermissions.set(browser.currentURI, "install", SitePermissions.BLOCK);
           for (let install of installInfo.installs) {
             if (install.state != AddonManager.STATE_CANCELLED) {
               install.cancel();
@@ -441,7 +507,7 @@ var gXPInstallObserver = {
       secHistogram.add(Ci.nsISecurityUITelemetry.WARNING_ADDON_ASKING_PREVENTED);
       let popup = PopupNotifications.show(browser, notificationID,
                                           messageString, anchorID,
-                                          action, [secondaryAction], options);
+                                          action, [dontAllowAction, neverAllowAction], options);
       removeNotificationOnEnd(popup, installInfo.installs);
       break; }
     case "addon-install-started": {
@@ -524,6 +590,16 @@ var gXPInstallObserver = {
         } else {
           error += "Incompatible";
           args = [brandShortName, Services.appinfo.version, install.name];
+        }
+
+        if (install.addon && !Services.policies.mayInstallAddon(install.addon)) {
+          error = "addonInstallBlockedByPolicy";
+          let extensionSettings = Services.policies.getExtensionSettings(install.addon.id);
+          let message = "";
+          if (extensionSettings && "blocked_install_message" in extensionSettings) {
+            message = " " + extensionSettings.blocked_install_message;
+          }
+          args = [install.name, install.addon.id, message];
         }
 
         // Add Learn More link when refusing to install an unsigned add-on
@@ -670,157 +746,4 @@ var gExtensionsNotifications = {
       });
     }
   },
-};
-
-var LightWeightThemeWebInstaller = {
-  init() {
-    let mm = window.messageManager;
-    mm.addMessageListener("LightWeightThemeWebInstaller:Install", this);
-    mm.addMessageListener("LightWeightThemeWebInstaller:Preview", this);
-    mm.addMessageListener("LightWeightThemeWebInstaller:ResetPreview", this);
-
-    XPCOMUtils.defineLazyPreferenceGetter(this, "_apiTesting", "extensions.webapi.testing", false);
-  },
-
-  receiveMessage(message) {
-    // ignore requests from background tabs
-    if (message.target != gBrowser.selectedBrowser) {
-      return;
-    }
-
-    let data = message.data;
-
-    switch (message.name) {
-      case "LightWeightThemeWebInstaller:Install": {
-        this._installRequest(data.themeData, data.principal, data.baseURI);
-        break;
-      }
-      case "LightWeightThemeWebInstaller:Preview": {
-        this._preview(data.themeData, data.principal, data.baseURI);
-        break;
-      }
-      case "LightWeightThemeWebInstaller:ResetPreview": {
-        this._resetPreview(data && data.principal);
-        break;
-      }
-    }
-  },
-
-  handleEvent(event) {
-    switch (event.type) {
-      case "TabSelect": {
-        this._resetPreview();
-        break;
-      }
-    }
-  },
-
-  get _manager() {
-    let temp = {};
-    ChromeUtils.import("resource://gre/modules/LightweightThemeManager.jsm", temp);
-    delete this._manager;
-    return this._manager = temp.LightweightThemeManager;
-  },
-
-  _installRequest(dataString, principal, baseURI) {
-    // Don't allow installing off null principals.
-    if (!principal.URI) {
-      return;
-    }
-
-    let data = this._manager.parseTheme(dataString, baseURI);
-
-    if (!data) {
-      return;
-    }
-
-    // A notification bar with the option to undo is normally shown after a
-    // theme is installed.  But the discovery pane served from the url(s)
-    // below has its own toggle switch for quick undos, so don't show the
-    // notification in that case.
-    let notify = this._shouldShowUndoPrompt(principal);
-    if (this._isAllowed(principal)) {
-      this._install(data, notify);
-      return;
-    }
-
-    let strings = {
-      header: gNavigatorBundle.getFormattedString("webextPerms.header", ["<>"]),
-      addonName: data.name,
-      text: gNavigatorBundle.getFormattedString("lwthemeInstallRequest.message2",
-                                                [principal.URI.host]),
-      acceptText: gNavigatorBundle.getString("lwthemeInstallRequest.allowButton2"),
-      acceptKey: gNavigatorBundle.getString("lwthemeInstallRequest.allowButton.accesskey2"),
-      cancelText: gNavigatorBundle.getString("webextPerms.cancel.label"),
-      cancelKey: gNavigatorBundle.getString("webextPerms.cancel.accessKey"),
-      msgs: [],
-    };
-    ExtensionsUI.showPermissionsPrompt(gBrowser.selectedBrowser, strings, null,
-      "installWeb").then(answer => {
-      if (answer) {
-        LightWeightThemeWebInstaller._install(data, notify);
-      }
-    });
-  },
-
-  _install(newLWTheme, notify) {
-    let listener = {
-      onEnabled(aAddon) {
-        if (notify) {
-          ExtensionsUI.showInstallNotification(gBrowser.selectedBrowser, newLWTheme);
-        }
-      },
-    };
-
-    AddonManager.addAddonListener(listener);
-    this._manager.currentTheme = newLWTheme;
-    AddonManager.removeAddonListener(listener);
-  },
-
-  _preview(dataString, principal, baseURI) {
-    if (!this._isAllowed(principal))
-      return;
-
-    let data = this._manager.parseTheme(dataString, baseURI);
-    if (!data)
-      return;
-
-    this._resetPreview();
-    gBrowser.tabContainer.addEventListener("TabSelect", this);
-    this._manager.previewTheme(data);
-  },
-
-  _resetPreview(principal) {
-    if (!this._isAllowed(principal))
-      return;
-    gBrowser.tabContainer.removeEventListener("TabSelect", this);
-    this._manager.resetPreview();
-  },
-
-  _isAllowed(principal) {
-    if (!principal || !principal.URI || !principal.URI.schemeIs("https")) {
-      return false;
-    }
-
-    let pm = Services.perms;
-    return pm.testPermission(principal.URI, "install") == pm.ALLOW_ACTION;
-  },
-
-  _shouldShowUndoPrompt(principal) {
-    if (!principal || !principal.URI) {
-      return true;
-    }
-
-    let prePath = principal.URI.prePath;
-    if (prePath == "https://discovery.addons.mozilla.org") {
-      return false;
-    }
-
-    if (this._apiTesting && (prePath == "https://discovery.addons.allizom.org" ||
-                             prePath == "https://discovery.addons-dev.allizom.org")) {
-      return false;
-    }
-    return true;
-  },
-
 };

@@ -63,18 +63,25 @@ class ProviderUnifiedComplete extends UrlbarProvider {
   }
 
   /**
-   * Returns the sources returned by this provider.
-   * @returns {array} one or multiple types from UrlbarUtils.RESULT_SOURCE.*
+   * Whether this provider should be invoked for the given context.
+   * If this method returns false, the providers manager won't start a query
+   * with this provider, to save on resources.
+   * @param {UrlbarQueryContext} queryContext The query context object
+   * @returns {boolean} Whether this provider should be invoked for the search.
    */
-  get sources() {
-    return [
-      UrlbarUtils.RESULT_SOURCE.BOOKMARKS,
-      UrlbarUtils.RESULT_SOURCE.HISTORY,
-      UrlbarUtils.RESULT_SOURCE.SEARCH,
-      UrlbarUtils.RESULT_SOURCE.TABS,
-      UrlbarUtils.RESULT_SOURCE.OTHER_LOCAL,
-      UrlbarUtils.RESULT_SOURCE.OTHER_NETWORK,
-    ];
+  isActive(queryContext) {
+    return true;
+  }
+
+  /**
+   * Whether this provider wants to restrict results to just itself.
+   * Other providers won't be invoked, unless this provider doesn't
+   * support the current query.
+   * @param {UrlbarQueryContext} queryContext The query context object
+   * @returns {boolean} Whether this provider wants to restrict results.
+   */
+  isRestricting(queryContext) {
+    return false;
   }
 
   /**
@@ -114,7 +121,7 @@ class ProviderUnifiedComplete extends UrlbarProvider {
     if (queryContext.userContextId) {
       params.push(`user-context-id:${queryContext.userContextId}}`);
     }
-    if (!queryContext.enableAutofill) {
+    if (!queryContext.allowAutofill) {
       params.push("prohibit-autofill");
     }
 
@@ -127,10 +134,12 @@ class ProviderUnifiedComplete extends UrlbarProvider {
             addCallback(UrlbarProviderUnifiedComplete, match);
           }
           if (done) {
+            delete this._resolveSearch;
             resolve();
           }
         },
       };
+      this._resolveSearch = resolve;
       unifiedComplete.startSearch(queryContext.searchString,
                                   params.join(" "),
                                   null, // previousResult
@@ -150,6 +159,9 @@ class ProviderUnifiedComplete extends UrlbarProvider {
     // This doesn't properly support being used concurrently by multiple fields.
     this.queries.delete(queryContext);
     unifiedComplete.stopSearch();
+    if (this._resolveSearch) {
+      this._resolveSearch();
+    }
   }
 }
 
@@ -202,7 +214,7 @@ function convertResultToMatches(context, result, urls) {
       continue;
     }
     // Manage autofill and preselected properties for the first match.
-    if (i == 0) {
+    if (i == 0 && style.includes("heuristic")) {
       if (style.includes("autofill") && result.defaultIndex == 0) {
         let autofillValue = result.getValueAt(i);
         if (autofillValue.toLocaleLowerCase()
@@ -215,10 +227,9 @@ function convertResultToMatches(context, result, urls) {
           };
         }
       }
-      if (style.includes("heuristic")) {
-        context.preselected = true;
-        match.heuristic = true;
-      }
+
+      context.preselected = true;
+      match.heuristic = true;
     }
     matches.push(match);
   }
@@ -347,7 +358,8 @@ function makeUrlbarResult(tokens, info) {
       // Tags are separated by a comma and in a random order.
       // We should also just include tags that match the searchString.
       tags = tags.split(",").map(t => t.trim()).filter(tag => {
-        return tokens.some(token => tag.includes(token.value));
+        let lowerCaseTag = tag.toLocaleLowerCase();
+        return tokens.some(token => lowerCaseTag.includes(token.lowerCaseValue));
       }).sort();
     }
   } else if (info.style.includes("preloaded-top-sites")) {

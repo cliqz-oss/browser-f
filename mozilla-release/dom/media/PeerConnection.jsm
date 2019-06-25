@@ -36,8 +36,6 @@ const PC_TRANSCEIVER_CID = Components.ID("{09475754-103a-41f5-a2d0-e1f27eb0b537}
 const PC_COREQUEST_CID = Components.ID("{74b2122d-65a8-4824-aa9e-3d664cb75dc2}");
 const PC_DTMF_SENDER_CID = Components.ID("{3610C242-654E-11E6-8EC0-6D1BE389A607}");
 
-const TELEMETRY_PC_CONNECTED = "webrtc.peerconnection.connected";
-const TELEMETRY_PC_PROMISE_GETSTATS = "webrtc.peerconnection.promise_stats_used";
 function logMsg(msg, file, line, flag, winID) {
   let scriptErrorClass = Cc["@mozilla.org/scripterror;1"];
   let scriptError = scriptErrorClass.createInstance(Ci.nsIScriptError);
@@ -222,6 +220,9 @@ class RTCIceCandidate {
   }
 
   __init(dict) {
+    if (dict.sdpMid == null && dict.sdpMLineIndex == null) {
+      throw new this._win.TypeError("Either sdpMid or sdpMLineIndex must be specified");
+    }
     Object.assign(this, dict);
   }
 }
@@ -310,17 +311,54 @@ setupPrototype(RTCStatsReport, {
   QueryInterface: ChromeUtils.generateQI([]),
 });
 
-// This is its own class so that it does not need to be exposed to the client.
+// Records PC related telemetry
 class PeerConnectionTelemetry {
   // Record which style(s) of invocation for getStats are used
   recordGetStats() {
-    Services.telemetry.scalarAdd(TELEMETRY_PC_PROMISE_GETSTATS, 1);
+    Services.telemetry.scalarAdd("webrtc.peerconnection.promise_stats_used",
+                                 1);
     this.recordGetStats = () => {};
   }
   // ICE connection state enters connected or completed.
   recordConnected() {
-    Services.telemetry.scalarAdd(TELEMETRY_PC_CONNECTED, 1);
+    Services.telemetry.scalarAdd("webrtc.peerconnection.connected", 1);
     this.recordConnected = () => {};
+  }
+  // DataChannel is created
+  _recordDataChannelCreated() {
+    Services.telemetry.scalarAdd("webrtc.peerconnection.datachannel_created",
+                                 1);
+    this._recordDataChannelCreated = () => {};
+  }
+  // DataChannel initialized with maxRetransmitTime
+  _recordMaxRetransmitTime(maxRetransmitTime) {
+    if (maxRetransmitTime === undefined) {
+      return false;
+    }
+    Services.telemetry.scalarAdd(
+      "webrtc.peerconnection.datachannel_max_retx_used", 1);
+    this._recordMaxRetransmitTime = () => true;
+    return true;
+  }
+  // DataChannel initialized with maxPacketLifeTime
+  _recordMaxPacketLifeTime(maxPacketLifeTime) {
+    if (maxPacketLifeTime === undefined) {
+      return false;
+    }
+    Services.telemetry.scalarAdd(
+      "webrtc.peerconnection.datachannel_max_life_used", 1);
+    this._recordMaxPacketLifeTime = () => true;
+    return true;
+  }
+  // DataChannel initialized
+  recordDataChannelInit(maxRetransmitTime, maxPacketLifeTime) {
+    const retxUsed = this._recordMaxRetransmitTime(maxRetransmitTime);
+    if (this._recordMaxPacketLifeTime(maxPacketLifeTime) && retxUsed) {
+      Services.telemetry.scalarAdd(
+        "webrtc.peerconnection.datachannel_max_retx_and_life_used", 1);
+      this.recordDataChannelInit = () => {};
+    }
+    this._recordDataChannelCreated();
   }
 }
 
@@ -409,7 +447,7 @@ class RTCPeerConnection {
         "RTCPeerConnection constructor passed invalid RTCConfiguration");
     }
     var principal = Cu.getWebIDLCallerPrincipal();
-    this._isChrome = Services.scriptSecurityManager.isSystemPrincipal(principal);
+    this._isChrome = principal.isSystemPrincipal;
 
     if (_globalPCList._networkdown) {
       throw new this._win.DOMException(
@@ -435,7 +473,7 @@ class RTCPeerConnection {
     this._operationsChain = this._win.Promise.resolve();
 
     this.__DOM_IMPL__._innerObject = this;
-    this._observer = new this._win.PeerConnectionObserver(this.__DOM_IMPL__);
+    const observer = new this._win.PeerConnectionObserver(this.__DOM_IMPL__);
 
     this._warnDeprecatedStatsRemoteAccessNullable = { warn: (key) =>
       this.logWarning(`Detected soon-to-break getStats() use with key="${key}"! stat.isRemote goes away in Firefox 66, but won't warn there!\
@@ -444,7 +482,7 @@ class RTCPeerConnection {
     // Add a reference to the PeerConnection to global list (before init).
     _globalPCList.addPC(this);
 
-    this._impl.initialize(this._observer, this._win, rtcConfig,
+    this._impl.initialize(observer, this._win, rtcConfig,
                           Services.tm.currentThread);
 
     this._certificateReady = this._initCertificate(rtcConfig.certificates);
@@ -923,12 +961,6 @@ class RTCPeerConnection {
                                        "NotSupportedError");
     }
 
-    if (!sdp && action != Ci.IPeerConnection.kActionRollback) {
-      throw new this._win.DOMException(
-          "Empty or null SDP provided to setLocalDescription",
-          "InvalidParameterError");
-    }
-
     // The fippo butter finger filter AKA non-ASCII chars
     // Note: SDP allows non-ASCII character in the subject (who cares?)
     // eslint-disable-next-line no-control-regex
@@ -970,23 +1002,21 @@ class RTCPeerConnection {
   }
 
   async _validateIdentity(sdp, origin) {
-    let expectedIdentity;
-
     // Only run a single identity verification at a time.  We have to do this to
     // avoid problems with the fact that identity validation doesn't block the
     // resolution of setRemoteDescription().
     let p = (async () => {
+      // Should never throw
+      await this._lastIdentityValidation;
       try {
-        await this._lastIdentityValidation;
-        let msg = await this._remoteIdp.verifyIdentityFromSDP(sdp, origin);
-        expectedIdentity = this._impl.peerIdentity;
+        const msg = await this._remoteIdp.verifyIdentityFromSDP(sdp, origin);
         // If this pc has an identity already, then the identity in sdp must match
-        if (expectedIdentity && (!msg || msg.identity !== expectedIdentity)) {
-          this.close();
+        if (this._impl.peerIdentity && (!msg || msg.identity !== this._impl.peerIdentity)) {
           throw new this._win.DOMException(
-            "Peer Identity mismatch, expected: " + expectedIdentity,
+            "Peer Identity mismatch, expected: " + this._impl.peerIdentity,
             "IncompatibleSessionDescriptionError");
         }
+
         if (msg) {
           // Set new identity and generate an event.
           this._impl.peerIdentity = msg.identity;
@@ -1009,7 +1039,7 @@ class RTCPeerConnection {
     this._lastIdentityValidation = p.catch(() => {});
 
     // Only wait for IdP validation if we need identity matching
-    if (expectedIdentity) {
+    if (this._impl.peerIdentity) {
       await p;
     }
   }
@@ -1058,6 +1088,7 @@ class RTCPeerConnection {
   setIdentityProvider(provider,
                       {protocol, usernameHint, peerIdentity} = {}) {
     this._checkClosed();
+    peerIdentity = peerIdentity || this._impl.peerIdentity;
     this._localIdp.setIdentityProvider(provider,
                                        protocol, usernameHint, peerIdentity);
   }
@@ -1107,14 +1138,15 @@ class RTCPeerConnection {
       containsTrickle(topSection) || sections.every(containsTrickle);
   }
 
-  // TODO: Implement processing for end-of-candidates (bug 1318167)
   addIceCandidate(cand, onSucc, onErr) {
-    if (cand === null) {
+    if (cand.candidate != "" &&
+        cand.sdpMid == null &&
+        cand.sdpMLineIndex == null) {
       throw new this._win.DOMException(
-        "Empty candidate can not be added.",
+        "Cannot add a candidate without specifying either sdpMid or sdpMLineIndex",
         "TypeError");
     }
-    return this._auto(onSucc, onErr, () => cand && this._addIceCandidate(cand));
+    return this._auto(onSucc, onErr, () => this._addIceCandidate(cand));
   }
 
   async _addIceCandidate({ candidate, sdpMid, sdpMLineIndex, usernameFragment }) {
@@ -1176,7 +1208,8 @@ class RTCPeerConnection {
     sender.checkWasCreatedByPc(this.__DOM_IMPL__);
 
     let transceiver =
-      this._transceivers.find(transceiver => transceiver.sender == sender);
+      this._transceivers.find(transceiver =>
+        !transceiver.stopped && transceiver.sender == sender);
 
     // If the transceiver was removed due to rollback, let it slide.
     if (!transceiver || !sender.track) {
@@ -1304,28 +1337,51 @@ class RTCPeerConnection {
   }
 
   _processTrackAdditionsAndRemovals() {
-    let postProcessing = {
-      updateStreamFunctions: [],
-      muteTracks: [],
-      trackEvents: [],
-    };
+    const removeList = [];
+    const addList = [];
+    const muteTracks = [];
+    const trackEventInits = [];
 
-    for (let transceiver of this._transceivers) {
+    for (const transceiver of this._transceivers) {
       transceiver.receiver.processTrackAdditionsAndRemovals(transceiver,
-                                                            postProcessing);
+        {removeList, addList, muteTracks, trackEventInits});
     }
 
-    for (let f of postProcessing.updateStreamFunctions) {
-      f();
+    muteTracks.forEach(track => {
+      // Check this as late as possible, in case JS has messed with this state.
+      if (!track.muted) {
+        track.mutedChanged(true);
+      }
+    });
+
+    for (const {stream, track} of removeList) {
+      // Check this as late as possible, in case JS messes with the track lists.
+      if (stream.getTracks().includes(track)) {
+        stream.removeTrack(track);
+        // Removing tracks from JS does not result in the stream getting a
+        // removetrack event, so we need to do that here.
+        stream.dispatchEvent(
+            new this._win.MediaStreamTrackEvent("removetrack", { track }));
+      }
     }
 
-    for (let t of postProcessing.muteTracks) {
-      t.mutedChanged(true);
+    for (const {stream, track} of addList) {
+      // Check this as late as possible, in case JS messes with the track lists.
+      if (!stream.getTracks().includes(track)) {
+        stream.addTrack(track);
+        // Adding tracks from JS does not result in the stream getting an
+        // addtrack event, so we need to do that here.
+        stream.dispatchEvent(
+            new this._win.MediaStreamTrackEvent("addtrack", { track }));
+      }
     }
 
-    for (let ev of postProcessing.trackEvents) {
-      this.dispatchEvent(ev);
-    }
+    trackEventInits.forEach(init => {
+      this.dispatchEvent(new this._win.RTCTrackEvent("track", init));
+      // Fire legacy event as well for a little bit.
+      this.dispatchEvent(new this._win.MediaStreamTrackEvent("addtrack",
+          { track: init.track }));
+    });
   }
 
   // TODO(Bug 1241291): Legacy event, remove eventually
@@ -1378,7 +1434,6 @@ class RTCPeerConnection {
     this._impl.close();
     this._suppressEvents = true;
     delete this._pc;
-    delete this._observer;
   }
 
   getLocalStreams() {
@@ -1572,19 +1627,55 @@ class RTCPeerConnection {
   }
 
   createDataChannel(label, {
-                      maxRetransmits, ordered, negotiated, id = 0xFFFF,
-                      maxRetransmitTime, maxPacketLifeTime = maxRetransmitTime,
+                      maxRetransmits, ordered, negotiated, id = null,
+                      maxRetransmitTime, maxPacketLifeTime,
                       protocol,
                     } = {}) {
     this._checkClosed();
+    this._pcTelemetry.recordDataChannelInit(maxRetransmitTime, maxPacketLifeTime);
+
+    if (maxPacketLifeTime === undefined) {
+      maxPacketLifeTime = maxRetransmitTime;
+    }
 
     if (maxRetransmitTime !== undefined) {
       this.logWarning("Use maxPacketLifeTime instead of deprecated maxRetransmitTime which will stop working soon in createDataChannel!");
     }
+
+    if (protocol.length > 32767) {
+      // At least 65536/2 UTF-16 characters. UTF-8 might be too long.
+      // Spec says to check how long |protocol| and |label| are in _bytes_. This
+      // is a little ambiguous. For now, examine the length of the utf-8 encoding.
+      const byteCounter = new TextEncoder("utf-8");
+
+      if (byteCounter.encode(protocol).length > 65535) {
+        throw new this._win.DOMException(
+            "protocol cannot be longer than 65535 bytes", "TypeError");
+      }
+    }
+
+    if (label.length > 32767) {
+      const byteCounter = new TextEncoder("utf-8");
+      if (byteCounter.encode(label).length > 65535) {
+        throw new this._win.DOMException(
+            "label cannot be longer than 65535 bytes", "TypeError");
+      }
+    }
+
+    if (!negotiated) {
+      id = null;
+    } else if (id === null) {
+      throw new this._win.DOMException(
+          "id is required when negotiated is true", "TypeError");
+    }
     if (maxPacketLifeTime !== undefined && maxRetransmits !== undefined) {
       throw new this._win.DOMException(
           "Both maxPacketLifeTime and maxRetransmits cannot be provided",
-          "InvalidParameterError");
+          "TypeError");
+    }
+    if (id == 65535) {
+      throw new this._win.DOMException(
+          "id cannot be 65535", "TypeError");
     }
     // Must determine the type where we still know if entries are undefined.
     let type;
@@ -1632,23 +1723,7 @@ class PeerConnectionObserver {
     this._dompc = dompc._innerObject;
   }
 
-  newError(message, code) {
-    // These strings must match those defined in the WebRTC spec.
-    const reasonName = [
-      "",
-      "InternalError",
-      "InternalError",
-      "InvalidParameterError",
-      "InvalidStateError",
-      "InvalidSessionDescriptionError",
-      "IncompatibleSessionDescriptionError",
-      "InternalError",
-      "IncompatibleMediaStreamTrackError",
-      "InternalError",
-      "TypeError",
-      "OperationError",
-    ];
-    let name = reasonName[Math.min(code, reasonName.length - 1)];
+  newError({message, name}) {
     return new this._dompc._win.DOMException(message, name);
   }
 
@@ -1660,54 +1735,52 @@ class PeerConnectionObserver {
     this._dompc._onCreateOfferSuccess(sdp);
   }
 
-  onCreateOfferError(code, message) {
-    this._dompc._onCreateOfferFailure(this.newError(message, code));
+  onCreateOfferError(error) {
+    this._dompc._onCreateOfferFailure(this.newError(error));
   }
 
   onCreateAnswerSuccess(sdp) {
     this._dompc._onCreateAnswerSuccess(sdp);
   }
 
-  onCreateAnswerError(code, message) {
-    this._dompc._onCreateAnswerFailure(this.newError(message, code));
+  onCreateAnswerError(error) {
+    this._dompc._onCreateAnswerFailure(this.newError(error));
   }
 
   onSetLocalDescriptionSuccess() {
-    this._dompc._syncTransceivers();
     this._dompc._onSetLocalDescriptionSuccess();
   }
 
   onSetRemoteDescriptionSuccess() {
-    this._dompc._syncTransceivers();
     this._dompc._processTrackAdditionsAndRemovals();
     this._dompc._fireLegacyAddStreamEvents();
     this._dompc._transceivers = this._dompc._transceivers.filter(t => !t.shouldRemove);
     this._dompc._onSetRemoteDescriptionSuccess();
   }
 
-  onSetLocalDescriptionError(code, message) {
-    this._dompc._onSetLocalDescriptionFailure(this.newError(message, code));
+  onSetLocalDescriptionError(error) {
+    this._dompc._onSetLocalDescriptionFailure(this.newError(error));
   }
 
-  onSetRemoteDescriptionError(code, message) {
-    this._dompc._onSetRemoteDescriptionFailure(this.newError(message, code));
+  onSetRemoteDescriptionError(error) {
+    this._dompc._onSetRemoteDescriptionFailure(this.newError(error));
   }
 
   onAddIceCandidateSuccess() {
     this._dompc._onAddIceCandidateSuccess();
   }
 
-  onAddIceCandidateError(code, message) {
-    this._dompc._onAddIceCandidateError(this.newError(message, code));
+  onAddIceCandidateError(error) {
+    this._dompc._onAddIceCandidateError(this.newError(error));
   }
 
-  onIceCandidate(sdpMLineIndex, sdpMid, candidate, ufrag) {
+  onIceCandidate(sdpMLineIndex, sdpMid, candidate, usernameFragment) {
     let win = this._dompc._win;
-    if (candidate) {
+    if (candidate || sdpMid || usernameFragment) {
       if (candidate.includes(" typ relay ")) {
         this._dompc._iceGatheredRelayCandidates = true;
       }
-      candidate = new win.RTCIceCandidate({ candidate, sdpMid, sdpMLineIndex, ufrag });
+      candidate = new win.RTCIceCandidate({ candidate, sdpMid, sdpMLineIndex, usernameFragment });
     } else {
       candidate = null;
     }
@@ -1841,13 +1914,8 @@ class PeerConnectionObserver {
     pc._onGetStatsSuccess(webidlobj);
   }
 
-  onGetStatsError(code, message) {
-    this._dompc._onGetStatsFailure(this.newError(message, code));
-  }
-
-  _getTransceiverWithRecvTrack(webrtcTrackId) {
-    return this._dompc.getTransceivers().find(
-        transceiver => transceiver.remoteTrackIdIs(webrtcTrackId));
+  onGetStatsError(message) {
+    this._dompc._onGetStatsFailure(this.newError({name: "OperationError", message}));
   }
 
   onTransceiverNeeded(kind, transceiverImpl) {
@@ -2066,15 +2134,15 @@ setupPrototype(RTCRtpSender, {
 
 class RTCRtpReceiver {
   constructor(pc, transceiverImpl) {
-    // We do not set the track here; that is done when _transceiverImpl is set
     Object.assign(this,
         {
           _pc: pc,
           _transceiverImpl: transceiverImpl,
           track: transceiverImpl.getReceiveTrack(),
-          _remoteSetSendBit: false,
-          _ontrackFired: false,
-          streamIds: [],
+          _recvBit: false,
+          _oldRecvBit: false,
+          _streams: [],
+          _oldstreams: [],
           // Sync and contributing sources must be kept cached so that timestamps
           // remain stable, as the timestamp offset can vary
           // note key = entry.source + entry.sourceType
@@ -2139,13 +2207,13 @@ class RTCRtpReceiver {
   _getRtpSourcesByType(type) {
     this._fetchRtpSources();
     // Only return the values from within the last 10 seconds as per the spec
-    let cutoffTime = this._rtpSourcesJsTimestamp - 10 * 1000;
-    let sources = [...this._rtpSources.values()].filter(
+    const cutoffTime = this._rtpSourcesJsTimestamp - 10 * 1000;
+    return [...this._rtpSources.values()].filter(
       (entry) => {
         return entry.sourceType == type &&
             (entry.timestamp + entry.sourceClockOffset) >= cutoffTime;
       }).map(e => {
-        let newEntry = {
+        const newEntry = {
           source: e.source,
           timestamp: e.timestamp + e.sourceClockOffset,
           audioLevel: e.audioLevel,
@@ -2154,8 +2222,7 @@ class RTCRtpReceiver {
           Object.assign(newEntry, {voiceActivityFlag: e.voiceActivityFlag});
         }
         return newEntry;
-      });
-      return sources;
+      }).sort((a, b) => b.timestamp - a.timestamp);
   }
 
   getContributingSources() {
@@ -2167,64 +2234,39 @@ class RTCRtpReceiver {
   }
 
   setStreamIds(streamIds) {
-    this.streamIds = streamIds;
+    this._streams = streamIds.map(id => this._pc._getOrCreateStream(id));
   }
 
-  setRemoteSendBit(sendBit) {
-    this._remoteSetSendBit = sendBit;
+  setRecvBit(recvBit) {
+    this._recvBit = recvBit;
   }
 
   processTrackAdditionsAndRemovals(transceiver,
-                                   {updateStreamFunctions, muteTracks, trackEvents}) {
-    let streamsWithTrack = this.streamIds
-      .map(id => this._pc._getOrCreateStream(id));
+      {removeList, addList, muteTracks, trackEventInits}) {
+    const receiver = this.__DOM_IMPL__;
+    const track = this.track;
+    const streams = this._streams;
+    const streamsAdded = streams.filter(s => !this._oldstreams.includes(s));
+    const streamsRemoved = this._oldstreams.filter(s => !streams.includes(s));
 
-    let streamsWithoutTrack = this._pc.getRemoteStreams()
-      .filter(s => !this.streamIds.includes(s.id));
+    addList.push(...streamsAdded.map(stream => ({stream, track})));
+    removeList.push(...streamsRemoved.map(stream => ({stream, track})));
+    this._oldstreams = this._streams;
 
-    updateStreamFunctions.push(...streamsWithTrack.map(stream => () => {
-      if (!stream.getTracks().includes(this.track)) {
-        stream.addTrack(this.track);
-        // Adding tracks from JS does not result in the stream getting
-        // onaddtrack, so we need to do that here.
-        stream.dispatchEvent(
-            new this._pc._win.MediaStreamTrackEvent(
-              "addtrack", { track: this.track }));
+    let needsTrackEvent = (streamsAdded.length != 0);
+
+    if (this._recvBit != this._oldRecvBit) {
+      this._oldRecvBit = this._recvBit;
+      if (this._recvBit) {
+        // New track, set in case streamsAdded is empty
+        needsTrackEvent = true;
+      } else {
+        muteTracks.push(track);
       }
-    }));
+    }
 
-    updateStreamFunctions.push(...streamsWithoutTrack.map(stream => () => {
-      // Content JS might remove this track from the stream before this function fires (ugh)
-      if (stream.getTracks().includes(this.track)) {
-        stream.removeTrack(this.track);
-        // Removing tracks from JS does not result in the stream getting
-        // onremovetrack, so we need to do that here.
-        stream.dispatchEvent(
-            new this._pc._win.MediaStreamTrackEvent(
-              "removetrack", { track: this.track }));
-      }
-    }));
-
-    if (!this._remoteSetSendBit) {
-      // remote used "recvonly" or "inactive"
-      this._ontrackFired = false;
-      if (!this.track.muted) {
-        muteTracks.push(this.track);
-      }
-    } else if (!this._ontrackFired) {
-      // remote used "sendrecv" or "sendonly", and we haven't fired ontrack
-      let ev = new this._pc._win.RTCTrackEvent("track", {
-        receiver: this.__DOM_IMPL__,
-        track: this.track,
-        streams: streamsWithTrack,
-        transceiver });
-      trackEvents.push(ev);
-      this._ontrackFired = true;
-
-      // Fire legacy event as well for a little bit.
-      ev = new this._pc._win.MediaStreamTrackEvent("addtrack",
-          { track: this.track });
-      trackEvents.push(ev);
+    if (needsTrackEvent) {
+      trackEventInits.push({track, streams, receiver, transceiver});
     }
   }
 }
@@ -2237,7 +2279,7 @@ setupPrototype(RTCRtpReceiver, {
 class RTCRtpTransceiver {
   constructor(pc, transceiverImpl, init, kind, sendTrack) {
     let receiver = pc._win.RTCRtpReceiver._create(
-        pc._win, new RTCRtpReceiver(pc, transceiverImpl, kind));
+        pc._win, new RTCRtpReceiver(pc, transceiverImpl));
     let streams = (init && init.streams) || [];
     let sender = pc._win.RTCRtpSender._create(
         pc._win, new RTCRtpSender(pc, transceiverImpl, this, sendTrack, kind, streams));
@@ -2252,7 +2294,6 @@ class RTCRtpTransceiver {
           stopped: false,
           _direction: direction,
           currentDirection: null,
-          _remoteTrackId: null,
           addTrackMagic: false,
           shouldRemove: false,
           _hasBeenUsedToSend: false,
@@ -2310,18 +2351,6 @@ class RTCRtpTransceiver {
 
   hasBeenUsedToSend() {
     return this._hasBeenUsedToSend;
-  }
-
-  setRemoteTrackId(webrtcTrackId) {
-    this._remoteTrackId = webrtcTrackId;
-  }
-
-  remoteTrackIdIs(webrtcTrackId) {
-    return this._remoteTrackId == webrtcTrackId;
-  }
-
-  getRemoteTrackId() {
-    return this._remoteTrackId;
   }
 
   setAddTrackMagic() {

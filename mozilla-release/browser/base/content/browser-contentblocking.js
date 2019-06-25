@@ -4,6 +4,7 @@
 
 var Fingerprinting = {
   PREF_ENABLED: "privacy.trackingprotection.fingerprinting.enabled",
+  reportBreakageLabel: "fingerprinting",
   telemetryIdentifier: "fp",
 
   strings: {
@@ -116,6 +117,7 @@ var Fingerprinting = {
 
 var Cryptomining = {
   PREF_ENABLED: "privacy.trackingprotection.cryptomining.enabled",
+  reportBreakageLabel: "cryptomining",
   telemetryIdentifier: "cm",
 
   strings: {
@@ -743,7 +745,7 @@ var ThirdPartyCookies = {
 
 var ContentBlocking = {
   // If the user ignores the doorhanger, we stop showing it after some time.
-  MAX_INTROS: 20,
+  MAX_INTROS: Services.prefs.getIntPref("browser.contentblocking.maxIntroCount"),
   PREF_ANIMATIONS_ENABLED: "toolkit.cosmeticAnimations.enabled",
   PREF_REPORT_BREAKAGE_ENABLED: "browser.contentblocking.reportBreakage.enabled",
   PREF_REPORT_BREAKAGE_URL: "browser.contentblocking.reportBreakage.url",
@@ -821,8 +823,12 @@ var ContentBlocking = {
 
     get appMenuTooltip() {
       delete this.appMenuTooltip;
+      if (AppConstants.platform == "win") {
+        return this.appMenuTooltip =
+          gNavigatorBundle.getString("contentBlocking.tooltipWin");
+      }
       return this.appMenuTooltip =
-        gNavigatorBundle.getString("contentBlocking.tooltip");
+        gNavigatorBundle.getString("contentBlocking.tooltipOther");
     },
 
     get activeTooltipText() {
@@ -980,6 +986,8 @@ var ContentBlocking = {
     body += `${ThirdPartyCookies.PREF_ENABLED}: ${Services.prefs.getIntPref(ThirdPartyCookies.PREF_ENABLED)}\n`;
     body += `network.cookie.lifetimePolicy: ${Services.prefs.getIntPref("network.cookie.lifetimePolicy")}\n`;
     body += `privacy.restrict3rdpartystorage.expiration: ${Services.prefs.getIntPref("privacy.restrict3rdpartystorage.expiration")}\n`;
+    body += `${Fingerprinting.PREF_ENABLED}: ${Services.prefs.getBoolPref(Fingerprinting.PREF_ENABLED)}\n`;
+    body += `${Cryptomining.PREF_ENABLED}: ${Services.prefs.getBoolPref(Cryptomining.PREF_ENABLED)}\n`;
 
     let comments = document.getElementById("identity-popup-breakageReportView-collection-comments");
     body += "\n**Comments**\n" + comments.value;
@@ -1009,6 +1017,19 @@ var ContentBlocking = {
         comments.value = "";
       }
     }).catch(Cu.reportError);
+  },
+
+  toggleReportBreakageButton() {
+    // For release (due to the large volume) we only want to receive reports
+    // for breakage that is directly related to third party cookie blocking.
+    if (this.reportBreakageEnabled ||
+        (ThirdPartyCookies.reportBreakageEnabled &&
+         ThirdPartyCookies.activated &&
+         !TrackingProtection.activated)) {
+      this.reportBreakageButton.removeAttribute("hidden");
+    } else {
+      this.reportBreakageButton.setAttribute("hidden", "true");
+    }
   },
 
   showReportBreakageSubview() {
@@ -1047,7 +1068,32 @@ var ContentBlocking = {
     Services.telemetry.getHistogramById("TRACKING_PROTECTION_SHIELD").add(value);
   },
 
+  cryptominersHistogramAdd(value) {
+    Services.telemetry.getHistogramById("CRYPTOMINERS_BLOCKED_COUNT").add(value);
+  },
+
+  fingerprintersHistogramAdd(value) {
+    Services.telemetry.getHistogramById("FINGERPRINTERS_BLOCKED_COUNT").add(value);
+  },
+
+  // This triggers from top level location changes.
+  onLocationChange() {
+    // Reset blocking and exception status so that we can send telemetry
+    this.hadShieldState = false;
+    let baseURI = this._baseURIForChannelClassifier;
+
+    // Don't deal with about:, file: etc.
+    if (!baseURI) {
+      return;
+    }
+    // Add to telemetry per page load as a baseline measurement.
+    this.fingerprintersHistogramAdd("pageLoad");
+    this.cryptominersHistogramAdd("pageLoad");
+    this.shieldHistogramAdd(0);
+  },
+
   onContentBlockingEvent(event, webProgress, isSimulated) {
+    let previousState = gBrowser.securityUI.contentBlockingEvent;
     let baseURI = this._baseURIForChannelClassifier;
 
     // Don't deal with about:, file: etc.
@@ -1097,7 +1143,7 @@ var ContentBlocking = {
           "browser.laterrun.bookkeeping.profileCreationTime", Date.now() / 1000);
         let delayLength = Services.prefs.getIntPref("browser.contentblocking.introDelaySeconds");
         let delayFulfilled = delayLength < (Date.now() / 1000 - installStamp);
-        if (introCount < this.MAX_INTROS && delayFulfilled) {
+        if (introCount < this.MAX_INTROS && !this.anyOtherWindowHasTour() && delayFulfilled) {
           Services.prefs.setIntPref(this.prefIntroCount, ++introCount);
           Services.prefs.savePrefFile(null);
           this.showIntroPanel();
@@ -1116,27 +1162,50 @@ var ContentBlocking = {
     this.iconBox.toggleAttribute("active", anyBlocking);
     this.iconBox.toggleAttribute("hasException", hasException);
 
-    // For release (due to the large volume) we only want to receive reports
-    // for breakage that is directly related to third party cookie blocking.
-    if (this.reportBreakageEnabled ||
-        (ThirdPartyCookies.reportBreakageEnabled &&
-         ThirdPartyCookies.activated &&
-         !TrackingProtection.activated)) {
-      this.reportBreakageButton.removeAttribute("hidden");
-    } else {
-      this.reportBreakageButton.setAttribute("hidden", "true");
-    }
-
     if (hasException) {
       this.iconBox.setAttribute("tooltiptext", this.strings.disabledTooltipText);
-      this.shieldHistogramAdd(1);
+      if (!this.hadShieldState && !isSimulated) {
+        this.hadShieldState = true;
+        this.shieldHistogramAdd(1);
+      }
     } else if (anyBlocking) {
       this.iconBox.setAttribute("tooltiptext", this.strings.activeTooltipText);
-      this.shieldHistogramAdd(2);
+      if (!this.hadShieldState && !isSimulated) {
+        this.hadShieldState = true;
+        this.shieldHistogramAdd(2);
+      }
     } else {
       this.iconBox.removeAttribute("tooltiptext");
-      this.shieldHistogramAdd(0);
     }
+
+    // We report up to one instance of fingerprinting and cryptomining
+    // blocking and/or allowing per page load.
+    let fingerprintingBlocking = Fingerprinting.isBlocking(event) && !Fingerprinting.isBlocking(previousState);
+    let fingerprintingAllowing = Fingerprinting.isAllowing(event) && !Fingerprinting.isAllowing(previousState);
+    let cryptominingBlocking = Cryptomining.isBlocking(event) && !Cryptomining.isBlocking(previousState);
+    let cryptominingAllowing = Cryptomining.isAllowing(event) && !Cryptomining.isAllowing(previousState);
+
+    if (fingerprintingBlocking) {
+      this.fingerprintersHistogramAdd("blocked");
+    } else if (fingerprintingAllowing) {
+      this.fingerprintersHistogramAdd("allowed");
+    }
+
+    if (cryptominingBlocking) {
+      this.cryptominersHistogramAdd("blocked");
+    } else if (cryptominingAllowing) {
+      this.cryptominersHistogramAdd("allowed");
+    }
+  },
+
+  // Check if any existing window has a UItour initiated, both showing and hidden.
+  anyOtherWindowHasTour() {
+    for (let win of BrowserWindowTracker.orderedWindows) {
+      if (win != window && UITour.tourBrowsersByWindow.has(win)) {
+        return true;
+      }
+    }
+    return false;
   },
 
   disableForCurrentPage() {

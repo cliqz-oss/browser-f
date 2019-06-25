@@ -36,6 +36,7 @@ const { DebuggerServer } = require("devtools/server/main");
 const { DebuggerServer: WorkerDebuggerServer } = worker.require("devtools/server/main");
 const { DebuggerClient } = require("devtools/shared/client/debugger-client");
 const ObjectClient = require("devtools/shared/client/object-client");
+const { LongStringFront } = require("devtools/shared/fronts/string");
 const {TargetFactory} = require("devtools/client/framework/target");
 
 const { addDebuggerToGlobal } = ChromeUtils.import("resource://gre/modules/jsdebugger.jsm");
@@ -163,6 +164,17 @@ async function createMainProcessMemoryFront() {
   });
 
   return { client: target.client, memoryFront };
+}
+
+function createLongStringFront(conn, form) {
+  // CAUTION -- do not replicate in the codebase. Instead, use marshalling
+  // This code is simulating how the LongStringFront would be created by protocol.js
+  // We should not use it like this in the codebase, this is done only for testing
+  // purposes until we can return a proper LongStringFront from the server.
+  const front = new LongStringFront(conn, form);
+  front.actorID = form.actor;
+  front.manage(front);
+  return front;
 }
 
 function createTestGlobal(name) {
@@ -323,10 +335,10 @@ var listener = {
       }
 
       // In the world before bug 997440, exceptions were getting lost because of
-      // the arbitrary JSContext being used in nsXPCWrappedJSClass::CallMethod.
+      // the arbitrary JSContext being used in nsXPCWrappedJS::CallMethod.
       // In the new world, the wanderers have returned. However, because of the,
       // currently very-broken, exception reporting machinery in
-      // XPCWrappedJSClass these get reported as errors to the console, even if
+      // nsXPCWrappedJS these get reported as errors to the console, even if
       // there's actually JS on the stack above that will catch them.  If we
       // throw an error here because of them our tests start failing.  So, we'll
       // just dump the message to the logs instead, to make sure the information
@@ -741,38 +753,38 @@ function getFrames(threadClient, first, count) {
 /**
  * Black box the specified source.
  *
- * @param SourceClient sourceClient
+ * @param SourceFront sourceFront
  * @returns Promise
  */
-async function blackBox(sourceClient, range = null) {
-  dumpn("Black boxing source: " + sourceClient.actor);
-  const { error, pausedInSource } = await sourceClient.blackBox(range);
-  Assert.ok(!error, "Should not get an error: " + error);
-  return {error, pausedInSource};
+async function blackBox(sourceFront, range = null) {
+  dumpn("Black boxing source: " + sourceFront.actor);
+  const pausedInSource = await sourceFront.blackBox(range);
+  ok(true, "blackBox didn't throw");
+  return pausedInSource;
 }
 
 /**
  * Stop black boxing the specified source.
  *
- * @param SourceClient sourceClient
+ * @param SourceFront sourceFront
  * @returns Promise
  */
-async function unBlackBox(sourceClient, range = null) {
-  dumpn("Un-black boxing source: " + sourceClient.actor);
-  const {error} = await sourceClient.unblackBox(range);
-  Assert.ok(!error, "Should not get an error: " + error);
+async function unBlackBox(sourceFront, range = null) {
+  dumpn("Un-black boxing source: " + sourceFront.actor);
+  await sourceFront.unblackBox(range);
+  ok(true, "unblackBox didn't throw");
 }
 
 /**
- * Perform a "source" RDP request with the given SourceClient to get the source
+ * Perform a "source" RDP request with the given SourceFront to get the source
  * content and content type.
  *
- * @param SourceClient sourceClient
+ * @param SourceFront sourceFront
  * @returns Promise
  */
-function getSourceContent(sourceClient) {
-  dumpn("Getting source content for " + sourceClient.actor);
-  return sourceClient.source();
+function getSourceContent(sourceFront) {
+  dumpn("Getting source content for " + sourceFront.actor);
+  return sourceFront.source();
 }
 
 /**
@@ -780,7 +792,7 @@ function getSourceContent(sourceClient) {
  *
  * @param ThreadClient threadClient
  * @param string url
- * @returns Promise<SourceClient>
+ * @returns Promise<SourceFront>
  */
 async function getSource(threadClient, url) {
   const source = await getSourceForm(threadClient, url);
@@ -872,8 +884,8 @@ async function setupTestFromUrl(url) {
   loadSubScript(sourceUrl, global);
   const { source } = await promise;
 
-  const sourceClient = threadClient.source(source);
-  return { global, debuggerClient, threadClient, sourceClient };
+  const sourceFront = threadClient.source(source);
+  return { global, debuggerClient, threadClient, sourceFront };
 }
 
 /**

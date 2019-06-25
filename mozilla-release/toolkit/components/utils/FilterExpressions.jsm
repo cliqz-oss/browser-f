@@ -4,6 +4,7 @@
 
 "use strict";
 
+const {Services} = ChromeUtils.import("resource://gre/modules/Services.jsm");
 const {XPCOMUtils} = ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
 ChromeUtils.defineModuleGetter(this, "PreferenceFilters", "resource://gre/modules/components-utils/PreferenceFilters.jsm");
@@ -24,6 +25,8 @@ XPCOMUtils.defineLazyGetter(this, "jexl", () => {
     keys,
     length,
     mapToProperty,
+    regExpMatch,
+    versionCompare,
   });
   jexl.addBinaryOp("intersect", 40, operatorIntersect);
   return jexl;
@@ -83,4 +86,29 @@ function operatorIntersect(listA, listB) {
   }
 
   return listA.filter(item => listB.includes(item));
+}
+
+/**
+ * Matches a string against a regular expression. Returns null if there are
+ * no matches or an Array of matches.
+ * @param {string} str
+ * @param {string} pattern
+ * @param {string} flags
+ * @return {Array|null}
+ */
+function regExpMatch(str, pattern, flags) {
+  const re = new RegExp(pattern, flags);
+  return str.match(re);
+}
+
+
+/**
+ * Compares v1 to v2 and returns 0 if they are equal, a negative number if
+ * v1 < v2 or a positive number if v1 > v2.
+ * @param {string} v1
+ * @param {string} v2
+ * @return {number}
+ */
+function versionCompare(v1, v2) {
+  return Services.vc.compare(v1, v2);
 }

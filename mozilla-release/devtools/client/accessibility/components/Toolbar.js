@@ -5,10 +5,11 @@
 
 // React
 const { createFactory, Component } = require("devtools/client/shared/vendor/react");
-const { div } = require("devtools/client/shared/vendor/react-dom-factories");
+const { div, span } = require("devtools/client/shared/vendor/react-dom-factories");
 const PropTypes = require("devtools/client/shared/vendor/react-prop-types");
 const { L10N } = require("../utils/l10n");
-const Button = createFactory(require("./Button"));
+const Button = createFactory(require("./Button").Button);
+const AccessibilityTreeFilter = createFactory(require("./AccessibilityTreeFilter"));
 
 const { connect } = require("devtools/client/shared/vendor/react-redux");
 const { disable, updateCanBeDisabled } = require("../actions/ui");
@@ -19,6 +20,7 @@ const { openDocLink } = require("devtools/client/shared/link");
 class Toolbar extends Component {
   static get propTypes() {
     return {
+      walker: PropTypes.object.isRequired,
       dispatch: PropTypes.func.isRequired,
       accessibility: PropTypes.object.isRequired,
       canBeDisabled: PropTypes.bool.isRequired,
@@ -65,10 +67,11 @@ class Toolbar extends Component {
   }
 
   render() {
-    const { canBeDisabled } = this.props;
+    const { canBeDisabled, walker } = this.props;
     const { disabling } = this.state;
     const disableButtonStr = disabling ?
       "accessibility.disabling" : "accessibility.disable";
+    const betaID = "beta";
     let title;
     let isDisabled = false;
 
@@ -91,11 +94,23 @@ class Toolbar extends Component {
         busy: disabling,
         title,
       }, L10N.getStr(disableButtonStr)),
-      Button({
-        className: "help",
-        title: L10N.getStr("accessibility.learnMore"),
-        onClick: this.onLearnMoreClick,
-      }))
+        div({
+          role: "separator",
+          className: "devtools-separator",
+        }),
+        // @remove after release 68 (See Bug 1551574)
+        span({
+          className: "beta",
+          role: "presentation",
+          id: betaID,
+        },
+          L10N.getStr("accessibility.beta")),
+        AccessibilityTreeFilter({ walker, describedby: betaID }),
+        Button({
+          className: "help",
+          title: L10N.getStr("accessibility.learnMore"),
+          onClick: this.onLearnMoreClick,
+        }))
     );
   }
 }

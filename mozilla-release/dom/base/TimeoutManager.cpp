@@ -122,7 +122,7 @@ bool TimeoutManager::IsActive() const {
   }
 
   // Check if we're playing audio
-  if (mWindow.AsInner()->IsPlayingAudio()) {
+  if (mWindow.IsPlayingAudio()) {
     return true;
   }
 
@@ -733,11 +733,10 @@ void TimeoutManager::RunTimeout(const TimeStamp& aNow,
 
   // Make sure that the window and the script context don't go away as
   // a result of running timeouts
-  nsCOMPtr<nsIScriptGlobalObject> windowKungFuDeathGrip(&mWindow);
-  // Silence the static analysis error about windowKungFuDeathGrip.  Accessing
-  // members of mWindow here is safe, because the lifetime of TimeoutManager is
-  // the same as the lifetime of the containing nsGlobalWindow.
-  Unused << windowKungFuDeathGrip;
+  RefPtr<nsGlobalWindowInner> window(&mWindow);
+  // Accessing members of mWindow here is safe, because the lifetime of
+  // TimeoutManager is the same as the lifetime of the containing
+  // nsGlobalWindow.
 
   // A native timer has gone off. See which of our timeouts need
   // servicing
@@ -968,8 +967,8 @@ void TimeoutManager::RunTimeout(const TimeStamp& aNow,
         MOZ_ASSERT(timeout->mFiringIndex > mLastFiringIndex);
         mLastFiringIndex = timeout->mFiringIndex;
 #endif
-        // This timeout is good to run
-        bool timeout_was_cleared = mWindow.RunTimeoutHandler(timeout, scx);
+        // This timeout is good to run.
+        bool timeout_was_cleared = window->RunTimeoutHandler(timeout, scx);
 #if MOZ_GECKO_PROFILER
         if (profiler_is_active()) {
           TimeDuration elapsed = now - timeout->SubmitTime();
@@ -1220,7 +1219,7 @@ void TimeoutManager::Resume() {
   // When Suspend() has been called after IsDocumentLoaded(), but the
   // throttle tracking timer never managed to fire, start the timer
   // again.
-  if (mWindow.AsInner()->IsDocumentLoaded() && !mThrottleTimeouts) {
+  if (mWindow.IsDocumentLoaded() && !mThrottleTimeouts) {
     MaybeStartThrottleTimeout();
   }
 
@@ -1321,7 +1320,7 @@ NS_IMPL_ISUPPORTS(ThrottleTimeoutsCallback, nsITimerCallback, nsINamed)
 
 NS_IMETHODIMP
 ThrottleTimeoutsCallback::Notify(nsITimer* aTimer) {
-  mWindow->AsInner()->TimeoutManager().StartThrottlingTimeouts();
+  mWindow->TimeoutManager().StartThrottlingTimeouts();
   mWindow = nullptr;
   return NS_OK;
 }
@@ -1348,16 +1347,16 @@ bool TimeoutManager::BudgetThrottlingEnabled(bool aIsBackground) const {
   }
 
   // Check if there are any active IndexedDB databases
-  if (mWindow.AsInner()->HasActiveIndexedDBDatabases()) {
+  if (mWindow.HasActiveIndexedDBDatabases()) {
     return false;
   }
 
   // Check if we have active PeerConnection
-  if (mWindow.AsInner()->HasActivePeerConnections()) {
+  if (mWindow.HasActivePeerConnections()) {
     return false;
   }
 
-  if (mWindow.AsInner()->HasOpenWebSockets()) {
+  if (mWindow.HasOpenWebSockets()) {
     return false;
   }
 

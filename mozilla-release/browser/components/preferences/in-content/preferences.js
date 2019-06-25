@@ -31,7 +31,7 @@ var gCategoryInits = new Map();
 function init_category_if_required(category) {
   let categoryInfo = gCategoryInits.get(category);
   if (!categoryInfo) {
-    throw "Unknown in-content prefs category! Can't init " + category;
+    throw new Error("Unknown in-content prefs category! Can't init " + category);
   }
   if (categoryInfo.inited) {
     return null;
@@ -45,10 +45,8 @@ function register_module(categoryName, categoryObject) {
     async init() {
       let template = document.getElementById("template-" + categoryName);
       if (template) {
-        // Replace the template element with the nodes from the parsed comment
-        // string.
-        let frag = MozXULElement.parseXULToFragment(template.firstChild.data);
-
+        // Replace the template element with the nodes inside of it.
+        let frag = template.content;
         await document.l10n.translateFragment(frag);
 
         // Actually insert them into the DOM.
@@ -183,6 +181,11 @@ async function gotoPref(aCategory) {
 
   let item;
   if (category != "paneSearchResults") {
+    // Hide second level headers in normal view
+    for (let element of document.querySelectorAll(".search-header")) {
+      element.hidden = true;
+    }
+
     item = categories.querySelector(".category[value=" + category + "]");
     if (!item) {
       category = kDefaultCategoryInternalName;

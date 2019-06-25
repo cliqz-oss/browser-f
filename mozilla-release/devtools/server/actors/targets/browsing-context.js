@@ -28,7 +28,6 @@ var DevToolsUtils = require("devtools/shared/DevToolsUtils");
 var { assert } = DevToolsUtils;
 var { TabSources } = require("devtools/server/actors/utils/TabSources");
 var makeDebugger = require("devtools/server/actors/utils/make-debugger");
-const Debugger = require("Debugger");
 const ReplayDebugger = require("devtools/server/actors/replay/debugger");
 const InspectorUtils = require("InspectorUtils");
 
@@ -236,7 +235,7 @@ const browsingContextTargetPrototype = {
     this.listenForNewDocShells = false;
 
     let canRewind = false;
-    if (Debugger.recordReplayProcessKind() == "Middleman") {
+    if (isReplaying) {
       const replayDebugger = new ReplayDebugger();
       canRewind = replayDebugger.canRewind();
     }
@@ -701,7 +700,7 @@ const browsingContextTargetPrototype = {
   _onDocShellCreated(docShell) {
     // (chrome-)webnavigation-create is fired very early during docshell
     // construction. In new root docshells within child processes, involving
-    // TabChild, this event is from within this call:
+    // BrowserChild, this event is from within this call:
     //   https://hg.mozilla.org/mozilla-central/annotate/74d7fb43bb44/dom/ipc/TabChild.cpp#l912
     // whereas the chromeEventHandler (and most likely other stuff) is set
     // later:
@@ -1193,13 +1192,7 @@ const browsingContextTargetPrototype = {
     }
     const windowUtils = this.window.windowUtils;
 
-    // Events are not suppressed when running in the middleman, as we are in a
-    // different process from the debuggee and may want to process events in
-    // the middleman for e.g. the overlay drawn when rewinding.
-    if (Debugger.recordReplayProcessKind() != "Middleman") {
-      windowUtils.suppressEventHandling(true);
-    }
-
+    windowUtils.suppressEventHandling(true);
     windowUtils.suspendTimeouts();
   },
 
@@ -1213,9 +1206,7 @@ const browsingContextTargetPrototype = {
     }
     const windowUtils = this.window.windowUtils;
     windowUtils.resumeTimeouts();
-    if (Debugger.recordReplayProcessKind() != "Middleman") {
-      windowUtils.suppressEventHandling(false);
-    }
+    windowUtils.suppressEventHandling(false);
   },
 
   _changeTopLevelDocument(window) {
@@ -1531,6 +1522,8 @@ DebuggerProgressListener.prototype = {
       this._targetActor._windowReady(win);
       this._knownWindowIDs.set(getWindowID(win), win);
     }
+
+    docShell.watchedByDevtools = true;
   },
 
   unwatch(docShell) {
@@ -1557,6 +1550,8 @@ DebuggerProgressListener.prototype = {
     for (const win of this._getWindowsInDocShell(docShell)) {
       this._knownWindowIDs.delete(getWindowID(win));
     }
+
+    docShell.watchedByDevtools = false;
   },
 
   _getWindowsInDocShell(docShell) {

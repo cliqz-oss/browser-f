@@ -5,11 +5,13 @@ ChromeUtils.defineModuleGetter(this, "Preferences",
 
 const TP_PREF = "privacy.trackingprotection.enabled";
 const TP_PBM_PREF = "privacy.trackingprotection.pbmode.enabled";
-const TP_LIST_PREF = "urlclassifier.trackingTable";
 const NCB_PREF = "network.cookie.cookieBehavior";
 const CAT_PREF = "browser.contentblocking.category";
 const FP_PREF = "privacy.trackingprotection.fingerprinting.enabled";
 const CM_PREF = "privacy.trackingprotection.cryptomining.enabled";
+const PREF_TEST_NOTIFICATIONS = "browser.safebrowsing.test-notifications.enabled";
+const STRICT_PREF = "browser.contentblocking.features.strict";
+const PRIVACY_PAGE = "about:preferences#privacy";
 
 const {
   EnterprisePolicyTesting,
@@ -17,6 +19,33 @@ const {
 } = ChromeUtils.import("resource://testing-common/EnterprisePolicyTesting.jsm", null);
 
 requestLongerTimeout(2);
+
+add_task(async function testListUpdate() {
+  SpecialPowers.pushPrefEnv({set: [
+    [PREF_TEST_NOTIFICATIONS, true],
+  ]});
+
+  await openPreferencesViaOpenPreferencesAPI("privacy", {leaveOpen: true});
+  let doc = gBrowser.contentDocument;
+
+  let fingerprintersCheckbox = doc.getElementById("contentBlockingFingerprintersCheckbox");
+  let updateObserved = TestUtils.topicObserved("safebrowsing-update-attempt");
+  fingerprintersCheckbox.click();
+  let url = (await updateObserved)[1];
+
+  ok(true, "Has tried to update after the fingerprinting checkbox was toggled");
+  is(url, "http://127.0.0.1:8888/safebrowsing-dummy/update", "Using the correct list url to update");
+
+  let cryptominersCheckbox = doc.getElementById("contentBlockingCryptominersCheckbox");
+  updateObserved = TestUtils.topicObserved("safebrowsing-update-attempt");
+  cryptominersCheckbox.click();
+  url = (await updateObserved)[1];
+
+  ok(true, "Has tried to update after the cryptomining checkbox was toggled");
+  is(url, "http://127.0.0.1:8888/safebrowsing-dummy/update", "Using the correct list url to update");
+
+  gBrowser.removeCurrentTab();
+});
 
 // Tests that the content blocking main category checkboxes have the correct default state.
 add_task(async function testContentBlockingMainCategory() {
@@ -116,7 +145,6 @@ add_task(async function testContentBlockingMainCategory() {
 // Tests that the content blocking "Standard" category radio sets the prefs to their default values.
 add_task(async function testContentBlockingStandardCategory() {
   let prefs = {
-    [TP_LIST_PREF]: null,
     [TP_PREF]: null,
     [TP_PBM_PREF]: null,
     [NCB_PREF]: null,
@@ -125,6 +153,7 @@ add_task(async function testContentBlockingStandardCategory() {
   };
 
   for (let pref in prefs) {
+    Services.prefs.clearUserPref(pref);
     switch (Services.prefs.getPrefType(pref)) {
     case Services.prefs.PREF_BOOL:
       prefs[pref] = Services.prefs.getBoolPref(pref);
@@ -140,12 +169,11 @@ add_task(async function testContentBlockingStandardCategory() {
     }
   }
 
-  Services.prefs.setStringPref(TP_LIST_PREF, "test-track-simple,base-track-digest256,content-track-digest256");
   Services.prefs.setBoolPref(TP_PREF, true);
   Services.prefs.setBoolPref(TP_PBM_PREF, false);
   Services.prefs.setIntPref(NCB_PREF, Ci.nsICookieService.BEHAVIOR_REJECT_TRACKER);
-  Services.prefs.setBoolPref(FP_PREF, true);
-  Services.prefs.setBoolPref(CM_PREF, true);
+  Services.prefs.setBoolPref(FP_PREF, !Services.prefs.getBoolPref(FP_PREF));
+  Services.prefs.setBoolPref(CM_PREF, !Services.prefs.getBoolPref(CM_PREF));
 
   for (let pref in prefs) {
     switch (Services.prefs.getPrefType(pref)) {
@@ -192,7 +220,7 @@ add_task(async function testContentBlockingStrictCategory() {
   Services.prefs.setBoolPref(TP_PREF, false);
   Services.prefs.setBoolPref(TP_PBM_PREF, false);
   Services.prefs.setIntPref(NCB_PREF, Ci.nsICookieService.BEHAVIOR_LIMIT_FOREIGN);
-  Services.prefs.setStringPref(TP_LIST_PREF, "test-track-simple,base-track-digest256,content-track-digest256");
+  let strict_pref = Services.prefs.getStringPref(STRICT_PREF).split(",");
 
   await openPreferencesViaOpenPreferencesAPI("privacy", {leaveOpen: true});
   let doc = gBrowser.contentDocument;
@@ -201,22 +229,62 @@ add_task(async function testContentBlockingStrictCategory() {
   strictRadioOption.click();
 
   // TP prefs are reset async to check for extensions controlling them.
-  await TestUtils.waitForCondition(() => Services.prefs.prefHasUserValue(TP_PREF));
-
-  is(Services.prefs.getStringPref(CAT_PREF), "strict", `${CAT_PREF} has been set to strict`);
-  is(Services.prefs.getBoolPref(TP_PREF), true, `${TP_PREF} has been set to true`);
-  is(Services.prefs.getBoolPref(TP_PBM_PREF), true, `${TP_PBM_PREF} has been set to true`);
-  is(Services.prefs.getIntPref(NCB_PREF), Ci.nsICookieService.BEHAVIOR_REJECT_TRACKER, `${NCB_PREF} has been set to ${Ci.nsICookieService.BEHAVIOR_REJECT_TRACKER}`);
-  ok(!Services.prefs.prefHasUserValue(TP_LIST_PREF), `reset the pref ${TP_LIST_PREF}`);
-  ok(!Services.prefs.prefHasUserValue(FP_PREF), `reset the pref ${FP_PREF}`);
-  ok(!Services.prefs.prefHasUserValue(CM_PREF), `reset the pref ${CM_PREF}`);
+  await TestUtils.waitForCondition(() => Services.prefs.getStringPref(CAT_PREF) == "strict");
+  // Depending on the definition of the STRICT_PREF, the dependant prefs may have been
+  // set to varying values. Ensure they have been set according to this definition.
+  for (let pref of strict_pref) {
+    switch (pref) {
+    case "tp":
+      is(Services.prefs.getBoolPref(TP_PREF), true, `${TP_PREF} has been set to true`);
+      break;
+    case "-tp":
+      is(Services.prefs.getBoolPref(TP_PREF), false, `${TP_PREF} has been set to false`);
+      break;
+    case "tpPrivate":
+      is(Services.prefs.getBoolPref(TP_PBM_PREF), true, `${TP_PBM_PREF} has been set to true`);
+      break;
+    case "-tpPrivate":
+      is(Services.prefs.getBoolPref(TP_PBM_PREF), false, `${TP_PBM_PREF} has been set to false`);
+      break;
+    case "fp":
+      is(Services.prefs.getBoolPref(FP_PREF), true, `${FP_PREF} has been set to true`);
+      break;
+    case "-fp":
+      is(Services.prefs.getBoolPref(FP_PREF), false, `${FP_PREF} has been set to false`);
+      break;
+    case "cm":
+      is(Services.prefs.getBoolPref(CM_PREF), true, `${CM_PREF} has been set to true`);
+      break;
+    case "-cm":
+      is(Services.prefs.getBoolPref(CM_PREF), false, `${CM_PREF} has been set to false`);
+      break;
+    case "cookieBehavior0":
+      is(Services.prefs.getIntPref(NCB_PREF), Ci.nsICookieService.BEHAVIOR_ACCEPT, `${NCB_PREF} has been set to ${Ci.nsICookieService.BEHAVIOR_ACCEPT}`);
+      break;
+    case "cookieBehavior1":
+      is(Services.prefs.getIntPref(NCB_PREF), Ci.nsICookieService.BEHAVIOR_REJECT_FOREIGN, `${NCB_PREF} has been set to ${Ci.nsICookieService.BEHAVIOR_REJECT_FOREIGN}`);
+      break;
+    case "cookieBehavior2":
+      is(Services.prefs.getIntPref(NCB_PREF), Ci.nsICookieService.BEHAVIOR_REJECT, `${NCB_PREF} has been set to ${Ci.nsICookieService.BEHAVIOR_REJECT}`);
+      break;
+    case "cookieBehavior3":
+      is(Services.prefs.getIntPref(NCB_PREF), Ci.nsICookieService.BEHAVIOR_LIMIT_FOREIGN, `${NCB_PREF} has been set to ${Ci.nsICookieService.BEHAVIOR_LIMIT_FOREIGN}`);
+      break;
+    case "cookieBehavior4":
+      is(Services.prefs.getIntPref(NCB_PREF), Ci.nsICookieService.BEHAVIOR_REJECT_TRACKER, `${NCB_PREF} has been set to ${Ci.nsICookieService.BEHAVIOR_REJECT_TRACKER}`);
+      break;
+    default:
+      ok(false, "unknown option was added to the strict pref");
+      break;
+    }
+  }
 
   gBrowser.removeCurrentTab();
 });
 
 // Tests that the content blocking "Custom" category behaves as expected.
 add_task(async function testContentBlockingCustomCategory() {
-  let prefs = [TP_LIST_PREF, TP_PREF, TP_PBM_PREF, NCB_PREF, FP_PREF, CM_PREF];
+  let prefs = [TP_PREF, TP_PBM_PREF, NCB_PREF, FP_PREF, CM_PREF];
 
   await openPreferencesViaOpenPreferencesAPI("privacy", {leaveOpen: true});
   let doc = gBrowser.contentDocument;
@@ -237,20 +305,12 @@ add_task(async function testContentBlockingCustomCategory() {
   is(Services.prefs.getStringPref(CAT_PREF), "custom", `${CAT_PREF} has been set to custom`);
 
   strictRadioOption.click();
-  await TestUtils.waitForCondition(() => Services.prefs.prefHasUserValue(TP_PREF));
-
-  // Changing the TP_PREF should necessarily set CAT_PREF to "custom"
-  Services.prefs.setBoolPref(TP_PREF, false);
-  await TestUtils.waitForCondition(() => !Services.prefs.prefHasUserValue(TP_PREF));
-  is(Services.prefs.getStringPref(CAT_PREF), "custom", `${CAT_PREF} has been set to custom`);
-
-  strictRadioOption.click();
   await TestUtils.waitForCondition(() => Services.prefs.getStringPref(CAT_PREF) == "strict");
 
-  // Changing the FP_PREF and CM_PREF should necessarily set CAT_PREF to "custom"
-  for (let pref of [FP_PREF, CM_PREF]) {
-    Services.prefs.setBoolPref(pref, true);
-    await TestUtils.waitForCondition(() => Services.prefs.prefHasUserValue(pref));
+  // Changing the FP_PREF, CM_PREF, TP_PREF, or TP_PBM_PREF should necessarily set CAT_PREF to "custom"
+  for (let pref of [FP_PREF, CM_PREF, TP_PREF, TP_PBM_PREF]) {
+    Services.prefs.setBoolPref(pref, !Services.prefs.getBoolPref(pref));
+    await TestUtils.waitForCondition(() => Services.prefs.getStringPref(CAT_PREF) == "custom");
     is(Services.prefs.getStringPref(CAT_PREF), "custom", `${CAT_PREF} has been set to custom`);
 
     strictRadioOption.click();
@@ -406,6 +466,12 @@ add_task(async function testPolicyCategorization() {
 
   // Cleanup after this particular test.
   if (Services.policies.status != Ci.nsIEnterprisePolicies.INACTIVE) {
+    await EnterprisePolicyTesting.setupPolicyEngineWithJson({
+      policies: {"Cookies": {
+          "Locked": false,
+        },
+      },
+    });
     await EnterprisePolicyTesting.setupPolicyEngineWithJson("");
   }
   is(Services.policies.status, Ci.nsIEnterprisePolicies.INACTIVE, "Engine is inactive at the end of the test");
@@ -430,5 +496,47 @@ add_task(async function testContentBlockingReloadWarning() {
   ok(!BrowserTestUtils.is_hidden(strictWarning), "The warning in the strict section should be showing");
 
   Services.prefs.setStringPref(CAT_PREF, "standard");
+  gBrowser.removeCurrentTab();
+});
+
+// Tests that changing a content blocking pref does not show the content blocking warning
+// if it is the only tab.
+add_task(async function testContentBlockingReloadWarning() {
+  Services.prefs.setStringPref(CAT_PREF, "standard");
+  await BrowserTestUtils.loadURI(gBrowser.selectedBrowser, PRIVACY_PAGE);
+
+  let reloadWarnings = [...gBrowser.contentDocument.querySelectorAll(".content-blocking-warning.reload-tabs")];
+  ok(reloadWarnings.every((el) => el.hidden), "all of the warnings to reload tabs are initially hidden");
+
+  is(BrowserWindowTracker.windowCount, 1, "There is only one window open");
+  is(gBrowser.tabs.length, 1, "There is only one tab open");
+  Services.prefs.setStringPref(CAT_PREF, "strict");
+
+  ok(reloadWarnings.every((el) => el.hidden), "all of the warnings to reload tabs are still hidden");
+  Services.prefs.setStringPref(CAT_PREF, "standard");
+  await BrowserTestUtils.loadURI(gBrowser.selectedBrowser, "about:newtab");
+});
+
+// Checks that the reload tabs message reloads all tabs except the active tab.
+add_task(async function testReloadTabsMessage() {
+  Services.prefs.setStringPref(CAT_PREF, "strict");
+  let exampleTab = await BrowserTestUtils.openNewForegroundTab(gBrowser, "http://example.com");
+  await openPreferencesViaOpenPreferencesAPI("privacy", {leaveOpen: true});
+  let doc = gBrowser.contentDocument;
+  let standardWarning = doc.querySelector("#contentBlockingOptionStandard .content-blocking-warning.reload-tabs");
+  let standardReloadButton = doc.querySelector("#contentBlockingOptionStandard .reload-tabs-button");
+
+  Services.prefs.setStringPref(CAT_PREF, "standard");
+  ok(!BrowserTestUtils.is_hidden(standardWarning), "The warning in the standard section should be showing");
+
+  standardReloadButton.click();
+  // The example page had a load event
+  await BrowserTestUtils.browserLoaded(exampleTab.linkedBrowser);
+
+  ok(BrowserTestUtils.is_hidden(standardWarning), "The warning in the standard section should have hidden after being clicked");
+
+  // cleanup
+  Services.prefs.setStringPref(CAT_PREF, "standard");
+  gBrowser.removeTab(exampleTab);
   gBrowser.removeCurrentTab();
 });

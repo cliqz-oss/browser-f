@@ -4,15 +4,12 @@ import {ASRouterAdmin} from "content-src/components/ASRouterAdmin/ASRouterAdmin"
 import {ASRouterUISurface} from "../../asrouter/asrouter-content";
 import {ConfirmDialog} from "content-src/components/ConfirmDialog/ConfirmDialog";
 import {connect} from "react-redux";
-import {DarkModeMessage} from "content-src/components/DarkModeMessage/DarkModeMessage";
 import {DiscoveryStreamBase} from "content-src/components/DiscoveryStreamBase/DiscoveryStreamBase";
 import {ErrorBoundary} from "content-src/components/ErrorBoundary/ErrorBoundary";
 import {PrerenderData} from "common/PrerenderData.jsm";
 import React from "react";
 import {Search} from "content-src/components/Search/Search";
 import {Sections} from "content-src/components/Sections/Sections";
-
-let didLogDevtoolsHelpText = false;
 
 const PrefsButton = injectIntl(props => (
   <div className="prefs-button">
@@ -84,30 +81,20 @@ export class _Base extends React.PureComponent {
     const {props} = this;
     const {App, locale, strings} = props;
     const {initialized} = App;
-
-    const prefs = props.Prefs.values;
-    if (prefs["asrouter.devtoolsEnabled"]) {
-      if (window.location.hash.startsWith("#asrouter") ||
-          window.location.hash.startsWith("#devtools")) {
-        return (<div>
-          <ASRouterAdmin />
-          <ASRouterUISurface dispatch={this.props.dispatch} />
-        </div>);
-      } else if (!didLogDevtoolsHelpText) {
-        console.log("Activity Stream devtools enabled. To access visit %cabout:newtab#devtools", "font-weight: bold"); // eslint-disable-line no-console
-        didLogDevtoolsHelpText = true;
-      }
-    }
+    const isDevtoolsEnabled = props.Prefs.values["asrouter.devtoolsEnabled"];
 
     if (!props.isPrerendered && !initialized) {
       return null;
     }
 
     return (<IntlProvider locale={locale} messages={strings}>
-        <ErrorBoundary className="base-content-fallback">
+      <ErrorBoundary className="base-content-fallback">
+        <React.Fragment>
           <BaseContent {...this.props} />
-        </ErrorBoundary>
-      </IntlProvider>);
+          {isDevtoolsEnabled ? <ASRouterAdmin /> : null}
+        </React.Fragment>
+      </ErrorBoundary>
+    </IntlProvider>);
   }
 }
 
@@ -148,8 +135,14 @@ export class BaseContent extends React.PureComponent {
     const prefs = props.Prefs.values;
 
     const shouldBeFixedToTop = PrerenderData.arePrefsValid(name => prefs[name]);
-    const noSectionsEnabled = !prefs["feeds.topsites"] && props.Sections.filter(section => section.enabled).length === 0;
     const isDiscoveryStream = props.DiscoveryStream.config && props.DiscoveryStream.config.enabled;
+    let filteredSections = props.Sections;
+
+    // Filter out highlights for DS
+    if (isDiscoveryStream) {
+      filteredSections = filteredSections.filter(section => section.id !== "highlights");
+    }
+    const noSectionsEnabled = !prefs["feeds.topsites"] && filteredSections.filter(section => section.enabled).length === 0;
     const searchHandoffEnabled = prefs["improvesearch.handoffToAwesomebar"];
 
     const outerClassName = [
@@ -176,7 +169,6 @@ export class BaseContent extends React.PureComponent {
             <div className={`body-wrapper${(initialized ? " on" : "")}`}>
               {isDiscoveryStream ? (
                 <ErrorBoundary className="borderless-error">
-                  {prefs.darkModeMessage && <DarkModeMessage />}
                   <DiscoveryStreamBase />
                 </ErrorBoundary>) : <Sections />}
               <PrefsButton onClick={this.openPreferences} />

@@ -87,8 +87,8 @@ class ScriptedOnStepHandler;
 class ScriptedOnPopHandler;
 class WasmInstanceObject;
 
-typedef HashSet<ReadBarrieredGlobalObject,
-                MovableCellHasher<ReadBarrieredGlobalObject>, ZoneAllocPolicy>
+typedef HashSet<WeakHeapPtrGlobalObject,
+                MovableCellHasher<WeakHeapPtrGlobalObject>, ZoneAllocPolicy>
     WeakGlobalObjectSet;
 
 #ifdef DEBUG
@@ -136,14 +136,13 @@ class DebuggerWeakMap
                   ZoneAllocPolicy>
       CountMap;
 
-  CountMap zoneCounts;
   JS::Compartment* compartment;
 
  public:
   typedef WeakMap<Key, Value> Base;
 
   explicit DebuggerWeakMap(JSContext* cx)
-      : Base(cx), zoneCounts(cx->zone()), compartment(cx->compartment()) {}
+      : Base(cx), compartment(cx->compartment()) {}
 
  public:
   // Expose those parts of HashMap public interface that are used by Debugger
@@ -159,6 +158,7 @@ class DebuggerWeakMap
   // Expose WeakMap public interface.
 
   using Base::all;
+  using Base::has;
   using Base::lookup;
   using Base::lookupForAdd;
   using Base::remove;
@@ -171,25 +171,8 @@ class DebuggerWeakMap
     CheckDebuggeeThing(k, InvisibleKeysOk);
 #endif
     MOZ_ASSERT(!Base::has(k));
-    if (!incZoneCount(k->zone())) {
-      return false;
-    }
     bool ok = Base::relookupOrAdd(p, k, v);
-    if (!ok) {
-      decZoneCount(k->zone());
-    }
     return ok;
-  }
-
-  template <typename KeyInput>
-  bool has(const KeyInput& k) const {
-    return !!this->lookup(k);
-  }
-
-  void remove(const Lookup& l) {
-    MOZ_ASSERT(Base::has(l));
-    Base::remove(l);
-    decZoneCount(l->zone());
   }
 
   // Remove entries whose keys satisfy the given predicate.
@@ -198,7 +181,6 @@ class DebuggerWeakMap
     for (Enum e(*static_cast<Base*>(this)); !e.empty(); e.popFront()) {
       JSObject* key = e.front().key();
       if (test(key)) {
-        decZoneCount(key->zoneFromAnyThread());
         e.removeFront();
       }
     }
@@ -218,46 +200,7 @@ class DebuggerWeakMap
     }
   }
 
-  bool hasKeyInZone(JS::Zone* zone) {
-    CountMap::Ptr p = zoneCounts.lookup(zone);
-    MOZ_ASSERT_IF(p.found(), p->value() > 0);
-    return p.found();
-  }
-
  private:
-  /* Override sweep method to also update our edge cache. */
-  void sweep() override {
-    MOZ_ASSERT(CurrentThreadIsPerformingGC());
-    for (Enum e(*static_cast<Base*>(this)); !e.empty(); e.popFront()) {
-      if (gc::IsAboutToBeFinalized(&e.front().mutableKey())) {
-        decZoneCount(e.front().key()->zoneFromAnyThread());
-        e.removeFront();
-      }
-    }
-#ifdef DEBUG
-    Base::assertEntriesNotAboutToBeFinalized();
-#endif
-  }
-
-  MOZ_MUST_USE bool incZoneCount(JS::Zone* zone) {
-    CountMap::AddPtr p = zoneCounts.lookupForAdd(zone);
-    if (!p && !zoneCounts.add(p, zone, 0)) {
-      return false;  // OOM'd while adding
-    }
-    ++p->value();
-    return true;
-  }
-
-  void decZoneCount(JS::Zone* zone) {
-    CountMap::Ptr p = zoneCounts.lookup(zone);
-    MOZ_ASSERT(p);
-    MOZ_ASSERT(p->value() > 0);
-    --p->value();
-    if (p->value() == 0) {
-      zoneCounts.remove(zone);
-    }
-  }
-
 #ifdef JS_GC_ZEAL
   // Let the weak map marking verifier know that this map can
   // contain keys in other zones.
@@ -339,7 +282,7 @@ class Debugger : private mozilla::LinkedListElement<Debugger> {
   friend bool(::JS_DefineDebuggerObject)(JSContext* cx, JS::HandleObject obj);
   friend bool(::JS::dbg::IsDebugger)(JSObject&);
   friend bool(::JS::dbg::GetDebuggeeGlobals)(JSContext*, JSObject&,
-                                             AutoObjectVector&);
+                                             MutableHandleObjectVector);
   friend bool JS::dbg::FireOnGarbageCollectionHookRequired(JSContext* cx);
   friend bool JS::dbg::FireOnGarbageCollectionHook(
       JSContext* cx, JS::dbg::GarbageCollectionEvent::Ptr&& data);
@@ -438,7 +381,7 @@ class Debugger : private mozilla::LinkedListElement<Debugger> {
     }
   };
 
-  // Barrier methods so we can have ReadBarriered<Debugger*>.
+  // Barrier methods so we can have WeakHeapPtr<Debugger*>.
   static void readBarrier(Debugger* dbg) {
     InternalBarrierMethods<JSObject*>::readBarrier(dbg->object);
   }
@@ -818,7 +761,7 @@ class Debugger : private mozilla::LinkedListElement<Debugger> {
 
  public:
   static MOZ_MUST_USE bool ensureExecutionObservabilityOfOsrFrame(
-      JSContext* cx, InterpreterFrame* frame);
+      JSContext* cx, AbstractFramePtr osrSourceFrame);
 
   // Public for DebuggerScript_setBreakpoint.
   static MOZ_MUST_USE bool ensureExecutionObservabilityOfScript(
@@ -991,7 +934,7 @@ class Debugger : private mozilla::LinkedListElement<Debugger> {
   static void traceAllForMovingGC(JSTracer* trc);
   static void sweepAll(FreeOp* fop);
   static void detachAllDebuggersFromGlobal(FreeOp* fop, GlobalObject* global);
-  static MOZ_MUST_USE bool findSweepGroupEdges(JS::Zone* zone);
+  static MOZ_MUST_USE bool findSweepGroupEdges(JSRuntime* rt);
 #ifdef DEBUG
   static bool isDebuggerCrossCompartmentEdge(JSObject* obj,
                                              const js::gc::Cell* cell);
@@ -1020,7 +963,7 @@ class Debugger : private mozilla::LinkedListElement<Debugger> {
    * Unfortunately, the interpreter and the baseline JIT arrange for this to
    * be called in different ways. The interpreter calls it from JSOP_RESUME,
    * immediately after pushing the resumed frame; the JIT calls it from
-   * JSOP_DEBUGAFTERYIELD, just after the generator resumes. The difference
+   * JSOP_AFTERYIELD, just after the generator resumes. The difference
    * should not be user-visible.
    */
   static inline ResumeMode onResumeFrame(JSContext* cx, AbstractFramePtr frame);
@@ -1207,20 +1150,23 @@ class Debugger : private mozilla::LinkedListElement<Debugger> {
    * standard SpiderMonkey call state: a boolean success value |ok|, a return
    * value |rv|, and a context |cx| that may or may not have an exception set.
    * If an exception was pending on |cx|, it is cleared (and |ok| is asserted
-   * to be false).
+   * to be false). On exceptional returns, exnStack will be set to any stack
+   * associated with the original throw, if available.
    */
   static void resultToCompletion(JSContext* cx, bool ok, const Value& rv,
                                  ResumeMode* resumeMode,
-                                 MutableHandleValue value);
+                                 MutableHandleValue value,
+                                 MutableHandleSavedFrame exnStack);
 
   /*
    * Set |*result| to a JavaScript completion value corresponding to
    * |resumeMode| and |value|. |value| should be the return value or exception
-   * value, not wrapped as a debuggee value. |cx| must be in the debugger
-   * compartment.
+   * value, not wrapped as a debuggee value. When throwing an exception,
+   * |exnStack| may be set to the stack when the value was thrown. |cx| must be
+   * in the debugger compartment.
    */
   MOZ_MUST_USE bool newCompletionValue(JSContext* cx, ResumeMode resumeMode,
-                                       const Value& value,
+                                       const Value& value, SavedFrame* exnStack,
                                        MutableHandleValue result);
 
   /*
@@ -1468,7 +1414,8 @@ struct OnPopHandler : Handler {
    * specifying how execution should continue.
    */
   virtual bool onPop(JSContext* cx, HandleDebuggerFrame frame,
-                     ResumeMode& resumeMode, MutableHandleValue vp) = 0;
+                     ResumeMode& resumeMode, MutableHandleValue vp,
+                     HandleSavedFrame exnStack) = 0;
 };
 
 class ScriptedOnPopHandler final : public OnPopHandler {
@@ -1478,7 +1425,8 @@ class ScriptedOnPopHandler final : public OnPopHandler {
   virtual void drop() override;
   virtual void trace(JSTracer* tracer) override;
   virtual bool onPop(JSContext* cx, HandleDebuggerFrame frame,
-                     ResumeMode& resumeMode, MutableHandleValue vp) override;
+                     ResumeMode& resumeMode, MutableHandleValue vp,
+                     HandleSavedFrame exnStack) override;
 
  private:
   HeapPtr<JSObject*> object_;
@@ -1492,13 +1440,23 @@ class DebuggerFrame : public NativeObject {
  public:
   static const Class class_;
 
+  enum {
+    OWNER_SLOT = 0,
+    ARGUMENTS_SLOT,
+    ONSTEP_HANDLER_SLOT,
+    ONPOP_HANDLER_SLOT,
+    RESERVED_SLOTS,
+  };
+
+  static void trace(JSTracer* trc, JSObject* obj);
+
   static NativeObject* initClass(JSContext* cx, HandleObject dbgCtor,
                                  Handle<GlobalObject*> global);
   static DebuggerFrame* create(JSContext* cx, HandleObject proto,
                                const FrameIter& iter,
                                HandleNativeObject debugger);
-  void freeFrameIterData(FreeOp* fop);
 
+  static MOZ_MUST_USE bool getScript(JSContext* cx, unsigned argc, Value* vp);
   static MOZ_MUST_USE bool getArguments(JSContext* cx,
                                         HandleDebuggerFrame frame,
                                         MutableHandleDebuggerArguments result);
@@ -1529,7 +1487,14 @@ class DebuggerFrame : public NativeObject {
                                 HandleObject bindings,
                                 const EvalOptions& options,
                                 ResumeMode& resumeMode,
-                                MutableHandleValue value);
+                                MutableHandleValue value,
+                                MutableHandleSavedFrame exnStack);
+
+  MOZ_MUST_USE bool requireLive(JSContext* cx);
+  static MOZ_MUST_USE DebuggerFrame* checkThis(JSContext* cx,
+                                               const CallArgs& args,
+                                               const char* fnname,
+                                               bool checkLive);
 
   bool isLive() const;
   OnStepHandler* onStepHandler() const;
@@ -1549,6 +1514,8 @@ class DebuggerFrame : public NativeObject {
 
   static const JSPropertySpec properties_[];
   static const JSFunctionSpec methods_[];
+
+  static void finalize(FreeOp* fop, JSObject* obj);
 
   static AbstractFramePtr getReferent(HandleDebuggerFrame frame);
   static MOZ_MUST_USE bool getFrameIter(JSContext* cx,
@@ -1592,6 +1559,9 @@ class DebuggerFrame : public NativeObject {
 
  public:
   FrameIter::Data* frameIterData() const;
+  void freeFrameIterData(FreeOp* fop);
+  void maybeDecrementFrameScriptStepModeCount(FreeOp* fop,
+                                              AbstractFramePtr frame);
 };
 
 class DebuggerObject : public NativeObject {
@@ -1694,13 +1664,11 @@ class DebuggerObject : public NativeObject {
                                 MutableHandleValue result);
   static MOZ_MUST_USE bool forceLexicalInitializationByName(
       JSContext* cx, HandleDebuggerObject object, HandleId id, bool& result);
-  static MOZ_MUST_USE bool executeInGlobal(JSContext* cx,
-                                           HandleDebuggerObject object,
-                                           mozilla::Range<const char16_t> chars,
-                                           HandleObject bindings,
-                                           const EvalOptions& options,
-                                           ResumeMode& resumeMode,
-                                           MutableHandleValue value);
+  static MOZ_MUST_USE bool executeInGlobal(
+      JSContext* cx, HandleDebuggerObject object,
+      mozilla::Range<const char16_t> chars, HandleObject bindings,
+      const EvalOptions& options, ResumeMode& resumeMode,
+      MutableHandleValue value, MutableHandleSavedFrame exnStack);
   static MOZ_MUST_USE bool makeDebuggeeValue(JSContext* cx,
                                              HandleDebuggerObject object,
                                              HandleValue value,
@@ -1906,14 +1874,14 @@ class BreakpointSite {
 
  protected:
   virtual void recompile(FreeOp* fop) = 0;
-  inline bool isEnabled() const { return enabledCount > 0; }
+  bool isEnabled() const { return enabledCount > 0; }
 
  public:
   BreakpointSite(Type type);
   Breakpoint* firstBreakpoint() const;
   virtual ~BreakpointSite() {}
   bool hasBreakpoint(Breakpoint* bp);
-  inline Type type() const { return type_; }
+  Type type() const { return type_; }
 
   void inc(FreeOp* fop);
   void dec(FreeOp* fop);
@@ -1951,7 +1919,10 @@ class Breakpoint {
   BreakpointSite* const site;
 
  private:
-  /* |handler| is marked unconditionally during minor GC. */
+  /*
+   * |handler| is marked unconditionally during minor GC so a post barrier is
+   * not required.
+   */
   js::PreBarrieredObject handler;
 
   /**
@@ -1969,7 +1940,7 @@ class Breakpoint {
 
   Breakpoint* nextInDebugger();
   Breakpoint* nextInSite();
-  const PreBarrieredObject& getHandler() const { return handler; }
+  JSObject* getHandler() const { return handler; }
   PreBarrieredObject& getHandlerRef() { return handler; }
 
   inline WasmBreakpoint* asWasm();
@@ -2057,7 +2028,7 @@ bool Debugger::observesNewGlobalObject() const {
 }
 
 bool Debugger::observesGlobal(GlobalObject* global) const {
-  ReadBarriered<GlobalObject*> debuggee(global);
+  WeakHeapPtr<GlobalObject*> debuggee(global);
   return debuggees.has(debuggee);
 }
 

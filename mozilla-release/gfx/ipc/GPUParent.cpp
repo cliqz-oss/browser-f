@@ -52,6 +52,8 @@
 #include "skia/include/core/SkGraphics.h"
 #if defined(XP_WIN)
 #  include "mozilla/gfx/DeviceManagerDx.h"
+#  include "mozilla/widget/WinCompositorWindowThread.h"
+#  include "mozilla/WindowsVersion.h"
 #  include <process.h>
 #  include <dwrite.h>
 #endif
@@ -62,6 +64,7 @@
 #ifdef MOZ_GECKO_PROFILER
 #  include "ChildProfilerController.h"
 #endif
+#include "nsAppRunner.h"
 
 namespace mozilla {
 namespace gfx {
@@ -222,7 +225,16 @@ mozilla::ipc::IPCResult GPUParent::RecvInit(
 #endif
 
 #if defined(MOZ_WIDGET_GTK)
-  char* display_name = PR_GetEnv("DISPLAY");
+  char* display_name = PR_GetEnv("MOZ_GDK_DISPLAY");
+  if (!display_name) {
+    bool waylandDisabled = true;
+#  ifdef MOZ_WAYLAND
+    waylandDisabled = IsWaylandDisabled();
+#  endif
+    if (waylandDisabled) {
+      display_name = PR_GetEnv("DISPLAY");
+    }
+  }
   if (display_name) {
     int argc = 3;
     char option_name[] = "--display";
@@ -252,6 +264,15 @@ mozilla::ipc::IPCResult GPUParent::RecvInit(
     wr::RenderThread::Start();
     image::ImageMemoryReporter::InitForWebRender();
   }
+#ifdef XP_WIN
+  else {
+    if (gfxPrefs::Direct3D11UseDoubleBuffering() && IsWin10OrLater()) {
+      // This is needed to avoid freezing the window on a device crash on double
+      // buffering, see bug 1549674.
+      widget::WinCompositorWindowThread::Start();
+    }
+  }
+#endif
 
   VRManager::ManagerInit();
   // Send a message to the UI process that we're done.
@@ -266,7 +287,7 @@ mozilla::ipc::IPCResult GPUParent::RecvInit(
 
 mozilla::ipc::IPCResult GPUParent::RecvInitCompositorManager(
     Endpoint<PCompositorManagerParent>&& aEndpoint) {
-  CompositorManagerParent::Create(std::move(aEndpoint));
+  CompositorManagerParent::Create(std::move(aEndpoint), /* aIsRoot */ true);
   return IPC_OK();
 }
 
@@ -321,7 +342,7 @@ mozilla::ipc::IPCResult GPUParent::RecvUpdateVar(const GfxVarUpdate& aUpdate) {
   return IPC_OK();
 }
 
-static void CopyFeatureChange(Feature aFeature, FeatureChange* aOut) {
+static void CopyFeatureChange(Feature aFeature, Maybe<FeatureFailure>* aOut) {
   FeatureState& feature = gfxConfig::GetFeature(aFeature);
   if (feature.DisabledByDefault() || feature.IsEnabled()) {
     // No change:
@@ -330,7 +351,7 @@ static void CopyFeatureChange(Feature aFeature, FeatureChange* aOut) {
     //   - Enabled means we were told to use this feature, and we didn't
     //   discover anything
     //     that would prevent us from doing so.
-    *aOut = null_t();
+    *aOut = Nothing();
     return;
   }
 
@@ -339,7 +360,8 @@ static void CopyFeatureChange(Feature aFeature, FeatureChange* aOut) {
   nsCString message;
   message.AssignASCII(feature.GetFailureMessage());
 
-  *aOut = FeatureFailure(feature.GetValue(), message, feature.GetFailureId());
+  *aOut =
+      Some(FeatureFailure(feature.GetValue(), message, feature.GetFailureId()));
 }
 
 mozilla::ipc::IPCResult GPUParent::RecvGetDeviceStatus(GPUDeviceData* aOut) {
@@ -351,10 +373,10 @@ mozilla::ipc::IPCResult GPUParent::RecvGetDeviceStatus(GPUDeviceData* aOut) {
   if (DeviceManagerDx* dm = DeviceManagerDx::Get()) {
     D3D11DeviceStatus deviceStatus;
     dm->ExportDeviceInfo(&deviceStatus);
-    aOut->gpuDevice() = deviceStatus;
+    aOut->gpuDevice() = Some(deviceStatus);
   }
 #else
-  aOut->gpuDevice() = null_t();
+  aOut->gpuDevice() = Nothing();
 #endif
 
   return IPC_OK();
@@ -376,7 +398,7 @@ mozilla::ipc::IPCResult GPUParent::RecvSimulateDeviceReset(
 
 mozilla::ipc::IPCResult GPUParent::RecvNewContentCompositorManager(
     Endpoint<PCompositorManagerParent>&& aEndpoint) {
-  CompositorManagerParent::Create(std::move(aEndpoint));
+  CompositorManagerParent::Create(std::move(aEndpoint), /* aIsRoot */ false);
   return IPC_OK();
 }
 
@@ -500,6 +522,11 @@ void GPUParent::ActorDestroy(ActorDestroyReason aWhy) {
   if (wr::RenderThread::Get()) {
     wr::RenderThread::ShutDown();
   }
+#ifdef XP_WIN
+  else if (gfxPrefs::Direct3D11UseDoubleBuffering() && IsWin10OrLater()) {
+    widget::WinCompositorWindowThread::ShutDown();
+  }
+#endif
 
   image::ImageMemoryReporter::ShutdownForWebRender();
 

@@ -7,6 +7,7 @@
 #include "gc/Allocator.h"
 
 #include "mozilla/DebugOnly.h"
+#include "mozilla/TimeStamp.h"
 
 #include "gc/GCInternals.h"
 #include "gc/GCTrace.h"
@@ -21,6 +22,9 @@
 #include "gc/Heap-inl.h"
 #include "gc/PrivateIterators-inl.h"
 #include "vm/JSObject-inl.h"
+
+using mozilla::TimeDuration;
+using mozilla::TimeStamp;
 
 using namespace js;
 using namespace gc;
@@ -268,19 +272,16 @@ T* GCRuntime::tryNewTenuredThing(JSContext* cx, AllocKind kind,
     // chunks available it may also allocate new memory directly.
     t = reinterpret_cast<T*>(refillFreeListFromAnyThread(cx, kind));
 
-    if (MOZ_UNLIKELY(!t && allowGC)) {
-      if (!cx->helperThread()) {
-        // We have no memory available for a new chunk; perform an
-        // all-compartments, non-incremental, shrinking GC and wait for
-        // sweeping to finish.
-        JS::PrepareForFullGC(cx);
-        cx->runtime()->gc.gc(GC_SHRINK, JS::GCReason::LAST_DITCH);
-        cx->runtime()->gc.waitBackgroundSweepOrAllocEnd();
-
+    if (MOZ_UNLIKELY(!t)) {
+      if (allowGC) {
+        cx->runtime()->gc.attemptLastDitchGC(cx);
         t = tryNewTenuredThing<T, NoGC>(cx, kind, thingSize);
       }
       if (!t) {
-        ReportOutOfMemory(cx);
+        if (allowGC) {
+          ReportOutOfMemory(cx);
+        }
+        return nullptr;
       }
     }
   }
@@ -292,6 +293,28 @@ T* GCRuntime::tryNewTenuredThing(JSContext* cx, AllocKind kind,
   // to count it.
   cx->noteTenuredAlloc();
   return t;
+}
+
+void GCRuntime::attemptLastDitchGC(JSContext* cx) {
+  // Either there was no memory available for a new chunk or the heap hit its
+  // size limit. Try to perform an all-compartments, non-incremental, shrinking
+  // GC and wait for it to finish.
+
+  if (cx->helperThread()) {
+    return;
+  }
+
+  if (!lastLastDitchTime.IsNull() &&
+      TimeStamp::Now() - lastLastDitchTime <= tunables.minLastDitchGCPeriod()) {
+    return;
+  }
+
+  JS::PrepareForFullGC(cx);
+  gc(GC_SHRINK, JS::GCReason::LAST_DITCH);
+  waitBackgroundAllocEnd();
+  waitBackgroundFreeEnd();
+
+  lastLastDitchTime = mozilla::TimeStamp::Now();
 }
 
 template <AllowGC allowGC>
@@ -347,7 +370,7 @@ bool GCRuntime::gcIfNeededAtAllocation(JSContext* cx) {
   // an incremental GC, we're growing faster than we're GCing, so stop
   // the world and do a full, non-incremental GC right now, if possible.
   if (isIncrementalGCInProgress() &&
-      cx->zone()->zoneSize.gcBytes() > cx->zone()->threshold.gcTriggerBytes()) {
+      cx->zone()->totalBytes() > cx->zone()->threshold.gcTriggerBytes()) {
     PrepareZoneForGC(cx->zone());
     gc(GC_NORMAL, JS::GCReason::INCREMENTAL_TOO_SLOW);
   }
@@ -577,7 +600,7 @@ Arena* GCRuntime::allocateArena(Chunk* chunk, Zone* zone, AllocKind thingKind,
 
   // Trigger an incremental slice if needed.
   if (checkThresholds != ShouldCheckThresholds::DontCheckThresholds) {
-    maybeAllocTriggerZoneGC(zone, lock);
+    maybeAllocTriggerZoneGC(zone);
   }
 
   return arena;

@@ -35,7 +35,7 @@ class RemoteObjectProxyBase : public js::BaseProxyHandler,
       JSContext* aCx, JS::Handle<JSObject*> aProxy, JS::Handle<jsid> aId,
       JS::MutableHandle<JS::PropertyDescriptor> aDesc) const override;
   bool ownPropertyKeys(JSContext* aCx, JS::Handle<JSObject*> aProxy,
-                       JS::AutoIdVector& aProps) const override;
+                       JS::MutableHandleVector<jsid> aProps) const override;
   bool defineProperty(JSContext* aCx, JS::Handle<JSObject*> aProxy,
                       JS::Handle<jsid> aId,
                       JS::Handle<JS::PropertyDescriptor> aDesc,
@@ -67,9 +67,9 @@ class RemoteObjectProxyBase : public js::BaseProxyHandler,
   // SpiderMonkey extensions
   bool hasOwn(JSContext* aCx, JS::Handle<JSObject*> aProxy,
               JS::Handle<jsid> aId, bool* aBp) const override;
-  bool getOwnEnumerablePropertyKeys(JSContext* aCx,
-                                    JS::Handle<JSObject*> aProxy,
-                                    JS::AutoIdVector& aProps) const override;
+  bool getOwnEnumerablePropertyKeys(
+      JSContext* aCx, JS::Handle<JSObject*> aProxy,
+      JS::MutableHandleVector<jsid> aProps) const override;
   const char* className(JSContext* aCx,
                         JS::Handle<JSObject*> aProxy) const final;
 

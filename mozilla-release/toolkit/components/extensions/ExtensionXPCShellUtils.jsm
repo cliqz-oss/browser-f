@@ -94,6 +94,8 @@ function promiseBrowserLoaded(browser, url, redirectUrl) {
       QueryInterface: ChromeUtils.generateQI([Ci.nsISupportsWeakReference, Ci.nsIWebProgressListener]),
 
       onStateChange(webProgress, request, stateFlags, statusCode) {
+        request.QueryInterface(Ci.nsIChannel);
+
         let requestUrl = request.originalURI ? request.originalURI.spec : webProgress.DOMWindow.location.href;
         if (webProgress.isTopLevel &&
             (requestUrl === url || requestUrl === redirectUrl) &&
@@ -114,10 +116,11 @@ function promiseBrowserLoaded(browser, url, redirectUrl) {
 }
 
 class ContentPage {
-  constructor(remote = REMOTE_CONTENT_SCRIPTS, extension = null, privateBrowsing = false) {
+  constructor(remote = REMOTE_CONTENT_SCRIPTS, extension = null, privateBrowsing = false, userContextId = undefined) {
     this.remote = remote;
     this.extension = extension;
     this.privateBrowsing = privateBrowsing;
+    this.userContextId = userContextId;
 
     this.browserReady = this._initBrowser();
   }
@@ -151,6 +154,9 @@ class ContentPage {
     let browser = chromeDoc.createElement("browser");
     browser.setAttribute("type", "content");
     browser.setAttribute("disableglobalhistory", "true");
+    if (this.userContextId) {
+      browser.setAttribute("usercontextid", this.userContextId);
+    }
 
     if (this.extension && this.extension.remote) {
       this.remote = true;
@@ -780,13 +786,8 @@ var ExtensionTestUtils = {
   addonManagerStarted: false,
 
   mockAppInfo() {
-    const {updateAppInfo} = ChromeUtils.import("resource://testing-common/AppInfo.jsm");
-    updateAppInfo({
-      ID: "xpcshell@tests.mozilla.org",
-      name: "XPCShell",
-      version: "48",
-      platformVersion: "48",
-    });
+    AddonTestUtils.createAppInfo("xpcshell@tests.mozilla.org",
+                                 "XPCShell", "48", "48");
   },
 
   startAddonManager() {
@@ -796,9 +797,7 @@ var ExtensionTestUtils = {
     this.addonManagerStarted = true;
     this.mockAppInfo();
 
-    let manager = Cc["@mozilla.org/addons/integration;1"].getService(Ci.nsIObserver)
-                                                         .QueryInterface(Ci.nsITimerCallback);
-    manager.observe(null, "addons-startup", null);
+    return AddonTestUtils.promiseStartupManager();
   },
 
   loadExtension(data) {
@@ -865,10 +864,10 @@ var ExtensionTestUtils = {
    *
    * @returns {ContentPage}
    */
-  loadContentPage(url, {extension = undefined, remote = undefined, redirectUrl = undefined, privateBrowsing = false} = {}) {
+  loadContentPage(url, {extension = undefined, remote = undefined, redirectUrl = undefined, privateBrowsing = false, userContextId = undefined} = {}) {
     ContentTask.setTestScope(this.currentScope);
 
-    let contentPage = new ContentPage(remote, extension && extension.extension, privateBrowsing);
+    let contentPage = new ContentPage(remote, extension && extension.extension, privateBrowsing, userContextId);
 
     return contentPage.loadURL(url, redirectUrl).then(() => {
       return contentPage;

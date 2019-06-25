@@ -20,6 +20,11 @@ XPCOMUtils.defineLazyModuleGetters(this, {
   NetUtil: "resource://gre/modules/NetUtil.jsm",
 });
 
+XPCOMUtils.defineLazyGetter(this, "ReferrerInfo", () =>
+  Components.Constructor("@mozilla.org/referrer-info;1",
+                         "nsIReferrerInfo",
+                         "init"));
+
 var gContextMenuContentData = null;
 
 function setContextMenuContentData(data) {
@@ -45,9 +50,6 @@ function openContextMenu(aMessage) {
   let documentURIObject = makeURI(data.docLocation,
                                   data.charSet,
                                   makeURI(data.baseURI));
-  let ReferrerInfo = Components.Constructor("@mozilla.org/referrer-info;1",
-                                        "nsIReferrerInfo",
-                                        "init");
   let referrerInfo = new ReferrerInfo(
     data.referrerPolicy,
     !data.context.linkHasNoReferrer,
@@ -215,6 +217,7 @@ nsContextMenu.prototype = {
     this.onCompletedImage    = context.onCompletedImage;
     this.onCTPPlugin         = context.onCTPPlugin;
     this.onDRMMedia          = context.onDRMMedia;
+    this.onPiPVideo          = context.onPiPVideo;
     this.onEditable          = context.onEditable;
     this.onImage             = context.onImage;
     this.onKeywordField      = context.onKeywordField;
@@ -678,7 +681,7 @@ nsContextMenu.prototype = {
     this.showItem("context-media-showcontrols", onMedia && !this.target.controls);
     this.showItem("context-media-hidecontrols", this.target.controls && (this.onVideo || (this.onAudio && !this.inSyntheticDoc)));
     this.showItem("context-video-fullscreen", this.onVideo && !this.target.ownerDocument.fullscreen);
-    if (AppConstants.NIGHTLY_BUILD) {
+    {
       let shouldDisplay = Services.prefs.getBoolPref("media.videocontrols.picture-in-picture.enabled") &&
                           this.onVideo &&
                           !this.target.ownerDocument.fullscreen;
@@ -713,6 +716,9 @@ nsContextMenu.prototype = {
         let canSaveSnapshot = !this.onDRMMedia && this.target.readyState >= this.target.HAVE_CURRENT_DATA;
         this.setItemAttr("context-video-saveimage", "disabled", !canSaveSnapshot);
         this.setItemAttr("context-video-fullscreen", "disabled", hasError);
+        this.setItemAttr("context-video-pictureinpicture", "checked", this.onPiPVideo);
+        this.setItemAttr("context-video-pictureinpicture", "disabled",
+                         !this.onPiPVideo && hasError);
       }
     }
     this.showItem("context-media-sep-commands", onMedia);
@@ -775,7 +781,10 @@ nsContextMenu.prototype = {
   },
 
   openPasswordManager() {
-    LoginHelper.openPasswordManager(window, gContextMenuContentData.documentURIObject.host);
+    LoginHelper.openPasswordManager(window, {
+      filterString: gContextMenuContentData.documentURIObject.host,
+      entryPoint: "contextmenu",
+    });
   },
 
   inspectNode() {
@@ -808,7 +817,8 @@ nsContextMenu.prototype = {
     if (("userContextId" in params &&
         params.userContextId != gContextMenuContentData.userContextId) ||
       this.onPlainTextLink) {
-      referrerInfo.sendReferrer = false;
+      referrerInfo = new ReferrerInfo(referrerInfo.referrerPolicy, false,
+        referrerInfo.originalReferrer);
     }
 
     params.referrerInfo = referrerInfo;
@@ -863,6 +873,7 @@ nsContextMenu.prototype = {
     openLinkIn(gContextMenuContentData.docLocation, "tab",
                { charset: gContextMenuContentData.charSet,
                  triggeringPrincipal: this.browser.contentPrincipal,
+                 csp: this.browser.csp,
                  referrerInfo: gContextMenuContentData.frameReferrerInfo });
   },
 
@@ -878,6 +889,7 @@ nsContextMenu.prototype = {
     openLinkIn(gContextMenuContentData.docLocation, "window",
                { charset: gContextMenuContentData.charSet,
                  triggeringPrincipal: this.browser.contentPrincipal,
+                 csp: this.browser.csp,
                  referrerInfo: gContextMenuContentData.frameReferrerInfo });
   },
 
@@ -897,6 +909,7 @@ nsContextMenu.prototype = {
     let {browser} = this;
     let openSelectionFn = function() {
       let tabBrowser = gBrowser;
+      const inNewWindow = !Services.prefs.getBoolPref("view_source.tab");
       // In the case of popups, we need to find a non-popup browser window.
       // We might also not have a tabBrowser reference (if this isn't in a
       // a tabbrowser scope) or might have a fake/stub tabbrowser reference
@@ -909,10 +922,16 @@ nsContextMenu.prototype = {
       let relatedToCurrent = gBrowser && gBrowser.selectedBrowser == browser;
       let tab = tabBrowser.loadOneTab("about:blank", {
         relatedToCurrent,
-        inBackground: false,
+        inBackground: inNewWindow,
+        skipAnimation: inNewWindow,
         triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal(),
       });
-      return tabBrowser.getBrowserForTab(tab);
+      const viewSourceBrowser = tabBrowser.getBrowserForTab(tab);
+      if (inNewWindow) {
+        tabBrowser.hideTab(tab);
+        tabBrowser.replaceTabsWithWindow(tab);
+      }
+      return viewSourceBrowser;
     };
 
     top.gViewSourceUtils.viewPartialSourceInBrowser(browser, openSelectionFn);
@@ -942,6 +961,7 @@ nsContextMenu.prototype = {
                      Ci.nsIScriptSecurityManager.DISALLOW_SCRIPT);
     openUILink(this.imageDescURL, e, { referrerInfo: gContextMenuContentData.referrerInfo,
                                        triggeringPrincipal: this.principal,
+                                       csp: this.csp,
     });
   },
 
@@ -988,6 +1008,7 @@ nsContextMenu.prototype = {
       openUILink(this.mediaURL, e, { referrerInfo,
                                      forceAllowDataURI: true,
                                      triggeringPrincipal: this.principal,
+                                     csp: this.csp,
       });
     }
   },
@@ -1044,6 +1065,7 @@ nsContextMenu.prototype = {
 
     openUILink(this.bgImageURL, e, { referrerInfo: gContextMenuContentData.referrerInfo,
                                      triggeringPrincipal: this.principal,
+                                     csp: this.csp,
     });
   },
 
@@ -1222,7 +1244,12 @@ nsContextMenu.prototype = {
     channel.loadFlags |= flags;
 
     if (channel instanceof Ci.nsIHttpChannel) {
-      channel.referrer = docURI;
+      let referrerInfo = new ReferrerInfo(
+        Ci.nsIHttpChannel.REFERRER_POLICY_UNSET,
+        true,
+        docURI);
+
+      channel.referrerInfo = referrerInfo;
       if (channel instanceof Ci.nsIHttpChannelInternal)
         channel.forceAllowThirdPartyCookie = true;
     }
@@ -1517,6 +1544,7 @@ nsContextMenu.prototype = {
     // Store searchTerms in context menu item so we know what to search onclick
     menuItem.searchTerms = selectedText;
     menuItem.principal = this.principal;
+    menuItem.csp = this.csp;
 
     // Copied to alert.js' prefillAlertInfo().
     // If the JS character after our truncation point is a trail surrogate,

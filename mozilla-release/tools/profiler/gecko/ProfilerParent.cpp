@@ -138,11 +138,7 @@ void ProfilerParent::Init() {
     ProfilerInitParams ipcParams;
     ipcParams.enabled() = true;
     ipcParams.entries() = entries;
-    if (duration.isSome()) {
-      ipcParams.duration() = duration.value();
-    } else {
-      ipcParams.duration() = mozilla::null_t();
-    }
+    ipcParams.duration() = duration;
     ipcParams.interval() = interval;
     ipcParams.features() = features;
 
@@ -188,9 +184,9 @@ void ProfilerParent::ProfilerStarted(nsIProfilerStartParams* aParams) {
   aParams->GetEntries(&ipcParams.entries());
   aParams->GetDuration(&duration);
   if (duration > 0.0) {
-    ipcParams.duration() = duration;
+    ipcParams.duration() = Some(duration);
   } else {
-    ipcParams.duration() = mozilla::null_t();
+    ipcParams.duration() = Nothing();
   }
   aParams->GetInterval(&ipcParams.interval());
   aParams->GetFeatures(&ipcParams.features());
@@ -231,6 +227,17 @@ void ProfilerParent::ProfilerResumed() {
 
   ProfilerParentTracker::Enumerate([](ProfilerParent* profilerParent) {
     Unused << profilerParent->SendResume();
+  });
+}
+
+/* static */
+void ProfilerParent::ClearAllPages() {
+  if (!NS_IsMainThread()) {
+    return;
+  }
+
+  ProfilerParentTracker::Enumerate([](ProfilerParent* profilerParent) {
+    Unused << profilerParent->SendClearAllPages();
   });
 }
 

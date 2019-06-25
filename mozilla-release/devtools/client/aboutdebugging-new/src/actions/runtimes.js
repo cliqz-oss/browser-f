@@ -4,6 +4,8 @@
 
 "use strict";
 
+const Services = require("Services");
+
 const Actions = require("./index");
 
 const {
@@ -14,15 +16,20 @@ const {
 
 const { l10n } = require("../modules/l10n");
 const { createClientForRuntime } = require("../modules/runtime-client-factory");
-const { isExtensionDebugSettingNeeded } = require("../modules/debug-target-support");
+const {
+  isSupportedDebugTargetPane,
+} = require("../modules/debug-target-support");
 
 const { remoteClientManager } =
   require("devtools/client/shared/remote-debugging/remote-client-manager");
 
 const {
+  CONNECT_RUNTIME_CANCEL,
   CONNECT_RUNTIME_FAILURE,
+  CONNECT_RUNTIME_NOT_RESPONDING,
   CONNECT_RUNTIME_START,
   CONNECT_RUNTIME_SUCCESS,
+  DEBUG_TARGET_PANE,
   DISCONNECT_RUNTIME_FAILURE,
   DISCONNECT_RUNTIME_START,
   DISCONNECT_RUNTIME_SUCCESS,
@@ -37,9 +44,6 @@ const {
   UPDATE_CONNECTION_PROMPT_SETTING_FAILURE,
   UPDATE_CONNECTION_PROMPT_SETTING_START,
   UPDATE_CONNECTION_PROMPT_SETTING_SUCCESS,
-  UPDATE_EXTENSION_DEBUG_SETTING_FAILURE,
-  UPDATE_EXTENSION_DEBUG_SETTING_START,
-  UPDATE_EXTENSION_DEBUG_SETTING_SUCCESS,
   UPDATE_RUNTIME_MULTIE10S_FAILURE,
   UPDATE_RUNTIME_MULTIE10S_START,
   UPDATE_RUNTIME_MULTIE10S_SUCCESS,
@@ -48,7 +52,21 @@ const {
   WATCH_RUNTIME_SUCCESS,
 } = require("../constants");
 
-async function getRuntimeIcon(channel) {
+const CONNECTION_TIMING_OUT_DELAY = 3000;
+const CONNECTION_CANCEL_DELAY = 13000;
+
+async function getRuntimeIcon(runtime, channel) {
+  if (runtime.isFenix) {
+    switch (channel) {
+      case "release":
+      case "beta":
+        return "chrome://devtools/skin/images/aboutdebugging-fenix.svg";
+      case "aurora":
+      default:
+        return "chrome://devtools/skin/images/aboutdebugging-fenix-nightly.svg";
+    }
+  }
+
   return (channel === "release" || channel === "beta" || channel === "aurora")
     ? `chrome://devtools/skin/images/aboutdebugging-firefox-${ channel }.svg`
     : "chrome://devtools/skin/images/aboutdebugging-firefox-nightly.svg";
@@ -64,48 +82,80 @@ function onMultiE10sUpdated() {
 }
 
 function connectRuntime(id) {
+  // Create a random connection id to track the connection attempt in telemetry.
+  const connectionId = (Math.random() * 100000) | 0;
+
   return async (dispatch, getState) => {
-    dispatch({ type: CONNECT_RUNTIME_START });
+    dispatch({ type: CONNECT_RUNTIME_START, connectionId, id });
+
+    // The preferences test-connection-timing-out-delay and test-connection-cancel-delay
+    // don't have a default value but will be overridden during our tests.
+    const connectionTimingOutDelay = Services.prefs.getIntPref(
+      "devtools.aboutdebugging.test-connection-timing-out-delay",
+      CONNECTION_TIMING_OUT_DELAY);
+    const connectionCancelDelay = Services.prefs.getIntPref(
+      "devtools.aboutdebugging.test-connection-cancel-delay", CONNECTION_CANCEL_DELAY);
+
+    const connectionNotRespondingTimer = setTimeout(() => {
+      // If connecting to the runtime takes time over CONNECTION_TIMING_OUT_DELAY,
+      // we assume the connection prompt is showing on the runtime, show a dialog
+      // to let user know that.
+      dispatch({ type: CONNECT_RUNTIME_NOT_RESPONDING, connectionId, id });
+    }, connectionTimingOutDelay);
+    const connectionCancelTimer = setTimeout(() => {
+      // Connect button of the runtime will be disabled during connection, but the status
+      // continues till the connection was either succeed or failed. This may have a
+      // possibility that the disabling continues unless page reloading, user will not be
+      // able to click again. To avoid this, revert the connect button status after
+      // CONNECTION_CANCEL_DELAY ms.
+      dispatch({ type: CONNECT_RUNTIME_CANCEL, connectionId, id });
+    }, connectionCancelDelay);
+
     try {
       const runtime = findRuntimeById(id, getState().runtimes);
       const clientWrapper = await createClientForRuntime(runtime);
 
       const deviceDescription = await clientWrapper.getDeviceDescription();
       const compatibilityReport = await clientWrapper.checkVersionCompatibility();
-      const icon = await getRuntimeIcon(deviceDescription.channel);
+      const icon = await getRuntimeIcon(runtime, deviceDescription.channel);
 
       const {
-        CHROME_DEBUG_ENABLED,
         CONNECTION_PROMPT,
         PERMANENT_PRIVATE_BROWSING,
-        REMOTE_DEBUG_ENABLED,
         SERVICE_WORKERS_ENABLED,
       } = RUNTIME_PREFERENCE;
       const connectionPromptEnabled =
         await clientWrapper.getPreference(CONNECTION_PROMPT, false);
-      const extensionDebugEnabled =
-        isExtensionDebugSettingNeeded(runtime.type)
-          ? await clientWrapper.getPreference(CHROME_DEBUG_ENABLED, true) &&
-            await clientWrapper.getPreference(REMOTE_DEBUG_ENABLED, true)
-          : true;
       const privateBrowsing =
         await clientWrapper.getPreference(PERMANENT_PRIVATE_BROWSING, false);
       const serviceWorkersEnabled =
         await clientWrapper.getPreference(SERVICE_WORKERS_ENABLED, true);
       const serviceWorkersAvailable = serviceWorkersEnabled && !privateBrowsing;
 
+      // Fenix specific workarounds are needed until we can get proper server side APIs
+      // to detect Fenix and get the proper application names and versions.
+      // See https://github.com/mozilla-mobile/fenix/issues/2016.
+
+      // For Fenix runtimes, the ADB runtime name is more accurate than the one returned
+      // by the Device actor.
+      const runtimeName = runtime.isFenix ? runtime.name : deviceDescription.name;
+
+      // For Fenix runtimes, the version we should display is the application version
+      // retrieved from ADB, and not the Gecko version returned by the Device actor.
+      const version = runtime.isFenix ?
+        runtime.extra.adbPackageVersion : deviceDescription.version;
+
       const runtimeDetails = {
         clientWrapper,
         compatibilityReport,
         connectionPromptEnabled,
-        extensionDebugEnabled,
         info: {
           deviceName: deviceDescription.deviceName,
           icon,
-          name: deviceDescription.name,
+          name: runtimeName,
           os: deviceDescription.os,
           type: runtime.type,
-          version: deviceDescription.version,
+          version,
         },
         isMultiE10s: deviceDescription.isMultiE10s,
         serviceWorkersAvailable,
@@ -124,6 +174,7 @@ function connectRuntime(id) {
 
       dispatch({
         type: CONNECT_RUNTIME_SUCCESS,
+        connectionId,
         runtime: {
           id,
           runtimeDetails,
@@ -131,7 +182,10 @@ function connectRuntime(id) {
         },
       });
     } catch (e) {
-      dispatch({ type: CONNECT_RUNTIME_FAILURE, error: e });
+      dispatch({ type: CONNECT_RUNTIME_FAILURE, connectionId, id, error: e });
+    } finally {
+      clearTimeout(connectionNotRespondingTimer);
+      clearTimeout(connectionCancelTimer);
     }
   };
 }
@@ -140,7 +194,12 @@ function createThisFirefoxRuntime() {
   return (dispatch, getState) => {
     const thisFirefoxRuntime = {
       id: RUNTIMES.THIS_FIREFOX,
-      isUnknown: false,
+      isConnecting: false,
+      isConnectionFailed: false,
+      isConnectionNotResponding: false,
+      isConnectionTimeout: false,
+      isUnavailable: false,
+      isUnplugged: false,
       name: l10n.getString("about-debugging-this-firefox-runtime-name"),
       type: RUNTIMES.THIS_FIREFOX,
     };
@@ -201,32 +260,6 @@ function updateConnectionPromptSetting(connectionPromptEnabled) {
   };
 }
 
-function updateExtensionDebugSetting(extensionDebugEnabled) {
-  return async (dispatch, getState) => {
-    dispatch({ type: UPDATE_EXTENSION_DEBUG_SETTING_START });
-    try {
-      const runtime = getCurrentRuntime(getState().runtimes);
-      const { clientWrapper } = runtime.runtimeDetails;
-
-      const { CHROME_DEBUG_ENABLED, REMOTE_DEBUG_ENABLED } = RUNTIME_PREFERENCE;
-      await clientWrapper.setPreference(CHROME_DEBUG_ENABLED, extensionDebugEnabled);
-      await clientWrapper.setPreference(REMOTE_DEBUG_ENABLED, extensionDebugEnabled);
-
-      // Re-get actual value from the runtime.
-      const isChromeDebugEnabled =
-        await clientWrapper.getPreference(CHROME_DEBUG_ENABLED, extensionDebugEnabled);
-      const isRemoveDebugEnabled =
-        await clientWrapper.getPreference(REMOTE_DEBUG_ENABLED, extensionDebugEnabled);
-      extensionDebugEnabled = isChromeDebugEnabled && isRemoveDebugEnabled;
-
-      dispatch({ type: UPDATE_EXTENSION_DEBUG_SETTING_SUCCESS,
-                 runtime, extensionDebugEnabled });
-    } catch (e) {
-      dispatch({ type: UPDATE_EXTENSION_DEBUG_SETTING_FAILURE, error: e });
-    }
-  };
-}
-
 function updateMultiE10s() {
   return async (dispatch, getState) => {
     dispatch({ type: UPDATE_RUNTIME_MULTIE10S_START });
@@ -260,6 +293,11 @@ function watchRuntime(id) {
       dispatch(Actions.requestExtensions());
       dispatch(Actions.requestTabs());
       dispatch(Actions.requestWorkers());
+
+      if (isSupportedDebugTargetPane(runtime.runtimeDetails.info.type,
+                                     DEBUG_TARGET_PANE.PROCESSES)) {
+        dispatch(Actions.requestProcesses());
+      }
     } catch (e) {
       dispatch({ type: WATCH_RUNTIME_FAILURE, error: e });
     }
@@ -293,6 +331,13 @@ function updateNetworkRuntimes(locations) {
       extra: {
         connectionParameters: { host, port: parseInt(port, 10) },
       },
+      isConnecting: false,
+      isConnectionFailed: false,
+      isConnectionNotResponding: false,
+      isConnectionTimeout: false,
+      isFenix: false,
+      isUnavailable: false,
+      isUnplugged: false,
       isUnknown: false,
       name: location,
       type: RUNTIMES.NETWORK,
@@ -304,16 +349,23 @@ function updateNetworkRuntimes(locations) {
 function updateUSBRuntimes(adbRuntimes) {
   const runtimes = adbRuntimes.map(adbRuntime => {
     // Set connectionParameters only for known runtimes.
-    const socketPath = adbRuntime._socketPath;
+    const socketPath = adbRuntime.socketPath;
     const deviceId = adbRuntime.deviceId;
-    const connectionParameters = adbRuntime.isUnknown() ? null : { deviceId, socketPath };
+    const connectionParameters = socketPath ? { deviceId, socketPath } : null;
     return {
       id: adbRuntime.id,
       extra: {
         connectionParameters,
         deviceName: adbRuntime.deviceName,
+        adbPackageVersion: adbRuntime.versionName,
       },
-      isUnknown: adbRuntime.isUnknown(),
+      isConnecting: false,
+      isConnectionFailed: false,
+      isConnectionNotResponding: false,
+      isConnectionTimeout: false,
+      isFenix: adbRuntime.isFenix,
+      isUnavailable: adbRuntime.isUnavailable,
+      isUnplugged: adbRuntime.isUnplugged,
       name: adbRuntime.shortName,
       type: RUNTIMES.USB,
     };
@@ -330,7 +382,7 @@ function updateUSBRuntimes(adbRuntimes) {
 function _isRuntimeValid(runtime, runtimes) {
   const isRuntimeAvailable = runtimes.some(r => r.id === runtime.id);
   const isConnectionValid = runtime.runtimeDetails &&
-    !runtime.runtimeDetails.clientWrapper.isClosed();
+                            !runtime.runtimeDetails.clientWrapper.isClosed();
   return isRuntimeAvailable && isConnectionValid;
 }
 
@@ -341,7 +393,7 @@ function updateRemoteRuntimes(runtimes, type) {
     // Check if the updated remote runtimes should trigger a navigation out of the current
     // runtime page.
     if (currentRuntime && currentRuntime.type === type &&
-      !_isRuntimeValid(currentRuntime, runtimes)) {
+        !_isRuntimeValid(currentRuntime, runtimes)) {
       // Since current remote runtime is invalid, move to this firefox page.
       // This case is considered as followings and so on:
       // * Remove ADB addon
@@ -354,12 +406,26 @@ function updateRemoteRuntimes(runtimes, type) {
       await dispatch(Actions.selectPage(PAGE_TYPES.RUNTIME, RUNTIMES.THIS_FIREFOX));
     }
 
-    // Retrieve runtimeDetails from existing runtimes.
+    // For existing runtimes, transfer all properties that are not available in the
+    // runtime objects passed to this method:
+    // - runtimeDetails (set by about:debugging after a successful connection)
+    // - isConnecting (set by about:debugging during the connection)
+    // - isConnectionFailed (set by about:debugging if connection was failed)
+    // - isConnectionNotResponding
+    //     (set by about:debugging if connection is taking too much time)
+    // - isConnectionTimeout (set by about:debugging if connection was timeout)
     runtimes.forEach(runtime => {
       const existingRuntime = findRuntimeById(runtime.id, getState().runtimes);
       const isConnectionValid = existingRuntime && existingRuntime.runtimeDetails &&
-        !existingRuntime.runtimeDetails.clientWrapper.isClosed();
+                                !existingRuntime.runtimeDetails.clientWrapper.isClosed();
       runtime.runtimeDetails = isConnectionValid ? existingRuntime.runtimeDetails : null;
+      runtime.isConnecting = existingRuntime ? existingRuntime.isConnecting : false;
+      runtime.isConnectionFailed =
+        existingRuntime ? existingRuntime.isConnectionFailed : false;
+      runtime.isConnectionNotResponding =
+        existingRuntime ? existingRuntime.isConnectionNotResponding : false;
+      runtime.isConnectionTimeout =
+        existingRuntime ? existingRuntime.isConnectionTimeout : false;
     });
 
     const existingRuntimes = getAllRuntimes(getState().runtimes);
@@ -416,7 +482,6 @@ module.exports = {
   removeRuntimeListeners,
   unwatchRuntime,
   updateConnectionPromptSetting,
-  updateExtensionDebugSetting,
   updateNetworkRuntimes,
   updateUSBRuntimes,
   watchRuntime,

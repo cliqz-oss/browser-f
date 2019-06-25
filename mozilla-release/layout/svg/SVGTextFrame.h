@@ -8,6 +8,7 @@
 #define MOZILLA_SVGTEXTFRAME_H
 
 #include "mozilla/Attributes.h"
+#include "mozilla/PresShellForwards.h"
 #include "mozilla/RefPtr.h"
 #include "mozilla/gfx/2D.h"
 #include "gfxMatrix.h"
@@ -158,7 +159,7 @@ class GlyphMetricsUpdater : public Runnable {
  * PaintText so that we can fill the text geometry with SVG paint servers.
  */
 class SVGTextFrame final : public nsSVGDisplayContainerFrame {
-  friend nsIFrame* NS_NewSVGTextFrame(nsIPresShell* aPresShell,
+  friend nsIFrame* NS_NewSVGTextFrame(mozilla::PresShell* aPresShell,
                                       ComputedStyle* aStyle);
 
   friend class mozilla::CharIterator;
@@ -186,7 +187,7 @@ class SVGTextFrame final : public nsSVGDisplayContainerFrame {
                  NS_STATE_SVG_POSITIONING_DIRTY);
   }
 
-  ~SVGTextFrame() {}
+  ~SVGTextFrame() = default;
 
  public:
   NS_DECL_QUERYFRAME
@@ -299,7 +300,7 @@ class SVGTextFrame final : public nsSVGDisplayContainerFrame {
    * animated SVG-in-OpenType glyphs), in which case aReason will be eResize,
    * since layout doesn't need to be recomputed.
    */
-  void ScheduleReflowSVGNonDisplayText(nsIPresShell::IntrinsicDirty aReason);
+  void ScheduleReflowSVGNonDisplayText(mozilla::IntrinsicDirty aReason);
 
   /**
    * Updates the mFontSizeScaleFactor value by looking at the range of
@@ -394,6 +395,7 @@ class SVGTextFrame final : public nsSVGDisplayContainerFrame {
    * exception is text in a textPath where we need to ignore characters that
    * fall off the end of the textPath path.
    */
+  MOZ_CAN_RUN_SCRIPT_BOUNDARY
   nsresult GetSubStringLengthSlowFallback(nsIContent* aContent,
                                           uint32_t charnum, uint32_t nchars,
                                           float* aResult);

@@ -174,6 +174,7 @@ class Longhand(object):
                  logical=False, logical_group=None, alias=None, extra_prefixes=None, boxed=False,
                  flags=None, allowed_in_page_rule=False, allow_quirks=False,
                  ignored_when_colors_disabled=False,
+                 simple_vector_bindings=False,
                  vector=False, servo_restyle_damage="repaint"):
         self.name = name
         if not spec:
@@ -210,6 +211,7 @@ class Longhand(object):
         self.allow_quirks = allow_quirks
         self.ignored_when_colors_disabled = ignored_when_colors_disabled
         self.is_vector = vector
+        self.simple_vector_bindings = simple_vector_bindings
 
         # https://drafts.csswg.org/css-animations/#keyframes
         # > The <declaration-list> inside of <keyframe-block> accepts any CSS property
@@ -324,6 +326,7 @@ class Longhand(object):
                 "JustifyItems",
                 "JustifySelf",
                 "MozForceBrokenImageIcon",
+                "MozListReversed",
                 "MozScriptLevel",
                 "MozScriptMinSize",
                 "MozScriptSizeMultiplier",
@@ -336,14 +339,18 @@ class Longhand(object):
                 "OverflowWrap",
                 "OverscrollBehavior",
                 "Percentage",
+                "PositiveIntegerOrNone",
                 "Resize",
                 "SVGOpacity",
                 "SVGPaintOrder",
                 "ScrollSnapAlign",
+                "ScrollSnapAxis",
+                "ScrollSnapStrictness",
                 "ScrollSnapType",
                 "TextAlign",
                 "TextDecorationLine",
                 "TextEmphasisPosition",
+                "TextTransform",
                 "TouchAction",
                 "TransformStyle",
                 "UserSelect",
@@ -396,8 +403,6 @@ class Shorthand(object):
             and allowed_in_keyframe_block != "False"
 
     def get_animatable(self):
-        if self.ident == "all":
-            return False
         for sub in self.sub_properties:
             if sub.animatable:
                 return True

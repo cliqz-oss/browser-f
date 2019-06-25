@@ -13,7 +13,7 @@
 #include "mozilla/gfx/gfxVars.h"
 #include "mozilla/gfx/GPUProcessManager.h"
 #include "mozilla/dom/ContentChild.h"  // for ContentChild
-#include "mozilla/dom/TabChild.h"      // for TabChild
+#include "mozilla/dom/BrowserChild.h"  // for BrowserChild
 #include "mozilla/dom/TabGroup.h"      // for TabGroup
 #include "VsyncSource.h"
 
@@ -49,7 +49,7 @@ void CompositorManagerChild::InitSameProcess(uint32_t aNamespace,
     return;
   }
 
-  parent->BindComplete();
+  parent->BindComplete(/* aIsRoot */ true);
   sInstance = child.forget();
 }
 
@@ -249,12 +249,13 @@ CompositorManagerChild::GetSpecificMessageEventTarget(const Message& aMsg) {
       return nullptr;
     }
 
-    TabChild* tabChild = TabChild::GetFrom(layersId);
-    if (!tabChild) {
+    BrowserChild* browserChild = BrowserChild::GetFrom(layersId);
+    if (!browserChild) {
       return nullptr;
     }
 
-    return do_AddRef(tabChild->TabGroup()->EventTargetFor(TaskCategory::Other));
+    return do_AddRef(
+        browserChild->TabGroup()->EventTargetFor(TaskCategory::Other));
   }
 
   if (aMsg.type() == PCompositorBridge::Msg_ParentAsyncMessages__ID) {
@@ -281,6 +282,14 @@ bool CompositorManagerChild::ShouldContinueFromReplyTimeout() {
     GPUProcessManager::Get()->KillProcess();
   }
   return false;
+}
+
+mozilla::ipc::IPCResult CompositorManagerChild::RecvNotifyWebRenderError(
+    const WebRenderError&& aError) {
+  MOZ_ASSERT(XRE_IsParentProcess());
+  MOZ_ASSERT(NS_IsMainThread());
+  GPUProcessManager::Get()->NotifyWebRenderError(aError);
+  return IPC_OK();
 }
 
 }  // namespace layers

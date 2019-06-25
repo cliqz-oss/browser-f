@@ -49,8 +49,8 @@ class InputBlockState : public RefCounted<InputBlockState> {
     eConfirmed
   };
 
-  explicit InputBlockState(const RefPtr<AsyncPanZoomController>& aTargetApzc,
-                           TargetConfirmationFlags aFlags);
+  InputBlockState(const RefPtr<AsyncPanZoomController>& aTargetApzc,
+                  TargetConfirmationFlags aFlags);
   virtual ~InputBlockState() = default;
 
   virtual CancelableBlockState* AsCancelableBlock() { return nullptr; }
@@ -398,6 +398,12 @@ class TouchBlockState : public CancelableBlockState {
    */
   bool GetAllowedTouchBehaviors(
       nsTArray<TouchBehaviorFlags>& aOutBehaviors) const;
+
+  /**
+   * Returns true if the allowed touch behaviours have been set, or if touch
+   * action is disabled.
+   */
+  bool HasAllowedTouchBehaviors() const;
 
   /**
    * Copy various properties from another block.

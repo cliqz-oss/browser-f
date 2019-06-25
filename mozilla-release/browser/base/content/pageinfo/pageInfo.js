@@ -24,7 +24,7 @@ function pageInfoTreeView(treeid, copycol) {
 }
 
 pageInfoTreeView.prototype = {
-  set rowCount(c) { throw "rowCount is a readonly property"; },
+  set rowCount(c) { throw new Error("rowCount is a readonly property"); },
   get rowCount() { return this.rows; },
 
   setTree(tree) {
@@ -101,10 +101,10 @@ pageInfoTreeView.prototype = {
         this.sortdir
       );
 
-    Array.forEach(tree.columns, function(col) {
+    for (let col of tree.columns) {
       col.element.removeAttribute("sortActive");
       col.element.removeAttribute("sortDirection");
-    });
+    }
     treecol.element.setAttribute("sortActive", "true");
     treecol.element.setAttribute("sortDirection", this.sortdir ?
                                                   "ascending" : "descending");
@@ -195,10 +195,10 @@ gImageView.onPageMediaSort = function(columnname) {
       this.sortdir
     );
 
-  Array.forEach(tree.columns, function(col) {
+  for (let col of tree.columns) {
     col.element.removeAttribute("sortActive");
     col.element.removeAttribute("sortDirection");
-  });
+  }
   treecol.element.setAttribute("sortActive", "true");
   treecol.element.setAttribute("sortDirection", this.sortdir ?
                                                 "ascending" : "descending");
@@ -318,20 +318,6 @@ function loadPageInfo(frameOuterWindowID, imageElement, browser) {
   let mm = browser.messageManager;
 
   let imageInfo = imageElement;
-
-  // Generate security information if it is a security error page.
-  let documentURI = browser.documentURI.spec;
-  if (documentURI.startsWith("about:certerror")) {
-    let hostName = null;
-    try {
-      hostName = browser.currentURI.displayHost;
-    } catch (exception) { }
-    let info = {
-      isTopWindow: !!frameOuterWindowID,
-      hostName,
-    };
-    securityOnLoad(documentURI, info);
-  }
 
   // Look for pageInfoListener in content.js. Sends message to listener with arguments.
   mm.sendAsyncMessage("PageInfo:getData", {strings: gStrings, frameOuterWindowID});

@@ -40,9 +40,7 @@ window.gActivityStreamStrings = {
   "section_disclaimer_topstories_buttontext": "Ok, rozumím",
   "prefs_home_header": "Obsah domovské stránky Firefoxu",
   "prefs_home_description": "Vyberte obsah, který chcete mít na výchozí domovské stránce Firefoxu.",
-  "prefs_content_discovery_header": "Domovská stránka Firefoxu",
   "prefs_content_discovery_description": "Doporučování obsahu na domovské stránce obsahu vám nabídne kvalitní a relevantní články z celého internetu.",
-  "prefs_content_discovery_button": "Vypnout doporučování obsahu",
   "prefs_section_rows_option": "{num} řádek;{num} řádky;{num} řádků",
   "prefs_search_header": "Vyhledávání na webu",
   "prefs_topsites_description": "Nejnavštěvovanější stránky",
@@ -107,8 +105,5 @@ window.gActivityStreamStrings = {
   "firstrun_privacy_notice": "Zásadami ochrany osobních údajů",
   "firstrun_continue_to_login": "Pokračovat",
   "firstrun_skip_login": "Přeskočit tento krok",
-  "context_menu_title": "Otevře nabídku",
-  "manual_migration_explanation2": "Vyzkoušejte Firefox se záložkami, historií a hesly z jiného vašeho prohlížeče.",
-  "manual_migration_cancel_button": "Ne, děkuji",
-  "manual_migration_import_button": "Importovat nyní"
+  "context_menu_title": "Otevře nabídku"
 };

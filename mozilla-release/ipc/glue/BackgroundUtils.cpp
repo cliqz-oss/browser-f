@@ -85,11 +85,7 @@ already_AddRefed<nsIPrincipal> PrincipalInfoToPrincipal(
         return nullptr;
       }
 
-      OriginAttributes attrs;
-      if (info.attrs().mAppId != nsIScriptSecurityManager::UNKNOWN_APP_ID) {
-        attrs = info.attrs();
-      }
-      principal = BasePrincipal::CreateCodebasePrincipal(uri, attrs);
+      principal = BasePrincipal::CreateCodebasePrincipal(uri, info.attrs());
       if (NS_WARN_IF(!principal)) {
         return nullptr;
       }
@@ -206,14 +202,16 @@ nsresult PopulateContentSecurityPolicies(
 }
 
 nsresult PrincipalToPrincipalInfo(nsIPrincipal* aPrincipal,
-                                  PrincipalInfo* aPrincipalInfo) {
+                                  PrincipalInfo* aPrincipalInfo,
+                                  bool aSkipBaseDomain) {
   MOZ_ASSERT(NS_IsMainThread());
   MOZ_ASSERT(aPrincipal);
   MOZ_ASSERT(aPrincipalInfo);
 
+  nsresult rv;
   if (aPrincipal->GetIsNullPrincipal()) {
     nsCOMPtr<nsIURI> uri;
-    nsresult rv = aPrincipal->GetURI(getter_AddRefs(uri));
+    rv = aPrincipal->GetURI(getter_AddRefs(uri));
     if (NS_WARN_IF(NS_FAILED(rv))) {
       return rv;
     }
@@ -233,19 +231,7 @@ nsresult PrincipalToPrincipalInfo(nsIPrincipal* aPrincipal,
     return NS_OK;
   }
 
-  nsCOMPtr<nsIScriptSecurityManager> secMan =
-      nsContentUtils::GetSecurityManager();
-  if (!secMan) {
-    return NS_ERROR_FAILURE;
-  }
-
-  bool isSystemPrincipal;
-  nsresult rv = secMan->IsSystemPrincipal(aPrincipal, &isSystemPrincipal);
-  if (NS_WARN_IF(NS_FAILED(rv))) {
-    return rv;
-  }
-
-  if (isSystemPrincipal) {
+  if (aPrincipal->IsSystemPrincipal()) {
     *aPrincipalInfo = SystemPrincipalInfo();
     return NS_OK;
   }
@@ -259,7 +245,7 @@ nsresult PrincipalToPrincipalInfo(nsIPrincipal* aPrincipal,
     PrincipalInfo info;
 
     for (auto& prin : expanded->AllowList()) {
-      rv = PrincipalToPrincipalInfo(prin, &info);
+      rv = PrincipalToPrincipalInfo(prin, &info, aSkipBaseDomain);
       if (NS_WARN_IF(NS_FAILED(rv))) {
         return rv;
       }
@@ -324,9 +310,13 @@ nsresult PrincipalToPrincipalInfo(nsIPrincipal* aPrincipal,
 
   // This attribute is not crucial.
   nsCString baseDomain;
-  if (NS_FAILED(aPrincipal->GetBaseDomain(baseDomain))) {
-    NS_WARNING("Failed to get base domain!");
+  if (aSkipBaseDomain) {
     baseDomain.SetIsVoid(true);
+  } else {
+    if (NS_FAILED(aPrincipal->GetBaseDomain(baseDomain))) {
+      NS_WARNING("Failed to get base domain!");
+      baseDomain.SetIsVoid(true);
+    }
   }
 
   *aPrincipalInfo =
@@ -520,7 +510,6 @@ nsresult LoadInfoToLoadInfoArgs(nsILoadInfo* aLoadInfo,
       aLoadInfo->GetUpgradeInsecureRequests(),
       aLoadInfo->GetBrowserUpgradeInsecureRequests(),
       aLoadInfo->GetBrowserWouldUpgradeInsecureRequests(),
-      aLoadInfo->GetVerifySignedContent(), aLoadInfo->GetEnforceSRI(),
       aLoadInfo->GetForceAllowDataURI(),
       aLoadInfo->GetAllowInsecureRedirectToDataURI(),
       aLoadInfo->GetSkipContentPolicyCheckForWebRequest(),
@@ -540,8 +529,8 @@ nsresult LoadInfoToLoadInfoArgs(nsILoadInfo* aLoadInfo,
       aLoadInfo->GetServiceWorkerTaintingSynthesized(),
       aLoadInfo->GetDocumentHasUserInteracted(),
       aLoadInfo->GetDocumentHasLoaded(), cspNonce,
-      aLoadInfo->GetIsFromProcessingFrameAttributes(),
-      aLoadInfo->GetOpenerPolicy(), cookieSettingsArgs));
+      aLoadInfo->GetIsFromProcessingFrameAttributes(), cookieSettingsArgs,
+      aLoadInfo->GetRequestBlockingReason()));
 
   return NS_OK;
 }
@@ -675,7 +664,6 @@ nsresult LoadInfoArgsToLoadInfo(
       loadInfoArgs.upgradeInsecureRequests(),
       loadInfoArgs.browserUpgradeInsecureRequests(),
       loadInfoArgs.browserWouldUpgradeInsecureRequests(),
-      loadInfoArgs.verifySignedContent(), loadInfoArgs.enforceSRI(),
       loadInfoArgs.forceAllowDataURI(),
       loadInfoArgs.allowInsecureRedirectToDataURI(),
       loadInfoArgs.skipContentPolicyCheckForWebRequest(),
@@ -692,13 +680,12 @@ nsresult LoadInfoArgsToLoadInfo(
       loadInfoArgs.isPreflight(), loadInfoArgs.loadTriggeredFromExternal(),
       loadInfoArgs.serviceWorkerTaintingSynthesized(),
       loadInfoArgs.documentHasUserInteracted(),
-      loadInfoArgs.documentHasLoaded(), loadInfoArgs.cspNonce());
+      loadInfoArgs.documentHasLoaded(), loadInfoArgs.cspNonce(),
+      loadInfoArgs.requestBlockingReason());
 
   if (loadInfoArgs.isFromProcessingFrameAttributes()) {
     loadInfo->SetIsFromProcessingFrameAttributes();
   }
-
-  loadInfo->SetOpenerPolicy(loadInfoArgs.openerPolicy());
 
   loadInfo.forget(outLoadInfo);
   return NS_OK;
@@ -712,7 +699,8 @@ void LoadInfoToParentLoadInfoForwarder(
         false,  // serviceWorkerTaintingSynthesized
         false,  // documentHasUserInteracted
         false,  // documentHasLoaded
-        nsILoadInfo::OPENER_POLICY_NULL, Maybe<CookieSettingsArgs>());
+        Maybe<CookieSettingsArgs>(),
+        nsILoadInfo::BLOCKING_REASON_NONE);  // requestBlockingReason
     return;
   }
 
@@ -724,9 +712,6 @@ void LoadInfoToParentLoadInfoForwarder(
 
   uint32_t tainting = nsILoadInfo::TAINTING_BASIC;
   Unused << aLoadInfo->GetTainting(&tainting);
-
-  nsILoadInfo::CrossOriginOpenerPolicy openerPolicy =
-      aLoadInfo->GetOpenerPolicy();
 
   Maybe<CookieSettingsArgs> cookieSettingsArgs;
 
@@ -743,7 +728,8 @@ void LoadInfoToParentLoadInfoForwarder(
       aLoadInfo->GetAllowInsecureRedirectToDataURI(), ipcController, tainting,
       aLoadInfo->GetServiceWorkerTaintingSynthesized(),
       aLoadInfo->GetDocumentHasUserInteracted(),
-      aLoadInfo->GetDocumentHasLoaded(), openerPolicy, cookieSettingsArgs);
+      aLoadInfo->GetDocumentHasLoaded(), cookieSettingsArgs,
+      aLoadInfo->GetRequestBlockingReason());
 }
 
 nsresult MergeParentLoadInfoForwarder(
@@ -771,13 +757,12 @@ nsresult MergeParentLoadInfoForwarder(
     aLoadInfo->MaybeIncreaseTainting(aForwarderArgs.tainting());
   }
 
-  MOZ_ALWAYS_SUCCEEDS(
-      aLoadInfo->SetOpenerPolicy(aForwarderArgs.openerPolicy()));
-
   MOZ_ALWAYS_SUCCEEDS(aLoadInfo->SetDocumentHasUserInteracted(
       aForwarderArgs.documentHasUserInteracted()));
   MOZ_ALWAYS_SUCCEEDS(
       aLoadInfo->SetDocumentHasLoaded(aForwarderArgs.documentHasLoaded()));
+  MOZ_ALWAYS_SUCCEEDS(aLoadInfo->SetRequestBlockingReason(
+      aForwarderArgs.requestBlockingReason()));
 
   const Maybe<CookieSettingsArgs>& cookieSettingsArgs =
       aForwarderArgs.cookieSettings();

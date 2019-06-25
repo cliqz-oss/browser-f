@@ -4,6 +4,8 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 "use strict";
 
+const {Services} = ChromeUtils.import("resource://gre/modules/Services.jsm");
+
 var EXPORTED_SYMBOLS = ["TestChild"];
 
 class TestChild extends JSWindowActorChild {
@@ -11,16 +13,23 @@ class TestChild extends JSWindowActorChild {
      super();
   }
 
-  recvAsyncMessage(aMessage) {
+  receiveMessage(aMessage) {
     switch (aMessage.name) {
       case "toChild":
         aMessage.data.toChild = true;
         this.sendAsyncMessage("toParent", aMessage.data);
         break;
+      case "asyncAdd":
+        let {a, b} = aMessage.data;
+        return new Promise(resolve => {
+          resolve({ result: a + b });
+        });
       case "done":
         this.done(aMessage.data);
         break;
     }
+
+    return undefined;
   }
 
   handleEvent(aEvent) {
@@ -33,5 +42,15 @@ class TestChild extends JSWindowActorChild {
 
   show() {
     return "TestChild";
+  }
+
+  willDestroy() {
+    Services.obs.notifyObservers(
+      this, "test-js-window-actor-willdestroy", true);
+  }
+
+  didDestroy() {
+    Services.obs.notifyObservers(
+      this, "test-js-window-actor-diddestroy", true);
   }
 }

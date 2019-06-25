@@ -5,6 +5,7 @@
 
 package org.mozilla.geckoview_example;
 
+import org.json.JSONObject;
 import org.mozilla.geckoview.AllowOrDeny;
 import org.mozilla.geckoview.BasicSelectionActionDelegate;
 import org.mozilla.geckoview.ContentBlocking;
@@ -14,6 +15,7 @@ import org.mozilla.geckoview.GeckoRuntimeSettings;
 import org.mozilla.geckoview.GeckoSession;
 import org.mozilla.geckoview.GeckoSessionSettings;
 import org.mozilla.geckoview.GeckoView;
+import org.mozilla.geckoview.WebExtension;
 import org.mozilla.geckoview.WebRequestError;
 
 import android.Manifest;
@@ -43,6 +45,7 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.LinkedList;
 import java.util.Locale;
@@ -69,6 +72,7 @@ public class GeckoViewActivity extends AppCompatActivity {
     private boolean mKillProcessOnDestroy;
 
     private boolean mShowNotificationsRejected;
+    private ArrayList<String> mAcceptedPersistentStorage = new ArrayList<String>();
 
     private LocationView mLocationView;
     private String mCurrentUri;
@@ -134,7 +138,7 @@ public class GeckoViewActivity extends AppCompatActivity {
                     .remoteDebuggingEnabled(mEnableRemoteDebugging)
                     .consoleOutput(true)
                     .contentBlocking(new ContentBlocking.Settings.Builder()
-                        .categories(ContentBlocking.AT_ALL | ContentBlocking.SB_ALL)
+                        .categories(ContentBlocking.AT_DEFAULT)
                         .build())
                     .crashHandler(ExampleCrashHandler.class);
 
@@ -466,6 +470,12 @@ public class GeckoViewActivity extends AppCompatActivity {
             }
             return GeckoResult.fromValue(visited);
         }
+
+        @Override
+        public void onHistoryStateChange(final GeckoSession session,
+                                         final GeckoSession.HistoryDelegate.HistoryList state) {
+            Log.i(LOGTAG, "History state updated");
+        }
     }
 
     private class ExampleContentDelegate implements GeckoSession.ContentDelegate {
@@ -533,6 +543,11 @@ public class GeckoViewActivity extends AppCompatActivity {
         public void onFirstComposite(final GeckoSession session) {
             Log.d(LOGTAG, "onFirstComposite");
         }
+
+        @Override
+        public void onWebAppManifest(final GeckoSession session, JSONObject manifest) {
+            Log.d(LOGTAG, "onWebAppManifest: " + manifest);
+        }
     }
 
     private class ExampleProgressDelegate implements GeckoSession.ProgressDelegate {
@@ -575,6 +590,11 @@ public class GeckoViewActivity extends AppCompatActivity {
         public void onSecurityChange(GeckoSession session, SecurityInformation securityInfo) {
             Log.i(LOGTAG, "Security status changed to " + securityInfo.securityMode);
         }
+
+        @Override
+        public void onSessionStateChange(GeckoSession session, GeckoSession.SessionState state) {
+            Log.i(LOGTAG, "New Session state: " + state.toString());
+        }
     }
 
     private class ExamplePermissionDelegate implements GeckoSession.PermissionDelegate {
@@ -597,6 +617,26 @@ public class GeckoViewActivity extends AppCompatActivity {
             @Override
             public void grant() {
                 mShowNotificationsRejected = false;
+                mCallback.grant();
+            }
+        }
+
+        class ExamplePersistentStorageCallback implements GeckoSession.PermissionDelegate.Callback {
+            private final GeckoSession.PermissionDelegate.Callback mCallback;
+            private final String mUri;
+            ExamplePersistentStorageCallback(final GeckoSession.PermissionDelegate.Callback callback, String uri) {
+                mCallback = callback;
+                mUri = uri;
+            }
+
+            @Override
+            public void reject() {
+                mCallback.reject();
+            }
+
+            @Override
+            public void grant() {
+                mAcceptedPersistentStorage.add(mUri);
                 mCallback.grant();
             }
         }
@@ -646,6 +686,14 @@ public class GeckoViewActivity extends AppCompatActivity {
                 }
                 resId = R.string.request_notification;
                 contentPermissionCallback = new ExampleNotificationCallback(callback);
+            } else if (PERMISSION_PERSISTENT_STORAGE == type) {
+                if (mAcceptedPersistentStorage.contains(uri)) {
+                    Log.w(LOGTAG, "Persistent Storage for "+ uri +" already granted by user.");
+                    callback.grant();
+                    return;
+                }
+                resId = R.string.request_storage;
+                contentPermissionCallback = new ExamplePersistentStorageCallback(callback, uri);
             } else {
                 Log.w(LOGTAG, "Unknown permission: " + type);
                 callback.reject();

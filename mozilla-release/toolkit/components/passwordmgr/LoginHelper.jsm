@@ -38,6 +38,7 @@ var LoginHelper = {
     // Watch for pref changes to update cached pref values.
     Services.prefs.addObserver("signon.", () => this.updateSignonPrefs());
     this.updateSignonPrefs();
+    Services.telemetry.setEventRecordingEnabled("pwmgr", true);
   },
 
   updateSignonPrefs() {
@@ -60,18 +61,12 @@ var LoginHelper = {
       return this.debug ? "Debug" : "Warn";
     };
 
-    let logger;
-    function getConsole() {
-      if (!logger) {
-        // Create a new instance of the ConsoleAPI so we can control the maxLogLevel with a pref.
-        let consoleOptions = {
-          maxLogLevel: getMaxLogLevel(),
-          prefix: aLogPrefix,
-        };
-        logger = console.createInstance(consoleOptions);
-      }
-      return logger;
-    }
+    // Create a new instance of the ConsoleAPI so we can control the maxLogLevel with a pref.
+    let consoleOptions = {
+      maxLogLevel: getMaxLogLevel(),
+      prefix: aLogPrefix,
+    };
+    let logger = console.createInstance(consoleOptions);
 
     // Watch for pref changes and update this.debug and the maxLogLevel for created loggers
     Services.prefs.addObserver("signon.debug", () => {
@@ -81,26 +76,7 @@ var LoginHelper = {
       }
     });
 
-    return {
-      log: (...args) => {
-        if (this.debug) {
-          getConsole().log(...args);
-        }
-      },
-      error: (...args) => {
-        getConsole().error(...args);
-      },
-      debug: (...args) => {
-        if (this.debug) {
-          getConsole().debug(...args);
-        }
-      },
-      warn: (...args) => {
-        if (this.debug) {
-          getConsole().warn(...args);
-        }
-      },
-    };
+    return logger;
   },
 
   /**
@@ -197,14 +173,14 @@ var LoginHelper = {
   },
 
   /**
-   * Helper to avoid the `count` argument and property bags when calling
+   * Helper to avoid the property bags when calling
    * Services.logins.searchLogins from JS.
    *
    * @param {Object} aSearchOptions - A regular JS object to copy to a property bag before searching
    * @return {nsILoginInfo[]} - The result of calling searchLogins.
    */
   searchLoginsWithObject(aSearchOptions) {
-    return Services.logins.searchLogins({}, this.newPropertyBag(aSearchOptions));
+    return Services.logins.searchLogins(this.newPropertyBag(aSearchOptions));
   },
 
   /**
@@ -272,6 +248,7 @@ var LoginHelper = {
    */
   isOriginMatching(aLoginOrigin, aSearchOrigin, aOptions = {
     schemeUpgrades: false,
+    acceptWildcardMatch: false,
   }) {
     if (aLoginOrigin == aSearchOrigin) {
       return true;
@@ -279,6 +256,10 @@ var LoginHelper = {
 
     if (!aOptions) {
       return false;
+    }
+
+    if (aOptions.acceptWildcardMatch && aLoginOrigin == "") {
+      return true;
     }
 
     if (aOptions.schemeUpgrades) {
@@ -480,12 +461,17 @@ var LoginHelper = {
    *        String representing the origin to use for preferring one login over
    *        another when they are dupes. This is used with "scheme" for
    *        `resolveBy` so the scheme from this origin will be preferred.
+   * @param {string} [preferredFormActionOrigin = undefined]
+   *        String representing the action origin to use for preferring one login over
+   *        another when they are dupes. This is used with "actionOrigin" for
+   *        `resolveBy` so the scheme from this action origin will be preferred.
    *
    * @returns {nsILoginInfo[]} list of unique logins.
    */
   dedupeLogins(logins, uniqueKeys = ["username", "password"],
                resolveBy = ["timeLastUsed"],
-               preferredOrigin = undefined) {
+               preferredOrigin = undefined,
+               preferredFormActionOrigin = undefined) {
     const KEY_DELIMITER = ":";
 
     if (!preferredOrigin && resolveBy.includes("scheme")) {
@@ -530,6 +516,16 @@ var LoginHelper = {
 
       for (let preference of resolveBy) {
         switch (preference) {
+          case "actionOrigin": {
+            if (!preferredFormActionOrigin) {
+              break;
+            }
+            if (LoginHelper.isOriginMatching(existingLogin.formSubmitURL, preferredFormActionOrigin, {schemeUpgrades: LoginHelper.schemeUpgrades}) &&
+                !LoginHelper.isOriginMatching(login.formSubmitURL, preferredFormActionOrigin, {schemeUpgrades: LoginHelper.schemeUpgrades})) {
+              return false;
+            }
+            break;
+          }
           case "scheme": {
             if (!preferredOriginScheme) {
               break;
@@ -598,11 +594,16 @@ var LoginHelper = {
    * @param {Window} window
    *                 the window from where we want to open the dialog
    *
-   * @param {string} [filterString=""]
+   * @param {object?} args
+   *                  params for opening the password manager
+   * @param {string} [args.filterString=""]
    *                 the domain (not origin) to pass to the login manager dialog
    *                 to pre-filter the results
+   * @param {string} args.entryPoint
+   *                 The name of the entry point, used for telemetry
    */
-  openPasswordManager(window, filterString = "") {
+  openPasswordManager(window, { filterString = "", entryPoint = "" } = {}) {
+    Services.telemetry.recordEvent("pwmgr", "open_management", entryPoint);
     if (this.managementURI && window.openTrustedLinkIn) {
       let managementURL = this.managementURI.replace("%DOMAIN%", window.encodeURIComponent(filterString));
       window.openTrustedLinkIn(managementURL, "tab");
@@ -732,7 +733,7 @@ var LoginHelper = {
 
       // While here we're passing formSubmitURL and httpRealm, they could be empty/null and get
       // ignored in that case, leading to multiple logins for the same username.
-      let existingLogins = Services.logins.findLogins({}, login.hostname,
+      let existingLogins = Services.logins.findLogins(login.hostname,
                                                       login.formSubmitURL,
                                                       login.httpRealm);
       // Check for an existing login that matches *including* the password.

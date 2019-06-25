@@ -17,8 +17,6 @@ ChromeUtils.defineModuleGetter(this, "CustomizableUI",
   "resource:///modules/CustomizableUI.jsm");
 ChromeUtils.defineModuleGetter(this, "FxAccounts",
   "resource://gre/modules/FxAccounts.jsm");
-ChromeUtils.defineModuleGetter(this, "LightweightThemeManager",
-  "resource://gre/modules/LightweightThemeManager.jsm");
 ChromeUtils.defineModuleGetter(this, "PageActions",
   "resource:///modules/PageActions.jsm");
 ChromeUtils.defineModuleGetter(this, "PrivateBrowsingUtils",
@@ -395,16 +393,6 @@ var UITour = {
         break;
       }
 
-      case "previewTheme": {
-        this.previewTheme(data.theme);
-        break;
-      }
-
-      case "resetTheme": {
-        this.resetTheme();
-        break;
-      }
-
       case "showMenu": {
         this.noautohideMenus.add(data.name);
         this.showMenu(window, data.name, () => {
@@ -450,7 +438,7 @@ var UITour = {
           log.warn("openPreferences: Invalid pane specified");
           return false;
         }
-        window.openPreferences(data.pane, { origin: "UITour" });
+        window.openPreferences(data.pane);
         break;
       }
 
@@ -780,7 +768,6 @@ var UITour = {
     }
 
     this.noautohideMenus.clear();
-    this.resetTheme();
 
     // If there are no more tour tabs left in the window, teardown the tour for the whole window.
     if (!openTourBrowsers || openTourBrowsers.size == 0) {
@@ -980,17 +967,6 @@ var UITour = {
       promise = this._setMenuStateForAnnotation(aChromeWindow, true, menuToOpen);
     }
     return promise;
-  },
-
-  previewTheme(aTheme) {
-    let origin = Services.prefs.getCharPref("browser.uitour.themeOrigin");
-    let data = LightweightThemeManager.parseTheme(aTheme, origin);
-    if (data)
-      LightweightThemeManager.previewTheme(data);
-  },
-
-  resetTheme() {
-    LightweightThemeManager.resetPreview();
   },
 
   /**
@@ -1342,7 +1318,10 @@ var UITour = {
       urlbar.value = SEARCH_STRING;
       urlbar.select();
       if (quantumbar) {
-        urlbar.startQuery();
+        urlbar.startQuery({
+          searchString: SEARCH_STRING,
+          allowAutofill: false,
+        });
       } else {
         urlbar.controller.startSearch(SEARCH_STRING);
       }

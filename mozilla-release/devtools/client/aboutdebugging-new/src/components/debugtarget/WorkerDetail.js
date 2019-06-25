@@ -49,7 +49,7 @@ class WorkerDetail extends PureComponent {
       FieldPair(
         {
           className: isListening ?
-            "js-worker-fetch-listening" : "js-worker-fetch-not-listening",
+            "qa-worker-fetch-listening" : "qa-worker-fetch-not-listening",
           label: "Fetch",
           slug: "fetch",
           value: "about-debugging-worker-fetch-value",
@@ -72,7 +72,7 @@ class WorkerDetail extends PureComponent {
           label: "Push Service",
           value: dom.span(
             {
-              className: "js-worker-push-service-value",
+              className: "qa-worker-push-service-value",
             },
             pushServiceEndpoint,
           ),
@@ -99,40 +99,19 @@ class WorkerDetail extends PureComponent {
     );
   }
 
-  renderStatus() {
-    const status = this.props.target.details.status.toLowerCase();
-
-    return FieldPair(
-      {
-        slug: "status",
-        label: Localized(
-          {
-            id: "about-debugging-worker-status",
-            $status: status,
-          },
-          dom.span(
-            {
-              className: `badge js-worker-status ` +
-                `${status === "running" ? "badge--success" : ""}`,
-            },
-            status
-          )
-        ),
-      }
-    );
-  }
-
   render() {
-    const { fetch, pushServiceEndpoint, scope, status } = this.props.target.details;
+    const { fetch, pushServiceEndpoint, scope } = this.props.target.details;
+
+    const isEmptyList = !pushServiceEndpoint && !fetch && !scope && !status;
 
     return dom.dl(
       {
-        className: "worker-detail",
+        className: "debug-target-item__detail" +
+                   (isEmptyList ? " debug-target-item__detail--empty" : ""),
       },
       pushServiceEndpoint ? this.renderPushService() : null,
       fetch ? this.renderFetch() : null,
       scope ? this.renderScope() : null,
-      status ? this.renderStatus() : null,
     );
   }
 }

@@ -34,15 +34,15 @@ namespace jit {
   _(GuardClass)                           \
   _(GuardGroupHasUnanalyzedNewScript)     \
   _(GuardIsExtensible)                    \
-  _(GuardIsNativeFunction)                \
+  _(GuardFunctionIsNative)                \
+  _(GuardFunctionIsConstructor)           \
+  _(GuardSpecificNativeFunction)          \
   _(GuardFunctionPrototype)               \
   _(GuardIsNativeObject)                  \
   _(GuardIsProxy)                         \
   _(GuardNotDOMProxy)                     \
   _(GuardSpecificInt32Immediate)          \
   _(GuardMagicValue)                      \
-  _(GuardNoUnboxedExpando)                \
-  _(GuardAndLoadUnboxedExpando)           \
   _(GuardNoDetachedTypedObjects)          \
   _(GuardNoDenseElements)                 \
   _(GuardAndGetNumberFromString)          \
@@ -56,6 +56,8 @@ namespace jit {
   _(GuardXrayExpandoShapeAndDefaultProto) \
   _(GuardNoAllocationMetadataBuilder)     \
   _(GuardObjectGroupNotPretenured)        \
+  _(GuardFunctionHasJitEntry)             \
+  _(GuardNotClassConstructor)             \
   _(LoadObject)                           \
   _(LoadProto)                            \
   _(LoadEnclosingEnvironment)             \
@@ -124,7 +126,9 @@ namespace jit {
   _(CallObjectHasSparseElementResult)     \
   _(CallInt32ToString)                    \
   _(CallNumberToString)                   \
+  _(BooleanToString)                      \
   _(CallIsSuspendedGeneratorResult)       \
+  _(MetaTwoByte)                          \
   _(WrapResult)
 
 // [SMDDOC] CacheIR Value Representation and Tracking
@@ -574,6 +578,8 @@ class MOZ_RAII CacheRegisterAllocator {
   void discardStack(MacroAssembler& masm);
 
   Address addressOf(MacroAssembler& masm, BaselineFrameSlot slot) const;
+  BaseValueIndex addressOf(MacroAssembler& masm, Register argcReg,
+                           BaselineFrameSlot slot) const;
 
   // Returns the register for the given operand. If the operand is currently
   // not in a register, it will load it into one.
@@ -737,7 +743,7 @@ class MOZ_RAII CacheIRCompiler {
   // up with the opcode signature in CACHE_IR_OPS.
   void assertAllArgumentsConsumed() {
     CacheOp prevOp = CacheOp(*currentVerificationPosition_);
-    uint32_t expectedLength = CacheIROpFormat::OpLengths[uint8_t(prevOp)];
+    uint32_t expectedLength = 1 + CacheIROpFormat::ArgLengths[uint8_t(prevOp)];
 
     const uint8_t* newPosition = reader.currentPosition();
     MOZ_ASSERT(newPosition > currentVerificationPosition_);
@@ -883,6 +889,12 @@ class MOZ_RAII CacheIRCompiler {
     MOZ_ASSERT(stubFieldPolicy_ == StubFieldPolicy::Constant);
     return jsid::fromRawBits(readStubWord(offset, StubField::Type::Id));
   }
+
+ public:
+  // The maximum number of arguments passed to a spread call or
+  // fun_apply IC.  Keep this small to avoid controllable stack
+  // overflows by attackers passing large arrays.
+  static const uint32_t MAX_ARGS_ARRAY_LENGTH = 16;
 };
 
 // Ensures the IC's output register is available for writing.
