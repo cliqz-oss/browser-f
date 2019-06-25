@@ -5,7 +5,7 @@
 // CLIQZ-SPECIAL:
 // DB-2064: startup.homepage_override_url should be assigned a url address leading to Cliqz
 // actual What's new page.
-pref("startup.homepage_override_url","https://cliqz.com/%LOCALE%/desktop/whatsnew/?version=%VERSION%&oldversion=%OLD_VERSION%");
+pref("startup.homepage_override_url","https://cliqz.com/desktop/whatsnew/?version=%VERSION%&oldversion=%OLD_VERSION%");
 pref("startup.homepage_welcome_url","");
 pref("startup.homepage_welcome_url.additional", "");
 

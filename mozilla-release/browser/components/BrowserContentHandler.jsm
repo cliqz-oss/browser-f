@@ -108,21 +108,15 @@ function needHomepageOverride(prefb) {
   }
 #endif
   var savedmstone = prefb.getCharPref("browser.startup.homepage_override.mstone", "");
-  // CLIQZ-SPECIAL: DB-2131,
+  // CLIQZ-SPECIAL: DB-2131 | DB-2186,
   // We should show WhatsNewPage for a user only in case of there is something to tell about;
   // That includes major updates only + the fact that these updates have definitely
   // features we would like to promote.
-  // Thus we can rely on "browser.migration.version" preference which is greater than or equal 80
-  // for FF 67.x.x (we definitely know we would like to promote 1.27.x for users).
-  //
-  // infer `browser.migration.showWhatsNew` from browserGlue.jsm
-  // to decide whether to whats new page show or not
   const shouldShowWhatsNew = prefb.getBoolPref("browser.migration.showWhatsNew", false);
-  if (!shouldShowWhatsNew) {
-    return OVERRIDE_NONE;
+  if (shouldShowWhatsNew) {
+    // set the flag to false to not show next time
+    Services.prefs.setBoolPref("browser.migration.showWhatsNew", false);
   }
-  // set the flag to false to not show next time
-  Services.prefs.setBoolPref("browser.migration.showWhatsNew", false);
 
   if (savedmstone == "ignore")
     return OVERRIDE_NONE;
@@ -133,22 +127,6 @@ function needHomepageOverride(prefb) {
 
   var buildID = Services.appinfo.platformBuildID;
 
-  // CLIQZ-SPECIAL: DB-2131
-  // We are only interested in major updates.
-  // Let mstone be equal "66.0.2".
-  // Then it takes to check savedmstone major number and compare them against each other.
-  const MSTONE_MAJOR = mstone.split(".")[0] * 1;
-  const SAVED_MSTONE_MAJOR = savedmstone.split(".")[0] * 1;
-  // There might be few users without browser.startup.homepage_override.mstone set,
-  // those ones are coming from 1.24.0, 1.25.3.
-  // For those we display WhatsNewPage by default (but still only for 1.27.x);
-  // So the following clause gets executed only for users who HAVE GOT
-  // browser.startup.homepage_override.mstone initially set in their preferences.
-  if (SAVED_MSTONE_MAJOR > 0) {
-    if (isNaN(MSTONE_MAJOR) || SAVED_MSTONE_MAJOR >= MSTONE_MAJOR) {
-      return OVERRIDE_NONE;
-    }
-  }
   if (mstone != savedmstone) {
     // Bug 462254. Previous releases had a default pref to suppress the EULA
     // agreement if the platform's installer had already shown one. Now with
@@ -159,7 +137,7 @@ function needHomepageOverride(prefb) {
 
     prefb.setCharPref("browser.startup.homepage_override.mstone", mstone);
     prefb.setCharPref("browser.startup.homepage_override.buildID", buildID);
-    return (savedmstone || !SAVED_MSTONE_MAJOR ? OVERRIDE_NEW_MSTONE : OVERRIDE_NEW_PROFILE);
+    return (shouldShowWhatsNew ? OVERRIDE_NEW_MSTONE : OVERRIDE_NEW_PROFILE);
   }
 
   if (buildID != savedBuildID) {
@@ -604,8 +582,7 @@ nsBrowserContentHandler.prototype = {
         overridePage = overridePage.replace("%OLD_VERSION%", old_mstone);
 #endif
 
-        overridePage = overridePage.replace("/%LOCALE%/", Services.locale.defaultLocale === "de" ? "/" : "/en/")
-                                   .replace("%VERSION%", new_cliqz_mstone)
+        overridePage = overridePage.replace("%VERSION%", new_cliqz_mstone)
                                    .replace("%OLD_VERSION%", old_cliqz_mstone);
 
         Services.prefs.setCharPref("distribution.previous_version", new_cliqz_mstone);
