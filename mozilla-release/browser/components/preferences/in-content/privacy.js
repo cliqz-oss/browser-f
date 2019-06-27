@@ -551,17 +551,13 @@ var gPrivacyPane = {
 #if 0
     setEventListener("contentBlockingTrackingProtectionCheckbox", "command",
       this._updateTrackingProtectionUI);
-<<<<<<< HEAD
-#endif
-||||||| merged common ancestors
-=======
     setEventListener("contentBlockingCryptominersCheckbox", "command",
       this.updateCryptominingLists);
     setEventListener("contentBlockingFingerprintersCheckbox", "command",
       this.updateFingerprintingLists);
->>>>>>> 822b139b92cedf98ab96ccad686dae664d417af4
     setEventListener("trackingProtectionMenu", "command",
       this.trackingProtectionWritePrefs);
+#endif
     setEventListener("standardArrow", "command", this.toggleExpansion);
     setEventListener("strictArrow", "command", this.toggleExpansion);
     setEventListener("customArrow", "command", this.toggleExpansion);

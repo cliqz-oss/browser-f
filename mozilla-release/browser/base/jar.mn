@@ -32,14 +32,8 @@ browser.jar:
 *       content/browser/browser.xhtml                 (content/browser.xhtml)
 #else
 *       content/browser/browser.xul                   (content/browser.xul)
-<<<<<<< HEAD
 *       content/browser/browser-addons.js             (content/browser-addons.js)
-||||||| merged common ancestors
-        content/browser/browser-addons.js             (content/browser-addons.js)
-=======
 #endif
-        content/browser/browser-addons.js             (content/browser-addons.js)
->>>>>>> 822b139b92cedf98ab96ccad686dae664d417af4
         content/browser/browser-allTabsMenu.js        (content/browser-allTabsMenu.js)
         content/browser/browser-captivePortal.js      (content/browser-captivePortal.js)
         content/browser/browser-ctrlTab.js            (content/browser-ctrlTab.js)

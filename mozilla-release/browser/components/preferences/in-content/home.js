@@ -237,16 +237,8 @@ var gHomePane = {
   },
 
   async _handleHomePageOverrides() {
-<<<<<<< HEAD
 #if 0
-    const homePref = Preferences.get("browser.startup.homepage");
-    if (homePref.locked) {
-||||||| merged common ancestors
-    const homePref = Preferences.get("browser.startup.homepage");
-    if (homePref.locked) {
-=======
     if (HomePage.locked) {
->>>>>>> 822b139b92cedf98ab96ccad686dae664d417af4
       // An extension can't control these settings if they're locked.
       hideControllingExtension(HOMEPAGE_OVERRIDE_KEY);
       this._setInputDisabledStates(false);

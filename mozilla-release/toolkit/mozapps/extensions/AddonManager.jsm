@@ -1854,19 +1854,10 @@ var AddonManagerInternal = {
         this.installNotifyObservers("addon-install-disabled", topBrowser,
                                     aInstallingPrincipal.URI, aInstall);
         return;
-<<<<<<< HEAD
         // CLIQZ-SPECIAL: Mark AMO as safe site
-      } else if (!this.isAMOOrigin(aInstallingPrincipal) &&
-                 (aInstallingPrincipal.isNullPrincipal ||
-                  !aBrowser.contentPrincipal ||
-                  !aInstallingPrincipal.subsumes(aBrowser.contentPrincipal))) {
-||||||| merged common ancestors
-      } else if (aInstallingPrincipal.isNullPrincipal || !aBrowser.contentPrincipal || !aInstallingPrincipal.subsumes(aBrowser.contentPrincipal)) {
-=======
-      } else if (aInstallingPrincipal.isNullPrincipal || !aBrowser.contentPrincipal ||
+      } else if (!this.isAMOOrigin(aInstallingPrincipal) && (aInstallingPrincipal.isNullPrincipal || !aBrowser.contentPrincipal ||
                  !aInstallingPrincipal.subsumes(aBrowser.contentPrincipal) ||
-                 !this.isInstallAllowedByPolicy(aInstallingPrincipal, aInstall, false /* explicit */)) {
->>>>>>> 822b139b92cedf98ab96ccad686dae664d417af4
+                 !this.isInstallAllowedByPolicy(aInstallingPrincipal, aInstall, false /* explicit */))) {
         aInstall.cancel();
 
         this.installNotifyObservers("addon-install-origin-blocked", topBrowser,
@@ -1884,27 +1875,11 @@ var AddonManagerInternal = {
 
         AddonManagerInternal.startInstall(aBrowser, aInstallingPrincipal.URI, aInstall);
       };
-<<<<<<< HEAD
-      // CLIQZ-SPECIAL: Mark AMO as safe site
-      if (!this.isAMOOrigin(aInstallingPrincipal) &&
-          !this.isInstallAllowed(aMimetype, aInstallingPrincipal)) {
-        this.installNotifyObservers("addon-install-blocked", topBrowser,
-                                    aInstallingPrincipal.URI, aInstall,
-                                    () => startInstall("other"));
-      } else {
-||||||| merged common ancestors
-      if (!this.isInstallAllowed(aMimetype, aInstallingPrincipal)) {
-        this.installNotifyObservers("addon-install-blocked", topBrowser,
-                                    aInstallingPrincipal.URI, aInstall,
-                                    () => startInstall("other"));
-      } else {
-=======
 
       let installAllowed = this.isInstallAllowed(aMimetype, aInstallingPrincipal);
       let installPerm = Services.perms.testPermissionFromPrincipal(aInstallingPrincipal, "install");
 
       if (installAllowed) {
->>>>>>> 822b139b92cedf98ab96ccad686dae664d417af4
         startInstall("AMO");
       } else if (installPerm === Ci.nsIPermissionManager.DENY_ACTION) {
         // Block without prompt

@@ -1100,20 +1100,11 @@ var gMainPane = {
     const value = event.target.checked;
     let warnOnQuitCheckbox = document.getElementById("browserRestoreSessionQuitWarning");
     if (value) {
-<<<<<<< HEAD
-||||||| merged common ancestors
-      // We need to restore the blank homepage setting in our other pref
-      if (startupPref.value === this.STARTUP_PREF_BLANK) {
-        Preferences.get("browser.startup.homepage").value = "about:blank";
-      }
-      newValue = this.STARTUP_PREF_RESTORE_SESSION;
-=======
       // We need to restore the blank homepage setting in our other pref
       if (startupPref.value === this.STARTUP_PREF_BLANK) {
         HomePage.set("about:blank");
       }
       newValue = this.STARTUP_PREF_RESTORE_SESSION;
->>>>>>> 822b139b92cedf98ab96ccad686dae664d417af4
       let warnOnQuitPref = Preferences.get("browser.sessionstore.warnOnQuit");
       if (!warnOnQuitPref.locked) {
         warnOnQuitCheckbox.removeAttribute("disabled");

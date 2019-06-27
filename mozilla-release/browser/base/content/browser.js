@@ -1319,16 +1319,9 @@ function _loadURI(browser, uri, params = {}) {
     mustChangeProcess,
     newFrameloader,
   } = E10SUtils.shouldLoadURIInBrowser(browser, uri, gMultiProcessBrowser,
-<<<<<<< HEAD
-                                       flags);
+                                       gFissionBrowser, flags);
 
   uri = CliqzResources.matchUrlByString(uri);
-
-||||||| merged common ancestors
-                                       flags);
-=======
-                                       gFissionBrowser, flags);
->>>>>>> 822b139b92cedf98ab96ccad686dae664d417af4
   if (uriObject && handleUriInChrome(browser, uriObject)) {
     // If we've handled the URI in Chrome then just return here.
     return;
@@ -6930,39 +6923,25 @@ var ToolbarContextMenu = {
   async updateExtension(popup) {
     let removeExtension = popup.querySelector(".customize-context-removeExtension");
     let manageExtension = popup.querySelector(".customize-context-manageExtension");
-<<<<<<< HEAD
-    let separator = removeExtension.nextElementSibling;
-    let node = this._getUnwrappedTriggerNode(popup);
-    let isWebExt = node && node.hasAttribute("data-extensionid");
-    // CLIQZ-SPECIAL: hide manage and remove extensions for cliqz toolbar icons
-    let isCliqzButton = node && node.hasAttribute("data-extensionid") && (node.getAttribute("data-extensionid") == "cliqz@cliqz.com");
-    removeExtension.hidden = manageExtension.hidden = separator.hidden = !isWebExt || isCliqzButton;
-||||||| merged common ancestors
-    let separator = removeExtension.nextElementSibling;
-    let id = this._getExtensionId(popup);
-    let addon = id && await AddonManager.getAddonByID(id);
-    removeExtension.hidden = manageExtension.hidden = separator.hidden = !addon;
-    if (addon) {
-      removeExtension.disabled = !(addon.permissions & AddonManager.PERM_CAN_UNINSTALL);
-    }
-=======
     let reportExtension = popup.querySelector(".customize-context-reportExtension");
     let separator = reportExtension.nextElementSibling;
     let id = this._getExtensionId(popup);
     let addon = id && await AddonManager.getAddonByID(id);
 
+    // CLIQZ-SPECIAL: hide manage, report and remove extensions for cliqz toolbar icons
+    let isCliqzButton = node && node.hasAttribute("data-extensionid") && (node.getAttribute("data-extensionid") == "cliqz@cliqz.com");
     for (let element of [removeExtension, manageExtension, separator]) {
-      element.hidden = !addon;
+      element.hidden = !addon || isCliqzButton;
     }
 
     reportExtension.hidden = !addon ||
                              !gAddonAbuseReportEnabled ||
+                             isCliqzButton ||
                              !gHtmlAboutAddonsEnabled;
 
     if (addon) {
       removeExtension.disabled = !(addon.permissions & AddonManager.PERM_CAN_UNINSTALL);
     }
->>>>>>> 822b139b92cedf98ab96ccad686dae664d417af4
   },
 
   async removeExtensionForContextAction(popup) {

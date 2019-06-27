@@ -97,71 +97,27 @@ detail-update-manual =
     .label = Aus
     .tooltiptext = Updates nicht automatisch installieren
 # Used as a description for the option to allow or block an add-on in private windows.
-<<<<<<< HEAD
 detail-private-browsing-label = In Vergessen-Fenstern ausführen
 
 detail-private-browsing-description2 = Falls erlaubt, hat die Erweiterung Zugriff auf Ihre Online-Aktivitäten im Vergessen-Modus. <label data-l10n-name="detail-private-browsing-learn-more">Weitere Informationen</label>
 
-||||||| merged common ancestors
-detail-private-browsing-label = In privaten Fenstern ausführen
-
-detail-private-browsing-description2 = Falls erlaubt, hat die Erweiterung Zugriff auf Ihre Online-Aktivitäten im Privaten Modus. <label data-l10n-name="detail-private-browsing-learn-more">Weitere Informationen</label>
-
-=======
-detail-private-browsing-label = In privaten Fenstern ausführen
-detail-private-browsing-description2 = Falls erlaubt, hat die Erweiterung Zugriff auf Ihre Online-Aktivitäten im Privaten Modus. <label data-l10n-name="detail-private-browsing-learn-more">Weitere Informationen</label>
->>>>>>> 822b139b92cedf98ab96ccad686dae664d417af4
 # Some add-ons may elect to not run in private windows by setting incognito: not_allowed in the manifest.  This
-<<<<<<< HEAD
 # cannot be overriden by the user.
 detail-private-disallowed-label = In Vergessen-Fenstern nicht erlaubt
 detail-private-disallowed-description = Die Erweiterung wird in Vergessen-Fenstern nicht ausgeführt. <label data-l10n-name="detail-private-browsing-learn-more">Weitere Informationen</label>
 
-||||||| merged common ancestors
-# cannot be overriden by the user.
-detail-private-disallowed-label = In privaten Fenstern nicht erlaubt
-detail-private-disallowed-description = Die Erweiterung wird im Privaten Modus nicht ausgeführt. <label data-l10n-name="detail-private-browsing-learn-more">Weitere Informationen</label>
-
-=======
-# cannot be overridden by the user.
-detail-private-disallowed-label = In privaten Fenstern nicht erlaubt
-detail-private-disallowed-description = Die Erweiterung wird im Privaten Modus nicht ausgeführt. <label data-l10n-name="detail-private-browsing-learn-more">Weitere Informationen</label>
->>>>>>> 822b139b92cedf98ab96ccad686dae664d417af4
 # Some special add-ons are privileged, run in private windows automatically, and this permission can't be revoked
-<<<<<<< HEAD
 detail-private-required-label = Benötigt Zugriff auf Vergessen-Fenster
 detail-private-required-description = Die Erweiterung hat Zugriff auf Ihre Online-Aktivitäten in Vergessen-Fenstern. <label data-l10n-name="detail-private-browsing-learn-more">Weitere Informationen</label>
 
-||||||| merged common ancestors
-detail-private-required-label = Benötigt Zugriff auf private Fenster
-detail-private-required-description = Die Erweiterung hat Zugriff auf Ihre Online-Aktivitäten im Privaten Modus. <label data-l10n-name="detail-private-browsing-learn-more">Weitere Informationen</label>
-
-=======
-detail-private-required-label = Benötigt Zugriff auf private Fenster
-detail-private-required-description = Die Erweiterung hat Zugriff auf Ihre Online-Aktivitäten im Privaten Modus. <label data-l10n-name="detail-private-browsing-learn-more">Weitere Informationen</label>
->>>>>>> 822b139b92cedf98ab96ccad686dae664d417af4
 detail-private-browsing-on =
     .label = Erlauben
-<<<<<<< HEAD
     .tooltiptext = Aktivieren in Vergessen-Fenstern
 
-||||||| merged common ancestors
-    .tooltiptext = Aktivieren im privaten Modus
-
-=======
-    .tooltiptext = Aktivieren im privaten Modus
->>>>>>> 822b139b92cedf98ab96ccad686dae664d417af4
 detail-private-browsing-off =
     .label = Nicht erlauben
-<<<<<<< HEAD
     .tooltiptext = Deaktivieren in Vergessen-Fenstern
 
-||||||| merged common ancestors
-    .tooltiptext = Deaktivieren im privaten Modus
-
-=======
-    .tooltiptext = Deaktivieren im privaten Modus
->>>>>>> 822b139b92cedf98ab96ccad686dae664d417af4
 detail-home =
     .label = Homepage
 detail-home-value =
@@ -205,19 +161,9 @@ legacy-extensions =
     .value = Alter Add-on-Typ
 legacy-extensions-description = Diese Erweiterungen erfüllen nicht die aktuellen Standards von { -brand-short-name } und wurden deshalb deaktiviert. <label data-l10n-name="legacy-learn-more">Weitere Informationen über Änderungen bei der Unterstützung von Add-ons für Firefox</label>
 private-browsing-description2 =
-<<<<<<< HEAD
     { -brand-short-name } ändert die Verwendung von Erweiterungen im Vergessen-Modus.
     Neu in { -brand-short-name } installierte Erweiterungen werden standardmäßig in Vergessen-Fenstern nicht ausgeführt und haben keine Zugriff auf die Online-Aktivitäten in diesen, außer gibt die Erweiterung wird in den Einstellungen für die Verwendung in Vergessen-Fenstern freigegeben.
     Diese Änderung dient Ihrem Datenschutz im Vergessen-Modus.
-||||||| merged common ancestors
-    { -brand-short-name } ändert die Verwendung von Erweiterungen im Privaten Modus.
-    Neu in { -brand-short-name } installierte Erweiterungen werden standardmäßig in privaten Fenstern nicht ausgeführt und haben keine Zugriff auf die Online-Aktivitäten in diesen, außer gibt die Erweiterung wird in den Einstellungen für die Verwendung im Privaten Modus freigegeben.
-    Diese Änderung dient Ihrem Datenschutz im Privaten Modus.
-=======
-    { -brand-short-name } ändert die Verwendung von Erweiterungen im Privaten Modus.
-    Neu in { -brand-short-name } installierte Erweiterungen werden standardmäßig in privaten Fenstern nicht ausgeführt und haben keinen Zugriff auf die Online-Aktivitäten in diesen, außer die Erweiterung wird in den Einstellungen für die Verwendung im Privaten Modus freigegeben.
-    Diese Änderung dient Ihrem Datenschutz im Privaten Modus.
->>>>>>> 822b139b92cedf98ab96ccad686dae664d417af4
     <label data-l10n-name="private-browsing-learn-more">Weitere Informationen zur Verwaltung der Erweiterungseinstellungen</label>
 extensions-view-discover =
     .name = Add-ons entdecken

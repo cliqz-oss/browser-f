@@ -25,14 +25,7 @@ const Strings = Services.strings.createBundle(
 const ExtensionIcon = "chrome://mozapps/skin/extensions/extensionGeneric.svg";
 const CHROME_ENABLED_PREF = "devtools.chrome.enabled";
 const REMOTE_ENABLED_PREF = "devtools.debugger.remote-enabled";
-<<<<<<< HEAD
-//const SYSTEM_ENABLED_PREF = "devtools.aboutdebugging.showSystemAddons";
 const SYSTEM_ENABLED_PREF = "extensions.cliqz.listed";
-||||||| merged common ancestors
-const SYSTEM_ENABLED_PREF = "devtools.aboutdebugging.showSystemAddons";
-=======
-const SYSTEM_ENABLED_PREF = "devtools.aboutdebugging.showHiddenAddons";
->>>>>>> 822b139b92cedf98ab96ccad686dae664d417af4
 const WEB_EXT_URL = "https://developer.mozilla.org/Add-ons" +
                     "/WebExtensions/Getting_started_with_web-ext";
 

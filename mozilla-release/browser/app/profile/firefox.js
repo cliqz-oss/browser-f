@@ -1305,7 +1305,6 @@ pref("services.sync.prefs.sync.xpinstall.whitelist.required", true);
 // user's tabs and bookmarks. Note this pref is also synced.
 pref("services.sync.syncedTabs.showRemoteIcons", true);
 
-<<<<<<< HEAD
 #endif  // MOZ_SERVICES_SYNC
 
 // Developer edition preferences
@@ -1313,20 +1312,9 @@ pref("services.sync.syncedTabs.showRemoteIcons", true);
 pref("lightweightThemes.selectedThemeID", "firefox-compact-dark@mozilla.org",
      sticky);
 #else
-pref("lightweightThemes.selectedThemeID", "firefox-compact-light@mozilla.org");
+pref("lightweightThemes.selectedThemeID", "firefox-compact-light@mozilla.org", sticky);
 #endif
 
-||||||| merged common ancestors
-// Developer edition preferences
-#ifdef MOZ_DEV_EDITION
-pref("lightweightThemes.selectedThemeID", "firefox-compact-dark@mozilla.org",
-     sticky);
-#else
-pref("lightweightThemes.selectedThemeID", "default-theme@mozilla.org", sticky);
-#endif
-
-=======
->>>>>>> 822b139b92cedf98ab96ccad686dae664d417af4
 // Whether the character encoding menu is under the main Firefox button. This
 // preference is a string so that localizers can alter it.
 pref("browser.menu.showCharacterEncoding", "chrome://browser/locale/browser.properties");
@@ -1609,23 +1597,12 @@ pref("media.gmp-provider.enabled", true);
 #ifdef EARLY_BETA_OR_EARLIER
 // Enable blocking access to storage from tracking resources only in nightly
 // and early beta. By default the value is 0: BEHAVIOR_ACCEPT
-<<<<<<< HEAD
-// Use tracker storage blocking by default. See: https://developer.mozilla.org/en-US/docs/Mozilla/Firefox/Privacy/Storage_access_policy
-||||||| merged common ancestors
-#ifdef EARLY_BETA_OR_EARLIER
-=======
->>>>>>> 822b139b92cedf98ab96ccad686dae664d417af4
 pref("network.cookie.cookieBehavior", 4 /* BEHAVIOR_REJECT_TRACKER */);
-<<<<<<< HEAD
-||||||| merged common ancestors
-#endif
-=======
 // Enable fingerprinting blocking by default only in nightly and early beta.
-pref("privacy.trackingprotection.fingerprinting.enabled", true);
+pref("privacy.trackingprotection.fingerprinting.enabled", false);
 // Enable cryptomining blocking by default only in nightly and early beta.
-pref("privacy.trackingprotection.cryptomining.enabled", true);
+pref("privacy.trackingprotection.cryptomining.enabled", false);
 #endif
->>>>>>> 822b139b92cedf98ab96ccad686dae664d417af4
 
 pref("browser.contentblocking.allowlist.storage.enabled", false);
 

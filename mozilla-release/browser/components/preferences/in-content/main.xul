@@ -14,21 +14,7 @@
 
 <stringbundle id="bundlePreferences" src="chrome://browser/locale/preferences.properties"/>
 
-<<<<<<< HEAD
-#if 0
-<!--
-  CLIQZ-TODO: since FF67 added CDATA syntax
-  #include cliqz.home.xul
-  does not work anymore.
-  This is a reason to put CDATA under comments until we find a workaround.
--->
-<box id="template-paneGeneral" hidden="true"><![CDATA[
-#endif
-||||||| merged common ancestors
-<box id="template-paneGeneral" hidden="true"><![CDATA[
-=======
 <html:template id="template-paneGeneral">
->>>>>>> 822b139b92cedf98ab96ccad686dae664d417af4
 <hbox id="generalCategory"
       class="subcategory"
       hidden="true"
@@ -828,12 +814,4 @@
     </hbox>
   </hbox>
 </groupbox>
-<<<<<<< HEAD
-#if 0
-]]></box>
-#endif
-||||||| merged common ancestors
-]]></box>
-=======
 </html:template>
->>>>>>> 822b139b92cedf98ab96ccad686dae664d417af4

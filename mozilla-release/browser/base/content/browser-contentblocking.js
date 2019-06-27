@@ -745,13 +745,7 @@ var ThirdPartyCookies = {
 
 var ContentBlocking = {
   // If the user ignores the doorhanger, we stop showing it after some time.
-<<<<<<< HEAD
-  MAX_INTROS: 0, // Cliqz. Don't use this functionality from FF
-||||||| merged common ancestors
-  MAX_INTROS: 20,
-=======
-  MAX_INTROS: Services.prefs.getIntPref("browser.contentblocking.maxIntroCount"),
->>>>>>> 822b139b92cedf98ab96ccad686dae664d417af4
+  MAX_INTROS: 0,
   PREF_ANIMATIONS_ENABLED: "toolkit.cosmeticAnimations.enabled",
   PREF_REPORT_BREAKAGE_ENABLED: "browser.contentblocking.reportBreakage.enabled",
   PREF_REPORT_BREAKAGE_URL: "browser.contentblocking.reportBreakage.url",

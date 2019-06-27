@@ -141,14 +141,6 @@ this.urlOverrides = class extends ExtensionAPI {
         extension.id, STORE_TYPE, NEW_TAB_SETTING_NAME, url,
         () => aboutNewTabService.newTabURL);
 
-<<<<<<< HEAD
-      // If the extension was just re-enabled, change the setting to enabled.
-      // This is required because addSetting above is used for both add and update.
-      if (["ADDON_ENABLE", "ADDON_UPGRADE", "ADDON_DOWNGRADE"]
-          .includes(extension.startupReason)) {
-        item = ExtensionSettingsStore.enable(extension.id, STORE_TYPE, NEW_TAB_SETTING_NAME);
-      }
-
       try {
         // CLIQZ: if its system addon do not add notification observer
         const isSystem = extension.addonData.signedState == 3;
@@ -158,22 +150,6 @@ this.urlOverrides = class extends ExtensionAPI {
         }
       } catch(e) {
         // is case there is no SignedState
-||||||| merged common ancestors
-      // If the extension was just re-enabled, change the setting to enabled.
-      // This is required because addSetting above is used for both add and update.
-      if (["ADDON_ENABLE", "ADDON_UPGRADE", "ADDON_DOWNGRADE"]
-          .includes(extension.startupReason)) {
-        item = ExtensionSettingsStore.enable(extension.id, STORE_TYPE, NEW_TAB_SETTING_NAME);
-      }
-
-      // Set the newTabURL to the current value of the setting.
-      if (item) {
-        setNewTabURL(item.id, item.value || item.initialValue);
-=======
-      // Set the newTabURL to the current value of the setting.
-      if (item) {
-        setNewTabURL(item.id, item.value || item.initialValue);
->>>>>>> 822b139b92cedf98ab96ccad686dae664d417af4
       }
 
       // We need to monitor permission change and update the preferences.

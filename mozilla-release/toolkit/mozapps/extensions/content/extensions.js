@@ -56,10 +56,9 @@ const PREF_LEGACY_ENABLED = "extensions.legacy.enabled";
 const LOADING_MSG_DELAY = 100;
 
 const UPDATES_RECENT_TIMESPAN = 2 * 24 * 3600000; // 2 days (in milliseconds)
-<<<<<<< HEAD
-const UPDATES_RELEASENOTES_TRANSFORMFILE = "chrome://mozapps/content/extensions/updateinfo.xsl";
 
-const XMLURI_PARSE_ERROR = "http://www.mozilla.org/newlayout/xml/parsererror.xml";
+const HTML_NS = "http://www.w3.org/1999/xhtml";
+
 const RECOMMENDED_ADDONS = {
   "firefox@ghostery.com": {
     "id": "firefox@ghostery.com",
@@ -86,14 +85,6 @@ const RECOMMENDED_ADDONS = {
     "homepageURL": "https://bitwarden.com",
   }
 };
-||||||| merged common ancestors
-const UPDATES_RELEASENOTES_TRANSFORMFILE = "chrome://mozapps/content/extensions/updateinfo.xsl";
-
-const XMLURI_PARSE_ERROR = "http://www.mozilla.org/newlayout/xml/parsererror.xml";
-=======
->>>>>>> 822b139b92cedf98ab96ccad686dae664d417af4
-
-const HTML_NS = "http://www.w3.org/1999/xhtml";
 
 var gViewDefault = "addons://list/extension";
 
@@ -752,25 +743,9 @@ var gViewController = {
     this.headeredViews = document.getElementById("headered-views");
     this.headeredViewsDeck = document.getElementById("headered-views-content");
     this.backButton = document.getElementById("go-back");
-
-<<<<<<< HEAD
 #if 0
-    this.viewObjects.discover = gDiscoverView;
-||||||| merged common ancestors
-    this.viewObjects.discover = gDiscoverView;
-=======
->>>>>>> 822b139b92cedf98ab96ccad686dae664d417af4
     this.viewObjects.legacy = gLegacyView;
-<<<<<<< HEAD
 #endif
-    this.viewObjects.list = gListView;
-    this.viewObjects.detail = gDetailView;
-    this.viewObjects.updates = gUpdatesView;
-||||||| merged common ancestors
-    this.viewObjects.detail = gDetailView;
-    this.viewObjects.updates = gUpdatesView;
-=======
->>>>>>> 822b139b92cedf98ab96ccad686dae664d417af4
     this.viewObjects.shortcuts = gShortcutsView;
 
     if (useHtmlViews) {

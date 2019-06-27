@@ -74,27 +74,14 @@ async function init(aEvent) {
     document.getElementById("experimental").hidden = false;
     document.getElementById("communityDesc").hidden = true;
   }
-<<<<<<< HEAD
+
+  // Use Fluent arguments for append version and the architecture of the build
+  let versionField = document.getElementById("version");
+
+  document.l10n.setAttributes(versionField, versionId, versionAttributes);
+
+  await document.l10n.translateElements([versionField]);
 #endif
-||||||| merged common ancestors
-
-  // Use Fluent arguments for append version and the architecture of the build
-  let versionField = document.getElementById("version");
-
-  document.l10n.setAttributes(versionField, versionId, versionAttributes);
-
-  await document.l10n.translateElements([versionField]);
-  window.sizeToContent();
-=======
-
-  // Use Fluent arguments for append version and the architecture of the build
-  let versionField = document.getElementById("version");
-
-  document.l10n.setAttributes(versionField, versionId, versionAttributes);
-
-  await document.l10n.translateElements([versionField]);
->>>>>>> 822b139b92cedf98ab96ccad686dae664d417af4
-
   // Show a release notes link if we have a URL.
   let relNotesLink = document.getElementById("releasenotes");
   let relNotesPrefType = Services.prefs.getPrefType("app.releaseNotesURL");

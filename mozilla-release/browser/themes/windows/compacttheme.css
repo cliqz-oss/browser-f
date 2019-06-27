@@ -87,15 +87,9 @@
   /* Show border on tabs with background colors and
    * show the tabs toolbar background color inside tabs. */
   .tabbrowser-tab {
-<<<<<<< HEAD
     /* Cliqz. Not used
     background-color: var(--lwt-accent-color) !important; */
-||||||| merged common ancestors
-    background-color: var(--lwt-accent-color) !important;
-=======
-    background-color: var(--lwt-accent-color) !important;
     color: var(--lwt-text-color) !important;
->>>>>>> 822b139b92cedf98ab96ccad686dae664d417af4
     border-top: 1px solid var(--tabs-border-color);
     background-clip: padding-box;
   }

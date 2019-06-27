@@ -83,13 +83,7 @@
 <script>
   Services.scriptloader.loadSubScript("chrome://global/content/contentAreaUtils.js", this);
   Services.scriptloader.loadSubScript("chrome://browser/content/browser-captivePortal.js", this);
-<<<<<<< HEAD
-  Services.scriptloader.loadSubScript("chrome://browser/content/browser-compacttheme.js", this);
 #ifdef 0
-||||||| merged common ancestors
-  Services.scriptloader.loadSubScript("chrome://browser/content/browser-compacttheme.js", this);
-=======
->>>>>>> 822b139b92cedf98ab96ccad686dae664d417af4
   Services.scriptloader.loadSubScript("chrome://browser/content/browser-contentblocking.js", this);
 #endif
 #ifdef MOZ_DATA_REPORTING
@@ -177,27 +171,8 @@
         <menupopup oncommand="TabContextMenu.reopenInContainer(event);"
                    onpopupshowing="TabContextMenu.createReopenInContainerMenu(event);"/>
       </menu>
-<<<<<<< HEAD
-      <menuitem id="context_openTabInWindow" label="&moveToNewWindow.label;"
-                accesskey="&moveToNewWindow.accesskey;"
-                tbattr="tabbrowser-multiple"
-                oncommand="gBrowser.replaceTabsWithWindow(TabContextMenu.contextTab);"/>
 #ifdef 0
-      <menuseparator id="context_sendTabToDevice_separator" class="sync-ui-item"/>
-      <menu id="context_moveTabOptions"
-            multiselectcontextlabel="&moveSelectedTabOptions.label;"
-            multiselectcontextaccesskey="&moveSelectedTabOptions.accesskey;"
-            nonmultiselectcontextlabel="&moveTabOptions.label;"
-            nonmultiselectcontextaccesskey="&moveTabOptions.accesskey;">
-||||||| merged common ancestors
-      <menu id="context_moveTabOptions"
-            multiselectcontextlabel="&moveSelectedTabOptions.label;"
-            multiselectcontextaccesskey="&moveSelectedTabOptions.accesskey;"
-            nonmultiselectcontextlabel="&moveTabOptions.label;"
-            nonmultiselectcontextaccesskey="&moveTabOptions.accesskey;">
-=======
       <menu id="context_moveTabOptions">
->>>>>>> 822b139b92cedf98ab96ccad686dae664d417af4
         <menupopup id="moveTabOptionsMenu">
           <menuitem id="context_moveToStart"
                     data-lazy-l10n-id="move-to-start"

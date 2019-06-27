@@ -850,12 +850,6 @@ content-blocking-setting-custom =
   .label = Custom
   .accesskey = C
 
-<<<<<<< HEAD
-content-blocking-standard-description = Only blocks known trackers in Forget Mode.
-||||||| merged common ancestors
-content-blocking-standard-description = Only blocks known trackers in Private Windows.
-=======
->>>>>>> 822b139b92cedf98ab96ccad686dae664d417af4
 content-blocking-standard-desc = Balanced for protection and performance. Allows some trackers so websites function properly.
 content-blocking-strict-description = Stronger protection, may cause some sites to break.
 content-blocking-custom-desc = Choose what to block.

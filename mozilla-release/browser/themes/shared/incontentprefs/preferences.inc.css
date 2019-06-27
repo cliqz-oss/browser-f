@@ -210,14 +210,11 @@ button > hbox > label {
   display: none;
 }
 
-<<<<<<< HEAD
 #header-connect {
   border-bottom: none;
   padding-bottom: 0;
 }
 
-||||||| merged common ancestors
-=======
 /* All panes */
 
 .info-icon,
@@ -229,7 +226,6 @@ button > hbox > label {
   fill: currentColor;
 }
 
->>>>>>> 822b139b92cedf98ab96ccad686dae664d417af4
 /* General Pane */
 
 #isDefaultLabel {
