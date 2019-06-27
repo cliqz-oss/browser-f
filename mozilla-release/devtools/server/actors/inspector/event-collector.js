@@ -12,9 +12,11 @@ const Services = require("Services");
 const {
   isAfterPseudoElement,
   isBeforePseudoElement,
+  isMarkerPseudoElement,
   isNativeAnonymous,
 } = require("devtools/shared/layout/utils");
 const Debugger = require("Debugger");
+const ReplayInspector = require("devtools/server/actors/replay/inspector");
 
 // eslint-disable-next-line
 const JQUERY_LIVE_REGEX = /return typeof \w+.*.event\.triggered[\s\S]*\.event\.(dispatch|handle).*arguments/;
@@ -265,7 +267,15 @@ class MainEventCollector {
   }
 
   getJQuery(node) {
+    if (Cu.isDeadWrapper(node)) {
+      return null;
+    }
+
     const global = this.unwrap(node.ownerGlobal);
+    if (!global) {
+      return null;
+    }
+
     const hasJQuery = global.jQuery && global.jQuery.fn && global.jQuery.fn.jquery;
 
     if (hasJQuery) {
@@ -381,7 +391,7 @@ class JQueryEventCollector extends MainEventCollector {
 
     // If jQuery is not on the page, if this is an anonymous node or a pseudo
     // element we need to return early.
-    if (!jQuery || isNativeAnonymous(node) ||
+    if (!jQuery || isNativeAnonymous(node) || isMarkerPseudoElement(node) ||
         isBeforePseudoElement(node) || isAfterPseudoElement(node)) {
       if (checkOnly) {
         return false;
@@ -390,14 +400,25 @@ class JQueryEventCollector extends MainEventCollector {
     }
 
     let eventsObj = null;
-
     const data = jQuery._data || jQuery.data;
+
     if (data) {
       // jQuery 1.2+
-      eventsObj = data(node, "events");
+      try {
+        eventsObj = data(node, "events");
+      } catch (e) {
+        // We have no access to a JS object. This is probably due to a CORS
+        // violation. Using try / catch is the only way to avoid this error.
+      }
     } else {
       // JQuery 1.0 & 1.1
-      const entry = jQuery(node)[0];
+      let entry;
+      try {
+        entry = entry = jQuery(node)[0];
+      } catch (e) {
+        // We have no access to a JS object. This is probably due to a CORS
+        // violation. Using try / catch is the only way to avoid this error.
+      }
 
       if (!entry || !entry.events) {
         if (checkOnly) {
@@ -474,7 +495,14 @@ class JQueryLiveEventCollector extends MainEventCollector {
       // Any element matching the specified selector will trigger the live
       // event.
       const win = this.unwrap(node.ownerGlobal);
-      const events = data(win.document, "events");
+      let events = null;
+
+      try {
+        events = data(win.document, "events");
+      } catch (e) {
+        // We have no access to a JS object. This is probably due to a CORS
+        // violation. Using try / catch is the only way to avoid this error.
+      }
 
       if (events) {
         for (const [, eventHolder] of Object.entries(events)) {
@@ -843,13 +871,19 @@ class EventCollector {
 
     try {
       const { capturing, handler } = listener;
-      const global = Cu.getGlobalForObject(handler);
 
-      // It is important that we recreate the globalDO for each handler because
-      // their global object can vary e.g. resource:// URLs on a video control. If
-      // we don't do this then all chrome listeners simply display "native code."
-      globalDO = dbg.addDebuggee(global);
-      let listenerDO = globalDO.makeDebuggeeValue(handler);
+      let listenerDO;
+      if (isReplaying) {
+        listenerDO = ReplayInspector.getDebuggerObject(handler);
+      } else {
+        const global = Cu.getGlobalForObject(handler);
+
+        // It is important that we recreate the globalDO for each handler because
+        // their global object can vary e.g. resource:// URLs on a video control. If
+        // we don't do this then all chrome listeners simply display "native code."
+        globalDO = dbg.addDebuggee(global);
+        listenerDO = globalDO.makeDebuggeeValue(handler);
+      }
 
       const { normalizeListener } = listener;
 

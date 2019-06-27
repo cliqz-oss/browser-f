@@ -74,7 +74,6 @@ EXPORTS.mozilla += [
     '!ServoCSSPropList.h',
     'AnimationCollection.h',
     'BindingStyleRule.h',
-    'BorrowedTypeList.h',
     'CachedInheritingStyles.h',
     'ComputedStyle.h',
     'ComputedStyleInlines.h',
@@ -101,18 +100,20 @@ EXPORTS.mozilla += [
     'ServoCSSRuleList.h',
     'ServoElementSnapshot.h',
     'ServoElementSnapshotTable.h',
+    'ServoStyleConstsForwards.h',
+    'ServoStyleConstsInlines.h',
     'ServoStyleSet.h',
     'ServoStyleSetInlines.h',
     'ServoTraversalStatistics.h',
     'ServoTypes.h',
     'ServoUtils.h',
-    'SheetType.h',
     'StyleAnimationValue.h',
-    'StyleComplexColor.h',
+    'StyleColorInlines.h',
     'StyleSheet.h',
     'StyleSheetInfo.h',
     'StyleSheetInlines.h',
     'URLExtraData.h',
+    'UserAgentStyleSheetID.h',
     'UserAgentStyleSheetList.h',
 ]
 
@@ -222,7 +223,7 @@ UNIFIED_SOURCES += [
     'ServoStyleSet.cpp',
     'StreamLoader.cpp',
     'StyleAnimationValue.cpp',
-    'StyleComplexColor.cpp',
+    'StyleColor.cpp',
     'StyleSheet.cpp',
     'URLExtraData.cpp',
 ]
@@ -317,6 +318,7 @@ if CONFIG['COMPILE_ENVIRONMENT']:
     consts = GENERATED_FILES['ServoStyleConsts.h']
     consts.script = 'RunCbindgen.py:generate'
     consts.inputs = [
+        '/servo/ports/geckolib',
         '/servo/components/style',
     ]
 

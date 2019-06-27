@@ -334,9 +334,9 @@ class ExtensionAPI extends EventEmitter {
 
     this.extension = extension;
 
-    extension.once("shutdown", () => {
+    extension.once("shutdown", (what, isAppShutdown) => {
       if (this.onShutdown) {
-        this.onShutdown(extension.shutdownReason);
+        this.onShutdown(isAppShutdown);
       }
       this.extension = null;
     });
@@ -1918,7 +1918,7 @@ LocaleData.prototype = {
       // Substitutions are case-insensitive, so normalize all of their names
       // to lower-case.
       let placeholders = new Map();
-      if (isPlainObject(msg.placeholders)) {
+      if ("placeholders" in msg && isPlainObject(msg.placeholders)) {
         for (let key of Object.keys(msg.placeholders)) {
           placeholders.set(key.toLowerCase(), msg.placeholders[key]);
         }
@@ -2115,7 +2115,7 @@ class EventManager {
       let api = extension.apiManager.getAPI(module, extension, "addon_parent");
       for (let [event, eventEntry] of moduleEntry) {
         for (let listener of eventEntry.values()) {
-          let primed = {pendingEvents: []};
+          let primed = {pendingEvents: [], cleared: false};
           listener.primed = primed;
 
           let bgStartupPromise = new Promise(r => extension.once("startup", r));
@@ -2125,6 +2125,10 @@ class EventManager {
           };
 
           let fireEvent = (...args) => new Promise((resolve, reject) => {
+            if (primed.cleared) {
+              reject(new Error("listener not re-registered"));
+              return;
+            }
             primed.pendingEvents.push({args, resolve, reject});
             extension.emit("background-page-event");
           });
@@ -2177,6 +2181,7 @@ class EventManager {
             EventManager.clearPersistentListener(extension, module, event, key);
           }
           primed.unregister();
+          primed.cleared = true;
         }
       }
     }

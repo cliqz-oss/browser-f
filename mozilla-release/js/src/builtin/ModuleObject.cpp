@@ -20,6 +20,7 @@
 #include "vm/AsyncFunction.h"
 #include "vm/AsyncIteration.h"
 #include "vm/EqualityOperations.h"  // js::SameValue
+#include "vm/ModuleBuilder.h"       // js::ModuleBuilder
 #include "vm/SelfHosting.h"
 
 #include "vm/JSObject-inl.h"
@@ -328,7 +329,7 @@ bool IndirectBindingMap::put(JSContext* cx, HandleId name,
                              HandleId localName) {
   // This object might have been allocated on the background parsing thread in
   // different zone to the final module. Lazily allocate the map so we don't
-  // have to switch its zone when merging compartments.
+  // have to switch its zone when merging realms.
   if (!map_) {
     MOZ_ASSERT(!cx->zone()->createdForHelperThread());
     map_.emplace(cx->zone());
@@ -638,7 +639,7 @@ bool ModuleNamespaceObject::ProxyHandler::delete_(
 }
 
 bool ModuleNamespaceObject::ProxyHandler::ownPropertyKeys(
-    JSContext* cx, HandleObject proxy, AutoIdVector& props) const {
+    JSContext* cx, HandleObject proxy, MutableHandleIdVector props) const {
   Rooted<ModuleNamespaceObject*> ns(cx, &proxy->as<ModuleNamespaceObject>());
   RootedObject exports(cx, &ns->exports());
   uint32_t count;
@@ -905,9 +906,9 @@ inline static void AssertModuleScopesMatch(ModuleObject* module) {
       &module->initialEnvironment().enclosingEnvironment()));
 }
 
-void ModuleObject::fixEnvironmentsAfterCompartmentMerge() {
+void ModuleObject::fixEnvironmentsAfterRealmMerge() {
   AssertModuleScopesMatch(this);
-  initialEnvironment().fixEnclosingEnvironmentAfterCompartmentMerge(
+  initialEnvironment().fixEnclosingEnvironmentAfterRealmMerge(
       script()->global());
   AssertModuleScopesMatch(this);
 }
@@ -1042,8 +1043,11 @@ bool ModuleObject::execute(JSContext* cx, HandleModuleObject self,
   RootedScript script(cx, self->script());
 
   // The top-level script if a module is only ever executed once. Clear the
-  // reference to prevent us keeping this alive unnecessarily.
-  self->setReservedSlot(ScriptSlot, UndefinedValue());
+  // reference at exit to prevent us keeping this alive unnecessarily. This is
+  // kept while executing so it is available to the debugger.
+  auto guardA = mozilla::MakeScopeExit([&] {
+      self->setReservedSlot(ScriptSlot, UndefinedValue());
+    });
 
   RootedModuleEnvironmentObject scope(cx, self->environment());
   if (!scope) {
@@ -1458,7 +1462,7 @@ bool ModuleBuilder::processExportObjectBinding(frontend::ListNode* obj) {
 
   for (ParseNode* node : obj->contents()) {
     MOZ_ASSERT(node->isKind(ParseNodeKind::MutateProto) ||
-               node->isKind(ParseNodeKind::Colon) ||
+               node->isKind(ParseNodeKind::PropertyDefinition) ||
                node->isKind(ParseNodeKind::Shorthand) ||
                node->isKind(ParseNodeKind::Spread));
 

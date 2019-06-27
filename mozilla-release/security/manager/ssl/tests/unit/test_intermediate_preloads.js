@@ -7,12 +7,17 @@
 "use strict";
 do_get_profile(); // must be called before getting nsIX509CertDB
 
-const {RemoteSecuritySettings} = ChromeUtils.import("resource://gre/modules/psm/RemoteSecuritySettings.jsm");
 const {RemoteSettings} = ChromeUtils.import("resource://services-settings/remote-settings.js");
 const {TestUtils} = ChromeUtils.import("resource://testing-common/TestUtils.jsm");
 const {TelemetryTestUtils} = ChromeUtils.import("resource://testing-common/TelemetryTestUtils.jsm");
 
-let remoteSecSetting = new RemoteSecuritySettings();
+let remoteSecSetting;
+if (AppConstants.MOZ_NEW_CERT_STORAGE) {
+  const {RemoteSecuritySettings} = ChromeUtils.import("resource://gre/modules/psm/RemoteSecuritySettings.jsm");
+  remoteSecSetting = new RemoteSecuritySettings();
+  remoteSecSetting.client.verifySignature = false;
+}
+
 let server;
 
 let intermediate1Data;
@@ -34,15 +39,19 @@ function* cyclingIterator(items, count = null) {
   }
 }
 
-function getHash(aStr) {
+function getHashCommon(aStr, useBase64) {
   let hasher = Cc["@mozilla.org/security/hash;1"].createInstance(Ci.nsICryptoHash);
   hasher.init(Ci.nsICryptoHash.SHA256);
   let stringStream = Cc["@mozilla.org/io/string-input-stream;1"].createInstance(Ci.nsIStringInputStream);
   stringStream.data = aStr;
   hasher.updateFromStream(stringStream, -1);
 
-  // convert the binary hash data to a hex string.
-  return hexify(hasher.finish(false));
+  return hasher.finish(useBase64);
+}
+
+// Get a hexified SHA-256 hash of the given string.
+function getHash(aStr) {
+  return hexify(getHashCommon(aStr, false));
 }
 
 function countTelemetryReports(histogram) {
@@ -81,9 +90,9 @@ function setupKintoPreloadServer(certGenerator, options = {
 }) {
   const dummyServerURL = `http://localhost:${server.identity.primaryPort}/v1`;
   Services.prefs.setCharPref("services.settings.server", dummyServerURL);
-  Services.prefs.setBoolPref("services.settings.verify_signature", false);
 
   const configPath = "/v1/";
+  const metadataPath = "/v1/buckets/security-state/collections/intermediates";
   const recordsPath = "/v1/buckets/security-state/collections/intermediates/records";
   const attachmentsPath = "/attachments/";
 
@@ -103,7 +112,7 @@ function setupKintoPreloadServer(certGenerator, options = {
   }
 
   // Basic server information, all static
-  server.registerPathHandler(configPath, (request, response) => {
+  const handler = (request, response) => {
     try {
       const respData = getResponseData(request, server.identity.primaryPort);
       if (!respData) {
@@ -118,7 +127,9 @@ function setupKintoPreloadServer(certGenerator, options = {
     } catch (e) {
       info(e);
     }
-  });
+  };
+  server.registerPathHandler(configPath, handler);
+  server.registerPathHandler(metadataPath, handler);
 
   // Lists of certs
   server.registerPathHandler(recordsPath, (request, response) => {
@@ -133,14 +144,11 @@ function setupKintoPreloadServer(certGenerator, options = {
 
     let output = [];
     let count = 1;
-    let certDB = Cc["@mozilla.org/security/x509certdb;1"]
-                 .getService(Ci.nsIX509CertDB);
 
     let certIterator = certGenerator();
     let result = certIterator.next();
     while (!result.done) {
       let certBytes = result.value;
-      let cert = certDB.constructX509FromBase64(pemToBase64(certBytes));
 
       output.push({
         "details": {
@@ -158,7 +166,8 @@ function setupKintoPreloadServer(certGenerator, options = {
           "mimetype": "application/x-pem-file",
         },
         "whitelist": false,
-        "pubKeyHash": cert.sha256Fingerprint,
+        // "pubKeyHash" is actually just the hash of the DER bytes of the certificate
+        "pubKeyHash": getHashCommon(atob(pemToBase64(certBytes)), true),
         "crlite_enrolled": true,
         "id": `78cf8900-fdea-4ce5-f8fb-${count}`,
         "last_modified": Date.now(),
@@ -211,7 +220,9 @@ function setupKintoPreloadServer(certGenerator, options = {
   });
 }
 
-add_task(async function test_preload_empty() {
+add_task({
+    skip_if: () => !AppConstants.MOZ_NEW_CERT_STORAGE,
+  }, async function test_preload_empty() {
   Services.prefs.setBoolPref(INTERMEDIATES_ENABLED_PREF, true);
 
   let countDownloadAttempts = 0;
@@ -238,7 +249,9 @@ add_task(async function test_preload_empty() {
                               certificateUsageSSLServer);
 });
 
-add_task(async function test_preload_disabled() {
+add_task({
+    skip_if: () => !AppConstants.MOZ_NEW_CERT_STORAGE,
+  }, async function test_preload_disabled() {
   Services.prefs.setBoolPref(INTERMEDIATES_ENABLED_PREF, false);
 
   let countDownloadAttempts = 0;
@@ -252,7 +265,9 @@ add_task(async function test_preload_disabled() {
   equal(countDownloadAttempts, 0, "There should have been no downloads");
 });
 
-add_task(async function test_preload_invalid_hash() {
+add_task({
+    skip_if: () => !AppConstants.MOZ_NEW_CERT_STORAGE,
+  }, async function test_preload_invalid_hash() {
   Services.prefs.setBoolPref(INTERMEDIATES_ENABLED_PREF, true);
   const invalidHash = "6e340b9cffb37a989ca544e6bb780a2c78901d3fb33738768511a30617afa01d";
 
@@ -273,9 +288,8 @@ add_task(async function test_preload_invalid_hash() {
                           .getHistogramById("INTERMEDIATE_PRELOADING_ERRORS")
                           .snapshot();
 
-  equal(countTelemetryReports(errors_histogram), 2, "There should be two error reports");
+  equal(countTelemetryReports(errors_histogram), 1, "There should be one error report");
   equal(errors_histogram.values[7], 1, "There should be one invalid hash error");
-  equal(errors_histogram.values[1], 1, "There should be one generic download error");
 
   equal(countDownloadAttempts, 1, "There should have been one download attempt");
 
@@ -293,7 +307,9 @@ add_task(async function test_preload_invalid_hash() {
                               certificateUsageSSLServer);
 });
 
-add_task(async function test_preload_invalid_length() {
+add_task({
+    skip_if: () => !AppConstants.MOZ_NEW_CERT_STORAGE,
+  }, async function test_preload_invalid_length() {
   Services.prefs.setBoolPref(INTERMEDIATES_ENABLED_PREF, true);
 
   let countDownloadAttempts = 0;
@@ -313,9 +329,8 @@ add_task(async function test_preload_invalid_length() {
                           .getHistogramById("INTERMEDIATE_PRELOADING_ERRORS")
                           .snapshot();
 
-  equal(countTelemetryReports(errors_histogram), 2, "There should be only two error reports");
+  equal(countTelemetryReports(errors_histogram), 1, "There should be only one error report");
   equal(errors_histogram.values[8], 1, "There should be one invalid length error");
-  equal(errors_histogram.values[1], 1, "There should be one generic download error");
 
   equal(countDownloadAttempts, 1, "There should have been one download attempt");
 
@@ -333,7 +348,9 @@ add_task(async function test_preload_invalid_length() {
                               certificateUsageSSLServer);
 });
 
-add_task(async function test_preload_basic() {
+add_task({
+    skip_if: () => !AppConstants.MOZ_NEW_CERT_STORAGE,
+  }, async function test_preload_basic() {
   Services.prefs.setBoolPref(INTERMEDIATES_ENABLED_PREF, true);
   Services.prefs.setIntPref(INTERMEDIATES_DL_PER_POLL_PREF, 100);
 
@@ -379,7 +396,9 @@ add_task(async function test_preload_basic() {
 });
 
 
-add_task(async function test_preload_200() {
+add_task({
+    skip_if: () => !AppConstants.MOZ_NEW_CERT_STORAGE,
+  }, async function test_preload_200() {
   Services.prefs.setBoolPref(INTERMEDIATES_ENABLED_PREF, true);
   Services.prefs.setIntPref(INTERMEDIATES_DL_PER_POLL_PREF, 100);
 
@@ -486,6 +505,22 @@ function getResponseData(req, port) {
           "attachments": {
             "base_url": `http://localhost:${port}/attachments/`,
           },
+        },
+      }),
+    },
+    "GET:/v1/buckets/security-state/collections/intermediates?": {
+      "responseHeaders": [
+        "Access-Control-Allow-Origin: *",
+        "Access-Control-Expose-Headers: Retry-After, Content-Length, Alert, Backoff",
+        "Content-Type: application/json; charset=UTF-8",
+        "Server: waitress",
+        "Etag: \"1234\"",
+      ],
+      "status": { status: 200, statusText: "OK" },
+      "responseBody": JSON.stringify({
+        "data": {
+          "id": "intermediates",
+          "last_modified": 1234,
         },
       }),
     },

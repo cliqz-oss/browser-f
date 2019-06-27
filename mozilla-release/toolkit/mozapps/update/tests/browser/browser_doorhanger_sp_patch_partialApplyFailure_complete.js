@@ -1,4 +1,9 @@
-add_task(async function testPartialPatchApplyFailureWithCompleteAvailable() {
+/* Any copyright is dedicated to the Public Domain.
+ * http://creativecommons.org/publicdomain/zero/1.0/ */
+
+"use strict";
+
+add_task(async function doorhanger_sp_patch_partialApplyFailure_complete() {
   let patchProps = {type: "partial",
                     state: STATE_PENDING};
   let patches = getLocalPatchString(patchProps);
@@ -8,13 +13,12 @@ add_task(async function testPartialPatchApplyFailureWithCompleteAvailable() {
                      promptWaitTime: "0"};
   let updates = getLocalUpdateString(updateProps, patches);
 
-  await runUpdateProcessingTest(updates, [
+  let params = {updates};
+  await runDoorhangerUpdateTest(params, [
     {
       notificationId: "update-restart",
       button: "secondaryButton",
-      cleanup() {
-        AppMenuNotifications.removeNotification(/.*/);
-      },
+      checkActiveUpdate: {state: STATE_PENDING},
     },
   ]);
 });

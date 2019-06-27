@@ -6,6 +6,7 @@
 
 #include "nsPageFrame.h"
 
+#include "mozilla/PresShell.h"
 #include "mozilla/gfx/2D.h"
 #include "gfxContext.h"
 #include "nsDeviceContext.h"
@@ -13,7 +14,6 @@
 #include "nsLayoutUtils.h"
 #include "nsPresContext.h"
 #include "nsGkAtoms.h"
-#include "nsIPresShell.h"
 #include "nsPageContentFrame.h"
 #include "nsDisplayList.h"
 #include "nsSimplePageSequenceFrame.h"  // for nsSharedPageData
@@ -28,7 +28,7 @@ extern mozilla::LazyLogModule gLayoutPrintingLog;
 using namespace mozilla;
 using namespace mozilla::gfx;
 
-nsPageFrame* NS_NewPageFrame(nsIPresShell* aPresShell, ComputedStyle* aStyle) {
+nsPageFrame* NS_NewPageFrame(PresShell* aPresShell, ComputedStyle* aStyle) {
   return new (aPresShell) nsPageFrame(aStyle, aPresShell->GetPresContext());
 }
 
@@ -362,7 +362,7 @@ void nsPageFrame::DrawHeaderFooter(gfxContext& aRenderingContext,
     aRenderingContext.SetColor(Color(0.f, 0.f, 0.f));
     nsLayoutUtils::DrawString(this, aFontMetrics, &aRenderingContext, str.get(),
                               str.Length(), nsPoint(x, y + aAscent), nullptr,
-                              DrawStringFlags::eForceHorizontal);
+                              DrawStringFlags::ForceHorizontal);
     aRenderingContext.Restore();
   }
 }
@@ -440,10 +440,10 @@ static gfx::Matrix4x4 ComputePageTransform(nsIFrame* aFrame,
   return gfx::Matrix4x4::Scaling(scale, scale, 1);
 }
 
-class nsDisplayHeaderFooter final : public nsDisplayItem {
+class nsDisplayHeaderFooter final : public nsPaintedDisplayItem {
  public:
   nsDisplayHeaderFooter(nsDisplayListBuilder* aBuilder, nsPageFrame* aFrame)
-      : nsDisplayItem(aBuilder, aFrame) {
+      : nsPaintedDisplayItem(aBuilder, aFrame) {
     MOZ_COUNT_CTOR(nsDisplayHeaderFooter);
   }
 #ifdef NS_BUILD_REFCNT_LOGGING
@@ -457,7 +457,7 @@ class nsDisplayHeaderFooter final : public nsDisplayItem {
     MOZ_ASSERT(pageFrame, "We should have an nsPageFrame");
 #endif
     static_cast<nsPageFrame*>(mFrame)->PaintHeaderFooter(
-        *aCtx, ToReferenceFrame(), mDisableSubpixelAA);
+        *aCtx, ToReferenceFrame(), IsSubpixelAADisabled());
   }
   NS_DISPLAY_DECL_NAME("HeaderFooter", TYPE_HEADER_FOOTER)
 
@@ -545,15 +545,14 @@ void nsPageFrame::BuildDisplayList(nsDisplayListBuilder* aBuilder,
         *aBuilder, content, child, backgroundRect, NS_RGBA(0, 0, 0, 0));
   }
 
-  content.AppendToTop(MakeDisplayItem<nsDisplayTransform>(
-      aBuilder, child, &content, content.GetBuildingRect(), 0,
-      ::ComputePageTransform));
+  content.AppendNewToTop<nsDisplayTransform>(aBuilder, child, &content,
+                                             content.GetBuildingRect(), 0,
+                                             ::ComputePageTransform);
 
   set.Content()->AppendToTop(&content);
 
   if (PresContext()->IsRootPaginatedDocument()) {
-    set.Content()->AppendToTop(
-        MakeDisplayItem<nsDisplayHeaderFooter>(aBuilder, this));
+    set.Content()->AppendNewToTop<nsDisplayHeaderFooter>(aBuilder, this);
   }
 
   set.MoveTo(aLists);
@@ -629,8 +628,7 @@ void nsPageFrame::AppendDirectlyOwnedAnonBoxes(
   aResult.AppendElement(mFrames.FirstChild());
 }
 
-nsIFrame* NS_NewPageBreakFrame(nsIPresShell* aPresShell,
-                               ComputedStyle* aStyle) {
+nsIFrame* NS_NewPageBreakFrame(PresShell* aPresShell, ComputedStyle* aStyle) {
   MOZ_ASSERT(aPresShell, "null PresShell");
   // check that we are only creating page break frames when printing
   NS_ASSERTION(aPresShell->GetPresContext()->IsPaginated(),

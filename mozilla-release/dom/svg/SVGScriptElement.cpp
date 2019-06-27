@@ -43,8 +43,6 @@ SVGScriptElement::SVGScriptElement(
   AddMutationObserver(this);
 }
 
-SVGScriptElement::~SVGScriptElement() {}
-
 //----------------------------------------------------------------------
 // nsINode methods
 
@@ -90,7 +88,7 @@ void SVGScriptElement::SetCrossOrigin(const nsAString& aCrossOrigin,
   SetOrRemoveNullableStringAttr(nsGkAtoms::crossorigin, aCrossOrigin, aError);
 }
 
-already_AddRefed<SVGAnimatedString> SVGScriptElement::Href() {
+already_AddRefed<DOMSVGAnimatedString> SVGScriptElement::Href() {
   return mStringAttributes[HREF].IsExplicitlySet()
              ? mStringAttributes[HREF].ToDOMAnimatedString(this)
              : mStringAttributes[XLINK_HREF].ToDOMAnimatedString(this);

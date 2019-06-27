@@ -40,9 +40,7 @@ window.gActivityStreamStrings = {
   "section_disclaimer_topstories_buttontext": "ٹھیک ہے مجھے سمجھ آگئی ہے",
   "prefs_home_header": "Firefox ابتائی مواد",
   "prefs_home_description": "Choose what content you want on your Firefox Home screen.",
-  "prefs_content_discovery_header": "Firefox ابتدائی صفحہ",
   "prefs_content_discovery_description": "Content Discovery in Firefox Home allows you to discover high-quality, relevant articles from across the web.",
-  "prefs_content_discovery_button": "Turn Off Content Discovery",
   "prefs_section_rows_option": "{num} row;{num} rows",
   "prefs_search_header": "وءب تلاش",
   "prefs_topsites_description": "سائٹس جو آُپ سب سے زیادہ ملاحظہ کرتے ہیں",
@@ -107,7 +105,5 @@ window.gActivityStreamStrings = {
   "firstrun_privacy_notice": "رازداری کا نوٹس",
   "firstrun_continue_to_login": "جاری رکھیں",
   "firstrun_skip_login": "Skip this step",
-  "context_menu_title": "مینیو کھولیں",
-  "manual_migration_cancel_button": "نہیں شکریہ",
-  "manual_migration_import_button": "ابھی درآمد کری"
+  "context_menu_title": "مینیو کھولیں"
 };

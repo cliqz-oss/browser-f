@@ -43,6 +43,11 @@ const Types = exports.__TypesForTests = [
     front: "devtools/shared/fronts/animation",
   },
   {
+    types: ["arraybuffer"],
+    spec: "devtools/shared/specs/array-buffer",
+    front: "devtools/shared/fronts/array-buffer",
+  },
+  {
     types: ["changes"],
     spec: "devtools/shared/specs/changes",
     front: "devtools/shared/fronts/changes",
@@ -51,11 +56,6 @@ const Types = exports.__TypesForTests = [
     types: ["cssProperties"],
     spec: "devtools/shared/specs/css-properties",
     front: "devtools/shared/fronts/css-properties",
-  },
-  {
-    types: ["cssUsage"],
-    spec: "devtools/shared/specs/csscoverage",
-    front: "devtools/shared/fronts/csscoverage",
   },
   {
     types: ["device"],
@@ -171,16 +171,10 @@ const Types = exports.__TypesForTests = [
     spec: "devtools/shared/specs/screenshot",
     front: "devtools/shared/fronts/screenshot",
   },
-  /* Script and source have old fashion client and no front */
-  {
-    types: ["context"],
-    spec: "devtools/shared/specs/script",
-    front: null,
-  },
   {
     types: ["source"],
     spec: "devtools/shared/specs/source",
-    front: null,
+    front: "devtools/shared/fronts/source",
   },
   {
     types: ["cookies", "localStorage", "sessionStorage", "Cache", "indexedDB", "storage"],
@@ -257,6 +251,12 @@ const Types = exports.__TypesForTests = [
     types: ["workerTarget"],
     spec: "devtools/shared/specs/targets/worker",
     front: "devtools/shared/fronts/targets/worker",
+  },
+  /* Thread has an old fashion client and no front */
+  {
+    types: ["context"],
+    spec: "devtools/shared/specs/thread",
+    front: null,
   },
   {
     types: ["console"],

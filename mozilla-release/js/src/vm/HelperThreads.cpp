@@ -234,15 +234,17 @@ static void FinishOffThreadIonCompile(jit::IonBuilder* builder,
 
 static JSRuntime* GetSelectorRuntime(const CompilationSelector& selector) {
   struct Matcher {
-    JSRuntime* match(JSScript* script) {
+    JSRuntime* operator()(JSScript* script) {
       return script->runtimeFromMainThread();
     }
-    JSRuntime* match(Realm* realm) { return realm->runtimeFromMainThread(); }
-    JSRuntime* match(Zone* zone) { return zone->runtimeFromMainThread(); }
-    JSRuntime* match(ZonesInState zbs) { return zbs.runtime; }
-    JSRuntime* match(JSRuntime* runtime) { return runtime; }
-    JSRuntime* match(AllCompilations all) { return nullptr; }
-    JSRuntime* match(CompilationsUsingNursery cun) { return cun.runtime; }
+    JSRuntime* operator()(Realm* realm) {
+      return realm->runtimeFromMainThread();
+    }
+    JSRuntime* operator()(Zone* zone) { return zone->runtimeFromMainThread(); }
+    JSRuntime* operator()(ZonesInState zbs) { return zbs.runtime; }
+    JSRuntime* operator()(JSRuntime* runtime) { return runtime; }
+    JSRuntime* operator()(AllCompilations all) { return nullptr; }
+    JSRuntime* operator()(CompilationsUsingNursery cun) { return cun.runtime; }
   };
 
   return selector.match(Matcher());
@@ -250,13 +252,13 @@ static JSRuntime* GetSelectorRuntime(const CompilationSelector& selector) {
 
 static bool JitDataStructuresExist(const CompilationSelector& selector) {
   struct Matcher {
-    bool match(JSScript* script) { return !!script->realm()->jitRealm(); }
-    bool match(Realm* realm) { return !!realm->jitRealm(); }
-    bool match(Zone* zone) { return !!zone->jitZone(); }
-    bool match(ZonesInState zbs) { return zbs.runtime->hasJitRuntime(); }
-    bool match(JSRuntime* runtime) { return runtime->hasJitRuntime(); }
-    bool match(AllCompilations all) { return true; }
-    bool match(CompilationsUsingNursery cun) {
+    bool operator()(JSScript* script) { return !!script->realm()->jitRealm(); }
+    bool operator()(Realm* realm) { return !!realm->jitRealm(); }
+    bool operator()(Zone* zone) { return !!zone->jitZone(); }
+    bool operator()(ZonesInState zbs) { return zbs.runtime->hasJitRuntime(); }
+    bool operator()(JSRuntime* runtime) { return runtime->hasJitRuntime(); }
+    bool operator()(AllCompilations all) { return true; }
+    bool operator()(CompilationsUsingNursery cun) {
       return cun.runtime->hasJitRuntime();
     }
   };
@@ -269,20 +271,22 @@ static bool IonBuilderMatches(const CompilationSelector& selector,
   struct BuilderMatches {
     jit::IonBuilder* builder_;
 
-    bool match(JSScript* script) { return script == builder_->script(); }
-    bool match(Realm* realm) { return realm == builder_->script()->realm(); }
-    bool match(Zone* zone) {
+    bool operator()(JSScript* script) { return script == builder_->script(); }
+    bool operator()(Realm* realm) {
+      return realm == builder_->script()->realm();
+    }
+    bool operator()(Zone* zone) {
       return zone == builder_->script()->zoneFromAnyThread();
     }
-    bool match(JSRuntime* runtime) {
+    bool operator()(JSRuntime* runtime) {
       return runtime == builder_->script()->runtimeFromAnyThread();
     }
-    bool match(AllCompilations all) { return true; }
-    bool match(ZonesInState zbs) {
+    bool operator()(AllCompilations all) { return true; }
+    bool operator()(ZonesInState zbs) {
       return zbs.runtime == builder_->script()->runtimeFromAnyThread() &&
              zbs.state == builder_->script()->zoneFromAnyThread()->gcState();
     }
-    bool match(CompilationsUsingNursery cun) {
+    bool operator()(CompilationsUsingNursery cun) {
       return cun.runtime == builder_->script()->runtimeFromAnyThread() &&
              !builder_->safeForMinorGC();
     }
@@ -415,21 +419,16 @@ bool js::HasOffThreadIonCompile(Realm* realm) {
 }
 #endif
 
-static const JSClassOps parseTaskGlobalClassOps = {nullptr,
-                                                   nullptr,
-                                                   nullptr,
-                                                   nullptr,
-                                                   nullptr,
-                                                   nullptr,
-                                                   nullptr,
-                                                   nullptr,
-                                                   nullptr,
-                                                   nullptr,
-                                                   JS_GlobalObjectTraceHook};
+struct MOZ_RAII AutoSetContextRuntime {
+  explicit AutoSetContextRuntime(JSRuntime* rt) {
+    TlsContext.get()->setRuntime(rt);
+  }
+  ~AutoSetContextRuntime() { TlsContext.get()->setRuntime(nullptr); }
+};
 
 static const JSClass parseTaskGlobalClass = {"internal-parse-task-global",
                                              JSCLASS_GLOBAL_FLAGS,
-                                             &parseTaskGlobalClassOps};
+                                             &JS::DefaultGlobalClassOps};
 
 ParseTask::ParseTask(ParseTaskKind kind, JSContext* cx,
                      JS::OffThreadCompileCallback callback, void* callbackData)
@@ -486,6 +485,27 @@ size_t ParseTask::sizeOfExcludingThis(
     mozilla::MallocSizeOf mallocSizeOf) const {
   return options.sizeOfExcludingThis(mallocSizeOf) +
          errors.sizeOfExcludingThis(mallocSizeOf);
+}
+
+void ParseTask::runTask() {
+  JSContext* cx = TlsContext.get();
+  JSRuntime* runtime = parseGlobal->runtimeFromAnyThread();
+
+  AutoSetContextRuntime ascr(runtime);
+
+  Zone* zone = parseGlobal->zoneFromAnyThread();
+  zone->setHelperThreadOwnerContext(cx);
+  auto resetOwnerContext = mozilla::MakeScopeExit(
+      [&] { zone->setHelperThreadOwnerContext(nullptr); });
+
+  AutoRealm ar(cx, parseGlobal);
+
+  parse(cx);
+
+  MOZ_ASSERT(cx->tempLifoAlloc().isEmpty());
+  cx->tempLifoAlloc().freeAll();
+  cx->frontendCollectionPool().purge();
+  cx->atomsZoneFreeLists().clear();
 }
 
 ScriptParseTask::ScriptParseTask(JSContext* cx,
@@ -1216,13 +1236,6 @@ void GlobalHelperThreadState::triggerFreeUnusedMemory() {
   notifyAll(PRODUCER, lock);
 }
 
-struct MOZ_RAII AutoSetContextRuntime {
-  explicit AutoSetContextRuntime(JSRuntime* rt) {
-    TlsContext.get()->setRuntime(rt);
-  }
-  ~AutoSetContextRuntime() { TlsContext.get()->setRuntime(nullptr); }
-};
-
 static inline bool IsHelperThreadSimulatingOOM(js::ThreadType threadType) {
 #if defined(DEBUG) || defined(JS_OOM_BREAKPOINT)
   return js::oom::simulator.targetThread() == threadType;
@@ -1856,7 +1869,7 @@ JSObject* GlobalHelperThreadState::finishModuleParseTask(
   MOZ_ASSERT(script->module());
 
   RootedModuleObject module(cx, script->module());
-  module->fixEnvironmentsAfterCompartmentMerge();
+  module->fixEnvironmentsAfterRealmMerge();
   if (!ModuleObject::Freeze(cx, module)) {
     return nullptr;
   }
@@ -1961,7 +1974,7 @@ void HelperThread::handleWasmWorkload(AutoLockHelperThreadState& locked,
   wasm::CompileTask* task = wasmTask();
   {
     AutoUnlockHelperThreadState unlock(locked);
-    wasm::ExecuteCompileTaskFromHelperThread(task);
+    task->runTask();
   }
 
   currentTask.reset();
@@ -1982,7 +1995,7 @@ void HelperThread::handleWasmTier2GeneratorWorkload(
   wasm::Tier2GeneratorTask* task = wasmTier2GeneratorTask();
   {
     AutoUnlockHelperThreadState unlock(locked);
-    task->execute();
+    task->runTask();
   }
 
   currentTask.reset();
@@ -2006,8 +2019,7 @@ void HelperThread::handlePromiseHelperTaskWorkload(
 
   {
     AutoUnlockHelperThreadState unlock(locked);
-    task->execute();
-    task->dispatchResolveAndDestroy();
+    task->runTask();
   }
 
   currentTask.reset();
@@ -2020,7 +2032,6 @@ void HelperThread::handlePromiseHelperTaskWorkload(
 void HelperThread::handleIonWorkload(AutoLockHelperThreadState& locked) {
   MOZ_ASSERT(HelperThreadState().canStartIonCompile(locked));
   MOZ_ASSERT(idle());
-
   // Find the IonBuilder in the worklist with the highest priority, and
   // remove it from the worklist.
   jit::IonBuilder* builder =
@@ -2036,17 +2047,9 @@ void HelperThread::handleIonWorkload(AutoLockHelperThreadState& locked) {
 
   {
     AutoUnlockHelperThreadState unlock(locked);
-
-    TraceLoggerThread* logger = TraceLoggerForCurrentThread();
-    TraceLoggerEvent event(TraceLogger_AnnotateScripts, builder->script());
-    AutoTraceLog logScript(logger, event);
-    AutoTraceLog logCompile(logger, TraceLogger_IonCompilation);
-
     AutoSetContextRuntime ascr(rt);
-    jit::JitContext jctx(jit::CompileRuntime::get(rt),
-                         jit::CompileRealm::get(builder->script()->realm()),
-                         &builder->alloc());
-    builder->setBackgroundCodegen(jit::CompileBackEnd(builder));
+
+    builder->runTask();
   }
 
   FinishOffThreadIonCompile(builder, locked);
@@ -2132,33 +2135,15 @@ void HelperThread::handleParseWorkload(AutoLockHelperThreadState& locked) {
   currentTask.emplace(HelperThreadState().parseWorklist(locked).popCopy());
   ParseTask* task = parseTask();
 
-  JSRuntime* runtime = task->parseGlobal->runtimeFromAnyThread();
-
 #ifdef DEBUG
+  JSRuntime* runtime = task->parseGlobal->runtimeFromAnyThread();
   runtime->incOffThreadParsesRunning();
 #endif
 
   {
     AutoUnlockHelperThreadState unlock(locked);
-    AutoSetContextRuntime ascr(runtime);
-
-    JSContext* cx = TlsContext.get();
-
-    Zone* zone = task->parseGlobal->zoneFromAnyThread();
-    zone->setHelperThreadOwnerContext(cx);
-    auto resetOwnerContext = mozilla::MakeScopeExit(
-        [&] { zone->setHelperThreadOwnerContext(nullptr); });
-
-    AutoRealm ar(cx, task->parseGlobal);
-
-    task->parse(cx);
-
-    MOZ_ASSERT(cx->tempLifoAlloc().isEmpty());
-    cx->tempLifoAlloc().freeAll();
-    cx->frontendCollectionPool().purge();
-    cx->atomsZoneFreeLists().clear();
+    task->runTask();
   }
-
   // The callback is invoked while we are still off thread.
   task->callback(task, task->callbackData);
 
@@ -2195,7 +2180,7 @@ void HelperThread::handleCompressionWorkload(
     TraceLoggerThread* logger = TraceLoggerForCurrentThread();
     AutoTraceLog logCompile(logger, TraceLogger_CompressSource);
 
-    task->work();
+    task->runTask();
   }
 
   {
@@ -2304,6 +2289,11 @@ void js::RunPendingSourceCompressions(JSRuntime* runtime) {
 void PromiseHelperTask::executeAndResolveAndDestroy(JSContext* cx) {
   execute();
   run(cx, JS::Dispatchable::NotShuttingDown);
+}
+
+void PromiseHelperTask::runTask() {
+  execute();
+  dispatchResolveAndDestroy();
 }
 
 bool js::StartOffThreadPromiseHelperTask(JSContext* cx,

@@ -606,13 +606,19 @@ function Search(searchString, searchParam, autocompleteListener,
   // properly recognize token types.
   let {tokens} = UrlbarTokenizer.tokenize({searchString: unescapedSearchString});
 
-  // This allows to handle a leading restriction character specially.
+  // This allows to handle leading or trailing restriction characters specially.
   this._leadingRestrictionToken = null;
+  this._trailingRestrictionToken = null;
   if (tokens.length > 0) {
     if (UrlbarTokenizer.isRestrictionToken(tokens[0]) &&
         (tokens.length > 1 || tokens[0].type == UrlbarTokenizer.TYPE.RESTRICT_SEARCH)) {
       this._leadingRestrictionToken = tokens[0].value;
     }
+    if (UrlbarTokenizer.isRestrictionToken(tokens[tokens.length - 1]) &&
+        (tokens.length > 1 || tokens[tokens.length - 1].type == UrlbarTokenizer.TYPE.RESTRICT_SEARCH)) {
+      this._trailingRestrictionToken = tokens[tokens.length - 1].value;
+    }
+
     // Check if the first token has a strippable prefix and remove it, but don't
     // create an empty token.
     if (prefix && tokens[0].value.length > prefix.length) {
@@ -776,6 +782,11 @@ Search.prototype = {
           this.setBehavior("restrict");
         }
         this.setBehavior(behavior);
+        // We return tags only for bookmarks, thus when tags are enforced, we
+        // must also set the bookmark behavior.
+        if (behavior == "tag") {
+          this.setBehavior("bookmark");
+        }
       }
     }
     // Set the right JavaScript behavior based on our preference.  Note that the
@@ -1492,6 +1503,7 @@ Search.prototype = {
       style = "action " + style;
       value = PlacesUtils.mozActionURI("keyword", {
         url,
+        keyword,
         input: this._originalSearchString,
         postData,
       });
@@ -1605,10 +1617,14 @@ Search.prototype = {
     if (!engine || !this.pending) {
       return false;
     }
-    // Strip a leading restriction char.
-    let query = this._leadingRestrictionToken ?
-      substringAfter(this._trimmedOriginalSearchString, this._leadingRestrictionToken).trim() :
-      this._trimmedOriginalSearchString;
+    // Strip a leading or trailing restriction char.
+    let query = this._trimmedOriginalSearchString;
+    if (this._leadingRestrictionToken) {
+      query = substringAfter(query, this._leadingRestrictionToken).trim();
+    }
+    if (this._trailingRestrictionToken) {
+      query = query.substring(0, query.lastIndexOf(this._trailingRestrictionToken));
+    }
     this._addSearchEngineMatch({ engine, query });
     return true;
   },
@@ -1764,6 +1780,11 @@ Search.prototype = {
     if (!this._searchString && this._strippedPrefix) {
       // The user just typed a stripped protocol, don't build a non-sense url
       // like http://http/ for it.
+      return false;
+    }
+    // The user may have typed something like "word?" to run a search, we should
+    // not convert that to a url.
+    if (this.hasBehavior("search") && this.hasBehavior("restrict")) {
       return false;
     }
     let flags = Ci.nsIURIFixup.FIXUP_FLAG_FIX_SCHEME_TYPOS |
@@ -2215,10 +2236,11 @@ Search.prototype = {
     // Always prefer the bookmark title unless it is empty
     let title = bookmarkTitle || historyTitle;
 
-    // We will always prefer to show tags if we have them.
-    let showTags = !!tags;
+    // Return tags as part of the title, unless the match has an action, like
+    // switch-to-tab, that doesn't care about them.
+    let showTags = !!tags && !action;
 
-    // However, we'll act as if a page is not bookmarked if the user wants
+    // We'll act as if the page is not bookmarked when the user wants
     // only history and not bookmarks and there are no tags.
     if (this.hasBehavior("history") && !this.hasBehavior("bookmark") &&
         !showTags) {

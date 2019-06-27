@@ -4,12 +4,12 @@
 "use strict";
 
 /**
- * Test that the initial route is /connect
+ * Test that the initial route is /setup
  */
 add_task(async function() {
-  info("Check root route redirects to connect page");
+  info("Check root route redirects to setup page");
   const { document, tab } = await openAboutDebugging();
-  is(document.location.hash, "#/connect");
+  is(document.location.hash, "#/setup");
 
   await removeTab(tab);
 });
@@ -25,8 +25,8 @@ add_task(async function() {
 
   info("Check 'This Firefox' route");
   document.location.hash = "#/runtime/this-firefox";
-  await waitUntil(() => document.querySelector(".js-runtime-page"));
-  const infoLabel = document.querySelector(".js-runtime-name").textContent;
+  await waitUntil(() => document.querySelector(".qa-runtime-page"));
+  const infoLabel = document.querySelector(".qa-runtime-name").textContent;
   // NOTE: when using USB Mocks, we see only "Firefox" as the device name
   ok(infoLabel.includes("Firefox"), "Runtime is displayed as Firefox");
   ok(!infoLabel.includes(" on "), "Runtime is not associated to any device");
@@ -36,14 +36,14 @@ add_task(async function() {
       "Checking title for 'runtime' page"
   );
 
-  info("Check 'Connect' page");
-  document.location.hash = "#/connect";
-  await waitUntil(() => document.querySelector(".js-connect-page"));
-  ok(true, "Connect page has been shown");
+  info("Check 'Setup' page");
+  document.location.hash = "#/setup";
+  await waitUntil(() => document.querySelector(".qa-connect-page"));
+  ok(true, "Setup page has been shown");
   is(
       document.title,
-      "Debugging - Connect",
-      "Checking title for 'connect' page"
+      "Debugging - Setup",
+      "Checking title for 'setup' page"
   );
 
   info("Check 'USB device runtime' page");
@@ -56,8 +56,8 @@ add_task(async function() {
   await connectToRuntime("Fancy Phone", document);
   // navigate to it via URL
   document.location.hash = "#/runtime/1337id";
-  await waitUntil(() => document.querySelector(".js-runtime-page"));
-  const runtimeLabel = document.querySelector(".js-runtime-name").textContent;
+  await waitUntil(() => document.querySelector(".qa-runtime-page"));
+  const runtimeLabel = document.querySelector(".qa-runtime-name").textContent;
   is(
       document.title,
       "Debugging - Runtime / 1337id",
@@ -75,19 +75,42 @@ add_task(async function() {
   info("Check an invalid route redirects to root");
   const { document, tab } = await openAboutDebugging();
 
-  info("Waiting for a non connect page to load");
+  info("Waiting for a non setup page to load");
   document.location.hash = "#/runtime/this-firefox";
-  await waitUntil(() => document.querySelector(".js-runtime-page"));
+  await waitUntil(() => document.querySelector(".qa-runtime-page"));
 
   info("Update hash & wait for a redirect to root (connect page)");
   document.location.hash = "#/lorem-ipsum";
-  await waitUntil(() => document.querySelector(".js-connect-page"));
+  await waitUntil(() => document.querySelector(".qa-connect-page"));
   is(
       document.title,
-      "Debugging - Connect",
-      "Checking title for 'connect' page"
+      "Debugging - Setup",
+      "Checking title for 'setup' page"
   );
-  is(document.location.hash, "#/connect", "Redirected to root");
+  is(document.location.hash, "#/setup", "Redirected to root");
+
+  await removeTab(tab);
+});
+
+/**
+ * Test that routes from old about:debugging redirect to this Firefox.
+ */
+add_task(async function testOldAboutDebuggingRoutes() {
+  info("Check that routes from old about:debugging redirect to this Firefox");
+  const { document, tab } = await openAboutDebugging();
+
+  const routes = ["addons", "tabs", "workers"];
+  for (const route of routes) {
+    info("Move to setup page before testing the route");
+    document.location.hash = "#/setup";
+    await waitUntil(() => document.querySelector(".qa-connect-page"));
+
+    info(`Check that navigating to ${route} redirects to This Firefox`);
+    document.location.hash = route;
+    await waitUntil(() => document.querySelector(".qa-runtime-page"));
+    is(document.location.hash, "#/runtime/this-firefox",
+      `${route} was redirected to This Firefox`);
+  }
 
   await removeTab(tab);
 });

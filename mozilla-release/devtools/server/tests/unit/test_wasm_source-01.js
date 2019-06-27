@@ -38,8 +38,7 @@ function run_test() {
         gThreadClient.reconfigure({
           observeAsmJS: true,
           wasmBinarySource: true,
-        }, function(response) {
-          Assert.equal(!!response.error, false);
+        }).then(function() {
           test_source();
         });
       });
@@ -55,7 +54,7 @@ const EXPECTED_CONTENT = String.fromCharCode(
 
 function test_source() {
   gThreadClient.addOneTimeListener("paused", function(event, packet) {
-    gThreadClient.getSources(function(response) {
+    gThreadClient.getSources().then(function(response) {
       Assert.ok(!!response);
       Assert.ok(!!response.sources);
 
@@ -65,8 +64,8 @@ function test_source() {
 
       Assert.ok(!!source);
 
-      const sourceClient = gThreadClient.source(source);
-      sourceClient.source().then(function(response) {
+      const sourceFront = gThreadClient.source(source);
+      sourceFront.source().then(function(response) {
         Assert.ok(!!response);
         Assert.ok(!!response.contentType);
         Assert.ok(response.contentType.includes("wasm"));
@@ -77,7 +76,7 @@ function test_source() {
         Assert.ok("binary" in sourceContent);
         Assert.equal(EXPECTED_CONTENT, sourceContent.binary);
 
-        gThreadClient.resume(function() {
+        gThreadClient.resume().then(function() {
           finishClient(gClient);
         });
       });

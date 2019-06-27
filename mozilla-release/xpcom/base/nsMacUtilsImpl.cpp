@@ -7,19 +7,27 @@
 #include "nsMacUtilsImpl.h"
 
 #include "base/command_line.h"
+#include "mozilla/ClearOnShutdown.h"
 #include "nsDirectoryServiceDefs.h"
 #include "nsCOMPtr.h"
 #include "nsIFile.h"
 #include "nsIProperties.h"
 #include "nsServiceManagerUtils.h"
 #include "nsXULAppAPI.h"
+#include "prenv.h"
 
 #include <CoreFoundation/CoreFoundation.h>
 #include <sys/sysctl.h>
 
 NS_IMPL_ISUPPORTS(nsMacUtilsImpl, nsIMacUtils)
 
+using mozilla::StaticMutexAutoLock;
 using mozilla::Unused;
+
+#if defined(MOZ_SANDBOX)
+StaticAutoPtr<nsCString> nsMacUtilsImpl::sCachedAppPath;
+StaticMutex nsMacUtilsImpl::sCachedAppPathMutex;
+#endif
 
 // Initialize with Unknown until we've checked if TCSM is available to set
 Atomic<nsMacUtilsImpl::TCSMStatus> nsMacUtilsImpl::sTCSMStatus(TCSM_Unknown);
@@ -133,13 +141,19 @@ nsMacUtilsImpl::GetIsTranslated(bool* aIsTranslated) {
   return NS_OK;
 }
 
-#if defined(MOZ_CONTENT_SANDBOX)
+#if defined(MOZ_SANDBOX)
 // Get the path to the .app directory (aka bundle) for the parent process.
 // When executing in the child process, this is the outer .app (such as
 // Firefox.app) and not the inner .app containing the child process
 // executable. We don't rely on the actual .app extension to allow for the
 // bundle being renamed.
 bool nsMacUtilsImpl::GetAppPath(nsCString& aAppPath) {
+  StaticMutexAutoLock lock(sCachedAppPathMutex);
+  if (sCachedAppPath) {
+    aAppPath.Assign(*sCachedAppPath);
+    return true;
+  }
+
   nsAutoCString appPath;
   nsAutoCString appBinaryPath(
       (CommandLine::ForCurrentProcess()->argv()[0]).c_str());
@@ -185,30 +199,53 @@ bool nsMacUtilsImpl::GetAppPath(nsCString& aAppPath) {
   }
   app->GetNativePath(aAppPath);
 
+  if (!sCachedAppPath) {
+    sCachedAppPath = new nsCString(aAppPath);
+    ClearOnShutdown(&sCachedAppPath);
+  }
+
   return true;
 }
 
 #  if defined(DEBUG)
+// If XPCOM_MEM_BLOAT_LOG or XPCOM_MEM_LEAK_LOG is set to a log file
+// path, return the path to the parent directory (where sibling log
+// files will be saved.)
+nsresult nsMacUtilsImpl::GetBloatLogDir(nsCString& aDirectoryPath) {
+  nsAutoCString bloatLog(PR_GetEnv("XPCOM_MEM_BLOAT_LOG"));
+  if (bloatLog.IsEmpty()) {
+    bloatLog = PR_GetEnv("XPCOM_MEM_LEAK_LOG");
+  }
+  if (!bloatLog.IsEmpty() && bloatLog != "1" && bloatLog != "2") {
+    return GetDirectoryPath(bloatLog.get(), aDirectoryPath);
+  }
+  return NS_OK;
+}
+
 // Given a path to a file, return the directory which contains it.
-nsAutoCString nsMacUtilsImpl::GetDirectoryPath(const char* aPath) {
-  nsCOMPtr<nsIFile> file = do_CreateInstance(NS_LOCAL_FILE_CONTRACTID);
-  if (!file || NS_FAILED(file->InitWithNativePath(nsDependentCString(aPath)))) {
-    MOZ_CRASH("Failed to create or init an nsIFile");
-  }
+nsresult nsMacUtilsImpl::GetDirectoryPath(const char* aPath,
+                                          nsCString& aDirectoryPath) {
+  nsresult rv = NS_OK;
+  nsCOMPtr<nsIFile> file = do_CreateInstance(NS_LOCAL_FILE_CONTRACTID, &rv);
+  NS_ENSURE_SUCCESS(rv, rv);
+
+  rv = file->InitWithNativePath(nsDependentCString(aPath));
+  NS_ENSURE_SUCCESS(rv, rv);
+
   nsCOMPtr<nsIFile> directoryFile;
-  if (NS_FAILED(file->GetParent(getter_AddRefs(directoryFile))) ||
-      !directoryFile) {
-    MOZ_CRASH("Failed to get parent for an nsIFile");
-  }
-  directoryFile->Normalize();
-  nsAutoCString directoryPath;
-  if (NS_FAILED(directoryFile->GetNativePath(directoryPath))) {
+  rv = file->GetParent(getter_AddRefs(directoryFile));
+  NS_ENSURE_SUCCESS(rv, rv);
+
+  rv = directoryFile->Normalize();
+  NS_ENSURE_SUCCESS(rv, rv);
+
+  if (NS_FAILED(directoryFile->GetNativePath(aDirectoryPath))) {
     MOZ_CRASH("Failed to get path for an nsIFile");
   }
-  return directoryPath;
+  return NS_OK;
 }
 #  endif /* DEBUG */
-#endif   /* MOZ_CONTENT_SANDBOX */
+#endif   /* MOZ_SANDBOX */
 
 /* static */
 bool nsMacUtilsImpl::IsTCSMAvailable() {
@@ -266,3 +303,15 @@ bool nsMacUtilsImpl::IsTCSMEnabled() {
   return (rv == 0) && (oldVal != 0);
 }
 #endif
+
+// Returns 0 on error.
+/* static */
+uint32_t nsMacUtilsImpl::GetPhysicalCPUCount() {
+  uint32_t oldVal = 0;
+  size_t oldValSize = sizeof(oldVal);
+  int rv = sysctlbyname("hw.physicalcpu_max", &oldVal, &oldValSize, NULL, 0);
+  if (rv == -1) {
+    return 0;
+  }
+  return oldVal;
+}

@@ -140,6 +140,18 @@ static void NotifySubdocumentInvalidation(
       });
 }
 
+static void SetChildrenChangedRecursive(Layer* aLayer) {
+  ForEachNode<ForwardIterator>(
+      aLayer,
+      [](Layer* layer) {
+        ContainerLayer* container = layer->AsContainerLayer();
+        if (container) {
+          container->SetChildrenChanged(true);
+          container->SetInvalidCompositeRect(nullptr);
+        }
+      });
+}
+
 struct LayerPropertiesBase : public LayerProperties {
   explicit LayerPropertiesBase(Layer* aLayer)
       : mLayer(aLayer),
@@ -173,7 +185,7 @@ struct LayerPropertiesBase : public LayerProperties {
         mUseClipRect(false) {
     MOZ_COUNT_CTOR(LayerPropertiesBase);
   }
-  ~LayerPropertiesBase() override { MOZ_COUNT_DTOR(LayerPropertiesBase); }
+  virtual ~LayerPropertiesBase() { MOZ_COUNT_DTOR(LayerPropertiesBase); }
 
  protected:
   LayerPropertiesBase(const LayerPropertiesBase& a) = delete;
@@ -249,7 +261,7 @@ struct LayerPropertiesBase : public LayerProperties {
         areaOverflowed = true;
       }
       LTI_DUMP(mask, "mask");
-      AddTransformedRegion(result, mask, mTransform);
+      AddRegion(result, mask);
     }
 
     for (size_t i = 0; i < std::min(mAncestorMaskLayers.Length(),
@@ -260,7 +272,7 @@ struct LayerPropertiesBase : public LayerProperties {
         areaOverflowed = true;
       }
       LTI_DUMP(mask, "ancestormask");
-      AddTransformedRegion(result, mask, mTransform);
+      AddRegion(result, mask);
     }
 
     if (mUseClipRect && otherClip) {
@@ -447,10 +459,14 @@ struct ContainerLayerProperties : public LayerPropertiesBase {
         } else {
           // |child| is new
           invalidateChildsCurrentArea = true;
+          SetChildrenChangedRecursive(child);
         }
       } else {
         // |child| is new, or was reordered to a higher index
         invalidateChildsCurrentArea = true;
+        if (!oldIndexMap.Contains(child)) {
+          SetChildrenChangedRecursive(child);
+        }
       }
       if (invalidateChildsCurrentArea) {
         LTI_DUMP(child->GetLocalVisibleRegion().ToUnknownRegion(),
@@ -624,8 +640,16 @@ struct ImageLayerProperties : public LayerPropertiesBase {
         mLastFrameID(-1),
         mIsMask(aIsMask) {
     if (mImageHost) {
-      mLastProducerID = mImageHost->GetLastProducerID();
-      mLastFrameID = mImageHost->GetLastFrameID();
+      if (aIsMask) {
+        // Mask layers never set the 'last' producer/frame
+        // id, since they never get composited as their own
+        // layer.
+        mLastProducerID = mImageHost->GetProducerID();
+        mLastFrameID = mImageHost->GetFrameID();
+      } else {
+        mLastProducerID = mImageHost->GetLastProducerID();
+        mLastFrameID = mImageHost->GetLastFrameID();
+      }
     }
   }
 

@@ -155,6 +155,18 @@ interface Element : Node {
   DOMMatrixReadOnly getTransformToViewport();
 };
 
+// https://html.spec.whatwg.org/#focus-management-apis
+dictionary FocusOptions {
+  boolean preventScroll = false;
+};
+
+// TODO(mbrodesser): once https://bugzilla.mozilla.org/show_bug.cgi?id=1414372
+// is fixed, mixin should be used.
+[NoInterfaceObject] interface HTMLOrSVGOrXULElementMixin {
+  [Throws]
+  void focus(optional FocusOptions options);
+};
+
 // http://dev.w3.org/csswg/cssom-view/
 enum ScrollLogicalPosition { "start", "center", "end", "nearest" };
 dictionary ScrollIntoViewOptions : ScrollOptions {
@@ -300,4 +312,19 @@ partial interface Element {
    */
   [ChromeOnly, Pure]
   sequence<Element> getElementsWithGrid();
+};
+
+// These variables are used in vtt.js, they are used for positioning vtt cues.
+partial interface Element {
+  // These two attributes are a double version of the clientHeight and the
+  // clientWidth.
+  [ChromeOnly]
+  readonly attribute double clientHeightDouble;
+  [ChromeOnly]
+  readonly attribute double clientWidthDouble;
+  // This attribute returns the block size of the first line box under the different
+  // writing directions. If the direction is horizontal, it represents box's
+  // height. If the direction is vertical, it represents box's width.
+  [ChromeOnly]
+  readonly attribute double firstLineBoxBSize;
 };

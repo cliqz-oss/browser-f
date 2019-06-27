@@ -40,9 +40,7 @@ window.gActivityStreamStrings = {
   "section_disclaimer_topstories_buttontext": "ઠીક છે, સમજાઇ ગયું",
   "prefs_home_header": "Firefox મુખ્ય સામગ્રી",
   "prefs_home_description": "તમારી Firefox મુખ્ય સ્ક્રીન પર કઈ સામગ્રી તમે ઇચ્છો તે પસંદ કરો.",
-  "prefs_content_discovery_header": "Firefox હોમ",
   "prefs_content_discovery_description": "Content Discovery in Firefox Home allows you to discover high-quality, relevant articles from across the web.",
-  "prefs_content_discovery_button": "સામગ્રી ડિસ્કવરી બંધ કરો",
   "prefs_section_rows_option": "{num} પંક્તિ;{num} પંક્તિઓ",
   "prefs_search_header": "વેબ શોધ",
   "prefs_topsites_description": "તમે સૌથી વધુ મુલાકાત લો છો તે સાઇટ્સ",
@@ -107,8 +105,5 @@ window.gActivityStreamStrings = {
   "firstrun_privacy_notice": "ખાનગી સૂચના",
   "firstrun_continue_to_login": "ચાલુ રાખો",
   "firstrun_skip_login": "આ પગલું છોડી દો",
-  "context_menu_title": "મેનૂ ખોલો",
-  "manual_migration_explanation2": "અન્ય બ્રાઉઝરથી બુકમાર્ક્સ, ઇતિહાસ અને પાસવર્ડ્સ સાથે ફાયરફોક્સ અજમાવો.",
-  "manual_migration_cancel_button": "ના અભાર",
-  "manual_migration_import_button": "હવે આયાત કરો"
+  "context_menu_title": "મેનૂ ખોલો"
 };

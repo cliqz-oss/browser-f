@@ -68,6 +68,7 @@ class VRManager {
                         const TimeDuration& aTimeout);
 
   void Shutdown();
+  bool IsPresenting();
 
  protected:
   VRManager();
@@ -95,14 +96,8 @@ class VRManager {
 
   typedef nsTArray<RefPtr<VRSystemManager>> VRSystemManagerArray;
   VRSystemManagerArray mManagers;
-
-  typedef nsRefPtrHashtable<nsUint32HashKey, gfx::VRDisplayHost>
-      VRDisplayHostHashMap;
-  VRDisplayHostHashMap mVRDisplays;
-
-  typedef nsRefPtrHashtable<nsUint32HashKey, gfx::VRControllerHost>
-      VRControllerHostHashMap;
-  VRControllerHostHashMap mVRControllers;
+  nsTArray<uint32_t> mVRDisplayIDs;
+  nsTArray<uint32_t> mVRControllerIDs;
 
   Atomic<bool> mInitialized;
 

@@ -147,19 +147,17 @@ void MediaTransportHandlerIPC::Destroy() {
 // this class once we move mtransport to its own process.
 void MediaTransportHandlerIPC::SetProxyServer(
     NrSocketProxyConfig&& aProxyConfig) {
-  // TODO(bug 1521113): This doesn't work on IPC
-#if 0
   mInitPromise->Then(
       GetMainThreadSerialEventTarget(), __func__,
       [aProxyConfig = std::move(aProxyConfig), this,
        self = RefPtr<MediaTransportHandlerIPC>(this)](bool /*dummy*/) mutable {
         if (mChild) {
-          mChild->SendSetProxyServer(aProxyConfig.GetBrowser(),
+          mChild->SendSetProxyServer(dom::TabId(aProxyConfig.GetTabId()),
+                                     aProxyConfig.GetLoadInfoArgs(),
                                      aProxyConfig.GetAlpn());
         }
       },
       [](const nsCString& aError) {});
-#endif
 }
 
 void MediaTransportHandlerIPC::EnsureProvisionalTransport(
@@ -291,17 +289,18 @@ MediaTransportHandlerIPC::GetIceStats(
         }
         RefPtr<StatsPromise> promise =
             mChild->SendGetIceStats(aTransportId, aNow, *aReport)
-                ->Then(GetMainThreadSerialEventTarget(), __func__,
-                       [](const dom::MovableRTCStatsReportInternal& aReport) {
-                         std::unique_ptr<dom::RTCStatsReportInternal> report(
-                             new dom::RTCStatsReportInternal(aReport));
-                         return StatsPromise::CreateAndResolve(
-                             std::move(report), __func__);
-                       },
-                       [](ipc::ResponseRejectReason aReason) {
-                         return StatsPromise::CreateAndReject(NS_ERROR_FAILURE,
-                                                              __func__);
-                       });
+                ->Then(
+                    GetMainThreadSerialEventTarget(), __func__,
+                    [](const dom::MovableRTCStatsReportInternal& aReport) {
+                      std::unique_ptr<dom::RTCStatsReportInternal> report(
+                          new dom::RTCStatsReportInternal(aReport));
+                      return StatsPromise::CreateAndResolve(std::move(report),
+                                                            __func__);
+                    },
+                    [](ipc::ResponseRejectReason aReason) {
+                      return StatsPromise::CreateAndReject(NS_ERROR_FAILURE,
+                                                           __func__);
+                    });
         return promise;
       },
       [](const nsCString& aError) {

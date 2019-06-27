@@ -6,9 +6,8 @@
 #if defined(MOZ_WIDGET_GTK)
 #  define GET_NATIVE_WINDOW_FROM_REAL_WIDGET(aWidget) \
     ((EGLNativeWindowType)aWidget->GetNativeData(NS_NATIVE_EGL_WINDOW))
-#  define GET_NATIVE_WINDOW_FROM_COMPOSITOR_WIDGET(aWidget)     \
-    ((EGLNativeWindowType)aWidget->RealWidget()->GetNativeData( \
-        NS_NATIVE_EGL_WINDOW))
+#  define GET_NATIVE_WINDOW_FROM_COMPOSITOR_WIDGET(aWidget) \
+    (aWidget->AsX11()->GetEGLNativeWindow())
 #elif defined(MOZ_WIDGET_ANDROID)
 #  define GET_NATIVE_WINDOW_FROM_REAL_WIDGET(aWidget) \
     ((EGLNativeWindowType)aWidget->GetNativeData(NS_JAVA_SURFACE))
@@ -72,6 +71,10 @@
 #include "nsThreadUtils.h"
 #include "ScopedGLHelpers.h"
 #include "TextureImageEGL.h"
+
+#if defined(MOZ_WIDGET_GTK)
+#  include "mozilla/widget/GtkCompositorWidget.h"
+#endif
 
 #if defined(MOZ_WAYLAND)
 #  include "nsAutoPtr.h"
@@ -282,13 +285,22 @@ already_AddRefed<GLContext> GLContextEGLFactory::Create(
   RefPtr<GLContextEGL> gl = GLContextEGL::CreateGLContext(
       flags, caps, false, config, surface, &discardFailureId);
   if (!gl) {
-    gfxCriticalNote << "Failed to create EGLContext!";
+    const auto err = egl->fGetError();
+    gfxCriticalNote << "Failed to create EGLContext!: " << gfx::hexa(err);
     mozilla::gl::DestroySurface(surface);
     return nullptr;
   }
 
   gl->MakeCurrent();
   gl->SetIsDoubleBuffered(doubleBuffered);
+
+#if defined(MOZ_WAYLAND)
+  if (surface != EGL_NO_SURFACE &&
+      !GDK_IS_X11_DISPLAY(gdk_display_get_default())) {
+    // Make eglSwapBuffers() non-blocking on wayland
+    egl->fSwapInterval(EGL_DISPLAY(), 0);
+  }
+#endif
   if (aWebRender && egl->IsANGLE()) {
     MOZ_ASSERT(doubleBuffered);
     egl->fSwapInterval(EGL_DISPLAY(), 0);
@@ -465,8 +477,16 @@ bool GLContextEGL::RenewSurface(CompositorWidget* aWidget) {
       return false;
     }
   }
-
-  return MakeCurrent(true);
+  const bool ok = MakeCurrent(true);
+  MOZ_ASSERT(ok);
+#if defined(MOZ_WAYLAND)
+  if (mSurface && !GDK_IS_X11_DISPLAY(gdk_display_get_default())) {
+    const auto* egl = gl::GLLibraryEGL::Get();
+    // Make eglSwapBuffers() non-blocking on wayland
+    egl->fSwapInterval(EGL_DISPLAY(), 0);
+  }
+#endif
+  return ok;
 }
 
 void GLContextEGL::ReleaseSurface() {

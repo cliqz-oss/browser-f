@@ -31,6 +31,7 @@
 #include "irregexp/RegExpStack.h"
 #include "js/BuildId.h"  // JS::BuildIdOp
 #include "js/Debug.h"
+#include "js/experimental/SourceHook.h"  // js::SourceHook
 #include "js/GCVector.h"
 #include "js/HashTable.h"
 #ifdef DEBUG
@@ -41,6 +42,7 @@
 #include "js/UniquePtr.h"
 #include "js/Utility.h"
 #include "js/Vector.h"
+#include "js/Warnings.h"  // JS::WarningReporter
 #include "threading/Thread.h"
 #include "vm/Caches.h"
 #include "vm/CodeCoverage.h"
@@ -521,6 +523,24 @@ struct JSRuntime : public js::MallocProvider<JSRuntime> {
   // number of realms visited by RealmsIter.
   js::MainThreadData<size_t> numRealms;
 
+ private:
+  // Number of debuggee realms in the runtime.
+  js::MainThreadData<size_t> numDebuggeeRealms_;
+
+  // Number of debuggee realms in the runtime observing code coverage.
+  js::MainThreadData<size_t> numDebuggeeRealmsObservingCoverage_;
+
+ public:
+  void incrementNumDebuggeeRealms();
+  void decrementNumDebuggeeRealms();
+
+  size_t numDebuggeeRealms() const {
+    return numDebuggeeRealms_;
+  }
+
+  void incrementNumDebuggeeRealmsObservingCoverage();
+  void decrementNumDebuggeeRealmsObservingCoverage();
+
   /* Locale-specific callbacks for string conversion. */
   js::MainThreadData<const JSLocaleCallbacks*> localeCallbacks;
 
@@ -643,7 +663,7 @@ struct JSRuntime : public js::MallocProvider<JSRuntime> {
   js::WriteOnceData<js::PropertyName*> emptyString;
 
  private:
-  js::WriteOnceData<js::FreeOp*> defaultFreeOp_;
+  js::MainThreadData<js::FreeOp*> defaultFreeOp_;
 
  public:
   js::FreeOp* defaultFreeOp() {

@@ -20,6 +20,7 @@ var isDevtools = SimpleTest.harnessParameters.subsuite == "devtools";
 var gExceptionPaths = [
   "chrome://browser/content/defaultthemes/",
   "resource://app/defaults/settings/blocklists/",
+  "resource://app/defaults/settings/security-state/",
   "resource://app/defaults/settings/main/",
   "resource://app/defaults/settings/pinning/",
   "resource://app/defaults/preferences/",
@@ -43,8 +44,8 @@ var gExceptionPaths = [
   // paths will be concatenated in FormAutofillUtils.jsm based on different country/region.
   "resource://formautofill/addressmetadata/",
 
-  // Exclude all search-plugins because they aren't referenced by filename
-  "resource://search-plugins/",
+  // Exclude all search-extensions because they aren't referenced by filename
+  "resource://search-extensions/",
 ];
 
 // These are not part of the omni.ja file, so we find them only when running
@@ -146,6 +147,8 @@ var whitelist = [
   {file: "chrome://pippki/content/resetpassword.xul"},
   // Bug 1337345
   {file: "resource://gre/modules/Manifest.jsm"},
+  // Bug 1548381
+  {file: "resource://gre/modules/PasswordGenerator.jsm"},
   // Bug 1351097
   {file: "resource://gre/modules/accessibility/AccessFu.jsm"},
   // Bug 1356043
@@ -156,9 +159,6 @@ var whitelist = [
   {file: "resource://gre/modules/Promise.jsm"},
   // Still used by WebIDE, which is going away but not entirely gone.
   {file: "resource://gre/modules/ZipUtils.jsm"},
-  // Bug 1483277 (temporarily unreferenced)
-  {file: AppConstants.BROWSER_CHROME_URL == "chrome://browser/content/browser.xul" ?
-    "chrome://browser/content/browser.xhtml" : "chrome://browser/content/browser.xul" },
   // Bug 1494170
   // (The references to these files are dynamically generated, so the test can't
   // find the references)
@@ -169,17 +169,18 @@ var whitelist = [
   {file: "chrome://devtools/skin/images/aboutdebugging-firefox-release.svg",
    isFromDevTools: true},
   {file: "chrome://devtools/skin/images/next.svg", isFromDevTools: true},
-  // kvstore.jsm wraps the API in nsIKeyValue.idl in a more ergonomic API
-  // It landed in bug 1490496, and we expect to start using it shortly.
-  {file: "resource://gre/modules/kvstore.jsm"},
-  {file: "chrome://devtools/content/aboutdebugging-new/tmp-locale/en-US/aboutdebugging.ftl",
-   isFromDevTools: true},
   // Bug 1526672
   {file: "resource://app/localization/en-US/browser/touchbar/touchbar.ftl",
    platforms: ["linux", "win"]},
   // Referenced by the webcompat system addon for localization
   {file: "resource://gre/localization/en-US/toolkit/about/aboutCompat.ftl"},
 ];
+
+if (!AppConstants.MOZ_NEW_NOTIFICATION_STORE) {
+  // kvstore.jsm wraps the API in nsIKeyValue.idl in a more ergonomic API
+  // It landed in bug 1490496, and we expect to start using it shortly.
+  whitelist.push({file: "resource://gre/modules/kvstore.jsm"});
+}
 
 whitelist = new Set(whitelist.filter(item =>
   ("isFromDevTools" in item) == isDevtools &&
@@ -280,8 +281,8 @@ function parseManifest(manifestUri) {
         // the addon is preffed-off, and since it's a hack until we
         // get bz1425104 landed, we'll just skip it for now.
         // Same issue with fxmonitor, which is also pref'd off.
-        if (chromeUri === "chrome://webcompat-reporter/locale/") {
-          gChromeMap.set("chrome://webcompat-reporter/locale/", true);
+        if (chromeUri === "chrome://report-site-issue/locale/") {
+          gChromeMap.set("chrome://report-site-issue/locale/", true);
         } else if (chromeUri === "chrome://fxmonitor/locale/") {
           gChromeMap.set("chrome://fxmonitor/locale/", true);
         } else {
@@ -311,6 +312,8 @@ function parseManifest(manifestUri) {
 // for any embedded APIs.  Returns the passed in URI if the manifest
 // is not a webextension manifest, null otherwise.
 async function parseJsonManifest(uri) {
+  uri = Services.io.newURI(convertToCodeURI(uri.spec));
+
   let raw = await fetchFile(uri.spec);
   let data;
   try {
@@ -324,6 +327,12 @@ async function parseJsonManifest(uri) {
     return uri;
   }
 
+  if (data.icons) {
+    for (let icon of Object.values(data.icons)) {
+      gReferencesFromCode.set(uri.resolve(icon), null);
+    }
+  }
+
   if (data.experiment_apis) {
     for (let api of Object.values(data.experiment_apis)) {
       if (api.parent && api.parent.script) {
@@ -331,6 +340,11 @@ async function parseJsonManifest(uri) {
         gReferencesFromCode.set(script, null);
       }
     }
+  }
+
+  if (data.theme_experiment && data.theme_experiment.stylesheet) {
+    let stylesheet = uri.resolve(data.theme_experiment.stylesheet);
+    gReferencesFromCode.set(stylesheet, null);
   }
 
   return null;

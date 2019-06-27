@@ -16,7 +16,7 @@
 #include "nsIAuthPrompt.h"
 #include "nsIAuthPrompt2.h"
 #include "nsIHttpHeaderVisitor.h"
-#include "nsITabParent.h"
+#include "nsIRemoteTab.h"
 #include "nsIPromptFactory.h"
 #include "nsIWindowWatcher.h"
 #include "nsQueryObject.h"
@@ -164,7 +164,7 @@ nsresult HttpChannelParentListener::TriggerCrossProcessRedirect(
   RefPtr<HttpChannelParentListener> self = this;
   p->Then(
       GetMainThreadSerialEventTarget(), __func__,
-      [=](nsCOMPtr<nsITabParent> tp) {
+      [=](nsCOMPtr<nsIRemoteTab> tp) {
         nsresult rv;
 
         // Register the new channel and obtain id for it
@@ -199,8 +199,8 @@ nsresult HttpChannelParentListener::TriggerCrossProcessRedirect(
           MOZ_ALWAYS_SUCCEEDS(internalChannel->GetRedirectMode(&redirectMode));
         }
 
-        dom::TabParent* tabParent = dom::TabParent::GetFrom(tp);
-        auto result = tabParent->Manager()->SendCrossProcessRedirect(
+        dom::BrowserParent* browserParent = dom::BrowserParent::GetFrom(tp);
+        auto result = browserParent->Manager()->SendCrossProcessRedirect(
             self->mRedirectChannelId, uri, newLoadFlags, loadInfoArgs,
             channelId, originalURI, aIdentifier, redirectMode);
 

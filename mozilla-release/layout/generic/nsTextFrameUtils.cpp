@@ -12,16 +12,26 @@
 #include "nsStyleStruct.h"
 #include "nsTextFragment.h"
 #include "nsUnicharUtils.h"
+#include "nsUnicodeProperties.h"
 #include <algorithm>
 
 using namespace mozilla;
+
+// static
+bool nsTextFrameUtils::IsSpaceCombiningSequenceTail(const char16_t* aChars,
+                                                    int32_t aLength) {
+  return aLength > 0 &&
+         (mozilla::unicode::IsClusterExtender(aChars[0]) ||
+          (IsBidiControl(aChars[0]) &&
+           IsSpaceCombiningSequenceTail(aChars + 1, aLength - 1)));
+}
 
 static bool IsDiscardable(char16_t ch, nsTextFrameUtils::Flags* aFlags) {
   // Unlike IS_DISCARDABLE, we don't discard \r. \r will be ignored by
   // gfxTextRun and discarding it would force us to copy text in many cases of
   // preformatted text containing \r\n.
   if (ch == CH_SHY) {
-    *aFlags |= nsTextFrameUtils::Flags::TEXT_HAS_SHY;
+    *aFlags |= nsTextFrameUtils::Flags::HasShy;
     return true;
   }
   return IsBidiControl(ch);
@@ -29,7 +39,7 @@ static bool IsDiscardable(char16_t ch, nsTextFrameUtils::Flags* aFlags) {
 
 static bool IsDiscardable(uint8_t ch, nsTextFrameUtils::Flags* aFlags) {
   if (ch == CH_SHY) {
-    *aFlags |= nsTextFrameUtils::Flags::TEXT_HAS_SHY;
+    *aFlags |= nsTextFrameUtils::Flags::HasShy;
     return true;
   }
   return false;
@@ -206,7 +216,7 @@ CharT* nsTextFrameUtils::TransformText(const CharT* aText, uint32_t aLength,
         } else {
           // aCompression == COMPRESS_NONE
           if (ch == '\t') {
-            flags |= Flags::TEXT_HAS_TAB;
+            flags |= Flags::HasTab;
           }
         }
         *aOutput++ = ch;

@@ -15,6 +15,7 @@
 #include "mozilla/ServoElementSnapshotTable.h"
 #include "nsChangeHint.h"
 #include "nsPresContext.h"
+#include "nsPresContextInlines.h"  // XXX Shouldn't be included by header though
 #include "nsStringFwd.h"
 
 class nsAttrValue;
@@ -263,6 +264,10 @@ class RestyleManager {
         MOZ_ASSERT(aContent->NodeInfo()->NameAtom() ==
                    nsGkAtoms::mozgeneratedcontentafter);
         mAfterContents.AppendElement(aContent->GetParent());
+      } else if (pseudoType == PseudoStyleType::marker) {
+        MOZ_ASSERT(aContent->NodeInfo()->NameAtom() ==
+                   nsGkAtoms::mozgeneratedcontentmarker);
+        mMarkerContents.AppendElement(aContent->GetParent());
       }
     }
 
@@ -278,12 +283,13 @@ class RestyleManager {
     // Below three arrays might include elements that have already had their
     // animations or transitions stopped.
     //
-    // mBeforeContents and mAfterContents hold the real element rather than
-    // the content node for the generated content (which might change during
-    // a reframe)
+    // mBeforeContents, mAfterContents and mMarkerContents hold the real element
+    // rather than the content node for the generated content (which might
+    // change during a reframe)
     nsTArray<RefPtr<nsIContent>> mContents;
     nsTArray<RefPtr<nsIContent>> mBeforeContents;
     nsTArray<RefPtr<nsIContent>> mAfterContents;
+    nsTArray<RefPtr<nsIContent>> mMarkerContents;
   };
 
   /**
@@ -369,7 +375,9 @@ class RestyleManager {
   // track whether off-main-thread animations are up-to-date.
   uint64_t GetAnimationGeneration() const { return mAnimationGeneration; }
 
-  static uint64_t GetAnimationGenerationForFrame(nsIFrame* aFrame);
+  // Typically only style frames have animations associated with them so this
+  // will likely return zero for anything that is not a style frame.
+  static uint64_t GetAnimationGenerationForFrame(nsIFrame* aStyleFrame);
 
   // Update the animation generation count to mark that animation state
   // has changed.

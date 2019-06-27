@@ -35,13 +35,13 @@ Push.prototype = {
 
   contractID: "@mozilla.org/push/PushManager;1",
 
-  classID : PUSH_CID,
+  classID: PUSH_CID,
 
-  QueryInterface : ChromeUtils.generateQI([Ci.nsIDOMGlobalPropertyInitializer,
-                                           Ci.nsISupportsWeakReference,
-                                           Ci.nsIObserver]),
+  QueryInterface: ChromeUtils.generateQI([Ci.nsIDOMGlobalPropertyInitializer,
+                                          Ci.nsISupportsWeakReference,
+                                          Ci.nsIObserver]),
 
-  init: function(win) {
+  init(win) {
     console.debug("init()");
 
     this._window = win;
@@ -53,11 +53,11 @@ Push.prototype = {
     this._topLevelPrincipal = win.top.document.nodePrincipal;
   },
 
-  __init: function(scope) {
+  __init(scope) {
     this._scope = scope;
   },
 
-  askPermission: function () {
+  askPermission() {
     console.debug("askPermission()");
 
     let isHandlingUserInput = this._window.windowUtils.isHandlingUserInput;
@@ -78,7 +78,7 @@ Push.prototype = {
     });
   },
 
-  subscribe: function(options) {
+  subscribe(options) {
     console.debug("subscribe()", this._scope);
 
     return this.askPermission().then(() =>
@@ -96,13 +96,12 @@ Push.prototype = {
           return;
         }
         PushService.subscribeWithKey(this._scope, this._principal,
-                                     keyView.byteLength, keyView,
-                                     callback);
+                                     keyView, callback);
       })
     );
   },
 
-  _normalizeAppServerKey: function(appServerKey) {
+  _normalizeAppServerKey(appServerKey) {
     let key;
     if (typeof appServerKey == "string") {
       try {
@@ -124,7 +123,7 @@ Push.prototype = {
     return new this._window.Uint8Array(key);
   },
 
-  getSubscription: function() {
+  getSubscription() {
     console.debug("getSubscription()", this._scope);
 
     return this.createPromise((resolve, reject) => {
@@ -133,7 +132,7 @@ Push.prototype = {
     });
   },
 
-  permissionState: function() {
+  permissionState() {
     console.debug("permissionState()", this._scope);
 
     return this.createPromise((resolve, reject) => {
@@ -141,7 +140,7 @@ Push.prototype = {
 
       try {
         permission = this._testPermission();
-      } catch(e) {
+      } catch (e) {
         reject();
         return;
       }
@@ -156,7 +155,7 @@ Push.prototype = {
     });
   },
 
-  _testPermission: function() {
+  _testPermission() {
     let permission = Services.perms.testExactPermissionFromPrincipal(
       this._principal, "desktop-notification");
     if (permission == Ci.nsIPermissionManager.ALLOW_ACTION) {
@@ -170,7 +169,7 @@ Push.prototype = {
     return permission;
   },
 
-  _requestPermission: function(isHandlingUserInput, allowCallback, cancelCallback) {
+  _requestPermission(isHandlingUserInput, allowCallback, cancelCallback) {
     // Create an array with a single nsIContentPermissionType element.
     let type = {
       type: "desktop-notification",
@@ -210,7 +209,7 @@ function PushSubscriptionCallback(pushManager, resolve, reject) {
 PushSubscriptionCallback.prototype = {
   QueryInterface: ChromeUtils.generateQI([Ci.nsIPushSubscriptionCallback]),
 
-  onPushSubscription: function(ok, subscription) {
+  onPushSubscription(ok, subscription) {
     let {pushManager} = this;
     if (!Components.isSuccessCode(ok)) {
       this._rejectWithError(ok);
@@ -227,8 +226,8 @@ PushSubscriptionCallback.prototype = {
     let options = {
       endpoint: subscription.endpoint,
       scope: pushManager._scope,
-      p256dhKey: p256dhKey,
-      authSecret: authSecret,
+      p256dhKey,
+      authSecret,
     };
     let appServerKey = this._getKey(subscription, "appServer");
     if (appServerKey) {
@@ -239,21 +238,20 @@ PushSubscriptionCallback.prototype = {
     this.resolve(sub);
   },
 
-  _getKey: function(subscription, name) {
-    let outKeyLen = {};
-    let rawKey = Cu.cloneInto(subscription.getKey(name, outKeyLen),
+  _getKey(subscription, name) {
+    let rawKey = Cu.cloneInto(subscription.getKey(name),
                               this.pushManager._window);
-    if (!outKeyLen.value) {
+    if (!rawKey.length) {
       return null;
     }
 
-    let key = new this.pushManager._window.ArrayBuffer(outKeyLen.value);
+    let key = new this.pushManager._window.ArrayBuffer(rawKey.length);
     let keyView = new this.pushManager._window.Uint8Array(key);
     keyView.set(rawKey);
     return key;
   },
 
-  _rejectWithError: function(result) {
+  _rejectWithError(result) {
     let error;
     switch (result) {
       case Cr.NS_ERROR_DOM_PUSH_INVALID_KEY_ERR:
@@ -280,4 +278,4 @@ PushSubscriptionCallback.prototype = {
   },
 };
 
-var EXPORTED_SYMBOLS = ["Push"];
+const EXPORTED_SYMBOLS = ["Push"];

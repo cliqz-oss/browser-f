@@ -18,9 +18,6 @@ XPCOMUtils.defineLazyModuleGetters(this, {
 XPCOMUtils.defineLazyServiceGetter(this, "sas",
                                    "@mozilla.org/storage/activity-service;1",
                                    "nsIStorageActivityService");
-XPCOMUtils.defineLazyServiceGetter(this, "eTLDService",
-                                   "@mozilla.org/network/effective-tld-service;1",
-                                   "nsIEffectiveTLDService");
 
 // A Cleaner is an object with 3 methods. These methods must return a Promise
 // object. Here a description of these methods:
@@ -40,8 +37,8 @@ XPCOMUtils.defineLazyServiceGetter(this, "eTLDService",
 const CookieCleaner = {
   deleteByHost(aHost, aOriginAttributes) {
     return new Promise(aResolve => {
-      Services.cookies.removeCookiesWithOriginAttributes(JSON.stringify(aOriginAttributes),
-                                                         aHost);
+      Services.cookies.removeCookiesFromRootDomain(aHost,
+                                                   JSON.stringify(aOriginAttributes));
       aResolve();
     });
   },
@@ -243,7 +240,7 @@ const PluginDataCleaner = {
 const DownloadsCleaner = {
   deleteByHost(aHost, aOriginAttributes) {
     return Downloads.getList(Downloads.ALL).then(aList => {
-      aList.removeFinished(aDownload => eTLDService.hasRootDomain(
+      aList.removeFinished(aDownload => Services.eTLD.hasRootDomain(
         Services.io.newURI(aDownload.source.url).host, aHost));
     });
   },
@@ -268,7 +265,7 @@ const DownloadsCleaner = {
 
 const PasswordsCleaner = {
   deleteByHost(aHost, aOriginAttributes) {
-    return this._deleteInternal(aLogin => eTLDService.hasRootDomain(aLogin.hostname, aHost));
+    return this._deleteInternal(aLogin => Services.eTLD.hasRootDomain(aLogin.hostname, aHost));
   },
 
   deleteAll() {
@@ -365,13 +362,10 @@ const QuotaCleaner = {
     // Clear sessionStorage
     Services.obs.notifyObservers(null, "browser:purge-sessionStorage", aHost);
 
-    let exceptionThrown = false;
-
     // ServiceWorkers: they must be removed before cleaning QuotaManager.
-    return Promise.all([
-      ServiceWorkerCleanUp.removeFromHost("http://" + aHost).catch(_ => { exceptionThrown = true; }),
-      ServiceWorkerCleanUp.removeFromHost("https://" + aHost).catch(_ => { exceptionThrown = true; }),
-    ]).then(() => {
+    return ServiceWorkerCleanUp.removeFromHost(aHost)
+      .then(_ => /* exceptionThrown = */ false, _ => /* exceptionThrown = */ true)
+      .then(exceptionThrown => {
         // QuotaManager: In the event of a failure, we call reject to propagate
         // the error upwards.
 
@@ -405,12 +399,9 @@ const QuotaCleaner = {
         }));
         if (Services.lsm.nextGenLocalStorageEnabled) {
           // deleteByHost has the semantics that "foo.example.com" should be
-          // wiped if we are provided an aHost of "example.com".  QuotaManager
-          // doesn't have a way to directly do this, so we use getUsage() to
-          // get a list of all of the origins known to QuotaManager and then
-          // check whether the domain is a sub-domain of aHost.
+          // wiped if we are provided an aHost of "example.com".
           promises.push(new Promise((aResolve, aReject) => {
-            Services.qms.getUsage(aRequest => {
+            Services.qms.listInitializedOrigins(aRequest => {
               if (aRequest.resultCode != Cr.NS_OK) {
                 aReject({message: "Delete by host failed"});
                 return;
@@ -418,8 +409,17 @@ const QuotaCleaner = {
 
               let promises = [];
               for (let item of aRequest.result) {
-                let principal = Services.scriptSecurityManager.createCodebasePrincipalFromOrigin(item.origin);
-                if (eTLDService.hasRootDomain(principal.URI.host, aHost)) {
+                let principal = Services.scriptSecurityManager
+                                        .createCodebasePrincipalFromOrigin(item.origin);
+                let host;
+                try {
+                  host = principal.URI.host;
+                } catch (e) {
+                  // There is no host for the given principal.
+                  continue;
+                }
+
+                if (Services.eTLD.hasRootDomain(host, aHost)) {
                   promises.push(new Promise((aResolve, aReject) => {
                     let clearRequest = Services.qms.clearStoragesForPrincipal(principal, null, "ls");
                     clearRequest.callback = () => {
@@ -558,6 +558,45 @@ const PushNotificationsCleaner = {
   },
 };
 
+const StorageAccessCleaner = {
+  deleteByHost(aHost, aOriginAttributes) {
+    return new Promise(aResolve => {
+      for (let perm of Services.perms.enumerator) {
+        if (perm.type == "storageAccessAPI") {
+          let toBeRemoved = false;
+          try {
+            toBeRemoved = Services.eTLD.hasRootDomain(perm.principal.URI.host,
+                                                    aHost);
+          } catch (ex) {
+            continue;
+          }
+          if (!toBeRemoved) {
+            continue;
+          }
+
+          try {
+            Services.perms.removePermission(perm);
+          } catch (ex) {
+            Cu.reportError(ex);
+          }
+        }
+      }
+
+      aResolve();
+    });
+  },
+
+  deleteByRange(aFrom, aTo) {
+    Services.perms.removeByTypeSince("storageAccessAPI", aFrom / 1000);
+    return Promise.resolve();
+  },
+
+  deleteAll() {
+    Services.perms.removeByType("storageAccessAPI");
+    return Promise.resolve();
+  },
+};
+
 const HistoryCleaner = {
   deleteByHost(aHost, aOriginAttributes) {
     return PlacesUtils.history.removeByFilter({ host: "." + aHost });
@@ -625,8 +664,7 @@ const PermissionsCleaner = {
       for (let perm of Services.perms.enumerator) {
         let toBeRemoved;
         try {
-          toBeRemoved = eTLDService.hasRootDomain(perm.principal.URI.host,
-                                                  aHost);
+          toBeRemoved = Services.eTLD.hasRootDomain(perm.principal.URI.host, aHost);
         } catch (ex) {
           continue;
         }
@@ -641,7 +679,7 @@ const PermissionsCleaner = {
               continue;
             }
 
-            toBeRemoved = eTLDService.hasRootDomain(uri.host, aHost);
+            toBeRemoved = Services.eTLD.hasRootDomain(uri.host, aHost);
             if (toBeRemoved) {
               break;
             }
@@ -722,7 +760,7 @@ const SecuritySettingsCleaner = {
         // the information in the site security service.
         for (let entry of sss.enumerate(type)) {
           let hostname = entry.hostname;
-          if (eTLDService.hasRootDomain(hostname, aHost)) {
+          if (Services.eTLD.hasRootDomain(hostname, aHost)) {
             // This uri is used as a key to remove the state.
             let uri = Services.io.newURI("https://" + hostname);
             sss.removeState(type, uri, 0, entry.originAttributes);
@@ -839,14 +877,29 @@ const FLAGS_MAP = [
 
  { flag: Ci.nsIClearDataService.CLEAR_REPORTS,
    cleaner: ReportsCleaner },
+
+ { flag: Ci.nsIClearDataService.CLEAR_STORAGE_ACCESS,
+   cleaner: StorageAccessCleaner },
 ];
 
-this.ClearDataService = function() {};
+this.ClearDataService = function() {
+  this._initialize();
+};
 
 ClearDataService.prototype = Object.freeze({
   classID: Components.ID("{0c06583d-7dd8-4293-b1a5-912205f779aa}"),
   QueryInterface: ChromeUtils.generateQI([Ci.nsIClearDataService]),
   _xpcom_factory: XPCOMUtils.generateSingletonFactory(ClearDataService),
+
+  _initialize() {
+    // Let's start all the service we need to cleanup data.
+
+    // This is mainly needed for GeckoView that doesn't start QMS on startup
+    // time.
+    if (!Services.qms) {
+      Cu.reportError("Failed initializiation of QuotaManagerService.");
+    }
+  },
 
   deleteDataFromHost(aHost, aIsUserRequest, aFlags, aCallback) {
     if (!aHost || !aCallback) {

@@ -33,6 +33,7 @@
 !define DDEApplication        "CLIQZ"
 !define AppRegName            "CLIQZ"
 
+!define BrandProductName      "Firefox"
 !ifndef DEV_EDITION
 !define BrandShortName        "@MOZ_APP_DISPLAYNAME@"
 !endif
@@ -114,6 +115,10 @@
 !define MOZ_MAINTENANCE_SERVICE
 #endif
 
+#ifdef MOZ_BITS_DOWNLOAD
+!define MOZ_BITS_DOWNLOAD
+#endif
+
 !if "@AB_CD@" == "en-US"
 !define MOZ_OPTIONAL_EXTENSIONS
 !else if "@AB_CD@" == "zh-CN"
@@ -140,6 +145,7 @@ VIAddVersionKey "ProductVersion"  "${AppVersion}"
 # least 15 MB additional for working room.
 !define APPROXIMATE_REQUIRED_SPACE_MB "145"
 
+<<<<<<< HEAD
 # Control positions in Dialog Units so they are placed correctly with
 # non-default DPI settings
 !define PROFILE_CLEANUP_LABEL_TOP_DU 64u
@@ -151,6 +157,19 @@ VIAddVersionKey "ProductVersion"  "${AppVersion}"
 !define INSTALL_FOOTER_WIDTH_DU 400u
 !define PROGRESS_BAR_TOP_DU 210u
 
+||||||| merged common ancestors
+# Control positions in Dialog Units so they are placed correctly with
+# non-default DPI settings
+!define PROFILE_CLEANUP_LABEL_TOP_DU 39u
+!define NOW_INSTALLING_TOP_DU 70u
+!define INSTALL_BLURB_TOP_DU 137u
+!define INSTALL_FOOTER_WIDTH_DU 250u
+!define PROGRESS_BAR_TOP_DU 112u
+!define APPNAME_BMP_EDGE_DU 19u
+!define APPNAME_BMP_TOP_DU 12u
+
+=======
+>>>>>>> 822b139b92cedf98ab96ccad686dae664d417af4
 # Constants for parts of the telemetry submission URL
 !define TELEMETRY_BASE_URL https://incoming.telemetry.mozilla.org/submit
 !define TELEMETRY_NAMESPACE firefox-installer

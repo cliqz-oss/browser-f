@@ -33,6 +33,10 @@ namespace gc {
 class RelocationOverlay;
 }  // namespace gc
 
+namespace jit {
+class CacheIRCompiler;
+}
+
 /****************************************************************************/
 
 class GlobalObject;
@@ -63,35 +67,24 @@ bool SetImmutablePrototype(JSContext* cx, JS::HandleObject obj,
  * - The |group_| member stores the group of the object, which contains its
  *   prototype object, its class and the possible types of its properties.
  *
- * - The |shapeOrExpando_| member points to (an optional) guard object that JIT
- *   may use to optimize. The pointed-to object dictates the constraints
- *   imposed on the JSObject:
- *      nullptr
- *          - Safe value if this field is not needed.
- *      js::Shape
- *          - All objects that might point |shapeOrExpando_| to a js::Shape
- *            must follow the rules specified on js::ShapedObject.
- *      JSObject
- *          - Implies nothing about the current object or target object. Either
- *            of which may mutate in place. Store a JSObject* only to save
- *            space, not to guard on.
+ * - The |shape_| member stores the current 'shape' of the object, which
+ *   describes the current layout and set of property keys of the object. The
+ *   |shape_| field must be non-null.
  *
- * NOTE: The JIT may check |shapeOrExpando_| pointer value without ever
- *       inspecting |group_| or the class.
+ * NOTE: shape()->getObjectClass() must equal getClass().
+ *
+ * NOTE: The JIT may check |shape_| pointer value without ever inspecting
+ *       |group_| or the class.
  *
  * NOTE: Some operations can change the contents of an object (including class)
  *       in-place so avoid assuming an object with same pointer has same class
  *       as before.
  *       - JSObject::swap()
- *       - UnboxedPlainObject::convertToNative()
- *
- * NOTE: UnboxedObjects may change class without changing |group_|.
- *       - js::TryConvertToUnboxedLayout
  */
 class JSObject : public js::gc::Cell {
  protected:
   js::GCPtrObjectGroup group_;
-  void* shapeOrExpando_;
+  js::GCPtrShape shape_;
 
  private:
   friend class js::Shape;
@@ -166,8 +159,23 @@ class JSObject : public js::gc::Cell {
   JS::Compartment* compartment() const { return group_->compartment(); }
   JS::Compartment* maybeCompartment() const { return compartment(); }
 
-  inline js::Shape* maybeShape() const;
-  inline js::Shape* ensureShape(JSContext* cx);
+  void initShape(js::Shape* shape) {
+    // Note: JSObject::zone() uses the group and we require it to be
+    // initialized before the shape.
+    MOZ_ASSERT(zone() == shape->zone());
+    shape_.init(shape);
+  }
+  void setShape(js::Shape* shape) {
+    MOZ_ASSERT(zone() == shape->zone());
+    shape_ = shape;
+  }
+  js::Shape* shape() const { return shape_; }
+
+  void traceShape(JSTracer* trc) { TraceEdge(trc, shapePtr(), "shape"); }
+
+  static JSObject* fromShapeFieldPointer(uintptr_t p) {
+    return reinterpret_cast<JSObject*>(p - JSObject::offsetOfShape());
+  }
 
   enum GenerateShape { GENERATE_NONE, GENERATE_SHAPE };
 
@@ -559,16 +567,18 @@ class JSObject : public js::gc::Cell {
       4 * sizeof(void*) + 16 * sizeof(JS::Value);
 
  protected:
+  // Used for GC tracing and Shape::listp
+  MOZ_ALWAYS_INLINE js::GCPtrShape* shapePtr() { return &(this->shape_); }
+
   // JIT Accessors.
   //
   // To help avoid writing Spectre-unsafe code, we only allow MacroAssembler
   // to call the method below.
   friend class js::jit::MacroAssembler;
+  friend class js::jit::CacheIRCompiler;
 
   static constexpr size_t offsetOfGroup() { return offsetof(JSObject, group_); }
-  static constexpr size_t offsetOfShapeOrExpando() {
-    return offsetof(JSObject, shapeOrExpando_);
-  }
+  static constexpr size_t offsetOfShape() { return offsetof(JSObject, shape_); }
 
  private:
   JSObject() = delete;
@@ -802,23 +812,6 @@ using ClassInitializerOp = JSObject* (*)(JSContext* cx,
 
 namespace js {
 
-inline gc::InitialHeap GetInitialHeap(NewObjectKind newKind,
-                                      const Class* clasp) {
-  if (newKind == NurseryAllocatedProxy) {
-    MOZ_ASSERT(clasp->isProxy());
-    MOZ_ASSERT(clasp->hasFinalize());
-    MOZ_ASSERT(!CanNurseryAllocateFinalizedClass(clasp));
-    return gc::DefaultHeap;
-  }
-  if (newKind != GenericObject) {
-    return gc::TenuredHeap;
-  }
-  if (clasp->hasFinalize() && !CanNurseryAllocateFinalizedClass(clasp)) {
-    return gc::TenuredHeap;
-  }
-  return gc::DefaultHeap;
-}
-
 bool NewObjectWithTaggedProtoIsCachable(JSContext* cx,
                                         Handle<TaggedProto> proto,
                                         NewObjectKind newKind,
@@ -908,8 +901,8 @@ void CompletePropertyDescriptor(MutableHandle<JS::PropertyDescriptor> desc);
  * ES5 15.2.3.7 steps 3-5.
  */
 extern bool ReadPropertyDescriptors(
-    JSContext* cx, HandleObject props, bool checkAccessors, AutoIdVector* ids,
-    MutableHandle<PropertyDescriptorVector> descs);
+    JSContext* cx, HandleObject props, bool checkAccessors,
+    MutableHandleIdVector ids, MutableHandle<PropertyDescriptorVector> descs);
 
 /* Read the name using a dynamic lookup on the scopeChain. */
 extern bool LookupName(JSContext* cx, HandlePropertyName name,

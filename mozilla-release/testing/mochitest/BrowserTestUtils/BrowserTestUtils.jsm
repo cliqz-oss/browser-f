@@ -325,7 +325,7 @@ var BrowserTestUtils = {
                 maybeErrorPage = false) {
     // Passing a url as second argument is a common mistake we should prevent.
     if (includeSubFrames && typeof includeSubFrames != "boolean") {
-      throw ("The second argument to browserLoaded should be a boolean.");
+      throw new Error("The second argument to browserLoaded should be a boolean.");
     }
 
     // If browser belongs to tabbrowser-tab, ensure it has been
@@ -600,7 +600,7 @@ var BrowserTestUtils = {
           let browser = win.gBrowser.selectedBrowser;
 
           if (win.gMultiProcessBrowser &&
-              !E10SUtils.canLoadURIInRemoteType(url, browser.remoteType,
+              !E10SUtils.canLoadURIInRemoteType(url, win.gFissionBrowser, browser.remoteType,
                                                 browser.remoteType /* aPreferredRemoteType */)) {
             await this.waitForEvent(browser, "XULFrameLoaderCreated");
           }
@@ -647,7 +647,9 @@ var BrowserTestUtils = {
     // If the new URI can't load in the browser's current process then we
     // should wait for the new frameLoader to be created. This will happen
     // asynchronously when the browser's remoteness changes.
-    if (!E10SUtils.canLoadURIInRemoteType(uri, browser.remoteType)) {
+    if (!E10SUtils.canLoadURIInRemoteType(uri,
+                                          browser.ownerGlobal.gFissionBrowser,
+                                          browser.remoteType)) {
       await this.waitForEvent(browser, "XULFrameLoaderCreated");
     }
   },

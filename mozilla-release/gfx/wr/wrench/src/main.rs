@@ -59,13 +59,13 @@ mod yaml_helper;
 #[cfg(target_os = "macos")]
 mod cgfont_to_data;
 
-use binary_frame_reader::BinaryFrameReader;
+use crate::binary_frame_reader::BinaryFrameReader;
 use gleam::gl;
 use glutin::GlContext;
-use perf::PerfHarness;
-use png::save_flipped;
-use rawtest::RawtestHarness;
-use reftest::{ReftestHarness, ReftestOptions};
+use crate::perf::PerfHarness;
+use crate::png::save_flipped;
+use crate::rawtest::RawtestHarness;
+use crate::reftest::{ReftestHarness, ReftestOptions};
 use std::fs;
 #[cfg(feature = "headless")]
 use std::ffi::CString;
@@ -82,8 +82,8 @@ use webrender::api::*;
 use webrender::api::units::*;
 use winit::dpi::{LogicalPosition, LogicalSize};
 use winit::VirtualKeyCode;
-use wrench::{Wrench, WrenchThing};
-use yaml_frame_reader::YamlFrameReader;
+use crate::wrench::{Wrench, WrenchThing};
+use crate::yaml_frame_reader::YamlFrameReader;
 
 lazy_static! {
     static ref PLATFORM_DEFAULT_FACE_NAME: String = String::from("Arial");
@@ -180,18 +180,18 @@ impl WindowWrapper {
         }
     }
 
-    fn get_inner_size(&self) -> FramebufferIntSize {
-        fn inner_size(window: &winit::Window) -> FramebufferIntSize {
+    fn get_inner_size(&self) -> DeviceIntSize {
+        fn inner_size(window: &winit::Window) -> DeviceIntSize {
             let size = window
                 .get_inner_size()
                 .unwrap()
                 .to_physical(window.get_hidpi_factor());
-            FramebufferIntSize::new(size.width as i32, size.height as i32)
+            DeviceIntSize::new(size.width as i32, size.height as i32)
         }
         match *self {
             WindowWrapper::Window(ref window, _) => inner_size(window.window()),
             WindowWrapper::Angle(ref window, ..) => inner_size(window),
-            WindowWrapper::Headless(ref context, _) => FramebufferIntSize::new(context.width, context.height),
+            WindowWrapper::Headless(ref context, _) => DeviceIntSize::new(context.width, context.height),
         }
     }
 
@@ -203,7 +203,7 @@ impl WindowWrapper {
         }
     }
 
-    fn resize(&mut self, size: FramebufferIntSize) {
+    fn resize(&mut self, size: DeviceIntSize) {
         match *self {
             WindowWrapper::Window(ref mut window, _) => {
                 window.set_inner_size(LogicalSize::new(size.width as f64, size.height as f64))
@@ -241,7 +241,7 @@ impl WindowWrapper {
 }
 
 fn make_window(
-    size: FramebufferIntSize,
+    size: DeviceIntSize,
     dp_ratio: Option<f32>,
     vsync: bool,
     events_loop: &Option<winit::EventsLoop>,
@@ -378,7 +378,11 @@ fn reftest<'a>(
     rx: Receiver<NotifierEvent>
 ) -> usize {
     let dim = window.get_inner_size();
-    let base_manifest = Path::new("reftests/reftest.list");
+    let base_manifest = if cfg!(target_os = "android") {
+        Path::new("/sdcard/wrench/reftests/reftest.list")
+    } else {
+        Path::new("reftests/reftest.list")
+    };
     let specific_reftest = subargs.value_of("REFTEST").map(|x| Path::new(x));
     let mut reftest_options = ReftestOptions::default();
     if let Some(allow_max_diff) = subargs.value_of("fuzz_tolerance") {
@@ -400,11 +404,15 @@ fn main() {
         .setting(clap::AppSettings::ArgRequiredElseHelp);
 
     // On android devices, attempt to read command line arguments
-    // from a text file located at /sdcard/wrench_args.
+    // from a text file located at /sdcard/wrench/args.
     let args = if cfg!(target_os = "android") {
+        // get full backtraces by default because it's hard to request
+        // externally on android
+        std::env::set_var("RUST_BACKTRACE", "full");
+
         let mut args = vec!["wrench".to_string()];
 
-        if let Ok(wrench_args) = fs::read_to_string("/sdcard/wrench_args") {
+        if let Ok(wrench_args) = fs::read_to_string("/sdcard/wrench/args") {
             for arg in wrench_args.split_whitespace() {
                 args.push(arg.to_string());
             }
@@ -427,24 +435,24 @@ fn main() {
     });
     let size = args.value_of("size")
         .map(|s| if s == "720p" {
-            FramebufferIntSize::new(1280, 720)
+            DeviceIntSize::new(1280, 720)
         } else if s == "1080p" {
-            FramebufferIntSize::new(1920, 1080)
+            DeviceIntSize::new(1920, 1080)
         } else if s == "4k" {
-            FramebufferIntSize::new(3840, 2160)
+            DeviceIntSize::new(3840, 2160)
         } else {
             let x = s.find('x').expect(
                 "Size must be specified exactly as 720p, 1080p, 4k, or width x height",
             );
             let w = s[0 .. x].parse::<i32>().expect("Invalid size width");
             let h = s[x + 1 ..].parse::<i32>().expect("Invalid size height");
-            FramebufferIntSize::new(w, h)
+            DeviceIntSize::new(w, h)
         })
-        .unwrap_or(FramebufferIntSize::new(1920, 1080));
+        .unwrap_or(DeviceIntSize::new(1920, 1080));
     let zoom_factor = args.value_of("zoom").map(|z| z.parse::<f32>().unwrap());
     let chase_primitive = match args.value_of("chase") {
         Some(s) => {
-            let mut items = s
+            let items = s
                 .split(',')
                 .map(|s| s.parse::<f32>().unwrap())
                 .collect::<Vec<_>>();
@@ -512,8 +520,9 @@ fn main() {
             Some("gpu-cache") => png::ReadSurface::GpuCache,
             _ => panic!("Unknown surface argument value")
         };
+        let output_path = subargs.value_of("OUTPUT").map(|s| PathBuf::from(s));
         let reader = YamlFrameReader::new_from_args(subargs);
-        png::png(&mut wrench, surface, &mut window, reader, rx.unwrap());
+        png::png(&mut wrench, surface, &mut window, reader, rx.unwrap(), output_path);
     } else if let Some(subargs) = args.subcommand_matches("reftest") {
         // Exit with an error code in order to ensure the CI job fails.
         process::exit(reftest(wrench, &mut window, subargs, rx.unwrap()) as _);
@@ -544,7 +553,7 @@ fn main() {
 fn render<'a>(
     wrench: &mut Wrench,
     window: &mut WindowWrapper,
-    size: FramebufferIntSize,
+    size: DeviceIntSize,
     events_loop: &mut Option<winit::EventsLoop>,
     subargs: &clap::ArgMatches<'a>,
 ) {
@@ -555,7 +564,7 @@ fn render<'a>(
         let mut documents = wrench.api.load_capture(input_path);
         println!("loaded {:?}", documents.iter().map(|cd| cd.document_id).collect::<Vec<_>>());
         let captured = documents.swap_remove(0);
-        if let Some(fb_size) = wrench.renderer.framebuffer_size() {
+        if let Some(fb_size) = wrench.renderer.device_size() {
             window.resize(fb_size);
         }
         wrench.document_id = captured.document_id;
@@ -587,7 +596,7 @@ fn render<'a>(
 
     // Default the profile overlay on for android.
     if cfg!(target_os = "android") {
-        debug_flags.toggle(DebugFlags::PROFILER_DBG);
+        debug_flags.toggle(DebugFlags::PROFILER_DBG | DebugFlags::COMPACT_PROFILER);
         wrench.api.send_debug_cmd(DebugCommand::SetFlags(debug_flags));
     }
 
@@ -646,6 +655,11 @@ fn render<'a>(
                         }
                         VirtualKeyCode::S => {
                             debug_flags.toggle(DebugFlags::COMPACT_PROFILER);
+                            wrench.api.send_debug_cmd(DebugCommand::SetFlags(debug_flags));
+                            do_render = true;
+                        }
+                        VirtualKeyCode::D => {
+                            debug_flags.toggle(DebugFlags::PICTURE_CACHING_DBG);
                             wrench.api.send_debug_cmd(DebugCommand::SetFlags(debug_flags));
                             do_render = true;
                         }
@@ -786,7 +800,8 @@ fn render<'a>(
     match *events_loop {
         None => {
             while body(wrench, vec![winit::Event::Awakened]) == winit::ControlFlow::Continue {}
-            let pixels = wrench.renderer.read_pixels_rgba8(size.into());
+            let fb_rect = FramebufferIntSize::new(size.width, size.height).into();
+            let pixels = wrench.renderer.read_pixels_rgba8(fb_rect);
             save_flipped("screenshot.png", pixels, size);
         }
         Some(ref mut events_loop) => {

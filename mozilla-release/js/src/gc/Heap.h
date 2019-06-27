@@ -7,30 +7,15 @@
 #ifndef gc_Heap_h
 #define gc_Heap_h
 
-#include "mozilla/ArrayUtils.h"
 #include "mozilla/Atomics.h"
-#include "mozilla/Attributes.h"
 #include "mozilla/DebugOnly.h"
-#include "mozilla/PodOperations.h"
 
-#include <stddef.h>
-#include <stdint.h>
-
-#include "jsfriendapi.h"
-#include "jspubtd.h"
-#include "jstypes.h"
 #include "jsutil.h"
 
 #include "ds/BitArray.h"
 #include "gc/AllocKind.h"
 #include "gc/GCEnum.h"
-#include "gc/Memory.h"
-#include "js/HeapAPI.h"
-#include "js/RootingAPI.h"
-#include "js/TracingAPI.h"
 #include "js/TypeDecls.h"
-
-#include "vm/Printer.h"
 
 namespace js {
 
@@ -97,7 +82,7 @@ const size_t ArenaBitmapWords =
  */
 class FreeSpan {
   friend class Arena;
-  friend class ArenaCellIterImpl;
+  friend class ArenaCellIter;
   friend class ArenaFreeCellIter;
 
   uint16_t first;
@@ -290,7 +275,11 @@ class Arena {
   // previously allocated for some zone, use release() instead.
   void setAsNotAllocated() {
     firstFreeSpan.initAsEmpty();
-    zone = nullptr;
+
+    // Poison zone pointer to highlight UAF on released arenas in crash data.
+    AlwaysPoison(&zone, JS_FREED_ARENA_PATTERN, sizeof(zone),
+                 MemCheckKind::MakeUndefined);
+
     allocKind = size_t(AllocKind::LIMIT);
     onDelayedMarkingList_ = 0;
     hasDelayedBlackMarking_ = 0;

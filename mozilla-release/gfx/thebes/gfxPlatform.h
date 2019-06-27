@@ -303,12 +303,10 @@ class gfxPlatform : public mozilla::layers::MemoryPressureListener {
   mozilla::gfx::BackendType GetFallbackCanvasBackend() {
     return mFallbackCanvasBackend;
   }
+
   /*
    * Font bits
    */
-
-  virtual void SetupClusterBoundaries(gfxTextRun* aTextRun,
-                                      const char16_t* aString);
 
   /**
    * Fill aListOfFonts with the results of querying the list of font names
@@ -608,15 +606,6 @@ class gfxPlatform : public mozilla::layers::MemoryPressureListener {
   static bool UsesOffMainThreadCompositing();
 
   /**
-   * Whether we want to adjust gfx parameters (currently just
-   * the framerate and whether we use software vs. hardware vsync)
-   * down because we've determined we're on a low-end machine.
-   * This will return false if the user has turned on fingerprinting
-   * resistance (to ensure consistent behavior across devices).
-   */
-  static bool ShouldAdjustForLowEndMachine();
-
-  /**
    * Get the hardware vsync source for each platform.
    * Should only exist and be valid on the parent process
    */
@@ -747,7 +736,7 @@ class gfxPlatform : public mozilla::layers::MemoryPressureListener {
   gfxPlatform();
   virtual ~gfxPlatform();
 
-  virtual bool HasBattery() { return true; }
+  virtual bool HasBattery() { return false; }
 
   virtual void InitAcceleration();
   virtual void InitWebRenderConfig();

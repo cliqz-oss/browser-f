@@ -6,20 +6,24 @@
 #ifndef GFX_USER_FONT_SET_H
 #define GFX_USER_FONT_SET_H
 
-#include "gfxFont.h"
+#include "gfxFontEntry.h"
 #include "gfxFontFamilyList.h"
 #include "gfxFontSrcPrincipal.h"
 #include "gfxFontSrcURI.h"
 #include "nsRefPtrHashtable.h"
 #include "nsCOMPtr.h"
-#include "nsIURI.h"
+#include "nsIMemoryReporter.h"
 #include "nsIPrincipal.h"
+#include "nsIRunnable.h"
 #include "nsIScriptError.h"
+#include "nsIURI.h"
 #include "nsURIHashKey.h"
 #include "mozilla/FontPropertyTypes.h"
 #include "mozilla/ServoStyleConsts.h"
 #include "mozilla/net/ReferrerPolicy.h"
 #include "gfxFontConstants.h"
+
+class gfxFont;
 
 namespace mozilla {
 class PostTraversalTask;
@@ -34,7 +38,7 @@ class gfxFontFaceBufferSource {
   virtual void TakeBuffer(uint8_t*& aBuffer, uint32_t& aLength) = 0;
 
  protected:
-  virtual ~gfxFontFaceBufferSource() {}
+  virtual ~gfxFontFaceBufferSource() = default;
 };
 
 // parsed CSS @font-face rule information
@@ -106,7 +110,7 @@ class gfxUserFontData {
         mCompression(kUnknownCompression),
         mPrivate(false),
         mIsBuffer(false) {}
-  virtual ~gfxUserFontData() {}
+  virtual ~gfxUserFontData() = default;
 
   size_t SizeOfIncludingThis(mozilla::MallocSizeOf aMallocSizeOf) const;
 
@@ -143,6 +147,7 @@ class gfxUserFontFamily : public gfxFontFamily {
 
   // add the given font entry to the end of the family's list
   void AddFontEntry(gfxFontEntry* aFontEntry) {
+    MOZ_ASSERT(!mIsSimpleFamily, "not valid for user-font families");
     // keep ref while removing existing entry
     RefPtr<gfxFontEntry> fe = aFontEntry;
     // remove existing entry, if already present
@@ -163,6 +168,11 @@ class gfxUserFontFamily : public gfxFontFamily {
 #endif
     }
     ResetCharacterMap();
+  }
+
+  void RemoveFontEntry(gfxFontEntry* aFontEntry) {
+    MOZ_ASSERT(!mIsSimpleFamily, "not valid for user-font families");
+    mAvailableFonts.RemoveElement(aFontEntry);
   }
 
   // Remove all font entries from the family
@@ -256,9 +266,6 @@ class gfxUserFontSet {
   // the given name
   gfxUserFontFamily* LookupFamily(const nsACString& aName) const;
 
-  // Look up names in a fontlist and return true if any are in the set
-  bool ContainsUserFontSetFonts(const mozilla::FontFamilyList& aFontList) const;
-
   virtual gfxFontSrcPrincipal* GetStandardFontLoadPrincipal() const = 0;
 
   // check whether content policies allow the given URI to load.
@@ -330,7 +337,7 @@ class gfxUserFontSet {
     // Helper that we use to observe the empty-cache notification
     // from nsICacheService.
     class Flusher : public nsIObserver {
-      virtual ~Flusher() {}
+      virtual ~Flusher() = default;
 
      public:
       NS_DECL_ISUPPORTS
@@ -540,6 +547,17 @@ class gfxUserFontEntry : public gfxFontEntry {
 
   virtual ~gfxUserFontEntry();
 
+  // Update the attributes of the entry to the given values, without disturbing
+  // the associated platform font entry or in-progress downloads.
+  void UpdateAttributes(WeightRange aWeight, StretchRange aStretch,
+                        SlantStyleRange aStyle,
+                        const nsTArray<gfxFontFeature>& aFeatureSettings,
+                        const nsTArray<gfxFontVariation>& aVariationSettings,
+                        uint32_t aLanguageOverride,
+                        gfxCharacterMap* aUnicodeRanges,
+                        mozilla::StyleFontDisplay aFontDisplay,
+                        RangeFlags aRangeFlags);
+
   // Return whether the entry matches the given list of attributes
   bool Matches(const nsTArray<gfxFontFaceSrc>& aFontFaceSrcList,
                WeightRange aWeight, StretchRange aStretch,
@@ -589,9 +607,9 @@ class gfxUserFontEntry : public gfxFontEntry {
   // methods to expose some information to FontFaceSet::UserFontSet
   // since we can't make that class a friend
   void SetLoader(nsFontFaceLoader* aLoader) { mLoader = aLoader; }
-  nsFontFaceLoader* GetLoader() { return mLoader; }
-  gfxFontSrcPrincipal* GetPrincipal() { return mPrincipal; }
-  uint32_t GetSrcIndex() { return mSrcIndex; }
+  nsFontFaceLoader* GetLoader() const { return mLoader; }
+  gfxFontSrcPrincipal* GetPrincipal() const { return mPrincipal; }
+  uint32_t GetSrcIndex() const { return mSrcIndex; }
   void GetFamilyNameAndURIForLogging(nsACString& aFamilyName, nsACString& aURI);
 
   gfxFontEntry* Clone() const override {

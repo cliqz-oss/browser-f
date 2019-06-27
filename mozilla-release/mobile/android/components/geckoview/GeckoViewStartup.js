@@ -12,6 +12,7 @@ XPCOMUtils.defineLazyModuleGetters(this, {
   GeckoViewTelemetryController: "resource://gre/modules/GeckoViewTelemetryController.jsm",
   L10nRegistry: "resource://gre/modules/L10nRegistry.jsm",
   Preferences: "resource://gre/modules/Preferences.jsm",
+  SafeBrowsing: "resource://gre/modules/SafeBrowsing.jsm",
   Services: "resource://gre/modules/Services.jsm",
 });
 
@@ -43,6 +44,13 @@ GeckoViewStartup.prototype = {
           ],
         });
 
+        GeckoViewUtils.addLazyGetter(this, "GeckoViewRecordingMedia", {
+          module: "resource://gre/modules/GeckoViewMedia.jsm",
+          observers: [
+            "recording-device-events",
+          ],
+        });
+
         GeckoViewUtils.addLazyGetter(this, "GeckoViewConsole", {
           module: "resource://gre/modules/GeckoViewConsole.jsm",
         });
@@ -51,6 +59,17 @@ GeckoViewStartup.prototype = {
           module: "resource://gre/modules/GeckoViewWebExtension.jsm",
           ged: [
             "GeckoView:RegisterWebExtension",
+            "GeckoView:UnregisterWebExtension",
+            "GeckoView:WebExtension:PortDisconnect",
+            "GeckoView:WebExtension:PortMessageFromApp",
+          ],
+        });
+
+        GeckoViewUtils.addLazyGetter(this, "GeckoViewStorageController", {
+          module: "resource://gre/modules/GeckoViewStorageController.jsm",
+          ged: [
+            "GeckoView:ClearData",
+            "GeckoView:ClearHostData",
           ],
         });
 
@@ -125,6 +144,10 @@ GeckoViewStartup.prototype = {
 
         ChromeUtils.import("resource://gre/modules/NotificationDB.jsm");
 
+        // Initialize safe browsing module. This is required for content
+        // blocking features and manages blocklist downloads and updates.
+        SafeBrowsing.init();
+
         // Listen for global EventDispatcher messages
         EventDispatcher.instance.registerListener(this,
           ["GeckoView:ResetUserPrefs",
@@ -156,7 +179,12 @@ GeckoViewStartup.prototype = {
         break;
       }
       case "GeckoView:SetLocale":
-        Services.locale.requestedLocales = aData.requestedLocales;
+        if (aData.requestedLocales) {
+          Services.locale.requestedLocales = aData.requestedLocales;
+        }
+        let pls = Cc["@mozilla.org/pref-localizedstring;1"].createInstance(Ci.nsIPrefLocalizedString);
+        pls.data = aData.acceptLanguages;
+        Services.prefs.setComplexValue("intl.accept_languages", Ci.nsIPrefLocalizedString, pls);
         break;
     }
   },

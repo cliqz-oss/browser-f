@@ -7,8 +7,18 @@
 // intended to check all the edge cases, because that component is already
 // covered by a good amount of tests.
 
+const {AddonTestUtils} = ChromeUtils.import("resource://testing-common/AddonTestUtils.jsm");
+
 const SUGGEST_PREF = "browser.urlbar.suggest.searches";
 const SUGGEST_ENABLED_PREF = "browser.search.suggest.enabled";
+
+AddonTestUtils.init(this, false);
+AddonTestUtils.overrideCertDB();
+AddonTestUtils.createAppInfo("xpcshell@tests.mozilla.org", "XPCShell", "1", "42");
+
+add_task(async function setup() {
+  await AddonTestUtils.promiseStartupManager();
+});
 
 add_task(async function test_unifiedComplete() {
   Services.prefs.setBoolPref(SUGGEST_PREF, true);
@@ -29,7 +39,9 @@ add_task(async function test_unifiedComplete() {
       },
     },
   });
-  let context = createContext("moz org", {isPrivate: false});
+  // Also check case insensitivity.
+  let searchString = "MoZ oRg";
+  let context = createContext(searchString, {isPrivate: false});
 
   // Add entries from multiple sources.
   await PlacesUtils.bookmarks.insert({
@@ -60,9 +72,9 @@ add_task(async function test_unifiedComplete() {
   ], context.results.map(m => m.type), "Check result types");
 
   Assert.deepEqual([
-    "moz org",
-    "moz org foo",
-    "moz org bar",
+    searchString,
+    searchString + " foo",
+    searchString + " bar",
     "Test bookmark",
     "Test tab",
     "Test history",

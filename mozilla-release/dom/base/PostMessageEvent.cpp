@@ -8,6 +8,7 @@
 
 #include "MessageEvent.h"
 #include "mozilla/dom/BlobBinding.h"
+#include "mozilla/dom/DocumentInlines.h"
 #include "mozilla/dom/File.h"
 #include "mozilla/dom/FileList.h"
 #include "mozilla/dom/FileListBinding.h"
@@ -18,11 +19,9 @@
 #include "mozilla/dom/StructuredCloneTags.h"
 #include "mozilla/dom/UnionConversions.h"
 #include "mozilla/EventDispatcher.h"
-#include "nsContentUtils.h"
 #include "nsDocShell.h"
 #include "nsGlobalWindow.h"
 #include "nsIConsoleService.h"
-#include "nsIPresShell.h"
 #include "nsIPrincipal.h"
 #include "nsIScriptError.h"
 #include "nsNetUtil.h"
@@ -100,9 +99,6 @@ PostMessageEvent::Run() {
       OriginAttributes targetAttrs = targetPrin->OriginAttributesRef();
 
       MOZ_DIAGNOSTIC_ASSERT(
-          sourceAttrs.mAppId == targetAttrs.mAppId,
-          "Target and source should have the same mAppId attribute.");
-      MOZ_DIAGNOSTIC_ASSERT(
           sourceAttrs.mUserContextId == targetAttrs.mUserContextId,
           "Target and source should have the same userContextId attribute.");
       MOZ_DIAGNOSTIC_ASSERT(sourceAttrs.mInIsolatedMozBrowser ==
@@ -136,9 +132,10 @@ PostMessageEvent::Run() {
         rv = NS_GetSanitizedURIStringFromURI(callerDocumentURI, uriSpec);
         NS_ENSURE_SUCCESS(rv, rv);
 
-        rv = errorObject->Init(errorText, uriSpec, EmptyString(), 0, 0,
-                               nsIScriptError::errorFlag, "DOM Window",
-                               mIsFromPrivateWindow);
+        rv = errorObject->Init(
+            errorText, uriSpec, EmptyString(), 0, 0, nsIScriptError::errorFlag,
+            "DOM Window", mIsFromPrivateWindow,
+            nsContentUtils::IsSystemPrincipal(mProvidedPrincipal));
       }
       NS_ENSURE_SUCCESS(rv, rv);
 
@@ -157,7 +154,7 @@ PostMessageEvent::Run() {
 
   StructuredCloneHolder* holder;
   if (mHolder.constructed<StructuredCloneHolder>()) {
-    mHolder.ref<StructuredCloneHolder>().Read(targetWindow->AsInner(), cx,
+    mHolder.ref<StructuredCloneHolder>().Read(ToSupports(targetWindow), cx,
                                               &messageData, rv);
     holder = &mHolder.ref<StructuredCloneHolder>();
   } else {
@@ -223,7 +220,7 @@ void PostMessageEvent::Dispatch(nsGlobalWindowInner* aTargetWindow,
   WidgetEvent* internalEvent = aEvent->WidgetEventPtr();
 
   nsEventStatus status = nsEventStatus_eIgnore;
-  EventDispatcher::Dispatch(aTargetWindow->AsInner(), presContext,
+  EventDispatcher::Dispatch(ToSupports(aTargetWindow), presContext,
                             internalEvent, aEvent, &status);
 }
 

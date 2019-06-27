@@ -40,9 +40,7 @@ window.gActivityStreamStrings = {
   "section_disclaimer_topstories_buttontext": "ตกลง เข้าใจแล้ว",
   "prefs_home_header": "เนื้อหาหน้าแรก Firefox",
   "prefs_home_description": "เลือกเนื้อหาที่คุณต้องการในหน้าจอหน้าแรก Firefox ของคุณ",
-  "prefs_content_discovery_header": "Firefox Home",
   "prefs_content_discovery_description": "Content Discovery ใน Firefox Home ช่วยให้คุณค้นพบบทความที่มีคุณภาพและมีความเกี่ยวข้องสูงจากทั่วทั้งเว็บ",
-  "prefs_content_discovery_button": "ปิดการค้นพบเนื้อหา",
   "prefs_section_rows_option": "{num} แถว",
   "prefs_search_header": "การค้นหาเว็บ",
   "prefs_topsites_description": "ไซต์ที่คุณเยี่ยมชมมากที่สุด",
@@ -107,8 +105,5 @@ window.gActivityStreamStrings = {
   "firstrun_privacy_notice": "ประกาศความเป็นส่วนตัว",
   "firstrun_continue_to_login": "ดำเนินการต่อ",
   "firstrun_skip_login": "ข้ามขั้นตอนนี้",
-  "context_menu_title": "เปิดเมนู",
-  "manual_migration_explanation2": "ลอง Firefox ด้วยที่คั่นหน้า, ประวัติ และรหัสผ่านจากเบราว์เซอร์อื่น",
-  "manual_migration_cancel_button": "ไม่ ขอบคุณ",
-  "manual_migration_import_button": "นำเข้าตอนนี้"
+  "context_menu_title": "เปิดเมนู"
 };

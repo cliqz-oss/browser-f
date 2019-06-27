@@ -448,6 +448,7 @@ function registerSelf() {
   let reply = sendSyncMessage("Marionette:Register", {outerWindowID});
   if (reply.length == 0) {
     logger.error("No reply from Marionette:Register");
+    return;
   }
 
   if (reply[0].outerWindowID === outerWindowID) {
@@ -706,7 +707,6 @@ function emitTouchEvent(type, touch) {
       [touch.radiusY],
       [touch.rotationAngle],
       [touch.force],
-      1,
       0);
 }
 

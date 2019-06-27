@@ -16,14 +16,15 @@ const {CryptoWrapper} = ChromeUtils.import("resource://services-sync/record.js")
 const {Svc, Utils} = ChromeUtils.import("resource://services-sync/util.js");
 
 XPCOMUtils.defineLazyModuleGetters(this, {
-  SyncedBookmarksMirror: "resource://gre/modules/SyncedBookmarksMirror.jsm",
   BookmarkValidator: "resource://services-sync/bookmark_validator.js",
+  LiveBookmarkMigrator: "resource:///modules/LiveBookmarkMigrator.jsm",
   OS: "resource://gre/modules/osfile.jsm",
   PlacesBackups: "resource://gre/modules/PlacesBackups.jsm",
   PlacesDBUtils: "resource://gre/modules/PlacesDBUtils.jsm",
   PlacesSyncUtils: "resource://gre/modules/PlacesSyncUtils.jsm",
   PlacesUtils: "resource://gre/modules/PlacesUtils.jsm",
   Resource: "resource://services-sync/resource.js",
+  SyncedBookmarksMirror: "resource://gre/modules/SyncedBookmarksMirror.jsm",
 });
 
 XPCOMUtils.defineLazyGetter(this, "PlacesBundle", () => {
@@ -363,6 +364,31 @@ BaseBookmarksEngine.prototype = {
     return newSyncID;
   },
 
+  async _syncStartup() {
+    await super._syncStartup();
+
+    try {
+      // For first syncs, back up the user's bookmarks and livemarks. Livemarks
+      // are unsupported as of bug 1477671, and syncing deletes them locally and
+      // remotely.
+      let lastSync = await this.getLastSync();
+      if (!lastSync) {
+        this._log.debug("Bookmarks backup starting");
+        await PlacesBackups.create(null, true);
+        this._log.debug("Bookmarks backup done");
+
+        this._log.debug("Livemarks backup starting");
+        await LiveBookmarkMigrator.migrate();
+        this._log.debug("Livemarks backup done");
+      }
+    } catch (ex) {
+      // Failure to create a backup is somewhat bad, but probably not bad
+      // enough to prevent syncing of bookmarks - so just log the error and
+      // continue.
+      this._log.warn("Error while backing up bookmarks, but continuing with sync", ex);
+    }
+  },
+
   async _sync() {
     try {
       await super._sync();
@@ -499,9 +525,7 @@ BookmarksEngine.prototype = {
       }
     }
 
-    let maybeYield = Async.jankYielder();
-    for (let [node, parent] of walkBookmarksRoots(tree)) {
-      await maybeYield();
+    await Async.yieldingForEach(walkBookmarksRoots(tree), ([node, parent]) => {
       let {guid, type: placeType} = node;
       guid = PlacesSyncUtils.bookmarks.guidToRecordId(guid);
       let key;
@@ -520,7 +544,7 @@ BookmarksEngine.prototype = {
           break;
         default:
           this._log.error("Unknown place type: '" + placeType + "'");
-          continue;
+          return;
       }
 
       let parentName = parent.title || "";
@@ -537,7 +561,7 @@ BookmarksEngine.prototype = {
       // Remember this item's GUID for its parent-name/key pair.
       guidMap[parentName][key] = entry;
       this._log.trace("Mapped: " + [parentName, key, entry, entry.hasDupe]);
-    }
+    });
 
     return guidMap;
   },
@@ -589,23 +613,7 @@ BookmarksEngine.prototype = {
   },
 
   async _syncStartup() {
-    await SyncEngine.prototype._syncStartup.call(this);
-
-    try {
-      // For first-syncs, make a backup for the user to restore
-      let lastSync = await this.getLastSync();
-      if (!lastSync) {
-        this._log.debug("Bookmarks backup starting.");
-        await PlacesBackups.create(null, true);
-        this._log.debug("Bookmarks backup done.");
-      }
-    } catch (ex) {
-      // Failure to create a backup is somewhat bad, but probably not bad
-      // enough to prevent syncing of bookmarks - so just log the error and
-      // continue.
-      this._log.warn("Error while backing up bookmarks, but continuing with sync", ex);
-    }
-
+    await super._syncStartup();
     this._store._childrenToOrder = {};
     this._store.clearPendingDeletions();
   },
@@ -1216,7 +1224,7 @@ BufferedBookmarksStore.prototype = {
 
   async applyIncomingBatch(records) {
     let buf = await this.ensureOpenMirror();
-    for (let chunk of PlacesSyncUtils.chunkArray(records, this._batchChunkSize)) {
+    for (let [, chunk] of PlacesSyncUtils.chunkArray(records, this._batchChunkSize)) {
       await buf.store(chunk);
     }
     // Array of failed records.

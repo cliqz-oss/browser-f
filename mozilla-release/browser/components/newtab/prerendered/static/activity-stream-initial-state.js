@@ -11,8 +11,7 @@ window.gActivityStreamPrerenderedState = {
     "initialized": false
   },
   "ASRouter": {
-    "initialized": false,
-    "allowLegacySnippets": null
+    "initialized": false
   },
   "Snippets": {
     "initialized": false
@@ -83,7 +82,8 @@ window.gActivityStreamPrerenderedState = {
       "spocs_endpoint": "",
       "lastUpdated": null,
       "data": {},
-      "loaded": false
+      "loaded": false,
+      "frequency_caps": []
     }
   },
   "Search": {

@@ -7,18 +7,16 @@
 //! Different kind of helpers to interact with Gecko values.
 
 use crate::counter_style::{Symbol, Symbols};
+use crate::gecko_bindings::structs::StyleGridTrackBreadth;
 use crate::gecko_bindings::structs::{nsStyleCoord, CounterStylePtr};
-use crate::gecko_bindings::structs::{StyleGridTrackBreadth, StyleShapeRadius};
 use crate::gecko_bindings::sugar::ns_style_coord::{CoordData, CoordDataMut, CoordDataValue};
-use crate::values::computed::basic_shape::ShapeRadius as ComputedShapeRadius;
 use crate::values::computed::{Angle, Length, LengthPercentage};
 use crate::values::computed::{Number, NumberOrPercentage, Percentage};
-use crate::values::generics::basic_shape::ShapeRadius;
 use crate::values::generics::gecko::ScrollSnapPoint;
 use crate::values::generics::grid::{TrackBreadth, TrackKeyword};
 use crate::values::generics::length::LengthPercentageOrAuto;
 use crate::values::generics::{CounterStyleOrNone, NonNegative};
-use crate::values::{Auto, Either, None_, Normal};
+use crate::values::Either;
 use crate::{Atom, Zero};
 use app_units::Au;
 use cssparser::RGBA;
@@ -41,23 +39,6 @@ impl nsStyleCoord {
     /// Set this `nsStyleCoord` value to `val`.
     pub fn set<T: GeckoStyleCoordConvertible>(&mut self, val: T) {
         val.to_gecko_style_coord(self);
-    }
-}
-
-impl<A: GeckoStyleCoordConvertible, B: GeckoStyleCoordConvertible> GeckoStyleCoordConvertible
-    for Either<A, B>
-{
-    fn to_gecko_style_coord<T: CoordDataMut>(&self, coord: &mut T) {
-        match *self {
-            Either::First(ref v) => v.to_gecko_style_coord(coord),
-            Either::Second(ref v) => v.to_gecko_style_coord(coord),
-        }
-    }
-
-    fn from_gecko_style_coord<T: CoordData>(coord: &T) -> Option<Self> {
-        A::from_gecko_style_coord(coord)
-            .map(Either::First)
-            .or_else(|| B::from_gecko_style_coord(coord).map(Either::Second))
     }
 }
 
@@ -209,35 +190,6 @@ impl<L: GeckoStyleCoordConvertible> GeckoStyleCoordConvertible for TrackBreadth<
     }
 }
 
-impl GeckoStyleCoordConvertible for ComputedShapeRadius {
-    fn to_gecko_style_coord<T: CoordDataMut>(&self, coord: &mut T) {
-        match *self {
-            ShapeRadius::ClosestSide => coord.set_value(CoordDataValue::Enumerated(
-                StyleShapeRadius::ClosestSide as u32,
-            )),
-            ShapeRadius::FarthestSide => coord.set_value(CoordDataValue::Enumerated(
-                StyleShapeRadius::FarthestSide as u32,
-            )),
-            ShapeRadius::Length(lp) => lp.to_gecko_style_coord(coord),
-        }
-    }
-
-    fn from_gecko_style_coord<T: CoordData>(coord: &T) -> Option<Self> {
-        match coord.as_value() {
-            CoordDataValue::Enumerated(v) => {
-                if v == StyleShapeRadius::ClosestSide as u32 {
-                    Some(ShapeRadius::ClosestSide)
-                } else if v == StyleShapeRadius::FarthestSide as u32 {
-                    Some(ShapeRadius::FarthestSide)
-                } else {
-                    None
-                }
-            },
-            _ => GeckoStyleCoordConvertible::from_gecko_style_coord(coord).map(ShapeRadius::Length),
-        }
-    }
-}
-
 impl<T: GeckoStyleCoordConvertible> GeckoStyleCoordConvertible for Option<T> {
     fn to_gecko_style_coord<U: CoordDataMut>(&self, coord: &mut U) {
         if let Some(ref me) = *self {
@@ -265,48 +217,6 @@ impl GeckoStyleCoordConvertible for Angle {
     }
 }
 
-impl GeckoStyleCoordConvertible for Auto {
-    fn to_gecko_style_coord<T: CoordDataMut>(&self, coord: &mut T) {
-        coord.set_value(CoordDataValue::Auto)
-    }
-
-    fn from_gecko_style_coord<T: CoordData>(coord: &T) -> Option<Self> {
-        if let CoordDataValue::Auto = coord.as_value() {
-            Some(Auto)
-        } else {
-            None
-        }
-    }
-}
-
-impl GeckoStyleCoordConvertible for None_ {
-    fn to_gecko_style_coord<T: CoordDataMut>(&self, coord: &mut T) {
-        coord.set_value(CoordDataValue::None)
-    }
-
-    fn from_gecko_style_coord<T: CoordData>(coord: &T) -> Option<Self> {
-        if let CoordDataValue::None = coord.as_value() {
-            Some(None_)
-        } else {
-            None
-        }
-    }
-}
-
-impl GeckoStyleCoordConvertible for Normal {
-    fn to_gecko_style_coord<T: CoordDataMut>(&self, coord: &mut T) {
-        coord.set_value(CoordDataValue::Normal)
-    }
-
-    fn from_gecko_style_coord<T: CoordData>(coord: &T) -> Option<Self> {
-        if let CoordDataValue::Normal = coord.as_value() {
-            Some(Normal)
-        } else {
-            None
-        }
-    }
-}
-
 impl GeckoStyleCoordConvertible for ScrollSnapPoint<LengthPercentage> {
     fn to_gecko_style_coord<T: CoordDataMut>(&self, coord: &mut T) {
         match self.repeated() {
@@ -317,7 +227,6 @@ impl GeckoStyleCoordConvertible for ScrollSnapPoint<LengthPercentage> {
 
     fn from_gecko_style_coord<T: CoordData>(coord: &T) -> Option<Self> {
         use crate::gecko_bindings::structs::root::nsStyleUnit;
-        use crate::values::generics::gecko::ScrollSnapPoint;
 
         Some(match coord.unit() {
             nsStyleUnit::eStyleUnit_None => ScrollSnapPoint::None,
@@ -379,7 +288,7 @@ impl CounterStyleOrNone {
                     .0
                     .iter()
                     .map(|symbol| match *symbol {
-                        Symbol::String(ref s) => nsCStr::from(s),
+                        Symbol::String(ref s) => nsCStr::from(&**s),
                         Symbol::Ident(_) => unreachable!("Should not have identifier in symbols()"),
                     })
                     .collect();
@@ -424,7 +333,7 @@ impl CounterStyleOrNone {
                 let symbol_type = SymbolsType::from_gecko_keyword(anonymous.mSystem as u32);
                 let symbols = symbols
                     .iter()
-                    .map(|gecko_symbol| Symbol::String(gecko_symbol.to_string()))
+                    .map(|gecko_symbol| Symbol::String(gecko_symbol.to_string().into()))
                     .collect();
                 Either::First(CounterStyleOrNone::Symbols(symbol_type, Symbols(symbols)))
             }

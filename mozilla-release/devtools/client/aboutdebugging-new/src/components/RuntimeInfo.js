@@ -37,7 +37,7 @@ class RuntimeInfo extends PureComponent {
       },
       dom.img(
         {
-          className: "main-heading__icon runtime-info__icon",
+          className: "main-heading__icon runtime-info__icon qa-runtime-icon",
           src: icon,
         }
       ),
@@ -49,7 +49,7 @@ class RuntimeInfo extends PureComponent {
         },
         dom.label(
           {
-            className: "js-runtime-name runtime-info__title",
+            className: "qa-runtime-name runtime-info__title",
           },
           `${ name } (${ version })`
         )
@@ -62,14 +62,19 @@ class RuntimeInfo extends PureComponent {
           deviceName
         ) : null,
       runtimeId !== RUNTIMES.THIS_FIREFOX ?
-        dom.button(
+        Localized(
           {
-            className: "default-button runtime-info__action qa-runtime-info__action",
-            onClick() {
-              dispatch(Actions.disconnectRuntime(runtimeId, true));
-            },
+            id: "about-debugging-runtime-disconnect-button",
           },
-          "Disconnect"
+          dom.button(
+            {
+              className: "default-button runtime-info__action qa-runtime-info__action",
+              onClick() {
+                dispatch(Actions.disconnectRuntime(runtimeId, true));
+              },
+            },
+            "Disconnect"
+          )
         ) : null,
     );
   }

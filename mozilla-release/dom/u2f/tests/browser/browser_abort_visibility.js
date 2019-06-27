@@ -70,6 +70,7 @@ add_task(async function test_abort() {
   Services.prefs.setBoolPref("security.webauth.u2f", true);
   Services.prefs.setBoolPref("security.webauth.webauthn_enable_softtoken", false);
   Services.prefs.setBoolPref("security.webauth.webauthn_enable_usbtoken", true);
+  Services.prefs.setBoolPref("security.webauth.webauthn_enable_android_fido2", false);
 
   // Create a new tab for the MakeCredential() request.
   let tab_create = await BrowserTestUtils.openNewForegroundTab(gBrowser, TEST_URL);
@@ -80,15 +81,23 @@ add_task(async function test_abort() {
 
   // Open another tab and switch to it. The first will lose focus.
   let tab_get = await BrowserTestUtils.openNewForegroundTab(gBrowser, TEST_URL);
+
+  // Start a GetAssertion() request in the second tab. That will abort the first.
+  await startGetAssertionRequest(tab_get);
+  await waitForStatus(tab_get, "pending");
   await waitForStatus(tab_create, "aborted");
 
-  // Start a GetAssertion() request in the second tab.
+  // Start a second request in the second tab. It should remain pending.
   await startGetAssertionRequest(tab_get);
+  await waitForStatus(tab_get, "pending");
+
+  // Switch back to the first tab. The second should still be pending
+  await BrowserTestUtils.switchTab(gBrowser, tab_create);
   await assertStatus(tab_get, "pending");
 
-  // Switch back to the first tab, the get() request is aborted.
-  await BrowserTestUtils.switchTab(gBrowser, tab_create);
-  await waitForStatus(tab_get, "aborted");
+  // Switch back to the get tab. The second should remain pending
+  await BrowserTestUtils.switchTab(gBrowser, tab_get);
+  await assertStatus(tab_get, "pending");
 
   // Close tabs.
   BrowserTestUtils.removeTab(tab_create);

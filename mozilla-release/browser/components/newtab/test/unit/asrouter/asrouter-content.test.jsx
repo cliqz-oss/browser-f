@@ -149,6 +149,19 @@ describe("ASRouterUISurface", () => {
     assert.equal(footerPortal.childElementCount, 0);
   });
 
+  it("should dispatch an event to select the correct theme", () => {
+    const stub = sandbox.stub(window, "dispatchEvent");
+    sandbox.stub(ASRouterUtils, "getPreviewEndpoint").returns({theme: "dark"});
+
+    wrapper = mountWithIntl(<ASRouterUISurface document={fakeDocument} />);
+
+    assert.calledOnce(stub);
+    assert.property(stub.firstCall.args[0].detail.data, "ntp_background");
+    assert.property(stub.firstCall.args[0].detail.data, "ntp_text");
+    assert.property(stub.firstCall.args[0].detail.data, "sidebar");
+    assert.property(stub.firstCall.args[0].detail.data, "sidebar_text");
+  });
+
   describe("snippets", () => {
     it("should send correct event and source when snippet is blocked", () => {
       wrapper.setState({message: FAKE_MESSAGE});

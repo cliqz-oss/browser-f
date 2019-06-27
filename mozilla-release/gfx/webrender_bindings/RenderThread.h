@@ -52,7 +52,7 @@ class WebRenderThreadPool {
   wr::WrThreadPool* mThreadPool;
 };
 
-class WebRenderProgramCache {
+class WebRenderProgramCache final {
  public:
   explicit WebRenderProgramCache(wr::WrThreadPool* aThreadPool);
 
@@ -64,7 +64,7 @@ class WebRenderProgramCache {
   wr::WrProgramCache* mProgramCache;
 };
 
-class WebRenderShaders {
+class WebRenderShaders final {
  public:
   WebRenderShaders(gl::GLContext* gl, WebRenderProgramCache* programCache);
   ~WebRenderShaders();
@@ -76,7 +76,7 @@ class WebRenderShaders {
   wr::WrShaders* mShaders;
 };
 
-class WebRenderPipelineInfo {
+class WebRenderPipelineInfo final {
   NS_INLINE_DECL_THREADSAFE_REFCOUNTING(WebRenderPipelineInfo);
 
  public:
@@ -96,7 +96,7 @@ class WebRenderPipelineInfo {
 /// messages to preserve ordering.
 class RendererEvent {
  public:
-  virtual ~RendererEvent() {}
+  virtual ~RendererEvent() = default;
   virtual void Run(RenderThread& aRenderThread, wr::WindowId aWindow) = 0;
 };
 
@@ -174,6 +174,7 @@ class RenderThread final {
   void UpdateAndRender(wr::WindowId aWindowId, const VsyncId& aStartId,
                        const TimeStamp& aStartTime, bool aRender,
                        const Maybe<gfx::IntSize>& aReadbackSize,
+                       const Maybe<wr::ImageFormat>& aReadbackFormat,
                        const Maybe<Range<uint8_t>>& aReadbackBuffer,
                        bool aHadSlowFrame);
 
@@ -187,9 +188,18 @@ class RenderThread final {
   /// Can be called from any thread.
   void UnregisterExternalImage(uint64_t aExternalImageId);
 
+  /// Can be called from any thread.
+  void PrepareForUse(uint64_t aExternalImageId);
+
+  /// Can be called from any thread.
+  void NotifyNotUsed(uint64_t aExternalImageId);
+
   /// Can only be called from the render thread.
   void UpdateRenderTextureHost(uint64_t aSrcExternalImageId,
                                uint64_t aWrappedExternalImageId);
+
+  /// Can only be called from the render thread.
+  void NofityForUse(uint64_t aExternalImageId);
 
   /// Can only be called from the render thread.
   void UnregisterExternalImageDuringShutdown(uint64_t aExternalImageId);
@@ -205,11 +215,11 @@ class RenderThread final {
   bool TooManyPendingFrames(wr::WindowId aWindowId);
   /// Can be called from any thread.
   void IncPendingFrameCount(wr::WindowId aWindowId, const VsyncId& aStartId,
-                            const TimeStamp& aStartTime);
+                            const TimeStamp& aStartTime,
+                            uint8_t aDocFrameCount);
   /// Can be called from any thread.
-  void DecPendingFrameCount(wr::WindowId aWindowId);
-  /// Can be called from any thread.
-  void IncRenderingFrameCount(wr::WindowId aWindowId);
+  mozilla::Pair<bool, bool> IncRenderingFrameCount(wr::WindowId aWindowId,
+                                                   bool aRender);
   /// Can be called from any thread.
   void FrameRenderingComplete(wr::WindowId aWindowId);
 
@@ -218,11 +228,19 @@ class RenderThread final {
   /// Can be called from any thread.
   WebRenderThreadPool& ThreadPool() { return mThreadPool; }
 
+  /// Returns the cache used to serialize shader programs to disk, if enabled.
+  ///
   /// Can only be called from the render thread.
-  WebRenderProgramCache* ProgramCache();
+  WebRenderProgramCache* GetProgramCache() {
+    MOZ_ASSERT(IsInRenderThread());
+    return mProgramCache.get();
+  }
 
   /// Can only be called from the render thread.
-  WebRenderShaders* Shaders() { return mShaders.get(); }
+  WebRenderShaders* GetShaders() {
+    MOZ_ASSERT(IsInRenderThread());
+    return mShaders.get();
+  }
 
   /// Can only be called from the render thread.
   gl::GLContext* SharedGL();
@@ -265,12 +283,15 @@ class RenderThread final {
 
   struct WindowInfo {
     bool mIsDestroyed = false;
+    bool mRender = false;
     int64_t mPendingCount = 0;
     int64_t mRenderingCount = 0;
+    uint8_t mDocFramesSeen = 0;
     // One entry in this queue for each pending frame, so the length
     // should always equal mPendingCount
     std::queue<TimeStamp> mStartTimes;
     std::queue<VsyncId> mStartIds;
+    std::queue<uint8_t> mDocFrameCounts;
     bool mHadSlowFrame = false;
   };
 

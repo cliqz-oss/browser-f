@@ -224,9 +224,7 @@ class OriginGetterRunnable : public WorkerMainThreadRunnable {
   OriginGetterRunnable(WorkerPrivate* aWorkerPrivate, nsAString& aValue,
                        nsIURI* aURI)
       : WorkerMainThreadRunnable(aWorkerPrivate,
-                                 // We can have telemetry keys for each getter
-                                 // when needed.
-                                 NS_LITERAL_CSTRING("URL :: getter")),
+                                 NS_LITERAL_CSTRING("URL :: origin getter")),
         mValue(aValue),
         mURI(aURI) {
     mWorkerPrivate->AssertIsOnWorkerThread();
@@ -409,17 +407,49 @@ void URLWorker::Init(const nsAString& aURL, const Optional<nsAString>& aBase,
     }
   }
 
-  // create url proxy
-  RefPtr<ConstructorRunnable> runnable =
-      new ConstructorRunnable(mWorkerPrivate, aURL, aBase);
-  runnable->Dispatch(Canceling, aRv);
-  if (NS_WARN_IF(aRv.Failed())) {
-    return;
+  // Let's check if the baseURI was passed and if it can be parsed on the worker
+  // thread.
+  bool useProxy = false;
+  nsCOMPtr<nsIURI> baseURI;
+  if (aBase.WasPassed()) {
+    rv = NS_NewURIOnAnyThread(getter_AddRefs(baseURI),
+                              NS_ConvertUTF16toUTF8(aBase.Value()));
+    if (NS_FAILED(rv)) {
+      if (rv != NS_ERROR_UNKNOWN_PROTOCOL) {
+        aRv.ThrowTypeError<MSG_INVALID_URL>(aBase.Value());
+        return;
+      }
+      useProxy = true;
+    }
   }
 
-  nsCOMPtr<nsIURI> uri = runnable->GetURI(aRv);
-  if (NS_WARN_IF(aRv.Failed())) {
-    return;
+  // Let's see if we can parse aURI on this thread.
+  nsCOMPtr<nsIURI> uri;
+  if (!useProxy) {
+    rv = NS_NewURIOnAnyThread(getter_AddRefs(uri), NS_ConvertUTF16toUTF8(aURL),
+                              nullptr, baseURI);
+    if (NS_FAILED(rv)) {
+      if (rv != NS_ERROR_UNKNOWN_PROTOCOL) {
+        aRv.ThrowTypeError<MSG_INVALID_URL>(aURL);
+        return;
+      }
+      useProxy = true;
+    }
+  }
+
+  // Fallback by proxy.
+  if (useProxy) {
+    RefPtr<ConstructorRunnable> runnable =
+        new ConstructorRunnable(mWorkerPrivate, aURL, aBase);
+    runnable->Dispatch(Canceling, aRv);
+    if (NS_WARN_IF(aRv.Failed())) {
+      return;
+    }
+
+    uri = runnable->GetURI(aRv);
+    if (NS_WARN_IF(aRv.Failed())) {
+      return;
+    }
   }
 
   SetURI(uri.forget());
@@ -452,10 +482,18 @@ void URLWorker::SetHref(const nsAString& aHref, ErrorResult& aRv) {
 }
 
 void URLWorker::GetOrigin(nsAString& aOrigin, ErrorResult& aRv) const {
-  RefPtr<OriginGetterRunnable> runnable =
-      new OriginGetterRunnable(mWorkerPrivate, aOrigin, GetURI());
+  nsresult rv = nsContentUtils::GetThreadSafeUTFOrigin(GetURI(), aOrigin);
+  if (rv == NS_ERROR_UNKNOWN_PROTOCOL) {
+    RefPtr<OriginGetterRunnable> runnable =
+        new OriginGetterRunnable(mWorkerPrivate, aOrigin, GetURI());
 
-  runnable->Dispatch(aRv);
+    runnable->Dispatch(aRv);
+    return;
+  }
+
+  if (NS_WARN_IF(NS_FAILED(rv))) {
+    aOrigin.Truncate();
+  }
 }
 
 void URLWorker::SetProtocol(const nsAString& aProtocol, ErrorResult& aRv) {

@@ -31,7 +31,6 @@
 #include "vm/SharedArrayObject.h"
 #include "vm/StringObject.h"
 #include "vm/TypedArrayObject.h"
-#include "vm/UnboxedObject.h"
 
 #include "vm/JSContext-inl.h"
 #include "vm/ObjectGroup-inl.h"
@@ -291,9 +290,7 @@ class TypeNewScript {
   // After the new script properties analyses have been performed, a template
   // object to use for newly constructed objects. The shape of this object
   // reflects all definite properties the object will have, and the
-  // allocation kind to use. This is null if the new objects have an unboxed
-  // layout, in which case the UnboxedLayout provides the initial structure
-  // of the object.
+  // allocation kind to use.
   HeapPtr<PlainObject*> templateObject_ = {};
 
   // Order in which definite properties become initialized. We need this in
@@ -354,9 +351,6 @@ class TypeNewScript {
   bool rollbackPartiallyInitializedObjects(JSContext* cx, ObjectGroup* group);
 
   static bool make(JSContext* cx, ObjectGroup* group, JSFunction* fun);
-  static TypeNewScript* makeNativeVersion(JSContext* cx,
-                                          TypeNewScript* newScript,
-                                          PlainObject* templateObject);
 
   size_t sizeOfIncludingThis(mozilla::MallocSizeOf mallocSizeOf) const;
 
@@ -364,19 +358,6 @@ class TypeNewScript {
     return offsetof(TypeNewScript, preliminaryObjects);
   }
 };
-
-inline UnboxedLayout::~UnboxedLayout() {
-  if (newScript_) {
-    newScript_->clear();
-  }
-  js_delete(newScript_);
-  js_free(traceList_);
-
-  nativeGroup_.init(nullptr);
-  nativeShape_.init(nullptr);
-  replacementGroup_.init(nullptr);
-  constructorCode_.init(nullptr);
-}
 
 inline bool ObjectGroup::hasUnanalyzedPreliminaryObjects() {
   return (newScriptDontCheckGeneration() &&
@@ -394,10 +375,6 @@ inline bool ObjectGroup::hasUnanalyzedPreliminaryObjects() {
  * is not reentrant and that recompilations occur properly.
  */
 struct MOZ_RAII AutoEnterAnalysis {
-  // For use when initializing an UnboxedLayout.  The UniquePtr's destructor
-  // must run when GC is not suppressed.
-  UniquePtr<UnboxedLayout> unboxedLayoutToCleanUp;
-
   // Prevent GC activity in the middle of analysis.
   gc::AutoSuppressGC suppressGC;
 
@@ -454,8 +431,6 @@ struct MOZ_RAII AutoEnterAnalysis {
 /////////////////////////////////////////////////////////////////////
 // Interface functions
 /////////////////////////////////////////////////////////////////////
-
-void MarkIteratorUnknownSlow(JSContext* cx);
 
 void TypeMonitorCallSlow(JSContext* cx, JSObject* callee, const CallArgs& args,
                          bool constructing);
@@ -1018,8 +993,8 @@ struct TypeHashSet {
       return bool(reinterpret_cast<uintptr_t>(elem) & U::TypeHashSetMarkBit);
     };
     auto toggleMarkBit = [](U* elem) -> U* {
-      return reinterpret_cast<U*>(
-          reinterpret_cast<uintptr_t>(elem) ^ U::TypeHashSetMarkBit);
+      return reinterpret_cast<U*>(reinterpret_cast<uintptr_t>(elem) ^
+                                  U::TypeHashSetMarkBit);
     };
 
     // When we have a single element it is stored in-place of the function

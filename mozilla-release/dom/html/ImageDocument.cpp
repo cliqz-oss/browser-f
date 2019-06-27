@@ -12,6 +12,7 @@
 #include "mozilla/dom/ImageDocumentBinding.h"
 #include "mozilla/dom/HTMLImageElement.h"
 #include "mozilla/dom/MouseEvent.h"
+#include "mozilla/PresShell.h"
 #include "mozilla/StaticPrefs.h"
 #include "nsRect.h"
 #include "nsIImageLoadingContent.h"
@@ -26,7 +27,6 @@
 #include "imgILoader.h"
 #include "imgIContainer.h"
 #include "imgINotificationObserver.h"
-#include "nsIPresShell.h"
 #include "nsPresContext.h"
 #include "nsIChannel.h"
 #include "nsIContentPolicy.h"
@@ -402,12 +402,12 @@ void ImageDocument::ScrollImageTo(int32_t aX, int32_t aY, bool restoreImage) {
     FlushPendingNotifications(FlushType::Layout);
   }
 
-  nsCOMPtr<nsIPresShell> shell = GetShell();
-  if (!shell) {
+  RefPtr<PresShell> presShell = GetPresShell();
+  if (!presShell) {
     return;
   }
 
-  nsIScrollableFrame* sf = shell->GetRootScrollFrameAsScrollable();
+  nsIScrollableFrame* sf = presShell->GetRootScrollFrameAsScrollable();
   if (!sf) {
     return;
   }
@@ -423,7 +423,7 @@ void ImageDocument::ScrollImageTo(int32_t aX, int32_t aY, bool restoreImage) {
       nsPoint(
           nsPresContext::CSSPixelsToAppUnits(aX / ratio) - portRect.width / 2,
           nsPresContext::CSSPixelsToAppUnits(aY / ratio) - portRect.height / 2),
-      nsIScrollableFrame::INSTANT);
+      ScrollMode::Instant);
 }
 
 void ImageDocument::RestoreImage() {
@@ -639,13 +639,11 @@ void ImageDocument::UpdateSizeFromLayout() {
   nsIntSize oldSize(mImageWidth, mImageHeight);
   IntrinsicSize newSize = contentFrame->GetIntrinsicSize();
 
-  if (newSize.width.GetUnit() == eStyleUnit_Coord) {
-    mImageWidth =
-        nsPresContext::AppUnitsToFloatCSSPixels(newSize.width.GetCoordValue());
+  if (newSize.width) {
+    mImageWidth = nsPresContext::AppUnitsToFloatCSSPixels(*newSize.width);
   }
-  if (newSize.height.GetUnit() == eStyleUnit_Coord) {
-    mImageHeight =
-        nsPresContext::AppUnitsToFloatCSSPixels(newSize.height.GetCoordValue());
+  if (newSize.height) {
+    mImageHeight = nsPresContext::AppUnitsToFloatCSSPixels(*newSize.height);
   }
 
   // Ensure that our information about overflow is up-to-date if needed.
@@ -835,9 +833,9 @@ float ImageDocument::GetZoomLevel() {
 #if defined(MOZ_WIDGET_ANDROID)
 float ImageDocument::GetResolution() {
   float resolution = mOriginalResolution;
-  nsCOMPtr<nsIPresShell> shell = GetShell();
-  if (shell) {
-    resolution = shell->GetResolution();
+  RefPtr<PresShell> presShell = GetPresShell();
+  if (presShell) {
+    resolution = presShell->GetResolution();
   }
   return resolution;
 }

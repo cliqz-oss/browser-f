@@ -105,6 +105,8 @@ class HTMLVideoElement final : public HTMLMediaElement {
     return mMediaInfo.mVideo.mRotation;
   }
 
+  bool HasAlpha() const { return mMediaInfo.mVideo.HasAlpha(); }
+
   void GetPoster(nsAString& aValue) {
     GetURIAttr(nsGkAtoms::poster, nullptr, aValue);
   }
@@ -142,6 +144,8 @@ class HTMLVideoElement final : public HTMLMediaElement {
   void StopCloningElementVisually();
 
   bool IsCloningElementVisually() const { return !!mVisualCloneTarget; }
+
+  void TogglePictureInPicture(ErrorResult& rv);
 
  protected:
   virtual ~HTMLVideoElement();

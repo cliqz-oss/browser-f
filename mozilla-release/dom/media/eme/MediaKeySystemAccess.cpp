@@ -244,9 +244,10 @@ static nsTArray<KeySystemConfig> GetSupportedKeySystems() {
   nsTArray<KeySystemConfig> keySystemConfigs;
 
   {
-    if (HavePluginForKeySystem(kEMEKeySystemClearkey)) {
+    const nsCString keySystem = NS_LITERAL_CSTRING(EME_KEY_SYSTEM_CLEARKEY);
+    if (HavePluginForKeySystem(keySystem)) {
       KeySystemConfig clearkey;
-      clearkey.mKeySystem = NS_ConvertUTF8toUTF16(kEMEKeySystemClearkey);
+      clearkey.mKeySystem.AssignLiteral(EME_KEY_SYSTEM_CLEARKEY);
       clearkey.mInitDataTypes.AppendElement(NS_LITERAL_STRING("cenc"));
       clearkey.mInitDataTypes.AppendElement(NS_LITERAL_STRING("keyids"));
       clearkey.mInitDataTypes.AppendElement(NS_LITERAL_STRING("webm"));
@@ -281,9 +282,10 @@ static nsTArray<KeySystemConfig> GetSupportedKeySystems() {
     }
   }
   {
-    if (HavePluginForKeySystem(kEMEKeySystemWidevine)) {
+    const nsCString keySystem = NS_LITERAL_CSTRING(EME_KEY_SYSTEM_WIDEVINE);
+    if (HavePluginForKeySystem(keySystem)) {
       KeySystemConfig widevine;
-      widevine.mKeySystem = NS_ConvertUTF8toUTF16(kEMEKeySystemWidevine);
+      widevine.mKeySystem.AssignLiteral(EME_KEY_SYSTEM_WIDEVINE);
       widevine.mInitDataTypes.AppendElement(NS_LITERAL_STRING("cenc"));
       widevine.mInitDataTypes.AppendElement(NS_LITERAL_STRING("keyids"));
       widevine.mInitDataTypes.AppendElement(NS_LITERAL_STRING("webm"));
@@ -350,7 +352,7 @@ static nsTArray<KeySystemConfig> GetSupportedKeySystems() {
       };
 
       for (const auto& data : validationList) {
-        if (MediaDrmProxy::IsCryptoSchemeSupported(kEMEKeySystemWidevine,
+        if (MediaDrmProxy::IsCryptoSchemeSupported(EME_KEY_SYSTEM_WIDEVINE,
                                                    data.mMimeType)) {
           if (AndroidDecoderModule::SupportsMimeType(data.mMimeType)) {
             data.mSupportType->SetCanDecryptAndDecode(data.mEMECodecType);
@@ -454,7 +456,7 @@ static bool ToSessionType(const nsAString& aSessionType,
   return false;
 }
 
-// 5.2.1 Is persistent session type?
+// 5.1.1 Is persistent session type?
 static bool IsPersistentSessionType(MediaKeySessionType aSessionType) {
   return aSessionType == MediaKeySessionType::Persistent_license;
 }
@@ -520,7 +522,7 @@ static bool IsParameterUnrecognized(const nsAString& aContentType) {
   return false;
 }
 
-// 3.1.2.3 Get Supported Capabilities for Audio/Video Type
+// 3.1.1.3 Get Supported Capabilities for Audio/Video Type
 static Sequence<MediaKeySystemMediaCapability> GetSupportedCapabilities(
     const CodecType aCodecType,
     const nsTArray<MediaKeySystemMediaCapability>& aRequestedCapabilities,
@@ -793,7 +795,9 @@ static bool CheckRequirement(const MediaKeysRequirement aRequirement,
       }
       break;
     }
-    default: { return false; }
+    default: {
+      return false;
+    }
   }
 
   // Set the requirement member of accumulated configuration to equal
@@ -803,7 +807,7 @@ static bool CheckRequirement(const MediaKeysRequirement aRequirement,
   return true;
 }
 
-// 3.1.2.2, step 12
+// 3.1.1.2, step 12
 // Follow the steps for the first matching condition from the following list:
 // If the sessionTypes member is present in candidate configuration.
 // Let session types be candidate configuration's sessionTypes member.
@@ -822,7 +826,7 @@ static Sequence<nsString> UnboxSessionTypes(
   return sessionTypes;
 }
 
-// 3.1.2.2 Get Supported Configuration and Consent
+// 3.1.1.2 Get Supported Configuration and Consent
 static bool GetSupportedConfig(
     const KeySystemConfig& aKeySystem,
     const MediaKeySystemConfiguration& aCandidate,

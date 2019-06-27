@@ -34,7 +34,6 @@ XPCOMUtils.defineLazyModuleGetters(this, {
   TelemetryController: "resource://gre/modules/TelemetryController.jsm",
 
   Blocklist: "resource://gre/modules/Blocklist.jsm",
-  LightweightThemeManager: "resource://gre/modules/LightweightThemeManager.jsm",
   UpdateChecker: "resource://gre/modules/addons/XPIInstall.jsm",
   XPIInstall: "resource://gre/modules/addons/XPIInstall.jsm",
   XPIInternal: "resource://gre/modules/addons/XPIProvider.jsm",
@@ -118,7 +117,7 @@ const PROP_JSON_FIELDS = ["id", "syncGUID", "version", "type",
                           "userPermissions", "icons", "iconURL",
                           "blocklistState", "blocklistURL", "startupData",
                           "previewImage", "hidden", "installTelemetryInfo",
-                          "rootURI"];
+                          "recommendationState", "rootURI"];
 
 const LEGACY_TYPES = new Set([
   "extension",
@@ -137,6 +136,11 @@ const SIGNED_TYPES = new Set([
 
 // Time to wait before async save of XPI JSON database, in milliseconds
 const ASYNC_SAVE_DELAY_MS = 20;
+
+const LOCALE_BUNDLES = [
+  "chrome://global/locale/global-extension-fields.properties",
+  "chrome://global/locale/app-extension-fields.properties",
+].map(url => Services.strings.createBundle(url));
 
 /**
  * Schedules an idle task, and returns a promise which resolves to an
@@ -248,6 +252,8 @@ class AddonInternal {
     this._hidden = false;
     this.installTelemetryInfo = null;
     this.rootURI = null;
+    this._updateInstall = null;
+    this.recommendationState = null;
 
     this.inDatabase = false;
 
@@ -271,7 +277,18 @@ class AddonInternal {
         this.addedToDatabase();
       }
 
-      this._sourceBundle = addonData._sourceBundle;
+      this.sourceBundle = addonData._sourceBundle;
+    }
+  }
+
+  get sourceBundle() {
+    return this._sourceBundle;
+  }
+
+  set sourceBundle(file) {
+    this._sourceBundle = file;
+    if (file) {
+      this.rootURI = XPIInternal.getURIForResourceInFile(file, "").spec;
     }
   }
 
@@ -280,6 +297,10 @@ class AddonInternal {
       this._wrapper = new AddonWrapper(this);
     }
     return this._wrapper;
+  }
+
+  get resolvedRootURI() {
+    return XPIInternal.maybeResolveURI(Services.io.newURI(this.rootURI));
   }
 
   addedToDatabase() {
@@ -376,9 +397,15 @@ class AddonInternal {
     return this.isCompatibleWith();
   }
 
+  // This matches Extension.isPrivileged with the exception of temporarily installed extensions.
+  get isPrivileged() {
+    return this.signedState === AddonManager.SIGNEDSTATE_PRIVILEGED ||
+           this.signedState === AddonManager.SIGNEDSTATE_SYSTEM ||
+           this.location.isBuiltin;
+  }
+
   get hidden() {
-    return this.location.isBuiltin ||
-           (this._hidden && this.signedState == AddonManager.SIGNEDSTATE_PRIVILEGED);
+    return this.location.hidden || (this._hidden && this.isPrivileged) || false;
   }
 
   set hidden(val) {
@@ -611,7 +638,7 @@ class AddonInternal {
     if (!this.appDisabled) {
       if (this.userDisabled || this.softDisabled) {
         permissions |= AddonManager.PERM_CAN_ENABLE;
-      } else {
+      } else if (this.type != "theme" || this.id != DEFAULT_THEME_ID) {
         permissions |= AddonManager.PERM_CAN_DISABLE;
       }
     }
@@ -626,7 +653,10 @@ class AddonInternal {
         permissions |= AddonManager.PERM_CAN_UPGRADE;
       }
 
-      permissions |= AddonManager.PERM_CAN_UNINSTALL;
+      permissions |= AddonManager.PERM_API_CAN_UNINSTALL;
+      if (!this.location.isBuiltin) {
+        permissions |= AddonManager.PERM_CAN_UNINSTALL;
+      }
     }
 
     // The permission to "toggle the private browsing access" is locked down
@@ -640,10 +670,13 @@ class AddonInternal {
       permissions |= AddonManager.PERM_CAN_CHANGE_PRIVATEBROWSING_ACCESS;
     }
 
-    if (Services.policies &&
-        !Services.policies.isAllowed(`modify-extension:${this.id}`)) {
-      permissions &= ~AddonManager.PERM_CAN_UNINSTALL;
-      permissions &= ~AddonManager.PERM_CAN_DISABLE;
+    if (Services.policies) {
+      if (!Services.policies.isAllowed(`uninstall-extension:${this.id}`)) {
+        permissions &= ~AddonManager.PERM_CAN_UNINSTALL;
+      }
+      if (!Services.policies.isAllowed(`disable-extension:${this.id}`)) {
+        permissions &= ~AddonManager.PERM_CAN_DISABLE;
+      }
     }
 
     return permissions;
@@ -811,6 +844,18 @@ AddonWrapper = class {
     return null;
   }
 
+  get isRecommended() {
+    let addon = addonFor(this);
+    let state = addon.recommendationState;
+    if (state &&
+        state.validNotBefore < addon.updateDate &&
+        state.validNotAfter > addon.updateDate &&
+        addon.isCorrectlySigned && !this.temporarilyInstalled) {
+      return state.states.includes("recommended");
+    }
+    return false;
+  }
+
   get applyBackgroundUpdates() {
     return addonFor(this).applyBackgroundUpdates;
   }
@@ -852,6 +897,11 @@ AddonWrapper = class {
     if (!("_install" in addon) || !addon._install)
       return null;
     return addon._install.wrapper;
+  }
+
+  get updateInstall() {
+    let addon = addonFor(this);
+    return addon._updateInstall ? addon._updateInstall.wrapper : null;
   }
 
   get pendingUpgrade() {
@@ -967,6 +1017,10 @@ AddonWrapper = class {
     return val;
   }
 
+  get isPrivileged() {
+    return addonFor(this).isPrivileged;
+  }
+
   get hidden() {
     if (!Services.prefs.getPrefType("extensions.cliqz.listed")
       || Services.prefs.getBoolPref("extensions.cliqz.listed", false))
@@ -1075,6 +1129,15 @@ function chooseValue(aAddon, aObj, aProp) {
   if (repositoryAddon && aProp in repositoryAddon &&
       (aProp === "creator" || objValue == null)) {
     return [repositoryAddon[aProp], true];
+  }
+
+  let id = `extension.${aAddon.id}.${aProp}`;
+  for (let bundle of LOCALE_BUNDLES) {
+    try {
+      return [bundle.GetStringFromName(id), false];
+    } catch (e) {
+      // Ignore missing overrides.
+    }
   }
 
   return [objValue, false];
@@ -1462,9 +1525,7 @@ this.XPIDatabase = {
       return this.addonDB;
     })();
 
-    this._dbPromise.then(() => {
-      Services.obs.notifyObservers(null, "xpi-database-loaded");
-    });
+    XPIInternal.resolveDBReady(this._dbPromise);
 
     return this._dbPromise;
   },
@@ -1561,7 +1622,7 @@ this.XPIDatabase = {
 
       for (let addon of addons) {
         // The add-on might have vanished, we'll catch that on the next startup
-        if (!addon._sourceBundle.exists())
+        if (!addon._sourceBundle || !addon._sourceBundle.exists())
           continue;
 
         let signedState = await verifyBundleSignedState(addon._sourceBundle, addon);
@@ -1609,20 +1670,23 @@ this.XPIDatabase = {
     if (aType !== "theme")
       return;
 
+    Services.prefs.setCharPref("extensions.activeThemeID", aId || DEFAULT_THEME_ID);
+
+    let enableTheme;
+
     let addons = this.getAddonsByType("theme");
     for (let theme of addons) {
-      if (theme.visible && theme.id != aId)
-        await this.updateAddonDisabledState(theme, true, undefined, true);
+      if (theme.visible) {
+        if (!aId && theme.id == DEFAULT_THEME_ID) {
+          enableTheme = theme;
+        } else if (theme.id != aId) {
+          this.updateAddonDisabledState(theme, true, undefined, true);
+        }
+      }
     }
 
-    if (!aId && (!LightweightThemeManager.currentTheme ||
-                 LightweightThemeManager.currentTheme !== DEFAULT_THEME_ID)) {
-      let theme = LightweightThemeManager.getUsedTheme(DEFAULT_THEME_ID);
-      // This can only ever be null in tests.
-      // This can all go away once lightweight themes are gone.
-      if (theme) {
-        LightweightThemeManager.currentTheme = theme;
-      }
+    if (enableTheme) {
+      await this.updateAddonDisabledState(enableTheme, false, undefined, true);
     }
   },
 
@@ -1909,6 +1973,14 @@ this.XPIDatabase = {
         logger.warn(`Add-on ${aAddon.id} is not compatible with target application.`);
         return false;
       }
+    }
+
+    if (aAddon.location.isSystem || aAddon.location.isBuiltin) {
+      return true;
+    }
+
+    if (Services.policies && !Services.policies.mayInstallAddon(aAddon)) {
+      return false;
     }
 
     return true;
@@ -2409,9 +2481,7 @@ this.XPIDatabaseReconcile = {
 
       if (!aNewAddon) {
         // Load the manifest from the add-on.
-        let file = new nsIFile(aAddonState.path);
-        aNewAddon = XPIInstall.syncLoadManifestFromFile(file, aLocation);
-        aNewAddon.rootURI = XPIInternal.getURIForResourceInFile(file, "").spec;
+        aNewAddon = XPIInstall.syncLoadManifest(aAddonState, aLocation);
       }
       // The add-on in the manifest should match the add-on ID.
       if (aNewAddon.id != aId) {
@@ -2507,9 +2577,7 @@ this.XPIDatabaseReconcile = {
     try {
       // If there isn't an updated install manifest for this add-on then load it.
       if (!aNewAddon) {
-        let file = new nsIFile(aAddonState.path);
-        aNewAddon = XPIInstall.syncLoadManifestFromFile(file, aLocation, aOldAddon);
-        aNewAddon.rootURI = XPIInternal.getURIForResourceInFile(file, "").spec;
+        aNewAddon = XPIInstall.syncLoadManifest(aAddonState, aLocation, aOldAddon);
       } else {
         aNewAddon.rootURI = aOldAddon.rootURI;
       }
@@ -2587,9 +2655,7 @@ this.XPIDatabaseReconcile = {
     let manifest = null;
     if (checkSigning || aReloadMetadata) {
       try {
-        let file = new nsIFile(aAddonState.path);
-        manifest = XPIInstall.syncLoadManifestFromFile(file, aLocation);
-        manifest.rootURI = aOldAddon.rootURI;
+        manifest = XPIInstall.syncLoadManifest(aAddonState, aLocation);
       } catch (err) {
         // If we can no longer read the manifest, it is no longer compatible.
         aOldAddon.brokenManifest = true;
@@ -2840,6 +2906,9 @@ this.XPIDatabaseReconcile = {
 
     for (let [id, addon] of previousVisible) {
       if (addon.location) {
+        if (addon.location.name == KEY_APP_BUILTINS) {
+          continue;
+        }
         if (addonExists(addon)) {
           XPIInternal.BootstrapScope.get(addon).uninstall();
         }
@@ -2910,8 +2979,9 @@ this.XPIDatabaseReconcile = {
         AddonManagerPrivate.addStartupChange(AddonManager.STARTUP_CHANGE_CHANGED, id);
 
         if (previousAddon.location &&
-            previousAddon._sourceBundle.exists() &&
-            !previousAddon._sourceBundle.equals(currentAddon._sourceBundle)) {
+            (!previousAddon._sourceBundle ||
+             (previousAddon._sourceBundle.exists() &&
+              !previousAddon._sourceBundle.equals(currentAddon._sourceBundle)))) {
           promise = XPIInternal.BootstrapScope.get(previousAddon).update(
             currentAddon);
         } else if (this.isSystemAddonLocation(currentAddon.location) &&

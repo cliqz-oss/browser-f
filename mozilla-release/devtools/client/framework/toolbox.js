@@ -24,7 +24,6 @@ var {gDevTools} = require("devtools/client/framework/devtools");
 var EventEmitter = require("devtools/shared/event-emitter");
 var Telemetry = require("devtools/client/shared/telemetry");
 const { getUnicodeUrl } = require("devtools/client/shared/unicode-url");
-var { attachThread, detachThread } = require("./attach-thread");
 var { DOMHelpers } = require("resource://devtools/client/shared/DOMHelpers.jsm");
 const { KeyCodes } = require("devtools/client/shared/keycodes");
 var Startup = Cc["@mozilla.org/devtools/startup-clh;1"].getService(Ci.nsISupports)
@@ -64,9 +63,17 @@ loader.lazyRequireGetter(this, "createEditContextMenu",
   "devtools/client/framework/toolbox-context-menu", true);
 loader.lazyRequireGetter(this, "remoteClientManager",
   "devtools/client/shared/remote-debugging/remote-client-manager.js", true);
+loader.lazyRequireGetter(this, "ResponsiveUIManager",
+  "devtools/client/responsive.html/manager", true);
+loader.lazyRequireGetter(this, "DevToolsUtils",
+  "devtools/shared/DevToolsUtils");
 
 loader.lazyGetter(this, "domNodeConstants", () => {
   return require("devtools/shared/dom-node-constants");
+});
+
+loader.lazyGetter(this, "DEBUG_TARGET_TYPES", () => {
+  return require("devtools/client/shared/remote-debugging/constants").DEBUG_TARGET_TYPES;
 });
 
 loader.lazyGetter(this, "registerHarOverlay", () => {
@@ -166,6 +173,8 @@ function Toolbox(target, selectedTool, hostType, contentWindow, frameId,
   this._onInspectObject = this._onInspectObject.bind(this);
   this._onNewSelectedNodeFront = this._onNewSelectedNodeFront.bind(this);
   this._onToolSelected = this._onToolSelected.bind(this);
+  this._onTargetClosed = this._onTargetClosed.bind(this);
+  this._onContextMenu = this._onContextMenu.bind(this);
   this.updateToolboxButtonsVisibility = this.updateToolboxButtonsVisibility.bind(this);
   this.updateToolboxButtons = this.updateToolboxButtons.bind(this);
   this.selectTool = this.selectTool.bind(this);
@@ -174,9 +183,11 @@ function Toolbox(target, selectedTool, hostType, contentWindow, frameId,
   this.toggleOptions = this.toggleOptions.bind(this);
   this.togglePaintFlashing = this.togglePaintFlashing.bind(this);
   this.toggleDragging = this.toggleDragging.bind(this);
+  this._onPausedState = this._onPausedState.bind(this);
+  this._onResumedState = this._onResumedState.bind(this);
   this.isPaintFlashing = false;
 
-  this._target.on("close", this.destroy);
+  this._target.on("close", this._onTargetClosed);
 
   if (!selectedTool) {
     selectedTool = Services.prefs.getCharPref(this._prefs.LAST_TOOL);
@@ -209,10 +220,8 @@ function Toolbox(target, selectedTool, hostType, contentWindow, frameId,
    * call it only once.
    */
   loader.lazyGetter(this, "direction", () => {
-    // Get the direction from browser.xul document
-    const top = this.win.top;
-    const topDocEl = top.document.documentElement;
-    const isRtl = top.getComputedStyle(topDocEl).direction === "rtl";
+    const { documentElement } = this.doc;
+    const isRtl = this.win.getComputedStyle(documentElement).direction === "rtl";
     return isRtl ? "rtl" : "ltr";
   });
 }
@@ -375,6 +384,19 @@ Toolbox.prototype = {
   },
 
   /**
+   * When the toolbox is loaded in a frame with type="content", win.parent will not return
+   * the parent Chrome window. This getter should return the parent Chrome window
+   * regardless of the frame type. See Bug 1539979.
+   */
+  get topWindow() {
+    return DevToolsUtils.getTopWindow(this.win);
+  },
+
+  get topDoc() {
+    return this.topWindow.document;
+  },
+
+  /**
    * Shortcut to the document containing the toolbox UI
    */
   get doc() {
@@ -432,16 +454,73 @@ Toolbox.prototype = {
       this.doc.querySelector("#toolbox-panel-iframe-webconsole").contentWindow;
   },
 
+  _onPausedState: function(_, packet) {
+    // Suppress interrupted events by default because the thread is
+    // paused/resumed a lot for various actions.
+    if (packet.why.type === "interrupted") {
+      return;
+    }
+
+    this.highlightTool("jsdebugger");
+
+    if (packet.why.type === "debuggerStatement" ||
+       packet.why.type === "breakpoint" ||
+       packet.why.type === "exception") {
+      this.raise();
+      this.selectTool("jsdebugger", packet.why.type);
+    }
+  },
+
+  _onResumedState: function() {
+    this.unhighlightTool("jsdebugger");
+  },
+
+  _startThreadClientListeners: function() {
+    this.threadClient.addListener("paused", this._onPausedState);
+    this.threadClient.addListener("resumed", this._onResumedState);
+  },
+
+  _stopThreadClientListeners: function() {
+    this.threadClient.removeListener("paused", this._onPausedState);
+    this.threadClient.removeListener("resumed", this._onResumedState);
+  },
+
+  _attachAndResumeThread: async function() {
+    const threadOptions = {
+      autoBlackBox: false,
+      ignoreFrameEnvironment: true,
+      pauseOnExceptions:
+        Services.prefs.getBoolPref("devtools.debugger.pause-on-exceptions"),
+      ignoreCaughtExceptions:
+        Services.prefs.getBoolPref("devtools.debugger.ignore-caught-exceptions"),
+    };
+    const [, threadClient] = await this._target.attachThread(threadOptions);
+
+    try {
+      await threadClient.resume();
+    } catch (ex) {
+      // Interpret a possible error thrown by ThreadActor.resume
+      if (ex.error === "wrongOrder") {
+        const box = this.getNotificationBox();
+        box.appendNotification(
+          L10N.getStr("toolbox.resumeOrderWarning"),
+          "wrong-resume-order",
+          "",
+          box.PRIORITY_WARNING_HIGH
+        );
+      } else {
+        throw ex;
+      }
+    }
+
+    return threadClient;
+  },
+
   /**
    * Open the toolbox
    */
   open: function() {
     return (async function() {
-      this.browserRequire = BrowserLoader({
-        window: this.doc.defaultView,
-        useOnlyShared: true,
-      }).require;
-
       const isToolboxURL = this.win.location.href.startsWith(this._URL);
       if (isToolboxURL) {
         // Update the URL so that onceDOMReady watch for the right url.
@@ -451,9 +530,8 @@ Toolbox.prototype = {
       if (this.hostType === Toolbox.HostType.PAGE) {
         // Displays DebugTargetInfo which shows the basic information of debug target,
         // if `about:devtools-toolbox` URL opens directly.
-        // DebugTargetInfo requires this._deviceDescription to be populated
-        this._showDebugTargetInfo = true;
-        this._deviceDescription = await this._getDeviceDescription();
+        // DebugTargetInfo requires this._debugTargetData to be populated
+        this._debugTargetData = this._getDebugTargetData();
       }
 
       const domHelper = new DOMHelpers(this.win);
@@ -477,9 +555,15 @@ Toolbox.prototype = {
         ]);
       }
 
-      // Attach the thread
-      this._threadClient = await attachThread(this);
+      this._threadClient = await this._attachAndResumeThread();
+      this._startThreadClientListeners();
+
       await domReady;
+
+      this.browserRequire = BrowserLoader({
+        window: this.win,
+        useOnlyShared: true,
+      }).require;
 
       // The web console is immediately loaded when replaying, so that the
       // timeline will always be populated with generated messages.
@@ -495,41 +579,17 @@ Toolbox.prototype = {
       Services.prefs.addObserver("devtools.serviceWorkers.testing.enabled",
                                  this._applyServiceWorkersTestingSettings);
 
-      // Register listener for handling context menus in standard
-      // input elements: <input> and <textarea>.
-      // There is also support for custom input elements using
-      // .devtools-input class (e.g. CodeMirror instances).
-      this.doc.addEventListener("contextmenu", (e) => {
-        if (e.originalTarget.closest("input[type=text]") ||
-            e.originalTarget.closest("input[type=search]") ||
-            e.originalTarget.closest("input:not([type])") ||
-            e.originalTarget.closest(".devtools-input") ||
-            e.originalTarget.closest("textarea")) {
-          e.stopPropagation();
-          e.preventDefault();
-          this.openTextBoxContextMenu(e.screenX, e.screenY);
-        }
-      });
-
-      this.shortcuts = new KeyShortcuts({
-        window: this.doc.defaultView,
-      });
       // Get the DOM element to mount the ToolboxController to.
       this._componentMount = this.doc.getElementById("toolbox-toolbar-mount");
 
       this._mountReactComponent();
       this._buildDockOptions();
-      this._buildOptions();
       this._buildTabs();
       this._applyCacheSettings();
       this._applyServiceWorkersTestingSettings();
-      this._addKeysToWindow();
-      this._addReloadKeys();
-      this._addHostListeners();
+      this._addWindowListeners();
+      this._addChromeEventHandlerEvents();
       this._registerOverlays();
-      if (!this._hostOptions || this._hostOptions.zoom === true) {
-        ZoomKeys.register(this.win);
-      }
 
       this._componentMount.addEventListener("keypress", this._onToolbarArrowKeypress);
       this._componentMount.setAttribute("aria-label", L10N.getStr("toolbox.label"));
@@ -567,15 +627,14 @@ Toolbox.prototype = {
 
       // Wait until the original tool is selected so that the split
       // console input will receive focus.
-      const browserWin = this.win.top;
       let splitConsolePromise = promise.resolve();
       if (Services.prefs.getBoolPref(SPLITCONSOLE_ENABLED_PREF)) {
         splitConsolePromise = this.openSplitConsole();
         this.telemetry.addEventProperty(
-          browserWin, "open", "tools", null, "splitconsole", true);
+          this.win, "open", "tools", null, "splitconsole", true);
       } else {
         this.telemetry.addEventProperty(
-          browserWin, "open", "tools", null, "splitconsole", false);
+          this.win, "open", "tools", null, "splitconsole", false);
       }
 
       await promise.all([
@@ -604,12 +663,238 @@ Toolbox.prototype = {
     });
   },
 
-  _getDeviceDescription: async function() {
-    const deviceFront = await this.target.client.mainRoot.getFront("device");
-    const description = await deviceFront.getDescription();
-    const remoteId = new this.win.URLSearchParams(this.win.location.href).get("remoteId");
+  /**
+   * Retrieve the ChromeEventHandler associated to the toolbox frame.
+   * When DevTools are loaded in a content frame, this will return the containing chrome
+   * frame. Events from nested frames will bubble up to this chrome frame, which allows to
+   * listen to events from nested frames.
+   */
+  getChromeEventHandler() {
+    if (!this.win || !this.win.docShell) {
+      return null;
+    }
+    return this.win.docShell.chromeEventHandler;
+  },
+
+  /**
+   * Attach events on the chromeEventHandler for the current window. When loaded in a
+   * frame with type set to "content", events will not bubble across frames. The
+   * chromeEventHandler does not have this limitation and will catch all events triggered
+   * on any of the frames under the devtools document.
+   *
+   * Events relying on the chromeEventHandler need to be added and removed at specific
+   * moments in the lifecycle of the toolbox, so all the events relying on it should be
+   * grouped here.
+   */
+  _addChromeEventHandlerEvents: function() {
+    // win.docShell.chromeEventHandler might not be accessible anymore when removing the
+    // events, so we can't rely on a dynamic getter here.
+    // Keep a reference on the chromeEventHandler used to addEventListener to be sure we
+    // can remove the listeners afterwards.
+    this._chromeEventHandler = this.getChromeEventHandler();
+    if (!this._chromeEventHandler) {
+      return;
+    }
+
+    // Add shortcuts and window-host-shortcuts that use the ChromeEventHandler as target.
+    this._addShortcuts();
+    this._addWindowHostShortcuts();
+
+    this._chromeEventHandler.addEventListener("keypress", this._splitConsoleOnKeypress);
+    this._chromeEventHandler.addEventListener("focus", this._onFocus, true);
+    this._chromeEventHandler.addEventListener("contextmenu", this._onContextMenu);
+  },
+
+  _removeChromeEventHandlerEvents: function() {
+    if (!this._chromeEventHandler) {
+      return;
+    }
+
+    // Remove shortcuts and window-host-shortcuts that use the ChromeEventHandler as
+    // target.
+    this._removeShortcuts();
+    this._removeWindowHostShortcuts();
+
+    this._chromeEventHandler.removeEventListener("keypress",
+      this._splitConsoleOnKeypress);
+    this._chromeEventHandler.removeEventListener("focus", this._onFocus, true);
+    this._chromeEventHandler.removeEventListener("contextmenu", this._onContextMenu);
+
+    this._chromeEventHandler = null;
+  },
+
+  _addShortcuts: function() {
+    // Create shortcuts instance for the toolbox
+    if (!this.shortcuts) {
+      this.shortcuts = new KeyShortcuts({
+        window: this.doc.defaultView,
+        // The toolbox key shortcuts should be triggered from any frame in DevTools.
+        // Use the chromeEventHandler as the target to catch events from all frames.
+        target: this.getChromeEventHandler(),
+      });
+    }
+
+    // Listen for the shortcut key to show the frame list
+    this.shortcuts.on(L10N.getStr("toolbox.showFrames.key"), event => {
+      if (event.target.id === "command-button-frames") {
+        event.target.click();
+      }
+    });
+
+    // Listen for tool navigation shortcuts.
+    this.shortcuts.on(L10N.getStr("toolbox.nextTool.key"),
+                 event => {
+                   this.selectNextTool();
+                   event.preventDefault();
+                 });
+    this.shortcuts.on(L10N.getStr("toolbox.previousTool.key"),
+                 event => {
+                   this.selectPreviousTool();
+                   event.preventDefault();
+                 });
+    this.shortcuts.on(L10N.getStr("toolbox.toggleHost.key"),
+                 event => {
+                   this.switchToPreviousHost();
+                   event.preventDefault();
+                 });
+
+    // List for Help/Settings key.
+    this.shortcuts.on(L10N.getStr("toolbox.help.key"), this.toggleOptions);
+
+    // Listen for Reload shortcuts
+    [
+      ["reload", false],
+      ["reload2", false],
+      ["forceReload", true],
+      ["forceReload2", true],
+    ].forEach(([id, force]) => {
+      const key = L10N.getStr("toolbox." + id + ".key");
+      this.shortcuts.on(key, event => {
+        this.reloadTarget(force);
+
+        // Prevent Firefox shortcuts from reloading the page
+        event.preventDefault();
+      });
+    });
+
+    // Add zoom-related shortcuts.
+    if (!this._hostOptions || this._hostOptions.zoom === true) {
+      ZoomKeys.register(this.win, this.shortcuts);
+    }
+  },
+
+  _removeShortcuts: function() {
+    if (this.shortcuts) {
+      this.shortcuts.destroy();
+      this.shortcuts = null;
+    }
+  },
+
+  /**
+   * Adds the keys and commands to the Toolbox Window in window mode.
+   */
+  _addWindowHostShortcuts: function() {
+    if (this.hostType != Toolbox.HostType.WINDOW) {
+      // Those shortcuts are only valid for host type WINDOW.
+      return;
+    }
+
+    if (!this._windowHostShortcuts) {
+      this._windowHostShortcuts = new KeyShortcuts({
+        window: this.win,
+        // The window host key shortcuts should be triggered from any frame in DevTools.
+        // Use the chromeEventHandler as the target to catch events from all frames.
+        target: this.getChromeEventHandler(),
+      });
+    }
+
+    const shortcuts = this._windowHostShortcuts;
+
+    for (const item of Startup.KeyShortcuts) {
+      const { id, toolId, shortcut, modifiers } = item;
+      const electronKey = KeyShortcuts.parseXulKey(modifiers, shortcut);
+
+      if (id == "browserConsole") {
+        // Add key for toggling the browser console from the detached window
+        shortcuts.on(electronKey, () => {
+          HUDService.toggleBrowserConsole();
+        });
+      } else if (toolId) {
+        // KeyShortcuts contain tool-specific and global key shortcuts,
+        // here we only need to copy shortcut specific to each tool.
+        shortcuts.on(electronKey, () => {
+          this.selectTool(toolId, "key_shortcut").then(() => this.fireCustomKey(toolId));
+        });
+      }
+    }
+
+    // CmdOrCtrl+W is registered only when the toolbox is running in
+    // detached window. In the other case the entire browser tab
+    // is closed when the user uses this shortcut.
+    shortcuts.on(L10N.getStr("toolbox.closeToolbox.key"), this.closeToolbox);
+
+    // The others are only registered in window host type as for other hosts,
+    // these keys are already registered by devtools-startup.js
+    shortcuts.on(L10N.getStr("toolbox.toggleToolboxF12.key"), this.closeToolbox);
+    if (AppConstants.platform == "macosx") {
+      shortcuts.on(L10N.getStr("toolbox.toggleToolboxOSX.key"), this.closeToolbox);
+    } else {
+      shortcuts.on(L10N.getStr("toolbox.toggleToolbox.key"), this.closeToolbox);
+    }
+  },
+
+  _removeWindowHostShortcuts: function() {
+    if (this._windowHostShortcuts) {
+      this._windowHostShortcuts.destroy();
+      this._windowHostShortcuts = null;
+    }
+  },
+
+  _onContextMenu: function(e) {
+    // Handle context menu events in standard input elements: <input> and <textarea>.
+    // Also support for custom input elements using .devtools-input class
+    // (e.g. CodeMirror instances).
+    if (e.originalTarget.closest("input[type=text]") ||
+        e.originalTarget.closest("input[type=search]") ||
+        e.originalTarget.closest("input:not([type])") ||
+        e.originalTarget.closest(".devtools-input") ||
+        e.originalTarget.closest("textarea")) {
+      e.stopPropagation();
+      e.preventDefault();
+      this.openTextBoxContextMenu(e.screenX, e.screenY);
+    }
+  },
+
+  _getDebugTargetData: function() {
+    const url = new URL(this.win.location);
+    const searchParams = new this.win.URLSearchParams(url.search);
+
+    const targetType = searchParams.get("type") || DEBUG_TARGET_TYPES.TAB;
+
+    const remoteId = searchParams.get("remoteId");
+    const runtimeInfo = remoteClientManager.getRuntimeInfoByRemoteId(remoteId);
     const connectionType = remoteClientManager.getConnectionTypeByRemoteId(remoteId);
-    return Object.assign({}, description, { connectionType });
+
+    return {
+      connectionType,
+      runtimeInfo,
+      targetType,
+    };
+  },
+
+  _onTargetClosed: async function() {
+    const win = this.win; // .destroy() will set this.win to null
+
+    // clean up the toolbox
+    this.destroy();
+    // NOTE: we should await this.destroy() to ensure a proper clean up.
+    //       See https://bugzilla.mozilla.org/show_bug.cgi?id=1536144
+
+    // redirect to about:toolbox error page if we are connected to a remote
+    // target and we lose it
+    if (this.hostType === Toolbox.HostType.PAGE) {
+      win.location.replace("about:devtools-toolbox?disconnected");
+    }
   },
 
   /**
@@ -714,6 +999,24 @@ Toolbox.prototype = {
    */
   get sourceMapService() {
     return this._createSourceMapService();
+  },
+
+    /**
+   * A common access point for the client-side parser service that any panel can use.
+   */
+  get parserService() {
+    if (this._parserService) {
+      return this._parserService;
+    }
+
+    const { ParserDispatcher } =
+      require("devtools/client/debugger/src/workers/parser/index");
+
+    this._parserService = new ParserDispatcher();
+    this._parserService.start(
+      "resource://devtools/client/debugger/dist/parser-worker.js",
+      this.win);
+    return this._parserService;
   },
 
   /**
@@ -883,16 +1186,13 @@ Toolbox.prototype = {
     return button;
   },
 
-  _buildOptions: function() {
-    this.shortcuts.on(L10N.getStr("toolbox.help.key"), this.toggleOptions);
-  },
-
   _splitConsoleOnKeypress: function(e) {
     if (e.keyCode === KeyCodes.DOM_VK_ESCAPE) {
       this.toggleSplitConsole();
-      // If the debugger is paused, don't let the ESC key stop any pending
-      // navigation.
-      if (this._threadClient.state == "paused") {
+      // If the debugger is paused, don't let the ESC key stop any pending navigation.
+      // If the host is page, don't let the ESC stop the load of the webconsole frame.
+      if (this._threadClient.state == "paused" ||
+          this.hostType === Toolbox.HostType.PAGE) {
         e.preventDefault();
       }
     }
@@ -919,53 +1219,14 @@ Toolbox.prototype = {
     });
   },
 
-  _addReloadKeys: function() {
-    [
-      ["reload", false],
-      ["reload2", false],
-      ["forceReload", true],
-      ["forceReload2", true],
-    ].forEach(([id, force]) => {
-      const key = L10N.getStr("toolbox." + id + ".key");
-      this.shortcuts.on(key, event => {
-        this.reloadTarget(force);
-
-        // Prevent Firefox shortcuts from reloading the page
-        event.preventDefault();
-      });
-    });
-  },
-
-  _addHostListeners: function() {
-    // Add navigation keys
-    this.shortcuts.on(L10N.getStr("toolbox.nextTool.key"),
-                 event => {
-                   this.selectNextTool();
-                   event.preventDefault();
-                 });
-    this.shortcuts.on(L10N.getStr("toolbox.previousTool.key"),
-                 event => {
-                   this.selectPreviousTool();
-                   event.preventDefault();
-                 });
-    this.shortcuts.on(L10N.getStr("toolbox.toggleHost.key"),
-                 event => {
-                   this.switchToPreviousHost();
-                   event.preventDefault();
-                 });
-
-    // Add event listeners
-    this.doc.addEventListener("keypress", this._splitConsoleOnKeypress);
-    this.doc.addEventListener("focus", this._onFocus, true);
+  _addWindowListeners: function() {
     this.win.addEventListener("unload", this.destroy);
     this.win.addEventListener("message", this._onBrowserMessage, true);
   },
 
-  _removeHostListeners: function() {
+  _removeWindowListeners: function() {
     // The host iframe's contentDocument may already be gone.
-    if (this.doc) {
-      this.doc.removeEventListener("keypress", this._splitConsoleOnKeypress);
-      this.doc.removeEventListener("focus", this._onFocus, true);
+    if (this.win) {
       this.win.removeEventListener("unload", this.destroy);
       this.win.removeEventListener("message", this._onBrowserMessage, true);
     }
@@ -1018,59 +1279,6 @@ Toolbox.prototype = {
         webconsolePanel.setAttribute("collapsed", "true");
         splitter.setAttribute("hidden", "true");
       }
-    }
-  },
-
-  /**
-   * Adds the keys and commands to the Toolbox Window in window mode.
-   */
-  _addKeysToWindow: function() {
-    if (this.hostType != Toolbox.HostType.WINDOW) {
-      // If we are toggling back to other host type, we should unregister the window
-      // listeners
-      if (this._windowHostShortcuts) {
-        this._windowHostShortcuts.destroy();
-        this._windowHostShortcuts = null;
-      }
-      return;
-    }
-    if (!this._windowHostShortcuts) {
-      this._windowHostShortcuts = new KeyShortcuts({
-        window: this.doc.defaultView,
-      });
-    }
-    const shortcuts = this._windowHostShortcuts;
-
-    for (const item of Startup.KeyShortcuts) {
-      const { id, toolId, shortcut, modifiers } = item;
-      const electronKey = KeyShortcuts.parseXulKey(modifiers, shortcut);
-
-      if (id == "browserConsole") {
-        // Add key for toggling the browser console from the detached window
-        shortcuts.on(electronKey, () => {
-          HUDService.toggleBrowserConsole();
-        });
-      } else if (toolId) {
-        // KeyShortcuts contain tool-specific and global key shortcuts,
-        // here we only need to copy shortcut specific to each tool.
-        shortcuts.on(electronKey, () => {
-          this.selectTool(toolId, "key_shortcut").then(() => this.fireCustomKey(toolId));
-        });
-      }
-    }
-
-    // CmdOrCtrl+W is registered only when the toolbox is running in
-    // detached window. In the other case the entire browser tab
-    // is closed when the user uses this shortcut.
-    shortcuts.on(L10N.getStr("toolbox.closeToolbox.key"), this.closeToolbox);
-
-    // The others are only registered in window host type as for other hosts,
-    // these keys are already registered by devtools-startup.js
-    shortcuts.on(L10N.getStr("toolbox.toggleToolboxF12.key"), this.closeToolbox);
-    if (AppConstants.platform == "macosx") {
-      shortcuts.on(L10N.getStr("toolbox.toggleToolboxOSX.key"), this.closeToolbox);
-    } else {
-      shortcuts.on(L10N.getStr("toolbox.toggleToolbox.key"), this.closeToolbox);
     }
   },
 
@@ -1147,12 +1355,12 @@ Toolbox.prototype = {
 
   postMessage: function(msg) {
     // We sometime try to send messages in middle of destroy(), where the
-    // toolbox iframe may already be detached and no longer have a parent.
-    if (this.win.parent) {
+    // toolbox iframe may already be detached.
+    if (!this._destroyer) {
       // Toolbox document is still chrome and disallow identifying message
       // origin via event.source as it is null. So use a custom id.
       msg.frameId = this.frameId;
-      this.win.parent.postMessage(msg, "*");
+      this.topWindow.postMessage(msg, "*");
     }
   },
 
@@ -1188,8 +1396,7 @@ Toolbox.prototype = {
       closeToolbox: this.closeToolbox,
       focusButton: this._onToolbarFocus,
       toolbox: this,
-      showDebugTargetInfo: this._showDebugTargetInfo,
-      deviceDescription: this._deviceDescription,
+      debugTargetData: this._debugTargetData,
       onTabsOrderUpdated: this._onTabsOrderUpdated,
     });
 
@@ -1291,13 +1498,6 @@ Toolbox.prototype = {
       },
     });
 
-    // Listen for the shortcut key to show the frame list
-    this.shortcuts.on(L10N.getStr("toolbox.showFrames.key"), event => {
-      if (event.target.id === "command-button-frames") {
-        event.target.click();
-      }
-    });
-
     return this.frameButton;
   },
 
@@ -1343,6 +1543,7 @@ Toolbox.prototype = {
   },
 
   _onPickerStarting: async function() {
+    this.tellRDMAboutPickerState(true);
     this.pickerButton.isChecked = true;
     await this.selectTool("inspector", "inspect_dom");
     this.on("select", this.inspector.nodePicker.stop);
@@ -1354,9 +1555,29 @@ Toolbox.prototype = {
   },
 
   _onPickerStopped: function() {
+    this.tellRDMAboutPickerState(false);
     this.off("select", this.inspector.nodePicker.stop);
     this.doc.removeEventListener("keypress", this._onPickerKeypress, true);
     this.pickerButton.isChecked = false;
+  },
+
+  /**
+   * RDM sometimes simulates touch events. For this to work correctly at all times, it
+   * needs to know when the picker is active or not.
+   * This method communicates with the RDM Manager if it exists.
+   *
+   * @param {Boolean} state
+   */
+  tellRDMAboutPickerState: async function(state) {
+    const { tab } = this.target;
+
+    if (!ResponsiveUIManager.isActiveForTab(tab) ||
+        await !this.target.actorHasMethod("emulation", "setElementPickerState")) {
+      return;
+    }
+
+    const ui = ResponsiveUIManager.getResponsiveUIForTab(tab);
+    await ui.emulationFront.setElementPickerState(state);
   },
 
   /**
@@ -2073,8 +2294,7 @@ Toolbox.prototype = {
       });
     }
 
-    const browserWin = this.win.top;
-    this.telemetry.addEventProperties(browserWin, "open", "tools", null, {
+    this.telemetry.addEventProperties(this.win, "open", "tools", null, {
       "width": width,
       "session_id": this.sessionId,
     });
@@ -2232,7 +2452,7 @@ Toolbox.prototype = {
    * Toggles the options panel.
    * If the option panel is already selected then select the last selected panel.
    */
-  toggleOptions: function() {
+  toggleOptions: function(event) {
     // Flip back to the last used panel if we are already
     // on the options panel.
     if (this.currentToolId === "options" &&
@@ -2241,6 +2461,10 @@ Toolbox.prototype = {
     } else {
       this.selectTool("options", "toggle_settings_on");
     }
+
+    // preventDefault will avoid a Linux only bug when the focus is on a text input
+    // See Bug 1519087.
+    event.preventDefault();
   },
 
   /**
@@ -2579,6 +2803,9 @@ Toolbox.prototype = {
       return null;
     }
 
+    // chromeEventHandler will change after swapping hosts, remove events relying on it.
+    this._removeChromeEventHandlerEvents();
+
     this.emit("host-will-change", hostType);
 
     // ToolboxHostManager is going to call swapFrameLoaders which mess up with
@@ -2600,7 +2827,9 @@ Toolbox.prototype = {
     this._hostType = hostType;
 
     this._buildDockOptions();
-    this._addKeysToWindow();
+
+    // chromeEventHandler changed after swapping hosts, add again events relying on it.
+    this._addChromeEventHandlerEvents();
 
     // We blurred the tools at start of switchHost, but also when clicking on
     // host switching button. We now have to restore the focus.
@@ -2883,6 +3112,13 @@ Toolbox.prototype = {
   },
 
   /**
+   * Public API to check is the current toolbox is currently being destroyed.
+   */
+  isDestroying: function() {
+    return this._destroyer;
+  },
+
+  /**
    * Remove all UI elements, detach from target and clear up
    */
   destroy: function() {
@@ -2924,9 +3160,15 @@ Toolbox.prototype = {
       this._sourceMapURLService.destroy();
       this._sourceMapURLService = null;
     }
+
     if (this._sourceMapService) {
       this._sourceMapService.stopSourceMapWorker();
       this._sourceMapService = null;
+    }
+
+    if (this._parserService) {
+      this._parserService.stop();
+      this._parserService = null;
     }
 
     if (this.webconsolePanel) {
@@ -2968,7 +3210,7 @@ Toolbox.prototype = {
     outstanding.push(this.resetPreference());
 
     // Detach the thread
-    detachThread(this._threadClient);
+    this._stopThreadClientListeners();
     this._threadClient = null;
 
     // Unregister buttons listeners
@@ -3012,7 +3254,8 @@ Toolbox.prototype = {
           return api ? api.destroy() : null;
         }, console.error)
         .then(() => {
-          this._removeHostListeners();
+          this._removeWindowListeners();
+          this._removeChromeEventHandlerEvents();
 
           // `location` may already be 'invalid' if the toolbox document is
           // already in process of destruction. Otherwise if it is still
@@ -3042,7 +3285,7 @@ Toolbox.prototype = {
           }
           const target = this._target;
           this._target = null;
-          target.off("close", this.destroy);
+          target.off("close", this._onTargetClosed);
           return target.destroy();
         }, console.error).then(() => {
           this.emit("destroyed");
@@ -3100,13 +3343,20 @@ Toolbox.prototype = {
    * @param {Number} y
    */
   openTextBoxContextMenu: function(x, y) {
-    const menu = createEditContextMenu(this.win, "toolbox-menu");
+    const menu = createEditContextMenu(this.topWindow, "toolbox-menu");
 
     // Fire event for tests
     menu.once("open", () => this.emit("menu-open"));
     menu.once("close", () => this.emit("menu-close"));
 
-    menu.popup(x, y, { doc: this.doc });
+    menu.popup(x, y, this.doc);
+  },
+
+  /**
+   *  Retrieve the current textbox context menu, if available.
+   */
+  getTextBoxContextMenu: function() {
+    return this.topDoc.getElementById("toolbox-menu");
   },
 
   /**
@@ -3114,9 +3364,13 @@ Toolbox.prototype = {
    * necessary because of the WebConsole's `profile` and `profileEnd` methods.
    */
   async initPerformance() {
-    // If target does not have performance actor (addons), do not
-    // even register the shared performance connection.
-    if (!this.target.hasActor("performance")) {
+    // If:
+    // - target does not have performance actor (addons)
+    // - or client uses the new performance panel (incompatible with console.profile())
+    // do not even register the shared performance connection.
+    const isNewPerfPanel =
+      Services.prefs.getBoolPref("devtools.performance.new-panel-enabled", false);
+    if (isNewPerfPanel || !this.target.hasActor("performance")) {
       return promise.resolve();
     }
 
@@ -3189,8 +3443,8 @@ Toolbox.prototype = {
    * Opens source in debugger. Falls back to plain "view-source:".
    * @see devtools/client/shared/source-utils.js
    */
-  viewSourceInDebugger: function(sourceURL, sourceLine, sourceId, reason) {
-    return viewSource.viewSourceInDebugger(this, sourceURL, sourceLine, sourceId, reason);
+  viewSourceInDebugger: function(sourceURL, sourceLine, sourceColumn, sourceId, reason) {
+    return viewSource.viewSourceInDebugger(this, sourceURL, sourceLine, sourceColumn, sourceId, reason);
   },
 
   /**

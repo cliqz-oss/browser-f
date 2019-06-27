@@ -148,7 +148,7 @@ function readFileData(aFile) {
   let size  = inputStream.available();
   let bytes = readInputStreamData(inputStream);
   if (size != bytes.length) {
-    throw "Didn't read expected number of bytes";
+    throw new Error("Didn't read expected number of bytes");
   }
   return bytes;
 }
@@ -949,6 +949,19 @@ function getItemsWithAnnotation(name) {
 
     return rows.map(row => row.getResultByName("guid"));
   });
+}
+
+/**
+ * Sets an annotation for an item.
+ *
+ * @param {String} guid The GUID of the item.
+ * @param {String} name The name of the annotation.
+ * @param {Number|String} value The value of the annotation.
+ */
+async function setItemAnnotation(guid, name, value) {
+  let id = await PlacesUtils.promiseItemId(guid);
+  PlacesUtils.annotations.setItemAnnotation(id, name, value, 0,
+                                            PlacesUtils.annotations.EXPIRE_NEVER);
 }
 
 /**

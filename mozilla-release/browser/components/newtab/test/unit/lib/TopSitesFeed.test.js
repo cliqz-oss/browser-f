@@ -114,6 +114,7 @@ describe("Top Sites Feed", () => {
   });
   afterEach(() => {
     globals.restore();
+    sandbox.restore();
   });
 
   function stubFaviconsToUseScreenshots() {
@@ -382,16 +383,15 @@ describe("Top Sites Feed", () => {
         assert.propertyVal(result[0], "screenshot", "screenshot");
       });
       describe("concurrency", () => {
-        let resolvers;
         beforeEach(() => {
           stubFaviconsToUseScreenshots();
-          resolvers = [];
-          fakeScreenshot.getScreenshotForURL = sandbox.spy(() => new Promise(
-            resolve => resolvers.push(resolve)));
+          fakeScreenshot.getScreenshotForURL = sandbox.stub().resolves(FAKE_SCREENSHOT);
+        });
+        afterEach(() => {
+          sandbox.restore();
         });
 
         const getTwice = () => Promise.all([feed.getLinksWithDefaults(), feed.getLinksWithDefaults()]);
-        const resolveAll = () => resolvers.forEach(resolve => resolve(FAKE_SCREENSHOT));
 
         it("should call the backing data once", async () => {
           await getTwice();
@@ -406,8 +406,6 @@ describe("Top Sites Feed", () => {
         it("should dispatch once per link screenshot fetched", async () => {
           feed._requestRichIcon = sinon.stub();
           await getTwice();
-
-          await resolveAll();
 
           assert.callCount(feed.store.dispatch, FAKE_LINKS.length);
         });
@@ -1088,7 +1086,10 @@ describe("Top Sites Feed", () => {
       feed.store.dispatch = sandbox.stub().callsFake(() => {
         resolvers.shift()();
       });
-      fakeScreenshot.getScreenshotForURL = sandbox.spy();
+      sandbox.stub(feed, "_fetchScreenshot");
+    });
+    afterEach(() => {
+      sandbox.restore();
     });
 
     const forDispatch = action => new Promise(resolve => {
@@ -1155,7 +1156,7 @@ describe("Top Sites Feed", () => {
     it("should call refresh and set ._currentSearchHostname to the new engine hostname when the the default search engine has been set", () => {
       sinon.stub(feed, "refresh");
       sandbox.stub(global.Services.search, "defaultEngine").value({identifier: "ddg", searchForm: "duckduckgo.com"});
-      feed.observe(null, "browser-search-engine-modified", "engine-current");
+      feed.observe(null, "browser-search-engine-modified", "engine-default");
       assert.equal(feed._currentSearchHostname, "duckduckgo");
       assert.calledOnce(feed.refresh);
     });
@@ -1277,15 +1278,6 @@ describe("Top Sites Feed", () => {
       assert.propertyVal(defaultSearchTopsite, "searchTopSite", true);
       assert.equal(defaultSearchTopsite.tippyTopIcon, "icon.png");
       assert.equal(defaultSearchTopsite.backgroundColor, "#fff");
-    });
-    it("should not overlap with improvesearch.noDefaultSearchTile and still provide search tiles", async () => {
-      feed.store.state.Prefs.values["improvesearch.noDefaultSearchTile"] = true;
-      links = [{url: "google.com"}];
-
-      const urlsReturned = await feed.getLinksWithDefaults();
-
-      const defaultSearchTopsite = urlsReturned.find(s => s.url === "google.com");
-      assert.isTrue(defaultSearchTopsite.searchTopSite);
     });
     it("should dispatch UPDATE_SEARCH_SHORTCUTS on updateCustomSearchShortcuts", async () => {
       feed.store.state.Prefs.values["improvesearch.noDefaultSearchTile"] = true;

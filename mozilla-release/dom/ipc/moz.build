@@ -9,9 +9,15 @@ with Files("**"):
 
 XPIDL_SOURCES += [
     'nsIHangReport.idl',
+    'nsIRemoteWebProgress.idl',
+    'nsIRemoteWebProgressRequest.idl',
 ]
 
 XPIDL_MODULE = 'dom'
+
+XPCOM_MANIFESTS += [
+    'components.conf',
+]
 
 EXTRA_JS_MODULES += [
     'ManifestMessagesChild.jsm',
@@ -30,6 +36,8 @@ EXPORTS.mozilla.dom.ipc += [
 EXPORTS.mozilla.dom += [
     'BrowserBridgeChild.h',
     'BrowserBridgeParent.h',
+    'BrowserChild.h',
+    'BrowserParent.h',
     'CoalescedInputData.h',
     'CoalescedMouseData.h',
     'CoalescedWheelData.h',
@@ -41,18 +49,20 @@ EXPORTS.mozilla.dom += [
     'CSPMessageUtils.h',
     'DocShellMessageUtils.h',
     'FilePickerParent.h',
+    'JSWindowActor.h',
     'JSWindowActorChild.h',
     'JSWindowActorParent.h',
     'JSWindowActorService.h',
     'MemoryReportRequest.h',
     'PermissionMessageUtils.h',
     'ReferrerInfoUtils.h',
-    'TabChild.h',
+    'RemoteWebProgress.h',
+    'RemoteWebProgressRequest.h',
     'TabContext.h',
     'TabMessageUtils.h',
-    'TabParent.h',
     'URLClassifierChild.h',
     'URLClassifierParent.h',
+    'WindowGlobalActor.h',
     'WindowGlobalChild.h',
     'WindowGlobalParent.h',
 ]
@@ -67,6 +77,8 @@ EXPORTS.mozilla += [
 UNIFIED_SOURCES += [
     'BrowserBridgeChild.cpp',
     'BrowserBridgeParent.cpp',
+    'BrowserChild.cpp',
+    'BrowserParent.cpp',
     'CoalescedMouseData.cpp',
     'CoalescedWheelData.cpp',
     'ColorPickerParent.cpp',
@@ -76,6 +88,7 @@ UNIFIED_SOURCES += [
     'CSPMessageUtils.cpp',
     'DocShellMessageUtils.cpp',
     'FilePickerParent.cpp',
+    'JSWindowActor.cpp',
     'JSWindowActorChild.cpp',
     'JSWindowActorParent.cpp',
     'JSWindowActorService.cpp',
@@ -86,14 +99,15 @@ UNIFIED_SOURCES += [
     'PreallocatedProcessManager.cpp',
     'ProcessPriorityManager.cpp',
     'ReferrerInfoUtils.cpp',
+    'RemoteWebProgress.cpp',
+    'RemoteWebProgressRequest.cpp',
     'SharedMap.cpp',
     'SharedStringMap.cpp',
     'StructuredCloneData.cpp',
-    'TabChild.cpp',
     'TabContext.cpp',
     'TabMessageUtils.cpp',
-    'TabParent.cpp',
     'URLClassifierParent.cpp',
+    'WindowGlobalActor.cpp',
     'WindowGlobalChild.cpp',
     'WindowGlobalParent.cpp',
 ]
@@ -132,12 +146,7 @@ include('/ipc/chromium/chromium-config.mozbuild')
 
 FINAL_LIBRARY = 'xul'
 
-if CONFIG['MOZ_SANDBOX'] and CONFIG['OS_TARGET'] == 'Darwin':
-    USE_LIBS += [
-        'mozsandbox',
-    ]
-
-if CONFIG['MOZ_CONTENT_SANDBOX'] and CONFIG['OS_ARCH'] == 'Linux':
+if CONFIG['MOZ_SANDBOX'] and (CONFIG['OS_TARGET'] in ['Darwin', 'Linux']):
     USE_LIBS += [
         'mozsandbox',
     ]
@@ -154,7 +163,7 @@ LOCAL_INCLUDES += [
     '/dom/media/webspeech/synth/ipc',
     '/dom/security',
     '/dom/storage',
-    '/extensions/cookie',
+    '/extensions/permissions',
     '/extensions/spellcheck/src',
     '/gfx/2d',
     '/hal/sandbox',
@@ -189,12 +198,13 @@ DEFINES['BIN_SUFFIX'] = '"%s"' % CONFIG['BIN_SUFFIX']
 if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'android':
     DEFINES['MOZ_ENABLE_FREETYPE'] = True
 
-if CONFIG['MOZ_TOOLKIT_SEARCH']:
-    DEFINES['MOZ_TOOLKIT_SEARCH'] = True
-
 JAR_MANIFESTS += ['jar.mn']
 
-BROWSER_CHROME_MANIFESTS += ['tests/browser.ini']
+BROWSER_CHROME_MANIFESTS += [
+    'tests/browser.ini',
+    'tests/JSWindowActor/browser.ini',
+]
+
 MOCHITEST_CHROME_MANIFESTS += ['tests/chrome.ini']
 MOCHITEST_MANIFESTS += ['tests/mochitest.ini']
 XPCSHELL_TESTS_MANIFESTS += ['tests/xpcshell.ini']

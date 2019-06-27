@@ -56,6 +56,8 @@ function startup() {
     window.close();
     throw (e);
   }
+  document.addEventListener("dialogaccept", acceptDialog);
+  document.addEventListener("dialogcancel", exitDialog);
 }
 
 function flush(cancelled) {
@@ -110,8 +112,8 @@ function acceptDialog(event) {
     var pleaseSelect =
       gProfileManagerBundle.getFormattedString("pleaseSelect", [appName]);
     Services.prompt.alert(window, pleaseSelectTitle, pleaseSelect);
-
-    return false;
+    event.preventDefault();
+    return;
   }
 
   gDialogParams.objects.insertElementAt(selectedProfile.profile.rootDir, 0);
@@ -126,16 +128,11 @@ function acceptDialog(event) {
       // profile based on the lock's directories.
     }
   }
-
   flush(false);
-
-  return true;
 }
 
 function exitDialog() {
   flush(true);
-
-  return true;
 }
 
 function updateStartupPrefs() {

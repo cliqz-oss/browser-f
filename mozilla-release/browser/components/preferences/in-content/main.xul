@@ -4,18 +4,17 @@
 
 <!-- General panel -->
 
-<script type="application/javascript"
-        src="chrome://browser/content/preferences/in-content/main.js"/>
+<script src="chrome://browser/content/preferences/in-content/main.js"/>
 
 #ifdef MOZ_UPDATER
-  <script type="application/javascript" src="chrome://browser/content/aboutDialog-appUpdater.js"/>
+  <script src="chrome://browser/content/aboutDialog-appUpdater.js"/>
 #endif
 
-<script type="application/javascript"
-        src="chrome://mozapps/content/preferences/fontbuilder.js"/>
+<script src="chrome://mozapps/content/preferences/fontbuilder.js"/>
 
 <stringbundle id="bundlePreferences" src="chrome://browser/locale/preferences.properties"/>
 
+<<<<<<< HEAD
 #if 0
 <!--
   CLIQZ-TODO: since FF67 added CDATA syntax
@@ -25,6 +24,11 @@
 -->
 <box id="template-paneGeneral" hidden="true"><![CDATA[
 #endif
+||||||| merged common ancestors
+<box id="template-paneGeneral" hidden="true"><![CDATA[
+=======
+<html:template id="template-paneGeneral">
+>>>>>>> 822b139b92cedf98ab96ccad686dae664d417af4
 <hbox id="generalCategory"
       class="subcategory"
       hidden="true"
@@ -71,6 +75,7 @@
 #endif
         <label id="isNotDefaultLabel" flex="1" data-l10n-id="is-not-default"/>
         <button id="setDefaultButton"
+                is="highlightable-button"
                 class="accessory-button"
                 data-l10n-id="set-as-my-default-browser"
                 preference="pref.general.disable_button.default_browser"/>
@@ -172,6 +177,7 @@
             align="center" class="extension-controlled">
         <description control="disableContainersExtension" flex="1" />
         <button id="disableContainersExtension"
+                is="highlightable-button"
                 class="extension-controlled-button accessory-button"
                 data-l10n-id="disable-extension" />
       </hbox>
@@ -186,6 +192,7 @@
         <!-- Please don't remove the wrapping hbox/vbox/box for these elements. It's used to properly compute the search tooltip position. -->
         <hbox>
           <button id="browserContainersSettings"
+                  is="highlightable-button"
                   class="accessory-button"
                   data-l10n-id="browser-containers-settings"
                   search-l10n-ids="containers-add-button.label,
@@ -253,6 +260,7 @@
     <!-- Please don't remove the wrapping hbox/vbox/box for these elements. It's used to properly compute the search tooltip position. -->
     <hbox>
       <button id="advancedFonts"
+              is="highlightable-button"
               class="accessory-button"
               icon="select-font"
               data-l10n-id="advanced-fonts"
@@ -325,6 +333,7 @@
     <!-- Please don't remove the wrapping hbox/vbox/box for these elements. It's used to properly compute the search tooltip position. -->
     <hbox>
       <button id="colors"
+              is="highlightable-button"
               class="accessory-button"
               icon="select-color"
               data-l10n-id="colors-settings"
@@ -360,6 +369,7 @@
       </menulist>
       <!-- CLIQZ-SPECIAL, DB-2015: Remove option to download language packs from AMO
       <button id="manageBrowserLanguagesButton"
+              is="highlightable-button"
               class="accessory-button"
               data-l10n-id="manage-browser-languages-button"
               oncommand="gMainPane.showBrowserLanguages({search: false})"/>
@@ -379,6 +389,7 @@
     <!--
     <hbox>
       <button id="chooseLanguage"
+              is="highlightable-button"
               class="accessory-button"
               data-l10n-id="choose-button"
               search-l10n-ids="
@@ -409,6 +420,7 @@
       </hbox>
     </hbox>
     <button id="translateButton"
+            is="highlightable-button"
             class="accessory-button"
             data-l10n-id="translate-exceptions"/>
   </hbox>
@@ -444,6 +456,7 @@
                readonly="true"
                aria-labelledby="saveTo"/>
       <button id="chooseFolder"
+              is="highlightable-button"
               class="accessory-button"
               data-l10n-id="download-choose-folder"/>
     </hbox>
@@ -463,7 +476,7 @@
   <label><html:h2 data-l10n-id="applications-header"/></label>
   <description data-l10n-id="applications-description"/>
   <textbox id="filter" flex="1"
-           type="search"
+           is="search-textbox"
            data-l10n-id="applications-filter"
            aria-controls="handlersView"/>
 
@@ -520,6 +533,7 @@
     <!-- Please don't remove the wrapping hbox/vbox/box for these elements. It's used to properly compute the search tooltip position. -->
     <vbox>
       <button id="showUpdateHistory"
+              is="highlightable-button"
               class="accessory-button"
               data-l10n-id="update-history"
               preference="app.update.disable_button.showUpdateHistory"
@@ -536,18 +550,21 @@
       <hbox id="checkForUpdates" align="start">
         <spacer flex="1"/>
         <button id="checkForUpdatesButton"
+                is="highlightable-button"
                 data-l10n-id="update-checkForUpdatesButton"
                 oncommand="gAppUpdater.checkForUpdates();"/>
       </hbox>
       <hbox id="downloadAndInstall" align="start">
         <spacer flex="1"/>
         <button id="downloadAndInstallButton"
+                is="highlightable-button"
                 oncommand="gAppUpdater.startDownload();"/>
                 <!-- label and accesskey will be filled by JS -->
       </hbox>
       <hbox id="apply" align="start">
         <spacer flex="1"/>
         <button id="updateButton"
+                is="highlightable-button"
                 data-l10n-id="update-updateButton"
                 oncommand="gAppUpdater.buttonRestartAfterDownload();"/>
       </hbox>
@@ -556,6 +573,7 @@
         <label data-l10n-id="update-checkingForUpdates"></label>
         <spacer flex="1"/>
         <button data-l10n-id="update-checkForUpdatesButton"
+                is="highlightable-button"
                 disabled="true"/>
       </hbox>
       <hbox id="downloading" align="start" data-l10n-id="update-downloading">
@@ -572,12 +590,14 @@
         </label>
         <spacer flex="1"/>
         <button data-l10n-id="update-checkForUpdatesButton"
+                is="highlightable-button"
                 oncommand="gAppUpdater.checkForUpdates();"/>
       </hbox>
       <hbox id="policyDisabled" align="start">
         <label data-l10n-id="update-adminDisabled"></label>
         <spacer flex="1"/>
         <button data-l10n-id="update-checkForUpdatesButton"
+                is="highlightable-button"
                 disabled="true"/>
       </hbox>
       <hbox id="noUpdatesFound" align="start">
@@ -587,12 +607,14 @@
         <label data-l10n-id="update-noUpdatesFound"></label>
         <spacer flex="1"/>
         <button data-l10n-id="update-checkForUpdatesButton"
+                is="highlightable-button"
                 oncommand="gAppUpdater.checkForUpdates();"/>
       </hbox>
       <hbox id="otherInstanceHandlingUpdates" align="start">
         <label data-l10n-id="update-otherInstanceHandlingUpdates"></label>
         <spacer flex="1"/>
         <button data-l10n-id="update-checkForUpdatesButton"
+                is="highlightable-button"
                 disabled="true"/>
       </hbox>
       <hbox id="manualUpdate" align="start">
@@ -604,6 +626,7 @@
         </description>
         <spacer flex="1"/>
         <button data-l10n-id="update-checkForUpdatesButton"
+                is="highlightable-button"
                 disabled="true"/>
       </hbox>
       <hbox id="unsupportedSystem" align="start">
@@ -612,12 +635,14 @@
         </description>
         <spacer flex="1"/>
         <button data-l10n-id="update-checkForUpdatesButton"
+                is="highlightable-button"
                 disabled="true"/>
       </hbox>
       <hbox id="restarting" align="start">
         <image class="update-throbber"/><label data-l10n-id="update-restarting"></label>
         <spacer flex="1"/>
         <button data-l10n-id="update-updateButton"
+                is="highlightable-button"
                 disabled="true"/>
       </hbox>
     </deck>
@@ -772,6 +797,7 @@
     <!-- Please don't remove the wrapping hbox/vbox/box for these elements. It's used to properly compute the search tooltip position. -->
     <hbox>
       <button id="connectionSettings"
+              is="highlightable-button"
               class="accessory-button"
               icon="network"
               data-l10n-id="network-proxy-connection-settings"
@@ -796,13 +822,18 @@
                 connection-proxy-reload.label,
                 connection-proxy-autologin.label,
                 connection-proxy-socks-remote-dns.label,
-                connection-dns-over-https,
-                connection-dns-over-https-url-custom,
-                connection-dns-over-https-url-default,
+                connection-dns-over-https.label,
+                connection-dns-over-https-url-custom.label,
             " />
     </hbox>
   </hbox>
 </groupbox>
+<<<<<<< HEAD
 #if 0
 ]]></box>
 #endif
+||||||| merged common ancestors
+]]></box>
+=======
+</html:template>
+>>>>>>> 822b139b92cedf98ab96ccad686dae664d417af4

@@ -9,6 +9,7 @@
 #include "nsIFrame.h"
 #include "nsContentUtils.h"
 #include "nsLayoutUtils.h"
+#include "mozilla/PresShell.h"
 #include "mozilla/ServoBindings.h"
 
 namespace mozilla {
@@ -252,7 +253,7 @@ void DOMIntersectionObserver::Update(Document* aDocument,
           rootFrame, rootRectRelativeToRootFrame, containingBlock);
     }
   } else {
-    nsCOMPtr<nsIPresShell> presShell = aDocument->GetShell();
+    RefPtr<PresShell> presShell = aDocument->GetPresShell();
     if (presShell) {
       rootFrame = presShell->GetRootScrollFrame();
       if (rootFrame) {
@@ -292,6 +293,7 @@ void DOMIntersectionObserver::Update(Document* aDocument,
   for (size_t i = 0; i < mObservationTargets.Length(); ++i) {
     Element* target = mObservationTargets.ElementAt(i);
     nsIFrame* targetFrame = target->GetPrimaryFrame();
+    nsIFrame* originalTargetFrame = targetFrame;
     nsRect targetRect;
     Maybe<nsRect> intersectionRect;
     bool isSameDoc = root && root->GetComposedDoc() == target->GetComposedDoc();
@@ -373,7 +375,7 @@ void DOMIntersectionObserver::Update(Document* aDocument,
           intersectionRectRelativeToRoot, rootIntersectionRect);
       if (intersectionRect.isSome() && !isSameDoc) {
         nsRect rect = intersectionRect.value();
-        nsPresContext* presContext = targetFrame->PresContext();
+        nsPresContext* presContext = originalTargetFrame->PresContext();
         nsIFrame* rootScrollFrame =
             presContext->PresShell()->GetRootScrollFrame();
         if (rootScrollFrame) {
@@ -460,7 +462,8 @@ void DOMIntersectionObserver::Notify() {
     }
   }
   mQueuedEntries.Clear();
-  mCallback->Call(this, entries, *this);
+  RefPtr<dom::IntersectionCallback> callback(mCallback);
+  callback->Call(this, entries, *this);
 }
 
 }  // namespace dom

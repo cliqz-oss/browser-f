@@ -230,7 +230,6 @@ function lazyRequireGetter(obj, property, module, destructure) {
 exports.modules = {
   ChromeUtils,
   HeapSnapshot,
-  InspectorUtils,
   promise,
   // Expose "chrome" Promise, which aren't related to any document
   // and so are never frozen, even if the browser loader module which
@@ -269,6 +268,14 @@ defineLazyGetter(exports.modules, "RecordReplayControl", () => {
   return global.RecordReplayControl;
 });
 
+defineLazyGetter(exports.modules, "InspectorUtils", () => {
+  if (exports.modules.Debugger.recordReplayProcessKind() == "Middleman") {
+    const ReplayInspector = require("devtools/server/actors/replay/inspector");
+    return ReplayInspector.createInspectorUtils(InspectorUtils);
+  }
+  return InspectorUtils;
+});
+
 defineLazyGetter(exports.modules, "Timer", () => {
   const {setTimeout, clearTimeout} = require("resource://gre/modules/Timer.jsm");
   // Do not return Cu.import result, as DevTools loader would freeze Timer.jsm globals...
@@ -290,7 +297,6 @@ exports.globals = {
   btoa,
   console,
   CSS,
-  CSSRule,
   // Make sure `define` function exists.  This allows defining some modules
   // in AMD format while retaining CommonJS compatibility through this hook.
   // JSON Viewer needs modules in AMD format, as it currently uses RequireJS
@@ -370,4 +376,14 @@ lazyGlobal("WebSocket", () => {
 });
 lazyGlobal("indexedDB", () => {
   return require("devtools/shared/indexed-db").createDevToolsIndexedDB(indexedDB);
+});
+lazyGlobal("isReplaying", () => {
+  return exports.modules.Debugger.recordReplayProcessKind() == "Middleman";
+});
+lazyGlobal("CSSRule", () => {
+  if (exports.modules.Debugger.recordReplayProcessKind() == "Middleman") {
+    const ReplayInspector = require("devtools/server/actors/replay/inspector");
+    return ReplayInspector.createCSSRule(CSSRule);
+  }
+  return CSSRule;
 });

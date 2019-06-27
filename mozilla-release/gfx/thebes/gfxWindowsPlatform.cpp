@@ -1229,6 +1229,8 @@ void gfxWindowsPlatform::SetupClearTypeParams() {
       dwriteGeometry = defaultRenderingParams->GetPixelGeometry();
     }
 
+    Factory::SetBGRSubpixelOrder(dwriteGeometry == DWRITE_PIXEL_GEOMETRY_BGR);
+
     if (renderMode < DWRITE_RENDERING_MODE_DEFAULT ||
         renderMode > DWRITE_RENDERING_MODE_CLEARTYPE_NATURAL_SYMMETRIC) {
       renderMode = defaultRenderingParams->GetRenderingMode();
@@ -1922,7 +1924,7 @@ class D3DVsyncSource final : public VsyncSource {
   virtual Display& GetGlobalDisplay() override { return *mPrimaryDisplay; }
 
  private:
-  virtual ~D3DVsyncSource() {}
+  virtual ~D3DVsyncSource() = default;
   RefPtr<D3DVsyncDisplay> mPrimaryDisplay;
 };  // end D3DVsyncSource
 
@@ -1963,7 +1965,7 @@ void gfxWindowsPlatform::ImportGPUDeviceData(
 
   DeviceManagerDx* dm = DeviceManagerDx::Get();
   if (gfxConfig::IsEnabled(Feature::D3D11_COMPOSITING)) {
-    dm->ImportDeviceInfo(aData.gpuDevice().get_D3D11DeviceStatus());
+    dm->ImportDeviceInfo(aData.gpuDevice().ref());
   } else {
     // There should be no devices, so this just takes away the device status.
     dm->ResetDevices();

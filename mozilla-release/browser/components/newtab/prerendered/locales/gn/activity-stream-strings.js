@@ -40,9 +40,7 @@ window.gActivityStreamStrings = {
   "section_disclaimer_topstories_buttontext": "Oĩma, hesakãma chéve",
   "prefs_home_header": "Kuatiarogue retepy Firefox ñepyrũháme",
   "prefs_home_description": "Eiporavo mba’e retepýpa eipota Firefox mba’erechaha ñepyrũháme.",
-  "prefs_content_discovery_header": "Firefox kuatiarogue ñepyrũ",
   "prefs_content_discovery_description": "Content Discovery Firefox kuatiarogue ñepyrũme ohechaukakuaa tetepy oikóva ha iporãva ñandutípe g̃uarã.",
-  "prefs_content_discovery_button": "Eipe'a Content Discovery",
   "prefs_section_rows_option": "{num} rysýi; {num} rysýi",
   "prefs_search_header": "Ñandutípe jeheka",
   "prefs_topsites_description": "Umi tenda ojeikeveha",
@@ -107,8 +105,5 @@ window.gActivityStreamStrings = {
   "firstrun_privacy_notice": "Ñemigua purureko",
   "firstrun_continue_to_login": "Eku'ejey",
   "firstrun_skip_login": "Ehejánte kóva",
-  "context_menu_title": "Eike poravorãme",
-  "manual_migration_explanation2": "Eipuru Firefox reheve techaukaha, tembiasakue ha ñe'ẽñemi ambue kundaharapegua.",
-  "manual_migration_cancel_button": "Ag̃amiénte",
-  "manual_migration_import_button": "Egueroike Ko'ág̃a"
+  "context_menu_title": "Eike poravorãme"
 };

@@ -69,6 +69,12 @@ class nsSVGIntegrationUtils final {
   static bool UsingMaskOrClipPathForFrame(const nsIFrame* aFrame);
 
   /**
+   * Returns true if the element has a clippath that is simple enough to
+   * be represented without a mask in WebRender.
+   */
+  static bool UsingSimpleClipPathForFrame(const nsIFrame* aFrame);
+
+  /**
    * Returns the size of the union of the border-box rects of all of
    * aNonSVGFrame's continuations.
    */
@@ -135,7 +141,7 @@ class nsSVGIntegrationUtils final {
    * repaint
    */
   static nsRect GetRequiredSourceForInvalidArea(nsIFrame* aFrame,
-                                                const nsRect& aDamageRect);
+                                                const nsRect& aDirtyRect);
 
   /**
    * Returns true if the given point is not clipped out by effects.

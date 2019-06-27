@@ -939,12 +939,8 @@ this.tabs = class extends ExtensionAPI {
                 gBrowser.pinTab(newTab);
               }
               gBrowser.moveTabTo(newTab, nativeTab._tPos + 1);
-            }, {once: true});
 
-            newTab.addEventListener("SSTabRestored", function() {
-              // Once it has been restored, select it and return the promise.
               gBrowser.selectedTab = newTab;
-
               resolve(tabManager.convert(newTab));
             }, {once: true});
           });
@@ -1104,7 +1100,7 @@ this.tabs = class extends ExtensionAPI {
           } = activeTab.ownerGlobal;
 
           return new Promise((resolve, reject) => {
-            let ppBrowser = PrintUtils._shouldSimplify ?
+            let ppBrowser = PrintUtils.shouldSimplify ?
               PrintPreviewListener.getSimplifiedPrintPreviewBrowser() :
               PrintPreviewListener.getPrintPreviewBrowser();
 

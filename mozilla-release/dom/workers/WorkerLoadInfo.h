@@ -24,13 +24,14 @@ class nsILoadGroup;
 class nsIPrincipal;
 class nsIRunnable;
 class nsIScriptContext;
-class nsITabChild;
+class nsIBrowserChild;
 class nsIURI;
 class nsPIDOMWindowInner;
 
 namespace mozilla {
 
 namespace ipc {
+class ContentSecurityPolicy;
 class PrincipalInfo;
 }  // namespace ipc
 
@@ -50,6 +51,7 @@ struct WorkerLoadInfoData {
   // If we load a data: URL, mPrincipal will be a null principal.
   nsCOMPtr<nsIPrincipal> mLoadingPrincipal;
   nsCOMPtr<nsIPrincipal> mPrincipal;
+  nsCOMPtr<nsIPrincipal> mStoragePrincipal;
 
   // Taken from the parent context.
   nsCOMPtr<nsICookieSettings> mCookieSettings;
@@ -65,7 +67,7 @@ struct WorkerLoadInfoData {
 
    public:
     InterfaceRequestor(nsIPrincipal* aPrincipal, nsILoadGroup* aLoadGroup);
-    void MaybeAddTabChild(nsILoadGroup* aLoadGroup);
+    void MaybeAddBrowserChild(nsILoadGroup* aLoadGroup);
     NS_IMETHOD GetInterface(const nsIID& aIID, void** aSink) override;
 
     void SetOuterRequestor(nsIInterfaceRequestor* aOuterRequestor) {
@@ -77,22 +79,26 @@ struct WorkerLoadInfoData {
    private:
     ~InterfaceRequestor() {}
 
-    already_AddRefed<nsITabChild> GetAnyLiveTabChild();
+    already_AddRefed<nsIBrowserChild> GetAnyLiveBrowserChild();
 
     nsCOMPtr<nsILoadContext> mLoadContext;
     nsCOMPtr<nsIInterfaceRequestor> mOuterRequestor;
 
-    // Array of weak references to nsITabChild.  We do not want to keep TabChild
-    // actors alive for long after their ActorDestroy() methods are called.
-    nsTArray<nsWeakPtr> mTabChildList;
+    // Array of weak references to nsIBrowserChild.  We do not want to keep
+    // BrowserChild actors alive for long after their ActorDestroy() methods are
+    // called.
+    nsTArray<nsWeakPtr> mBrowserChildList;
   };
 
   // Only set if we have a custom overriden load group
   RefPtr<InterfaceRequestor> mInterfaceRequestor;
 
   nsAutoPtr<mozilla::ipc::PrincipalInfo> mPrincipalInfo;
+  nsAutoPtr<mozilla::ipc::PrincipalInfo> mStoragePrincipalInfo;
   nsCString mDomain;
   nsString mOrigin;  // Derived from mPrincipal; can be used on worker thread.
+
+  nsTArray<mozilla::ipc::ContentSecurityPolicy> mCSPInfos;
 
   nsString mServiceWorkerCacheName;
   Maybe<ServiceWorkerDescriptor> mServiceWorkerDescriptor;
@@ -112,7 +118,8 @@ struct WorkerLoadInfoData {
   bool mReportCSPViolations;
   bool mXHRParamsAllowed;
   bool mPrincipalIsSystem;
-  bool mStorageAllowed;
+  bool mWatchedByDevtools;
+  nsContentUtils::StorageAccess mStorageAccess;
   bool mFirstPartyStorageAccessGranted;
   bool mServiceWorkersTestingInWindow;
   OriginAttributes mOriginAttributes;
@@ -136,14 +143,15 @@ struct WorkerLoadInfo : WorkerLoadInfoData {
 
   WorkerLoadInfo& operator=(WorkerLoadInfo&& aOther) = default;
 
-  nsresult SetPrincipalOnMainThread(nsIPrincipal* aPrincipal,
-                                    nsILoadGroup* aLoadGroup);
+  nsresult SetPrincipalsOnMainThread(nsIPrincipal* aPrincipal,
+                                     nsIPrincipal* aStoragePrincipal,
+                                     nsILoadGroup* aLoadGroup);
 
-  nsresult GetPrincipalAndLoadGroupFromChannel(nsIChannel* aChannel,
-                                               nsIPrincipal** aPrincipalOut,
-                                               nsILoadGroup** aLoadGroupOut);
+  nsresult GetPrincipalsAndLoadGroupFromChannel(
+      nsIChannel* aChannel, nsIPrincipal** aPrincipalOut,
+      nsIPrincipal** aStoragePrincipalOut, nsILoadGroup** aLoadGroupOut);
 
-  nsresult SetPrincipalFromChannel(nsIChannel* aChannel);
+  nsresult SetPrincipalsFromChannel(nsIChannel* aChannel);
 
   bool FinalChannelPrincipalIsValid(nsIChannel* aChannel);
 

@@ -24,6 +24,7 @@ add_task(async function() {
     id: USB_RUNTIME_ID,
     runtimeName: USB_APP_NAME,
     sidebarName: USB_DEVICE_NAME,
+    type: "usb",
   });
 
   info("Test with a network runtime");
@@ -36,11 +37,12 @@ add_task(async function() {
     id: NETWORK_RUNTIME_HOST,
     runtimeName: NETWORK_RUNTIME_APP_NAME,
     sidebarName: NETWORK_RUNTIME_HOST,
+    type: "network",
   });
 });
 
 async function testRemoteClientPersistConnection(mocks,
-  { client, id, runtimeName, sidebarName }) {
+  { client, id, runtimeName, sidebarName, type }) {
   info("Open about:debugging and connect to the test runtime");
   let { document, tab, window } = await openAboutDebugging();
   await selectThisFirefoxPage(document, window.AboutDebugging.store);
@@ -54,7 +56,13 @@ async function testRemoteClientPersistConnection(mocks,
   info("Wait until the remote runtime appears as connected");
   await waitUntil(() => {
     const sidebarItem = findSidebarItemByText(sidebarName, document);
-    return sidebarItem && !sidebarItem.querySelector(".js-connect-button");
+    return sidebarItem && !sidebarItem.querySelector(".qa-connect-button");
+  });
+
+  info("Wait until the remote runtime page is selected");
+  await waitUntil(() => {
+    const runtimeInfo = document.querySelector(".qa-runtime-name");
+    return runtimeInfo && runtimeInfo.textContent.includes(runtimeName);
   });
 
   // Remove the runtime without emitting an update.
@@ -64,7 +72,12 @@ async function testRemoteClientPersistConnection(mocks,
 
   info("Emit 'closed' on the client and wait for the sidebar item to disappear");
   client._eventEmitter.emit("closed");
-  await waitUntil(() => !findSidebarItemByText(sidebarName, document));
+  if (type === "usb") {
+    await waitUntilUsbDeviceIsUnplugged(sidebarName, document);
+  } else {
+    await waitUntil(() => !findSidebarItemByText(sidebarName, document) &&
+                        !findSidebarItemByText(runtimeName, document));
+  }
 
   info("Remove the tab");
   await removeTab(tab);

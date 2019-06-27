@@ -131,19 +131,30 @@ class WebConsoleWrapper {
          * frame depth given.
          *
          * @param {Number} frame: optional frame depth.
-         * @return {String|null}: The FrameActor ID for the given frame depth (or the
-         *                        selected frame if it exists).
+         * @return { frameActor: String|null, client: Object }:
+         *         frameActor is the FrameActor ID for the given frame depth
+         *         (or the selected frame if it exists), null if no frame was found.
+         *         client is the WebConsole client for the thread the frame is
+         *         associated with.
          */
         getFrameActor: (frame = null) => {
           const state = this.hud.getDebuggerFrames();
           if (!state) {
-            return null;
+            return { frameActor: null, client: webConsoleUI.webConsoleClient };
           }
 
           const grip = Number.isInteger(frame)
             ? state.frames[frame]
             : state.frames[state.selected];
-          return grip ? grip.actor : null;
+
+          if (!grip) {
+            return { frameActor: null, client: webConsoleUI.webConsoleClient };
+          }
+
+          return {
+            frameActor: grip.actor,
+            client: this.hud.lookupConsoleClient(grip.thread),
+          };
         },
 
         inputHasSelection: () => {
@@ -167,6 +178,10 @@ class WebConsoleWrapper {
 
         evaluateInput: (expression) => {
           return webConsoleUI.jsterm && webConsoleUI.jsterm.execute(expression);
+        },
+
+        requestEvaluation: (string, options) => {
+          return webConsoleUI.webConsoleClient.evaluateJSAsync(string, options);
         },
 
         getInputCursor: () => {
@@ -241,7 +256,7 @@ class WebConsoleWrapper {
 
         // Emit the "menu-open" event for testing.
         menu.once("open", () => this.emit("menu-open"));
-        menu.popup(screenX, screenY, { doc: this.hud.chromeWindow.document });
+        menu.popup(screenX, screenY, this.hud.chromeWindow.document);
 
         return menu;
       };
@@ -251,7 +266,7 @@ class WebConsoleWrapper {
         const menu = createEditContextMenu(window, "webconsole-menu");
         // Emit the "menu-open" event for testing.
         menu.once("open", () => this.emit("menu-open"));
-        menu.popup(screenX, screenY, { doc: this.hud.chromeWindow.document });
+        menu.popup(screenX, screenY, this.hud.chromeWindow.document);
 
         return menu;
       };
@@ -264,7 +279,7 @@ class WebConsoleWrapper {
         Object.assign(serviceContainer, {
           onViewSourceInDebugger: frame => {
             this.toolbox.viewSourceInDebugger(
-              frame.url, frame.line, frame.sourceId
+              frame.url, frame.line, frame.column, frame.sourceId
             ).then(() => {
               this.telemetry.recordEvent(
                 "jump_to_source", "webconsole",
@@ -293,6 +308,11 @@ class WebConsoleWrapper {
           openNetworkPanel: (requestId) => {
             return this.toolbox.selectTool("netmonitor").then((panel) => {
               return panel.panelWin.Netmonitor.inspectRequest(requestId);
+            });
+          },
+          resendNetworkRequest: (requestId) => {
+            return this.toolbox.getNetMonitorAPI().then((api) => {
+              return api.resendRequest(requestId);
             });
           },
           sourceMapService: this.toolbox ? this.toolbox.sourceMapURLService : null,
@@ -344,6 +364,7 @@ class WebConsoleWrapper {
       const {prefs} = store.getState();
       const jstermCodeMirror = prefs.jstermCodeMirror
         && !Services.appinfo.accessibilityEnabled;
+      const autocomplete = prefs.autocomplete;
 
       const app = App({
         attachRefToWebConsoleUI,
@@ -352,6 +373,9 @@ class WebConsoleWrapper {
         onFirstMeaningfulPaint: resolve,
         closeSplitConsole: this.closeSplitConsole.bind(this),
         jstermCodeMirror,
+        autocomplete,
+        hideShowContentMessagesCheckbox: !webConsoleUI.isBrowserConsole ||
+          !prefs.filterContentMessages,
       });
 
       // Render the root Application component.

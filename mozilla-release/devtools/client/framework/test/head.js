@@ -367,7 +367,7 @@ function getElementByToolIdOrExtensionIdOrSelector(toolbox, idOrSelector) {
 }
 
 function getWindow(toolbox) {
-  return toolbox.win.parent;
+  return toolbox.topWindow;
 }
 
 async function resizeWindow(toolbox, width, height) {
@@ -388,4 +388,58 @@ function assertSelectedLocationInDebugger(debuggerPanel, line, column) {
   );
   is(location.line, line);
   is(location.column, column);
+}
+
+/**
+ * Open a new tab on about:devtools-toolbox with the provided params object used as
+ * queryString.
+ */
+async function openAboutToolbox(params) {
+  info("Open about:devtools-toolbox");
+  const querystring = new URLSearchParams();
+  Object.keys(params).forEach(x => querystring.append(x, params[x]));
+
+  const tab = await addTab(`about:devtools-toolbox?${querystring}`);
+  const browser = tab.linkedBrowser;
+
+  return {
+    tab,
+    document: browser.contentDocument,
+  };
+}
+
+/**
+ * Enable temporary preferences useful to run browser toolbox process tests.
+ * Returns a promise that will resolve when the preferences are set.
+ */
+function setupPreferencesForBrowserToolbox() {
+  const options = {"set": [
+    ["devtools.debugger.prompt-connection", false],
+    ["devtools.debugger.remote-enabled", true],
+    ["devtools.chrome.enabled", true],
+    // Test-only pref to allow passing `testScript` argument to the browser
+    // toolbox
+    ["devtools.browser-toolbox.allow-unsafe-script", true],
+    // On debug test runner, it takes more than the default time (20s)
+    // to get a initialized console
+    ["devtools.debugger.remote-timeout", 120000],
+  ]};
+
+  return SpecialPowers.pushPrefEnv(options);
+}
+
+/**
+ * Load FTL.
+ *
+ * @param {Toolbox} toolbox
+ *        Toolbox instance.
+ * @param {String} path
+ *        Path to the FTL file.
+ */
+function loadFTL(toolbox, path) {
+  const win = toolbox.doc.ownerGlobal;
+
+  if (win.MozXULElement) {
+    win.MozXULElement.insertFTLIfNeeded(path);
+  }
 }

@@ -40,9 +40,7 @@ window.gActivityStreamStrings = {
   "section_disclaimer_topstories_buttontext": "У реду",
   "prefs_home_header": "Садржај Firefox почетне странице",
   "prefs_home_description": "Изаберите садржај који желите видети на вашој Firefox почетној страници.",
-  "prefs_content_discovery_header": "Firefox почетна",
   "prefs_content_discovery_description": "Откривање садржаја на Firefox почетној вам омогућава да добијете веома квалитетне и вама значајне чланке са целог веба.",
-  "prefs_content_discovery_button": "Искључи откривање садржаја",
   "prefs_section_rows_option": "{num} ред;{num} реда;{num} редова",
   "prefs_search_header": "Веб претрага",
   "prefs_topsites_description": "Сајтови које највише посећујете",
@@ -107,8 +105,5 @@ window.gActivityStreamStrings = {
   "firstrun_privacy_notice": "обавештење о приватности",
   "firstrun_continue_to_login": "Настави",
   "firstrun_skip_login": "Прескочи овај корак",
-  "context_menu_title": "Отвори мени",
-  "manual_migration_explanation2": "Пробајте FIrefox са коришћењем забелешки, историјата и лозинки из другог прегледача.",
-  "manual_migration_cancel_button": "Не, хвала",
-  "manual_migration_import_button": "Увези сада"
+  "context_menu_title": "Отвори мени"
 };

@@ -520,14 +520,12 @@ dictionary IOActivityDataDictionary {
  * (3) Update the methods on mozilla::OriginAttributesPattern, including matching.
  */
 dictionary OriginAttributesDictionary {
-  unsigned long appId = 0;
   unsigned long userContextId = 0;
   boolean inIsolatedMozBrowser = false;
   unsigned long privateBrowsingId = 0;
   DOMString firstPartyDomain = "";
 };
 dictionary OriginAttributesPatternDictionary {
-  unsigned long appId;
   unsigned long userContextId;
   boolean inIsolatedMozBrowser;
   unsigned long privateBrowsingId;
@@ -605,6 +603,22 @@ dictionary WindowActorOptions {
    * tabbrowser.
    */
   boolean includeChrome = false;
+
+  /**
+   * An array of URL match patterns (as accepted by the MatchPattern
+   * class in MatchPattern.webidl) which restrict which pages the actor
+   * may be instantiated for. If this is defined, only documents URL which match
+   * are allowed to have the given actor created for them. Other
+   * documents will fail to have their actor constructed, returning nullptr.
+   **/
+  sequence<DOMString> matches;
+
+  /**
+   * Optional list of regular expressions for remoteTypes which are
+   * allowed to instantiate this actor. If not passed, all content
+   * processes are allowed to instantiate the actor.
+   **/
+  sequence<DOMString> remoteTypes;
 
   /** This fields are used for configuring individual sides of the actor. */
   required WindowActorSidedOptions parent;

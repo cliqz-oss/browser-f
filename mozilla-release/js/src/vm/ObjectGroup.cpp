@@ -26,8 +26,10 @@
 #include "vm/TaggedProto.h"
 
 #include "gc/Marking-inl.h"
+#include "gc/ObjectKind-inl.h"
+#include "vm/JSObject-inl.h"
+#include "vm/NativeObject-inl.h"
 #include "vm/TypeInference-inl.h"
-#include "vm/UnboxedObject-inl.h"
 
 using namespace js;
 
@@ -50,7 +52,6 @@ void ObjectGroup::finalize(FreeOp* fop) {
     newScriptDontCheckGeneration()->clear();
   }
   fop->delete_(newScriptDontCheckGeneration());
-  fop->delete_(maybeUnboxedLayoutDontCheckGeneration());
   if (maybePreliminaryObjectsDontCheckGeneration()) {
     maybePreliminaryObjectsDontCheckGeneration()->clear();
   }
@@ -73,9 +74,6 @@ size_t ObjectGroup::sizeOfExcludingThis(
   size_t n = 0;
   if (TypeNewScript* newScript = newScriptDontCheckGeneration()) {
     n += newScript->sizeOfIncludingThis(mallocSizeOf);
-  }
-  if (UnboxedLayout* layout = maybeUnboxedLayoutDontCheckGeneration()) {
-    n += layout->sizeOfIncludingThis(mallocSizeOf);
   }
   return n;
 }
@@ -361,7 +359,7 @@ bool JSObject::setNewGroupUnknown(JSContext* cx, ObjectGroupRealm& realm,
  * (though there are only a few of these per realm).
  */
 struct ObjectGroupRealm::NewEntry {
-  ReadBarrieredObjectGroup group;
+  WeakHeapPtrObjectGroup group;
 
   // Note: This pointer is only used for equality and does not need a read
   // barrier.
@@ -567,8 +565,7 @@ ObjectGroup* ObjectGroup::defaultNewGroup(JSContext* cx, const Class* clasp,
   if (p) {
     ObjectGroup* group = p->group;
     MOZ_ASSERT_IF(clasp, group->clasp() == clasp);
-    MOZ_ASSERT_IF(!clasp, group->clasp() == &PlainObject::class_ ||
-                              group->clasp() == &UnboxedPlainObject::class_);
+    MOZ_ASSERT_IF(!clasp, group->clasp() == &PlainObject::class_);
     MOZ_ASSERT(group->proto() == proto);
     groups.defaultNewGroupCache.put(group, associated);
     return group;
@@ -730,6 +727,8 @@ inline const Class* GetClassForProtoKey(JSProtoKey key) {
     case JSProto_Float32Array:
     case JSProto_Float64Array:
     case JSProto_Uint8ClampedArray:
+    case JSProto_BigInt64Array:
+    case JSProto_BigUint64Array:
       return &TypedArrayObject::classes[key - JSProto_Int8Array];
 
     default:
@@ -1015,60 +1014,7 @@ bool js::CombinePlainObjectPropertyTypes(JSContext* cx, JSObject* newObj,
         }
       }
     }
-  } else if (newObj->is<UnboxedPlainObject>()) {
-    const UnboxedLayout& layout = newObj->as<UnboxedPlainObject>().layout();
-    const int32_t* traceList = layout.traceList();
-    if (!traceList) {
-      return true;
-    }
-
-    uint8_t* newData = newObj->as<UnboxedPlainObject>().data();
-    uint8_t* oldData = oldObj->as<UnboxedPlainObject>().data();
-
-    for (; *traceList != -1; traceList++) {
-    }
-    traceList++;
-    for (; *traceList != -1; traceList++) {
-      JSObject* newInnerObj =
-          *reinterpret_cast<JSObject**>(newData + *traceList);
-      JSObject* oldInnerObj =
-          *reinterpret_cast<JSObject**>(oldData + *traceList);
-
-      if (!newInnerObj || !oldInnerObj || SameGroup(oldInnerObj, newInnerObj)) {
-        continue;
-      }
-
-      if (!GiveObjectGroup(cx, newInnerObj, oldInnerObj)) {
-        return false;
-      }
-
-      if (SameGroup(oldInnerObj, newInnerObj)) {
-        continue;
-      }
-
-      if (!GiveObjectGroup(cx, oldInnerObj, newInnerObj)) {
-        return false;
-      }
-
-      if (SameGroup(oldInnerObj, newInnerObj)) {
-        for (size_t i = 1; i < ncompare; i++) {
-          if (compare[i].isObject() &&
-              SameGroup(&compare[i].toObject(), newObj)) {
-            uint8_t* otherData =
-                compare[i].toObject().as<UnboxedPlainObject>().data();
-            JSObject* otherInnerObj =
-                *reinterpret_cast<JSObject**>(otherData + *traceList);
-            if (otherInnerObj && !SameGroup(otherInnerObj, newInnerObj)) {
-              if (!GiveObjectGroup(cx, otherInnerObj, newInnerObj)) {
-                return false;
-              }
-            }
-          }
-        }
-      }
-    }
   }
-
   return true;
 }
 
@@ -1116,8 +1062,8 @@ struct ObjectGroupRealm::PlainObjectKey {
 };
 
 struct ObjectGroupRealm::PlainObjectEntry {
-  ReadBarrieredObjectGroup group;
-  ReadBarrieredShape shape;
+  WeakHeapPtrObjectGroup group;
+  WeakHeapPtrShape shape;
   TypeSet::Type* types;
 
   bool needsSweep(unsigned nproperties) {
@@ -1304,15 +1250,6 @@ JSObject* ObjectGroup::newPlainObject(JSContext* cx, IdValuePair* properties,
   mozilla::Maybe<AutoSweepObjectGroup> sweep;
   sweep.emplace(group);
 
-  // Watch for existing groups which now use an unboxed layout.
-  if (group->maybeUnboxedLayout(*sweep)) {
-    MOZ_ASSERT(group->maybeUnboxedLayout(*sweep)->properties().length() ==
-               nproperties);
-    sweep.reset();
-    return UnboxedPlainObject::createWithProperties(cx, group, newKind,
-                                                    properties);
-  }
-
   // Update property types according to the properties we are about to add.
   // Do this before we do anything which can GC, which might move or remove
   // this table entry.
@@ -1375,12 +1312,12 @@ JSObject* ObjectGroup::newPlainObject(JSContext* cx, IdValuePair* properties,
 
 struct ObjectGroupRealm::AllocationSiteKey
     : public DefaultHasher<AllocationSiteKey> {
-  ReadBarrieredScript script;
+  WeakHeapPtrScript script;
 
   uint32_t offset : 24;
   JSProtoKey kind : 8;
 
-  ReadBarrieredObject proto;
+  WeakHeapPtrObject proto;
 
   static const uint32_t OFFSET_LIMIT = (1 << 23);
 
@@ -1409,17 +1346,20 @@ struct ObjectGroupRealm::AllocationSiteKey
     proto = std::move(key.proto);
   }
 
-  static inline uint32_t hash(AllocationSiteKey key) {
-    return uint32_t(
-        size_t(key.script.unbarrieredGet()->offsetToPC(key.offset)) ^ key.kind ^
-        MovableCellHasher<JSObject*>::hash(key.proto.unbarrieredGet()));
+  static inline HashNumber hash(const AllocationSiteKey& key) {
+    JSScript* script = key.script.unbarrieredGet();
+    JSObject* proto = key.proto.unbarrieredGet();
+    HashNumber hash = mozilla::HashGeneric(key.offset, key.kind);
+    hash = mozilla::AddToHash(hash, MovableCellHasher<JSScript*>::hash(script));
+    hash = mozilla::AddToHash(hash, MovableCellHasher<JSObject*>::hash(proto));
+    return hash;
   }
 
   static inline bool match(const AllocationSiteKey& a,
                            const AllocationSiteKey& b) {
-    return DefaultHasher<JSScript*>::match(a.script.unbarrieredGet(),
-                                           b.script.unbarrieredGet()) &&
-           a.offset == b.offset && a.kind == b.kind &&
+    return a.offset == b.offset && a.kind == b.kind &&
+           MovableCellHasher<JSScript*>::match(a.script.unbarrieredGet(),
+                                               b.script.unbarrieredGet()) &&
            MovableCellHasher<JSObject*>::match(a.proto, b.proto);
   }
 
@@ -1441,9 +1381,9 @@ struct ObjectGroupRealm::AllocationSiteKey
 
 class ObjectGroupRealm::AllocationSiteTable
     : public JS::WeakCache<
-          js::GCHashMap<AllocationSiteKey, ReadBarrieredObjectGroup,
+          js::GCHashMap<AllocationSiteKey, WeakHeapPtrObjectGroup,
                         AllocationSiteKey, SystemAllocPolicy>> {
-  using Table = js::GCHashMap<AllocationSiteKey, ReadBarrieredObjectGroup,
+  using Table = js::GCHashMap<AllocationSiteKey, WeakHeapPtrObjectGroup,
                               AllocationSiteKey, SystemAllocPolicy>;
   using Base = JS::WeakCache<Table>;
 
@@ -1848,7 +1788,7 @@ void ObjectGroupRealm::sweep() {
     plainObjectTable->sweep();
   }
   if (stringSplitStringGroup) {
-    if (JS::GCPolicy<ReadBarrieredObjectGroup>::needsSweep(
+    if (JS::GCPolicy<WeakHeapPtrObjectGroup>::needsSweep(
             &stringSplitStringGroup)) {
       stringSplitStringGroup = nullptr;
     }

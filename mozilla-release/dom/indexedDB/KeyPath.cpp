@@ -15,7 +15,9 @@
 #include "xpcpublic.h"
 
 #include "mozilla/dom/BindingDeclarations.h"
+#include "mozilla/dom/Blob.h"
 #include "mozilla/dom/BlobBinding.h"
+#include "mozilla/dom/File.h"
 #include "mozilla/dom/IDBObjectStoreBinding.h"
 
 namespace mozilla {
@@ -462,6 +464,13 @@ KeyPath KeyPath::DeserializeFromString(const nsAString& aString) {
     tokenizer.nextToken();
     while (tokenizer.hasMoreTokens()) {
       keyPath.mStrings.AppendElement(tokenizer.nextToken());
+    }
+
+    if (tokenizer.separatorAfterCurrentToken()) {
+      // There is a trailing comma, indicating the original KeyPath has
+      // a trailing empty string, i.e. [..., '']. We should append this
+      // empty string.
+      keyPath.mStrings.AppendElement(nsString{});
     }
 
     return keyPath;

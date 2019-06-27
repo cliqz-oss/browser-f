@@ -30,8 +30,6 @@ const SWAPPED_BROWSER_STATE = [
   "_characterSet",
   "_contentPrincipal",
   "_imageDocument",
-  "_fullZoom",
-  "_textZoom",
   "_isSyntheticDocument",
   "_innerWindowID",
 ];
@@ -208,7 +206,8 @@ function tunnelToInnerBrowser(outer, inner) {
       // reattach it here.
       const tab = gBrowser.getTabForBrowser(outer);
       const filteredProgressListener = gBrowser._tabFilters.get(tab);
-      outer.webProgress.addProgressListener(filteredProgressListener);
+      outer.webProgress.addProgressListener(filteredProgressListener,
+                                            Ci.nsIWebProgress.NOTIFY_ALL);
 
       // Add the inner browser to tabbrowser's WeakMap from browser to tab.  This assists
       // with tabbrowser's processing of some events such as MozLayerTreeReady which
@@ -262,13 +261,16 @@ function tunnelToInnerBrowser(outer, inner) {
       const { detail } = event;
       event.preventDefault();
       const uri = Services.io.newURI(detail.url);
+      let flags = Ci.nsIBrowserDOMWindow.OPEN_NEWTAB;
+      if (detail.forceNoReferrer) {
+        flags |= Ci.nsIBrowserDOMWindow.OPEN_NO_REFERRER;
+      }
       // This API is used mainly because it's near the path used for <a target/> with
       // regular browser tabs (which calls `openURIInFrame`).  The more elaborate APIs
       // that support openers, window features, etc. didn't seem callable from JS and / or
       // this event doesn't give enough info to use them.
       browserWindow.browserDOMWindow
-        .openURI(uri, null, Ci.nsIBrowserDOMWindow.OPEN_NEWTAB,
-                 Ci.nsIBrowserDOMWindow.OPEN_NEW,
+        .openURI(uri, null, flags, Ci.nsIBrowserDOMWindow.OPEN_NEW,
                  outer.contentPrincipal);
     },
 
@@ -416,6 +418,8 @@ MessageManagerTunnel.prototype = {
     "SessionStore:flush",
     "SessionStore:restoreHistory",
     "SessionStore:restoreTabContent",
+    // Messages sent from viewZoomOverlay.js.
+    "FullZoom",
   ],
 
   INNER_TO_OUTER_MESSAGES: [
@@ -429,10 +433,8 @@ MessageManagerTunnel.prototype = {
     // Messages sent to RemoteWebProgress.jsm
     "Content:LoadURIResult",
     "Content:LocationChange",
-    "Content:ProgressChange",
     "Content:SecurityChange",
     "Content:StateChange",
-    "Content:StatusChange",
     // Messages sent to browser.js
     "DOMTitleChanged",
     "ImageDocumentLoaded",

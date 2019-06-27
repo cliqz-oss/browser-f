@@ -43,8 +43,10 @@ const PINNED_TABS_TARGET_SITES = [
   "outlook.live.com", "facebook.com", "www.facebook.com", "twitter.com", "www.twitter.com",
   "reddit.com", "www.reddit.com", "github.com", "www.github.com", "youtube.com", "www.youtube.com",
   "feedly.com", "www.feedly.com", "drive.google.com", "amazon.com", "www.amazon.com",
-  "messages.android.com",
+  "messages.android.com", "amazon.ca", "www.amazon.ca", "amazon.com.au", "www.amazon.com.au",
+  "amazon.co.uk", "www.amazon.co.uk", "amazon.fr", "www.amazon.fr", "amazon.de", "www.amazon.de",
 ];
+const PINNED_TABS_TARGET_LOCALES = ["en-US", "en-CA", "en-AU", "en-GB", "en-ZA", "en-NZ", "fr", "de"];
 
 const CFR_MESSAGES = [
   {
@@ -66,7 +68,7 @@ const CFR_MESSAGES = [
         rating: 4.6,
         users: 299019,
         author: "Mozilla",
-        amo_url: "https://addons.mozilla.org/en-US/firefox/addon/facebook-container/",
+        amo_url: "https://addons.mozilla.org/firefox/addon/facebook-container/",
       },
       text: "Stop Facebook from tracking your activity across the web. Use Facebook the way you normally do without annoying ads following you around.",
       buttons: {
@@ -86,7 +88,7 @@ const CFR_MESSAGES = [
           label: {string_id: "cfr-doorhanger-extension-manage-settings-button"},
           action: {
             type: "OPEN_PREFERENCES_PAGE",
-            data: {category: "general-cfraddons", origin: "CFR"},
+            data: {category: "general-cfraddons"},
           },
         }],
       },
@@ -118,7 +120,7 @@ const CFR_MESSAGES = [
         rating: 4.1,
         users: 313474,
         author: "Juan Escobar",
-        amo_url: "https://addons.mozilla.org/en-US/firefox/addon/to-google-translate/",
+        amo_url: "https://addons.mozilla.org/firefox/addon/to-google-translate/",
       },
       text: "Instantly translate any webpage text. Simply highlight the text, right-click to open the context menu, and choose a text or aural translation.",
       buttons: {
@@ -138,7 +140,7 @@ const CFR_MESSAGES = [
           label: {string_id: "cfr-doorhanger-extension-manage-settings-button"},
           action: {
             type: "OPEN_PREFERENCES_PAGE",
-            data: {category: "general-cfraddons", origin: "CFR"},
+            data: {category: "general-cfraddons"},
           },
         }],
       },
@@ -170,7 +172,7 @@ const CFR_MESSAGES = [
         rating: 4.8,
         users: 357328,
         author: "Maxime RF",
-        amo_url: "https://addons.mozilla.org/en-US/firefox/addon/enhancer-for-youtube/",
+        amo_url: "https://addons.mozilla.org/firefox/addon/enhancer-for-youtube/",
       },
       text: "Take control of your YouTube experience. Automatically block annoying ads, set playback speed and volume, remove annotations, and more.",
       buttons: {
@@ -190,7 +192,7 @@ const CFR_MESSAGES = [
           label: {string_id: "cfr-doorhanger-extension-manage-settings-button"},
           action: {
             type: "OPEN_PREFERENCES_PAGE",
-            data: {category: "general-cfraddons", origin: "CFR"},
+            data: {category: "general-cfraddons"},
           },
         }],
       },
@@ -223,7 +225,7 @@ const CFR_MESSAGES = [
         rating: 4.9,
         users: 3095,
         author: "Nick Diedrich",
-        amo_url: "https://addons.mozilla.org/en-US/firefox/addon/wikipedia-context-menu-search/",
+        amo_url: "https://addons.mozilla.org/firefox/addon/wikipedia-context-menu-search/",
       },
       text: "Get to a Wikipedia page fast, from anywhere on the web. Just highlight any webpage text and right-click to open the context menu to start a Wikipedia search.",
       buttons: {
@@ -243,7 +245,7 @@ const CFR_MESSAGES = [
           label: {string_id: "cfr-doorhanger-extension-manage-settings-button"},
           action: {
             type: "OPEN_PREFERENCES_PAGE",
-            data: {category: "general-cfraddons", origin: "CFR"},
+            data: {category: "general-cfraddons"},
           },
         }],
       },
@@ -276,7 +278,7 @@ const CFR_MESSAGES = [
         rating: 4.6,
         users: 258129,
         author: "honestbleeps",
-        amo_url: "https://addons.mozilla.org/en-US/firefox/addon/reddit-enhancement-suite/",
+        amo_url: "https://addons.mozilla.org/firefox/addon/reddit-enhancement-suite/",
       },
       text: "New features include Inline Image Viewer, Never Ending Reddit (never click 'next page' again), Keyboard Navigation, Account Switcher, and User Tagger.",
       buttons: {
@@ -296,7 +298,7 @@ const CFR_MESSAGES = [
           label: {string_id: "cfr-doorhanger-extension-manage-settings-button"},
           action: {
             type: "OPEN_PREFERENCES_PAGE",
-            data: {category: "general-cfraddons", origin: "CFR"},
+            data: {category: "general-cfraddons"},
           },
         }],
       },
@@ -345,12 +347,12 @@ const CFR_MESSAGES = [
           label: {string_id: "cfr-doorhanger-extension-manage-settings-button"},
           action: {
             type: "OPEN_PREFERENCES_PAGE",
-            data: {category: "general-cfrfeatures", origin: "CFR"},
+            data: {category: "general-cfrfeatures"},
           },
         }],
       },
     },
-    targeting: `locale == "en-US" && !hasPinnedTabs && recentVisits[.timestamp > (currentDate|date - 3600 * 1000 * 1)]|length >= 3`,
+    targeting: `locale in ${JSON.stringify(PINNED_TABS_TARGET_LOCALES)} && !hasPinnedTabs && recentVisits[.timestamp > (currentDate|date - 3600 * 1000 * 1)]|length >= 3`,
     frequency: {lifetime: 3},
     trigger: {id: "frequentVisits", params: PINNED_TABS_TARGET_SITES},
   },

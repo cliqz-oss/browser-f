@@ -59,7 +59,7 @@ add_task(async function() {
   });
   await PlacesTestUtils.addVisits(visits);
 
-  await promiseAutocompleteResultPopup("example.com/autocomplete");
+  await promiseAutocompleteResultPopup("example.com/autocomplete", window, true);
 
   let resultCount = await UrlbarTestUtils.getResultCount(window);
 
@@ -101,8 +101,4 @@ add_task(async function() {
   info("Page Up again will wrap around to the end of the list");
   EventUtils.synthesizeKey("KEY_PageUp");
   assertSelected(maxResults - 1);
-
-  await UrlbarTestUtils.promisePopupClose(window, () => {
-    EventUtils.synthesizeKey("KEY_Escape");
-  });
 });

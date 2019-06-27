@@ -207,11 +207,11 @@ Notification.prototype = {
 function PopupNotifications(tabbrowser, panel,
                                                       iconBox, options = {}) {
   if (!tabbrowser)
-    throw "Invalid tabbrowser";
+    throw new Error("Invalid tabbrowser");
   if (iconBox && ChromeUtils.getClassName(iconBox) != "XULElement")
-    throw "Invalid iconBox";
+    throw new Error("Invalid iconBox");
   if (ChromeUtils.getClassName(panel) != "XULPopupElement")
-    throw "Invalid panel";
+    throw new Error("Invalid panel");
 
   this._shouldSuppress = options.shouldSuppress || (() => false);
   this._suppress = this._shouldSuppress();
@@ -489,13 +489,13 @@ PopupNotifications.prototype = {
     }
 
     if (!browser)
-      throw "PopupNotifications_show: invalid browser";
+      throw new Error("PopupNotifications_show: invalid browser");
     if (!id)
-      throw "PopupNotifications_show: invalid ID";
+      throw new Error("PopupNotifications_show: invalid ID");
     if (mainAction && isInvalidAction(mainAction))
-      throw "PopupNotifications_show: invalid mainAction";
+      throw new Error("PopupNotifications_show: invalid mainAction");
     if (secondaryActions && secondaryActions.some(isInvalidAction))
-      throw "PopupNotifications_show: invalid secondaryActions";
+      throw new Error("PopupNotifications_show: invalid secondaryActions");
 
     let notification = new Notification(id, message, anchorID, mainAction,
                                         secondaryActions, browser, this, options);
@@ -565,7 +565,7 @@ PopupNotifications.prototype = {
    */
   locationChange: function PopupNotifications_locationChange(aBrowser) {
     if (!aBrowser)
-      throw "PopupNotifications_locationChange: invalid browser";
+      throw new Error("PopupNotifications_locationChange: invalid browser");
 
     let notifications = this._getNotificationsForBrowser(aBrowser);
 
@@ -1442,7 +1442,7 @@ PopupNotifications.prototype = {
 
     let notifications = this._getNotificationsForBrowser(browser);
     // Mark notifications as dismissed and call dismissal callbacks
-    Array.forEach(this.panel.children, function(nEl) {
+    for (let nEl of this.panel.children) {
       let notificationObj = nEl.notification;
       // Never call a dismissal handler on a notification that's been removed.
       if (!notifications.includes(notificationObj))
@@ -1466,7 +1466,7 @@ PopupNotifications.prototype = {
         notificationObj.dismissed = true;
         this._fireCallback(notificationObj, NOTIFICATION_EVENT_DISMISSED);
       }
-    }, this);
+    }
   },
 
   _onCheckboxCommand(event) {
@@ -1508,10 +1508,10 @@ PopupNotifications.prototype = {
     }
 
     if (!notificationEl)
-      throw "PopupNotifications._onButtonEvent: couldn't find notification element";
+      throw new Error("PopupNotifications._onButtonEvent: couldn't find notification element");
 
     if (!notificationEl.notification)
-      throw "PopupNotifications._onButtonEvent: couldn't find notification";
+      throw new Error("PopupNotifications._onButtonEvent: couldn't find notification");
 
     let notification = notificationEl.notification;
 
@@ -1586,7 +1586,7 @@ PopupNotifications.prototype = {
   _onMenuCommand: function PopupNotifications_onMenuCommand(event) {
     let target = event.originalTarget;
     if (!target.action || !target.notification)
-      throw "menucommand target has no associated action/notification";
+      throw new Error("menucommand target has no associated action/notification");
 
     let notificationEl = getNotificationFromElement(target);
     event.stopPropagation();

@@ -50,8 +50,6 @@ SVGStyleElement::SVGStyleElement(
   AddMutationObserver(this);
 }
 
-SVGStyleElement::~SVGStyleElement() {}
-
 //----------------------------------------------------------------------
 // nsINode methods
 
@@ -199,6 +197,7 @@ Maybe<nsStyleLinkElement::SheetInfo> SVGStyleElement::GetStyleSheetInfo() {
       media,
       HasAlternateRel::No,
       IsInline::Yes,
+      IsExplicitlyEnabled::No,
   });
 }
 

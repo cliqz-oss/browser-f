@@ -126,11 +126,12 @@ export class _TopSites extends React.PureComponent {
         className="top-sites"
         icon="topsites"
         id="topsites"
-        title={{id: "header_top_sites"}}
+        title={this.props.title || {id: "header_top_sites"}}
         extraMenuOptions={extraMenuOptions}
         showPrefName="feeds.topsites"
         eventSource={TOP_SITES_SOURCE}
         collapsed={props.TopSites.pref ? props.TopSites.pref.collapsed : undefined}
+        isFixed={props.isFixed}
         isFirst={props.isFirst}
         isLast={props.isLast}
         dispatch={props.dispatch}>
@@ -138,7 +139,7 @@ export class _TopSites extends React.PureComponent {
         <div className="edit-topsites-wrapper">
           {editForm &&
             <div className="edit-topsites">
-              <div className="modal-overlay" onClick={this.onEditFormClose} />
+              <div className="modal-overlay" onClick={this.onEditFormClose} role="presentation" />
               <div className="modal">
                 <TopSiteForm
                   site={props.TopSites.rows[editForm.index]}
@@ -151,7 +152,7 @@ export class _TopSites extends React.PureComponent {
           }
           {showSearchShortcutsForm &&
             <div className="edit-search-shortcuts">
-              <div className="modal-overlay" onClick={this.onSearchShortcutsFormClose} />
+              <div className="modal-overlay" onClick={this.onSearchShortcutsFormClose} role="presentation" />
               <div className="modal">
                 <SearchShortcutsForm
                   TopSites={props.TopSites}

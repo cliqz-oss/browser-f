@@ -217,6 +217,14 @@ interface nsISearchService : nsISupports
   Promise init();
 
   /**
+   * Exposed for testing.
+   */
+  void reInit([optional] in boolean skipRegionCheck);
+  void reset();
+  Promise ensureBuiltinExtension(in AString id,
+                                [optional] in jsval locales);
+
+  /**
    * Determine whether initialization has been completed.
    *
    * Clients of the service can use this attribute to quickly determine whether
@@ -347,7 +355,8 @@ interface nsISearchService : nsISupports
   /**
    * Adds search providers to the search service.  If the search
    * service is configured to load multiple locales for the extension,
-   * it may load more than one search engine.
+   * it may load more than one search engine. If called directly
+   * ensure the extension has been initialised.
    *
    * @param extension
    *        The extension to load from.
@@ -434,6 +443,15 @@ interface nsISearchService : nsISupports
   Promise removeEngine(in nsISearchEngine engine);
 
   /**
+   * Notify nsSearchService that an extension has been removed. Removes any
+   * engines that are associated with that extension.
+   *
+   * @param  id
+   *         The id of the extension.
+   */
+  Promise removeWebExtensionEngine(in AString id);
+
+  /**
    * The original Engine object that is the default for this region,
    * ignoring changes the user may have subsequently made.
    */
@@ -476,16 +494,6 @@ interface nsISearchService : nsISupports
    *        "https://www.google.com/search?q=terms".
    */
   nsISearchParseSubmissionResult parseSubmissionURL(in AString url);
-
-  /**
-   * Determines if a URL is related to search and if so, records the
-   * appropriate telemetry.
-   *
-   * @param url
-   *        String containing the URL to parse, for example
-   *        "https://www.google.com/search?q=terms".
-   */
-  boolean recordSearchURLTelemetry(in AString url);
 };
 
 %{ C++
@@ -519,11 +527,6 @@ interface nsISearchService : nsISupports
  * followed by an "added" notification.
  */
 #define SEARCH_ENGINE_LOADED       "engine-loaded"
-
-/**
- * Sent when the "current" engine is changed.
- */
-#define SEARCH_ENGINE_CURRENT      "engine-current";
 
 /**
  * Sent when the "default" engine is changed.

@@ -117,7 +117,7 @@ class TextServicesDocument final : public nsIEditActionListener {
    *
    * @param aStr                [OUT] This will contain the text.
    */
-  nsresult GetCurrentTextBlock(nsString* aStr);
+  nsresult GetCurrentTextBlock(nsAString& aStr);
 
   /**
    * Tells the document to point to the first text block in the document.  This
@@ -150,6 +150,7 @@ class TextServicesDocument final : public nsIEditActionListener {
    * @param aLength             [OUT] This will contain the number of
    *                            characters that are selected in the string.
    */
+  MOZ_CAN_RUN_SCRIPT
   nsresult LastSelectedBlock(BlockSelectionStatus* aSelStatus,
                              int32_t* aSelOffset, int32_t* aSelLength);
 
@@ -189,6 +190,7 @@ class TextServicesDocument final : public nsIEditActionListener {
    *                            GetCurrentTextBlock().
    * @param aLength             Number of characters selected.
    */
+  MOZ_CAN_RUN_SCRIPT
   nsresult SetSelection(int32_t aOffset, int32_t aLength);
 
   /**
@@ -201,13 +203,15 @@ class TextServicesDocument final : public nsIEditActionListener {
    * with nothing selected, or with a collapsed selection (cursor) does
    * nothing and returns NS_OK.
    */
+  MOZ_CAN_RUN_SCRIPT
   nsresult DeleteSelection();
 
   /**
    * Inserts the given text at the current cursor position.  If there is a
    * selection, it will be deleted before the text is inserted.
    */
-  nsresult InsertText(const nsString* aText);
+  MOZ_CAN_RUN_SCRIPT
+  nsresult InsertText(const nsAString& aText);
 
   /**
    * nsIEditActionListener method implementations.
@@ -267,10 +271,13 @@ class TextServicesDocument final : public nsIEditActionListener {
   static bool HasSameBlockNodeParent(nsIContent* aContent1,
                                      nsIContent* aContent2);
 
+  MOZ_CAN_RUN_SCRIPT
   nsresult SetSelectionInternal(int32_t aOffset, int32_t aLength,
                                 bool aDoUpdate);
+  MOZ_CAN_RUN_SCRIPT
   nsresult GetSelection(BlockSelectionStatus* aSelStatus, int32_t* aSelOffset,
                         int32_t* aSelLength);
+  MOZ_CAN_RUN_SCRIPT
   nsresult GetCollapsedSelection(BlockSelectionStatus* aSelStatus,
                                  int32_t* aSelOffset, int32_t* aSelLength);
   nsresult GetUncollapsedSelection(BlockSelectionStatus* aSelStatus,
@@ -282,7 +289,7 @@ class TextServicesDocument final : public nsIEditActionListener {
   static nsresult CreateOffsetTable(nsTArray<OffsetEntry*>* aOffsetTable,
                                     FilteredContentIterator* aFilteredIter,
                                     IteratorStatus* aIteratorStatus,
-                                    nsRange* aIterRange, nsString* aStr);
+                                    nsRange* aIterRange, nsAString* aStr);
   static nsresult ClearOffsetTable(nsTArray<OffsetEntry*>* aOffsetTable);
 
   static nsresult NodeHasOffsetEntry(nsTArray<OffsetEntry*>* aOffsetTable,

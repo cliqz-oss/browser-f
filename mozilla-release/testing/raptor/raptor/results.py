@@ -35,12 +35,13 @@ class RaptorResultsHandler():
                             'page_cycle': page_cycle})
 
     def add_page_timeout(self, test_name, page_url, pending_metrics):
+        timeout_details = {'test_name': test_name,
+                           'url': page_url}
+        if pending_metrics:
+            pending_metrics = [key for key, value in pending_metrics.items() if value]
+            timeout_details['pending_metrics'] = ", ".join(pending_metrics)
 
-        pending_metrics = [key for key, value in pending_metrics.items() if value]
-
-        self.page_timeout_list.append({'test_name': test_name,
-                                       'url': page_url,
-                                       'pending_metrics': ", ".join(pending_metrics)})
+        self.page_timeout_list.append(timeout_details)
 
     def add_supporting_data(self, supporting_data):
         ''' Supporting data is additional data gathered outside of the regular
@@ -75,6 +76,9 @@ class RaptorResultsHandler():
         LOG.info("summarizing raptor test results")
         output = Output(self.results, self.supporting_data, test_config['subtest_alert_on'])
         output.summarize(test_names)
+        # that has each browser cycle separate; need to check if there were multiple browser
+        # cycles, and if so need to combine results from all cycles into one overall result
+        output.combine_browser_cycles()
         output.summarize_screenshots(self.images)
         # only dump out supporting data (i.e. power) if actual Raptor test completed
         if self.supporting_data is not None and len(self.results) != 0:

@@ -14,12 +14,14 @@ const ColorContrastCheck =
   createFactory(require("./ColorContrastAccessibility").ColorContrastCheck);
 const { L10N } = require("../utils/l10n");
 
+const { accessibility: { AUDIT_TYPE } } = require("devtools/shared/constants");
+
 function EmptyChecks() {
   return (
     div({
       className: "checks-empty",
       role: "presentation",
-    }, L10N.getStr("accessibility.checks.empty"))
+    }, L10N.getStr("accessibility.checks.empty2"))
   );
 }
 
@@ -33,7 +35,7 @@ class Checks extends Component {
     };
   }
 
-  contrastRatio(contrastRatio) {
+  [AUDIT_TYPE.CONTRAST](contrastRatio) {
     return ColorContrastCheck(contrastRatio);
   }
 

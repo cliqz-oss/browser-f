@@ -25,8 +25,14 @@ const Strings = Services.strings.createBundle(
 const ExtensionIcon = "chrome://mozapps/skin/extensions/extensionGeneric.svg";
 const CHROME_ENABLED_PREF = "devtools.chrome.enabled";
 const REMOTE_ENABLED_PREF = "devtools.debugger.remote-enabled";
+<<<<<<< HEAD
 //const SYSTEM_ENABLED_PREF = "devtools.aboutdebugging.showSystemAddons";
 const SYSTEM_ENABLED_PREF = "extensions.cliqz.listed";
+||||||| merged common ancestors
+const SYSTEM_ENABLED_PREF = "devtools.aboutdebugging.showSystemAddons";
+=======
+const SYSTEM_ENABLED_PREF = "devtools.aboutdebugging.showHiddenAddons";
+>>>>>>> 822b139b92cedf98ab96ccad686dae664d417af4
 const WEB_EXT_URL = "https://developer.mozilla.org/Add-ons" +
                     "/WebExtensions/Getting_started_with_web-ext";
 
@@ -167,6 +173,9 @@ class AddonsPanel extends Component {
     const temporaryTargets = targets.filter((target) => target.temporarilyInstalled);
     const systemTargets = showSystemAddons && targets.filter((target) => target.isSystem);
 
+    // Don't show the temporary addons category if users can't install addons.
+    const isXpinstallEnabled = Services.prefs.getBoolPref("xpinstall.enabled", true);
+
     return dom.div({
       id: id + "-panel",
       className: "panel",
@@ -178,7 +187,7 @@ class AddonsPanel extends Component {
       name: Strings.GetStringFromName("addons"),
     }),
     AddonsControls({ debugDisabled }),
-    dom.div({ id: "temporary-addons" },
+    isXpinstallEnabled ? dom.div({ id: "temporary-addons" },
       TargetList({
         id: "temporary-extensions",
         name: temporaryName,
@@ -198,7 +207,7 @@ class AddonsPanel extends Component {
           Strings.GetStringFromName("webExtTip.learnMore")
         )
       )
-    ),
+    ) : null,
     dom.div({ id: "addons" },
       TargetList({
         id: "extensions",

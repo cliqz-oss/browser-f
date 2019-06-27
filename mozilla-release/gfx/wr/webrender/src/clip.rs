@@ -5,20 +5,20 @@
 use api::{BorderRadius, ClipIntern, ClipMode, ComplexClipRegion, ImageMask};
 use api::{BoxShadowClipMode, ImageKey, ImageRendering};
 use api::units::*;
-use border::{ensure_no_corner_overlap, BorderRadiusAu};
-use box_shadow::{BLUR_SAMPLE_SCALE, BoxShadowClipSource, BoxShadowCacheKey};
-use clip_scroll_tree::{ClipScrollTree, SpatialNodeIndex};
-use ellipse::Ellipse;
-use gpu_cache::{GpuCache, GpuCacheHandle, ToGpuBlocks};
-use gpu_types::{BoxShadowStretchMode};
-use image::{self, Repetition};
-use intern;
-use prim_store::{ClipData, ImageMaskData, SpaceMapper, VisibleMaskImageTile};
-use prim_store::{PointKey, SizeKey, RectangleKey};
-use render_task::to_cache_size;
-use resource_cache::{ImageRequest, ResourceCache};
+use crate::border::{ensure_no_corner_overlap, BorderRadiusAu};
+use crate::box_shadow::{BLUR_SAMPLE_SCALE, BoxShadowClipSource, BoxShadowCacheKey};
+use crate::clip_scroll_tree::{ROOT_SPATIAL_NODE_INDEX, CoordinateSystemId, ClipScrollTree, SpatialNodeIndex};
+use crate::ellipse::Ellipse;
+use crate::gpu_cache::{GpuCache, GpuCacheHandle, ToGpuBlocks};
+use crate::gpu_types::{BoxShadowStretchMode};
+use crate::image::{self, Repetition};
+use crate::intern;
+use crate::prim_store::{ClipData, ImageMaskData, SpaceMapper, VisibleMaskImageTile};
+use crate::prim_store::{PointKey, SizeKey, RectangleKey};
+use crate::render_task::to_cache_size;
+use crate::resource_cache::{ImageRequest, ResourceCache};
 use std::{cmp, u32};
-use util::{extract_inner_rect_safe, project_rect, ScaleOffset};
+use crate::util::{extract_inner_rect_safe, project_rect, ScaleOffset};
 
 /*
 
@@ -180,6 +180,7 @@ bitflags! {
     pub struct ClipNodeFlags: u8 {
         const SAME_SPATIAL_NODE = 0x1;
         const SAME_COORD_SYSTEM = 0x2;
+        const USE_FAST_PATH = 0x4;
     }
 }
 
@@ -238,11 +239,12 @@ pub struct ClipNodeRange {
     pub count: u32,
 }
 
-// A helper struct for converting between coordinate systems
-// of clip sources and primitives.
+/// A helper struct for converting between coordinate systems
+/// of clip sources and primitives.
 // todo(gw): optimize:
 //  separate arrays for matrices
 //  cache and only build as needed.
+//TODO: merge with `CoordinateSpaceMapping`?
 #[derive(Debug, MallocSizeOf)]
 #[cfg_attr(feature = "capture", derive(Serialize))]
 enum ClipSpaceConversion {
@@ -269,10 +271,12 @@ impl ClipNodeInfo {
         clipped_rect: &LayoutRect,
         gpu_cache: &mut GpuCache,
         resource_cache: &mut ResourceCache,
-    ) -> ClipNodeInstance {
+        clip_scroll_tree: &ClipScrollTree,
+        request_resources: bool,
+    ) -> Option<ClipNodeInstance> {
         // Calculate some flags that are required for the segment
         // building logic.
-        let flags = match self.conversion {
+        let mut flags = match self.conversion {
             ClipSpaceConversion::Local => {
                 ClipNodeFlags::SAME_SPATIAL_NODE | ClipNodeFlags::SAME_COORD_SYSTEM
             }
@@ -283,6 +287,19 @@ impl ClipNodeInfo {
                 ClipNodeFlags::empty()
             }
         };
+
+        // Some clip shaders support a fast path mode for simple clips.
+        // For now, the fast path is only selected if:
+        //  - The clip item content supports fast path
+        //  - Both clip and primitive are in the root coordinate system (no need for AA along edges)
+        // TODO(gw): We could also apply fast path when segments are created, since we only write
+        //           the mask for a single corner at a time then, so can always consider radii uniform.
+        let clip_spatial_node = &clip_scroll_tree.spatial_nodes[self.spatial_node_index.0 as usize];
+        if clip_spatial_node.coordinate_system_id == CoordinateSystemId::root() &&
+           flags.contains(ClipNodeFlags::SAME_COORD_SYSTEM) &&
+           node.item.supports_fast_path_rendering() {
+            flags |= ClipNodeFlags::USE_FAST_PATH;
+        }
 
         let mut visible_tiles = None;
 
@@ -326,10 +343,12 @@ impl ClipNodeInfo {
                             tile_size as i32,
                         );
                         for tile in tiles {
-                            resource_cache.request_image(
-                                request.with_tile(tile.offset),
-                                gpu_cache,
-                            );
+                            if request_resources {
+                                resource_cache.request_image(
+                                    request.with_tile(tile.offset),
+                                    gpu_cache,
+                                );
+                            }
                             mask_tiles.push(VisibleMaskImageTile {
                                 tile_offset: tile.offset,
                                 tile_rect: tile.rect,
@@ -337,19 +356,24 @@ impl ClipNodeInfo {
                         }
                     }
                     visible_tiles = Some(mask_tiles);
-                } else {
+                } else if request_resources {
                     resource_cache.request_image(request, gpu_cache);
                 }
+            } else {
+                // If the supplied image key doesn't exist in the resource cache,
+                // skip the clip node since there is nothing to mask with.
+                warn!("Clip mask with missing image key {:?}", request.key);
+                return None;
             }
         }
 
-        ClipNodeInstance {
+        Some(ClipNodeInstance {
             handle: self.handle,
             flags,
             spatial_node_index: self.spatial_node_index,
             local_pos: self.local_pos,
             visible_tiles,
-        }
+        })
     }
 }
 
@@ -457,6 +481,8 @@ pub struct ClipChainInstance {
     // Combined clip rect in picture space (may
     // be more conservative that local_clip_rect).
     pub pic_clip_rect: PictureRect,
+    // Space, in which the `pic_clip_rect` is defined.
+    pub pic_spatial_node_index: SpatialNodeIndex,
 }
 
 impl ClipChainInstance {
@@ -470,6 +496,7 @@ impl ClipChainInstance {
             has_non_local_clips: false,
             needs_mask: false,
             pic_clip_rect: PictureRect::zero(),
+            pic_spatial_node_index: ROOT_SPATIAL_NODE_INDEX,
         }
     }
 }
@@ -574,6 +601,7 @@ impl ClipStore {
         device_pixel_scale: DevicePixelScale,
         world_rect: &WorldRect,
         clip_data_store: &mut ClipDataStore,
+        request_resources: bool,
     ) -> Option<ClipChainInstance> {
         let mut local_clip_rect = local_prim_clip_rect;
 
@@ -659,34 +687,36 @@ impl ClipStore {
                     );
 
                     // Create the clip node instance for this clip node
-                    let instance = node_info.create_instance(
+                    if let Some(instance) = node_info.create_instance(
                         node,
                         &local_bounding_rect,
                         gpu_cache,
                         resource_cache,
-                    );
+                        clip_scroll_tree,
+                        request_resources,
+                    ) {
+                        // As a special case, a partial accept of a clip rect that is
+                        // in the same coordinate system as the primitive doesn't need
+                        // a clip mask. Instead, it can be handled by the primitive
+                        // vertex shader as part of the local clip rect. This is an
+                        // important optimization for reducing the number of clip
+                        // masks that are allocated on common pages.
+                        needs_mask |= match node.item {
+                            ClipItem::Rectangle(_, ClipMode::ClipOut) |
+                            ClipItem::RoundedRectangle(..) |
+                            ClipItem::Image { .. } |
+                            ClipItem::BoxShadow(..) => {
+                                true
+                            }
 
-                    // As a special case, a partial accept of a clip rect that is
-                    // in the same coordinate system as the primitive doesn't need
-                    // a clip mask. Instead, it can be handled by the primitive
-                    // vertex shader as part of the local clip rect. This is an
-                    // important optimization for reducing the number of clip
-                    // masks that are allocated on common pages.
-                    needs_mask |= match node.item {
-                        ClipItem::Rectangle(_, ClipMode::ClipOut) |
-                        ClipItem::RoundedRectangle(..) |
-                        ClipItem::Image { .. } |
-                        ClipItem::BoxShadow(..) => {
-                            true
-                        }
+                            ClipItem::Rectangle(_, ClipMode::Clip) => {
+                                !instance.flags.contains(ClipNodeFlags::SAME_COORD_SYSTEM)
+                            }
+                        };
 
-                        ClipItem::Rectangle(_, ClipMode::Clip) => {
-                            !instance.flags.contains(ClipNodeFlags::SAME_COORD_SYSTEM)
-                        }
-                    };
-
-                    // Store this in the index buffer for this clip chain instance.
-                    self.clip_node_instances.push(instance);
+                        // Store this in the index buffer for this clip chain instance.
+                        self.clip_node_instances.push(instance);
+                    }
                 }
             }
         }
@@ -703,6 +733,7 @@ impl ClipStore {
             has_non_local_clips,
             local_clip_rect,
             pic_clip_rect,
+            pic_spatial_node_index: prim_to_pic_mapper.ref_spatial_node_index,
             needs_mask,
         })
     }
@@ -1020,6 +1051,23 @@ impl ClipItem {
         ClipItem::BoxShadow(source)
     }
 
+    /// Returns true if this clip mask can run through the fast path
+    /// for the given clip item type.
+    fn supports_fast_path_rendering(&self) -> bool {
+        match *self {
+            ClipItem::Rectangle(..) |
+            ClipItem::Image { .. } |
+            ClipItem::BoxShadow(..) => {
+                false
+            }
+            ClipItem::RoundedRectangle(_, ref radius, _) => {
+                // The rounded clip rect fast path shader can only work
+                // if the radii are uniform.
+                radius.is_uniform().is_some()
+            }
+        }
+    }
+
     // Get an optional clip rect that a clip source can provide to
     // reduce the size of a primitive region. This is typically
     // used to eliminate redundant clips, and reduce the size of
@@ -1299,6 +1347,9 @@ fn add_clip_node_to_current_chain(
 
     // Determine the most efficient way to convert between coordinate
     // systems of the primitive and clip node.
+    //Note: this code is different from `get_relative_transform` in a way that we only try
+    // getting the relative transform if it's Local or ScaleOffset,
+    // falling back to the world transform otherwise.
     let conversion = if spatial_node_index == node.spatial_node_index {
         ClipSpaceConversion::Local
     } else if ref_spatial_node.coordinate_system_id == clip_spatial_node.coordinate_system_id {
@@ -1310,7 +1361,7 @@ fn add_clip_node_to_current_chain(
         ClipSpaceConversion::Transform(
             clip_scroll_tree
                 .get_world_transform(node.spatial_node_index)
-                .flattened
+                .into_transform()
         )
     };
 

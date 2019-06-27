@@ -25,7 +25,7 @@ class GeckoViewNavigationChild extends GeckoViewChildModule {
 
     if (Services.appinfo.processType === Services.appinfo.PROCESS_TYPE_CONTENT) {
       let tabchild = docShell.QueryInterface(Ci.nsIInterfaceRequestor)
-                             .getInterface(Ci.nsITabChild);
+                             .getInterface(Ci.nsIBrowserChild);
       tabchild.webBrowserChrome = this;
     }
   }
@@ -91,7 +91,8 @@ class GeckoViewNavigationChild extends GeckoViewChildModule {
   // nsIWebBrowserChrome
   shouldLoadURIInThisProcess(aURI) {
     debug `shouldLoadURIInThisProcess ${aURI.displaySpec}`;
-    return E10SUtils.shouldLoadURIInThisProcess(aURI);
+    let remoteSubframes = docShell.QueryInterface(Ci.nsILoadContext).useRemoteSubframes;
+    return E10SUtils.shouldLoadURIInThisProcess(aURI, remoteSubframes);
   }
 
   // nsIWebBrowserChrome

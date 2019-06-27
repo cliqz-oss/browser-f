@@ -9,6 +9,7 @@
 #include "mozilla/Attributes.h"
 #include "mozilla/EventDispatcher.h"
 #include "mozilla/EventStates.h"
+#include "mozilla/dom/DocumentInlines.h"
 #include "mozilla/dom/SVGAElementBinding.h"
 #include "nsCOMPtr.h"
 #include "nsContentUtils.h"
@@ -53,9 +54,7 @@ NS_IMPL_RELEASE_INHERITED(SVGAElement, SVGAElementBase)
 SVGAElement::SVGAElement(already_AddRefed<mozilla::dom::NodeInfo>&& aNodeInfo)
     : SVGAElementBase(std::move(aNodeInfo)), Link(this) {}
 
-SVGAElement::~SVGAElement() {}
-
-already_AddRefed<SVGAnimatedString> SVGAElement::Href() {
+already_AddRefed<DOMSVGAnimatedString> SVGAElement::Href() {
   return mStringAttributes[HREF].IsExplicitlySet()
              ? mStringAttributes[HREF].ToDOMAnimatedString(this)
              : mStringAttributes[XLINK_HREF].ToDOMAnimatedString(this);
@@ -86,7 +85,7 @@ NS_IMPL_ELEMENT_CLONE_WITH_INIT(SVGAElement)
 
 //----------------------------------------------------------------------
 
-already_AddRefed<SVGAnimatedString> SVGAElement::Target() {
+already_AddRefed<DOMSVGAnimatedString> SVGAElement::Target() {
   return mStringAttributes[TARGET].ToDOMAnimatedString(this);
 }
 

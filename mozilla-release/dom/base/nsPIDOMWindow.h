@@ -13,6 +13,8 @@
 #include "nsCOMPtr.h"
 #include "nsTArray.h"
 #include "mozilla/dom/EventTarget.h"
+#include "mozilla/AntiTrackingCommon.h"
+#include "mozilla/Maybe.h"
 #include "mozilla/TaskCategory.h"
 #include "js/TypeDecls.h"
 #include "nsRefPtrHashtable.h"
@@ -33,6 +35,7 @@ class nsICSSDeclaration;
 class nsIDocShell;
 class nsDocShellLoadState;
 class nsIPrincipal;
+class nsIRunnable;
 class nsIScriptTimeoutHandler;
 class nsISerialEventTarget;
 class nsIURI;
@@ -144,9 +147,6 @@ class nsPIDOMWindowInner : public mozIDOMWindow {
  public:
   NS_DECLARE_STATIC_IID_ACCESSOR(NS_PIDOMWINDOWINNER_IID)
 
-  nsPIDOMWindowInner* AsInner() { return this; }
-  const nsPIDOMWindowInner* AsInner() const { return this; }
-
   nsIGlobalObject* AsGlobal();
   const nsIGlobalObject* AsGlobal() const;
 
@@ -175,6 +175,7 @@ class nsPIDOMWindowInner : public mozIDOMWindow {
 
   // Note: not related to IsLoading.  Set to false if there's an error, etc.
   void SetActiveLoadingState(bool aIsActiveLoading);
+  void AddAfterLoadRunner(nsIRunnable* aRunner);
 
   bool AddAudioContext(mozilla::dom::AudioContext* aAudioContext);
   void RemoveAudioContext(mozilla::dom::AudioContext* aAudioContext);
@@ -555,7 +556,7 @@ class nsPIDOMWindowInner : public mozIDOMWindow {
 
   void BroadcastReport(mozilla::dom::Report* aReport);
 
-  void NotifyReportingObservers();
+  MOZ_CAN_RUN_SCRIPT void NotifyReportingObservers();
 
   void SaveStorageAccessGranted(const nsACString& aPermissionKey);
 
@@ -664,6 +665,8 @@ class nsPIDOMWindowInner : public mozIDOMWindow {
   // This will be non-null during the full lifetime of the window, initialized
   // during SetNewDocument, and cleared during FreeInnerObjects.
   RefPtr<mozilla::dom::WindowGlobalChild> mWindowGlobalChild;
+
+  nsTArray<nsCOMPtr<nsIRunnable>> mAfterLoadRunners;
 };
 
 NS_DEFINE_STATIC_IID_ACCESSOR(nsPIDOMWindowInner, NS_PIDOMWINDOWINNER_IID)
@@ -683,13 +686,6 @@ class nsPIDOMWindowOuter : public mozIDOMWindowProxy {
 
  public:
   NS_DECLARE_STATIC_IID_ACCESSOR(NS_PIDOMWINDOWOUTER_IID)
-
-  nsPIDOMWindowOuter* AsOuter() { return this; }
-  const nsPIDOMWindowOuter* AsOuter() const { return this; }
-
-  nsPIDOMWindowOuter* GetOuterWindow() const {
-    return const_cast<nsPIDOMWindowOuter*>(this);
-  }
 
   static nsPIDOMWindowOuter* From(mozIDOMWindowProxy* aFrom) {
     return static_cast<nsPIDOMWindowOuter*>(aFrom);
@@ -1008,8 +1004,12 @@ class nsPIDOMWindowOuter : public mozIDOMWindowProxy {
                                      const nsAString& aPopupWindowName,
                                      const nsAString& aPopupWindowFeatures) = 0;
 
-  virtual void NotifyContentBlockingEvent(unsigned aEvent, nsIChannel* aChannel,
-                                          bool aBlocked, nsIURI* aURIHint) = 0;
+  virtual void NotifyContentBlockingEvent(
+      unsigned aEvent, nsIChannel* aChannel, bool aBlocked, nsIURI* aURIHint,
+      nsIChannel* aTrackingChannel,
+      const mozilla::Maybe<
+          mozilla::AntiTrackingCommon::StorageAccessGrantedReason>& aReason =
+          mozilla::Nothing()) = 0;
 
   // WebIDL-ish APIs
   void MarkUncollectableForCCGeneration(uint32_t aGeneration) {

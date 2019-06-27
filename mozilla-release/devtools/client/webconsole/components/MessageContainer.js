@@ -9,6 +9,7 @@
 // React & Redux
 const { Component } = require("devtools/client/shared/vendor/react");
 loader.lazyRequireGetter(this, "PropTypes", "devtools/client/shared/vendor/react-prop-types");
+loader.lazyRequireGetter(this, "isWarningGroup", "devtools/client/webconsole/utils/messages", true);
 
 const {
   MESSAGE_SOURCE,
@@ -18,10 +19,12 @@ const {
 const componentMap = new Map([
   ["ConsoleApiCall", require("./message-types/ConsoleApiCall")],
   ["ConsoleCommand", require("./message-types/ConsoleCommand")],
+  ["CSSWarning", require("./message-types/CSSWarning")],
   ["DefaultRenderer", require("./message-types/DefaultRenderer")],
   ["EvaluationResult", require("./message-types/EvaluationResult")],
   ["NetworkEventMessage", require("./message-types/NetworkEventMessage")],
   ["PageError", require("./message-types/PageError")],
+  ["WarningGroup", require("./message-types/WarningGroup")],
 ]);
 
 class MessageContainer extends Component {
@@ -30,9 +33,12 @@ class MessageContainer extends Component {
       messageId: PropTypes.string.isRequired,
       open: PropTypes.bool.isRequired,
       serviceContainer: PropTypes.object.isRequired,
+      payload: PropTypes.object,
       tableData: PropTypes.object,
       timestampsVisible: PropTypes.bool.isRequired,
       repeat: PropTypes.number,
+      badge: PropTypes.number,
+      indent: PropTypes.number,
       networkMessageUpdate: PropTypes.object,
       getMessage: PropTypes.func.isRequired,
       isPaused: PropTypes.bool.isRequired,
@@ -49,6 +55,7 @@ class MessageContainer extends Component {
   shouldComponentUpdate(nextProps, nextState) {
     const repeatChanged = this.props.repeat !== nextProps.repeat;
     const openChanged = this.props.open !== nextProps.open;
+    const payloadChanged = this.props.payload !== nextProps.payload;
     const tableDataChanged = this.props.tableData !== nextProps.tableData;
     const timestampVisibleChanged =
       this.props.timestampsVisible !== nextProps.timestampsVisible;
@@ -57,9 +64,12 @@ class MessageContainer extends Component {
     const pausedChanged = this.props.isPaused !== nextProps.isPaused;
     const executionPointChanged =
       this.props.pausedExecutionPoint !== nextProps.pausedExecutionPoint;
+    const badgeChanged = this.props.badge !== nextProps.badge;
 
     return repeatChanged
+      || badgeChanged
       || openChanged
+      || payloadChanged
       || tableDataChanged
       || timestampVisibleChanged
       || networkMessageUpdateChanged
@@ -86,6 +96,7 @@ function getMessageComponent(message) {
     case MESSAGE_SOURCE.NETWORK:
       return componentMap.get("NetworkEventMessage");
     case MESSAGE_SOURCE.CSS:
+      return componentMap.get("CSSWarning");
     case MESSAGE_SOURCE.JAVASCRIPT:
       switch (message.type) {
         case MESSAGE_TYPE.COMMAND:
@@ -101,6 +112,11 @@ function getMessageComponent(message) {
         default:
           return componentMap.get("DefaultRenderer");
       }
+    case MESSAGE_SOURCE.CONSOLE_FRONTEND:
+      if (isWarningGroup(message)) {
+        return componentMap.get("WarningGroup");
+      }
+      break;
   }
 
   return componentMap.get("DefaultRenderer");

@@ -40,9 +40,7 @@ window.gActivityStreamStrings = {
   "section_disclaimer_topstories_buttontext": "Oke, paham",
   "prefs_home_header": "Konten Beranda Firefox",
   "prefs_home_description": "Pilih konten yang ingin Anda tampilkan dalam Beranda Firefox.",
-  "prefs_content_discovery_header": "Beranda Firefox",
   "prefs_content_discovery_description": "Penemuan Konten dalam Firefox Home memungkinkan Anda untuk menemukan artikel bermutu tinggi dan relevan dari seluruh web.",
-  "prefs_content_discovery_button": "Matikan Penemuan Konten",
   "prefs_section_rows_option": "{num} baris",
   "prefs_search_header": "Pencarian Web",
   "prefs_topsites_description": "Situs yang sering Anda kunjungi",
@@ -107,8 +105,5 @@ window.gActivityStreamStrings = {
   "firstrun_privacy_notice": "Pernyataan Privasi",
   "firstrun_continue_to_login": "Lanjutkan",
   "firstrun_skip_login": "Lewati langkah ini",
-  "context_menu_title": "Buka menu",
-  "manual_migration_explanation2": "Coba Firefox dengan markah, riwayat, dan sandi dari peramban lain.",
-  "manual_migration_cancel_button": "Tidak, Terima kasih",
-  "manual_migration_import_button": "Impor Sekarang"
+  "context_menu_title": "Buka menu"
 };

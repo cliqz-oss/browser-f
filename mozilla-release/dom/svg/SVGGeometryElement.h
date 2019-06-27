@@ -7,10 +7,10 @@
 #ifndef mozilla_dom_SVGGeometryElement_h
 #define mozilla_dom_SVGGeometryElement_h
 
+#include "mozilla/dom/SVGGraphicsElement.h"
 #include "mozilla/gfx/2D.h"
-#include "SVGGraphicsElement.h"
+#include "SVGAnimatedNumber.h"
 #include "nsISVGPoint.h"
-#include "nsSVGNumber2.h"
 
 namespace mozilla {
 
@@ -31,7 +31,7 @@ struct SVGMark {
 
 namespace dom {
 
-class SVGAnimatedNumber;
+class DOMSVGAnimatedNumber;
 
 typedef mozilla::dom::SVGGraphicsElement SVGGeometryElementBase;
 
@@ -208,7 +208,7 @@ class SVGGeometryElement : public SVGGeometryElementBase {
   float GetPathLengthScale(PathLengthScaleForType aFor);
 
   // WebIDL
-  already_AddRefed<SVGAnimatedNumber> PathLength();
+  already_AddRefed<DOMSVGAnimatedNumber> PathLength();
   float GetTotalLength();
   already_AddRefed<nsISVGPoint> GetPointAtLength(float distance,
                                                  ErrorResult& rv);
@@ -217,7 +217,7 @@ class SVGGeometryElement : public SVGGeometryElementBase {
   // SVGElement method
   virtual NumberAttributesInfo GetNumberInfo() override;
 
-  nsSVGNumber2 mPathLength;
+  SVGAnimatedNumber mPathLength;
   static NumberInfo sNumberInfo;
   mutable RefPtr<Path> mCachedPath;
 };

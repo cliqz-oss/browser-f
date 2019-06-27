@@ -4,7 +4,7 @@
   <title>Testing APZ hit-test with touch-action boxes</title>
   <script type="application/javascript" src="apz_test_utils.js"></script>
   <script type="application/javascript" src="apz_test_native_event_utils.js"></script>
-  <script type="application/javascript" src="/tests/SimpleTest/paint_listener.js"></script>
+  <script src="/tests/SimpleTest/paint_listener.js"></script>
   <meta name="viewport" content="width=device-width"/>
   <style>
 .taBox {
@@ -113,6 +113,12 @@ function* test(testDriver) {
   yield waitForApzFlushedRepaints(testDriver);
 
   var scrollId = config.utils.getViewId(document.scrollingElement);
+
+  // Elements with APZ aware listeners round-trip through the dispatch-to-content
+  // region and end up as IRREGULAR_AREA when WebRender is disabled.
+  var touchListenerFlag = config.isWebRender
+        ? APZHitResultFlags.APZ_AWARE_LISTENERS
+        : APZHitResultFlags.IRREGULAR_AREA;
 
   checkHitResult(
       hitTest(centerOf("taNone")),
@@ -237,7 +243,7 @@ function* test(testDriver) {
   checkHitResult(
       hitTest(centerOf("taInnerManipListener")),
       APZHitResultFlags.VISIBLE |
-      APZHitResultFlags.DISPATCH_TO_CONTENT |
+      touchListenerFlag |
       APZHitResultFlags.DOUBLE_TAP_ZOOM_DISABLED,
       scrollId,
       "div with touch listener inside touch-action: manipulation");
@@ -245,13 +251,13 @@ function* test(testDriver) {
   checkHitResult(
       hitTest(centerOf("taListener")),
       APZHitResultFlags.VISIBLE |
-      APZHitResultFlags.DISPATCH_TO_CONTENT,
+      touchListenerFlag,
       scrollId,
       "div with touch listener");
   checkHitResult(
       hitTest(centerOf("taInnerListenerPanX")),
       APZHitResultFlags.VISIBLE |
-      APZHitResultFlags.DISPATCH_TO_CONTENT |
+      touchListenerFlag |
       APZHitResultFlags.PAN_Y_DISABLED |
       APZHitResultFlags.PINCH_ZOOM_DISABLED |
       APZHitResultFlags.DOUBLE_TAP_ZOOM_DISABLED,

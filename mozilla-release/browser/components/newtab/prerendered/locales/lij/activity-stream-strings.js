@@ -40,9 +40,7 @@ window.gActivityStreamStrings = {
   "section_disclaimer_topstories_buttontext": "Va ben, ò capio",
   "prefs_home_header": "Pagina iniçiâ de Firefox",
   "prefs_home_description": "Çerni i contegnui che ti veu vedde inta pagina iniçiâ de Firefox.",
-  "prefs_content_discovery_header": "Pagina iniçiâ de Firefox",
   "prefs_content_discovery_description": "Content Discovery in Firefox Home allows you to discover high-quality, relevant articles from across the web.",
-  "prefs_content_discovery_button": "Dizabilita a descoverta de neuvi contegnui",
   "prefs_section_rows_option": "{num} riga;{num} righe",
   "prefs_search_header": "Çerca into Web",
   "prefs_topsites_description": "I sciti che ti vixiti de ciù",
@@ -107,8 +105,5 @@ window.gActivityStreamStrings = {
   "firstrun_privacy_notice": "Informativa in sciâ privacy",
   "firstrun_continue_to_login": "Continoa",
   "firstrun_skip_login": "Sata sto passo",
-  "context_menu_title": "Arvi menû",
-  "manual_migration_explanation2": "Preuva Firefox con i segnalibbri, a stöia e-e paròlle segrete de 'n atro navegatô.",
-  "manual_migration_cancel_button": "No graçie",
-  "manual_migration_import_button": "Inpòrta oua"
+  "context_menu_title": "Arvi menû"
 };

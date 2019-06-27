@@ -149,6 +149,26 @@ add_task(async function check_usesFirefoxSync() {
     "should select correct item by usesFirefoxSync");
 });
 
+add_task(async function check_isFxAEnabled() {
+  await pushPrefs(["identity.fxaccounts.enabled", false]);
+  is(await ASRouterTargeting.Environment.isFxAEnabled, false,
+    "should return false if fxa is disabled");
+
+  const message = {id: "foo", targeting: "isFxAEnabled"};
+  is(await ASRouterTargeting.findMatchingMessage({messages: [message]}), undefined,
+    "should not select a message if fxa is disabled");
+});
+
+add_task(async function check_isFxAEnabled() {
+  await pushPrefs(["identity.fxaccounts.enabled", true]);
+  is(await ASRouterTargeting.Environment.isFxAEnabled, true,
+    "should return true if fxa is enabled");
+
+  const message = {id: "foo", targeting: "isFxAEnabled"};
+  is(await ASRouterTargeting.findMatchingMessage({messages: [message]}), message,
+    "should select the correct message");
+});
+
 add_task(async function check_totalBookmarksCount() {
   // Make sure we remove default bookmarks so they don't interfere
   await clearHistoryAndBookmarks();
@@ -451,14 +471,14 @@ add_task(async function checkCFRPinnedTabsTargetting() {
         {timestamp: timeMinutesAgo(1)},
       ],
     },
-    param: "github.com",
+    param: {host: "github.com", url: "https://google.com"},
   };
 
   is(await ASRouterTargeting.findMatchingMessage({messages, trigger}), undefined,
     "should not select PIN_TAB mesage with only 2 visits in past hour");
 
   trigger.context.recentVisits.push({timestamp: timeMinutesAgo(59)});
-  is(await ASRouterTargeting.findMatchingMessage({messages, trigger}), messages.find(m => m.id === "PIN_TAB"),
+  is((await ASRouterTargeting.findMatchingMessage({messages, trigger})).id, "PIN_TAB",
     "should select PIN_TAB mesage");
 
   await BrowserTestUtils.withNewTab({gBrowser, url: "about:blank"}, async browser => {
@@ -469,7 +489,34 @@ add_task(async function checkCFRPinnedTabsTargetting() {
     gBrowser.unpinTab(tab);
   });
 
-  trigger.param = "foo.bar";
+  trigger.param = {host: "foo.bar", url: "https://foo.bar"};
   is(await ASRouterTargeting.findMatchingMessage({messages, trigger}), undefined,
     "should not select PIN_TAB mesage with a trigger param/host not in our hostlist");
+});
+
+add_task(async function checkPatternMatches() {
+  const now = Date.now();
+  const timeMinutesAgo = numMinutes => now - numMinutes * 60 * 1000;
+  const messages = [{id: "message_with_pattern", targeting: "true", trigger: {id: "frequentVisits", patterns: ["*://*.github.com/"]}}];
+  const trigger = {
+    id: "frequentVisits",
+    context: {
+      recentVisits: [
+        {timestamp: timeMinutesAgo(33)},
+        {timestamp: timeMinutesAgo(17)},
+        {timestamp: timeMinutesAgo(1)},
+      ],
+    },
+    param: {host: "github.com", url: "https://gist.github.com"},
+  };
+
+  is((await ASRouterTargeting.findMatchingMessage({messages, trigger})).id, "message_with_pattern", "should select PIN_TAB mesage");
+});
+
+add_task(async function checkPatternsValid() {
+  const messages = CFRMessageProvider.getMessages().filter(m => m.trigger.patterns);
+
+  for (const message of messages) {
+    Assert.ok(new MatchPatternSet(message.trigger.patterns));
+  }
 });

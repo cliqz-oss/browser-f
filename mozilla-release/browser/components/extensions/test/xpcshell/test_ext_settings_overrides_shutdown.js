@@ -4,7 +4,6 @@
 "use strict";
 
 const {AddonTestUtils} = ChromeUtils.import("resource://testing-common/AddonTestUtils.jsm");
-const {SearchTestUtils} = ChromeUtils.import("resource://testing-common/SearchTestUtils.jsm");
 // Lazily import ExtensionParent to allow AddonTestUtils.createAppInfo to
 // override Services.appinfo.
 ChromeUtils.defineModuleGetter(this, "ExtensionParent",
@@ -14,8 +13,6 @@ AddonTestUtils.init(this);
 AddonTestUtils.overrideCertDB();
 AddonTestUtils.createAppInfo("xpcshell@tests.mozilla.org", "XPCShell", "42", "42");
 
-Services.prefs.setBoolPref("browser.search.log", true);
-
 add_task(async function shutdown_during_search_provider_startup() {
   await AddonTestUtils.promiseStartupManager();
 
@@ -24,6 +21,7 @@ add_task(async function shutdown_during_search_provider_startup() {
     manifest: {
       chrome_settings_overrides: {
         search_provider: {
+          is_default: true,
           name: "dummy name",
           search_url: "https://example.com/",
         },
@@ -79,8 +77,6 @@ add_task(async function shutdown_during_search_provider_startup() {
   await uninstallingPromise;
   Assert.ok(!uninstalled, "Uninstall should not be finished yet");
   Assert.ok(!initialized, "Search service should still be uninitialized");
-  let searchSettingsUpdatePromise = SearchTestUtils.promiseSearchNotification("settings-update-complete");
-
   await Services.search.init();
   Assert.ok(initialized, "Search service should be initialized");
 
@@ -95,8 +91,6 @@ add_task(async function shutdown_during_search_provider_startup() {
 
   // After initializing the search service, uninstall should eventually finish.
   await uninstalledPromise;
-
-  await searchSettingsUpdatePromise;
 
   await AddonTestUtils.promiseShutdownManager();
 });

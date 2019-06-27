@@ -1188,7 +1188,6 @@ function getTransactionsForCopy(items, insertionIndex,
         !PlacesUtils.bookmarks.isVirtualRootItem(guid) &&
         !PlacesUtils.isVirtualLeftPaneItem(guid)) {
       transaction = PlacesTransactions.Copy({
-        excludingAnnotation: "Places/SmartBookmark",
         guid,
         newIndex: index,
         newParentGuid: insertionParentGuid,

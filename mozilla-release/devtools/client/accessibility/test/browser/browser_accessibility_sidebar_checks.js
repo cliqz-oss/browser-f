@@ -27,7 +27,7 @@ const TEST_URI = `<html>
 const tests = [{
   desc: "Test the initial accessibility audit state.",
   expected: {
-    audit: { contrastRatio: null },
+    audit: { CONTRAST: null },
   },
 }, {
   desc: "Check accessible representing text node in red.",
@@ -38,11 +38,12 @@ const tests = [{
   },
   expected: {
     audit: {
-      "contrastRatio": {
+      "CONTRAST": {
         "value": 4.00,
         "color": [255, 0, 0, 1],
         "backgroundColor": [255, 255, 255, 1],
         "isLargeText": false,
+        "score": "fail",
       },
     },
   },
@@ -54,11 +55,12 @@ const tests = [{
   },
   expected: {
     audit: {
-      "contrastRatio": {
+      "CONTRAST": {
         "value": 8.59,
         "color": [0, 0, 255, 1],
         "backgroundColor": [255, 255, 255, 1],
         "isLargeText": false,
+        "score": "AAA",
       },
     },
   },

@@ -26,8 +26,9 @@ class nsTableRowFrame;
 class nsTableColGroupFrame;
 class nsITableLayoutStrategy;
 namespace mozilla {
-class WritingMode;
 class LogicalMargin;
+class PresShell;
+class WritingMode;
 struct TableReflowInput;
 namespace layers {
 class StackingContextHelper;
@@ -41,11 +42,11 @@ static inline bool IsTableCell(mozilla::LayoutFrameType frameType) {
          frameType == mozilla::LayoutFrameType::BCTableCell;
 }
 
-class nsDisplayTableItem : public nsDisplayItem {
+class nsDisplayTableItem : public nsPaintedDisplayItem {
  public:
   nsDisplayTableItem(nsDisplayListBuilder* aBuilder, nsIFrame* aFrame,
                      bool aDrawsBackground = true)
-      : nsDisplayItem(aBuilder, aFrame),
+      : nsPaintedDisplayItem(aBuilder, aFrame),
         mPartHasFixedBackground(false),
         mDrawsBackground(aDrawsBackground) {}
 
@@ -137,7 +138,7 @@ class nsTableFrame : public nsContainerFrame {
    *
    * @return           the frame that was created
    */
-  friend nsTableFrame* NS_NewTableFrame(nsIPresShell* aPresShell,
+  friend nsTableFrame* NS_NewTableFrame(mozilla::PresShell* aPresShell,
                                         ComputedStyle* aStyle);
 
   /** sets defaults for table-specific style.
@@ -646,12 +647,12 @@ class nsTableFrame : public nsContainerFrame {
 
  public:
   // calculate the computed block-size of aFrame including its border and
-  // padding given its reflow state.
+  // padding given its reflow input.
   nscoord CalcBorderBoxBSize(const ReflowInput& aReflowInput);
 
  protected:
   // update the  desired block-size of this table taking into account the
-  // current reflow state, the table attributes and the content driven rowgroup
+  // current reflow input, the table attributes and the content driven rowgroup
   // bsizes this function can change the overflow area
   void CalcDesiredBSize(const ReflowInput& aReflowInput,
                         ReflowOutput& aDesiredSize);

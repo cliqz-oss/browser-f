@@ -68,7 +68,7 @@ function getServicePack() {
 
     if (0 === GetVersionEx(winVer.address())) {
       // Using "throw" instead of "do_throw" (see NOTE above)
-      throw ("Failure in GetVersionEx (returned 0)");
+      throw new Error("Failure in GetVersionEx (returned 0)");
     }
 
     return winVer.wServicePackMajor + "." + winVer.wServicePackMinor + "." +
@@ -125,7 +125,7 @@ function getProcArchitecture() {
         return "x86";
       default:
         // Using "throw" instead of "do_throw" (see NOTE above)
-        throw ("Unknown architecture returned from GetNativeSystemInfo: " + sysInfo.wProcessorArchitecture);
+        throw new Error("Unknown architecture returned from GetNativeSystemInfo: " + sysInfo.wProcessorArchitecture);
     }
   } finally {
     kernel32.close();
@@ -224,8 +224,8 @@ add_task(async function test_locale() {
   do_get_profile();
 
   let url = URL_PREFIX + "%LOCALE%/";
-  Assert.equal(await getResult(url), AppConstants.INSTALL_LOCALE,
-               "the url param for %LOCALE%" + MSG_SHOULD_EQUAL);
+  Assert.equal(await getResult(url), "en-US",
+               "Assuming we are built with en-US, the url param for %LOCALE%" + MSG_SHOULD_EQUAL);
 });
 
 // url constructed with %CHANNEL%

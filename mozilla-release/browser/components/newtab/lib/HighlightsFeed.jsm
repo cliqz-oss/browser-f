@@ -223,37 +223,9 @@ this.HighlightsFeed = class HighlightsFeed {
   fetchImage(page) {
     // Request a screenshot if we don't already have one pending
     const {preview_image_url: imageUrl, url} = page;
-    Screenshots.maybeCacheScreenshot(page, imageUrl || url, "image", image => {
+    return Screenshots.maybeCacheScreenshot(page, imageUrl || url, "image", image => {
       SectionsManager.updateSectionCard(SECTION_ID, url, {image}, true);
     });
-  }
-
-  /**
-   * Deletes an item from a user's saved to Pocket feed and then refreshes highlights
-   * @param {int} itemID
-   *  The unique ID given by Pocket for that item; used to look the item up when deleting
-   */
-  async deleteFromPocket(itemID) {
-    try {
-      await NewTabUtils.activityStreamLinks.deletePocketEntry(itemID);
-      this.fetchHighlights({broadcast: true});
-    } catch (err) {
-      Cu.reportError(err);
-    }
-  }
-
-  /**
-   * Archives an item from a user's saved to Pocket feed and then refreshes highlights
-   * @param {int} itemID
-   *  The unique ID given by Pocket for that item; used to look the item up when archiving
-   */
-  async archiveFromPocket(itemID) {
-    try {
-      await NewTabUtils.activityStreamLinks.archivePocketEntry(itemID);
-      this.fetchHighlights({broadcast: true});
-    } catch (err) {
-      Cu.reportError(err);
-    }
   }
 
   onAction(action) {
@@ -276,13 +248,8 @@ this.HighlightsFeed = class HighlightsFeed {
       case at.PLACES_HISTORY_CLEARED:
       case at.PLACES_LINK_BLOCKED:
       case at.DOWNLOAD_CHANGED:
+      case at.POCKET_LINK_DELETED_OR_ARCHIVED:
         this.fetchHighlights({broadcast: true});
-        break;
-      case at.DELETE_FROM_POCKET:
-        this.deleteFromPocket(action.data.pocket_id);
-        break;
-      case at.ARCHIVE_FROM_POCKET:
-        this.archiveFromPocket(action.data.pocket_id);
         break;
       case at.PLACES_LINKS_CHANGED:
       case at.PLACES_SAVED_TO_POCKET:

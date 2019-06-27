@@ -40,9 +40,7 @@ window.gActivityStreamStrings = {
   "section_disclaimer_topstories_buttontext": "Ok, entendi",
   "prefs_home_header": "Conteúdo inicial do Firefox",
   "prefs_home_description": "Escolha que conteúdo você quer na sua tela inicial do Firefox.",
-  "prefs_content_discovery_header": "Página inicial do Firefox",
   "prefs_content_discovery_description": "A descoberta de conteúdo na página inicial do Firefox permite descobrir artigos relevantes, de alta qualidade, pela web afora.",
-  "prefs_content_discovery_button": "Desativar descoberta de conteúdo",
   "prefs_section_rows_option": "{num} linha;{num} linhas",
   "prefs_search_header": "Pesquisar na web",
   "prefs_topsites_description": "Os sites que você mais visita",
@@ -107,8 +105,5 @@ window.gActivityStreamStrings = {
   "firstrun_privacy_notice": "Política de privacidade",
   "firstrun_continue_to_login": "Continuar",
   "firstrun_skip_login": "Pular essa etapa",
-  "context_menu_title": "Abrir menu",
-  "manual_migration_explanation2": "Experimente o Firefox com os favoritos, histórico e senhas salvas em outro navegador.",
-  "manual_migration_cancel_button": "Não, obrigado",
-  "manual_migration_import_button": "Importar agora"
+  "context_menu_title": "Abrir menu"
 };

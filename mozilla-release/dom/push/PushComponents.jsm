@@ -89,7 +89,6 @@ PushServiceBase.prototype = {
     if (topic === "android-push-service") {
       // Load PushService immediately.
       this._handleReady();
-      return;
     }
   },
 
@@ -142,12 +141,12 @@ Object.assign(PushServiceParent.prototype, {
   // nsIPushService methods
 
   subscribe(scope, principal, callback) {
-    this.subscribeWithKey(scope, principal, 0, null, callback);
+    this.subscribeWithKey(scope, principal, [], callback);
   },
 
-  subscribeWithKey(scope, principal, keyLen, key, callback) {
+  subscribeWithKey(scope, principal, key, callback) {
     this._handleRequest("Push:Register", principal, {
-      scope: scope,
+      scope,
       appServerKey: key,
     }).then(result => {
       this._deliverSubscription(callback, result);
@@ -158,7 +157,7 @@ Object.assign(PushServiceParent.prototype, {
 
   unsubscribe(scope, principal, callback) {
     this._handleRequest("Push:Unregister", principal, {
-      scope: scope,
+      scope,
     }).then(result => {
       callback.onUnsubscribe(Cr.NS_OK, result);
     }, error => {
@@ -168,7 +167,7 @@ Object.assign(PushServiceParent.prototype, {
 
   getSubscription(scope, principal, callback) {
     return this._handleRequest("Push:Registration", principal, {
-      scope: scope,
+      scope,
     }).then(result => {
       this._deliverSubscription(callback, result);
     }, error => {
@@ -178,7 +177,7 @@ Object.assign(PushServiceParent.prototype, {
 
   clearForDomain(domain, callback) {
     return this._handleRequest("Push:Clear", null, {
-      domain: domain,
+      domain,
     }).then(result => {
       callback.onClear(Cr.NS_OK);
     }, error => {
@@ -219,10 +218,10 @@ Object.assign(PushServiceParent.prototype, {
       this.reportDeliveryError(data.messageId, data.reason);
       return;
     }
-    return this._handleRequest(name, principal, data).then(result => {
+    this._handleRequest(name, principal, data).then(result => {
       target.sendAsyncMessage(this._getResponseName(name, "OK"), {
         requestID: data.requestID,
-        result: result
+        result,
       });
     }, error => {
       target.sendAsyncMessage(this._getResponseName(name, "KO"), {
@@ -349,39 +348,39 @@ Object.assign(PushServiceContent.prototype, {
   // nsIPushService methods
 
   subscribe(scope, principal, callback) {
-    this.subscribeWithKey(scope, principal, 0, null, callback);
+    this.subscribeWithKey(scope, principal, [], callback);
   },
 
-  subscribeWithKey(scope, principal, keyLen, key, callback) {
-    let requestId = this._addRequest(callback);
+  subscribeWithKey(scope, principal, key, callback) {
+    let requestID = this._addRequest(callback);
     this._mm.sendAsyncMessage("Push:Register", {
-      scope: scope,
+      scope,
       appServerKey: key,
-      requestID: requestId,
+      requestID,
     }, null, principal);
   },
 
   unsubscribe(scope, principal, callback) {
-    let requestId = this._addRequest(callback);
+    let requestID = this._addRequest(callback);
     this._mm.sendAsyncMessage("Push:Unregister", {
-      scope: scope,
-      requestID: requestId,
+      scope,
+      requestID,
     }, null, principal);
   },
 
   getSubscription(scope, principal, callback) {
-    let requestId = this._addRequest(callback);
+    let requestID = this._addRequest(callback);
     this._mm.sendAsyncMessage("Push:Registration", {
-      scope: scope,
-      requestID: requestId,
+      scope,
+      requestID,
     }, null, principal);
   },
 
   clearForDomain(domain, callback) {
-    let requestId = this._addRequest(callback);
+    let requestID = this._addRequest(callback);
     this._mm.sendAsyncMessage("Push:Clear", {
-      domain: domain,
-      requestID: requestId,
+      domain,
+      requestID,
     });
   },
 
@@ -399,8 +398,8 @@ Object.assign(PushServiceContent.prototype, {
 
   reportDeliveryError(messageId, reason) {
     this._mm.sendAsyncMessage("Push:ReportError", {
-      messageId: messageId,
-      reason: reason,
+      messageId,
+      reason,
     });
   },
 
@@ -530,29 +529,25 @@ PushSubscription.prototype = {
    * callers receive the key buffer as a return value, while C++ callers
    * receive the key size and buffer as out parameters.
    */
-  getKey(name, outKeyLen) {
+  getKey(name) {
     switch (name) {
       case "p256dh":
-        return this._getRawKey(this._props.p256dhKey, outKeyLen);
+        return this._getRawKey(this._props.p256dhKey);
 
       case "auth":
-        return this._getRawKey(this._props.authenticationSecret, outKeyLen);
+        return this._getRawKey(this._props.authenticationSecret);
 
       case "appServer":
-        return this._getRawKey(this._props.appServerKey, outKeyLen);
+        return this._getRawKey(this._props.appServerKey);
     }
-    return null;
+    return [];
   },
 
-  _getRawKey(key, outKeyLen) {
+  _getRawKey(key) {
     if (!key) {
-      return null;
+      return [];
     }
-    let rawKey = new Uint8Array(key);
-    if (outKeyLen) {
-      outKeyLen.value = rawKey.length;
-    }
-    return rawKey;
+    return new Uint8Array(key);
   },
 };
 
@@ -560,4 +555,4 @@ PushSubscription.prototype = {
 // the parent or content process.
 let Service = isParent ? PushServiceParent : PushServiceContent;
 
-var EXPORTED_SYMBOLS = ["Service"];
+const EXPORTED_SYMBOLS = ["Service"];

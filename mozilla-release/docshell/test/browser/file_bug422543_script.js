@@ -1,3 +1,5 @@
+/* eslint-env mozilla/frame-script */
+
 function SHistoryListener() {
 }
 
@@ -5,27 +7,27 @@ SHistoryListener.prototype = {
   retval: true,
   last: "initial",
 
-  OnHistoryNewEntry: function (aNewURI) {
+  OnHistoryNewEntry(aNewURI) {
     this.last = "newentry";
   },
 
-  OnHistoryGotoIndex: function (aIndex, aGotoURI) {
+  OnHistoryGotoIndex() {
     this.last = "gotoindex";
   },
 
-  OnHistoryPurge: function (aNumEntries) {
+  OnHistoryPurge() {
     this.last = "purge";
   },
 
-  OnHistoryReload: function (aReloadURI, aReloadFlags) {
+  OnHistoryReload() {
     this.last = "reload";
     return this.retval;
   },
 
-  OnHistoryReplaceEntry: function (aIndex) {},
+  OnHistoryReplaceEntry() {},
 
   QueryInterface: ChromeUtils.generateQI([Ci.nsISHistoryListener,
-                                          Ci.nsISupportsWeakReference])
+                                          Ci.nsISupportsWeakReference]),
 };
 
 let testAPI = {
@@ -63,8 +65,7 @@ let testAPI = {
 
   notifyReload() {
     let history = this.shistory.legacySHistory;
-    let rval =
-      history.notifyOnHistoryReload(content.document.documentURIObject, 0);
+    let rval = history.notifyOnHistoryReload();
     sendAsyncMessage("bug422543:notifyReload:return", { rval });
   },
 

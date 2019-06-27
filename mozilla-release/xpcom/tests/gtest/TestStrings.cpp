@@ -1304,7 +1304,8 @@ static void test_parse_string_helper2(const char* str, char separator,
   test_parse_string_helper(str, separator, 2, s1, s2);
 }
 
-TEST(String, parse_string) {
+TEST(String, parse_string)
+{
   test_parse_string_helper1("foo, bar", '_', "foo, bar");
   test_parse_string_helper2("foo, bar", ',', "foo", " bar");
   test_parse_string_helper2("foo, bar ", ' ', "foo,", "bar");
@@ -1322,7 +1323,8 @@ static void test_strip_chars_helper(const char16_t* str, const char16_t* strip,
   EXPECT_TRUE(data.Equals(result));
 }
 
-TEST(String, strip_chars) {
+TEST(String, strip_chars)
+{
   test_strip_chars_helper(u"foo \r \nbar", u" \n\r",
                           NS_LITERAL_STRING("foobar"));
   test_strip_chars_helper(u"\r\nfoo\r\n", u" \n\r", NS_LITERAL_STRING("foo"));
@@ -1840,6 +1842,52 @@ TEST_F(Strings, StripCRLFW) {
   result.AssignLiteral(u"\u263A    is   ;-)");
   str.StripCRLF();
   EXPECT_TRUE(str == result);
+}
+
+TEST_F(Strings, utf8_to_latin1_sharing) {
+  nsCString s;
+  s.Append('a');
+  s.Append('b');
+  s.Append('c');
+  nsCString t;
+  LossyAppendUTF8toLatin1(s, t);
+  EXPECT_TRUE(t.EqualsLiteral("abc"));
+  EXPECT_EQ(s.BeginReading(), t.BeginReading());
+  LossyCopyUTF8toLatin1(s, t);
+  EXPECT_TRUE(t.EqualsLiteral("abc"));
+  EXPECT_EQ(s.BeginReading(), t.BeginReading());
+}
+
+TEST_F(Strings, latin1_to_utf8_sharing) {
+  nsCString s;
+  s.Append('a');
+  s.Append('b');
+  s.Append('c');
+  nsCString t;
+  AppendLatin1toUTF8(s, t);
+  EXPECT_TRUE(t.EqualsLiteral("abc"));
+  EXPECT_EQ(s.BeginReading(), t.BeginReading());
+  CopyLatin1toUTF8(s, t);
+  EXPECT_TRUE(t.EqualsLiteral("abc"));
+  EXPECT_EQ(s.BeginReading(), t.BeginReading());
+}
+
+TEST_F(Strings, utf8_to_latin1) {
+  nsCString s;
+  s.AssignLiteral("\xC3\xA4");
+  nsCString t;
+  LossyCopyUTF8toLatin1(s, t);
+  // EqualsLiteral requires ASCII
+  EXPECT_TRUE(t.Equals("\xE4"));
+}
+
+TEST_F(Strings, latin1_to_utf8) {
+  nsCString s;
+  s.AssignLiteral("\xE4");
+  nsCString t;
+  CopyLatin1toUTF8(s, t);
+  // EqualsLiteral requires ASCII
+  EXPECT_TRUE(t.Equals("\xC3\xA4"));
 }
 
 // Note the five calls in the loop, so divide by 100k

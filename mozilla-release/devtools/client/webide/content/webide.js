@@ -67,10 +67,17 @@ var UI = {
     // toolbox session id.
     this._telemetry.toolOpened("webide", -1, this);
 
-    this.notificationBox = new window.MozElements.NotificationBox(element => {
-      document.getElementById("containerbox")
-              .insertAdjacentElement("afterbegin", element);
-    });
+    function createNotificationBox() {
+      return new window.MozElements.NotificationBox(element => {
+        document.getElementById("containerbox")
+                .insertAdjacentElement("afterbegin", element);
+      });
+    }
+    // Create two distinct NotificationBox to be able to show the deprecation message and
+    // the error messages simultaneously.
+    this.notificationBox = createNotificationBox();
+    this.deprecationBox = createNotificationBox();
+
     AppManager.init();
 
     this.appManagerUpdate = this.appManagerUpdate.bind(this);
@@ -107,6 +114,12 @@ var UI = {
 
     this.contentViewer = window.docShell.contentViewer;
     this.contentViewer.fullZoom = Services.prefs.getCharPref("devtools.webide.zoom");
+
+    // If the new about:debugging is enabled, show a deprecation message to encourage
+    // users to open the new Remote Debugging
+    if (Services.prefs.getBoolPref("devtools.aboutdebugging.new-enabled", false)) {
+      this.showDeprecationMessage();
+    }
 
     gDevToolsBrowser.isWebIDEInitialized.resolve();
   },
@@ -302,7 +315,32 @@ var UI = {
     const nbox = this.notificationBox;
     nbox.removeAllNotifications(true);
     nbox.appendNotification(text, "webide:errornotification", null,
-                            nbox.PRIORITY_WARNING_LOW, buttons);
+      nbox.PRIORITY_WARNING_LOW, buttons);
+  },
+
+  showDeprecationMessage: function() {
+    let text;
+    try {
+      text = Strings.GetStringFromName("error_webIDEDeprecated2");
+    } catch (e) {
+      // The string error_webIDEDeprecated2 should be upflited to Beta 68. In this
+      // situation, some language packs might not be updated and provide the new string
+      // immediately. Fallback to the previous string in this case.
+      text = Strings.GetStringFromName("error_webIDEDeprecated");
+    }
+    const buttons = [{
+      label: Strings.GetStringFromName("notification_openAboutDebugging.label"),
+      accessKey: Strings.GetStringFromName("notification_openAboutDebugging.accesskey"),
+      callback: function() {
+        const { openTrustedLink } = require("devtools/client/shared/link");
+        openTrustedLink("about:debugging");
+      },
+    }];
+
+    const nbox = this.deprecationBox;
+    nbox.removeAllNotifications(true);
+    nbox.appendNotification(text, "webide:deprecationnotification", null,
+      nbox.PRIORITY_WARNING_LOW, buttons);
   },
 
   dismissErrorNotification: function() {

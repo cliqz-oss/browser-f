@@ -131,6 +131,7 @@ EXPORTS.js += [
     '../public/Debug.h',
     '../public/Equality.h',
     '../public/ErrorReport.h',
+    '../public/ForOfIterator.h',
     '../public/GCAnnotations.h',
     '../public/GCAPI.h',
     '../public/GCHashTable.h',
@@ -157,7 +158,10 @@ EXPORTS.js += [
     '../public/ProtoKey.h',
     '../public/Proxy.h',
     '../public/Realm.h',
+    '../public/RealmOptions.h',
     '../public/RefCounted.h',
+    '../public/RegExp.h',
+    '../public/RegExpFlags.h',
     '../public/RequiredDefines.h',
     '../public/Result.h',
     '../public/RootingAPI.h',
@@ -187,8 +191,13 @@ EXPORTS.js += [
     '../public/Utility.h',
     '../public/Value.h',
     '../public/Vector.h',
+    '../public/Warnings.h',
     '../public/WeakMapPtr.h',
     '../public/Wrapper.h',
+]
+
+EXPORTS.js.experimental += [
+    '../public/experimental/SourceHook.h',
 ]
 
 UNIFIED_SOURCES += [
@@ -313,6 +322,7 @@ UNIFIED_SOURCES += [
     'vm/Shape.cpp',
     'vm/SharedArrayObject.cpp',
     'vm/SharedImmutableStringsCache.cpp',
+    'vm/SourceHook.cpp',
     'vm/Stack.cpp',
     'vm/StringType.cpp',
     'vm/SymbolType.cpp',
@@ -323,8 +333,8 @@ UNIFIED_SOURCES += [
     'vm/UbiNode.cpp',
     'vm/UbiNodeCensus.cpp',
     'vm/UbiNodeShortestPaths.cpp',
-    'vm/UnboxedObject.cpp',
     'vm/Value.cpp',
+    'vm/Warnings.cpp',
     'vm/Xdr.cpp',
 ]
 

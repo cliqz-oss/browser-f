@@ -1996,6 +1996,31 @@ public class GeckoAppShell {
         return Integer.parseInt(prop);
     }
 
+    static private int sPreviousAudioMode = -2;
+
+    @WrapForJNI(calledFrom = "any")
+    public static void setCommunicationAudioModeOn(final boolean on) {
+        final AudioManager am = (AudioManager)getApplicationContext()
+                                .getSystemService(Context.AUDIO_SERVICE);
+        if (am == null) {
+            return;
+        }
+
+        try {
+            if (on)  {
+                Log.e(LOGTAG, "Setting communication mode ON");
+                am.startBluetoothSco();
+                am.setBluetoothScoOn(true);
+            } else {
+                Log.e(LOGTAG, "Setting communication mode OFF");
+                am.stopBluetoothSco();
+                am.setBluetoothScoOn(false);
+            }
+        } catch (SecurityException e) {
+            Log.e(LOGTAG, "could not set communication mode", e);
+        }
+    }
+
     private static String getLanguageTag(final Locale locale) {
         final StringBuilder out = new StringBuilder(locale.getLanguage());
         final String country = locale.getCountry();

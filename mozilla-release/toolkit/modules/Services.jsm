@@ -81,6 +81,7 @@ var initTable = {
   storage: ["@mozilla.org/storage/service;1", "mozIStorageService"],
   domStorageManager: ["@mozilla.org/dom/localStorage-manager;1", "nsIDOMStorageManager"],
   lsm: ["@mozilla.org/dom/localStorage-manager;1", "nsILocalStorageManager"],
+  search: ["@mozilla.org/browser/search-service;1", "nsISearchService"],
   strings: ["@mozilla.org/intl/stringbundle;1", "nsIStringBundleService"],
   telemetry: ["@mozilla.org/base/telemetry;1", "nsITelemetry"],
   textToSubURI: ["@mozilla.org/intl/texttosuburi;1", "nsITextToSubURI"],
@@ -99,20 +100,25 @@ var initTable = {
   netUtils: ["@mozilla.org/network/util;1", "nsINetUtil"],
   loadContextInfo: ["@mozilla.org/load-context-info-factory;1", "nsILoadContextInfoFactory"],
   qms: ["@mozilla.org/dom/quota-manager-service;1", "nsIQuotaManagerService"],
-  xulStore: ["@mozilla.org/xul/xulstore;1", "nsIXULStore"],
 };
 
 if (AppConstants.platform == "android") {
   initTable.androidBridge = ["@mozilla.org/android/bridge;1", "nsIAndroidBridge"];
 }
-if (AppConstants.MOZ_TOOLKIT_SEARCH) {
-  initTable.search = ["@mozilla.org/browser/search-service;1", "nsISearchService"];
-}
 if (AppConstants.MOZ_GECKO_PROFILER) {
   initTable.profiler = ["@mozilla.org/tools/profiler;1", "nsIProfiler"];
 }
-if ("@mozilla.org/browser/enterprisepolicies;1" in Cc) {
-  initTable.policies = ["@mozilla.org/browser/enterprisepolicies;1", "nsIEnterprisePolicies"];
+if ("@mozilla.org/enterprisepolicies;1" in Cc) {
+  initTable.policies = ["@mozilla.org/enterprisepolicies;1", "nsIEnterprisePolicies"];
+}
+
+if (AppConstants.MOZ_NEW_XULSTORE) {
+  XPCOMUtils.defineLazyGetter(Services, "xulStore", () => {
+    const {XULStore} = ChromeUtils.import("resource://gre/modules/XULStore.jsm");
+    return XULStore;
+  });
+} else {
+  initTable.xulStore = ["@mozilla.org/xul/xulstore;1", "nsIXULStore"];
 }
 
 XPCOMUtils.defineLazyServiceGetters(Services, initTable);

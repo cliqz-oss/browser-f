@@ -12,7 +12,7 @@
     <link rel="stylesheet" href="chrome://global/skin/in-content/common.css"
           type="text/css"/>
     <link rel="localization" href="toolkit/about/aboutPerformance.ftl"/>
-    <script type="text/javascript" src="chrome://global/content/aboutPerformance.js"></script>
+    <script src="chrome://global/content/aboutPerformance.js"></script>
     <style>
       @import url("chrome://global/skin/in-content/common.css");
 
@@ -47,6 +47,7 @@
         height: 2em;
         border-bottom: 1px solid var(--in-content-border-color);
         min-width: 40em;
+        background-color: var(--in-content-box-background);
       }
       tr {
         display: table;
@@ -132,6 +133,10 @@
         transform: scale(1.2);
       }
 
+      #dispatch-thead > tr {
+        height: inherit;
+      }
+
       #dispatch-thead > tr > td {
         border: none;
         background-color: var(--in-content-box-background-hover);
@@ -156,6 +161,8 @@
         background-repeat: no-repeat;
         background-size: 16px 16px;
         background-position-y: center;
+        -moz-context-properties: fill;
+        fill: currentColor;
       }
       #dispatch-tbody > tr > td.root{
         background-position-x: left 36px;

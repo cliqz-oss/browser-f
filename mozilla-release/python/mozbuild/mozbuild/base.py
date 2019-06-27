@@ -12,6 +12,7 @@ import os
 import subprocess
 import sys
 import types
+import errno
 try:
     from shutil import which
 except ImportError:
@@ -197,6 +198,49 @@ class MozbuildObject(ProcessExecutionMixin):
 
         return mozpath.normsep(os.path.normpath(topobjdir))
 
+    def build_out_of_date(self, output, dep_file):
+        if not os.path.isfile(output):
+            print(" Output reference file not found: %s" % output)
+            return True
+        if not os.path.isfile(dep_file):
+            print(" Dependency file not found: %s" % dep_file)
+            return True
+
+        deps = []
+        with open(dep_file, 'r') as fh:
+            deps = fh.read().splitlines()
+
+        mtime = os.path.getmtime(output)
+        for f in deps:
+            try:
+                dep_mtime = os.path.getmtime(f)
+            except OSError as e:
+                if e.errno == errno.ENOENT:
+                    print(" Input not found: %s" % f)
+                    return True
+                raise
+            if dep_mtime > mtime:
+                print(" %s is out of date with respect to %s" % (output, f))
+                return True
+        return False
+
+    def backend_out_of_date(self, backend_file):
+        if not os.path.isfile(backend_file):
+            return True
+
+        # Check if any of our output files have been removed since
+        # we last built the backend, re-generate the backend if
+        # so.
+        outputs = []
+        with open(backend_file, 'r') as fh:
+            outputs = fh.read().splitlines()
+        for output in outputs:
+            if not os.path.isfile(mozpath.join(self.topobjdir, output)):
+                return True
+
+        dep_file = '%s.in' % backend_file
+        return self.build_out_of_date(backend_file, dep_file)
+
     @property
     def topobjdir(self):
         if self._topobjdir is None:
@@ -285,7 +329,7 @@ class MozbuildObject(ProcessExecutionMixin):
 
         config_status = os.path.join(self.topobjdir, 'config.status')
 
-        if not os.path.exists(config_status):
+        if not os.path.exists(config_status) or not os.path.getsize(config_status):
             raise BuildEnvironmentNotFoundException('config.status not available. Run configure.')
 
         self._config_environment = \
@@ -661,8 +705,6 @@ class MozbuildObject(ProcessExecutionMixin):
 
         if silent:
             args.append('-s')
-        else:
-            args.append('BUILD_VERBOSE_LOG=1')
 
         # Print entering/leaving directory messages. Some consumers look at
         # these to measure progress.
@@ -927,6 +969,13 @@ class MachCommandConditions(object):
         return False
 
     @staticmethod
+    def is_not_android(cls):
+        """Must not have an Android build."""
+        if hasattr(cls, 'substs'):
+            return cls.substs.get('MOZ_WIDGET_TOOLKIT') != 'android'
+        return False
+
+    @staticmethod
     def is_firefox_or_android(cls):
         """Must have a Firefox or Android build."""
         return MachCommandConditions.is_firefox(cls) or MachCommandConditions.is_android(cls)
@@ -945,6 +994,11 @@ class MachCommandConditions(object):
     def is_artifact_build(cls):
         """Must be an artifact build."""
         return getattr(cls, 'substs', {}).get('MOZ_ARTIFACT_BUILDS')
+
+    @staticmethod
+    def is_non_artifact_build(cls):
+        """Must not be an artifact build."""
+        return not MachCommandConditions.is_artifact_build(cls)
 
 
 class PathArgument(object):

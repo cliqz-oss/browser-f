@@ -18,7 +18,7 @@ const kPostPath = "/post";
 const kPostUrl = kBaseUrl + kPostPath;
 const kPostDataSent = [["foo", "bar"], ["complex", "!*()@"]];
 const kPostDataReceived = "foo=bar&complex=%21%2A%28%29%40";
-const kPostMimeTypeReceived = "application/x-www-form-urlencoded;charset=UTF-8";
+const kPostMimeTypeReceived = "application/x-www-form-urlencoded; charset=utf-8";
 
 const kJsonPostPath = "/json_post";
 const kJsonPostUrl = kBaseUrl + kJsonPostPath;
@@ -91,7 +91,7 @@ add_test(function test_errorCallback() {
       run_next_test();
     },
     onError(e, aResponse) {
-      Assert.equal(e, "404 - Not Found");
+      Assert.equal(e.message, "404 - Not Found");
       do_test_finished();
       run_next_test();
     },

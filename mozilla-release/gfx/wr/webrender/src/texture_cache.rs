@@ -7,15 +7,15 @@ use api::{DebugFlags, ImageDescriptor};
 use api::units::*;
 #[cfg(test)]
 use api::IdNamespace;
-use device::{TextureFilter, total_gpu_bytes_allocated};
-use freelist::{FreeList, FreeListHandle, UpsertResult, WeakFreeListHandle};
-use gpu_cache::{GpuCache, GpuCacheHandle};
-use gpu_types::{ImageSource, UvRectKind};
-use internal_types::{CacheTextureId, FastHashMap, LayerIndex, TextureUpdateList, TextureUpdateSource};
-use internal_types::{TextureSource, TextureCacheAllocInfo, TextureCacheUpdate};
-use profiler::{ResourceProfileCounter, TextureCacheProfileCounters};
-use render_backend::{FrameId, FrameStamp};
-use resource_cache::{CacheItem, CachedImageData};
+use crate::device::{TextureFilter, total_gpu_bytes_allocated};
+use crate::freelist::{FreeList, FreeListHandle, UpsertResult, WeakFreeListHandle};
+use crate::gpu_cache::{GpuCache, GpuCacheHandle};
+use crate::gpu_types::{ImageSource, UvRectKind};
+use crate::internal_types::{CacheTextureId, FastHashMap, LayerIndex, TextureUpdateList, TextureUpdateSource};
+use crate::internal_types::{TextureSource, TextureCacheAllocInfo, TextureCacheUpdate};
+use crate::profiler::{ResourceProfileCounter, TextureCacheProfileCounters};
+use crate::render_backend::{FrameId, FrameStamp};
+use crate::resource_cache::{CacheItem, CachedImageData};
 use std::cell::Cell;
 use std::cmp;
 use std::mem;
@@ -25,16 +25,18 @@ use std::rc::Rc;
 /// The size of each region/layer in shared cache texture arrays.
 pub const TEXTURE_REGION_DIMENSIONS: i32 = 512;
 
-/// The number of slices for picture caching to allocate at start.
-const BASE_PICTURE_TEXTURE_SLICES: usize = 16;
-/// The number of slices to add when we grow out of the current range.
-const ADD_PICTURE_TEXTURE_SLICES: usize = 8;
+const PICTURE_TEXTURE_ADD_SLICES: usize = 4;
+
 /// The chosen image format for picture tiles.
 const PICTURE_TILE_FORMAT: ImageFormat = ImageFormat::BGRA8;
 
 /// The number of pixels in a region. Derived from the above.
 const TEXTURE_REGION_PIXELS: usize =
     (TEXTURE_REGION_DIMENSIONS as usize) * (TEXTURE_REGION_DIMENSIONS as usize);
+
+// The minimum number of bytes that we must be able to reclaim in order
+// to justify clearing the entire shared cache in order to shrink it.
+const RECLAIM_THRESHOLD_BYTES: usize = 5 * 1024 * 1024;
 
 /// Items in the texture cache can either be standalone textures,
 /// or a sub-rect inside the shared cache.
@@ -475,7 +477,7 @@ pub struct TextureCache {
     shared_textures: SharedTextures,
 
     /// A single texture array for picture caching.
-    picture_texture: WholeTextureArray,
+    picture_texture: Option<WholeTextureArray>,
 
     /// Maximum texture size supported by hardware.
     max_texture_size: i32,
@@ -514,13 +516,18 @@ pub struct TextureCache {
     /// begin_frame and moved back in end_frame to solve borrow checker issues.
     /// We should try removing this when we require a rustc with NLL.
     doc_data: PerDocumentData,
+
+    /// This indicates that we performed a cleanup operation which requires all
+    /// documents to build a frame.
+    require_frame_build: bool,
 }
 
 impl TextureCache {
     pub fn new(
         max_texture_size: i32,
         mut max_texture_layers: usize,
-        picture_tile_size: DeviceIntSize,
+        picture_tile_size: Option<DeviceIntSize>,
+        initial_size: DeviceIntSize,
     ) -> Self {
         if cfg!(target_os = "macos") {
             // On MBP integrated Intel GPUs, texture arrays appear to be
@@ -548,15 +555,26 @@ impl TextureCache {
             max_texture_layers = max_texture_layers.min(32);
         }
 
-        let picture_texture = WholeTextureArray {
-            size: picture_tile_size,
-            filter: TextureFilter::Linear,
-            format: PICTURE_TILE_FORMAT,
-            texture_id: CacheTextureId(1),
-            slices: vec![WholeTextureSlice { uv_rect_handle: None }; BASE_PICTURE_TEXTURE_SLICES],
-        };
         let mut pending_updates = TextureUpdateList::new();
-        pending_updates.push_alloc(picture_texture.texture_id, picture_texture.to_info());
+        let picture_texture = if let Some(tile_size) = picture_tile_size{
+            let picture_texture = WholeTextureArray {
+                size: tile_size,
+                filter: TextureFilter::Linear,
+                format: PICTURE_TILE_FORMAT,
+                texture_id: CacheTextureId(1),
+                slices: {
+                    let num_x = (initial_size.width + tile_size.width - 1) / tile_size.width;
+                    let num_y = (initial_size.height + tile_size.height - 1) / tile_size.height;
+                    let count = (num_x * num_y).max(1) as usize;
+                    info!("Initializing picture texture with {}x{} slices", num_x, num_y);
+                    vec![WholeTextureSlice { uv_rect_handle: None }; count]
+                },
+            };
+            pending_updates.push_alloc(picture_texture.texture_id, picture_texture.to_info());
+            Some(picture_texture)
+        } else {
+            None
+        };
 
         TextureCache {
             shared_textures: SharedTextures::new(),
@@ -571,6 +589,7 @@ impl TextureCache {
             now: FrameStamp::INVALID,
             per_doc_data: FastHashMap::default(),
             doc_data: PerDocumentData::new(),
+            require_frame_build: false,
         }
     }
 
@@ -579,9 +598,8 @@ impl TextureCache {
     /// directly from unit test code.
     #[cfg(test)]
     pub fn new_for_testing(max_texture_size: i32, max_texture_layers: usize) -> Self {
-        let tile_size = DeviceIntSize::new(64, 64);
-        let mut cache = Self::new(max_texture_size, max_texture_layers, tile_size);
-        let mut now = FrameStamp::first(DocumentId(IdNamespace(1), 1));
+        let mut cache = Self::new(max_texture_size, max_texture_layers, None, DeviceIntSize::zero());
+        let mut now = FrameStamp::first(DocumentId::new(IdNamespace(1), 1));
         now.advance();
         cache.begin_frame(now);
         cache
@@ -593,13 +611,6 @@ impl TextureCache {
 
     /// Clear all entries of the specified kind.
     fn clear_kind(&mut self, kind: EntryKind) {
-        // This pref just helps us avoid crashes when we begin using multiple documents.
-        // What we need to do for clear to work correctly with multiple documents is
-        // to ensure that we generate frames for all documents whenever we do this.
-        if self.debug_flags.contains(DebugFlags::TEXTURE_CACHE_DBG_DISABLE_SHRINK) {
-            return;
-        }
-
         let mut per_doc_data = mem::replace(&mut self.per_doc_data, FastHashMap::default());
         for (&_, doc_data) in per_doc_data.iter_mut() {
             let entry_handles = mem::replace(
@@ -613,7 +624,10 @@ impl TextureCache {
                 self.free(&entry);
             }
         }
+
+        self.pending_updates.note_clear();
         self.per_doc_data = per_doc_data;
+        self.require_frame_build = true;
     }
 
     fn clear_standalone(&mut self) {
@@ -623,15 +637,14 @@ impl TextureCache {
 
     fn clear_picture(&mut self) {
         self.clear_kind(EntryKind::Picture);
-        if let Some(texture_id) = self.picture_texture.reset(BASE_PICTURE_TEXTURE_SLICES) {
-            self.pending_updates.push_realloc(texture_id, self.picture_texture.to_info());
+        if let Some(ref mut picture_texture) = self.picture_texture {
+            if let Some(texture_id) = picture_texture.reset(PICTURE_TEXTURE_ADD_SLICES) {
+                self.pending_updates.push_reset(texture_id, picture_texture.to_info());
+            }
         }
     }
 
     fn clear_shared(&mut self) {
-        if self.debug_flags.contains(DebugFlags::TEXTURE_CACHE_DBG_DISABLE_SHRINK) {
-            return;
-        }
         self.unset_doc_data();
         self.clear_kind(EntryKind::Shared);
         self.shared_textures.clear(&mut self.pending_updates);
@@ -658,21 +671,58 @@ impl TextureCache {
                                  mem::replace(&mut self.doc_data, PerDocumentData::new()));
     }
 
+    pub fn prepare_for_frames(&mut self, time: SystemTime) {
+        self.maybe_reclaim_shared_memory(time);
+    }
+
+    pub fn bookkeep_after_frames(&mut self) {
+        self.require_frame_build = false;
+    }
+
+    pub fn requires_frame_build(&self) -> bool {
+        return self.require_frame_build;
+    }
+
     /// Called at the beginning of each frame.
     pub fn begin_frame(&mut self, stamp: FrameStamp) {
         debug_assert!(!self.now.is_valid());
         self.now = stamp;
         self.set_doc_data();
-        self.maybe_reclaim_shared_cache_memory();
+        self.maybe_do_periodic_gc();
     }
 
-    /// Called at the beginning of each frame to periodically GC and reclaim
-    /// storage if the cache has grown too large.
-    fn maybe_reclaim_shared_cache_memory(&mut self) {
+    fn maybe_reclaim_shared_memory(&mut self, time: SystemTime) {
+        // If we've had a sufficient number of unused layers for a sufficiently
+        // long time, just blow the whole cache away to shrink it.
+        //
+        // We could do this more intelligently with a resize+blit, but that would
+        // add complexity for a rare case.
+        //
+        // This function must be called before the first begin_frame() for a group
+        // of documents, otherwise documents could end up ignoring the
+        // self.require_frame_build flag which is set if we end up calling
+        // clear_shared.
+        debug_assert!(!self.now.is_valid());
+        if self.shared_textures.empty_region_bytes() >= RECLAIM_THRESHOLD_BYTES {
+            self.reached_reclaim_threshold.get_or_insert(time);
+        } else {
+            self.reached_reclaim_threshold = None;
+        }
+        if let Some(t) = self.reached_reclaim_threshold {
+            let dur = time.duration_since(t).unwrap_or(Duration::default());
+            if dur >= Duration::from_secs(5) {
+                self.clear_shared();
+                self.reached_reclaim_threshold = None;
+            }
+        }
+    }
+
+    /// Called at the beginning of each frame to periodically GC by expiring
+    /// old shared entries. If necessary, the shared memory opened up as a
+    /// result of expiring these entries will be reclaimed before the next
+    /// group of document frames.
+    fn maybe_do_periodic_gc(&mut self) {
         debug_assert!(self.now.is_valid());
-        // The minimum number of bytes that we must be able to reclaim in order
-        // to justify clearing the entire shared cache in order to shrink it.
-        const RECLAIM_THRESHOLD_BYTES: usize = 5 * 1024 * 1024;
 
         // Normally the shared cache only gets GCed when we fail to allocate.
         // However, we also perform a periodic, conservative GC to ensure that
@@ -689,28 +739,6 @@ impl TextureCache {
                 .max_time_s(10)
                 .build();
             self.maybe_expire_old_shared_entries(threshold);
-        }
-
-        // If we've had a sufficient number of unused layers for a sufficiently
-        // long time, just blow the whole cache away to shrink it.
-        //
-        // We could do this more intelligently with a resize+blit, but that would
-        // add complexity for a rare case.
-        //
-        // This block of code is broken with multiple documents, and should be
-        // moved out into a section that runs before building any frames in a
-        // group of documents.
-        if self.shared_textures.empty_region_bytes() >= RECLAIM_THRESHOLD_BYTES {
-            self.reached_reclaim_threshold.get_or_insert(self.now.time());
-        } else {
-            self.reached_reclaim_threshold = None;
-        }
-        if let Some(t) = self.reached_reclaim_threshold {
-            let dur = self.now.time().duration_since(t).unwrap_or(Duration::default());
-            if dur >= Duration::from_secs(5) {
-                self.clear_shared();
-                self.reached_reclaim_threshold = None;
-            }
         }
     }
 
@@ -737,8 +765,10 @@ impl TextureCache {
         self.shared_textures.array_rgba8_nearest
             .update_profile(&mut texture_cache_profile.pages_rgba8_nearest);
 
-        self.picture_texture
-            .update_profile(&mut texture_cache_profile.pages_picture);
+        if let Some(ref picture_texture) = self.picture_texture {
+            picture_texture
+                .update_profile(&mut texture_cache_profile.pages_picture);
+        }
 
         self.unset_doc_data();
         self.now = FrameStamp::INVALID;
@@ -782,8 +812,8 @@ impl TextureCache {
     }
 
     #[cfg(feature = "replay")]
-    pub fn picture_tile_size(&self) -> DeviceIntSize {
-        self.picture_texture.size
+    pub fn picture_tile_size(&self) -> Option<DeviceIntSize> {
+        self.picture_texture.as_ref().map(|pt| pt.size)
     }
 
     pub fn pending_updates(&mut self) -> TextureUpdateList {
@@ -994,12 +1024,11 @@ impl TextureCache {
     // Free a cache entry from the standalone list or shared cache.
     fn free(&mut self, entry: &CacheEntry) {
         match entry.details {
-            EntryDetails::Standalone => {
-                // This is a standalone texture allocation. Free it directly.
-                self.pending_updates.push_free(entry.texture_id);
-            }
             EntryDetails::Picture { layer_index } => {
-                self.picture_texture.slices[layer_index].uv_rect_handle = None;
+                let picture_texture = self.picture_texture
+                    .as_mut()
+                    .expect("Picture caching is expecte to be ON");
+                picture_texture.slices[layer_index].uv_rect_handle = None;
                 if self.debug_flags.contains(
                     DebugFlags::TEXTURE_CACHE_DBG |
                     DebugFlags::TEXTURE_CACHE_DBG_CLEAR_EVICTED)
@@ -1007,11 +1036,15 @@ impl TextureCache {
                     self.pending_updates.push_debug_clear(
                         entry.texture_id,
                         DeviceIntPoint::zero(),
-                        self.picture_texture.size.width,
-                        self.picture_texture.size.height,
+                        picture_texture.size.width,
+                        picture_texture.size.height,
                         layer_index,
                     );
                 }
+            }
+            EntryDetails::Standalone => {
+                // This is a standalone texture allocation. Free it directly.
+                self.pending_updates.push_free(entry.texture_id);
             }
             EntryDetails::Cache { origin, layer_index } => {
                 // Free the block in the given region.
@@ -1125,11 +1158,11 @@ impl TextureCache {
         };
         self.pending_updates.push_alloc(texture_id, info);
 
-        return CacheEntry::new_standalone(
+        CacheEntry::new_standalone(
             texture_id,
             self.now,
             params,
-        );
+        )
     }
 
     /// Allocates a cache entry appropriate for the given parameters.
@@ -1264,17 +1297,21 @@ impl TextureCache {
         debug_assert!(self.now.is_valid());
 
         if self.entries.get_opt(handle).is_none() {
-            let layer_index = match self.picture_texture.find_free() {
-                Some(index) => index,
-                None => {
-                    let index = self.picture_texture.grow(ADD_PICTURE_TEXTURE_SLICES);
-                    let info = self.picture_texture.to_info();
-                    self.pending_updates.push_realloc(self.picture_texture.texture_id, info);
-                    index
-                },
+            let cache_entry = {
+                let picture_texture = self.picture_texture
+                    .as_mut()
+                    .expect("Picture caching is expecte to be ON");
+                let layer_index = match picture_texture.find_free() {
+                    Some(index) => index,
+                    None => {
+                        let index = picture_texture.grow(PICTURE_TEXTURE_ADD_SLICES);
+                        let info = picture_texture.to_info();
+                        self.pending_updates.push_realloc(picture_texture.texture_id, info);
+                        index
+                    },
+                };
+                picture_texture.occupy(layer_index, self.now)
             };
-
-            let cache_entry = self.picture_texture.occupy(layer_index, self.now);
             self.upsert_entry(cache_entry, handle)
         }
 
@@ -1611,12 +1648,9 @@ impl WholeTextureArray {
         index
     }
 
-    /// Occupy a specified slice by a cache entry.
-    fn occupy(&mut self, layer_index: usize, now: FrameStamp) -> CacheEntry {
-        let uv_rect_handle = GpuCacheHandle::new();
-        assert!(self.slices[layer_index].uv_rect_handle.is_none());
-        self.slices[layer_index].uv_rect_handle = Some(uv_rect_handle);
-
+    fn cache_entry_impl(
+        &self, layer_index: usize, now: FrameStamp, uv_rect_handle: GpuCacheHandle, texture_id: CacheTextureId,
+    ) -> CacheEntry {
         CacheEntry {
             size: self.size,
             user_data: [0.0; 3],
@@ -1627,11 +1661,19 @@ impl WholeTextureArray {
             uv_rect_handle,
             format: self.format,
             filter: self.filter,
-            texture_id: self.texture_id,
+            texture_id,
             eviction_notice: None,
             uv_rect_kind: UvRectKind::Rect,
             eviction: Eviction::Eager,
         }
+    }
+
+    /// Occupy a specified slice by a cache entry.
+    fn occupy(&mut self, layer_index: usize, now: FrameStamp) -> CacheEntry {
+        let uv_rect_handle = GpuCacheHandle::new();
+        assert!(self.slices[layer_index].uv_rect_handle.is_none());
+        self.slices[layer_index].uv_rect_handle = Some(uv_rect_handle);
+        self.cache_entry_impl(layer_index, now, uv_rect_handle, self.texture_id)
     }
 
     /// Reset the texture array to the specified number of slices, if it's larger.

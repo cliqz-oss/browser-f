@@ -40,9 +40,7 @@ window.gActivityStreamStrings = {
   "section_disclaimer_topstories_buttontext": "Tamam, anladım",
   "prefs_home_header": "Firefox giriş sayfası içeriği",
   "prefs_home_description": "Firefox giriş sayfasında görmek istediğiniz içerikleri seçin.",
-  "prefs_content_discovery_header": "Firefox Başlangıç",
   "prefs_content_discovery_description": "Firefox giriş sayfasındaki içerik keşfi özelliği, internetteki kaliteli ve ilginizi çekebilecek yazıları keşfetmenizi sağlar.",
-  "prefs_content_discovery_button": "İçerik keşfini kapat",
   "prefs_section_rows_option": "{num} satır;{num} satır",
   "prefs_search_header": "Web araması",
   "prefs_topsites_description": "En çok ziyaret ettiğiniz siteler",
@@ -107,8 +105,5 @@ window.gActivityStreamStrings = {
   "firstrun_privacy_notice": "Gizlilik Bildirimini",
   "firstrun_continue_to_login": "Devam et",
   "firstrun_skip_login": "Bu adımı atla",
-  "context_menu_title": "Menüyü aç",
-  "manual_migration_explanation2": "Öteki tarayıcılarınızdaki yer imlerinizi, geçmişinizi ve parolalarınızı Firefox’a aktarabilirsiniz.",
-  "manual_migration_cancel_button": "Gerek yok",
-  "manual_migration_import_button": "Olur, aktaralım"
+  "context_menu_title": "Menüyü aç"
 };

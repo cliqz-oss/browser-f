@@ -124,16 +124,16 @@ var gSync = {
       return;
     }
 
-    // Label for the sync buttons, also set on the icon for accessibility.
-    let syncIcon = document.getElementById("appMenu-fxa-icon");
-    if (!syncIcon) {
+    this._generateNodeGetters();
+
+    // Label for the sync buttons.
+    if (!this.appMenuLabel) {
       // We are in a window without our elements - just abort now, without
       // setting this._initialized, so we don't attempt to remove observers.
       return;
     }
     let syncNow = document.getElementById("PanelUI-remotetabs-syncnow");
     let label = this.syncStrings.GetStringFromName("syncnow.label");
-    syncIcon.setAttribute("label", label);
     syncNow.setAttribute("label", label);
     // We start with every menuitem hidden (except for the "setup sync" state),
     // so that we don't need to init the sync UI on windows like pageInfo.xul
@@ -147,8 +147,6 @@ var gSync = {
     for (let topic of this._obs) {
       Services.obs.addObserver(this, topic, true);
     }
-
-    this._generateNodeGetters();
 
     this.maybeUpdateUIState();
 
@@ -198,7 +196,7 @@ var gSync = {
     this.updateState(state);
     this.updateSyncButtonsTooltip(state);
     this.updateSyncStatus(state);
-    this.updateFxAToolbarPanel(state);
+    this.updateFxAPanel(state);
   },
 
   updateSendToDeviceTitle() {
@@ -216,6 +214,21 @@ var gSync = {
     PanelUI.showSubView("PanelUI-sendTabToDevice", anchor);
     let panelViewNode = document.getElementById("PanelUI-sendTabToDevice");
     this.populateSendTabToDevicesView(panelViewNode, this.populateSendTabToDevicesView.bind(this));
+  },
+
+  showSendToDeviceViewFromFxaMenu(anchor) {
+    this.showSendToDeviceView(anchor);
+    this.emitFxaToolbarTelemetry("send_tab", anchor);
+  },
+
+  showRemoteTabsFromFxaMenu(panel) {
+    PanelUI.showSubView("PanelUI-remotetabs", panel);
+    this.emitFxaToolbarTelemetry("sync_tabs", panel);
+  },
+
+  showSidebarFromFxaMenu(panel) {
+    SidebarUI.toggle("viewTabsSidebar");
+    this.emitFxaToolbarTelemetry("sync_tabs_sidebar", panel);
   },
 
   populateSendTabToDevicesView(panelViewNode, reloadFunc) {
@@ -296,15 +309,12 @@ var gSync = {
     if (anchor.getAttribute("open") == "true") {
       PanelUI.hide();
     } else {
+      this.emitFxaToolbarTelemetry("toolbar_icon", anchor);
       PanelUI.showSubView(viewId, anchor, aEvent);
     }
   },
 
-  updateFxAToolbarPanel(state = {}) {
-    if (!gFxaToolbarEnabled) {
-      return;
-    }
-
+  updateFxAPanel(state = {}) {
     const mainWindowEl = document.documentElement;
 
     // The Firefox Account toolbar currently handles 3 different states for
@@ -360,17 +370,39 @@ var gSync = {
     }
   },
 
+  emitFxaToolbarTelemetry(type, panel) {
+    if (UIState.isReady() && panel) {
+      const state = UIState.get();
+      const hasAvatar = state.avatarURL && !state.avatarURL.includes(FXA_NO_AVATAR_ZEROS);
+      let extraOptions = {"fxa_status": state.status, "fxa_avatar": hasAvatar ? "true" : "false"};
+
+      // When the fxa avatar panel is within the Firefox app menu,
+      // we emit different telemetry.
+      let eventName = "fxa_avatar_menu";
+      if (this.isPanelInsideAppMenu(panel)) {
+        eventName = "fxa_app_menu";
+      }
+
+      Services.telemetry.recordEvent(eventName, "click", type, null, extraOptions);
+    }
+  },
+
+  isPanelInsideAppMenu(panel = undefined) {
+    const appMenuPanel = document.getElementById("appMenu-popup");
+    if (panel && appMenuPanel.contains(panel)) {
+      return true;
+    }
+    return false;
+  },
+
   updatePanelPopup(state) {
     let defaultLabel = this.appMenuStatus.getAttribute("defaultlabel");
-    // The localization string is for the signed in text, but it's the default text as well
-    let defaultTooltiptext = this.appMenuStatus.getAttribute("signedinTooltiptext");
-
     const status = state.status;
     // Reset the status bar to its original state.
     this.appMenuLabel.setAttribute("label", defaultLabel);
-    this.appMenuStatus.setAttribute("tooltiptext", defaultTooltiptext);
     this.appMenuContainer.removeAttribute("fxastatus");
     this.appMenuAvatar.style.removeProperty("list-style-image");
+    this.appMenuLabel.classList.remove("subviewbutton-nav");
 
     if (status == UIState.STATUS_NOT_CONFIGURED) {
       return;
@@ -396,6 +428,8 @@ var gSync = {
     // At this point we consider sync to be logged-in.
     this.appMenuContainer.setAttribute("fxastatus", "signedin");
     this.appMenuLabel.setAttribute("label", state.displayName || state.email);
+    this.appMenuLabel.classList.add("subviewbutton-nav");
+    this.appMenuStatus.removeAttribute("tooltiptext");
 
     if (state.avatarURL) {
       let bgImage = "url(\"" + state.avatarURL + "\")";
@@ -440,7 +474,9 @@ var gSync = {
   onMenuPanelCommand() {
     switch (this.appMenuContainer.getAttribute("fxastatus")) {
     case "signedin":
-      this.openPrefs("menupanel", "fxaSignedin");
+      const panel = document.getElementById("appMenu-fxa-status");
+      this.emitFxaToolbarTelemetry("toolbar_icon", panel);
+      PanelUI.showSubView("PanelUI-fxa", panel);
       break;
     case "error":
       if (this.appMenuContainer.getAttribute("fxastatus") == "unverified") {
@@ -448,13 +484,13 @@ var gSync = {
       } else {
         this.openSignInAgainPage("menupanel");
       }
+      PanelUI.hide();
       break;
     default:
       this.openPrefs("menupanel", "fxa");
+      PanelUI.hide();
       break;
     }
-
-    PanelUI.hide();
   },
 
   async openSignInAgainPage(entryPoint) {
@@ -478,6 +514,15 @@ var gSync = {
     openTrustedLinkIn(url, "tab");
   },
 
+  async openConnectAnotherDeviceFromFxaMenu(panel = undefined) {
+    this.emitFxaToolbarTelemetry("cad", panel);
+    let entryPoint = "fxa_discoverability_native";
+    if (this.isPanelInsideAppMenu(panel)) {
+      entryPoint = "fxa_app_menu";
+    }
+    this.openConnectAnotherDevice(entryPoint);
+  },
+
   openSendToDevicePromo() {
     let url = this.PRODUCT_INFO_BASE_URL;
     url += "send-tabs/?utm_source=" + Services.appinfo.name.toLowerCase();
@@ -489,9 +534,27 @@ var gSync = {
     switchToTabHavingURI(url, true, { replaceQueryString: true });
   },
 
+  async openFxAEmailFirstPageFromFxaMenu(panel = undefined) {
+    this.emitFxaToolbarTelemetry("login", panel);
+    let entryPoint = "fxa_discoverability_native";
+    if (this.isPanelInsideAppMenu(panel)) {
+        entryPoint = "fxa_app_menu";
+    }
+    this.openFxAEmailFirstPage(entryPoint);
+  },
+
   async openFxAManagePage(entryPoint) {
     const url = await FxAccounts.config.promiseManageURI(entryPoint);
     switchToTabHavingURI(url, true, { replaceQueryString: true });
+  },
+
+  async openFxAManagePageFromFxaMenu(panel = undefined) {
+    this.emitFxaToolbarTelemetry("account_settings", panel);
+    let entryPoint = "fxa_discoverability_native";
+    if (this.isPanelInsideAppMenu(panel)) {
+        entryPoint = "fxa_app_menu";
+    }
+    this.openFxAManagePage(entryPoint);
   },
 
   async sendTabToDevice(url, targets, title) {
@@ -774,7 +837,6 @@ var gSync = {
     let remotetabsSyncNowEl = document.getElementById("PanelUI-remotetabs-syncnow");
     let fxaMenuSyncNowEl = document.getElementById("PanelUI-fxa-menu-syncnow-button");
     let syncElements = [
-      document.getElementById("appMenu-fxa-icon"),
       remotetabsSyncNowEl,
       fxaMenuSyncNowEl,
     ];
@@ -794,7 +856,6 @@ var gSync = {
 
     let label = this.syncStrings.GetStringFromName("syncnow.label");
     let syncElements = [
-      document.getElementById("appMenu-fxa-icon"),
       document.getElementById("PanelUI-remotetabs-syncnow"),
       document.getElementById("PanelUI-fxa-menu-syncnow-button"),
     ];
@@ -842,8 +903,22 @@ var gSync = {
     }
   },
 
+  doSyncFromFxaMenu(panel) {
+    this.doSync();
+    this.emitFxaToolbarTelemetry("sync_now", panel);
+  },
+
   openPrefs(entryPoint = "syncbutton", origin = undefined) {
     window.openPreferences("paneSync", { origin, urlParams: { entrypoint: entryPoint } });
+  },
+
+  openPrefsFromFxaMenu(type, panel) {
+    this.emitFxaToolbarTelemetry(type, panel);
+    let entryPoint = "fxa_discoverability_native";
+    if (this.isPanelInsideAppMenu(panel)) {
+      entryPoint = "fxa_app_menu";
+    }
+    this.openPrefs(entryPoint);
   },
 
   openSyncedTabsPanel() {
@@ -895,14 +970,11 @@ var gSync = {
       tooltiptext = this.formatLastSyncDate(state.lastSync);
     }
 
-    let syncIcon = document.getElementById("appMenu-fxa-icon");
-    if (syncIcon) {
+    if (this.appMenuLabel) {
       let syncNow = document.getElementById("PanelUI-remotetabs-syncnow");
       if (tooltiptext) {
-        syncIcon.setAttribute("tooltiptext", tooltiptext);
         syncNow.setAttribute("tooltiptext", tooltiptext);
       } else {
-        syncIcon.removeAttribute("tooltiptext");
         syncNow.removeAttribute("tooltiptext");
       }
     }

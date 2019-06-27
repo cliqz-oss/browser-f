@@ -138,8 +138,9 @@ ARCHIVE_FILES = {
             'source': buildconfig.topsrcdir,
             'base': '',
             'manifests': [
+                'dom/media/test/marionette/manifest.ini',
                 'testing/marionette/harness/marionette_harness/tests/unit-tests.ini',
-                'gfx/tests/marionette/manifest.ini',
+                'gfx/tests/marionette/manifest.ini'
             ],
             # We also need the manifests and harness_unit tests
             'pattern': 'testing/marionette/harness/marionette_harness/tests/**',
@@ -403,6 +404,36 @@ ARCHIVE_FILES = {
             'base': 'testing',
             'pattern': 'mozharness/**',
         },
+        {
+            'source': buildconfig.topsrcdir,
+            'base': 'testing/mozbase/manifestparser',
+            'pattern': 'manifestparser/**',
+            'dest': 'mozharness',
+        },
+        {
+            'source': buildconfig.topsrcdir,
+            'base': 'testing/mozbase/mozfile',
+            'pattern': 'mozfile/**',
+            'dest': 'mozharness',
+        },
+        {
+            'source': buildconfig.topsrcdir,
+            'base': 'testing/mozbase/mozinfo',
+            'pattern': 'mozinfo/**',
+            'dest': 'mozharness',
+        },
+        {
+            'source': buildconfig.topsrcdir,
+            'base': 'testing/mozbase/mozprocess',
+            'pattern': 'mozprocess/**',
+            'dest': 'mozharness',
+        },
+        {
+            'source': buildconfig.topsrcdir,
+            'base': 'third_party/python/six',
+            'pattern': 'six.py',
+            'dest': 'mozharness',
+        },
     ],
     'reftest': [
         {
@@ -520,9 +551,9 @@ ARCHIVE_FILES = {
                 'head.js',
                 'mach_test_package_commands.py',
                 'moz-http2/**',
-                'moz-spdy/**',
                 'node-http2/**',
-                'node-spdy/**',
+                'node-ip/**',
+                'dns-packet/**',
                 'remotexpcshelltests.py',
                 'runxpcshelltests.py',
                 'xpcshellcommandline.py',

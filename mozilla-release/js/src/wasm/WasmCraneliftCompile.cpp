@@ -108,7 +108,7 @@ static bool GenerateCraneliftCode(WasmMacroAssembler& masm,
     const CraneliftMetadataEntry& metadata = func.metadatas[i];
 
     CheckedInt<size_t> offset = funcBase;
-    offset += metadata.offset;
+    offset += metadata.codeOffset;
     if (!offset.isValid()) {
       return false;
     }
@@ -119,15 +119,17 @@ static bool GenerateCraneliftCode(WasmMacroAssembler& masm,
     MOZ_ASSERT(offset.value() < offsets->ret);
 
     // Check bytecode offsets.
-    if (metadata.srcLoc > 0 && lineOrBytecode > 0) {
-      MOZ_ASSERT(metadata.srcLoc >= lineOrBytecode);
-      MOZ_ASSERT(metadata.srcLoc < lineOrBytecode + funcBytecodeSize);
+    if (metadata.moduleBytecodeOffset > 0 && lineOrBytecode > 0) {
+      MOZ_ASSERT(metadata.moduleBytecodeOffset >= lineOrBytecode);
+      MOZ_ASSERT(metadata.moduleBytecodeOffset <
+                 lineOrBytecode + funcBytecodeSize);
     }
 #endif
     // TODO(bug 1532716): Cranelift gives null bytecode offsets for symbolic
     // accesses.
-    uint32_t bytecodeOffset =
-        metadata.srcLoc ? metadata.srcLoc : lineOrBytecode;
+    uint32_t bytecodeOffset = metadata.moduleBytecodeOffset
+                                  ? metadata.moduleBytecodeOffset
+                                  : lineOrBytecode;
 
     switch (metadata.which) {
       case CraneliftMetadataEntry::Which::DirectCall: {
@@ -157,7 +159,9 @@ static bool GenerateCraneliftCode(WasmMacroAssembler& masm,
         masm.append(SymbolicAccess(CodeOffset(offset.value()), sym));
         break;
       }
-      default: { MOZ_CRASH("unknown cranelift metadata kind"); }
+      default: {
+        MOZ_CRASH("unknown cranelift metadata kind");
+      }
     }
   }
 
@@ -405,24 +409,8 @@ BD_ConstantValue global_constantValue(const GlobalDesc* global) {
   return v;
 }
 
-#ifdef DEBUG
-static bool IsCraneliftCompatible(TypeCode type) {
-  switch (type) {
-    case TypeCode::I32:
-    case TypeCode::I64:
-    case TypeCode::F32:
-    case TypeCode::F64:
-      return true;
-    default:
-      return false;
-  }
-}
-#endif
-
 TypeCode global_type(const GlobalDesc* global) {
-  TypeCode type = TypeCode(global->type().code());
-  MOZ_ASSERT(IsCraneliftCompatible(type));
-  return type;
+  return TypeCode(global->type().code());
 }
 
 size_t global_tlsOffset(const GlobalDesc* global) {
@@ -432,9 +420,9 @@ size_t global_tlsOffset(const GlobalDesc* global) {
 // TableDesc
 
 size_t table_tlsOffset(const TableDesc* table) {
-  MOZ_RELEASE_ASSERT(table->kind == TableKind::AnyFunction ||
-                         table->kind == TableKind::TypedFunction,
-                     "cranelift doesn't support AnyRef tables yet.");
+  MOZ_RELEASE_ASSERT(
+      table->kind == TableKind::FuncRef || table->kind == TableKind::AsmJS,
+      "cranelift doesn't support AnyRef tables yet.");
   return globalToTlsOffset(table->globalDataOffset);
 }
 
@@ -445,11 +433,6 @@ size_t funcType_numArgs(const FuncTypeWithId* funcType) {
 }
 
 const BD_ValType* funcType_args(const FuncTypeWithId* funcType) {
-#ifdef DEBUG
-  for (ValType valType : funcType->args()) {
-    MOZ_ASSERT(IsCraneliftCompatible(TypeCode(valType.code())));
-  }
-#endif
   static_assert(sizeof(BD_ValType) == sizeof(ValType), "update BD_ValType");
   return (const BD_ValType*)&funcType->args()[0];
 }

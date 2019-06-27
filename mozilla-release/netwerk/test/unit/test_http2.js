@@ -590,7 +590,6 @@ function test_http2_post_big() {
 }
 
 const {HttpServer} = ChromeUtils.import("resource://testing-common/httpd.js");
-const {NetUtil} = ChromeUtils.import("resource://gre/modules/NetUtil.jsm");
 
 var httpserv = null;
 var httpserv2 = null;
@@ -1200,6 +1199,7 @@ function resetPrefs() {
   prefs.setBoolPref("network.http.altsvc.enabled", altsvcpref1);
   prefs.setBoolPref("network.http.altsvc.oe", altsvcpref2);
   prefs.clearUserPref("network.dns.localDomains");
+  prefs.clearUserPref("network.cookieSettings.unblocked_for_testing");
 }
 
 function run_test() {
@@ -1235,6 +1235,7 @@ function run_test() {
   prefs.setBoolPref("network.http.altsvc.enabled", true);
   prefs.setBoolPref("network.http.altsvc.oe", true);
   prefs.setCharPref("network.dns.localDomains", "foo.example.com, bar.example.com");
+  prefs.setBoolPref("network.cookieSettings.unblocked_for_testing", true);
 
   loadGroup = Cc["@mozilla.org/network/load-group;1"].createInstance(Ci.nsILoadGroup);
 

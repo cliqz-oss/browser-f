@@ -212,6 +212,8 @@ def mozharness_on_docker_worker_setup(config, job, taskdesc):
     # Xvfb
     if run['need-xvfb']:
         env['NEED_XVFB'] = 'true'
+    else:
+        env['NEED_XVFB'] = 'false'
 
     if run['tooltool-downloads']:
         internal = run['tooltool-downloads'] == 'internal'
@@ -243,7 +245,9 @@ def mozharness_on_docker_worker_setup(config, job, taskdesc):
 @run_job_using("generic-worker", "mozharness", schema=mozharness_run_schema,
                defaults=mozharness_defaults)
 def mozharness_on_generic_worker(config, job, taskdesc):
-    assert job['worker']['os'] == 'windows', 'only supports windows right now'
+    assert (
+        job["worker"]["os"] == "windows"
+    ), "only supports windows right now: {}".format(job["label"])
 
     run = job['run']
 
@@ -298,16 +302,30 @@ def mozharness_on_generic_worker(config, job, taskdesc):
             "Task generation for mozharness build jobs currently only supported on Windows"
         )
 
-    mh_command = [r'c:\mozilla-build\python\python.exe']
-    mh_command.append('\\'.join([r'.\build\src\testing', run['script'].replace('/', '\\')]))
+    # TODO We should run the mozharness script with `mach python` so these
+    # modules are automatically available, but doing so somehow caused hangs in
+    # Windows ccov builds (see bug 1543149).
+    gecko = env['GECKO_PATH'].replace('.', '%cd%')
+    mozbase_dir = "{}/testing/mozbase".format(gecko)
+    env['PYTHONPATH'] = ';'.join([
+        "{}/manifestparser".format(mozbase_dir),
+        "{}/mozinfo".format(mozbase_dir),
+        "{}/mozfile".format(mozbase_dir),
+        "{}/mozprocess".format(mozbase_dir),
+        "{}/third_party/python/six".format(gecko),
+    ])
+
+    mh_command = [
+            'c:/mozilla-build/python/python.exe',
+            '{}/testing/{}'.format(gecko, run['script']),
+    ]
 
     if 'config-paths' in run:
         for path in run['config-paths']:
-            mh_command.append(r'--extra-config-path '
-                              r'.\build\src\{}'.format(path.replace('/', '\\')))
+            mh_command.append('--extra-config-path {}/{}'.format(gecko, path))
 
     for cfg in run['config']:
-        mh_command.append('--config ' + cfg.replace('/', '\\'))
+        mh_command.append('--config ' + cfg)
     if run['use-magic-mh-args']:
         mh_command.append('--branch ' + config.params['project'])
     mh_command.append(r'--work-dir %cd:Z:=z:%\build')

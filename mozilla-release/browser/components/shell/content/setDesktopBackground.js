@@ -22,22 +22,34 @@ var gSetBackground = {
     this._canvas = document.getElementById("screen");
     this._screenWidth = screen.width;
     this._screenHeight = screen.height;
+    // Cap ratio to 4 so the dialog width doesn't get ridiculous. Highest
+    // regular screens seem to be 32:9 (3.56) according to Wikipedia.
+    let screenRatio = Math.min(this._screenWidth / this._screenHeight, 4);
+    this._canvas.width = this._canvas.height * screenRatio;
+    document.getElementById("preview-unavailable").style.width =
+      this._canvas.width + "px";
+
     if (AppConstants.platform == "macosx") {
       document.documentElement.getButton("accept").hidden = true;
-    }
-    if (this._screenWidth / this._screenHeight >= 1.6)
-      document.getElementById("monitor").setAttribute("aspectratio", "16:10");
+    } else {
+      let multiMonitors = false;
+      if (AppConstants.platform == "linux") {
+        // getMonitors only ever returns the primary monitor on Linux, so just
+        // always show the option
+        multiMonitors = true;
+      } else {
+        const gfxInfo = Cc["@mozilla.org/gfx/info;1"].getService(Ci.nsIGfxInfo);
+        const monitors = gfxInfo.getMonitors();
+        multiMonitors = monitors.length > 1;
+      }
 
-    if (AppConstants.platform == "win") {
-      // Hide fill + fit options if < Win7 since they don't work.
-      var version = Services.sysinfo.getProperty("version");
-      var isWindows7OrHigher = (parseFloat(version) >= 6.1);
-      if (!isWindows7OrHigher) {
-        document.getElementById("fillPosition").hidden = true;
-        document.getElementById("fitPosition").hidden = true;
+      if (!multiMonitors || AppConstants.isPlatformAndVersionAtMost("win", 6.1)) {
+        // Hide span option if < Win8 since that's when it was introduced.
+        document.getElementById("spanPosition").hidden = true;
       }
     }
 
+    document.addEventListener("dialogaccept", function() { gSetBackground.setDesktopBackground(); });
     // make sure that the correct dimensions will be used
     setTimeout(function(self) {
       self.init(window.arguments[0], window.arguments[1]);
@@ -92,6 +104,7 @@ var gSetBackground = {
   updatePosition() {
     var ctx = this._canvas.getContext("2d");
     ctx.clearRect(0, 0, this._screenWidth, this._screenHeight);
+    document.getElementById("preview-unavailable").hidden = true;
 
     if (AppConstants.platform != "macosx") {
       this._position = document.getElementById("menuPosition").value;
@@ -146,6 +159,12 @@ var gSetBackground = {
         }
         ctx.drawImage(this._image, x, y, width, height);
         break;
+      }
+      case "SPAN": {
+        document.getElementById("preview-unavailable").hidden = false;
+        ctx.fillStyle = "#222";
+        ctx.fillRect(0, 0, this._screenWidth, this._screenHeight);
+        ctx.stroke();
       }
     }
   },

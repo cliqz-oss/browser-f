@@ -8,7 +8,17 @@ DIRS += [
 #    'formautofill',
 #    'fxmonitor',
     'pdfjs',
+<<<<<<< HEAD
 #    'screenshots',
 #    'webcompat',
 #    'webcompat-reporter'
+||||||| merged common ancestors
+    'screenshots',
+    'webcompat',
+    'webcompat-reporter'
+=======
+    'screenshots',
+    'webcompat',
+    'report-site-issue'
+>>>>>>> 822b139b92cedf98ab96ccad686dae664d417af4
 ]

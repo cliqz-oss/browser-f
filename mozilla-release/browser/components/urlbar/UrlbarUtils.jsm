@@ -66,6 +66,8 @@ var UrlbarUtils = {
   },
 
   // Defines UrlbarResult types.
+  // If you add new result types, consider checking if consumers of
+  // "urlbar-user-start-navigation" need update as well.
   RESULT_TYPE: {
     // An open tab.
     // Payload: { icon, url, userContextId }
@@ -91,6 +93,8 @@ var UrlbarUtils = {
   // can return results from more than one source. This is used by the
   // ProvidersManager to decide which providers must be queried and which
   // results can be returned.
+  // If you add new source types, consider checking if consumers of
+  // "urlbar-user-start-navigation" need update as well.
   RESULT_SOURCE: {
     BOOKMARKS: 1,
     HISTORY: 2,
@@ -106,18 +110,20 @@ var UrlbarUtils = {
     SEARCH_GLASS: "chrome://browser/skin/search-glass.svg",
   },
 
+  // The number of results by which Page Up/Down move the selection.
+  PAGE_UP_DOWN_DELTA: 5,
+
   // IME composition states.
   COMPOSITION: {
     NONE: 1,
     COMPOSING: 2,
     COMMIT: 3,
+    CANCELED: 4,
   },
 
-  // This defines possible reasons for canceling a query.
-  CANCEL_REASON: {
-    // 1 is intentionally left in case we want a none/undefined/other later.
-    BLUR: 2,
-  },
+  // Limit the length of titles and URLs we display so layout doesn't spend too
+  // much time building text runs.
+  MAX_TEXT_LENGTH: 255,
 
   /**
    * Adds a url to history as long as it isn't in a private browsing window,
@@ -155,6 +161,7 @@ var UrlbarUtils = {
       return { url, postData, mayInheritPrincipal };
     }
 
+    await Services.search.init();
     let engine = Services.search.getEngineByAlias(keyword);
     if (engine) {
       let submission = engine.getSubmission(param, null, "keyword");
@@ -216,9 +223,10 @@ var UrlbarUtils = {
   },
 
   /**
-   * Returns a list of all the token substring matches in a string.  Each match
-   * in the list is a tuple: [matchIndex, matchLength].  matchIndex is the index
-   * in the string of the match, and matchLength is the length of the match.
+   * Returns a list of all the token substring matches in a string.  Matching is
+   * case insensitive.  Each match in the returned list is a tuple: [matchIndex,
+   * matchLength].  matchIndex is the index in the string of the match, and
+   * matchLength is the length of the match.
    *
    * @param {array} tokens The tokens to search for.
    * @param {string} str The string to match against.
@@ -231,14 +239,15 @@ var UrlbarUtils = {
    *          The array is sorted by match indexes ascending.
    */
   getTokenMatches(tokens, str) {
+    str = str.toLocaleLowerCase();
     // To generate non-overlapping ranges, we start from a 0-filled array with
     // the same length of the string, and use it as a collision marker, setting
     // 1 where a token matches.
     let hits = new Array(str.length).fill(0);
-    for (let token of tokens) {
+    for (let { lowerCaseValue } of tokens) {
       // Ideally we should never hit the empty token case, but just in case
-      // the value check protects us from an infinite loop.
-      for (let index = 0, needle = token.value; index >= 0 && needle;) {
+      // the `needle` check protects us from an infinite loop.
+      for (let index = 0, needle = lowerCaseValue; index >= 0 && needle;) {
         index = str.indexOf(needle, index);
         if (index >= 0) {
           hits.fill(1, index, index + needle.length);
@@ -362,6 +371,19 @@ var UrlbarUtils = {
     }
     return pasteData;
   },
+
+  async addToInputHistory(url, input) {
+    await PlacesUtils.withConnectionWrapper("addToInputHistory", db => {
+      // use_count will asymptotically approach the max of 10.
+      return db.executeCached(`
+        INSERT OR REPLACE INTO moz_inputhistory
+        SELECT h.id, IFNULL(i.input, :input), IFNULL(i.use_count, 0) * .9 + 1
+        FROM moz_places h
+        LEFT JOIN moz_inputhistory i ON i.place_id = h.id AND i.input = :input
+        WHERE url_hash = hash(:url) AND url = :url
+      `, {url, input});
+    });
+  },
 };
 
 XPCOMUtils.defineLazyGetter(UrlbarUtils.ICON, "DEFAULT", () => {
@@ -382,21 +404,19 @@ class UrlbarQueryContext {
    * @param {string} options.searchString
    *   The string the user entered in autocomplete. Could be the empty string
    *   in the case of the user opening the popup via the mouse.
-   * @param {number} options.lastKey
-   *   The last key the user entered (as a key code). Could be null if the search
-   *   was started via the mouse.
    * @param {boolean} options.isPrivate
    *   Set to true if this query was started from a private browsing window.
    * @param {number} options.maxResults
    *   The maximum number of results that will be displayed for this query.
-   * @param {boolean} options.enableAutofill
-   *   Whether or not to include autofill results.
+   * @param {boolean} options.allowAutofill
+   *   Whether or not to allow providers to include autofill results.
+   * @param {number} options.userContextId
+   *   The container id where this context was generated, if any.
    */
   constructor(options = {}) {
     this._checkRequiredOptions(options, [
-      "enableAutofill",
+      "allowAutofill",
       "isPrivate",
-      "lastKey",
       "maxResults",
       "searchString",
     ]);
@@ -414,6 +434,8 @@ class UrlbarQueryContext {
         (!Array.isArray(options.sources) || !options.sources.length)) {
       throw new Error(`Invalid sources list`);
     }
+
+    this.userContextId = options.userContextId;
   }
 
   /**
@@ -477,11 +499,25 @@ class UrlbarProvider {
     throw new Error("Trying to access the base class, must be overridden");
   }
   /**
-   * List of UrlbarUtils.RESULT_SOURCE, representing the data sources used by
-   * the provider.
+   * Whether this provider should be invoked for the given context.
+   * If this method returns false, the providers manager won't start a query
+   * with this provider, to save on resources.
+   * @param {UrlbarQueryContext} queryContext The query context object
+   * @returns {boolean} Whether this provider should be invoked for the search.
    * @abstract
    */
-  get sources() {
+  isActive(queryContext) {
+    throw new Error("Trying to access the base class, must be overridden");
+  }
+  /**
+   * Whether this provider wants to restrict results to just itself.
+   * Other providers won't be invoked, unless this provider doesn't
+   * support the current query.
+   * @param {UrlbarQueryContext} queryContext The query context object
+   * @returns {boolean} Whether this provider wants to restrict results.
+   * @abstract
+   */
+  isRestricting(queryContext) {
     throw new Error("Trying to access the base class, must be overridden");
   }
   /**

@@ -229,10 +229,6 @@ module.exports = {
     // Allow the use of ternary operators.
     "no-ternary": "off",
 
-    // Disallow throwing literals (eg. throw "error" instead of
-    // throw new Error("error")).
-    "no-throw-literal": "error",
-
     // Allow dangling underscores in identifiers (for privates).
     "no-underscore-dangle": "off",
 
@@ -292,4 +288,14 @@ module.exports = {
     // Disallow labels that share a name with a variable
     "no-label-var": "error",
   },
+
+  "overrides": [{
+    "files": "test/xpcshell/head*.js",
+    "rules": {
+      "no-unused-vars": ["error", {
+        "args": "none",
+        "vars": "local",
+      }],
+    },
+  }],
 };

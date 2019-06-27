@@ -10,6 +10,7 @@
 #include "mozilla/dom/XULFrameElement.h"
 #include "mozilla/dom/WindowProxyHolder.h"
 #include "mozilla/Preferences.h"
+#include "mozilla/PresShell.h"
 #include "mozilla/ErrorResult.h"
 #include "GeckoProfiler.h"
 #include "nsAttrValueInlines.h"
@@ -18,7 +19,6 @@
 #include "nsIFrame.h"
 #include "nsIInterfaceRequestorUtils.h"
 #include "nsIPermissionManager.h"
-#include "nsIPresShell.h"
 #include "nsIScrollable.h"
 #include "nsPresContext.h"
 #include "nsServiceManagerUtils.h"
@@ -109,12 +109,8 @@ BrowsingContext* nsGenericHTMLFrameElement::GetContentWindowInternal() {
     return nullptr;
   }
 
-  RefPtr<nsDocShell> doc_shell = mFrameLoader->GetDocShell(IgnoreErrors());
-  if (!doc_shell) {
-    return nullptr;
-  }
-
-  return doc_shell->GetBrowsingContext();
+  RefPtr<BrowsingContext> bc = mFrameLoader->GetBrowsingContext();
+  return bc;
 }
 
 Nullable<WindowProxyHolder> nsGenericHTMLFrameElement::GetContentWindow() {
@@ -133,17 +129,15 @@ void nsGenericHTMLFrameElement::EnsureFrameLoader() {
 
   // Strangely enough, this method doesn't actually ensure that the
   // frameloader exists.  It's more of a best-effort kind of thing.
-  mFrameLoader = nsFrameLoader::Create(
-      this, mOpenerWindow ? mOpenerWindow->GetDOMWindow() : nullptr,
-      mNetworkCreated);
+  mFrameLoader = nsFrameLoader::Create(this, mOpenerWindow, mNetworkCreated);
 }
 
 nsresult nsGenericHTMLFrameElement::CreateRemoteFrameLoader(
-    nsITabParent* aTabParent) {
+    nsIRemoteTab* aBrowserParent) {
   MOZ_ASSERT(!mFrameLoader);
   EnsureFrameLoader();
   NS_ENSURE_STATE(mFrameLoader);
-  mFrameLoader->SetRemoteBrowser(aTabParent);
+  mFrameLoader->SetRemoteBrowser(aBrowserParent);
 
   if (nsSubDocumentFrame* subdocFrame = do_QueryFrame(GetPrimaryFrame())) {
     // The reflow for this element already happened while we were waiting
@@ -179,6 +173,11 @@ void nsGenericHTMLFrameElement::SwapFrameLoaders(
 
 void nsGenericHTMLFrameElement::SwapFrameLoaders(
     nsFrameLoaderOwner* aOtherLoaderOwner, mozilla::ErrorResult& rv) {
+  if (RefPtr<Document> doc = GetComposedDoc()) {
+    // SwapWithOtherLoader relies on frames being up-to-date.
+    doc->FlushPendingNotifications(FlushType::Frames);
+  }
+
   RefPtr<nsFrameLoader> loader = GetFrameLoader();
   RefPtr<nsFrameLoader> otherLoader = aOtherLoaderOwner->GetFrameLoader();
   if (!loader || !otherLoader) {
@@ -296,13 +295,13 @@ nsresult nsGenericHTMLFrameElement::AfterSetAttr(
             scrollable->SetDefaultScrollbarPreferences(
                 nsIScrollable::ScrollOrientation_Y, val);
             RefPtr<nsPresContext> presContext = docshell->GetPresContext();
-            nsIPresShell* shell =
+            PresShell* presShell =
                 presContext ? presContext->GetPresShell() : nullptr;
             nsIFrame* rootScroll =
-                shell ? shell->GetRootScrollFrame() : nullptr;
+                presShell ? presShell->GetRootScrollFrame() : nullptr;
             if (rootScroll) {
-              shell->FrameNeedsReflow(rootScroll, nsIPresShell::eStyleChange,
-                                      NS_FRAME_IS_DIRTY);
+              presShell->FrameNeedsReflow(
+                  rootScroll, IntrinsicDirty::StyleChange, NS_FRAME_IS_DIRTY);
             }
           }
         }

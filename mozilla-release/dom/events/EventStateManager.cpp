@@ -13,6 +13,8 @@
 #include "mozilla/MiscEvents.h"
 #include "mozilla/MathAlgorithms.h"
 #include "mozilla/MouseEvents.h"
+#include "mozilla/PresShell.h"
+#include "mozilla/ScrollTypes.h"
 #include "mozilla/TextComposition.h"
 #include "mozilla/TextEditor.h"
 #include "mozilla/TextEvents.h"
@@ -22,11 +24,12 @@
 #include "mozilla/dom/Event.h"
 #include "mozilla/dom/FrameLoaderBinding.h"
 #include "mozilla/dom/MouseEventBinding.h"
-#include "mozilla/dom/TabChild.h"
-#include "mozilla/dom/TabParent.h"
+#include "mozilla/dom/BrowserChild.h"
+#include "mozilla/dom/BrowserParent.h"
 #include "mozilla/dom/UIEvent.h"
 #include "mozilla/dom/UIEventBinding.h"
 #include "mozilla/dom/WheelEventBinding.h"
+#include "mozilla/StaticPrefs.h"
 
 #include "ContentEventHandler.h"
 #include "IMEContentObserver.h"
@@ -46,7 +49,6 @@
 #include "nsITextControlElement.h"
 #include "nsIWidget.h"
 #include "nsPresContext.h"
-#include "nsIPresShell.h"
 #include "nsGkAtoms.h"
 #include "nsIFormControl.h"
 #include "nsComboboxControlFrame.h"
@@ -60,7 +62,7 @@
 #include "nsIWebNavigation.h"
 #include "nsIContentViewer.h"
 #include "nsFrameManager.h"
-#include "nsITabChild.h"
+#include "nsIBrowserChild.h"
 #include "nsPluginFrame.h"
 #include "nsMenuPopupFrame.h"
 
@@ -192,7 +194,6 @@ NS_INTERFACE_MAP_END
 
 static uint32_t sESMInstanceCount = 0;
 
-uint64_t EventStateManager::sUserInputCounter = 0;
 int32_t EventStateManager::sUserInputEventDepth = 0;
 int32_t EventStateManager::sUserKeyboardEventDepth = 0;
 bool EventStateManager::sNormalLMouseEventInProcess = false;
@@ -518,18 +519,18 @@ nsresult EventStateManager::PreHandleEvent(nsPresContext* aPresContext,
       BeginTrackingDragGesture(aPresContext, mouseEvent, aTargetFrame);
       break;
     case eMouseDown: {
-      switch (mouseEvent->button) {
-        case WidgetMouseEvent::eLeftButton:
+      switch (mouseEvent->mButton) {
+        case MouseButton::eLeft:
           BeginTrackingDragGesture(aPresContext, mouseEvent, aTargetFrame);
           mLClickCount = mouseEvent->mClickCount;
           SetClickCount(mouseEvent, aStatus);
           sNormalLMouseEventInProcess = true;
           break;
-        case WidgetMouseEvent::eMiddleButton:
+        case MouseButton::eMiddle:
           mMClickCount = mouseEvent->mClickCount;
           SetClickCount(mouseEvent, aStatus);
           break;
-        case WidgetMouseEvent::eRightButton:
+        case MouseButton::eRight:
           mRClickCount = mouseEvent->mClickCount;
           SetClickCount(mouseEvent, aStatus);
           break;
@@ -538,8 +539,8 @@ nsresult EventStateManager::PreHandleEvent(nsPresContext* aPresContext,
       break;
     }
     case eMouseUp: {
-      switch (mouseEvent->button) {
-        case WidgetMouseEvent::eLeftButton:
+      switch (mouseEvent->mButton) {
+        case MouseButton::eLeft:
           if (Prefs::ClickHoldContextMenu()) {
             KillClickHoldTimer();
           }
@@ -548,8 +549,8 @@ nsresult EventStateManager::PreHandleEvent(nsPresContext* aPresContext,
           sNormalLMouseEventInProcess = false;
           // then fall through...
           MOZ_FALLTHROUGH;
-        case WidgetMouseEvent::eRightButton:
-        case WidgetMouseEvent::eMiddleButton:
+        case MouseButton::eRight:
+        case MouseButton::eMiddle:
           RefPtr<EventStateManager> esm =
               ESMFromContentOrThis(aOverrideClickTarget);
           esm->SetClickCount(mouseEvent, aStatus, aOverrideClickTarget);
@@ -607,7 +608,7 @@ nsresult EventStateManager::PreHandleEvent(nsPresContext* aPresContext,
     case ePointerDown:
       if (aEvent->mMessage == ePointerDown) {
         PointerEventHandler::ImplicitlyCapturePointer(aTargetFrame, aEvent);
-        if (mouseEvent->inputSource != MouseEvent_Binding::MOZ_SOURCE_TOUCH) {
+        if (mouseEvent->mInputSource != MouseEvent_Binding::MOZ_SOURCE_TOUCH) {
           NotifyTargetUserActivation(aEvent, aTargetContent);
         }
       }
@@ -658,9 +659,9 @@ nsresult EventStateManager::PreHandleEvent(nsPresContext* aPresContext,
         // If the eKeyPress event will be sent to a remote process, this
         // process needs to wait reply from the remote process for checking if
         // preceding eKeyDown event is consumed.  If preceding eKeyDown event
-        // is consumed in the remote process, TabChild won't send the event
+        // is consumed in the remote process, BrowserChild won't send the event
         // back to this process.  So, only when this process receives a reply
-        // eKeyPress event in TabParent, we should handle accesskey in this
+        // eKeyPress event in BrowserParent, we should handle accesskey in this
         // process.
         if (IsRemoteTarget(GetFocusedContent())) {
           // However, if there is no accesskey target for the key combination,
@@ -750,10 +751,12 @@ nsresult EventStateManager::PreHandleEvent(nsPresContext* aPresContext,
       DeltaAccumulator::GetInstance()->InitLineOrPageDelta(aTargetFrame, this,
                                                            wheelEvent);
     } break;
-    case eSetSelection:
-      IMEStateManager::HandleSelectionEvent(aPresContext, GetFocusedContent(),
+    case eSetSelection: {
+      nsCOMPtr<nsIContent> focusedContent = GetFocusedContent();
+      IMEStateManager::HandleSelectionEvent(aPresContext, focusedContent,
                                             aEvent->AsSelectionEvent());
       break;
+    }
     case eContentCommandCut:
     case eContentCommandCopy:
     case eContentCommandPaste:
@@ -852,9 +855,9 @@ void EventStateManager::NotifyTargetUserActivation(WidgetEvent* aEvent,
 already_AddRefed<EventStateManager> EventStateManager::ESMFromContentOrThis(
     nsIContent* aContent) {
   if (aContent) {
-    nsIPresShell* shell = aContent->OwnerDoc()->GetShell();
-    if (shell) {
-      nsPresContext* prescontext = shell->GetPresContext();
+    PresShell* presShell = aContent->OwnerDoc()->GetPresShell();
+    if (presShell) {
+      nsPresContext* prescontext = presShell->GetPresContext();
       if (prescontext) {
         RefPtr<EventStateManager> esm = prescontext->EventStateManager();
         if (esm) {
@@ -1016,7 +1019,8 @@ bool EventStateManager::LookForAccessKeyAndExecute(
         } else {
           nsIFocusManager* fm = nsFocusManager::GetFocusManager();
           if (fm) {
-            fm->SetFocus(element, nsIFocusManager::FLAG_BYKEY);
+            fm->SetFocus(element, nsIFocusManager::FLAG_BYKEY |
+                                      nsIFocusManager::FLAG_BYELEMENTFOCUS);
             focusChanged = true;
           }
         }
@@ -1026,8 +1030,8 @@ bool EventStateManager::LookForAccessKeyAndExecute(
           // focus, but pass false since we don't want to change the window
           // order.
           nsIDocShell* docShell = mPresContext->GetDocShell();
-          nsCOMPtr<nsITabChild> child =
-              docShell ? docShell->GetTabChild() : nullptr;
+          nsCOMPtr<nsIBrowserChild> child =
+              docShell ? docShell->GetBrowserChild() : nullptr;
           if (child) {
             child->SendRequestFocus(false);
           }
@@ -1087,12 +1091,13 @@ struct MOZ_STACK_CLASS AccessKeyInfo {
       : event(aEvent), charCodes(aCharCodes) {}
 };
 
-static bool HandleAccessKeyInRemoteChild(TabParent* aTabParent, void* aArg) {
+static bool HandleAccessKeyInRemoteChild(BrowserParent* aBrowserParent,
+                                         void* aArg) {
   AccessKeyInfo* accessKeyInfo = static_cast<AccessKeyInfo*>(aArg);
 
   // Only forward accesskeys for the active tab.
   bool active;
-  aTabParent->GetDocShellIsActive(&active);
+  aBrowserParent->GetDocShellIsActive(&active);
   if (active) {
     // Even if there is no target for the accesskey in this process,
     // the event may match with a content accesskey.  If so, the keyboard
@@ -1101,8 +1106,8 @@ static bool HandleAccessKeyInRemoteChild(TabParent* aTabParent, void* aArg) {
     // "File" menu.)
     accessKeyInfo->event->StopPropagation();
     accessKeyInfo->event->MarkAsWaitingReplyFromRemoteProcess();
-    aTabParent->HandleAccessKey(*accessKeyInfo->event,
-                                accessKeyInfo->charCodes);
+    aBrowserParent->HandleAccessKey(*accessKeyInfo->event,
+                                    accessKeyInfo->charCodes);
     return true;
   }
 
@@ -1145,22 +1150,25 @@ bool EventStateManager::WalkESMTreeToHandleAccessKey(
 
     nsCOMPtr<nsIDocShell> subDS = do_QueryInterface(subShellItem);
     if (subDS && IsShellVisible(subDS)) {
-      nsCOMPtr<nsIPresShell> subPS = subDS->GetPresShell();
+      // Guarantee subPresShell lifetime while we're handling access key
+      // since somebody may assume that it won't be deleted before the
+      // corresponding nsPresContext and EventStateManager.
+      RefPtr<PresShell> subPresShell = subDS->GetPresShell();
 
       // Docshells need not have a presshell (eg. display:none
       // iframes, docshells in transition between documents, etc).
-      if (!subPS) {
+      if (!subPresShell) {
         // Oh, well.  Just move on to the next child
         continue;
       }
 
-      nsPresContext* subPC = subPS->GetPresContext();
+      RefPtr<nsPresContext> subPresContext = subPresShell->GetPresContext();
 
-      EventStateManager* esm =
-          static_cast<EventStateManager*>(subPC->EventStateManager());
+      RefPtr<EventStateManager> esm =
+          static_cast<EventStateManager*>(subPresContext->EventStateManager());
 
       if (esm && esm->WalkESMTreeToHandleAccessKey(
-                     aEvent, subPC, aAccessCharCodes, nullptr,
+                     aEvent, subPresContext, aAccessCharCodes, nullptr,
                      eAccessKeyProcessingDown, aExecute)) {
         return true;
       }
@@ -1173,16 +1181,21 @@ bool EventStateManager::WalkESMTreeToHandleAccessKey(
     docShell->GetParent(getter_AddRefs(parentShellItem));
     nsCOMPtr<nsIDocShell> parentDS = do_QueryInterface(parentShellItem);
     if (parentDS) {
-      nsCOMPtr<nsIPresShell> parentPS = parentDS->GetPresShell();
-      NS_ASSERTION(parentPS, "Our PresShell exists but the parent's does not?");
+      // Guarantee parentPresShell lifetime while we're handling access key
+      // since somebody may assume that it won't be deleted before the
+      // corresponding nsPresContext and EventStateManager.
+      RefPtr<PresShell> parentPresShell = parentDS->GetPresShell();
+      NS_ASSERTION(parentPresShell,
+                   "Our PresShell exists but the parent's does not?");
 
-      nsPresContext* parentPC = parentPS->GetPresContext();
-      NS_ASSERTION(parentPC, "PresShell without PresContext");
+      RefPtr<nsPresContext> parentPresContext =
+          parentPresShell->GetPresContext();
+      NS_ASSERTION(parentPresContext, "PresShell without PresContext");
 
-      EventStateManager* esm =
-          static_cast<EventStateManager*>(parentPC->EventStateManager());
+      RefPtr<EventStateManager> esm = static_cast<EventStateManager*>(
+          parentPresContext->EventStateManager());
       if (esm && esm->WalkESMTreeToHandleAccessKey(
-                     aEvent, parentPC, aAccessCharCodes, docShell,
+                     aEvent, parentPresContext, aAccessCharCodes, docShell,
                      eAccessKeyProcessingDown, aExecute)) {
         return true;
       }
@@ -1193,10 +1206,10 @@ bool EventStateManager::WalkESMTreeToHandleAccessKey(
   if (aExecute &&
       aEvent->ModifiersMatchWithAccessKey(AccessKeyType::eContent) &&
       mDocument && mDocument->GetWindow()) {
-    // If the focus is currently on a node with a TabParent, the key event
+    // If the focus is currently on a node with a BrowserParent, the key event
     // should've gotten forwarded to the child process and HandleAccessKey
     // called from there.
-    if (TabParent::GetFrom(GetFocusedContent())) {
+    if (BrowserParent::GetFrom(GetFocusedContent())) {
       // If access key may be only in remote contents, this method won't handle
       // access key synchronously.  In this case, only reply event should reach
       // here.
@@ -1221,9 +1234,29 @@ bool EventStateManager::WalkESMTreeToHandleAccessKey(
 void EventStateManager::DispatchCrossProcessEvent(WidgetEvent* aEvent,
                                                   nsFrameLoader* aFrameLoader,
                                                   nsEventStatus* aStatus) {
-  TabParent* remote = TabParent::GetFrom(aFrameLoader);
+  BrowserParent* remote = BrowserParent::GetFrom(aFrameLoader);
   if (!remote) {
     return;
+  }
+
+  if (aEvent->mLayersId.IsValid()) {
+    BrowserParent* preciseRemote =
+        BrowserParent::GetBrowserParentFromLayersId(aEvent->mLayersId);
+    if (preciseRemote) {
+      remote = preciseRemote;
+    }
+    // else there is a race between APZ and the LayersId to BrowserParent
+    // mapping, so fall back to delivering the event to the topmost child
+    // process.
+  } else if (aEvent->mClass == eKeyboardEventClass) {
+    // APZ attaches a LayersId to hit-testable events, for keyboard events,
+    // we use focus.
+    BrowserParent* preciseRemote = BrowserParent::GetFocused();
+    if (preciseRemote) {
+      remote = preciseRemote;
+    }
+    // else there is a race between layout and focus tracking,
+    // so fall back to delivering the event to the topmost child process.
   }
 
   switch (aEvent->mClass) {
@@ -1247,8 +1280,8 @@ void EventStateManager::DispatchCrossProcessEvent(WidgetEvent* aEvent,
       return;
     }
     case eDragEventClass: {
-      RefPtr<TabParent> tabParent = remote;
-      tabParent->Manager()->MaybeInvokeDragSession(tabParent);
+      RefPtr<BrowserParent> browserParent = remote;
+      browserParent->Manager()->MaybeInvokeDragSession(browserParent);
 
       nsCOMPtr<nsIDragSession> dragSession = nsContentUtils::GetDragSession();
       uint32_t dropEffect = nsIDragService::DRAGDROP_ACTION_NONE;
@@ -1265,8 +1298,8 @@ void EventStateManager::DispatchCrossProcessEvent(WidgetEvent* aEvent,
         }
       }
 
-      tabParent->SendRealDragEvent(*aEvent->AsDragEvent(), action, dropEffect,
-                                   IPC::Principal(principal));
+      browserParent->SendRealDragEvent(*aEvent->AsDragEvent(), action,
+                                       dropEffect, IPC::Principal(principal));
       return;
     }
     case ePluginEventClass: {
@@ -1274,12 +1307,14 @@ void EventStateManager::DispatchCrossProcessEvent(WidgetEvent* aEvent,
       remote->SendPluginEvent(*aEvent->AsPluginEvent());
       return;
     }
-    default: { MOZ_CRASH("Attempt to send non-whitelisted event?"); }
+    default: {
+      MOZ_CRASH("Attempt to send non-whitelisted event?");
+    }
   }
 }
 
 bool EventStateManager::IsRemoteTarget(nsIContent* target) {
-  return !!TabParent::GetFrom(target);
+  return !!BrowserParent::GetFrom(target);
 }
 
 bool EventStateManager::HandleCrossProcessEvent(WidgetEvent* aEvent,
@@ -1580,7 +1615,7 @@ void EventStateManager::BeginTrackingDragGesture(nsPresContext* aPresContext,
     }
   }
   mGestureModifiers = inDownEvent->mModifiers;
-  mGestureDownButtons = inDownEvent->buttons;
+  mGestureDownButtons = inDownEvent->mButtons;
 
   if (inDownEvent->mMessage != eMouseTouchDrag &&
       Prefs::ClickHoldContextMenu()) {
@@ -1628,14 +1663,15 @@ void EventStateManager::FillInEventFromGestureDown(WidgetMouseEvent* aEvent) {
   aEvent->mRefPoint =
       mGestureDownPoint - aEvent->mWidget->WidgetToScreenOffset();
   aEvent->mModifiers = mGestureModifiers;
-  aEvent->buttons = mGestureDownButtons;
+  aEvent->mButtons = mGestureDownButtons;
 }
 
 void EventStateManager::MaybeFirePointerCancel(WidgetInputEvent* aEvent) {
-  nsCOMPtr<nsIPresShell> shell = mPresContext->GetPresShell();
+  RefPtr<PresShell> presShell = mPresContext->GetPresShell();
   AutoWeakFrame targetFrame = mCurrentTarget;
 
-  if (!PointerEventHandler::IsPointerEventEnabled() || !shell || !targetFrame) {
+  if (!PointerEventHandler::IsPointerEventEnabled() || !presShell ||
+      !targetFrame) {
     return;
   }
 
@@ -1653,7 +1689,7 @@ void EventStateManager::MaybeFirePointerCancel(WidgetInputEvent* aEvent) {
                                                    ePointerCancel);
 
     event.convertToPointer = false;
-    shell->HandleEventWithTarget(&event, targetFrame, content, &status);
+    presShell->HandleEventWithTarget(&event, targetFrame, content, &status);
   } else if (WidgetTouchEvent* aTouchEvent = aEvent->AsTouchEvent()) {
     WidgetPointerEvent event(aTouchEvent->IsTrusted(), ePointerCancel,
                              aTouchEvent->mWidget);
@@ -1662,7 +1698,7 @@ void EventStateManager::MaybeFirePointerCancel(WidgetInputEvent* aEvent) {
         &event, aTouchEvent, aTouchEvent->mTouches[0], true);
 
     event.convertToPointer = false;
-    shell->HandleEventWithTarget(&event, targetFrame, content, &status);
+    presShell->HandleEventWithTarget(&event, targetFrame, content, &status);
   } else {
     MOZ_ASSERT(false);
   }
@@ -1721,7 +1757,7 @@ void EventStateManager::GenerateDragGesture(nsPresContext* aPresContext,
     }
 
     // If non-native code is capturing the mouse don't start a drag.
-    if (nsIPresShell::IsMouseCapturePreventingDrag()) {
+    if (PresShell::IsMouseCapturePreventingDrag()) {
       StopTrackingDragGesture();
       return;
     }
@@ -1779,9 +1815,9 @@ void EventStateManager::GenerateDragGesture(nsPresContext* aPresContext,
 
       startEvent.mDataTransfer = dataTransfer;
       if (aEvent->AsMouseEvent()) {
-        startEvent.inputSource = aEvent->AsMouseEvent()->inputSource;
+        startEvent.mInputSource = aEvent->AsMouseEvent()->mInputSource;
       } else if (aEvent->AsTouchEvent()) {
-        startEvent.inputSource = MouseEvent_Binding::MOZ_SOURCE_TOUCH;
+        startEvent.mInputSource = MouseEvent_Binding::MOZ_SOURCE_TOUCH;
       } else {
         MOZ_ASSERT(false);
       }
@@ -1960,7 +1996,7 @@ bool EventStateManager::DoDefaultDragStart(nsPresContext* aPresContext,
 
   // get any custom drag image that was set
   int32_t imageX, imageY;
-  Element* dragImage = aDataTransfer->GetDragImage(&imageX, &imageY);
+  RefPtr<Element> dragImage = aDataTransfer->GetDragImage(&imageX, &imageY);
 
   nsCOMPtr<nsIArray> transArray = aDataTransfer->GetTransferables(dragTarget);
   if (!transArray) return false;
@@ -2005,8 +2041,8 @@ nsresult EventStateManager::GetContentViewer(nsIContentViewer** aCv) {
   nsCOMPtr<nsPIDOMWindowOuter> rootWindow = window->GetPrivateRoot();
   if (!rootWindow) return NS_ERROR_FAILURE;
 
-  TabChild* tabChild = TabChild::GetFrom(rootWindow);
-  if (!tabChild) {
+  BrowserChild* browserChild = BrowserChild::GetFrom(rootWindow);
+  if (!browserChild) {
     nsIFocusManager* fm = nsFocusManager::GetFocusManager();
     if (!fm) return NS_ERROR_FAILURE;
 
@@ -2014,7 +2050,7 @@ nsresult EventStateManager::GetContentViewer(nsIContentViewer** aCv) {
     fm->GetActiveWindow(getter_AddRefs(activeWindow));
     if (rootWindow != activeWindow) return NS_OK;
   } else {
-    if (!tabChild->ParentIsActive()) return NS_OK;
+    if (!browserChild->ParentIsActive()) return NS_OK;
   }
 
   nsCOMPtr<nsPIDOMWindowOuter> contentWindow =
@@ -2269,10 +2305,10 @@ void EventStateManager::SendLineScrollEvent(nsIFrame* aTargetFrame,
   event.mTime = aEvent->mTime;
   event.mTimeStamp = aEvent->mTimeStamp;
   event.mModifiers = aEvent->mModifiers;
-  event.buttons = aEvent->buttons;
+  event.mButtons = aEvent->mButtons;
   event.mIsHorizontal = (aDeltaDirection == DELTA_DIRECTION_X);
   event.mDelta = aDelta;
-  event.inputSource = aEvent->inputSource;
+  event.mInputSource = aEvent->mInputSource;
 
   nsEventStatus status = nsEventStatus_eIgnore;
   EventDispatcher::Dispatch(targetContent, aTargetFrame->PresContext(), &event,
@@ -2305,10 +2341,10 @@ void EventStateManager::SendPixelScrollEvent(nsIFrame* aTargetFrame,
   event.mTime = aEvent->mTime;
   event.mTimeStamp = aEvent->mTimeStamp;
   event.mModifiers = aEvent->mModifiers;
-  event.buttons = aEvent->buttons;
+  event.mButtons = aEvent->mButtons;
   event.mIsHorizontal = (aDeltaDirection == DELTA_DIRECTION_X);
   event.mDelta = aPixelDelta;
-  event.inputSource = aEvent->inputSource;
+  event.mInputSource = aEvent->mInputSource;
 
   nsEventStatus status = nsEventStatus_eIgnore;
   EventDispatcher::Dispatch(targetContent, aTargetFrame->PresContext(), &event,
@@ -2636,25 +2672,25 @@ void EventStateManager::DoScrollText(nsIScrollableFrame* aScrollableFrame,
   bool isDeltaModePixel =
       (aEvent->mDeltaMode == WheelEvent_Binding::DOM_DELTA_PIXEL);
 
-  nsIScrollableFrame::ScrollMode mode;
+  ScrollMode mode;
   switch (aEvent->mScrollType) {
     case WidgetWheelEvent::SCROLL_DEFAULT:
       if (isDeltaModePixel) {
-        mode = nsIScrollableFrame::NORMAL;
+        mode = ScrollMode::Normal;
       } else if (aEvent->mFlags.mHandledByAPZ) {
-        mode = nsIScrollableFrame::SMOOTH_MSD;
+        mode = ScrollMode::SmoothMsd;
       } else {
-        mode = nsIScrollableFrame::SMOOTH;
+        mode = ScrollMode::Smooth;
       }
       break;
     case WidgetWheelEvent::SCROLL_SYNCHRONOUSLY:
-      mode = nsIScrollableFrame::INSTANT;
+      mode = ScrollMode::Instant;
       break;
     case WidgetWheelEvent::SCROLL_ASYNCHRONOUSELY:
-      mode = nsIScrollableFrame::NORMAL;
+      mode = ScrollMode::Normal;
       break;
     case WidgetWheelEvent::SCROLL_SMOOTHLY:
-      mode = nsIScrollableFrame::SMOOTH;
+      mode = ScrollMode::Smooth;
       break;
     default:
       MOZ_CRASH("Invalid mScrollType value comes");
@@ -2853,23 +2889,21 @@ void EventStateManager::PostHandleKeyboardEvent(
 
   if (!aKeyboardEvent->HasBeenPostedToRemoteProcess()) {
     if (aKeyboardEvent->IsWaitingReplyFromRemoteProcess()) {
-      RefPtr<TabParent> remote =
-          aTargetFrame ? TabParent::GetFrom(aTargetFrame->GetContent())
+      RefPtr<BrowserParent> remote =
+          aTargetFrame ? BrowserParent::GetFrom(aTargetFrame->GetContent())
                        : nullptr;
-      if (remote && aKeyboardEvent->mLayersId.IsValid()) {
+      if (remote) {
         // remote is null-checked above in order to let pre-existing event
-        // targeting code's chrome vs. content decision override APZ if they
-        // disagree in order not to disrupt non-Fission e10s mode in case
+        // targeting code's chrome vs. content decision override in case of
+        // disagreement in order not to disrupt non-Fission e10s mode in case
         // there are still bugs in the Fission-mode code. That is, if remote
         // is nullptr, the pre-existing event targeting code has deemed this
         // event to belong to chrome rather than content.
-        TabParent* preciseRemote =
-            TabParent::GetTabParentFromLayersId(aKeyboardEvent->mLayersId);
+        BrowserParent* preciseRemote = BrowserParent::GetFocused();
         if (preciseRemote) {
           remote = preciseRemote;
         }
-        // else there was a race between APZ and the chrome-process LayersId
-        // to TabParent mapping.
+        // else there was a race between layout and focus tracking
       }
       if (remote && !remote->IsReadyToHandleInputEvents()) {
         // We need to dispatch the event to the browser element again if we were
@@ -2988,11 +3022,11 @@ nsresult EventStateManager::PostHandleEvent(nsPresContext* aPresContext,
   switch (aEvent->mMessage) {
     case eMouseDown: {
       WidgetMouseEvent* mouseEvent = aEvent->AsMouseEvent();
-      if (mouseEvent->button == WidgetMouseEvent::eLeftButton &&
+      if (mouseEvent->mButton == MouseButton::eLeft &&
           !sNormalLMouseEventInProcess) {
         // We got a mouseup event while a mousedown event was being processed.
         // Make sure that the capturing content is cleared.
-        nsIPresShell::SetCapturingContent(nullptr, 0);
+        PresShell::ReleaseCapturingContent();
         break;
       }
 
@@ -3001,10 +3035,13 @@ nsresult EventStateManager::PostHandleEvent(nsPresContext* aPresContext,
       // mousemove/mouseup events will continue to be dispatched to this element
       // and therefore forwarded to the child.
       if (aEvent->HasBeenPostedToRemoteProcess() &&
-          !nsIPresShell::GetCapturingContent()) {
-        nsIContent* content =
-            mCurrentTarget ? mCurrentTarget->GetContent() : nullptr;
-        nsIPresShell::SetCapturingContent(content, 0);
+          !PresShell::GetCapturingContent()) {
+        if (nsIContent* content =
+                mCurrentTarget ? mCurrentTarget->GetContent() : nullptr) {
+          PresShell::SetCapturingContent(content, CaptureFlags::None);
+        } else {
+          PresShell::ReleaseCapturingContent();
+        }
       }
 
       nsCOMPtr<nsIContent> activeContent;
@@ -3125,7 +3162,7 @@ nsresult EventStateManager::PostHandleEvent(nsPresContext* aPresContext,
             uint32_t flags =
                 nsIFocusManager::FLAG_BYMOUSE | nsIFocusManager::FLAG_NOSCROLL;
             // If this was a touch-generated event, pass that information:
-            if (mouseEvent->inputSource ==
+            if (mouseEvent->mInputSource ==
                 MouseEvent_Binding::MOZ_SOURCE_TOUCH) {
               flags |= nsIFocusManager::FLAG_BYTOUCH;
             }
@@ -3145,7 +3182,7 @@ nsresult EventStateManager::PostHandleEvent(nsPresContext* aPresContext,
         }
 
         // The rest is left button-specific.
-        if (mouseEvent->button != WidgetMouseEvent::eLeftButton) {
+        if (mouseEvent->mButton != MouseButton::eLeft) {
           break;
         }
 
@@ -3197,7 +3234,7 @@ nsresult EventStateManager::PostHandleEvent(nsPresContext* aPresContext,
       PointerEventHandler::ImplicitlyReleasePointerCapture(pointerEvent);
 
       if (pointerEvent->mMessage == ePointerCancel ||
-          pointerEvent->inputSource == MouseEvent_Binding::MOZ_SOURCE_TOUCH) {
+          pointerEvent->mInputSource == MouseEvent_Binding::MOZ_SOURCE_TOUCH) {
         // After pointercancel, pointer becomes invalid so we can remove
         // relevant helper from table. Regarding pointerup with non-hoverable
         // device, the pointer also becomes invalid. Hoverable (mouse/pen)
@@ -3219,9 +3256,8 @@ nsresult EventStateManager::PostHandleEvent(nsPresContext* aPresContext,
             esm->PostHandleMouseUp(mouseUpEvent, aStatus, aOverrideClickTarget);
       }
 
-      nsIPresShell* shell = presContext->GetPresShell();
-      if (shell) {
-        RefPtr<nsFrameSelection> frameSelection = shell->FrameSelection();
+      if (PresShell* presShell = presContext->GetPresShell()) {
+        RefPtr<nsFrameSelection> frameSelection = presShell->FrameSelection();
         frameSelection->SetDragState(false);
       }
     } break;
@@ -3588,8 +3624,8 @@ nsresult EventStateManager::PostHandleEvent(nsPresContext* aPresContext,
   return ret;
 }
 
-TabParent* EventStateManager::GetCrossProcessTarget() {
-  return IMEStateManager::GetActiveTabParent();
+BrowserParent* EventStateManager::GetCrossProcessTarget() {
+  return IMEStateManager::GetActiveBrowserParent();
 }
 
 bool EventStateManager::IsTargetCrossProcess(WidgetGUIEvent* aEvent) {
@@ -3597,7 +3633,7 @@ bool EventStateManager::IsTargetCrossProcess(WidgetGUIEvent* aEvent) {
   // in that case, do not forward IME events to content
   nsIContent* focusedContent = GetFocusedContent();
   if (focusedContent && focusedContent->IsEditable()) return false;
-  return IMEStateManager::GetActiveTabParent() != nullptr;
+  return IMEStateManager::GetActiveBrowserParent() != nullptr;
 }
 
 void EventStateManager::NotifyDestroyPresContext(nsPresContext* aPresContext) {
@@ -3814,7 +3850,7 @@ void EventStateManager::UpdateCursor(nsPresContext* aPresContext,
     hotspot = Some(customCursor.mHotspot);
   }
 
-  if (nsContentUtils::UseActivityCursor()) {
+  if (StaticPrefs::ui_use_activity_cursor()) {
     // Check whether or not to show the busy cursor
     nsCOMPtr<nsIDocShell> docShell(aPresContext->GetDocShell());
     if (!docShell) return;
@@ -3992,11 +4028,13 @@ class MOZ_STACK_CLASS ESMEventCB : public EventDispatchingCallback {
  public:
   explicit ESMEventCB(nsIContent* aTarget) : mTarget(aTarget) {}
 
+  MOZ_CAN_RUN_SCRIPT
   void HandleEvent(EventChainPostVisitor& aVisitor) override {
     if (aVisitor.mPresContext) {
       nsIFrame* frame = aVisitor.mPresContext->GetPrimaryFrameFor(mTarget);
       if (frame) {
-        frame->HandleEvent(aVisitor.mPresContext, aVisitor.mEvent->AsGUIEvent(),
+        frame->HandleEvent(MOZ_KnownLive(aVisitor.mPresContext),
+                           aVisitor.mEvent->AsGUIEvent(),
                            &aVisitor.mEventStatus);
       }
     }
@@ -4018,7 +4056,6 @@ bool EventStateManager::IsHandlingKeyboardInput() {
 /*static*/
 void EventStateManager::StartHandlingUserInput(EventMessage aMessage) {
   ++sUserInputEventDepth;
-  ++sUserInputCounter;
   if (sUserInputEventDepth == 1) {
     sLatestUserInputStart = sHandlingInputStart = TimeStamp::Now();
   }
@@ -4051,7 +4088,7 @@ static void CreateMouseOrPointerWidgetEvent(
     newPointerEvent->mIsPrimary = sourcePointer->mIsPrimary;
     newPointerEvent->mWidth = sourcePointer->mWidth;
     newPointerEvent->mHeight = sourcePointer->mHeight;
-    newPointerEvent->inputSource = sourcePointer->inputSource;
+    newPointerEvent->mInputSource = sourcePointer->mInputSource;
     newPointerEvent->mRelatedTarget = aRelatedContent;
     aNewEvent = newPointerEvent.forget();
   } else {
@@ -4062,11 +4099,11 @@ static void CreateMouseOrPointerWidgetEvent(
   }
   aNewEvent->mRefPoint = aMouseEvent->mRefPoint;
   aNewEvent->mModifiers = aMouseEvent->mModifiers;
-  aNewEvent->button = aMouseEvent->button;
-  aNewEvent->buttons = aMouseEvent->buttons;
-  aNewEvent->pressure = aMouseEvent->pressure;
+  aNewEvent->mButton = aMouseEvent->mButton;
+  aNewEvent->mButtons = aMouseEvent->mButtons;
+  aNewEvent->mPressure = aMouseEvent->mPressure;
   aNewEvent->mPluginEvent = aMouseEvent->mPluginEvent;
-  aNewEvent->inputSource = aMouseEvent->inputSource;
+  aNewEvent->mInputSource = aMouseEvent->mInputSource;
   aNewEvent->pointerId = aMouseEvent->pointerId;
 }
 
@@ -4282,9 +4319,9 @@ void EventStateManager::NotifyMouseOver(WidgetMouseEvent* aMouseEvent,
   if (Document* parentDoc = mDocument->GetParentDocument()) {
     if (nsCOMPtr<nsIContent> docContent =
             parentDoc->FindContentForSubDocument(mDocument)) {
-      if (nsIPresShell* parentShell = parentDoc->GetShell()) {
+      if (PresShell* parentPresShell = parentDoc->GetPresShell()) {
         RefPtr<EventStateManager> parentESM =
-            parentShell->GetPresContext()->EventStateManager();
+            parentPresShell->GetPresContext()->EventStateManager();
         parentESM->NotifyMouseOver(aMouseEvent, docContent);
       }
     }
@@ -4698,7 +4735,9 @@ void EventStateManager::FireDragEnterOrExit(nsPresContext* aPresContext,
   }
 
   // Finally dispatch the event to the frame
-  if (aTargetFrame) aTargetFrame->HandleEvent(aPresContext, &event, &status);
+  if (aTargetFrame) {
+    aTargetFrame->HandleEvent(aPresContext, &event, &status);
+  }
 }
 
 void EventStateManager::UpdateDragDataTransfer(WidgetDragEvent* dragEvent) {
@@ -4736,8 +4775,8 @@ nsresult EventStateManager::SetClickCount(WidgetMouseEvent* aEvent,
     }
   }
 
-  switch (aEvent->button) {
-    case WidgetMouseEvent::eLeftButton:
+  switch (aEvent->mButton) {
+    case MouseButton::eLeft:
       if (aEvent->mMessage == eMouseDown) {
         mLastLeftMouseDownContent = mouseContent;
       } else if (aEvent->mMessage == eMouseUp) {
@@ -4754,7 +4793,7 @@ nsresult EventStateManager::SetClickCount(WidgetMouseEvent* aEvent,
       }
       break;
 
-    case WidgetMouseEvent::eMiddleButton:
+    case MouseButton::eMiddle:
       if (aEvent->mMessage == eMouseDown) {
         mLastMiddleMouseDownContent = mouseContent;
       } else if (aEvent->mMessage == eMouseUp) {
@@ -4771,7 +4810,7 @@ nsresult EventStateManager::SetClickCount(WidgetMouseEvent* aEvent,
       }
       break;
 
-    case WidgetMouseEvent::eRightButton:
+    case MouseButton::eRight:
       if (aEvent->mMessage == eMouseDown) {
         mLastRightMouseDownContent = mouseContent;
       } else if (aEvent->mMessage == eMouseUp) {
@@ -4815,9 +4854,9 @@ bool EventStateManager::EventCausesClickEvents(
 
 nsresult EventStateManager::InitAndDispatchClickEvent(
     WidgetMouseEvent* aMouseUpEvent, nsEventStatus* aStatus,
-    EventMessage aMessage, nsIPresShell* aPresShell,
-    nsIContent* aMouseUpContent, AutoWeakFrame aCurrentTarget,
-    bool aNoContentDispatch, nsIContent* aOverrideClickTarget) {
+    EventMessage aMessage, PresShell* aPresShell, nsIContent* aMouseUpContent,
+    AutoWeakFrame aCurrentTarget, bool aNoContentDispatch,
+    nsIContent* aOverrideClickTarget) {
   MOZ_ASSERT(aMouseUpEvent);
   MOZ_ASSERT(EventCausesClickEvents(*aMouseUpEvent));
   MOZ_ASSERT(aMouseUpContent || aCurrentTarget || aOverrideClickTarget);
@@ -4828,13 +4867,15 @@ nsresult EventStateManager::InitAndDispatchClickEvent(
   event.mRefPoint = aMouseUpEvent->mRefPoint;
   event.mClickCount = aMouseUpEvent->mClickCount;
   event.mModifiers = aMouseUpEvent->mModifiers;
-  event.buttons = aMouseUpEvent->buttons;
+  event.mButtons = aMouseUpEvent->mButtons;
   event.mTime = aMouseUpEvent->mTime;
   event.mTimeStamp = aMouseUpEvent->mTimeStamp;
+  event.mFlags.mOnlyChromeDispatch =
+      aNoContentDispatch && !aMouseUpEvent->mUseLegacyNonPrimaryDispatch;
   event.mFlags.mNoContentDispatch = aNoContentDispatch;
-  event.button = aMouseUpEvent->button;
+  event.mButton = aMouseUpEvent->mButton;
   event.pointerId = aMouseUpEvent->pointerId;
-  event.inputSource = aMouseUpEvent->inputSource;
+  event.mInputSource = aMouseUpEvent->mInputSource;
   nsIContent* target = aMouseUpContent;
   nsIFrame* targetFrame = aCurrentTarget;
   if (aOverrideClickTarget) {
@@ -4850,8 +4891,8 @@ nsresult EventStateManager::InitAndDispatchClickEvent(
   // cleared by EventStateManager::PreHandleEvent().  Therefore, dispatching
   // an event means that previous event status will be ignored.
   nsEventStatus status = nsEventStatus_eIgnore;
-  nsresult rv =
-      aPresShell->HandleEventWithTarget(&event, targetFrame, target, &status);
+  nsresult rv = aPresShell->HandleEventWithTarget(
+      &event, targetFrame, MOZ_KnownLive(target), &status);
   // Copy mMultipleActionsPrevented flag from a click event to the mouseup
   // event only when it's set to true.  It may be set to true if an editor has
   // already handled it.  This is important to avoid two or more default
@@ -4881,7 +4922,7 @@ nsresult EventStateManager::PostHandleMouseUp(
   MOZ_ASSERT(EventCausesClickEvents(*aMouseUpEvent));
   MOZ_ASSERT(aStatus);
 
-  nsCOMPtr<nsIPresShell> presShell = mPresContext->GetPresShell();
+  RefPtr<PresShell> presShell = mPresContext->GetPresShell();
   if (!presShell) {
     return NS_OK;
   }
@@ -4912,7 +4953,7 @@ nsresult EventStateManager::PostHandleMouseUp(
   }
 
   // Handle middle click paste if it's enabled and the mouse button is middle.
-  if (aMouseUpEvent->button != WidgetMouseEventBase::eMiddleButton ||
+  if (aMouseUpEvent->mButton != MouseButton::eMiddle ||
       !WidgetMouseEvent::IsMiddleClickPasteEnabled()) {
     return NS_OK;
   }
@@ -4935,7 +4976,7 @@ nsresult EventStateManager::PostHandleMouseUp(
 }
 
 nsresult EventStateManager::DispatchClickEvents(
-    nsIPresShell* aPresShell, WidgetMouseEvent* aMouseUpEvent,
+    PresShell* aPresShell, WidgetMouseEvent* aMouseUpEvent,
     nsEventStatus* aStatus, nsIContent* aClickTarget,
     nsIContent* aOverrideClickTarget) {
   MOZ_ASSERT(aPresShell);
@@ -4945,8 +4986,8 @@ nsresult EventStateManager::DispatchClickEvents(
   MOZ_ASSERT(aClickTarget || aOverrideClickTarget);
 
   bool notDispatchToContents =
-      (aMouseUpEvent->button == WidgetMouseEvent::eMiddleButton ||
-       aMouseUpEvent->button == WidgetMouseEvent::eRightButton);
+      (aMouseUpEvent->mButton == MouseButton::eMiddle ||
+       aMouseUpEvent->mButton == MouseButton::eRight);
 
   bool fireAuxClick = notDispatchToContents;
 
@@ -4958,8 +4999,17 @@ nsresult EventStateManager::DispatchClickEvents(
     return rv;
   }
 
+  // Fire auxclick event if necessary.
+  if (fireAuxClick && *aStatus != nsEventStatus_eConsumeNoDefault &&
+      aClickTarget && aClickTarget->IsInComposedDoc()) {
+    rv = InitAndDispatchClickEvent(aMouseUpEvent, aStatus, eMouseAuxClick,
+                                   aPresShell, aClickTarget, currentTarget,
+                                   false, aOverrideClickTarget);
+    NS_WARNING_ASSERTION(NS_SUCCEEDED(rv), "Failed to dispatch eMouseAuxClick");
+  }
+
   // Fire double click event if click count is 2.
-  if (aMouseUpEvent->mClickCount == 2 && aClickTarget &&
+  if (aMouseUpEvent->mClickCount == 2 && !fireAuxClick && aClickTarget &&
       aClickTarget->IsInComposedDoc()) {
     rv = InitAndDispatchClickEvent(aMouseUpEvent, aStatus, eMouseDoubleClick,
                                    aPresShell, aClickTarget, currentTarget,
@@ -4969,24 +5019,16 @@ nsresult EventStateManager::DispatchClickEvents(
     }
   }
 
-  // Fire auxclick even if necessary.
-  if (fireAuxClick && aClickTarget && aClickTarget->IsInComposedDoc()) {
-    rv = InitAndDispatchClickEvent(aMouseUpEvent, aStatus, eMouseAuxClick,
-                                   aPresShell, aClickTarget, currentTarget,
-                                   false, aOverrideClickTarget);
-    NS_WARNING_ASSERTION(NS_SUCCEEDED(rv), "Failed to dispatch eMouseAuxClick");
-  }
-
   return rv;
 }
 
 nsresult EventStateManager::HandleMiddleClickPaste(
-    nsIPresShell* aPresShell, WidgetMouseEvent* aMouseEvent,
+    PresShell* aPresShell, WidgetMouseEvent* aMouseEvent,
     nsEventStatus* aStatus, TextEditor* aTextEditor) {
   MOZ_ASSERT(aPresShell);
   MOZ_ASSERT(aMouseEvent);
-  MOZ_ASSERT((aMouseEvent->mMessage == eMouseClick &&
-              aMouseEvent->button == WidgetMouseEventBase::eMiddleButton) ||
+  MOZ_ASSERT((aMouseEvent->mMessage == eMouseAuxClick &&
+              aMouseEvent->mButton == MouseButton::eMiddle) ||
              EventCausesClickEvents(*aMouseEvent));
   MOZ_ASSERT(aStatus);
   MOZ_ASSERT(*aStatus != nsEventStatus_eConsumeNoDefault);
@@ -5095,9 +5137,9 @@ nsresult EventStateManager::HandleMiddleClickPaste(
 }
 
 nsIFrame* EventStateManager::GetEventTarget() {
-  nsIPresShell* shell;
+  PresShell* presShell;
   if (mCurrentTarget || !mPresContext ||
-      !(shell = mPresContext->GetPresShell())) {
+      !(presShell = mPresContext->GetPresShell())) {
     return mCurrentTarget;
   }
 
@@ -5108,7 +5150,7 @@ nsIFrame* EventStateManager::GetEventTarget() {
     }
   }
 
-  nsIFrame* frame = shell->GetCurrentEventFrame();
+  nsIFrame* frame = presShell->GetCurrentEventFrame();
   return (mCurrentTarget = frame);
 }
 
@@ -5125,9 +5167,7 @@ already_AddRefed<nsIContent> EventStateManager::GetEventTargetContent(
   }
 
   nsCOMPtr<nsIContent> content;
-
-  nsIPresShell* presShell = mPresContext->GetPresShell();
-  if (presShell) {
+  if (PresShell* presShell = mPresContext->GetPresShell()) {
     content = presShell->GetEventTargetContent(aEvent);
   }
 
@@ -5223,13 +5263,7 @@ void EventStateManager::UpdateAncestorState(nsIContent* aStartNode,
 
 bool EventStateManager::SetContentState(nsIContent* aContent,
                                         EventStates aState) {
-  // We manage 4 states here: ACTIVE, HOVER, DRAGOVER, URLTARGET
-  // The input must be exactly one of them.
-  MOZ_ASSERT(aState == NS_EVENT_STATE_ACTIVE ||
-                 aState == NS_EVENT_STATE_HOVER ||
-                 aState == NS_EVENT_STATE_DRAGOVER ||
-                 aState == NS_EVENT_STATE_URLTARGET,
-             "Unexpected state");
+  MOZ_ASSERT(ManagesState(aState), "Unexpected state");
 
   nsCOMPtr<nsIContent> notifyContent1;
   nsCOMPtr<nsIContent> notifyContent2;
@@ -5445,7 +5479,7 @@ void EventStateManager::ContentRemoved(Document* aDocument,
 
 bool EventStateManager::EventStatusOK(WidgetGUIEvent* aEvent) {
   return !(aEvent->mMessage == eMouseDown &&
-           aEvent->AsMouseEvent()->button == WidgetMouseEvent::eLeftButton &&
+           aEvent->AsMouseEvent()->mButton == MouseButton::eLeft &&
            !sNormalLMouseEventInProcess);
 }
 
@@ -5476,10 +5510,9 @@ void EventStateManager::EnsureDocument(nsPresContext* aPresContext) {
 }
 
 void EventStateManager::FlushPendingEvents(nsPresContext* aPresContext) {
-  MOZ_ASSERT(nullptr != aPresContext, "nullptr ptr");
-  nsIPresShell* shell = aPresContext->GetPresShell();
-  if (shell) {
-    shell->FlushPendingNotifications(FlushType::InterruptibleLayout);
+  MOZ_ASSERT(aPresContext, "nullptr ptr");
+  if (RefPtr<PresShell> presShell = aPresContext->GetPresShell()) {
+    presShell->FlushPendingNotifications(FlushType::InterruptibleLayout);
   }
 }
 
@@ -5568,9 +5601,7 @@ nsresult EventStateManager::DoContentCommandEvent(
     if (canDoIt && !aEvent->mOnlyEnabledCheck) {
       switch (aEvent->mMessage) {
         case eContentCommandPasteTransferable: {
-          nsFocusManager* fm = nsFocusManager::GetFocusManager();
-          nsIContent* focusedContent = fm ? fm->GetFocusedElement() : nullptr;
-          RefPtr<TabParent> remote = TabParent::GetFrom(focusedContent);
+          BrowserParent* remote = BrowserParent::GetFocused();
           if (remote) {
             nsCOMPtr<nsITransferable> transferable = aEvent->mTransferable;
             IPCDataTransfer ipcDataTransfer;
@@ -5637,8 +5668,8 @@ nsresult EventStateManager::DoContentCommandEvent(
 nsresult EventStateManager::DoContentCommandScrollEvent(
     WidgetContentCommandEvent* aEvent) {
   NS_ENSURE_TRUE(mPresContext, NS_ERROR_NOT_AVAILABLE);
-  nsIPresShell* ps = mPresContext->GetPresShell();
-  NS_ENSURE_TRUE(ps, NS_ERROR_NOT_AVAILABLE);
+  PresShell* presShell = mPresContext->GetPresShell();
+  NS_ENSURE_TRUE(presShell, NS_ERROR_NOT_AVAILABLE);
   NS_ENSURE_TRUE(aEvent->mScroll.mAmount != 0, NS_ERROR_INVALID_ARG);
 
   nsIScrollableFrame::ScrollUnit scrollUnit;
@@ -5659,7 +5690,7 @@ nsresult EventStateManager::DoContentCommandScrollEvent(
   aEvent->mSucceeded = true;
 
   nsIScrollableFrame* sf =
-      ps->GetScrollableFrameToScroll(nsIPresShell::eEither);
+      presShell->GetScrollableFrameToScroll(ScrollableDirection::Either);
   aEvent->mIsEnabled =
       sf ? (aEvent->mScroll.mIsHorizontal ? WheelHandlingUtils::CanScrollOn(
                                                 sf, aEvent->mScroll.mAmount, 0)
@@ -5679,7 +5710,7 @@ nsresult EventStateManager::DoContentCommandScrollEvent(
   }
 
   // The caller may want synchronous scrolling.
-  sf->ScrollBy(pt, scrollUnit, nsIScrollableFrame::INSTANT);
+  sf->ScrollBy(pt, scrollUnit, ScrollMode::Instant);
   return NS_OK;
 }
 
@@ -6235,8 +6266,8 @@ AutoHandlingUserInputStatePusher::AutoHandlingUserInputStatePusher(
   }
   EventStateManager::StartHandlingUserInput(mMessage);
   if (mMessage == eMouseDown) {
-    nsIPresShell::SetCapturingContent(nullptr, 0);
-    nsIPresShell::AllowMouseCapture(true);
+    PresShell::ReleaseCapturingContent();
+    PresShell::AllowMouseCapture(true);
   }
   if (!aDocument || !aEvent || !aEvent->IsTrusted()) {
     return;
@@ -6259,7 +6290,7 @@ AutoHandlingUserInputStatePusher::~AutoHandlingUserInputStatePusher() {
   }
   EventStateManager::StopHandlingUserInput(mMessage);
   if (mMessage == eMouseDown) {
-    nsIPresShell::AllowMouseCapture(false);
+    PresShell::AllowMouseCapture(false);
   }
   if (NeedsToResetFocusManagerMouseButtonHandlingState()) {
     nsFocusManager* fm = nsFocusManager::GetFocusManager();

@@ -15,6 +15,8 @@ const Config = {
   },
 };
 
+const FRAMEWORK_KEYS = ["hasFastClick", "hasMobify", "hasMarfeel"];
+
 // If parental controls are on, we don't activate (that is, we don't show our
 // menu item or prompt the user when they use "request desktop site".
 browser.browserInfo.getParentalControlsEnabled().then(enabled => {
@@ -109,6 +111,56 @@ async function checkEndpointPref() {
   }
 }
 
+function hasFastClickPageScript() {
+  const win = window.wrappedJSObject;
+
+  if (win.FastClick) {
+    return true;
+  }
+
+  for (const property in win) {
+    try {
+      const proto = win[property].prototype;
+      if (proto && proto.needsClick) {
+        return true;
+      }
+    } catch (_) {
+    }
+  }
+
+  return false;
+}
+
+function hasMobifyPageScript() {
+  const win = window.wrappedJSObject;
+  return !!(win.Mobify && win.Mobify.Tag);
+}
+
+function hasMarfeelPageScript() {
+  const win = window.wrappedJSObject;
+  return !!win.marfeel;
+}
+
+function checkForFrameworks(tabId) {
+  return browser.tabs.executeScript(tabId, {
+    code: `
+      (function() {
+        ${hasFastClickPageScript};
+        ${hasMobifyPageScript};
+        ${hasMarfeelPageScript};
+        
+        const result = {
+          hasFastClick: hasFastClickPageScript(),
+          hasMobify: hasMobifyPageScript(),
+          hasMarfeel: hasMarfeelPageScript(),
+        }
+
+        return result;
+      })();
+    `,
+  }).then(([results]) => results).catch(() => false);
+}
+
 function getWebCompatInfoForTab(tab) {
   const {id, windiwId, url} = tab;
   return Promise.all([
@@ -118,12 +170,13 @@ function getWebCompatInfoForTab(tab) {
     browser.browserInfo.getUpdateChannel(),
     browser.browserInfo.hasTouchScreen(),
     browser.tabExtras.getWebcompatInfo(id),
+    checkForFrameworks(id),
     browser.tabs.captureVisibleTab(windiwId, Config.screenshotFormat).catch(e => {
       console.error("Report Site Issue: getting a screenshot failed", e);
       return Promise.resolve(undefined);
     }),
   ]).then(([blockList, buildID, graphicsPrefs, channel, hasTouchScreen,
-            frameInfo, screenshot]) => {
+            frameInfo, frameworks, screenshot]) => {
     if (channel !== "linux") {
       delete graphicsPrefs["layers.acceleration.force-enabled"];
     }
@@ -138,6 +191,7 @@ function getWebCompatInfoForTab(tab) {
         buildID,
         channel,
         consoleLog,
+        frameworks,
         hasTouchScreen,
         "mixed active content blocked": frameInfo.hasMixedActiveContentBlocked,
         "mixed passive content blocked": frameInfo.hasMixedDisplayContentBlocked,
@@ -164,13 +218,22 @@ async function openWebCompatTab(compatInfo, usePrivateTab) {
     utm_campaign: "report-site-issue-button",
     src: "mobile-reporter",
     details,
-    label: [],
+    extra_labels: [],
   };
+
+  for (let framework of FRAMEWORK_KEYS) {
+    if (details.frameworks[framework]) {
+      params.details[framework] = true;
+      params.extra_labels.push(framework.replace(/^has/, "type-").toLowerCase());
+    }
+  }
+  delete details.frameworks;
+
   if (details["gfx.webrender.all"] || details["gfx.webrender.enabled"]) {
-    params.label.push("type-webrender-enabled");
+    params.extra_labels.push("type-webrender-enabled");
   }
   if (compatInfo.hasTrackingContentBlocked) {
-    params.label.push(`type-tracking-protection-${compatInfo.blockList}`);
+    params.extra_labels.push(`type-tracking-protection-${compatInfo.blockList}`);
   }
 
   // Need custom API for private tabs until https://bugzil.la/1372178 is fixed

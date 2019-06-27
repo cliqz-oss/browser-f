@@ -38,7 +38,6 @@
 #include "nsIClipboardHelper.h"
 #include "nsIFile.h"
 #include "nsIGfxInfo.h"
-#include "nsIPresShell.h"
 #include "nsMimeTypes.h"
 #include "nsPresContext.h"
 #include "nsRegion.h"
@@ -1095,22 +1094,29 @@ const float kBT709NarrowYCbCrToRGB_RowMajor[16] = {
     1.16438f,  0.00000f, 1.79274f, -0.97295f, 1.16438f, -0.21325f,
     -0.53291f, 0.30148f, 1.16438f, 2.11240f,  0.00000f, -1.13340f,
     0.00000f,  0.00000f, 0.00000f, 1.00000f};
+const float kBT2020NarrowYCbCrToRGB_RowMajor[16] = {
+    1.16438f,  0.00000f, 1.67867f, -0.91569f, 1.16438f, -0.18733f,
+    -0.65042f, 0.34746f, 1.16438f, 2.14177f,  0.00000f, -1.14815f,
+    0.00000f,  0.00000f, 0.00000f, 1.00000f};
 
 /* static */ const float* gfxUtils::YuvToRgbMatrix4x3RowMajor(
-    YUVColorSpace aYUVColorSpace) {
+    gfx::YUVColorSpace aYUVColorSpace) {
 #define X(x) \
   { x[0], x[1], x[2], 0.0f, x[4], x[5], x[6], 0.0f, x[8], x[9], x[10], 0.0f }
 
   static const float rec601[12] = X(kBT601NarrowYCbCrToRGB_RowMajor);
   static const float rec709[12] = X(kBT709NarrowYCbCrToRGB_RowMajor);
+  static const float rec2020[12] = X(kBT2020NarrowYCbCrToRGB_RowMajor);
 
 #undef X
 
   switch (aYUVColorSpace) {
-    case YUVColorSpace::BT601:
+    case gfx::YUVColorSpace::BT601:
       return rec601;
-    case YUVColorSpace::BT709:
+    case gfx::YUVColorSpace::BT709:
       return rec709;
+    case gfx::YUVColorSpace::BT2020:
+      return rec2020;
     default:  // YUVColorSpace::UNKNOWN
       MOZ_ASSERT(false, "unknown aYUVColorSpace");
       return rec601;
@@ -1118,20 +1124,23 @@ const float kBT709NarrowYCbCrToRGB_RowMajor[16] = {
 }
 
 /* static */ const float* gfxUtils::YuvToRgbMatrix3x3ColumnMajor(
-    YUVColorSpace aYUVColorSpace) {
+    gfx::YUVColorSpace aYUVColorSpace) {
 #define X(x) \
   { x[0], x[4], x[8], x[1], x[5], x[9], x[2], x[6], x[10] }
 
   static const float rec601[9] = X(kBT601NarrowYCbCrToRGB_RowMajor);
   static const float rec709[9] = X(kBT709NarrowYCbCrToRGB_RowMajor);
+  static const float rec2020[9] = X(kBT2020NarrowYCbCrToRGB_RowMajor);
 
 #undef X
 
   switch (aYUVColorSpace) {
-    case YUVColorSpace::BT601:
+    case gfx::YUVColorSpace::BT601:
       return rec601;
     case YUVColorSpace::BT709:
       return rec709;
+    case YUVColorSpace::BT2020:
+      return rec2020;
     default:  // YUVColorSpace::UNKNOWN
       MOZ_ASSERT(false, "unknown aYUVColorSpace");
       return rec601;
@@ -1148,6 +1157,7 @@ const float kBT709NarrowYCbCrToRGB_RowMajor[16] = {
 
   static const float rec601[16] = X(kBT601NarrowYCbCrToRGB_RowMajor);
   static const float rec709[16] = X(kBT709NarrowYCbCrToRGB_RowMajor);
+  static const float rec2020[16] = X(kBT2020NarrowYCbCrToRGB_RowMajor);
 
 #undef X
 
@@ -1156,6 +1166,8 @@ const float kBT709NarrowYCbCrToRGB_RowMajor[16] = {
       return rec601;
     case YUVColorSpace::BT709:
       return rec709;
+    case YUVColorSpace::BT2020:
+      return rec2020;
     default:  // YUVColorSpace::UNKNOWN
       MOZ_ASSERT(false, "unknown aYUVColorSpace");
       return rec601;
@@ -1213,23 +1225,6 @@ void gfxUtils::WriteAsPNG(DrawTarget* aDT, const char* aFile) {
   } else {
     NS_WARNING("Failed to get surface!");
   }
-}
-
-/* static */
-void gfxUtils::WriteAsPNG(nsIPresShell* aShell, const char* aFile) {
-  int32_t width = 1000, height = 1000;
-  nsRect r(0, 0, aShell->GetPresContext()->DevPixelsToAppUnits(width),
-           aShell->GetPresContext()->DevPixelsToAppUnits(height));
-
-  RefPtr<mozilla::gfx::DrawTarget> dt =
-      gfxPlatform::GetPlatform()->CreateOffscreenContentDrawTarget(
-          IntSize(width, height), SurfaceFormat::B8G8R8A8);
-  NS_ENSURE_TRUE(dt && dt->IsValid(), /*void*/);
-
-  RefPtr<gfxContext> context = gfxContext::CreateOrNull(dt);
-  MOZ_ASSERT(context);  // already checked the draw target above
-  aShell->RenderDocument(r, 0, NS_RGB(255, 255, 0), context);
-  WriteAsPNG(dt.get(), aFile);
 }
 
 /* static */
@@ -1343,7 +1338,7 @@ void gfxUtils::CopyAsDataURI(DrawTarget* aDT) {
 nsresult gfxUtils::GetInputStream(gfx::DataSourceSurface* aSurface,
                                   bool aIsAlphaPremultiplied,
                                   const char* aMimeType,
-                                  const char16_t* aEncoderOptions,
+                                  const nsAString& aEncoderOptions,
                                   nsIInputStream** outStream) {
   nsCString enccid("@mozilla.org/image/encoder;2?type=");
   enccid += aMimeType;
@@ -1471,6 +1466,75 @@ bool gfxUtils::DumpDisplayList() {
          (gfxPrefs::LayoutDumpDisplayListContent() && XRE_IsContentProcess());
 }
 
+wr::RenderRoot gfxUtils::GetContentRenderRoot() {
+  if (gfx::gfxVars::UseWebRender() && gfxPrefs::WebRenderSplitRenderRoots()) {
+    return wr::RenderRoot::Content;
+  }
+  return wr::RenderRoot::Default;
+}
+
+Maybe<wr::RenderRoot> gfxUtils::GetRenderRootForFrame(const nsIFrame* aFrame) {
+  if (!gfxVars::UseWebRender() || !gfxPrefs::WebRenderSplitRenderRoots()) {
+    return Nothing();
+  }
+  if (!aFrame->GetContent()) {
+    return Nothing();
+  }
+  return gfxUtils::GetRenderRootForElement(aFrame->GetContent()->AsElement());
+}
+
+Maybe<wr::RenderRoot> gfxUtils::GetRenderRootForElement(
+    const dom::Element* aElement) {
+  if (!aElement) {
+    return Nothing();
+  }
+  if (!gfxVars::UseWebRender() || !gfxPrefs::WebRenderSplitRenderRoots()) {
+    return Nothing();
+  }
+  if (!aElement->IsXULElement()) {
+    return Nothing();
+  }
+  if (aElement->AttrValueIs(kNameSpaceID_None, nsGkAtoms::renderroot,
+                            NS_LITERAL_STRING("content"), eCaseMatters)) {
+    return Some(wr::RenderRoot::Content);
+  }
+  return Nothing();
+}
+
+wr::RenderRoot gfxUtils::RecursivelyGetRenderRootForFrame(
+    const nsIFrame* aFrame) {
+  if (!gfxVars::UseWebRender() || !gfxPrefs::WebRenderSplitRenderRoots()) {
+    return wr::RenderRoot::Default;
+  }
+
+  for (const nsIFrame* current = aFrame; current;
+       current = current->GetParent()) {
+    auto renderRoot = gfxUtils::GetRenderRootForFrame(current);
+    if (renderRoot) {
+      return *renderRoot;
+    }
+  }
+
+  return wr::RenderRoot::Default;
+}
+
+wr::RenderRoot gfxUtils::RecursivelyGetRenderRootForElement(
+    const dom::Element* aElement) {
+  if (!gfxVars::UseWebRender() || !gfxPrefs::WebRenderSplitRenderRoots()) {
+    return wr::RenderRoot::Default;
+  }
+
+  for (const dom::Element* current = aElement; current;
+       current = current->GetParentElement()) {
+    auto renderRoot = gfxUtils::GetRenderRootForElement(current);
+    if (renderRoot) {
+      return *renderRoot;
+    }
+  }
+
+  return wr::RenderRoot::Default;
+}
+
 FILE* gfxUtils::sDumpPaintFile = stderr;
 
 namespace mozilla {
@@ -1494,6 +1558,10 @@ Color ToDeviceColor(Color aColor) {
 
 Color ToDeviceColor(nscolor aColor) {
   return ToDeviceColor(Color::FromABGR(aColor));
+}
+
+Color ToDeviceColor(const StyleRGBA& aColor) {
+  return ToDeviceColor(aColor.ToColor());
 }
 
 }  // namespace gfx

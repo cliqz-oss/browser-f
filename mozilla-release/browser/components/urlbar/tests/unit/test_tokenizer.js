@@ -61,6 +61,13 @@ add_task(async function test_tokenizer() {
         { value: `test${UrlbarTokenizer.RESTRICT.BOOKMARK}test`, type: UrlbarTokenizer.TYPE.TEXT },
       ],
     },
+    { desc: "restriction char in the middle 2",
+      searchString: `test${UrlbarTokenizer.RESTRICT.BOOKMARK} test`,
+      expectedTokens: [
+        { value: `test${UrlbarTokenizer.RESTRICT.BOOKMARK}`, type: UrlbarTokenizer.TYPE.TEXT },
+        { value: `test`, type: UrlbarTokenizer.TYPE.POSSIBLE_ORIGIN },
+      ],
+    },
     { desc: "double boundary restriction char",
       searchString: `${UrlbarTokenizer.RESTRICT.BOOKMARK}test${UrlbarTokenizer.RESTRICT.TITLE}`,
       expectedTokens: [
@@ -227,10 +234,51 @@ add_task(async function test_tokenizer() {
         { value: "test/test", type: UrlbarTokenizer.TYPE.POSSIBLE_URL },
       ],
     },
+    { desc: "percent encoded string",
+      searchString: "%E6%97%A5%E6%9C%AC",
+      expectedTokens: [
+        { value: "%E6%97%A5%E6%9C%AC", type: UrlbarTokenizer.TYPE.TEXT },
+      ],
+    },
+    { desc: "Uppercase",
+      searchString: "TEST",
+      expectedTokens: [
+        { value: "TEST", type: UrlbarTokenizer.TYPE.POSSIBLE_ORIGIN },
+      ],
+    },
+    { desc: "Mixed case 1",
+      searchString: "TeSt",
+      expectedTokens: [
+        { value: "TeSt", type: UrlbarTokenizer.TYPE.POSSIBLE_ORIGIN },
+      ],
+    },
+    { desc: "Mixed case 2",
+      searchString: "tEsT",
+      expectedTokens: [
+        { value: "tEsT", type: UrlbarTokenizer.TYPE.POSSIBLE_ORIGIN },
+      ],
+    },
+    { desc: "Uppercase with spaces",
+      searchString: "TEST EXAMPLE",
+      expectedTokens: [
+        { value: "TEST", type: UrlbarTokenizer.TYPE.POSSIBLE_ORIGIN },
+        { value: "EXAMPLE", type: UrlbarTokenizer.TYPE.POSSIBLE_ORIGIN },
+      ],
+    },
+    { desc: "Mixed case with spaces",
+      searchString: "TeSt eXaMpLe",
+      expectedTokens: [
+        { value: "TeSt", type: UrlbarTokenizer.TYPE.POSSIBLE_ORIGIN },
+        { value: "eXaMpLe", type: UrlbarTokenizer.TYPE.POSSIBLE_ORIGIN },
+      ],
+    },
   ];
 
   for (let queryContext of testContexts) {
     info(queryContext.desc);
+    for (let token of queryContext.expectedTokens) {
+      token.lowerCaseValue = token.value.toLocaleLowerCase();
+    }
     let newQueryContext = UrlbarTokenizer.tokenize(queryContext);
     Assert.equal(queryContext, newQueryContext,
                  "The queryContext object is the same");

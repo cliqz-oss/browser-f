@@ -15,6 +15,8 @@
 #include "mozilla/LayerAnimationInfo.h"
 #include "mozilla/layers/AnimationInfo.h"
 #include "mozilla/layout/ScrollAnchorContainer.h"
+#include "mozilla/PresShell.h"
+#include "mozilla/PresShellInlines.h"
 #include "mozilla/ServoBindings.h"
 #include "mozilla/ServoStyleSetInlines.h"
 #include "mozilla/Unused.h"
@@ -34,7 +36,6 @@
 #include "nsIFrame.h"
 #include "nsIFrameInlines.h"
 #include "nsImageFrame.h"
-#include "nsIPresShellInlines.h"
 #include "nsPlaceholderFrame.h"
 #include "nsPrintfCString.h"
 #include "nsRefreshDriver.h"
@@ -456,6 +457,33 @@ void RestyleManager::ContentRemoved(nsIContent* aOldChild,
   }
 }
 
+static bool StateChangeMayAffectFrame(const Element& aElement,
+                                      const nsIFrame& aFrame,
+                                      EventStates aStates) {
+  if (aFrame.IsGeneratedContentFrame()) {
+    // If it's generated content, ignore LOADING/etc state changes on it.
+    return false;
+  }
+
+  const bool brokenChanged = aStates.HasAtLeastOneOfStates(
+      NS_EVENT_STATE_BROKEN | NS_EVENT_STATE_USERDISABLED |
+      NS_EVENT_STATE_SUPPRESSED);
+  const bool loadingChanged =
+      aStates.HasAtLeastOneOfStates(NS_EVENT_STATE_LOADING);
+
+  if (!brokenChanged && !loadingChanged) {
+    return false;
+  }
+
+  if (aElement.IsHTMLElement(nsGkAtoms::img)) {
+    // Loading state doesn't affect <img>, see
+    // `nsImageFrame::ShouldCreateImageFrameFor`.
+    return brokenChanged;
+  }
+
+  return brokenChanged || loadingChanged;
+}
+
 /**
  * Calculates the change hint and the restyle hint for a given content state
  * change.
@@ -471,11 +499,7 @@ static nsChangeHint ChangeForContentStateChange(const Element& aElement,
   // need to force a reframe -- if it's needed, the HasStateDependentStyle
   // call will handle things.
   if (nsIFrame* primaryFrame = aElement.GetPrimaryFrame()) {
-    // If it's generated content, ignore LOADING/etc state changes on it.
-    if (!primaryFrame->IsGeneratedContentFrame() &&
-        aStateMask.HasAtLeastOneOfStates(
-            NS_EVENT_STATE_BROKEN | NS_EVENT_STATE_USERDISABLED |
-            NS_EVENT_STATE_SUPPRESSED | NS_EVENT_STATE_LOADING)) {
+    if (StateChangeMayAffectFrame(aElement, *primaryFrame, aStateMask)) {
       return nsChangeHint_ReconstructFrame;
     }
 
@@ -748,15 +772,15 @@ static bool RecomputePosition(nsIFrame* aFrame) {
     return true;
   }
 
-  // For the absolute positioning case, set up a fake HTML reflow state for
+  // For the absolute positioning case, set up a fake HTML reflow input for
   // the frame, and then get the offsets and size from it. If the frame's size
   // doesn't need to change, we can simply update the frame position. Otherwise
   // we fall back to a reflow.
   RefPtr<gfxContext> rc =
       aFrame->PresShell()->CreateReferenceRenderingContext();
 
-  // Construct a bogus parent reflow state so that there's a usable
-  // containing block reflow state.
+  // Construct a bogus parent reflow input so that there's a usable
+  // containing block reflow input.
   nsIFrame* parentFrame = aFrame->GetParent();
   WritingMode parentWM = parentFrame->GetWritingMode();
   WritingMode frameWM = aFrame->GetWritingMode();
@@ -809,7 +833,7 @@ static bool RecomputePosition(nsIFrame* aFrame) {
   cbSize -= nsSize(parentBorder.LeftRight(), parentBorder.TopBottom());
   LogicalSize lcbSize(frameWM, cbSize);
   ReflowInput reflowInput(aFrame->PresContext(), parentReflowInput, aFrame,
-                          availSize, &lcbSize);
+                          availSize, Some(lcbSize));
   nsSize computedSize(reflowInput.ComputedWidth(),
                       reflowInput.ComputedHeight());
   computedSize.width += reflowInput.ComputedPhysicalBorderPadding().LeftRight();
@@ -1015,7 +1039,7 @@ static void DoApplyRenderingChangeToTree(nsIFrame* aFrame,
       aFrame->InvalidateFrameSubtree();
       if ((aChange & nsChangeHint_UpdateEffects) &&
           aFrame->IsFrameOfType(nsIFrame::eSVG) &&
-          !(aFrame->GetStateBits() & NS_STATE_IS_OUTER_SVG)) {
+          !aFrame->IsSVGOuterSVGFrame()) {
         // Need to update our overflow rects:
         nsSVGUtils::ScheduleReflowSVG(aFrame);
       }
@@ -1164,8 +1188,8 @@ static bool IsPrimaryFrameOfRootOrBodyElement(nsIFrame* aFrame) {
   return false;
 }
 
-static void ApplyRenderingChangeToTree(nsIPresShell* aPresShell,
-                                       nsIFrame* aFrame, nsChangeHint aChange) {
+static void ApplyRenderingChangeToTree(PresShell* aPresShell, nsIFrame* aFrame,
+                                       nsChangeHint aChange) {
   // We check StyleDisplay()->HasTransformStyle() in addition to checking
   // IsTransformed() since we can get here for some frames that don't support
   // CSS transforms.
@@ -1225,33 +1249,33 @@ static void AddSubtreeToOverflowTracker(
 }
 
 static void StyleChangeReflow(nsIFrame* aFrame, nsChangeHint aHint) {
-  nsIPresShell::IntrinsicDirty dirtyType;
+  IntrinsicDirty dirtyType;
   if (aHint & nsChangeHint_ClearDescendantIntrinsics) {
     NS_ASSERTION(aHint & nsChangeHint_ClearAncestorIntrinsics,
                  "Please read the comments in nsChangeHint.h");
     NS_ASSERTION(aHint & nsChangeHint_NeedDirtyReflow,
                  "ClearDescendantIntrinsics requires NeedDirtyReflow");
-    dirtyType = nsIPresShell::eStyleChange;
+    dirtyType = IntrinsicDirty::StyleChange;
   } else if ((aHint & nsChangeHint_UpdateComputedBSize) &&
              aFrame->HasAnyStateBits(
                  NS_FRAME_DESCENDANT_INTRINSIC_ISIZE_DEPENDS_ON_BSIZE)) {
-    dirtyType = nsIPresShell::eStyleChange;
+    dirtyType = IntrinsicDirty::StyleChange;
   } else if (aHint & nsChangeHint_ClearAncestorIntrinsics) {
-    dirtyType = nsIPresShell::eTreeChange;
+    dirtyType = IntrinsicDirty::TreeChange;
   } else if ((aHint & nsChangeHint_UpdateComputedBSize) &&
              HasBoxAncestor(aFrame)) {
     // The frame's computed BSize is changing, and we have a box ancestor
     // whose cached intrinsic height may need to be updated.
-    dirtyType = nsIPresShell::eTreeChange;
+    dirtyType = IntrinsicDirty::TreeChange;
   } else {
-    dirtyType = nsIPresShell::eResize;
+    dirtyType = IntrinsicDirty::Resize;
   }
 
   nsFrameState dirtyBits;
   if (aFrame->GetStateBits() & NS_FRAME_FIRST_REFLOW) {
     dirtyBits = nsFrameState(0);
   } else if ((aHint & nsChangeHint_NeedDirtyReflow) ||
-             dirtyType == nsIPresShell::eStyleChange) {
+             dirtyType == IntrinsicDirty::StyleChange) {
     dirtyBits = NS_FRAME_IS_DIRTY;
   } else {
     dirtyBits = NS_FRAME_HAS_DIRTY_CHILDREN;
@@ -1259,13 +1283,13 @@ static void StyleChangeReflow(nsIFrame* aFrame, nsChangeHint aHint) {
 
   // If we're not going to clear any intrinsic sizes on the frames, and
   // there are no dirty bits to set, then there's nothing to do.
-  if (dirtyType == nsIPresShell::eResize && !dirtyBits) return;
+  if (dirtyType == IntrinsicDirty::Resize && !dirtyBits) return;
 
-  nsIPresShell::ReflowRootHandling rootHandling;
+  ReflowRootHandling rootHandling;
   if (aHint & nsChangeHint_ReflowChangesSizeOrPosition) {
-    rootHandling = nsIPresShell::ePositionOrSizeChange;
+    rootHandling = ReflowRootHandling::PositionOrSizeChange;
   } else {
-    rootHandling = nsIPresShell::eNoPositionOrSizeChange;
+    rootHandling = ReflowRootHandling::NoPositionOrSizeChange;
   }
 
   do {
@@ -1643,7 +1667,7 @@ void RestyleManager::ProcessRestyledFrames(nsStyleChangeList& aChangeList) {
       if ((hint & nsChangeHint_InvalidateRenderingObservers) ||
           ((hint & nsChangeHint_UpdateOpacityLayer) &&
            frame->IsFrameOfType(nsIFrame::eSVG) &&
-           !(frame->GetStateBits() & NS_STATE_IS_OUTER_SVG))) {
+           !frame->IsSVGOuterSVGFrame())) {
         SVGObserverUtils::InvalidateRenderingObservers(frame);
         frame->SchedulePaint();
       }
@@ -1839,8 +1863,8 @@ void RestyleManager::ProcessRestyledFrames(nsStyleChangeList& aChangeList) {
 }
 
 /* static */
-uint64_t RestyleManager::GetAnimationGenerationForFrame(nsIFrame* aFrame) {
-  EffectSet* effectSet = EffectSet::GetEffectSet(aFrame);
+uint64_t RestyleManager::GetAnimationGenerationForFrame(nsIFrame* aStyleFrame) {
+  EffectSet* effectSet = EffectSet::GetEffectSetForStyleFrame(aStyleFrame);
   return effectSet ? effectSet->GetAnimationGeneration() : 0;
 }
 
@@ -1960,6 +1984,7 @@ void RestyleManager::AnimationsWithDestroyedFrame ::
   StopAnimationsWithoutFrame(mContents, PseudoStyleType::NotPseudo);
   StopAnimationsWithoutFrame(mBeforeContents, PseudoStyleType::before);
   StopAnimationsWithoutFrame(mAfterContents, PseudoStyleType::after);
+  StopAnimationsWithoutFrame(mMarkerContents, PseudoStyleType::marker);
 }
 
 void RestyleManager::AnimationsWithDestroyedFrame ::StopAnimationsWithoutFrame(
@@ -1979,6 +2004,10 @@ void RestyleManager::AnimationsWithDestroyedFrame ::StopAnimationsWithoutFrame(
       }
     } else if (aPseudoType == PseudoStyleType::after) {
       if (nsLayoutUtils::GetAfterFrame(content)) {
+        continue;
+      }
+    } else if (aPseudoType == PseudoStyleType::marker) {
+      if (nsLayoutUtils::GetMarkerFrame(content)) {
         continue;
       }
     }
@@ -2025,10 +2054,6 @@ static const nsIFrame* ExpectedOwnerForChild(const nsIFrame* aFrame) {
     }
     return parent->IsViewportFrame() ? nullptr
                                      : FirstContinuationOrPartOfIBSplit(parent);
-  }
-
-  if (aFrame->IsBulletFrame()) {
-    return FirstContinuationOrPartOfIBSplit(parent);
   }
 
   if (aFrame->IsLineFrame()) {
@@ -2542,7 +2567,8 @@ static void UpdateOneAdditionalComputedStyle(nsIFrame* aFrame, uint32_t aIndex,
   uint32_t equalStructs;  // Not used, actually.
   nsChangeHint childHint =
       aOldContext.CalcStyleDifference(*newStyle, &equalStructs);
-  if (!aFrame->HasAnyStateBits(NS_FRAME_OUT_OF_FLOW)) {
+  if (!aFrame->HasAnyStateBits(NS_FRAME_OUT_OF_FLOW) &&
+      !aFrame->IsColumnSpanInMulticolSubtree()) {
     childHint = NS_RemoveSubsumedHints(childHint,
                                        aRestyleState.ChangesHandledFor(aFrame));
   }
@@ -2640,7 +2666,7 @@ static ServoPostTraversalFlags SendA11yNotifications(
   }
 
   if (needsNotify) {
-    nsIPresShell* presShell = aPresContext->PresShell();
+    PresShell* presShell = aPresContext->PresShell();
     if (isVisible) {
       accService->ContentRangeInserted(presShell, aElement,
                                        aElement->GetNextSibling());
@@ -2684,6 +2710,10 @@ bool RestyleManager::ProcessPostTraversal(Element* aElement,
   nsChangeHint changeHint =
       static_cast<nsChangeHint>(Servo_TakeChangeHint(aElement, &wasRestyled));
 
+  RefPtr<ComputedStyle> upToDateStyleIfRestyled =
+      wasRestyled ? aRestyleState.StyleSet().ResolveServoStyle(*aElement)
+                  : nullptr;
+
   // We should really fix the weird primary frame mapping for image maps
   // (bug 135040)...
   if (styleFrame && styleFrame->GetContent() != aElement) {
@@ -2719,6 +2749,21 @@ bool RestyleManager::ProcessPostTraversal(Element* aElement,
         maybeAnonBoxChild->ParentIsWrapperAnonBox()) {
       aRestyleState.AddPendingWrapperRestyle(
           ServoRestyleState::TableAwareParentFor(maybeAnonBoxChild));
+    }
+
+    // If we don't have a ::marker pseudo-element, but need it, then
+    // reconstruct the frame.  (The opposite situation implies 'display'
+    // changes so doesn't need to be handled explicitly here.)
+    if (wasRestyled &&
+        styleFrame->StyleDisplay()->mDisplay == StyleDisplay::ListItem &&
+        styleFrame->IsBlockFrameOrSubclass() &&
+        !nsLayoutUtils::GetMarkerPseudo(aElement)) {
+      RefPtr<ComputedStyle> pseudoStyle =
+          aRestyleState.StyleSet().ProbePseudoElementStyle(
+              *aElement, PseudoStyleType::marker, upToDateStyleIfRestyled);
+      if (pseudoStyle) {
+        changeHint |= nsChangeHint_ReconstructFrame;
+      }
     }
   }
 
@@ -2776,9 +2821,8 @@ bool RestyleManager::ProcessPostTraversal(Element* aElement,
   ServoRestyleState& childrenRestyleState =
       thisFrameRestyleState ? *thisFrameRestyleState : aRestyleState;
 
-  RefPtr<ComputedStyle> upToDateContext =
-      wasRestyled ? aRestyleState.StyleSet().ResolveServoStyle(*aElement)
-                  : oldOrDisplayContentsStyle;
+  ComputedStyle* upToDateStyle =
+      wasRestyled ? upToDateStyleIfRestyled : oldOrDisplayContentsStyle;
 
   ServoPostTraversalFlags childrenFlags =
       wasRestyled ? ServoPostTraversalFlags::ParentWasRestyled
@@ -2799,7 +2843,7 @@ bool RestyleManager::ProcessPostTraversal(Element* aElement,
     // initial continuations; ::first-line fixes that up after the fact.
     for (nsIFrame* f = styleFrame; f; f = f->GetNextContinuation()) {
       MOZ_ASSERT_IF(f != styleFrame, !f->GetAdditionalComputedStyle(0));
-      f->SetComputedStyle(upToDateContext);
+      f->SetComputedStyle(upToDateStyle);
     }
 
     if (styleFrame) {
@@ -2830,7 +2874,7 @@ bool RestyleManager::ProcessPostTraversal(Element* aElement,
 
     childrenFlags |=
         SendA11yNotifications(mPresContext, aElement, oldOrDisplayContentsStyle,
-                              upToDateContext, aFlags);
+                              upToDateStyle, aFlags);
   }
 
   const bool traverseElementChildren =
@@ -2840,14 +2884,13 @@ bool RestyleManager::ProcessPostTraversal(Element* aElement,
   bool recreatedAnyContext = wasRestyled;
   if (traverseElementChildren || traverseTextChildren) {
     StyleChildrenIterator it(aElement);
-    TextPostTraversalState textState(*aElement, upToDateContext,
+    TextPostTraversalState textState(*aElement, upToDateStyle,
                                      isDisplayContents && wasRestyled,
                                      childrenRestyleState);
     for (nsIContent* n = it.GetNextChild(); n; n = it.GetNextChild()) {
       if (traverseElementChildren && n->IsElement()) {
-        recreatedAnyContext |=
-            ProcessPostTraversal(n->AsElement(), upToDateContext,
-                                 childrenRestyleState, childrenFlags);
+        recreatedAnyContext |= ProcessPostTraversal(
+            n->AsElement(), upToDateStyle, childrenRestyleState, childrenFlags);
       } else if (traverseTextChildren && n->IsText()) {
         recreatedAnyContext |= ProcessPostTraversalForText(
             n, textState, childrenRestyleState, childrenFlags);
@@ -2977,7 +3020,7 @@ ServoElementSnapshot& RestyleManager::SnapshotFor(Element& aElement) {
 
 void RestyleManager::DoProcessPendingRestyles(ServoTraversalFlags aFlags) {
   nsPresContext* presContext = PresContext();
-  nsIPresShell* shell = presContext->PresShell();
+  PresShell* presShell = presContext->PresShell();
 
   MOZ_ASSERT(presContext->Document(), "No document?  Pshaw!");
   // FIXME(emilio): In the "flush animations" case, ideally, we should only
@@ -2991,7 +3034,7 @@ void RestyleManager::DoProcessPendingRestyles(ServoTraversalFlags aFlags) {
   MOZ_ASSERT(!nsContentUtils::IsSafeToRunScript(), "Missing a script blocker!");
   MOZ_DIAGNOSTIC_ASSERT(!mInStyleRefresh);
 
-  if (MOZ_UNLIKELY(!shell->DidInitialize())) {
+  if (MOZ_UNLIKELY(!presShell->DidInitialize())) {
     // PresShell::FlushPendingNotifications doesn't early-return in the case
     // where the PresShell hasn't yet been initialized (and therefore we haven't
     // yet done the initial style traversal of the DOM tree). We should arguably
@@ -3001,7 +3044,7 @@ void RestyleManager::DoProcessPendingRestyles(ServoTraversalFlags aFlags) {
   }
 
   // It'd be bad!
-  nsIPresShell::AutoAssertNoFlush noReentrantFlush(*shell);
+  PresShell::AutoAssertNoFlush noReentrantFlush(*presShell);
 
   // Create a AnimationsWithDestroyedFrame during restyling process to
   // stop animations and transitions on elements that have no frame at the end

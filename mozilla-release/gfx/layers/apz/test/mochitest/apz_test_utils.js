@@ -19,6 +19,34 @@ function convertEntries(entries) {
   return result;
 }
 
+// TODO: Clean up these rect-handling functions so that e.g. a rect returned
+//       by Element.getBoundingClientRect() Just Works with them.
+function parseRect(str) {
+  var pieces = str.replace(/[()\s]+/g, "").split(",");
+  SimpleTest.is(pieces.length, 4, "expected string of form (x,y,w,h)");
+  return { x: parseInt(pieces[0]),
+           y: parseInt(pieces[1]),
+           w: parseInt(pieces[2]),
+           h: parseInt(pieces[3]) };
+}
+
+// These functions expect rects with fields named x/y/w/h, such as
+// that returned by parseRect().
+function rectContains(haystack, needle) {
+  return haystack.x <= needle.x
+      && haystack.y <= needle.y
+      && (haystack.x + haystack.w) >= (needle.x + needle.w)
+      && (haystack.y + haystack.h) >= (needle.y + needle.h);
+}
+function rectToString(rect) {
+  return "(" + rect.x + "," + rect.y + "," + rect.w + "," + rect.h + ")";
+}
+function assertRectContainment(haystackRect, haystackDesc, needleRect, needleDesc) {
+  SimpleTest.ok(rectContains(haystackRect, needleRect),
+                haystackDesc + " " + rectToString(haystackRect) + " should contain " +
+                needleDesc + " " + rectToString(needleRect));
+}
+
 function getPropertyAsRect(scrollFrames, scrollId, prop) {
   SimpleTest.ok(scrollId in scrollFrames,
                 "expected scroll frame data for scroll id " + scrollId);
@@ -26,12 +54,7 @@ function getPropertyAsRect(scrollFrames, scrollId, prop) {
   SimpleTest.ok("displayport" in scrollFrameData,
                 "expected a " + prop + " for scroll id " + scrollId);
   var value = scrollFrameData[prop];
-  var pieces = value.replace(/[()\s]+/g, "").split(",");
-  SimpleTest.is(pieces.length, 4, "expected string of form (x,y,w,h)");
-  return { x: parseInt(pieces[0]),
-           y: parseInt(pieces[1]),
-           w: parseInt(pieces[2]),
-           h: parseInt(pieces[3]) };
+  return parseRect(value);
 }
 
 function convertScrollFrameData(scrollFrames) {
@@ -162,7 +185,7 @@ function promiseApzRepaintsFlushed(aWindow = window) {
 
 function flushApzRepaints(aCallback, aWindow = window) {
   if (!aCallback) {
-    throw "A callback must be provided!";
+    throw new Error("A callback must be provided!");
   }
   promiseApzRepaintsFlushed(aWindow).then(aCallback);
 }
@@ -260,6 +283,15 @@ function runSubtestsSeriallyInFreshWindows(aSubtests) {
 
       test = aSubtests[testIndex];
 
+      let recognizedProps = ["file", "prefs", "dp_suppression", "onload"];
+      for (let prop in test) {
+        if (!recognizedProps.includes(prop)) {
+          SimpleTest.ok(false, "Subtest " + test.file + " has unrecognized property '" + prop + "'");
+          setTimeout(function() { advanceSubtestExecution(); }, 0);
+          return;
+        }
+      }
+
       if (onlyOneSubtest && onlyOneSubtest != test.file) {
         SimpleTest.ok(true, "Skipping " + test.file + " because only " + onlyOneSubtest + " is being run");
         setTimeout(function() { advanceSubtestExecution(); }, 0);
@@ -284,6 +316,7 @@ function runSubtestsSeriallyInFreshWindows(aSubtests) {
         w.SimpleTest = SimpleTest;
         w.dump = function(msg) { return dump(aFile + " | " + msg); };
         w.is = function(a, b, msg) { return is(a, b, aFile + " | " + msg); };
+        w.isfuzzy = function(a, b, eps, msg) { return isfuzzy(a, b, eps, aFile + " | " + msg); };
         w.ok = function(cond, msg) {
           arguments[1] = aFile + " | " + msg;
           // Forward all arguments to SimpleTest.ok where we will check that ok() was
@@ -693,8 +726,20 @@ function hitTestScrollbar(params) {
   // behaviour on different platforms which makes testing harder.
   var expectedHitInfo = APZHitResultFlags.VISIBLE | APZHitResultFlags.SCROLLBAR;
   if (params.expectThumb) {
+    // The thumb has listeners which are APZ-aware. With WebRender we are able
+    // to losslessly propagate this flag to APZ, but with non-WebRender the area
+    // ends up in the mDispatchToContentRegion which we then convert back to
+    // a IRREGULAR_AREA flag. This still works correctly since IRREGULAR_AREA
+    // will fall back to the main thread for everything.
+    if (config.isWebRender) {
+      expectedHitInfo |= APZHitResultFlags.APZ_AWARE_LISTENERS;
+      if (params.layerState == LayerState.INACTIVE) {
+        expectedHitInfo |= APZHitResultFlags.INACTIVE_SCROLLFRAME;
+      }
+    } else {
+      expectedHitInfo |= APZHitResultFlags.IRREGULAR_AREA;
+    }
     // We do not generate the layers for thumbs on inactive scrollframes.
-    expectedHitInfo |= APZHitResultFlags.DISPATCH_TO_CONTENT;
     if (params.layerState == LayerState.ACTIVE) {
       expectedHitInfo |= APZHitResultFlags.SCROLLBAR_THUMB;
     }
@@ -756,8 +801,6 @@ function getPrefs(ident) {
         // position is synced back to the main thread. So we disable displayport
         // expiry for these tests.
         ["apz.displayport_expiry_ms", 0],
-        // All of test cases should define viewport meta tag.
-        ["dom.meta-viewport.enabled", true],
       ];
     case "TOUCH_ACTION":
       return [

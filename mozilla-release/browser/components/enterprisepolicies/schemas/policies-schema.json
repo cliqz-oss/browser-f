@@ -164,6 +164,10 @@
       }
     },
 
+    "DefaultDownloadDirectory": {
+      "type": "string"
+    },
+
     "DisableAppUpdate": {
       "type": "boolean"
     },
@@ -260,6 +264,40 @@
       "type": "boolean"
     },
 
+<<<<<<< HEAD
+||||||| merged common ancestors
+    "EnableTrackingProtection": {
+      "type": "object",
+      "properties": {
+        "Value": {
+          "type": "boolean"
+        },
+        "Locked": {
+          "type": "boolean"
+        }
+      },
+      "required": ["Value"]
+    },
+
+=======
+    "DownloadDirectory": {
+      "type": "string"
+    },
+
+    "EnableTrackingProtection": {
+      "type": "object",
+      "properties": {
+        "Value": {
+          "type": "boolean"
+        },
+        "Locked": {
+          "type": "boolean"
+        }
+      },
+      "required": ["Value"]
+    },
+
+>>>>>>> 822b139b92cedf98ab96ccad686dae664d417af4
     "Extensions": {
       "type": "object",
       "properties": {
@@ -284,8 +322,80 @@
       }
     },
 
+    "ExtensionSettings": {
+      "type": "object",
+      "properties": {
+        "*": {
+          "type": "object",
+          "properties": {
+            "installation_mode": {
+              "type": "string",
+              "enum": ["allowed", "blocked"]
+            },
+            "allowed_types": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": ["extension", "dictionary", "locale", "theme"]
+              }
+            },
+            "blocked_install_message": {
+              "type": "string"
+            },
+            "install_sources": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      },
+      "patternProperties": {
+        "^.*$": {
+          "type": "object",
+          "properties": {
+            "installation_mode": {
+              "type": "string",
+              "enum": ["allowed", "blocked", "force_installed", "normal_installed"]
+            },
+            "install_url": {
+              "type": "string"
+            },
+            "blocked_install_message": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+
     "ExtensionUpdate": {
       "type": "boolean"
+    },
+
+    "FirefoxHome": {
+      "type": "object",
+      "properties": {
+        "Search": {
+          "type": "boolean"
+        },
+        "TopSites": {
+          "type": "boolean"
+        },
+        "Highlights": {
+          "type": "boolean"
+        },
+        "Pocket": {
+          "type": "boolean"
+        },
+        "Snippets": {
+          "type": "boolean"
+        },
+        "Locked": {
+          "type": "boolean"
+        }
+      }
     },
 
     "FlashPlugin": {
@@ -363,7 +473,18 @@
       }
     },
 
+    "LocalFileLinks": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+
     "NetworkPrediction": {
+      "type": "boolean"
+    },
+
+    "NewTabPage": {
       "type": "boolean"
     },
 
@@ -525,6 +646,79 @@
       }
     },
 
+    "Preferences": {
+      "type": "object",
+      "properties": {
+        "app.update.auto ": {
+          "type": "boolean"
+        },
+        "browser.cache.disk.enable": {
+          "type": "boolean"
+        },
+        "browser.fixup.dns_first_for_single_words": {
+          "type": "boolean"
+        },
+        "browser.search.update": {
+          "type": "boolean"
+        },
+        "browser.tabs.warnOnClose": {
+          "type": "boolean"
+        },
+        "browser.cache.disk.parent_directory": {
+          "type": "string"
+        },
+        "browser.urlbar.suggest.openpage": {
+          "type": "boolean"
+        },
+        "browser.urlbar.suggest.history": {
+          "type": "boolean"
+        },
+        "browser.urlbar.suggest.bookmark": {
+          "type": "boolean"
+        },
+        "dom.disable_window_flip": {
+          "type": "boolean"
+        },
+        "dom.disable_window_move_resize": {
+          "type": "boolean"
+        },
+        "dom.event.contextmenu.enabled": {
+          "type": "boolean"
+        },
+        "extensions.getAddons.showPane": {
+          "type": "boolean"
+        },
+        "media.gmp-gmpopenh264.enabled": {
+          "type": "boolean"
+        },
+        "media.gmp-widevinecdm.enabled": {
+          "type": "boolean"
+        },
+        "network.dns.disableIPv6": {
+          "type": "boolean"
+        },
+        "network.IDN_show_punycode": {
+          "type": "boolean"
+        },
+        "places.history.enabled": {
+          "type": "boolean"
+        },
+        "security.default_personal_cert": {
+          "type": "string"
+        },
+        "security.ssl.errorReporting.enabled": {
+          "type": "boolean"
+        },
+        "ui.key.menuAccessKeyFocuses": {
+          "type": "boolean"
+        }
+      }
+    },
+
+    "PromptForDownloadLocation": {
+      "type": "boolean"
+    },
+
     "Proxy": {
       "type": "object",
       "properties": {
@@ -580,10 +774,182 @@
       }
     },
 
+<<<<<<< HEAD
+||||||| merged common ancestors
+    "RequestedLocales": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+
+=======
+    "RequestedLocales": {
+      "type": ["string", "array"],
+      "items": {
+        "type": "string"
+      }
+    },
+
+>>>>>>> 822b139b92cedf98ab96ccad686dae664d417af4
     "SanitizeOnShutdown": {
+      "type": ["boolean", "object"],
+      "properties": {
+        "Cache": {
+          "type": "boolean"
+        },
+        "Cookies": {
+          "type": "boolean"
+        },
+        "Downloads": {
+          "type": "boolean"
+        },
+        "FormData": {
+          "type": "boolean"
+        },
+        "History": {
+          "type": "boolean"
+        },
+        "Sessions": {
+          "type": "boolean"
+        },
+        "SiteSettings": {
+          "type": "boolean"
+        },
+        "OfflineApps": {
+          "type": "boolean"
+        }
+      }
+    },
+
+<<<<<<< HEAD
+||||||| merged common ancestors
+    "SearchBar": {
+      "type": "string",
+      "enum": ["unified", "separate"]
+    },
+
+    "SearchEngines": {
+      "enterprise_only": true,
+
+      "type": "object",
+      "properties": {
+        "Add": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["Name", "URLTemplate"],
+
+            "properties": {
+              "Name": {
+                "type": "string"
+              },
+              "IconURL": {
+                "type": "URLorEmpty"
+              },
+              "Alias": {
+                "type": "string"
+              },
+              "Description": {
+                "type": "string"
+              },
+              "Method": {
+                "type": "string",
+                "enum": ["GET", "POST"]
+              },
+              "URLTemplate": {
+                "type": "string"
+              },
+              "PostData": {
+                "type": "string"
+              },
+              "SuggestURLTemplate": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "Default": {
+          "type": "string"
+        },
+        "PreventInstalls": {
+          "type": "boolean"
+        },
+        "Remove": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+
+=======
+    "SearchBar": {
+      "type": "string",
+      "enum": ["unified", "separate"]
+    },
+
+    "SearchEngines": {
+      "enterprise_only": true,
+
+      "type": "object",
+      "properties": {
+        "Add": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["Name", "URLTemplate"],
+
+            "properties": {
+              "Name": {
+                "type": "string"
+              },
+              "IconURL": {
+                "type": "URLorEmpty"
+              },
+              "Alias": {
+                "type": "string"
+              },
+              "Description": {
+                "type": "string"
+              },
+              "Method": {
+                "type": "string",
+                "enum": ["GET", "POST"]
+              },
+              "URLTemplate": {
+                "type": "string"
+              },
+              "PostData": {
+                "type": "string"
+              },
+              "SuggestURLTemplate": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "Default": {
+          "type": "string"
+        },
+        "PreventInstalls": {
+          "type": "boolean"
+        },
+        "Remove": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+
+    "SearchSuggestEnabled": {
       "type": "boolean"
     },
 
+>>>>>>> 822b139b92cedf98ab96ccad686dae664d417af4
     "SecurityDevices": {
       "type": "object",
       "patternProperties": {

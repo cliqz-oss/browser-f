@@ -5,14 +5,14 @@ skip-if(!asyncPan) == bg-fixed-cover-3.html bg-fixed-cover-3-ref.html
 skip-if(!asyncPan) == bg-fixed-child.html bg-fixed-child-ref.html
 skip-if(!asyncPan) == bg-fixed-child-clip-1.html bg-fixed-child-clip-ref.html
 skip-if(!asyncPan) == bg-fixed-child-clip-2.html bg-fixed-child-clip-ref.html
-fuzzy(0-1,0-246) fuzzy-if(skiaContent,0-2,0-170) fuzzy-if(browserIsRemote&&d2d,0-59,0-187) fuzzy-if(webrender,41-41,154-154) skip-if(!asyncPan) == bg-fixed-child-mask.html bg-fixed-child-mask-ref.html
+fuzzy(0-1,0-246) fuzzy-if(skiaContent,0-2,0-170) fuzzy-if(browserIsRemote&&d2d,0-59,0-187) fuzzy-if(webrender,41-41,166-166) skip-if(!asyncPan) == bg-fixed-child-mask.html bg-fixed-child-mask-ref.html
 skip-if(!asyncPan) == bg-fixed-in-opacity.html bg-fixed-in-opacity-ref.html
 # Passing the test below without WebRender would require implementing CSS filters in the Gecko compositor.
 fails-if(!webrender) skip-if(!asyncPan) fuzzy-if(webrender&&gtkWidget,0-1,0-87) fuzzy-if(webrender&&!gtkWidget,0-1,0-8) == bg-fixed-in-css-filter.html bg-fixed-in-css-filter-ref.html # bug 1454794 for webrender fuzziness
 skip-if(!asyncPan) == bg-fixed-child-no-culling-1.html bg-fixed-child-no-culling-1-ref.html
 skip-if(!asyncPan) == bg-fixed-child-no-culling-2.html bg-fixed-child-no-culling-2-ref.html
 skip-if(!asyncPan) == bg-fixed-child-no-culling-3.html bg-fixed-child-no-culling-3-ref.html
-fuzzy-if(Android,0-2,0-4000) fuzzy-if(browserIsRemote&&cocoaWidget,0-2,0-179524) fuzzy-if(browserIsRemote&&winWidget,0-1,0-74590) fuzzy-if(gtkWidget&&layersGPUAccelerated,0-1,0-3528) skip-if(!asyncPan) == bg-fixed-transformed-image.html bg-fixed-transformed-image-ref.html
+fuzzy-if(Android,0-2,0-4000) fuzzy-if(browserIsRemote&&cocoaWidget,0-2,0-179524) fuzzy-if(browserIsRemote&&winWidget,0-1,0-74590) fuzzy-if(gtkWidget&&layersGPUAccelerated,0-1,0-3528) fuzzy-if((/^Windows\x20NT\x2010\.0/.test(http.oscpu))&&(/^aarch64-msvc/.test(xulRuntime.XPCOMABI)),0-1,0-75900) skip-if(!asyncPan) == bg-fixed-transformed-image.html bg-fixed-transformed-image-ref.html
 test-pref(layout.css.contain.enabled,true) skip-if(!asyncPan) == contain-paint-scrollable-frame-1.html contain-paint-scrollable-frame-1-ref.html
 skip-if(!asyncPan) == element-1.html element-1-ref.html
 pref(layers.force-active,true) skip-if(!asyncPan) == iframe-1.html iframe-1-ref.html
@@ -93,3 +93,7 @@ skip-if(!Android) pref(apz.allow_zooming,true) == position-fixed-async-zoom-3.ht
 skip-if(!Android) pref(apz.allow_zooming,true) == position-fixed-async-zoom-4.html position-fixed-async-zoom-4-ref.html
 skip-if(!Android) pref(apz.allow_zooming,true) == position-sticky-async-zoom-1.html position-sticky-async-zoom-1-ref.html
 skip-if(!Android) pref(apz.allow_zooming,true) == position-sticky-async-zoom-2.html position-sticky-async-zoom-2-ref.html
+
+# for this test, apz.allow_zooming is needed to ensure we take the containerless scrolling codepath that creates
+# an async zoom container (since we are testing a regression in that codepath)
+skip-if(!Android) pref(apz.allow_zooming,true) test-pref(apz.fixed-margin-override.enabled,true) test-pref(apz.fixed-margin-override.bottom,50) == dynamic-toolbar-fixed-bottom-1.html dynamic-toolbar-fixed-bottom-1-ref.html

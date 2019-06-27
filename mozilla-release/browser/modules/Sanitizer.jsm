@@ -223,7 +223,7 @@ var Sanitizer = {
         startDate = endDate - 86400000000; // 24*60*60*1000000
         break;
       default:
-        throw "Invalid time span for clear private data: " + ts;
+        throw new Error("Invalid time span for clear private data: " + ts);
     }
     return [startDate, endDate];
   },
@@ -349,7 +349,8 @@ var Sanitizer = {
         let refObj = {};
         TelemetryStopwatch.start("FX_SANITIZE_HISTORY", refObj);
         await clearData(range, Ci.nsIClearDataService.CLEAR_HISTORY |
-                               Ci.nsIClearDataService.CLEAR_SESSION_HISTORY);
+                               Ci.nsIClearDataService.CLEAR_SESSION_HISTORY |
+                               Ci.nsIClearDataService.CLEAR_STORAGE_ACCESS);
         TelemetryStopwatch.finish("FX_SANITIZE_HISTORY", refObj);
       },
     },
@@ -677,7 +678,6 @@ class PrincipalsCollector {
   async getAllPrincipals(progress) {
     if (this.principals == null) {
       // Here is the list of principals with site data.
-      progress.advancement = "get-principals";
       this.principals = await this.getAllPrincipalsInternal(progress);
     }
 
@@ -687,8 +687,8 @@ class PrincipalsCollector {
   async getAllPrincipalsInternal(progress) {
     progress.step = "principals-quota-manager";
     let principals = await new Promise(resolve => {
-      quotaManagerService.getUsage(request => {
-        progress.step = "principals-quota-manager-getUsage";
+      quotaManagerService.listInitializedOrigins(request => {
+        progress.step = "principals-quota-manager-listInitializedOrigins";
         if (request.resultCode != Cr.NS_OK) {
           // We are probably shutting down. We don't want to propagate the
           // error, rejecting the promise.
@@ -800,6 +800,8 @@ async function sanitizeOnShutdown(progress) {
 
     let principals = await principalsCollector.getAllPrincipals(progress);
     await maybeSanitizeSessionPrincipals(progress, principals);
+
+    progress.advancement = "done";
     return;
   }
 
@@ -853,7 +855,8 @@ async function maybeSanitizeSessionPrincipals(progress, principals) {
   });
 
   progress.step = "promises:" + promises.length;
-  return Promise.all(promises);
+  await Promise.all(promises);
+  progress.step = "promises resolved";
 }
 
 function cookiesAllowedForDomainOrSubDomain(principal) {
@@ -904,14 +907,18 @@ function cookiesAllowedForDomainOrSubDomain(principal) {
 async function sanitizeSessionPrincipal(progress, principal) {
   log("Sanitizing principal: " + principal.URI.spec);
 
-  progress.step = "sanitizing";
   await new Promise(resolve => {
+    progress.sanitizePrincipal = "started";
     Services.clearData.deleteDataFromPrincipal(principal, true /* user request */,
+                                               Ci.nsIClearDataService.CLEAR_ALL_CACHES |
+                                               Ci.nsIClearDataService.CLEAR_COOKIES |
                                                Ci.nsIClearDataService.CLEAR_DOM_STORAGES |
-                                               Ci.nsIClearDataService.CLEAR_COOKIES,
+                                               Ci.nsIClearDataService.CLEAR_SECURITY_SETTINGS |
+                                               Ci.nsIClearDataService.CLEAR_EME |
+                                               Ci.nsIClearDataService.CLEAR_PLUGIN_DATA,
                                                resolve);
   });
-  progress.step = "sanitized";
+  progress.sanitizePrincipal = "completed";
 }
 
 function sanitizeNewTabSegregation() {

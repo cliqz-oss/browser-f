@@ -128,7 +128,6 @@ def make_job_description(config, jobs):
 
         attributes['repackage_type'] = 'repackage'
 
-        level = config.params['level']
         repack_id = job['extra']['repack_id']
 
         repackage_config = []
@@ -168,11 +167,11 @@ def make_job_description(config, jobs):
         }
 
         if build_platform.startswith('win'):
-            worker_type = 'aws-provisioner-v1/gecko-%s-b-win2012' % level
+            worker_type = 'b-win2012'
             run['use-magic-mh-args'] = False
         else:
             if build_platform.startswith('macosx'):
-                worker_type = 'aws-provisioner-v1/gecko-%s-b-linux' % level
+                worker_type = 'b-linux'
             else:
                 raise NotImplementedError(
                     'Unsupported build_platform: "{}"'.format(build_platform)
@@ -182,7 +181,7 @@ def make_job_description(config, jobs):
             worker['docker-image'] = {"in-tree": "debian7-amd64-build"}
 
         worker['artifacts'] = _generate_task_output_files(
-            dep_job, worker_type_implementation(worker_type),
+            dep_job, worker_type_implementation(config.graph_config, worker_type),
             repackage_config, partner=repack_id,
         )
 

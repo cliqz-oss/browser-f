@@ -7,16 +7,11 @@ from __future__ import absolute_import, print_function, unicode_literals
 import argparse
 import logging
 import os
-import shutil
-import subprocess
-import zipfile
 import json
 
 from zipfile import ZipFile
 
 import mozpack.path as mozpath
-
-from mozfile import TemporaryDirectory
 
 from mozbuild.base import (
     MachCommandBase,
@@ -233,39 +228,6 @@ class MachCommands(MachCommandBase):
 
         return ret
 
-    @SubCommand('android', 'test-ccov',
-                """Run Android local unit tests in order to get a code coverage report.
-        See https://firefox-source-docs.mozilla.org/mobile/android/fennec/testcoverage.html""")  # NOQA: E501
-    @CommandArgument('args', nargs=argparse.REMAINDER)
-    def android_test_ccov(self, args):
-        enable_ccov = '-Penable_code_coverage'
-
-        # Don't care if the tests are failing, we only want the coverage information.
-        self.android_test([enable_ccov])
-
-        self.gradle(self.substs['GRADLE_ANDROID_TEST_CCOV_REPORT_TASKS'] +
-                    [enable_ccov] + args, verbose=True)
-        self._process_jacoco_reports()
-        return 0
-
-    def _process_jacoco_reports(self):
-        def run_grcov(grcov_path, input_path):
-            args = [grcov_path, input_path, '-t', 'lcov']
-            return subprocess.check_output(args)
-
-        with TemporaryDirectory() as xml_dir:
-            grcov = os.path.join(os.environ['MOZ_FETCHES_DIR'], 'grcov')
-
-            report_xml_template = self.topobjdir + '/gradle/build/mobile/android/%s/reports/jacoco/jacocoTestReport/jacocoTestReport.xml'  # NOQA: E501
-            shutil.copy(report_xml_template % 'app', os.path.join(xml_dir, 'app.xml'))
-            shutil.copy(report_xml_template % 'geckoview', os.path.join(xml_dir, 'geckoview.xml'))
-
-            # Parse output files with grcov.
-            grcov_output = run_grcov(grcov, xml_dir)
-            grcov_zip_path = os.path.join(self.topobjdir, 'code-coverage-grcov.zip')
-            with zipfile.ZipFile(grcov_zip_path, 'w', zipfile.ZIP_DEFLATED) as z:
-                z.writestr('grcov_lcov_output.info', grcov_output)
-
     @SubCommand('android', 'lint',
                 """Run Android lint.
                 See https://developer.mozilla.org/en-US/docs/Mozilla/Android-specific_test_suites#android-lint""")  # NOQA: E501
@@ -314,46 +276,40 @@ class MachCommands(MachCommandBase):
 
         return ret
 
-    @SubCommand('android', 'checkstyle',
-                """Run Android checkstyle.
-                See https://developer.mozilla.org/en-US/docs/Mozilla/Android-specific_test_suites#android-checkstyle""")  # NOQA: E501
-    @CommandArgument('args', nargs=argparse.REMAINDER)
-    def android_checkstyle(self, args):
-        ret = self.gradle(self.substs['GRADLE_ANDROID_CHECKSTYLE_TASKS'] +
-                          args, verbose=True)
-
+    def _parse_checkstyle_output(self, output_path):
+        ret = 0
         # Checkstyle produces both HTML and XML reports.  Visit the
         # XML report(s) to report errors and link to the HTML
         # report(s) for human consumption.
         import xml.etree.ElementTree as ET
 
-        f = open(os.path.join(self.topobjdir,
-                              'gradle/build/mobile/android/app/reports/checkstyle/checkstyle.xml'),
-                 'rt')
+        output_absolute_path = os.path.join(self.topobjdir, output_path)
+        f = open(output_absolute_path, 'rt')
         tree = ET.parse(f)
         root = tree.getroot()
 
         # Now the reports, linkified.
-        root_url = self._root_url(
+        report_xml = self._root_url(
             artifactdir='public/android/checkstyle',
-            objdir='gradle/build/mobile/android/app/reports/checkstyle')
-
-        # Log reports for Tree Herder "Job Details".
-        print('TinderboxPrint: report<br/><a href="{}/checkstyle.html">HTML checkstyle report</a>, visit "Inspect Task" link for details'.format(root_url))  # NOQA: E501
-        print('TinderboxPrint: report<br/><a href="{}/checkstyle.xml">XML checkstyle report</a>, visit "Inspect Task" link for details'.format(root_url))  # NOQA: E501
+            objdir=output_absolute_path)
+        report_html = self._root_url(
+            artifactdir='public/android/checkstyle',
+            objdir=os.path.splitext(output_absolute_path)[0] + '.html')
 
         # And make the report display as soon as possible.
         if root.findall('file/error'):
             ret |= 1
 
         if ret:
-            print('TEST-UNEXPECTED-FAIL | android-checkstyle | Checkstyle rule violations were found. See the report at: {}/checkstyle.html'.format(root_url))  # NOQA: E501
+            # Log reports for Tree Herder "Job Details".
+            print('TinderboxPrint: report<br/><a href="{}">HTML checkstyle report</a>, visit "Inspect Task" link for details'.format(report_xml))  # NOQA: E501
+            print('TinderboxPrint: report<br/><a href="{}">XML checkstyle report</a>, visit "Inspect Task" link for details'.format(report_html))  # NOQA: E501
 
-        print('SUITE-START | android-checkstyle')
+            print('TEST-UNEXPECTED-FAIL | android-checkstyle | Checkstyle rule violations were found. See the report at: {}'.format(report_html))  # NOQA: E501
+
         for file in root.findall('file'):
             name = file.get('name')
 
-            print('TEST-START | {}'.format(name))
             error_count = 0
             for error in file.findall('error'):
                 # There's no particular advantage to formatting the
@@ -364,8 +320,18 @@ class MachCommands(MachCommandBase):
                     print('TEST-UNEXPECTED-FAIL | {}'.format(line))
                 error_count += 1
 
-            if not error_count:
-                print('TEST-PASS | {}'.format(name))
+        return ret
+
+    @SubCommand('android', 'checkstyle',
+                """Run Android checkstyle.
+                See https://developer.mozilla.org/en-US/docs/Mozilla/Android-specific_test_suites#android-checkstyle""")  # NOQA: E501
+    @CommandArgument('args', nargs=argparse.REMAINDER)
+    def android_checkstyle(self, args):
+        ret = self.gradle(self.substs['GRADLE_ANDROID_CHECKSTYLE_TASKS'] +
+                          args, verbose=True)
+        print('SUITE-START | android-checkstyle')
+        for filePath in self.substs['GRADLE_ANDROID_CHECKSTYLE_OUTPUT_FILES']:
+            ret |= self._parse_checkstyle_output(filePath)
         print('SUITE-END | android-checkstyle')
 
         return ret
@@ -438,16 +404,6 @@ class MachCommands(MachCommandBase):
         # can change the outputs for those processes.
         self.gradle(self.substs['GRADLE_ANDROID_DEPENDENCIES_TASKS'] +
                     ["--continue"] + args, verbose=True)
-
-        return 0
-
-    @SubCommand('android', 'archive-coverage-artifacts',
-                """Archive compiled classfiles to be used later in generating code
-        coverage reports. See https://firefox-source-docs.mozilla.org/mobile/android/fennec/testcoverage.html""")  # NOQA: E501
-    @CommandArgument('args', nargs=argparse.REMAINDER)
-    def android_archive_classfiles(self, args):
-        self.gradle(self.substs['GRADLE_ANDROID_ARCHIVE_COVERAGE_ARTIFACTS_TASKS'] +
-                    args, verbose=True)
 
         return 0
 
@@ -635,6 +591,49 @@ class MachCommands(MachCommandBase):
              conditions=[REMOVED])
     def gradle_install(self):
         pass
+
+    @Command('install-android', category='post-build',
+             conditional_name='install',
+             conditions=[conditions.is_android],
+             description='Install an Android package on a device or an emulator.')
+    @CommandArgument('--verbose', '-v', action='store_true',
+                     help='Print verbose output when installing.')
+    def install(self, verbose=False):
+        from mozrunner.devices.android_device import verify_android_device
+        verify_android_device(self, verbose=verbose)
+
+        ret = self._run_make(directory='.', target='install', ensure_exit_code=False)
+        if ret == 0:
+            self.notify('Install complete')
+        return ret
+
+    @Command('run-android', category='post-build',
+             conditional_name='run',
+             conditions=[conditions.is_android],
+             description='Run Fennec on an Android device or an emulator.')
+    @CommandArgument('--url', help='URL to open',
+                     default=None)
+    @CommandArgument('--no-install', help='Do not try to install application on device before ' +
+                     'running (default: False)',
+                     action='store_true',
+                     default=False)
+    @CommandArgument('--no-wait', help='Do not wait for application to start before returning ' +
+                     '(default: False)',
+                     action='store_true',
+                     default=False)
+    @CommandArgument('--fail-if-running', help='Fail if application is already running ' +
+                     '(default: False)',
+                     action='store_true',
+                     default=False)
+    def run(self, url=None, no_install=None, no_wait=None, fail_if_running=None):
+        from mozrunner.devices.android_device import verify_android_device, run_firefox_for_android
+
+        verify_android_device(self, install=not no_install)
+        return run_firefox_for_android(self,
+                                       [],
+                                       url=url,
+                                       wait=not no_wait,
+                                       fail_if_running=fail_if_running)
 
 
 def _get_maven_archive_abs_and_relative_paths(maven_folder):

@@ -11,7 +11,7 @@
 use crate::gecko_bindings::structs::{self, PseudoStyleType};
 use crate::properties::longhands::display::computed_value::T as Display;
 use crate::properties::{ComputedValues, PropertyFlags};
-use crate::selector_parser::{NonTSPseudoClass, PseudoElementCascadeType, SelectorImpl};
+use crate::selector_parser::{PseudoElementCascadeType, SelectorImpl};
 use crate::str::{starts_with_ignore_ascii_case, string_as_ascii_lowercase};
 use crate::string_cache::Atom;
 use crate::values::serialize_atom_identifier;
@@ -30,19 +30,20 @@ impl ::selectors::parser::PseudoElement for PseudoElement {
     // ::slotted() should support all tree-abiding pseudo-elements, see
     // https://drafts.csswg.org/css-scoping/#slotted-pseudo
     // https://drafts.csswg.org/css-pseudo-4/#treelike
+    #[inline]
     fn valid_after_slotted(&self) -> bool {
         matches!(
             *self,
-            PseudoElement::Before | PseudoElement::After | PseudoElement::Placeholder
+            PseudoElement::Before |
+                PseudoElement::After |
+                PseudoElement::Marker |
+                PseudoElement::Placeholder
         )
     }
 
-    fn supports_pseudo_class(&self, pseudo_class: &NonTSPseudoClass) -> bool {
-        if !self.supports_user_action_state() {
-            return false;
-        }
-
-        return pseudo_class.is_safe_user_action_state();
+    #[inline]
+    fn accepts_state_pseudo_classes(&self) -> bool {
+        self.supports_user_action_state()
     }
 }
 
@@ -107,6 +108,12 @@ impl PseudoElement {
     #[inline]
     pub fn is_after(&self) -> bool {
         *self == PseudoElement::After
+    }
+
+    /// Whether this pseudo-element is the ::marker pseudo.
+    #[inline]
+    pub fn is_marker(&self) -> bool {
+        *self == PseudoElement::Marker
     }
 
     /// Whether this pseudo-element is ::first-letter.
@@ -180,6 +187,8 @@ impl PseudoElement {
     /// Whether this pseudo-element should actually exist if it has
     /// the given styles.
     pub fn should_exist(&self, style: &ComputedValues) -> bool {
+        debug_assert!(self.is_eager());
+
         if style.get_box().clone_display() == Display::None {
             return false;
         }

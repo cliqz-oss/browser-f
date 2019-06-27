@@ -9,16 +9,12 @@ const PERMISSION_SAVE_LOGINS = "login-saving";
 const {XPCOMUtils} = ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 const {Services} = ChromeUtils.import("resource://gre/modules/Services.jsm");
 
-ChromeUtils.defineModuleGetter(this, "BrowserUtils",
-                               "resource://gre/modules/BrowserUtils.jsm");
 ChromeUtils.defineModuleGetter(this, "LoginHelper",
                                "resource://gre/modules/LoginHelper.jsm");
 ChromeUtils.defineModuleGetter(this, "LoginFormFactory",
                                "resource://gre/modules/LoginFormFactory.jsm");
 ChromeUtils.defineModuleGetter(this, "LoginManagerContent",
                                "resource://gre/modules/LoginManagerContent.jsm");
-ChromeUtils.defineModuleGetter(this, "LoginAutoCompleteResult",
-                               "resource://gre/modules/LoginAutoCompleteResult.jsm");
 ChromeUtils.defineModuleGetter(this, "InsecurePasswordUtils",
                                "resource://gre/modules/InsecurePasswordUtils.jsm");
 
@@ -28,6 +24,11 @@ XPCOMUtils.defineLazyGetter(this, "log", () => {
 });
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
+
+if (Services.appinfo.processType !== Services.appinfo.PROCESS_TYPE_DEFAULT) {
+  throw new Error("LoginManager.jsm should only run in the parent process");
+}
+
 
 function LoginManager() {
   this.init();
@@ -56,41 +57,24 @@ LoginManager.prototype = {
 
   /* ---------- private members ---------- */
 
-
-
   _storage: null, // Storage component which contains the saved logins
-  _prefBranch: null, // Preferences service
-  _remember: true,  // mirrors signon.rememberSignons preference
 
 
   /**
    * Initialize the Login Manager. Automatically called when service
    * is created.
    *
-   * Note: Service created in /browser/base/content/browser.js,
-   *       delayedStartup()
+   * Note: Service created in BrowserGlue#_scheduleStartupIdleTasks()
    */
   init() {
     // Cache references to current |this| in utility objects
     this._observer._pwmgr            = this;
 
-    // Preferences. Add observer so we get notified of changes.
-    this._prefBranch = Services.prefs.getBranch("signon.");
-    this._prefBranch.addObserver("rememberSignons", this._observer);
-
-    this._remember = this._prefBranch.getBoolPref("rememberSignons");
-    this._autoCompleteLookupPromise = null;
-
-    // Form submit observer checks forms for new logins and pw changes.
     Services.obs.addObserver(this._observer, "xpcom-shutdown");
+    Services.obs.addObserver(this._observer, "passwordmgr-storage-replace");
 
-    if (Services.appinfo.processType ===
-        Services.appinfo.PROCESS_TYPE_DEFAULT) {
-      Services.obs.addObserver(this._observer, "passwordmgr-storage-replace");
-
-      // Initialize storage so that asynchronous data loading can start.
-      this._initStorage();
-    }
+    // Initialize storage so that asynchronous data loading can start.
+    this._initStorage();
 
     Services.obs.addObserver(this._observer, "gather-telemetry");
   },
@@ -121,19 +105,8 @@ LoginManager.prototype = {
 
     // nsIObserver
     observe(subject, topic, data) {
-      if (topic == "nsPref:changed") {
-        var prefName = data;
-        log.debug("got change to", prefName, "preference");
-
-        if (prefName == "rememberSignons") {
-          this._pwmgr._remember =
-              this._pwmgr._prefBranch.getBoolPref("rememberSignons");
-        } else {
-          log.debug("Oops! Pref not handled, change ignored.");
-        }
-      } else if (topic == "xpcom-shutdown") {
+      if (topic == "xpcom-shutdown") {
         delete this._pwmgr._storage;
-        delete this._pwmgr._prefBranch;
         this._pwmgr = null;
       } else if (topic == "passwordmgr-storage-replace") {
         (async () => {
@@ -174,7 +147,7 @@ LoginManager.prototype = {
     }
 
     clearAndGetHistogram("PWMGR_BLOCKLIST_NUM_SITES").add(
-      this.getAllDisabledHosts({}).length
+      this.getAllDisabledHosts().length
     );
     clearAndGetHistogram("PWMGR_NUM_SAVED_PASSWORDS").add(
       this.countLogins("", "", "")
@@ -187,7 +160,7 @@ LoginManager.prototype = {
 
     // This is a boolean histogram, and not a flag, because we don't want to
     // record any value if _gatherTelemetry is not called.
-    clearAndGetHistogram("PWMGR_SAVING_ENABLED").add(this._remember);
+    clearAndGetHistogram("PWMGR_SAVING_ENABLED").add(LoginHelper.enabled);
     Services.obs.notifyObservers(null, "weave:telemetry:histogram", "PWMGR_SAVING_ENABLED");
 
     // Don't try to get logins if MP is enabled, since we don't want to show a MP prompt.
@@ -195,7 +168,7 @@ LoginManager.prototype = {
       return;
     }
 
-    let logins = this.getAllLogins({});
+    let logins = this.getAllLogins();
 
     let usernamePresentHistogram = clearAndGetHistogram("PWMGR_USERNAME_PRESENT");
     let loginLastUsedDaysHistogram = clearAndGetHistogram("PWMGR_LOGIN_LAST_USED_DAYS");
@@ -285,7 +258,7 @@ LoginManager.prototype = {
     this._checkLogin(login);
 
     // Look for an existing entry.
-    var logins = this.findLogins({}, login.hostname, login.formSubmitURL,
+    var logins = this.findLogins(login.hostname, login.formSubmitURL,
                                  login.httpRealm);
 
     if (logins.some(l => login.matches(l, true))) {
@@ -350,12 +323,11 @@ LoginManager.prototype = {
   /**
    * Get a dump of all stored logins. Used by the login manager UI.
    *
-   * @param count - only needed for XPCOM.
    * @return {nsILoginInfo[]} - If there are no logins, the array is empty.
    */
-  getAllLogins(count) {
+  getAllLogins() {
     log.debug("Getting a list of all logins");
-    return this._storage.getAllLogins(count);
+    return this._storage.getAllLogins();
   },
 
 
@@ -375,7 +347,7 @@ LoginManager.prototype = {
    * @return {String[]} of disabled origins. If there are no disabled origins,
    *                    the array is empty.
    */
-  getAllDisabledHosts(count) {
+  getAllDisabledHosts() {
     log.debug("Getting a list of all disabled origins");
 
     let disabledHosts = [];
@@ -385,10 +357,6 @@ LoginManager.prototype = {
       }
     }
 
-    if (count) {
-      count.value = disabledHosts.length;
-    } // needed for XPCOM
-
     log.debug("getAllDisabledHosts: returning", disabledHosts.length, "disabled hosts.");
     return disabledHosts;
   },
@@ -397,12 +365,11 @@ LoginManager.prototype = {
   /**
    * Search for the known logins for entries matching the specified criteria.
    */
-  findLogins(count, origin, formActionOrigin, httpRealm) {
+  findLogins(origin, formActionOrigin, httpRealm) {
     log.debug("Searching for logins matching origin:", origin,
               "formActionOrigin:", formActionOrigin, "httpRealm:", httpRealm);
 
-    return this._storage.findLogins(count, origin, formActionOrigin,
-                                    httpRealm);
+    return this._storage.findLogins(origin, formActionOrigin, httpRealm);
   },
 
 
@@ -412,7 +379,7 @@ LoginManager.prototype = {
    *
    * @return {nsILoginInfo[]} which are decrypted.
    */
-  searchLogins(count, matchData) {
+  searchLogins(matchData) {
     log.debug("Searching for logins");
 
     matchData.QueryInterface(Ci.nsIPropertyBag2);
@@ -426,7 +393,7 @@ LoginManager.prototype = {
       }
     }
 
-    return this._storage.searchLogins(count, matchData);
+    return this._storage.searchLogins(matchData);
   },
 
 
@@ -457,7 +424,7 @@ LoginManager.prototype = {
    */
   getLoginSavingEnabled(origin) {
     log.debug("Checking if logins to", origin, "can be saved.");
-    if (!this._remember) {
+    if (!LoginHelper.enabled) {
       return false;
     }
 
@@ -482,101 +449,6 @@ LoginManager.prototype = {
 
     log.debug("Login saving for", origin, "now enabled?", enabled);
     LoginHelper.notifyStorageChanged(enabled ? "hostSavingEnabled" : "hostSavingDisabled", origin);
-  },
-
-  /**
-   * Yuck. This is called directly by satchel:
-   * nsFormFillController::StartSearch()
-   * [toolkit/components/satchel/nsFormFillController.cpp]
-   *
-   * We really ought to have a simple way for code to register an
-   * auto-complete provider, and not have satchel calling pwmgr directly.
-   */
-  autoCompleteSearchAsync(aSearchString, aPreviousResult,
-                          aElement, aCallback) {
-    // aPreviousResult is an nsIAutoCompleteResult, aElement is
-    // HTMLInputElement
-
-    let {isNullPrincipal} = aElement.nodePrincipal;
-    // Show the insecure login warning in the passwords field on null principal documents.
-    let isSecure = !isNullPrincipal;
-    // Avoid loading InsecurePasswordUtils.jsm in a sandboxed document (e.g. an ad. frame) if we
-    // already know it has a null principal and will therefore get the insecure autocomplete
-    // treatment.
-    // InsecurePasswordUtils doesn't handle the null principal case as not secure because we don't
-    // want the same treatment:
-    // * The web console warnings will be confusing (as they're primarily about http:) and not very
-    //   useful if the developer intentionally sandboxed the document.
-    // * The site identity insecure field warning would require LoginManagerContent being loaded and
-    //   listening to some of the DOM events we're ignoring in null principal documents. For memory
-    //   reasons it's better to not load LMC at all for these sandboxed frames. Also, if the top-
-    //   document is sandboxing a document, it probably doesn't want that sandboxed document to be
-    //   able to affect the identity icon in the address bar by adding a password field.
-    if (isSecure) {
-      let form = LoginFormFactory.createFromField(aElement);
-      isSecure = InsecurePasswordUtils.isFormSecure(form);
-    }
-    let isPasswordField = aElement.type == "password";
-    let hostname = aElement.ownerDocument.documentURIObject.host;
-
-    let completeSearch = (autoCompleteLookupPromise, { logins, messageManager }) => {
-      // If the search was canceled before we got our
-      // results, don't bother reporting them.
-      if (this._autoCompleteLookupPromise !== autoCompleteLookupPromise) {
-        return;
-      }
-
-      this._autoCompleteLookupPromise = null;
-      let results = new LoginAutoCompleteResult(aSearchString, logins, {
-        messageManager,
-        isSecure,
-        isPasswordField,
-        hostname,
-      });
-      aCallback.onSearchCompletion(results);
-    };
-
-    if (isNullPrincipal) {
-      // Don't search login storage when the field has a null principal as we don't want to fill
-      // logins for the `location` in this case.
-      let acLookupPromise = this._autoCompleteLookupPromise = Promise.resolve({ logins: [] });
-      acLookupPromise.then(completeSearch.bind(this, acLookupPromise));
-      return;
-    }
-
-    if (isPasswordField && aSearchString) {
-      // Return empty result on password fields with password already filled.
-      let acLookupPromise = this._autoCompleteLookupPromise = Promise.resolve({ logins: [] });
-      acLookupPromise.then(completeSearch.bind(this, acLookupPromise));
-      return;
-    }
-
-    if (!this._remember) {
-      let acLookupPromise = this._autoCompleteLookupPromise = Promise.resolve({ logins: [] });
-      acLookupPromise.then(completeSearch.bind(this, acLookupPromise));
-      return;
-    }
-
-    log.debug("AutoCompleteSearch invoked. Search is:", aSearchString);
-
-    let previousResult;
-    if (aPreviousResult) {
-      previousResult = { searchString: aPreviousResult.searchString,
-                         logins: aPreviousResult.wrappedJSObject.logins };
-    } else {
-      previousResult = null;
-    }
-
-    let rect = BrowserUtils.getElementBoundingScreenRect(aElement);
-    let acLookupPromise = this._autoCompleteLookupPromise =
-      LoginManagerContent._autoCompleteSearchAsync(aSearchString, previousResult,
-                                                   aElement, rect);
-    acLookupPromise.then(completeSearch.bind(this, acLookupPromise))
-                             .catch(Cu.reportError);
-  },
-
-  stopSearch() {
-    this._autoCompleteLookupPromise = null;
   },
 }; // end of LoginManager implementation
 

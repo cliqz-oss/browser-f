@@ -4,27 +4,14 @@
 
 // There are shutdown issues for which multiple rejections are left uncaught.
 // See bug 1018184 for resolving these issues.
-const { PromiseTestUtils } = scopedCuImport("resource://testing-common/PromiseTestUtils.jsm");
+const { PromiseTestUtils } = ChromeUtils.import("resource://testing-common/PromiseTestUtils.jsm");
 PromiseTestUtils.whitelistRejectionsGlobally(/File closed/);
 
 // On debug test slave, it takes about 50s to run the test.
 requestLongerTimeout(4);
 
 add_task(async function() {
-  await new Promise(done => {
-    const options = {"set": [
-      ["devtools.debugger.prompt-connection", false],
-      ["devtools.debugger.remote-enabled", true],
-      ["devtools.chrome.enabled", true],
-      // Test-only pref to allow passing `testScript` argument to the browser
-      // toolbox
-      ["devtools.browser-toolbox.allow-unsafe-script", true],
-      // On debug test slave, it takes more than the default time (20s)
-      // to get a initialized console
-      ["devtools.debugger.remote-timeout", 120000],
-    ]};
-    SpecialPowers.pushPrefEnv(options, done);
-  });
+  await setupPreferencesForBrowserToolbox();
 
   // Wait for a notification sent by a script evaluated in the webconsole
   // of the browser toolbox.

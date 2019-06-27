@@ -9,8 +9,7 @@
 #include "js/Initialization.h"
 
 #include "mozilla/Assertions.h"
-
-#include <ctype.h>
+#include "mozilla/TextUtils.h"
 
 #include "jstypes.h"
 
@@ -23,6 +22,7 @@
 #include "jit/JitCommon.h"
 #include "js/Utility.h"
 #if ENABLE_INTL_API
+#  include "unicode/putil.h"
 #  include "unicode/uclean.h"
 #  include "unicode/utypes.h"
 #endif  // ENABLE_INTL_API
@@ -45,7 +45,7 @@ InitState JS::detail::libraryInitState;
 static unsigned MessageParameterCount(const char* format) {
   unsigned numfmtspecs = 0;
   for (const char* fmt = format; *fmt != '\0'; fmt++) {
-    if (*fmt == '{' && isdigit(fmt[1])) {
+    if (*fmt == '{' && mozilla::IsAsciiDigit(fmt[1])) {
       ++numfmtspecs;
     }
   }
@@ -114,6 +114,8 @@ JS_PUBLIC_API const char* JS::detail::InitWithFailureDiagnostic(
 
   js::gc::InitMemorySubsystem();  // Ensure gc::SystemPageSize() works.
 
+  js::coverage::InitLCov();
+
   RETURN_IF_FAIL(js::jit::InitProcessExecutableMemory());
 
   RETURN_IF_FAIL(js::MemoryProtectionExceptionHandler::install());
@@ -129,6 +131,13 @@ JS_PUBLIC_API const char* JS::detail::InitWithFailureDiagnostic(
   RETURN_IF_FAIL(js::jit::AtomicOperations::Initialize());
 
 #if EXPOSE_INTL_API
+#  if !MOZ_SYSTEM_ICU
+  // Explicitly set the data directory to its default value, but only when we're
+  // sure that we use our in-tree ICU copy. See bug 1527879 and ICU bug
+  // report <https://unicode-org.atlassian.net/browse/ICU-20491>.
+  u_setDataDirectory("");
+#  endif
+
   UErrorCode err = U_ZERO_ERROR;
   u_init(&err);
   if (U_FAILURE(err)) {
@@ -142,6 +151,10 @@ JS_PUBLIC_API const char* JS::detail::InitWithFailureDiagnostic(
 
 #ifdef JS_SIMULATOR
   RETURN_IF_FAIL(js::jit::SimulatorProcess::initialize());
+#endif
+
+#ifdef JS_TRACE_LOGGING
+  RETURN_IF_FAIL(JS::InitTraceLogger());
 #endif
 
   libraryInitState = InitState::Running;

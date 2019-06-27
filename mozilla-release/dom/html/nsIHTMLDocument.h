@@ -61,7 +61,7 @@ class nsIHTMLDocument : public nsISupports {
    * @param aChange +1 if the contentEditable attribute/property was changed to
    *                true, -1 if it was changed to false
    */
-  virtual nsresult ChangeContentEditableCount(nsIContent *aElement,
+  virtual nsresult ChangeContentEditableCount(nsIContent* aElement,
                                               int32_t aChange) = 0;
 
   enum EditingState {
@@ -92,11 +92,6 @@ class nsIHTMLDocument : public nsISupports {
    * SetDesignMode().
    */
   virtual nsresult SetEditingState(EditingState aState) = 0;
-
-  /**
-   * Disables getting and setting cookies
-   */
-  virtual void DisableCookieAccess() = 0;
 
   /**
    * Called when this nsIHTMLDocument's editor is destroyed.

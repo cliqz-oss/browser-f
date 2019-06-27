@@ -40,9 +40,7 @@ window.gActivityStreamStrings = {
   "section_disclaimer_topstories_buttontext": "ठीक आहे, समजले",
   "prefs_home_header": "फायरफॉक्स होम वरील मजकूर",
   "prefs_home_description": "आपल्या फायरफॉक्सचा मुख्यपृष्ठवर आपल्याला कोणती माहिती पाहिजे ते निवडा.",
-  "prefs_content_discovery_header": "Firefox मुख्यपृष्ठ",
   "prefs_content_discovery_description": "Content Discovery in Firefox Home allows you to discover high-quality, relevant articles from across the web.",
-  "prefs_content_discovery_button": "Turn Off Content Discovery",
   "prefs_section_rows_option": "{num} ओळ;{num} ओळी",
   "prefs_search_header": "वेब शोध",
   "prefs_topsites_description": "आपण सर्वाधिक भेट देता त्या साइट",
@@ -107,8 +105,5 @@ window.gActivityStreamStrings = {
   "firstrun_privacy_notice": "गोपनीयता सूचना",
   "firstrun_continue_to_login": "पुढे चला",
   "firstrun_skip_login": "ही पायरी वगळा",
-  "context_menu_title": "मेनु उघडा",
-  "manual_migration_explanation2": "दुसऱ्या ब्राऊझरमधील वाचनखूणा, इतिहास आणि पासवर्ड सोबत Firefox ला वापरून पहा.",
-  "manual_migration_cancel_button": "नाही धन्यवाद",
-  "manual_migration_import_button": "आता आयात करा"
+  "context_menu_title": "मेनु उघडा"
 };

@@ -6,6 +6,7 @@
 
 #include "mozilla/Attributes.h"
 #include "mozilla/PresShell.h"
+#include "mozilla/PresShellInlines.h"
 #include "mozilla/dom/Element.h"
 #include "mozilla/dom/EventTarget.h"
 #include "mozilla/mozalloc.h"
@@ -313,14 +314,14 @@ HTMLEditor::CheckSelectionStateForAnonymousButtons() {
     return NS_ERROR_NOT_INITIALIZED;
   }
 
-  nsresult rv = RefereshEditingUI();
+  nsresult rv = RefreshEditingUI();
   if (NS_WARN_IF(NS_FAILED(rv))) {
     return EditorBase::ToGenericNSResult(rv);
   }
   return NS_OK;
 }
 
-nsresult HTMLEditor::RefereshEditingUI() {
+nsresult HTMLEditor::RefreshEditingUI() {
   MOZ_ASSERT(IsEditActionDataAvailable());
 
   // First, we need to remove unnecessary editing UI now since some of them

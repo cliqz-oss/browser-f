@@ -200,14 +200,16 @@ class WebConsole {
    *        The URL of the file.
    * @param integer sourceLine
    *        The line number which you want to place the caret.
+   * @param integer sourceColumn
+   *        The column number which you want to place the caret.
    */
-  viewSourceInDebugger(sourceURL, sourceLine) {
+  viewSourceInDebugger(sourceURL, sourceLine, sourceColumn) {
     const toolbox = gDevTools.getToolbox(this.target);
     if (!toolbox) {
-      this.viewSource(sourceURL, sourceLine);
+      this.viewSource(sourceURL, sourceLine, sourceColumn);
       return;
     }
-    toolbox.viewSourceInDebugger(sourceURL, sourceLine).then(() => {
+    toolbox.viewSourceInDebugger(sourceURL, sourceLine, sourceColumn).then(() => {
       this.ui.emit("source-in-debugger-opened");
     });
   }
@@ -251,6 +253,18 @@ class WebConsole {
   }
 
   /**
+   * Return the console client to use when interacting with a thread.
+   *
+   * @param {String} thread: The ID of the target thread.
+   * @returns {Object} The console client associated with the thread.
+   */
+  lookupConsoleClient(thread) {
+    const toolbox = gDevTools.getToolbox(this.target);
+    const panel = toolbox.getPanel("jsdebugger");
+    return panel.lookupConsoleClient(thread);
+  }
+
+  /**
    * Given an expression, returns an object containing a new expression, mapped by the
    * parser worker to provide additional feature for the user (top-level await,
    * original languages mapping, …).
@@ -287,19 +301,17 @@ class WebConsole {
     return null;
   }
 
-  /**
-   * A common access point for the client-side parser service that any panel can use.
-   */
   get parserService() {
     if (this._parserService) {
       return this._parserService;
     }
 
-    this._parserService =
-      require("devtools/client/debugger/new/src/workers/parser/index");
+    const { ParserDispatcher } =
+      require("devtools/client/debugger/src/workers/parser/index");
 
+    this._parserService = new ParserDispatcher();
     this._parserService.start(
-      "resource://devtools/client/debugger/new/dist/parser-worker.js",
+      "resource://devtools/client/debugger/dist/parser-worker.js",
       this.chromeUtilsWindow);
     return this._parserService;
   }

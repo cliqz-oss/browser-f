@@ -33,8 +33,9 @@
 #include "nsIMutableArray.h"
 #include "nsIFrame.h"
 #include "nsIScrollableFrame.h"
+#include "mozilla/PresShell.h"
 #include "mozilla/dom/NodeInfo.h"
-#include "mozilla/dom/TabParent.h"
+#include "mozilla/dom/BrowserParent.h"
 #include "nsIServiceManager.h"
 #include "nsNameSpaceManager.h"
 #include "nsTextFormatter.h"
@@ -1259,9 +1260,7 @@ HWND AccessibleWrap::GetHWNDFor(Accessible* aAccessible) {
   if (frame) {
     nsIWidget* widget = frame->GetNearestWidget();
     if (widget && widget->IsVisible()) {
-      nsIPresShell* shell = document->PresShell();
-      nsViewManager* vm = shell->GetViewManager();
-      if (vm) {
+      if (nsViewManager* vm = document->PresShellPtr()->GetViewManager()) {
         nsCOMPtr<nsIWidget> rootWidget;
         vm->GetRootWidget(getter_AddRefs(rootWidget));
         // Make sure the accessible belongs to popup. If not then use
@@ -1311,7 +1310,7 @@ static already_AddRefed<IDispatch> GetProxiedAccessibleInSubtree(
   if (aDoc->IsTopLevel()) {
     wrapper->GetNativeInterface(getter_AddRefs(comProxy));
   } else {
-    auto tab = static_cast<dom::TabParent*>(aDoc->Manager());
+    auto tab = static_cast<dom::BrowserParent*>(aDoc->Manager());
     MOZ_ASSERT(tab);
     DocAccessibleParent* topLevelDoc = tab->GetTopLevelDocAccessible();
     MOZ_ASSERT(topLevelDoc && topLevelDoc->IsTopLevel());

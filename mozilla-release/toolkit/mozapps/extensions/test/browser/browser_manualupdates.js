@@ -9,6 +9,12 @@ var gManagerWindow;
 var gCategoryUtilities;
 var gAvailableCategory;
 
+// This test is testing XUL about:addons UI (the HTML about:addons has its
+// own test files for these test cases).
+SpecialPowers.pushPrefEnv({
+  set: [["extensions.htmlaboutaddons.enabled", false]],
+});
+
 async function test() {
   waitForExplicitFinish();
 
@@ -114,7 +120,7 @@ add_test(async function() {
 add_test(function() {
   function checkReleaseNotesTelemetry() {
     let snapshot = Services.telemetry.snapshotEvents(
-      Ci.nsITelemetry.DATASET_RELEASE_CHANNEL_OPTIN, true);
+      Ci.nsITelemetry.DATASET_PRERELEASE_CHANNELS, true);
     ok(snapshot.parent && snapshot.parent.length > 0, "Got parent telemetry events in the snapshot");
 
     let releaseNotesEvents = snapshot.parent

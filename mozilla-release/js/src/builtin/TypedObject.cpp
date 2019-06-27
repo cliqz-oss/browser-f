@@ -338,8 +338,12 @@ const Class js::ReferenceTypeDescr::class_ = {
 
 const JSFunctionSpec js::ReferenceTypeDescr::typeObjectMethods[] = {
     JS_SELF_HOSTED_FN("toSource", "DescrToSource", 0, 0),
-    {"array", {nullptr, nullptr}, 1, 0, "ArrayShorthand"},
-    {"equivalent", {nullptr, nullptr}, 1, 0, "TypeDescrEquivalent"},
+    {JSFunctionSpec::Name("array"), {nullptr, nullptr}, 1, 0, "ArrayShorthand"},
+    {JSFunctionSpec::Name("equivalent"),
+     {nullptr, nullptr},
+     1,
+     0,
+     "TypeDescrEquivalent"},
     JS_FS_END};
 
 static const uint32_t ReferenceSizes[] = {
@@ -477,9 +481,13 @@ const Class ArrayTypeDescr::class_ = {
 const JSPropertySpec ArrayMetaTypeDescr::typeObjectProperties[] = {JS_PS_END};
 
 const JSFunctionSpec ArrayMetaTypeDescr::typeObjectMethods[] = {
-    {"array", {nullptr, nullptr}, 1, 0, "ArrayShorthand"},
+    {JSFunctionSpec::Name("array"), {nullptr, nullptr}, 1, 0, "ArrayShorthand"},
     JS_SELF_HOSTED_FN("toSource", "DescrToSource", 0, 0),
-    {"equivalent", {nullptr, nullptr}, 1, 0, "TypeDescrEquivalent"},
+    {JSFunctionSpec::Name("equivalent"),
+     {nullptr, nullptr},
+     1,
+     0,
+     "TypeDescrEquivalent"},
     JS_SELF_HOSTED_FN("build", "TypedObjectArrayTypeBuild", 3, 0),
     JS_SELF_HOSTED_FN("from", "TypedObjectArrayTypeFrom", 3, 0),
     JS_FS_END};
@@ -487,8 +495,12 @@ const JSFunctionSpec ArrayMetaTypeDescr::typeObjectMethods[] = {
 const JSPropertySpec ArrayMetaTypeDescr::typedObjectProperties[] = {JS_PS_END};
 
 const JSFunctionSpec ArrayMetaTypeDescr::typedObjectMethods[] = {
-    {"forEach", {nullptr, nullptr}, 1, 0, "ArrayForEach"},
-    {"redimension", {nullptr, nullptr}, 1, 0, "TypedObjectArrayRedimension"},
+    {JSFunctionSpec::Name("forEach"), {nullptr, nullptr}, 1, 0, "ArrayForEach"},
+    {JSFunctionSpec::Name("redimension"),
+     {nullptr, nullptr},
+     1,
+     0,
+     "TypedObjectArrayRedimension"},
     JS_SELF_HOSTED_FN("map", "TypedObjectArrayMap", 2, 0),
     JS_SELF_HOSTED_FN("reduce", "TypedObjectArrayReduce", 2, 0),
     JS_SELF_HOSTED_FN("filter", "TypedObjectArrayFilter", 1, 0),
@@ -718,9 +730,13 @@ const Class StructTypeDescr::class_ = {
 const JSPropertySpec StructMetaTypeDescr::typeObjectProperties[] = {JS_PS_END};
 
 const JSFunctionSpec StructMetaTypeDescr::typeObjectMethods[] = {
-    {"array", {nullptr, nullptr}, 1, 0, "ArrayShorthand"},
+    {JSFunctionSpec::Name("array"), {nullptr, nullptr}, 1, 0, "ArrayShorthand"},
     JS_SELF_HOSTED_FN("toSource", "DescrToSource", 0, 0),
-    {"equivalent", {nullptr, nullptr}, 1, 0, "TypeDescrEquivalent"},
+    {JSFunctionSpec::Name("equivalent"),
+     {nullptr, nullptr},
+     1,
+     0,
+     "TypeDescrEquivalent"},
     JS_FS_END};
 
 const JSPropertySpec StructMetaTypeDescr::typedObjectProperties[] = {JS_PS_END};
@@ -768,7 +784,7 @@ CheckedInt32 StructMetaTypeDescr::Layout::close(int32_t* alignment) {
 JSObject* StructMetaTypeDescr::create(JSContext* cx, HandleObject metaTypeDescr,
                                       HandleObject fields) {
   // Obtain names of fields, which are the own properties of `fields`
-  AutoIdVector ids(cx);
+  RootedIdVector ids(cx);
   if (!GetPropertyKeys(cx, fields, JSITER_OWNONLY | JSITER_SYMBOLS, &ids)) {
     return nullptr;
   }
@@ -776,8 +792,8 @@ JSObject* StructMetaTypeDescr::create(JSContext* cx, HandleObject metaTypeDescr,
   // Iterate through each field. Collect values for the various
   // vectors below and also track total size and alignment. Be wary
   // of overflow!
-  AutoValueVector fieldTypeObjs(cx);  // Type descriptor of each field.
-  bool opaque = false;                // Opacity of struct.
+  RootedValueVector fieldTypeObjs(cx);  // Type descriptor of each field.
+  bool opaque = false;                  // Opacity of struct.
 
   Vector<StructFieldProps> fieldProps(cx);
 
@@ -838,15 +854,15 @@ JSObject* StructMetaTypeDescr::create(JSContext* cx, HandleObject metaTypeDescr,
 /* static */
 StructTypeDescr* StructMetaTypeDescr::createFromArrays(
     JSContext* cx, HandleObject structTypePrototype, bool opaque,
-    bool allowConstruct, AutoIdVector& ids, AutoValueVector& fieldTypeObjs,
-    Vector<StructFieldProps>& fieldProps) {
-  StringBuffer stringBuffer(cx);      // Canonical string repr
-  AutoValueVector fieldNames(cx);     // Name of each field.
-  AutoValueVector fieldOffsets(cx);   // Offset of each field field.
-  AutoValueVector fieldMuts(cx);      // Mutability of each field.
-  RootedObject userFieldOffsets(cx);  // User-exposed {f:offset} object
-  RootedObject userFieldTypes(cx);    // User-exposed {f:descr} object.
-  Layout layout;                      // Field offsetter
+    bool allowConstruct, HandleIdVector ids,
+    JS::HandleValueVector fieldTypeObjs, Vector<StructFieldProps>& fieldProps) {
+  StringBuffer stringBuffer(cx);       // Canonical string repr
+  RootedValueVector fieldNames(cx);    // Name of each field.
+  RootedValueVector fieldOffsets(cx);  // Offset of each field field.
+  RootedValueVector fieldMuts(cx);     // Mutability of each field.
+  RootedObject userFieldOffsets(cx);   // User-exposed {f:offset} object
+  RootedObject userFieldTypes(cx);     // User-exposed {f:descr} object.
+  Layout layout;                       // Field offsetter
 
   userFieldOffsets = NewBuiltinClassInstance<PlainObject>(cx, TenuredObject);
   if (!userFieldOffsets) {
@@ -2075,7 +2091,7 @@ bool TypedObject::obj_deleteProperty(JSContext* cx, HandleObject obj,
 }
 
 bool TypedObject::obj_newEnumerate(JSContext* cx, HandleObject obj,
-                                   AutoIdVector& properties,
+                                   MutableHandleIdVector properties,
                                    bool enumerableOnly) {
   MOZ_ASSERT(obj->is<TypedObject>());
   Rooted<TypedObject*> typedObj(cx, &obj->as<TypedObject>());

@@ -70,7 +70,13 @@ async function withNewWindow(callback) {
                     "", "chrome");
   await BrowserTestUtils.waitForEvent(win, "load");
 
-  win.gBrowser = {};
+  win.gBrowser = {
+    selectedBrowser: {
+      getAttribute() {
+        return undefined;
+      },
+    },
+  };
 
   // Clone the elements into the new window, so we get exact copies without having
   // to replicate the xul.
@@ -150,46 +156,6 @@ add_task(async function test_input_with_private_browsing() {
       searchString: "search",
       isPrivate: true,
     });
-
-    sandbox.resetHistory();
-  });
-});
-
-add_task(async function test_autofill_disabled_on_prefix_search() {
-  await withNewWindow(input => {
-    // search for "autofill" -- autofill should be enabled
-    input.inputField.value = "autofill";
-    input.handleEvent({
-      target: input.inputField,
-      type: "input",
-    });
-    checkStartQueryCall(fakeController.startQuery, {
-      searchString: "autofill",
-      enableAutofill: true,
-    });
-
-    // search for "auto" -- autofill should be disabled since the previous
-    // search string starts with the new search string
-    input.inputField.value = "auto";
-    input.handleEvent({
-      target: input.inputField,
-      type: "input",
-    });
-    checkStartQueryCall(fakeController.startQuery, {
-      searchString: "auto",
-      enableAutofill: false,
-    }, 1);
-
-    // search for "autofill" again -- autofill should be enabled
-    input.inputField.value = "autofill";
-    input.handleEvent({
-      target: input.inputField,
-      type: "input",
-    });
-    checkStartQueryCall(fakeController.startQuery, {
-      searchString: "autofill",
-      enableAutofill: true,
-    }, 2);
 
     sandbox.resetHistory();
   });

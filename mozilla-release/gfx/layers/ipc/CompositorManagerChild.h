@@ -83,6 +83,9 @@ class CompositorManagerChild : public PCompositorManagerChild {
 
   bool ShouldContinueFromReplyTimeout() override;
 
+  mozilla::ipc::IPCResult RecvNotifyWebRenderError(
+      const WebRenderError&& aError);
+
  private:
   static StaticRefPtr<CompositorManagerChild> sInstance;
 
@@ -92,7 +95,7 @@ class CompositorManagerChild : public PCompositorManagerChild {
   CompositorManagerChild(Endpoint<PCompositorManagerChild>&& aEndpoint,
                          uint64_t aProcessToken, uint32_t aNamespace);
 
-  ~CompositorManagerChild() override {}
+  virtual ~CompositorManagerChild() = default;
 
   void DeallocPCompositorManagerChild() override;
 

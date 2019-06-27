@@ -25,7 +25,7 @@ webidl Node;
  * We are also making it scriptable for now, but this may change once we have
  * WebSockets for Workers.
  */
-[scriptable, uuid(ce71d028-322a-4105-a947-a894689b52bf)]
+[scriptable, builtinclass, uuid(ce71d028-322a-4105-a947-a894689b52bf)]
 interface nsIWebSocketChannel : nsISupports
 {
     /**
@@ -71,6 +71,12 @@ interface nsIWebSocketChannel : nsISupports
      * Sec-Websocket-Extensions response header value
      */
     [must_use] readonly attribute ACString extensions;
+
+    /**
+     * The channelId of the underlying http channel.
+     * It's available only after nsIWebSocketListener::onStart
+     */
+    [must_use] readonly attribute uint64_t httpChannelId;
 
     /**
      * Init the WebSocketChannel with LoadInfo arguments.
@@ -229,6 +235,16 @@ interface nsIWebSocketChannel : nsISupports
         return 0;
       }
       return serial;
+    }
+
+    inline uint64_t HttpChannelId()
+    {
+      uint64_t httpChannelId;
+      nsresult rv = GetHttpChannelId(&httpChannelId);
+      if (NS_WARN_IF(NS_FAILED(rv))) {
+        return 0;
+      }
+      return httpChannelId;
     }
 %}
 };

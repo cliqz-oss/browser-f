@@ -13,18 +13,23 @@ UNIFIED_SOURCES = [
     'TestBlendAnimationFilter.cpp',
     'TestContainers.cpp',
     'TestCopyOnWrite.cpp',
-    'TestDecoders.cpp',
-    'TestDecodeToSurface.cpp',
     'TestDeinterlacingFilter.cpp',
     'TestFrameAnimator.cpp',
     'TestLoader.cpp',
-    'TestMetadata.cpp',
     'TestRemoveFrameRectFilter.cpp',
-    'TestSourceBuffer.cpp',
     'TestStreamingLexer.cpp',
-    'TestSurfaceCache.cpp',
     'TestSurfaceSink.cpp',
 ]
+
+# skip the test on windows10-aarch64, aarch64 due to 1544961
+if not(CONFIG['OS_TARGET'] == 'WINNT' and CONFIG['CPU_ARCH'] == 'aarch64'):
+    UNIFIED_SOURCES += [
+        'TestDecoders.cpp',
+        'TestDecodeToSurface.cpp',
+        'TestMetadata.cpp',
+        'TestSourceBuffer.cpp',
+        'TestSurfaceCache.cpp',
+    ]
 
 if CONFIG['MOZ_ENABLE_SKIA']:
     UNIFIED_SOURCES += [

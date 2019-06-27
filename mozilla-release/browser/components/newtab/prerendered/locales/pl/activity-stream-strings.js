@@ -40,9 +40,7 @@ window.gActivityStreamStrings = {
   "section_disclaimer_topstories_buttontext": "OK",
   "prefs_home_header": "Strona startowa Firefoksa",
   "prefs_home_description": "Wybierz, co wyświetlać na stronie startowej Firefoksa.",
-  "prefs_content_discovery_header": "Strona startowa Firefoksa",
   "prefs_content_discovery_description": "Funkcja odkrywania treści na stronie startowej Firefoksa umożliwia odkrywanie spersonalizowanych artykułów o wysokiej jakości z całego Internetu.",
-  "prefs_content_discovery_button": "Wyłącz odkrywanie treści",
   "prefs_section_rows_option": "{num} wiersz;{num} wiersze;{num} wierszy",
   "prefs_search_header": "Pasek wyszukiwania",
   "prefs_topsites_description": "Najczęściej odwiedzane strony.",
@@ -107,8 +105,5 @@ window.gActivityStreamStrings = {
   "firstrun_privacy_notice": "zasady ochrony prywatności",
   "firstrun_continue_to_login": "Kontynuuj",
   "firstrun_skip_login": "Pomiń",
-  "context_menu_title": "Otwórz menu",
-  "manual_migration_explanation2": "Wypróbuj Firefoksa z zakładkami, historią i hasłami z innej przeglądarki.",
-  "manual_migration_cancel_button": "Anuluj",
-  "manual_migration_import_button": "Importuj"
+  "context_menu_title": "Otwórz menu"
 };

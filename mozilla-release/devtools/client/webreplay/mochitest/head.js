@@ -12,7 +12,7 @@ Services.scriptloader.loadSubScript(
 );
 
 Services.scriptloader.loadSubScript(
-  "chrome://mochitests/content/browser/devtools/client/debugger/new/test/mochitest/helpers.js",
+  "chrome://mochitests/content/browser/devtools/client/debugger/test/mochitest/helpers.js",
   this
 );
 
@@ -71,9 +71,7 @@ var rewindToLine = resumeThenPauseAtLineFunctionFactory("rewind");
 var resumeToLine = resumeThenPauseAtLineFunctionFactory("resume");
 var reverseStepOverToLine = resumeThenPauseAtLineFunctionFactory("reverseStepOver");
 var stepOverToLine = resumeThenPauseAtLineFunctionFactory("stepOver");
-var reverseStepInToLine = resumeThenPauseAtLineFunctionFactory("reverseStepIn");
 var stepInToLine = resumeThenPauseAtLineFunctionFactory("stepIn");
-var reverseStepOutToLine = resumeThenPauseAtLineFunctionFactory("reverseStepOut");
 var stepOutToLine = resumeThenPauseAtLineFunctionFactory("stepOut");
 
 // Return a promise that resolves when a thread evaluates a string in the
@@ -152,7 +150,11 @@ async function warpToMessage(hud, threadClient, text) {
   return message;
 }
 
-const { PromiseTestUtils } = scopedCuImport(
+const { PromiseTestUtils } = ChromeUtils.import(
   "resource://testing-common/PromiseTestUtils.jsm"
 );
 PromiseTestUtils.whitelistRejectionsGlobally(/NS_ERROR_NOT_INITIALIZED/);
+
+// Many web replay tests can resume execution before the debugger has finished
+// all operations related to the pause.
+PromiseTestUtils.whitelistRejectionsGlobally(/Current thread has paused or resumed/);

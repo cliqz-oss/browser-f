@@ -1,7 +1,7 @@
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
-
+---
 loader: taskgraph.loader.single_dep:loader
 
 transforms:
@@ -17,11 +17,17 @@ only-for-attributes:
 
 not-for-build-platforms:
     - linux-nightly/opt
+    - linux-shippable/opt
     - linux64-nightly/opt
+    - linux64-shippable/opt
     - macosx64-nightly/opt
+    - macosx64-shippable/opt
     - win32-nightly/opt
+    - win32-shippable/opt
     - win64-nightly/opt
+    - win64-shippable/opt
     - win64-aarch64-nightly/opt
+    - win64-aarch64-shippable/opt
     - linux-devedition-nightly/opt
     - linux64-devedition-nightly/opt
     - macosx64-devedition-nightly/opt
@@ -35,7 +41,6 @@ job-template:
     shipping-phase: promote
     attributes:
         artifact_map:
-            by-project:
-                mozilla-release: taskcluster/taskgraph/manifests/fennec_candidates.yml
-                mozilla-beta: taskcluster/taskgraph/manifests/fennec_candidates.yml
-                default: taskcluster/taskgraph/manifests/fennec_nightly.yml
+            by-platform:
+                android-(aarch64|api-16|x86|x86_64)-(beta|release): taskcluster/taskgraph/manifests/fennec_candidates.yml
+                android-(aarch64|api-16|x86|x86_64)-nightly: taskcluster/taskgraph/manifests/fennec_nightly.yml

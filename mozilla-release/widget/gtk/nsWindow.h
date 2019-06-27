@@ -272,6 +272,7 @@ class nsWindow final : public nsBaseWidget {
   GtkWidget* GetMozContainerWidget();
   GdkWindow* GetGdkWindow() { return mGdkWindow; }
   GtkWidget* GetGtkWidget() { return mShell; }
+  nsIFrame* GetFrame();
   bool IsDestroyed() { return mIsDestroyed; }
 
   void DispatchDragEvent(mozilla::EventMessage aMsg,
@@ -460,6 +461,10 @@ class nsWindow final : public nsBaseWidget {
   nsWindow* GetTransientForWindowIfPopup();
   bool IsHandlingTouchSequence(GdkEventSequence* aSequence);
 
+  void NativeMoveResizeWaylandPopup(GdkPoint* aPosition, GdkRectangle* aSize);
+
+  GtkTextDirection GetTextDirection();
+
 #ifdef MOZ_X11
   typedef enum {GTK_WIDGET_COMPOSIDED_DEFAULT = 0,
                 GTK_WIDGET_COMPOSIDED_DISABLED = 1,
@@ -604,6 +609,12 @@ class nsWindow final : public nsBaseWidget {
   virtual int32_t RoundsWidgetCoordinatesTo() override;
 
   void ForceTitlebarRedraw();
+
+  bool IsWaylandPopup();
+  GtkWidget* ConfigureWaylandPopupWindows();
+  void HideWaylandWindow();
+  void HideWaylandTooltips();
+  void HideWaylandPopupAndAllChildren();
 
   /**
    * |mIMContext| takes all IME related stuff.

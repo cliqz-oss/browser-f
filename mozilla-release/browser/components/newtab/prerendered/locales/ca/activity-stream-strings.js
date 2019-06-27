@@ -40,9 +40,7 @@ window.gActivityStreamStrings = {
   "section_disclaimer_topstories_buttontext": "Entesos",
   "prefs_home_header": "Contingut d'inici del Firefox",
   "prefs_home_description": "Trieu el contingut que voleu a la pantalla d'inici del Firefox.",
-  "prefs_content_discovery_header": "Inici del Firefox",
   "prefs_content_discovery_description": "El descobriment de contingut en la pàgina d'inici del Firefox us permet descobrir articles de gran qualitat i rellevants de tot el web.",
-  "prefs_content_discovery_button": "Desactiva el descobriment de contingut",
   "prefs_section_rows_option": "{num} fila;{num} files",
   "prefs_search_header": "Cerca web",
   "prefs_topsites_description": "Els llocs que visiteu més sovint",
@@ -107,8 +105,5 @@ window.gActivityStreamStrings = {
   "firstrun_privacy_notice": "Avís de privadesa",
   "firstrun_continue_to_login": "Continua",
   "firstrun_skip_login": "Omet aquest pas",
-  "context_menu_title": "Obre el menú",
-  "manual_migration_explanation2": "Proveu el Firefox amb les adreces d'interès, l'historial i les contrasenyes d'un altre navegador.",
-  "manual_migration_cancel_button": "No, gràcies",
-  "manual_migration_import_button": "Importa-ho ara"
+  "context_menu_title": "Obre el menú"
 };

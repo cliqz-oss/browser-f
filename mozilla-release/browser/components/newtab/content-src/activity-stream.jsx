@@ -1,5 +1,4 @@
 import {actionCreators as ac, actionTypes as at} from "common/Actions.jsm";
-import {addSnippetsSubscriber} from "content-src/lib/snippets";
 import {Base} from "content-src/components/Base/Base";
 import {DetectUserSessionStart} from "content-src/lib/detect-user-session-start";
 import {initStore} from "content-src/lib/init-store";
@@ -26,5 +25,3 @@ ReactDOM.hydrate(<Provider store={store}>
     locale={global.document.documentElement.lang}
     strings={global.gActivityStreamStrings} />
 </Provider>, document.getElementById("root"));
-
-addSnippetsSubscriber(store);

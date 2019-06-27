@@ -21,6 +21,7 @@
 #include "mozilla/gfx/2D.h"
 #include "mozilla/LinkedList.h"
 #include "mozilla/UniquePtr.h"
+#include "mozilla/WeakPtr.h"
 #include "nsCycleCollectionNoteChild.h"
 #include "nsICanvasRenderingContextInternal.h"
 #include "nsLayoutUtils.h"
@@ -268,7 +269,8 @@ class AvailabilityRunnable final : public Runnable {
 
 class WebGLContext : public nsICanvasRenderingContextInternal,
                      public nsSupportsWeakReference,
-                     public nsWrapperCache {
+                     public nsWrapperCache,
+                     public SupportsWeakPtr<WebGLContext> {
   friend class ScopedDrawCallWrapper;
   friend class ScopedDrawWithTransformFeedback;
   friend class ScopedFakeVertexAttrib0;
@@ -343,9 +345,9 @@ class WebGLContext : public nsICanvasRenderingContextInternal,
 
  public:
   NS_DECL_CYCLE_COLLECTING_ISUPPORTS
-
   NS_DECL_CYCLE_COLLECTION_SCRIPT_HOLDER_CLASS_AMBIGUOUS(
       WebGLContext, nsICanvasRenderingContextInternal)
+  MOZ_DECLARE_WEAKREFERENCE_TYPENAME(WebGLContext)
 
   virtual JSObject* WrapObject(JSContext* cx,
                                JS::Handle<JSObject*> givenProto) override = 0;
@@ -369,7 +371,7 @@ class WebGLContext : public nsICanvasRenderingContextInternal,
 
   virtual UniquePtr<uint8_t[]> GetImageBuffer(int32_t* out_format) override;
   NS_IMETHOD GetInputStream(const char* mimeType,
-                            const char16_t* encoderOptions,
+                            const nsAString& encoderOptions,
                             nsIInputStream** out_stream) override;
 
   virtual already_AddRefed<mozilla::gfx::SourceSurface> GetSurfaceSnapshot(
@@ -958,7 +960,7 @@ class WebGLContext : public nsICanvasRenderingContextInternal,
                        WebGLintptr offset, WebGLsizeiptr size);
 
  private:
-  void BufferDataImpl(GLenum target, size_t dataLen, const uint8_t* data,
+  void BufferDataImpl(GLenum target, uint64_t dataLen, const uint8_t* data,
                       GLenum usage);
 
  public:
@@ -972,7 +974,7 @@ class WebGLContext : public nsICanvasRenderingContextInternal,
 
  private:
   void BufferSubDataImpl(GLenum target, WebGLsizeiptr dstByteOffset,
-                         size_t srcDataLen, const uint8_t* srcData);
+                         uint64_t srcDataLen, const uint8_t* srcData);
 
  public:
   void BufferSubData(GLenum target, WebGLsizeiptr dstByteOffset,
@@ -1490,8 +1492,6 @@ class WebGLContext : public nsICanvasRenderingContextInternal,
   GLenum mDefaultFB_ReadBuffer = 0;
 
   mutable GLenum mWebGLError;
-
-  bool mBypassShaderValidation;
 
   webgl::ShaderValidator* CreateShaderValidator(GLenum shaderType) const;
 

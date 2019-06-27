@@ -123,6 +123,8 @@ class TextDrawTarget : public DrawTarget {
     return true;
   }
 
+  wr::RenderRoot GetRenderRoot() { return mResources->GetRenderRoot(); }
+
   wr::FontInstanceFlags GetWRGlyphFlags() const { return mWRGlyphFlags; }
   void SetWRGlyphFlags(wr::FontInstanceFlags aFlags) { mWRGlyphFlags = aFlags; }
 
@@ -226,8 +228,9 @@ class TextDrawTarget : public DrawTarget {
 
   IntSize GetSize() const override { return mSize; }
 
-  void AppendShadow(const wr::Shadow& aShadow) {
-    mBuilder.PushShadow(mBoundsRect, ClipRect(), mBackfaceVisible, aShadow);
+  void AppendShadow(const wr::Shadow& aShadow, bool aInflate) {
+    mBuilder.PushShadow(mBoundsRect, ClipRect(), mBackfaceVisible, aShadow,
+                        aInflate);
     mHasShadows = true;
   }
 

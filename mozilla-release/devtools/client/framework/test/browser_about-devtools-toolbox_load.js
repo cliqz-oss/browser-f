@@ -22,21 +22,7 @@ add_task(async function() {
   await removeTab(tab);
 
   async function assertErrorIsShown(doc) {
-    await waitUntil(() => doc.querySelector(".js-error-page"));
-    ok(doc.querySelector(".js-error-page"), "Error page is rendered");
+    await waitUntil(() => doc.querySelector(".qa-error-page"));
+    ok(doc.querySelector(".qa-error-page"), "Error page is rendered");
   }
 });
-
-async function openAboutToolbox(params) {
-  info("opening about:devtools-toolbox");
-  const querystring = new URLSearchParams();
-  Object.keys(params).forEach(x => querystring.append(x, params[x]));
-
-  const tab = await addTab(`about:devtools-toolbox?${querystring}`);
-  const browser = tab.linkedBrowser;
-
-  return {
-    tab,
-    document: browser.contentDocument,
-  };
-}

@@ -29,9 +29,9 @@ BENCHMARK_REVISION = '2720cdc790828952964524bb44ce8b4c14670e90'
 class RaptorRunner(MozbuildObject):
     def run_test(self, raptor_args, kwargs):
         """
-        We want to do couple of things before running raptor
+        We want to do a few things before running Raptor:
         1. Clone mozharness
-        2. Make config for raptor mozharness
+        2. Make the config for Raptor mozharness
         3. Run mozharness
         """
 
@@ -60,6 +60,7 @@ class RaptorRunner(MozbuildObject):
             kwargs['host'] = os.environ['HOST_IP']
         self.host = kwargs['host']
         self.power_test = kwargs['power_test']
+        self.memory_test = kwargs['memory_test']
         self.is_release_build = kwargs['is_release_build']
 
     def setup_benchmarks(self):
@@ -114,7 +115,12 @@ class RaptorRunner(MozbuildObject):
                     shutil.copytree(path, dest)
 
     def make_config(self):
-        default_actions = ['populate-webroot', 'install-chrome', 'create-virtualenv', 'run-tests']
+        default_actions = [
+            'populate-webroot',
+            'install-chromium-distribution',
+            'create-virtualenv',
+            'run-tests'
+        ]
         self.config = {
             'run_local': True,
             'binary_path': self.binary_path,
@@ -123,7 +129,7 @@ class RaptorRunner(MozbuildObject):
             'obj_path': self.topobjdir,
             'log_name': 'raptor',
             'virtualenv_path': self.virtualenv_path,
-            'pypi_url': 'http://pypi.python.org/simple',
+            'pypi_url': 'http://pypi.org/simple',
             'base_work_dir': self.mozharness_dir,
             'exes': {
                 'python': self.python_interp,
@@ -134,6 +140,7 @@ class RaptorRunner(MozbuildObject):
             'raptor_cmd_line_args': self.raptor_args,
             'host': self.host,
             'power_test': self.power_test,
+            'memory_test': self.memory_test,
             'is_release_build': self.is_release_build,
         }
 
@@ -181,7 +188,8 @@ class MachRaptor(MachCommandBase):
         if conditions.is_android(build_obj) or kwargs['app'] in firefox_android_browsers:
             from mozrunner.devices.android_device import verify_android_device
             from mozdevice import ADBAndroid, ADBHost
-            if not verify_android_device(build_obj, install=True, app=kwargs['binary']):
+            if not verify_android_device(build_obj, install=True, app=kwargs['binary'],
+                                         xre=True):  # Equivalent to 'run_local' = True.
                 return 1
 
         debug_command = '--debug-command'
@@ -196,7 +204,7 @@ class MachRaptor(MachCommandBase):
                 adbhost = ADBHost(verbose=True)
                 device_serial = "%s:5555" % device.get_ip_address()
                 device.command_output(["tcpip", "5555"])
-                raw_input("Please disconnect your device from USB then press ENTER...")
+                raw_input("Please disconnect your device from USB then press Enter/return...")
                 adbhost.command_output(["connect", device_serial])
                 while len(adbhost.devices()) > 1:
                     raw_input("You must disconnect your device from USB before continuing.")
@@ -210,7 +218,7 @@ class MachRaptor(MachCommandBase):
         finally:
             try:
                 if kwargs['app'] in firefox_android_browsers and kwargs['power_test']:
-                    raw_input("Connect device via usb and press ENTER...")
+                    raw_input("Connect device via USB and press Enter/return...")
                     device = ADBAndroid(device=device_serial, verbose=True)
                     device.command_output(["usb"])
                     adbhost.command_output(["disconnect", device_serial])

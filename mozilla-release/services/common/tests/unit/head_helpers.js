@@ -58,7 +58,7 @@ function do_check_throws_message(aFunc, aResult) {
  * @usage _(1, 2, 3) -> prints "1 2 3"
  */
 var _ = function(some, debug, text, to) {
-  print(Array.slice(arguments).join(" "));
+  print(Array.from(arguments).join(" "));
 };
 
 function httpd_setup(handlers, port = -1) {
@@ -157,7 +157,7 @@ function uninstallFakePAC() {
 function _eventsTelemetrySnapshot(component, source) {
   const { Services } = ChromeUtils.import("resource://gre/modules/Services.jsm");
   const TELEMETRY_CATEGORY_ID = "uptake.remotecontent.result";
-  const snapshot = Services.telemetry.snapshotEvents(Ci.nsITelemetry.DATASET_RELEASE_CHANNEL_OPTOUT, true);
+  const snapshot = Services.telemetry.snapshotEvents(Ci.nsITelemetry.DATASET_ALL_CHANNELS, true);
   const parentEvents = snapshot.parent || [];
   return parentEvents
     // Transform raw event data to objects.
@@ -196,5 +196,19 @@ function checkUptakeTelemetry(snapshot1, snapshot2, expectedIncrements) {
     value2 = (snapshot2 && snapshot2.histogram && snapshot2.histogram.values[key]) || 0;
     actual = value2 - value1;
     equal(expected, actual, `check events for ${status}`);
+  }
+}
+
+async function withFakeChannel(channel, f) {
+  const module = ChromeUtils.import("resource://services-common/uptake-telemetry.js", null);
+  const oldPolicy = module.Policy;
+  module.Policy = {
+    ...oldPolicy,
+    getChannel: () => channel,
+  };
+  try {
+    return await f();
+  } finally {
+    module.Policy = oldPolicy;
   }
 }

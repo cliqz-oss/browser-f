@@ -8,18 +8,18 @@
 
 #include "gfxContext.h"
 #include "gfxUtils.h"
+#include "mozilla/Likely.h"
+#include "mozilla/PresShell.h"
+#include "mozilla/dom/MutationEventBinding.h"
 #include "mozilla/gfx/2D.h"
 #include "nsLayoutUtils.h"
 #include "nsPresContext.h"
-#include "nsIPresShell.h"
 #include "nsNameSpaceManager.h"
 #include "nsGkAtoms.h"
 #include "nsDisplayList.h"
-#include "mozilla/Likely.h"
 #include "nsIScriptError.h"
 #include "nsContentUtils.h"
 #include "nsMathMLElement.h"
-#include "mozilla/dom/MutationEventBinding.h"
 
 using namespace mozilla;
 using namespace mozilla::gfx;
@@ -68,10 +68,10 @@ nsresult nsMathMLContainerFrame::ReflowError(DrawTarget* aDrawTarget,
   return NS_OK;
 }
 
-class nsDisplayMathMLError : public nsDisplayItem {
+class nsDisplayMathMLError : public nsPaintedDisplayItem {
  public:
   nsDisplayMathMLError(nsDisplayListBuilder* aBuilder, nsIFrame* aFrame)
-      : nsDisplayItem(aBuilder, aFrame) {
+      : nsPaintedDisplayItem(aBuilder, aFrame) {
     MOZ_COUNT_CTOR(nsDisplayMathMLError);
   }
 #ifdef NS_BUILD_REFCNT_LOGGING
@@ -600,8 +600,7 @@ void nsMathMLContainerFrame::BuildDisplayList(nsDisplayListBuilder* aBuilder,
   if (NS_MATHML_HAS_ERROR(mPresentationData.flags)) {
     if (!IsVisibleForPainting()) return;
 
-    aLists.Content()->AppendToTop(
-        MakeDisplayItem<nsDisplayMathMLError>(aBuilder, this));
+    aLists.Content()->AppendNewToTop<nsDisplayMathMLError>(aBuilder, this);
     return;
   }
 
@@ -674,7 +673,7 @@ nsresult nsMathMLContainerFrame::ReLayoutChildren(nsIFrame* aParentFrame) {
   NS_ASSERTION(parent, "No parent to pass the reflow request up to");
   if (!parent) return NS_OK;
 
-  frame->PresShell()->FrameNeedsReflow(frame, nsIPresShell::eStyleChange,
+  frame->PresShell()->FrameNeedsReflow(frame, IntrinsicDirty::StyleChange,
                                        NS_FRAME_IS_DIRTY);
 
   return NS_OK;
@@ -728,7 +727,7 @@ nsresult nsMathMLContainerFrame::AttributeChanged(int32_t aNameSpaceID,
   // XXX Since they are numerous MathML attributes that affect layout, and
   // we can't check all of them here, play safe by requesting a reflow.
   // XXXldb This should only do work for attributes that cause changes!
-  PresShell()->FrameNeedsReflow(this, nsIPresShell::eStyleChange,
+  PresShell()->FrameNeedsReflow(this, IntrinsicDirty::StyleChange,
                                 NS_FRAME_IS_DIRTY);
 
   return NS_OK;
@@ -912,13 +911,13 @@ static nscoord AddInterFrameSpacingToSize(ReflowOutput& aDesiredSize,
 
 /* virtual */
 void nsMathMLContainerFrame::MarkIntrinsicISizesDirty() {
-  mIntrinsicWidth = NS_INTRINSIC_WIDTH_UNKNOWN;
+  mIntrinsicWidth = NS_INTRINSIC_ISIZE_UNKNOWN;
   nsContainerFrame::MarkIntrinsicISizesDirty();
 }
 
 void nsMathMLContainerFrame::UpdateIntrinsicWidth(
     gfxContext* aRenderingContext) {
-  if (mIntrinsicWidth == NS_INTRINSIC_WIDTH_UNKNOWN) {
+  if (mIntrinsicWidth == NS_INTRINSIC_ISIZE_UNKNOWN) {
     ReflowOutput desiredSize(GetWritingMode());
     GetIntrinsicISizeMetrics(aRenderingContext, desiredSize);
 
@@ -1461,7 +1460,7 @@ nsresult nsMathMLContainerFrame::ReportInvalidChildError(nsAtom* aChildTag) {
 
 //==========================
 
-nsContainerFrame* NS_NewMathMLmathBlockFrame(nsIPresShell* aPresShell,
+nsContainerFrame* NS_NewMathMLmathBlockFrame(PresShell* aPresShell,
                                              ComputedStyle* aStyle) {
   auto newFrame = new (aPresShell)
       nsMathMLmathBlockFrame(aStyle, aPresShell->GetPresContext());
@@ -1475,7 +1474,7 @@ NS_QUERYFRAME_HEAD(nsMathMLmathBlockFrame)
   NS_QUERYFRAME_ENTRY(nsMathMLmathBlockFrame)
 NS_QUERYFRAME_TAIL_INHERITING(nsBlockFrame)
 
-nsContainerFrame* NS_NewMathMLmathInlineFrame(nsIPresShell* aPresShell,
+nsContainerFrame* NS_NewMathMLmathInlineFrame(PresShell* aPresShell,
                                               ComputedStyle* aStyle) {
   return new (aPresShell)
       nsMathMLmathInlineFrame(aStyle, aPresShell->GetPresContext());

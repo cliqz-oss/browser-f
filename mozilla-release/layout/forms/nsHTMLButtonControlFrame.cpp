@@ -6,6 +6,7 @@
 
 #include "nsHTMLButtonControlFrame.h"
 
+#include "mozilla/PresShell.h"
 #include "nsContainerFrame.h"
 #include "nsIFormControlFrame.h"
 #include "nsIFrameInlines.h"
@@ -20,7 +21,7 @@
 
 using namespace mozilla;
 
-nsContainerFrame* NS_NewHTMLButtonControlFrame(nsIPresShell* aPresShell,
+nsContainerFrame* NS_NewHTMLButtonControlFrame(PresShell* aPresShell,
                                                ComputedStyle* aStyle) {
   return new (aPresShell)
       nsHTMLButtonControlFrame(aStyle, aPresShell->GetPresContext());
@@ -310,11 +311,16 @@ void nsHTMLButtonControlFrame::ReflowButtonContents(
   // within our frame... unless it's orthogonal, in which case we'll use the
   // contents inline-size as an approximation for now.
   // XXX is there a better strategy? should we include border-padding?
-  if (aButtonReflowInput.mStyleDisplay->IsContainSize()) {
-    // If we're size-contained, we should pretend our contents had 0 height
-    // (as they would, if we had no children). This case is identical to the
-    // final else case, but uses only our specified button height for ascent
-    // (ie. it ignores the height returned in contentsDesiredSize).
+  if (aButtonReflowInput.mStyleDisplay->IsContainLayout()) {
+    // If we're layout-contained, then for the purposes of computing the
+    // ascent, we should pretend our button-contents frame had 0 height. In
+    // other words, we use the <button> content-rect's central block-axis
+    // position as our baseline.
+    // NOTE: This should be the same ascent that we'd get from the final 'else'
+    // clause here, if we had no DOM children. In that no-children scenario,
+    // the final 'else' clause's BlockStartAscent() term would be 0, and its
+    // childPos.B(wm) term would be equal to the same central offset that we're
+    // independently calculating here.
     nscoord containAscent = (buttonContentBox.BSize(wm) / 2) + clbp.BStart(wm);
     aButtonDesiredSize.SetBlockStartAscent(containAscent);
   } else if (aButtonDesiredSize.GetWritingMode().IsOrthogonalTo(wm)) {
@@ -336,7 +342,7 @@ bool nsHTMLButtonControlFrame::GetVerticalAlignBaseline(
   if (!inner->GetVerticalAlignBaseline(aWM, aBaseline)) {
     // <input type=color> has an empty block frame as inner frame
     *aBaseline = inner->SynthesizeBaselineBOffsetFromBorderBox(
-        aWM, BaselineSharingGroup::eFirst);
+        aWM, BaselineSharingGroup::First);
   }
   nscoord innerBStart = inner->BStart(aWM, GetSize());
   *aBaseline += innerBStart;
@@ -356,7 +362,7 @@ bool nsHTMLButtonControlFrame::GetNaturalBaselineBOffset(
         inner->SynthesizeBaselineBOffsetFromBorderBox(aWM, aBaselineGroup);
   }
   nscoord innerBStart = inner->BStart(aWM, GetSize());
-  if (aBaselineGroup == BaselineSharingGroup::eFirst) {
+  if (aBaselineGroup == BaselineSharingGroup::First) {
     *aBaseline += innerBStart;
   } else {
     *aBaseline += BSize(aWM) - (innerBStart + inner->BSize(aWM));

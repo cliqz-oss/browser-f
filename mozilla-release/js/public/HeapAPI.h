@@ -349,8 +349,8 @@ class JS_FRIEND_API GCCellPtr {
 template <typename F>
 auto MapGCThingTyped(GCCellPtr thing, F&& f) {
   switch (thing.kind()) {
-#define JS_EXPAND_DEF(name, type, _) \
-  case JS::TraceKind::name:          \
+#define JS_EXPAND_DEF(name, type, _, _1) \
+  case JS::TraceKind::name:              \
     return f(&thing.as<type>());
     JS_FOR_EACH_TRACEKIND(JS_EXPAND_DEF);
 #undef JS_EXPAND_DEF
@@ -545,6 +545,12 @@ extern JS_PUBLIC_API bool IsIncrementalBarrierNeeded(JSContext* cx);
  * This method must be called if IsIncrementalBarrierNeeded.
  */
 extern JS_PUBLIC_API void IncrementalPreWriteBarrier(JSObject* obj);
+
+/*
+ * Notify the GC that a reference to a tenured GC cell is about to be
+ * overwritten. This method must be called if IsIncrementalBarrierNeeded.
+ */
+extern JS_PUBLIC_API void IncrementalPreWriteBarrier(GCCellPtr thing);
 
 /*
  * Notify the GC that a weak reference to a GC thing has been read.

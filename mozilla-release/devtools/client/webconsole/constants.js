@@ -23,6 +23,7 @@ const actionTypes = {
   MESSAGE_CLOSE: "MESSAGE_CLOSE",
   MESSAGE_OPEN: "MESSAGE_OPEN",
   MESSAGE_TABLE_RECEIVE: "MESSAGE_TABLE_RECEIVE",
+  MESSAGE_UPDATE_PAYLOAD: "MESSAGE_UPDATE_PAYLOAD",
   MESSAGES_ADD: "MESSAGES_ADD",
   MESSAGES_CLEAR: "MESSAGES_CLEAR",
   MESSAGES_CLEAR_LOGPOINT: "MESSAGES_CLEAR_LOGPOINT",
@@ -35,6 +36,7 @@ const actionTypes = {
   REVERSE_SEARCH_INPUT_TOGGLE: "REVERSE_SEARCH_INPUT_TOGGLE",
   SELECT_NETWORK_MESSAGE_TAB: "SELECT_NETWORK_MESSAGE_TAB",
   SHOW_OBJECT_IN_SIDEBAR: "SHOW_OBJECT_IN_SIDEBAR",
+  SHOW_CONTENT_MESSAGES_TOGGLE: "SHOW_CONTENT_MESSAGES_TOGGLE",
   SIDEBAR_CLOSE: "SIDEBAR_CLOSE",
   SPLIT_CONSOLE_CLOSE_BUTTON_TOGGLE: "SPLIT_CONSOLE_CLOSE_BUTTON_TOGGLE",
   TIMESTAMPS_TOGGLE: "TIMESTAMPS_TOGGLE",
@@ -67,11 +69,16 @@ const prefs = {
       INPUT_HISTORY_COUNT: "devtools.webconsole.inputHistoryCount",
       // Is editor mode enabled.
       EDITOR: "devtools.webconsole.input.editor",
+      // Display content messages in the browser console
+      CONTENT_MESSAGES: "devtools.browserconsole.contentMessages",
     },
     FEATURES: {
       // We use the same pref to enable the sidebar on webconsole and browser console.
       SIDEBAR_TOGGLE: "devtools.webconsole.sidebarToggle",
       JSTERM_CODE_MIRROR: "devtools.webconsole.jsterm.codeMirror",
+      AUTOCOMPLETE: "devtools.webconsole.input.autocomplete",
+      GROUP_WARNINGS: "devtools.webconsole.groupWarningMessages",
+      FILTER_CONTENT_MESSAGES: "devtools.browserconsole.filterContentMessages",
     },
   },
 };
@@ -110,6 +117,9 @@ const chromeRDPEnums = {
     JAVASCRIPT: "javascript",
     NETWORK: "network",
     CONSOLE_API: "console-api",
+    // Messages emitted by the console frontend itself (i.e. similar messages grouping
+    // header).
+    CONSOLE_FRONTEND: "console-frontend",
     STORAGE: "storage",
     APPCACHE: "appcache",
     RENDERING: "rendering",
@@ -126,6 +136,9 @@ const chromeRDPEnums = {
     START_GROUP: "startGroup",
     START_GROUP_COLLAPSED: "startGroupCollapsed",
     END_GROUP: "endGroup",
+    CONTENT_BLOCKING_GROUP: "contentBlockingWarningGroup",
+    CORS_GROUP: "CORSWarningGroup",
+    CSP_GROUP: "CSPWarningGroup",
     ASSERT: "assert",
     DEBUG: "debug",
     PROFILE: "profile",

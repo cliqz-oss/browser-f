@@ -262,9 +262,9 @@ function createAppInfo(ID = "xpcshell@tests.mozilla.org", name = "XPCShell",
 
 // Fake the timeout functions for the TelemetryScheduler.
 function fakeSchedulerTimer(set, clear) {
-  let session = ChromeUtils.import("resource://gre/modules/TelemetrySession.jsm", null);
-  session.Policy.setSchedulerTickTimeout = set;
-  session.Policy.clearSchedulerTickTimeout = clear;
+  let scheduler = ChromeUtils.import("resource://gre/modules/TelemetryScheduler.jsm", null);
+  scheduler.Policy.setSchedulerTickTimeout = set;
+  scheduler.Policy.clearSchedulerTickTimeout = clear;
 }
 
 /* global TelemetrySession:false, TelemetryEnvironment:false, TelemetryController:false,
@@ -287,6 +287,7 @@ function fakeNow(...args) {
     ChromeUtils.import("resource://gre/modules/TelemetryStorage.jsm", null),
     ChromeUtils.import("resource://gre/modules/TelemetrySend.jsm", null),
     ChromeUtils.import("resource://gre/modules/TelemetryReportingPolicy.jsm", null),
+    ChromeUtils.import("resource://gre/modules/TelemetryScheduler.jsm", null),
   ];
 
   for (let m of modules) {
@@ -334,11 +335,6 @@ function fakeGzipCompressStringForNextPing(length) {
     send.Policy.gzipCompressString = send.gzipCompressString;
     return largePayload;
   };
-}
-
-function fakePrioEncode() {
-  const m = ChromeUtils.import("resource://gre/modules/TelemetrySession.jsm", null);
-  m.Policy.prioEncode = (batchID, prioParams) => prioParams;
 }
 
 function fakeIntlReady() {
@@ -419,6 +415,10 @@ if (runningInParent) {
 
   // Ensure we're not in a GeckoView-like environment by default
   Services.prefs.setBoolPref("toolkit.telemetry.isGeckoViewMode", false);
+
+  // Make sure ecosystem telemetry is disabled, no matter which build
+  // Individual tests will enable it when appropriate
+  Services.prefs.setBoolPref(TelemetryUtils.Preferences.EcosystemTelemetryEnabled, false);
 
   // Non-unified Telemetry (e.g. Fennec on Android) needs the preference to be set
   // in order to enable Telemetry.

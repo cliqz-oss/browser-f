@@ -379,8 +379,7 @@ LoginManagerPrompter.prototype = {
       }
 
       // Look for existing logins.
-      var foundLogins = Services.logins.findLogins({}, hostname, null,
-                                                   realm);
+      var foundLogins = Services.logins.findLogins(hostname, null, realm);
 
       // XXX Like the original code, we can't deal with multiple
       // account selection. (bug 227632)
@@ -483,8 +482,7 @@ LoginManagerPrompter.prototype = {
 
       if (!aPassword.value) {
         // Look for existing logins.
-        var foundLogins = Services.logins.findLogins({}, hostname, null,
-                                                     realm);
+        var foundLogins = Services.logins.findLogins(hostname, null, realm);
 
         // XXX Like the original code, we can't deal with multiple
         // account selection (bug 227632). We can deal with finding the
@@ -633,7 +631,16 @@ LoginManagerPrompter.prototype = {
 
     var ok = canAutologin;
     let browser = this._browser;
-    let baseDomain = PromptAbuseHelper.getBaseDomainOrFallback(hostname);
+    let baseDomain;
+
+    // We might not have a browser or browser.currentURI.host could fail
+    // (e.g. on about:blank). Fall back to the subresource hostname in that case.
+    try {
+      let topLevelHost = browser.currentURI.host;
+      baseDomain = PromptAbuseHelper.getBaseDomainOrFallback(topLevelHost);
+    } catch (e) {
+      baseDomain = PromptAbuseHelper.getBaseDomainOrFallback(hostname);
+    }
 
     if (!ok) {
       if (PromptAbuseHelper.hasReachedAbuseLimit(baseDomain, browser)) {
@@ -803,12 +810,12 @@ LoginManagerPrompter.prototype = {
     this._openerBrowser = aOpenerBrowser;
   },
 
-  promptToSavePassword(aLogin) {
+  promptToSavePassword(aLogin, dismissed) {
     this.log("promptToSavePassword");
     var notifyObj = this._getPopupNote();
     if (notifyObj) {
       this._showLoginCaptureDoorhanger(aLogin, "password-save", {
-        dismissed: this._inPrivateBrowsing,
+        dismissed: this._inPrivateBrowsing || dismissed,
       });
       Services.obs.notifyObservers(aLogin, "passwordmgr-prompt-save");
     } else {
@@ -1167,14 +1174,17 @@ LoginManagerPrompter.prototype = {
    *                       The old login we may want to update.
    * @param {nsILoginInfo} aNewLogin
    *                       The new login from the page form.
+   * @param dismissed
+   *        A boolean indicating if the prompt should be automatically
+   *        dismissed on being shown.
    */
-  promptToChangePassword(aOldLogin, aNewLogin) {
+  promptToChangePassword(aOldLogin, aNewLogin, dismissed) {
     this.log("promptToChangePassword");
     let notifyObj = this._getPopupNote();
 
     if (notifyObj) {
       this._showChangeLoginNotification(notifyObj, aOldLogin,
-                                        aNewLogin);
+                                        aNewLogin, dismissed);
     } else {
       this._showChangeLoginDialog(aOldLogin, aNewLogin);
     }
@@ -1191,13 +1201,16 @@ LoginManagerPrompter.prototype = {
    *
    * @param aNewLogin
    *        The login object with the changes we want to make.
+   * @param dismissed
+   *        A boolean indicating if the prompt should be automatically
+   *        dismissed on being shown.
    */
-  _showChangeLoginNotification(aNotifyObj, aOldLogin, aNewLogin) {
+  _showChangeLoginNotification(aNotifyObj, aOldLogin, aNewLogin, dismissed = false) {
     aOldLogin.hostname = aNewLogin.hostname;
     aOldLogin.formSubmitURL = aNewLogin.formSubmitURL;
     aOldLogin.password = aNewLogin.password;
     aOldLogin.username = aNewLogin.username;
-    this._showLoginCaptureDoorhanger(aOldLogin, "password-change");
+    this._showLoginCaptureDoorhanger(aOldLogin, "password-change", {dismissed});
 
     let oldGUID = aOldLogin.QueryInterface(Ci.nsILoginMetaInfo).guid;
     Services.obs.notifyObservers(aNewLogin, "passwordmgr-prompt-change", oldGUID);
@@ -1243,11 +1256,9 @@ LoginManagerPrompter.prototype = {
    * Note: The caller doesn't know the username for aNewLogin, so this
    *       function fills in .username and .usernameField with the values
    *       from the login selected by the user.
-   *
-   * Note; XPCOM stupidity: |count| is just |logins.length|.
    */
-  promptToChangePasswordWithUsernames(logins, count, aNewLogin) {
-    this.log("promptToChangePasswordWithUsernames with count:", count);
+  promptToChangePasswordWithUsernames(logins, aNewLogin) {
+    this.log("promptToChangePasswordWithUsernames with count:", logins.length);
 
     var usernames = logins.map(l => l.username || this._getLocalizedString("noUsername"));
     var dialogText  = this._getLocalizedString("userSelectText2");

@@ -17,10 +17,6 @@ const {OS} = ChromeUtils.import("resource://gre/modules/osfile.jsm");
 ChromeUtils.defineModuleGetter(this, "AttributionCode",
                                "resource:///modules/AttributionCode.jsm");
 
-// Lazy load |LightweightThemeManager|.
-ChromeUtils.defineModuleGetter(this, "LightweightThemeManager",
-                               "resource://gre/modules/LightweightThemeManager.jsm");
-
 ChromeUtils.defineModuleGetter(this, "ExtensionTestUtils",
                                "resource://testing-common/ExtensionXPCShellUtils.jsm");
 
@@ -72,12 +68,6 @@ const PLUGIN2_NAME = "Quicktime";
 const PLUGIN2_DESC = "A mock Quicktime plugin";
 const PLUGIN2_VERSION = "2.3";
 
-const PERSONA_ID = "3785";
-// Defined by LightweightThemeManager, it is appended to the PERSONA_ID.
-const PERSONA_ID_SUFFIX = "@personas.mozilla.org";
-const PERSONA_NAME = "Test Theme";
-const PERSONA_DESCRIPTION = "A nice theme/persona description.";
-
 const PLUGIN_UPDATED_TOPIC     = "plugins-list-updated";
 
 // system add-ons are enabled at startup, so record date when the test starts
@@ -124,8 +114,7 @@ PluginTag.prototype = {
 
   mimeTypes: [ PLUGIN_MIME_TYPE1, PLUGIN_MIME_TYPE2 ],
 
-  getMimeTypes(count) {
-    count.value = this.mimeTypes.length;
+  getMimeTypes() {
     return this.mimeTypes;
   },
 };
@@ -138,8 +127,7 @@ var gInstalledPlugins = [
 
 // A fake plugin host for testing plugin telemetry environment.
 var PluginHost = {
-  getPluginTags(countRef) {
-    countRef.value = gInstalledPlugins.length;
+  getPluginTags() {
     return gInstalledPlugins.map(plugin => plugin.pluginTag);
   },
 
@@ -263,7 +251,7 @@ function createMockAddonProvider(aName) {
     },
 
     async getAddonsByTypes(aTypes) {
-      return this._addons.map(a => new MockAddonWrapper(a));
+      return this._addons.filter(a => !aTypes || aTypes.includes(a.type)).map(a => new MockAddonWrapper(a));
     },
 
     shutdown() {
@@ -274,23 +262,10 @@ function createMockAddonProvider(aName) {
   return mockProvider;
 }
 
-/**
- * Used to spoof the Persona Id.
- */
-function spoofTheme(aId, aName, aDesc) {
-  return {
-    id: aId,
-    name: aName,
-    description: aDesc,
-    headerURL: "http://lwttest.invalid/a.png",
-    textcolor: Math.random().toString(),
-    accentcolor: Math.random().toString(),
-  };
-}
-
 function spoofGfxAdapter() {
   try {
     let gfxInfo = Cc["@mozilla.org/gfx/info;1"].getService(Ci.nsIGfxInfoDebug);
+    gfxInfo.fireTestProcess();
     gfxInfo.spoofVendorID(GFX_VENDOR_ID);
     gfxInfo.spoofDeviceID(GFX_DEVICE_ID);
   } catch (x) {
@@ -410,6 +385,7 @@ function checkSettingsSection(data) {
   const EXPECTED_FIELDS_TYPES = {
     blocklistEnabled: "boolean",
     e10sEnabled: "boolean",
+    e10sMultiProcesses: "number",
     intl: "object",
     locale: "string",
     telemetryEnabled: "boolean",
@@ -528,6 +504,7 @@ function checkGfxAdapter(data) {
     subsysID: "string",
     RAM: "number",
     driver: "string",
+    driverVendor: "string",
     driverVersion: "string",
     driverDate: "string",
     GPUActive: "boolean",
@@ -628,12 +605,13 @@ function checkSystemSection(data) {
   for (let disk of EXPECTED_HDD_FIELDS) {
     Assert.ok(check(data.system.hdd[disk].model));
     Assert.ok(check(data.system.hdd[disk].revision));
+    Assert.ok(check(data.system.hdd[disk].type));
   }
 
   let gfxData = data.system.gfx;
   Assert.ok("D2DEnabled" in gfxData);
   Assert.ok("DWriteEnabled" in gfxData);
-  Assert.equal(typeof gfxData.LowEndMachine, "boolean");
+  Assert.ok("Headless" in gfxData);
   // DWriteVersion is disabled due to main thread jank and will be enabled
   // again as part of bug 1154500.
   // Assert.ok("DWriteVersion" in gfxData);
@@ -653,7 +631,7 @@ function checkSystemSection(data) {
   Assert.ok(gfxData.adapters[0].GPUActive, "The first GFX adapter must be active.");
 
   Assert.ok(Array.isArray(gfxData.monitors));
-  if (gIsWindows || gIsMac) {
+  if (gIsWindows || gIsMac || gIsLinux) {
     Assert.ok(gfxData.monitors.length >= 1, "There is at least one monitor.");
     Assert.equal(typeof gfxData.monitors[0].screenWidth, "number");
     Assert.equal(typeof gfxData.monitors[0].screenHeight, "number");
@@ -818,7 +796,6 @@ function checkActiveGMPlugin(data) {
 function checkAddonsSection(data, expectBrokenAddons, partialAddonsRecords) {
   const EXPECTED_FIELDS = [
     "activeAddons", "theme", "activePlugins", "activeGMPlugins",
-    "persona",
   ];
 
   Assert.ok("addons" in data, "There must be an addons section in Environment.");
@@ -850,9 +827,6 @@ function checkAddonsSection(data, expectBrokenAddons, partialAddonsRecords) {
   for (let gmPlugin in activeGMPlugins) {
     checkActiveGMPlugin(activeGMPlugins[gmPlugin]);
   }
-
-  // Check persona
-  Assert.ok(checkNullOrString(data.addons.persona));
 }
 
 function checkExperimentsSection(data) {
@@ -890,8 +864,6 @@ function checkEnvironmentData(data, options = {}) {
 }
 
 add_task(async function setup() {
-  // Load a custom manifest to provide search engine loading from JAR files.
-  do_load_manifest("chrome.manifest");
   registerFakeSysInfo();
   spoofGfxAdapter();
   do_get_profile();
@@ -903,10 +875,6 @@ add_task(async function setup() {
   system_addon.append("tel-system-xpi@tests.mozilla.org.xpi");
   system_addon.lastModifiedTime = SYSTEM_ADDON_INSTALL_DATE;
   loadAddonManager(APP_ID, APP_NAME, APP_VERSION, PLATFORM_VERSION);
-
-  // Spoof the persona ID.
-  LightweightThemeManager.currentTheme =
-    spoofTheme(PERSONA_ID, PERSONA_NAME, PERSONA_DESCRIPTION);
 
   // The test runs in a fresh profile so starting the AddonManager causes
   // the addons database to be created (as does setting new theme).
@@ -1378,12 +1346,6 @@ add_task(async function test_addonsAndPlugins() {
 
   await webextension.unload();
 
-  // Check theme data.
-  let theme = data.addons.theme;
-  Assert.equal(theme.id, (PERSONA_ID + PERSONA_ID_SUFFIX));
-  Assert.equal(theme.name, PERSONA_NAME);
-  Assert.equal(theme.description, PERSONA_DESCRIPTION);
-
   // Check plugin data.
   Assert.equal(data.addons.activePlugins.length, 1, "We must have only one active plugin.");
   let targetPlugin = data.addons.activePlugins[0];
@@ -1395,8 +1357,6 @@ add_task(async function test_addonsAndPlugins() {
   Assert.ok(targetPlugin.mimeTypes.find(m => m == PLUGIN_MIME_TYPE1));
   Assert.ok(targetPlugin.mimeTypes.find(m => m == PLUGIN_MIME_TYPE2));
   Assert.ok(!targetPlugin.mimeTypes.find(m => m == "Not There."));
-
-  Assert.equal(data.addons.persona, PERSONA_ID, "The correct Persona Id must be reported.");
 
   // Uninstall the addon.
   await addon.startupPromise;
@@ -1489,6 +1449,7 @@ add_task(async function test_collectionWithbrokenAddonData() {
     origin: "https://telemetry-test2.example.com",
     version: 1, // This is intentionally not a string.
     signedState: AddonManager.SIGNEDSTATE_SIGNED,
+    type: "extension",
   };
 
   const ADDON_INSTALL_URL = gDataRoot + "restartless.xpi";
@@ -1566,19 +1527,21 @@ add_task(async function test_collectionWithbrokenAddonData() {
 add_task(async function test_defaultSearchEngine() {
   // Check that no default engine is in the environment before the search service is
   // initialized.
+  let searchExtensions = do_get_cwd();
+  searchExtensions.append("data");
+  searchExtensions.append("search-extensions");
+  let resProt = Services.io.getProtocolHandler("resource")
+                        .QueryInterface(Ci.nsIResProtocolHandler);
+  resProt.setSubstitution("search-extensions",
+                          Services.io.newURI("file://" + searchExtensions.path));
 
   let data = await TelemetryEnvironment.testCleanRestart().onInitialized();
   checkEnvironmentData(data);
   Assert.ok(!("defaultSearchEngine" in data.settings));
   Assert.ok(!("defaultSearchEngineData" in data.settings));
 
-  // Load the engines definitions from a custom JAR file: that's needed so that
+  // Load the engines definitions from a xpcshell data: that's needed so that
   // the search provider reports an engine identifier.
-  let url = "chrome://testsearchplugin/locale/searchplugins/";
-  let resProt = Services.io.getProtocolHandler("resource")
-                        .QueryInterface(Ci.nsIResProtocolHandler);
-  resProt.setSubstitution("search-plugins",
-                          Services.io.newURI(url));
 
   // Initialize the search service.
   await Services.search.init();
@@ -1590,10 +1553,10 @@ add_task(async function test_defaultSearchEngine() {
   checkEnvironmentData(data);
   Assert.equal(data.settings.defaultSearchEngine, "telemetrySearchIdentifier");
   let expectedSearchEngineData = {
-    name: "telemetrySearchIdentifier",
-    loadPath: "jar:[other]/searchTest.jar!testsearchplugin/telemetrySearchIdentifier.xml",
-    origin: "default",
-    submissionURL: "http://ar.wikipedia.org/wiki/%D8%AE%D8%A7%D8%B5:%D8%A8%D8%AD%D8%AB?search=&sourceid=Mozilla-search",
+    "name": "telemetrySearchIdentifier",
+    "loadPath": "[other]addEngineWithDetails:telemetrySearchIdentifier@search.mozilla.org",
+    "origin": "default",
+    "submissionURL": "https://ar.wikipedia.org/wiki/%D8%AE%D8%A7%D8%B5:%D8%A8%D8%AD%D8%AB?search=&sourceId=Mozilla-search",
   };
   Assert.deepEqual(data.settings.defaultSearchEngineData, expectedSearchEngineData);
 
@@ -1601,10 +1564,10 @@ add_task(async function test_defaultSearchEngine() {
   for (let engine of await Services.search.getEngines()) {
     await Services.search.removeEngine(engine);
   }
-  // The search service does not notify "engine-current" when removing a default engine.
+  // The search service does not notify "engine-default" when removing a default engine.
   // Manually force the notification.
   // TODO: remove this when bug 1165341 is resolved.
-  Services.obs.notifyObservers(null, "browser-search-engine-modified", "engine-current");
+  Services.obs.notifyObservers(null, "browser-search-engine-modified", "engine-default");
   await promiseNextTick();
 
   // Then check that no default engine is reported if none is available.
@@ -1673,7 +1636,7 @@ add_task(async function test_defaultSearchEngine() {
     TelemetryEnvironment.registerChangeListener("testWatch_SearchDefault", resolve);
   });
   engine.wrappedJSObject.setAttr("loadPathHash", "broken");
-  Services.obs.notifyObservers(null, "browser-search-engine-modified", "engine-current");
+  Services.obs.notifyObservers(null, "browser-search-engine-modified", "engine-default");
   await promise;
   TelemetryEnvironment.unregisterChangeListener("testWatch_SearchDefault");
   data = TelemetryEnvironment.currentEnvironment;

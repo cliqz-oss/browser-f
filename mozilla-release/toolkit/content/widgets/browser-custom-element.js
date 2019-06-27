@@ -18,7 +18,7 @@ window.addEventListener("unload", () => {
   elementsToDestroyOnUnload.clear();
 }, { mozSystemGroup: true, once: true });
 
-class MozBrowser extends MozElementMixin(XULFrameElement) {
+class MozBrowser extends MozElements.MozElementMixin(XULFrameElement) {
   static get observedAttributes() {
     return ["remote"];
   }
@@ -218,8 +218,6 @@ class MozBrowser extends MozElementMixin(XULFrameElement) {
 
     this._innerWindowID = null;
 
-    this._browsingContextId = null;
-
     this._lastSearchString = null;
 
     this._controller = null;
@@ -237,6 +235,8 @@ class MozBrowser extends MozElementMixin(XULFrameElement) {
     this._mayEnableCharacterEncodingMenu = null;
 
     this._contentPrincipal = null;
+
+    this._csp = null;
 
     this._contentRequestContextID = null;
 
@@ -382,8 +382,8 @@ class MozBrowser extends MozElementMixin(XULFrameElement) {
   set docShellIsActive(val) {
     if (this.isRemoteBrowser) {
       let { frameLoader } = this;
-      if (frameLoader && frameLoader.tabParent) {
-        frameLoader.tabParent.docShellIsActive = val;
+      if (frameLoader && frameLoader.remoteTab) {
+        frameLoader.remoteTab.docShellIsActive = val;
       }
     } else if (this.docShell) {
       this.docShell.isActive = val;
@@ -393,8 +393,8 @@ class MozBrowser extends MozElementMixin(XULFrameElement) {
   get docShellIsActive() {
     if (this.isRemoteBrowser) {
       let { frameLoader } = this;
-      if (frameLoader && frameLoader.tabParent) {
-        return frameLoader.tabParent.docShellIsActive;
+      if (frameLoader && frameLoader.remoteTab) {
+        return frameLoader.remoteTab.docShellIsActive;
       }
       return false;
     }
@@ -404,8 +404,8 @@ class MozBrowser extends MozElementMixin(XULFrameElement) {
   set renderLayers(val) {
     if (this.isRemoteBrowser) {
       let { frameLoader } = this;
-      if (frameLoader && frameLoader.tabParent) {
-        frameLoader.tabParent.renderLayers = val;
+      if (frameLoader && frameLoader.remoteTab) {
+        frameLoader.remoteTab.renderLayers = val;
       }
     } else {
       this.docShellIsActive = val;
@@ -415,8 +415,8 @@ class MozBrowser extends MozElementMixin(XULFrameElement) {
   get renderLayers() {
     if (this.isRemoteBrowser) {
       let { frameLoader } = this;
-      if (frameLoader && frameLoader.tabParent) {
-        return frameLoader.tabParent.renderLayers;
+      if (frameLoader && frameLoader.remoteTab) {
+        return frameLoader.remoteTab.renderLayers;
       }
       return false;
     }
@@ -426,8 +426,8 @@ class MozBrowser extends MozElementMixin(XULFrameElement) {
   get hasLayers() {
     if (this.isRemoteBrowser) {
       let { frameLoader } = this;
-      if (frameLoader && frameLoader.tabParent) {
-        return frameLoader.tabParent.hasLayers;
+      if (frameLoader && frameLoader.remoteTab) {
+        return frameLoader.remoteTab.hasLayers;
       }
       return false;
     }
@@ -466,7 +466,7 @@ class MozBrowser extends MozElementMixin(XULFrameElement) {
       return false;
     }
 
-    return !this.frameLoader.tabParent;
+    return !this.frameLoader.remoteTab;
   }
 
   get messageManager() {
@@ -551,11 +551,7 @@ class MozBrowser extends MozElementMixin(XULFrameElement) {
   }
 
   get browsingContext() {
-    if (!this.isRemoteBrowser) {
-      return this.docShell.browsingContext;
-    }
-
-    return BrowsingContext.get(this._browsingContextId);
+    return this.frameLoader.browsingContext;
   }
   /**
    * Note that this overrides webNavigation on XULFrameElement, and duplicates the return value for the non-remote case
@@ -600,6 +596,12 @@ class MozBrowser extends MozElementMixin(XULFrameElement) {
 
   get contentPrincipal() {
     return this.isRemoteBrowser ? this._contentPrincipal : this.contentDocument.nodePrincipal;
+  }
+
+  get csp() {
+    // After Bug 965637 we can query the csp directly from the contentDocument
+    // instead of contentDocument.nodePrincipal.
+    return this.isRemoteBrowser ? this._csp : this.contentDocument.nodePrincipal.csp;
   }
 
   get contentRequestContextID() {
@@ -685,7 +687,7 @@ class MozBrowser extends MozElementMixin(XULFrameElement) {
 
   get hasContentOpener() {
     if (this.isRemoteBrowser) {
-      return this.frameLoader.tabParent.hasContentOpener;
+      return this.frameLoader.remoteTab.hasContentOpener;
     }
     return !!this.contentWindow.opener;
   }
@@ -809,9 +811,11 @@ class MozBrowser extends MozElementMixin(XULFrameElement) {
         triggeringPrincipal,
         postData,
         headers,
+        csp,
     } = aParams || {};
     let loadURIOptions = {
       triggeringPrincipal,
+      csp,
       referrerInfo,
       loadFlags: flags,
       postData,
@@ -844,8 +848,8 @@ class MozBrowser extends MozElementMixin(XULFrameElement) {
       return;
     }
     let { frameLoader } = this;
-    if (frameLoader.tabParent) {
-      frameLoader.tabParent.preserveLayers(preserve);
+    if (frameLoader.remoteTab) {
+      frameLoader.remoteTab.preserveLayers(preserve);
     }
   }
 
@@ -854,8 +858,8 @@ class MozBrowser extends MozElementMixin(XULFrameElement) {
       return;
     }
     let { frameLoader } = this;
-    if (frameLoader.tabParent) {
-      frameLoader.tabParent.deprioritize();
+    if (frameLoader.remoteTab) {
+      frameLoader.remoteTab.deprioritize();
     }
   }
 
@@ -864,8 +868,8 @@ class MozBrowser extends MozElementMixin(XULFrameElement) {
       return;
     }
     let { frameLoader } = this;
-    if (frameLoader && frameLoader.tabParent) {
-      frameLoader.tabParent.forceRepaint();
+    if (frameLoader && frameLoader.remoteTab) {
+      frameLoader.remoteTab.forceRepaint();
     }
   }
 
@@ -1001,7 +1005,7 @@ class MozBrowser extends MozElementMixin(XULFrameElement) {
   }
 
   resumeMedia() {
-    this.messageManager.sendAsyncMessage("AudioPlayback", { type: "resumeMedia" });
+    this.frameLoader.browsingContext.notifyStartDelayedAutoplayMedia();
     if (this._hasAnyPlayingMediaBeenBlocked) {
       this._hasAnyPlayingMediaBeenBlocked = false;
       let event = document.createEvent("Events");
@@ -1042,6 +1046,9 @@ class MozBrowser extends MozElementMixin(XULFrameElement) {
       let aboutBlank = Services.io.newURI("about:blank");
       let ssm = Services.scriptSecurityManager;
       this._contentPrincipal = ssm.getLoadContextCodebasePrincipal(aboutBlank, this.loadContext);
+      // CSP for about:blank is null; if we ever change _contentPrincipal above,
+      // we should re-evaluate the CSP here.
+      this._csp = null;
 
       this.messageManager.addMessageListener("Browser:Init", this);
       this.messageManager.addMessageListener("DOMTitleChanged", this);
@@ -1215,15 +1222,15 @@ class MozBrowser extends MozElementMixin(XULFrameElement) {
           let usingApz = false;
           if (this.isRemoteBrowser && data.scrollId != null &&
             this.mPrefs.getBoolPref("apz.autoscroll.enabled", false)) {
-            let { tabParent } = this.frameLoader;
-            if (tabParent) {
+            let { remoteTab } = this.frameLoader;
+            if (remoteTab) {
               // If APZ is handling the autoscroll, it may decide to cancel
               // it of its own accord, so register an observer to allow it
               // to notify us of that.
               var os = Services.obs;
               os.addObserver(this.observer, "apz:cancel-autoscroll", true);
 
-              usingApz = tabParent.startApzAutoscroll(
+              usingApz = remoteTab.startApzAutoscroll(
                 data.screenX, data.screenY,
                 data.scrollId, data.presShellId);
             }
@@ -1298,7 +1305,6 @@ class MozBrowser extends MozElementMixin(XULFrameElement) {
     switch (aMessage.name) {
       case "Browser:Init":
         this._outerWindowID = data.outerWindowID;
-        this._browsingContextId = data.browsingContextId;
         break;
       case "DOMTitleChanged":
         this._contentTitle = data.title;
@@ -1342,11 +1348,10 @@ class MozBrowser extends MozElementMixin(XULFrameElement) {
     return undefined;
   }
 
-  enableDisableCommandsRemoteOnly(aAction, aEnabledLength, aEnabledCommands, aDisabledLength, aDisabledCommands) {
+  enableDisableCommandsRemoteOnly(aAction, aEnabledCommands, aDisabledCommands) {
     if (this._controller) {
-      this._controller.enableDisableCommands(aAction,
-        aEnabledLength, aEnabledCommands,
-        aDisabledLength, aDisabledCommands);
+      this._controller.enableDisableCommands(aAction, aEnabledCommands,
+                                             aDisabledCommands);
     }
   }
 
@@ -1360,27 +1365,8 @@ class MozBrowser extends MozElementMixin(XULFrameElement) {
     }
   }
 
-  callWebProgressContentBlockingEventListeners(aIsWebProgressPassed,
-                                               aIsTopLevel,
-                                               aIsLoadingDocument,
-                                               aLoadType,
-                                               aDOMWindowID,
-                                               aRequestURI,
-                                               aOriginalRequestURI,
-                                               aMatchedList,
-                                               aEvent) {
-    if (this._remoteWebProgressManager) {
-      this._remoteWebProgressManager
-          .callWebProgressContentBlockingEventListeners(aIsWebProgressPassed,
-                                                        aIsTopLevel,
-                                                        aIsLoadingDocument,
-                                                        aLoadType,
-                                                        aDOMWindowID,
-                                                        aRequestURI,
-                                                        aOriginalRequestURI,
-                                                        aMatchedList,
-                                                        aEvent);
-    }
+  get remoteWebProgressManager() {
+    return this._remoteWebProgressManager;
   }
 
   purgeSessionHistory() {
@@ -1406,7 +1392,7 @@ class MozBrowser extends MozElementMixin(XULFrameElement) {
       // needed to create a document with the given principal.
       let permissionPrincipal =
         BrowserUtils.principalWithMatchingOA(aPrincipal, this.contentPrincipal);
-      this.frameLoader.tabParent.transmitPermissionsForPrincipal(permissionPrincipal);
+      this.frameLoader.remoteTab.transmitPermissionsForPrincipal(permissionPrincipal);
 
       // Create the about blank content viewer in the content process
       this.messageManager.sendAsyncMessage("Browser:CreateAboutBlank", aPrincipal);
@@ -1436,9 +1422,9 @@ class MozBrowser extends MozElementMixin(XULFrameElement) {
       }
 
       if (this.isRemoteBrowser && this._autoScrollScrollId != null) {
-        let { tabParent } = this.frameLoader;
-        if (tabParent) {
-          tabParent.stopApzAutoscroll(this._autoScrollScrollId,
+        let { remoteTab } = this.frameLoader;
+        if (remoteTab) {
+          remoteTab.stopApzAutoscroll(this._autoScrollScrollId,
             this._autoScrollPresShellId);
         }
         this._autoScrollScrollId = null;
@@ -1608,7 +1594,7 @@ class MozBrowser extends MozElementMixin(XULFrameElement) {
     throw new Error("Closing a browser which was not attached to a tabbrowser is unsupported.");
   }
 
-  swapBrowsers(aOtherBrowser, aFlags) {
+  swapBrowsers(aOtherBrowser) {
     // The request comes from a XPCOM component, we'd want to redirect
     // the request to tabbrowser so tabbrowser will be setup correctly,
     // and it will eventually call swapDocShells.
@@ -1617,7 +1603,7 @@ class MozBrowser extends MozElementMixin(XULFrameElement) {
     if (ourTabBrowser && otherTabBrowser) {
       let ourTab = ourTabBrowser.getTabForBrowser(this);
       let otherTab = otherTabBrowser.getTabForBrowser(aOtherBrowser);
-      ourTabBrowser.swapBrowsers(ourTab, otherTab, aFlags);
+      ourTabBrowser.swapBrowsers(ourTab, otherTab);
       return;
     }
 
@@ -1754,9 +1740,9 @@ class MozBrowser extends MozElementMixin(XULFrameElement) {
 
   permitUnload(aPermitUnloadFlags) {
     if (this.isRemoteBrowser) {
-      let { tabParent } = this.frameLoader;
+      let { remoteTab } = this.frameLoader;
 
-      if (!tabParent.hasBeforeUnload) {
+      if (!remoteTab.hasBeforeUnload) {
         return { permitUnload: true, timedOut: false };
       }
 
@@ -1845,12 +1831,12 @@ class MozBrowser extends MozElementMixin(XULFrameElement) {
     return this.frameLoader.drawSnapshot(x, y, w, h, scale, backgroundColor);
   }
 
-  dropLinks(aLinksCount, aLinks, aTriggeringPrincipal) {
+  dropLinks(aLinks, aTriggeringPrincipal) {
     if (!this.droppedLinkHandler) {
       return false;
     }
     let links = [];
-    for (let i = 0; i < aLinksCount; i += 3) {
+    for (let i = 0; i < aLinks.length; i += 3) {
       links.push({
         url: aLinks[i],
         name: aLinks[i + 1],
@@ -1863,7 +1849,7 @@ class MozBrowser extends MozElementMixin(XULFrameElement) {
 
   getContentBlockingLog() {
     if (this.isRemoteBrowser) {
-      return this.frameLoader.tabParent.getContentBlockingLog();
+      return this.frameLoader.remoteTab.getContentBlockingLog();
     }
     return this.docShell ?
       this.docShell.getContentBlockingLog() :

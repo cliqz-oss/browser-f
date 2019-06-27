@@ -14,8 +14,10 @@ let whitelist = [
   {sourceName: /codemirror\.css$/i,
    isFromDevTools: true},
   // The debugger uses cross-browser CSS.
-  {sourceName: /devtools\/client\/debugger\/new\/dist\/debugger.css/i,
+  {sourceName: /devtools\/client\/debugger\/dist\/vendors.css/i,
    isFromDevTools: true},
+  {sourceName: /devtools\/client\/debugger\/src\/components\/([A-z\/]+).css/i,
+  isFromDevTools: true},
    // Reps uses cross-browser CSS.
    {sourceName: /devtools-client-shared\/components\/reps\/reps.css/i,
    isFromDevTools: true},
@@ -42,6 +44,10 @@ let whitelist = [
   {sourceName: /(?:res|gre-resources)\/forms\.css$/i,
    errorMessage: /Unknown property.*overflow-clip-box/i,
    isFromDevTools: false},
+  // System colors reserved to UA / chrome sheets
+  {sourceName: /(?:res|gre-resources)\/forms\.css$/i,
+   errorMessage: /Expected color but found \u2018-moz.*/i,
+   platforms: ["linux"], isFromDevTools: false},
   // The '-moz-menulist-button' value is only supported in chrome and UA sheets
   // but forms.css is loaded as a document sheet by this test.
   // Maybe bug 1261237 will fix this?
@@ -70,6 +76,15 @@ if (!Services.prefs.getBoolPref("layout.css.xul-box-display-values.content.enabl
   whitelist.push({
     sourceName: /(skin\/shared\/Heartbeat|((?:res|gre-resources)\/(ua|html)))\.css$/i,
     errorMessage: /Error in parsing value for .*\bdisplay\b/i,
+    isFromDevTools: false,
+  });
+}
+
+if (!Services.prefs.getBoolPref("layout.css.line-height-moz-block-height.content.enabled")) {
+  // -moz-block-height is used in form controls but not exposed to the web.
+  whitelist.push({
+    sourceName: /(?:res|gre-resources)\/forms\.css$/i,
+    errorMessage: /Error in parsing value for \u2018line-height\u2019/iu,
     isFromDevTools: false,
   });
 }

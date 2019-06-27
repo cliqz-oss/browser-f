@@ -9,7 +9,7 @@ taskcluster/ci/upload-symbols/job-template.yml into an actual task description.
 from __future__ import absolute_import, print_function, unicode_literals
 
 from taskgraph.transforms.base import TransformSequence
-from taskgraph.util.attributes import RELEASE_PROJECTS
+from taskgraph.util.attributes import RELEASE_PROJECTS, copy_attributes_from_dependent_job
 from taskgraph.util.treeherder import join_symbol
 
 import logging
@@ -28,7 +28,7 @@ def check_nightlies(config, tasks):
     for task in tasks:
         dep = task['primary-dependency']
         if config.params['project'] in RELEASE_PROJECTS and \
-                dep.attributes.get('nightly') and \
+                dep.attributes.get('nightly', dep.attributes.get('shippable')) and \
                 not dep.attributes.get('enable-full-crashsymbols'):
             raise Exception('Nightly job %s should have enable-full-crashsymbols attribute '
                             'set to true to enable symbol upload to crash-stats' % dep.label)
@@ -54,13 +54,11 @@ def fill_template(config, tasks):
         task['worker']['env']['SYMBOL_SECRET'] = task['worker']['env']['SYMBOL_SECRET'].format(
             level=config.params['level'])
 
-        build_platform = dep.attributes.get('build_platform')
-        build_type = dep.attributes.get('build_type')
-        attributes = task.setdefault('attributes', {})
-        attributes['build_platform'] = build_platform
-        attributes['build_type'] = build_type
-        if dep.attributes.get('nightly'):
-            attributes['nightly'] = True
+        attributes = copy_attributes_from_dependent_job(dep)
+        attributes.update(task.get('attributes', {}))
+        task['attributes'] = attributes
+
+        build_type = attributes.get('build_type')
 
         treeherder = task.get('treeherder', {})
         th = dep.task.get('extra')['treeherder']
@@ -82,8 +80,12 @@ def fill_template(config, tasks):
         if dep.attributes.get('nightly'):
             # For nightly builds, we want to run these tasks if the build is run.
             task['run-on-projects'] = dep.attributes.get('run_on_projects')
+        elif dep.attributes.get('shippable'):
+            # For shippable builds, we want to run these tasks if the build is run.
+            # XXX Better to run this on promote phase instead?
+            task['run-on-projects'] = dep.attributes.get('run_on_projects')
         else:
-            # For non nightly builds, these can be requested to upload to the try symbol sever.
+            # For other builds, these can be requested to upload to the try symbol sever.
             task['run-on-projects'] = ['try']
 
         # clear out the stuff that's not part of a task description

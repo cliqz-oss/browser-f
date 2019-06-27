@@ -24,7 +24,7 @@ XPCOMUtils.defineLazyGetter(this, "DebuggerServer", () => {
 });
 
 XPCOMUtils.defineLazyGetter(this, "SocketListener", () => {
-  let { SocketListener } = require("devtools/shared/security/socket");
+  const { SocketListener } = require("devtools/shared/security/socket");
   return SocketListener;
 });
 
@@ -55,7 +55,7 @@ var GeckoViewRemoteDebugger = {
     // after all "profile-after-change" handlers (including this one)
     // have completed.
     Services.tm.dispatchToMainThread(() => {
-        Services.obs.notifyObservers(null, "marionette-startup-requested");
+      Services.obs.notifyObservers(null, "marionette-startup-requested");
     });
   },
 

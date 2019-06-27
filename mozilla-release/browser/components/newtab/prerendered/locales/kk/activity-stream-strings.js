@@ -40,9 +40,7 @@ window.gActivityStreamStrings = {
   "section_disclaimer_topstories_buttontext": "Жақсы, түсіндім",
   "prefs_home_header": "Firefox үй парағы құрамасы",
   "prefs_home_description": "Firefox үй парағында қандай құраманы көргіңіз келетінді таңдаңыз.",
-  "prefs_content_discovery_header": "Firefox үй парағы",
   "prefs_content_discovery_description": "Firefox үй парағында құраманы табу сізге интернеттен жоғары сапалы, релевантты мақалаларды табуға көмектеседі.",
-  "prefs_content_discovery_button": "Құраманы табуды сөндіру",
   "prefs_section_rows_option": "{num} жол;{num} жол",
   "prefs_search_header": "Интернеттен іздеу",
   "prefs_topsites_description": "Сіз жиі шолатын сайттар",
@@ -107,8 +105,5 @@ window.gActivityStreamStrings = {
   "firstrun_privacy_notice": "Жекелік ескертуі",
   "firstrun_continue_to_login": "Жалғастыру",
   "firstrun_skip_login": "Бұл қадамды аттап кету",
-  "context_menu_title": "Мәзірді ашу",
-  "manual_migration_explanation2": "Firefox қолданбасын басқа браузер бетбелгілері, тарихы және парольдерімен қолданып көріңіз.",
-  "manual_migration_cancel_button": "Жоқ, рахмет",
-  "manual_migration_import_button": "Қазір импорттау"
+  "context_menu_title": "Мәзірді ашу"
 };

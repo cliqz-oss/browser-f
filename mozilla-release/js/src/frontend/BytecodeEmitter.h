@@ -14,6 +14,7 @@
 
 #include "ds/InlineTable.h"
 #include "frontend/BCEParserHandle.h"
+#include "frontend/BytecodeSection.h"  // BytecodeSection, PerScriptData
 #include "frontend/DestructuringFlavor.h"
 #include "frontend/EitherParser.h"
 #include "frontend/JumpList.h"
@@ -28,80 +29,6 @@
 
 namespace js {
 namespace frontend {
-
-class CGNumberList {
-  Rooted<ValueVector> vector;
-
- public:
-  explicit CGNumberList(JSContext* cx) : vector(cx, ValueVector(cx)) {}
-  MOZ_MUST_USE bool append(const Value& v) { return vector.append(v); }
-  size_t length() const { return vector.length(); }
-  void finish(mozilla::Span<GCPtrValue> array);
-};
-
-struct CGObjectList {
-  uint32_t length;    /* number of emitted so far objects */
-  ObjectBox* lastbox; /* last emitted object */
-
-  CGObjectList() : length(0), lastbox(nullptr) {}
-
-  unsigned add(ObjectBox* objbox);
-  void finish(mozilla::Span<GCPtrObject> array);
-  void finishInnerFunctions();
-};
-
-struct MOZ_STACK_CLASS CGScopeList {
-  Rooted<GCVector<Scope*>> vector;
-
-  explicit CGScopeList(JSContext* cx) : vector(cx, GCVector<Scope*>(cx)) {}
-
-  bool append(Scope* scope) { return vector.append(scope); }
-  uint32_t length() const { return vector.length(); }
-  void finish(mozilla::Span<GCPtrScope> array);
-};
-
-struct CGTryNoteList {
-  Vector<JSTryNote> list;
-  explicit CGTryNoteList(JSContext* cx) : list(cx) {}
-
-  MOZ_MUST_USE bool append(JSTryNoteKind kind, uint32_t stackDepth,
-                           size_t start, size_t end);
-  size_t length() const { return list.length(); }
-  void finish(mozilla::Span<JSTryNote> array);
-};
-
-struct CGScopeNote : public ScopeNote {
-  // The end offset. Used to compute the length.
-  uint32_t end;
-};
-
-struct CGScopeNoteList {
-  Vector<CGScopeNote> list;
-  explicit CGScopeNoteList(JSContext* cx) : list(cx) {}
-
-  MOZ_MUST_USE bool append(uint32_t scopeIndex, uint32_t offset,
-                           uint32_t parent);
-  void recordEnd(uint32_t index, uint32_t offse);
-  size_t length() const { return list.length(); }
-  void finish(mozilla::Span<ScopeNote> array);
-};
-
-struct CGResumeOffsetList {
-  Vector<uint32_t> list;
-  explicit CGResumeOffsetList(JSContext* cx) : list(cx) {}
-
-  MOZ_MUST_USE bool append(uint32_t offset) { return list.append(offset); }
-  size_t length() const { return list.length(); }
-  void finish(mozilla::Span<uint32_t> array);
-};
-
-static constexpr size_t MaxBytecodeLength = INT32_MAX;
-static constexpr size_t MaxSrcNotesLength = INT32_MAX;
-
-// Have a few inline elements, so as to avoid heap allocation for tiny
-// sequences.  See bug 1390526.
-typedef Vector<jsbytecode, 64> BytecodeVector;
-typedef Vector<jssrcnote, 64> SrcNotesVector;
 
 class CallOrNewEmitter;
 class ElemOpEmitter;
@@ -127,49 +54,35 @@ struct MOZ_STACK_CLASS BytecodeEmitter {
   Rooted<LazyScript*> lazyScript;
 
  private:
-  BytecodeVector code_;  /* bytecode */
-  SrcNotesVector notes_; /* source notes, see below */
+  BytecodeSection bytecodeSection_;
 
-  // Code offset for last source note
-  ptrdiff_t lastNoteOffset_ = 0;
+ public:
+  BytecodeSection& bytecodeSection() { return bytecodeSection_; }
+  const BytecodeSection& bytecodeSection() const { return bytecodeSection_; }
 
-  // Line number for srcnotes.
-  //
-  // WARNING: If this becomes out of sync with already-emitted srcnotes,
-  // we can get undefined behavior.
-  uint32_t currentLine_ = 0;
+ private:
+  PerScriptData perScriptData_;
 
-  // Zero-based column index on currentLine of last SRC_COLSPAN-annotated
-  // opcode.
-  //
-  // WARNING: If this becomes out of sync with already-emitted srcnotes,
-  // we can get undefined behavior.
-  uint32_t lastColumn_ = 0;
+ public:
+  PerScriptData& perScriptData() { return perScriptData_; }
+  const PerScriptData& perScriptData() const { return perScriptData_; }
 
-  uint32_t lastSeparatorOffet_ = 0;
-  uint32_t lastSeparatorLine_ = 0;
-  uint32_t lastSeparatorColumn_ = 0;
-
+ private:
   // switchToMain sets this to the bytecode offset of the main section.
   mozilla::Maybe<uint32_t> mainOffset_ = {};
 
- public:
-  // Last jump target emitted.
-  JumpTarget lastTarget = {-1 - ptrdiff_t(JSOP_JUMPTARGET_LENGTH)};
+  /* field info for enclosing class */
+  const FieldInitializers fieldInitializers_;
 
+ public:
   // Private storage for parser wrapper. DO NOT REFERENCE INTERNALLY. May not be
   // initialized. Use |parser| instead.
   mozilla::Maybe<EitherParser> ep_ = {};
   BCEParserHandle* parser = nullptr;
 
-  PooledMapPtr<AtomIndexMap> atomIndices; /* literals indexed for mapping */
   unsigned firstLine = 0; /* first line, for JSScript::initFromEmitter */
 
   uint32_t maxFixedSlots = 0; /* maximum number of fixed frame slots so far */
-  uint32_t maxStackDepth =
-      0; /* maximum number of expression stack slots so far */
-
-  int32_t stackDepth = 0; /* current stack depth in script frame */
 
   uint32_t bodyScopeIndex =
       UINT32_MAX; /* index into scopeList of the body scope */
@@ -179,8 +92,7 @@ struct MOZ_STACK_CLASS BytecodeEmitter {
   EmitterScope* innermostEmitterScope_ = nullptr;
   TDZCheckCache* innermostTDZCheckCache = nullptr;
 
-  /* field info for enclosing class */
-  FieldInitializers fieldInitializers_;
+  const FieldInitializers& getFieldInitializers() { return fieldInitializers_; }
 
 #ifdef DEBUG
   bool unstableEmitterScope = false;
@@ -195,28 +107,6 @@ struct MOZ_STACK_CLASS BytecodeEmitter {
   EmitterScope* innermostEmitterScopeNoCheck() const {
     return innermostEmitterScope_;
   }
-
-  CGNumberList numberList;       /* double and bigint values used by script */
-  CGObjectList objectList;       /* list of emitted objects */
-  CGScopeList scopeList;         /* list of emitted scopes */
-  CGTryNoteList tryNoteList;     /* list of emitted try notes */
-  CGScopeNoteList scopeNoteList; /* list of emitted block scope notes */
-
-  // Certain ops (yield, await, gosub) have an entry in the script's
-  // resumeOffsets list. This can be used to map from the op's resumeIndex to
-  // the bytecode offset of the next pc. This indirection makes it easy to
-  // resume in the JIT (because BaselineScript stores a resumeIndex => native
-  // code array).
-  CGResumeOffsetList resumeOffsetList;
-
-  // Number of JOF_IC opcodes emitted.
-  size_t numICEntries = 0;
-
-  // Number of yield instructions emitted. Does not include JSOP_AWAIT.
-  uint32_t numYields = 0;
-
-  // Number of JOF_TYPESET opcodes generated.
-  uint16_t typesetCount = 0;
 
   // Script contains singleton initializer JSOP_OBJECT.
   bool hasSingletons = false;
@@ -257,9 +147,10 @@ struct MOZ_STACK_CLASS BytecodeEmitter {
    */
  private:
   // Internal constructor, for delegation use only.
-  BytecodeEmitter(BytecodeEmitter* parent, SharedContext* sc,
-                  HandleScript script, Handle<LazyScript*> lazyScript,
-                  uint32_t lineNum, EmitterMode emitterMode);
+  BytecodeEmitter(
+      BytecodeEmitter* parent, SharedContext* sc, HandleScript script,
+      Handle<LazyScript*> lazyScript, uint32_t lineNum, EmitterMode emitterMode,
+      FieldInitializers fieldInitializers = FieldInitializers::Invalid());
 
   void initFromBodyPosition(TokenPos bodyPosition);
 
@@ -273,53 +164,59 @@ struct MOZ_STACK_CLASS BytecodeEmitter {
                                const ListNode* argsList);
 
  public:
-  BytecodeEmitter(BytecodeEmitter* parent, BCEParserHandle* parser,
-                  SharedContext* sc, HandleScript script,
-                  Handle<LazyScript*> lazyScript, uint32_t lineNum,
-                  EmitterMode emitterMode = Normal);
+  BytecodeEmitter(
+      BytecodeEmitter* parent, BCEParserHandle* parser, SharedContext* sc,
+      HandleScript script, Handle<LazyScript*> lazyScript, uint32_t lineNum,
+      EmitterMode emitterMode = Normal,
+      FieldInitializers fieldInitializers = FieldInitializers::Invalid());
 
-  BytecodeEmitter(BytecodeEmitter* parent, const EitherParser& parser,
-                  SharedContext* sc, HandleScript script,
-                  Handle<LazyScript*> lazyScript, uint32_t lineNum,
-                  EmitterMode emitterMode = Normal);
+  BytecodeEmitter(
+      BytecodeEmitter* parent, const EitherParser& parser, SharedContext* sc,
+      HandleScript script, Handle<LazyScript*> lazyScript, uint32_t lineNum,
+      EmitterMode emitterMode = Normal,
+      FieldInitializers fieldInitializers = FieldInitializers::Invalid());
 
   template <typename Unit>
-  BytecodeEmitter(BytecodeEmitter* parent,
-                  Parser<FullParseHandler, Unit>* parser, SharedContext* sc,
-                  HandleScript script, Handle<LazyScript*> lazyScript,
-                  uint32_t lineNum, EmitterMode emitterMode = Normal)
+  BytecodeEmitter(
+      BytecodeEmitter* parent, Parser<FullParseHandler, Unit>* parser,
+      SharedContext* sc, HandleScript script, Handle<LazyScript*> lazyScript,
+      uint32_t lineNum, EmitterMode emitterMode = Normal,
+      FieldInitializers fieldInitializers = FieldInitializers::Invalid())
       : BytecodeEmitter(parent, EitherParser(parser), sc, script, lazyScript,
-                        lineNum, emitterMode) {}
+                        lineNum, emitterMode, fieldInitializers) {}
 
   // An alternate constructor that uses a TokenPos for the starting
   // line and that sets functionBodyEndPos as well.
-  BytecodeEmitter(BytecodeEmitter* parent, BCEParserHandle* parser,
-                  SharedContext* sc, HandleScript script,
-                  Handle<LazyScript*> lazyScript, TokenPos bodyPosition,
-                  EmitterMode emitterMode = Normal)
+  BytecodeEmitter(
+      BytecodeEmitter* parent, BCEParserHandle* parser, SharedContext* sc,
+      HandleScript script, Handle<LazyScript*> lazyScript,
+      TokenPos bodyPosition, EmitterMode emitterMode = Normal,
+      FieldInitializers fieldInitializers = FieldInitializers::Invalid())
       : BytecodeEmitter(parent, parser, sc, script, lazyScript,
                         parser->errorReporter().lineAt(bodyPosition.begin),
-                        emitterMode) {
+                        emitterMode, fieldInitializers) {
     initFromBodyPosition(bodyPosition);
   }
 
-  BytecodeEmitter(BytecodeEmitter* parent, const EitherParser& parser,
-                  SharedContext* sc, HandleScript script,
-                  Handle<LazyScript*> lazyScript, TokenPos bodyPosition,
-                  EmitterMode emitterMode = Normal)
+  BytecodeEmitter(
+      BytecodeEmitter* parent, const EitherParser& parser, SharedContext* sc,
+      HandleScript script, Handle<LazyScript*> lazyScript,
+      TokenPos bodyPosition, EmitterMode emitterMode = Normal,
+      FieldInitializers fieldInitializers = FieldInitializers::Invalid())
       : BytecodeEmitter(parent, parser, sc, script, lazyScript,
                         parser.errorReporter().lineAt(bodyPosition.begin),
-                        emitterMode) {
+                        emitterMode, fieldInitializers) {
     initFromBodyPosition(bodyPosition);
   }
 
   template <typename Unit>
-  BytecodeEmitter(BytecodeEmitter* parent,
-                  Parser<FullParseHandler, Unit>* parser, SharedContext* sc,
-                  HandleScript script, Handle<LazyScript*> lazyScript,
-                  TokenPos bodyPosition, EmitterMode emitterMode = Normal)
+  BytecodeEmitter(
+      BytecodeEmitter* parent, Parser<FullParseHandler, Unit>* parser,
+      SharedContext* sc, HandleScript script, Handle<LazyScript*> lazyScript,
+      TokenPos bodyPosition, EmitterMode emitterMode = Normal,
+      FieldInitializers fieldInitializers = FieldInitializers::Invalid())
       : BytecodeEmitter(parent, EitherParser(parser), sc, script, lazyScript,
-                        bodyPosition, emitterMode) {}
+                        bodyPosition, emitterMode, fieldInitializers) {}
 
   MOZ_MUST_USE bool init();
 
@@ -354,24 +251,26 @@ struct MOZ_STACK_CLASS BytecodeEmitter {
     varEmitterScope = emitterScope;
   }
 
-  Scope* outermostScope() const { return scopeList.vector[0]; }
+  Scope* outermostScope() const {
+    return perScriptData().scopeList().vector[0];
+  }
   Scope* innermostScope() const;
   Scope* bodyScope() const {
-    MOZ_ASSERT(bodyScopeIndex < scopeList.length());
-    return scopeList.vector[bodyScopeIndex];
+    MOZ_ASSERT(bodyScopeIndex < perScriptData().scopeList().length());
+    return perScriptData().scopeList().vector[bodyScopeIndex];
   }
 
   MOZ_ALWAYS_INLINE
   MOZ_MUST_USE bool makeAtomIndex(JSAtom* atom, uint32_t* indexp) {
-    MOZ_ASSERT(atomIndices);
-    AtomIndexMap::AddPtr p = atomIndices->lookupForAdd(atom);
+    MOZ_ASSERT(perScriptData().atomIndices());
+    AtomIndexMap::AddPtr p = perScriptData().atomIndices()->lookupForAdd(atom);
     if (p) {
       *indexp = p->value();
       return true;
     }
 
-    uint32_t index = atomIndices->count();
-    if (!atomIndices->add(p, atom, index)) {
+    uint32_t index = perScriptData().atomIndices()->count();
+    if (!perScriptData().atomIndices()->add(p, atom, index)) {
       ReportOutOfMemory(cx);
       return false;
     }
@@ -394,45 +293,13 @@ struct MOZ_STACK_CLASS BytecodeEmitter {
 
   void tellDebuggerAboutCompiledScript(JSContext* cx);
 
-  BytecodeVector& code() { return code_; }
-  const BytecodeVector& code() const { return code_; }
-
-  jsbytecode* code(ptrdiff_t offset) { return code_.begin() + offset; }
-  ptrdiff_t offset() const { return code_.end() - code_.begin(); }
-
   uint32_t mainOffset() const { return *mainOffset_; }
 
   bool inPrologue() const { return mainOffset_.isNothing(); }
 
   void switchToMain() {
     MOZ_ASSERT(inPrologue());
-    mainOffset_.emplace(code_.length());
-  }
-
-  SrcNotesVector& notes() {
-    // Prologue shouldn't have source notes.
-    MOZ_ASSERT(!inPrologue());
-    return notes_;
-  }
-  ptrdiff_t lastNoteOffset() const { return lastNoteOffset_; }
-  unsigned currentLine() const { return currentLine_; }
-
-  void setCurrentLine(uint32_t line) {
-    currentLine_ = line;
-    lastColumn_ = 0;
-  }
-
-  // Check if the last emitted opcode is a jump target.
-  bool lastOpcodeIsJumpTarget() const {
-    return offset() - lastTarget.offset == ptrdiff_t(JSOP_JUMPTARGET_LENGTH);
-  }
-
-  // JumpTarget should not be part of the emitted statement, as they can be
-  // aliased by multiple statements. If we included the jump target as part of
-  // the statement we might have issues where the enclosing statement might
-  // not contain all the opcodes of the enclosed statements.
-  ptrdiff_t lastNonJumpTargetOffset() const {
-    return lastOpcodeIsJumpTarget() ? lastTarget.offset : offset();
+    mainOffset_.emplace(bytecodeSection().code().length());
   }
 
   void setFunctionBodyEndPos(uint32_t pos) {
@@ -503,12 +370,10 @@ struct MOZ_STACK_CLASS BytecodeEmitter {
   MOZ_MUST_USE bool emitFunctionScript(FunctionNode* funNode,
                                        TopLevelFunction isTopLevel);
 
-  void updateDepth(ptrdiff_t target);
   MOZ_MUST_USE bool markStepBreakpoint();
   MOZ_MUST_USE bool markSimpleBreakpoint();
   MOZ_MUST_USE bool updateLineNumberNotes(uint32_t offset);
   MOZ_MUST_USE bool updateSourceCoordNotes(uint32_t offset);
-  void updateSeparatorPosition();
 
   JSOp strictifySetNameOp(JSOp op);
 
@@ -550,6 +415,7 @@ struct MOZ_STACK_CLASS BytecodeEmitter {
   // Emit (1 + extra) bytecodes, for N bytes of op and its immediate operand.
   MOZ_MUST_USE bool emitN(JSOp op, size_t extra, ptrdiff_t* offset = nullptr);
 
+  MOZ_MUST_USE bool emitDouble(double dval);
   MOZ_MUST_USE bool emitNumberOp(double dval);
 
   MOZ_MUST_USE bool emitBigIntOp(BigInt* bigint);
@@ -597,8 +463,9 @@ struct MOZ_STACK_CLASS BytecodeEmitter {
                                      JSOp op);
   MOZ_MUST_USE bool emitRegExp(uint32_t index);
 
-  MOZ_NEVER_INLINE MOZ_MUST_USE bool emitFunction(FunctionNode* funNode,
-                                                  bool needsProto = false);
+  MOZ_NEVER_INLINE MOZ_MUST_USE bool emitFunction(
+      FunctionNode* funNode, bool needsProto = false,
+      ListNode* classContentsIfConstructor = nullptr);
   MOZ_NEVER_INLINE MOZ_MUST_USE bool emitObject(ListNode* objNode);
 
   MOZ_MUST_USE bool replaceNewInitWithNewObject(JSObject* obj,
@@ -610,7 +477,12 @@ struct MOZ_STACK_CLASS BytecodeEmitter {
                                      PropListType type);
 
   FieldInitializers setupFieldInitializers(ListNode* classMembers);
+  MOZ_MUST_USE bool emitCreateFieldKeys(ListNode* obj);
   MOZ_MUST_USE bool emitCreateFieldInitializers(ListNode* obj);
+  const FieldInitializers& findFieldInitializersForCall();
+  MOZ_MUST_USE bool emitCopyInitializersToLocalInitializers();
+  enum class IsSuperCall : bool { No, Yes };
+  MOZ_MUST_USE bool emitInitializeInstanceFields(IsSuperCall isSuperCall);
 
   // To catch accidental misuse, emitUint16Operand/emit3 assert that they are
   // not used to unconditionally emit JSOP_GETLOCAL. Variable access should
@@ -629,7 +501,8 @@ struct MOZ_STACK_CLASS BytecodeEmitter {
   }
   MOZ_MUST_USE bool emitGetName(NameNode* name);
 
-  MOZ_MUST_USE bool emitTDZCheckIfNeeded(JSAtom* name, const NameLocation& loc);
+  MOZ_MUST_USE bool emitTDZCheckIfNeeded(HandleAtom name,
+                                         const NameLocation& loc);
 
   MOZ_MUST_USE bool emitNameIncDec(UnaryNode* incDec);
 
@@ -779,8 +652,8 @@ struct MOZ_STACK_CLASS BytecodeEmitter {
 
   MOZ_MUST_USE bool emitCallSiteObject(CallSiteNode* callSiteObj);
   MOZ_MUST_USE bool emitTemplateString(ListNode* templateString);
-  MOZ_MUST_USE bool emitAssignment(ParseNode* lhs, JSOp compoundOp,
-                                   ParseNode* rhs);
+  MOZ_MUST_USE bool emitAssignmentOrInit(ParseNodeKind kind, ParseNode* lhs,
+                                         ParseNode* rhs);
 
   MOZ_MUST_USE bool emitReturn(UnaryNode* returnNode);
   MOZ_MUST_USE bool emitExpressionStatement(UnaryNode* exprStmt);
@@ -812,8 +685,8 @@ struct MOZ_STACK_CLASS BytecodeEmitter {
   MOZ_MUST_USE bool emitArguments(ListNode* argsList, bool isCall,
                                   bool isSpread, CallOrNewEmitter& cone);
   MOZ_MUST_USE bool emitCallOrNew(
-      BinaryNode* callNode, ValueUsage valueUsage = ValueUsage::WantValue);
-  MOZ_MUST_USE bool emitSelfHostedCallFunction(BinaryNode* callNode);
+      CallNode* callNode, ValueUsage valueUsage = ValueUsage::WantValue);
+  MOZ_MUST_USE bool emitSelfHostedCallFunction(CallNode* callNode);
   MOZ_MUST_USE bool emitSelfHostedResumeGenerator(BinaryNode* callNode);
   MOZ_MUST_USE bool emitSelfHostedForceInterpreter();
   MOZ_MUST_USE bool emitSelfHostedAllowContentIter(BinaryNode* callNode);

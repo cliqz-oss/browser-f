@@ -40,9 +40,7 @@ window.gActivityStreamStrings = {
   "section_disclaimer_topstories_buttontext": "OK, jeg forstår det",
   "prefs_home_header": "Innhold Firefox-startside",
   "prefs_home_description": "Velg hvilket innhold som du vil ha på din Firefox-startside.",
-  "prefs_content_discovery_header": "Firefox startside",
   "prefs_content_discovery_description": "Innholdsoppdagelse på Firefox startside lar deg oppdage relevante artikler av høy kvalitet fra nettet.",
-  "prefs_content_discovery_button": "Slå av innholdsoppdagelse",
   "prefs_section_rows_option": "{num} rekke;{num} rekker",
   "prefs_search_header": "Nettsøk",
   "prefs_topsites_description": "Mest besøkte nettsteder",
@@ -107,8 +105,5 @@ window.gActivityStreamStrings = {
   "firstrun_privacy_notice": "Personvernbestemmelser",
   "firstrun_continue_to_login": "Fortsett",
   "firstrun_skip_login": "Hopp over dette trinnet",
-  "context_menu_title": "Åpne meny",
-  "manual_migration_explanation2": "Prøv Firefox med bokmerkene, historikk og passord fra en annen nettleser.",
-  "manual_migration_cancel_button": "Nei takk",
-  "manual_migration_import_button": "Importer nå"
+  "context_menu_title": "Åpne meny"
 };

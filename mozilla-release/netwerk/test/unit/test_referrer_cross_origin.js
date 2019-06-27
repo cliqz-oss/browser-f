@@ -2,7 +2,9 @@
  * http://creativecommons.org/publicdomain/zero/1.0/
  */
 
-const {NetUtil} = ChromeUtils.import("resource://gre/modules/NetUtil.jsm");
+const ReferrerInfo = Components.Constructor("@mozilla.org/referrer-info;1",
+                                            "nsIReferrerInfo",
+                                            "init");
 
 function test_policy(test) {
   info("Running test: " + test.toSource());
@@ -34,18 +36,17 @@ function test_policy(test) {
   });
 
   chan.QueryInterface(Ci.nsIHttpChannel);
-  chan.setReferrerWithPolicy(referrer, test.policy);
+  chan.referrerInfo = new ReferrerInfo(test.policy, true, referrer);
+
   if (test.expectedReferrerSpec === undefined) {
     try {
       chan.getRequestHeader("Referer");
       do_throw("Should not find a Referer header!");
     } catch(e) {
     }
-    Assert.equal(chan.referrer, null);
   } else {
     let header = chan.getRequestHeader("Referer");
     Assert.equal(header, test.expectedReferrerSpec);
-    Assert.equal(chan.referrer.asciiSpec, test.expectedReferrerSpec);
   }
 }
 

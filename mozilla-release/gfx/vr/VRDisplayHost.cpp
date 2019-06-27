@@ -96,6 +96,13 @@ VRDisplayHost::~VRDisplayHost() {
   MOZ_COUNT_DTOR(VRDisplayHost);
 }
 
+void VRDisplayHost::ShutdownSubmitThread() {
+  if (mSubmitThread) {
+    mSubmitThread->Shutdown();
+    mSubmitThread = nullptr;
+  }
+}
+
 #if defined(XP_WIN)
 bool VRDisplayHost::CreateD3DObjects() {
   if (!mDevice) {
@@ -186,7 +193,7 @@ void VRDisplayHost::StartFrame() {
   TimeStamp now = TimeStamp::Now();
 #if defined(MOZ_WIDGET_ANDROID)
   const TimeStamp lastFrameStart =
-      mDisplayInfo.mLastFrameStart[mDisplayInfo.mFrameId % kVRMaxLatencyFrames];
+      mLastFrameStart[mDisplayInfo.mFrameId % kVRMaxLatencyFrames];
   const bool isPresenting = mLastUpdateDisplayInfo.GetPresentingGroups() != 0;
   double duration =
       lastFrameStart.IsNull() ? 0.0 : (now - lastFrameStart).ToMilliseconds();
@@ -204,7 +211,7 @@ void VRDisplayHost::StartFrame() {
   ++mDisplayInfo.mFrameId;
   size_t bufferIndex = mDisplayInfo.mFrameId % kVRMaxLatencyFrames;
   mDisplayInfo.mLastSensorState[bufferIndex] = GetSensorState();
-  mDisplayInfo.mLastFrameStart[bufferIndex] = now;
+  mLastFrameStart[bufferIndex] = now;
   mFrameStarted = true;
 #if defined(MOZ_WIDGET_ANDROID)
   mLastStartedFrame = mDisplayInfo.mFrameId;
@@ -256,7 +263,7 @@ void VRDisplayHost::CheckWatchDog() {
   // If content fails to call VRDisplay.submitFrame, we must eventually
   // time-out and trigger a new frame.
   TimeStamp lastFrameStart =
-      mDisplayInfo.mLastFrameStart[mDisplayInfo.mFrameId % kVRMaxLatencyFrames];
+      mLastFrameStart[mDisplayInfo.mFrameId % kVRMaxLatencyFrames];
   if (lastFrameStart.IsNull()) {
     bShouldStartFrame = true;
   } else {

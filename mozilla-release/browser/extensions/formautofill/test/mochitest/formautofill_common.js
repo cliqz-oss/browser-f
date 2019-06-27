@@ -1,6 +1,5 @@
 /* import-globals-from ../../../../../testing/mochitest/tests/SimpleTest/SimpleTest.js */
 /* import-globals-from ../../../../../testing/mochitest/tests/SimpleTest/EventUtils.js */
-/* import-globals-from ../../../../../testing/mochitest/tests/SimpleTest/AddTask.js */
 /* import-globals-from ../../../../../toolkit/components/satchel/test/satchel_common.js */
 /* eslint-disable no-unused-vars */
 
@@ -118,8 +117,9 @@ function triggerAutofillAndCheckProfile(profile) {
   const promises = [];
 
   for (const [fieldName, value] of Object.entries(adaptedProfile)) {
+    info(`triggerAutofillAndCheckProfile: ${fieldName}`);
     const element = document.getElementById(fieldName);
-    const expectingEvent = document.activeElement == element ? "DOMAutoComplete" : "change";
+    const expectingEvent = document.activeElement == element ? "input" : "change";
     const checkFieldAutofilled = Promise.all([
       new Promise(resolve => element.addEventListener("input", (event) => {
         if (element.tagName == "INPUT" && element.type == "text") {

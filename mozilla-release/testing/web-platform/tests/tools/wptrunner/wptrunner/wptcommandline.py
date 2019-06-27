@@ -8,8 +8,7 @@ from datetime import timedelta
 
 import config
 import wpttest
-import formatters
-
+from formatters import chromium, wptreport, wptscreenshot
 
 def abs_path(path):
     return os.path.abspath(os.path.expanduser(path))
@@ -230,7 +229,7 @@ scheme host and port.""")
                                 help="Total number of chunks to use")
     chunking_group.add_argument("--this-chunk", action="store", type=int, default=1,
                                 help="Chunk number to run")
-    chunking_group.add_argument("--chunk-type", action="store", choices=["none", "equal_time", "hash", "dir_hash"],
+    chunking_group.add_argument("--chunk-type", action="store", choices=["none", "hash", "dir_hash"],
                                 default=None, help="Chunking type to use")
 
     ssl_group = parser.add_argument_group("SSL/TLS")
@@ -326,7 +325,17 @@ scheme host and port.""")
                         help="List of URLs for tests to run, or paths including tests to run. "
                              "(equivalent to --include)")
 
-    commandline.log_formatters["wptreport"] = (formatters.WptreportFormatter, "wptreport format")
+    def screenshot_api_wrapper(formatter, api):
+        formatter.api = api
+        return formatter
+
+    commandline.fmt_options["api"] = (screenshot_api_wrapper,
+                                      "Cache API (default: %s)" % wptscreenshot.DEFAULT_API,
+                                      {"wptscreenshot"}, "store")
+
+    commandline.log_formatters["chromium"] = (chromium.ChromiumFormatter, "Chromium Layout Tests format")
+    commandline.log_formatters["wptreport"] = (wptreport.WptreportFormatter, "wptreport format")
+    commandline.log_formatters["wptscreenshot"] = (wptscreenshot.WptscreenshotFormatter, "wpt.fyi screenshots")
 
     commandline.add_logging_group(parser)
     return parser
