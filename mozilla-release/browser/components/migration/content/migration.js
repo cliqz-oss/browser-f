@@ -169,13 +169,7 @@ var MigrationWizard = { /* exported MigrationWizard */
     }
   },
 
-<<<<<<< HEAD
-  maybeTakeUserSelectedMigrator: function () {
-||||||| merged common ancestors
-  onImportSourcePageAdvanced() {
-=======
   onImportSourcePageAdvanced(event) {
->>>>>>> 822b139b92cedf98ab96ccad686dae664d417af4
     var newSource = document.getElementById("importSourceGroup").selectedItem.id;
 
     if (newSource == "nothing") {
@@ -200,9 +194,9 @@ var MigrationWizard = { /* exported MigrationWizard */
     return true;
   },
 
-  onImportSourcePageAdvanced() {
+  onImportSourcePageAdvanced(event) {
     // Only change explicitly set migrator if manual selection is allowed.
-    if (!this._skipImportSourcePage && !this.maybeTakeUserSelectedMigrator())
+    if (!this._skipImportSourcePage && !this.maybeTakeUserSelectedMigrator(event))
       return false;
 
     // check for more than one source profile

@@ -65,19 +65,10 @@
   </wizardpage>
 
   <wizardpage id="importItems" pageid="importItems" label="&importItems.title;"
-<<<<<<< HEAD
               next="selectAddons"
               onpageshow="return MigrationWizard.onImportItemsPageShow();"
               onpagerewound="return MigrationWizard.onImportItemsPageRewound();"
               onpageadvanced="return MigrationWizard.onImportItemsPageAdvanced();"
-||||||| merged common ancestors
-              next="migrating"
-              onpageshow="return MigrationWizard.onImportItemsPageShow();"
-              onpagerewound="return MigrationWizard.onImportItemsPageRewound();"
-              onpageadvanced="return MigrationWizard.onImportItemsPageAdvanced();"
-=======
-              next="migrating"
->>>>>>> 822b139b92cedf98ab96ccad686dae664d417af4
               oncommand="MigrationWizard.onImportItemCommand();">
     <description control="dataSources">&importItems.label;</description>
 
