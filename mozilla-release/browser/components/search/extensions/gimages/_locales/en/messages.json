@@ -1,0 +1,14 @@
+{
+  "extensionName": {
+    "message": "Google Images"
+  },
+  "extensionDescription": {
+    "message": "Google Images"
+  },
+  "searchUrl": {
+    "message": "https://www.google.com/search"
+  },
+  "searchForm": {
+    "message": "https://www.google.com/search"
+  }
+}

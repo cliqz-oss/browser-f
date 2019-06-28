@@ -1,0 +1,14 @@
+{
+  "extensionName": {
+    "message": "Google Maps"
+  },
+  "extensionDescription": {
+    "message": "Google Maps"
+  },
+  "searchUrl": {
+    "message": "https://www.google.de/maps"
+  },
+  "searchForm": {
+    "message": "https://www.google.de/maps"
+  }
+}

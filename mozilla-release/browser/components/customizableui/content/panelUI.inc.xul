@@ -236,7 +236,6 @@
                        oncommand="PanelUI._onBannerItemSelected(event)"
                        wrap="true"
                        hidden="true"/>
-<<<<<<< HEAD
         <toolbarbutton
                        id="addon-enabled-banner"
                        class="panel-banner-item"
@@ -251,12 +250,7 @@
                        class="subviewbutton subviewbutton-iconic"
                        oncommand="openPreferences('connect', {origin: 'ContainersCommand'});"/>
 #ifdef 0
-        <toolbaritem id="appMenu-fxa-container" class="toolbaritem-combined-buttons sync-ui-item">
-||||||| merged common ancestors
-        <toolbaritem id="appMenu-fxa-container" class="toolbaritem-combined-buttons sync-ui-item">
-=======
         <toolbaritem id="appMenu-fxa-container" class="sync-ui-item">
->>>>>>> 822b139b92cedf98ab96ccad686dae664d417af4
           <hbox id="appMenu-fxa-status"
                 flex="1"
                 defaultlabel="&fxaSignIn.label;"

@@ -1,0 +1,17 @@
+{
+  "extensionName": {
+    "message": "Yahoo"
+  },
+  "extensionDescription": {
+    "message": "Use Yahoo to search the Internet."
+  },
+  "searchUrl": {
+    "message": "https://de.search.yahoo.com/"
+  },
+  "searchForm": {
+    "message": "https://de.search.yahoo.com/"
+  },
+  "suggestUrl": {
+    "message": "https://de.search.yahoo.com/?p={searchTerms}&ei=UTF-8"
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "name": "Start Page",
+  "description": "Search Start Page",
+  "manifest_version": 2,
+  "version": "1.0",
+  "applications": {
+    "gecko": {
+      "id": "start-page@search.mozilla.org"
+    }
+  },
+  "hidden": true,
+  "icons": {
+    "16": "startpage.png"
+  },
+  "web_accessible_resources": [
+    "startpage.png"
+  ],
+  "chrome_settings_overrides": {
+    "search_provider": {
+      "name": "Start Page",
+      "search_url": "https://www.startpage.com/do/dsearch",
+      "search_form": "https://www.startpage.com/do/dsearch?query={searchTerms}&cat=web&pl=opensearch&language=english",
+      "search_url_get_params": "query={searchTerms}&cat=web&pl=opensearch&language=english"
+    }
+  }
+}

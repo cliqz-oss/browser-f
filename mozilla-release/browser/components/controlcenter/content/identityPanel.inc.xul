@@ -55,7 +55,7 @@
                 when-connection="not-secure secure secure-ev secure-cert-user-overridden"
                 oncommand="gIdentityHandler.showSecuritySubView(); gIdentityHandler.recordClick('security_subview_btn');"/>
       </hbox>
-
+#if 0
       <!-- Tracking Protection Section -->
       <hbox id="tracking-protection-container"
             class="identity-popup-section"
@@ -129,7 +129,7 @@
                  flex="1">&contentBlocking.openBreakageReportView2.label;</label>
         </vbox>
       </hbox>
-
+#endif
       <!-- Permissions Section -->
       <hbox class="identity-popup-section"
             when-connection="not-secure secure secure-ev secure-cert-user-overridden file extension">
