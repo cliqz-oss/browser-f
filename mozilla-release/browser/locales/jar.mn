@@ -15,17 +15,7 @@
 % locale browser @AB_CD@ %locale/browser/
 # bookmarks.html is produced by LOCALIZED_GENERATED_FILES.
     locale/browser/bookmarks.html                  (bookmarks.html)
-<<<<<<< HEAD
-# Disabled in favor of Cliqz own design
-#if 0
-    locale/browser/aboutPrivateBrowsing.dtd        (%chrome/browser/aboutPrivateBrowsing.dtd)
-#endif
     locale/browser/cliqzPrivateBrowsing.dtd        (%chrome/browser/cliqzPrivateBrowsing.dtd)
-||||||| merged common ancestors
-    locale/browser/aboutPrivateBrowsing.dtd        (%chrome/browser/aboutPrivateBrowsing.dtd)
-=======
-
->>>>>>> 822b139b92cedf98ab96ccad686dae664d417af4
     locale/browser/accounts.properties             (%chrome/browser/accounts.properties)
     locale/browser/app-extension-fields.properties (%chrome/browser/app-extension-fields.properties)
     locale/browser/browser.dtd                     (%chrome/browser/browser.dtd)

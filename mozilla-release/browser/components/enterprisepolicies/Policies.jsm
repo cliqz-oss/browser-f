@@ -727,38 +727,9 @@ var Policies = {
       // |homepages| will be a string containing a pipe-separated ('|') list of
       // URLs because that is what the "Custom URLs..." section of about:preferences
       // (and therefore what the pref |browser.startup.homepage|) accepts.
-<<<<<<< HEAD
       let homepages = "about:home";
-      if (param.Homepage) {
-        switch (param.Homepage) {
-          case "default":
-            homepages = "about:home";
-||||||| merged common ancestors
       if (param.URL) {
-        let homepages = param.URL.href;
-        if (param.Additional && param.Additional.length > 0) {
-          homepages += "|" + param.Additional.map(url => url.href).join("|");
-        }
-        if (param.Locked) {
-          setAndLockPref("browser.startup.homepage", homepages);
-          setAndLockPref("pref.browser.homepage.disable_button.current_page", true);
-          setAndLockPref("pref.browser.homepage.disable_button.bookmark_page", true);
-          setAndLockPref("pref.browser.homepage.disable_button.restore_default", true);
-        } else {
-          setDefaultPref("browser.startup.homepage", homepages);
-          runOncePerModification("setHomepage", homepages, () => {
-            Services.prefs.clearUserPref("browser.startup.homepage");
-          });
-        }
-      }
-      if (param.StartPage) {
-        let prefValue;
-        switch (param.StartPage) {
-          case "none":
-            prefValue = 0;
-=======
-      if (param.URL) {
-        let homepages = param.URL.href;
+        homepages = param.URL.href;
         if (param.Additional && param.Additional.length > 0) {
           homepages += "|" + param.Additional.map(url => url.href).join("|");
         }
@@ -776,9 +747,10 @@ var Policies = {
       if (param.StartPage) {
         let prefValue;
         switch (param.StartPage) {
+          case "default":
+            homepages = "about:home";
           case "none":
             prefValue = 0;
->>>>>>> 822b139b92cedf98ab96ccad686dae664d417af4
             break;
           case "urls":
             if (param.URLs && param.URLs.length > 0) {
@@ -789,33 +761,11 @@ var Policies = {
             homepages = "about:blank";
             break;
         }
-<<<<<<< HEAD
       }
 
-      if (param.Locked) {
-        setAndLockPref("browser.startup.restoreTabs", param.RestoreLastSession);
-        setAndLockPref("browser.startup.addFreshTab", param.ShowHomepage);
-        setAndLockPref("browser.startup.homepage", homepages);
-        setAndLockPref("pref.browser.homepage.disable_button.current_page", true);
-        setAndLockPref("pref.browser.homepage.disable_button.bookmark_page", true);
-        setAndLockPref("pref.browser.homepage.disable_button.restore_default", true);
-      } else {
-        setDefaultPref("browser.startup.restoreTabs", param.RestoreLastSession);
-        setDefaultPref("browser.startup.addFreshTab", param.ShowHomepage);
-        setDefaultPref("browser.startup.homepage", homepages);
-        runOncePerModification("setHomepage", homepages, () => {
-          Services.prefs.clearUserPref("browser.startup.homepage");
-        });
-||||||| merged common ancestors
-        if (param.Locked) {
-          setAndLockPref("browser.startup.page", prefValue);
-        } else {
-          setDefaultPref("browser.startup.page", prefValue);
-        }
-=======
-        setDefaultPref("browser.startup.page", prefValue, param.Locked);
->>>>>>> 822b139b92cedf98ab96ccad686dae664d417af4
-      }
+      setDefaultPref("browser.startup.restoreTabs", param.RestoreLastSession, param.Locked);
+      setDefaultPref("browser.startup.addFreshTab", param.ShowHomepage, param.Locked);
+      setDefaultPref("browser.startup.homepage", homepages, param.Locked);
     },
   },
 

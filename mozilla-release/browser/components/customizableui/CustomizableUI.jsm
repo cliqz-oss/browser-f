@@ -28,7 +28,8 @@ XPCOMUtils.defineLazyGetter(this, "gWidgetsBundle", function() {
 XPCOMUtils.defineLazyServiceGetter(this, "gELS",
   "@mozilla.org/eventlistenerservice;1", "nsIEventListenerService");
 
-const kDefaultThemeID = "default-theme@mozilla.org";
+// Cliqz: Set compact light theme as default theme
+const kDefaultThemeID = "firefox-compact-light@mozilla.org";
 
 const kSpecialWidgetPfx = "customizableui-special-";
 
@@ -2721,19 +2722,7 @@ var CustomizableUIInternal = {
     Services.prefs.clearUserPref(kPrefUIDensity);
     Services.prefs.clearUserPref(kPrefAutoTouchMode);
     Services.prefs.clearUserPref(kPrefAutoHideDownloadsButton);
-<<<<<<< HEAD
-    // LightweightThemeManager.currentTheme = null;
-    // Cliqz: Set compact light theme as default theme
-    const lightTheme = LightweightThemeManager.getUsedTheme('firefox-compact-light@mozilla.org');
-    if (lightTheme) {
-      LightweightThemeManager.currentTheme = lightTheme;
-    }
-
-||||||| merged common ancestors
-    LightweightThemeManager.currentTheme = null;
-=======
     gDefaultTheme.enable();
->>>>>>> 822b139b92cedf98ab96ccad686dae664d417af4
     gNewElementCount = 0;
     log.debug("State reset");
 
@@ -3012,20 +3001,9 @@ var CustomizableUIInternal = {
       return false;
     }
 
-<<<<<<< HEAD
-    // Cliqz: firefox-compact-light@mozilla.org is default
-    if (LightweightThemeManager.currentTheme &&
-        LightweightThemeManager.currentTheme.id != "firefox-compact-light@mozilla.org") {
-      log.debug(LightweightThemeManager.currentTheme + " theme is non-default");
-||||||| merged common ancestors
-    if (LightweightThemeManager.currentTheme &&
-        LightweightThemeManager.currentTheme.id != "default-theme@mozilla.org") {
-      log.debug(LightweightThemeManager.currentTheme + " theme is non-default");
-=======
     // This should just be `gDefaultTheme.isActive`, but bugs...
     if (gDefaultTheme && gDefaultTheme.id != gSelectedTheme.id) {
       log.debug(gSelectedTheme.id + " theme is non-default");
->>>>>>> 822b139b92cedf98ab96ccad686dae664d417af4
       return false;
     }
 

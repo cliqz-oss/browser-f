@@ -165,15 +165,9 @@ NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(nsFrameLoader)
   NS_INTERFACE_MAP_ENTRY(nsISupports)
 NS_INTERFACE_MAP_END
 
-<<<<<<< HEAD
 static mozilla::LazyLogModule gFrameLoaderLog("nsFrameLoader");
 
-nsFrameLoader::nsFrameLoader(Element* aOwner, nsPIDOMWindowOuter* aOpener,
-||||||| merged common ancestors
-nsFrameLoader::nsFrameLoader(Element* aOwner, nsPIDOMWindowOuter* aOpener,
-=======
 nsFrameLoader::nsFrameLoader(Element* aOwner, BrowsingContext* aBrowsingContext,
->>>>>>> 822b139b92cedf98ab96ccad686dae664d417af4
                              bool aNetworkCreated)
     : mBrowsingContext(aBrowsingContext),
       mOwnerContent(aOwner),

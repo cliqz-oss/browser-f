@@ -264,22 +264,6 @@
       "type": "boolean"
     },
 
-<<<<<<< HEAD
-||||||| merged common ancestors
-    "EnableTrackingProtection": {
-      "type": "object",
-      "properties": {
-        "Value": {
-          "type": "boolean"
-        },
-        "Locked": {
-          "type": "boolean"
-        }
-      },
-      "required": ["Value"]
-    },
-
-=======
     "DownloadDirectory": {
       "type": "string"
     },
@@ -297,7 +281,6 @@
       "required": ["Value"]
     },
 
->>>>>>> 822b139b92cedf98ab96ccad686dae664d417af4
     "Extensions": {
       "type": "object",
       "properties": {
@@ -774,16 +757,6 @@
       }
     },
 
-<<<<<<< HEAD
-||||||| merged common ancestors
-    "RequestedLocales": {
-      "type": "array",
-      "items": {
-        "type": "string"
-      }
-    },
-
-=======
     "RequestedLocales": {
       "type": ["string", "array"],
       "items": {
@@ -791,7 +764,6 @@
       }
     },
 
->>>>>>> 822b139b92cedf98ab96ccad686dae664d417af4
     "SanitizeOnShutdown": {
       "type": ["boolean", "object"],
       "properties": {
@@ -822,69 +794,6 @@
       }
     },
 
-<<<<<<< HEAD
-||||||| merged common ancestors
-    "SearchBar": {
-      "type": "string",
-      "enum": ["unified", "separate"]
-    },
-
-    "SearchEngines": {
-      "enterprise_only": true,
-
-      "type": "object",
-      "properties": {
-        "Add": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "required": ["Name", "URLTemplate"],
-
-            "properties": {
-              "Name": {
-                "type": "string"
-              },
-              "IconURL": {
-                "type": "URLorEmpty"
-              },
-              "Alias": {
-                "type": "string"
-              },
-              "Description": {
-                "type": "string"
-              },
-              "Method": {
-                "type": "string",
-                "enum": ["GET", "POST"]
-              },
-              "URLTemplate": {
-                "type": "string"
-              },
-              "PostData": {
-                "type": "string"
-              },
-              "SuggestURLTemplate": {
-                "type": "string"
-              }
-            }
-          }
-        },
-        "Default": {
-          "type": "string"
-        },
-        "PreventInstalls": {
-          "type": "boolean"
-        },
-        "Remove": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
-        }
-      }
-    },
-
-=======
     "SearchBar": {
       "type": "string",
       "enum": ["unified", "separate"]
@@ -949,7 +858,6 @@
       "type": "boolean"
     },
 
->>>>>>> 822b139b92cedf98ab96ccad686dae664d417af4
     "SecurityDevices": {
       "type": "object",
       "patternProperties": {
