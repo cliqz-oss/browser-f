@@ -283,15 +283,7 @@ const DEFAULT_ENVIRONMENT_PREFS = new Map([
   ["security.pki.mitm_detected", {what: RECORD_PREF_VALUE}],
   ["security.mixed_content.block_active_content", {what: RECORD_PREF_VALUE}],
   ["security.mixed_content.block_display_content", {what: RECORD_PREF_VALUE}],
-<<<<<<< HEAD
   ["toolkit.cosmeticAnimations.enabled", {what: RECORD_PREF_VALUE}],
-  ["toolkit.telemetry.testing.overridePreRelease", {what: RECORD_PREF_VALUE}],
-  ["toolkit.telemetry.overrideUpdateChannel", {what: RECORD_PREF_STATE}],
-||||||| merged common ancestors
-  ["toolkit.telemetry.testing.overridePreRelease", {what: RECORD_PREF_VALUE}],
-  ["toolkit.telemetry.overrideUpdateChannel", {what: RECORD_PREF_STATE}],
-=======
->>>>>>> 822b139b92cedf98ab96ccad686dae664d417af4
   ["xpinstall.signatures.required", {what: RECORD_PREF_VALUE}],
 ]);
 

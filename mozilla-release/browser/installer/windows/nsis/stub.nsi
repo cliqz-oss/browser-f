@@ -40,7 +40,6 @@ Var HwndBgBitmapControl
 Var CurrentBlurbIdx
 Var CheckboxCleanupProfile
 
-<<<<<<< HEAD
 Var Bitmap1
 Var Bitmap2
 Var Bitmap3
@@ -51,21 +50,12 @@ Var HwndBitmap2
 Var HwndBitmap3
 Var HwndBitmap4
 Var HwndBitmap5
-
-||||||| merged common ancestors
-=======
 Var FontFamilyName
->>>>>>> 822b139b92cedf98ab96ccad686dae664d417af4
 Var FontInstalling
-<<<<<<< HEAD
-Var FontBlurb1
-Var FontBlurb2
-||||||| merged common ancestors
-Var FontBlurb
-=======
 Var FontHeader
 Var FontBlurb
->>>>>>> 822b139b92cedf98ab96ccad686dae664d417af4
+Var FontBlurb1
+Var FontBlurb2
 Var FontFooter
 Var FontButton
 Var FontCheckbox
@@ -502,28 +492,20 @@ Function .onInit
     StrCpy $FontFamilyName "$(^Font)"
   ${EndIf}
 
-<<<<<<< HEAD
-  CreateFont $FontInstalling "$0" "11" "400"
-  CreateFont $FontBlurb1     "$0" "26" "600"
-  CreateFont $FontBlurb2     "$0" "14" "400"
-  CreateFont $FontButton     "$0" "14" "600"
-  CreateFont $FontFooter     "$0" "10" "600"
-  CreateFont $FontCheckbox   "$0" "12" "400"
-||||||| merged common ancestors
-  CreateFont $FontInstalling "$0" "28" "400"
-  CreateFont $FontBlurb      "$0" "15" "400"
-  CreateFont $FontFooter     "$0" "13" "400"
-  CreateFont $FontCheckbox   "$0" "10" "400"
-=======
   CreateFont $FontHeader     "$FontFamilyName" "${INSTALL_HEADER_FONT_SIZE}" \
                                                "${INSTALL_HEADER_FONT_WEIGHT}"
-  CreateFont $FontInstalling "$FontFamilyName" "${INSTALL_INSTALLING_FONT_SIZE}" \
-                                               "${INSTALL_INSTALLING_FONT_WEIGHT}"
-  CreateFont $FontButton     "$FontFamilyName" "10" "500"
+  CreateFont $FontInstalling "$0" "11" "400"
+; CreateFont $FontInstalling "$FontFamilyName" "${INSTALL_INSTALLING_FONT_SIZE}" \
+;                                               "${INSTALL_INSTALLING_FONT_WEIGHT}"
+  CreateFont $FontButton     "$0" "14" "600"
+; CreateFont $FontButton     "$FontFamilyName" "10" "500"
   CreateFont $FontBlurb      "$FontFamilyName" "15" "400"
-  CreateFont $FontFooter     "$FontFamilyName" "13" "400"
-  CreateFont $FontCheckbox   "$FontFamilyName" "10" "400"
->>>>>>> 822b139b92cedf98ab96ccad686dae664d417af4
+  CreateFont $FontFooter     "$0" "10" "600"
+; CreateFont $FontFooter     "$FontFamilyName" "13" "400"
+  CreateFont $FontCheckbox   "$0" "12" "400"
+; CreateFont $FontCheckbox   "$FontFamilyName" "10" "400"
+  CreateFont $FontBlurb1     "$0" "26" "600"
+  CreateFont $FontBlurb2     "$0" "14" "400"
 
   InitPluginsDir
   File /oname=$PLUGINSDIR\cliqzlogo.gif "cliqzlogo.gif"
@@ -596,15 +578,11 @@ Function .onInit
     MessageBox MB_OK|MB_ICONEXCLAMATION "$(WARN_DISK_SPACE_QUIT)"
     Quit
   ${EndIf}
-<<<<<<< HEAD
+
+  ${InitHashAppModelId} "$INSTDIR" "Software\Mozilla\${AppName}\TaskBarIDs"
 
   ; Save information about brand to registry for later use from full installer
   CliqzHelper::saveTaggedParams "Software\CLIQZ" 259200
-||||||| merged common ancestors
-=======
-
-  ${InitHashAppModelId} "$INSTDIR" "Software\Mozilla\${AppName}\TaskBarIDs"
->>>>>>> 822b139b92cedf98ab96ccad686dae664d417af4
 FunctionEnd
 
 ; .onGUIInit isn't needed except for RTL locales
@@ -734,55 +712,6 @@ Function createProfileCleanup
   ShowWindow $0 ${SW_HIDE}
   EnableWindow $0 0
 
-<<<<<<< HEAD
-  ${GetDlgItemWidthHeight} $HWNDPARENT $R1 $R2
-  ${GetTextWidthHeight} $ProfileCleanupHeaderString $FontBlurb1 $R1 $R1 $R2
-  ${NSD_CreateLabelCenter} 0 ${PROFILE_CLEANUP_LABEL_TOP_DU} 100% $R2 \
-    $ProfileCleanupHeaderString
-  Pop $0
-  SendMessage $0 ${WM_SETFONT} $FontBlurb1 0
-  SetCtlColors $0 ${INSTALL_BLURB_TEXT_COLOR} transparent
-
-  ${GetDlgItemBottomDU} $Dialog $0 $1
-  IntOp $1 $1 + 40 ; add a bit of padding between the header and the button
-  ${GetTextExtent} $ProfileCleanupButtonString $FontButton $R1 $R2
-  ; Add some padding to both dimensions of the button.
-  IntOp $R1 $R1 + 90
-  IntOp $R2 $R2 + 24
-  ; Now that we know the size and the Y coordinate for the button, we can find
-  ; the correct X coordinate to get it properly centered.
-  ${GetDlgItemWidthHeight} $HWNDPARENT $R3 $R4
-  IntOp $R5 $R1 / 2
-  IntOp $R3 $R3 / 2
-  IntOp $R3 $R3 - $R5
-  ; We need a custom button because the default ones get drawn underneath the
-  ; background image we're about to insert.
-  ${NSD_CreateButton} $R3 $1 $R1 $R2 $ProfileCleanupButtonString
-||||||| merged common ancestors
-  ${GetDlgItemWidthHeight} $HWNDPARENT $R1 $R2
-  ${GetTextWidthHeight} $ProfileCleanupHeaderString $FontInstalling $R1 $R1 $R2
-  ${NSD_CreateLabelCenter} 0 ${PROFILE_CLEANUP_LABEL_TOP_DU} 100% $R2 \
-    $ProfileCleanupHeaderString
-  Pop $0
-  SendMessage $0 ${WM_SETFONT} $FontInstalling 0
-  SetCtlColors $0 ${INSTALL_BLURB_TEXT_COLOR} transparent
-
-  ${GetDlgItemBottomDU} $Dialog $0 $1
-  IntOp $1 $1 + 10 ; add a bit of padding between the header and the button
-  ${GetTextExtent} $ProfileCleanupButtonString $FontFooter $R1 $R2
-  ; Add some padding to both dimensions of the button.
-  IntOp $R1 $R1 + 100
-  IntOp $R2 $R2 + 10
-  ; Now that we know the size and the Y coordinate for the button, we can find
-  ; the correct X coordinate to get it properly centered.
-  ${GetDlgItemWidthHeight} $HWNDPARENT $R3 $R4
-  IntOp $R5 $R1 / 2
-  IntOp $R3 $R3 / 2
-  IntOp $R3 $R3 - $R5
-  ; We need a custom button because the default ones get drawn underneath the
-  ; background image we're about to insert.
-  ${NSD_CreateButton} $R3 $1 $R1 $R2 $ProfileCleanupButtonString
-=======
   ; Draw the main prompt header label.
   !if ${PROFILE_CLEANUP_LABEL_WIDTH} == "100%"
     ${GetDlgItemWidthHeight} $HWNDPARENT $0 $1
@@ -794,12 +723,18 @@ Function createProfileCleanup
     IntOp $R1 $1 / 2
     IntOp $0 $0 / 2
     IntOp $9 $0 - $R1
-    ${GetTextWidthHeight} $ProfileCleanupHeaderString $FontHeader $1 $R1 $R2
+    ; ${GetTextWidthHeight} $ProfileCleanupHeaderString $FontHeader $1 $R1 $R2
+    ${GetTextWidthHeight} $ProfileCleanupHeaderString $FontBlurb1 $R1 $R1 $R2
   !else
     ${DialogUnitsToPixels} ${PROFILE_CLEANUP_LABEL_WIDTH} X $1
     ${GetTextWidthHeight} $ProfileCleanupHeaderString $FontHeader $1 $1 $R2
     ${ConvertLeftCoordForRTL} ${PROFILE_CLEANUP_LABEL_LEFT} $1 $9
   !endif
+  SendMessage $0 ${WM_SETFONT} $FontBlurb1 0
+  IntOp $1 $1 + 40 ; add a bit of padding between the header and the button
+  ${GetTextExtent} $ProfileCleanupButtonString $FontButton $R1 $R2
+  IntOp $R1 $R1 + 90
+  IntOp $R2 $R2 + 24
   ; If this text is over the maximum height, drop the font size until it fits.
   StrCpy $4 $FontHeader
   !ifdef PROFILE_CLEANUP_LABEL_HEIGHT
@@ -813,79 +748,14 @@ Function createProfileCleanup
   !endif
   ${NSD_CreateLabel} $9 ${PROFILE_CLEANUP_LABEL_TOP} $1 $R2 \
     "$ProfileCleanupHeaderString"
->>>>>>> 822b139b92cedf98ab96ccad686dae664d417af4
   Pop $0
-<<<<<<< HEAD
-  SendMessage $0 ${WM_SETFONT} $FontButton 0
-  ${NSD_OnClick} $0 gotoInstallPage
-  ${NSD_SetFocus} $0
-||||||| merged common ancestors
-  SendMessage $0 ${WM_SETFONT} $FontFooter 0
-  ${NSD_OnClick} $0 gotoInstallPage
-  ${NSD_SetFocus} $0
-=======
   !if ${PROFILE_CLEANUP_LABEL_ALIGN} == "center"
     ${NSD_AddStyle} $0 ${SS_CENTER}
   !endif
-  SendMessage $0 ${WM_SETFONT} $4 0
+  ; SendMessage $0 ${WM_SETFONT} $4 0
+  SendMessage $0 ${WM_SETFONT} $FontButton 0
   SetCtlColors $0 ${COMMON_TEXT_COLOR} transparent
->>>>>>> 822b139b92cedf98ab96ccad686dae664d417af4
 
-<<<<<<< HEAD
-  ; For the checkbox, first we need to know the width of the checkbox itself,
-  ; since it can vary with the display scaling and the theme.
-  System::Call 'User32::GetSystemMetrics(i 71) i .r1' ; 71 == SM_CXMENUCHECK
-  ; Now get the width of the label test, if it were all on one line.
-  ${GetTextExtent} $(STUB_CLEANUP_CHECKBOX_LABEL) $FontCheckbox $R1 $R2
-  ${GetDlgItemWidthHeight} $HWNDPARENT $R3 $R4
-  ; Add the checkbox width to the text width, then figure out how many lines
-  ; we're going to need in order to display that text in our dialog.
-  IntOp $R1 $R1 + $1
-  IntOp $R1 $R1 + 5
-  StrCpy $R5 $R1
-  StrCpy $R6 $R2
-  IntOp $R3 $R3 - 150 ; leave some padding on the sides of the dialog
-  ${While} $R1 > $R3
-    StrCpy $R5 $R3
-    IntOp $R2 $R2 + $R6
-    IntOp $R1 $R1 - $R3
-  ${EndWhile}
-  ${GetDlgItemBottomDU} $Dialog $0 $1
-  ; Now that we know the size for the checkbox, center it in the dialog.
-  ${GetDlgItemWidthHeight} $HWNDPARENT $R3 $R4
-  IntOp $R6 $R5 / 2
-  IntOp $R3 $R3 / 2
-  IntOp $R3 $R3 - $R6
-  IntOp $1 $1 + 30 ; add a bit of padding between the button and the checkbox
-  ${NSD_CreateCheckbox} $R3 $1 $R5 $R2 $(STUB_CLEANUP_CHECKBOX_LABEL)
-||||||| merged common ancestors
-  ; For the checkbox, first we need to know the width of the checkbox itself,
-  ; since it can vary with the display scaling and the theme.
-  System::Call 'User32::GetSystemMetrics(i 71) i .r1' ; 71 == SM_CXMENUCHECK
-  ; Now get the width of the label test, if it were all on one line.
-  ${GetTextExtent} $(STUB_CLEANUP_CHECKBOX_LABEL) $FontCheckbox $R1 $R2
-  ${GetDlgItemWidthHeight} $HWNDPARENT $R3 $R4
-  ; Add the checkbox width to the text width, then figure out how many lines
-  ; we're going to need in order to display that text in our dialog.
-  IntOp $R1 $R1 + $1
-  IntOp $R1 $R1 + 5
-  StrCpy $R5 $R1
-  StrCpy $R6 $R2
-  IntOp $R3 $R3 - 150 ; leave some padding on the sides of the dialog
-  ${While} $R1 > $R3
-    StrCpy $R5 $R3
-    IntOp $R2 $R2 + $R6
-    IntOp $R1 $R1 - $R3
-  ${EndWhile}
-  ${GetDlgItemBottomDU} $Dialog $0 $1
-  ; Now that we know the size for the checkbox, center it in the dialog.
-  ${GetDlgItemWidthHeight} $HWNDPARENT $R3 $R4
-  IntOp $R6 $R5 / 2
-  IntOp $R3 $R3 / 2
-  IntOp $R3 $R3 - $R6
-  IntOp $1 $1 + 20 ; add a bit of padding between the button and the checkbox
-  ${NSD_CreateCheckbox} $R3 $1 $R5 $R2 $(STUB_CLEANUP_CHECKBOX_LABEL)
-=======
   ; For the checkbox, first find how much height we're going to need for the
   ; label text.
   ${If} ${PROFILE_CLEANUP_CHECKBOX_WIDTH} == "100%"
@@ -926,7 +796,8 @@ Function createProfileCleanup
   ${GetDlgItemBottomPX} $0 $1
   ; Add a bit of margin above the checkbox.
   ${DialogUnitsToPixels} ${PROFILE_CLEANUP_CHECKBOX_TOP_MARGIN} Y $2
-  IntOp $1 $1 + $2
+  IntOp $1 $1 + 30 ; add a bit of padding between the button and the checkbox
+  ; IntOp $1 $1 + $2
   ClearErrors
   ${WordFind} "${PROFILE_CLEANUP_CHECKBOX_WIDTH}" "%" "E#" $9
   ${If} ${Errors}
@@ -934,7 +805,6 @@ Function createProfileCleanup
   ${EndIf}
   ${NSD_CreateCheckbox} $R3 $1 ${PROFILE_CLEANUP_CHECKBOX_WIDTH} $R2 \
     $(STUB_CLEANUP_CHECKBOX_LABEL)
->>>>>>> 822b139b92cedf98ab96ccad686dae664d417af4
   Pop $CheckboxCleanupProfile
   SendMessage $CheckboxCleanupProfile ${WM_SETFONT} $FontCheckbox 0
   ; The uxtheme must be disabled on checkboxes in order to override the system
@@ -952,32 +822,7 @@ Function createProfileCleanup
   ${NSD_OnClick} $CheckboxCleanupProfile RedrawWindow
   ${NSD_Check} $CheckboxCleanupProfile
 
-<<<<<<< HEAD
   ${NSD_CreateLabel} 60% ${INSTALL_FOOTER_TOP_DU} 35% 60u "$(STUB_BLURB_FOOTER2)"
-;  ${GetTextWidthHeight} "$(STUB_BLURB_FOOTER2)" $FontFooter \
-;    ${INSTALL_FOOTER_WIDTH_DU} $R1 $R2
-;  !ifdef ${AB_CD}_rtl
-;    nsDialogs::CreateControl STATIC ${DEFAULT_STYLES}|${SS_NOTIFY} \
-;      ${WS_EX_TRANSPARENT} 30u ${INSTALL_FOOTER_TOP_DU} ${INSTALL_FOOTER_WIDTH_DU} \
-;       "$R2u" "$(STUB_BLURB_FOOTER2)"
-;  !else
-;    nsDialogs::CreateControl STATIC ${DEFAULT_STYLES}|${SS_NOTIFY}|${SS_RIGHT} \
-;      ${WS_EX_TRANSPARENT} 175u ${INSTALL_FOOTER_TOP_DU} ${INSTALL_FOOTER_WIDTH_DU} \
-;      "$R2u" "$(STUB_BLURB_FOOTER2)"
-;  !endif
-||||||| merged common ancestors
-  ${GetTextWidthHeight} "$(STUB_BLURB_FOOTER2)" $FontFooter \
-    ${INSTALL_FOOTER_WIDTH_DU} $R1 $R2
-  !ifdef ${AB_CD}_rtl
-    nsDialogs::CreateControl STATIC ${DEFAULT_STYLES}|${SS_NOTIFY} \
-      ${WS_EX_TRANSPARENT} 30u ${INSTALL_FOOTER_TOP_DU} ${INSTALL_FOOTER_WIDTH_DU} \
-       "$R2u" "$(STUB_BLURB_FOOTER2)"
-  !else
-    nsDialogs::CreateControl STATIC ${DEFAULT_STYLES}|${SS_NOTIFY}|${SS_RIGHT} \
-      ${WS_EX_TRANSPARENT} 175u ${INSTALL_FOOTER_TOP_DU} ${INSTALL_FOOTER_WIDTH_DU} \
-      "$R2u" "$(STUB_BLURB_FOOTER2)"
-  !endif
-=======
   ; Time to draw the continue button. Compute its height based on the top and
   ; height of the checkbox, since GetDlgItemBottomPX returns nonsense for the
   ; checkbox for some reason.
@@ -1003,7 +848,6 @@ Function createProfileCleanup
   ; We need a custom button because the default ones get drawn underneath the
   ; background image we're about to insert.
   ${NSD_CreateButton} $R3 $1 $R1 $R2 "$ProfileCleanupButtonString"
->>>>>>> 822b139b92cedf98ab96ccad686dae664d417af4
   Pop $0
   SendMessage $0 ${WM_SETFONT} $FontButton 0
   ${NSD_OnClick} $0 gotoInstallPage
@@ -1114,7 +958,6 @@ Function createInstall
     ${INSTALL_INSTALLING_WIDTH} $R2 "$(STUB_INSTALLING_LABEL2)"
   Pop $0
   SendMessage $0 ${WM_SETFONT} $FontInstalling 0
-<<<<<<< HEAD
   SetCtlColors $0 ${INSTALL_BLURB_TEXT_COLOR} transparent
 
   ${NSD_CreateLabel} 60% ${INSTALL_BLURB1_TOP_DU} 37% 100u "$(STUB_BLURB1_FIRST1)"
@@ -1136,20 +979,6 @@ Function createInstall
   SendMessage $LabelBlurb3 ${WM_SETFONT} $FontBlurb2 0
   SetCtlColors $LabelBlurb3 ${INSTALL_BLURB_TEXT_COLOR} transparent
   ShowWindow $LabelBlurb3 ${SW_HIDE}
-||||||| merged common ancestors
-  SetCtlColors $0 ${INSTALL_BLURB_TEXT_COLOR} transparent
-
-  ${NSD_CreateLabelCenter} 0% ${INSTALL_BLURB_TOP_DU} 100% 60u "$(STUB_BLURB_FIRST1)"
-  Pop $LabelBlurb
-  SendMessage $LabelBlurb ${WM_SETFONT} $FontBlurb 0
-  SetCtlColors $LabelBlurb ${INSTALL_BLURB_TEXT_COLOR} transparent
-=======
-  ${If} $UsingHighContrastMode == 0
-    SetCtlColors $0 ${INSTALL_INSTALLING_TEXT_COLOR} transparent
-  ${Else}
-    SetCtlColors $0 ${COMMON_TEXT_COLOR} transparent
-  ${EndIf}
->>>>>>> 822b139b92cedf98ab96ccad686dae664d417af4
 
   ; Initialize these variables even if we won't use them to silence warnings.
   StrCpy $CurrentBlurbIdx "0"
@@ -1163,27 +992,7 @@ Function createInstall
     ${NSD_CreateTimer} ClearBlurb ${BlurbDisplayMS}
   !endif
 
-<<<<<<< HEAD
   ${NSD_CreateLabel} 60% ${INSTALL_FOOTER_TOP_DU} 35% 60u "$(STUB_BLURB_FOOTER2)"
-  Pop $0
-  SendMessage $0 ${WM_SETFONT} $FontFooter 0
-  SetCtlColors $0 ${INSTALL_FOOTER_TEXT_COLOR} transparent
-||||||| merged common ancestors
-  ${GetTextWidthHeight} "$(STUB_BLURB_FOOTER2)" $FontFooter \
-    ${INSTALL_FOOTER_WIDTH_DU} $R1 $R2
-  !ifdef ${AB_CD}_rtl
-    nsDialogs::CreateControl STATIC ${DEFAULT_STYLES}|${SS_NOTIFY} \
-      ${WS_EX_TRANSPARENT} 30u ${INSTALL_FOOTER_TOP_DU} ${INSTALL_FOOTER_WIDTH_DU} "$R2u" \
-      "$(STUB_BLURB_FOOTER2)"
-  !else
-    nsDialogs::CreateControl STATIC ${DEFAULT_STYLES}|${SS_NOTIFY}|${SS_RIGHT} \
-      ${WS_EX_TRANSPARENT} 175u ${INSTALL_FOOTER_TOP_DU} ${INSTALL_FOOTER_WIDTH_DU} "$R2u" \
-      "$(STUB_BLURB_FOOTER2)"
-  !endif
-  Pop $0
-  SendMessage $0 ${WM_SETFONT} $FontFooter 0
-  SetCtlColors $0 ${INSTALL_FOOTER_TEXT_COLOR} transparent
-=======
   !ifdef INSTALL_FOOTER_WIDTH
     ${GetTextWidthHeight} "$(STUB_BLURB_FOOTER2)" $FontFooter \
       ${INSTALL_FOOTER_WIDTH} $R1 $R2
@@ -1200,9 +1009,7 @@ Function createInstall
     SendMessage $0 ${WM_SETFONT} $FontFooter 0
     SetCtlColors $0 ${COMMON_TEXT_COLOR} transparent
   !endif
->>>>>>> 822b139b92cedf98ab96ccad686dae664d417af4
 
-<<<<<<< HEAD
   ; load all images
   ${NSD_CreateBitmap} 29u 52u 210u 141u ""
   Pop $Bitmap1
@@ -1228,25 +1035,6 @@ Function createInstall
   ${NSD_SetImage} $Bitmap5 $PLUGINSDIR\artboard5.bmp $HwndBitmap5
   ShowWindow $Bitmap5 ${SW_HIDE}
 
-;  ${GetTextWidthHeight} "$(STUB_BLURB_FOOTER2)" $FontFooter \
-;    ${INSTALL_FOOTER_WIDTH_DU} $R1 $R2
-;  !ifdef ${AB_CD}_rtl
-;    nsDialogs::CreateControl STATIC ${DEFAULT_STYLES}|${SS_NOTIFY} \
-;      ${WS_EX_TRANSPARENT} 30u ${INSTALL_FOOTER_TOP_DU} ${INSTALL_FOOTER_WIDTH_DU} "$R2u" \
-;      "$(STUB_BLURB_FOOTER2)"
-;  !else
-;    nsDialogs::CreateControl STATIC ${DEFAULT_STYLES}|${SS_NOTIFY}|${SS_RIGHT} \
-;      ${WS_EX_TRANSPARENT} 175u ${INSTALL_FOOTER_TOP_DU} ${INSTALL_FOOTER_WIDTH_DU} "$R2u" \
-;      "$(STUB_BLURB_FOOTER2)"
-;  !endif
-;  Pop $0
-;  SendMessage $0 ${WM_SETFONT} $FontFooter 0
-;  SetCtlColors $0 ${INSTALL_BLURB_TEXT_COLOR} transparent
-
-  ${NSD_CreateProgressBar} 19% ${PROGRESS_BAR_TOP_DU} 62% 3u ""
-||||||| merged common ancestors
-  ${NSD_CreateProgressBar} 20% ${PROGRESS_BAR_TOP_DU} 60% 12u ""
-=======
   ; And now draw the progress bar.
   ClearErrors
   ${WordFind} "${INSTALL_PROGRESS_BAR_WIDTH}" "%" "E#" $9
@@ -1257,7 +1045,6 @@ Function createInstall
   ${EndIf}
   ${NSD_CreateProgressBar} $9 ${INSTALL_PROGRESS_BAR_TOP} \
     ${INSTALL_PROGRESS_BAR_WIDTH} ${INSTALL_PROGRESS_BAR_HEIGHT} ""
->>>>>>> 822b139b92cedf98ab96ccad686dae664d417af4
   Pop $Progressbar
   !ifdef PROGRESS_BAR_BACKGROUND_COLOR
     ; The uxtheme must be disabled so we can change the color.
@@ -1348,25 +1135,18 @@ Function createInstall
   LockWindow off
   nsDialogs::Show
 
-<<<<<<< HEAD
-  ${NSD_FreeImage} $BgBitmapImage
   ${NSD_FreeImage} $HwndBitmap1
   ${NSD_FreeImage} $HwndBitmap2
   ${NSD_FreeImage} $HwndBitmap3
   ${NSD_FreeImage} $HwndBitmap4
   ${NSD_FreeImage} $HwndBitmap5
-||||||| merged common ancestors
-  ${NSD_FreeImage} $BgBitmapImage
-=======
   ${If} $UsingHighContrastMode == 0
     ${NSD_FreeImage} $BgBitmapImage
   ${EndIf}
->>>>>>> 822b139b92cedf98ab96ccad686dae664d417af4
 FunctionEnd
 
 Function StartDownload
   ${NSD_KillTimer} StartDownload
-<<<<<<< HEAD
   ${If} $DroplistArch == "$(VERSION_64BIT)"
     InetBgDL::Get "${URLStubDownload64}${URLStubDownloadAppend}" \
                   "$PLUGINSDIR\download.exe" \
@@ -1376,26 +1156,6 @@ Function StartDownload
                   "$PLUGINSDIR\download.exe" \
                   /CONNECTTIMEOUT 120 /RECEIVETIMEOUT 120 /END
   ${EndIf}
-||||||| merged common ancestors
-  ${If} $ArchToInstall == ${ARCH_AMD64}
-    InetBgDL::Get "${URLStubDownloadAMD64}${URLStubDownloadAppend}" \
-                  "$PLUGINSDIR\download.exe" \
-                  /CONNECTTIMEOUT 120 /RECEIVETIMEOUT 120 /END
-  ${ElseIf} $ArchToInstall == ${ARCH_AARCH64}
-    InetBgDL::Get "${URLStubDownloadAArch64}${URLStubDownloadAppend}" \
-                  "$PLUGINSDIR\download.exe" \
-                  /CONNECTTIMEOUT 120 /RECEIVETIMEOUT 120 /END
-  ${Else}
-    InetBgDL::Get "${URLStubDownloadX86}${URLStubDownloadAppend}" \
-                  "$PLUGINSDIR\download.exe" \
-                  /CONNECTTIMEOUT 120 /RECEIVETIMEOUT 120 /END
-  ${EndIf}
-=======
-  Call GetDownloadURL
-  Pop $0
-  InetBgDL::Get "$0" "$PLUGINSDIR\download.exe" \
-                /CONNECTTIMEOUT 120 /RECEIVETIMEOUT 120 /END
->>>>>>> 822b139b92cedf98ab96ccad686dae664d417af4
   StrCpy $4 ""
   ${NSD_CreateTimer} OnDownload ${DownloadIntervalMS}
   ${If} ${FileExists} "$INSTDIR\${TO_BE_DELETED}"
@@ -2300,33 +2060,7 @@ Function ShouldPromptForProfileCleanup
   SetShellVarContext current
 
   StrCpy $R0 ""
-<<<<<<< HEAD
   ${If} ${FileExists} "$APPDATA\Cliqz\profiles.ini"
-||||||| merged common ancestors
-  ${If} ${FileExists} "$APPDATA\Mozilla\Firefox\profiles.ini"
-=======
-  ; First look for an install-specific profile, which might be listed as
-  ; either a relative or an absolute path (installs.ini doesn't say which).
-  ${If} ${FileExists} "$APPDATA\Mozilla\Firefox\installs.ini"
-    ClearErrors
-    ReadINIStr $1 "$APPDATA\Mozilla\Firefox\installs.ini" "$AppUserModelID" "Default"
-    ${IfNot} ${Errors}
-      ${GetLongPath} "$APPDATA\Mozilla\Firefox\$1" $2
-      ${If} ${FileExists} $2
-        StrCpy $R0 $2
-      ${Else}
-        ${GetLongPath} "$1" $2
-        ${If} ${FileExists} $2
-          StrCpy $R0 $2
-        ${EndIf}
-      ${EndIf}
-    ${EndIf}
-  ${EndIf}
-
-  ${If} $R0 == ""
-    ; We don't have an install-specific profile, so look for an old-style
-    ; default profile instead by checking each numbered Profile section.
->>>>>>> 822b139b92cedf98ab96ccad686dae664d417af4
     StrCpy $0 0
     ${Do}
       ClearErrors
@@ -2514,30 +2248,8 @@ FunctionEnd
 ; 2) An amount of RAM strictly greater than RAM_NEEDED_FOR_64BIT
 ; 3) No third-party products installed that cause issues with the 64-bit build.
 ;    Currently this includes Lenovo OneKey Theater and Lenovo Energy Management.
-<<<<<<< HEAD
 Function ShouldInstall64Bit
   StrCpy $0 0
-||||||| merged common ancestors
-; If any of those checks fail, the 32-bit x86 build is selected.
-Function GetArchToInstall
-  StrCpy $ArchToInstall ${ARCH_X86}
-
-  ${If} ${IsNativeARM64}
-    StrCpy $ArchToInstall ${ARCH_AARCH64}
-    Return
-  ${EndIf}
-=======
-; We also make sure that the partner.ini file contains a download URL for the
-; selected architecture, when a partner.ini file eixsts.
-; If any of those checks fail, the 32-bit x86 build is selected.
-Function GetArchToInstall
-  StrCpy $ArchToInstall ${ARCH_X86}
-
-  ${If} ${IsNativeARM64}
-    StrCpy $ArchToInstall ${ARCH_AARCH64}
-    GoTo downloadUrlCheck
-  ${EndIf}
->>>>>>> 822b139b92cedf98ab96ccad686dae664d417af4
 
   ${IfNot} ${RunningX64}
     Return
@@ -2561,66 +2273,7 @@ Function GetArchToInstall
     Return
   ${EndIf}
 
-<<<<<<< HEAD
   StrCpy $0 1
-||||||| merged common ancestors
-  StrCpy $ArchToInstall ${ARCH_AMD64}
-=======
-  StrCpy $ArchToInstall ${ARCH_AMD64}
-
-  downloadUrlCheck:
-  ; If we've selected an architecture that doesn't have a download URL in the
-  ; partner.ini, but there is a URL there for 32-bit x86, then fall back to
-  ; 32-bit x86 on the theory that we should never use a non-partner build if
-  ; we are configured as a partner installer, even if the only build that's
-  ; provided is suboptimal for the machine. If there isn't even an x86 URL,
-  ; then we won't force x86 and GetDownloadURL will stick with the built-in URL.
-  ClearErrors
-  ReadINIStr $1 "${PARTNER_INI}" "DownloadURL" "X86"
-  ${IfNot} ${Errors}
-    ${If} $ArchToInstall == ${ARCH_AMD64}
-      ReadINIStr $1 "${PARTNER_INI}" "DownloadURL" "AMD64"
-      ${If} ${Errors}
-        StrCpy $ArchToInstall ${ARCH_X86}
-      ${EndIf}
-    ${ElseIf} $ArchToInstall == ${ARCH_AARCH64}
-      ReadINIStr $1 "${PARTNER_INI}" "DownloadURL" "AArch64"
-      ${If} ${Errors}
-        StrCpy $ArchToInstall ${ARCH_X86}
-      ${EndIf}
-    ${EndIf}
-  ${EndIf}
-FunctionEnd
-
-Function GetDownloadURL
-  Push $0
-  Push $1
-
-  ; Start with the appropriate URL from our built-in branding info.
-  ${If} $ArchToInstall == ${ARCH_AMD64}
-    StrCpy $0 "${URLStubDownloadAMD64}${URLStubDownloadAppend}"
-  ${ElseIf} $ArchToInstall == ${ARCH_AARCH64}
-    StrCpy $0 "${URLStubDownloadAArch64}${URLStubDownloadAppend}"
-  ${Else}
-    StrCpy $0 "${URLStubDownloadX86}${URLStubDownloadAppend}"
-  ${EndIf}
-
-  ; If we have a partner.ini file then use the URL from there instead.
-  ClearErrors
-  ${If} $ArchToInstall == ${ARCH_AMD64}
-    ReadINIStr $1 "${PARTNER_INI}" "DownloadURL" "AMD64"
-  ${ElseIf} $ArchToInstall == ${ARCH_AARCH64}
-    ReadINIStr $1 "${PARTNER_INI}" "DownloadURL" "AArch64"
-  ${Else}
-    ReadINIStr $1 "${PARTNER_INI}" "DownloadURL" "X86"
-  ${EndIf}
-  ${IfNot} ${Errors}
-    StrCpy $0 "$1"
-  ${EndIf}
-
-  Pop $1
-  Exch $0
->>>>>>> 822b139b92cedf98ab96ccad686dae664d417af4
 FunctionEnd
 
 Section

@@ -217,16 +217,8 @@ LaunchServiceSoftwareUpdateCommand(int argc, LPCWSTR* argv) {
   // 1) "MozillaMaintenance" (I think this is redundant with 0)
   // 2) The command being executed, which is "software-update"
   // 3) The path to updater.exe (from argv[0])
-<<<<<<< HEAD
-  LPCWSTR *updaterServiceArgv = new LPCWSTR[argc + 2];
-  updaterServiceArgv[0] = L"CliqzMaintenance";
-||||||| merged common ancestors
-  LPCWSTR *updaterServiceArgv = new LPCWSTR[argc + 2];
-  updaterServiceArgv[0] = L"MozillaMaintenance";
-=======
   LPCWSTR* updaterServiceArgv = new LPCWSTR[argc + 2];
-  updaterServiceArgv[0] = L"MozillaMaintenance";
->>>>>>> 822b139b92cedf98ab96ccad686dae664d417af4
+  updaterServiceArgv[0] = L"CliqzMaintenance";
   updaterServiceArgv[1] = L"software-update";
 
   for (int i = 0; i < argc; ++i) {
