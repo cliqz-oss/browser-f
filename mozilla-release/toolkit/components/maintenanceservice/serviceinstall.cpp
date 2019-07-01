@@ -54,13 +54,7 @@ static int ReadMaintenanceServiceStrings(
     LPCWSTR path, MaintenanceServiceStringTable* results) {
   // Read in the maintenance service description string if specified.
   const unsigned int kNumStrings = 1;
-<<<<<<< HEAD
-  const char *kServiceKeys = "CliqzMaintenanceDescription\0";
-||||||| merged common ancestors
-  const char *kServiceKeys = "MozillaMaintenanceDescription\0";
-=======
-  const char* kServiceKeys = "MozillaMaintenanceDescription\0";
->>>>>>> 822b139b92cedf98ab96ccad686dae664d417af4
+  const char* kServiceKeys = "CliqzMaintenanceDescription\0";
   char serviceStrings[kNumStrings][MAX_TEXT_LEN];
   int result = ReadStrings(path, kServiceKeys, kNumStrings, serviceStrings);
   if (result != OK) {
@@ -193,16 +187,8 @@ BOOL UpdateServiceDescription(SC_HANDLE serviceHandle) {
  * @return TRUE if the service path is now correct.
  */
 BOOL FixServicePath(SC_HANDLE service, LPCWSTR currentServicePath,
-<<<<<<< HEAD
-                    BOOL &servicePathWasWrong) {
-  // When we originally upgraded the CliqzMaintenance service we
-||||||| merged common ancestors
-                    BOOL &servicePathWasWrong) {
-  // When we originally upgraded the MozillaMaintenance service we
-=======
                     BOOL& servicePathWasWrong) {
-  // When we originally upgraded the MozillaMaintenance service we
->>>>>>> 822b139b92cedf98ab96ccad686dae664d417af4
+  // When we originally upgraded the CliqzMaintenance service we
   // would uninstall the service on each upgrade.  This had an
   // intermittent error which could cause the service to use the file
   // maintenanceservice_tmp.exe as the install path.  Only a small number
