@@ -117,12 +117,8 @@ RemoteWebNavigation.prototype = {
                            aLoadURIOptions.triggeringPrincipal || Services.scriptSecurityManager.createNullPrincipal({})),
       csp: aLoadURIOptions.csp ? E10SUtils.serializeCSP(aLoadURIOptions.csp) : null,
       requestTime: Services.telemetry.msSystemNow(),
-<<<<<<< HEAD
-      ensurePrivate: !!aLoadURIOptions.ensurePrivate
-||||||| merged common ancestors
-=======
+      ensurePrivate: !!aLoadURIOptions.ensurePrivate,
       cancelContentJSEpoch,
->>>>>>> 822b139b92cedf98ab96ccad686dae664d417af4
     });
   },
   setOriginAttributesBeforeLoading(aOriginAttributes) {

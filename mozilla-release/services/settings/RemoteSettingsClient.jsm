@@ -199,27 +199,13 @@ class RemoteSettingsClient extends EventEmitter {
    * @return {Promise}
    */
   async get(options = {}) {
-<<<<<<< HEAD
     try {
       const {
         filters = {},
         order = "", // not sorted by default.
         syncIfEmpty = true,
       } = options;
-||||||| merged common ancestors
-    const {
-      filters = {},
-      order = "", // not sorted by default.
-      syncIfEmpty = true,
-    } = options;
-=======
-    const {
-      filters = {},
-      order = "", // not sorted by default.
-      syncIfEmpty = true,
-    } = options;
-    let { verifySignature = false } = options;
->>>>>>> 822b139b92cedf98ab96ccad686dae664d417af4
+      let { verifySignature = false } = options;
 
       if (syncIfEmpty && !(await Utils.hasLocalData(this))) {
         try {
@@ -232,61 +218,35 @@ class RemoteSettingsClient extends EventEmitter {
             // There is no JSON dump, force a synchronization from the server.
             await this.sync({ loadDump: false });
           }
+          // Either from trusted dump, or already done during sync.
+          verifySignature = false;
         } catch (e) {
           // Report but return an empty list since there will be no data anyway.
           Cu.reportError(e);
           return [];
         }
-<<<<<<< HEAD
-||||||| merged common ancestors
-      } catch (e) {
-        // Report but return an empty list since there will be no data anyway.
-        Cu.reportError(e);
-        return [];
-=======
-        // Either from trusted dump, or already done during sync.
-        verifySignature = false;
-      } catch (e) {
-        // Report but return an empty list since there will be no data anyway.
-        Cu.reportError(e);
-        return [];
->>>>>>> 822b139b92cedf98ab96ccad686dae664d417af4
       }
 
-<<<<<<< HEAD
       // Read from the local DB.
-      const kintoCol = await this.openCollection();
-      const { data } = await kintoCol.list({ filters, order });
+      const kintoCollection = await this.openCollection();
+      const { data } = await kintoCollection.list({ filters, order });
+
+      // Verify signature of local data.
+      if (verifySignature) {
+        const localRecords = data.map(r => kintoCollection.cleanLocalFields(r));
+        const timestamp = await kintoCollection.db.getLastModified();
+        const metadata = await kintoCollection.metadata();
+        await this._validateCollectionSignature([],
+                                                timestamp,
+                                                metadata,
+                                                { localRecords });
+      }
+
       // Filter the records based on `this.filterFunc` results.
       return this._filterEntries(data);
     } catch(e) {
       return [];
     }
-||||||| merged common ancestors
-    // Read from the local DB.
-    const kintoCol = await this.openCollection();
-    const { data } = await kintoCol.list({ filters, order });
-    // Filter the records based on `this.filterFunc` results.
-    return this._filterEntries(data);
-=======
-    // Read from the local DB.
-    const kintoCollection = await this.openCollection();
-    const { data } = await kintoCollection.list({ filters, order });
-
-    // Verify signature of local data.
-    if (verifySignature) {
-      const localRecords = data.map(r => kintoCollection.cleanLocalFields(r));
-      const timestamp = await kintoCollection.db.getLastModified();
-      const metadata = await kintoCollection.metadata();
-      await this._validateCollectionSignature([],
-                                              timestamp,
-                                              metadata,
-                                              { localRecords });
-    }
-
-    // Filter the records based on `this.filterFunc` results.
-    return this._filterEntries(data);
->>>>>>> 822b139b92cedf98ab96ccad686dae664d417af4
   }
 
   /**
