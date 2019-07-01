@@ -998,13 +998,10 @@ menulist[indicator=true] > menupopup menuitem[indicator=true]:not([image]) > .me
 #updateSettingCrossUserWarning:-moz-locale-dir(rtl) {
   background-position-x: right 2px;
 }
-<<<<<<< HEAD
 
 .formatBoxSize {
   -moz-box-align: start;
 }
-||||||| merged common ancestors
-=======
 
 richlistitem .text-link {
   color: inherit;
@@ -1014,4 +1011,3 @@ richlistitem .text-link {
 richlistitem .text-link:hover {
   color: inherit;
 }
->>>>>>> 822b139b92cedf98ab96ccad686dae664d417af4

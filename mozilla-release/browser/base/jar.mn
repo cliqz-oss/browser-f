@@ -53,12 +53,8 @@ browser.jar:
         content/browser/browser-safebrowsing.js       (content/browser-safebrowsing.js)
 *       content/browser/browser-sidebar.js            (content/browser-sidebar.js)
         content/browser/browser-siteIdentity.js       (content/browser-siteIdentity.js)
-<<<<<<< HEAD
-#ifdef MOZ_SERVICES_SYNC
-||||||| merged common ancestors
-=======
         content/browser/browser-siteProtections.js    (content/browser-siteProtections.js)
->>>>>>> 822b139b92cedf98ab96ccad686dae664d417af4
+#ifdef MOZ_SERVICES_SYNC
         content/browser/browser-sync.js               (content/browser-sync.js)
 #endif
         content/browser/browser-tabsintitlebar.js     (content/browser-tabsintitlebar.js)
