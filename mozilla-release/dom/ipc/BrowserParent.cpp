@@ -323,15 +323,17 @@ already_AddRefed<nsILoadContext> BrowserParent::GetLoadContext() {
   if (mLoadContext) {
     loadContext = mLoadContext;
   } else {
+#if 0  // Privateness is already passed with TabContext to our constructor.
     bool isPrivate = mChromeFlags & nsIWebBrowserChrome::CHROME_PRIVATE_WINDOW;
     SetPrivateBrowsingAttributes(isPrivate);
+#endif
     bool useTrackingProtection = false;
     nsCOMPtr<nsIDocShell> docShell = mFrameElement->OwnerDoc()->GetDocShell();
     if (docShell) {
       docShell->GetUseTrackingProtection(&useTrackingProtection);
     }
     loadContext = new LoadContext(
-        GetOwnerElement(), true /* aIsContent */, isPrivate,
+        GetOwnerElement(), true /* aIsContent */,
         mChromeFlags & nsIWebBrowserChrome::CHROME_REMOTE_WINDOW,
         mChromeFlags & nsIWebBrowserChrome::CHROME_FISSION_WINDOW,
         useTrackingProtection, OriginAttributesRef());
@@ -2803,6 +2805,14 @@ mozilla::ipc::IPCResult BrowserParent::RecvDispatchFocusToTopLevelWindow() {
   return IPC_OK();
 }
 
+mozilla::ipc::IPCResult
+BrowserParent::RecvLoadContextPrivatenessChanged(const bool& isPrivate) {
+  SetPrivateBrowsingAttributes(isPrivate);
+  GetLoadContext();
+  mLoadContext->SetPrivateness(isPrivate);
+  return IPC_OK();
+}
+
 bool BrowserParent::ReceiveMessage(const nsString& aMessage, bool aSync,
                                    StructuredCloneData* aData,
                                    CpowHolder* aCpows, nsIPrincipal* aPrincipal,
@@ -3480,9 +3490,14 @@ class FakeChannel final : public nsIChannel,
   NS_IMETHOD GetUsePrivateBrowsing(bool*) NO_IMPL;
   NS_IMETHOD SetUsePrivateBrowsing(bool) NO_IMPL;
   NS_IMETHOD SetPrivateBrowsing(bool) NO_IMPL;
+  NS_IMETHOD SetPrivateness(bool) NO_IMPL NS_IMETHOD
   NS_IMETHOD GetIsInIsolatedMozBrowserElement(bool*) NO_IMPL;
   NS_IMETHOD GetScriptableOriginAttributes(JSContext*,
                                            JS::MutableHandleValue) NO_IMPL;
+  NS_IMETHOD
+      AddWeakPrivacyTransitionObserver(nsIPrivacyTransitionObserver *obs) NO_IMPL
+  NS_IMETHOD_(void)
+      GetOriginAttributes(mozilla::OriginAttributes& aAttrs) override {}
   NS_IMETHOD_(void)
   GetOriginAttributes(mozilla::OriginAttributes& aAttrs) override {}
   NS_IMETHOD GetUseRemoteTabs(bool*) NO_IMPL;

@@ -45,6 +45,7 @@ class nsIWebBrowserPersistDocumentReceiver;
 
 namespace mozilla {
 
+class LoadContext;
 namespace a11y {
 class DocAccessibleParent;
 }
@@ -408,6 +409,9 @@ class BrowserParent final : public PBrowserParent,
 
   mozilla::ipc::IPCResult RecvDispatchFocusToTopLevelWindow();
 
+  mozilla::ipc::IPCResult RecvLoadContextPrivatenessChanged(
+      const bool& isPrivate);
+
   mozilla::ipc::IPCResult RecvRespondStartSwipeEvent(
       const uint64_t& aInputBlockId, const bool& aStartSwipe);
 
@@ -723,6 +727,8 @@ class BrowserParent final : public PBrowserParent,
       InfallibleTArray<URIParams>&& aURIs);
 
  private:
+  // DB-2188: please take a look at GetLoadContext();
+  // void CreateLoadContext();
   void SuppressDisplayport(bool aEnabled);
 
   void DestroyInternal();

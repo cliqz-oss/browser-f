@@ -568,6 +568,9 @@ nsresult BrowserChild::Init(mozIDOMWindowProxy* aParent) {
   loadContext->SetPrivateBrowsing(OriginAttributesRef().mPrivateBrowsingId > 0);
   loadContext->SetRemoteTabs(mChromeFlags &
                              nsIWebBrowserChrome::CHROME_REMOTE_WINDOW);
+  NS_ENSURE_SUCCESS(
+      loadContext->AddWeakPrivacyTransitionObserver(this),
+      NS_ERROR_FAILURE);
   loadContext->SetRemoteSubframes(mChromeFlags &
                                   nsIWebBrowserChrome::CHROME_FISSION_WINDOW);
 
@@ -680,6 +683,7 @@ NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(BrowserChild)
   NS_INTERFACE_MAP_ENTRY(nsIObserver)
   NS_INTERFACE_MAP_ENTRY(nsISupportsWeakReference)
   NS_INTERFACE_MAP_ENTRY(nsITooltipListener)
+  NS_INTERFACE_MAP_ENTRY(nsIPrivacyTransitionObserver)
   NS_INTERFACE_MAP_ENTRY(nsIWebProgressListener)
 NS_INTERFACE_MAP_END_INHERITING(BrowserChildBase)
 
@@ -3115,6 +3119,13 @@ BrowserChild::OnShowTooltip(int32_t aXCoords, int32_t aYCoords,
 NS_IMETHODIMP
 BrowserChild::OnHideTooltip() {
   SendHideTooltip();
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+BrowserChild::PrivateModeChanged(bool enabled) {
+  SetPrivateBrowsingAttributes(enabled);
+  SendLoadContextPrivatenessChanged(enabled);
   return NS_OK;
 }
 
