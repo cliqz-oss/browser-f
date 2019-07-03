@@ -11,7 +11,9 @@ const {AppConstants} = ChromeUtils.import("resource://gre/modules/AppConstants.j
 
 XPCOMUtils.defineLazyModuleGetters(this, {
   AddonManager: "resource://gre/modules/AddonManager.jsm",
+#if 0
   AddonManagerPrivate: "resource://gre/modules/AddonManager.jsm",
+#endif
   SearchWidgetTracker: "resource:///modules/SearchWidgetTracker.jsm",
   CustomizableWidgets: "resource:///modules/CustomizableWidgets.jsm",
   DeferredTask: "resource://gre/modules/DeferredTask.jsm",
@@ -185,7 +187,13 @@ var CustomizableUIInternal = {
   initialize() {
     log.debug("Initializing");
 
-    AddonManagerPrivate.databaseReady.then(async () => {
+    // CLIQZ-SPECIAL:
+    // DB-2188: AddonManagerPrivate.databaseReady might sometimes return
+    // a promise which is in a pending state.
+    // That means it will never get resolved or rejected at all.
+    // AddonManager.isReadyAsync can guarantee the promise it returns
+    // will end up with either resolved or rejected.
+    AddonManager.isReadyAsync().then(async () => {
       AddonManager.addAddonListener(this);
 
       let addons = await AddonManager.getAddonsByTypes(["theme"]);
