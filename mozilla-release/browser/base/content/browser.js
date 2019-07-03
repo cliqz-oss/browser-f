@@ -5894,8 +5894,9 @@ var TabsProgressListener = {
     gBrowser.getNotificationBox(aBrowser).removeTransientNotifications();
 
     FullZoom.onLocationChange(aLocationURI, false, aBrowser);
-
+#if 0
     ContentBlocking.onLocationChange();
+#endif
   },
 
   onLinkIconAvailable(browser, dataURI, iconURI) {
