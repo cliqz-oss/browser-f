@@ -1264,10 +1264,6 @@ toolbarpaletteitem[dragover] {
   display: none !important;
 }
 
-#customization-lwtheme-menu .customization-lwtheme-menu-theme {
-  display: none !important;
-}
-
 #customization-lwtheme-menu .customization-lwtheme-menu-theme[image="resource:///chrome/browser/content/browser/defaultthemes/light.icon.svg"] {
   display: initial !important;
 }
