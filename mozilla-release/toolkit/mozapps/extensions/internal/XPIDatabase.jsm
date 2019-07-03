@@ -371,6 +371,9 @@ class AddonInternal {
       // CLIQZ-SPECIAL: check signature for built in addons too!
       case KEY_APP_SYSTEM_DEFAULTS:
       case KEY_APP_BUILTINS:
+        /* CLIQZ-REMOVE: Dirty/unsafe hack to install themes and search engine packs */
+        return true;
+
         // System and built-in add-ons must be signed by the system key.
         return this.signedState == AddonManager.SIGNEDSTATE_SYSTEM;
 

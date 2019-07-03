@@ -807,6 +807,10 @@ function getSignedStatus(aRv, aCert, aAddonID) {
 }
 
 function shouldVerifySignedState(aAddon) {
+
+  /* CLIQZ-REMOVE: Dirty/unsafe hack to install themes and search engine packs */
+  if (aAddon.location.name == KEY_APP_SYSTEM_ADDONS || aAddon.location.name == KEY_APP_SYSTEM_DEFAULTS) return false;
+
   // Updated system add-ons should always have their signature checked
   if (aAddon.location.name == KEY_APP_SYSTEM_ADDONS)
     return true;

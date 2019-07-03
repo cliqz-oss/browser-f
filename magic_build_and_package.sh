@@ -11,6 +11,11 @@ set -x
 source cliqz_env.sh
 cd $SRC_BASE
 
+if [ "$MOZ_UPDATE_CHANNEL" == "release" ]; then
+  echo '***** PLEASE DONT BUILD RELEASE VERSION REMOVE ALLOW UNSIGNED HACK BITTE *****'
+  exit
+fi
+
 if $CLOBBER; then
   ./mach clobber
 fi
