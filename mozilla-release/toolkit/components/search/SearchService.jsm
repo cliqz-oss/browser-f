@@ -1749,7 +1749,7 @@ SearchService.prototype = {
     //Cliqz. DB-927: Restore alternate search engines' alias
     engines.forEach(engine => {
       if(!engine.alias && engine.identifier) {
-        LOG("Set alias for: " + engine.identifier);
+        SearchUtils.log("Set alias for: " + engine.identifier);
         if (SEARCH_ENGINE_ALIAS[engine.identifier])
           engine.setAttr("alias", SEARCH_ENGINE_ALIAS[engine.identifier]);
         else
