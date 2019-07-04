@@ -469,6 +469,8 @@ addon-permissions-empty = This extension doesn’t require any permissions
 
 recommended-extensions-heading = Recommended Extensions
 recommended-themes-heading = Recommended Themes
+install-recommended-addon = Install
+recommended-addon-learn-more = Learn more...
 
 # A recommendation for the Firefox Color theme shown at the bottom of the theme
 # list view. The "Firefox Color" name itself should not be translated.

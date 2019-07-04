@@ -55,7 +55,8 @@ addon-list message-bar-stack.pending-uninstall {
   box-shadow: var(--card-shadow);
 }
 
-addon-card:not([expanded]) > .addon.card:hover {
+addon-card:not([expanded]) > .addon.card:hover,
+#recommendations .addon.card:hover{
   box-shadow: var(--card-shadow-hover);
   cursor: pointer;
 }
@@ -420,4 +421,25 @@ addon-permissions-list > .addon-detail-row:first-of-type {
   margin-inline: calc(var(--card-padding) * -1);
   font-size: 0;
   line-height: 0;
+}
+
+#recommendations {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-column-gap: 15px;
+}
+
+.addon.recommended {
+  display: grid;
+  grid-template-columns: 1fr auto;
+}
+
+#recommendations .addon-description {
+  font-size: 11px;
+}
+
+.recommended-addon-install {
+  background: #0078CA !important;
+  color: #fff !important;
+  cursor: pointer;
 }
