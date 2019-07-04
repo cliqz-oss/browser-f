@@ -71,3 +71,5 @@ remove-all-shown =
 remove-all-passwords-prompt = Sollen tatsächlich alle gespeicherten Passwörter gelöscht werden?
 remove-all-passwords-title = Alle Passwörter löschen
 no-master-password-prompt = Sollen Ihre Passwörter wirklich angezeigt werden?
+auto-fill-logins-and-passwords =
+    .label = Zugangsdaten und Passwörter automatisch ausfüllen

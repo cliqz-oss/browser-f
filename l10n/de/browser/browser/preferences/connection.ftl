@@ -79,7 +79,19 @@ connection-dns-over-https-url-default =
     .label = Standard verwenden ({ $url })
     .accesskey = S
     .tooltiptext = Standardadresse für das Auflösen von DNS über HTTPS verwenden
+
+connection-dns-over-https-url-resolver = Anbieter verwenden
+    .accesskey = v
+
+# Variables:
+#   $name (String) - Display name or URL for the DNS over HTTPS provider
+connection-dns-over-https-url-item-default =
+    .label = { $name } (Standard)
+    .tooltiptext = Standardadresse für das Auflösen von DNS über HTTPS verwenden
+
 connection-dns-over-https-url-custom =
     .label = Benutzerdefiniert
     .accesskey = e
     .tooltiptext = Adresse für das Auflösen von DNS über HTTPS eingeben
+
+connection-dns-over-https-custom-label = Benutzerdefiniert

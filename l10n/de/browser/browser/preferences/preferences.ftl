@@ -34,6 +34,9 @@ policies-notice =
         [windows] Ihre Organisation hat das Ändern einiger Einstellungen deaktiviert.
        *[other] Ihre Organisation hat das Ändern einiger Einstellungen deaktiviert.
     }
+
+managed-notice = Der Browser wird durch Ihre Organisation verwaltet.
+
 pane-general-title = Allgemein
 category-general =
     .tooltiptext = { pane-general-title }
@@ -670,6 +673,9 @@ addressbar-suggestions-settings = Einstellungen für Suchvorschläge ändern
 
 content-blocking-header = Seitenelemente blockieren
 content-blocking-description = Blockiert eingebettete Inhalte anderer Websites, welche Ihre Aktivitäten im Internet verfolgen. Kontrollieren Sie den Umfang Ihrer Online-Aktivitäten, welche von Websites gespeichert und mit anderen Websites ausgetauscht werden.
+
+content-blocking-section-description = Schützen Sie Ihre Privatsphäre während des Surfens, indem Sie unsichtbare Inhalte blockieren. Diese verfolgen sonst, welche Websites Sie besuchen, und legen ein Profil über Sie an. Das Blockieren einiger dieser Inhalte kann das Laden von Websites beschleunigen.
+
 content-blocking-learn-more = Weitere Informationen
 # The terminology used to refer to categories of Content Blocking is also used in chrome/browser/browser.properties and should be translated consistently.
 # "Standard" in this case is an adjective, meaning "default" or "normal".
@@ -682,14 +688,24 @@ content-blocking-setting-strict =
 content-blocking-setting-custom =
     .label = Benutzerdefiniert
     .accesskey = B
+
 content-blocking-standard-description = Nur in privaten Fenstern bekannte Elemente zur Aktivitätenverfolgung blockieren
+
 content-blocking-standard-desc = Ausgewogenes Blockieren für gleichzeitigen Schutz und Leistung. Einige Elemente zur Aktivitätenverfolgung werden erlaubt, damit Websites funktionieren.
 content-blocking-strict-desc = Alle von { -brand-short-name } erkannten Elemente zur Aktivitätenverfolgung blockieren. Einige Websites funktionieren dann eventuell nicht richtig.
+content-blocking-strict-description = Besserer Schutz. Einige Websites funktionieren eventuell nicht richtig.
 content-blocking-custom-desc = Entsprechend den Einstellungen blockieren:
+
 content-blocking-private-trackers = Bekannte Elemente zur Aktivitätenverfolgung nur in privaten Fenstern
 content-blocking-third-party-cookies = Cookies zur Aktivitätenverfolgung von Drittanbietern
+content-blocking-all-cookies = Alle Cookies
+content-blocking-unvisited-cookies = Cookies von nicht besuchten Websites
 content-blocking-all-windows-trackers = Erkannte Elemente zur Aktivitätenverfolgung in allen Fenstern
 content-blocking-all-third-party-cookies = Alle Cookies von Drittanbietern
+
+content-blocking-cryptominers = Heimliche Digitalwährungsberechner (Krypto-Miner)
+content-blocking-fingerprinters = Identifizierer (Fingerprinter)
+
 content-blocking-warning-title = Achtung!
 content-blocking-warning-desc = Das Blockieren von Cookies und Elementen zur Aktivitätenverfolgung kann zu Problemen mit einigen Websites führen. Deshalb können Sie die Funktion für Websites, denen Sie vertrauen, leicht deaktivieren.
 content-blocking-warning-description = Das Blockieren von Inhalten kann bei einigen Websites zu Problemen führen. Das Deaktivieren des Blockierens für von Ihnen vertraute Seiten ist ganz einfach.
