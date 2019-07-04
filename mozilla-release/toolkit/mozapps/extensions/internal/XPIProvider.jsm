@@ -2266,9 +2266,15 @@ var XPIProvider = {
 
       AddonManagerPrivate.markProviderSafe(this);
 
+      // CLIQZ-SPECIAL:
+      // avoid even a try (maybe it fails, we do not know) of installing default theme
+      // for Cliqz Browser as an addon.
+      // Since we use only 2 themes: dark and light.
+#if 0
       this.maybeInstallBuiltinAddon(
           "default-theme@mozilla.org", "1.0",
           "resource://gre/modules/themes/default/");
+#endif
 
       resolveProviderReady(Promise.all(this.startupPromises));
 
