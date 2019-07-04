@@ -1749,9 +1749,11 @@ class AddonCard extends HTMLElement {
       });
     }
 
+    /* CLIQZ-SPECIAL: we do not support recommended addon feature for now
     // Show the recommended badge if needed.
     card.querySelector(".addon-badge-recommended")
       .hidden = !addon.isRecommended;
+    */
 
     // Update description.
     card.querySelector(".addon-description").textContent = addon.description;
