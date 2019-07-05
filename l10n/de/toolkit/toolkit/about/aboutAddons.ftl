@@ -284,6 +284,9 @@ addons-disabled-heading = Deaktiviert
 
 recommended-extensions-heading = Empfohlene Erweiterungen
 recommended-themes-heading = Empfohlene Themes
+install-recommended-addon = Installieren
+recommended-addon-learn-more = Weitere Informationen…
+
 # A recommendation for the Firefox Color theme shown at the bottom of the theme
 # list view. The "Firefox Color" name itself should not be translated.
 recommended-theme-1 = Fühlen Sie sich inspiriert? <a data-l10n-name="link">Erstellen Sie eigene Themes mit Firefox Color.</a>

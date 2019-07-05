@@ -2738,7 +2738,8 @@ pref("services.settings.security.onecrl.collection", "onecrl");
 pref("services.settings.security.onecrl.signer", "onecrl.content-signature.mozilla.org");
 pref("services.settings.security.onecrl.checked", 0);
 
-pref("extensions.abuseReport.enabled", true);
+// CLIQZ-SPECIAL: we do not support abuse report feature for now
+pref("extensions.abuseReport.enabled", false);
 pref("extensions.abuseReport.url", "https://addons.mozilla.org/api/v4/abuse/report/addon/");
 
 // Blocklist preferences
@@ -5193,7 +5194,7 @@ pref("extensions.htmlaboutaddons.enabled", true);
 // Whether to allow the inline options browser in HTML about:addons page.
 pref("extensions.htmlaboutaddons.inline-options.enabled", true);
 // Show recommendations on the extension and theme list views.
-pref("extensions.htmlaboutaddons.recommendations.enabled", true);
+pref("extensions.htmlaboutaddons.recommendations.enabled", false);
 
 // The URL for the privacy policy related to recommended add-ons.
 pref("extensions.recommendations.privacyPolicyUrl", "");
