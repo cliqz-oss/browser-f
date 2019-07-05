@@ -269,9 +269,19 @@ var gURLBarHandler = {
    * Invoked by CustomizationHandler when a customization starts.
    */
   customizeStart() {
+    // CLIQZ-SPECIAL:
+    // removeCopyCutController gets triggered in
+    // ./mozilla-release/browser/base/content/urlbarBindings.xml destructor
+    // when a user enters customization mode.
+    // If we keep triggered it here then nsXULControllers.cpp#nsXULControllers::RemoveController
+    // returns NS_ERROR_FAILURE code which will raise an exception in UrlbarInput.jsm
+    // This happens because copyCutController instance can not be found in
+    // nsXULControllers.cpp#mControllers (urlbarBindings destructor removes that).
+#if 0
     if (this._urlbar && this._urlbar.constructor.name == "UrlbarInput") {
       this._urlbar.removeCopyCutController();
     }
+#endif
   },
 
   /**
