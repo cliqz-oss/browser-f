@@ -6,7 +6,6 @@ with Files("**"):
     BUG_COMPONENT = ("Firefox", "Address Bar")
 
 EXTRA_JS_MODULES += [
-    'UrlbarController.jsm',
     'UrlbarEventBufferer.jsm',
     'UrlbarInput.jsm',
     'UrlbarMuxerUnifiedComplete.jsm',
@@ -19,6 +18,10 @@ EXTRA_JS_MODULES += [
     'UrlbarUtils.jsm',
     'UrlbarValueFormatter.jsm',
     'UrlbarView.jsm',
+]
+
+EXTRA_PP_JS_MODULES += [
+    'UrlbarController.jsm',
 ]
 
 TESTING_JS_MODULES += [

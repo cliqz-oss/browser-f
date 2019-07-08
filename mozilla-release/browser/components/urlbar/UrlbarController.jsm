@@ -529,6 +529,7 @@ class UrlbarController {
    * @param {object} params Parameters to pass with the notification.
    */
   _notify(name, ...params) {
+#if 0
     for (let listener of this._listeners) {
       // Can't use "in" because some tests proxify these.
       if (typeof listener[name] != "undefined") {
@@ -539,5 +540,6 @@ class UrlbarController {
         }
       }
     }
+#endif
   }
 }
