@@ -5,19 +5,23 @@
   "version": "1.0",
   "applications": {
     "gecko": {
-      "id": "gimage@search.mozilla.org"
+      "id": "gimages@search.mozilla.org"
     }
   },
   "hidden": true,
+  "default_locale": "en",
   "icons": {
-    "16": "favicon.ico"
+    "16": "favicon.png"
   },
-  "web_accessible_resources": ["favicon.ico"],
+  "web_accessible_resources": [
+    "favicon.png"
+  ],
   "chrome_settings_overrides": {
     "search_provider": {
       "name": "__MSG_extensionName__",
       "search_url": "__MSG_searchUrl__",
       "search_form": "__MSG_searchForm__",
+      "suggest_url": "__MSG_suggestUrl__",
       "search_url_get_params": "q={searchTerms}&tbm=isch"
     }
   }

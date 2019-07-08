@@ -5,9 +5,10 @@
   "version": "1.0",
   "applications": {
     "gecko": {
-      "id": "gmap@search.mozilla.org"
+      "id": "gmaps@search.mozilla.org"
     }
   },
+  "default_locale": "en",
   "hidden": true,
   "icons": {
     "16": "favicon.ico"
@@ -18,6 +19,7 @@
       "name": "__MSG_extensionName__",
       "search_url": "__MSG_searchUrl__",
       "search_form": "__MSG_searchForm__",
+      "suggest_url": "__MSG_suggestUrl__",
       "search_url_get_params": "q={searchTerms}"
     }
   }

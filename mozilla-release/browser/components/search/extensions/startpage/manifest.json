@@ -5,7 +5,7 @@
   "version": "1.0",
   "applications": {
     "gecko": {
-      "id": "start-page@search.mozilla.org"
+      "id": "startpage@search.mozilla.org"
     }
   },
   "hidden": true,
