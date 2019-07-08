@@ -669,7 +669,7 @@ var loadManifest = async function(aPackage, aLocation, aOldAddon) {
   }
 
   if (addon.type === "extension" && !addon.location.isBuiltin) {
-    /* CLIQZ-SPECIAL: remove recommended status 
+    /* CLIQZ-SPECIAL: remove recommended status
     addon.recommendationState = await readRecommendationStates(aPackage, addon.id);
     */
   }
@@ -809,17 +809,13 @@ function getSignedStatus(aRv, aCert, aAddonID) {
 }
 
 function shouldVerifySignedState(aAddon) {
-
-  /* CLIQZ-REMOVE: Dirty/unsafe hack to install themes and search engine packs */
-  if (aAddon.location.name == KEY_APP_SYSTEM_ADDONS || aAddon.location.name == KEY_APP_SYSTEM_DEFAULTS) return false;
-
   // Updated system add-ons should always have their signature checked
   if (aAddon.location.name == KEY_APP_SYSTEM_ADDONS)
     return true;
 
-  // Cliqz cares about signatures for default system add-ons
+  // We don't care about signatures for default system add-ons
   if (aAddon.location.name == KEY_APP_SYSTEM_DEFAULTS)
-    return true;
+    return false;
 
   if (aAddon.location.scope & AppConstants.MOZ_UNSIGNED_SCOPES)
     return false;
