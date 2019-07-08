@@ -10,10 +10,13 @@
 <!ENTITY fullscreenButton.exitfullscreenlabel "Vollbild-Modus verlassen">
 <!ENTITY castingButton.castingLabel "An Bildschirm weiterleiten">
 <!ENTITY closedCaption.off "Keine">
-
 <!-- LOCALIZATION NOTE (volumeScrubber.label): This label is exposed to
      accessibility software to clarify what the slider is for. -->
 <!ENTITY volumeScrubber.label "Lautstärkeregler">
+
+<!-- LOCALIZATION NOTE (pictureInPicture.label): This string is used as part of
+the Picture-in-Picture video toggle button when the mouse is hovering it. -->
+<!ENTITY pictureInPicture.label "Bild-im-Bild (PiP)">
 
 <!ENTITY stats.media "Medien">
 <!ENTITY stats.size "Größe">

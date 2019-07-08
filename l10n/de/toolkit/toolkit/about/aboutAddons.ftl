@@ -84,7 +84,13 @@ detail-version =
     .label = Version
 detail-last-updated =
     .label = Zuletzt aktualisiert
+
 detail-contributions-description = Der Entwickler dieses Add-ons bittet Sie, dass Sie die Entwicklung unterstützen, indem Sie einen kleinen Betrag spenden.
+
+detail-contributions-button = Unterstützen
+    .title = Die Entwicklung dieses Add-ons unterstützen
+    .accesskey = U
+
 detail-update-type =
     .value = Automatische Updates
 detail-update-default =
@@ -168,6 +174,9 @@ private-browsing-description2 =
 extensions-view-discover =
     .name = Add-ons entdecken
     .tooltiptext = { extensions-view-discover.name }
+extensions-view-discopane =
+    .name = Empfehlungen
+    .tooltiptext = { extensions-view-discopane.name }
 extensions-view-recent-updates =
     .name = Zuletzt durchgeführte Updates
     .tooltiptext = { extensions-view-recent-updates.name }
@@ -260,6 +269,10 @@ shortcuts-modifier-other = Mit Strg- oder Alt-Taste kombinieren
 shortcuts-invalid = Ungültige Kombination
 shortcuts-letter = Zeichen eingeben
 shortcuts-system = { -brand-short-name }-Tastenkombinationen können nicht überschrieben werden.
+# String displayed when a keyboard shortcut is already used by another add-on
+# Variables:
+#   $addon (string) - Name of the add-on
+shortcuts-exists = Bereits durch { $addon } belegt
 shortcuts-card-expand-button =
     { $numberToShow ->
        *[other] { $numberToShow } weitere anzeigen
@@ -270,17 +283,126 @@ go-back-button =
 
 ## Recommended add-ons page
 
+# Explanatory introduction to the list of recommended add-ons. The action word
+# ("recommends") in the final sentence is a link to external documentation.
+discopane-intro =
+    Erweiterungen und Themes sind wie Apps für den Browser und ermöglichen es zum Beispiel,
+    Passwörter zu schützen, Videos herunterzuladen, keine Angebote zu verpassen, nervige Werbung zu blockieren,
+    das Aussehen des Browsers zu verändern und viel mehr. Diese kleinen Software-Programme werden oft von
+    Personen oder Organisationen entwickelt, die keine direkte Verbindung mit dem Browser-Entwickler haben.
+    Hier ist eine Auswahl durch { -brand-product-name } von 
+    <a data-l10n-name="learn-more-trigger">empfohlenen Add-ons</a>, welche für herausragende Sicherheit,
+    Leistung und Funktionalität stehen.
+
+# Notice to make user aware that the recommendations are personalized.
+discopane-notice-recommendations =
+    Einige dieser Empfehlungen sind personalisiert, da sie auf Ihren bereits installierten Erweiterungen,
+    Profileinstellungen und Nutzungsstatistiken basieren.
+discopane-notice-learn-more = Weitere Informationen
+
+privacy-policy = Datenschutzrichtlinie
+
+# Refers to the author of an add-on, shown below the name of the add-on.
+# Variables:
+#   $author (string) - The name of the add-on developer.
+created-by-author = von <a data-l10n-name="author">{ $author }</a>
+# Shows the number of daily users of the add-on.
+# Variables:
+#   $dailyUsers (number) - The number of daily users.
+user-count = { $dailyUsers } Nutzer
+install-extension-button = Zu { -brand-product-name } hinzufügen
+install-theme-button = Theme installieren
+# The label of the button that appears after installing an add-on. Upon click,
+# the detailed add-on view is opened, from where the add-on can be managed.
+manage-addon-button = Verwalten
+find-more-addons = Mehr Add-ons ansehen
 
 ## Add-on actions
 
+report-addon-button = Melden
 remove-addon-button = Entfernen
 disable-addon-button = Deaktivieren
 enable-addon-button = Aktivieren
 expand-addon-button = Weitere Einstellungen
+
+preferences-addon-button =
+    { PLATFORM() ->
+        [windows] Einstellungen
+       *[other] Einstellungen
+    }
+details-addon-button = Details
+release-notes-addon-button = Versionshinweise
+permissions-addon-button = Berechtigungen
+
 addons-enabled-heading = Aktiviert
 addons-disabled-heading = Deaktiviert
 
+ask-to-activate-button = Nachfragen, ob aktiviert werden soll
+always-activate-button = Immer aktivieren
+never-activate-button = Nie aktivieren
+
+addon-detail-author-label = Autor
+addon-detail-version-label = Version
+addon-detail-last-updated-label = Zuletzt aktualisiert
+addon-detail-homepage-label = Homepage
+addon-detail-rating-label = Bewertung
+
+# The average rating that the add-on has received.
+# Variables:
+#   $rating (number) - A number between 0 and 5. The translation should show at most one digit after the comma.
+five-star-rating =
+  .title = Bewertet mit { NUMBER($rating, maximumFractionDigits: 1) } von 5
+
+# This string is used to show that an add-on is disabled.
+# Variables:
+#   $name (string) - The name of the add-on
+addon-name-disabled = { $name } (deaktiviert)
+
+# The number of reviews that an add-on has received on AMO.
+# Variables:
+#   $numberOfReviews (number) - The number of reviews received
+addon-detail-reviews-link =
+    { $numberOfReviews ->
+        [one] { $numberOfReviews } Bewertung
+       *[other] { $numberOfReviews } Bewertungen
+    }
+
+
 ## Pending uninstall message bar
+
+# Variables:
+#   $addon (string) - Name of the add-on
+pending-uninstall-description = <span data-l10n-name="addon-name">{ $addon }</span> wurde entfernt.
+pending-uninstall-undo-button = Rückgängig
+
+addon-detail-updates-label = Automatische Updates erlauben
+addon-detail-updates-radio-default = Standard
+addon-detail-updates-radio-on = An
+addon-detail-updates-radio-off = Aus
+addon-detail-update-check-label = Nach Updates suchen
+install-update-button = Aktualisieren
+
+# This is the tooltip text for the private browsing badge in about:addons. The
+# badge is the private browsing icon included next to the extension's name.
+addon-badge-private-browsing-allowed =
+    .title = In privaten Fenstern erlaubt
+addon-detail-private-browsing-help = Falls erlaubt, hat die Erweiterung Zugriff auf Ihre Online-Aktivitäten im Privaten Modus. <a data-l10n-name="learn-more">Weitere Informationen</a>
+addon-detail-private-browsing-allow = Erlauben
+addon-detail-private-browsing-disallow = Nicht erlauben
+
+# This is the tooltip text for the recommended badge for an extension in about:addons. The
+# badge is a small icon displayed next to an extension when it is recommended on AMO.
+addon-badge-recommended =
+  .title = Empfohlen
+  .alt = Empfohlen
+
+available-updates-heading = Verfügbare Updates
+recent-updates-heading = Kürzlich durchgeführte Updates
+
+release-notes-loading = Wird geladen…
+release-notes-error = Es tut uns leid, beim Laden der Versionshinweise trat ein Fehler auf.
+
+addon-permissions-empty = Diese Erweiterung benötigt keine Berechtigungen.
 
 recommended-extensions-heading = Empfohlene Erweiterungen
 recommended-themes-heading = Empfohlene Themes

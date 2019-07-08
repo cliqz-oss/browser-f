@@ -778,6 +778,10 @@ class BrowserParent final : public PBrowserParent,
 
   static void PopFocus(BrowserParent* aBrowserParent);
 
+ public:
+  static void PopFocusAll();
+
+ private:
   TabId mTabId;
 
   RefPtr<ContentParent> mManager;

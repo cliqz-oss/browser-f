@@ -75,6 +75,12 @@
 <!ENTITY  crash_close_label "Schließen">
 <!ENTITY  crash_restart_label "&brandShortName; neu starten">
 
+<!-- Localization note (crash_notification_title, crash_notification_message, crash_notification_negative_button_text)
+     Text displayed in a system notification to allow starting the Crash Reporter (Android Q and later).-->
+<!ENTITY  crash_notification_title "&brandShortName; ist abgestürzt">
+<!ENTITY  crash_notification_message "Antippen, um an &vendorShortName; zu melden">
+<!ENTITY  crash_notification_negative_button_text "Ignorieren">
+
 <!ENTITY url_bar_default_text2 "Suchen oder Adresse eingeben">
 
 <!-- Localization note: this text will be displayed in the Search Widget -->
@@ -116,6 +122,10 @@
 <!ENTITY bookmark_folder_updated "Ordner aktualisiert">
 <!ENTITY bookmark_parent_folder "Enthalten in Ordner">
 <!ENTITY bookmark_add_folder "Neuen Ordner hinzufügen">
+
+<!-- Localization note (bookmark_default_folder_title): Default title is used if user doesn't specify
+     one when he is creating a bookmark folder -->
+<!ENTITY bookmark_default_folder_title "(kein Titel)">
 
 <!ENTITY reader_saved_offline "Offline gespeichert">
 <!-- Localization note (reader_switch_to_bookmarks) : This
@@ -961,3 +971,4 @@ Picture-in-picture mini window -->
 <!-- LOCALIZATION NOTE (site_notifications_channel): This is for system notifications displayed by
 web sites through the HTML Notifications API. -->
 <!ENTITY site_notifications_channel "Website-Benachrichtigungen">
+<!ENTITY crash_handler_notifications_channel "&brandShortName; - Absturzmelder">
