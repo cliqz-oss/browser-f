@@ -179,9 +179,12 @@ pref("app.update.service.enabled", true);
 #endif
 
 #ifdef XP_WIN
+// Cliqz. This looks very experimental, especially a used languages and
+// libraries (XPCOM-C++-rust chain). Need to check how winapi-rs really works,
+// I didn't find any popular service or project which use it.
 // If set to true, the Update Service will attempt to use Windows BITS to
 // download updates and will fallback to downloading internally if that fails.
-pref("app.update.BITS.enabled", true);
+pref("app.update.BITS.enabled", false);
 #endif
 
 // Symmetric (can be overridden by individual extensions) update preferences.
@@ -356,7 +359,7 @@ pref("browser.urlbar.usepreloadedtopurls.enabled", false);
 pref("browser.urlbar.usepreloadedtopurls.expire_days", 14);
 
 // Enable the new Address Bar code.
-pref("browser.urlbar.quantumbar", true);
+pref("browser.urlbar.quantumbar", false);
 
 pref("browser.altClickSave", false);
 
@@ -1594,9 +1597,9 @@ pref("media.gmp-provider.enabled", true);
 // and early beta. By default the value is 0: BEHAVIOR_ACCEPT
 pref("network.cookie.cookieBehavior", 4 /* BEHAVIOR_REJECT_TRACKER */);
 // Enable fingerprinting blocking by default only in nightly and early beta.
-pref("privacy.trackingprotection.fingerprinting.enabled", false);
+pref("privacy.trackingprotection.fingerprinting.enabled", true);
 // Enable cryptomining blocking by default only in nightly and early beta.
-pref("privacy.trackingprotection.cryptomining.enabled", false);
+pref("privacy.trackingprotection.cryptomining.enabled", true);
 #endif
 
 pref("browser.contentblocking.allowlist.storage.enabled", false);

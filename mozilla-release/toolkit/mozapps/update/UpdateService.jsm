@@ -4027,7 +4027,7 @@ Downloader.prototype = {
       }
 
       let updateRootDir = FileUtils.getDir("UpdRootD", [], true);
-      let jobName = "MozillaUpdate " + updateRootDir.leafName;
+      let jobName = "CliqzUpdate " + updateRootDir.leafName;
       let updatePath = updateDir.path;
       if (!Bits.initialized) {
         Bits.init(jobName, updatePath, monitorTimeout);

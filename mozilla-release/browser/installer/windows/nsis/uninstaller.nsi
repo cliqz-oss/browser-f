@@ -508,7 +508,7 @@ Section "Uninstall"
 !endif
 
 !ifdef MOZ_BITS_DOWNLOAD
-  BitsUtils::CancelBitsJobsByName "MozillaUpdate $AppUserModelID"
+  BitsUtils::CancelBitsJobsByName "CliqzUpdate $AppUserModelID"
   Pop $0
 !endif
 

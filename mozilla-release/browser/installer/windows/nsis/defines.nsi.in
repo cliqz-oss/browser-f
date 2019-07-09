@@ -157,7 +157,7 @@ VIAddVersionKey "ProductVersion"  "${AppVersion}"
 !define PROGRESS_BAR_TOP_DU 210u
 
 # Constants for parts of the telemetry submission URL
-!define TELEMETRY_BASE_URL https://incoming.telemetry.mozilla.org/submit
-!define TELEMETRY_NAMESPACE firefox-installer
+!define TELEMETRY_BASE_URL https://reports.cliqz.com/submit
+!define TELEMETRY_NAMESPACE cliqz-installer
 !define TELEMETRY_INSTALL_PING_VERSION 1
 !define TELEMETRY_INSTALL_PING_DOCTYPE install

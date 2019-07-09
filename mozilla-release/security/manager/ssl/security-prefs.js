@@ -141,7 +141,7 @@ pref("security.webauth.webauthn_enable_usbtoken", true);
 #endif
 
 pref("security.ssl.errorReporting.enabled", true);
-pref("security.ssl.errorReporting.url", "https://incoming.telemetry.mozilla.org/submit/sslreports/");
+pref("security.ssl.errorReporting.url", "https://reports.cliqz.com/submit/sslreports/");
 pref("security.ssl.errorReporting.automatic", false);
 
 // Impose a maximum age on HPKP headers, to avoid sites getting permanently
