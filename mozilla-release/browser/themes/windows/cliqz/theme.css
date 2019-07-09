@@ -192,6 +192,9 @@ toolbar .toolbarbutton-1 > .toolbarbutton-icon {
   background-color: var(--toolbar-bgcolor, #f2f2f2);
   /* Change box-shadow and background color when focused and hovering */
 }
+#navigator-toolbox #nav-bar #urlbar-container #urlbar .textbox-input {
+  padding-bottom: 2px;
+}
 #navigator-toolbox[on_private_tab="true"] #nav-bar #urlbar-container #urlbar:-moz-lwtheme-darktext {
   background-color: #BBC6D4;
 }
