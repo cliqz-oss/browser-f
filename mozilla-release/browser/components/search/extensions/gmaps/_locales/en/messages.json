@@ -13,5 +13,8 @@
   },
   "searchForm": {
     "message": "https://www.google.com/maps"
+  },
+  "searchUrlGetParams": {
+    "message": "q={searchTerms}"
   }
 }

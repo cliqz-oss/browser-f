@@ -13,5 +13,8 @@
   },
   "suggestUrl": {
     "message": "https://www.google.de/maps"
+  },
+  "searchUrlGetParams": {
+    "message": "q={searchTerms}"
   }
 }

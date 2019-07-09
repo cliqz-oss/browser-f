@@ -13,5 +13,8 @@
   },
   "suggestUrl": {
     "message": "https://www.youtube.com/results?q={searchTerms}"
+  },
+  "searchUrlGetParams": {
+    "message": "q={searchTerms}"
   }
 }
