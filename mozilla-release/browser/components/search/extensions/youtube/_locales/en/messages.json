@@ -1,9 +1,9 @@
 {
   "extensionName": {
-    "message": "Yahoo"
+    "message": "Youtube"
   },
   "extensionDescription": {
-    "message": "Use Yahoo to search the Internet."
+    "message": "Use youtube to search the Internet."
   },
   "searchUrl": {
     "message": "https://www.youtube.com/results"
