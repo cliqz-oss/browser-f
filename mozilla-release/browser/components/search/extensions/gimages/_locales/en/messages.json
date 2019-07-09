@@ -8,7 +8,7 @@
   "searchUrl": {
     "message": "https://www.google.com/search"
   },
-  "suggest_url": {
+  "suggestUrl": {
     "message": "https://www.google.com/search"
   },
   "searchForm": {

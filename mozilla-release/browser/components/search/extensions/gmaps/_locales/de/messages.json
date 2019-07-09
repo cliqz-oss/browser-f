@@ -10,5 +10,8 @@
   },
   "searchForm": {
     "message": "https://www.google.de/maps"
+  },
+  "suggestUrl": {
+    "message": "https://www.google.de/maps"
   }
 }
