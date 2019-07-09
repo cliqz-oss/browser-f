@@ -181,7 +181,10 @@ toolbar .toolbarbutton-1 > .toolbarbutton-icon {
   box-shadow: 0 1px 6px rgba(0, 0, 0, 0.15);
   background-color: #585858;
 }
-#navigator-toolbox #nav-bar #urlbar-container #urlbar:-moz-lwtheme[pageproxystate=valid] > #identity-box.verifiedIdentity > #identity-icon-labels {
+#navigator-toolbox #nav-bar #urlbar-container #urlbar:-moz-lwtheme[pageproxystate="valid"] > #identity-box #identity-icon-labels {
+  color: #fff;
+}
+#navigator-toolbox #nav-bar #urlbar-container #urlbar:-moz-lwtheme[pageproxystate="valid"] > #identity-box.verifiedIdentity #identity-icon-labels {
   color: #058B00;
 }
 #navigator-toolbox #nav-bar #urlbar-container #urlbar:-moz-lwtheme-darktext {
@@ -196,8 +199,8 @@ toolbar .toolbarbutton-1 > .toolbarbutton-icon {
   box-shadow: 0 1px 6px rgba(0, 0, 0, 0.15);
   background-color: #fff;
 }
-#navigator-toolbox #nav-bar #urlbar-container #urlbar:-moz-lwtheme-darktext[pageproxystate=valid] > #identity-box.chromeUI > #identity-icon-labels {
-  color: #000;
+#navigator-toolbox #nav-bar #urlbar-container #urlbar:-moz-lwtheme-darktext[pageproxystate="valid"] > #identity-box #identity-icon-labels {
+  color: #5a5b5c;
 }
 #navigator-toolbox #PersonalToolbar {
   border-top: 1px solid #e1e1e1;
