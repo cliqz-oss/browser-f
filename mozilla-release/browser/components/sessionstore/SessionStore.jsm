@@ -2010,7 +2010,7 @@ var SessionStoreInternal = {
 
     // Don't save private tabs
     let isPrivateWindow = PrivateBrowsingUtils.isWindowPrivate(aWindow);
-    if (!isPrivateWindow && tabState.isPrivate) {
+    if (isPrivateWindow || tabState.isPrivate) {
       return;
     }
 
