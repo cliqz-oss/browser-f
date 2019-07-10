@@ -169,7 +169,7 @@ var MigrationWizard = { /* exported MigrationWizard */
     }
   },
 
-  onImportSourcePageAdvanced(event) {
+  maybeTakeUserSelectedMigrator(event) {
     var newSource = document.getElementById("importSourceGroup").selectedItem.id;
 
     if (newSource == "nothing") {
@@ -180,6 +180,7 @@ var MigrationWizard = { /* exported MigrationWizard */
                         .add(MigrationUtils.getSourceIdForTelemetry("nothing"));
       document.documentElement.cancel();
       event.preventDefault();
+      return false;
     }
 
     if (!this._migrator || (newSource != this._source)) {

@@ -517,7 +517,7 @@ var Policies = {
       setAndLockPref("browser.download.useDownloadDir", true);
     },
   },
-
+#if 0
   "EnableTrackingProtection": {
     onBeforeUIStartup(manager, param) {
       if (param.Value) {
@@ -529,7 +529,7 @@ var Policies = {
       }
     },
   },
-
+#endif
   "Extensions": {
     onBeforeUIStartup(manager, param) {
       let uninstallingPromise = Promise.resolve();
@@ -727,30 +727,13 @@ var Policies = {
       // |homepages| will be a string containing a pipe-separated ('|') list of
       // URLs because that is what the "Custom URLs..." section of about:preferences
       // (and therefore what the pref |browser.startup.homepage|) accepts.
+      // Cliqz. This part totally re-worked in Cliqz browser because we have
+      // different Startup options, so we can not follow FF's settings at all.
       let homepages = "about:home";
-      if (param.URL) {
-        homepages = param.URL.href;
-        if (param.Additional && param.Additional.length > 0) {
-          homepages += "|" + param.Additional.map(url => url.href).join("|");
-        }
-        setDefaultPref("browser.startup.homepage", homepages, param.Locked);
-        if (param.Locked) {
-          setAndLockPref("pref.browser.homepage.disable_button.current_page", true);
-          setAndLockPref("pref.browser.homepage.disable_button.bookmark_page", true);
-          setAndLockPref("pref.browser.homepage.disable_button.restore_default", true);
-        } else {
-          runOncePerModification("setHomepage", homepages, () => {
-            Services.prefs.clearUserPref("browser.startup.homepage");
-          });
-        }
-      }
-      if (param.StartPage) {
-        let prefValue;
-        switch (param.StartPage) {
+      if (param.Homepage) {
+        switch (param.Homepage) {
           case "default":
             homepages = "about:home";
-          case "none":
-            prefValue = 0;
             break;
           case "urls":
             if (param.URLs && param.URLs.length > 0) {
@@ -766,6 +749,15 @@ var Policies = {
       setDefaultPref("browser.startup.restoreTabs", param.RestoreLastSession, param.Locked);
       setDefaultPref("browser.startup.addFreshTab", param.ShowHomepage, param.Locked);
       setDefaultPref("browser.startup.homepage", homepages, param.Locked);
+      if (param.Locked) {
+        setAndLockPref("pref.browser.homepage.disable_button.current_page", true);
+        setAndLockPref("pref.browser.homepage.disable_button.bookmark_page", true);
+        setAndLockPref("pref.browser.homepage.disable_button.restore_default", true);
+      } else {
+        runOncePerModification("setHomepage", homepages, () => {
+          Services.prefs.clearUserPref("browser.startup.homepage");
+        });
+      }
     },
   },
 
@@ -906,7 +898,7 @@ var Policies = {
       }
     },
   },
-
+#if 0
   "RequestedLocales": {
     onBeforeAddons(manager, param) {
       if (Array.isArray(param)) {
@@ -916,7 +908,7 @@ var Policies = {
       }
     },
   },
-
+#endif
   "SanitizeOnShutdown": {
     onBeforeUIStartup(manager, param) {
       if (typeof param === "boolean") {
@@ -972,7 +964,7 @@ var Policies = {
       }
     },
   },
-
+#if 0
   "SearchBar": {
     onAllWindowsRestored(manager, param) {
       // This policy is meant to change the default behavior, not to force it.
@@ -1073,7 +1065,7 @@ var Policies = {
       setAndLockPref("browser.search.suggest.enabled", param);
     },
   },
-
+#endif
   "SecurityDevices": {
     onProfileAfterChange(manager, param) {
       let securityDevices = param;

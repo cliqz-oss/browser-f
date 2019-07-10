@@ -1865,9 +1865,11 @@ var AddonManagerInternal = {
                                     aInstallingPrincipal.URI, aInstall);
         return;
         // CLIQZ-SPECIAL: Mark AMO as safe site
-      } else if (!this.isAMOOrigin(aInstallingPrincipal) && (aInstallingPrincipal.isNullPrincipal || !aBrowser.contentPrincipal ||
-                 !aInstallingPrincipal.subsumes(aBrowser.contentPrincipal) ||
-                 !this.isInstallAllowedByPolicy(aInstallingPrincipal, aInstall, false /* explicit */))) {
+      } else if (!this.isAMOOrigin(aInstallingPrincipal) &&
+                 (aInstallingPrincipal.isNullPrincipal ||
+                  !aBrowser.contentPrincipal ||
+                  !aInstallingPrincipal.subsumes(aBrowser.contentPrincipal) ||
+                  !this.isInstallAllowedByPolicy(aInstallingPrincipal, aInstall, false /* explicit */))) {
         aInstall.cancel();
 
         this.installNotifyObservers("addon-install-origin-blocked", topBrowser,

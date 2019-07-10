@@ -32,8 +32,8 @@ browser.jar:
 *       content/browser/browser.xhtml                 (content/browser.xhtml)
 #else
 *       content/browser/browser.xul                   (content/browser.xul)
-        content/browser/browser-addons.js             (content/browser-addons.js)
 #endif
+        content/browser/browser-addons.js             (content/browser-addons.js)
         content/browser/browser-allTabsMenu.js        (content/browser-allTabsMenu.js)
         content/browser/browser-captivePortal.js      (content/browser-captivePortal.js)
         content/browser/browser-ctrlTab.js            (content/browser-ctrlTab.js)

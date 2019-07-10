@@ -1097,14 +1097,10 @@ var gMainPane = {
   },
 
   onBrowserRestoreSessionChange(event) {
+    // Cliqz. Some code was remove without ifdef (for simplicity)
     const value = event.target.checked;
     let warnOnQuitCheckbox = document.getElementById("browserRestoreSessionQuitWarning");
     if (value) {
-      // We need to restore the blank homepage setting in our other pref
-      if (startupPref.value === this.STARTUP_PREF_BLANK) {
-        HomePage.set("about:blank");
-      }
-      newValue = this.STARTUP_PREF_RESTORE_SESSION;
       let warnOnQuitPref = Preferences.get("browser.sessionstore.warnOnQuit");
       if (!warnOnQuitPref.locked) {
         warnOnQuitCheckbox.removeAttribute("disabled");

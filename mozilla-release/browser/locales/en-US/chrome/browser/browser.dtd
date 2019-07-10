@@ -971,10 +971,7 @@ you can use these alternative items. Otherwise, their values should be empty.  -
      display a tooltip for accessibility indicator in toolbar/tabbar. It is also
      used as a textual label for the indicator used by assistive technology
      users. -->
-<!ENTITY accessibilityIndicator.tooltip "Accessibility Features Enabled">
-<!ENTITY addonPostInstall.incognito.checkbox.label "Allow this extension to run in Forget Windows">
-<!ENTITY addonPrivateBrowsing.header2.label "Change to extensions in Forget Windows">
-<!ENTITY addonPrivateBrowsing.body2.label "Any new extensions you add to &brandShorterName; won’t work in Forget Windows unless you allow this in the settings.">
+
 <!-- Cliqz -->
 <!ENTITY allowAddons.panelUI.label "Cliqz now supports Firefox add-ons">
 <!ENTITY connect.panelUI.label "Connect">

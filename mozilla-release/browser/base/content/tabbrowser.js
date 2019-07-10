@@ -2486,7 +2486,7 @@ window._gBrowser = {
       // userContext, check if there is a preloaded browser ready.
       if (aURI == BROWSER_NEW_TAB_URL &&
           !userContextId &&
-          !PrivateBrowsingUtils.isWindowPrivate(window) && // CLIQZ-CHECK
+          !private &&
           !recordExecution &&
           !replayExecution) {
         b = NewTabPagePreloading.getPreloadedBrowser(window);

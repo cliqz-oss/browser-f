@@ -1253,9 +1253,7 @@ pref("services.sync.prefs.sync.browser.urlbar.maxRichResults", true);
 pref("services.sync.prefs.sync.browser.urlbar.suggest.bookmark", true);
 pref("services.sync.prefs.sync.browser.urlbar.suggest.history", true);
 pref("services.sync.prefs.sync.browser.urlbar.suggest.openpage", true);
-#if 0
 pref("services.sync.prefs.sync.browser.urlbar.suggest.searches", true);
-#endif
 pref("services.sync.prefs.sync.browser.urlbar.suggest.searches", false);
 pref("services.sync.prefs.sync.dom.disable_open_during_load", true);
 pref("services.sync.prefs.sync.dom.disable_window_flip", true);
@@ -1310,16 +1308,7 @@ pref("services.sync.prefs.dangerously_allow_arbitrary", false);
 // fetching these icons to show remote tabs may leak information about that
 // user's tabs and bookmarks. Note this pref is also synced.
 pref("services.sync.syncedTabs.showRemoteIcons", true);
-
 #endif  // MOZ_SERVICES_SYNC
-
-// Developer edition preferences
-#ifdef MOZ_DEV_EDITION
-pref("lightweightThemes.selectedThemeID", "firefox-compact-dark@mozilla.org",
-     sticky);
-#else
-pref("lightweightThemes.selectedThemeID", "firefox-compact-light@mozilla.org", sticky);
-#endif
 
 // Whether the character encoding menu is under the main Firefox button. This
 // preference is a string so that localizers can alter it.
@@ -1660,8 +1649,8 @@ pref("browser.contentblocking.rejecttrackers.reportBreakage.enabled", false);
 pref("browser.contentblocking.reportBreakage.url", "https://tracking-protection-issues.herokuapp.com/new");
 
 pref("browser.contentblocking.introCount", 0);
-
-pref("browser.contentblocking.maxIntroCount", 5);
+// Cliqz. Don't use FF intro
+pref("browser.contentblocking.maxIntroCount", 0);
 // 1800 = 30 min in seconds
 pref("browser.contentblocking.introDelaySeconds", 1800);
 

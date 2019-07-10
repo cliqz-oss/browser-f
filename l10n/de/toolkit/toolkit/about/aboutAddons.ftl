@@ -104,22 +104,17 @@ detail-update-manual =
     .tooltiptext = Updates nicht automatisch installieren
 # Used as a description for the option to allow or block an add-on in private windows.
 detail-private-browsing-label = In Vergessen-Fenstern ausführen
-
 detail-private-browsing-description2 = Falls erlaubt, hat die Erweiterung Zugriff auf Ihre Online-Aktivitäten im Vergessen-Modus. <label data-l10n-name="detail-private-browsing-learn-more">Weitere Informationen</label>
-
 # Some add-ons may elect to not run in private windows by setting incognito: not_allowed in the manifest.  This
 # cannot be overriden by the user.
 detail-private-disallowed-label = In Vergessen-Fenstern nicht erlaubt
 detail-private-disallowed-description = Die Erweiterung wird in Vergessen-Fenstern nicht ausgeführt. <label data-l10n-name="detail-private-browsing-learn-more">Weitere Informationen</label>
-
 # Some special add-ons are privileged, run in private windows automatically, and this permission can't be revoked
 detail-private-required-label = Benötigt Zugriff auf Vergessen-Fenster
 detail-private-required-description = Die Erweiterung hat Zugriff auf Ihre Online-Aktivitäten in Vergessen-Fenstern. <label data-l10n-name="detail-private-browsing-learn-more">Weitere Informationen</label>
-
 detail-private-browsing-on =
     .label = Erlauben
     .tooltiptext = Aktivieren in Vergessen-Fenstern
-
 detail-private-browsing-off =
     .label = Nicht erlauben
     .tooltiptext = Deaktivieren in Vergessen-Fenstern
@@ -168,7 +163,7 @@ legacy-extensions =
 legacy-extensions-description = Diese Erweiterungen erfüllen nicht die aktuellen Standards von { -brand-short-name } und wurden deshalb deaktiviert. <label data-l10n-name="legacy-learn-more">Weitere Informationen über Änderungen bei der Unterstützung von Add-ons für Firefox</label>
 private-browsing-description2 =
     { -brand-short-name } ändert die Verwendung von Erweiterungen im Vergessen-Modus.
-    Neu in { -brand-short-name } installierte Erweiterungen werden standardmäßig in Vergessen-Fenstern nicht ausgeführt und haben keine Zugriff auf die Online-Aktivitäten in diesen, außer gibt die Erweiterung wird in den Einstellungen für die Verwendung in Vergessen-Fenstern freigegeben.
+    Neu in { -brand-short-name } installierte Erweiterungen werden standardmäßig in Vergessen-Fenstern nicht ausgeführt und haben keinen Zugriff auf die Online-Aktivitäten in diesen, außer die Erweiterung wird in den Einstellungen für die Verwendung in Vergessen-Fenstern freigegeben.
     Diese Änderung dient Ihrem Datenschutz im Vergessen-Modus.
     <label data-l10n-name="private-browsing-learn-more">Weitere Informationen zur Verwaltung der Erweiterungseinstellungen</label>
 extensions-view-discover =
@@ -290,7 +285,7 @@ discopane-intro =
     Passwörter zu schützen, Videos herunterzuladen, keine Angebote zu verpassen, nervige Werbung zu blockieren,
     das Aussehen des Browsers zu verändern und viel mehr. Diese kleinen Software-Programme werden oft von
     Personen oder Organisationen entwickelt, die keine direkte Verbindung mit dem Browser-Entwickler haben.
-    Hier ist eine Auswahl durch { -brand-product-name } von 
+    Hier ist eine Auswahl durch { -brand-product-name } von
     <a data-l10n-name="learn-more-trigger">empfohlenen Add-ons</a>, welche für herausragende Sicherheit,
     Leistung und Funktionalität stehen.
 

@@ -548,7 +548,6 @@ var gPrivacyPane = {
     setEventListener("changeBlockListLink", "click", this.showBlockLists);
     setEventListener("contentBlockingTrackingProtectionCheckbox", "command",
       this.trackingProtectionWritePrefs);
-#if 0
     setEventListener("contentBlockingTrackingProtectionCheckbox", "command",
       this._updateTrackingProtectionUI);
     setEventListener("contentBlockingCryptominersCheckbox", "command",
@@ -557,7 +556,6 @@ var gPrivacyPane = {
       this.updateFingerprintingLists);
     setEventListener("trackingProtectionMenu", "command",
       this.trackingProtectionWritePrefs);
-#endif
     setEventListener("standardArrow", "command", this.toggleExpansion);
     setEventListener("strictArrow", "command", this.toggleExpansion);
     setEventListener("customArrow", "command", this.toggleExpansion);
@@ -566,7 +564,6 @@ var gPrivacyPane = {
       gPrivacyPane.readBlockCookies.bind(gPrivacyPane));
     Preferences.get("network.cookie.cookieBehavior").on("change",
       gPrivacyPane.readBlockCookiesMenu.bind(gPrivacyPane));
-#if 0
     Preferences.get("browser.contentblocking.category").on("change",
       gPrivacyPane.highlightCBCategory);
 
@@ -595,7 +592,6 @@ var gPrivacyPane = {
       this.populateCategoryContents);
     this.populateCategoryContents();
     this.highlightCBCategory();
-#endif
     this.readBlockCookies();
     this.readBlockCookiesMenu();
 
