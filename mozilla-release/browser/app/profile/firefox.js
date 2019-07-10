@@ -359,7 +359,15 @@ pref("browser.urlbar.usepreloadedtopurls.enabled", false);
 pref("browser.urlbar.usepreloadedtopurls.expire_days", 14);
 
 // Enable the new Address Bar code.
-pref("browser.urlbar.quantumbar", false);
+// CLIQZ-SPECIAL:
+// DB-2204
+// Since I have already disabled quantumbar search results in
+// fb497cd8e531c2c4bf904a23fe070bb74fcb5f5f commit
+// we also need to turn off the old autocomplete FF dropdown.
+// However, unlike new quantumbar that old source code got spreaded across
+// many files and it is not error-proof at all.
+// So it is easier for us to have quantumbar on by default.
+pref("browser.urlbar.quantumbar", true);
 
 pref("browser.altClickSave", false);
 
