@@ -2813,7 +2813,7 @@ mozilla::ipc::IPCResult BrowserParent::RecvDispatchFocusToTopLevelWindow() {
 mozilla::ipc::IPCResult
 BrowserParent::RecvLoadContextPrivatenessChanged(const bool& isPrivate) {
   SetPrivateBrowsingAttributes(isPrivate);
-  GetLoadContext();
+  nsCOMPtr<nsILoadContext> loadContext = GetLoadContext();
   mLoadContext->SetPrivateness(isPrivate);
   return IPC_OK();
 }
