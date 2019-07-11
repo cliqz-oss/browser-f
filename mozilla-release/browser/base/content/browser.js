@@ -6968,7 +6968,7 @@ var ToolbarContextMenu = {
     }
     let {remove, report} = promptRemoveExtension(addon);
     AMTelemetry.recordActionEvent({
-      object: "browserAction",n
+      object: "browserAction",
       action: "uninstall",
       value: remove ? "accepted" : "cancelled",
       extra: {addonId: addon.id},
