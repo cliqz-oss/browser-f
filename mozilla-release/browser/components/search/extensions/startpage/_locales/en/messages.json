@@ -9,7 +9,7 @@
     "message": "https://www.startpage.com/do/dsearch"
   },
   "searchForm": {
-    "message": "https://www.startpage.com/do/dsearch?query={searchTerms}&cat=web&pl=opensearch&language=english"
+    "message": "https://www.startpage.com/do/dsearch"
   },
   "suggestUrl": {
     "message": "https://www.startpage.com/do/dsearch"

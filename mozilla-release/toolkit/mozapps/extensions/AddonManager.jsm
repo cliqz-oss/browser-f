@@ -1864,7 +1864,7 @@ var AddonManagerInternal = {
         this.installNotifyObservers("addon-install-disabled", topBrowser,
                                     aInstallingPrincipal.URI, aInstall);
         return;
-        // CLIQZ-SPECIAL: Mark AMO as safe site
+      // CLIQZ-SPECIAL: Mark AMO as safe site
       } else if (!this.isAMOOrigin(aInstallingPrincipal) &&
                  (aInstallingPrincipal.isNullPrincipal ||
                   !aBrowser.contentPrincipal ||
@@ -1888,7 +1888,8 @@ var AddonManagerInternal = {
         AddonManagerInternal.startInstall(aBrowser, aInstallingPrincipal.URI, aInstall);
       };
 
-      let installAllowed = this.isInstallAllowed(aMimetype, aInstallingPrincipal);
+      // CLIQZ-SPECIAL: Mark AMO as safe site
+      let installAllowed = this.isAMOOrigin(aInstallingPrincipal) || this.isInstallAllowed(aMimetype, aInstallingPrincipal);
       let installPerm = Services.perms.testPermissionFromPrincipal(aInstallingPrincipal, "install");
 
       if (installAllowed) {

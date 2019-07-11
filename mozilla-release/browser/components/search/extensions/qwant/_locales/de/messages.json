@@ -9,7 +9,7 @@
     "message": "https://www.qwant.com/"
   },
   "searchForm": {
-    "message": "https://www.qwant.com/?client=brz-moz&q={searchTerms}"
+    "message": "https://www.qwant.com"
   },
   "suggestUrl": {
     "message": "https://api.qwant.com/api/suggest/"

@@ -6945,6 +6945,7 @@ var ToolbarContextMenu = {
     let addon = id && await AddonManager.getAddonByID(id);
 
     // CLIQZ-SPECIAL: hide manage, report and remove extensions for cliqz toolbar icons
+    let node = this._getUnwrappedTriggerNode(popup);
     let isCliqzButton = node && node.hasAttribute("data-extensionid") && (node.getAttribute("data-extensionid") == "cliqz@cliqz.com");
     for (let element of [removeExtension, manageExtension, separator]) {
       element.hidden = !addon || isCliqzButton;
