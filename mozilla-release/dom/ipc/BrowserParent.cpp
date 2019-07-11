@@ -319,9 +319,16 @@ void BrowserParent::RemoveBrowserParentFromTable(layers::LayersId aLayersId) {
 }
 
 already_AddRefed<nsILoadContext> BrowserParent::GetLoadContext() {
+  CreateLoadContext();
+  //RefPtr<LoadContext> loadContext;
   nsCOMPtr<nsILoadContext> loadContext;
+  loadContext = mLoadContext;
+  return loadContext.forget();
+}
+
+void BrowserParent::CreateLoadContext() {
   if (mLoadContext) {
-    loadContext = mLoadContext;
+    return;
   } else {
 #if 0  // Privateness is already passed with TabContext to our constructor.
     bool isPrivate = mChromeFlags & nsIWebBrowserChrome::CHROME_PRIVATE_WINDOW;
@@ -332,14 +339,13 @@ already_AddRefed<nsILoadContext> BrowserParent::GetLoadContext() {
     if (docShell) {
       docShell->GetUseTrackingProtection(&useTrackingProtection);
     }
-    loadContext = new LoadContext(
+    mLoadContext = new LoadContext(
         GetOwnerElement(), true /* aIsContent */,
+        OriginAttributesRef().mPrivateBrowsingId != 0,
         mChromeFlags & nsIWebBrowserChrome::CHROME_REMOTE_WINDOW,
         mChromeFlags & nsIWebBrowserChrome::CHROME_FISSION_WINDOW,
         useTrackingProtection, OriginAttributesRef());
-    mLoadContext = loadContext;
   }
-  return loadContext.forget();
 }
 
 /**

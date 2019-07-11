@@ -67,11 +67,13 @@ class LoadContext final : public nsILoadContext, public nsIInterfaceRequestor {
 
   LoadContext(dom::Element* aTopFrameElement, bool aIsContent,
               bool aUsePrivateBrowsing, bool aUseRemoteTabs,
-              bool aUseTrackingProtection, const OriginAttributes& aAttrs)
+              bool aUseRemoteSubframes, bool aUseTrackingProtection,
+              const OriginAttributes& aAttrs)
       : mTopFrameElement(do_GetWeakReference(aTopFrameElement)),
         mNestedFrameId(0),
         mIsContent(aIsContent),
         mUseRemoteTabs(aUseRemoteTabs),
+        mUseRemoteSubframes(aUseRemoteSubframes),
         mUseTrackingProtection(aUseTrackingProtection),
 #ifdef DEBUG
         mIsNotNull(true),

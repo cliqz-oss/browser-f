@@ -46,6 +46,7 @@ class nsIWebBrowserPersistDocumentReceiver;
 namespace mozilla {
 
 class LoadContext;
+
 namespace a11y {
 class DocAccessibleParent;
 }
@@ -727,8 +728,8 @@ class BrowserParent final : public PBrowserParent,
       InfallibleTArray<URIParams>&& aURIs);
 
  private:
-  // DB-2188: please take a look at GetLoadContext();
-  // void CreateLoadContext();
+  void CreateLoadContext();
+
   void SuppressDisplayport(bool aEnabled);
 
   void DestroyInternal();
