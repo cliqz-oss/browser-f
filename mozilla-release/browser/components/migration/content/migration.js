@@ -63,13 +63,16 @@ var MigrationWizard = { /* exported MigrationWizard */
     document.getElementById("selectProfile").addEventListener("pageshow", function() { MigrationWizard.onSelectProfilePageShow(); });
     document.getElementById("importItems").addEventListener("pageshow", function() { MigrationWizard.onImportItemsPageShow(); });
     document.getElementById("migrating").addEventListener("pageshow", function() { MigrationWizard.onMigratingPageShow(); });
+    document.getElementById("selectAddons").addEventListener("pageshow", function() { MigrationWizard.onImportAddonsPageShow(); });
     document.getElementById("done").addEventListener("pageshow", function() { MigrationWizard.onDonePageShow(); });
 
     document.getElementById("selectProfile").addEventListener("pagerewound", function() { MigrationWizard.onSelectProfilePageRewound(); });
+    document.getElementById("selectAddons").addEventListener("pagerewound", function() { MigrationWizard.onImportAddonsPageRewound(); });
     document.getElementById("importItems").addEventListener("pagerewound", function() { MigrationWizard.onImportItemsPageRewound(); });
 
     document.getElementById("selectProfile").addEventListener("pageadvanced", function() { MigrationWizard.onSelectProfilePageAdvanced(); });
     document.getElementById("importItems").addEventListener("pageadvanced", function() { MigrationWizard.onImportItemsPageAdvanced(); });
+    document.getElementById("selectAddons").addEventListener("pageadvanced", function(e) { MigrationWizard.onImportAddonsPageAdvanced(e); });
     document.getElementById("importSource").addEventListener("pageadvanced", function(e) { MigrationWizard.onImportSourcePageAdvanced(e); });
 
     this.onImportSourcePageShow();
