@@ -137,11 +137,11 @@ class RetAddrEntry {
 
  public:
   enum class Kind : uint32_t {
-    // A for-op IC.
+    // An IC for a JOF_IC op.
     IC,
 
-    // A non-op IC.
-    NonOpIC,
+    // A prologue IC.
+    PrologueIC,
 
     // A callVM for an op.
     CallVM,
@@ -203,12 +203,6 @@ class RetAddrEntry {
     MOZ_ASSERT(kind_ < uint32_t(Kind::Invalid));
     return Kind(kind_);
   }
-  bool isForOp() const { return kind() == Kind::IC; }
-
-  void setNonICKind(Kind kind) {
-    MOZ_ASSERT(kind != Kind::IC && kind != Kind::NonOpIC);
-    setKind(kind);
-  }
 };
 
 struct BaselineScript final {
@@ -228,6 +222,10 @@ struct BaselineScript final {
   // Early Ion bailouts will enter at this address. This is after frame
   // construction and before environment chain is initialized.
   uint32_t bailoutPrologueOffset_;
+
+  // Baseline Interpreter can enter Baseline Compiler code at this address. This
+  // is right after the warm-up counter check in the prologue.
+  uint32_t warmUpCheckPrologueOffset_;
 
   // Baseline Debug OSR during prologue will enter at this address. This is
   // right after where a debug prologue VM call would have returned.
@@ -320,11 +318,13 @@ struct BaselineScript final {
   // Use BaselineScript::New to create new instances. It will properly
   // allocate trailing objects.
   BaselineScript(uint32_t bailoutPrologueOffset,
+                 uint32_t warmUpCheckPrologueOffset,
                  uint32_t debugOsrPrologueOffset,
                  uint32_t debugOsrEpilogueOffset,
                  uint32_t profilerEnterToggleOffset,
                  uint32_t profilerExitToggleOffset)
       : bailoutPrologueOffset_(bailoutPrologueOffset),
+        warmUpCheckPrologueOffset_(warmUpCheckPrologueOffset),
         debugOsrPrologueOffset_(debugOsrPrologueOffset),
         debugOsrEpilogueOffset_(debugOsrEpilogueOffset),
         profilerEnterToggleOffset_(profilerEnterToggleOffset),
@@ -333,10 +333,11 @@ struct BaselineScript final {
  public:
   static BaselineScript* New(
       JSScript* jsscript, uint32_t bailoutPrologueOffset,
-      uint32_t debugOsrPrologueOffset, uint32_t debugOsrEpilogueOffset,
-      uint32_t profilerEnterToggleOffset, uint32_t profilerExitToggleOffset,
-      size_t retAddrEntries, size_t pcMappingIndexEntries, size_t pcMappingSize,
-      size_t resumeEntries, size_t traceLoggerToggleOffsetEntries);
+      uint32_t warmUpCheckPrologueOffset, uint32_t debugOsrPrologueOffset,
+      uint32_t debugOsrEpilogueOffset, uint32_t profilerEnterToggleOffset,
+      uint32_t profilerExitToggleOffset, size_t retAddrEntries,
+      size_t pcMappingIndexEntries, size_t pcMappingSize, size_t resumeEntries,
+      size_t traceLoggerToggleOffsetEntries);
 
   static void Trace(JSTracer* trc, BaselineScript* script);
   static void Destroy(FreeOp* fop, BaselineScript* script);
@@ -367,6 +368,9 @@ struct BaselineScript final {
 
   uint8_t* bailoutPrologueEntryAddr() const {
     return method_->raw() + bailoutPrologueOffset_;
+  }
+  uint8_t* warmUpCheckPrologueAddr() const {
+    return method_->raw() + warmUpCheckPrologueOffset_;
   }
   uint8_t* debugOsrPrologueEntryAddr() const {
     return method_->raw() + debugOsrPrologueOffset_;
@@ -551,12 +555,22 @@ inline bool IsBaselineEnabled(JSContext* cx) {
 #endif
 }
 
+enum class BaselineTier { Interpreter, Compiler };
+
+template <BaselineTier Tier>
 MethodStatus CanEnterBaselineMethod(JSContext* cx, RunState& state);
 
+template <BaselineTier Tier>
 MethodStatus CanEnterBaselineAtBranch(JSContext* cx, InterpreterFrame* fp);
 
 JitExecStatus EnterBaselineAtBranch(JSContext* cx, InterpreterFrame* fp,
                                     jsbytecode* pc);
+
+// Called by the Baseline Interpreter to compile a script for the Baseline JIT.
+// |res| is set to the native code address in the BaselineScript to jump to, or
+// nullptr if we were unable to compile this script.
+bool BaselineCompileFromBaselineInterpreter(JSContext* cx, BaselineFrame* frame,
+                                            uint8_t** res);
 
 void FinishDiscardBaselineScript(FreeOp* fop, JSScript* script);
 
@@ -636,6 +650,58 @@ void JitSpewBaselineICStats(JSScript* script, const char* dumpReason);
 #endif
 
 static const unsigned BASELINE_MAX_ARGS_LENGTH = 20000;
+
+// Class storing the generated Baseline Interpreter code for the runtime.
+class BaselineInterpreter {
+  // The interpreter code.
+  JitCode* code_ = nullptr;
+
+  // Offset of the code to start interpreting a bytecode op.
+  uint32_t interpretOpOffset_ = 0;
+
+  // The offsets for the toggledJump instructions for profiler instrumentation.
+  uint32_t profilerEnterToggleOffset_ = 0;
+  uint32_t profilerExitToggleOffset_ = 0;
+
+  // The offset for the toggledJump instruction for the debugger's
+  // IsDebuggeeCheck code in the prologue.
+  uint32_t debuggeeCheckOffset_ = 0;
+
+  // Offsets of toggled calls to the DebugTrapHandler trampoline (for
+  // breakpoints and stepping).
+  using CodeOffsetVector = Vector<uint32_t, 0, SystemAllocPolicy>;
+  CodeOffsetVector debugTrapOffsets_;
+
+  // Offsets of toggled jumps for code coverage.
+  CodeOffsetVector codeCoverageOffsets_;
+
+ public:
+  BaselineInterpreter() = default;
+
+  BaselineInterpreter(const BaselineInterpreter&) = delete;
+  void operator=(const BaselineInterpreter&) = delete;
+
+  void init(JitCode* code, uint32_t interpretOpOffset,
+            uint32_t profilerEnterToggleOffset,
+            uint32_t profilerExitToggleOffset, uint32_t debuggeeCheckOffset,
+            CodeOffsetVector&& debugTrapOffsets,
+            CodeOffsetVector&& codeCoverageOffsets);
+
+  uint8_t* codeRaw() const { return code_->raw(); }
+
+  TrampolinePtr interpretOpAddr() const {
+    return TrampolinePtr(codeRaw() + interpretOpOffset_);
+  }
+
+  void toggleProfilerInstrumentation(bool enable);
+  void toggleDebuggerInstrumentation(bool enable);
+
+  void toggleCodeCoverageInstrumentationUnchecked(bool enable);
+  void toggleCodeCoverageInstrumentation(bool enable);
+};
+
+MOZ_MUST_USE bool GenerateBaselineInterpreter(JSContext* cx,
+                                              BaselineInterpreter& interpreter);
 
 }  // namespace jit
 }  // namespace js

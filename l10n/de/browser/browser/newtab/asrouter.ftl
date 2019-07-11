@@ -56,3 +56,11 @@ cfr-doorhanger-pintab-step3 = Falls die Seite auf eine Aktualisierung aufmerksam
 
 cfr-doorhanger-pintab-animation-pause = Anhalten
 cfr-doorhanger-pintab-animation-resume = Fortfahren
+
+## Firefox Accounts Message
+cfr-doorhanger-bookmark-fxa-header = Synchronisieren Sie Ihre Lesezeichen, um sie überall verfügbar zu haben.
+cfr-doorhanger-bookmark-fxa-body = Jederzeit Zugriff auf dieses Lesezeichen - auch auf mobilen Geräten. Nutzen Sie dafür ein { -fxaccount-brand-name }.
+cfr-doorhanger-bookmark-fxa-link-text = Lesezeichen jetzt synchronisieren…
+cfr-doorhanger-bookmark-fxa-close-btn-tooltip =
+  .aria-label = Schließen-Schaltfläche
+  .title = Schließen

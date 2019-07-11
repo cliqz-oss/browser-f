@@ -10,7 +10,7 @@ use moz_task::Task;
 use nserror::{nsresult, NS_ERROR_FAILURE};
 use nsstring::nsCString;
 use owned_value::owned_to_variant;
-use rkv::{Manager, OwnedValue, Rkv, SingleStore, StoreError, StoreOptions, Value};
+use rkv::{OwnedValue, Rkv, SingleStore, StoreError, StoreOptions, Value};
 use std::{
     path::Path,
     str,
@@ -27,6 +27,7 @@ use xpcom::{
 use KeyValueDatabase;
 use KeyValueEnumerator;
 use KeyValuePairResult;
+use manager::Manager;
 
 /// A macro to generate a done() implementation for a Task.
 /// Takes one argument that specifies the type of the Task's callback function:
@@ -172,6 +173,66 @@ impl Task for PutTask {
 
             self.store
                 .put(&mut writer, key, &Value::from(&self.value))?;
+            writer.commit()?;
+
+            Ok(())
+        }()));
+    }
+
+    task_done!(void);
+}
+
+pub struct WriteManyTask {
+    callback: AtomicCell<Option<ThreadBoundRefPtr<nsIKeyValueVoidCallback>>>,
+    rkv: Arc<RwLock<Rkv>>,
+    store: SingleStore,
+    pairs: Vec<(nsCString, Option<OwnedValue>)>,
+    result: AtomicCell<Option<Result<(), KeyValueError>>>,
+}
+
+impl WriteManyTask {
+    pub fn new(
+        callback: RefPtr<nsIKeyValueVoidCallback>,
+        rkv: Arc<RwLock<Rkv>>,
+        store: SingleStore,
+        pairs: Vec<(nsCString, Option<OwnedValue>)>,
+    ) -> WriteManyTask {
+        WriteManyTask {
+            callback: AtomicCell::new(Some(ThreadBoundRefPtr::new(callback))),
+            rkv,
+            store,
+            pairs,
+            result: AtomicCell::default(),
+        }
+    }
+}
+
+impl Task for WriteManyTask {
+    fn run(&self) {
+        // We do the work within a closure that returns a Result so we can
+        // use the ? operator to simplify the implementation.
+        self.result.store(Some(|| -> Result<(), KeyValueError> {
+            let env = self.rkv.read()?;
+            let mut writer = env.write()?;
+
+            for (key, value) in self.pairs.iter() {
+                let key = str::from_utf8(key)?;
+                match value {
+                    Some(val) => self.store.put(&mut writer, key, &Value::from(val))?,
+                    None => {
+                        match self.store.delete(&mut writer, key) {
+                            Ok(_) => (),
+
+                            // LMDB fails with an error if the key to delete wasn't found,
+                            // and Rkv returns that error, but we ignore it, as we expect most
+                            // of our consumers to want this behavior.
+                            Err(StoreError::LmdbError(lmdb::Error::NotFound)) => (),
+
+                            Err(err) => return Err(KeyValueError::StoreError(err)),
+                        };
+                    }
+                }
+            }
             writer.commit()?;
 
             Ok(())
@@ -330,6 +391,45 @@ impl Task for DeleteTask {
                 Err(err) => return Err(KeyValueError::StoreError(err)),
             };
 
+            writer.commit()?;
+
+            Ok(())
+        }()));
+    }
+
+    task_done!(void);
+}
+
+pub struct ClearTask {
+    callback: AtomicCell<Option<ThreadBoundRefPtr<nsIKeyValueVoidCallback>>>,
+    rkv: Arc<RwLock<Rkv>>,
+    store: SingleStore,
+    result: AtomicCell<Option<Result<(), KeyValueError>>>,
+}
+
+impl ClearTask {
+    pub fn new(
+        callback: RefPtr<nsIKeyValueVoidCallback>,
+        rkv: Arc<RwLock<Rkv>>,
+        store: SingleStore,
+    ) -> ClearTask {
+        ClearTask {
+            callback: AtomicCell::new(Some(ThreadBoundRefPtr::new(callback))),
+            rkv,
+            store,
+            result: AtomicCell::default(),
+        }
+    }
+}
+
+impl Task for ClearTask {
+    fn run(&self) {
+        // We do the work within a closure that returns a Result so we can
+        // use the ? operator to simplify the implementation.
+        self.result.store(Some(|| -> Result<(), KeyValueError> {
+            let env = self.rkv.read()?;
+            let mut writer = env.write()?;
+            self.store.clear(&mut writer)?;
             writer.commit()?;
 
             Ok(())

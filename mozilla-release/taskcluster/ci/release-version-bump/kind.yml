@@ -1,7 +1,7 @@
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
-
+---
 loader: taskgraph.loader.transform:loader
 
 transforms:
@@ -31,15 +31,7 @@ job-defaults:
         bump-files:
             by-project:
                 default: ["browser/config/version_display.txt"]
-                mozilla-release:
-                    - "browser/config/version.txt"
-                    - "browser/config/version_display.txt"
-                    - "config/milestone.txt"
-                mozilla-esr52:
-                    - "browser/config/version.txt"
-                    - "browser/config/version_display.txt"
-                    - "config/milestone.txt"
-                mozilla-esr60:
+                mozilla-(release|esr.*):
                     - "browser/config/version.txt"
                     - "browser/config/version_display.txt"
                     - "config/milestone.txt"
@@ -49,19 +41,30 @@ job-defaults:
                     - "config/milestone.txt"
         push:
             by-project:
-                mozilla-beta: true
-                mozilla-release: true
-                mozilla-esr52: true
-                mozilla-esr60: true
+                mozilla-(beta|release|esr.*): true
                 maple: true
                 birch: true
                 jamun: true
                 default: false
 
 jobs:
-    fennec:
-        name: fennec-version-bump
+    fennec-beta:
+        attributes:
+            release-type: beta
+        name: fennec-beta-version-bump
         shipping-product: fennec
+        worker:
+            bump-files:
+                - mobile/android/config/version-files/beta/version_display.txt
+
+    fennec-release:
+        attributes:
+            release-type: release
+        name: fennec-release-version-bump
+        shipping-product: fennec
+        worker:
+            bump-files:
+                - mobile/android/config/version-files/release/version_display.txt
 
     firefox:
         name: firefox-version-bump

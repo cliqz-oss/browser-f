@@ -401,11 +401,13 @@ void PluginModuleContentParent::Initialize(
 
   moduleMapping->SetChannelOpened();
 
-  // Request Windows message deferral behavior on our channel. This
-  // applies to the top level and all sub plugin protocols since they
-  // all share the same channel.
-  parent->GetIPCChannel()->SetChannelFlags(
-      MessageChannel::REQUIRE_DEFERRED_MESSAGE_PROTECTION);
+  if (XRE_UseNativeEventProcessing()) {
+    // If we're processing native events in our message pump, request Windows
+    // message deferral behavior on our channel. This applies to the top level
+    // and all sub plugin protocols since they all share the same channel.
+    parent->GetIPCChannel()->SetChannelFlags(
+        MessageChannel::REQUIRE_DEFERRED_MESSAGE_PROTECTION);
+  }
 
   TimeoutChanged(kContentTimeoutPref, parent);
 
@@ -1291,6 +1293,7 @@ void PluginModuleChromeParent::ProcessFirstMinidump() {
     return;
   }
 
+  AnnotationTable annotations;
   uint32_t sequence = UINT32_MAX;
   nsAutoCString flashProcessType;
   RefPtr<nsIFile> dumpFile =
@@ -1302,9 +1305,9 @@ void PluginModuleChromeParent::ProcessFirstMinidump() {
 
   if (mFlashProcess1 &&
       TakeMinidumpForChild(mFlashProcess1, getter_AddRefs(childDumpFile),
-                           &childSequence)) {
+                           annotations, &childSequence)) {
     if (childSequence < sequence &&
-        mCrashReporter->AdoptMinidump(childDumpFile)) {
+        mCrashReporter->AdoptMinidump(childDumpFile, annotations)) {
       RemoveMinidump(dumpFile);
       dumpFile = childDumpFile;
       sequence = childSequence;
@@ -1315,9 +1318,9 @@ void PluginModuleChromeParent::ProcessFirstMinidump() {
   }
   if (mFlashProcess2 &&
       TakeMinidumpForChild(mFlashProcess2, getter_AddRefs(childDumpFile),
-                           &childSequence)) {
+                           annotations, &childSequence)) {
     if (childSequence < sequence &&
-        mCrashReporter->AdoptMinidump(childDumpFile)) {
+        mCrashReporter->AdoptMinidump(childDumpFile, annotations)) {
       RemoveMinidump(dumpFile);
       dumpFile = childDumpFile;
       sequence = childSequence;
@@ -1489,7 +1492,7 @@ NPError PluginModuleParent::NPP_Destroy(NPP instance, NPSavedData** saved) {
   NPError retval = pip->Destroy();
   instance->pdata = nullptr;
 
-  Unused << PluginInstanceParent::Call__delete__(pip);
+  Unused << PluginInstanceParent::Send__delete__(pip);
   return retval;
 }
 

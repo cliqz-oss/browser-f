@@ -61,6 +61,7 @@ MACH_MODULES = [
     'testing/web-platform/mach_commands.py',
     'testing/xpcshell/mach_commands.py',
     'toolkit/components/telemetry/tests/marionette/mach_commands.py',
+    'tools/browsertime/mach_commands.py',
     'tools/compare-locales/mach_commands.py',
     'tools/docs/mach_commands.py',
     'tools/lint/mach_commands.py',
@@ -250,6 +251,8 @@ def bootstrap(topsrcdir, mozilla_dir=None):
         except Exception:
             substs = {}
 
+        command_attrs = getattr(context, 'command_attrs', {})
+
         # We gather telemetry for every operation.
         paths = {
             instance.topsrcdir: '$topsrcdir/',
@@ -263,7 +266,7 @@ def bootstrap(topsrcdir, mozilla_dir=None):
         data = gather_telemetry(command=handler.name, success=(result == 0),
                                 start_time=start_time, end_time=end_time,
                                 mach_context=context, substs=substs,
-                                paths=paths)
+                                command_attrs=command_attrs, paths=paths)
         if data:
             telemetry_dir = os.path.join(get_state_dir(), 'telemetry')
             try:

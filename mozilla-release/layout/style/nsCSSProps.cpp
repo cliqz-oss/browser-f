@@ -359,14 +359,6 @@ const KTableEntry nsCSSProps::kTextAlignKTable[] = {
     {eCSSKeyword_end, NS_STYLE_TEXT_ALIGN_END},
     {eCSSKeyword_UNKNOWN, -1}};
 
-const KTableEntry nsCSSProps::kTextDecorationLineKTable[] = {
-    {eCSSKeyword_none, NS_STYLE_TEXT_DECORATION_LINE_NONE},
-    {eCSSKeyword_underline, NS_STYLE_TEXT_DECORATION_LINE_UNDERLINE},
-    {eCSSKeyword_overline, NS_STYLE_TEXT_DECORATION_LINE_OVERLINE},
-    {eCSSKeyword_line_through, NS_STYLE_TEXT_DECORATION_LINE_LINE_THROUGH},
-    {eCSSKeyword_blink, NS_STYLE_TEXT_DECORATION_LINE_BLINK},
-    {eCSSKeyword_UNKNOWN, -1}};
-
 const KTableEntry nsCSSProps::kTextDecorationStyleKTable[] = {
     {eCSSKeyword__moz_none, NS_STYLE_TEXT_DECORATION_STYLE_NONE},
     {eCSSKeyword_solid, NS_STYLE_TEXT_DECORATION_STYLE_SOLID},
@@ -389,33 +381,7 @@ const KTableEntry nsCSSProps::kTextOverflowKTable[] = {
     {eCSSKeyword_ellipsis, NS_STYLE_TEXT_OVERFLOW_ELLIPSIS},
     {eCSSKeyword_UNKNOWN, -1}};
 
-const KTableEntry nsCSSProps::kTouchActionKTable[] = {
-    {eCSSKeyword_none, NS_STYLE_TOUCH_ACTION_NONE},
-    {eCSSKeyword_auto, NS_STYLE_TOUCH_ACTION_AUTO},
-    {eCSSKeyword_pan_x, NS_STYLE_TOUCH_ACTION_PAN_X},
-    {eCSSKeyword_pan_y, NS_STYLE_TOUCH_ACTION_PAN_Y},
-    {eCSSKeyword_manipulation, NS_STYLE_TOUCH_ACTION_MANIPULATION},
-    {eCSSKeyword_UNKNOWN, -1}};
-
-const KTableEntry nsCSSProps::kVerticalAlignKTable[] = {
-    {eCSSKeyword_baseline, NS_STYLE_VERTICAL_ALIGN_BASELINE},
-    {eCSSKeyword_sub, NS_STYLE_VERTICAL_ALIGN_SUB},
-    {eCSSKeyword_super, NS_STYLE_VERTICAL_ALIGN_SUPER},
-    {eCSSKeyword_top, NS_STYLE_VERTICAL_ALIGN_TOP},
-    {eCSSKeyword_text_top, NS_STYLE_VERTICAL_ALIGN_TEXT_TOP},
-    {eCSSKeyword_middle, NS_STYLE_VERTICAL_ALIGN_MIDDLE},
-    {eCSSKeyword__moz_middle_with_baseline,
-     NS_STYLE_VERTICAL_ALIGN_MIDDLE_WITH_BASELINE},
-    {eCSSKeyword_bottom, NS_STYLE_VERTICAL_ALIGN_BOTTOM},
-    {eCSSKeyword_text_bottom, NS_STYLE_VERTICAL_ALIGN_TEXT_BOTTOM},
-    {eCSSKeyword_UNKNOWN, -1}};
-
 // keyword tables for SVG properties
-
-const KTableEntry nsCSSProps::kShapeRadiusKTable[] = {
-    {eCSSKeyword_closest_side, StyleShapeRadius::ClosestSide},
-    {eCSSKeyword_farthest_side, StyleShapeRadius::FarthestSide},
-    {eCSSKeyword_UNKNOWN, -1}};
 
 const KTableEntry nsCSSProps::kFilterFunctionKTable[] = {
     {eCSSKeyword_blur, NS_STYLE_FILTER_BLUR},

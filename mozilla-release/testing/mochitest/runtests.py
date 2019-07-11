@@ -102,9 +102,8 @@ list of valid flavors.
 # Set the desired log modules you want a log be produced
 # by a try run for, or leave blank to disable the feature.
 # This will be passed to MOZ_LOG environment variable.
-# Try run will then put a download link for all log files
-# on tbpl.mozilla.org.
-
+# Try run will then put a download link for a zip archive
+# of all the log files on treeherder.
 MOZ_LOG = ""
 
 #####################
@@ -571,8 +570,8 @@ class WebSocketServer(object):
         cmd = [sys.executable, script]
         if self.debuggerInfo and self.debuggerInfo.interactive:
             cmd += ['--interactive']
-        cmd += ['-p', str(self.port), '-w', self._scriptdir, '-l',
-                os.path.join(self._scriptdir, "websock.log"),
+        cmd += ['-H', '127.0.0.1', '-p', str(self.port), '-w', self._scriptdir,
+                '-l', os.path.join(self._scriptdir, "websock.log"),
                 '--log-level=debug', '--allow-handlers-outside-root-dir']
         # start the process
         self._process = mozprocess.ProcessHandler(cmd, cwd=SCRIPT_DIR)
@@ -623,6 +622,9 @@ class SSLTunnel:
 
             if option in (
                     'tls1',
+                    'tls1_1',
+                    'tls1_2',
+                    'tls1_3',
                     'ssl3',
                     'rc4',
                     'failHandshake'):
@@ -630,7 +632,7 @@ class SSLTunnel:
                     "%s:%s:%s:%s\n" %
                     (option, loc.host, loc.port, self.sslPort))
 
-    def buildConfig(self, locations):
+    def buildConfig(self, locations, public=None):
         """Create the ssltunnel configuration file"""
         configFd, self.configFile = tempfile.mkstemp(
             prefix="ssltunnel", suffix=".cfg")
@@ -641,7 +643,17 @@ class SSLTunnel:
             config.write(
                 "websocketserver:%s:%s\n" %
                 (self.webServer, self.webSocketPort))
-            config.write("listen:*:%s:pgoserver\n" % self.sslPort)
+            # Use "*" to tell ssltunnel to listen on the public ip
+            # address instead of the loopback address 127.0.0.1. This
+            # may have the side-effect of causing firewall warnings on
+            # macOS and Windows. Use "127.0.0.1" to listen on the
+            # loopback address.  Remote tests using physical or
+            # emulated Android devices must use the public ip address
+            # in order for the sslproxy to work but Desktop tests
+            # which run on the same host as ssltunnel may use the
+            # loopback address.
+            listen_address = "*" if public else "127.0.0.1"
+            config.write("listen:%s:%s:pgoserver\n" % (listen_address, self.sslPort))
 
             for loc in locations:
                 if loc.scheme == "https" and "nocert" not in loc.options:
@@ -1057,7 +1069,6 @@ class MochitestDesktop(object):
     def setTestRoot(self, options):
         if options.flavor != 'plain':
             self.testRoot = options.flavor
-
         else:
             self.testRoot = self.TEST_PATH
         self.testRootAbs = os.path.join(SCRIPT_DIR, self.testRoot)
@@ -1164,7 +1175,7 @@ class MochitestDesktop(object):
             self.log.error("runtests.py | Timed out while waiting for "
                            "websocket/process bridge startup.")
 
-    def startServers(self, options, debuggerInfo):
+    def startServers(self, options, debuggerInfo, public=None):
         # start servers and set ports
         # TODO: pass these values, don't set on `self`
         self.webServer = options.webServer
@@ -1189,7 +1200,7 @@ class MochitestDesktop(object):
         self.sslTunnel = SSLTunnel(
             options,
             logger=self.log)
-        self.sslTunnel.buildConfig(self.locations)
+        self.sslTunnel.buildConfig(self.locations, public=public)
         self.sslTunnel.start()
 
         # If we're lucky, the server has fully started by now, and all paths are
@@ -2561,11 +2572,6 @@ toolbar#nav-bar {
         """ Prepare, configure, run tests and cleanup """
         self.extraPrefs = parse_preferences(options.extraPrefs)
 
-        # a11y and chrome tests don't run with e10s enabled in CI. Need to set
-        # this here since |mach mochitest| sets the flavor after argument parsing.
-        if options.flavor in ('a11y', 'chrome'):
-            options.e10s = False
-
         # for test manifest parsing.
         mozinfo.update({
             "e10s": options.e10s,
@@ -2929,6 +2935,15 @@ toolbar#nav-bar {
             self.killAndGetStack(browser_pid, utilityPath, debuggerInfo,
                                  dump_screen=not debuggerInfo)
 
+    def archiveMozLogs(self):
+        if self.mozLogs:
+            with zipfile.ZipFile("{}/mozLogs.zip".format(os.environ["MOZ_UPLOAD_DIR"]),
+                                 "w", zipfile.ZIP_DEFLATED) as logzip:
+                for logfile in glob.glob("{}/moz*.log*".format(os.environ["MOZ_UPLOAD_DIR"])):
+                    logzip.write(logfile, os.path.basename(logfile))
+                    os.remove(logfile)
+                logzip.close()
+
     class OutputHandler(object):
 
         """line output handler for mozrunner"""
@@ -3106,6 +3121,13 @@ def run_test_harness(parser, options):
     if hasattr(options, 'log'):
         delattr(options, 'log')
 
+    # windows10-aarch64 does not yet support crashreporter testing.
+    # see https://bugzilla.mozilla.org/show_bug.cgi?id=1536221
+    if mozinfo.os == "win" and mozinfo.processor == "aarch64":
+        # manually override the mozinfo.crashreporter value after MochitestDesktop
+        # is instantiated.
+        mozinfo.update({u"crashreporter": False})
+
     options.runByManifest = False
     if options.flavor in ('plain', 'browser', 'chrome'):
         options.runByManifest = True
@@ -3115,13 +3137,7 @@ def run_test_harness(parser, options):
     else:
         result = runner.runTests(options)
 
-    if runner.mozLogs:
-        with zipfile.ZipFile("{}/mozLogs.zip".format(runner.browserEnv["MOZ_UPLOAD_DIR"]),
-                             "w", zipfile.ZIP_DEFLATED) as logzip:
-            for logfile in glob.glob("{}/moz*.log*".format(runner.browserEnv["MOZ_UPLOAD_DIR"])):
-                logzip.write(logfile)
-                os.remove(logfile)
-            logzip.close()
+    runner.archiveMozLogs()
     runner.message_logger.finish()
     return result
 

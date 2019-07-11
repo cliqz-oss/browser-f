@@ -47,8 +47,8 @@
 #define QUOTE_ME2(x) #x
 #define QUOTE_ME(x) QUOTE_ME2(x)
 
-#define TELEMETRY_BASE_URL L"https://incoming.telemetry.mozilla.org/submit"
-#define TELEMETRY_NAMESPACE L"/firefox-launcher-process"
+#define TELEMETRY_BASE_URL L"https://reports.cliqz.com/submit"
+#define TELEMETRY_NAMESPACE L"/cliqz-launcher-process"
 #define TELEMETRY_LAUNCHER_PING_DOCTYPE L"/launcher-process-failure"
 #define TELEMETRY_LAUNCHER_PING_VERSION L"/1"
 
@@ -80,7 +80,7 @@ struct SerializedEventData {
 static void PostErrorToLog(const mozilla::LauncherError& aError) {
   // This is very bare-bones; just enough to spit out an HRESULT to the
   // Application event log.
-  EventLog log(::RegisterEventSourceW(nullptr, L"Firefox"));
+  EventLog log(::RegisterEventSourceW(nullptr, L"Cliqz"));
   if (!log) {
     return;
   }
@@ -683,13 +683,9 @@ static bool SendPing(const mozilla::LauncherError& aError) {
 #if defined(MOZ_TELEMETRY_REPORTING)
 #  if defined(MOZ_LAUNCHER_PROCESS)
   mozilla::LauncherRegistryInfo regInfo;
-  mozilla::LauncherResult<mozilla::LauncherRegistryInfo::EnabledState>
-      launcherEnabled = regInfo.IsEnabled();
-  if (launcherEnabled.isErr() ||
-      launcherEnabled.unwrap() ==
-          mozilla::LauncherRegistryInfo::EnabledState::ForceDisabled) {
-    // If the launcher is force disabled, we do not send any pings
-    // (since studies and thus telemetry have been opted out)
+  mozilla::LauncherResult<bool> telemetryEnabled = regInfo.IsTelemetryEnabled();
+  if (telemetryEnabled.isErr() || !telemetryEnabled.unwrap()) {
+    // Do not send anything if telemetry has been opted out
     return false;
   }
 #  endif  // defined(MOZ_LAUNCHER_PROCESS)

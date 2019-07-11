@@ -40,9 +40,7 @@ window.gActivityStreamStrings = {
   "section_disclaimer_topstories_buttontext": "OK, e mora vesh",
   "prefs_home_header": "Lëndë Firefox Home",
   "prefs_home_description": "Zgjidhni ç’lëndë doni në skenën tuaj Firefox.",
-  "prefs_content_discovery_header": "Kreu i Firefox-it",
   "prefs_content_discovery_description": "Zbulimi i Lëndës në Kreun e Firefox-it ju lejon të zbuloni në internet artikuj të cilësisë së lartë, dhe afër interesave tuaja.",
-  "prefs_content_discovery_button": "Çaktivizoje Zbulimin e Lëndës",
   "prefs_section_rows_option": "{num} rresht;{num} rreshta",
   "prefs_search_header": "Kërkim Web",
   "prefs_topsites_description": "Sajtet që vizitoni më tepër",
@@ -107,8 +105,5 @@ window.gActivityStreamStrings = {
   "firstrun_privacy_notice": "Shënim Mbi Privatësinë",
   "firstrun_continue_to_login": "Vazhdo",
   "firstrun_skip_login": "Anashkalojeni këtë hap",
-  "context_menu_title": "Hape menunë",
-  "manual_migration_explanation2": "Provojeni Firefox-in me faqerojtës, historik dhe fjalëkalime nga një tjetër shfletues.",
-  "manual_migration_cancel_button": "Jo, Faleminderit",
-  "manual_migration_import_button": "Importoje Tani"
+  "context_menu_title": "Hape menunë"
 };

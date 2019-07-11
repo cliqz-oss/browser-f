@@ -42,12 +42,14 @@
 
 #include "nsBoxFrame.h"
 
+#include "gfxPrefs.h"
 #include "gfxUtils.h"
 #include "mozilla/gfx/2D.h"
 #include "nsBoxLayoutState.h"
 #include "mozilla/dom/Touch.h"
 #include "mozilla/Move.h"
 #include "mozilla/ComputedStyle.h"
+#include "mozilla/PresShell.h"
 #include "nsPlaceholderFrame.h"
 #include "nsPresContext.h"
 #include "nsCOMPtr.h"
@@ -57,7 +59,6 @@
 #include "nsHTMLParts.h"
 #include "nsViewManager.h"
 #include "nsView.h"
-#include "nsIPresShell.h"
 #include "nsCSSRendering.h"
 #include "nsIServiceManager.h"
 #include "nsBoxLayout.h"
@@ -69,6 +70,7 @@
 #include "nsITheme.h"
 #include "nsTransform2D.h"
 #include "mozilla/EventStateManager.h"
+#include "mozilla/gfx/gfxVars.h"
 #include "nsDisplayList.h"
 #include "mozilla/Preferences.h"
 #include "nsStyleConsts.h"
@@ -85,14 +87,14 @@ using namespace mozilla;
 using namespace mozilla::dom;
 using namespace mozilla::gfx;
 
-nsIFrame* NS_NewBoxFrame(nsIPresShell* aPresShell, ComputedStyle* aStyle,
+nsIFrame* NS_NewBoxFrame(PresShell* aPresShell, ComputedStyle* aStyle,
                          bool aIsRoot, nsBoxLayout* aLayoutManager) {
   return new (aPresShell)
       nsBoxFrame(aStyle, aPresShell->GetPresContext(), nsBoxFrame::kClassID,
                  aIsRoot, aLayoutManager);
 }
 
-nsIFrame* NS_NewBoxFrame(nsIPresShell* aPresShell, ComputedStyle* aStyle) {
+nsIFrame* NS_NewBoxFrame(PresShell* aPresShell, ComputedStyle* aStyle) {
   return new (aPresShell) nsBoxFrame(aStyle, aPresShell->GetPresContext());
 }
 
@@ -520,7 +522,7 @@ nscoord nsBoxFrame::GetMinISize(gfxContext* aRenderingContext) {
   nsSize minSize = GetXULMinSize(state);
 
   // GetXULMinSize returns border-box width, and we want to return content
-  // width.  Since Reflow uses the reflow state's border and padding, we
+  // width.  Since Reflow uses the reflow input's border and padding, we
   // actually just want to subtract what GetXULMinSize added, which is the
   // result of GetXULBorderAndPadding.
   nsMargin bp;
@@ -541,7 +543,7 @@ nscoord nsBoxFrame::GetPrefISize(gfxContext* aRenderingContext) {
   nsSize prefSize = GetXULPrefSize(state);
 
   // GetXULPrefSize returns border-box width, and we want to return content
-  // width.  Since Reflow uses the reflow state's border and padding, we
+  // width.  Since Reflow uses the reflow input's border and padding, we
   // actually just want to subtract what GetXULPrefSize added, which is the
   // result of GetXULBorderAndPadding.
   nsMargin bp;
@@ -875,7 +877,7 @@ void nsBoxFrame::RemoveFrame(ChildListID aListID, nsIFrame* aOldFrame) {
   aOldFrame->Destroy();
 
   // mark us dirty and generate a reflow command
-  PresShell()->FrameNeedsReflow(this, nsIPresShell::eTreeChange,
+  PresShell()->FrameNeedsReflow(this, IntrinsicDirty::TreeChange,
                                 NS_FRAME_HAS_DIRTY_CHILDREN);
 }
 
@@ -903,7 +905,7 @@ void nsBoxFrame::InsertFrames(ChildListID aListID, nsIFrame* aPrevFrame,
   // just lose.
   CheckBoxOrder();
 
-  PresShell()->FrameNeedsReflow(this, nsIPresShell::eTreeChange,
+  PresShell()->FrameNeedsReflow(this, IntrinsicDirty::TreeChange,
                                 NS_FRAME_HAS_DIRTY_CHILDREN);
 }
 
@@ -926,7 +928,7 @@ void nsBoxFrame::AppendFrames(ChildListID aListID, nsFrameList& aFrameList) {
 
   // XXXbz why is this NS_FRAME_FIRST_REFLOW check here?
   if (!(GetStateBits() & NS_FRAME_FIRST_REFLOW)) {
-    PresShell()->FrameNeedsReflow(this, nsIPresShell::eTreeChange,
+    PresShell()->FrameNeedsReflow(this, IntrinsicDirty::TreeChange,
                                   NS_FRAME_HAS_DIRTY_CHILDREN);
   }
 }
@@ -1009,7 +1011,7 @@ nsresult nsBoxFrame::AttributeChanged(int32_t aNameSpaceID, nsAtom* aAttribute,
       UpdateMouseThrough();
     }
 
-    PresShell()->FrameNeedsReflow(this, nsIPresShell::eStyleChange,
+    PresShell()->FrameNeedsReflow(this, IntrinsicDirty::StyleChange,
                                   NS_FRAME_IS_DIRTY);
   } else if (aAttribute == nsGkAtoms::ordinal) {
     nsIFrame* parent = GetParentXULBox(this);
@@ -1022,7 +1024,7 @@ nsresult nsBoxFrame::AttributeChanged(int32_t aNameSpaceID, nsAtom* aAttribute,
         StyleDisplay()->mDisplay != mozilla::StyleDisplay::MozPopup) {
       parent->XULRelayoutChildAtOrdinal(this);
       // XXXldb Should this instead be a tree change on the child or parent?
-      PresShell()->FrameNeedsReflow(parent, nsIPresShell::eStyleChange,
+      PresShell()->FrameNeedsReflow(parent, IntrinsicDirty::StyleChange,
                                     NS_FRAME_IS_DIRTY);
     }
   }
@@ -1034,7 +1036,7 @@ nsresult nsBoxFrame::AttributeChanged(int32_t aNameSpaceID, nsAtom* aAttribute,
              mContent->IsXULElement(nsGkAtoms::tree)) {
     // Reflow ourselves and all our children if "rows" changes, since
     // nsTreeBodyFrame's layout reads this from its parent (this frame).
-    PresShell()->FrameNeedsReflow(this, nsIPresShell::eStyleChange,
+    PresShell()->FrameNeedsReflow(this, IntrinsicDirty::StyleChange,
                                   NS_FRAME_IS_DIRTY);
   }
 
@@ -1044,6 +1046,13 @@ nsresult nsBoxFrame::AttributeChanged(int32_t aNameSpaceID, nsAtom* aAttribute,
 void nsBoxFrame::BuildDisplayList(nsDisplayListBuilder* aBuilder,
                                   const nsDisplayListSet& aLists) {
   bool forceLayer = false;
+  // We check the renderroot attribute here in nsBoxFrame for lack of a better
+  // place. This roughly mirrors the pre-existing "layer" attribute. In the
+  // long term we may want to add a specific element in which we can wrap
+  // alternate renderroot content, but we're electing to not go down that
+  // rabbit hole today.
+  wr::RenderRoot renderRoot =
+      gfxUtils::GetRenderRootForFrame(this).valueOr(wr::RenderRoot::Default);
 
   if (GetContent()->IsXULElement()) {
     // forcelayer is only supported on XUL elements with box layout
@@ -1061,12 +1070,14 @@ void nsBoxFrame::BuildDisplayList(nsDisplayListBuilder* aBuilder,
   }
 
   nsDisplayListCollection tempLists(aBuilder);
-  const nsDisplayListSet& destination = forceLayer ? tempLists : aLists;
+  const nsDisplayListSet& destination =
+      (forceLayer || renderRoot != wr::RenderRoot::Default) ? tempLists
+                                                            : aLists;
 
   DisplayBorderBackgroundOutline(aBuilder, destination);
 
   Maybe<nsDisplayListBuilder::AutoContainerASRTracker> contASRTracker;
-  if (forceLayer) {
+  if (forceLayer || renderRoot != wr::RenderRoot::Default) {
     contASRTracker.emplace(aBuilder);
   }
 
@@ -1075,7 +1086,7 @@ void nsBoxFrame::BuildDisplayList(nsDisplayListBuilder* aBuilder,
   // see if we have to draw a selection frame around this container
   DisplaySelectionOverlay(aBuilder, destination.Content());
 
-  if (forceLayer) {
+  if (forceLayer || renderRoot != wr::RenderRoot::Default) {
     // This is a bit of a hack. Collect up all descendant display items
     // and merge them into a single Content() list. This can cause us
     // to violate CSS stacking order, but forceLayer is a magic
@@ -1087,15 +1098,21 @@ void nsBoxFrame::BuildDisplayList(nsDisplayListBuilder* aBuilder,
     masterList.AppendToTop(tempLists.Content());
     masterList.AppendToTop(tempLists.PositionedDescendants());
     masterList.AppendToTop(tempLists.Outlines());
-
     const ActiveScrolledRoot* ownLayerASR = contASRTracker->GetContainerASR();
-
     DisplayListClipState::AutoSaveRestore ownLayerClipState(aBuilder);
 
-    // Wrap the list to make it its own layer
-    aLists.Content()->AppendToTop(MakeDisplayItem<nsDisplayOwnLayer>(
-        aBuilder, this, &masterList, ownLayerASR, nsDisplayOwnLayerFlags::eNone,
-        mozilla::layers::ScrollbarData{}, true, true));
+    if (forceLayer) {
+      MOZ_ASSERT(renderRoot == wr::RenderRoot::Default);
+      // Wrap the list to make it its own layer
+      aLists.Content()->AppendNewToTop<nsDisplayOwnLayer>(
+          aBuilder, this, &masterList, ownLayerASR,
+          nsDisplayOwnLayerFlags::None, mozilla::layers::ScrollbarData{}, true,
+          true);
+    } else {
+      MOZ_ASSERT(!XRE_IsContentProcess());
+      aLists.Content()->AppendNewToTop<nsDisplayRenderRoot>(
+          aBuilder, this, &masterList, ownLayerASR, renderRoot);
+    }
   }
 }
 

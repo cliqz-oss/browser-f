@@ -10,11 +10,12 @@ const {GeckoViewModule} = ChromeUtils.import("resource://gre/modules/GeckoViewMo
 const {Services} = ChromeUtils.import("resource://gre/modules/Services.jsm");
 const {XPCOMUtils} = ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
-XPCOMUtils.defineLazyServiceGetter(this, "OverrideService",
-  "@mozilla.org/security/certoverride;1", "nsICertOverrideService");
+XPCOMUtils.defineLazyServiceGetter(
+  this, "OverrideService", "@mozilla.org/security/certoverride;1",
+  "nsICertOverrideService");
 
-XPCOMUtils.defineLazyServiceGetter(this, "IDNService",
-  "@mozilla.org/network/idn-service;1", "nsIIDNService");
+XPCOMUtils.defineLazyServiceGetter(
+  this, "IDNService", "@mozilla.org/network/idn-service;1", "nsIIDNService");
 
 var IdentityHandler = {
   // The definitions below should be kept in sync with those in GeckoView.ProgressListener.SecurityInformation
@@ -56,11 +57,11 @@ var IdentityHandler = {
 
   getMixedDisplayMode: function getMixedDisplayMode(aState) {
     if (aState & Ci.nsIWebProgressListener.STATE_LOADED_MIXED_DISPLAY_CONTENT) {
-        return this.MIXED_MODE_CONTENT_LOADED;
+      return this.MIXED_MODE_CONTENT_LOADED;
     }
 
     if (aState & Ci.nsIWebProgressListener.STATE_BLOCKED_MIXED_DISPLAY_CONTENT) {
-        return this.MIXED_MODE_CONTENT_BLOCKED;
+      return this.MIXED_MODE_CONTENT_BLOCKED;
     }
 
     return this.MIXED_MODE_UNKNOWN;
@@ -85,10 +86,10 @@ var IdentityHandler = {
    * (if available). Return the data needed to update the UI.
    */
   checkIdentity: function checkIdentity(aState, aBrowser) {
-    let identityMode = this.getIdentityMode(aState);
-    let mixedDisplay = this.getMixedDisplayMode(aState);
-    let mixedActive = this.getMixedActiveMode(aState);
-    let result = {
+    const identityMode = this.getIdentityMode(aState);
+    const mixedDisplay = this.getMixedDisplayMode(aState);
+    const mixedActive = this.getMixedActiveMode(aState);
+    const result = {
       mode: {
         identity: identityMode,
         mixed_display: mixedDisplay,
@@ -122,7 +123,7 @@ var IdentityHandler = {
       result.host = uri.host;
     }
 
-    let cert = aBrowser.securityUI.secInfo.serverCert;
+    const cert = aBrowser.securityUI.secInfo.serverCert;
 
     result.organization = cert.organization;
     result.subjectName = cert.subjectName;
@@ -131,7 +132,7 @@ var IdentityHandler = {
 
     try {
       result.securityException = OverrideService.hasMatchingOverride(
-          uri.host, uri.port, cert, {}, {});
+        uri.host, uri.port, cert, {}, {});
     } catch (e) {
     }
 
@@ -147,15 +148,16 @@ class GeckoViewProgress extends GeckoViewModule {
   onEnable() {
     debug `onEnable`;
 
-    let flags = Ci.nsIWebProgress.NOTIFY_STATE_NETWORK |
-                Ci.nsIWebProgress.NOTIFY_SECURITY |
-                Ci.nsIWebProgress.NOTIFY_LOCATION;
+    const flags = Ci.nsIWebProgress.NOTIFY_STATE_NETWORK |
+                  Ci.nsIWebProgress.NOTIFY_SECURITY |
+                  Ci.nsIWebProgress.NOTIFY_LOCATION;
     this.progressFilter =
       Cc["@mozilla.org/appshell/component/browser-status-filter;1"]
       .createInstance(Ci.nsIWebProgress);
     this.progressFilter.addProgressListener(this, flags);
     this.browser.addProgressListener(this.progressFilter, flags);
     Services.obs.addObserver(this, "oop-frameloader-crashed");
+    this.registerListener("GeckoView:FlushSessionState");
   }
 
   onDisable() {
@@ -167,6 +169,17 @@ class GeckoViewProgress extends GeckoViewModule {
     }
 
     Services.obs.removeObserver(this, "oop-frameloader-crashed");
+    this.unregisterListener("GeckoView:FlushSessionState");
+  }
+
+  onEvent(aEvent, aData, aCallback) {
+    debug `onEvent: event=${aEvent}, data=${aData}`;
+
+    switch (aEvent) {
+      case "GeckoView:FlushSessionState":
+        this.messageManager.sendAsyncMessage("GeckoView:FlushSessionState");
+        break;
+    }
   }
 
   onSettingsUpdate() {
@@ -203,7 +216,7 @@ class GeckoViewProgress extends GeckoViewModule {
     } else if (isStop && !aWebProgress.isLoadingDocument) {
       this._inProgress = false;
 
-      let message = {
+      const message = {
         type: "GeckoView:PageStop",
         success: isSuccess,
       };
@@ -223,9 +236,9 @@ class GeckoViewProgress extends GeckoViewModule {
     this._state = aState;
     this._hostChanged = false;
 
-    let identity = IdentityHandler.checkIdentity(aState, this.browser);
+    const identity = IdentityHandler.checkIdentity(aState, this.browser);
 
-    let message = {
+    const message = {
       type: "GeckoView:SecurityChanged",
       identity: identity,
     };

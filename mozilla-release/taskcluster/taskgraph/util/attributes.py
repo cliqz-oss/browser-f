@@ -19,9 +19,11 @@ RELEASE_PROJECTS = {
     'mozilla-beta',
     'mozilla-release',
     'mozilla-esr60',
+    'mozilla-esr68',
     'comm-central',
     'comm-beta',
     'comm-esr60',
+    'comm-esr68',
     'oak',
 }
 
@@ -43,6 +45,8 @@ _OPTIONAL_ATTRIBUTES = (
     'shipping_product',
     'stub-installer',
     'update-channel',
+    'shippable',
+    'release-type',
 )
 
 

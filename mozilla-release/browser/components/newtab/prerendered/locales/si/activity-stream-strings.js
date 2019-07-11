@@ -40,9 +40,7 @@ window.gActivityStreamStrings = {
   "section_disclaimer_topstories_buttontext": "හරි, තේරුණා",
   "prefs_home_header": "Firefox මුල්පිටු අන්තර්ගතය",
   "prefs_home_description": "Firefox මුල් පිටුවෙහි ඔබට අවැසි වන්නේ කුමන අන්තර්ගතයදැයි තෝරන්න.",
-  "prefs_content_discovery_header": "Firefox නිවස",
   "prefs_content_discovery_description": "Content Discovery in Firefox Home allows you to discover high-quality, relevant articles from across the web.",
-  "prefs_content_discovery_button": "Turn Off Content Discovery",
   "prefs_section_rows_option": "{num} තීරය;{num} තීර",
   "prefs_search_header": "ජාල සෙවුම",
   "prefs_topsites_description": "ඔබ වැඩිපුරම පිවිසෙන අඩවි",
@@ -107,8 +105,5 @@ window.gActivityStreamStrings = {
   "firstrun_privacy_notice": "පෞද්ගලිකත්ව ප්‍රතිපත්තිය",
   "firstrun_continue_to_login": "ඉදිරියට",
   "firstrun_skip_login": "මෙම පියවර මගහරින්න",
-  "context_menu_title": "මෙනුව විවෘත කරන්න",
-  "manual_migration_explanation2": "Firefox වෙනත් ගවේශයකය පිටය සලකුණු, අතීතය සහ මුරපද සමග උත්සාහ කර බලන්න.",
-  "manual_migration_cancel_button": "එපා, ස්තුතියි",
-  "manual_migration_import_button": "දැන් ආයාත කරන්න"
+  "context_menu_title": "මෙනුව විවෘත කරන්න"
 };

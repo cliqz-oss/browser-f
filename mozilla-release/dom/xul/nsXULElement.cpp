@@ -18,6 +18,7 @@
 #include "mozilla/EventStateManager.h"
 #include "mozilla/EventStates.h"
 #include "mozilla/DeclarationBlock.h"
+#include "mozilla/PresShell.h"
 #include "js/CompilationAndEvaluation.h"
 #include "js/SourceText.h"
 #include "nsFocusManager.h"
@@ -25,7 +26,6 @@
 #include "nsNameSpaceManager.h"
 #include "nsIObjectInputStream.h"
 #include "nsIObjectOutputStream.h"
-#include "nsIPresShell.h"
 #include "nsIPrincipal.h"
 #include "nsIScriptContext.h"
 #include "nsIScriptError.h"
@@ -746,9 +746,9 @@ void nsXULElement::UnregisterAccessKey(const nsAString& aOldValue) {
   //
   Document* doc = GetComposedDoc();
   if (doc && !aOldValue.IsEmpty()) {
-    nsIPresShell* shell = doc->GetShell();
+    PresShell* presShell = doc->GetPresShell();
 
-    if (shell) {
+    if (presShell) {
       Element* element = this;
 
       // find out what type of content node this is
@@ -761,7 +761,7 @@ void nsXULElement::UnregisterAccessKey(const nsAString& aOldValue) {
       }
 
       if (element) {
-        shell->GetPresContext()->EventStateManager()->UnregisterAccessKey(
+        presShell->GetPresContext()->EventStateManager()->UnregisterAccessKey(
             element, aOldValue.First());
       }
     }
@@ -865,9 +865,7 @@ nsresult nsXULElement::AfterSetAttr(int32_t aNamespaceID, nsAtom* aName,
         } else if (aName == nsGkAtoms::localedir) {
           // if the localedir changed on the root element, reset the document
           // direction
-          if (document->IsXULDocument()) {
-            document->AsXULDocument()->ResetDocumentDirection();
-          }
+          document->ResetDocumentDirection();
         } else if (aName == nsGkAtoms::lwtheme ||
                    aName == nsGkAtoms::lwthemetextcolor) {
           // if the lwtheme changed, make sure to reset the document lwtheme
@@ -892,9 +890,7 @@ nsresult nsXULElement::AfterSetAttr(int32_t aNamespaceID, nsAtom* aName,
         if (aName == nsGkAtoms::localedir) {
           // if the localedir changed on the root element, reset the document
           // direction
-          if (doc->IsXULDocument()) {
-            doc->AsXULDocument()->ResetDocumentDirection();
-          }
+          doc->ResetDocumentDirection();
         } else if ((aName == nsGkAtoms::lwtheme ||
                     aName == nsGkAtoms::lwthemetextcolor)) {
           // if the lwtheme changed, make sure to restyle appropriately
@@ -1032,9 +1028,9 @@ nsresult nsXULElement::DispatchXULCommand(const EventChainVisitor& aVisitor,
     }
     WidgetInputEvent* orig = aVisitor.mEvent->AsInputEvent();
     nsContentUtils::DispatchXULCommand(
-        commandElt, orig->IsTrusted(), aVisitor.mDOMEvent, nullptr,
-        orig->IsControl(), orig->IsAlt(), orig->IsShift(), orig->IsMeta(),
-        inputSource);
+        commandElt, orig->IsTrusted(), MOZ_KnownLive(aVisitor.mDOMEvent),
+        nullptr, orig->IsControl(), orig->IsAlt(), orig->IsShift(),
+        orig->IsMeta(), inputSource);
   } else {
     NS_WARNING("A XUL element is attached to a command that doesn't exist!\n");
   }
@@ -1161,7 +1157,7 @@ void nsXULElement::ClickWithInputSource(uint16_t aInputSource,
                                WidgetMouseEvent::eReal);
       WidgetMouseEvent eventClick(aIsTrustedEvent, eMouseClick, nullptr,
                                   WidgetMouseEvent::eReal);
-      eventDown.inputSource = eventUp.inputSource = eventClick.inputSource =
+      eventDown.mInputSource = eventUp.mInputSource = eventClick.mInputSource =
           aInputSource;
 
       // send mouse down
@@ -1194,7 +1190,8 @@ void nsXULElement::ClickWithInputSource(uint16_t aInputSource,
 void nsXULElement::DoCommand() {
   nsCOMPtr<Document> doc = GetComposedDoc();  // strong just in case
   if (doc) {
-    nsContentUtils::DispatchXULCommand(this, true);
+    RefPtr<nsXULElement> self = this;
+    nsContentUtils::DispatchXULCommand(self, true);
   }
 }
 
@@ -2139,9 +2136,6 @@ nsresult nsXULPrototypeScript::Compile(
   // source from the files on demand.
   options.setSourceIsLazy(mOutOfLine);
   JS::Rooted<JSObject*> scope(cx, JS::CurrentGlobalOrNull(cx));
-  if (scope) {
-    JS::ExposeObjectToActiveJS(scope);
-  }
 
   if (aOffThreadReceiver && JS::CanCompileOffThread(cx, options, aTextLength)) {
     if (!JS::CompileOffThread(cx, options, srcBuf,
@@ -2151,9 +2145,10 @@ nsresult nsXULPrototypeScript::Compile(
     }
     NotifyOffThreadScriptCompletedRunnable::NoteReceiver(aOffThreadReceiver);
   } else {
-    JS::Rooted<JSScript*> script(cx);
-    if (!JS::Compile(cx, options, srcBuf, &script))
+    JS::Rooted<JSScript*> script(cx, JS::Compile(cx, options, srcBuf));
+    if (!script) {
       return NS_ERROR_OUT_OF_MEMORY;
+    }
     Set(script);
   }
   return NS_OK;

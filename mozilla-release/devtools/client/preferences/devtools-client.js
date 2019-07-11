@@ -53,14 +53,6 @@ pref("devtools.inspector.showUserAgentShadowRoots", false);
 // Enable the new Rules View
 pref("devtools.inspector.new-rulesview.enabled", false);
 
-// Flexbox preferences
-// Whether or not to show the combined flexbox and box model highlighter.
-#if defined(NIGHTLY_BUILD) || defined(MOZ_DEV_EDITION)
-pref("devtools.inspector.flexboxHighlighter.combine", true);
-#else
-pref("devtools.inspector.flexboxHighlighter.combine", false);
-#endif
-
 // Grid highlighter preferences
 pref("devtools.gridinspector.gridOutlineMaxColumns", 50);
 pref("devtools.gridinspector.gridOutlineMaxRows", 50);
@@ -188,7 +180,7 @@ pref("devtools.netmonitor.saveRequestAndResponseBodies", true);
 
 // The default Network monitor HAR export setting
 pref("devtools.netmonitor.har.defaultLogDir", "");
-pref("devtools.netmonitor.har.defaultFileName", "Archive %date");
+pref("devtools.netmonitor.har.defaultFileName", "%hostname_Archive [%date]");
 pref("devtools.netmonitor.har.jsonp", false);
 pref("devtools.netmonitor.har.jsonpCallback", "");
 pref("devtools.netmonitor.har.includeResponseBodies", true);
@@ -248,6 +240,9 @@ pref("devtools.webconsole.filter.css", false);
 pref("devtools.webconsole.filter.net", false);
 pref("devtools.webconsole.filter.netxhr", false);
 
+// Webconsole autocomplete preference
+pref("devtools.webconsole.input.autocomplete",true);
+
 // Browser console filters
 pref("devtools.browserconsole.filter.error", true);
 pref("devtools.browserconsole.filter.warn", true);
@@ -290,6 +285,11 @@ pref("devtools.performance.new-panel-enabled", false);
 
 // Enable message grouping in the console, false by default
 pref("devtools.webconsole.groupWarningMessages", false);
+
+// Enable Content messages filtering in the browser console.
+pref("devtools.browserconsole.filterContentMessages", false);
+// Saved state of the Display content messages checkbox in the browser console.
+pref("devtools.browserconsole.contentMessages", false);
 
 // Enable client-side mapping service for source maps
 pref("devtools.source-map.client-service.enabled", true);
@@ -347,12 +347,23 @@ pref("devtools.responsive.showUserAgentInput", true);
 pref("devtools.responsive.showUserAgentInput", false);
 #endif
 
-// Enable new about:debugging.
+// Enable new about:debugging in Nightly and DevEdition only.
+// Should ride the trains in Firefox 69. See Bug 1553042.
+#if defined(MOZ_DEV_EDITION) || defined(NIGHTLY_BUILD)
+pref("devtools.aboutdebugging.new-enabled", true);
+#else
 pref("devtools.aboutdebugging.new-enabled", false);
-// Enable the network location feature.
-pref("devtools.aboutdebugging.network", false);
-// Enable the wifi feature.
-pref("devtools.aboutdebugging.wifi", false);
+#endif
+
+// Show tab debug targets for This Firefox (on by default for local builds).
+#ifdef MOZILLA_OFFICIAL
+  pref("devtools.aboutdebugging.local-tab-debugging", false);
+#else
+  pref("devtools.aboutdebugging.local-tab-debugging", true);
+#endif
+
+// Show process debug targets.
+pref("devtools.aboutdebugging.process-debugging", true);
 // Stringified array of network locations that users can connect to.
 pref("devtools.aboutdebugging.network-locations", "[]");
 // Debug target pane collapse/expand settings.
@@ -363,11 +374,11 @@ pref("devtools.aboutdebugging.collapsibilities.sharedWorker", false);
 pref("devtools.aboutdebugging.collapsibilities.tab", false);
 pref("devtools.aboutdebugging.collapsibilities.temporaryExtension", false);
 
-// about:debugging: only show system add-ons in local builds by default.
+// about:debugging: only show system and hidden extensions in local builds by default.
 #ifdef MOZILLA_OFFICIAL
-  pref("devtools.aboutdebugging.showSystemAddons", false);
+  pref("devtools.aboutdebugging.showHiddenAddons", false);
 #else
-  pref("devtools.aboutdebugging.showSystemAddons", true);
+  pref("devtools.aboutdebugging.showHiddenAddons", true);
 #endif
 
 // Map top-level await expressions in the console

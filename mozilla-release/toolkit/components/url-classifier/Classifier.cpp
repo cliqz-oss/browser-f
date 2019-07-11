@@ -409,10 +409,21 @@ nsresult Classifier::CheckURIFragments(
     const nsTArray<nsCString>& aSpecFragments, const nsACString& aTable,
     LookupResultArray& aResults) {
   // A URL can form up to 30 different fragments
+  MOZ_ASSERT(aSpecFragments.Length() != 0);
   MOZ_ASSERT(aSpecFragments.Length() <=
              (MAX_HOST_COMPONENTS * (MAX_PATH_COMPONENTS + 2)));
 
-  LOG(("Checking table %s", aTable.BeginReading()));
+  if (LOG_ENABLED()) {
+    uint32_t urlIdx = 0;
+    for (uint32_t i = 1; i < aSpecFragments.Length(); i++) {
+      if (aSpecFragments[urlIdx].Length() < aSpecFragments[i].Length()) {
+        urlIdx = i;
+      }
+    }
+    LOG(("Checking table %s, URL is %s", aTable.BeginReading(),
+         aSpecFragments[urlIdx].get()));
+  }
+
   RefPtr<LookupCache> cache = GetLookupCache(aTable);
   if (NS_WARN_IF(!cache)) {
     return NS_ERROR_FAILURE;
@@ -422,13 +433,6 @@ nsresult Classifier::CheckURIFragments(
   for (uint32_t i = 0; i < aSpecFragments.Length(); i++) {
     Completion lookupHash;
     lookupHash.FromPlaintext(aSpecFragments[i]);
-
-    if (LOG_ENABLED()) {
-      nsAutoCString checking;
-      lookupHash.ToHexString(checking);
-      LOG(("Checking fragment %s, hash %s (%X)", aSpecFragments[i].get(),
-           checking.get(), lookupHash.ToUint32()));
-    }
 
     bool has, confirmed;
     uint32_t matchLength;
@@ -440,8 +444,14 @@ nsresult Classifier::CheckURIFragments(
       RefPtr<LookupResult> result = new LookupResult;
       aResults.AppendElement(result);
 
-      LOG(("Found a result in %s: %s", cache->TableName().get(),
-           confirmed ? "confirmed." : "Not confirmed."));
+      if (LOG_ENABLED()) {
+        nsAutoCString checking;
+        lookupHash.ToHexString(checking);
+        LOG(("Found a result in fragment %s, hash %s (%X)",
+             aSpecFragments[i].get(), checking.get(), lookupHash.ToUint32()));
+        LOG(("Result %s, match %d-bytes prefix",
+             confirmed ? "confirmed." : "Not confirmed.", matchLength));
+      }
 
       result->hash.complete = lookupHash;
       result->mConfirmed = confirmed;
@@ -912,17 +922,17 @@ nsresult Classifier::ScanStoreDir(nsIFile* aDirectory,
       continue;
     }
 
-    nsCString leafName;
+    nsAutoCString leafName;
     rv = file->GetNativeLeafName(leafName);
     NS_ENSURE_SUCCESS(rv, rv);
 
-    // Both v2 and v4 contain .pset file
-    nsCString suffix(NS_LITERAL_CSTRING(".pset"));
-
-    int32_t dot = leafName.RFind(suffix);
-    if (dot != -1) {
-      leafName.Cut(dot, suffix.Length());
-      aTables.AppendElement(leafName);
+    // Check both V2 and V4 prefix files
+    if (StringEndsWith(leafName, NS_LITERAL_CSTRING(".pset"))) {
+      aTables.AppendElement(
+          Substring(leafName, 0, leafName.Length() - strlen(".pset")));
+    } else if (StringEndsWith(leafName, NS_LITERAL_CSTRING(".vlpset"))) {
+      aTables.AppendElement(
+          Substring(leafName, 0, leafName.Length() - strlen(".vlpset")));
     }
   }
   NS_ENSURE_SUCCESS(rv, rv);

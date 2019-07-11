@@ -11,11 +11,14 @@
 #include "mozilla/css/ImageLoader.h"
 #include "mozilla/dom/CanvasRenderingContext2D.h"
 #include "mozilla/net/ReferrerPolicy.h"
+#include "mozilla/PresShell.h"
 #include "mozilla/RestyleManager.h"
 #include "nsCSSFrameConstructor.h"
 #include "nsCycleCollectionParticipant.h"
+#include "nsHashKeys.h"
 #include "nsIContent.h"
 #include "nsIContentInlines.h"
+#include "nsInterfaceHashtable.h"
 #include "nsIReflowCallback.h"
 #include "nsISupportsImpl.h"
 #include "nsSVGClipPathFrame.h"
@@ -23,12 +26,71 @@
 #include "nsSVGMarkerFrame.h"
 #include "nsSVGMaskFrame.h"
 #include "nsSVGPaintServerFrame.h"
+#include "nsTHashtable.h"
+#include "nsURIHashKey.h"
 #include "SVGGeometryElement.h"
 #include "SVGTextPathElement.h"
 #include "SVGUseElement.h"
 
 using namespace mozilla;
 using namespace mozilla::dom;
+
+bool URLAndReferrerInfo::operator==(const URLAndReferrerInfo& aRHS) const {
+  bool uriEqual = false, referrerEqual = false;
+  this->mURI->Equals(aRHS.mURI, &uriEqual);
+  this->mReferrer->Equals(aRHS.mReferrer, &referrerEqual);
+
+  return uriEqual && referrerEqual &&
+         this->mReferrerPolicy == aRHS.mReferrerPolicy;
+}
+
+class URLAndReferrerInfoHashKey : public PLDHashEntryHdr {
+ public:
+  using KeyType = const URLAndReferrerInfo*;
+  using KeyTypePointer = const URLAndReferrerInfo*;
+
+  explicit URLAndReferrerInfoHashKey(const URLAndReferrerInfo* aKey)
+      : mKey(aKey) {
+    MOZ_COUNT_CTOR(URLAndReferrerInfoHashKey);
+  }
+  URLAndReferrerInfoHashKey(URLAndReferrerInfoHashKey&& aToMove)
+      : PLDHashEntryHdr(std::move(aToMove)), mKey(std::move(aToMove.mKey)) {
+    MOZ_COUNT_CTOR(URLAndReferrerInfoHashKey);
+  }
+  ~URLAndReferrerInfoHashKey() { MOZ_COUNT_DTOR(URLAndReferrerInfoHashKey); }
+
+  const URLAndReferrerInfo* GetKey() const { return mKey; }
+
+  bool KeyEquals(const URLAndReferrerInfo* aKey) const {
+    if (!mKey) {
+      return !aKey;
+    }
+    return *mKey == *aKey;
+  }
+
+  static const URLAndReferrerInfo* KeyToPointer(
+      const URLAndReferrerInfo* aKey) {
+    return aKey;
+  }
+
+  static PLDHashNumber HashKey(const URLAndReferrerInfo* aKey) {
+    if (!aKey) {
+      // If the key is null, return hash for empty string.
+      return HashString(EmptyCString());
+    }
+    nsAutoCString urlSpec, referrerSpec;
+    // nsURIHashKey ignores GetSpec() failures, so we do too:
+    Unused << aKey->GetURI()->GetSpec(urlSpec);
+    Unused << aKey->GetReferrer()->GetSpec(referrerSpec);
+    auto refPolicy = aKey->GetReferrerPolicy();
+    return AddToHash(HashString(urlSpec), HashString(referrerSpec), refPolicy);
+  }
+
+  enum { ALLOW_MEMMOVE = true };
+
+ protected:
+  RefPtr<const URLAndReferrerInfo> mKey;
+};
 
 static already_AddRefed<URLAndReferrerInfo> ResolveURLUsingLocalRef(
     nsIFrame* aFrame, const css::URLValue* aURL) {
@@ -92,7 +154,7 @@ struct nsSVGFrameReferenceFromProperty {
  private:
   // The frame that our property is attached to (may be null).
   nsIFrame* mFrame;
-  nsIPresShell* mFramePresShell;
+  mozilla::PresShell* mFramePresShell;
 };
 
 void SVGRenderingObserver::StartObserving() {
@@ -572,7 +634,7 @@ class SVGFilterObserverList : public nsISupports {
  public:
   SVGFilterObserverList(const nsTArray<nsStyleFilter>& aFilters,
                         nsIContent* aFilteredElement,
-                        nsIFrame* aFiltedFrame = nullptr);
+                        nsIFrame* aFilteredFrame = nullptr);
 
   bool ReferencesValidResources();
   void Invalidate() { OnRenderingChange(); }
@@ -987,8 +1049,7 @@ void SVGRenderingObserver::DebugObserverSet() {
 }
 #endif
 
-typedef nsInterfaceHashtable<nsRefPtrHashKey<URLAndReferrerInfo>,
-                             nsIMutationObserver>
+typedef nsInterfaceHashtable<URLAndReferrerInfoHashKey, nsIMutationObserver>
     URIObserverHashtable;
 
 using PaintingPropertyDescriptor =
@@ -1374,8 +1435,6 @@ Element* SVGObserverUtils::GetAndObserveBackgroundImage(nsIFrame* aFrame,
       targetURI, aFrame->GetContent()->OwnerDoc()->GetDocumentURI(),
       aFrame->GetContent()->OwnerDoc()->GetReferrerPolicy());
 
-  // XXXjwatt: this is broken - we're using the address of a new
-  // URLAndReferrerInfo as the hash key every time!
   SVGMozElementObserver* observer =
       static_cast<SVGMozElementObserver*>(hashtable->GetWeak(url));
   if (!observer) {

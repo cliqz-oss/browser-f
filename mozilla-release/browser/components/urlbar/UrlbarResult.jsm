@@ -16,6 +16,9 @@ var EXPORTED_SYMBOLS = ["UrlbarResult"];
 
 const {XPCOMUtils} = ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 XPCOMUtils.defineLazyModuleGetters(this, {
+  BrowserUtils: "resource://gre/modules/BrowserUtils.jsm",
+  Services: "resource://gre/modules/Services.jsm",
+  UrlbarPrefs: "resource:///modules/UrlbarPrefs.jsm",
   UrlbarUtils: "resource:///modules/UrlbarUtils.jsm",
 });
 
@@ -50,6 +53,9 @@ class UrlbarResult {
       throw new Error("Invalid result source");
     }
     this.source = resultSource;
+
+    // UrlbarView is responsible for updating this.
+    this.uiIndex = -1;
 
     // May be used to indicate an heuristic result. Heuristic results can bypass
     // source filters in the ProvidersManager, that otherwise may skip them.
@@ -109,7 +115,9 @@ class UrlbarResult {
                [this.payload.url || "", this.payloadHighlights.url || []];
       case UrlbarUtils.RESULT_TYPE.SEARCH:
         if (this.payload.isKeywordOffer) {
-          return [this.payload.keyword, this.payloadHighlights.keyword];
+          return this.heuristic ?
+                 ["", []] :
+                 [this.payload.keyword, this.payloadHighlights.keyword];
         }
         return this.payload.suggestion ?
                [this.payload.suggestion, this.payloadHighlights.suggestion] :
@@ -162,6 +170,24 @@ class UrlbarResult {
       try {
         payloadInfo.title[0] = new URL(payloadInfo.url[0]).host;
       } catch (e) {}
+    }
+
+    if (payloadInfo.url) {
+      // For display purposes we need to unescape the url.
+      payloadInfo.displayUrl = [...payloadInfo.url];
+      let url = payloadInfo.displayUrl[0];
+      if (UrlbarPrefs.get("trimURLs")) {
+        url = BrowserUtils.trimURL(url || "");
+      }
+      payloadInfo.displayUrl[0] = Services.textToSubURI.unEscapeURIForUI("UTF-8", url);
+    }
+
+    // For performance reasons limit excessive string lengths, to reduce the
+    // amount of string matching we do here, and avoid wasting resources to
+    // handle long textruns that the user would never see anyway.
+    for (let prop of ["displayUrl", "title"].filter(p => p in payloadInfo)) {
+      payloadInfo[prop][0] =
+        payloadInfo[prop][0].substring(0, UrlbarUtils.MAX_TEXT_LENGTH);
     }
 
     let entries = Object.entries(payloadInfo);

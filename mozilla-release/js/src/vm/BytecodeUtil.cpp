@@ -18,7 +18,6 @@
 #include "mozilla/Vector.h"
 
 #include <algorithm>
-#include <ctype.h>
 #include <inttypes.h>
 #include <stdio.h>
 #include <string.h>
@@ -1474,8 +1473,15 @@ static unsigned Disassemble1(JSContext* cx, HandleScript script, jsbytecode* pc,
       break;
     }
 
-    case JOF_BIGINT:
     case JOF_DOUBLE: {
+      double d = GET_INLINE_VALUE(pc).toDouble();
+      if (!sp->jsprintf(" %lf", d)) {
+        return 0;
+      }
+      break;
+    }
+
+    case JOF_BIGINT: {
       RootedValue v(cx, script->getConst(GET_UINT32_INDEX(pc)));
       UniqueChars bytes = ToDisassemblySource(cx, v);
       if (!bytes) {
@@ -2012,8 +2018,7 @@ bool ExpressionDecompiler::decompilePC(jsbytecode* pc, uint8_t defIndex) {
         return write("CONSTRUCTOR");
 
       case JSOP_DOUBLE:
-        return sprinter.printf(
-            "%lf", script->getConst(GET_UINT32_INDEX(pc)).toDouble());
+        return sprinter.printf("%lf", GET_INLINE_VALUE(pc).toDouble());
 
       case JSOP_EXCEPTION:
         return write("EXCEPTION");

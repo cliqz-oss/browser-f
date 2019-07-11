@@ -18,9 +18,10 @@
 #include "nsGkAtoms.h"
 #include "nsIScrollableFrame.h"
 #include "nsIScrollbarMediator.h"
-#include "mozilla/LookAndFeel.h"
 #include "nsStyleConsts.h"
 #include "nsIContent.h"
+#include "mozilla/LookAndFeel.h"
+#include "mozilla/PresShell.h"
 #include "mozilla/dom/MutationEventBinding.h"
 
 using namespace mozilla;
@@ -30,8 +31,7 @@ using namespace mozilla;
 //
 // Creates a new scrollbar frame and returns it
 //
-nsIFrame* NS_NewScrollbarFrame(nsIPresShell* aPresShell,
-                               ComputedStyle* aStyle) {
+nsIFrame* NS_NewScrollbarFrame(PresShell* aPresShell, ComputedStyle* aStyle) {
   return new (aPresShell)
       nsScrollbarFrame(aStyle, aPresShell->GetPresContext());
 }

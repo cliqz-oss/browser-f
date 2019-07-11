@@ -343,9 +343,6 @@ KeymapWrapper::KeymapWrapper()
           ("%p Constructor, mGdkKeymap=%p", this, mGdkKeymap));
 
   g_object_ref(mGdkKeymap);
-  g_signal_connect(mGdkKeymap, "keys-changed", (GCallback)OnKeysChanged, this);
-  g_signal_connect(mGdkKeymap, "direction-changed",
-                   (GCallback)OnDirectionChanged, this);
 
   if (GDK_IS_X11_DISPLAY(gdk_display_get_default())) InitXKBExtension();
 
@@ -447,6 +444,10 @@ void KeymapWrapper::InitXKBExtension() {
 void KeymapWrapper::InitBySystemSettingsX11() {
   MOZ_LOG(gKeymapWrapperLog, LogLevel::Info,
           ("%p InitBySystemSettingsX11, mGdkKeymap=%p", this, mGdkKeymap));
+
+  g_signal_connect(mGdkKeymap, "keys-changed", (GCallback)OnKeysChanged, this);
+  g_signal_connect(mGdkKeymap, "direction-changed",
+                   (GCallback)OnDirectionChanged, this);
 
   Display* display = gdk_x11_display_get_xdisplay(gdk_display_get_default());
 
@@ -656,6 +657,8 @@ void KeymapWrapper::SetModifierMasks(xkb_keymap* aKeymap) {
  */
 static void keyboard_handle_keymap(void* data, struct wl_keyboard* wl_keyboard,
                                    uint32_t format, int fd, uint32_t size) {
+  KeymapWrapper::ResetKeyboard();
+
   if (format != WL_KEYBOARD_KEYMAP_FORMAT_XKB_V1) {
     close(fd);
     return;
@@ -766,10 +769,12 @@ void KeymapWrapper::InitBySystemSettingsWayland() {
 
 KeymapWrapper::~KeymapWrapper() {
   gdk_window_remove_filter(nullptr, FilterEvents, this);
-  g_signal_handlers_disconnect_by_func(mGdkKeymap,
-                                       FuncToGpointer(OnKeysChanged), this);
-  g_signal_handlers_disconnect_by_func(
-      mGdkKeymap, FuncToGpointer(OnDirectionChanged), this);
+  if (GDK_IS_X11_DISPLAY(gdk_display_get_default())) {
+    g_signal_handlers_disconnect_by_func(mGdkKeymap,
+                                         FuncToGpointer(OnKeysChanged), this);
+    g_signal_handlers_disconnect_by_func(
+        mGdkKeymap, FuncToGpointer(OnDirectionChanged), this);
+  }
   g_object_unref(mGdkKeymap);
   MOZ_LOG(gKeymapWrapperLog, LogLevel::Info, ("%p Destructor", this));
 }
@@ -898,6 +903,12 @@ static void ResetBidiKeyboard() {
 }
 
 /* static */
+void KeymapWrapper::ResetKeyboard() {
+  sInstance->mInitialized = false;
+  ResetBidiKeyboard();
+}
+
+/* static */
 void KeymapWrapper::OnKeysChanged(GdkKeymap* aGdkKeymap,
                                   KeymapWrapper* aKeymapWrapper) {
   MOZ_LOG(gKeymapWrapperLog, LogLevel::Info,
@@ -909,8 +920,7 @@ void KeymapWrapper::OnKeysChanged(GdkKeymap* aGdkKeymap,
 
   // We cannot reintialize here becasue we don't have GdkWindow which is using
   // the GdkKeymap.  We'll reinitialize it when next GetInstance() is called.
-  sInstance->mInitialized = false;
-  ResetBidiKeyboard();
+  ResetKeyboard();
 }
 
 // static
@@ -1050,29 +1060,28 @@ void KeymapWrapper::InitInputEvent(WidgetInputEvent& aInputEvent,
   }
 
   WidgetMouseEventBase& mouseEvent = *aInputEvent.AsMouseEventBase();
-  mouseEvent.buttons = 0;
+  mouseEvent.mButtons = 0;
   if (aModifierState & GDK_BUTTON1_MASK) {
-    mouseEvent.buttons |= WidgetMouseEvent::eLeftButtonFlag;
+    mouseEvent.mButtons |= MouseButtonsFlag::eLeftFlag;
   }
   if (aModifierState & GDK_BUTTON3_MASK) {
-    mouseEvent.buttons |= WidgetMouseEvent::eRightButtonFlag;
+    mouseEvent.mButtons |= MouseButtonsFlag::eRightFlag;
   }
   if (aModifierState & GDK_BUTTON2_MASK) {
-    mouseEvent.buttons |= WidgetMouseEvent::eMiddleButtonFlag;
+    mouseEvent.mButtons |= MouseButtonsFlag::eMiddleFlag;
   }
 
   if (doLog) {
-    MOZ_LOG(
-        gKeymapWrapperLog, LogLevel::Debug,
-        ("%p InitInputEvent, aInputEvent has buttons, "
-         "aInputEvent.buttons=0x%04X (Left: %s, Right: %s, Middle: %s, "
-         "4th (BACK): %s, 5th (FORWARD): %s)",
-         keymapWrapper, mouseEvent.buttons,
-         GetBoolName(mouseEvent.buttons & WidgetMouseEvent::eLeftButtonFlag),
-         GetBoolName(mouseEvent.buttons & WidgetMouseEvent::eRightButtonFlag),
-         GetBoolName(mouseEvent.buttons & WidgetMouseEvent::eMiddleButtonFlag),
-         GetBoolName(mouseEvent.buttons & WidgetMouseEvent::e4thButtonFlag),
-         GetBoolName(mouseEvent.buttons & WidgetMouseEvent::e5thButtonFlag)));
+    MOZ_LOG(gKeymapWrapperLog, LogLevel::Debug,
+            ("%p InitInputEvent, aInputEvent has mButtons, "
+             "aInputEvent.mButtons=0x%04X (Left: %s, Right: %s, Middle: %s, "
+             "4th (BACK): %s, 5th (FORWARD): %s)",
+             keymapWrapper, mouseEvent.mButtons,
+             GetBoolName(mouseEvent.mButtons & MouseButtonsFlag::eLeftFlag),
+             GetBoolName(mouseEvent.mButtons & MouseButtonsFlag::eRightFlag),
+             GetBoolName(mouseEvent.mButtons & MouseButtonsFlag::eMiddleFlag),
+             GetBoolName(mouseEvent.mButtons & MouseButtonsFlag::e4thFlag),
+             GetBoolName(mouseEvent.mButtons & MouseButtonsFlag::e5thFlag)));
   }
 }
 

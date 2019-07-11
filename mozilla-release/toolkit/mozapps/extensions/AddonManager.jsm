@@ -36,14 +36,6 @@ const PREF_WEBEXT_PERM_PROMPTS        = "extensions.webextPermissionPrompts";
 
 const UPDATE_REQUEST_VERSION          = 2;
 
-const XMLURI_BLOCKLIST                = "http://www.mozilla.org/2006/addons-blocklist";
-
-const KEY_PROFILEDIR                  = "ProfD";
-const KEY_APPDIR                      = "XCurProcD";
-const FILE_BLOCKLIST                  = "blocklist.xml";
-
-const DEFAULT_THEME_ID                = "default-theme@mozilla.org";
-
 const BRANCH_REGEXP                   = /^([^\.]+\.[0-9]+[a-z]*).*/gi;
 const PREF_EM_CHECK_COMPATIBILITY_BASE = "extensions.checkCompatibility";
 var PREF_EM_CHECK_COMPATIBILITY = MOZ_COMPATIBILITY_NIGHTLY ?
@@ -64,13 +56,11 @@ const {XPCOMUtils} = ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm")
 // a const.
 var {AsyncShutdown} = ChromeUtils.import("resource://gre/modules/AsyncShutdown.jsm");
 
-XPCOMUtils.defineLazyGlobalGetters(this, ["DOMParser", "Element"]);
+XPCOMUtils.defineLazyGlobalGetters(this, ["Element"]);
 
 XPCOMUtils.defineLazyModuleGetters(this, {
   AddonRepository: "resource://gre/modules/addons/AddonRepository.jsm",
   Extension: "resource://gre/modules/Extension.jsm",
-  FileUtils: "resource://gre/modules/FileUtils.jsm",
-  LightweightThemeManager: "resource://gre/modules/LightweightThemeManager.jsm",
 });
 
 XPCOMUtils.defineLazyPreferenceGetter(this, "WEBEXT_PERMISSION_PROMPTS",
@@ -92,7 +82,6 @@ const CATEGORY_PROVIDER_MODULE = "addon-provider-module";
 // A list of providers to load by default
 const DEFAULT_PROVIDERS = [
   "resource://gre/modules/addons/XPIProvider.jsm",
-  "resource://gre/modules/LightweightThemeManager.jsm",
 ];
 
 const {Log} = ChromeUtils.import("resource://gre/modules/Log.jsm");
@@ -527,7 +516,8 @@ var gCheckUpdateSecurity = gCheckUpdateSecurityDefault;
 var gUpdateEnabled = true;
 var gAutoUpdateDefault = true;
 var gWebExtensionsMinPlatformVersion = "";
-var gShutdownBarrier = null;
+var gFinalShutdownBarrier = null;
+var gBeforeShutdownBarrier = null;
 var gRepoShutdownState = "";
 var gShutdownInProgress = false;
 var gPluginPageListener = null;
@@ -558,82 +548,6 @@ var AddonManagerInternal = {
 
   recordTimestamp(name, value) {
     this.TelemetryTimestamps.add(name, value);
-  },
-
-  validateBlocklist() {
-    let appBlocklist = FileUtils.getFile(KEY_APPDIR, [FILE_BLOCKLIST]);
-
-    // If there is no application shipped blocklist then there is nothing to do
-    if (!appBlocklist.exists())
-      return;
-
-    let profileBlocklist = FileUtils.getFile(KEY_PROFILEDIR, [FILE_BLOCKLIST]);
-
-    // If there is no blocklist in the profile then copy the application shipped
-    // one there
-    if (!profileBlocklist.exists()) {
-      try {
-        appBlocklist.copyTo(profileBlocklist.parent, FILE_BLOCKLIST);
-      } catch (e) {
-        logger.warn("Failed to copy the application shipped blocklist to the profile", e);
-      }
-      return;
-    }
-
-    let fileStream = Cc["@mozilla.org/network/file-input-stream;1"].
-                     createInstance(Ci.nsIFileInputStream);
-    try {
-      let cstream = Cc["@mozilla.org/intl/converter-input-stream;1"].
-                    createInstance(Ci.nsIConverterInputStream);
-      fileStream.init(appBlocklist, FileUtils.MODE_RDONLY, FileUtils.PERMS_FILE, 0);
-      cstream.init(fileStream, "UTF-8", 0, 0);
-
-      let data = "";
-      let str = {};
-      let read = 0;
-      do {
-        read = cstream.readString(0xffffffff, str);
-        data += str.value;
-      } while (read != 0);
-
-      let parser = new DOMParser();
-      var doc = parser.parseFromString(data, "text/xml");
-    } catch (e) {
-      logger.warn("Application shipped blocklist could not be loaded", e);
-      return;
-    } finally {
-      try {
-        fileStream.close();
-      } catch (e) {
-        logger.warn("Unable to close blocklist file stream", e);
-      }
-    }
-
-    // If the namespace is incorrect then ignore the application shipped
-    // blocklist
-    if (doc.documentElement.namespaceURI != XMLURI_BLOCKLIST) {
-      logger.warn("Application shipped blocklist has an unexpected namespace (" +
-                  doc.documentElement.namespaceURI + ")");
-      return;
-    }
-
-    // If there is no lastupdate information then ignore the application shipped
-    // blocklist
-    if (!doc.documentElement.hasAttribute("lastupdate"))
-      return;
-
-    // If the application shipped blocklist is older than the profile blocklist
-    // then do nothing
-    if (doc.documentElement.getAttribute("lastupdate") <=
-        profileBlocklist.lastModifiedTime)
-      return;
-
-    // Otherwise copy the application shipped blocklist to the profile
-    try {
-      appBlocklist.copyTo(profileBlocklist.parent, FILE_BLOCKLIST);
-    } catch (e) {
-      logger.warn("Failed to copy the application shipped blocklist to the profile", e);
-    }
   },
 
   /**
@@ -676,7 +590,7 @@ var AddonManagerInternal = {
       };
       logger.debug("Registering shutdown blocker for " + name);
       this.providerShutdowns.set(aProvider, AMProviderShutdown);
-      AddonManager.shutdown.addBlocker(name, AMProviderShutdown);
+      AddonManagerPrivate.finalShutdown.addBlocker(name, AMProviderShutdown);
     }
 
     this.pendingProviders.delete(aProvider);
@@ -730,7 +644,6 @@ var AddonManagerInternal = {
                                    Services.appinfo.platformVersion);
         Services.prefs.setIntPref(PREF_BLOCKLIST_PINGCOUNTVERSION,
                                   (appChanged === undefined ? 0 : -1));
-        this.validateBlocklist();
       }
 
       if (!MOZ_COMPATIBILITY_NIGHTLY) {
@@ -799,7 +712,8 @@ var AddonManagerInternal = {
       }
 
       // Register our shutdown handler with the AsyncShutdown manager
-      gShutdownBarrier = new AsyncShutdown.Barrier("AddonManager: Waiting for providers to shut down.");
+      gBeforeShutdownBarrier = new AsyncShutdown.Barrier("AddonManager: Waiting to start provider shutdown.");
+      gFinalShutdownBarrier = new AsyncShutdown.Barrier("AddonManager: Waiting for providers to shut down.");
       AsyncShutdown.profileBeforeChange.addBlocker("AddonManager: shutting down.",
                                                    this.shutdownManager.bind(this),
                                                    {fetchState: this.shutdownState.bind(this)});
@@ -830,27 +744,6 @@ var AddonManagerInternal = {
     } catch (e) {
       logger.error("startup failed", e);
       AddonManagerPrivate.recordException("AMI", "startup failed", e);
-    }
-
-    let brandBundle = Services.strings.createBundle("chrome://branding/locale/brand.properties");
-    let extensionsBundle = Services.strings.createBundle(
-      "chrome://global/locale/extensions.properties");
-
-    // When running in xpcshell tests, the default theme may already
-    // exist.
-    if (!LightweightThemeManager._builtInThemes.has(DEFAULT_THEME_ID)) {
-      let author = "Mozilla";
-      try {
-        author = brandBundle.GetStringFromName("vendorShortName");
-      } catch (e) {}
-
-      LightweightThemeManager.addBuiltInTheme({
-        id: DEFAULT_THEME_ID,
-        name: extensionsBundle.GetStringFromName("defaultTheme.name"),
-        description: extensionsBundle.GetStringFromName("defaultTheme.description2"),
-        iconURL: "chrome://mozapps/content/extensions/default-theme-icon.svg",
-        author,
-      });
     }
 
     logger.debug("Completed startup sequence");
@@ -936,13 +829,14 @@ var AddonManagerInternal = {
 
     // If we're unregistering after startup but before shutting down,
     // remove the blocker for this provider's shutdown and call it.
-    // If we're already shutting down, just let gShutdownBarrier call it to avoid races.
+    // If we're already shutting down, just let gFinalShutdownBarrier
+    // call it to avoid races.
     if (gStarted && !gShutdownInProgress) {
       logger.debug("Unregistering shutdown blocker for " + providerName(aProvider));
       let shutter = this.providerShutdowns.get(aProvider);
       if (shutter) {
         this.providerShutdowns.delete(aProvider);
-        gShutdownBarrier.client.removeBlocker(shutter);
+        gFinalShutdownBarrier.client.removeBlocker(shutter);
         return shutter();
       }
     }
@@ -1014,11 +908,10 @@ var AddonManagerInternal = {
    */
   shutdownState() {
     let state = [];
-    if (gShutdownBarrier) {
-      state.push({
-        name: gShutdownBarrier.client.name,
-        state: gShutdownBarrier.state,
-      });
+    for (let barrier of [gBeforeShutdownBarrier, gFinalShutdownBarrier]) {
+      if (barrier) {
+        state.push({name: barrier.client.name, state: barrier.state});
+      }
     }
     state.push({
       name: "AddonRepository: async shutdown",
@@ -1034,6 +927,13 @@ var AddonManagerInternal = {
    *                       have finished shutting down
    */
   async shutdownManager() {
+    logger.debug("before shutdown");
+    try {
+      await gBeforeShutdownBarrier.wait();
+    } catch (e) {
+      Cu.reportError(e);
+    }
+
     logger.debug("shutdown");
     this.callManagerListeners("onShutdown");
 
@@ -1052,7 +952,7 @@ var AddonManagerInternal = {
     // Only shut down providers if they've been started.
     if (gStarted) {
       try {
-        await gShutdownBarrier.wait();
+        await gFinalShutdownBarrier.wait();
       } catch (err) {
         savedError = err;
         logger.error("Failure during wait for shutdown barrier", err);
@@ -1081,7 +981,8 @@ var AddonManagerInternal = {
       delete this.startupChanges[type];
     gStarted = false;
     gStartupComplete = false;
-    gShutdownBarrier = null;
+    gFinalShutdownBarrier = null;
+    gBeforeShutdownBarrier = null;
     gShutdownInProgress = false;
     if (savedError) {
       throw savedError;
@@ -1279,8 +1180,6 @@ var AddonManagerInternal = {
       if (this.updateEnabled) {
         // Keep track of all the async add-on updates happening in parallel
         let updates = [];
-
-        updates.push(LightweightThemeManager.updateThemes());
 
         let allAddons = await this.getAllAddons();
 
@@ -1530,11 +1429,9 @@ var AddonManagerInternal = {
     // considered unsafe (and therefore disallowed by AddonManager.jsm) to
     // access providers that haven't been initialized yet. Since this is when
     // XPIProvider is starting up, XPIProvider can't access itself via APIs
-    // going through AddonManager.jsm. Furthermore, LightweightThemeManager may
-    // not be initialized until after XPIProvider is, and therefore would also
-    // be unaccessible during XPIProvider startup. Thankfully, these are the
-    // only two uses of this API, and we know it's safe to use this API with
-    // both providers; so we have this hack to allow bypassing the normal
+    // going through AddonManager.jsm. Thankfully, this is the only use
+    // of this API, and we know it's safe to use this API with both
+    // providers; so we have this hack to allow bypassing the normal
     // safetey guard.
     // The notifyAddonChanged/addonChanged API will be unneeded and therefore
     // removed by bug 520124, so this is a temporary quick'n'dirty hack.
@@ -1596,6 +1493,8 @@ var AddonManagerInternal = {
    *         An optional placeholder version while the add-on is being downloaded
    * @param  {XULElement} [aOptions.browser]
    *         An optional <browser> element for download permissions prompts.
+   * @param  {nsIPrincipal} [aOptions.triggeringPrincipal]
+   *         The principal which is attempting to install the add-on.
    * @param  {Object} [aOptions.telemetryInfo]
    *         An optional object which provides details about the installation source
    *         included in the addon manager telemetry events.
@@ -1777,6 +1676,10 @@ var AddonManagerInternal = {
       throw Components.Exception("aInstallingPrincipal must be a nsIPrincipal",
                                  Cr.NS_ERROR_INVALID_ARG);
 
+    if (this.isInstallAllowedByPolicy(aInstallingPrincipal, null, true /* explicit */)) {
+      return true;
+    }
+
     let providers = [...this.providers];
     for (let provider of providers) {
       if (callProvider(provider, "supportsMimetype", false, aMimetype) &&
@@ -1784,6 +1687,40 @@ var AddonManagerInternal = {
         return true;
     }
     return false;
+  },
+
+  /**
+   * Checks whether a particular source is allowed to install add-ons based
+   * on policy.
+   *
+   * @param  aInstallingPrincipal
+   *         The nsIPrincipal that initiated the install
+   * @param  aInstall
+   *         The AddonInstall to be installed
+   * @param  explicit
+   *         If this is set, we only return true if the source is explicitly
+   *         blocked via policy.
+   *
+   * @return boolean
+   *         By default, returns true if the source is blocked by policy
+   *         or there is no policy.
+   *         If explicit is set, only returns true of the source is
+   *         blocked by policy, false otherwise. This is needed for
+   *         handling inverse cases.
+   */
+  isInstallAllowedByPolicy(aInstallingPrincipal, aInstall, explicit) {
+    if (Services.policies) {
+      let extensionSettings = Services.policies.getExtensionSettings("*");
+      if (extensionSettings && extensionSettings.install_sources) {
+        if ((!aInstall || Services.policies.allowedInstallSource(aInstall.sourceURI)) &&
+            (!aInstallingPrincipal || !aInstallingPrincipal.URI ||
+            Services.policies.allowedInstallSource(aInstallingPrincipal.URI))) {
+          return true;
+        }
+        return false;
+      }
+    }
+    return !explicit;
   },
 
   installNotifyObservers(aTopic, aBrowser, aUri, aInstall, aInstallFn) {
@@ -1912,17 +1849,27 @@ var AddonManagerInternal = {
       topBrowser = docShell.chromeEventHandler;
 
     try {
-      if (!this.isInstallEnabled(aMimetype)) {
+      if (topBrowser.ownerGlobal.fullScreen) {
+        // Addon installation and the resulting notifications should be blocked in fullscreen for security and usability reasons.
+        // Installation prompts in fullscreen can trick the user into installing unwanted addons.
+        // In fullscreen the notification box does not have a clear visual association with its parent anymore.
+        aInstall.cancel();
+
+        this.installNotifyObservers("addon-install-blocked-silent", topBrowser,
+                                    aInstallingPrincipal.URI, aInstall);
+        return;
+      } else if (!this.isInstallEnabled(aMimetype)) {
         aInstall.cancel();
 
         this.installNotifyObservers("addon-install-disabled", topBrowser,
                                     aInstallingPrincipal.URI, aInstall);
         return;
-        // CLIQZ-SPECIAL: Mark AMO as safe site
+      // CLIQZ-SPECIAL: Mark AMO as safe site
       } else if (!this.isAMOOrigin(aInstallingPrincipal) &&
                  (aInstallingPrincipal.isNullPrincipal ||
                   !aBrowser.contentPrincipal ||
-                  !aInstallingPrincipal.subsumes(aBrowser.contentPrincipal))) {
+                  !aInstallingPrincipal.subsumes(aBrowser.contentPrincipal) ||
+                  !this.isInstallAllowedByPolicy(aInstallingPrincipal, aInstall, false /* explicit */))) {
         aInstall.cancel();
 
         this.installNotifyObservers("addon-install-origin-blocked", topBrowser,
@@ -1940,14 +1887,22 @@ var AddonManagerInternal = {
 
         AddonManagerInternal.startInstall(aBrowser, aInstallingPrincipal.URI, aInstall);
       };
+
       // CLIQZ-SPECIAL: Mark AMO as safe site
-      if (!this.isAMOOrigin(aInstallingPrincipal) &&
-          !this.isInstallAllowed(aMimetype, aInstallingPrincipal)) {
-        this.installNotifyObservers("addon-install-blocked", topBrowser,
-                                    aInstallingPrincipal.URI, aInstall,
-                                    () => startInstall("other"));
-      } else {
+      let installAllowed = this.isAMOOrigin(aInstallingPrincipal) || this.isInstallAllowed(aMimetype, aInstallingPrincipal);
+      let installPerm = Services.perms.testPermissionFromPrincipal(aInstallingPrincipal, "install");
+
+      if (installAllowed) {
         startInstall("AMO");
+      } else if (installPerm === Ci.nsIPermissionManager.DENY_ACTION) {
+        // Block without prompt
+        aInstall.cancel();
+        this.installNotifyObservers("addon-install-blocked-silent", topBrowser, aInstallingPrincipal.URI, aInstall);
+      } else {
+        // Block with prompt
+        this.installNotifyObservers("addon-install-blocked", topBrowser,
+          aInstallingPrincipal.URI, aInstall,
+          () => startInstall("other"));
       }
     } catch (e) {
       // In the event that the weblistener throws during instantiation or when
@@ -1970,6 +1925,13 @@ var AddonManagerInternal = {
    *         The AddonInstall to be installed
    */
   installAddonFromAOM(browser, uri, install) {
+    if (!this.isInstallAllowedByPolicy(null, install)) {
+      install.cancel();
+
+      this.installNotifyObservers("addon-install-origin-blocked", browser,
+                                  install.sourceURI, install);
+      return;
+    }
     if (!gStarted)
       throw Components.Exception("AddonManager is not initialized",
                                  Cr.NS_ERROR_NOT_INITIALIZED);
@@ -2094,6 +2056,28 @@ var AddonManagerInternal = {
 
     return AddonManagerInternal._getProviderByName("XPIProvider")
                                .installBuiltinAddon(aBase);
+  },
+
+  /**
+   * Like `installBuiltinAddon`, but only installs the addon at `aBase`
+   * if an existing built-in addon with the ID `aID` and version doesn't
+   * already exist.
+   *
+   * @param {string} aID
+   *        The ID of the add-on being registered.
+   * @param {string} aVersion
+   *        The version of the add-on being registered.
+   * @param {string} aBase
+   *        A string containing the base URL.  Must be a resource: URL.
+   * @returns a Promise that resolves when the addon is installed.
+   */
+  maybeInstallBuiltinAddon(aID, aVersion, aBase) {
+    if (!gStarted)
+      throw Components.Exception("AddonManager is not initialized",
+                                 Cr.NS_ERROR_NOT_INITIALIZED);
+
+    return AddonManagerInternal._getProviderByName("XPIProvider")
+                               .maybeInstallBuiltinAddon(aID, aVersion, aBase);
   },
 
    syncGetAddonIDByInstanceID(aInstanceID) {
@@ -2558,7 +2542,7 @@ var AddonManagerInternal = {
       // precedence.
       // If this add-on is not a webextension or if the application does not
       // implement permission prompts, no confirmation is displayed for
-      // installs created with mozAddonManager (in which case requireConfirm
+      // installs created from about:addons (in which case requireConfirm
       // is false).
       // In the remaining cases, a confirmation prompt is displayed but the
       // application may override it either by implementing the
@@ -2706,7 +2690,7 @@ var AddonManagerInternal = {
         installPromise.catch(() => {});
 
         return {listener, installPromise};
-     };
+      };
 
       try {
         checkInstallUrl(options.url);
@@ -2715,13 +2699,20 @@ var AddonManagerInternal = {
       }
 
       return AddonManagerInternal.getInstallForURL(options.url, {
+        browser: target,
+        triggeringPrincipal: options.triggeringPrincipal,
         hash: options.hash,
         telemetryInfo: {
           source: AddonManager.getInstallSourceFromHost(options.sourceHost),
           method: "amWebAPI",
         },
       }).then(install => {
-        AddonManagerInternal.setupPromptHandler(target, null, install, false, "AMO");
+        let requireConfirm = true;
+        if (target.contentDocument &&
+            target.contentDocument.nodePrincipal.isSystemPrincipal) {
+          requireConfirm = false;
+        }
+        AddonManagerInternal.setupPromptHandler(target, null, install, requireConfirm, "AMO");
 
         let id = this.nextInstall++;
         let {listener, installPromise} = makeListener(id, target.messageManager);
@@ -3013,6 +3004,21 @@ var AddonManagerPrivate = {
     let provider = AddonManagerInternal._getProviderByName("XPIProvider");
     return provider ? provider.isDBLoaded : false;
   },
+
+  get databaseReady() {
+    let provider = AddonManagerInternal._getProviderByName("XPIProvider");
+    return provider ? provider.databaseReady : new Promise(() => {});
+  },
+
+  /**
+   * Async shutdown barrier which blocks the completion of add-on
+   * manager shutdown. This should generally only be used by add-on
+   * providers (i.e., XPIProvider) to complete their final shutdown
+   * tasks.
+   */
+  get finalShutdown() {
+    return gFinalShutdownBarrier.client;
+  },
 };
 
 /**
@@ -3026,7 +3032,6 @@ var AddonManager = {
   _installHostSource: new Map([
     ["addons.mozilla.org", "amo"],
     ["discovery.addons.mozilla.org", "disco"],
-    ["testpilot.firefox.com", "testpilot"],
   ]),
 
   // Constants for the AddonInstall.state property
@@ -3163,6 +3168,9 @@ var AddonManager = {
   // Indicates that the Addon can be set to be allowed/disallowed
   // in private browsing windows.
   PERM_CAN_CHANGE_PRIVATEBROWSING_ACCESS: 32,
+  // Indicates that internal APIs can uninstall the add-on, even if the
+  // front-end cannot.
+  PERM_API_CAN_UNINSTALL: 64,
 
   // General descriptions of where items are installed.
   // Installed in this profile.
@@ -3415,6 +3423,10 @@ var AddonManager = {
     return AddonManagerInternal.installBuiltinAddon(aBase);
   },
 
+  maybeInstallBuiltinAddon(aID, aVersion, aBase) {
+    return AddonManagerInternal.maybeInstallBuiltinAddon(aID, aVersion, aBase);
+  },
+
   addManagerListener(aListener) {
     AddonManagerInternal.addManagerListener(aListener);
   },
@@ -3544,8 +3556,13 @@ var AddonManager = {
     return AddonManagerInternal.webAPI;
   },
 
-  get shutdown() {
-    return gShutdownBarrier.client;
+  /**
+   * Async shutdown barrier which blocks the start of AddonManager
+   * shutdown. Callers should add blockers to this barrier if they need
+   * to complete add-on manager operations before it shuts down.
+   */
+  get beforeShutdown() {
+    return gBeforeShutdownBarrier.client;
   },
 };
 
@@ -3965,9 +3982,13 @@ AMTelemetry = {
    *        addonsManager.action object of the Events.yaml file.
    * @param {string} opts.action The identifier for the action.
    * @param {string} opts.value An optional value for the action.
-   * @param {AddonWrapper} opts.addon
-   *        An optional add-on object related to the event. Passing this will
-   *        set extra.addonId and extra.type based on the add-on.
+   * @param {object} opts.addon
+   *        An optional object with the "id" and "type" properties, for example
+   *        an AddonWrapper object. Passing this will set some extra properties.
+   * @param {string} opts.addon.id
+   *        The add-on ID to assign to extra.addonId.
+   * @param {string} opts.addon.type
+   *        The add-on type to assign to extra.type.
    * @param {string} opts.view The current view, when object is aboutAddons.
    * @param {object} opts.extra
    *        The extra data to be sent, all keys must be registered in the
@@ -4006,6 +4027,32 @@ AMTelemetry = {
       object: "aboutAddons",
       value: view,
       extra: this.formatExtraVars({type, addon}),
+    });
+  },
+
+  /**
+   * Record an event on abuse report submissions.
+   *
+   * @params {object} opts
+   * @params {string} opts.addonId
+   *         The id of the addon being reported.
+   * @params {string} [opts.addonType]
+   *         The type of the addon being reported  (only present for an existing
+   *         addonId).
+   * @params {string} [opts.errorType]
+   *         The AbuseReport errorType for a submission failure.
+   * @params {string} opts.reportEntryPoint
+   *         The entry point of the abuse report.
+   */
+  recordReportEvent({addonId, addonType, errorType, reportEntryPoint}) {
+    this.recordEvent({
+      method: "report",
+      object: reportEntryPoint,
+      value: addonId,
+      extra: this.formatExtraVars({
+        addon_type: addonType,
+        error_type: errorType,
+      }),
     });
   },
 

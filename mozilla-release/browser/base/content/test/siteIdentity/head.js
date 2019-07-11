@@ -1,21 +1,6 @@
 var {XPCOMUtils} = ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
 
 /**
- * Returns a Promise that resolves once a new tab has been opened in
- * a xul:tabbrowser.
- *
- * @param aTabBrowser
- *        The xul:tabbrowser to monitor for a new tab.
- * @return {Promise}
- *        Resolved when the new tab has been opened.
- * @resolves to the TabOpen event that was fired.
- * @rejects Never.
- */
-function waitForNewTabEvent(aTabBrowser) {
-  return BrowserTestUtils.waitForEvent(aTabBrowser.tabContainer, "TabOpen");
-}
-
-/**
  * Waits for a load (or custom) event to finish in a given tab. If provided
  * load an uri into the tab.
  *
@@ -241,9 +226,9 @@ async function assertMixedContentBlockingState(tabbrowser, states = {}) {
     let promiseViewShown = BrowserTestUtils.waitForEvent(gIdentityHandler._identityPopup, "ViewShown");
     doc.getElementById("identity-popup-security-expander").click();
     await promiseViewShown;
-    is(Array.filter(doc.getElementById("identity-popup-securityView")
-                       .querySelectorAll(".identity-popup-mcb-learn-more"),
-                    element => !BrowserTestUtils.is_hidden(element)).length, 1,
+    is(Array.prototype.filter.call(doc.getElementById("identity-popup-securityView")
+                                      .querySelectorAll(".identity-popup-mcb-learn-more"),
+                                   element => !BrowserTestUtils.is_hidden(element)).length, 1,
        "The 'Learn more' link should be visible once.");
   }
 
@@ -256,28 +241,6 @@ async function assertMixedContentBlockingState(tabbrowser, states = {}) {
 }
 
 async function loadBadCertPage(url) {
-  const EXCEPTION_DIALOG_URI = "chrome://pippki/content/exceptionDialog.xul";
-  let exceptionDialogResolved = new Promise(function(resolve) {
-    // When the certificate exception dialog has opened, click the button to add
-    // an exception.
-    let certExceptionDialogObserver = {
-      observe(aSubject, aTopic, aData) {
-        if (aTopic == "cert-exception-ui-ready") {
-          Services.obs.removeObserver(this, "cert-exception-ui-ready");
-          let certExceptionDialog = getCertExceptionDialog(EXCEPTION_DIALOG_URI);
-          ok(certExceptionDialog, "found exception dialog");
-          executeSoon(function() {
-            certExceptionDialog.documentElement.getButton("extra1").click();
-            resolve();
-          });
-        }
-      },
-    };
-
-    Services.obs.addObserver(certExceptionDialogObserver,
-                             "cert-exception-ui-ready");
-  });
-
   let loaded = BrowserTestUtils.waitForErrorPage(gBrowser.selectedBrowser);
   await BrowserTestUtils.loadURI(gBrowser.selectedBrowser, url);
   await loaded;
@@ -285,26 +248,5 @@ async function loadBadCertPage(url) {
   await ContentTask.spawn(gBrowser.selectedBrowser, null, async function() {
     content.document.getElementById("exceptionDialogButton").click();
   });
-  if (!Services.prefs.getBoolPref("browser.security.newcerterrorpage.enabled", false)) {
-    await exceptionDialogResolved;
-  }
   await BrowserTestUtils.browserLoaded(gBrowser.selectedBrowser);
-}
-
-// Utility function to get a handle on the certificate exception dialog.
-// Modified from toolkit/components/passwordmgr/test/prompt_common.js
-function getCertExceptionDialog(aLocation) {
-  for (let win of Services.wm.getXULWindowEnumerator(null)) {
-    let windowDocShell = win.docShell;
-
-    let containedDocShells = windowDocShell.getDocShellEnumerator(
-                                      Ci.nsIDocShellTreeItem.typeChrome,
-                                      Ci.nsIDocShell.ENUMERATE_FORWARDS);
-    for (let {domWindow} of containedDocShells) {
-      if (domWindow.location.href == aLocation) {
-        return domWindow.document;
-      }
-    }
-  }
-  return undefined;
 }

@@ -34,7 +34,6 @@
 #include "nsIURL.h"
 #include "nsContainerFrame.h"
 #include "nsIAnonymousContentCreator.h"
-#include "nsIPresShell.h"
 #include "nsPresContext.h"
 #include "nsStyleConsts.h"
 #include "nsString.h"
@@ -68,7 +67,9 @@
 #include "mozilla/FullscreenChange.h"
 #include "mozilla/InternalMutationEvent.h"
 #include "mozilla/MouseEvents.h"
+#include "mozilla/PresShell.h"
 #include "mozilla/RestyleManager.h"
+#include "mozilla/ScrollTypes.h"
 #include "mozilla/SizeOfState.h"
 #include "mozilla/TextEditor.h"
 #include "mozilla/TextEvents.h"
@@ -163,6 +164,7 @@
 
 #include "nsISpeculativeConnect.h"
 #include "nsIIOService.h"
+#include "nsBlockFrame.h"
 
 #include "DOMMatrix.h"
 
@@ -337,15 +339,21 @@ int32_t Element::TabIndex() {
   return TabIndexDefault();
 }
 
-void Element::Focus(mozilla::ErrorResult& aError) {
+void Element::Focus(const FocusOptions& aOptions, ErrorResult& aError) {
   nsFocusManager* fm = nsFocusManager::GetFocusManager();
   // Also other browsers seem to have the hack to not re-focus (and flush) when
   // the element is already focused.
+  // Until https://github.com/whatwg/html/issues/4512 is clarified, we'll
+  // maintain interoperatibility by not re-focusing, independent of aOptions.
+  // I.e., `focus({ preventScroll: true})` followed by `focus( { preventScroll:
+  // false })` won't re-focus.
   if (fm) {
     if (fm->CanSkipFocus(this)) {
       fm->NeedsFlushBeforeEventHandling(this);
     } else {
-      aError = fm->SetFocus(this, 0);
+      aError = fm->SetFocus(
+          this, nsIFocusManager::FLAG_BYELEMENTFOCUS |
+                    nsFocusManager::FocusOptionsToFocusManagerFlags(aOptions));
     }
   }
 }
@@ -447,7 +455,7 @@ Element::StyleStateLocks Element::LockedStyleStates() const {
 void Element::NotifyStyleStateChange(EventStates aStates) {
   Document* doc = GetComposedDoc();
   if (doc) {
-    nsIPresShell* presShell = doc->GetShell();
+    RefPtr<PresShell> presShell = doc->GetPresShell();
     if (presShell) {
       nsAutoScriptBlocker scriptBlocker;
       presShell->ContentStateChanged(doc, this, aStates);
@@ -526,7 +534,7 @@ static bool MayNeedToLoadXBLBinding(const Document& aDocument,
   // Otherwise, don't do anything else here unless we're dealing with
   // XUL or an HTML element that may have a plugin-related overlay
   // (i.e. object or embed).
-  if (!aDocument.GetShell() || aElement.GetPrimaryFrame()) {
+  if (!aDocument.GetPresShell() || aElement.GetPrimaryFrame()) {
     return false;
   }
 
@@ -602,8 +610,6 @@ JSObject* Element::WrapObject(JSContext* aCx,
       nsCOMPtr<nsIPrincipal> principal = bindingURL->ExtraData()->Principal();
 
       // We have a binding that must be installed.
-      bool dummy;
-
       nsXBLService* xblService = nsXBLService::GetInstance();
       if (!xblService) {
         dom::Throw(aCx, NS_ERROR_NOT_AVAILABLE);
@@ -611,8 +617,7 @@ JSObject* Element::WrapObject(JSContext* aCx,
       }
 
       RefPtr<nsXBLBinding> binding;
-      xblService->LoadBindings(this, uri, principal, getter_AddRefs(binding),
-                               &dummy);
+      xblService->LoadBindings(this, uri, principal, getter_AddRefs(binding));
 
       if (binding) {
         if (nsContentUtils::IsSafeToRunScript()) {
@@ -657,19 +662,16 @@ already_AddRefed<nsIHTMLCollection> Element::GetElementsByTagName(
 
 nsIScrollableFrame* Element::GetScrollFrame(nsIFrame** aFrame,
                                             FlushType aFlushType) {
-  // it isn't clear what to return for SVG nodes, so just return nothing
-  if (IsSVGElement()) {
-    if (aFrame) {
-      *aFrame = nullptr;
-    }
-    return nullptr;
-  }
-
   nsIFrame* frame = GetPrimaryFrame(aFlushType);
   if (aFrame) {
     *aFrame = frame;
   }
   if (frame) {
+    if (frame->HasAnyStateBits(NS_FRAME_SVG_LAYOUT)) {
+      // It's unclear what to return for SVG frames, so just return null.
+      return nullptr;
+    }
+
     // menu frames implement GetScrollTargetFrame but we don't want
     // to use it here.  Similar for comboboxes.
     LayoutFrameType type = frame->Type();
@@ -697,8 +699,8 @@ nsIScrollableFrame* Element::GetScrollFrame(nsIFrame** aFrame,
 
   if (isScrollingElement) {
     // Our scroll info should map to the root scrollable frame if there is one.
-    if (nsIPresShell* shell = doc->GetShell()) {
-      return shell->GetRootScrollFrameAsScrollable();
+    if (PresShell* presShell = doc->GetPresShell()) {
+      return presShell->GetRootScrollFrameAsScrollable();
     }
   }
 
@@ -730,70 +732,73 @@ void Element::ScrollIntoView(const ScrollIntoViewOptions& aOptions) {
   }
 
   // Get the presentation shell
-  nsCOMPtr<nsIPresShell> presShell = document->GetShell();
+  RefPtr<PresShell> presShell = document->GetPresShell();
   if (!presShell) {
     return;
   }
 
-  int16_t vpercent = nsIPresShell::SCROLL_CENTER;
+  WhereToScroll whereToScrollVertically = kScrollToCenter;
   switch (aOptions.mBlock) {
     case ScrollLogicalPosition::Start:
-      vpercent = nsIPresShell::SCROLL_TOP;
+      whereToScrollVertically = kScrollToTop;
       break;
     case ScrollLogicalPosition::Center:
-      vpercent = nsIPresShell::SCROLL_CENTER;
+      whereToScrollVertically = kScrollToCenter;
       break;
     case ScrollLogicalPosition::End:
-      vpercent = nsIPresShell::SCROLL_BOTTOM;
+      whereToScrollVertically = kScrollToBottom;
       break;
     case ScrollLogicalPosition::Nearest:
-      vpercent = nsIPresShell::SCROLL_MINIMUM;
+      whereToScrollVertically = kScrollMinimum;
       break;
     default:
       MOZ_ASSERT_UNREACHABLE("Unexpected ScrollLogicalPosition value");
   }
 
-  int16_t hpercent = nsIPresShell::SCROLL_CENTER;
+  WhereToScroll whereToScrollHorizontally = kScrollToCenter;
   switch (aOptions.mInline) {
     case ScrollLogicalPosition::Start:
-      hpercent = nsIPresShell::SCROLL_LEFT;
+      whereToScrollHorizontally = kScrollToLeft;
       break;
     case ScrollLogicalPosition::Center:
-      hpercent = nsIPresShell::SCROLL_CENTER;
+      whereToScrollHorizontally = kScrollToCenter;
       break;
     case ScrollLogicalPosition::End:
-      hpercent = nsIPresShell::SCROLL_RIGHT;
+      whereToScrollHorizontally = kScrollToRight;
       break;
     case ScrollLogicalPosition::Nearest:
-      hpercent = nsIPresShell::SCROLL_MINIMUM;
+      whereToScrollHorizontally = kScrollMinimum;
       break;
     default:
       MOZ_ASSERT_UNREACHABLE("Unexpected ScrollLogicalPosition value");
   }
 
-  uint32_t flags = nsIPresShell::SCROLL_OVERFLOW_HIDDEN;
+  ScrollFlags scrollFlags = ScrollFlags::ScrollOverflowHidden;
   if (aOptions.mBehavior == ScrollBehavior::Smooth) {
-    flags |= nsIPresShell::SCROLL_SMOOTH;
+    scrollFlags |= ScrollFlags::ScrollSmooth;
   } else if (aOptions.mBehavior == ScrollBehavior::Auto) {
-    flags |= nsIPresShell::SCROLL_SMOOTH_AUTO;
+    scrollFlags |= ScrollFlags::ScrollSmoothAuto;
+  }
+  if (StaticPrefs::layout_css_scroll_snap_v1_enabled()) {
+    scrollFlags |= ScrollFlags::ScrollSnap;
   }
 
   presShell->ScrollContentIntoView(
-      this, nsIPresShell::ScrollAxis(vpercent, nsIPresShell::SCROLL_ALWAYS),
-      nsIPresShell::ScrollAxis(hpercent, nsIPresShell::SCROLL_ALWAYS), flags);
+      this, ScrollAxis(whereToScrollVertically, WhenToScroll::Always),
+      ScrollAxis(whereToScrollHorizontally, WhenToScroll::Always), scrollFlags);
 }
 
 void Element::Scroll(const CSSIntPoint& aScroll,
                      const ScrollOptions& aOptions) {
   nsIScrollableFrame* sf = GetScrollFrame();
   if (sf) {
-    nsIScrollableFrame::ScrollMode scrollMode = nsIScrollableFrame::INSTANT;
+    ScrollMode scrollMode = ScrollMode::Instant;
     if (aOptions.mBehavior == ScrollBehavior::Smooth) {
-      scrollMode = nsIScrollableFrame::SMOOTH_MSD;
+      scrollMode = ScrollMode::SmoothMsd;
     } else if (aOptions.mBehavior == ScrollBehavior::Auto) {
       ScrollStyles styles = sf->GetScrollStyles();
       if (styles.mScrollBehavior == NS_STYLE_SCROLL_BEHAVIOR_SMOOTH) {
-        scrollMode = nsIScrollableFrame::SMOOTH_MSD;
+        scrollMode = ScrollMode::SmoothMsd;
       }
     }
 
@@ -850,13 +855,13 @@ void Element::ScrollBy(const ScrollToOptions& aOptions) {
       scrollDelta.y = mozilla::ToZeroIfNonfinite(aOptions.mTop.Value());
     }
 
-    nsIScrollableFrame::ScrollMode scrollMode = nsIScrollableFrame::INSTANT;
+    ScrollMode scrollMode = ScrollMode::Instant;
     if (aOptions.mBehavior == ScrollBehavior::Smooth) {
-      scrollMode = nsIScrollableFrame::SMOOTH_MSD;
+      scrollMode = ScrollMode::SmoothMsd;
     } else if (aOptions.mBehavior == ScrollBehavior::Auto) {
       ScrollStyles styles = sf->GetScrollStyles();
       if (styles.mScrollBehavior == NS_STYLE_SCROLL_BEHAVIOR_SMOOTH) {
-        scrollMode = nsIScrollableFrame::SMOOTH_MSD;
+        scrollMode = ScrollMode::SmoothMsd;
       }
     }
 
@@ -880,10 +885,10 @@ void Element::SetScrollTop(int32_t aScrollTop) {
   FlushType flushType = aScrollTop == 0 ? FlushType::Frames : FlushType::Layout;
   nsIScrollableFrame* sf = GetScrollFrame(nullptr, flushType);
   if (sf) {
-    nsIScrollableFrame::ScrollMode scrollMode = nsIScrollableFrame::INSTANT;
+    ScrollMode scrollMode = ScrollMode::Instant;
     if (sf->GetScrollStyles().mScrollBehavior ==
         NS_STYLE_SCROLL_BEHAVIOR_SMOOTH) {
-      scrollMode = nsIScrollableFrame::SMOOTH_MSD;
+      scrollMode = ScrollMode::SmoothMsd;
     }
     sf->ScrollToCSSPixels(
         CSSIntPoint(sf->GetScrollPositionCSSPixels().x, aScrollTop),
@@ -902,10 +907,10 @@ void Element::SetScrollLeft(int32_t aScrollLeft) {
   // range.  So we need to flush layout no matter what.
   nsIScrollableFrame* sf = GetScrollFrame();
   if (sf) {
-    nsIScrollableFrame::ScrollMode scrollMode = nsIScrollableFrame::INSTANT;
+    ScrollMode scrollMode = ScrollMode::Instant;
     if (sf->GetScrollStyles().mScrollBehavior ==
         NS_STYLE_SCROLL_BEHAVIOR_SMOOTH) {
-      scrollMode = nsIScrollableFrame::SMOOTH_MSD;
+      scrollMode = ScrollMode::SmoothMsd;
     }
 
     sf->ScrollToCSSPixels(
@@ -922,7 +927,7 @@ void Element::MozScrollSnap() {
 }
 
 static nsSize GetScrollRectSizeForOverflowVisibleFrame(nsIFrame* aFrame) {
-  if (!aFrame) {
+  if (!aFrame || aFrame->HasAnyStateBits(NS_FRAME_SVG_LAYOUT)) {
     return nsSize(0, 0);
   }
 
@@ -944,8 +949,6 @@ static nsSize GetScrollRectSizeForOverflowVisibleFrame(nsIFrame* aFrame) {
 }
 
 int32_t Element::ScrollHeight() {
-  if (IsSVGElement()) return 0;
-
   nsIFrame* frame;
   nsIScrollableFrame* sf = GetScrollFrame(&frame);
   nscoord height;
@@ -959,8 +962,6 @@ int32_t Element::ScrollHeight() {
 }
 
 int32_t Element::ScrollWidth() {
-  if (IsSVGElement()) return 0;
-
   nsIFrame* frame;
   nsIScrollableFrame* sf = GetScrollFrame(&frame);
   nscoord width;
@@ -989,7 +990,7 @@ nsRect Element::GetClientAreaRect() {
     // We will always have a pres shell if we have a pres context, and we will
     // only get here if we have a pres context from the root content document
     // check
-    nsIPresShell* presShell = doc->GetShell();
+    PresShell* presShell = doc->GetPresShell();
 
     // Ensure up to date dimensions, but don't reflow
     RefPtr<nsViewManager> viewManager = presShell->GetViewManager();
@@ -1104,7 +1105,7 @@ void Element::GetSlot(nsAString& aName) {
 // https://dom.spec.whatwg.org/#dom-element-shadowroot
 ShadowRoot* Element::GetShadowRootByMode() const {
   /**
-   * 1. Let shadow be context object’s shadow root.
+   * 1. Let shadow be context object's shadow root.
    * 2. If shadow is null or its mode is "closed", then return null.
    */
   ShadowRoot* shadowRoot = GetShadowRoot();
@@ -1120,7 +1121,7 @@ ShadowRoot* Element::GetShadowRootByMode() const {
 
 bool Element::CanAttachShadowDOM() const {
   /**
-   * If context object’s namespace is not the HTML namespace,
+   * If context object's namespace is not the HTML namespace,
    * return false.
    *
    * Deviate from the spec here to allow shadow dom attachement to
@@ -1133,7 +1134,7 @@ bool Element::CanAttachShadowDOM() const {
   }
 
   /**
-   * If context object’s local name is not
+   * If context object's local name is not
    *    a valid custom element name, "article", "aside", "blockquote",
    *    "body", "div", "footer", "h1", "h2", "h3", "h4", "h5", "h6",
    *    "header", "main" "nav", "p", "section", or "span",
@@ -1161,9 +1162,9 @@ bool Element::CanAttachShadowDOM() const {
 already_AddRefed<ShadowRoot> Element::AttachShadow(const ShadowRootInit& aInit,
                                                    ErrorResult& aError) {
   /**
-   * 1. If context object’s namespace is not the HTML namespace,
+   * 1. If context object's namespace is not the HTML namespace,
    *    then throw a "NotSupportedError" DOMException.
-   * 2. If context object’s local name is not valid to attach shadow DOM to,
+   * 2. If context object's local name is not valid to attach shadow DOM to,
    *    then throw a "NotSupportedError" DOMException.
    */
   if (!CanAttachShadowDOM()) {
@@ -1197,16 +1198,16 @@ already_AddRefed<ShadowRoot> Element::AttachShadowWithoutNameChecks(
           DOCUMENT_FRAGMENT_NODE);
 
   if (Document* doc = GetComposedDoc()) {
-    if (nsIPresShell* shell = doc->GetShell()) {
-      shell->DestroyFramesForAndRestyle(this);
+    if (PresShell* presShell = doc->GetPresShell()) {
+      presShell->DestroyFramesForAndRestyle(this);
     }
   }
   MOZ_ASSERT(!GetPrimaryFrame());
 
   /**
    * 4. Let shadow be a new shadow root whose node document is
-   *    context object’s node document, host is context object,
-   *    and mode is init’s mode.
+   *    context object's node document, host is context object,
+   *    and mode is init's mode.
    */
   RefPtr<ShadowRoot> shadowRoot =
       new ShadowRoot(this, aMode, nodeInfo.forget());
@@ -1216,7 +1217,7 @@ already_AddRefed<ShadowRoot> Element::AttachShadowWithoutNameChecks(
   }
 
   /**
-   * 5. Set context object’s shadow root to shadow.
+   * 5. Set context object's shadow root to shadow.
    */
   SetShadowRoot(shadowRoot);
 
@@ -1318,8 +1319,8 @@ void Element::UnattachShadow() {
   nsAutoScriptBlocker scriptBlocker;
 
   if (Document* doc = GetComposedDoc()) {
-    if (nsIPresShell* shell = doc->GetShell()) {
-      shell->DestroyFramesForAndRestyle(this);
+    if (PresShell* presShell = doc->GetPresShell()) {
+      presShell->DestroyFramesForAndRestyle(this);
     }
   }
   MOZ_ASSERT(!GetPrimaryFrame());
@@ -1777,7 +1778,8 @@ nsresult Element::BindToTree(Document* aDocument, nsIContent* aParent,
     PseudoStyleType pseudoType = GetPseudoElementType();
     if ((pseudoType == PseudoStyleType::NotPseudo ||
          pseudoType == PseudoStyleType::before ||
-         pseudoType == PseudoStyleType::after) &&
+         pseudoType == PseudoStyleType::after ||
+         pseudoType == PseudoStyleType::marker) &&
         EffectSet::GetEffectSet(this, pseudoType)) {
       if (nsPresContext* presContext = aDocument->GetPresContext()) {
         presContext->EffectCompositor()->RequestRestyle(
@@ -1901,21 +1903,24 @@ void Element::UnbindFromTree(bool aDeep, bool aNullParent) {
   }
 #endif
 
-  ClearInDocument();
-  SetIsConnected(false);
-
   // Ensure that CSS transitions don't continue on an element at a
   // different place in the tree (even if reinserted before next
   // animation refresh).
+  //
   // We need to delete the properties while we're still in document
-  // (if we were in document).
+  // (if we were in document) so that they can look up the
+  // PendingAnimationTracker on the document and remove their animations,
+  // and so they can find their pres context for dispatching cancel events.
+  //
   // FIXME (Bug 522599): Need a test for this.
   if (MayHaveAnimations()) {
     DeleteProperty(nsGkAtoms::transitionsOfBeforeProperty);
     DeleteProperty(nsGkAtoms::transitionsOfAfterProperty);
+    DeleteProperty(nsGkAtoms::transitionsOfMarkerProperty);
     DeleteProperty(nsGkAtoms::transitionsProperty);
     DeleteProperty(nsGkAtoms::animationsOfBeforeProperty);
     DeleteProperty(nsGkAtoms::animationsOfAfterProperty);
+    DeleteProperty(nsGkAtoms::animationsOfMarkerProperty);
     DeleteProperty(nsGkAtoms::animationsProperty);
     if (document) {
       if (nsPresContext* presContext = document->GetPresContext()) {
@@ -1926,6 +1931,9 @@ void Element::UnbindFromTree(bool aDeep, bool aNullParent) {
       }
     }
   }
+
+  ClearInDocument();
+  SetIsConnected(false);
 
   if (aNullParent || !mParent->IsInShadowTree()) {
     UnsetFlags(NODE_IS_IN_SHADOW_TREE);
@@ -2037,8 +2045,8 @@ nsresult Element::SetSMILOverrideStyleDeclaration(
   // be in a document, if we're clearing animation effects on a target node
   // that's been detached since the previous animation sample.)
   if (Document* doc = GetComposedDoc()) {
-    if (nsIPresShell* shell = doc->GetShell()) {
-      shell->RestyleForAnimation(this, StyleRestyleHint_RESTYLE_SMIL);
+    if (PresShell* presShell = doc->GetPresShell()) {
+      presShell->RestyleForAnimation(this, StyleRestyleHint_RESTYLE_SMIL);
     }
   }
 
@@ -2154,16 +2162,16 @@ nsresult Element::DispatchEvent(nsPresContext* aPresContext,
     return NS_OK;
   }
 
-  nsCOMPtr<nsIPresShell> shell = aPresContext->GetPresShell();
-  if (!shell) {
+  RefPtr<PresShell> presShell = aPresContext->GetPresShell();
+  if (!presShell) {
     return NS_OK;
   }
 
   if (aFullDispatch) {
-    return shell->HandleEventWithTarget(aEvent, nullptr, aTarget, aStatus);
+    return presShell->HandleEventWithTarget(aEvent, nullptr, aTarget, aStatus);
   }
 
-  return shell->HandleDOMEventWithTarget(aTarget, aEvent, aStatus);
+  return presShell->HandleDOMEventWithTarget(aTarget, aEvent, aStatus);
 }
 
 /* static */
@@ -2186,17 +2194,17 @@ nsresult Element::DispatchClickEvent(nsPresContext* aPresContext,
   WidgetMouseEvent* sourceMouseEvent = aSourceEvent->AsMouseEvent();
   if (sourceMouseEvent) {
     clickCount = sourceMouseEvent->mClickCount;
-    pressure = sourceMouseEvent->pressure;
+    pressure = sourceMouseEvent->mPressure;
     pointerId = sourceMouseEvent->pointerId;
-    inputSource = sourceMouseEvent->inputSource;
+    inputSource = sourceMouseEvent->mInputSource;
   } else if (aSourceEvent->mClass == eKeyboardEventClass) {
     event.mFlags.mIsPositionless = true;
     inputSource = MouseEvent_Binding::MOZ_SOURCE_KEYBOARD;
   }
-  event.pressure = pressure;
+  event.mPressure = pressure;
   event.mClickCount = clickCount;
   event.pointerId = pointerId;
-  event.inputSource = inputSource;
+  event.mInputSource = inputSource;
   event.mModifiers = aSourceEvent->mModifiers;
   if (aExtraEventFlags) {
     // Be careful not to overwrite existing flags!
@@ -2588,7 +2596,7 @@ bool Element::ParseAttribute(int32_t aNamespaceID, nsAtom* aAttribute,
   }
 
   if (aNamespaceID == kNameSpaceID_None) {
-    if (aAttribute == nsGkAtoms::_class) {
+    if (aAttribute == nsGkAtoms::_class || aAttribute == nsGkAtoms::part) {
       aResult.ParseAtomArray(aValue);
       return true;
     }
@@ -3080,8 +3088,7 @@ nsresult Element::PostHandleEventForLinks(EventChainPostVisitor& aVisitor) {
 
   switch (aVisitor.mEvent->mMessage) {
     case eMouseDown: {
-      if (aVisitor.mEvent->AsMouseEvent()->button ==
-          WidgetMouseEvent::eLeftButton) {
+      if (aVisitor.mEvent->AsMouseEvent()->mButton == MouseButton::eLeft) {
         // don't make the link grab the focus if there is no link handler
         nsILinkHandler* handler = aVisitor.mPresContext->GetLinkHandler();
         Document* document = GetComposedDoc();
@@ -3116,8 +3123,8 @@ nsresult Element::PostHandleEventForLinks(EventChainPostVisitor& aVisitor) {
         }
 
         // The default action is simply to dispatch DOMActivate
-        nsCOMPtr<nsIPresShell> shell = aVisitor.mPresContext->GetPresShell();
-        if (shell) {
+        if (RefPtr<PresShell> presShell =
+                aVisitor.mPresContext->GetPresShell()) {
           // single-click
           nsEventStatus status = nsEventStatus_eIgnore;
           // DOMActive event should be trusted since the activation is actually
@@ -3125,7 +3132,7 @@ nsresult Element::PostHandleEventForLinks(EventChainPostVisitor& aVisitor) {
           InternalUIEvent actEvent(true, eLegacyDOMActivate, mouseEvent);
           actEvent.mDetail = 1;
 
-          rv = shell->HandleDOMEventWithTarget(this, &actEvent, &status);
+          rv = presShell->HandleDOMEventWithTarget(this, &actEvent, &status);
           if (NS_SUCCEEDED(rv)) {
             aVisitor.mEventStatus = nsEventStatus_eConsumeNoDefault;
           }
@@ -3150,8 +3157,8 @@ nsresult Element::PostHandleEventForLinks(EventChainPostVisitor& aVisitor) {
       WidgetKeyboardEvent* keyEvent = aVisitor.mEvent->AsKeyboardEvent();
       if (keyEvent && keyEvent->mKeyCode == NS_VK_RETURN) {
         nsEventStatus status = nsEventStatus_eIgnore;
-        rv = DispatchClickEvent(aVisitor.mPresContext, keyEvent, this, false,
-                                nullptr, &status);
+        rv = DispatchClickEvent(MOZ_KnownLive(aVisitor.mPresContext), keyEvent,
+                                this, false, nullptr, &status);
         if (NS_SUCCEEDED(rv)) {
           aVisitor.mEventStatus = nsEventStatus_eConsumeNoDefault;
         }
@@ -3446,11 +3453,7 @@ already_AddRefed<Animation> Element::Animate(
 
   // Animation constructor follows the standard Xray calling convention and
   // needs to be called in the target element's realm.
-  Maybe<JSAutoRealm> ar;
-  if (js::GetContextCompartment(aContext) !=
-      js::GetObjectCompartment(ownerGlobal->GetGlobalJSObject())) {
-    ar.emplace(aContext, ownerGlobal->GetGlobalJSObject());
-  }
+  JSAutoRealm ar(aContext, global.Get());
 
   AnimationTimeline* timeline = referenceElement->OwnerDoc()->Timeline();
   RefPtr<Animation> animation = Animation::Constructor(
@@ -3493,6 +3496,9 @@ void Element::GetAnimations(const AnimationFilter& filter,
   } else if (IsGeneratedContentContainerForAfter()) {
     elem = GetParentElement();
     pseudoType = PseudoStyleType::after;
+  } else if (IsGeneratedContentContainerForMarker()) {
+    elem = GetParentElement();
+    pseudoType = PseudoStyleType::marker;
   }
 
   if (!elem) {
@@ -3500,7 +3506,8 @@ void Element::GetAnimations(const AnimationFilter& filter,
   }
 
   if (!filter.mSubtree || pseudoType == PseudoStyleType::before ||
-      pseudoType == PseudoStyleType::after) {
+      pseudoType == PseudoStyleType::after ||
+      pseudoType == PseudoStyleType::marker) {
     GetAnimationsUnsorted(elem, pseudoType, aAnimations);
   } else {
     for (nsIContent* node = this; node; node = node->GetNextNode(this)) {
@@ -3514,6 +3521,8 @@ void Element::GetAnimations(const AnimationFilter& filter,
                                      aAnimations);
       Element::GetAnimationsUnsorted(element, PseudoStyleType::after,
                                      aAnimations);
+      Element::GetAnimationsUnsorted(element, PseudoStyleType::marker,
+                                     aAnimations);
     }
   }
   aAnimations.Sort(AnimationPtrComparator<RefPtr<Animation>>());
@@ -3525,7 +3534,8 @@ void Element::GetAnimationsUnsorted(Element* aElement,
                                     nsTArray<RefPtr<Animation>>& aAnimations) {
   MOZ_ASSERT(aPseudoType == PseudoStyleType::NotPseudo ||
                  aPseudoType == PseudoStyleType::after ||
-                 aPseudoType == PseudoStyleType::before,
+                 aPseudoType == PseudoStyleType::before ||
+                 aPseudoType == PseudoStyleType::marker,
              "Unsupported pseudo type");
   MOZ_ASSERT(aElement, "Null element");
 
@@ -4278,8 +4288,8 @@ static void NoteDirtyElement(Element* aElement, uint32_t aBits) {
     }
   }
 
-  if (nsIPresShell* shell = doc->GetShell()) {
-    shell->EnsureStyleFlush();
+  if (PresShell* presShell = doc->GetPresShell()) {
+    presShell->EnsureStyleFlush();
   }
 
   MOZ_ASSERT(parent->IsElement() || parent == doc);
@@ -4389,6 +4399,18 @@ void Element::NoteDescendantsNeedFramesForServo() {
   // needs processing).
   NoteDirtyElement(this, NODE_DESCENDANTS_NEED_FRAMES);
   SetFlags(NODE_DESCENDANTS_NEED_FRAMES);
+}
+
+double Element::FirstLineBoxBSize() const {
+  const nsBlockFrame* frame = do_QueryFrame(GetPrimaryFrame());
+  if (!frame) {
+    return 0.0;
+  }
+  nsBlockFrame::ConstLineIterator line = frame->LinesBegin();
+  nsBlockFrame::ConstLineIterator lineEnd = frame->LinesEnd();
+  return line != lineEnd
+             ? nsPresContext::AppUnitsToDoubleCSSPixels(line->BSize())
+             : 0.0;
 }
 
 }  // namespace dom

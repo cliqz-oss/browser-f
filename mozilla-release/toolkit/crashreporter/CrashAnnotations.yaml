@@ -49,6 +49,11 @@ AdapterDeviceID:
     Graphics adapter name.
   type: string
 
+AdapterDriverVendor:
+  description: >
+    Graphics adapter driver vendor.
+  type: string
+
 AdapterDriverVersion:
   description: >
     Graphics adapter driver version.
@@ -152,6 +157,11 @@ Bug_1086977:
   description: >
     Mac-only annotation which should be present only if Firefox crashed when
     loading a facebook plugin.
+  type: string
+
+Bug_1541161:
+  description: >
+    Dump JS Stack in case loadinfo is null within NewChannelFromURIWithProxyFlagsInternal().
   type: string
 
 BuildID:
@@ -268,14 +278,6 @@ EventLoopNestingLevel:
   type: integer
   ping: true
 
-ExecutableName:
-  description: >
-    The name of the last executable that was launched via the nsIProcess class.
-    Multiple executables can be launched at the same time from one or more
-    threads so this annotation might not always contain the correct value. To
-    be removed once bug 1386760 is fixed.
-  type: string
-
 ExpectedStreamLen:
   description: >
     Expected length of an IPC proxy stream.
@@ -358,6 +360,15 @@ IAccessibleConfig:
     Set when something is seriously wrong with the IAccessible configuration in
     the computer's registry. The value is always set to "NoSystemTypeLibOrPS"
   type: string
+
+IndexedDBShutdownTimeout:
+  description: >
+    This annotation is present if IndexedDB shutdown was not finished in time
+    and the browser was crashed instead of waiting for IndexedDB shutdown to
+    finish. The condition that caused the hang is contained in the annotation.
+  type: string
+  content: false
+  ping: true
 
 InstallTime:
   description: >
@@ -457,6 +468,11 @@ IsGarbageCollecting:
   type: boolean
   ping: true
 
+IsWayland:
+  description: >
+    If true then the Wayland windowing system was in use.
+  type: boolean
+
 JavaStackTrace:
   description: >
     Java stack trace, only present on Firefox for Android if we encounter an
@@ -485,6 +501,15 @@ LauncherProcessState:
     match with one of the values in the
     mozilla::LauncherRegistryInfo::EnableState enum
   type: integer
+
+LocalStorageShutdownTimeout:
+  description: >
+    This annotation is present if LocalStorage shutdown was not finished in time
+    and the browser was crashed instead of waiting for LocalStorage shutdown to
+    finish. The condition that caused the hang is contained in the annotation.
+  type: string
+  content: false
+  ping: true
 
 LowCommitSpaceEvents:
   description: >

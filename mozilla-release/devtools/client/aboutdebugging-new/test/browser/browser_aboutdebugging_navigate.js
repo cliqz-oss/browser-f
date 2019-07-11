@@ -22,12 +22,13 @@ add_task(async function() {
   const AboutDebugging = window.AboutDebugging;
   await selectThisFirefoxPage(document, AboutDebugging.store);
 
-  const connectSidebarItem = findSidebarItemByText("Connect", document);
-  const connectLink = connectSidebarItem.querySelector(".js-sidebar-link");
+  const connectSidebarItem = findSidebarItemByText("Setup", document);
+  const connectLink = connectSidebarItem.querySelector(".qa-sidebar-link");
   ok(connectSidebarItem, "Found the Connect sidebar item");
 
-  const thisFirefoxSidebarItem = findSidebarItemByText("This Firefox", document);
-  const thisFirefoxLink = thisFirefoxSidebarItem.querySelector(".js-sidebar-link");
+  const thisFirefoxString = getThisFirefoxString(window);
+  const thisFirefoxSidebarItem = findSidebarItemByText(thisFirefoxString, document);
+  const thisFirefoxLink = thisFirefoxSidebarItem.querySelector(".qa-sidebar-link");
   ok(thisFirefoxSidebarItem, "Found the ThisFirefox sidebar item");
   ok(isSidebarItemSelected(thisFirefoxSidebarItem),
     "ThisFirefox sidebar item is selected by default");
@@ -43,11 +44,11 @@ add_task(async function() {
   connectLink.click();
 
   info("Wait until Connect page is displayed");
-  await waitUntil(() => document.querySelector(".js-connect-page"));
+  await waitUntil(() => document.querySelector(".qa-connect-page"));
   // we need to wait here because the sidebar isn't updated after mounting the page
   info("Wait until Connect sidebar item is selected");
   await waitUntil(() => isSidebarItemSelected(connectSidebarItem));
-  ok(!document.querySelector(".js-runtime-page"), "Runtime page no longer rendered");
+  ok(!document.querySelector(".qa-runtime-page"), "Runtime page no longer rendered");
 
   info("Open a new tab which should be listed when we go back to This Firefox");
   const backgroundTab2 = await addTab(TAB_URL_2, { background: true });
@@ -60,10 +61,10 @@ add_task(async function() {
   await requestsSuccess;
 
   info("Wait until ThisFirefox page is displayed");
-  await waitUntil(() => document.querySelector(".js-runtime-page"));
+  await waitUntil(() => document.querySelector(".qa-runtime-page"));
   ok(isSidebarItemSelected(thisFirefoxSidebarItem),
     "ThisFirefox sidebar item is selected again");
-  ok(!document.querySelector(".js-connect-page"), "Connect page no longer rendered");
+  ok(!document.querySelector(".qa-connect-page"), "Connect page no longer rendered");
 
   info("TAB2 should already be displayed in the debug targets");
   await waitUntil(() => findDebugTargetByText("TAB2", document));
@@ -86,5 +87,5 @@ add_task(async function() {
 });
 
 function isSidebarItemSelected(item) {
-  return item.classList.contains("js-sidebar-item-selected");
+  return item.classList.contains("qa-sidebar-item-selected");
 }

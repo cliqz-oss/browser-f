@@ -10,13 +10,16 @@ const {XPCOMUtils} = ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm")
 const {AppConstants} = ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
 
 XPCOMUtils.defineLazyModuleGetters(this, {
+  AddonManager: "resource://gre/modules/AddonManager.jsm",
+#if 0
+  AddonManagerPrivate: "resource://gre/modules/AddonManager.jsm",
+#endif
   SearchWidgetTracker: "resource:///modules/SearchWidgetTracker.jsm",
   CustomizableWidgets: "resource:///modules/CustomizableWidgets.jsm",
   DeferredTask: "resource://gre/modules/DeferredTask.jsm",
   PanelMultiView: "resource:///modules/PanelMultiView.jsm",
   PrivateBrowsingUtils: "resource://gre/modules/PrivateBrowsingUtils.jsm",
   ShortcutUtils: "resource://gre/modules/ShortcutUtils.jsm",
-  LightweightThemeManager: "resource://gre/modules/LightweightThemeManager.jsm",
 });
 
 XPCOMUtils.defineLazyGetter(this, "gWidgetsBundle", function() {
@@ -26,6 +29,9 @@ XPCOMUtils.defineLazyGetter(this, "gWidgetsBundle", function() {
 
 XPCOMUtils.defineLazyServiceGetter(this, "gELS",
   "@mozilla.org/eventlistenerservice;1", "nsIEventListenerService");
+
+// Cliqz: Set compact light theme as default theme
+const kDefaultThemeID = "firefox-compact-light@mozilla.org";
 
 const kSpecialWidgetPfx = "customizableui-special-";
 
@@ -39,6 +45,9 @@ const kPrefAutoTouchMode             = "browser.touchmode.auto";
 const kPrefAutoHideDownloadsButton   = "browser.download.autohideButton";
 
 const kExpectedWindowURL = AppConstants.BROWSER_CHROME_URL;
+
+var gDefaultTheme;
+var gSelectedTheme;
 
 /**
  * The keys are the handlers that are fired when the event type (the value)
@@ -178,6 +187,20 @@ var CustomizableUIInternal = {
   initialize() {
     log.debug("Initializing");
 
+    // CLIQZ-SPECIAL:
+    // DB-2188: AddonManagerPrivate.databaseReady might sometimes return
+    // a promise which is in a pending state.
+    // That means it will never get resolved or rejected at all.
+    // AddonManager.isReadyAsync can guarantee the promise it returns
+    // will end up with either resolved or rejected.
+    AddonManager.isReadyAsync().then(async () => {
+      AddonManager.addAddonListener(this);
+
+      let addons = await AddonManager.getAddonsByTypes(["theme"]);
+      gDefaultTheme = addons.find(addon => addon.id == kDefaultThemeID);
+      gSelectedTheme = addons.find(addon => addon.isActive) || gDefaultTheme;
+    });
+
     this.addListener(this);
     this._defineBuiltInWidgets();
     this.loadSavedState();
@@ -245,6 +268,12 @@ var CustomizableUIInternal = {
     }, true);
 
     SearchWidgetTracker.init();
+  },
+
+  onEnabled(addon) {
+    if (addon.type == "theme") {
+      gSelectedTheme = addon;
+    }
   },
 
   get _builtinAreas() {
@@ -921,6 +950,12 @@ var CustomizableUIInternal = {
           if ((node.id || this.isSpecialWidget(node)) &&
               node.getAttribute("skipintoolbarset") != "true") {
             if (this.isWidgetRemovable(node)) {
+              if (node.id && (gResetting || gUndoResetting)) {
+                let widget = gPalette.get(node.id);
+                if (widget) {
+                  widget.currentArea = null;
+                }
+              }
               if (palette && !this.isSpecialWidget(node.id)) {
                 palette.appendChild(node);
                 this.removeLocationAttributes(node);
@@ -2091,7 +2126,7 @@ var CustomizableUIInternal = {
     try {
       gSavedState = JSON.parse(state);
       if (typeof gSavedState != "object" || gSavedState === null) {
-        throw "Invalid saved state";
+        throw new Error("Invalid saved state");
       }
     } catch (e) {
       Services.prefs.clearUserPref(kPrefCustomizationState);
@@ -2684,7 +2719,7 @@ var CustomizableUIInternal = {
       gUIStateBeforeReset.uiCustomizationState = Services.prefs.getCharPref(kPrefCustomizationState);
       gUIStateBeforeReset.uiDensity = Services.prefs.getIntPref(kPrefUIDensity);
       gUIStateBeforeReset.autoTouchMode = Services.prefs.getBoolPref(kPrefAutoTouchMode);
-      gUIStateBeforeReset.currentTheme = LightweightThemeManager.currentTheme;
+      gUIStateBeforeReset.currentTheme = gSelectedTheme;
       gUIStateBeforeReset.autoHideDownloadsButton = Services.prefs.getBoolPref(kPrefAutoHideDownloadsButton);
       gUIStateBeforeReset.newElementCount = gNewElementCount;
     } catch (e) { }
@@ -2695,13 +2730,7 @@ var CustomizableUIInternal = {
     Services.prefs.clearUserPref(kPrefUIDensity);
     Services.prefs.clearUserPref(kPrefAutoTouchMode);
     Services.prefs.clearUserPref(kPrefAutoHideDownloadsButton);
-    // LightweightThemeManager.currentTheme = null;
-    // Cliqz: Set compact light theme as default theme
-    const lightTheme = LightweightThemeManager.getUsedTheme('firefox-compact-light@mozilla.org');
-    if (lightTheme) {
-      LightweightThemeManager.currentTheme = lightTheme;
-    }
-
+    gDefaultTheme.enable();
     gNewElementCount = 0;
     log.debug("State reset");
 
@@ -2763,7 +2792,7 @@ var CustomizableUIInternal = {
     Services.prefs.setIntPref(kPrefUIDensity, uiDensity);
     Services.prefs.setBoolPref(kPrefAutoTouchMode, autoTouchMode);
     Services.prefs.setBoolPref(kPrefAutoHideDownloadsButton, autoHideDownloadsButton);
-    LightweightThemeManager.currentTheme = currentTheme;
+    currentTheme.enable();
     this.loadSavedState();
     // If the user just customizes toolbar/titlebar visibility, gSavedState will be null
     // and we don't need to do anything else here:
@@ -2980,10 +3009,9 @@ var CustomizableUIInternal = {
       return false;
     }
 
-    // Cliqz: firefox-compact-light@mozilla.org is default
-    if (LightweightThemeManager.currentTheme &&
-        LightweightThemeManager.currentTheme.id != "firefox-compact-light@mozilla.org") {
-      log.debug(LightweightThemeManager.currentTheme + " theme is non-default");
+    // This should just be `gDefaultTheme.isActive`, but bugs...
+    if (gDefaultTheme && gDefaultTheme.id != gSelectedTheme.id) {
+      log.debug(gSelectedTheme.id + " theme is non-default");
       return false;
     }
 

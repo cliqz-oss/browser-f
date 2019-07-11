@@ -61,7 +61,7 @@ void TouchManager::EvictTouchPoint(RefPtr<Touch>& aTouch,
   if (node) {
     Document* doc = node->GetComposedDoc();
     if (doc && (!aLimitToDocument || aLimitToDocument == doc)) {
-      nsIPresShell* presShell = doc->GetShell();
+      PresShell* presShell = doc->GetPresShell();
       if (presShell) {
         nsIFrame* frame = presShell->GetRootFrame();
         if (frame) {
@@ -114,7 +114,8 @@ nsIFrame* TouchManager::SetupTarget(WidgetTouchEvent* aEvent,
   // Setting this flag will skip the scrollbars on the root frame from
   // participating in hit-testing, and we only want that to happen on
   // zoomable platforms (for now).
-  if (gfxPrefs::APZAllowZooming()) {
+  dom::Document* doc = aFrame->PresContext()->Document();
+  if (nsLayoutUtils::AllowZoomingForDocument(doc)) {
     flags |= INPUT_IGNORE_ROOT_SCROLL_FRAME;
   }
 
@@ -222,10 +223,10 @@ nsIFrame* TouchManager::SuppressInvalidPointsAndGetTargetedFrame(
 bool TouchManager::PreHandleEvent(WidgetEvent* aEvent, nsEventStatus* aStatus,
                                   bool& aTouchIsNew, bool& aIsHandlingUserInput,
                                   nsCOMPtr<nsIContent>& aCurrentEventContent) {
-  if (!aEvent->IsTrusted()) {
-    return true;
-  }
+  MOZ_DIAGNOSTIC_ASSERT(aEvent->IsTrusted());
 
+  // NOTE: If you need to handle new event messages here, you need to add new
+  //       cases in PresShell::EventHandler::PrepareToDispatchEvent().
   switch (aEvent->mMessage) {
     case eTouchStart: {
       aIsHandlingUserInput = true;

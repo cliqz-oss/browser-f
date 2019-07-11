@@ -207,7 +207,7 @@ function plInit() {
         // instance which adds the load listener and injects tpRecordTime), all the
         // pages should be able to load in the same mode as the initial page - due
         // to this reinitialization on the switch.
-        let remoteType = E10SUtils.getRemoteTypeForURI(pageUrls[0], true);
+        let remoteType = E10SUtils.getRemoteTypeForURI(pageUrls[0], /* remote */ true, /* fission */ false);
         let tabbrowser = browserWindow.gBrowser;
         if (remoteType) {
           tabbrowser.updateBrowserRemoteness(tabbrowser.initialBrowser, { remoteType });
@@ -218,7 +218,7 @@ function plInit() {
         browserWindow.resizeTo(winWidth, winHeight);
         browserWindow.moveTo(0, 0);
         browserWindow.focus();
-        content = browserWindow.getBrowser();
+        content = browserWindow.gBrowser;
         content.selectedBrowser.messageManager.loadFrameScript("chrome://pageloader/content/utils.js", false, true);
 
         // pick the right load handler
@@ -468,7 +468,7 @@ function waitForFNBPaint() {
 
 function forceContentGC() {
   return new Promise((resolve) => {
-    let mm = browserWindow.getBrowser().selectedBrowser.messageManager;
+    let mm = browserWindow.gBrowser.selectedBrowser.messageManager;
     mm.addMessageListener("Talos:ForceGC:OK", function onTalosContentForceGC(msg) {
       mm.removeMessageListener("Talos:ForceGC:OK", onTalosContentForceGC);
       resolve();

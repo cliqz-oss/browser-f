@@ -182,6 +182,11 @@ TextPropertyEditor.prototype = {
       title: l10n("rule.warning.title"),
     });
 
+    this.unusedState = createChild(this.container, "div", {
+      class: "ruleview-unused-warning",
+      hidden: "",
+    });
+
     // Filter button that filters for the current property name and is
     // displayed when the property is overridden by another rule.
     this.filterProperty = createChild(this.container, "div", {
@@ -584,9 +589,20 @@ TextPropertyEditor.prototype = {
     this.expander.style.display = "none";
   },
 
+  get shouldShowComputedExpander() {
+    // Only show the expander to reveal computed properties if:
+    // - the computed properties are actually different from the current property (i.e
+    //   these are longhands while the current property is the shorthand)
+    // - all of the computed properties have defined values. In case the current property
+    //   value contains CSS variables, then the computed properties will be missing and we
+    //   want to avoid showing them.
+    return this.prop.computed.some(c => c.name !== this.prop.name) &&
+           !this.prop.computed.every(c => !c.value);
+  },
+
   /**
-   * Update the visibility of the enable checkbox, the warning indicator and
-   * the filter property, as well as the overridden state of the property.
+   * Update the visibility of the enable checkbox, the warning indicator, the used
+   * indicator and the filter property, as well as the overridden state of the property.
    */
   updatePropertyState: function() {
     if (this.prop.enabled) {
@@ -607,8 +623,8 @@ TextPropertyEditor.prototype = {
                                  !this.prop.overridden ||
                                  this.ruleEditor.rule.isUnmatched;
 
-    const showExpander = this.prop.computed.some(c => c.name !== this.prop.name);
-    this.expander.style.display = showExpander ? "inline-block" : "none";
+    this.expander.style.display =
+      this.shouldShowComputedExpander ? "inline-block" : "none";
 
     if (!this.editing &&
         (this.prop.overridden || !this.prop.enabled ||
@@ -616,6 +632,16 @@ TextPropertyEditor.prototype = {
       this.element.classList.add("ruleview-overridden");
     } else {
       this.element.classList.remove("ruleview-overridden");
+    }
+
+    const { used } = this.prop.isUsed();
+
+    if (this.editing || this.prop.overridden || !this.prop.enabled || used) {
+      this.element.classList.remove("unused");
+      this.unusedState.hidden = true;
+    } else {
+      this.element.classList.add("unused");
+      this.unusedState.hidden = false;
     }
   },
 
@@ -626,8 +652,8 @@ TextPropertyEditor.prototype = {
   _updateComputed: function() {
     this.computed.innerHTML = "";
 
-    const showExpander = this.prop.computed.some(c => c.name !== this.prop.name);
-    this.expander.style.display = !this.editing && showExpander ? "inline-block" : "none";
+    this.expander.style.display =
+      !this.editing && this.shouldShowComputedExpander ? "inline-block" : "none";
 
     this._populatedComputed = false;
     if (this.expander.hasAttribute("open")) {
@@ -674,7 +700,8 @@ TextPropertyEditor.prototype = {
    * Populate the list of overridden shorthand styles.
    */
   _populateShorthandOverridden: function() {
-    if (this._populatedShorthandOverridden || this.prop.overridden) {
+    if (this._populatedShorthandOverridden || this.prop.overridden ||
+        !this.shouldShowComputedExpander) {
       return;
     }
     this._populatedShorthandOverridden = true;

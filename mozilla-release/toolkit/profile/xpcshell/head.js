@@ -10,6 +10,8 @@ const { TelemetryTestUtils } = ChromeUtils.import("resource://testing-common/Tel
 
 const NS_ERROR_START_PROFILE_MANAGER = 0x805800c9;
 
+const UPDATE_CHANNEL = AppConstants.MOZ_UPDATE_CHANNEL;
+
 let gProfD = do_get_profile();
 let gDataHome = gProfD.clone();
 gDataHome.append("data");
@@ -53,14 +55,22 @@ const ShellService = {
 
 ShellService.register();
 
-let gIsSnap = false;
+let gIsLegacy = false;
 
 function simulateSnapEnvironment() {
   let env = Cc["@mozilla.org/process/environment;1"].
           getService(Ci.nsIEnvironment);
   env.set("SNAP_NAME", "foo");
 
-  gIsSnap = true;
+  gIsLegacy = true;
+}
+
+function enableLegacyProfiles() {
+  let env = Cc["@mozilla.org/process/environment;1"].
+          getService(Ci.nsIEnvironment);
+  env.set("MOZ_LEGACY_PROFILES", "1");
+
+  gIsLegacy = true;
 }
 
 function getProfileService() {
@@ -69,7 +79,7 @@ function getProfileService() {
 }
 
 let PROFILE_DEFAULT = "default";
-let DEDICATED_NAME = `default-${AppConstants.MOZ_UPDATE_CHANNEL}`;
+let DEDICATED_NAME = `default-${UPDATE_CHANNEL}`;
 if (AppConstants.MOZ_DEV_EDITION) {
   DEDICATED_NAME = PROFILE_DEFAULT = "dev-edition-default";
 }
@@ -94,7 +104,8 @@ function selectStartupProfile(args = [], isResetting = false) {
   let localDir = {};
   let profile = {};
   let didCreate = service.selectStartupProfile(["xpcshell", ...args], isResetting,
-                                               rootDir, localDir, profile);
+                                               UPDATE_CHANNEL, rootDir, localDir,
+                                               profile);
 
   if (profile.value) {
     Assert.ok(rootDir.value.equals(profile.value.rootDir), "Should have matched the root dir.");
@@ -395,7 +406,7 @@ function checkProfileService(profileData = readProfilesIni(), verifyBackup = tru
   let defaultPath = (profileData.installs && hash in profileData.installs) ?
                     profileData.installs[hash].default : null;
   let dedicatedProfile = null;
-  let snapProfile = null;
+  let legacyProfile = null;
 
   for (let i = 0; i < serviceProfiles.length; i++) {
     let serviceProfile = serviceProfiles[i];
@@ -413,15 +424,15 @@ function checkProfileService(profileData = readProfilesIni(), verifyBackup = tru
 
     if (AppConstants.MOZ_DEV_EDITION) {
       if (expectedProfile.name == PROFILE_DEFAULT) {
-        snapProfile = serviceProfile;
+        legacyProfile = serviceProfile;
       }
     } else if (expectedProfile.default) {
-      snapProfile = serviceProfile;
+      legacyProfile = serviceProfile;
     }
   }
 
-  if (gIsSnap) {
-    Assert.equal(service.defaultProfile, snapProfile, "Should have seen the right profile selected.");
+  if (gIsLegacy) {
+    Assert.equal(service.defaultProfile, legacyProfile, "Should have seen the right profile selected.");
   } else {
     Assert.equal(service.defaultProfile, dedicatedProfile, "Should have seen the right profile selected.");
   }

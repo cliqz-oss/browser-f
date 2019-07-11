@@ -14,9 +14,6 @@ function _getSupportsFile(path) {
 }
 
 async function enableExtensionDebugging() {
-  // Force enabling of addons debugging
-  await pushPref("devtools.chrome.enabled", true);
-  await pushPref("devtools.debugger.remote-enabled", true);
   // Disable security prompt
   await pushPref("devtools.debugger.prompt-connection", false);
   // Enable Browser toolbox test script execution via env variable
@@ -70,7 +67,7 @@ async function installTemporaryExtension(pathOrFile, name, document) {
   });
 
   // Trigger the file picker by clicking on the button
-  document.querySelector(".js-temporary-extension-install-button").click();
+  document.querySelector(".qa-temporary-extension-install-button").click();
 
   info("Wait for addon to be installed");
   await onAddonInstalled;
@@ -136,7 +133,7 @@ async function installTemporaryExtensionFromXPI(xpiData, document) {
 async function removeTemporaryExtension(name, document) {
   info(`Remove the temporary extension with name: '${name}'`);
   const temporaryExtensionItem = findDebugTargetByText(name, document);
-  temporaryExtensionItem.querySelector(".js-temporary-extension-remove-button").click();
+  temporaryExtensionItem.querySelector(".qa-temporary-extension-remove-button").click();
 
   info("Wait until the debug target item disappears");
   await waitUntil(() => !findDebugTargetByText(name, document));

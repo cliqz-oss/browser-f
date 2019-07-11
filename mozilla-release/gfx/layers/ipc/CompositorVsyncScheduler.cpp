@@ -104,6 +104,7 @@ void CompositorVsyncScheduler::Destroy() {
 
   mCompositeRequestedAt = TimeStamp();
   CancelCurrentCompositeTask();
+  CancelCurrentVRTask();
 }
 
 void CompositorVsyncScheduler::PostCompositeTask(
@@ -122,7 +123,7 @@ void CompositorVsyncScheduler::PostCompositeTask(
 void CompositorVsyncScheduler::PostVRTask(TimeStamp aTimestamp) {
   MonitorAutoLock lockVR(mCurrentVRTaskMonitor);
   if (mCurrentVRTask == nullptr && CompositorThreadHolder::Loop()) {
-    RefPtr<Runnable> task = NewRunnableMethod<TimeStamp>(
+    RefPtr<CancelableRunnable> task = NewCancelableRunnableMethod<TimeStamp>(
         "layers::CompositorVsyncScheduler::DispatchVREvents", this,
         &CompositorVsyncScheduler::DispatchVREvents, aTimestamp);
     mCurrentVRTask = task;
@@ -176,9 +177,28 @@ bool CompositorVsyncScheduler::NotifyVsync(const VsyncEvent& aVsync) {
   MOZ_ASSERT_IF(XRE_GetProcessType() == GeckoProcessType_GPU,
                 CompositorThreadHolder::IsInCompositorThread());
   MOZ_ASSERT(!NS_IsMainThread());
+
+#if defined(MOZ_WIDGET_ANDROID)
+  gfx::VRManager* vm = gfx::VRManager::Get();
+  if (!vm->IsPresenting()) {
+    PostCompositeTask(aVsync.mId, aVsync.mTime);
+  }
+#else
   PostCompositeTask(aVsync.mId, aVsync.mTime);
+#endif  // defined(MOZ_WIDGET_ANDROID)
+
   PostVRTask(aVsync.mTime);
   return true;
+}
+
+void CompositorVsyncScheduler::CancelCurrentVRTask() {
+  MOZ_ASSERT(CompositorThreadHolder::IsInCompositorThread() ||
+             NS_IsMainThread());
+  MonitorAutoLock lock(mCurrentVRTaskMonitor);
+  if (mCurrentVRTask) {
+    mCurrentVRTask->Cancel();
+    mCurrentVRTask = nullptr;
+  }
 }
 
 void CompositorVsyncScheduler::CancelCurrentCompositeTask() {

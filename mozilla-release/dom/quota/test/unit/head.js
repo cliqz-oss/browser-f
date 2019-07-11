@@ -156,6 +156,17 @@ function clear(callback)
   return request;
 }
 
+function clearClient(principal, persistence, client, callback)
+{
+  let request =
+    SpecialPowers._getQuotaManager().clearStoragesForPrincipal(principal,
+                                                               persistence,
+                                                               client);
+  request.callback = callback;
+
+  return request;
+}
+
 function clearOrigin(principal, persistence, callback)
 {
   let request =
@@ -195,6 +206,14 @@ function persist(principal, callback) {
 
 function persisted(principal, callback) {
   let request = SpecialPowers._getQuotaManager().persisted(principal);
+  request.callback = callback;
+
+  return request;
+}
+
+function listInitializedOrigins(callback) {
+  let request =
+      SpecialPowers._getQuotaManager().listInitializedOrigins(callback);
   request.callback = callback;
 
   return request;

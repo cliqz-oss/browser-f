@@ -17,6 +17,7 @@
  *          openTabContextMenu closeTabContextMenu
  *          openToolsMenu closeToolsMenu
  *          imageBuffer imageBufferFromDataURI
+ *          getInlineOptionsBrowser
  *          getListStyleImage getPanelForNode
  *          awaitExtensionPanel awaitPopupResize
  *          promiseContentDimensions alterContent
@@ -119,6 +120,13 @@ function imageBufferFromDataURI(encodedImageData) {
 
 let img = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQImWNgYGBgAAAABQABh6FO1AAAAABJRU5ErkJggg==";
 var imageBuffer = imageBufferFromDataURI(img);
+
+function getInlineOptionsBrowser(aboutAddonsBrowser) {
+  let {contentWindow} = aboutAddonsBrowser;
+  let htmlBrowser = contentWindow.document.getElementById("html-view-browser");
+  return htmlBrowser.contentDocument.getElementById("addon-inline-options") ||
+    contentWindow.document.getElementById("addon-options");
+}
 
 function getListStyleImage(button) {
   let style = button.ownerGlobal.getComputedStyle(button);
@@ -463,7 +471,7 @@ async function openChromeContextMenu(menuId, target, win = window) {
 }
 
 async function openSubmenu(submenuItem, win = window) {
-  const submenu = submenuItem.firstElementChild;
+  const submenu = submenuItem.menupopup;
   const shown = BrowserTestUtils.waitForEvent(submenu, "popupshown");
   EventUtils.synthesizeMouseAtCenter(submenuItem, {}, win);
   await shown;
@@ -503,6 +511,9 @@ function closeActionContextMenu(itemToSelect, kind, win = window) {
 }
 
 function openTabContextMenu(win = window) {
+  // The TabContextMenu initializes its strings only on a focus or mouseover event.
+  // Calls focus event on the TabContextMenu before opening.
+  gBrowser.selectedTab.focus();
   return openChromeContextMenu("tabContextMenu", ".tabbrowser-tab[selected]", win);
 }
 
@@ -704,8 +715,6 @@ async function getIncognitoWindow(url = "about:privatebrowsing") {
   // Since events will be limited based on incognito, we need a
   // spanning extension to get the tab id so we can test access failure.
 
-  // avoid linting issue with background
-  /* eslint-disable no-use-before-define */
   function background(expectUrl) {
     browser.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
       if (changeInfo.status === "complete" && tab.url === expectUrl) {
@@ -718,16 +727,15 @@ async function getIncognitoWindow(url = "about:privatebrowsing") {
     manifest: {
       "permissions": ["tabs"],
     },
-    background: `(${background})("${url}")`,
+    background: `(${background})(${JSON.stringify(url)})`,
     incognitoOverride: "spanning",
   });
 
   await windowWatcher.startup();
   let data = windowWatcher.awaitMessage("data");
 
-  let win = await BrowserTestUtils.openNewBrowserWindow({private: true, url});
-  let browser = win.getBrowser().selectedBrowser;
-  BrowserTestUtils.loadURI(browser, url);
+  let win = await BrowserTestUtils.openNewBrowserWindow({private: true});
+  BrowserTestUtils.loadURI(win.gBrowser.selectedBrowser, url);
 
   let details = await data;
   await windowWatcher.unload();

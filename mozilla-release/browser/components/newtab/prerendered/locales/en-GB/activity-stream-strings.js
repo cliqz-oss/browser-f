@@ -40,9 +40,7 @@ window.gActivityStreamStrings = {
   "section_disclaimer_topstories_buttontext": "Okay, got it",
   "prefs_home_header": "Firefox Home Content",
   "prefs_home_description": "Choose what content you want on your Firefox Home screen.",
-  "prefs_content_discovery_header": "Firefox Home",
   "prefs_content_discovery_description": "Content Discovery in Firefox Home allows you to discover high-quality, relevant articles from across the web.",
-  "prefs_content_discovery_button": "Turn Off Content Discovery",
   "prefs_section_rows_option": "{num} row;{num} rows",
   "prefs_search_header": "Web Search",
   "prefs_topsites_description": "The sites you visit most",
@@ -107,8 +105,5 @@ window.gActivityStreamStrings = {
   "firstrun_privacy_notice": "Privacy Notice",
   "firstrun_continue_to_login": "Continue",
   "firstrun_skip_login": "Skip this step",
-  "context_menu_title": "Open menu",
-  "manual_migration_explanation2": "Try Firefox with the bookmarks, history and passwords from another browser.",
-  "manual_migration_cancel_button": "No Thanks",
-  "manual_migration_import_button": "Import Now"
+  "context_menu_title": "Open menu"
 };

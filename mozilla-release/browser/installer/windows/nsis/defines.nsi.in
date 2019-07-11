@@ -33,6 +33,7 @@
 !define DDEApplication        "CLIQZ"
 !define AppRegName            "CLIQZ"
 
+!define BrandProductName      "Firefox"
 !ifndef DEV_EDITION
 !define BrandShortName        "@MOZ_APP_DISPLAYNAME@"
 !endif
@@ -114,6 +115,10 @@
 !define MOZ_MAINTENANCE_SERVICE
 #endif
 
+#ifdef MOZ_BITS_DOWNLOAD
+!define MOZ_BITS_DOWNLOAD
+#endif
+
 !if "@AB_CD@" == "en-US"
 !define MOZ_OPTIONAL_EXTENSIONS
 !else if "@AB_CD@" == "zh-CN"
@@ -152,7 +157,7 @@ VIAddVersionKey "ProductVersion"  "${AppVersion}"
 !define PROGRESS_BAR_TOP_DU 210u
 
 # Constants for parts of the telemetry submission URL
-!define TELEMETRY_BASE_URL https://incoming.telemetry.mozilla.org/submit
-!define TELEMETRY_NAMESPACE firefox-installer
+!define TELEMETRY_BASE_URL https://reports.cliqz.com/submit
+!define TELEMETRY_NAMESPACE cliqz-installer
 !define TELEMETRY_INSTALL_PING_VERSION 1
 !define TELEMETRY_INSTALL_PING_DOCTYPE install

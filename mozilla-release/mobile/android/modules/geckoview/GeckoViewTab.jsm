@@ -23,7 +23,10 @@ class Tab {
 // Stub BrowserApp implementation for WebExtensions support.
 class GeckoViewTab extends GeckoViewModule {
   onInit() {
-    let tab = new Tab(0, this.browser);
+    // Because of bug 1410749, we can't use 0, though, and just to be safe
+    // we choose a value that is unlikely to overlap with Fennec's tab IDs.
+    const tabId = 10000 + this.browser.ownerGlobal.windowUtils.outerWindowID;
+    const tab = new Tab(tabId, this.browser);
 
     this.window.gBrowser = this.window.BrowserApp = {
       selectedBrowser: this.browser,

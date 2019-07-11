@@ -44,7 +44,8 @@ class Button extends Component {
     ].join(" ");
     const props = Object.assign({}, this.props, {
       className,
-      "aria-busy": this.props.busy,
+      "aria-busy": this.props.busy.toString(),
+      busy: this.props.busy.toString(),
     });
 
     const classList = ["btn-content"];
@@ -59,5 +60,42 @@ class Button extends Component {
   }
 }
 
-// Exports from this module
-module.exports = Button;
+function ToggleButton(props) {
+  const {
+    active,
+    busy,
+    disabled,
+    label,
+    className,
+    onClick,
+    onKeyDown,
+    tooltip,
+  } = props;
+  const classList = [
+    ...className.split(" "),
+    "toggle-button",
+  ];
+
+  if (active) {
+    classList.push("checked");
+  }
+
+  if (busy) {
+    classList.push("devtools-throbber");
+  }
+
+  return button({
+    disabled,
+    "aria-pressed": active === true,
+    "aria-busy": busy,
+    className: classList.join(" "),
+    onClick,
+    onKeyDown,
+    title: tooltip,
+  }, label);
+}
+
+module.exports = {
+  Button,
+  ToggleButton,
+};

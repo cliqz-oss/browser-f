@@ -1022,6 +1022,7 @@ static const bool FALSE_START_ENABLED_DEFAULT = true;
 static const bool ALPN_ENABLED_DEFAULT = false;
 static const bool ENABLED_0RTT_DATA_DEFAULT = false;
 static const bool HELLO_DOWNGRADE_CHECK_DEFAULT = false;
+static const bool ENABLED_POST_HANDSHAKE_AUTH_DEFAULT = false;
 
 static void ConfigureTLSSessionIdentifiers() {
   bool disableSessionIdentifiers =
@@ -1575,6 +1576,12 @@ static nsresult InitializeNSSWithFallbacks(const nsACString& profilePath,
     MOZ_LOG(gPIPNSSLog, LogLevel::Debug,
             ("nocertdb mode or empty profile path -> NSS_NoDB_Init"));
     SECStatus srv = NSS_NoDB_Init(nullptr);
+#ifdef MOZ_DIAGNOSTIC_ASSERT_ENABLED
+    if (srv != SECSuccess) {
+      MOZ_CRASH_UNSAFE_PRINTF("InitializeNSSWithFallbacks failed: %d",
+                              PR_GetError());
+    }
+#endif
     return srv == SECSuccess ? NS_OK : NS_ERROR_FAILURE;
   }
 
@@ -1628,6 +1635,10 @@ static nsresult InitializeNSSWithFallbacks(const nsACString& profilePath,
       // Unload NSS so we can attempt to fix this situation for the user.
       srv = NSS_Shutdown();
       if (srv != SECSuccess) {
+#  ifdef MOZ_DIAGNOSTIC_ASSERT_ENABLED
+        MOZ_CRASH_UNSAFE_PRINTF("InitializeNSSWithFallbacks failed: %d",
+                                PR_GetError());
+#  endif
         return NS_ERROR_FAILURE;
       }
       MOZ_LOG(gPIPNSSLog, LogLevel::Debug, ("trying to rename module db"));
@@ -1636,6 +1647,12 @@ static nsresult InitializeNSSWithFallbacks(const nsACString& profilePath,
       // fall back to NSS_NoDB_Init, which is the behavior we want.
       nsresult rv = AttemptToRenameBothPKCS11ModuleDBVersions(profilePath);
       if (NS_FAILED(rv)) {
+#  ifdef MOZ_DIAGNOSTIC_ASSERT_ENABLED
+        // An nsresult is a uint32_t, but at least one of our compilers doesn't
+        // like this format string unless we include the cast. <shruggie emoji>
+        MOZ_CRASH_UNSAFE_PRINTF("InitializeNSSWithFallbacks failed: %u",
+                                (uint32_t)rv);
+#  endif
         return rv;
       }
       srv = ::mozilla::psm::InitializeNSS(profilePath, false, true);
@@ -1654,6 +1671,12 @@ static nsresult InitializeNSSWithFallbacks(const nsACString& profilePath,
 
   MOZ_LOG(gPIPNSSLog, LogLevel::Debug, ("last-resort NSS_NoDB_Init"));
   srv = NSS_NoDB_Init(nullptr);
+#ifdef MOZ_DIAGNOSTIC_ASSERT_ENABLED
+  if (srv != SECSuccess) {
+    MOZ_CRASH_UNSAFE_PRINTF("InitializeNSSWithFallbacks failed: %d",
+                            PR_GetError());
+  }
+#endif
   return srv == SECSuccess ? NS_OK : NS_ERROR_FAILURE;
 }
 
@@ -1671,6 +1694,7 @@ nsresult nsNSSComponent::InitializeNSS() {
 
   nsAutoCString profileStr;
   nsresult rv = GetNSSProfilePath(profileStr);
+  MOZ_DIAGNOSTIC_ASSERT(NS_SUCCEEDED(rv));
   if (NS_FAILED(rv)) {
     return NS_ERROR_NOT_AVAILABLE;
   }
@@ -1687,6 +1711,7 @@ nsresult nsNSSComponent::InitializeNSS() {
   // modules will be loaded).
   if (runtime) {
     rv = runtime->GetInSafeMode(&inSafeMode);
+    MOZ_DIAGNOSTIC_ASSERT(NS_SUCCEEDED(rv));
     if (NS_FAILED(rv)) {
       return rv;
     }
@@ -1694,6 +1719,7 @@ nsresult nsNSSComponent::InitializeNSS() {
   MOZ_LOG(gPIPNSSLog, LogLevel::Debug, ("inSafeMode: %u\n", inSafeMode));
 
   rv = InitializeNSSWithFallbacks(profileStr, nocertdb, inSafeMode);
+  MOZ_DIAGNOSTIC_ASSERT(NS_SUCCEEDED(rv));
   if (NS_FAILED(rv)) {
     MOZ_LOG(gPIPNSSLog, LogLevel::Debug, ("failed to initialize NSS"));
     return rv;
@@ -1710,6 +1736,7 @@ nsresult nsNSSComponent::InitializeNSS() {
   SSL_OptionSetDefault(SSL_V2_COMPATIBLE_HELLO, false);
 
   rv = setEnabledTLSVersions();
+  MOZ_DIAGNOSTIC_ASSERT(NS_SUCCEEDED(rv));
   if (NS_FAILED(rv)) {
     return NS_ERROR_UNEXPECTED;
   }
@@ -1747,7 +1774,14 @@ nsresult nsNSSComponent::InitializeNSS() {
                        Preferences::GetBool("security.tls.enable_0rtt_data",
                                             ENABLED_0RTT_DATA_DEFAULT));
 
-  if (NS_FAILED(InitializeCipherSuite())) {
+  SSL_OptionSetDefault(
+      SSL_ENABLE_POST_HANDSHAKE_AUTH,
+      Preferences::GetBool("security.tls.enable_post_handshake_auth",
+                           ENABLED_POST_HANDSHAKE_AUTH_DEFAULT));
+
+  rv = InitializeCipherSuite();
+  MOZ_DIAGNOSTIC_ASSERT(NS_SUCCEEDED(rv));
+  if (NS_FAILED(rv)) {
     MOZ_LOG(gPIPNSSLog, LogLevel::Error,
             ("Unable to initialize cipher suite settings\n"));
     return NS_ERROR_FAILURE;
@@ -1811,6 +1845,7 @@ nsresult nsNSSComponent::InitializeNSS() {
         Preferences::GetUint(kFamilySafetyModePref, kFamilySafetyModeDefault);
     Vector<nsCString> possibleLoadableRootsLocations;
     rv = ListPossibleLoadableRootsLocations(possibleLoadableRootsLocations);
+    MOZ_DIAGNOSTIC_ASSERT(NS_SUCCEEDED(rv));
     if (NS_FAILED(rv)) {
       return rv;
     }
@@ -1818,6 +1853,7 @@ nsresult nsNSSComponent::InitializeNSS() {
         new LoadLoadableRootsTask(this, importEnterpriseRoots, familySafetyMode,
                                   std::move(possibleLoadableRootsLocations)));
     rv = loadLoadableRootsTask->Dispatch();
+    MOZ_DIAGNOSTIC_ASSERT(NS_SUCCEEDED(rv));
     if (NS_FAILED(rv)) {
       return rv;
     }
@@ -1935,6 +1971,12 @@ nsNSSComponent::Observe(nsISupports* aSubject, const char* aTopic,
       SSL_OptionSetDefault(SSL_ENABLE_0RTT_DATA,
                            Preferences::GetBool("security.tls.enable_0rtt_data",
                                                 ENABLED_0RTT_DATA_DEFAULT));
+    } else if (prefName.EqualsLiteral(
+                   "security.tls.enable_post_handshake_auth")) {
+      SSL_OptionSetDefault(
+          SSL_ENABLE_POST_HANDSHAKE_AUTH,
+          Preferences::GetBool("security.tls.enable_post_handshake_auth",
+                               ENABLED_POST_HANDSHAKE_AUTH_DEFAULT));
     } else if (prefName.EqualsLiteral(
                    "security.ssl.disable_session_identifiers")) {
       ConfigureTLSSessionIdentifiers();

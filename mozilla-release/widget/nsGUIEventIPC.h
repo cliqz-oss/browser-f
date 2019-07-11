@@ -55,6 +55,7 @@ struct ParamTraits<mozilla::WidgetEvent> {
     WriteParam(aMsg, aParam.mTime);
     WriteParam(aMsg, aParam.mTimeStamp);
     WriteParam(aMsg, aParam.mFlags);
+    WriteParam(aMsg, aParam.mLayersId);
   }
 
   static bool Read(const Message* aMsg, PickleIterator* aIter,
@@ -66,7 +67,8 @@ struct ParamTraits<mozilla::WidgetEvent> {
                ReadParam(aMsg, aIter, &aResult->mFocusSequenceNumber) &&
                ReadParam(aMsg, aIter, &aResult->mTime) &&
                ReadParam(aMsg, aIter, &aResult->mTimeStamp) &&
-               ReadParam(aMsg, aIter, &aResult->mFlags);
+               ReadParam(aMsg, aIter, &aResult->mFlags) &&
+               ReadParam(aMsg, aIter, &aResult->mLayersId);
     aResult->mClass = static_cast<mozilla::EventClassID>(eventClassID);
     if (ret) {
       // Reset cross process dispatching state here because the event has not
@@ -131,22 +133,22 @@ struct ParamTraits<mozilla::WidgetMouseEventBase> {
 
   static void Write(Message* aMsg, const paramType& aParam) {
     WriteParam(aMsg, static_cast<const mozilla::WidgetInputEvent&>(aParam));
-    WriteParam(aMsg, aParam.button);
-    WriteParam(aMsg, aParam.buttons);
-    WriteParam(aMsg, aParam.pressure);
-    WriteParam(aMsg, aParam.hitCluster);
-    WriteParam(aMsg, aParam.inputSource);
+    WriteParam(aMsg, aParam.mButton);
+    WriteParam(aMsg, aParam.mButtons);
+    WriteParam(aMsg, aParam.mPressure);
+    WriteParam(aMsg, aParam.mHitCluster);
+    WriteParam(aMsg, aParam.mInputSource);
   }
 
   static bool Read(const Message* aMsg, PickleIterator* aIter,
                    paramType* aResult) {
     return ReadParam(aMsg, aIter,
                      static_cast<mozilla::WidgetInputEvent*>(aResult)) &&
-           ReadParam(aMsg, aIter, &aResult->button) &&
-           ReadParam(aMsg, aIter, &aResult->buttons) &&
-           ReadParam(aMsg, aIter, &aResult->pressure) &&
-           ReadParam(aMsg, aIter, &aResult->hitCluster) &&
-           ReadParam(aMsg, aIter, &aResult->inputSource);
+           ReadParam(aMsg, aIter, &aResult->mButton) &&
+           ReadParam(aMsg, aIter, &aResult->mButtons) &&
+           ReadParam(aMsg, aIter, &aResult->mPressure) &&
+           ReadParam(aMsg, aIter, &aResult->mHitCluster) &&
+           ReadParam(aMsg, aIter, &aResult->mInputSource);
   }
 };
 

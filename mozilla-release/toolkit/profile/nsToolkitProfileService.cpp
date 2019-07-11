@@ -382,13 +382,14 @@ nsToolkitProfileService::nsToolkitProfileService()
       mIsFirstRun(true),
       mUseDevEditionProfile(false),
 #ifdef MOZ_DEDICATED_PROFILES
-      mUseDedicatedProfile(!IsSnapEnvironment()),
+      mUseDedicatedProfile(!IsSnapEnvironment() && !UseLegacyProfiles()),
 #else
       mUseDedicatedProfile(false),
 #endif
       mCreatedAlternateProfile(false),
       mStartupReason(NS_LITERAL_STRING("unknown")),
       mMaybeLockProfile(false),
+      mUpdateChannel(NS_STRINGIFY(MOZ_UPDATE_CHANNEL)),
       mProfileDBExists(false),
       mProfileDBFileSize(0),
       mProfileDBModifiedTime(0),
@@ -587,9 +588,8 @@ nsresult nsToolkitProfileService::MaybeMakeDefaultDedicatedProfile(
   return NS_OK;
 }
 
-bool
-IsFileOutdated(nsIFile* aFile, bool aExists, PRTime aLastModified,
-               int64_t aLastSize) {
+bool IsFileOutdated(nsIFile* aFile, bool aExists, PRTime aLastModified,
+                    int64_t aLastSize) {
   nsCOMPtr<nsIFile> file;
   nsresult rv = aFile->Clone(getter_AddRefs(file));
   if (NS_FAILED(rv)) {
@@ -621,9 +621,8 @@ IsFileOutdated(nsIFile* aFile, bool aExists, PRTime aLastModified,
   return false;
 }
 
-nsresult
-UpdateFileStats(nsIFile* aFile, bool* aExists, PRTime* aLastModified,
-                int64_t* aLastSize) {
+nsresult UpdateFileStats(nsIFile* aFile, bool* aExists, PRTime* aLastModified,
+                         int64_t* aLastSize) {
   nsCOMPtr<nsIFile> file;
   nsresult rv = aFile->Clone(getter_AddRefs(file));
   NS_ENSURE_SUCCESS(rv, rv);
@@ -647,7 +646,7 @@ UpdateFileStats(nsIFile* aFile, bool* aExists, PRTime* aLastModified,
 }
 
 NS_IMETHODIMP
-nsToolkitProfileService::GetIsListOutdated(bool *aResult) {
+nsToolkitProfileService::GetIsListOutdated(bool* aResult) {
   if (IsFileOutdated(mProfileDBFile, mProfileDBExists, mProfileDBModifiedTime,
                      mProfileDBFileSize)) {
     *aResult = true;
@@ -853,6 +852,24 @@ nsresult nsToolkitProfileService::Init() {
     currentProfile = new nsToolkitProfile(name, rootDir, localDir, true);
     NS_ENSURE_TRUE(currentProfile, NS_ERROR_OUT_OF_MEMORY);
 
+    // If a user has modified the ini file path it may make for a valid profile
+    // path but not match what we would have serialised and so may not match
+    // the path in the install section. Re-serialise it to get it in the
+    // expected form again.
+    bool nowRelative;
+    nsCString descriptor;
+    GetProfileDescriptor(currentProfile, descriptor, &nowRelative);
+
+    if (isRelative != nowRelative || !descriptor.Equals(filePath)) {
+      mProfileDB.SetString(profileID.get(), "IsRelative",
+                           nowRelative ? "1" : "0");
+      mProfileDB.SetString(profileID.get(), "Path", descriptor.get());
+
+      // Should we flush now? It costs some startup time and we will fix it on
+      // the next startup anyway. If something else causes a flush then it will
+      // be fixed in the ini file then.
+    }
+
     rv = mProfileDB.GetString(profileID.get(), "Default", buffer);
     if (NS_SUCCEEDED(rv) && buffer.EqualsLiteral("1")) {
       mNormalDefault = currentProfile;
@@ -860,7 +877,7 @@ nsresult nsToolkitProfileService::Init() {
 
     // Is this the default profile for this install?
     if (mUseDedicatedProfile && !mDedicatedProfile &&
-        installProfilePath.Equals(filePath)) {
+        installProfilePath.Equals(descriptor)) {
       // Found a profile for this install.
       mDedicatedProfile = currentProfile;
     }
@@ -1055,7 +1072,7 @@ nsresult nsToolkitProfileService::CreateDefaultProfile(
   if (mUseDevEditionProfile) {
     name.AssignLiteral(DEV_EDITION_NAME);
   } else if (mUseDedicatedProfile) {
-    name.AssignLiteral("default-" NS_STRINGIFY(MOZ_UPDATE_CHANNEL));
+    name.AppendPrintf("default-%s", mUpdateChannel.get());
   } else {
     name.AssignLiteral(DEFAULT_NAME);
   }
@@ -1080,8 +1097,9 @@ nsresult nsToolkitProfileService::CreateDefaultProfile(
  */
 NS_IMETHODIMP
 nsToolkitProfileService::SelectStartupProfile(
-    const nsTArray<nsCString>& aArgv, bool aIsResetting, nsIFile** aRootDir,
-    nsIFile** aLocalDir, nsIToolkitProfile** aProfile, bool* aDidCreate) {
+    const nsTArray<nsCString>& aArgv, bool aIsResetting,
+    const nsACString& aUpdateChannel, nsIFile** aRootDir, nsIFile** aLocalDir,
+    nsIToolkitProfile** aProfile, bool* aDidCreate) {
   int argc = aArgv.Length();
   // Our command line handling expects argv to be null-terminated so construct
   // an appropriate array.
@@ -1095,6 +1113,8 @@ nsToolkitProfileService::SelectStartupProfile(
     argv[i] = allocated[i].get();
   }
   argv[argc] = nullptr;
+
+  mUpdateChannel = aUpdateChannel;
 
   bool wasDefault;
   nsresult rv =
@@ -1177,14 +1197,6 @@ nsresult nsToolkitProfileService::SelectStartupProfile(
 
           mCurrent = profile;
         } else {
-          if (aIsResetting) {
-            // We don't want to create a fresh profile when we're attempting a
-            // profile reset so just bail out here, the calling code will handle
-            // it.
-            *aProfile = nullptr;
-            return NS_OK;
-          }
-
           rv = CreateDefaultProfile(getter_AddRefs(mCurrent));
           if (NS_FAILED(rv)) {
             *aProfile = nullptr;
@@ -1353,13 +1365,6 @@ nsresult nsToolkitProfileService::SelectStartupProfile(
 
   // If this is a first run then create a new profile.
   if (mIsFirstRun) {
-    if (aIsResetting) {
-      // We don't want to create a fresh profile when we're attempting a
-      // profile reset so just bail out here, the calling code will handle it.
-      *aProfile = nullptr;
-      return NS_OK;
-    }
-
     // If we're configured to always show the profile manager then don't create
     // a new profile to use.
     if (!mStartWithLast) {
@@ -1747,6 +1752,17 @@ bool nsToolkitProfileService::IsSnapEnvironment() {
   return !!PR_GetEnv("SNAP_NAME");
 }
 
+/**
+ * In some situations dedicated profile support does not work well. This
+ * includes a handful of linux distributions which always install different
+ * application versions to different locations, some application sandboxing
+ * systems as well as enterprise deployments. This environment variable provides
+ * a way to opt out of dedicated profiles for these cases.
+ */
+bool nsToolkitProfileService::UseLegacyProfiles() {
+  return !!PR_GetEnv("MOZ_LEGACY_PROFILES");
+}
+
 struct FindInstallsClosure {
   nsINIParser* installData;
   nsTArray<nsCString>* installs;
@@ -1868,7 +1884,7 @@ nsToolkitProfileService::Flush() {
       fclose(writeFile);
 
       rv = UpdateFileStats(mInstallDBFile, &mInstallDBExists,
-                          &mInstallDBModifiedTime, &mInstallDBFileSize);
+                           &mInstallDBModifiedTime, &mInstallDBFileSize);
       NS_ENSURE_SUCCESS(rv, rv);
     } else {
       rv = mInstallDBFile->Remove(false);

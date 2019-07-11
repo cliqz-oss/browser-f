@@ -243,6 +243,10 @@ PushApk publishes Android packages onto Google Play Store. Jobs of this kind tak
 all the signed multi-locales (aka "multi") APKs for a given release and upload them
 all at once.
 
+push-apk-checks
+---------------
+Runs the checks done in push-apk to ensure APKs are sane before submitting them
+
 release-balrog-submit-toplevel
 ------------------------------
 Toplevel tasks are responsible for submitting metadata to Balrog that is not specific to any
@@ -363,10 +367,13 @@ Publishes signed langpacks to archive.mozilla.org
 release-update-verify
 ---------------------
 Verifies the contents and package of release update MARs.
-
 release-secondary-update-verify
 -------------------------------
 Verifies the contents and package of release update MARs.
+
+release-update-verify-next
+--------------------------
+Verifies the contents and package of release and updare MARs from the previous ESR release.
 
 release-update-verify-config
 ----------------------------
@@ -375,6 +382,10 @@ Creates configs for release-update-verify tasks
 release-secondary-update-verify-config
 --------------------------------------
 Creates configs for release-secondary-update-verify tasks
+
+release-update-verify-config-next
+---------------------------------
+Creates configs for release-update-verify-next tasks
 
 release-updates-builder
 -----------------------
@@ -541,7 +552,7 @@ addon
 Tasks used to build/package add-ons.
 
 openh264-plugin
------
+---------------
 Tasks used to build the openh264 plugin.
 
 openh264-signing
@@ -569,3 +580,7 @@ geckodriver-repack
 ------------------
 Tasks to repackage the geckodriver binary from a build tasks's common
 test archive into it's own archive.
+
+geckodriver-signing
+-------------------
+Signing for geckodriver binary.

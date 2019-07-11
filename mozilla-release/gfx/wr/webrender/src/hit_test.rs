@@ -3,15 +3,15 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 use api::{BorderRadius, ClipMode, HitTestFlags, HitTestItem, HitTestResult, ItemTag};
-use api::{LayoutPrimitiveInfo, PipelineId};
+use api::PipelineId;
 use api::units::*;
-use clip::{ClipChainId, ClipDataStore, ClipNode, ClipItem, ClipStore};
-use clip::{rounded_rectangle_contains_point};
-use clip_scroll_tree::{SpatialNodeIndex, ClipScrollTree};
-use internal_types::FastHashMap;
+use crate::clip::{ClipChainId, ClipDataStore, ClipNode, ClipItem, ClipStore};
+use crate::clip::{rounded_rectangle_contains_point};
+use crate::clip_scroll_tree::{SpatialNodeIndex, ClipScrollTree};
+use crate::internal_types::{FastHashMap, LayoutPrimitiveInfo};
 use std::{ops, u32};
 use std::sync::Arc;
-use util::{LayoutToWorldFastTransform, WorldToLayoutFastTransform};
+use crate::util::{LayoutToWorldFastTransform, WorldToLayoutFastTransform};
 
 /// A copy of important clip scroll node data to use during hit testing. This a copy of
 /// data from the ClipScrollTree that will persist as a new frame is under construction,
@@ -32,6 +32,9 @@ pub struct HitTestSpatialNode {
 
     /// Cached inverse of the world viewport transform
     inv_world_viewport_transform: Option<WorldToLayoutFastTransform>,
+
+    /// The accumulated external scroll offset for this spatial node.
+    external_scroll_offset: LayoutVector2D,
 }
 
 #[derive(MallocSizeOf)]
@@ -265,6 +268,7 @@ impl HitTester {
                 inv_world_content_transform: node.world_content_transform.inverse(),
                 inv_world_viewport_transform: node.world_viewport_transform.inverse(),
                 world_viewport_transform: node.world_viewport_transform,
+                external_scroll_offset: clip_scroll_tree.external_scroll_offset(index),
             });
         }
 
@@ -335,7 +339,7 @@ impl HitTester {
         let node = &self.clip_chains[clip_chain_node_id.0 as usize].region;
         let transform = self
             .spatial_nodes[spatial_node_index.0 as usize]
-            .world_viewport_transform;
+            .world_content_transform;
         let transformed_point = match transform
             .inverse()
             .and_then(|inverted| inverted.transform_point2d(&point))
@@ -473,7 +477,9 @@ impl HitTester {
                     let root_node = &self.spatial_nodes[root_spatial_node_index.0 as usize];
                     point_in_viewport = root_node
                         .inv_world_viewport_transform
-                        .and_then(|inverted| inverted.transform_point2d(&point));
+                        .and_then(|inverted| inverted.transform_point2d(&point))
+                        .map(|pt| pt - scroll_node.external_scroll_offset);
+
                     current_root_spatial_node_index = root_spatial_node_index;
                 }
 

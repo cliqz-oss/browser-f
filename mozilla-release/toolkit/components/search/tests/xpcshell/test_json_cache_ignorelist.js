@@ -7,19 +7,23 @@
 
 "use strict";
 
+var {getAppInfo} = ChromeUtils.import("resource://testing-common/AppInfo.jsm");
+
 var cacheTemplate, appPluginsPath, profPlugins;
 
 /**
  * Test reading from search.json.mozlz4
  */
 add_task(async function setup() {
+  await AddonTestUtils.promiseStartupManager();
+
   await setupRemoteSettings();
 
   let cacheTemplateFile = do_get_file("data/search_ignorelist.json");
   cacheTemplate = readJSONFile(cacheTemplateFile);
   cacheTemplate.buildID = getAppInfo().platformBuildID;
 
-  let engineFile = gProfD.clone();
+  let engineFile = do_get_profile().clone();
   engineFile.append("searchplugins");
   engineFile.append("test-search-engine.xml");
   engineFile.parent.create(Ci.nsIFile.DIRECTORY_TYPE, FileUtils.PERMS_DIRECTORY);

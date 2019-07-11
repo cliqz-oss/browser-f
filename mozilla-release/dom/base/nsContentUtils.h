@@ -83,7 +83,6 @@ class nsNameSpaceManager;
 class nsIObserver;
 class nsIParser;
 class nsIPluginTag;
-class nsIPresShell;
 class nsIPrincipal;
 class nsIRequest;
 class nsIRunnable;
@@ -127,6 +126,7 @@ class Dispatcher;
 class ErrorResult;
 class EventListenerManager;
 class HTMLEditor;
+class PresShell;
 class TextEditor;
 
 namespace dom {
@@ -146,9 +146,9 @@ class MessageBroadcaster;
 class NodeInfo;
 class ContentChild;
 class ContentParent;
-class TabChild;
+class BrowserChild;
 class Selection;
-class TabParent;
+class BrowserParent;
 }  // namespace dom
 
 namespace ipc {
@@ -201,8 +201,8 @@ struct EventNameMapping {
   bool mMaybeSpecialSVGorSMILEvent;
 };
 
-typedef bool (*CallOnRemoteChildFunction)(mozilla::dom::TabParent* aTabParent,
-                                          void* aArg);
+typedef bool (*CallOnRemoteChildFunction)(
+    mozilla::dom::BrowserParent* aBrowserParent, void* aArg);
 
 class nsContentUtils {
   friend class nsAutoScriptBlockerSuppressNodeRemoved;
@@ -827,7 +827,7 @@ class nsContentUtils {
    * @return the pres shell, or nullptr if the content is not in a document
    *         (if GetComposedDoc returns nullptr)
    */
-  static nsIPresShell* GetPresShellForContent(const nsIContent* aContent);
+  static mozilla::PresShell* GetPresShellForContent(const nsIContent* aContent);
 
   /**
    * Method to do security and content policy checks on the image URI
@@ -1024,7 +1024,8 @@ class nsContentUtils {
    */
   static void LogSimpleConsoleError(const nsAString& aErrorText,
                                     const char* classification,
-                                    bool aFromPrivateWindow);
+                                    bool aFromPrivateWindow,
+                                    bool aFromChromeContext);
 
   /**
    * Report a non-localized error message to the error console.
@@ -1518,6 +1519,12 @@ class nsContentUtils {
    * to the foreground.
    */
   static nsresult DispatchFocusChromeEvent(nsPIDOMWindowOuter* aWindow);
+
+  /**
+   * Helper to dispatch a "framefocusrequested" event to chrome, which will only
+   * bring the window to the foreground and switch tabs if aCanRaise is true.
+   */
+  static void RequestFrameFocus(Element& aFrameElement, bool aCanRaise);
 
   /**
    * This method creates and dispatches a trusted event.
@@ -2130,26 +2137,32 @@ class nsContentUtils {
    * suitable for, for example, header values. The UTF versions return strings
    * containing international characters.
    *
+   * The thread-safe versions return NS_ERROR_UNKNOWN_PROTOCOL if the
+   * operation cannot be completed on the current thread.
+   *
    * @pre aPrincipal/aOrigin must not be null.
    *
    * @note this should be used for HTML5 origin determination.
    */
   static nsresult GetASCIIOrigin(nsIPrincipal* aPrincipal, nsACString& aOrigin);
   static nsresult GetASCIIOrigin(nsIURI* aURI, nsACString& aOrigin);
+  static nsresult GetThreadSafeASCIIOrigin(nsIURI* aURI, nsACString& aOrigin);
   static nsresult GetUTFOrigin(nsIPrincipal* aPrincipal, nsAString& aOrigin);
   static nsresult GetUTFOrigin(nsIURI* aURI, nsAString& aOrigin);
+  static nsresult GetThreadSafeUTFOrigin(nsIURI* aURI, nsAString& aOrigin);
 
   /**
    * This method creates and dispatches "command" event, which implements
    * XULCommandEvent.
-   * If aShell is not null, dispatching goes via
-   * nsIPresShell::HandleDOMEventWithTarget.
+   * If aPresShell is not null, dispatching goes via
+   * PresShell::HandleDOMEventWithTarget().
    */
+  MOZ_CAN_RUN_SCRIPT
   static nsresult DispatchXULCommand(
       nsIContent* aTarget, bool aTrusted,
       mozilla::dom::Event* aSourceEvent = nullptr,
-      nsIPresShell* aShell = nullptr, bool aCtrl = false, bool aAlt = false,
-      bool aShift = false, bool aMeta = false,
+      mozilla::PresShell* aPresShell = nullptr, bool aCtrl = false,
+      bool aAlt = false, bool aShift = false, bool aMeta = false,
       // Including MouseEventBinding here leads
       // to incude loops, unfortunately.
       uint16_t inputSource = 0 /* MouseEvent_Binding::MOZ_SOURCE_UNKNOWN */);
@@ -2246,7 +2259,8 @@ class nsContentUtils {
    * getting generic data like a device context or widget from it is OK, but it
    * might not be this document's actual presentation.
    */
-  static nsIPresShell* FindPresShellForDocument(const Document* aDoc);
+  static mozilla::PresShell* FindPresShellForDocument(
+      const Document* aDocument);
 
   /**
    * Returns the widget for this document if there is one. Looks at all ancestor
@@ -2256,7 +2270,7 @@ class nsContentUtils {
    * You should probably use WidgetForContent() instead of this, unless you have
    * a good reason to do otherwise.
    */
-  static nsIWidget* WidgetForDocument(const Document* aDoc);
+  static nsIWidget* WidgetForDocument(const Document* aDocument);
 
   /**
    * Returns the appropriate widget for this element, if there is one. Unlike
@@ -2318,30 +2332,12 @@ class nsContentUtils {
   static bool IsFocusedContent(const nsIContent* aContent);
 
   /**
-   * Returns true if the DOM fullscreen API is enabled.
-   */
-  static bool IsFullscreenApiEnabled();
-
-  /**
-   * Returns true if the unprefixed fullscreen API is enabled.
-   */
-  static bool IsUnprefixedFullscreenApiEnabled() {
-    return sIsUnprefixedFullscreenApiEnabled;
-  }
-
-  /**
    * Returns true if requests for fullscreen are allowed in the current
    * context. Requests are only allowed if the user initiated them (like with
    * a mouse-click or key press), unless this check has been disabled by
    * setting the pref "full-screen-api.allow-trusted-requests-only" to false.
    */
   static bool IsRequestFullscreenAllowed(mozilla::dom::CallerType aCallerType);
-
-  /**
-   * Returns true if calling execCommand with 'cut' or 'copy' arguments
-   * is restricted to chrome code.
-   */
-  static bool IsCutCopyRestricted() { return !sIsCutCopyAllowed; }
 
   /**
    * Returns true if calling execCommand with 'cut' or 'copy' arguments is
@@ -2351,37 +2347,6 @@ class nsContentUtils {
   static bool IsCutCopyAllowed(nsIPrincipal* aSubjectPrincipal);
 
   /*
-   * Returns true if the performance timing APIs are enabled.
-   */
-  static bool IsPerformanceTimingEnabled() {
-    return sIsPerformanceTimingEnabled;
-  }
-
-  /*
-   * Returns true if the performance timing APIs are enabled.
-   */
-  static bool IsResourceTimingEnabled() { return sIsResourceTimingEnabled; }
-
-  /*
-   * Returns true if the performance timing APIs are enabled.
-   */
-  static bool IsPerformanceNavigationTimingEnabled() {
-    return sIsPerformanceNavigationTimingEnabled;
-  }
-
-  /*
-   * Returns true if notification should be sent for peformance timing events.
-   */
-  static bool SendPerformanceTimingNotifications() {
-    return sSendPerformanceTimingNotifications;
-  }
-
-  /*
-   * Returns true if the frame timing APIs are enabled.
-   */
-  static bool IsFrameTimingEnabled();
-
-  /*
    * Returns true if the browser should attempt to prevent the given caller type
    * from collecting distinctive information about the browser that could
    * be used to "fingerprint" and track the user across websites.
@@ -2389,28 +2354,6 @@ class nsContentUtils {
   static bool ResistFingerprinting(mozilla::dom::CallerType aCallerType) {
     return aCallerType != mozilla::dom::CallerType::System &&
            ShouldResistFingerprinting();
-  }
-
-  /**
-   * Returns true if the browser should show busy cursor when loading page.
-   */
-  static bool UseActivityCursor() { return sUseActivityCursor; }
-
-  /**
-   * Returns true if the DOM Animations API should be enabled.
-   */
-  static bool AnimationsAPICoreEnabled() { return sAnimationsAPICoreEnabled; }
-
-  /**
-   * Returns true if the getBoxQuads API should be enabled.
-   */
-  static bool GetBoxQuadsEnabled() { return sGetBoxQuadsEnabled; }
-
-  /**
-   * Returns true if the requestIdleCallback API should be enabled.
-   */
-  static bool RequestIdleCallbackEnabled() {
-    return sRequestIdleCallbackEnabled;
   }
 
   /**
@@ -2712,11 +2655,6 @@ class nsContentUtils {
   static mozilla::HTMLEditor* GetHTMLEditor(nsPresContext* aPresContext);
 
   /**
-   * Returns true if the privacy.donottrackheader.enabled pref is set.
-   */
-  static bool DoNotTrackEnabled();
-
-  /**
    * Returns a LogModule that dump calls from content script are logged to.
    * This can be enabled with the 'Dump' module, and is useful for synchronizing
    * content JS to other logging modules.
@@ -2759,6 +2697,13 @@ class nsContentUtils {
   static bool IsAllowedNonCorsLanguage(const nsACString& aHeaderValue);
 
   /**
+   * Returns whether a given header and value is a CORS-safelisted request
+   * header per https://fetch.spec.whatwg.org/#cors-safelisted-request-header
+   */
+  static bool IsCORSSafelistedRequestHeader(const nsACString& aName,
+                                            const nsACString& aValue);
+
+  /**
    * Returns whether a given header is forbidden for an XHR or fetch
    * response.
    */
@@ -2791,8 +2736,8 @@ class nsContentUtils {
 
   /*
    * Call nsPIDOMWindow::SetKeyboardIndicators all all remote children. This is
-   * in here rather than nsGlobalWindow because TabParent indirectly includes
-   * Windows headers which aren't allowed there.
+   * in here rather than nsGlobalWindow because BrowserParent indirectly
+   * includes Windows headers which aren't allowed there.
    */
   static void SetKeyboardIndicatorsOnRemoteChildren(
       nsPIDOMWindowOuter* aWindow, UIStateChangeType aShowAccelerators,
@@ -2835,7 +2780,7 @@ class nsContentUtils {
       const nsContentPolicyType& aContentPolicyType,
       nsITransferable* aTransferable,
       mozilla::dom::ContentParent* aContentParent,
-      mozilla::dom::TabChild* aTabChild);
+      mozilla::dom::BrowserChild* aBrowserChild);
 
   static void TransferablesToIPCTransferables(
       nsIArray* aTransferables, nsTArray<mozilla::dom::IPCDataTransfer>& aIPC,
@@ -2866,13 +2811,13 @@ class nsContentUtils {
   // Helpers shared by the implementations of nsContentUtils methods and
   // nsIDOMWindowUtils methods.
   static mozilla::Modifiers GetWidgetModifiers(int32_t aModifiers);
-  static nsIWidget* GetWidget(nsIPresShell* aPresShell, nsPoint* aOffset);
+  static nsIWidget* GetWidget(mozilla::PresShell* aPresShell, nsPoint* aOffset);
   static int16_t GetButtonsFlagForButton(int32_t aButton);
   static mozilla::LayoutDeviceIntPoint ToWidgetPoint(
       const mozilla::CSSPoint& aPoint, const nsPoint& aOffset,
       nsPresContext* aPresContext);
   static nsView* GetViewToDispatchEvent(nsPresContext* aPresContext,
-                                        nsIPresShell** aPresShell);
+                                        mozilla::PresShell** aPresShell);
 
   /**
    * Synthesize a mouse event to the given widget
@@ -2880,11 +2825,11 @@ class nsContentUtils {
    */
   MOZ_CAN_RUN_SCRIPT
   static nsresult SendMouseEvent(
-      const nsCOMPtr<nsIPresShell>& aPresShell, const nsAString& aType,
-      float aX, float aY, int32_t aButton, int32_t aButtons,
-      int32_t aClickCount, int32_t aModifiers, bool aIgnoreRootScrollFrame,
-      float aPressure, unsigned short aInputSourceArg, uint32_t aIdentifier,
-      bool aToWindow, bool* aPreventDefault, bool aIsDOMEventSynthesized,
+      mozilla::PresShell* aPresShell, const nsAString& aType, float aX,
+      float aY, int32_t aButton, int32_t aButtons, int32_t aClickCount,
+      int32_t aModifiers, bool aIgnoreRootScrollFrame, float aPressure,
+      unsigned short aInputSourceArg, uint32_t aIdentifier, bool aToWindow,
+      bool* aPreventDefault, bool aIsDOMEventSynthesized,
       bool aIsWidgetEventSynthesized);
 
   static void FirePageShowEvent(nsIDocShellTreeItem* aItem,
@@ -2981,7 +2926,7 @@ class nsContentUtils {
    * the window's extant document has not been set yet.  The code in
    * StorageAllowedForWindow(), however, will not work in these cases.
    */
-  static StorageAccess StorageAllowedForDocument(Document* aDoc);
+  static StorageAccess StorageAllowedForDocument(const Document* aDoc);
 
   /*
    * Checks if storage should be allowed for a new window with the given
@@ -3002,7 +2947,8 @@ class nsContentUtils {
    * Checks if storage for the given principal is permitted by the user's
    * preferences. This method should be used only by ServiceWorker loading.
    */
-  static StorageAccess StorageAllowedForServiceWorker(nsIPrincipal* aPrincipal);
+  static StorageAccess StorageAllowedForServiceWorker(
+      nsIPrincipal* aPrincipal, nsICookieSettings* aCookieSettings);
 
   /*
    * Returns true if this document should disable storages because of the
@@ -3097,8 +3043,12 @@ class nsContentUtils {
   /**
    * Creates a new XUL or XHTML element applying any appropriate custom element
    * definition.
+   *
+   * If aFromParser != FROM_PARSER_FRAGMENT, a nested event loop permits
+   * arbitrary changes to the world before this function returns.  This should
+   * probably just be MOZ_CAN_RUN_SCRIPT - bug 1543259.
    */
-  static nsresult NewXULOrHTMLElement(
+  MOZ_CAN_RUN_SCRIPT_BOUNDARY static nsresult NewXULOrHTMLElement(
       Element** aResult, mozilla::dom::NodeInfo* aNodeInfo,
       mozilla::dom::FromParser aFromParser, nsAtom* aIsAtom,
       mozilla::dom::CustomElementDefinition* aDefinition);
@@ -3239,44 +3189,20 @@ class nsContentUtils {
   static uint64_t GenerateBrowsingContextId();
 
   /**
-   * Check whether we should skip moving the cursor for a same-value .value set
-   * on a text input or textarea.
-   */
-  static bool SkipCursorMoveForSameValueSet() {
-    return sSkipCursorMoveForSameValueSet;
-  }
-
-  /**
    * Determine whether or not the user is currently interacting with the web
    * browser. This method is safe to call from off of the main thread.
    */
   static bool GetUserIsInteracting();
 
-  // Whether tracker tailing is turned on - "network.http.tailing.enabled".
-  static bool IsTailingEnabled() { return sTailingEnabled; }
-
-  // Check pref "dom.placeholder.show_on_focus" to see
-  // if we want to show the placeholder inside input elements
-  // when they have focus.
-  static bool ShowInputPlaceholderOnFocus() {
-    return sShowInputPlaceholderOnFocus;
-  }
-
-  // Check pref "browser.autofocus" to see if we want to enable autofocusing
-  // elements when the page requests it.
-  static bool AutoFocusEnabled() { return sAutoFocusEnabled; }
-
-  // Check pref "dom.script_loader.bytecode_cache.enabled" to see
-  // if we want to cache JS bytecode on the cache entry.
-  static bool IsBytecodeCacheEnabled() { return sIsBytecodeCacheEnabled; }
-
-  // Check pref "dom.script_loader.bytecode_cache.strategy" to see which
-  // heuristic strategy should be used to trigger the caching of the bytecode.
-  static int32_t BytecodeCacheStrategy() { return sBytecodeCacheStrategy; }
-
   // Alternate data MIME type used by the ScriptLoader to register and read
   // bytecode out of the nsCacheInfoChannel.
   static nsCString& JSBytecodeMimeType() { return *sJSBytecodeMimeType; }
+
+  /**
+   * Checks if the passed-in name is one of the special names: "_blank", "_top",
+   * "_parent" or "_self".
+   */
+  static bool IsSpecialName(const nsAString& aName);
 
   /**
    * Checks if the passed-in name should override an existing name on the
@@ -3307,7 +3233,7 @@ class nsContentUtils {
   static bool ContentIsLink(nsIContent* aContent);
 
   static already_AddRefed<mozilla::dom::ContentFrameMessageManager>
-  TryGetTabChildGlobal(nsISupports* aFrom);
+  TryGetBrowserChildGlobal(nsISupports* aFrom);
 
   // Get a serial number for a newly created inner or outer window.
   static uint32_t InnerOrOuterWindowCreated();
@@ -3406,11 +3332,10 @@ class nsContentUtils {
    * Used in the implementation of StorageAllowedForWindow,
    * StorageAllowedForChannel and StorageAllowedForServiceWorker.
    */
-  static StorageAccess InternalStorageAllowedCheck(nsIPrincipal* aPrincipal,
-                                                   nsPIDOMWindowInner* aWindow,
-                                                   nsIURI* aURI,
-                                                   nsIChannel* aChannel,
-                                                   uint32_t& aRejectedReason);
+  static StorageAccess InternalStorageAllowedCheck(
+      nsIPrincipal* aPrincipal, nsPIDOMWindowInner* aWindow, nsIURI* aURI,
+      nsIChannel* aChannel, nsICookieSettings* aCookieSettings,
+      uint32_t& aRejectedReason);
 
   static nsINode* GetCommonAncestorHelper(nsINode* aNode1, nsINode* aNode2);
   static nsIContent* GetCommonFlattenedTreeAncestorHelper(
@@ -3459,36 +3384,9 @@ class nsContentUtils {
 
   static bool sIsHandlingKeyBoardEvent;
   static bool sAllowXULXBL_for_file;
-  static bool sIsFullscreenApiEnabled;
-  static bool sIsUnprefixedFullscreenApiEnabled;
-  static bool sTrustedFullscreenOnly;
-  static bool sIsCutCopyAllowed;
-  static uint32_t sHandlingInputTimeout;
-  static bool sIsPerformanceTimingEnabled;
-  static bool sIsResourceTimingEnabled;
-  static bool sIsPerformanceNavigationTimingEnabled;
-  static bool sIsUpgradableDisplayContentPrefEnabled;
-  static bool sIsFrameTimingPrefEnabled;
-  static bool sIsFormAutofillAutocompleteEnabled;
-  static bool sSendPerformanceTimingNotifications;
-  static bool sUseActivityCursor;
-  static bool sAnimationsAPICoreEnabled;
-  static bool sGetBoxQuadsEnabled;
-  static bool sSkipCursorMoveForSameValueSet;
-  static bool sRequestIdleCallbackEnabled;
-  static bool sTailingEnabled;
-  static bool sShowInputPlaceholderOnFocus;
-  static bool sAutoFocusEnabled;
 #ifndef RELEASE_OR_BETA
   static bool sBypassCSSOMOriginCheck;
 #endif
-  static bool sIsBytecodeCacheEnabled;
-  static int32_t sBytecodeCacheStrategy;
-  static uint32_t sCookiesLifetimePolicy;
-  static bool sAntiTrackingControlCenterUIEnabled;
-
-  static int32_t sPrivacyMaxInnerWidth;
-  static int32_t sPrivacyMaxInnerHeight;
 
   class UserInteractionObserver;
   static UserInteractionObserver* sUserInteractionObserver;
@@ -3513,7 +3411,6 @@ class nsContentUtils {
   // bytecode out of the nsCacheInfoChannel.
   static nsCString* sJSBytecodeMimeType;
 
-  static bool sDoNotTrackEnabled;
   static mozilla::LazyLogModule sDOMDumpLog;
 
   static int32_t sInnerOrOuterWindowCount;

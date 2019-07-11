@@ -1,4 +1,4 @@
-import {ASRouterAdminInner} from "content-src/components/ASRouterAdmin/ASRouterAdmin";
+import {ASRouterAdminInner, CollapseToggle, DiscoveryStreamAdmin, ToggleStoryButton} from "content-src/components/ASRouterAdmin/ASRouterAdmin";
 import {GlobalOverrider} from "test/unit/utils";
 import React from "react";
 import {shallow} from "enzyme";
@@ -25,7 +25,7 @@ describe("ASRouterAdmin", () => {
   }];
   beforeEach(() => {
     globals = new GlobalOverrider();
-    sandbox = sinon.sandbox.create();
+    sandbox = sinon.createSandbox();
     sendMessageStub = sandbox.stub();
     addListenerStub = sandbox.stub();
     removeListenerStub = sandbox.stub();
@@ -34,7 +34,7 @@ describe("ASRouterAdmin", () => {
     globals.set("RPMAddMessageListener", addListenerStub);
     globals.set("RPMRemoveMessageListener", removeListenerStub);
 
-    wrapper = shallow(<ASRouterAdminInner location={{routes: [""]}} />);
+    wrapper = shallow(<ASRouterAdminInner collapsed={false} location={{routes: [""]}} />);
   });
   afterEach(() => {
     sandbox.restore();
@@ -55,6 +55,15 @@ describe("ASRouterAdmin", () => {
     wrapper.unmount();
     assert.calledOnce(removeListenerStub);
   });
+  it("should set a .collapsed class on the outer div if props.collapsed is true", () => {
+    wrapper.setProps({collapsed: true});
+    assert.isTrue(wrapper.find(".asrouter-admin").hasClass("collapsed"));
+  });
+  it("should set a .expanded class on the outer div if props.collapsed is false", () => {
+    wrapper.setProps({collapsed: false});
+    assert.isTrue(wrapper.find(".asrouter-admin").hasClass("expanded"));
+    assert.isFalse(wrapper.find(".asrouter-admin").hasClass("collapsed"));
+  });
   describe("#getSection", () => {
     it("should render a message provider section by default", () => {
       assert.equal(wrapper.find("h2").at(2).text(), "Messages");
@@ -66,6 +75,24 @@ describe("ASRouterAdmin", () => {
     it("should render a pocket section for pocket route", () => {
       wrapper = shallow(<ASRouterAdminInner location={{routes: ["pocket"]}} Sections={[]} />);
       assert.equal(wrapper.find("h2").at(0).text(), "Pocket");
+    });
+    it("should render a DS section for DS route", () => {
+      wrapper = shallow(<ASRouterAdminInner location={{routes: ["ds"]}} Sections={[]} Prefs={{}} />);
+      assert.equal(wrapper.find("h2").at(0).text(), "Discovery Stream");
+    });
+    it("should render two error messages", () => {
+      wrapper = shallow(<ASRouterAdminInner location={{routes: ["errors"]}} Sections={[]} />);
+      const firstError = {timestamp: Date.now() + 100, error: {message: "first"}};
+      const secondError = {timestamp: Date.now(), error: {message: "second"}};
+      wrapper.setState({providers: [{id: "foo", errors: [firstError, secondError]}]});
+
+      assert.equal(wrapper.find("tbody tr").at(0).find("td")
+        .at(0)
+        .text(), "foo");
+      assert.lengthOf(wrapper.find("tbody tr"), 2);
+      assert.equal(wrapper.find("tbody tr").at(0).find("td")
+        .at(1)
+        .text(), secondError.error.message);
     });
   });
   describe("#render", () => {
@@ -149,6 +176,92 @@ describe("ASRouterAdmin", () => {
 
         assert.lengthOf(wrapper.find(".message-id"), 0);
       });
+    });
+  });
+  describe("#DiscoveryStream", () => {
+    it("should render a DiscoveryStreamAdmin component", () => {
+      wrapper = shallow(<DiscoveryStreamAdmin otherPrefs={{}} state={{
+        config: {
+          enabled: true,
+          layout_endpint: "",
+        },
+        layout: [],
+        spocs: {
+          frequency_caps: [],
+        },
+        feeds: {
+          data: {},
+        },
+      }} />);
+      assert.equal(wrapper.find("h3").at(0).text(), "Endpoint variant");
+    });
+    it("should render a spoc in DiscoveryStreamAdmin component", () => {
+      wrapper = shallow(<DiscoveryStreamAdmin otherPrefs={{}} state={{
+        config: {
+          enabled: true,
+          layout_endpint: "",
+        },
+        layout: [],
+        spocs: {
+          frequency_caps: [],
+          data: {
+            spocs: [{
+              id: 12345,
+            }],
+          },
+        },
+        feeds: {
+          data: {},
+        },
+      }} />);
+      wrapper.instance().onStoryToggle({id: 12345});
+      const messageSummary = wrapper.find(".message-summary").at(0);
+      const pre = messageSummary.find("pre").at(0);
+      const spocText = pre.text();
+      assert.equal(spocText, "{\n  \"id\": 12345\n}");
+    });
+  });
+  describe("#ToggleStoryButton", () => {
+    it("should fire onClick in toggle button", async () => {
+      let result = "";
+      function onClick(spoc) {
+        result = spoc;
+      }
+
+      wrapper = shallow(<ToggleStoryButton story="spoc" onClick={onClick} />);
+      wrapper.find("button").simulate("click");
+
+      assert.equal(result, "spoc");
+    });
+  });
+});
+
+describe("CollapseToggle", () => {
+  let wrapper;
+  beforeEach(() => {
+    wrapper = shallow(<CollapseToggle location={{routes: [""]}} />);
+  });
+
+  describe("rendering inner content", () => {
+    it("should not render ASRouterAdminInner for about:newtab (no hash)", () => {
+      wrapper.setProps({location: {hash: "", routes: [""]}});
+      assert.lengthOf(wrapper.find(ASRouterAdminInner), 0);
+    });
+
+    it("should render ASRouterAdminInner for about:newtab#asrouter and subroutes", () => {
+      wrapper.setProps({location: {hash: "#asrouter", routes: [""]}});
+      assert.lengthOf(wrapper.find(ASRouterAdminInner), 1);
+
+      wrapper.setProps({location: {hash: "#asrouter-foo", routes: [""]}});
+      assert.lengthOf(wrapper.find(ASRouterAdminInner), 1);
+    });
+
+    it("should render ASRouterAdminInner for about:newtab#devtools and subroutes", () => {
+      wrapper.setProps({location: {hash: "#devtools", routes: [""]}});
+      assert.lengthOf(wrapper.find(ASRouterAdminInner), 1);
+
+      wrapper.setProps({location: {hash: "#devtools-foo", routes: [""]}});
+      assert.lengthOf(wrapper.find(ASRouterAdminInner), 1);
     });
   });
 });

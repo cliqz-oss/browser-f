@@ -5,7 +5,7 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 with Files("**"):
-    BUG_COMPONENT = ("Core", "DOM: Core & HTML")
+    BUG_COMPONENT = ("Core", "DOM: Networking")
 
 EXPORTS.mozilla.dom += [
     'BodyExtractor.h',
@@ -60,6 +60,7 @@ LOCAL_INCLUDES += [
 ]
 
 BROWSER_CHROME_MANIFESTS += [ 'tests/browser.ini' ]
+MOCHITEST_MANIFESTS += [ 'tests/mochitest.ini' ]
 
 FINAL_LIBRARY = 'xul'
 

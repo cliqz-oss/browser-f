@@ -42,3 +42,14 @@ if (AppConstants.MOZ_ALLOW_LEGACY_EXTENSIONS || Cu.isInAutomation) {
 } else {
   makeConstant("ALLOW_LEGACY_EXTENSIONS", false);
 }
+
+#if 0
+if (AppConstants.MOZ_DEV_EDITION) {
+  makeConstant("DEFAULT_THEME_ID", "firefox-compact-dark@mozilla.org");
+} else {
+  makeConstant("DEFAULT_THEME_ID", "default-theme@mozilla.org");
+}
+#endif
+// CLIQZ-SPECIAL:
+// We would like to have a compact light theme as a default one in Cliqz Browser.
+makeConstant("DEFAULT_THEME_ID", "firefox-compact-light@mozilla.org");

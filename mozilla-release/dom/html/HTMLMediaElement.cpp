@@ -56,6 +56,7 @@
 #include "mozilla/MathAlgorithms.h"
 #include "mozilla/NotNull.h"
 #include "mozilla/Preferences.h"
+#include "mozilla/PresShell.h"
 #include "mozilla/Sprintf.h"
 #include "mozilla/StaticPrefs.h"
 #include "mozilla/Telemetry.h"
@@ -101,7 +102,6 @@
 #include "nsIFrame.h"
 #include "nsIObserverService.h"
 #include "nsIPermissionManager.h"
-#include "nsIPresShell.h"
 #include "nsIRequest.h"
 #include "nsIScriptError.h"
 #include "nsIScriptSecurityManager.h"
@@ -122,6 +122,7 @@
 #include "nsThreadUtils.h"
 #include "nsURIHashKey.h"
 #include "nsVideoFrame.h"
+#include "ReferrerInfo.h"
 #include "xpcpublic.h"
 #include <algorithm>
 #include <cmath>
@@ -164,7 +165,7 @@ static const double MAX_PLAYBACKRATE = 16.0;
 // muted
 static const double THRESHOLD_HIGH_PLAYBACKRATE_AUDIO = 4.0;
 // Threshold under which audio is muted
-static const double THRESHOLD_LOW_PLAYBACKRATE_AUDIO = 0.5;
+static const double THRESHOLD_LOW_PLAYBACKRATE_AUDIO = 0.25;
 
 static double ClampPlaybackRate(double aPlaybackRate) {
   MOZ_ASSERT(aPlaybackRate >= 0.0);
@@ -1279,7 +1280,6 @@ class HTMLMediaElement::ChannelLoader final {
         nullptr,  // aCallbacks
         nsICachingChannel::LOAD_BYPASS_LOCAL_CACHE_IF_BUSY |
             nsIChannel::LOAD_MEDIA_SNIFFER_OVERRIDES_CONTENT_TYPE |
-            nsIChannel::LOAD_CLASSIFY_URI |
             nsIChannel::LOAD_CALL_CONTENT_SNIFFERS);
 
     if (NS_FAILED(rv)) {
@@ -1639,7 +1639,7 @@ bool HTMLMediaElement::IsVideoDecodingSuspended() const {
 }
 
 bool HTMLMediaElement::IsVisible() const {
-  return mVisibilityState == Visibility::APPROXIMATELY_VISIBLE;
+  return mVisibilityState == Visibility::ApproximatelyVisible;
 }
 
 already_AddRefed<layers::Image> HTMLMediaElement::GetCurrentImage() {
@@ -1708,6 +1708,7 @@ void HTMLMediaElement::ShutdownDecoder() {
     mNextAvailableMediaDecoderOutputTrackID =
         mDecoder->GetNextOutputStreamTrackID();
   }
+  DiscardFinishWhenEndedOutputStreams();
   mDecoder->Shutdown();
   DDUNLINKCHILD(mDecoder.get());
   mDecoder = nullptr;
@@ -1810,6 +1811,8 @@ void HTMLMediaElement::AbortExistingLoads() {
     EndSrcMediaStreamPlayback();
   }
 
+  DiscardFinishWhenEndedOutputStreams();
+
   RemoveMediaElementFromURITable();
   mLoadingSrc = nullptr;
   mLoadingSrcTriggeringPrincipal = nullptr;
@@ -1874,10 +1877,6 @@ void HTMLMediaElement::AbortExistingLoads() {
   AddRemoveSelfReference();
 
   mIsRunningSelectResource = false;
-
-  if (mTextTrackManager) {
-    mTextTrackManager->NotifyReset();
-  }
 
   mEventDeliveryPaused = false;
   mPendingEvents.Clear();
@@ -2455,6 +2454,27 @@ bool HTMLMediaElement::AllowedToPlay() const {
   return AutoplayPolicy::IsAllowedToPlay(*this);
 }
 
+uint32_t HTMLMediaElement::GetPreloadDefault() const {
+  if (mMediaSource) {
+    return HTMLMediaElement::PRELOAD_ATTR_METADATA;
+  }
+  if (OnCellularConnection()) {
+    return Preferences::GetInt("media.preload.default.cellular",
+                               HTMLMediaElement::PRELOAD_ATTR_NONE);
+  }
+  return Preferences::GetInt("media.preload.default",
+                             HTMLMediaElement::PRELOAD_ATTR_METADATA);
+}
+
+uint32_t HTMLMediaElement::GetPreloadDefaultAuto() const {
+  if (OnCellularConnection()) {
+    return Preferences::GetInt("media.preload.auto.cellular",
+                               HTMLMediaElement::PRELOAD_ATTR_METADATA);
+  }
+  return Preferences::GetInt("media.preload.auto",
+                             HTMLMediaElement::PRELOAD_ENOUGH);
+}
+
 void HTMLMediaElement::UpdatePreloadAction() {
   PreloadAction nextAction = PRELOAD_UNDEFINED;
   // If autoplay is set, or we're playing, we should always preload data,
@@ -2469,13 +2489,8 @@ void HTMLMediaElement::UpdatePreloadAction() {
         mAttrs.GetAttr(nsGkAtoms::preload, kNameSpaceID_None);
     // MSE doesn't work if preload is none, so it ignores the pref when src is
     // from MSE.
-    uint32_t preloadDefault =
-        mMediaSource
-            ? HTMLMediaElement::PRELOAD_ATTR_METADATA
-            : Preferences::GetInt("media.preload.default",
-                                  HTMLMediaElement::PRELOAD_ATTR_METADATA);
-    uint32_t preloadAuto = Preferences::GetInt(
-        "media.preload.auto", HTMLMediaElement::PRELOAD_ENOUGH);
+    uint32_t preloadDefault = GetPreloadDefault();
+    uint32_t preloadAuto = GetPreloadDefaultAuto();
     if (!val) {
       // Attribute is not set. Use the preload action specified by the
       // media.preload.default pref, or just preload metadata if not present.
@@ -2627,11 +2642,10 @@ bool HTMLMediaElement::Seeking() const {
 double HTMLMediaElement::CurrentTime() const {
   if (MediaStream* stream = GetSrcMediaStream()) {
     MediaStreamGraph* graph = stream->Graph();
-    GraphTime currentTime =
-        mSrcStreamPausedGraphTime == GRAPH_TIME_MAX
-            ? graph->CurrentTime() - mSrcStreamGraphTimeOffset
-            : mSrcStreamPausedGraphTime;
-    return stream->StreamTimeToSeconds(currentTime);
+    GraphTime currentGraphTime =
+        mSrcStreamPausedGraphTime.valueOr(graph->CurrentTime());
+    StreamTime currentStreamTime = currentGraphTime - mSrcStreamGraphTimeOffset;
+    return stream->StreamTimeToSeconds(currentStreamTime);
   }
 
   if (mDefaultPlaybackStartPosition == 0.0 && mDecoder) {
@@ -3126,6 +3140,23 @@ void HTMLMediaElement::AddCaptureMediaTrackToOutputStream(
       ("Created %s track %p with id %d from track %p through MediaInputPort %p",
        inputTrack->AsAudioStreamTrack() ? "audio" : "video", track.get(),
        destinationTrackID, inputTrack, port.get()));
+}
+
+void HTMLMediaElement::DiscardFinishWhenEndedOutputStreams() {
+  // Discard all output streams that have finished now.
+  for (int32_t i = mOutputStreams.Length() - 1; i >= 0; --i) {
+    if (!mOutputStreams[i].mFinishWhenEnded) {
+      continue;
+    }
+    LOG(LogLevel::Debug,
+        ("Playback ended. Letting output stream %p go inactive",
+         mOutputStreams[i].mStream.get()));
+    mOutputStreams[i].mStream->SetFinishedOnInactive(true);
+    if (mOutputStreams[i].mCapturingDecoder) {
+      mDecoder->RemoveOutputStream(mOutputStreams[i].mStream);
+    }
+    mOutputStreams.RemoveElementAt(i);
+  }
 }
 
 bool HTMLMediaElement::CanBeCaptured(StreamCaptureType aCaptureType) {
@@ -3623,7 +3654,7 @@ void HTMLMediaElement::SetPlayedOrSeeked(bool aValue) {
   if (!frame) {
     return;
   }
-  frame->PresShell()->FrameNeedsReflow(frame, nsIPresShell::eTreeChange,
+  frame->PresShell()->FrameNeedsReflow(frame, IntrinsicDirty::TreeChange,
                                        NS_FRAME_IS_DIRTY);
 }
 
@@ -4097,19 +4128,7 @@ nsresult HTMLMediaElement::BindToTree(Document* aDocument, nsIContent* aParent,
   if (IsInComposedDoc()) {
     // Construct Shadow Root so web content can be hidden in the DOM.
     AttachAndSetUAShadowRoot();
-#ifdef ANDROID
     NotifyUAWidgetSetupOrChange();
-#else
-    // We don't want to call into JS if the website never asks for native
-    // video controls.
-    // If controls attribute is set later, controls is constructed lazily
-    // with the UAWidgetAttributeChanged event.
-    // This only applies to Desktop because on Fennec we would need to show
-    // an UI if the video is blocked.
-    if (Controls()) {
-      NotifyUAWidgetSetupOrChange();
-    }
-#endif
   }
 
   mUnboundFromTree = false;
@@ -4210,11 +4229,13 @@ void HTMLMediaElement::ReportTelemetry() {
     FrameStatistics* stats = vid->GetFrameStatistics();
     if (stats) {
       data = stats->GetFrameStatisticsData();
-      if (data.mParsedFrames) {
-        MOZ_ASSERT(data.mDroppedFrames <= data.mParsedFrames);
+      uint64_t parsedFrames = stats->GetParsedFrames();
+      if (parsedFrames) {
+        uint64_t droppedFrames = stats->GetDroppedFrames();
+        MOZ_ASSERT(droppedFrames <= parsedFrames);
         // Dropped frames <= total frames, so 'percentage' cannot be higher than
         // 100 and therefore can fit in a uint32_t (that Telemetry takes).
-        uint32_t percentage = 100 * data.mDroppedFrames / data.mParsedFrames;
+        uint32_t percentage = 100 * droppedFrames / parsedFrames;
         LOG(LogLevel::Debug,
             ("Reporting telemetry DROPPED_FRAMES_IN_VIDEO_PLAYBACK"));
         Telemetry::Accumulate(Telemetry::VIDEO_DROPPED_FRAMES_PROPORTION,
@@ -4326,7 +4347,7 @@ void HTMLMediaElement::ReportTelemetry() {
 
 void HTMLMediaElement::UnbindFromTree(bool aDeep, bool aNullParent) {
   mUnboundFromTree = true;
-  mVisibilityState = Visibility::UNTRACKED;
+  mVisibilityState = Visibility::Untracked;
 
   if (IsInComposedDoc()) {
     NotifyUAWidgetTeardown();
@@ -4677,9 +4698,9 @@ void HTMLMediaElement::UpdateSrcMediaStreamPlaying(uint32_t aFlags) {
 
   if (shouldPlay) {
     mSrcStreamPlaybackEnded = false;
-    mSrcStreamGraphTimeOffset =
-        graph->CurrentTime() - mSrcStreamPausedGraphTime;
-    mSrcStreamPausedGraphTime = GRAPH_TIME_MAX;
+    mSrcStreamGraphTimeOffset +=
+        graph->CurrentTime() - mSrcStreamPausedGraphTime.ref();
+    mSrcStreamPausedGraphTime = Nothing();
 
     mWatchManager.Watch(graph->CurrentTime(),
                         &HTMLMediaElement::UpdateSrcStreamTime);
@@ -4704,8 +4725,8 @@ void HTMLMediaElement::UpdateSrcMediaStreamPlaying(uint32_t aFlags) {
     SetAudibleState(true);
   } else {
     if (stream) {
-      mSrcStreamPausedGraphTime =
-          graph->CurrentTime() - mSrcStreamGraphTimeOffset;
+      MOZ_DIAGNOSTIC_ASSERT(mSrcStreamPausedGraphTime.isNothing());
+      mSrcStreamPausedGraphTime = Some(graph->CurrentTime().Ref());
 
       mWatchManager.Unwatch(graph->CurrentTime(),
                             &HTMLMediaElement::UpdateSrcStreamTime);
@@ -4745,11 +4766,12 @@ void HTMLMediaElement::SetupSrcMediaStreamPlayback(DOMMediaStream* aStream) {
     return;
   }
 
-  mSrcStreamPausedGraphTime = 0;
+  mSrcStreamPausedGraphTime = Some(0);
   if (MediaStream* stream = GetSrcMediaStream()) {
     if (MediaStreamGraph* graph = stream->Graph()) {
       // The current graph time will represent 0 for this media element.
-      mSrcStreamPausedGraphTime = graph->CurrentTime();
+      mSrcStreamGraphTimeOffset = graph->CurrentTime();
+      mSrcStreamPausedGraphTime = Some(mSrcStreamGraphTimeOffset);
     }
   }
 
@@ -5102,19 +5124,7 @@ void HTMLMediaElement::PlaybackEnded() {
   NS_ASSERTION(!mDecoder || mDecoder->IsEnded(),
                "Decoder fired ended, but not in ended state");
 
-  // Discard all output streams that have finished now.
-  for (int32_t i = mOutputStreams.Length() - 1; i >= 0; --i) {
-    if (mOutputStreams[i].mFinishWhenEnded) {
-      LOG(LogLevel::Debug,
-          ("Playback ended. Letting output stream %p go inactive",
-           mOutputStreams[i].mStream.get()));
-      mOutputStreams[i].mStream->SetFinishedOnInactive(true);
-      if (mOutputStreams[i].mCapturingDecoder) {
-        mDecoder->RemoveOutputStream(mOutputStreams[i].mStream);
-      }
-      mOutputStreams.RemoveElementAt(i);
-    }
-  }
+  DiscardFinishWhenEndedOutputStreams();
 
   if (mSrcStream) {
     LOG(LogLevel::Debug,
@@ -5514,6 +5524,13 @@ void HTMLMediaElement::ChangeReadyState(nsMediaReadyState aState) {
       ("%p Ready state changed to %s", this, gReadyStateToString[aState]));
 
   DDLOG(DDLogCategory::Property, "ready_state", gReadyStateToString[aState]);
+
+  // https://html.spec.whatwg.org/multipage/media.html#text-track-cue-active-flag
+  // The user agent must synchronously unset cues' active flag whenever the
+  // media element's readyState is changed back to HAVE_NOTHING.
+  if (mReadyState == HAVE_NOTHING && mTextTrackManager) {
+    mTextTrackManager->NotifyReset();
+  }
 
   if (mNetworkState == NETWORK_EMPTY) {
     return;
@@ -5918,8 +5935,8 @@ void HTMLMediaElement::Invalidate(bool aImageSizeChanged,
     UpdateMediaSize(aNewIntrinsicSize.value());
     if (frame) {
       nsPresContext* presContext = frame->PresContext();
-      nsIPresShell* presShell = presContext->PresShell();
-      presShell->FrameNeedsReflow(frame, nsIPresShell::eStyleChange,
+      PresShell* presShell = presContext->PresShell();
+      presShell->FrameNeedsReflow(frame, IntrinsicDirty::StyleChange,
                                   NS_FRAME_IS_DIRTY);
     }
   }
@@ -6222,8 +6239,9 @@ void HTMLMediaElement::SetRequestHeaders(nsIHttpChannel* aChannel) {
   MOZ_ASSERT(NS_SUCCEEDED(rv));
 
   // Set the Referer header
-  rv = aChannel->SetReferrerWithPolicy(OwnerDoc()->GetDocumentURI(),
-                                       OwnerDoc()->GetReferrerPolicy());
+  nsCOMPtr<nsIReferrerInfo> referrerInfo = new ReferrerInfo(
+      OwnerDoc()->GetDocumentURI(), OwnerDoc()->GetReferrerPolicy());
+  rv = aChannel->SetReferrerInfoWithoutClone(referrerInfo);
   MOZ_ASSERT(NS_SUCCEEDED(rv));
 }
 
@@ -6363,14 +6381,14 @@ bool HTMLMediaElement::AudioChannelAgentBlockedPlay() {
 
 static const char* VisibilityString(Visibility aVisibility) {
   switch (aVisibility) {
-    case Visibility::UNTRACKED: {
-      return "UNTRACKED";
+    case Visibility::Untracked: {
+      return "Untracked";
     }
-    case Visibility::APPROXIMATELY_NONVISIBLE: {
-      return "APPROXIMATELY_NONVISIBLE";
+    case Visibility::ApproximatelyNonVisible: {
+      return "ApproximatelyNonVisible";
     }
-    case Visibility::APPROXIMATELY_VISIBLE: {
-      return "APPROXIMATELY_VISIBLE";
+    case Visibility::ApproximatelyVisible: {
+      return "ApproximatelyVisible";
     }
   }
 
@@ -6391,11 +6409,11 @@ void HTMLMediaElement::OnVisibilityChange(Visibility aNewVisibility) {
   }
 
   switch (aNewVisibility) {
-    case Visibility::UNTRACKED: {
+    case Visibility::Untracked: {
       MOZ_ASSERT_UNREACHABLE("Shouldn't notify for untracked visibility");
       return;
     }
-    case Visibility::APPROXIMATELY_NONVISIBLE: {
+    case Visibility::ApproximatelyNonVisible: {
       if (mPlayTime.IsStarted()) {
         // Not visible, play time is running -> Start hidden play time if
         // needed.
@@ -6403,7 +6421,7 @@ void HTMLMediaElement::OnVisibilityChange(Visibility aNewVisibility) {
       }
       break;
     }
-    case Visibility::APPROXIMATELY_VISIBLE: {
+    case Visibility::ApproximatelyVisible: {
       // Visible -> Just pause hidden play time (no-op if already paused).
       HiddenVideoStop();
       break;
@@ -6450,24 +6468,25 @@ bool HTMLMediaElement::TryRemoveMediaKeysAssociation() {
   if (mDecoder) {
     RefPtr<HTMLMediaElement> self = this;
     mDecoder->SetCDMProxy(nullptr)
-        ->Then(mAbstractMainThread, __func__,
-               [self]() {
-                 self->mSetCDMRequest.Complete();
+        ->Then(
+            mAbstractMainThread, __func__,
+            [self]() {
+              self->mSetCDMRequest.Complete();
 
-                 self->RemoveMediaKeys();
-                 if (self->AttachNewMediaKeys()) {
-                   // No incoming MediaKeys object or MediaDecoder is not
-                   // created yet.
-                   self->MakeAssociationWithCDMResolved();
-                 }
-               },
-               [self](const MediaResult& aResult) {
-                 self->mSetCDMRequest.Complete();
-                 // 5.2.4 If the preceding step failed, let this object's
-                 // attaching media keys value be false and reject promise with
-                 // a new DOMException whose name is the appropriate error name.
-                 self->SetCDMProxyFailure(aResult);
-               })
+              self->RemoveMediaKeys();
+              if (self->AttachNewMediaKeys()) {
+                // No incoming MediaKeys object or MediaDecoder is not
+                // created yet.
+                self->MakeAssociationWithCDMResolved();
+              }
+            },
+            [self](const MediaResult& aResult) {
+              self->mSetCDMRequest.Complete();
+              // 5.2.4 If the preceding step failed, let this object's
+              // attaching media keys value be false and reject promise with
+              // a new DOMException whose name is the appropriate error name.
+              self->SetCDMProxyFailure(aResult);
+            })
         ->Track(mSetCDMRequest);
     return false;
   }
@@ -6523,15 +6542,16 @@ bool HTMLMediaElement::TryMakeAssociationWithCDM(CDMProxy* aProxy) {
     // HTMLMediaElement should resolve or reject the DOM promise.
     RefPtr<HTMLMediaElement> self = this;
     mDecoder->SetCDMProxy(aProxy)
-        ->Then(mAbstractMainThread, __func__,
-               [self]() {
-                 self->mSetCDMRequest.Complete();
-                 self->MakeAssociationWithCDMResolved();
-               },
-               [self](const MediaResult& aResult) {
-                 self->mSetCDMRequest.Complete();
-                 self->SetCDMProxyFailure(aResult);
-               })
+        ->Then(
+            mAbstractMainThread, __func__,
+            [self]() {
+              self->mSetCDMRequest.Complete();
+              self->MakeAssociationWithCDMResolved();
+            },
+            [self](const MediaResult& aResult) {
+              self->mSetCDMRequest.Complete();
+              self->SetCDMProxyFailure(aResult);
+            })
         ->Track(mSetCDMRequest);
     return false;
   }
@@ -6951,7 +6971,7 @@ void HTMLMediaElement::NotifyCueDisplayStatesChanged() {
 }
 
 void HTMLMediaElement::MarkAsContentSource(CallerAPI aAPI) {
-  const bool isVisible = mVisibilityState == Visibility::APPROXIMATELY_VISIBLE;
+  const bool isVisible = mVisibilityState == Visibility::ApproximatelyVisible;
 
   if (isVisible) {
     // 0 = ALL_VISIBLE

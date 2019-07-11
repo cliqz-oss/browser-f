@@ -84,6 +84,60 @@ for (const injection of [
       matches: ["*://*.sreedharscce.in/authenticate"],
       css: [{file: "injections/css/bug1526977-sreedharscce.in-login-fix.css"}],
     },
+  }, {
+    id: "bug1518781",
+    platform: "desktop",
+    domain: "twitch.tv",
+    bug: "1518781",
+    contentScripts: {
+      matches: ["*://*.twitch.tv/*"],
+      css: [{file: "injections/css/bug1518781-twitch.tv-webkit-scrollbar.css"}],
+    },
+  }, {
+    id: "bug1551672",
+    platform: "android",
+    domain: "Sites using PDK 5 video",
+    bug: "1551672",
+    pdk5fix: {
+      urls: ["https://*/*/tpPdk.js", "https://*/*/pdk/js/*/*.js"],
+      types: ["script"],
+    },
+  }, {
+    id: "bug1305028",
+    platform: "desktop",
+    domain: "gaming.youtube.com",
+    bug: "1305028",
+    contentScripts: {
+      matches: ["*://gaming.youtube.com/*"],
+      css: [{file: "injections/css/bug1305028-gaming.youtube.com-webkit-scrollbar.css"}],
+    },
+  }, {
+    id: "bug1432935-discord",
+    platform: "desktop",
+    domain: "discordapp.com",
+    bug: "1432935",
+    contentScripts: {
+      matches: ["*://discordapp.com/*"],
+      css: [{file: "injections/css/bug1432935-discordapp.com-webkit-scorllbar-white-line.css"}],
+    },
+  }, {
+    id: "bug1432935-breitbart",
+    platform: "desktop",
+    domain: "breitbart.com",
+    bug: "1432935",
+    contentScripts: {
+      matches: ["*://*.breitbart.com/*"],
+      css: [{file: "injections/css/bug1432935-breitbart.com-webkit-scrollbar.css"}],
+    },
+  }, {
+    id: "bug1561371",
+    platform: "android",
+    domain: "mail.google.com",
+    bug: "1561371",
+    contentScripts: {
+      matches: ["*://mail.google.com/*"],
+      css: [{file: "injections/css/bug1561371-mail.google.com-allow-horizontal-scrolling.css"}],
+    },
   },
 ]) {
   Injections.push(injection);
@@ -108,8 +162,39 @@ async function registerContentScripts() {
   portsToAboutCompatTabs.broadcast({interventionsChanged: filterOverrides(Injections)});
 }
 
+function replaceStringInRequest(requestId, inString, outString, inEncoding = "utf-8") {
+  const filter = browser.webRequest.filterResponseData(requestId);
+  const decoder = new TextDecoder(inEncoding);
+  const encoder = new TextEncoder();
+  const RE = new RegExp(inString, "g");
+  const carryoverLength = inString.length;
+  let carryover = "";
+  filter.ondata = event => {
+    const replaced = (carryover + decoder.decode(event.data, {stream: true})).replace(RE, outString);
+    filter.write(encoder.encode(replaced.slice(0, -carryoverLength)));
+    carryover = replaced.slice(-carryoverLength);
+  };
+  filter.onstop = event => {
+    if (carryover.length) {
+      filter.write(encoder.encode(carryover));
+    }
+    filter.close();
+  };
+}
+
 async function enableInjection(injection) {
   if (injection.active) {
+    return;
+  }
+
+  if ("pdk5fix" in injection) {
+    const {urls, types} = injection.pdk5fix;
+    const listener = injection.pdk5fix.listener = ({requestId}) => {
+      replaceStringInRequest(requestId, "VideoContextChromeAndroid", "VideoContextAndroid");
+      return {};
+    };
+    browser.webRequest.onBeforeRequest.addListener(listener, {urls, types}, ["blocking"]);
+    injection.active = true;
     return;
   }
 
@@ -132,6 +217,14 @@ function unregisterContentScripts() {
 
 async function disableInjection(injection) {
   if (!injection.active) {
+    return;
+  }
+
+  if (injection.pdk5fix) {
+    const {listener} = injection.pdk5fix;
+    browser.webRequest.onBeforeRequest.removeListener(listener);
+    injection.active = false;
+    delete injection.pdk5fix.listener;
     return;
   }
 

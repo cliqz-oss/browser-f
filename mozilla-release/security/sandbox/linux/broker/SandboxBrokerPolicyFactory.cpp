@@ -51,7 +51,6 @@
 
 namespace mozilla {
 
-#if defined(MOZ_CONTENT_SANDBOX)
 namespace {
 static const int rdonly = SandboxBroker::MAY_READ;
 static const int wronly = SandboxBroker::MAY_WRITE;
@@ -59,7 +58,6 @@ static const int rdwr = rdonly | wronly;
 static const int rdwrcr = rdwr | SandboxBroker::MAY_CREATE;
 static const int access = SandboxBroker::MAY_ACCESS;
 }  // namespace
-#endif
 
 static void AddMesaSysfsPaths(SandboxBroker::Policy* aPolicy) {
   // Bug 1384178: Mesa driver loader
@@ -203,7 +201,6 @@ static void AddSharedMemoryPaths(SandboxBroker::Policy* aPolicy, pid_t aPid) {
 SandboxBrokerPolicyFactory::SandboxBrokerPolicyFactory() {
   // Policy entries that are the same in every process go here, and
   // are cached over the lifetime of the factory.
-#if defined(MOZ_CONTENT_SANDBOX)
   SandboxBroker::Policy* policy = new SandboxBroker::Policy;
   // Write permssions
   //
@@ -373,7 +370,7 @@ SandboxBrokerPolicyFactory::SandboxBrokerPolicyFactory() {
     }
   }
 
-#  ifdef DEBUG
+#ifdef DEBUG
   char* bloatLog = PR_GetEnv("XPCOM_MEM_BLOAT_LOG");
   // XPCOM_MEM_BLOAT_LOG has the format
   // /tmp/tmpd0YzFZ.mozrunner/runtests_leaks.log
@@ -387,7 +384,7 @@ SandboxBrokerPolicyFactory::SandboxBrokerPolicyFactory() {
       policy->AddPrefix(rdwrcr, bloatStr.get());
     }
   }
-#  endif
+#endif
 
   // Allow Primus to contact the Bumblebee daemon to manage GPU
   // switching on NVIDIA Optimus systems.
@@ -397,26 +394,24 @@ SandboxBrokerPolicyFactory::SandboxBrokerPolicyFactory() {
   }
   policy->AddPath(SandboxBroker::MAY_CONNECT, bumblebeeSocket);
 
-#  if defined(MOZ_WIDGET_GTK)
+#if defined(MOZ_WIDGET_GTK)
   // Allow local X11 connections, for Primus and VirtualGL to contact
   // the secondary X server. No exception for Wayland.
-#    if defined(MOZ_WAYLAND)
+#  if defined(MOZ_WAYLAND)
   if (GDK_IS_X11_DISPLAY(gdk_display_get_default())) {
     policy->AddPrefix(SandboxBroker::MAY_CONNECT, "/tmp/.X11-unix/X");
   }
-#    else
+#  else
   policy->AddPrefix(SandboxBroker::MAY_CONNECT, "/tmp/.X11-unix/X");
-#    endif
+#  endif
   if (const auto xauth = PR_GetEnv("XAUTHORITY")) {
     policy->AddPath(rdonly, xauth);
   }
-#  endif
+#endif
 
   mCommonContentPolicy.reset(policy);
-#endif
 }
 
-#ifdef MOZ_CONTENT_SANDBOX
 UniquePtr<SandboxBroker::Policy> SandboxBrokerPolicyFactory::GetContentPolicy(
     int aPid, bool aFileProcess) {
   // Policy entries that vary per-process (currently the only reason
@@ -515,12 +510,12 @@ UniquePtr<SandboxBroker::Policy> SandboxBrokerPolicyFactory::GetContentPolicy(
   bool allowPulse = false;
   bool allowAlsa = false;
   if (level < 4) {
-#  ifdef MOZ_PULSEAUDIO
+#ifdef MOZ_PULSEAUDIO
     allowPulse = true;
-#  endif
-#  ifdef MOZ_ALSA
+#endif
+#ifdef MOZ_ALSA
     allowAlsa = true;
-#  endif
+#endif
   }
 
   if (allowAlsa) {
@@ -534,7 +529,7 @@ UniquePtr<SandboxBroker::Policy> SandboxBrokerPolicyFactory::GetContentPolicy(
     AddSharedMemoryPaths(policy.get(), aPid);
   }
 
-#  ifdef MOZ_WIDGET_GTK
+#ifdef MOZ_WIDGET_GTK
   if (const auto userDir = g_get_user_runtime_dir()) {
     // Bug 1321134: DConf's single bit of shared memory
     // The leaf filename is "user" by default, but is configurable.
@@ -549,7 +544,7 @@ UniquePtr<SandboxBroker::Policy> SandboxBrokerPolicyFactory::GetContentPolicy(
       policy->AddPath(rdonly, pulsePath.get());
     }
   }
-#  endif  // MOZ_WIDGET_GTK
+#endif  // MOZ_WIDGET_GTK
 
   if (allowPulse) {
     // PulseAudio also needs access to read the $XAUTHORITY file (see
@@ -597,5 +592,4 @@ SandboxBrokerPolicyFactory::GetUtilityPolicy(int aPid) {
   return policy;
 }
 
-#endif  // MOZ_CONTENT_SANDBOX
 }  // namespace mozilla

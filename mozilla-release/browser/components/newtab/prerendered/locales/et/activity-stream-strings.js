@@ -40,9 +40,7 @@ window.gActivityStreamStrings = {
   "section_disclaimer_topstories_buttontext": "Olgu, sain aru",
   "prefs_home_header": "Firefoxi avalehe sisu",
   "prefs_home_description": "Vali sisu, mida soovid Firefoxi avalehel näha.",
-  "prefs_content_discovery_header": "Firefox Home",
   "prefs_content_discovery_description": "Content Discovery in Firefox Home allows you to discover high-quality, relevant articles from across the web.",
-  "prefs_content_discovery_button": "Turn Off Content Discovery",
   "prefs_section_rows_option": "{num} rida;{num} rida",
   "prefs_search_header": "Veebiotsing",
   "prefs_topsites_description": "Enim külastatud saidid",
@@ -107,9 +105,5 @@ window.gActivityStreamStrings = {
   "firstrun_privacy_notice": "privaatsusreeglitega",
   "firstrun_continue_to_login": "Jätka",
   "firstrun_skip_login": "Jäta see samm vahele",
-  "context_menu_title": "Ava menüü",
-  "pocket_learn_more": "Rohkem teavet",
-  "manual_migration_explanation2": "Proovi Firefoxi teisest brauserist pärinevate järjehoidjate, ajaloo ja paroolidega.",
-  "manual_migration_cancel_button": "Ei soovi",
-  "manual_migration_import_button": "Impordi kohe"
+  "context_menu_title": "Ava menüü"
 };

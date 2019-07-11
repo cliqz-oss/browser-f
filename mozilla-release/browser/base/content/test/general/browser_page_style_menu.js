@@ -29,7 +29,7 @@ add_task(async function() {
 
   let validLinks = await ContentTask.spawn(gBrowser.selectedBrowser, items, function(contentItems) {
     let contentValidLinks = 0;
-    Array.forEach(content.document.querySelectorAll("link, style"), function(el) {
+    Array.prototype.forEach.call(content.document.querySelectorAll("link, style"), function(el) {
       var title = el.getAttribute("title");
       var rel = el.getAttribute("rel");
       var media = el.getAttribute("media");
@@ -61,7 +61,7 @@ add_task(async function() {
           ok(checked, idstring + " should be selected");
           break;
         default:
-          throw "data-state attribute is missing or has invalid value";
+          throw new Error("data-state attribute is missing or has invalid value");
       }
     });
     return contentValidLinks;

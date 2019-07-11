@@ -18,6 +18,7 @@ loader.lazyRequireGetter(this, "isAfterPseudoElement", "devtools/shared/layout/u
 loader.lazyRequireGetter(this, "isAnonymous", "devtools/shared/layout/utils", true);
 loader.lazyRequireGetter(this, "isBeforePseudoElement", "devtools/shared/layout/utils", true);
 loader.lazyRequireGetter(this, "isDirectShadowHostChild", "devtools/shared/layout/utils", true);
+loader.lazyRequireGetter(this, "isMarkerPseudoElement", "devtools/shared/layout/utils", true);
 loader.lazyRequireGetter(this, "isNativeAnonymous", "devtools/shared/layout/utils", true);
 loader.lazyRequireGetter(this, "isShadowAnonymous", "devtools/shared/layout/utils", true);
 loader.lazyRequireGetter(this, "isShadowHost", "devtools/shared/layout/utils", true);
@@ -127,6 +128,7 @@ const NodeActor = protocol.ActorClassWithSpec(nodeSpec, {
 
       attrs: this.writeAttrs(),
       customElementLocation: this.getCustomElementLocation(),
+      isMarkerPseudoElement: isMarkerPseudoElement(this.rawNode),
       isBeforePseudoElement: isBeforePseudoElement(this.rawNode),
       isAfterPseudoElement: isAfterPseudoElement(this.rawNode),
       isAnonymous: isAnonymous(this.rawNode),
@@ -186,7 +188,9 @@ const NodeActor = protocol.ActorClassWithSpec(nodeSpec, {
   get numChildren() {
     // For pseudo elements, childNodes.length returns 1, but the walker
     // will return 0.
-    if (isBeforePseudoElement(this.rawNode) || isAfterPseudoElement(this.rawNode)) {
+    if (isMarkerPseudoElement(this.rawNode) ||
+      isBeforePseudoElement(this.rawNode) || isAfterPseudoElement(this.rawNode)
+    ) {
       return 0;
     }
 
@@ -262,9 +266,15 @@ const NodeActor = protocol.ActorClassWithSpec(nodeSpec, {
     }
 
     // If it does, then check it also has scrollbars.
-    const walker = new DocumentWalker(this.rawNode, this.rawNode.ownerGlobal,
-                                      { filter: scrollbarTreeWalkerFilter });
-    return !!walker.firstChild();
+    try {
+      const walker = new DocumentWalker(this.rawNode, this.rawNode.ownerGlobal,
+                                        { filter: scrollbarTreeWalkerFilter });
+      return !!walker.firstChild();
+    } catch (e) {
+      // We have no access to a DOM object. This is probably due to a CORS
+      // violation. Using try / catch is the only way to avoid this error.
+      return false;
+    }
   },
 
   /**
@@ -339,6 +349,10 @@ const NodeActor = protocol.ActorClassWithSpec(nodeSpec, {
   getCustomElementLocation: function() {
     // Get a reference to the custom element definition function.
     const name = this.rawNode.localName;
+
+    if (!this.rawNode.ownerGlobal) {
+      return undefined;
+    }
 
     const customElementsRegistry = this.rawNode.ownerGlobal.customElements;
     const customElement = customElementsRegistry && customElementsRegistry.get(name);

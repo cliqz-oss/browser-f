@@ -82,7 +82,7 @@ function ConsoleApiCall(props) {
     ];
   } else if (type === "assert") {
     const reps = formatReps(messageBodyConfig);
-    messageBody = dom.span({ className: "cm-variable" }, "Assertion failed: ", reps);
+    messageBody = dom.span({}, "Assertion failed: ", reps);
   } else if (type === "table") {
     // TODO: Chrome does not output anything, see if we want to keep this
     messageBody = dom.span({className: "cm-variable"}, "console.table()");
@@ -93,8 +93,17 @@ function ConsoleApiCall(props) {
         className: "console-message-prefix",
       }, `${prefix}: `));
     }
-  } else {
+  } else if (typeof messageText === "string") {
     messageBody = messageText;
+  } else if (messageText) {
+    messageBody = GripMessageBody({
+      dispatch,
+      messageId,
+      grip: messageText,
+      serviceContainer,
+      useQuotes: false,
+      type,
+    });
   }
 
   let attachment = null;
@@ -140,6 +149,7 @@ function ConsoleApiCall(props) {
     timeStamp,
     timestampsVisible,
     parameters,
+    message,
     maybeScrollToBottom,
   });
 }

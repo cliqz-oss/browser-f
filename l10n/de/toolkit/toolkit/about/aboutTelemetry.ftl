@@ -15,6 +15,7 @@ about-telemetry-option-group-older = Älter
 about-telemetry-previous-ping = <<
 about-telemetry-next-ping = >>
 about-telemetry-page-title = Telemetrie-Daten
+about-telemetry-current-store = Aktueller Speicher: 
 about-telemetry-more-information = Weitere Informationen:
 about-telemetry-firefox-data-doc = Die <a data-l10n-name="data-doc-link">Dokumentation von Firefox-Daten</a> enthält Anleitungen zur Verwendung unserer Datenwerkzeuge.
 about-telemetry-telemetry-client-doc = Die <a data-l10n-name="client-doc-link">Dokumentation des Telemetrie-Clients von Firefox</a> enthält Definitionen von Konzepten, API-Dokumentationen und Erläuterungen zu den Daten.
@@ -55,6 +56,16 @@ about-telemetry-upload-type =
     { $uploadcase ->
         [enabled] aktiviert
        *[disabled] deaktiviert
+    }
+# Example Output: 1 sample, average = 0, sum = 0
+# Variables:
+#   $sampleCount (Integer): amount of histogram samples
+#   $prettyAverage (Integer): average of histogram samples
+#   $sum (Integer): sum of histogram samples
+about-telemetry-histogram-stats = 
+    { $sampleCount ->
+        [one] { $sampleCount } Messung, Durchschnitt = { $prettyAverage }, Summe = { $sum }
+       *[other] { $sampleCount } Messung, Durchschnitt = { $prettyAverage }, Summe = { $sum }
     }
 # Variables:
 #   $telemetryServerOwner (String): the value of the toolkit.telemetry.server_owner preference. Typically "Mozilla"
@@ -125,3 +136,9 @@ about-telemetry-category-header = Kategorie
 about-telemetry-method-header = Methode
 about-telemetry-object-header = Objekt
 about-telemetry-extra-header = Zusatz
+about-telemetry-origin-section = Quellen-Telemetrie
+about-telemetry-origin-origin = Quelle
+about-telemetry-origin-count = Anzahl
+# Variables:
+#   $telemetryServerOwner (String): the value of the toolkit.telemetry.server_owner preference. Typically "Mozilla"
+about-telemetry-origins-explanation = Die <a data-l10n-name="origin-doc-link">Quellen-Telemetrie von Firefox</a> kodiert Daten vor dem Senden, sodass { $telemetryServerOwner } etwas zählen aber nicht bestimmen kann, ob eine bestimmte { -brand-product-name }-Installation zu der Zählung beigetragen hat. <a data-l10n-name="prio-blog-link">Weitere Informationen</a>

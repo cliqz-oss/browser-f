@@ -7,8 +7,12 @@
 
 // Make this available to both AMD and CJS environments
 define(function(require, exports, module) {
-  const { cloneElement, Component, createFactory } =
-    require("devtools/client/shared/vendor/react");
+  const {
+    cloneElement,
+    Component,
+    createFactory,
+    createRef,
+  } = require("devtools/client/shared/vendor/react");
   const { findDOMNode } = require("devtools/client/shared/vendor/react-dom");
   const PropTypes = require("devtools/client/shared/vendor/react-prop-types");
   const dom = require("devtools/client/shared/vendor/react-dom-factories");
@@ -18,6 +22,8 @@ define(function(require, exports, module) {
   const TreeRow = createFactory(require("./TreeRow"));
   const TreeHeader = createFactory(require("./TreeHeader"));
 
+  const { scrollIntoView } = require("devtools/client/shared/scroll");
+
   const SUPPORTED_KEYS = [
     "ArrowUp",
     "ArrowDown",
@@ -25,6 +31,9 @@ define(function(require, exports, module) {
     "ArrowRight",
     "End",
     "Home",
+    "Enter",
+    " ",
+    "Escape",
   ];
 
   const defaultProps = {
@@ -33,6 +42,7 @@ define(function(require, exports, module) {
     provider: ObjectProvider,
     expandedNodes: new Set(),
     selected: null,
+    active: null,
     expandableStrings: true,
     columns: [],
   };
@@ -55,6 +65,7 @@ define(function(require, exports, module) {
    *   getChildren: function(object);
    *   hasChildren: function(object);
    *   getLabel: function(object, colId);
+   *   getLevel: function(object); // optional
    *   getValue: function(object, colId);
    *   getKey: function(object);
    *   getType: function(object);
@@ -111,12 +122,16 @@ define(function(require, exports, module) {
         expandedNodes: PropTypes.object,
         // Selected node
         selected: PropTypes.string,
+        // The currently active (keyboard) item, if any such item exists.
+        active: PropTypes.string,
         // Custom filtering callback
         onFilter: PropTypes.func,
         // Custom sorting callback
         onSort: PropTypes.func,
         // Custom row click callback
         onClickRow: PropTypes.func,
+        // Row context menu event handler
+        onContextMenuRow: PropTypes.func,
         // Tree context menu event handler
         onContextMenuTree: PropTypes.func,
         // A header is displayed if set to true
@@ -190,8 +205,11 @@ define(function(require, exports, module) {
         expandedNodes: props.expandedNodes,
         columns: ensureDefaultColumn(props.columns),
         selected: props.selected,
+        active: props.active,
         lastSelectedIndex: 0,
       };
+
+      this.treeRef = createRef();
 
       this.toggle = this.toggle.bind(this);
       this.isExpanded = this.isExpanded.bind(this);
@@ -199,6 +217,7 @@ define(function(require, exports, module) {
       this.onClickRow = this.onClickRow.bind(this);
       this.getSelectedRow = this.getSelectedRow.bind(this);
       this.selectRow = this.selectRow.bind(this);
+      this.activateRow = this.activateRow.bind(this);
       this.isSelected = this.isSelected.bind(this);
       this.onFilter = this.onFilter.bind(this);
       this.onSort = this.onSort.bind(this);
@@ -224,7 +243,8 @@ define(function(require, exports, module) {
       const selected = this.getSelectedRow();
       if (!selected && this.rows.length > 0) {
         this.selectRow(this.rows[
-          Math.min(this.state.lastSelectedIndex, this.rows.length - 1)]);
+          Math.min(this.state.lastSelectedIndex, this.rows.length - 1)
+        ], { alignTo: "top" });
       }
     }
 
@@ -275,45 +295,61 @@ define(function(require, exports, module) {
             const parentRow = this.rows.slice(0, index).reverse().find(
               r => r.props.member.level < row.props.member.level);
             if (parentRow) {
-              this.selectRow(parentRow);
+              this.selectRow(parentRow, { alignTo: "top" });
             }
           }
           break;
         case "ArrowDown":
           const nextRow = this.rows[index + 1];
           if (nextRow) {
-            this.selectRow(nextRow);
+            this.selectRow(nextRow, { alignTo: "bottom" });
           }
           break;
         case "ArrowUp":
           const previousRow = this.rows[index - 1];
           if (previousRow) {
-            this.selectRow(previousRow);
+            this.selectRow(previousRow, { alignTo: "top" });
           }
           break;
         case "Home":
           const firstRow = this.rows[0];
 
           if (firstRow) {
-            // Due to the styling, the first row is sometimes overlapped by
-            // the table head. So we want to force the tree to scroll to the very top.
-            this.selectRow(firstRow, {
-              block: "end",
-              inline: "nearest",
-            });
+            this.selectRow(firstRow, { alignTo: "top" });
           }
           break;
 
         case "End":
           const lastRow = this.rows[this.rows.length - 1];
           if (lastRow) {
-            this.selectRow(lastRow);
+            this.selectRow(lastRow, { alignTo: "bottom" });
+          }
+          break;
+
+        case "Enter":
+        case " ":
+          // On space or enter make selected row active. This means keyboard
+          // focus handling is passed on to the tree row itself.
+          if (this.treeRef.current === document.activeElement) {
+            event.stopPropagation();
+            event.preventDefault();
+            if (this.state.active !== this.state.selected) {
+              this.activateRow(this.state.selected);
+            }
+
+            return;
+          }
+          break;
+        case "Escape":
+          event.stopPropagation();
+          if (this.state.active != null) {
+            this.activateRow(null);
           }
           break;
       }
 
       // Focus should always remain on the tree container itself.
-      this.tree.focus();
+      this.treeRef.current.focus();
       event.preventDefault();
     }
 
@@ -330,7 +366,17 @@ define(function(require, exports, module) {
       if (cell && cell.classList.contains("treeLabelCell")) {
         this.toggle(nodePath);
       }
-      this.selectRow(event.currentTarget);
+
+      this.selectRow(
+        this.rows.find(row => row.props.member.path === nodePath),
+        { preventAutoScroll: true });
+    }
+
+    onContextMenu(member, event) {
+      const onContextMenuRow = this.props.onContextMenuRow;
+      if (onContextMenuRow) {
+        onContextMenuRow.call(this, member, event);
+      }
     }
 
     getSelectedRow() {
@@ -350,23 +396,62 @@ define(function(require, exports, module) {
       return this.rows.indexOf(row);
     }
 
-    selectRow(row, scrollOptions = {block: "nearest"}) {
-      row = findDOMNode(row);
-
-      if (this.state.selected === row.id) {
-        row.scrollIntoView(scrollOptions);
+    _scrollIntoView(row, options = {}) {
+      const treeEl = this.treeRef.current;
+      if (!treeEl || !row) {
         return;
       }
 
-      this.setState(Object.assign({}, this.state, {
-        selected: row.id,
-      }));
+      const { props: { member: { path } = {} } = {} } = row;
+      if (!path) {
+        return;
+      }
 
-      row.scrollIntoView(scrollOptions);
+      const element = treeEl.ownerDocument.getElementById(path);
+      if (!element) {
+        return;
+      }
+
+      scrollIntoView(element, { ...options });
+    }
+
+    selectRow(row, options = {}) {
+      const { props: { member: { path } = {} } = {} } = row;
+      if (this.isSelected(path)) {
+        return;
+      }
+
+      if (this.state.active != null) {
+        const treeEl = this.treeRef.current;
+        if (treeEl && treeEl !== treeEl.ownerDocument.activeElement) {
+          treeEl.focus();
+        }
+      }
+
+      if (!options.preventAutoScroll) {
+        this._scrollIntoView(row, options);
+      }
+
+      this.setState({
+        ...this.state,
+        selected: path,
+        active: null,
+      });
+    }
+
+    activateRow(active) {
+      this.setState({
+        ...this.state,
+        active,
+      });
     }
 
     isSelected(nodePath) {
       return nodePath === this.state.selected;
+    }
+
+    isActive(nodePath) {
+      return nodePath === this.state.active;
     }
 
     // Filtering & Sorting
@@ -437,7 +522,7 @@ define(function(require, exports, module) {
           // Class attribute computed from the type.
           rowClass: "treeRow-" + type,
           // Level of the child within the hierarchy (top == 0)
-          level: level,
+          level: provider.getLevel ? provider.getLevel(child, level) : level,
           // True if this node has children.
           hasChildren: hasChildren,
           // Value associated with this node (as provided by the data provider)
@@ -450,6 +535,8 @@ define(function(require, exports, module) {
           hidden: !this.onFilter(child),
           // True if the node is selected with keyboard
           selected: this.isSelected(nodePath),
+          // True if the node is activated with keyboard
+          active: this.isActive(nodePath),
         };
       });
     }
@@ -477,12 +564,26 @@ define(function(require, exports, module) {
         }
 
         const props = Object.assign({}, this.props, {
-          key: member.path,
+          key: `${member.path}-${member.active ? "active" : "inactive"}`,
           member: member,
           columns: this.state.columns,
           id: member.path,
-          ref: row => row && this.rows.push(row),
+          ref: row => {
+            if (!row) {
+              return;
+            }
+
+            const rowEl = findDOMNode(row);
+            if (!rowEl || !rowEl.offsetParent) {
+              // offsetParent returns null when the element has style.display
+              // set to none (done by TreeView filtering).
+              return;
+            }
+
+            this.rows.push(row);
+          },
           onClick: this.onClickRow.bind(this, member.path),
+          onContextMenu: this.onContextMenu.bind(this, member),
         });
 
         // Render single row.
@@ -538,12 +639,22 @@ define(function(require, exports, module) {
         dom.table({
           className: classNames.join(" "),
           role: "tree",
-          ref: tree => {
-            this.tree = tree;
-          },
+          ref: this.treeRef,
           tabIndex: 0,
           onKeyDown: this.onKeyDown,
           onContextMenu: onContextMenuTree && onContextMenuTree.bind(this),
+          onClick: () => {
+            // Focus should always remain on the tree container itself.
+            this.treeRef.current.focus();
+          },
+          onBlur: event => {
+            if (this.state.active != null) {
+              const { relatedTarget } = event;
+              if (!this.treeRef.current.contains(relatedTarget)) {
+                this.activateRow(null);
+              }
+            }
+          },
           "aria-label": this.props.label || "",
           "aria-activedescendant": this.state.selected,
           cellPadding: 0,
@@ -551,6 +662,7 @@ define(function(require, exports, module) {
           TreeHeader(props),
           dom.tbody({
             role: "presentation",
+            tabIndex: -1,
           }, rows)
         )
       );

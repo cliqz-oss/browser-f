@@ -21,6 +21,7 @@ const SCROLL_BEHAVIOR_AUTO = 1;
 XPCOMUtils.defineLazyModuleGetters(this, {
   FormLikeFactory: "resource://gre/modules/FormLikeFactory.jsm",
   GeckoViewAutoFill: "resource://gre/modules/GeckoViewAutoFill.jsm",
+  ManifestObtainer: "resource://gre/modules/ManifestObtainer.jsm",
   PrivacyFilter: "resource://gre/modules/sessionstore/PrivacyFilter.jsm",
   SessionHistory: "resource://gre/modules/sessionstore/SessionHistory.jsm",
 });
@@ -40,7 +41,6 @@ class GeckoViewContentChild extends GeckoViewChildModule {
     this.messageManager.addMessageListener("GeckoView:DOMFullscreenExited",
                                            this);
     this.messageManager.addMessageListener("GeckoView:RestoreState", this);
-    this.messageManager.addMessageListener("GeckoView:SaveState", this);
     this.messageManager.addMessageListener("GeckoView:SetActive", this);
     this.messageManager.addMessageListener("GeckoView:UpdateInitData", this);
     this.messageManager.addMessageListener("GeckoView:ZoomToInput", this);
@@ -77,6 +77,7 @@ class GeckoViewContentChild extends GeckoViewChildModule {
     addEventListener("MozDOMFullscreen:Exited", this, false);
     addEventListener("MozDOMFullscreen:Request", this, false);
     addEventListener("contextmenu", this, { capture: true });
+    addEventListener("DOMContentLoaded", this, false);
   }
 
   onDisable() {
@@ -90,6 +91,7 @@ class GeckoViewContentChild extends GeckoViewChildModule {
     removeEventListener("MozDOMFullscreen:Exited", this);
     removeEventListener("MozDOMFullscreen:Request", this);
     removeEventListener("contextmenu", this, { capture: true });
+    removeEventListener("DOMContentLoaded", this);
   }
 
   collectSessionState() {
@@ -138,12 +140,15 @@ class GeckoViewContentChild extends GeckoViewChildModule {
   }
 
   toScrollBehavior(aBehavior) {
-    if (aBehavior === SCROLL_BEHAVIOR_SMOOTH) {
-      return "smooth";
-    } else if (aBehavior === SCROLL_BEHAVIOR_AUTO) {
-      return "auto";
+    if (!content) {
+      return 0;
     }
-    return "smooth";
+    if (aBehavior === SCROLL_BEHAVIOR_SMOOTH) {
+      return content.windowUtils.SCROLL_MODE_SMOOTH;
+    } else if (aBehavior === SCROLL_BEHAVIOR_AUTO) {
+      return content.windowUtils.SCROLL_MODE_INSTANT;
+    }
+    return content.windowUtils.SCROLL_MODE_SMOOTH;
   }
 
   receiveMessage(aMsg) {
@@ -163,7 +168,6 @@ class GeckoViewContentChild extends GeckoViewChildModule {
                  .exitFullscreen();
         }
         break;
-
       case "GeckoView:ZoomToInput": {
         let dwu = content.windowUtils;
 
@@ -206,28 +210,8 @@ class GeckoViewContentChild extends GeckoViewChildModule {
         break;
       }
 
-      case "GeckoView:SaveState":
-        if (this._savedState) {
-          // Short circuit and return the pending state if we're in the process of restoring
-          sendAsyncMessage("GeckoView:SaveStateFinish", {state: JSON.stringify(this._savedState), id: aMsg.data.id});
-        } else {
-          try {
-            let state = this.collectSessionState();
-            sendAsyncMessage("GeckoView:SaveStateFinish", {
-              state: state ? JSON.stringify(state) : null,
-              id: aMsg.data.id,
-            });
-          } catch (e) {
-            sendAsyncMessage("GeckoView:SaveStateFinish", {
-              error: e.message,
-              id: aMsg.data.id,
-            });
-          }
-        }
-        break;
-
       case "GeckoView:RestoreState":
-        this._savedState = JSON.parse(aMsg.data.state);
+        this._savedState = aMsg.data;
 
         if (this._savedState.history) {
           let restoredHistory = SessionHistory.restore(docShell, this._savedState.history);
@@ -244,17 +228,22 @@ class GeckoViewContentChild extends GeckoViewChildModule {
             }
           }, {capture: true, mozSystemGroup: true, once: true});
 
-          addEventListener("pageshow", _ => {
-            const scrolldata = this._savedState.scrolldata;
-            if (scrolldata) {
-              this.Utils.restoreFrameTreeData(content, scrolldata, (frame, data) => {
-                if (data.scroll) {
-                  SessionStoreUtils.restoreScrollPosition(frame, data);
-                }
-              });
+          let scrollRestore = _ => {
+            if (content.location != "about:blank") {
+              const scrolldata = this._savedState.scrolldata;
+              if (scrolldata) {
+                this.Utils.restoreFrameTreeData(content, scrolldata, (frame, data) => {
+                  if (data.scroll) {
+                    SessionStoreUtils.restoreScrollPosition(frame, data);
+                  }
+                });
+              }
+              delete this._savedState;
+              removeEventListener("pageshow", scrollRestore);
             }
-            delete this._savedState;
-          }, {capture: true, mozSystemGroup: true, once: true});
+          };
+
+          addEventListener("pageshow", scrollRestore, {capture: true, mozSystemGroup: true});
 
           if (!this.progressFilter) {
             this.progressFilter =
@@ -284,18 +273,23 @@ class GeckoViewContentChild extends GeckoViewChildModule {
             docShell, "geckoview-content-global-transferred");
         break;
       case "GeckoView:ScrollBy":
-        content.scrollBy({
-          top: this.toPixels(aMsg.data.heightValue, aMsg.data.heightType),
-          left: this.toPixels(aMsg.data.widthValue, aMsg.data.widthType),
-          behavior: this.toScrollBehavior(aMsg.data.behavior),
-        });
+        let x = {};
+        let y = {};
+        content.windowUtils.getVisualViewportOffset(x, y);
+        content.windowUtils.scrollToVisual(
+          x.value + this.toPixels(aMsg.data.widthValue, aMsg.data.widthType),
+          y.value + this.toPixels(aMsg.data.heightValue, aMsg.data.heightType),
+          content.windowUtils.UPDATE_TYPE_MAIN_THREAD,
+          this.toScrollBehavior(aMsg.data.behavior)
+        );
         break;
       case "GeckoView:ScrollTo":
-        content.scrollTo({
-          top: this.toPixels(aMsg.data.heightValue, aMsg.data.heightType),
-          left: this.toPixels(aMsg.data.widthValue, aMsg.data.widthType),
-          behavior: this.toScrollBehavior(aMsg.data.behavior),
-        });
+        content.windowUtils.scrollToVisual(
+          this.toPixels(aMsg.data.widthValue, aMsg.data.widthType),
+          this.toPixels(aMsg.data.heightValue, aMsg.data.heightType),
+          content.windowUtils.UPDATE_TYPE_MAIN_THREAD,
+          this.toScrollBehavior(aMsg.data.behavior)
+        );
         break;
     }
   }
@@ -425,6 +419,17 @@ class GeckoViewContentChild extends GeckoViewChildModule {
           });
         }
         break;
+      case "DOMContentLoaded": {
+        content.requestIdleCallback(async () => {
+          const manifest = await ManifestObtainer.contentObtainManifest(content);
+          if (manifest) {
+            this.eventDispatcher.sendRequest({
+              type: "GeckoView:WebAppManifest",
+              manifest,
+            });
+          }
+        });
+      }
     }
   }
 

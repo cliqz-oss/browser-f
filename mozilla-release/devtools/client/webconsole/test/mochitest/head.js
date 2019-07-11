@@ -21,15 +21,15 @@ Services.scriptloader.loadSubScript(
   this);
 
 // Import helpers for the new debugger
-/* import-globals-from ../../../debugger/new/test/mochitest/helpers/context.js */
+/* import-globals-from ../../../debugger/test/mochitest/helpers/context.js */
 Services.scriptloader.loadSubScript(
-  "chrome://mochitests/content/browser/devtools/client/debugger/new/test/mochitest/helpers/context.js",
+  "chrome://mochitests/content/browser/devtools/client/debugger/test/mochitest/helpers/context.js",
   this);
 
 // Import helpers for the new debugger
-/* import-globals-from ../../../debugger/new/test/mochitest/helpers.js*/
+/* import-globals-from ../../../debugger/test/mochitest/helpers.js*/
 Services.scriptloader.loadSubScript(
-  "chrome://mochitests/content/browser/devtools/client/debugger/new/test/mochitest/helpers.js",
+  "chrome://mochitests/content/browser/devtools/client/debugger/test/mochitest/helpers.js",
   this);
 
 var {HUDService} = require("devtools/client/webconsole/hudservice");
@@ -84,6 +84,23 @@ async function openNewTabAndConsole(url, clearJstermHistory = true) {
   }
 
   return hud;
+}
+
+/**
+ * Open a new window with a tab,open the toolbox, and select the webconsole.
+ *
+ * @param string url
+ *        The URL for the tab to be opened.
+ * @return Promise<{win, hud, tab}>
+ *         Resolves when the tab has been added, loaded and the toolbox has been opened.
+ *         Resolves to the toolbox.
+ */
+async function openNewWindowAndConsole(url) {
+  const win = await openNewBrowserWindow();
+  const tab = await addTab(url, {window: win});
+  win.gBrowser.selectedTab = tab;
+  const hud = await openConsole(tab);
+  return {win, hud, tab};
 }
 
 /**
@@ -280,8 +297,7 @@ async function openContextMenu(hud, element) {
   const onConsoleMenuOpened = hud.ui.wrapper.once("menu-open");
   synthesizeContextMenuEvent(element);
   await onConsoleMenuOpened;
-  const doc = hud.chromeWindow.document;
-  return doc.getElementById("webconsole-menu");
+  return _getContextMenu(hud);
 }
 
 /**
@@ -293,8 +309,7 @@ async function openContextMenu(hud, element) {
  * @return promise
  */
 function hideContextMenu(hud) {
-  const doc = hud.chromeWindow.document;
-  const popup = doc.getElementById("webconsole-menu");
+  const popup = _getContextMenu(hud);
   if (!popup) {
     return Promise.resolve();
   }
@@ -302,6 +317,12 @@ function hideContextMenu(hud) {
   const onPopupHidden = once(popup, "popuphidden");
   popup.hidePopup();
   return onPopupHidden;
+}
+
+function _getContextMenu(hud) {
+  const toolbox = gDevTools.getToolbox(hud.target);
+  const doc = toolbox ? toolbox.topWindow.document : hud.chromeWindow.document;
+  return doc.getElementById("webconsole-menu");
 }
 
 function loadDocument(url, browser = gBrowser.selectedBrowser) {
@@ -342,26 +363,43 @@ function waitForNodeMutation(node, observeConfig = {}) {
  * @param {boolean} expectUrl
  *        Whether the URL in the opened source should match the link, or whether
  *        it is expected to be null.
+ * @param {boolean} expectLine
+ *        It indicates if there is the need to check the line.
+ * @param {boolean} expectColumn
+ *        It indicates if there is the need to check the column.
  */
-async function testOpenInDebugger(hud, toolbox, text, expectUrl = true) {
+async function testOpenInDebugger(
+  hud,
+  toolbox,
+  text,
+  expectUrl = true,
+  expectLine = true,
+  expectColumn = true
+) {
   info(`Finding message for open-in-debugger test; text is "${text}"`);
   const messageNode = await waitFor(() => findMessage(hud, text));
   const frameLinkNode = messageNode.querySelector(".message-location .frame-link");
   ok(frameLinkNode, "The message does have a location link");
-  await checkClickOnNode(hud, toolbox, frameLinkNode, expectUrl);
+  await checkClickOnNode(hud,
+                         toolbox,
+                         frameLinkNode,
+                         expectUrl,
+                         expectLine,
+                         expectColumn);
 }
 
 /**
  * Helper function for testOpenInDebugger.
  */
-async function checkClickOnNode(hud, toolbox, frameLinkNode, expectUrl) {
+async function checkClickOnNode(
+  hud,
+  toolbox,
+  frameLinkNode,
+  expectUrl,
+  expectLine,
+  expectColumn
+) {
   info("checking click on node location");
-
-  const url = frameLinkNode.getAttribute("data-url");
-  ok(url, `source url found ("${url}")`);
-
-  const line = frameLinkNode.getAttribute("data-line");
-  ok(line, `source line found ("${line}")`);
 
   const onSourceInDebuggerOpened = once(hud.ui, "source-in-debugger-opened");
 
@@ -373,14 +411,34 @@ async function checkClickOnNode(hud, toolbox, frameLinkNode, expectUrl) {
   const dbg = toolbox.getPanel("jsdebugger");
 
   // Wait for the source to finish loading, if it is pending.
-  await waitFor(() => {
-    return !!dbg._selectors.getSelectedSource(dbg._getState());
-  });
+  await waitFor(() => !!dbg._selectors.getSelectedSource(dbg._getState()) &&
+                      !!dbg._selectors.getSelectedLocation(dbg._getState()));
 
   if (expectUrl) {
+    const url = frameLinkNode.getAttribute("data-url");
+    ok(url, `source url found ("${url}")`);
+
     is(
       dbg._selectors.getSelectedSource(dbg._getState()).url, url,
       "expected source url"
+    );
+  }
+  if (expectLine) {
+    const line = frameLinkNode.getAttribute("data-line");
+    ok(line, `source line found ("${line}")`);
+
+    is(
+      dbg._selectors.getSelectedLocation(dbg._getState()).line, line,
+      "expected source line"
+    );
+  }
+  if (expectColumn) {
+    const column = frameLinkNode.getAttribute("data-column");
+    ok(column, `source column found ("${column}")`);
+
+    is(
+      dbg._selectors.getSelectedLocation(dbg._getState()).column, column,
+      "expected source column"
     );
   }
 }
@@ -1149,7 +1207,7 @@ function isConfirmDialogOpened(toolbox) {
 
 async function selectFrame(dbg, frame) {
   const onScopes = waitForDispatch(dbg, "ADD_SCOPES");
-  await dbg.actions.selectFrame(frame);
+  await dbg.actions.selectFrame(dbg.selectors.getThreadContext(), frame);
   await onScopes;
 }
 
@@ -1160,4 +1218,134 @@ async function pauseDebugger(dbg) {
     content.wrappedJSObject.firstCall();
   });
   await onPaused;
+}
+
+/**
+ * Check that the passed HTMLElement vertically overflows.
+ * @param {HTMLElement} container
+ * @returns {Boolean}
+ */
+function hasVerticalOverflow(container) {
+  return container.scrollHeight > container.clientHeight;
+}
+
+/**
+ * Check that the passed HTMLElement is scrolled to the bottom.
+ * @param {HTMLElement} container
+ * @returns {Boolean}
+ */
+function isScrolledToBottom(container) {
+  if (!container.lastChild) {
+    return true;
+  }
+  const lastNodeHeight = container.lastChild.clientHeight;
+  return container.scrollTop + container.clientHeight >=
+         container.scrollHeight - lastNodeHeight / 2;
+}
+
+/**
+ *
+ * @param {WebConsole} hud
+ * @param {Array<String>} expectedMessages: An array of string representing the messages
+ *                        from the output. This can only be a part of the string of the
+ *                        message.
+ *                        Start the string with "▶︎⚠ " or "▼⚠ " to indicate that the
+ *                        message is a warningGroup (with respectively an open or
+ *                        collapsed arrow).
+ *                        Start the string with "|︎ " to indicate that the message is
+ *                        inside a group and should be indented.
+ */
+function checkConsoleOutputForWarningGroup(hud, expectedMessages) {
+  const messages = findMessages(hud, "");
+  is(messages.length, expectedMessages.length, "Got the expected number of messages");
+
+  const isInWarningGroup = index => {
+    const message = expectedMessages[index];
+    if (!message.startsWith("|")) {
+      return false;
+    }
+    const groups = expectedMessages.slice(0, index)
+      .reverse()
+      .filter(m => !m.startsWith("|"));
+    if (groups.length === 0) {
+      ok(false, "Unexpected structure: an indented message isn't in a group");
+    }
+
+    return groups[0].startsWith("▶︎⚠") || groups[0].startsWith("▼⚠");
+  };
+
+  expectedMessages.forEach((expectedMessage, i) => {
+    const message = messages[i];
+    info(`Checking "${expectedMessage}"`);
+
+    // Collapsed Warning group
+    if (expectedMessage.startsWith("▶︎⚠")) {
+      is(message.querySelector(".arrow").getAttribute("aria-expanded"), "false",
+        "There's a collapsed arrow");
+      is(message.querySelector(".indent").getAttribute("data-indent"), "0",
+        "The warningGroup has the expected indent");
+      expectedMessage = expectedMessage.replace("▶︎⚠ ", "");
+    }
+
+    // Expanded Warning group
+    if (expectedMessage.startsWith("▼︎⚠")) {
+      is(message.querySelector(".arrow").getAttribute("aria-expanded"), "true",
+        "There's an expanded arrow");
+      is(message.querySelector(".indent").getAttribute("data-indent"), "0",
+        "The warningGroup has the expected indent");
+      expectedMessage = expectedMessage.replace("▼︎⚠ ", "");
+    }
+
+    // Collapsed console.group
+    if (expectedMessage.startsWith("▶︎")) {
+      is(message.querySelector(".arrow").getAttribute("aria-expanded"), "false",
+        "There's a collapsed arrow");
+      expectedMessage = expectedMessage.replace("▶︎ ", "");
+    }
+
+    // Expanded console.group
+    if (expectedMessage.startsWith("▼")) {
+      is(message.querySelector(".arrow").getAttribute("aria-expanded"), "true",
+        "There's an expanded arrow");
+      expectedMessage = expectedMessage.replace("▼ ", "");
+    }
+
+    // In-group message
+    if (expectedMessage.startsWith("|")) {
+      if (isInWarningGroup(i)) {
+        is(message.querySelector(".indent.warning-indent").getAttribute("data-indent"),
+          "1", "The message has the expected indent");
+      }
+
+      expectedMessage = expectedMessage.replace("| ", "");
+    }
+
+    ok(message.textContent.trim().includes(expectedMessage.trim()), `Message includes ` +
+      `the expected "${expectedMessage}" content - "${message.textContent.trim()}"`);
+  });
+}
+
+/**
+ * Check that there is a message with the specified text that has the specified
+ * stack information.
+ * @param {WebConsole} hud
+ * @param {string} text
+ *        message substring to look for
+ * @param {Array<number>} frameLines
+ *        line numbers of the frames expected in the stack
+ */
+async function checkMessageStack(hud, text, frameLines) {
+  const msgNode = await waitFor(() => findMessage(hud, text));
+  ok(!msgNode.classList.contains("open"), `Error logged not expanded`);
+
+  const button = await waitFor(() => msgNode.querySelector(".collapse-button"));
+  button.click();
+
+  const framesNode = await waitFor(() => msgNode.querySelector(".frames"));
+  const frameNodes = framesNode.querySelectorAll(".frame");
+  ok(frameNodes.length == frameLines.length, `Found ${frameLines.length} frames`);
+  for (let i = 0; i < frameLines.length; i++) {
+    ok(frameNodes[i].querySelector(".line").textContent == "" + frameLines[i],
+       `Found line ${frameLines[i]} for frame #${i}`);
+  }
 }

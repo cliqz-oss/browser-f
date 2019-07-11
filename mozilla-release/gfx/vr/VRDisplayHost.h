@@ -58,6 +58,7 @@ class VRDisplayHost {
   bool CheckClearDisplayInfoDirty();
   void SetGroupMask(uint32_t aGroupMask);
   bool GetIsConnected();
+  void ShutdownSubmitThread();
 
   class AutoRestoreRenderState {
    public:
@@ -85,6 +86,7 @@ class VRDisplayHost {
                            const gfx::Rect& aRightEyeRect) = 0;
 
   VRDisplayInfo mDisplayInfo;
+  TimeStamp mLastFrameStart[kVRMaxLatencyFrames];
 
   nsTArray<VRLayerParent*> mLayers;
   // Weak reference to mLayers entries are cleared in

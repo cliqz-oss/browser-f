@@ -26,15 +26,15 @@
     <html:link rel="localization" href="branding/brand.ftl"/>
   </linkset>
 
-  <script type="application/javascript" src="chrome://browser/content/utilityOverlay.js"/>
-  <script type="application/javascript" src="chrome://global/content/preferencesBindings.js"/>
-  <script type="application/javascript" src="chrome://browser/content/preferences/in-content/extensionControlled.js"/>
+  <script src="chrome://browser/content/utilityOverlay.js"/>
+  <script src="chrome://global/content/preferencesBindings.js"/>
+  <script src="chrome://browser/content/preferences/in-content/extensionControlled.js"/>
 
   <keyset>
     <key data-l10n-id="connection-close-key" modifiers="accel" oncommand="Preferences.close(event)"/>
   </keyset>
 
-  <script type="application/javascript" src="chrome://browser/content/preferences/connection.js"/>
+  <script src="chrome://browser/content/preferences/connection.js"/>
 
   <hbox id="proxyExtensionContent"
         align="top" hidden="true" class="extension-controlled">
@@ -148,24 +148,39 @@
   <checkbox id="networkProxySOCKSRemoteDNS"
             preference="network.proxy.socks_remote_dns"
             data-l10n-id="connection-proxy-socks-remote-dns" />
-  <checkbox id="networkDnsOverHttps"
+
+  <groupbox>
+    <checkbox id="networkDnsOverHttps"
             data-l10n-id="connection-dns-over-https"
             preference="network.trr.mode"
             onsyncfrompreference="return gConnectionsDialog.readDnsOverHttpsMode();"
-            onsynctopreference="return gConnectionsDialog.writeDnsOverHttpsMode();"
-            oncommand="gConnectionsDialog.updateDnsOverHttpsUI();"/>
-  <vbox class="indent" flex="1">
-    <radiogroup id="DnsOverHttpsUrlRadioGroup" orient="vertical">
-      <radio id="defaultDnsOverHttpsUrlRadio"
-             data-l10n-id="connection-dns-over-https-url-default"
-             preference="network.trr.uri"
-             oncommand="gConnectionsDialog.updateDnsOverHttpsUI();"/>
-      <hbox>
-        <radio id="customDnsOverHttpsUrlRadio"
-               data-l10n-id="connection-dns-over-https-url-custom"
-               oncommand="gConnectionsDialog.updateDnsOverHttpsUI();"/>
-        <textbox id="customDnsOverHttpsInput" flex="1" preference="network.trr.custom_uri"/>
-      </hbox>
-    </radiogroup>
-  </vbox>
+            onsynctopreference="return gConnectionsDialog.writeDnsOverHttpsMode();"/>
+
+    <grid class="indent" flex="1">
+      <columns>
+        <column></column>
+        <column flex="1"></column>
+      </columns>
+      <rows>
+        <row align="center">
+          <hbox pack="end">
+            <label id="networkDnsOverHttpsResolverChoicesLabel"
+                   data-l10n-id="connection-dns-over-https-url-resolver"
+                   control="networkDnsOverHttpsResolverChoices"/>
+          </hbox>
+          <menulist id="networkDnsOverHttpsResolverChoices"
+                    oncommand="gConnectionsDialog.updateDnsOverHttpsUI()"></menulist>
+        </row>
+        <row align="center" id="customDnsOverHttpsContainer" hidden="true">
+          <hbox pack="end">
+            <label id="networkCustomDnsOverHttpsInputLabel"
+                   data-l10n-id="connection-dns-over-https-custom-label"
+                   control="networkCustomDnsOverHttpsInput"/>
+          </hbox>
+          <textbox id="networkCustomDnsOverHttpsInput" flex="1"
+                   preference="network.trr.custom_uri"/>
+        </row>
+      </rows>
+    </grid>
+  </groupbox>
 </dialog>

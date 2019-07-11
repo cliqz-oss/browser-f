@@ -40,9 +40,7 @@ window.gActivityStreamStrings = {
   "section_disclaimer_topstories_buttontext": "Oké, begrepen",
   "prefs_home_header": "Ynhâld fan Firefox-startside",
   "prefs_home_description": "Kies hokker ynhâld jo op jo Firefox-startside werjaan wolle.",
-  "prefs_content_discovery_header": "Firefox Home",
   "prefs_content_discovery_description": "Fia Content Discovery op de Firefox-startside kinne jo relevante artikelen op it hiele web mei hege kwaliteit fine.",
-  "prefs_content_discovery_button": "Content Discovery útskeakelje",
   "prefs_section_rows_option": "{num} rige;{num} rigen",
   "prefs_search_header": "Sykje op it web",
   "prefs_topsites_description": "De troch jo meast besochte websites",
@@ -107,8 +105,5 @@ window.gActivityStreamStrings = {
   "firstrun_privacy_notice": "Privacyferklearring",
   "firstrun_continue_to_login": "Trochgean",
   "firstrun_skip_login": "Dizze stap oerslaan",
-  "context_menu_title": "Menu iepenje",
-  "manual_migration_explanation2": "Probearje Firefox en ymportearje de blêdwizers, skiednis en wachtwurden fan oare browsers.",
-  "manual_migration_cancel_button": "Nee tankewol",
-  "manual_migration_import_button": "No ymportearje"
+  "context_menu_title": "Menu iepenje"
 };

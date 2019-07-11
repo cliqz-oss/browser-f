@@ -24,6 +24,7 @@ var SidebarUI = {
         url: "chrome://browser/content/places/historySidebar.xul",
         menuId: "menu_historySidebar",
         buttonId: "sidebar-switcher-history",
+        triggerButtonId: "appMenuViewHistorySidebar",
       }],
 #ifdef MOZ_SERVICES_SYNC
       ["viewTabsSidebar", {
@@ -32,6 +33,7 @@ var SidebarUI = {
         url: "chrome://browser/content/syncedtabs/sidebar.xhtml",
         menuId: "menu_tabsSidebar",
         buttonId: "sidebar-switcher-tabs",
+        triggerButtonId: "PanelUI-remotetabs-view-sidebar",
       }],
 #endif
     ]);
@@ -67,6 +69,12 @@ var SidebarUI = {
   _switcherArrow: null,
   _inited: false,
 
+  _initDeferred: PromiseUtils.defer(),
+
+  get promiseInitialized() {
+    return this._initDeferred.promise;
+  },
+
   get initialized() {
     return this._inited;
   },
@@ -85,6 +93,8 @@ var SidebarUI = {
     });
 
     this._inited = true;
+
+    this._initDeferred.resolve();
   },
 
   uninit() {
@@ -522,15 +532,24 @@ var SidebarUI = {
    * none if the argument is an empty string.
    */
   selectMenuItem(commandID) {
-    for (let [id, {menuId, buttonId}] of this.sidebars) {
+    for (let [id, {menuId, buttonId, triggerButtonId}] of this.sidebars) {
       let menu = document.getElementById(menuId);
       let button = document.getElementById(buttonId);
+      let triggerbutton = triggerButtonId && document.getElementById(triggerButtonId);
       if (id == commandID) {
         menu.setAttribute("checked", "true");
         button.setAttribute("checked", "true");
+        if (triggerbutton) {
+          triggerbutton.setAttribute("checked", "true");
+          updateToggleControlLabel(triggerbutton);
+        }
       } else {
         menu.removeAttribute("checked");
         button.removeAttribute("checked");
+        if (triggerbutton) {
+          triggerbutton.removeAttribute("checked");
+          updateToggleControlLabel(triggerbutton);
+        }
       }
     }
   },

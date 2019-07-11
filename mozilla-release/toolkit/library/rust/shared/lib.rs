@@ -31,10 +31,19 @@ extern crate env_logger;
 extern crate u2fhid;
 extern crate gkrust_utils;
 extern crate log;
+#[cfg(feature = "new_cert_storage")]
+extern crate cert_storage;
 extern crate cosec;
 extern crate rsdparsa_capi;
+#[cfg(feature = "new_xulstore")]
+extern crate xulstore;
 #[cfg(feature = "spidermonkey_rust")]
 extern crate jsrust_shared;
+#[cfg(feature = "bitsdownload")]
+extern crate bitsdownload;
+extern crate storage;
+#[cfg(feature = "moz_places")]
+extern crate bookmark_sync;
 
 extern crate arrayvec;
 

@@ -15,6 +15,15 @@ module.exports = {
         sourceType: "module",
       },
     },
+    {
+      "files": "test/unit/head.js",
+      "rules": {
+        "no-unused-vars": ["error", {
+          "args": "none",
+          "vars": "local",
+        }],
+      },
+    },
   ],
   rules: {
     "mozilla/var-only-at-top-level": "error",
@@ -51,7 +60,6 @@ module.exports = {
       max: 2,
     }],
     "no-proto": "error",
-    "no-throw-literal": "error",
     "no-unused-expressions": "error",
     "no-unused-vars": ["error", {
       args: "none",

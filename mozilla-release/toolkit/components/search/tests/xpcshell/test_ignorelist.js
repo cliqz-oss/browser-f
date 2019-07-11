@@ -11,6 +11,10 @@ const kSearchEngineURL2 = "http://example.com/?search={searchTerms}&IGNORE=TRUE"
 const kSearchEngineURL3 = "http://example.com/?search={searchTerms}";
 const kExtensionID = "searchignore@mozilla.com";
 
+add_task(async function setup() {
+  await AddonTestUtils.promiseStartupManager();
+});
+
 add_task(async function test_ignoreList() {
   await setupRemoteSettings();
 
@@ -23,7 +27,6 @@ add_task(async function test_ignoreList() {
 
   await updatePromise;
 
-  // An ignored engine shouldn't be available at all
   let engine = Services.search.getEngineByName(kSearchEngineID1);
   Assert.equal(engine, null, "Engine with ignored search params should not exist");
 

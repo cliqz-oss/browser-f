@@ -40,9 +40,7 @@ window.gActivityStreamStrings = {
   "section_disclaimer_topstories_buttontext": "సరే, అర్థమయ్యింది",
   "prefs_home_header": "Firefox ముంగిలి విషయం",
   "prefs_home_description": "మీ Firefox ముంగిలి తెరలో మీకు కావలసిన విషయాల్ని ఎంచుకోండి.",
-  "prefs_content_discovery_header": "Firefox Home",
   "prefs_content_discovery_description": "Content Discovery in Firefox Home allows you to discover high-quality, relevant articles from across the web.",
-  "prefs_content_discovery_button": "Turn Off Content Discovery",
   "prefs_section_rows_option": "{num} వరుస;{num} వరుసలు",
   "prefs_search_header": "జాల వెతుకులాట",
   "prefs_topsites_description": "మీరు తరచూ చూసే సైట్లు",
@@ -107,9 +105,5 @@ window.gActivityStreamStrings = {
   "firstrun_privacy_notice": "అంతరంగికత గమనిక",
   "firstrun_continue_to_login": "కొనసాగు",
   "firstrun_skip_login": "ఈ అంచెను దాటవేయి",
-  "context_menu_title": "మెనూని తెరువు",
-  "pocket_learn_more": "ఇంకా తెలుసుకోండి",
-  "manual_migration_explanation2": "మరొక విహారిణి లోని ఇష్టాంశాలు, చరిత్ర, సంకేతపదాలతో Firefoxను ప్రయత్నించండి.",
-  "manual_migration_cancel_button": "అడిగినందుకు ధన్యవాదాలు, వద్దు",
-  "manual_migration_import_button": "ఇప్పుడే దిగుమతి చేయండి"
+  "context_menu_title": "మెనూని తెరువు"
 };

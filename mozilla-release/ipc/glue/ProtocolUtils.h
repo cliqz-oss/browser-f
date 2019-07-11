@@ -184,6 +184,8 @@ class IProtocol : public HasResultCodes {
                                         nsIEventTarget* aEventTarget) = 0;
     virtual void ReplaceEventTargetForActor(IProtocol* aActor,
                                             nsIEventTarget* aEventTarget) = 0;
+    virtual void SetEventTargetForRoute(int32_t aRoute,
+                                        nsIEventTarget* aEventTarget) = 0;
 
     virtual already_AddRefed<nsIEventTarget> GetActorEventTarget(
         IProtocol* aActor) = 0;
@@ -226,6 +228,8 @@ class IProtocol : public HasResultCodes {
                                 nsIEventTarget* aEventTarget) override;
     void ReplaceEventTargetForActor(IProtocol* aActor,
                                     nsIEventTarget* aEventTarget) override;
+    void SetEventTargetForRoute(int32_t aRoute,
+                                nsIEventTarget* aEventTarget) override;
     already_AddRefed<nsIEventTarget> GetActorEventTarget(
         IProtocol* aActor) override;
 
@@ -320,6 +324,8 @@ class IProtocol : public HasResultCodes {
   // unexpected behavior.
   void ReplaceEventTargetForActor(IProtocol* aActor,
                                   nsIEventTarget* aEventTarget);
+
+  void SetEventTargetForRoute(int32_t aRoute, nsIEventTarget* aEventTarget);
 
   nsIEventTarget* GetActorEventTarget();
   already_AddRefed<nsIEventTarget> GetActorEventTarget(IProtocol* aActor);
@@ -427,6 +433,8 @@ class IToplevelProtocol : public IProtocol {
                                 nsIEventTarget* aEventTarget) override;
     void ReplaceEventTargetForActor(IProtocol* aActor,
                                     nsIEventTarget* aEventTarget) override;
+    void SetEventTargetForRoute(int32_t aRoute,
+                                nsIEventTarget* aEventTarget) override;
     already_AddRefed<nsIEventTarget> GetActorEventTarget(
         IProtocol* aActor) override;
 
@@ -458,8 +466,6 @@ class IToplevelProtocol : public IProtocol {
 
   base::ProcessId OtherPid() const final;
   void SetOtherProcessId(base::ProcessId aOtherPid);
-
-  bool TakeMinidump(nsIFile** aDump, uint32_t* aSequence);
 
   virtual void OnChannelClose() = 0;
   virtual void OnChannelError() = 0;
@@ -871,6 +877,61 @@ nsresult CreateEndpoints(const PrivateIPDLInterface& aPrivate,
   return NS_OK;
 }
 
+/**
+ * A managed endpoint represents one end of a partially initialized managed
+ * IPDL actor. It is used for situations where the usual IPDL Constructor
+ * methods do not give sufficient control over the construction of actors, such
+ * as when constructing actors within replies, or constructing multiple related
+ * actors simultaneously.
+ *
+ * FooParent* parent = new FooParent();
+ * ManagedEndpoint<PFooChild> childEp = parentMgr->OpenPFooEndpoint(parent);
+ *
+ * ManagedEndpoints should be sent using IPDL messages or other mechanisms to
+ * the other side of the manager channel. Once the ManagedEndpoint has arrived
+ * at its destination, you can create the actor, and bind it to the endpoint.
+ *
+ * FooChild* child = new FooChild();
+ * childMgr->BindPFooEndpoint(childEp, child);
+ *
+ * WARNING: If the remote side of an endpoint has not been bound before it
+ * begins to receive messages, an IPC routing error will occur, likely causing
+ * a browser crash.
+ */
+template <class PFooSide>
+class ManagedEndpoint {
+ public:
+  ManagedEndpoint() : mId(0) {}
+
+  ManagedEndpoint(const PrivateIPDLInterface&, int32_t aId) : mId(aId) {}
+
+  ManagedEndpoint(ManagedEndpoint&& aOther) : mId(aOther.mId) {
+    aOther.mId = 0;
+  }
+
+  ManagedEndpoint& operator=(ManagedEndpoint&& aOther) {
+    mId = aOther.mId;
+    aOther.mId = 0;
+    return *this;
+  }
+
+  bool IsValid() const { return mId != 0; }
+
+  Maybe<int32_t> ActorId() const { return IsValid() ? Some(mId) : Nothing(); }
+
+ private:
+  friend struct IPC::ParamTraits<ManagedEndpoint<PFooSide>>;
+
+  ManagedEndpoint(const ManagedEndpoint&) = delete;
+  ManagedEndpoint& operator=(const ManagedEndpoint&) = delete;
+
+  // The routing ID for the to-be-created endpoint.
+  int32_t mId;
+
+  // XXX(nika): Might be nice to have other info for assertions?
+  // e.g. mManagerId, mManagerType, etc.
+};
+
 void TableToArray(const nsTHashtable<nsPtrHashKey<void>>& aTable,
                   nsTArray<void*>& aArray);
 
@@ -906,9 +967,6 @@ Protocol* LoneManagedOrNullAsserts(
   return aManagees.ConstIter().Get()->GetKey();
 }
 
-// appId's are for B2G only currently, where managees.Count() == 1. This is
-// not guaranteed currently in Desktop, so for paths used for desktop,
-// don't assert there's one managee.
 template <typename Protocol>
 Protocol* SingleManagedOrNull(const ManagedContainer<Protocol>& aManagees) {
   if (aManagees.Count() != 1) {
@@ -993,6 +1051,29 @@ struct ParamTraits<mozilla::ipc::Endpoint<PFooSide>> {
 
   static void Log(const paramType& aParam, std::wstring* aLog) {
     aLog->append(StringPrintf(L"Endpoint"));
+  }
+};
+
+template <class PFooSide>
+struct ParamTraits<mozilla::ipc::ManagedEndpoint<PFooSide>> {
+  typedef mozilla::ipc::ManagedEndpoint<PFooSide> paramType;
+
+  static void Write(Message* aMsg, const paramType& aParam) {
+    IPC::WriteParam(aMsg, aParam.mId);
+  }
+
+  static bool Read(const Message* aMsg, PickleIterator* aIter,
+                   paramType* aResult) {
+    MOZ_RELEASE_ASSERT(aResult->mId == 0);
+
+    if (!IPC::ReadParam(aMsg, aIter, &aResult->mId)) {
+      return false;
+    }
+    return true;
+  }
+
+  static void Log(const paramType& aParam, std::wstring* aLog) {
+    aLog->append(StringPrintf(L"ManagedEndpoint"));
   }
 };
 

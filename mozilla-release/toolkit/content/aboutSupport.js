@@ -93,14 +93,6 @@ var snapshotFormatters = {
                                 });
     document.l10n.setAttributes($("multiprocess-box-status"), statusTextId);
 
-    if (data.remoteAutoStart) {
-      $("contentprocesses-box").textContent = data.currentContentProcesses +
-                                              "/" +
-                                              data.maxContentProcesses;
-    } else {
-      $("contentprocesses-row").hidden = true;
-    }
-
     if (Services.policies) {
       let policiesStrId = "";
       let aboutPolicies = "about:policies";
@@ -164,7 +156,6 @@ var snapshotFormatters = {
       return;
     }
     $("crashes-allReports").style.display = "block";
-    $("crashes-allReports").classList.remove("no-copy");
 
     if (data.pending > 0) {
       document.l10n.setAttributes($("crashes-allReportsWithPending"), "pending-reports", { reports: data.pending });
@@ -229,6 +220,32 @@ var snapshotFormatters = {
         $.new("td", feature.id),
       ]);
     }));
+  },
+
+  async processes(data) {
+    async function buildEntry(name, value) {
+      let entryName = (await document.l10n.formatValue(`process-type-${name.toLowerCase()}`))
+                      || name;
+
+      $("processes-tbody").appendChild($.new("tr", [
+        $.new("td", entryName),
+        $.new("td", value),
+      ]));
+    }
+
+    let remoteProcessesCount = Object.values(data.remoteTypes).reduce((a, b) => a + b, 0);
+    document.querySelector("#remoteprocesses-row a").textContent = remoteProcessesCount;
+
+    // Display the regular "web" process type first in the list,
+    // and with special formatting.
+    if (data.remoteTypes.web) {
+      await buildEntry("web", `${data.remoteTypes.web} / ${data.maxWebContentProcesses}`);
+      delete data.remoteTypes.web;
+    }
+
+    for (let remoteProcessType in data.remoteTypes) {
+      await buildEntry(remoteProcessType, data.remoteTypes[remoteProcessType]);
+    }
   },
 
   modifiedPreferences(data) {
@@ -462,11 +479,11 @@ var snapshotFormatters = {
       "webgl2Extensions",
       ["supportsHardwareH264", "hardware-h264"],
       ["direct2DEnabled", "#Direct2D"],
+      ["windowProtocol", "graphics-window-protocol"],
       "usesTiling",
       "contentUsesTiling",
       "offMainThreadPaintEnabled",
       "offMainThreadPaintWorkerCount",
-      "lowEndMachine",
       "targetFrameRate",
     ];
     for (let feature of featureKeys) {
@@ -491,6 +508,7 @@ var snapshotFormatters = {
       ["adapterDescription", "gpu-description"],
       ["adapterVendorID", "gpu-vendor-id"],
       ["adapterDeviceID", "gpu-device-id"],
+      ["driverVendor", "gpu-driver-vendor"],
       ["driverVersion", "gpu-driver-version"],
       ["driverDate", "gpu-driver-date"],
       ["adapterDrivers", "gpu-drivers"],
@@ -587,7 +605,7 @@ var snapshotFormatters = {
 
     if (featureLog.fallbacks.length) {
       for (let fallback of featureLog.fallbacks) {
-        addRow("workarounds", fallback.name, [new Text(fallback.message)]);
+        addRow("workarounds", "#" + fallback.name, [new Text(fallback.message)]);
       }
     } else {
       $("graphics-workarounds-tbody").style.display = "none";
@@ -949,7 +967,9 @@ function getLoadContext() {
 
 async function copyContentsToClipboard() {
   // Get the HTML and text representations for the important part of the page.
-  let contentsDiv = $("contents");
+  let contentsDiv = $("contents").cloneNode(true);
+  // Remove the items we don't want to copy from the clone:
+  contentsDiv.querySelectorAll(".no-copy, [hidden]").forEach(n => n.remove());
   let dataHtml = contentsDiv.innerHTML;
   let dataText = createTextForElement(contentsDiv);
 
@@ -1022,9 +1042,6 @@ Serializer.prototype = {
   },
 
   _serializeElement(elem) {
-    if (this._ignoreElement(elem))
-      return;
-
     // table
     if (elem.localName == "table") {
       this._serializeTable(elem);
@@ -1045,7 +1062,8 @@ Serializer.prototype = {
     }
 
     // For headings, draw a "line" underneath them so they stand out.
-    if (/^h[0-9]+$/.test(elem.localName)) {
+    let isHeader = /^h[0-9]+$/.test(elem.localName);
+    if (isHeader) {
       let headerText = (this._currentLine || "").trim();
       if (headerText) {
         this._startNewLine();
@@ -1053,13 +1071,10 @@ Serializer.prototype = {
       }
     }
 
-    // Add a blank line underneath block elements but only if they contain text.
-    if (hasText) {
-      let display = window.getComputedStyle(elem).getPropertyValue("display");
-      if (display == "block") {
-        this._startNewLine();
-        this._startNewLine();
-      }
+    // Add a blank line underneath elements but only if they contain text.
+    if (hasText && (isHeader || "p" == elem.localName)) {
+      this._startNewLine();
+      this._startNewLine();
     }
   },
 
@@ -1113,13 +1128,11 @@ Serializer.prototype = {
       // The table's empty.
       return;
 
-    if (hasColHeadings && !this._ignoreElement(tableHeadingElem)) {
+    if (hasColHeadings) {
       // Use column headings.  Print each tr as a multi-line chunk like:
       //   Heading 1: Column 1 value
       //   Heading 2: Column 2 value
       for (let i = startRow; i < trs.length; i++) {
-        if (this._ignoreElement(trs[i]))
-          continue;
         let children = trs[i].querySelectorAll("td");
         for (let j = 0; j < children.length; j++) {
           let text = "";
@@ -1138,8 +1151,6 @@ Serializer.prototype = {
     // print each tr in a single line like:
     //   Column 1 value: Column 2 value
     for (let i = startRow; i < trs.length; i++) {
-      if (this._ignoreElement(trs[i]))
-        continue;
       let children = trs[i].querySelectorAll("th,td");
       let rowHeading = this._nodeText(children[0]).trim();
       if (children[0].classList.contains("title-column")) {
@@ -1161,10 +1172,6 @@ Serializer.prototype = {
       this._startNewLine();
     }
     this._startNewLine();
-  },
-
-  _ignoreElement(elem) {
-    return elem.classList.contains("no-copy");
   },
 
   _nodeText(node) {

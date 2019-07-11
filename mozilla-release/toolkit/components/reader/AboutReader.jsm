@@ -63,7 +63,9 @@ var AboutReader = function(mm, win, articlePromise) {
 
   this._scrollOffset = win.pageYOffset;
 
+  doc.addEventListener("mousedown", this);
   doc.addEventListener("click", this);
+  doc.addEventListener("touchstart", this);
 
   win.addEventListener("pagehide", this);
   win.addEventListener("mozvisualscroll", this, { mozSystemGroup: true });
@@ -259,23 +261,38 @@ AboutReader.prototype = {
     if (!aEvent.isTrusted)
       return;
 
+    let target = aEvent.target;
     switch (aEvent.type) {
-      case "click":
-        let target = aEvent.target;
-        if (target.classList.contains("dropdown-toggle")) {
-          this._toggleDropdownClicked(aEvent);
-        } else if (!target.closest(".dropdown-popup")) {
+      case "touchstart":
+      /* fall through */
+      case "mousedown":
+        if (!target.closest(".dropdown-popup")) {
           this._closeDropdowns();
         }
         break;
+      case "click":
+        if (target.classList.contains("dropdown-toggle")) {
+          this._toggleDropdownClicked(aEvent);
+        }
+        break;
       case "mozvisualscroll":
-        this._closeDropdowns(true);
         const vv = aEvent.originalTarget; // VisualViewport
-        if (!gIsFirefoxDesktop && this._scrollOffset != vv.pageTop) {
+
+        if (gIsFirefoxDesktop) {
+          this._closeDropdowns(true);
+        } else if (this._scrollOffset != vv.pageTop) {
+          // hide the system UI and the "reader-toolbar" only if the dropdown is not opened
+          let selector = ".dropdown.open";
+          let openDropdowns = this._doc.querySelectorAll(selector);
+          if (openDropdowns.length) {
+            break;
+          }
+
           let isScrollingUp = this._scrollOffset > vv.pageTop;
           this._setSystemUIVisibility(isScrollingUp);
           this._setToolbarVisibility(isScrollingUp);
         }
+
         this._scrollOffset = vv.pageTop;
         break;
       case "resize":

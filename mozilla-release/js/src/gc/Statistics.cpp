@@ -11,7 +11,6 @@
 #include "mozilla/Sprintf.h"
 #include "mozilla/TimeStamp.h"
 
-#include <ctype.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <type_traits>
@@ -67,10 +66,13 @@ JS_PUBLIC_API const char* JS::ExplainGCReason(JS::GCReason reason) {
   case JS::GCReason::name:     \
     return #name;
     GCREASONS(SWITCH_REASON)
+#undef SWITCH_REASON
+
+    case JS::GCReason::NO_REASON:
+      return "NO_REASON";
 
     default:
       MOZ_CRASH("bad GC reason");
-#undef SWITCH_REASON
   }
 }
 

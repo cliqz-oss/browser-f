@@ -43,3 +43,5 @@ customize-mode-undo-cmd =
     .label = Rückgängig
 customize-mode-lwthemes-my-themes =
     .value = Installiert
+customize-mode-cliqz-blue-theme =
+    .label = Blaue Tab-Leiste

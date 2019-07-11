@@ -21,6 +21,11 @@ const {
 loader.lazyRequireGetter(this, "getGripPreviewItems", "devtools/client/shared/components/reps/reps", true);
 loader.lazyRequireGetter(this, "getUnicodeUrlPath", "devtools/client/shared/unicode-url", true);
 loader.lazyRequireGetter(this, "getSourceNames", "devtools/client/shared/source-utils", true);
+loader.lazyRequireGetter(this, "createWarningGroupMessage", "devtools/client/webconsole/utils/messages", true);
+loader.lazyRequireGetter(this, "isWarningGroup", "devtools/client/webconsole/utils/messages", true);
+loader.lazyRequireGetter(this, "getWarningGroupType", "devtools/client/webconsole/utils/messages", true);
+loader.lazyRequireGetter(this, "getParentWarningGroupMessageId", "devtools/client/webconsole/utils/messages", true);
+ChromeUtils.defineModuleGetter(this, "pointPrecedes", "resource://devtools/shared/execution-point-utils.js");
 
 const {
   UPDATE_REQUEST,
@@ -33,8 +38,9 @@ const {
 const MessageState = overrides => Object.freeze(Object.assign({
   // List of all the messages added to the console.
   messagesById: new Map(),
-  // When recording or replaying, all progress values in messagesById.
-  replayProgressMessages: new Set(),
+  // List of additional data associated with messages (populated async or on-demand at a
+  // later time after the message is received).
+  messagesPayloadById: new Map(),
   // Array of the visible messages.
   visibleMessages: [],
   // Object for the filtered messages.
@@ -46,9 +52,12 @@ const MessageState = overrides => Object.freeze(Object.assign({
   messagesTableDataById: new Map(),
   // Map of the form {groupMessageId : groupArray},
   // where groupArray is the list of of all the parent groups' ids of the groupMessageId.
+  // This handles console API groups.
   groupsById: new Map(),
-  // Message id of the current group (no corresponding console.groupEnd yet).
+  // Message id of the current console API group (no corresponding console.groupEnd yet).
   currentGroup: null,
+  // This group handles "warning groups" (Content Blocking, CORS, CSP, …)
+  warningGroupsById: new Map(),
   // Array of removed actors (i.e. actors logged in removed messages) we keep track of
   // in order to properly release them.
   // This array is not supposed to be consumed by any UI component.
@@ -60,16 +69,19 @@ const MessageState = overrides => Object.freeze(Object.assign({
   networkMessagesUpdateById: {},
   // Set of logpoint IDs that have been removed
   removedLogpointIds: new Set(),
+  // Any execution point we are currently paused at, when replaying.
   pausedExecutionPoint: null,
+  // Whether any messages with execution points have been seen.
+  hasExecutionPoints: false,
 }, overrides));
 
 function cloneState(state) {
   return {
     messagesById: new Map(state.messagesById),
-    replayProgressMessages: new Set(state.replayProgressMessages),
     visibleMessages: [...state.visibleMessages],
     filteredMessagesCount: {...state.filteredMessagesCount},
     messagesUiById: [...state.messagesUiById],
+    messagesPayloadById: new Map(state.messagesPayloadById),
     messagesTableDataById: new Map(state.messagesTableDataById),
     groupsById: new Map(state.groupsById),
     currentGroup: state.currentGroup,
@@ -78,13 +90,24 @@ function cloneState(state) {
     networkMessagesUpdateById: {...state.networkMessagesUpdateById},
     removedLogpointIds: new Set(state.removedLogpointIds),
     pausedExecutionPoint: state.pausedExecutionPoint,
+    hasExecutionPoints: state.hasExecutionPoints,
+    warningGroupsById: new Map(state.warningGroupsById),
   };
 }
 
-function addMessage(state, filtersState, prefsState, newMessage) {
+/**
+ * Add a console message to the state.
+ *
+ * @param {ConsoleMessage} newMessage: The message to add to the state.
+ * @param {MessageState} state: The message state ( = managed by this reducer).
+ * @param {FiltersState} filtersState: The filters state.
+ * @param {PrefsState} prefsState: The preferences state.
+ * @param {UiState} uiState: The ui state.
+ * @returns {MessageState} a new messages state.
+ */
+function addMessage(newMessage, state, filtersState, prefsState, uiState) {
   const {
     messagesById,
-    replayProgressMessages,
     groupsById,
     currentGroup,
     repeatById,
@@ -93,17 +116,6 @@ function addMessage(state, filtersState, prefsState, newMessage) {
   if (newMessage.type === constants.MESSAGE_TYPE.NULL_MESSAGE) {
     // When the message has a NULL type, we don't add it.
     return state;
-  }
-
-  if (newMessage.executionPoint && !newMessage.logpointId) {
-    // When replaying old behaviors in a tab, we might see the same messages
-    // multiple times. Ignore duplicate messages with the same progress values.
-    // We don't need to do this for logpoint messages, which will only arrive once.
-    const progress = newMessage.executionPoint.progress;
-    if (replayProgressMessages.has(progress)) {
-      return state;
-    }
-    state.replayProgressMessages.add(progress);
   }
 
   // After messages with a given logpoint ID have been removed, ignore all
@@ -121,7 +133,7 @@ function addMessage(state, filtersState, prefsState, newMessage) {
   }
 
   if (newMessage.allowRepeating && messagesById.size > 0) {
-    const lastMessage = [...messagesById.values()][messagesById.size - 1];
+    const lastMessage = messagesById.get(getLastMessageId(state));
 
     if (
       lastMessage.repeatId === newMessage.repeatId
@@ -134,10 +146,73 @@ function addMessage(state, filtersState, prefsState, newMessage) {
 
   // Add the new message with a reference to the parent group.
   const parentGroups = getParentGroups(currentGroup, groupsById);
-  newMessage.groupId = currentGroup;
-  newMessage.indent = parentGroups.length;
+  if (!isWarningGroup(newMessage)) {
+    newMessage.groupId = currentGroup;
+    newMessage.indent = parentGroups.length;
+  }
 
   ensureExecutionPoint(state, newMessage);
+
+  if (newMessage.executionPoint) {
+    state.hasExecutionPoints = true;
+  }
+
+  // Check if the current message could be placed in a Warning Group.
+  // This needs to be done before setting the new message in messagesById so we have a
+  // proper message.
+  const warningGroupType = getWarningGroupType(newMessage);
+
+  // If the preference for warning grouping is true, and the new message could be in a
+  // warning group.
+  if (prefsState.groupWarnings && warningGroupType !== null) {
+    const warningGroupMessageId = getParentWarningGroupMessageId(newMessage);
+
+    // If there's no warning group for the type/innerWindowID yet
+    if (!state.messagesById.has(warningGroupMessageId)) {
+      // We create it and add it to the store.
+      const groupMessage = createWarningGroupMessage(
+        warningGroupMessageId, warningGroupType, newMessage);
+      state = addMessage(groupMessage, state, filtersState, prefsState, uiState);
+      state.warningGroupsById.set(warningGroupMessageId, []);
+    }
+
+    // We add the new message to the appropriate warningGroup.
+    state.warningGroupsById.get(warningGroupMessageId).push(newMessage.id);
+
+    // If the warningGroup message is not visible yet, but should be.
+    if (!state.visibleMessages.includes(warningGroupMessageId)
+      && getMessageVisibility(state.messagesById.get(warningGroupMessageId), {
+        messagesState: state,
+        filtersState,
+        prefsState,
+        uiState,
+      }).visible
+    ) {
+      // Then we put it in the visibleMessages properties, at the position of the first
+      // warning message inside the warningGroup.
+      // If that first warning message is in a console.group, we place it before the
+      // outermost console.group message.
+      const firstWarningMessageId = state.warningGroupsById.get(warningGroupMessageId)[0];
+      const firstWarningMessage = state.messagesById.get(firstWarningMessageId);
+      const outermostGroupId = getOutermostGroup(firstWarningMessage, groupsById);
+      const groupIndex = state.visibleMessages.indexOf(outermostGroupId);
+      const warningMessageIndex = state.visibleMessages.indexOf(firstWarningMessageId);
+
+      if (groupIndex > -1) {
+        // We remove the warning message
+        if (warningMessageIndex > -1) {
+          state.visibleMessages.splice(warningMessageIndex, 1);
+        }
+
+        // And we put the warning group before the console.group
+        state.visibleMessages.splice(groupIndex, 0, warningGroupMessageId);
+      } else {
+        // If the warning message is not in a console.group, we replace it by the
+        // warning group message.
+        state.visibleMessages.splice(warningMessageIndex, 1, warningGroupMessageId);
+      }
+    }
+  }
 
   const addedMessage = Object.freeze(newMessage);
   state.messagesById.set(newMessage.id, addedMessage);
@@ -155,13 +230,36 @@ function addMessage(state, filtersState, prefsState, newMessage) {
     }
   }
 
-  const {
-    visible,
-    cause,
-  } = getMessageVisibility(addedMessage, state, filtersState);
+  const { visible, cause } = getMessageVisibility(addedMessage, {
+    messagesState: state,
+    filtersState,
+    prefsState,
+    uiState,
+  });
 
   if (visible) {
-    state.visibleMessages.push(newMessage.id);
+    // If the message is part of a visible warning group, we want to add it after the last
+    // visible message of the group.
+    const warningGroupId = getParentWarningGroupMessageId(newMessage);
+    if (warningGroupId && state.visibleMessages.includes(warningGroupId)) {
+      // Defaults to the warning group message.
+      let index = state.visibleMessages.indexOf(warningGroupId);
+
+      // We loop backward through the warning group's messages to get the latest visible
+      // messages in it.
+      const messagesInWarningGroup = state.warningGroupsById.get(warningGroupId);
+      for (let i = messagesInWarningGroup.length - 1; i >= 0; i--) {
+        const idx = state.visibleMessages.indexOf(messagesInWarningGroup[i]);
+        if (idx > -1) {
+          index = idx;
+          break;
+        }
+      }
+      // Inserts the new warning message at the wanted location "in" the warning group.
+      state.visibleMessages.splice(index + 1, 0, newMessage.id);
+    } else {
+      state.visibleMessages.push(newMessage.id);
+    }
     maybeSortVisibleMessages(state);
   } else if (DEFAULT_FILTERS.includes(cause)) {
     state.filteredMessagesCount.global++;
@@ -177,9 +275,10 @@ function addMessage(state, filtersState, prefsState, newMessage) {
   return state;
 }
 
-function messages(state = MessageState(), action, filtersState, prefsState) {
+function messages(state = MessageState(), action, filtersState, prefsState, uiState) {
   const {
     messagesById,
+    messagesPayloadById,
     messagesUiById,
     messagesTableDataById,
     networkMessagesUpdateById,
@@ -222,7 +321,7 @@ function messages(state = MessageState(), action, filtersState, prefsState) {
 
       newState = cloneState(state);
       list.forEach(message => {
-        newState = addMessage(newState, filtersState, prefsState, message);
+        newState = addMessage(message, newState, filtersState, prefsState, uiState);
       });
 
       return limitTopLevelMessageCount(newState, logLimit);
@@ -278,21 +377,28 @@ function messages(state = MessageState(), action, filtersState, prefsState) {
       openState.messagesUiById = [...messagesUiById, action.id];
       const currMessage = messagesById.get(action.id);
 
-      // If the message is a group
-      if (isGroupType(currMessage.type)) {
+      // If the message is a console.group/groupCollapsed or a warning group.
+      if (isGroupType(currMessage.type) || isWarningGroup(currMessage)) {
         // We want to make its children visible
         const messagesToShow = [...messagesById].reduce((res, [id, message]) => {
           if (
             !visibleMessages.includes(message.id)
-            && getParentGroups(message.groupId, groupsById).includes(action.id)
-            && getMessageVisibility(
-              message,
-              openState,
+            && (
+              (isWarningGroup(currMessage) && !!getWarningGroupType(message))
+              || (
+                isGroupType(currMessage.type)
+                && getParentGroups(message.groupId, groupsById).includes(action.id)
+              )
+            )
+            && getMessageVisibility(message, {
+              messagesState: openState,
               filtersState,
-              // We want to check if the message is in an open group
-              // only if it is not a direct child of the group we're opening.
-              message.groupId !== action.id
-            ).visible
+              prefsState,
+              uiState,
+            // We want to check if the message is in an open group
+            // only if it is not a direct child of the group we're opening.
+              checkGroup: message.groupId !== action.id,
+            }).visible
           ) {
             res.push(id);
           }
@@ -329,11 +435,25 @@ function messages(state = MessageState(), action, filtersState, prefsState) {
 
       // If the message is a group
       if (isGroupType(messagesById.get(messageId).type)) {
-        // Hide all its children
-        closeState.visibleMessages = visibleMessages.filter(id =>
-          getParentGroups(messagesById.get(id).groupId, groupsById)
-            .includes(messageId) === false
-        );
+        // Hide all its children, unless they're in a warningGroup.
+        closeState.visibleMessages = visibleMessages.filter((id, i, arr) => {
+          const message = messagesById.get(id);
+          const warningGroupMessage =
+            messagesById.get(getParentWarningGroupMessageId(message));
+
+          // If the message is in a warning group, then we return its current visibility.
+          if (shouldGroupWarningMessages(warningGroupMessage, closeState, prefsState)) {
+            return arr.includes(id);
+          }
+
+          const parentGroups = getParentGroups(message.groupId, groupsById);
+          return parentGroups.includes(messageId) === false;
+        });
+      } else if (isWarningGroup(messagesById.get(messageId))) {
+        // If the message was a warningGroup, we hide all the messages in the group.
+        const groupMessages = closeState.warningGroupsById.get(messageId);
+        closeState.visibleMessages =
+          visibleMessages.filter(id => !groupMessages.includes(id));
       }
       return closeState;
 
@@ -343,6 +463,12 @@ function messages(state = MessageState(), action, filtersState, prefsState) {
       return {
         ...state,
         messagesTableDataById: (new Map(messagesTableDataById)).set(id, data),
+      };
+
+    case constants.MESSAGE_UPDATE_PAYLOAD:
+      return {
+        ...state,
+        messagesPayloadById: (new Map(messagesPayloadById)).set(action.id, action.data),
       };
 
     case constants.NETWORK_MESSAGE_UPDATE:
@@ -383,14 +509,18 @@ function messages(state = MessageState(), action, filtersState, prefsState) {
     case constants.FILTER_TEXT_SET:
     case constants.FILTERS_CLEAR:
     case constants.DEFAULT_FILTERS_RESET:
+    case constants.SHOW_CONTENT_MESSAGES_TOGGLE:
       const messagesToShow = [];
       const filtered = getDefaultFiltersCounter();
 
       messagesById.forEach((message, msgId) => {
-        const {
-          visible,
-          cause,
-        } = getMessageVisibility(message, state, filtersState);
+        const { visible, cause } = getMessageVisibility(message, {
+          messagesState: state,
+          filtersState,
+          prefsState,
+          uiState,
+        });
+
         if (visible) {
           messagesToShow.push(msgId);
         } else if (DEFAULT_FILTERS.includes(cause)) {
@@ -456,6 +586,14 @@ function getParentGroups(currentGroup, groupsById) {
   }
 
   return groups;
+}
+
+function getOutermostGroup(message, groupsById) {
+  const groups = getParentGroups(message.groupId, groupsById);
+  if (groups.length === 0) {
+    return null;
+  }
+  return groups[groups.length - 1];
 }
 
 /**
@@ -635,15 +773,63 @@ function getToplevelMessageCount(state) {
  *         - visible {Boolean}: true if the message should be visible
  *         - cause {String}: if visible is false, what causes the message to be hidden.
  */
-function getMessageVisibility(message, messagesState, filtersState, checkGroup = true) {
-  // Do not display the message if it's in closed group.
+function getMessageVisibility(message, {
+    messagesState,
+    filtersState,
+    prefsState,
+    uiState,
+    checkGroup = true,
+}) {
+  // Do not display the message if it's not from chromeContext and we don't show content
+  // messages.
+  if (
+    !uiState.showContentMessages &&
+    message.chromeContext === false &&
+    message.type !== MESSAGE_TYPE.COMMAND &&
+    message.type !== MESSAGE_TYPE.RESULT
+  ) {
+    return {
+      visible: false,
+      cause: "contentMessage",
+    };
+  }
+
+  const warningGroupMessage =
+  messagesState.messagesById.get(getParentWarningGroupMessageId(message));
+
+  // Do not display the message if it's in closed group and not in a warning group.
   if (
     checkGroup
     && !isInOpenedGroup(message, messagesState.groupsById, messagesState.messagesUiById)
+    && !shouldGroupWarningMessages(warningGroupMessage, messagesState, prefsState)
   ) {
     return {
       visible: false,
       cause: "closedGroup",
+    };
+  }
+
+  // If the message is a warningGroup, check if it should be displayed.
+  if (
+    isWarningGroup(message)
+    && !shouldGroupWarningMessages(message, messagesState, prefsState)
+  ) {
+    return {
+      visible: false,
+      cause: "warningGroupHeuristicNotMet",
+    };
+  }
+
+  // Do not display the the message if it can be in a warningGroup, and the group is
+  // displayed but collapsed.
+  const warningGroupMessageId = getParentWarningGroupMessageId(message);
+  if (
+    messagesState.visibleMessages.includes(warningGroupMessageId)
+    && !messagesState.messagesUiById.includes(warningGroupMessageId)
+  ) {
+    return {
+      visible: false,
+      cause: "closedWarningGroup",
     };
   }
 
@@ -652,13 +838,6 @@ function getMessageVisibility(message, messagesState, filtersState, checkGroup =
   if (isUnfilterable(message)) {
     return {
       visible: true,
-    };
-  }
-
-  if (!passSearchFilters(message, filtersState)) {
-    return {
-      visible: false,
-      cause: FILTERS.TEXT,
     };
   }
 
@@ -689,6 +868,15 @@ function getMessageVisibility(message, messagesState, filtersState, checkGroup =
     return {
       visible: false,
       cause: FILTERS.NETXHR,
+    };
+  }
+
+  // This should always be the last check, or we might report that a message was hidden
+  // because of text search, while it may be hidden because its category is disabled.
+  if (!passSearchFilters(message, filtersState)) {
+    return {
+      visible: false,
+      cause: FILTERS.TEXT,
     };
   }
 
@@ -799,7 +987,15 @@ function passCssFilters(message, filters) {
  * @returns {Boolean}
  */
 function passSearchFilters(message, filters) {
-  const text = (filters.text || "").trim();
+  const text = (filters.text || "").trim().toLocaleLowerCase();
+  let regex;
+  if (text.startsWith("/") && text.endsWith("/") && text.length > 2) {
+    try {
+      regex = new RegExp(text.slice(1, -1), "im");
+    } catch (e) {
+
+    }
+  }
 
   // If there is no search, the message passes the filter.
   if (!text) {
@@ -808,26 +1004,26 @@ function passSearchFilters(message, filters) {
 
   return (
     // Look for a match in parameters.
-    isTextInParameters(text, message.parameters)
+    isTextInParameters(text, regex, message.parameters)
     // Look for a match in location.
-    || isTextInFrame(text, message.frame)
+    || isTextInFrame(text, regex, message.frame)
     // Look for a match in net events.
-    || isTextInNetEvent(text, message.request)
+    || isTextInNetEvent(text, regex, message.request)
     // Look for a match in stack-trace.
-    || isTextInStackTrace(text, message.stacktrace)
+    || isTextInStackTrace(text, regex, message.stacktrace)
     // Look for a match in messageText.
-    || isTextInMessageText(text, message.messageText)
+    || isTextInMessageText(text, regex, message.messageText)
     // Look for a match in notes.
-    || isTextInNotes(text, message.notes)
+    || isTextInNotes(text, regex, message.notes)
     // Look for a match in prefix.
-    || isTextInPrefix(text, message.prefix)
+    || isTextInPrefix(text, regex, message.prefix)
   );
 }
 
 /**
 * Returns true if given text is included in provided stack frame.
 */
-function isTextInFrame(text, frame) {
+function isTextInFrame(text, regex, frame) {
   if (!frame) {
     return false;
   }
@@ -841,53 +1037,50 @@ function isTextInFrame(text, frame) {
   const { short } = getSourceNames(source);
   const unicodeShort = getUnicodeUrlPath(short);
 
-  const includes =
-    `${functionName ? functionName + " " : ""}${unicodeShort}:${line}:${column}`
-    .toLocaleLowerCase()
-    .includes(text.toLocaleLowerCase());
-  return includes;
+  const str =
+    `${functionName ? functionName + " " : ""}${unicodeShort}:${line}:${column}`;
+  return regex ? regex.test(str) : str.toLocaleLowerCase().includes(text);
 }
 
 /**
 * Returns true if given text is included in provided parameters.
 */
-function isTextInParameters(text, parameters) {
+function isTextInParameters(text, regex, parameters) {
   if (!parameters) {
     return false;
   }
 
-  text = text.toLocaleLowerCase();
-  return getAllProps(parameters).some(prop =>
-    (prop + "").toLocaleLowerCase().includes(text)
-  );
+  return getAllProps(parameters).some(prop => {
+    const str = (prop + "");
+    return regex ? regex.test(str) : str.toLocaleLowerCase().includes(text);
+  });
 }
 
 /**
 * Returns true if given text is included in provided net event grip.
 */
-function isTextInNetEvent(text, request) {
+function isTextInNetEvent(text, regex, request) {
   if (!request) {
     return false;
   }
 
-  text = text.toLocaleLowerCase();
-
-  const method = request.method.toLocaleLowerCase();
-  const url = request.url.toLocaleLowerCase();
-  return method.includes(text) || url.includes(text);
+  const method = request.method;
+  const url = request.url;
+  return regex ? regex.test(method) || regex.test(url) :
+    method.toLocaleLowerCase().includes(text) || url.toLocaleLowerCase().includes(text);
 }
 
 /**
 * Returns true if given text is included in provided stack trace.
 */
-function isTextInStackTrace(text, stacktrace) {
+function isTextInStackTrace(text, regex, stacktrace) {
   if (!Array.isArray(stacktrace)) {
     return false;
   }
 
   // isTextInFrame expect the properties of the frame object to be in the same
   // order they are rendered in the Frame component.
-  return stacktrace.some(frame => isTextInFrame(text, {
+  return stacktrace.some(frame => isTextInFrame(text, regex, {
     functionName: frame.functionName || l10n.getStr("stacktrace.anonymousFunction"),
     source: frame.filename,
     lineNumber: frame.lineNumber,
@@ -898,17 +1091,19 @@ function isTextInStackTrace(text, stacktrace) {
 /**
 * Returns true if given text is included in `messageText` field.
 */
-function isTextInMessageText(text, messageText) {
+function isTextInMessageText(text, regex, messageText) {
   if (!messageText) {
     return false;
   }
 
   if (typeof messageText === "string") {
-    return messageText.toLocaleLowerCase().includes(text.toLocaleLowerCase());
+    return regex ? regex.test(messageText) :
+      messageText.toLocaleLowerCase().includes(text);
   }
 
   if (messageText.type === "longString") {
-    return messageText.initial.toLocaleLowerCase().includes(text.toLocaleLowerCase());
+    return regex ? regex.test(messageText.initial) :
+      messageText.initial.toLocaleLowerCase().includes(text);
   }
 
   return true;
@@ -917,18 +1112,21 @@ function isTextInMessageText(text, messageText) {
 /**
 * Returns true if given text is included in notes.
 */
-function isTextInNotes(text, notes) {
+function isTextInNotes(text, regex, notes) {
   if (!Array.isArray(notes)) {
     return false;
   }
 
   return notes.some(note =>
     // Look for a match in location.
-    isTextInFrame(text, note.frame) ||
+    isTextInFrame(text, regex, note.frame) ||
     // Look for a match in messageBody.
     (
       note.messageBody &&
-      note.messageBody.toLocaleLowerCase().includes(text.toLocaleLowerCase())
+      (
+        regex ? regex.test(note.messageBody) :
+          note.messageBody.toLocaleLowerCase().includes(text)
+      )
     )
   );
 }
@@ -936,12 +1134,14 @@ function isTextInNotes(text, notes) {
 /**
 * Returns true if given text is included in prefix.
 */
-function isTextInPrefix(text, prefix) {
+function isTextInPrefix(text, regex, prefix) {
   if (!prefix) {
     return false;
   }
 
-  return `${prefix}: `.toLocaleLowerCase().includes(text.toLocaleLowerCase());
+  const str = `${prefix}: `;
+
+  return regex ? regex.test(str) : str.toLocaleLowerCase().includes(text);
 }
 
 /**
@@ -985,7 +1185,7 @@ function ensureExecutionPoint(state, newMessage) {
 
   // Add a lastExecutionPoint property which will place this message immediately
   // after the last visible one when sorting.
-  let point = { progress: 0 }, messageCount = 1;
+  let point = { checkpoint: 0, progress: 0 }, messageCount = 1;
   if (state.visibleMessages.length) {
     const lastId = state.visibleMessages[state.visibleMessages.length - 1];
     const lastMessage = state.messagesById.get(lastId);
@@ -1014,32 +1214,19 @@ function maybeSortVisibleMessages(state) {
   // with respect to how they originally executed. Use the execution point
   // information in the messages to sort visible messages according to how
   // they originally executed. This isn't necessary if we haven't seen any
-  // messages with progress counters, as either we aren't replaying or haven't
+  // messages with execution points, as either we aren't replaying or haven't
   // seen any messages yet.
-  if (state.replayProgressMessages.size) {
+  if (state.hasExecutionPoints) {
     state.visibleMessages.sort((a, b) => {
       const pointA = messageExecutionPoint(state, a);
       const pointB = messageExecutionPoint(state, b);
-      if (pointA.progress != pointB.progress) {
-        return pointA.progress > pointB.progress;
+      if (pointPrecedes(pointB, pointA)) {
+        return true;
+      } else if (pointPrecedes(pointA, pointB)) {
+        return false;
       }
-      // Execution points without a progress counter predate execution points
-      // with one, i.e. a console.log() call (which bumps the progress value)
-      // predates the code that runs afterward.
-      if ("frameIndex" in pointA != "frameIndex" in pointB) {
-        return "frameIndex" in pointA;
-      }
-      // Deeper frames predate shallower frames, if the progress counter is the
-      // same. We bump the progress counter when pushing frames, but not when
-      // popping them.
-      if (pointA.frameIndex != pointB.frameIndex) {
-        return pointA.frameIndex < pointB.frameIndex;
-      }
-      // Earlier script locations predate later script locations.
-      if (pointA.offset != pointB.offset) {
-        return pointA.offset > pointB.offset;
-      }
-      // When messages don't have their own execution point, they can still be
+
+      // When messages have the same execution point, they can still be
       // distinguished by the number of messages since the last one which did
       // have an execution point.
       const countA = messageCountSinceLastExecutionPoint(state, a);
@@ -1047,6 +1234,36 @@ function maybeSortVisibleMessages(state) {
       return countA > countB;
     });
   }
+}
+
+function getLastMessageId(state) {
+  return Array.from(state.messagesById.keys())[state.messagesById.size - 1];
+}
+
+/**
+ * Returns if a given type of warning message should be grouped.
+ *
+ * @param {ConsoleMessage} warningGroupMessage
+ * @param {MessageState} messagesState
+ * @param {PrefsState} prefsState
+ */
+function shouldGroupWarningMessages(warningGroupMessage, messagesState, prefsState) {
+  if (!warningGroupMessage) {
+    return false;
+  }
+
+  // Only group if the preference is ON.
+  if (!prefsState.groupWarnings) {
+    return false;
+  }
+
+  // We group warning messages if there are at least 2 messages that could go in it.
+  const warningGroup = messagesState.warningGroupsById.get(warningGroupMessage.id);
+  if (!warningGroup || !Array.isArray(warningGroup)) {
+    return false;
+  }
+
+  return warningGroup.length > 1;
 }
 
 exports.messages = messages;

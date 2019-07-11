@@ -138,11 +138,12 @@ import org.mozilla.gecko.tabs.TabsPanel;
 import org.mozilla.gecko.telemetry.TelemetryCorePingDelegate;
 import org.mozilla.gecko.telemetry.TelemetryUploadService;
 import org.mozilla.gecko.telemetry.measurements.SearchCountMeasurements;
+import org.mozilla.gecko.telemetry.TelemetryActivationPingDelegate;
 import org.mozilla.gecko.toolbar.AutocompleteHandler;
 import org.mozilla.gecko.toolbar.BrowserToolbar;
+import org.mozilla.gecko.toolbar.BrowserToolbar.CommitEventSource;
 import org.mozilla.gecko.toolbar.BrowserToolbar.TabEditingState;
 import org.mozilla.gecko.toolbar.PwaConfirm;
-import org.mozilla.gecko.trackingprotection.TrackingProtectionPrompt;
 import org.mozilla.gecko.updater.PostUpdateHandler;
 import org.mozilla.gecko.updater.UpdateServiceHelper;
 import org.mozilla.gecko.util.ActivityUtils;
@@ -317,6 +318,7 @@ public class BrowserApp extends GeckoApp
     private final DynamicToolbar mDynamicToolbar = new DynamicToolbar();
 
     private final TelemetryCorePingDelegate mTelemetryCorePingDelegate = new TelemetryCorePingDelegate();
+    private final TelemetryActivationPingDelegate mTelemetryActivationPingDelegate = new TelemetryActivationPingDelegate();
 
     private final List<BrowserAppDelegate> delegates = Collections.unmodifiableList(Arrays.asList(
             new ScreenshotDelegate(),
@@ -324,6 +326,7 @@ public class BrowserApp extends GeckoApp
             new ReaderViewBookmarkPromotion(),
             new PostUpdateHandler(),
             mTelemetryCorePingDelegate,
+            mTelemetryActivationPingDelegate,
             new OfflineTabStatusDelegate(),
             new AdjustBrowserAppDelegate(mTelemetryCorePingDelegate)
     ));
@@ -479,6 +482,11 @@ public class BrowserApp extends GeckoApp
         // Global onKey handler. This is called if the focused UI doesn't
         // handle the key event, and before Gecko swallows the events.
         if (event.getAction() != KeyEvent.ACTION_DOWN) {
+            // workaround for suppresed back button after the first redirect (see bug #1551458)
+            if (keyCode == KeyEvent.KEYCODE_BACK) {
+                return false;
+            }
+
             if (mSuppressNextKeyUp && event.getAction() == KeyEvent.ACTION_UP) {
                 mSuppressNextKeyUp = false;
                 return true;
@@ -639,8 +647,8 @@ public class BrowserApp extends GeckoApp
 
         super.onCreate(savedInstanceState);
 
-        if (mIsAbortingAppLaunch) {
-          return;
+        if (isShutDownOrAbort()) {
+            return;
         }
 
         mOnboardingHelper = new OnboardingHelper(this, safeStartingIntent);
@@ -1083,7 +1091,7 @@ public class BrowserApp extends GeckoApp
     public void onResume() {
         super.onResume();
 
-        if (mIsAbortingAppLaunch) {
+        if (isShutDownOrAbort()) {
             return;
         }
 
@@ -1104,7 +1112,7 @@ public class BrowserApp extends GeckoApp
         dismissTabHistoryFragment();
 
         super.onPause();
-        if (mIsAbortingAppLaunch) {
+        if (isShutDownOrAbort()) {
             return;
         }
 
@@ -1140,7 +1148,7 @@ public class BrowserApp extends GeckoApp
             // User clicked a new link to be opened in Firefox.
             // We returned from Picture-in-picture mode and now must try to open that link.
             if (startingIntentAfterPip != null) {
-                getApplication().startActivity(startingIntentAfterPip);
+                startActivity(startingIntentAfterPip);
                 startingIntentAfterPip = null;
             } else {
                 // Get if the user pressed in the PIP window to return to full app or closed it entirely
@@ -1168,7 +1176,7 @@ public class BrowserApp extends GeckoApp
     @Override
     public void onRestart() {
         super.onRestart();
-        if (mIsAbortingAppLaunch) {
+        if (isShutDownOrAbort()) {
             return;
         }
 
@@ -1180,7 +1188,7 @@ public class BrowserApp extends GeckoApp
     @Override
     public void onStart() {
         super.onStart();
-        if (mIsAbortingAppLaunch) {
+        if (isShutDownOrAbort()) {
             return;
         }
 
@@ -1217,7 +1225,7 @@ public class BrowserApp extends GeckoApp
     @Override
     public void onStop() {
         super.onStop();
-        if (mIsAbortingAppLaunch) {
+        if (isShutDownOrAbort()) {
             return;
         }
 
@@ -1258,8 +1266,9 @@ public class BrowserApp extends GeckoApp
 
         mBrowserToolbar.setOnCommitListener(new BrowserToolbar.OnCommitListener() {
             @Override
-            public void onCommitByKey() {
-                if (commitEditingMode()) {
+            public void onCommit(CommitEventSource eventSource) {
+                final boolean didCommit = commitEditingMode();
+                if (didCommit && eventSource == CommitEventSource.KEY_EVENT) {
                     // We're committing in response to a key-down event. Since we'll be hiding the
                     // ToolbarEditLayout, the corresponding key-up event will end up being sent to
                     // Gecko which we don't want, as this messes up tracking of the last user input.
@@ -1510,7 +1519,7 @@ public class BrowserApp extends GeckoApp
 
     @Override
     public void onDestroy() {
-        if (mIsAbortingAppLaunch) {
+        if (isShutDownOrAbort()) {
             super.onDestroy();
             return;
         }
@@ -2178,20 +2187,6 @@ public class BrowserApp extends GeckoApp
     @Override
     public void addPrivateTab() {
         Tabs.getInstance().addPrivateTab();
-    }
-
-    public void showTrackingProtectionPromptIfApplicable() {
-        final SharedPreferences prefs = getSharedPreferences();
-
-        final boolean hasTrackingProtectionPromptBeShownBefore = prefs.getBoolean(GeckoPreferences.PREFS_TRACKING_PROTECTION_PROMPT_SHOWN, false);
-
-        if (hasTrackingProtectionPromptBeShownBefore) {
-            return;
-        }
-
-        prefs.edit().putBoolean(GeckoPreferences.PREFS_TRACKING_PROTECTION_PROMPT_SHOWN, true).apply();
-
-        startActivity(new Intent(BrowserApp.this, TrackingProtectionPrompt.class));
     }
 
     @Override
@@ -4241,5 +4236,9 @@ public class BrowserApp extends GeckoApp
         if (frag != null) {
             frag.dismiss();
         }
+    }
+
+    private boolean isShutDownOrAbort() {
+        return mIsAbortingAppLaunch || mShutdownOnDestroy;
     }
 }

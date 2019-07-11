@@ -18,14 +18,12 @@ const {AppConstants} = ChromeUtils.import("resource://gre/modules/AppConstants.j
 
 const Utils = TelemetryUtils;
 
-const { AddonManager } = ChromeUtils.import("resource://gre/modules/AddonManager.jsm");
+const {AddonManager, AddonManagerPrivate} = ChromeUtils.import("resource://gre/modules/AddonManager.jsm");
 
 ChromeUtils.defineModuleGetter(this, "AttributionCode",
                                "resource:///modules/AttributionCode.jsm");
 ChromeUtils.defineModuleGetter(this, "ctypes",
                                "resource://gre/modules/ctypes.jsm");
-ChromeUtils.defineModuleGetter(this, "LightweightThemeManager",
-                               "resource://gre/modules/LightweightThemeManager.jsm");
 ChromeUtils.defineModuleGetter(this, "ProfileAge",
                                "resource://gre/modules/ProfileAge.jsm");
 ChromeUtils.defineModuleGetter(this, "WindowsRegistry",
@@ -241,6 +239,7 @@ const DEFAULT_ENVIRONMENT_PREFS = new Map([
   ["extensions.blocklist.url", {what: RECORD_PREF_VALUE}],
   ["extensions.formautofill.addresses.enabled", {what: RECORD_PREF_VALUE}],
   ["extensions.formautofill.creditCards.enabled", {what: RECORD_PREF_VALUE}],
+  ["extensions.htmlaboutaddons.enabled", {what: RECORD_PREF_VALUE}],
   ["extensions.legacy.enabled", {what: RECORD_PREF_VALUE}],
   ["extensions.strictCompatibility", {what: RECORD_PREF_VALUE}],
   ["extensions.update.enabled", {what: RECORD_PREF_VALUE}],
@@ -279,11 +278,12 @@ const DEFAULT_ENVIRONMENT_PREFS = new Map([
   ["privacy.fuzzyfox.enabled", {what: RECORD_PREF_VALUE}],
   ["privacy.trackingprotection.enabled", {what: RECORD_PREF_VALUE}],
   ["privacy.donottrackheader.enabled", {what: RECORD_PREF_VALUE}],
+  ["security.enterprise_roots.auto-enabled", {what: RECORD_PREF_VALUE}],
+  ["security.enterprise_roots.enabled", {what: RECORD_PREF_VALUE}],
+  ["security.pki.mitm_detected", {what: RECORD_PREF_VALUE}],
   ["security.mixed_content.block_active_content", {what: RECORD_PREF_VALUE}],
   ["security.mixed_content.block_display_content", {what: RECORD_PREF_VALUE}],
   ["toolkit.cosmeticAnimations.enabled", {what: RECORD_PREF_VALUE}],
-  ["toolkit.telemetry.testing.overridePreRelease", {what: RECORD_PREF_VALUE}],
-  ["toolkit.telemetry.overrideUpdateChannel", {what: RECORD_PREF_STATE}],
   ["xpinstall.signatures.required", {what: RECORD_PREF_VALUE}],
 ]);
 
@@ -306,7 +306,7 @@ const SEARCH_ENGINE_MODIFIED_TOPIC = "browser-search-engine-modified";
 const SEARCH_SERVICE_TOPIC = "browser-search-service";
 const SESSIONSTORE_WINDOWS_RESTORED_TOPIC = "sessionstore-windows-restored";
 const PREF_CHANGED_TOPIC = "nsPref:changed";
-const BLOCKLIST_LOADED_TOPIC = "blocklist-loaded";
+const BLOCKLIST_LOADED_TOPIC = "plugin-blocklist-loaded";
 const AUTO_UPDATE_PREF_CHANGE_TOPIC = "auto-update-config-change";
 
 /**
@@ -478,6 +478,7 @@ function getGfxAdapter(aSuffix = "") {
     subsysID: getGfxField("adapterSubsysID" + aSuffix, null),
     RAM: memoryMB,
     driver: getGfxField("adapterDriver" + aSuffix, null),
+    driverVendor: getGfxField("adapterDriverVendor" + aSuffix, null),
     driverVersion: getGfxField("adapterDriverVersion" + aSuffix, null),
     driverDate: getGfxField("adapterDriverDate" + aSuffix, null),
   };
@@ -531,7 +532,7 @@ function getWindowsVersionInfo() {
     winVer.dwOSVersionInfoSize = OSVERSIONINFOEXW.size;
 
     if (0 === GetVersionEx(winVer.address())) {
-      throw ("Failure in GetVersionEx (returned 0)");
+      throw new Error("Failure in GetVersionEx (returned 0)");
     }
 
     return {
@@ -569,15 +570,9 @@ EnvironmentAddonBuilder.prototype = {
    * Get the initial set of addons.
    * @returns Promise<void> when the initial load is complete.
    */
-  init() {
-    // Some tests don't initialize the addon manager. This accounts for the
-    // unfortunate reality of life.
-    try {
-      AddonManager.shutdown.addBlocker("EnvironmentAddonBuilder",
-        () => this._shutdownBlocker());
-    } catch (err) {
-      return Promise.reject(err);
-    }
+  async init() {
+    AddonManager.beforeShutdown.addBlocker("EnvironmentAddonBuilder",
+      () => this._shutdownBlocker());
 
     this._pendingTask = (async () => {
       try {
@@ -585,18 +580,9 @@ EnvironmentAddonBuilder.prototype = {
         await this._updateAddons(true);
 
         if (!this._environment._addonsAreFull) {
-          // The addon database has not been loaded, so listen for the event
-          // triggered by the AddonManager when it is loaded so we can
-          // immediately gather full data at that time.
-          await new Promise(resolve => {
-            const ADDON_LOAD_NOTIFICATION = "xpi-database-loaded";
-            Services.obs.addObserver({
-              observe(subject, topic, data) {
-                Services.obs.removeObserver(this, ADDON_LOAD_NOTIFICATION);
-                resolve();
-              },
-            }, ADDON_LOAD_NOTIFICATION);
-          });
+          // The addon database has not been loaded, wait for it to
+          // initialize and gather full data as soon as it does.
+          await AddonManagerPrivate.databaseReady;
 
           // Now gather complete addons details.
           await this._updateAddons();
@@ -620,23 +606,26 @@ EnvironmentAddonBuilder.prototype = {
   },
 
   // AddonListener
-  onEnabled() {
-    this._onAddonChange();
+  onEnabled(addon) {
+    this._onAddonChange(addon);
   },
-  onDisabled() {
-    this._onAddonChange();
+  onDisabled(addon) {
+    this._onAddonChange(addon);
   },
-  onInstalled() {
-    this._onAddonChange();
+  onInstalled(addon) {
+    this._onAddonChange(addon);
   },
-  onUninstalling() {
-    this._onAddonChange();
+  onUninstalling(addon) {
+    this._onAddonChange(addon);
   },
-  onUninstalled() {
-    this._onAddonChange();
+  onUninstalled(addon) {
+    this._onAddonChange(addon);
   },
 
-  _onAddonChange() {
+  _onAddonChange(addon) {
+    if (addon && addon.isBuiltin && !addon.isSystem) {
+      return;
+    }
     this._environment._log.trace("_onAddonChange");
     this._checkForChanges("addons-changed");
   },
@@ -710,18 +699,12 @@ EnvironmentAddonBuilder.prototype = {
    */
   async _updateAddons(atStartup) {
     this._environment._log.trace("_updateAddons");
-    let personaId = null;
-    let theme = LightweightThemeManager.currentTheme;
-    if (theme) {
-      personaId = theme.id;
-    }
 
     let addons = {
       activeAddons: await this._getActiveAddons(),
       theme: await this._getActiveTheme(),
       activePlugins: this._getActivePlugins(atStartup),
       activeGMPlugins: await this._getActiveGMPlugins(atStartup),
-      persona: personaId,
     };
 
     let result = {
@@ -749,6 +732,10 @@ EnvironmentAddonBuilder.prototype = {
     this._environment._addonsAreFull = fullData;
     let activeAddons = {};
     for (let addon of allAddons) {
+      // Don't collect any information about the new built-in search webextensions
+      if (addon.isBuiltin && !addon.isSystem) {
+        continue;
+      }
       // Weird addon data in the wild can lead to exceptions while collecting
       // the data.
       try {
@@ -850,7 +837,7 @@ EnvironmentAddonBuilder.prototype = {
       }];
     }
     let pluginTags =
-      Cc["@mozilla.org/plugin/host;1"].getService(Ci.nsIPluginHost).getPluginTags({});
+      Cc["@mozilla.org/plugin/host;1"].getService(Ci.nsIPluginHost).getPluginTags();
 
     let activePlugins = [];
     for (let tag of pluginTags) {
@@ -870,7 +857,7 @@ EnvironmentAddonBuilder.prototype = {
           blocklisted: tag.blocklisted,
           disabled: tag.disabled,
           clicktoplay: tag.clicktoplay,
-          mimeTypes: tag.getMimeTypes({}),
+          mimeTypes: tag.getMimeTypes(),
           updateDay: Utils.millisecondsToDays(updateDate.getTime()),
         });
       } catch (ex) {
@@ -1245,7 +1232,7 @@ EnvironmentCache.prototype = {
     this._log.trace("observe - aTopic: " + aTopic + ", aData: " + aData);
     switch (aTopic) {
       case SEARCH_ENGINE_MODIFIED_TOPIC:
-        if (aData != "engine-current") {
+        if (aData != "engine-default") {
           return;
         }
         // Record the new default search choice and send the change notification.
@@ -1740,14 +1727,17 @@ EnvironmentCache.prototype = {
       profile: { // hdd where the profile folder is located
         model: getSysinfoProperty("profileHDDModel", null),
         revision: getSysinfoProperty("profileHDDRevision", null),
+        type: getSysinfoProperty("profileHDDType", null),
       },
       binary:  { // hdd where the application binary is located
         model: getSysinfoProperty("binHDDModel", null),
         revision: getSysinfoProperty("binHDDRevision", null),
+        type: getSysinfoProperty("binHDDType", null),
       },
       system:  { // hdd where the system files are located
         model: getSysinfoProperty("winHDDModel", null),
         revision: getSysinfoProperty("winHDDRevision", null),
+        type: getSysinfoProperty("winHDDType", null),
       },
     };
   },
@@ -1786,7 +1776,7 @@ EnvironmentCache.prototype = {
       D2DEnabled: getGfxField("D2DEnabled", null),
       DWriteEnabled: getGfxField("DWriteEnabled", null),
       ContentBackend: getGfxField("ContentBackend", null),
-      LowEndMachine: getGfxField("LowEndMachine", false),
+      Headless: getGfxField("isHeadless", null),
       // The following line is disabled due to main thread jank and will be enabled
       // again as part of bug 1154500.
       // DWriteVersion: getGfxField("DWriteVersion", null),
@@ -1795,7 +1785,7 @@ EnvironmentCache.prototype = {
       features: {},
     };
 
-    if (!["android", "linux"].includes(AppConstants.platform)) {
+    if (AppConstants.platform !== "android") {
       let gfxInfo = Cc["@mozilla.org/gfx/info;1"].getService(Ci.nsIGfxInfo);
       try {
         gfxData.monitors = gfxInfo.getMonitors();

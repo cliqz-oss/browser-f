@@ -95,7 +95,7 @@
 @BINPATH@/platform.ini
 @BINPATH@/blocklist.xml
 @BINPATH@/defaults/settings/blocklists/addons.json
-@BINPATH@/defaults/settings/blocklists/certificates.json
+@BINPATH@/defaults/settings/security-state/onecrl.json
 
 ; [Components]
 @BINPATH@/components/components.manifest
@@ -129,6 +129,10 @@
 @BINPATH@/components/HandlerService.js
 @BINPATH@/components/servicesComponents.manifest
 @BINPATH@/components/servicesSettings.manifest
+
+#ifndef MOZ_GECKOVIEW_JAR
+@BINPATH@/components/TelemetryStartup.manifest
+#endif
 
 #if defined(ENABLE_TESTS) && defined(MOZ_DEBUG)
 @BINPATH@/components/TestInterfaceJS.js

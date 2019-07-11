@@ -40,9 +40,7 @@ window.gActivityStreamStrings = {
   "section_disclaimer_topstories_buttontext": "យល់​ហើយ",
   "prefs_home_header": "ខ្លឹមសារ Firefox Home",
   "prefs_home_description": "ជ្រើសរើស​ខ្លឹមសារ​អ្វីដែលអ្នកចង់បាននៅលើអេក្រង់ Firefox Home របស់អ្នក។",
-  "prefs_content_discovery_header": "Firefox Home",
   "prefs_content_discovery_description": "Content Discovery in Firefox Home allows you to discover high-quality, relevant articles from across the web.",
-  "prefs_content_discovery_button": "Turn Off Content Discovery",
   "prefs_section_rows_option": "{num} row;{num} rows",
   "prefs_search_header": "ការស្វែងរកតាម​អ៊ីនធឺណិត",
   "prefs_topsites_description": "គេហទំព័រ​ដែល​អ្នក​មើល​ច្រើន​បំផុត",
@@ -107,9 +105,5 @@ window.gActivityStreamStrings = {
   "firstrun_privacy_notice": "Privacy Notice",
   "firstrun_continue_to_login": "បន្ត",
   "firstrun_skip_login": "Skip this step",
-  "context_menu_title": "បើក​ម៉ឺនុយ",
-  "pocket_learn_more": "ស្វែងយល់​បន្ថែម",
-  "manual_migration_explanation2": "សាកល្បងប្រើ Firefox ជាមួយចំណាំ ប្រវត្តិ និងពាក្យសម្ងាត់ពីកម្មវិធីរុករកផ្សេងទៀត។",
-  "manual_migration_cancel_button": "ទេ អរគុណ",
-  "manual_migration_import_button": "នាំចូលឥឡូវនេះ"
+  "context_menu_title": "បើក​ម៉ឺនុយ"
 };

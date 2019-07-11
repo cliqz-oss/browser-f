@@ -259,9 +259,10 @@ static LanguageSpecificCasingBehavior GetCasingFor(const nsAtom* aLang) {
 
 bool nsCaseTransformTextRunFactory::TransformString(
     const nsAString& aString, nsString& aConvertedString, bool aAllUppercase,
-    const nsAtom* aLanguage, nsTArray<bool>& aCharsToMergeArray,
-    nsTArray<bool>& aDeletedCharsArray, const nsTransformedTextRun* aTextRun,
-    uint32_t aOffsetInTextRun, nsTArray<uint8_t>* aCanBreakBeforeArray,
+    bool aCaseTransformsOnly, const nsAtom* aLanguage,
+    nsTArray<bool>& aCharsToMergeArray, nsTArray<bool>& aDeletedCharsArray,
+    const nsTransformedTextRun* aTextRun, uint32_t aOffsetInTextRun,
+    nsTArray<uint8_t>* aCanBreakBeforeArray,
     nsTArray<RefPtr<nsTransformedCharStyle>>* aStyleArray) {
   bool auxiliaryOutputArrays = aCanBreakBeforeArray && aStyleArray;
   MOZ_ASSERT(!auxiliaryOutputArrays || aTextRun,
@@ -279,7 +280,10 @@ bool nsCaseTransformTextRunFactory::TransformString(
   uint32_t sigmaIndex = uint32_t(-1);
   nsUGenCategory cat;
 
-  uint8_t style = aAllUppercase ? NS_STYLE_TEXT_TRANSFORM_UPPERCASE : 0;
+  StyleTextTransform style =
+      aAllUppercase ? StyleTextTransform{StyleTextTransformCase::Uppercase,
+                                         StyleTextTransformOther()}
+                    : StyleTextTransform::None();
   bool forceNonFullWidth = false;
   const nsAtom* lang = aLanguage;
 
@@ -301,8 +305,10 @@ bool nsCaseTransformTextRunFactory::TransformString(
     RefPtr<nsTransformedCharStyle> charStyle;
     if (aTextRun) {
       charStyle = aTextRun->mStyles[aOffsetInTextRun];
-      style = aAllUppercase ? NS_STYLE_TEXT_TRANSFORM_UPPERCASE
-                            : charStyle->mTextTransform;
+      style = aAllUppercase
+                  ? StyleTextTransform{StyleTextTransformCase::Uppercase,
+                                       StyleTextTransformOther()}
+                  : charStyle->mTextTransform;
       forceNonFullWidth = charStyle->mForceNonFullWidth;
 
       nsAtom* newLang =
@@ -327,8 +333,11 @@ bool nsCaseTransformTextRunFactory::TransformString(
       ch = SURROGATE_TO_UCS4(ch, str[i + 1]);
     }
 
-    switch (style) {
-      case NS_STYLE_TEXT_TRANSFORM_LOWERCASE:
+    switch (style.case_) {
+      case StyleTextTransformCase::None:
+        break;
+
+      case StyleTextTransformCase::Lowercase:
         if (languageSpecificCasing == eLSCB_Turkish) {
           if (ch == 'I') {
             ch = LATIN_SMALL_LETTER_DOTLESS_I;
@@ -429,7 +438,7 @@ bool nsCaseTransformTextRunFactory::TransformString(
         ch = ToLowerCase(ch);
         break;
 
-      case NS_STYLE_TEXT_TRANSFORM_UPPERCASE:
+      case StyleTextTransformCase::Uppercase:
         if (languageSpecificCasing == eLSCB_Turkish && ch == 'i') {
           ch = LATIN_CAPITAL_LETTER_I_WITH_DOT_ABOVE;
           break;
@@ -537,7 +546,7 @@ bool nsCaseTransformTextRunFactory::TransformString(
         }
         break;
 
-      case NS_STYLE_TEXT_TRANSFORM_CAPITALIZE:
+      case StyleTextTransformCase::Capitalize:
         if (aTextRun) {
           if (capitalizeDutchIJ && ch == 'j') {
             ch = 'J';
@@ -574,11 +583,18 @@ bool nsCaseTransformTextRunFactory::TransformString(
         }
         break;
 
-      case NS_STYLE_TEXT_TRANSFORM_FULL_WIDTH:
-        ch = mozilla::unicode::GetFullWidth(ch);
+      default:
+        MOZ_ASSERT_UNREACHABLE("all cases should be handled");
         break;
+    }
 
-      case NS_STYLE_TEXT_TRANSFORM_FULL_SIZE_KANA: {
+    if (!aCaseTransformsOnly) {
+      if (!forceNonFullWidth &&
+          (style.other_ & StyleTextTransformOther_FULL_WIDTH)) {
+        ch = mozilla::unicode::GetFullWidth(ch);
+      }
+
+      if (style.other_ & StyleTextTransformOther_FULL_SIZE_KANA) {
         // clang-format off
         static const uint16_t kSmallKanas[] = {
             // ぁ   ぃ      ぅ      ぇ      ぉ      っ      ゃ      ゅ      ょ
@@ -617,11 +633,7 @@ bool nsCaseTransformTextRunFactory::TransformString(
         if (mozilla::BinarySearch(kSmallKanas, 0, len, ch, &index)) {
           ch = kFullSizeKanas[index];
         }
-        break;
       }
-
-      default:
-        break;
     }
 
     if (forceNonFullWidth) {
@@ -679,10 +691,10 @@ void nsCaseTransformTextRunFactory::RebuildTextRun(
   AutoTArray<uint8_t, 50> canBreakBeforeArray;
   AutoTArray<RefPtr<nsTransformedCharStyle>, 50> styleArray;
 
-  bool mergeNeeded =
-      TransformString(aTextRun->mString, convertedString, mAllUppercase,
-                      nullptr, charsToMergeArray, deletedCharsArray, aTextRun,
-                      0, &canBreakBeforeArray, &styleArray);
+  bool mergeNeeded = TransformString(
+      aTextRun->mString, convertedString, mAllUppercase,
+      /* aCaseTransformsOnly = */ false, nullptr, charsToMergeArray,
+      deletedCharsArray, aTextRun, 0, &canBreakBeforeArray, &styleArray);
 
   gfx::ShapedTextFlags flags;
   gfxTextRunFactory::Parameters innerParams =

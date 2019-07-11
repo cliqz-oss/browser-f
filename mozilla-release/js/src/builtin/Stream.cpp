@@ -1132,19 +1132,18 @@ static MOZ_MUST_USE JSObject* ReadableStreamTee_Cancel(
   if (bothBranchesCanceled) {
     // Step 13/14.c.i: Let compositeReason be
     //                 ! CreateArrayFromList(« reason1, reason2 »).
-    RootedNativeObject compositeReason(cx, NewDenseFullyAllocatedArray(cx, 2));
-    if (!compositeReason) {
-      return nullptr;
-    }
-
-    compositeReason->setDenseInitializedLength(2);
-
     RootedValue reason1(cx, unwrappedTeeState->reason1());
     RootedValue reason2(cx, unwrappedTeeState->reason2());
     if (!cx->compartment()->wrap(cx, &reason1) ||
         !cx->compartment()->wrap(cx, &reason2)) {
       return nullptr;
     }
+
+    RootedNativeObject compositeReason(cx, NewDenseFullyAllocatedArray(cx, 2));
+    if (!compositeReason) {
+      return nullptr;
+    }
+    compositeReason->setDenseInitializedLength(2);
     compositeReason->initDenseElement(0, reason1);
     compositeReason->initDenseElement(1, reason2);
     RootedValue compositeReasonVal(cx, ObjectValue(*compositeReason));
@@ -1552,8 +1551,7 @@ static MOZ_MUST_USE JSObject* ReadableStreamCreateReadResult(
   // Step 4: Let obj be ObjectCreate(prototype).
   NativeObject* obj;
   JS_TRY_VAR_OR_RETURN_NULL(
-      cx, obj,
-      NativeObject::createWithTemplate(cx, gc::DefaultHeap, templateObject));
+      cx, obj, NativeObject::createWithTemplate(cx, templateObject));
 
   // Step 5: Perform CreateDataProperty(obj, "value", value).
   obj->setSlot(Realm::IterResultObjectValueSlot, value);
@@ -3058,7 +3056,9 @@ static MOZ_MUST_USE bool ReadableStreamDefaultControllerEnqueue(
     // Step e: If enqueueResult is an abrupt completion,
     if (!success) {
       RootedValue exn(cx);
-      if (!cx->isExceptionPending() || !GetAndClearException(cx, &exn)) {
+      RootedSavedFrame stack(cx);
+      if (!cx->isExceptionPending() ||
+          !GetAndClearExceptionAndStack(cx, &exn, &stack)) {
         // Uncatchable error. Die immediately without erroring the
         // stream.
         return false;
@@ -3075,7 +3075,7 @@ static MOZ_MUST_USE bool ReadableStreamDefaultControllerEnqueue(
       // Step b.ii: Return result.
       // Step e.ii: Return enqueueResult.
       // (I.e., propagate the exception.)
-      cx->setPendingException(exn);
+      cx->setPendingException(exn, stack);
       return false;
     }
   }
@@ -3466,6 +3466,28 @@ bool ReadableByteStreamController::constructor(JSContext* cx, unsigned argc,
   return false;
 }
 
+// Disconnect the source from a controller without calling finalize() on it,
+// unless this class is reset(). This ensures that finalize() will not be called
+// on the source if setting up the controller fails.
+class MOZ_RAII AutoClearUnderlyingSource {
+  Rooted<ReadableStreamController*> controller_;
+
+ public:
+  AutoClearUnderlyingSource(JSContext* cx, ReadableStreamController* controller)
+      : controller_(cx, controller) {}
+
+  ~AutoClearUnderlyingSource() {
+    if (controller_) {
+      ReadableStreamController::clearUnderlyingSource(
+          controller_, /* finalizeSource */ false);
+    }
+  }
+
+  void reset() {
+    controller_ = nullptr;
+  }
+};
+
 /**
  * Version of SetUpReadableByteStreamController that's specialized for handling
  * external, embedding-provided, underlying sources.
@@ -3479,6 +3501,8 @@ static MOZ_MUST_USE bool SetUpExternalReadableByteStreamController(
   if (!controller) {
     return false;
   }
+
+  AutoClearUnderlyingSource autoClear(cx, controller);
 
   // Step 1: Assert: stream.[[readableStreamController]] is undefined.
   MOZ_ASSERT(!stream->hasController());
@@ -3555,6 +3579,7 @@ static MOZ_MUST_USE bool SetUpExternalReadableByteStreamController(
     return false;
   }
 
+  autoClear.reset();
   return true;
 }
 
@@ -3881,7 +3906,9 @@ static MOZ_MUST_USE bool ReadableByteStreamControllerClose(
           cx, GetErrorMessage, nullptr,
           JSMSG_READABLEBYTESTREAMCONTROLLER_CLOSE_PENDING_PULL);
       RootedValue e(cx);
-      if (!cx->isExceptionPending() || !GetAndClearException(cx, &e)) {
+      RootedSavedFrame stack(cx);
+      if (!cx->isExceptionPending() ||
+          !GetAndClearExceptionAndStack(cx, &e, &stack)) {
         // Uncatchable error. Die immediately without erroring the
         // stream.
         return false;
@@ -3893,7 +3920,7 @@ static MOZ_MUST_USE bool ReadableByteStreamControllerClose(
       }
 
       // Step iii: Throw e.
-      cx->setPendingException(e);
+      cx->setPendingException(e, stack);
       return false;
     }
   }

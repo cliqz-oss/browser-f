@@ -109,9 +109,9 @@ class Toolbar extends Component {
 
   componentDidMount() {
     Services.prefs.addObserver(DEVTOOLS_ENABLE_PERSISTENT_LOG_PREF,
-                               this.updatePersistentLogsEnabled);
+      this.updatePersistentLogsEnabled);
     Services.prefs.addObserver(DEVTOOLS_DISABLE_CACHE_PREF,
-                               this.updateBrowserCacheDisabled);
+      this.updateBrowserCacheDisabled);
   }
 
   shouldComponentUpdate(nextProps) {
@@ -128,9 +128,9 @@ class Toolbar extends Component {
 
   componentWillUnmount() {
     Services.prefs.removeObserver(DEVTOOLS_ENABLE_PERSISTENT_LOG_PREF,
-                                  this.updatePersistentLogsEnabled);
+      this.updatePersistentLogsEnabled);
     Services.prefs.removeObserver(DEVTOOLS_DISABLE_CACHE_PREF,
-                                  this.updateBrowserCacheDisabled);
+      this.updateBrowserCacheDisabled);
   }
 
   toggleRequestFilterType(evt) {
@@ -141,8 +141,13 @@ class Toolbar extends Component {
   }
 
   updatePersistentLogsEnabled() {
+    // Make sure the UI is updated when the pref changes.
+    // It might happen when the user changed it through about:config or
+    // through another Toolbox instance (opened in another browser tab).
+    // In such case, skip telemetry recordings.
     this.props.enablePersistentLogs(
-      Services.prefs.getBoolPref(DEVTOOLS_ENABLE_PERSISTENT_LOG_PREF));
+      Services.prefs.getBoolPref(DEVTOOLS_ENABLE_PERSISTENT_LOG_PREF),
+      true);
   }
 
   updateBrowserCacheDisabled() {
@@ -356,7 +361,6 @@ class Toolbar extends Component {
         delay: FILTER_SEARCH_DELAY,
         keyShortcut: SEARCH_KEY_SHORTCUT,
         placeholder: SEARCH_PLACE_HOLDER,
-        plainStyle: true,
         type: "filter",
         ref: "searchbox",
         onChange: setRequestFilterText,
@@ -385,8 +389,8 @@ class Toolbar extends Component {
     // Render the entire toolbar.
     // dock at bottom or dock at side has different layout
     return singleRow ? (
-      span({ className: "devtools-toolbar devtools-toolbar-container" },
-        span({ className: "devtools-toolbar-group devtools-toolbar-single-row" },
+      span({ id: "netmonitor-toolbar-container" },
+        span({ className: "devtools-toolbar devtools-input-toolbar" },
           this.renderClearButton(clearRequests),
           this.renderSeparator(),
           this.renderFilterBox(setRequestFilterText),
@@ -403,8 +407,8 @@ class Toolbar extends Component {
         )
       )
     ) : (
-      span({ className: "devtools-toolbar devtools-toolbar-container" },
-        span({ className: "devtools-toolbar-group devtools-toolbar-two-rows-1" },
+      span({ id: "netmonitor-toolbar-container" },
+        span({ className: "devtools-toolbar devtools-input-toolbar" },
           this.renderClearButton(clearRequests),
           this.renderSeparator(),
           this.renderFilterBox(setRequestFilterText),
@@ -417,7 +421,7 @@ class Toolbar extends Component {
           this.renderThrottlingMenu(),
           this.renderHarButton(),
         ),
-        span({ className: "devtools-toolbar-group devtools-toolbar-two-rows-2" },
+        span({ className: "devtools-toolbar" },
           this.renderFilterButtons(requestFilterTypes)
         )
       )
@@ -438,7 +442,8 @@ module.exports = connect(
   (dispatch) => ({
     clearRequests: () => dispatch(Actions.clearRequests()),
     disableBrowserCache: (disabled) => dispatch(Actions.disableBrowserCache(disabled)),
-    enablePersistentLogs: (enabled) => dispatch(Actions.enablePersistentLogs(enabled)),
+    enablePersistentLogs: (enabled, skipTelemetry) =>
+      dispatch(Actions.enablePersistentLogs(enabled, skipTelemetry)),
     setRequestFilterText: (text) => dispatch(Actions.setRequestFilterText(text)),
     toggleBrowserCache: () => dispatch(Actions.toggleBrowserCache()),
     toggleRecording: () => dispatch(Actions.toggleRecording()),

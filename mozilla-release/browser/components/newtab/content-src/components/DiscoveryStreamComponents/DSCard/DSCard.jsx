@@ -1,4 +1,5 @@
 import {actionCreators as ac} from "common/Actions.jsm";
+import {DSImage} from "../DSImage/DSImage.jsx";
 import {DSLinkMenu} from "../DSLinkMenu/DSLinkMenu";
 import {ImpressionStats} from "../../DiscoveryStreamImpressionStats/ImpressionStats";
 import React from "react";
@@ -29,29 +30,24 @@ export class DSCard extends React.PureComponent {
 
   render() {
     return (
-      <div className="ds-card">
+      <div className={`ds-card${this.props.placeholder ? " placeholder" : ""}`}>
         <SafeAnchor
           className="ds-card-link"
           dispatch={this.props.dispatch}
-          onLinkClick={this.onLinkClick}
+          onLinkClick={!this.props.placeholder ? this.onLinkClick : undefined}
           url={this.props.url}>
           <div className="img-wrapper">
-            <div className="img" style={{backgroundImage: `url(${this.props.image_src}`}} />
+            <DSImage extraClassNames="img" source={this.props.image_src} rawSource={this.props.raw_image_src} />
           </div>
           <div className="meta">
             <div className="info-wrap">
-              <header className="title">{this.props.title}</header>
-              {this.props.excerpt && <p className="excerpt">{this.props.excerpt}</p>}
+              <p className="source clamp">{this.props.source}</p>
+              <header className="title clamp">{this.props.title}</header>
+              {this.props.excerpt && <p className="excerpt clamp">{this.props.excerpt}</p>}
             </div>
-            <p>
-              {this.props.context && (
-                <span>
-                  <span className="context">{this.props.context}</span>
-                  <br />
-                </span>
-              )}
-              <span className="source">{this.props.source}</span>
-            </p>
+            {this.props.context && (
+              <p className="context">{this.props.context}</p>
+            )}
           </div>
           <ImpressionStats
             campaignId={this.props.campaignId}
@@ -59,7 +55,7 @@ export class DSCard extends React.PureComponent {
             dispatch={this.props.dispatch}
             source={this.props.type} />
         </SafeAnchor>
-        <DSLinkMenu
+        {!this.props.placeholder && <DSLinkMenu
           id={this.props.id}
           index={this.props.pos}
           dispatch={this.props.dispatch}
@@ -67,8 +63,11 @@ export class DSCard extends React.PureComponent {
           url={this.props.url}
           title={this.props.title}
           source={this.props.source}
-          type={this.props.type} />
+          type={this.props.type}
+          pocket_id={this.props.pocket_id}
+          bookmarkGuid={this.props.bookmarkGuid} />}
       </div>
     );
   }
 }
+export const PlaceholderDSCard = props => <DSCard placeholder={true} />;

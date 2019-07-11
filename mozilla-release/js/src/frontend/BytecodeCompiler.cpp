@@ -26,6 +26,7 @@
 #include "vm/GlobalObject.h"
 #include "vm/JSContext.h"
 #include "vm/JSScript.h"
+#include "vm/ModuleBuilder.h"  // js::ModuleBuilder
 #include "vm/TraceLogging.h"
 #include "wasm/AsmJS.h"
 
@@ -315,6 +316,10 @@ AutoFrontendTraceLog::AutoFrontendTraceLog(JSContext* cx,
                                            const ErrorReporter& errorReporter)
 #ifdef JS_TRACE_LOGGING
     : logger_(TraceLoggerForCurrentThread(cx)) {
+  if (!logger_) {
+    return;
+  }
+
   // If the tokenizer hasn't yet gotten any tokens, use the line and column
   // numbers from CompileOptions.
   uint32_t line, column;
@@ -340,6 +345,10 @@ AutoFrontendTraceLog::AutoFrontendTraceLog(JSContext* cx,
                                            FunctionBox* funbox)
 #ifdef JS_TRACE_LOGGING
     : logger_(TraceLoggerForCurrentThread(cx)) {
+  if (!logger_) {
+    return;
+  }
+
   frontendEvent_.emplace(TraceLogger_Frontend, errorReporter.getFilename(),
                          funbox->startLine, funbox->startColumn);
   frontendLog_.emplace(logger_, *frontendEvent_);
@@ -356,6 +365,10 @@ AutoFrontendTraceLog::AutoFrontendTraceLog(JSContext* cx,
                                            ParseNode* pn)
 #ifdef JS_TRACE_LOGGING
     : logger_(TraceLoggerForCurrentThread(cx)) {
+  if (!logger_) {
+    return;
+  }
+
   uint32_t line, column;
   errorReporter.lineAndColumnAt(pn->pn_pos.begin, &line, &column);
   frontendEvent_.emplace(TraceLogger_Frontend, errorReporter.getFilename(),
@@ -388,24 +401,11 @@ bool BytecodeCompiler::createScriptSource(
   return true;
 }
 
-template <typename Unit>
-bool BytecodeCompiler::assignSource(SourceText<Unit>& sourceBuffer) {
-  if (!cx->realm()->behaviors().discardSource()) {
-    if (options.sourceIsLazy) {
-      scriptSource->setSourceRetrievable();
-    } else if (!scriptSource->setSourceCopy(cx, sourceBuffer)) {
-      return false;
-    }
-  }
-
-  return true;
-}
-
 bool BytecodeCompiler::canLazilyParse() const {
   return options.canLazilyParse &&
          !cx->realm()->behaviors().disableLazyParsing() &&
          !cx->realm()->behaviors().discardSource() && !options.sourceIsLazy &&
-         !cx->lcovEnabled() &&
+         !coverage::IsLCovEnabled() &&
          // Disabled during record/replay. The replay debugger requires
          // scripts to be constructed in a consistent order, which might not
          // happen with lazy parsing.
@@ -503,9 +503,7 @@ bool BytecodeCompiler::deoptimizeArgumentsInEnclosingScripts(
         return false;
       }
       if (script->argumentsHasVarBinding()) {
-        if (!JSScript::argumentsOptimizationFailed(cx, script)) {
-          return false;
-        }
+        JSScript::argumentsOptimizationFailed(cx, script);
       }
     }
     env = env->enclosingEnvironment();
@@ -531,7 +529,8 @@ JSScript* frontend::ScriptCompiler<Unit>::compileScript(
   for (;;) {
     ParseNode* pn;
     {
-      AutoGeckoProfilerEntry pseudoFrame(cx, "script parsing");
+      AutoGeckoProfilerEntry pseudoFrame(cx, "script parsing",
+                                         JS::ProfilingCategoryPair::JS_Parsing);
       if (sc->isEvalContext()) {
         pn = parser->evalBody(sc->asEvalContext());
       } else {
@@ -540,7 +539,8 @@ JSScript* frontend::ScriptCompiler<Unit>::compileScript(
     }
 
     // Successfully parsed. Emit the script.
-    AutoGeckoProfilerEntry pseudoFrame(cx, "script emit");
+    AutoGeckoProfilerEntry pseudoFrame(cx, "script emit",
+                                       JS::ProfilingCategoryPair::JS_Parsing);
     if (pn) {
       if (sc->isEvalContext() && sc->hasDebuggerStatement() &&
           !cx->helperThread()) {
@@ -988,8 +988,14 @@ static bool CompileLazyFunctionImpl(JSContext* cx, Handle<LazyScript*> lazy,
     script->setHasBeenCloned();
   }
 
+  FieldInitializers fieldInitializers = FieldInitializers::Invalid();
+  if (fun->kind() == JSFunction::FunctionKind::ClassConstructor) {
+    fieldInitializers = lazy->getFieldInitializers();
+  }
+
   BytecodeEmitter bce(/* parent = */ nullptr, &parser, pn->funbox(), script,
-                      lazy, pn->pn_pos, BytecodeEmitter::LazyFunction);
+                      lazy, pn->pn_pos, BytecodeEmitter::LazyFunction,
+                      fieldInitializers);
   if (!bce.init()) {
     return false;
   }

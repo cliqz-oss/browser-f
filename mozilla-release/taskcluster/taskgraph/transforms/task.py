@@ -39,6 +39,7 @@ from taskgraph.util.signed_artifacts import get_signed_artifacts
 from voluptuous import Any, Required, Optional, Extra, Match
 from taskgraph import GECKO, MAX_DEPENDENCIES
 from ..util import docker as dockerutil
+from ..util.workertypes import get_worker_type
 
 RUN_TASK = os.path.join(GECKO, 'taskcluster', 'scripts', 'run-task')
 
@@ -47,6 +48,14 @@ RUN_TASK = os.path.join(GECKO, 'taskcluster', 'scripts', 'run-task')
 def _run_task_suffix():
     """String to append to cache names under control of run-task."""
     return hash_path(RUN_TASK)[0:20]
+
+
+def _compute_geckoview_version(app_version, moz_build_date):
+    """Geckoview version string that matches geckoview gradle configuration"""
+    # Must be synchronized with /mobile/android/geckoview/build.gradle computeVersionCode(...)
+    version_without_milestone = re.sub(r'a[0-9]', '', app_version, 1)
+    parts = version_without_milestone.split('.')
+    return "%s.%s.%s" % (parts[0], parts[1], moz_build_date)
 
 
 # A task description is a general description of a TaskCluster task
@@ -126,7 +135,8 @@ task_description_schema = Schema({
 
         # Type of gecko v2 index to use
         'type': Any('generic', 'nightly', 'l10n', 'nightly-with-multi-l10n',
-                    'release', 'nightly-l10n'),
+                    'release', 'nightly-l10n', 'shippable', 'shippable-l10n',
+                    'android-nightly', 'android-nightly-with-multi-l10n'),
 
         # The rank that the task will receive in the TaskCluster
         # index.  A newly completed task supercedes the currently
@@ -251,11 +261,25 @@ V2_NIGHTLY_TEMPLATES = [
     "index.{trust-domain}.v2.{project}.nightly.revision.{branch_rev}.{product}.{job-name}",
 ]
 
+V2_SHIPPABLE_TEMPLATES = [
+    "index.{trust-domain}.v2.{project}.shippable.latest.{product}.{job-name}",
+    "index.{trust-domain}.v2.{project}.shippable.{build_date}.revision.{branch_rev}.{product}.{job-name}",  # noqa - too long
+    "index.{trust-domain}.v2.{project}.shippable.{build_date}.latest.{product}.{job-name}",
+    "index.{trust-domain}.v2.{project}.shippable.revision.{branch_rev}.{product}.{job-name}",
+]
+
 V2_NIGHTLY_L10N_TEMPLATES = [
     "index.{trust-domain}.v2.{project}.nightly.latest.{product}-l10n.{job-name}.{locale}",
     "index.{trust-domain}.v2.{project}.nightly.{build_date}.revision.{branch_rev}.{product}-l10n.{job-name}.{locale}",  # noqa - too long
     "index.{trust-domain}.v2.{project}.nightly.{build_date}.latest.{product}-l10n.{job-name}.{locale}",  # noqa - too long
     "index.{trust-domain}.v2.{project}.nightly.revision.{branch_rev}.{product}-l10n.{job-name}.{locale}",  # noqa - too long
+]
+
+V2_SHIPPABLE_L10N_TEMPLATES = [
+    "index.{trust-domain}.v2.{project}.shippable.latest.{product}-l10n.{job-name}.{locale}",
+    "index.{trust-domain}.v2.{project}.shippable.{build_date}.revision.{branch_rev}.{product}-l10n.{job-name}.{locale}",  # noqa - too long
+    "index.{trust-domain}.v2.{project}.shippable.{build_date}.latest.{product}-l10n.{job-name}.{locale}",  # noqa - too long
+    "index.{trust-domain}.v2.{project}.shippable.revision.{branch_rev}.{product}-l10n.{job-name}.{locale}",  # noqa - too long
 ]
 
 V2_L10N_TEMPLATES = [
@@ -264,6 +288,10 @@ V2_L10N_TEMPLATES = [
     "index.{trust-domain}.v2.{project}.pushlog-id.{pushlog_id}.{product}-l10n.{job-name}.{locale}",
     "index.{trust-domain}.v2.{project}.latest.{product}-l10n.{job-name}.{locale}",
 ]
+
+# This index is specifically for builds that include geckoview releases,
+# so we can hard-code the project to "geckoview"
+V2_GECKOVIEW_RELEASE = "index.{trust-domain}.v2.{project}.geckoview-version.{geckoview-version}.{product}.{job-name}"  # noqa - too long
 
 # the roots of the treeherder routes
 TREEHERDER_ROUTE_ROOT = 'tc-treeherder'
@@ -650,7 +678,7 @@ def build_docker_worker_payload(config, task, task_def):
 
 
 @payload_builder('generic-worker', schema={
-    Required('os'): Any('windows', 'macosx', 'linux'),
+    Required('os'): Any('windows', 'macosx', 'linux', 'linux-bitbar'),
     # see http://schemas.taskcluster.net/generic-worker/v1/payload.json
     # and https://docs.taskcluster.net/reference/workers/generic-worker/payload
 
@@ -740,6 +768,16 @@ def build_generic_worker_payload(config, task, task_def):
         'command': worker['command'],
         'maxRunTime': worker['max-run-time'],
     }
+
+    if worker['os'] == 'windows':
+        task_def['payload']['onExitStatus'] = {
+            'retry': [
+                # These codes (on windows) indicate a process interruption,
+                # rather than a task run failure. See bug 1544403.
+                1073807364,  # process force-killed due to system shutdown
+                3221225786,  # sigint (any interrupt)
+            ]
+        }
 
     env = worker.get('env', {})
 
@@ -1134,6 +1172,7 @@ def build_push_apk_payload(config, task, task_def):
 
 
 @payload_builder('push-snap', schema={
+    Required('channel'): basestring,
     Required('upstream-artifacts'): [{
         Required('taskId'): taskref_or_string,
         Required('taskType'): basestring,
@@ -1144,6 +1183,7 @@ def build_push_snap_payload(config, task, task_def):
     worker = task['worker']
 
     task_def['payload'] = {
+        'channel': worker['channel'],
         'upstreamArtifacts':  worker['upstream-artifacts'],
     }
 
@@ -1436,6 +1476,36 @@ def add_nightly_index_routes(config, task):
     return task
 
 
+@index_builder('shippable')
+def add_shippable_index_routes(config, task):
+    index = task.get('index')
+    routes = task.setdefault('routes', [])
+
+    verify_index(config, index)
+
+    subs = config.params.copy()
+    subs['job-name'] = index['job-name']
+    subs['build_date_long'] = time.strftime("%Y.%m.%d.%Y%m%d%H%M%S",
+                                            time.gmtime(config.params['build_date']))
+    subs['build_date'] = time.strftime("%Y.%m.%d",
+                                       time.gmtime(config.params['build_date']))
+    subs['product'] = index['product']
+    subs['trust-domain'] = config.graph_config['trust-domain']
+    subs['branch_rev'] = get_branch_rev(config)
+
+    for tpl in V2_SHIPPABLE_TEMPLATES:
+        routes.append(tpl.format(**subs))
+
+    # Also add routes for en-US
+    task = add_shippable_l10n_index_routes(config, task, force_locale="en-US")
+
+    # For nightly-compat index:
+    if 'nightly' in config.params['target_tasks_method']:
+        add_nightly_index_routes(config, task)
+
+    return task
+
+
 @index_builder('release')
 def add_release_index_routes(config, task):
     index = task.get('index')
@@ -1506,6 +1576,50 @@ def add_l10n_index_routes(config, task, force_locale=None):
     return task
 
 
+@index_builder('shippable-l10n')
+def add_shippable_l10n_index_routes(config, task, force_locale=None):
+    index = task.get('index')
+    routes = task.setdefault('routes', [])
+
+    verify_index(config, index)
+
+    subs = config.params.copy()
+    subs['job-name'] = index['job-name']
+    subs['build_date_long'] = time.strftime("%Y.%m.%d.%Y%m%d%H%M%S",
+                                            time.gmtime(config.params['build_date']))
+    subs['product'] = index['product']
+    subs['trust-domain'] = config.graph_config['trust-domain']
+    subs['branch_rev'] = get_branch_rev(config)
+
+    locales = task['attributes'].get('chunk_locales',
+                                     task['attributes'].get('all_locales'))
+    # Some tasks has only one locale set
+    if task['attributes'].get('locale'):
+        locales = [task['attributes']['locale']]
+
+    if force_locale:
+        # Used for en-US and multi-locale
+        locales = [force_locale]
+
+    if not locales:
+        raise Exception("Error: Unable to use l10n index for tasks without locales")
+
+    # If there are too many locales, we can't write a route for all of them
+    # See Bug 1323792
+    if len(locales) > 18:  # 18 * 3 = 54, max routes = 64
+        return task
+
+    for locale in locales:
+        for tpl in V2_SHIPPABLE_L10N_TEMPLATES:
+            routes.append(tpl.format(locale=locale, **subs))
+
+    # For nightly-compat index:
+    if 'nightly' in config.params['target_tasks_method']:
+        add_nightly_l10n_index_routes(config, task, force_locale)
+
+    return task
+
+
 @index_builder('nightly-l10n')
 def add_nightly_l10n_index_routes(config, task, force_locale=None):
     index = task.get('index')
@@ -1539,6 +1653,42 @@ def add_nightly_l10n_index_routes(config, task, force_locale=None):
     for locale in locales:
         for tpl in V2_NIGHTLY_L10N_TEMPLATES:
             routes.append(tpl.format(locale=locale, **subs))
+
+    return task
+
+
+def add_geckoview_index_routes(config, task):
+    index = task.get('index')
+    routes = task.setdefault('routes', [])
+    geckoview_version = _compute_geckoview_version(
+        config.params['app_version'],
+        config.params['moz_build_date']
+    )
+
+    subs = {
+        'geckoview-version': geckoview_version,
+        'job-name': index['job-name'],
+        'product': index['product'],
+        'project': config.params['project'],
+        'trust-domain': config.graph_config['trust-domain'],
+    }
+    routes.append(V2_GECKOVIEW_RELEASE.format(**subs))
+
+    return task
+
+
+@index_builder('android-nightly')
+def add_android_nightly_index_routes(config, task):
+    task = add_nightly_index_routes(config, task)
+    task = add_geckoview_index_routes(config, task)
+
+    return task
+
+
+@index_builder('android-nightly-with-multi-l10n')
+def add_android_nightly_multi_index_routes(config, task):
+    task = add_nightly_multi_index_routes(config, task)
+    task = add_geckoview_index_routes(config, task)
 
     return task
 
@@ -1577,8 +1727,13 @@ def add_index_routes(config, tasks):
 def build_task(config, tasks):
     for task in tasks:
         level = str(config.params['level'])
-        worker_type = task['worker-type'].format(level=level)
-        provisioner_id, worker_type = worker_type.split('/', 1)
+
+        provisioner_id, worker_type = get_worker_type(
+            config.graph_config,
+            task['worker-type'],
+            level,
+        )
+        task['worker-type'] = '/'.join([provisioner_id, worker_type])
         project = config.params['project']
 
         routes = task.get('routes', [])

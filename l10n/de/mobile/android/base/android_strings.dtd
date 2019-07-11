@@ -24,9 +24,11 @@
 <!ENTITY firstrun_sync_message2 "Machen Sie da weiter, wo Sie aufgehört haben.">
 <!ENTITY firstrun_sync_subtext2 "Mit Sync können Sie jederzeit auf alle Ihre Lesezeichen, Passwörter und anderen Dinge zugreifen, die Sie in &brandShortName; auf anderen Geräten speichern.">
 <!ENTITY newfirstrun_sync_subtext "Synchronisieren Sie in Firefox für Android gespeicherte Einträge mit Firefox für Windows, macOS oder Linux - privat und sicher.">
+<!ENTITY updatednewfirstrun_sync_subtext "Melden Sie sich mit Ihrem Konto an und nutzen Sie &brandShortName; effektiver.">
 <!ENTITY firstrun_signin_message "Verbinden Sie und legen Sie los">
 <!ENTITY firstrun_signin_button "Bei Sync anmelden">
 <!ENTITY newfirstrun_signin_button "Sync aktivieren">
+<!ENTITY updatednewfirstrun_signin_button "In &brandShortName; anmelden">
 <!ENTITY  onboard_start_button_browser "Mit dem Surfen beginnen">
 <!ENTITY firstrun_button_notnow "Nicht sofort">
 <!ENTITY firstrun_button_next "Weiter">
@@ -73,6 +75,12 @@
 <!ENTITY  crash_close_label "Schließen">
 <!ENTITY  crash_restart_label "&brandShortName; neu starten">
 
+<!-- Localization note (crash_notification_title, crash_notification_message, crash_notification_negative_button_text)
+     Text displayed in a system notification to allow starting the Crash Reporter (Android Q and later).-->
+<!ENTITY  crash_notification_title "&brandShortName; ist abgestürzt">
+<!ENTITY  crash_notification_message "Antippen, um an &vendorShortName; zu melden">
+<!ENTITY  crash_notification_negative_button_text "Ignorieren">
+
 <!ENTITY url_bar_default_text2 "Suchen oder Adresse eingeben">
 
 <!-- Localization note: this text will be displayed in the Search Widget -->
@@ -114,6 +122,10 @@
 <!ENTITY bookmark_folder_updated "Ordner aktualisiert">
 <!ENTITY bookmark_parent_folder "Enthalten in Ordner">
 <!ENTITY bookmark_add_folder "Neuen Ordner hinzufügen">
+
+<!-- Localization note (bookmark_default_folder_title): Default title is used if user doesn't specify
+     one when he is creating a bookmark folder -->
+<!ENTITY bookmark_default_folder_title "(kein Titel)">
 
 <!ENTITY reader_saved_offline "Offline gespeichert">
 <!-- Localization note (reader_switch_to_bookmarks) : This
@@ -530,6 +542,10 @@ shown from Android O while a tab is being queued.-->
 <!ENTITY find_next "Weitersuchen">
 <!ENTITY find_close "Schließen">
 
+<!-- Localization note (find_error) : Error message shown when there is no result for the
+     searched for text in this webpage -->
+<!ENTITY find_error "Suchbegriff nicht gefunden">
+
 <!-- Localization note (media_sending_to, media_play, media_pause, media_stop) : These strings are used
      as alternate text for accessibility. They are not visible in the UI. -->
 <!ENTITY media_sending_to "An Gerät senden">
@@ -690,6 +706,8 @@ shown from Android O while a tab is being queued.-->
 <!ENTITY filepicker_audio_title "Einen Ton auswählen oder aufnehmen">
 <!ENTITY filepicker_image_title "Ein Bild auswählen oder aufnehmen">
 <!ENTITY filepicker_video_title "Ein Video auswählen oder aufnehmen">
+
+<!ENTITY filepicker_permission_denied "Benötigte Berechtigungen nicht gewährt, Dateiauswahl des Systems wird verwendet">
 
 <!-- Site identity popup -->
 <!ENTITY identity_connected_to "Sie sind verbunden mit">
@@ -937,6 +955,7 @@ Picture-in-picture mini window -->
 <!-- Notification channels names -->
 <!ENTITY default_notification_channel "&brandShortName;">
 
+<!ENTITY pref_notification_settings_link "Benachrichtigungs-Einstellungen verwalten">
 <!-- Notification channels names -->
 <!ENTITY default_notification_channel2 "Browser">
 <!ENTITY mls_notification_channel "&vendorShortName;-Standortdienst">
@@ -952,3 +971,4 @@ Picture-in-picture mini window -->
 <!-- LOCALIZATION NOTE (site_notifications_channel): This is for system notifications displayed by
 web sites through the HTML Notifications API. -->
 <!ENTITY site_notifications_channel "Website-Benachrichtigungen">
+<!ENTITY crash_handler_notifications_channel "&brandShortName; - Absturzmelder">

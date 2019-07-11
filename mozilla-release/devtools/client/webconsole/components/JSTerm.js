@@ -6,6 +6,7 @@
 
 const {Utils: WebConsoleUtils} = require("devtools/client/webconsole/utils");
 const Services = require("Services");
+const { debounce } = require("devtools/shared/debounce");
 
 loader.lazyServiceGetter(this, "clipboardHelper",
                          "@mozilla.org/widget/clipboardhelper;1",
@@ -77,10 +78,12 @@ class JSTerm extends Component {
       updateHistoryPosition: PropTypes.func.isRequired,
       // Update autocomplete popup state.
       autocompleteUpdate: PropTypes.func.isRequired,
+      autocompleteClear: PropTypes.func.isRequired,
       // Data to be displayed in the autocomplete popup.
       autocompleteData: PropTypes.object.isRequired,
       // Is the input in editor mode.
       editorMode: PropTypes.bool,
+      autocomplete: PropTypes.bool,
     };
   }
 
@@ -99,6 +102,11 @@ class JSTerm extends Component {
     this._blurEventHandler = this._blurEventHandler.bind(this);
     this.onContextMenu = this.onContextMenu.bind(this);
     this.imperativeUpdate = this.imperativeUpdate.bind(this);
+
+    // We debounce the autocompleteUpdate so we don't send too many requests to the server
+    // as the user is typing.
+    // The delay should be small enough to be unnoticed by the user.
+    this.autocompleteUpdate = debounce(this.props.autocompleteUpdate, 75, this);
 
     /**
      * Last input value.
@@ -263,10 +271,12 @@ class JSTerm extends Component {
             "Left": onArrowLeft,
             "Ctrl-Left": onArrowLeft,
             "Cmd-Left": onArrowLeft,
+            "Alt-Left": onArrowLeft,
 
             "Right": onArrowRight,
             "Ctrl-Right": onArrowRight,
             "Cmd-Right": onArrowRight,
+            "Alt-Right": onArrowRight,
 
             "Ctrl-N": () => {
               // Control-N differs from down arrow: it ignores autocomplete state.
@@ -664,8 +674,11 @@ class JSTerm extends Component {
       "lines": str.split(/\n/).length,
     });
 
-    return this.webConsoleClient.evaluateJSAsync(str, {
-      frameActor: this.props.serviceContainer.getFrameActor(options.frame),
+    const { frameActor, client } =
+      this.props.serviceContainer.getFrameActor(options.frame);
+
+    return client.evaluateJSAsync(str, {
+      frameActor,
       ...options,
     });
   }
@@ -804,7 +817,9 @@ class JSTerm extends Component {
     const value = this._getValue();
     if (this.lastInputValue !== value) {
       this.resizeInput();
-      this.props.autocompleteUpdate();
+      if (this.props.autocomplete) {
+        this.autocompleteUpdate();
+      }
       this.lastInputValue = value;
     }
   }
@@ -905,9 +920,9 @@ class JSTerm extends Component {
       if (event.keyCode === KeyCodes.DOM_VK_RIGHT) {
         if (this.getAutoCompletionText()) {
           this.acceptProposedCompletion();
+          event.preventDefault();
         }
         this.clearCompletion();
-        event.preventDefault();
       }
 
       return;
@@ -1341,7 +1356,7 @@ class JSTerm extends Component {
       }
     }
 
-    this.clearCompletion();
+    this.props.autocompleteClear();
 
     if (completionText) {
       this.insertStringAtCursor(completionText, numberOfCharsToReplaceCharsBeforeCursor);
@@ -1624,7 +1639,7 @@ function mapDispatchToProps(dispatch) {
     updateHistoryPosition: (direction, expression) =>
       dispatch(historyActions.updateHistoryPosition(direction, expression)),
     autocompleteUpdate: force => dispatch(autocompleteActions.autocompleteUpdate(force)),
-    autocompleteBailOut: () => dispatch(autocompleteActions.autocompleteBailOut()),
+    autocompleteClear: () => dispatch(autocompleteActions.autocompleteClear()),
   };
 }
 

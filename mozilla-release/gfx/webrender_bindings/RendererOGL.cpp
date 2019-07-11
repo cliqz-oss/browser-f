@@ -10,6 +10,7 @@
 #include "mozilla/gfx/gfxVars.h"
 #include "mozilla/gfx/Types.h"
 #include "mozilla/layers/CompositorBridgeParent.h"
+#include "mozilla/layers/CompositorManagerParent.h"
 #include "mozilla/layers/CompositorThread.h"
 #include "mozilla/layers/LayersTypes.h"
 #include "mozilla/webrender/RenderCompositor.h"
@@ -91,6 +92,7 @@ static void DoNotifyWebRenderContextPurge(
 }
 
 bool RendererOGL::UpdateAndRender(const Maybe<gfx::IntSize>& aReadbackSize,
+                                  const Maybe<wr::ImageFormat>& aReadbackFormat,
                                   const Maybe<Range<uint8_t>>& aReadbackBuffer,
                                   bool aHadSlowFrame,
                                   RendererStats* aOutStats) {
@@ -125,10 +127,15 @@ bool RendererOGL::UpdateAndRender(const Maybe<gfx::IntSize>& aReadbackSize,
 
   if (aReadbackBuffer.isSome()) {
     MOZ_ASSERT(aReadbackSize.isSome());
+    MOZ_ASSERT(aReadbackFormat.isSome());
     wr_renderer_readback(mRenderer, aReadbackSize.ref().width,
-                         aReadbackSize.ref().height, &aReadbackBuffer.ref()[0],
+                         aReadbackSize.ref().height,
+                         aReadbackFormat.ref(),
+                         &aReadbackBuffer.ref()[0],
                          aReadbackBuffer.ref().length());
   }
+
+  mScreenshotGrabber.MaybeGrabScreenshot(mRenderer, size.ToUnknownSize());
 
   mCompositor->EndFrame();
 
@@ -143,6 +150,8 @@ bool RendererOGL::UpdateAndRender(const Maybe<gfx::IntSize>& aReadbackSize,
   // Clear frame start time
   mFrameStartTime = TimeStamp();
 #endif
+
+  mScreenshotGrabber.MaybeProcessQueue(mRenderer);
 
   // TODO: Flush pending actions such as texture deletions/unlocks and
   //       textureHosts recycling.
@@ -210,15 +219,13 @@ void RendererOGL::AccumulateMemoryReport(MemoryReport* aReport) {
   aReport->swap_chain += swapChainSize;
 }
 
-static void DoNotifyWebRenderError(layers::CompositorBridgeParent* aBridge,
-                                   WebRenderError aError) {
-  aBridge->NotifyWebRenderError(aError);
+static void DoNotifyWebRenderError(WebRenderError aError) {
+  layers::CompositorManagerParent::NotifyWebRenderError(aError);
 }
 
 void RendererOGL::NotifyWebRenderError(WebRenderError aError) {
-  layers::CompositorThreadHolder::Loop()->PostTask(
-      NewRunnableFunction("DoNotifyWebRenderErrorRunnable",
-                          &DoNotifyWebRenderError, mBridge, aError));
+  layers::CompositorThreadHolder::Loop()->PostTask(NewRunnableFunction(
+      "DoNotifyWebRenderErrorRunnable", &DoNotifyWebRenderError, aError));
 }
 
 }  // namespace wr

@@ -2,8 +2,8 @@
 <html>
 <head>
   <title>Test for scroll snapping</title>
-  <script type="text/javascript" src="/tests/SimpleTest/SimpleTest.js"></script>
-  <script type="text/javascript" src="/tests/SimpleTest/EventUtils.js"></script>
+  <script src="/tests/SimpleTest/SimpleTest.js"></script>
+  <script src="/tests/SimpleTest/EventUtils.js"></script>
   <link rel="stylesheet" type="text/css" href="/tests/SimpleTest/test.css" />
 </head>
 <body>
@@ -243,7 +243,7 @@ function doTest() {
   lastScrollLeft = sc.scrollLeft;
 
   sc.scrollTo(testCase.startScroll.x, testCase.startScroll.y);
-  sc.style.scrollSnapType = "mandatory";
+  sc.style.scrollSnapType = "both mandatory";
   sd.style.scrollSnapCoordinate = testCase.snapCoord;
 
   synthesizeMouse(sc,
@@ -343,6 +343,7 @@ addLoadEvent(function() {
   sd = document.getElementById("sd");
   SpecialPowers.pushPrefEnv({
     "set": [["layout.css.scroll-snap.enabled", true],
+            ["layout.css.scroll-snap-v1.enabled", false],
             ["layout.css.scroll-snap.proximity-threshold", 100]]},
     doTest);
 });

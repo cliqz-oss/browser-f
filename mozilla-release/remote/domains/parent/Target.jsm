@@ -32,6 +32,9 @@ class Target extends Domain {
     } else {
       targets.off("connect", this.onTargetCreated);
     }
+    for (const target of targets) {
+      this.onTargetCreated("connect", target);
+    }
   }
 
   onTargetCreated(eventName, target) {
@@ -44,25 +47,15 @@ class Target extends Domain {
     });
   }
 
-  async createTarget(a, b) {
+  async createTarget() {
+    const {targets} = this.session.target;
+    const onTarget = targets.once("connect");
     const tab = TabManager.addTab();
-    const browser = tab.linkedBrowser;
-
-    // Wait for the related target to be created
-    const target = await new Promise(resolve => {
-      const { targets } = this.session.target;
-      const listener = (eventName, target) => {
-        if (target.browser == browser) {
-          targets.off("connect", listener);
-          resolve(target);
-        }
-      };
-      targets.on("connect", listener);
-    });
-
-    return {
-      targetId: target.id,
-    };
+    const target = await onTarget;
+    if (tab.linkedBrowser != target.browser) {
+      throw new Error("Unexpected tab opened: " + tab.linkedBrowser.currentURI.spec);
+    }
+    return {targetId: target.id};
   }
 
   attachToTarget({ targetId }) {
@@ -72,7 +65,7 @@ class Target extends Domain {
       return new Error(`Unable to find target with id '${targetId}'`);
     }
 
-    const session = new TabSession(this.session.connection, target, sessionIds++);
+    const session = new TabSession(this.session.connection, target, sessionIds++, this.session);
     this.emit("Target.attachedToTarget", {
       targetInfo: {
         type: "page",
@@ -86,4 +79,14 @@ class Target extends Domain {
   }
 
   setAutoAttach() {}
+
+  sendMessageToTarget({ sessionId, message }) {
+    const { sessions } = this.session.connection;
+    const session = sessions.get(sessionId);
+    if (!session) {
+      throw new Error(`Session '${sessionId}' doesn't exists.`);
+    }
+    message = JSON.parse(message);
+    session.onMessage(message);
+  }
 }

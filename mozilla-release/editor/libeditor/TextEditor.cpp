@@ -64,11 +64,6 @@ namespace mozilla {
 
 using namespace dom;
 
-template already_AddRefed<Element> TextEditor::InsertBrElementWithTransaction(
-    const EditorDOMPoint& aPointToInsert, EDirection aSelect);
-template already_AddRefed<Element> TextEditor::InsertBrElementWithTransaction(
-    const EditorRawDOMPoint& aPointToInsert, EDirection aSelect);
-
 TextEditor::TextEditor()
     : mWrapColumn(0),
       mMaxTextLength(-1),
@@ -242,9 +237,8 @@ TextEditor::SetDocumentCharacterSet(const nsACString& characterSet) {
   }
 
   // Create a new meta charset tag
-  EditorRawDOMPoint atStartOfHeadNode(headNode, 0);
   RefPtr<Element> metaElement =
-      CreateNodeWithTransaction(*nsGkAtoms::meta, atStartOfHeadNode);
+      CreateNodeWithTransaction(*nsGkAtoms::meta, EditorDOMPoint(headNode, 0));
   if (NS_WARN_IF(!metaElement)) {
     return NS_OK;
   }
@@ -321,7 +315,8 @@ nsresult TextEditor::InitRules() {
     // instantiate the rules for this text editor
     mRules = new TextEditRules();
   }
-  return mRules->Init(this);
+  RefPtr<TextEditRules> textEditRules(mRules);
+  return textEditRules->Init(this);
 }
 
 nsresult TextEditor::HandleKeyPressEvent(WidgetKeyboardEvent* aKeyboardEvent) {
@@ -435,10 +430,8 @@ nsresult TextEditor::InsertLineBreakAsAction() {
   return NS_OK;
 }
 
-template <typename PT, typename CT>
 already_AddRefed<Element> TextEditor::InsertBrElementWithTransaction(
-    const EditorDOMPointBase<PT, CT>& aPointToInsert,
-    EDirection aSelect /* = eNone */) {
+    const EditorDOMPoint& aPointToInsert, EDirection aSelect /* = eNone */) {
   MOZ_ASSERT(IsEditActionDataAvailable());
 
   if (NS_WARN_IF(!aPointToInsert.IsSet())) {
@@ -868,7 +861,7 @@ already_AddRefed<Element> TextEditor::DeleteSelectionAndCreateElement(
     return nullptr;
   }
 
-  EditorRawDOMPoint pointToInsert(SelectionRefPtr()->AnchorRef());
+  EditorDOMPoint pointToInsert(SelectionRefPtr()->AnchorRef());
   if (!pointToInsert.IsSet()) {
     return nullptr;
   }
@@ -1198,18 +1191,25 @@ nsresult TextEditor::SetTextAsSubAction(const nsAString& aString) {
     // shouldn't receive such selectionchange before the first mutation.
     AutoUpdateViewBatch preventSelectionChangeEvent(*this);
 
+    Element* rootElement = GetRoot();
+    if (NS_WARN_IF(!rootElement)) {
+      return NS_ERROR_FAILURE;
+    }
+
     // We want to select trailing BR node to remove all nodes to replace all,
     // but TextEditor::SelectEntireDocument doesn't select that BR node.
     if (rules->DocumentIsEmpty()) {
-      // if it's empty, don't select entire doc - that would select
-      // the bogus node
-      Element* rootElement = GetRoot();
-      if (NS_WARN_IF(!rootElement)) {
-        return NS_ERROR_FAILURE;
-      }
       rv = SelectionRefPtr()->Collapse(rootElement, 0);
+      NS_WARNING_ASSERTION(
+          NS_SUCCEEDED(rv),
+          "Failed to move caret to start of the editor root element");
     } else {
-      rv = EditorBase::SelectEntireDocument();
+      ErrorResult error;
+      SelectionRefPtr()->SelectAllChildren(*rootElement, error);
+      NS_WARNING_ASSERTION(
+          !error.Failed(),
+          "Failed to select all children of the editor root element");
+      rv = error.StealNSResult();
     }
     if (NS_SUCCEEDED(rv)) {
       rv = ReplaceSelectionAsSubAction(aString);
@@ -1591,12 +1591,6 @@ TextEditor::SetWrapWidth(int32_t aWrapColumn) {
 }
 
 NS_IMETHODIMP
-TextEditor::SetWrapColumn(int32_t aWrapColumn) {
-  mWrapColumn = aWrapColumn;
-  return NS_OK;
-}
-
-NS_IMETHODIMP
 TextEditor::GetNewlineHandling(int32_t* aNewlineHandling) {
   NS_ENSURE_ARG_POINTER(aNewlineHandling);
 
@@ -1735,7 +1729,8 @@ TextEditor::Redo(uint32_t aCount) {
   return NS_OK;
 }
 
-bool TextEditor::CanCutOrCopy(PasswordFieldAllowed aPasswordFieldAllowed) {
+bool TextEditor::CanCutOrCopy(
+    PasswordFieldAllowed aPasswordFieldAllowed) const {
   MOZ_ASSERT(IsEditActionDataAvailable());
 
   if (aPasswordFieldAllowed == ePasswordFieldNotAllowed && IsPasswordEditor()) {
@@ -1759,9 +1754,9 @@ bool TextEditor::FireClipboardEvent(EventMessage aEventMessage,
     return false;
   }
 
-  if (!nsCopySupport::FireClipboardEvent(aEventMessage, aSelectionType,
-                                         presShell, SelectionRefPtr(),
-                                         aActionTaken)) {
+  if (!nsCopySupport::FireClipboardEvent(
+          aEventMessage, aSelectionType, presShell,
+          MOZ_KnownLive(SelectionRefPtr()), aActionTaken)) {
     return false;
   }
 
@@ -1785,25 +1780,23 @@ TextEditor::Cut() {
                                                *nsGkAtoms::DeleteTxnName);
     DeleteSelectionAsSubAction(eNone, eStrip);
   }
-  return actionTaken ? NS_OK : NS_ERROR_FAILURE;
+  return EditorBase::ToGenericNSResult(
+      actionTaken ? NS_OK : NS_ERROR_EDITOR_ACTION_CANCELED);
 }
 
-NS_IMETHODIMP
-TextEditor::CanCut(bool* aCanCut) {
-  if (NS_WARN_IF(!aCanCut)) {
-    return NS_ERROR_INVALID_ARG;
-  }
-
+bool TextEditor::CanCut() const {
   AutoEditActionDataSetter editActionData(*this, EditAction::eNotEditing);
   if (NS_WARN_IF(!editActionData.CanHandle())) {
-    return NS_ERROR_NOT_INITIALIZED;
+    return false;
   }
 
   // Cut is always enabled in HTML documents
-  RefPtr<Document> doc = GetDocument();
-  *aCanCut = (doc && doc->IsHTMLOrXHTML()) ||
-             (IsModifiable() && CanCutOrCopy(ePasswordFieldNotAllowed));
-  return NS_OK;
+  Document* document = GetDocument();
+  if (document && document->IsHTMLOrXHTML()) {
+    return true;
+  }
+
+  return IsModifiable() && CanCutOrCopy(ePasswordFieldNotAllowed);
 }
 
 NS_IMETHODIMP
@@ -1816,40 +1809,32 @@ TextEditor::Copy() {
   bool actionTaken = false;
   FireClipboardEvent(eCopy, nsIClipboard::kGlobalClipboard, &actionTaken);
 
-  return actionTaken ? NS_OK : NS_ERROR_FAILURE;
+  return EditorBase::ToGenericNSResult(
+      actionTaken ? NS_OK : NS_ERROR_EDITOR_ACTION_CANCELED);
 }
 
-NS_IMETHODIMP
-TextEditor::CanCopy(bool* aCanCopy) {
-  if (NS_WARN_IF(!aCanCopy)) {
-    return NS_ERROR_INVALID_ARG;
-  }
-
+bool TextEditor::CanCopy() const {
   AutoEditActionDataSetter editActionData(*this, EditAction::eNotEditing);
   if (NS_WARN_IF(!editActionData.CanHandle())) {
-    return NS_ERROR_NOT_INITIALIZED;
+    return false;
   }
 
   // Copy is always enabled in HTML documents
-  RefPtr<Document> doc = GetDocument();
-  *aCanCopy =
-      (doc && doc->IsHTMLOrXHTML()) || CanCutOrCopy(ePasswordFieldNotAllowed);
-  return NS_OK;
+  Document* document = GetDocument();
+  if (document && document->IsHTMLOrXHTML()) {
+    return true;
+  }
+
+  return CanCutOrCopy(ePasswordFieldNotAllowed);
 }
 
-NS_IMETHODIMP
-TextEditor::CanDelete(bool* aCanDelete) {
-  if (NS_WARN_IF(!aCanDelete)) {
-    return NS_ERROR_INVALID_ARG;
-  }
-
+bool TextEditor::CanDelete() const {
   AutoEditActionDataSetter editActionData(*this, EditAction::eNotEditing);
   if (NS_WARN_IF(!editActionData.CanHandle())) {
-    return NS_ERROR_NOT_INITIALIZED;
+    return false;
   }
 
-  *aCanDelete = IsModifiable() && CanCutOrCopy(ePasswordFieldAllowed);
-  return NS_OK;
+  return IsModifiable() && CanCutOrCopy(ePasswordFieldAllowed);
 }
 
 already_AddRefed<nsIDocumentEncoder> TextEditor::GetAndInitDocEncoder(
@@ -2143,31 +2128,28 @@ nsresult TextEditor::SelectEntireDocument() {
     return NS_ERROR_NULL_POINTER;
   }
 
+  Element* rootElement = GetRoot();
+  if (NS_WARN_IF(!rootElement)) {
+    return NS_ERROR_NOT_INITIALIZED;
+  }
+
   // Protect the edit rules object from dying
   RefPtr<TextEditRules> rules(mRules);
 
-  // is doc empty?
+  // If we're empty, don't select all children because that would select the
+  // bogus node.
   if (rules->DocumentIsEmpty()) {
-    // get root node
-    Element* rootElement = GetRoot();
-    if (NS_WARN_IF(!rootElement)) {
-      return NS_ERROR_FAILURE;
-    }
-
-    // if it's empty don't select entire doc - that would select the bogus node
-    return SelectionRefPtr()->Collapse(rootElement, 0);
-  }
-
-  SelectionBatcher selectionBatcher(SelectionRefPtr());
-  nsresult rv = EditorBase::SelectEntireDocument();
-  if (NS_WARN_IF(NS_FAILED(rv))) {
+    nsresult rv = SelectionRefPtr()->Collapse(rootElement, 0);
+    NS_WARNING_ASSERTION(
+        NS_SUCCEEDED(rv),
+        "Failed to move caret to start of the editor root element");
     return rv;
   }
 
   // Don't select the trailing BR node if we have one
   nsCOMPtr<nsIContent> childNode;
-  rv = EditorBase::GetEndChildNode(*SelectionRefPtr(),
-                                   getter_AddRefs(childNode));
+  nsresult rv = EditorBase::GetEndChildNode(*SelectionRefPtr(),
+                                            getter_AddRefs(childNode));
   if (NS_WARN_IF(NS_FAILED(rv))) {
     return rv;
   }
@@ -2176,13 +2158,22 @@ nsresult TextEditor::SelectEntireDocument() {
   }
 
   if (childNode && TextEditUtils::IsMozBR(childNode)) {
-    int32_t parentOffset;
-    nsINode* parentNode = GetNodeLocation(childNode, &parentOffset);
-
-    return SelectionRefPtr()->Extend(parentNode, parentOffset);
+    ErrorResult error;
+    MOZ_KnownLive(SelectionRefPtr())
+        ->SetStartAndEndInLimiter(RawRangeBoundary(rootElement, 0),
+                                  EditorRawDOMPoint(childNode), error);
+    NS_WARNING_ASSERTION(!error.Failed(),
+                         "Failed to select all children of the editor root "
+                         "element except the moz-<br> element");
+    return error.StealNSResult();
   }
 
-  return NS_OK;
+  ErrorResult error;
+  SelectionRefPtr()->SelectAllChildren(*rootElement, error);
+  NS_WARNING_ASSERTION(
+      !error.Failed(),
+      "Failed to select all children of the editor root element");
+  return error.StealNSResult();
 }
 
 EventTarget* TextEditor::GetDOMEventTarget() { return mEventTarget; }

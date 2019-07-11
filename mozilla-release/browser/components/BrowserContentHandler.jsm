@@ -327,11 +327,6 @@ function openBrowserWindow(cmdLine, triggeringPrincipal, urlOrUrlList, postData 
 }
 
 function openPreferences(cmdLine, extraArgs) {
-  if (extraArgs && extraArgs.origin) {
-    Services.telemetry.getHistogramById("FX_PREFERENCES_OPENED_VIA").add(extraArgs.origin);
-  } else {
-    Services.telemetry.getHistogramById("FX_PREFERENCES_OPENED_VIA").add("other");
-  }
   openBrowserWindow(cmdLine, gSystemPrincipal, "about:preferences");
 }
 
@@ -409,7 +404,7 @@ nsBrowserContentHandler.prototype = {
       // Handle old preference dialog URLs.
       if (chromeParam == "chrome://browser/content/pref/pref.xul" ||
           chromeParam == "chrome://browser/content/preferences/preferences.xul") {
-        openPreferences(cmdLine, {origin: "commandLineLegacy"});
+        openPreferences(cmdLine);
         cmdLine.preventDefault = true;
       } else {
         try {
@@ -441,7 +436,7 @@ nsBrowserContentHandler.prototype = {
       }
     }
     if (cmdLine.handleFlag("preferences", false)) {
-      openPreferences(cmdLine, {origin: "commandLineLegacy"});
+      openPreferences(cmdLine);
       cmdLine.preventDefault = true;
     }
     if (cmdLine.handleFlag("silent", false))

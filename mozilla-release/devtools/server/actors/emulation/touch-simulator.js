@@ -8,6 +8,8 @@
 
 const { Services } = require("resource://gre/modules/Services.jsm");
 
+loader.lazyRequireGetter(this, "InspectorUtils", "InspectorUtils");
+
 var systemAppOrigin = (function() {
   let systemOrigin = "_";
   try {
@@ -22,6 +24,8 @@ var systemAppOrigin = (function() {
 
 var threshold = Services.prefs.getIntPref("ui.dragThresholdX", 25);
 var delay = Services.prefs.getIntPref("ui.click_hold_context_menus.delay", 500);
+
+const kStateHover = 0x00000004; // NS_EVENT_STATE_HOVER
 
 function TouchSimulator(simulatorTarget) {
   this.simulatorTarget = simulatorTarget;
@@ -73,7 +77,23 @@ TouchSimulator.prototype = {
     this.enabled = false;
   },
 
+  /**
+   * Set the current element picker state value.
+   * True means the element picker is currently active and we should not be emulating
+   * touch events.
+   * False means the element picker is not active and it is ok to emulate touch events.
+   * @param {Boolean} state
+   */
+  setElementPickerState(state) {
+    this._isPicking = state;
+  },
+
   handleEvent(evt) {
+    // Bail out if devtools is in pick mode in the same tab.
+    if (this._isPicking) {
+      return;
+    }
+
     // The gaia system window use an hybrid system even on the device which is
     // a mix of mouse/touch events. So let's not cancel *all* mouse events
     // if it is the current target.
@@ -129,6 +149,12 @@ TouchSimulator.prototype = {
       case "mouseleave":
         // Don't propagate events which are not related to touch events
         evt.stopPropagation();
+        evt.preventDefault();
+
+        // We don't want to trigger any visual changes to elements whose content can
+        // be modified via hover states. We can avoid this by removing the element's
+        // content state.
+        InspectorUtils.removeContentState(evt.target, kStateHover);
         break;
 
       case "mousedown":

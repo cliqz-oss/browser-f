@@ -14,7 +14,6 @@
 #include "prlock.h"
 #include "mozilla/RefPtr.h"
 #include "nsAutoPtr.h"
-#include "nsIWeakReferenceUtils.h"  // for the definition of nsWeakPtr
 #include "IPeerConnection.h"
 #include "sigslot.h"
 #include "nsComponentManagerUtils.h"
@@ -129,7 +128,7 @@ class PCUuidGenerator : public mozilla::JsepUuidGenerator {
 // Not an inner class so we can forward declare.
 class RTCStatsQuery {
  public:
-  explicit RTCStatsQuery(bool internalStats);
+  explicit RTCStatsQuery(bool aInternalStats, bool aRecordTelemetry);
   RTCStatsQuery(RTCStatsQuery&& aOrig) = default;
   ~RTCStatsQuery();
 
@@ -138,6 +137,7 @@ class RTCStatsQuery {
   mozilla::TimeStamp iceStartTime;
 
   bool internalStats;
+  bool recordTelemetry;
   std::string transportId;
   bool grabAllLevels;
   DOMHighResTimeStamp now;
@@ -172,19 +172,6 @@ class PeerConnectionImpl final
  public:
   explicit PeerConnectionImpl(
       const mozilla::dom::GlobalObject* aGlobal = nullptr);
-
-  enum Error {
-    kNoError = 0,
-    kInvalidCandidate = 2,
-    kInvalidMediastreamTrack = 3,
-    kInvalidState = 4,
-    kInvalidSessionDescription = 5,
-    kIncompatibleSessionDescription = 6,
-    kIncompatibleMediaStreamTrack = 8,
-    kInternalError = 9,
-    kTypeError = 10,
-    kOperationError = 11
-  };
 
   NS_DECL_THREADSAFE_ISUPPORTS
 
@@ -390,6 +377,7 @@ class PeerConnectionImpl final
   void GetPeerIdentity(nsAString& peerIdentity) {
     if (mPeerIdentity) {
       peerIdentity = mPeerIdentity->ToString();
+      return;
     }
 
     peerIdentity.SetIsVoid(true);
@@ -499,7 +487,8 @@ class PeerConnectionImpl final
   void startCallTelem();
 
   RefPtr<RTCStatsQueryPromise> GetStats(dom::MediaStreamTrack* aSelector,
-                                        bool aInternalStats);
+                                        bool aInternalStats,
+                                        bool aRecordTelemetry);
 
   // for monitoring changes in track ownership
   // PeerConnectionMedia can't do it because it doesn't know about principals
@@ -594,8 +583,7 @@ class PeerConnectionImpl final
   mozilla::dom::PCImplIceGatheringState mIceGatheringState;
 
   nsCOMPtr<nsIThread> mThread;
-  // TODO: Remove if we ever properly wire PeerConnection for cycle-collection.
-  nsWeakPtr mPCObserver;
+  RefPtr<PeerConnectionObserver> mPCObserver;
 
   nsCOMPtr<nsPIDOMWindowInner> mWindow;
 
@@ -673,7 +661,7 @@ class PeerConnectionImpl final
     NS_DECL_NSITIMERCALLBACK
     NS_DECL_THREADSAFE_ISUPPORTS
 
-    nsWeakPtr mPCObserver;
+    RefPtr<PeerConnectionObserver> mPCObserver;
     RefPtr<TransceiverImpl> mTransceiver;
     nsCOMPtr<nsITimer> mSendTimer;
     nsString mTones;

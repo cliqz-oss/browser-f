@@ -140,12 +140,6 @@ const SNAPSHOT_SCHEMA = {
         numRemoteWindows: {
           type: "number",
         },
-        currentContentProcesses: {
-          type: "number",
-        },
-        maxContentProcesses: {
-          type: "number",
-        },
         policiesStatus: {
           type: "number",
         },
@@ -258,6 +252,20 @@ const SNAPSHOT_SCHEMA = {
         },
       },
     },
+    processes: {
+      required: true,
+      type: "object",
+      properties: {
+        maxWebContentProcesses: {
+          required: true,
+          type: "number",
+        },
+        remoteTypes: {
+          required: true,
+          type: "object",
+        },
+      },
+    },
     modifiedPreferences: {
       required: true,
       type: "object",
@@ -318,6 +326,9 @@ const SNAPSHOT_SCHEMA = {
         adapterDrivers: {
           type: "string",
         },
+        driverVendor: {
+          type: "string",
+        },
         driverVersion: {
           type: "string",
         },
@@ -340,6 +351,9 @@ const SNAPSHOT_SCHEMA = {
           type: "string",
         },
         adapterDrivers2: {
+          type: "string",
+        },
+        driverVendor2: {
           type: "string",
         },
         driverVersion2: {
@@ -446,11 +460,11 @@ const SNAPSHOT_SCHEMA = {
             },
           },
         },
-        lowEndMachine: {
-          type: "boolean",
-        },
         targetFrameRate: {
           type: "number",
+        },
+        windowProtocol: {
+          type: "string",
         },
       },
     },
@@ -745,11 +759,11 @@ const SNAPSHOT_SCHEMA = {
           type: "boolean",
         },
         contentSandboxLevel: {
-          required: AppConstants.MOZ_CONTENT_SANDBOX,
+          required: AppConstants.MOZ_SANDBOX,
           type: "number",
         },
         effectiveContentSandboxLevel: {
-          required: AppConstants.MOZ_CONTENT_SANDBOX,
+          required: AppConstants.MOZ_SANDBOX,
           type: "number",
         },
         syscallLog: {

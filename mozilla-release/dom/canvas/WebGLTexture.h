@@ -12,6 +12,7 @@
 #include <vector>
 
 #include "mozilla/Assertions.h"
+#include "mozilla/Casting.h"
 #include "mozilla/CheckedInt.h"
 #include "mozilla/dom/TypedArray.h"
 #include "mozilla/LinkedList.h"
@@ -269,7 +270,8 @@ class WebGLTexture final : public nsWrapperCache,
       case LOCAL_GL_TEXTURE_CUBE_MAP_NEGATIVE_Y:
       case LOCAL_GL_TEXTURE_CUBE_MAP_POSITIVE_Z:
       case LOCAL_GL_TEXTURE_CUBE_MAP_NEGATIVE_Z:
-        return rawTexImageTarget - LOCAL_GL_TEXTURE_CUBE_MAP_POSITIVE_X;
+        return AutoAssertCast(rawTexImageTarget -
+                              LOCAL_GL_TEXTURE_CUBE_MAP_POSITIVE_X);
 
       default:
         return 0;
@@ -309,6 +311,7 @@ class WebGLTexture final : public nsWrapperCache,
   void PopulateMipChain(uint32_t maxLevel);
   bool IsMipAndCubeComplete(uint32_t maxLevel, bool ensureInit,
                             bool* out_initFailed) const;
+  void Truncate();
 
   bool IsCubeMap() const { return (mTarget == LOCAL_GL_TEXTURE_CUBE_MAP); }
 };

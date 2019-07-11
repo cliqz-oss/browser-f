@@ -95,6 +95,7 @@ const UPDATED_REQ_ITEM_PROPS = [
   "status",
   "statusText",
   "fromCache",
+  "isRacing",
   "fromServiceWorker",
   "method",
   "url",
@@ -124,6 +125,7 @@ const UPDATED_REQ_PROPS = [
 class RequestListItem extends Component {
   static get propTypes() {
     return {
+      blocked: PropTypes.bool,
       connector: PropTypes.object.isRequired,
       columns: PropTypes.object.isRequired,
       item: PropTypes.object.isRequired,
@@ -132,6 +134,7 @@ class RequestListItem extends Component {
       firstRequestStartedMillis: PropTypes.number.isRequired,
       fromCache: PropTypes.bool,
       onCauseBadgeMouseDown: PropTypes.func.isRequired,
+      onDoubleClick: PropTypes.func.isRequired,
       onContextMenu: PropTypes.func.isRequired,
       onFocusedNodeChange: PropTypes.func,
       onMouseDown: PropTypes.func.isRequired,
@@ -185,6 +188,7 @@ class RequestListItem extends Component {
 
   render() {
     const {
+      blocked,
       connector,
       columns,
       item,
@@ -192,6 +196,7 @@ class RequestListItem extends Component {
       isSelected,
       firstRequestStartedMillis,
       fromCache,
+      onDoubleClick,
       onContextMenu,
       onMouseDown,
       onCauseBadgeMouseDown,
@@ -202,6 +207,7 @@ class RequestListItem extends Component {
     const classList = ["request-list-item", index % 2 ? "odd" : "even"];
     isSelected && classList.push("selected");
     fromCache && classList.push("fromCache");
+    blocked && classList.push("blocked");
 
     return (
       dom.tr({
@@ -211,6 +217,7 @@ class RequestListItem extends Component {
         tabIndex: 0,
         onContextMenu,
         onMouseDown,
+        onDoubleClick,
       },
         columns.status && RequestListColumnStatus({ item }),
         columns.method && RequestListColumnMethod({ item }),

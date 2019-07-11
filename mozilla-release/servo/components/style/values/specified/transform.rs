@@ -42,7 +42,7 @@ impl Transform {
             .try(|input| input.expect_ident_matching("none"))
             .is_ok()
         {
-            return Ok(generic::Transform(Vec::new()));
+            return Ok(generic::Transform::none());
         }
 
         Ok(generic::Transform(Space::parse(input, |input| {
@@ -218,7 +218,7 @@ impl Transform {
                         .new_custom_error(StyleParseErrorKind::UnexpectedFunction(function.clone()))
                 })
             })
-        })?))
+        })?.into()))
     }
 }
 
@@ -232,7 +232,7 @@ impl Parse for Transform {
 }
 
 /// The specified value of a component of a CSS `<transform-origin>`.
-#[derive(Clone, Debug, MallocSizeOf, Parse, PartialEq, SpecifiedValueInfo, ToCss)]
+#[derive(Clone, Debug, MallocSizeOf, Parse, PartialEq, SpecifiedValueInfo, ToCss, ToShmem)]
 pub enum OriginComponent<S> {
     /// `center`
     Center,

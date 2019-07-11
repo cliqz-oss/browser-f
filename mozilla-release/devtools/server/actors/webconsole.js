@@ -1010,7 +1010,7 @@ WebConsoleActor.prototype =
     const helperResult = evalInfo.helperResult;
 
     let result, errorDocURL, errorMessage, errorNotes = null, errorGrip = null,
-      frame = null, awaitResult, errorMessageName;
+      frame = null, awaitResult, errorMessageName, exceptionStack;
     if (evalResult) {
       if ("return" in evalResult) {
         result = evalResult.return;
@@ -1028,6 +1028,21 @@ WebConsoleActor.prototype =
       } else if ("throw" in evalResult) {
         const error = evalResult.throw;
         errorGrip = this.createValueGrip(error);
+
+        exceptionStack = this.prepareStackForRemote(evalResult.stack);
+
+        if (exceptionStack) {
+          // Set the frame based on the topmost stack frame for the exception.
+          const {
+            filename: source,
+            sourceId,
+            lineNumber: line,
+            columnNumber: column,
+          } = exceptionStack[0];
+          frame = { source, sourceId, line, column };
+
+          exceptionStack = WebConsoleUtils.removeFramesAboveDebuggerEval(exceptionStack);
+        }
 
         errorMessage = String(error);
         if (typeof error === "object" && error !== null) {
@@ -1132,6 +1147,7 @@ WebConsoleActor.prototype =
       exception: errorGrip,
       exceptionMessage: this._createStringGrip(errorMessage),
       exceptionDocURL: errorDocURL,
+      exceptionStack,
       errorMessageName,
       frame,
       helperResult: helperResult,
@@ -1250,7 +1266,13 @@ WebConsoleActor.prototype =
         const lA = aFirstMeaningfulChar.toLocaleLowerCase() === aFirstMeaningfulChar;
         const lB = bFirstMeaningfulChar.toLocaleLowerCase() === bFirstMeaningfulChar;
         if (lA === lB) {
-          return a < b ? -1 : 1;
+          if (a === matchProp) {
+            return -1;
+          }
+          if (b === matchProp) {
+            return 1;
+          }
+          return a.localeCompare(b);
         }
         return lA ? -1 : 1;
       });
@@ -1460,6 +1482,36 @@ WebConsoleActor.prototype =
   },
 
   /**
+   * Prepare a SavedFrame stack to be sent to the client.
+   *
+   * @param SavedFrame errorStack
+   *        Stack for an error we need to send to the client.
+   * @return object
+   *         The object you can send to the remote client.
+   */
+  prepareStackForRemote(errorStack) {
+    // Convert stack objects to the JSON attributes expected by client code
+    // Bug 1348885: If the global from which this error came from has been
+    // nuked, stack is going to be a dead wrapper.
+    if (!errorStack || (Cu && Cu.isDeadWrapper(errorStack))) {
+      return null;
+    }
+    const stack = [];
+    let s = errorStack;
+    while (s) {
+      stack.push({
+        filename: s.source,
+        sourceId: this.getActorIdForInternalSourceId(s.sourceId),
+        lineNumber: s.line,
+        columnNumber: s.column,
+        functionName: s.functionDisplayName,
+      });
+      s = s.parent;
+    }
+    return stack;
+  },
+
+  /**
    * Prepare an nsIScriptError to be sent to the client.
    *
    * @param nsIScriptError pageError
@@ -1468,24 +1520,7 @@ WebConsoleActor.prototype =
    *         The object you can send to the remote client.
    */
   preparePageErrorForRemote: function(pageError) {
-    let stack = null;
-    // Convert stack objects to the JSON attributes expected by client code
-    // Bug 1348885: If the global from which this error came from has been
-    // nuked, stack is going to be a dead wrapper.
-    if (pageError.stack && !Cu.isDeadWrapper(pageError.stack)) {
-      stack = [];
-      let s = pageError.stack;
-      while (s !== null) {
-        stack.push({
-          filename: s.source,
-          sourceId: this.getActorIdForInternalSourceId(s.sourceId),
-          lineNumber: s.line,
-          columnNumber: s.column,
-          functionName: s.functionDisplayName,
-        });
-        s = s.parent;
-      }
-    }
+    const stack = this.prepareStackForRemote(pageError.stack);
     let lineText = pageError.sourceLine;
     if (lineText && lineText.length > DebuggerServer.LONG_STRING_INITIAL_LENGTH) {
       lineText = lineText.substr(0, DebuggerServer.LONG_STRING_INITIAL_LENGTH);
@@ -1509,16 +1544,32 @@ WebConsoleActor.prototype =
       }
     }
 
+    // If there is no location information in the error but we have a stack,
+    // fill in the location with the first frame on the stack.
+    let {
+      sourceName,
+      sourceId,
+      lineNumber,
+      columnNumber,
+    } = pageError;
+    if (!sourceName && !sourceId && !lineNumber && !columnNumber && stack) {
+      sourceName = stack[0].filename;
+      sourceId = stack[0].sourceId;
+      lineNumber = stack[0].lineNumber;
+      columnNumber = stack[0].columnNumber;
+    }
+
     return {
       errorMessage: this._createStringGrip(pageError.errorMessage),
       errorMessageName: pageError.errorMessageName,
       exceptionDocURL: ErrorDocs.GetURL(pageError),
-      sourceName: pageError.sourceName,
-      sourceId: this.getActorIdForInternalSourceId(pageError.sourceId),
-      lineText: lineText,
-      lineNumber: pageError.lineNumber,
-      columnNumber: pageError.columnNumber,
+      sourceName,
+      sourceId: this.getActorIdForInternalSourceId(sourceId),
+      lineText,
+      lineNumber,
+      columnNumber,
       category: pageError.category,
+      innerWindowID: pageError.innerWindowID,
       timeStamp: pageError.timeStamp,
       warning: !!(pageError.flags & pageError.warningFlag),
       error: !!(pageError.flags & pageError.errorFlag),
@@ -1529,6 +1580,8 @@ WebConsoleActor.prototype =
       stacktrace: stack,
       notes: notesArray,
       executionPoint: pageError.executionPoint,
+      chromeContext: pageError.isFromChromeContext,
+      cssSelectors: pageError.cssSelectors,
     };
   },
 
@@ -1659,6 +1712,50 @@ WebConsoleActor.prototype =
   },
 
   /**
+   * Block a request based on certain filtering options.
+   *
+   * Currently, an exact URL match is the only supported filter type.
+   * In the future, there may be other types of filters, such as domain.
+   * For now, ignore anything other than URL.
+   *
+   * @param object filter
+   *   An object containing a `url` key with a URL to block.
+   */
+  async blockRequest({ filter }) {
+    if (this.netmonitors) {
+      for (const { messageManager } of this.netmonitors) {
+        messageManager.sendAsyncMessage("debug:block-request", {
+          filter,
+        });
+      }
+    }
+
+    return {};
+  },
+
+  /**
+   * Unblock a request based on certain filtering options.
+   *
+   * Currently, an exact URL match is the only supported filter type.
+   * In the future, there may be other types of filters, such as domain.
+   * For now, ignore anything other than URL.
+   *
+   * @param object filter
+   *   An object containing a `url` key with a URL to unblock.
+   */
+  async unblockRequest({ filter }) {
+    if (this.netmonitors) {
+      for (const { messageManager } of this.netmonitors) {
+        messageManager.sendAsyncMessage("debug:unblock-request", {
+          filter,
+        });
+      }
+    }
+
+    return {};
+  },
+
+  /**
    * Handler for file activity. This method sends the file request information
    * to the remote Web Console client.
    *
@@ -1702,21 +1799,25 @@ WebConsoleActor.prototype =
     delete result.consoleID;
 
     if (result.stacktrace) {
-      result.stacktrace = Array.map(result.stacktrace, (frame) => {
-        return { ...frame, sourceId: this.getActorIdForInternalSourceId(frame.sourceId) };
+      result.stacktrace = result.stacktrace.map(frame => {
+        return {
+          ...frame,
+          sourceId: this.getActorIdForInternalSourceId(frame.sourceId),
+        };
       });
     }
 
-    result.arguments = Array.map(message.arguments || [], (obj) => {
+    result.arguments = (message.arguments || []).map(obj => {
       const dbgObj = this.makeDebuggeeValue(obj, useObjectGlobal);
       return this.createValueGrip(dbgObj);
     });
 
-    result.styles = Array.map(message.styles || [], (string) => {
+    result.styles = (message.styles || []).map(string => {
       return this.createValueGrip(string);
     });
 
     result.category = message.category || "webdev";
+    result.innerWindowID = message.innerID;
 
     return result;
   },
@@ -1805,6 +1906,8 @@ WebConsoleActor.prototype.requestTypes =
   getPreferences: WebConsoleActor.prototype.getPreferences,
   setPreferences: WebConsoleActor.prototype.setPreferences,
   sendHTTPRequest: WebConsoleActor.prototype.sendHTTPRequest,
+  blockRequest: WebConsoleActor.prototype.blockRequest,
+  unblockRequest: WebConsoleActor.prototype.unblockRequest,
 };
 
 exports.WebConsoleActor = WebConsoleActor;

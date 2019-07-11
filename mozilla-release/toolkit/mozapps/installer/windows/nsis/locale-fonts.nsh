@@ -63,13 +63,7 @@
 !endif
 
 ; Bengali
-!if "${AB_CD}" == "bn-BD"
-!define FONT_NAME1 "Nirmala UI"
-!define FONT_FILE1 "Nirmala.ttf"
-!endif
-
-; Bengali - India
-!if "${AB_CD}" == "bn-IN"
+!if "${AB_CD}" == "bn"
 !define FONT_NAME1 "Nirmala UI"
 !define FONT_FILE1 "Nirmala.ttf"
 !endif
@@ -136,9 +130,6 @@
 
 ; English - United States
 !if "${AB_CD}" == "en-US"
-;!define FONT_NAME1 "Segoe UI Light"
-;!define FONT_FILE1 "segoeuil.ttf"
-
 !define FONT_NAME1 "Segoe UI"
 !define FONT_FILE1 "segoeui.ttf"
 !endif

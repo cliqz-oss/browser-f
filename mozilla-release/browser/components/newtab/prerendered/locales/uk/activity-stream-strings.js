@@ -40,9 +40,7 @@ window.gActivityStreamStrings = {
   "section_disclaimer_topstories_buttontext": "Гаразд, зрозуміло",
   "prefs_home_header": "Домівка Firefox",
   "prefs_home_description": "Оберіть бажаний вміст для показу в домівці Firefox.",
-  "prefs_content_discovery_header": "Домівка Firefox",
   "prefs_content_discovery_description": "Огляд вмісту в домівці Firefox дозволяє вам знаходити високоякісні, цікаві статті з усього інтернету.",
-  "prefs_content_discovery_button": "Вимкнути огляд вмісту",
   "prefs_section_rows_option": "{num} рядок;{num} рядки;{num} рядків",
   "prefs_search_header": "Пошук в Інтернеті",
   "prefs_topsites_description": "Сайти, які ви відвідуєте найчастіше",
@@ -107,8 +105,5 @@ window.gActivityStreamStrings = {
   "firstrun_privacy_notice": "Повідомлення про приватність",
   "firstrun_continue_to_login": "Продовжити",
   "firstrun_skip_login": "Пропустити цей крок",
-  "context_menu_title": "Відкрити меню",
-  "manual_migration_explanation2": "Спробуйте Firefox із закладками, історією та паролями з іншого браузера.",
-  "manual_migration_cancel_button": "Ні, дякую",
-  "manual_migration_import_button": "Імпортувати зараз"
+  "context_menu_title": "Відкрити меню"
 };

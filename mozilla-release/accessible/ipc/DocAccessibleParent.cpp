@@ -6,7 +6,7 @@
 
 #include "DocAccessibleParent.h"
 #include "mozilla/a11y/Platform.h"
-#include "mozilla/dom/TabParent.h"
+#include "mozilla/dom/BrowserParent.h"
 #include "xpcAccessibleDocument.h"
 #include "xpcAccEvents.h"
 #include "nsAccUtils.h"
@@ -442,8 +442,9 @@ mozilla::ipc::IPCResult DocAccessibleParent::RecvAnnouncementEvent(
     return IPC_OK();
   }
 
-  // XXX: A future patch will add platform support for this event type.
-  // Right now, we just need to support XPC for testing.
+#  if defined(ANDROID)
+  ProxyAnnouncementEvent(target, aAnnouncement, aPriority);
+#  endif
 
   if (!nsCoreUtils::AccEventObserversExist()) {
     return IPC_OK();
@@ -540,7 +541,7 @@ ipc::IPCResult DocAccessibleParent::AddChildDoc(DocAccessibleParent* aChildDoc,
 mozilla::ipc::IPCResult DocAccessibleParent::RecvShutdown() {
   Destroy();
 
-  auto mgr = static_cast<dom::TabParent*>(Manager());
+  auto mgr = static_cast<dom::BrowserParent*>(Manager());
   if (!mgr->IsDestroyed()) {
     if (!PDocAccessibleParent::Send__delete__(this)) {
       return IPC_FAIL_NO_REASON(mgr);
@@ -653,7 +654,7 @@ void DocAccessibleParent::MaybeInitWindowEmulation() {
     return;
   }
 
-  // XXX get the bounds from the tabParent instead of poking at accessibles
+  // XXX get the bounds from the browserParent instead of poking at accessibles
   // which might not exist yet.
   Accessible* outerDoc = OuterDocOfRemoteBrowser();
   if (!outerDoc) {
@@ -671,7 +672,7 @@ void DocAccessibleParent::MaybeInitWindowEmulation() {
     rect.MoveToX(rootRect.X() - rect.X());
     rect.MoveToY(rect.Y() - rootRect.Y());
 
-    auto tab = static_cast<dom::TabParent*>(Manager());
+    auto tab = static_cast<dom::BrowserParent*>(Manager());
     tab->GetDocShellIsActive(&isActive);
   }
 
@@ -707,7 +708,7 @@ void DocAccessibleParent::MaybeInitWindowEmulation() {
  */
 void DocAccessibleParent::SendParentCOMProxy() {
   // Make sure that we're not racing with a tab shutdown
-  auto tab = static_cast<dom::TabParent*>(Manager());
+  auto tab = static_cast<dom::BrowserParent*>(Manager());
   MOZ_ASSERT(tab);
   if (tab->IsDestroyed()) {
     return;
@@ -731,9 +732,9 @@ void DocAccessibleParent::SendParentCOMProxy() {
     return;
   }
 
-#  if defined(MOZ_CONTENT_SANDBOX)
+#  if defined(MOZ_SANDBOX)
   mParentProxyStream = holder.GetPreservedStream();
-#  endif  // defined(MOZ_CONTENT_SANDBOX)
+#  endif  // defined(MOZ_SANDBOX)
 }
 
 void DocAccessibleParent::SetEmulatedWindowHandle(HWND aWindowHandle) {
@@ -745,7 +746,7 @@ void DocAccessibleParent::SetEmulatedWindowHandle(HWND aWindowHandle) {
 
 mozilla::ipc::IPCResult DocAccessibleParent::RecvGetWindowedPluginIAccessible(
     const WindowsHandle& aHwnd, IAccessibleHolder* aPluginCOMProxy) {
-#  if defined(MOZ_CONTENT_SANDBOX)
+#  if defined(MOZ_SANDBOX)
   // We don't actually want the accessible object for aHwnd, but rather the
   // one that belongs to its child (see HTMLWin32ObjectAccessible).
   HWND childWnd = ::GetWindow(reinterpret_cast<HWND>(aHwnd), GW_CHILD);

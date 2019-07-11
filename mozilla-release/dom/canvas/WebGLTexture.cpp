@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include "GLContext.h"
+#include "mozilla/Casting.h"
 #include "mozilla/dom/WebGLRenderingContextBinding.h"
 #include "mozilla/gfx/Logging.h"
 #include "mozilla/MathAlgorithms.h"
@@ -260,7 +261,7 @@ Maybe<const WebGLTexture::CompletenessInfo> WebGLTexture::CalcCompletenessInfo(
     ret->incompleteReason = "Bad mipmap dimension or format.";
     return ret;
   }
-  ret->levels = maxLevel - mBaseMipmapLevel + 1;
+  ret->levels = AutoAssertCast(maxLevel - mBaseMipmapLevel + 1);
   ret->mipmapComplete = true;
 
   // -
@@ -586,7 +587,7 @@ static bool ZeroTextureData(const WebGLContext* webgl, GLuint tex,
 
     const size_t byteCount = checkedByteCount.value();
 
-    UniqueBuffer zeros = calloc(1, byteCount);
+    UniqueBuffer zeros = calloc(1u, byteCount);
     if (!zeros) return false;
 
     ScopedUnpackReset scopedReset(webgl);
@@ -623,7 +624,7 @@ static bool ZeroTextureData(const WebGLContext* webgl, GLuint tex,
 
   const size_t byteCount = checkedByteCount.value();
 
-  UniqueBuffer zeros = calloc(1, byteCount);
+  UniqueBuffer zeros = calloc(1u, byteCount);
   if (!zeros) return false;
 
   ScopedUnpackReset scopedReset(webgl);
@@ -1026,6 +1027,13 @@ void WebGLTexture::TexParameter(TexTarget texTarget, GLenum pname,
     mContext->gl->fTexParameteri(texTarget.get(), pname, clamped.i);
   else
     mContext->gl->fTexParameterf(texTarget.get(), pname, clamped.f);
+}
+
+void WebGLTexture::Truncate() {
+  for (auto& cur : mImageInfoArr) {
+    cur = {};
+  }
+  InvalidateCaches();
 }
 
 ////////////////////////////////////////////////////////////////////////////////

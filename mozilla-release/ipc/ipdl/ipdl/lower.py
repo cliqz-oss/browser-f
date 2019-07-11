@@ -249,7 +249,7 @@ For example: |Actor[]| would turn into |Array<ActorParent*>|, so this
 function would return true for |Actor[]|."""
     return (ipdltype.isIPDL()
             and (ipdltype.isActor()
-                 or ((ipdltype.isArray() or ipdltype.isMaybe())
+                 or (ipdltype.hasBaseType()
                      and _hasVisibleActor(ipdltype.basetype))))
 
 
@@ -522,6 +522,9 @@ class _ConvertToCxxType(TypeVisitor):
     def visitEndpointType(self, s):
         return Type(self.typename(s))
 
+    def visitManagedEndpointType(self, s):
+        return Type(self.typename(s))
+
     def visitUniquePtrType(self, s):
         return Type(self.typename(s))
 
@@ -554,7 +557,7 @@ def _cxxConstRefType(ipdltype, side):
     if ipdltype.isIPDL() and ipdltype.isByteBuf():
         t.ref = True
         return t
-    if ipdltype.isIPDL() and (ipdltype.isArray() or ipdltype.isMaybe()):
+    if ipdltype.isIPDL() and ipdltype.hasBaseType():
         # Keep same constness as inner type.
         inner = _cxxConstRefType(ipdltype.basetype, side)
         t.const = inner.const or not inner.ref
@@ -585,7 +588,9 @@ def _cxxTypeNeedsMove(ipdltype):
         return True
 
     if ipdltype.isIPDL():
-        return ipdltype.isArray() or ipdltype.isEndpoint()
+        return (ipdltype.isArray() or
+                ipdltype.isEndpoint() or
+                ipdltype.isManagedEndpoint())
 
     return False
 
@@ -598,11 +603,12 @@ def _cxxTypeNeedsMoveForSend(ipdltype):
         return ipdltype.isMoveonly()
 
     if ipdltype.isIPDL():
-        if ipdltype.isMaybe() or ipdltype.isArray():
+        if ipdltype.hasBaseType():
             return _cxxTypeNeedsMove(ipdltype.basetype)
         return (ipdltype.isShmem() or
                 ipdltype.isByteBuf() or
-                ipdltype.isEndpoint())
+                ipdltype.isEndpoint() or
+                ipdltype.isManagedEndpoint())
 
     return False
 
@@ -1372,6 +1378,8 @@ with some new IPDL/C++ nodes that are tuned for C++ codegen."""
                                        'Transport'),
                                Typedef(Type('mozilla::ipc::Endpoint'),
                                        'Endpoint', ['FooSide']),
+                               Typedef(Type('mozilla::ipc::ManagedEndpoint'),
+                                       'ManagedEndpoint', ['FooSide']),
                                Typedef(Type('mozilla::ipc::TransportDescriptor'),
                                        'TransportDescriptor'),
                                Typedef(Type('mozilla::UniquePtr'),
@@ -3364,7 +3372,7 @@ class _GenerateProtocolActorCode(ipdl.ast.Visitor):
                 if not ptype.isManagerOf(managed) or md.decl.type.isDtor():
                     continue
 
-                # add the Alloc/Dealloc interface for managed actors
+                # add the Alloc interface for managed actors
                 actortype = md.actorDecl().bareType(self.side)
 
                 self.cls.addstmt(StmtDecl(MethodDecl(
@@ -3372,9 +3380,13 @@ class _GenerateProtocolActorCode(ipdl.ast.Visitor):
                     params=md.makeCxxParams(side=self.side, implicit=False),
                     ret=actortype, methodspec=MethodSpec.PURE)))
 
+            # add the Dealloc interface for all managed actors, even without
+            # ctors.  This is useful for protocols which use ManagedEndpoint
+            # for construction.
+            for managed in ptype.manages:
                 self.cls.addstmt(StmtDecl(MethodDecl(
                     _deallocMethod(managed, self.side),
-                    params=[Decl(actortype, 'aActor')],
+                    params=[Decl(p.managedCxxType(managed, self.side), 'aActor')],
                     ret=Type.BOOL, methodspec=MethodSpec.PURE)))
 
         # ActorDestroy() method; default is no-op
@@ -3504,6 +3516,10 @@ class _GenerateProtocolActorCode(ipdl.ast.Visitor):
             refmeth.addstmt(StmtReturn(p.managedVar(managed, self.side)))
 
             self.cls.addstmts([meth, refmeth, Whitespace.NL])
+
+        # OpenPEndpoint(...)/BindPEndpoint(...)
+        for managed in ptype.manages:
+            self.genManagedEndpoint(managed)
 
         # OnMessageReceived()/OnCallReceived()
 
@@ -3823,6 +3839,41 @@ class _GenerateProtocolActorCode(ipdl.ast.Visitor):
                     p.managedVarType(managed, self.side),
                     p.managedVar(managed, self.side).name))])
 
+    def genManagedEndpoint(self, managed):
+        hereEp = 'ManagedEndpoint<%s>' % _actorName(managed.name(), self.side)
+        thereEp = 'ManagedEndpoint<%s>' % _actorName(managed.name(),
+                                                     _otherSide(self.side))
+
+        actor = _HybridDecl(ipdl.type.ActorType(managed), 'aActor')
+        eprouteid = ExprCall(ExprSelect(ExprVar('aEndpoint'), '.', 'ActorId'))
+
+        # ManagedEndpoint<PThere> OpenPEndpoint(PHere* aActor)
+        openmeth = MethodDefn(MethodDecl(
+            'Open%sEndpoint' % managed.name(),
+            params=[Decl(self.protocol.managedCxxType(managed, self.side), actor.name)],
+            ret=Type(thereEp)))
+        openmeth.addstmts(self.bindManagedActor(actor, errfn=ExprCall(ExprVar(thereEp))))
+        openmeth.addstmts([
+            Whitespace.NL,
+            StmtReturn(ExprCall(ExprVar(thereEp),
+                                args=[_backstagePass(),
+                                      ExprCall(ExprSelect(actor.var(), '->', 'Id'))])),
+        ])
+
+        # void BindPEndpoint(ManagedEndpoint<PHere>&& aEndpoint, PHere* aActor)
+        bindmeth = MethodDefn(MethodDecl(
+            'Bind%sEndpoint' % managed.name(),
+            params=[Decl(Type(hereEp), 'aEndpoint'),
+                    Decl(self.protocol.managedCxxType(managed, self.side),
+                         actor.name)],
+            ret=Type.BOOL))
+        bindmeth.addstmt(_abortIfFalse(eprouteid, "Invalid Endpoint!"))
+        bindmeth.addstmts(self.bindManagedActor(actor, errfn=ExprLiteral.FALSE,
+                                                idexpr=ExprDeref(eprouteid)))
+        bindmeth.addstmts([Whitespace.NL, StmtReturn.TRUE])
+
+        self.cls.addstmts([openmeth, bindmeth, Whitespace.NL])
+
     def implementManagerIface(self):
         p = self.protocol
         protocolbase = Type('IProtocol', ptr=True)
@@ -4035,7 +4086,7 @@ class _GenerateProtocolActorCode(ipdl.ast.Visitor):
     def genAsyncCtor(self, md):
         actor = md.actorDecl()
         method = MethodDefn(self.makeSendMethodDecl(md))
-        method.addstmts(self.ctorPrologue(md) + [Whitespace.NL])
+        method.addstmts(self.bindManagedActor(actor) + [Whitespace.NL])
 
         msgvar, stmts = self.makeMessage(md, errfnSendCtor)
         sendok, sendstmts = self.sendAsync(md, msgvar)
@@ -4076,32 +4127,49 @@ class _GenerateProtocolActorCode(ipdl.ast.Visitor):
     def genBlockingCtorMethod(self, md):
         actor = md.actorDecl()
         method = MethodDefn(self.makeSendMethodDecl(md))
-        method.addstmts(self.ctorPrologue(md) + [Whitespace.NL])
+        method.addstmts(self.bindManagedActor(actor) + [Whitespace.NL])
 
         msgvar, stmts = self.makeMessage(md, errfnSendCtor)
 
         replyvar = self.replyvar
         sendok, sendstmts = self.sendBlocking(md, msgvar, replyvar)
+
+        failIf = StmtIf(ExprNot(sendok))
+        failIf.addifstmt(_printWarningMessage('Error sending constructor'))
+        failIf.addifstmts(self.destroyActor(md, actor.var(),
+                                            why=_DestroyReason.FailedConstructor))
+        failIf.addifstmt(StmtReturn(ExprLiteral.NULL))
+
         method.addstmts(
+            # Build our constructor message & verify it.
             stmts
             + [Whitespace.NL,
                 StmtDecl(Decl(Type('Message'), replyvar.name))]
             + self.genVerifyMessage(md.decl.type.verify, md.params,
                                     errfnSendCtor, ExprVar('msg__'))
-            + sendstmts
-            + self.failCtorIf(md, ExprNot(sendok)))
 
-        def errfnCleanupCtor(msg):
-            return self.failCtorIf(md, ExprLiteral.TRUE)
+            # Synchronously send the constructor message to the other side.
+            #
+            # If the MessageChannel is closing, and we haven't been told yet,
+            # this send may fail. This error is ignored to treat it like a
+            # message being lost due to the other side shutting down before
+            # processing it.
+            #
+            # NOTE: We also free the actor here.
+            + sendstmts
+
+            # Warn, destroy the actor and return null if the message failed to
+            # send.
+            + [failIf])
+
         stmts = self.deserializeReply(
             md, ExprAddrOf(replyvar), self.side,
-            errfnCleanupCtor, errfnSentinel(ExprLiteral.NULL))
+            errfnSendCtor, errfnSentinel(ExprLiteral.NULL))
         method.addstmts(stmts + [StmtReturn(actor.var())])
 
         return method
 
-    def ctorPrologue(self, md, errfn=ExprLiteral.NULL, idexpr=None):
-        actordecl = md.actorDecl()
+    def bindManagedActor(self, actordecl, errfn=ExprLiteral.NULL, idexpr=None):
         actorvar = actordecl.var()
         actorproto = actordecl.ipdltype.protocol
         actortype = ipdl.type.ActorType(actorproto)
@@ -4114,30 +4182,18 @@ class _GenerateProtocolActorCode(ipdl.ast.Visitor):
                               args=setManagerArgs)
 
         return [
+            # if (!actor) { return $errReturn; }
             self.failIfNullActor(actorvar, errfn, msg="Error constructing actor %s" %
                                  actortype.name() + self.side.capitalize()),
+            # actor->SetManagerAndRegister(this[, id]);
             StmtExpr(setmanager),
+            # mManagedPFoo.PutEntry(actor);
             StmtExpr(_callInsertManagedActor(
-                self.protocol.managedVar(md.decl.type.constructedType(),
-                                         self.side),
-                actorvar)),
+                self.protocol.managedVar(actorproto, self.side), actorvar)),
+            # actor->mLivenessState = START;
             StmtExpr(ExprAssn(_actorState(actorvar),
-                              _startState(md.decl.type.cdtype.hasReentrantDelete)))
+                              _startState(actorproto.hasReentrantDelete))),
         ]
-
-    def failCtorIf(self, md, cond):
-        actorvar = md.actorDecl().var()
-        failif = StmtIf(cond)
-
-        if self.side == 'child':
-            # in the child process this should not fail
-            failif.addifstmt(_fatalError('constructor for actor failed'))
-        else:
-            failif.addifstmts(self.destroyActor(md, actorvar,
-                                                why=_DestroyReason.FailedConstructor))
-
-        failif.addifstmt(StmtReturn(ExprLiteral.NULL))
-        return [failif]
 
     def genHelperCtor(self, md):
         helperdecl = self.makeSendMethodDecl(md)
@@ -4360,8 +4416,8 @@ class _GenerateProtocolActorCode(ipdl.ast.Visitor):
             + [StmtExpr(ExprAssn(
                 actorvar,
                 self.callAllocActor(md, retsems='in', side=self.side)))]
-            + self.ctorPrologue(md, errfn=_Result.ValuError,
-                                idexpr=_actorHId(actorhandle))
+            + self.bindManagedActor(md.actorDecl(), errfn=_Result.ValuError,
+                                    idexpr=_actorHId(actorhandle))
             + [Whitespace.NL]
             + saveIdStmts
             + self.invokeRecvHandler(md)
@@ -4574,7 +4630,7 @@ class _GenerateProtocolActorCode(ipdl.ast.Visitor):
             + [_ParamTraits.checkedRead(p.ipdltype,
                                         ExprAddrOf(ExprVar(p.var().name + 'Copy')),
                                         msgexpr, ExprAddrOf(itervar),
-                                        errfn, p.bareType(side).name,
+                                        errfn, p.ipdltype.name(),
                                         sentinelKey=p.name,
                                         errfnSentinel=errfnSentinel(),
                                         actor=ExprVar.THIS)
@@ -4633,7 +4689,7 @@ class _GenerateProtocolActorCode(ipdl.ast.Visitor):
             + [Whitespace.NL]
             + reads + [_ParamTraits.checkedRead(p.ipdltype, ExprAddrOf(p.var()),
                                                 msgexpr, ExprAddrOf(itervar),
-                                                errfn, "'%s'" % p.bareType(side).name,
+                                                errfn, "'%s'" % p.ipdltype.name(),
                                                 sentinelKey=p.name, errfnSentinel=errfnSent,
                                                 actor=ExprVar.THIS)
                        for p in md.params[start:]]
@@ -4695,7 +4751,7 @@ class _GenerateProtocolActorCode(ipdl.ast.Visitor):
             + [Whitespace.NL]
             + reads + [_ParamTraits.checkedRead(p.ipdltype, ExprAddrOf(p.var()),
                                                 msgexpr, ExprAddrOf(itervar),
-                                                errfn, "'%s'" % p.bareType(side).name,
+                                                errfn, "'%s'" % p.ipdltype.name(),
                                                 sentinelKey=p.name, errfnSentinel=errfnSent,
                                                 actor=ExprVar.THIS)
                        for p in md.returns[start:]]
@@ -4724,7 +4780,7 @@ class _GenerateProtocolActorCode(ipdl.ast.Visitor):
             + [_ParamTraits.checkedRead(r.ipdltype, r.var(),
                                         ExprAddrOf(self.replyvar),
                                         ExprAddrOf(self.itervar),
-                                        errfn, "'%s'" % r.bareType(side).name,
+                                        errfn, "'%s'" % r.ipdltype.name(),
                                         sentinelKey=r.name, errfnSentinel=errfnSentinel,
                                         actor=ExprVar.THIS)
                 for r in md.returns]
@@ -4891,7 +4947,8 @@ class _GenerateProtocolActorCode(ipdl.ast.Visitor):
             md.sendMethod(),
             params=md.makeCxxParams(paramsems, returnsems=returnsems,
                                     side=self.side, implicit=implicit),
-            warn_unused=(self.side == 'parent' and returnsems != 'callback'),
+            warn_unused=((self.side == 'parent' and returnsems != 'callback') or
+                         (md.decl.type.isCtor() and not md.decl.type.isAsync())),
             ret=rettype)
         if md.decl.type.isCtor():
             decl.ret = md.actorDecl().bareType(self.side)

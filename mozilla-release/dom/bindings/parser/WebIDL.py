@@ -4649,7 +4649,7 @@ class IDLArgument(IDLObjectWithIdentifier):
 
 
 class IDLCallback(IDLObjectWithScope):
-    def __init__(self, location, parentScope, identifier, returnType, arguments):
+    def __init__(self, location, parentScope, identifier, returnType, arguments, isConstructor):
         assert isinstance(returnType, IDLType)
 
         self._returnType = returnType
@@ -4664,9 +4664,14 @@ class IDLCallback(IDLObjectWithScope):
 
         self._treatNonCallableAsNull = False
         self._treatNonObjectAsNull = False
+        self._isRunScriptBoundary = False
+        self._isConstructor = isConstructor
 
     def isCallback(self):
         return True
+
+    def isConstructor(self):
+        return self._isConstructor
 
     def signatures(self):
         return [(self._returnType, self._arguments)]
@@ -4700,7 +4705,16 @@ class IDLCallback(IDLObjectWithScope):
             if attr.identifier() == "TreatNonCallableAsNull":
                 self._treatNonCallableAsNull = True
             elif attr.identifier() == "TreatNonObjectAsNull":
+                if self._isConstructor:
+                    raise WebIDLError("[TreatNonObjectAsNull] is not supported "
+                                      "on constructors", [self.location])
                 self._treatNonObjectAsNull = True
+            elif attr.identifier() == "MOZ_CAN_RUN_SCRIPT_BOUNDARY":
+                if self._isConstructor:
+                    raise WebIDLError("[MOZ_CAN_RUN_SCRIPT_BOUNDARY] is not "
+                                      "permitted on constructors",
+                                      [self.location])
+                self._isRunScriptBoundary = True
             else:
                 unhandledAttrs.append(attr)
         if self._treatNonCallableAsNull and self._treatNonObjectAsNull:
@@ -4711,6 +4725,9 @@ class IDLCallback(IDLObjectWithScope):
 
     def _getDependentObjects(self):
         return set([self._returnType] + self._arguments)
+
+    def isRunScriptBoundary(self):
+        return self._isRunScriptBoundary;
 
 
 class IDLCallbackType(IDLType):
@@ -5480,6 +5497,7 @@ class Tokenizer(object):
         "iterable": "ITERABLE",
         "namespace": "NAMESPACE",
         "ReadableStream": "READABLESTREAM",
+        "constructor": "CONSTRUCTOR",
         }
 
     tokens.extend(keywords.values())
@@ -5606,6 +5624,7 @@ class Parser(Tokenizer):
     def p_CallbackRestOrInterface(self, p):
         """
             CallbackRestOrInterface : CallbackRest
+                                    | CallbackConstructorRest
                                     | Interface
         """
         assert p[1]
@@ -5975,7 +5994,15 @@ class Parser(Tokenizer):
         """
         identifier = IDLUnresolvedIdentifier(self.getLocation(p, 1), p[1])
         p[0] = IDLCallback(self.getLocation(p, 1), self.globalScope(),
-                           identifier, p[3], p[5])
+                           identifier, p[3], p[5], isConstructor=False)
+
+    def p_CallbackConstructorRest(self, p):
+        """
+            CallbackConstructorRest : CONSTRUCTOR IDENTIFIER EQUALS ReturnType LPAREN ArgumentList RPAREN SEMICOLON
+        """
+        identifier = IDLUnresolvedIdentifier(self.getLocation(p, 2), p[2])
+        p[0] = IDLCallback(self.getLocation(p, 2), self.globalScope(),
+                           identifier, p[4], p[6], isConstructor=True)
 
     def p_ExceptionMembers(self, p):
         """
@@ -6444,6 +6471,7 @@ class Parser(Tokenizer):
                          | ATTRIBUTE
                          | CALLBACK
                          | CONST
+                         | CONSTRUCTOR
                          | DELETER
                          | DICTIONARY
                          | ENUM
@@ -6568,6 +6596,7 @@ class Parser(Tokenizer):
                   | BYTE
                   | LEGACYCALLER
                   | CONST
+                  | CONSTRUCTOR
                   | DELETER
                   | DOUBLE
                   | EXCEPTION

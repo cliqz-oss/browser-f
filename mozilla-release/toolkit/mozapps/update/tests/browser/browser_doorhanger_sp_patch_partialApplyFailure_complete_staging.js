@@ -1,7 +1,14 @@
-add_task(async function testPartialPatchApplyFailureWithCompleteAvailable() {
-  SpecialPowers.pushPrefEnv({set: [
-    [PREF_APP_UPDATE_STAGING_ENABLED, true],
-  ]});
+/* Any copyright is dedicated to the Public Domain.
+ * http://creativecommons.org/publicdomain/zero/1.0/ */
+
+"use strict";
+
+add_task(async function doorhanger_sp_patch_partialApplyFailure_complete_staging() {
+  await SpecialPowers.pushPrefEnv({
+    set: [
+      [PREF_APP_UPDATE_STAGING_ENABLED, true],
+    ],
+  });
 
   let patchProps = {type: "partial",
                     state: STATE_PENDING};
@@ -12,13 +19,12 @@ add_task(async function testPartialPatchApplyFailureWithCompleteAvailable() {
                      promptWaitTime: "0"};
   let updates = getLocalUpdateString(updateProps, patches);
 
-  await runUpdateProcessingTest(updates, [
+  let params = {updates};
+  await runDoorhangerUpdateTest(params, [
     {
       notificationId: "update-restart",
       button: "secondaryButton",
-      cleanup() {
-        AppMenuNotifications.removeNotification(/.*/);
-      },
+      checkActiveUpdate: {state: STATE_APPLIED},
     },
   ]);
 });

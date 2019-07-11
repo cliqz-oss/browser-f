@@ -5,6 +5,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "mozilla/Attributes.h"
+#include "mozilla/Utf8.h"  // mozilla::Utf8Unit
 
 #include <cstdarg>
 
@@ -21,6 +22,7 @@
 #include "js/CompilationAndEvaluation.h"
 #include "js/Printf.h"
 #include "js/PropertySpec.h"
+#include "js/SourceText.h"  // JS::SourceText
 #include "nsCOMPtr.h"
 #include "nsAutoPtr.h"
 #include "nsExceptionHandler.h"
@@ -856,21 +858,26 @@ nsresult mozJSComponentLoader::ObjectForLocation(
       // Note: exceptions will get handled further down;
       // don't early return for them here.
       auto buf = map.get<char>();
-      if (reuseGlobal) {
-        CompileUtf8ForNonSyntacticScope(cx, options, buf.get(), map.size(),
-                                        &script);
+
+      JS::SourceText<mozilla::Utf8Unit> srcBuf;
+      if (srcBuf.init(cx, buf.get(), map.size(),
+                      JS::SourceOwnership::Borrowed)) {
+        script = reuseGlobal ? CompileForNonSyntacticScope(cx, options, srcBuf)
+                             : Compile(cx, options, srcBuf);
       } else {
-        CompileUtf8(cx, options, buf.get(), map.size(), &script);
+        MOZ_ASSERT(!script);
       }
     } else {
       nsCString str;
       MOZ_TRY_VAR(str, ReadScript(aInfo));
 
-      if (reuseGlobal) {
-        CompileUtf8ForNonSyntacticScope(cx, options, str.get(), str.Length(),
-                                        &script);
+      JS::SourceText<mozilla::Utf8Unit> srcBuf;
+      if (srcBuf.init(cx, str.get(), str.Length(),
+                      JS::SourceOwnership::Borrowed)) {
+        script = reuseGlobal ? CompileForNonSyntacticScope(cx, options, srcBuf)
+                             : Compile(cx, options, srcBuf);
       } else {
-        CompileUtf8(cx, options, str.get(), str.Length(), &script);
+        MOZ_ASSERT(!script);
       }
     }
     // Propagate the exception, if one exists. Also, don't leave the stale
@@ -950,15 +957,11 @@ void mozJSComponentLoader::UnloadModules() {
   mInitialized = false;
 
   if (mLoaderGlobal) {
-    dom::AutoJSAPI jsapi;
-    jsapi.Init();
-    JSContext* cx = jsapi.cx();
-    RootedObject global(cx, mLoaderGlobal);
-    JSAutoRealm ar(cx, global);
-    MOZ_ASSERT(JS_HasExtensibleLexicalEnvironment(global));
-    JS_SetAllNonReservedSlotsToUndefined(
-        cx, JS_ExtensibleLexicalEnvironment(global));
-    JS_SetAllNonReservedSlotsToUndefined(cx, global);
+    MOZ_ASSERT(JS_HasExtensibleLexicalEnvironment(mLoaderGlobal));
+    JS::RootedObject lexicalEnv(dom::RootingCx(),
+                                JS_ExtensibleLexicalEnvironment(mLoaderGlobal));
+    JS_SetAllNonReservedSlotsToUndefined(lexicalEnv);
+    JS_SetAllNonReservedSlotsToUndefined(mLoaderGlobal);
     mLoaderGlobal = nullptr;
   }
 

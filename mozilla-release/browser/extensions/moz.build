@@ -8,7 +8,7 @@ DIRS += [
 #    'formautofill',
 #    'fxmonitor',
     'pdfjs',
-#    'screenshots',
-#    'webcompat',
-#    'webcompat-reporter'
+#   'screenshots',
+#   'webcompat',
+#   'report-site-issue'
 ]

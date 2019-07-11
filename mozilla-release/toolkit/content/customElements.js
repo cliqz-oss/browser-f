@@ -4,7 +4,7 @@
 
  // This file defines these globals on the window object.
  // Define them here so that ESLint can find them:
-/* globals BaseControlMixin, MozElementMixin, MozXULElement, MozElements */
+/* globals MozXULElement, MozElements */
 
 "use strict";
 
@@ -18,8 +18,166 @@ if (window.MozXULElement) {
   return;
 }
 
+const MozElements = {};
+window.MozElements = MozElements;
+
 const {Services} = ChromeUtils.import("resource://gre/modules/Services.jsm");
 const {AppConstants} = ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
+const env = Cc["@mozilla.org/process/environment;1"].getService(Ci.nsIEnvironment);
+const instrumentClasses = env.get("MOZ_INSTRUMENT_CUSTOM_ELEMENTS");
+const instrumentedClasses = instrumentClasses ? new Set() : null;
+const instrumentedBaseClasses = instrumentClasses ? new WeakSet() : null;
+
+// If requested, wrap the normal customElements.define to give us a chance
+// to modify the class so we can instrument function calls in local development:
+if (instrumentClasses) {
+  let define = window.customElements.define;
+  window.customElements.define = function(name, c, opts) {
+    instrumentCustomElementClass(c);
+    return define.call(this, name, c, opts);
+  };
+  window.addEventListener("load", () => {
+    MozElements.printInstrumentation(true);
+  }, { once: true, capture: true });
+}
+
+MozElements.printInstrumentation = function(collapsed) {
+  let summaries = [];
+  let totalCalls = 0;
+  let totalTime = 0;
+  for (let c of instrumentedClasses) {
+    // Allow passing in something like MOZ_INSTRUMENT_CUSTOM_ELEMENTS=MozXULElement,Button to filter
+    let includeClass = instrumentClasses == 1 ||
+        instrumentClasses.split(",").some(n => c.name.toLowerCase().includes(n.toLowerCase()));
+    let summary = c.__instrumentation_summary;
+    if (includeClass && summary) {
+      summaries.push(summary);
+      totalCalls += summary.totalCalls;
+      totalTime += summary.totalTime;
+    }
+  }
+  if (summaries.length) {
+    let groupName = `Instrumentation data for custom elements in ${document.documentURI}`;
+    console[collapsed ? "groupCollapsed" : "group"](groupName);
+    console.log(`Total function calls ${totalCalls} and total time spent inside ${totalTime.toFixed(2)}`);
+    for (let summary of summaries) {
+      console.log(`${summary.name} (# instances: ${summary.instances})`);
+      if (Object.keys(summary.data).length > 1) {
+        console.table(summary.data);
+      }
+    }
+    console.groupEnd(groupName);
+  }
+};
+
+function instrumentCustomElementClass(c) {
+  // Climb up prototype chain to see if we inherit from a MozElement.
+  // Keep track of classes to instrument, for example:
+  //   MozMenuCaption->MozMenuBase->BaseText->BaseControl->MozXULElement
+  let inheritsFromBase = instrumentedBaseClasses.has(c);
+  let classesToInstrument = [c];
+  let proto = Object.getPrototypeOf(c);
+  while (proto) {
+    classesToInstrument.push(proto);
+    if (instrumentedBaseClasses.has(proto)) {
+      inheritsFromBase = true;
+      break;
+    }
+    proto = Object.getPrototypeOf(proto);
+  }
+
+  if (inheritsFromBase) {
+    for (let c of classesToInstrument.reverse()) {
+      instrumentIndividualClass(c);
+    }
+  }
+}
+
+function instrumentIndividualClass(c) {
+  if (instrumentedClasses.has((c))) {
+    return;
+  }
+
+  instrumentedClasses.add((c));
+  let data = { instances: 0 };
+
+  function wrapFunction(name, fn) {
+    return function() {
+      if (!data[name]) {
+        data[name] = {time: 0, calls: 0};
+      }
+      data[name].calls++;
+      let n = performance.now();
+      let r = fn.apply(this, arguments);
+      data[name].time += performance.now() - n;
+      return r;
+    };
+  }
+  function wrapPropertyDescriptor(obj, name) {
+    if (name == "constructor") {
+      return;
+    }
+    let prop = Object.getOwnPropertyDescriptor(obj, name);
+    if (prop.get) {
+      prop.get = wrapFunction(`<get> ${name}`, prop.get);
+    }
+    if (prop.set) {
+      prop.set = wrapFunction(`<set> ${name}`, prop.set);
+    }
+    if (prop.writable && prop.value && prop.value.apply) {
+      prop.value = wrapFunction(name, prop.value);
+    }
+    Object.defineProperty(obj, name, prop);
+  }
+
+  // Handle static properties
+  for (let name of Object.getOwnPropertyNames((c))) {
+    wrapPropertyDescriptor(c, name);
+  }
+
+  // Handle instance properties
+  for (let name of Object.getOwnPropertyNames(c.prototype)) {
+    wrapPropertyDescriptor(c.prototype, name);
+  }
+
+  c.__instrumentation_data = data;
+  Object.defineProperty(c, "__instrumentation_summary", {
+    enumerable: false,
+    configurable: false,
+    get() {
+      if (data.instances == 0) {
+        return null;
+      }
+
+      let clonedData = JSON.parse(JSON.stringify(data));
+      delete clonedData.instances;
+      let totalCalls = 0;
+      let totalTime = 0;
+      for (let d in clonedData) {
+        let {time, calls} = clonedData[d];
+        time = parseFloat(time.toFixed(2));
+        totalCalls += calls;
+        totalTime += time;
+        clonedData[d]["time (ms)"] = time;
+        delete clonedData[d].time;
+        clonedData[d].timePerCall = parseFloat((time / calls).toFixed(4));
+      }
+
+      let timePerCall =  parseFloat((totalTime / totalCalls).toFixed(4));
+      totalTime = parseFloat(totalTime.toFixed(2));
+
+      // Add a spaced-out final row with summed up totals
+      clonedData["\ntotals"]  = { "time (ms)": `\n${totalTime}`, calls: `\n${totalCalls}`, timePerCall: `\n${timePerCall}` };
+      return {
+        instances: data.instances,
+        data: clonedData,
+        name: c.name,
+        totalCalls,
+        totalTime,
+      };
+    },
+  });
+}
 
 // The listener of DOMContentLoaded must be set on window, rather than
 // document, because the window can go away before the event is fired.
@@ -44,9 +202,19 @@ window.addEventListener("DOMContentLoaded", () => {
 const gXULDOMParser = new DOMParser();
 gXULDOMParser.forceEnableXULXBL();
 
-const MozElements = {};
+MozElements.MozElementMixin = Base => {
+  let MozElementBase = class extends Base {
+  constructor() {
+    super();
 
-const MozElementMixin = Base => class MozElement extends Base {
+    if (instrumentClasses) {
+      let proto = this.constructor;
+      while (proto && proto != Base) {
+        proto.__instrumentation_data.instances++;
+        proto = Object.getPrototypeOf(proto);
+      }
+    }
+  }
   /*
    * A declarative way to wire up attribute inheritance and automatically generate
    * the `observedAttributes` getter.  For example, if you returned:
@@ -66,23 +234,47 @@ const MozElementMixin = Base => class MozElement extends Base {
     return null;
   }
 
+  static get flippedInheritedAttributes() {
+    // Have to be careful here, if a subclass overrides inheritedAttributes
+    // and its parent class is instantiated first, then reading
+    // this._flippedInheritedAttributes on the child class will return the
+    // computed value from the parent.  We store it separately on each class
+    // to ensure everything works correctly when inheritedAttributes is
+    // overridden.
+    if (!this.hasOwnProperty("_flippedInheritedAttributes")) {
+      let {inheritedAttributes} = this;
+      if (!inheritedAttributes) {
+        this._flippedInheritedAttributes = null;
+      } else {
+        this._flippedInheritedAttributes = {};
+        for (let selector in inheritedAttributes) {
+          let attrRules = inheritedAttributes[selector].split(",");
+          for (let attrRule of attrRules) {
+            let attrName = attrRule;
+            let attrNewName = attrRule;
+            let split = attrName.split("=");
+            if (split.length == 2) {
+              attrName = split[1];
+              attrNewName = split[0];
+            }
+
+            if (!this._flippedInheritedAttributes[attrName]) {
+              this._flippedInheritedAttributes[attrName] = [];
+            }
+            this._flippedInheritedAttributes[attrName].push([selector, attrNewName]);
+          }
+        }
+      }
+    }
+
+    return this._flippedInheritedAttributes;
+  }
   /*
    * Generate this array based on `inheritedAttributes`, if any. A class is free to override
    * this if it needs to do something more complex or wants to opt out of this behavior.
    */
   static get observedAttributes() {
-    let {inheritedAttributes} = this;
-    if (!inheritedAttributes) {
-      return [];
-    }
-
-    let allAttributes = new Set();
-    for (let sel in inheritedAttributes) {
-      for (let attrName of inheritedAttributes[sel].split(",")) {
-        allAttributes.add(attrName.split("=").pop());
-      }
-    }
-    return [...allAttributes];
+    return Object.keys(this.flippedInheritedAttributes || {});
   }
 
   /*
@@ -90,11 +282,14 @@ const MozElementMixin = Base => class MozElement extends Base {
    * based on the static `inheritedAttributes` Object. This can be overridden by callers.
    */
   attributeChangedCallback(name, oldValue, newValue) {
-    if (!this.isConnectedAndReady || oldValue === newValue || !this.inheritedAttributesCache) {
+    if (oldValue === newValue || !this.initializedAttributeInheritance) {
       return;
     }
 
-    this.inheritAttributes();
+    let list = this.constructor.flippedInheritedAttributes[name];
+    if (list) {
+      this.inheritAttribute(list, name);
+    }
   }
 
   /*
@@ -111,112 +306,53 @@ const MozElementMixin = Base => class MozElement extends Base {
   *
   */
   initializeAttributeInheritance() {
-    let {inheritedAttributes} = this.constructor;
-    if (!inheritedAttributes) {
-      return;
-    }
-    this._inheritedAttributesValuesCache = null;
-    this.inheritedAttributesCache = new Map();
-    for (let selector in inheritedAttributes) {
-      let el = this.querySelector(selector);
-      // Skip unmatched selectors in case an element omits some elements in certain cases:
-      if (!el) {
-        continue;
-      }
-      if (this.inheritedAttributesCache.has(el)) {
-        console.error(`Error: duplicate element encountered with ${selector}`);
-      }
-
-      this.inheritedAttributesCache.set(el, inheritedAttributes[selector]);
-    }
-    this.inheritAttributes();
-  }
-
-  /*
-   * Loop through the static `inheritedAttributes` Map and inherit attributes to child elements.
-   *
-   * This usually won't need to be called directly - `this.initializeAttributeInheritance()` and
-   * `this.attributeChangedCallback` will call it for you when appropriate.
-   */
-  inheritAttributes() {
-    let {inheritedAttributes} = this.constructor;
-    if (!inheritedAttributes) {
+    let {flippedInheritedAttributes} = this.constructor;
+    if (!flippedInheritedAttributes) {
       return;
     }
 
-    if (!this.inheritedAttributesCache) {
-     console.error(`You must call this.initializeAttributeInheritance() for ${this.tagName}`);
-     return;
-    }
+    // Clear out any existing cached elements:
+    this._inheritedElements = null;
 
-    for (let [ el, attrs ] of this.inheritedAttributesCache.entries()) {
-      for (let attr of attrs.split(",")) {
-        this.inheritAttribute(el, attr);
+    this.initializedAttributeInheritance = true;
+    for (let attr in flippedInheritedAttributes) {
+      if (this.hasAttribute(attr)) {
+        this.inheritAttribute(flippedInheritedAttributes[attr], attr);
       }
     }
   }
 
   /*
-   * Implements attribute inheritance by a child element. Uses XBL @inherit
-   * syntax of |to=from|. This can be used directly, but for simple cases
-   * you should use the inheritedAttributes getter and let the base class
-   * handle this for you.
+   * Implements attribute value inheritance by child elements.
    *
-   * @param {element} child
-   *        A child element that inherits an attribute.
+   * @param {array} list
+   *        An array of (to-element-selector, to-attr) pairs.
    * @param {string} attr
-   *        An attribute to inherit. Optionally in the form of |to=from|, where
-   *        |to| is an attribute defined on custom element, whose value will be
-   *        inherited to |from| attribute, defined a child element. Note |from| may
-   *        take a special value of "text" to propogate attribute value as
-   *        a child's text.
+   *        An attribute to propagate.
    */
-  inheritAttribute(child, attr) {
-    let attrName = attr;
-    let attrNewName = attr;
-    let split = attrName.split("=");
-    if (split.length == 2) {
-      attrName = split[1];
-      attrNewName = split[0];
-    }
-    let hasAttr = this.hasAttribute(attrName);
-    let attrValue = this.getAttribute(attrName);
-
-    // If our attribute hasn't changed since we last inherited, we don't want to
-    // propagate it down to the child. This prevents overriding an attribute that's
-    // been changed on the child (for instance, [checked]).
-    if (!this._inheritedAttributesValuesCache) {
-      this._inheritedAttributesValuesCache = new WeakMap();
-    }
-    if (!this._inheritedAttributesValuesCache.has(child)) {
-      this._inheritedAttributesValuesCache.set(child, {});
-    }
-    let lastInheritedAttributes = this._inheritedAttributesValuesCache.get(child);
-
-    if ((hasAttr && attrValue === lastInheritedAttributes[attrName]) ||
-        (!hasAttr && !lastInheritedAttributes.hasOwnProperty(attrName))) {
-      // We got a request to inherit an unchanged attribute - bail.
-      return;
+  inheritAttribute(list, attr) {
+    if (!this._inheritedElements) {
+      this._inheritedElements = {};
     }
 
-    // Store the value we're about to pass down to the child.
-    if (hasAttr) {
-      lastInheritedAttributes[attrName] = attrValue;
-    } else {
-      delete lastInheritedAttributes[attrName];
-    }
+    let hasAttr = this.hasAttribute(attr);
+    let attrValue = this.getAttribute(attr);
 
-    // Actually set the attribute.
-    if (attrNewName === "text") {
-      child.textContent = hasAttr ? attrValue : "";
-    } else if (hasAttr) {
-      child.setAttribute(attrNewName, attrValue);
-    } else {
-      child.removeAttribute(attrNewName);
-    }
-
-    if (attrNewName == "accesskey" && child.formatAccessKey) {
-      child.formatAccessKey(false);
+    for (let [selector, newAttr] of list) {
+      if (!(selector in this._inheritedElements)) {
+        let parent = this.shadowRoot || this;
+        this._inheritedElements[selector] = parent.querySelector(selector);
+      }
+      let el = this._inheritedElements[selector];
+      if (el) {
+        if (newAttr == "text") {
+          el.textContent = hasAttr ? attrValue : "";
+        } else if (hasAttr) {
+          el.setAttribute(newAttr, attrValue);
+        } else {
+          el.removeAttribute(newAttr);
+        }
+      }
     }
   }
 
@@ -371,9 +507,17 @@ const MozElementMixin = Base => class MozElement extends Base {
       return null;
     };
   }
+  };
+
+  // Rename the class so we can distinguish between MozXULElement and MozXULPopupElement, for example.
+  Object.defineProperty(MozElementBase, "name", {value: `Moz${Base.name}`});
+  if (instrumentedBaseClasses) {
+    instrumentedBaseClasses.add(MozElementBase);
+  }
+  return MozElementBase;
 };
 
-const MozXULElement = MozElementMixin(XULElement);
+const MozXULElement = MozElements.MozElementMixin(XULElement);
 
 /**
  * Given an object, add a proxy that reflects interface implementations
@@ -401,7 +545,7 @@ function getInterfaceProxy(obj) {
   return obj._customInterfaceProxy;
 }
 
-const BaseControlMixin = Base => {
+MozElements.BaseControlMixin = Base => {
   class BaseControl extends Base {
     get disabled() {
       return this.getAttribute("disabled") == "true";
@@ -428,13 +572,13 @@ const BaseControlMixin = Base => {
     }
   }
 
-  Base.implementCustomInterface(BaseControl,
-                                [Ci.nsIDOMXULControlElement]);
+  MozXULElement.implementCustomInterface(BaseControl,
+                                         [Ci.nsIDOMXULControlElement]);
   return BaseControl;
 };
-MozElements.BaseControl = BaseControlMixin(MozXULElement);
+MozElements.BaseControl = MozElements.BaseControlMixin(MozXULElement);
 
-const BaseTextMixin = Base => class extends BaseControlMixin(Base) {
+const BaseTextMixin = Base => class BaseText extends MozElements.BaseControlMixin(Base) {
   set label(val) {
     this.setAttribute("label", val);
     return val;
@@ -486,13 +630,11 @@ const BaseTextMixin = Base => class extends BaseControlMixin(Base) {
     return this.labelElement ? this.labelElement.accessKey : this.getAttribute("accesskey");
   }
 };
+MozElements.BaseTextMixin = BaseTextMixin;
 MozElements.BaseText = BaseTextMixin(MozXULElement);
 
 // Attach the base class to the window so other scripts can use it:
-window.BaseControlMixin = BaseControlMixin;
-window.MozElementMixin = MozElementMixin;
 window.MozXULElement = MozXULElement;
-window.MozElements = MozElements;
 
 customElements.setElementCreationCallback("browser", () => {
   Services.scriptloader.loadSubScript("chrome://global/content/elements/browser-custom-element.js", window);
@@ -504,8 +646,10 @@ const isDummyDocument = document.documentURI == "chrome://extensions/content/dum
 if (!isDummyDocument) {
   for (let script of [
     "chrome://global/content/elements/general.js",
+    "chrome://global/content/elements/button.js",
     "chrome://global/content/elements/checkbox.js",
     "chrome://global/content/elements/menu.js",
+    "chrome://global/content/elements/menupopup.js",
     "chrome://global/content/elements/notificationbox.js",
     "chrome://global/content/elements/popupnotification.js",
     "chrome://global/content/elements/radio.js",
@@ -514,6 +658,7 @@ if (!isDummyDocument) {
     "chrome://global/content/elements/autocomplete-richlistitem.js",
     "chrome://global/content/elements/textbox.js",
     "chrome://global/content/elements/tabbox.js",
+    "chrome://global/content/elements/text.js",
     "chrome://global/content/elements/tree.js",
     "chrome://global/content/elements/wizard.js",
   ]) {
@@ -523,10 +668,10 @@ if (!isDummyDocument) {
   for (let [tag, script] of [
     ["findbar", "chrome://global/content/elements/findbar.js"],
     ["menulist", "chrome://global/content/elements/menulist.js"],
+    ["search-textbox", "chrome://global/content/elements/search-textbox.js"],
     ["stringbundle", "chrome://global/content/elements/stringbundle.js"],
     ["printpreview-toolbar", "chrome://global/content/printPreviewToolbar.js"],
     ["editor", "chrome://global/content/elements/editor.js"],
-    ["text-link", "chrome://global/content/elements/text.js"],
   ]) {
     customElements.setElementCreationCallback(tag, () => {
       Services.scriptloader.loadSubScript(script, window);

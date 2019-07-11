@@ -15,6 +15,7 @@
 #include "mozilla/dom/SVGSVGElement.h"
 #include "nsContentUtils.h"
 #include "nsIFrame.h"
+#include "SVGTextFrame.h"
 #include "SVGContentUtils.h"
 #include "nsSVGDisplayableFrame.h"
 #include "nsSVGUtils.h"
@@ -164,9 +165,41 @@ already_AddRefed<SVGIRect> SVGTransformableElement::GetBBox(
     return nullptr;
   }
   nsSVGDisplayableFrame* svgframe = do_QueryFrame(frame);
+
   if (!svgframe) {
-    rv.Throw(NS_ERROR_NOT_IMPLEMENTED);  // XXX: outer svg
-    return nullptr;
+    if (!nsSVGUtils::IsInSVGTextSubtree(frame)) {
+      rv.Throw(NS_ERROR_NOT_IMPLEMENTED);  // XXX: outer svg
+      return nullptr;
+    }
+
+    // For <tspan>, <textPath>, the frame is an nsInlineFrame or
+    // nsBlockFrame, |svgframe| will be a nullptr.
+    // We implement their getBBox directly here instead of in
+    // nsSVGUtils::GetBBox, because nsSVGUtils::GetBBox is more
+    // or less used for other purpose elsewhere. e.g. gradient
+    // code assumes GetBBox of <tspan> returns the bbox of the
+    // outer <text>.
+    // TODO: cleanup this sort of usecase of nsSVGUtils::GetBBox,
+    // then move this code nsSVGUtils::GetBBox.
+    SVGTextFrame* text =
+        static_cast<SVGTextFrame*>(nsLayoutUtils::GetClosestFrameOfType(
+            frame->GetParent(), LayoutFrameType::SVGText));
+
+    if (text->HasAnyStateBits(NS_FRAME_IS_NONDISPLAY)) {
+      rv.Throw(NS_ERROR_FAILURE);
+      return nullptr;
+    }
+
+    gfxRect rec = text->TransformFrameRectFromTextChild(
+        frame->GetRectRelativeToSelf(), frame);
+
+    // Should also add the |x|, |y| of the SVGTextFrame itself, since
+    // the result obtained by TransformFrameRectFromTextChild doesn't
+    // include them.
+    rec.x += float(text->GetPosition().x) / AppUnitsPerCSSPixel();
+    rec.y += float(text->GetPosition().y) / AppUnitsPerCSSPixel();
+
+    return NS_NewSVGRect(this, ToRect(rec));
   }
 
   if (!NS_SVGNewGetBBoxEnabled()) {
@@ -174,30 +207,29 @@ already_AddRefed<SVGIRect> SVGTransformableElement::GetBBox(
         this, ToRect(nsSVGUtils::GetBBox(
                   frame, nsSVGUtils::eBBoxIncludeFillGeometry |
                              nsSVGUtils::eUseUserSpaceOfUseElement)));
-  } else {
-    uint32_t flags = 0;
-    if (aOptions.mFill) {
-      flags |= nsSVGUtils::eBBoxIncludeFill;
-    }
-    if (aOptions.mStroke) {
-      flags |= nsSVGUtils::eBBoxIncludeStroke;
-    }
-    if (aOptions.mMarkers) {
-      flags |= nsSVGUtils::eBBoxIncludeMarkers;
-    }
-    if (aOptions.mClipped) {
-      flags |= nsSVGUtils::eBBoxIncludeClipped;
-    }
-    if (flags == 0) {
-      return NS_NewSVGRect(this, 0, 0, 0, 0);
-    }
-    if (flags == nsSVGUtils::eBBoxIncludeMarkers ||
-        flags == nsSVGUtils::eBBoxIncludeClipped) {
-      flags |= nsSVGUtils::eBBoxIncludeFill;
-    }
-    flags |= nsSVGUtils::eUseUserSpaceOfUseElement;
-    return NS_NewSVGRect(this, ToRect(nsSVGUtils::GetBBox(frame, flags)));
   }
+  uint32_t flags = 0;
+  if (aOptions.mFill) {
+    flags |= nsSVGUtils::eBBoxIncludeFill;
+  }
+  if (aOptions.mStroke) {
+    flags |= nsSVGUtils::eBBoxIncludeStroke;
+  }
+  if (aOptions.mMarkers) {
+    flags |= nsSVGUtils::eBBoxIncludeMarkers;
+  }
+  if (aOptions.mClipped) {
+    flags |= nsSVGUtils::eBBoxIncludeClipped;
+  }
+  if (flags == 0) {
+    return NS_NewSVGRect(this, 0, 0, 0, 0);
+  }
+  if (flags == nsSVGUtils::eBBoxIncludeMarkers ||
+      flags == nsSVGUtils::eBBoxIncludeClipped) {
+    flags |= nsSVGUtils::eBBoxIncludeFill;
+  }
+  flags |= nsSVGUtils::eUseUserSpaceOfUseElement;
+  return NS_NewSVGRect(this, ToRect(nsSVGUtils::GetBBox(frame, flags)));
 }
 
 already_AddRefed<SVGMatrix> SVGTransformableElement::GetCTM() {

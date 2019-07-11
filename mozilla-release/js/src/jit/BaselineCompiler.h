@@ -14,6 +14,9 @@
 #include "jit/MacroAssembler.h"
 
 namespace js {
+
+enum class GeneratorResumeKind;
+
 namespace jit {
 
 #define OPCODE_LIST(_)          \
@@ -205,7 +208,7 @@ namespace jit {
   _(JSOP_YIELD)                 \
   _(JSOP_AWAIT)                 \
   _(JSOP_TRYSKIPAWAIT)          \
-  _(JSOP_DEBUGAFTERYIELD)       \
+  _(JSOP_AFTERYIELD)            \
   _(JSOP_FINALYIELDRVAL)        \
   _(JSOP_RESUME)                \
   _(JSOP_ASYNCAWAIT)            \
@@ -279,6 +282,10 @@ class BaselineCodeGen {
   // construction and before environment chain is initialized.
   CodeOffset bailoutPrologueOffset_;
 
+  // Baseline Interpreter can enter Baseline Compiler code at this address. This
+  // is right after the warm-up counter check in the prologue.
+  CodeOffset warmUpCheckPrologueOffset_;
+
   // Baseline Debug OSR during prologue will enter at this address. This is
   // right after where a debug prologue VM call would have returned.
   CodeOffset debugOsrPrologueOffset_;
@@ -313,16 +320,16 @@ class BaselineCodeGen {
   // stored in the script) as argument for a VM function.
   enum class ScriptObjectType { RegExp, Function };
   void pushScriptObjectArg(ScriptObjectType type);
-  void pushScriptNameArg();
+  void pushScriptNameArg(Register scratch1, Register scratch2);
   void pushScriptScopeArg();
 
   // Pushes a bytecode operand as argument for a VM function.
-  void pushUint8BytecodeOperandArg();
-  void pushUint16BytecodeOperandArg();
+  void pushUint8BytecodeOperandArg(Register scratch);
+  void pushUint16BytecodeOperandArg(Register scratch);
 
-  void loadResumeIndexBytecodeOperand(Register dest);
   void loadInt32LengthBytecodeOperand(Register dest);
   void loadInt32IndexBytecodeOperand(ValueOperand dest);
+  void loadNumFormalArguments(Register dest);
 
   // Loads the current JSScript* in dest.
   void loadScript(Register dest);
@@ -340,6 +347,9 @@ class BaselineCodeGen {
 
   // Load the |this|-value from the global's lexical environment.
   void loadGlobalThisValue(ValueOperand dest);
+
+  // Load script atom |index| into |dest|.
+  void loadScriptAtom(Register index, Register dest);
 
   void prepareVMCall();
 
@@ -373,6 +383,10 @@ class BaselineCodeGen {
     return emitDebugInstrumentation(ifDebuggee, mozilla::Maybe<F>());
   }
 
+  template <typename F>
+  MOZ_MUST_USE bool emitAfterYieldDebugInstrumentation(const F& ifDebuggee,
+                                                       Register scratch);
+
   // ifSet should be a function emitting code for when the script has |flag|
   // set. ifNotSet emits code for when the flag isn't set.
   template <typename F1, typename F2>
@@ -389,8 +403,18 @@ class BaselineCodeGen {
   MOZ_MUST_USE bool emitTestScriptFlag(JSScript::MutableFlags flag, bool value,
                                        const F& emit, Register scratch);
 
+  MOZ_MUST_USE bool emitGeneratorResume(GeneratorResumeKind resumeKind);
+  MOZ_MUST_USE bool emitEnterGeneratorCode(Register script,
+                                           Register resumeIndex,
+                                           Register scratch);
+  void emitJumpToInterpretOpLabel();
+
+  MOZ_MUST_USE bool emitIncExecutionProgressCounter(Register scratch);
+
   MOZ_MUST_USE bool emitCheckThis(ValueOperand val, bool reinit = false);
   void emitLoadReturnValue(ValueOperand val);
+  void emitPushNonArrowFunctionNewTarget();
+  void emitGetAliasedVar(ValueOperand dest);
 
   MOZ_MUST_USE bool emitNextIC();
   MOZ_MUST_USE bool emitInterruptCheck();
@@ -469,11 +493,19 @@ class BaselineCodeGen {
   MOZ_MUST_USE bool emitStackCheck();
   MOZ_MUST_USE bool emitArgumentTypeChecks();
   MOZ_MUST_USE bool emitDebugPrologue();
+
+  template <typename F1, typename F2>
+  MOZ_MUST_USE bool initEnvironmentChainHelper(const F1& initFunctionEnv,
+                                               const F2& initGlobalOrEvalEnv,
+                                               Register scratch);
   MOZ_MUST_USE bool initEnvironmentChain();
 
   MOZ_MUST_USE bool emitTraceLoggerEnter();
   MOZ_MUST_USE bool emitTraceLoggerExit();
 
+  MOZ_MUST_USE bool emitHandleCodeCoverageAtPrologue();
+
+  void emitInitFrameFields();
   void emitIsDebuggeeCheck();
   void emitInitializeLocals();
   void emitPreInitEnvironmentChain(Register nonFunctionEnv);
@@ -630,6 +662,13 @@ class BaselineCompiler final : private BaselineCompilerCodeGen {
 class BaselineInterpreterHandler {
   InterpreterFrameInfo frame_;
   Label interpretOp_;
+  CodeOffset debuggeeCheckOffset_;
+
+  // Offsets of toggled jumps for code coverage instrumentation.
+  using CodeOffsetVector = Vector<uint32_t, 0, SystemAllocPolicy>;
+  CodeOffsetVector codeCoverageOffsets_;
+  Label codeCoverageAtPrologueLabel_;
+  Label codeCoverageAtPCLabel_;
 
  public:
   using FrameInfoT = InterpreterFrameInfo;
@@ -639,12 +678,21 @@ class BaselineInterpreterHandler {
   InterpreterFrameInfo& frame() { return frame_; }
 
   Label* interpretOpLabel() { return &interpretOp_; }
+  Label* codeCoverageAtPrologueLabel() { return &codeCoverageAtPrologueLabel_; }
+  Label* codeCoverageAtPCLabel() { return &codeCoverageAtPCLabel_; }
+
+  CodeOffsetVector& codeCoverageOffsets() { return codeCoverageOffsets_; }
 
   // Interpreter doesn't know the script and pc statically.
   jsbytecode* maybePC() const { return nullptr; }
   bool isDefinitelyLastOp() const { return false; }
   JSScript* maybeScript() const { return nullptr; }
   JSFunction* maybeFunction() const { return nullptr; }
+
+  void setDebuggeeCheckOffset(CodeOffset offset) {
+    debuggeeCheckOffset_ = offset;
+  }
+  CodeOffset debuggeeCheckOffset() const { return debuggeeCheckOffset_; }
 
   // Interpreter doesn't need to keep track of RetAddrEntries, so these methods
   // are no-ops.
@@ -666,8 +714,28 @@ class BaselineInterpreterHandler {
 using BaselineInterpreterCodeGen = BaselineCodeGen<BaselineInterpreterHandler>;
 
 class BaselineInterpreterGenerator final : private BaselineInterpreterCodeGen {
+  // Offsets of patchable call instructions for debugger breakpoints/stepping.
+  Vector<uint32_t, 0, SystemAllocPolicy> debugTrapOffsets_;
+
+  // Offsets of move instructions for tableswitch base address.
+  Vector<CodeOffset, 0, SystemAllocPolicy> tableLabels_;
+
+  // Offset of the first tableswitch entry.
+  uint32_t tableOffset_ = 0;
+
+  // Offset of the code to start interpreting a bytecode op.
+  uint32_t interpretOpOffset_ = 0;
+
  public:
   explicit BaselineInterpreterGenerator(JSContext* cx);
+
+  MOZ_MUST_USE bool generate(BaselineInterpreter& interpreter);
+
+ private:
+  MOZ_MUST_USE bool emitInterpreterLoop();
+  MOZ_MUST_USE bool emitDebugTrap();
+
+  void emitOutOfLineCodeCoverageInstrumentation();
 };
 
 }  // namespace jit

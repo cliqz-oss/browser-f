@@ -2,8 +2,8 @@
 
 set -e
 set -x
+source cliqz_env.sh
 
-export CQZ_VERSION=$(cat ./mozilla-release/browser/config/version_display.txt)
 export WAIT=2
 export RETRIES=3
 export ARTIFACT_PATH="/c/build"
@@ -28,7 +28,7 @@ retry() {
 download() {
     package="$1"
 
-    wget -O "${ARTIFACT_PATH}/${package}" "https://repository.cliqz.com/dist/artifacts/win/release/${CQZ_VERSION}/${package}"
+    wget -O "${ARTIFACT_PATH}/${package}" "https://repository.cliqz.com/dist/artifacts/win/${CQZ_RELEASE_CHANNEL}/${CQZ_VERSION}/${package}"
     tar xjvf ${ARTIFACT_PATH}/${package} -C $ARTIFACT_PATH
 }
 
@@ -40,7 +40,7 @@ download_internal() {
 }
 
 main() {
-    if [ "$CQZ_VERSION" != "$ARTIFACT_VERSION" ]; then
+    if [ "$CQZ_VERSION$CQZ_RELEASE_CHANNEL" != "$ARTIFACT_VERSION" ]; then
         rm -rf $ARTIFACT_PATH
     fi
     mkdir -p $ARTIFACT_PATH
@@ -60,7 +60,7 @@ main() {
         fi
     done
 
-    echo $CQZ_VERSION > $ARTIFACT_PATH/version.txt
+    echo $CQZ_VERSION$CQZ_RELEASE_CHANNEL > $ARTIFACT_PATH/version.txt
 }
 
 main "$@"

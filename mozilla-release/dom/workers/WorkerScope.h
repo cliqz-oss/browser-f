@@ -7,6 +7,7 @@
 #ifndef mozilla_dom_workerscope_h__
 #define mozilla_dom_workerscope_h__
 
+#include "mozilla/Attributes.h"
 #include "mozilla/dom/WorkerCommon.h"
 #include "mozilla/DOMEventTargetHelper.h"
 #include "mozilla/dom/DOMPrefs.h"
@@ -76,7 +77,10 @@ class WorkerGlobalScope : public DOMEventTargetHelper,
   virtual bool WrapGlobalObject(JSContext* aCx,
                                 JS::MutableHandle<JSObject*> aReflector) = 0;
 
-  virtual JSObject* GetGlobalJSObject(void) override { return GetWrapper(); }
+  JSObject* GetGlobalJSObject() override { return GetWrapper(); }
+  JSObject* GetGlobalJSObjectPreserveColor() const override {
+    return GetWrapperPreserveColor();
+  }
 
   NS_DECL_ISUPPORTS_INHERITED
   NS_DECL_CYCLE_COLLECTION_SCRIPT_HOLDER_CLASS_INHERITED(WorkerGlobalScope,
@@ -101,7 +105,8 @@ class WorkerGlobalScope : public DOMEventTargetHelper,
   OnErrorEventHandlerNonNull* GetOnerror();
   void SetOnerror(OnErrorEventHandlerNonNull* aHandler);
 
-  void ImportScripts(const Sequence<nsString>& aScriptURLs, ErrorResult& aRv);
+  void ImportScripts(JSContext* aCx, const Sequence<nsString>& aScriptURLs,
+                     ErrorResult& aRv);
 
   int32_t SetTimeout(JSContext* aCx, Function& aHandler, const int32_t aTimeout,
                      const Sequence<JS::Value>& aArguments, ErrorResult& aRv);
@@ -125,6 +130,8 @@ class WorkerGlobalScope : public DOMEventTargetHelper,
 
   IMPL_EVENT_HANDLER(online)
   IMPL_EVENT_HANDLER(offline)
+  IMPL_EVENT_HANDLER(rejectionhandled)
+  IMPL_EVENT_HANDLER(unhandledrejection)
 
   void Dump(const Optional<nsAString>& aString) const;
 
@@ -189,6 +196,8 @@ class WorkerGlobalScope : public DOMEventTargetHelper,
   RefPtr<mozilla::dom::ServiceWorkerRegistration>
   GetOrCreateServiceWorkerRegistration(
       const ServiceWorkerRegistrationDescriptor& aDescriptor) override;
+
+  void FirstPartyStorageAccessGranted();
 };
 
 class DedicatedWorkerGlobalScope final : public WorkerGlobalScope {
@@ -299,7 +308,10 @@ class WorkerDebuggerGlobalScope final : public DOMEventTargetHelper,
   virtual bool WrapGlobalObject(JSContext* aCx,
                                 JS::MutableHandle<JSObject*> aReflector);
 
-  virtual JSObject* GetGlobalJSObject(void) override { return GetWrapper(); }
+  JSObject* GetGlobalJSObject(void) override { return GetWrapper(); }
+  JSObject* GetGlobalJSObjectPreserveColor(void) const override {
+    return GetWrapperPreserveColor();
+  }
 
   void GetGlobal(JSContext* aCx, JS::MutableHandle<JSObject*> aGlobal,
                  ErrorResult& aRv);
@@ -312,7 +324,7 @@ class WorkerDebuggerGlobalScope final : public DOMEventTargetHelper,
                      const Optional<JS::Handle<JSObject*>>& aSandbox,
                      ErrorResult& aRv);
 
-  void EnterEventLoop();
+  MOZ_CAN_RUN_SCRIPT void EnterEventLoop();
 
   void LeaveEventLoop();
 

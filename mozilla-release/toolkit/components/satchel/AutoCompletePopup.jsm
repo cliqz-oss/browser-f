@@ -36,8 +36,9 @@ var AutoCompleteResultView = {
   },
 
   getLabelAt(index) {
-    // Unused by richlist autocomplete - see getCommentAt.
-    return "";
+    // Backwardly-used by richlist autocomplete - see getCommentAt.
+    // The label is used for secondary information.
+    return this.results[index].comment;
   },
 
   getCommentAt(index) {
@@ -150,10 +151,6 @@ this.AutoCompletePopup = {
     }
   },
 
-  // Along with being called internally by the receiveMessage handler,
-  // this function is also called directly by the login manager, which
-  // uses a single message to fill in the autocomplete results. See
-  // "PasswordManager:autoCompleteLogins".
   showPopupWithResults({ browser, rect, dir, results }) {
     if (!results.length || this.openedPopup) {
       // We shouldn't ever be showing an empty popup, and if we

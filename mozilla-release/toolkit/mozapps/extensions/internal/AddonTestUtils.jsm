@@ -263,6 +263,7 @@ var AddonTestUtils = {
   appInfo: null,
   addonStartup: null,
   collectedTelemetryEvents: [],
+  testScope: null,
   testUnpacked: false,
   useRealCertChecks: false,
   usePrivilegedSignatures: true,
@@ -274,7 +275,7 @@ var AddonTestUtils = {
     }
   },
 
-  init(testScope) {
+  init(testScope, enableLogging = true) {
     if (this.testScope === testScope) {
       return;
     }
@@ -302,8 +303,10 @@ var AddonTestUtils = {
     this.registerDirectory("XREAddonAppDir", appDirForAddons);
 
 
-    // Enable more extensive EM logging
-    Services.prefs.setBoolPref("extensions.logging.enabled", true);
+    // Enable more extensive EM logging.
+    if (enableLogging) {
+      Services.prefs.setBoolPref("extensions.logging.enabled", true);
+    }
 
     // By default only load extensions from the profile install location
     Services.prefs.setIntPref("extensions.enabledScopes", AddonManager.SCOPE_PROFILE);
@@ -486,7 +489,7 @@ var AddonTestUtils = {
       }
 
       const proxyFilter = {
-        proxyInfo: proxyService.newProxyInfo("http", serverHost, serverPort, 0, 4096, null),
+        proxyInfo: proxyService.newProxyInfo("http", serverHost, serverPort, "", "", 0, 4096, null),
 
         applyFilter(service, channel, defaultProxyInfo, callback) {
           if (hosts.has(channel.URI.host)) {
@@ -706,6 +709,78 @@ var AddonTestUtils = {
   },
 
   /**
+   * Load the data from the specified files into the *real* blocklist providers.
+   * Loads using loadBlocklistRawData, which will treat this as an update.
+   *
+   * @param {nsIFile} dir
+   *        The directory in which the files live.
+   * @param {string} prefix
+   *        a prefix for the files which ought to be loaded.
+   *        This method will suffix -extensions.json and -plugins.json
+   *        to the prefix it is given, and attempt to load both.
+   *        Insofar as either exists, their data will be dumped into
+   *        the respective store, and the respective update handlers
+   *        will be called.
+   */
+  async loadBlocklistData(dir, prefix) {
+    let loadedData = {};
+    for (let fileSuffix of ["extensions", "plugins"]) {
+      const fileName = `${prefix}-${fileSuffix}.json`;
+      let jsonStr = await OS.File.read(OS.Path.join(dir.path, fileName), {encoding: "UTF-8"}).catch(() => {});
+      if (!jsonStr) {
+         continue;
+      }
+      this.info(`Loaded ${fileName}`);
+
+      loadedData[fileSuffix] = JSON.parse(jsonStr);
+    }
+    return this.loadBlocklistRawData(loadedData);
+  },
+
+  /**
+   * Load the following data into the *real* blocklist providers.
+   * While `overrideBlocklist` replaces the blocklist entirely with a mock
+   * that returns dummy data, this method instead loads data into the actual
+   * blocklist, fires update methods as would happen if this data came from
+   * an actual blocklist update, etc.
+   *
+   * @param {object} data
+   *        The data to load.
+   */
+  async loadBlocklistRawData(data) {
+    const bsPass = ChromeUtils.import("resource://gre/modules/Blocklist.jsm", null);
+    const blocklistMapping = {
+      "extensions": bsPass.ExtensionBlocklistRS,
+      "plugins": bsPass.PluginBlocklistRS,
+    };
+
+    for (const [dataProp, blocklistObj] of Object.entries(blocklistMapping)) {
+      let newData = data[dataProp];
+      if (!newData) {
+        continue;
+      }
+      if (!Array.isArray(newData)) {
+        throw new Error("Expected an array of new items to put in the " + dataProp + " blocklist!");
+      }
+      for (let item of newData) {
+        if (!item.id) {
+          item.id = uuidGen.generateUUID().number.slice(1, -1);
+        }
+        if (!item.last_modified) {
+          item.last_modified = Date.now();
+        }
+      }
+      blocklistObj.ensureInitialized();
+      let collection = await blocklistObj._client.openCollection();
+      await collection.clear();
+      await collection.loadDump(newData);
+      // We manually call _onUpdate... which is evil, but at the moment kinto doesn't have
+      // a better abstraction unless you want to mock your own http server to do the update.
+      await blocklistObj._onUpdate();
+    }
+  },
+
+  /**
    * Starts up the add-on manager as if it was started by the application.
    *
    * @param {string} [newVersion]
@@ -747,6 +822,8 @@ var AddonTestUtils = {
     this.addonIntegrationService.observe(null, "addons-startup", null);
 
     this.emit("addon-manager-started");
+
+    await Promise.all(XPIScope.XPIProvider.startupPromises);
 
     // Load the add-ons list as it was after extension registration
     await this.loadAddonsList(true);

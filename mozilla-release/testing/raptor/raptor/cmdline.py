@@ -8,24 +8,37 @@ import os
 
 from mozlog.commandline import add_logging_group
 
-
+(FIREFOX,
+ CHROME,
+ CHROMIUM) = DESKTOP_APPS = ["firefox", "chrome", "chromium"]
+(FENNEC,
+ GECKOVIEW,
+ REFBROW,
+ FENIX) = FIREFOX_ANDROID_APPS = ["fennec", "geckoview", "refbrow", "fenix"]
+CHROMIUM_DISTROS = [CHROME, CHROMIUM]
 APPS = {
-    "firefox": {
+    FIREFOX: {
         "long_name": "Firefox Desktop"},
-    "chrome": {
+    CHROME: {
         "long_name": "Google Chrome Desktop"},
-    "fennec": {
+    CHROMIUM: {
+        "long_name": "Google Chromium Desktop"},
+    FENNEC: {
         "long_name": "Firefox Fennec on Android"},
-    "geckoview": {
+    GECKOVIEW: {
         "long_name": "Firefox Geckoview on Android",
-        "default_activity": "GeckoViewActivity"},
-    "refbrow": {
+        "default_activity": "org.mozilla.geckoview_example.GeckoViewActivity",
+        "default_intent": "android.intent.action.MAIN"},
+    REFBROW: {
         "long_name": "Firefox Android Components Reference Browser",
-        "default_activity": "BrowserTestActivity"},
-    "fenix": {
+        "default_activity": "org.mozilla.reference.browser.BrowserTestActivity",
+        "default_intent": "android.intent.action.MAIN"},
+    FENIX: {
         "long_name": "Firefox Android Fenix Browser",
-        "default_activity": "HomeActivity"}
+        "default_activity": "org.mozilla.fenix.browser.BrowserPerformanceTestActivity",
+        "default_intent": "android.intent.action.VIEW"}
 }
+INTEGRATED_APPS = list(APPS.keys())
 
 
 def print_all_activities():
@@ -37,12 +50,23 @@ def print_all_activities():
     return all_activities
 
 
+def print_all_intents():
+    all_intents = []
+    for next_app in APPS:
+        if APPS[next_app].get('default_intent', None) is not None:
+            _intent = "%s:%s" % (next_app, APPS[next_app]['default_intent'])
+            all_intents.append(_intent)
+    return all_intents
+
+
 def create_parser(mach_interface=False):
     parser = argparse.ArgumentParser()
     add_arg = parser.add_argument
 
     add_arg('-t', '--test', required=True, dest='test',
-            help="name of raptor test to run")
+            help="name of raptor test to run (can be a top-level suite name i.e. "
+            "'--test raptor-speedometer','--test raptor-tp6-1', or for page-load "
+            "tests a suite sub-test i.e. '--test raptor-tp6-google-firefox')")
     add_arg('--app', default='firefox', dest='app',
             help="name of the application we are testing (default: firefox)",
             choices=APPS.keys())
@@ -51,6 +75,9 @@ def create_parser(mach_interface=False):
     add_arg('-a', '--activity', dest='activity', default=None,
             help="Name of android activity used to launch the android app."
             "i.e.: %s" % print_all_activities())
+    add_arg('-i', '--intent', dest='intent', default=None,
+            help="Name of android intent action used to launch the android app."
+            "i.e.: %s" % print_all_intents())
     add_arg('--host', dest='host',
             help="Hostname from which to serve urls, defaults to 127.0.0.1. "
             "The value HOST_IP will cause the value of host to be "
@@ -59,6 +86,8 @@ def create_parser(mach_interface=False):
     add_arg('--power-test', dest="power_test", action="store_true",
             help="Use Raptor to measure power usage. Currently supported for Geckoview. "
             "The host ip address must be specified via the --host command line argument.")
+    add_arg('--memory-test', dest="memory_test", action="store_true",
+            help="Use Raptor to measure memory usage.")
     add_arg('--is-release-build', dest="is_release_build", default=False,
             action='store_true',
             help="Whether the build is a release build which requires work arounds "
@@ -75,10 +104,12 @@ def create_parser(mach_interface=False):
             "After talos is finished, profiler.firefox.com will be launched in Firefox "
             "so you can analyze the local profiles. To disable auto-launching of "
             "profiler.firefox.com set the DISABLE_PROFILE_LAUNCH=1 env var.")
-    add_arg('--gecko-profile-interval', dest='gecko_profile_interval', type=float,
-            help="How frequently to take samples (milliseconds)")
     add_arg('--gecko-profile-entries', dest="gecko_profile_entries", type=int,
-            help="How many samples to take with the profiler")
+            help='How many samples to take with the profiler')
+    add_arg('--gecko-profile-interval', dest='gecko_profile_interval', type=int,
+            help='How frequently to take samples (milliseconds)')
+    add_arg('--gecko-profile-thread', dest='gecko_profile_threads', action='append',
+            help='Name of the extra thread to be profiled')
     add_arg('--symbolsPath', dest='symbols_path',
             help="Path to the symbols for the build we are testing")
     add_arg('--page-cycles', dest="page_cycles", type=int,
@@ -86,10 +117,20 @@ def create_parser(mach_interface=False):
                  "for benchmark tests this is how many times the benchmark test will be run")
     add_arg('--page-timeout', dest="page_timeout", type=int,
             help="How long to wait (ms) for one page_cycle to complete, before timing out")
+    add_arg('--post-startup-delay',
+            dest='post_startup_delay',
+            type=int,
+            default=30000,
+            help='How long to wait (ms) after browser start-up before starting the tests')
+    add_arg('--browser-cycles', dest="browser_cycles", type=int,
+            help="The number of times a cold load test is repeated (for cold load tests only, "
+            "where the browser is shutdown and restarted between test iterations)")
     add_arg('--print-tests', action=_PrintTests,
             help="Print all available Raptor tests")
     add_arg('--debug-mode', dest="debug_mode", action="store_true",
             help="Run Raptor in debug mode (open browser console, limited page-cycles, etc.)")
+    add_arg('--disable-e10s', dest="e10s", action="store_false", default=True,
+            help="Run without multiple processes (e10s).")
     if not mach_interface:
         add_arg('--run-local', dest="run_local", default=False, action="store_true",
                 help="Flag that indicates if raptor is running locally or in production")
@@ -106,7 +147,7 @@ def verify_options(parser, args):
         parser.error("--binary is required!")
 
     # if running on a desktop browser make sure the binary exists
-    if args.app in ["firefox", "chrome"]:
+    if args.app in DESKTOP_APPS:
         if not os.path.isfile(args.binary):
             parser.error("{binary} does not exist!".format(**ctx))
 
@@ -117,11 +158,11 @@ def verify_options(parser, args):
     # if --power-test specified, must be on geckoview/android with --host specified.
     if args.power_test:
         if args.app not in ["fennec", "geckoview", "refbrow", "fenix"] \
-          or args.host in ('localhost', '127.0.0.1'):
+                or args.host in ('localhost', '127.0.0.1'):
             parser.error("Power test is only supported when running raptor on Firefox Android "
                          "browsers when host is specified!")
 
-    # if running on geckoview/refbrow/fenix, we need an activity name
+    # if running on geckoview/refbrow/fenix, we need an activity and intent
     if args.app in ["geckoview", "refbrow", "fenix"]:
         if not args.activity:
             # if we have a default activity specified in APPS above, use that
@@ -130,6 +171,13 @@ def verify_options(parser, args):
             else:
                 # otherwise fail out
                 parser.error("--activity command line argument is required!")
+        if not args.intent:
+            # if we have a default intent specified in APPS above, use that
+            if APPS[args.app].get("default_intent", None) is not None:
+                args.intent = APPS[args.app]['default_intent']
+            else:
+                # otherwise fail out
+                parser.error("--intent command line argument is required!")
 
 
 def parse_args(argv=None):
@@ -153,13 +201,17 @@ class _StopAction(argparse.Action):
 
 
 class _PrintTests(_StopAction):
+    def __init__(self, integrated_apps=INTEGRATED_APPS, *args, **kwargs):
+        super(_PrintTests, self).__init__(*args, **kwargs)
+        self.integrated_apps = integrated_apps
+
     def __call__(self, parser, namespace, values, option_string=None):
         from manifestparser import TestManifest
 
         here = os.path.abspath(os.path.dirname(__file__))
         raptor_ini = os.path.join(here, 'raptor.ini')
 
-        for _app in ["firefox", "chrome", "fennec", "geckoview", "refbrow", "fenix"]:
+        for _app in self.integrated_apps:
             test_manifest = TestManifest([raptor_ini], strict=False)
             info = {"app": _app}
             available_tests = test_manifest.active_tests(exists=False,

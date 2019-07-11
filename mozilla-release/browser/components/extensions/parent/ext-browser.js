@@ -665,7 +665,7 @@ class TabTracker extends TabTrackerBase {
     let {gBrowser} = browser.ownerGlobal;
     // Some non-browser windows have gBrowser but not getTabForBrowser!
     if (!gBrowser || !gBrowser.getTabForBrowser) {
-      if (browser.ownerDocument.documentURI === "about:addons") {
+      if (browser.ownerGlobal.top.document.documentURI === "about:addons") {
         // When we're loaded into a <browser> inside about:addons, we need to go up
         // one more level.
         browser = browser.ownerGlobal.docShell.chromeEventHandler;
@@ -700,6 +700,10 @@ tabTracker = new TabTracker();
 Object.assign(global, {tabTracker, windowTracker});
 
 class Tab extends TabBase {
+  get incognito() {
+    return PrivateBrowsingUtils.isBrowserPrivate(this.browser);
+  }
+
   get _favIconUrl() {
     return this.window.gBrowser.getIcon(this.nativeTab);
   }

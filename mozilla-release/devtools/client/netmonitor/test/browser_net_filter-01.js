@@ -37,14 +37,14 @@ const REQUESTS_WITH_MEDIA_AND_FLASH = REQUESTS_WITH_MEDIA.concat([
 ]);
 
 const REQUESTS_WITH_MEDIA_AND_FLASH_AND_WS = REQUESTS_WITH_MEDIA_AND_FLASH.concat([
-  /* "Upgrade" is a reserved header and can not be set on XMLHttpRequest */
-  { url: "sjs_content-type-test-server.sjs?fmt=ws" },
+  /* Use new WebSocket() to mock native websocket request, then "Upgrade" will be added */
+  { url: WS_URL + "sjs_content-type-test-server.sjs?fmt=ws", ws: true },
 ]);
 
 const EXPECTED_REQUESTS = [
   {
     method: "GET",
-    url: getSjsURLInUnicodeIdn() + "?fmt=html",
+    url: getSjsURLInUnicodeIdn() + "?fmt=html&res=undefined&text=Sample",
     data: {
       fuzzyUrl: true,
       status: 200,
@@ -55,7 +55,7 @@ const EXPECTED_REQUESTS = [
   },
   {
     method: "GET",
-    url: CONTENT_TYPE_SJS + "?fmt=css",
+    url: CONTENT_TYPE_SJS + "?fmt=css&text=sample",
     data: {
       fuzzyUrl: true,
       status: 200,
@@ -66,7 +66,7 @@ const EXPECTED_REQUESTS = [
   },
   {
     method: "GET",
-    url: CONTENT_TYPE_SJS + "?fmt=js",
+    url: CONTENT_TYPE_SJS + "?fmt=js&text=sample",
     data: {
       fuzzyUrl: true,
       status: 200,
@@ -77,7 +77,7 @@ const EXPECTED_REQUESTS = [
   },
   {
     method: "GET",
-    url: CONTENT_TYPE_SJS + "?fmt=html",
+    url: CONTENT_TYPE_SJS + `?fmt=html&text=${ENCODED_CHARS_IN_URI_COMP}`,
     data: {
       fuzzyUrl: true,
       status: 200,
@@ -88,7 +88,7 @@ const EXPECTED_REQUESTS = [
   },
   {
     method: "GET",
-    url: CONTENT_TYPE_SJS + "?fmt=css",
+    url: CONTENT_TYPE_SJS + `?fmt=css&text=${ENCODED_CHARS_IN_URI_COMP}`,
     data: {
       fuzzyUrl: true,
       status: 200,
@@ -99,7 +99,7 @@ const EXPECTED_REQUESTS = [
   },
   {
     method: "GET",
-    url: CONTENT_TYPE_SJS + "?fmt=js",
+    url: CONTENT_TYPE_SJS + `?fmt=js&text=${ENCODED_CHARS_IN_URI_COMP}`,
     data: {
       fuzzyUrl: true,
       status: 200,
@@ -187,7 +187,7 @@ const EXPECTED_REQUESTS = [
   },
   {
     method: "GET",
-    url: CONTENT_TYPE_SJS + "?fmt=ws",
+    url: WS_CONTENT_TYPE_SJS + "?fmt=ws",
     data: {
       fuzzyUrl: true,
       status: 101,

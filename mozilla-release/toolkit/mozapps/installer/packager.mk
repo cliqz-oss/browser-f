@@ -48,6 +48,7 @@ ifdef MOZ_PACKAGE_JSSHELL
 	$(RM) $(PKG_JSSHELL)
 	$(MAKE_JSSHELL)
 endif # MOZ_PACKAGE_JSSHELL
+ifdef MOZ_AUTOMATION
 ifdef MOZ_ARTIFACT_BUILD_SYMBOLS
 	@echo 'Packaging existing crashreporter symbols from artifact build...'
 	$(NSINSTALL) -D $(DIST)/$(PKG_PATH)
@@ -59,6 +60,7 @@ ifeq ($(MOZ_ARTIFACT_BUILD_SYMBOLS),full)
           zip -r5D '../$(PKG_PATH)$(SYMBOL_FULL_ARCHIVE_BASENAME).zip' .
 endif
 endif # MOZ_ARTIFACT_BUILD_SYMBOLS
+endif # MOZ_AUTOMATION
 ifdef MOZ_CODE_COVERAGE
 	@echo 'Generating chrome-map for coverage data...'
 	$(topsrcdir)/mach build-backend -b ChromeMap
@@ -76,6 +78,12 @@ ifdef ENABLE_MOZSEARCH_PLUGIN
 	$(RM) $(MOZSEARCH_RUST_ANALYSIS_BASENAME).zip
 	cd $(topobjdir)/ && \
           find . -type d -name save-analysis | xargs zip -r5D '$(ABS_DIST)/$(PKG_PATH)$(MOZSEARCH_RUST_ANALYSIS_BASENAME).zip'
+	@echo 'Generating mozsearch rust stdlib analysis tarball ($(RUST_TARGET))...'
+	$(RM) $(MOZSEARCH_RUST_STDLIB_BASENAME).zip
+	cd $(topsrcdir)/rustc/lib && \
+          zip -r5D '$(ABS_DIST)/$(PKG_PATH)$(MOZSEARCH_RUST_STDLIB_BASENAME).zip' \
+          rustlib/$(RUST_TARGET)/analysis/ rustlib/src/
+	@echo 'Generating mozsearch distinclude map...'
 	cd $(topobjdir)/ && cp _build_manifests/install/dist_include '$(ABS_DIST)/$(PKG_PATH)$(MOZSEARCH_INCLUDEMAP_BASENAME).map'
 endif
 ifeq (Darwin, $(OS_ARCH))

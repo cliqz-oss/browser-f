@@ -40,9 +40,7 @@ window.gActivityStreamStrings = {
   "section_disclaimer_topstories_buttontext": "Ok, chapì",
   "prefs_home_header": "Cuntegn da la pagina da partenza da Firefox",
   "prefs_home_description": "Tscherna il cuntegn che ti vuls vesair sin la pagina da partenza da Firefox.",
-  "prefs_content_discovery_header": "Pagina da partenza da Firefox",
   "prefs_content_discovery_description": "La vitrina da cuntegn pussibilitescha da scuvrir artitgels relevants da gronda qualitad en il web.",
-  "prefs_content_discovery_button": "Deactivar la vitrina da cuntegn",
   "prefs_section_rows_option": "{num} lingia;{num} lingias",
   "prefs_search_header": "Tschertga web",
   "prefs_topsites_description": "Las paginas che ti visitas il pli savens",
@@ -107,8 +105,5 @@ window.gActivityStreamStrings = {
   "firstrun_privacy_notice": "Infurmaziuns davart la protecziun da datas",
   "firstrun_continue_to_login": "Cuntinuar",
   "firstrun_skip_login": "Sursiglir quest pass",
-  "context_menu_title": "Avrir il menu",
-  "manual_migration_explanation2": "Emprova Firefox cun ils segnapaginas, la cronologia ed ils pleds-clav importads d'in auter navigatur.",
-  "manual_migration_cancel_button": "Na, grazia",
-  "manual_migration_import_button": "Importar ussa"
+  "context_menu_title": "Avrir il menu"
 };

@@ -721,6 +721,11 @@ HTMLTooltip.prototype = {
    * is hidden.
    */
   async hide({ fromMouseup = false } = {}) {
+    // Exit if the disable autohide setting is in effect.
+    if (Services.prefs.getBoolPref("ui.popup.disable_autohide", false)) {
+      return;
+    }
+
     this.doc.defaultView.clearTimeout(this.attachEventsTimer);
     if (!this.isVisible()) {
       this.emit("hidden");
@@ -826,11 +831,6 @@ HTMLTooltip.prototype = {
       return;
     }
 
-    // If the disable autohide setting is in effect, ignore.
-    if (Services.prefs.getBoolPref("ui.popup.disable_autohide", false)) {
-      return;
-    }
-
     this.hide({ fromMouseup: true });
   },
 
@@ -920,6 +920,7 @@ HTMLTooltip.prototype = {
     // so disable all features that impact the behavior.
     panel.setAttribute("animate", false);
     panel.setAttribute("consumeoutsideclicks", false);
+    panel.setAttribute("incontentshell", false);
     panel.setAttribute("noautofocus", true);
     panel.setAttribute("ignorekeys", true);
     panel.setAttribute("tooltip", "aHTMLTooltip");

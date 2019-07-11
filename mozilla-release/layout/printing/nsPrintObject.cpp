@@ -15,13 +15,16 @@
 #include "nsComponentManagerUtils.h"
 #include "nsIDocShellTreeItem.h"
 #include "nsIBaseWindow.h"
-#include "mozilla/dom/Document.h"
 #include "nsDocShell.h"
 
+#include "mozilla/PresShell.h"
 #include "mozilla/dom/BrowsingContext.h"
+#include "mozilla/dom/Document.h"
 #include "mozilla/dom/Element.h"
 
+using mozilla::PresShell;
 using mozilla::dom::BrowsingContext;
+using mozilla::dom::Document;
 using mozilla::dom::Element;
 
 //---------------------------------------------------
@@ -116,9 +119,9 @@ void nsPrintObject::DestroyPresentation() {
   if (mPresShell) {
     mPresShell->EndObservingDocument();
     nsAutoScriptBlocker scriptBlocker;
-    nsCOMPtr<nsIPresShell> shell = mPresShell;
+    RefPtr<PresShell> presShell = mPresShell;
     mPresShell = nullptr;
-    shell->Destroy();
+    presShell->Destroy();
   }
   mPresContext = nullptr;
   mViewManager = nullptr;

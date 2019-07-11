@@ -198,6 +198,11 @@ function BrowserTabList(connection) {
 
 BrowserTabList.prototype.constructor = BrowserTabList;
 
+BrowserTabList.prototype.destroy = function() {
+  this._actorByBrowser.clear();
+  this.onListChanged = null;
+};
+
 /**
  * Get the selected browser for the given navigator:browser window.
  * @private
@@ -346,8 +351,8 @@ BrowserTabList.prototype.getTab = function({ outerWindowID, tabId },
     // Tabs OOP
     for (const browser of this._getBrowsers()) {
       if (browser.frameLoader &&
-          browser.frameLoader.tabParent &&
-          browser.frameLoader.tabParent.tabId === tabId) {
+          browser.frameLoader.remoteTab &&
+          browser.frameLoader.remoteTab.tabId === tabId) {
         return this._getActorForBrowser(browser, browserActorOptions);
       }
     }
@@ -644,7 +649,7 @@ BrowserTabList.prototype._listenToMediatorIf = function(shouldListen) {
  * actors or tables here.
  *
  * An nsIWindowMediatorListener's methods get passed all sorts of windows; we
- * only care about the tab containers. Those have 'getBrowser' methods.
+ * only care about the tab containers. Those have 'gBrowser' members.
  */
 BrowserTabList.prototype.onOpenWindow =
 DevToolsUtils.makeInfallible(function(window) {

@@ -40,9 +40,7 @@ window.gActivityStreamStrings = {
   "section_disclaimer_topstories_buttontext": "Ok, verstanden",
   "prefs_home_header": "Inhalte des Firefox-Startbildschirms",
   "prefs_home_description": "Wählen Sie, welche Inhalte auf Ihrem Firefox-Startbildschirm angezeigt werden sollen.",
-  "prefs_content_discovery_header": "Firefox-Startseite",
   "prefs_content_discovery_description": "\"Neues aus dem Netz\" macht auf gute Inhalte im Internet aufmerksam.",
-  "prefs_content_discovery_button": "\"Neues aus dem Netz\" nicht anzeigen",
   "prefs_section_rows_option": "{num} Zeile;{num} Zeilen",
   "prefs_search_header": "Internetsuche",
   "prefs_topsites_description": "Die von die Ihnen am meisten besuchten Websites",
@@ -107,8 +105,5 @@ window.gActivityStreamStrings = {
   "firstrun_privacy_notice": "Datenschutzhinweis",
   "firstrun_continue_to_login": "Weiter",
   "firstrun_skip_login": "Diesen Schritt überspringen",
-  "context_menu_title": "Menü öffnen",
-  "manual_migration_explanation2": "Probieren Sie Firefox aus und importieren Sie die Lesezeichen, Chronik und Passwörter eines anderen Browsers.",
-  "manual_migration_cancel_button": "Nein, danke",
-  "manual_migration_import_button": "Jetzt importieren"
+  "context_menu_title": "Menü öffnen"
 };

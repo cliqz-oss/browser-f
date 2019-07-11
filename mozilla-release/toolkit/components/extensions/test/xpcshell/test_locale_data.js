@@ -1,5 +1,9 @@
 "use strict";
 
+AddonTestUtils.init(this);
+AddonTestUtils.overrideCertDB();
+AddonTestUtils.createAppInfo("xpcshell@tests.mozilla.org", "XPCShell", "1", "42");
+
 const {ExtensionData} = ChromeUtils.import("resource://gre/modules/Extension.jsm");
 
 async function generateAddon(data) {
@@ -121,21 +125,64 @@ add_task(async function testExtractLocalizedManifest() {
     "manifest": {
       "name": "__MSG_extensionName__",
       "default_locale": "en_US",
+      "icons": {
+        "16": "__MSG_extensionIcon__",
+      },
     },
 
+    "files": {
+      "_locales/en_US/messages.json": `{
+        "extensionName": {"message": "foo"},
+        "extensionIcon": {"message": "icon-en.png"}
+      }`,
+      "_locales/de_DE/messages.json": `{
+        "extensionName": {"message": "bar"},
+        "extensionIcon": {"message": "icon-de.png"}
+      }`,
+    },
+  });
+
+  await extension.loadManifest();
+  equal(extension.manifest.name, "foo", "name localized");
+  equal(extension.manifest.icons["16"], "icon-en.png", "icons localized");
+
+  let manifest = await extension.getLocalizedManifest("de-DE");
+  ok(extension.localeData.has("de-DE"), "has de_DE locale");
+  equal(manifest.name, "bar", "name localized");
+  equal(manifest.icons["16"], "icon-de.png", "icons localized");
+
+  await Assert.rejects(extension.getLocalizedManifest("xx-XX"),
+                       /does not contain the locale xx-XX/, "xx-XX does not exist");
+});
+
+add_task(async function testRestartThenExtractLocalizedManifest() {
+  await AddonTestUtils.promiseStartupManager();
+
+  let wrapper = ExtensionTestUtils.loadExtension({
+    "manifest": {
+      "name": "__MSG_extensionName__",
+      "default_locale": "en_US",
+    },
+    useAddonManager: "permanent",
     "files": {
       "_locales/en_US/messages.json": '{"extensionName": {"message": "foo"}}',
       "_locales/de_DE/messages.json": '{"extensionName": {"message": "bar"}}',
     },
   });
 
-  await extension.loadManifest();
-  equal(extension.manifest.name, "foo", "name localized");
+  await wrapper.startup();
 
+  await AddonTestUtils.promiseRestartManager();
+  await wrapper.startupPromise;
+
+  let {extension} = wrapper;
   let manifest = await extension.getLocalizedManifest("de-DE");
   ok(extension.localeData.has("de-DE"), "has de_DE locale");
   equal(manifest.name, "bar", "name localized");
 
   await Assert.rejects(extension.getLocalizedManifest("xx-XX"),
                        /does not contain the locale xx-XX/, "xx-XX does not exist");
+
+  await wrapper.unload();
+  await AddonTestUtils.promiseShutdownManager();
 });

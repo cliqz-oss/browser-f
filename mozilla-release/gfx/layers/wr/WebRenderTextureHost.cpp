@@ -9,9 +9,32 @@
 #include "mozilla/layers/ImageDataSerializer.h"
 #include "mozilla/layers/LayersSurfaces.h"
 #include "mozilla/webrender/RenderThread.h"
+#include "mozilla/webrender/WebRenderAPI.h"
+
+#ifdef MOZ_WIDGET_ANDROID
+#  include "mozilla/layers/TextureHostOGL.h"
+#endif
 
 namespace mozilla {
 namespace layers {
+
+class ScheduleNofityForUse : public wr::NotificationHandler {
+ public:
+  explicit ScheduleNofityForUse(uint64_t aExternalImageId)
+      : mExternalImageId(aExternalImageId) {}
+
+  virtual void Notify(wr::Checkpoint aCheckpoint) override {
+    if (aCheckpoint == wr::Checkpoint::FrameTexturesUpdated) {
+      MOZ_ASSERT(wr::RenderThread::IsInRenderThread());
+      wr::RenderThread::Get()->NofityForUse(mExternalImageId);
+    } else {
+      MOZ_ASSERT(aCheckpoint == wr::Checkpoint::TransactionDropped);
+    }
+  }
+
+ protected:
+  uint64_t mExternalImageId;
+};
 
 WebRenderTextureHost::WebRenderTextureHost(
     const SurfaceDescriptor& aDesc, TextureFlags aFlags, TextureHost* aTexture,
@@ -70,11 +93,11 @@ already_AddRefed<gfx::DataSourceSurface> WebRenderTextureHost::GetAsSurface() {
 void WebRenderTextureHost::SetTextureSourceProvider(
     TextureSourceProvider* aProvider) {}
 
-YUVColorSpace WebRenderTextureHost::GetYUVColorSpace() const {
+gfx::YUVColorSpace WebRenderTextureHost::GetYUVColorSpace() const {
   if (mWrappedTextureHost) {
     return mWrappedTextureHost->GetYUVColorSpace();
   }
-  return YUVColorSpace::UNKNOWN;
+  return gfx::YUVColorSpace::UNKNOWN;
 }
 
 gfx::IntSize WebRenderTextureHost::GetSize() const {
@@ -89,6 +112,25 @@ gfx::SurfaceFormat WebRenderTextureHost::GetFormat() const {
     return gfx::SurfaceFormat::UNKNOWN;
   }
   return mWrappedTextureHost->GetFormat();
+}
+
+void WebRenderTextureHost::NotifyNotUsed() {
+#ifdef MOZ_WIDGET_ANDROID
+  if (mWrappedTextureHost && mWrappedTextureHost->AsSurfaceTextureHost()) {
+    wr::RenderThread::Get()->NotifyNotUsed(wr::AsUint64(mExternalImageId));
+  }
+#endif
+  TextureHost::NotifyNotUsed();
+}
+
+void WebRenderTextureHost::PrepareForUse() {
+#ifdef MOZ_WIDGET_ANDROID
+  if (mWrappedTextureHost && mWrappedTextureHost->AsSurfaceTextureHost()) {
+    // Call PrepareForUse on render thread.
+    // See RenderAndroidSurfaceTextureHostOGL::PrepareForUse.
+    wr::RenderThread::Get()->PrepareForUse(wr::AsUint64(mExternalImageId));
+  }
+#endif
 }
 
 gfx::SurfaceFormat WebRenderTextureHost::GetReadFormat() const {
@@ -144,6 +186,31 @@ void WebRenderTextureHost::PushDisplayItems(
 
 bool WebRenderTextureHost::SupportsWrNativeTexture() {
   return mWrappedTextureHost->SupportsWrNativeTexture();
+}
+
+bool WebRenderTextureHost::NeedsYFlip() const {
+  bool yFlip = TextureHost::NeedsYFlip();
+  if (mWrappedTextureHost->AsSurfaceTextureHost()) {
+    MOZ_ASSERT(yFlip);
+    // With WebRender, SurfaceTextureHost always requests y-flip.
+    // But y-flip should not be handled, since
+    // SurfaceTexture.getTransformMatrix() is not handled yet.
+    // See Bug 1507076.
+    yFlip = false;
+  }
+  return yFlip;
+}
+
+void WebRenderTextureHost::MaybeNofityForUse(wr::TransactionBuilder& aTxn) {
+#if defined(MOZ_WIDGET_ANDROID)
+  if (!mWrappedTextureHost->AsSurfaceTextureHost()) {
+    return;
+  }
+  // SurfaceTexture of video needs NofityForUse() to detect if it is rendered
+  // on WebRender.
+  aTxn.Notify(wr::Checkpoint::FrameTexturesUpdated,
+              MakeUnique<ScheduleNofityForUse>(wr::AsUint64(mExternalImageId)));
+#endif
 }
 
 }  // namespace layers

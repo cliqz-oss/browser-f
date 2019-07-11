@@ -329,9 +329,7 @@ uint32_t gfxPlatformGtk::MaxGenericSubstitions() {
   return uint32_t(mMaxGenericSubstitutions);
 }
 
-bool gfxPlatformGtk::AccelerateLayersByDefault() {
-  return gfxPrefs::WebRenderAll();
-}
+bool gfxPlatformGtk::AccelerateLayersByDefault() { return true; }
 
 void gfxPlatformGtk::GetPlatformCMSOutputProfile(void*& mem, size_t& size) {
   mem = nullptr;
@@ -362,7 +360,7 @@ void gfxPlatformGtk::GetPlatformCMSOutputProfile(void*& mem, size_t& size) {
   if (iccAtom) {
     // read once to get size, once for the data
     if (Success == XGetWindowProperty(dpy, root, iccAtom, 0,
-                                      INT_MAX /* length */, False,
+                                      INT_MAX /* length */, X11False,
                                       AnyPropertyType, &retAtom, &retFormat,
                                       &retLength, &retAfter, &retProperty)) {
       if (retLength > 0) {
@@ -387,7 +385,7 @@ void gfxPlatformGtk::GetPlatformCMSOutputProfile(void*& mem, size_t& size) {
 
   edidAtom = XInternAtom(dpy, EDID1_ATOM_NAME, TRUE);
   if (edidAtom) {
-    if (Success == XGetWindowProperty(dpy, root, edidAtom, 0, 32, False,
+    if (Success == XGetWindowProperty(dpy, root, edidAtom, 0, 32, X11False,
                                       AnyPropertyType, &retAtom, &retFormat,
                                       &retLength, &retAfter, &retProperty)) {
       double gamma;
@@ -619,7 +617,7 @@ class GtkVsyncSource final : public VsyncSource {
     }
 
    private:
-    virtual ~GLXDisplay() {}
+    virtual ~GLXDisplay() = default;
 
     void RunVsync() {
       MOZ_ASSERT(!NS_IsMainThread());

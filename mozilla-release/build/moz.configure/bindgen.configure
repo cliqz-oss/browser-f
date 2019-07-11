@@ -4,32 +4,62 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-# cbindgen is needed by the style system build.
-cbindgen = check_prog('CBINDGEN', ['cbindgen'], paths=toolchain_search_path,
-                      when=depends(build_project)
-                      (lambda build_project: build_project != 'js'))
+# cbindgen is needed by the style system build and webrender.
+cbindgen_is_needed = depends(build_project)(lambda build_project: build_project != 'js')
+
+option(env='CBINDGEN', nargs=1, when=cbindgen_is_needed,
+       help='Path to cbindgen')
 
 
-@depends_if(cbindgen)
-@checking('cbindgen version')
 @imports(_from='textwrap', _import='dedent')
-def cbindgen_version(cbindgen):
-    cbindgen_min_version = Version('0.8.2')
+def check_cbindgen_version(cbindgen, fatal=False):
+    log.debug("trying cbindgen: %s" % cbindgen)
+
+    cbindgen_min_version = Version('0.8.7')
 
     # cbindgen x.y.z
     version = Version(check_cmd_output(cbindgen, '--version').strip().split(" ")[1])
+    log.debug("%s has version %s" % (cbindgen, version))
+    if version >= cbindgen_min_version:
+        return True
+    if not fatal:
+        return False
 
-    if version < cbindgen_min_version:
-        die(dedent('''\
-        cbindgen version {} is too old. At least version {} is required.
+    die(dedent('''\
+    cbindgen version {} is too old. At least version {} is required.
 
-        Please update using 'cargo install cbindgen --force' or running
-        './mach bootstrap', after removing the existing executable located at
-        {}.
-        '''.format(version, cbindgen_min_version, cbindgen)))
+    Please update using 'cargo install cbindgen --force' or running
+    './mach bootstrap', after removing the existing executable located at
+    {}.
+    '''.format(version, cbindgen_min_version, cbindgen)))
 
-    return version
 
+@depends_if('CBINDGEN', toolchain_search_path, when=cbindgen_is_needed)
+@checking('for cbindgen')
+@imports(_from='textwrap', _import='dedent')
+def cbindgen(cbindgen_override, toolchain_search_path):
+    if cbindgen_override:
+        check_cbindgen_version(cbindgen_override[0], fatal=True)
+        return cbindgen_override[0]
+
+    candidates = []
+    for path in toolchain_search_path:
+        candidate = find_program('cbindgen', [path])
+        if not candidate:
+            continue
+        if check_cbindgen_version(candidate):
+            return candidate
+        candidates.append(candidate)
+
+    if not candidates:
+        raise FatalCheckError(dedent('''\
+        Cannot find cbindgen. Please run `mach bootstrap`,
+        `cargo install cbindgen`, ensure that `cbindgen` is on your PATH,
+        or point at an executable with `CBINDGEN`.
+        '''))
+    check_cbindgen_version(candidates[0], fatal=True)
+
+set_config('CBINDGEN', cbindgen)
 
 # Bindgen can use rustfmt to format Rust file, but it's not required.
 js_option(env='RUSTFMT', nargs=1, help='Path to the rustfmt program')
@@ -137,9 +167,9 @@ def bindgen_config_paths(llvm_config, libclang_path, clang_path,
         for choice in libclang_choices:
             libclang = os.path.join(path, choice)
             if os.path.exists(libclang):
-                return (True, None)
+                return (libclang, None)
         else:
-            return (False, list(set(libclang_choices)))
+            return (None, list(set(libclang_choices)))
 
     # XXX: we want this code to be run for both Gecko and JS, but we don't
     # necessarily want to force a bindgen/Rust dependency on JS just yet.
@@ -189,8 +219,8 @@ def bindgen_config_paths(llvm_config, libclang_path, clang_path,
             necessary packages, or run `mach bootstrap`.
             '''.format(libclang_path, libclang_arg)))
 
-        (found, searched) = search_for_libclang(libclang_path)
-        if not found:
+        (libclang, searched) = search_for_libclang(libclang_path)
+        if not libclang:
             die(dedent('''\
             Could not find the clang shared library in the path {}
             returned by `llvm-config {}` (searched for files {}).
@@ -199,6 +229,7 @@ def bindgen_config_paths(llvm_config, libclang_path, clang_path,
             '''.format(libclang_path, libclang_arg, searched)))
 
         return namespace(
+            libclang=libclang,
             libclang_path=libclang_path,
             clang_path=clang_resolved,
         )
@@ -221,8 +252,8 @@ def bindgen_config_paths(llvm_config, libclang_path, clang_path,
         The argument to --with-libclang-path is not a directory: {}
         '''.format(libclang_path)))
 
-    (found, searched) = search_for_libclang(libclang_path)
-    if not found:
+    (libclang, searched) = search_for_libclang(libclang_path)
+    if not libclang:
         die(dedent('''\
         Could not find the clang shared library in the path {}
         specified by --with-libclang-path (searched for files {}).
@@ -235,17 +266,40 @@ def bindgen_config_paths(llvm_config, libclang_path, clang_path,
         '''.format(clang_path)))
 
     return namespace(
+        libclang=libclang,
         libclang_path=libclang_path,
         clang_path=clang_resolved,
     )
+
+@depends(bindgen_config_paths.libclang)
+@checking('that libclang is new enough', lambda s: 'yes' if s else 'no')
+@imports(_from='ctypes', _import='CDLL')
+@imports(_from='textwrap', _import='dedent')
+def min_libclang_version(libclang):
+    try:
+        lib = CDLL(libclang.encode('utf-8'))
+        # We want at least 4.0. The API we test below is enough for that.
+        # Just accessing it should throw if not found.
+        fun = lib.clang_EvalResult_getAsLongLong
+        return True
+    except:
+        die(dedent('''\
+        The libclang located at {} is too old (need at least 4.0).
+
+        Please make sure to update it or point to a newer libclang using
+        --with-libclang-path.
+        '''.format(libclang)))
+        return False
+
 
 set_config('MOZ_LIBCLANG_PATH', bindgen_config_paths.libclang_path)
 set_config('MOZ_CLANG_PATH', bindgen_config_paths.clang_path)
 
 
 @depends(target, target_is_unix, cxx_compiler, bindgen_cflags_android,
-         bindgen_config_paths.clang_path)
-def basic_bindgen_cflags(target, is_unix, compiler_info, android_cflags, clang_path):
+         bindgen_config_paths.clang_path, macos_sdk)
+def basic_bindgen_cflags(target, is_unix, compiler_info, android_cflags,
+                         clang_path, macos_sdk):
     args = [
         '-x', 'c++', '-fno-sized-deallocation',
         '-DTRACING=1', '-DIMPL_LIBXUL', '-DMOZILLA_INTERNAL_API',
@@ -292,6 +346,11 @@ def basic_bindgen_cflags(target, is_unix, compiler_info, android_cflags, clang_p
     info = check_compiler([clang_path], 'C++', target)
 
     args += info.flags
+
+    # XXX We wouldn't have to do this if we were using the compiler from
+    # toolchain.configure, rather than just `check_compiler`.
+    if macos_sdk and target.os == 'OSX':
+        args += ['-isysroot', macos_sdk]
 
     return args
 

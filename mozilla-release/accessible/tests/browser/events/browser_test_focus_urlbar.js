@@ -23,6 +23,12 @@ function isEventForAutocompleteItem(event) {
  * search isn't finished yet.
  */
 function waitForSearchFinish() {
+  if (UrlbarPrefs.get("quantumbar")) {
+    return Promise.all([
+      gURLBar.lastQueryContextPromise,
+      BrowserTestUtils.waitForCondition(() => gURLBar.view.isOpen)
+    ]);
+  }
   return BrowserTestUtils.waitForCondition(() =>
     (gURLBar.popupOpen && gURLBar.controller.searchStatus >=
       Ci.nsIAutoCompleteController.STATUS_COMPLETE_NO_MATCH),
@@ -76,7 +82,7 @@ async function runTests() {
   await TestUtils.waitForTick();
   testStates(textBox, STATE_FOCUSED);
 
-  info("Ensuring autocomplete focus on down arrow");
+  info("Ensuring autocomplete focus on down arrow (1)");
   focused = waitForEvent(EVENT_FOCUS, isEventForAutocompleteItem);
   EventUtils.synthesizeKey("KEY_ArrowDown");
   event = await focused;
@@ -113,11 +119,14 @@ async function runTests() {
   EventUtils.synthesizeKey("KEY_ArrowLeft");
   await focused;
   testStates(textBox, STATE_FOCUSED);
+  if (UrlbarPrefs.get("quantumbar")) {
+    gURLBar.view.close();
+  }
   // On Mac, down arrow when not at the end of the field moves to the end.
   // Move back to the end so the next press of down arrow opens the popup.
   EventUtils.synthesizeKey("KEY_ArrowRight");
 
-  info("Ensuring autocomplete focus on down arrow");
+  info("Ensuring autocomplete focus on down arrow (2)");
   focused = waitForEvent(EVENT_FOCUS, isEventForAutocompleteItem);
   EventUtils.synthesizeKey("KEY_ArrowDown");
   event = await focused;
@@ -131,7 +140,7 @@ async function runTests() {
   EventUtils.synthesizeKey("KEY_Backspace");
   await waitForSearchFinish();
 
-  info("Ensuring autocomplete focus on down arrow");
+  info("Ensuring autocomplete focus on down arrow (3)");
   focused = waitForEvent(EVENT_FOCUS, isEventForAutocompleteItem);
   EventUtils.synthesizeKey("KEY_ArrowDown");
   event = await focused;
@@ -143,9 +152,13 @@ async function runTests() {
   await focused;
   testStates(textBox, STATE_FOCUSED);
 
-  info("Ensuring autocomplete focus on down arrow");
+  info("Ensuring autocomplete focus on arrow down & up");
   focused = waitForEvent(EVENT_FOCUS, isEventForAutocompleteItem);
   EventUtils.synthesizeKey("KEY_ArrowDown");
+  // With the quantumbar enabled, we only get one result here, and arrow down
+  // selects a one-off search button. We arrow back up to re-select the
+  // autocomplete result.
+  EventUtils.synthesizeKey("KEY_ArrowUp");
   event = await focused;
   testStates(event.accessible, STATE_FOCUSED);
 

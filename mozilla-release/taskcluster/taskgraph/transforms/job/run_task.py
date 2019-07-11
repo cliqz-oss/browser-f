@@ -81,9 +81,11 @@ worker_defaults = {
 }
 
 
-def run_task_url(config):
-    return '{}/raw-file/{}/taskcluster/scripts/run-task'.format(
-                config.params['head_repository'], config.params['head_rev'])
+def script_url(config, script):
+    return '{}/raw-file/{}/taskcluster/scripts/{}'.format(
+                config.params['head_repository'],
+                config.params['head_rev'],
+                script)
 
 
 @run_job_using("docker-worker", "run-task", schema=run_task_schema, defaults=worker_defaults)
@@ -127,7 +129,9 @@ def generic_worker_run_task(config, job, taskdesc):
     if is_win:
         command = ['C:/mozilla-build/python3/python3.exe', 'run-task']
     elif is_mac:
-        command = ['/tools/python36/bin/python3.6', 'run-task']
+        command = ['/tools/python37/bin/python3.7', 'run-task']
+        if job['worker-type'].endswith('1014'):
+            command = ['/usr/local/bin/python3', 'run-task']
     else:
         command = ['./run-task']
 
@@ -141,10 +145,17 @@ def generic_worker_run_task(config, job, taskdesc):
         })
     worker['mounts'].append({
         'content': {
-            'url': run_task_url(config),
+            'url': script_url(config, 'run-task'),
         },
         'file': './run-task',
     })
+    if worker.get('env', {}).get('MOZ_FETCHES'):
+        worker['mounts'].append({
+            'content': {
+                'url': script_url(config, 'misc/fetch-content'),
+            },
+            'file': './fetch-content',
+        })
 
     run_command = run['command']
     if isinstance(run_command, basestring):

@@ -20,6 +20,8 @@
 #include "mozilla/LayerAnimationInfo.h"
 #include "mozilla/LookAndFeel.h"  // For LookAndFeel::GetInt
 #include "mozilla/KeyframeUtils.h"
+#include "mozilla/PresShell.h"
+#include "mozilla/PresShellInlines.h"
 #include "mozilla/ServoBindings.h"
 #include "mozilla/StaticPrefs.h"
 #include "mozilla/TypeTraits.h"
@@ -31,11 +33,27 @@
 #include "nsCSSPseudoElements.h"    // For PseudoStyleType
 #include "nsDOMMutationObserver.h"  // For nsAutoAnimationMutationBatch
 #include "nsIFrame.h"
-#include "nsIPresShell.h"
 #include "nsIScriptError.h"
+#include "nsPresContextInlines.h"
 #include "nsRefreshDriver.h"
 
 namespace mozilla {
+
+void AnimationProperty::SetPerformanceWarning(
+    const AnimationPerformanceWarning& aWarning, const Element* aElement) {
+  if (mPerformanceWarning && *mPerformanceWarning == aWarning) {
+    return;
+  }
+
+  mPerformanceWarning = Some(aWarning);
+
+  nsAutoString localizedString;
+  if (nsLayoutUtils::IsAnimationLoggingEnabled() &&
+      mPerformanceWarning->ToLocalizedString(localizedString)) {
+    nsAutoCString logMessage = NS_ConvertUTF16toUTF8(localizedString);
+    AnimationUtils::LogAsyncAnimationFailure(logMessage, aElement);
+  }
+}
 
 bool PropertyValuePair::operator==(const PropertyValuePair& aOther) const {
   if (mProperty != aOther.mProperty) {
@@ -136,7 +154,8 @@ void KeyframeEffect::NotifySpecifiedTimingUpdated() {
   }
 }
 
-void KeyframeEffect::NotifyAnimationTimingUpdated() {
+void KeyframeEffect::NotifyAnimationTimingUpdated(
+    PostRestyleMode aPostRestyle) {
   UpdateTargetRegistration();
 
   // If the effect is not relevant it will be removed from the target
@@ -151,7 +170,8 @@ void KeyframeEffect::NotifyAnimationTimingUpdated() {
   }
 
   // Request restyle if necessary.
-  if (mAnimation && !mProperties.IsEmpty() && HasComputedTimingChanged()) {
+  if (aPostRestyle == PostRestyleMode::IfNeeded && mAnimation &&
+      !mProperties.IsEmpty() && HasComputedTimingChanged()) {
     EffectCompositor::RestyleType restyleType =
         CanThrottle() ? EffectCompositor::RestyleType::Throttled
                       : EffectCompositor::RestyleType::Standard;
@@ -258,23 +278,36 @@ const AnimationProperty* KeyframeEffect::GetEffectiveAnimationOfProperty(
 }
 
 bool KeyframeEffect::HasEffectiveAnimationOfPropertySet(
-    const nsCSSPropertyIDSet& aPropertySet, const EffectSet& aEffect) const {
-  bool ret = false;
+    const nsCSSPropertyIDSet& aPropertySet, const EffectSet& aEffectSet) const {
+  // The various transform properties ('transform', 'scale' etc.) get combined
+  // on the compositor.
+  //
+  // As a result, if we have an animation of 'scale' and 'translate', but the
+  // 'translate' property is covered by an !important rule, we will not be
+  // able to combine the result on the compositor since we won't have the
+  // !important rule to incorporate. In that case we should run all the
+  // transform-related animations on the main thread (where we have the
+  // !important rule).
+  //
+  // Bug 1534884: Move this check to ShouldBlockAsyncTransformAnimations (or
+  // similar) and add a performance warning for this case.
+
+  bool result = false;
+
   for (const AnimationProperty& property : mProperties) {
     if (!aPropertySet.HasProperty(property.mProperty)) {
       continue;
     }
 
-    // Only consider the property if it is not overridden by !important rules in
-    // the transitions level. If one of the properties is overridden by
-    // !important rules, we return false. This is especially for transform-like
-    // properties because all of them should be running on the same thread.
-    if (!IsEffectiveProperty(aEffect, property.mProperty)) {
+    if (IsEffectiveProperty(aEffectSet, property.mProperty)) {
+      result = true;
+    } else if (nsCSSPropertyIDSet::TransformLikeProperties().HasProperty(
+                   property.mProperty)) {
       return false;
     }
-    ret = true;
   }
-  return ret;
+
+  return result;
 }
 
 nsCSSPropertyIDSet KeyframeEffect::GetPropertiesForCompositor(
@@ -482,7 +515,9 @@ void KeyframeEffect::ComposeStyleRule(
     const AnimationProperty& aProperty,
     const AnimationPropertySegment& aSegment,
     const ComputedTiming& aComputedTiming) {
-  Servo_AnimationCompose(&aAnimationValues, &mBaseValues, aProperty.mProperty,
+  auto* opaqueTable =
+      reinterpret_cast<RawServoAnimationValueTable*>(&mBaseValues);
+  Servo_AnimationCompose(&aAnimationValues, opaqueTable, aProperty.mProperty,
                          &aSegment, &aProperty.mSegments.LastElement(),
                          &aComputedTiming, mEffectOptions.mIterationComposite);
 }
@@ -911,6 +946,7 @@ void KeyframeEffect::GetTarget(
   switch (mTarget->mPseudoType) {
     case PseudoStyleType::before:
     case PseudoStyleType::after:
+    case PseudoStyleType::marker:
       aRv.SetValue().SetAsCSSPseudoElement() =
           CSSPseudoElement::GetCSSPseudoElement(mTarget->mElement,
                                                 mTarget->mPseudoType);
@@ -1174,7 +1210,7 @@ bool KeyframeEffect::CanThrottleIfNotVisible(nsIFrame& aFrame) const {
     return false;
   }
 
-  nsIPresShell* presShell = GetPresShell();
+  PresShell* presShell = GetPresShell();
   if (presShell && !presShell->IsActive()) {
     return true;
   }
@@ -1358,6 +1394,8 @@ nsIFrame* KeyframeEffect::GetPrimaryFrame() const {
     frame = nsLayoutUtils::GetBeforeFrame(mTarget->mElement);
   } else if (mTarget->mPseudoType == PseudoStyleType::after) {
     frame = nsLayoutUtils::GetAfterFrame(mTarget->mElement);
+  } else if (mTarget->mPseudoType == PseudoStyleType::marker) {
+    frame = nsLayoutUtils::GetMarkerFrame(mTarget->mElement);
   } else {
     frame = mTarget->mElement->GetPrimaryFrame();
     MOZ_ASSERT(mTarget->mPseudoType == PseudoStyleType::NotPseudo,
@@ -1374,12 +1412,12 @@ Document* KeyframeEffect::GetRenderedDocument() const {
   return mTarget->mElement->GetComposedDoc();
 }
 
-nsIPresShell* KeyframeEffect::GetPresShell() const {
+PresShell* KeyframeEffect::GetPresShell() const {
   Document* doc = GetRenderedDocument();
   if (!doc) {
     return nullptr;
   }
-  return doc->GetShell();
+  return doc->GetPresShell();
 }
 
 /* static */
@@ -1412,11 +1450,19 @@ bool KeyframeEffect::IsGeometricProperty(const nsCSSPropertyID aProperty) {
 bool KeyframeEffect::CanAnimateTransformOnCompositor(
     const nsIFrame* aFrame,
     AnimationPerformanceWarning::Type& aPerformanceWarning /* out */) {
+  // In some cases, such as when we are simply collecting all the compositor
+  // animations regardless of the frame on which they run in order to calculate
+  // change hints, |aFrame| will be the style frame. However, even in that case
+  // we should look at the primary frame since that is where the transform will
+  // be applied.
+  const nsIFrame* primaryFrame =
+      nsLayoutUtils::GetPrimaryFrameFromStyleFrame(aFrame);
+
   // Disallow OMTA for preserve-3d transform. Note that we check the style
   // property rather than Extend3DContext() since that can recurse back into
   // this function via HasOpacity(). See bug 779598.
-  if (aFrame->Combines3DTransformWithAncestors() ||
-      aFrame->StyleDisplay()->mTransformStyle ==
+  if (primaryFrame->Combines3DTransformWithAncestors() ||
+      primaryFrame->StyleDisplay()->mTransformStyle ==
           NS_STYLE_TRANSFORM_STYLE_PRESERVE_3D) {
     aPerformanceWarning =
         AnimationPerformanceWarning::Type::TransformPreserve3D;
@@ -1426,14 +1472,14 @@ bool KeyframeEffect::CanAnimateTransformOnCompositor(
   // what we need for animating backface-visibility correctly if we
   // remove the above test for Extend3DContext(); that would require
   // looking at backface-visibility on descendants as well. See bug 1186204.
-  if (aFrame->BackfaceIsHidden()) {
+  if (primaryFrame->BackfaceIsHidden()) {
     aPerformanceWarning =
         AnimationPerformanceWarning::Type::TransformBackfaceVisibilityHidden;
     return false;
   }
   // Async 'transform' animations of aFrames with SVG transforms is not
   // supported.  See bug 779599.
-  if (aFrame->IsSVGTransformed()) {
+  if (primaryFrame->IsSVGTransformed()) {
     aPerformanceWarning = AnimationPerformanceWarning::Type::TransformSVG;
     return false;
   }
@@ -1477,13 +1523,6 @@ bool KeyframeEffect::ShouldBlockAsyncTransformAnimations(
     }
   }
 
-  // FIXME: Bug 1425837: drop this hack.
-  // XXX cku temporarily disable async-animation when this frame has any
-  // individual transforms before bug 1425837 been fixed.
-  if (aFrame->StyleDisplay()->HasIndividualTransform()) {
-    return true;
-  }
-
   return false;
 }
 
@@ -1498,19 +1537,16 @@ bool KeyframeEffect::HasGeometricProperties() const {
 }
 
 void KeyframeEffect::SetPerformanceWarning(
-    nsCSSPropertyID aProperty, const AnimationPerformanceWarning& aWarning) {
+    const nsCSSPropertyIDSet& aPropertySet,
+    const AnimationPerformanceWarning& aWarning) {
+  nsCSSPropertyIDSet curr = aPropertySet;
   for (AnimationProperty& property : mProperties) {
-    if (property.mProperty == aProperty &&
-        (!property.mPerformanceWarning ||
-         *property.mPerformanceWarning != aWarning)) {
-      property.mPerformanceWarning = Some(aWarning);
-
-      nsAutoString localizedString;
-      if (nsLayoutUtils::IsAnimationLoggingEnabled() &&
-          property.mPerformanceWarning->ToLocalizedString(localizedString)) {
-        nsAutoCString logMessage = NS_ConvertUTF16toUTF8(localizedString);
-        AnimationUtils::LogAsyncAnimationFailure(logMessage, mTarget->mElement);
-      }
+    if (!curr.HasProperty(property.mProperty)) {
+      continue;
+    }
+    property.SetPerformanceWarning(aWarning, mTarget->mElement);
+    curr.RemoveProperty(property.mProperty);
+    if (curr.IsEmpty()) {
       return;
     }
   }
@@ -1568,7 +1604,8 @@ void KeyframeEffect::CalculateCumulativeChangeHint(
       // on invisible elements because we can't calculate the change hint for
       // such properties until we compose it.
       if (!segment.HasReplaceableValues()) {
-        if (property.mProperty != eCSSProperty_transform) {
+        if (!nsCSSPropertyIDSet::TransformLikeProperties().HasProperty(
+                property.mProperty)) {
           mCumulativeChangeHint = ~nsChangeHint_Hints_CanIgnoreIfNotVisible;
           return;
         }
@@ -1627,7 +1664,7 @@ void KeyframeEffect::SetAnimation(Animation* aAnimation) {
   if (mAnimation) {
     mAnimation->UpdateRelevance();
   }
-  NotifyAnimationTimingUpdated();
+  NotifyAnimationTimingUpdated(PostRestyleMode::IfNeeded);
   if (mAnimation) {
     MarkCascadeNeedsUpdate();
   }
@@ -1680,6 +1717,13 @@ bool KeyframeEffect::HasComputedTimingChanged() const {
 }
 
 bool KeyframeEffect::ContainsAnimatedScale(const nsIFrame* aFrame) const {
+  // For display:table content, transform animations run on the table wrapper
+  // frame. If we are being passed a frame that doesn't support transforms
+  // (i.e. the inner table frame) we could just return false, but it possibly
+  // means we looked up the wrong EffectSet so for now we just assert instead.
+  MOZ_ASSERT(aFrame && aFrame->IsFrameOfType(nsIFrame::eSupportsCSSTransforms),
+             "We should be passed a frame that supports transforms");
+
   if (!IsCurrent()) {
     return false;
   }
@@ -1737,16 +1781,24 @@ void KeyframeEffect::UpdateEffectSet(EffectSet* aEffectSet) const {
     return;
   }
 
-  nsIFrame* frame = GetStyleFrame();
+  nsIFrame* styleFrame = GetStyleFrame();
   if (HasAnimationOfPropertySet(nsCSSPropertyIDSet::OpacityProperties())) {
     effectSet->SetMayHaveOpacityAnimation();
-    EnumerateContinuationsOrIBSplitSiblings(
-        frame, [](nsIFrame* aFrame) { aFrame->SetMayHaveOpacityAnimation(); });
+    EnumerateContinuationsOrIBSplitSiblings(styleFrame, [](nsIFrame* aFrame) {
+      aFrame->SetMayHaveOpacityAnimation();
+    });
   }
+
+  nsIFrame* primaryFrame = GetPrimaryFrame();
   if (HasAnimationOfPropertySet(
           nsCSSPropertyIDSet::TransformLikeProperties())) {
     effectSet->SetMayHaveTransformAnimation();
-    EnumerateContinuationsOrIBSplitSiblings(frame, [](nsIFrame* aFrame) {
+    // For table frames, it's not clear if we should iterate over the
+    // continuations of the table wrapper or the inner table frame.
+    //
+    // Fortunately, this is not currently an issue because we only split tables
+    // when printing (page breaks) where we don't run animations.
+    EnumerateContinuationsOrIBSplitSiblings(primaryFrame, [](nsIFrame* aFrame) {
       aFrame->SetMayHaveTransformAnimation();
     });
   }

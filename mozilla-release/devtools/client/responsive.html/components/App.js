@@ -20,6 +20,7 @@ loader.lazyGetter(this, "DeviceModal",
 const { changeNetworkThrottling } = require("devtools/client/shared/components/throttling/actions");
 const {
   addCustomDevice,
+  editCustomDevice,
   removeCustomDevice,
   updateDeviceDisplayed,
   updateDeviceModal,
@@ -68,9 +69,11 @@ class App extends PureComponent {
     this.onChangeUserAgent = this.onChangeUserAgent.bind(this);
     this.onContentResize = this.onContentResize.bind(this);
     this.onDeviceListUpdate = this.onDeviceListUpdate.bind(this);
+    this.onEditCustomDevice = this.onEditCustomDevice.bind(this);
     this.onExit = this.onExit.bind(this);
     this.onRemoveCustomDevice = this.onRemoveCustomDevice.bind(this);
     this.onRemoveDeviceAssociation = this.onRemoveDeviceAssociation.bind(this);
+    this.doResizeViewport = this.doResizeViewport.bind(this);
     this.onResizeViewport = this.onResizeViewport.bind(this);
     this.onRotateViewport = this.onRotateViewport.bind(this);
     this.onScreenshot = this.onScreenshot.bind(this);
@@ -163,6 +166,27 @@ class App extends PureComponent {
     updatePreferredDevices(devices);
   }
 
+  onEditCustomDevice(oldDevice, newDevice) {
+    // If the edited device is currently selected, then update its original association
+    // and reset UI state.
+    let viewport = this.props.viewports.find(({ device }) => device === oldDevice.name);
+
+    if (viewport) {
+      viewport = {
+        ...viewport,
+        device: newDevice.name,
+        deviceType: "custom",
+        height: newDevice.height,
+        width: newDevice.width,
+        pixelRatio: newDevice.pixelRatio,
+        touch: newDevice.touch,
+        userAgent: newDevice.userAgent,
+      };
+    }
+
+    this.props.dispatch(editCustomDevice(viewport, oldDevice, newDevice));
+  }
+
   onExit() {
     window.postMessage({ type: "exit" }, "*");
   }
@@ -188,13 +212,20 @@ class App extends PureComponent {
     this.props.dispatch(changeUserAgent(""));
   }
 
-  onResizeViewport(id, width, height) {
+  doResizeViewport(id, width, height) {
+    // This is the setter function that we pass to Toolbar and Viewports
+    // so they can modify the viewport.
+    this.props.dispatch(resizeViewport(id, width, height));
+  }
+
+  onResizeViewport({ width, height }) {
+    // This is the response function that listens to changes to the size
+    // and sends out a "viewport-resize" message with the new size.
     window.postMessage({
       type: "viewport-resize",
       width,
       height,
     }, "*");
-    this.props.dispatch(resizeViewport(id, width, height));
   }
 
   onRotateViewport(id) {
@@ -247,9 +278,11 @@ class App extends PureComponent {
       onChangeUserAgent,
       onContentResize,
       onDeviceListUpdate,
+      onEditCustomDevice,
       onExit,
       onRemoveCustomDevice,
       onRemoveDeviceAssociation,
+      doResizeViewport,
       onResizeViewport,
       onRotateViewport,
       onScreenshot,
@@ -289,7 +322,7 @@ class App extends PureComponent {
           onChangeUserAgent,
           onExit,
           onRemoveDeviceAssociation,
-          onResizeViewport,
+          doResizeViewport,
           onRotateViewport,
           onScreenshot,
           onToggleLeftAlignment,
@@ -304,6 +337,7 @@ class App extends PureComponent {
           onBrowserMounted,
           onContentResize,
           onRemoveDeviceAssociation,
+          doResizeViewport,
           onResizeViewport,
         }),
         devices.isModalOpen ?
@@ -312,6 +346,7 @@ class App extends PureComponent {
             devices,
             onAddCustomDevice,
             onDeviceListUpdate,
+            onEditCustomDevice,
             onRemoveCustomDevice,
             onUpdateDeviceDisplayed,
             onUpdateDeviceModal,

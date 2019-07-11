@@ -207,10 +207,7 @@ async function ensureNoPreloadedBrowser(win = window) {
   // do this before we disable preloading or changing the new tab
   // URL, otherwise _getPreloadedBrowser will return null, despite
   // the preloaded browser existing.
-  let preloaded = win.gBrowser._getPreloadedBrowser();
-  if (preloaded) {
-    preloaded.remove();
-  }
+  NewTabPagePreloading.removePreloadedBrowser(win);
 
   await SpecialPowers.pushPrefEnv({
     set: [["browser.newtab.preload", false]],
@@ -696,6 +693,24 @@ async function runUrlbarTest(useAwesomebar,
           fn();
         }, ms);
       };
+    } else {
+      let popup = URLBar.view;
+      let oldOnQueryResults = popup.onQueryResults.bind(popup);
+      let oldOnQueryFinished = popup.onQueryFinished.bind(popup);
+
+      // We need to invalidate the frame tree outside of the normal
+      // mechanism since invalidations and result additions to the
+      // URL bar occur without firing JS events (which is how we
+      // normally know to dirty the frame tree).
+      popup.onQueryResults = (context) => {
+        dirtyFrame(win);
+        oldOnQueryResults(context);
+      };
+
+      popup.onQueryFinished = (context) => {
+        dirtyFrame(win);
+        oldOnQueryFinished(context);
+      };
     }
 
     let waitExtra = async () => {
@@ -719,8 +734,11 @@ async function runUrlbarTest(useAwesomebar,
         await waitExtra();
       }
     } else {
-      await UrlbarTestUtils.promiseAutocompleteResultPopup(win, URLBar.value,
-                                                           SimpleTest.waitForFocus);
+      await UrlbarTestUtils.promiseAutocompleteResultPopup({
+        window: win,
+        waitForFocus: SimpleTest.waitForFocus,
+        value: URLBar.value,
+      });
       await waitExtra();
     }
 

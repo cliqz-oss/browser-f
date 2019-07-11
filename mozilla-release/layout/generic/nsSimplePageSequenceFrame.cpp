@@ -6,13 +6,15 @@
 
 #include "nsSimplePageSequenceFrame.h"
 
+#include "mozilla/PresShell.h"
+#include "mozilla/dom/HTMLCanvasElement.h"
+
 #include "DateTimeFormat.h"
 #include "nsCOMPtr.h"
 #include "nsDeviceContext.h"
 #include "nsPresContext.h"
 #include "gfxContext.h"
 #include "nsGkAtoms.h"
-#include "nsIPresShell.h"
 #include "nsIPrintSettings.h"
 #include "nsPageFrame.h"
 #include "nsSubDocumentFrame.h"
@@ -21,7 +23,6 @@
 #include "nsContentUtils.h"
 #include "nsDisplayList.h"
 #include "nsHTMLCanvasFrame.h"
-#include "mozilla/dom/HTMLCanvasElement.h"
 #include "nsICanvasRenderingContextInternal.h"
 #include "nsServiceManagerUtils.h"
 #include <algorithm>
@@ -37,7 +38,7 @@ mozilla::LazyLogModule gLayoutPrintingLog("printing-layout");
 #define PR_PL(_p1) MOZ_LOG(gLayoutPrintingLog, mozilla::LogLevel::Debug, _p1)
 
 nsSimplePageSequenceFrame* NS_NewSimplePageSequenceFrame(
-    nsIPresShell* aPresShell, ComputedStyle* aStyle) {
+    PresShell* aPresShell, ComputedStyle* aStyle) {
   return new (aPresShell)
       nsSimplePageSequenceFrame(aStyle, aPresShell->GetPresContext());
 }
@@ -53,13 +54,12 @@ nsSimplePageSequenceFrame::nsSimplePageSequenceFrame(
   nscoord halfInch = PresContext()->CSSTwipsToAppUnits(NS_INCHES_TO_TWIPS(0.5));
   mMargin.SizeTo(halfInch, halfInch, halfInch, halfInch);
 
-  // XXX Unsafe to assume successful allocation
   mPageData = new nsSharedPageData();
   mPageData->mHeadFootFont =
       *PresContext()
            ->Document()
            ->GetFontPrefsForLang(aStyle->StyleFont()->mLanguage)
-           ->GetDefaultFont(kGenericFont_serif);
+           ->GetDefaultFont(StyleGenericFontFamily::Serif);
   mPageData->mHeadFootFont.size = nsPresContext::CSSPointsToAppUnits(10);
 
   // Doing this here so we only have to go get these formats once
@@ -663,10 +663,10 @@ nsSimplePageSequenceFrame::PrintNextPage() {
 
     nsRect drawingRect(nsPoint(0, 0), currentPageFrame->GetSize());
     nsRegion drawingRegion(drawingRect);
-    nsLayoutUtils::PaintFrame(
-        gCtx, currentPageFrame, drawingRegion, NS_RGBA(0, 0, 0, 0),
-        nsDisplayListBuilderMode::PAINTING,
-        nsLayoutUtils::PaintFrameFlags::PAINT_SYNC_DECODE_IMAGES);
+    nsLayoutUtils::PaintFrame(gCtx, currentPageFrame, drawingRegion,
+                              NS_RGBA(0, 0, 0, 0),
+                              nsDisplayListBuilderMode::Painting,
+                              nsLayoutUtils::PaintFrameFlags::SyncDecodeImages);
   }
   return rv;
 }
@@ -724,9 +724,9 @@ void nsSimplePageSequenceFrame::BuildDisplayList(
     }
   }
 
-  content.AppendToTop(MakeDisplayItem<nsDisplayTransform>(
-      aBuilder, this, &content, content.GetBuildingRect(), 0,
-      ::ComputePageSequenceTransform));
+  content.AppendNewToTop<nsDisplayTransform>(aBuilder, this, &content,
+                                             content.GetBuildingRect(), 0,
+                                             ::ComputePageSequenceTransform);
 
   aLists.Content()->AppendToTop(&content);
   aBuilder->SetInPageSequence(false);

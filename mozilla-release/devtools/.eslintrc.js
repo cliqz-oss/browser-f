@@ -7,6 +7,7 @@ module.exports = {
   "globals": {
     "exports": true,
     "isWorker": true,
+    "isReplaying": true,
     "loader": true,
     "module": true,
     "reportError": true,
@@ -330,9 +331,6 @@ module.exports = {
     "no-sync": "off",
     // Allow the use of ternary operators.
     "no-ternary": "off",
-    // Disallow throwing literals (eg. throw "error" instead of
-    // throw new Error("error")).
-    "no-throw-literal": "error",
     // Allow dangling underscores in identifiers (for privates).
     "no-underscore-dangle": "off",
     // Allow use of undefined variable.

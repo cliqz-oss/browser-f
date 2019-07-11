@@ -115,6 +115,7 @@ EXPORTS += [
     'CubebUtils.h',
     'DecoderTraits.h',
     'DOMMediaStream.h',
+    'DriftCompensation.h',
     'FileBlockCache.h',
     'FrameStatistics.h',
     'ImageToI420.h',
@@ -143,7 +144,6 @@ EXPORTS += [
     'MediaStreamGraph.h',
     'MediaStreamListener.h',
     'MediaStreamTypes.h',
-    'MediaStreamVideoSink.h',
     'MediaTimer.h',
     'MediaTrack.h',
     'MediaTrackList.h',
@@ -260,7 +260,6 @@ UNIFIED_SOURCES += [
     'MediaStreamGraph.cpp',
     'MediaStreamListener.cpp',
     'MediaStreamTrack.cpp',
-    'MediaStreamVideoSink.cpp',
     'MediaTimer.cpp',
     'MediaTrack.cpp',
     'MediaTrackList.cpp',
@@ -360,3 +359,7 @@ if CONFIG['CC_TYPE'] in ('clang', 'gcc'):
     ]
 
 FINAL_LIBRARY = 'xul'
+
+MARIONETTE_DOM_MEDIA_MANIFESTS += [
+ 'test/marionette/manifest.ini'
+]

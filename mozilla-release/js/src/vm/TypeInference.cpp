@@ -37,7 +37,6 @@
 #include "vm/Printer.h"
 #include "vm/Shape.h"
 #include "vm/Time.h"
-#include "vm/UnboxedObject.h"
 
 #include "gc/Marking-inl.h"
 #include "gc/PrivateIterators-inl.h"
@@ -309,10 +308,6 @@ bool js::ObjectGroupHasProperty(JSContext* cx, ObjectGroup* group, jsid id,
             return true;
           }
         }
-      }
-      JSObject* obj = &value.toObject();
-      if (!obj->hasLazyGroup() && obj->group()->maybeOriginalUnboxedGroup()) {
-        return true;
       }
     }
 
@@ -1574,7 +1569,7 @@ bool js::FinishCompilation(JSContext* cx, HandleScript script,
   }
 
   if (!succeeded) {
-    script->resetWarmUpCounter();
+    script->resetWarmUpCounterToDelayIonCompilation();
     *isValidOut = false;
     return true;
   }
@@ -2016,32 +2011,6 @@ class ConstraintDataFreezeObjectForTypedArrayData {
   Compartment* maybeCompartment() { return obj->compartment(); }
 };
 
-// Constraint which triggers recompilation if an unboxed object in some group
-// is converted to a native object.
-class ConstraintDataFreezeObjectForUnboxedConvertedToNative {
- public:
-  ConstraintDataFreezeObjectForUnboxedConvertedToNative() {}
-
-  const char* kind() { return "freezeObjectForUnboxedConvertedToNative"; }
-
-  bool invalidateOnNewType(TypeSet::Type type) { return false; }
-  bool invalidateOnNewPropertyState(TypeSet* property) { return false; }
-  bool invalidateOnNewObjectState(const AutoSweepObjectGroup& sweep,
-                                  ObjectGroup* group) {
-    return group->unboxedLayout(sweep).nativeGroup() != nullptr;
-  }
-
-  bool constraintHolds(const AutoSweepObjectGroup& sweep, JSContext* cx,
-                       const HeapTypeSetKey& property,
-                       TemporaryTypeSet* expected) {
-    return !invalidateOnNewObjectState(sweep, property.object()->maybeGroup());
-  }
-
-  bool shouldSweep() { return false; }
-
-  Compartment* maybeCompartment() { return nullptr; }
-};
-
 } /* anonymous namespace */
 
 void TypeSet::ObjectKey::watchStateChangeForTypedArrayData(
@@ -2056,19 +2025,6 @@ void TypeSet::ObjectKey::watchStateChangeForTypedArrayData(
   constraints->add(
       alloc->new_<T>(alloc, objectProperty,
                      ConstraintDataFreezeObjectForTypedArrayData(tarray)));
-}
-
-void TypeSet::ObjectKey::watchStateChangeForUnboxedConvertedToNative(
-    CompilerConstraintList* constraints) {
-  HeapTypeSetKey objectProperty = property(JSID_EMPTY);
-  LifoAlloc* alloc = constraints->alloc();
-
-  typedef CompilerConstraintInstance<
-      ConstraintDataFreezeObjectForUnboxedConvertedToNative>
-      T;
-  constraints->add(
-      alloc->new_<T>(alloc, objectProperty,
-                     ConstraintDataFreezeObjectForUnboxedConvertedToNative()));
 }
 
 static void ObjectStateChange(const AutoSweepObjectGroup& sweep, JSContext* cx,
@@ -2682,9 +2638,6 @@ bool TemporaryTypeSet::propertyNeedsBarrier(CompilerConstraintList* constraints,
 }
 
 bool js::ClassCanHaveExtraProperties(const Class* clasp) {
-  if (clasp == &UnboxedPlainObject::class_) {
-    return false;
-  }
   return clasp->getResolve() || clasp->getOpsLookupProperty() ||
          clasp->getOpsGetProperty() || IsTypedArrayClass(clasp);
 }
@@ -2726,9 +2679,7 @@ void TypeZone::addPendingRecompile(JSContext* cx, JSScript* script) {
   CancelOffThreadIonCompile(script);
 
   // Let the script warm up again before attempting another compile.
-  if (jit::IsBaselineEnabled(cx)) {
-    script->resetWarmUpCounter();
-  }
+  script->resetWarmUpCounterToDelayIonCompilation();
 
   if (script->hasIonScript()) {
     addPendingRecompile(
@@ -2921,35 +2872,6 @@ void ObjectGroup::addDefiniteProperties(JSContext* cx, Shape* shape) {
   }
 }
 
-bool ObjectGroup::matchDefiniteProperties(HandleObject obj) {
-  AutoSweepObjectGroup sweep(this);
-  unsigned count = getPropertyCount(sweep);
-  for (unsigned i = 0; i < count; i++) {
-    Property* prop = getProperty(sweep, i);
-    if (!prop) {
-      continue;
-    }
-    if (prop->types.definiteProperty()) {
-      unsigned slot = prop->types.definiteSlot();
-
-      bool found = false;
-      Shape* shape = obj->as<NativeObject>().lastProperty();
-      while (!shape->isEmptyShape()) {
-        if (shape->slot() == slot && shape->propid() == prop->id) {
-          found = true;
-          break;
-        }
-        shape = shape->previous();
-      }
-      if (!found) {
-        return false;
-      }
-    }
-  }
-
-  return true;
-}
-
 void js::AddTypePropertyId(JSContext* cx, ObjectGroup* group, JSObject* obj,
                            jsid id, TypeSet::Type type) {
   MOZ_ASSERT(id == IdToTypeId(id));
@@ -2997,19 +2919,6 @@ void js::AddTypePropertyId(JSContext* cx, ObjectGroup* group, JSObject* obj,
   if (group->newScript(sweep) && group->newScript(sweep)->initializedGroup()) {
     AddTypePropertyId(cx, group->newScript(sweep)->initializedGroup(), nullptr,
                       id, type);
-  }
-
-  // Maintain equivalent type information for unboxed object groups and their
-  // corresponding native group. Since type sets might contain the unboxed
-  // group but not the native group, this ensures optimizations based on the
-  // unboxed group are valid for the native group.
-  if (group->maybeUnboxedLayout(sweep) &&
-      group->maybeUnboxedLayout(sweep)->nativeGroup()) {
-    AddTypePropertyId(cx, group->maybeUnboxedLayout(sweep)->nativeGroup(),
-                      nullptr, id, type);
-  }
-  if (ObjectGroup* unboxedGroup = group->maybeOriginalUnboxedGroup()) {
-    AddTypePropertyId(cx, unboxedGroup, nullptr, id, type);
   }
 }
 
@@ -3090,16 +2999,6 @@ void ObjectGroup::setFlags(const AutoSweepObjectGroup& sweep, JSContext* cx,
     AutoSweepObjectGroup sweepInit(newScript(sweep)->initializedGroup());
     newScript(sweep)->initializedGroup()->setFlags(sweepInit, cx, flags);
   }
-
-  // Propagate flag changes between unboxed and corresponding native groups.
-  if (maybeUnboxedLayout(sweep) && maybeUnboxedLayout(sweep)->nativeGroup()) {
-    AutoSweepObjectGroup sweepNative(maybeUnboxedLayout(sweep)->nativeGroup());
-    maybeUnboxedLayout(sweep)->nativeGroup()->setFlags(sweepNative, cx, flags);
-  }
-  if (ObjectGroup* unboxedGroup = maybeOriginalUnboxedGroup()) {
-    AutoSweepObjectGroup sweepUnboxed(unboxedGroup);
-    unboxedGroup->setFlags(sweepUnboxed, cx, flags);
-  }
 }
 
 void ObjectGroup::markUnknown(const AutoSweepObjectGroup& sweep,
@@ -3135,27 +3034,6 @@ void ObjectGroup::markUnknown(const AutoSweepObjectGroup& sweep,
   }
 
   clearProperties(sweep);
-
-  if (ObjectGroup* unboxedGroup = maybeOriginalUnboxedGroup()) {
-    MarkObjectGroupUnknownProperties(cx, unboxedGroup);
-  }
-  if (maybeUnboxedLayout(sweep) && maybeUnboxedLayout(sweep)->nativeGroup()) {
-    MarkObjectGroupUnknownProperties(cx,
-                                     maybeUnboxedLayout(sweep)->nativeGroup());
-  }
-  if (ObjectGroup* unboxedGroup = maybeOriginalUnboxedGroup()) {
-    MarkObjectGroupUnknownProperties(cx, unboxedGroup);
-  }
-}
-
-TypeNewScript* ObjectGroup::anyNewScript(const AutoSweepObjectGroup& sweep) {
-  if (newScript(sweep)) {
-    return newScript(sweep);
-  }
-  if (maybeUnboxedLayout(sweep)) {
-    return unboxedLayout(sweep).newScript();
-  }
-  return nullptr;
 }
 
 void ObjectGroup::detachNewScript(bool writeBarrier, ObjectGroup* replacement) {
@@ -3164,7 +3042,7 @@ void ObjectGroup::detachNewScript(bool writeBarrier, ObjectGroup* replacement) {
   // produced by calling 'new' on the associated function anymore.
   // The TypeNewScript is not actually destroyed.
   AutoSweepObjectGroup sweep(this);
-  TypeNewScript* newScript = anyNewScript(sweep);
+  TypeNewScript* newScript = this->newScript(sweep);
   MOZ_ASSERT(newScript);
 
   if (newScript->analyzed()) {
@@ -3187,11 +3065,7 @@ void ObjectGroup::detachNewScript(bool writeBarrier, ObjectGroup* replacement) {
     MOZ_ASSERT(!replacement);
   }
 
-  if (this->newScript(sweep)) {
-    setAddendum(Addendum_None, nullptr, writeBarrier);
-  } else {
-    unboxedLayout(sweep).setNewScript(nullptr, writeBarrier);
-  }
+  setAddendum(Addendum_None, nullptr, writeBarrier);
 }
 
 void ObjectGroup::maybeClearNewScriptOnOOM() {
@@ -3202,7 +3076,7 @@ void ObjectGroup::maybeClearNewScriptOnOOM() {
   }
 
   AutoSweepObjectGroup sweep(this);
-  TypeNewScript* newScript = anyNewScript(sweep);
+  TypeNewScript* newScript = this->newScript(sweep);
   if (!newScript) {
     return;
   }
@@ -3218,7 +3092,7 @@ void ObjectGroup::maybeClearNewScriptOnOOM() {
 void ObjectGroup::clearNewScript(JSContext* cx,
                                  ObjectGroup* replacement /* = nullptr*/) {
   AutoSweepObjectGroup sweep(this);
-  TypeNewScript* newScript = anyNewScript(sweep);
+  TypeNewScript* newScript = this->newScript(sweep);
   if (!newScript) {
     return;
   }
@@ -3379,6 +3253,9 @@ bool js::AddClearDefiniteGetterSetterForPrototypeChain(JSContext* cx,
    */
   RootedObject proto(cx, group->proto().toObjectOrNull());
   while (proto) {
+    if (!proto->hasStaticPrototype()) {
+      return false;
+    }
     ObjectGroup* protoGroup = JSObject::getGroup(cx, proto);
     if (!protoGroup) {
       cx->recoverFromOutOfMemory();
@@ -3570,7 +3447,7 @@ void js::TypeMonitorResult(JSContext* cx, JSScript* script, jsbytecode* pc,
     return;
   }
 
-  if (!script->hasBaselineScript()) {
+  if (!script->types()) {
     return;
   }
 
@@ -3614,7 +3491,22 @@ bool JSScript::makeTypes(JSContext* cx) {
   MOZ_ASSERT(!types_);
   cx->check(this);
 
+  // Scripts that will never run in the Baseline Interpreter or the JITs don't
+  // need a TypeScript.
+  MOZ_ASSERT(!hasForceInterpreterOp());
+
   AutoEnterAnalysis enter(cx);
+
+  // Run the arguments-analysis if needed. Both the Baseline Interpreter and
+  // Compiler rely on this.
+  if (!ensureHasAnalyzedArgsUsage(cx)) {
+    return false;
+  }
+
+  // If ensureHasAnalyzedArgsUsage allocated the TypeScript we're done.
+  if (types_) {
+    return true;
+  }
 
   UniquePtr<jit::ICScript> icScript(jit::ICScript::create(cx, this));
   if (!icScript) {
@@ -3645,7 +3537,12 @@ bool JSScript::makeTypes(JSContext* cx) {
 
   prepareForDestruction.release();
 
+  MOZ_ASSERT(!types_);
   types_ = new (typeScript) TypeScript(this, std::move(icScript), numTypeSets);
+
+  // We have a TypeScript so we can set the script's jitCodeRaw_ pointer to the
+  // Baseline Interpreter code.
+  updateJitCodeRaw(cx->runtime());
 
 #ifdef DEBUG
   StackTypeSet* typeArray = typeScript->typeArrayDontCheckGeneration();
@@ -3747,23 +3644,6 @@ void PreliminaryObjectArray::sweep() {
   for (size_t i = 0; i < COUNT; i++) {
     JSObject** ptr = &objects[i];
     if (*ptr && IsAboutToBeFinalizedUnbarriered(ptr)) {
-      // Before we clear this reference, change the object's group to the
-      // Object.prototype group. This is done to ensure JSObject::finalize
-      // sees a NativeObject Class even if we change the current group's
-      // Class to one of the unboxed object classes in the meantime. If
-      // the realm's global is dead, we don't do anything as the group's
-      // Class is not going to change in that case.
-      JSObject* obj = *ptr;
-      GlobalObject* global =
-          obj->as<NativeObject>().realm()->unsafeUnbarrieredMaybeGlobal();
-      if (global && !obj->isSingleton()) {
-        JSObject* objectProto = global->maybeGetPrototype(JSProto_Object);
-        obj->setGroup(objectProto->groupRaw());
-        MOZ_ASSERT(obj->is<NativeObject>());
-        MOZ_ASSERT(obj->getClass() == objectProto->getClass());
-        MOZ_ASSERT(!obj->getClass()->hasFinalize());
-      }
-
       *ptr = nullptr;
     }
   }
@@ -3861,17 +3741,10 @@ void PreliminaryObjectArrayWithTemplate::maybeAnalyze(JSContext* cx,
     }
   }
 
-  TryConvertToUnboxedLayout(cx, enter, shape(), group,
-                            preliminaryObjects.get());
-  AutoSweepObjectGroup sweep(group);
-  if (group->maybeUnboxedLayout(sweep)) {
-    return;
-  }
-
-  // We weren't able to use an unboxed layout, but since the preliminary
-  // objects still reflect the template object's properties, and all
-  // objects in the future will be created with those properties, the
-  // properties can be marked as definite for objects in the group.
+  // Since the preliminary objects still reflect the template object's
+  // properties, and all objects in the future will be created with those
+  // properties, the properties can be marked as definite for objects in the
+  // group.
   group->addDefiniteProperties(cx, shape());
 }
 
@@ -3886,7 +3759,6 @@ bool TypeNewScript::make(JSContext* cx, ObjectGroup* group, JSFunction* fun) {
   AutoSweepObjectGroup sweep(group);
   MOZ_ASSERT(cx->zone()->types.activeAnalysis);
   MOZ_ASSERT(!group->newScript(sweep));
-  MOZ_ASSERT(!group->maybeUnboxedLayout(sweep));
   MOZ_ASSERT(cx->realm() == group->realm());
   MOZ_ASSERT(cx->realm() == fun->realm());
 
@@ -3914,41 +3786,6 @@ bool TypeNewScript::make(JSContext* cx, ObjectGroup* group, JSFunction* fun) {
 
   gc::gcTracer.traceTypeNewScript(group);
   return true;
-}
-
-// Make a TypeNewScript with the same initializer list as |newScript| but with
-// a new template object.
-/* static */
-TypeNewScript* TypeNewScript::makeNativeVersion(JSContext* cx,
-                                                TypeNewScript* newScript,
-                                                PlainObject* templateObject) {
-  MOZ_RELEASE_ASSERT(cx->zone()->types.activeAnalysis);
-
-  auto nativeNewScript = cx->make_unique<TypeNewScript>();
-  if (!nativeNewScript) {
-    return nullptr;
-  }
-
-  nativeNewScript->function_ = newScript->function();
-  nativeNewScript->templateObject_ = templateObject;
-
-  TypeNewScriptInitializer* cursor = newScript->initializerList;
-  while (cursor->kind != TypeNewScriptInitializer::DONE) {
-    cursor++;
-  }
-
-  size_t initializerLength = cursor - newScript->initializerList + 1;
-
-  nativeNewScript->initializerList =
-      cx->pod_calloc<TypeNewScriptInitializer>(initializerLength);
-  if (!nativeNewScript->initializerList) {
-    return nullptr;
-  }
-
-  PodCopy(nativeNewScript->initializerList, newScript->initializerList,
-          initializerLength);
-
-  return nativeNewScript.release();
 }
 
 size_t TypeNewScript::sizeOfIncludingThis(
@@ -4162,36 +3999,8 @@ bool TypeNewScript::maybeAnalyze(JSContext* cx, ObjectGroup* group,
             initializerVector.length());
   }
 
-  // Try to use an unboxed representation for the group.
-  if (!TryConvertToUnboxedLayout(cx, enter, templateObject()->lastProperty(),
-                                 group, preliminaryObjects)) {
-    return false;
-  }
-
   js_delete(preliminaryObjects);
   preliminaryObjects = nullptr;
-
-  if (group->maybeUnboxedLayout(sweep)) {
-    // An unboxed layout was constructed for the group, and this has already
-    // been hooked into it.
-    MOZ_ASSERT(group->unboxedLayout(sweep).newScript() == this);
-    destroyNewScript.release();
-
-    // Clear out the template object, which is not used for TypeNewScripts
-    // with an unboxed layout. Currently it is a mutant object with a
-    // non-native group and native shape, so make it safe for GC by changing
-    // its group to the default for its prototype.
-    AutoEnterOOMUnsafeRegion oomUnsafe;
-    ObjectGroup* plainGroup =
-        ObjectGroup::defaultNewGroup(cx, &PlainObject::class_, group->proto());
-    if (!plainGroup) {
-      oomUnsafe.crash("TypeNewScript::maybeAnalyze");
-    }
-    templateObject_->setGroup(plainGroup);
-    templateObject_ = nullptr;
-
-    return true;
-  }
 
   if (prefixShape->slotSpan() == templateObject()->slotSpan()) {
     // The definite properties analysis found exactly the properties that
@@ -4293,13 +4102,6 @@ bool TypeNewScript::rollbackPartiallyInitializedObjects(JSContext* cx,
     if (!thisv.isObject() || thisv.toObject().hasLazyGroup() ||
         thisv.toObject().group() != group) {
       continue;
-    }
-
-    if (thisv.toObject().is<UnboxedPlainObject>()) {
-      AutoEnterOOMUnsafeRegion oomUnsafe;
-      if (!UnboxedPlainObject::convertToNative(cx, &thisv.toObject())) {
-        oomUnsafe.crash("rollbackPartiallyInitializedObjects");
-      }
     }
 
     // Found a matching frame.
@@ -4501,12 +4303,6 @@ void ConstraintTypeSet::sweep(const AutoSweepBase& sweep, Zone* zone) {
         // Object sets containing objects with unknown properties might
         // not be complete. Mark the type set as unknown, which it will
         // be treated as during Ion compilation.
-        //
-        // Note that we don't have to do this when the type set might
-        // be missing the native group corresponding to an unboxed
-        // object group. In this case, the native group points to the
-        // unboxed object group via its addendum, so as long as objects
-        // with either group exist, neither group will be finalized.
         flags |= TYPE_FLAG_ANYOBJECT;
         clearObjects();
         objectCount = 0;
@@ -4589,24 +4385,6 @@ void ObjectGroup::sweep(const AutoSweepObjectGroup& sweep) {
   }
 
   AutoTouchingGrayThings tgt;
-
-  if (auto* layout = maybeUnboxedLayout(sweep)) {
-    // Remove unboxed layouts that are about to be finalized from the
-    // realm wide list while we are still on the main thread.
-    ObjectGroup* group = this;
-    if (IsAboutToBeFinalizedUnbarriered(&group)) {
-      layout->detachFromRealm();
-    }
-
-    if (layout->newScript()) {
-      layout->newScript()->sweep();
-    }
-
-    // Discard constructor code to avoid holding onto ExecutablePools.
-    if (zone()->isGCCompacting()) {
-      layout->setConstructorCode(nullptr);
-    }
-  }
 
   if (maybePreliminaryObjects(sweep)) {
     maybePreliminaryObjects(sweep)->sweep();
@@ -4761,6 +4539,7 @@ void JSScript::maybeReleaseTypes() {
 
   types_->destroy(zone());
   types_ = nullptr;
+  updateJitCodeRaw(runtimeFromMainThread());
 }
 
 void TypeScript::destroy(Zone* zone) {

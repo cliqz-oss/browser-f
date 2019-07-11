@@ -285,14 +285,9 @@ macro_rules! impl_threadsafe_refcount {
 }
 
 impl_threadsafe_refcount!(
-    structs::RawGeckoURLExtraData,
+    structs::mozilla::URLExtraData,
     bindings::Gecko_AddRefURLExtraDataArbitraryThread,
     bindings::Gecko_ReleaseURLExtraDataArbitraryThread
-);
-impl_threadsafe_refcount!(
-    structs::nsCSSValueSharedList,
-    bindings::Gecko_AddRefCSSValueSharedListArbitraryThread,
-    bindings::Gecko_ReleaseCSSValueSharedListArbitraryThread
 );
 impl_threadsafe_refcount!(
     structs::mozilla::css::URLValue,

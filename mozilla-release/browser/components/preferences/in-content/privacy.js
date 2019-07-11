@@ -26,8 +26,7 @@ const CONTENT_BLOCKING_PREFS = ["privacy.trackingprotection.enabled",
                                 "privacy.trackingprotection.pbmode.enabled",
                                 "network.cookie.cookieBehavior",
                                 "privacy.trackingprotection.fingerprinting.enabled",
-                                "privacy.trackingprotection.cryptomining.enabled",
-                                "urlclassifier.trackingTable"];
+                                "privacy.trackingprotection.cryptomining.enabled"];
 
 var gStrings = Services.strings.createBundle("chrome://mozapps/locale/extensions/extensions.properties");
 
@@ -48,6 +47,10 @@ XPCOMUtils.defineLazyGetter(this, "AlertsServiceDND", function() {
     return undefined;
   }
 });
+
+XPCOMUtils.defineLazyServiceGetter(this, "listManager",
+                                   "@mozilla.org/url-classifier/listmanager;1",
+                                   "nsIUrlListManager");
 
 Preferences.addAll([
   // Content blocking / Tracking Protection
@@ -78,7 +81,10 @@ Preferences.addAll([
   { id: "network.cookie.cookieBehavior", type: "int" },
   { id: "network.cookie.lifetimePolicy", type: "int" },
   { id: "network.cookie.blockFutureCookies", type: "bool" },
+  // Content blocking category
   { id: "browser.contentblocking.category", type: "string"},
+  { id: "browser.contentblocking.features.strict", type: "string"},
+
   // Clear Private Data
   { id: "privacy.sanitize.sanitizeOnShutdown", type: "bool" },
   { id: "privacy.sanitize.timeSpan", type: "int" },
@@ -220,13 +226,6 @@ var gPrivacyPane = {
       // trackingProtectionMenu element getting disabled/enabled at the right time.
       Services.obs.notifyObservers(window, "privacy-pane-tp-ui-updated");
     }
-
-    // We watch the network.cookie.cookieBehavior default value, if it is
-    // BEHAVIOR_ACCEPT (0) then show the fallback UI. When we change
-    // this default to BEHAVIOR_REJECT_TRACKER (4) show our default UI.
-    let defaults = Services.prefs.getDefaultBranch("");
-    document.getElementById("contentBlockingCategories").toggleAttribute("fallback-ui",
-      defaults.getIntPref("network.cookie.cookieBehavior") === Ci.nsICookieService.BEHAVIOR_ACCEPT);
 
     let policy = Services.policies.getActivePolicies();
     if (policy && ((policy.EnableTrackingProtection && policy.EnableTrackingProtection.Locked) ||
@@ -375,6 +374,8 @@ var gPrivacyPane = {
     this.trackingProtectionReadPrefs();
     this.networkCookieBehaviorReadPrefs();
     this._initTrackingProtectionExtensionControl();
+
+    Services.telemetry.setEventRecordingEnabled("pwmgr", true);
 
     Preferences.get("media.autoplay.default").on("change",
       gPrivacyPane.blockAutoplayReadPrefs.bind(gPrivacyPane));
@@ -547,10 +548,12 @@ var gPrivacyPane = {
     setEventListener("changeBlockListLink", "click", this.showBlockLists);
     setEventListener("contentBlockingTrackingProtectionCheckbox", "command",
       this.trackingProtectionWritePrefs);
-#if 0
     setEventListener("contentBlockingTrackingProtectionCheckbox", "command",
       this._updateTrackingProtectionUI);
-#endif
+    setEventListener("contentBlockingCryptominersCheckbox", "command",
+      this.updateCryptominingLists);
+    setEventListener("contentBlockingFingerprintersCheckbox", "command",
+      this.updateFingerprintingLists);
     setEventListener("trackingProtectionMenu", "command",
       this.trackingProtectionWritePrefs);
     setEventListener("standardArrow", "command", this.toggleExpansion);
@@ -561,17 +564,20 @@ var gPrivacyPane = {
       gPrivacyPane.readBlockCookies.bind(gPrivacyPane));
     Preferences.get("network.cookie.cookieBehavior").on("change",
       gPrivacyPane.readBlockCookiesMenu.bind(gPrivacyPane));
-#if 0
     Preferences.get("browser.contentblocking.category").on("change",
       gPrivacyPane.highlightCBCategory);
 
     // If any relevant content blocking pref changes, show a warning that the changes will
     // not be implemented until they refresh their tabs.
     for (let pref of CONTENT_BLOCKING_PREFS) {
-      Preferences.get(pref).on("change", gPrivacyPane.notifyUserToReload);
+      Preferences.get(pref).on("change", gPrivacyPane.maybeNotifyUserToReload);
+      // If the value changes, run populateCategoryContents, since that change might have been
+      // triggered by a default value changing in the standard category.
+      Preferences.get(pref).on("change", gPrivacyPane.populateCategoryContents);
     }
+    Preferences.get("urlclassifier.trackingTable").on("change", gPrivacyPane.maybeNotifyUserToReload);
     for (let button of document.querySelectorAll(".reload-tabs-button")) {
-      button.addEventListener("command", gPrivacyPane.reloadAllTabs);
+      button.addEventListener("command", gPrivacyPane.reloadAllOtherTabs);
     }
 
     let cryptoMinersOption = document.getElementById("contentBlockingCryptominersOption");
@@ -582,8 +588,10 @@ var gPrivacyPane = {
     fingerprintersOption.hidden =
       !Services.prefs.getBoolPref("browser.contentblocking.fingerprinting.preferences.ui.enabled");
 
+    Preferences.get("browser.contentblocking.features.strict").on("change",
+      this.populateCategoryContents);
+    this.populateCategoryContents();
     this.highlightCBCategory();
-#endif
     this.readBlockCookies();
     this.readBlockCookiesMenu();
 
@@ -596,6 +604,96 @@ var gPrivacyPane = {
     let warningLinks = document.getElementsByClassName("content-blocking-warning-learn-how");
     for (let warningLink of warningLinks) {
       warningLink.setAttribute("href", contentBlockingTour);
+    }
+  },
+
+  populateCategoryContents() {
+    for (let type of ["strict", "standard"]) {
+      let rulesArray = [];
+      let selector;
+      if (type == "strict") {
+        selector = "#contentBlockingOptionStrict";
+        rulesArray = Services.prefs.getStringPref("browser.contentblocking.features.strict").split(",");
+      } else {
+        selector = "#contentBlockingOptionStandard";
+        // In standard show/hide UI items based on the default values of the relevant prefs.
+        let defaults = Services.prefs.getDefaultBranch("");
+
+        let cookieBehavior = defaults.getIntPref("network.cookie.cookieBehavior");
+        switch (cookieBehavior) {
+        case Ci.nsICookieService.BEHAVIOR_ACCEPT:
+          rulesArray.push("cookieBehavior0");
+          break;
+        case Ci.nsICookieService.BEHAVIOR_REJECT_FOREIGN:
+          rulesArray.push("cookieBehavior1");
+          break;
+        case Ci.nsICookieService.BEHAVIOR_REJECT:
+          rulesArray.push("cookieBehavior2");
+          break;
+        case Ci.nsICookieService.BEHAVIOR_LIMIT_FOREIGN:
+          rulesArray.push("cookieBehavior3");
+          break;
+        case Ci.nsICookieService.BEHAVIOR_REJECT_TRACKER:
+          rulesArray.push("cookieBehavior4");
+          break;
+        }
+        rulesArray.push(defaults.getBoolPref("privacy.trackingprotection.cryptomining.enabled") ? "cm" : "-cm");
+        rulesArray.push(defaults.getBoolPref("privacy.trackingprotection.fingerprinting.enabled") ? "fp" : "-fp");
+        rulesArray.push(defaults.getBoolPref("privacy.trackingprotection.enabled") ? "tp" : "-tp");
+        rulesArray.push(defaults.getBoolPref("privacy.trackingprotection.pbmode.enabled") ? "tpPrivate" : "-tpPrivate");
+      }
+      // Hide all cookie options first, until we learn which one should be showing.
+      document.querySelector(selector + " .all-cookies-option").hidden = true;
+      document.querySelector(selector + " .unvisited-cookies-option").hidden = true;
+      document.querySelector(selector + " .third-party-tracking-cookies-option").hidden = true;
+      document.querySelector(selector + " .all-third-party-cookies-option").hidden = true;
+
+      for (let item of rulesArray) {
+        // Note "cookieBehavior0", will result in no UI changes, so is not listed here.
+        switch (item) {
+        case "tp":
+          document.querySelector(selector + " .trackers-option").hidden = false;
+          break;
+        case "-tp":
+          document.querySelector(selector + " .trackers-option").hidden = true;
+          break;
+        case "tpPrivate":
+          document.querySelector(selector + " .pb-trackers-option").hidden = false;
+          break;
+        case "-tpPrivate":
+          document.querySelector(selector + " .pb-trackers-option").hidden = true;
+          break;
+        case "fp":
+          document.querySelector(selector + " .fingerprinters-option").hidden = false;
+          break;
+        case "-fp":
+          document.querySelector(selector + " .fingerprinters-option").hidden = true;
+          break;
+        case "cm":
+          document.querySelector(selector + " .cryptominers-option").hidden = false;
+          break;
+        case "-cm":
+          document.querySelector(selector + " .cryptominers-option").hidden = true;
+          break;
+        case "cookieBehavior1":
+          document.querySelector(selector + " .all-third-party-cookies-option").hidden = false;
+          break;
+        case "cookieBehavior2":
+          document.querySelector(selector + " .all-cookies-option").hidden = false;
+          break;
+        case "cookieBehavior3":
+          document.querySelector(selector + " .unvisited-cookies-option").hidden = false;
+          break;
+        case "cookieBehavior4":
+          document.querySelector(selector + " .third-party-tracking-cookies-option").hidden = false;
+          break;
+        }
+      }
+      // Hide the "tracking protection in private browsing" list item
+      // if the "tracking protection enabled in all windows" list item is showing.
+      if (!document.querySelector(selector + " .trackers-option").hidden) {
+        document.querySelector(selector + " .pb-trackers-option").hidden = true;
+      }
     }
   },
 
@@ -621,6 +719,26 @@ var gPrivacyPane = {
         standardEl.classList.add("selected");
         break;
     }
+  },
+
+  updateCryptominingLists() {
+    let listPrefs = [
+      "urlclassifier.features.cryptomining.blacklistTables",
+      "urlclassifier.features.cryptomining.whitelistTables",
+    ];
+
+    let listValue = listPrefs.map(l => Services.prefs.getStringPref(l)).join(",");
+    listManager.forceUpdates(listValue);
+  },
+
+  updateFingerprintingLists() {
+    let listPrefs = [
+      "urlclassifier.features.fingerprinting.blacklistTables",
+      "urlclassifier.features.fingerprinting.whitelistTables",
+    ];
+
+    let listValue = listPrefs.map(l => Services.prefs.getStringPref(l)).join(",");
+    listManager.forceUpdates(listValue);
   },
 
   // TRACKING PROTECTION MODE
@@ -1212,21 +1330,42 @@ var gPrivacyPane = {
 #endif
 
   /**
-   * Reload all tabs in all windows.
+   * Reload all tabs in all windows, except the active Preferences tab.
    */
-  reloadAllTabs() {
+  reloadAllOtherTabs() {
+    let activeWindow = window.BrowserWindowTracker.getTopWindow();
+    let selectedPrefTab = activeWindow.gBrowser.selectedTab;
     for (let win of window.BrowserWindowTracker.orderedWindows) {
-      let tabbrowser = win.getBrowser();
-      tabbrowser.reloadTabs(tabbrowser.tabs);
+      let tabbrowser = win.gBrowser;
+      let tabsToReload = [...tabbrowser.tabs];
+      if (win == activeWindow ) {
+        tabsToReload = tabsToReload.filter(tab => tab !== selectedPrefTab);
+      }
+      tabbrowser.reloadTabs(tabsToReload);
+    }
+    for (let notification of document.querySelectorAll(".reload-tabs")) {
+      notification.hidden = true;
     }
   },
 
   /**
-   * Show a warning to the user that they need to reload their tabs to apply the setting.
+   * If there are more tabs than just the preferences tab, show a warning to the user that
+   * they need to reload their tabs to apply the setting.
    */
-  notifyUserToReload() {
-    for (let notification of document.querySelectorAll(".reload-tabs")) {
-      notification.hidden = false;
+  maybeNotifyUserToReload() {
+    let shouldShow = false;
+    if (window.BrowserWindowTracker.orderedWindows.length > 1) {
+      shouldShow = true;
+    } else {
+      let tabbrowser = window.BrowserWindowTracker.getTopWindow().gBrowser;
+      if (tabbrowser.tabs.length > 1) {
+        shouldShow = true;
+      }
+    }
+    if (shouldShow) {
+      for (let notification of document.querySelectorAll(".reload-tabs")) {
+        notification.hidden = false;
+      }
     }
   },
 
@@ -1492,9 +1631,12 @@ var gPrivacyPane = {
  */
   showPasswords() {
     if (LoginHelper.managementURI) {
-      window.docShell.messageManager.sendAsyncMessage("PasswordManager:OpenPreferences", {});
+      window.docShell.messageManager.sendAsyncMessage("PasswordManager:OpenPreferences", {
+        entryPoint: "preferences",
+      });
       return;
     }
+    Services.telemetry.recordEvent("pwmgr", "open_management", "preferences");
     gSubDialog.open("chrome://passwordmgr/content/passwordManager.xul");
   },
 
@@ -1608,11 +1750,7 @@ var gPrivacyPane = {
       malwareTable.value = malware.join(",");
 
       // Force an update after changing the malware table.
-      let listmanager = Cc["@mozilla.org/url-classifier/listmanager;1"]
-                        .getService(Ci.nsIUrlListManager);
-      if (listmanager) {
-        listmanager.forceUpdates(malwareTable.value);
-      }
+      listManager.forceUpdates(malwareTable.value);
     });
 
     // set initial values

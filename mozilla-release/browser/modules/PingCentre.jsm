@@ -163,6 +163,26 @@ class PingCentre {
     return payload;
   }
 
+  async _createStructuredIngestionPing(data, options) {
+    let filter = options && options.filter;
+    let experiments = TelemetryEnvironment.getActiveExperiments();
+    let experimentsString = this._createExperimentsString(experiments, filter);
+
+    let clientID = data.client_id || await this.telemetryClientId;
+    let locale = data.locale || Services.locale.appLocaleAsLangTag;
+    const payload = Object.assign({
+      locale,
+      client_id: clientID,
+      version: AppConstants.MOZ_APP_VERSION,
+      release_channel: UpdateUtils.getUpdateChannel(false),
+    }, data);
+    if (experimentsString) {
+      payload.shield_id = experimentsString;
+    }
+
+    return payload;
+  }
+
   async sendPing(data, options) {
     if (!this.enabled) {
       return Promise.resolve();
@@ -177,7 +197,11 @@ class PingCentre {
       }
     }
 
-    return fetch(this._pingEndpoint, {method: "POST", body: JSON.stringify(payload)}).then(response => {
+    return fetch(this._pingEndpoint, {
+      method: "POST",
+      body: JSON.stringify(payload),
+      credentials: "omit",
+    }).then(response => {
       if (!response.ok) {
         Cu.reportError(`Ping failure with HTTP response code: ${response.status}`);
       }
@@ -201,9 +225,17 @@ class PingCentre {
       return Promise.resolve();
     }
 
-    const payload = await this._createPing(data, options);
+    const payload = await this._createStructuredIngestionPing(data, options);
 
-    return fetch(endpoint, {method: "POST", body: JSON.stringify(payload)}).then(response => {
+    if (this.logging) {
+      Services.console.logStringMessage(`TELEMETRY PING (STRUCTURED INGESTION): ${JSON.stringify(payload)}\n`);
+    }
+
+    return fetch(endpoint, {
+      method: "POST",
+      body: JSON.stringify(payload),
+      credentials: "omit",
+    }).then(response => {
       if (!response.ok) {
         Cu.reportError(`Structured Ingestion ping failure with HTTP response code: ${response.status}`);
       }

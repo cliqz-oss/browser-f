@@ -11,6 +11,7 @@
 #include "gfxPrefs.h"
 #include "GLBlitHelper.h"
 #include "GLContext.h"
+#include "mozilla/Casting.h"
 #include "mozilla/gfx/2D.h"
 #include "mozilla/dom/HTMLCanvasElement.h"
 #include "mozilla/dom/HTMLVideoElement.h"
@@ -1094,6 +1095,7 @@ void WebGLTexture::TexStorage(TexTarget target, GLsizei levels,
 
   if (error == LOCAL_GL_OUT_OF_MEMORY) {
     mContext->ErrorOutOfMemory("Ran out of memory during texture allocation.");
+    Truncate();
     return;
   }
   if (error) {
@@ -1124,7 +1126,7 @@ void WebGLTexture::TexStorage(TexTarget target, GLsizei levels,
   }
 
   mImmutable = true;
-  mImmutableLevelCount = levels;
+  mImmutableLevelCount = AutoAssertCast(levels);
   ClampLevelBaseAndMax();
 }
 
@@ -1231,6 +1233,7 @@ void WebGLTexture::TexImage(TexImageTarget target, GLint level,
 
   if (glError == LOCAL_GL_OUT_OF_MEMORY) {
     mContext->ErrorOutOfMemory("Driver ran out of memory during upload.");
+    Truncate();
     return;
   }
 
@@ -1311,6 +1314,7 @@ void WebGLTexture::TexSubImage(TexImageTarget target, GLint level,
 
   if (glError == LOCAL_GL_OUT_OF_MEMORY) {
     mContext->ErrorOutOfMemory("Driver ran out of memory during upload.");
+    Truncate();
     return;
   }
 
@@ -1417,6 +1421,7 @@ void WebGLTexture::CompressedTexImage(TexImageTarget target, GLint level,
   mContext->OnDataAllocCall();
   if (error == LOCAL_GL_OUT_OF_MEMORY) {
     mContext->ErrorOutOfMemory("Ran out of memory during upload.");
+    Truncate();
     return;
   }
   if (error) {
@@ -1563,6 +1568,7 @@ void WebGLTexture::CompressedTexSubImage(
       blob->mPtr);
   if (error == LOCAL_GL_OUT_OF_MEMORY) {
     mContext->ErrorOutOfMemory("Ran out of memory during upload.");
+    Truncate();
     return;
   }
   if (error) {
@@ -1915,7 +1921,7 @@ bool WebGLTexture::ValidateCopyTexImageForFeedback(uint32_t level,
 }
 
 static bool DoCopyTexOrSubImage(WebGLContext* webgl, bool isSubImage,
-                                const WebGLTexture* tex, TexImageTarget target,
+                                WebGLTexture* const tex, const TexImageTarget target,
                                 GLint level, GLint xWithinSrc, GLint yWithinSrc,
                                 uint32_t srcTotalWidth, uint32_t srcTotalHeight,
                                 const webgl::FormatUsageInfo* srcUsage,
@@ -1951,12 +1957,12 @@ static bool DoCopyTexOrSubImage(WebGLContext* webgl, bool isSubImage,
 
       if (uint32_t(rwWidth) != dstWidth || uint32_t(rwHeight) != dstHeight) {
         const auto& pi = idealUnpack->ToPacking();
-        CheckedUint32 byteCount = BytesPerPixel(pi);
+        CheckedInt<size_t> byteCount = BytesPerPixel(pi);
         byteCount *= dstWidth;
         byteCount *= dstHeight;
 
         if (byteCount.isValid()) {
-          buffer = calloc(1, byteCount.value());
+          buffer = calloc(1u, byteCount.value());
         }
 
         if (!buffer.get()) {
@@ -2004,6 +2010,7 @@ static bool DoCopyTexOrSubImage(WebGLContext* webgl, bool isSubImage,
 
   if (error == LOCAL_GL_OUT_OF_MEMORY) {
     webgl->ErrorOutOfMemory("Ran out of memory during texture copy.");
+    tex->Truncate();
     return false;
   }
 

@@ -9,7 +9,7 @@ ChromeUtils.defineModuleGetter(this, "WebRequest",
 
 // The guts of a WebRequest event handler.  Takes care of converting
 // |details| parameter when invoking listeners.
-function registerEvent(extension, eventName, fire, filter, info, tabParent = null) {
+function registerEvent(extension, eventName, fire, filter, info, remoteTab = null) {
   let listener = async data => {
     let browserData = {tabId: -1, windowId: -1};
     if (data.browser) {
@@ -24,12 +24,21 @@ function registerEvent(extension, eventName, fire, filter, info, tabParent = nul
 
     let event = data.serialize(eventName);
     event.tabId = browserData.tabId;
-
+    if (data.originAttributes) {
+      event.incognito = data.originAttributes.privateBrowsingId > 0;
+      if (extension.hasPermission("cookies")) {
+        event.cookieStoreId = getCookieStoreIdForOriginAttributes(data.originAttributes);
+      }
+    }
     if (data.registerTraceableChannel) {
+      // If this is a primed listener, no tabParent was passed in here,
+      // but the convert() callback later in this function will be called
+      // when the background page is started.  Force that to happen here
+      // after which we'll have a valid tabParent.
       if (fire.wakeup) {
         await fire.wakeup();
       }
-      data.registerTraceableChannel(extension.policy, tabParent);
+      data.registerTraceableChannel(extension.policy, remoteTab);
     }
 
     return fire.sync(event);
@@ -54,6 +63,9 @@ function registerEvent(extension, eventName, fire, filter, info, tabParent = nul
   }
   if (filter.windowId) {
     filter2.windowId = filter.windowId;
+  }
+  if (filter.incognito !== undefined) {
+    filter2.incognito = filter.incognito;
   }
 
   let blockingAllowed = extension.hasPermission("webRequestBlocking");
@@ -87,7 +99,7 @@ function registerEvent(extension, eventName, fire, filter, info, tabParent = nul
     unregister: () => { WebRequest[eventName].removeListener(listener); },
     convert(_fire, context) {
       fire = _fire;
-      tabParent = context.xulBrowser.frameLoader.tabParent;
+      remoteTab = context.xulBrowser.frameLoader.remoteTab;
     },
   };
 }
@@ -102,7 +114,7 @@ function makeWebRequestEvent(context, name) {
     },
     register: (fire, filter, info) => {
       return registerEvent(context.extension, name, fire, filter, info,
-                           context.xulBrowser.frameLoader.tabParent).unregister;
+                           context.xulBrowser.frameLoader.remoteTab).unregister;
     },
   }).api();
 }
@@ -128,7 +140,7 @@ this.webRequest = class extends ExtensionAPI {
           return WebRequest.getSecurityInfo({
             id: requestId,
             extension: context.extension.policy,
-            tabParent: context.xulBrowser.frameLoader.tabParent,
+            remoteTab: context.xulBrowser.frameLoader.remoteTab,
             options,
           });
         },

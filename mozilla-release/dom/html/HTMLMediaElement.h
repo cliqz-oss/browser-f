@@ -729,6 +729,8 @@ class HTMLMediaElement : public nsGenericHTMLElement,
   // that we can start AudioContext if it was not allowed to start.
   RefPtr<GenericNonExclusivePromise> GetAllowedToPlayPromise();
 
+  bool GetShowPosterFlag() const { return mShowPoster; }
+
  protected:
   virtual ~HTMLMediaElement();
 
@@ -857,6 +859,11 @@ class HTMLMediaElement : public nsGenericHTMLElement,
   void AddCaptureMediaTrackToOutputStream(MediaTrack* aTrack,
                                           OutputMediaStream& aOutputStream,
                                           bool aAsyncAddtrack = true);
+
+  /**
+   * Discard all output streams that are flagged to finish when playback ends.
+   */
+  void DiscardFinishWhenEndedOutputStreams();
 
   /**
    * Returns an DOMMediaStream containing the played contents of this
@@ -1314,10 +1321,10 @@ class HTMLMediaElement : public nsGenericHTMLElement,
   bool mSrcStreamTracksAvailable = false;
 
   // While mPaused is true and mSrcStream is set, this is the value to use for
-  // CurrentTime(). Otherwise this is set to GRAPH_TIME_MAX.
-  GraphTime mSrcStreamPausedGraphTime = GRAPH_TIME_MAX;
+  // CurrentTime(). Otherwise this is Nothing.
+  Maybe<GraphTime> mSrcStreamPausedGraphTime;
 
-  // The offset in GraphTime that this media element started playing the
+  // The offset in GraphTime at which this media element started playing the
   // playback stream of mSrcStream.
   GraphTime mSrcStreamGraphTimeOffset = 0;
 
@@ -1737,6 +1744,9 @@ class HTMLMediaElement : public nsGenericHTMLElement,
 
   virtual void MaybeBeginCloningVisually(){};
 
+  uint32_t GetPreloadDefault() const;
+  uint32_t GetPreloadDefaultAuto() const;
+
   /**
    * This function is called by AfterSetAttr and OnAttrSetButNotChanged.
    * It will not be called if the value is being unset.
@@ -1795,7 +1805,7 @@ class HTMLMediaElement : public nsGenericHTMLElement,
   // track list, false if all tracks are removed from the track list.
   bool mMediaTracksConstructed = false;
 
-  Visibility mVisibilityState = Visibility::UNTRACKED;
+  Visibility mVisibilityState = Visibility::Untracked;
 
   UniquePtr<ErrorSink> mErrorSink;
 

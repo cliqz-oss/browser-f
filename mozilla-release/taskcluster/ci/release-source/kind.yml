@@ -1,7 +1,7 @@
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
-
+---
 loader: taskgraph.loader.transform:loader
 
 kind-dependencies:
@@ -20,7 +20,9 @@ job-defaults:
     shipping-phase: promote
     treeherder:
         symbol: Src
-    worker-type: aws-provisioner-v1/gecko-{level}-b-linux
+    attributes:
+        shippable: true
+    worker-type: b-linux
     worker:
         max-run-time: 3600
         env:
@@ -48,11 +50,21 @@ jobs:
             platform: firefox-release/opt
         shipping-product: firefox
 
-    fennec-source/opt:
+    fennec-beta-source/opt:
+        description: "Fennec source builder"
+        treeherder:
+            platform: fennec-beta/opt
+        shipping-product: fennec
+        attributes:
+            release-type: beta
+
+    fennec-release-source/opt:
         description: "Fennec source builder"
         treeherder:
             platform: fennec-release/opt
         shipping-product: fennec
+        attributes:
+            release-type: release
 
     devedition-source/opt:
         description: "Devedition source builder"

@@ -188,8 +188,8 @@ class MarkupContextMenu {
    * Jumps to the custom element definition in the debugger.
    */
   _jumpToCustomElementDefinition() {
-    const { url, line } = this.selection.nodeFront.customElementLocation;
-    this.toolbox.viewSourceInDebugger(url, line, null, "show_custom_element");
+    const { url, line, column } = this.selection.nodeFront.customElementLocation;
+    this.toolbox.viewSourceInDebugger(url, line, column, null, "show_custom_element");
   }
 
   /**
@@ -754,7 +754,7 @@ class MarkupContextMenu {
       menu.append(menuitem);
     }
 
-    menu.popup(screenX, screenY, this.toolbox);
+    menu.popup(screenX, screenY, this.toolbox.doc);
     return menu;
   }
 
@@ -770,7 +770,8 @@ class MarkupContextMenu {
     const hasA11YProps = await this.walker.hasAccessibilityProperties(
       this.selection.nodeFront);
     if (hasA11YProps) {
-      this.toolbox.doc.getElementById(menuItem.id).disabled = menuItem.disabled = false;
+      const menuItemEl = Menu.getMenuElementById(menuItem.id, this.toolbox.doc);
+      menuItemEl.disabled = menuItem.disabled = false;
     }
 
     this.inspector.emit("node-menu-updated");

@@ -40,9 +40,7 @@ window.gActivityStreamStrings = {
   "section_disclaimer_topstories_buttontext": "باشه، گرفتم",
   "prefs_home_header": "محتوای صفحه خانگی فایرفاکس",
   "prefs_home_description": "انتخاب کنید که چه محتوایی می‌خواهید در صفحه خانگیِ فایرفاکس خود ببینید.",
-  "prefs_content_discovery_header": "خانهٔ فایرفاکس",
   "prefs_content_discovery_description": "سرویس کشف محتوا در فایرفاکس به شما قابلیت پیدا کردن مطالبِ با کیفیت و مرتبط را در سراسر وب می‌دهد.",
-  "prefs_content_discovery_button": "خاموش کردن سیستم کشف محتوا",
   "prefs_section_rows_option": "{num} ردیف;{num} ردیف",
   "prefs_search_header": "جست‌وجو وب",
   "prefs_topsites_description": "سایت‌هایی که بیشتر بازدید می‌کنید",
@@ -107,8 +105,5 @@ window.gActivityStreamStrings = {
   "firstrun_privacy_notice": "نکات حریم‌خصوصی",
   "firstrun_continue_to_login": "ادامه",
   "firstrun_skip_login": "پرش از این مرحله",
-  "context_menu_title": "باز کردن منو",
-  "manual_migration_explanation2": "فایرفاکس را با نشانک‌ها،‌ تاریخچه‌ها و کلمات عبور از سایر مرورگر ها تجربه کنید.",
-  "manual_migration_cancel_button": "نه ممنون",
-  "manual_migration_import_button": "هم‌اکنون وارد شوند"
+  "context_menu_title": "باز کردن منو"
 };

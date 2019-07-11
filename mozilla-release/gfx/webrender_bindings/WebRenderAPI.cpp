@@ -8,6 +8,7 @@
 
 #include "gfxPrefs.h"
 #include "LayersLogging.h"
+#include "mozilla/ipc/ByteBuf.h"
 #include "mozilla/webrender/RendererOGL.h"
 #include "mozilla/gfx/gfxVars.h"
 #include "mozilla/layers/CompositorThread.h"
@@ -15,6 +16,7 @@
 #include "mozilla/widget/CompositorWidget.h"
 #include "mozilla/layers/SynchronousTask.h"
 #include "TextDrawTarget.h"
+#include "malloc_decls.h"
 
 // clang-format off
 #define WRDL_LOG(...)
@@ -53,7 +55,7 @@ class NewRenderer : public RendererEvent {
 
   ~NewRenderer() { MOZ_COUNT_DTOR(NewRenderer); }
 
-  virtual void Run(RenderThread& aRenderThread, WindowId aWindowId) override {
+  void Run(RenderThread& aRenderThread, WindowId aWindowId) override {
     layers::AutoCompleteTask complete(mTask);
 
     UniquePtr<RenderCompositor> compositor =
@@ -68,19 +70,24 @@ class NewRenderer : public RendererEvent {
     *mUseDComp = compositor->UseDComp();
     *mUseTripleBuffering = compositor->UseTripleBuffering();
 
-    bool supportLowPriorityTransactions = true;  // TODO only for main windows.
+    bool isMainWindow = true;  // TODO!
+    bool supportLowPriorityTransactions = isMainWindow;
+    bool supportPictureCaching = isMainWindow;
     wr::Renderer* wrRenderer = nullptr;
     if (!wr_window_new(
             aWindowId, mSize.width, mSize.height,
-            supportLowPriorityTransactions, gfxPrefs::WebRenderPictureCaching(),
-            compositor->gl(),
-            aRenderThread.ProgramCache() ? aRenderThread.ProgramCache()->Raw()
-                                         : nullptr,
-            aRenderThread.Shaders() ? aRenderThread.Shaders()->RawShaders()
-                                    : nullptr,
+            supportLowPriorityTransactions,
+            gfxPrefs::WebRenderPictureCaching() && supportPictureCaching,
+            gfxPrefs::WebRenderStartDebugServer(), compositor->gl(),
+            aRenderThread.GetProgramCache()
+                ? aRenderThread.GetProgramCache()->Raw()
+                : nullptr,
+            aRenderThread.GetShaders()
+                ? aRenderThread.GetShaders()->RawShaders()
+                : nullptr,
             aRenderThread.ThreadPool().Raw(), &WebRenderMallocSizeOf,
-            &WebRenderMallocEnclosingSizeOf, mDocHandle, &wrRenderer,
-            mMaxTextureSize)) {
+            &WebRenderMallocEnclosingSizeOf, (uint32_t)wr::RenderRoot::Default,
+            mDocHandle, &wrRenderer, mMaxTextureSize)) {
       // wr_window_new puts a message into gfxCriticalNote if it returns false
       return;
     }
@@ -124,9 +131,9 @@ class RemoveRenderer : public RendererEvent {
     MOZ_COUNT_CTOR(RemoveRenderer);
   }
 
-  ~RemoveRenderer() { MOZ_COUNT_DTOR(RemoveRenderer); }
+  virtual ~RemoveRenderer() { MOZ_COUNT_DTOR(RemoveRenderer); }
 
-  virtual void Run(RenderThread& aRenderThread, WindowId aWindowId) override {
+  void Run(RenderThread& aRenderThread, WindowId aWindowId) override {
     aRenderThread.RemoveRenderer(aWindowId);
     layers::AutoCompleteTask complete(mTask);
   }
@@ -159,13 +166,12 @@ void TransactionBuilder::RemovePipeline(PipelineId aPipelineId) {
 }
 
 void TransactionBuilder::SetDisplayList(
-    gfx::Color aBgColor, Epoch aEpoch, mozilla::LayerSize aViewportSize,
+    gfx::Color aBgColor, Epoch aEpoch, const wr::LayoutSize& aViewportSize,
     wr::WrPipelineId pipeline_id, const wr::LayoutSize& content_size,
     wr::BuiltDisplayListDescriptor dl_descriptor, wr::Vec<uint8_t>& dl_data) {
   wr_transaction_set_display_list(mTxn, aEpoch, ToColorF(aBgColor),
-                                  aViewportSize.width, aViewportSize.height,
-                                  pipeline_id, content_size, dl_descriptor,
-                                  &dl_data.inner);
+                                  aViewportSize, pipeline_id, content_size,
+                                  dl_descriptor, &dl_data.inner);
 }
 
 void TransactionBuilder::ClearDisplayList(Epoch aEpoch,
@@ -205,7 +211,7 @@ bool TransactionBuilder::IsRenderedFrameInvalidated() const {
 
 void TransactionBuilder::SetDocumentView(
     const LayoutDeviceIntRect& aDocumentRect) {
-  wr::FramebufferIntRect wrDocRect;
+  wr::DeviceIntRect wrDocRect;
   wrDocRect.origin.x = aDocumentRect.x;
   wrDocRect.origin.y = aDocumentRect.y;
   wrDocRect.size.width = aDocumentRect.width;
@@ -275,7 +281,8 @@ already_AddRefed<WebRenderAPI> WebRenderAPI::Create(
 
   return RefPtr<WebRenderAPI>(
              new WebRenderAPI(docHandle, aWindowId, maxTextureSize, useANGLE,
-                              useDComp, useTripleBuffering, syncHandle))
+                              useDComp, useTripleBuffering, syncHandle,
+                              wr::RenderRoot::Default))
       .forget();
 }
 
@@ -285,24 +292,25 @@ already_AddRefed<WebRenderAPI> WebRenderAPI::Clone() {
 
   RefPtr<WebRenderAPI> renderApi =
       new WebRenderAPI(docHandle, mId, mMaxTextureSize, mUseANGLE, mUseDComp,
-                       mUseTripleBuffering, mSyncHandle);
+                       mUseTripleBuffering, mSyncHandle, mRenderRoot);
   renderApi->mRootApi = this;  // Hold root api
   renderApi->mRootDocumentApi = this;
   return renderApi.forget();
 }
 
 already_AddRefed<WebRenderAPI> WebRenderAPI::CreateDocument(
-    LayoutDeviceIntSize aSize, int8_t aLayerIndex) {
-  wr::FramebufferIntSize wrSize;
+    LayoutDeviceIntSize aSize, int8_t aLayerIndex, wr::RenderRoot aRenderRoot) {
+  wr::DeviceIntSize wrSize;
   wrSize.width = aSize.width;
   wrSize.height = aSize.height;
   wr::DocumentHandle* newDoc;
 
-  wr_api_create_document(mDocHandle, &newDoc, wrSize, aLayerIndex);
+  wr_api_create_document(mDocHandle, &newDoc, wrSize, aLayerIndex,
+                         (uint32_t)aRenderRoot);
 
-  RefPtr<WebRenderAPI> api(new WebRenderAPI(newDoc, mId, mMaxTextureSize,
-                                            mUseANGLE, mUseDComp,
-                                            mUseTripleBuffering, mSyncHandle));
+  RefPtr<WebRenderAPI> api(
+      new WebRenderAPI(newDoc, mId, mMaxTextureSize, mUseANGLE, mUseDComp,
+                       mUseTripleBuffering, mSyncHandle, aRenderRoot));
   api->mRootApi = this;
   return api.forget();
 }
@@ -310,6 +318,21 @@ already_AddRefed<WebRenderAPI> WebRenderAPI::CreateDocument(
 wr::WrIdNamespace WebRenderAPI::GetNamespace() {
   return wr_api_get_namespace(mDocHandle);
 }
+
+WebRenderAPI::WebRenderAPI(wr::DocumentHandle* aHandle, wr::WindowId aId,
+                           uint32_t aMaxTextureSize, bool aUseANGLE,
+                           bool aUseDComp, bool aUseTripleBuffering,
+                           layers::SyncHandle aSyncHandle,
+                           wr::RenderRoot aRenderRoot)
+    : mDocHandle(aHandle),
+      mId(aId),
+      mMaxTextureSize(aMaxTextureSize),
+      mUseANGLE(aUseANGLE),
+      mUseDComp(aUseDComp),
+      mUseTripleBuffering(aUseTripleBuffering),
+      mSyncHandle(aSyncHandle),
+      mDebugFlags({0}),
+      mRenderRoot(aRenderRoot) {}
 
 WebRenderAPI::~WebRenderAPI() {
   if (!mRootDocumentApi) {
@@ -342,6 +365,40 @@ void WebRenderAPI::SendTransaction(TransactionBuilder& aTxn) {
   wr_api_send_transaction(mDocHandle, aTxn.Raw(), aTxn.UseSceneBuilderThread());
 }
 
+/* static */
+void WebRenderAPI::SendTransactions(
+    const RenderRootArray<RefPtr<WebRenderAPI>>& aApis,
+    RenderRootArray<TransactionBuilder*>& aTxns) {
+  if (!aApis[RenderRoot::Default]) {
+    return;
+  }
+
+  aApis[RenderRoot::Default]->UpdateDebugFlags(
+      gfx::gfxVars::WebRenderDebugFlags());
+  AutoTArray<DocumentHandle*, kRenderRootCount> documentHandles;
+  AutoTArray<Transaction*, kRenderRootCount> txns;
+  Maybe<bool> useSceneBuilderThread;
+  for (auto& api : aApis) {
+    if (!api) {
+      continue;
+    }
+    auto& txn = aTxns[api->GetRenderRoot()];
+    if (txn) {
+      documentHandles.AppendElement(api->mDocHandle);
+      txns.AppendElement(txn->Raw());
+      if (useSceneBuilderThread.isSome()) {
+        MOZ_ASSERT(txn->UseSceneBuilderThread() == *useSceneBuilderThread);
+      } else {
+        useSceneBuilderThread.emplace(txn->UseSceneBuilderThread());
+      }
+    }
+  }
+  if (!txns.IsEmpty()) {
+    wr_api_send_transactions(documentHandles.Elements(), txns.Elements(),
+                             txns.Length(), *useSceneBuilderThread);
+  }
+}
+
 bool WebRenderAPI::HitTest(const wr::WorldPoint& aPoint,
                            wr::WrPipelineId& aOutPipelineId,
                            layers::ScrollableLayerGuid::ViewID& aOutScrollId,
@@ -361,20 +418,24 @@ bool WebRenderAPI::HitTest(const wr::WorldPoint& aPoint,
 }
 
 void WebRenderAPI::Readback(const TimeStamp& aStartTime, gfx::IntSize size,
+                            const gfx::SurfaceFormat& aFormat,
                             const Range<uint8_t>& buffer) {
   class Readback : public RendererEvent {
    public:
     explicit Readback(layers::SynchronousTask* aTask, TimeStamp aStartTime,
-                      gfx::IntSize aSize, const Range<uint8_t>& aBuffer)
-        : mTask(aTask), mStartTime(aStartTime), mSize(aSize), mBuffer(aBuffer) {
+                      gfx::IntSize aSize, const gfx::SurfaceFormat& aFormat,
+                      const Range<uint8_t>& aBuffer)
+        : mTask(aTask), mStartTime(aStartTime), mSize(aSize), mFormat(aFormat),
+          mBuffer(aBuffer) {
       MOZ_COUNT_CTOR(Readback);
     }
 
-    ~Readback() { MOZ_COUNT_DTOR(Readback); }
+    virtual ~Readback() { MOZ_COUNT_DTOR(Readback); }
 
-    virtual void Run(RenderThread& aRenderThread, WindowId aWindowId) override {
+    void Run(RenderThread& aRenderThread, WindowId aWindowId) override {
       aRenderThread.UpdateAndRender(aWindowId, VsyncId(), mStartTime,
                                     /* aRender */ true, Some(mSize),
+                                    wr::SurfaceFormatToImageFormat(mFormat),
                                     Some(mBuffer), false);
       layers::AutoCompleteTask complete(mTask);
     }
@@ -382,6 +443,7 @@ void WebRenderAPI::Readback(const TimeStamp& aStartTime, gfx::IntSize size,
     layers::SynchronousTask* mTask;
     TimeStamp mStartTime;
     gfx::IntSize mSize;
+    gfx::SurfaceFormat mFormat;
     const Range<uint8_t>& mBuffer;
   };
 
@@ -389,7 +451,7 @@ void WebRenderAPI::Readback(const TimeStamp& aStartTime, gfx::IntSize size,
   UpdateDebugFlags(0);
 
   layers::SynchronousTask task("Readback");
-  auto event = MakeUnique<Readback>(&task, aStartTime, size, buffer);
+  auto event = MakeUnique<Readback>(&task, aStartTime, size, aFormat, buffer);
   // This event will be passed from wr_backend thread to renderer thread. That
   // implies that all frame data have been processed when the renderer runs this
   // read-back event. Then, we could make sure this read-back event gets the
@@ -410,9 +472,9 @@ void WebRenderAPI::Pause() {
       MOZ_COUNT_CTOR(PauseEvent);
     }
 
-    ~PauseEvent() { MOZ_COUNT_DTOR(PauseEvent); }
+    virtual ~PauseEvent() { MOZ_COUNT_DTOR(PauseEvent); }
 
-    virtual void Run(RenderThread& aRenderThread, WindowId aWindowId) override {
+    void Run(RenderThread& aRenderThread, WindowId aWindowId) override {
       aRenderThread.Pause(aWindowId);
       layers::AutoCompleteTask complete(mTask);
     }
@@ -438,9 +500,9 @@ bool WebRenderAPI::Resume() {
       MOZ_COUNT_CTOR(ResumeEvent);
     }
 
-    ~ResumeEvent() { MOZ_COUNT_DTOR(ResumeEvent); }
+    virtual ~ResumeEvent() { MOZ_COUNT_DTOR(ResumeEvent); }
 
-    virtual void Run(RenderThread& aRenderThread, WindowId aWindowId) override {
+    void Run(RenderThread& aRenderThread, WindowId aWindowId) override {
       *mResult = aRenderThread.Resume(aWindowId);
       layers::AutoCompleteTask complete(mTask);
     }
@@ -482,9 +544,9 @@ void WebRenderAPI::WaitFlushed() {
       MOZ_COUNT_CTOR(WaitFlushedEvent);
     }
 
-    ~WaitFlushedEvent() { MOZ_COUNT_DTOR(WaitFlushedEvent); }
+    virtual ~WaitFlushedEvent() { MOZ_COUNT_DTOR(WaitFlushedEvent); }
 
-    virtual void Run(RenderThread& aRenderThread, WindowId aWindowId) override {
+    void Run(RenderThread& aRenderThread, WindowId aWindowId) override {
       layers::AutoCompleteTask complete(mTask);
     }
 
@@ -619,9 +681,9 @@ class FrameStartTime : public RendererEvent {
     MOZ_COUNT_CTOR(FrameStartTime);
   }
 
-  ~FrameStartTime() { MOZ_COUNT_DTOR(FrameStartTime); }
+  virtual ~FrameStartTime() { MOZ_COUNT_DTOR(FrameStartTime); }
 
-  virtual void Run(RenderThread& aRenderThread, WindowId aWindowId) override {
+  void Run(RenderThread& aRenderThread, WindowId aWindowId) override {
     auto renderer = aRenderThread.GetRenderer(aWindowId);
     if (renderer) {
       renderer->SetFrameStartTime(mTime);
@@ -644,9 +706,13 @@ void WebRenderAPI::RunOnRenderThread(UniquePtr<RendererEvent> aEvent) {
 
 DisplayListBuilder::DisplayListBuilder(PipelineId aId,
                                        const wr::LayoutSize& aContentSize,
-                                       size_t aCapacity)
+                                       size_t aCapacity, RenderRoot aRenderRoot)
     : mCurrentSpaceAndClipChain(wr::RootScrollNodeWithChain()),
-      mActiveFixedPosTracker(nullptr) {
+      mActiveFixedPosTracker(nullptr),
+      mPipelineId(aId),
+      mContentSize(aContentSize),
+      mRenderRoot(aRenderRoot),
+      mSendSubBuilderDisplayList(aRenderRoot == wr::RenderRoot::Default) {
   MOZ_COUNT_CTOR(DisplayListBuilder);
   mWrState = wr_state_new(aId, aContentSize, aCapacity);
 }
@@ -660,6 +726,31 @@ void DisplayListBuilder::Save() { wr_dp_save(mWrState); }
 void DisplayListBuilder::Restore() { wr_dp_restore(mWrState); }
 void DisplayListBuilder::ClearSave() { wr_dp_clear_save(mWrState); }
 
+DisplayListBuilder& DisplayListBuilder::CreateSubBuilder(
+    const wr::LayoutSize& aContentSize, size_t aCapacity,
+    wr::RenderRoot aRenderRoot) {
+  MOZ_ASSERT(mRenderRoot == wr::RenderRoot::Default);
+  MOZ_ASSERT(!mSubBuilders[aRenderRoot]);
+  mSubBuilders[aRenderRoot] = MakeUnique<DisplayListBuilder>(
+      mPipelineId, aContentSize, aCapacity, aRenderRoot);
+  return *mSubBuilders[aRenderRoot];
+}
+
+DisplayListBuilder& DisplayListBuilder::SubBuilder(RenderRoot aRenderRoot) {
+  if (aRenderRoot == mRenderRoot) {
+    return *this;
+  }
+  return *mSubBuilders[aRenderRoot];
+}
+
+bool DisplayListBuilder::HasSubBuilder(RenderRoot aRenderRoot) {
+  if (aRenderRoot == RenderRoot::Default) {
+    MOZ_ASSERT(mRenderRoot == RenderRoot::Default);
+    return true;
+  }
+  return !!mSubBuilders[aRenderRoot];
+}
+
 usize DisplayListBuilder::Dump(usize aIndent, const Maybe<usize>& aStart,
                                const Maybe<usize>& aEnd) {
   return wr_dump_display_list(mWrState, aIndent, aStart.ptrOr(nullptr),
@@ -670,6 +761,19 @@ void DisplayListBuilder::Finalize(wr::LayoutSize& aOutContentSize,
                                   BuiltDisplayList& aOutDisplayList) {
   wr_api_finalize_builder(mWrState, &aOutContentSize, &aOutDisplayList.dl_desc,
                           &aOutDisplayList.dl.inner);
+}
+
+void DisplayListBuilder::Finalize(
+    layers::RenderRootDisplayListData& aOutTransaction) {
+  MOZ_ASSERT(mRenderRoot == wr::RenderRoot::Default);
+  wr::VecU8 dl;
+  wr_api_finalize_builder(SubBuilder(aOutTransaction.mRenderRoot).mWrState,
+                          &aOutTransaction.mContentSize,
+                          &aOutTransaction.mDLDesc, &dl.inner);
+  aOutTransaction.mDL.emplace(dl.inner.data, dl.inner.length,
+                              dl.inner.capacity);
+  dl.inner.capacity = 0;
+  dl.inner.data = nullptr;
 }
 
 Maybe<wr::WrSpatialId> DisplayListBuilder::PushStackingContext(
@@ -703,9 +807,14 @@ void DisplayListBuilder::PopStackingContext(bool aIsReferenceFrame) {
 }
 
 wr::WrClipChainId DisplayListBuilder::DefineClipChain(
-    const nsTArray<wr::WrClipId>& aClips) {
+    const nsTArray<wr::WrClipId>& aClips, bool aParentWithCurrentChain) {
+  const uint64_t* parent = nullptr;
+  if (aParentWithCurrentChain &&
+      mCurrentSpaceAndClipChain.clip_chain != wr::ROOT_CLIP_CHAIN) {
+    parent = &mCurrentSpaceAndClipChain.clip_chain;
+  }
   uint64_t clipchainId = wr_dp_define_clipchain(
-      mWrState, nullptr, aClips.Elements(), aClips.Length());
+      mWrState, parent, aClips.Elements(), aClips.Length());
   WRDL_LOG("DefineClipChain id=%" PRIu64 " clips=%zu\n", mWrState, clipchainId,
            aClips.Length());
   return wr::WrClipChainId{clipchainId};
@@ -831,6 +940,16 @@ void DisplayListBuilder::PushRoundedRect(const wr::LayoutRect& aBounds,
 
   wr_dp_push_rect_with_parent_clip(mWrState, aBounds, clip, aIsBackfaceVisible,
                                    &spaceAndClip, aColor);
+}
+
+void DisplayListBuilder::PushHitTest(const wr::LayoutRect& aBounds,
+                                     const wr::LayoutRect& aClip,
+                                     bool aIsBackfaceVisible) {
+  wr::LayoutRect clip = MergeClipLeaf(aClip);
+  WRDL_LOG("PushHitTest b=%s cl=%s\n", mWrState, Stringify(aBounds).c_str(),
+           Stringify(clip).c_str());
+  wr_dp_push_hit_test(mWrState, aBounds, clip, aIsBackfaceVisible,
+                      &mCurrentSpaceAndClipChain);
 }
 
 void DisplayListBuilder::PushClearRect(const wr::LayoutRect& aBounds) {
@@ -1027,12 +1146,50 @@ void DisplayListBuilder::PushLine(const wr::LayoutRect& aClip,
 void DisplayListBuilder::PushShadow(const wr::LayoutRect& aRect,
                                     const wr::LayoutRect& aClip,
                                     bool aIsBackfaceVisible,
-                                    const wr::Shadow& aShadow) {
-  wr_dp_push_shadow(mWrState, aRect, MergeClipLeaf(aClip), aIsBackfaceVisible,
-                    &mCurrentSpaceAndClipChain, aShadow);
+                                    const wr::Shadow& aShadow,
+                                    bool aShouldInflate) {
+  // Local clip_rects are translated inside of shadows, as they are assumed to
+  // be part of the element drawing itself, and not a parent frame clipping it.
+  // As such, it is not sound to apply the MergeClipLeaf optimization inside of
+  // shadows. So we disable the optimization when we encounter a shadow.
+  // Shadows don't span frames, so we don't have to worry about MergeClipLeaf
+  // being re-enabled mid-shadow. The optimization is restored in PopAllShadows.
+  SuspendClipLeafMerging();
+  wr_dp_push_shadow(mWrState, aRect, aClip, aIsBackfaceVisible,
+                    &mCurrentSpaceAndClipChain, aShadow,
+                    aShouldInflate);
 }
 
-void DisplayListBuilder::PopAllShadows() { wr_dp_pop_all_shadows(mWrState); }
+void DisplayListBuilder::PopAllShadows() {
+  wr_dp_pop_all_shadows(mWrState);
+  ResumeClipLeafMerging();
+}
+
+void DisplayListBuilder::SuspendClipLeafMerging() {
+  if (mClipChainLeaf) {
+    // No one should reinitialize mClipChainLeaf while we're suspended
+    MOZ_ASSERT(!mSuspendedClipChainLeaf);
+
+    mSuspendedClipChainLeaf = mClipChainLeaf;
+    mSuspendedSpaceAndClipChain = Some(mCurrentSpaceAndClipChain);
+
+    auto clipId = DefineClip(Nothing(), *mClipChainLeaf);
+    auto clipChainId = DefineClipChain({clipId}, true);
+
+    mCurrentSpaceAndClipChain.clip_chain = clipChainId.id;
+    mClipChainLeaf = Nothing();
+  }
+}
+
+void DisplayListBuilder::ResumeClipLeafMerging() {
+  if (mSuspendedClipChainLeaf) {
+    mCurrentSpaceAndClipChain = *mSuspendedSpaceAndClipChain;
+    mClipChainLeaf = mSuspendedClipChainLeaf;
+
+    mSuspendedClipChainLeaf = Nothing();
+    mSuspendedSpaceAndClipChain = Nothing();
+  }
+}
 
 void DisplayListBuilder::PushBoxShadow(
     const wr::LayoutRect& aRect, const wr::LayoutRect& aClip,
@@ -1120,6 +1277,12 @@ void wr_transaction_notification_notified(uintptr_t aHandler,
   // TODO: it would be better to get a callback when the object is destroyed on
   // the rust side and delete then.
   delete handler;
+}
+
+void wr_register_thread_local_arena() {
+#ifdef MOZ_MEMORY
+  jemalloc_thread_local_arena(true);
+#endif
 }
 
 }  // extern C

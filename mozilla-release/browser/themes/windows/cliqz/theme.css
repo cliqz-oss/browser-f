@@ -181,13 +181,19 @@ toolbar .toolbarbutton-1 > .toolbarbutton-icon {
   box-shadow: 0 1px 6px rgba(0, 0, 0, 0.15);
   background-color: #585858;
 }
-#navigator-toolbox #nav-bar #urlbar-container #urlbar:-moz-lwtheme[pageproxystate=valid] > #identity-box.verifiedIdentity > #identity-icon-labels {
+#navigator-toolbox #nav-bar #urlbar-container #urlbar:-moz-lwtheme[pageproxystate="valid"] > #identity-box #identity-icon-labels {
+  color: #fff;
+}
+#navigator-toolbox #nav-bar #urlbar-container #urlbar:-moz-lwtheme[pageproxystate="valid"] > #identity-box.verifiedIdentity #identity-icon-labels {
   color: #058B00;
 }
 #navigator-toolbox #nav-bar #urlbar-container #urlbar:-moz-lwtheme-darktext {
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
   background-color: var(--toolbar-bgcolor, #f2f2f2);
   /* Change box-shadow and background color when focused and hovering */
+}
+#navigator-toolbox #nav-bar #urlbar-container #urlbar .textbox-input {
+  padding-bottom: 2px;
 }
 #navigator-toolbox[on_private_tab="true"] #nav-bar #urlbar-container #urlbar:-moz-lwtheme-darktext {
   background-color: #BBC6D4;
@@ -196,8 +202,8 @@ toolbar .toolbarbutton-1 > .toolbarbutton-icon {
   box-shadow: 0 1px 6px rgba(0, 0, 0, 0.15);
   background-color: #fff;
 }
-#navigator-toolbox #nav-bar #urlbar-container #urlbar:-moz-lwtheme-darktext[pageproxystate=valid] > #identity-box.chromeUI > #identity-icon-labels {
-  color: #000;
+#navigator-toolbox #nav-bar #urlbar-container #urlbar:-moz-lwtheme-darktext[pageproxystate="valid"] > #identity-box #identity-icon-labels {
+  color: #5a5b5c;
 }
 #navigator-toolbox #PersonalToolbar {
   border-top: 1px solid #e1e1e1;

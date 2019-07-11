@@ -18,6 +18,9 @@ const {
   getWaterfallScale,
 } = require("../selectors/index");
 
+loader.lazyRequireGetter(this, "openRequestInTab",
+  "devtools/client/netmonitor/src/utils/firefox/open-request-in-tab",
+  true);
 loader.lazyGetter(this, "setImageTooltip", function() {
   return require("devtools/client/shared/widgets/tooltip/ImageTooltipHelper")
     .setImageTooltip;
@@ -41,29 +44,39 @@ const REQUESTS_TOOLTIP_IMAGE_MAX_DIM = 400;
 // Gecko's scrollTop is int32_t, so the maximum value is 2^31 - 1 = 2147483647
 const MAX_SCROLL_HEIGHT = 2147483647;
 
+const LEFT_MOUSE_BUTTON = 0;
+const RIGHT_MOUSE_BUTTON = 2;
+
 /**
  * Renders the actual contents of the request list.
  */
 class RequestListContent extends Component {
   static get propTypes() {
     return {
+      blockSelectedRequestURL: PropTypes.func.isRequired,
       connector: PropTypes.object.isRequired,
       columns: PropTypes.object.isRequired,
       networkDetailsOpen: PropTypes.bool.isRequired,
       networkDetailsWidth: PropTypes.number,
       networkDetailsHeight: PropTypes.number,
-      cloneSelectedRequest: PropTypes.func.isRequired,
+      cloneRequest: PropTypes.func.isRequired,
+      clickedRequest: PropTypes.object,
+      openDetailsPanelTab: PropTypes.func.isRequired,
+      sendCustomRequest: PropTypes.func.isRequired,
       displayedRequests: PropTypes.array.isRequired,
       firstRequestStartedMillis: PropTypes.number.isRequired,
       fromCache: PropTypes.bool,
       onCauseBadgeMouseDown: PropTypes.func.isRequired,
+      onItemRightMouseButtonDown: PropTypes.func.isRequired,
       onItemMouseDown: PropTypes.func.isRequired,
       onSecurityIconMouseDown: PropTypes.func.isRequired,
       onSelectDelta: PropTypes.func.isRequired,
       onWaterfallMouseDown: PropTypes.func.isRequired,
       openStatistics: PropTypes.func.isRequired,
       scale: PropTypes.number,
+      selectRequest: PropTypes.func.isRequired,
       selectedRequest: PropTypes.object,
+      unblockSelectedRequestURL: PropTypes.func.isRequired,
       requestFilterTypes: PropTypes.object.isRequired,
     };
   }
@@ -75,8 +88,11 @@ class RequestListContent extends Component {
     this.onScroll = this.onScroll.bind(this);
     this.onResize = this.onResize.bind(this);
     this.onKeyDown = this.onKeyDown.bind(this);
+    this.openRequestInTab = this.openRequestInTab.bind(this);
+    this.onDoubleClick = this.onDoubleClick.bind(this);
     this.onContextMenu = this.onContextMenu.bind(this);
     this.onFocusedNodeChange = this.onFocusedNodeChange.bind(this);
+    this.onMouseDown = this.onMouseDown.bind(this);
   }
 
   componentWillMount() {
@@ -121,6 +137,16 @@ class RequestListContent extends Component {
     // Uninstall the tooltip event handler
     this.tooltip.stopTogglingOnHover();
     window.removeEventListener("resize", this.onResize);
+
+    // Performance optimization. React is slow when removing long lists
+    // of elements (i.e. the list of HTTP requests in this case), and so
+    // let's clean up the content through `innerHTML` property in advance.
+    // This significantly speeds up Network panel closing time.
+    // This isn't React friendly since React has no way to know the DOM
+    // has been modified. But, the panel is closing at this point anyway.
+    // See also: Bug 1546513 - Closing the network panel with many
+    // entries takes multiple seconds
+    this.refs.rowGroupEl.innerHTML = "";
   }
 
   /*
@@ -198,6 +224,14 @@ class RequestListContent extends Component {
     this.tooltip.hide();
   }
 
+  onMouseDown(evt, id) {
+    if (evt.button === LEFT_MOUSE_BUTTON) {
+      this.props.selectRequest(id);
+    } else if (evt.button === RIGHT_MOUSE_BUTTON) {
+      this.props.onItemRightMouseButtonDown(id);
+    }
+  }
+
   /**
    * Handler for keyboard events. For arrow up/down, page up/down, home/end,
    * move the selection up or down.
@@ -236,20 +270,50 @@ class RequestListContent extends Component {
     }
   }
 
+  /**
+   * Opens selected item in a new tab.
+   */
+  async openRequestInTab(id, url, requestHeaders, requestPostData) {
+    requestHeaders = requestHeaders ||
+      await this.props.connector.requestData(id, "requestHeaders");
+
+    requestPostData = requestPostData ||
+      await this.props.connector.requestData(id, "requestPostData");
+
+    openRequestInTab(url, requestHeaders, requestPostData);
+  }
+
+  onDoubleClick({ id, url, requestHeaders, requestPostData }) {
+    this.openRequestInTab(id, url, requestHeaders, requestPostData);
+  }
+
   onContextMenu(evt) {
     evt.preventDefault();
-    const { selectedRequest, displayedRequests } = this.props;
+    const { clickedRequest, displayedRequests } = this.props;
 
     if (!this.contextMenu) {
-      const { connector, cloneSelectedRequest, openStatistics } = this.props;
-      this.contextMenu = new RequestListContextMenu({
+      const {
+        blockSelectedRequestURL,
         connector,
-        cloneSelectedRequest,
+        cloneRequest,
+        openDetailsPanelTab,
+        sendCustomRequest,
         openStatistics,
+        unblockSelectedRequestURL,
+      } = this.props;
+      this.contextMenu = new RequestListContextMenu({
+        blockSelectedRequestURL,
+        connector,
+        cloneRequest,
+        openDetailsPanelTab,
+        sendCustomRequest,
+        openStatistics,
+        openRequestInTab: this.openRequestInTab,
+        unblockSelectedRequestURL,
       });
     }
 
-    this.contextMenu.open(evt, selectedRequest, displayedRequests);
+    this.contextMenu.open(evt, clickedRequest, displayedRequests);
   }
 
   /**
@@ -267,7 +331,6 @@ class RequestListContent extends Component {
       displayedRequests,
       firstRequestStartedMillis,
       onCauseBadgeMouseDown,
-      onItemMouseDown,
       onSecurityIconMouseDown,
       onWaterfallMouseDown,
       requestFilterTypes,
@@ -292,6 +355,7 @@ class RequestListContent extends Component {
             style: { "--timings-scale": scale, "--timings-rev-scale": 1 / scale },
           },
             displayedRequests.map((item, index) => RequestListItem({
+              blocked: !!item.blockedReason,
               firstRequestStartedMillis,
               fromCache: item.status === "304" || item.fromCache,
               connector,
@@ -302,7 +366,8 @@ class RequestListContent extends Component {
               key: item.id,
               onContextMenu: this.onContextMenu,
               onFocusedNodeChange: this.onFocusedNodeChange,
-              onMouseDown: () => onItemMouseDown(item.id),
+              onDoubleClick: () => this.onDoubleClick(item),
+              onMouseDown: (evt) => this.onMouseDown(evt, item.id),
               onCauseBadgeMouseDown: () => onCauseBadgeMouseDown(item.cause),
               onSecurityIconMouseDown: () => onSecurityIconMouseDown(item.securityState),
               onWaterfallMouseDown: () => onWaterfallMouseDown(),
@@ -321,6 +386,7 @@ module.exports = connect(
     networkDetailsOpen: state.ui.networkDetailsOpen,
     networkDetailsWidth: state.ui.networkDetailsWidth,
     networkDetailsHeight: state.ui.networkDetailsHeight,
+    clickedRequest: state.requests.clickedRequest,
     displayedRequests: getDisplayedRequests(state),
     firstRequestStartedMillis: state.requests.firstStartedMillis,
     selectedRequest: getSelectedRequest(state),
@@ -328,8 +394,16 @@ module.exports = connect(
     requestFilterTypes: state.filters.requestFilterTypes,
   }),
   (dispatch, props) => ({
-    cloneSelectedRequest: () => dispatch(Actions.cloneSelectedRequest()),
+    blockSelectedRequestURL: (clickedRequest) => {
+      dispatch(Actions.blockSelectedRequestURL(props.connector, clickedRequest));
+    },
+    cloneRequest: (id) => dispatch(Actions.cloneRequest(id)),
+    openDetailsPanelTab: () => dispatch(Actions.openNetworkDetails(true)),
+    sendCustomRequest: () => dispatch(Actions.sendCustomRequest(props.connector)),
     openStatistics: (open) => dispatch(Actions.openStatistics(props.connector, open)),
+    unblockSelectedRequestURL: (clickedRequest) => {
+      dispatch(Actions.unblockSelectedRequestURL(props.connector, clickedRequest));
+    },
     /**
      * A handler that opens the stack trace tab when a stack trace is available
      */
@@ -338,6 +412,8 @@ module.exports = connect(
         dispatch(Actions.selectDetailsPanelTab("stack-trace"));
       }
     },
+    selectRequest: (id) => dispatch(Actions.selectRequest(id)),
+    onItemRightMouseButtonDown: (id) => dispatch(Actions.rightClickRequest(id)),
     onItemMouseDown: (id) => dispatch(Actions.selectRequest(id)),
     /**
      * A handler that opens the security tab in the details view if secure or

@@ -121,8 +121,9 @@ class AutoFTFace {
         NS_WARNING("failed to create freetype face");
       }
     }
-    if (FT_Err_Ok != FT_Select_Charmap(mFace, FT_ENCODING_UNICODE)) {
-      NS_WARNING("failed to select Unicode charmap");
+    if (FT_Err_Ok != FT_Select_Charmap(mFace, FT_ENCODING_UNICODE) &&
+        FT_Err_Ok != FT_Select_Charmap(mFace, FT_ENCODING_MS_SYMBOL)) {
+      NS_WARNING("failed to select Unicode or symbol charmap");
     }
     mOwnsFace = true;
   }
@@ -268,7 +269,8 @@ FT2FontEntry* FT2FontEntry::CreateFontEntry(
     free((void*)aFontData);
     return nullptr;
   }
-  if (FT_Err_Ok != FT_Select_Charmap(face, FT_ENCODING_UNICODE)) {
+  if (FT_Err_Ok != FT_Select_Charmap(face, FT_ENCODING_UNICODE) &&
+      FT_Err_Ok != FT_Select_Charmap(face, FT_ENCODING_MS_SYMBOL)) {
     Factory::ReleaseFTFace(face);
     free((void*)aFontData);
     return nullptr;
@@ -877,7 +879,7 @@ class WillShutdownObserver : public nsIObserver {
   }
 
  protected:
-  virtual ~WillShutdownObserver() {}
+  virtual ~WillShutdownObserver() = default;
 
   gfxFT2FontList* mFontList;
 };
@@ -1115,8 +1117,9 @@ void gfxFT2FontList::FindFontsInOmnijar(FontNameCache* aCache) {
 void gfxFT2FontList::AddFaceToList(const nsCString& aEntryName, uint32_t aIndex,
                                    StandardFile aStdFile, FT_Face aFace,
                                    nsCString& aFaceList) {
-  if (FT_Err_Ok != FT_Select_Charmap(aFace, FT_ENCODING_UNICODE)) {
-    // ignore faces that don't support a Unicode charmap
+  if (FT_Err_Ok != FT_Select_Charmap(aFace, FT_ENCODING_UNICODE) &&
+      FT_Err_Ok != FT_Select_Charmap(aFace, FT_ENCODING_MS_SYMBOL)) {
+    // ignore faces that don't support a Unicode or symbol charmap
     return;
   }
 
@@ -1505,12 +1508,12 @@ searchDone:
   return fe;
 }
 
-gfxFontFamily* gfxFT2FontList::GetDefaultFontForPlatform(
+FontFamily gfxFT2FontList::GetDefaultFontForPlatform(
     const gfxFontStyle* aStyle) {
-  gfxFontFamily* ff = nullptr;
+  FontFamily ff;
 #if defined(MOZ_WIDGET_ANDROID)
   ff = FindFamily(NS_LITERAL_CSTRING("Roboto"));
-  if (!ff) {
+  if (ff.IsNull()) {
     ff = FindFamily(NS_LITERAL_CSTRING("Droid Sans"));
   }
 #endif

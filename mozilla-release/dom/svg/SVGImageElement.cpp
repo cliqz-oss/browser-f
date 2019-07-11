@@ -70,19 +70,19 @@ NS_IMPL_ELEMENT_CLONE_WITH_INIT(SVGImageElement)
 
 //----------------------------------------------------------------------
 
-already_AddRefed<SVGAnimatedLength> SVGImageElement::X() {
+already_AddRefed<DOMSVGAnimatedLength> SVGImageElement::X() {
   return mLengthAttributes[ATTR_X].ToDOMAnimatedLength(this);
 }
 
-already_AddRefed<SVGAnimatedLength> SVGImageElement::Y() {
+already_AddRefed<DOMSVGAnimatedLength> SVGImageElement::Y() {
   return mLengthAttributes[ATTR_Y].ToDOMAnimatedLength(this);
 }
 
-already_AddRefed<SVGAnimatedLength> SVGImageElement::Width() {
+already_AddRefed<DOMSVGAnimatedLength> SVGImageElement::Width() {
   return mLengthAttributes[ATTR_WIDTH].ToDOMAnimatedLength(this);
 }
 
-already_AddRefed<SVGAnimatedLength> SVGImageElement::Height() {
+already_AddRefed<DOMSVGAnimatedLength> SVGImageElement::Height() {
   return mLengthAttributes[ATTR_HEIGHT].ToDOMAnimatedLength(this);
 }
 
@@ -91,7 +91,7 @@ SVGImageElement::PreserveAspectRatio() {
   return mPreserveAspectRatio.ToDOMAnimatedPreserveAspectRatio(this);
 }
 
-already_AddRefed<SVGAnimatedString> SVGImageElement::Href() {
+already_AddRefed<DOMSVGAnimatedString> SVGImageElement::Href() {
   return mStringAttributes[HREF].IsExplicitlySet()
              ? mStringAttributes[HREF].ToDOMAnimatedString(this)
              : mStringAttributes[XLINK_HREF].ToDOMAnimatedString(this);
@@ -99,6 +99,10 @@ already_AddRefed<SVGAnimatedString> SVGImageElement::Href() {
 
 void SVGImageElement::GetDecoding(nsAString& aValue) {
   GetEnumAttr(nsGkAtoms::decoding, kDecodingTableDefault->tag, aValue);
+}
+
+already_AddRefed<Promise> SVGImageElement::Decode(ErrorResult& aRv) {
+  return nsImageLoadingContent::QueueDecodeAsync(aRv);
 }
 
 //----------------------------------------------------------------------
@@ -275,7 +279,8 @@ SVGElement::LengthAttributesInfo SVGImageElement::GetLengthInfo() {
                               ArrayLength(sLengthInfo));
 }
 
-SVGAnimatedPreserveAspectRatio* SVGImageElement::GetPreserveAspectRatio() {
+SVGAnimatedPreserveAspectRatio*
+SVGImageElement::GetAnimatedPreserveAspectRatio() {
   return &mPreserveAspectRatio;
 }
 

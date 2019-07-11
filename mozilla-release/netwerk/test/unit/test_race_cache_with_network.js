@@ -5,7 +5,6 @@
 "use strict";
 
 const {HttpServer} = ChromeUtils.import("resource://testing-common/httpd.js");
-const {NetUtil} = ChromeUtils.import("resource://gre/modules/NetUtil.jsm");
 
 var httpserver = new HttpServer();
 httpserver.start(-1);
@@ -58,6 +57,7 @@ let gIsFromCache = 0;
 function checkContent(request, buffer, context, isFromCache)
 {
   Assert.equal(buffer, gResponseBody);
+  info("isRacing: " + request.QueryInterface(Ci.nsICacheInfoChannel).isRacing() + "\n");
   gResponseCounter++;
   if (isFromCache) {
     gIsFromCache++;

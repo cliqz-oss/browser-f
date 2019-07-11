@@ -40,9 +40,7 @@ window.gActivityStreamStrings = {
   "section_disclaimer_topstories_buttontext": "Skaidrs",
   "prefs_home_header": "Firefox sōkuma saturs",
   "prefs_home_description": "Izavielej, kaidu saturu gribi redzēt Firefox sōkuma ekranā.",
-  "prefs_content_discovery_header": "Firefox Home",
   "prefs_content_discovery_description": "Content Discovery in Firefox Home allows you to discover high-quality, relevant articles from across the web.",
-  "prefs_content_discovery_button": "Turn Off Content Discovery",
   "prefs_section_rows_option": "{num} rindu;{num} rinda;{num} rindas",
   "prefs_search_header": "Mekliešona internetā",
   "prefs_topsites_description": "Vaira apmaklātōs lopys",
@@ -107,8 +105,5 @@ window.gActivityStreamStrings = {
   "firstrun_privacy_notice": "Privatuma pīzeime",
   "firstrun_continue_to_login": "Turpynōt",
   "firstrun_skip_login": "Izlaist itū sūli",
-  "context_menu_title": "Open menu",
-  "manual_migration_explanation2": "Paraugi Firefox ar grōmotzeimem, viesturi un parolem nu cyta porlyuka.",
-  "manual_migration_cancel_button": "Nā, paļdis",
-  "manual_migration_import_button": "Importeit"
+  "context_menu_title": "Open menu"
 };

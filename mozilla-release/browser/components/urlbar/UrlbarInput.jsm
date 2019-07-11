@@ -60,6 +60,7 @@ class UrlbarInput {
       MozXULElement.parseXULToFragment(`
         <panel id="urlbar-results"
                role="group"
+               tooltip="aHTMLTooltip"
                noautofocus="true"
                hidden="true"
                flip="none"
@@ -91,13 +92,21 @@ class UrlbarInput {
     this.isPrivate = PrivateBrowsingUtils.isWindowPrivate(this.window);
     this.lastQueryContextPromise = Promise.resolve();
     this._actionOverrideKeyCount = 0;
+    this._autofillPlaceholder = "";
+    this._lastSearchString = "";
+    this._textValueOnLastSearch = "";
     this._resultForCurrentValue = null;
     this._suppressStartQuery = false;
     this._untrimmedValue = "";
+    this._openViewOnFocus = false;
+
+    // This exists only for tests.
+    this._enableAutofillPlaceholder = true;
 
     // Forward textbox methods and properties.
     const METHODS = ["addEventListener", "removeEventListener",
-      "setAttribute", "hasAttribute", "removeAttribute", "getAttribute",
+      "getAttribute", "hasAttribute",
+      "setAttribute", "removeAttribute", "toggleAttribute",
       "select"];
     const READ_ONLY_PROPERTIES = ["inputField", "editor"];
     const READ_WRITE_PROPERTIES = ["placeholder", "readOnly",
@@ -134,6 +143,13 @@ class UrlbarInput {
       return new UrlbarValueFormatter(this);
     });
 
+    // If the toolbar is not visible in this window or the urlbar is readonly,
+    // we'll stop here, so that most properties of the input object are valid,
+    // but we won't handle events.
+    if (!this.window.toolbar.visible || this.hasAttribute("readonly")) {
+      return;
+    }
+
     // The event bufferer can be used to defer events that may affect users
     // muscle memory; for example quickly pressing DOWN+ENTER should end up
     // on a predictable result, regardless of the search status. The event
@@ -153,11 +169,17 @@ class UrlbarInput {
     this.view.panel.addEventListener("popupshowing", this);
     this.view.panel.addEventListener("popuphidden", this);
 
-    this.inputField.controllers.insertControllerAt(0, new CopyCutController(this));
+    this._copyCutController = new CopyCutController(this);
+    this.inputField.controllers.insertControllerAt(0, this._copyCutController);
+
     this._initPasteAndGo();
 
     // Tracks IME composition.
-    this._compositionState == UrlbarUtils.COMPOSITION.NONE;
+    this._compositionState = UrlbarUtils.COMPOSITION.NONE;
+    this._compositionClosedPopup = false;
+
+    this.editor.QueryInterface(Ci.nsIPlaintextEditor).newlineHandling =
+      Ci.nsIPlaintextEditor.eNewlinesStripSurroundingWhitespace;
   }
 
   /**
@@ -171,7 +193,24 @@ class UrlbarInput {
 
     this.view.panel.remove();
 
-    this.inputField.controllers.removeControllerAt(0);
+    // When uninit is called due to exiting the browser's customize mode,
+    // this.inputField.controllers is not the original list of controllers, and
+    // it doesn't contain CopyCutController.  That's why removeCopyCutController
+    // must be called when entering customize mode.  If uninit ends up getting
+    // called by something else though, try to remove the controller now.
+    try {
+      // If removeCopyCutController throws, then the controller isn't in the
+      // list of the input's controllers, and the consumer should have called
+      // removeCopyCutController at some earlier point, e.g., when customize
+      // mode was entered.
+      this.removeCopyCutController();
+    } catch (ex) {
+      Cu.reportError("Leaking UrlbarInput._copyCutController! You should have called removeCopyCutController!");
+    }
+
+    if (Object.getOwnPropertyDescriptor(this, "valueFormatter").get) {
+      this.valueFormatter.uninit();
+    }
 
     delete this.document;
     delete this.window;
@@ -181,6 +220,17 @@ class UrlbarInput {
     delete this.view;
     delete this.controller;
     delete this.textbox;
+  }
+
+  /**
+   * Removes the CopyCutController from the input's controllers list.  This must
+   * be called when the browser's customize mode is entered.
+   */
+  removeCopyCutController() {
+    if (this._copyCutController) {
+      this.inputField.controllers.removeController(this._copyCutController);
+      delete this._copyCutController;
+    }
   }
 
   /**
@@ -194,16 +244,24 @@ class UrlbarInput {
    *   The trimmed string
    */
   trimValue(val) {
-    return UrlbarPrefs.get("trimURLs") ? this.window.trimURL(val) : val;
+    return UrlbarPrefs.get("trimURLs") ? BrowserUtils.trimURL(val) : val;
   }
 
   /**
    * Applies styling to the text in the urlbar input, depending on the text.
    */
   formatValue() {
-    this.valueFormatter.update();
+    // The editor may not exist if the toolbar is not visible.
+    if (this.editor) {
+      this.valueFormatter.update();
+    }
   }
 
+  /**
+   * This exists for legacy compatibility, and can be removed once the old
+   * urlbar code goes away, by changing callers. Internal consumers should use
+   * view.close().
+   */
   closePopup() {
     this.view.close();
   }
@@ -256,9 +314,6 @@ class UrlbarInput {
 
   /**
    * Handles an event which would cause a url or text to be opened.
-   * XXX the name is currently handleCommand which is compatible with
-   * urlbarBindings. However, it is no longer called automatically by autocomplete,
-   * See _on_keydown.
    *
    * @param {Event} event The event triggering the open.
    * @param {string} [openWhere] Where we expect the result to be opened.
@@ -296,9 +351,9 @@ class UrlbarInput {
 
     // Use the selected result if we have one; this is usually the case
     // when the view is open.
-    let index = this.view.selectedIndex;
-    if (!selectedOneOff && index != -1) {
-      this.pickResult(event, index);
+    let result = this.view.selectedResult;
+    if (!selectedOneOff && result) {
+      this.pickResult(result, event);
       return;
     }
 
@@ -306,7 +361,7 @@ class UrlbarInput {
     if (selectedOneOff) {
       // If there's a selected one-off button then load a search using
       // the button's engine.
-      let result = this._resultForCurrentValue;
+      result = this._resultForCurrentValue;
       let searchString =
         (result && (result.payload.suggestion || result.payload.query)) ||
         this._lastSearchString;
@@ -324,12 +379,10 @@ class UrlbarInput {
       return;
     }
 
+    this.controller.recordSelectedResult(event, result || this.view.selectedResult);
+
     let where = openWhere || this._whereToOpen(event);
-
     openParams.allowInheritPrincipal = false;
-
-    this.controller.recordSelectedResult(event, index);
-
     url = this._maybeCanonizeURL(event, url) || url.trim();
 
     try {
@@ -343,7 +396,7 @@ class UrlbarInput {
             browser.lastLocationChange == lastLocationChange) {
           openParams.postData = data.postData;
           openParams.allowInheritPrincipal = data.mayInheritPrincipal;
-          this._loadURL(data.url, where, openParams, browser);
+          this._loadURL(data.url, where, openParams, null, browser);
         }
       });
       return;
@@ -363,11 +416,10 @@ class UrlbarInput {
   /**
    * Called by the view when a result is picked.
    *
+   * @param {UrlbarResult} result The result that was picked.
    * @param {Event} event The event that picked the result.
-   * @param {resultIndex} resultIndex The index of the result that was picked.
    */
-  pickResult(event, resultIndex) {
-    let result = this.view.getResult(resultIndex);
+  pickResult(result, event) {
     let isCanonized = this.setValueFromResult(result, event);
     let where = this._whereToOpen(event);
     let openParams = {
@@ -377,7 +429,8 @@ class UrlbarInput {
     if (!result.payload.isKeywordOffer) {
       this.view.close();
     }
-    this.controller.recordSelectedResult(event, resultIndex);
+
+    this.controller.recordSelectedResult(event, result);
 
     if (isCanonized) {
       this._loadURL(this.value, where, openParams);
@@ -408,6 +461,11 @@ class UrlbarInput {
       }
       case UrlbarUtils.RESULT_TYPE.SEARCH: {
         if (result.payload.isKeywordOffer) {
+          // The user confirmed a token alias, so just move the caret
+          // to the end of it. Because there's a trailing space in the value,
+          // the user can directly start typing a query string at that point.
+          this.selectionStart = this.selectionEnd = this.value.length;
+
           // Picking a keyword offer just fills it in the input and doesn't
           // visit anything.  The user can then type a search string.  Also
           // start a new search so that the offer appears in the view by itself
@@ -443,7 +501,17 @@ class UrlbarInput {
     if (!url) {
       throw new Error(`Invalid url for result ${JSON.stringify(result)}`);
     }
-    this._loadURL(url, where, openParams);
+
+    if (!this.isPrivate && !result.heuristic) {
+      // This should not interrupt the load anyway.
+      UrlbarUtils.addToInputHistory(url, this._lastSearchString)
+                 .catch(Cu.reportError);
+    }
+
+    this._loadURL(url, where, openParams, {
+      source: result.source,
+      type: result.type,
+    });
   }
 
   /**
@@ -460,7 +528,10 @@ class UrlbarInput {
     let canonizedUrl;
 
     if (!result) {
-      this.value = this._lastSearchString;
+      // This usually happens when there's no selected results (the user cycles
+      // through results and there was no heuristic), and we reset the input
+      // value to the previous text value.
+      this.value = this._textValueOnLastSearch;
     } else {
       // For autofilled results, the value that should be canonized is not the
       // autofilled value but the value that the user typed.
@@ -468,12 +539,11 @@ class UrlbarInput {
                        this._lastSearchString : this.textValue);
       if (canonizedUrl) {
         this.value = canonizedUrl;
+      } else if (result.autofill) {
+        let { value, selectionStart, selectionEnd } = result.autofill;
+        this._autofillValue(value, selectionStart, selectionEnd);
       } else {
         this.value = this._getValueFromResult(result);
-        if (result.autofill) {
-          this.selectionStart = result.autofill.selectionStart;
-          this.selectionEnd = result.autofill.selectionEnd;
-        }
       }
     }
     this._resultForCurrentValue = result;
@@ -481,7 +551,8 @@ class UrlbarInput {
     // Also update userTypedValue. See bug 287996.
     this.window.gBrowser.userTypedValue = this.value;
 
-    // The value setter clobbers the actiontype attribute, so update this after that.
+    // The value setter clobbers the actiontype attribute, so update this after
+    // that.
     if (result) {
       switch (result.type) {
         case UrlbarUtils.RESULT_TYPE.TAB_SWITCH:
@@ -497,43 +568,85 @@ class UrlbarInput {
   }
 
   /**
-   * Starts a query based on the user input.
+   * Called by the controller when the first result of a new search is received.
+   * If it's an autofill result, then it may need to be autofilled, subject to a
+   * few restrictions.
    *
-   * @param {number} [options.lastKey]
-   *   The last key the user entered (as a key code).
+   * @param {UrlbarResult} result
+   *   The first result.
+   */
+  autofillFirstResult(result) {
+    if (!result.autofill) {
+      return;
+    }
+
+    let isPlaceholderSelected =
+      this.selectionEnd == this._autofillPlaceholder.length &&
+      this.selectionStart == this._lastSearchString.length &&
+      this._autofillPlaceholder.toLocaleLowerCase()
+        .startsWith(this._lastSearchString.toLocaleLowerCase());
+
+    // Don't autofill if there's already a selection (with one caveat described
+    // next) or the cursor isn't at the end of the input.  But if there is a
+    // selection and it's the autofill placeholder value, then do autofill.
+    if (!isPlaceholderSelected &&
+        (this.selectionStart != this.selectionEnd ||
+         this.selectionEnd != this._lastSearchString.length)) {
+      return;
+    }
+
+    this.setValueFromResult(result);
+  }
+
+  /**
+   * Starts a query based on the current input value.
+   *
+   * @param {boolean} [options.allowAutofill]
+   *   Whether or not to allow providers to include autofill results.
+   * @param {string} [options.searchString]
+   *   The search string.  If not given, the current input value is used.
+   *   Otherwise, the current input value must start with this value.
+   * @param {boolean} [options.resetSearchState]
+   *   If this is the first search of a user interaction with the input, set
+   *   this to true (the default) so that search-related state from the previous
+   *   interaction doesn't interfere with the new interaction.  Otherwise set it
+   *   to false so that state is maintained during a single interaction.  The
+   *   intended use for this parameter is that it should be set to false when
+   *   this method is called due to input events.
    */
   startQuery({
-    lastKey = null,
+    allowAutofill = true,
+    searchString = null,
+    resetSearchState = true,
   } = {}) {
     if (this._suppressStartQuery) {
       return;
     }
 
-    let searchString = this.textValue;
+    if (resetSearchState) {
+      this._resetSearchState();
+    }
 
-    // We should autofill only when all of the following are true:
-    // * The pref is enabled.
-    // * The end of the selection is at the end of the input.
-    // * The user hasn't deleted text at the end of the input since the last
-    //   query.  Do a simple prefix comparison to guess whether that happened.
-    let enableAutofill =
-      UrlbarPrefs.get("autoFill") &&
-      this.selectionEnd == searchString.length &&
-      (!this._lastSearchString ||
-       !this._lastSearchString.startsWith(searchString));
+    if (!searchString) {
+      searchString = (this.getAttribute("pageproxystate") == "valid") ?
+                     "" : this.textValue;
+    } else if (!this.textValue.startsWith(searchString)) {
+      throw new Error("The current value doesn't start with the search string");
+    }
+
     this._lastSearchString = searchString;
+    this._textValueOnLastSearch = this.textValue;
 
     // TODO (Bug 1522902): This promise is necessary for tests, because some
     // tests are not listening for completion when starting a query through
     // other methods than startQuery (input events for example).
     this.lastQueryContextPromise = this.controller.startQuery(new UrlbarQueryContext({
-      enableAutofill,
+      allowAutofill,
       isPrivate: this.isPrivate,
-      lastKey,
       maxResults: UrlbarPrefs.get("maxRichResults"),
       muxer: "UnifiedComplete",
-      providers: ["UnifiedComplete"],
       searchString,
+      userContextId: this.window.gBrowser.selectedBrowser.getAttribute("usercontextid"),
     }));
   }
 
@@ -560,9 +673,10 @@ class UrlbarInput {
     // Note: proper IME Composition handling depends on the fact this generates
     // an input event, rather than directly invoking the controller; everything
     // goes through _on_input, that will properly skip the search until the
-    // composition is committed.
-    // If this assumption changes, we'll have to first check we are not
-    // composing, before starting a search.
+    // composition is committed. _on_input also skips the search when it's the
+    // same as the previous search, but we want to allow consecutive searches
+    // with the same string. So clear _lastSearchString first.
+    this._lastSearchString = "";
     let event = this.document.createEvent("UIEvents");
     event.initUIEvent("input", true, false, this.window, 0);
     this.inputField.dispatchEvent(event);
@@ -605,6 +719,21 @@ class UrlbarInput {
   }
 
   set value(val) {
+    return this._setValue(val, true);
+  }
+
+  get openViewOnFocus() {
+    return this._openViewOnFocus;
+  }
+
+  set openViewOnFocus(val) {
+    this._openViewOnFocus = val;
+    this.toggleAttribute("hidedropmarker", val);
+  }
+
+  // Private methods below.
+
+  _setValue(val, allowTrim) {
     this._untrimmedValue = val;
 
     let originalUrl = ReaderMode.getOriginalUrlObjectForDisplay(val);
@@ -612,7 +741,7 @@ class UrlbarInput {
       val = originalUrl.displaySpec;
     }
 
-    val = this.trimValue(val);
+    val = allowTrim ? this.trimValue(val) : val;
 
     this.valueIsTyped = false;
     this._resultForCurrentValue = null;
@@ -628,13 +757,7 @@ class UrlbarInput {
     return val;
   }
 
-  // Private methods below.
-
   _getValueFromResult(result) {
-    if (result.autofill) {
-      return result.autofill.value;
-    }
-
     switch (result.type) {
       case UrlbarUtils.RESULT_TYPE.KEYWORD:
         return result.payload.input;
@@ -653,6 +776,51 @@ class UrlbarInput {
     } catch (ex) {}
 
     return "";
+  }
+
+  /**
+   * Resets some state so that searches from the user's previous interaction
+   * with the input don't interfere with searches from a new interaction.
+   */
+  _resetSearchState() {
+    this._lastSearchString = this.textValue;
+    this._autofillPlaceholder = "";
+  }
+
+  /**
+   * Autofills the autofill placeholder string if appropriate, and determines
+   * whether autofill should be allowed for the new search started by an input
+   * event.
+   *
+   * @param {string} value
+   *   The new search string.
+   * @returns {boolean}
+   *   Whether autofill should be allowed in the new search.
+   */
+  _maybeAutofillOnInput(value) {
+    let allowAutofill = this.selectionEnd == value.length;
+
+    // Determine whether we can autofill the placeholder.  The placeholder is a
+    // value that we autofill now, when the search starts and before we wait on
+    // its first result, in order to prevent a flicker in the input caused by
+    // the previous autofilled substring disappearing and reappearing when the
+    // first result arrives.  Of course we can only autofill the placeholder if
+    // it starts with the new search string, and we shouldn't autofill anything
+    // if the caret isn't at the end of the input.
+    if (!allowAutofill ||
+        this._autofillPlaceholder.length <= value.length ||
+        !this._autofillPlaceholder.toLocaleLowerCase()
+          .startsWith(value.toLocaleLowerCase())) {
+      this._autofillPlaceholder = "";
+    } else if (this._autofillPlaceholder &&
+               this.selectionEnd == this.value.length &&
+               this._enableAutofillPlaceholder) {
+      let autofillValue =
+        value + this._autofillPlaceholder.substring(value.length);
+      this._autofillValue(autofillValue, value.length, autofillValue.length);
+    }
+
+    return allowAutofill;
   }
 
   _updateTextOverflow() {
@@ -778,10 +946,15 @@ class UrlbarInput {
         this.view.panel.setAttribute("actionoverride", "true");
       } else if (this._actionOverrideKeyCount &&
                  --this._actionOverrideKeyCount == 0) {
-        this.removeAttribute("actionoverride");
-        this.view.panel.removeAttribute("actionoverride");
+        this._clearActionOverride();
       }
     }
+  }
+
+  _clearActionOverride() {
+    this._actionOverrideKeyCount = 0;
+    this.removeAttribute("actionoverride");
+    this.view.panel.removeAttribute("actionoverride");
   }
 
   /**
@@ -861,6 +1034,26 @@ class UrlbarInput {
   }
 
   /**
+   * Autofills a value into the input.  The value will be autofilled regardless
+   * of the input's current value.
+   *
+   * @param {string} value
+   *   The value to autofill.
+   * @param {integer} selectionStart
+   *   The new selectionStart.
+   * @param {integer} selectionEnd
+   *   The new selectionEnd.
+   */
+  _autofillValue(value, selectionStart, selectionEnd) {
+    // The autofilled value may be a URL that includes a scheme at the
+    // beginning.  Do not allow it to be trimmed.
+    this._setValue(value, false);
+    this.selectionStart = selectionStart;
+    this.selectionEnd = selectionEnd;
+    this._autofillPlaceholder = value;
+  }
+
+  /**
    * Loads the url in the appropriate place.
    *
    * @param {string} url
@@ -876,16 +1069,28 @@ class UrlbarInput {
    *   The POST data associated with a search submission.
    * @param {boolean} [params.allowInheritPrincipal]
    *   If the principal may be inherited
+   * @param {object} [result]
+   *   Details of the selected result, if any
+   * @param {UrlbarUtils.RESULT_TYPE} [result.type]
+   *   Details of the result type, if any.
+   * @param {UrlbarUtils.RESULT_SOURCE} [result.source]
+   *   Details of the result source, if any.
    * @param {object} browser [optional] the browser to use for the load.
    */
-  _loadURL(url, openUILinkWhere, params,
+  _loadURL(url, openUILinkWhere, params, result = {},
            browser = this.window.gBrowser.selectedBrowser) {
-    this.value = url;
-    browser.userTypedValue = url;
+    // No point in setting these because we'll handleRevert() a few rows below.
+    if (openUILinkWhere == "current") {
+      this.value = url;
+      browser.userTypedValue = url;
+    }
 
-    if (this.window.gInitialPages.includes(url)) {
+    // No point in setting this if we are loading in a new window.
+    if (openUILinkWhere != "window" &&
+        this.window.gInitialPages.includes(url)) {
       browser.initialPageLoadedFromUserAction = url;
     }
+
     try {
       UrlbarUtils.addToUrlbarHistory(url, this.window);
     } catch (ex) {
@@ -922,6 +1127,9 @@ class UrlbarInput {
       this.handleRevert();
     }
 
+    // Notify about the start of navigation.
+    this._notifyStartNavigation(result);
+
     try {
       this.window.openTrustedLinkIn(url, openUILinkWhere, params);
     } catch (ex) {
@@ -932,10 +1140,10 @@ class UrlbarInput {
       }
     }
 
-    // Ensure the start of the URL is visible for usability reasons.
+    // Make sure the domain name stays visible for spoof protection and usability.
     this.selectionStart = this.selectionEnd = 0;
 
-    this.closePopup();
+    this.view.close();
   }
 
   /**
@@ -1021,19 +1229,45 @@ class UrlbarInput {
     insertLocation.insertAdjacentElement("afterend", pasteAndGo);
   }
 
+  /**
+   * This notifies observers that the user has entered or selected something in
+   * the URL bar which will cause navigation.
+   *
+   * We use the observer service, so that we don't need to load extra facilities
+   * if they aren't being used, e.g. WebNavigation.
+   *
+   * @param {UrlbarResult} result
+   *   The result that was selected, if any.
+   */
+  _notifyStartNavigation(result) {
+    Services.obs.notifyObservers({result}, "urlbar-user-start-navigation");
+  }
+
   // Event handlers below.
 
   _on_blur(event) {
+    // In certain cases, like holding an override key and confirming an entry,
+    // we don't key a keyup event for the override key, thus we make this
+    // additional cleanup on blur.
+    this._clearActionOverride();
     this.formatValue();
+
+    // The extension input sessions depends more on blur than on the fact we
+    // actually cancel a running query, so we do it here.
+    if (ExtensionSearchHandler.hasActiveInputSession()) {
+      ExtensionSearchHandler.handleInputCancelled();
+    }
+
     // Respect the autohide preference for easier inspecting/debugging via
     // the browser toolbox.
     if (!UrlbarPrefs.get("ui.popup.disable_autohide")) {
-      this.view.close(UrlbarUtils.CANCEL_REASON.BLUR);
+      this.view.close();
     }
     // We may have hidden popup notifications, show them again if necessary.
     if (this.getAttribute("pageproxystate") != "valid") {
       this.window.UpdatePopupNotificationsVisibility();
     }
+    this._resetSearchState();
   }
 
   _on_focus(event) {
@@ -1044,6 +1278,10 @@ class UrlbarInput {
     if (this.getAttribute("pageproxystate") != "valid") {
       this.window.UpdatePopupNotificationsVisibility();
     }
+
+    if (this.openViewOnFocus) {
+      this.startQuery();
+    }
   }
 
   _on_mouseover(event) {
@@ -1051,7 +1289,9 @@ class UrlbarInput {
   }
 
   _on_mousedown(event) {
-    if (event.originalTarget == this.inputField &&
+    if ((event.target == this.inputField ||
+         // Can be removed after bug 1513337:
+         event.originalTarget.classList.contains("anonymous-div")) &&
         event.button == 0 &&
         event.detail == 2 &&
         UrlbarPrefs.get("doubleClickSelectsAll")) {
@@ -1065,16 +1305,28 @@ class UrlbarInput {
       if (this.view.isOpen) {
         this.view.close();
       } else {
-        this.startQuery();
+        this.focus();
+        this.startQuery({
+          allowAutofill: false,
+        });
       }
     }
   }
 
-  _on_input() {
+  _on_input(event) {
     let value = this.textValue;
     this.valueIsTyped = true;
     this._untrimmedValue = value;
     this.window.gBrowser.userTypedValue = value;
+
+    let compositionState = this._compositionState;
+    let compositionClosedPopup = this._compositionClosedPopup;
+
+    // Clear composition values if we're no more composing.
+    if (this._compositionState != UrlbarUtils.COMPOSITION.COMPOSING) {
+      this._compositionState = UrlbarUtils.COMPOSITION.NONE;
+      this._compositionClosedPopup = false;
+    }
 
     if (value) {
       this.setAttribute("usertyping", "true");
@@ -1088,38 +1340,40 @@ class UrlbarInput {
       return;
     }
 
+    this.view.removeAccessibleFocus();
+
     // During composition with an IME, the following events happen in order:
     // 1. a compositionstart event
     // 2. some input events
     // 3. a compositionend event
     // 4. an input event
 
-    // We should do nothing during composition.
-    if (this._compositionState == UrlbarUtils.COMPOSITION.COMPOSING) {
+    // We should do nothing during composition or if composition was canceled
+    // and we didn't close the popup on composition start.
+    if (compositionState == UrlbarUtils.COMPOSITION.COMPOSING ||
+        (compositionState == UrlbarUtils.COMPOSITION.CANCELED &&
+         !compositionClosedPopup)) {
       return;
     }
 
-    if (this._compositionState == UrlbarUtils.COMPOSITION.COMMIT) {
-      this._compositionState = UrlbarUtils.COMPOSITION.NONE;
-    }
+    // Autofill only when text is inserted (i.e., event.data is not empty) and
+    // it's not due to pasting.
+    let allowAutofill =
+      !!event.data &&
+      !event.inputType.startsWith("insertFromPaste") &&
+      event.inputType != "insertFromYank" &&
+      this._maybeAutofillOnInput(value);
 
-    // Note: if in the future we should re-implement the legacy optimization
-    // where we didn't search again when the string is the same, skip it if we
-    // are committing a composition; since the search was canceled on
-    // composition start, we should restart it.
-
-    // XXX Fill in lastKey, and add anything else we need.
     this.startQuery({
-      lastKey: null,
+      searchString: value,
+      allowAutofill,
+      resetSearchState: false,
     });
   }
 
   _on_select(event) {
-    if (!Services.clipboard.supportsSelectionClipboard()) {
-      return;
-    }
-
-    if (!this.window.windowUtils.isHandlingUserInput) {
+    if (!this.window.windowUtils.isHandlingUserInput ||
+        !Services.clipboard.supportsSelectionClipboard()) {
       return;
     }
 
@@ -1194,10 +1448,24 @@ class UrlbarInput {
   }
 
   _on_TabSelect(event) {
+    this._resetSearchState();
     this.controller.viewContextChanged();
+    if (this.focused && this.openViewOnFocus) {
+      this.startQuery();
+    }
   }
 
   _on_keydown(event) {
+    // Due to event deferring, it's possible preventDefault() won't be invoked
+    // soon enough to actually prevent some of the default behaviors, thus we
+    // have to handle the event "twice". This first immediate call passes false
+    // as second argument so that handleKeyNavigation will only simulate the
+    // event handling, without actually executing actions.
+    // TODO (Bug 1541806): improve this handling, maybe by delaying actions
+    // instead of events.
+    if (this.eventBufferer.shouldDeferEvent(event)) {
+      this.controller.handleKeyNavigation(event, false);
+    }
     this._toggleActionOverride(event);
     this.eventBufferer.maybeDeferEvent(event, () => {
       this.controller.handleKeyNavigation(event);
@@ -1215,7 +1483,12 @@ class UrlbarInput {
     this._compositionState = UrlbarUtils.COMPOSITION.COMPOSING;
 
     // Close the view. This will also stop searching.
-    this.closePopup();
+    if (this.view.isOpen) {
+      this._compositionClosedPopup = true;
+      this.view.close();
+    } else {
+      this._compositionClosedPopup = false;
+    }
   }
 
   _on_compositionend(event) {
@@ -1225,7 +1498,8 @@ class UrlbarInput {
 
     // We can't yet retrieve the committed value from the editor, since it isn't
     // completely committed yet. We'll handle it at the next input event.
-    this._compositionState = UrlbarUtils.COMPOSITION.COMMIT;
+    this._compositionState = event.data ? UrlbarUtils.COMPOSITION.COMMIT :
+                                          UrlbarUtils.COMPOSITION.CANCELED;
   }
 
   _on_popupshowing() {
@@ -1269,20 +1543,20 @@ class UrlbarInput {
 
   _on_drop(event) {
     let droppedItem = getDroppableData(event);
-    if (!droppedItem) {
-      return;
+    let droppedURL = droppedItem instanceof URL ? droppedItem.href : droppedItem;
+    if (droppedURL && (droppedURL !== this.window.gBrowser.currentURI.spec)) {
+      let principal = Services.droppedLinkHandler.getTriggeringPrincipal(event);
+      this.value = droppedURL;
+      this.window.SetPageProxyState("invalid");
+      this.focus();
+      this.handleCommand(null, undefined, undefined, principal);
+      // For safety reasons, in the drop case we don't want to immediately show
+      // the the dropped value, instead we want to keep showing the current page
+      // url until an onLocationChange happens.
+      // See the handling in URLBarSetURI for further details.
+      this.window.gBrowser.userTypedValue = null;
+      this.window.URLBarSetURI(null, true);
     }
-    let principal = Services.droppedLinkHandler.getTriggeringPrincipal(event);
-    this.value = droppedItem instanceof URL ? droppedItem.href : droppedItem;
-    this.window.SetPageProxyState("invalid");
-    this.focus();
-    this.handleCommand(null, undefined, undefined, principal);
-    // For safety reasons, in the drop case we don't want to immediately show
-    // the the dropped value, instead we want to keep showing the current page
-    // url until an onLocationChange happens.
-    // See the handling in URLBarSetURI for further details.
-    this.window.gBrowser.userTypedValue = null;
-    this.window.URLBarSetURI(null, true);
   }
 }
 

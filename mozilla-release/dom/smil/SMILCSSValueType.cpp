@@ -17,6 +17,8 @@
 #include "nsString.h"
 #include "nsStyleUtil.h"
 #include "mozilla/DeclarationBlock.h"
+#include "mozilla/PresShell.h"
+#include "mozilla/PresShellInlines.h"
 #include "mozilla/ServoBindings.h"
 #include "mozilla/StyleAnimationValue.h"
 #include "mozilla/ServoCSSParser.h"

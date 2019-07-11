@@ -1921,7 +1921,7 @@ static bool InitTypeConstructor(
     const JSFunctionSpec* instanceFns, const JSPropertySpec* instanceProps,
     MutableHandleObject typeProto, MutableHandleObject dataProto) {
   JSFunction* fun = js::DefineFunctionWithReserved(
-      cx, parent, spec.name, spec.call.op, spec.nargs, spec.flags);
+      cx, parent, spec.name.string(), spec.call.op, spec.nargs, spec.flags);
   if (!fun) {
     return false;
   }
@@ -2029,7 +2029,7 @@ static JSObject* InitInt64Class(JSContext* cx, HandleObject parent,
   return prototype;
 }
 
-static void AttachProtos(JSObject* proto, const AutoObjectVector& protos) {
+static void AttachProtos(JSObject* proto, HandleObjectVector protos) {
   // For a given 'proto' of [[Class]] "CTypeProto", attach each of the 'protos'
   // to the appropriate CTypeProtoSlot. (SLOT_CTYPES is the last slot
   // of [[Class]] "CTypeProto" that we fill in this automated manner.)
@@ -2102,7 +2102,7 @@ static bool InitTypeClasses(JSContext* cx, HandleObject ctypesObj) {
   //     * [[Class]] "CDataProto"
   //     * __proto__ === 'p', the prototype object from above
   //     * 'constructor' property === 't'
-  AutoObjectVector protos(cx);
+  RootedObjectVector protos(cx);
   if (!protos.resize(CTYPEPROTO_SLOTS)) {
     return false;
   }
@@ -6196,7 +6196,7 @@ JSObject* StructType::BuildFieldsArray(JSContext* cx, JSObject* obj) {
   size_t len = fields->count();
 
   // Prepare a new array for the 'fields' property of the StructType.
-  JS::AutoValueVector fieldsVec(cx);
+  JS::RootedValueVector fieldsVec(cx);
   if (!fieldsVec.resize(len)) {
     return nullptr;
   }
@@ -6715,7 +6715,7 @@ bool FunctionType::Create(JSContext* cx, unsigned argc, Value* vp) {
     return ArgumentLengthError(cx, "FunctionType", "two or three", "s");
   }
 
-  AutoValueVector argTypes(cx);
+  JS::RootedValueVector argTypes(cx);
   RootedObject arrayObj(cx, nullptr);
 
   if (args.length() == 3) {
@@ -7078,7 +7078,7 @@ bool FunctionType::ArgTypesGetter(JSContext* cx, const JS::CallArgs& args) {
   // Prepare a new array.
   JS::Rooted<JSObject*> argTypes(cx);
   {
-    JS::AutoValueVector vec(cx);
+    JS::RootedValueVector vec(cx);
     if (!vec.resize(len)) {
       return false;
     }
@@ -7304,7 +7304,7 @@ bool CClosure::ArgClosure::operator()(JSContext* cx) {
   }
 
   // Set up an array for converted arguments.
-  JS::AutoValueVector argv(cx);
+  JS::RootedValueVector argv(cx);
   if (!argv.resize(cif->nargs)) {
     JS_ReportOutOfMemory(cx);
     return false;
@@ -7667,10 +7667,11 @@ bool CData::GetRuntime(JSContext* cx, unsigned argc, Value* vp) {
 }
 
 typedef JS::TwoByteCharsZ (*InflateUTF8Method)(JSContext*, const JS::UTF8Chars,
-                                               size_t*);
+                                               size_t*, arena_id_t);
 
 static bool ReadStringCommon(JSContext* cx, InflateUTF8Method inflateUTF8,
-                             unsigned argc, Value* vp, const char* funName) {
+                             unsigned argc, Value* vp, const char* funName,
+                             arena_id_t destArenaId) {
   CallArgs args = CallArgsFromVp(argc, vp);
   if (args.length() != 0) {
     return ArgumentLengthError(cx, funName, "no", "s");
@@ -7743,7 +7744,8 @@ static bool ReadStringCommon(JSContext* cx, InflateUTF8Method inflateUTF8,
 
       // Determine the length.
       UniqueTwoByteChars dst(
-          inflateUTF8(cx, JS::UTF8Chars(bytes, length), &length).get());
+          inflateUTF8(cx, JS::UTF8Chars(bytes, length), &length, destArenaId)
+              .get());
       if (!dst) {
         return false;
       }
@@ -7779,19 +7781,21 @@ static bool ReadStringCommon(JSContext* cx, InflateUTF8Method inflateUTF8,
 
 bool CData::ReadString(JSContext* cx, unsigned argc, Value* vp) {
   return ReadStringCommon(cx, JS::UTF8CharsToNewTwoByteCharsZ, argc, vp,
-                          "CData.prototype.readString");
+                          "CData.prototype.readString", js::StringBufferArena);
 }
 
 bool CDataFinalizer::Methods::ReadString(JSContext* cx, unsigned argc,
                                          Value* vp) {
   return ReadStringCommon(cx, JS::UTF8CharsToNewTwoByteCharsZ, argc, vp,
-                          "CDataFinalizer.prototype.readString");
+                          "CDataFinalizer.prototype.readString",
+                          js::StringBufferArena);
 }
 
 bool CData::ReadStringReplaceMalformed(JSContext* cx, unsigned argc,
                                        Value* vp) {
   return ReadStringCommon(cx, JS::LossyUTF8CharsToNewTwoByteCharsZ, argc, vp,
-                          "CData.prototype.readStringReplaceMalformed");
+                          "CData.prototype.readStringReplaceMalformed",
+                          js::StringBufferArena);
 }
 
 JSString* CData::GetSourceString(JSContext* cx, HandleObject typeObj,

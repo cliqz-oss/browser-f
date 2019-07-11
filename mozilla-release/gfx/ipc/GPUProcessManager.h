@@ -42,7 +42,7 @@ class CompositorWidget;
 }  // namespace widget
 namespace dom {
 class ContentParent;
-class TabParent;
+class BrowserParent;
 }  // namespace dom
 namespace ipc {
 class GeckoChildProcessHost;
@@ -248,7 +248,7 @@ class GPUProcessManager final : public GPUProcessHost::Listener {
     explicit Observer(GPUProcessManager* aManager);
 
    protected:
-    ~Observer() {}
+    virtual ~Observer() = default;
 
     GPUProcessManager* mManager;
   };

@@ -317,6 +317,9 @@ class gfxPrefs final {
   DECL_GFX_PREF(Live, "apz.drag.initial.enabled",              APZDragInitiationEnabled, bool, false);
   DECL_GFX_PREF(Live, "apz.drag.touch.enabled",                APZTouchDragEnabled, bool, false);
   DECL_GFX_PREF(Live, "apz.enlarge_displayport_when_clipped",  APZEnlargeDisplayPortWhenClipped, bool, false);
+  DECL_GFX_PREF(Live, "apz.fixed-margin-override.enabled",     APZFixedMarginOverrideEnabled, bool, false);
+  DECL_GFX_PREF(Live, "apz.fixed-margin-override.bottom",      APZFixedMarginOverrideBottom, int32_t, 0);
+  DECL_GFX_PREF(Live, "apz.fixed-margin-override.top",         APZFixedMarginOverrideTop, int32_t, 0);
   DECL_GFX_PREF(Live, "apz.fling_accel_base_mult",             APZFlingAccelBaseMultiplier, float, 1.0f);
   DECL_GFX_PREF(Live, "apz.fling_accel_interval_ms",           APZFlingAccelInterval, int32_t, 500);
   DECL_GFX_PREF(Live, "apz.fling_accel_supplemental_mult",     APZFlingAccelSupplementalMultiplier, float, 1.0f);
@@ -388,11 +391,7 @@ class gfxPrefs final {
   DECL_GFX_PREF(Live, "dom.vr.oculus.present.timeout",         VROculusPresentTimeout, int32_t, 500);
   DECL_GFX_PREF(Live, "dom.vr.oculus.quit.timeout",            VROculusQuitTimeout, int32_t, 10000);
   DECL_GFX_PREF(Once, "dom.vr.openvr.enabled",                 VROpenVREnabled, bool, false);
-#if defined(RELEASE_OR_BETA)
-  DECL_GFX_PREF(Once, "dom.vr.openvr.action_input",            VROpenVRActionInputEnabled, bool, false);
-#else
   DECL_GFX_PREF(Once, "dom.vr.openvr.action_input",             VROpenVRActionInputEnabled, bool, true);
-#endif
   DECL_GFX_PREF(Once, "dom.vr.osvr.enabled",                   VROSVREnabled, bool, false);
   DECL_GFX_PREF(Live, "dom.vr.controller.enumerate.interval",  VRControllerEnumerateInterval, int32_t, 1000);
   DECL_GFX_PREF(Live, "dom.vr.display.enumerate.interval",     VRDisplayEnumerateInterval, int32_t, 5000);
@@ -403,13 +402,9 @@ class gfxPrefs final {
   DECL_GFX_PREF(Live, "dom.vr.puppet.submitframe",             VRPuppetSubmitFrame, uint32_t, 0);
   DECL_GFX_PREF(Live, "dom.vr.display.rafMaxDuration",         VRDisplayRafMaxDuration, uint32_t, 50);
   DECL_GFX_PREF(Once, "dom.vr.process.enabled",                VRProcessEnabled, bool, false);
+  DECL_GFX_PREF(Once, "dom.vr.process.startup_timeout_ms",     VRProcessTimeoutMs, int32_t, 5000);
   DECL_GFX_PREF(Once, "dom.vr.service.enabled",                VRServiceEnabled, bool, true);
   DECL_GFX_PREF(Live, "dom.w3c_pointer_events.enabled",        PointerEventsEnabled, bool, false);
-
-  // Make APZ send child-to-screen layer matrices to the chrome process
-  // even when the GPU process is in use (behind pref due to IPC errors
-  // in reftests) https://bugzilla.mozilla.org/show_bug.cgi?id=1533673
-  DECL_GFX_PREF(Live, "fission.apz-matrices-with-gpu-process", FissionApzMatricesWithGpuProcess, bool, false);
 
   DECL_GFX_PREF(Live, "general.smoothScroll",                  SmoothScrollEnabled, bool, true);
   DECL_GFX_PREF(Live, "general.smoothScroll.currentVelocityWeighting",
@@ -502,6 +497,7 @@ class gfxPrefs final {
   DECL_GFX_PREF(Live, "gfx.downloadable_fonts.otl_validation", ValidateOTLTables, bool, true);
   DECL_GFX_PREF(Live, "gfx.draw-color-bars",                   CompositorDrawColorBars, bool, false);
   DECL_GFX_PREF(Once, "gfx.e10s.hide-plugins-for-scroll",      HidePluginsForScroll, bool, true);
+  DECL_GFX_PREF(Once, "gfx.e10s.font-list.shared",             SharedFontList, bool, false);
   DECL_GFX_PREF(Live, "gfx.layerscope.enabled",                LayerScopeEnabled, bool, false);
   DECL_GFX_PREF(Live, "gfx.layerscope.port",                   LayerScopePort, int32_t, 23456);
   // Note that        "gfx.logging.level" is defined in Logging.h.
@@ -511,6 +507,7 @@ class gfxPrefs final {
   // The maximums here are quite conservative, we can tighten them if problems show up.
   DECL_GFX_PREF(Once, "gfx.logging.texture-usage.enabled",     GfxLoggingTextureUsageEnabled, bool, false);
   DECL_GFX_PREF(Once, "gfx.logging.peak-texture-usage.enabled",GfxLoggingPeakTextureUsageEnabled, bool, false);
+  DECL_GFX_PREF(Once, "gfx.logging.slow-frames.enabled",       LoggingSlowFramesEnabled, bool, false);
   // Use gfxPlatform::MaxAllocSize instead of the pref directly
   DECL_GFX_PREF(Once, "gfx.max-alloc-size",                    MaxAllocSizeDoNotUseDirectly, int32_t, (int32_t)500000000);
   // Use gfxPlatform::MaxTextureSize instead of the pref directly
@@ -533,7 +530,7 @@ class gfxPrefs final {
   DECL_GFX_PREF(Once, "gfx.vsync.compositor.unobserve-count",  CompositorUnobserveCount, int32_t, 10);
 
   DECL_GFX_PREF(Once, "gfx.webrender.all",                     WebRenderAll, bool, false);
-  DECL_GFX_PREF(Once, "gfx.webrender.all.qualified",           WebRenderAllQualified, bool, false);
+  DECL_GFX_PREF(Once, "gfx.webrender.all.qualified",           WebRenderAllQualified, bool, true);
   DECL_GFX_PREF(Once,
                 "gfx.webrender.all.qualified.default",
                 WebRenderAllQualifiedDefault,
@@ -550,6 +547,8 @@ class gfxPrefs final {
   DECL_GFX_PREF(Live, "gfx.webrender.late-scenebuild-threshold", WebRenderLateSceneBuildThreshold, int32_t, 4);
   DECL_GFX_PREF(Live, "gfx.webrender.max-filter-ops-per-chain", WebRenderMaxFilterOpsPerChain, uint32_t, 64);
   DECL_GFX_PREF(Live, "gfx.webrender.picture-caching",         WebRenderPictureCaching, bool, false);
+  DECL_GFX_PREF(Once, "gfx.webrender.split-render-roots",      WebRenderSplitRenderRoots, bool, false);
+  DECL_GFX_PREF(Live, "gfx.webrender.start-debug-server",      WebRenderStartDebugServer, bool, false);
 
   // Use vsync events generated by hardware
   DECL_GFX_PREF(Once, "gfx.work-around-driver-bugs",           WorkAroundDriverBugs, bool, true);
@@ -566,7 +565,6 @@ class gfxPrefs final {
   DECL_GFX_PREF(Live, "image.animated.decode-on-demand.threshold-kb", ImageAnimatedDecodeOnDemandThresholdKB, uint32_t, 20480);
   DECL_GFX_PREF(Live, "image.animated.decode-on-demand.batch-size", ImageAnimatedDecodeOnDemandBatchSize, uint32_t, 6);
   DECL_GFX_PREF(Live, "image.animated.decode-on-demand.recycle", ImageAnimatedDecodeOnDemandRecycle, bool, false);
-  DECL_GFX_PREF(Once, "image.animated.generate-full-frames",   ImageAnimatedGenerateFullFrames, bool, false);
   DECL_GFX_PREF(Live, "image.animated.resume-from-last-displayed", ImageAnimatedResumeFromLastDisplayed, bool, false);
   DECL_GFX_PREF(Live, "image.cache.factor2.threshold-surfaces", ImageCacheFactor2ThresholdSurfaces, int32_t, -1);
   DECL_GFX_PREF(Live, "image.cache.max-rasterized-svg-threshold-kb", ImageCacheMaxRasterizedSVGThresholdKB, int32_t, 90*1024);
@@ -669,6 +667,7 @@ class gfxPrefs final {
   DECL_GFX_PREF(Live, "layers.shared-buffer-provider.enabled", PersistentBufferProviderSharedEnabled, bool, false);
   DECL_GFX_PREF(Live, "layers.single-tile.enabled",            LayersSingleTileEnabled, bool, true);
   DECL_GFX_PREF(Live, "layers.force-synchronous-resize",       LayersForceSynchronousResize, bool, true);
+  DECL_GFX_PREF(Once, "layers.windowrecording.path",           LayersWindowRecordingPath, std::string, std::string());
 
   // We allow for configurable and rectangular tile size to avoid wasting memory on devices whose
   // screen size does not align nicely to the default tile size. Although layers can be any size,
@@ -725,7 +724,7 @@ class gfxPrefs final {
   DECL_GFX_PREF(Once, "layout.paint_rects_separately",         LayoutPaintRectsSeparately, bool, true);
 
   // This and code dependent on it should be removed once containerless scrolling looks stable.
-  DECL_OVERRIDE_PREF(Live, "layout.scroll.root-frame-containers",   LayoutUseContainersForRootFrames, !OverrideBase_WebRender());
+  DECL_GFX_PREF(Live, "layout.scroll.root-frame-containers",   LayoutUseContainersForRootFrames, bool, false);
   // This pref is to be set by test code only.
   DECL_GFX_PREF(Live, "layout.scrollbars.always-layerize-track", AlwaysLayerizeScrollbarTrackTestOnly, bool, false);
   DECL_GFX_PREF(Live, "layout.smaller-painted-layers",         LayoutSmallerPaintedLayers, bool, false);
@@ -763,11 +762,6 @@ class gfxPrefs final {
 
   DECL_GFX_PREF(Live, "nglayout.debug.widget_update_flashing", WidgetUpdateFlashing, bool, false);
 
-  DECL_GFX_PREF(Live, "performance.adjust_to_machine",         AdjustToMachine, bool, false);
-  // Use gfxPlatform::ShouldAdjustForLowEndMachine() to determine if you should use low-end
-  // machine code-paths, rather than checking this pref directly.
-  DECL_GFX_PREF(Live, "performance.low_end_machine",           IsLowEndMachineDoNotUseDirectly, bool, false);
-
   DECL_GFX_PREF(Live, "print.font-variations-as-paths",        PrintFontVariationsAsPaths, bool, true);
 
   DECL_GFX_PREF(Live, "privacy.resistFingerprinting",          ResistFingerprinting, bool, false);
@@ -789,7 +783,6 @@ class gfxPrefs final {
   DECL_GFX_PREF(Live, "webgl.angle.force-d3d11",               WebGLANGLEForceD3D11, bool, false);
   DECL_GFX_PREF(Live, "webgl.angle.try-d3d11",                 WebGLANGLETryD3D11, bool, false);
   DECL_GFX_PREF(Live, "webgl.angle.force-warp",                WebGLANGLEForceWARP, bool, false);
-  DECL_GFX_PREF(Live, "webgl.bypass-shader-validation",        WebGLBypassShaderValidator, bool, true);
   DECL_GFX_PREF(Live, "webgl.can-lose-context-in-foreground",  WebGLCanLoseContextInForeground, bool, true);
   DECL_GFX_PREF(Live, "webgl.default-low-power",               WebGLDefaultLowPower, bool, false);
   DECL_GFX_PREF(Live, "webgl.default-no-alpha",                WebGLDefaultNoAlpha, bool, false);

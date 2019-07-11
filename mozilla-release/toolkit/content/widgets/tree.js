@@ -241,7 +241,7 @@
       }
 
       var hidden = !tree.enableColumnDrag;
-      aPopup.querySelectorAll(":not([colindex])").forEach((e) => { e.hidden = hidden; });
+      aPopup.querySelectorAll(":scope > :not([colindex])").forEach((e) => { e.hidden = hidden; });
     }
   }
 
@@ -304,16 +304,9 @@
       });
     }
 
-    markTreeDirty() {
-      this.parentNode.parentNode._columnsDirty = true;
-    }
-
     connectedCallback() {
       if (this.delayConnectedCallback()) {
         return;
-      }
-      if (!this.isRunningDelayedConnectedCallback) {
-        this.markTreeDirty();
       }
 
       this.textContent = "";
@@ -497,16 +490,16 @@
 
       // Set resizeafter="farthest" on the splitters if nothing else has been
       // specified.
-      Array.forEach(this.getElementsByTagName("splitter"), function(splitter) {
+      for (let splitter of this.getElementsByTagName("splitter")) {
         if (!splitter.hasAttribute("resizeafter"))
           splitter.setAttribute("resizeafter", "farthest");
-      });
+      }
     }
   }
 
   customElements.define("treecols", MozTreecols);
 
-  class MozTree extends BaseControlMixin(MozElementMixin(XULTreeElement)) {
+  class MozTree extends MozElements.BaseControlMixin(MozElements.MozElementMixin(XULTreeElement)) {
     constructor() {
       super();
 
@@ -519,46 +512,33 @@
             <hbox flex="1" class="tree-bodybox">
               <html:slot name="treechildren"></html:slot>
             </hbox>
-            <scrollbar height="0" minwidth="0" minheight="0" orient="vertical" inherits="collapsed=hidevscroll" style="position:relative; z-index:2147483647;" oncontextmenu="event.stopPropagation(); event.preventDefault();" onclick="event.stopPropagation(); event.preventDefault();" ondblclick="event.stopPropagation();" oncommand="event.stopPropagation();"></scrollbar>
+            <scrollbar height="0" minwidth="0" minheight="0" orient="vertical"
+                       class="hidevscroll-scrollbar"
+                       style="position:relative; z-index:2147483647;"
+                       oncontextmenu="event.stopPropagation(); event.preventDefault();"
+                       onclick="event.stopPropagation(); event.preventDefault();"
+                       ondblclick="event.stopPropagation();"
+                       oncommand="event.stopPropagation();"></scrollbar>
           </hbox>
           <textbox class="tree-input" left="0" top="0" hidden="true"></textbox>
         </stack>
-        <hbox inherits="collapsed=hidehscroll">
+        <hbox class="hidehscroll-box">
           <scrollbar orient="horizontal" flex="1" increment="16" style="position:relative; z-index:2147483647;" oncontextmenu="event.stopPropagation(); event.preventDefault();" onclick="event.stopPropagation(); event.preventDefault();" ondblclick="event.stopPropagation();" oncommand="event.stopPropagation();"></scrollbar>
-          <scrollcorner inherits="collapsed=hidevscroll" oncontextmenu="event.stopPropagation(); event.preventDefault();" onclick="event.stopPropagation(); event.preventDefault();" ondblclick="event.stopPropagation();" oncommand="event.stopPropagation();"></scrollcorner>
+          <scrollcorner class="hidevscroll-scrollcorner"
+                        oncontextmenu="event.stopPropagation(); event.preventDefault();"
+                        onclick="event.stopPropagation(); event.preventDefault();"
+                        ondblclick="event.stopPropagation();"
+                        oncommand="event.stopPropagation();"></scrollcorner>
         </hbox>
       `));
     }
 
-    static get observedAttributes() {
-      return [
-        "hidehscroll",
-        "hidevscroll",
-      ];
-    }
-
-    attributeChangedCallback(name, oldValue, newValue) {
-      if (this.isConnectedAndReady && oldValue != newValue) {
-        this._updateAttributes();
-      }
-    }
-
-    _updateAttributes() {
-      for (let [ el, attrs ] of this._inheritedAttributeMap.entries()) {
-        for (let attr of attrs) {
-          this.inheritAttribute(el, attr);
-        }
-      }
-    }
-
-    get _inheritedAttributeMap() {
-      if (!this.__inheritedAttributeMap) {
-        this.__inheritedAttributeMap = new Map();
-        for (let el of this.shadowRoot.querySelectorAll("[inherits]")) {
-          this.__inheritedAttributeMap.set(el, el.getAttribute("inherits").split(","));
-        }
-      }
-      return this.__inheritedAttributeMap;
+    static get inheritedAttributes() {
+      return {
+        ".hidehscroll-box": "collapsed=hidehscroll",
+        ".hidevscroll-scrollbar": "collapsed=hidevscroll",
+        ".hidevscroll-scrollcorner": "collapsed=hidevscroll",
+      };
     }
 
     connectedCallback() {
@@ -574,7 +554,7 @@
       this.setAttribute("hidehscroll", "true");
       this.setAttribute("clickthrough", "never");
 
-      this._updateAttributes();
+      this.initializeAttributeInheritance();
 
       this.pageUpOrDownMovesSelection = !/Mac/.test(navigator.platform);
 
@@ -958,26 +938,24 @@
     }
 
     _ensureColumnOrder() {
-      if (!this._columnsDirty)
-        return;
-
       if (this.columns) {
         // update the ordinal position of each column to assure that it is
         // an odd number and 2 positions above its next sibling
         var cols = [];
-        var i;
-        for (var col = this.columns.getFirstColumn(); col; col = col.getNext())
-          cols.push(col.element);
-        for (i = 0; i < cols.length; ++i)
-          cols[i].setAttribute("ordinal", (i * 2) + 1);
 
+        for (let col = this.columns.getFirstColumn(); col; col = col.getNext()) {
+          cols.push(col.element);
+        }
+        for (let i = 0; i < cols.length; ++i) {
+          cols[i].setAttribute("ordinal", (i * 2) + 1);
+        }
         // update the ordinal positions of splitters to even numbers, so that
         // they are in between columns
         var splitters = this.getElementsByTagName("splitter");
-        for (i = 0; i < splitters.length; ++i)
+        for (let i = 0; i < splitters.length; ++i) {
           splitters[i].setAttribute("ordinal", (i + 1) * 2);
+        }
       }
-      this._columnsDirty = false;
     }
 
     _reorderColumn(aColMove, aColBefore, aBefore) {
@@ -1169,7 +1147,8 @@
       this._editingRow = -1;
       this._editingColumn = null;
 
-      if (accept) {
+      // `this.view` could be null if the tree was hidden before we were called.
+      if (accept && this.view) {
         var value = input.value;
         this.view.setCellText(editingRow, editingColumn, value);
       }

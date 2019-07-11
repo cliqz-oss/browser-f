@@ -2,11 +2,9 @@
 <html>
 <head>
   <title>Test for EventTarget chain of MessageManagers</title>
-  <script type="application/javascript"
-          src="/tests/SimpleTest/SimpleTest.js">
+  <script src="/tests/SimpleTest/SimpleTest.js">
   </script>
-  <script type="application/javascript"
-          src="/tests/SimpleTest/EventUtils.js">
+  <script src="/tests/SimpleTest/EventUtils.js">
   </script>
   <link rel="stylesheet" type="text/css" href="/tests/SimpleTest/test.css"/>
 </head>
@@ -104,12 +102,9 @@
       var principal = SpecialPowers.wrap(document).nodePrincipal;
       SpecialPowers.pushPermissions([
         { type: "browser", allow: 1, context: { url: principal.URI.spec,
-                                                originAttributes: {
-                                                  appId: principal.appId
-                                                }}},
+                                                originAttributes: {}}},
         { type: "browser", allow: 1, context: { url: principal.URI.spec,
                                                 originAttributes: {
-                                                  appId: principal.appId,
                                                   inIsolatedMozBrowser: true }}}
       ], () => {
         SpecialPowers.pushPrefEnv({

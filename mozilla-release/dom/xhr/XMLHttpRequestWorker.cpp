@@ -666,6 +666,11 @@ class OpenRunnable final : public WorkerThreadProxySyncRunnable {
   bool mWithCredentials;
   uint32_t mTimeout;
   XMLHttpRequestResponseType mResponseType;
+  const nsString mMimeTypeOverride;
+
+  // Remember the worker thread's stack when the XHR was opened, so that it can
+  // be passed on to the net monitor.
+  UniquePtr<SerializedStackHolder> mOriginStack;
 
  public:
   OpenRunnable(WorkerPrivate* aWorkerPrivate, Proxy* aProxy,
@@ -673,14 +678,18 @@ class OpenRunnable final : public WorkerThreadProxySyncRunnable {
                const Optional<nsAString>& aUser,
                const Optional<nsAString>& aPassword, bool aBackgroundRequest,
                bool aWithCredentials, uint32_t aTimeout,
-               XMLHttpRequestResponseType aResponseType)
+               XMLHttpRequestResponseType aResponseType,
+               const nsString& aMimeTypeOverride,
+               UniquePtr<SerializedStackHolder> aOriginStack)
       : WorkerThreadProxySyncRunnable(aWorkerPrivate, aProxy),
         mMethod(aMethod),
         mURL(aURL),
         mBackgroundRequest(aBackgroundRequest),
         mWithCredentials(aWithCredentials),
         mTimeout(aTimeout),
-        mResponseType(aResponseType) {
+        mResponseType(aResponseType),
+        mMimeTypeOverride(aMimeTypeOverride),
+        mOriginStack(std::move(aOriginStack)) {
     if (aUser.WasPassed()) {
       mUserStr = aUser.Value();
       mUser = &mUserStr;
@@ -779,7 +788,7 @@ bool Proxy::Init() {
   mXHR = new XMLHttpRequestMainThread();
   mXHR->Construct(mWorkerPrivate->GetPrincipal(),
                   ownerWindow ? ownerWindow->AsGlobal() : nullptr,
-                  mWorkerPrivate->CookieSettings(),
+                  mWorkerPrivate->CookieSettings(), true,
                   mWorkerPrivate->GetBaseURI(), mWorkerPrivate->GetLoadGroup(),
                   mWorkerPrivate->GetPerformanceStorage(),
                   mWorkerPrivate->CSPEventListener());
@@ -1273,6 +1282,10 @@ nsresult OpenRunnable::MainThreadRunInternal() {
     NS_ENSURE_SUCCESS(rv, rv);
   }
 
+  if (mOriginStack) {
+    mProxy->mXHR->SetOriginStack(std::move(mOriginStack));
+  }
+
   ErrorResult rv;
 
   if (mWithCredentials) {
@@ -1284,6 +1297,13 @@ nsresult OpenRunnable::MainThreadRunInternal() {
 
   if (mTimeout) {
     mProxy->mXHR->SetTimeout(mTimeout, rv);
+    if (NS_WARN_IF(rv.Failed())) {
+      return rv.StealNSResult();
+    }
+  }
+
+  if (!mMimeTypeOverride.IsVoid()) {
+    mProxy->mXHR->OverrideMimeType(mMimeTypeOverride, rv);
     if (NS_WARN_IF(rv.Failed())) {
       return rv.StealNSResult();
     }
@@ -1424,7 +1444,8 @@ XMLHttpRequestWorker::XMLHttpRequestWorker(WorkerPrivate* aWorkerPrivate)
       mWithCredentials(false),
       mCanceled(false),
       mMozAnon(false),
-      mMozSystem(false) {
+      mMozSystem(false),
+      mMimeTypeOverride(VoidString()) {
   mWorkerPrivate->AssertIsOnWorkerThread();
 
   mozilla::HoldJSObjects(this);
@@ -1473,7 +1494,14 @@ already_AddRefed<XMLHttpRequest> XMLHttpRequestWorker::Construct(
   WorkerPrivate* workerPrivate = GetWorkerPrivateFromContext(cx);
   MOZ_ASSERT(workerPrivate);
 
+  nsCOMPtr<nsIGlobalObject> global = do_QueryInterface(aGlobal.GetAsSupports());
+  if (NS_WARN_IF(!global)) {
+    aRv.Throw(NS_ERROR_FAILURE);
+    return nullptr;
+  }
+
   RefPtr<XMLHttpRequestWorker> xhr = new XMLHttpRequestWorker(workerPrivate);
+  xhr->BindToOwner(global);
 
   if (workerPrivate->XHRParamsAllowed()) {
     if (aParams.mMozSystem)
@@ -1740,6 +1768,7 @@ void XMLHttpRequestWorker::Open(const nsACString& aMethod,
     return;
   }
 
+  bool alsoOverrideMimeType = false;
   if (mProxy) {
     MaybeDispatchPrematureAbortEvents(aRv);
     if (aRv.Failed()) {
@@ -1753,13 +1782,23 @@ void XMLHttpRequestWorker::Open(const nsACString& aMethod,
     }
     mProxy = new Proxy(this, clientInfo.ref(), mWorkerPrivate->GetController(),
                        mMozAnon, mMozSystem);
+    alsoOverrideMimeType = true;
   }
 
   mProxy->mOuterEventStreamId++;
 
+  UniquePtr<SerializedStackHolder> stack;
+  if (mWorkerPrivate->IsWatchedByDevtools()) {
+    if (JSContext* cx = nsContentUtils::GetCurrentJSContext()) {
+      stack = GetCurrentStackForNetMonitor(cx);
+    }
+  }
+
   RefPtr<OpenRunnable> runnable = new OpenRunnable(
       mWorkerPrivate, mProxy, aMethod, aUrl, aUser, aPassword,
-      mBackgroundRequest, mWithCredentials, mTimeout, mResponseType);
+      mBackgroundRequest, mWithCredentials, mTimeout, mResponseType,
+      alsoOverrideMimeType ? mMimeTypeOverride : VoidString(),
+      std::move(stack));
 
   ++mProxy->mOpenCount;
   runnable->Dispatch(Canceling, aRv);
@@ -1876,7 +1915,7 @@ XMLHttpRequestUpload* XMLHttpRequestWorker::GetUpload(ErrorResult& aRv) {
   }
 
   if (!mUpload) {
-    mUpload = new XMLHttpRequestUpload();
+    mUpload = new XMLHttpRequestUpload(this);
 
     if (!mUpload) {
       aRv.Throw(NS_ERROR_FAILURE);
@@ -2118,20 +2157,20 @@ void XMLHttpRequestWorker::OverrideMimeType(const nsAString& aMimeType,
     return;
   }
 
-  // We're supposed to throw if the state is not OPENED or HEADERS_RECEIVED. We
-  // can detect OPENED really easily but we can't detect HEADERS_RECEIVED in a
-  // non-racy way until the XHR state machine actually runs on this thread
-  // (bug 671047). For now we're going to let this work only if the Send()
-  // method has not been called, unless the send has been aborted.
-  if (!mProxy || (SendInProgress() &&
-                  (mProxy->mSeenLoadStart || mStateData.mReadyState > 1))) {
+  // We're supposed to throw if the state is LOADING or DONE.
+  if (mStateData.mReadyState == XMLHttpRequest_Binding::LOADING ||
+      mStateData.mReadyState == XMLHttpRequest_Binding::DONE) {
     aRv.Throw(NS_ERROR_DOM_INVALID_STATE_ERR);
     return;
   }
 
-  RefPtr<OverrideMimeTypeRunnable> runnable =
-      new OverrideMimeTypeRunnable(mWorkerPrivate, mProxy, aMimeType);
-  runnable->Dispatch(Canceling, aRv);
+  mMimeTypeOverride = aMimeType;
+
+  if (mProxy) {
+    RefPtr<OverrideMimeTypeRunnable> runnable =
+        new OverrideMimeTypeRunnable(mWorkerPrivate, mProxy, aMimeType);
+    runnable->Dispatch(Canceling, aRv);
+  }
 }
 
 void XMLHttpRequestWorker::SetResponseType(

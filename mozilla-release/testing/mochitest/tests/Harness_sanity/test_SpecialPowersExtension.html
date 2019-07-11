@@ -2,7 +2,7 @@
 <html>
 <head>
   <title>Test for SpecialPowers extension</title>
-  <script type="text/javascript" src="/tests/SimpleTest/SimpleTest.js"></script>
+  <script src="/tests/SimpleTest/SimpleTest.js"></script>
   <link rel="stylesheet" type="text/css" href="/tests/SimpleTest/test.css" />
 </head>
 <body onload="starttest();">
@@ -59,7 +59,7 @@ function starttest(){
   } catch (ex) {
     retVal = ex;
   }
-  is(retVal, "Error getting pref 'extensions.checkCompat0123456789'", "received an exception trying to get an unset preference value");
+  is(retVal.message, "Error getting pref 'extensions.checkCompat0123456789'", "received an exception trying to get an unset preference value");
 
   SpecialPowers.addChromeEventListener("TestEvent", testEventListener, true, true);
   SpecialPowers.addChromeEventListener("TestEvent", testEventListener2, true, false);

@@ -44,6 +44,7 @@
 #include "mozilla/net/NeckoChannelParams.h"
 #include "mozilla/StaticPrefs.h"
 #include "mozilla/Unused.h"
+#include "nsIReferrerInfo.h"
 
 using namespace mozilla;
 using namespace mozilla::dom;
@@ -1248,30 +1249,23 @@ class FetchEventRunnable : public ExtendableFunctionalEventWorkerRunnable,
     uint32_t loadFlags;
     rv = channel->GetLoadFlags(&loadFlags);
     NS_ENSURE_SUCCESS(rv, rv);
-    nsCOMPtr<nsILoadInfo> loadInfo;
-    rv = channel->GetLoadInfo(getter_AddRefs(loadInfo));
-    NS_ENSURE_SUCCESS(rv, rv);
-    NS_ENSURE_STATE(loadInfo);
+    nsCOMPtr<nsILoadInfo> loadInfo = channel->LoadInfo();
     mContentPolicyType = loadInfo->InternalContentPolicyType();
 
     nsCOMPtr<nsIHttpChannel> httpChannel = do_QueryInterface(channel);
     MOZ_ASSERT(httpChannel, "How come we don't have an HTTP channel?");
 
-    nsAutoCString referrer;
-    // Ignore the return value since the Referer header may not exist.
-    Unused << httpChannel->GetRequestHeader(NS_LITERAL_CSTRING("Referer"),
-                                            referrer);
-    if (!referrer.IsEmpty()) {
-      mReferrer = referrer;
-    } else {
-      // If there's no referrer Header, means the header was omitted for
-      // security/privacy reason.
-      mReferrer = EmptyCString();
-    }
-
+    mReferrer = EmptyCString();
     uint32_t referrerPolicy = 0;
-    rv = httpChannel->GetReferrerPolicy(&referrerPolicy);
-    NS_ENSURE_SUCCESS(rv, rv);
+    nsCOMPtr<nsIReferrerInfo> referrerInfo = httpChannel->GetReferrerInfo();
+    if (referrerInfo) {
+      referrerPolicy = referrerInfo->GetReferrerPolicy();
+      nsCOMPtr<nsIURI> computedReferrer = referrerInfo->GetComputedReferrer();
+      if (computedReferrer) {
+        rv = computedReferrer->GetSpec(mReferrer);
+        NS_ENSURE_SUCCESS(rv, rv);
+      }
+    }
     switch (referrerPolicy) {
       case nsIHttpChannel::REFERRER_POLICY_UNSET:
         mReferrerPolicy = ReferrerPolicy::_empty;
@@ -1729,13 +1723,15 @@ nsresult ServiceWorkerPrivate::SpawnWorkerIfNeeded(WakeUpReason aWhy,
   }
   info.mLoadingPrincipal = info.mPrincipal;
 
-  nsContentUtils::StorageAccess access =
-      nsContentUtils::StorageAllowedForServiceWorker(info.mPrincipal);
-  info.mStorageAllowed =
-      access > nsContentUtils::StorageAccess::ePrivateBrowsing;
+  // StoragePrincipal for ServiceWorkers is equal to mPrincipal because, at the
+  // moment, ServiceWorkers are not exposed in partitioned contexts.
+  info.mStoragePrincipal = info.mPrincipal;
 
   info.mCookieSettings = mozilla::net::CookieSettings::Create();
   MOZ_ASSERT(info.mCookieSettings);
+
+  info.mStorageAccess = nsContentUtils::StorageAllowedForServiceWorker(
+      info.mPrincipal, info.mCookieSettings);
 
   info.mOriginAttributes = mInfo->GetOriginAttributes();
 
@@ -1753,7 +1749,8 @@ nsresult ServiceWorkerPrivate::SpawnWorkerIfNeeded(WakeUpReason aWhy,
 
   WorkerPrivate::OverrideLoadInfoLoadGroup(info, info.mPrincipal);
 
-  rv = info.SetPrincipalOnMainThread(info.mPrincipal, info.mLoadGroup);
+  rv = info.SetPrincipalsOnMainThread(info.mPrincipal, info.mStoragePrincipal,
+                                      info.mLoadGroup);
   if (NS_WARN_IF(NS_FAILED(rv))) {
     return rv;
   }

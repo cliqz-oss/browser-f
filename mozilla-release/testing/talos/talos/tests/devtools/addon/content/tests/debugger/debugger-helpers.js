@@ -9,7 +9,7 @@ const { openToolboxAndLog, reloadPageAndLog } = require("../head");
 /*
  * These methods are used for working with debugger state changes in order
  * to make it easier to manipulate the ui and test different behavior. These
- * methods roughly reflect those found in debugger/new/test/mochi/head.js with
+ * methods roughly reflect those found in debugger/test/mochi/head.js with
  * a few exceptions. The `dbg` object is not exactly the same, and the methods
  * have been simplified. We may want to consider unifying them in the future
  */
@@ -78,8 +78,8 @@ async function waitUntil(predicate, msg) {
 }
 
 function findSource(dbg, url) {
-  const sources = dbg.selectors.getSources(dbg.getState());
-  return Object.values(sources).find(s => (s.url || "").includes(url));
+  const sources = dbg.selectors.getSourceList(dbg.getState());
+  return sources.find(s => (s.url || "").includes(url));
 }
 
 function getCM(dbg) {
@@ -100,15 +100,12 @@ function waitForText(dbg, url, text) {
   }, "text is visible");
 }
 
-function waitForMetaData(dbg) {
+function waitForSymbols(dbg) {
   return waitUntil(
     () => {
       const state = dbg.store.getState();
       const source = dbg.selectors.getSelectedSource(state);
-      // wait for metadata -- this involves parsing the file to determine its type.
-      // if the object is empty, the data has not yet loaded
-      const metaData = dbg.selectors.getSourceMetaData(state, source.id);
-      return !!Object.keys(metaData).length;
+      return dbg.selectors.hasSymbols(state, source);
     },
     "has file metadata"
   );
@@ -182,13 +179,13 @@ function selectSource(dbg, url) {
   dump(`Selecting source: ${url}\n`);
   const line = 1;
   const source = findSource(dbg, url);
-  dbg.actions.selectLocation({ sourceId: source.id, line });
+  const cx = dbg.selectors.getContext(dbg.getState());
+  dbg.actions.selectLocation(cx, { sourceId: source.id, line });
   return waitForState(
     dbg,
     state => {
-      const source = dbg.selectors.getSelectedSource(state);
-      const isLoaded = source && source.loadedState === "loaded";
-      if (!isLoaded) {
+      const { source, content } = dbg.selectors.getSelectedSourceWithContent(state);
+      if (!content) {
         return false;
       }
 
@@ -219,7 +216,7 @@ async function openDebuggerAndLog(label, expected) {
     await waitForSource(dbg, expected.sourceURL);
     await selectSource(dbg, expected.file);
     await waitForText(dbg, expected.file, expected.text);
-    await waitForMetaData(dbg);
+    await waitForSymbols(dbg);
   };
 
   const toolbox = await openToolboxAndLog(label + ".jsdebugger", "jsdebugger", onLoad);
@@ -234,7 +231,7 @@ async function reloadDebuggerAndLog(label, toolbox, expected) {
     await waitForDispatch(dbg, "NAVIGATE");
     await waitForSources(dbg, expected.sources);
     await waitForText(dbg, expected.file, expected.text);
-    await waitForMetaData(dbg);
+    await waitForSymbols(dbg);
   };
   await reloadPageAndLog(`${label}.jsdebugger`, toolbox, onReload);
 }
@@ -250,9 +247,8 @@ async function addBreakpoint(dbg, line, url) {
 
   await selectSource(dbg, url);
 
-  const onDispatched = waitForDispatch(dbg, "ADD_BREAKPOINT");
-  dbg.actions.addBreakpoint(location);
-  return onDispatched;
+  const cx = dbg.selectors.getContext(dbg.getState());
+  await dbg.actions.addBreakpoint(cx, location);
 }
 exports.addBreakpoint = addBreakpoint;
 
@@ -264,7 +260,8 @@ async function removeBreakpoints(dbg, line, url) {
     dbg,
     state => dbg.selectors.getBreakpointCount(state) === 0
   );
-  await dbg.actions.removeBreakpoints(breakpoints);
+  const cx = dbg.selectors.getContext(dbg.getState());
+  await dbg.actions.removeBreakpoints(cx, breakpoints);
   return onBreakpointsCleared;
 }
 exports.removeBreakpoints = removeBreakpoints;
@@ -279,14 +276,16 @@ exports.pauseDebugger = pauseDebugger;
 
 async function resume(dbg) {
   const onResumed = waitForResumed(dbg);
-  dbg.actions.resume();
+  const cx = dbg.selectors.getThreadContext(dbg.getState());
+  dbg.actions.resume(cx);
   return onResumed;
 }
 exports.resume = resume;
 
 async function step(dbg, stepType) {
   const resumed = waitForResumed(dbg);
-  dbg.actions[stepType]();
+  const cx = dbg.selectors.getThreadContext(dbg.getState());
+  dbg.actions[stepType](cx);
   await resumed;
   return waitForPaused(dbg);
 }

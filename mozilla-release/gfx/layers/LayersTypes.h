@@ -42,10 +42,6 @@ template <typename T>
 struct ParamTraits;
 }  // namespace IPC
 
-namespace android {
-class MOZ_EXPORT GraphicBuffer;
-}  // namespace android
-
 namespace mozilla {
 namespace layers {
 
@@ -365,7 +361,7 @@ typedef Maybe<LayerRect> MaybeLayerRect;
 // This is used to communicate Layers across IPC channels. The Handle is valid
 // for layers in the same PLayerTransaction. Handles are created by
 // ClientLayerManager, and are cached in LayerTransactionParent on first use.
-class LayerHandle {
+class LayerHandle final {
   friend struct IPC::ParamTraits<mozilla::layers::LayerHandle>;
 
  public:
@@ -387,7 +383,7 @@ class LayerHandle {
 // valid for layers in the same PLayerTransaction or PImageBridge. Handles are
 // created by ClientLayerManager or ImageBridgeChild, and are cached in the
 // parent side on first use.
-class CompositableHandle {
+class CompositableHandle final {
   friend struct IPC::ParamTraits<mozilla::layers::CompositableHandle>;
 
  public:
@@ -415,7 +411,8 @@ MOZ_DEFINE_ENUM_CLASS_WITH_BASE(ScrollDirection, uint32_t, (
 MOZ_DEFINE_ENUM_CLASS_WITH_BASE(CompositionPayloadType, uint8_t, (
   eKeyPress,
   eAPZScroll,
-  eAPZPinchZoom
+  eAPZPinchZoom,
+  eContentPaint
 ));
 // clang-format on
 

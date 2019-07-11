@@ -17,9 +17,9 @@ use std::hash::{Hash, Hasher};
 use std::path::PathBuf;
 use std::sync::Arc;
 // local imports
-use api::IdNamespace;
-use color::ColorU;
-use units::LayoutPoint;
+use crate::api::IdNamespace;
+use crate::color::ColorU;
+use crate::units::LayoutPoint;
 
 
 #[cfg(not(target_os = "macos"))]
@@ -96,7 +96,7 @@ pub enum FontTemplate {
     Native(NativeFontHandle),
 }
 
-#[repr(u32)]
+#[repr(u8)]
 #[derive(Debug, Copy, Clone, Hash, Eq, MallocSizeOf, PartialEq, Serialize, Deserialize, Ord, PartialOrd)]
 pub enum FontRenderMode {
     Mono = 0,

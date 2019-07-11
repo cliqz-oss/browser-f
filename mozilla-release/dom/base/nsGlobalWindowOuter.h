@@ -68,7 +68,7 @@ class nsIScrollableFrame;
 class nsIControllers;
 class nsIScriptContext;
 class nsIScriptTimeoutHandler;
-class nsITabChild;
+class nsIBrowserChild;
 class nsITimeoutHandler;
 class nsIWebBrowserChrome;
 class mozIDOMWindowProxy;
@@ -231,10 +231,12 @@ class nsGlobalWindowOuter final : public mozilla::dom::EventTarget,
   }
 
   // nsIGlobalJSObjectHolder
-  virtual JSObject* GetGlobalJSObject() override;
-
-  // nsIScriptGlobalObject
-  JSObject* FastGetGlobalJSObject() const { return GetWrapperPreserveColor(); }
+  JSObject* GetGlobalJSObject() final {
+    return GetWrapper();
+  }
+  JSObject* GetGlobalJSObjectPreserveColor() const final {
+    return GetWrapperPreserveColor();
+  }
 
   virtual nsresult EnsureScriptEnvironment() override;
 
@@ -246,6 +248,8 @@ class nsGlobalWindowOuter final : public mozilla::dom::EventTarget,
 
   // nsIScriptObjectPrincipal
   virtual nsIPrincipal* GetPrincipal() override;
+
+  virtual nsIPrincipal* GetEffectiveStoragePrincipal() override;
 
   // nsIDOMWindow
   NS_DECL_NSIDOMWINDOW
@@ -321,7 +325,7 @@ class nsGlobalWindowOuter final : public mozilla::dom::EventTarget,
   // Outer windows only.
   virtual void EnsureSizeAndPositionUpToDate() override;
 
-  virtual void EnterModalState() override;
+  MOZ_CAN_RUN_SCRIPT_BOUNDARY virtual void EnterModalState() override;
   virtual void LeaveModalState() override;
 
   // Outer windows only.
@@ -410,8 +414,6 @@ class nsGlobalWindowOuter final : public mozilla::dom::EventTarget,
 
   nsIScriptContext* GetContextInternal();
 
-  nsGlobalWindowOuter* GetOuterWindowInternal();
-
   nsGlobalWindowInner* GetCurrentInnerWindowInternal() const;
 
   nsGlobalWindowInner* EnsureInnerWindowInternal();
@@ -457,9 +459,12 @@ class nsGlobalWindowOuter final : public mozilla::dom::EventTarget,
       Document* aDoc, nsIURI* aPopupURI, const nsAString& aPopupWindowName,
       const nsAString& aPopupWindowFeatures) override;
 
-  virtual void NotifyContentBlockingEvent(unsigned aEvent, nsIChannel* aChannel,
-                                          bool aBlocked,
-                                          nsIURI* aURIHint) override;
+  virtual void NotifyContentBlockingEvent(
+      unsigned aEvent, nsIChannel* aChannel, bool aBlocked, nsIURI* aURIHint,
+      nsIChannel* aTrackingChannel,
+      const mozilla::Maybe<
+          mozilla::AntiTrackingCommon::StorageAccessGrantedReason>& aReason)
+      override;
 
   void AddSizeOfIncludingThis(nsWindowSizes& aWindowSizes) const;
 
@@ -598,6 +603,7 @@ class nsGlobalWindowOuter final : public mozilla::dom::EventTarget,
   double GetScrollXOuter();
   double GetScrollYOuter();
 
+  MOZ_CAN_RUN_SCRIPT_BOUNDARY
   void SizeToContentOuter(mozilla::dom::CallerType aCallerType,
                           mozilla::ErrorResult& aError);
   nsIControllers* GetControllersOuter(mozilla::ErrorResult& aError);
@@ -848,6 +854,7 @@ class nsGlobalWindowOuter final : public mozilla::dom::EventTarget,
   // Arguments to this function should have values in app units
   void SetCSSViewportWidthAndHeight(nscoord width, nscoord height);
   // Arguments to this function should have values in device pixels
+  MOZ_CAN_RUN_SCRIPT_BOUNDARY
   nsresult SetDocShellWidthAndHeight(int32_t width, int32_t height);
 
   static bool CanSetProperty(const char* aPrefName);
@@ -856,6 +863,7 @@ class nsGlobalWindowOuter final : public mozilla::dom::EventTarget,
                                     nsIPrincipal* aSubjectPrincipal);
 
   // Outer windows only.
+  MOZ_CAN_RUN_SCRIPT_BOUNDARY
   bool CanMoveResizeWindows(mozilla::dom::CallerType aCallerType);
 
   // If aDoFlush is true, we'll flush our own layout; otherwise we'll try to
@@ -1098,6 +1106,7 @@ class nsGlobalWindowOuter final : public mozilla::dom::EventTarget,
   RefPtr<mozilla::dom::Storage> mLocalStorage;
 
   nsCOMPtr<nsIPrincipal> mDocumentPrincipal;
+  nsCOMPtr<nsIPrincipal> mDocumentStoragePrincipal;
 
 #ifdef DEBUG
   uint32_t mSerial;
@@ -1135,7 +1144,7 @@ class nsGlobalWindowOuter final : public mozilla::dom::EventTarget,
   // All accesses to this field should be guarded by a check of mIsChrome.
   struct ChromeFields {
     nsCOMPtr<nsIBrowserDOMWindow> mBrowserDOMWindow;
-    // A weak pointer to the nsPresShell that we are doing fullscreen for.
+    // A weak pointer to the PresShell that we are doing fullscreen for.
     // The pointer being set indicates we've set the IsInFullscreenChange
     // flag on this pres shell.
     nsWeakPtr mFullscreenPresShell;
@@ -1182,22 +1191,18 @@ inline nsIScriptContext* nsGlobalWindowOuter::GetContextInternal() {
   return mContext;
 }
 
-inline nsGlobalWindowOuter* nsGlobalWindowOuter::GetOuterWindowInternal() {
-  return nsGlobalWindowOuter::Cast(GetOuterWindow());
-}
-
 inline nsGlobalWindowInner* nsGlobalWindowOuter::GetCurrentInnerWindowInternal()
     const {
   return nsGlobalWindowInner::Cast(mInnerWindow);
 }
 
 inline nsGlobalWindowInner* nsGlobalWindowOuter::EnsureInnerWindowInternal() {
-  return nsGlobalWindowInner::Cast(AsOuter()->EnsureInnerWindow());
+  return nsGlobalWindowInner::Cast(EnsureInnerWindow());
 }
 
 inline bool nsGlobalWindowOuter::IsTopLevelWindow() {
   nsPIDOMWindowOuter* parentWindow = GetScriptableTop();
-  return parentWindow == this->AsOuter();
+  return parentWindow == this;
 }
 
 inline bool nsGlobalWindowOuter::IsPopupSpamWindow() { return mIsPopupSpam; }
@@ -1208,7 +1213,7 @@ inline bool nsGlobalWindowOuter::IsFrame() {
 
 inline void nsGlobalWindowOuter::MaybeClearInnerWindow(
     nsGlobalWindowInner* aExpectedInner) {
-  if (mInnerWindow == aExpectedInner->AsInner()) {
+  if (mInnerWindow == aExpectedInner) {
     mInnerWindow = nullptr;
   }
 }

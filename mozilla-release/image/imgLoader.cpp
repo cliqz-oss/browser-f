@@ -17,6 +17,7 @@
 #include "mozilla/Preferences.h"
 #include "mozilla/ChaosMode.h"
 #include "mozilla/LoadInfo.h"
+#include "mozilla/StaticPrefs.h"
 
 #include "nsImageModule.h"
 #include "imgRequestProxy.h"
@@ -56,6 +57,7 @@
 #include "Image.h"
 #include "gfxPrefs.h"
 #include "prtime.h"
+#include "ReferrerInfo.h"
 
 // we want to explore making the document own the load group
 // so we can associate the document URI with the load group.
@@ -789,7 +791,6 @@ static nsresult NewImageChannel(
   // If all of the proxy requests are canceled then this request should be
   // canceled too.
   //
-  aLoadFlags |= nsIChannel::LOAD_CLASSIFY_URI;
 
   nsCOMPtr<nsINode> requestingNode = do_QueryInterface(aRequestingContext);
 
@@ -884,7 +885,9 @@ static nsresult NewImageChannel(
     NS_ENSURE_TRUE(httpChannelInternal, NS_ERROR_UNEXPECTED);
     rv = httpChannelInternal->SetDocumentURI(aInitialDocumentURI);
     MOZ_ASSERT(NS_SUCCEEDED(rv));
-    rv = newHttpChannel->SetReferrerWithPolicy(aReferringURI, aReferrerPolicy);
+    nsCOMPtr<nsIReferrerInfo> referrerInfo =
+        new ReferrerInfo(aReferringURI, aReferrerPolicy);
+    rv = newHttpChannel->SetReferrerInfoWithoutClone(referrerInfo);
     MOZ_ASSERT(NS_SUCCEEDED(rv));
   }
 
@@ -1270,7 +1273,6 @@ nsresult imgLoader::InitCache() {
   }
 
   os->AddObserver(this, "memory-pressure", false);
-  os->AddObserver(this, "chrome-flush-skin-caches", false);
   os->AddObserver(this, "chrome-flush-caches", false);
   os->AddObserver(this, "last-pb-context-exited", false);
   os->AddObserver(this, "profile-before-change", false);
@@ -1308,8 +1310,7 @@ imgLoader::Observe(nsISupports* aSubject, const char* aTopic,
 
   } else if (strcmp(aTopic, "memory-pressure") == 0) {
     MinimizeCaches();
-  } else if (strcmp(aTopic, "chrome-flush-skin-caches") == 0 ||
-             strcmp(aTopic, "chrome-flush-caches") == 0) {
+  } else if (strcmp(aTopic, "chrome-flush-caches") == 0) {
     MinimizeCaches();
     ClearChromeImageCache();
   } else if (strcmp(aTopic, "last-pb-context-exited") == 0) {
@@ -2010,6 +2011,17 @@ void imgLoader::RemoveFromUncachedImages(imgRequest* aRequest) {
   mUncachedImages.RemoveEntry(aRequest);
 }
 
+bool imgLoader::PreferLoadFromCache(nsIURI* aURI) const {
+  // If we are trying to load an image from a protocol that doesn't support
+  // caching (e.g. thumbnails via the moz-page-thumb:// protocol, or icons via
+  // the moz-extension:// protocol), load it directly from the cache to prevent
+  // re-decoding the image. See Bug 1373258.
+  // TODO: Bug 1406134
+  bool match = false;
+  return (NS_SUCCEEDED(aURI->SchemeIs("moz-page-thumb", &match)) && match) ||
+         (NS_SUCCEEDED(aURI->SchemeIs("moz-extension", &match)) && match);
+}
+
 #define LOAD_FLAGS_CACHE_MASK \
   (nsIRequest::LOAD_BYPASS_CACHE | nsIRequest::LOAD_FROM_CACHE)
 
@@ -2094,14 +2106,7 @@ nsresult imgLoader::LoadImage(
   // Get the default load flags from the loadgroup (if possible)...
   if (aLoadGroup) {
     aLoadGroup->GetLoadFlags(&requestFlags);
-
-    // If we are trying to load a thumbnail via the moz-page-thumb:// protocol,
-    // load it directly from the cache to prevent re-decoding the image. See Bug
-    // 1373258
-    // TODO: Bug 1406134
-    bool isThumbnailScheme = false;
-    if (NS_SUCCEEDED(aURI->SchemeIs("moz-page-thumb", &isThumbnailScheme)) &&
-        isThumbnailScheme) {
+    if (PreferLoadFromCache(aURI)) {
       requestFlags |= nsIRequest::LOAD_FROM_CACHE;
     }
   }
@@ -2225,7 +2230,7 @@ nsresult imgLoader::LoadImage(
         cos->AddClassFlags(nsIClassOfService::UrgentStart);
       }
 
-      if (nsContentUtils::IsTailingEnabled() &&
+      if (StaticPrefs::network_http_tailing_enabled() &&
           aContentPolicyType == nsIContentPolicy::TYPE_INTERNAL_IMAGE_FAVICON) {
         cos->AddClassFlags(nsIClassOfService::Throttleable |
                            nsIClassOfService::Tail);
@@ -2378,13 +2383,7 @@ nsresult imgLoader::LoadImageWithChannel(nsIChannel* channel,
   nsLoadFlags requestFlags = nsIRequest::LOAD_NORMAL;
   channel->GetLoadFlags(&requestFlags);
 
-  // If we are trying to load a thumbnail via the moz-page-thumb:// protocol,
-  // load it directly from the cache to prevent re-decoding the image. See Bug
-  // 1373258
-  // TODO: Bug 1406134
-  bool isThumbnailScheme = false;
-  if (NS_SUCCEEDED(uri->SchemeIs("moz-page-thumb", &isThumbnailScheme)) &&
-      isThumbnailScheme) {
+  if (PreferLoadFromCache(uri)) {
     requestFlags |= nsIRequest::LOAD_FROM_CACHE;
   }
 

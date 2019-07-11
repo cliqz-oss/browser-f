@@ -525,8 +525,7 @@ nsresult FetchDriver::HttpFetch(
   MOZ_ASSERT(mLoadGroup);
   nsCOMPtr<nsIChannel> chan;
 
-  nsLoadFlags loadFlags =
-      nsIRequest::LOAD_BACKGROUND | bypassFlag | nsIChannel::LOAD_CLASSIFY_URI;
+  nsLoadFlags loadFlags = nsIRequest::LOAD_BACKGROUND | bypassFlag;
   if (mDocument) {
     MOZ_ASSERT(mDocument->NodePrincipal() == mPrincipal);
     MOZ_ASSERT(mDocument->CookieSettings() == mCookieSettings);
@@ -607,7 +606,7 @@ nsresult FetchDriver::HttpFetch(
       nsCOMPtr<nsILoadInfo> loadInfo = httpChan->LoadInfo();
       bool isPrivate = loadInfo->GetOriginAttributes().mPrivateBrowsingId > 0;
       net::ReferrerPolicy referrerPolicy = static_cast<net::ReferrerPolicy>(
-          NS_GetDefaultReferrerPolicy(httpChan, uri, isPrivate));
+          ReferrerInfo::GetDefaultReferrerPolicy(httpChan, uri, isPrivate));
       mRequest->SetReferrerPolicy(referrerPolicy);
     }
 
@@ -693,7 +692,7 @@ nsresult FetchDriver::HttpFetch(
     loadInfo->SetCorsPreflightInfo(unsafeHeaders, false);
   }
 
-  if (mIsTrackingFetch && nsContentUtils::IsTailingEnabled() && cos) {
+  if (mIsTrackingFetch && StaticPrefs::network_http_tailing_enabled() && cos) {
     cos->AddClassFlags(nsIClassOfService::Throttleable |
                        nsIClassOfService::Tail);
   }

@@ -40,9 +40,7 @@ window.gActivityStreamStrings = {
   "section_disclaimer_topstories_buttontext": "ਠੀਕ ਹੈ, ਸਮਝ ਲਿਆ",
   "prefs_home_header": "ਫਾਇਰਫਾਕਸ ਮੁੱਖ ਪੰਨਾ",
   "prefs_home_description": "ਉਹ ਸਮੱਗਰੀ ਚੁਣੋ ਜੋ ਤੁਸੀਂ ਆਪਣੇ ਫਾਇਰਫਾਕਸ ਮੁੱਖ ਪੰਨੇ 'ਤੇ ਚਾਹੁੰਦੇ ਹੋ।",
-  "prefs_content_discovery_header": "ਫਾਇਰਫਾਕਸ ਮੁੱਖ ਸਫ਼ਾ",
   "prefs_content_discovery_description": "Content Discovery in Firefox Home allows you to discover high-quality, relevant articles from across the web.",
-  "prefs_content_discovery_button": "ਸਮੱਗਰੀ ਖੋਜ ਬੰਦ ਕਰੋ",
   "prefs_section_rows_option": "{num} ਕਤਾਰ;{num} ਕਤਾਰਾਂ",
   "prefs_search_header": "ਵੈੱਬ ਖੋਜ",
   "prefs_topsites_description": "ਤੁਹਾਡੇ ਵੱਲੋਂ ਸਭ ਤੋਂ ਵੱਧ ਵੇਖੀਆਂ ਸਾਈਟਾਂ",
@@ -107,7 +105,5 @@ window.gActivityStreamStrings = {
   "firstrun_privacy_notice": "ਪਰਦੇਦਾਰੀ ਦਾ ਨੋਟਿਸ",
   "firstrun_continue_to_login": "ਜਾਰੀ ਰੱਖੋ",
   "firstrun_skip_login": "ਇਹ ਪਗ਼ ਛੱਡੋ",
-  "context_menu_title": "ਮੇਨੂ ਖੋਲ੍ਹੋ",
-  "manual_migration_cancel_button": "ਨਹੀਂ, ਧੰਨਵਾਦ",
-  "manual_migration_import_button": "ਹੁਣੇ ਇੰਪੋਰਟ ਕਰੋ"
+  "context_menu_title": "ਮੇਨੂ ਖੋਲ੍ਹੋ"
 };

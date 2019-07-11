@@ -40,6 +40,7 @@ NSS build tool options:
                      (requires the gold linker, use clang-3.8 for SAW)
     --no-zdefs       don't set -Wl,-z,defs
     --test           ignore map files and export everything we have
+    --static         create static libraries and use static linking
     --ct-verif       build with valgrind for ct-verif
     --nspr           force a rebuild of NSPR
     --with-nspr      use the NSPR build at the given locations
@@ -51,4 +52,6 @@ NSS build tool options:
     --enable-libpkix make libpkix part of the build
     --mozpkix-only   build only static mozpkix and mozpkix-test libraries
                      support for this build option is limited
+    --disable-keylog disable support for logging key data to a file specified
+                     by the SSLKEYLOGFILE environment variable
     -D<gyp-option>   pass an option directly to gyp

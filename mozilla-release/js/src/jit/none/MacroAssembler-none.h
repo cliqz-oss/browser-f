@@ -44,8 +44,8 @@ static constexpr Register CallTempReg3{Registers::invalid_reg};
 static constexpr Register CallTempReg4{Registers::invalid_reg};
 static constexpr Register CallTempReg5{Registers::invalid_reg};
 static constexpr Register InvalidReg{Registers::invalid_reg};
-  static constexpr Register CallTempNonArgRegs[] = {InvalidReg, InvalidReg};
-  static const uint32_t NumCallTempNonArgRegs =
+static constexpr Register CallTempNonArgRegs[] = {InvalidReg, InvalidReg};
+static const uint32_t NumCallTempNonArgRegs =
     mozilla::ArrayLength(CallTempNonArgRegs);
 
 static constexpr Register IntArgReg0{Registers::invalid_reg};
@@ -173,6 +173,8 @@ class Assembler : public AssemblerShared {
                                    const Disassembler::HeapAccess& heapAccess) {
     MOZ_CRASH();
   }
+
+  void setUnlimitedBuffer() { MOZ_CRASH(); }
 };
 
 class Operand {
@@ -287,6 +289,10 @@ class MacroAssemblerNone : public Assembler {
   void loadValue(T, S) {
     MOZ_CRASH();
   }
+  template <typename T, typename S>
+  void loadUnalignedValue(T, S) {
+    MOZ_CRASH();
+  }
   template <typename T>
   void pushValue(const T&) {
     MOZ_CRASH();
@@ -299,7 +305,7 @@ class MacroAssemblerNone : public Assembler {
   void tagValue(JSValueType, Register, ValueOperand) { MOZ_CRASH(); }
   void retn(Imm32 n) { MOZ_CRASH(); }
   template <typename T>
-  void push(T) {
+  void push(const T&) {
     MOZ_CRASH();
   }
   template <typename T>
@@ -343,7 +349,7 @@ class MacroAssemblerNone : public Assembler {
     MOZ_CRASH();
   }
   template <typename T>
-  void move32(T, Register) {
+  void move32(const T&, Register) {
     MOZ_CRASH();
   }
   template <typename T, typename S>

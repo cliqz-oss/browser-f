@@ -40,9 +40,7 @@ window.gActivityStreamStrings = {
   "section_disclaimer_topstories_buttontext": "En ordo, mi komprenis",
   "prefs_home_header": "Enhavo de la hejmekrano de Firefox",
   "prefs_home_description": "Elektu la enhavon, kiun vi volas en via hejmekrano de Firefox.",
-  "prefs_content_discovery_header": "Eka paĝo de Firefox",
   "prefs_content_discovery_description": "Malkovro de enhavo en la eka paĝo de Firefox permesas al vi trovi altkvalitajn elstarajn artikolojn el la tuta teksaĵo.",
-  "prefs_content_discovery_button": "Malaktivigi malkovron de enhavo",
   "prefs_section_rows_option": "{num} vico;{num} vicoj",
   "prefs_search_header": "Serĉo en la reto",
   "prefs_topsites_description": "Viaj plej vizititaj retejoj",
@@ -107,8 +105,5 @@ window.gActivityStreamStrings = {
   "firstrun_privacy_notice": "rimarkon pri privateco",
   "firstrun_continue_to_login": "Daŭrigi",
   "firstrun_skip_login": "Pretersalti tiun ĉi paŝon",
-  "context_menu_title": "Malfermi menuon",
-  "manual_migration_explanation2": "Provu Firefox kun la legosignoj, historio kaj pasvortoj de alia retumilo.",
-  "manual_migration_cancel_button": "Ne, dankon",
-  "manual_migration_import_button": "Importi nun"
+  "context_menu_title": "Malfermi menuon"
 };

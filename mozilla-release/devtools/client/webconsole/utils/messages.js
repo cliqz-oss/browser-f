@@ -195,6 +195,7 @@ function transformConsoleAPICallPacket(packet) {
     private: message.private,
     executionPoint: message.executionPoint,
     logpointId: message.logpointId,
+    chromeContext: message.chromeContext,
   });
 }
 
@@ -205,6 +206,7 @@ function transformNavigationMessagePacket(packet) {
     type: MESSAGE_TYPE.NAVIGATION_MARKER,
     level: MESSAGE_LEVEL.LOG,
     messageText: l10n.getFormatStr("webconsole.navigated", [url]),
+    timeStamp: Date.now(),
   });
 }
 
@@ -221,6 +223,7 @@ function transformLogMessagePacket(packet) {
     messageText: message,
     timeStamp,
     private: message.private,
+    chromeContext: message.chromeContext,
   });
 }
 
@@ -244,9 +247,11 @@ function transformPageErrorPacket(packet) {
   const messageSource = matchesCSS ? MESSAGE_SOURCE.CSS
                                   : MESSAGE_SOURCE.JAVASCRIPT;
   return new ConsoleMessage({
+    innerWindowID: pageError.innerWindowID,
     source: messageSource,
     type: MESSAGE_TYPE.LOG,
     level,
+    category: pageError.category,
     messageText: pageError.errorMessage,
     stacktrace: pageError.stacktrace ? pageError.stacktrace : null,
     frame,
@@ -256,6 +261,11 @@ function transformPageErrorPacket(packet) {
     notes: pageError.notes,
     private: pageError.private,
     executionPoint: pageError.executionPoint,
+    chromeContext: pageError.chromeContext,
+    // Backward compatibility: cssSelectors might not be available when debugging
+    // Firefox 67 or older.
+    // Remove `|| ""` when Firefox 68 is on the release channel.
+    cssSelectors: pageError.cssSelectors || "",
   });
 }
 
@@ -276,6 +286,7 @@ function transformNetworkEventPacket(packet) {
     cause: networkEvent.cause,
     private: networkEvent.private,
     securityState: networkEvent.securityState,
+    chromeContext: networkEvent.chromeContext,
   });
 }
 
@@ -285,6 +296,7 @@ function transformEvaluationResultPacket(packet) {
     errorMessageName,
     exceptionDocURL,
     exception,
+    exceptionStack,
     frame,
     result,
     helperResult,
@@ -320,6 +332,7 @@ function transformEvaluationResultPacket(packet) {
     parameters: [parameter],
     errorMessageName,
     exceptionDocURL,
+    stacktrace: exceptionStack,
     frame,
     timeStamp,
     notes,
@@ -427,10 +440,79 @@ function isPacketPrivate(packet) {
   );
 }
 
+function createWarningGroupMessage(id, type, firstMessage) {
+  let messageText;
+  if (type === MESSAGE_TYPE.CONTENT_BLOCKING_GROUP) {
+    messageText = l10n.getStr("webconsole.group.contentBlocked");
+  }
+  return new ConsoleMessage({
+    id,
+    level: MESSAGE_LEVEL.WARN,
+    source: MESSAGE_SOURCE.CONSOLE_FRONTEND,
+    type,
+    messageText,
+    timeStamp: firstMessage.timeStamp,
+    innerWindowID: firstMessage.innerWindowID,
+  });
+}
+
+/**
+ * Get the warningGroup type in which the message could be in.
+ * @param {ConsoleMessage} message
+ * @returns {String|null} null if the message can't be part of a warningGroup.
+ */
+function getWarningGroupType(message) {
+  if (isContentBlockingMessage(message)) {
+    return MESSAGE_TYPE.CONTENT_BLOCKING_GROUP;
+  }
+  return null;
+}
+
+/**
+ * Returns a computed id given a message
+ *
+ * @param {ConsoleMessage} type: the message type, from MESSAGE_TYPE.
+ * @param {Integer} innerWindowID: the message innerWindowID.
+ * @returns {String}
+ */
+function getParentWarningGroupMessageId(message) {
+  return `${message.type}-${message.innerWindowID}`;
+}
+
+/**
+ * Returns true if the message is a warningGroup message (i.e. the "Header").
+ * @param {ConsoleMessage} message
+ * @returns {Boolean}
+ */
+function isWarningGroup(message) {
+  return message.type === MESSAGE_TYPE.CONTENT_BLOCKING_GROUP
+   || message.type === MESSAGE_TYPE.CORS_GROUP
+   || message.type === MESSAGE_TYPE.CSP_GROUP;
+}
+
+/**
+ * Returns true if the message is a content blocking message.
+ * @param {ConsoleMessage} message
+ * @returns {Boolean}
+ */
+function isContentBlockingMessage(message) {
+  const {category} = message;
+  return category == "cookieBlockedPermission" ||
+    category == "cookieBlockedTracker" ||
+    category == "cookieBlockedAll" ||
+    category == "cookieBlockedForeign" ||
+    category == "Tracking Protection";
+}
+
 module.exports = {
+  createWarningGroupMessage,
   getInitialMessageCountForViewport,
+  getParentWarningGroupMessageId,
+  getWarningGroupType,
+  isContentBlockingMessage,
   isGroupType,
   isPacketPrivate,
+  isWarningGroup,
   l10n,
   prepareMessage,
   // Export for use in testing.

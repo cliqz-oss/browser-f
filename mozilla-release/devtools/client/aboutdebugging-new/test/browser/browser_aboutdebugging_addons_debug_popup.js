@@ -7,7 +7,7 @@ Services.scriptloader.loadSubScript(CHROME_URL_ROOT + "helper-addons.js", this);
 
 // There are shutdown issues for which multiple rejections are left uncaught.
 // See bug 1018184 for resolving these issues.
-const { PromiseTestUtils } = scopedCuImport("resource://testing-common/PromiseTestUtils.jsm");
+const { PromiseTestUtils } = ChromeUtils.import("resource://testing-common/PromiseTestUtils.jsm");
 PromiseTestUtils.whitelistRejectionsGlobally(/File closed/);
 
 // Avoid test timeouts that can occur while waiting for the "addon-console-works" message.
@@ -114,15 +114,13 @@ add_task(async function testWebExtensionsToolboxWebConsole() {
     name: ADDON_NAME,
   }, document);
 
-  const target = findDebugTargetByText(ADDON_NAME, document);
-
   info("Open a toolbox to debug the addon");
-  const onToolboxReady = gDevTools.once("toolbox-ready");
+  const { devtoolsTab, devtoolsWindow } =
+    await openAboutDevtoolsToolbox(document, tab, aboutDebuggingWindow, ADDON_NAME);
+  const toolbox = getToolbox(devtoolsWindow);
+
   const onToolboxClose = gDevTools.once("toolbox-destroyed");
-  const inspectButton = target.querySelector(".js-debug-target-inspect-button");
-  inspectButton.click();
-  const toolbox = await onToolboxReady;
-  toolboxTestScript(toolbox);
+  toolboxTestScript(toolbox, devtoolsTab);
 
   info("Wait until the addon popup is opened from the test script");
   await onReadyForOpenPopup;
@@ -155,7 +153,7 @@ add_task(async function testWebExtensionsToolboxWebConsole() {
   await removeTab(tab);
 });
 
-async function toolboxTestScript(toolbox) {
+async function toolboxTestScript(toolbox, devtoolsTab) {
   let jsterm;
   const popupFramePromise = new Promise(resolve => {
     const listener = data => {
@@ -222,10 +220,12 @@ async function toolboxTestScript(toolbox) {
       await waitUntil(() => toolbox.highlighter);
       await Promise.race([toolbox.highlighter.once("node-highlight"), wait(1000)]);
       await waitForNavigated;
-
       await jsterm.execute("myWebExtensionPopupAddonFunction()");
 
-      await toolbox.closeToolbox();
+      info("Wait for all pending requests to settle on the DebuggerClient");
+      await toolbox.target.client.waitForRequestsToSettle();
+
+      await removeTab(devtoolsTab);
     })
     .catch((error) => {
       dump("Error while running code in the browser toolbox process:\n");

@@ -10,6 +10,10 @@ loader.lazyGetter(this, "telemetry", () => new Telemetry());
 loader.lazyGetter(this, "sessionId", () => parseInt(telemetry.msSinceProcessStart(), 10));
 
 const {
+  CONNECT_RUNTIME_CANCEL,
+  CONNECT_RUNTIME_FAILURE,
+  CONNECT_RUNTIME_NOT_RESPONDING,
+  CONNECT_RUNTIME_START,
   CONNECT_RUNTIME_SUCCESS,
   DISCONNECT_RUNTIME_SUCCESS,
   REMOTE_RUNTIMES_UPDATED,
@@ -102,15 +106,18 @@ function onRemoteRuntimesUpdated(action, store) {
   // array.
   for (const oldRuntime of oldRuntimes) {
     const runtimeRemoved = newRuntimes.every(r => r.id !== oldRuntime.id);
-    if (runtimeRemoved) {
+    if (runtimeRemoved && !oldRuntime.isUnplugged) {
       recordEvent("runtime_removed", getRuntimeEventExtras(oldRuntime));
     }
   }
 
+  // Using device names as unique IDs is inaccurate. See Bug 1544582.
   const oldDeviceNames = new Set(oldRuntimes.map(r => r.extra.deviceName));
   for (const oldDeviceName of oldDeviceNames) {
-    const deviceRemoved = newRuntimes.every(r => r.extra.deviceName !== oldDeviceName);
-    if (oldDeviceName && deviceRemoved) {
+    const newRuntime = newRuntimes.find(r => r.extra.deviceName === oldDeviceName);
+    const oldRuntime = oldRuntimes.find(r => r.extra.deviceName === oldDeviceName);
+    const isUnplugged = newRuntime && newRuntime.isUnplugged && !oldRuntime.isUnplugged;
+    if (oldDeviceName && (!newRuntime || isUnplugged)) {
       recordEvent("device_removed", {
         "connection_type": action.runtimeType,
         "device_name": oldDeviceName,
@@ -122,15 +129,19 @@ function onRemoteRuntimesUpdated(action, store) {
   // array.
   for (const newRuntime of newRuntimes) {
     const runtimeAdded = oldRuntimes.every(r => r.id !== newRuntime.id);
-    if (runtimeAdded) {
+    if (runtimeAdded && !newRuntime.isUnplugged) {
       recordEvent("runtime_added", getRuntimeEventExtras(newRuntime));
     }
   }
 
+  // Using device names as unique IDs is inaccurate. See Bug 1544582.
   const newDeviceNames = new Set(newRuntimes.map(r => r.extra.deviceName));
   for (const newDeviceName of newDeviceNames) {
-    const deviceAdded = oldRuntimes.every(r => r.extra.deviceName !== newDeviceName);
-    if (newDeviceName && deviceAdded) {
+    const newRuntime = newRuntimes.find(r => r.extra.deviceName === newDeviceName);
+    const oldRuntime = oldRuntimes.find(r => r.extra.deviceName === newDeviceName);
+    const isPlugged = oldRuntime && oldRuntime.isUnplugged && !newRuntime.isUnplugged;
+
+    if (newDeviceName && (!oldRuntime || isPlugged)) {
       recordEvent("device_added", {
         "connection_type": action.runtimeType,
         "device_name": newDeviceName,
@@ -139,13 +150,41 @@ function onRemoteRuntimesUpdated(action, store) {
   }
 }
 
+function recordConnectionAttempt(connectionId, runtimeId, status, store) {
+  const runtime = findRuntimeById(runtimeId, store.getState().runtimes);
+  if (runtime.type === RUNTIMES.THIS_FIREFOX) {
+    // Only record connection_attempt events for remote runtimes.
+    return;
+  }
+
+  recordEvent("connection_attempt", {
+    "connection_id": connectionId,
+    "connection_type": runtime.type,
+    "runtime_id": getTelemetryRuntimeId(runtimeId),
+    "status": status,
+  });
+}
+
 /**
  * This middleware will record events to telemetry for some specific actions.
  */
 function eventRecordingMiddleware(store) {
   return next => action => {
     switch (action.type) {
+      case CONNECT_RUNTIME_CANCEL:
+        recordConnectionAttempt(action.connectionId, action.id, "cancelled", store);
+        break;
+      case CONNECT_RUNTIME_FAILURE:
+        recordConnectionAttempt(action.connectionId, action.id, "failed", store);
+        break;
+      case CONNECT_RUNTIME_NOT_RESPONDING:
+        recordConnectionAttempt(action.connectionId, action.id, "not responding", store);
+        break;
+      case CONNECT_RUNTIME_START:
+        recordConnectionAttempt(action.connectionId, action.id, "start", store);
+        break;
       case CONNECT_RUNTIME_SUCCESS:
+        recordConnectionAttempt(action.connectionId, action.runtime.id, "success", store);
         onConnectRuntimeSuccess(action, store);
         break;
       case DISCONNECT_RUNTIME_SUCCESS:

@@ -40,9 +40,7 @@ window.gActivityStreamStrings = {
   "section_disclaimer_topstories_buttontext": "Ceart, tha mi agaibh",
   "prefs_home_header": "Susbaint sgrìn mhòr Firefox",
   "prefs_home_description": "Tagh an t-susbaint a bu mhath leat fhaicinn air sgrìn mhòr Firefox",
-  "prefs_content_discovery_header": "Dachaigh Firefox",
   "prefs_content_discovery_description": "Bheir fidreadh susbaint ann am Firefox Home cothrom dhut sàr-artaigealan iomchaidh o fheadh an lìn a lorg.",
-  "prefs_content_discovery_button": "Cuir dheth fidreadh susbaint",
   "prefs_section_rows_option": "{num} ràgh;{num} ràgh;{num} ràghan;{num} ràgh",
   "prefs_search_header": "Lorg air an lìon",
   "prefs_topsites_description": "Na làraichean air an tadhail thu as trice",
@@ -107,8 +105,5 @@ window.gActivityStreamStrings = {
   "firstrun_privacy_notice": "aithris na prìobhaideachd",
   "firstrun_continue_to_login": "Lean air adhart",
   "firstrun_skip_login": "Leum seachad air seo",
-  "context_menu_title": "Fosgail an clàr-taice",
-  "manual_migration_explanation2": "Feuch Firefox leis na comharran-lìn, an eachdraidh ’s na faclan-faire o bhrabhsair eile.",
-  "manual_migration_cancel_button": "Chan eil, tapadh leibh",
-  "manual_migration_import_button": "Ion-phortaich an-dràsta"
+  "context_menu_title": "Fosgail an clàr-taice"
 };

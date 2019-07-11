@@ -40,9 +40,7 @@ window.gActivityStreamStrings = {
   "section_disclaimer_topstories_buttontext": "了解しました",
   "prefs_home_header": "Firefox Home コンテンツ",
   "prefs_home_description": "Firefox Home に表示するコンテンツを選びましょう。",
-  "prefs_content_discovery_header": "Firefox Home",
   "prefs_content_discovery_description": "Firefox Home のコンテンツディスカバリーは関連性の高い優れた記事をウェブ上から発見できます。",
-  "prefs_content_discovery_button": "コンテンツディスカバリーをオフにする",
   "prefs_section_rows_option": "{num} 行",
   "prefs_search_header": "ウェブ検索",
   "prefs_topsites_description": "よく訪れるサイト",
@@ -107,8 +105,5 @@ window.gActivityStreamStrings = {
   "firstrun_privacy_notice": "プライバシーに関する通知",
   "firstrun_continue_to_login": "続ける",
   "firstrun_skip_login": "この手順をスキップ",
-  "context_menu_title": "メニューを開きます",
-  "manual_migration_explanation2": "他のブラウザーからブックマークや履歴、パスワードをインポートして Firefox を使ってみましょう。",
-  "manual_migration_cancel_button": "今はしない",
-  "manual_migration_import_button": "今すぐインポート"
+  "context_menu_title": "メニューを開きます"
 };

@@ -7,6 +7,7 @@ from __future__ import absolute_import, print_function, unicode_literals
 import os
 import logging
 import attr
+from six import text_type
 from mozpack import path
 
 from .util.schema import validate_schema, Schema, optionally_keyed_by
@@ -75,6 +76,18 @@ graph_config_schema = Schema({
             optionally_keyed_by('release-product', 'release-level', 'release-type',
                                 Any(basestring, None)),
     },
+    Required('version-directory'): optionally_keyed_by('release-product', 'android-release-type',
+                                                       basestring),
+    Required('workers'): {
+        Required('aliases'): {
+            text_type: {
+                Required('provisioner'): text_type,
+                Required('implementation'): text_type,
+                Required('os'): text_type,
+                Required('worker-type'): optionally_keyed_by('level', text_type),
+            }
+        },
+    },
 })
 
 
@@ -85,6 +98,9 @@ class GraphConfig(object):
 
     def __getitem__(self, name):
         return self._config[name]
+
+    def get(self, *args, **kwargs):
+        return self._config.get(*args, **kwargs)
 
     @property
     def taskcluster_yml(self):

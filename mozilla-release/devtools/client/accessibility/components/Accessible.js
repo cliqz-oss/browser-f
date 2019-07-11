@@ -139,9 +139,11 @@ class Accessible extends Component {
 
   update() {
     const { dispatch, accessible, supports } = this.props;
-    if (gToolbox) {
-      dispatch(updateDetails(gToolbox.walker, accessible, supports));
+    if (!gToolbox || !accessible.actorID) {
+      return;
     }
+
+    dispatch(updateDetails(gToolbox.walker, accessible, supports));
   }
 
   setExpanded(item, isExpanded) {
@@ -283,7 +285,7 @@ class Accessible extends Component {
         className: classList.join(" "),
         style: {
           paddingInlineStart: depthPadding,
-          "inline-size":
+          inlineSize:
             `calc(var(--accessibility-properties-item-width) - ${depthPadding}px)`,
         },
         onClick: e => {

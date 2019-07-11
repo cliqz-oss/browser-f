@@ -17,18 +17,16 @@
         xmlns:html="http://www.w3.org/1999/xhtml"
         xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"
         xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
-        onwizardfinish="return onFinish();"
         onload="initWizard();"
         style="&window.size;">
-  <script type="application/javascript"
-          src="chrome://global/content/customElements.js"/>
+  <script src="chrome://global/content/customElements.js"/>
 
   <stringbundle id="bundle_profileManager"
                 src="chrome://mozapps/locale/profile/profileSelection.properties"/>
 
-  <script type="application/javascript" src="chrome://mozapps/content/profile/createProfileWizard.js"/>
+  <script src="chrome://mozapps/content/profile/createProfileWizard.js"/>
 
-  <wizardpage id="explanation" onpageshow="enableNextButton();">
+  <wizardpage id="explanation">
     <description>&profileCreationExplanation_1.text;</description>
     <description>&profileCreationExplanation_2.text;</description>
     <description>&profileCreationExplanation_3.text;</description>
@@ -44,7 +42,7 @@
 #endif
   </wizardpage>
 
-  <wizardpage id="createProfile" onpageshow="initSecondWizardPage();">
+  <wizardpage id="createProfile">
     <description>&profileCreationIntro.text;</description> 
 
     <label accesskey="&profilePrompt.accesskey;" control="ProfileName">&profilePrompt.label;</label> 

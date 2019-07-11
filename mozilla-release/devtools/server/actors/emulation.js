@@ -7,7 +7,8 @@
 const { Ci } = require("chrome");
 const protocol = require("devtools/shared/protocol");
 const { emulationSpec } = require("devtools/shared/specs/emulation");
-const { TouchSimulator } = require("devtools/server/actors/emulation/touch-simulator");
+
+loader.lazyRequireGetter(this, "TouchSimulator", "devtools/server/actors/emulation/touch-simulator", true);
 
 /**
  * This actor overrides various browser features to simulate different environments to
@@ -28,18 +29,29 @@ const EmulationActor = protocol.ActorClassWithSpec(emulationSpec, {
     protocol.Actor.prototype.initialize.call(this, conn);
     this.targetActor = targetActor;
     this.docShell = targetActor.docShell;
-    this.touchSimulator = new TouchSimulator(targetActor.chromeEventHandler);
+
+    this.onWillNavigate = this.onWillNavigate.bind(this);
+    this.onWindowReady = this.onWindowReady.bind(this);
+
+    this.targetActor.on("will-navigate", this.onWillNavigate);
+    this.targetActor.on("window-ready", this.onWindowReady);
   },
 
   destroy() {
+    this.stopPrintMediaSimulation();
     this.clearDPPXOverride();
     this.clearNetworkThrottling();
     this.clearTouchEventsOverride();
     this.clearMetaViewportOverride();
     this.clearUserAgentOverride();
+
+    this.targetActor.off("will-navigate", this.onWillNavigate);
+    this.targetActor.off("window-ready", this.onWindowReady);
+
     this.targetActor = null;
     this.docShell = null;
-    this.touchSimulator = null;
+    this._touchSimulator = null;
+
     protocol.Actor.prototype.destroy.call(this);
   },
 
@@ -54,6 +66,33 @@ const EmulationActor = protocol.ActorClassWithSpec(emulationSpec, {
     }
     const form = this.targetActor.form();
     return this.conn._getOrCreateActor(form.consoleActor);
+  },
+
+  get touchSimulator() {
+    if (!this._touchSimulator) {
+      this._touchSimulator = new TouchSimulator(this.targetActor.chromeEventHandler);
+    }
+
+    return this._touchSimulator;
+  },
+
+  onWillNavigate({ isTopLevel }) {
+    // Make sure that print simulation is stopped before navigating to another page. We
+    // need to do this since the browser will cache the last state of the page in its
+    // session history.
+    if (this._printSimulationEnabled && isTopLevel) {
+      this.stopPrintMediaSimulation(true);
+    }
+  },
+
+  onWindowReady({ isTopLevel }) {
+    // Since `emulateMedium` only works for the current page, we need to ensure persistent
+    // print simulation for when the user navigates to a new page while its enabled.
+    // To do this, we need to tell the page to begin print simulation before the DOM
+    // content is available to the user:
+    if (this._printSimulationEnabled && isTopLevel) {
+      this.startPrintMediaSimulation();
+    }
   },
 
   /* DPPX override */
@@ -177,6 +216,30 @@ const EmulationActor = protocol.ActorClassWithSpec(emulationSpec, {
 
   _previousTouchEventsOverride: undefined,
 
+  /**
+   * Set the current element picker state.
+   *
+   * True means the element picker is currently active and we should not be emulating
+   * touch events.
+   * False means the element picker is not active and it is ok to emulate touch events.
+   *
+   * This actor method is meant to be called by the DevTools front-end. The reason for
+   * this is the following:
+   * RDM is the only current consumer of the touch simulator. RDM instantiates this actor
+   * on its own, whether or not the Toolbox is opened. That means it does so in its own
+   * Debugger Server instance.
+   * When the Toolbox is running, it uses a different DebuggerServer. Therefore, it is not
+   * possible for the touch simulator to know whether the picker is active or not. This
+   * state has to be sent by the client code of the Toolbox to this actor.
+   * If a future use case arises where we want to use the touch simulator from the Toolbox
+   * too, then we could add code in here to detect the picker mode as described in
+   * https://bugzilla.mozilla.org/show_bug.cgi?id=1409085#c3
+   * @param {Boolean} state
+   */
+  setElementPickerState(state) {
+    this.touchSimulator.setElementPickerState(state);
+  },
+
   setTouchEventsOverride(flag) {
     if (this.getTouchEventsOverride() == flag) {
       return false;
@@ -260,6 +323,47 @@ const EmulationActor = protocol.ActorClassWithSpec(emulationSpec, {
     return false;
   },
 
+  /* Simulating print media for the page */
+
+  _printSimulationEnabled: false,
+
+  getIsPrintSimulationEnabled() {
+    return this._printSimulationEnabled;
+  },
+
+  async startPrintMediaSimulation() {
+    this._printSimulationEnabled = true;
+    this.targetActor.docShell.contentViewer.emulateMedium("print");
+  },
+
+  /**
+   * Stop simulating print media for the current page.
+   *
+   * @param {Boolean} state
+   *        Whether or not to set _printSimulationEnabled to false. If true, we want to
+   *        stop simulation print media for the current page but NOT set
+   *        _printSimulationEnabled to false. We do this specifically for the
+   *        "will-navigate" event where we still want to continue simulating print when
+   *        navigating to the next page. Defaults to false, meaning we want to completely
+   *        stop print simulation.
+   */
+  async stopPrintMediaSimulation(state = false) {
+    this._printSimulationEnabled = state;
+    this.targetActor.docShell.contentViewer.stopEmulatingMedium();
+  },
+
+  /**
+   * Simulates the "orientationchange" event when device screen is rotated.
+   *
+   * TODO: Update `window.screen.orientation` and `window.screen.angle` here.
+   * See Bug 1357774.
+   */
+  simulateScreenOrientationChange() {
+    const win = this.docShell.chromeEventHandler.ownerGlobal;
+    const { CustomEvent } = win;
+    const orientationChangeEvent = new CustomEvent("orientationchange");
+    win.dispatchEvent(orientationChangeEvent);
+  },
 });
 
 exports.EmulationActor = EmulationActor;

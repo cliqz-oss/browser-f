@@ -11,13 +11,19 @@
 #include "mozilla/Attributes.h"
 #include "mozilla/ErrorResult.h"
 #include "mozilla/dom/BindingDeclarations.h"
+#include "mozilla/dom/JSWindowActor.h"
 #include "nsCycleCollectionParticipant.h"
 #include "nsWrapperCache.h"
 
 namespace mozilla {
 namespace dom {
 
+template <typename>
+struct Nullable;
+
+class Document;
 class WindowGlobalChild;
+class WindowProxyHolder;
 
 }  // namespace dom
 }  // namespace mozilla
@@ -25,16 +31,11 @@ class WindowGlobalChild;
 namespace mozilla {
 namespace dom {
 
-class JSWindowActorChild final : public nsISupports, public nsWrapperCache {
+class JSWindowActorChild final : public JSWindowActor {
  public:
-  NS_DECL_CYCLE_COLLECTING_ISUPPORTS
-  NS_DECL_CYCLE_COLLECTION_SCRIPT_HOLDER_CLASS(JSWindowActorChild)
-
- protected:
-  ~JSWindowActorChild() = default;
-
- public:
-  nsISupports* GetParentObject() const;
+  NS_DECL_ISUPPORTS_INHERITED
+  NS_DECL_CYCLE_COLLECTION_SCRIPT_HOLDER_CLASS_INHERITED(JSWindowActorChild,
+                                                         JSWindowActor)
 
   JSObject* WrapObject(JSContext* aCx,
                        JS::Handle<JSObject*> aGivenProto) override;
@@ -46,12 +47,21 @@ class JSWindowActorChild final : public nsISupports, public nsWrapperCache {
 
   WindowGlobalChild* Manager() const;
   void Init(const nsAString& aName, WindowGlobalChild* aManager);
-  void SendAsyncMessage(JSContext* aCx, const nsAString& aMessageName,
-                        JS::Handle<JS::Value> aObj,
-                        JS::Handle<JS::Value> aTransfers, ErrorResult& aRv);
+  void StartDestroy();
+  void AfterDestroy();
+  Document* GetDocument(ErrorResult& aRv);
+  BrowsingContext* GetBrowsingContext(ErrorResult& aRv);
+  Nullable<WindowProxyHolder> GetContentWindow(ErrorResult& aRv);
+
+ protected:
+  void SendRawMessage(const JSWindowActorMessageMeta& aMeta,
+                      ipc::StructuredCloneData&& aData,
+                      ErrorResult& aRv) override;
 
  private:
-  nsString mName;
+  ~JSWindowActorChild();
+
+  bool mCanSend = true;
   RefPtr<WindowGlobalChild> mManager;
 };
 

@@ -1,0 +1,20 @@
+{
+  "extensionName": {
+    "message": "Start Page"
+  },
+  "extensionDescription": {
+    "message": "Search Start Page"
+  },
+  "searchUrl": {
+    "message": "https://www.startpage.com/do/dsearch"
+  },
+  "searchForm": {
+    "message": "https://www.startpage.com/do/dsearch"
+  },
+  "suggestUrl": {
+    "message": "https://www.startpage.com/do/dsearch"
+  },
+  "searchUrlGetParams": {
+    "message": "query={searchTerms}&cat=web&pl=opensearch&language=english"
+  }
+}

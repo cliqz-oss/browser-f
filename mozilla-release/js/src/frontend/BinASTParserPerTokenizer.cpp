@@ -132,7 +132,8 @@ JS::Result<ParseNode*> BinASTParserPerTokenizer<Tok>::parseAux(
   MOZ_TRY(tokenizer_->readHeader());
 
   ParseNode* result(nullptr);
-  MOZ_TRY_VAR(result, asFinalParser()->parseProgram());
+  const Context topContext(Context::topLevel());
+  MOZ_TRY_VAR(result, asFinalParser()->parseProgram(topContext));
 
   mozilla::Maybe<GlobalScope::Data*> bindings =
       NewGlobalScopeData(cx_, varScope, alloc_, pc_);
@@ -191,7 +192,12 @@ JS::Result<FunctionNode*> BinASTParserPerTokenizer<Tok>::parseLazyFunction(
   ListNode* tmpBody;
   auto parseFunc = isExpr ? &FinalParser::parseFunctionExpressionContents
                           : &FinalParser::parseFunctionOrMethodContents;
-  MOZ_TRY((asFinalParser()->*parseFunc)(func->nargs(), &params, &tmpBody));
+
+  // Inject a toplevel context (i.e. no parent) to parse the lazy content.
+  // In the future, we may move this to a more specific context.
+  const Context context(Context::topLevel());
+  MOZ_TRY(
+      (asFinalParser()->*parseFunc)(func->nargs(), &params, &tmpBody, context));
 
   BINJS_TRY_DECL(lexicalScopeData,
                  NewLexicalScopeData(cx_, lexicalScope, alloc_, pc_));
@@ -365,9 +371,10 @@ JS::Result<FunctionNode*> BinASTParserPerTokenizer<Tok>::buildFunction(
   // Check all our bindings after maybe adding function metavars.
   MOZ_TRY(checkFunctionClosedVars());
 
-  BINJS_TRY_DECL(bindings, NewFunctionScopeData(cx_, pc_->functionScope(),
-                                                /* hasParameterExprs = */ false,
-                                                alloc_, pc_));
+  BINJS_TRY_DECL(bindings,
+                 NewFunctionScopeData(cx_, pc_->functionScope(),
+                                      /* hasParameterExprs = */ false,
+                                      IsFieldInitializer::No, alloc_, pc_));
 
   funbox->functionScopeBindings().set(*bindings);
 

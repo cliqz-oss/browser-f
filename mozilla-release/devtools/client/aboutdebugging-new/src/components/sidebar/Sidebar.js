@@ -11,17 +11,17 @@ const PropTypes = require("devtools/client/shared/vendor/react-prop-types");
 const FluentReact = require("devtools/client/shared/vendor/fluent-react");
 const Localized = createFactory(FluentReact.Localized);
 
-const { MESSAGE_LEVEL, PAGE_TYPES, RUNTIMES } = require("../../constants");
+const { ICON_LABEL_LEVEL, PAGE_TYPES, RUNTIMES } = require("../../constants");
 const Types = require("../../types/index");
 loader.lazyRequireGetter(this, "ADB_ADDON_STATES", "devtools/shared/adb/adb-addon", true);
 
-const Message = createFactory(require("../shared/Message"));
+const IconLabel = createFactory(require("../shared/IconLabel"));
 const SidebarItem = createFactory(require("./SidebarItem"));
 const SidebarFixedItem = createFactory(require("./SidebarFixedItem"));
 const SidebarRuntimeItem = createFactory(require("./SidebarRuntimeItem"));
 const RefreshDevicesButton = createFactory(require("./RefreshDevicesButton"));
 const FIREFOX_ICON = "chrome://devtools/skin/images/aboutdebugging-firefox-logo.svg";
-const CONNECT_ICON = "chrome://devtools/skin/images/aboutdebugging-connect-icon.svg";
+const CONNECT_ICON = "chrome://devtools/skin/images/settings.svg";
 const GLOBE_ICON = "chrome://devtools/skin/images/aboutdebugging-globe-icon.svg";
 const USB_ICON = "chrome://devtools/skin/images/aboutdebugging-connect-icon.svg";
 
@@ -31,6 +31,7 @@ class Sidebar extends PureComponent {
       adbAddonStatus: Types.adbAddonStatus,
       className: PropTypes.string,
       dispatch: PropTypes.func.isRequired,
+      isAdbReady: PropTypes.bool.isRequired,
       isScanningUsb: PropTypes.bool.isRequired,
       networkRuntimes: PropTypes.arrayOf(Types.runtime).isRequired,
       selectedPage: Types.page,
@@ -39,40 +40,39 @@ class Sidebar extends PureComponent {
     };
   }
 
-  renderAdbAddonStatus() {
-    const isAddonInstalled = this.props.adbAddonStatus === ADB_ADDON_STATES.INSTALLED;
-    const localizationId = isAddonInstalled ? "about-debugging-sidebar-usb-enabled" :
-                                              "about-debugging-sidebar-usb-disabled";
-    return Message(
+  renderAdbStatus() {
+    const isUsbEnabled = this.props.isAdbReady &&
+      this.props.adbAddonStatus === ADB_ADDON_STATES.INSTALLED;
+    const localizationId = isUsbEnabled ? "about-debugging-sidebar-usb-enabled" :
+                                          "about-debugging-sidebar-usb-disabled";
+    return IconLabel(
       {
-          level: MESSAGE_LEVEL.INFO,
+          level: isUsbEnabled ? ICON_LABEL_LEVEL.OK : ICON_LABEL_LEVEL.INFO,
       },
-        Localized(
+      Localized(
+        {
+          id: localizationId,
+        },
+        dom.span(
           {
-            id: localizationId,
+            className: "qa-sidebar-usb-status",
           },
-          dom.div(
-            {
-              className: "js-sidebar-usb-status",
-            },
-            localizationId
-          )
+          localizationId
+        )
       )
     );
   }
 
   renderDevicesEmpty() {
     return SidebarItem(
-      {
-        isSelected: false,
-      },
+      {},
       Localized(
         {
           id: "about-debugging-sidebar-no-devices",
         },
         dom.aside(
           {
-            className: "sidebar__label js-sidebar-no-devices",
+            className: "sidebar__label qa-sidebar-no-devices",
           },
           "No devices discovered"
         )
@@ -89,12 +89,12 @@ class Sidebar extends PureComponent {
     }
     // render all devices otherwise
     return [
-      ...this.renderSidebarItems(GLOBE_ICON, networkRuntimes),
-      ...this.renderSidebarItems(USB_ICON, usbRuntimes),
+      ...this.renderRuntimeItems(GLOBE_ICON, networkRuntimes),
+      ...this.renderRuntimeItems(USB_ICON, usbRuntimes),
     ];
   }
 
-  renderSidebarItems(icon, runtimes) {
+  renderRuntimeItems(icon, runtimes) {
     const { dispatch, selectedPage, selectedRuntimeId } = this.props;
 
     return runtimes.map(runtime => {
@@ -115,12 +115,62 @@ class Sidebar extends PureComponent {
         icon,
         key: keyId,
         isConnected: runtimeHasDetails,
+        isConnecting: runtime.isConnecting,
+        isConnectionFailed: runtime.isConnectionFailed,
+        isConnectionNotResponding: runtime.isConnectionNotResponding,
+        isConnectionTimeout: runtime.isConnectionTimeout,
         isSelected,
-        isUnknown: runtime.isUnknown,
+        isUnavailable: runtime.isUnavailable,
+        isUnplugged: runtime.isUnplugged,
         name,
         runtimeId: runtime.id,
       });
     });
+  }
+
+  renderFooter() {
+    const HELP_ICON_SRC = "chrome://global/skin/icons/help.svg";
+    const SUPPORT_URL = "https://developer.mozilla.org/docs/Tools/about:debugging";
+
+    return dom.footer(
+      {
+        className: "sidebar__footer",
+      },
+      dom.ul(
+        {},
+        SidebarItem(
+          {
+            className: "sidebar-item--condensed",
+            to: SUPPORT_URL,
+          },
+          dom.span(
+            {
+              className: "sidebar__footer__support-help",
+            },
+            Localized(
+              {
+                id: "about-debugging-sidebar-support-icon",
+                attrs: {
+                  alt: true,
+                },
+              },
+              dom.img(
+                {
+                  className: "sidebar__footer__icon",
+                  src: HELP_ICON_SRC,
+                }
+              ),
+            ),
+            Localized(
+              {
+                id: "about-debugging-sidebar-support",
+              },
+              dom.span({}, "about-debugging-sidebar-support"),
+            )
+          )
+        ),
+      )
+    );
   }
 
   render() {
@@ -133,14 +183,14 @@ class Sidebar extends PureComponent {
       dom.ul(
         {},
         Localized(
-          { id: "about-debugging-sidebar-connect", attrs: { name: true } },
+          { id: "about-debugging-sidebar-setup", attrs: { name: true } },
           SidebarFixedItem({
             dispatch,
             icon: CONNECT_ICON,
             isSelected: PAGE_TYPES.CONNECT === selectedPage,
             key: PAGE_TYPES.CONNECT,
-            name: "Connect",
-            to: "/connect",
+            name: "Setup",
+            to: "/setup",
           })
         ),
         Localized(
@@ -156,17 +206,15 @@ class Sidebar extends PureComponent {
         ),
         SidebarItem(
           {
-            className: "sidebar-item--overflow",
-            isSelected: false,
+            className: "sidebar__adb-status",
           },
-          dom.hr({ className: "separator" }),
-          this.renderAdbAddonStatus(),
+          dom.hr({ className: "separator separator--breathe" }),
+          this.renderAdbStatus(),
         ),
         this.renderDevices(),
         SidebarItem(
           {
             className: "sidebar-item--breathe sidebar__refresh-usb",
-            isSelected: false,
             key: "refresh-devices",
           },
           RefreshDevicesButton({
@@ -174,7 +222,8 @@ class Sidebar extends PureComponent {
             isScanning: isScanningUsb,
           })
         ),
-      )
+      ),
+      this.renderFooter(),
     );
   }
 }

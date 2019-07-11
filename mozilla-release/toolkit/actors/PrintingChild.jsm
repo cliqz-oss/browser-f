@@ -288,7 +288,7 @@ class PrintingChild extends ActorChild {
           let listener = new PrintingListener(this.mm);
 
           this.printPreviewInitializingInfo = { changingBrowsers };
-          docShell.printPreview.printPreview(printSettings, contentWindow, listener);
+          docShell.initOrReusePrintPreviewViewer().printPreview(printSettings, contentWindow, listener);
         } catch (error) {
           // This might fail if we, for example, attempt to print a XUL document.
           // In that case, we inform the parent to bail out of print preview.
@@ -318,11 +318,12 @@ class PrintingChild extends ActorChild {
 
   exitPrintPreview(glo) {
     this.printPreviewInitializingInfo = null;
-    this.docShell.printPreview.exitPrintPreview();
+    this.docShell.initOrReusePrintPreviewViewer().exitPrintPreview();
   }
 
   print(contentWindow, simplifiedMode, defaultPrinterName) {
     let printSettings = this.getPrintSettings(defaultPrinterName);
+    let printCancelled = false;
 
     // If we happen to be on simplified mode, we need to set docURL in order
     // to generate header/footer content correctly, since simplified tab has
@@ -354,7 +355,9 @@ class PrintingChild extends ActorChild {
     } catch (e) {
       // Pressing cancel is expressed as an NS_ERROR_ABORT return value,
       // causing an exception to be thrown which we catch here.
-      if (e.result != Cr.NS_ERROR_ABORT) {
+      if (e.result == Cr.NS_ERROR_ABORT) {
+        printCancelled = true;
+      } else {
         Cu.reportError(`In Printing:Print:Done handler, got unexpected rv
                         ${e.result}.`);
         this.mm.sendAsyncMessage("Printing:Error", {
@@ -364,7 +367,8 @@ class PrintingChild extends ActorChild {
       }
     }
 
-    if (this.shouldSavePrintSettings) {
+    if ((!printCancelled || printSettings.saveOnCancel) &&
+        this.shouldSavePrintSettings) {
       let PSSVC = Cc["@mozilla.org/gfx/printsettings-service;1"]
                     .getService(Ci.nsIPrintSettingsService);
 
@@ -381,14 +385,14 @@ class PrintingChild extends ActorChild {
   }
 
   updatePageCount() {
-    let numPages = this.docShell.printPreview.printPreviewNumPages;
+    let numPages = this.docShell.initOrReusePrintPreviewViewer().printPreviewNumPages;
     this.mm.sendAsyncMessage("Printing:Preview:UpdatePageCount", {
       numPages,
     });
   }
 
   navigate(navType, pageNum) {
-    this.docShell.printPreview.printPreviewNavigate(navType, pageNum);
+    this.docShell.initOrReusePrintPreviewViewer().printPreviewNavigate(navType, pageNum);
   }
 }
 

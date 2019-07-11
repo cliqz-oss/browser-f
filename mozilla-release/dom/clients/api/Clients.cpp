@@ -14,6 +14,7 @@
 #include "mozilla/dom/ServiceWorkerDescriptor.h"
 #include "mozilla/dom/ServiceWorkerManager.h"
 #include "mozilla/dom/WorkerPrivate.h"
+#include "mozilla/ipc/BackgroundUtils.h"
 #include "mozilla/SystemGroup.h"
 #include "nsIGlobalObject.h"
 #include "nsString.h"
@@ -80,30 +81,31 @@ already_AddRefed<Promise> Clients::Get(const nsAString& aClientID,
       MakeRefPtr<DOMMozPromiseRequestHolder<ClientOpPromise>>(mGlobal);
 
   innerPromise
-      ->Then(target, __func__,
-             [outerPromise, holder, scope](const ClientOpResult& aResult) {
-               holder->Complete();
-               NS_ENSURE_TRUE_VOID(holder->GetParentObject());
-               RefPtr<Client> client = new Client(
-                   holder->GetParentObject(), aResult.get_ClientInfoAndState());
-               if (client->GetStorageAccess() ==
-                   nsContentUtils::StorageAccess::eAllow) {
-                 outerPromise->MaybeResolve(std::move(client));
-                 return;
-               }
-               nsCOMPtr<nsIRunnable> r = NS_NewRunnableFunction(
-                   "Clients::Get() storage denied", [scope] {
-                     ServiceWorkerManager::LocalizeAndReportToAllClients(
-                         scope, "ServiceWorkerGetClientStorageError",
-                         nsTArray<nsString>());
-                   });
-               SystemGroup::Dispatch(TaskCategory::Other, r.forget());
-               outerPromise->MaybeResolveWithUndefined();
-             },
-             [outerPromise, holder](nsresult aResult) {
-               holder->Complete();
-               outerPromise->MaybeResolveWithUndefined();
-             })
+      ->Then(
+          target, __func__,
+          [outerPromise, holder, scope](const ClientOpResult& aResult) {
+            holder->Complete();
+            NS_ENSURE_TRUE_VOID(holder->GetParentObject());
+            RefPtr<Client> client = new Client(
+                holder->GetParentObject(), aResult.get_ClientInfoAndState());
+            if (client->GetStorageAccess() ==
+                nsContentUtils::StorageAccess::eAllow) {
+              outerPromise->MaybeResolve(std::move(client));
+              return;
+            }
+            nsCOMPtr<nsIRunnable> r = NS_NewRunnableFunction(
+                "Clients::Get() storage denied", [scope] {
+                  ServiceWorkerManager::LocalizeAndReportToAllClients(
+                      scope, "ServiceWorkerGetClientStorageError",
+                      nsTArray<nsString>());
+                });
+            SystemGroup::Dispatch(TaskCategory::Other, r.forget());
+            outerPromise->MaybeResolveWithUndefined();
+          },
+          [outerPromise, holder](nsresult aResult) {
+            holder->Complete();
+            outerPromise->MaybeResolveWithUndefined();
+          })
       ->Track(*holder);
 
   return outerPromise.forget();
@@ -216,9 +218,12 @@ already_AddRefed<Promise> Clients::OpenWindow(const nsAString& aURL,
   }
 
   const PrincipalInfo& principalInfo = workerPrivate->GetPrincipalInfo();
+  const nsTArray<mozilla::ipc::ContentSecurityPolicy>& cspInfos =
+      workerPrivate->GetCSPInfos();
   nsCString baseURL = workerPrivate->GetLocationInfo().mHref;
-  ClientOpenWindowArgs args(principalInfo, NS_ConvertUTF16toUTF8(aURL),
-                            baseURL);
+
+  ClientOpenWindowArgs args(principalInfo, cspInfos,
+                            NS_ConvertUTF16toUTF8(aURL), baseURL);
 
   nsCOMPtr<nsIGlobalObject> global = mGlobal;
 

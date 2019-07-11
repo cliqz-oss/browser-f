@@ -246,7 +246,9 @@ void VRPose::GetPosition(JSContext* aCx, JS::MutableHandle<JSObject*> aRetval,
   SetFloat32Array(
       aCx, aRetval, mPosition, mVRState.pose.position, 3,
       !mPosition &&
-          bool(mVRState.flags & gfx::VRDisplayCapabilityFlags::Cap_Position),
+          (bool(mVRState.flags & gfx::VRDisplayCapabilityFlags::Cap_Position) ||
+           bool(mVRState.flags &
+                gfx::VRDisplayCapabilityFlags::Cap_PositionEmulated)),
       aRv);
 }
 
@@ -324,7 +326,7 @@ VRDisplay::VRDisplay(nsPIDOMWindowInner* aWindow, gfx::VRDisplayClient* aClient)
       mShutdown(false) {
   const gfx::VRDisplayInfo& info = aClient->GetDisplayInfo();
   mDisplayId = info.GetDisplayID();
-  mDisplayName = NS_ConvertASCIItoUTF16(info.GetDisplayName());
+  mDisplayName = NS_ConvertUTF8toUTF16(info.GetDisplayName());
   mCapabilities = new VRDisplayCapabilities(aWindow, info.GetCapabilities());
   if (info.GetCapabilities() &
       gfx::VRDisplayCapabilityFlags::Cap_StageParameters) {
@@ -727,9 +729,6 @@ void VRFrameData::LazyCreateMatrix(JS::Heap<JSObject*>& aArray,
       aRv.NoteJSContextException(aCx);
       return;
     }
-  }
-  if (aArray) {
-    JS::ExposeObjectToActiveJS(aArray);
   }
   aRetval.set(aArray);
 }

@@ -18,6 +18,8 @@ loader.lazyRequireGetter(this, "setIgnoreLayoutChanges", "devtools/server/actors
 exports.setIgnoreLayoutChanges = (...args) =>
   this.setIgnoreLayoutChanges(...args);
 
+const ReplayInspector = require("devtools/server/actors/replay/inspector");
+
 /**
  * Returns the `DOMWindowUtils` for the window given.
  *
@@ -638,6 +640,7 @@ exports.isShadowHost = isShadowHost;
 function isDirectShadowHostChild(node) {
   // Pseudo elements and native anonymous elements are always part of the anonymous tree.
   if (
+    isMarkerPseudoElement(node) ||
     isBeforePseudoElement(node) ||
     isAfterPseudoElement(node) ||
     isNativeAnonymous(node)) {
@@ -648,6 +651,17 @@ function isDirectShadowHostChild(node) {
   return parentNode && !!parentNode.openOrClosedShadowRoot;
 }
 exports.isDirectShadowHostChild = isDirectShadowHostChild;
+
+/**
+ * Determine whether a node is a ::marker pseudo.
+ *
+ * @param {DOMNode} node
+ * @return {Boolean}
+ */
+function isMarkerPseudoElement(node) {
+  return node.nodeName === "_moz_generated_content_marker";
+}
+exports.isMarkerPseudoElement = isMarkerPseudoElement;
 
 /**
  * Determine whether a node is a ::before pseudo.
@@ -768,6 +782,13 @@ exports.getViewportDimensions = getViewportDimensions;
  * @return {DOMWindow}
  */
 function getWindowFor(node) {
+  // Check if we are replaying, as the tests below don't work when inspecting
+  // nodes in another process.
+  if (isReplaying) {
+    // Multiple windows are not supported yet when replaying, so return the
+    // global window.
+    return ReplayInspector.window;
+  }
   if (Node.isInstance(node)) {
     if (node.nodeType === node.DOCUMENT_NODE) {
       return node.defaultView;

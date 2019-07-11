@@ -17,6 +17,7 @@
 #include "mozilla/Maybe.h"
 #include "mozilla/SafeMode.h"
 #include "mozilla/UniquePtr.h"
+#include "mozilla/WindowsConsole.h"
 #include "mozilla/WindowsVersion.h"
 #include "mozilla/WinHeaderOnlyUtils.h"
 #include "nsWindowsHelpers.h"
@@ -40,16 +41,16 @@
  *
  * @return Ok if browser startup should proceed
  */
-static mozilla::LauncherVoidResult PostCreationSetup(HANDLE aChildProcess,
-                                                     HANDLE aChildMainThread,
-                                                     const bool aIsSafeMode) {
+static mozilla::LauncherVoidResult PostCreationSetup(
+    const wchar_t* aFullImagePath, HANDLE aChildProcess,
+    HANDLE aChildMainThread, const bool aIsSafeMode) {
   // The launcher process's DLL blocking code is incompatible with ASAN because
   // it is able to execute before ASAN itself has even initialized.
   // Also, the AArch64 build doesn't yet have a working interceptor.
 #if defined(MOZ_ASAN) || defined(_M_ARM64)
   return mozilla::Ok();
 #else
-  return mozilla::InitializeDllBlocklistOOP(aChildProcess);
+  return mozilla::InitializeDllBlocklistOOP(aFullImagePath, aChildProcess);
 #endif  // defined(MOZ_ASAN) || defined(_M_ARM64)
 }
 
@@ -162,12 +163,23 @@ static mozilla::Maybe<bool> RunAsLauncherProcess(int& argc, wchar_t** argv) {
   bool runAsLauncher = DoLauncherProcessChecks(argc, argv);
 
 #if defined(MOZ_LAUNCHER_PROCESS)
+  bool forceLauncher = runAsLauncher &&
+                       mozilla::CheckArg(argc, argv, L"force-launcher",
+                                         static_cast<const wchar_t**>(nullptr),
+                                         mozilla::CheckArgFlag::RemoveArg) ==
+                       mozilla::ARG_FOUND;
+
   mozilla::LauncherRegistryInfo::ProcessType desiredType =
       runAsLauncher ? mozilla::LauncherRegistryInfo::ProcessType::Launcher
                     : mozilla::LauncherRegistryInfo::ProcessType::Browser;
+
+  mozilla::LauncherRegistryInfo::CheckOption checkOption =
+      forceLauncher ? mozilla::LauncherRegistryInfo::CheckOption::Force
+                    : mozilla::LauncherRegistryInfo::CheckOption::Default;
+
   mozilla::LauncherRegistryInfo regInfo;
   mozilla::LauncherResult<mozilla::LauncherRegistryInfo::ProcessType>
-      runAsType = regInfo.Check(desiredType);
+      runAsType = regInfo.Check(desiredType, checkOption);
 
   if (runAsType.isErr()) {
     mozilla::HandleLauncherError(runAsType);
@@ -218,6 +230,8 @@ Maybe<int> LauncherMain(int& argc, wchar_t* argv[],
       MOZ_ASSERT(setOk);
     }
   }
+
+  mozilla::UseParentConsole();
 
   if (!SetArgv0ToFullBinaryPath(argv)) {
     HandleLauncherError(LAUNCHER_ERROR_GENERIC());
@@ -322,8 +336,8 @@ Maybe<int> LauncherMain(int& argc, wchar_t* argv[],
   nsAutoHandle process(pi.hProcess);
   nsAutoHandle mainThread(pi.hThread);
 
-  LauncherVoidResult setupResult =
-      PostCreationSetup(process.get(), mainThread.get(), isSafeMode.value());
+  LauncherVoidResult setupResult = PostCreationSetup(
+      argv[0], process.get(), mainThread.get(), isSafeMode.value());
   if (setupResult.isErr()) {
     HandleLauncherError(setupResult);
     ::TerminateProcess(process.get(), 1);

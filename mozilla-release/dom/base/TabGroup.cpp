@@ -7,7 +7,7 @@
 #include "mozilla/dom/TabGroup.h"
 
 #include "mozilla/dom/ContentChild.h"
-#include "mozilla/dom/TabChild.h"
+#include "mozilla/dom/BrowserChild.h"
 #include "mozilla/dom/DocGroup.h"
 #include "mozilla/dom/TimeoutManager.h"
 #include "mozilla/AbstractThread.h"
@@ -80,8 +80,14 @@ void TabGroup::EnsureThrottledEventQueues() {
 
   for (size_t i = 0; i < size_t(TaskCategory::Count); i++) {
     TaskCategory category = static_cast<TaskCategory>(i);
-    if (category == TaskCategory::Worker || category == TaskCategory::Timer) {
-      mEventTargets[i] = ThrottledEventQueue::Create(mEventTargets[i]);
+    if (category == TaskCategory::Worker) {
+      mEventTargets[i] =
+          ThrottledEventQueue::Create(mEventTargets[i],
+                                      "TabGroup worker queue");
+    } else if (category == TaskCategory::Timer) {
+      mEventTargets[i] =
+          ThrottledEventQueue::Create(mEventTargets[i],
+                                      "TabGroup timer queue");
     }
   }
 }
@@ -97,15 +103,15 @@ TabGroup* TabGroup::GetChromeTabGroup() {
 
 /* static */
 TabGroup* TabGroup::GetFromWindow(mozIDOMWindowProxy* aWindow) {
-  if (TabChild* tabChild = TabChild::GetFrom(aWindow)) {
-    return tabChild->TabGroup();
+  if (BrowserChild* browserChild = BrowserChild::GetFrom(aWindow)) {
+    return browserChild->TabGroup();
   }
 
   return nullptr;
 }
 
 /* static */
-TabGroup* TabGroup::GetFromActor(TabChild* aTabChild) {
+TabGroup* TabGroup::GetFromActor(BrowserChild* aBrowserChild) {
   MOZ_RELEASE_ASSERT(NS_IsMainThread());
 
   // Middleman processes do not assign event targets to their tab children.
@@ -114,7 +120,7 @@ TabGroup* TabGroup::GetFromActor(TabChild* aTabChild) {
   }
 
   nsCOMPtr<nsIEventTarget> target =
-      aTabChild->Manager()->GetEventTargetFor(aTabChild);
+      aBrowserChild->Manager()->GetEventTargetFor(aBrowserChild);
   if (!target) {
     return nullptr;
   }

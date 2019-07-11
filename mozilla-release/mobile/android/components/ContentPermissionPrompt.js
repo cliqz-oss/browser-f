@@ -11,6 +11,9 @@ ChromeUtils.defineModuleGetter(this, "RuntimePermissions",
 ChromeUtils.defineModuleGetter(this, "DoorHanger",
                                "resource://gre/modules/Prompt.jsm");
 
+ChromeUtils.defineModuleGetter(this, "PrivateBrowsingUtils",
+                               "resource://gre/modules/PrivateBrowsingUtils.jsm");
+
 const kEntities = {
   "contacts": "contacts",
   "desktop-notification": "desktopNotification2",
@@ -24,7 +27,7 @@ ContentPermissionPrompt.prototype = {
 
   QueryInterface: ChromeUtils.generateQI([Ci.nsIContentPermissionPrompt]),
 
-  handleExistingPermission: function handleExistingPermission(request, type, isApp, callback) {
+  handleExistingPermission: function handleExistingPermission(request, type, callback) {
     let result = Services.perms.testExactPermissionFromPrincipal(request.principal, type);
     if (result == Ci.nsIPermissionManager.ALLOW_ACTION) {
       callback(/* allow */ true);
@@ -32,11 +35,6 @@ ContentPermissionPrompt.prototype = {
     }
 
     if (result == Ci.nsIPermissionManager.DENY_ACTION) {
-      callback(/* allow */ false);
-      return true;
-    }
-
-    if (isApp && result == Ci.nsIPermissionManager.UNKNOWN_ACTION) {
       callback(/* allow */ false);
       return true;
     }
@@ -59,8 +57,6 @@ ContentPermissionPrompt.prototype = {
   },
 
   prompt: function(request) {
-    let isApp = request.principal.appId !== Ci.nsIScriptSecurityManager.NO_APP_ID && request.principal.appId !== Ci.nsIScriptSecurityManager.UNKNOWN_APP_ID;
-
     // Only allow exactly one permission rquest here.
     let types = request.types.QueryInterface(Ci.nsIArray);
     if (types.length != 1) {
@@ -85,8 +81,11 @@ ContentPermissionPrompt.prototype = {
       request.allow();
     };
 
+    // We don't want to remember permissions in private mode
+    let isPrivate = PrivateBrowsingUtils.isWindowPrivate(request.window.ownerGlobal);
+
     // Returns true if the request was handled
-    if (this.handleExistingPermission(request, perm.type, isApp, callback)) {
+    if (this.handleExistingPermission(request, perm.type, callback)) {
        return;
     }
 
@@ -113,11 +112,16 @@ ContentPermissionPrompt.prototype = {
     {
       label: browserBundle.GetStringFromName(entityName + ".allow"),
       callback: function(aChecked) {
+        let isPermanent = (aChecked || entityName == "desktopNotification2");
         // If the user checked "Don't ask again" or this is a desktopNotification, make a permanent exception
-        if (aChecked || entityName == "desktopNotification2") {
+        // Also, we don't want to permanently store this exception if the user is in private mode
+        if (!isPrivate && isPermanent) {
           Services.perms.addFromPrincipal(request.principal, perm.type, Ci.nsIPermissionManager.ALLOW_ACTION);
-        } else if (isApp) {
+        // If we are in private mode, then it doesn't matter if the notification is desktop and also
+        // it shouldn't matter if the Don't show checkbox was checked because it shouldn't be show in the first place
+        } else if (isPrivate && isPermanent) {
           // Otherwise allow the permission for the current session if the request comes from an app
+          // or if the request was made in private mode
           Services.perms.addFromPrincipal(request.principal, perm.type, Ci.nsIPermissionManager.ALLOW_ACTION, Ci.nsIPermissionManager.EXPIRE_SESSION);
         }
 
@@ -139,8 +143,12 @@ ContentPermissionPrompt.prototype = {
           url: "https://www.mozilla.org/firefox/push/",
         },
       };
-    } else {
+    // it doesn't make sense to display the checkbox since we won't be remembering
+    // this specific permission if the user is in Private mode
+    } else if (!isPrivate) {
       options = { checkbox: browserBundle.GetStringFromName(entityName + ".dontAskAgain") };
+    } else {
+      options = { };
     }
 
     options.defaultCallback = () => {

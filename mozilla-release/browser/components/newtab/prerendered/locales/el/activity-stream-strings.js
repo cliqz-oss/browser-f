@@ -40,9 +40,7 @@ window.gActivityStreamStrings = {
   "section_disclaimer_topstories_buttontext": "Εντάξει, το 'πιασα",
   "prefs_home_header": "Περιεχόμενο αρχικής σελίδας Firefox",
   "prefs_home_description": "Επιλέξτε τι περιεχόμενο θέλετε στην αρχική σελίδα του Firefox σας.",
-  "prefs_content_discovery_header": "Αρχική Firefox",
   "prefs_content_discovery_description": "Η ανακάλυψη περιεχομένου στην Αρχική Firefox σάς επιτρέπει να ανακαλύψετε υψηλής ποιότητας, σχετικά άρθρα από όλο τον ιστό.",
-  "prefs_content_discovery_button": "Απενεργοποίηση ανακάλυψης περιεχομένου",
   "prefs_section_rows_option": "{num} σειρά;{num} σειρές",
   "prefs_search_header": "Διαδικτυακή αναζήτηση",
   "prefs_topsites_description": "Οι ιστοσελίδες που επισκέπτεστε περισσότερο",
@@ -107,8 +105,5 @@ window.gActivityStreamStrings = {
   "firstrun_privacy_notice": "Σημείωση Απορρήτου",
   "firstrun_continue_to_login": "Συνέχεια",
   "firstrun_skip_login": "Παράλειψη βήματος",
-  "context_menu_title": "Άνοιγμα μενού",
-  "manual_migration_explanation2": "Δοκιμάστε το Firefox με τους σελιδοδείκτες, το ιστορικό και τους κωδικούς πρόσβασης από ένα άλλο πρόγραμμα περιήγησης.",
-  "manual_migration_cancel_button": "Όχι ευχαριστώ",
-  "manual_migration_import_button": "Εισαγωγή τώρα"
+  "context_menu_title": "Άνοιγμα μενού"
 };

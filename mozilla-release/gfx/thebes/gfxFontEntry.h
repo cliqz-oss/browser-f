@@ -45,7 +45,11 @@ class nsAtom;
 
 namespace mozilla {
 class SVGContextPaint;
-};
+namespace fontlist {
+struct Family;
+struct Face;
+}  // namespace fontlist
+}  // namespace mozilla
 
 #define NO_FONT_LANGUAGE_OVERRIDE 0
 
@@ -197,16 +201,27 @@ class gfxFontEntry {
   }
 
   inline bool HasCmapTable() {
-    if (!mCharacterMap) {
+    if (!mCharacterMap && !mShmemCharacterMap) {
       ReadCMAP();
-      NS_ASSERTION(mCharacterMap, "failed to initialize character map");
+      NS_ASSERTION(mCharacterMap || mShmemCharacterMap,
+                   "failed to initialize character map");
     }
     return mHasCmapTable;
   }
 
   inline bool HasCharacter(uint32_t ch) {
-    if (mCharacterMap && mCharacterMap->test(ch)) {
-      return true;
+    if (mShmemCharacterMap) {
+      return mShmemCharacterMap->test(ch);
+    }
+    if (mCharacterMap) {
+      if (mShmemFace && TrySetShmemCharacterMap()) {
+        // Forget our temporary local copy, now we can use the shared cmap
+        mCharacterMap = nullptr;
+        return mShmemCharacterMap->test(ch);
+      }
+      if (mCharacterMap->test(ch)) {
+        return true;
+      }
     }
     return TestCharacterMap(ch);
   }
@@ -397,6 +412,9 @@ class gfxFontEntry {
 
   RefPtr<gfxCharacterMap> mCharacterMap;
 
+  mozilla::fontlist::Face* mShmemFace = nullptr;
+  const SharedBitSet* mShmemCharacterMap = nullptr;
+
   mozilla::UniquePtr<uint8_t[]> mUVSData;
   mozilla::UniquePtr<gfxUserFontData> mUserFontData;
   mozilla::UniquePtr<gfxSVGGlyphs> mSVGGlyphs;
@@ -515,6 +533,11 @@ class gfxFontEntry {
 
   // helper for HasCharacter(), which is what client code should call
   virtual bool TestCharacterMap(uint32_t aCh);
+
+  // Try to set mShmemCharacterMap, based on the char map in mShmemFace;
+  // return true if successful, false if it remains null (maybe the parent
+  // hasn't handled our SetCharacterMap message yet).
+  bool TrySetShmemCharacterMap();
 
   // Shaper-specific face objects, shared by all instantiations of the same
   // physical font, regardless of size.
@@ -678,19 +701,16 @@ inline bool gfxFontEntry::SupportsBold() {
 // used when iterating over all fonts looking for a match for a given character
 struct GlobalFontMatch {
   GlobalFontMatch(const uint32_t aCharacter, const gfxFontStyle& aStyle)
-      : mStyle(aStyle),
-        mCh(aCharacter),
-        mCount(0),
-        mCmapsTested(0),
-        mMatchDistance(INFINITY) {}
+      : mStyle(aStyle), mCh(aCharacter) {}
 
   RefPtr<gfxFontEntry> mBestMatch;       // current best match
   RefPtr<gfxFontFamily> mMatchedFamily;  // the family it belongs to
-  const gfxFontStyle& mStyle;            // style to match
-  const uint32_t mCh;                    // codepoint to be matched
-  uint32_t mCount;                       // number of fonts matched
-  uint32_t mCmapsTested;                 // number of cmaps tested
-  float mMatchDistance;                  // metric indicating closest match
+  mozilla::fontlist::Family* mMatchedSharedFamily = nullptr;
+  const gfxFontStyle& mStyle;       // style to match
+  const uint32_t mCh;               // codepoint to be matched
+  uint32_t mCount = 0;              // number of fonts matched
+  uint32_t mCmapsTested = 0;        // number of cmaps tested
+  float mMatchDistance = INFINITY;  // metric indicating closest match
 };
 
 class gfxFontFamily {
@@ -777,13 +797,6 @@ class gfxFontFamily {
 
   // read in other family names, if any, and use functor to add each into cache
   virtual void ReadOtherFamilyNames(gfxPlatformFontList* aPlatformFontList);
-
-  // helper method for reading localized family names from the name table
-  // of a single face
-  static void ReadOtherFamilyNamesForFace(
-      const nsACString& aFamilyName, const char* aNameData,
-      uint32_t aDataLength, nsTArray<nsCString>& aOtherFamilyNames,
-      bool useFullName);
 
   // set when other family names have been read in
   void SetOtherFamilyNamesInitialized() { mOtherFamilyNamesInitialized = true; }
@@ -906,20 +919,62 @@ class gfxFontFamily {
   };
 };
 
+// Wrapper for either a mozilla::fontlist::Family in the shared font list or an
+// unshared gfxFontFamily that belongs just to the current process. This does
+// not own a reference, it just wraps a raw pointer and records the type.
+struct FontFamily {
+  FontFamily() : mUnshared(nullptr), mIsShared(false) {}
+
+  FontFamily(const FontFamily& aOther) = default;
+
+  explicit FontFamily(gfxFontFamily* aFamily)
+      : mUnshared(aFamily), mIsShared(false) {}
+
+  explicit FontFamily(mozilla::fontlist::Family* aFamily)
+      : mShared(aFamily), mIsShared(true) {}
+
+  bool operator==(const FontFamily& aOther) const {
+    return mIsShared == aOther.mIsShared &&
+           (mIsShared ? mShared == aOther.mShared
+                      : mUnshared == aOther.mUnshared);
+  }
+
+  bool IsNull() const { return mIsShared ? !mShared : !mUnshared; }
+
+  union {
+    gfxFontFamily* mUnshared;
+    mozilla::fontlist::Family* mShared;
+  };
+  bool mIsShared;
+};
+
 // Struct used in the gfxFontGroup font list to keep track of a font family
 // together with the CSS generic (if any) that was mapped to it in this
 // particular case (so it can be reported to the DevTools font inspector).
 struct FamilyAndGeneric final {
   FamilyAndGeneric()
-      : mFamily(nullptr), mGeneric(mozilla::FontFamilyType::eFamily_none) {}
+      : mFamily(), mGeneric(mozilla::StyleGenericFontFamily::None) {}
   FamilyAndGeneric(const FamilyAndGeneric& aOther)
       : mFamily(aOther.mFamily), mGeneric(aOther.mGeneric) {}
-  explicit FamilyAndGeneric(
-      gfxFontFamily* aFamily,
-      mozilla::FontFamilyType aGeneric = mozilla::FontFamilyType::eFamily_none)
+  explicit FamilyAndGeneric(gfxFontFamily* aFamily,
+                            mozilla::StyleGenericFontFamily aGeneric =
+                                mozilla::StyleGenericFontFamily::None)
       : mFamily(aFamily), mGeneric(aGeneric) {}
-  gfxFontFamily* mFamily;
-  mozilla::FontFamilyType mGeneric;
+  explicit FamilyAndGeneric(mozilla::fontlist::Family* aFamily,
+                            mozilla::StyleGenericFontFamily aGeneric =
+                                mozilla::StyleGenericFontFamily::None)
+      : mFamily(aFamily), mGeneric(aGeneric) {}
+  explicit FamilyAndGeneric(const FontFamily& aFamily,
+                            mozilla::StyleGenericFontFamily aGeneric =
+                                mozilla::StyleGenericFontFamily::None)
+      : mFamily(aFamily), mGeneric(aGeneric) {}
+
+  bool operator==(const FamilyAndGeneric& aOther) const {
+    return mFamily == aOther.mFamily && mGeneric == aOther.mGeneric;
+  }
+
+  FontFamily mFamily;
+  mozilla::StyleGenericFontFamily mGeneric;
 };
 
 #endif

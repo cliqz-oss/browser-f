@@ -43,11 +43,24 @@
 #hostOnly,
 #isHttpOnly,
 #sameSite {
-  min-width: 50px;
+  min-width: 58px;
 }
 
 #isSecure {
-  min-width: 40px;
+  min-width: 48px;
+}
+
+/* Text input in storage table */
+#storage-table textbox {
+  -moz-appearance: none;
+  /* make sure the outline is not cut off */
+  position: relative;
+  max-width: calc(100% - 1px);
+  padding: 3px 3px;
+  font: inherit;
+  line-height: 14px;
+  color: var(--theme-text-color-strong);
+  background-color: var(--theme-body-background);
 }
 
 /* Variables View Sidebar */
@@ -55,6 +68,16 @@
 #storage-sidebar {
   max-width: 500px;
   min-width: 250px;
+}
+
+/* Toolbar */
+
+/*
+  .devtools-input-toolbar forces display: flex; which does not work
+  properly with XUL. Force XUL flexbox instead.
+*/
+#storage-toolbar {
+  display: -moz-box;
 }
 
 #storage-toolbar .add-button::before {
@@ -85,9 +108,5 @@
 
   #storage-table #path {
     display: none;
-  }
-
-  #storage-table .table-widget-cell {
-    min-width: 100px;
   }
 }
