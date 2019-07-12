@@ -283,6 +283,8 @@ var gIdentityHandler = {
   },
 
   recordClick(object) {
+    // Cliqz don't count clicks for ContentBlocking, because don't use it
+    return ;
     let extra = {};
     for (let blocker of ContentBlocking.blockers) {
       if (blocker.telemetryIdentifier) {
