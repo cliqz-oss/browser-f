@@ -826,8 +826,9 @@ var gIdentityHandler = {
 
     // Update per-site permissions section.
     this.updateSitePermissions();
-
+    /* CLIQZ-SPECIAL: No content blocking from Firefox
     ContentBlocking.toggleReportBreakageButton();
+    */
   },
 
   setURI(uri) {
