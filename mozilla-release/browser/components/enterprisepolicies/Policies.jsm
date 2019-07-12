@@ -332,7 +332,7 @@ var Policies = {
       }
     },
   },
-
+#if 0
   "DisableFirefoxAccounts": {
     onBeforeAddons(manager, param) {
       if (param) {
@@ -358,7 +358,7 @@ var Policies = {
       }
     },
   },
-
+#endif
   "DisableForgetButton": {
     onProfileAfterChange(manager, param) {
       if (param) {
@@ -382,7 +382,7 @@ var Policies = {
       }
     },
   },
-
+#if 0
   "DisablePocket": {
     onBeforeAddons(manager, param) {
       if (param) {
@@ -390,7 +390,7 @@ var Policies = {
       }
     },
   },
-
+#endif
   "DisablePrivateBrowsing": {
     onBeforeAddons(manager, param) {
       if (param) {
@@ -668,7 +668,7 @@ var Policies = {
       }
     },
   },
-
+#if 0
   "FirefoxHome": {
     onBeforeAddons(manager, param) {
       let locked = param.Locked || false;
@@ -689,7 +689,7 @@ var Policies = {
       }
     },
   },
-
+#endif
   "FlashPlugin": {
     onBeforeUIStartup(manager, param) {
       addAllowDenyPermissions("plugin:flash", param.Allow, param.Block);
@@ -795,13 +795,13 @@ var Policies = {
       setAndLockPref("network.dns.disablePrefetchFromHTTPS", !param);
     },
   },
-
+#if 0
   "NewTabPage": {
     onBeforeAddons(manager, param) {
       setAndLockPref("browser.newtabpage.enabled", param);
     },
   },
-
+#endif
   "NoDefaultBookmarks": {
     onProfileAfterChange(manager, param) {
       if (param) {
