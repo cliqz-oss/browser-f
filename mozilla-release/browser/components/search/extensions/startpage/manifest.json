@@ -9,6 +9,7 @@
     }
   },
   "hidden": true,
+  "default_locale": "en",
   "icons": {
     "16": "startpage.png"
   },
