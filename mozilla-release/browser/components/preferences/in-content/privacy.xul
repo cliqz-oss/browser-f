@@ -354,7 +354,7 @@
 <groupbox id="siteDataGroup" data-category="panePrivacy" hidden="true" aria-describedby="totalSiteDataSize">
   <label><html:h2 data-l10n-id="sitedata-header"/></label>
 
-  <hbox data-subcategory="sitedata" align="baseline">
+  <hbox data-subcategory="sitedata" align="baseline" pack="end">
     <vbox flex="1">
       <description class="description-with-side-element" flex="1">
         <html:span id="totalSiteDataSize" class="tail-with-learn-more"></html:span>
@@ -375,44 +375,6 @@
         <radio value="disallow"
                data-l10n-id="sitedata-disallow-cookies-option"
                flex="1" />
-        <hbox id="blockThirdPartyRow"
-              class="indent"
-              align="center">
-          <label id="blockCookiesLabel"
-              control="blockCookiesMenu"
-              data-l10n-id="sitedata-block-desc"/>
-          <!-- Please don't remove the wrapping hbox/vbox/box for these elements. It's used to properly compute the search tooltip position. -->
-          <hbox>
-            <menulist id="blockCookiesMenu" preference="network.cookie.cookieBehavior"
-                      onsyncfrompreference="return gPrivacyPane.readBlockCookiesMenu();"
-                      onsynctopreference="return gPrivacyPane.writeBlockCookiesMenu(this.selectedItem.value);">
-              <menupopup>
-                <menuitem id="blockCookiesFromTrackers" data-l10n-id="sitedata-option-block-trackers" value="trackers"/>
-                <menuitem data-l10n-id="sitedata-option-block-unvisited" value="unvisited"/>
-                <menuitem data-l10n-id="sitedata-option-block-all-third-party" value="all-third-parties"/>
-                <menuitem data-l10n-id="sitedata-option-block-all" value="always"/>
-              </menupopup>
-            </menulist>
-          </hbox>
-        </hbox>
-        <hbox id="keepRow"
-              class="indent"
-              align="center">
-          <label id="keepUntil"
-                 control="keepCookiesUntil"
-                 data-l10n-id="sitedata-keep-until"/>
-          <!-- Please don't remove the wrapping hbox/vbox/box for these elements. It's used to properly compute the search tooltip position. -->
-          <hbox>
-            <menulist id="keepCookiesUntil"
-                      onsyncfrompreference="return gPrivacyPane.readKeepCookiesUntil();"
-                      preference="network.cookie.lifetimePolicy">
-              <menupopup>
-                <menuitem data-l10n-id="sitedata-keep-until-expire" value="0"/>
-                <menuitem data-l10n-id="sitedata-keep-until-closed" value="2"/>
-              </menupopup>
-            </menulist>
-          </hbox>
-        </hbox>
       </radiogroup>
     </vbox>
     <vbox align="end">
@@ -458,6 +420,49 @@
       </hbox>
     </vbox>
   </hbox>
+  <!--
+    CLIQZ-SPECIAL:
+    DB-2210: I copied (no layout changes) and pasted those hboxes here
+    just to let blockCookiesMenu take all available space horizontally.
+  -->
+  <hbox id="blockThirdPartyRow"
+        class="indent"
+        align="center">
+    <label id="blockCookiesLabel"
+        control="blockCookiesMenu"
+        data-l10n-id="sitedata-block-desc"/>
+    <!-- Please don't remove the wrapping hbox/vbox/box for these elements. It's used to properly compute the search tooltip position. -->
+    <hbox pack="end">
+      <menulist id="blockCookiesMenu" preference="network.cookie.cookieBehavior"
+                onsyncfrompreference="return gPrivacyPane.readBlockCookiesMenu();"
+                onsynctopreference="return gPrivacyPane.writeBlockCookiesMenu(this.selectedItem.value);">
+        <menupopup>
+          <menuitem id="blockCookiesFromTrackers" data-l10n-id="sitedata-option-block-trackers" value="trackers"/>
+          <menuitem data-l10n-id="sitedata-option-block-unvisited" value="unvisited"/>
+          <menuitem data-l10n-id="sitedata-option-block-all-third-party" value="all-third-parties"/>
+          <menuitem data-l10n-id="sitedata-option-block-all" value="always"/>
+        </menupopup>
+      </menulist>
+    </hbox>
+  </hbox>
+  <hbox id="keepRow"
+        class="indent"
+        align="center">
+    <label id="keepUntil"
+           control="keepCookiesUntil"
+           data-l10n-id="sitedata-keep-until"/>
+    <!-- Please don't remove the wrapping hbox/vbox/box for these elements. It's used to properly compute the search tooltip position. -->
+    <hbox>
+      <menulist id="keepCookiesUntil"
+                onsyncfrompreference="return gPrivacyPane.readKeepCookiesUntil();"
+                preference="network.cookie.lifetimePolicy">
+        <menupopup>
+          <menuitem data-l10n-id="sitedata-keep-until-expire" value="0"/>
+          <menuitem data-l10n-id="sitedata-keep-until-closed" value="2"/>
+        </menupopup>
+      </menulist>
+    </hbox>
+  </hbox>
 </groupbox>
 
 <!-- Passwords -->
@@ -465,16 +470,15 @@
   <label><html:h2 data-l10n-id="logins-header"/></label>
 
   <vbox id="passwordSettings">
-    <hbox id="savePasswordsBox">
-      <hbox flex="1">
+    <hbox id="savePasswordsBox" align="top">
       <checkbox id="savePasswords"
+                flex="2"
                 data-l10n-id="forms-ask-to-save-logins"
                 preference="signon.rememberSignons"
                 onsyncfrompreference="return gPrivacyPane.readSavePasswords();"
                 />
-      </hbox>
       <!-- Please don't remove the wrapping hbox/vbox/box for these elements. It's used to properly compute the search tooltip position. -->
-      <hbox>
+      <hbox flex="1" pack="end">
         <button id="passwordExceptions"
                 is="highlightable-button"
                 class="accessory-button"
@@ -693,8 +697,10 @@
       <checkbox id="trackingProtectionPBM"
                 preference="privacy.donottrackheader.enabled"
                 data-l10n-id="do-not-track-checkbox-description"
+                flex="2"
                 class="tail-with-learn-more"/>
       <label class="learnMore" is="text-link"
+             flex="1"
              data-l10n-id="do-not-track-learn-more"
              href="https://www.mozilla.org/dnt"/>
     </hbox>
@@ -895,9 +901,11 @@
   <vbox id="a11yPermissionsBox">
     <hbox flex="1" align="center">
       <checkbox id="a11yPrivacyCheckbox" class="tail-with-learn-more"
+                flex="2"
                 data-l10n-id="permissions-a11y-privacy-checkbox"
                 oncommand="return gPrivacyPane.updateA11yPrefs(this.checked)"/>
       <label id="a11yLearnMoreLink" class="learnMore" is="text-link"
+             flex="1"
              data-l10n-id="permissions-a11y-privacy-link"/>
     </hbox>
   </vbox>
@@ -1049,15 +1057,14 @@
            value="Ask Every Time"/>
   </radiogroup>
   <hbox align="start">
-    <hbox flex="1">
     <checkbox id="enableOCSP"
+              flex="2"
               data-l10n-id="certs-enable-ocsp"
               onsyncfrompreference="return gPrivacyPane.readEnableOCSP();"
               onsynctopreference="return gPrivacyPane.writeEnableOCSP();"
               preference="security.OCSP.enabled"
               />
-    </hbox>
-    <vbox>
+    <vbox flex="1">
       <!-- Please don't remove the wrapping hbox/vbox/box for these elements. It's used to properly compute the search tooltip position. -->
       <hbox pack="end">
         <button id="viewCertificatesButton"
