@@ -42,6 +42,11 @@
 
 groupbox[data-category] {
   margin: 0 0 32px;
+  max-width: 664px;
+}
+
+vbox[data-category], hbox[data-category] {
+  max-width: 664px;
 }
 
 html|h1 {

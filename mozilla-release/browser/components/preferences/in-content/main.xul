@@ -771,7 +771,7 @@
   <label class="search-header" hidden="true"><html:h2 data-l10n-id="network-settings-title"/></label>
 
   <hbox align="center">
-    <hbox align="center" flex="1">
+    <hbox align="center" flex="2">
       <description id="connectionSettingsDescription" control="connectionSettings"/>
       <spacer width="5"/>
       <label id="connectionSettingsLearnMore" class="learnMore" is="text-link"
@@ -781,7 +781,7 @@
     </hbox>
 
     <!-- Please don't remove the wrapping hbox/vbox/box for these elements. It's used to properly compute the search tooltip position. -->
-    <hbox>
+    <hbox flex="1">
       <button id="connectionSettings"
               is="highlightable-button"
               class="accessory-button"
