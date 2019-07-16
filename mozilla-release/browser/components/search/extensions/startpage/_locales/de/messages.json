@@ -6,13 +6,13 @@
     "message": "Search Start Page"
   },
   "searchUrl": {
-    "message": "https://www.startpage.com/do/dsearch"
+    "message": "https://www.startpage.com/do/dsearch?query={searchTerms}&cat=web&pl=opensearch&language=deutsch"
   },
   "searchForm": {
-    "message": "https://www.startpage.com/do/dsearch"
+    "message": "https://www.startpage.com/do/dsearch?query={searchTerms}&cat=web&pl=opensearch&language=deutsch"
   },
   "suggestUrl": {
-    "message": "https://www.startpage.com/do/dsearch"
+    "message": "https://www.startpage.com/do/dsearch?query={searchTerms}&cat=web&pl=opensearch&language=deutsch"
   },
   "searchUrlGetParams": {
     "message": "query={searchTerms}&cat=web&pl=opensearch&language=deutsch"
