@@ -6,10 +6,10 @@
     "message": "Search Qwant"
   },
   "searchUrl": {
-    "message": "https://www.qwant.com/"
+    "message": "https://www.qwant.com/?client=opensearch&q={searchTerms}&l=de&r=DE&sr=de"
   },
   "searchForm": {
-    "message": "https://www.qwant.com"
+    "message": "https://www.qwant.com?client=opensearch&q={searchTerms}&l=de&r=DE&sr=de"
   },
   "suggestUrl": {
     "message": "https://api.qwant.com/api/suggest/"
