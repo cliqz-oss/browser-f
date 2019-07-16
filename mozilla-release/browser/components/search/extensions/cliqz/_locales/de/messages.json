@@ -9,12 +9,12 @@
     "message": "https://suchen.cliqz.com/"
   },
   "searchForm": {
-    "message": "https://suchen.cliqz.com/#{searchTerms}"
+    "message": "https://suchen.cliqz.com/"
   },
   "suggestUrl": {
-    "message": "https://suchen.cliqz.com/#{searchTerms}"
+    "message": "https://suchen.cliqz.com/"
   },
   "searchUrlGetParams": {
-    "message": "#{searchTerms}"
+    "message": "{cliqzSearchTermsKey}={searchTerms}"
   }
 }
