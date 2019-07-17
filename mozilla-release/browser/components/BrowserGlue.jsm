@@ -2372,7 +2372,9 @@ BrowserGlue.prototype = {
       return;
 
     // CLIQZ-SPECIAL: Show whats new page on every update
-    Services.prefs.setBoolPref("browser.migration.showWhatsNew", true);
+    // set false for 1.28 as we do not show whats new page
+    // set true if we need to show whats new page
+    Services.prefs.setBoolPref("browser.migration.showWhatsNew", false);
 
     let xulStore = Services.xulStore;
 
