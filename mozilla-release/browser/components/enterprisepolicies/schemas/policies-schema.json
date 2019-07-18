@@ -293,7 +293,7 @@
     },
 
     "ExtensionSettings": {
-      "type": "object",
+      "type": ["JSON", "object"],
       "properties": {
         "*": {
           "type": "object",
@@ -652,6 +652,9 @@
           "type": "boolean"
         },
         "places.history.enabled": {
+          "type": "boolean"
+        },
+        "privacy.file_unique_origin": {
           "type": "boolean"
         },
         "security.default_personal_cert": {

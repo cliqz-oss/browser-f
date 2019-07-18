@@ -25,7 +25,7 @@ RUN apt-get update \
 WORKDIR /builds/worker/
 # Change hash_for_given_tag to point to a newer tag. For more information, see
 # https://bugzilla.mozilla.org/show_bug.cgi?id=1459980#c3
-RUN export revision='520af258e5e5109dfba5dc0cc758f9265f1b6611' \
+RUN export revision='7647009c5a32e543bae941192071c66872733ed3' \
   && curl --location "https://github.com/mozilla-releng/mozapkpublisher/archive/$revision.zip" > mozapkpublisher.zip \
   && unzip mozapkpublisher.zip \
   && mv "mozapkpublisher-$revision" mozapkpublisher \
