@@ -362,6 +362,11 @@ window._gBrowser = {
       ContextualIdentityService.setTabStyle(tab);
     }
 
+    // CLIQZ-SPECIAL:
+    // DB-2208:
+    // The idea to do that does not look nice but what an adventure! ;)
+    tab.setAttribute("private", window.arguments[0] === "about:privatebrowsing");
+
     this._tabForBrowser.set(browser, tab);
 
     this._appendStatusPanel();
@@ -2257,6 +2262,8 @@ window._gBrowser = {
    */
   addTrustedTab(aURI, params = {}) {
     params.triggeringPrincipal = Services.scriptSecurityManager.getSystemPrincipal();
+    params.private = typeof params.private == "boolean" ? params.private : false;
+
     return this.addTab(aURI, params);
   },
 
@@ -2329,6 +2336,8 @@ window._gBrowser = {
       (relatedToCurrent && this.selectedTab));
 
     var t = document.createXULElement("tab");
+
+    t.setAttribute("private", private == true);
 
     t.openerTab = openerTab;
 

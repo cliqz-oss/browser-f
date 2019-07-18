@@ -2646,6 +2646,7 @@ function BrowserOpenTab(event) {
       openTrustedLinkIn(BROWSER_NEW_TAB_URL, where, {
         relatedToCurrent,
         resolveOnNewTabCreated: resolve,
+        private: PrivateBrowsingUtils.isWindowPrivate(window),
       });
     }),
   }, "browser-open-newtab-start");
