@@ -316,7 +316,7 @@ function openLinkIn(url, where, params) {
   var aForceAllowDataURI    = params.forceAllowDataURI;
   var aInBackground         = params.inBackground;
   var aInitiatingDoc        = params.initiatingDoc;
-  var aIsPrivate            = params.private || params.isContentWindowPrivate;
+  var aIsPrivate            = params.private || params.isContentWindowPrivate || false;
   var aSkipTabAnimation     = params.skipTabAnimation;
   var aAllowPinnedTabHostChange = !!params.allowPinnedTabHostChange;
   var aAllowPopups          = !!params.allowPopups;

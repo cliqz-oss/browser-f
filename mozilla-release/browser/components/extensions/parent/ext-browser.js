@@ -25,6 +25,10 @@ let tabTracker;
 let windowTracker;
 
 function isPrivateTab(nativeTab) {
+  if (nativeTab.linkedBrowser.loadContext == null) {
+    return nativeTab.getAttribute("private") === "true";
+  }
+
   return PrivateBrowsingUtils.isBrowserPrivate(nativeTab.linkedBrowser);
 }
 
@@ -701,7 +705,7 @@ Object.assign(global, {tabTracker, windowTracker});
 
 class Tab extends TabBase {
   get incognito() {
-    return PrivateBrowsingUtils.isBrowserPrivate(this.browser);
+    return isPrivateTab(this.nativeTab);
   }
 
   get _favIconUrl() {

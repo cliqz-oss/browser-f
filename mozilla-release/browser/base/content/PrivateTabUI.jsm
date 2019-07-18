@@ -57,6 +57,8 @@ const eventHandlers = {
   "TabPrivateModeChanged": function onTabPrivateModeChanged(event) {
     if (event.originalTarget !== this._browser.selectedBrowser)
       return;
+
+    this._browser.selectedTab.setAttribute("private", event.detail.private == true);
     this._setToolboxPrivateAttr(event.detail.private);
   }
 };
