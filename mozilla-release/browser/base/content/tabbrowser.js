@@ -365,7 +365,9 @@ window._gBrowser = {
     // CLIQZ-SPECIAL:
     // DB-2208:
     // The idea to do that does not look nice but what an adventure! ;)
-    tab.setAttribute("private", window.arguments[0] === "about:privatebrowsing");
+    tab.setAttribute("private", window.arguments != null ?
+      window.arguments[0] === "about:privatebrowsing" :
+      false);
 
     this._tabForBrowser.set(browser, tab);
 
