@@ -195,7 +195,8 @@
   }
 
   :root[tabsintitlebar]:not([inFullscreen]):not(:-moz-lwtheme):-moz-window-inactive {
-    color: InactiveCaptionText;
+    /*color: InactiveCaptionText;*/
+    color: rgb(255,255,255);
   }
 }
 
