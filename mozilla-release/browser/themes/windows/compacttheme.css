@@ -116,7 +116,8 @@
     }
 
     :root[tabsintitlebar]:not([inFullscreen]):-moz-window-inactive {
-      color: InactiveCaptionText;
+      /*color: InactiveCaptionText;*/
+      color: rgb(255,255,255);
     }
 
     #main-window[tabsintitlebar] #main-menubar > menu {
