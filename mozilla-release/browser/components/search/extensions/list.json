@@ -244,7 +244,7 @@
     "de": {
       "default": {
         "visibleDefaultEngines": [
-          "google-b-d", "amazon-de", "bing", "ddg", "ebay-de", "ecosia", "leo_ende_de", "wikipedia-de",
+          "amazon-de", "bing", "ddg", "ebay-de", "ecosia", "leo_ende_de", "wikipedia-de",
           "google", "amazondotcom-de", "cliqz", "twitter", "qwant-de", "yahoo-de",
           "gimages-de", "gmaps-de", "startpage-de", "youtube-de"
         ]
