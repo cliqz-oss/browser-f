@@ -1110,7 +1110,7 @@ class TabManager extends TabManagerBase {
 
   canAccessTab(nativeTab) {
     return this.extension.privateBrowsingAllowed ||
-           !PrivateBrowsingUtils.isBrowserPrivate(nativeTab.linkedBrowser);
+           !isPrivateTab(nativeTab);
   }
 
   wrapTab(nativeTab) {
