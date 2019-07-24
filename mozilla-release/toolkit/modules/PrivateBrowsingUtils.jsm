@@ -90,8 +90,8 @@ var PrivateBrowsingUtils = {
       // There might be cases when aBrowser.loadContext is not yet (or not anymore)
       // exists for a given aBrowser. As we don't have any other way to know if it's
       // private or not, it's safer to assume it is.
-      Components.utils.reportError("Browser passed to PrivateBrowsingUtils.isBrowserPrivate " +
-                                   "does not have loadContext.");
+      //Components.utils.reportError("Browser passed to PrivateBrowsingUtils.isBrowserPrivate " +
+      //                             "does not have loadContext.");
       return true;
     }
   },
