@@ -661,9 +661,11 @@
         data-l10n-id="forget-mode-enable-checkbox"
         preference="browser.privatebrowsing.apt"/>
     <html:ul>
-      <html:li><description data-l10n-id="forget-mode-explanation1"/></html:li>
-      <html:li><description data-l10n-id="forget-mode-explanation2"/></html:li>
-      <html:li><description data-l10n-id="forget-mode-explanation3"/></html:li>
+      <description>
+        <html:li data-l10n-id="forget-mode-explanation1"/>
+        <html:li data-l10n-id="forget-mode-explanation2"/>
+        <html:li data-l10n-id="forget-mode-explanation3"/>
+      </description>
     </html:ul>
     <separator class="thin"/>
     <description data-l10n-id="forget-mode-note"/>
