@@ -87,6 +87,8 @@ const RECOMMENDED_ADDONS = {
   }
 };
 
+const defaultIcon = "chrome://mozapps/skin/extensions/extensionGeneric.svg";
+
 const PREF_DISCOVERY_API_URL = "extensions.getAddons.discovery.api_url";
 const PREF_THEME_RECOMMENDATION_URL =
   "extensions.recommendations.themeRecommendationUrl";
@@ -1729,7 +1731,7 @@ class AddonCard extends HTMLElement {
     } else {
       icon = AddonManager.getPreferredIconURL(addon, 32, window);
     }
-    card.querySelector(".addon-icon").src = icon;
+    card.querySelector(".addon-icon").src = icon || defaultIcon;
 
     // Update the theme preview.
     let preview = card.querySelector(".card-heading-image");
