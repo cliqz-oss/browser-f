@@ -1752,13 +1752,15 @@ class AddonCard extends HTMLElement {
         name: addon.name,
       });
     }
-    let addonPermissions = card.querySelector(".addon-permissions");
-    const { permissions, origins } = addon.userPermissions;
-    if (permissions.length || origins.length) {
-      if (origins.length) {
-        addonPermissions.textContent = browserBundle.formatStringFromName('webextPerms.domain.heading', [permissions.length], 1);
-      } else {
-        addonPermissions.textContent = browserBundle.formatStringFromName('webextPerms.heading', [permissions.length], 1);
+    if (addon.userPermissions) {
+      let addonPermissions = card.querySelector(".addon-permissions");
+      const { permissions = [], origins = [] } = addon.userPermissions;
+      if (permissions.length || origins.length) {
+        if (origins.length) {
+          addonPermissions.textContent = browserBundle.formatStringFromName('webextPerms.domain.heading', [permissions.length], 1);
+        } else {
+          addonPermissions.textContent = browserBundle.formatStringFromName('webextPerms.heading', [permissions.length], 1);
+        }
       }
     }
     name.title = `${addon.name} ${addon.version}`;
