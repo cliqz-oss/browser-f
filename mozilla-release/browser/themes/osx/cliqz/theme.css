@@ -200,6 +200,7 @@ toolbar .toolbarbutton-1 > .toolbarbutton-icon {
   color: #5a5b5c;
 }
 #navigator-toolbox #PersonalToolbar {
+  padding-top: 2px; /* CLIQZ SPECIAL: Quick fix for DB-2239 need to check in detail*/
   border-top: 1px solid #e1e1e1;
   box-shadow: rgba(0, 0, 0, 0.19) 0 1px 1px 0;
   border-bottom: unset;
