@@ -25,7 +25,7 @@ let tabTracker;
 let windowTracker;
 
 function isPrivateTab(nativeTab) {
-  if (nativeTab.linkedBrowser.loadContext == null) {
+  if (nativeTab.linkedBrowser == null || nativeTab.linkedBrowser.loadContext == null) {
     return nativeTab.getAttribute("private") === "true";
   }
 
