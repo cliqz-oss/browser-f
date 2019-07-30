@@ -28,7 +28,7 @@ function runFindOperation(context, params, message) {
   let mm = browser.messageManager;
   tabId = tabId || tabTracker.getId(tab);
   if (!context.privateBrowsingAllowed &&
-      PrivateBrowsingUtils.isBrowserPrivate(browser)) {
+      PrivateBrowsingUtils.isTabContextPrivate(tab)) {
     return Promise.reject({message: `Unable to search: ${tabId}`});
   }
   // We disallow find in about: urls.
@@ -116,7 +116,7 @@ this.find = class extends ExtensionAPI {
          */
         removeHighlighting(tabId) {
           let tab = tabId ? tabTracker.getTab(tabId) : tabTracker.activeTab;
-          if (!context.privateBrowsingAllowed && PrivateBrowsingUtils.isBrowserPrivate(tab.linkedBrowser)) {
+          if (!context.privateBrowsingAllowed && PrivateBrowsingUtils.isTabContextPrivate(tab)) {
             throw new ExtensionError(`Invalid tab ID: ${tabId}`);
           }
           tab.linkedBrowser.messageManager.sendAsyncMessage("ext-Finder:clearHighlighting");

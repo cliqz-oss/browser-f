@@ -214,8 +214,9 @@ var PageThumbs = {
    *   security checks performed.
    */
   shouldStoreThumbnail(aBrowser, aCallback) {
+    let aTab = aBrowser.ownerGlobal.gBrowser.getTabForBrowser(aBrowser);
     // Don't capture in private browsing mode.
-    if (PrivateBrowsingUtils.isBrowserPrivate(aBrowser)) {
+    if (PrivateBrowsingUtils.isTabContextPrivate(aTab)) {
       aCallback(false);
       return;
     }

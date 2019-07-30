@@ -1120,7 +1120,7 @@ var ContentBlocking = {
       anyBlocking = anyBlocking || blocker.activated;
     }
 
-    let isBrowserPrivate = PrivateBrowsingUtils.isBrowserPrivate(gBrowser.selectedBrowser);
+    let isBrowserPrivate = PrivateBrowsingUtils.isTabContextPrivate(gBrowser.getTabForBrowser(gBrowser.selectedBrowser));
 
     // Check whether the user has added an exception for this site.
     let type =  isBrowserPrivate ? "trackingprotection-pb" : "trackingprotection";
@@ -1214,7 +1214,7 @@ var ContentBlocking = {
     // Add the current host in the 'trackingprotection' consumer of
     // the permission manager using a normalized URI. This effectively
     // places this host on the tracking protection allowlist.
-    if (PrivateBrowsingUtils.isBrowserPrivate(gBrowser.selectedBrowser)) {
+    if (PrivateBrowsingUtils.isTabContextPrivate(gBrowser.getTabForBrowser(gBrowser.selectedBrowser))) {
       PrivateBrowsingUtils.addToTrackingAllowlist(baseURI);
     } else {
       Services.perms.add(baseURI,
@@ -1230,7 +1230,7 @@ var ContentBlocking = {
     // from the tracking protection allowlist.
     let baseURI = this._baseURIForChannelClassifier;
 
-    if (PrivateBrowsingUtils.isBrowserPrivate(gBrowser.selectedBrowser)) {
+    if (PrivateBrowsingUtils.isTabContextPrivate(gBrowser.getTabForBrowser(gBrowser.selectedBrowser))) {
       PrivateBrowsingUtils.removeFromTrackingAllowlist(baseURI);
     } else {
       Services.perms.remove(baseURI, "trackingprotection");
@@ -1240,7 +1240,7 @@ var ContentBlocking = {
   },
 
   dontShowIntroPanelAgain() {
-    if (!PrivateBrowsingUtils.isBrowserPrivate(gBrowser.selectedBrowser)) {
+    if (!PrivateBrowsingUtils.isTabContextPrivate(gBrowser.getTabForBrowser(gBrowser.selectedBrowser))) {
       Services.prefs.setIntPref(this.prefIntroCount, this.MAX_INTROS);
       Services.prefs.savePrefFile(null);
     }
