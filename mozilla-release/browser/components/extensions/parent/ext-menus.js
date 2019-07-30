@@ -103,7 +103,7 @@ var gMenuBuilder = {
   canAccessContext(extension, contextData) {
     if (!extension.privateBrowsingAllowed) {
       let nativeTab = contextData.tab;
-      if (nativeTab && PrivateBrowsingUtils.isBrowserPrivate(nativeTab.linkedBrowser)) {
+      if (nativeTab && PrivateBrowsingUtils.isTabContextPrivate(nativeTab)) {
         return false;
       } else if (PrivateBrowsingUtils.isWindowPrivate(contextData.menu.ownerGlobal)) {
         return false;

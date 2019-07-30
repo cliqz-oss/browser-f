@@ -329,7 +329,12 @@ var LoginManagerParent = {
     }
 
     function recordLoginUse(login) {
-      if (!target || PrivateBrowsingUtils.isBrowserPrivate(target)) {
+      if (!target) {
+        return;
+      }
+
+      let aTab = target.ownerGlobal.gBrowser.getTabForBrowser(target);
+      if (PrivateBrowsingUtils.isTabContextPrivate(aTab)) {
         // don't record non-interactive use in private browsing
         return;
       }

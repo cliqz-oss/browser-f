@@ -273,7 +273,7 @@ var ContentSearch = {
     let ok = SearchSuggestionController.engineOffersSuggestions(engine);
     controller.maxLocalResults = ok ? MAX_LOCAL_SUGGESTIONS : MAX_SUGGESTIONS;
     controller.maxRemoteResults = ok ? MAX_SUGGESTIONS : 0;
-    let priv = PrivateBrowsingUtils.isBrowserPrivate(browser);
+    let priv = PrivateBrowsingUtils.isTabContextPrivate(browser.ownerGlobal.gBrowser.getTabForBrowser(browser));
     // fetch() rejects its promise if there's a pending request, but since we
     // process our event queue serially, there's never a pending request.
     this._currentSuggestion = { controller, target: browser };
@@ -307,7 +307,7 @@ var ContentSearch = {
       // isBrowserPrivate assumes that the passed-in browser has all the normal
       // properties, which won't be true if the browser has been destroyed.
       // That may be the case here due to the asynchronous nature of messaging.
-      isPrivate = PrivateBrowsingUtils.isBrowserPrivate(browser.target);
+      isPrivate = PrivateBrowsingUtils.isTabContextPrivate(browser.target.ownerGlobal.gBrowser.getTabForBrowser(browser.target));
     } catch (err) {
       return false;
     }
