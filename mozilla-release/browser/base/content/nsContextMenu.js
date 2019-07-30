@@ -1029,7 +1029,8 @@ nsContextMenu.prototype = {
 
   saveVideoFrameAsImage() {
     let mm = this.browser.messageManager;
-    let isPrivate = PrivateBrowsingUtils.isBrowserPrivate(this.browser);
+    let aTab = this.browser.ownerGlobal.gBrowser.getTabForBrowser(this.browser);
+    let isPrivate = PrivateBrowsingUtils.isTabContextPrivate(aTab);
 
     let name = "";
     if (this.mediaURL) {
@@ -1242,7 +1243,8 @@ nsContextMenu.prototype = {
     if (linkDownload)
       channel.contentDispositionFilename = linkDownload;
     if (channel instanceof Ci.nsIPrivateBrowsingChannel) {
-      let docIsPrivate = PrivateBrowsingUtils.isBrowserPrivate(this.browser);
+      let aTab = this.browser.ownerGlobal.gBrowser.getTabForBrowser(this.browser);
+      let docIsPrivate = PrivateBrowsingUtils.isTabContextPrivate(aTab);
       channel.setPrivate(docIsPrivate);
     }
     channel.notificationCallbacks = new callbacks();
@@ -1300,7 +1302,8 @@ nsContextMenu.prototype = {
     let doc = this.ownerDoc;
     let isContentWindowPrivate = this.isRemote ? this.ownerDoc.isPrivate : undefined;
     let referrerURI = gContextMenuContentData.documentURIObject;
-    let isPrivate = PrivateBrowsingUtils.isBrowserPrivate(this.browser);
+    let aTab = this.browser.ownerGlobal.gBrowser.getTabForBrowser(this.browser);
+    let isPrivate = PrivateBrowsingUtils.isTabContextPrivate(aTab);
     if (this.onCanvas) {
       // Bypass cache, since it's a data: URL.
       this._canvasToBlobURL(this.target).then(function(blobURL) {

@@ -183,7 +183,8 @@ var gViewSourceUtils = {
           contentType: browser.documentContentType,
           title: browser.contentTitle,
         };
-        data.isPrivate = PrivateBrowsingUtils.isBrowserPrivate(browser);
+        let aTab = browser.ownerGlobal.gBrowser.getTabForBrowser(browser);
+        data.isPrivate = PrivateBrowsingUtils.isTabContextPrivate(aTab);
       }
 
       try {

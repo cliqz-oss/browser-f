@@ -182,7 +182,7 @@ class TabBase {
    *        @readonly
    */
   get _incognito() {
-    return PrivateBrowsingUtils.isBrowserPrivate(this.browser);
+    return PrivateBrowsingUtils.isTabContextPrivate(this.nativeTab);
   }
 
   /**

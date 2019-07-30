@@ -1359,9 +1359,10 @@ function _loadURI(browser, uri, params = {}) {
   try {
     if (!mustChangeProcess) {
       if (userContextId) {
+        let aTab = browser.ownerGlobal.gBrowser.getTabForBrowser(browser);
         browser.webNavigation.setOriginAttributesBeforeLoading({
           userContextId,
-          privateBrowsingId: PrivateBrowsingUtils.isBrowserPrivate(browser) ? 1 : 0,
+          privateBrowsingId: PrivateBrowsingUtils.isTabContextPrivate(aTab) ? 1 : 0,
         });
       }
       if (CliqzResources.isCliqzPage(uri)) {
@@ -1412,9 +1413,10 @@ function _loadURI(browser, uri, params = {}) {
       gBrowser.updateBrowserRemotenessByURL(browser, uri);
 
       if (userContextId) {
+        let aTab = browser.ownerGlobal.gBrowser.getTabForBrowser(browser);
         browser.webNavigation.setOriginAttributesBeforeLoading({
           userContextId,
-          privateBrowsingId: PrivateBrowsingUtils.isBrowserPrivate(browser) ? 1 : 0,
+          privateBrowsingId: PrivateBrowsingUtils.isTabContextPrivate(aTab) ? 1 : 0,
         });
       }
       browser.webNavigation.loadURI(uri, loadURIOptions);
@@ -3038,7 +3040,8 @@ function URLBarSetURI(aURI, updatePopupNotifications) {
 
     // Cliqz. Invalidate page proxy state for inital pages opened in private tabs
     // and Cliqz pages.
-    if (PrivateBrowsingUtils.isBrowserPrivate(gBrowser.selectedBrowser) &&
+    let aTab = gBrowser.getTabForBrowser(gBrowser.selectedBrowser);
+    if (PrivateBrowsingUtils.isTabContextPrivate(aTab) &&
         CliqzResources.isInitialPage(uri.spec)) {
       valid = false;
     }
@@ -3404,7 +3407,8 @@ var BrowserOnClick = {
           flags |= overrideService.ERROR_TIME;
         }
         let uri = Services.uriFixup.createFixupURI(location, 0);
-        let permanentOverride = !PrivateBrowsingUtils.isBrowserPrivate(browser) && Services.prefs.getBoolPref("security.certerrors.permanentOverride");
+        let aTab = browser.ownerGlobal.gBrowser.getTabForBrowser(browser);
+        let permanentOverride = !PrivateBrowsingUtils.isTabContextPrivate(aTab) && Services.prefs.getBoolPref("security.certerrors.permanentOverride");
         cert = securityInfo.serverCert;
         overrideService.rememberValidityOverride(
           uri.asciiHost, uri.port,

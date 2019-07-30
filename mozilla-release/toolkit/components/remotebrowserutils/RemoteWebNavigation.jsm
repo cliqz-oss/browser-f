@@ -90,9 +90,10 @@ RemoteWebNavigation.prototype = {
         // don't have one or if it's a SystemPrincipal, let's create it with OA
         // inferred from the current context.
         if (!principal || principal.isSystemPrincipal) {
+          let aTab = this._browser.ownerGlobal.gBrowser.getTabForBrowser(this._browser);
           let attrs = {
             userContextId: this._browser.getAttribute("usercontextid") || 0,
-            privateBrowsingId: PrivateBrowsingUtils.isBrowserPrivate(this._browser) ? 1 : 0,
+            privateBrowsingId: PrivateBrowsingUtils.isTabContextPrivate(aTab) ? 1 : 0,
           };
           principal = Services.scriptSecurityManager.createCodebasePrincipal(uri, attrs);
         }

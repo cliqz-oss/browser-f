@@ -582,7 +582,7 @@ this.tabs = class extends ExtensionAPI {
               // Falling back to codebase here as about: requires it, however is safe.
               principal = Services.scriptSecurityManager.createCodebasePrincipal(Services.io.newURI(url), {
                 userContextId: options.userContextId,
-                privateBrowsingId: PrivateBrowsingUtils.isBrowserPrivate(window.gBrowser) ? 1 : 0,
+                privateBrowsingId: PrivateBrowsingUtils.isBrowserPrivate(window.gBrowser, true) ? 1 : 0,
               });
             } else {
               options.allowInheritPrincipal = true;
@@ -872,8 +872,8 @@ this.tabs = class extends ExtensionAPI {
             // If moving between windows, be sure privacy matches.  While gBrowser
             // prevents this, we want to silently ignore it.
             if (nativeTab.ownerGlobal != window &&
-                PrivateBrowsingUtils.isBrowserPrivate(window.gBrowser) !=
-                PrivateBrowsingUtils.isBrowserPrivate(nativeTab.ownerGlobal.gBrowser)) {
+                PrivateBrowsingUtils.isBrowserPrivate(window.gBrowser, true) !=
+                PrivateBrowsingUtils.isBrowserPrivate(nativeTab.ownerGlobal.gBrowser, true)) {
               continue;
             }
 

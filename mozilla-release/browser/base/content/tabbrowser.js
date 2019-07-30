@@ -5227,7 +5227,7 @@ class TabProgressListener {
       // CLIQZ: also don't register windows from Forget tabs.
       if (!isBlankPageURL(aLocation.spec) &&
           ((!PrivateBrowsingUtils.isWindowPrivate(window) &&
-            !PrivateBrowsingUtils.isBrowserPrivate(this.mTab.linkedBrowser)) ||
+            !PrivateBrowsingUtils.isTabContextPrivate(this.mTab)) ||
             PrivateBrowsingUtils.permanentPrivateBrowsing)) {
         gBrowser.UrlbarProviderOpenTabs.registerOpenTab(aLocation.spec,
                                                         userContextId);

@@ -169,7 +169,7 @@ this.windows = class extends ExtensionAPI {
             }
             // Private browsing tabs can only be moved to private browsing
             // windows.
-            let incognito = PrivateBrowsingUtils.isBrowserPrivate(tab.linkedBrowser);
+            let incognito = PrivateBrowsingUtils.isTabContextPrivate(tab);
             if (createData.incognito !== null && createData.incognito != incognito) {
               return Promise.reject({message: "`incognito` property must match the incognito state of tab"});
             }
