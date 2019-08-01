@@ -24,7 +24,7 @@
 
   <script src="chrome://global/content/resetProfile.js"/>
 
-  <description data-l10n-id="refresh-profile-description"/>
+  <description crop="end" data-l10n-id="refresh-profile-description"/>
   <label data-l10n-id="refresh-profile-description-details"/>
 
   <vbox id="migratedItems">
