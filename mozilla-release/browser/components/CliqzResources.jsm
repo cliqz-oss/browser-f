@@ -39,9 +39,9 @@ const CliqzResources = {
       case 'about:home':
       case 'about:newtab':
       case 'resource://cliqz/freshtab/home.html':
+      case 'about:welcome':
         return this.getFreshTabUrl();
 
-      case 'about:welcome':
       case 'chrome://cliqz/content/onboarding-v3/index.html':
         return this.getWelcomeUrl();
 

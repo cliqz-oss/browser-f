@@ -89,7 +89,7 @@ static const RedirEntry kRedirMap[] = {
      nsIAboutModule::URI_MUST_LOAD_IN_CHILD |
          nsIAboutModule::URI_CAN_LOAD_IN_PRIVILEGED_CHILD |
          nsIAboutModule::URI_SAFE_FOR_UNTRUSTED_CONTENT |
-         nsIAboutModule::ALLOW_SCRIPT},
+         nsIAboutModule::ALLOW_SCRIPT | nsIAboutModule::HIDE_FROM_ABOUTABOUT},
     {"library", "chrome://browser/content/aboutLibrary.xhtml",
      nsIAboutModule::URI_MUST_LOAD_IN_CHILD |
          nsIAboutModule::URI_SAFE_FOR_UNTRUSTED_CONTENT},
