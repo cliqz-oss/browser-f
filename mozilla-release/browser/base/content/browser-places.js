@@ -8,10 +8,13 @@
 XPCOMUtils.defineLazyScriptGetter(this, ["PlacesToolbar", "PlacesMenu",
                                          "PlacesPanelview", "PlacesPanelMenuView"],
                                   "chrome://browser/content/places/browserPlacesViews.js");
+
+/*
+CLIQZ-SPECIAL: remove bookmark recommendation served from activity stream
 XPCOMUtils.defineLazyModuleGetters(this, {
   BookmarkPanelHub: "resource://activity-stream/lib/BookmarkPanelHub.jsm",
 });
-
+*/
 var StarUI = {
   _itemGuids: null,
   _batching: false,
@@ -186,11 +189,13 @@ var StarUI = {
   },
 
   getRecommendation(data) {
-    return BookmarkPanelHub.messageRequest(data, window);
+    // CLIQZ-SPECIAL: remove bookmark recommendation served from activity stream
+    // return BookmarkPanelHub.messageRequest(data, window);
   },
 
   toggleRecommendation() {
-    BookmarkPanelHub.toggleRecommendation();
+    // CLIQZ-SPECIAL: remove bookmark recommendation served from activity stream
+    // BookmarkPanelHub.toggleRecommendation();
   },
 
   async showEditBookmarkPopup(aNode, aIsNewBookmark, aUrl) {
@@ -234,6 +239,8 @@ var StarUI = {
 
     this._setIconAndPreviewImage();
 
+    /*
+    CLIQZ-SPECIAL: remove bookmark recommendation served from activity stream
     await this.getRecommendation({
       container: this._element("editBookmarkPanelRecommendation"),
       infoButton: this._element("editBookmarkPanelInfoButton"),
@@ -248,7 +255,7 @@ var StarUI = {
         this.panel.hidePopup();
       },
     });
-
+    */
     this.beginBatch();
 
     this._anchorElement = BookmarkingUI.anchor;
