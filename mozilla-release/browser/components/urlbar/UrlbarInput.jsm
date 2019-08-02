@@ -169,8 +169,10 @@ class UrlbarInput {
     this.view.panel.addEventListener("popupshowing", this);
     this.view.panel.addEventListener("popuphidden", this);
 
-    this._copyCutController = new CopyCutController(this);
-    this.inputField.controllers.insertControllerAt(0, this._copyCutController);
+    // CLIQZ-SPECIAL: we do not need to attach controller, as its hijacked by extension also DB-2229
+    // this._copyCutController = new CopyCutController(this);
+    this._copyCutController = null;
+    // this.inputField.controllers.insertControllerAt(0, this._copyCutController);
 
     this._initPasteAndGo();
 
