@@ -371,7 +371,7 @@ class UrlbarInput {
     } else {
       // Use the current value if we don't have a UrlbarResult e.g. because the
       // view is closed.
-      url = this.value;
+      url = this.value || this.textValue;
       openParams.postData = null;
     }
 
