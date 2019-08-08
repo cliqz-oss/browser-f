@@ -149,7 +149,7 @@
           </description>
           <description class="text-blurb" data-l10n-id="cliqz-description-2">
             <label is="text-link" href="https://mozilla.org" data-l10n-name="cliqz-desc2-mozilla"></label>
-            <label is="text-link" href="about:license" data-l10n-name="cliqz-desc2-here"></label>
+            <label is="text-link" useoriginprincipal="true" href="about:license" data-l10n-name="cliqz-desc2-here"></label>
           </description>
         </vbox>
       </vbox>
