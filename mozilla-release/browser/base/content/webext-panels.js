@@ -10,7 +10,10 @@
 ChromeUtils.defineModuleGetter(this, "ExtensionParent",
                                "resource://gre/modules/ExtensionParent.jsm");
 
-const {ExtensionUtils} = ChromeUtils.import("resource://gre/modules/ExtensionUtils.jsm");
+// CLIQZ-SPECIAL:
+// DB-2252: Using CQZ_TOR_MODE active declares ExtensionUtils in the browser.js file.
+// Which leads to a problem here (var x; const x; redeclaration);
+var {ExtensionUtils} = ChromeUtils.import("resource://gre/modules/ExtensionUtils.jsm");
 
 var {
   promiseEvent,
