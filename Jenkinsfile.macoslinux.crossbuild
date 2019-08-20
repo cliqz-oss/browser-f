@@ -81,7 +81,7 @@ node('gideon') {
                 v.memory = ENV["NODE_MEMORY"]
             end
             crossbuild.vm.provision "shell", privileged: true, run: "always", inline: <<-SHELL
-                npm install -g appdmg
+                npm install --unsafe-perm=true appdmg@0.5.2 -g
             SHELL
             crossbuild.vm.provision "shell", privileged: false, run: "always", inline: <<-SHELL
                 rm -f slave.jar
