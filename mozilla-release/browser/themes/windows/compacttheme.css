@@ -120,10 +120,6 @@
       color: rgb(255,255,255);
     }
 
-    :root[tabsintitlebar]:not([inFullscreen]):not(:-moz-window-inactive) {
-      color: rgb(255,255,255);
-    }
-
     #main-window[tabsintitlebar] #main-menubar > menu {
       color: inherit;
     }
