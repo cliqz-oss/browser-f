@@ -233,6 +233,8 @@ for inst,           rrr in [
     X86_64.enc(inst.i32.any, *r.rc(0xd3, rrr=rrr))
 
 for inst,           rrr in [
+        (base.rotl_imm, 0),
+        (base.rotr_imm, 1),
         (base.ishl_imm, 4),
         (base.ushr_imm, 5),
         (base.sshr_imm, 7)]:
@@ -338,6 +340,25 @@ enc_x86_64(x86.pop.i64, r.popq, 0x58)
 # special regunit immediate operands with the current constraint language.
 X86_64.enc(base.copy_special, *r.copysp.rex(0x89, w=1))
 X86_32.enc(base.copy_special, *r.copysp(0x89))
+
+# Stack-slot-to-the-same-stack-slot copy, which is guaranteed to turn
+# into a no-op.  Ideally we could to make this encoding available for
+# all types, and write `base.copy_nop.any`, but it appears that the
+# controlling type variable must not polymorphic.  So we make do with
+# the following limited set, and guard the generating transformation in
+# regalloc/reload.rs accordingly.
+#
+# The same encoding is generated for both the 64- and 32-bit architectures.
+# Note that we can't use `enc_both` here, because that attempts to create a
+# variant with a REX prefix in the 64-bit-architecture case.  But since
+# there's no actual instruction for the REX prefix to modify the meaning of,
+# it will modify the meaning of whatever instruction happens to follow this
+# one, which is obviously wrong.  Note also that we can and indeed *must*
+# claim that there's a 64-bit encoding for the 32-bit arch case, even though
+# no such single instruction actually exists for the 32-bit arch case.
+for ty in [types.i64, types.i32, types.i16, types.i8, types.f64, types.f32]:
+    X86_64.enc(base.copy_nop.bind(ty), r.stacknull, 0)
+    X86_32.enc(base.copy_nop.bind(ty), r.stacknull, 0)
 
 # Adjust SP down by a dynamic value (or up, with a negative operand).
 X86_32.enc(base.adjust_sp_down.i32, *r.adjustsp(0x29))
@@ -481,8 +502,10 @@ X86_64.enc(base.x_return, *r.ret(0xc3))
 #
 # Branches
 #
-enc_both(base.jump, r.jmpb, 0xeb)
-enc_both(base.jump, r.jmpd, 0xe9)
+X86_32.enc(base.jump, *r.jmpb(0xeb))
+X86_64.enc(base.jump, *r.jmpb(0xeb))
+X86_32.enc(base.jump, *r.jmpd(0xe9))
+X86_64.enc(base.jump, *r.jmpd(0xe9))
 
 enc_both(base.brif, r.brib, 0x70)
 enc_both(base.brif, r.brid, 0x0f, 0x80)

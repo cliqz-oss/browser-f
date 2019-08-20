@@ -12,6 +12,8 @@
 #include "mozilla/LookAndFeel.h"
 #include "mozilla/Maybe.h"
 #include "mozilla/PresShell.h"
+#include "mozilla/dom/EffectsInfo.h"
+#include "mozilla/dom/RemoteBrowser.h"
 #include "mozilla/dom/ProfileTimelineMarkerBinding.h"
 #include "mozilla/gfx/Matrix.h"
 #include "ActiveLayerTracker.h"
@@ -34,6 +36,7 @@
 #include "nsDocShell.h"
 #include "nsIScrollableFrame.h"
 #include "nsImageFrame.h"
+#include "nsSubDocumentFrame.h"
 #include "nsLayoutUtils.h"
 #include "nsPresContext.h"
 #include "nsPrintfCString.h"
@@ -51,10 +54,11 @@
 #include "mozilla/layers/TextureClient.h"
 #include "mozilla/layers/TextureWrapperImage.h"
 #include "mozilla/layers/WebRenderUserData.h"
+#include "mozilla/PerfStats.h"
 #include "mozilla/Unused.h"
 #include "GeckoProfiler.h"
 #include "LayersLogging.h"
-#include "gfxPrefs.h"
+#include "mozilla/StaticPrefs.h"
 
 #include <algorithm>
 #include <functional>
@@ -387,7 +391,7 @@ DisplayItemData::~DisplayItemData() {
   }
 }
 
-void DisplayItemData::ClearAnimationCompositorState() {
+void DisplayItemData::NotifyRemoved() {
   if (mDisplayItemKey > static_cast<uint8_t>(DisplayItemType::TYPE_MAX)) {
     // This is sort of a hack. The display item key has higher bits set, which
     // means that it is not the only display item for the frame.
@@ -396,6 +400,24 @@ void DisplayItemData::ClearAnimationCompositorState() {
   }
 
   const DisplayItemType type = GetDisplayItemTypeFromKey(mDisplayItemKey);
+
+  if (type == DisplayItemType::TYPE_REMOTE) {
+    // TYPE_REMOTE doesn't support merging, so access it directly
+    MOZ_ASSERT(mFrameList.Length() == 1);
+    if (mFrameList.Length() != 1) {
+      return;
+    }
+
+    // This is a remote browser that is going away, notify it that it is now
+    // hidden
+    nsIFrame* frame = mFrameList[0];
+    nsSubDocumentFrame* subdoc = static_cast<nsSubDocumentFrame*>(frame);
+    nsFrameLoader* frameLoader = subdoc->FrameLoader();
+    if (frameLoader && frameLoader->GetRemoteBrowser()) {
+      frameLoader->GetRemoteBrowser()->UpdateEffects(
+          mozilla::dom::EffectsInfo::FullyHidden());
+    }
+  }
 
   // FIXME: Bug 1530857: Add background_color.
   if (type != DisplayItemType::TYPE_TRANSFORM &&
@@ -579,7 +601,7 @@ class PaintedLayerData {
   nsCString mLog;
 
 #  define FLB_LOG_PAINTED_LAYER_DECISION(pld, ...) \
-    if (gfxPrefs::LayersDumpDecision()) {          \
+    if (StaticPrefs::layers_dump_decision()) {     \
       pld->mLog.AppendPrintf("\t\t\t\t");          \
       pld->mLog.AppendPrintf(__VA_ARGS__);         \
     }
@@ -2238,6 +2260,18 @@ void FrameLayerBuilder::RemoveFrameFromLayerManager(
     data->mParent->mDisplayItems.pop_back();
   }
 
+  if (aFrame->IsSubDocumentFrame()) {
+    const nsSubDocumentFrame* subdoc =
+        static_cast<const nsSubDocumentFrame*>(aFrame);
+    nsFrameLoader* frameLoader = subdoc->FrameLoader();
+    if (frameLoader && frameLoader->GetRemoteBrowser()) {
+      // This is a remote browser that is going away, notify it that it is now
+      // hidden
+      frameLoader->GetRemoteBrowser()->UpdateEffects(
+          mozilla::dom::EffectsInfo::FullyHidden());
+    }
+  }
+
   arrayCopy.Clear();
   sDestroyedFrame = nullptr;
 }
@@ -2290,7 +2324,7 @@ void FrameLayerBuilder::WillEndTransaction() {
             GetLastPaintOffset(t), did->mTransform);
       }
 
-      did->ClearAnimationCompositorState();
+      did->NotifyRemoved();
 
       // Remove this item. Swapping it with the last element first is
       // quicker than erasing from the middle.
@@ -2351,7 +2385,9 @@ DisplayItemData* FrameLayerBuilder::GetOldLayerForFrame(
     LayerManager* aOldLayerManager /* = nullptr */) {
   // If we need to build a new layer tree, then just refuse to recycle
   // anything.
-  if (!mRetainingManager || mInvalidateAllLayers) return nullptr;
+  if (!mRetainingManager || mInvalidateAllLayers) {
+    return nullptr;
+  }
 
   MOZ_ASSERT(!aOldData || aOldLayerManager,
              "You must provide aOldLayerManager to check aOldData's validity.");
@@ -2423,7 +2459,9 @@ already_AddRefed<ColorLayer> ContainerState::CreateOrRecycleColorLayer(
   } else {
     // Create a new layer
     layer = mManager->CreateColorLayer();
-    if (!layer) return nullptr;
+    if (!layer) {
+      return nullptr;
+    }
     // Mark this layer as being used for painting display items
     data->mColorLayer = layer;
     layer->SetUserData(&gColorLayerUserData, nullptr);
@@ -2446,7 +2484,9 @@ already_AddRefed<ImageLayer> ContainerState::CreateOrRecycleImageLayer(
   } else {
     // Create a new layer
     layer = mManager->CreateImageLayer();
-    if (!layer) return nullptr;
+    if (!layer) {
+      return nullptr;
+    }
     // Mark this layer as being used for painting display items
     data->mImageLayer = layer;
     layer->SetUserData(&gImageLayerUserData, nullptr);
@@ -3051,7 +3091,7 @@ PaintedLayerData* PaintedLayerDataNode::FindPaintedLayerFor(
         break;
       }
 
-      if (gfxPrefs::LayoutSmallerPaintedLayers()) {
+      if (StaticPrefs::layout_smaller_painted_layers()) {
         lowestUsableLayer = nullptr;
       }
     }
@@ -3757,7 +3797,7 @@ UniquePtr<InactiveLayerData> PaintedLayerData::CreateInactiveLayerData(
   FrameLayerBuilder* layerBuilder = new FrameLayerBuilder();
   // Ownership of layerBuilder is passed to tempManager.
   layerBuilder->Init(aState->Builder(), tempManager, this, true,
-                            &aItem->GetClip());
+                     &aItem->GetClip());
 
   tempManager->BeginTransaction();
   if (aState->LayerBuilder()->GetRetainingLayerManager()) {
@@ -4254,6 +4294,7 @@ nsIntRegion ContainerState::ComputeOpaqueRect(
     bool* aOpaqueForAnimatedGeometryRootParent) {
   bool snapOpaque;
   nsRegion opaque = aItem->GetOpaqueRegion(mBuilder, &snapOpaque);
+  MOZ_ASSERT(!opaque.IsComplex());
   if (opaque.IsEmpty()) {
     return nsIntRegion();
   }
@@ -4274,7 +4315,7 @@ nsIntRegion ContainerState::ComputeOpaqueRect(
   // etc will mess us up (and opaque contributions from other containers are
   // not needed).
   if (!nsLayoutUtils::GetCrossDocParentFrame(mContainerFrame)) {
-    mBuilder->AddWindowOpaqueRegion(opaqueClipped);
+    mBuilder->AddWindowOpaqueRegion(aItem->Frame(), opaqueClipped.GetBounds());
   }
   opaquePixels = ScaleRegionToInsidePixels(opaqueClipped, snapOpaque);
 
@@ -4437,10 +4478,12 @@ static void ProcessDisplayItemMarker(DisplayItemEntryType aMarker,
 void ContainerState::ProcessDisplayItems(nsDisplayList* aList) {
   AUTO_PROFILER_LABEL("ContainerState::ProcessDisplayItems",
                       GRAPHICS_LayerBuilding);
+  PerfStats::AutoMetricRecording<PerfStats::Metric::LayerBuilding>
+      autoRecording;
 
   nsPoint topLeft(0, 0);
 
-  int32_t maxLayers = gfxPrefs::MaxActiveLayers();
+  int32_t maxLayers = StaticPrefs::layers_max_active();
   int layerCount = 0;
 
   if (!mManager->IsWidgetLayerManager()) {
@@ -4619,6 +4662,7 @@ void ContainerState::ProcessDisplayItems(nsDisplayList* aList) {
       transformNode = transformNode->Parent();
     }
 
+    nsRect itemVisibleRectAu = itemContent;
     if (transformNode) {
       // If we are within transform, transform itemContent and itemDrawRect.
       MOZ_ASSERT(transformNode);
@@ -4780,6 +4824,15 @@ void ContainerState::ProcessDisplayItems(nsDisplayList* aList) {
       ContainerLayerParameters params = mParameters;
       params.mBackgroundColor = uniformColor;
       params.mLayerCreationHint = GetLayerCreationHint(itemAGR);
+      if (!transformNode) {
+        params.mItemVisibleRect = &itemVisibleRectAu;
+      } else {
+        // We only use mItemVisibleRect for getting the visible rect for
+        // remote browsers (which should never have inactive transforms), so we
+        // avoid doing transforms on itemVisibleRectAu above and can't report
+        // an accurate bounds here.
+        params.mItemVisibleRect = nullptr;
+      }
       params.mScrollMetadataASR =
           ActiveScrolledRoot::IsAncestor(scrollMetadataASR,
                                          mContainerScrollMetadataASR)
@@ -5025,7 +5078,7 @@ void ContainerState::ProcessDisplayItems(nsDisplayList* aList) {
       } else if ((itemType == DisplayItemType::TYPE_SUBDOCUMENT ||
                   itemType == DisplayItemType::TYPE_ZOOM ||
                   itemType == DisplayItemType::TYPE_RESOLUTION) &&
-                 gfxPrefs::LayoutUseContainersForRootFrames()) {
+                 StaticPrefs::layout_scroll_root_frame_containers()) {
         newLayerEntry->mBaseScrollMetadata =
             static_cast<nsDisplaySubDocument*>(item)->ComputeScrollMetadata(
                 ownLayer->Manager(), mParameters);
@@ -5913,9 +5966,9 @@ void ContainerState::Finish(uint32_t* aTextContentFlags,
                             nsDisplayList* aChildItems) {
   mPaintedLayerDataTree.Finish();
 
-  if (!gfxPrefs::LayoutUseContainersForRootFrames()) {
+  if (!StaticPrefs::layout_scroll_root_frame_containers()) {
     // Bug 1336544 tracks re-enabling this assertion in the
-    // gfxPrefs::LayoutUseContainersForRootFrames() case.
+    // StaticPrefs::layout_scroll_root_frame_containers() case.
     NS_ASSERTION(mContainerBounds.IsEqualInterior(mAccumulatedChildBounds),
                  "Bounds computation mismatch");
   }
@@ -6153,7 +6206,7 @@ static bool ChooseScaleAndSetTransform(
   // tiling, that's not a problem, since we'll automatically choose a tiled
   // layer for layers of that size. If not, we need to apply clamping to
   // prevent this.
-  if (aTransform && !gfxPrefs::LayersTilesEnabled()) {
+  if (aTransform && !StaticPrefs::layers_enable_tiles()) {
     RestrictScaleToMaxLayerSize(scale, aVisibleRect, aContainerFrame, aLayer);
   }
 
@@ -6252,7 +6305,7 @@ already_AddRefed<ContainerLayer> FrameLayerBuilder::BuildContainerLayerFor(
       aParameters.mScrollMetadataASR;
   const ActiveScrolledRoot* containerCompositorASR = aParameters.mCompositorASR;
 
-  if (!aContainerItem && gfxPrefs::LayoutUseContainersForRootFrames()) {
+  if (!aContainerItem && StaticPrefs::layout_scroll_root_frame_containers()) {
     containerASR = aBuilder->ActiveScrolledRootForRootScrollframe();
     containerScrollMetadataASR = containerASR;
     containerCompositorASR = containerASR;
@@ -6347,7 +6400,9 @@ already_AddRefed<ContainerLayer> FrameLayerBuilder::BuildContainerLayerFor(
 Layer* FrameLayerBuilder::GetLeafLayerFor(nsDisplayListBuilder* aBuilder,
                                           nsDisplayItem* aItem) {
   Layer* layer = GetOldLayerFor(aItem);
-  if (!layer) return nullptr;
+  if (!layer) {
+    return nullptr;
+  }
   if (layer->HasUserData(&gPaintedDisplayItemLayerUserData)) {
     // This layer was created to render Thebes-rendered content for this
     // display item. The display item should not use it for its own
@@ -7101,7 +7156,7 @@ void FrameLayerBuilder::PaintItems(std::vector<AssignedDisplayItem>& aItems,
  */
 static bool ShouldDrawRectsSeparately(DrawTarget* aDrawTarget,
                                       DrawRegionClip aClip) {
-  if (!gfxPrefs::LayoutPaintRectsSeparately() ||
+  if (!StaticPrefs::layout_paint_rects_separately() ||
       aClip == DrawRegionClip::NONE) {
     return false;
   }
@@ -7229,7 +7284,7 @@ void FrameLayerBuilder::DrawPaintedLayer(PaintedLayer* aLayer,
       layerBuilder->PaintItems(userData->mItems, iterRect, aContext, builder,
                                presContext, offset, userData->mXScale,
                                userData->mYScale);
-      if (gfxPrefs::GfxLoggingPaintedPixelCountEnabled()) {
+      if (StaticPrefs::gfx_logging_painted_pixel_count_enabled()) {
         aLayer->Manager()->AddPaintedPixelCount(iterRect.Area());
       }
     }
@@ -7246,7 +7301,7 @@ void FrameLayerBuilder::DrawPaintedLayer(PaintedLayer* aLayer,
     layerBuilder->PaintItems(userData->mItems, aRegionToDraw.GetBounds(),
                              aContext, builder, presContext, offset,
                              userData->mXScale, userData->mYScale);
-    if (gfxPrefs::GfxLoggingPaintedPixelCountEnabled()) {
+    if (StaticPrefs::gfx_logging_painted_pixel_count_enabled()) {
       aLayer->Manager()->AddPaintedPixelCount(aRegionToDraw.GetBounds().Area());
     }
   }

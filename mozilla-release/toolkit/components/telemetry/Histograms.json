@@ -234,8 +234,8 @@
   "AUDIOSTREAM_BACKEND_USED": {
     "record_in_processes": ["main", "content"],
     "alert_emails": ["padenot@mozilla.com", "kinetik@flim.org"],
-    "bug_numbers": [1280630],
-    "expires_in_version": "65",
+    "bug_numbers": [1280630, 1444878],
+    "expires_in_version": "70",
     "kind": "enumerated",
     "n_values": 16,
     "description": "The operating system audio back-end used when successfully opening an audio stream, or whether the failure occurred on the first try or not <https://dxr.mozilla.org/mozilla-central/search?q=AUDIOSTREAM_BACKEND_ID_STR>",
@@ -648,7 +648,7 @@
   },
   "GC_IN_PROGRESS_MS": {
     "record_in_processes": ["main", "content"],
-    "alert_emails": ["smaug@mozilla.com"],
+    "alert_emails": ["dev-telemetry-gc-alerts@mozilla.org", "smaug@mozilla.com"],
     "expires_in_version": "never",
     "kind": "exponential",
     "high": 10000,
@@ -852,7 +852,7 @@
   "GC_NURSERY_BYTES": {
     "record_in_processes": ["main", "content"],
     "alert_emails": ["dev-telemetry-gc-alerts@mozilla.org"],
-    "expires_in_version": "never",
+    "expires_in_version": "72",
     "kind": "linear",
     "high": 16777216,
     "n_buckets": 16,
@@ -919,6 +919,39 @@
     "n_buckets": 100,
     "bug_numbers": [1475896],
     "description": "The number of objects marked per ms during GC."
+  },
+  "GC_TIME_BETWEEN_S": {
+    "record_in_processes": ["main", "content"],
+    "alert_emails": ["dev-telemetry-gc-alerts@mozilla.org", "jcoppeard@mozilla.com"],
+    "expires_in_version": "never",
+    "kind": "exponential",
+    "high": 120,
+    "n_buckets": 50,
+    "releaseChannelCollection": "opt-out",
+    "bug_numbers": [1556467],
+    "description": "Time spent in between garbage collections for the main runtime (seconds)"
+  },
+  "GC_TIME_BETWEEN_SLICES_MS": {
+    "record_in_processes": ["main", "content"],
+    "alert_emails": ["dev-telemetry-gc-alerts@mozilla.org", "jcoppeard@mozilla.com"],
+    "expires_in_version": "never",
+    "kind": "exponential",
+    "high": 2000,
+    "n_buckets": 50,
+    "releaseChannelCollection": "opt-out",
+    "bug_numbers": [1556467],
+    "description": "Time spent in between garbage collections slice for the main runtime (ms)"
+  },
+  "GC_SLICE_COUNT": {
+    "record_in_processes": ["main", "content"],
+    "alert_emails": ["dev-telemetry-gc-alerts@mozilla.org", "jcoppeard@mozilla.com"],
+    "expires_in_version": "never",
+    "kind": "exponential",
+    "high": 200,
+    "n_buckets": 50,
+    "releaseChannelCollection": "opt-out",
+    "bug_numbers": [1556467],
+    "description": "The number of slices in an incremental GC for the main runtime"
   },
   "GEOLOCATION_ACCURACY_EXPONENTIAL": {
     "record_in_processes": ["main", "content"],
@@ -1072,6 +1105,17 @@
     "n_buckets": 100,
     "bug_numbers": [1226196],
     "description": "Resident memory size (KB)"
+  },
+  "MEMORY_RESIDENT_PEAK": {
+    "record_in_processes": ["main", "content"],
+    "alert_emails": ["memshrink-telemetry-alerts@mozilla.com", "kgupta@mozilla.com"],
+    "expires_in_version": "never",
+    "kind": "exponential",
+    "low": 32768,
+    "high": 16777216,
+    "n_buckets": 100,
+    "bug_numbers": [1551648],
+    "description": "Peak resident memory size (KB)"
   },
   "MEMORY_TOTAL": {
     "record_in_processes": ["main"],
@@ -4788,14 +4832,14 @@
     "n_buckets": 10,
     "description": "Time spent (ms) during showdown deleting disk cache v2 for 'clear private data' option"
   },
-  "NETWORK_ID": {
-    "record_in_processes": ["main", "content"],
+  "NETWORK_ID2": {
+    "record_in_processes": ["main"],
     "alert_emails": ["necko@mozilla.com"],
-    "bug_numbers": [1240932],
+    "bug_numbers": [1240932, 1395914],
     "expires_in_version": "never",
     "kind": "enumerated",
     "n_values": 6,
-    "description": "Network identification (0=None, 1=New, 2=Same)"
+    "description": "Network identification (0=None, 1=New Ipv4, 2=Same, 3=New IPv6, 4=New dual)"
   },
   "IDLE_NOTIFY_IDLE_MS": {
     "record_in_processes": ["main", "content"],
@@ -6229,7 +6273,7 @@
   "FX_TAB_SWITCH_SPINNER_VISIBLE_MS": {
     "record_in_processes": ["main"],
     "alert_emails": ["mconley@mozilla.com", "dothayer@mozilla.com"],
-    "expires_in_version": "70",
+    "expires_in_version": "77",
     "kind": "exponential",
     "high": 1000,
     "n_buckets": 20,
@@ -6240,7 +6284,7 @@
   "FX_TAB_SWITCH_SPINNER_VISIBLE_LONG_MS": {
     "record_in_processes": ["main"],
     "alert_emails": ["mconley@mozilla.com", "dothayer@mozilla.com"],
-    "expires_in_version": "70",
+    "expires_in_version": "77",
     "kind": "exponential",
     "low": 1000,
     "high": 64000,
@@ -6253,7 +6297,7 @@
     "record_in_processes": ["main"],
     "alert_emails": ["dothayer@mozilla.com"],
     "bug_numbers": [1442068],
-    "expires_in_version": "70",
+    "expires_in_version": "77",
     "kind": "categorical",
     "labels": ["none", "preActions", "postActions", "onLoadTimeout", "onLayersReady", "onSizeModeOrOcc", "onEndSwapDocShells"],
     "releaseChannelCollection": "opt-out",
@@ -6261,7 +6305,7 @@
   },
   "FX_TAB_SWITCH_REQUEST_TAB_WARMING_STATE": {
     "record_in_processes": ["main"],
-    "expires_in_version": "70",
+    "expires_in_version": "77",
     "alert_emails": ["mconley@mozilla.com"],
     "releaseChannelCollection": "opt-out",
     "kind": "categorical",
@@ -6281,17 +6325,6 @@
     "high": 1000,
     "n_buckets": 20,
     "description": "Firefox: Time in ms spent on switching tabs in response to a tab click"
-  },
-  "FX_TAB_REMOTE_NAVIGATION_DELAY_MS": {
-    "record_in_processes": ["content"],
-    "alert_emails": ["mconley@mozilla.com"],
-    "bug_numbers": [1352961, 1501295],
-    "expires_in_version": "69",
-    "kind": "exponential",
-    "high": 4000,
-    "n_buckets": 100,
-    "keyed": true,
-    "description": "Time taken (in ms) from the point of the parent sending the naviagion triggering message to the content and the content receiving it. This message can be either SessionStore:restoreTabContent or WebNavigation:LoadURI and these names are used as keys for this histogram. This is e10s only and recorded in the content process."
   },
   "FX_BOOKMARKS_TOOLBAR_INIT_MS": {
     "record_in_processes": ["main", "content"],
@@ -6338,6 +6371,28 @@
     "description": "Firefox: Time taken to load a page (ms). This includes all static contents, no dynamic content. Loading of about: pages is not counted.",
     "bug_numbers": [1504247],
     "alert_emails": ["tdsmith@mozilla.com", "perfteam@mozilla.com", "product-metrics-telemetry-alerts@mozilla.com"],
+    "releaseChannelCollection": "opt-out"
+  },
+  "FX_PAGE_RELOAD_NORMAL_MS": {
+    "record_in_processes": ["main"],
+    "expires_in_version": "never",
+    "kind": "linear",
+    "high": 10000,
+    "n_buckets": 200,
+    "description": "Firefox: Time taken to reload a page (ms) when using the LOAD_RELOAD_NORMAL flag",
+    "bug_numbers": [1549519],
+    "alert_emails": ["sefeng@mozilla.com", "perfteam@mozilla.com", "product-metrics-telemetry-alerts@mozilla.com"],
+    "releaseChannelCollection": "opt-out"
+  },
+  "FX_PAGE_RELOAD_SKIP_CACHE_MS": {
+    "record_in_processes": ["main"],
+    "expires_in_version": "never",
+    "kind": "linear",
+    "high": 10000,
+    "n_buckets": 200,
+    "description": "Firefox: Time taken to reload a page (ms) when caches are skipped",
+    "bug_numbers": [1549519],
+    "alert_emails": ["sefeng@mozilla.com", "perfteam@mozilla.com", "product-metrics-telemetry-alerts@mozilla.com"],
     "releaseChannelCollection": "opt-out"
   },
   "FX_SCHEDULE_PRESSURE_IDLE_SAMPLE_MS": {
@@ -6619,6 +6674,16 @@
     "labels": ["bookmark", "pocket", "screenshots", "webcompat", "copyURL", "emailLink",
                "sendToDevice", "other", "addSearchEngine", "shareURL", "screenshotsMozillaOr"],
     "description": "Count how many times people use items from the main page action button"
+  },
+  "FX_PICTURE_IN_PICTURE_WINDOW_OPEN_DURATION": {
+    "record_in_processes": ["main"],
+    "alert_emails": ["mconley@mozilla.com", "astevenson@mozilla.com"],
+    "bug_numbers": [1560590],
+    "expires_in_version": "74",
+    "kind": "exponential",
+    "high": 10000,
+    "n_buckets": 100,
+    "description": "The length of time (in seconds) that a Picture-in-Picture window was open."
   },
   "INPUT_EVENT_RESPONSE_MS": {
     "record_in_processes": ["main", "content"],
@@ -6949,8 +7014,8 @@
   "ENCODING_OVERRIDE_SITUATION": {
     "record_in_processes": ["main", "content"],
     "alert_emails": ["hsivonen@mozilla.com"],
-    "bug_numbers": [840476, 977573, 1513473],
-    "expires_in_version": "69",
+    "bug_numbers": [840476, 977573, 1513473, 1554592],
+    "expires_in_version": "72",
     "releaseChannelCollection": "opt-out",
     "kind": "categorical",
     "labels": ["Local", "RemoteTld", "RemoteNonTld", "LocalChardet", "RemoteChardet", "Labeled", "AlreadyOverridden", "Bug"],
@@ -8229,7 +8294,7 @@
   },
   "SEARCH_SERVICE_INIT_MS": {
     "record_in_processes": ["main"],
-    "alert_emails": ["mdeboer@mozilla.com", "dolske@mozilla.com"],
+    "alert_emails": ["mdeboer@mozilla.com", "fx-search@mozilla.com"],
     "expires_in_version": "never",
     "releaseChannelCollection": "opt-out",
     "kind": "exponential",
@@ -8240,7 +8305,7 @@
   },
   "SEARCH_SERVICE_COUNTRY_FETCH_TIME_MS": {
     "record_in_processes": ["main", "content"],
-    "alert_emails": ["mhammond@mozilla.com", "gavin@mozilla.com"],
+    "alert_emails": ["mdeboer@mozilla.com", "fx-search@mozilla.com"],
     "expires_in_version": "never",
     "kind": "exponential",
     "n_buckets": 30,
@@ -8249,7 +8314,7 @@
   },
   "SEARCH_SERVICE_COUNTRY_FETCH_RESULT": {
     "record_in_processes": ["main", "content"],
-    "alert_emails": ["mhammond@mozilla.com", "gavin@mozilla.com"],
+    "alert_emails": ["mdeboer@mozilla.com", "fx-search@mozilla.com"],
     "expires_in_version": "never",
     "kind": "enumerated",
     "n_values": 8,
@@ -8257,56 +8322,49 @@
   },
   "SEARCH_SERVICE_COUNTRY_TIMEOUT": {
     "record_in_processes": ["main", "content"],
-    "alert_emails": ["mhammond@mozilla.com", "gavin@mozilla.com"],
+    "alert_emails": ["mdeboer@mozilla.com", "fx-search@mozilla.com"],
     "expires_in_version": "never",
     "kind": "boolean",
     "description": "True if we stopped waiting for the XHR response before it completed"
   },
-  "SEARCH_SERVICE_COUNTRY_FETCH_CAUSED_SYNC_INIT": {
-    "record_in_processes": ["main", "content"],
-    "alert_emails": ["mhammond@mozilla.com", "gavin@mozilla.com"],
-    "expires_in_version": "never",
-    "kind": "boolean",
-    "description": "True if the search service was synchronously initialized while we were waiting for the XHR response"
-  },
   "SEARCH_SERVICE_US_COUNTRY_MISMATCHED_TIMEZONE": {
     "record_in_processes": ["main", "content"],
-    "alert_emails": ["mhammond@mozilla.com", "gavin@mozilla.com"],
+    "alert_emails": ["mdeboer@mozilla.com", "fx-search@mozilla.com"],
     "expires_in_version": "never",
     "kind": "flag",
     "description": "Set if the fetched country-code indicates US but the time-zone heuristic doesn't"
   },
   "SEARCH_SERVICE_US_TIMEZONE_MISMATCHED_COUNTRY": {
     "record_in_processes": ["main", "content"],
-    "alert_emails": ["mhammond@mozilla.com", "gavin@mozilla.com"],
+    "alert_emails": ["mdeboer@mozilla.com", "fx-search@mozilla.com"],
     "expires_in_version": "never",
     "kind": "flag",
     "description": "Set if the time-zone heuristic indicates US but the fetched country code doesn't"
   },
   "SEARCH_SERVICE_US_COUNTRY_MISMATCHED_PLATFORM_OSX": {
     "record_in_processes": ["main", "content"],
-    "alert_emails": ["mhammond@mozilla.com", "gavin@mozilla.com"],
+    "alert_emails": ["mdeboer@mozilla.com", "fx-search@mozilla.com"],
     "expires_in_version": "never",
     "kind": "boolean",
     "description": "If we are on OSX and either the OSX countryCode or the geoip countryCode indicates we are in the US, set to false if they both do or true otherwise"
   },
   "SEARCH_SERVICE_NONUS_COUNTRY_MISMATCHED_PLATFORM_OSX": {
     "record_in_processes": ["main", "content"],
-    "alert_emails": ["mhammond@mozilla.com", "gavin@mozilla.com"],
+    "alert_emails": ["mdeboer@mozilla.com", "fx-search@mozilla.com"],
     "expires_in_version": "never",
     "kind": "boolean",
     "description": "If we are on OSX and neither the OSX countryCode nor the geoip countryCode indicates we are in the US, set to false if they both agree on the value or true otherwise"
   },
   "SEARCH_SERVICE_US_COUNTRY_MISMATCHED_PLATFORM_WIN": {
     "record_in_processes": ["main", "content"],
-    "alert_emails": ["mhammond@mozilla.com", "gavin@mozilla.com"],
+    "alert_emails": ["mdeboer@mozilla.com", "fx-search@mozilla.com"],
     "expires_in_version": "never",
     "kind": "boolean",
     "description": "If we are on Windows and either the Windows countryCode or the geoip countryCode indicates we are in the US, set to false if they both do or true otherwise"
   },
   "SEARCH_SERVICE_NONUS_COUNTRY_MISMATCHED_PLATFORM_WIN": {
     "record_in_processes": ["main", "content"],
-    "alert_emails": ["mhammond@mozilla.com", "gavin@mozilla.com"],
+    "alert_emails": ["mdeboer@mozilla.com", "fx-search@mozilla.com"],
     "expires_in_version": "never",
     "kind": "boolean",
     "description": "If we are on Windows and neither the Windows countryCode nor the geoip countryCode indicates we are in the US, set to false if they both agree on the value or true otherwise"
@@ -8347,15 +8405,6 @@
     "high": 5000,
     "n_buckets": 15,
     "description": "Time (ms) it takes to figure out extension last modified time"
-  },
-  "TELEMETRY_MEMORY_REPORTER_MS": {
-    "record_in_processes": ["main", "content"],
-    "alert_emails": ["memshrink-telemetry-alerts@mozilla.com"],
-    "expires_in_version": "never",
-    "kind": "exponential",
-    "high": 5000,
-    "n_buckets": 10,
-    "description": "Time (ms) it takes to run memory reporters when sending a telemetry ping"
   },
   "SSL_SUCCESFUL_CERT_VALIDATION_TIME_MOZILLAPKIX" : {
     "record_in_processes": ["main", "content"],
@@ -8483,7 +8532,7 @@
     "expires_in_version": "never",
     "kind": "enumerated",
     "n_values": 8,
-    "description": "User actions taken in the plugin notification: 0: allownow 1: allowalways 2: block 3: blockalways",
+    "description": "User actions taken in the plugin notification: 0: allownow 1: allowalways 2: block 3: blockalways; Note: 1 and 3 are unused from Firefox 69 onwards.",
     "bug_numbers": [902075, 1345894, 1398972],
     "alert_emails": ["flashvideo-2015@mozilla.com"]
   },
@@ -8729,12 +8778,13 @@
     "bug_numbers": [1360438]
   },
   "MEDIA_MKV_CANPLAY_REQUESTED": {
-    "record_in_processes": ["main", "content"],
-    "alert_emails": ["ayang@mozilla.com"],
-    "expires_in_version": "65",
+    "record_in_processes": ["content"],
+    "products": ["firefox", "geckoview"],
+    "alert_emails": ["bvandyk@mozilla.com"],
+    "expires_in_version": "74",
     "kind": "boolean",
     "description": "Reports a true value when a page requests canPlayType for a matroska media type.",
-    "bug_numbers": [1429986]
+    "bug_numbers": [1429986, 1570634]
   },
   "MEDIA_EME_REQUEST_DEPRECATED_WARNINGS": {
     "record_in_processes": ["main", "content"],
@@ -8800,10 +8850,11 @@
     "description": "Maximum number of owners for each MediaCache block. Recorded at every MediaCache destruction, i.e., whenever there is no more media data to be downloaded or kept for playback."
   },
   "MEDIACACHESTREAM_LENGTH_KB": {
-    "record_in_processes": ["main", "content"],
-    "alert_emails": ["gsquelart@mozilla.com"],
-    "bug_numbers": [1369538],
-    "expires_in_version": "60",
+    "record_in_processes": ["content"],
+    "products": ["firefox", "geckoview"],
+    "alert_emails": ["jya@mozilla.com"],
+    "bug_numbers": [1369538, 1570634],
+    "expires_in_version": "74",
     "kind": "linear",
     "high": 520000,
     "n_buckets": 66,
@@ -8988,28 +9039,31 @@
     "description": "The length of time (in milliseconds) it took for a server DTLS handshake to complete, given that it failed."
   },
   "WEBRTC_DTLS_CIPHER": {
-    "record_in_processes": ["content"],
+    "record_in_processes": ["content", "socket"],
+    "products": ["firefox", "geckoview"],
     "alert_emails": ["webrtc-dtls-telemetry-alerts@mozilla.com", "nohlmeier@mozilla.com"],
-    "bug_numbers": [1484024],
-    "expires_in_version": "66",
+    "bug_numbers": [1484024, 1570634],
+    "expires_in_version": "74",
     "kind": "enumerated",
     "n_values": 14,
     "description": "The DTLS cipher (as integer) negotiated for a RTCPeerConnection. See TransportLayerDtls::RecordCipherTelemetry for the meaning of the values"
   },
   "WEBRTC_SRTP_CIPHER": {
-    "record_in_processes": ["content"],
+    "record_in_processes": ["content", "socket"],
+    "products": ["firefox", "geckoview"],
     "alert_emails": ["webrtc-dtls-telemetry-alerts@mozilla.com", "nohlmeier@mozilla.com"],
-    "bug_numbers": [1491511],
-    "expires_in_version": "67",
+    "bug_numbers": [1491511, 1570634],
+    "expires_in_version": "74",
     "kind": "categorical",
     "labels": ["Unknown", "Aes128CmHmacSha1_80", "Aes128CmHmacSha1_32", "AeadAes128Gcm", "AeadAes256Gcm"],
     "description": "The SRTP cipher (as label) negotiated for a RTCPeerConnection."
   },
   "WEBRTC_DTLS_PROTOCOL_VERSION": {
-    "record_in_processes": ["content"],
+    "record_in_processes": ["content", "socket"],
+    "products": ["firefox", "geckoview"],
     "alert_emails": ["webrtc-dtls-telemetry-alerts@mozilla.com", "nohlmeier@mozilla.com"],
-    "bug_numbers": [1491511],
-    "expires_in_version": "68",
+    "bug_numbers": [1491511, 1570634],
+    "expires_in_version": "74",
     "kind": "categorical",
     "labels": ["Unknown", "Dtls_version_1_0", "Dtls_version_1_2", "Dtls_version_1_3"],
     "description": "The DTLS protocol version (as label) negotiated for a RTCPeerConnection."
@@ -11875,79 +11929,86 @@
     "description": "The number of entries in persistent DataStorage (HSTS and HPKP data, basically)"
   },
   "VIDEO_PLAY_TIME_MS" : {
-    "record_in_processes": ["main", "content"],
+    "record_in_processes": ["content"],
+    "products": ["firefox", "geckoview"],
     "alert_emails": ["jya@mozilla.com", "drno@ohlmeier.org"],
-    "expires_in_version": "63",
+    "expires_in_version": "never",
     "description": "Total time spent playing video in milliseconds. This reports the total play time for an HTML Media Element whenever it is suspended or resumed, such as when the page is unloaded, or when the mute status changes when the AudioChannelAPI pref is set.",
     "kind": "exponential",
     "high": 7200000,
     "n_buckets": 100,
-    "bug_numbers": [1261955, 1127646]
+    "bug_numbers": [1261955, 1127646, 1570634]
   },
   "VIDEO_HIDDEN_PLAY_TIME_MS" : {
-    "record_in_processes": ["main", "content"],
+    "record_in_processes": ["content"],
+    "products": ["firefox", "geckoview"],
     "alert_emails": ["jya@mozilla.com", "drno@ohlmeier.org"],
-    "expires_in_version": "63",
+    "expires_in_version": "never",
     "description": "Total time spent playing video while element is hidden, in milliseconds. This reports the total hidden play time for an HTML Media Element whenever it is suspended or resumed, such as when the page is unloaded, or when the mute status changes when the AudioChannelAPI pref is set.",
     "kind": "exponential",
     "high": 7200000,
     "n_buckets": 100,
-    "bug_numbers": [1285419]
+    "bug_numbers": [1285419, 1570634]
   },
   "VIDEO_HIDDEN_PLAY_TIME_PERCENTAGE" : {
-    "record_in_processes": ["main", "content"],
+    "record_in_processes": ["content"],
+    "products": ["firefox", "geckoview"],
     "alert_emails": ["jya@mozilla.com", "drno@ohlmeier.org"],
-    "expires_in_version": "63",
+    "expires_in_version": "never",
     "description": "Percentage of total time spent playing video while element is hidden. Keyed by audio presence and by height ranges (boundaries: 240. 480, 576, 720, 1080, 2160), e.g.: 'V,0<h<=240', 'AV,h>2160'; and 'All' will accumulate all percentages. This is reported whenever an HTML Media Element is suspended or resumed, such as when the page is unloaded.",
     "keyed": true,
     "kind": "linear",
     "high": 100,
     "n_buckets": 50,
-    "bug_numbers": [1287987]
+    "bug_numbers": [1287987, 1570634]
   },
   "VIDEO_INFERRED_DECODE_SUSPEND_PERCENTAGE" : {
-    "record_in_processes": ["main", "content"],
+    "record_in_processes": ["content"],
+    "products": ["firefox", "geckoview"],
     "alert_emails": ["jya@mozilla.com", "drno@ohlmeier.org"],
-    "expires_in_version": "63",
+    "expires_in_version": "74",
     "description": "Percentage of total time spent *not* fully decoding video while element is hidden (simulated, even when feature is not enabled). Keyed by audio presence and by height ranges (boundaries: 240. 480, 576, 720, 1080, 2160), e.g.: 'V,0<h<=240', 'AV,h>2160'; and 'All' will accumulate all percentages. This is reported whenever an HTML Media Element is suspended or resumed, such as when the page is unloaded.",
     "keyed": true,
     "kind": "linear",
     "high": 100,
     "n_buckets": 50,
-    "bug_numbers": [1293145]
+    "bug_numbers": [1293145, 1570634]
   },
   "VIDEO_INTER_KEYFRAME_AVERAGE_MS" : {
-    "record_in_processes": ["main", "content"],
+    "record_in_processes": ["content"],
+    "products": ["firefox", "geckoview"],
     "alert_emails": ["jya@mozilla.com", "drno@ohlmeier.org"],
-    "expires_in_version": "63",
+    "expires_in_version": "74",
     "description": "Average interval between video keyframes in played videos, in milliseconds. Keyed by audio presence and by height ranges (boundaries: 240. 480, 576, 720, 1080, 2160), e.g.: 'V,0<h<=240', 'AV,h>2160'; and 'All' will accumulate all percentages. This is reported whenever an HTML Media Element is suspended or resumed, such as when the page is unloaded.",
     "keyed": true,
     "kind": "exponential",
     "high": 60000,
     "n_buckets": 100,
-    "bug_numbers": [1289668]
+    "bug_numbers": [1289668, 1570634]
   },
   "VIDEO_INTER_KEYFRAME_MAX_MS" : {
-    "record_in_processes": ["main", "content"],
+    "record_in_processes": ["content"],
+    "products": ["firefox", "geckoview"],
     "alert_emails": ["jya@mozilla.com", "drno@ohlmeier.org"],
-    "expires_in_version": "63",
+    "expires_in_version": "74",
     "description": "Maximum interval between video keyframes in played videos, in milliseconds; '0' means only 1 keyframe found. Keyed by audio presence and by height ranges (boundaries: 240. 480, 576, 720, 1080, 2160), e.g.: 'V,0<h<=240', 'AV,h>2160'; and 'All' will accumulate all percentages. This is reported whenever an HTML Media Element is suspended or resumed, such as when the page is unloaded.",
     "keyed": true,
     "kind": "exponential",
     "high": 60000,
     "n_buckets": 100,
-    "bug_numbers": [1289668]
+    "bug_numbers": [1289668, 1570634]
   },
   "VIDEO_SUSPEND_RECOVERY_TIME_MS" : {
-    "record_in_processes": ["main", "content"],
+    "record_in_processes": ["content"],
+    "products": ["firefox", "geckoview"],
     "alert_emails": ["jya@mozilla.com", "drno@ohlmeier.org"],
-    "expires_in_version": "63",
+    "expires_in_version": "74",
     "description": "Time taken for a video to resume after decoding was suspended, in milliseconds. Keyed by audio presence, hw acceleration, and by height ranges (boundaries: 240. 480, 720, 1080, 2160), e.g.: 'V,0-240', 'AV(hw),2160+'; and 'All' will accumulate all percentages.",
     "keyed": true,
     "kind": "exponential",
     "high": 10000,
     "n_buckets": 100,
-    "bug_numbers": [1294349]
+    "bug_numbers": [1294349, 1570634]
   },
   "VIDEO_AS_CONTENT_SOURCE" : {
     "record_in_processes": ["main", "content"],
@@ -11977,10 +12038,11 @@
     "bug_numbers": [1261955, 1261955]
   },
   "VIDEO_VP9_BENCHMARK_FPS": {
-    "record_in_processes": ["main", "content"],
+    "record_in_processes": ["content"],
+    "products": ["firefox", "geckoview"],
     "alert_emails": ["jya@mozilla.com", "drno@ohlmeier.org"],
-    "expires_in_version": "63",
-    "bug_numbers": [1230265],
+    "expires_in_version": "74",
+    "bug_numbers": [1230265, 1570634],
     "kind": "linear",
     "high": 1000,
     "n_buckets": 100,
@@ -11988,7 +12050,8 @@
     "releaseChannelCollection": "opt-out"
   },
   "MEDIA_PLAY_PROMISE_RESOLUTION": {
-    "record_in_processes": ["main", "content"],
+    "record_in_processes": ["content"],
+    "products": ["firefox", "geckoview"],
     "bug_numbers": [1453176],
     "alert_emails": ["jya@mozilla.com", "drno@ohlmeier.org"],
     "expires_in_version": "72",
@@ -12902,13 +12965,14 @@
     "description": "Uses of HTMLMediaElement.fastSeek"
   },
   "VIDEO_DROPPED_FRAMES_PROPORTION" : {
-    "record_in_processes": ["main", "content"],
+    "record_in_processes": ["content"],
+    "products": ["firefox", "geckoview"],
     "alert_emails": ["jya@mozilla.com", "drno@ohlmeier.org"],
-    "expires_in_version": "63",
+    "expires_in_version": "never",
     "kind": "linear",
     "high": 100,
     "n_buckets": 50,
-    "bug_numbers": [1238433],
+    "bug_numbers": [1238433, 1570634],
     "description": "Percentage of frames decoded frames dropped in an HTMLVideoElement"
   },
   "MEDIA_DECODER_BACKEND_USED": {
@@ -13107,12 +13171,13 @@
     "bug_numbers": [1002846]
   },
   "WEBVTT_TRACK_KINDS": {
-    "record_in_processes": ["main", "content"],
+    "record_in_processes": ["content"],
+    "products": ["firefox", "geckoview"],
     "alert_emails": ["alwu@mozilla.com"],
-    "expires_in_version": "55",
+    "expires_in_version": "74",
     "kind": "enumerated",
     "n_values": 10,
-    "bug_numbers": [1280644],
+    "bug_numbers": [1280644, 1570634],
     "description": "Number of the use of the subtitles kind track. 0=Subtitles, 1=Captions, 2=Descriptions, 3=Chapters, 4=Metadata, 5=Undefined Error",
     "releaseChannelCollection": "opt-out"
   },
@@ -13575,33 +13640,6 @@
     "n_buckets": 100,
     "bug_numbers": [1341531],
     "description": "Time (ms) for the APZ handled wheel event to dispatch, but before handlers executing."
-  },
-  "INTERMEDIATE_PRELOADING_ERRORS": {
-    "record_in_processes": ["main"],
-    "alert_emails": ["seceng-telemetry@mozilla.com", "jjones@mozilla.com"],
-    "expires_in_version": "70",
-    "kind": "categorical",
-    "labels": ["emptyAttachment",
-               "failedToDownloadMisc",
-               "failedToFetch",
-               "failedToObserve",
-               "failedToRemove",
-               "failedToUpdateNSS",
-               "failedToUpdateDB",
-               "unexpectedHash",
-               "unexpectedLength"],
-    "bug_numbers": [1519273],
-    "description": "Errors occurred during intermediate certificate preloading."
-  },
-  "INTERMEDIATE_PRELOADING_UPDATE_TIME_MS": {
-    "record_in_processes": ["main"],
-    "alert_emails": ["seceng-telemetry@mozilla.com", "jjones@mozilla.com"],
-    "expires_in_version": "70",
-    "kind": "exponential",
-    "high": 180000,
-    "n_buckets": 50,
-    "bug_numbers": [1519273],
-    "description": "Number of milliseconds to update the pre-loaded data, if updated."
   },
   "IPC_SYNC_MESSAGE_MANAGER_LATENCY_MS": {
     "record_in_processes": ["main", "content"],
@@ -14258,35 +14296,26 @@
     "n_values": 64,
     "description": "URL CLassifier-related (aka Safe Browsing) UI events. See nsIUrlClassifierUITelemetry.idl for the specific values."
   },
-  "USER_CHROME_CSS_LOADED": {
-    "record_in_processes": ["main"],
-    "bug_numbers": [1416044],
-    "expires_in_version": "62",
-    "alert_emails": ["sfoster@mozilla.com"],
-    "kind": "boolean",
-    "releaseChannelCollection": "opt-out",
-    "description": "Was a userChrome.css stylesheet loaded when the profile was initialized?"
-  },
  "WEBAUTHN_CREATE_CREDENTIAL_MS": {
     "record_in_processes": ["main"],
     "alert_emails": ["seceng-telemetry@mozilla.com", "jjones@mozilla.com"],
-    "expires_in_version": "70",
+    "expires_in_version": "78",
     "releaseChannelCollection": "opt-out",
     "kind": "exponential",
     "high": 120000,
     "n_buckets": 100,
-    "bug_numbers": [1265472],
+    "bug_numbers": [1265472, 1558870],
     "description": "Time in milliseconds to complete a WebAuthn create credential."
   },
   "WEBAUTHN_GET_ASSERTION_MS": {
     "record_in_processes": ["main"],
     "alert_emails": ["seceng-telemetry@mozilla.com", "jjones@mozilla.com"],
-    "expires_in_version": "70",
+    "expires_in_version": "78",
     "releaseChannelCollection": "opt-out",
     "kind": "exponential",
     "high": 120000,
     "n_buckets": 100,
-    "bug_numbers": [1265472],
+    "bug_numbers": [1265472, 1558870],
     "description": "Time in milliseconds to complete a WebAuthn get assertion."
   },
   "VIDEO_UNBLACKINGLISTING_DXVA_DRIVER_RUNTIME_STATUS": {
@@ -14547,33 +14576,35 @@
     "description": "What buttons are pressed most often on the Mac Touch Bar?"
   },
   "AUDIO_TRACK_SILENCE_PROPORTION": {
-    "record_in_processes": ["main", "content"],
+    "record_in_processes": ["content"],
+    "products": ["firefox", "geckoview"],
     "alert_emails": [
       "alwu@mozilla.com",
       "cpearce@mozilla.com",
       "nohlmeier@mozilla.com"
     ],
-    "expires_in_version": "68",
+    "expires_in_version": "74",
     "kind": "linear",
     "high": 100,
     "n_buckets": 10,
-    "bug_numbers": [1482259],
+    "bug_numbers": [1482259, 1570634],
     "description": "In order to know how many silent audio track in the web comparing to other normal media, we record the silence proportion of audio track of media element. The range of value is from 0% - 100%.",
     "releaseChannelCollection": "opt-out"
   },
   "WEB_AUDIO_BECOMES_AUDIBLE_TIME": {
-    "record_in_processes": ["main", "content"],
+    "record_in_processes": ["content"],
+    "products": ["firefox", "geckoview"],
     "alert_emails": [
       "alwu@mozilla.com",
       "cpearce@mozilla.com",
       "nohlmeier@mozilla.com",
       "padenot@mozilla.com"
     ],
-    "expires_in_version": "69",
+    "expires_in_version": "74",
     "kind": "linear",
     "high": 60,
     "n_buckets": 10,
-    "bug_numbers": [1490074],
+    "bug_numbers": [1490074, 1570634],
     "description": "How long the AudioContext would become audible since it was created, time unit is seconds.",
     "releaseChannelCollection": "opt-out"
   },
@@ -14655,6 +14686,20 @@
     "n_buckets": 100,
     "bug_numbers": [1499418],
     "description": "GeckoView: Time taken to load a page in ms. This includes all static contents, no dynamic content. Loading of about: pages is not counted."
+  },
+  "GV_PAGE_RELOAD_MS": {
+    "record_in_processes": ["main", "content"],
+    "alert_emails": [
+      "geckoview-team@mozilla.com",
+      "sefeng@mozilla.com",
+      "perfteam@mozilla.com"
+    ],
+    "expires_in_version": "never",
+    "kind": "exponential",
+    "high": 100000,
+    "n_buckets": 100,
+    "bug_numbers": [1549519],
+    "description": "GeckoView: Time taken to reload a page in ms. This includes all static contents, no dynamic content. Loading of about: pages is not counted."
   },
   "GV_STARTUP_RUNTIME_MS": {
     "record_in_processes": ["main", "content"],
@@ -14792,7 +14837,7 @@
   "HTTP_TRAFFIC_ANALYSIS_3": {
     "record_in_processes": ["main"],
     "alert_emails": ["gachen@mozilla.com"],
-    "bug_numbers": [1533363, 1546796, 1546906, 1550756],
+    "bug_numbers": [1533363, 1546796, 1546906, 1550756, 1572666],
     "expires_in_version": "73",
     "kind": "categorical",
     "n_values": 50,
@@ -14827,6 +14872,18 @@
       "Connection",
       "Transaction"
     ],
+    "releaseChannelCollection": "opt-out",
     "description": "Numbers of HTTP transactions and connections by type. There are some categories separated by labels based on 5 parameters: 1. normal browsing or private browsing 2. system principal or not 3. first party or third party 4. class of service (Leader/Background/Others) 5. tracking classification (Basic/Content/FingerprintingContent)."
+  },
+  "THREAD_WAKEUP": {
+    "record_in_processes": ["main", "content"],
+    "alert_emails": ["opettay@mozilla.com" ],
+    "bug_numbers": [1554292],
+    "expires_in_version": "71",
+    "kind": "exponential",
+    "high": 60000,
+    "n_buckets": 100,
+    "keyed": true,
+    "description": "How many milliseconds it took before 100 wakeups for the thread was done because of new Runnables."
   }
 }

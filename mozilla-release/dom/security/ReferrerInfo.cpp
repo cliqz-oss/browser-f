@@ -5,7 +5,6 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "nsIClassInfoImpl.h"
-#include "nsContentUtils.h"
 #include "nsICookieService.h"
 #include "nsIHttpChannel.h"
 #include "nsIObjectInputStream.h"
@@ -14,11 +13,15 @@
 #include "nsIURL.h"
 #include "nsIURIMutator.h"
 
+#include "nsWhitespaceTokenizer.h"
 #include "nsAlgorithm.h"
+#include "nsContentUtils.h"
 #include "ReferrerInfo.h"
 
 #include "mozilla/AntiTrackingCommon.h"
+#include "mozilla/net/CookieSettings.h"
 #include "mozilla/net/HttpBaseChannel.h"
+#include "mozilla/dom/Element.h"
 
 static mozilla::LazyLogModule gReferrerInfoLog("ReferrerInfo");
 #define LOG(msg) MOZ_LOG(gReferrerInfoLog, mozilla::LogLevel::Debug, msg)
@@ -120,9 +123,18 @@ uint32_t ReferrerInfo::GetDefaultReferrerPolicy(nsIHttpChannel* aChannel,
                                                 bool privateBrowsing) {
   CachePreferrenceValue();
   bool thirdPartyTrackerIsolated = false;
-  if (StaticPrefs::network_cookie_cookieBehavior() ==
-          nsICookieService::BEHAVIOR_REJECT_TRACKER &&
-      aChannel && aURI) {
+  nsCOMPtr<nsILoadInfo> loadInfo;
+  if (aChannel) {
+    loadInfo = aChannel->LoadInfo();
+  }
+  nsCOMPtr<nsICookieSettings> cs;
+  if (loadInfo) {
+    Unused << loadInfo->GetCookieSettings(getter_AddRefs(cs));
+  }
+  if (!cs) {
+    cs = net::CookieSettings::Create();
+  }
+  if (aChannel && aURI && cs->GetRejectThirdPartyTrackers()) {
     uint32_t rejectedReason = 0;
     thirdPartyTrackerIsolated =
         !AntiTrackingCommon::IsFirstPartyStorageAccessGrantedFor(
@@ -173,13 +185,40 @@ bool ReferrerInfo::IsReferrerSchemeAllowed(nsIURI* aReferrer) {
          scheme.EqualsIgnoreCase("ftp");
 }
 
-nsresult ReferrerInfo::HandleSecureToInsecureReferral(nsIURI* aURI,
-                                                      bool& aAllowed) const {
+/* static */
+bool ReferrerInfo::ShouldResponseInheritReferrerInfo(nsIChannel* aChannel) {
+  if (!aChannel) {
+    return false;
+  }
+
+  nsCOMPtr<nsIURI> channelURI;
+  nsresult rv = aChannel->GetURI(getter_AddRefs(channelURI));
+  NS_ENSURE_SUCCESS(rv, false);
+
+  bool isAbout =
+      (NS_SUCCEEDED(channelURI->SchemeIs("about", &isAbout)) && isAbout);
+  if (!isAbout) {
+    return false;
+  }
+
+  nsAutoCString aboutSpec;
+  rv = channelURI->GetSpec(aboutSpec);
+  NS_ENSURE_SUCCESS(rv, false);
+
+  return aboutSpec.EqualsLiteral("about:srcdoc");
+}
+
+/* static */
+nsresult ReferrerInfo::HandleSecureToInsecureReferral(nsIURI* aOriginalURI,
+                                                      nsIURI* aURI,
+                                                      uint32_t aPolicy,
+                                                      bool& aAllowed) {
+  NS_ENSURE_ARG(aOriginalURI);
   NS_ENSURE_ARG(aURI);
 
   aAllowed = false;
   bool referrerIsHttpsScheme;
-  nsresult rv = mOriginalReferrer->SchemeIs("https", &referrerIsHttpsScheme);
+  nsresult rv = aOriginalURI->SchemeIs("https", &referrerIsHttpsScheme);
   if (NS_WARN_IF(NS_FAILED(rv))) {
     return rv;
   }
@@ -199,9 +238,9 @@ nsresult ReferrerInfo::HandleSecureToInsecureReferral(nsIURI* aURI,
   // policy is "unsafe-url", "origin", or "origin-when-cross-origin".
   // in other referrer policies, https->http is not allowed...
 
-  if (mPolicy != nsIHttpChannel::REFERRER_POLICY_UNSAFE_URL &&
-      mPolicy != nsIHttpChannel::REFERRER_POLICY_ORIGIN_WHEN_XORIGIN &&
-      mPolicy != nsIHttpChannel::REFERRER_POLICY_ORIGIN && !uriIsHttpsScheme) {
+  if (aPolicy != nsIHttpChannel::REFERRER_POLICY_UNSAFE_URL &&
+      aPolicy != nsIHttpChannel::REFERRER_POLICY_ORIGIN_WHEN_XORIGIN &&
+      aPolicy != nsIHttpChannel::REFERRER_POLICY_ORIGIN && !uriIsHttpsScheme) {
     return NS_OK;
   }
 
@@ -299,6 +338,48 @@ nsresult ReferrerInfo::HandleUserXOriginSendingPolicy(nsIURI* aURI,
   return NS_OK;
 }
 
+/* static */
+bool ReferrerInfo::ShouldSetNullOriginHeader(net::HttpBaseChannel* aChannel,
+                                             nsIURI* aOriginURI) {
+  MOZ_ASSERT(aChannel);
+  MOZ_ASSERT(aOriginURI);
+
+  // When we're dealing with CORS (mode is "cors"), we shouldn't take the
+  // Referrer-Policy into account
+  uint32_t corsMode = CORS_NONE;
+  NS_ENSURE_SUCCESS(aChannel->GetCorsMode(&corsMode), false);
+  if (corsMode == CORS_USE_CREDENTIALS) {
+    return false;
+  }
+
+  nsCOMPtr<nsIReferrerInfo> referrerInfo;
+  NS_ENSURE_SUCCESS(aChannel->GetReferrerInfo(getter_AddRefs(referrerInfo)),
+                    false);
+  if (!referrerInfo) {
+    return false;
+  }
+  uint32_t policy = referrerInfo->GetReferrerPolicy();
+  if (policy == nsIHttpChannel::REFERRER_POLICY_NO_REFERRER) {
+    return true;
+  }
+
+  bool allowed = false;
+  nsCOMPtr<nsIURI> uri;
+  NS_ENSURE_SUCCESS(aChannel->GetURI(getter_AddRefs(uri)), false);
+
+  if (NS_SUCCEEDED(ReferrerInfo::HandleSecureToInsecureReferral(
+          aOriginURI, uri, policy, allowed)) &&
+      !allowed) {
+    return true;
+  }
+
+  if (policy == nsIHttpChannel::REFERRER_POLICY_SAME_ORIGIN) {
+    return ReferrerInfo::IsCrossOriginRequest(aChannel);
+  }
+
+  return false;
+}
+
 nsresult ReferrerInfo::HandleUserReferrerSendingPolicy(nsIHttpChannel* aChannel,
                                                        bool& aAllowed) const {
   aAllowed = false;
@@ -322,7 +403,8 @@ nsresult ReferrerInfo::HandleUserReferrerSendingPolicy(nsIHttpChannel* aChannel,
   return NS_OK;
 }
 
-bool ReferrerInfo::IsCrossOriginRequest(nsIHttpChannel* aChannel) const {
+/* static */
+bool ReferrerInfo::IsCrossOriginRequest(nsIHttpChannel* aChannel) {
   nsCOMPtr<nsILoadInfo> loadInfo = aChannel->LoadInfo();
 
   nsCOMPtr<nsIURI> triggeringURI;
@@ -502,6 +584,20 @@ already_AddRefed<nsIReferrerInfo> ReferrerInfo::CloneWithNewPolicy(
   return copy.forget();
 }
 
+already_AddRefed<nsIReferrerInfo> ReferrerInfo::CloneWithNewSendReferrer(
+    bool aSendReferrer) const {
+  RefPtr<ReferrerInfo> copy(new ReferrerInfo(*this));
+  copy->mSendReferrer = aSendReferrer;
+  return copy.forget();
+}
+
+already_AddRefed<nsIReferrerInfo> ReferrerInfo::CloneWithNewOriginalReferrer(
+    nsIURI* aOriginalReferrer) const {
+  RefPtr<ReferrerInfo> copy(new ReferrerInfo(*this));
+  copy->mOriginalReferrer = aOriginalReferrer;
+  return copy.forget();
+}
+
 NS_IMETHODIMP
 ReferrerInfo::GetOriginalReferrer(nsIURI** aOriginalReferrer) {
   *aOriginalReferrer = mOriginalReferrer;
@@ -543,11 +639,133 @@ ReferrerInfo::Init(uint32_t aReferrerPolicy, bool aSendReferrer,
     return NS_ERROR_ALREADY_INITIALIZED;
   };
 
-  mInitialized = true;
   mPolicy = aReferrerPolicy;
   mSendReferrer = aSendReferrer;
   mOriginalReferrer = aOriginalReferrer;
+  mInitialized = true;
   return NS_OK;
+}
+
+NS_IMETHODIMP
+ReferrerInfo::InitWithDocument(Document* aDocument) {
+  MOZ_ASSERT(!mInitialized);
+  if (mInitialized) {
+    return NS_ERROR_ALREADY_INITIALIZED;
+  };
+
+  mPolicy = aDocument->GetReferrerPolicy();
+  mSendReferrer = true;
+  mOriginalReferrer = aDocument->GetDocumentURIAsReferrer();
+  mInitialized = true;
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+ReferrerInfo::InitWithNode(nsINode* aNode) {
+  MOZ_ASSERT(!mInitialized);
+  if (mInitialized) {
+    return NS_ERROR_ALREADY_INITIALIZED;
+  };
+
+  // Referrer policy from referrerpolicy attribute will have a higher priority
+  // than referrer policy from <meta> tag and Referrer-Policy header.
+  GetReferrerPolicyFromAtribute(aNode, mPolicy);
+  if (mPolicy == mozilla::net::RP_Unset) {
+    // Fallback to use document's referrer poicy if we don't have referrer
+    // policy from attribute.
+    mPolicy = aNode->OwnerDoc()->GetReferrerPolicy();
+  }
+
+  mSendReferrer = !HasRelNoReferrer(aNode);
+  mOriginalReferrer = aNode->OwnerDoc()->GetDocumentURIAsReferrer();
+
+  mInitialized = true;
+  return NS_OK;
+}
+
+/* static */
+already_AddRefed<nsIReferrerInfo> ReferrerInfo::CreateForFetch(
+    nsIPrincipal* aPrincipal, Document* aDoc) {
+  MOZ_ASSERT(aPrincipal);
+
+  nsCOMPtr<nsIReferrerInfo> referrerInfo;
+  if (!aPrincipal || aPrincipal->IsSystemPrincipal()) {
+    referrerInfo = new ReferrerInfo(nullptr);
+    return referrerInfo.forget();
+  }
+
+  nsCOMPtr<nsIURI> principalURI;
+  aPrincipal->GetURI(getter_AddRefs(principalURI));
+
+  if (!aDoc) {
+    referrerInfo = new ReferrerInfo(principalURI, RP_Unset);
+    return referrerInfo.forget();
+  }
+
+  // If it weren't for history.push/replaceState, we could just use the
+  // principal's URI here.  But since we want changes to the URI effected
+  // by push/replaceState to be reflected in the XHR referrer, we have to
+  // be more clever.
+  //
+  // If the document's original URI (before any push/replaceStates) matches
+  // our principal, then we use the document's current URI (after
+  // push/replaceStates).  Otherwise (if the document is, say, a data:
+  // URI), we just use the principal's URI.
+  nsCOMPtr<nsIURI> docCurURI = aDoc->GetDocumentURI();
+  nsCOMPtr<nsIURI> docOrigURI = aDoc->GetOriginalURI();
+
+  nsCOMPtr<nsIURI> referrerURI;
+
+  if (principalURI && docCurURI && docOrigURI) {
+    bool equal = false;
+    principalURI->Equals(docOrigURI, &equal);
+    if (equal) {
+      referrerURI = docCurURI;
+    }
+  }
+
+  if (!referrerURI) {
+    referrerURI = principalURI;
+  }
+
+  referrerInfo = new ReferrerInfo(referrerURI, aDoc->GetReferrerPolicy());
+  return referrerInfo.forget();
+}
+
+void ReferrerInfo::GetReferrerPolicyFromAtribute(nsINode* aNode,
+                                                 uint32_t& aPolicy) const {
+  aPolicy = mozilla::net::RP_Unset;
+  mozilla::dom::Element* element = aNode->AsElement();
+
+  if (!element->IsAnyOfHTMLElements(nsGkAtoms::a, nsGkAtoms::area,
+                                    nsGkAtoms::script, nsGkAtoms::iframe,
+                                    nsGkAtoms::img)) {
+    return;
+  }
+
+  aPolicy = element->GetReferrerPolicyAsEnum();
+}
+
+bool ReferrerInfo::HasRelNoReferrer(nsINode* aNode) const {
+  mozilla::dom::Element* element = aNode->AsElement();
+
+  // rel=noreferrer is only support in <a> and <area>
+  if (!element->IsAnyOfHTMLElements(nsGkAtoms::a, nsGkAtoms::area)) {
+    return false;
+  }
+
+  nsAutoString rel;
+  element->GetAttr(kNameSpaceID_None, nsGkAtoms::rel, rel);
+  nsWhitespaceTokenizerTemplate<nsContentUtils::IsHTMLWhitespace> tok(rel);
+
+  while (tok.hasMoreTokens()) {
+    const nsAString& token = tok.nextToken();
+    if (token.LowerCaseEqualsLiteral("noreferrer")) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 nsresult ReferrerInfo::ComputeReferrer(nsIHttpChannel* aChannel) {
@@ -625,7 +843,8 @@ nsresult ReferrerInfo::ComputeReferrer(nsIHttpChannel* aChannel) {
   }
 
   bool isSecureToInsecureAllowed = false;
-  rv = HandleSecureToInsecureReferral(uri, isSecureToInsecureAllowed);
+  rv = HandleSecureToInsecureReferral(mOriginalReferrer, uri, mPolicy,
+                                      isSecureToInsecureAllowed);
   if (NS_WARN_IF(NS_FAILED(rv))) {
     return rv;
   }

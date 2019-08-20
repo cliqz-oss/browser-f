@@ -37,6 +37,12 @@ app-basics-build-id = Build-ID
 app-basics-update-channel = Update-Kanal
 app-basics-update-history = Update-Chronik
 app-basics-show-update-history = Update-Chronik anzeigen
+app-basics-update-dir =
+    { PLATFORM() ->
+        [linux] Update-Verzeichnis
+       *[other] Update-Ordner
+    }
+app-basics-binary = Anwendungsprogrammdatei
 app-basics-profile-dir =
     { PLATFORM() ->
         [linux] Profilverzeichnis

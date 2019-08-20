@@ -151,7 +151,7 @@ bool HTMLVideoElement::ParseAttribute(int32_t aNamespaceID, nsAtom* aAttribute,
                                       nsIPrincipal* aMaybeScriptedPrincipal,
                                       nsAttrValue& aResult) {
   if (aAttribute == nsGkAtoms::width || aAttribute == nsGkAtoms::height) {
-    return aResult.ParseSpecialIntValue(aValue);
+    return aResult.ParseHTMLDimension(aValue);
   }
 
   return HTMLMediaElement::ParseAttribute(aNamespaceID, aAttribute, aValue,
@@ -180,14 +180,14 @@ nsMapRuleToAttributesFunc HTMLVideoElement::GetAttributeMappingFunction()
   return &MapAttributesIntoRule;
 }
 
-void HTMLVideoElement::UnbindFromTree(bool aDeep, bool aNullParent) {
+void HTMLVideoElement::UnbindFromTree(bool aNullParent) {
   if (mVisualCloneSource) {
     mVisualCloneSource->EndCloningVisually();
   } else if (mVisualCloneTarget) {
     EndCloningVisually();
   }
 
-  HTMLMediaElement::UnbindFromTree(aDeep, aNullParent);
+  HTMLMediaElement::UnbindFromTree(aNullParent);
 }
 
 nsresult HTMLVideoElement::SetAcceptHeader(nsIHttpChannel* aChannel) {
@@ -386,13 +386,13 @@ void HTMLVideoElement::ReleaseVideoWakeLockIfExists() {
 bool HTMLVideoElement::SetVisualCloneTarget(
     HTMLVideoElement* aVisualCloneTarget) {
   MOZ_DIAGNOSTIC_ASSERT(
-      !aVisualCloneTarget || !aVisualCloneTarget->mUnboundFromTree,
+      !aVisualCloneTarget || aVisualCloneTarget->IsInComposedDoc(),
       "Can't set the clone target to a disconnected video "
       "element.");
   MOZ_DIAGNOSTIC_ASSERT(!mVisualCloneSource,
                         "Can't clone a video element that is already a clone.");
   if (!aVisualCloneTarget ||
-      (!aVisualCloneTarget->mUnboundFromTree && !mVisualCloneSource)) {
+      (aVisualCloneTarget->IsInComposedDoc() && !mVisualCloneSource)) {
     mVisualCloneTarget = aVisualCloneTarget;
     return true;
   }
@@ -402,14 +402,14 @@ bool HTMLVideoElement::SetVisualCloneTarget(
 bool HTMLVideoElement::SetVisualCloneSource(
     HTMLVideoElement* aVisualCloneSource) {
   MOZ_DIAGNOSTIC_ASSERT(
-      !aVisualCloneSource || !aVisualCloneSource->mUnboundFromTree,
+      !aVisualCloneSource || aVisualCloneSource->IsInComposedDoc(),
       "Can't set the clone source to a disconnected video "
       "element.");
   MOZ_DIAGNOSTIC_ASSERT(!mVisualCloneTarget,
                         "Can't clone a video element that is already a "
                         "clone.");
   if (!aVisualCloneSource ||
-      (!aVisualCloneSource->mUnboundFromTree && !mVisualCloneTarget)) {
+      (aVisualCloneSource->IsInComposedDoc() && !mVisualCloneTarget)) {
     mVisualCloneSource = aVisualCloneSource;
     return true;
   }
@@ -452,11 +452,11 @@ double HTMLVideoElement::TotalPlayTime() const {
 
 void HTMLVideoElement::CloneElementVisually(HTMLVideoElement& aTargetVideo,
                                             ErrorResult& rv) {
-  MOZ_ASSERT(!mUnboundFromTree,
+  MOZ_ASSERT(IsInComposedDoc(),
              "Can't clone a video that's not bound to a DOM tree.");
-  MOZ_ASSERT(!aTargetVideo.mUnboundFromTree,
+  MOZ_ASSERT(aTargetVideo.IsInComposedDoc(),
              "Can't clone to a video that's not bound to a DOM tree.");
-  if (mUnboundFromTree || aTargetVideo.mUnboundFromTree) {
+  if (!IsInComposedDoc() || !aTargetVideo.IsInComposedDoc()) {
     rv.Throw(NS_ERROR_UNEXPECTED);
     return;
   }

@@ -13,7 +13,6 @@ from taskgraph.util.attributes import copy_attributes_from_dependent_job
 from taskgraph.util.keyed_by import evaluate_keyed_by
 from taskgraph.util.schema import taskref_or_string
 from taskgraph.util.scriptworker import (
-    add_scope_prefix,
     get_signing_cert_scope_per_platform,
     get_worker_type_for_scope,
 )
@@ -42,6 +41,9 @@ signing_description_schema = schema.extend({
 
     # depname is used in taskref's to identify the taskID of the unsigned things
     Required('depname'): basestring,
+
+    # attributes for this task
+    Optional('attributes'): {basestring: object},
 
     # unique label to describe this signing task, defaults to {dep.label}-signing
     Optional('label'): basestring,
@@ -84,7 +86,7 @@ def add_entitlements_link(config, jobs):
             "mac entitlements",
             {
                 'platform': job['primary-dependency'].attributes.get('build_platform'),
-                'release-level': config.params.release_level(),
+                'project': config.params['project'],
             },
         )
         if entitlements_path:
@@ -105,10 +107,6 @@ def make_task_description(config, jobs):
         for artifacts in job['upstream-artifacts']:
             for f in artifacts['formats']:
                 formats.add(f)  # Add each format only once
-        for format in formats:
-            signing_format_scopes.append(
-                add_scope_prefix(config, 'signing:format:{}'.format(format))
-            )
 
         is_nightly = dep_job.attributes.get(
             'nightly', dep_job.attributes.get('shippable', False))
@@ -145,7 +143,8 @@ def make_task_description(config, jobs):
             )
         )
 
-        attributes = copy_attributes_from_dependent_job(dep_job)
+        attributes = job['attributes'] if job.get('attributes') else \
+            copy_attributes_from_dependent_job(dep_job)
         attributes['signed'] = True
 
         if dep_job.attributes.get('chunk_locales'):
@@ -153,8 +152,7 @@ def make_task_description(config, jobs):
             attributes['chunk_locales'] = dep_job.attributes.get('chunk_locales')
 
         signing_cert_scope = get_signing_cert_scope_per_platform(
-            build_platform, is_nightly, config,
-            job_release_type=dep_job.attributes.get('release-type')
+            build_platform, is_nightly, config
         )
         worker_type_alias = get_worker_type_for_scope(config, signing_cert_scope)
         mac_behavior = None

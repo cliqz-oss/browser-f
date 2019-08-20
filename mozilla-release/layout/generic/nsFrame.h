@@ -200,9 +200,9 @@ class nsFrame : public nsBox {
   void SetPrevContinuation(nsIFrame*) override;
   nsIFrame* GetNextContinuation() const override;
   void SetNextContinuation(nsIFrame*) override;
-  nsIFrame* GetPrevInFlowVirtual() const override;
+  nsIFrame* GetPrevInFlow() const override;
   void SetPrevInFlow(nsIFrame*) override;
-  nsIFrame* GetNextInFlowVirtual() const override;
+  nsIFrame* GetNextInFlow() const override;
   void SetNextInFlow(nsIFrame*) override;
 
   nsresult GetSelectionController(nsPresContext* aPresContext,
@@ -529,6 +529,32 @@ class nsFrame : public nsBox {
    */
   void DisplayOutline(nsDisplayListBuilder* aBuilder,
                       const nsDisplayListSet& aLists);
+
+  /**
+   * Add a display item for CSS inset box shadows. Does not check visibility.
+   */
+  void DisplayInsetBoxShadowUnconditional(nsDisplayListBuilder* aBuilder,
+                                          nsDisplayList* aList);
+
+  /**
+   * Add a display item for CSS inset box shadow, after calling
+   * IsVisibleForPainting to confirm we are visible.
+   */
+  void DisplayInsetBoxShadow(nsDisplayListBuilder* aBuilder,
+                             nsDisplayList* aList);
+
+  /**
+   * Add a display item for CSS outset box shadows. Does not check visibility.
+   */
+  void DisplayOutsetBoxShadowUnconditional(nsDisplayListBuilder* aBuilder,
+                                           nsDisplayList* aList);
+
+  /**
+   * Add a display item for CSS outset box shadow, after calling
+   * IsVisibleForPainting to confirm we are visible.
+   */
+  void DisplayOutsetBoxShadow(nsDisplayListBuilder* aBuilder,
+                              nsDisplayList* aList);
 
   /**
    * Adjust the given parent frame to the right ComputedStyle parent frame for

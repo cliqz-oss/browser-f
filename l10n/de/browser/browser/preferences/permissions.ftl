@@ -46,8 +46,17 @@ permissions-button-ok =
     .label = Änderungen speichern
     .accesskey = s
 
+permissions-autoplay-menu = Standard für alle Websites:
+
 permissions-searchbox =
     .placeholder = Website suchen
+
+permissions-capabilities-autoplay-allow =
+    .label = Audio und Video erlauben
+permissions-capabilities-autoplay-block =
+    .label = Medien mit Audio blockieren
+permissions-capabilities-autoplay-blockall =
+    .label = Audio und Video blockieren
 
 permissions-capabilities-allow =
     .label = Erlauben
@@ -114,7 +123,12 @@ permissions-exceptions-addons-desc = Sie können festlegen, welchen Websites Sie
 
 permissions-exceptions-autoplay-media-window2 =
     .title = Ausnahmen - Automatische Wiedergabe
+## Site Permissions - Autoplay
+
+permissions-site-autoplay-window =
+    .title = Einstellungen - Automatische Wiedergabe
     .style = { permissions-window.style }
+permissions-site-autoplay-desc = Hier können die Websites verwaltet werden, welche benutzerdefinierte Einstellungen für die automatische Wiedergabe verwenden.
 permissions-exceptions-autoplay-media-desc2 = Hier können die Websites festgelegt werden, welche immer oder nie automatisch Medien mit Ton wiedergeben dürfen. Geben Sie die Adresse der Website ein und klicken Sie dann auf "Blockieren" oder "Erlauben".
 
 ## Site Permissions - Notifications

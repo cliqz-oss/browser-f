@@ -6,13 +6,26 @@
 
 var EXPORTED_SYMBOLS = ["ExecutionContext"];
 
-const uuidGen = Cc["@mozilla.org/uuid-generator;1"].getService(Ci.nsIUUIDGenerator);
+const uuidGen = Cc["@mozilla.org/uuid-generator;1"].getService(
+  Ci.nsIUUIDGenerator
+);
 
-const TYPED_ARRAY_CLASSES = ["Uint8Array", "Uint8ClampedArray", "Uint16Array",
-                             "Uint32Array", "Int8Array", "Int16Array", "Int32Array",
-                             "Float32Array", "Float64Array"];
+const TYPED_ARRAY_CLASSES = [
+  "Uint8Array",
+  "Uint8ClampedArray",
+  "Uint16Array",
+  "Uint32Array",
+  "Int8Array",
+  "Int16Array",
+  "Int32Array",
+  "Float32Array",
+  "Float64Array",
+];
 function uuid() {
-  return uuidGen.generateUUID().toString().slice(1, -1);
+  return uuidGen
+    .generateUUID()
+    .toString()
+    .slice(1, -1);
 }
 
 /**
@@ -46,6 +59,10 @@ class ExecutionContext {
 
   hasRemoteObject(id) {
     return this._remoteObjects.has(id);
+  }
+
+  getRemoteObject(id) {
+    return this._remoteObjects.get(id);
   }
 
   releaseObject(id) {
@@ -85,10 +102,15 @@ class ExecutionContext {
    * describing the exception by following CDP ExceptionDetails specification.
    */
   _returnError(exception) {
-    if (this._debuggee.executeInGlobalWithBindings("exception instanceof Error",
-      {exception}).return) {
-      const text = this._debuggee.executeInGlobalWithBindings("exception.message",
-        {exception}).return;
+    if (
+      this._debuggee.executeInGlobalWithBindings("exception instanceof Error", {
+        exception,
+      }).return
+    ) {
+      const text = this._debuggee.executeInGlobalWithBindings(
+        "exception.message",
+        { exception }
+      ).return;
       return {
         exceptionDetails: {
           text,
@@ -104,7 +126,13 @@ class ExecutionContext {
     };
   }
 
-  async callFunctionOn(functionDeclaration, callArguments = [], returnByValue = false, awaitPromise = false, objectId = null) {
+  async callFunctionOn(
+    functionDeclaration,
+    callArguments = [],
+    returnByValue = false,
+    awaitPromise = false,
+    objectId = null
+  ) {
     // Map the given objectId to a JS reference.
     let thisArg = null;
     if (objectId) {
@@ -168,6 +196,53 @@ class ExecutionContext {
     };
   }
 
+  getProperties({ objectId, ownProperties }) {
+    let obj = this.getRemoteObject(objectId);
+    if (!obj) {
+      throw new Error("Cannot find object with id = " + objectId);
+    }
+    const result = [];
+    const serializeObject = (obj, isOwn) => {
+      for (const propertyName of obj.getOwnPropertyNames()) {
+        const descriptor = obj.getOwnPropertyDescriptor(propertyName);
+        result.push({
+          name: propertyName,
+
+          configurable: descriptor.configurable,
+          enumerable: descriptor.enumerable,
+          writable: descriptor.writable,
+          value: this._toRemoteObject(descriptor.value),
+          get: descriptor.get
+            ? this._toRemoteObject(descriptor.get)
+            : undefined,
+          set: descriptor.set
+            ? this._toRemoteObject(descriptor.set)
+            : undefined,
+
+          isOwn,
+        });
+      }
+    };
+
+    // When `ownProperties` is set to true, we only iterate over own properties.
+    // Otherwise, we also iterate over propreties inherited from the prototype chain.
+    serializeObject(obj, true);
+
+    if (!ownProperties) {
+      while (true) {
+        obj = obj.proto;
+        if (!obj) {
+          break;
+        }
+        serializeObject(obj, false);
+      }
+    }
+
+    return {
+      result,
+    };
+  }
+
   /**
    * Convert a given `Debugger.Object` to a JSON string.
    *
@@ -177,10 +252,13 @@ class ExecutionContext {
    *  The JSON string
    */
   _serialize(obj) {
-    if (typeof(obj) == "undefined") {
+    if (typeof obj == "undefined") {
       return undefined;
     }
-    const result = this._debuggee.executeInGlobalWithBindings("JSON.stringify(e)", {e: obj});
+    const result = this._debuggee.executeInGlobalWithBindings(
+      "JSON.stringify(e)",
+      { e: obj }
+    );
     if (result.throw) {
       throw new Error("Object is not serializable");
     }
@@ -200,10 +278,14 @@ class ExecutionContext {
     }
     if (arg.unserializableValue) {
       switch (arg.unserializableValue) {
-        case "Infinity": return Infinity;
-        case "-Infinity": return -Infinity;
-        case "-0": return -0;
-        case "NaN": return NaN;
+        case "Infinity":
+          return Infinity;
+        case "-Infinity":
+          return -Infinity;
+        case "-0":
+          return -0;
+        case "NaN":
+          return NaN;
       }
     }
     return this._deserialize(arg.value);
@@ -216,8 +298,10 @@ class ExecutionContext {
     if (typeof obj !== "object") {
       return obj;
     }
-    const result = this._debuggee.executeInGlobalWithBindings("JSON.parse(obj)",
-      {obj: JSON.stringify(obj)});
+    const result = this._debuggee.executeInGlobalWithBindings(
+      "JSON.parse(obj)",
+      { obj: JSON.stringify(obj) }
+    );
     if (result.throw) {
       throw new Error("Unable to deserialize object");
     }
@@ -271,7 +355,7 @@ class ExecutionContext {
       }
 
       const type = typeof rawObj;
-      return {objectId, type, subtype};
+      return { objectId, type, subtype };
     }
 
     // Now, handle all values that Debugger API isn't wrapping into Debugger.API.
@@ -284,19 +368,20 @@ class ExecutionContext {
     if (type == "symbol" || type == "bigint") {
       const objectId = uuid();
       this._remoteObjects.set(objectId, debuggerObj);
-      return {objectId, type};
+      return { objectId, type };
     }
 
     // A few primitive type can't be serialized and CDP has special case for them
     let unserializableValue = undefined;
-    if (Object.is(debuggerObj, NaN))
+    if (Object.is(debuggerObj, NaN)) {
       unserializableValue = "NaN";
-    else if (Object.is(debuggerObj, -0))
+    } else if (Object.is(debuggerObj, -0)) {
       unserializableValue = "-0";
-    else if (Object.is(debuggerObj, Infinity))
+    } else if (Object.is(debuggerObj, Infinity)) {
       unserializableValue = "Infinity";
-    else if (Object.is(debuggerObj, -Infinity))
+    } else if (Object.is(debuggerObj, -Infinity)) {
       unserializableValue = "-Infinity";
+    }
     if (unserializableValue) {
       return {
         unserializableValue,

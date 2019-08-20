@@ -30,6 +30,7 @@
 #include "nsString.h"
 #include "nsThreadUtils.h"
 #include "shared-libraries.h"
+#include "zlib.h"
 
 #include <string>
 #include <sstream>
@@ -104,10 +105,21 @@ nsProfiler::CanProfile(bool* aCanProfile) {
   return NS_OK;
 }
 
+static nsresult FillVectorFromStringArray(Vector<const char*>& aVector,
+                                          const nsTArray<nsCString>& aArray) {
+  if (NS_WARN_IF(!aVector.reserve(aArray.Length()))) {
+    return NS_ERROR_OUT_OF_MEMORY;
+  }
+  for (auto& entry : aArray) {
+    aVector.infallibleAppend(entry.get());
+  }
+  return NS_OK;
+}
+
 NS_IMETHODIMP
 nsProfiler::StartProfiler(uint32_t aEntries, double aInterval,
-                          const char** aFeatures, uint32_t aFeatureCount,
-                          const char** aFilters, uint32_t aFilterCount,
+                          const nsTArray<nsCString>& aFeatures,
+                          const nsTArray<nsCString>& aFilters,
                           double aDuration) {
   if (mLockedForPrivateBrowsing) {
     return NS_ERROR_NOT_AVAILABLE;
@@ -115,9 +127,22 @@ nsProfiler::StartProfiler(uint32_t aEntries, double aInterval,
 
   ResetGathering();
 
-  uint32_t features = ParseFeaturesFromStringArray(aFeatures, aFeatureCount);
+  Vector<const char*> featureStringVector;
+  nsresult rv = FillVectorFromStringArray(featureStringVector, aFeatures);
+  if (NS_FAILED(rv)) {
+    return rv;
+  }
+  uint32_t features = ParseFeaturesFromStringArray(
+      featureStringVector.begin(), featureStringVector.length());
   Maybe<double> duration = aDuration > 0.0 ? Some(aDuration) : Nothing();
-  profiler_start(aEntries, aInterval, features, aFilters, aFilterCount,
+
+  Vector<const char*> filterStringVector;
+  rv = FillVectorFromStringArray(filterStringVector, aFilters);
+  if (NS_FAILED(rv)) {
+    return rv;
+  }
+  profiler_start(PowerOfTwo32(aEntries), aInterval, features,
+                 filterStringVector.begin(), filterStringVector.length(),
                  duration);
 
   return NS_OK;
@@ -283,7 +308,7 @@ nsProfiler::GetProfileDataAsync(double aSinceTime, JSContext* aCx,
                   MOZ_ASSERT(gotException);
 
                   jsapi.ClearException();
-                  promise->MaybeReject(cx, exn);
+                  promise->MaybeReject(exn);
                 }
               } else {
                 promise->MaybeResolve(val);
@@ -336,6 +361,100 @@ nsProfiler::GetProfileDataAsArrayBuffer(double aSinceTime, JSContext* aCx,
             JSObject* typedArray = dom::ArrayBuffer::Create(
                 cx, aResult.Length(),
                 reinterpret_cast<const uint8_t*>(aResult.Data()));
+            if (typedArray) {
+              JS::RootedValue val(cx, JS::ObjectValue(*typedArray));
+              promise->MaybeResolve(val);
+            } else {
+              promise->MaybeReject(NS_ERROR_OUT_OF_MEMORY);
+            }
+          },
+          [promise](nsresult aRv) { promise->MaybeReject(aRv); });
+
+  promise.forget(aPromise);
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+nsProfiler::GetProfileDataAsGzippedArrayBuffer(double aSinceTime,
+                                               JSContext* aCx,
+                                               Promise** aPromise) {
+  MOZ_ASSERT(NS_IsMainThread());
+
+  if (!profiler_is_active()) {
+    return NS_ERROR_FAILURE;
+  }
+
+  if (NS_WARN_IF(!aCx)) {
+    return NS_ERROR_FAILURE;
+  }
+
+  nsIGlobalObject* globalObject = xpc::CurrentNativeGlobal(aCx);
+  if (NS_WARN_IF(!globalObject)) {
+    return NS_ERROR_FAILURE;
+  }
+
+  ErrorResult result;
+  RefPtr<Promise> promise = Promise::Create(globalObject, result);
+  if (NS_WARN_IF(result.Failed())) {
+    return result.StealNSResult();
+  }
+
+  StartGathering(aSinceTime)
+      ->Then(
+          GetMainThreadSerialEventTarget(), __func__,
+          [promise](nsCString aResult) {
+            AutoJSAPI jsapi;
+            if (NS_WARN_IF(!jsapi.Init(promise->GetGlobalObject()))) {
+              // We're really hosed if we can't get a JS context for some
+              // reason.
+              promise->MaybeReject(NS_ERROR_DOM_UNKNOWN_ERR);
+              return;
+            }
+
+            // Compress a buffer via zlib (as with `compress()`), but emit a
+            // gzip header as well. Like `compress()`, this is limited to 4GB in
+            // size, but that shouldn't be an issue for our purposes.
+            uLongf outSize = compressBound(aResult.Length());
+            FallibleTArray<uint8_t> outBuff;
+            if (!outBuff.SetLength(outSize, fallible)) {
+              promise->MaybeReject(NS_ERROR_OUT_OF_MEMORY);
+              return;
+            }
+
+            int zerr;
+            z_stream stream;
+            stream.zalloc = nullptr;
+            stream.zfree = nullptr;
+            stream.opaque = nullptr;
+            stream.next_out = (Bytef*)outBuff.Elements();
+            stream.avail_out = outBuff.Length();
+            stream.next_in = (z_const Bytef*)aResult.Data();
+            stream.avail_in = aResult.Length();
+
+            // A windowBits of 31 is the default (15) plus 16 for emitting a
+            // gzip header; a memLevel of 8 is the default.
+            zerr = deflateInit2(&stream, Z_DEFAULT_COMPRESSION, Z_DEFLATED,
+                                /* windowBits */ 31, /* memLevel */ 8,
+                                Z_DEFAULT_STRATEGY);
+            if (zerr != Z_OK) {
+              promise->MaybeReject(NS_ERROR_FAILURE);
+              return;
+            }
+
+            zerr = deflate(&stream, Z_FINISH);
+            outSize = stream.total_out;
+            deflateEnd(&stream);
+
+            if (zerr != Z_STREAM_END) {
+              promise->MaybeReject(NS_ERROR_FAILURE);
+              return;
+            }
+
+            outBuff.TruncateLength(outSize);
+
+            JSContext* cx = jsapi.cx();
+            JSObject* typedArray = dom::ArrayBuffer::Create(
+                cx, outBuff.Length(), outBuff.Elements());
             if (typedArray) {
               JS::RootedValue val(cx, JS::ObjectValue(*typedArray));
               promise->MaybeResolve(val);
@@ -476,8 +595,8 @@ nsProfiler::IsActive(bool* aIsActive) {
   return NS_OK;
 }
 
-static void GetArrayOfStringsForFeatures(uint32_t aFeatures, uint32_t* aCount,
-                                         char*** aFeatureList) {
+static void GetArrayOfStringsForFeatures(uint32_t aFeatures,
+                                         nsTArray<nsCString>& aFeatureList) {
 #define COUNT_IF_SET(n_, str_, Name_, desc_)    \
   if (ProfilerFeature::Has##Name_(aFeatures)) { \
     len++;                                      \
@@ -489,34 +608,29 @@ static void GetArrayOfStringsForFeatures(uint32_t aFeatures, uint32_t* aCount,
 
 #undef COUNT_IF_SET
 
-  auto featureList = static_cast<char**>(moz_xmalloc(len * sizeof(char*)));
+  aFeatureList.SetCapacity(len);
 
 #define DUP_IF_SET(n_, str_, Name_, desc_)      \
   if (ProfilerFeature::Has##Name_(aFeatures)) { \
-    featureList[i] = moz_xstrdup(str_);         \
-    i++;                                        \
+    aFeatureList.AppendElement(str_);           \
   }
 
   // Insert the strings for the features in use.
-  size_t i = 0;
   PROFILER_FOR_EACH_FEATURE(DUP_IF_SET)
 
 #undef DUP_IF_SET
-
-  *aFeatureList = featureList;
-  *aCount = len;
 }
 
 NS_IMETHODIMP
-nsProfiler::GetFeatures(uint32_t* aCount, char*** aFeatureList) {
+nsProfiler::GetFeatures(nsTArray<nsCString>& aFeatureList) {
   uint32_t features = profiler_get_available_features();
-  GetArrayOfStringsForFeatures(features, aCount, aFeatureList);
+  GetArrayOfStringsForFeatures(features, aFeatureList);
   return NS_OK;
 }
 
 NS_IMETHODIMP
-nsProfiler::GetAllFeatures(uint32_t* aCount, char*** aFeatureList) {
-  GetArrayOfStringsForFeatures((uint32_t)-1, aCount, aFeatureList);
+nsProfiler::GetAllFeatures(nsTArray<nsCString>& aFeatureList) {
+  GetArrayOfStringsForFeatures((uint32_t)-1, aFeatureList);
   return NS_OK;
 }
 

@@ -59,6 +59,9 @@ class GeckoInstance(object):
         "dom.max_chrome_script_run_time": 0,
         "dom.max_script_run_time": 0,
 
+        # DOM Push
+        "dom.push.connection.enabled": False,
+
         # Only load extensions from the application and user profile
         # AddonManager.SCOPE_PROFILE + AddonManager.SCOPE_APPLICATION
         "extensions.autoDisableScopes": 0,
@@ -116,6 +119,9 @@ class GeckoInstance(object):
         # Make sure SNTP requests don't hit the network
         "network.sntp.pools": "%(server)s",
 
+        # Privacy and Tracking Protection
+        "privacy.trackingprotection.enabled": False,
+
         # Don't do network connections for mitm priming
         "security.certerrors.mitm.priming.enabled": False,
 
@@ -141,7 +147,7 @@ class GeckoInstance(object):
 
     def __init__(self, host=None, port=None, bin=None, profile=None, addons=None,
                  app_args=None, symbols_path=None, gecko_log=None, prefs=None,
-                 workspace=None, verbose=0, headless=False):
+                 workspace=None, verbose=0, headless=False, enable_webrender=False):
         self.runner_class = Runner
         self.app_args = app_args or []
         self.runner = None
@@ -160,6 +166,7 @@ class GeckoInstance(object):
         self._gecko_log = None
         self.verbose = verbose
         self.headless = headless
+        self.enable_webrender = enable_webrender
 
         # keep track of errors to decide whether instance is unresponsive
         self.unresponsive_count = 0
@@ -325,6 +332,12 @@ class GeckoInstance(object):
             env["MOZ_HEADLESS"] = "1"
             env["DISPLAY"] = "77"  # Set a fake display.
 
+        if self.enable_webrender:
+            env["MOZ_WEBRENDER"] = "1"
+            env["MOZ_ACCELERATED"] = "1"
+        else:
+            env["MOZ_WEBRENDER"] = "0"
+
         # environment variables needed for crashreporting
         # https://developer.mozilla.org/docs/Environment_variables_affecting_crash_reporting
         env.update({"MOZ_CRASHREPORTER": "1",
@@ -456,12 +469,18 @@ class FennecInstance(GeckoInstance):
             "processOutputLine": [NullOutput()],
         }
 
+        env = {} if self.env is None else self.env.copy()
+        if self.enable_webrender:
+            env["MOZ_WEBRENDER"] = "1"
+        else:
+            env["MOZ_WEBRENDER"] = "0"
+
         runner_args = {
             "app": self.package_name,
             "avd_home": self.avd_home,
             "adb_path": self.adb_path,
             "binary": self.emulator_binary,
-            "env": self.env,
+            "env": env,
             "profile": self.profile,
             "cmdargs": ["-marionette"] + self.app_args,
             "symbols_path": self.symbols_path,
@@ -597,6 +616,21 @@ class DesktopInstance(GeckoInstance):
         self.required_prefs.update(required_prefs)
 
 
+class ThunderbirdInstance(GeckoInstance):
+    def __init__(self, *args, **kwargs):
+        super(ThunderbirdInstance, self).__init__(*args, **kwargs)
+        try:
+            # Copied alongside in the test archive
+            from .thunderbirdinstance import thunderbird_prefs
+        except ImportError:
+            try:
+                # Coming from source tree through virtualenv
+                from thunderbirdinstance import thunderbird_prefs
+            except ImportError:
+                thunderbird_prefs = {}
+        self.required_prefs.update(thunderbird_prefs)
+
+
 class NullOutput(object):
     def __call__(self, line):
         pass
@@ -605,9 +639,11 @@ class NullOutput(object):
 apps = {
     'fennec': FennecInstance,
     'fxdesktop': DesktopInstance,
+    'thunderbird': ThunderbirdInstance,
 }
 
 app_ids = {
     '{aa3c5121-dab2-40e2-81ca-7ea25febc110}': 'fennec',
     '{ec8030f7-c20a-464f-9b0e-13a3a9e97384}': 'fxdesktop',
+    '{3550f703-e582-4d05-9a08-453d09bdfdc6}': 'thunderbird',
 }

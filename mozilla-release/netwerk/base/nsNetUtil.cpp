@@ -97,8 +97,17 @@
 #include "mozilla/dom/BlobURLProtocolHandler.h"
 #include "nsStreamUtils.h"
 #include "nsSocketTransportService2.h"
-
+#include "nsViewSourceHandler.h"
+#include "nsJARURI.h"
+#include "nsIconURI.h"
+#include "nsAboutProtocolHandler.h"
+#include "nsResProtocolHandler.h"
+#include "mozilla/net/ExtensionProtocolHandler.h"
 #include <limits>
+
+#if defined(MOZ_THUNDERBIRD) || defined(MOZ_SUITE)
+#  include "nsNewMailnewsURI.h"
+#endif
 
 using namespace mozilla;
 using namespace mozilla::net;
@@ -1617,19 +1626,6 @@ nsresult NS_ReadInputStreamToString(nsIInputStream* aInputStream,
 }
 
 nsresult NS_NewURI(
-    nsIURI** result, const nsACString& spec,
-    const char* charset /* = nullptr */, nsIURI* baseURI /* = nullptr */,
-    nsIIOService*
-        ioService /* = nullptr */)  // pass in nsIIOService to optimize callers
-{
-  nsresult rv;
-  nsCOMPtr<nsIIOService> grip;
-  rv = net_EnsureIOService(&ioService, grip);
-  if (ioService) rv = ioService->NewURI(spec, charset, baseURI, result);
-  return rv;
-}
-
-nsresult NS_NewURI(
     nsIURI** result, const nsACString& spec, NotNull<const Encoding*> encoding,
     nsIURI* baseURI /* = nullptr */,
     nsIIOService*
@@ -1708,10 +1704,10 @@ class TlsAutoIncrement {
   T& mVar;
 };
 
-nsresult NS_NewURIOnAnyThread(nsIURI** aURI, const nsACString& aSpec,
-                              const char* aCharset /* = nullptr */,
-                              nsIURI* aBaseURI /* = nullptr */,
-                              nsIIOService* aIOService /* = nullptr */) {
+nsresult NS_NewURI(nsIURI** aURI, const nsACString& aSpec,
+                   const char* aCharset /* = nullptr */,
+                   nsIURI* aBaseURI /* = nullptr */,
+                   nsIIOService* aIOService /* = nullptr */) {
   TlsAutoIncrement<decltype(gTlsURLRecursionCount)> inc(gTlsURLRecursionCount);
   if (inc.value() >= MAX_RECURSION_COUNT) {
     return NS_ERROR_MALFORMED_URI;
@@ -1745,6 +1741,9 @@ nsresult NS_NewURIOnAnyThread(nsIURI** aURI, const nsACString& aSpec,
   }
   if (scheme.EqualsLiteral("ftp")) {
     return NewStandardURI(aSpec, aCharset, aBaseURI, 21, aURI);
+  }
+  if (scheme.EqualsLiteral("ssh")) {
+    return NewStandardURI(aSpec, aCharset, aBaseURI, 22, aURI);
   }
 
   if (scheme.EqualsLiteral("file")) {
@@ -1793,13 +1792,105 @@ nsresult NS_NewURIOnAnyThread(nsIURI** aURI, const nsACString& aSpec,
                                                 aURI);
   }
 
-  if (NS_IsMainThread()) {
-    // XXX (valentin): this fallback should be removed once we get rid of
-    // nsIProtocolHandler.newURI
-    return NS_NewURI(aURI, aSpec, aCharset, aBaseURI, aIOService);
+  if (scheme.EqualsLiteral("view-source")) {
+    return nsViewSourceHandler::CreateNewURI(aSpec, aCharset, aBaseURI, aURI);
   }
 
-  return NS_ERROR_UNKNOWN_PROTOCOL;
+  if (scheme.EqualsLiteral("resource")) {
+    RefPtr<nsResProtocolHandler> handler = nsResProtocolHandler::GetSingleton();
+    if (!handler) {
+      return NS_ERROR_NOT_AVAILABLE;
+    }
+    return handler->NewURI(aSpec, aCharset, aBaseURI, aURI);
+  }
+
+  if (scheme.EqualsLiteral("indexeddb")) {
+    nsCOMPtr<nsIURI> base(aBaseURI);
+    return NS_MutateURI(new nsStandardURL::Mutator())
+        .Apply(NS_MutatorMethod(&nsIStandardURLMutator::Init,
+                                nsIStandardURL::URLTYPE_AUTHORITY, 0,
+                                nsCString(aSpec), aCharset, base, nullptr))
+        .Finalize(aURI);
+  }
+
+  if (scheme.EqualsLiteral("moz-extension")) {
+    RefPtr<mozilla::net::ExtensionProtocolHandler> handler =
+        mozilla::net::ExtensionProtocolHandler::GetSingleton();
+    if (!handler) {
+      return NS_ERROR_NOT_AVAILABLE;
+    }
+    return handler->NewURI(aSpec, aCharset, aBaseURI, aURI);
+  }
+
+  if (scheme.EqualsLiteral("about")) {
+    return nsAboutProtocolHandler::CreateNewURI(aSpec, aCharset, aBaseURI,
+                                                aURI);
+  }
+
+  if (scheme.EqualsLiteral("jar")) {
+    nsCOMPtr<nsIURI> base(aBaseURI);
+    return NS_MutateURI(new nsJARURI::Mutator())
+        .Apply(NS_MutatorMethod(&nsIJARURIMutator::SetSpecBaseCharset,
+                                nsCString(aSpec), base, aCharset))
+        .Finalize(aURI);
+  }
+
+  if (scheme.EqualsLiteral("moz-icon")) {
+    return NS_MutateURI(new nsMozIconURI::Mutator())
+        .SetSpec(aSpec)
+        .Finalize(aURI);
+  }
+
+#ifdef MOZ_WIDGET_GTK
+  if (scheme.EqualsLiteral("smb") || scheme.EqualsLiteral("sftp")) {
+    nsCOMPtr<nsIURI> base(aBaseURI);
+    return NS_MutateURI(new nsStandardURL::Mutator())
+        .Apply(NS_MutatorMethod(&nsIStandardURLMutator::Init,
+                                nsIStandardURL::URLTYPE_STANDARD, -1,
+                                nsCString(aSpec), aCharset, base, nullptr))
+        .Finalize(aURI);
+  }
+#endif
+
+  if (scheme.EqualsLiteral("android")) {
+    nsCOMPtr<nsIURI> base(aBaseURI);
+    return NS_MutateURI(NS_STANDARDURLMUTATOR_CONTRACTID)
+        .Apply(NS_MutatorMethod(&nsIStandardURLMutator::Init,
+                                nsIStandardURL::URLTYPE_STANDARD, -1,
+                                nsCString(aSpec), aCharset, base, nullptr))
+        .Finalize(aURI);
+  }
+
+  if (scheme.EqualsLiteral("dweb") || scheme.EqualsLiteral("dat")) {
+    return NewStandardURI(aSpec, aCharset, aBaseURI, -1, aURI);
+  }
+
+#if defined(MOZ_THUNDERBIRD) || defined(MOZ_SUITE)
+  rv = NS_NewMailnewsURI(aURI, aSpec, aCharset, aBaseURI, aIOService);
+  if (rv != NS_ERROR_UNKNOWN_PROTOCOL) {
+    return rv;
+  }
+#endif
+
+  if (aBaseURI) {
+    nsAutoCString newSpec;
+    rv = aBaseURI->Resolve(aSpec, newSpec);
+    NS_ENSURE_SUCCESS(rv, rv);
+
+    nsAutoCString newScheme;
+    rv = net_ExtractURLScheme(newSpec, newScheme);
+    if (NS_SUCCEEDED(rv)) {
+      // The scheme shouldn't really change at this point.
+      MOZ_DIAGNOSTIC_ASSERT(newScheme == scheme);
+    }
+
+    return NS_MutateURI(new nsSimpleURI::Mutator())
+        .SetSpec(newSpec)
+        .Finalize(aURI);
+  }
+
+  // Falls back to external protocol handler.
+  return NS_MutateURI(new nsSimpleURI::Mutator()).SetSpec(aSpec).Finalize(aURI);
 }
 
 nsresult NS_GetSanitizedURIStringFromURI(nsIURI* aUri,
@@ -2703,10 +2794,10 @@ nsresult NS_ShouldSecureUpgrade(
         NS_ConvertUTF8toUTF16 reportScheme(scheme);
 
         if (aLoadInfo->GetUpgradeInsecureRequests()) {
-          const char16_t* params[] = {reportSpec.get(), reportScheme.get()};
+          AutoTArray<nsString, 2> params = {reportSpec, reportScheme};
           uint32_t innerWindowId = aLoadInfo->GetInnerWindowID();
           CSP_LogLocalizedStr(
-              "upgradeInsecureRequest", params, ArrayLength(params),
+              "upgradeInsecureRequest", params,
               EmptyString(),  // aSourceFile
               EmptyString(),  // aScriptSample
               0,              // aLineNumber
@@ -2727,14 +2818,13 @@ nsresult NS_ShouldSecureUpgrade(
           nsresult rv = nsContentUtils::GetLocalizedString(
               nsContentUtils::eBRAND_PROPERTIES, "brandShortName", brandName);
           if (NS_SUCCEEDED(rv)) {
-            const char16_t* params[] = {brandName.get(), reportSpec.get(),
-                                        reportScheme.get()};
+            AutoTArray<nsString, 3> params = {brandName, reportSpec,
+                                              reportScheme};
             nsContentUtils::ReportToConsole(
                 nsIScriptError::warningFlag,
                 NS_LITERAL_CSTRING("DATA_URI_BLOCKED"), doc,
                 nsContentUtils::eSECURITY_PROPERTIES,
-                "BrowserUpgradeInsecureDisplayRequest", params,
-                ArrayLength(params));
+                "BrowserUpgradeInsecureDisplayRequest", params);
           }
           Telemetry::AccumulateCategorical(
               Telemetry::LABELS_HTTP_SCHEME_UPGRADE_TYPE::BrowserDisplay);

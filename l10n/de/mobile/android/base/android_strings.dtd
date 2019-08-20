@@ -21,6 +21,7 @@
 <!ENTITY firstrun_data_message "Weniger Datenvolumen, größere Ersparnis">
 <!ENTITY firstrun_data_subtext2 "Sperren Sie das Laden von Grafiken, damit für jede besuchte Seite weniger Daten geladen werden müssen.">
 <!ENTITY firstrun_sync_title "Sync">
+<!ENTITY updatednewfirstrun_sync_title "Konto">
 <!ENTITY firstrun_sync_message2 "Machen Sie da weiter, wo Sie aufgehört haben.">
 <!ENTITY firstrun_sync_subtext2 "Mit Sync können Sie jederzeit auf alle Ihre Lesezeichen, Passwörter und anderen Dinge zugreifen, die Sie in &brandShortName; auf anderen Geräten speichern.">
 <!ENTITY newfirstrun_sync_subtext "Synchronisieren Sie in Firefox für Android gespeicherte Einträge mit Firefox für Windows, macOS oder Linux - privat und sicher.">
@@ -286,6 +287,7 @@
 <!ENTITY pref_cookies_menu "Cookies">
 <!ENTITY pref_cookies_accept_all "Erlauben">
 <!ENTITY pref_cookies_not_accept_foreign "Erlauben, aber nicht Drittanbietern">
+<!ENTITY pref_cookies_not_accept_trackers "Erlauben, aber nicht zur Verfolgung über Websites hinweg">
 <!ENTITY pref_cookies_disabled "Nicht erlauben">
 
 <!-- Localization note (pref_category_data_saver): “data saver” in this
@@ -618,6 +620,8 @@ shown from Android O while a tab is being queued.-->
 <!ENTITY bookmark_edit_location "Adresse">
 <!ENTITY bookmark_edit_keyword "Schlüsselwort">
 <!ENTITY bookmark_select_folder "Ordner auswählen">
+
+<!ENTITY bookmark_edit_undo "Rückgängig">
 
 <!-- Localization note (site_settings_*) : These strings are used in the "Site Settings"
      dialog that appears after selecting the "Edit Site Settings" context menu item. -->

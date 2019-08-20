@@ -6,20 +6,30 @@
 
 #include "ContentBlockingLog.h"
 
+#include "nsStringStream.h"
+#include "nsTArray.h"
 #include "mozilla/dom/ContentChild.h"
+#include "mozilla/HashFunctions.h"
 #include "mozilla/RandomNum.h"
 #include "mozilla/Telemetry.h"
 #include "mozilla/Unused.h"
 #include "mozilla/XorShift128PlusRNG.h"
+#include "mozilla/ipc/IPCStreamUtils.h"
+
+namespace mozilla {
+
+using ipc::AutoIPCStream;
 
 static LazyLogModule gContentBlockingLog("ContentBlockingLog");
 #define LOG(fmt, ...) \
-  MOZ_LOG(gContentBlockingLog, mozilla::LogLevel::Debug, (fmt, ##__VA_ARGS__))
+  MOZ_LOG(gContentBlockingLog, LogLevel::Debug, (fmt, ##__VA_ARGS__))
 
-typedef mozilla::Telemetry::OriginMetricID OriginMetricID;
+typedef Telemetry::OriginMetricID OriginMetricID;
 
-namespace mozilla {
 namespace dom {
+
+// sync with TelemetryOriginData.inc
+NS_NAMED_LITERAL_CSTRING(ContentBlockingLog::kDummyOriginHash, "PAGELOAD");
 
 // randomly choose 1% users included in the content blocking measurement
 // based on their client id.
@@ -104,14 +114,50 @@ static void ReportOriginSingleHash(OriginMetricID aId,
                                            nsCString(aOrigin));
 }
 
-void ContentBlockingLog::ReportLog() {
+void ContentBlockingLog::ReportLog(nsIPrincipal* aFirstPartyPrincipal) {
   MOZ_ASSERT(NS_IsMainThread());
+  MOZ_ASSERT(aFirstPartyPrincipal);
 
+  if (!StaticPrefs::browser_contentblocking_database_enabled()) {
+    return;
+  }
+
+  if (mLog.IsEmpty()) {
+    return;
+  }
+
+  dom::ContentChild* contentChild = dom::ContentChild::GetSingleton();
+  if (NS_WARN_IF(!contentChild)) {
+    return;
+  }
+
+  nsAutoCString json = Stringify();
+
+  nsCOMPtr<nsIInputStream> stream;
+  nsresult rv = NS_NewCStringInputStream(getter_AddRefs(stream), json);
+  if (NS_WARN_IF(NS_FAILED(rv))) {
+    return;
+  }
+
+  AutoIPCStream ipcStream;
+  ipcStream.Serialize(stream, contentChild);
+
+  Unused << contentChild->SendReportContentBlockingLog(ipcStream.TakeValue());
+}
+
+void ContentBlockingLog::ReportOrigins() {
   if (!IsReportingEnabled()) {
     return;
   }
-  LOG("ContentBlockingLog::ReportLog [this=%p]", this);
+  LOG("ContentBlockingLog::ReportOrigins [this=%p]", this);
+  const bool testMode =
+      StaticPrefs::telemetry_origin_telemetry_test_mode_enabled();
+  OriginMetricID metricId =
+      testMode ? OriginMetricID::ContentBlocking_Blocked_TestOnly
+               : OriginMetricID::ContentBlocking_Blocked;
+  ReportOriginSingleHash(metricId, kDummyOriginHash);
 
+  nsTArray<HashNumber> lookupTable;
   for (const auto& originEntry : mLog) {
     if (!originEntry.mData) {
       continue;
@@ -126,12 +172,9 @@ void ContentBlockingLog::ReportLog() {
 
       const bool isBlocked = logEntry.mBlocked;
       Maybe<StorageAccessGrantedReason> reason = logEntry.mReason;
-      const bool testMode =
-          StaticPrefs::telemetry_origin_telemetry_test_mode_enabled();
 
-      OriginMetricID metricId =
-          testMode ? OriginMetricID::ContentBlocking_Blocked_TestOnly
-                   : OriginMetricID::ContentBlocking_Blocked;
+      metricId = testMode ? OriginMetricID::ContentBlocking_Blocked_TestOnly
+                          : OriginMetricID::ContentBlocking_Blocked;
       if (!isBlocked) {
         MOZ_ASSERT(reason.isSome());
         switch (reason.value()) {
@@ -160,7 +203,13 @@ void ContentBlockingLog::ReportLog() {
         }
       }
 
-      for (const nsCString& hash : logEntry.mTrackingFullHashes) {
+      for (const auto& hash : logEntry.mTrackingFullHashes) {
+        HashNumber key = AddToHash(HashString(hash.get(), hash.Length()),
+                                   static_cast<uint32_t>(metricId));
+        if (lookupTable.Contains(key)) {
+          continue;
+        }
+        lookupTable.AppendElement(key);
         ReportOriginSingleHash(metricId, hash);
       }
       break;

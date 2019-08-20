@@ -537,9 +537,6 @@ perf: {
 
   // Whether the page is preloaded or not.
   "is_preloaded": [true|false],
-
-  // Whether the page is prerendered or not.
-  "is_prerendered": [true|false]
 }
 ```
 
@@ -587,7 +584,8 @@ This reports the user's interaction with those Pocket tiles.
   "user_prefs": 7,
 
   // "pos" is the 0-based index to record the tile's position in the Pocket section.
-  "tiles": [{"id": 10000, "pos": 0}],
+  // "shim" is a base64 encoded shim attached to spocs, unique to the impression from the Ad server.
+  "tiles": [{"id": 10000, "pos": 0, "shim": "enuYa1j73z3RzxgTexHNxYPC/b,9JT6w5KB0CRKYEU+"}],
 
   // A 0-based index to record which tile in the "tiles" list that the user just interacted with.
   "click|block|pocket": 0
@@ -957,6 +955,20 @@ CFR impression ping has two forms, in which the message_id could be of different
 }
 ```
 
+#### Onboarding impression
+```js
+{
+  "client_id": "26288a14-5cc4-d14f-ae0a-bb01ef45be9c",
+  "action": "onboarding_user_event",
+  "impression_id": "n/a",
+  "source": "FIRST_RUN",
+  "addon_version": "20180710100040",
+  "locale": "en-US",
+  "message_id": "EXTENDED_TRIPLETS_1",
+  "event": "IMPRESSION"
+}
+```
+
 ### User interaction pings
 
 This reports the user's interaction with Activity Stream Router.
@@ -1068,5 +1080,23 @@ This reports an enrollment ping when a user gets enrolled in a Trailhead experim
     "experimentType": "as-firstrun",
     "branch": ["supercharge" | "join" | "sync" | "privacy" ...]
   }
+}
+```
+
+## Feature Callouts interaction pings
+
+This reports when a user has seen or clicked a badge/notification in the browser toolbar in a non-PBM window
+
+```
+{
+  "locale": "en-US",
+  "client_id": "9da773d8-4356-f54f-b7cf-6134726bcf3d",
+  "version": "70.0a1",
+  "release_channel": "default",
+  "addon_version": "20190712095934",
+  "action": "cfr_user_event",
+  "source": "CFR",
+  "message_id": "FXA_ACCOUNTS_BADGE",
+  "event": ["CLICK" | "IMPRESSION"],
 }
 ```

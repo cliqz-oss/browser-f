@@ -42,7 +42,6 @@ STATIC_ATOMS = [
     Atom("moztype", "_moz-type"),
     Atom("mozdirty", "_moz_dirty"),
     Atom("mozdisallowselectionprint", "mozdisallowselectionprint"),
-    Atom("mozpersist", "mozpersist"),
     Atom("mozdonotsend", "moz-do-not-send"),
     Atom("mozeditorbogusnode", "_moz_editor_bogus_node"),
     Atom("mozgeneratedcontentbefore", "_moz_generated_content_before"),
@@ -290,6 +289,7 @@ STATIC_ATOMS = [
     Atom("datal10nargs", "data-l10n-args"),
     Atom("datal10nattrs", "data-l10n-attrs"),
     Atom("datal10nname", "data-l10n-name"),
+    Atom("datal10nsync", "data-l10n-sync"),
     Atom("dataType", "data-type"),
     Atom("dateTime", "date-time"),
     Atom("date", "date"),
@@ -864,6 +864,7 @@ STATIC_ATOMS = [
     Atom("onRadioStateChange", "onRadioStateChange"),
     Atom("onreadystatechange", "onreadystatechange"),
     Atom("onrejectionhandled", "onrejectionhandled"),
+    Atom("onremove", "onremove"),
     Atom("onrequestprogress", "onrequestprogress"),
     Atom("onresourcetimingbufferfull", "onresourcetimingbufferfull"),
     Atom("onresponseprogress", "onresponseprogress"),
@@ -2117,6 +2118,7 @@ STATIC_ATOMS = [
     Atom("crh", "crh"),
     # Atom("el", "el"),  # "el" is present above
     Atom("ga", "ga"),
+    # Atom("lt", "lt"),  # "lt" is present above (atom name "lt_")
     Atom("nl", "nl"),
 
     # mathematical language, used for MathML

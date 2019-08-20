@@ -334,6 +334,8 @@ impl<'a> FunctionBuilder<'a> {
     }
 
     /// Set label for Value
+    ///
+    /// This will not do anything unless `func.dfg.collect_debug_info` is called first.
     pub fn set_val_label(&mut self, val: Value, label: ValueLabel) {
         if let Some(values_labels) = self.func.dfg.values_labels.as_mut() {
             use std::collections::hash_map::Entry;
@@ -569,7 +571,7 @@ impl<'a> FunctionBuilder<'a> {
     /// Useful for debug purposes. Use it with `None` for standard printing.
     // Clippy thinks the lifetime that follows is needless, but rustc needs it
     #[cfg_attr(feature = "cargo-clippy", allow(clippy::needless_lifetimes))]
-    pub fn display<'b, I: Into<Option<&'b TargetIsa>>>(&'b self, isa: I) -> DisplayFunction {
+    pub fn display<'b, I: Into<Option<&'b dyn TargetIsa>>>(&'b self, isa: I) -> DisplayFunction {
         self.func.display(isa)
     }
 }

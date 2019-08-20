@@ -241,7 +241,7 @@ fn emit_runtime_typecheck<'a, 'b>(
 /// Determine if `node` represents one of the value splitting instructions: `isplit` or `vsplit.
 /// These instructions are lowered specially by the `legalize::split` module.
 fn is_value_split(def: &Def) -> bool {
-    let name = def.apply.inst.name;
+    let name = &def.apply.inst.name;
     name == "isplit" || name == "vsplit"
 }
 
@@ -410,7 +410,7 @@ fn gen_transform_group<'a>(
         fmt.line("inst: crate::ir::Inst,");
         fmt.line("func: &mut crate::ir::Function,");
         fmt.line("cfg: &mut crate::flowgraph::ControlFlowGraph,");
-        fmt.line("isa: &crate::isa::TargetIsa,");
+        fmt.line("isa: &dyn crate::isa::TargetIsa,");
     });
     fmtln!(fmt, ") -> bool {");
 

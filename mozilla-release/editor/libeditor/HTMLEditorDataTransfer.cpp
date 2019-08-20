@@ -49,6 +49,7 @@
 #include "nsNameSpaceManager.h"
 #include "nsINode.h"
 #include "nsIParserUtils.h"
+#include "nsIPrincipal.h"
 #include "nsISupportsImpl.h"
 #include "nsISupportsPrimitives.h"
 #include "nsISupportsUtils.h"
@@ -173,7 +174,15 @@ nsresult HTMLEditor::LoadHTML(const nsAString& aInputString) {
 
 NS_IMETHODIMP
 HTMLEditor::InsertHTML(const nsAString& aInString) {
-  AutoEditActionDataSetter editActionData(*this, EditAction::eInsertHTML);
+  nsresult rv = InsertHTMLAsAction(aInString);
+  NS_WARNING_ASSERTION(NS_SUCCEEDED(rv), "Failed to insert HTML");
+  return rv;
+}
+
+nsresult HTMLEditor::InsertHTMLAsAction(const nsAString& aInString,
+                                        nsIPrincipal* aPrincipal) {
+  AutoEditActionDataSetter editActionData(*this, EditAction::eInsertHTML,
+                                          aPrincipal);
   if (NS_WARN_IF(!editActionData.CanHandle())) {
     return NS_ERROR_NOT_INITIALIZED;
   }
@@ -997,12 +1006,12 @@ nsresult HTMLEditor::BlobReader::OnResult(const nsACString& aResult) {
 }
 
 nsresult HTMLEditor::BlobReader::OnError(const nsAString& aError) {
-  const nsPromiseFlatString& flat = PromiseFlatString(aError);
-  const char16_t* error = flat.get();
+  AutoTArray<nsString, 1> error;
+  error.AppendElement(aError);
   nsContentUtils::ReportToConsole(
       nsIScriptError::warningFlag, NS_LITERAL_CSTRING("Editor"),
       mPointToInsert.GetContainer()->OwnerDoc(),
-      nsContentUtils::eDOM_PROPERTIES, "EditorFileDropFailed", &error, 1);
+      nsContentUtils::eDOM_PROPERTIES, "EditorFileDropFailed", error);
   return NS_OK;
 }
 
@@ -1439,10 +1448,10 @@ bool HTMLEditor::HavePrivateHTMLFlavor(nsIClipboard* aClipboard) {
   NS_ENSURE_TRUE(aClipboard, false);
   bool bHavePrivateHTMLFlavor = false;
 
-  const char* flavArray[] = {kHTMLContext};
+  AutoTArray<nsCString, 1> flavArray = {nsDependentCString(kHTMLContext)};
 
   if (NS_SUCCEEDED(aClipboard->HasDataMatchingFlavors(
-          flavArray, ArrayLength(flavArray), nsIClipboard::kGlobalClipboard,
+          flavArray, nsIClipboard::kGlobalClipboard,
           &bHavePrivateHTMLFlavor))) {
     return bHavePrivateHTMLFlavor;
   }
@@ -1499,6 +1508,7 @@ nsresult HTMLEditor::PasteInternal(int32_t aClipboardType,
       return NS_ERROR_FAILURE;
     }
     contextTransferable->Init(nullptr);
+    contextTransferable->SetIsPrivateData(transferable->GetIsPrivateData());
     contextTransferable->AddDataFlavor(kHTMLContext);
     clipboard->GetData(contextTransferable, aClipboardType);
     nsCOMPtr<nsISupports> contextDataObj;
@@ -1516,6 +1526,7 @@ nsresult HTMLEditor::PasteInternal(int32_t aClipboardType,
       return NS_ERROR_FAILURE;
     }
     infoTransferable->Init(nullptr);
+    contextTransferable->SetIsPrivateData(transferable->GetIsPrivateData());
     infoTransferable->AddDataFlavor(kHTMLInfo);
     clipboard->GetData(infoTransferable, aClipboardType);
     nsCOMPtr<nsISupports> infoDataObj;
@@ -1536,8 +1547,10 @@ nsresult HTMLEditor::PasteInternal(int32_t aClipboardType,
   return NS_OK;
 }
 
-nsresult HTMLEditor::PasteTransferable(nsITransferable* aTransferable) {
-  AutoEditActionDataSetter editActionData(*this, EditAction::ePaste);
+nsresult HTMLEditor::PasteTransferableAsAction(nsITransferable* aTransferable,
+                                               nsIPrincipal* aPrincipal) {
+  AutoEditActionDataSetter editActionData(*this, EditAction::ePaste,
+                                          aPrincipal);
   if (NS_WARN_IF(!editActionData.CanHandle())) {
     return NS_ERROR_NOT_INITIALIZED;
   }
@@ -1564,7 +1577,15 @@ nsresult HTMLEditor::PasteTransferable(nsITransferable* aTransferable) {
  */
 NS_IMETHODIMP
 HTMLEditor::PasteNoFormatting(int32_t aSelectionType) {
-  AutoEditActionDataSetter editActionData(*this, EditAction::ePaste);
+  nsresult rv = PasteNoFormattingAsAction(aSelectionType);
+  NS_WARNING_ASSERTION(NS_SUCCEEDED(rv), "Failed to paste without format");
+  return rv;
+}
+
+nsresult HTMLEditor::PasteNoFormattingAsAction(int32_t aSelectionType,
+                                               nsIPrincipal* aPrincipal) {
+  AutoEditActionDataSetter editActionData(*this, EditAction::ePaste,
+                                          aPrincipal);
   if (NS_WARN_IF(!editActionData.CanHandle())) {
     return NS_ERROR_NOT_INITIALIZED;
   }
@@ -1623,9 +1644,11 @@ static const char* textHtmlEditorFlavors[] = {kUnicodeMime,   kHTMLMime,
                                               kPNGImageMime,  kGIFImageMime};
 
 bool HTMLEditor::CanPaste(int32_t aClipboardType) const {
-  // Always enable the paste command when inside of a HTML or XHTML document.
+  // Always enable the paste command when inside of a HTML or XHTML document,
+  // but if the document is chrome, let it control it.
   Document* document = GetDocument();
-  if (document && document->IsHTMLOrXHTML()) {
+  if (document && document->IsHTMLOrXHTML() &&
+      !nsContentUtils::IsChromeDoc(document)) {
     return true;
   }
 
@@ -1643,20 +1666,21 @@ bool HTMLEditor::CanPaste(int32_t aClipboardType) const {
 
   // Use the flavors depending on the current editor mask
   if (IsPlaintextEditor()) {
+    AutoTArray<nsCString, ArrayLength(textEditorFlavors)> flavors;
+    flavors.AppendElements<const char*>(Span<const char*>(textEditorFlavors));
     bool haveFlavors;
-    rv = clipboard->HasDataMatchingFlavors(textEditorFlavors,
-                                           ArrayLength(textEditorFlavors),
-                                           aClipboardType, &haveFlavors);
+    rv = clipboard->HasDataMatchingFlavors(flavors, aClipboardType,
+                                           &haveFlavors);
     if (NS_WARN_IF(NS_FAILED(rv))) {
       return false;
     }
     return haveFlavors;
   }
 
+  AutoTArray<nsCString, ArrayLength(textHtmlEditorFlavors)> flavors;
+  flavors.AppendElements<const char*>(Span<const char*>(textHtmlEditorFlavors));
   bool haveFlavors;
-  rv = clipboard->HasDataMatchingFlavors(textHtmlEditorFlavors,
-                                         ArrayLength(textHtmlEditorFlavors),
-                                         aClipboardType, &haveFlavors);
+  rv = clipboard->HasDataMatchingFlavors(flavors, aClipboardType, &haveFlavors);
   if (NS_WARN_IF(NS_FAILED(rv))) {
     return false;
   }
@@ -1700,11 +1724,13 @@ bool HTMLEditor::CanPasteTransferable(nsITransferable* aTransferable) {
 }
 
 nsresult HTMLEditor::PasteAsQuotationAsAction(int32_t aClipboardType,
-                                              bool aDispatchPasteEvent) {
+                                              bool aDispatchPasteEvent,
+                                              nsIPrincipal* aPrincipal) {
   MOZ_ASSERT(aClipboardType == nsIClipboard::kGlobalClipboard ||
              aClipboardType == nsIClipboard::kSelectionClipboard);
 
-  AutoEditActionDataSetter editActionData(*this, EditAction::ePasteAsQuotation);
+  AutoEditActionDataSetter editActionData(*this, EditAction::ePasteAsQuotation,
+                                          aPrincipal);
   if (NS_WARN_IF(!editActionData.CanHandle())) {
     return NS_ERROR_NOT_INITIALIZED;
   }
@@ -2440,18 +2466,19 @@ void HTMLEditor::CreateListOfNodesToPaste(
     aEndOffset = aFragment.Length();
   }
 
-  RefPtr<nsRange> docFragRange;
-  nsresult rv =
-      nsRange::CreateRange(aStartContainer, aStartOffset, aEndContainer,
-                           aEndOffset, getter_AddRefs(docFragRange));
-  MOZ_ASSERT(NS_SUCCEEDED(rv));
-  NS_ENSURE_SUCCESS(rv, );
+  RefPtr<nsRange> docFragRange = nsRange::Create(
+      aStartContainer, aStartOffset, aEndContainer, aEndOffset, IgnoreErrors());
+  if (NS_WARN_IF(!docFragRange)) {
+    MOZ_ASSERT(docFragRange);
+    return;
+  }
 
   // Now use a subtree iterator over the range to create a list of nodes
   TrivialFunctor functor;
   DOMSubtreeIterator iter;
-  rv = iter.Init(*docFragRange);
-  NS_ENSURE_SUCCESS(rv, );
+  if (NS_WARN_IF(NS_FAILED(iter.Init(*docFragRange)))) {
+    return;
+  }
   iter.AppendList(functor, outNodeList);
 }
 

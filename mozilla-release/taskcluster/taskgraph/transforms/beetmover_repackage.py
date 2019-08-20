@@ -228,12 +228,8 @@ def make_task_description(config, jobs):
         if job.get('locale'):
             attributes['locale'] = job['locale']
 
-        bucket_scope = get_beetmover_bucket_scope(
-            config, job_release_type=attributes.get('release-type')
-        )
-        action_scope = get_beetmover_action_scope(
-            config, job_release_type=attributes.get('release-type')
-        )
+        bucket_scope = get_beetmover_bucket_scope(config)
+        action_scope = get_beetmover_action_scope(config)
 
         task = {
             'label': label,

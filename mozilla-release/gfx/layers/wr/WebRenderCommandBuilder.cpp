@@ -12,6 +12,7 @@
 #include "mozilla/gfx/2D.h"
 #include "mozilla/gfx/Logging.h"
 #include "mozilla/gfx/Types.h"
+#include "mozilla/layers/AnimationHelper.h"
 #include "mozilla/layers/ClipManager.h"
 #include "mozilla/layers/ImageClient.h"
 #include "mozilla/layers/RenderRootStateManager.h"
@@ -1067,8 +1068,21 @@ void WebRenderScrollDataCollection::AppendRoot(
       layerScrollData.back().InitializeRoot(layerScrollData.size() - 1);
 
       if (aRootMetadata) {
-        layerScrollData.back().AppendScrollMetadata(aScrollDatas[renderRoot],
-                                                    aRootMetadata.ref());
+        // Put the fallback root metadata on the rootmost layer that is
+        // a matching async zoom container, or the root layer that we just
+        // created above.
+        size_t rootMetadataTarget = layerScrollData.size() - 1;
+        for (size_t i = rootMetadataTarget; i > 0; i--) {
+          if (auto zoomContainerId =
+                  layerScrollData[i - 1].GetAsyncZoomContainerId()) {
+            if (*zoomContainerId == aRootMetadata->GetMetrics().GetScrollId()) {
+              rootMetadataTarget = i - 1;
+              break;
+            }
+          }
+        }
+        layerScrollData[rootMetadataTarget].AppendScrollMetadata(
+            aScrollDatas[renderRoot], aRootMetadata.ref());
       }
     }
   }
@@ -1322,8 +1336,11 @@ void Grouper::ConstructItemInsideInactive(
   // still
   aGroup->ComputeGeometryChange(aItem, data, mTransform, mDisplayListBuilder);
 
-  // Temporarily restrict the image bounds to the bounds of the container so
-  // that clipped children within the container know about the clip.
+  // Temporarily restrict the image bounds to the bounds of the container so that
+  // clipped children within the container know about the clip. This ensures
+  // that the bounds passed to FlushItem are contained in the bounds of the clip
+  // so that we don't include items in the recording without including their
+  // corresponding clipping items.
   IntRect oldClippedImageBounds = aGroup->mClippedImageBounds;
   aGroup->mClippedImageBounds =
       aGroup->mClippedImageBounds.Intersect(data->mRect);
@@ -1638,8 +1655,10 @@ void WebRenderCommandBuilder::BuildWebRenderCommands(
 bool WebRenderCommandBuilder::ShouldDumpDisplayList(
     nsDisplayListBuilder* aBuilder) {
   return aBuilder != nullptr && aBuilder->IsInActiveDocShell() &&
-         ((XRE_IsParentProcess() && gfxPrefs::WebRenderDLDumpParent()) ||
-          (XRE_IsContentProcess() && gfxPrefs::WebRenderDLDumpContent()));
+         ((XRE_IsParentProcess() &&
+           StaticPrefs::gfx_webrender_dl_dump_parent()) ||
+          (XRE_IsContentProcess() &&
+           StaticPrefs::gfx_webrender_dl_dump_content()));
 }
 
 void WebRenderCommandBuilder::CreateWebRenderCommandsFromDisplayList(
@@ -2037,20 +2056,9 @@ static bool PaintItemByDrawTarget(nsDisplayItem* aItem, gfx::DrawTarget* aDT,
   MOZ_ASSERT(context);
 
   switch (aItem->GetType()) {
-    case DisplayItemType::TYPE_SVG_WRAPPER: {
-      // XXX Why doesn't this need the scaling applied?
-      context->SetMatrix(
-          context->CurrentMatrix().PreTranslate(-aOffset.x, -aOffset.y));
-      isInvalidated = PaintByLayer(
-          aItem, aDisplayListBuilder, aManager, context, aScale, [&]() {
-            aManager->EndTransaction(FrameLayerBuilder::DrawPaintedLayer,
-                                     aDisplayListBuilder);
-          });
-      break;
-    }
+    case DisplayItemType::TYPE_SVG_WRAPPER:
     case DisplayItemType::TYPE_MASK: {
-      // We could handle this case with the same code as TYPE_FILTER, but it
-      // would be good to know what situations trigger it.
+      // These items should be handled by other code paths
       MOZ_RELEASE_ASSERT(0);
       break;
     }
@@ -2109,10 +2117,10 @@ WebRenderCommandBuilder::GenerateFallbackData(
     nsDisplayItem* aItem, wr::DisplayListBuilder& aBuilder,
     wr::IpcResourceUpdateQueue& aResources, const StackingContextHelper& aSc,
     nsDisplayListBuilder* aDisplayListBuilder, LayoutDeviceRect& aImageRect) {
-  bool useBlobImage =
-      gfxPrefs::WebRenderBlobImages() && !aItem->MustPaintOnContentSide();
+  bool useBlobImage = StaticPrefs::gfx_webrender_blob_images() &&
+                      !aItem->MustPaintOnContentSide();
   Maybe<gfx::Color> highlight = Nothing();
-  if (gfxPrefs::WebRenderHighlightPaintedLayers()) {
+  if (StaticPrefs::gfx_webrender_highlight_painted_layers()) {
     highlight = Some(useBlobImage ? gfx::Color(1.0, 0.0, 0.0, 0.5)
                                   : gfx::Color(1.0, 1.0, 0.0, 0.5));
   }
@@ -2230,11 +2238,12 @@ WebRenderCommandBuilder::GenerateFallbackData(
                                     : gfx::SurfaceFormat::B8G8R8A8;
     if (useBlobImage) {
       bool snapped;
-      wr::OpacityType opacity =
-          aItem->GetOpaqueRegion(aDisplayListBuilder, &snapped)
-                  .Contains(paintBounds)
-              ? wr::OpacityType::Opaque
-              : wr::OpacityType::HasAlphaChannel;
+      nsRegion opaqueRegion =
+          aItem->GetOpaqueRegion(aDisplayListBuilder, &snapped);
+      MOZ_ASSERT(!opaqueRegion.IsComplex());
+      wr::OpacityType opacity = opaqueRegion.Contains(paintBounds)
+                                    ? wr::OpacityType::Opaque
+                                    : wr::OpacityType::HasAlphaChannel;
       std::vector<RefPtr<ScaledFont>> fonts;
       bool validFonts = true;
       RefPtr<WebRenderDrawEventRecorder> recorder =

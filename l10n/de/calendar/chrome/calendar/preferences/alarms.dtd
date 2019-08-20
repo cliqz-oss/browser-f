@@ -12,6 +12,8 @@
 <!ENTITY pref.calendar.alarms.playsound.accessKey "k">
 <!ENTITY pref.calendar.alarms.sound.useDefault.label "Standardklang verwenden">
 <!ENTITY pref.calendar.alarms.sound.useDefault.accessKey "s">
+<!ENTITY pref.calendar.alarms.sound.useCustom.label "Audiodatei verwenden:">
+<!ENTITY pref.calendar.alarms.sound.useCustom.accessKey "v">
 <!ENTITY pref.calendar.alarms.sound.browse.label "Durchsuchen…">
 <!ENTITY pref.calendar.alarms.sound.browse.accessKey "D">
 <!ENTITY pref.calendar.alarms.sound.play.label "Abspielen">
@@ -22,9 +24,9 @@
 <!ENTITY pref.missedalarms2 "Erinnerungen für nicht schreibgeschützte Kalender anzeigen">
 <!ENTITY pref.calendar.alarms.missedAlarms.accessKey "z">
 <!ENTITY pref.calendar.alarms.defaults.label "Standardeinstellungen für Erinnerungen">
-<!ENTITY pref.defalarm4events.label "Standardeinstellungen für Erinnerungen bei Terminen:">
+<!ENTITY pref.defalarm4events.label "Standardeinstellung für Erinnerungen bei Terminen:">
 <!ENTITY pref.defalarm4events.accesskey "e">
-<!ENTITY pref.defalarm4todos.label "Standardeinstellungen für Erinnerungen bei Aufgaben:">
+<!ENTITY pref.defalarm4todos.label "Standardeinstellung für Erinnerungen bei Aufgaben:">
 <!ENTITY pref.defalarm4todos.accesskey "a">
 <!ENTITY pref.alarm.on "Ein">
 <!ENTITY pref.alarm.off "Aus">
@@ -33,5 +35,5 @@
 <!ENTITY pref.defalarmlen4todos.label "Erinnerungszeitpunkt vor Aufgabenbeginn:">
 <!ENTITY pref.defalarmlen4todos.accesskey "o">
 
-<!ENTITY pref.defaultsnoozelength.label "Standardintervall für erneutes Erinnern:">
+<!ENTITY pref.defaultsnoozelength.label "Standardintervall für das Zurückstellen:">
 <!ENTITY pref.defaultsnoozelength.accesskey "R">

@@ -51,6 +51,7 @@ impl BlobImageKey {
 pub struct ExternalImageId(pub u64);
 
 /// Specifies the type of texture target in driver terms.
+#[repr(u8)]
 #[derive(Copy, Clone, Debug, Eq, Hash, PartialEq, Serialize, Deserialize)]
 pub enum TextureTarget {
     /// Standard texture. This maps to GL_TEXTURE_2D in OpenGL.
@@ -59,7 +60,7 @@ pub enum TextureTarget {
     /// https://www.khronos.org/opengl/wiki/Array_Texture for background
     /// on Array textures.
     Array = 1,
-    /// Rectange texture. This maps to GL_TEXTURE_RECTANGLE in OpenGL. This
+    /// Rectangle texture. This maps to GL_TEXTURE_RECTANGLE in OpenGL. This
     /// is similar to a standard texture, with a few subtle differences
     /// (no mipmaps, non-power-of-two dimensions, different coordinate space)
     /// that make it useful for representing the kinds of textures we use
@@ -297,13 +298,13 @@ pub trait BlobImageResources {
 /// and creating the rasterizer objects, but isn't expected to do any rasterization itself.
 pub trait BlobImageHandler: Send {
     /// Creates a snapshot of the current state of blob images in the handler.
-    fn create_blob_rasterizer(&mut self) -> Box<AsyncBlobImageRasterizer>;
+    fn create_blob_rasterizer(&mut self) -> Box<dyn AsyncBlobImageRasterizer>;
 
     /// A hook to let the blob image handler update any state related to resources that
     /// are not bundled in the blob recording itself.
     fn prepare_resources(
         &mut self,
-        services: &BlobImageResources,
+        services: &dyn BlobImageResources,
         requests: &[BlobImageParams],
     );
 
@@ -423,7 +424,7 @@ where
         match (*self, *other) {
             (All, rect) | (rect, All)  => rect,
             (Partial(rect1), Partial(rect2)) => Partial(rect1.intersection(&rect2)
-                                                                   .unwrap_or(TypedRect::zero()))
+                                                                   .unwrap_or_else(TypedRect::zero))
         }
     }
 
@@ -434,7 +435,7 @@ where
         match *self {
             All              => *rect,
             Partial(dirty_rect) => dirty_rect.intersection(rect)
-                                               .unwrap_or(TypedRect::zero()),
+                                               .unwrap_or_else(TypedRect::zero),
         }
     }
 }

@@ -140,11 +140,6 @@ class SharedContext {
   // should be tested (see JSScript::argIsAliased).
   bool bindingsAccessedDynamically_ : 1;
 
-  // Whether this script, or any of its inner scripts contains a debugger
-  // statement which could potentially read or write anywhere along the
-  // scope chain.
-  bool hasDebuggerStatement_ : 1;
-
   // A direct eval occurs in the body of the script.
   bool hasDirectEval_ : 1;
 
@@ -169,7 +164,6 @@ class SharedContext {
         needsThisTDZChecks_(false),
         hasExplicitUseStrict_(false),
         bindingsAccessedDynamically_(false),
-        hasDebuggerStatement_(false),
         hasDirectEval_(false) {}
 
   // If this is the outermost SharedContext, the Scope that encloses
@@ -211,12 +205,10 @@ class SharedContext {
   bool bindingsAccessedDynamically() const {
     return bindingsAccessedDynamically_;
   }
-  bool hasDebuggerStatement() const { return hasDebuggerStatement_; }
   bool hasDirectEval() const { return hasDirectEval_; }
 
   void setExplicitUseStrict() { hasExplicitUseStrict_ = true; }
   void setBindingsAccessedDynamically() { bindingsAccessedDynamically_ = true; }
-  void setHasDebuggerStatement() { hasDebuggerStatement_ = true; }
   void setHasDirectEval() { hasDirectEval_ = true; }
 
   inline bool allBindingsClosedOver();
@@ -304,7 +296,7 @@ class FunctionBox : public ObjectBox, public SharedContext {
   // has expressions.
   VarScope::Data* extraVarScopeBindings_;
 
-  void initWithEnclosingScope(Scope* enclosingScope);
+  void initWithEnclosingScope(Scope* enclosingScope, JSFunction* fun);
 
  public:
   // Back pointer used by asm.js for error messages.
@@ -394,6 +386,17 @@ class FunctionBox : public ObjectBox, public SharedContext {
   // Whether this function has nested functions.
   bool hasInnerFunctions_ : 1;
 
+  // Whether this function is an arrow function
+  bool isArrow_ : 1;
+
+  bool isNamedLambda_ : 1;
+  bool isGetter_ : 1;
+  bool isSetter_ : 1;
+  bool isMethod_ : 1;
+
+  JSFunction::FunctionKind kind_;
+  JSAtom* explicitName_;
+
   FunctionBox(JSContext* cx, TraceListNode* traceListHead, JSFunction* fun,
               uint32_t toStringStart, Directives directives, bool extraWarnings,
               GeneratorKind generatorKind, FunctionAsyncKind asyncKind);
@@ -420,11 +423,12 @@ class FunctionBox : public ObjectBox, public SharedContext {
         &extraVarScopeBindings_);
   }
 
-  void initFromLazyFunction();
+  void initFromLazyFunction(JSFunction* fun);
   void initStandaloneFunction(Scope* enclosingScope);
-  void initWithEnclosingParseContext(ParseContext* enclosing,
+  void initWithEnclosingParseContext(ParseContext* enclosing, JSFunction* fun,
                                      FunctionSyntaxKind kind);
-  void initFieldInitializer(ParseContext* enclosing, HasHeritage hasHeritage);
+  void initFieldInitializer(ParseContext* enclosing, JSFunction* fun,
+                            HasHeritage hasHeritage);
 
   inline bool isLazyFunctionWithoutEnclosingScope() const {
     return function()->isInterpretedLazy() &&
@@ -497,7 +501,7 @@ class FunctionBox : public ObjectBox, public SharedContext {
   bool needsIteratorResult() const { return isGenerator() && !isAsync(); }
   bool needsPromiseResult() const { return isAsync() && !isGenerator(); }
 
-  bool isArrow() const { return function()->isArrow(); }
+  bool isArrow() const { return isArrow_; }
 
   bool hasRest() const { return hasRest_; }
   void setHasRest() { hasRest_ = true; }
@@ -515,6 +519,14 @@ class FunctionBox : public ObjectBox, public SharedContext {
   bool needsHomeObject() const { return needsHomeObject_; }
   bool isDerivedClassConstructor() const { return isDerivedClassConstructor_; }
   bool hasInnerFunctions() const { return hasInnerFunctions_; }
+  bool isNamedLambda() const { return isNamedLambda_; }
+  bool isGetter() const { return isGetter_; }
+  bool isSetter() const { return isSetter_; }
+  bool isMethod() const { return isMethod_; }
+
+  JSFunction::FunctionKind kind() { return kind_; }
+
+  JSAtom* explicitName() const { return function()->explicitName(); }
 
   void setHasExtensibleScope() { hasExtensibleScope_ = true; }
   void setHasThisBinding() { hasThisBinding_ = true; }

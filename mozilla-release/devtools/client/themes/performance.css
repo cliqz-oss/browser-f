@@ -28,6 +28,15 @@
   --sidebar-width: 185px;
 }
 
+/* Let the component gain focus when a click hits an empty area */
+.performance-tool {
+  -moz-user-focus: normal;
+}
+
+.performance-tool:focus {
+  outline: 0;
+}
+
 /**
  * A generic class to hide elements, replacing the `element.hidden` attribute
  * that we use to hide elements that can later be active
@@ -766,7 +775,7 @@ menuitem.experimental-option::before {
   max-height: 12px;
   margin-top: 2px;
   margin-inline-end: 5px;
-  background-image: url(chrome://devtools/skin/images/alert.svg);
+  background-image: url(chrome://devtools/skin/images/alert-small.svg);
   background-repeat: no-repeat;
   background-size: contain;
   -moz-context-properties: fill;

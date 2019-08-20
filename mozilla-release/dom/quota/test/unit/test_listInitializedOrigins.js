@@ -3,8 +3,7 @@
  * http://creativecommons.org/publicdomain/zero/1.0/
  */
 
-async function CreateTestEnvironment(origins)
-{
+async function CreateTestEnvironment(origins) {
   let request;
   for (let origin of origins) {
     request = initOrigin(getPrincipal(origin.origin), "default");
@@ -15,34 +14,33 @@ async function CreateTestEnvironment(origins)
   await requestFinished(request);
 }
 
-async function testSteps()
-{
+async function testSteps() {
   const origins = [
     {
       origin: "https://example.com",
-      path: "https+++example.com"
+      path: "https+++example.com",
     },
 
     {
       origin: "https://localhost",
-      path: "https+++localhost"
+      path: "https+++localhost",
     },
 
     {
       origin: "https://www.mozilla.org",
-      path: "https+++www.mozilla.org"
-    }
+      path: "https+++www.mozilla.org",
+    },
   ];
 
-  function verifyResult(result, origins) {
+  function verifyResult(result, expectedOrigins) {
     ok(result instanceof Array, "Got an array object");
-    ok(result.length == origins.length, "Correct number of elements");
+    ok(result.length == expectedOrigins.length, "Correct number of elements");
 
     info("Sorting elements");
 
     result.sort(function(a, b) {
-      let originA = a.origin
-      let originB = b.origin
+      let originA = a.origin;
+      let originB = b.origin;
 
       if (originA < originB) {
         return -1;
@@ -57,7 +55,7 @@ async function testSteps()
 
     for (let i = 0; i < result.length; i++) {
       let a = result[i];
-      let b = origins[i];
+      let b = expectedOrigins[i];
       ok(a.origin == b.origin, "Origin equals");
     }
   }
@@ -72,7 +70,8 @@ async function testSteps()
     listInitializedOrigins(request => {
       verifyResult(request.result, []);
       resolve();
-  })});
+    });
+  });
 
   info("Verifying result");
 
@@ -82,8 +81,9 @@ async function testSteps()
   info("Getting origins after initializing the storage");
 
   await new Promise(resolve => {
-    listInitializedOrigins(request => {
-      verifyResult(request.result, origins);
+    listInitializedOrigins(req => {
+      verifyResult(req.result, origins);
       resolve();
-  })});
+    });
+  });
 }

@@ -49,7 +49,7 @@
 
 #tabbrowser-tabs,
 #tabbrowser-tabs > .tabbrowser-arrowscrollbox,
-#tabbrowser-tabs[positionpinnedtabs] > .tabbrowser-tab[pinned] {
+#tabbrowser-tabs[positionpinnedtabs] > .tabbrowser-arrowscrollbox > .tabbrowser-tab[pinned] {
   min-height: var(--tab-min-height);
 }
 
@@ -400,18 +400,27 @@
   list-style-image: url(chrome://browser/skin/tabbrowser/tab-audio-blocked.svg);
 }
 
+.tab-icon-sound[pictureinpicture] {
+  list-style-image: url(chrome://global/skin/media/pictureinpicture.svg);
+  width: 14px;
+  height: 14px;
+}
+
+:root[lwtheme-image] .tab-icon-sound:-moz-lwtheme-darktext[pictureinpicture],
 :root[lwtheme-image] .tab-icon-sound:-moz-lwtheme-darktext[soundplaying],
 :root[lwtheme-image] .tab-icon-sound:-moz-lwtheme-darktext[muted],
 :root[lwtheme-image] .tab-icon-sound:-moz-lwtheme-darktext[activemedia-blocked] {
   filter: drop-shadow(1px 1px 1px white);
 }
 
+:root[lwtheme-image] .tab-icon-sound:-moz-lwtheme-brighttext[pictureinpicture],
 :root[lwtheme-image] .tab-icon-sound:-moz-lwtheme-brighttext[soundplaying],
 :root[lwtheme-image] .tab-icon-sound:-moz-lwtheme-brighttext[muted],
 :root[lwtheme-image] .tab-icon-sound:-moz-lwtheme-brighttext[activemedia-blocked] {
   filter: drop-shadow(1px 1px 1px black);
 }
 
+.tab-icon-sound[pictureinpicture]:not(:hover),
 .tab-icon-sound[soundplaying]:not(:hover),
 .tab-icon-sound[muted]:not(:hover),
 .tab-icon-sound[activemedia-blocked]:not(:hover) {
@@ -528,8 +537,8 @@
  */
 
 /* Lightweight theme on tabs */
-#tabbrowser-tabs:not([movingtab]) > .tabbrowser-tab > .tab-stack > .tab-background[multiselected=true]:-moz-lwtheme,
-#tabbrowser-tabs:not([movingtab]) > .tabbrowser-tab > .tab-stack > .tab-background[selected=true]:-moz-lwtheme {
+#tabbrowser-tabs:not([movingtab]) > .tabbrowser-arrowscrollbox > .tabbrowser-tab > .tab-stack > .tab-background[multiselected=true]:-moz-lwtheme,
+#tabbrowser-tabs:not([movingtab]) > .tabbrowser-arrowscrollbox > .tabbrowser-tab > .tab-stack > .tab-background[selected=true]:-moz-lwtheme {
   background-attachment: scroll, scroll, fixed;
   background-color: transparent;
   background-image: linear-gradient(var(--lwt-selected-tab-background-color, transparent), var(--lwt-selected-tab-background-color, transparent)),
@@ -573,19 +582,19 @@
 /* Pinned tabs */
 
 /* Pinned tab separators need position: absolute when positioned (during overflow). */
-#tabbrowser-tabs[positionpinnedtabs] > .tabbrowser-tab[pinned]::after {
+#tabbrowser-tabs[positionpinnedtabs] > .tabbrowser-arrowscrollbox > .tabbrowser-tab[pinned]::after {
   position: absolute;
   top: 0;
   bottom: 0;
   right: 0;
 }
 
-#tabbrowser-tabs[positionpinnedtabs] > .tabbrowser-tab[pinned]:-moz-locale-dir(rtl)::after {
+#tabbrowser-tabs[positionpinnedtabs] > .tabbrowser-arrowscrollbox > .tabbrowser-tab[pinned]:-moz-locale-dir(rtl)::after {
   right: unset;
   left: 0;
 }
 
-#tabbrowser-tabs[positionpinnedtabs] > .tabbrowser-tab[pinned] > .tab-stack {
+#tabbrowser-tabs[positionpinnedtabs] > .tabbrowser-arrowscrollbox > .tabbrowser-tab[pinned] > .tab-stack {
   border-inline-end: 1px solid transparent;
 }
 
@@ -655,16 +664,16 @@
 %endif
 /* Show full height tab separators on hover and multiselection. */
 .tabbrowser-tab:hover::after,
-#tabbrowser-tabs:not([movingtab]) > .tabbrowser-tab[beforehovered]::after,
+#tabbrowser-tabs:not([movingtab]) > .tabbrowser-arrowscrollbox > .tabbrowser-tab[beforehovered]::after,
 .tabbrowser-tab[multiselected]::after,
-#tabbrowser-tabs:not([movingtab]) > .tabbrowser-tab[before-multiselected]::after {
+#tabbrowser-tabs:not([movingtab]) > .tabbrowser-arrowscrollbox > .tabbrowser-tab[before-multiselected]::after {
   margin-top: var(--tabs-top-border-width);
   margin-bottom: 0;
 }
 
 /* Show full height tab separators on selected tabs. */
-#tabbrowser-tabs:not([movingtab]) > .tabbrowser-tab[beforeselected-visible]::after,
-#tabbrowser-tabs[movingtab] > .tabbrowser-tab[visuallyselected]::before,
+#tabbrowser-tabs:not([movingtab]) > .tabbrowser-arrowscrollbox > .tabbrowser-tab[beforeselected-visible]::after,
+#tabbrowser-tabs[movingtab] > .tabbrowser-arrowscrollbox > .tabbrowser-tab[visuallyselected]::before,
 .tabbrowser-tab[visuallyselected]::after {
   border-color: var(--tabs-border-color);
   margin-top: 0;
@@ -674,7 +683,7 @@
 
 .tabbrowser-tab::after,
 /* Also show separators beside the selected tab when dragging it. */
-#tabbrowser-tabs[movingtab] > .tabbrowser-tab[visuallyselected]::before {
+#tabbrowser-tabs[movingtab] > .tabbrowser-arrowscrollbox > .tabbrowser-tab[visuallyselected]::before {
   content: "";
   display: -moz-box;
 }

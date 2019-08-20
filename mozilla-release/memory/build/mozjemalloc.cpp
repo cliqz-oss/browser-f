@@ -140,6 +140,7 @@
 #include "mozilla/ThreadLocal.h"
 #include "mozilla/UniquePtr.h"
 #include "mozilla/Unused.h"
+#include "mozilla/XorShift128PlusRNG.h"
 #include "mozilla/fallible.h"
 #include "rb.h"
 #include "Mutex.h"
@@ -420,10 +421,7 @@ static const size_t kChunkSizeMask = kChunkSize - 1;
 // VM page size. It must divide the runtime CPU page size or the code
 // will abort.
 // Platform specific page size conditions copied from js/public/HeapAPI.h
-#  if (defined(SOLARIS) || defined(__FreeBSD__)) && \
-      (defined(__sparc) || defined(__sparcv9) || defined(__ia64))
-static const size_t gPageSize = 8_KiB;
-#  elif defined(__powerpc64__)
+#  if defined(__powerpc64__)
 static const size_t gPageSize = 64_KiB;
 #  else
 static const size_t gPageSize = 4_KiB;
@@ -911,6 +909,14 @@ struct arena_t {
   // a single spare inadequate.
   arena_chunk_t* mSpare;
 
+  // A per-arena opt-in to randomize the offset of small allocations
+  bool mRandomizeSmallAllocations;
+
+  // A pseudorandom number generator. Initially null, it gets initialized
+  // on first use to avoid recursive malloc initialization (e.g. on OSX
+  // arc4random allocates memory).
+  mozilla::non_crypto::XorShift128PlusRNG* mPRNG;
+
  public:
   // Current count of pages within unused runs that are potentially
   // dirty, and for which madvise(... MADV_FREE) has not been called.  By
@@ -971,6 +977,10 @@ struct arena_t {
                    size_t aNewSize, bool dirty);
 
   arena_run_t* GetNonFullBinRun(arena_bin_t* aBin);
+
+  inline uint8_t FindFreeBitInMask(uint32_t aMask, uint32_t& aRng);
+
+  inline void* ArenaRunRegAlloc(arena_run_t* aRun, arena_bin_t* aBin);
 
   inline void* MallocSmall(size_t aSize, bool aZero);
 
@@ -2029,52 +2039,66 @@ static inline arena_t* choose_arena(size_t size) {
   return ret;
 }
 
-static inline void* arena_run_reg_alloc(arena_run_t* run, arena_bin_t* bin) {
+inline uint8_t arena_t::FindFreeBitInMask(uint32_t aMask, uint32_t& aRng) {
+  if (mPRNG != nullptr) {
+    if (aRng == UINT_MAX) {
+      aRng = mPRNG->next() % 32;
+    }
+    uint8_t bitIndex;
+    // RotateRight asserts when provided bad input.
+    aMask = aRng ? RotateRight(aMask, aRng)
+                 : aMask;  // Rotate the mask a random number of slots
+    bitIndex = CountTrailingZeroes32(aMask);
+    return (bitIndex + aRng) % 32;
+  }
+  return CountTrailingZeroes32(aMask);
+}
+
+inline void* arena_t::ArenaRunRegAlloc(arena_run_t* aRun, arena_bin_t* aBin) {
   void* ret;
   unsigned i, mask, bit, regind;
+  uint32_t rndPos = UINT_MAX;
 
-  MOZ_DIAGNOSTIC_ASSERT(run->mMagic == ARENA_RUN_MAGIC);
-  MOZ_ASSERT(run->mRegionsMinElement < bin->mRunNumRegionsMask);
+  MOZ_DIAGNOSTIC_ASSERT(aRun->mMagic == ARENA_RUN_MAGIC);
+  MOZ_ASSERT(aRun->mRegionsMinElement < aBin->mRunNumRegionsMask);
 
-  // Move the first check outside the loop, so that run->mRegionsMinElement can
+  // Move the first check outside the loop, so that aRun->mRegionsMinElement can
   // be updated unconditionally, without the possibility of updating it
   // multiple times.
-  i = run->mRegionsMinElement;
-  mask = run->mRegionsMask[i];
+  i = aRun->mRegionsMinElement;
+  mask = aRun->mRegionsMask[i];
   if (mask != 0) {
-    // Usable allocation found.
-    bit = CountTrailingZeroes32(mask);
+    bit = FindFreeBitInMask(mask, rndPos);
 
     regind = ((i << (LOG2(sizeof(int)) + 3)) + bit);
-    MOZ_ASSERT(regind < bin->mRunNumRegions);
-    ret = (void*)(((uintptr_t)run) + bin->mRunFirstRegionOffset +
-                  (bin->mSizeClass * regind));
+    MOZ_ASSERT(regind < aBin->mRunNumRegions);
+    ret = (void*)(((uintptr_t)aRun) + aBin->mRunFirstRegionOffset +
+                  (aBin->mSizeClass * regind));
 
     // Clear bit.
     mask ^= (1U << bit);
-    run->mRegionsMask[i] = mask;
+    aRun->mRegionsMask[i] = mask;
 
     return ret;
   }
 
-  for (i++; i < bin->mRunNumRegionsMask; i++) {
-    mask = run->mRegionsMask[i];
+  for (i++; i < aBin->mRunNumRegionsMask; i++) {
+    mask = aRun->mRegionsMask[i];
     if (mask != 0) {
-      // Usable allocation found.
-      bit = CountTrailingZeroes32(mask);
+      bit = FindFreeBitInMask(mask, rndPos);
 
       regind = ((i << (LOG2(sizeof(int)) + 3)) + bit);
-      MOZ_ASSERT(regind < bin->mRunNumRegions);
-      ret = (void*)(((uintptr_t)run) + bin->mRunFirstRegionOffset +
-                    (bin->mSizeClass * regind));
+      MOZ_ASSERT(regind < aBin->mRunNumRegions);
+      ret = (void*)(((uintptr_t)aRun) + aBin->mRunFirstRegionOffset +
+                    (aBin->mSizeClass * regind));
 
       // Clear bit.
       mask ^= (1U << bit);
-      run->mRegionsMask[i] = mask;
+      aRun->mRegionsMask[i] = mask;
 
       // Make a note that nothing before this element
       // contains a free region.
-      run->mRegionsMinElement = i;  // Low payoff: + (mask == 0);
+      aRun->mRegionsMinElement = i;  // Low payoff: + (mask == 0);
 
       return ret;
     }
@@ -2761,6 +2785,27 @@ void* arena_t::MallocSmall(size_t aSize, bool aZero) {
   MOZ_DIAGNOSTIC_ASSERT(aSize == bin->mSizeClass);
 
   {
+    // Before we lock, we determine if we need to randomize the allocation
+    // because if we do, we need to create the PRNG which might require
+    // allocating memory (arc4random on OSX for example) and we need to
+    // avoid the deadlock
+    if (MOZ_UNLIKELY(mRandomizeSmallAllocations && mPRNG == nullptr)) {
+      // This is frustrating. Because the code backing RandomUint64 (arc4random
+      // for example) may allocate memory, and because
+      // mRandomizeSmallAllocations is true and we haven't yet initilized mPRNG,
+      // we would re-enter this same case and cause a deadlock inside e.g.
+      // arc4random.  So we temporarily disable mRandomizeSmallAllocations to
+      // skip this case and then re-enable it
+      mRandomizeSmallAllocations = false;
+      mozilla::Maybe<uint64_t> prngState1 = mozilla::RandomUint64();
+      mozilla::Maybe<uint64_t> prngState2 = mozilla::RandomUint64();
+      void* backing =
+          base_alloc(sizeof(mozilla::non_crypto::XorShift128PlusRNG));
+      mPRNG = new (backing) mozilla::non_crypto::XorShift128PlusRNG(
+          prngState1.valueOr(0), prngState2.valueOr(0));
+      mRandomizeSmallAllocations = true;
+    }
+
     MutexAutoLock lock(mLock);
     run = bin->mCurrentRun;
     if (MOZ_UNLIKELY(!run || run->mNumFree == 0)) {
@@ -2771,7 +2816,7 @@ void* arena_t::MallocSmall(size_t aSize, bool aZero) {
     }
     MOZ_DIAGNOSTIC_ASSERT(run->mMagic == ARENA_RUN_MAGIC);
     MOZ_DIAGNOSTIC_ASSERT(run->mNumFree > 0);
-    ret = arena_run_reg_alloc(run, bin);
+    ret = ArenaRunRegAlloc(run, bin);
     MOZ_DIAGNOSTIC_ASSERT(ret);
     run->mNumFree--;
     if (!ret) {
@@ -3080,7 +3125,7 @@ inline void MozJemalloc::jemalloc_ptr_info(const void* aPtr,
             &huge)
             ->Search(&key);
     if (node) {
-      *aInfo = {TagLiveHuge, node->mAddr, node->mSize, node->mArena->mId};
+      *aInfo = {TagLiveAlloc, node->mAddr, node->mSize, node->mArena->mId};
       return;
     }
   }
@@ -3104,21 +3149,8 @@ inline void MozJemalloc::jemalloc_ptr_info(const void* aPtr,
   size_t mapbits = chunk->map[pageind].bits;
 
   if (!(mapbits & CHUNK_MAP_ALLOCATED)) {
-    PtrInfoTag tag = TagFreedPageDirty;
-    if (mapbits & CHUNK_MAP_DIRTY) {
-      tag = TagFreedPageDirty;
-    } else if (mapbits & CHUNK_MAP_DECOMMITTED) {
-      tag = TagFreedPageDecommitted;
-    } else if (mapbits & CHUNK_MAP_MADVISED) {
-      tag = TagFreedPageMadvised;
-    } else if (mapbits & CHUNK_MAP_ZEROED) {
-      tag = TagFreedPageZeroed;
-    } else {
-      MOZ_CRASH();
-    }
-
     void* pageaddr = (void*)(uintptr_t(aPtr) & ~gPageSizeMask);
-    *aInfo = {tag, pageaddr, gPageSize, chunk->arena->mId};
+    *aInfo = {TagFreedPage, pageaddr, gPageSize, chunk->arena->mId};
     return;
   }
 
@@ -3151,7 +3183,7 @@ inline void MozJemalloc::jemalloc_ptr_info(const void* aPtr,
     }
 
     void* addr = ((char*)chunk) + (pageind << gPageSize2Pow);
-    *aInfo = {TagLiveLarge, addr, size, chunk->arena->mId};
+    *aInfo = {TagLiveAlloc, addr, size, chunk->arena->mId};
     return;
   }
 
@@ -3180,7 +3212,7 @@ inline void MozJemalloc::jemalloc_ptr_info(const void* aPtr,
   unsigned elm = regind >> (LOG2(sizeof(int)) + 3);
   unsigned bit = regind - (elm << (LOG2(sizeof(int)) + 3));
   PtrInfoTag tag =
-      ((run->mRegionsMask[elm] & (1U << bit))) ? TagFreedSmall : TagLiveSmall;
+      ((run->mRegionsMask[elm] & (1U << bit))) ? TagFreedAlloc : TagLiveAlloc;
 
   *aInfo = {tag, addr, size, chunk->arena->mId};
 }
@@ -3433,6 +3465,10 @@ arena_t::arena_t(arena_params_t* aParams) {
   mSpare = nullptr;
 
   mNumDirty = 0;
+
+  mRandomizeSmallAllocations =
+      aParams && aParams->mFlags & ARENA_FLAG_RANDOMIZE_SMALL;
+  mPRNG = nullptr;
 
   // The default maximum amount of dirty pages allowed on arenas is a fraction
   // of opt_dirty_max.
@@ -4404,23 +4440,31 @@ static
 
 #  define MALLOC_DECL(name, return_type, ...) MozJemalloc::name,
 
-static const malloc_table_t gReplaceMallocTableDefault = {
+// The default malloc table, i.e. plain allocations. It never changes. It's
+// used by init(), and not used after that.
+static const malloc_table_t gDefaultMallocTable = {
 #  include "malloc_decls.h"
 };
-static malloc_table_t gReplaceMallocTables[2] = {
-    {
-#  include "malloc_decls.h"
-    },
-    {
-#  include "malloc_decls.h"
-    },
-};
-unsigned gReplaceMallocIndex = 0;
 
-// Avoid races when swapping malloc impls dynamically
+// The malloc table installed by init(). It never changes from that point
+// onward. It will be the same as gDefaultMallocTable if no replace-malloc tool
+// is enabled at startup.
+static malloc_table_t gOriginalMallocTable = {
+#  include "malloc_decls.h"
+};
+
+// The malloc table installed by jemalloc_replace_dynamic(). (Read the
+// comments above that function for more details.)
+static malloc_table_t gDynamicMallocTable = {
+#  include "malloc_decls.h"
+};
+
+// This briefly points to gDefaultMallocTable at startup. After that, it points
+// to either gOriginalMallocTable or gDynamicMallocTable. It's atomic to avoid
+// races when switching between tables.
 static Atomic<malloc_table_t const*, mozilla::MemoryOrdering::Relaxed,
               recordreplay::Behavior::DontPreserve>
-    gReplaceMallocTable;
+    gMallocTablePtr;
 
 #  ifdef MOZ_DYNAMIC_REPLACE_INIT
 #    undef replace_init
@@ -4477,7 +4521,7 @@ bool Equals(const malloc_table_t& aTable1, const malloc_table_t& aTable2) {
 // replacement functions if they exist.
 static ReplaceMallocBridge* gReplaceMallocBridge = nullptr;
 static void init() {
-  malloc_table_t tempTable = gReplaceMallocTableDefault;
+  malloc_table_t tempTable = gDefaultMallocTable;
 
 #  ifdef MOZ_DYNAMIC_REPLACE_INIT
   replace_malloc_handle_t handle = replace_malloc_handle();
@@ -4488,77 +4532,94 @@ static void init() {
 
   // Set this *before* calling replace_init, otherwise if replace_init calls
   // malloc() we'll get an infinite loop.
-  gReplaceMallocTable = &gReplaceMallocTableDefault;
+  gMallocTablePtr = &gDefaultMallocTable;
 
-  // Pass in the a new (default allocator table so replace functions can
-  // copy and use it for their allocations.  The replace_init() function
-  // should modify the table if it wants to be active, otherwise leave it
-  // unmodified.
+  // Pass in the default allocator table so replace functions can copy and use
+  // it for their allocations. The replace_init() function should modify the
+  // table if it wants to be active, otherwise leave it unmodified.
   if (replace_init) {
     replace_init(&tempTable, &gReplaceMallocBridge);
   }
 #  ifdef MOZ_REPLACE_MALLOC_STATIC
-  if (Equals(tempTable, gReplaceMallocTableDefault)) {
+  if (Equals(tempTable, gDefaultMallocTable)) {
     logalloc_init(&tempTable, &gReplaceMallocBridge);
   }
 #    ifdef MOZ_DMD
-  if (Equals(tempTable, gReplaceMallocTableDefault)) {
+  if (Equals(tempTable, gDefaultMallocTable)) {
     dmd_init(&tempTable, &gReplaceMallocBridge);
   }
 #    endif
 #  endif
-  if (!Equals(tempTable, gReplaceMallocTableDefault)) {
+  if (!Equals(tempTable, gDefaultMallocTable)) {
     replace_malloc_init_funcs(&tempTable);
-    gReplaceMallocIndex = (gReplaceMallocIndex + 1) % 2;
-    gReplaceMallocTables[gReplaceMallocIndex] = tempTable;
-    // Atomic change
-    gReplaceMallocTable = &gReplaceMallocTables[gReplaceMallocIndex];
   }
+  gOriginalMallocTable = tempTable;
+  gMallocTablePtr = &gOriginalMallocTable;
 }
 
-// Note: since other allocations have happened before this, it must deal
-// with allocations being freed that weren't allocated through it, and when
-// it's removed the normal allocator must deal with allocations made by the
-// replacement that are freed by the normal allocator.
+// WARNING WARNING WARNING: this function should be used with extreme care. It
+// is not as general-purpose as it looks. It is currently used by
+// tools/profiler/core/memory_hooks.cpp for counting allocations and probably
+// should not be used for any other purpose.
 //
-// This means that simple replacements that don't modify much about the
-// allocations or just record information about it are fine.
+// This function allows the original malloc table to be temporarily replaced by
+// a different malloc table. Or, if the argument is nullptr, it switches back to
+// the original malloc table.
+//
+// Limitations:
+//
+// - It is not threadsafe. If multiple threads pass it the same
+//   `replace_init_func` at the same time, there will be data races writing to
+//   the malloc_table_t within that function.
+//
+// - Only one replacement can be installed. No nesting is allowed.
+//
+// - The new malloc table must be able to free allocations made by the original
+//   malloc table, and upon removal the original malloc table must be able to
+//   free allocations made by the new malloc table. This means the new malloc
+//   table can only do simple things like recording extra information, while
+//   delegating actual allocation/free operations to the original malloc table.
+//
 MOZ_JEMALLOC_API void jemalloc_replace_dynamic(
     jemalloc_init_func replace_init_func) {
-  malloc_table_t tempTable = gReplaceMallocTableDefault;
   if (replace_init_func) {
+    malloc_table_t tempTable = gOriginalMallocTable;
     (*replace_init_func)(&tempTable, &gReplaceMallocBridge);
-    if (!Equals(tempTable, gReplaceMallocTableDefault)) {
+    if (!Equals(tempTable, gOriginalMallocTable)) {
       replace_malloc_init_funcs(&tempTable);
-      // flip-flop between two tables
-      gReplaceMallocIndex = (gReplaceMallocIndex + 1) % 2;
-      gReplaceMallocTables[gReplaceMallocIndex] = tempTable;
-      gReplaceMallocTable = &gReplaceMallocTables[gReplaceMallocIndex];
+
+      // Temporarily switch back to the original malloc table. In the
+      // (supported) non-nested case, this is a no-op. But just in case this is
+      // a (unsupported) nested call, it makes the overwriting of
+      // gDynamicMallocTable less racy, because ongoing calls to malloc() and
+      // friends won't go through gDynamicMallocTable.
+      gMallocTablePtr = &gOriginalMallocTable;
+
+      gDynamicMallocTable = tempTable;
+      gMallocTablePtr = &gDynamicMallocTable;
       // We assume that dynamic replaces don't occur close enough for a
       // thread to still have old copies of the table pointer when the 2nd
       // replace occurs.
-      return;
     }
+  } else {
+    // Switch back to the original malloc table.
+    gMallocTablePtr = &gOriginalMallocTable;
   }
-  // When a replacer is removed, switch back to the original default.  A
-  // new replacement will not immediately re-use the same table array index
-  // as the last malloc replacer.
-  gReplaceMallocTable = &gReplaceMallocTableDefault;
 }
 
-#  define MALLOC_DECL(name, return_type, ...)                               \
-    template <>                                                             \
-    inline return_type ReplaceMalloc::name(                                 \
-        ARGS_HELPER(TYPED_ARGS, ##__VA_ARGS__)) {                           \
-      if (MOZ_UNLIKELY(!gReplaceMallocTable)) {                             \
-        init();                                                             \
-      }                                                                     \
-      return (*gReplaceMallocTable).name(ARGS_HELPER(ARGS, ##__VA_ARGS__)); \
+#  define MALLOC_DECL(name, return_type, ...)                           \
+    template <>                                                         \
+    inline return_type ReplaceMalloc::name(                             \
+        ARGS_HELPER(TYPED_ARGS, ##__VA_ARGS__)) {                       \
+      if (MOZ_UNLIKELY(!gMallocTablePtr)) {                             \
+        init();                                                         \
+      }                                                                 \
+      return (*gMallocTablePtr).name(ARGS_HELPER(ARGS, ##__VA_ARGS__)); \
     }
 #  include "malloc_decls.h"
 
 MOZ_JEMALLOC_API struct ReplaceMallocBridge* get_bridge(void) {
-  if (MOZ_UNLIKELY(!gReplaceMallocTable)) {
+  if (MOZ_UNLIKELY(!gMallocTablePtr)) {
     init();
   }
   return gReplaceMallocBridge;

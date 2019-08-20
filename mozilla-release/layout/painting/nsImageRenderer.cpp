@@ -164,7 +164,7 @@ bool nsImageRenderer::PrepareImage() {
       break;
     }
     case eStyleImageType_Gradient:
-      mGradientData = mImage->GetGradientData();
+      mGradientData = &mImage->GetGradient();
       mPrepareResult = ImgDrawResult::SUCCESS;
       break;
     case eStyleImageType_Element: {
@@ -496,7 +496,7 @@ ImgDrawResult nsImageRenderer::Draw(nsPresContext* aPresContext,
     }
     case eStyleImageType_Gradient: {
       nsCSSGradientRenderer renderer = nsCSSGradientRenderer::Create(
-          aPresContext, mForFrame->Style(), mGradientData, mSize);
+          aPresContext, mForFrame->Style(), *mGradientData, mSize);
 
       renderer.Paint(*ctx, aDest, aFill, aRepeatSize, aSrc, aDirtyRect,
                      aOpacity);
@@ -575,7 +575,7 @@ ImgDrawResult nsImageRenderer::BuildWebRenderDisplayItems(
   switch (mType) {
     case eStyleImageType_Gradient: {
       nsCSSGradientRenderer renderer = nsCSSGradientRenderer::Create(
-          aPresContext, mForFrame->Style(), mGradientData, mSize);
+          aPresContext, mForFrame->Style(), *mGradientData, mSize);
 
       renderer.BuildWebRenderDisplayItems(aBuilder, aSc, aDest, aFill,
                                           aRepeatSize, aSrc,
@@ -1012,7 +1012,7 @@ ImgDrawResult nsImageRenderer::DrawShapeImage(nsPresContext* aPresContext,
 
     case eStyleImageType_Gradient: {
       nsCSSGradientRenderer renderer = nsCSSGradientRenderer::Create(
-          aPresContext, mForFrame->Style(), mGradientData, mSize);
+          aPresContext, mForFrame->Style(), *mGradientData, mSize);
       nsRect dest(nsPoint(0, 0), mSize);
 
       renderer.Paint(aRenderingContext, dest, dest, mSize,
@@ -1068,9 +1068,4 @@ void nsImageRenderer::PurgeCacheForViewportChange(
       mImageContainer->GetType() == imgIContainer::TYPE_VECTOR) {
     mImage->PurgeCacheForViewportChange(aSVGViewportSize, aHasIntrinsicRatio);
   }
-}
-
-already_AddRefed<nsStyleGradient> nsImageRenderer::GetGradientData() {
-  RefPtr<nsStyleGradient> res = mGradientData;
-  return res.forget();
 }

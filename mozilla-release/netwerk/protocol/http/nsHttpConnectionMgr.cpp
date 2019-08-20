@@ -625,6 +625,8 @@ nsresult nsHttpConnectionMgr::UpdateRequestTokenBucket(
 nsresult nsHttpConnectionMgr::ClearConnectionHistory() {
   MOZ_ASSERT(OnSocketThread(), "not on socket thread");
 
+  LOG(("nsHttpConnectionMgr::ClearConnectionHistory"));
+
   for (auto iter = mCT.Iter(); !iter.Done(); iter.Next()) {
     RefPtr<nsConnectionEntry> ent = iter.Data();
     if (ent->mIdleConns.Length() == 0 && ent->mActiveConns.Length() == 0 &&
@@ -2347,9 +2349,9 @@ void nsHttpConnectionMgr::OnMsgShutdownConfirm(int32_t priority,
 
 void nsHttpConnectionMgr::OnMsgNewTransaction(int32_t priority,
                                               ARefBase* param) {
-  LOG(("nsHttpConnectionMgr::OnMsgNewTransaction [trans=%p]\n", param));
-
   nsHttpTransaction* trans = static_cast<nsHttpTransaction*>(param);
+
+  LOG(("nsHttpConnectionMgr::OnMsgNewTransaction [trans=%p]\n", trans));
   trans->SetPriority(priority);
   nsresult rv = ProcessNewTransaction(trans);
   if (NS_FAILED(rv)) trans->Close(rv);  // for whatever its worth
@@ -2834,6 +2836,26 @@ void nsHttpConnectionMgr::OnMsgReclaimConnection(int32_t, ARefBase* param) {
   if (ent->mActiveConns.RemoveElement(conn)) {
     DecrementActiveConnCount(conn);
     ConditionallyStopTimeoutTick();
+  } else if (conn->EverUsedSpdy()) {
+    LOG(("nsHttpConnection %p not found in its connection entry, try ^anon",
+         conn));
+    // repeat for flipped anon flag as we share connection entries for spdy
+    // connections.
+    RefPtr<nsHttpConnectionInfo> anonInvertedCI(ci->Clone());
+    anonInvertedCI->SetAnonymous(!ci->GetAnonymous());
+
+    nsConnectionEntry* ent = mCT.GetWeak(anonInvertedCI->HashKey());
+    if (ent) {
+      if (ent->mActiveConns.RemoveElement(conn)) {
+        DecrementActiveConnCount(conn);
+        ConditionallyStopTimeoutTick();
+      } else {
+        LOG(
+            ("nsHttpConnection %p could not be removed from its entry's active "
+             "list",
+             conn));
+      }
+    }
   }
 
   if (conn->CanReuse()) {
@@ -3980,15 +4002,14 @@ nsresult nsHttpConnectionMgr::nsHalfOpenSocket::SetupStreams(
 
   MOZ_ASSERT(mEnt);
   nsresult rv;
-  const char* socketTypes[1];
-  uint32_t typeCount = 0;
+  nsTArray<nsCString> socketTypes;
   const nsHttpConnectionInfo* ci = mEnt->mConnInfo;
   if (ci->FirstHopSSL()) {
-    socketTypes[typeCount++] = "ssl";
+    socketTypes.AppendElement(NS_LITERAL_CSTRING("ssl"));
   } else {
-    socketTypes[typeCount] = gHttpHandler->DefaultSocketType();
-    if (socketTypes[typeCount]) {
-      typeCount++;
+    const nsCString& defaultType = gHttpHandler->DefaultSocketType();
+    if (!defaultType.IsVoid()) {
+      socketTypes.AppendElement(defaultType);
     }
   }
 
@@ -4009,9 +4030,8 @@ nsresult nsHttpConnectionMgr::nsHalfOpenSocket::SetupStreams(
   nsCOMPtr<nsIRoutedSocketTransportService> routedSTS(do_QueryInterface(sts));
   if (routedSTS) {
     rv = routedSTS->CreateRoutedTransport(
-        socketTypes, typeCount, ci->GetOrigin(), ci->OriginPort(),
-        ci->GetRoutedHost(), ci->RoutedPort(), ci->ProxyInfo(),
-        getter_AddRefs(socketTransport));
+        socketTypes, ci->GetOrigin(), ci->OriginPort(), ci->GetRoutedHost(),
+        ci->RoutedPort(), ci->ProxyInfo(), getter_AddRefs(socketTransport));
   } else {
     if (!ci->GetRoutedHost().IsEmpty()) {
       // There is a route requested, but the legacy nsISocketTransportService
@@ -4024,9 +4044,8 @@ nsresult nsHttpConnectionMgr::nsHalfOpenSocket::SetupStreams(
            this, ci->RoutedHost(), ci->RoutedPort()));
     }
 
-    rv = sts->CreateTransport(socketTypes, typeCount, ci->GetOrigin(),
-                              ci->OriginPort(), ci->ProxyInfo(),
-                              getter_AddRefs(socketTransport));
+    rv = sts->CreateTransport(socketTypes, ci->GetOrigin(), ci->OriginPort(),
+                              ci->ProxyInfo(), getter_AddRefs(socketTransport));
   }
   NS_ENSURE_SUCCESS(rv, rv);
 

@@ -15,7 +15,7 @@ import subprocess
 # load modules from parent dir
 sys.path.insert(1, os.path.dirname(sys.path[0]))
 
-from mozharness.base.log import FATAL
+from mozharness.base.log import WARNING, FATAL
 from mozharness.base.script import BaseScript, PreScriptAction
 from mozharness.mozilla.automation import TBPL_RETRY
 from mozharness.mozilla.mozbase import MozbaseMixin
@@ -25,6 +25,7 @@ from mozharness.mozilla.testing.codecoverage import CodeCoverageMixin
 
 SUITE_DEFAULT_E10S = ['geckoview-junit', 'mochitest', 'reftest']
 SUITE_NO_E10S = ['cppunittest', 'xpcshell']
+SUITE_REPEATABLE = ['mochitest', 'reftest']
 
 
 class AndroidHardwareTest(TestingMixin, BaseScript, MozbaseMixin,
@@ -77,6 +78,22 @@ class AndroidHardwareTest(TestingMixin, BaseScript, MozbaseMixin,
          "default": True,
          "help": "Run tests without multiple processes (e10s).",
          }
+    ], [
+        ['--enable-webrender'],
+        {"action": "store_true",
+         "dest": "enable_webrender",
+         "default": False,
+         "help": "Run with WebRender enabled.",
+         }
+    ], [
+        ['--repeat'],
+        {"action": "store",
+         "type": "int",
+         "dest": "repeat",
+         "default": 0,
+         "help": "Repeat the tests the given number of times. Supported "
+                 "by mochitest, reftest, crashtest, ignored otherwise."
+         }
     ]] + copy.deepcopy(testing_config_options)
 
     def __init__(self, require_config_file=False):
@@ -118,6 +135,7 @@ class AndroidHardwareTest(TestingMixin, BaseScript, MozbaseMixin,
         self.log_raw_level = c.get('log_raw_level')
         self.log_tbpl_level = c.get('log_tbpl_level')
         self.e10s = c.get('e10s')
+        self.enable_webrender = c.get('enable_webrender')
 
     def query_abs_dirs(self):
         if self.abs_dirs:
@@ -246,6 +264,19 @@ class AndroidHardwareTest(TestingMixin, BaseScript, MozbaseMixin,
                 cmd.extend(['--disable-e10s'])
             elif category not in SUITE_DEFAULT_E10S and self.e10s:
                 cmd.extend(['--e10s'])
+        if c.get('repeat'):
+            if category in SUITE_REPEATABLE:
+                cmd.extend(["--repeat=%s" % c.get('repeat')])
+            else:
+                self.log("--repeat not supported in {}".format(category), level=WARNING)
+
+        # Only enable WebRender if the flag is enabled. All downstream harnesses
+        # are expected to force-disable WebRender if not explicitly enabled,
+        # so that we don't have it accidentally getting enabled because the
+        # underlying hardware running the test becomes part of the WR-qualified
+        # set.
+        if self.enable_webrender:
+            cmd.extend(['--enable-webrender'])
 
         try_options, try_tests = self.try_args(self.test_suite)
         cmd.extend(try_options)

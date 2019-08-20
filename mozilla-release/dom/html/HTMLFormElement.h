@@ -94,10 +94,8 @@ class HTMLFormElement final : public nsGenericHTMLElement,
   void WillHandleEvent(EventChainPostVisitor& aVisitor) override;
   virtual nsresult PostHandleEvent(EventChainPostVisitor& aVisitor) override;
 
-  virtual nsresult BindToTree(Document* aDocument, nsIContent* aParent,
-                              nsIContent* aBindingParent) override;
-  virtual void UnbindFromTree(bool aDeep = true,
-                              bool aNullParent = true) override;
+  virtual nsresult BindToTree(BindContext&, nsINode& aParent) override;
+  virtual void UnbindFromTree(bool aNullParent = true) override;
   virtual nsresult BeforeSetAttr(int32_t aNamespaceID, nsAtom* aName,
                                  const nsAttrValueOrString* aValue,
                                  bool aNotify) override;
@@ -522,6 +520,17 @@ class HTMLFormElement final : public nsGenericHTMLElement,
    */
   nsresult GetActionURL(nsIURI** aActionURL, Element* aOriginatingElement);
 
+  // Returns a number for this form that is unique within its owner document.
+  // This is used by nsContentUtils::GenerateStateKey to identify form controls
+  // that are inserted into the document by the parser.
+  int32_t GetFormNumberForStateKey();
+
+  /**
+   * Called when we have been cloned and adopted, and the information of the
+   * node has been changed.
+   */
+  void NodeInfoChanged(Document* aOldDoc) override;
+
  protected:
   //
   // Data members
@@ -581,6 +590,9 @@ class HTMLFormElement final : public nsGenericHTMLElement,
    * @note Should only be used by UpdateValidity() and GetValidity()!
    */
   int32_t mInvalidElementsCount;
+
+  // See GetFormNumberForStateKey.
+  int32_t mFormNumber;
 
   /** Whether we are currently processing a submit event or not */
   bool mGeneratingSubmit;

@@ -306,6 +306,7 @@ early_options = early_options()
 # This gives access to the sandbox. Don't copy this blindly.
 @imports('__sandbox__')
 @imports('os')
+@imports('six')
 def mozconfig_options(mozconfig, automation, help):
     if mozconfig['path']:
         if 'MOZ_AUTOMATION_MOZCONFIG' in mozconfig['env']['added']:
@@ -331,15 +332,15 @@ def mozconfig_options(mozconfig, automation, help):
                 log.info('  %s' % arg)
                 helper.add(arg, origin='mozconfig', args=helper._args)
 
-        for key, value in mozconfig['env']['added'].iteritems():
+        for key, value in six.iteritems(mozconfig['env']['added']):
             add(key, value)
             os.environ[key] = value
-        for key, (_, value) in mozconfig['env']['modified'].iteritems():
+        for key, (_, value) in six.iteritems(mozconfig['env']['modified']):
             add(key, value)
             os.environ[key] = value
-        for key, value in mozconfig['vars']['added'].iteritems():
+        for key, value in six.iteritems(mozconfig['vars']['added']):
             add(key, value)
-        for key, (_, value) in mozconfig['vars']['modified'].iteritems():
+        for key, (_, value) in six.iteritems(mozconfig['vars']['modified']):
             add(key, value)
 
 
@@ -750,6 +751,15 @@ def split_triplet(triplet, allow_unknown=False):
     def bitness(cpu):
         return CPU_bitness[cpu]
 
+    # Toolchains, most notably for cross compilation may use cpu-os
+    # prefixes. We need to be more specific about the LLVM target on Mac
+    # so cross-language LTO will work correctly.
+
+    if os.startswith('darwin'):
+        toolchain = '%s-apple-%s' % (cpu, os)
+    else:
+        toolchain = '%s-%s' % (cpu, os)
+
     return namespace(
         alias=triplet,
         cpu=sanitize(CPU, canonical_cpu),
@@ -759,9 +769,7 @@ def split_triplet(triplet, allow_unknown=False):
         endianness=sanitize(Endianness, endianness),
         raw_cpu=cpu,
         raw_os=os,
-        # Toolchains, most notably for cross compilation may use cpu-os
-        # prefixes.
-        toolchain='%s-%s' % (cpu, os),
+        toolchain=toolchain,
     )
 
 
@@ -1069,6 +1077,14 @@ def target_is_solaris(target):
 set_define('XP_SOLARIS', target_is_solaris)
 
 
+@depends(target)
+def target_is_sparc(target):
+    if target.cpu == 'sparc64':
+        return True
+
+set_define('SPARC64', target_is_sparc)
+
+
 @depends('--enable-project', '--with-external-source-dir',
          check_build_environment, '--help')
 @imports(_from='os.path', _import='exists')
@@ -1130,7 +1146,6 @@ add_old_configure_assignment('MOZILLA_OFFICIAL', mozilla_official)
 
 # Allow specifying custom paths to the version files used by the milestone() function below.
 option('--with-version-file-path',
-       env='MOZ_VERSION_FILE',
        nargs=1,
        help='Specify a custom path to app version files instead of auto-detecting',
        default=None)
@@ -1257,6 +1272,19 @@ def update_channel(channel):
 set_config('MOZ_UPDATE_CHANNEL', update_channel)
 set_define('MOZ_UPDATE_CHANNEL', update_channel)
 add_old_configure_assignment('MOZ_UPDATE_CHANNEL', update_channel)
+
+
+js_option(env='MOZBUILD_STATE_PATH', nargs=1,
+          help='Path to a persistent state directory for the build system '
+               'and related tools')
+
+
+@depends('MOZBUILD_STATE_PATH', '--help')
+@imports('os')
+def mozbuild_state_path(path, _):
+    if path:
+        return path[0]
+    return os.path.expanduser(os.path.join('~', '.mozbuild'))
 
 
 # A template providing a shorthand for setting a variable. The created

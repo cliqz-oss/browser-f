@@ -21,6 +21,7 @@
         'ssl_ciphersuite_unittest.cc',
         'ssl_custext_unittest.cc',
         'ssl_damage_unittest.cc',
+        'ssl_debug_env_unittest.cc',
         'ssl_dhe_unittest.cc',
         'ssl_drop_unittest.cc',
         'ssl_ecdh_unittest.cc',
@@ -53,7 +54,8 @@
         'tls_filter.cc',
         'tls_hkdf_unittest.cc',
         'tls_esni_unittest.cc',
-        'tls_protect.cc'
+        'tls_protect.cc',
+        'tls_subcerts_unittest.cc'
       ],
       'dependencies': [
         '<(DEPTH)/exports.gyp:nss_exports',

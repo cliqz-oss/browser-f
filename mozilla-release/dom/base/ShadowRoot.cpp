@@ -5,6 +5,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "mozilla/Preferences.h"
+#include "mozilla/dom/BindContext.h"
 #include "mozilla/dom/ShadowRoot.h"
 #include "mozilla/dom/DocumentFragment.h"
 #include "ChildIterator.h"
@@ -19,6 +20,7 @@
 #include "mozilla/EventDispatcher.h"
 #include "mozilla/IdentifierMapEntry.h"
 #include "mozilla/PresShell.h"
+#include "mozilla/PresShellInlines.h"
 #include "mozilla/ServoStyleRuleMap.h"
 #include "mozilla/StyleSheet.h"
 #include "mozilla/StyleSheetInlines.h"
@@ -130,9 +132,10 @@ nsresult ShadowRoot::Bind() {
     OwnerDoc()->AddComposedDocShadowRoot(*this);
   }
 
+  BindContext context(*this);
   for (nsIContent* child = GetFirstChild(); child;
        child = child->GetNextSibling()) {
-    nsresult rv = child->BindToTree(nullptr, this, Host());
+    nsresult rv = child->BindToTree(context, *this);
     NS_ENSURE_SUCCESS(rv, rv);
   }
 
@@ -147,7 +150,7 @@ void ShadowRoot::Unbind() {
 
   for (nsIContent* child = GetFirstChild(); child;
        child = child->GetNextSibling()) {
-    child->UnbindFromTree(true, false);
+    child->UnbindFromTree(false);
   }
 }
 
@@ -178,6 +181,18 @@ void ShadowRoot::InvalidateStyleAndLayoutOnSubtree(Element* aElement) {
   }
 
   presShell->DestroyFramesForAndRestyle(aElement);
+}
+
+void ShadowRoot::PartAdded(const Element& aPart) {
+  MOZ_ASSERT(aPart.HasPartAttribute());
+  MOZ_ASSERT(!mParts.Contains(&aPart));
+  mParts.AppendElement(&aPart);
+}
+
+void ShadowRoot::PartRemoved(const Element& aPart) {
+  MOZ_ASSERT(mParts.Contains(&aPart));
+  mParts.RemoveElement(&aPart);
+  MOZ_ASSERT(!mParts.Contains(&aPart));
 }
 
 void ShadowRoot::AddSlot(HTMLSlotElement* aSlot) {
@@ -330,6 +345,16 @@ void ShadowRoot::RuleChanged(StyleSheet& aSheet, css::Rule*) {
   ApplicableRulesChanged();
 }
 
+// We don't need to do anything else than forwarding to the document if
+// necessary.
+void ShadowRoot::StyleSheetCloned(StyleSheet& aSheet) {
+  if (Document* doc = GetComposedDoc()) {
+    if (PresShell* shell = doc->GetPresShell()) {
+      shell->StyleSet()->StyleSheetCloned(aSheet);
+    }
+  }
+}
+
 void ShadowRoot::ApplicableRulesChanged() {
   if (Document* doc = GetComposedDoc()) {
     doc->RecordShadowStyleChange(*this);
@@ -467,9 +492,8 @@ ShadowRoot::SlotAssignment ShadowRoot::SlotAssignmentFor(nsIContent* aContent) {
   nsAutoString slotName;
   // Note that if slot attribute is missing, assign it to the first default
   // slot, if exists.
-  if (aContent->IsElement()) {
-    aContent->AsElement()->GetAttr(kNameSpaceID_None, nsGkAtoms::slot,
-                                   slotName);
+  if (Element* element = Element::FromNode(aContent)) {
+    element->GetAttr(kNameSpaceID_None, nsGkAtoms::slot, slotName);
   }
 
   SlotArray* slots = mSlotMap.Get(slotName);

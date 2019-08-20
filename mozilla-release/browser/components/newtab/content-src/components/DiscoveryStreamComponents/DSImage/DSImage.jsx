@@ -16,11 +16,13 @@ export class DSImage extends React.PureComponent {
 
   onSeen(entries) {
     if (this.state) {
-      if (entries.some(entry => entry.isIntersecting)) {
+      const entry = entries.find(e => e.isIntersecting);
+
+      if (entry) {
         if (this.props.optimize) {
           this.setState({
-            containerWidth: ReactDOM.findDOMNode(this).clientWidth,
-            containerHeight: ReactDOM.findDOMNode(this).clientHeight,
+            containerWidth: entry.boundingClientRect.width,
+            containerHeight: entry.boundingClientRect.height,
           });
         }
 
@@ -38,7 +40,9 @@ export class DSImage extends React.PureComponent {
     // Change the image URL to request a size tailored for the parent container width
     // Also: force JPEG, quality 60, no upscaling, no EXIF data
     // Uses Thumbor: https://thumbor.readthedocs.io/en/latest/usage.html
-    return `https://img-getpocket.cdn.mozilla.net/${width}x${height}/filters:format(jpeg):quality(60):no_upscale():strip_exif()/${encodeURIComponent(url)}`;
+    return `https://img-getpocket.cdn.mozilla.net/${width}x${height}/filters:format(jpeg):quality(60):no_upscale():strip_exif()/${encodeURIComponent(
+      url
+    )}`;
   }
 
   componentDidMount() {
@@ -54,12 +58,18 @@ export class DSImage extends React.PureComponent {
   }
 
   render() {
-    const classNames = `ds-image${this.props.extraClassNames ? ` ${this.props.extraClassNames}` : ``}`;
+    const classNames = `ds-image${
+      this.props.extraClassNames ? ` ${this.props.extraClassNames}` : ``
+    }`;
 
     let img;
 
     if (this.state && this.state.isSeen) {
-      if (this.props.optimize && this.props.rawSource && !this.state.optimizedImageFailed) {
+      if (
+        this.props.optimize &&
+        this.props.rawSource &&
+        !this.state.optimizedImageFailed
+      ) {
         let source;
         let source2x;
 
@@ -78,24 +88,32 @@ export class DSImage extends React.PureComponent {
             this.state.containerHeight * 2
           );
 
-          img = (<img crossOrigin="anonymous"
-            onError={this.onOptimizedImageError}
-            src={source}
-            srcSet={`${source2x} 2x`} />);
+          img = (
+            <img
+              alt=""
+              crossOrigin="anonymous"
+              onError={this.onOptimizedImageError}
+              src={source}
+              srcSet={`${source2x} 2x`}
+            />
+          );
         }
       } else if (!this.state.nonOptimizedImageFailed) {
-        img = (<img crossOrigin="anonymous"
-          onError={this.onNonOptimizedImageError}
-          src={this.props.source} />);
+        img = (
+          <img
+            alt=""
+            crossOrigin="anonymous"
+            onError={this.onNonOptimizedImageError}
+            src={this.props.source}
+          />
+        );
       } else {
         // Remove the img element if both sources fail. Render a placeholder instead.
-        img = (<div className="broken-image" />);
+        img = <div className="broken-image" />;
       }
     }
 
-    return (
-      <picture className={classNames}>{img}</picture>
-    );
+    return <picture className={classNames}>{img}</picture>;
   }
 
   onOptimizedImageError() {

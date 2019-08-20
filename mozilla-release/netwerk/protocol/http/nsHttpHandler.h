@@ -75,8 +75,12 @@ class AltSvcMapping;
  * FRAMECHECK_STRICT - we also do not allow case 2) and 3) from
  *                     FRAMECHECK_BARELY.
  */
-enum FrameCheckLevel { FRAMECHECK_LAX, FRAMECHECK_BARELY,
-                       FRAMECHECK_STRICT_CHUNKED, FRAMECHECK_STRICT };
+enum FrameCheckLevel {
+  FRAMECHECK_LAX,
+  FRAMECHECK_BARELY,
+  FRAMECHECK_STRICT_CHUNKED,
+  FRAMECHECK_STRICT
+};
 
 //-----------------------------------------------------------------------------
 // nsHttpHandler - protocol handler for HTTP and HTTPS
@@ -116,9 +120,7 @@ class nsHttpHandler final : public nsIHttpProtocolHandler,
   PRIntervalTime ResponseTimeoutEnabled() { return mResponseTimeoutEnabled; }
   uint32_t NetworkChangedTimeout() { return mNetworkChangedTimeout; }
   uint16_t MaxRequestAttempts() { return mMaxRequestAttempts; }
-  const char* DefaultSocketType() {
-    return mDefaultSocketType.IsVoid() ? nullptr : mDefaultSocketType.get();
-  }
+  const nsCString& DefaultSocketType() { return mDefaultSocketType; }
   uint32_t PhishyUserPassLength() { return mPhishyUserPassLength; }
   uint8_t GetQoSBits() { return mQoSBits; }
   uint16_t GetIdleSynTimeout() { return mIdleSynTimeout; }
@@ -428,9 +430,6 @@ class nsHttpHandler final : public nsIHttpProtocolHandler,
   uint32_t DefaultHpackBuffer() const { return mDefaultHpackBuffer; }
 
   bool Bug1563538() const { return mBug1563538; }
-  bool Bug1563695() const { return mBug1563695; }
-  bool Bug1562315() const { return mBug1562315; }
-  bool Bug1556491() const { return mBug1556491; }
 
   uint32_t MaxHttpResponseHeaderSize() const {
     return mMaxHttpResponseHeaderSize;
@@ -676,9 +675,6 @@ class nsHttpHandler final : public nsIHttpProtocolHandler,
 
   // Pref for the whole fix that bug provides
   Atomic<bool, Relaxed> mBug1563538;
-  Atomic<bool, Relaxed> mBug1563695;
-  Atomic<bool, Relaxed> mBug1562315;
-  Atomic<bool, Relaxed> mBug1556491;
 
   // The max size (in bytes) for received Http response header.
   uint32_t mMaxHttpResponseHeaderSize;

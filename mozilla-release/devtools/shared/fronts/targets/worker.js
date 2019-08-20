@@ -3,12 +3,16 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 "use strict";
 
-const {workerTargetSpec} = require("devtools/shared/specs/targets/worker");
-const { FrontClassWithSpec, registerFront } = require("devtools/shared/protocol");
+const { workerTargetSpec } = require("devtools/shared/specs/targets/worker");
+const {
+  FrontClassWithSpec,
+  registerFront,
+} = require("devtools/shared/protocol");
 const { TargetMixin } = require("./target-mixin");
 
-class WorkerTargetFront extends
-  TargetMixin(FrontClassWithSpec(workerTargetSpec)) {
+class WorkerTargetFront extends TargetMixin(
+  FrontClassWithSpec(workerTargetSpec)
+) {
   constructor(client) {
     super(client);
 
@@ -51,7 +55,9 @@ class WorkerTargetFront extends
       // that will be later used by Target.
       const connectResponse = await this.connect({});
       // Set the console actor ID on the form to expose it to Target.attachConsole
+      // Set the ThreadActor on the target form so it is accessible by getFront
       this.targetForm.consoleActor = connectResponse.consoleActor;
+      this.targetForm.contextActor = connectResponse.threadActor;
       this._threadActor = connectResponse.threadActor;
 
       return this.attachConsole();

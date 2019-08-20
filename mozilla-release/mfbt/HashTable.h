@@ -171,7 +171,7 @@ class HashMap {
 
   explicit HashMap(AllocPolicy aAllocPolicy = AllocPolicy(),
                    uint32_t aLen = Impl::sDefaultLen)
-      : mImpl(aAllocPolicy, aLen) {}
+      : mImpl(std::move(aAllocPolicy), aLen) {}
 
   explicit HashMap(uint32_t aLen) : mImpl(AllocPolicy(), aLen) {}
 
@@ -456,7 +456,7 @@ class HashSet {
 
   explicit HashSet(AllocPolicy aAllocPolicy = AllocPolicy(),
                    uint32_t aLen = Impl::sDefaultLen)
-      : mImpl(aAllocPolicy, aLen) {}
+      : mImpl(std::move(aAllocPolicy), aLen) {}
 
   explicit HashSet(uint32_t aLen) : mImpl(AllocPolicy(), aLen) {}
 
@@ -1510,20 +1510,32 @@ class HashTable : private AllocPolicy {
   };
 
   // HashTable is movable
-  HashTable(HashTable&& aRhs) : AllocPolicy(aRhs) {
-    PodAssign(this, &aRhs);
-    aRhs.mTable = nullptr;
+  HashTable(HashTable&& aRhs) : AllocPolicy(std::move(aRhs)) {
+    moveFrom(aRhs);
   }
   void operator=(HashTable&& aRhs) {
     MOZ_ASSERT(this != &aRhs, "self-move assignment is prohibited");
     if (mTable) {
       destroyTable(*this, mTable, capacity());
     }
-    PodAssign(this, &aRhs);
-    aRhs.mTable = nullptr;
+    AllocPolicy::operator=(std::move(aRhs));
+    moveFrom(aRhs);
   }
 
  private:
+  void moveFrom(HashTable& aRhs) {
+    mGen = aRhs.mGen;
+    mHashShift = aRhs.mHashShift;
+    mTable = aRhs.mTable;
+    mEntryCount = aRhs.mEntryCount;
+    mRemovedCount = aRhs.mRemovedCount;
+#ifdef DEBUG
+    mMutationCount = aRhs.mMutationCount;
+    mEntered = aRhs.mEntered;
+#endif
+    aRhs.mTable = nullptr;
+  }
+
   // HashTable is not copyable or assignable
   HashTable(const HashTable&) = delete;
   void operator=(const HashTable&) = delete;
@@ -1618,7 +1630,6 @@ class HashTable : private AllocPolicy {
 
   static char* createTable(AllocPolicy& aAllocPolicy, uint32_t aCapacity,
                            FailureBehavior aReportFailure = ReportFailure) {
-
     FakeSlot* fake =
         aReportFailure
             ? aAllocPolicy.template pod_malloc<FakeSlot>(aCapacity)
@@ -1651,7 +1662,7 @@ class HashTable : private AllocPolicy {
 
  public:
   HashTable(AllocPolicy aAllocPolicy, uint32_t aLen)
-      : AllocPolicy(aAllocPolicy),
+      : AllocPolicy(std::move(aAllocPolicy)),
         mGen(0),
         mHashShift(hashShift(aLen)),
         mTable(nullptr),

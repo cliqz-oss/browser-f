@@ -508,6 +508,13 @@ void SandboxBroker::SetSecurityLevelForContentProcess(int32_t aSandboxLevel,
       sandbox::MITIGATION_DEP | sandbox::MITIGATION_EXTENSION_POINT_DISABLE |
       sandbox::MITIGATION_IMAGE_LOAD_PREFER_SYS32;
 
+#if defined(_M_ARM64)
+  // Disable CFG on older versions of ARM64 Windows to avoid a crash in COM.
+  if (!IsWin10Sep2018UpdateOrLater()) {
+    mitigations |= sandbox::MITIGATION_CONTROL_FLOW_GUARD_DISABLE;
+  }
+#endif
+
   if (aSandboxLevel > 4) {
     result = mPolicy->SetAlternateDesktop(false);
     if (NS_WARN_IF(result != sandbox::SBOX_ALL_OK)) {
@@ -785,7 +792,9 @@ bool SandboxBroker::SetSecurityLevelForRDDProcess() {
       sandbox::MITIGATION_DEP_NO_ATL_THUNK | sandbox::MITIGATION_DEP |
       sandbox::MITIGATION_IMAGE_LOAD_PREFER_SYS32;
 
-  if (sRddWin32kDisable) {
+  // On Windows 7, where Win32k lockdown is not supported, the Chromium
+  // sandbox does something weird that breaks COM instantiation.
+  if (sRddWin32kDisable && IsWin8OrLater()) {
     mitigations |= sandbox::MITIGATION_WIN32K_DISABLE;
     result =
         mPolicy->AddRule(sandbox::TargetPolicy::SUBSYS_WIN32K_LOCKDOWN,

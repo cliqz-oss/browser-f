@@ -135,6 +135,13 @@ TEST_SUITES = {
         'task_regex': ['mochitest-gpu($|.*(-1|[^0-9])$)',
                        'test-verify($|.*(-1|[^0-9])$)'],
     },
+    'mochitest-remote': {
+        'aliases': ('remote',),
+        'mach_command': 'mochitest',
+        'kwargs': {'flavor': 'browser-chrome', 'subsuite': 'remote', 'test_paths': None},
+        'task_regex': ['mochitest-remote($|.*(-1|[^0-9])$)',
+                       'test-verify($|.*(-1|[^0-9])$)'],
+    },
     'mochitest-webgl1-core': WebglSuite('webgl1-core'),
     'mochitest-webgl1-ext': WebglSuite('webgl1-ext'),
     'mochitest-webgl2-core': WebglSuite('webgl2-core'),
@@ -143,6 +150,12 @@ TEST_SUITES = {
     'python': {
         'mach_command': 'python-test',
         'kwargs': {'tests': None},
+    },
+    'telemetry-tests-client': {
+        'aliases': ('ttc',),
+        'mach_command': 'telemetry-tests-client',
+        'kwargs': {},
+        'task_regex': ['telemetry-tests-client($|.*(-1|[^0-9])$)'],
     },
     'reftest': {
         'aliases': ('rr',),
@@ -224,6 +237,7 @@ _test_flavors = {
     'python': 'python',
     'reftest': 'reftest',
     'steeplechase': '',
+    'telemetry-tests-client': 'telemetry-tests-client',
     'web-platform-tests': 'web-platform-tests',
     'xpcshell': 'xpcshell',
 }
@@ -231,6 +245,7 @@ _test_flavors = {
 _test_subsuites = {
     ('browser-chrome', 'devtools'): 'mochitest-devtools-chrome',
     ('browser-chrome', 'gpu'): 'mochitest-browser-chrome-gpu',
+    ('browser-chrome', 'remote'): 'mochitest-remote',
     ('browser-chrome', 'screenshots'): 'mochitest-browser-chrome-screenshots',
     ('chrome', 'gpu'): 'mochitest-chrome-gpu',
     ('mochitest', 'gpu'): 'mochitest-plain-gpu',

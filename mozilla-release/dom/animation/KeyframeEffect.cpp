@@ -279,35 +279,13 @@ const AnimationProperty* KeyframeEffect::GetEffectiveAnimationOfProperty(
 
 bool KeyframeEffect::HasEffectiveAnimationOfPropertySet(
     const nsCSSPropertyIDSet& aPropertySet, const EffectSet& aEffectSet) const {
-  // The various transform properties ('transform', 'scale' etc.) get combined
-  // on the compositor.
-  //
-  // As a result, if we have an animation of 'scale' and 'translate', but the
-  // 'translate' property is covered by an !important rule, we will not be
-  // able to combine the result on the compositor since we won't have the
-  // !important rule to incorporate. In that case we should run all the
-  // transform-related animations on the main thread (where we have the
-  // !important rule).
-  //
-  // Bug 1534884: Move this check to ShouldBlockAsyncTransformAnimations (or
-  // similar) and add a performance warning for this case.
-
-  bool result = false;
-
   for (const AnimationProperty& property : mProperties) {
-    if (!aPropertySet.HasProperty(property.mProperty)) {
-      continue;
-    }
-
-    if (IsEffectiveProperty(aEffectSet, property.mProperty)) {
-      result = true;
-    } else if (nsCSSPropertyIDSet::TransformLikeProperties().HasProperty(
-                   property.mProperty)) {
-      return false;
+    if (aPropertySet.HasProperty(property.mProperty) &&
+        IsEffectiveProperty(aEffectSet, property.mProperty)) {
+      return true;
     }
   }
-
-  return result;
+  return false;
 }
 
 nsCSSPropertyIDSet KeyframeEffect::GetPropertiesForCompositor(
@@ -317,39 +295,61 @@ nsCSSPropertyIDSet KeyframeEffect::GetPropertiesForCompositor(
 
   nsCSSPropertyIDSet properties;
 
-  if (!IsInEffect() && !IsCurrent()) {
+  if (!mAnimation || !mAnimation->IsRelevant()) {
     return properties;
   }
 
   static constexpr nsCSSPropertyIDSet compositorAnimatables =
       nsCSSPropertyIDSet::CompositorAnimatables();
+  static constexpr nsCSSPropertyIDSet transformLikeProperties =
+      nsCSSPropertyIDSet::TransformLikeProperties();
+
+  nsCSSPropertyIDSet transformSet;
+  AnimationPerformanceWarning::Type dummyWarning;
+
   for (const AnimationProperty& property : mProperties) {
     if (!compositorAnimatables.HasProperty(property.mProperty)) {
       continue;
     }
 
-    AnimationPerformanceWarning::Type warning;
+    // Transform-like properties are combined together on the compositor so we
+    // need to evaluate them as a group. We build up a separate set here then
+    // evaluate it as a separate step below.
+    if (transformLikeProperties.HasProperty(property.mProperty)) {
+      transformSet.AddProperty(property.mProperty);
+      continue;
+    }
+
     KeyframeEffect::MatchForCompositor matchResult = IsMatchForCompositor(
-        nsCSSPropertyIDSet{property.mProperty}, aFrame, aEffects, warning);
+        nsCSSPropertyIDSet{property.mProperty}, aFrame, aEffects, dummyWarning);
     if (matchResult ==
             KeyframeEffect::MatchForCompositor::NoAndBlockThisProperty ||
         matchResult == KeyframeEffect::MatchForCompositor::No) {
       continue;
     }
-
     properties.AddProperty(property.mProperty);
   }
+
+  if (!transformSet.IsEmpty()) {
+    KeyframeEffect::MatchForCompositor matchResult =
+        IsMatchForCompositor(transformSet, aFrame, aEffects, dummyWarning);
+    if (matchResult == KeyframeEffect::MatchForCompositor::Yes ||
+        matchResult == KeyframeEffect::MatchForCompositor::IfNeeded) {
+      properties |= transformSet;
+    }
+  }
+
   return properties;
 }
 
-bool KeyframeEffect::HasAnimationOfPropertySet(
-    const nsCSSPropertyIDSet& aPropertySet) const {
+nsCSSPropertyIDSet KeyframeEffect::GetPropertySet() const {
+  nsCSSPropertyIDSet result;
+
   for (const AnimationProperty& property : mProperties) {
-    if (aPropertySet.HasProperty(property.mProperty)) {
-      return true;
-    }
+    result.AddProperty(property.mProperty);
   }
-  return false;
+
+  return result;
 }
 
 #ifdef DEBUG
@@ -417,6 +417,10 @@ void KeyframeEffect::UpdateProperties(const ComputedStyle* aStyle) {
   CalculateCumulativeChangeHint(aStyle);
 
   MarkCascadeNeedsUpdate();
+
+  if (mAnimation) {
+    mAnimation->NotifyEffectPropertiesUpdated();
+  }
 
   RequestRestyle(EffectCompositor::RestyleType::Layer);
 }
@@ -575,13 +579,10 @@ void KeyframeEffect::ComposeStyle(RawServoAnimationValueMap& aComposeResult,
   if (HasPropertiesThatMightAffectOverflow()) {
     nsPresContext* presContext =
         nsContentUtils::GetContextForContent(mTarget->mElement);
-    if (presContext) {
+    EffectSet* effectSet =
+        EffectSet::GetEffectSet(mTarget->mElement, mTarget->mPseudoType);
+    if (presContext && effectSet) {
       TimeStamp now = presContext->RefreshDriver()->MostRecentRefresh();
-      EffectSet* effectSet =
-          EffectSet::GetEffectSet(mTarget->mElement, mTarget->mPseudoType);
-      MOZ_ASSERT(effectSet,
-                 "ComposeStyle should only be called on an effect "
-                 "that is part of an effect set");
       effectSet->UpdateLastOverflowAnimationSyncTime(now);
     }
   }
@@ -792,7 +793,9 @@ void KeyframeEffect::UpdateTargetRegistration() {
   // something calls Animation::UpdateRelevance. Whenever our timing changes,
   // we should be notifying our Animation before calling this, so
   // Animation::IsRelevant() should be up-to-date by the time we get here.
-  MOZ_ASSERT(isRelevant == IsCurrent() || IsInEffect(),
+  MOZ_ASSERT(isRelevant ==
+                 ((IsCurrent() || IsInEffect()) && mAnimation &&
+                  mAnimation->ReplaceState() != AnimationReplaceState::Removed),
              "Out of date Animation::IsRelevant value");
 
   if (isRelevant && !mInEffectSet) {
@@ -998,6 +1001,10 @@ void KeyframeEffect::SetTarget(
       nsNodeUtils::AnimationAdded(mAnimation);
       mAnimation->ReschedulePendingTasks();
     }
+  }
+
+  if (mAnimation) {
+    mAnimation->NotifyEffectTargetUpdated();
   }
 }
 
@@ -1488,10 +1495,28 @@ bool KeyframeEffect::CanAnimateTransformOnCompositor(
 }
 
 bool KeyframeEffect::ShouldBlockAsyncTransformAnimations(
-    const nsIFrame* aFrame,
+    const nsIFrame* aFrame, const nsCSSPropertyIDSet& aPropertySet,
     AnimationPerformanceWarning::Type& aPerformanceWarning /* out */) const {
   EffectSet* effectSet =
       EffectSet::GetEffectSet(mTarget->mElement, mTarget->mPseudoType);
+  // The various transform properties ('transform', 'scale' etc.) get combined
+  // on the compositor.
+  //
+  // As a result, if we have an animation of 'scale' and 'translate', but the
+  // 'translate' property is covered by an !important rule, we will not be
+  // able to combine the result on the compositor since we won't have the
+  // !important rule to incorporate. In that case we should run all the
+  // transform-related animations on the main thread (where we have the
+  // !important rule).
+  nsCSSPropertyIDSet blockedProperties =
+      effectSet->PropertiesWithImportantRules().Intersect(
+          effectSet->PropertiesForAnimationsLevel());
+  if (blockedProperties.Intersects(aPropertySet)) {
+    aPerformanceWarning =
+        AnimationPerformanceWarning::Type::TransformIsBlockedByImportantRules;
+    return true;
+  }
+
   for (const AnimationProperty& property : mProperties) {
     // If there is a property for animations level that is overridden by
     // !important rules, it should not block other animations from running
@@ -1725,6 +1750,11 @@ bool KeyframeEffect::ContainsAnimatedScale(const nsIFrame* aFrame) const {
              "We should be passed a frame that supports transforms");
 
   if (!IsCurrent()) {
+    return false;
+  }
+
+  if (!mAnimation ||
+      mAnimation->ReplaceState() == AnimationReplaceState::Removed) {
     return false;
   }
 

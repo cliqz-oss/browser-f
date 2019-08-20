@@ -30,9 +30,7 @@ void MacroAssembler::move16SignExtend(Register src, Register dest) {
   ma_seh(dest, src);
 }
 
-void MacroAssembler::loadAbiReturnAddress(Register dest) {
-  movePtr(ra, dest);
-}
+void MacroAssembler::loadAbiReturnAddress(Register dest) { movePtr(ra, dest); }
 
 // ===============================================================
 // Logical instructions
@@ -640,7 +638,7 @@ void MacroAssembler::branchTestNumber(Condition cond, Register tag,
                                       Label* label) {
   MOZ_ASSERT(cond == Equal || cond == NotEqual);
   Condition actual = cond == Equal ? BelowOrEqual : Above;
-  ma_b(tag, ImmTag(JSVAL_UPPER_INCL_TAG_OF_NUMBER_SET), label, actual);
+  ma_b(tag, ImmTag(JS::detail::ValueUpperInclNumberTag), label, actual);
 }
 
 void MacroAssembler::branchTestBoolean(Condition cond, Register tag,
@@ -741,7 +739,7 @@ void MacroAssembler::branchTestGCThing(Condition cond, const Address& address,
   MOZ_ASSERT(cond == Equal || cond == NotEqual);
   SecondScratchRegisterScope scratch2(*this);
   extractTag(address, scratch2);
-  ma_b(scratch2, ImmTag(JSVAL_LOWER_INCL_TAG_OF_GCTHING_SET), label,
+  ma_b(scratch2, ImmTag(JS::detail::ValueLowerInclGCThingTag), label,
        (cond == Equal) ? AboveOrEqual : Below);
 }
 void MacroAssembler::branchTestGCThing(Condition cond, const BaseIndex& address,
@@ -749,14 +747,14 @@ void MacroAssembler::branchTestGCThing(Condition cond, const BaseIndex& address,
   MOZ_ASSERT(cond == Equal || cond == NotEqual);
   SecondScratchRegisterScope scratch2(*this);
   extractTag(address, scratch2);
-  ma_b(scratch2, ImmTag(JSVAL_LOWER_INCL_TAG_OF_GCTHING_SET), label,
+  ma_b(scratch2, ImmTag(JS::detail::ValueLowerInclGCThingTag), label,
        (cond == Equal) ? AboveOrEqual : Below);
 }
 
 void MacroAssembler::branchTestPrimitive(Condition cond, Register tag,
                                          Label* label) {
   MOZ_ASSERT(cond == Equal || cond == NotEqual);
-  ma_b(tag, ImmTag(JSVAL_UPPER_EXCL_TAG_OF_PRIMITIVE_SET), label,
+  ma_b(tag, ImmTag(JS::detail::ValueUpperExclPrimitiveTag), label,
        (cond == Equal) ? Below : AboveOrEqual);
 }
 

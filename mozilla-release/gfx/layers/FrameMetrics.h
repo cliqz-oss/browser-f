@@ -22,7 +22,7 @@
 #include "mozilla/StaticPtr.h"                   // for StaticAutoPtr
 #include "mozilla/TimeStamp.h"                   // for TimeStamp
 #include "nsString.h"
-#include "nsStyleCoord.h"  // for nsStyleCoord
+#include "mozilla/ServoStyleConsts.h"
 #include "PLDHashTable.h"  // for PLDHashNumber
 
 struct nsStyleDisplay;
@@ -719,8 +719,8 @@ struct ScrollSnapInfo {
   ScrollSnapInfo() = default;
 
   bool operator==(const ScrollSnapInfo& aOther) const {
-    return mScrollSnapTypeX == aOther.mScrollSnapTypeX &&
-           mScrollSnapTypeY == aOther.mScrollSnapTypeY &&
+    return mScrollSnapStrictnessX == aOther.mScrollSnapStrictnessX &&
+           mScrollSnapStrictnessY == aOther.mScrollSnapStrictnessY &&
            mScrollSnapIntervalX == aOther.mScrollSnapIntervalX &&
            mScrollSnapIntervalY == aOther.mScrollSnapIntervalY &&
            mScrollSnapDestination == aOther.mScrollSnapDestination &&
@@ -733,24 +733,25 @@ struct ScrollSnapInfo {
   }
 
   bool HasScrollSnapping() const {
-    return mScrollSnapTypeY != mozilla::StyleScrollSnapStrictness::None ||
-           mScrollSnapTypeX != mozilla::StyleScrollSnapStrictness::None;
+    return mScrollSnapStrictnessY != mozilla::StyleScrollSnapStrictness::None ||
+           mScrollSnapStrictnessX != mozilla::StyleScrollSnapStrictness::None;
   }
 
   bool HasSnapPositions() const {
     return (!mSnapPositionX.IsEmpty() &&
-            mScrollSnapTypeX != mozilla::StyleScrollSnapStrictness::None) ||
+            mScrollSnapStrictnessX !=
+                mozilla::StyleScrollSnapStrictness::None) ||
            (!mSnapPositionY.IsEmpty() &&
-            mScrollSnapTypeY != mozilla::StyleScrollSnapStrictness::None);
+            mScrollSnapStrictnessY != mozilla::StyleScrollSnapStrictness::None);
   }
 
-  void InitializeScrollSnapType(WritingMode aWritingMode,
-                                const nsStyleDisplay* aDisplay);
+  void InitializeScrollSnapStrictness(WritingMode aWritingMode,
+                                      const nsStyleDisplay* aDisplay);
 
   // The scroll frame's scroll-snap-type.
-  mozilla::StyleScrollSnapStrictness mScrollSnapTypeX =
+  mozilla::StyleScrollSnapStrictness mScrollSnapStrictnessX =
       mozilla::StyleScrollSnapStrictness::None;
-  mozilla::StyleScrollSnapStrictness mScrollSnapTypeY =
+  mozilla::StyleScrollSnapStrictness mScrollSnapStrictnessY =
       mozilla::StyleScrollSnapStrictness::None;
 
   // The intervals derived from the scroll frame's scroll-snap-points.
@@ -758,7 +759,7 @@ struct ScrollSnapInfo {
   Maybe<nscoord> mScrollSnapIntervalY;
 
   // The scroll frame's scroll-snap-destination, in cooked form (to avoid
-  // shipping the raw nsStyleCoord::CalcValue over IPC).
+  // shipping the raw style value over IPC).
   nsPoint mScrollSnapDestination;
 
   // The scroll-snap-coordinates of any descendant frames of the scroll frame,
@@ -986,7 +987,7 @@ struct ScrollMetadata {
     mIsAutoDirRootContentRTL = aValue;
   }
   bool IsAutoDirRootContentRTL() const { return mIsAutoDirRootContentRTL; }
-  // Implemented out of line because the implementation needs gfxPrefs.h
+  // Implemented out of line because the implementation needs StaticPrefs.h
   // and we don't want to include that from FrameMetrics.h.
   void SetUsesContainerScrolling(bool aValue);
   bool UsesContainerScrolling() const { return mUsesContainerScrolling; }

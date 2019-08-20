@@ -14,13 +14,9 @@
 
 using namespace mozilla;
 
-template <class InnerQueueT>
-void PrioritizedEventQueue<InnerQueueT>::PutEvent(
-    already_AddRefed<nsIRunnable>&& aEvent, EventQueuePriority aPriority,
-    const MutexAutoLock& aProofOfLock) {
-  static_assert(IsBaseOf<AbstractEventQueue, InnerQueueT>::value,
-                "InnerQueueT must be an AbstractEventQueue subclass");
-
+void PrioritizedEventQueue::PutEvent(already_AddRefed<nsIRunnable>&& aEvent,
+                                     EventQueuePriority aPriority,
+                                     const MutexAutoLock& aProofOfLock) {
   // Double check the priority with a QI.
   RefPtr<nsIRunnable> event(aEvent);
   EventQueuePriority priority = aPriority;
@@ -29,7 +25,7 @@ void PrioritizedEventQueue<InnerQueueT>::PutEvent(
       mInputQueueState == STATE_DISABLED) {
     priority = EventQueuePriority::Normal;
   } else if (priority == EventQueuePriority::MediumHigh &&
-             !StaticPrefs::medium_high_event_queue_enabled()) {
+             !StaticPrefs::threads_medium_high_event_queue_enabled()) {
     priority = EventQueuePriority::Normal;
   }
 
@@ -58,8 +54,7 @@ void PrioritizedEventQueue<InnerQueueT>::PutEvent(
   }
 }
 
-template <class InnerQueueT>
-TimeStamp PrioritizedEventQueue<InnerQueueT>::GetIdleDeadline() {
+TimeStamp PrioritizedEventQueue::GetIdleDeadline() {
   // If we are shutting down, we won't honor the idle period, and we will
   // always process idle runnables.  This will ensure that the idle queue
   // gets exhausted at shutdown time to prevent intermittently leaking
@@ -104,8 +99,7 @@ TimeStamp PrioritizedEventQueue<InnerQueueT>::GetIdleDeadline() {
   return idleDeadline;
 }
 
-template <class InnerQueueT>
-EventQueuePriority PrioritizedEventQueue<InnerQueueT>::SelectQueue(
+EventQueuePriority PrioritizedEventQueue::SelectQueue(
     bool aUpdateState, const MutexAutoLock& aProofOfLock) {
   size_t inputCount = mInputQueue->Count(aProofOfLock);
 
@@ -181,8 +175,7 @@ EventQueuePriority PrioritizedEventQueue<InnerQueueT>::SelectQueue(
   return queue;
 }
 
-template <class InnerQueueT>
-already_AddRefed<nsIRunnable> PrioritizedEventQueue<InnerQueueT>::GetEvent(
+already_AddRefed<nsIRunnable> PrioritizedEventQueue::GetEvent(
     EventQueuePriority* aPriority, const MutexAutoLock& aProofOfLock) {
   auto guard =
       MakeScopeExit([&] { mHasPendingEventsPromisedIdleEvent = false; });
@@ -262,9 +255,7 @@ already_AddRefed<nsIRunnable> PrioritizedEventQueue<InnerQueueT>::GetEvent(
   return event.forget();
 }
 
-template <class InnerQueueT>
-bool PrioritizedEventQueue<InnerQueueT>::IsEmpty(
-    const MutexAutoLock& aProofOfLock) {
+bool PrioritizedEventQueue::IsEmpty(const MutexAutoLock& aProofOfLock) {
   // Just check IsEmpty() on the sub-queues. Don't bother checking the idle
   // deadline since that only determines whether an idle event is ready or not.
   return mHighQueue->IsEmpty(aProofOfLock) &&
@@ -275,9 +266,7 @@ bool PrioritizedEventQueue<InnerQueueT>::IsEmpty(
          mIdleQueue->IsEmpty(aProofOfLock);
 }
 
-template <class InnerQueueT>
-bool PrioritizedEventQueue<InnerQueueT>::HasReadyEvent(
-    const MutexAutoLock& aProofOfLock) {
+bool PrioritizedEventQueue::HasReadyEvent(const MutexAutoLock& aProofOfLock) {
   mHasPendingEventsPromisedIdleEvent = false;
 
   EventQueuePriority queue = SelectQueue(false, aProofOfLock);
@@ -312,28 +301,23 @@ bool PrioritizedEventQueue<InnerQueueT>::HasReadyEvent(
   return false;
 }
 
-template <class InnerQueueT>
-bool PrioritizedEventQueue<InnerQueueT>::HasPendingHighPriorityEvents(
+bool PrioritizedEventQueue::HasPendingHighPriorityEvents(
     const MutexAutoLock& aProofOfLock) {
   return !mHighQueue->IsEmpty(aProofOfLock);
 }
 
-template <class InnerQueueT>
-size_t PrioritizedEventQueue<InnerQueueT>::Count(
-    const MutexAutoLock& aProofOfLock) const {
+size_t PrioritizedEventQueue::Count(const MutexAutoLock& aProofOfLock) const {
   MOZ_CRASH("unimplemented");
 }
 
-template <class InnerQueueT>
-void PrioritizedEventQueue<InnerQueueT>::EnableInputEventPrioritization(
+void PrioritizedEventQueue::EnableInputEventPrioritization(
     const MutexAutoLock& aProofOfLock) {
   MOZ_ASSERT(mInputQueueState == STATE_DISABLED);
   mInputQueueState = STATE_ENABLED;
   mInputHandlingStartTime = TimeStamp();
 }
 
-template <class InnerQueueT>
-void PrioritizedEventQueue<InnerQueueT>::FlushInputEventPrioritization(
+void PrioritizedEventQueue::FlushInputEventPrioritization(
     const MutexAutoLock& aProofOfLock) {
   MOZ_ASSERT(mInputQueueState == STATE_ENABLED ||
              mInputQueueState == STATE_SUSPEND);
@@ -341,21 +325,15 @@ void PrioritizedEventQueue<InnerQueueT>::FlushInputEventPrioritization(
       mInputQueueState == STATE_ENABLED ? STATE_FLUSHING : STATE_SUSPEND;
 }
 
-template <class InnerQueueT>
-void PrioritizedEventQueue<InnerQueueT>::SuspendInputEventPrioritization(
+void PrioritizedEventQueue::SuspendInputEventPrioritization(
     const MutexAutoLock& aProofOfLock) {
   MOZ_ASSERT(mInputQueueState == STATE_ENABLED ||
              mInputQueueState == STATE_FLUSHING);
   mInputQueueState = STATE_SUSPEND;
 }
 
-template <class InnerQueueT>
-void PrioritizedEventQueue<InnerQueueT>::ResumeInputEventPrioritization(
+void PrioritizedEventQueue::ResumeInputEventPrioritization(
     const MutexAutoLock& aProofOfLock) {
   MOZ_ASSERT(mInputQueueState == STATE_SUSPEND);
   mInputQueueState = STATE_ENABLED;
 }
-
-namespace mozilla {
-template class PrioritizedEventQueue<EventQueue>;
-}  // namespace mozilla

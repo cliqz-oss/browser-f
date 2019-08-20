@@ -16,7 +16,7 @@ import {
 
 import { makeWhyNormal } from "../../../utils/test-mockup";
 
-import * as parser from "../../../workers/parser/index";
+import { parserWorker } from "../../../test/tests-setup";
 
 const { isStepping } = selectors;
 
@@ -72,6 +72,7 @@ const mockThreadClient = {
   },
   getBreakpointPositions: async () => ({}),
   getBreakableLines: async () => [],
+  actorID: "threadActorID",
 };
 
 const mockFrameId = "1";
@@ -85,6 +86,7 @@ function createPauseInfo(
       { id: mockFrameId, sourceId: frameLocation.sourceId },
       {
         location: frameLocation,
+        generatedLocation: frameLocation,
         ...frameOpts,
       }
     ),
@@ -98,9 +100,6 @@ function createPauseInfo(
   };
 }
 
-function resumedPacket() {
-  return { from: "FakeThread", type: "resumed" };
-}
 describe("pause", () => {
   describe("stepping", () => {
     it("should set and clear the command", async () => {
@@ -147,7 +146,7 @@ describe("pause", () => {
       await dispatch(actions.newGeneratedSource(makeSource("foo1")));
       await dispatch(actions.paused(mockPauseInfo));
       const cx = selectors.getThreadContext(getState());
-      const getNextStepSpy = jest.spyOn(parser, "getNextStep");
+      const getNextStepSpy = jest.spyOn(parserWorker, "getNextStep");
       dispatch(actions.stepOver(cx));
       expect(getNextStepSpy).not.toHaveBeenCalled();
       expect(isStepping(getState(), "FakeThread")).toBeTruthy();
@@ -166,7 +165,7 @@ describe("pause", () => {
 
       await dispatch(actions.paused(mockPauseInfo));
       const cx = selectors.getThreadContext(getState());
-      const getNextStepSpy = jest.spyOn(parser, "getNextStep");
+      const getNextStepSpy = jest.spyOn(parserWorker, "getNextStep");
       dispatch(actions.stepOver(cx));
       expect(getNextStepSpy).toHaveBeenCalled();
       getNextStepSpy.mockRestore();
@@ -188,7 +187,7 @@ describe("pause", () => {
 
       await dispatch(actions.paused(mockPauseInfo));
       const cx = selectors.getThreadContext(getState());
-      const getNextStepSpy = jest.spyOn(parser, "getNextStep");
+      const getNextStepSpy = jest.spyOn(parserWorker, "getNextStep");
       dispatch(actions.stepOver(cx));
       expect(getNextStepSpy).toHaveBeenCalled();
       getNextStepSpy.mockRestore();
@@ -382,7 +381,7 @@ describe("pause", () => {
 
       const cx = selectors.getThreadContext(getState());
       dispatch(actions.stepIn(cx));
-      await dispatch(actions.resumed(resumedPacket()));
+      await dispatch(actions.resumed(mockThreadClient.actorID));
       expect(client.evaluateExpressions.mock.calls).toHaveLength(1);
     });
 
@@ -400,9 +399,9 @@ describe("pause", () => {
       client.evaluateExpressions.mockReturnValue(Promise.resolve(["YAY"]));
       await dispatch(actions.paused(mockPauseInfo));
 
-      await dispatch(actions.resumed(resumedPacket()));
+      await dispatch(actions.resumed(mockThreadClient.actorID));
       const expression = selectors.getExpression(getState(), "foo");
-      expect(expression.value).toEqual("YAY");
+      expect(expression && expression.value).toEqual("YAY");
     });
   });
 });

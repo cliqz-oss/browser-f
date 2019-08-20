@@ -36,6 +36,12 @@
 <!ENTITY newFeedAccountCmd.accesskey "F">
 <!ENTITY newIMContactCmd.label "Chat-Kontakt…">
 <!ENTITY newIMContactCmd.accesskey "h">
+<!ENTITY  newMessageCmd2.key "N">
+<!ENTITY  newMessageCmd.key "M">
+<!ENTITY  newMessageCmd.label "Nachricht">
+<!ENTITY  newMessageCmd.accesskey "N">
+<!ENTITY  newContactCmd.label "Adressbuchkontakt…">
+<!ENTITY  newContactCmd.accesskey "k">
 <!ENTITY openMessageFileCmd.label "Datei öffnen…">
 <!ENTITY openMessageFileCmd.accesskey "ö">
 <!ENTITY saveAsMenu.label "Speichern als">
@@ -438,6 +444,9 @@
 <!ENTITY openConversationCmd.label "In Themenbaum anzeigen">
 <!ENTITY openConversationCmd.accesskey "z">
 <!ENTITY openConversationCmd.key "o">
+<!ENTITY openInConversationCmd.label "In Themenbaum anzeigen">
+<!ENTITY openInConversationCmd.accesskey "z">
+<!ENTITY openInConversationCmd.key "o">
 <!ENTITY openAttachmentListCmd.label "Anhänge">
 <!ENTITY openAttachmentListCmd.accesskey "h">
 <!ENTITY openFeedMessage1.label "Beim Öffnen eines Feed-Artikels">
@@ -602,6 +611,7 @@
 <!ENTITY tagButton.tooltip "Bei gewählten Nachrichten Schlagwörter hinzufügen/entfernen">
 <!ENTITY compactButton.tooltip "Gelöschte Nachrichten endgültig aus dem gewählten Ordner entfernen">
 <!ENTITY appmenuButton1.tooltip "Anwendungsmenü von &brandShortName; anzeigen">
+<!ENTITY addonsButton.tooltip "Add-ons verwalten">
 
 <!-- Toolbar Button Popup -->
 <!ENTITY buttonMenuForwardAsInline.label "Als eingebundenen Text">
@@ -646,6 +656,7 @@
 <!-- Folder Pane Context Menu -->
 <!ENTITY folderContextGetMessages.label "Nachrichten abrufen">
 <!ENTITY folderContextGetMessages.accesskey "c">
+<!ENTITY folderContextMarkAllFoldersRead.label "Alle Ordner als gelesen markieren">
 <!ENTITY folderContextPauseAllUpdates.label "Alle Aktualisierungen anhalten">
 <!ENTITY folderContextPauseUpdates.label "Aktualisierungen anhalten">
 <!ENTITY folderContextPauseUpdates.accesskey "g">
@@ -788,6 +799,8 @@
 <!ENTITY contextMoveMsgMenu.accesskey "v">
 <!ENTITY contextMoveCopyMsgRecentMenu.label "Letzte Ordner">
 <!ENTITY contextMoveCopyMsgRecentMenu.accesskey "z">
+<!ENTITY contextMoveCopyMsgFavoritesMenu.label "Favoriten">
+<!ENTITY contextMoveCopyMsgFavoritesMenu.accesskey "F">
 <!ENTITY contextCopyMsgMenu.label "Kopieren in">
 <!ENTITY contextCopyMsgMenu.accesskey "K">
 <!ENTITY contextKillThreadMenu.label "Thema ignorieren">

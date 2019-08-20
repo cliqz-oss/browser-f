@@ -14,23 +14,28 @@ function run_test() {
   });
   initTestDebuggerServer();
   gDebuggee = addTestGlobal("test-grips");
-  gDebuggee.eval(function stopMe(arg1) {
-    debugger;
-  }.toString());
+  gDebuggee.eval(
+    function stopMe(arg1) {
+      debugger;
+    }.toString()
+  );
 
   gClient = new DebuggerClient(DebuggerServer.connectPipe());
   gClient.connect().then(function() {
-    attachTestTabAndResume(gClient, "test-grips",
-                           function(response, targetFront, threadClient) {
-                             gThreadClient = threadClient;
-                             test_named_function();
-                           });
+    attachTestTabAndResume(gClient, "test-grips", function(
+      response,
+      targetFront,
+      threadClient
+    ) {
+      gThreadClient = threadClient;
+      test_named_function();
+    });
   });
   do_test_pending();
 }
 
 function test_named_function() {
-  gThreadClient.addOneTimeListener("paused", function(event, packet) {
+  gThreadClient.once("paused", function(packet) {
     const args = packet.frame.arguments;
 
     Assert.equal(args[0].class, "Function");
@@ -50,7 +55,7 @@ function test_named_function() {
 }
 
 function test_inferred_name_function() {
-  gThreadClient.addOneTimeListener("paused", function(event, packet) {
+  gThreadClient.once("paused", function(packet) {
     const args = packet.frame.arguments;
 
     Assert.equal(args[0].class, "Function");
@@ -73,7 +78,7 @@ function test_inferred_name_function() {
 }
 
 function test_anonymous_function() {
-  gThreadClient.addOneTimeListener("paused", function(event, packet) {
+  gThreadClient.once("paused", function(packet) {
     const args = packet.frame.arguments;
 
     Assert.equal(args[0].class, "Function");
@@ -96,4 +101,3 @@ function test_anonymous_function() {
 
   gDebuggee.eval("stopMe(function(foo, bar, baz) { })");
 }
-

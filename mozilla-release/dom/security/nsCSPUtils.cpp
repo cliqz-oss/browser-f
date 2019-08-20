@@ -10,6 +10,7 @@
 #include "nsCSPUtils.h"
 #include "nsDebug.h"
 #include "nsIConsoleService.h"
+#include "nsIChannel.h"
 #include "nsICryptoHash.h"
 #include "nsIScriptError.h"
 #include "nsIServiceManager.h"
@@ -84,8 +85,40 @@ void CSP_PercentDecodeStr(const nsAString& aEncStr, nsAString& outDecStr) {
   }
 }
 
-void CSP_GetLocalizedStr(const char* aName, const char16_t** aParams,
-                         uint32_t aLength, nsAString& outResult) {
+// The Content Security Policy should be inherited for
+// local schemes like: "about", "blob", "data", or "filesystem".
+// see: https://w3c.github.io/webappsec-csp/#initialize-document-csp
+bool CSP_ShouldResponseInheritCSP(nsIChannel* aChannel) {
+  if (!aChannel) {
+    return false;
+  }
+
+  nsCOMPtr<nsIURI> uri;
+  nsresult rv = aChannel->GetURI(getter_AddRefs(uri));
+  NS_ENSURE_SUCCESS(rv, false);
+
+  bool isAbout = (NS_SUCCEEDED(uri->SchemeIs("about", &isAbout)) && isAbout);
+  if (isAbout) {
+    nsAutoCString aboutSpec;
+    rv = uri->GetSpec(aboutSpec);
+    NS_ENSURE_SUCCESS(rv, false);
+    // also allow about:blank#foo
+    if (StringBeginsWith(aboutSpec, NS_LITERAL_CSTRING("about:blank")) ||
+        StringBeginsWith(aboutSpec, NS_LITERAL_CSTRING("about:srcdoc"))) {
+      return true;
+    }
+  }
+
+  bool isBlob = (NS_SUCCEEDED(uri->SchemeIs("blob", &isBlob)) && isBlob);
+  bool isData = (NS_SUCCEEDED(uri->SchemeIs("data", &isData)) && isData);
+  bool isFS = (NS_SUCCEEDED(uri->SchemeIs("filesystem", &isFS)) && isFS);
+  bool isJS = (NS_SUCCEEDED(uri->SchemeIs("javascript", &isJS)) && isJS);
+
+  return isBlob || isData || isFS || isJS;
+}
+
+void CSP_GetLocalizedStr(const char* aName, const nsTArray<nsString>& aParams,
+                         nsAString& outResult) {
   nsCOMPtr<nsIStringBundle> keyStringBundle;
   nsCOMPtr<nsIStringBundleService> stringBundleService =
       mozilla::services::GetStringBundleService();
@@ -100,7 +133,7 @@ void CSP_GetLocalizedStr(const char* aName, const char16_t** aParams,
   if (!keyStringBundle) {
     return;
   }
-  keyStringBundle->FormatStringFromName(aName, aParams, aLength, outResult);
+  keyStringBundle->FormatStringFromName(aName, aParams, outResult);
 }
 
 void CSP_LogStrMessage(const nsAString& aMsg) {
@@ -171,14 +204,14 @@ void CSP_LogMessage(const nsAString& aMessage, const nsAString& aSourceName,
 /**
  * Combines CSP_LogMessage and CSP_GetLocalizedStr into one call.
  */
-void CSP_LogLocalizedStr(const char* aName, const char16_t** aParams,
-                         uint32_t aLength, const nsAString& aSourceName,
+void CSP_LogLocalizedStr(const char* aName, const nsTArray<nsString>& aParams,
+                         const nsAString& aSourceName,
                          const nsAString& aSourceLine, uint32_t aLineNumber,
                          uint32_t aColumnNumber, uint32_t aFlags,
                          const nsACString& aCategory, uint64_t aInnerWindowID,
                          bool aFromPrivateWindow) {
   nsAutoString logMsg;
-  CSP_GetLocalizedStr(aName, aParams, aLength, logMsg);
+  CSP_GetLocalizedStr(aName, aParams, logMsg);
   CSP_LogMessage(logMsg, aSourceName, aSourceLine, aLineNumber, aColumnNumber,
                  aFlags, aCategory, aInnerWindowID, aFromPrivateWindow);
 }
@@ -600,6 +633,15 @@ bool nsCSPHostSrc::permits(nsIURI* aUri, const nsAString& aNonce,
   // just a specific scheme, the parser should generate a nsCSPSchemeSource.
   NS_ASSERTION((!mHost.IsEmpty()), "host can not be the empty string");
 
+  // Before we can check if the host matches, we have to
+  // extract the host part from aUri.
+  nsAutoCString uriHost;
+  nsresult rv = aUri->GetAsciiHost(uriHost);
+  NS_ENSURE_SUCCESS(rv, false);
+
+  nsString decodedUriHost;
+  CSP_PercentDecodeStr(NS_ConvertUTF8toUTF16(uriHost), decodedUriHost);
+
   // 2) host matching: Enforce a single *
   if (mHost.EqualsASCII("*")) {
     // The single ASTERISK character (*) does not match a URI's scheme of a type
@@ -615,24 +657,18 @@ bool nsCSPHostSrc::permits(nsIURI* aUri, const nsAString& aNonce,
     bool isFileScheme =
         (NS_SUCCEEDED(aUri->SchemeIs("filesystem", &isFileScheme)) &&
          isFileScheme);
-
     if (isBlobScheme || isDataScheme || isFileScheme) {
       return false;
     }
-    return true;
+
+    // If no scheme is present there also wont be a port and folder to check
+    // which means we can return early
+    if (mScheme.IsEmpty()) {
+      return true;
+    }
   }
-
-  // Before we can check if the host matches, we have to
-  // extract the host part from aUri.
-  nsAutoCString uriHost;
-  nsresult rv = aUri->GetAsciiHost(uriHost);
-  NS_ENSURE_SUCCESS(rv, false);
-
-  nsString decodedUriHost;
-  CSP_PercentDecodeStr(NS_ConvertUTF8toUTF16(uriHost), decodedUriHost);
-
   // 4.5) host matching: Check if the allowed host starts with a wilcard.
-  if (mHost.First() == '*') {
+  else if (mHost.First() == '*') {
     NS_ASSERTION(
         mHost[1] == '.',
         "Second character needs to be '.' whenever host starts with '*'");

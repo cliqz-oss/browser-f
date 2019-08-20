@@ -55,7 +55,6 @@
 #include "mozilla/Preferences.h"
 #include "mozilla/ResultExtensions.h"
 #include "mozilla/ScriptPreloader.h"
-#include "mozilla/dom/DOMPrefs.h"
 #include "mozilla/dom/ScriptSettings.h"
 #include "mozilla/ResultExtensions.h"
 #include "mozilla/UniquePtrExtensions.h"
@@ -93,7 +92,7 @@ static LazyLogModule gJSCLLog("JSComponentLoader");
 #define ERROR_SETTING_SYMBOL "%s - Could not set symbol '%s' on target object."
 
 static bool Dump(JSContext* cx, unsigned argc, Value* vp) {
-  if (!mozilla::dom::DOMPrefs::DumpEnabled()) {
+  if (!nsJSUtils::DumpEnabled()) {
     return true;
   }
 
@@ -589,8 +588,7 @@ void mozJSComponentLoader::CreateLoaderGlobal(JSContext* aCx,
   backstagePass->SetGlobalObject(global);
 
   JSAutoRealm ar(aCx, global);
-  if (!JS_DefineFunctions(aCx, global, gGlobalFun) ||
-      !JS_DefineProfilingFunctions(aCx, global)) {
+  if (!JS_DefineFunctions(aCx, global, gGlobalFun)) {
     return;
   }
 
@@ -862,8 +860,9 @@ nsresult mozJSComponentLoader::ObjectForLocation(
       JS::SourceText<mozilla::Utf8Unit> srcBuf;
       if (srcBuf.init(cx, buf.get(), map.size(),
                       JS::SourceOwnership::Borrowed)) {
-        script = reuseGlobal ? CompileForNonSyntacticScope(cx, options, srcBuf)
-                             : Compile(cx, options, srcBuf);
+        script = reuseGlobal ? CompileForNonSyntacticScopeDontInflate(
+                                   cx, options, srcBuf)
+                             : CompileDontInflate(cx, options, srcBuf);
       } else {
         MOZ_ASSERT(!script);
       }
@@ -874,8 +873,9 @@ nsresult mozJSComponentLoader::ObjectForLocation(
       JS::SourceText<mozilla::Utf8Unit> srcBuf;
       if (srcBuf.init(cx, str.get(), str.Length(),
                       JS::SourceOwnership::Borrowed)) {
-        script = reuseGlobal ? CompileForNonSyntacticScope(cx, options, srcBuf)
-                             : Compile(cx, options, srcBuf);
+        script = reuseGlobal ? CompileForNonSyntacticScopeDontInflate(
+                                   cx, options, srcBuf)
+                             : CompileDontInflate(cx, options, srcBuf);
       } else {
         MOZ_ASSERT(!script);
       }

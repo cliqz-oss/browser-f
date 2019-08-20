@@ -603,6 +603,12 @@ void MacroAssembler::Push(FloatRegister f) {
   adjustFrame(sizeof(double));
 }
 
+void MacroAssembler::PushBoxed(FloatRegister reg) {
+  subFromStackPtr(Imm32(sizeof(double)));
+  boxDouble(reg, Address(getStackPointer(), 0));
+  adjustFrame(sizeof(double));
+}
+
 void MacroAssembler::Pop(Register reg) {
   pop(reg);
   adjustFrame(-1 * int64_t(sizeof(int64_t)));
@@ -675,7 +681,7 @@ void MacroAssembler::patchCall(uint32_t callerOffset, uint32_t calleeOffset) {
   ptrdiff_t relTarget = (int)calleeOffset - ((int)callerOffset - 4);
   ptrdiff_t relTarget00 = relTarget >> 2;
   MOZ_RELEASE_ASSERT((relTarget & 0x3) == 0);
-  MOZ_RELEASE_ASSERT(vixl::is_int26(relTarget00));
+  MOZ_RELEASE_ASSERT(vixl::IsInt26(relTarget00));
   bl(inst, relTarget00);
   AutoFlushICache::flush(uintptr_t(inst), 4);
 }
@@ -1036,7 +1042,7 @@ void MacroAssembler::storeUnboxedValue(const ConstantOrRegister& value,
                                        MIRType valueType, const T& dest,
                                        MIRType slotType) {
   if (valueType == MIRType::Double) {
-    storeDouble(value.reg().typedReg().fpu(), dest);
+    boxDouble(value.reg().typedReg().fpu(), dest);
     return;
   }
 

@@ -124,8 +124,8 @@ bool IsImageExtractionAllowed(Document* aDocument, JSContext* aCx,
   // Check if the site has permission to extract canvas data.
   // Either permit or block extraction if a stored permission setting exists.
   uint32_t permission;
-  rv = permissionManager->TestPermission(
-      topLevelDocURI, PERMISSION_CANVAS_EXTRACT_DATA, &permission);
+  rv = permissionManager->TestPermissionFromPrincipal(
+      principal, PERMISSION_CANVAS_EXTRACT_DATA, &permission);
   NS_ENSURE_SUCCESS(rv, false);
   switch (permission) {
     case nsIPermissionManager::ALLOW_ACTION:
@@ -167,11 +167,14 @@ bool IsImageExtractionAllowed(Document* aDocument, JSContext* aCx,
 
   // Prompt the user (asynchronous).
   nsPIDOMWindowOuter* win = aDocument->GetWindow();
+  nsAutoCString origin;
+  rv = principal->GetOrigin(origin);
+  NS_ENSURE_SUCCESS(rv, false);
+
   if (XRE_IsContentProcess()) {
     BrowserChild* browserChild = BrowserChild::GetFrom(win);
     if (browserChild) {
-      browserChild->SendShowCanvasPermissionPrompt(topLevelDocURISpec,
-                                                   isAutoBlockCanvas);
+      browserChild->SendShowCanvasPermissionPrompt(origin, isAutoBlockCanvas);
     }
   } else {
     nsCOMPtr<nsIObserverService> obs = mozilla::services::GetObserverService();
@@ -180,7 +183,7 @@ bool IsImageExtractionAllowed(Document* aDocument, JSContext* aCx,
                            isAutoBlockCanvas
                                ? TOPIC_CANVAS_PERMISSIONS_PROMPT_HIDE_DOORHANGER
                                : TOPIC_CANVAS_PERMISSIONS_PROMPT,
-                           NS_ConvertUTF8toUTF16(topLevelDocURISpec).get());
+                           NS_ConvertUTF8toUTF16(origin).get());
     }
   }
 
@@ -291,14 +294,19 @@ bool HasDrawWindowPrivilege(JSContext* aCx, JSObject* /* unused */) {
                                              nsGkAtoms::all_urlsPermission);
 }
 
-bool CheckWriteOnlySecurity(bool aCORSUsed, nsIPrincipal* aPrincipal) {
+bool CheckWriteOnlySecurity(bool aCORSUsed, nsIPrincipal* aPrincipal,
+                            bool aHadCrossOriginRedirects) {
   if (!aPrincipal) {
     return true;
   }
 
   if (!aCORSUsed) {
+    if (aHadCrossOriginRedirects) {
+      return true;
+    }
+
     nsIGlobalObject* incumbentSettingsObject = dom::GetIncumbentGlobal();
-    if (NS_WARN_IF(!incumbentSettingsObject)) {
+    if (!incumbentSettingsObject) {
       return true;
     }
 

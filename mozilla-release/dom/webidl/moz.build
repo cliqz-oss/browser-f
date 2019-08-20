@@ -331,9 +331,6 @@ with Files("WebGL*"):
 with Files("WebGPU*"):
     BUG_COMPONENT = ("Core", "Canvas: WebGL")
 
-with Files("WebKitCSSMatrix.webidl"):
-    BUG_COMPONENT = ("Core", "DOM: CSS Object Model")
-
 with Files("Webrtc*"):
     BUG_COMPONENT = ("Core", "WebRTC")
 
@@ -361,6 +358,7 @@ PREPROCESSED_WEBIDL_FILES = [
 WEBIDL_FILES = [
     'AbortController.webidl',
     'AbortSignal.webidl',
+    'AbstractRange.webidl',
     'AbstractWorker.webidl',
     'AddonManager.webidl',
     'AnalyserNode.webidl',
@@ -400,7 +398,6 @@ WEBIDL_FILES = [
     'BeforeUnloadEvent.webidl',
     'BiquadFilterNode.webidl',
     'Blob.webidl',
-    'BoxObject.webidl',
     'BroadcastChannel.webidl',
     'BrowserElement.webidl',
     'BrowserElementDictionaries.webidl',
@@ -467,11 +464,9 @@ WEBIDL_FILES = [
     'Directory.webidl',
     'Document.webidl',
     'DocumentFragment.webidl',
-    'DocumentL10n.webidl',
     'DocumentOrShadowRoot.webidl',
     'DocumentTimeline.webidl',
     'DocumentType.webidl',
-    'DOMError.webidl',
     'DOMException.webidl',
     'DOMImplementation.webidl',
     'DOMMatrix.webidl',
@@ -494,6 +489,7 @@ WEBIDL_FILES = [
     'EventTarget.webidl',
     'ExtendableEvent.webidl',
     'ExtendableMessageEvent.webidl',
+    'FailedCertSecurityInfo.webidl',
     'FakePluginTagInit.webidl',
     'FeaturePolicy.webidl',
     'Fetch.webidl',
@@ -519,8 +515,10 @@ WEBIDL_FILES = [
     'GainNode.webidl',
     'Gamepad.webidl',
     'GamepadHapticActuator.webidl',
+    'GamepadLightIndicator.webidl',
     'GamepadPose.webidl',
     'GamepadServiceTest.webidl',
+    'GamepadTouch.webidl',
     'Geolocation.webidl',
     'GeometryUtils.webidl',
     'GetUserMediaRequest.webidl',
@@ -634,12 +632,12 @@ WEBIDL_FILES = [
     'KeyframeAnimationOptions.webidl',
     'KeyframeEffect.webidl',
     'KeyIdsInitData.webidl',
-    'L10nUtils.webidl',
     'LegacyQueryInterface.webidl',
     'LinkStyle.webidl',
     'LoadURIOptions.webidl',
     'Location.webidl',
     'MediaCapabilities.webidl',
+    'MediaDebugInfo.webidl',
     'MediaDeviceInfo.webidl',
     'MediaDevices.webidl',
     'MediaElementAudioSourceNode.webidl',
@@ -768,6 +766,7 @@ WEBIDL_FILES = [
     'SocketCommon.webidl',
     'SourceBuffer.webidl',
     'SourceBufferList.webidl',
+    'StaticRange.webidl',
     'StereoPannerNode.webidl',
     'Storage.webidl',
     'StorageEvent.webidl',
@@ -933,7 +932,6 @@ WEBIDL_FILES = [
     'WebGLRenderingContext.webidl',
     'WebGPU.webidl',
     'WebGPUExtras.webidl',
-    'WebKitCSSMatrix.webidl',
     'WebSocket.webidl',
     'WheelEvent.webidl',
     'WidevineCDMManifest.webidl',
@@ -965,7 +963,6 @@ WEBIDL_FILES = [
 if CONFIG['MOZ_WEBRTC']:
     WEBIDL_FILES += [
         'PeerConnectionImpl.webidl',
-        'PeerConnectionImplEnums.webidl',
         'PeerConnectionObserver.webidl',
         'PeerConnectionObserverEnums.webidl',
         'RTCCertificate.webidl',

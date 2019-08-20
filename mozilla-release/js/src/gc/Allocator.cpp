@@ -96,7 +96,7 @@ template <AllowGC allowGC>
 JSObject* GCRuntime::tryNewNurseryObject(JSContext* cx, size_t thingSize,
                                          size_t nDynamicSlots,
                                          const Class* clasp) {
-  MOZ_RELEASE_ASSERT(!cx->helperThread());
+  MOZ_RELEASE_ASSERT(!cx->isHelperThreadContext());
 
   MOZ_ASSERT(cx->isNurseryAllocAllowed());
   MOZ_ASSERT(!cx->isNurseryAllocSuppressed());
@@ -140,6 +140,8 @@ JSObject* GCRuntime::tryNewTenuredObject(JSContext* cx, AllocKind kind,
   if (obj) {
     if (nDynamicSlots) {
       static_cast<NativeObject*>(obj)->initSlots(slots);
+      AddCellMemory(obj, nDynamicSlots * sizeof(HeapSlot),
+                    MemoryUse::ObjectSlots);
     }
   } else {
     js_free(slots);
@@ -155,7 +157,7 @@ JSString* GCRuntime::tryNewNurseryString(JSContext* cx, size_t thingSize,
                                          AllocKind kind) {
   MOZ_ASSERT(IsNurseryAllocable(kind));
   MOZ_ASSERT(cx->isNurseryAllocAllowed());
-  MOZ_ASSERT(!cx->helperThread());
+  MOZ_ASSERT(!cx->isHelperThreadContext());
   MOZ_ASSERT(!cx->isNurseryAllocSuppressed());
   MOZ_ASSERT(!cx->zone()->isAtomsZone());
 
@@ -244,7 +246,7 @@ T* js::Allocate(JSContext* cx) {
   size_t thingSize = sizeof(T);
   MOZ_ASSERT(thingSize == Arena::thingSize(kind));
 
-  if (!cx->helperThread()) {
+  if (!cx->isHelperThreadContext()) {
     if (!cx->runtime()->gc.checkAllocatorState<allowGC>(cx, kind)) {
       return nullptr;
     }
@@ -300,7 +302,7 @@ void GCRuntime::attemptLastDitchGC(JSContext* cx) {
   // size limit. Try to perform an all-compartments, non-incremental, shrinking
   // GC and wait for it to finish.
 
-  if (cx->helperThread()) {
+  if (cx->isHelperThreadContext()) {
     return;
   }
 
@@ -369,8 +371,9 @@ bool GCRuntime::gcIfNeededAtAllocation(JSContext* cx) {
   // If we have grown past our GC heap threshold while in the middle of
   // an incremental GC, we're growing faster than we're GCing, so stop
   // the world and do a full, non-incremental GC right now, if possible.
+  Zone* zone = cx->zone();
   if (isIncrementalGCInProgress() &&
-      cx->zone()->totalBytes() > cx->zone()->threshold.gcTriggerBytes()) {
+      zone->zoneSize.gcBytes() > zone->threshold.gcTriggerBytes()) {
     PrepareZoneForGC(cx->zone());
     gc(GC_NORMAL, JS::GCReason::INCREMENTAL_TOO_SLOW);
   }
@@ -382,7 +385,7 @@ template <typename T>
 /* static */
 void GCRuntime::checkIncrementalZoneState(JSContext* cx, T* t) {
 #ifdef DEBUG
-  if (cx->helperThread() || !t) {
+  if (cx->isHelperThreadContext() || !t) {
     return;
   }
 
@@ -428,7 +431,7 @@ TenuredCell* GCRuntime::refillFreeListFromAnyThread(JSContext* cx,
                                                     AllocKind thingKind) {
   MOZ_ASSERT(cx->freeLists().isEmpty(thingKind));
 
-  if (!cx->helperThread()) {
+  if (!cx->isHelperThreadContext()) {
     return refillFreeListFromMainThread(cx, thingKind);
   }
 
@@ -600,7 +603,7 @@ Arena* GCRuntime::allocateArena(Chunk* chunk, Zone* zone, AllocKind thingKind,
 
   // Trigger an incremental slice if needed.
   if (checkThresholds != ShouldCheckThresholds::DontCheckThresholds) {
-    maybeAllocTriggerZoneGC(zone);
+    maybeAllocTriggerZoneGC(zone, ArenaSize);
   }
 
   return arena;

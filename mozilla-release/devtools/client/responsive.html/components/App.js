@@ -6,6 +6,7 @@
 
 "use strict";
 
+const Services = require("Services");
 const { createFactory, PureComponent } = require("devtools/client/shared/vendor/react");
 const dom = require("devtools/client/shared/vendor/react-dom-factories");
 const PropTypes = require("devtools/client/shared/vendor/react-prop-types");
@@ -38,10 +39,12 @@ const {
 const {
   changeDevice,
   changePixelRatio,
+  changeViewportAngle,
   removeDeviceAssociation,
   resizeViewport,
   rotateViewport,
 } = require("../actions/viewports");
+const { getOrientation } = require("../utils/orientation");
 
 const Types = require("../types");
 
@@ -67,6 +70,7 @@ class App extends PureComponent {
     this.onChangePixelRatio = this.onChangePixelRatio.bind(this);
     this.onChangeTouchSimulation = this.onChangeTouchSimulation.bind(this);
     this.onChangeUserAgent = this.onChangeUserAgent.bind(this);
+    this.onChangeViewportOrientation = this.onChangeViewportOrientation.bind(this);
     this.onContentResize = this.onContentResize.bind(this);
     this.onDeviceListUpdate = this.onDeviceListUpdate.bind(this);
     this.onEditCustomDevice = this.onEditCustomDevice.bind(this);
@@ -114,7 +118,12 @@ class App extends PureComponent {
     window.postMessage({
       type: "change-device",
       device,
+      viewport: this.props.viewports[id],
     }, "*");
+
+    const orientation = getOrientation(device, this.props.viewports[0]);
+
+    this.props.dispatch(changeViewportAngle(0, orientation.angle));
     this.props.dispatch(changeDevice(id, device.name, deviceType));
     this.props.dispatch(changePixelRatio(id, device.pixelRatio));
     this.props.dispatch(changeUserAgent(device.userAgent));
@@ -152,6 +161,19 @@ class App extends PureComponent {
       userAgent,
     }, "*");
     this.props.dispatch(changeUserAgent(userAgent));
+  }
+
+  onChangeViewportOrientation(id, type, angle, isViewportRotated = false) {
+    window.postMessage({
+      type: "viewport-orientation-change",
+      orientationType: type,
+      angle,
+      isViewportRotated,
+    }, "*");
+
+    if (isViewportRotated) {
+      this.props.dispatch(changeViewportAngle(id, angle));
+    }
   }
 
   onContentResize({ width, height }) {
@@ -228,7 +250,39 @@ class App extends PureComponent {
     }, "*");
   }
 
+  /**
+   * Dispatches the rotateViewport action creator. This utilized by the RDM toolbar as
+   * a prop.
+   *
+   * @param {Number} id
+   *        The viewport ID.
+   */
   onRotateViewport(id) {
+    let currentDevice;
+    const viewport = this.props.viewports[id];
+
+    for (const type of this.props.devices.types) {
+      for (const device of this.props.devices[type]) {
+        if (viewport.device === device.name) {
+          currentDevice = device;
+        }
+      }
+    }
+
+    // If no device is selected, then assume the selected device's primary orientation is
+    // opposite of the viewport orientation.
+    if (!currentDevice) {
+      currentDevice = {
+        height: viewport.width,
+        width: viewport.height,
+      };
+    }
+
+    const currentAngle = Services.prefs.getIntPref("devtools.responsive.viewport.angle");
+    const angleToRotateTo = currentAngle === 90 ? 0 : 90;
+    const { type, angle } = getOrientation(currentDevice, viewport, angleToRotateTo);
+
+    this.onChangeViewportOrientation(id, type, angle, true);
     this.props.dispatch(rotateViewport(id));
   }
 
@@ -276,6 +330,7 @@ class App extends PureComponent {
       onChangePixelRatio,
       onChangeTouchSimulation,
       onChangeUserAgent,
+      onChangeViewportOrientation,
       onContentResize,
       onDeviceListUpdate,
       onEditCustomDevice,
@@ -335,6 +390,7 @@ class App extends PureComponent {
           screenshot,
           viewports,
           onBrowserMounted,
+          onChangeViewportOrientation,
           onContentResize,
           onRemoveDeviceAssociation,
           doResizeViewport,

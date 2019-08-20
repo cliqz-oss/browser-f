@@ -16,6 +16,7 @@
 #include "jstypes.h"  // JS_PUBLIC_API
 
 struct JSContext;
+class JSObject;
 struct JSRuntime;
 
 struct JSFreeOp {
@@ -67,7 +68,16 @@ namespace JS {
  */
 #define JS_FOR_EACH_PUBLIC_MEMORY_USE(_) \
   _(XPCWrappedNative)                    \
-  _(DOMBinding)
+  _(DOMBinding)                          \
+  _(CTypeFFIType)                        \
+  _(CTypeFFITypeElements)                \
+  _(CTypeFunctionInfo)                   \
+  _(CTypeFieldInfo)                      \
+  _(CDataBufferPtr)                      \
+  _(CDataBuffer)                         \
+  _(CClosureInfo)                        \
+  _(CTypesInt64)                         \
+  _(PerfMeasurement)
 
 enum class MemoryUse : uint8_t {
 #define DEFINE_MEMORY_USE(Name) Name,

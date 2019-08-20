@@ -104,9 +104,9 @@ AsyncShutdownTimeout:
 
 AvailablePageFile:
   description: >
-    Windows-only, maximum amount of memory that can be committed.  This
-    annotation is populated with the contents of the MEMORYSTATUSEX's structure
-    ullAvailPageFile field.
+    Windows-only, available commit-space in bytes.  This annotation is computed
+    from the PERFORMANCE_INFORMATION structure by substracting the CommitTotal
+    field from the CommitLimit field.
   type: string
   ping: true
 
@@ -260,6 +260,12 @@ DeviceResetReason:
   description: >
     Reason why a DirectX device has been reset, Windows only.
   type: string
+
+DOMFissionEnabled:
+  description: >
+    Set to 1 when DOM fission is enabled, and subframes are potentially loaded
+    in a separate process.
+  type: boolean
 
 DOMIPCEnabled:
   description: >
@@ -473,6 +479,11 @@ IsWayland:
     If true then the Wayland windowing system was in use.
   type: boolean
 
+IsWaylandDRM:
+  description: >
+    If true then the Wayland DRM backend was in use.
+  type: boolean
+
 JavaStackTrace:
   description: >
     Java stack trace, only present on Firefox for Android if we encounter an
@@ -507,6 +518,16 @@ LocalStorageShutdownTimeout:
     This annotation is present if LocalStorage shutdown was not finished in time
     and the browser was crashed instead of waiting for LocalStorage shutdown to
     finish. The condition that caused the hang is contained in the annotation.
+    The condition is constructed by stringifying status of global arrays and
+    hash tables that blocked LocalStorage shutdown (gPrepareDatastoreOps,
+    gDatastores and gLiveDatabases). gDatastores and gLiveDatabases currently
+    only report the number of elements. gPrepareDatastoreOps reports the number
+    of elements and status of individual elements (duplicit entries are removed):
+    "gPrepareDatastoreOps: N (element1, element2, elementN)" where N is the
+    number of elements. Status of individual elements is constructed by taking
+    PrepareDatastoreOp's sanitized origin string, stringified state and
+    stringified nested state. A full example:
+    "gPrepareDatastoreOps: 1 (http://aaa.aaa.aaa*Nesting*DatabaseWorkOpen)"
   type: string
   content: false
   ping: true
@@ -763,9 +784,9 @@ ThreadIdNameMapping:
 
 TotalPageFile:
   description: >
-    Windows-only, current committed memory limit. This annotation is
-    populated with the contents of the MEMORYSTATUSEX's structure
-    ullTotalPageFile field.
+    Windows-only, maximum amount of memory that can be committed.  This
+    annotation is populated with the contents of the PERFORMANCE_INFORMATION's
+    structure CommitLimit field.
   type: string
   ping: true
 

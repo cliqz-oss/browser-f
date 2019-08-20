@@ -118,6 +118,12 @@ impl FrameId {
     pub const INVALID: FrameId = FrameId(0);
 }
 
+impl Default for FrameId {
+    fn default() -> Self {
+        FrameId::INVALID
+    }
+}
+
 impl ::std::ops::Add<usize> for FrameId {
     type Output = Self;
     fn add(self, other: usize) -> FrameId {
@@ -193,7 +199,7 @@ impl FrameStamp {
         FrameStamp {
             id: FrameId::first(),
             time: SystemTime::now(),
-            document_id: document_id,
+            document_id,
         }
     }
 
@@ -296,6 +302,10 @@ impl DataStores {
             PrimitiveInstanceKind::YuvImage { data_handle, .. } => {
                 let prim_data = &self.yuv_image[data_handle];
                 &prim_data.common
+            }
+            PrimitiveInstanceKind::PushClipChain |
+            PrimitiveInstanceKind::PopClipChain => {
+                unreachable!();
             }
         }
     }
@@ -486,6 +496,16 @@ impl Document {
                     self.frame_is_valid = false;
                 }
             }
+            FrameMsg::SetIsTransformPinchZooming(is_zooming, animation_id) => {
+                let node = self.clip_scroll_tree.spatial_nodes.iter_mut()
+                    .find(|node| node.is_transform_bound_to_property(animation_id));
+                if let Some(node) = node {
+                    if node.is_pinch_zooming != is_zooming {
+                        node.is_pinch_zooming = is_zooming;
+                        self.frame_is_valid = false;
+                    }
+                }
+            }
         }
 
         DocumentOps::nop()
@@ -617,7 +637,6 @@ impl Document {
         if let Some(frame_builder) = self.frame_builder.take() {
             let globals = frame_builder.destroy(
                 &mut retained_tiles,
-                &self.clip_scroll_tree,
             );
 
             // Provide any cached tiles from the previous frame builder to
@@ -686,9 +705,9 @@ pub struct RenderBackend {
     frame_config: FrameBuilderConfig,
     documents: FastHashMap<DocumentId, Document>,
 
-    notifier: Box<RenderNotifier>,
-    recorder: Option<Box<ApiRecordingReceiver>>,
-    sampler: Option<Box<AsyncPropertySampler + Send>>,
+    notifier: Box<dyn RenderNotifier>,
+    recorder: Option<Box<dyn ApiRecordingReceiver>>,
+    sampler: Option<Box<dyn AsyncPropertySampler + Send>>,
     size_of_ops: Option<MallocSizeOfOps>,
     debug_flags: DebugFlags,
     namespace_alloc_by_client: bool,
@@ -706,10 +725,10 @@ impl RenderBackend {
         scene_rx: Receiver<SceneBuilderResult>,
         default_device_pixel_ratio: f32,
         resource_cache: ResourceCache,
-        notifier: Box<RenderNotifier>,
+        notifier: Box<dyn RenderNotifier>,
         frame_config: FrameBuilderConfig,
-        recorder: Option<Box<ApiRecordingReceiver>>,
-        sampler: Option<Box<AsyncPropertySampler + Send>>,
+        recorder: Option<Box<dyn ApiRecordingReceiver>>,
+        sampler: Option<Box<dyn AsyncPropertySampler + Send>>,
         size_of_ops: Option<MallocSizeOfOps>,
         debug_flags: DebugFlags,
         namespace_alloc_by_client: bool,
@@ -1806,7 +1825,7 @@ impl RenderBackend {
                 .expect(&format!("Unable to open {}.ron", data_stores_name));
 
             let doc = Document {
-                id: id,
+                id,
                 scene: scene.clone(),
                 removed_pipelines: Vec::new(),
                 view: view.clone(),

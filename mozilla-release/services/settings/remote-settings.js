@@ -12,31 +12,48 @@ var EXPORTED_SYMBOLS = [
   "remoteSettingsBroadcastHandler",
 ];
 
-const {Services} = ChromeUtils.import("resource://gre/modules/Services.jsm");
-const {XPCOMUtils} = ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+const { Services } = ChromeUtils.import("resource://gre/modules/Services.jsm");
+const { XPCOMUtils } = ChromeUtils.import(
+  "resource://gre/modules/XPCOMUtils.jsm"
+);
 
-ChromeUtils.defineModuleGetter(this, "UptakeTelemetry",
-                               "resource://services-common/uptake-telemetry.js");
-ChromeUtils.defineModuleGetter(this, "pushBroadcastService",
-                               "resource://gre/modules/PushBroadcastService.jsm");
-ChromeUtils.defineModuleGetter(this, "RemoteSettingsClient",
-                               "resource://services-settings/RemoteSettingsClient.jsm");
-ChromeUtils.defineModuleGetter(this, "Utils",
-                               "resource://services-settings/Utils.jsm");
-ChromeUtils.defineModuleGetter(this, "FilterExpressions",
-                               "resource://gre/modules/components-utils/FilterExpressions.jsm");
+ChromeUtils.defineModuleGetter(
+  this,
+  "UptakeTelemetry",
+  "resource://services-common/uptake-telemetry.js"
+);
+ChromeUtils.defineModuleGetter(
+  this,
+  "pushBroadcastService",
+  "resource://gre/modules/PushBroadcastService.jsm"
+);
+ChromeUtils.defineModuleGetter(
+  this,
+  "RemoteSettingsClient",
+  "resource://services-settings/RemoteSettingsClient.jsm"
+);
+ChromeUtils.defineModuleGetter(
+  this,
+  "Utils",
+  "resource://services-settings/Utils.jsm"
+);
+ChromeUtils.defineModuleGetter(
+  this,
+  "FilterExpressions",
+  "resource://gre/modules/components-utils/FilterExpressions.jsm"
+);
 
 XPCOMUtils.defineLazyGlobalGetters(this, ["fetch"]);
 
-const PREF_SETTINGS_DEFAULT_BUCKET     = "services.settings.default_bucket";
-const PREF_SETTINGS_BRANCH             = "services.settings.";
-const PREF_SETTINGS_SERVER             = "server";
-const PREF_SETTINGS_DEFAULT_SIGNER     = "default_signer";
-const PREF_SETTINGS_SERVER_BACKOFF     = "server.backoff";
-const PREF_SETTINGS_LAST_UPDATE        = "last_update_seconds";
-const PREF_SETTINGS_LAST_ETAG          = "last_etag";
+const PREF_SETTINGS_DEFAULT_BUCKET = "services.settings.default_bucket";
+const PREF_SETTINGS_BRANCH = "services.settings.";
+const PREF_SETTINGS_SERVER = "server";
+const PREF_SETTINGS_DEFAULT_SIGNER = "default_signer";
+const PREF_SETTINGS_SERVER_BACKOFF = "server.backoff";
+const PREF_SETTINGS_LAST_UPDATE = "last_update_seconds";
+const PREF_SETTINGS_LAST_ETAG = "last_etag";
 const PREF_SETTINGS_CLOCK_SKEW_SECONDS = "clock_skew_seconds";
-const PREF_SETTINGS_LOAD_DUMP          = "load_dump";
+const PREF_SETTINGS_LOAD_DUMP = "load_dump";
 
 // Telemetry identifiers.
 const TELEMETRY_COMPONENT = "remotesettings";
@@ -52,7 +69,12 @@ const DEFAULT_SIGNER = "remote-settings.content-signature.mozilla.org";
 XPCOMUtils.defineLazyGetter(this, "gPrefs", () => {
   return Services.prefs.getBranch(PREF_SETTINGS_BRANCH);
 });
-XPCOMUtils.defineLazyPreferenceGetter(this, "gServerURL", PREF_SETTINGS_BRANCH + PREF_SETTINGS_SERVER);
+XPCOMUtils.defineLazyGetter(this, "console", () => Utils.log);
+XPCOMUtils.defineLazyPreferenceGetter(
+  this,
+  "gServerURL",
+  PREF_SETTINGS_BRANCH + PREF_SETTINGS_SERVER
+);
 
 /**
  * Default entry filtering function, in charge of excluding remote settings entries
@@ -78,7 +100,6 @@ async function jexlFilterFunc(entry, environment) {
   return result ? entry : null;
 }
 
-
 function remoteSettingsFunction() {
   const _clients = new Map();
   let _invalidatePolling = false;
@@ -101,12 +122,16 @@ function remoteSettingsFunction() {
     // Get or instantiate a remote settings client.
     if (!_clients.has(collectionName)) {
       // Register a new client!
-      const c = new RemoteSettingsClient(collectionName, { ...defaultOptions, ...options });
+      const c = new RemoteSettingsClient(collectionName, {
+        ...defaultOptions,
+        ...options,
+      });
       // Store instance for later call.
       _clients.set(collectionName, c);
       // Invalidate the polling status, since we want the new collection to
       // be taken into account.
       _invalidatePolling = true;
+      console.debug(`Instantiated new client ${c.identifier}`);
     }
     return _clients.get(collectionName);
   };
@@ -126,7 +151,9 @@ function remoteSettingsFunction() {
     // therefore we can instantiate a client with the default options.
     // So if we have a local database or if we ship a JSON dump, then it means that
     // this client is known but it was not registered yet (eg. calling module not "imported" yet).
-    if (bucketName == Services.prefs.getCharPref(PREF_SETTINGS_DEFAULT_BUCKET)) {
+    if (
+      bucketName == Services.prefs.getCharPref(PREF_SETTINGS_DEFAULT_BUCKET)
+    ) {
       const c = new RemoteSettingsClient(collectionName, defaultOptions);
       const [dbExists, localDump] = await Promise.all([
         Utils.hasLocalData(c),
@@ -140,6 +167,7 @@ function remoteSettingsFunction() {
     // Mainly because we cannot guess which `signerName` has to be used for example.
     // And we don't want to synchronize data for collections in the main bucket that are
     // completely unknown (ie. no database and no JSON dump).
+    console.debug(`No known client for ${bucketName}/${collectionName}`);
     return null;
   }
 
@@ -151,7 +179,10 @@ function remoteSettingsFunction() {
    * @param {string} options.trigger           (optional) label to identify what triggered this sync (eg. ``"timer"``, default: `"manual"`)
    * @returns {Promise} or throws error if something goes wrong.
    */
-  remoteSettings.pollChanges = async ({ expectedTimestamp, trigger = "manual" } = {}) => {
+  remoteSettings.pollChanges = async ({
+    expectedTimestamp,
+    trigger = "manual",
+  } = {}) => {
     const startedAt = new Date();
     let pollTelemetryArgs = {
       source: TELEMETRY_SOURCE_POLL,
@@ -160,26 +191,47 @@ function remoteSettingsFunction() {
 
     // Check if the server backoff time is elapsed.
     if (gPrefs.prefHasUserValue(PREF_SETTINGS_SERVER_BACKOFF)) {
-      const backoffReleaseTime = gPrefs.getCharPref(PREF_SETTINGS_SERVER_BACKOFF);
-      const remainingMilliseconds = parseInt(backoffReleaseTime, 10) - Date.now();
+      const backoffReleaseTime = gPrefs.getCharPref(
+        PREF_SETTINGS_SERVER_BACKOFF
+      );
+      const remainingMilliseconds =
+        parseInt(backoffReleaseTime, 10) - Date.now();
       if (remainingMilliseconds > 0) {
         // Backoff time has not elapsed yet.
-        await UptakeTelemetry.report(TELEMETRY_COMPONENT, UptakeTelemetry.STATUS.BACKOFF, pollTelemetryArgs);
-        throw new Error(`Server is asking clients to back off; retry in ${Math.ceil(remainingMilliseconds / 1000)}s.`);
+        await UptakeTelemetry.report(
+          TELEMETRY_COMPONENT,
+          UptakeTelemetry.STATUS.BACKOFF,
+          pollTelemetryArgs
+        );
+        throw new Error(
+          `Server is asking clients to back off; retry in ${Math.ceil(
+            remainingMilliseconds / 1000
+          )}s.`
+        );
       } else {
         gPrefs.clearUserPref(PREF_SETTINGS_SERVER_BACKOFF);
       }
     }
 
-    Services.obs.notifyObservers(null, "remote-settings:changes-poll-start", JSON.stringify({ expectedTimestamp }));
+    console.info("Start polling for changes");
+    Services.obs.notifyObservers(
+      null,
+      "remote-settings:changes-poll-start",
+      JSON.stringify({ expectedTimestamp })
+    );
 
     // Do we have the latest version already?
     // Every time we register a new client, we have to fetch the whole list again.
-    const lastEtag = _invalidatePolling ? "" : gPrefs.getCharPref(PREF_SETTINGS_LAST_ETAG, "");
+    const lastEtag = _invalidatePolling
+      ? ""
+      : gPrefs.getCharPref(PREF_SETTINGS_LAST_ETAG, "");
 
     let pollResult;
     try {
-      pollResult = await Utils.fetchLatestChanges(gServerURL, { expectedTimestamp, lastEtag });
+      pollResult = await Utils.fetchLatestChanges(gServerURL, {
+        expectedTimestamp,
+        lastEtag,
+      });
     } catch (e) {
       // Report polling error to Uptake Telemetry.
       let reportStatus;
@@ -196,23 +248,42 @@ function remoteSettingsFunction() {
       } else {
         reportStatus = UptakeTelemetry.STATUS.UNKNOWN_ERROR;
       }
-      await UptakeTelemetry.report(TELEMETRY_COMPONENT, reportStatus, pollTelemetryArgs);
+      await UptakeTelemetry.report(
+        TELEMETRY_COMPONENT,
+        reportStatus,
+        pollTelemetryArgs
+      );
       // No need to go further.
       throw new Error(`Polling for changes failed: ${e.message}.`);
     }
 
-    const { serverTimeMillis, changes, currentEtag, backoffSeconds, ageSeconds } = pollResult;
+    const {
+      serverTimeMillis,
+      changes,
+      currentEtag,
+      backoffSeconds,
+      ageSeconds,
+    } = pollResult;
 
     // Report age of server data in Telemetry.
     pollTelemetryArgs = { age: ageSeconds, ...pollTelemetryArgs };
 
     // Report polling success to Uptake Telemetry.
-    const reportStatus = changes.length === 0 ? UptakeTelemetry.STATUS.UP_TO_DATE
-                                              : UptakeTelemetry.STATUS.SUCCESS;
-    await UptakeTelemetry.report(TELEMETRY_COMPONENT, reportStatus, pollTelemetryArgs);
+    const reportStatus =
+      changes.length === 0
+        ? UptakeTelemetry.STATUS.UP_TO_DATE
+        : UptakeTelemetry.STATUS.SUCCESS;
+    await UptakeTelemetry.report(
+      TELEMETRY_COMPONENT,
+      reportStatus,
+      pollTelemetryArgs
+    );
 
     // Check if the server asked the clients to back off (for next poll).
     if (backoffSeconds) {
+      console.info(
+        "Server asks clients to backoff for ${backoffSeconds} seconds"
+      );
       const backoffReleaseTime = Date.now() + backoffSeconds * 1000;
       gPrefs.setCharPref(PREF_SETTINGS_SERVER_BACKOFF, backoffReleaseTime);
     }
@@ -245,8 +316,12 @@ function remoteSettingsFunction() {
         await client.maybeSync(last_modified, { loadDump, trigger });
 
         // Save last time this client was successfully synced.
-        Services.prefs.setIntPref(client.lastCheckTimePref, checkedServerTimeInSeconds);
+        Services.prefs.setIntPref(
+          client.lastCheckTimePref,
+          checkedServerTimeInSeconds
+        );
       } catch (e) {
+        console.error(e);
         if (!firstError) {
           firstError = e;
           firstError.details = change;
@@ -259,11 +334,19 @@ function remoteSettingsFunction() {
 
     // Report total synchronization duration to Telemetry.
     const durationMilliseconds = new Date() - startedAt;
-    const syncTelemetryArgs = { source: TELEMETRY_SOURCE_SYNC, duration: durationMilliseconds, trigger };
+    const syncTelemetryArgs = {
+      source: TELEMETRY_SOURCE_SYNC,
+      duration: durationMilliseconds,
+      trigger,
+    };
 
     if (firstError) {
       // Report the global synchronization failure. Individual uptake reports will also have been sent for each collection.
-      await UptakeTelemetry.report(TELEMETRY_COMPONENT, UptakeTelemetry.STATUS.SYNC_ERROR, syncTelemetryArgs);
+      await UptakeTelemetry.report(
+        TELEMETRY_COMPONENT,
+        UptakeTelemetry.STATUS.SYNC_ERROR,
+        syncTelemetryArgs
+      );
       // Rethrow the first observed error
       throw firstError;
     }
@@ -274,8 +357,13 @@ function remoteSettingsFunction() {
     }
 
     // Report the global synchronization success.
-    await UptakeTelemetry.report(TELEMETRY_COMPONENT, UptakeTelemetry.STATUS.SUCCESS, syncTelemetryArgs);
+    await UptakeTelemetry.report(
+      TELEMETRY_COMPONENT,
+      UptakeTelemetry.STATUS.SUCCESS,
+      syncTelemetryArgs
+    );
 
+    console.info("Polling for changes done");
     Services.obs.notifyObservers(null, "remote-settings:changes-poll-end");
   };
 
@@ -284,26 +372,34 @@ function remoteSettingsFunction() {
    * known remote settings collections.
    */
   remoteSettings.inspect = async () => {
-    const { changes, currentEtag: serverTimestamp } = await Utils.fetchLatestChanges(gServerURL);
+    const {
+      changes,
+      currentEtag: serverTimestamp,
+    } = await Utils.fetchLatestChanges(gServerURL);
 
-    const collections = await Promise.all(changes.map(async (change) => {
-      const { bucket, collection, last_modified: serverTimestamp } = change;
-      const client = await _client(bucket, collection);
-      if (!client) {
-        return null;
-      }
-      const kintoCol = await client.openCollection();
-      const localTimestamp = await kintoCol.db.getLastModified();
-      const lastCheck = Services.prefs.getIntPref(client.lastCheckTimePref, 0);
-      return {
-        bucket,
-        collection,
-        localTimestamp,
-        serverTimestamp,
-        lastCheck,
-        signerName: client.signerName,
-      };
-    }));
+    const collections = await Promise.all(
+      changes.map(async change => {
+        const { bucket, collection, last_modified: serverTimestamp } = change;
+        const client = await _client(bucket, collection);
+        if (!client) {
+          return null;
+        }
+        const kintoCol = await client.openCollection();
+        const localTimestamp = await kintoCol.db.getLastModified();
+        const lastCheck = Services.prefs.getIntPref(
+          client.lastCheckTimePref,
+          0
+        );
+        return {
+          bucket,
+          collection,
+          localTimestamp,
+          serverTimestamp,
+          lastCheck,
+          signerName: client.signerName,
+        };
+      })
+    );
 
     return {
       serverURL: gServerURL,
@@ -321,13 +417,14 @@ function remoteSettingsFunction() {
    * Startup function called from nsBrowserGlue.
    */
   remoteSettings.init = () => {
+    console.info("Initialize Remote Settings");
     // Hook the Push broadcast and RemoteSettings polling.
     // When we start on a new profile there will be no ETag stored.
     // Use an arbitrary ETag that is guaranteed not to occur.
     // This will trigger a broadcast message but that's fine because we
     // will check the changes on each collection and retrieve only the
     // changes (e.g. nothing if we have a dump with the same data).
-    const currentVersion = gPrefs.getStringPref(PREF_SETTINGS_LAST_ETAG, "\"0\"");
+    const currentVersion = gPrefs.getStringPref(PREF_SETTINGS_LAST_ETAG, '"0"');
     const moduleInfo = {
       moduleURI: __URI__,
       symbolName: "remoteSettingsBroadcastHandler",
@@ -347,6 +444,10 @@ var remoteSettingsBroadcastHandler = {
       pushBroadcastService.PHASES.HELLO,
       pushBroadcastService.PHASES.REGISTER,
     ].includes(phase);
+
+    console.info(
+      `Push notification received (version=${version} phase=${phase})`
+    );
 
     return RemoteSettings.pollChanges({
       expectedTimestamp: version,

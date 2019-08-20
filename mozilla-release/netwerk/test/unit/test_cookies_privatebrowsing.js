@@ -18,8 +18,10 @@ function finish_test() {
 }
 
 function make_channel(url) {
-  return NetUtil.newChannel({uri: url, loadUsingSystemPrincipal: true})
-                .QueryInterface(Ci.nsIHttpChannel);
+  return NetUtil.newChannel({
+    uri: url,
+    loadUsingSystemPrincipal: true,
+  }).QueryInterface(Ci.nsIHttpChannel);
 }
 
 function* do_run_test() {
@@ -27,7 +29,10 @@ function* do_run_test() {
   let profile = do_get_profile();
 
   // We don't want to have CookieSettings blocking this test.
-  Services.prefs.setBoolPref("network.cookieSettings.unblocked_for_testing", true);
+  Services.prefs.setBoolPref(
+    "network.cookieSettings.unblocked_for_testing",
+    true
+  );
 
   // Test with cookies enabled.
   Services.prefs.setIntPref("network.cookie.cookieBehavior", 0);
@@ -50,13 +55,13 @@ function* do_run_test() {
   chan2.setPrivate(true);
 
   Services.cookies.setCookieString(uri2, null, "oh=hai; max-age=1000", chan2);
-  Assert.equal(Services.cookiemgr.getCookieString(uri1, chan1), null);
+  Assert.equal(Services.cookiemgr.getCookieString(uri1, chan1), "");
   Assert.equal(Services.cookiemgr.getCookieString(uri2, chan2), "oh=hai");
 
   // Remove cookies and check counts.
   Services.obs.notifyObservers(null, "last-pb-context-exited");
-  Assert.equal(Services.cookiemgr.getCookieString(uri1, chan1), null);
-  Assert.equal(Services.cookiemgr.getCookieString(uri2, chan2), null);
+  Assert.equal(Services.cookiemgr.getCookieString(uri1, chan1), "");
+  Assert.equal(Services.cookiemgr.getCookieString(uri2, chan2), "");
 
   Services.cookies.setCookieString(uri2, null, "oh=hai; max-age=1000", chan2);
   Assert.equal(Services.cookiemgr.getCookieString(uri2, chan2), "oh=hai");
@@ -76,8 +81,8 @@ function* do_run_test() {
   Assert.equal(Services.cookiemgr.countCookiesFromHost(uri2.host), 0);
 
   // Enter private browsing mode, set a cookie for host 2, and check the counts.
-  Assert.equal(Services.cookiemgr.getCookieString(uri1, chan1), null);
-  Assert.equal(Services.cookiemgr.getCookieString(uri2, chan2), null);
+  Assert.equal(Services.cookiemgr.getCookieString(uri1, chan1), "");
+  Assert.equal(Services.cookiemgr.getCookieString(uri2, chan2), "");
   Services.cookies.setCookieString(uri2, null, "oh=hai; max-age=1000", chan2);
   Assert.equal(Services.cookiemgr.getCookieString(uri2, chan2), "oh=hai");
 
@@ -88,8 +93,8 @@ function* do_run_test() {
 
   // We're still in private browsing mode, but should have a new session.
   // Check counts.
-  Assert.equal(Services.cookiemgr.getCookieString(uri1, chan1), null);
-  Assert.equal(Services.cookiemgr.getCookieString(uri2, chan2), null);
+  Assert.equal(Services.cookiemgr.getCookieString(uri1, chan1), "");
+  Assert.equal(Services.cookiemgr.getCookieString(uri2, chan2), "");
 
   // Leave private browsing mode and check counts.
   Services.obs.notifyObservers(null, "last-pb-context-exited");
@@ -106,8 +111,8 @@ function* do_run_test() {
 
   // We're still in private browsing mode, but should have a new session.
   // Check counts.
-  Assert.equal(Services.cookiemgr.getCookieString(uri1, chan1), null);
-  Assert.equal(Services.cookiemgr.getCookieString(uri2, chan2), null);
+  Assert.equal(Services.cookiemgr.getCookieString(uri1, chan1), "");
+  Assert.equal(Services.cookiemgr.getCookieString(uri2, chan2), "");
 
   // Leave private browsing mode and check counts.
   Services.obs.notifyObservers(null, "last-pb-context-exited");

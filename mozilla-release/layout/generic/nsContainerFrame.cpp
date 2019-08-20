@@ -628,10 +628,10 @@ void nsContainerFrame::SetSizeConstraints(nsPresContext* aPresContext,
       aPresContext->AppUnitsToDevPixels(aMinSize.width),
       aPresContext->AppUnitsToDevPixels(aMinSize.height));
   LayoutDeviceIntSize devMaxSize(
-      aMaxSize.width == NS_INTRINSICSIZE
+      aMaxSize.width == NS_UNCONSTRAINEDSIZE
           ? NS_MAXSIZE
           : aPresContext->AppUnitsToDevPixels(aMaxSize.width),
-      aMaxSize.height == NS_INTRINSICSIZE
+      aMaxSize.height == NS_UNCONSTRAINEDSIZE
           ? NS_MAXSIZE
           : aPresContext->AppUnitsToDevPixels(aMaxSize.height));
 
@@ -722,7 +722,7 @@ void nsContainerFrame::DoInlineIntrinsicISize(
   nscoord clonePBM = 0;  // PBM = PaddingBorderMargin
   const bool sliceBreak =
       styleBorder->mBoxDecorationBreak == StyleBoxDecorationBreak::Slice;
-  if (!GetPrevContinuation()) {
+  if (!GetPrevContinuation() || MOZ_UNLIKELY(!sliceBreak)) {
     nscoord startPBM =
         // clamp negative calc() to 0
         std::max(GetCoord(stylePadding->mPadding.Get(startSide), 0), 0) +
@@ -742,6 +742,7 @@ void nsContainerFrame::DoInlineIntrinsicISize(
       GetCoord(styleMargin->mMargin.Get(endSide), 0);
   if (MOZ_UNLIKELY(!sliceBreak)) {
     clonePBM += endPBM;
+    aData->mCurrentLine += clonePBM;
   }
 
   const nsLineList_iterator* savedLine = aData->mLine;
@@ -1489,8 +1490,7 @@ bool nsContainerFrame::MoveInlineOverflowToChildList(nsIFrame* aLineContainer) {
       // container if the container has prev continuation.
       if (aLineContainer->GetPrevContinuation()) {
         ReparentFloatsForInlineChild(aLineContainer,
-                                     prevOverflowFrames->FirstChild(), true,
-                                     ReparentingDirection::Forwards);
+                                     prevOverflowFrames->FirstChild(), true);
       }
       // When pushing and pulling frames we need to check for whether
       // any views need to be reparented.
@@ -1638,9 +1638,9 @@ nsIFrame* nsContainerFrame::PullNextInFlowChild(
 }
 
 /* static */
-void nsContainerFrame::ReparentFloatsForInlineChild(
-    nsIFrame* aOurLineContainer, nsIFrame* aFrame, bool aReparentSiblings,
-    ReparentingDirection aDirection) {
+void nsContainerFrame::ReparentFloatsForInlineChild(nsIFrame* aOurLineContainer,
+                                                    nsIFrame* aFrame,
+                                                    bool aReparentSiblings) {
   // XXXbz this would be better if it took a nsFrameList or a frame
   // list slice....
   NS_ASSERTION(aOurLineContainer->GetNextContinuation() ||
@@ -1660,7 +1660,7 @@ void nsContainerFrame::ReparentFloatsForInlineChild(
   NS_ASSERTION(ourBlock, "Not a block, but broke vertically?");
 
   while (true) {
-    ourBlock->ReparentFloats(aFrame, frameBlock, false, aDirection);
+    ourBlock->ReparentFloats(aFrame, frameBlock, false);
 
     if (!aReparentSiblings) return;
     nsIFrame* next = aFrame->GetNextSibling();
@@ -1673,8 +1673,7 @@ void nsContainerFrame::ReparentFloatsForInlineChild(
     // trust that the frames in the sibling chain all have the same parent,
     // because lazy reparenting may be going on. If we find a different
     // parent we need to redo our analysis.
-    ReparentFloatsForInlineChild(aOurLineContainer, next, aReparentSiblings,
-                                 aDirection);
+    ReparentFloatsForInlineChild(aOurLineContainer, next, aReparentSiblings);
     return;
   }
 }
@@ -1877,8 +1876,9 @@ nsresult nsOverflowContinuationTracker::Insert(nsIFrame* aOverflowCont,
   }
 
   // If we need to reflow it, mark it dirty
-  if (aReflowStatus.NextInFlowNeedsReflow())
-    aOverflowCont->AddStateBits(NS_FRAME_IS_DIRTY);
+  if (aReflowStatus.NextInFlowNeedsReflow()) {
+    aOverflowCont->MarkSubtreeDirty();
+  }
 
   // It's in our list, just step forward
   StepForward();

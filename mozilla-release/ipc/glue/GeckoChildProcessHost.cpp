@@ -37,6 +37,7 @@
 
 #include "mozilla/ipc/BrowserProcessSubThread.h"
 #include "mozilla/ipc/EnvironmentMap.h"
+#include "mozilla/LinkedList.h"
 #include "mozilla/Omnijar.h"
 #include "mozilla/RecordReplay.h"
 #include "mozilla/RDDProcessHost.h"
@@ -68,6 +69,7 @@
 #endif
 
 #if defined(XP_MACOSX) && defined(MOZ_SANDBOX)
+#  include "GMPProcessParent.h"
 #  include "nsMacUtilsImpl.h"
 #endif
 
@@ -101,6 +103,11 @@ static bool ShouldHaveDirectoryService() {
   return GeckoProcessType_Default == XRE_GetProcessType();
 }
 
+mozilla::StaticAutoPtr<mozilla::LinkedList<GeckoChildProcessHost>>
+    GeckoChildProcessHost::sGeckoChildProcessHosts;
+
+mozilla::StaticMutex GeckoChildProcessHost::sMutex;
+
 GeckoChildProcessHost::GeckoChildProcessHost(GeckoProcessType aProcessType,
                                              bool aIsFileContent)
     : mProcessType(aProcessType),
@@ -121,6 +128,11 @@ GeckoChildProcessHost::GeckoChildProcessHost(GeckoProcessType aProcessType,
 #endif
       mDestroying(false) {
   MOZ_COUNT_CTOR(GeckoChildProcessHost);
+  StaticMutexAutoLock lock(sMutex);
+  if (!sGeckoChildProcessHosts) {
+    sGeckoChildProcessHosts = new mozilla::LinkedList<GeckoChildProcessHost>();
+  }
+  sGeckoChildProcessHosts->insertBack(this);
 }
 
 GeckoChildProcessHost::~GeckoChildProcessHost()
@@ -167,8 +179,19 @@ GeckoChildProcessHost::~GeckoChildProcessHost()
 #endif
 }
 
+void GeckoChildProcessHost::RemoveFromProcessList() {
+  StaticMutexAutoLock lock(sMutex);
+  if (!sGeckoChildProcessHosts) {
+    return;
+  }
+  LinkedListElement<GeckoChildProcessHost>::removeFrom(
+      *sGeckoChildProcessHosts);
+}
+
 void GeckoChildProcessHost::Destroy() {
   MOZ_RELEASE_ASSERT(!mDestroying);
+  // We can remove from the list before it's really destroyed
+  RemoveFromProcessList();
   RefPtr<HandlePromise> whenReady = mHandlePromise;
 
   if (!whenReady) {
@@ -370,8 +393,8 @@ bool GeckoChildProcessHost::AsyncLaunch(std::vector<std::string> aExtraOpts) {
   PrepareLaunch();
 
 #if defined(XP_MACOSX) && defined(MOZ_SANDBOX)
-  if (IsMacSandboxLaunchEnabled()) {
-    AppendMacSandboxParams(aExtraOpts);
+  if (IsMacSandboxLaunchEnabled() && !AppendMacSandboxParams(aExtraOpts)) {
+    return false;
   }
 #endif
 
@@ -946,6 +969,9 @@ bool GeckoChildProcessHost::PerformAsyncLaunch(
 #  if defined(MOZ_WIDGET_ANDROID)
   LaunchAndroidService(childProcessType, childArgv,
                        mLaunchOptions->fds_to_remap, &process);
+  if (process == 0) {
+    return false;
+  }
 #  else   // goes with defined(MOZ_WIDGET_ANDROID)
   if (!base::LaunchApp(childArgv, *mLaunchOptions, &process)) {
     return false;
@@ -1254,7 +1280,7 @@ bool GeckoChildProcessHost::PerformAsyncLaunch(
 #  error Sorry
 #endif  // defined(OS_POSIX)
 
-  MOZ_ASSERT(process);
+  MOZ_DIAGNOSTIC_ASSERT(process);
   // NB: on OS X, we block much longer than we need to in order to
   // reach this call, waiting for the child process's task_t.  The
   // best way to fix that is to refactor this file, hard.
@@ -1394,15 +1420,18 @@ void GeckoChildProcessHost::LaunchAndroidService(
 #endif
 
 #if defined(XP_MACOSX) && defined(MOZ_SANDBOX)
-void GeckoChildProcessHost::AppendMacSandboxParams(StringVector& aArgs) {
+bool GeckoChildProcessHost::AppendMacSandboxParams(StringVector& aArgs) {
   MacSandboxInfo info;
-  FillMacSandboxInfo(info);
+  if (!FillMacSandboxInfo(info)) {
+    return false;
+  }
   info.AppendAsParams(aArgs);
+  return true;
 }
 
 // Fill |aInfo| with the flags needed to launch the utility sandbox
 /* static */
-void GeckoChildProcessHost::StaticFillMacSandboxInfo(MacSandboxInfo& aInfo) {
+bool GeckoChildProcessHost::StaticFillMacSandboxInfo(MacSandboxInfo& aInfo) {
   aInfo.type = GetDefaultMacSandboxType();
   aInfo.shouldLog = Preferences::GetBool("security.sandbox.logging.enabled") ||
                     PR_GetEnv("MOZ_SANDBOX_LOGGING");
@@ -1412,10 +1441,11 @@ void GeckoChildProcessHost::StaticFillMacSandboxInfo(MacSandboxInfo& aInfo) {
     MOZ_CRASH("Failed to get app path");
   }
   aInfo.appPath.assign(appPath.get());
+  return true;
 }
 
-void GeckoChildProcessHost::FillMacSandboxInfo(MacSandboxInfo& aInfo) {
-  GeckoChildProcessHost::StaticFillMacSandboxInfo(aInfo);
+bool GeckoChildProcessHost::FillMacSandboxInfo(MacSandboxInfo& aInfo) {
+  return GeckoChildProcessHost::StaticFillMacSandboxInfo(aInfo);
 }
 
 //
@@ -1429,9 +1459,9 @@ bool GeckoChildProcessHost::StartMacSandbox(int aArgc, char** aArgv,
                                             std::string& aErrorMessage) {
   MacSandboxType sandboxType = MacSandboxType_Invalid;
   switch (XRE_GetProcessType()) {
-    // For now, only support early sandbox startup for content
-    // processes. Add case statements for the additional process
-    // types once early sandbox startup is implemented for them.
+    // For now, only support early sandbox startup for content,
+    // RDD, and GMP processes. Add case statements for the additional
+    // process types once early sandbox startup is implemented for them.
     case GeckoProcessType_Content:
       // Content processes don't use GeckoChildProcessHost
       // to configure sandboxing so hard code the sandbox type.
@@ -1439,6 +1469,9 @@ bool GeckoChildProcessHost::StartMacSandbox(int aArgc, char** aArgv,
       break;
     case GeckoProcessType_RDD:
       sandboxType = RDDProcessHost::GetMacSandboxType();
+      break;
+    case GeckoProcessType_GMPlugin:
+      sandboxType = gmp::GMPProcessParent::GetMacSandboxType();
       break;
     default:
       return true;
@@ -1448,3 +1481,13 @@ bool GeckoChildProcessHost::StartMacSandbox(int aArgc, char** aArgv,
 }
 
 #endif /* XP_MACOSX && MOZ_SANDBOX */
+
+/* static */
+void GeckoChildProcessHost::GetAll(const GeckoProcessCallback& aCallback) {
+  StaticMutexAutoLock lock(sMutex);
+  for (GeckoChildProcessHost* gp = sGeckoChildProcessHosts->getFirst(); gp;
+       gp = static_cast<mozilla::LinkedListElement<GeckoChildProcessHost>*>(gp)
+                ->getNext()) {
+    aCallback(gp);
+  }
+}

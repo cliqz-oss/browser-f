@@ -523,6 +523,11 @@ class TenuredHeap : public js::HeapBase<T, TenuredHeap<T>> {
   uintptr_t bits;
 };
 
+static MOZ_ALWAYS_INLINE bool ObjectIsMarkedGray(
+    const JS::TenuredHeap<JSObject*>& obj) {
+  return ObjectIsMarkedGray(obj.unbarrieredGetPtr());
+}
+
 /**
  * Reference to a T that has been rooted elsewhere. This is most useful
  * as a parameter type, which guarantees that the T lvalue is properly
@@ -1030,12 +1035,13 @@ class MOZ_RAII Rooted : public js::RootedBase<T, Rooted<T>> {
   // empty T.
   template <typename RootingContext>
   Rooted(const RootingContext& cx, CtorDispatcher, detail::FallbackOverload)
-    : Rooted(cx, SafelyInitialized<T>()) {}
+      : Rooted(cx, SafelyInitialized<T>()) {}
 
   // If T can be constructed with a cx, then define another constructor for it
   // that will be preferred.
   template <typename RootingContext,
-            typename = typename std::enable_if<std::is_constructible<T, RootingContext>::value>::type>
+            typename = typename std::enable_if<
+                std::is_constructible<T, RootingContext>::value>::type>
   Rooted(const RootingContext& cx, CtorDispatcher, detail::PreferredOverload)
       : Rooted(cx, T(cx)) {}
 
@@ -1255,10 +1261,9 @@ JS_PUBLIC_API void AddPersistentRoot(JSRuntime* rt, RootKind kind,
  *
  * These roots can be used in heap-allocated data structures, so they are not
  * associated with any particular JSContext or stack. They are registered with
- * the JSRuntime itself, without locking, so they require a full JSContext to be
- * initialized, not one of its more restricted superclasses. Initialization may
- * take place on construction, or in two phases if the no-argument constructor
- * is called followed by init().
+ * the JSRuntime itself, without locking. Initialization may take place on
+ * construction, or in two phases if the no-argument constructor is called
+ * followed by init().
  *
  * Note that you must not use an PersistentRooted in an object owned by a JS
  * object:
@@ -1354,8 +1359,14 @@ class PersistentRooted
 
   bool initialized() { return ListBase::isInList(); }
 
-  void init(JSContext* cx) { init(cx, SafelyInitialized<T>()); }
+  void init(RootingContext* cx) { init(cx, SafelyInitialized<T>()); }
+  void init(JSContext* cx) { init(RootingContext::get(cx)); }
 
+  template <typename U>
+  void init(RootingContext* cx, U&& initial) {
+    ptr = std::forward<U>(initial);
+    registerWithRootLists(cx);
+  }
   template <typename U>
   void init(JSContext* cx, U&& initial) {
     ptr = std::forward<U>(initial);

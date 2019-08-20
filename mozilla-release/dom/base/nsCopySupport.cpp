@@ -28,7 +28,7 @@
 
 #include "nsPIDOMWindow.h"
 #include "mozilla/dom/Document.h"
-#include "nsIHTMLDocument.h"
+#include "nsHTMLDocument.h"
 #include "nsGkAtoms.h"
 #include "nsIFrame.h"
 #include "nsIURI.h"
@@ -122,10 +122,9 @@ static nsresult EncodeForTextUnicode(nsIDocumentEncoder& aEncoder,
 
   if (!selForcedTextPlain && mimeType.EqualsLiteral(kTextMime)) {
     // SetSelection and EncodeToString use this case to signal that text/plain
-    // was forced because the document is either not an nsIHTMLDocument or it's
-    // XHTML.  We want to pretty print XHTML but not non-nsIHTMLDocuments.
-    nsCOMPtr<nsIHTMLDocument> htmlDoc = do_QueryInterface(&aDocument);
-    if (!htmlDoc) {
+    // was forced because the document is either not an HTMLDocument or it's
+    // XHTML.  We want to pretty print XHTML but not non-HTMLDocuments.
+    if (!aDocument.IsHTMLOrXHTML()) {
       selForcedTextPlain = true;
     }
   }
@@ -184,7 +183,7 @@ struct EncodedDocumentWithContext {
   // as mime type to the encoder. It uses this as a switch to decide whether to
   // encode the document as `text/html` or `text/plain`. It  is `true` iff
   // `text/html` was used.
-  bool mUnicodeEncodingIsTextHTML;
+  bool mUnicodeEncodingIsTextHTML = false;
 
   // The serialized document when encoding the document with `text/unicode`. See
   // comment of `mUnicodeEncodingIsTextHTML`.
@@ -346,9 +345,9 @@ static nsresult PutToClipboard(
   return rv;
 }
 
-nsresult nsCopySupport::HTMLCopy(Selection* aSel, Document* aDoc,
-                                 int16_t aClipboardID,
-                                 bool aWithRubyAnnotation) {
+nsresult nsCopySupport::EncodeDocumentWithContextAndPutToClipboard(
+    Selection* aSel, Document* aDoc, int16_t aClipboardID,
+    bool aWithRubyAnnotation) {
   NS_ENSURE_TRUE(aDoc, NS_ERROR_NULL_POINTER);
 
   uint32_t additionalFlags = nsIDocumentEncoder::SkipInvisibleContent;
@@ -426,7 +425,7 @@ nsresult nsCopySupport::GetTransferableForNode(
   if (NS_WARN_IF(result.Failed())) {
     return result.StealNSResult();
   }
-  selection->AddRangeInternal(*range, aDoc, result);
+  selection->AddRangeAndSelectFramesAndNotifyListeners(*range, aDoc, result);
   if (NS_WARN_IF(result.Failed())) {
     return result.StealNSResult();
   }
@@ -562,10 +561,6 @@ static nsresult AppendDOMNode(nsITransferable* aTransferable,
   // Note that XHTML is not counted as HTML here, because we can't copy it
   // properly (all the copy code for non-plaintext assumes using HTML
   // serializers and parsers is OK, and those mess up XHTML).
-  DebugOnly<nsCOMPtr<nsIHTMLDocument>> htmlDoc =
-      nsCOMPtr<nsIHTMLDocument>(do_QueryInterface(document, &rv));
-  NS_ENSURE_SUCCESS(rv, NS_OK);
-
   NS_ENSURE_TRUE(document->IsHTMLDocument(), NS_OK);
 
   // init encoder with document and node
@@ -915,8 +910,8 @@ bool nsCopySupport::FireClipboardEvent(EventMessage aEventMessage,
       // selection is inside a same ruby container. But we really should
       // expose the full functionality in browser. See bug 1130891.
       bool withRubyAnnotation = IsSelectionInsideRuby(sel);
-      // call the copy code
-      nsresult rv = HTMLCopy(sel, doc, aClipboardType, withRubyAnnotation);
+      nsresult rv = EncodeDocumentWithContextAndPutToClipboard(
+          sel, doc, aClipboardType, withRubyAnnotation);
       if (NS_FAILED(rv)) {
         return false;
       }

@@ -7,8 +7,6 @@
 
 "use strict";
 
-const BROWSER_SEARCH_PREF = "browser.search.";
-
 add_task(async function test() {
   await Services.search.init();
 
@@ -34,7 +32,11 @@ add_task(async function test() {
 
   // Check search suggestion URL.
   url = engine.getSubmission("foo", "application/x-suggestions+json").uri.spec;
-  is(url, "https://ac.duckduckgo.com/ac/?q=foo&type=list", "Check search suggestion URL for 'foo'");
+  is(
+    url,
+    "https://ac.duckduckgo.com/ac/?q=foo&type=list",
+    "Check search suggestion URL for 'foo'"
+  );
 
   // Check all other engine properties.
   const EXPECTED_ENGINE = {

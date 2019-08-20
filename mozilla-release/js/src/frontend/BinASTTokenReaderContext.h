@@ -12,6 +12,8 @@
 
 #include "mozilla/Maybe.h"  // mozilla::Maybe
 
+#include <brotli/decode.h>  // BrotliDecoderState
+
 #include <stddef.h>  // size_t
 #include <stdint.h>  // uint8_t, uint32_t
 
@@ -35,6 +37,197 @@ namespace frontend {
 
 class ErrorReporter;
 
+// The format treats several distinct models as the same.
+//
+// We use `NormalizedInterfaceAndField` as a proxy for `BinASTInterfaceAndField`
+// to ensure that we always normalize into the canonical model.
+struct NormalizedInterfaceAndField {
+  const BinASTInterfaceAndField identity;
+  explicit NormalizedInterfaceAndField(BinASTInterfaceAndField identity)
+      : identity(identity == BinASTInterfaceAndField::
+                                 StaticMemberAssignmentTarget__Property
+                     ? BinASTInterfaceAndField::StaticMemberExpression__Property
+                     : identity) {}
+};
+
+// An entry in a Huffman table.
+template <typename T>
+struct HuffmanEntry {
+  HuffmanEntry(uint32_t bits, uint8_t bits_length, T&& value)
+      : bits(bits), bits_length(bits_length), value(value) {
+    MOZ_ASSERT(bits >> bits_length == 0);
+  }
+
+  // Together, `bits` and `bits_length` represent the prefix for this entry
+  // in the Huffman table.
+  //
+  // This entry matches a candidate `c` iff `c.bits_length == bits_length`
+  // and `c.bits << (32 - c.bits_len) == bits << (32 - bits_len)`.
+  //
+  // Invariant: the first `32 - bits_len` bits are always 0.
+  const uint32_t bits;
+  const uint8_t bits_length;
+  const T value;
+};
+
+// The default inline buffer length for instances of HuffmanTable.
+// Specific type (e.g. booleans) will override this to provide something
+// more suited to their type.
+const size_t HUFFMAN_TABLE_DEFAULT_INLINE_BUFFER_LENGTH = 8;
+
+// A flag that determines only whether a value is `null`.
+// Used for optional interface.
+enum class Nullable {
+  Null,
+  NonNull,
+};
+
+template <typename T, int N = HUFFMAN_TABLE_DEFAULT_INLINE_BUFFER_LENGTH>
+class HuffmanTableImpl {
+ public:
+  explicit HuffmanTableImpl(JSContext* cx) : values(cx) {}
+  HuffmanTableImpl(HuffmanTableImpl&& other) noexcept
+      : values(std::move(other.values)) {}
+
+  // Initialize a Huffman table containing a single value.
+  JS::Result<Ok> initWithSingleValue(JSContext* cx, T&& value);
+
+  // Initialize a Huffman table containing `numberOfSymbols`.
+  // Symbols must be added with `addSymbol`.
+  JS::Result<Ok> init(JSContext* cx, size_t numberOfSymbols);
+
+  // Add a symbol to a value.
+  JS::Result<Ok> addSymbol(uint32_t bits, uint8_t bits_length, T&& value);
+
+  HuffmanTableImpl() = delete;
+  HuffmanTableImpl(HuffmanTableImpl&) = delete;
+
+  size_t length() const { return values.length(); }
+  const HuffmanEntry<T>* begin() const { return values.begin(); }
+  const HuffmanEntry<T>* end() const { return values.end(); }
+
+ private:
+  // The entries in this Huffman table.
+  // Entries are always ranked by increasing bit_length, and within
+  // a bitlength by increasing value of `bits`. This lets us implement
+  // `HuffmanTableImpl::next()` in `O(number_of_bits)` worst case time.
+  Vector<HuffmanEntry<T>, N> values;
+  friend class HuffmanPreludeReader;
+};
+
+// An empty Huffman table. Attempting to get a value from this table is an
+// error. This is the default value for `HuffmanTable` and represents all states
+// that may not be reached.
+//
+// Part of variant `HuffmanTable`.
+struct HuffmanTableUnreachable {};
+
+// --- Explicit instantiations of `HuffmanTableImpl`.
+// These classes are all parts of variant `HuffmanTable`.
+
+struct HuffmanTableExplicitSymbolsF64 {
+  HuffmanTableImpl<double> impl;
+  explicit HuffmanTableExplicitSymbolsF64(JSContext* cx) : impl(cx) {}
+};
+
+struct HuffmanTableExplicitSymbolsU32 {
+  HuffmanTableImpl<uint32_t> impl;
+};
+
+struct HuffmanTableIndexedSymbolsSum {
+  HuffmanTableImpl<BinASTKind> impl;
+  explicit HuffmanTableIndexedSymbolsSum(JSContext* cx) : impl(cx) {}
+};
+
+struct HuffmanTableIndexedSymbolsBool {
+  HuffmanTableImpl<bool, 2> impl;
+  explicit HuffmanTableIndexedSymbolsBool(JSContext* cx) : impl(cx) {}
+};
+
+struct HuffmanTableIndexedSymbolsMaybeInterface {
+  HuffmanTableImpl<Nullable, 2> impl;
+  explicit HuffmanTableIndexedSymbolsMaybeInterface(JSContext* cx) : impl(cx) {}
+
+  // `true` if this table only contains values for `null`.
+  bool isAlwaysNull() const {
+    MOZ_ASSERT(impl.length() > 0);
+
+    // By definition, we have either 1 or 2 values.
+    // By definition, if we have 2 values, one of them is not null.
+    if (impl.length() != 1) {
+      return false;
+    }
+    // Otherwise, check the single value.
+    return impl.begin()->value == Nullable::Null;
+  }
+};
+
+struct HuffmanTableIndexedSymbolsStringEnum {
+  HuffmanTableImpl<BinASTVariant> impl;
+  explicit HuffmanTableIndexedSymbolsStringEnum(JSContext* cx) : impl(cx) {}
+};
+
+struct HuffmanTableIndexedSymbolsLiteralString {
+  HuffmanTableImpl<JSAtom*> impl;
+  explicit HuffmanTableIndexedSymbolsLiteralString(JSContext* cx) : impl(cx) {}
+};
+
+struct HuffmanTableIndexedSymbolsOptionalLiteralString {
+  HuffmanTableImpl<JSAtom*> impl;
+  explicit HuffmanTableIndexedSymbolsOptionalLiteralString(JSContext* cx)
+      : impl(cx) {}
+};
+
+// A single Huffman table.
+using HuffmanTable = mozilla::Variant<
+    HuffmanTableUnreachable,  // Default value.
+    HuffmanTableExplicitSymbolsF64, HuffmanTableExplicitSymbolsU32,
+    HuffmanTableIndexedSymbolsSum, HuffmanTableIndexedSymbolsMaybeInterface,
+    HuffmanTableIndexedSymbolsBool, HuffmanTableIndexedSymbolsStringEnum,
+    HuffmanTableIndexedSymbolsLiteralString,
+    HuffmanTableIndexedSymbolsOptionalLiteralString>;
+
+struct HuffmanTableExplicitSymbolsListLength {
+  HuffmanTableImpl<uint32_t> impl;
+  explicit HuffmanTableExplicitSymbolsListLength(JSContext* cx) : impl(cx) {}
+};
+
+// A single Huffman table, specialized for list lengths.
+using HuffmanTableListLength =
+    mozilla::Variant<HuffmanTableUnreachable,  // Default value.
+                     HuffmanTableExplicitSymbolsListLength>;
+
+// A Huffman dictionary for the current file.
+//
+// A Huffman dictionary consists in a (contiguous) set of Huffman tables
+// to predict field values and a second (contiguous) set of Huffman tables
+// to predict list lengths.
+class HuffmanDictionary {
+ public:
+  explicit HuffmanDictionary(JSContext* cx) : fields(cx), listLengths(cx) {}
+
+  HuffmanTable& tableForField(NormalizedInterfaceAndField index);
+  HuffmanTableListLength& tableForListLength(BinASTList list);
+
+ private:
+  // Huffman tables for `(Interface, Field)` pairs, used to decode the value of
+  // `Interface::Field`. Some tables may be `HuffmanTableUnreacheable`
+  // if they represent fields of interfaces that actually do not show up
+  // in the file.
+  //
+  // The mapping from `(Interface, Field) -> index` is extracted statically from
+  // the webidl specs.
+  Vector<HuffmanTable, BINAST_INTERFACE_AND_FIELD_LIMIT> fields;
+
+  // Huffman tables for list lengths. Some tables may be
+  // `HuffmanTableUnreacheable` if they represent lists that actually do not
+  // show up in the file.
+  //
+  // The mapping from `List -> index` is extracted statically from the webidl
+  // specs.
+  Vector<HuffmanTableListLength, BINAST_NUMBER_OF_LIST_TYPES> listLengths;
+};
+
 /**
  * A token reader implementing the "context" serialization format for BinAST.
  *
@@ -48,11 +241,14 @@ class ErrorReporter;
  * - the reader does not support lookahead or pushback.
  */
 class MOZ_STACK_CLASS BinASTTokenReaderContext : public BinASTTokenReaderBase {
+  using Base = BinASTTokenReaderBase;
+
  public:
   class AutoList;
   class AutoTaggedTuple;
 
   using CharSlice = BinaryASTSupport::CharSlice;
+  using Context = BinASTTokenReaderBase::Context;
 
   // This implementation of `BinASTFields` is effectively `void`, as the format
   // does not embed field information.
@@ -81,10 +277,75 @@ class MOZ_STACK_CLASS BinASTTokenReaderContext : public BinASTTokenReaderBase {
 
   ~BinASTTokenReaderContext();
 
+ private:
+  // {readByte, readBuf, readVarU32} are implemented both for uncompressed
+  // stream and brotli-compressed stream.
+  //
+  // Uncompressed variant is for reading the magic header, and compressed
+  // variant is for reading the remaining part.
+  //
+  // Once compressed variant is called, the underlying uncompressed stream is
+  // buffered and uncompressed variant cannot be called.
+  enum class Compression { No, Yes };
+
+  // Buffer that holds already brotli-decoded but not yet used data.
+  // decodedBuffer[decodedBegin, decodedEnd) holds the data.
+  static const size_t DECODED_BUFFER_SIZE = 128;
+  uint8_t decodedBuffer_[DECODED_BUFFER_SIZE];
+  size_t decodedBegin_ = 0;
+  size_t decodedEnd_ = 0;
+
+  // The number of already decoded bytes.
+  size_t availableDecodedLength() const { return decodedEnd_ - decodedBegin_; }
+
+  // The beginning of decoded buffer.
+  const uint8_t* decodedBufferBegin() const {
+    return decodedBuffer_ + decodedBegin_;
+  }
+
+  // Returns true if the brotli stream finished.
+  bool isEOF() const;
+
+  /**
+   * Read a single byte.
+   */
+  template <Compression compression>
+  MOZ_MUST_USE JS::Result<uint8_t> readByte();
+
+  /**
+   * Read several bytes.
+   *
+   * If there is not enough data, or if the tokenizer has previously been
+   * poisoned, return an error.
+   */
+  template <Compression compression>
+  MOZ_MUST_USE JS::Result<Ok> readBuf(uint8_t* bytes, uint32_t len);
+
+  /**
+   * Read bytes to fill decodedBuffer_.
+   *
+   * On success, this guarantees there's at least 1 byte in the buffer.
+   * If there is no data, return an error.
+   */
+  MOZ_MUST_USE JS::Result<Ok> fillDecodedBuf();
+
+  void advanceDecodedBuffer(uint32_t count);
+
+ public:
   /**
    * Read the header of the file.
    */
   MOZ_MUST_USE JS::Result<Ok> readHeader();
+
+  /**
+   * Read the string dictionary from the header of the file.
+   */
+  MOZ_MUST_USE JS::Result<Ok> readStringPrelude();
+
+  /**
+   * Read the huffman dictionary from the header of the file.
+   */
+  MOZ_MUST_USE JS::Result<Ok> readHuffmanPrelude();
 
   // --- Primitive values.
   //
@@ -99,44 +360,45 @@ class MOZ_STACK_CLASS BinASTTokenReaderContext : public BinASTTokenReaderBase {
   /**
    * Read a single `true | false` value.
    */
-  MOZ_MUST_USE JS::Result<bool> readBool();
+  MOZ_MUST_USE JS::Result<bool> readBool(const Context&);
 
   /**
    * Read a single `number` value.
    */
-  MOZ_MUST_USE JS::Result<double> readDouble();
+  MOZ_MUST_USE JS::Result<double> readDouble(const Context&);
 
   /**
    * Read a single `string | null` value.
    *
    * Fails if that string is not valid UTF-8.
    */
-  MOZ_MUST_USE JS::Result<JSAtom*> readMaybeAtom();
-  MOZ_MUST_USE JS::Result<JSAtom*> readAtom();
+  MOZ_MUST_USE JS::Result<JSAtom*> readMaybeAtom(const Context&);
+  MOZ_MUST_USE JS::Result<JSAtom*> readAtom(const Context&);
 
   /**
    * Read a single IdentifierName value.
    */
-  MOZ_MUST_USE JS::Result<JSAtom*> readMaybeIdentifierName();
-  MOZ_MUST_USE JS::Result<JSAtom*> readIdentifierName();
+  MOZ_MUST_USE JS::Result<JSAtom*> readMaybeIdentifierName(const Context&);
+  MOZ_MUST_USE JS::Result<JSAtom*> readIdentifierName(const Context&);
 
   /**
    * Read a single PropertyKey value.
    */
-  MOZ_MUST_USE JS::Result<JSAtom*> readPropertyKey();
+  MOZ_MUST_USE JS::Result<JSAtom*> readPropertyKey(const Context&);
 
   /**
    * Read a single `string | null` value.
    *
    * MAY check if that string is not valid UTF-8.
    */
-  MOZ_MUST_USE JS::Result<Ok> readChars(Chars&);
+  MOZ_MUST_USE JS::Result<Ok> readChars(Chars&, const Context&);
 
   /**
    * Read a single `BinASTVariant | null` value.
    */
-  MOZ_MUST_USE JS::Result<mozilla::Maybe<BinASTVariant>> readMaybeVariant();
-  MOZ_MUST_USE JS::Result<BinASTVariant> readVariant();
+  MOZ_MUST_USE JS::Result<mozilla::Maybe<BinASTVariant>> readMaybeVariant(
+      const Context&);
+  MOZ_MUST_USE JS::Result<BinASTVariant> readVariant(const Context&);
 
   /**
    * Read over a single `[Skippable]` subtree value.
@@ -145,7 +407,8 @@ class MOZ_STACK_CLASS BinASTTokenReaderContext : public BinASTTokenReaderBase {
    * returned `SkippableSubTree` contains the necessary information
    * to parse/tokenize the subtree at a later stage
    */
-  MOZ_MUST_USE JS::Result<SkippableSubTree> readSkippableSubTree();
+  MOZ_MUST_USE JS::Result<SkippableSubTree> readSkippableSubTree(
+      const Context&);
 
   // --- Composite values.
   //
@@ -167,7 +430,8 @@ class MOZ_STACK_CLASS BinASTTokenReaderContext : public BinASTTokenReaderBase {
    * If the caller has consumed too few/too many bytes, this will be reported
    * in the call go `guard.done()`.
    */
-  MOZ_MUST_USE JS::Result<Ok> enterList(uint32_t& length, AutoList& guard);
+  MOZ_MUST_USE JS::Result<Ok> enterList(uint32_t& length, const Context&,
+                                        AutoList& guard);
 
   /**
    * Start reading a tagged tuple.
@@ -187,17 +451,18 @@ class MOZ_STACK_CLASS BinASTTokenReaderContext : public BinASTTokenReaderBase {
    */
   MOZ_MUST_USE JS::Result<Ok> enterTaggedTuple(
       BinASTKind& tag, BinASTTokenReaderContext::BinASTFields& fields,
-      AutoTaggedTuple& guard);
+      const Context&, AutoTaggedTuple& guard);
 
   /**
    * Read a single unsigned long.
    */
-  MOZ_MUST_USE JS::Result<uint32_t> readUnsignedLong() { return readVarU32(); }
+  MOZ_MUST_USE JS::Result<uint32_t> readUnsignedLong(const Context&);
 
  private:
   /**
    * Read a single uint32_t.
    */
+  template <Compression compression>
   MOZ_MUST_USE JS::Result<uint32_t> readVarU32();
 
  private:
@@ -211,7 +476,11 @@ class MOZ_STACK_CLASS BinASTTokenReaderContext : public BinASTTokenReaderBase {
   MetadataOwnership metadataOwned_ = MetadataOwnership::Owned;
   BinASTSourceMetadata* metadata_;
 
+  class HuffmanDictionary dictionary;
+
   const uint8_t* posBeforeTree_;
+
+  BrotliDecoderState* decoder_ = nullptr;
 
  public:
   BinASTTokenReaderContext(const BinASTTokenReaderContext&) = delete;
@@ -222,6 +491,11 @@ class MOZ_STACK_CLASS BinASTTokenReaderContext : public BinASTTokenReaderBase {
   void traceMetadata(JSTracer* trc);
   BinASTSourceMetadata* takeMetadata();
   MOZ_MUST_USE JS::Result<Ok> initFromScriptSource(ScriptSource* scriptSource);
+
+ protected:
+  friend class HuffmanPreludeReader;
+
+  JSContext* cx_;
 
  public:
   // The following classes are used whenever we encounter a tuple/tagged

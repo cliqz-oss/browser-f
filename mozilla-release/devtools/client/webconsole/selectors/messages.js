@@ -5,8 +5,18 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 "use strict";
 
-loader.lazyRequireGetter(this, "getWarningGroupType", "devtools/client/webconsole/utils/messages", true);
-loader.lazyRequireGetter(this, "getParentWarningGroupMessageId", "devtools/client/webconsole/utils/messages", true);
+loader.lazyRequireGetter(
+  this,
+  "getWarningGroupType",
+  "devtools/client/webconsole/utils/messages",
+  true
+);
+loader.lazyRequireGetter(
+  this,
+  "getParentWarningGroupMessageId",
+  "devtools/client/webconsole/utils/messages",
+  true
+);
 
 function getAllMessagesById(state) {
   return state.messages.messagesById;
@@ -21,10 +31,6 @@ function getAllMessagesUiById(state) {
 }
 function getAllMessagesPayloadById(state) {
   return state.messages.messagesPayloadById;
-}
-
-function getAllMessagesTableDataById(state) {
-  return state.messages.messagesTableDataById;
 }
 
 function getAllGroupsById(state) {
@@ -63,12 +69,12 @@ function getAllWarningGroupsById(state) {
   return state.messages.warningGroupsById;
 }
 
-function isMessageInWarningGroup(state, message) {
+function isMessageInWarningGroup(message, visibleMessages = []) {
   if (!getWarningGroupType(message)) {
     return false;
   }
 
-  return getVisibleMessages(state).includes(getParentWarningGroupMessageId(message));
+  return visibleMessages.includes(getParentWarningGroupMessageId(message));
 }
 
 module.exports = {
@@ -76,7 +82,6 @@ module.exports = {
   getAllWarningGroupsById,
   getAllMessagesById,
   getAllMessagesPayloadById,
-  getAllMessagesTableDataById,
   getAllMessagesUiById,
   getAllNetworkMessagesUpdateById,
   getAllRepeatById,

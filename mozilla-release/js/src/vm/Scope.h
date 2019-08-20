@@ -178,7 +178,8 @@ class TrailingNamesArray {
 
   explicit TrailingNamesArray(size_t nameCount) {
     if (nameCount) {
-      AlwaysPoison(&data_, 0xCC, sizeof(BindingName) * nameCount,
+      AlwaysPoison(&data_, JS_SCOPE_DATA_TRAILING_NAMES_PATTERN,
+                   sizeof(BindingName) * nameCount,
                    MemCheckKind::MakeUndefined);
     }
   }
@@ -568,7 +569,6 @@ class FunctionScope : public Scope {
     Data() = delete;
 
     void trace(JSTracer* trc);
-    Zone* zone() const;
   };
 
   static FunctionScope* create(JSContext* cx, Handle<Data*> data,

@@ -13,6 +13,7 @@
 #include "nsImageLoadingContent.h"
 #include "nsError.h"
 #include "nsIContent.h"
+#include "mozilla/dom/BindContext.h"
 #include "mozilla/dom/Document.h"
 #include "nsIScriptGlobalObject.h"
 #include "nsIDOMWindow.h"
@@ -38,8 +39,6 @@
 #include "nsLayoutUtils.h"
 #include "nsIContentPolicy.h"
 #include "SVGObserverUtils.h"
-
-#include "gfxPrefs.h"
 
 #include "mozAutoDocUpdate.h"
 #include "mozilla/AsyncEventDispatcher.h"
@@ -530,7 +529,7 @@ void nsImageLoadingContent::MaybeForceSyncDecoding(
     // attribute on a timer.
     TimeStamp now = TimeStamp::Now();
     TimeDuration threshold = TimeDuration::FromMilliseconds(
-        gfxPrefs::ImageInferSrcAnimationThresholdMS());
+        StaticPrefs::image_infer_src_animation_threshold_ms());
 
     // If the length of time between request changes is less than the threshold,
     // then force sync decoding to eliminate flicker from the animation.
@@ -1148,15 +1147,6 @@ nsresult nsImageLoadingContent::LoadImage(nsIURI* aNewURI, bool aForce,
   nsLoadFlags loadFlags =
       aLoadFlags | nsContentUtils::CORSModeToLoadImageFlags(GetCORSMode());
 
-  // get document wide referrer policy
-  // if referrer attributes are enabled in preferences, load img referrer
-  // attribute if the image does not provide a referrer attribute, ignore this
-  net::ReferrerPolicy referrerPolicy = aDocument->GetReferrerPolicy();
-  net::ReferrerPolicy imgReferrerPolicy = GetImageReferrerPolicy();
-  if (imgReferrerPolicy != net::RP_Unset) {
-    referrerPolicy = imgReferrerPolicy;
-  }
-
   RefPtr<imgRequestProxy>& req = PrepareNextRequest(aImageLoadType);
   nsCOMPtr<nsIContent> content =
       do_QueryInterface(static_cast<nsIImageLoadingContent*>(this));
@@ -1174,10 +1164,14 @@ nsresult nsImageLoadingContent::LoadImage(nsIURI* aNewURI, bool aForce,
 
   nsCOMPtr<nsINode> thisNode =
       do_QueryInterface(static_cast<nsIImageLoadingContent*>(this));
+  nsCOMPtr<nsIReferrerInfo> referrerInfo = new ReferrerInfo();
+  referrerInfo->InitWithNode(thisNode);
+  nsCOMPtr<nsIURI> referrer = referrerInfo->GetOriginalReferrer();
   nsresult rv = nsContentUtils::LoadImage(
-      aNewURI, thisNode, aDocument, triggeringPrincipal, 0,
-      aDocument->GetDocumentURIAsReferrer(), referrerPolicy, this, loadFlags,
-      content->LocalName(), getter_AddRefs(req), policyType,
+      aNewURI, thisNode, aDocument, triggeringPrincipal, 0, referrer,
+      static_cast<mozilla::net::ReferrerPolicy>(
+          referrerInfo->GetReferrerPolicy()),
+      this, loadFlags, content->LocalName(), getter_AddRefs(req), policyType,
       mUseUrgentStartForChannel);
 
   // Reset the flag to avoid loading from XPCOM or somewhere again else without
@@ -1613,16 +1607,16 @@ void nsImageLoadingContent::NotifyOwnerDocumentActivityChanged() {
   }
 }
 
-void nsImageLoadingContent::BindToTree(Document* aDocument, nsIContent* aParent,
-                                       nsIContent* aBindingParent) {
+void nsImageLoadingContent::BindToTree(BindContext& aContext,
+                                       nsINode& aParent) {
   // We may be getting connected, if so our image should be tracked,
-  if (GetOurCurrentDoc()) {
+  if (aContext.InComposedDoc()) {
     TrackImage(mCurrentRequest);
     TrackImage(mPendingRequest);
   }
 }
 
-void nsImageLoadingContent::UnbindFromTree(bool aDeep, bool aNullParent) {
+void nsImageLoadingContent::UnbindFromTree(bool aNullParent) {
   // We may be leaving the document, so if our image is tracked, untrack it.
   nsCOMPtr<Document> doc = GetOurCurrentDoc();
   if (!doc) return;

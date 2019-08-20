@@ -6,8 +6,14 @@
 /* global gTelemetry */
 
 // React
-const { createFactory, Component } = require("devtools/client/shared/vendor/react");
-const { div, span } = require("devtools/client/shared/vendor/react-dom-factories");
+const {
+  createFactory,
+  Component,
+} = require("devtools/client/shared/vendor/react");
+const {
+  div,
+  span,
+} = require("devtools/client/shared/vendor/react-dom-factories");
 const PropTypes = require("devtools/client/shared/vendor/react-prop-types");
 const { L10N } = require("../utils/l10n");
 const ToggleButton = createFactory(require("./Button").ToggleButton);
@@ -19,13 +25,15 @@ const { FILTERS } = require("../constants");
 
 const TELEMETRY_AUDIT_ACTIVATED = "devtools.accessibility.audit_activated";
 const FILTER_LABELS = {
+  [FILTERS.ALL]: "accessibility.filter.all",
   [FILTERS.CONTRAST]: "accessibility.badge.contrast",
+  [FILTERS.TEXT_LABEL]: "accessibility.badge.textLabel",
 };
 
 class AccessibilityTreeFilter extends Component {
   static get propTypes() {
     return {
-      auditing: PropTypes.string.isRequired,
+      auditing: PropTypes.array.isRequired,
       filters: PropTypes.object.isRequired,
       dispatch: PropTypes.func.isRequired,
       walker: PropTypes.object.isRequired,
@@ -83,18 +91,23 @@ class AccessibilityTreeFilter extends Component {
         label: L10N.getStr(FILTER_LABELS[filterKey]),
         onClick: this.onClick.bind(this, filterKey),
         onKeyDown: this.onKeyDown.bind(this, filterKey),
-        busy: auditing === filterKey,
-      }));
+        busy: auditing.includes(filterKey),
+      })
+    );
 
-    return div({
-      role: "toolbar",
-      className: "accessibility-tree-filters",
-      "aria-labelledby": toolbarLabelID,
-      "aria-describedby": describedby,
-    },
-      span({ id: toolbarLabelID, role: "presentation" },
-        L10N.getStr("accessibility.tree.filters")),
-      ...filterButtons);
+    return div(
+      {
+        role: "toolbar",
+        className: "accessibility-tree-filters",
+        "aria-labelledby": toolbarLabelID,
+        "aria-describedby": describedby,
+      },
+      span(
+        { id: toolbarLabelID, role: "presentation" },
+        L10N.getStr("accessibility.tree.filters")
+      ),
+      ...filterButtons
+    );
   }
 }
 

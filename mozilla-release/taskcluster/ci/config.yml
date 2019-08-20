@@ -22,6 +22,7 @@ treeherder:
         'Fxfn-r-1proc': 'Firefox functional tests (remote) without e10s'
         'M': 'Mochitests'
         'M-1proc': 'Mochitests without e10s'
+        'M-fis': 'Mochitests with fission enabled'
         'M-spi': 'Mochitests with socket process'
         'M-spi-1proc': 'Mochitests with socket process without e10s'
         'M-sw': 'Mochitests with serviceworker redesign'
@@ -31,10 +32,12 @@ treeherder:
         'MSIs': 'Signing of Repacked installers of MSIs'
         'R': 'Reftests'
         'R-1proc': 'Reftests without e10s'
+        'R-fis': 'Reftests with fission enabled'
         'R-sw': 'Reftests with serviceworker redesign'
         'R-sw-1proc': 'Reftests with serviceworker redesign enabled without e10s'
         'Rap': 'Raptor performance tests on Firefox'
         'Rap-1proc': 'Raptor performance tests on Firefox without e10s'
+        'Rap-fis': 'Raptor performance tests on Firefox with fission enabled'
         'Rap-Prof': 'Raptor performance tests on Firefox with Gecko Profiling'
         'Rap-Prof-1proc': 'Raptor performance tests on Firefox with Gecko Profiling and without e10s'
         'Rap-ChC': 'Raptor performance tests on Google Chrome Canary'
@@ -48,9 +51,11 @@ treeherder:
         'Rap-refbrow': 'Raptor performance tests on the reference browser'
         'T': 'Talos performance tests'
         'T-1proc': 'Talos performance tests without e10s'
-        'Tsd': 'Talos performance tests with e10s, Stylo disabled'
+        'T-fis': 'Talos performance tests with fission enabled'
+        'Tsd': 'Talos performance tests, Stylo disabled'
         'Tsd-1proc': 'Talos performance tests with Stylo disabled without e10s'
-        'Tss': 'Talos performance tests with e10s, Stylo sequential'
+        'Tss': 'Talos performance tests, Stylo sequential'
+        'Tss-fis': 'Talos performance tests, Stylo sequential with fission enabled'
         'Tss-1proc': 'Talos performance tests with Stylo sequential without e10s'
         'tt': 'Telemetry tests'
         'tt-1proc': 'Telemetry tests without e10s'
@@ -60,10 +65,12 @@ treeherder:
         'VP': 'VideoPuppeteer tests'
         'W': 'Web platform tests'
         'W-1proc': 'Web platform tests without e10s'
+        'W-fis': 'Web platform tests with fission enabled'
         'W-sw': 'Web platform tests with serviceworker redesign'
         'W-sw-1proc': 'Web platform tests with serviceworker redesign, without e10s'
         'X': 'Xpcshell tests'
         'X-1proc': 'Xpcshell tests, without e10s'
+        'X-fis': 'Xpcshell tests with fission enabled'
         'X-sw': 'Xpcshell tests with serviceworker redesign'
         'X-sw-1proc': 'Xpcshell tests with serviceworker redesign, without e10s'
         'L10n': 'Localised Repacks'
@@ -154,12 +161,9 @@ release-promotion:
             product: devedition
             target-tasks-method: promote_desktop
             partial-updates: true
-        promote_fennec_beta:
+        promote_fennec:
             product: fennec
-            target-tasks-method: promote_fennec_beta
-        promote_fennec_release:
-            product: fennec
-            target-tasks-method: promote_fennec_release
+            target-tasks-method: promote_fennec
         promote_firefox:
             product: firefox
             target-tasks-method: promote_desktop
@@ -192,17 +196,14 @@ release-promotion:
             target-tasks-method: ship_desktop
             version-bump: true
             partial-updates: true
-        ship_fennec_beta:
+        ship_fennec:
             product: fennec
-            target-tasks-method: ship_fennec_beta
+            target-tasks-method: ship_fennec
             version-bump: true
-        ship_fennec_release:
-            product: fennec
-            target-tasks-method: ship_fennec_release
-        ship_fennec_release_rc:
+        ship_fennec_rc:
             product: fennec
             is-rc: true
-            target-tasks-method: ship_fennec_release
+            target-tasks-method: ship_fennec
         ship_firefox:
             product: firefox
             target-tasks-method: ship_desktop
@@ -277,13 +278,6 @@ task-priority:
         'autoland': 'low'
         'mozilla-inbound': 'low'
         'default': 'very-low'
-
-version-directory:
-    by-android-release-type:
-        nightly: mobile/android/config/version-files/nightly/
-        beta: mobile/android/config/version-files/beta/
-        release: mobile/android/config/version-files/release/
-        default: browser/config/
 
 workers:
     aliases:
@@ -386,7 +380,7 @@ workers:
             implementation: generic-worker
             os: windows
             worker-type: 'gecko-{alias}'
-        t-win10-64(-hw|-ux):
+        t-win10-64(-hw|-ref-hw|-ux):
             provisioner: releng-hardware
             implementation: generic-worker
             os: windows
@@ -401,6 +395,11 @@ workers:
             implementation: generic-worker
             os: windows
             worker-type: 'gecko-{alias}'
+        succeed:
+            provisioner: built-in
+            implementation: succeed
+            os: none
+            worker-type: succeed
 
 mac-notarization:
     mac-behavior:
@@ -413,7 +412,7 @@ mac-notarization:
     mac-entitlements:
         by-platform:
             macosx64.*:
-                by-release-level:
-                    production: security/mac/hardenedruntime/production.entitlements.xml
+                by-project:
+                    mozilla-(central|beta|release): security/mac/hardenedruntime/production.entitlements.xml
                     default: security/mac/hardenedruntime/developer.entitlements.xml
             default: ''

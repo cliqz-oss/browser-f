@@ -11,8 +11,11 @@ use std::vec::Vec;
 /// Value location range.
 #[derive(Debug, Clone, Copy)]
 pub struct ValueLocRange {
+    /// The ValueLoc containing a ValueLabel during this range.
     pub loc: ValueLoc,
+    /// The start of the range.
     pub start: u32,
+    /// The end of the range.
     pub end: u32,
 }
 
@@ -78,7 +81,7 @@ where
 pub fn build_value_labels_ranges<T>(
     func: &Function,
     regalloc: &Context,
-    isa: &TargetIsa,
+    isa: &dyn TargetIsa,
 ) -> ValueLabelsRanges
 where
     T: From<SourceLoc> + Deref<Target = SourceLoc> + Ord + Copy,

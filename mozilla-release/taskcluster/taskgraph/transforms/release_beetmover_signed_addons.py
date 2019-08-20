@@ -102,12 +102,8 @@ def make_task_description(config, jobs):
         )
 
         job['scopes'] = [
-            get_beetmover_bucket_scope(
-                config, job_release_type=attributes.get('release-type')
-            ),
-            get_beetmover_action_scope(
-                config, job_release_type=attributes.get('release-type')
-            ),
+            get_beetmover_bucket_scope(config),
+            get_beetmover_action_scope(config),
         ]
 
         job['dependencies'] = {dep_job.kind: dep_job.label}

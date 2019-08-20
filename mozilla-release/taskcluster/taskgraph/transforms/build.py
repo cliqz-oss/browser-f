@@ -70,7 +70,7 @@ def resolve_shipping_product(config, jobs):
 
 
 @transforms.add
-def mozharness_extra_config(config, jobs):
+def update_channel(config, jobs):
     for job in jobs:
         resolve_keyed_by(
             job, 'run.update-channel', item_name=job['name'],
@@ -78,20 +78,10 @@ def mozharness_extra_config(config, jobs):
                 'release-type': config.params['release_type'],
             }
         )
-
-        for item_name, should_become_attribute in (
-            ('branding', False),
-            ('update-channel', True),
-            ('version-file', False),
-        ):
-            item = job['run'].pop(item_name, None)
-            if item:
-                underscored_name = item_name.replace('-', '_')
-                job['run'].setdefault('extra-config', {})[underscored_name] = item
-
-                if should_become_attribute:
-                    job['attributes'][item_name] = item
-
+        update_channel = job['run'].pop('update-channel', None)
+        if update_channel:
+            job['run'].setdefault('extra-config', {})['update_channel'] = update_channel
+            job['attributes']['update-channel'] = update_channel
         yield job
 
 
@@ -114,7 +104,8 @@ def mozconfig(config, jobs):
 def use_profile_data(config, jobs):
     for job in jobs:
         use_pgo = job.pop('use-pgo', False)
-        if not use_pgo:
+        disable_pgo = config.params['try_task_config'].get('disable-pgo', False)
+        if not use_pgo or disable_pgo:
             yield job
             continue
 

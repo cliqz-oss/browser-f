@@ -194,8 +194,6 @@ class ComputedStyle {
   void SetCachedLazyPseudoStyle(ComputedStyle* aStyle) {
     MOZ_ASSERT(aStyle->IsPseudoElement());
     MOZ_ASSERT(!GetCachedLazyPseudoStyle(aStyle->GetPseudoType()));
-    MOZ_ASSERT(!IsLazilyCascadedPseudoElement(),
-               "lazy pseudos can't inherit lazy pseudos");
     MOZ_ASSERT(aStyle->IsLazilyCascadedPseudoElement());
 
     // Since we're caching lazy pseudo styles on the ComputedValues of the
@@ -241,6 +239,10 @@ class ComputedStyle {
    */
   nsChangeHint CalcStyleDifference(const ComputedStyle& aNewContext,
                                    uint32_t* aEqualStructs) const;
+
+#ifdef DEBUG
+  bool EqualForCachedAnonymousContentStyle(const ComputedStyle&) const;
+#endif
 
  public:
   /**

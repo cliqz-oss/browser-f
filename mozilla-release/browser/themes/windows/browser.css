@@ -548,14 +548,14 @@ menuitem.bookmark-item {
 %include ../shared/urlbar-searchbar.inc.css
 
 #urlbar,
-.searchbar-textbox {
+#searchbar {
   font-size: 1.15em;
 }
 
 @media (-moz-windows-default-theme: 0) {
   #urlbar:not(:-moz-lwtheme):not([focused="true"]),
   #urlbar:not(:-moz-lwtheme).hidden-focus,
-  .searchbar-textbox:not(:-moz-lwtheme):not([focused="true"]) {
+  #searchbar:not(:-moz-lwtheme):not(:focus-within) {
     border-color: ThreeDShadow;
   }
 }
@@ -826,7 +826,7 @@ notification[value="translation"] {
   notification[value="translation"] menulist > .menulist-dropmarker {
     list-style-image: url(chrome://global/skin/icons/arrow-dropdown-16.svg);
   }
-  notification[value="translation"] menulist > .menulist-dropmarker > .dropmarker-icon {
+  notification[value="translation"] menulist > .menulist-dropmarker::part(icon) {
     width: 11px;
     height: 11px;
   }
@@ -904,16 +904,6 @@ notification[value="translation"] {
 /* Customization mode */
 
 %include ../shared/customizableui/customizeMode.inc.css
-
-/**
- * This next rule is a hack to disable subpixel anti-aliasing on all
- * labels during the customize mode transition. Subpixel anti-aliasing
- * on Windows with Direct2D layers acceleration is particularly slow to
- * paint, so this hack is how we sidestep that performance bottleneck.
- */
-#main-window:-moz-any([customize-entering],[customize-exiting]) label {
-  transform: perspective(0.01px);
-}
 
 /* End customization mode */
 

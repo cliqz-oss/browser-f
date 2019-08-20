@@ -20,6 +20,9 @@
 #include "GfxInfoX11.h"
 
 #include <gdk/gdkx.h>
+#ifdef MOZ_WAYLAND
+#  include "mozilla/widget/nsWaylandDisplay.h"
+#endif
 
 #ifdef DEBUG
 bool fire_glxtest_process();
@@ -43,6 +46,7 @@ nsresult GfxInfo::Init() {
   mIsMesa = false;
   mIsAccelerated = true;
   mIsWayland = false;
+  mIsWaylandDRM = false;
   return GfxInfoBase::Init();
 }
 
@@ -57,6 +61,8 @@ void GfxInfo::AddCrashReportAnnotations() {
       CrashReporter::Annotation::AdapterDriverVersion, mDriverVersion);
   CrashReporter::AnnotateCrashReport(CrashReporter::Annotation::IsWayland,
                                      mIsWayland);
+  CrashReporter::AnnotateCrashReport(CrashReporter::Annotation::IsWaylandDRM,
+                                     mIsWaylandDRM);
 }
 
 void GfxInfo::GetData() {
@@ -274,9 +280,11 @@ void GfxInfo::GetData() {
     }
   } else if (glVendor.EqualsLiteral("NVIDIA Corporation")) {
     CopyUTF16toUTF8(GfxDriverInfo::GetDeviceVendor(VendorNVIDIA), mVendorId);
+    mDriverVendor.AssignLiteral("nvidia/unknown");
     // TODO: Use NV-CONTROL X11 extension to query Device ID and VRAM.
   } else if (glVendor.EqualsLiteral("ATI Technologies Inc.")) {
     CopyUTF16toUTF8(GfxDriverInfo::GetDeviceVendor(VendorATI), mVendorId);
+    mDriverVendor.AssignLiteral("ati/unknown");
     // TODO: Look into ways to find the device ID on FGLRX.
   } else {
     NS_WARNING("Failed to detect GL vendor!");
@@ -291,8 +299,12 @@ void GfxInfo::GetData() {
   }
 
   mAdapterDescription.Assign(glRenderer);
+#ifdef MOZ_WAYLAND
   mIsWayland = !GDK_IS_X11_DISPLAY(gdk_display_get_default());
-
+  if (mIsWayland) {
+    mIsWaylandDRM = nsWaylandDisplay::IsDMABufEnabled();
+  }
+#endif
   AddCrashReportAnnotations();
 }
 
@@ -347,11 +359,20 @@ const nsTArray<GfxDriverInfo>& GfxInfo::GetGfxDriverInfo() {
         nsIGfxInfo::FEATURE_BLOCKED_DEVICE, DRIVER_COMPARISON_IGNORED,
         V(0, 0, 0, 0), "FEATURE_FAILURE_WEBRENDER_NO_LINUX_NVIDIA", "");
 
-    // Disable on all ATI devices for now.
+    // ATI Mesa baseline, chosen arbitrarily.
     APPEND_TO_DRIVER_BLOCKLIST(
         OperatingSystem::Linux,
         (nsAString&)GfxDriverInfo::GetDeviceVendor(VendorATI),
-        (nsAString&)GfxDriverInfo::GetDriverVendor(DriverVendorAll),
+        (nsAString&)GfxDriverInfo::GetDriverVendor(DriverMesaAll),
+        GfxDriverInfo::allDevices, nsIGfxInfo::FEATURE_WEBRENDER,
+        nsIGfxInfo::FEATURE_BLOCKED_DRIVER_VERSION, DRIVER_LESS_THAN,
+        V(18, 0, 0, 0), "FEATURE_FAILURE_WEBRENDER_OLD_MESA", "Mesa 18.0.0.0");
+
+    // Disable on all ATI devices not using Mesa for now.
+    APPEND_TO_DRIVER_BLOCKLIST(
+        OperatingSystem::Linux,
+        (nsAString&)GfxDriverInfo::GetDeviceVendor(VendorATI),
+        (nsAString&)GfxDriverInfo::GetDriverVendor(DriverNonMesaAll),
         GfxDriverInfo::allDevices, nsIGfxInfo::FEATURE_WEBRENDER,
         nsIGfxInfo::FEATURE_BLOCKED_DEVICE, DRIVER_COMPARISON_IGNORED,
         V(0, 0, 0, 0), "FEATURE_FAILURE_WEBRENDER_NO_LINUX_ATI", "");
@@ -440,7 +461,11 @@ GfxInfo::GetCleartypeParameters(nsAString& aCleartypeParams) {
 NS_IMETHODIMP
 GfxInfo::GetWindowProtocol(nsAString& aWindowProtocol) {
   if (mIsWayland) {
-    aWindowProtocol.AssignLiteral("wayland");
+    if (mIsWaylandDRM) {
+      aWindowProtocol.AssignLiteral("wayland (drm)");
+    } else {
+      aWindowProtocol.AssignLiteral("wayland");
+    }
     return NS_OK;
   }
 

@@ -270,6 +270,17 @@ class nsDocShell final : public nsDocLoader,
                          LOCATION_CHANGE_SAME_DOCUMENT);
   }
 
+  // This function is created exclusively for dom.background_loading_iframe is
+  // set. As soon as the current DocShell knows itself can be treated as
+  // background loading, it triggers the parent docshell to see if the parent
+  // document can fire load event earlier.
+  void TriggerParentCheckDocShellIsEmpty() {
+    RefPtr<nsDocShell> parent = GetParentDocshell();
+    if (parent) {
+      parent->DocLoaderIsEmpty(true);
+    }
+  }
+
   nsresult HistoryEntryRemoved(int32_t aIndex);
 
   // Notify Scroll observers when an async panning/zooming transform
@@ -486,7 +497,10 @@ class nsDocShell final : public nsDocLoader,
 
   // aPrincipal can be passed in if the caller wants. If null is
   // passed in, the about:blank principal will end up being used.
+  // aCSP, if any, will be used for the new about:blank load.
   nsresult CreateAboutBlankContentViewer(nsIPrincipal* aPrincipal,
+                                         nsIPrincipal* aStoragePrincipal,
+                                         nsIContentSecurityPolicy* aCSP,
                                          nsIURI* aBaseURI,
                                          bool aTryToSaveOldPresentation = true,
                                          bool aCheckPermitUnload = true);
@@ -522,6 +536,7 @@ class nsDocShell final : public nsDocLoader,
   nsresult AddToSessionHistory(nsIURI* aURI, nsIChannel* aChannel,
                                nsIPrincipal* aTriggeringPrincipal,
                                nsIPrincipal* aPrincipalToInherit,
+                               nsIPrincipal* aStoragePrincipalToInherit,
                                nsIContentSecurityPolicy* aCsp,
                                bool aCloneChildren, nsISHEntry** aNewEntry);
 
@@ -595,7 +610,8 @@ class nsDocShell final : public nsDocLoader,
   // will be upgraded to HTTPS.
   bool OnNewURI(nsIURI* aURI, nsIChannel* aChannel,
                 nsIPrincipal* aTriggeringPrincipal,
-                nsIPrincipal* aPrincipalToInherit, uint32_t aLoadType,
+                nsIPrincipal* aPrincipalToInherit,
+                nsIPrincipal* aStoragePrincipalToInehrit, uint32_t aLoadType,
                 nsIContentSecurityPolicy* aCsp, bool aFireOnLocationChange,
                 bool aAddToGlobalHistory, bool aCloneSHChildren);
 
@@ -635,7 +651,10 @@ class nsDocShell final : public nsDocLoader,
   // If that fails too, we force creation of a content viewer and use the
   // resulting principal. If aConsiderCurrentDocument is false, we just look
   // at the parent.
-  nsIPrincipal* GetInheritedPrincipal(bool aConsiderCurrentDocument);
+  // If aConsiderStoragePrincipal is true, we consider the storage principal
+  // instead of the node principal.
+  nsIPrincipal* GetInheritedPrincipal(bool aConsiderCurrentDocument,
+                                      bool aConsiderStoragePrincipal = false);
 
   /**
    * Helper function that determines if channel is an HTTP POST.
@@ -764,24 +783,24 @@ class nsDocShell final : public nsDocLoader,
     BFCACHE_SUCCESS,
     UNLOAD = mozilla::dom::BFCacheStatus::UNLOAD_LISTENER,
     UNLOAD_REQUEST = mozilla::dom::BFCacheStatus::UNLOAD_LISTENER |
-                              mozilla::dom::BFCacheStatus::REQUEST,
+                     mozilla::dom::BFCacheStatus::REQUEST,
     REQUEST = mozilla::dom::BFCacheStatus::REQUEST,
     UNLOAD_REQUEST_PEER = mozilla::dom::BFCacheStatus::UNLOAD_LISTENER |
                           mozilla::dom::BFCacheStatus::REQUEST |
                           mozilla::dom::BFCacheStatus::ACTIVE_PEER_CONNECTION,
     UNLOAD_REQUEST_PEER_MSE =
-      mozilla::dom::BFCacheStatus::UNLOAD_LISTENER |
-      mozilla::dom::BFCacheStatus::REQUEST |
-      mozilla::dom::BFCacheStatus::ACTIVE_PEER_CONNECTION |
-      mozilla::dom::BFCacheStatus::CONTAINS_MSE_CONTENT,
+        mozilla::dom::BFCacheStatus::UNLOAD_LISTENER |
+        mozilla::dom::BFCacheStatus::REQUEST |
+        mozilla::dom::BFCacheStatus::ACTIVE_PEER_CONNECTION |
+        mozilla::dom::BFCacheStatus::CONTAINS_MSE_CONTENT,
     UNLOAD_REQUEST_MSE = mozilla::dom::BFCacheStatus::UNLOAD_LISTENER |
                          mozilla::dom::BFCacheStatus::REQUEST |
                          mozilla::dom::BFCacheStatus::CONTAINS_MSE_CONTENT,
     SUSPENDED_UNLOAD_REQUEST_PEER =
-      mozilla::dom::BFCacheStatus::SUSPENDED |
-      mozilla::dom::BFCacheStatus::UNLOAD_LISTENER |
-      mozilla::dom::BFCacheStatus::REQUEST |
-      mozilla::dom::BFCacheStatus::ACTIVE_PEER_CONNECTION,
+        mozilla::dom::BFCacheStatus::SUSPENDED |
+        mozilla::dom::BFCacheStatus::UNLOAD_LISTENER |
+        mozilla::dom::BFCacheStatus::REQUEST |
+        mozilla::dom::BFCacheStatus::ACTIVE_PEER_CONNECTION,
   };
 
   void ReportBFCacheComboTelemetry(uint16_t aCombo);
@@ -1248,6 +1267,10 @@ class nsDocShell final : public nsDocLoader,
 
   // Set when activity in this docshell is being watched by the developer tools.
   bool mWatchedByDevtools : 1;
+
+  // This flag indicates whether or not the DocShell is currently executing an
+  // nsIWebNavigation navigation method.
+  bool mIsNavigating : 1;
 };
 
 #endif /* nsDocShell_h__ */

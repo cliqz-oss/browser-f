@@ -23,6 +23,7 @@
 #include "nsGlobalWindowInner.h"
 #include "nsFrameLoaderOwner.h"
 #include "nsQueryObject.h"
+#include "nsSerializationHelper.h"
 
 #include "mozilla/dom/JSWindowActorBinding.h"
 #include "mozilla/dom/JSWindowActorChild.h"
@@ -69,9 +70,9 @@ already_AddRefed<WindowGlobalChild> WindowGlobalChild::Create(
 
   RefPtr<WindowGlobalChild> wgc = new WindowGlobalChild(aWindow, bc);
 
-  // If we have already closed our browsing context, return a pre-closed
+  // If we have already closed our browsing context, return a pre-destroyed
   // WindowGlobalChild actor.
-  if (bc->GetClosed()) {
+  if (bc->IsDiscarded()) {
     wgc->ActorDestroy(FailedConstructor);
     return wgc.forget();
   }
@@ -138,6 +139,23 @@ already_AddRefed<BrowserChild> WindowGlobalChild::GetBrowserChild() {
   return do_AddRef(static_cast<BrowserChild*>(Manager()));
 }
 
+uint64_t WindowGlobalChild::ContentParentId() {
+  if (XRE_IsParentProcess()) {
+    return 0;
+  }
+  return ContentChild::GetSingleton()->GetID();
+}
+
+// A WindowGlobalChild is the root in its process if it has no parent, or its
+// embedder is in a different process.
+bool WindowGlobalChild::IsProcessRoot() {
+  if (!BrowsingContext()->GetParent()) {
+    return true;
+  }
+
+  return !BrowsingContext()->GetEmbedderElement();
+}
+
 void WindowGlobalChild::Destroy() {
   // Perform async IPC shutdown unless we're not in-process, and our
   // BrowserChild is in the process of being destroyed, which will destroy us as
@@ -185,8 +203,12 @@ static nsresult ChangeFrameRemoteness(WindowGlobalChild* aWgc,
 
   // Actually perform the remoteness swap.
   RemotenessOptions options;
-  options.mRemoteType.Construct(aRemoteType);
   options.mPendingSwitchID.Construct(aPendingSwitchId);
+
+  // Only set mRemoteType if it doesn't match the current process' remote type.
+  if (!ContentChild::GetSingleton()->GetRemoteType().Equals(aRemoteType)) {
+    options.mRemoteType.Construct(aRemoteType);
+  }
 
   ErrorResult error;
   flo->ChangeRemoteness(options, error);
@@ -233,6 +255,36 @@ IPCResult WindowGlobalChild::RecvChangeFrameRemoteness(
 
   // To make the type system happy, we've gotta do some gymnastics.
   aResolver(Tuple<const nsresult&, PBrowserBridgeChild*>(rv, bbc));
+  return IPC_OK();
+}
+
+mozilla::ipc::IPCResult WindowGlobalChild::RecvGetSecurityInfo(
+    GetSecurityInfoResolver&& aResolve) {
+  Maybe<nsCString> result;
+
+  if (nsCOMPtr<Document> doc = mWindowGlobal->GetDoc()) {
+    nsCOMPtr<nsISupports> secInfo;
+    nsresult rv = NS_OK;
+
+    // First check if there's a failed channel, in case of a certificate
+    // error.
+    if (nsIChannel* failedChannel = doc->GetFailedChannel()) {
+      rv = failedChannel->GetSecurityInfo(getter_AddRefs(secInfo));
+    } else {
+      // When there's no failed channel we should have a regular
+      // security info on the document. In some cases there's no
+      // security info at all, i.e. on HTTP sites.
+      secInfo = doc->GetSecurityInfo();
+    }
+
+    if (NS_SUCCEEDED(rv) && secInfo) {
+      nsCOMPtr<nsISerializable> secInfoSer = do_QueryInterface(secInfo);
+      result.emplace();
+      NS_SerializeToString(secInfoSer, result.ref());
+    }
+  }
+
+  aResolve(result);
   return IPC_OK();
 }
 
@@ -290,7 +342,7 @@ already_AddRefed<JSWindowActorChild> WindowGlobalChild::GetActor(
     return nullptr;
   }
 
-  MOZ_RELEASE_ASSERT(!actor->Manager(),
+  MOZ_RELEASE_ASSERT(!actor->GetManager(),
                      "mManager was already initialized once!");
   actor->Init(aName, this);
   mWindowActors.Put(aName, actor);

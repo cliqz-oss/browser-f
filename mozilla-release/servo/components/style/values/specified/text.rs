@@ -134,14 +134,16 @@ impl ToComputedValue for LineHeight {
 }
 
 /// A generic value for the `text-overflow` property.
+/// cbindgen:derive-tagged-enum-copy-constructor=true
 #[derive(Clone, Debug, Eq, MallocSizeOf, PartialEq, SpecifiedValueInfo, ToCss, ToShmem)]
+#[repr(C, u8)]
 pub enum TextOverflowSide {
     /// Clip inline content.
     Clip,
     /// Render ellipsis to represent clipped inline content.
     Ellipsis,
     /// Render a given string to represent clipped inline content.
-    String(Box<str>),
+    String(crate::OwnedStr),
 }
 
 impl Parse for TextOverflowSide {
@@ -160,9 +162,9 @@ impl Parse for TextOverflowSide {
                     ))
                 }
             },
-            Token::QuotedString(ref v) => Ok(TextOverflowSide::String(
-                v.as_ref().to_owned().into_boxed_str(),
-            )),
+            Token::QuotedString(ref v) => {
+                Ok(TextOverflowSide::String(v.as_ref().to_owned().into()))
+            },
             ref t => Err(location.new_unexpected_token_error(t.clone())),
         }
     }
@@ -1005,6 +1007,31 @@ pub enum WordBreak {
     BreakWord,
 }
 
+/// Values for the `line-break` property.
+#[repr(u8)]
+#[derive(
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    MallocSizeOf,
+    Parse,
+    PartialEq,
+    SpecifiedValueInfo,
+    ToComputedValue,
+    ToCss,
+    ToResolvedValue,
+    ToShmem,
+)]
+#[allow(missing_docs)]
+pub enum LineBreak {
+    Auto,
+    Loose,
+    Normal,
+    Strict,
+    Anywhere,
+}
+
 /// Values for the `overflow-wrap` property.
 #[repr(u8)]
 #[derive(
@@ -1026,4 +1053,29 @@ pub enum OverflowWrap {
     Normal,
     BreakWord,
     Anywhere,
+}
+
+/// Implements text-decoration-skip-ink which takes the keywords auto | none
+///
+/// https://drafts.csswg.org/css-text-decor-4/#text-decoration-skip-ink-property
+#[repr(u8)]
+#[cfg_attr(feature = "servo", derive(Deserialize, Serialize))]
+#[derive(
+    Clone,
+    Copy,
+    Debug,
+    Eq,
+    MallocSizeOf,
+    Parse,
+    PartialEq,
+    SpecifiedValueInfo,
+    ToComputedValue,
+    ToCss,
+    ToResolvedValue,
+    ToShmem,
+)]
+#[allow(missing_docs)]
+pub enum TextDecorationSkipInk {
+    Auto,
+    None,
 }

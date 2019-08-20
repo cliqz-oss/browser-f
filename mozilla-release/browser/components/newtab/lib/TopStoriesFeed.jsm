@@ -3,21 +3,47 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 "use strict";
 
-const {XPCOMUtils} = ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
-const {Services} = ChromeUtils.import("resource://gre/modules/Services.jsm");
-const {NewTabUtils} = ChromeUtils.import("resource://gre/modules/NewTabUtils.jsm");
+const { XPCOMUtils } = ChromeUtils.import(
+  "resource://gre/modules/XPCOMUtils.jsm"
+);
+const { Services } = ChromeUtils.import("resource://gre/modules/Services.jsm");
+const { NewTabUtils } = ChromeUtils.import(
+  "resource://gre/modules/NewTabUtils.jsm"
+);
 XPCOMUtils.defineLazyGlobalGetters(this, ["fetch"]);
 
-const {actionTypes: at, actionCreators: ac} = ChromeUtils.import("resource://activity-stream/common/Actions.jsm");
-const {Prefs} = ChromeUtils.import("resource://activity-stream/lib/ActivityStreamPrefs.jsm");
-const {shortURL} = ChromeUtils.import("resource://activity-stream/lib/ShortURL.jsm");
-const {SectionsManager} = ChromeUtils.import("resource://activity-stream/lib/SectionsManager.jsm");
-const {UserDomainAffinityProvider} = ChromeUtils.import("resource://activity-stream/lib/UserDomainAffinityProvider.jsm");
-const {PersonalityProvider} = ChromeUtils.import("resource://activity-stream/lib/PersonalityProvider.jsm");
-const {PersistentCache} = ChromeUtils.import("resource://activity-stream/lib/PersistentCache.jsm");
+const { actionTypes: at, actionCreators: ac } = ChromeUtils.import(
+  "resource://activity-stream/common/Actions.jsm"
+);
+const { Prefs } = ChromeUtils.import(
+  "resource://activity-stream/lib/ActivityStreamPrefs.jsm"
+);
+const { shortURL } = ChromeUtils.import(
+  "resource://activity-stream/lib/ShortURL.jsm"
+);
+const { SectionsManager } = ChromeUtils.import(
+  "resource://activity-stream/lib/SectionsManager.jsm"
+);
+const { UserDomainAffinityProvider } = ChromeUtils.import(
+  "resource://activity-stream/lib/UserDomainAffinityProvider.jsm"
+);
+const { PersonalityProvider } = ChromeUtils.import(
+  "resource://activity-stream/lib/PersonalityProvider.jsm"
+);
+const { PersistentCache } = ChromeUtils.import(
+  "resource://activity-stream/lib/PersistentCache.jsm"
+);
 
-ChromeUtils.defineModuleGetter(this, "perfService", "resource://activity-stream/common/PerfService.jsm");
-ChromeUtils.defineModuleGetter(this, "pktApi", "chrome://pocket/content/pktApi.jsm");
+ChromeUtils.defineModuleGetter(
+  this,
+  "perfService",
+  "resource://activity-stream/common/PerfService.jsm"
+);
+ChromeUtils.defineModuleGetter(
+  this,
+  "pktApi",
+  "chrome://pocket/content/pktApi.jsm"
+);
 
 const STORIES_UPDATE_TIME = 30 * 60 * 1000; // 30 minutes
 const TOPICS_UPDATE_TIME = 3 * 60 * 60 * 1000; // 3 hours
@@ -26,7 +52,11 @@ const MIN_DOMAIN_AFFINITIES_UPDATE_TIME = 12 * 60 * 60 * 1000; // 12 hours
 const DEFAULT_RECS_EXPIRE_TIME = 60 * 60 * 1000; // 1 hour
 const SECTION_ID = "topstories";
 const IMPRESSION_SOURCE = "TOP_STORIES";
-const SPOC_IMPRESSION_TRACKING_PREF = "feeds.section.topstories.spoc.impressions";
+const SPOC_IMPRESSION_TRACKING_PREF =
+  "feeds.section.topstories.spoc.impressions";
+const DISCOVERY_STREAM_PREF_ENABLED = "discoverystream.enabled";
+const DISCOVERY_STREAM_PREF_ENABLED_PATH =
+  "browser.newtabpage.activity-stream.discoverystream.enabled";
 const REC_IMPRESSION_TRACKING_PREF = "feeds.section.topstories.rec.impressions";
 const OPTIONS_PREF = "feeds.section.topstories.options";
 const MAX_LIFETIME_CAP = 500; // Guard against misconfiguration on the server
@@ -37,7 +67,11 @@ this.TopStoriesFeed = class TopStoriesFeed {
     // Use discoverystream config pref default values for fast path and
     // if needed lazy load activity stream top stories feed based on
     // actual user preference when INIT and PREF_CHANGED is invoked
-    this.discoveryStreamEnabled = ds && ds.value && JSON.parse(ds.value).enabled;
+    this.discoveryStreamEnabled =
+      ds &&
+      ds.value &&
+      JSON.parse(ds.value).enabled &&
+      Services.prefs.getBoolPref(DISCOVERY_STREAM_PREF_ENABLED_PATH, false);
     if (!this.discoveryStreamEnabled) {
       this.initializeProperties();
     }
@@ -58,10 +92,16 @@ this.TopStoriesFeed = class TopStoriesFeed {
     }
 
     try {
-      const {options} = SectionsManager.sections.get(SECTION_ID);
+      const { options } = SectionsManager.sections.get(SECTION_ID);
       const apiKey = this.getApiKeyFromPref(options.api_key_pref);
-      this.stories_endpoint = this.produceFinalEndpointUrl(options.stories_endpoint, apiKey);
-      this.topics_endpoint = this.produceFinalEndpointUrl(options.topics_endpoint, apiKey);
+      this.stories_endpoint = this.produceFinalEndpointUrl(
+        options.stories_endpoint,
+        apiKey
+      );
+      this.topics_endpoint = this.produceFinalEndpointUrl(
+        options.topics_endpoint,
+        apiKey
+      );
       this.read_more_endpoint = options.read_more_endpoint;
       this.stories_referrer = options.stories_referrer;
       this.personalized = options.personalized;
@@ -78,18 +118,20 @@ this.TopStoriesFeed = class TopStoriesFeed {
       // Cache is used for new page loads, which shouldn't have changed data.
       // If we have changed data, cache should be cleared,
       // and last updated should be 0, and we can fetch.
-      let {stories, topics} = await this.loadCachedData();
+      let { stories, topics } = await this.loadCachedData();
       if (this.storiesLastUpdated === 0) {
         stories = await this.fetchStories();
       }
       if (this.topicsLastUpdated === 0) {
         topics = await this.fetchTopics();
       }
-      this.doContentUpdate({stories, topics}, true);
+      this.doContentUpdate({ stories, topics }, true);
       this.storiesLoaded = true;
 
       // This is filtered so an update function can return true to retry on the next run
-      this.contentUpdateQueue = this.contentUpdateQueue.filter(update => update());
+      this.contentUpdateQueue = this.contentUpdateQueue.filter(update =>
+        update()
+      );
     } catch (e) {
       Cu.reportError(`Problem initializing top stories feed: ${e.message}`);
     }
@@ -125,13 +167,17 @@ this.TopStoriesFeed = class TopStoriesFeed {
   }
 
   getPocketState(target) {
-    const action = {type: at.POCKET_LOGGED_IN, data: pktApi.isUserLoggedIn()};
+    const action = { type: at.POCKET_LOGGED_IN, data: pktApi.isUserLoggedIn() };
     this.store.dispatch(ac.OnlyToOneContent(action, target));
   }
 
   dispatchPocketCta(data, shouldBroadcast) {
-    const action = {type: at.POCKET_CTA, data: JSON.parse(data)};
-    this.store.dispatch(shouldBroadcast ? ac.BroadcastToContent(action) : ac.AlsoToPreloaded(action));
+    const action = { type: at.POCKET_CTA, data: JSON.parse(data) };
+    this.store.dispatch(
+      shouldBroadcast
+        ? ac.BroadcastToContent(action)
+        : ac.AlsoToPreloaded(action)
+    );
   }
 
   /**
@@ -151,18 +197,21 @@ this.TopStoriesFeed = class TopStoriesFeed {
    *                  loads or pref changes, we want to update existing tabs,
    *                  for system tick or other updates we do not.
    */
-  doContentUpdate({stories, topics}, shouldBroadcast) {
+  doContentUpdate({ stories, topics }, shouldBroadcast) {
     let updateProps = {};
     if (stories) {
       updateProps.rows = stories;
     } else {
-      const {Sections} = this.store.getState();
+      const { Sections } = this.store.getState();
       if (Sections && Sections.find) {
         updateProps.rows = Sections.find(s => s.id === SECTION_ID).rows;
       }
     }
     if (topics) {
-      Object.assign(updateProps, {topics, read_more_endpoint: this.read_more_endpoint});
+      Object.assign(updateProps, {
+        topics,
+        read_more_endpoint: this.read_more_endpoint,
+      });
     }
 
     // We should only be calling this once per init.
@@ -173,7 +222,7 @@ this.TopStoriesFeed = class TopStoriesFeed {
     const data = await this.cache.get();
     let stories = data.stories && data.stories.recommendations;
     this.stories = this.rotate(this.transform(stories));
-    this.doContentUpdate({stories: this.stories}, false);
+    this.doContentUpdate({ stories: this.stories }, false);
 
     const affinities = this.affinityProvider.getAffinities();
     this.domainAffinitiesLastUpdated = Date.now();
@@ -182,19 +231,24 @@ this.TopStoriesFeed = class TopStoriesFeed {
   }
 
   affinityProividerSwitcher(...args) {
-    const {affinityProviderV2} = this;
+    const { affinityProviderV2 } = this;
     if (affinityProviderV2 && affinityProviderV2.use_v2) {
-      const provider = this.PersonalityProvider(...args, {modelKeys: affinityProviderV2.model_keys, dispatch: this.store.dispatch});
+      const provider = this.PersonalityProvider(...args, {
+        modelKeys: affinityProviderV2.model_keys,
+        dispatch: this.store.dispatch,
+      });
       provider.init(this.onPersonalityProviderInit.bind(this));
       return provider;
     }
 
     const start = perfService.absNow();
     const v1Provider = this.UserDomainAffinityProvider(...args);
-    this.store.dispatch(ac.PerfEvent({
-      event: "topstories.domain.affinity.calculation.ms",
-      value: Math.round(perfService.absNow() - start),
-    }));
+    this.store.dispatch(
+      ac.PerfEvent({
+        event: "topstories.domain.affinity.calculation.ms",
+        value: Math.round(perfService.absNow() - start),
+      })
+    );
 
     return v1Provider;
   }
@@ -212,9 +266,13 @@ this.TopStoriesFeed = class TopStoriesFeed {
       return null;
     }
     try {
-      const response = await fetch(this.stories_endpoint, {credentials: "omit"});
+      const response = await fetch(this.stories_endpoint, {
+        credentials: "omit",
+      });
       if (!response.ok) {
-        throw new Error(`Stories endpoint returned unexpected status: ${response.status}`);
+        throw new Error(
+          `Stories endpoint returned unexpected status: ${response.status}`
+        );
       }
 
       const body = await response.json();
@@ -223,8 +281,12 @@ this.TopStoriesFeed = class TopStoriesFeed {
       this.cleanUpTopRecImpressionPref();
 
       if (this.show_spocs && body.spocs) {
-        this.spocCampaignMap = new Map(body.spocs.map(s => [s.id, `${s.campaign_id}`]));
-        this.spocs = this.transform(body.spocs).filter(s => s.score >= s.min_score);
+        this.spocCampaignMap = new Map(
+          body.spocs.map(s => [s.id, `${s.campaign_id}`])
+        );
+        this.spocs = this.transform(body.spocs).filter(
+          s => s.score >= s.min_score
+        );
         this.cleanUpCampaignImpressionPref();
       }
       this.storiesLastUpdated = Date.now();
@@ -243,8 +305,13 @@ this.TopStoriesFeed = class TopStoriesFeed {
 
     let affinities = data.domainAffinities;
     if (this.personalized && affinities && affinities.scores) {
-      this.affinityProvider = this.affinityProividerSwitcher(affinities.timeSegments,
-        affinities.parameterSets, affinities.maxHistoryQueryResults, affinities.version, affinities.scores);
+      this.affinityProvider = this.affinityProividerSwitcher(
+        affinities.timeSegments,
+        affinities.parameterSets,
+        affinities.maxHistoryQueryResults,
+        affinities.version,
+        affinities.scores
+      );
       this.domainAffinitiesLastUpdated = affinities._timestamp;
     }
     if (stories && stories.length > 0 && this.storiesLastUpdated === 0) {
@@ -252,8 +319,12 @@ this.TopStoriesFeed = class TopStoriesFeed {
       this.stories = this.rotate(this.transform(stories));
       this.storiesLastUpdated = data.stories._timestamp;
       if (data.stories.spocs && data.stories.spocs.length) {
-        this.spocCampaignMap = new Map(data.stories.spocs.map(s => [s.id, `${s.campaign_id}`]));
-        this.spocs = this.transform(data.stories.spocs).filter(s => s.score >= s.min_score);
+        this.spocCampaignMap = new Map(
+          data.stories.spocs.map(s => [s.id, `${s.campaign_id}`])
+        );
+        this.spocs = this.transform(data.stories.spocs).filter(
+          s => s.score >= s.min_score
+        );
         this.cleanUpCampaignImpressionPref();
       }
     }
@@ -262,7 +333,7 @@ this.TopStoriesFeed = class TopStoriesFeed {
       this.topicsLastUpdated = data.topics._timestamp;
     }
 
-    return {topics: this.topics, stories: this.stories};
+    return { topics: this.topics, stories: this.stories };
   }
 
   dispatchRelevanceScore(start) {
@@ -271,7 +342,7 @@ this.TopStoriesFeed = class TopStoriesFeed {
     if (!this.personalized) {
       return;
     }
-    const {affinityProviderV2} = this;
+    const { affinityProviderV2 } = this;
     if (affinityProviderV2 && affinityProviderV2.use_v2) {
       if (this.affinityProvider) {
         initialized = this.affinityProvider.initialized;
@@ -285,10 +356,12 @@ this.TopStoriesFeed = class TopStoriesFeed {
     // v1 doesn't have any initialized issues around ranking,
     // and should be ready right away.
     if (initialized) {
-      this.store.dispatch(ac.PerfEvent({
-        event,
-        value: Math.round(perfService.absNow() - start),
-      }));
+      this.store.dispatch(
+        ac.PerfEvent({
+          event,
+          value: Math.round(perfService.absNow() - start),
+        })
+      );
     }
   }
 
@@ -299,22 +372,30 @@ this.TopStoriesFeed = class TopStoriesFeed {
 
     const scoreStart = perfService.absNow();
     const calcResult = items
-      .filter(s => !NewTabUtils.blockedLinks.isBlocked({"url": s.url}))
+      .filter(s => !NewTabUtils.blockedLinks.isBlocked({ url: s.url }))
       .map(s => {
         let mapped = {
-          "guid": s.id,
-          "hostname": s.domain || shortURL(Object.assign({}, s, {url: s.url})),
-          "type": (Date.now() - (s.published_timestamp * 1000)) <= STORIES_NOW_THRESHOLD ? "now" : "trending",
-          "context": s.context,
-          "icon": s.icon,
-          "title": s.title,
-          "description": s.excerpt,
-          "image": this.normalizeUrl(s.image_src),
-          "referrer": this.stories_referrer,
-          "url": s.url,
-          "min_score": s.min_score || 0,
-          "score": this.personalized && this.affinityProvider ? this.affinityProvider.calculateItemRelevanceScore(s) : s.item_score || 1,
-          "spoc_meta": this.show_spocs ? {campaign_id: s.campaign_id, caps: s.caps} : {},
+          guid: s.id,
+          hostname: s.domain || shortURL(Object.assign({}, s, { url: s.url })),
+          type:
+            Date.now() - s.published_timestamp * 1000 <= STORIES_NOW_THRESHOLD
+              ? "now"
+              : "trending",
+          context: s.context,
+          icon: s.icon,
+          title: s.title,
+          description: s.excerpt,
+          image: this.normalizeUrl(s.image_src),
+          referrer: this.stories_referrer,
+          url: s.url,
+          min_score: s.min_score || 0,
+          score:
+            this.personalized && this.affinityProvider
+              ? this.affinityProvider.calculateItemRelevanceScore(s)
+              : s.item_score || 1,
+          spoc_meta: this.show_spocs
+            ? { campaign_id: s.campaign_id, caps: s.caps }
+            : {},
         };
 
         // Very old cached spocs may not contain an `expiration_timestamp` property
@@ -335,12 +416,16 @@ this.TopStoriesFeed = class TopStoriesFeed {
       return null;
     }
     try {
-      const response = await fetch(this.topics_endpoint, {credentials: "omit"});
+      const response = await fetch(this.topics_endpoint, {
+        credentials: "omit",
+      });
       if (!response.ok) {
-        throw new Error(`Topics endpoint returned unexpected status: ${response.status}`);
+        throw new Error(
+          `Topics endpoint returned unexpected status: ${response.status}`
+        );
       }
       const body = await response.json();
-      const {topics} = body;
+      const { topics } = body;
       if (topics) {
         this.topics = topics;
         this.topicsLastUpdated = Date.now();
@@ -372,14 +457,21 @@ this.TopStoriesFeed = class TopStoriesFeed {
     this.recsExpireTime = settings.recsExpireTime;
     this.version = settings.version;
 
-    if (this.affinityProvider && (this.affinityProvider.version !== this.version)) {
+    if (
+      this.affinityProvider &&
+      this.affinityProvider.version !== this.version
+    ) {
       this.resetDomainAffinityScores();
     }
   }
 
   updateDomainAffinityScores() {
-    if (!this.personalized || !this.domainAffinityParameterSets ||
-      Date.now() - this.domainAffinitiesLastUpdated < MIN_DOMAIN_AFFINITIES_UPDATE_TIME) {
+    if (
+      !this.personalized ||
+      !this.domainAffinityParameterSets ||
+      Date.now() - this.domainAffinitiesLastUpdated <
+        MIN_DOMAIN_AFFINITIES_UPDATE_TIME
+    ) {
       return;
     }
 
@@ -387,7 +479,9 @@ this.TopStoriesFeed = class TopStoriesFeed {
       this.timeSegments,
       this.domainAffinityParameterSets,
       this.maxHistoryQueryResults,
-      this.version, undefined);
+      this.version,
+      undefined
+    );
 
     const affinities = this.affinityProvider.getAffinities();
     this.domainAffinitiesLastUpdated = Date.now();
@@ -408,12 +502,18 @@ this.TopStoriesFeed = class TopStoriesFeed {
       return items;
     }
 
-    const maxImpressionAge = Math.max(this.recsExpireTime * 1000 || DEFAULT_RECS_EXPIRE_TIME, DEFAULT_RECS_EXPIRE_TIME);
+    const maxImpressionAge = Math.max(
+      this.recsExpireTime * 1000 || DEFAULT_RECS_EXPIRE_TIME,
+      DEFAULT_RECS_EXPIRE_TIME
+    );
     const impressions = this.readImpressionsPref(REC_IMPRESSION_TRACKING_PREF);
     const expired = [];
     const active = [];
     for (const item of items) {
-      if (impressions[item.guid] && Date.now() - impressions[item.guid] >= maxImpressionAge) {
+      if (
+        impressions[item.guid] &&
+        Date.now() - impressions[item.guid] >= maxImpressionAge
+      ) {
         expired.push(item);
       } else {
         active.push(item);
@@ -427,7 +527,9 @@ this.TopStoriesFeed = class TopStoriesFeed {
       return apiKeyPref;
     }
 
-    return this._prefs.get(apiKeyPref) || Services.prefs.getCharPref(apiKeyPref);
+    return (
+      this._prefs.get(apiKeyPref) || Services.prefs.getCharPref(apiKeyPref)
+    );
   }
 
   produceFinalEndpointUrl(url, apiKey) {
@@ -454,7 +556,7 @@ this.TopStoriesFeed = class TopStoriesFeed {
   }
 
   dispatchSpocDone(target) {
-    const action = {type: at.POCKET_WAITING_FOR_SPOC, data: false};
+    const action = { type: at.POCKET_WAITING_FOR_SPOC, data: false };
     this.store.dispatch(ac.OnlyToOneContent(action, target));
   }
 
@@ -475,7 +577,9 @@ this.TopStoriesFeed = class TopStoriesFeed {
 
     // Filter spocs based on frequency caps
     const impressions = this.readImpressionsPref(SPOC_IMPRESSION_TRACKING_PREF);
-    let spocs = this.spocs.filter(s => this.isBelowFrequencyCap(impressions, s));
+    let spocs = this.spocs.filter(s =>
+      this.isBelowFrequencyCap(impressions, s)
+    );
 
     // Filter out expired spocs based on `expiration_timestamp`
     spocs = spocs.filter(spoc => {
@@ -500,12 +604,17 @@ this.TopStoriesFeed = class TopStoriesFeed {
       }
 
       // Create a new array with a spoc inserted at index 2
-      const section = this.store.getState().Sections.find(s => s.id === SECTION_ID);
+      const section = this.store
+        .getState()
+        .Sections.find(s => s.id === SECTION_ID);
       let rows = section.rows.slice(0, this.stories.length);
-      rows.splice(2, 0, Object.assign(spocs[0], {pinned: true}));
+      rows.splice(2, 0, Object.assign(spocs[0], { pinned: true }));
 
       // Send a content update to the target tab
-      const action = {type: at.SECTION_UPDATE, data: Object.assign({rows}, {id: SECTION_ID})};
+      const action = {
+        type: at.SECTION_UPDATE,
+        data: Object.assign({ rows }, { id: SECTION_ID }),
+      };
       this.store.dispatch(ac.OnlyToOneContent(action, target));
       this.dispatchSpocDone(target);
       return false;
@@ -540,15 +649,21 @@ this.TopStoriesFeed = class TopStoriesFeed {
       return true;
     }
 
-    const lifeTimeCap = Math.min(spoc.spoc_meta.caps && spoc.spoc_meta.caps.lifetime, MAX_LIFETIME_CAP);
+    const lifeTimeCap = Math.min(
+      spoc.spoc_meta.caps && spoc.spoc_meta.caps.lifetime,
+      MAX_LIFETIME_CAP
+    );
     const lifeTimeCapExceeded = campaignImpressions.length >= lifeTimeCap;
     if (lifeTimeCapExceeded) {
       return false;
     }
 
-    const campaignCap = (spoc.spoc_meta.caps && spoc.spoc_meta.caps.campaign) || {};
-    const campaignCapExceeded = campaignImpressions
-      .filter(i => (Date.now() - i) < (campaignCap.period * 1000)).length >= campaignCap.count;
+    const campaignCap =
+      (spoc.spoc_meta.caps && spoc.spoc_meta.caps.campaign) || {};
+    const campaignCapExceeded =
+      campaignImpressions.filter(
+        i => Date.now() - i < campaignCap.period * 1000
+      ).length >= campaignCap.count;
     return !campaignCapExceeded;
   }
 
@@ -556,14 +671,20 @@ this.TopStoriesFeed = class TopStoriesFeed {
   // longer part of the response, and are therefore considered inactive.
   cleanUpCampaignImpressionPref() {
     const campaignIds = new Set(this.spocCampaignMap.values());
-    this.cleanUpImpressionPref(id => !campaignIds.has(id), SPOC_IMPRESSION_TRACKING_PREF);
+    this.cleanUpImpressionPref(
+      id => !campaignIds.has(id),
+      SPOC_IMPRESSION_TRACKING_PREF
+    );
   }
 
   // Clean up rec impression pref by removing all stories that are no
   // longer part of the response.
   cleanUpTopRecImpressionPref() {
     const activeStories = new Set(this.stories.map(s => `${s.guid}`));
-    this.cleanUpImpressionPref(id => !activeStories.has(id), REC_IMPRESSION_TRACKING_PREF);
+    this.cleanUpImpressionPref(
+      id => !activeStories.has(id),
+      REC_IMPRESSION_TRACKING_PREF
+    );
   }
 
   /**
@@ -577,14 +698,12 @@ this.TopStoriesFeed = class TopStoriesFeed {
     const impressions = this.readImpressionsPref(pref);
     let changed = false;
 
-    Object
-      .keys(impressions)
-      .forEach(id => {
-        if (isExpired(id)) {
-          changed = true;
-          delete impressions[id];
-        }
-      });
+    Object.keys(impressions).forEach(id => {
+      if (isExpired(id)) {
+        changed = true;
+        delete impressions[id];
+      }
+    });
 
     if (changed) {
       this.writeImpressionsPref(pref, impressions);
@@ -598,7 +717,7 @@ this.TopStoriesFeed = class TopStoriesFeed {
 
     const timeStamps = impressions[campaignId] || [];
     timeStamps.push(Date.now());
-    impressions = Object.assign(impressions, {[campaignId]: timeStamps});
+    impressions = Object.assign(impressions, { [campaignId]: timeStamps });
 
     this.writeImpressionsPref(SPOC_IMPRESSION_TRACKING_PREF, impressions);
   }
@@ -613,7 +732,7 @@ this.TopStoriesFeed = class TopStoriesFeed {
     topItems.forEach(t => {
       if (!impressions[t]) {
         changed = true;
-        impressions = Object.assign(impressions, {[t]: Date.now()});
+        impressions = Object.assign(impressions, { [t]: Date.now() });
       }
     });
 
@@ -671,7 +790,9 @@ this.TopStoriesFeed = class TopStoriesFeed {
     }
 
     try {
-      this.discoveryStreamEnabled = JSON.parse(_dsPref).enabled;
+      this.discoveryStreamEnabled =
+        JSON.parse(_dsPref).enabled &&
+        this.store.getState().Prefs.values[DISCOVERY_STREAM_PREF_ENABLED];
     } catch (e) {
       // Load activity stream top stories if fail to determine discovery stream state
       this.discoveryStreamEnabled = false;
@@ -696,6 +817,9 @@ this.TopStoriesFeed = class TopStoriesFeed {
       case at.PREF_CHANGED:
         if (action.data.name === DISCOVERY_STREAM_PREF) {
           this.lazyLoadTopStories(action.data.value);
+        }
+        if (action.data.name === DISCOVERY_STREAM_PREF_ENABLED) {
+          this.lazyLoadTopStories();
         }
         break;
       case at.UNINIT:
@@ -723,7 +847,7 @@ this.TopStoriesFeed = class TopStoriesFeed {
         if (Date.now() - this.topicsLastUpdated >= TOPICS_UPDATE_TIME) {
           topics = await this.fetchTopics();
         }
-        this.doContentUpdate({stories, topics}, false);
+        this.doContentUpdate({ stories, topics }, false);
         break;
       case at.UNINIT:
         this.uninit();
@@ -756,7 +880,11 @@ this.TopStoriesFeed = class TopStoriesFeed {
         // Top Stories impressions pref to continuously grow, see bug #1523408
         if (action.data.source === IMPRESSION_SOURCE) {
           const payload = action.data;
-          const viewImpression = !("click" in payload || "block" in payload || "pocket" in payload);
+          const viewImpression = !(
+            "click" in payload ||
+            "block" in payload ||
+            "pocket" in payload
+          );
           if (payload.tiles && viewImpression) {
             if (this.shouldShowSpocs()) {
               payload.tiles.forEach(t => {
@@ -795,7 +923,9 @@ this.TopStoriesFeed = class TopStoriesFeed {
               this.init();
             }
           } catch (e) {
-            Cu.reportError(`Problem initializing affinity provider v2: ${e.message}`);
+            Cu.reportError(
+              `Problem initializing affinity provider v2: ${e.message}`
+            );
           }
         }
         break;
@@ -810,4 +940,13 @@ this.SPOC_IMPRESSION_TRACKING_PREF = SPOC_IMPRESSION_TRACKING_PREF;
 this.REC_IMPRESSION_TRACKING_PREF = REC_IMPRESSION_TRACKING_PREF;
 this.MIN_DOMAIN_AFFINITIES_UPDATE_TIME = MIN_DOMAIN_AFFINITIES_UPDATE_TIME;
 this.DEFAULT_RECS_EXPIRE_TIME = DEFAULT_RECS_EXPIRE_TIME;
-const EXPORTED_SYMBOLS = ["TopStoriesFeed", "STORIES_UPDATE_TIME", "TOPICS_UPDATE_TIME", "SECTION_ID", "SPOC_IMPRESSION_TRACKING_PREF", "MIN_DOMAIN_AFFINITIES_UPDATE_TIME", "REC_IMPRESSION_TRACKING_PREF", "DEFAULT_RECS_EXPIRE_TIME"];
+const EXPORTED_SYMBOLS = [
+  "TopStoriesFeed",
+  "STORIES_UPDATE_TIME",
+  "TOPICS_UPDATE_TIME",
+  "SECTION_ID",
+  "SPOC_IMPRESSION_TRACKING_PREF",
+  "MIN_DOMAIN_AFFINITIES_UPDATE_TIME",
+  "REC_IMPRESSION_TRACKING_PREF",
+  "DEFAULT_RECS_EXPIRE_TIME",
+];

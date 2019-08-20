@@ -50,6 +50,8 @@ class nsXREDirProvider final : public nsIDirectoryServiceProvider2,
   nsresult GetUserProfilesRootDir(nsIFile** aResult);
   nsresult GetUserProfilesLocalDir(nsIFile** aResult);
 
+  nsresult GetLegacyInstallHash(nsAString& aPathHash);
+
   // We only set the profile dir, we don't ensure that it exists;
   // that is the responsibility of the toolkit profile service.
   // We also don't fire profile-changed notifications... that is
@@ -154,6 +156,10 @@ class nsXREDirProvider final : public nsIDirectoryServiceProvider2,
   nsCOMPtr<nsIFile> mPluginProcessSandboxTempDir;
 #endif
   nsCOMArray<nsIFile> mAppBundleDirectories;
+
+ private:
+  static nsresult SetUserDataProfileDirectory(nsCOMPtr<nsIFile>& aFile,
+                                              bool aLocal);
 };
 
 #endif

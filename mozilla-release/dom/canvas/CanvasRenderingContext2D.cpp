@@ -51,7 +51,6 @@
 #include "gfxPlatform.h"
 #include "gfxFont.h"
 #include "gfxBlur.h"
-#include "gfxPrefs.h"
 #include "gfxTextRun.h"
 #include "gfxUtils.h"
 
@@ -93,6 +92,7 @@
 #include "mozilla/MathAlgorithms.h"
 #include "mozilla/Preferences.h"
 #include "mozilla/ServoBindings.h"
+#include "mozilla/StaticPrefs.h"
 #include "mozilla/Telemetry.h"
 #include "mozilla/TimeStamp.h"
 #include "mozilla/UniquePtr.h"
@@ -1001,7 +1001,7 @@ bool CanvasRenderingContext2D::ParseColor(const nsAString& aString,
     RefPtr<ComputedStyle> canvasStyle =
         nsComputedDOMStyle::GetComputedStyle(mCanvasElement, nullptr);
     if (canvasStyle) {
-      *aColor = canvasStyle->StyleColor()->mColor.ToColor();
+      *aColor = canvasStyle->StyleText()->mColor.ToColor();
     }
     // Beware that the presShell could be gone here.
   }
@@ -1227,12 +1227,13 @@ bool CanvasRenderingContext2D::EnsureTarget(const gfx::Rect* aCoveredRect,
   }
 
   if (mTarget) {
-    return true;
+    return mTarget != sErrorTarget;
   }
 
   // Check that the dimensions are sane
-  if (mWidth > gfxPrefs::MaxCanvasSize() ||
-      mHeight > gfxPrefs::MaxCanvasSize() || mWidth < 0 || mHeight < 0) {
+  if (mWidth > StaticPrefs::gfx_canvas_max_size() ||
+      mHeight > StaticPrefs::gfx_canvas_max_size() || mWidth < 0 ||
+      mHeight < 0) {
     SetErrorState();
     return false;
   }
@@ -1406,15 +1407,6 @@ bool CanvasRenderingContext2D::TrySharedTarget(
     // provider.
     return false;
   }
-
-#ifdef XP_WIN
-  // Bug 1285271 - Disable shared buffer provider on Windows with D2D due to
-  // instability
-  if (gfxPlatform::GetPlatform()->GetPreferredCanvasBackend() ==
-      BackendType::DIRECT2D1_1) {
-    return false;
-  }
-#endif
 
   RefPtr<LayerManager> layerManager =
       LayerManagerFromCanvasElement(mCanvasElement);
@@ -1620,19 +1612,13 @@ UniquePtr<uint8_t[]> CanvasRenderingContext2D::GetImageBuffer(
 
   *aFormat = 0;
 
-  RefPtr<SourceSurface> snapshot;
-  if (mTarget) {
-    snapshot = mTarget->Snapshot();
-  } else if (mBufferProvider) {
-    snapshot = mBufferProvider->BorrowSnapshot();
-  } else {
-    EnsureTarget();
-    if (!IsTargetValid()) {
+  if (!mBufferProvider) {
+    if (!EnsureTarget()) {
       return nullptr;
     }
-    snapshot = mTarget->Snapshot();
   }
 
+  RefPtr<SourceSurface> snapshot = mBufferProvider->BorrowSnapshot();
   if (snapshot) {
     RefPtr<DataSourceSurface> data = snapshot->GetDataSurface();
     if (data && data->GetSize() == GetSize()) {
@@ -1641,9 +1627,7 @@ UniquePtr<uint8_t[]> CanvasRenderingContext2D::GetImageBuffer(
     }
   }
 
-  if (!mTarget && mBufferProvider) {
-    mBufferProvider->ReturnSnapshot(snapshot.forget());
-  }
+  mBufferProvider->ReturnSnapshot(snapshot.forget());
 
   return ret;
 }
@@ -1679,6 +1663,30 @@ CanvasRenderingContext2D::GetInputStream(const char* aMimeType,
   return ImageEncoder::GetInputStream(mWidth, mHeight, imageBuffer.get(),
                                       format, encoder, aEncoderOptions,
                                       aStream);
+}
+
+already_AddRefed<mozilla::gfx::SourceSurface>
+CanvasRenderingContext2D::GetSurfaceSnapshot(gfxAlphaType* aOutAlphaType) {
+  if (aOutAlphaType) {
+    *aOutAlphaType = (mOpaque ? gfxAlphaType::Opaque : gfxAlphaType::Premult);
+  }
+
+  // For GetSurfaceSnapshot we always call EnsureTarget even if mBufferProvider
+  // already exists, otherwise we get performance issues. See bug 1567054.
+  if (!EnsureTarget()) {
+    MOZ_ASSERT(
+        mTarget == sErrorTarget,
+        "On EnsureTarget failure mTarget should be set to sErrorTarget.");
+    return mTarget->Snapshot();
+  }
+
+  // The concept of BorrowSnapshot seems a bit broken here, but the original
+  // code in GetSurfaceSnapshot just returned a snapshot from mTarget, which
+  // amounts to breaking the concept implicitly.
+  RefPtr<SourceSurface> snapshot = mBufferProvider->BorrowSnapshot();
+  RefPtr<SourceSurface> retSurface = snapshot;
+  mBufferProvider->ReturnSnapshot(snapshot.forget());
+  return retSurface.forget();
 }
 
 SurfaceFormat CanvasRenderingContext2D::GetSurfaceFormat() const {
@@ -1921,7 +1929,7 @@ void CanvasRenderingContext2D::GetMozCurrentTransformInverse(
   Matrix ctm = mTarget->GetTransform();
 
   if (!ctm.Invert()) {
-    double NaN = JS_GetNaNValue(aCx).toDouble();
+    double NaN = JS::GenericNaN();
     ctm = Matrix(NaN, NaN, NaN, NaN, NaN, NaN);
   }
 
@@ -2267,7 +2275,7 @@ static already_AddRefed<ComputedStyle> ResolveFilterStyleForServo(
 }
 
 bool CanvasRenderingContext2D::ParseFilter(
-    const nsAString& aString, nsTArray<nsStyleFilter>& aFilterChain,
+    const nsAString& aString, StyleOwnedSlice<StyleFilter>& aFilterChain,
     ErrorResult& aError) {
   if (!mCanvasElement && !mDocShell) {
     NS_WARNING(
@@ -2302,14 +2310,14 @@ bool CanvasRenderingContext2D::ParseFilter(
 
 void CanvasRenderingContext2D::SetFilter(const nsAString& aFilter,
                                          ErrorResult& aError) {
-  nsTArray<nsStyleFilter> filterChain;
+  StyleOwnedSlice<StyleFilter> filterChain;
   if (ParseFilter(aFilter, filterChain, aError)) {
     CurrentState().filterString = aFilter;
-    filterChain.SwapElements(CurrentState().filterChain);
+    CurrentState().filterChain = std::move(filterChain);
     if (mCanvasElement) {
       CurrentState().autoSVGFiltersObserver =
           SVGObserverUtils::ObserveFiltersForCanvasContext(
-              this, mCanvasElement, CurrentState().filterChain);
+              this, mCanvasElement, CurrentState().filterChain.AsSpan());
       UpdateFilter();
     }
   }
@@ -2376,7 +2384,8 @@ void CanvasRenderingContext2D::UpdateFilter() {
       (mCanvasElement && mCanvasElement->IsWriteOnly());
 
   CurrentState().filter = nsFilterInstance::GetFilterDescription(
-      mCanvasElement, CurrentState().filterChain, sourceGraphicIsTainted,
+      mCanvasElement, CurrentState().filterChain.AsSpan(),
+      sourceGraphicIsTainted,
       CanvasUserSpaceMetrics(
           GetSize(), CurrentState().fontFont, CurrentState().fontLanguage,
           CurrentState().fontExplicitLanguage, presShell->GetPresContext()),
@@ -4237,6 +4246,11 @@ CanvasRenderingContext2D::CachedSurfaceFromElement(Element* aElement) {
     return res;
   }
 
+  if (NS_FAILED(imgRequest->GetHadCrossOriginRedirects(
+          &res.mHadCrossOriginRedirects))) {
+    return res;
+  }
+
   res.mSourceSurface = CanvasImageCache::LookupAllCanvas(aElement);
   if (!res.mSourceSurface) {
     return res;
@@ -4250,7 +4264,8 @@ CanvasRenderingContext2D::CachedSurfaceFromElement(Element* aElement) {
   res.mSize = res.mSourceSurface->GetSize();
   res.mPrincipal = principal.forget();
   res.mImageRequest = imgRequest.forget();
-  res.mIsWriteOnly = CheckWriteOnlySecurity(res.mCORSUsed, res.mPrincipal);
+  res.mIsWriteOnly = CheckWriteOnlySecurity(res.mCORSUsed, res.mPrincipal,
+                                            res.mHadCrossOriginRedirects);
 
   return res;
 }
@@ -4922,27 +4937,21 @@ nsresult CanvasRenderingContext2D::GetImageDataArray(
     return NS_OK;
   }
 
-  RefPtr<DataSourceSurface> readback;
-  DataSourceSurface::MappedSurface rawData;
-  RefPtr<SourceSurface> snapshot;
-  if (!mTarget && mBufferProvider) {
-    snapshot = mBufferProvider->BorrowSnapshot();
-  } else {
-    EnsureTarget();
-    if (!IsTargetValid()) {
+  if (!mBufferProvider) {
+    if (!EnsureTarget()) {
       return NS_ERROR_FAILURE;
     }
-    snapshot = mTarget->Snapshot();
   }
 
-  if (snapshot) {
-    readback = snapshot->GetDataSurface();
+  RefPtr<SourceSurface> snapshot = mBufferProvider->BorrowSnapshot();
+  if (!snapshot) {
+    return NS_ERROR_OUT_OF_MEMORY;
   }
 
-  if (!mTarget && mBufferProvider) {
-    mBufferProvider->ReturnSnapshot(snapshot.forget());
-  }
+  RefPtr<DataSourceSurface> readback = snapshot->GetDataSurface();
+  mBufferProvider->ReturnSnapshot(snapshot.forget());
 
+  DataSourceSurface::MappedSurface rawData;
   if (!readback || !readback->Map(DataSourceSurface::READ, &rawData)) {
     return NS_ERROR_OUT_OF_MEMORY;
   }
@@ -5659,7 +5668,8 @@ size_t BindingJSObjectMallocBytes(CanvasRenderingContext2D* aContext) {
   int32_t height = aContext->GetHeight();
 
   // TODO: Bug 1552137: No memory will be allocated if either dimension is
-  // greater than gfxPrefs::MaxCanvasSize(). We should check this here too.
+  // greater than gfxPrefs::gfx_canvas_max_size(). We should check this here
+  // too.
 
   CheckedInt<uint32_t> bytes = CheckedInt<uint32_t>(width) * height * 4;
   if (!bytes.isValid()) {

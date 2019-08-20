@@ -173,7 +173,7 @@ static void DiscardFramesFromTail(MediaQueue<Type>& aQueue,
 // decoding is suspended.
 static TimeDuration SuspendBackgroundVideoDelay() {
   return TimeDuration::FromMilliseconds(
-      StaticPrefs::MediaSuspendBkgndVideoDelayMs());
+      StaticPrefs::media_suspend_bkgnd_video_delay_ms());
 }
 
 class MediaDecoderStateMachine::StateObject {
@@ -214,7 +214,8 @@ class MediaDecoderStateMachine::StateObject {
 
   virtual void HandlePlayStateChanged(MediaDecoder::PlayState aPlayState) {}
 
-  virtual nsCString GetDebugInfo() { return nsCString(); }
+  virtual void GetDebugInfo(
+      MediaDecoderStateMachineDecodingStateDebugInfo& aInfo) {}
 
   virtual void HandleLoopingChanged() {}
 
@@ -636,8 +637,9 @@ class MediaDecoderStateMachine::DecodingState
     }
   }
 
-  nsCString GetDebugInfo() override {
-    return nsPrintfCString("mIsPrerolling=%d", mIsPrerolling);
+  void GetDebugInfo(
+      MediaDecoderStateMachineDecodingStateDebugInfo& aInfo) override {
+    aInfo.mIsPrerolling = mIsPrerolling;
   }
 
   void HandleLoopingChanged() override { SetDecodingState(); }
@@ -693,7 +695,7 @@ class MediaDecoderStateMachine::DecodingState
       return;
     }
 
-    auto timeout = StaticPrefs::MediaDormantOnPauseTimeoutMs();
+    auto timeout = StaticPrefs::media_dormant_on_pause_timeout_ms();
     if (timeout < 0) {
       // Disabled when timeout is negative.
       return;
@@ -2207,7 +2209,7 @@ void MediaDecoderStateMachine::DecodeMetadataState::OnMetadataRead(
 
   // Check whether the media satisfies the requirement of seamless looing.
   // (Before checking the media is audio only, we need to get metadata first.)
-  mMaster->mSeamlessLoopingAllowed = StaticPrefs::MediaSeamlessLooping() &&
+  mMaster->mSeamlessLoopingAllowed = StaticPrefs::media_seamless_looping() &&
                                      mMaster->HasAudio() &&
                                      !mMaster->HasVideo();
 
@@ -2613,7 +2615,7 @@ MediaDecoderStateMachine::MediaDecoderStateMachine(MediaDecoder* aDecoder,
       mAbstractMainThread(aDecoder->AbstractMainThread()),
       mFrameStats(&aDecoder->GetFrameStatistics()),
       mVideoFrameContainer(aDecoder->GetVideoFrameContainer()),
-      mTaskQueue(new TaskQueue(GetMediaThreadPool(MediaThreadType::PLAYBACK),
+      mTaskQueue(new TaskQueue(GetMediaThreadPool(MediaThreadType::MDSM),
                                "MDSM::mTaskQueue",
                                /* aSupportsTailDispatch = */ true)),
       mWatchManager(this, mTaskQueue),
@@ -2954,7 +2956,7 @@ void MediaDecoderStateMachine::SetVideoDecodeModeInternal(
       mVideoDecodeSuspended ? 'T' : 'F');
 
   // Should not suspend decoding if we don't turn on the pref.
-  if (!StaticPrefs::MediaSuspendBkgndVideoEnabled() &&
+  if (!StaticPrefs::media_suspend_bkgnd_video_enabled() &&
       aMode == VideoDecodeMode::Suspend) {
     LOG("SetVideoDecodeModeInternal(), early return because preference off and "
         "set to Suspend");
@@ -3700,42 +3702,36 @@ uint32_t MediaDecoderStateMachine::GetAmpleVideoFrames() const {
              : std::max<uint32_t>(sVideoQueueDefaultSize, MIN_VIDEO_QUEUE_SIZE);
 }
 
-nsCString MediaDecoderStateMachine::GetDebugInfo() {
+void MediaDecoderStateMachine::GetDebugInfo(
+    dom::MediaDecoderStateMachineDebugInfo& aInfo) {
   MOZ_ASSERT(OnTaskQueue());
-  int64_t duration =
+  aInfo.mDuration =
       mDuration.Ref() ? mDuration.Ref().ref().ToMicroseconds() : -1;
-  auto str = nsPrintfCString(
-      "MDSM: duration=%" PRId64 " GetMediaTime=%" PRId64
-      " GetClock="
-      "%" PRId64
-      " mMediaSink=%p state=%s mPlayState=%d "
-      "mSentFirstFrameLoadedEvent=%d IsPlaying=%d mAudioStatus=%s "
-      "mVideoStatus=%s mDecodedAudioEndTime=%" PRId64
-      " mDecodedVideoEndTime=%" PRId64
-      " mAudioCompleted=%d "
-      "mVideoCompleted=%d %s",
-      duration, GetMediaTime().ToMicroseconds(),
-      mMediaSink->IsStarted() ? GetClock().ToMicroseconds() : -1,
-      mMediaSink.get(), ToStateStr(), mPlayState.Ref(),
-      mSentFirstFrameLoadedEvent, IsPlaying(), AudioRequestStatus(),
-      VideoRequestStatus(), mDecodedAudioEndTime.ToMicroseconds(),
-      mDecodedVideoEndTime.ToMicroseconds(), mAudioCompleted, mVideoCompleted,
-      mStateObj->GetDebugInfo().get());
-
-  AppendStringIfNotEmpty(str, mMediaSink->GetDebugInfo());
-
-  return std::move(str);
+  aInfo.mMediaTime = GetMediaTime().ToMicroseconds();
+  aInfo.mClock = mMediaSink->IsStarted() ? GetClock().ToMicroseconds() : -1;
+  aInfo.mPlayState = int32_t(mPlayState.Ref());
+  aInfo.mSentFirstFrameLoadedEvent = mSentFirstFrameLoadedEvent;
+  aInfo.mIsPlaying = IsPlaying();
+  aInfo.mAudioRequestStatus = NS_ConvertUTF8toUTF16(AudioRequestStatus());
+  aInfo.mVideoRequestStatus = NS_ConvertUTF8toUTF16(VideoRequestStatus());
+  aInfo.mDecodedAudioEndTime = mDecodedAudioEndTime.ToMicroseconds();
+  aInfo.mDecodedVideoEndTime = mDecodedVideoEndTime.ToMicroseconds();
+  aInfo.mAudioCompleted = mAudioCompleted;
+  aInfo.mVideoCompleted = mVideoCompleted;
+  mStateObj->GetDebugInfo(aInfo.mStateObj);
+  mMediaSink->GetDebugInfo(aInfo.mMediaSink);
 }
 
-RefPtr<MediaDecoder::DebugInfoPromise>
-MediaDecoderStateMachine::RequestDebugInfo() {
-  using PromiseType = MediaDecoder::DebugInfoPromise;
-  RefPtr<PromiseType::Private> p = new PromiseType::Private(__func__);
+RefPtr<GenericPromise> MediaDecoderStateMachine::RequestDebugInfo(
+    dom::MediaDecoderStateMachineDebugInfo& aInfo) {
+  RefPtr<GenericPromise::Private> p = new GenericPromise::Private(__func__);
   RefPtr<MediaDecoderStateMachine> self = this;
   nsresult rv = OwnerThread()->Dispatch(
-      NS_NewRunnableFunction(
-          "MediaDecoderStateMachine::RequestDebugInfo",
-          [self, p]() { p->Resolve(self->GetDebugInfo(), __func__); }),
+      NS_NewRunnableFunction("MediaDecoderStateMachine::RequestDebugInfo",
+                             [self, p, &aInfo]() {
+                               self->GetDebugInfo(aInfo);
+                               p->Resolve(true, __func__);
+                             }),
       AbstractThread::TailDispatch);
   MOZ_DIAGNOSTIC_ASSERT(NS_SUCCEEDED(rv));
   Unused << rv;

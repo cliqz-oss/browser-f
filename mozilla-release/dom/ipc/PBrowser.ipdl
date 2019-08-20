@@ -26,6 +26,7 @@ include JavaScriptTypes;
 include URIParams;
 include PPrintingTypes;
 include PTabContext;
+include PBackgroundSharedTypes;
 
 include "mozilla/GfxMessageUtils.h";
 include "mozilla/layers/LayersMessageUtils.h";
@@ -86,6 +87,8 @@ using mozilla::FontRange from "ipc/nsGUIEventIPC.h";
 using mozilla::a11y::IAccessibleHolder from "mozilla/a11y/IPCTypes.h";
 using mozilla::OriginAttributes from "mozilla/ipc/BackgroundUtils.h";
 using refcounted class mozilla::dom::BrowsingContext from "mozilla/dom/BrowsingContext.h";
+using mozilla::dom::EffectsInfo from "mozilla/dom/TabMessageUtils.h";
+using mozilla::dom::TabId from "mozilla/dom/ipc/IdType.h";
 
 namespace mozilla {
 namespace dom {
@@ -116,6 +119,36 @@ struct RequestData
   nsIURI requestURI;
   nsIURI originalRequestURI;
   nsCString matchedList;
+};
+
+struct WebProgressStateChangeData
+{
+  bool isNavigating;
+  bool mayEnableCharacterEncodingMenu;
+  bool charsetAutodetected;
+
+  // The following fields are only set when the aStateFlags param passed with
+  // this struct is |nsIWebProgress.STATE_STOP|.
+  nsString contentType;
+  nsString charset;
+  nsIURI documentURI;
+};
+
+
+struct WebProgressLocationChangeData
+{
+  bool isNavigating;
+  bool isSyntheticDocument;
+  bool mayEnableCharacterEncodingMenu;
+  bool charsetAutodetected;
+  nsString contentType;
+  nsString title;
+  nsString charset;
+  nsIURI documentURI;
+  PrincipalInfo contentPrincipal;
+  PrincipalInfo contentStoragePrincipal;
+  CSPInfo? csp;
+  uint64_t? requestContextID;
 };
 
 /**
@@ -172,7 +205,8 @@ parent:
      * Construct a new Remote iframe actor.
      */
     async PBrowserBridge(nsString aPresentationURL, nsString aRemoteType,
-                         BrowsingContext aBrowsingContext, uint32_t aChromeFlags);
+                         BrowsingContext aBrowsingContext, uint32_t aChromeFlags,
+                         TabId tabId);
 
     /**
      * Sends an NS_NATIVE_CHILD_OF_SHAREABLE_WINDOW to be adopted by the
@@ -544,10 +578,21 @@ parent:
     async RegisterProtocolHandler(nsString scheme, nsIURI handlerURI, nsString title,
                                   nsIURI documentURI);
 
+    async OnStateChange(WebProgressData? aWebProgressData,
+                        RequestData aRequestData, uint32_t aStateFlags,
+                        nsresult aStatus,
+                        WebProgressStateChangeData? aStateChangeData);
+
     async OnProgressChange(WebProgressData? aWebProgressData,
                            RequestData aRequestData, int32_t aCurSelfProgress,
                            int32_t aMaxSelfProgress, int32_t aCurTotalProgress,
                            int32_t aMaxTotalProgress);
+
+    async OnLocationChange(WebProgressData? aWebProgressData,
+                           RequestData aRequestData, nsIURI aLocation,
+                           uint32_t aFlags, bool aCanGoBack,
+                           bool aCanGoForward,
+                           WebProgressLocationChangeData? aLocationChangeData);
 
     async OnStatusChange(WebProgressData? aWebProgressData,
                          RequestData aRequestData, nsresult aStatus,
@@ -556,15 +601,18 @@ parent:
     async OnContentBlockingEvent(WebProgressData? aWebProgressData,
                                  RequestData aRequestData, uint32_t aEvent);
 
+    async NavigationFinished();
+
     async SessionStoreUpdate(nsCString? aDocShellCaps,
                              bool? aPrivatedMode,
                              nsCString[] aPositions,
                              int32_t[] aPositionDescendants,
-                             uint32_t aFlushId);
+                             uint32_t aFlushId,
+                             bool aIsFinal);
 
 child:
     async NativeSynthesisResponse(uint64_t aObserverId, nsCString aResponse);
-    async FlushTabState(uint32_t aFlushId);
+    async FlushTabState(uint32_t aFlushId, bool aIsFinal);
 
 parent:
 
@@ -593,6 +641,15 @@ parent:
      */
     async PaintWhileInterruptingJSNoOp(LayersObserverEpoch aEpoch);
 
+child:
+    /**
+     * Parent informs the child of graphical effects that are being applied
+     * to the child browser.
+     */
+    async UpdateEffects(EffectsInfo aEffects);
+
+parent:
+
     /**
      * Sent by the child to the parent to inform it that an update to the
      * dimensions has been requested, likely through win.moveTo or resizeTo
@@ -620,9 +677,9 @@ parent:
      * This function is used to notify the parent that it should display a
      * canvas permission prompt.
      *
-     * @param aFirstPartyURI first party of the tab that is requesting access.
+     * @param aOrigin origin string of the document that is requesting access.
      */
-    async ShowCanvasPermissionPrompt(nsCString aFirstPartyURI,
+    async ShowCanvasPermissionPrompt(nsCString aOrigin,
                                      bool aHideDoorHanger);
 
     sync SetSystemFont(nsCString aFontName);
@@ -630,6 +687,11 @@ parent:
 
     sync SetPrefersReducedMotionOverrideForTest(bool aValue);
     sync ResetPrefersReducedMotionOverrideForTest();
+
+    /**
+     * Fire a `load` event on this PBrowser's embedding frame element.
+     */
+    async FireFrameLoadEvent(bool aIsTrusted);
 
 child:
     /**
@@ -665,8 +727,7 @@ child:
 
     async ParentActivated(bool aActivated);
 
-    async SetKeyboardIndicators(UIStateChangeType showAccelerators,
-                                UIStateChangeType showFocusRings);
+    async SetKeyboardIndicators(UIStateChangeType showFocusRings);
 
     /**
      * StopIMEStateManagement() is called when the process loses focus and

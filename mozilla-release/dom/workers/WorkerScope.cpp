@@ -13,8 +13,9 @@
 #include "mozilla/dom/Clients.h"
 #include "mozilla/dom/ClientState.h"
 #include "mozilla/dom/Console.h"
+#include "mozilla/dom/CSPEvalChecker.h"
+#include "mozilla/dom/DebuggerNotification.h"
 #include "mozilla/dom/DedicatedWorkerGlobalScopeBinding.h"
-#include "mozilla/dom/DOMPrefs.h"
 #include "mozilla/dom/Fetch.h"
 #include "mozilla/dom/FunctionBinding.h"
 #include "mozilla/dom/IDBFactory.h"
@@ -26,18 +27,20 @@
 #include "mozilla/dom/ServiceWorkerGlobalScopeBinding.h"
 #include "mozilla/dom/SharedWorkerGlobalScopeBinding.h"
 #include "mozilla/dom/SimpleGlobalObject.h"
+#include "mozilla/dom/TimeoutHandler.h"
 #include "mozilla/dom/WorkerDebuggerGlobalScopeBinding.h"
 #include "mozilla/dom/WorkerGlobalScopeBinding.h"
 #include "mozilla/dom/WorkerLocation.h"
 #include "mozilla/dom/WorkerNavigator.h"
 #include "mozilla/dom/cache/CacheStorage.h"
-#include "mozilla/StaticPrefs.h"
+#include "mozilla/StorageAccess.h"
+#include "nsContentUtils.h"
+#include "nsJSUtils.h"
 #include "nsServiceManagerUtils.h"
 
 #include "mozilla/dom/Document.h"
 #include "nsIServiceWorkerManager.h"
 #include "nsIScriptError.h"
-#include "nsIScriptTimeoutHandler.h"
 
 #ifdef ANDROID
 #  include <android/log.h>
@@ -56,21 +59,57 @@
 #  undef PostMessage
 #endif
 
-extern already_AddRefed<nsIScriptTimeoutHandler> NS_CreateJSTimeoutHandler(
-    JSContext* aCx, mozilla::dom::WorkerPrivate* aWorkerPrivate,
-    mozilla::dom::Function& aFunction,
-    const mozilla::dom::Sequence<JS::Value>& aArguments,
-    mozilla::ErrorResult& aError);
-
-extern already_AddRefed<nsIScriptTimeoutHandler> NS_CreateJSTimeoutHandler(
-    JSContext* aCx, mozilla::dom::WorkerPrivate* aWorkerPrivate,
-    const nsAString& aExpression, mozilla::ErrorResult& aRv);
-
 namespace mozilla {
 namespace dom {
 
 using mozilla::dom::cache::CacheStorage;
 using mozilla::ipc::PrincipalInfo;
+
+class WorkerScriptTimeoutHandler final : public ScriptTimeoutHandler {
+ public:
+  NS_DECL_ISUPPORTS_INHERITED
+  NS_DECL_CYCLE_COLLECTION_CLASS_INHERITED(WorkerScriptTimeoutHandler,
+                                           ScriptTimeoutHandler)
+
+  WorkerScriptTimeoutHandler(JSContext* aCx, nsIGlobalObject* aGlobal,
+                             const nsAString& aExpression)
+      : ScriptTimeoutHandler(aCx, aGlobal, aExpression) {}
+
+  MOZ_CAN_RUN_SCRIPT virtual bool Call(const char* aExecutionReason) override;
+
+ private:
+  virtual ~WorkerScriptTimeoutHandler() {}
+};
+
+NS_IMPL_CYCLE_COLLECTION_INHERITED(WorkerScriptTimeoutHandler,
+                                   ScriptTimeoutHandler)
+
+NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(WorkerScriptTimeoutHandler)
+NS_INTERFACE_MAP_END_INHERITING(ScriptTimeoutHandler)
+
+NS_IMPL_ADDREF_INHERITED(WorkerScriptTimeoutHandler, ScriptTimeoutHandler)
+NS_IMPL_RELEASE_INHERITED(WorkerScriptTimeoutHandler, ScriptTimeoutHandler)
+
+bool WorkerScriptTimeoutHandler::Call(const char* aExecutionReason) {
+  nsAutoMicroTask mt;
+  AutoEntryScript aes(mGlobal, aExecutionReason, false);
+
+  JSContext* cx = aes.cx();
+  JS::CompileOptions options(cx);
+  options.setFileAndLine(mFileName.get(), mLineNo).setNoScriptRval(true);
+
+  JS::Rooted<JS::Value> unused(cx);
+  JS::SourceText<char16_t> srcBuf;
+  if (!srcBuf.init(cx, mExpr.BeginReading(), mExpr.Length(),
+                   JS::SourceOwnership::Borrowed) ||
+      !JS::Evaluate(cx, options, srcBuf, &unused)) {
+    if (!JS_IsExceptionPending(cx)) {
+      return false;
+    }
+  }
+
+  return true;
+};
 
 WorkerGlobalScope::WorkerGlobalScope(WorkerPrivate* aWorkerPrivate)
     : mSerialEventTarget(aWorkerPrivate->HybridEventTarget()),
@@ -102,6 +141,7 @@ NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN_INHERITED(WorkerGlobalScope,
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mNavigator)
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mIndexedDB)
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mCacheStorage)
+  NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mDebuggerNotificationManager)
   tmp->TraverseHostObjectURIs(cb);
   tmp->mWorkerPrivate->TraverseTimeouts(cb);
 NS_IMPL_CYCLE_COLLECTION_TRAVERSE_END
@@ -116,6 +156,7 @@ NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN_INHERITED(WorkerGlobalScope,
   NS_IMPL_CYCLE_COLLECTION_UNLINK(mNavigator)
   NS_IMPL_CYCLE_COLLECTION_UNLINK(mIndexedDB)
   NS_IMPL_CYCLE_COLLECTION_UNLINK(mCacheStorage)
+  NS_IMPL_CYCLE_COLLECTION_UNLINK(mDebuggerNotificationManager)
   tmp->UnlinkHostObjectURIs();
   tmp->mWorkerPrivate->UnlinkTimeouts();
 NS_IMPL_CYCLE_COLLECTION_UNLINK_END
@@ -253,34 +294,21 @@ int32_t WorkerGlobalScope::SetTimeout(JSContext* aCx, Function& aHandler,
                                       const int32_t aTimeout,
                                       const Sequence<JS::Value>& aArguments,
                                       ErrorResult& aRv) {
-  mWorkerPrivate->AssertIsOnWorkerThread();
-
-  nsCOMPtr<nsIScriptTimeoutHandler> handler =
-      NS_CreateJSTimeoutHandler(aCx, mWorkerPrivate, aHandler, aArguments, aRv);
-  if (!handler) {
-    return 0;
-  }
-
-  return mWorkerPrivate->SetTimeout(aCx, handler, aTimeout, false, aRv);
+  return SetTimeoutOrInterval(aCx, aHandler, aTimeout, aArguments, false, aRv);
 }
 
 int32_t WorkerGlobalScope::SetTimeout(JSContext* aCx, const nsAString& aHandler,
                                       const int32_t aTimeout,
                                       const Sequence<JS::Value>& /* unused */,
                                       ErrorResult& aRv) {
-  mWorkerPrivate->AssertIsOnWorkerThread();
-
-  nsCOMPtr<nsIScriptTimeoutHandler> handler =
-      NS_CreateJSTimeoutHandler(aCx, mWorkerPrivate, aHandler, aRv);
-  if (!handler) {
-    return 0;
-  }
-
-  return mWorkerPrivate->SetTimeout(aCx, handler, aTimeout, false, aRv);
+  return SetTimeoutOrInterval(aCx, aHandler, aTimeout, false, aRv);
 }
 
 void WorkerGlobalScope::ClearTimeout(int32_t aHandle) {
   mWorkerPrivate->AssertIsOnWorkerThread();
+
+  DebuggerNotificationDispatch(this, DebuggerNotificationType::ClearTimeout);
+
   mWorkerPrivate->ClearTimeout(aHandle);
 }
 
@@ -288,15 +316,7 @@ int32_t WorkerGlobalScope::SetInterval(JSContext* aCx, Function& aHandler,
                                        const int32_t aTimeout,
                                        const Sequence<JS::Value>& aArguments,
                                        ErrorResult& aRv) {
-  mWorkerPrivate->AssertIsOnWorkerThread();
-
-  nsCOMPtr<nsIScriptTimeoutHandler> handler =
-      NS_CreateJSTimeoutHandler(aCx, mWorkerPrivate, aHandler, aArguments, aRv);
-  if (NS_WARN_IF(aRv.Failed())) {
-    return 0;
-  }
-
-  return mWorkerPrivate->SetTimeout(aCx, handler, aTimeout, true, aRv);
+  return SetTimeoutOrInterval(aCx, aHandler, aTimeout, aArguments, true, aRv);
 }
 
 int32_t WorkerGlobalScope::SetInterval(JSContext* aCx,
@@ -304,22 +324,60 @@ int32_t WorkerGlobalScope::SetInterval(JSContext* aCx,
                                        const int32_t aTimeout,
                                        const Sequence<JS::Value>& /* unused */,
                                        ErrorResult& aRv) {
-  mWorkerPrivate->AssertIsOnWorkerThread();
-
-  Sequence<JS::Value> dummy;
-
-  nsCOMPtr<nsIScriptTimeoutHandler> handler =
-      NS_CreateJSTimeoutHandler(aCx, mWorkerPrivate, aHandler, aRv);
-  if (NS_WARN_IF(aRv.Failed())) {
-    return 0;
-  }
-
-  return mWorkerPrivate->SetTimeout(aCx, handler, aTimeout, true, aRv);
+  return SetTimeoutOrInterval(aCx, aHandler, aTimeout, true, aRv);
 }
 
 void WorkerGlobalScope::ClearInterval(int32_t aHandle) {
   mWorkerPrivate->AssertIsOnWorkerThread();
+
+  DebuggerNotificationDispatch(this, DebuggerNotificationType::ClearInterval);
+
   mWorkerPrivate->ClearTimeout(aHandle);
+}
+
+int32_t WorkerGlobalScope::SetTimeoutOrInterval(
+    JSContext* aCx, Function& aHandler, const int32_t aTimeout,
+    const Sequence<JS::Value>& aArguments, bool aIsInterval, ErrorResult& aRv) {
+  mWorkerPrivate->AssertIsOnWorkerThread();
+
+  DebuggerNotificationDispatch(
+      this, aIsInterval ? DebuggerNotificationType::SetInterval
+                        : DebuggerNotificationType::SetTimeout);
+
+  nsTArray<JS::Heap<JS::Value>> args;
+  if (!args.AppendElements(aArguments, fallible)) {
+    aRv.Throw(NS_ERROR_OUT_OF_MEMORY);
+    return 0;
+  }
+
+  RefPtr<TimeoutHandler> handler =
+      new CallbackTimeoutHandler(aCx, this, &aHandler, std::move(args));
+
+  return mWorkerPrivate->SetTimeout(aCx, handler, aTimeout, aIsInterval, aRv);
+}
+
+int32_t WorkerGlobalScope::SetTimeoutOrInterval(JSContext* aCx,
+                                                const nsAString& aHandler,
+                                                const int32_t aTimeout,
+                                                bool aIsInterval,
+                                                ErrorResult& aRv) {
+  mWorkerPrivate->AssertIsOnWorkerThread();
+
+  DebuggerNotificationDispatch(
+      this, aIsInterval ? DebuggerNotificationType::SetInterval
+                        : DebuggerNotificationType::SetTimeout);
+
+  bool allowEval = false;
+  aRv =
+      CSPEvalChecker::CheckForWorker(aCx, mWorkerPrivate, aHandler, &allowEval);
+  if (NS_WARN_IF(aRv.Failed()) || !allowEval) {
+    return 0;
+  }
+
+  RefPtr<TimeoutHandler> handler =
+      new WorkerScriptTimeoutHandler(aCx, this, aHandler);
+
+  return mWorkerPrivate->SetTimeout(aCx, handler, aTimeout, aIsInterval, aRv);
 }
 
 void WorkerGlobalScope::GetOrigin(nsAString& aOrigin) const {
@@ -346,11 +404,9 @@ void WorkerGlobalScope::Dump(const Optional<nsAString>& aString) const {
     return;
   }
 
-#if !(defined(DEBUG) || defined(MOZ_ENABLE_JS_DUMP))
-  if (!DOMPrefs::DumpEnabled()) {
+  if (!nsJSUtils::DumpEnabled()) {
     return;
   }
-#endif
 
   NS_ConvertUTF16toUTF8 str(aString.Value());
 
@@ -401,16 +457,16 @@ already_AddRefed<IDBFactory> WorkerGlobalScope::GetIndexedDB(
   RefPtr<IDBFactory> indexedDB = mIndexedDB;
 
   if (!indexedDB) {
-    nsContentUtils::StorageAccess access = mWorkerPrivate->StorageAccess();
+    StorageAccess access = mWorkerPrivate->StorageAccess();
 
-    if (access == nsContentUtils::StorageAccess::eDeny) {
+    if (access == StorageAccess::eDeny) {
       NS_WARNING("IndexedDB is not allowed in this worker!");
       aErrorResult = NS_ERROR_DOM_SECURITY_ERR;
       return nullptr;
     }
 
-    if (access == nsContentUtils::StorageAccess::ePartitionedOrDeny &&
-        !StaticPrefs::privacy_storagePrincipal_enabledForTrackers()) {
+    if (ShouldPartitionStorage(access) &&
+        !StoragePartitioningEnabled(access, mWorkerPrivate->CookieSettings())) {
       NS_WARNING("IndexedDB is not allowed in this worker!");
       aErrorResult = NS_ERROR_DOM_SECURITY_ERR;
       return nullptr;
@@ -461,6 +517,20 @@ AbstractThread* WorkerGlobalScope::AbstractMainThreadFor(
   MOZ_CRASH("AbstractMainThreadFor not supported for workers.");
 }
 
+mozilla::dom::DebuggerNotificationManager*
+WorkerGlobalScope::GetOrCreateDebuggerNotificationManager() {
+  if (!mDebuggerNotificationManager) {
+    mDebuggerNotificationManager = new DebuggerNotificationManager(this);
+  }
+
+  return mDebuggerNotificationManager;
+}
+
+mozilla::dom::DebuggerNotificationManager*
+WorkerGlobalScope::GetExistingDebuggerNotificationManager() {
+  return mDebuggerNotificationManager;
+}
+
 Maybe<ClientInfo> WorkerGlobalScope::GetClientInfo() const {
   return mWorkerPrivate->GetClientInfo();
 }
@@ -506,7 +576,11 @@ WorkerGlobalScope::GetOrCreateServiceWorkerRegistration(
 }
 
 void WorkerGlobalScope::FirstPartyStorageAccessGranted() {
+  // Reset the IndexedDB factory.
   mIndexedDB = nullptr;
+
+  // Reset DOM Cache
+  mCacheStorage = nullptr;
 }
 
 DedicatedWorkerGlobalScope::DedicatedWorkerGlobalScope(

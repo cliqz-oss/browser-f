@@ -5,6 +5,7 @@
 "use strict";
 
 const { Ci, Cu } = require("chrome");
+const ChromeUtils = require("ChromeUtils");
 const Services = require("Services");
 const { BrowserElementWebNavigation } = require("./web-navigation");
 const { getStack } = require("devtools/shared/platform/stack");
@@ -88,6 +89,38 @@ function tunnelToInnerBrowser(outer, inner) {
   let browserWindow = outer.ownerDocument.defaultView;
   let gBrowser = browserWindow.gBrowser;
   let mmTunnel;
+
+  // Mirror the state updates from the outer <xul:browser> to the inner
+  // <iframe mozbrowser>.
+  const mirroringProgressListener = {
+    onStateChange: (webProgress, request, stateFlags, status) => {
+      if (webProgress && webProgress.isTopLevel) {
+        inner._characterSet = outer._characterSet;
+        inner._documentURI = outer._documentURI;
+        inner._documentContentType = outer._documentContentType;
+      }
+    },
+
+    onLocationChange: (webProgress, request, location, flags) => {
+      if (webProgress && webProgress.isTopLevel) {
+        inner._securityUI = outer._securityUI;
+        inner._documentURI = outer._documentURI;
+        inner._documentContentType = outer._documentContentType;
+        inner._contentTitle = outer._contentTitle;
+        inner._characterSet = outer._characterSet;
+        inner._contentPrincipal = outer._contentPrincipal;
+        inner._imageDocument = outer._imageDocument;
+        inner._isSyntheticDocument = outer._isSyntheticDocument;
+        inner._innerWindowID = outer._innerWindowID;
+        inner._remoteWebNavigationImpl._currentURI = outer._remoteWebNavigationImpl._currentURI;
+      }
+    },
+
+    QueryInterface: ChromeUtils.generateQI([
+      Ci.nsISupportsWeakReference,
+      Ci.nsIWebProgressListener,
+    ]),
+  };
 
   return {
 
@@ -208,6 +241,10 @@ function tunnelToInnerBrowser(outer, inner) {
       const filteredProgressListener = gBrowser._tabFilters.get(tab);
       outer.webProgress.addProgressListener(filteredProgressListener,
                                             Ci.nsIWebProgress.NOTIFY_ALL);
+      outer.webProgress.addProgressListener(
+        mirroringProgressListener,
+        Ci.nsIWebProgress.NOTIFY_STATE_ALL | Ci.nsIWebProgress.NOTIFY_LOCATION
+      );
 
       // Add the inner browser to tabbrowser's WeakMap from browser to tab.  This assists
       // with tabbrowser's processing of some events such as MozLayerTreeReady which
@@ -313,6 +350,7 @@ function tunnelToInnerBrowser(outer, inner) {
 
       // Remove the progress listener we added manually.
       outer.webProgress.removeProgressListener(filteredProgressListener);
+      outer.webProgress.removeProgressListener(mirroringProgressListener);
 
       // Reset the Custom Element back to the original state.
       outer.destroy();
@@ -409,11 +447,8 @@ MessageManagerTunnel.prototype = {
     "Browser:Reload",
     "PageStyle:Disable",
     "PageStyle:Switch",
-    // Messages sent from SelectParentHelper.jsm
-    "Forms:DismissedDropDown",
     "Forms:MouseOut",
     "Forms:MouseOver",
-    "Forms:SelectDropDownItem",
     // Messages sent from SessionStore.jsm
     "SessionStore:flush",
     "SessionStore:restoreHistory",
@@ -431,21 +466,14 @@ MessageManagerTunnel.prototype = {
     "Link:AddSearch",
     "PageStyle:StyleSheets",
     // Messages sent to RemoteWebProgress.jsm
-    "Content:LoadURIResult",
-    "Content:LocationChange",
     "Content:SecurityChange",
-    "Content:StateChange",
     // Messages sent to browser.js
     "DOMTitleChanged",
     "ImageDocumentLoaded",
-    "Forms:ShowDropDown",
-    "Forms:HideDropDown",
     "InPermitUnload",
     "PermitUnload",
     // Messages sent to tabbrowser.xml
     "contextmenu",
-    // Messages sent to SelectParentHelper.jsm
-    "Forms:UpdateDropDown",
     // Messages sent to SessionStore.jsm
     "SessionStore:update",
     // Messages sent to BrowserTestUtils.jsm

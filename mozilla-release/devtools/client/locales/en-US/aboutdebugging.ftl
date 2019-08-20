@@ -102,7 +102,7 @@ about-debugging-setup-title = Setup
 about-debugging-setup-intro = Configure the connection method you wish to remotely debug your device with.
 
 # Explanatory text in the Setup page about what the 'This Firefox' page is for
-about-debugging-setup-this-firefox = Use <a>{ about-debugging-this-firefox-runtime-name }</a> to debug tabs, extensions and service workers on this version of { -brand-shorter-name }.
+about-debugging-setup-this-firefox2 = Use <a>{ about-debugging-this-firefox-runtime-name }</a> to debug extensions and service workers on this version of { -brand-shorter-name }.
 
 # Title of the heading Connect section of the Setup page.
 about-debugging-setup-connect-heading = Connect a Device
@@ -368,3 +368,12 @@ about-debugging-main-process-description2 = Main Process for the target browser
 # Alt text used for the close icon of message component (warnings, errors and notifications).
 about-debugging-message-close-icon =
   .alt = Close message
+
+# Label text used for the error details of message component.
+about-debugging-message-details-label-error = Error details
+
+# Label text used for the warning details of message component.
+about-debugging-message-details-label-warning = Warning details
+
+# Label text used for default state of details of message component.
+about-debugging-message-details-label = Details

@@ -25,6 +25,7 @@ stage-package: multilocale.txt locale-manifest.in $(MOZ_PKG_MANIFEST) $(MOZ_PKG_
 		--format $(MOZ_PACKAGER_FORMAT) \
 		$(addprefix --removals ,$(MOZ_PKG_REMOVALS)) \
 		$(if $(filter-out 0,$(MOZ_PKG_FATAL_WARNINGS)),,--ignore-errors) \
+		$(if $(MOZ_AUTOMATION),,--ignore-broken-symlinks) \
 		$(if $(MOZ_PACKAGER_MINIFY),--minify) \
 		$(if $(MOZ_PACKAGER_MINIFY_JS),--minify-js \
 		  $(addprefix --js-binary ,$(JS_BINARY)) \
@@ -120,7 +121,7 @@ GARBAGE += make-package
 
 make-sourcestamp-file::
 	$(NSINSTALL) -D $(DIST)/$(PKG_PATH)
-	@echo '$(BUILDID)' > $(MOZ_SOURCESTAMP_FILE)
+	@awk '$$2 == "MOZ_BUILDID" {print $$3}' $(DEPTH)/buildid.h > $(MOZ_SOURCESTAMP_FILE)
 ifdef MOZ_INCLUDE_SOURCE_INFO
 	@awk '$$2 == "MOZ_SOURCE_URL" {print $$3}' $(DEPTH)/source-repo.h >> $(MOZ_SOURCESTAMP_FILE)
 endif
@@ -158,7 +159,7 @@ source-package:
 	@echo 'Generate the sourcestamp file'
 	# Make sure to have repository information available and then generate the
 	# sourcestamp file.
-	$(MAKE) -C $(DEPTH) 'source-repo.h'
+	$(MAKE) -C $(DEPTH) 'source-repo.h' 'buildid.h'
 	$(MAKE) make-sourcestamp-file
 	@echo 'Packaging source tarball...'
 	# We want to include the sourcestamp file in the source tarball, so copy it

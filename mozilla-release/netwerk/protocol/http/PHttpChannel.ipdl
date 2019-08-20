@@ -52,7 +52,9 @@ parent:
 
   // Sent to the parent in order signal that the child side listeners have been
   // set up and the parent side of the channel can be opened.
-  async CrossProcessRedirectDone(nsresult result);
+  // The passed loadInfo needs to be set on the channel - since the channel
+  // moved to a new process it now has different properties.
+  async CrossProcessRedirectDone(nsresult result, LoadInfoArgs? loadInfo);
 
   // For document loads we keep this protocol open after child's
   // OnStopRequest, and send this msg (instead of __delete__) to allow
@@ -129,7 +131,8 @@ child:
                        bool                deliveringAltData,
                        bool                applyConversion,
                        bool                isResolvedByTRR,
-                       ResourceTimingStruct timing);
+                       ResourceTimingStruct timing,
+                       bool                allRedirectsSameOrigin);
 
   // Used to cancel child channel if we hit errors during creating and
   // AsyncOpen of nsHttpChannel on the parent.
@@ -145,7 +148,8 @@ child:
                        nsHttpResponseHead responseHead,
                        nsCString          securityInfoSerialization,
                        uint64_t           channelId,
-                       NetAddr            oldPeerAddr);
+                       NetAddr            oldPeerAddr,
+                       ResourceTimingStruct timing);
 
   // Called if redirect successful so that child can complete setup.
   async Redirect3Complete();

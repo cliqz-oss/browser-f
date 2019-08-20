@@ -47,6 +47,7 @@ user_pref("dom.allow_scripts_to_close_windows", true);
 user_pref("dom.disable_open_during_load", false);
 user_pref("dom.disable_window_flip", true);
 user_pref("dom.disable_window_move_resize", true);
+user_pref("dom.push.connection.enabled", false);
 user_pref("extensions.autoDisableScopes", 10);
 user_pref("extensions.blocklist.enabled", false);
 user_pref("extensions.blocklist.url", "http://127.0.0.1/extensions-dummy/blocklistURL");
@@ -75,9 +76,6 @@ user_pref("media.navigator.permission.disabled", true);
 user_pref("media.peerconnection.enabled", true);
 // Disable speculative connections so they aren't reported as leaking when they're hanging around.
 user_pref("network.http.speculative-parallel-limit", 0);
-user_pref("network.proxy.http", "localhost");
-user_pref("network.proxy.http_port", 80);
-user_pref("network.proxy.type", 1);
 // Set places maintenance far in the future (the maximum time possible in an
 // int32_t) to avoid it kicking in during tests. The maintenance can take a
 // relatively long time which may cause unnecessary intermittents and slow down

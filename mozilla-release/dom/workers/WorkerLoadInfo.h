@@ -7,6 +7,7 @@
 #ifndef mozilla_dom_workers_WorkerLoadInfo_h
 #define mozilla_dom_workers_WorkerLoadInfo_h
 
+#include "mozilla/StorageAccess.h"
 #include "mozilla/dom/ChannelInfo.h"
 #include "mozilla/dom/ServiceWorkerRegistrationDescriptor.h"
 #include "mozilla/dom/WorkerCommon.h"
@@ -31,8 +32,8 @@ class nsPIDOMWindowInner;
 namespace mozilla {
 
 namespace ipc {
-class ContentSecurityPolicy;
 class PrincipalInfo;
+class CSPInfo;
 }  // namespace ipc
 
 namespace dom {
@@ -59,6 +60,13 @@ struct WorkerLoadInfoData {
   nsCOMPtr<nsIScriptContext> mScriptContext;
   nsCOMPtr<nsPIDOMWindowInner> mWindow;
   nsCOMPtr<nsIContentSecurityPolicy> mCSP;
+  // Thread boundaries require us to not only store a CSP object, but also a
+  // serialized version of the CSP. Reason being: Serializing a CSP to a CSPInfo
+  // needs to happen on the main thread, but storing the CSPInfo needs to happen
+  // on the worker thread. We move the CSPInfo into the Client within
+  // ScriptLoader::PreRun().
+  nsAutoPtr<mozilla::ipc::CSPInfo> mCSPInfo;
+
   nsCOMPtr<nsIChannel> mChannel;
   nsCOMPtr<nsILoadGroup> mLoadGroup;
 
@@ -98,8 +106,6 @@ struct WorkerLoadInfoData {
   nsCString mDomain;
   nsString mOrigin;  // Derived from mPrincipal; can be used on worker thread.
 
-  nsTArray<mozilla::ipc::ContentSecurityPolicy> mCSPInfos;
-
   nsString mServiceWorkerCacheName;
   Maybe<ServiceWorkerDescriptor> mServiceWorkerDescriptor;
   Maybe<ServiceWorkerRegistrationDescriptor>
@@ -112,14 +118,14 @@ struct WorkerLoadInfoData {
 
   uint64_t mWindowID;
 
-  net::ReferrerPolicy mReferrerPolicy;
+  nsCOMPtr<nsIReferrerInfo> mReferrerInfo;
   bool mFromWindow;
   bool mEvalAllowed;
   bool mReportCSPViolations;
   bool mXHRParamsAllowed;
   bool mPrincipalIsSystem;
   bool mWatchedByDevtools;
-  nsContentUtils::StorageAccess mStorageAccess;
+  StorageAccess mStorageAccess;
   bool mFirstPartyStorageAccessGranted;
   bool mServiceWorkersTestingInWindow;
   OriginAttributes mOriginAttributes;
@@ -143,15 +149,16 @@ struct WorkerLoadInfo : WorkerLoadInfoData {
 
   WorkerLoadInfo& operator=(WorkerLoadInfo&& aOther) = default;
 
-  nsresult SetPrincipalsOnMainThread(nsIPrincipal* aPrincipal,
-                                     nsIPrincipal* aStoragePrincipal,
-                                     nsILoadGroup* aLoadGroup);
+  nsresult SetPrincipalsAndCSPOnMainThread(nsIPrincipal* aPrincipal,
+                                           nsIPrincipal* aStoragePrincipal,
+                                           nsILoadGroup* aLoadGroup,
+                                           nsIContentSecurityPolicy* aCSP);
 
   nsresult GetPrincipalsAndLoadGroupFromChannel(
       nsIChannel* aChannel, nsIPrincipal** aPrincipalOut,
       nsIPrincipal** aStoragePrincipalOut, nsILoadGroup** aLoadGroupOut);
 
-  nsresult SetPrincipalsFromChannel(nsIChannel* aChannel);
+  nsresult SetPrincipalsAndCSPFromChannel(nsIChannel* aChannel);
 
   bool FinalChannelPrincipalIsValid(nsIChannel* aChannel);
 

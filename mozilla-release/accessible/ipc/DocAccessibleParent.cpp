@@ -6,6 +6,7 @@
 
 #include "DocAccessibleParent.h"
 #include "mozilla/a11y/Platform.h"
+#include "mozilla/dom/BrowserBridgeParent.h"
 #include "mozilla/dom/BrowserParent.h"
 #include "xpcAccessibleDocument.h"
 #include "xpcAccEvents.h"
@@ -535,6 +536,43 @@ ipc::IPCResult DocAccessibleParent::AddChildDoc(DocAccessibleParent* aChildDoc,
     ProxyCreated(aChildDoc, Interfaces::DOCUMENT | Interfaces::HYPERTEXT);
   }
 
+#if defined(XP_WIN)
+  auto embeddedBrowser = static_cast<dom::BrowserParent*>(aChildDoc->Manager());
+  dom::BrowserBridgeParent* bridge = embeddedBrowser->GetBrowserBridgeParent();
+  if (bridge) {
+    // aChildDoc is an embedded document in a different content process to
+    // this document.
+    // Send a COM proxy for the embedded document to the embedder process
+    // hosting the iframe. This will be returned as the child of the
+    // embedder OuterDocAccessible.
+    RefPtr<IDispatch> docAcc;
+    aChildDoc->GetCOMInterface((void**)getter_AddRefs(docAcc));
+    RefPtr<IDispatch> docWrapped(
+        mscom::PassthruProxy::Wrap<IDispatch>(WrapNotNull(docAcc)));
+    IDispatchHolder::COMPtrType docPtr(
+        mscom::ToProxyUniquePtr(std::move(docWrapped)));
+    IDispatchHolder docHolder(std::move(docPtr));
+    if (bridge->SendSetEmbeddedDocAccessibleCOMProxy(docHolder)) {
+#  if defined(MOZ_SANDBOX)
+      mDocProxyStream = docHolder.GetPreservedStream();
+#  endif  // defined(MOZ_SANDBOX)
+    }
+    // Send a COM proxy for the embedder OuterDocAccessible to the embedded
+    // document process. This will be returned as the parent of the
+    // embedded document.
+    aChildDoc->SendParentCOMProxy(WrapperFor(outerDoc));
+    if (nsWinUtils::IsWindowEmulationStarted()) {
+      // The embedded document should use the same emulated window handle as
+      // its embedder. It will return the embedder document (not a window
+      // accessible) as the parent accessible, so we pass a null accessible
+      // when sending the window to the embedded document.
+      aChildDoc->SetEmulatedWindowHandle(mEmulatedWindowHandle);
+      Unused << aChildDoc->SendEmulatedWindow(
+          reinterpret_cast<uintptr_t>(mEmulatedWindowHandle), nullptr);
+    }
+  }
+#endif  // defined(XP_WIN)
+
   return IPC_OK();
 }
 
@@ -672,16 +710,21 @@ void DocAccessibleParent::MaybeInitWindowEmulation() {
     rect.MoveToX(rootRect.X() - rect.X());
     rect.MoveToY(rect.Y() - rootRect.Y());
 
-    auto tab = static_cast<dom::BrowserParent*>(Manager());
-    tab->GetDocShellIsActive(&isActive);
+    auto browserParent = static_cast<dom::BrowserParent*>(Manager());
+    isActive = browserParent->GetDocShellIsActive();
   }
 
-  nsWinUtils::NativeWindowCreateProc onCreate([this](HWND aHwnd) -> void {
+  // onCreate is guaranteed to be called synchronously by
+  // nsWinUtils::CreateNativeWindow, so this reference isn't really necessary.
+  // However, static analysis complains without it.
+  RefPtr<DocAccessibleParent> thisRef = this;
+  nsWinUtils::NativeWindowCreateProc onCreate([thisRef](HWND aHwnd) -> void {
     IDispatchHolder hWndAccHolder;
 
-    ::SetPropW(aHwnd, kPropNameDocAccParent, reinterpret_cast<HANDLE>(this));
+    ::SetPropW(aHwnd, kPropNameDocAccParent,
+               reinterpret_cast<HANDLE>(thisRef.get()));
 
-    SetEmulatedWindowHandle(aHwnd);
+    thisRef->SetEmulatedWindowHandle(aHwnd);
 
     RefPtr<IAccessible> hwndAcc;
     if (SUCCEEDED(::AccessibleObjectFromWindow(
@@ -692,8 +735,9 @@ void DocAccessibleParent::MaybeInitWindowEmulation() {
           mscom::ToProxyUniquePtr(std::move(wrapped))));
     }
 
-    Unused << SendEmulatedWindow(
-        reinterpret_cast<uintptr_t>(mEmulatedWindowHandle), hWndAccHolder);
+    Unused << thisRef->SendEmulatedWindow(
+        reinterpret_cast<uintptr_t>(thisRef->mEmulatedWindowHandle),
+        hWndAccHolder);
   });
 
   HWND parentWnd = reinterpret_cast<HWND>(rootDocument->GetNativeWindow());
@@ -703,10 +747,7 @@ void DocAccessibleParent::MaybeInitWindowEmulation() {
   MOZ_ASSERT(hWnd);
 }
 
-/**
- * @param aCOMProxy COM Proxy to the document in the content process.
- */
-void DocAccessibleParent::SendParentCOMProxy() {
+void DocAccessibleParent::SendParentCOMProxy(Accessible* aOuterDoc) {
   // Make sure that we're not racing with a tab shutdown
   auto tab = static_cast<dom::BrowserParent*>(Manager());
   MOZ_ASSERT(tab);
@@ -714,13 +755,8 @@ void DocAccessibleParent::SendParentCOMProxy() {
     return;
   }
 
-  Accessible* outerDoc = OuterDocOfRemoteBrowser();
-  if (!outerDoc) {
-    return;
-  }
-
   RefPtr<IAccessible> nativeAcc;
-  outerDoc->GetNativeInterface(getter_AddRefs(nativeAcc));
+  aOuterDoc->GetNativeInterface(getter_AddRefs(nativeAcc));
   MOZ_ASSERT(nativeAcc);
 
   RefPtr<IDispatch> wrapped(
@@ -810,11 +846,18 @@ mozilla::ipc::IPCResult DocAccessibleParent::RecvBatch(
   // Only do something in Android. We can't ifdef the entire protocol out in
   // the ipdl because it doesn't allow preprocessing.
 #  if defined(ANDROID)
+  if (mShutdown) {
+    return IPC_OK();
+  }
   nsTArray<ProxyAccessible*> proxies(aData.Length());
   for (size_t i = 0; i < aData.Length(); i++) {
     DocAccessibleParent* doc = static_cast<DocAccessibleParent*>(
         aData.ElementAt(i).Document().get_PDocAccessibleParent());
     MOZ_ASSERT(doc);
+
+    if (doc->IsShutdown()) {
+      continue;
+    }
 
     ProxyAccessible* proxy = doc->GetAccessible(aData.ElementAt(i).ID());
     if (!proxy) {
@@ -829,6 +872,24 @@ mozilla::ipc::IPCResult DocAccessibleParent::RecvBatch(
   return IPC_OK();
 }
 #endif  // !defined(XP_WIN)
+
+Tuple<DocAccessibleParent*, uint64_t> DocAccessibleParent::GetRemoteEmbedder() {
+  dom::BrowserParent* embeddedBrowser = dom::BrowserParent::GetFrom(Manager());
+  dom::BrowserBridgeParent* bridge = embeddedBrowser->GetBrowserBridgeParent();
+  if (!bridge) {
+    return Tuple<DocAccessibleParent*, uint64_t>(nullptr, 0);
+  }
+  DocAccessibleParent* doc;
+  uint64_t id;
+  Tie(doc, id) = bridge->GetEmbedderAccessible();
+  if (doc && doc->IsShutdown()) {
+    // Sometimes, the embedder document is destroyed before its
+    // BrowserBridgeParent. Don't return a destroyed document.
+    doc = nullptr;
+    id = 0;
+  }
+  return Tuple<DocAccessibleParent*, uint64_t>(doc, id);
+}
 
 }  // namespace a11y
 }  // namespace mozilla

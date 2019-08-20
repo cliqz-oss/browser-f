@@ -236,23 +236,22 @@
                        oncommand="PanelUI._onBannerItemSelected(event)"
                        wrap="true"
                        hidden="true"/>
-        <toolbaritem id="appMenu-fxa-container" class="sync-ui-item">
-          <hbox id="appMenu-fxa-status"
-                flex="1"
-                defaultlabel="&fxaSignIn.label;"
+        <toolbaritem id="appMenu-fxa-status"
+                     class="sync-ui-item"
+                     flex="1"
+                     defaultlabel="&fxaSignIn.label;"
 # Despite the name, the tooltip says "Open Sync Preferences" and it is only used when *not* signed in.
 # Bug 1542334 changed the behaviour of the item when signed in so the tooltip was no longer appropriate there.
-                tooltiptext="&fxaSignedIn.tooltip;"
-                errorlabel="&fxaSignInError.label;"
-                unverifiedlabel="&fxaUnverified.label;"
-                onclick="if (event.which == 1) gSync.onMenuPanelCommand();">
-            <image id="appMenu-fxa-avatar"/>
-            <toolbarbutton id="appMenu-fxa-label"
-                class="subviewbutton subviewbutton-iconic"
-                label="&fxaSignIn.label;"
-                fxabrandname="&syncBrand.fxAccount.label;"
-                closemenu="none"/>
-          </hbox>
+                     tooltiptext="&fxaSignedIn.tooltip;"
+                     errorlabel="&fxaSignInError.label;"
+                     unverifiedlabel="&fxaUnverified.label;"
+                     onclick="if (event.which == 1) gSync.onMenuPanelCommand();">
+          <image id="appMenu-fxa-avatar"/>
+          <toolbarbutton id="appMenu-fxa-label"
+                         class="subviewbutton subviewbutton-iconic"
+                         label="&fxaSignIn.label;"
+                         fxabrandname="&syncBrand.fxAccount.label;"
+                         closemenu="none"/>
         </toolbaritem>
         <toolbarseparator class="sync-ui-item"/>
         <toolbaritem>
@@ -400,6 +399,11 @@
                        label="&webDeveloperMenu.label;"
                        closemenu="none"
                        oncommand="PanelUI.showSubView('PanelUI-developer', this)"/>
+       <toolbarbutton id="appMenu-whatsnew-button"
+                      class="subviewbutton subviewbutton-iconic subviewbutton-nav"
+                      hidden="true"
+                      closemenu="none"
+                      oncommand="PanelUI.showSubView('PanelUI-whatsNew', this)"/>
         <toolbarbutton id="appMenu-help-button"
                        class="subviewbutton subviewbutton-iconic subviewbutton-nav"
                        label="&appMenuHelp.label;"
@@ -625,6 +629,10 @@
       <vbox id="PanelUI-developerItems" class="panel-subview-body"/>
     </panelview>
 
+    <panelview id="PanelUI-profiler" flex="1">
+      <iframe id="PanelUI-profilerIframe" className="PanelUI-developer-iframe" />
+    </panelview>
+
     <panelview id="PanelUI-characterEncodingView" flex="1">
       <vbox class="panel-subview-body">
         <vbox id="PanelUI-characterEncodingView-pinned"
@@ -796,6 +804,23 @@
                        label-show="&viewBookmarksToolbar.label;"
                        label-hide="&hideBookmarksToolbar.label;"
                        oncommand="BookmarkingUI.toggleBookmarksToolbar();"/>
+      </vbox>
+    </panelview>
+
+    <panelview id="PanelUI-whatsNew" class="PanelUI-subView">
+      <vbox class="panel-subview-body">
+        <box id="PanelUI-whatsNew-title" class="panel-header">
+          <label/>
+        </box>
+        <toolbaritem id="PanelUI-whatsNew-content"
+                     orient="vertical"
+                     smoothscroll="false"
+                     flatList="true"
+                     tooltip="bhTooltip">
+          <html:div id="PanelUI-whatsNew-message-container">
+            <!-- What's New messages will be rendered here -->
+          </html:div>
+        </toolbaritem>
       </vbox>
     </panelview>
   </panelmultiview>

@@ -66,8 +66,6 @@ using namespace mozilla::dom;
 #define LOG_ENABLED() \
   MOZ_LOG_TEST(gfxUserFontSet::GetUserFontsLog(), LogLevel::Debug)
 
-#define FONT_LOADING_API_ENABLED_PREF "layout.css.font-loading-api.enabled"
-
 NS_IMPL_CYCLE_COLLECTION_CLASS(FontFaceSet)
 
 NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN_INHERITED(FontFaceSet,
@@ -631,12 +629,11 @@ nsresult FontFaceSet::StartLoad(gfxUserFontEntry* aUserFontEntry,
     rv = httpChannel->SetReferrerInfoWithoutClone(referrerInfo);
     Unused << NS_WARN_IF(NS_FAILED(rv));
 
-    nsAutoCString accept("application/font-woff;q=0.9,*/*;q=0.8");
-    if (Preferences::GetBool(GFX_PREF_WOFF2_ENABLED)) {
-      accept.InsertLiteral("application/font-woff2;q=1.0,", 0);
-    }
-    rv = httpChannel->SetRequestHeader(NS_LITERAL_CSTRING("Accept"), accept,
-                                       false);
+    rv = httpChannel->SetRequestHeader(
+        NS_LITERAL_CSTRING("Accept"),
+        NS_LITERAL_CSTRING("application/font-woff2;q=1.0,application/"
+                           "font-woff;q=0.9,*/*;q=0.8"),
+        false);
     NS_ENSURE_SUCCESS(rv, rv);
 
     // For WOFF and WOFF2, we should tell servers/proxies/etc NOT to try
@@ -1041,17 +1038,16 @@ FontFaceSet::FindOrCreateUserFontEntryFromFontFace(
   if (existingEntry) {
     // aFontFace already has a user font entry, so we update its attributes
     // rather than creating a new one.
-    existingEntry->UpdateAttributes(weight, stretch, italicStyle,
-                                    featureSettings, variationSettings,
-                                    languageOverride, unicodeRanges,
-                                    fontDisplay, rangeFlags);
+    existingEntry->UpdateAttributes(
+        weight, stretch, italicStyle, featureSettings, variationSettings,
+        languageOverride, unicodeRanges, fontDisplay, rangeFlags);
     // If the family name has changed, remove the entry from its current family
     // and clear the mFamilyName field so it can be reset when added to a new
     // family.
     if (!existingEntry->mFamilyName.IsEmpty() &&
         existingEntry->mFamilyName != aFamilyName) {
       gfxUserFontFamily* family =
-        set->GetUserFontSet()->LookupFamily(existingEntry->mFamilyName);
+          set->GetUserFontSet()->LookupFamily(existingEntry->mFamilyName);
       if (family) {
         family->RemoveFontEntry(existingEntry);
       }
@@ -1091,14 +1087,14 @@ FontFaceSet::FindOrCreateUserFontEntryFromFontFace(
         }
         case StyleFontFaceSourceListComponent::Tag::Url: {
           face->mSourceType = gfxFontFaceSrc::eSourceType_URL;
-          const URLValue* url = component.AsUrl();
+          const StyleCssUrl* url = component.AsUrl();
           nsIURI* uri = url->GetURI();
           face->mURI = uri ? new gfxFontSrcURI(uri) : nullptr;
-          URLExtraData* extraData = url->ExtraData();
-          face->mReferrer = extraData->GetReferrer();
-          face->mReferrerPolicy = extraData->GetReferrerPolicy();
+          const URLExtraData& extraData = url->ExtraData();
+          face->mReferrer = extraData.GetReferrer();
+          face->mReferrerPolicy = extraData.GetReferrerPolicy();
           face->mOriginPrincipal =
-              new gfxFontSrcPrincipal(extraData->Principal());
+              new gfxFontSrcPrincipal(extraData.Principal());
 
           // agent and user stylesheets are treated slightly differently,
           // the same-site origin check and access control headers are
@@ -1124,8 +1120,7 @@ FontFaceSet::FindOrCreateUserFontEntryFromFontFace(
 
             if (valueString.LowerCaseEqualsASCII("woff")) {
               face->mFormatFlags |= gfxUserFontSet::FLAG_FORMAT_WOFF;
-            } else if (Preferences::GetBool(GFX_PREF_WOFF2_ENABLED) &&
-                       valueString.LowerCaseEqualsASCII("woff2")) {
+            } else if (valueString.LowerCaseEqualsASCII("woff2")) {
               face->mFormatFlags |= gfxUserFontSet::FLAG_FORMAT_WOFF2;
             } else if (valueString.LowerCaseEqualsASCII("opentype")) {
               face->mFormatFlags |= gfxUserFontSet::FLAG_FORMAT_OPENTYPE;
@@ -1141,7 +1136,6 @@ FontFaceSet::FindOrCreateUserFontEntryFromFontFace(
                        valueString.LowerCaseEqualsASCII("woff-variations")) {
               face->mFormatFlags |= gfxUserFontSet::FLAG_FORMAT_WOFF_VARIATIONS;
             } else if (StaticPrefs::layout_css_font_variations_enabled() &&
-                       Preferences::GetBool(GFX_PREF_WOFF2_ENABLED) &&
                        valueString.LowerCaseEqualsASCII("woff2-variations")) {
               face->mFormatFlags |=
                   gfxUserFontSet::FLAG_FORMAT_WOFF2_VARIATIONS;
@@ -1216,6 +1210,10 @@ RawServoFontFaceRule* FontFaceSet::FindRuleForUserFontEntry(
 nsresult FontFaceSet::LogMessage(gfxUserFontEntry* aUserFontEntry,
                                  const char* aMessage, uint32_t aFlags,
                                  nsresult aStatus) {
+  MOZ_ASSERT(NS_IsMainThread(),
+             "LogMessage only works on the main thread, due to the Servo_XXX "
+             "CSSOM calls it makes");
+
   nsCOMPtr<nsIConsoleService> console(
       do_GetService(NS_CONSOLESERVICE_CONTRACTID));
   if (!console) {
@@ -1715,13 +1713,7 @@ FontFaceSet::HandleEvent(Event* aEvent) {
 
 /* static */
 bool FontFaceSet::PrefEnabled() {
-  static bool initialized = false;
-  static bool enabled;
-  if (!initialized) {
-    initialized = true;
-    Preferences::AddBoolVarCache(&enabled, FONT_LOADING_API_ENABLED_PREF);
-  }
-  return enabled;
+  return StaticPrefs::layout_css_font_loading_api_enabled();
 }
 
 // nsICSSLoaderObserver

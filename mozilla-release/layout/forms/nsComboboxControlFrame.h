@@ -209,9 +209,8 @@ class nsComboboxControlFrame final : public nsBlockFrame,
   mozilla::UniquePtr<mozilla::PresState> SaveState() override;
   MOZ_CAN_RUN_SCRIPT_BOUNDARY
   NS_IMETHOD RestoreState(mozilla::PresState* aState) override;
-  NS_IMETHOD GenerateStateKey(nsIContent* aContent,
-                              mozilla::dom::Document* aDocument,
-                              nsACString& aKey) override;
+  void GenerateStateKey(nsIContent* aContent, mozilla::dom::Document* aDocument,
+                        nsACString& aKey) override;
 
   static bool ToolkitHasNativePopup();
 
@@ -290,6 +289,11 @@ class nsComboboxControlFrame final : public nsBlockFrame,
   // The inline size of our display area.  Used by that frame's reflow
   // to size to the full inline size except the drop-marker.
   nscoord mDisplayISize;
+  // The maximum inline size of our display area, which is the
+  // nsComoboxControlFrame's border-box.
+  //
+  // Going over this would be observable via DOM APIs like client / scrollWidth.
+  nscoord mMaxDisplayISize;
 
   nsRevocableEventPtr<RedisplayTextEvent> mRedisplayTextEvent;
 

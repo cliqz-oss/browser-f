@@ -34,7 +34,7 @@ static bool FillCharBufferCallback(const char16_t* buf, uint32_t len,
   return true;
 }
 
-static JSObject* NonNullObject(JSContext* aCx, HandleValue aValue) {
+static JSObject* RequireObject(JSContext* aCx, HandleValue aValue) {
   if (!aValue.isObject()) {
     JS_ReportErrorASCII(aCx, "Expected object");
     return nullptr;
@@ -142,7 +142,7 @@ static bool Middleman_RegisterReplayDebugger(JSContext* aCx, unsigned aArgc,
     return JS_WrapValue(aCx, args.rval());
   }
 
-  RootedObject obj(aCx, NonNullObject(aCx, args.get(0)));
+  RootedObject obj(aCx, RequireObject(aCx, args.get(0)));
   if (!obj) {
     return false;
   }
@@ -194,7 +194,7 @@ static bool Middleman_SpawnReplayingChild(JSContext* aCx, unsigned aArgc,
 static bool Middleman_SendManifest(JSContext* aCx, unsigned aArgc, Value* aVp) {
   CallArgs args = CallArgsFromVp(aArgc, aVp);
 
-  RootedObject manifestObject(aCx, NonNullObject(aCx, args.get(1)));
+  RootedObject manifestObject(aCx, RequireObject(aCx, args.get(1)));
   if (!manifestObject) {
     return false;
   }
@@ -313,9 +313,7 @@ void SetupDevtoolsSandbox() {
   InitializeScriptHits();
 }
 
-bool IsInitialized() {
-  return !!gReplay;
-}
+bool IsInitialized() { return !!gReplay; }
 
 extern "C" {
 
@@ -574,8 +572,8 @@ static bool RecordReplay_AreThreadEventsDisallowed(JSContext* aCx,
   return true;
 }
 
-static bool RecordReplay_DivergeFromRecording(JSContext* aCx,
-                                              unsigned aArgc, Value* aVp) {
+static bool RecordReplay_DivergeFromRecording(JSContext* aCx, unsigned aArgc,
+                                              Value* aVp) {
   CallArgs args = CallArgsFromVp(aArgc, aVp);
   DivergeFromRecording();
   args.rval().setUndefined();
@@ -585,7 +583,7 @@ static bool RecordReplay_DivergeFromRecording(JSContext* aCx,
 static bool RecordReplay_ProgressCounter(JSContext* aCx, unsigned aArgc,
                                          Value* aVp) {
   CallArgs args = CallArgsFromVp(aArgc, aVp);
-  args.rval().setNumber((double) gProgressCounter);
+  args.rval().setNumber((double)gProgressCounter);
   return true;
 }
 
@@ -633,7 +631,7 @@ static bool RecordReplay_ManifestFinished(JSContext* aCx, unsigned aArgc,
 
   CharBuffer responseBuffer;
   if (args.hasDefined(0)) {
-    RootedObject responseObject(aCx, NonNullObject(aCx, args.get(0)));
+    RootedObject responseObject(aCx, RequireObject(aCx, args.get(0)));
     if (!responseObject) {
       return false;
     }
@@ -661,7 +659,7 @@ static bool RecordReplay_ResumeExecution(JSContext* aCx, unsigned aArgc,
 }
 
 static bool RecordReplay_RestoreCheckpoint(JSContext* aCx, unsigned aArgc,
-                                         Value* aVp) {
+                                           Value* aVp) {
   CallArgs args = CallArgsFromVp(aArgc, aVp);
 
   if (!args.get(0).isNumber()) {
@@ -765,8 +763,8 @@ struct ScriptHitInfo {
     // The most recent checkpoint prior to the hit.
     uint32_t mCheckpoint;
 
-    // Index of the frame where the hit occurred, or UINT32_MAX if this represents
-    // an aggregate set of hits after the checkpoint.
+    // Index of the frame where the hit occurred, or UINT32_MAX if this
+    // represents an aggregate set of hits after the checkpoint.
     uint32_t mFrameIndex;
 
     // Progress counter when the hit occurred, invalid if this represents an
@@ -778,7 +776,8 @@ struct ScriptHitInfo {
 
     ScriptHit(uint32_t aCheckpoint, uint32_t aFrameIndex,
               ProgressCounter aProgress)
-        : mCheckpoint(aCheckpoint), mFrameIndex(aFrameIndex),
+        : mCheckpoint(aCheckpoint),
+          mFrameIndex(aFrameIndex),
           mProgress(aProgress) {}
   };
 
@@ -801,13 +800,14 @@ struct ScriptHitInfo {
     }
 
     static bool match(const ScriptHitKey& aFirst, const ScriptHitKey& aSecond) {
-      return aFirst.mScript == aSecond.mScript
-          && aFirst.mOffset == aSecond.mOffset;
+      return aFirst.mScript == aSecond.mScript &&
+             aFirst.mOffset == aSecond.mOffset;
     }
   };
 
   typedef HashMap<ScriptHitKey, ScriptHitChunk*, ScriptHitKey,
-                  AllocPolicy<MemoryKind::ScriptHits>> ScriptHitMap;
+                  AllocPolicy<MemoryKind::ScriptHits>>
+      ScriptHitMap;
   ScriptHitMap mTable;
   ScriptHitChunk* mFreeChunk;
 
@@ -871,8 +871,7 @@ static bool RecordReplay_AddScriptHit(JSContext* aCx, unsigned aArgc,
                                       Value* aVp) {
   CallArgs args = CallArgsFromVp(aArgc, aVp);
 
-  if (!args.get(0).isNumber() ||
-      !args.get(1).isNumber() ||
+  if (!args.get(0).isNumber() || !args.get(1).isNumber() ||
       !args.get(2).isNumber()) {
     JS_ReportErrorASCII(aCx, "Bad parameters");
     return false;
@@ -909,12 +908,12 @@ static bool RecordReplay_FindScriptHits(JSContext* aCx, unsigned aArgc,
       if (hit.mCheckpoint) {
         RootedObject hitObject(aCx, JS_NewObject(aCx, nullptr));
         if (!hitObject ||
-            !JS_DefineProperty(aCx, hitObject, "checkpoint",
-                               hit.mCheckpoint, JSPROP_ENUMERATE) ||
+            !JS_DefineProperty(aCx, hitObject, "checkpoint", hit.mCheckpoint,
+                               JSPROP_ENUMERATE) ||
             !JS_DefineProperty(aCx, hitObject, "progress",
-                               (double) hit.mProgress, JSPROP_ENUMERATE) ||
-            !JS_DefineProperty(aCx, hitObject, "frameIndex",
-                               hit.mFrameIndex, JSPROP_ENUMERATE) ||
+                               (double)hit.mProgress, JSPROP_ENUMERATE) ||
+            !JS_DefineProperty(aCx, hitObject, "frameIndex", hit.mFrameIndex,
+                               JSPROP_ENUMERATE) ||
             !values.append(ObjectValue(*hitObject))) {
           return false;
         }

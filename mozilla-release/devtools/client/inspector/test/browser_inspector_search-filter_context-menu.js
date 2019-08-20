@@ -10,8 +10,8 @@ const TEST_URI = "<h1>test filter context menu</h1>";
 
 add_task(async function() {
   await addTab("data:text/html;charset=utf-8," + encodeURIComponent(TEST_URI));
-  const {toolbox, inspector} = await openInspector();
-  const {searchBox} = inspector;
+  const { toolbox, inspector } = await openInspector();
+  const { searchBox } = inspector;
   await selectNode("h1", inspector);
 
   emptyClipboard();
@@ -26,8 +26,10 @@ add_task(async function() {
   await onContextMenuOpen;
 
   let searchContextMenu = toolbox.getTextBoxContextMenu();
-  ok(searchContextMenu,
-    "The search filter context menu is loaded in the computed view");
+  ok(
+    searchContextMenu,
+    "The search filter context menu is loaded in the computed view"
+  );
 
   let cmdUndo = searchContextMenu.querySelector("#editmenu-undo");
   let cmdDelete = searchContextMenu.querySelector("#editmenu-delete");
@@ -39,12 +41,13 @@ add_task(async function() {
   is(cmdUndo.getAttribute("disabled"), "true", "cmdUndo is disabled");
   is(cmdDelete.getAttribute("disabled"), "true", "cmdDelete is disabled");
   is(cmdSelectAll.getAttribute("disabled"), "true", "cmdSelectAll is disabled");
+  is(cmdCut.getAttribute("disabled"), "true", "cmdCut is disabled");
+  is(cmdCopy.getAttribute("disabled"), "true", "cmdCopy is disabled");
 
-  // Cut/Copy items are enabled in context menu even if there
-  // is no selection. See also Bug 1303033, and 1317322
-  is(cmdCut.getAttribute("disabled"), "", "cmdCut is enabled");
-  is(cmdCopy.getAttribute("disabled"), "", "cmdCopy is enabled");
-  is(cmdPaste.getAttribute("disabled"), "", "cmdPaste is enabled");
+  if (isWindows()) {
+    // emptyClipboard only works on Windows (666254), assert paste only for this OS.
+    is(cmdPaste.getAttribute("disabled"), "true", "cmdPaste is disabled");
+  }
 
   info("Closing context menu");
   let onContextMenuClose = toolbox.once("menu-close");

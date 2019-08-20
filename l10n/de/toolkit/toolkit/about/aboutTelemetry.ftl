@@ -65,7 +65,7 @@ about-telemetry-upload-type =
 about-telemetry-histogram-stats = 
     { $sampleCount ->
         [one] { $sampleCount } Messung, Durchschnitt = { $prettyAverage }, Summe = { $sum }
-       *[other] { $sampleCount } Messung, Durchschnitt = { $prettyAverage }, Summe = { $sum }
+       *[other] { $sampleCount } Messungen, Durchschnitt = { $prettyAverage }, Summe = { $sum }
     }
 # Variables:
 #   $telemetryServerOwner (String): the value of the toolkit.telemetry.server_owner preference. Typically "Mozilla"
@@ -142,3 +142,6 @@ about-telemetry-origin-count = Anzahl
 # Variables:
 #   $telemetryServerOwner (String): the value of the toolkit.telemetry.server_owner preference. Typically "Mozilla"
 about-telemetry-origins-explanation = Die <a data-l10n-name="origin-doc-link">Quellen-Telemetrie von Firefox</a> kodiert Daten vor dem Senden, sodass { $telemetryServerOwner } etwas zählen aber nicht bestimmen kann, ob eine bestimmte { -brand-product-name }-Installation zu der Zählung beigetragen hat. <a data-l10n-name="prio-blog-link">Weitere Informationen</a>
+# Variables:
+#  $process (String): type of process in subsection headers ( e.g. "content", "parent" )
+about-telemetry-process = { $process }-Prozess

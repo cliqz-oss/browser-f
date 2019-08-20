@@ -33,6 +33,17 @@ cert-error-domain-mismatch-single-nolink = Websites bestätigen ihre Identität 
 # Variables:
 # $subject-alt-names (String) - Alternate domain names for which the cert is valid.
 cert-error-domain-mismatch-multiple = Websites bestätigen ihre Identität mittels Zertifikaten. { -brand-short-name } vertraut dieser Website nicht, weil das von der Website verwendete Zertifikat nicht für { $hostname } gilt. Das Zertifikat gilt nur für folgende Namen: { $subject-alt-names }
+
+# Variables:
+# $hostname (String) - Hostname of the website with cert error.
+# $not-after-local-time (Date) - Certificate is not valid after this time.
+cert-error-expired-now = Websites bestätigen ihre Identität mittels Zertifikaten, welche für einen bestimmten Zeitraum gültig sind. Das Zertifikat für { $hostname } ist am { $not-after-local-time } abgelaufen.
+
+# Variables:
+# $hostname (String) - Hostname of the website with cert error.
+# $not-before-local-time (Date) - Certificate is not valid before this time.
+cert-error-not-yet-valid-now = Websites bestätigen ihre Identität mittels Zertifikaten, welche für einen bestimmten Zeitraum gültig sind. Das Zertifikat für { $hostname } wird erst am { $not-before-local-time } gültig.
+
 # Variables:
 # $error (String) - NSS error code string that specifies type of cert error. e.g. unknown issuer, invalid cert, etc.
 cert-error-code-prefix-link = Fehlercode: <a data-l10n-name="error-code-link">{ $error }</a>

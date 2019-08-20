@@ -17,17 +17,18 @@ namespace js {
 namespace gc {
 
 // Like gc::MarkColor but allows the possibility of the cell being
-// unmarked. Order is important here, with white being 'least marked'
-// and black being 'most marked'.
-enum class CellColor : uint8_t { White = 0, Gray = 1, Black = 2 };
-
-static constexpr CellColor AllCellColors[] = {
-  CellColor::White, CellColor::Gray, CellColor::Black
+// unmarked.
+enum class CellColor : uint8_t {
+  White = 0,
+  Gray = uint8_t(MarkColor::Gray),
+  Black = uint8_t(MarkColor::Black)
 };
 
-static constexpr CellColor MarkedCellColors[] = {
-  CellColor::Gray, CellColor::Black
-};
+static constexpr CellColor AllCellColors[] = {CellColor::White, CellColor::Gray,
+                                              CellColor::Black};
+
+static constexpr CellColor MarkedCellColors[] = {CellColor::Gray,
+                                                 CellColor::Black};
 
 inline CellColor GetCellColor(Cell* cell) {
   if (cell->isMarkedBlack()) {
@@ -56,7 +57,7 @@ inline CellColor ExpectedKeyAndDelegateColor(CellColor keyColor,
   return Max(keyColor, delegateColor);
 }
 
-} // namespace gc
-} // namespace js
+}  // namespace gc
+}  // namespace js
 
 #endif /* gc_Verifier_h */

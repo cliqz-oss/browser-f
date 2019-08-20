@@ -47,6 +47,10 @@ enum CanonicalAxisIndex {
   AXIS_INDEX_COUNT
 };
 
+float NormalizeTouch(long aValue, long aMin, long aMax) {
+  return (2.f * (aValue - aMin) / static_cast<float>(aMax - aMin)) - 1.f;
+}
+
 bool AxisNegativeAsButton(float input) {
   const float value = (input < -0.5f) ? 1.f : 0.f;
   return value > 0.1f;
@@ -357,10 +361,106 @@ class StadiaControllerRemapper final : public GamepadRemapper {
 
 class Dualshock4Remapper final : public GamepadRemapper {
  public:
+  Dualshock4Remapper() {
+    mLastTouches.SetLength(TOUCH_EVENT_COUNT);
+    mLastTouchId.SetLength(TOUCH_EVENT_COUNT);
+  }
+
   virtual uint32_t GetAxisCount() const override { return AXIS_INDEX_COUNT; }
 
   virtual uint32_t GetButtonCount() const override {
     return DUALSHOCK_BUTTON_COUNT;
+  }
+
+  virtual uint32_t GetLightIndicatorCount() const override {
+    return LIGHT_INDICATOR_COUNT;
+  }
+
+  virtual void GetLightIndicators(
+      nsTArray<GamepadLightIndicatorType>& aTypes) const override {
+    const uint32_t len = GetLightIndicatorCount();
+    aTypes.SetLength(len);
+    for (uint32_t i = 0; i < len; ++i) {
+      aTypes[i] = GamepadLightIndicatorType::Rgb;
+    }
+  }
+
+  virtual uint32_t GetTouchEventCount() const override {
+    return TOUCH_EVENT_COUNT;
+  }
+
+  virtual void GetLightColorReport(
+      uint8_t aRed, uint8_t aGreen, uint8_t aBlue,
+      std::vector<uint8_t>& aReport) const override {
+    const size_t report_length = 32;
+    aReport.resize(report_length);
+    aReport.assign(report_length, 0);
+
+    aReport[0] = 0x05;  // report ID USB only
+    aReport[1] = 0x02;  // LED only
+    aReport[6] = aRed;
+    aReport[7] = aGreen;
+    aReport[8] = aBlue;
+  }
+
+  virtual void GetTouchData(uint32_t aIndex, void* aInput) override {
+    nsTArray<GamepadTouchState> touches(TOUCH_EVENT_COUNT);
+    touches.SetLength(TOUCH_EVENT_COUNT);
+    uint8_t* rawData = (uint8_t*)aInput;
+
+    const uint32_t kTouchDimensionX = 1920;
+    const uint32_t kTouchDimensionY = 942;
+    bool touch0Pressed = (((rawData[35] & 0xff) >> 7) == 0);
+    bool touch1Pressed = (((rawData[39] & 0xff) >> 7) == 0);
+
+    if ((touch0Pressed && (rawData[35] & 0xff) < mLastTouchId[0]) ||
+        (touch1Pressed && (rawData[39] & 0xff) < mLastTouchId[1])) {
+      mTouchIdBase += 128;
+    }
+
+    if (touch0Pressed) {
+      touches[0].touchId = mTouchIdBase + (rawData[35] & 0x7f);
+      touches[0].surfaceId = 0;
+      touches[0].position[0] = NormalizeTouch(
+          ((rawData[37] & 0xf) << 8) | rawData[36], 0, (kTouchDimensionX - 1));
+      touches[0].position[1] =
+          NormalizeTouch(rawData[38] << 4 | ((rawData[37] & 0xf0) >> 4), 0,
+                         (kTouchDimensionY - 1));
+      touches[0].surfaceDimensions[0] = kTouchDimensionX;
+      touches[0].surfaceDimensions[1] = kTouchDimensionY;
+      touches[0].isSurfaceDimensionsValid = true;
+      mLastTouchId[0] = rawData[35] & 0x7f;
+    }
+    if (touch1Pressed) {
+      touches[1].touchId = mTouchIdBase + (rawData[39] & 0x7f);
+      touches[1].surfaceId = 0;
+      touches[1].position[0] =
+          NormalizeTouch((((rawData[41] & 0xf) << 8) | rawData[40]) + 1, 0,
+                         (kTouchDimensionX - 1));
+      touches[1].position[1] =
+          NormalizeTouch(rawData[42] << 4 | ((rawData[41] & 0xf0) >> 4), 0,
+                         (kTouchDimensionY - 1));
+      touches[1].surfaceDimensions[0] = kTouchDimensionX;
+      touches[1].surfaceDimensions[1] = kTouchDimensionY;
+      touches[1].isSurfaceDimensionsValid = true;
+      mLastTouchId[1] = rawData[39] & 0x7f;
+    }
+
+    RefPtr<GamepadPlatformService> service =
+        GamepadPlatformService::GetParentService();
+    if (!service) {
+      return;
+    }
+
+    // Avoid to send duplicate untouched events to the gamepad service.
+    if ((mLastTouches[0] != touch0Pressed) || touch0Pressed) {
+      service->NewMultiTouchEvent(aIndex, 0, touches[0]);
+    }
+    if ((mLastTouches[1] != touch1Pressed) || touch1Pressed) {
+      service->NewMultiTouchEvent(aIndex, 1, touches[1]);
+    }
+    mLastTouches[0] = touch0Pressed;
+    mLastTouches[1] = touch1Pressed;
   }
 
   virtual void RemapAxisMoveEvent(uint32_t aIndex, uint32_t aAxis,
@@ -443,6 +543,13 @@ class Dualshock4Remapper final : public GamepadRemapper {
     DUALSHOCK_BUTTON_TOUCHPAD = BUTTON_INDEX_COUNT,
     DUALSHOCK_BUTTON_COUNT
   };
+
+  static const uint32_t LIGHT_INDICATOR_COUNT = 1;
+  static const uint32_t TOUCH_EVENT_COUNT = 2;
+
+  nsTArray<unsigned long> mLastTouchId;
+  nsTArray<bool> mLastTouches;
+  unsigned long mTouchIdBase = 0;
 };
 
 class LogitechDInputRemapper final : public GamepadRemapper {

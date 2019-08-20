@@ -13,9 +13,9 @@ import filters
 import json
 import os
 
-from mozlog import get_proxy_logger
+from logger.logger import RaptorLogger
 
-LOG = get_proxy_logger(component="raptor-output")
+LOG = RaptorLogger(component='raptor-output')
 
 
 class Output(object):
@@ -43,7 +43,7 @@ class Output(object):
 
         # check if we actually have any results
         if len(self.results) == 0:
-            LOG.error("error: no raptor test results found for %s" %
+            LOG.error("no raptor test results found for %s" %
                       ', '.join(test_names))
             return
 
@@ -533,7 +533,7 @@ class Output(object):
             subtests.append(_subtests[name])
             vals.append([_subtests[name]['value'], name])
 
-        print subtests
+        print(subtests)
         return subtests, vals
 
     def parseMotionmarkOutput(self, test):
@@ -737,10 +737,11 @@ class Output(object):
         for pagecycle in data:
             for _sub, _value in pagecycle[0].iteritems():
                 try:
-                    percent_dropped = float(_value['droppedFrames']) / _value['decodedFrames']
+                    percent_dropped = float(_value['droppedFrames']) / _value['decodedFrames'] \
+                                      * 100.0
                 except ZeroDivisionError:
                     # if no frames have been decoded the playback failed completely
-                    percent_dropped = 1
+                    percent_dropped = 100.0
 
                 # Remove the not needed "PlaybackPerf." prefix from each test
                 _sub = _sub.split('PlaybackPerf.', 1)[-1]
@@ -764,7 +765,8 @@ class Output(object):
         for name in names:
             _subtests[name]['value'] = round(filters.median(_subtests[name]['replicates']), 2)
             subtests.append(_subtests[name])
-            if name.endswith("dropped_frames"):
+            # only include dropped_frames values, without the %_dropped_frames values
+            if name.endswith("X_dropped_frames"):
                 vals.append([_subtests[name]['value'], name])
 
         return subtests, vals
@@ -821,7 +823,7 @@ class Output(object):
             screenshot_path = os.path.join(os.getcwd(), 'screenshots.html')
 
         if self.summarized_results == {}:
-            LOG.error("error: no summarized raptor results found for %s" %
+            LOG.error("no summarized raptor results found for %s" %
                       ', '.join(test_names))
         else:
             with open(results_path, 'w') as f:
@@ -837,27 +839,40 @@ class Output(object):
         # now that we've checked for screen captures too, if there were no actual
         # test results we can bail out here
         if self.summarized_results == {}:
-            return False
+            return False, 0
 
         # when gecko_profiling, we don't want results ingested by Perfherder
         extra_opts = self.summarized_results['suites'][0].get('extraOptions', [])
-        if 'gecko_profile' not in extra_opts:
+        test_type = self.summarized_results['suites'][0].get('type', '')
+
+        output_perf_data = True
+        not_posting = '- not posting regular test results for perfherder'
+        if 'gecko_profile' in extra_opts:
+            LOG.info("gecko profiling enabled %s" % not_posting)
+            output_perf_data = False
+        elif test_type == 'scenario':
+            # if a resource-usage flag was supplied the perfherder data
+            # will still be output from output_supporting_data
+            LOG.info("scenario test type was run %s" % not_posting)
+            output_perf_data = False
+
+        total_perfdata = 0
+        if output_perf_data:
             # if we have supporting data i.e. power, we ONLY want those measurements
             # dumped out. TODO: Bug 1515406 - Add option to output both supplementary
             # data (i.e. power) and the regular Raptor test result
             # Both are already available as separate PERFHERDER_DATA json blobs
             if len(self.summarized_supporting_data) == 0:
                 LOG.info("PERFHERDER_DATA: %s" % json.dumps(self.summarized_results))
+                total_perfdata = 1
             else:
                 LOG.info("supporting data measurements exist - only posting those to perfherder")
-        else:
-            LOG.info("gecko profiling enabled - not posting results for perfherder")
 
         json.dump(self.summarized_results, open(results_path, 'w'), indent=2,
                   sort_keys=True)
         LOG.info("results can also be found locally at: %s" % results_path)
 
-        return True
+        return True, total_perfdata
 
     def output_supporting_data(self, test_names):
         '''
@@ -870,10 +885,11 @@ class Output(object):
         from the actual Raptor test that was ran when the supporting data was gathered.
         '''
         if len(self.summarized_supporting_data) == 0:
-            LOG.error("error: no summarized supporting data found for %s" %
+            LOG.error("no summarized supporting data found for %s" %
                       ', '.join(test_names))
-            return False
+            return False, 0
 
+        total_perfdata = 0
         for next_data_set in self.summarized_supporting_data:
             data_type = next_data_set['suites'][0]['type']
 
@@ -892,8 +908,9 @@ class Output(object):
             # the output that treeherder expects to find
             LOG.info("PERFHERDER_DATA: %s" % json.dumps(next_data_set))
             LOG.info("%s results can also be found locally at: %s" % (data_type, results_path))
+            total_perfdata += 1
 
-        return True
+        return True, total_perfdata
 
     @classmethod
     def v8_Metric(cls, val_list):

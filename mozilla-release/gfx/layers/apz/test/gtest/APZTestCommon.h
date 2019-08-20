@@ -23,6 +23,7 @@
 #include "mozilla/layers/LayerMetricsWrapper.h"
 #include "mozilla/layers/APZThreadUtils.h"
 #include "mozilla/layers/MatrixMessage.h"
+#include "mozilla/StaticPrefs.h"
 #include "mozilla/TypedEnumBits.h"
 #include "mozilla/UniquePtr.h"
 #include "apz/src/APZCTreeManager.h"
@@ -32,7 +33,6 @@
 #include "Layers.h"
 #include "TestLayers.h"
 #include "UnitTransforms.h"
-#include "gfxPrefs.h"
 
 using namespace mozilla;
 using namespace mozilla::gfx;
@@ -75,8 +75,8 @@ inline PinchGestureInput CreatePinchGestureInput(
 template <class SetArg, class Storage>
 class ScopedGfxSetting {
  public:
-  ScopedGfxSetting(SetArg (*aGetPrefFunc)(void), void (*aSetPrefFunc)(SetArg),
-                   SetArg aVal)
+  ScopedGfxSetting(const std::function<SetArg(void)>& aGetPrefFunc,
+                   const std::function<void(SetArg)>& aSetPrefFunc, SetArg aVal)
       : mSetPrefFunc(aSetPrefFunc) {
     mOldVal = aGetPrefFunc();
     aSetPrefFunc(aVal);
@@ -85,13 +85,31 @@ class ScopedGfxSetting {
   ~ScopedGfxSetting() { mSetPrefFunc(mOldVal); }
 
  private:
-  void (*mSetPrefFunc)(SetArg);
+  std::function<void(SetArg)> mSetPrefFunc;
   Storage mOldVal;
 };
 
-#define SCOPED_GFX_PREF(prefBase, prefType, prefValue)  \
-  ScopedGfxSetting<prefType, prefType> pref_##prefBase( \
-      &(gfxPrefs::prefBase), &(gfxPrefs::Set##prefBase), prefValue)
+#define FRESH_PREF_VAR_PASTE(id, line) id##line
+#define FRESH_PREF_VAR_EXPAND(id, line) FRESH_PREF_VAR_PASTE(id, line)
+#define FRESH_PREF_VAR FRESH_PREF_VAR_EXPAND(pref, __LINE__)
+
+#define SCOPED_GFX_PREF_BOOL(prefName, prefValue)                           \
+  ScopedGfxSetting<bool, bool> FRESH_PREF_VAR(                              \
+      [=]() { return Preferences::GetBool(prefName); },                     \
+      [=](bool aPrefValue) { Preferences::SetBool(prefName, aPrefValue); }, \
+      prefValue)
+
+#define SCOPED_GFX_PREF_INT(prefName, prefValue)                              \
+  ScopedGfxSetting<int32_t, int32_t> FRESH_PREF_VAR(                          \
+      [=]() { return Preferences::GetInt(prefName); },                        \
+      [=](int32_t aPrefValue) { Preferences::SetInt(prefName, aPrefValue); }, \
+      prefValue)
+
+#define SCOPED_GFX_PREF_FLOAT(prefName, prefValue)                            \
+  ScopedGfxSetting<float, float> FRESH_PREF_VAR(                              \
+      [=]() { return Preferences::GetFloat(prefName); },                      \
+      [=](float aPrefValue) { Preferences::SetFloat(prefName, aPrefValue); }, \
+      prefValue)
 
 #define SCOPED_GFX_VAR(varBase, varType, varValue)         \
   ScopedGfxSetting<const varType&, varType> var_##varBase( \
@@ -363,8 +381,9 @@ class TestAsyncPanZoomController : public AsyncPanZoomController {
   }
 
   CSSPoint GetCompositedScrollOffset() const {
-    return GetCurrentAsyncScrollOffset(AsyncPanZoomController::eForCompositing)
-        / GetFrameMetrics().GetZoom();
+    return GetCurrentAsyncScrollOffset(
+               AsyncPanZoomController::eForCompositing) /
+           GetFrameMetrics().GetZoom();
   }
 
   void SetWaitForMainThread() { mWaitForMainThread = true; }
@@ -520,7 +539,7 @@ void APZCTesterBase::Tap(const RefPtr<InputReceiver>& aTarget,
 
   // If touch-action is enabled then simulate the allowed touch behaviour
   // notification that the main thread is supposed to deliver.
-  if (gfxPrefs::TouchActionEnabled() &&
+  if (StaticPrefs::layout_css_touch_action_enabled() &&
       status != nsEventStatus_eConsumeNoDefault) {
     SetDefaultAllowedTouchBehavior(aTarget, *aOutInputBlockId);
   }
@@ -552,8 +571,8 @@ void APZCTesterBase::Pan(const RefPtr<InputReceiver>& aTarget,
   // We can't use a scoped pref because this value might be read at some later
   // time when the events are actually processed, rather than when we deliver
   // them.
-  gfxPrefs::SetAPZTouchStartTolerance(1.0f / 1000.0f);
-  gfxPrefs::SetAPZTouchMoveTolerance(0.0f);
+  Preferences::SetFloat("apz.touch_start_tolerance", 1.0f / 1000.0f);
+  Preferences::SetFloat("apz.touch_move_tolerance", 0.0f);
   int overcomeTouchToleranceX = 0;
   int overcomeTouchToleranceY = 0;
   if (!(aOptions & PanOptions::ExactCoordinates)) {
@@ -596,7 +615,7 @@ void APZCTesterBase::Pan(const RefPtr<InputReceiver>& aTarget,
       EXPECT_EQ(1UL, aAllowedTouchBehaviors->Length());
       aTarget->SetAllowedTouchBehavior(*aOutInputBlockId,
                                        *aAllowedTouchBehaviors);
-    } else if (gfxPrefs::TouchActionEnabled()) {
+    } else if (StaticPrefs::layout_css_touch_action_enabled()) {
       SetDefaultAllowedTouchBehavior(aTarget, *aOutInputBlockId);
     }
   }
@@ -681,7 +700,7 @@ void APZCTesterBase::DoubleTap(const RefPtr<InputReceiver>& aTarget,
 
   // If touch-action is enabled then simulate the allowed touch behaviour
   // notification that the main thread is supposed to deliver.
-  if (gfxPrefs::TouchActionEnabled() &&
+  if (StaticPrefs::layout_css_touch_action_enabled() &&
       status != nsEventStatus_eConsumeNoDefault) {
     SetDefaultAllowedTouchBehavior(aTarget, blockId);
   }
@@ -700,7 +719,7 @@ void APZCTesterBase::DoubleTap(const RefPtr<InputReceiver>& aTarget,
   }
   mcc->AdvanceByMillis(10);
 
-  if (gfxPrefs::TouchActionEnabled() &&
+  if (StaticPrefs::layout_css_touch_action_enabled() &&
       status != nsEventStatus_eConsumeNoDefault) {
     SetDefaultAllowedTouchBehavior(aTarget, blockId);
   }
@@ -773,7 +792,7 @@ void APZCTesterBase::PinchWithTouchInput(
     EXPECT_EQ(2UL, aAllowedTouchBehaviors->Length());
     aTarget->SetAllowedTouchBehavior(*aOutInputBlockId,
                                      *aAllowedTouchBehaviors);
-  } else if (gfxPrefs::TouchActionEnabled()) {
+  } else if (StaticPrefs::layout_css_touch_action_enabled()) {
     SetDefaultAllowedTouchBehavior(aTarget, *aOutInputBlockId, 2);
   }
 

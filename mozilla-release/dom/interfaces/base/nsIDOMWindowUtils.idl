@@ -200,6 +200,20 @@ interface nsIDOMWindowUtils : nsISupports {
                                     in Element aElement);
 
   /**
+   * If |aElement| is a scroll container, returns the amount of layout
+   * space taken up by its scrollbars (that is, the width of the vertical
+   * scrollbar and the height of the horizontal scrollbar) in CSS pixels;
+   * otherwise returns zero.
+   *
+   * Note that on some platforms, scrollbars don't take up layout space
+   * ("overlay scrollbars"). On such platforms, the returned sizes are
+   * always zero.
+   */
+  void getScrollbarSizes(in Element aElement,
+                         out uint32_t aVerticalScrollbarWidth,
+                         out uint32_t aHorizontalScrollbarHeight);
+
+  /**
    * Get/set the resolution at which rescalable web content is drawn.
    *
    * Setting a new resolution does *not* trigger reflow.  This API is
@@ -209,9 +223,9 @@ interface nsIDOMWindowUtils : nsISupports {
    * The effect of this API is for gfx code to allocate more or fewer
    * pixels for rescalable content by a factor of |resolution| in
    * both dimensions.
-   * 
+   *
    * In addition, the content is scaled by the amount of the resolution,
-   * so that it is displayed at a correspondingly larger or smaller size, 
+   * so that it is displayed at a correspondingly larger or smaller size,
    * without the need for the caller to set an additional transform.
    *
    * This can be used to implement a non-reflowing scale-zoom, e.g.
@@ -1298,11 +1312,6 @@ interface nsIDOMWindowUtils : nsISupports {
   readonly attribute boolean usingAdvancedLayers;
 
   /**
-   * True if the current build includes WebRender.
-   */
-  readonly attribute boolean isWebRenderBuilt;
-
-  /**
    * True if webrender was requested by the user (via pref or env-var), false
    * otherwise. Note that this doesn't represent whether or not webrender is
    * *actually* enabled, just whether or not it was requested.
@@ -1996,6 +2005,8 @@ interface nsIDOMWindowUtils : nsISupports {
   const long DIRECTION_NOT_SET = 2;
 
   void syncFlushCompositor();
+
+  unsigned long long getLayersId();
 };
 
 [scriptable, uuid(c694e359-7227-4392-a138-33c0cc1f15a6)]

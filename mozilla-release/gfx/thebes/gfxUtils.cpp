@@ -29,6 +29,7 @@
 #include "mozilla/image/nsPNGEncoder.h"
 #include "mozilla/Maybe.h"
 #include "mozilla/RefPtr.h"
+#include "mozilla/StaticPrefs.h"
 #include "mozilla/UniquePtrExtensions.h"
 #include "mozilla/Unused.h"
 #include "mozilla/Vector.h"
@@ -46,7 +47,6 @@
 #include "ImageContainer.h"
 #include "ImageRegion.h"
 #include "gfx2DGlue.h"
-#include "gfxPrefs.h"
 
 #ifdef XP_WIN
 #  include "gfxWindowsPlatform.h"
@@ -1461,23 +1461,30 @@ void gfxUtils::RemoveShaderCacheFromDiskIfNecessary() {
 
 /* static */
 bool gfxUtils::DumpDisplayList() {
-  return gfxPrefs::LayoutDumpDisplayList() ||
-         (gfxPrefs::LayoutDumpDisplayListParent() && XRE_IsParentProcess()) ||
-         (gfxPrefs::LayoutDumpDisplayListContent() && XRE_IsContentProcess());
+  return StaticPrefs::layout_display_list_dump() ||
+         (StaticPrefs::layout_display_list_dump_parent() &&
+          XRE_IsParentProcess()) ||
+         (StaticPrefs::layout_display_list_dump_content() &&
+          XRE_IsContentProcess());
 }
 
 wr::RenderRoot gfxUtils::GetContentRenderRoot() {
-  if (gfx::gfxVars::UseWebRender() && gfxPrefs::WebRenderSplitRenderRoots()) {
+  if (gfx::gfxVars::UseWebRender() &&
+      StaticPrefs::gfx_webrender_split_render_roots()) {
     return wr::RenderRoot::Content;
   }
   return wr::RenderRoot::Default;
 }
 
 Maybe<wr::RenderRoot> gfxUtils::GetRenderRootForFrame(const nsIFrame* aFrame) {
-  if (!gfxVars::UseWebRender() || !gfxPrefs::WebRenderSplitRenderRoots()) {
+  if (!gfxVars::UseWebRender() ||
+      !StaticPrefs::gfx_webrender_split_render_roots()) {
     return Nothing();
   }
   if (!aFrame->GetContent()) {
+    return Nothing();
+  }
+  if (!aFrame->GetContent()->IsElement()) {
     return Nothing();
   }
   return gfxUtils::GetRenderRootForElement(aFrame->GetContent()->AsElement());
@@ -1488,45 +1495,31 @@ Maybe<wr::RenderRoot> gfxUtils::GetRenderRootForElement(
   if (!aElement) {
     return Nothing();
   }
-  if (!gfxVars::UseWebRender() || !gfxPrefs::WebRenderSplitRenderRoots()) {
-    return Nothing();
-  }
-  if (!aElement->IsXULElement()) {
+  if (!gfxVars::UseWebRender() ||
+      !StaticPrefs::gfx_webrender_split_render_roots()) {
     return Nothing();
   }
   if (aElement->AttrValueIs(kNameSpaceID_None, nsGkAtoms::renderroot,
                             NS_LITERAL_STRING("content"), eCaseMatters)) {
     return Some(wr::RenderRoot::Content);
   }
+  if (aElement->AttrValueIs(kNameSpaceID_None, nsGkAtoms::renderroot,
+                            NS_LITERAL_STRING("popover"), eCaseMatters)) {
+    return Some(wr::RenderRoot::Popover);
+  }
   return Nothing();
 }
 
 wr::RenderRoot gfxUtils::RecursivelyGetRenderRootForFrame(
     const nsIFrame* aFrame) {
-  if (!gfxVars::UseWebRender() || !gfxPrefs::WebRenderSplitRenderRoots()) {
+  if (!gfxVars::UseWebRender() ||
+      !StaticPrefs::gfx_webrender_split_render_roots()) {
     return wr::RenderRoot::Default;
   }
 
   for (const nsIFrame* current = aFrame; current;
-       current = current->GetParent()) {
+       current = nsLayoutUtils::GetCrossDocParentFrame(current)) {
     auto renderRoot = gfxUtils::GetRenderRootForFrame(current);
-    if (renderRoot) {
-      return *renderRoot;
-    }
-  }
-
-  return wr::RenderRoot::Default;
-}
-
-wr::RenderRoot gfxUtils::RecursivelyGetRenderRootForElement(
-    const dom::Element* aElement) {
-  if (!gfxVars::UseWebRender() || !gfxPrefs::WebRenderSplitRenderRoots()) {
-    return wr::RenderRoot::Default;
-  }
-
-  for (const dom::Element* current = aElement; current;
-       current = current->GetParentElement()) {
-    auto renderRoot = gfxUtils::GetRenderRootForElement(current);
     if (renderRoot) {
       return *renderRoot;
     }

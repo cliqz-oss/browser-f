@@ -19,12 +19,12 @@
 #include "mozilla/gfx/ssse3-scaler.h"
 #include "mozilla/layers/ImageDataSerializer.h"
 #include "mozilla/SSE.h"
+#include "mozilla/StaticPrefs.h"
 #include "gfxPlatform.h"
 #include "gfxUtils.h"
 #include "YCbCrUtils.h"
 #include <algorithm>
 #include "ImageContainer.h"
-#include "gfxPrefs.h"
 
 namespace mozilla {
 using namespace mozilla::gfx;
@@ -225,7 +225,6 @@ BasicCompositor::BasicCompositor(CompositorBridgeParent* aParent,
   mMaxTextureSize =
       std::min(Factory::GetMaxSurfaceSize(gfxVars::ContentBackend()),
                Factory::GetMaxSurfaceSize(BackendType::CAIRO));
-
 }
 
 BasicCompositor::~BasicCompositor() { MOZ_COUNT_DTOR(BasicCompositor); }
@@ -368,7 +367,7 @@ bool BasicCompositor::SupportsEffect(EffectTypes aEffect) {
 }
 
 bool BasicCompositor::SupportsLayerGeometry() const {
-  return gfxPrefs::BasicLayerGeometry();
+  return StaticPrefs::layers_geometry_basic_enabled();
 }
 
 static RefPtr<gfx::Path> BuildPathFromPolygon(const RefPtr<DrawTarget>& aDT,
@@ -1024,7 +1023,7 @@ void BasicCompositor::EndFrame() {
   // Pop aClipRectIn/bounds rect
   mRenderTarget->mDrawTarget->PopClip();
 
-  if (gfxPrefs::WidgetUpdateFlashing()) {
+  if (StaticPrefs::nglayout_debug_widget_update_flashing()) {
     float r = float(rand()) / RAND_MAX;
     float g = float(rand()) / RAND_MAX;
     float b = float(rand()) / RAND_MAX;

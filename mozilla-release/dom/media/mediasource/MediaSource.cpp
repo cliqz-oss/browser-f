@@ -117,11 +117,11 @@ nsresult MediaSource::IsTypeSupported(const nsAString& aType,
   }
   if (mimeType == MEDIAMIMETYPE("video/webm")) {
     if (!(Preferences::GetBool("media.mediasource.webm.enabled", false) ||
-          StaticPrefs::MediaCapabilitiesEnabled() ||
+          StaticPrefs::media_media_capabilities_enabled() ||
           containerType->ExtendedType().Codecs().Contains(
               NS_LITERAL_STRING("vp8")) ||
 #ifdef MOZ_AV1
-          (StaticPrefs::MediaAv1Enabled() &&
+          (StaticPrefs::media_av1_enabled() &&
            IsAV1CodecString(
                containerType->ExtendedType().Codecs().AsString())) ||
 #endif
@@ -615,10 +615,22 @@ void MediaSource::DurationChange(double aNewDuration, ErrorResult& aRv) {
   mDecoder->SetMediaSourceDuration(aNewDuration);
 }
 
-void MediaSource::GetMozDebugReaderData(nsAString& aString) {
-  nsAutoCString result;
-  mDecoder->GetMozDebugReaderData(result);
-  aString = NS_ConvertUTF8toUTF16(result);
+already_AddRefed<Promise> MediaSource::MozDebugReaderData(ErrorResult& aRv) {
+  // Creating a JS promise
+  nsPIDOMWindowInner* win = GetOwner();
+  if (!win) {
+    aRv.Throw(NS_ERROR_UNEXPECTED);
+    return nullptr;
+  }
+  RefPtr<Promise> domPromise = Promise::Create(win->AsGlobal(), aRv);
+  if (NS_WARN_IF(aRv.Failed())) {
+    return nullptr;
+  }
+  MOZ_ASSERT(domPromise);
+  MediaSourceDecoderDebugInfo info;
+  mDecoder->GetDebugInfo(info);
+  domPromise->MaybeResolve(info);
+  return domPromise.forget();
 }
 
 nsPIDOMWindowInner* MediaSource::GetParentObject() const { return GetOwner(); }

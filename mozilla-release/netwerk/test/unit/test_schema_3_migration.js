@@ -43,16 +43,36 @@ function* do_run_test() {
   // Populate it, with:
   // 1) Unexpired, unique cookies.
   for (let i = 0; i < 20; ++i) {
-    let cookie = new Cookie("oh" + i, "hai", "foo.com", "/",
-                            futureExpiry, now, now + i, false, false, false);
+    let cookie = new Cookie(
+      "oh" + i,
+      "hai",
+      "foo.com",
+      "/",
+      futureExpiry,
+      now,
+      now + i,
+      false,
+      false,
+      false
+    );
 
     schema3db.insertCookie(cookie);
   }
 
   // 2) Expired, unique cookies.
   for (let i = 20; i < 40; ++i) {
-    let cookie = new Cookie("oh" + i, "hai", "bar.com", "/",
-                            pastExpiry, now, now + i, false, false, false);
+    let cookie = new Cookie(
+      "oh" + i,
+      "hai",
+      "bar.com",
+      "/",
+      pastExpiry,
+      now,
+      now + i,
+      false,
+      false,
+      false
+    );
 
     schema3db.insertCookie(cookie);
   }
@@ -60,26 +80,66 @@ function* do_run_test() {
   // 3) Many copies of the same cookie, some of which have expired and
   // some of which have not.
   for (let i = 40; i < 45; ++i) {
-    let cookie = new Cookie("oh", "hai", "baz.com", "/",
-                            futureExpiry + i, now, now + i, false, false, false);
+    let cookie = new Cookie(
+      "oh",
+      "hai",
+      "baz.com",
+      "/",
+      futureExpiry + i,
+      now,
+      now + i,
+      false,
+      false,
+      false
+    );
 
     schema3db.insertCookie(cookie);
   }
   for (let i = 45; i < 50; ++i) {
-    let cookie = new Cookie("oh", "hai", "baz.com", "/",
-                            pastExpiry - i, now, now + i, false, false, false);
+    let cookie = new Cookie(
+      "oh",
+      "hai",
+      "baz.com",
+      "/",
+      pastExpiry - i,
+      now,
+      now + i,
+      false,
+      false,
+      false
+    );
 
     schema3db.insertCookie(cookie);
   }
   for (let i = 50; i < 55; ++i) {
-    let cookie = new Cookie("oh", "hai", "baz.com", "/",
-                            futureExpiry - i, now, now + i, false, false, false);
+    let cookie = new Cookie(
+      "oh",
+      "hai",
+      "baz.com",
+      "/",
+      futureExpiry - i,
+      now,
+      now + i,
+      false,
+      false,
+      false
+    );
 
     schema3db.insertCookie(cookie);
   }
   for (let i = 55; i < 60; ++i) {
-    let cookie = new Cookie("oh", "hai", "baz.com", "/",
-                            pastExpiry + i, now, now + i, false, false, false);
+    let cookie = new Cookie(
+      "oh",
+      "hai",
+      "baz.com",
+      "/",
+      pastExpiry + i,
+      now,
+      now + i,
+      false,
+      false,
+      false
+    );
 
     schema3db.insertCookie(cookie);
   }
@@ -102,7 +162,7 @@ function* do_run_test() {
   // time.
   Assert.equal(Services.cookiemgr.countCookiesFromHost("baz.com"), 1);
   let enumerator = Services.cookiemgr.getCookiesFromHost("baz.com", {});
-  let cookie = enumerator.getNext().QueryInterface(Ci.nsICookie2);
+  let cookie = enumerator.getNext().QueryInterface(Ci.nsICookie);
   Assert.equal(cookie.expiry, futureExpiry + 44);
 
   do_close_profile(test_generator);
@@ -113,8 +173,18 @@ function* do_run_test() {
 
   // Populate it with more cookies.
   for (let i = 60; i < 80; ++i) {
-    let cookie = new Cookie("oh" + i, "hai", "cat.com", "/",
-                            futureExpiry, now, now + i, false, false, false);
+    let cookie = new Cookie(
+      "oh" + i,
+      "hai",
+      "cat.com",
+      "/",
+      futureExpiry,
+      now,
+      now + i,
+      false,
+      false,
+      false
+    );
 
     schema3db.insertCookie(cookie);
   }
@@ -130,9 +200,8 @@ function* do_run_test() {
   // Test the expected set of cookies.
   Assert.equal(Services.cookiemgr.countCookiesFromHost("cat.com"), 20);
   enumerator = Services.cookiemgr.getCookiesFromHost("cat.com", {});
-  cookie = enumerator.getNext().QueryInterface(Ci.nsICookie2);
+  cookie = enumerator.getNext().QueryInterface(Ci.nsICookie);
   Assert.equal(cookie.creationTime, 0);
 
   finish_test();
 }
-

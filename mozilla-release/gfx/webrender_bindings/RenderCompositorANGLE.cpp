@@ -32,7 +32,8 @@ namespace wr {
 /* static */
 UniquePtr<RenderCompositor> RenderCompositorANGLE::Create(
     RefPtr<widget::CompositorWidget>&& aWidget) {
-  if (!RenderThread::Get()->SharedGL()) {
+  const auto& gl = RenderThread::Get()->SharedGL();
+  if (!gl) {
     gfxCriticalNote << "Failed to get shared GL context";
     return nullptr;
   }
@@ -114,7 +115,8 @@ bool RenderCompositorANGLE::Initialize() {
   if (!SutdownEGLLibraryIfNecessary()) {
     return false;
   }
-  if (!RenderThread::Get()->SharedGL()) {
+  const auto gl = RenderThread::Get()->SharedGL();
+  if (!gl) {
     gfxCriticalNote << "[WR] failed to get shared GL context.";
     return false;
   }
@@ -225,7 +227,9 @@ bool RenderCompositorANGLE::Initialize() {
 
   // Force enable alpha channel to make sure ANGLE use correct framebuffer
   // formart
-  if (!gl::CreateConfig(&mEGLConfig, /* bpp */ 32,
+  const auto& gle = gl::GLContextEGL::Cast(gl);
+  const auto& egl = gle->mEgl;
+  if (!gl::CreateConfig(egl, &mEGLConfig, /* bpp */ 32,
                         /* enableDepthBuffer */ true)) {
     gfxCriticalNote << "Failed to create EGLConfig for WebRender";
   }
@@ -425,8 +429,6 @@ bool RenderCompositorANGLE::ResizeBufferIfNeeded() {
     }
   }
 
-  auto* egl = gl::GLLibraryEGL::Get();
-
   const EGLint pbuffer_attribs[]{
       LOCAL_EGL_WIDTH,
       size.width,
@@ -438,6 +440,9 @@ bool RenderCompositorANGLE::ResizeBufferIfNeeded() {
 
   const auto buffer = reinterpret_cast<EGLClientBuffer>(backBuf.get());
 
+  const auto gl = RenderThread::Get()->SharedGL();
+  const auto& gle = gl::GLContextEGL::Cast(gl);
+  const auto& egl = gle->mEgl;
   const EGLSurface surface = egl->fCreatePbufferFromClientBuffer(
       egl->Display(), LOCAL_EGL_D3D_TEXTURE_ANGLE, buffer, mEGLConfig,
       pbuffer_attribs);
@@ -456,11 +461,11 @@ bool RenderCompositorANGLE::ResizeBufferIfNeeded() {
 }
 
 void RenderCompositorANGLE::DestroyEGLSurface() {
-  auto* egl = gl::GLLibraryEGL::Get();
-
   // Release EGLSurface of back buffer before calling ResizeBuffers().
   if (mEGLSurface) {
-    gl::GLContextEGL::Cast(gl())->SetEGLSurfaceOverride(EGL_NO_SURFACE);
+    const auto& gle = gl::GLContextEGL::Cast(gl());
+    const auto& egl = gle->mEgl;
+    gle->SetEGLSurfaceOverride(EGL_NO_SURFACE);
     egl->fDestroySurface(egl->Display(), mEGLSurface);
     mEGLSurface = nullptr;
   }

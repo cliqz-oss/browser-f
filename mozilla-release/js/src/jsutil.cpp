@@ -79,6 +79,20 @@ void FailureSimulator::reset() {
 }  // namespace js
 #endif  // defined(DEBUG) || defined(JS_OOM_BREAKPOINT)
 
+#if defined(FUZZING)
+namespace js {
+namespace oom {
+JS_PUBLIC_DATA size_t largeAllocLimit = 0;
+void InitLargeAllocLimit() {
+  char* limitStr = getenv("MOZ_FUZZ_LARGE_ALLOC_LIMIT");
+  if (limitStr) {
+    largeAllocLimit = atoll(limitStr);
+  }
+}
+}  // namespace oom
+}  // namespace js
+#endif
+
 bool js::gDisablePoisoning = false;
 
 JS_PUBLIC_DATA arena_id_t js::MallocArena;
@@ -87,8 +101,11 @@ JS_PUBLIC_DATA arena_id_t js::StringBufferArena;
 
 void js::InitMallocAllocator() {
   MallocArena = moz_create_arena();
-  ArrayBufferContentsArena = moz_create_arena();
-  StringBufferArena = moz_create_arena();
+
+  arena_params_t params;
+  params.mFlags |= ARENA_FLAG_RANDOMIZE_SMALL;
+  ArrayBufferContentsArena = moz_create_arena_with_params(&params);
+  StringBufferArena = moz_create_arena_with_params(&params);
 }
 
 void js::ShutDownMallocAllocator() {

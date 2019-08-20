@@ -154,7 +154,7 @@ Var ArchToInstall
 !define DownloadMinSizeBytes 15728640 ; 15 MB
 
 ; Maximum size expected to download in bytes
-!define DownloadMaxSizeBytes 73400320 ; 70 MB
+!define DownloadMaxSizeBytes 157286400 ; 150 MB
 
 ; Interval before retrying to download. 3 seconds is used along with 10
 ; attempted downloads (the first attempt along with 9 retries) to give a
@@ -362,46 +362,12 @@ Function .onInit
   ${If} "$R9" == "false"
     SetShellVarContext current ; Set SHCTX to HKCU
     ${GetSingleInstallPath} "Software\Mozilla\${BrandFullNameInternal}" $R9
-
-    ${If} ${IsNativeAMD64}
-    ${OrIf} ${IsNativeARM64}
-      ; In HKCU there is no WOW64 redirection, which means we may have gotten
-      ; the path to a 32-bit install even though we're 64-bit.
-      ; In that case, just use the default path instead of offering an upgrade.
-      ; But only do that override if the existing install is in Program Files,
-      ; because that's the only place we can be sure is specific
-      ; to either 32 or 64 bit applications.
-      ; The WordFind syntax below searches for the first occurence of the
-      ; "delimiter" (the Program Files path) in the install path and returns
-      ; anything that appears before that. If nothing appears before that,
-      ; then the install is under Program Files.
-      ${WordFind} $R9 $PROGRAMFILES32 "+1{" $0
-      ${If} $0 == ""
-        StrCpy $R9 "false"
-      ${EndIf}
-    ${EndIf}
   ${EndIf}
 
   StrCpy $PreviousInstallDir ""
   ${If} "$R9" != "false"
-    ; Don't override the default install path with an existing installation
-    ; of a different architecture.
-    StrCpy $0 $R9
-    Call GetExistingInstallArch
-
-    ${If} $0 == ${ARCH_X86}
-    ${AndIf} $ArchToInstall == ${ARCH_X86}
-      StrCpy $PreviousInstallDir "$R9"
-      StrCpy $INSTDIR "$PreviousInstallDir"
-    ${ElseIf} $0 == ${ARCH_AMD64}
-    ${AndIf} $ArchToInstall == ${ARCH_AMD64}
-      StrCpy $PreviousInstallDir "$R9"
-      StrCpy $INSTDIR "$PreviousInstallDir"
-    ${ElseIf} $0 == ${ARCH_AARCH64}
-    ${AndIf} $ArchToInstall == ${ARCH_AARCH64}
-      StrCpy $PreviousInstallDir "$R9"
-      StrCpy $INSTDIR "$PreviousInstallDir"
-    ${EndIf}
+    StrCpy $PreviousInstallDir "$R9"
+    StrCpy $INSTDIR "$PreviousInstallDir"
   ${EndIf}
 
   ; Used to determine if the default installation directory was used.
@@ -1913,7 +1879,13 @@ Function LaunchHelpPage
 FunctionEnd
 
 Function OpenManualDownloadURL
-  ExecShell "open" "${URLManualDownload}${URLManualDownloadAppend}"
+  ClearErrors
+  ReadINIStr $0 "${PARTNER_INI}" "DownloadURL" "FallbackPage"
+  ${IfNot} ${Errors}
+    ExecShell "open" "$0"
+  ${Else}
+    ExecShell "open" "${URLManualDownload}${URLManualDownloadAppend}"
+  ${EndIf}
 FunctionEnd
 
 Function ShouldPromptForProfileCleanup
@@ -2131,42 +2103,6 @@ Function GetLatestReleasedVersion
   Pop $3
   Pop $2
   Pop $0
-FunctionEnd
-
-Function GetExistingInstallArch
-  StrCpy $0 "unknown"
-
-  ClearErrors
-  FileOpen $R1 "$0\install.log" r
-  ${If} ${Errors}
-    Return
-  ${EndIf}
-
-  ${Do}
-    ClearErrors
-    FileReadUTF16LE $R1 $R2
-    ${If} ${Errors}
-      ${Break}
-    ${EndIf}
-
-    ClearErrors
-    ${WordFind} "$R2" "Target CPU : " "E+1}" $R3
-    ${If} ${Errors}
-      ${Continue}
-    ${EndIf}
-
-    ${TrimNewLines} "$R3" $R3
-    ${If} $R3 == "x86"
-      StrCpy $0 ${ARCH_X86}
-    ${ElseIf} $R3 == "x64"
-      StrCpy $0 ${ARCH_AMD64}
-    ${ElseIf} $R3 == "AArch64"
-      StrCpy $0 ${ARCH_AARCH64}
-    ${EndIf}
-    ${Break}
-  ${Loop}
-
-  FileClose $R1
 FunctionEnd
 
 ; Determine which architecture build we should download and install.

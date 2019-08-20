@@ -25,6 +25,7 @@ BROWSER_CHROME_MANIFESTS += [
     'content/test/contextMenu/browser.ini',
     'content/test/favicons/browser.ini',
     'content/test/forms/browser.ini',
+    'content/test/fullscreen/browser.ini',
     'content/test/general/browser.ini',
     'content/test/historySwipeAnimation/browser.ini',
     'content/test/keyboard/browser.ini',
@@ -46,6 +47,7 @@ BROWSER_CHROME_MANIFESTS += [
     'content/test/sanitize/browser.ini',
     'content/test/sidebar/browser.ini',
     'content/test/siteIdentity/browser.ini',
+    'content/test/siteProtections/browser.ini',
     'content/test/static/browser.ini',
     'content/test/statuspanel/browser.ini',
     'content/test/sync/browser.ini',
@@ -60,8 +62,6 @@ BROWSER_CHROME_MANIFESTS += [
 
 DEFINES['MOZ_APP_VERSION'] = CONFIG['MOZ_APP_VERSION']
 DEFINES['MOZ_APP_VERSION_DISPLAY'] = CONFIG['MOZ_APP_VERSION_DISPLAY']
-if CONFIG['MOZ_BROWSER_XHTML']:
-    DEFINES['MOZ_BROWSER_XHTML'] = CONFIG['MOZ_BROWSER_XHTML']
 
 DEFINES['APP_LICENSE_BLOCK'] = '%s/content/overrides/app-license.html' % SRCDIR
 

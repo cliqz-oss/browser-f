@@ -105,7 +105,7 @@ void nsSVGOuterSVGFrame::Init(nsIContent* aContent, nsContainerFrame* aParent,
   NS_ASSERTION(aContent->IsSVGElement(nsGkAtoms::svg),
                "Content is not an SVG 'svg' element!");
 
-  AddStateBits(NS_FRAME_FONT_INFLATION_CONTAINER |
+  AddStateBits(NS_FRAME_REFLOW_ROOT | NS_FRAME_FONT_INFLATION_CONTAINER |
                NS_FRAME_FONT_INFLATION_FLOW_ROOT);
 
   // Check for conditional processing attributes here rather than in
@@ -307,8 +307,8 @@ LogicalSize nsSVGOuterSVGFrame::ComputeSize(
     // We're the root of the outermost browsing context, so we need to scale
     // cbSize by the full-zoom so that SVGs with percentage width/height zoom:
 
-    NS_ASSERTION(aCBSize.ISize(aWritingMode) != NS_AUTOHEIGHT &&
-                     aCBSize.BSize(aWritingMode) != NS_AUTOHEIGHT,
+    NS_ASSERTION(aCBSize.ISize(aWritingMode) != NS_UNCONSTRAINEDSIZE &&
+                     aCBSize.BSize(aWritingMode) != NS_UNCONSTRAINEDSIZE,
                  "root should not have auto-width/height containing block");
 
     if (!IsContainingWindowElementOfType(nullptr, nsGkAtoms::iframe)) {
@@ -336,7 +336,7 @@ LogicalSize nsSVGOuterSVGFrame::ComputeSize(
 
     const SVGAnimatedLength& height =
         content->mLengthAttributes[SVGSVGElement::ATTR_HEIGHT];
-    NS_ASSERTION(aCBSize.BSize(aWritingMode) != NS_AUTOHEIGHT,
+    NS_ASSERTION(aCBSize.BSize(aWritingMode) != NS_UNCONSTRAINEDSIZE,
                  "root should not have auto-height containing block");
     if (height.IsPercentage()) {
       MOZ_ASSERT(!intrinsicSize.height,
@@ -423,9 +423,9 @@ void nsSVGOuterSVGFrame::Reflow(nsPresContext* aPresContext,
     //
     if (svgElem->HasViewBoxOrSyntheticViewBox()) {
       nsIFrame* anonChild = PrincipalChildList().FirstChild();
-      anonChild->AddStateBits(NS_FRAME_IS_DIRTY);
+      anonChild->MarkSubtreeDirty();
       for (nsIFrame* child : anonChild->PrincipalChildList()) {
-        child->AddStateBits(NS_FRAME_IS_DIRTY);
+        child->MarkSubtreeDirty();
       }
     }
     changeBits |= COORD_CONTEXT_CHANGED;
@@ -450,7 +450,6 @@ void nsSVGOuterSVGFrame::Reflow(nsPresContext* aPresContext,
   } else {
     // Update the mRects and visual overflow rects of all our descendants,
     // including our anonymous wrapper kid:
-    anonKid->AddStateBits(mState & NS_FRAME_IS_DIRTY);
     anonKid->ReflowSVG();
     MOZ_ASSERT(!anonKid->GetNextSibling(),
                "We should have one anonymous child frame wrapping our real "
@@ -692,11 +691,11 @@ nsresult nsSVGOuterSVGFrame::AttributeChanged(int32_t aNameSpaceID,
         static_cast<SVGSVGElement*>(GetContent())
             ->ChildrenOnlyTransformChanged();
       }
-
-    } else if (aAttribute == nsGkAtoms::width ||
-               aAttribute == nsGkAtoms::height) {
+    }
+    if (aAttribute == nsGkAtoms::width || aAttribute == nsGkAtoms::height ||
+        aAttribute == nsGkAtoms::viewBox) {
       // Don't call ChildrenOnlyTransformChanged() here, since we call it
-      // under Reflow if the width/height actually changed.
+      // under Reflow if the width/height/viewBox actually changed.
 
       nsIFrame* embeddingFrame;
       if (IsRootOfReplacedElementSubDoc(&embeddingFrame) && embeddingFrame) {
@@ -709,7 +708,8 @@ nsresult nsSVGOuterSVGFrame::AttributeChanged(int32_t aNameSpaceID,
         // else our width and height is overridden - don't reflow anything
       } else {
         // We are not embedded by reference, so our 'width' and 'height'
-        // attributes are not overridden - we need to reflow.
+        // attributes are not overridden (and viewBox may influence our
+        // intrinsic aspect ratio).  We need to reflow.
         PresShell()->FrameNeedsReflow(this, IntrinsicDirty::StyleChange,
                                       NS_FRAME_IS_DIRTY);
       }

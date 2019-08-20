@@ -35,6 +35,7 @@ class nsPluginInstanceOwner;
 
 namespace mozilla {
 namespace dom {
+struct BindContext;
 template <typename T>
 class Sequence;
 struct MozPluginParameter;
@@ -228,10 +229,6 @@ class nsObjectLoadingContent : public nsImageLoadingContent,
                         mozilla::ErrorResult& aRv) {
     aRv.Throw(NS_ERROR_NOT_IMPLEMENTED);
   }
-  void LegacyCall(JSContext* aCx, JS::Handle<JS::Value> aThisVal,
-                  const mozilla::dom::Sequence<JS::Value>& aArguments,
-                  JS::MutableHandle<JS::Value> aRetval,
-                  mozilla::ErrorResult& aRv);
 
   uint32_t GetRunID(mozilla::dom::SystemCallerGuarantee,
                     mozilla::ErrorResult& aRv);
@@ -320,9 +317,8 @@ class nsObjectLoadingContent : public nsImageLoadingContent,
 
   void DoStopPlugin(nsPluginInstanceOwner* aInstanceOwner);
 
-  nsresult BindToTree(mozilla::dom::Document* aDocument, nsIContent* aParent,
-                      nsIContent* aBindingParent);
-  void UnbindFromTree(bool aDeep = true, bool aNullParent = true);
+  nsresult BindToTree(mozilla::dom::BindContext&, nsINode& aParent);
+  void UnbindFromTree(bool aNullParent = true);
 
   /**
    * Return the content policy type used for loading the element.

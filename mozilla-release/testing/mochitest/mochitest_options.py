@@ -421,11 +421,6 @@ class MochitestArguments(ArgumentContainer):
           "default": None,
           "suppress": True,
           }],
-        [["--nested_oop"],
-         {"action": "store_true",
-          "default": False,
-          "help": "Run tests with nested_oop preferences and test filtering enabled.",
-          }],
         [["--dmd"],
          {"action": "store_true",
           "default": False,
@@ -600,6 +595,12 @@ class MochitestArguments(ArgumentContainer):
           "default": 3600,
           "help": "Maximum time, in seconds, to run in --verify mode.",
           }],
+        [["--enable-webrender"],
+         {"action": "store_true",
+          "dest": "enable_webrender",
+          "default": False,
+          "help": "Enable the WebRender compositor in Gecko.",
+          }],
     ]
 
     defaults = {
@@ -620,9 +621,6 @@ class MochitestArguments(ArgumentContainer):
 
     def validate(self, parser, options, context):
         """Validate generic options."""
-
-        # for test manifest parsing.
-        mozinfo.update({"nested_oop": options.nested_oop})
 
         # and android doesn't use 'app' the same way, so skip validation
         if parser.app != 'android':
@@ -821,9 +819,6 @@ class MochitestArguments(ArgumentContainer):
                     'Missing binary pactl required for '
                     '--use-test-media-devices')
 
-        if options.nested_oop:
-            options.e10s = True
-
         # The a11y and chrome flavors can't run with e10s.
         if options.flavor in ('a11y', 'chrome') and options.e10s:
             parser.error("mochitest-{} does not support e10s, try again with "
@@ -945,10 +940,7 @@ class AndroidArguments(ArgumentContainer):
         options.webServer = options.remoteWebServer
 
         if options.app is None:
-            if build_obj:
-                options.app = build_obj.substs['ANDROID_PACKAGE_NAME']
-            else:
-                parser.error("You must specify either appPath or app")
+            options.app = "org.mozilla.geckoview.test"
 
         if build_obj and 'MOZ_HOST_BIN' in os.environ:
             options.xrePath = os.environ['MOZ_HOST_BIN']

@@ -94,8 +94,6 @@ typename PtrBaseGCType<T>::type* ConvertToBase(T* thingp) {
 template <typename T>
 void TraceEdgeInternal(JSTracer* trc, T* thingp, const char* name);
 template <typename T>
-void TraceWeakEdgeInternal(JSTracer* trc, T* thingp, const char* name);
-template <typename T>
 void TraceRangeInternal(JSTracer* trc, size_t len, T* vec, const char* name);
 
 #ifdef DEBUG
@@ -106,9 +104,19 @@ inline void AssertRootMarkingPhase(JSTracer* trc) {}
 
 }  // namespace gc
 
-// Trace through an edge in the live object graph on behalf of tracing. The
-// effect of tracing the edge depends on the JSTracer being used. For pointer
-// types, |*thingp| must not be null.
+// Trace through a strong edge in the live object graph on behalf of
+// tracing. The effect of tracing the edge depends on the JSTracer being
+// used. For pointer types, |*thingp| must not be null.
+//
+// Note that weak edges are handled separately. GC things with weak edges must
+// not trace those edges during marking tracing (which would keep the referent
+// alive) but instead arrange for the edge to be swept by calling
+// js::gc::IsAboutToBeFinalized during sweeping. For example, see the treatment
+// of the script_ edge in LazyScript::traceChildren and
+// js::gc::SweepLazyScripts.
+//
+// GC things that are weakly held in containers can use WeakMap or a container
+// wrapped in the WeakCache<> template to perform the appropriate sweeping.
 
 template <typename T>
 inline void TraceEdge(JSTracer* trc, WriteBarriered<T>* thingp,
@@ -118,8 +126,7 @@ inline void TraceEdge(JSTracer* trc, WriteBarriered<T>* thingp,
 }
 
 template <typename T>
-inline void TraceEdge(JSTracer* trc, WeakHeapPtr<T>* thingp,
-                      const char* name) {
+inline void TraceEdge(JSTracer* trc, WeakHeapPtr<T>* thingp, const char* name) {
   gc::TraceEdgeInternal(trc, gc::ConvertToBase(thingp->unsafeGet()), name);
 }
 
@@ -153,8 +160,7 @@ inline void TraceRoot(JSTracer* trc, T* thingp, const char* name) {
 }
 
 template <typename T>
-inline void TraceRoot(JSTracer* trc, WeakHeapPtr<T>* thingp,
-                      const char* name) {
+inline void TraceRoot(JSTracer* trc, WeakHeapPtr<T>* thingp, const char* name) {
   TraceRoot(trc, thingp->unsafeGet(), name);
 }
 
@@ -185,16 +191,6 @@ inline void TraceManuallyBarrieredEdge(JSTracer* trc, T* thingp,
   gc::TraceEdgeInternal(trc, gc::ConvertToBase(thingp), name);
 }
 
-// Visits a WeakRef, but does not trace its referents. If *thingp is not marked
-// at the end of marking, it is replaced by nullptr. This method records
-// thingp, so the edge location must not change after this function is called.
-
-template <typename T>
-inline void TraceWeakEdge(JSTracer* trc, WeakHeapPtr<T>* thingp, const char* name) {
-  gc::TraceWeakEdgeInternal(
-      trc, gc::ConvertToBase(thingp->unsafeUnbarrieredForTracing()), name);
-}
-
 // Trace all edges contained in the given array.
 
 template <typename T>
@@ -214,9 +210,9 @@ void TraceRootRange(JSTracer* trc, size_t len, T* vec, const char* name) {
 
 // Trace an edge that crosses compartment boundaries. If the compartment of the
 // destination thing is not being GC'd, then the edge will not be traced.
+template <typename T>
 void TraceCrossCompartmentEdge(JSTracer* trc, JSObject* src,
-                               WriteBarriered<Value>* dst,
-                               const char* name);
+                               WriteBarriered<T>* dst, const char* name);
 
 // As above but with manual barriers.
 template <typename T>

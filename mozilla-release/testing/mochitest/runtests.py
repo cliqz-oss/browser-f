@@ -83,6 +83,8 @@ try:
 except ImportError:
     pass
 
+import six
+
 here = os.path.abspath(os.path.dirname(__file__))
 
 NO_TESTS_FOUND = """
@@ -202,7 +204,12 @@ class MessageLogger(object):
     def parse_line(self, line):
         """Takes a given line of input (structured or not) and
         returns a list of structured messages"""
-        line = line.rstrip().decode("UTF-8", "replace")
+        if isinstance(line, six.binary_type):
+            # if line is a sequence of bytes, let's decode it
+            line = line.rstrip().decode("UTF-8", "replace")
+        else:
+            # line is in unicode - so let's use it as it is
+            line = line.rstrip()
 
         messages = []
         for fragment in line.split(MessageLogger.DELIMITER):
@@ -844,7 +851,6 @@ class MochitestDesktop(object):
 
     # Path to the test script on the server
     TEST_PATH = "tests"
-    NESTED_OOP_TEST_PATH = "nested_oop"
     CHROME_PATH = "redirect.html"
 
     certdbNew = False
@@ -1095,8 +1101,6 @@ class MochitestDesktop(object):
             testURL = "/".join([testHost, self.CHROME_PATH])
         elif options.flavor == 'browser':
             testURL = "about:blank"
-        if options.nested_oop:
-            testURL = "/".join([testHost, self.NESTED_OOP_TEST_PATH])
         return testURL
 
     def getTestsByScheme(self, options, testsToFilter=None, disabled=True):
@@ -1701,6 +1705,12 @@ toolbar#nav-bar {
         if not options.enableCPOWWarnings:
             browserEnv["DISABLE_UNSAFE_CPOW_WARNINGS"] = "1"
 
+        if options.enable_webrender:
+            browserEnv["MOZ_WEBRENDER"] = "1"
+            browserEnv["MOZ_ACCELERATED"] = "1"
+        else:
+            browserEnv["MOZ_WEBRENDER"] = "0"
+
         return browserEnv
 
     def killNamedProc(self, pname, orphans=True):
@@ -1910,7 +1920,6 @@ toolbar#nav-bar {
         # Hardcoded prefs (TODO move these into a base profile)
         prefs = {
             "browser.tabs.remote.autostart": options.e10s,
-            "dom.ipc.tabs.nested.enabled": options.nested_oop,
             # Enable tracing output for detailed failures in case of
             # failing connection attempts, and hangs (bug 1397201)
             "marionette.log.level": "Trace",
@@ -2575,11 +2584,13 @@ toolbar#nav-bar {
         # for test manifest parsing.
         mozinfo.update({
             "e10s": options.e10s,
+            "fission": self.extraPrefs.get('fission.autostart', False),
             "headless": options.headless,
             "serviceworker_e10s": self.extraPrefs.get(
                 'dom.serviceWorkers.parent_intercept', False),
             "socketprocess_e10s": self.extraPrefs.get(
                 'network.process.enabled', False),
+            "webrender": options.enable_webrender,
         })
 
         self.setTestRoot(options)
@@ -3120,13 +3131,6 @@ def run_test_harness(parser, options):
 
     if hasattr(options, 'log'):
         delattr(options, 'log')
-
-    # windows10-aarch64 does not yet support crashreporter testing.
-    # see https://bugzilla.mozilla.org/show_bug.cgi?id=1536221
-    if mozinfo.os == "win" and mozinfo.processor == "aarch64":
-        # manually override the mozinfo.crashreporter value after MochitestDesktop
-        # is instantiated.
-        mozinfo.update({u"crashreporter": False})
 
     options.runByManifest = False
     if options.flavor in ('plain', 'browser', 'chrome'):

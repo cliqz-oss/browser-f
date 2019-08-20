@@ -8,65 +8,75 @@
 #define frontend_BytecodeSection_h
 
 #include "mozilla/Attributes.h"  // MOZ_MUST_USE, MOZ_STACK_CLASS
+#include "mozilla/Maybe.h"       // mozilla::Maybe
 #include "mozilla/Span.h"        // mozilla::Span
 
 #include <stddef.h>  // ptrdiff_t, size_t
 #include <stdint.h>  // uint16_t, int32_t, uint32_t
 
 #include "NamespaceImports.h"          // ValueVector
+#include "frontend/BytecodeOffset.h"   // BytecodeOffset
 #include "frontend/JumpList.h"         // JumpTarget
 #include "frontend/NameCollections.h"  // AtomIndexMap, PooledMapPtr
 #include "frontend/SourceNotes.h"      // jssrcnote
 #include "gc/Barrier.h"                // GCPtrObject, GCPtrScope, GCPtrValue
 #include "gc/Rooting.h"                // JS::Rooted
 #include "js/GCVector.h"               // GCVector
-#include "js/TypeDecls.h"              // jsbytecode
+#include "js/TypeDecls.h"              // jsbytecode, JSContext
 #include "js/Value.h"                  // JS::Vector
 #include "js/Vector.h"                 // Vector
 #include "vm/JSScript.h"               // JSTryNote, JSTryNoteKind, ScopeNote
 #include "vm/Opcodes.h"                // JSOP_*
 
-struct JSContext;
-
 namespace js {
 
 class Scope;
+
+using BigIntVector = JS::GCVector<js::BigInt*>;
 
 namespace frontend {
 
 class ObjectBox;
 
-class CGNumberList {
-  JS::Rooted<ValueVector> vector;
+struct MOZ_STACK_CLASS GCThingList {
+  JS::RootedVector<StackGCCellPtr> vector;
 
- public:
-  explicit CGNumberList(JSContext* cx) : vector(cx, ValueVector(cx)) {}
-  MOZ_MUST_USE bool append(const JS::Value& v) { return vector.append(v); }
-  size_t length() const { return vector.length(); }
-  void finish(mozilla::Span<GCPtrValue> array);
-};
-
-struct CGObjectList {
-  // Number of emitted so far objects.
-  uint32_t length;
   // Last emitted object.
-  ObjectBox* lastbox;
+  ObjectBox* lastbox = nullptr;
 
-  CGObjectList() : length(0), lastbox(nullptr) {}
+  // Index of the first scope in the vector.
+  mozilla::Maybe<uint32_t> firstScopeIndex;
 
-  unsigned add(ObjectBox* objbox);
-  void finish(mozilla::Span<GCPtrObject> array);
-  void finishInnerFunctions();
-};
+  explicit GCThingList(JSContext* cx) : vector(cx) {}
 
-struct MOZ_STACK_CLASS CGScopeList {
-  JS::Rooted<GCVector<Scope*>> vector;
+  MOZ_MUST_USE bool append(Scope* scope, uint32_t* index) {
+    *index = vector.length();
+    if (!vector.append(JS::GCCellPtr(scope))) {
+      return false;
+    }
+    if (!firstScopeIndex) {
+      firstScopeIndex.emplace(*index);
+    }
+    return true;
+  }
+  MOZ_MUST_USE bool append(BigInt* bi, uint32_t* index) {
+    *index = vector.length();
+    return vector.append(JS::GCCellPtr(bi));
+  }
+  MOZ_MUST_USE bool append(ObjectBox* obj, uint32_t* index);
 
-  explicit CGScopeList(JSContext* cx) : vector(cx, GCVector<Scope*>(cx)) {}
-
-  bool append(Scope* scope) { return vector.append(scope); }
   uint32_t length() const { return vector.length(); }
-  void finish(mozilla::Span<GCPtrScope> array);
+  void finish(mozilla::Span<JS::GCCellPtr> array);
+  void finishInnerFunctions();
+
+  Scope* getScope(size_t index) const {
+    return &vector[index].get().get().as<Scope>();
+  }
+
+  Scope* firstScope() const {
+    MOZ_ASSERT(firstScopeIndex.isSome());
+    return getScope(*firstScopeIndex);
+  }
 };
 
 struct CGTryNoteList {
@@ -74,7 +84,7 @@ struct CGTryNoteList {
   explicit CGTryNoteList(JSContext* cx) : list(cx) {}
 
   MOZ_MUST_USE bool append(JSTryNoteKind kind, uint32_t stackDepth,
-                           size_t start, size_t end);
+                           BytecodeOffset start, BytecodeOffset end);
   size_t length() const { return list.length(); }
   void finish(mozilla::Span<JSTryNote> array);
 };
@@ -88,11 +98,15 @@ struct CGScopeNoteList {
   Vector<CGScopeNote> list;
   explicit CGScopeNoteList(JSContext* cx) : list(cx) {}
 
-  MOZ_MUST_USE bool append(uint32_t scopeIndex, uint32_t offset,
+  MOZ_MUST_USE bool append(uint32_t scopeIndex, BytecodeOffset offset,
                            uint32_t parent);
-  void recordEnd(uint32_t index, uint32_t offse);
+  void recordEnd(uint32_t index, BytecodeOffset offset);
+  void recordEndFunctionBodyVar(uint32_t index);
   size_t length() const { return list.length(); }
   void finish(mozilla::Span<ScopeNote> array);
+
+ private:
+  void recordEndImpl(uint32_t index, uint32_t offset);
 };
 
 struct CGResumeOffsetList {
@@ -103,7 +117,6 @@ struct CGResumeOffsetList {
   size_t length() const { return list.length(); }
   void finish(mozilla::Span<uint32_t> array);
 };
-
 
 static constexpr size_t MaxBytecodeLength = INT32_MAX;
 static constexpr size_t MaxSrcNotesLength = INT32_MAX;
@@ -124,32 +137,40 @@ class BytecodeSection {
   BytecodeVector& code() { return code_; }
   const BytecodeVector& code() const { return code_; }
 
-  jsbytecode* code(ptrdiff_t offset) { return code_.begin() + offset; }
-  ptrdiff_t offset() const { return code_.end() - code_.begin(); }
+  jsbytecode* code(BytecodeOffset offset) {
+    return code_.begin() + offset.value();
+  }
+  BytecodeOffset offset() const {
+    return BytecodeOffset(code_.end() - code_.begin());
+  }
 
   // ---- Source notes ----
 
   SrcNotesVector& notes() { return notes_; }
   const SrcNotesVector& notes() const { return notes_; }
 
-  ptrdiff_t lastNoteOffset() const { return lastNoteOffset_; }
-  void setLastNoteOffset(ptrdiff_t offset) { lastNoteOffset_ = offset; }
+  BytecodeOffset lastNoteOffset() const { return lastNoteOffset_; }
+  void setLastNoteOffset(BytecodeOffset offset) { lastNoteOffset_ = offset; }
 
   // ---- Jump ----
 
-  ptrdiff_t lastTargetOffset() const { return lastTarget_.offset; }
-  void setLastTargetOffset(ptrdiff_t offset) { lastTarget_.offset = offset; }
+  BytecodeOffset lastTargetOffset() const { return lastTarget_.offset; }
+  void setLastTargetOffset(BytecodeOffset offset) {
+    lastTarget_.offset = offset;
+  }
 
   // Check if the last emitted opcode is a jump target.
   bool lastOpcodeIsJumpTarget() const {
-    return offset() - lastTarget_.offset == ptrdiff_t(JSOP_JUMPTARGET_LENGTH);
+    return lastTarget_.offset.valid() &&
+           offset() - lastTarget_.offset ==
+               BytecodeOffsetDiff(JSOP_JUMPTARGET_LENGTH);
   }
 
   // JumpTarget should not be part of the emitted statement, as they can be
   // aliased by multiple statements. If we included the jump target as part of
   // the statement we might have issues where the enclosing statement might
   // not contain all the opcodes of the enclosed statements.
-  ptrdiff_t lastNonJumpTargetOffset() const {
+  BytecodeOffset lastNonJumpTargetOffset() const {
     return lastOpcodeIsJumpTarget() ? lastTarget_.offset : offset();
   }
 
@@ -160,7 +181,7 @@ class BytecodeSection {
 
   uint32_t maxStackDepth() const { return maxStackDepth_; }
 
-  void updateDepth(ptrdiff_t target);
+  void updateDepth(BytecodeOffset target);
 
   // ---- Try notes ----
 
@@ -237,12 +258,12 @@ class BytecodeSection {
   SrcNotesVector notes_;
 
   // Code offset for last source note
-  ptrdiff_t lastNoteOffset_ = 0;
+  BytecodeOffset lastNoteOffset_;
 
   // ---- Jump ----
 
   // Last jump target emitted.
-  JumpTarget lastTarget_ = {-1 - ptrdiff_t(JSOP_JUMPTARGET_LENGTH)};
+  JumpTarget lastTarget_;
 
   // ---- Stack ----
 
@@ -313,35 +334,15 @@ class PerScriptData {
 
   MOZ_MUST_USE bool init(JSContext* cx);
 
-  // ---- Scope ----
-
-  CGScopeList& scopeList() { return scopeList_; }
-  const CGScopeList& scopeList() const { return scopeList_; }
-
-  // ---- Literals ----
-
-  CGNumberList& numberList() { return numberList_; }
-  const CGNumberList& numberList() const { return numberList_; }
-
-  CGObjectList& objectList() { return objectList_; }
-  const CGObjectList& objectList() const { return objectList_; }
+  GCThingList& gcThingList() { return gcThingList_; }
+  const GCThingList& gcThingList() const { return gcThingList_; }
 
   PooledMapPtr<AtomIndexMap>& atomIndices() { return atomIndices_; }
   const PooledMapPtr<AtomIndexMap>& atomIndices() const { return atomIndices_; }
 
  private:
-  // ---- Scope ----
-
-  // List of emitted scopes.
-  CGScopeList scopeList_;
-
-  // ---- Literals ----
-
-  // List of double and bigint values used by script.
-  CGNumberList numberList_;
-
-  // List of emitted objects.
-  CGObjectList objectList_;
+  // List of emitted scopes/objects/bigints.
+  GCThingList gcThingList_;
 
   // Map from atom to index.
   PooledMapPtr<AtomIndexMap> atomIndices_;

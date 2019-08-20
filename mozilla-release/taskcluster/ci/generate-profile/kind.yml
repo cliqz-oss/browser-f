@@ -5,12 +5,14 @@
 loader: taskgraph.loader.transform:loader
 
 kind-dependencies:
+    - toolchain
     - instrumented-build
 
 transforms:
     - taskgraph.transforms.build_attrs:transforms
     - taskgraph.transforms.release_deps:transforms
     - taskgraph.transforms.run_pgo_profile:transforms
+    - taskgraph.transforms.use_toolchains:transforms
     - taskgraph.transforms.job:transforms
     - taskgraph.transforms.task:transforms
 
@@ -22,6 +24,40 @@ job-defaults:
         tier: 1
 
 jobs:
+    linux-shippable/opt:
+        description: "Linux Profile Generation"
+        shipping-phase: build
+        shipping-product: firefox
+        index:
+            product: firefox
+            job-name: linux-profile
+        treeherder:
+            platform: linux32-shippable/opt
+        worker-type: b-linux
+        worker:
+            env:
+                NEED_XVFB: "true"
+            max-run-time: 1200
+            docker-image: {in-tree: desktop1604-test}
+            artifacts:
+                - type: file
+                  name: public/build/profdata.tar.xz
+                  path: /builds/worker/artifacts/profdata.tar.xz
+                - type: file
+                  name: public/build/xvfb.log
+                  path: /builds/worker/artifacts/xvfb/xvfb.log
+                - type: file
+                  name: public/build/profile-run-1.log
+                  path: /builds/worker/artifacts/profile-run-1.log
+                - type: file
+                  name: public/build/profile-run-2.log
+                  path: /builds/worker/artifacts/profile-run-2.log
+        run:
+            using: run-task
+            command: >
+                cd /builds/worker/checkouts/gecko &&
+                ./taskcluster/scripts/misc/run-profileserver.sh
+
     linux64-shippable/opt:
         description: "Linux64 Profile Generation"
         shipping-phase: build
@@ -33,6 +69,8 @@ jobs:
             platform: linux64-shippable/opt
         worker-type: b-linux
         worker:
+            env:
+                NEED_XVFB: "true"
             max-run-time: 1200
             docker-image: {in-tree: debian9-amd64-build}
             artifacts:
@@ -89,3 +127,63 @@ jobs:
                 - android/android_common.py
                 - android/androidarm_4_3.py
                 - android/android_pgo.py
+        toolchains:
+            - linux64-clang
+
+    win32-shippable/opt:
+        description: "Win32 Profile Generation"
+        shipping-phase: build
+        shipping-product: firefox
+        index:
+            product: firefox
+            job-name: win32-profile
+        treeherder:
+            platform: windows2012-32-shippable/opt
+        worker-type: b-win2012
+        worker:
+            max-run-time: 1200
+            env:
+                UPLOAD_PATH: "artifacts"
+            artifacts:
+                - type: file
+                  name: public/build/profdata.tar.xz
+                  path: build/src/artifacts/profdata.tar.xz
+                - type: file
+                  name: public/build/profile-run-1.log
+                  path: build/src/artifacts/profile-run-1.log
+                - type: file
+                  name: public/build/profile-run-2.log
+                  path: build/src/artifacts/profile-run-2.log
+        run:
+            using: run-task
+            sparse-profile: profile-generate
+            command: mv fetches build/src && cd build/src && ./taskcluster/scripts/misc/run-profileserver.sh
+
+    win64-shippable/opt:
+        description: "Win64 Profile Generation"
+        shipping-phase: build
+        shipping-product: firefox
+        index:
+            product: firefox
+            job-name: win64-profile
+        treeherder:
+            platform: windows2012-64-shippable/opt
+        worker-type: b-win2012
+        worker:
+            max-run-time: 1200
+            env:
+                UPLOAD_PATH: "artifacts"
+            artifacts:
+                - type: file
+                  name: public/build/profdata.tar.xz
+                  path: build/src/artifacts/profdata.tar.xz
+                - type: file
+                  name: public/build/profile-run-1.log
+                  path: build/src/artifacts/profile-run-1.log
+                - type: file
+                  name: public/build/profile-run-2.log
+                  path: build/src/artifacts/profile-run-2.log
+        run:
+            using: run-task
+            sparse-profile: profile-generate
+            command: mv fetches build/src && cd build/src && ./taskcluster/scripts/misc/run-profileserver.sh

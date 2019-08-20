@@ -82,6 +82,8 @@ NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN(FontFace)
   NS_IMPL_CYCLE_COLLECTION_UNLINK(mParent)
   NS_IMPL_CYCLE_COLLECTION_UNLINK(mLoaded)
   NS_IMPL_CYCLE_COLLECTION_UNLINK(mFontFaceSet)
+  tmp->mInFontFaceSet = false;
+  tmp->SetUserFontEntry(nullptr);
   NS_IMPL_CYCLE_COLLECTION_UNLINK(mOtherFontFaceSets)
   NS_IMPL_CYCLE_COLLECTION_UNLINK_PRESERVED_WRAPPER
 NS_IMPL_CYCLE_COLLECTION_UNLINK_END
@@ -315,8 +317,7 @@ void FontFace::SetDisplay(const nsAString& aValue, ErrorResult& aRv) {
   }
 }
 
-void FontFace::DescriptorUpdated()
-{
+void FontFace::DescriptorUpdated() {
   // If we haven't yet initialized mUserFontEntry, no need to do anything here;
   // we'll respect the updated descriptor when the time comes to create it.
   if (!mUserFontEntry) {
@@ -326,7 +327,7 @@ void FontFace::DescriptorUpdated()
   // Behind the scenes, this will actually update the existing entry and return
   // it, rather than create a new one.
   RefPtr<gfxUserFontEntry> newEntry =
-    mFontFaceSet->FindOrCreateUserFontEntryFromFontFace(this);
+      mFontFaceSet->FindOrCreateUserFontEntryFromFontFace(this);
   SetUserFontEntry(newEntry);
 
   if (mInFontFaceSet) {

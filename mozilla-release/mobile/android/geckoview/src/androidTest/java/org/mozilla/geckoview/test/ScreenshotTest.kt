@@ -10,6 +10,7 @@ import android.support.test.filters.MediumTest
 import android.support.test.runner.AndroidJUnit4
 import android.view.Surface
 import org.hamcrest.Matchers.*
+import org.junit.Ignore
 import org.junit.Assert.fail
 import org.junit.Rule
 import org.junit.Test
@@ -99,16 +100,5 @@ class ScreenshotTest : BaseSessionTest() {
             it.surfaceChanged(surface, SCREEN_WIDTH, SCREEN_HEIGHT)
             sessionRule.waitForResult(result)
         }
-    }
-
-    @Test
-    fun capturePixelsThrowsCompositorNotReady() {
-        expectedEx.expect(IllegalStateException::class.java)
-        expectedEx.expectMessage("Compositor must be ready before pixels can be captured")
-        val session = sessionRule.createClosedSession()
-        val display = session.acquireDisplay()
-
-        sessionRule.waitForResult(display.capturePixels())
-        fail("IllegalStateException expected to be thrown")
     }
 }

@@ -132,20 +132,6 @@ void TLSFilterTransaction::Close(nsresult aReason) {
   mTransaction->Close(aReason);
   mTransaction = nullptr;
 
-  if (!gHttpHandler->Bug1563695()) {
-    RefPtr<NullHttpTransaction> baseTrans(do_QueryReferent(mWeakTrans));
-    SpdyConnectTransaction* trans =
-        baseTrans ? baseTrans->QuerySpdyConnectTransaction() : nullptr;
-
-    LOG(("TLSFilterTransaction::Close %p aReason=%" PRIx32 " trans=%p\n", this,
-         static_cast<uint32_t>(aReason), trans));
-
-    if (trans) {
-      trans->Close(aReason);
-      trans = nullptr;
-    }
-  }
-
   if (gHttpHandler->Bug1563538()) {
     if (NS_FAILED(aReason)) {
       mCloseReason = aReason;
@@ -380,56 +366,16 @@ nsresult TLSFilterTransaction::WriteSegmentsAgain(nsAHttpSegmentWriter* aWriter,
     return mCloseReason;
   }
 
-  bool againBeforeWriteSegmentsCall = *again;
-
   mSegmentWriter = aWriter;
 
-  /*
-   * Bug 1562315 replaced TLSFilterTransaction::WriteSegments with
-   * WriteSegmentsAgain and the call of WriteSegments on the associated
-   * transaction was replaced with WriteSegmentsAgain call.
-   *
-   * When TLSFilterTransaction::WriteSegmentsAgain was called from outside, it
-   * internally called WriteSegments (nsAHttpTransaction default impl) and did
-   * not modify the 'again' out flag.
-   *
-   * So, to disable the bug fix, we only need two things:
-   * - call mTransaction->WriteSegments
-   * - don't modify 'again' (which is an automatic outcome of step 1, this
-   * method doesn't touch it itself)
-   */
-
   nsresult rv =
-      gHttpHandler->Bug1562315()
-          ? mTransaction->WriteSegmentsAgain(this, aCount, outCountWritten,
-                                             again)
-          : mTransaction->WriteSegments(this, aCount, outCountWritten);
+      mTransaction->WriteSegmentsAgain(this, aCount, outCountWritten, again);
 
-  if (NS_SUCCEEDED(rv) && !(*outCountWritten)) {
-    if (NS_FAILED(mFilterReadCode)) {
-      // nsPipe turns failures into silent OK.. undo that!
-      rv = mFilterReadCode;
-      if (Connection() && (mFilterReadCode == NS_BASE_STREAM_WOULD_BLOCK)) {
-        Unused << Connection()->ResumeRecv();
-      }
-    }
-    if (againBeforeWriteSegmentsCall && !*again) {
-      // This code can never be reached if bug1562315 pref is off.
-      LOG(
-          ("TLSFilterTransaction %p called trans->WriteSegments which dropped "
-           "the 'again' flag",
-           this));
-      // The transaction (=h2 session) wishes to break the loop.  There is a
-      // pending close of the transaction that is being handled by the current
-      // input stream of the session.  After cancellation of that transaction
-      // the state of the stream will change and move the state machine of the
-      // session forward on the next call of WriteSegmentsAgain. But if there
-      // are no data on the socket to read to call this code again, the session
-      // and the stream will just hang in an intermediate state, blocking. Hence
-      // forcing receive to finish the stream cleanup.
-      if (Connection()) {
-        Unused << Connection()->ForceRecv();
-      }
+  if (NS_SUCCEEDED(rv) && !(*outCountWritten) && NS_FAILED(mFilterReadCode)) {
+    // nsPipe turns failures into silent OK.. undo that!
+    rv = mFilterReadCode;
+    if (Connection() && (mFilterReadCode == NS_BASE_STREAM_WOULD_BLOCK)) {
+      Unused << Connection()->ResumeRecv();
     }
   }
   LOG(("TLSFilterTransaction %p called trans->WriteSegments rv=%" PRIx32
@@ -544,6 +490,17 @@ nsresult TLSFilterTransaction::StartTimerCallback() {
     return cb->OnTunnelNudged(this);
   }
   return NS_OK;
+}
+
+bool TLSFilterTransaction::HasDataToRecv() {
+  MOZ_ASSERT(OnSocketThread(), "not on socket thread");
+  if (!mFD) {
+    return false;
+  }
+  int32_t n = 0;
+  char c;
+  n = PR_Recv(mFD, &c, 1, PR_MSG_PEEK, 0);
+  return n > 0;
 }
 
 PRStatus TLSFilterTransaction::GetPeerName(PRFileDesc* aFD, PRNetAddr* addr) {
@@ -1261,6 +1218,9 @@ nsresult SpdyConnectTransaction::ReadSegments(nsAHttpSegmentReader* reader,
       }
       return rv;
     }
+
+    LOG(("SpdyConnectTransaciton::ReadSegments %p connect request consumed",
+         this));
     return NS_BASE_STREAM_WOULD_BLOCK;
   }
 

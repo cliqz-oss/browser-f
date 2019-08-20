@@ -425,9 +425,8 @@ class MOZ_NON_MEMMOVABLE BarrieredBase {
 
 // Base class for barriered pointer types that intercept only writes.
 template <class T>
-class WriteBarriered
-    : public BarrieredBase<T>,
-      public WrappedPtrOperations<T, WriteBarriered<T>> {
+class WriteBarriered : public BarrieredBase<T>,
+                       public WrappedPtrOperations<T, WriteBarriered<T>> {
  protected:
   using BarrieredBase<T>::value;
 
@@ -852,7 +851,13 @@ class ImmutableTenuredPtr {
   operator T() const { return value; }
   T operator->() const { return value; }
 
-  operator Handle<T>() const { return Handle<T>::fromMarkedLocation(&value); }
+  // `ImmutableTenuredPtr<T>` is implicitly convertible to `Handle<T>`.
+  //
+  // In case you need to convert to `Handle<U>` where `U` is base class of `T`,
+  // convert this to `Handle<T>` by `toHandle()` and then use implicit
+  // conversion from `Handle<T>` to `Handle<U>`.
+  operator Handle<T>() const { return toHandle(); }
+  Handle<T> toHandle() const { return Handle<T>::fromMarkedLocation(&value); }
 
   void init(T ptr) {
     MOZ_ASSERT(ptr->isTenured());
@@ -962,6 +967,21 @@ struct WeakHeapPtrHasher {
   }
 };
 
+// Wrapper around GCCellPtr for use with RootedVector<StackGCCellPtr>.
+class MOZ_STACK_CLASS StackGCCellPtr {
+  JS::GCCellPtr ptr_;
+
+ public:
+  MOZ_IMPLICIT StackGCCellPtr(JS::GCCellPtr ptr) : ptr_(ptr) {}
+  StackGCCellPtr() = default;
+
+  void operator=(const StackGCCellPtr& other) { ptr_ = other.ptr_; }
+
+  void trace(JSTracer* trc);
+
+  JS::GCCellPtr get() const { return ptr_; }
+};
+
 }  // namespace js
 
 namespace mozilla {
@@ -1005,6 +1025,7 @@ using GCPtrNativeObject = GCPtr<NativeObject*>;
 using GCPtrArrayObject = GCPtr<ArrayObject*>;
 using GCPtrBaseShape = GCPtr<BaseShape*>;
 using GCPtrAtom = GCPtr<JSAtom*>;
+using GCPtrBigInt = GCPtr<BigInt*>;
 using GCPtrFlatString = GCPtr<JSFlatString*>;
 using GCPtrFunction = GCPtr<JSFunction*>;
 using GCPtrObject = GCPtr<JSObject*>;

@@ -10,7 +10,6 @@
 
 // Helper Classes
 #include "nsContentUtils.h"
-#include "nsStyleCoord.h"
 #include "nsSize.h"
 #include "mozilla/ReflowInput.h"
 #include "nsIServiceManager.h"
@@ -684,6 +683,11 @@ NS_IMETHODIMP
 nsDocShellTreeOwner::OnLocationChange(nsIWebProgress* aWebProgress,
                                       nsIRequest* aRequest, nsIURI* aURI,
                                       uint32_t aFlags) {
+  if (mChromeTooltipListener && aWebProgress &&
+      !(aFlags & nsIWebProgressListener::LOCATION_CHANGE_SAME_DOCUMENT) &&
+      mChromeTooltipListener->WebProgressShowedTooltip(aWebProgress)) {
+    mChromeTooltipListener->HideTooltip();
+  }
   return NS_OK;
 }
 
@@ -1187,6 +1191,7 @@ ChromeTooltipListener::HideTooltip() {
     mTooltipTimer = nullptr;
     // release tooltip target
     mPossibleTooltipNode = nullptr;
+    mLastDocshell = nullptr;
   }
 
   // if we're showing the tip, tell the chrome to hide it
@@ -1202,6 +1207,30 @@ ChromeTooltipListener::HideTooltip() {
   }
 
   return rv;
+}
+
+bool ChromeTooltipListener::WebProgressShowedTooltip(
+    nsIWebProgress* aWebProgress) {
+  nsCOMPtr<nsIDocShell> docshell = do_QueryInterface(aWebProgress);
+  nsCOMPtr<nsIDocShell> lastUsed = do_QueryReferent(mLastDocshell);
+  while (lastUsed) {
+    if (lastUsed == docshell) {
+      return true;
+    }
+    // We can't use the docshell hierarchy here, because when the parent
+    // docshell is navigated, the child docshell is disconnected (ie its
+    // references to the parent are nulled out) despite it still being
+    // alive here. So we use the document hierarchy instead:
+    Document* document = lastUsed->GetDocument();
+    if (document) {
+      document = document->GetParentDocument();
+    }
+    if (!document) {
+      break;
+    }
+    lastUsed = document->GetDocShell();
+  }
+  return false;
 }
 
 // A timer callback, fired when the mouse has hovered inside of a frame for the
@@ -1245,7 +1274,7 @@ void ChromeTooltipListener::sTooltipCallback(nsITimer* aTimer,
       }
     }
 
-    if (!widget) {
+    if (!widget || !docShell || !docShell->GetIsActive()) {
       // release tooltip target if there is one, NO MATTER WHAT
       self->mPossibleTooltipNode = nullptr;
       return;
@@ -1276,6 +1305,10 @@ void ChromeTooltipListener::sTooltipCallback(nsITimer* aTimer,
                           self->mMouseScreenY - screenDot.y / scaleFactor,
                           tooltipText, directionText);
         self->mLastShownTooltipText = std::move(tooltipText);
+        if (self->mPossibleTooltipNode->OwnerDoc()) {
+          self->mLastDocshell = do_GetWeakReference(
+              self->mPossibleTooltipNode->OwnerDoc()->GetDocShell());
+        }
       }
     }
 

@@ -8,13 +8,6 @@ import sys
 
 # need this so raptor imports work both from /raptor and via mach
 here = os.path.abspath(os.path.dirname(__file__))
-if os.environ.get('SCRIPTSPATH', None) is not None:
-    # in production it is env SCRIPTS_PATH
-    mozharness_dir = os.environ['SCRIPTSPATH']
-else:
-    # locally it's in source tree
-    mozharness_dir = os.path.join(here, '../../mozharness')
-sys.path.insert(1, mozharness_dir)
 
 raptor_dir = os.path.join(os.path.dirname(here), 'raptor')
 sys.path.insert(0, raptor_dir)
@@ -164,7 +157,7 @@ def test_get_raptor_test_list_firefox(create_args):
     args = create_args(browser_cycles=1)
 
     test_list = get_raptor_test_list(args, mozinfo.os)
-    assert len(test_list) == 3
+    assert len(test_list) == 4
 
     subtests = ['raptor-tp6-google-firefox', 'raptor-tp6-amazon-firefox',
                 'raptor-tp6-facebook-firefox', 'raptor-tp6-youtube-firefox']
