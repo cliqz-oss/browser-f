@@ -191,8 +191,7 @@
    * compacttheme.css, minus the :not(:-moz-lwtheme) condition - see Bug 1165718.
    */
   :root[tabsintitlebar]:not([inFullscreen]):not(:-moz-lwtheme) {
-    /*color: CaptionText;*/
-    color: rgb(255,255,255);
+    color: CaptionText;
   }
 
   :root[tabsintitlebar]:not([inFullscreen]):not(:-moz-lwtheme):-moz-window-inactive {
