@@ -8,13 +8,13 @@
 
 #include "CompositableHost.h"
 #include "gfxEnv.h"
-#include "gfxPrefs.h"
 #include "gfxEnv.h"
 #include "GeckoProfiler.h"
 #include "GLContext.h"
 #include "GLContextProvider.h"
 #include "nsExceptionHandler.h"
 #include "mozilla/Range.h"
+#include "mozilla/StaticPrefs.h"
 #include "mozilla/UniquePtr.h"
 #include "mozilla/layers/AnimationHelper.h"
 #include "mozilla/layers/APZSampler.h"
@@ -69,7 +69,7 @@ void gecko_profiler_add_text_marker(const char* name, const char* text_bytes,
                                     size_t text_len, uint64_t microseconds) {
 #ifdef MOZ_GECKO_PROFILER
   if (profiler_thread_is_being_profiled()) {
-    auto now = mozilla::TimeStamp::Now();
+    auto now = mozilla::TimeStamp::NowUnfuzzed();
     auto start = now - mozilla::TimeDuration::FromMicroseconds(microseconds);
     profiler_add_text_marker(name, nsDependentCSubstring(text_bytes, text_len),
                              JS::ProfilingCategoryPair::GRAPHICS, start, now);
@@ -326,7 +326,8 @@ WebRenderBridgeParent::WebRenderBridgeParent(
     mCompositorScheduler = new CompositorVsyncScheduler(this, mWidget);
   }
 
-  if (!IsRootWebRenderBridgeParent() && gfxPrefs::WebRenderSplitRenderRoots()) {
+  if (!IsRootWebRenderBridgeParent() &&
+      StaticPrefs::gfx_webrender_split_render_roots()) {
     mRenderRoot = wr::RenderRoot::Content;
   }
 
@@ -573,8 +574,7 @@ bool WebRenderBridgeParent::AddExternalImage(
     wr::ImageDescriptor descriptor(dSurf->GetSize(), dSurf->Stride(),
                                    dSurf->GetFormat());
     aResources.AddExternalImage(aKey, descriptor, aExtId,
-                                wr::WrExternalImageBufferType::ExternalBuffer,
-                                0);
+                                wr::ExternalImageType::Buffer(), 0);
     return true;
   }
 
@@ -704,7 +704,7 @@ bool WebRenderBridgeParent::UpdateExternalImage(
     wr::ImageDescriptor descriptor(dSurf->GetSize(), dSurf->Stride(),
                                    dSurf->GetFormat());
     aResources.UpdateExternalImageWithDirtyRect(
-        aKey, descriptor, aExtId, wr::WrExternalImageBufferType::ExternalBuffer,
+        aKey, descriptor, aExtId, wr::ExternalImageType::Buffer(),
         wr::ToDeviceIntRect(aDirtyRect), 0);
     return true;
   }
@@ -799,6 +799,11 @@ void WebRenderBridgeParent::RemoveEpochDataPriorTo(
 
 bool WebRenderBridgeParent::IsRootWebRenderBridgeParent() const {
   return !!mWidget;
+}
+
+void WebRenderBridgeParent::SetCompositionRecorder(
+    RefPtr<layers::WebRenderCompositionRecorder>&& aRecorder) {
+  Api(wr::RenderRoot::Default)->SetCompositionRecorder(std::move(aRecorder));
 }
 
 CompositorBridgeParent* WebRenderBridgeParent::GetRootCompositorBridgeParent()
@@ -921,7 +926,7 @@ bool WebRenderBridgeParent::SetDisplayList(
       }
       LayoutDeviceIntSize widgetSize = mWidget->GetClientSize();
       LayoutDeviceIntRect rect;
-      if (gfxPrefs::WebRenderSplitRenderRoots()) {
+      if (StaticPrefs::gfx_webrender_split_render_roots()) {
         rect = RoundedToInt(aRect);
         rect.SetWidth(
             std::max(0, std::min(widgetSize.width - rect.X(), rect.Width())));
@@ -1074,6 +1079,11 @@ mozilla::ipc::IPCResult WebRenderBridgeParent::RecvSetDisplayList(
   if (!validTransaction && observeLayersUpdate) {
     mCompositorBridge->ObserveLayersUpdate(GetLayersId(),
                                            mChildLayersObserverEpoch, true);
+  }
+
+  if (!IsRootWebRenderBridgeParent()) {
+    aPayloads.AppendElement(
+        CompositionPayload{CompositionPayloadType::eContentPaint, aFwdTime});
   }
 
   HoldPendingTransactionId(wrEpoch, aTransactionId, aContainsSVGGroup, aVsyncId,
@@ -1610,7 +1620,7 @@ mozilla::ipc::IPCResult WebRenderBridgeParent::RecvClearCachedResources() {
   for (auto renderRoot : wr::kRenderRoots) {
     if (renderRoot == wr::RenderRoot::Default ||
         (IsRootWebRenderBridgeParent() &&
-         gfxPrefs::WebRenderSplitRenderRoots())) {
+         StaticPrefs::gfx_webrender_split_render_roots())) {
       // Clear resources
       wr::TransactionBuilder txn;
       txn.SetLowPriority(true);
@@ -1698,7 +1708,7 @@ void WebRenderBridgeParent::ScheduleForcedGenerateFrame() {
   for (auto renderRoot : wr::kRenderRoots) {
     if (renderRoot == wr::RenderRoot::Default ||
         (IsRootWebRenderBridgeParent() &&
-         gfxPrefs::WebRenderSplitRenderRoots())) {
+         StaticPrefs::gfx_webrender_split_render_roots())) {
       wr::TransactionBuilder fastTxn(/* aUseSceneBuilderThread */ false);
       fastTxn.InvalidateRenderedFrame();
       Api(renderRoot)->SendTransaction(fastTxn);
@@ -1735,7 +1745,7 @@ mozilla::ipc::IPCResult WebRenderBridgeParent::RecvSetConfirmedTargetAPZC(
   for (size_t i = 0; i < aTargets.Length(); i++) {
     // Guard against bad data from hijacked child processes
     if (aTargets[i].mRenderRoot > wr::kHighestRenderRoot ||
-        (!gfxPrefs::WebRenderSplitRenderRoots() &&
+        (!StaticPrefs::gfx_webrender_split_render_roots() &&
          aTargets[i].mRenderRoot != wr::RenderRoot::Default)) {
       NS_ERROR(
           "Unexpected render root in RecvSetConfirmedTargetAPZC; dropping "
@@ -2101,7 +2111,7 @@ void WebRenderBridgeParent::NotifyDidSceneBuild(
   if (lastVsyncId == VsyncId() || !mMostRecentComposite ||
       mMostRecentComposite >= lastVsync ||
       ((TimeStamp::Now() - lastVsync).ToMilliseconds() >
-       gfxPrefs::WebRenderLateSceneBuildThreshold())) {
+       StaticPrefs::gfx_webrender_late_scenebuild_threshold())) {
     mCompositorScheduler->ScheduleComposition();
     return;
   }

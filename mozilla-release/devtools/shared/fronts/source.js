@@ -5,7 +5,10 @@
 "use strict";
 
 const { sourceSpec } = require("devtools/shared/specs/source");
-const { FrontClassWithSpec, registerFront } = require("devtools/shared/protocol");
+const {
+  FrontClassWithSpec,
+  registerFront,
+} = require("devtools/shared/protocol");
 const { ArrayBufferFront } = require("devtools/shared/fronts/array-buffer");
 
 /**
@@ -19,11 +22,17 @@ const { ArrayBufferFront } = require("devtools/shared/fronts/array-buffer");
 class SourceFront extends FrontClassWithSpec(sourceSpec) {
   constructor(client, form) {
     super(client);
-    this._url = form.url;
-    // this is here for the time being, until the source front is managed
-    // via protocol.js marshalling
-    this.actorID = form.actor;
-    this.manage(this);
+    if (form) {
+      this._url = form.url;
+      // this is here for the time being, until the source front is managed
+      // via protocol.js marshalling
+      this.actorID = form.actor;
+      this.manage(this);
+    }
+  }
+
+  form(json) {
+    this._url = json.url;
   }
 
   get actor() {

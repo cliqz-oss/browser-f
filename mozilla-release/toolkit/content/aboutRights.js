@@ -7,13 +7,26 @@ function showServices() {
 
 // Fluent replaces the children of the element being overlayed which prevents us
 // from putting an event handler directly on the children.
+<<<<<<< HEAD
 document.body.addEventListener("click", event => {
+||||||| merged common ancestors
+let rightsIntro = document.querySelector("[data-l10n-id=rights-intro-point-5]") ||
+                  document.querySelector("[data-l10n-id=rights-intro-point-5-unbranded]");
+rightsIntro.addEventListener("click", event => {
+=======
+let rightsIntro =
+  document.querySelector("[data-l10n-id=rights-intro-point-5]") ||
+  document.querySelector("[data-l10n-id=rights-intro-point-5-unbranded]");
+rightsIntro.addEventListener("click", event => {
+>>>>>>> origin/upstream-releases
   if (event.target.id == "showWebServices") {
     showServices();
   }
 });
 
-var disablingServicesDiv = document.getElementById("disabling-webservices-container");
+var disablingServicesDiv = document.getElementById(
+  "disabling-webservices-container"
+);
 
 function showDisablingServices() {
   disablingServicesDiv.style.display = "";
@@ -22,7 +35,17 @@ function showDisablingServices() {
 if (disablingServicesDiv != null) {
   disablingServicesDiv.style.display = "none";
   // Same issue here with Fluent replacing the children affecting the event listeners.
+<<<<<<< HEAD
   document.body.addEventListener("click", event => {
+||||||| merged common ancestors
+  let rightsWebServices = document.querySelector("[data-l10n-id=rights-webservices]");
+  rightsWebServices.addEventListener("click", event => {
+=======
+  let rightsWebServices = document.querySelector(
+    "[data-l10n-id=rights-webservices]"
+  );
+  rightsWebServices.addEventListener("click", event => {
+>>>>>>> origin/upstream-releases
     if (event.target.id == "showDisablingWebServices") {
       showDisablingServices();
     }

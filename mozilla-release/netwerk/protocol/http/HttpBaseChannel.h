@@ -38,7 +38,7 @@
 #include "nsILoadInfo.h"
 #include "mozilla/net/NeckoCommon.h"
 #include "nsThreadUtils.h"
-#include "PrivateBrowsingChannel.h"
+#include "mozilla/net/PrivateBrowsingChannel.h"
 #include "mozilla/net/DNS.h"
 #include "nsITimedChannel.h"
 #include "nsIHttpChannel.h"
@@ -253,7 +253,7 @@ class HttpBaseChannel : public nsHashPropertyBag,
   NS_IMETHOD SetDocumentURI(nsIURI* aDocumentURI) override;
   NS_IMETHOD GetRequestVersion(uint32_t* major, uint32_t* minor) override;
   NS_IMETHOD GetResponseVersion(uint32_t* major, uint32_t* minor) override;
-  NS_IMETHOD SetCookie(const char* aCookieHeader) override;
+  NS_IMETHOD SetCookie(const nsACString& aCookieHeader) override;
   NS_IMETHOD GetThirdPartyFlags(uint32_t* aForce) override;
   NS_IMETHOD SetThirdPartyFlags(uint32_t aForce) override;
   NS_IMETHOD GetForceAllowThirdPartyCookie(bool* aForce) override;
@@ -317,6 +317,13 @@ class HttpBaseChannel : public nsHashPropertyBag,
   virtual void SetIPv6Disabled(void) override;
   NS_IMETHOD GetCrossOriginOpenerPolicy(
       nsILoadInfo::CrossOriginOpenerPolicy* aPolicy) override;
+  virtual bool GetHasSandboxedAuxiliaryNavigations() override {
+    return mHasSandboxedNavigations;
+  }
+  virtual void SetHasSandboxedAuxiliaryNavigations(
+      bool aHasSandboxedAuxiliaryNavigations) override {
+    mHasSandboxedNavigations = aHasSandboxedAuxiliaryNavigations;
+  }
 
   inline void CleanRedirectCacheChainIfNecessary() {
     mRedirectedCachekeys = nullptr;
@@ -477,7 +484,7 @@ class HttpBaseChannel : public nsHashPropertyBag,
   // Set-Cookie header in the response header of any network request.
   // This notification will come only after the "http-on-examine-response"
   // was fired.
-  void NotifySetCookie(char const* aCookie);
+  void NotifySetCookie(const nsACString& aCookie);
 
   mozilla::dom::PerformanceStorage* GetPerformanceStorage();
   void MaybeReportTimingData();
@@ -730,6 +737,9 @@ class HttpBaseChannel : public nsHashPropertyBag,
   // Defaults to true.  This is set to false when it is no longer possible
   // to upgrade the request to a secure channel.
   uint32_t mUpgradableToSecure : 1;
+
+  // Is true if the docshell has the SANDBOXED_AUXILIARY_NAVIGATION flag set.
+  uint32_t mHasSandboxedNavigations : 1;
 
   // An opaque flags for non-standard behavior of the TLS system.
   // It is unlikely this will need to be set outside of telemetry studies

@@ -119,69 +119,6 @@ class ScrollFrameHelper : public nsIReflowCallback {
   bool IsSmoothScrollingEnabled();
 
   /**
-   * This class handles the dispatching of scroll events to content.
-   *
-   * Scroll events are posted to the refresh driver via
-   * nsRefreshDriver::PostScrollEvent(), and they are fired during a refresh
-   * driver tick, after running requestAnimationFrame callbacks but before
-   * the style flush. This allows rAF callbacks to perform scrolling and have
-   * that scrolling be reflected on the same refresh driver tick, while at
-   * the same time allowing scroll event listeners to make style changes and
-   * have those style changes be reflected on the same refresh driver tick.
-   *
-   * ScrollEvents cannot be refresh observers, because none of the existing
-   * categories of refresh observers (FlushType::Style, FlushType::Layout,
-   * and FlushType::Display) are run at the desired time in a refresh driver
-   * tick. They behave similarly to refresh observers in that their presence
-   * causes the refresh driver to tick.
-   *
-   * ScrollEvents are one-shot runnables; the refresh driver drops them after
-   * running them.
-   */
-  class ScrollEvent : public Runnable {
-   public:
-    NS_DECL_NSIRUNNABLE
-    explicit ScrollEvent(ScrollFrameHelper* aHelper, bool aDelayed);
-    void Revoke() { mHelper = nullptr; }
-
-   private:
-    ScrollFrameHelper* mHelper;
-  };
-
-  class ScrollEndEvent : public Runnable {
-   public:
-    NS_DECL_NSIRUNNABLE
-    explicit ScrollEndEvent(ScrollFrameHelper* aHelper);
-    void Revoke() { mHelper = nullptr; }
-
-   private:
-    ScrollFrameHelper* mHelper;
-  };
-
-  class AsyncScrollPortEvent : public Runnable {
-   public:
-    NS_DECL_NSIRUNNABLE
-    explicit AsyncScrollPortEvent(ScrollFrameHelper* helper)
-        : Runnable("ScrollFrameHelper::AsyncScrollPortEvent"),
-          mHelper(helper) {}
-    void Revoke() { mHelper = nullptr; }
-
-   private:
-    ScrollFrameHelper* mHelper;
-  };
-
-  class ScrolledAreaEvent : public Runnable {
-   public:
-    NS_DECL_NSIRUNNABLE
-    explicit ScrolledAreaEvent(ScrollFrameHelper* helper)
-        : Runnable("ScrollFrameHelper::ScrolledAreaEvent"), mHelper(helper) {}
-    void Revoke() { mHelper = nullptr; }
-
-   private:
-    ScrollFrameHelper* mHelper;
-  };
-
-  /**
    * @note This method might destroy the frame, pres shell and other objects.
    */
   void FinishReflowForScrollbar(mozilla::dom::Element* aElement, nscoord aMinXY,
@@ -263,6 +200,10 @@ class ScrollFrameHelper : public nsIReflowCallback {
   void ScrollSnap(ScrollMode aMode = ScrollMode::SmoothMsd);
   void ScrollSnap(const nsPoint& aDestination,
                   ScrollMode aMode = ScrollMode::SmoothMsd);
+
+  bool HasPendingScrollRestoration() const {
+    return mRestorePos != nsPoint(-1, -1);
+  }
 
  protected:
   nsRect GetVisualScrollRange() const;
@@ -410,9 +351,13 @@ class ScrollFrameHelper : public nsIReflowCallback {
  private:
   nsIFrame* GetFrameForDir() const;  // helper for Is{Physical,Bidi}LTR to find
                                      // the frame whose directionality we use
-  nsIFrame* GetFrameForScrollSnap() const;  // helper to find the frame whose
-                                            // scroll-snap-type and
-                                            // scroll-padding we use
+  // helper to find the frame that style data for this scrollable frame is
+  // stored.
+  //
+  // NOTE: Use GetFrameForDir() if you want to know `writing-mode` or `dir`
+  // properties. Use GetScrollStylesFromFrame() if you want to know `overflow`
+  // and `overflow-behavior` properties.
+  nsIFrame* GetFrameForStyle() const;
 
   // This is the for the old unspecced scroll snap implementation.
   ScrollSnapInfo ComputeOldScrollSnapInfo() const;
@@ -565,16 +510,34 @@ class ScrollFrameHelper : public nsIReflowCallback {
       const nsPoint& aVisualViewportOffset,
       mozilla::layers::FrameMetrics::ScrollOffsetUpdateType aUpdateType);
 
+  bool IsSmoothScroll(mozilla::dom::ScrollBehavior aBehavior) const;
+
   // Update minimum-scale size.  The minimum-scale size will be set/used only
   // if there is overflow-x:hidden region.
   void UpdateMinimumScaleSize(const nsRect& aScrollableOverflow,
                               const nsSize& aICBSize);
+
+
+  // Return the scroll frame's "true outer size".
+  // This is mOuter->GetSize(), except when mOuter has been sized to reflect
+  // a virtual (layout) viewport in which case this returns the outer size
+  // used to size the physical (visual) viewport.
+  nsSize TrueOuterSize() const;
+
+  already_AddRefed<Element> MakeScrollbar(dom::NodeInfo* aNodeInfo,
+                                          bool aVertical,
+                                          AnonymousContentKey& aKey);
 
   // owning references to the nsIAnonymousContentCreator-built content
   nsCOMPtr<mozilla::dom::Element> mHScrollbarContent;
   nsCOMPtr<mozilla::dom::Element> mVScrollbarContent;
   nsCOMPtr<mozilla::dom::Element> mScrollCornerContent;
   nsCOMPtr<mozilla::dom::Element> mResizerContent;
+
+  class ScrollEvent;
+  class ScrollEndEvent;
+  class AsyncScrollPortEvent;
+  class ScrolledAreaEvent;
 
   RefPtr<ScrollEvent> mScrollEvent;
   RefPtr<ScrollEndEvent> mScrollEndEvent;
@@ -1238,6 +1201,10 @@ class nsHTMLScrollFrame : public nsContainerFrame,
     return mHelper.SmoothScrollVisual(aVisualViewportOffset, aUpdateType);
   }
 
+  bool IsSmoothScroll(mozilla::dom::ScrollBehavior aBehavior) const override {
+    return mHelper.IsSmoothScroll(aBehavior);
+  }
+
 #ifdef DEBUG_FRAME_DUMP
   virtual nsresult GetFrameName(nsAString& aResult) const override;
 #endif
@@ -1725,6 +1692,10 @@ class nsXULScrollFrame final : public nsBoxFrame,
                           mozilla::layers::FrameMetrics::ScrollOffsetUpdateType
                               aUpdateType) override {
     return mHelper.SmoothScrollVisual(aVisualViewportOffset, aUpdateType);
+  }
+
+  bool IsSmoothScroll(mozilla::dom::ScrollBehavior aBehavior) const override {
+    return mHelper.IsSmoothScroll(aBehavior);
   }
 
 #ifdef DEBUG_FRAME_DUMP

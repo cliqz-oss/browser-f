@@ -6,8 +6,15 @@
 
 var EXPORTED_SYMBOLS = ["ContentProcessSession"];
 
-const {ContentProcessDomains} = ChromeUtils.import("chrome://remote/content/domains/ContentProcessDomains.jsm");
-const {Domains} = ChromeUtils.import("chrome://remote/content/domains/Domains.jsm");
+const { ContentProcessDomains } = ChromeUtils.import(
+  "chrome://remote/content/domains/ContentProcessDomains.jsm"
+);
+const { Domains } = ChromeUtils.import(
+  "chrome://remote/content/domains/Domains.jsm"
+);
+const { UnknownMethodError } = ChromeUtils.import(
+  "chrome://remote/content/Error.jsm"
+);
 
 class ContentProcessSession {
   constructor(messageManager, browsingContext, content, docShell) {
@@ -27,6 +34,7 @@ class ContentProcessSession {
   destroy() {
     this.messageManager.removeMessageListener("remote:request", this);
     this.messageManager.removeMessageListener("remote:destroy", this);
+    this.domains.clear();
   }
 
   // Domain event listener
@@ -43,8 +51,8 @@ class ContentProcessSession {
 
   // nsIMessageListener
 
-  async receiveMessage({name, data}) {
-    const {browsingContextId} = data;
+  async receiveMessage({ name, data }) {
+    const { browsingContextId } = data;
 
     // We may have more than one tab loaded in the same process,
     // and debug the two at the same time. We want to ensure not
@@ -57,39 +65,36 @@ class ContentProcessSession {
     }
 
     switch (name) {
-    case "remote:request":
-      try {
-        const {id, domain, command, params} = data.request;
+      case "remote:request":
+        try {
+          const { id, domain, command, params } = data.request;
+          if (!this.domains.domainSupportsMethod(domain, command)) {
+            throw new UnknownMethodError(domain, command);
+          }
+          const inst = this.domains.get(domain);
+          const result = await inst[command](params);
 
-        const inst = this.domains.get(domain);
-        const func = inst[command];
-        if (!func || typeof func != "function") {
-          throw new Error(`Implementation missing: ${domain}.${command}`);
+          this.messageManager.sendAsyncMessage("remote:result", {
+            browsingContextId,
+            id,
+            result,
+          });
+        } catch (e) {
+          this.messageManager.sendAsyncMessage("remote:error", {
+            browsingContextId,
+            id: data.request.id,
+            error: {
+              name: e.name || "exception",
+              message: e.message || String(e),
+              stack: e.stack,
+            },
+          });
         }
+        break;
 
-        const result = await func.call(inst, params);
-
-        this.messageManager.sendAsyncMessage("remote:result", {
-          browsingContextId,
-          id,
-          result,
-        });
-      } catch (e) {
-        this.messageManager.sendAsyncMessage("remote:error", {
-          browsingContextId,
-          id: data.request.id,
-          error: {
-            name: e.name || "exception",
-            message: e.message || String(e),
-            stack: e.stack,
-          },
-        });
-      }
-      break;
-
-    case "remote:destroy":
-      this.destroy();
-      break;
+      case "remote:destroy":
+        this.destroy();
+        break;
     }
   }
 }

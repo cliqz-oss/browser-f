@@ -57,9 +57,7 @@ def make_beetmover_push_to_release_description(config, jobs):
             )
         )
 
-        bucket_scope = get_beetmover_bucket_scope(
-            config, job_release_type=job.get('attributes', {}).get('release-type')
-        )
+        bucket_scope = get_beetmover_bucket_scope(config)
         action_scope = add_scope_prefix(config, 'beetmover:action:push-to-releases')
 
         task = {

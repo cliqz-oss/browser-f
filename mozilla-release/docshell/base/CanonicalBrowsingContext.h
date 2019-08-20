@@ -38,7 +38,7 @@ class CanonicalBrowsingContext final : public BrowsingContext {
 
   void GetCurrentRemoteType(nsAString& aRemoteType, ErrorResult& aRv) const;
 
-  void SetOwnerProcessId(uint64_t aProcessId) { mProcessId = aProcessId; }
+  void SetOwnerProcessId(uint64_t aProcessId);
 
   void GetWindowGlobals(nsTArray<RefPtr<WindowGlobalParent>>& aWindows);
 
@@ -72,6 +72,11 @@ class CanonicalBrowsingContext final : public BrowsingContext {
   // are related with the canonical browsing content tree to start delayed
   // autoplay media.
   void NotifyStartDelayedAutoplayMedia();
+
+  // This function is used to mute or unmute all media within a tab. It would
+  // set the media mute property for the top level window and propagate it to
+  // other top level windows in other processes.
+  void NotifyMediaMutedChanged(bool aMuted);
 
   // Validate that the given process is allowed to perform the given
   // transaction. aSource is |nullptr| if set in the parent process.

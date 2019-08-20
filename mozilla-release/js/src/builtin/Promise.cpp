@@ -2329,7 +2329,7 @@ static MOZ_MUST_USE bool CommonStaticAllRace(JSContext* cx, CallArgs& args,
         break;
     }
     JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr,
-                              JSMSG_NOT_NONNULL_OBJECT, message);
+                              JSMSG_OBJECT_REQUIRED, message);
     return false;
   }
 
@@ -3457,7 +3457,7 @@ static MOZ_MUST_USE JSObject* CommonStaticResolveRejectImpl(
     const char* msg = mode == ResolveMode ? "Receiver of Promise.resolve call"
                                           : "Receiver of Promise.reject call";
     JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr,
-                              JSMSG_NOT_NONNULL_OBJECT, msg);
+                              JSMSG_OBJECT_REQUIRED, msg);
     return nullptr;
   }
   RootedObject C(cx, &thisVal.toObject());
@@ -4590,7 +4590,7 @@ static bool Promise_then_impl(JSContext* cx, HandleValue promiseVal,
   // Step 2.
   if (!promiseVal.isObject()) {
     JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr,
-                              JSMSG_NOT_NONNULL_OBJECT,
+                              JSMSG_OBJECT_REQUIRED,
                               "Receiver of Promise.prototype.then call");
     return false;
   }
@@ -5176,7 +5176,8 @@ void js::PromiseLookup::initialize(JSContext* cx) {
 }
 
 void js::PromiseLookup::reset() {
-  AlwaysPoison(this, 0xBB, sizeof(*this), MemCheckKind::MakeUndefined);
+  AlwaysPoison(this, JS_RESET_VALUE_PATTERN, sizeof(*this),
+               MemCheckKind::MakeUndefined);
   state_ = State::Uninitialized;
 }
 
@@ -5681,6 +5682,15 @@ JS::AutoDebuggerJobQueueInterruption::~AutoDebuggerJobQueueInterruption() {
 }
 
 bool JS::AutoDebuggerJobQueueInterruption::init(JSContext* cx) {
+  // When recording or replaying this class doesn't do anything. Callbacks on
+  // the job queue can interact with the recording, and this class can be used
+  // at different places between recording and replay. Because nested event
+  // loops aren't pushed in debugger callbacks when recording/replaying, the
+  // job queue does not need to be saved during debugger callbacks.
+  if (mozilla::recordreplay::IsRecordingOrReplaying()) {
+    return true;
+  }
+
   MOZ_ASSERT(cx->jobQueue);
   this->cx = cx;
   saved = cx->jobQueue->saveJobQueue(cx);
@@ -5688,8 +5698,10 @@ bool JS::AutoDebuggerJobQueueInterruption::init(JSContext* cx) {
 }
 
 void JS::AutoDebuggerJobQueueInterruption::runJobs() {
-  JS::AutoSaveExceptionState ases(cx);
-  cx->jobQueue->runJobs(cx);
+  if (!mozilla::recordreplay::IsRecordingOrReplaying()) {
+    JS::AutoSaveExceptionState ases(cx);
+    cx->jobQueue->runJobs(cx);
+  }
 }
 
 const JSJitInfo promise_then_info = {

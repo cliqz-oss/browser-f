@@ -13,6 +13,7 @@
 #include "mozilla/HTMLEditor.h"
 #include "mozilla/mozalloc.h"
 #include "mozilla/OwningNonNull.h"
+#include "mozilla/RangeUtils.h"
 #include "mozilla/SelectionState.h"
 
 #include "nsAString.h"
@@ -68,6 +69,7 @@ WSRunObject::WSRunObject(HTMLEditor* aHTMLEditor,
                          const EditorDOMPointBase<PT, CT>& aScanEndPoint)
     : mScanStartPoint(aScanStartPoint),
       mScanEndPoint(aScanEndPoint),
+      mEditingHost(aHTMLEditor->GetActiveEditingHost()),
       mPRE(false),
       mStartOffset(0),
       mEndOffset(0),
@@ -76,8 +78,9 @@ WSRunObject::WSRunObject(HTMLEditor* aHTMLEditor,
       mStartRun(nullptr),
       mEndRun(nullptr),
       mHTMLEditor(aHTMLEditor) {
-  MOZ_ASSERT(nsContentUtils::ComparePoints(aScanStartPoint, aScanEndPoint) <=
-             0);
+  MOZ_ASSERT(
+      nsContentUtils::ComparePoints(aScanStartPoint.ToRawRangeBoundary(),
+                                    aScanEndPoint.ToRawRangeBoundary()) <= 0);
   GetWSNodes();
   GetRuns();
 }
@@ -659,7 +662,7 @@ nsresult WSRunObject::GetWSNodes() {
 
   // first look backwards to find preceding ws nodes
   if (Text* textNode = mScanStartPoint.GetContainerAsText()) {
-    const nsTextFragment* textFrag = textNode->GetText();
+    const nsTextFragment* textFrag = &textNode->TextFragment();
     mNodeArray.InsertElementAt(0, textNode);
     if (!mScanStartPoint.IsStartOfContainer()) {
       for (uint32_t i = mScanStartPoint.Offset(); i; i--) {
@@ -703,10 +706,10 @@ nsresult WSRunObject::GetWSNodes() {
       } else if (priorNode->IsText() && priorNode->IsEditable()) {
         RefPtr<Text> textNode = priorNode->GetAsText();
         mNodeArray.InsertElementAt(0, textNode);
-        const nsTextFragment* textFrag;
-        if (!textNode || !(textFrag = textNode->GetText())) {
+        if (!textNode) {
           return NS_ERROR_NULL_POINTER;
         }
+        const nsTextFragment* textFrag = &textNode->TextFragment();
         uint32_t len = textNode->TextLength();
 
         if (len < 1) {
@@ -765,7 +768,7 @@ nsresult WSRunObject::GetWSNodes() {
   // then look ahead to find following ws nodes
   if (Text* textNode = mScanEndPoint.GetContainerAsText()) {
     // don't need to put it on list. it already is from code above
-    const nsTextFragment* textFrag = textNode->GetText();
+    const nsTextFragment* textFrag = &textNode->TextFragment();
     if (!mScanEndPoint.IsEndOfContainer()) {
       for (uint32_t i = mScanEndPoint.Offset(); i < textNode->TextLength();
            i++) {
@@ -810,10 +813,10 @@ nsresult WSRunObject::GetWSNodes() {
       } else if (nextNode->IsText() && nextNode->IsEditable()) {
         RefPtr<Text> textNode = nextNode->GetAsText();
         mNodeArray.AppendElement(textNode);
-        const nsTextFragment* textFrag;
-        if (!textNode || !(textFrag = textNode->GetText())) {
+        if (!textNode) {
           return NS_ERROR_NULL_POINTER;
         }
+        const nsTextFragment* textFrag = &textNode->TextFragment();
         uint32_t len = textNode->TextLength();
 
         if (len < 1) {
@@ -1029,15 +1032,24 @@ nsIContent* WSRunObject::GetPreviousWSNodeInner(nsINode* aStartNode,
   // containers.
   MOZ_ASSERT(aStartNode && aBlockParent);
 
+  if (NS_WARN_IF(aStartNode == mEditingHost)) {
+    return nullptr;
+  }
+
   nsCOMPtr<nsIContent> priorNode = aStartNode->GetPreviousSibling();
   OwningNonNull<nsINode> curNode = *aStartNode;
   while (!priorNode) {
     // We have exhausted nodes in parent of aStartNode.
     nsCOMPtr<nsINode> curParent = curNode->GetParentNode();
-    NS_ENSURE_TRUE(curParent, nullptr);
+    if (NS_WARN_IF(!curParent)) {
+      return nullptr;
+    }
     if (curParent == aBlockParent) {
       // We have exhausted nodes in the block parent.  The convention here is
       // to return null.
+      return nullptr;
+    }
+    if (NS_WARN_IF(curParent == mEditingHost)) {
       return nullptr;
     }
     // We have a parent: look for previous sibling
@@ -1114,15 +1126,24 @@ nsIContent* WSRunObject::GetNextWSNodeInner(nsINode* aStartNode,
   // containers.
   MOZ_ASSERT(aStartNode && aBlockParent);
 
+  if (NS_WARN_IF(aStartNode == mEditingHost)) {
+    return nullptr;
+  }
+
   nsCOMPtr<nsIContent> nextNode = aStartNode->GetNextSibling();
   nsCOMPtr<nsINode> curNode = aStartNode;
   while (!nextNode) {
     // We have exhausted nodes in parent of aStartNode.
     nsCOMPtr<nsINode> curParent = curNode->GetParentNode();
-    NS_ENSURE_TRUE(curParent, nullptr);
+    if (NS_WARN_IF(!curParent)) {
+      return nullptr;
+    }
     if (curParent == aBlockParent) {
       // We have exhausted nodes in the block parent.  The convention here is
       // to return null.
+      return nullptr;
+    }
+    if (NS_WARN_IF(curParent == mEditingHost)) {
       return nullptr;
     }
     // We have a parent: look for next sibling
@@ -1365,14 +1386,15 @@ nsresult WSRunObject::DeleteRange(const EditorDOMPoint& aStartPoint,
     } else {
       if (!range) {
         range = new nsRange(aStartPoint.GetContainer());
-        nsresult rv = range->SetStartAndEnd(aStartPoint, aEndPoint);
+        nsresult rv = range->SetStartAndEnd(aStartPoint.ToRawRangeBoundary(),
+                                            aEndPoint.ToRawRangeBoundary());
         if (NS_WARN_IF(NS_FAILED(rv))) {
           return rv;
         }
       }
       bool nodeBefore, nodeAfter;
       nsresult rv =
-          nsRange::CompareNodeToRange(node, range, &nodeBefore, &nodeAfter);
+          RangeUtils::CompareNodeToRange(node, range, &nodeBefore, &nodeAfter);
       if (NS_WARN_IF(NS_FAILED(rv))) {
         return rv;
       }
@@ -1512,7 +1534,7 @@ nsresult WSRunObject::InsertNBSPAndRemoveFollowingASCIIWhitespaces(
   // Now, the text node may have been modified by mutation observer.
   // So, the NBSP may have gone.
   if (aPoint.mTextNode->TextDataLength() <= aPoint.mOffset ||
-      aPoint.mTextNode->GetText()->CharAt(aPoint.mOffset) != kNBSP) {
+      aPoint.mTextNode->TextFragment().CharAt(aPoint.mOffset) != kNBSP) {
     // This is just preparation of an edit action.  Let's return NS_OK.
     // XXX Perhaps, we should return another success code which indicates
     //     mutation observer touched the DOM tree.  However, that should
@@ -1605,7 +1627,8 @@ WSRunObject::WSFragment* WSRunObject::FindNearestRun(
 
   for (WSFragment* run = mStartRun; run; run = run->mRight) {
     int32_t comp = run->mStartNode ? nsContentUtils::ComparePoints(
-                                         aPoint, run->StartPoint())
+                                         aPoint.ToRawRangeBoundary(),
+                                         run->StartPoint().ToRawRangeBoundary())
                                    : -1;
     if (comp <= 0) {
       // aPoint equals or before start of the run.  Return the run if we're
@@ -1613,9 +1636,10 @@ WSRunObject::WSFragment* WSRunObject::FindNearestRun(
       return aForward ? run : nullptr;
     }
 
-    comp = run->mEndNode
-               ? nsContentUtils::ComparePoints(aPoint, run->EndPoint())
-               : -1;
+    comp = run->mEndNode ? nsContentUtils::ComparePoints(
+                               aPoint.ToRawRangeBoundary(),
+                               run->EndPoint().ToRawRangeBoundary())
+                         : -1;
     if (comp < 0) {
       // If aPoint is in the run, return the run.
       return run;
@@ -1642,11 +1666,11 @@ char16_t WSRunObject::GetCharAt(Text* aTextNode, int32_t aOffset) const {
   // return 0 if we can't get a char, for whatever reason
   NS_ENSURE_TRUE(aTextNode, 0);
 
-  int32_t len = int32_t(aTextNode->TextLength());
+  int32_t len = int32_t(aTextNode->TextDataLength());
   if (aOffset < 0 || aOffset >= len) {
     return 0;
   }
-  return aTextNode->GetText()->CharAt(aOffset);
+  return aTextNode->TextFragment().CharAt(aOffset);
 }
 
 template <typename PT, typename CT>
@@ -1668,8 +1692,8 @@ WSRunObject::WSPoint WSRunObject::GetNextCharPointInternal(
   uint32_t firstNum = 0, curNum = numNodes / 2, lastNum = numNodes;
   while (curNum != lastNum) {
     Text* curNode = mNodeArray[curNum];
-    int16_t cmp =
-        nsContentUtils::ComparePoints(aPoint, EditorRawDOMPoint(curNode, 0));
+    int16_t cmp = nsContentUtils::ComparePoints(aPoint.ToRawRangeBoundary(),
+                                                RawRangeBoundary(curNode, 0));
     if (cmp < 0) {
       lastNum = curNum;
     } else {
@@ -1718,7 +1742,8 @@ WSRunObject::WSPoint WSRunObject::GetPreviousCharPointInternal(
   // ComparePoints(), which is expensive.
   while (curNum != lastNum) {
     Text* curNode = mNodeArray[curNum];
-    cmp = nsContentUtils::ComparePoints(aPoint, EditorRawDOMPoint(curNode, 0));
+    cmp = nsContentUtils::ComparePoints(aPoint.ToRawRangeBoundary(),
+                                        RawRangeBoundary(curNode, 0));
     if (cmp < 0) {
       lastNum = curNum;
     } else {

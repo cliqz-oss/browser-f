@@ -613,6 +613,11 @@ void Realm::clearTables() {
   varNames_.clear();
 }
 
+// Check to see if this individual realm is recording allocations. Debuggers or
+// runtimes can try and record allocations, so this method can check to see if
+// any initialization is needed.
+bool Realm::isRecordingAllocations() { return !!allocationMetadataBuilder_; }
+
 void Realm::setAllocationMetadataBuilder(
     const js::AllocationMetadataBuilder* builder) {
   // Clear any jitcode in the runtime, which behaves differently depending on
@@ -660,10 +665,12 @@ void Realm::setNewObjectMetadata(JSContext* cx, HandleObject obj) {
 
 static bool AddInnerLazyFunctionsFromScript(
     JSScript* script, MutableHandleObjectVector lazyFunctions) {
-  if (!script->hasObjects()) {
-    return true;
-  }
-  for (JSObject* obj : script->objects()) {
+  for (JS::GCCellPtr gcThing : script->gcthings()) {
+    if (!gcThing.is<JSObject>()) {
+      continue;
+    }
+
+    JSObject* obj = &gcThing.as<JSObject>();
     if (obj->is<JSFunction>() && obj->as<JSFunction>().isInterpretedLazy()) {
       if (!lazyFunctions.append(obj)) {
         return false;
@@ -934,7 +941,7 @@ mozilla::HashCodeScrambler Realm::randomHashCodeScrambler() {
 
 AutoSetNewObjectMetadata::AutoSetNewObjectMetadata(
     JSContext* cx MOZ_GUARD_OBJECT_NOTIFIER_PARAM_IN_IMPL)
-    : cx_(cx->helperThread() ? nullptr : cx),
+    : cx_(cx->isHelperThreadContext() ? nullptr : cx),
       prevState_(cx, cx->realm()->objectMetadataState_) {
   MOZ_GUARD_OBJECT_NOTIFIER_INIT;
   if (cx_) {

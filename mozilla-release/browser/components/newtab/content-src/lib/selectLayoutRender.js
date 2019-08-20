@@ -1,5 +1,5 @@
 export const selectLayoutRender = (state, prefs, rickRollCache) => {
-  const {layout, feeds, spocs} = state;
+  const { layout, feeds, spocs } = state;
   let spocIndex = 0;
   let bufferRollCache = [];
   // Records the chosen and unchosen spocs by the probability selection.
@@ -26,8 +26,10 @@ export const selectLayoutRender = (state, prefs, rickRollCache) => {
 
       if (rickRoll <= spocsConfig.probability) {
         spocIndex++;
-        recommendations.splice(position.index, 0, spoc);
-        chosenSpocs.add(spoc);
+        if (!spocs.blocked.includes(spoc.url)) {
+          recommendations.splice(position.index, 0, spoc);
+          chosenSpocs.add(spoc);
+        }
       } else {
         unchosenSpocs.add(spoc);
       }
@@ -40,8 +42,15 @@ export const selectLayoutRender = (state, prefs, rickRollCache) => {
   }
 
   const positions = {};
-  const DS_COMPONENTS = ["Message", "SectionTitle", "Navigation",
-    "CardGrid", "Hero", "HorizontalRule", "List"];
+  const DS_COMPONENTS = [
+    "Message",
+    "SectionTitle",
+    "Navigation",
+    "CardGrid",
+    "Hero",
+    "HorizontalRule",
+    "List",
+  ];
 
   const filterArray = [];
 
@@ -63,10 +72,10 @@ export const selectLayoutRender = (state, prefs, rickRollCache) => {
       items = component.properties.items;
     }
     for (let i = 0; i < items; i++) {
-      data.recommendations.push({"placeholder": true});
+      data.recommendations.push({ placeholder: true });
     }
 
-    return {...component, data};
+    return { ...component, data };
   };
 
   const handleComponent = component => {
@@ -79,19 +88,29 @@ export const selectLayoutRender = (state, prefs, rickRollCache) => {
     if (feed && feed.data) {
       data = {
         ...feed.data,
-        recommendations: [...feed.data.recommendations],
+        recommendations: [...(feed.data.recommendations || [])],
       };
     }
 
     if (component && component.properties && component.properties.offset) {
       data = {
         ...data,
-        recommendations: data.recommendations.slice(component.properties.offset),
+        recommendations: data.recommendations.slice(
+          component.properties.offset
+        ),
       };
     }
 
+    // Ensure we have recs available for this feed.
+    const hasRecs = data && data.recommendations;
+
     // Do we ever expect to possibly have a spoc.
-    if (data && component.spocs && component.spocs.positions && component.spocs.positions.length) {
+    if (
+      hasRecs &&
+      component.spocs &&
+      component.spocs.positions &&
+      component.spocs.positions.length
+    ) {
       // We expect a spoc, spocs are loaded, and the server returned spocs.
       if (spocs.loaded && spocs.data.spocs && spocs.data.spocs.length) {
         data = rollForSpocs(data, component.spocs);
@@ -113,24 +132,33 @@ export const selectLayoutRender = (state, prefs, rickRollCache) => {
       };
     }
 
-    return {...component, data};
+    return { ...component, data };
   };
 
   const renderLayout = () => {
     const renderedLayoutArray = [];
-    for (const row of layout.filter(r => r.components.filter(c => !filterArray.includes(c.type)).length)) {
+    for (const row of layout.filter(
+      r => r.components.filter(c => !filterArray.includes(c.type)).length
+    )) {
       let components = [];
       renderedLayoutArray.push({
         ...row,
         components,
       });
-      for (const component of row.components.filter(c => !filterArray.includes(c.type))) {
+      for (const component of row.components.filter(
+        c => !filterArray.includes(c.type)
+      )) {
         if (component.feed) {
           const spocsConfig = component.spocs;
           // Are we still waiting on a feed/spocs, render what we have,
           // add a placeholder for this component, and bail out early.
-          if (!feeds.data[component.feed.url] ||
-            (spocsConfig && spocsConfig.positions && spocsConfig.positions.length && !spocs.loaded)) {
+          if (
+            !feeds.data[component.feed.url] ||
+            (spocsConfig &&
+              spocsConfig.positions &&
+              spocsConfig.positions.length &&
+              !spocs.loaded)
+          ) {
             components.push(placeholderComponent(component));
             return renderedLayoutArray;
           }
@@ -156,14 +184,29 @@ export const selectLayoutRender = (state, prefs, rickRollCache) => {
   // be "out_of_position".
   let spocsFill = [];
   if (spocs.loaded && feeds.loaded && spocs.data.spocs) {
-    const chosenSpocsFill = [...chosenSpocs]
-      .map(spoc => ({id: spoc.id, reason: "n/a", displayed: 1, full_recalc: 0}));
+    const chosenSpocsFill = [...chosenSpocs].map(spoc => ({
+      id: spoc.id,
+      reason: "n/a",
+      displayed: 1,
+      full_recalc: 0,
+    }));
     const unchosenSpocsFill = [...unchosenSpocs]
       .filter(spoc => !chosenSpocs.has(spoc))
-      .map(spoc => ({id: spoc.id, reason: "probability_selection", displayed: 0, full_recalc: 0}));
-    const outOfPositionSpocsFill = spocs.data.spocs.slice(spocIndex)
+      .map(spoc => ({
+        id: spoc.id,
+        reason: "probability_selection",
+        displayed: 0,
+        full_recalc: 0,
+      }));
+    const outOfPositionSpocsFill = spocs.data.spocs
+      .slice(spocIndex)
       .filter(spoc => !unchosenSpocs.has(spoc))
-      .map(spoc => ({id: spoc.id, reason: "out_of_position", displayed: 0, full_recalc: 0}));
+      .map(spoc => ({
+        id: spoc.id,
+        reason: "out_of_position",
+        displayed: 0,
+        full_recalc: 0,
+      }));
 
     spocsFill = [
       ...chosenSpocsFill,
@@ -172,5 +215,5 @@ export const selectLayoutRender = (state, prefs, rickRollCache) => {
     ];
   }
 
-  return {spocsFill, layoutRender};
+  return { spocsFill, layoutRender };
 };

@@ -3,7 +3,7 @@
 
 "use strict";
 
-/* global toggleRow, toggleFilter */
+/* global toggleFilter */
 
 const TEST_URI = `<html>
   <head>
@@ -29,63 +29,84 @@ const TEST_URI = `<html>
  *   expected {JSON}      An expected states for the tree and the sidebar.
  * }
  */
-const tests = [{
-  desc: "Check initial state.",
-  expected: {
-    tree: [{
-      role: "document",
-      name: `"Accessibility Panel Test"`,
-      selected: true,
-    }],
+const tests = [
+  {
+    desc: "Check initial state.",
+    expected: {
+      tree: [
+        {
+          role: "document",
+          name: `"Accessibility Panel Test"`,
+          selected: true,
+        },
+      ],
+      toolbar: [false, false, false],
+    },
   },
-}, {
-  desc: "Run an audit from a11y panel toolbar by activating a filter.",
-  setup: async ({ doc }) => {
-    await toggleFilter(doc, 0);
+  {
+    desc: "Run an audit (all) from a11y panel toolbar by activating a filter.",
+    setup: async ({ doc }) => {
+      await toggleFilter(doc, 0);
+    },
+    expected: {
+      tree: [
+        {
+          role: "text leaf",
+          name: `"Top level header "contrast`,
+          badges: ["contrast"],
+          selected: true,
+        },
+        {
+          role: "text leaf",
+          name: `"Second level header "contrast`,
+          badges: ["contrast"],
+        },
+      ],
+      toolbar: [true, true, true],
+    },
   },
-  expected: {
-    tree: [{
-      role: "text leaf",
-      name: `"Top level header "contrast`,
-      badges: [ "contrast" ],
-      selected: true,
-    }, {
-      role: "text leaf",
-      name: `"Second level header "contrast`,
-      badges: [ "contrast" ],
-    }],
+  {
+    desc: "Click on the filter again.",
+    setup: async ({ doc }) => {
+      await toggleFilter(doc, 0);
+    },
+    expected: {
+      tree: [
+        {
+          role: "document",
+          name: `"Accessibility Panel Test"`,
+        },
+        {
+          role: "heading",
+          name: `"Top level header"`,
+        },
+        {
+          role: "text leaf",
+          name: `"Top level header "contrast`,
+          badges: ["contrast"],
+          selected: true,
+        },
+        {
+          role: "heading",
+          name: `"Second level header"`,
+        },
+        {
+          role: "text leaf",
+          name: `"Second level header "contrast`,
+          badges: ["contrast"],
+        },
+      ],
+      toolbar: [false, false, false],
+    },
   },
-}, {
-  desc: "Click on the filter again.",
-  setup: async ({ doc }) => {
-    await toggleFilter(doc, 0);
-  },
-  expected: {
-    tree: [{
-      role: "document",
-      name: `"Accessibility Panel Test"`,
-    }, {
-      role: "heading",
-      name: `"Top level header"`,
-    }, {
-      role: "text leaf",
-      name: `"Top level header "contrast`,
-      badges: [ "contrast" ],
-      selected: true,
-    }, {
-      role: "heading",
-      name: `"Second level header"`,
-    }, {
-      role: "text leaf",
-      name: `"Second level header "contrast`,
-      badges: [ "contrast" ],
-    }],
-  },
-}];
+];
 
 /**
  * Simple test that checks content of the Accessibility panel tree when the
  * audit is activated via the panel's toolbar.
  */
-addA11yPanelTestsTask(tests, TEST_URI,
-  "Test Accessibility panel tree with contrast filter audit activation.");
+addA11yPanelTestsTask(
+  tests,
+  TEST_URI,
+  "Test Accessibility panel tree with 'all' filter audit activation."
+);

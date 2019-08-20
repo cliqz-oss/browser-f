@@ -150,7 +150,8 @@ bool HttpChannelParent::Init(const HttpChannelCreationArgs& aArgs) {
           a.launchServiceWorkerStart(), a.launchServiceWorkerEnd(),
           a.dispatchFetchEventStart(), a.dispatchFetchEventEnd(),
           a.handleFetchEventStart(), a.handleFetchEventEnd(),
-          a.forceMainDocumentChannel(), a.navigationStartTimeStamp());
+          a.forceMainDocumentChannel(), a.navigationStartTimeStamp(),
+          a.hasSandboxedAuxiliaryNavigations());
     }
     case HttpChannelCreationArgs::THttpChannelConnectArgs: {
       const HttpChannelConnectArgs& cArgs = aArgs.get_HttpChannelConnectArgs();
@@ -262,7 +263,7 @@ base::ProcessId HttpChannelParent::OtherPid() const {
   if (mIPCClosed) {
     return 0;
   }
-  return Manager()->OtherPid();
+  return IProtocol::OtherPid();
 }
 
 //-----------------------------------------------------------------------------
@@ -408,7 +409,8 @@ bool HttpChannelParent::DoAsyncOpen(
     const TimeStamp& aHandleFetchEventStart,
     const TimeStamp& aHandleFetchEventEnd,
     const bool& aForceMainDocumentChannel,
-    const TimeStamp& aNavigationStartTimeStamp) {
+    const TimeStamp& aNavigationStartTimeStamp,
+    const bool& hasSandboxedAuxiliaryNavigations) {
   nsCOMPtr<nsIURI> uri = DeserializeURI(aURI);
   if (!uri) {
     // URIParams does MOZ_ASSERT if null, but we need to protect opt builds from
@@ -490,6 +492,10 @@ bool HttpChannelParent::DoAsyncOpen(
 
   if (aForceMainDocumentChannel) {
     httpChannel->SetIsMainDocumentChannel(true);
+  }
+
+  if (hasSandboxedAuxiliaryNavigations) {
+    httpChannel->SetHasSandboxedAuxiliaryNavigations(true);
   }
 
   for (uint32_t i = 0; i < requestHeaders.Length(); i++) {
@@ -1243,9 +1249,25 @@ static void FinishCrossProcessRedirect(nsHttpChannel* channel,
 }
 
 mozilla::ipc::IPCResult HttpChannelParent::RecvCrossProcessRedirectDone(
-    const nsresult& aResult) {
+    const nsresult& aResult,
+    const mozilla::Maybe<LoadInfoArgs>& aLoadInfoArgs) {
   RefPtr<nsHttpChannel> chan = do_QueryObject(mChannel);
+  nsresult rv = NS_OK;
+  auto sendReply =
+      MakeScopeExit([&]() { FinishCrossProcessRedirect(chan, rv); });
+
+  nsCOMPtr<nsILoadInfo> newLoadInfo;
+  rv = LoadInfoArgsToLoadInfo(aLoadInfoArgs, getter_AddRefs(newLoadInfo));
+  if (NS_FAILED(rv)) {
+    return IPC_OK();
+  }
+
+  if (newLoadInfo) {
+    chan->SetLoadInfo(newLoadInfo);
+  }
+
   if (!mBgParent) {
+    sendReply.release();
     RefPtr<HttpChannelParent> self = this;
     WaitForBgParent()->Then(
         GetMainThreadSerialEventTarget(), __func__,
@@ -1254,8 +1276,6 @@ mozilla::ipc::IPCResult HttpChannelParent::RecvCrossProcessRedirectDone(
           MOZ_ASSERT(NS_FAILED(aRejectionRv), "This should be an error code");
           FinishCrossProcessRedirect(chan, aRejectionRv);
         });
-  } else {
-    FinishCrossProcessRedirect(chan, aResult);
   }
 
   return IPC_OK();
@@ -1467,6 +1487,9 @@ HttpChannelParent::OnStartRequest(nsIRequest* aRequest) {
   bool isResolvedByTRR = false;
   chan->GetIsResolvedByTRR(&isResolvedByTRR);
 
+  bool allRedirectsSameOrigin = false;
+  chan->GetAllRedirectsSameOrigin(&allRedirectsSameOrigin);
+
   rv = NS_OK;
   if (mIPCClosed ||
       !SendOnStartRequest(
@@ -1476,7 +1499,8 @@ HttpChannelParent::OnStartRequest(nsIRequest* aRequest) {
           mCacheEntry ? true : false, cacheEntryId, fetchCount, expirationTime,
           cachedCharset, secInfoSerialization, chan->GetSelfAddr(),
           chan->GetPeerAddr(), redirectCount, cacheKey, altDataType, altDataLen,
-          deliveringAltData, applyConversion, isResolvedByTRR, timing)) {
+          deliveringAltData, applyConversion, isResolvedByTRR, timing,
+          allRedirectsSameOrigin)) {
     rv = NS_ERROR_UNEXPECTED;
   }
   requestHead->Exit();
@@ -2023,12 +2047,15 @@ HttpChannelParent::StartRedirect(uint32_t registrarId, nsIChannel* newChannel,
     responseHead = &cleanedUpResponseHead;
   }
 
+  ResourceTimingStruct timing;
+  GetTimingAttributes(mChannel, timing);
+
   bool result = false;
   if (!mIPCClosed) {
     result = SendRedirect1Begin(registrarId, uriParams, newLoadFlags,
                                 redirectFlags, loadInfoForwarderArg,
                                 *responseHead, secInfoSerialization, channelId,
-                                mChannel->GetPeerAddr());
+                                mChannel->GetPeerAddr(), timing);
   }
   if (!result) {
     // Bug 621446 investigation

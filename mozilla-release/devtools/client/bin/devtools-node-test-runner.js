@@ -29,15 +29,19 @@ const SUITES = {
     path: "../aboutdebugging-new/test/jest",
     type: TEST_TYPES.JEST,
   },
-  "framework": {
+  accessibility: {
+    path: "../accessibility/test/jest",
+    type: TEST_TYPES.JEST,
+  },
+  framework: {
     path: "../framework/test/jest",
     type: TEST_TYPES.JEST,
   },
-  "netmonitor": {
-    path: "../netmonitor/test",
+  netmonitor: {
+    path: "../netmonitor",
     type: TEST_TYPES.JEST,
   },
-  "webconsole": {
+  webconsole: {
     path: "../webconsole/test",
     type: TEST_TYPES.MOCHA,
   },
@@ -58,22 +62,44 @@ function execOut(...args) {
 function getErrors(suite, out, err) {
   switch (SUITES[suite].type) {
     case TEST_TYPES.JEST:
-      // jest errors are logged in the `err` buffer.
-      return parseErrorsFromLogs(err, / {4}✕\s*(.*)/);
+      return getJestErrors(out, err);
     case TEST_TYPES.MOCHA:
-      // mocha errors are logged in the `out` buffer, and will either log Error or
-      // TypeError depending on the error detected.
-      return parseErrorsFromLogs(out, / {4}((?:Type)?Error\:.*)/);
+      return getMochaErrors(out, err);
     default:
       throw new Error("Unsupported suite type: " + SUITES[suite].type);
   }
 }
 
-function parseErrorsFromLogs(text, regExp) {
-  text = text || "";
-  const globalRegexp = new RegExp(regExp, "g");
-  const matches = text.match(globalRegexp) || [];
-  return matches.map(m => m.match(regExp)[1]);
+function getJestErrors(out, err) {
+  // The string out has extra content before the JSON object starts.
+  const jestJsonOut = out.substring(out.indexOf("{"), out.lastIndexOf("}") + 1);
+  const results = JSON.parse(jestJsonOut);
+
+  // The individual failing tests are jammed into the same message string :/
+  return results.testResults.reduce((p, testResult) => {
+    const failures = testResult.message
+      .split("\n")
+      .filter(l => l.includes("●"));
+    return p.concat(failures);
+  }, []);
+}
+
+function getMochaErrors(out, err) {
+  // With mocha tests, the command itself contains curly braces already so we need
+  // to find the first brace after the first line.
+  const firstRelevantBracket = out.indexOf("{", out.indexOf("--reporter json"));
+  const mochaJsonOut = out.substring(
+    firstRelevantBracket,
+    out.lastIndexOf("}") + 1
+  );
+  const results = JSON.parse(mochaJsonOut);
+  if (!results.failures) {
+    // No failures, return an empty array.
+    return [];
+  }
+  return results.failures.map(
+    failure => failure.fullTitle + " | " + failure.err.message
+  );
 }
 
 function runTests() {
@@ -81,7 +107,9 @@ function runTests() {
   const suiteArg = process.argv.find(arg => arg.includes("suite="));
   const suite = suiteArg.split("=")[1];
   if (!SUITES[suite]) {
-    throw new Error("Invalid suite argument to devtools-node-test-runner: " + suite);
+    throw new Error(
+      "Invalid suite argument to devtools-node-test-runner: " + suite
+    );
   }
 
   console.log("[devtools-node-test-runner] Found test suite: " + suite);
@@ -94,7 +122,7 @@ function runTests() {
   console.log(`TEST START | ${SUITES[suite].type} | ${suite}`);
 
   console.log("[devtools-node-test-runner] Run `yarn test` in test folder");
-  const { out, err } = execOut("yarn", ["test"]);
+  const { out, err } = execOut("yarn", ["test-ci"]);
 
   if (err) {
     console.log("[devtools-node-test-runner] Error log");
@@ -104,11 +132,18 @@ function runTests() {
   console.log("[devtools-node-test-runner] Parse errors from the test logs");
   const errors = getErrors(suite, out, err) || [];
   for (const error of errors) {
-    console.log(`TEST-UNEXPECTED-FAIL | ${SUITES[suite].type} | ${suite} | ${error}`);
+    console.log(
+      `TEST-UNEXPECTED-FAIL | ${SUITES[suite].type} | ${suite} | ${error}`
+    );
   }
-  return errors.length === 0;
+
+  const success = errors.length === 0;
+  if (success) {
+    console.log(`[devtools-node-test-runner] Test suite [${suite}] succeeded`);
+  } else {
+    console.log(`[devtools-node-test-runner] Test suite [${suite}] failed`);
+  }
+  return success;
 }
 
-const success = runTests();
-
-process.exitCode = success ? 0 : 1;
+process.exitCode = runTests() ? 0 : 1;

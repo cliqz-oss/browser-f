@@ -20,19 +20,21 @@ const { L10N } = require("../utils/l10n");
  */
 function TextProgressBar({ id, textStringKey }) {
   const text = L10N.getStr(textStringKey);
-  return ReactDOM.span({
-    id,
-    key: id,
-    role: "progressbar",
-    "aria-valuetext": text,
-  },
-    text);
+  return ReactDOM.span(
+    {
+      id,
+      key: id,
+      role: "progressbar",
+      "aria-valuetext": text,
+    },
+    text
+  );
 }
 
 class AuditProgressOverlay extends React.Component {
   static get propTypes() {
     return {
-      auditing: PropTypes.array,
+      auditing: PropTypes.array.isRequired,
       total: PropTypes.number,
       percentage: PropTypes.number,
     };
@@ -40,38 +42,48 @@ class AuditProgressOverlay extends React.Component {
 
   render() {
     const { auditing, percentage, total } = this.props;
-    if (!auditing) {
+    if (auditing.length === 0) {
       return null;
     }
 
     const id = "audit-progress-container";
 
     if (total == null) {
-      return TextProgressBar({id, textStringKey: "accessibility.progress.initializing"});
+      return TextProgressBar({
+        id,
+        textStringKey: "accessibility.progress.initializing",
+      });
     }
 
     if (percentage === 100) {
-      return TextProgressBar({id, textStringKey: "accessibility.progress.finishing"});
+      return TextProgressBar({
+        id,
+        textStringKey: "accessibility.progress.finishing",
+      });
     }
 
-    const progressbarString = PluralForm.get(total,
-      L10N.getStr("accessibility.progress.progressbar"));
+    const progressbarString = PluralForm.get(
+      total,
+      L10N.getStr("accessibility.progress.progressbar")
+    );
 
-    return ReactDOM.span({
-      id,
-      key: id,
-    },
+    return ReactDOM.span(
+      {
+        id,
+        key: id,
+      },
       progressbarString.replace("#1", total),
       ReactDOM.progress({
         max: 100,
         value: percentage,
         className: "audit-progress-progressbar",
         "aria-labelledby": id,
-      }));
+      })
+    );
   }
 }
 
-const mapStateToProps = ({ audit: { auditing, progress }}) => {
+const mapStateToProps = ({ audit: { auditing, progress } }) => {
   const { total, percentage } = progress || {};
   return { auditing, total, percentage };
 };

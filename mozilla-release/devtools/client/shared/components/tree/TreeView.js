@@ -139,11 +139,13 @@ define(function(require, exports, module) {
         // Long string is expandable by a toggle button
         expandableStrings: PropTypes.bool,
         // Array of columns
-        columns: PropTypes.arrayOf(PropTypes.shape({
-          id: PropTypes.string.isRequired,
-          title: PropTypes.string,
-          width: PropTypes.string,
-        })),
+        columns: PropTypes.arrayOf(
+          PropTypes.shape({
+            id: PropTypes.string.isRequired,
+            title: PropTypes.string,
+            width: PropTypes.string,
+          })
+        ),
       };
     }
 
@@ -166,15 +168,20 @@ define(function(require, exports, module) {
            Sibling nodes will either be all expanded or none expanded.
      * }
      */
-    static getExpandedNodes(rootObj, { maxLevel = Infinity, maxNodes = Infinity } = {}) {
+    static getExpandedNodes(
+      rootObj,
+      { maxLevel = Infinity, maxNodes = Infinity } = {}
+    ) {
       const expandedNodes = new Set();
-      const queue = [{
-        object: rootObj,
-        level: 1,
-        path: "",
-      }];
+      const queue = [
+        {
+          object: rootObj,
+          level: 1,
+          path: "",
+        },
+      ];
       while (queue.length) {
-        const {object, level, path} = queue.shift();
+        const { object, level, path } = queue.shift();
         if (Object(object) !== object) {
           continue;
         }
@@ -241,11 +248,31 @@ define(function(require, exports, module) {
 
     componentDidUpdate() {
       const selected = this.getSelectedRow();
-      if (!selected && this.rows.length > 0) {
-        this.selectRow(this.rows[
-          Math.min(this.state.lastSelectedIndex, this.rows.length - 1)
-        ], { alignTo: "top" });
+      if (selected) {
+        return;
       }
+
+      const rows = this.visibleRows;
+      if (rows.length === 0) {
+        return;
+      }
+
+      this.selectRow(
+        rows[Math.min(this.state.lastSelectedIndex, rows.length - 1)],
+        { alignTo: "top" }
+      );
+    }
+
+    /**
+     * Get rows that are currently visible. Some rows can be filtered and made
+     * invisible, in which case, when navigating around the tree we need to
+     * ignore the ones that are not reachable by the user.
+     */
+    get visibleRows() {
+      return this.rows.filter(row => {
+        const rowEl = findDOMNode(row);
+        return rowEl && rowEl.offsetParent;
+      });
     }
 
     // Node expand/collapse
@@ -259,9 +286,11 @@ define(function(require, exports, module) {
       }
 
       // Compute new state and update the tree.
-      this.setState(Object.assign({}, this.state, {
-        expandedNodes: nodes,
-      }));
+      this.setState(
+        Object.assign({}, this.state, {
+          expandedNodes: nodes,
+        })
+      );
     }
 
     isExpanded(nodePath) {
@@ -270,6 +299,7 @@ define(function(require, exports, module) {
 
     // Event Handlers
 
+    /* eslint-disable complexity */
     onKeyDown(event) {
       if (!SUPPORTED_KEYS.includes(event.key)) {
         return;
@@ -280,7 +310,8 @@ define(function(require, exports, module) {
         return;
       }
 
-      const index = this.rows.indexOf(row);
+      const rows = this.visibleRows;
+      const index = rows.indexOf(row);
       switch (event.key) {
         case "ArrowRight":
           const { hasChildren, open } = row.props.member;
@@ -292,27 +323,29 @@ define(function(require, exports, module) {
           if (row && row.props.member.open) {
             this.toggle(this.state.selected);
           } else {
-            const parentRow = this.rows.slice(0, index).reverse().find(
-              r => r.props.member.level < row.props.member.level);
+            const parentRow = rows
+              .slice(0, index)
+              .reverse()
+              .find(r => r.props.member.level < row.props.member.level);
             if (parentRow) {
               this.selectRow(parentRow, { alignTo: "top" });
             }
           }
           break;
         case "ArrowDown":
-          const nextRow = this.rows[index + 1];
+          const nextRow = rows[index + 1];
           if (nextRow) {
             this.selectRow(nextRow, { alignTo: "bottom" });
           }
           break;
         case "ArrowUp":
-          const previousRow = this.rows[index - 1];
+          const previousRow = rows[index - 1];
           if (previousRow) {
             this.selectRow(previousRow, { alignTo: "top" });
           }
           break;
         case "Home":
-          const firstRow = this.rows[0];
+          const firstRow = rows[0];
 
           if (firstRow) {
             this.selectRow(firstRow, { alignTo: "top" });
@@ -320,7 +353,7 @@ define(function(require, exports, module) {
           break;
 
         case "End":
-          const lastRow = this.rows[this.rows.length - 1];
+          const lastRow = rows[rows.length - 1];
           if (lastRow) {
             this.selectRow(lastRow, { alignTo: "bottom" });
           }
@@ -352,6 +385,7 @@ define(function(require, exports, module) {
       this.treeRef.current.focus();
       event.preventDefault();
     }
+    /* eslint-enable complexity */
 
     onClickRow(nodePath, event) {
       const onClickRow = this.props.onClickRow;
@@ -368,8 +402,9 @@ define(function(require, exports, module) {
       }
 
       this.selectRow(
-        this.rows.find(row => row.props.member.path === nodePath),
-        { preventAutoScroll: true });
+        this.visibleRows.find(row => row.props.member.path === nodePath),
+        { preventAutoScroll: true }
+      );
     }
 
     onContextMenu(member, event) {
@@ -380,10 +415,11 @@ define(function(require, exports, module) {
     }
 
     getSelectedRow() {
-      if (!this.state.selected || this.rows.length === 0) {
+      const rows = this.visibleRows;
+      if (!this.state.selected || rows.length === 0) {
         return null;
       }
-      return this.rows.find(row => this.isSelected(row.props.member.path));
+      return rows.find(row => this.isSelected(row.props.member.path));
     }
 
     getSelectedRowIndex() {
@@ -393,7 +429,7 @@ define(function(require, exports, module) {
         return 0;
       }
 
-      return this.rows.indexOf(row);
+      return this.visibleRows.indexOf(row);
     }
 
     _scrollIntoView(row, options = {}) {
@@ -568,20 +604,7 @@ define(function(require, exports, module) {
           member: member,
           columns: this.state.columns,
           id: member.path,
-          ref: row => {
-            if (!row) {
-              return;
-            }
-
-            const rowEl = findDOMNode(row);
-            if (!rowEl || !rowEl.offsetParent) {
-              // offsetParent returns null when the element has style.display
-              // set to none (done by TreeView filtering).
-              return;
-            }
-
-            this.rows.push(row);
-          },
+          ref: row => row && this.rows.push(row),
           onClick: this.onClickRow.bind(this, member.path),
           onContextMenu: this.onContextMenu.bind(this, member),
         });
@@ -591,8 +614,11 @@ define(function(require, exports, module) {
 
         // If a child node is expanded render its rows too.
         if (member.hasChildren && member.open) {
-          const childRows = this.renderRows(member.object, level + 1,
-            member.path);
+          const childRows = this.renderRows(
+            member.object,
+            level + 1,
+            member.path
+          );
 
           // If children needs to be asynchronously fetched first,
           // set 'loading' property to the parent row. Otherwise
@@ -635,8 +661,8 @@ define(function(require, exports, module) {
         columns: this.state.columns,
       });
 
-      return (
-        dom.table({
+      return dom.table(
+        {
           className: classNames.join(" "),
           role: "tree",
           ref: this.treeRef,
@@ -658,12 +684,15 @@ define(function(require, exports, module) {
           "aria-label": this.props.label || "",
           "aria-activedescendant": this.state.selected,
           cellPadding: 0,
-          cellSpacing: 0},
-          TreeHeader(props),
-          dom.tbody({
+          cellSpacing: 0,
+        },
+        TreeHeader(props),
+        dom.tbody(
+          {
             role: "presentation",
             tabIndex: -1,
-          }, rows)
+          },
+          rows
         )
       );
     }
@@ -686,7 +715,7 @@ define(function(require, exports, module) {
     }
 
     // The default column is usually the first one.
-    return [{id: "default"}, ...columns];
+    return [{ id: "default" }, ...columns];
   }
 
   function isLongString(value) {

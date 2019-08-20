@@ -1,21 +1,28 @@
 import os
 import subprocess
-import urlparse
+from six.moves.urllib.parse import urljoin
 from collections import defaultdict
 
-from wptmanifest.parser import atoms
+from .wptmanifest.parser import atoms
 
 atom_reset = atoms["Reset"]
-enabled_tests = set(["testharness", "reftest", "wdspec"])
+enabled_tests = {"testharness", "reftest", "wdspec"}
 
 
 class Result(object):
-    def __init__(self, status, message, expected=None, extra=None, stack=None):
+    def __init__(self,
+                 status,
+                 message,
+                 expected=None,
+                 extra=None,
+                 stack=None,
+                 known_intermittent=None):
         if status not in self.statuses:
             raise ValueError("Unrecognised status %s" % status)
         self.status = status
         self.message = message
         self.expected = expected
+        self.known_intermittent = known_intermittent if known_intermittent is not None else []
         self.extra = extra if extra is not None else {}
         self.stack = stack
 
@@ -24,7 +31,7 @@ class Result(object):
 
 
 class SubtestResult(object):
-    def __init__(self, name, status, message, stack=None, expected=None):
+    def __init__(self, name, status, message, stack=None, expected=None, known_intermittent=None):
         self.name = name
         if status not in self.statuses:
             raise ValueError("Unrecognised status %s" % status)
@@ -32,6 +39,7 @@ class SubtestResult(object):
         self.message = message
         self.stack = stack
         self.expected = expected
+        self.known_intermittent = known_intermittent if known_intermittent is not None else []
 
     def __repr__(self):
         return "<%s.%s %s %s>" % (self.__module__, self.__class__.__name__, self.name, self.status)
@@ -39,28 +47,28 @@ class SubtestResult(object):
 
 class TestharnessResult(Result):
     default_expected = "OK"
-    statuses = set(["OK", "ERROR", "INTERNAL-ERROR", "TIMEOUT", "EXTERNAL-TIMEOUT", "CRASH"])
+    statuses = {"OK", "ERROR", "INTERNAL-ERROR", "TIMEOUT", "EXTERNAL-TIMEOUT", "CRASH"}
 
 
 class TestharnessSubtestResult(SubtestResult):
     default_expected = "PASS"
-    statuses = set(["PASS", "FAIL", "TIMEOUT", "NOTRUN"])
+    statuses = {"PASS", "FAIL", "TIMEOUT", "NOTRUN"}
 
 
 class ReftestResult(Result):
     default_expected = "PASS"
-    statuses = set(["PASS", "FAIL", "ERROR", "INTERNAL-ERROR", "TIMEOUT", "EXTERNAL-TIMEOUT",
-                    "CRASH"])
+    statuses = {"PASS", "FAIL", "ERROR", "INTERNAL-ERROR", "TIMEOUT", "EXTERNAL-TIMEOUT",
+                "CRASH"}
 
 
 class WdspecResult(Result):
     default_expected = "OK"
-    statuses = set(["OK", "ERROR", "INTERNAL-ERROR", "TIMEOUT", "EXTERNAL-TIMEOUT", "CRASH"])
+    statuses = {"OK", "ERROR", "INTERNAL-ERROR", "TIMEOUT", "EXTERNAL-TIMEOUT", "CRASH"}
 
 
 class WdspecSubtestResult(SubtestResult):
     default_expected = "PASS"
-    statuses = set(["PASS", "FAIL", "ERROR"])
+    statuses = {"PASS", "FAIL", "ERROR"}
 
 
 def get_run_info(metadata_root, product, **kwargs):
@@ -72,7 +80,8 @@ class RunInfo(dict):
                  browser_version=None,
                  browser_channel=None,
                  verify=None,
-                 extras=None):
+                 extras=None,
+                 enable_webrender=False):
         import mozinfo
         self._update_mozinfo(metadata_root)
         self.update(mozinfo.info)
@@ -102,6 +111,10 @@ class RunInfo(dict):
             self["wasm"] = False
         if extras is not None:
             self.update(extras)
+
+        self["headless"] = extras["headless"]
+        self["webrender"] = enable_webrender
+
 
     def _update_mozinfo(self, metadata_root):
         """Add extra build information from a mozinfo.json file in a parent
@@ -299,9 +312,28 @@ class Test(object):
             return default
 
         try:
-            return metadata.get("expected")
+            expected = metadata.get("expected")
+            if isinstance(expected, (basestring)):
+                return expected
+            elif isinstance(expected, list):
+                return expected[0]
+            elif expected is None:
+                return default
         except KeyError:
             return default
+
+    def known_intermittent(self, subtest=None):
+        metadata = self._get_metadata(subtest)
+        if metadata is None:
+            return []
+
+        try:
+            expected = metadata.get("expected")
+            if isinstance(expected, list):
+                return expected[1:]
+            return []
+        except KeyError:
+            return []
 
     def __repr__(self):
         return "<%s.%s %s>" % (self.__module__, self.__class__.__name__, self.id)
@@ -474,12 +506,12 @@ class ReftestTest(Test):
             for key, data in value:
                 if isinstance(key, (tuple, list)):
                     key = list(key)
-                    key[0] = urlparse.urljoin(self.url, key[0])
-                    key[1] = urlparse.urljoin(self.url, key[1])
+                    key[0] = urljoin(self.url, key[0])
+                    key[1] = urljoin(self.url, key[1])
                     key = tuple(key)
                 elif key:
                     # Key is just a relative url to a ref
-                    key = urlparse.urljoin(self.url, key)
+                    key = urljoin(self.url, key)
                 values[key] = data
         return values
 

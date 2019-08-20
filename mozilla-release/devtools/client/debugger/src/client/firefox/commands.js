@@ -16,7 +16,6 @@ import type {
   BreakpointLocation,
   BreakpointOptions,
   PendingLocation,
-  EventListenerBreakpoints,
   Frame,
   FrameId,
   GeneratedSourceData,
@@ -36,12 +35,18 @@ import type {
   SourcesPacket,
 } from "./types";
 
+import type {
+  EventListenerCategoryList,
+  EventListenerActiveList,
+} from "../../actions/types";
+
 let workerClients: Object;
 let threadClient: ThreadClient;
 let tabTarget: TabTarget;
 let debuggerClient: DebuggerClient;
 let sourceActors: { [ActorId]: SourceId };
 let breakpoints: { [string]: Object };
+let eventBreakpoints: ?EventListenerActiveList;
 let supportsWasm: boolean;
 
 let shouldWaitForWorkers = false;
@@ -361,8 +366,34 @@ function interrupt(thread: string): Promise<*> {
   return lookupThreadClient(thread).interrupt();
 }
 
-function setEventListenerBreakpoints(eventTypes: EventListenerBreakpoints) {
-  // TODO: Figure out what sendpoint we want to hit
+async function setEventListenerBreakpoints(ids: string[]) {
+  eventBreakpoints = ids;
+
+  await threadClient.setActiveEventBreakpoints(ids);
+  await forEachWorkerThread(thread => thread.setActiveEventBreakpoints(ids));
+}
+
+// eslint-disable-next-line
+async function getEventListenerBreakpointTypes(): Promise<
+  EventListenerCategoryList
+> {
+  let categories;
+  try {
+    categories = await threadClient.getAvailableEventBreakpoints();
+
+    if (!Array.isArray(categories)) {
+      // When connecting to older browser that had our placeholder
+      // implementation of the 'getAvailableEventBreakpoints' endpoint, we
+      // actually get back an object with a 'value' property containing
+      // the categories. Since that endpoint wasn't actually backed with a
+      // functional implementation, we just bail here instead of storing the
+      // 'value' property into the categories.
+      categories = null;
+    }
+  } catch (err) {
+    // Event bps aren't supported on this firefox version.
+  }
+  return categories || [];
 }
 
 function pauseGrip(thread: string, func: Function): ObjectClient {
@@ -396,6 +427,7 @@ async function fetchWorkers(): Promise<Worker[]> {
   if (features.windowlessWorkers) {
     const options = {
       breakpoints,
+      eventBreakpoints,
       observeAsmJS: true,
     };
 
@@ -412,7 +444,12 @@ async function fetchWorkers(): Promise<Worker[]> {
     for (const actor of workerNames) {
       if (!workerClients[actor]) {
         const client = newWorkerClients[actor].thread;
-        getSources(client);
+
+        // This runs in the background and populates some data, but we also
+        // want to allow it to fail quietly. For instance, it is pretty easy
+        // for source clients to throw during the fetch if their thread
+        // shuts down, and this would otherwise cause test failures.
+        getSources(client).catch(e => console.error(e));
       }
     }
 
@@ -525,6 +562,7 @@ const clientCommands = {
   sendPacket,
   setSkipPausing,
   setEventListenerBreakpoints,
+  getEventListenerBreakpointTypes,
   waitForWorkers,
   detachWorkers,
   hasWasmSupport,

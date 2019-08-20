@@ -72,6 +72,22 @@ PostMessageEvent::Run() {
       targetWindow->IsDying())
     return NS_OK;
 
+  // If the window's document has suppressed event handling, hand off this event
+  // for running later. We check the top window's document so that when multiple
+  // same-origin windows exist in the same top window, postMessage events will
+  // be delivered in the same order they were posted, regardless of which window
+  // they were posted to.
+  if (nsCOMPtr<nsPIDOMWindowOuter> topWindow =
+          targetWindow->GetOuterWindow()->GetTop()) {
+    if (nsCOMPtr<nsPIDOMWindowInner> topInner =
+            topWindow->GetCurrentInnerWindow()) {
+      if (topInner->GetExtantDoc() &&
+          topInner->GetExtantDoc()->SuspendPostMessageEvent(this)) {
+        return NS_OK;
+      }
+    }
+  }
+
   JSAutoRealm ar(cx, targetWindow->GetWrapper());
 
   // Ensure that any origin which might have been provided is the origin of this
@@ -112,12 +128,10 @@ PostMessageEvent::Run() {
       rv = nsContentUtils::GetUTFOrigin(mProvidedPrincipal, providedOrigin);
       NS_ENSURE_SUCCESS(rv, rv);
 
-      const char16_t* params[] = {providedOrigin.get(), targetOrigin.get()};
-
       nsAutoString errorText;
-      nsContentUtils::FormatLocalizedString(nsContentUtils::eDOM_PROPERTIES,
-                                            "TargetPrincipalDoesNotMatch",
-                                            params, errorText);
+      nsContentUtils::FormatLocalizedString(
+          errorText, nsContentUtils::eDOM_PROPERTIES,
+          "TargetPrincipalDoesNotMatch", providedOrigin, targetOrigin);
 
       nsCOMPtr<nsIScriptError> errorObject =
           do_CreateInstance(NS_SCRIPTERROR_CONTRACTID, &rv);

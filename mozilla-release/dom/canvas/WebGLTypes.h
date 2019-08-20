@@ -178,6 +178,7 @@ enum class WebGLExtensionID : uint8_t {
   OES_texture_half_float,
   OES_texture_half_float_linear,
   OES_vertex_array_object,
+  OVR_multiview2,
   WEBGL_color_buffer_float,
   WEBGL_compressed_texture_astc,
   WEBGL_compressed_texture_etc,
@@ -189,6 +190,7 @@ enum class WebGLExtensionID : uint8_t {
   WEBGL_debug_shaders,
   WEBGL_depth_texture,
   WEBGL_draw_buffers,
+  WEBGL_explicit_present,
   WEBGL_lose_context,
   Max
 };

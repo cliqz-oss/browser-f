@@ -13,6 +13,8 @@
 #include "mozilla/net/HttpChannelChild.h"
 #include "mozilla/net/CookieServiceChild.h"
 #include "mozilla/net/FTPChannelChild.h"
+#include "mozilla/net/DataChannelChild.h"
+#include "mozilla/net/FileChannelChild.h"
 #include "mozilla/net/WebSocketChannelChild.h"
 #include "mozilla/net/WebSocketEventListenerChild.h"
 #include "mozilla/net/DNSRequestChild.h"
@@ -38,6 +40,7 @@
 #include "nsQueryObject.h"
 #include "mozilla/ipc/URIUtils.h"
 #include "nsNetUtil.h"
+#include "SimpleChannel.h"
 
 using mozilla::dom::TCPServerSocketChild;
 using mozilla::dom::TCPSocketChild;
@@ -86,7 +89,7 @@ bool NeckoChild::DeallocPHttpChannelChild(PHttpChannelChild* channel) {
   MOZ_ASSERT(IsNeckoChild(), "DeallocPHttpChannelChild called by non-child!");
 
   HttpChannelChild* child = static_cast<HttpChannelChild*>(channel);
-  child->ReleaseIPDLReference();
+  child->Release();
   return true;
 }
 
@@ -220,7 +223,7 @@ PDataChannelChild* NeckoChild::AllocPDataChannelChild(
 }
 
 bool NeckoChild::DeallocPDataChannelChild(PDataChannelChild* child) {
-  // NB: See DataChannelChild::ActorDestroy.
+  static_cast<DataChannelChild*>(child)->Release();
   return true;
 }
 
@@ -231,7 +234,7 @@ PFileChannelChild* NeckoChild::AllocPFileChannelChild(
 }
 
 bool NeckoChild::DeallocPFileChannelChild(PFileChannelChild* child) {
-  // NB: See FileChannelChild::ActorDestroy.
+  static_cast<FileChannelChild*>(child)->Release();
   return true;
 }
 
@@ -242,7 +245,7 @@ PSimpleChannelChild* NeckoChild::AllocPSimpleChannelChild(
 }
 
 bool NeckoChild::DeallocPSimpleChannelChild(PSimpleChannelChild* child) {
-  // NB: See SimpleChannelChild::ActorDestroy.
+  static_cast<SimpleChannelChild*>(child)->Release();
   return true;
 }
 

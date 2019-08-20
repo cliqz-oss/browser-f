@@ -30,7 +30,7 @@
 // is included in mozAutoDocUpdate.h.
 #include "nsNPAPIPluginInstance.h"
 #include "gfxDrawable.h"
-#include "gfxPrefs.h"
+#include "mozilla/StaticPrefs.h"
 #include "ImageOps.h"
 #include "mozAutoDocUpdate.h"
 #include "mozilla/AntiTrackingCommon.h"
@@ -80,6 +80,7 @@
 #include "mozilla/dom/ShadowRoot.h"
 #include "mozilla/dom/XULCommandEvent.h"
 #include "mozilla/dom/WorkerCommon.h"
+#include "mozilla/dom/WorkerPrivate.h"
 #include "mozilla/net/CookieSettings.h"
 #include "mozilla/EventDispatcher.h"
 #include "mozilla/EventListenerManager.h"
@@ -158,7 +159,6 @@
 #include "nsIForm.h"
 #include "nsIFragmentContentSink.h"
 #include "nsContainerFrame.h"
-#include "nsIHTMLDocument.h"
 #include "nsIHttpChannelInternal.h"
 #include "nsIIdleService.h"
 #include "nsIImageLoadingContent.h"
@@ -329,6 +329,19 @@ mozilla::LazyLogModule nsContentUtils::sDOMDumpLog("Dump");
 
 int32_t nsContentUtils::sInnerOrOuterWindowCount = 0;
 uint32_t nsContentUtils::sInnerOrOuterWindowSerialCounter = 0;
+
+template int32_t nsContentUtils::ComparePoints(
+    const RangeBoundary& aFirstBoundary, const RangeBoundary& aSecondBoundary,
+    bool* aDisconnected);
+template int32_t nsContentUtils::ComparePoints(
+    const RangeBoundary& aFirstBoundary,
+    const RawRangeBoundary& aSecondBoundary, bool* aDisconnected);
+template int32_t nsContentUtils::ComparePoints(
+    const RawRangeBoundary& aFirstBoundary,
+    const RangeBoundary& aSecondBoundary, bool* aDisconnected);
+template int32_t nsContentUtils::ComparePoints(
+    const RawRangeBoundary& aFirstBoundary,
+    const RawRangeBoundary& aSecondBoundary, bool* aDisconnected);
 
 // Subset of
 // http://www.whatwg.org/specs/web-apps/current-work/#autofill-field-name
@@ -1169,10 +1182,6 @@ int32_t nsContentUtils::ParseHTMLInteger(const nsAString& aValue,
         break;
       }
       foundValue = true;
-    } else if (*iter == char16_t('%')) {
-      ++iter;
-      result |= eParseHTMLInteger_IsPercent;
-      break;
     } else {
       break;
     }
@@ -1950,6 +1959,13 @@ bool nsContentUtils::IsFuzzingEnabled() {
 #endif
 
 /* static */
+bool nsContentUtils::IsCallerChromeOrElementTransformGettersEnabled(
+    JSContext* aCx, JSObject*) {
+  return ThreadsafeIsSystemCaller(aCx) ||
+         StaticPrefs::dom_element_transform_getters_enabled();
+}
+
+/* static */
 bool nsContentUtils::ShouldResistFingerprinting() {
   return StaticPrefs::privacy_resistFingerprinting();
 }
@@ -1976,6 +1992,16 @@ bool nsContentUtils::ShouldResistFingerprinting(nsIPrincipal* aPrincipal) {
     return false;
   }
   bool isChrome = nsContentUtils::IsSystemPrincipal(aPrincipal);
+  return !isChrome && ShouldResistFingerprinting();
+}
+
+/* static */
+bool nsContentUtils::ShouldResistFingerprinting(WorkerPrivate* aWorkerPrivate) {
+  if (!aWorkerPrivate) {
+    // We may be on a non-worker thread!
+    return ShouldResistFingerprinting();
+  }
+  bool isChrome = aWorkerPrivate->UsesSystemPrincipal();
   return !isChrome && ShouldResistFingerprinting();
 }
 
@@ -2493,14 +2519,19 @@ nsINode* nsContentUtils::GetCommonAncestorUnderInteractiveContent(
 }
 
 /* static */
-int32_t nsContentUtils::ComparePoints(const RawRangeBoundary& aFirst,
-                                      const RawRangeBoundary& aSecond,
-                                      bool* aDisconnected) {
-  if (NS_WARN_IF(!aFirst.IsSet()) || NS_WARN_IF(!aSecond.IsSet())) {
+template <typename FPT, typename FRT, typename SPT, typename SRT>
+int32_t nsContentUtils::ComparePoints(
+    const RangeBoundaryBase<FPT, FRT>& aFirstBoundary,
+    const RangeBoundaryBase<SPT, SRT>& aSecondBoundary, bool* aDisconnected) {
+  if (NS_WARN_IF(!aFirstBoundary.IsSet()) ||
+      NS_WARN_IF(!aSecondBoundary.IsSet())) {
     return -1;
   }
-  return ComparePoints(aFirst.Container(), aFirst.Offset(), aSecond.Container(),
-                       aSecond.Offset(), aDisconnected);
+  // XXX Re-implement this without calling `Offset()` as far as possible,
+  //     and the other overload should be an alias of this.
+  return ComparePoints(aFirstBoundary.Container(), aFirstBoundary.Offset(),
+                       aSecondBoundary.Container(), aSecondBoundary.Offset(),
+                       aDisconnected);
 }
 
 inline bool IsCharInSet(const char* aSet, const char16_t aChar) {
@@ -2637,37 +2668,30 @@ static inline bool IsAutocompleteOff(const nsIContent* aContent) {
 }
 
 /*static*/
-nsresult nsContentUtils::GenerateStateKey(nsIContent* aContent,
-                                          Document* aDocument,
-                                          nsACString& aKey) {
+void nsContentUtils::GenerateStateKey(nsIContent* aContent, Document* aDocument,
+                                      nsACString& aKey) {
+  MOZ_ASSERT(aContent);
+
   aKey.Truncate();
 
   uint32_t partID = aDocument ? aDocument->GetPartID() : 0;
 
-  // We must have content if we're not using a special state id
-  NS_ENSURE_TRUE(aContent, NS_ERROR_FAILURE);
-
   // Don't capture state for anonymous content
   if (aContent->IsInAnonymousSubtree()) {
-    return NS_OK;
+    return;
   }
 
   if (IsAutocompleteOff(aContent)) {
-    return NS_OK;
+    return;
   }
 
-  nsCOMPtr<nsIHTMLDocument> htmlDocument =
-      do_QueryInterface(aContent->GetUncomposedDoc());
+  RefPtr<Document> doc = aContent->GetUncomposedDoc();
 
   KeyAppendInt(partID, aKey);  // first append a partID
   bool generatedUniqueKey = false;
 
-  if (htmlDocument) {
-    nsHTMLDocument* htmlDoc = static_cast<nsHTMLDocument*>(htmlDocument.get());
-    RefPtr<nsContentList> htmlForms;
-    RefPtr<nsContentList> htmlFormControls;
-    htmlDoc->GetFormsAndFormControls(getter_AddRefs(htmlForms),
-                                     getter_AddRefs(htmlFormControls));
+  if (doc && doc->IsHTMLOrXHTML()) {
+    nsHTMLDocument* htmlDoc = doc->AsHTMLDocument();
 
     // If we have a form control and can calculate form information, use that
     // as the key - it is more reliable than just recording position in the
@@ -2675,47 +2699,84 @@ nsresult nsContentUtils::GenerateStateKey(nsIContent* aContent,
     // XXXbz Is it, really?  We have bugs on this, I think...
     // Important to have a unique key, and tag/type/name may not be.
     //
-    // If the control has a form, the format of the key is:
-    // f>type>IndOfFormInDoc>IndOfControlInForm>FormName>name
-    // else:
-    // d>type>IndOfControlInDoc>name
+    // The format of the key depends on whether the control has a form,
+    // and whether the element was parser inserted:
+    //
+    // [Has Form, Parser Inserted]:
+    //   fp>type>FormNum>IndOfControlInForm>FormName>name
+    //
+    // [No Form, Parser Inserted]:
+    //   dp>type>ControlNum>name
+    //
+    // [Has Form, Not Parser Inserted]:
+    //   fn>type>IndOfFormInDoc>IndOfControlInForm>FormName>name
+    //
+    // [No Form, Not Parser Inserted]:
+    //   dn>type>IndOfControlInDoc>name
     //
     // XXX We don't need to use index if name is there
     // XXXbz We don't?  Why not?  I don't follow.
     //
     nsCOMPtr<nsIFormControl> control(do_QueryInterface(aContent));
     if (control) {
+      // Get the control number if this was a parser inserted element from the
+      // network.
+      int32_t controlNumber =
+          control->GetParserInsertedControlNumberForStateKey();
+      bool parserInserted = controlNumber != -1;
+
+      RefPtr<nsContentList> htmlForms;
+      RefPtr<nsContentList> htmlFormControls;
+      if (!parserInserted) {
+        // Getting these lists is expensive, as we need to keep them up to date
+        // as the document loads, so we avoid it if we don't need them.
+        htmlDoc->GetFormsAndFormControls(getter_AddRefs(htmlForms),
+                                         getter_AddRefs(htmlFormControls));
+      }
+
       // Append the control type
       KeyAppendInt(control->ControlType(), aKey);
 
       // If in a form, add form name / index of form / index in form
-      Element* formElement = control->GetFormElement();
+      HTMLFormElement* formElement = control->GetFormElement();
       if (formElement) {
         if (IsAutocompleteOff(formElement)) {
           aKey.Truncate();
-          return NS_OK;
+          return;
         }
 
-        KeyAppendString(NS_LITERAL_CSTRING("f"), aKey);
-
-        // Append the index of the form in the document
-        int32_t index = htmlForms->IndexOf(formElement, false);
-        if (index <= -1) {
-          //
-          // XXX HACK this uses some state that was dumped into the document
-          // specifically to fix bug 138892.  What we are trying to do is
-          // *guess* which form this control's state is found in, with the
-          // highly likely guess that the highest form parsed so far is the one.
-          // This code should not be on trunk, only branch.
-          //
-          index = htmlDocument->GetNumFormsSynchronous() - 1;
+        // Append the form number, if this is a parser inserted control, or
+        // the index of the form in the document otherwise.
+        bool appendedForm = false;
+        if (parserInserted) {
+          MOZ_ASSERT(formElement->GetFormNumberForStateKey() != -1,
+                     "when generating a state key for a parser inserted form "
+                     "control we should have a parser inserted <form> element");
+          KeyAppendString(NS_LITERAL_CSTRING("fp"), aKey);
+          KeyAppendInt(formElement->GetFormNumberForStateKey(), aKey);
+          appendedForm = true;
+        } else {
+          KeyAppendString(NS_LITERAL_CSTRING("fn"), aKey);
+          int32_t index = htmlForms->IndexOf(formElement, false);
+          if (index <= -1) {
+            //
+            // XXX HACK this uses some state that was dumped into the document
+            // specifically to fix bug 138892.  What we are trying to do is
+            // *guess* which form this control's state is found in, with the
+            // highly likely guess that the highest form parsed so far is the
+            // one. This code should not be on trunk, only branch.
+            //
+            index = htmlDoc->GetNumFormsSynchronous() - 1;
+          }
+          if (index > -1) {
+            KeyAppendInt(index, aKey);
+            appendedForm = true;
+          }
         }
-        if (index > -1) {
-          KeyAppendInt(index, aKey);
 
+        if (appendedForm) {
           // Append the index of the control in the form
-          nsCOMPtr<nsIForm> form(do_QueryInterface(formElement));
-          index = form->IndexOfControl(control);
+          int32_t index = formElement->IndexOfControl(control);
 
           if (index > -1) {
             KeyAppendInt(index, aKey);
@@ -2727,29 +2788,30 @@ nsresult nsContentUtils::GenerateStateKey(nsIContent* aContent,
         nsAutoString formName;
         formElement->GetAttr(kNameSpaceID_None, nsGkAtoms::name, formName);
         KeyAppendString(formName, aKey);
-
       } else {
-        KeyAppendString(NS_LITERAL_CSTRING("d"), aKey);
-
-        // If not in a form, add index of control in document
-        // Less desirable than indexing by form info.
-
-        // Hash by index of control in doc (we are not in a form)
-        // These are important as they are unique, and type/name may not be.
-
-        // We have to flush sink notifications at this point to make
-        // sure that htmlFormControls is up to date.
-        int32_t index = htmlFormControls->IndexOf(aContent, true);
-        if (index > -1) {
-          KeyAppendInt(index, aKey);
+        // Not in a form.  Append the control number, if this is a parser
+        // inserted control, or the index of the control in the document
+        // otherwise.
+        if (parserInserted) {
+          KeyAppendString(NS_LITERAL_CSTRING("dp"), aKey);
+          KeyAppendInt(control->GetParserInsertedControlNumberForStateKey(),
+                       aKey);
           generatedUniqueKey = true;
+        } else {
+          KeyAppendString(NS_LITERAL_CSTRING("dn"), aKey);
+          int32_t index = htmlFormControls->IndexOf(aContent, true);
+          if (index > -1) {
+            KeyAppendInt(index, aKey);
+            generatedUniqueKey = true;
+          }
         }
-      }
 
-      // Append the control name
-      nsAutoString name;
-      aContent->AsElement()->GetAttr(kNameSpaceID_None, nsGkAtoms::name, name);
-      KeyAppendString(name, aKey);
+        // Append the control name
+        nsAutoString name;
+        aContent->AsElement()->GetAttr(kNameSpaceID_None, nsGkAtoms::name,
+                                       name);
+        KeyAppendString(name, aKey);
+      }
     }
   }
 
@@ -2777,8 +2839,6 @@ nsresult nsContentUtils::GenerateStateKey(nsIContent* aContent,
       parent = content->GetParentNode();
     }
   }
-
-  return NS_OK;
 }
 
 // static
@@ -3582,38 +3642,18 @@ nsresult nsContentUtils::GetLocalizedString(PropertiesFile aFile,
 }
 
 /* static */
-nsresult nsContentUtils::FormatLocalizedString(PropertiesFile aFile,
-                                               const char* aKey,
-                                               const char16_t** aParams,
-                                               uint32_t aParamsLength,
-                                               nsAString& aResult) {
+nsresult nsContentUtils::FormatLocalizedString(
+    PropertiesFile aFile, const char* aKey, const nsTArray<nsString>& aParams,
+    nsAString& aResult) {
   nsresult rv = EnsureStringBundle(aFile);
   NS_ENSURE_SUCCESS(rv, rv);
   nsIStringBundle* bundle = sStringBundles[aFile];
 
-  if (!aParams || !aParamsLength) {
+  if (aParams.IsEmpty()) {
     return bundle->GetStringFromName(aKey, aResult);
   }
 
-  return bundle->FormatStringFromName(aKey, aParams, aParamsLength, aResult);
-}
-
-/* static */
-nsresult nsContentUtils::FormatLocalizedString(
-    PropertiesFile aFile, const char* aKey,
-    const nsTArray<nsString>& aParamArray, nsAString& aResult) {
-  MOZ_ASSERT(NS_IsMainThread());
-
-  UniquePtr<const char16_t*[]> params;
-  uint32_t paramsLength = aParamArray.Length();
-  if (paramsLength > 0) {
-    params = MakeUnique<const char16_t*[]>(paramsLength);
-    for (uint32_t i = 0; i < paramsLength; ++i) {
-      params[i] = aParamArray[i].get();
-    }
-  }
-  return FormatLocalizedString(aFile, aKey, params.get(), paramsLength,
-                               aResult);
+  return bundle->FormatStringFromName(aKey, aParams, aResult);
 }
 
 /* static */
@@ -3639,17 +3679,12 @@ void nsContentUtils::LogSimpleConsoleError(const nsAString& aErrorText,
 nsresult nsContentUtils::ReportToConsole(
     uint32_t aErrorFlags, const nsACString& aCategory,
     const Document* aDocument, PropertiesFile aFile, const char* aMessageName,
-    const char16_t** aParams, uint32_t aParamsLength, nsIURI* aURI,
+    const nsTArray<nsString>& aParams, nsIURI* aURI,
     const nsString& aSourceLine, uint32_t aLineNumber, uint32_t aColumnNumber) {
-  NS_ASSERTION((aParams && aParamsLength) || (!aParams && !aParamsLength),
-               "Supply either both parameters and their number or no"
-               "parameters and 0.");
-
   nsresult rv;
   nsAutoString errorText;
-  if (aParams) {
-    rv = FormatLocalizedString(aFile, aMessageName, aParams, aParamsLength,
-                               errorText);
+  if (!aParams.IsEmpty()) {
+    rv = FormatLocalizedString(aFile, aMessageName, aParams, errorText);
   } else {
     rv = GetLocalizedString(aFile, aMessageName, errorText);
   }
@@ -4163,27 +4198,13 @@ nsresult nsContentUtils::DispatchChromeEvent(
   return err.StealNSResult();
 }
 
-/* static */
-nsresult nsContentUtils::DispatchFocusChromeEvent(nsPIDOMWindowOuter* aWindow) {
-  MOZ_ASSERT(aWindow);
-
-  RefPtr<Document> doc = aWindow->GetExtantDoc();
-  if (!doc) {
-    return NS_ERROR_FAILURE;
-  }
-
-  return DispatchChromeEvent(doc, aWindow, NS_LITERAL_STRING("DOMWindowFocus"),
-                             CanBubble::eYes, Cancelable::eYes);
-}
-
 void nsContentUtils::RequestFrameFocus(Element& aFrameElement, bool aCanRaise) {
   RefPtr<Element> target = &aFrameElement;
   bool defaultAction = true;
   if (aCanRaise) {
-    DispatchEventOnlyToChrome(target->OwnerDoc(), target,
-                              NS_LITERAL_STRING("framefocusrequested"),
-                              CanBubble::eYes, Cancelable::eYes,
-                              &defaultAction);
+    DispatchEventOnlyToChrome(
+        target->OwnerDoc(), target, NS_LITERAL_STRING("framefocusrequested"),
+        CanBubble::eYes, Cancelable::eYes, &defaultAction);
   }
   if (!defaultAction) {
     return;
@@ -4534,10 +4555,6 @@ already_AddRefed<DocumentFragment> nsContentUtils::CreateContextualFragment(
   // for compiling event handlers... so just bail out.
   RefPtr<Document> document = aContextNode->OwnerDoc();
   bool isHTML = document->IsHTMLDocument();
-#ifdef DEBUG
-  nsCOMPtr<nsIHTMLDocument> htmlDoc = do_QueryInterface(document);
-  NS_ASSERTION(!isHTML || htmlDoc, "Should have HTMLDocument here!");
-#endif
 
   if (isHTML) {
     RefPtr<DocumentFragment> frag =
@@ -5084,12 +5101,8 @@ void nsContentUtils::TriggerLink(nsIContent* aContent,
       fileName.SetIsVoid(true);  // No actionable download attribute was found.
     }
 
-    // Currently we query the CSP from the triggeringPrincipal, which is
-    // aContent->NodePrincipal(). After Bug 965637 we can query the CSP
-    // directly from the doc instead (aContent->OwnerDoc()).
     nsCOMPtr<nsIPrincipal> triggeringPrincipal = aContent->NodePrincipal();
-    nsCOMPtr<nsIContentSecurityPolicy> csp;
-    triggeringPrincipal->GetCsp(getter_AddRefs(csp));
+    nsCOMPtr<nsIContentSecurityPolicy> csp = aContent->GetCsp();
 
     handler->OnLinkClick(
         aContent, aLinkURI, fileName.IsVoid() ? aTargetSpec : EmptyString(),
@@ -5783,7 +5796,6 @@ nsresult nsContentUtils::GetASCIIOrigin(nsIPrincipal* aPrincipal,
 /* static */
 nsresult nsContentUtils::GetASCIIOrigin(nsIURI* aURI, nsACString& aOrigin) {
   MOZ_ASSERT(aURI, "missing uri");
-  MOZ_ASSERT(NS_IsMainThread());
 
   bool isBlobURL = false;
   nsresult rv = aURI->SchemeIs(BLOBURI_SCHEME, &isBlobURL);
@@ -5835,69 +5847,6 @@ nsresult nsContentUtils::GetASCIIOrigin(nsIURI* aURI, nsACString& aOrigin) {
 }
 
 /* static */
-nsresult nsContentUtils::GetThreadSafeASCIIOrigin(nsIURI* aURI,
-                                                  nsACString& aOrigin) {
-  MOZ_ASSERT(aURI, "missing uri");
-
-  bool isBlobURL = false;
-  nsresult rv = aURI->SchemeIs(BLOBURI_SCHEME, &isBlobURL);
-  NS_ENSURE_SUCCESS(rv, rv);
-
-  // For Blob URI, the path is the URL of the owning page.
-  if (isBlobURL) {
-    nsAutoCString path;
-    rv = aURI->GetPathQueryRef(path);
-    NS_ENSURE_SUCCESS(rv, rv);
-
-    nsCOMPtr<nsIURI> uri;
-    nsresult rv = NS_NewURIOnAnyThread(getter_AddRefs(uri), path);
-    if (rv == NS_ERROR_UNKNOWN_PROTOCOL) {
-      return NS_ERROR_UNKNOWN_PROTOCOL;
-    }
-
-    if (NS_FAILED(rv)) {
-      aOrigin.AssignLiteral("null");
-      return NS_OK;
-    }
-
-    return GetThreadSafeASCIIOrigin(uri, aOrigin);
-  }
-
-  aOrigin.Truncate();
-
-  // This is not supported yet.
-  nsCOMPtr<nsINestedURI> nestedURI(do_QueryInterface(aURI));
-  if (nestedURI) {
-    return NS_ERROR_UNKNOWN_PROTOCOL;
-  }
-
-  nsAutoCString host;
-  rv = aURI->GetAsciiHost(host);
-
-  if (NS_SUCCEEDED(rv) && !host.IsEmpty()) {
-    nsAutoCString userPass;
-    aURI->GetUserPass(userPass);
-
-    nsCOMPtr<nsIURI> uri = aURI;
-
-    nsAutoCString prePath;
-    if (!userPass.IsEmpty()) {
-      rv = NS_MutateURI(uri).SetUserPass(EmptyCString()).Finalize(uri);
-      NS_ENSURE_SUCCESS(rv, rv);
-    }
-
-    rv = uri->GetPrePath(prePath);
-    NS_ENSURE_SUCCESS(rv, rv);
-
-    aOrigin = prePath;
-  } else {
-    aOrigin.AssignLiteral("null");
-  }
-
-  return NS_OK;
-}
-
-/* static */
 nsresult nsContentUtils::GetUTFOrigin(nsIPrincipal* aPrincipal,
                                       nsAString& aOrigin) {
   MOZ_ASSERT(aPrincipal, "missing principal");
@@ -5915,7 +5864,6 @@ nsresult nsContentUtils::GetUTFOrigin(nsIPrincipal* aPrincipal,
 /* static */
 nsresult nsContentUtils::GetUTFOrigin(nsIURI* aURI, nsAString& aOrigin) {
   MOZ_ASSERT(aURI, "missing uri");
-  MOZ_ASSERT(NS_IsMainThread());
   nsresult rv;
 
 #if defined(MOZ_THUNDERBIRD) || defined(MOZ_SUITE)
@@ -5933,24 +5881,6 @@ nsresult nsContentUtils::GetUTFOrigin(nsIURI* aURI, nsAString& aOrigin) {
 
   nsAutoCString asciiOrigin;
   rv = GetASCIIOrigin(aURI, asciiOrigin);
-  NS_ENSURE_SUCCESS(rv, rv);
-
-  aOrigin = NS_ConvertUTF8toUTF16(asciiOrigin);
-  return NS_OK;
-}
-
-/* static */
-nsresult nsContentUtils::GetThreadSafeUTFOrigin(nsIURI* aURI,
-                                                nsAString& aOrigin) {
-#if defined(MOZ_THUNDERBIRD) || defined(MOZ_SUITE)
-  return NS_ERROR_UNKNOWN_PROTOCOL;
-#endif
-
-  MOZ_ASSERT(aURI, "missing uri");
-  nsresult rv;
-
-  nsAutoCString asciiOrigin;
-  rv = GetThreadSafeASCIIOrigin(aURI, asciiOrigin);
   NS_ENSURE_SUCCESS(rv, rv);
 
   aOrigin = NS_ConvertUTF8toUTF16(asciiOrigin);
@@ -6185,7 +6115,7 @@ bool nsContentUtils::IsSubDocumentTabbable(nsIContent* aContent) {
 }
 
 bool nsContentUtils::IsUserFocusIgnored(nsINode* aNode) {
-  if (!nsGenericHTMLFrameElement::BrowserFramesEnabled()) {
+  if (!StaticPrefs::dom_mozBrowserFramesEnabled()) {
     return false;
   }
 
@@ -6471,17 +6401,16 @@ static void ReportPatternCompileFailure(nsAString& aPattern,
   JS::RootedString messageStr(cx, messageVal.toString());
   MOZ_ASSERT(messageStr);
 
-  nsAutoString wideMessage;
-  if (!AssignJSString(cx, wideMessage, messageStr)) {
+  AutoTArray<nsString, 2> strings;
+  strings.AppendElement(aPattern);
+  if (!AssignJSString(cx, *strings.AppendElement(), messageStr)) {
     return;
   }
 
-  const nsString& pattern = PromiseFlatString(aPattern);
-  const char16_t* strings[] = {pattern.get(), wideMessage.get()};
-  nsContentUtils::ReportToConsole(
-      nsIScriptError::errorFlag, NS_LITERAL_CSTRING("DOM"), aDocument,
-      nsContentUtils::eDOM_PROPERTIES, "PatternAttributeCompileFailure",
-      strings, ArrayLength(strings));
+  nsContentUtils::ReportToConsole(nsIScriptError::errorFlag,
+                                  NS_LITERAL_CSTRING("DOM"), aDocument,
+                                  nsContentUtils::eDOM_PROPERTIES,
+                                  "PatternAttributeCompileFailure", strings);
   savedExc.drop();
 }
 
@@ -6585,24 +6514,36 @@ bool nsContentUtils::ChannelShouldInheritPrincipal(
 }
 
 /* static */
-bool nsContentUtils::IsRequestFullscreenAllowed(CallerType aCallerType) {
-  // If more time has elapsed since the user input than is specified by the
-  // dom.event.handling-user-input-time-limit pref (default 1 second), this
-  // function also returns false.
-
+const char* nsContentUtils::CheckRequestFullscreenAllowed(
+    CallerType aCallerType) {
   if (!StaticPrefs::full_screen_api_allow_trusted_requests_only() ||
       aCallerType == CallerType::System) {
-    return true;
+    return nullptr;
   }
 
-  if (EventStateManager::IsHandlingUserInput()) {
-    TimeDuration timeout = HandlingUserInputTimeout();
-    return timeout <= TimeDuration(nullptr) ||
-           (TimeStamp::Now() - EventStateManager::GetHandlingInputStart()) <=
-               timeout;
+  if (!EventStateManager::IsHandlingUserInput()) {
+    return "FullscreenDeniedNotInputDriven";
   }
 
-  return false;
+  // If more time has elapsed since the user input than is specified by the
+  // dom.event.handling-user-input-time-limit pref (default 1 second),
+  // disallow fullscreen
+  TimeDuration timeout = HandlingUserInputTimeout();
+  if (timeout > TimeDuration(nullptr) &&
+      (TimeStamp::Now() - EventStateManager::GetHandlingInputStart()) >
+          timeout) {
+    return "FullscreenDeniedNotInputDriven";
+  }
+
+  // Entering full-screen on mouse mouse event is only allowed with left mouse
+  // button
+  if (StaticPrefs::full_screen_api_mouse_event_allow_left_button_only() &&
+      (EventStateManager::sCurrentMouseBtn == MouseButton::eMiddle ||
+       EventStateManager::sCurrentMouseBtn == MouseButton::eRight)) {
+    return "FullscreenDeniedMouseEventOnlyLeftBtn";
+  }
+
+  return nullptr;
 }
 
 /* static */
@@ -6805,12 +6746,50 @@ void nsContentUtils::GetSelectionInTextControl(Selection* aSelection,
 }
 
 HTMLEditor* nsContentUtils::GetHTMLEditor(nsPresContext* aPresContext) {
+  if (!aPresContext) {
+    return nullptr;
+  }
+
   nsCOMPtr<nsIDocShell> docShell(aPresContext->GetDocShell());
   bool isEditable;
   if (!docShell || NS_FAILED(docShell->GetEditable(&isEditable)) || !isEditable)
     return nullptr;
 
   return docShell->GetHTMLEditor();
+}
+
+// static
+TextEditor* nsContentUtils::GetActiveEditor(nsPresContext* aPresContext) {
+  if (!aPresContext) {
+    return nullptr;
+  }
+
+  nsPIDOMWindowOuter* window = aPresContext->Document()->GetWindow();
+  if (!window) {
+    return nullptr;
+  }
+
+  // If it's in designMode, nobody can have focus.  Therefore, the HTMLEditor
+  // handles all events.  I.e., it's focused editor in this case.
+  if (aPresContext->Document()->HasFlag(NODE_IS_EDITABLE)) {
+    return GetHTMLEditor(aPresContext);
+  }
+
+  // If focused element is associated with TextEditor, it must be <input>
+  // element or <textarea> element.  Let's return it even if it's in a
+  // contenteditable element.
+  nsCOMPtr<nsPIDOMWindowOuter> focusedWindow;
+  if (Element* focusedElement = nsFocusManager::GetFocusedDescendant(
+          window, nsFocusManager::SearchRange::eOnlyCurrentWindow,
+          getter_AddRefs(focusedWindow))) {
+    if (TextEditor* textEditor = focusedElement->GetTextEditorInternal()) {
+      return textEditor;
+    }
+  }
+
+  // Otherwise, HTMLEditor may handle inputs even non-editable element has
+  // focus or nobody has focus.
+  return GetHTMLEditor(aPresContext);
 }
 
 // static
@@ -7173,26 +7152,21 @@ void nsContentUtils::CallOnAllRemoteChildren(
 }
 
 struct UIStateChangeInfo {
-  UIStateChangeType mShowAccelerators;
   UIStateChangeType mShowFocusRings;
 
-  UIStateChangeInfo(UIStateChangeType aShowAccelerators,
-                    UIStateChangeType aShowFocusRings)
-      : mShowAccelerators(aShowAccelerators),
-        mShowFocusRings(aShowFocusRings) {}
+  explicit UIStateChangeInfo(UIStateChangeType aShowFocusRings)
+      : mShowFocusRings(aShowFocusRings) {}
 };
 
 bool SetKeyboardIndicatorsChild(BrowserParent* aParent, void* aArg) {
   UIStateChangeInfo* stateInfo = static_cast<UIStateChangeInfo*>(aArg);
-  Unused << aParent->SendSetKeyboardIndicators(stateInfo->mShowAccelerators,
-                                               stateInfo->mShowFocusRings);
+  Unused << aParent->SendSetKeyboardIndicators(stateInfo->mShowFocusRings);
   return false;
 }
 
 void nsContentUtils::SetKeyboardIndicatorsOnRemoteChildren(
-    nsPIDOMWindowOuter* aWindow, UIStateChangeType aShowAccelerators,
-    UIStateChangeType aShowFocusRings) {
-  UIStateChangeInfo stateInfo(aShowAccelerators, aShowFocusRings);
+    nsPIDOMWindowOuter* aWindow, UIStateChangeType aShowFocusRings) {
+  UIStateChangeInfo stateInfo(aShowFocusRings);
   CallOnAllRemoteChildren(aWindow, SetKeyboardIndicatorsChild,
                           (void*)&stateInfo);
 }
@@ -7204,6 +7178,8 @@ nsresult nsContentUtils::IPCTransferableToTransferable(
     nsITransferable* aTransferable, mozilla::dom::ContentParent* aContentParent,
     mozilla::dom::BrowserChild* aBrowserChild) {
   nsresult rv;
+
+  aTransferable->SetIsPrivateData(aIsPrivateData);
 
   const nsTArray<IPCDataTransferItem>& items = aDataTransfer.items();
   for (const auto& item : items) {
@@ -7254,7 +7230,6 @@ nsresult nsContentUtils::IPCTransferableToTransferable(
     }
   }
 
-  aTransferable->SetIsPrivateData(aIsPrivateData);
   aTransferable->SetRequestingPrincipal(aRequestingPrincipal);
   aTransferable->SetContentPolicyType(aContentPolicyType);
   return NS_OK;
@@ -7901,7 +7876,7 @@ nsresult nsContentUtils::SendMouseEvent(
     }
     return presShell->HandleEvent(view->GetFrame(), &event, false, &status);
   }
-  if (gfxPrefs::TestEventsAsyncEnabled()) {
+  if (StaticPrefs::test_events_async_enabled()) {
     status = widget->DispatchInputEvent(&event);
   } else {
     nsresult rv = widget->DispatchEvent(&event, status);
@@ -7993,56 +7968,6 @@ bool nsContentUtils::IsUpgradableDisplayType(nsContentPolicyType aType) {
           aType == nsIContentPolicy::TYPE_MEDIA);
 }
 
-nsresult nsContentUtils::SetFetchReferrerURIWithPolicy(
-    nsIPrincipal* aPrincipal, Document* aDoc, nsIHttpChannel* aChannel,
-    mozilla::net::ReferrerPolicy aReferrerPolicy) {
-  NS_ENSURE_ARG_POINTER(aPrincipal);
-  NS_ENSURE_ARG_POINTER(aChannel);
-
-  nsCOMPtr<nsIURI> principalURI;
-
-  if (aPrincipal->IsSystemPrincipal()) {
-    return NS_OK;
-  }
-
-  aPrincipal->GetURI(getter_AddRefs(principalURI));
-
-  nsCOMPtr<nsIReferrerInfo> referrerInfo;
-  if (!aDoc) {
-    referrerInfo = new ReferrerInfo(principalURI, aReferrerPolicy);
-    return aChannel->SetReferrerInfoWithoutClone(referrerInfo);
-  }
-
-  // If it weren't for history.push/replaceState, we could just use the
-  // principal's URI here.  But since we want changes to the URI effected
-  // by push/replaceState to be reflected in the XHR referrer, we have to
-  // be more clever.
-  //
-  // If the document's original URI (before any push/replaceStates) matches
-  // our principal, then we use the document's current URI (after
-  // push/replaceStates).  Otherwise (if the document is, say, a data:
-  // URI), we just use the principal's URI.
-  nsCOMPtr<nsIURI> docCurURI = aDoc->GetDocumentURI();
-  nsCOMPtr<nsIURI> docOrigURI = aDoc->GetOriginalURI();
-
-  nsCOMPtr<nsIURI> referrerURI;
-
-  if (principalURI && docCurURI && docOrigURI) {
-    bool equal = false;
-    principalURI->Equals(docOrigURI, &equal);
-    if (equal) {
-      referrerURI = docCurURI;
-    }
-  }
-
-  if (!referrerURI) {
-    referrerURI = principalURI;
-  }
-
-  referrerInfo = new ReferrerInfo(referrerURI, aReferrerPolicy);
-  return aChannel->SetReferrerInfoWithoutClone(referrerInfo);
-}
-
 // static
 net::ReferrerPolicy nsContentUtils::GetReferrerPolicyFromHeader(
     const nsAString& aHeader) {
@@ -8104,129 +8029,6 @@ bool nsContentUtils::IsNonSubresourceInternalPolicyType(
          aType == nsIContentPolicy::TYPE_INTERNAL_FRAME ||
          aType == nsIContentPolicy::TYPE_INTERNAL_WORKER ||
          aType == nsIContentPolicy::TYPE_INTERNAL_SHARED_WORKER;
-}
-
-// static, public
-nsContentUtils::StorageAccess nsContentUtils::StorageAllowedForWindow(
-    nsPIDOMWindowInner* aWindow, uint32_t* aRejectedReason) {
-  uint32_t rejectedReason;
-  if (!aRejectedReason) {
-    aRejectedReason = &rejectedReason;
-  }
-
-  *aRejectedReason = 0;
-
-  if (Document* document = aWindow->GetExtantDoc()) {
-    nsCOMPtr<nsIPrincipal> principal = document->NodePrincipal();
-    // Note that GetChannel() below may return null, but that's OK, since the
-    // callee is able to deal with a null channel argument, and if passed null,
-    // will only fail to notify the UI in case storage gets blocked.
-    nsIChannel* channel = document->GetChannel();
-    return InternalStorageAllowedCheck(principal, aWindow, nullptr, channel,
-                                       document->CookieSettings(),
-                                       *aRejectedReason);
-  }
-
-  // No document? Let's return a generic rejected reason.
-  return StorageAccess::eDeny;
-}
-
-// static, public
-nsContentUtils::StorageAccess nsContentUtils::StorageAllowedForDocument(
-    const Document* aDoc) {
-  MOZ_ASSERT(aDoc);
-
-  if (nsPIDOMWindowInner* inner = aDoc->GetInnerWindow()) {
-    nsCOMPtr<nsIPrincipal> principal = aDoc->NodePrincipal();
-    // Note that GetChannel() below may return null, but that's OK, since the
-    // callee is able to deal with a null channel argument, and if passed null,
-    // will only fail to notify the UI in case storage gets blocked.
-    nsIChannel* channel = aDoc->GetChannel();
-
-    uint32_t rejectedReason = 0;
-    return InternalStorageAllowedCheck(
-        principal, inner, nullptr, channel,
-        const_cast<Document*>(aDoc)->CookieSettings(), rejectedReason);
-  }
-
-  return StorageAccess::eDeny;
-}
-
-// static, public
-nsContentUtils::StorageAccess nsContentUtils::StorageAllowedForNewWindow(
-    nsIPrincipal* aPrincipal, nsIURI* aURI, nsPIDOMWindowInner* aParent) {
-  MOZ_ASSERT(aPrincipal);
-  MOZ_ASSERT(aURI);
-  // parent may be nullptr
-
-  uint32_t rejectedReason = 0;
-  nsCOMPtr<nsICookieSettings> cs;
-  if (aParent && aParent->GetExtantDoc()) {
-    cs = aParent->GetExtantDoc()->CookieSettings();
-  } else {
-    cs = net::CookieSettings::Create();
-  }
-  return InternalStorageAllowedCheck(aPrincipal, aParent, aURI, nullptr, cs,
-                                     rejectedReason);
-}
-
-// static, public
-nsContentUtils::StorageAccess nsContentUtils::StorageAllowedForChannel(
-    nsIChannel* aChannel) {
-  MOZ_DIAGNOSTIC_ASSERT(sSecurityManager);
-  MOZ_DIAGNOSTIC_ASSERT(aChannel);
-
-  nsCOMPtr<nsIPrincipal> principal;
-  Unused << sSecurityManager->GetChannelResultPrincipal(
-      aChannel, getter_AddRefs(principal));
-  NS_ENSURE_TRUE(principal, nsContentUtils::StorageAccess::eDeny);
-
-  nsCOMPtr<nsILoadInfo> loadInfo = aChannel->LoadInfo();
-  nsCOMPtr<nsICookieSettings> cookieSettings;
-  nsresult rv = loadInfo->GetCookieSettings(getter_AddRefs(cookieSettings));
-  NS_ENSURE_SUCCESS(rv, nsContentUtils::StorageAccess::eDeny);
-
-  uint32_t rejectedReason = 0;
-  nsContentUtils::StorageAccess result = InternalStorageAllowedCheck(
-      principal, nullptr, nullptr, aChannel, cookieSettings, rejectedReason);
-
-  return result;
-}
-
-// static, public
-nsContentUtils::StorageAccess nsContentUtils::StorageAllowedForServiceWorker(
-    nsIPrincipal* aPrincipal, nsICookieSettings* aCookieSettings) {
-  uint32_t rejectedReason = 0;
-  return InternalStorageAllowedCheck(aPrincipal, nullptr, nullptr, nullptr,
-                                     aCookieSettings, rejectedReason);
-}
-
-// static, private
-void nsContentUtils::GetCookieLifetimePolicyFromCookieSettings(
-    nsICookieSettings* aCookieSettings, nsIPrincipal* aPrincipal,
-    uint32_t* aLifetimePolicy) {
-  *aLifetimePolicy = StaticPrefs::network_cookie_lifetimePolicy();
-
-  if (aCookieSettings) {
-    uint32_t cookiePermission = 0;
-    nsresult rv =
-        aCookieSettings->CookiePermission(aPrincipal, &cookiePermission);
-    if (NS_WARN_IF(NS_FAILED(rv))) {
-      return;
-    }
-
-    switch (cookiePermission) {
-      case nsICookiePermission::ACCESS_ALLOW:
-        *aLifetimePolicy = nsICookieService::ACCEPT_NORMALLY;
-        break;
-      case nsICookiePermission::ACCESS_DENY:
-        *aLifetimePolicy = nsICookieService::ACCEPT_NORMALLY;
-        break;
-      case nsICookiePermission::ACCESS_SESSION:
-        *aLifetimePolicy = nsICookieService::ACCEPT_SESSION;
-        break;
-    }
-  }
 }
 
 // static public
@@ -8325,181 +8127,6 @@ bool nsContentUtils::IsThirdPartyTrackingResourceWindow(
   }
 
   return httpChannel->IsThirdPartyTrackingResource();
-}
-
-static bool StorageDisabledByAntiTrackingInternal(
-    nsPIDOMWindowInner* aWindow, nsIChannel* aChannel, nsIPrincipal* aPrincipal,
-    nsIURI* aURI, nsICookieSettings* aCookieSettings,
-    uint32_t& aRejectedReason) {
-  MOZ_ASSERT(aWindow || aChannel || aPrincipal);
-
-  if (aWindow) {
-    nsIURI* documentURI = aURI ? aURI : aWindow->GetDocumentURI();
-    return !documentURI ||
-           !AntiTrackingCommon::IsFirstPartyStorageAccessGrantedFor(
-               aWindow, documentURI, &aRejectedReason);
-  }
-
-  if (aChannel) {
-    nsCOMPtr<nsIHttpChannel> httpChannel = do_QueryInterface(aChannel);
-    if (!httpChannel) {
-      return false;
-    }
-
-    nsCOMPtr<nsIURI> uri;
-    nsresult rv = httpChannel->GetURI(getter_AddRefs(uri));
-    if (NS_WARN_IF(NS_FAILED(rv))) {
-      return false;
-    }
-
-    return !AntiTrackingCommon::IsFirstPartyStorageAccessGrantedFor(
-        httpChannel, uri, &aRejectedReason);
-  }
-
-  MOZ_ASSERT(aPrincipal);
-  return !AntiTrackingCommon::IsFirstPartyStorageAccessGrantedFor(
-      aPrincipal, aCookieSettings);
-}
-
-// static public
-bool nsContentUtils::StorageDisabledByAntiTracking(nsPIDOMWindowInner* aWindow,
-                                                   nsIChannel* aChannel,
-                                                   nsIPrincipal* aPrincipal,
-                                                   nsIURI* aURI,
-                                                   uint32_t& aRejectedReason) {
-  nsCOMPtr<nsICookieSettings> cookieSettings;
-  if (aWindow) {
-    if (aWindow->GetExtantDoc()) {
-      cookieSettings = aWindow->GetExtantDoc()->CookieSettings();
-    }
-  } else if (aChannel) {
-    nsCOMPtr<nsILoadInfo> loadInfo = aChannel->LoadInfo();
-    Unused << loadInfo->GetCookieSettings(getter_AddRefs(cookieSettings));
-  }
-  if (!cookieSettings) {
-    cookieSettings = net::CookieSettings::Create();
-  }
-  bool disabled = StorageDisabledByAntiTrackingInternal(
-      aWindow, aChannel, aPrincipal, aURI, cookieSettings, aRejectedReason);
-  if (StaticPrefs::
-          browser_contentblocking_rejecttrackers_control_center_ui_enabled()) {
-    if (aWindow) {
-      AntiTrackingCommon::NotifyBlockingDecision(
-          aWindow,
-          disabled ? AntiTrackingCommon::BlockingDecision::eBlock
-                   : AntiTrackingCommon::BlockingDecision::eAllow,
-          aRejectedReason);
-    } else if (aChannel) {
-      AntiTrackingCommon::NotifyBlockingDecision(
-          aChannel,
-          disabled ? AntiTrackingCommon::BlockingDecision::eBlock
-                   : AntiTrackingCommon::BlockingDecision::eAllow,
-          aRejectedReason);
-    }
-  }
-  return disabled;
-}
-
-// static, private
-nsContentUtils::StorageAccess nsContentUtils::InternalStorageAllowedCheck(
-    nsIPrincipal* aPrincipal, nsPIDOMWindowInner* aWindow, nsIURI* aURI,
-    nsIChannel* aChannel, nsICookieSettings* aCookieSettings,
-    uint32_t& aRejectedReason) {
-  MOZ_ASSERT(aPrincipal);
-
-  aRejectedReason = 0;
-
-  StorageAccess access = StorageAccess::eAllow;
-
-  // We don't allow storage on the null principal, in general. Even if the
-  // calling context is chrome.
-  if (aPrincipal->GetIsNullPrincipal()) {
-    return StorageAccess::eDeny;
-  }
-
-  if (aWindow) {
-    // If the document is sandboxed, then it is not permitted to use storage
-    Document* document = aWindow->GetExtantDoc();
-    if (document && document->GetSandboxFlags() & SANDBOXED_ORIGIN) {
-      return StorageAccess::eDeny;
-    }
-
-    // Check if we are in private browsing, and record that fact
-    if (IsInPrivateBrowsing(document)) {
-      access = StorageAccess::ePrivateBrowsing;
-    }
-  }
-
-  uint32_t lifetimePolicy;
-
-  // WebExtensions principals always get BEHAVIOR_ACCEPT as cookieBehavior
-  // and ACCEPT_NORMALLY as lifetimePolicy (See Bug 1406675 for rationale).
-  auto policy = BasePrincipal::Cast(aPrincipal)->AddonPolicy();
-
-  if (policy) {
-    lifetimePolicy = nsICookieService::ACCEPT_NORMALLY;
-  } else {
-    GetCookieLifetimePolicyFromCookieSettings(aCookieSettings, aPrincipal,
-                                              &lifetimePolicy);
-  }
-
-  // Check if we should only allow storage for the session, and record that fact
-  if (lifetimePolicy == nsICookieService::ACCEPT_SESSION) {
-    // Storage could be StorageAccess::ePrivateBrowsing or StorageAccess::eAllow
-    // so perform a std::min comparison to make sure we preserve
-    // ePrivateBrowsing if it has been set.
-    access = std::min(StorageAccess::eSessionScoped, access);
-  }
-
-  // About URIs are allowed to access storage, even if they don't have chrome
-  // privileges. If this is not desired, than the consumer will have to
-  // implement their own restriction functionality.
-  //
-  // This is due to backwards-compatibility and the state of storage access
-  // before the introducton of
-  // nsContentUtils::InternalStorageAllowedCheck:
-  //
-  // BEFORE:
-  // localStorage, caches: allowed in 3rd-party iframes always
-  // IndexedDB: allowed in 3rd-party iframes only if 3rd party URI is an about:
-  //   URI within a specific whitelist
-  //
-  // AFTER:
-  // localStorage, caches: allowed in 3rd-party iframes by default. Preference
-  //   can be set to disable in 3rd-party, which will not disallow in about:
-  //   URIs.
-  // IndexedDB: allowed in 3rd-party iframes by default. Preference can be set
-  //   to disable in 3rd-party, which will disallow in about: URIs, unless they
-  //   are within a specific whitelist.
-  //
-  // This means that behavior for storage with internal about: URIs should not
-  // be affected, which is desireable due to the lack of automated testing for
-  // about: URIs with these preferences set, and the importance of the correct
-  // functioning of these URIs even with custom preferences.
-  nsCOMPtr<nsIURI> uri = aURI;
-  if (!uri) {
-    Unused << aPrincipal->GetURI(getter_AddRefs(uri));
-  }
-  if (uri) {
-    bool isAbout = false;
-    MOZ_ALWAYS_SUCCEEDS(uri->SchemeIs("about", &isAbout));
-    if (isAbout) {
-      return access;
-    }
-  }
-
-  if (!StorageDisabledByAntiTracking(aWindow, aChannel, aPrincipal, aURI,
-                                     aRejectedReason)) {
-    return access;
-  }
-
-  // We want to have a partitioned storage only for trackers.
-  if (aRejectedReason ==
-      nsIWebProgressListener::STATE_COOKIES_BLOCKED_TRACKER) {
-    return StorageAccess::ePartitionedOrDeny;
-  }
-
-  return StorageAccess::eDeny;
 }
 
 namespace {
@@ -9049,8 +8676,7 @@ bool nsContentUtils::SerializeNodeToMarkup(nsINode* aRoot,
 
       case nsINode::TEXT_NODE:
       case nsINode::CDATA_SECTION_NODE: {
-        const nsTextFragment* text =
-            static_cast<nsIContent*>(current)->GetText();
+        const nsTextFragment* text = &current->AsText()->TextFragment();
         nsIContent* parent = current->GetParent();
         if (ShouldEscape(parent)) {
           AppendEncodedCharacters(text, builder);
@@ -9394,14 +9020,14 @@ static void DoCustomElementCreate(Element** aElement, JSContext* aCx,
   UNWRAP_OBJECT(Element, &constructResult, element);
   if (aNodeInfo->NamespaceEquals(kNameSpaceID_XHTML)) {
     if (!element || !element->IsHTMLElement()) {
-      aRv.ThrowTypeError<MSG_THIS_DOES_NOT_IMPLEMENT_INTERFACE>(
-          NS_LITERAL_STRING("HTMLElement"));
+      aRv.ThrowTypeError<MSG_DOES_NOT_IMPLEMENT_INTERFACE>(
+          NS_LITERAL_STRING("\"this\""), NS_LITERAL_STRING("HTMLElement"));
       return;
     }
   } else {
     if (!element || !element->IsXULElement()) {
-      aRv.ThrowTypeError<MSG_THIS_DOES_NOT_IMPLEMENT_INTERFACE>(
-          NS_LITERAL_STRING("XULElement"));
+      aRv.ThrowTypeError<MSG_DOES_NOT_IMPLEMENT_INTERFACE>(
+          NS_LITERAL_STRING("\"this\""), NS_LITERAL_STRING("XULElement"));
       return;
     }
   }
@@ -9821,15 +9447,7 @@ bool nsContentUtils::AttemptLargeAllocationLoad(nsIHttpChannel* aChannel) {
 
   nsCOMPtr<nsILoadInfo> loadInfo = aChannel->LoadInfo();
   nsCOMPtr<nsIPrincipal> triggeringPrincipal = loadInfo->TriggeringPrincipal();
-
-  // Currently we query the CSP from the triggeringPrincipal within the
-  // loadInfo. After Bug 965637, we can query the CSP from the loadInfo, which
-  // internally queries the CSP from the Client.
-  nsCOMPtr<nsIContentSecurityPolicy> csp;
-  if (triggeringPrincipal) {
-    rv = triggeringPrincipal->GetCsp(getter_AddRefs(csp));
-    NS_ENSURE_SUCCESS(rv, false);
-  }
+  nsCOMPtr<nsIContentSecurityPolicy> csp = loadInfo->GetCspToInherit();
 
   // Get the channel's load flags, and use them to generate nsIWebNavigation
   // load flags. We want to make sure to propagate the refresh and cache busting
@@ -9960,15 +9578,19 @@ bool nsContentUtils::QueryTriggeringPrincipal(
     return result;
   }
 
-  nsCOMPtr<nsISupports> serializedPrincipal;
-  NS_DeserializeObject(NS_ConvertUTF16toUTF8(loadingStr),
-                       getter_AddRefs(serializedPrincipal));
-  nsCOMPtr<nsIPrincipal> serializedPrin =
-      do_QueryInterface(serializedPrincipal);
-  if (serializedPrin) {
-    result = true;
-    serializedPrin.forget(aTriggeringPrincipal);
+  nsCString binary;
+  nsresult rv = Base64Decode(NS_ConvertUTF16toUTF8(loadingStr), binary);
+  if (NS_SUCCEEDED(rv)) {
+    nsCOMPtr<nsIPrincipal> serializedPrin = BasePrincipal::FromJSON(binary);
+    if (serializedPrin) {
+      result = true;
+      serializedPrin.forget(aTriggeringPrincipal);
+    }
   } else {
+    MOZ_ASSERT(false, "Unable to deserialize base64 principal");
+  }
+
+  if (!result) {
     // Fallback if the deserialization is failed.
     loadingPrincipal.forget(aTriggeringPrincipal);
   }

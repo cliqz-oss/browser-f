@@ -203,6 +203,8 @@ class gfxPlatform : public mozilla::layers::MemoryPressureListener {
 
   static bool IsHeadless();
 
+  static bool UseWebRender();
+
   /**
    * Create an offscreen surface of the given dimensions
    * and image format.
@@ -279,6 +281,7 @@ class gfxPlatform : public mozilla::layers::MemoryPressureListener {
   void GetApzSupportInfo(mozilla::widget::InfoObject& aObj);
   void GetTilesSupportInfo(mozilla::widget::InfoObject& aObj);
   void GetFrameStats(mozilla::widget::InfoObject& aObj);
+  void GetCMSSupportInfo(mozilla::widget::InfoObject& aObj);
 
   // Get the default content backend that will be used with the default
   // compositor. If the compositor is known when calling this function,
@@ -541,6 +544,11 @@ class gfxPlatform : public mozilla::layers::MemoryPressureListener {
    */
   static qcms_transform* GetCMSRGBATransform();
 
+  /**
+   * Return sRGBA -> output device transform.
+   */
+  static qcms_transform* GetCMSBGRATransform();
+
   virtual void FontsPrefsChanged(const char* aPref);
 
   int32_t GetBidiNumeralOption();
@@ -667,8 +675,8 @@ class gfxPlatform : public mozilla::layers::MemoryPressureListener {
       mozilla::gfx::SurfaceFormat aFormat);
 
   /**
-   * Wrapper around gfxPrefs::PerfWarnings().
-   * Extracted into a function to avoid including gfxPrefs.h from this file.
+   * Wrapper around StaticPrefs::gfx_perf_warnings_enabled().
+   * Extracted into a function to avoid including StaticPrefs.h from this file.
    */
   static bool PerfWarnings();
 
@@ -876,6 +884,7 @@ class gfxPlatform : public mozilla::layers::MemoryPressureListener {
 
   void InitCompositorAccelerationPrefs();
   void InitGPUProcessPrefs();
+  virtual void InitPlatformGPUProcessPrefs() {}
   void InitOMTPConfig();
 
   static bool IsDXInterop2Blocked();
@@ -903,6 +912,7 @@ class gfxPlatform : public mozilla::layers::MemoryPressureListener {
   mozilla::widget::GfxInfoCollector<gfxPlatform> mApzSupportCollector;
   mozilla::widget::GfxInfoCollector<gfxPlatform> mTilesInfoCollector;
   mozilla::widget::GfxInfoCollector<gfxPlatform> mFrameStatsCollector;
+  mozilla::widget::GfxInfoCollector<gfxPlatform> mCMSInfoCollector;
 
   nsTArray<mozilla::layers::FrameStats> mFrameStats;
 

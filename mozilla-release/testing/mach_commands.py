@@ -374,6 +374,9 @@ class Test(MachCommandBase):
 class MachCommands(MachCommandBase):
     @Command('cppunittest', category='testing',
              description='Run cpp unit tests (C++ tests).')
+    @CommandArgument('--enable-webrender', action='store_true', default=False,
+                     dest='enable_webrender',
+                     help='Enable the WebRender compositor in Gecko.')
     @CommandArgument('test_files', nargs='*', metavar='N',
                      help='Test to run. Can be specified as one or more files or '
                      'directories, or omitted. If omitted, the entire test suite is '
@@ -1114,7 +1117,7 @@ class TestInfoCommand(MachCommandBase):
                 {"in": {"build.branch": branches.split(',')}},
                 {"gt": {"task.run.start_time": {"date": start}}},
                 {"lte": {"task.run.start_time": {"date": end}}},
-                {"eq": {"state": "completed"}},
+                {"eq": {"task.state": "completed"}},
             ]}
         }
         data = self.submit(query)
@@ -1126,7 +1129,7 @@ class TestInfoCommand(MachCommandBase):
                 if 'tasks_gt_pct' in record:
                     count = record['count']
                     tasks_gt_pct = record['tasks_gt_pct']
-                    if tasks_gt_pct / count > filter_threshold_pct / 100.0:
+                    if float(tasks_gt_pct) / count > filter_threshold_pct / 100.0:
                         filtered.append(record)
             filtered.sort(key=get_long_running_ratio)
             if not filtered:

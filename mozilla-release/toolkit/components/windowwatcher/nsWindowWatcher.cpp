@@ -43,7 +43,6 @@
 #include "nsIWebBrowserChrome.h"
 #include "nsIWebNavigation.h"
 #include "nsIWindowCreator.h"
-#include "nsIWindowCreator2.h"
 #include "nsIXPConnect.h"
 #include "nsIXULRuntime.h"
 #include "nsPIDOMWindow.h"
@@ -66,6 +65,7 @@
 #include "mozilla/dom/Storage.h"
 #include "mozilla/dom/ScriptSettings.h"
 #include "mozilla/dom/BrowserParent.h"
+#include "mozilla/dom/BrowserHost.h"
 #include "mozilla/dom/DocGroup.h"
 #include "mozilla/dom/TabGroup.h"
 #include "nsIXULWindow.h"
@@ -403,14 +403,13 @@ nsresult nsWindowWatcher::CreateChromeWindow(
     uint32_t aChromeFlags, nsIRemoteTab* aOpeningBrowserParent,
     mozIDOMWindowProxy* aOpener, uint64_t aNextRemoteTabId,
     nsIWebBrowserChrome** aResult) {
-  nsCOMPtr<nsIWindowCreator2> windowCreator2(do_QueryInterface(mWindowCreator));
-  if (NS_WARN_IF(!windowCreator2)) {
+  if (NS_WARN_IF(!mWindowCreator)) {
     return NS_ERROR_UNEXPECTED;
   }
 
   bool cancel = false;
   nsCOMPtr<nsIWebBrowserChrome> newWindowChrome;
-  nsresult rv = windowCreator2->CreateChromeWindow2(
+  nsresult rv = mWindowCreator->CreateChromeWindow(
       aParentChrome, aChromeFlags, aOpeningBrowserParent, aOpener,
       aNextRemoteTabId, &cancel, getter_AddRefs(newWindowChrome));
 
@@ -476,7 +475,7 @@ nsWindowWatcher::OpenWindowWithRemoteTab(
   if (aRemoteTab) {
     // We need to examine the window that aRemoteTab belongs to in
     // order to inform us of what kind of window we're going to open.
-    BrowserParent* openingTab = BrowserParent::GetFrom(aRemoteTab);
+    BrowserHost* openingTab = BrowserHost::GetFrom(aRemoteTab);
     parentWindowOuter = openingTab->GetParentWindowOuter();
 
     // Propagate the privacy & fission status of the parent window, if
@@ -507,8 +506,7 @@ nsWindowWatcher::OpenWindowWithRemoteTab(
     return NS_ERROR_UNEXPECTED;
   }
 
-  nsCOMPtr<nsIWindowCreator2> windowCreator2(do_QueryInterface(mWindowCreator));
-  if (NS_WARN_IF(!windowCreator2)) {
+  if (NS_WARN_IF(!mWindowCreator)) {
     return NS_ERROR_UNEXPECTED;
   }
 
@@ -864,24 +862,15 @@ nsresult nsWindowWatcher::OpenWindowInternal(
         parentTopInnerWindow->Suspend();
       }
 
-      /* If the window creator is an nsIWindowCreator2, we can give it
-         some hints. The only hint at this time is whether the opening window
-         is in a situation that's likely to mean this is an unrequested
-         popup window we're creating. However we're not completely honest:
-         we clear that indicator if the opener is chrome, so that the
-         downstream consumer can treat the indicator to mean simply
+      /* We can give the window creator some hints. The only hint at this time
+         is whether the opening window is in a situation that's likely to mean
+         this is an unrequested popup window we're creating. However we're not
+         completely honest: we clear that indicator if the opener is chrome, so
+         that the downstream consumer can treat the indicator to mean simply
          that the new window is subject to popup control. */
-      nsCOMPtr<nsIWindowCreator2> windowCreator2(
-          do_QueryInterface(mWindowCreator));
-      if (windowCreator2) {
-        mozIDOMWindowProxy* openerWindow = aForceNoOpener ? nullptr : aParent;
-        rv = CreateChromeWindow(features, parentChrome, chromeFlags, nullptr,
-                                openerWindow, 0, getter_AddRefs(newChrome));
-
-      } else {
-        rv = mWindowCreator->CreateChromeWindow(parentChrome, chromeFlags,
-                                                getter_AddRefs(newChrome));
-      }
+      mozIDOMWindowProxy* openerWindow = aForceNoOpener ? nullptr : aParent;
+      rv = CreateChromeWindow(features, parentChrome, chromeFlags, nullptr,
+                              openerWindow, 0, getter_AddRefs(newChrome));
 
       if (parentTopInnerWindow) {
         parentTopInnerWindow->Resume();
@@ -1028,7 +1017,16 @@ nsresult nsWindowWatcher::OpenWindowInternal(
     // this call already happened when the window was created, but
     // SetInitialPrincipalToSubject is safe to call multiple times.
     if (newWindow) {
-      newWindow->SetInitialPrincipalToSubject();
+      nsCOMPtr<nsIContentSecurityPolicy> cspToInheritForAboutBlank;
+      nsCOMPtr<mozIDOMWindowProxy> targetOpener = newWindow->GetOpener();
+      nsCOMPtr<nsIDocShell> openerDocShell(do_GetInterface(targetOpener));
+      if (openerDocShell) {
+        RefPtr<Document> openerDoc =
+            static_cast<nsDocShell*>(openerDocShell.get())->GetDocument();
+        cspToInheritForAboutBlank = openerDoc ? openerDoc->GetCsp() : nullptr;
+      }
+      newWindow->SetInitialPrincipalToSubject(cspToInheritForAboutBlank);
+
       if (aIsPopupSpam) {
         nsGlobalWindowOuter* globalWin = nsGlobalWindowOuter::Cast(newWindow);
         MOZ_ASSERT(!globalWin->IsPopupSpamWindow(),
@@ -1095,28 +1093,18 @@ nsresult nsWindowWatcher::OpenWindowInternal(
         doc = parentWindow->GetExtantDoc();
       }
       if (doc) {
-        nsCOMPtr<nsIReferrerInfo> referrerInfo =
-            new ReferrerInfo(doc->GetDocumentURI(), doc->GetReferrerPolicy());
+        nsCOMPtr<nsIReferrerInfo> referrerInfo = new ReferrerInfo();
+        referrerInfo->InitWithDocument(doc);
         loadState->SetReferrerInfo(referrerInfo);
       }
     }
   }
 
-  // Currently we query the CSP from the principal of the inner window.
-  // After Bug 965637 we can query the CSP directly from the inner window.
-  // Further, if the JS context is null, then the subjectPrincipal falls
-  // back to being the SystemPrincipal (see above) and the SystemPrincipal
-  // can currently not hold a CSP. We use the same semantics here.
   if (loadState && cx) {
     nsGlobalWindowInner* win = xpc::CurrentWindowOrNull(cx);
     if (win) {
-      nsCOMPtr<nsIPrincipal> principal = win->GetPrincipal();
-      if (principal) {
-        nsCOMPtr<nsIContentSecurityPolicy> csp;
-        rv = principal->GetCsp(getter_AddRefs(csp));
-        NS_ENSURE_SUCCESS(rv, rv);
-        loadState->SetCsp(csp);
-      }
+      nsCOMPtr<nsIContentSecurityPolicy> csp = win->GetCsp();
+      loadState->SetCsp(csp);
     }
   }
 
@@ -1241,7 +1229,7 @@ nsresult nsWindowWatcher::OpenWindowInternal(
       // Reset popup state while opening a modal dialog, and firing
       // events about the dialog, to prevent the current state from
       // being active the whole time a modal dialog is open.
-      nsAutoPopupStatePusher popupStatePusher(PopupBlocker::openAbused);
+      AutoPopupStatePusher popupStatePusher(PopupBlocker::openAbused);
 
       newChrome->ShowAsModal();
     }

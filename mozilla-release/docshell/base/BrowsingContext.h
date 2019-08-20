@@ -51,6 +51,7 @@ template <typename>
 struct Nullable;
 template <typename T>
 class Sequence;
+class StructuredCloneHolder;
 struct WindowPostMessageOptions;
 class WindowProxyHolder;
 
@@ -104,6 +105,13 @@ class BrowsingContext : public nsWrapperCache, public BrowsingContextBase {
     return Get(aId);
   }
 
+  static already_AddRefed<BrowsingContext> GetFromWindow(
+      WindowProxyHolder& aProxy);
+  static already_AddRefed<BrowsingContext> GetFromWindow(
+      GlobalObject&, WindowProxyHolder& aProxy) {
+    return GetFromWindow(aProxy);
+  }
+
   // Create a brand-new BrowsingContext object.
   static already_AddRefed<BrowsingContext> Create(BrowsingContext* aParent,
                                                   BrowsingContext* aOpener,
@@ -117,6 +125,11 @@ class BrowsingContext : public nsWrapperCache, public BrowsingContextBase {
   // process? This may be true with a null mDocShell after the Window has been
   // closed.
   bool IsInProcess() const { return mIsInProcess; }
+
+  // Has this BrowsingContext been discarded. A discarded browsing context has
+  // been destroyed, and may not be available on the other side of an IPC
+  // message.
+  bool IsDiscarded() const { return mIsDiscarded; }
 
   // Get the DocShell for this BrowsingContext if it is in-process, or
   // null if it's not.
@@ -145,6 +158,9 @@ class BrowsingContext : public nsWrapperCache, public BrowsingContextBase {
   // child and the parent process.
   void Detach(bool aFromIPC = false);
 
+  // Prepare this BrowsingContext to leave the current process.
+  void PrepareForProcessChange();
+
   // Remove all children from the current BrowsingContext and cache
   // them to allow them to be attached again.
   void CacheChildren(bool aFromIPC = false);
@@ -161,6 +177,9 @@ class BrowsingContext : public nsWrapperCache, public BrowsingContextBase {
   bool NameEquals(const nsAString& aName) { return mName.Equals(aName); }
 
   bool IsContent() const { return mType == Type::Content; }
+  bool IsChrome() const { return !IsContent(); }
+
+  bool IsTopContent() const { return IsContent() && !GetParent(); }
 
   uint64_t Id() const { return mBrowsingContextId; }
 
@@ -259,6 +278,12 @@ class BrowsingContext : public nsWrapperCache, public BrowsingContextBase {
                       nsIPrincipal& aSubjectPrincipal, ErrorResult& aError);
 
   JSObject* WrapObject(JSContext* aCx);
+
+  static JSObject* ReadStructuredClone(JSContext* aCx,
+                                       JSStructuredCloneReader* aReader,
+                                       StructuredCloneHolder* aHolder);
+  bool WriteStructuredClone(JSContext* aCx, JSStructuredCloneWriter* aWriter,
+                            StructuredCloneHolder* aHolder);
 
   void StartDelayedAutoplayMediaComponents();
 
@@ -374,6 +399,9 @@ class BrowsingContext : public nsWrapperCache, public BrowsingContextBase {
 
   bool IsActive() const;
 
+  // Removes the context from its group and sets mIsDetached to true.
+  void Unregister();
+
   friend class ::nsOuterWindowProxy;
   friend class ::nsGlobalWindowOuter;
   // Update the window proxy object that corresponds to this browsing context.
@@ -455,6 +483,10 @@ class BrowsingContext : public nsWrapperCache, public BrowsingContextBase {
   // process? This may be true with a null mDocShell after the Window has been
   // closed.
   bool mIsInProcess : 1;
+
+  // Has this browsing context been discarded? BrowsingContexts should
+  // only be discarded once.
+  bool mIsDiscarded : 1;
 };
 
 /**
@@ -479,7 +511,7 @@ typedef BrowsingContext::Children BrowsingContextChildren;
 // Allow sending BrowsingContext objects over IPC.
 namespace ipc {
 template <>
-struct IPDLParamTraits<dom::BrowsingContext> {
+struct IPDLParamTraits<dom::BrowsingContext*> {
   static void Write(IPC::Message* aMsg, IProtocol* aActor,
                     dom::BrowsingContext* aParam);
   static bool Read(const IPC::Message* aMsg, PickleIterator* aIter,

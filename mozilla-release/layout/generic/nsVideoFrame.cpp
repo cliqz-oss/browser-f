@@ -238,18 +238,19 @@ already_AddRefed<Layer> nsVideoFrame::BuildLayer(
   return result.forget();
 }
 
-class DispatchResizeToControls : public Runnable {
+class DispatchResizeEvent : public Runnable {
  public:
-  explicit DispatchResizeToControls(nsIContent* aContent)
-      : mozilla::Runnable("DispatchResizeToControls"), mContent(aContent) {}
+  explicit DispatchResizeEvent(nsIContent* aContent, const nsString& aName)
+      : mozilla::Runnable("DispatchResizeEvent"),
+        mContent(aContent),
+        mName(aName) {}
   NS_IMETHOD Run() override {
-    nsContentUtils::DispatchTrustedEvent(
-        mContent->OwnerDoc(), mContent,
-        NS_LITERAL_STRING("resizevideocontrols"), CanBubble::eNo,
-        Cancelable::eNo);
+    nsContentUtils::DispatchTrustedEvent(mContent->OwnerDoc(), mContent, mName,
+                                         CanBubble::eNo, Cancelable::eNo);
     return NS_OK;
   }
   nsCOMPtr<nsIContent> mContent;
+  nsString mName;
 };
 
 void nsVideoFrame::Reflow(nsPresContext* aPresContext, ReflowOutput& aMetrics,
@@ -271,7 +272,7 @@ void nsVideoFrame::Reflow(nsPresContext* aPresContext, ReflowOutput& aMetrics,
   const nscoord borderBoxISize =
       aReflowInput.ComputedISize() +
       aReflowInput.ComputedLogicalBorderPadding().IStartEnd(myWM);
-  const bool isBSizeShrinkWrapping = (contentBoxBSize == NS_INTRINSICSIZE);
+  const bool isBSizeShrinkWrapping = (contentBoxBSize == NS_UNCONSTRAINEDSIZE);
 
   nscoord borderBoxBSize;
   if (!isBSizeShrinkWrapping) {
@@ -354,10 +355,12 @@ void nsVideoFrame::Reflow(nsPresContext* aPresContext, ReflowOutput& aMetrics,
       FinishReflowChild(child, aPresContext, kidDesiredSize, &kidReflowInput,
                         borderPadding.left, borderPadding.top, 0);
 
-      if (child->GetContent() == videoControlsDiv &&
-          child->GetSize() != oldChildSize) {
+      if (child->GetSize() != oldChildSize) {
+        const nsString name = child->GetContent() == videoControlsDiv
+                                  ? NS_LITERAL_STRING("resizevideocontrols")
+                                  : NS_LITERAL_STRING("resizecaption");
         RefPtr<Runnable> event =
-            new DispatchResizeToControls(child->GetContent());
+            new DispatchResizeEvent(child->GetContent(), name);
         nsContentUtils::AddScriptRunner(event);
       }
     } else {
@@ -366,7 +369,7 @@ void nsVideoFrame::Reflow(nsPresContext* aPresContext, ReflowOutput& aMetrics,
   }
 
   if (isBSizeShrinkWrapping) {
-    if (contentBoxBSize == NS_INTRINSICSIZE) {
+    if (contentBoxBSize == NS_UNCONSTRAINEDSIZE) {
       // We didn't get a BSize from our intrinsic size/ratio, nor did we
       // get one from our controls. Just use BSize of 0.
       contentBoxBSize = 0;

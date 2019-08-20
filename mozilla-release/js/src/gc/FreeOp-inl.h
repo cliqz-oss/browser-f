@@ -9,7 +9,8 @@
 
 #include "gc/FreeOp.h"
 
-#include "gc/Zone.h"
+#include "gc/ZoneAllocator.h"
+#include "js/RefCounted.h"
 
 namespace js {
 
@@ -42,6 +43,14 @@ inline void FreeOp::freeLater(void* p) {
   }
 }
 
-} // namespace js
+template <class T>
+inline void FreeOp::release(gc::Cell* cell, T* p, size_t nbytes, MemoryUse use) {
+  if (p) {
+    RemoveCellMemory(cell, nbytes, use);
+    p->Release();
+  }
+}
 
-#endif // gc_FreeOp_inl_h
+}  // namespace js
+
+#endif  // gc_FreeOp_inl_h

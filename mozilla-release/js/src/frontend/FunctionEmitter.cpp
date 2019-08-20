@@ -220,7 +220,10 @@ bool FunctionEmitter::emitAsmJSModule() {
 
 bool FunctionEmitter::emitFunction() {
   // Make the function object a literal in the outer script's pool.
-  unsigned index = bce_->perScriptData().objectList().add(funbox_);
+  uint32_t index;
+  if (!bce_->perScriptData().gcThingList().append(funbox_, &index)) {
+    return false;
+  }
 
   //                [stack]
 
@@ -475,16 +478,9 @@ bool FunctionScriptEmitter::prepareForBody() {
     }
   }
 
-  if (funbox_->function()->kind() ==
-      JSFunction::FunctionKind::ClassConstructor) {
-    if (funbox_->isDerivedClassConstructor()) {
-      if (!bce_->emitCopyInitializersToLocalInitializers()) {
-        //          [stack]
-        return false;
-      }
-    } else {
-      if (!bce_->emitInitializeInstanceFields(
-              BytecodeEmitter::IsSuperCall::No)) {
+  if (funbox_->kind() == JSFunction::FunctionKind::ClassConstructor) {
+    if (!funbox_->isDerivedClassConstructor()) {
+      if (!bce_->emitInitializeInstanceFields()) {
         //          [stack]
         return false;
       }

@@ -21,6 +21,7 @@ declTest("destroy actor by iframe remove", {
         const TOPIC = "test-js-window-actor-willdestroy";
         Services.obs.addObserver(function obs(subject, topic, data) {
           ok(data, "willDestroyCallback data should be true.");
+          is(subject, actorChild, "Should have this value");
 
           Services.obs.removeObserver(obs, TOPIC);
           resolve();
@@ -31,6 +32,7 @@ declTest("destroy actor by iframe remove", {
         const TOPIC = "test-js-window-actor-diddestroy";
         Services.obs.addObserver(function obs(subject, topic, data) {
           ok(data, "didDestroyCallback data should be true.");
+          is(subject, actorChild, "Should have this value");
 
           Services.obs.removeObserver(obs, TOPIC);
           resolve();
@@ -41,8 +43,11 @@ declTest("destroy actor by iframe remove", {
       content.document.getElementById("frame").remove();
       await Promise.all([willDestroyPromise, didDestroyPromise]);
 
-      Assert.throws(() => child.getActor("Test"),
-        /InvalidStateError/, "Should throw if frame destroy.");
+      Assert.throws(
+        () => child.getActor("Test"),
+        /InvalidStateError/,
+        "Should throw if frame destroy."
+      );
     });
   },
 });
@@ -67,8 +72,11 @@ declTest("destroy actor by page navigates", {
       ok(actorChild, "JSWindowActorChild should have value.");
       await ContentTaskUtils.waitForEvent(frame, "load");
 
-      Assert.throws(() => child.getActor("Test"),
-              /InvalidStateError/, "Should throw if frame destroy.");
+      Assert.throws(
+        () => child.getActor("Test"),
+        /InvalidStateError/,
+        "Should throw if frame destroy."
+      );
     });
   },
 });

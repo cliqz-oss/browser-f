@@ -24,7 +24,7 @@ push_apk_description_schema = Schema({
     Required('label'): task_description_schema['label'],
     Required('description'): task_description_schema['description'],
     Required('job-from'): task_description_schema['job-from'],
-    Required('attributes'): object,
+    Required('attributes'): task_description_schema['attributes'],
     Required('treeherder'): task_description_schema['treeherder'],
     Required('run-on-projects'): task_description_schema['run-on-projects'],
     Required('worker-type'): optionally_keyed_by('release-level', basestring),
@@ -36,32 +36,69 @@ push_apk_description_schema = Schema({
 })
 
 
-PLATFORM_REGEX = re.compile(r'build-signing-android-(\S+)/(\S+)')
+PLATFORM_REGEX = re.compile(r'build-signing-android-(\S+)-nightly')
 
 transforms = TransformSequence()
 transforms.add_validate(push_apk_description_schema)
 
 
 @transforms.add
+def validate_dependent_tasks(config, jobs):
+    for job in jobs:
+        check_every_architecture_is_present_in_dependent_tasks(
+            config.params['project'], job['dependent-tasks']
+        )
+        yield job
+
+
+_REQUIRED_ARCHITECTURES = {
+    'android-aarch64-nightly',
+    'android-api-16-nightly',
+    'android-x86_64-nightly',
+    'android-x86-nightly',
+}
+
+
+def check_every_architecture_is_present_in_dependent_tasks(project, dependent_tasks):
+    dep_platforms = set(t.attributes.get('build_platform') for t in dependent_tasks)
+    missed_architectures = _REQUIRED_ARCHITECTURES - dep_platforms
+    if missed_architectures:
+        raise Exception('''One or many required architectures are missing.
+
+Required architectures: {}.
+Given dependencies: {}.
+'''.format(_REQUIRED_ARCHITECTURES, dependent_tasks)
+        )
+
+
+@transforms.add
 def make_task_description(config, jobs):
     for job in jobs:
         job['dependencies'] = generate_dependencies(job['dependent-tasks'])
-        job['worker']['upstream-artifacts'] = generate_upstream_artifacts(job, job['dependencies'])
+        job['worker']['upstream-artifacts'] = generate_upstream_artifacts(
+            job, job['dependencies']
+        )
 
-        params_kwargs = {
-            'release-level': config.params.release_level(),
-            'release-type': config.params['release_type'],
-        }
+        resolve_keyed_by(
+            job, 'worker.google-play-track', item_name=job['name'],
+            **{'release-type': config.params['release_type']}
+        )
+        resolve_keyed_by(
+            job, 'worker.commit', item_name=job['name'],
+            **{'release-level': config.params.release_level()}
+        )
 
-        for key in (
-            'worker.commit',
-            'worker.google-play-track',
-            'worker.rollout-percentage',
-            'worker-type',
-        ):
-            resolve_keyed_by(job, key, item_name=job['name'], **params_kwargs)
+        resolve_keyed_by(
+            job, 'worker.rollout-percentage', item_name=job['name'],
+            **{'release-type': config.params['release_type']}
+        )
 
-        job['scopes'] = [get_push_apk_scope(config, job['attributes'].get('release-type'))]
+        job['scopes'] = [get_push_apk_scope(config)]
+
+        resolve_keyed_by(
+            job, 'worker-type', item_name=job['name'],
+            **{'release-level': config.params.release_level()}
+        )
 
         yield job
 

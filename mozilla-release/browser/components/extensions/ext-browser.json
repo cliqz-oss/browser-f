@@ -121,6 +121,14 @@
       ["menusInternal"]
     ]
   },
+  "normandyAddonStudy": {
+    "url": "chrome://browser/content/parent/ext-normandyAddonStudy.js",
+    "schema": "chrome://browser/content/schemas/normandyAddonStudy.json",
+    "scopes": ["addon_parent", "content_parent", "devtools_parent"],
+    "paths": [
+      ["normandyAddonStudy"]
+    ]
+  },
   "omnibox": {
     "url": "chrome://browser/content/parent/ext-omnibox.js",
     "schema": "chrome://browser/content/schemas/omnibox.json",
@@ -188,6 +196,22 @@
     "events": ["update", "disable"],
     "paths": [
       ["tabs"]
+    ]
+  },
+  "topSites": {
+    "url": "chrome://browser/content/parent/ext-topSites.js",
+    "schema": "chrome://browser/content/schemas/top_sites.json",
+    "scopes": ["addon_parent"],
+    "paths": [
+      ["topSites"]
+    ]
+  },
+  "urlbar": {
+    "url": "chrome://browser/content/parent/ext-urlbar.js",
+    "schema": "chrome://browser/content/schemas/urlbar.json",
+    "scopes": ["addon_parent"],
+    "paths": [
+      ["urlbar"]
     ]
   },
   "urlOverrides": {

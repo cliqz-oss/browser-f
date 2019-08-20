@@ -16,6 +16,7 @@ import shutil
 import sys
 import tempfile
 import time
+import traceback
 
 import mozcrash
 import mozdevice
@@ -33,7 +34,7 @@ class RemoteGTests(object):
     def __init__(self):
         self.device = None
 
-    def build_environment(self, shuffle, test_filter):
+    def build_environment(self, shuffle, test_filter, enable_webrender):
         """
            Create and return a dictionary of all the appropriate env variables
            and values.
@@ -53,11 +54,15 @@ class RemoteGTests(object):
             env["GTEST_SHUFFLE"] = "True"
         if test_filter:
             env["GTEST_FILTER"] = test_filter
+        if enable_webrender:
+            env["MOZ_WEBRENDER"] = "1"
+        else:
+            env["MOZ_WEBRENDER"] = "0"
 
         return env
 
     def run_gtest(self, test_dir, shuffle, test_filter, package, adb_path, device_serial,
-                  remote_test_root, libxul_path, symbols_path):
+                  remote_test_root, libxul_path, symbols_path, enable_webrender):
         """
            Launch the test app, run gtest, collect test results and wait for completion.
            Return False if a crash or other failure is detected, else True.
@@ -93,7 +98,7 @@ class RemoteGTests(object):
             if not os.path.isdir(f):
                 self.device.push(f, self.remote_profile)
 
-        env = self.build_environment(shuffle, test_filter)
+        env = self.build_environment(shuffle, test_filter, enable_webrender)
         args = ["-unittest", "--gtest_death_test_style=threadsafe",
                 "-profile %s" % self.remote_profile]
         if 'geckoview' in self.package:
@@ -236,13 +241,13 @@ class AppWaiter(object):
         return top
 
     def wait_for_start(self, package):
-        if self.update_log():
-            # if log content is available, assume the app started; otherwise,
-            # a short run (few tests) might complete without ever being detected
-            # in the foreground
-            return package
         top = None
         while top != package and not self.start_timed_out():
+            if self.update_log():
+                # if log content is available, assume the app started; otherwise,
+                # a short run (few tests) might complete without ever being detected
+                # in the foreground
+                return package
             time.sleep(1)
             top = self.get_top()
         return top
@@ -264,6 +269,7 @@ class AppWaiter(object):
             if not self.update_log():
                 top = self.get_top()
                 if top != package or self.output_timed_out():
+                    time.sleep(self.output_poll_interval)
                     break
             time.sleep(self.output_poll_interval)
         self.update_log()
@@ -348,6 +354,11 @@ class remoteGtestOptions(OptionParser):
         self.add_option("--tests-path",
                         default=None,
                         help="Path to gtest directory containing test support files.")
+        self.add_option("--enable-webrender",
+                        action="store_true",
+                        dest="enable_webrender",
+                        default=False,
+                        help="Enable the WebRender compositor in Gecko.")
 
 
 def update_mozinfo():
@@ -382,11 +393,12 @@ def main():
                                   options.shuffle, test_filter, options.package,
                                   options.adb_path, options.device_serial,
                                   options.remote_test_root, options.libxul_path,
-                                  options.symbols_path)
+                                  options.symbols_path, options.enable_webrender)
     except KeyboardInterrupt:
         log.info("gtest | Received keyboard interrupt")
     except Exception as e:
         log.error(str(e))
+        traceback.print_exc()
         if isinstance(e, mozdevice.ADBTimeoutError):
             device_exception = True
     finally:

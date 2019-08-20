@@ -4,7 +4,7 @@
  * You can obtain one at http://mozilla.org/MPL/2.0/.
  */
 
-[Constructor(DOMString type, optional FrameCrashedEventInit eventInitDict), ChromeOnly]
+[Constructor(DOMString type, optional FrameCrashedEventInit eventInitDict = {}), ChromeOnly]
 interface FrameCrashedEvent : Event
 {
   /**
@@ -21,5 +21,5 @@ interface FrameCrashedEvent : Event
 dictionary FrameCrashedEventInit : EventInit
 {
   unsigned long long browsingContextId = 0;
-  boolean isTopFrame = false;
+  boolean isTopFrame = true;
 };

@@ -39,7 +39,7 @@
 #include "nsIScriptSecurityManager.h"
 #include "nsIPrincipal.h"
 #include "nsJSUtils.h"
-#include "gfxPrefs.h"
+
 #include "nsIXULRuntime.h"
 #include "GeckoProfiler.h"
 
@@ -994,7 +994,7 @@ static bool ProcessArgs(AutoJSAPI& jsapi, char** argv, int argc,
         JS::SourceText<mozilla::Utf8Unit> srcBuf;
         if (srcBuf.init(cx, argv[i], strlen(argv[i]),
                         JS::SourceOwnership::Borrowed)) {
-          JS::Evaluate(cx, opts, srcBuf, &rval);
+          JS::EvaluateDontInflate(cx, opts, srcBuf, &rval);
         }
 
         isInteractive = false;
@@ -1327,8 +1327,6 @@ int XRE_XPCShellMain(int argc, char** argv, char** envp,
       return 1;
     }
 
-    // Initialize graphics prefs on the main thread, if not already done
-    gfxPrefs::GetSingleton();
     // Initialize e10s check on the main thread, if not already done
     BrowserTabsRemoteAutostart();
 #ifdef XP_WIN
@@ -1376,8 +1374,7 @@ int XRE_XPCShellMain(int argc, char** argv, char** envp,
         return 1;
       }
 
-      if (!JS_DefineFunctions(cx, glob, glob_functions) ||
-          !JS_DefineProfilingFunctions(cx, glob)) {
+      if (!JS_DefineFunctions(cx, glob, glob_functions)) {
         return 1;
       }
 

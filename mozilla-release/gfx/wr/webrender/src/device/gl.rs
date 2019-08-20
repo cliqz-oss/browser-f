@@ -166,7 +166,7 @@ fn supports_extension(extensions: &[String], extension: &str) -> bool {
     extensions.iter().any(|s| s == extension)
 }
 
-fn get_shader_version(gl: &gl::Gl) -> &'static str {
+fn get_shader_version(gl: &dyn gl::Gl) -> &'static str {
     match gl.get_type() {
         gl::GlType::Gl => SHADER_VERSION_GL,
         gl::GlType::Gles => SHADER_VERSION_GLES,
@@ -295,7 +295,7 @@ impl VertexAttribute {
         divisor: gl::GLuint,
         stride: gl::GLint,
         offset: gl::GLuint,
-        gl: &gl::Gl,
+        gl: &dyn gl::Gl,
     ) {
         gl.enable_vertex_attrib_array(attr_index);
         gl.vertex_attrib_divisor(attr_index, divisor);
@@ -365,7 +365,7 @@ impl VertexDescriptor {
         attributes: &[VertexAttribute],
         start_index: usize,
         divisor: u32,
-        gl: &gl::Gl,
+        gl: &dyn gl::Gl,
         vbo: VBOId,
     ) {
         vbo.bind(gl);
@@ -383,7 +383,7 @@ impl VertexDescriptor {
         }
     }
 
-    fn bind(&self, gl: &gl::Gl, main: VBOId, instance: VBOId) {
+    fn bind(&self, gl: &dyn gl::Gl, main: VBOId, instance: VBOId) {
         Self::bind_attributes(self.vertex_attributes, 0, 0, gl, main);
 
         if !self.instance_attributes.is_empty() {
@@ -397,19 +397,19 @@ impl VertexDescriptor {
 }
 
 impl VBOId {
-    fn bind(&self, gl: &gl::Gl) {
+    fn bind(&self, gl: &dyn gl::Gl) {
         gl.bind_buffer(gl::ARRAY_BUFFER, self.0);
     }
 }
 
 impl IBOId {
-    fn bind(&self, gl: &gl::Gl) {
+    fn bind(&self, gl: &dyn gl::Gl) {
         gl.bind_buffer(gl::ELEMENT_ARRAY_BUFFER, self.0);
     }
 }
 
 impl FBOId {
-    fn bind(&self, gl: &gl::Gl, target: FBOTarget) {
+    fn bind(&self, gl: &dyn gl::Gl, target: FBOTarget) {
         let target = match target {
             FBOTarget::Read => gl::READ_FRAMEBUFFER,
             FBOTarget::Draw => gl::DRAW_FRAMEBUFFER,
@@ -816,11 +816,11 @@ pub struct ProgramCache {
 
     /// Optional trait object that allows the client
     /// application to handle ProgramCache updating
-    program_cache_handler: Option<Box<ProgramCacheObserver>>,
+    program_cache_handler: Option<Box<dyn ProgramCacheObserver>>,
 }
 
 impl ProgramCache {
-    pub fn new(program_cache_observer: Option<Box<ProgramCacheObserver>>) -> Rc<Self> {
+    pub fn new(program_cache_observer: Option<Box<dyn ProgramCacheObserver>>) -> Rc<Self> {
         Rc::new(
             ProgramCache {
                 entries: RefCell::new(FastHashMap::default()),
@@ -903,6 +903,8 @@ pub struct Capabilities {
     /// is available on some mobile GPUs. This allows fast access to
     /// the per-pixel tile memory.
     pub supports_pixel_local_storage: bool,
+    /// Whether advanced blend equations are supported.
+    pub supports_advanced_blend_equation: bool,
     /// Whether KHR_debug is supported for getting debug messages from
     /// the driver.
     pub supports_khr_debug: bool,
@@ -940,11 +942,11 @@ enum TexStorageUsage {
 }
 
 pub struct Device {
-    gl: Rc<gl::Gl>,
+    gl: Rc<dyn gl::Gl>,
 
     /// If non-None, |gl| points to a profiling wrapper, and this points to the
     /// underling Gl instance.
-    base_gl: Option<Rc<gl::Gl>>,
+    base_gl: Option<Rc<dyn gl::Gl>>,
 
     // device state
     bound_textures: [gl::GLuint; 16],
@@ -1000,6 +1002,9 @@ pub struct Device {
 
     // GL extensions
     extensions: Vec<String>,
+
+    /// Dumps the source of the shader with the given name
+    dump_shader_source: Option<String>,
 }
 
 /// Contains the parameters necessary to bind a draw target.
@@ -1170,11 +1175,12 @@ impl From<DrawTarget> for ReadTarget {
 
 impl Device {
     pub fn new(
-        mut gl: Rc<gl::Gl>,
+        mut gl: Rc<dyn gl::Gl>,
         resource_override_path: Option<PathBuf>,
         upload_method: UploadMethod,
         cached_programs: Option<Rc<ProgramCache>>,
         allow_pixel_local_storage_support: bool,
+        dump_shader_source: Option<String>,
     ) -> Device {
         let mut max_texture_size = [0];
         let mut max_texture_layers = [0];
@@ -1307,6 +1313,13 @@ impl Device {
             ext_framebuffer_fetch &&
             ext_pixel_local_storage;
 
+        // KHR_blend_equation_advanced renders incorrectly on Adreno
+        // devices. This has only been confirmed up to Adreno 5xx, and has been
+        // fixed for Android 9, so this condition could be made more specific.
+        let supports_advanced_blend_equation =
+            supports_extension(&extensions, "GL_KHR_blend_equation_advanced") &&
+            !renderer_name.starts_with("Adreno");
+
         // On Adreno GPUs PBO texture upload is only performed asynchronously
         // if the stride of the data in the PBO is a multiple of 256 bytes.
         // Other platforms may have similar requirements and should be added
@@ -1330,6 +1343,7 @@ impl Device {
                 supports_copy_image_sub_data,
                 supports_blit_to_texture_array,
                 supports_pixel_local_storage,
+                supports_advanced_blend_equation,
                 supports_khr_debug,
             },
 
@@ -1357,14 +1371,15 @@ impl Device {
             extensions,
             texture_storage_usage,
             optimal_pbo_stride,
+            dump_shader_source,
         }
     }
 
-    pub fn gl(&self) -> &gl::Gl {
+    pub fn gl(&self) -> &dyn gl::Gl {
         &*self.gl
     }
 
-    pub fn rc_gl(&self) -> &Rc<gl::Gl> {
+    pub fn rc_gl(&self) -> &Rc<dyn gl::Gl> {
         &self.gl
     }
 
@@ -1420,7 +1435,7 @@ impl Device {
     }
 
     pub fn compile_shader(
-        gl: &gl::Gl,
+        gl: &dyn gl::Gl,
         name: &str,
         shader_type: gl::GLenum,
         source: &String,
@@ -1703,6 +1718,13 @@ impl Device {
                         return Err(err);
                     }
                 };
+
+            // Check if shader source should be dumped
+            if Some(info.base_filename) == self.dump_shader_source.as_ref().map(String::as_ref) {
+                let path = std::path::Path::new(info.base_filename);
+                std::fs::write(path.with_extension("vert"), vs_source).unwrap();
+                std::fs::write(path.with_extension("frag"), fs_source).unwrap();
+            }
 
             // Attach shaders
             self.gl.attach_shader(program.id, vs_id);
@@ -2201,7 +2223,7 @@ impl Device {
                         dest_rect.size.width.abs(),
                         dest_rect.size.height.abs(),
                     ),
-                ).intersection(&dimensions.into()).unwrap_or(DeviceIntRect::zero());
+                ).intersection(&dimensions.into()).unwrap_or_else(DeviceIntRect::zero);
 
                 self.bind_read_target_impl(fbo);
                 self.bind_texture_impl(
@@ -3145,7 +3167,7 @@ impl Device {
         }
     }
 
-    fn log_driver_messages(gl: &gl::Gl) {
+    fn log_driver_messages(gl: &dyn gl::Gl) {
         for msg in gl.get_debug_messages() {
             let level = match msg.severity {
                 gl::DEBUG_SEVERITY_HIGH => Level::Error,
@@ -3280,7 +3302,7 @@ impl PixelBuffer {
 }
 
 struct UploadTarget<'a> {
-    gl: &'a gl::Gl,
+    gl: &'a dyn gl::Gl,
     bgra_format: gl::GLuint,
     optimal_pbo_stride: NonZeroUsize,
     texture: &'a Texture,

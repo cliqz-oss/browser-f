@@ -1162,9 +1162,9 @@ class AsyncPanZoomController {
    * Returns true if the newly sampled value is different from the previously
    * sampled value.
    *
-   * (This is only relevant when |gfxPrefs::APZFrameDelayEnabled() == true|.
-   * Otherwise, GetCurrentAsyncTransform() always reflects what's stored in
-   * |Metrics()| immediately, without any delay.)
+   * (This is only relevant when StaticPrefs::apz_frame_delay_enabled() is
+   * true. Otherwise, GetCurrentAsyncTransform() always reflects what's stored
+   * in |Metrics()| immediately, without any delay.)
    */
   bool SampleCompositedAsyncTransform();
 
@@ -1609,6 +1609,8 @@ class AsyncPanZoomController {
   LayersId GetLayersId() const { return mLayersId; }
 
   wr::RenderRoot GetRenderRoot() const { return mRenderRoot; }
+
+  bool IsPinchZooming() const { return mState == PINCHING; }
 
  private:
   // Extra offset to add to the async scroll position for testing

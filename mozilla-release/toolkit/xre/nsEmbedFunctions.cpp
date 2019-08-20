@@ -90,6 +90,7 @@
 #include "mozilla/net/SocketProcessImpl.h"
 
 #include "GeckoProfiler.h"
+#include "BaseProfiler.h"
 
 #if defined(MOZ_SANDBOX) && defined(XP_WIN)
 #  include "mozilla/sandboxTarget.h"
@@ -202,7 +203,7 @@ nsresult XRE_InitEmbedding2(nsIFile* aLibXULDirectory, nsIFile* aAppDirectory,
   // If the app wants to autoregister every time (for instance, if it's debug),
   // it can do so after we return from this function.
 
-  nsAppStartupNotifier::NotifyObservers(APPSTARTUP_TOPIC);
+  nsAppStartupNotifier::NotifyObservers(APPSTARTUP_CATEGORY);
 
   return NS_OK;
 }
@@ -333,6 +334,8 @@ nsresult XRE_InitChildProcess(int aArgc, char* aArgv[],
 
   recordreplay::Initialize(aArgc, aArgv);
 
+  NS_SetCurrentThreadName("MainThread");
+
 #ifdef MOZ_ASAN_REPORTER
   // In ASan reporter builds, we need to set ASan's log_path as early as
   // possible, so it dumps its errors into files there instead of using
@@ -391,6 +394,8 @@ nsresult XRE_InitChildProcess(int aArgc, char* aArgv[],
 
   mozilla::LogModule::Init(aArgc, aArgv);
 
+  AUTO_BASE_PROFILER_LABEL("XRE_InitChildProcess (around Gecko Profiler)",
+                           OTHER);
   AUTO_PROFILER_INIT;
   AUTO_PROFILER_LABEL("XRE_InitChildProcess", OTHER);
 
@@ -808,7 +813,10 @@ nsresult XRE_InitParentProcess(int aArgc, char* aArgv[],
 
   mozilla::LogModule::Init(aArgc, aArgv);
 
+  AUTO_BASE_PROFILER_LABEL("XRE_InitParentProcess (around Gecko Profiler)",
+                           OTHER);
   AUTO_PROFILER_INIT;
+  AUTO_PROFILER_LABEL("XRE_InitParentProcess", OTHER);
 
   ScopedXREEmbed embed;
 

@@ -122,7 +122,6 @@
   MACRO(dotGenerator, dotGenerator, ".generator")                              \
   MACRO(dotThis, dotThis, ".this")                                             \
   MACRO(dotInitializers, dotInitializers, ".initializers")                     \
-  MACRO(dotLocalInitializers, dotLocalInitializers, ".localInitializers")      \
   MACRO(dotFieldKeys, dotFieldKeys, ".fieldKeys")                              \
   MACRO(each, each, "each")                                                    \
   MACRO(elementType, elementType, "elementType")                               \
@@ -211,6 +210,7 @@
   MACRO(index, index, "index")                                                 \
   MACRO(infinity, infinity, "infinity")                                        \
   MACRO(Infinity, Infinity, "Infinity")                                        \
+  MACRO(initial, initial, "initial")                                           \
   MACRO(InitializeCollator, InitializeCollator, "InitializeCollator")          \
   MACRO(InitializeDateTimeFormat, InitializeDateTimeFormat,                    \
         "InitializeDateTimeFormat")                                            \

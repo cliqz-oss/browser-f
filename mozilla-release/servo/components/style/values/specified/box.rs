@@ -25,7 +25,7 @@ use style_traits::{SpecifiedValueInfo, StyleParseErrorKind, ToCss};
 fn moz_display_values_enabled(context: &ParserContext) -> bool {
     use crate::gecko_bindings::structs;
     context.in_ua_or_chrome_sheet() ||
-        unsafe { structs::StaticPrefs_sVarCache_layout_css_xul_display_values_content_enabled }
+        unsafe { structs::StaticPrefs::sVarCache_layout_css_xul_display_values_content_enabled }
 }
 
 #[cfg(feature = "gecko")]
@@ -33,7 +33,7 @@ fn moz_box_display_values_enabled(context: &ParserContext) -> bool {
     use crate::gecko_bindings::structs;
     context.in_ua_or_chrome_sheet() ||
         unsafe {
-            structs::StaticPrefs_sVarCache_layout_css_xul_box_display_values_content_enabled
+            structs::StaticPrefs::sVarCache_layout_css_xul_box_display_values_content_enabled
         }
 }
 
@@ -1129,11 +1129,13 @@ pub enum Appearance {
     ButtonArrowUp,
     /// A rectangular button that contains complex content
     /// like images (e.g. HTML <button> elements)
+    #[css(skip)]
     ButtonBevel,
     /// The focus outline box inside of a button.
     #[parse(condition = "ParserContext::in_ua_or_chrome_sheet")]
     ButtonFocus,
     /// The caret of a text area
+    #[css(skip)]
     Caret,
     /// A dual toolbar button (e.g., a Back button with a dropdown)
     #[parse(condition = "ParserContext::in_ua_or_chrome_sheet")]
@@ -1146,6 +1148,7 @@ pub enum Appearance {
     /// List boxes.
     Listbox,
     /// A listbox item.
+    #[css(skip)]
     Listitem,
     /// Menu Bar background
     #[parse(condition = "ParserContext::in_ua_or_chrome_sheet")]
@@ -1165,8 +1168,10 @@ pub enum Appearance {
     /// The dropdown button(s) that open up a dropdown list.
     MenulistButton,
     /// The text part of a dropdown list, to left of button.
+    #[parse(condition = "ParserContext::in_ua_or_chrome_sheet")]
     MenulistText,
     /// An editable textfield with a dropdown list (a combobox).
+    #[css(skip)]
     MenulistTextfield,
     /// Menu Popup background.
     #[parse(condition = "ParserContext::in_ua_or_chrome_sheet")]

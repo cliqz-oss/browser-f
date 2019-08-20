@@ -107,7 +107,7 @@ nsChangeHint ComputedStyle::CalcStyleDifference(const ComputedStyle& aNewStyle,
   // FIXME: The order of these DO_STRUCT_DIFFERENCE calls is no longer
   // significant.  With a small amount of effort, we could replace them with a
   // #include "nsStyleStructList.h".
-  DO_STRUCT_DIFFERENCE(Display);
+  DO_STRUCT_DIFFERENCE_WITH_ARGS(Display, (, *StylePosition()));
   DO_STRUCT_DIFFERENCE(XUL);
   DO_STRUCT_DIFFERENCE(Column);
   DO_STRUCT_DIFFERENCE(Content);
@@ -129,7 +129,6 @@ nsChangeHint ComputedStyle::CalcStyleDifference(const ComputedStyle& aNewStyle,
   DO_STRUCT_DIFFERENCE(TextReset);
   DO_STRUCT_DIFFERENCE(Effects);
   DO_STRUCT_DIFFERENCE(Background);
-  DO_STRUCT_DIFFERENCE(Color);
 
 #undef DO_STRUCT_DIFFERENCE
 #undef DO_STRUCT_DIFFERENCE_WITH_ARGS
@@ -297,10 +296,10 @@ static nscolor ExtractColor(const ComputedStyle& aStyle,
   return ExtractColor(aStyle, aColor.AsColor());
 }
 
-static nscolor ExtractColor(ComputedStyle& aStyle,
-                            const nsStyleSVGPaint& aPaintServer) {
-  return aPaintServer.Type() == eStyleSVGPaintType_Color
-             ? aPaintServer.GetColor(&aStyle)
+static nscolor ExtractColor(const ComputedStyle& aStyle,
+                            const StyleSVGPaint& aPaintServer) {
+  return aPaintServer.kind.IsColor()
+             ? ExtractColor(aStyle, aPaintServer.kind.AsColor())
              : NS_RGBA(0, 0, 0, 0);
 }
 
@@ -374,8 +373,6 @@ Maybe<StyleStructID> ComputedStyle::LookupStruct(const nsACString& aName) {
 ComputedStyle* ComputedStyle::GetCachedLazyPseudoStyle(
     PseudoStyleType aPseudo) const {
   MOZ_ASSERT(PseudoStyle::IsPseudoElement(aPseudo));
-  MOZ_ASSERT(!IsLazilyCascadedPseudoElement(),
-             "Lazy pseudos can't inherit lazy pseudos");
 
   if (nsCSSPseudoElements::PseudoElementSupportsUserActionState(aPseudo)) {
     return nullptr;
@@ -396,5 +393,18 @@ void ComputedStyle::AddSizeOfIncludingThis(nsWindowSizes& aSizes,
   mSource.AddSizeOfExcludingThis(aSizes);
   mCachedInheritingStyles.AddSizeOfIncludingThis(aSizes, aCVsSize);
 }
+
+#ifdef DEBUG
+bool ComputedStyle::EqualForCachedAnonymousContentStyle(
+    const ComputedStyle& aOther) const {
+  // One thing we can't add UA rules to prevent is different -x-lang
+  // values being inherited in.  So we use this FFI function function rather
+  // than rely on CalcStyleDifference, which can't tell us which specific
+  // properties have changed.
+  return Servo_ComputedValues_EqualForCachedAnonymousContentStyle(this,
+                                                                  &aOther);
+}
+
+#endif
 
 }  // namespace mozilla

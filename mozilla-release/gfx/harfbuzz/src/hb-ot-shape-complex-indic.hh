@@ -278,7 +278,7 @@ matra_position_indic (hb_codepoint_t u, indic_position_t side)
     case POS_POST_C:	return MATRA_POS_RIGHT (u);
     case POS_ABOVE_C:	return MATRA_POS_TOP (u);
     case POS_BELOW_C:	return MATRA_POS_BOTTOM (u);
-  };
+  }
   return side;
 }
 
@@ -359,7 +359,7 @@ set_indic_properties (hb_glyph_info_t &info)
   /* According to ScriptExtensions.txt, these Grantha marks may also be used in Tamil,
    * so the Indic shaper needs to know their categories. */
   else if (unlikely (u == 0x11301u || u == 0x11303u)) cat = OT_SM;
-  else if (unlikely (u == 0x1133cu)) cat = OT_N;
+  else if (unlikely (u == 0x1133Bu || u == 0x1133Cu)) cat = OT_N;
 
   else if (unlikely (u == 0x0AFBu)) cat = OT_N; /* https://github.com/harfbuzz/harfbuzz/issues/552 */
 

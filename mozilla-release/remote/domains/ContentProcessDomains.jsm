@@ -6,7 +6,9 @@
 
 var EXPORTED_SYMBOLS = ["ContentProcessDomains"];
 
-const {XPCOMUtils} = ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+const { XPCOMUtils } = ChromeUtils.import(
+  "resource://gre/modules/XPCOMUtils.jsm"
+);
 
 const ContentProcessDomains = {};
 
@@ -15,7 +17,6 @@ XPCOMUtils.defineLazyModuleGetters(ContentProcessDomains, {
   Emulation: "chrome://remote/content/domains/content/Emulation.jsm",
   Input: "chrome://remote/content/domains/content/Input.jsm",
   Log: "chrome://remote/content/domains/content/Log.jsm",
-  Network: "chrome://remote/content/domains/content/Network.jsm",
   Page: "chrome://remote/content/domains/content/Page.jsm",
   Performance: "chrome://remote/content/domains/content/Performance.jsm",
   Runtime: "chrome://remote/content/domains/content/Runtime.jsm",

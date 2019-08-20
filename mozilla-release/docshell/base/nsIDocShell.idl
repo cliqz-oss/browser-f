@@ -43,6 +43,7 @@ class ClientSource;
 interface nsIURI;
 interface nsIChannel;
 interface nsIContentViewer;
+interface nsIContentSecurityPolicy;
 interface nsIDocShellLoadInfo;
 interface nsIEditor;
 interface nsIEditingSession;
@@ -376,8 +377,6 @@ interface nsIDocShell : nsIDocShellTreeItem
 
   attribute nsILayoutHistoryState layoutHistoryState;
 
-  readonly attribute boolean shouldSaveLayoutState;
-
   /**
    * The SecureBrowserUI object for this docshell.  This is set by XUL
    * <browser> or nsWebBrowser for their root docshell.
@@ -590,7 +589,7 @@ interface nsIDocShell : nsIDocShellTreeItem
    * visible, and thus is not a good candidate for certain optimizations
    * like image frame discarding. Docshells are active unless told otherwise.
    */
-  attribute boolean isActive;
+  [infallible] attribute boolean isActive;
 
   /**
    * The ID of the docshell in the session history.
@@ -612,8 +611,12 @@ interface nsIDocShell : nsIDocShellTreeItem
   /**
    * Create a new about:blank document and content viewer.
    * @param aPrincipal the principal to use for the new document.
+   * @param aStoragePrincipal the storage principal to use for the new document.
+   * @param aCsp the CSP to use for the new document.
    */
-  void createAboutBlankContentViewer(in nsIPrincipal aPrincipal);
+  void createAboutBlankContentViewer(in nsIPrincipal aPrincipal,
+                                     in nsIPrincipal aStoragePrincipal,
+                                     [optional] in nsIContentSecurityPolicy aCSP);
 
   /**
    * Upon getting, returns the canonical encoding label of the document
@@ -880,6 +883,11 @@ interface nsIDocShell : nsIDocShellTreeItem
    * must disable the menu when this property is false.
    */
   [infallible] readonly attribute boolean mayEnableCharacterEncodingMenu;
+
+  /**
+   * Indicates that the character encoding was autodetected.
+   */
+  [infallible] readonly attribute boolean charsetAutodetected;
 
            attribute  nsIEditor editor;
   readonly attribute  boolean   editable;             /* this docShell is editable */
@@ -1195,4 +1203,17 @@ interface nsIDocShell : nsIDocShellTreeItem
    * Whether developer tools are watching activity in this docshell.
    */
   [infallible] attribute boolean watchedByDevtools;
+
+  /*
+   * Whether or not this docshell is executing a nsIWebNavigation navigation
+   * method.
+   *
+   * This will be true when the following methods are executing:
+   *   nsIWebNavigation.binaryLoadURI
+   *   nsIWebNavigation.goBack
+   *   nsIWebNavigation.goForward
+   *   nsIWebNavigation.gotoIndex
+   *   nsIWebNavigation.loadURI
+   */
+  [infallible] readonly attribute boolean isNavigating;
 };

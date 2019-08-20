@@ -25,6 +25,8 @@ import type {
   Range,
 } from "../../types";
 
+import type { EventListenerCategoryList } from "../../actions/types";
+
 type URL = string;
 
 /**
@@ -94,6 +96,7 @@ export type SourcePayload = {
   sourceMapURL: URL | null,
   introductionUrl: URL | null,
   introductionType: string | null,
+  extensionName: string | null,
 };
 
 /**
@@ -134,11 +137,6 @@ export type PausedPacket = {
     type: string,
     onNext?: Function,
   },
-};
-
-export type ResumedPacket = {
-  from: ActorId,
-  type: string,
 };
 
 /**
@@ -185,7 +183,7 @@ export type TabPayload = {
  */
 export type Actions = {
   paused: Pause => void,
-  resumed: ResumedPacket => void,
+  resumed: ActorId => void,
   newQueuedSources: (QueuedSourceData[]) => void,
   fetchEventListeners: () => void,
   updateWorkers: () => void,
@@ -361,15 +359,17 @@ export type ThreadClient = {
   eventListeners: () => Promise<*>,
   getFrames: (number, number) => FramesResponse,
   getEnvironment: (frame: Frame) => Promise<*>,
-  addListener: (string, Function) => void,
+  on: (string, Function) => void,
   getSources: () => Promise<SourcesPacket>,
   reconfigure: ({ observeAsmJS: boolean }) => Promise<*>,
   getLastPausePacket: () => ?PausedPacket,
   _parent: TabClient,
   actor: ActorId,
+  actorID: ActorId,
   request: (payload: Object) => Promise<*>,
   url: string,
-  setEventListenerBreakpoints: (string[]) => void,
+  setActiveEventBreakpoints: (string[]) => void,
+  getAvailableEventBreakpoints: () => Promise<EventListenerCategoryList>,
   skipBreakpoints: boolean => Promise<{| skip: boolean |}>,
 };
 

@@ -19,9 +19,9 @@ use std::fmt::{self, Write};
 use style_traits::{CssWriter, ToCss};
 
 pub use crate::values::specified::TextAlignKeyword as TextAlign;
-pub use crate::values::specified::TextTransform;
-pub use crate::values::specified::{OverflowWrap, WordBreak};
+pub use crate::values::specified::{LineBreak, OverflowWrap, WordBreak};
 pub use crate::values::specified::{TextDecorationLine, TextEmphasisPosition};
+pub use crate::values::specified::{TextDecorationSkipInk, TextTransform};
 
 /// A computed value for the `initial-letter` property.
 pub type InitialLetter = GenericInitialLetter<CSSFloat, CSSInteger>;
@@ -105,6 +105,7 @@ impl ToComputedValue for specified::WordSpacing {
 pub type LineHeight = GenericLineHeight<NonNegativeNumber, NonNegativeLength>;
 
 #[derive(Clone, Debug, MallocSizeOf, PartialEq, ToResolvedValue)]
+#[repr(C)]
 /// text-overflow.
 /// When the specified value only has one side, that's the "second"
 /// side, and the sides are logical, so "second" means "end".  The

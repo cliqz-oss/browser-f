@@ -12,6 +12,7 @@
 <!ENTITY enableGlodaSearch.label       "Globale Suche und Nachrichtenindizierung aktivieren">
 <!ENTITY enableGlodaSearch.accesskey   "N">
 <!ENTITY dateTimeFormatting.label      "Datums- und Uhrzeitformat">
+<!ENTITY languageSelector.label        "Sprache">
 <!ENTITY allowHWAccel.label            "Hardwarebeschleunigung verwenden, wenn verfügbar">
 <!ENTITY allowHWAccel.accesskey        "H">
 <!ENTITY storeType.label               "Speichermethode für neue Konten:">
@@ -66,9 +67,10 @@
  -->
 <!ENTITY updateApp.version.pre           "Version ">
 <!ENTITY updateApp.version.post          "">
-<!ENTITY updateAuto.label                "Updates automatisch installieren (empfohlen: erhöhte Sicherheit)">
+<!ENTITY updateAppAllow.description      "&brandShortName; erlauben">
+<!ENTITY updateAuto.label                "Updates automatisch zu installieren (empfohlen: erhöhte Sicherheit)">
 <!ENTITY updateAuto.accesskey            "U">
-<!ENTITY updateCheck.label               "Nach Updates suchen, aber Installation manuell durchführen">
+<!ENTITY updateCheck.label               "Nach Updates zu suchen, aber vor der Installation nachfragen">
 <!ENTITY updateCheck.accesskey           "N">
 <!ENTITY updateManual.label              "Nicht nach Updates suchen (nicht empfohlen: Sicherheitsrisiko)">
 <!ENTITY updateManual.accesskey          "d">
@@ -77,6 +79,8 @@
 
 <!ENTITY useService.label                "Einen Hintergrunddienst zum Installieren von Updates verwenden">
 <!ENTITY useService.accesskey            "H">
+
+<!ENTITY updateCrossUserSettingWarning.description "Diese Einstellung betrifft alle Windows-Konten und &brandShortName;-Profile, welche diese Installation von &brandShortName; verwenden.">
 
 <!-- Networking and Disk Space -->
 <!ENTITY showSettings.label             "Einstellungen…">

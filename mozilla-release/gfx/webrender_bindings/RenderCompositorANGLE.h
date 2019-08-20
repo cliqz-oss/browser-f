@@ -24,6 +24,9 @@ struct IDXGIFactory2;
 struct IDXGISwapChain;
 
 namespace mozilla {
+namespace gl {
+class GLLibraryEGL;
+}  // namespace gl
 
 namespace wr {
 

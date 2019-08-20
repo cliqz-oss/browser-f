@@ -14,7 +14,7 @@ class OriginAttributes;
 [ptr] native OriginAttributesPtr(mozilla::OriginAttributes);
 
 interface nsISimpleEnumerator;
-interface nsICookie2;
+interface nsICookie;
 interface nsIFile;
 
 [scriptable, function, uuid(20709db8-8dad-4e45-b33e-6e7c761dfc5d)]
@@ -23,7 +23,7 @@ interface nsIPrivateModeCallback : nsISupports
   void callback();
 };
 
-/** 
+/**
  * An optional interface for accessing or removing the cookies
  * that are in the cookie list
  */
@@ -124,7 +124,7 @@ interface nsICookieManager : nsISupports
   void add(in AUTF8String aHost,
            in AUTF8String aPath,
            in ACString    aName,
-           in ACString    aValue,
+           in AUTF8String aValue,
            in boolean     aIsSecure,
            in boolean     aIsHttpOnly,
            in boolean     aIsSession,
@@ -136,7 +136,7 @@ interface nsICookieManager : nsISupports
   nsresult addNative(in AUTF8String aHost,
                      in AUTF8String aPath,
                      in ACString    aName,
-                     in ACString    aValue,
+                     in AUTF8String aValue,
                      in boolean     aIsSecure,
                      in boolean     aIsHttpOnly,
                      in boolean     aIsSession,
@@ -200,7 +200,7 @@ interface nsICookieManager : nsISupports
    * @param aOriginAttributes The originAttributes of cookies that would be
    *                          retrived.
    *
-   * @return an nsISimpleEnumerator of nsICookie2 objects.
+   * @return an nsISimpleEnumerator of nsICookie objects.
    *
    * @see countCookiesFromHost
    */

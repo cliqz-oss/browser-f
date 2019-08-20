@@ -195,6 +195,12 @@ class AndroidProfileRun(TestingMixin, BaseScript, MozbaseMixin,
                 v = v.format(**interpolation)
             prefs[k] = Preferences.cast(v)
 
+        # Enforce 1proc. This isn't in one of the user.js files because those
+        # are shared with desktop, which wants e10s. We can't interpolate
+        # because the formatting code only works for strings, and this is a
+        # bool pref.
+        prefs["browser.tabs.remote.autostart"] = False
+
         outputdir = self.config.get('output_directory', '/sdcard')
         jarlog = posixpath.join(outputdir, 'en-US.log')
         profdata = posixpath.join(outputdir, 'default.profraw')
@@ -271,13 +277,29 @@ class AndroidProfileRun(TestingMixin, BaseScript, MozbaseMixin,
             self.fatal('INFRA-ERROR: Failed with an ADBTimeoutError',
                        EXIT_STATUS_DICT[TBPL_RETRY])
 
+        # We normally merge as part of a GENERATED_FILES step in the profile-use
+        # build, but Android runs sometimes result in a truncated profile. We do
+        # a merge here to make sure the data isn't corrupt so we can retry the
+        # 'run' task if necessary.
+        merge_cmd = [
+            '/builds/worker/workspace/build/clang/bin/llvm-profdata',
+            'merge',
+            '/builds/worker/workspace/default.profraw',
+            '-o',
+            '/builds/worker/workspace/merged.profraw',
+        ]
+        rc = subprocess.call(merge_cmd)
+        if rc != 0:
+            self.fatal('INFRA-ERROR: Failed to merge profile data. Corrupt profile?',
+                       EXIT_STATUS_DICT[TBPL_RETRY])
+
         # tarfile doesn't support xz in this version of Python
         tar_cmd = [
             'tar',
             '-acvf',
             '/builds/worker/artifacts/profdata.tar.xz',
             '-C', '/builds/worker/workspace',
-            'default.profraw',
+            'merged.profraw',
             'en-US.log',
         ]
         subprocess.check_call(tar_cmd)

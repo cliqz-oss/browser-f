@@ -74,7 +74,6 @@ class nsIWebBrowserChrome;
 class mozIDOMWindowProxy;
 
 class nsDocShellLoadState;
-class nsDOMWindowList;
 class nsScreen;
 class nsHistory;
 class nsGlobalWindowObserver;
@@ -87,6 +86,7 @@ class nsWindowSizes;
 namespace mozilla {
 class AbstractThread;
 class DOMEventTargetHelper;
+class ThrottledEventQueue;
 namespace dom {
 class BarProp;
 class BrowsingContext;
@@ -231,9 +231,7 @@ class nsGlobalWindowOuter final : public mozilla::dom::EventTarget,
   }
 
   // nsIGlobalJSObjectHolder
-  JSObject* GetGlobalJSObject() final {
-    return GetWrapper();
-  }
+  JSObject* GetGlobalJSObject() final { return GetWrapper(); }
   JSObject* GetGlobalJSObjectPreserveColor() const final {
     return GetWrapperPreserveColor();
   }
@@ -298,7 +296,8 @@ class nsGlobalWindowOuter final : public mozilla::dom::EventTarget,
       mozilla::dom::EventTarget* aChromeEventHandler) override;
 
   // Outer windows only.
-  virtual void SetInitialPrincipalToSubject() override;
+  virtual void SetInitialPrincipalToSubject(
+      nsIContentSecurityPolicy* aCSP) override;
 
   virtual already_AddRefed<nsISupports> SaveWindowState() override;
   virtual nsresult RestoreWindowState(nsISupports* aState) override;
@@ -354,7 +353,8 @@ class nsGlobalWindowOuter final : public mozilla::dom::EventTarget,
   // nsIObserver
   NS_DECL_NSIOBSERVER
 
-  already_AddRefed<nsPIDOMWindowOuter> IndexedGetterOuter(uint32_t aIndex);
+  mozilla::dom::Nullable<mozilla::dom::WindowProxyHolder> IndexedGetterOuter(
+      uint32_t aIndex);
 
   already_AddRefed<nsPIDOMWindowOuter> GetTop() override;
   // Similar to GetTop() except that it stops at content frames that an
@@ -535,11 +535,12 @@ class nsGlobalWindowOuter final : public mozilla::dom::EventTarget,
   nsresult Focus() override;
   void BlurOuter();
   mozilla::dom::BrowsingContext* GetFramesOuter();
-  nsDOMWindowList* GetFrames() final;
   uint32_t Length();
   mozilla::dom::Nullable<mozilla::dom::WindowProxyHolder> GetTopOuter();
 
   nsresult GetPrompter(nsIPrompt** aPrompt) override;
+
+  RefPtr<mozilla::ThrottledEventQueue> mPostMessageEventQueue;
 
  protected:
   nsPIDOMWindowOuter* GetOpenerWindowOuter();
@@ -918,7 +919,6 @@ class nsGlobalWindowOuter final : public mozilla::dom::EventTarget,
   virtual bool ShouldShowFocusRing() override;
 
   virtual void SetKeyboardIndicators(
-      UIStateChangeType aShowAccelerators,
       UIStateChangeType aShowFocusRings) override;
 
  public:
@@ -1099,7 +1099,6 @@ class nsGlobalWindowOuter final : public mozilla::dom::EventTarget,
   // For |window.arguments|, via |openDialog|.
   nsCOMPtr<nsIArray> mArguments;
 
-  RefPtr<nsDOMWindowList> mFrames;
   RefPtr<nsDOMWindowUtils> mWindowUtils;
   nsString mStatus;
 

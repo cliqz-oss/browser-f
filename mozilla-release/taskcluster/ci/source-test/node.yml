@@ -45,15 +45,14 @@ devtools-tests:
             npm install &&
             cd /builds/worker/checkouts/gecko/devtools/client/bin/ &&
             node devtools-node-test-runner.js --suite=aboutdebugging-new &&
+            node devtools-node-test-runner.js --suite=accessibility &&
             node devtools-node-test-runner.js --suite=framework &&
             node devtools-node-test-runner.js --suite=netmonitor &&
             node devtools-node-test-runner.js --suite=webconsole
     when:
         files-changed:
-            - 'devtools/client/aboutdebugging-new/src/components/**'
-            - 'devtools/client/framework/components/**'
-            - 'devtools/client/webconsole/**'
-            - 'devtools/client/netmonitor/**'
+            - 'devtools/client/**'
+            - 'devtools/shared/**'
 
 eslint-plugin-mozilla:
     description: eslint-plugin-mozilla integration tests

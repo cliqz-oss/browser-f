@@ -17,7 +17,7 @@
         spec="https://www.w3.org/TR/CSS2/visuren.html#propdef-%s" % side,
         flags="GETCS_NEEDS_LAYOUT_FLUSH",
         animation_value_type="ComputedValue",
-        allow_quirks=True,
+        allow_quirks="Yes",
         servo_restyle_damage="reflow_out_of_flow",
         logical_group="inset",
     )}
@@ -253,7 +253,7 @@ ${helpers.predefined_type(
         "computed::Size::auto()",
         logical=logical,
         logical_group="size",
-        allow_quirks=not logical,
+        allow_quirks="No" if logical else "Yes",
         spec=spec % size,
         animation_value_type="Size",
         flags="GETCS_NEEDS_LAYOUT_FLUSH",
@@ -266,7 +266,7 @@ ${helpers.predefined_type(
         "computed::Size::auto()",
         logical=logical,
         logical_group="min-size",
-        allow_quirks=not logical,
+        allow_quirks="No" if logical else "Yes",
         spec=spec % size,
         animation_value_type="Size",
         servo_restyle_damage="reflow",
@@ -277,7 +277,7 @@ ${helpers.predefined_type(
         "computed::MaxSize::none()",
         logical=logical,
         logical_group="max-size",
-        allow_quirks=not logical,
+        allow_quirks="No" if logical else "Yes",
         spec=spec % size,
         animation_value_type="MaxSize",
         servo_restyle_damage="reflow",
@@ -322,7 +322,6 @@ ${helpers.predefined_type(
             animation_value_type="discrete",
             spec="https://drafts.csswg.org/css-grid/#propdef-grid-%s-%s" % (kind, range),
             products="gecko",
-            boxed=True,
         )}
     % endfor
 
@@ -390,5 +389,19 @@ ${helpers.predefined_type(
     products="gecko",
     spec="https://drafts.csswg.org/css-align-3/#propdef-row-gap",
     animation_value_type="NonNegativeLengthPercentageOrNormal",
+    servo_restyle_damage="reflow",
+)}
+
+// NOTE(emilio): Before exposing this property to content, we probably need to
+// change syntax and such, and make it apply to more elements.
+//
+// For now, it's used only for mapped attributes.
+${helpers.predefined_type(
+    "aspect-ratio",
+    "Number",
+    "computed::Number::zero()",
+    animation_value_type="ComputedValue",
+    spec="Internal, for now",
+    enabled_in="",
     servo_restyle_damage="reflow",
 )}

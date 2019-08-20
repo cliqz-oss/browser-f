@@ -125,9 +125,9 @@ typedef enum JSGCParamKey {
    * Max milliseconds to spend in an incremental GC slice.
    *
    * Pref: javascript.options.mem.gc_incremental_slice_ms
-   * Default: DefaultTimeBudget.
+   * Default: DefaultTimeBudgetMS.
    */
-  JSGC_SLICE_TIME_BUDGET = 9,
+  JSGC_SLICE_TIME_BUDGET_MS = 9,
 
   /**
    * Maximum size the GC mark stack can grow to.
@@ -427,18 +427,18 @@ namespace JS {
   D(FULL_WHOLE_CELL_BUFFER, 17)            \
   D(FULL_GENERIC_BUFFER, 18)               \
   D(FULL_VALUE_BUFFER, 19)                 \
-  D(FULL_CELL_PTR_BUFFER, 20)              \
+  D(FULL_CELL_PTR_OBJ_BUFFER, 20)          \
   D(FULL_SLOT_BUFFER, 21)                  \
   D(FULL_SHAPE_BUFFER, 22)                 \
   D(TOO_MUCH_WASM_MEMORY, 23)              \
   D(DISABLE_GENERATIONAL_GC, 24)           \
   D(FINISH_GC, 25)                         \
   D(PREPARE_FOR_TRACING, 26)               \
+  D(INCREMENTAL_ALLOC_TRIGGER, 27)         \
+  D(FULL_CELL_PTR_STR_BUFFER, 28)          \
+  D(INCREMENTAL_MALLOC_TRIGGER, 29)        \
                                            \
   /* These are reserved for future use. */ \
-  D(RESERVED3, 27)                         \
-  D(RESERVED4, 28)                         \
-  D(RESERVED5, 29)                         \
   D(RESERVED6, 30)                         \
   D(RESERVED7, 31)                         \
   D(RESERVED8, 32)                         \
@@ -921,6 +921,8 @@ class JS_PUBLIC_API AutoCheckCannotGC : public AutoRequireNoGC {
   explicit AutoCheckCannotGC(JSContext* cx = nullptr) {}
 } JS_HAZ_GC_INVALIDATED;
 #endif
+
+extern JS_PUBLIC_API void SetLowMemoryState(JSContext* cx, bool newState);
 
 /*
  * Internal to Firefox.

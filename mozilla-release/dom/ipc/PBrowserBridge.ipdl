@@ -5,6 +5,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 include protocol PBrowser;
+include protocol PDocAccessible;
 
 include DOMTypes;
 
@@ -13,6 +14,8 @@ using nsSizeMode from "nsIWidgetListener.h";
 using mozilla::layers::LayersObserverEpoch from "mozilla/layers/LayersTypes.h";
 using mozilla::layers::LayersId from "mozilla/layers/LayersTypes.h";
 using mozilla::WidgetMouseEvent from "ipc/nsGUIEventIPC.h";
+using mozilla::a11y::IDispatchHolder from "mozilla/a11y/IPCTypes.h";
+using mozilla::dom::EffectsInfo from "mozilla/dom/TabMessageUtils.h";
 
 namespace mozilla {
 namespace dom {
@@ -43,6 +46,16 @@ child:
    */
   async MoveFocus(bool forward, bool forDocumentNavigation);
 
+  /**
+   * Send the child the COM proxy for the embedded document accessible.
+   */
+  async SetEmbeddedDocAccessibleCOMProxy(IDispatchHolder aCOMProxy);
+
+  /**
+   * Fire a `load` event on this PBrowserBridge's embedding frame element.
+   */
+  async FireFrameLoadEvent(bool aIsTrusted);
+
 parent:
   // Destroy the remote web browser due to the nsFrameLoader going away.
   async __delete__();
@@ -55,6 +68,8 @@ parent:
   async Show(ScreenIntSize size, bool parentIsActive, nsSizeMode sizeMode);
   async UpdateDimensions(DimensionInfo dimensions) compressall;
   async RenderLayers(bool aEnabled, bool aForceRepaint, LayersObserverEpoch aEpoch);
+
+  async UpdateEffects(EffectsInfo aEffects);
 
   /**
    * Navigate by key (Tab/Shift+Tab/F6/Shift+f6).
@@ -76,6 +91,14 @@ parent:
   async SetIsUnderHiddenEmbedderElement(bool aIsUnderHiddenEmbedderElement);
 
   async SkipBrowsingContextDetach();
+
+  /**
+   * Tell the parent the accessible for this iframe's embedder
+   * OuterDocAccessible.
+   * aDoc is the actor for the containing document.
+   * aID is the unique id of the embedder accessible within that document.
+   */
+  async SetEmbedderAccessible(PDocAccessible aDoc, uint64_t aID);
 };
 
 }  // namespace dom

@@ -121,7 +121,7 @@ class HttpChannelParent final : public nsIInterfaceRequestor,
   // Callback while background channel is destroyed.
   void OnBackgroundParentDestroyed();
 
-  base::ProcessId OtherPid() const override;
+  base::ProcessId OtherPid() const;
 
   // Calling this method will cancel the HttpChannelChild because the consumer
   // needs to be relocated to another process.
@@ -172,7 +172,8 @@ class HttpChannelParent final : public nsIInterfaceRequestor,
       const TimeStamp& aHandleFetchEventStart,
       const TimeStamp& aHandleFetchEventEnd,
       const bool& aForceMainDocumentChannel,
-      const TimeStamp& aNavigationStartTimeStamp);
+      const TimeStamp& aNavigationStartTimeStamp,
+      const bool& hasSandboxedAuxiliaryNavigations);
 
   virtual mozilla::ipc::IPCResult RecvSetPriority(
       const int16_t& priority) override;
@@ -200,7 +201,8 @@ class HttpChannelParent final : public nsIInterfaceRequestor,
       const nsresult& statusCode) override;
   virtual mozilla::ipc::IPCResult RecvDivertComplete() override;
   virtual mozilla::ipc::IPCResult RecvCrossProcessRedirectDone(
-      const nsresult& aResult) override;
+      const nsresult& aResult,
+      const mozilla::Maybe<LoadInfoArgs>& aLoadInfoArgs) override;
   virtual mozilla::ipc::IPCResult RecvRemoveCorsPreflightCacheEntry(
       const URIParams& uri,
       const mozilla::ipc::PrincipalInfo& requestingPrincipal) override;

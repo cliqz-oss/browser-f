@@ -18,44 +18,20 @@
 using namespace js;
 using namespace js::frontend;
 
-void CGNumberList::finish(mozilla::Span<GCPtrValue> array) {
-  MOZ_ASSERT(length() == array.size());
+bool GCThingList::append(ObjectBox* objbox, uint32_t* index) {
+  // Append the object to the vector and return the index in *index. Also add
+  // the ObjectBox to the |lastbox| linked list for finishInnerFunctions below.
 
-  for (unsigned i = 0; i < length(); i++) {
-    array[i].init(vector[i]);
-  }
-}
-
-/*
- * Find the index of the given object for code generator.
- *
- * Since the emitter refers to each parsed object only once, for the index we
- * use the number of already indexed objects. We also add the object to a list
- * to convert the list to a fixed-size array when we complete code generation,
- * see js::CGObjectList::finish below.
- */
-unsigned CGObjectList::add(ObjectBox* objbox) {
   MOZ_ASSERT(objbox->isObjectBox());
   MOZ_ASSERT(!objbox->emitLink);
   objbox->emitLink = lastbox;
   lastbox = objbox;
-  return length++;
+
+  *index = vector.length();
+  return vector.append(JS::GCCellPtr(objbox->object()));
 }
 
-void CGObjectList::finish(mozilla::Span<GCPtrObject> array) {
-  MOZ_ASSERT(length <= INDEX_LIMIT);
-  MOZ_ASSERT(length == array.size());
-
-  ObjectBox* objbox = lastbox;
-  for (GCPtrObject& obj : mozilla::Reversed(array)) {
-    MOZ_ASSERT(obj == nullptr);
-    MOZ_ASSERT(objbox->object()->isTenured());
-    obj.init(objbox->object());
-    objbox = objbox->emitLink;
-  }
-}
-
-void CGObjectList::finishInnerFunctions() {
+void GCThingList::finishInnerFunctions() {
   ObjectBox* objbox = lastbox;
   while (objbox) {
     if (objbox->isFunctionBox()) {
@@ -65,20 +41,18 @@ void CGObjectList::finishInnerFunctions() {
   }
 }
 
-void CGScopeList::finish(mozilla::Span<GCPtrScope> array) {
+void GCThingList::finish(mozilla::Span<JS::GCCellPtr> array) {
   MOZ_ASSERT(length() <= INDEX_LIMIT);
   MOZ_ASSERT(length() == array.size());
 
   for (uint32_t i = 0; i < length(); i++) {
-    array[i].init(vector[i]);
+    array[i] = vector[i].get().get();
   }
 }
 
 bool CGTryNoteList::append(JSTryNoteKind kind, uint32_t stackDepth,
-                           size_t start, size_t end) {
+                           BytecodeOffset start, BytecodeOffset end) {
   MOZ_ASSERT(start <= end);
-  MOZ_ASSERT(size_t(uint32_t(start)) == start);
-  MOZ_ASSERT(size_t(uint32_t(end)) == end);
 
   // Offsets are given relative to sections, but we only expect main-section
   // to have TryNotes. In finish() we will fixup base offset.
@@ -86,8 +60,8 @@ bool CGTryNoteList::append(JSTryNoteKind kind, uint32_t stackDepth,
   JSTryNote note;
   note.kind = kind;
   note.stackDepth = stackDepth;
-  note.start = uint32_t(start);
-  note.length = uint32_t(end - start);
+  note.start = start.toUint32();
+  note.length = (end - start).toUint32();
 
   return list.append(note);
 }
@@ -100,7 +74,7 @@ void CGTryNoteList::finish(mozilla::Span<JSTryNote> array) {
   }
 }
 
-bool CGScopeNoteList::append(uint32_t scopeIndex, uint32_t offset,
+bool CGScopeNoteList::append(uint32_t scopeIndex, BytecodeOffset offset,
                              uint32_t parent) {
   CGScopeNote note;
   mozilla::PodZero(&note);
@@ -109,13 +83,21 @@ bool CGScopeNoteList::append(uint32_t scopeIndex, uint32_t offset,
   // offset if needed.
 
   note.index = scopeIndex;
-  note.start = offset;
+  note.start = offset.toUint32();
   note.parent = parent;
 
   return list.append(note);
 }
 
-void CGScopeNoteList::recordEnd(uint32_t index, uint32_t offset) {
+void CGScopeNoteList::recordEnd(uint32_t index, BytecodeOffset offset) {
+  recordEndImpl(index, offset.toUint32());
+}
+
+void CGScopeNoteList::recordEndFunctionBodyVar(uint32_t index) {
+  recordEndImpl(index, UINT32_MAX);
+}
+
+void CGScopeNoteList::recordEndImpl(uint32_t index, uint32_t offset) {
   MOZ_ASSERT(index < length());
   MOZ_ASSERT(list[index].length == 0);
   list[index].end = offset;
@@ -142,12 +124,13 @@ void CGResumeOffsetList::finish(mozilla::Span<uint32_t> array) {
 BytecodeSection::BytecodeSection(JSContext* cx, uint32_t lineNum)
     : code_(cx),
       notes_(cx),
+      lastNoteOffset_(0),
       tryNoteList_(cx),
       scopeNoteList_(cx),
       resumeOffsetList_(cx),
       currentLine_(lineNum) {}
 
-void BytecodeSection::updateDepth(ptrdiff_t target) {
+void BytecodeSection::updateDepth(BytecodeOffset target) {
   jsbytecode* pc = code(target);
 
   int nuses = StackUses(pc);
@@ -163,8 +146,6 @@ void BytecodeSection::updateDepth(ptrdiff_t target) {
 }
 
 PerScriptData::PerScriptData(JSContext* cx)
-    : scopeList_(cx),
-      numberList_(cx),
-      atomIndices_(cx->frontendCollectionPool()) {}
+    : gcThingList_(cx), atomIndices_(cx->frontendCollectionPool()) {}
 
 bool PerScriptData::init(JSContext* cx) { return atomIndices_.acquire(cx); }

@@ -577,8 +577,7 @@ JSFlatString* JSRope::flattenInternal(JSContext* maybecx) {
       // Remove memory association for left node we're about to make into a
       // dependent string.
       if (left.isTenured()) {
-        RemoveCellMemory(&left, left.allocSize(),
-                         MemoryUse::StringContents);
+        RemoveCellMemory(&left, left.allocSize(), MemoryUse::StringContents);
       }
 
       if (IsSame<CharT, char16_t>::value) {
@@ -665,8 +664,7 @@ finish_node : {
     str->d.s.u3.capacity = wholeCapacity;
 
     if (str->isTenured()) {
-      AddCellMemory(str, str->asFlat().allocSize(),
-                    MemoryUse::StringContents);
+      AddCellMemory(str, str->asFlat().allocSize(), MemoryUse::StringContents);
     }
 
     return &this->asFlat();
@@ -713,7 +711,7 @@ JSFlatString* JSRope::flattenInternal(JSContext* maybecx) {
 
 JSFlatString* JSRope::flatten(JSContext* maybecx) {
   mozilla::Maybe<AutoGeckoProfilerEntry> entry;
-  if (maybecx && !maybecx->helperThread()) {
+  if (maybecx && !maybecx->isHelperThreadContext()) {
     entry.emplace(maybecx, "JSRope::flatten");
   }
 
@@ -1476,8 +1474,7 @@ JSFlatString* JSExternalString::ensureFlat(JSContext* cx) {
   finalize(cx->runtime()->defaultFreeOp());
 
   MOZ_ASSERT(isTenured());
-  AddCellMemory(this, (n + 1) * sizeof(char16_t),
-                MemoryUse::StringContents);
+  AddCellMemory(this, (n + 1) * sizeof(char16_t), MemoryUse::StringContents);
 
   // Transform the string into a non-external, flat string. Note that the
   // resulting string will still be in an AllocKind::EXTERNAL_STRING arena,
@@ -2252,7 +2249,7 @@ JSString* js::ToStringSlow(
 
   Value v = arg;
   if (!v.isPrimitive()) {
-    MOZ_ASSERT(!cx->helperThread());
+    MOZ_ASSERT(!cx->isHelperThreadContext());
     if (!allowGC) {
       return nullptr;
     }
@@ -2275,7 +2272,7 @@ JSString* js::ToStringSlow(
   } else if (v.isNull()) {
     str = cx->names().null;
   } else if (v.isSymbol()) {
-    MOZ_ASSERT(!cx->helperThread());
+    MOZ_ASSERT(!cx->isHelperThreadContext());
     if (allowGC) {
       JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr,
                                 JSMSG_SYMBOL_TO_STRING);

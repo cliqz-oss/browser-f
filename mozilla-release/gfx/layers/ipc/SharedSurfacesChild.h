@@ -201,7 +201,6 @@ class AnimationImageKeyData final : public SharedSurfacesChild::ImageKeyData {
   AnimationImageKeyData& operator=(AnimationImageKeyData&& aOther);
 
   AutoTArray<RefPtr<gfx::SourceSurface>, 2> mPendingRelease;
-  bool mRecycling;
 };
 
 /**

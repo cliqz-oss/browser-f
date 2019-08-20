@@ -130,7 +130,9 @@ EXPORTS.mozilla.layers += [
     'basic/TextureHostBasic.h',
     'BSPTree.h',
     'BufferTexture.h',
+    'CanvasDrawEventRecorder.h',
     'CanvasRenderer.h',
+    'CanvasTranslator.h',
     'client/CanvasClient.h',
     'client/CompositableClient.h',
     'client/ContentClient.h',
@@ -142,6 +144,7 @@ EXPORTS.mozilla.layers += [
     'client/TextureClientPool.h',
     'client/TextureClientRecycleAllocator.h',
     'client/TextureClientSharedSurface.h',
+    'client/TextureRecorded.h',
     'client/TiledContentClient.h',
     'composite/AsyncCompositionManager.h',
     'composite/CanvasLayerComposite.h',
@@ -176,6 +179,8 @@ EXPORTS.mozilla.layers += [
     'ipc/APZCTreeManagerParent.h',
     'ipc/APZInputBridgeChild.h',
     'ipc/APZInputBridgeParent.h',
+    'ipc/CanvasChild.h',
+    'ipc/CanvasParent.h',
     'ipc/CompositableForwarder.h',
     'ipc/CompositableTransactionParent.h',
     'ipc/CompositorBridgeChild.h',
@@ -243,6 +248,7 @@ EXPORTS.mozilla.layers += [
     'TextureSourceProvider.h',
     'TextureWrapperImage.h',
     'TransactionIdAllocator.h',
+    'TreeTraversal.h',
     'UpdateImageHelper.h',
     'wr/AsyncImagePipelineManager.h',
     'wr/ClipManager.h',
@@ -255,6 +261,7 @@ EXPORTS.mozilla.layers += [
     'wr/WebRenderBridgeParent.h',
     'wr/WebRenderCanvasRenderer.h',
     'wr/WebRenderCommandBuilder.h',
+    'wr/WebRenderCompositionRecorder.h',
     'wr/WebRenderDrawEventRecorder.h',
     'wr/WebRenderImageHost.h',
     'wr/WebRenderLayerManager.h',
@@ -370,7 +377,9 @@ UNIFIED_SOURCES += [
     'basic/TextureHostBasic.cpp',
     'BSPTree.cpp',
     'BufferTexture.cpp',
+    'CanvasDrawEventRecorder.cpp',
     'CanvasRenderer.cpp',
+    'CanvasTranslator.cpp',
     'client/CanvasClient.cpp',
     'client/ClientCanvasLayer.cpp',
     'client/ClientCanvasRenderer.cpp',
@@ -390,6 +399,7 @@ UNIFIED_SOURCES += [
     'client/TextureClientPool.cpp',
     'client/TextureClientRecycleAllocator.cpp',
     'client/TextureClientSharedSurface.cpp',
+    'client/TextureRecorded.cpp',
     'client/TiledContentClient.cpp',
     'composite/AsyncCompositionManager.cpp',
     'composite/CanvasLayerComposite.cpp',
@@ -423,6 +433,8 @@ UNIFIED_SOURCES += [
     'ipc/APZCTreeManagerParent.cpp',
     'ipc/APZInputBridgeChild.cpp',
     'ipc/APZInputBridgeParent.cpp',
+    'ipc/CanvasChild.cpp',
+    'ipc/CanvasParent.cpp',
     'ipc/CompositableTransactionParent.cpp',
     'ipc/CompositorBench.cpp',
     'ipc/CompositorBridgeChild.cpp',
@@ -503,6 +515,7 @@ UNIFIED_SOURCES += [
     'wr/WebRenderBridgeParent.cpp',
     'wr/WebRenderCanvasRenderer.cpp',
     'wr/WebRenderCommandBuilder.cpp',
+    'wr/WebRenderCompositionRecorder.cpp',
     'wr/WebRenderDrawEventRecorder.cpp',
     'wr/WebRenderImageHost.cpp',
     'wr/WebRenderLayerManager.cpp',
@@ -538,6 +551,7 @@ IPDL_SOURCES += [
     'ipc/PAPZ.ipdl',
     'ipc/PAPZCTreeManager.ipdl',
     'ipc/PAPZInputBridge.ipdl',
+    'ipc/PCanvas.ipdl',
     'ipc/PCompositorBridge.ipdl',
     'ipc/PCompositorManager.ipdl',
     'ipc/PImageBridge.ipdl',
@@ -585,6 +599,7 @@ if CONFIG['ENABLE_TESTS']:
 
 MOCHITEST_MANIFESTS += ['apz/test/mochitest/mochitest.ini']
 MOCHITEST_CHROME_MANIFESTS += ['apz/test/mochitest/chrome.ini']
+BROWSER_CHROME_MANIFESTS += ['apz/test/mochitest/browser.ini']
 
 CXXFLAGS += CONFIG['MOZ_CAIRO_CFLAGS']
 CXXFLAGS += CONFIG['TK_CFLAGS']

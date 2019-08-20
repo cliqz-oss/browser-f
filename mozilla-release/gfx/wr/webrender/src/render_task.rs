@@ -19,10 +19,10 @@ use crate::freelist::{FreeList, FreeListHandle, WeakFreeListHandle};
 use crate::glyph_rasterizer::GpuGlyphCacheKey;
 use crate::gpu_cache::{GpuCache, GpuCacheAddress, GpuCacheHandle};
 use crate::gpu_types::{BorderInstance, ImageSource, UvRectKind, SnapOffsets};
-use crate::internal_types::{CacheTextureId, FastHashMap, LayerIndex, SavedTargetIndex};
+use crate::internal_types::{CacheTextureId, FastHashMap, LayerIndex, SavedTargetIndex, TextureSource};
 #[cfg(feature = "pathfinder")]
 use pathfinder_partitioner::mesh::Mesh;
-use crate::prim_store::PictureIndex;
+use crate::prim_store::{PictureIndex, PrimitiveVisibilityMask};
 use crate::prim_store::image::ImageCacheKey;
 use crate::prim_store::gradient::{GRADIENT_FP_STOPS, GradientCacheKey, GradientStopKey};
 use crate::prim_store::line_dec::LineDecorationCacheKey;
@@ -75,7 +75,6 @@ impl RenderTaskId {
 #[cfg_attr(feature = "replay", derive(Deserialize))]
 pub struct RenderTaskAddress(pub u16);
 
-#[derive(Debug)]
 #[cfg_attr(feature = "capture", derive(Serialize))]
 #[cfg_attr(feature = "replay", derive(Deserialize))]
 pub struct RenderTaskGraph {
@@ -389,7 +388,7 @@ impl RenderTaskGraph {
     }
 
     pub fn get_task_address(&self, id: RenderTaskId) -> RenderTaskAddress {
-        #[cfg(debug_assertions)]
+        #[cfg(all(debug_assertions, not(feature = "replay")))]
         debug_assert_eq!(self.frame_id, id.frame_id);
         RenderTaskAddress(id.index as u16)
     }
@@ -415,7 +414,7 @@ impl RenderTaskGraph {
 impl ops::Index<RenderTaskId> for RenderTaskGraph {
     type Output = RenderTask;
     fn index(&self, id: RenderTaskId) -> &RenderTask {
-        #[cfg(debug_assertions)]
+        #[cfg(all(debug_assertions, not(feature = "replay")))]
         debug_assert_eq!(self.frame_id, id.frame_id);
         &self.tasks[id.index as usize]
     }
@@ -423,7 +422,7 @@ impl ops::Index<RenderTaskId> for RenderTaskGraph {
 
 impl ops::IndexMut<RenderTaskId> for RenderTaskGraph {
     fn index_mut(&mut self, id: RenderTaskId) -> &mut RenderTask {
-        #[cfg(debug_assertions)]
+        #[cfg(all(debug_assertions, not(feature = "replay")))]
         debug_assert_eq!(self.frame_id, id.frame_id);
         &mut self.tasks[id.index as usize]
     }
@@ -457,6 +456,16 @@ pub enum RenderTaskLocation {
         /// The target region within the above layer.
         rect: DeviceIntRect,
     },
+    /// This render task will be drawn to a picture cache texture that is
+    /// persisted between both frames and scenes, if the content remains valid.
+    PictureCache {
+        /// The texture ID to draw to.
+        texture: TextureSource,
+        /// Slice index in the texture array to draw to.
+        layer: i32,
+        /// Size in device pixels of this picture cache tile.
+        size: DeviceIntSize,
+    },
 }
 
 impl RenderTaskLocation {
@@ -473,6 +482,7 @@ impl RenderTaskLocation {
             RenderTaskLocation::Fixed(rect) => rect.size,
             RenderTaskLocation::Dynamic(_, size) => *size,
             RenderTaskLocation::TextureCache { rect, .. } => rect.size,
+            RenderTaskLocation::PictureCache { size, .. } => *size,
         }
     }
 }
@@ -497,17 +507,6 @@ pub struct ClipRegionTask {
     pub device_pixel_scale: DevicePixelScale,
 }
 
-#[derive(Debug)]
-#[cfg_attr(feature = "capture", derive(Serialize))]
-#[cfg_attr(feature = "replay", derive(Deserialize))]
-pub struct TileBlit {
-    pub target: CacheItem,
-    pub src_offset: DeviceIntPoint,
-    pub dest_offset: DeviceIntPoint,
-    pub size: DeviceIntSize,
-}
-
-#[derive(Debug)]
 #[cfg_attr(feature = "capture", derive(Serialize))]
 #[cfg_attr(feature = "replay", derive(Deserialize))]
 pub struct PictureTask {
@@ -515,10 +514,12 @@ pub struct PictureTask {
     pub can_merge: bool,
     pub content_origin: DeviceIntPoint,
     pub uv_rect_handle: GpuCacheHandle,
-    pub root_spatial_node_index: SpatialNodeIndex,
     pub surface_spatial_node_index: SpatialNodeIndex,
     uv_rect_kind: UvRectKind,
     device_pixel_scale: DevicePixelScale,
+    /// A bitfield that describes which dirty regions should be included
+    /// in batches built for this picture task.
+    pub vis_mask: PrimitiveVisibilityMask,
 }
 
 #[derive(Debug)]
@@ -621,7 +622,6 @@ pub struct RenderTaskData {
     pub data: [f32; FLOATS_PER_RENDER_TASK_INFO],
 }
 
-#[derive(Debug)]
 #[cfg_attr(feature = "capture", derive(Serialize))]
 #[cfg_attr(feature = "replay", derive(Deserialize))]
 pub enum RenderTaskKind {
@@ -703,7 +703,6 @@ impl BlurTaskKey {
     }
 }
 
-#[derive(Debug)]
 #[cfg_attr(feature = "capture", derive(Serialize))]
 #[cfg_attr(feature = "replay", derive(Deserialize))]
 pub struct RenderTask {
@@ -754,14 +753,15 @@ impl RenderTask {
         pic_index: PictureIndex,
         content_origin: DeviceIntPoint,
         uv_rect_kind: UvRectKind,
-        root_spatial_node_index: SpatialNodeIndex,
         surface_spatial_node_index: SpatialNodeIndex,
         device_pixel_scale: DevicePixelScale,
+        vis_mask: PrimitiveVisibilityMask,
     ) -> Self {
         let size = match location {
             RenderTaskLocation::Dynamic(_, size) => size,
             RenderTaskLocation::Fixed(rect) => rect.size,
             RenderTaskLocation::TextureCache { rect, .. } => rect.size,
+            RenderTaskLocation::PictureCache { size, .. } => size,
         };
 
         render_task_sanity_check(&size);
@@ -778,9 +778,9 @@ impl RenderTask {
                 can_merge,
                 uv_rect_handle: GpuCacheHandle::new(),
                 uv_rect_kind,
-                root_spatial_node_index,
                 surface_spatial_node_index,
                 device_pixel_scale,
+                vis_mask,
             }),
             clear_mode: ClearMode::Transparent,
             saved_index: None,
@@ -1347,6 +1347,7 @@ impl RenderTask {
             RenderTaskLocation::Fixed(..) => DeviceIntSize::zero(),
             RenderTaskLocation::Dynamic(_, size) => size,
             RenderTaskLocation::TextureCache { rect, .. } => rect.size,
+            RenderTaskLocation::PictureCache { size, .. } => size,
         }
     }
 
@@ -1377,6 +1378,15 @@ impl RenderTask {
             }
             RenderTaskLocation::TextureCache {layer, rect, .. } => {
                 (rect, RenderTargetIndex(layer as usize))
+            }
+            RenderTaskLocation::PictureCache { size, layer, .. } => {
+                (
+                    DeviceIntRect::new(
+                        DeviceIntPoint::zero(),
+                        size,
+                    ),
+                    RenderTargetIndex(layer as usize),
+                )
             }
         }
     }
@@ -1535,7 +1545,8 @@ impl RenderTask {
             RenderTaskLocation::Dynamic(..) => {
                 self.saved_index = Some(SavedTargetIndex::PENDING);
             }
-            RenderTaskLocation::TextureCache { .. } => {
+            RenderTaskLocation::TextureCache { .. } |
+            RenderTaskLocation::PictureCache { .. } => {
                 panic!("Unable to mark a permanently cached task for saving!");
             }
         }
@@ -1645,6 +1656,7 @@ impl RenderTaskCache {
         // Find out what size to alloc in the texture cache.
         let size = match render_task.location {
             RenderTaskLocation::Fixed(..) |
+            RenderTaskLocation::PictureCache { .. } |
             RenderTaskLocation::TextureCache { .. } => {
                 panic!("BUG: dynamic task was expected");
             }
@@ -1771,13 +1783,13 @@ impl RenderTaskCache {
     }
 
     #[allow(dead_code)]
-    pub fn cache_item_is_allocated_for_render_task(&self,
-                                                   texture_cache: &TextureCache,
-                                                   key: &RenderTaskCacheKey)
-                                                   -> bool {
+    pub fn get_allocated_size_for_render_task(&self,
+                                              texture_cache: &TextureCache,
+                                              key: &RenderTaskCacheKey)
+                                              -> Option<usize> {
         let handle = self.map.get(key).unwrap();
         let cache_entry = self.cache_entries.get(handle);
-        texture_cache.is_allocated(&cache_entry.handle)
+        texture_cache.get_allocated_size(&cache_entry.handle)
     }
 }
 
@@ -1944,7 +1956,7 @@ pub fn dump_render_tasks_as_svg(
 
 #[allow(dead_code)]
 fn dump_task_dependency_link(
-    output: &mut io::Write,
+    output: &mut dyn io::Write,
     x1: f32, y1: f32,
     x2: f32, y2: f32,
 ) {
@@ -2058,7 +2070,7 @@ fn blur_task_graph() {
 
     // Insert a task that is an odd number > 1 of passes away from its dependency.
     // This should force us to mark the dependency "for saving" to keep its content valid
-    // until the task can access it. 
+    // until the task can access it.
     let vblur4 = tasks.add(RenderTask::new_test(color, dyn_location(160, 160), vec![scale2]));
     let hblur4 = tasks.add(RenderTask::new_test(color, dyn_location(160, 160), vec![vblur4]));
 
@@ -2109,7 +2121,7 @@ fn blur_task_graph() {
 
     assert_eq!(passes[7].tasks, vec![main_pic]);
 
-    // See vblur4's comment above. 
+    // See vblur4's comment above.
     assert!(tasks[scale2].saved_index.is_some());
 }
 

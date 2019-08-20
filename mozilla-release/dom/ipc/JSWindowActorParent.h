@@ -40,10 +40,13 @@ class JSWindowActorParent final : public JSWindowActor {
     return MakeAndAddRef<JSWindowActorParent>();
   }
 
-  WindowGlobalParent* Manager() const;
+  nsIGlobalObject* GetParentObject() const override;
+
+  WindowGlobalParent* GetManager() const;
   void Init(const nsAString& aName, WindowGlobalParent* aManager);
   void StartDestroy();
   void AfterDestroy();
+  CanonicalBrowsingContext* GetBrowsingContext(ErrorResult& aRv);
 
  protected:
   void SendRawMessage(const JSWindowActorMessageMeta& aMeta,

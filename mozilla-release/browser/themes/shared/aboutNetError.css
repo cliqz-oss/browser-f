@@ -249,10 +249,6 @@ body:not(.neterror) #advancedButton {
   display: none;
 }
 
-#wrongSystemTimePanel {
-  display: none;
-}
-
 #wrongSystemTimeWithoutReferencePanel {
   display: none;
 }

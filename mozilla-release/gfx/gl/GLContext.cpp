@@ -34,7 +34,7 @@
 #include "SharedSurfaceGL.h"
 #include "GfxTexturesReporter.h"
 #include "gfx2DGlue.h"
-#include "gfxPrefs.h"
+#include "mozilla/StaticPrefs.h"
 #include "mozilla/IntegerPrintfMacros.h"
 #include "mozilla/gfx/Logging.h"
 
@@ -79,6 +79,7 @@ static const char* const sExtensionNames[] = {
     "GL_ANGLE_framebuffer_blit",
     "GL_ANGLE_framebuffer_multisample",
     "GL_ANGLE_instanced_arrays",
+    "GL_ANGLE_multiview",
     "GL_ANGLE_texture_compression_dxt3",
     "GL_ANGLE_texture_compression_dxt5",
     "GL_ANGLE_timer_query",
@@ -136,7 +137,6 @@ static const char* const sExtensionNames[] = {
     "GL_EXT_draw_buffers",
     "GL_EXT_draw_buffers2",
     "GL_EXT_draw_instanced",
-    "GL_EXT_draw_range_elements",
     "GL_EXT_float_blend",
     "GL_EXT_frag_depth",
     "GL_EXT_framebuffer_blit",
@@ -204,12 +204,15 @@ static const char* const sExtensionNames[] = {
     "GL_OES_texture_half_float",
     "GL_OES_texture_half_float_linear",
     "GL_OES_texture_npot",
-    "GL_OES_vertex_array_object"};
+    "GL_OES_vertex_array_object",
+    "GL_OVR_multiview2"};
 
 static bool ShouldUseTLSIsCurrent(bool useTLSIsCurrent) {
-  if (gfxPrefs::UseTLSIsCurrent() == 0) return useTLSIsCurrent;
+  if (StaticPrefs::gl_use_tls_is_current() == 0) {
+    return useTLSIsCurrent;
+  }
 
-  return gfxPrefs::UseTLSIsCurrent() > 0;
+  return StaticPrefs::gl_use_tls_is_current() > 0;
 }
 
 static bool ParseVersion(const std::string& versionStr,
@@ -274,7 +277,7 @@ GLContext::GLContext(CreateContextFlags flags, const SurfaceCaps& caps,
       mDebugFlags(ChooseDebugFlags(flags)),
       mSharedContext(sharedContext),
       mCaps(caps),
-      mWorkAroundDriverBugs(gfxPrefs::WorkAroundDriverBugs()) {
+      mWorkAroundDriverBugs(StaticPrefs::gfx_work_around_driver_bugs()) {
   mOwningThreadId = PlatformThread::CurrentId();
   MOZ_ALWAYS_TRUE(sCurrentContext.init());
   sCurrentContext.set(0);
@@ -837,37 +840,35 @@ bool GLContext::InitImpl() {
   raw_fGetIntegerv(LOCAL_GL_MAX_VIEWPORT_DIMS, mMaxViewportDims);
 
   if (mWorkAroundDriverBugs) {
+    int maxTexSize = INT32_MAX;
+    int maxCubeSize = INT32_MAX;
 #ifdef XP_MACOSX
     if (!nsCocoaFeatures::IsAtLeastVersion(10, 12)) {
       if (mVendor == GLVendor::Intel) {
         // see bug 737182 for 2D textures, bug 684882 for cube map textures.
-        mMaxTextureSize = std::min(mMaxTextureSize, 4096);
-        mMaxCubeMapTextureSize = std::min(mMaxCubeMapTextureSize, 512);
-        // for good measure, we align renderbuffers on what we do for 2D
-        // textures
-        mMaxRenderbufferSize = std::min(mMaxRenderbufferSize, 4096);
-        mNeedsTextureSizeChecks = true;
+        maxTexSize = 4096;
+        maxCubeSize = 512;
       } else if (mVendor == GLVendor::NVIDIA) {
         // See bug 879656.  8192 fails, 8191 works.
-        mMaxTextureSize = std::min(mMaxTextureSize, 8191);
-        mMaxRenderbufferSize = std::min(mMaxRenderbufferSize, 8191);
-
-        // Part of the bug 879656, but it also doesn't hurt the 877949
-        mNeedsTextureSizeChecks = true;
+        maxTexSize = 8191;
       }
+    } else {
+      // https://bugzilla.mozilla.org/show_bug.cgi?id=1544446
+      // Mojave exposes 16k textures, but gives FRAMEBUFFER_UNSUPPORTED for any
+      // 16k*16k FB except rgba8 without depth/stencil.
+      // The max supported sizes changes based on involved formats.
+      // (RGBA32F more restrictive than RGBA16F)
+      maxTexSize = 8192;
     }
 #endif
 #ifdef MOZ_X11
     if (mVendor == GLVendor::Nouveau) {
       // see bug 814716. Clamp MaxCubeMapTextureSize at 2K for Nouveau.
-      mMaxCubeMapTextureSize = std::min(mMaxCubeMapTextureSize, 2048);
-      mNeedsTextureSizeChecks = true;
+      maxCubeSize = 2048;
     } else if (mVendor == GLVendor::Intel) {
       // Bug 1199923. Driver seems to report a larger max size than
       // actually supported.
-      mMaxTextureSize /= 2;
-      mMaxRenderbufferSize /= 2;
-      mNeedsTextureSizeChecks = true;
+      maxTexSize = mMaxTextureSize / 2;
     }
     // Bug 1367570. Explicitly set vertex attributes [1,3] to opaque
     // black because Nvidia doesn't do it for us.
@@ -901,6 +902,21 @@ bool GLContext::InitImpl() {
       mNeedsCheckAfterAttachTextureToFb = true;
     }
 #endif
+
+    // -
+
+    const auto fnLimit = [&](int* const driver, const int limit) {
+      if (*driver > limit) {
+        *driver = limit;
+        mNeedsTextureSizeChecks = true;
+      }
+    };
+
+    fnLimit(&mMaxTextureSize, maxTexSize);
+    fnLimit(&mMaxRenderbufferSize, maxTexSize);
+
+    maxCubeSize = std::min(maxCubeSize, maxTexSize);
+    fnLimit(&mMaxCubeMapTextureSize, maxCubeSize);
   }
 
   if (IsSupported(GLFeature::framebuffer_multisample)) {
@@ -1234,18 +1250,6 @@ void GLContext::LoadMoreSymbols(const SymbolLoader& loader) {
         fnLoadFeatureByCore(coreSymbols, extSymbols, GLFeature::draw_buffers);
     }
 
-    if (IsSupported(GLFeature::draw_range_elements)) {
-        const SymLoadStruct coreSymbols[] = {
-            { (PRFuncPtr*) &mSymbols.fDrawRangeElements, {{ "glDrawRangeElements" }} },
-            END_SYMBOLS
-        };
-        const SymLoadStruct extSymbols[] = {
-            { (PRFuncPtr*) &mSymbols.fDrawRangeElements, {{ "glDrawRangeElementsEXT" }} },
-            END_SYMBOLS
-        };
-        fnLoadFeatureByCore(coreSymbols, extSymbols, GLFeature::draw_range_elements);
-    }
-
     if (IsSupported(GLFeature::get_integer_indexed)) {
         const SymLoadStruct coreSymbols[] = {
             { (PRFuncPtr*) &mSymbols.fGetIntegeri_v, {{ "glGetIntegeri_v" }} },
@@ -1382,6 +1386,17 @@ void GLContext::LoadMoreSymbols(const SymbolLoader& loader) {
             END_SYMBOLS
         };
         fnLoadForFeature(symbols, GLFeature::invalidate_framebuffer);
+    }
+
+    if (IsSupported(GLFeature::multiview)) {
+        const SymLoadStruct symbols[] = {
+            { (PRFuncPtr*) &mSymbols.fFramebufferTextureMultiview, {{
+              "glFramebufferTextureMultiviewOVR",
+              "glFramebufferTextureMultiviewLayeredANGLE"
+            }} },
+            END_SYMBOLS
+        };
+        fnLoadForFeature(symbols, GLFeature::multiview);
     }
 
     if (IsSupported(GLFeature::prim_restart)) {
@@ -1745,16 +1760,6 @@ GLFormats GLContext::ChooseGLFormats(const SurfaceCaps& caps) const {
       formats.color_rbFormat = LOCAL_GL_RGB8;
     }
   }
-
-  uint32_t msaaLevel = gfxPrefs::MSAALevel();
-  GLsizei samples = msaaLevel * msaaLevel;
-  samples = std::min(samples, mMaxSamples);
-
-  // Bug 778765.
-  if (WorkAroundDriverBugs() && samples == 1) {
-    samples = 0;
-  }
-  formats.samples = samples;
 
   // Be clear that these are 0 if unavailable.
   formats.depthStencil = 0;
@@ -2898,6 +2903,15 @@ void GLContext::OnImplicitMakeCurrentFailure(const char* const funcName) {
   gfxCriticalError() << "Ignoring call to " << funcName << " with failed"
                      << " mImplicitMakeCurrent.";
 }
+
+// -
+
+// These are defined out of line so that we don't need to include
+// ISurfaceAllocator.h in SurfaceTypes.h.
+SurfaceCaps::SurfaceCaps() = default;
+SurfaceCaps::SurfaceCaps(const SurfaceCaps& other) = default;
+SurfaceCaps& SurfaceCaps::operator=(const SurfaceCaps& other) = default;
+SurfaceCaps::~SurfaceCaps() = default;
 
 } /* namespace gl */
 } /* namespace mozilla */

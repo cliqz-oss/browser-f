@@ -62,6 +62,10 @@ using JS::ReadOnlyCompileOptions;
 using JS::RegExpFlag;
 using JS::RegExpFlags;
 
+// There's some very preliminary support for private fields in this file. It's
+// disabled in all builds, for now.
+//#define JS_PRIVATE_FIELDS 1
+
 struct ReservedWordInfo {
   const char* chars;  // C string with reserved word text
   js::frontend::TokenKind tokentype;
@@ -129,20 +133,28 @@ static const ReservedWordInfo* FindReservedWord(
   if (str->hasLatin1Chars()) {
     const JS::Latin1Char* chars = str->latin1Chars(nogc);
     size_t length = str->length();
+#ifdef JS_PRIVATE_FIELDS
     if (length > 0 && chars[0] == '#') {
       *visibility = js::frontend::NameVisibility::Private;
       return nullptr;
     }
+#else
+    MOZ_ASSERT_IF(length > 0, chars[0] != '#');
+#endif
     *visibility = js::frontend::NameVisibility::Public;
     return FindReservedWord(chars, length);
   }
 
   const char16_t* chars = str->twoByteChars(nogc);
   size_t length = str->length();
+#ifdef JS_PRIVATE_FIELDS
   if (length > 0 && chars[0] == '#') {
     *visibility = js::frontend::NameVisibility::Private;
     return nullptr;
   }
+#else
+  MOZ_ASSERT_IF(length > 0, chars[0] != '#');
+#endif
   *visibility = js::frontend::NameVisibility::Public;
   return FindReservedWord(chars, length);
 }
@@ -233,8 +245,12 @@ bool IsIdentifierNameOrPrivateName(const Latin1Char* chars, size_t length) {
   }
 
   if (char16_t(*chars) == '#') {
+#ifdef JS_PRIVATE_FIELDS
     ++chars;
     --length;
+#else
+    return false;
+#endif
   }
 
   return IsIdentifier(chars, length);
@@ -275,11 +291,15 @@ bool IsIdentifierNameOrPrivateName(const char16_t* chars, size_t length) {
 
   codePoint = GetSingleCodePoint(&p, end);
   if (codePoint == '#') {
+#ifdef JS_PRIVATE_FIELDS
     if (length == 1) {
       return false;
     }
 
     codePoint = GetSingleCodePoint(&p, end);
+#else
+    return false;
+#endif
   }
 
   if (!unicode::IsIdentifierStart(codePoint)) {
@@ -1601,7 +1621,7 @@ bool TokenStreamAnyChars::fillExceptingContext(ErrorMetadata* err,
 
   // If this TokenStreamAnyChars doesn't have location information, try to
   // get it from the caller.
-  if (!filename_ && !cx->helperThread()) {
+  if (!filename_ && !cx->isHelperThreadContext()) {
     NonBuiltinFrameIter iter(cx, FrameIter::FOLLOW_DEBUGGER_EVAL_PREV_LINK,
                              cx->realm()->principals());
     if (!iter.done() && iter.filename()) {
@@ -1992,7 +2012,7 @@ MOZ_MUST_USE bool TokenStreamSpecific<Unit, AnyCharsAccess>::getDirective(
     }
 
     if (MOZ_LIKELY(isAsciiCodePoint(unit))) {
-      if (unicode::IsSpaceOrBOM2(unit)) {
+      if (unicode::IsSpace(AssertedCast<Latin1Char>(unit))) {
         break;
       }
 
@@ -2016,13 +2036,13 @@ MOZ_MUST_USE bool TokenStreamSpecific<Unit, AnyCharsAccess>::getDirective(
     // This ignores encoding errors: subsequent caller-side code to
     // handle the remaining source text in the comment will do so.
     PeekedCodePoint<Unit> peeked = this->sourceUnits.peekCodePoint();
-    if (peeked.isNone() || unicode::IsSpaceOrBOM2(peeked.codePoint())) {
+    if (peeked.isNone() || unicode::IsSpace(peeked.codePoint())) {
       break;
     }
 
     MOZ_ASSERT(!IsLineTerminator(peeked.codePoint()),
-               "!IsSpaceOrBOM2 must imply !IsLineTerminator or else we'll "
-               "fail to maintain line-info/flags for EOL");
+               "!IsSpace must imply !IsLineTerminator or else we'll fail to "
+               "maintain line-info/flags for EOL");
     this->sourceUnits.consumeKnownCodePoint(peeked);
 
     if (!appendCodePointToCharBuffer(peeked.codePoint())) {
@@ -2151,8 +2171,11 @@ bool TokenStreamSpecific<Unit, AnyCharsAccess>::putIdentInCharBuffer(
 
     uint32_t codePoint;
     if (MOZ_LIKELY(isAsciiCodePoint(unit))) {
-      if (unicode::IsIdentifierPart(char16_t(unit)) ||
-          (char16_t(unit) == '#')) {
+      if (unicode::IsIdentifierPart(char16_t(unit))
+#ifdef JS_PRIVATE_FIELDS
+          || char16_t(unit) == '#'
+#endif
+      ) {
         if (!this->charBuffer.append(unit)) {
           return false;
         }
@@ -2266,17 +2289,10 @@ MOZ_MUST_USE bool TokenStreamSpecific<Unit, AnyCharsAccess>::identifierName(
 
   noteBadToken.release();
   if (visibility == NameVisibility::Private) {
-    MOZ_ASSERT(identStart[0] == static_cast<Unit>('#'),
-               "Private identifier starts with #");
-    newPrivateNameToken(atom->asPropertyName(), start, modifier, out);
-
-    if (!anyCharsAccess().options().fieldsEnabledOption) {
-      errorAt(start.offset(), JSMSG_FIELDS_NOT_SUPPORTED);
-      return false;
-    }
-  } else {
-    newNameToken(atom->asPropertyName(), start, modifier, out);
+    errorAt(start.offset(), JSMSG_PRIVATE_FIELDS_NOT_SUPPORTED);
+    return false;
   }
+  newNameToken(atom->asPropertyName(), start, modifier, out);
   return true;
 }
 
@@ -2743,12 +2759,11 @@ MOZ_MUST_USE bool TokenStreamSpecific<Unit, AnyCharsAccess>::getTokenInternal(
     }
 
     if (MOZ_UNLIKELY(!isAsciiCodePoint(unit))) {
-      // Non-ASCII code points can only be identifiers or whitespace.
-      // It would be nice to compute these *after* discarding whitespace,
-      // but IN A WORLD where |unicode::IsSpaceOrBOM2| requires consuming
-      // a variable number of code points, it's easier to assume it's an
-      // identifier and maybe do a little wasted work, than to unget and
-      // compute and reget if whitespace.
+      // Non-ASCII code points can only be identifiers or whitespace.  It would
+      // be nice to compute these *after* discarding whitespace, but IN A WORLD
+      // where |unicode::IsSpace| requires consuming a variable number of code
+      // units, it's easier to assume it's an identifier and maybe do a little
+      // wasted work, than to unget and compute and reget if whitespace.
       TokenStart start(this->sourceUnits, 0);
       const Unit* identStart = this->sourceUnits.addressOfNextCodeUnit();
 
@@ -2760,7 +2775,7 @@ MOZ_MUST_USE bool TokenStreamSpecific<Unit, AnyCharsAccess>::getTokenInternal(
       }
 
       char32_t cp = peeked.codePoint();
-      if (unicode::IsSpaceOrBOM2(cp)) {
+      if (unicode::IsSpace(cp)) {
         this->sourceUnits.consumeKnownCodePoint(peeked);
         if (IsLineTerminator(cp)) {
           if (!updateLineInfoForEOL()) {
@@ -3059,6 +3074,7 @@ MOZ_MUST_USE bool TokenStreamSpecific<Unit, AnyCharsAccess>::getTokenInternal(
         break;
 
       case '#': {
+#ifdef JS_PRIVATE_FIELDS
         TokenStart start(this->sourceUnits, -1);
         const Unit* identStart = this->sourceUnits.addressOfNextCodeUnit() - 1;
         IdentifierEscapes sawEscape;
@@ -3067,6 +3083,11 @@ MOZ_MUST_USE bool TokenStreamSpecific<Unit, AnyCharsAccess>::getTokenInternal(
         }
         return identifierName(start, identStart, sawEscape, modifier,
                               NameVisibility::Private, ttp);
+#else
+        ungetCodeUnit(unit);
+        error(JSMSG_PRIVATE_FIELDS_NOT_SUPPORTED);
+        return badToken();
+#endif
       }
 
       case '=':

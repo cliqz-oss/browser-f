@@ -12,6 +12,7 @@
 #include "mozilla/CondVar.h"
 #include "mozilla/DOMEventTargetHelper.h"
 #include "mozilla/RelativeTimeline.h"
+#include "mozilla/StorageAccess.h"
 #include "nsContentUtils.h"
 #include "nsIContentSecurityPolicy.h"
 #include "nsIEventTarget.h"
@@ -43,6 +44,7 @@ class MessagePort;
 class MessagePortIdentifier;
 class PerformanceStorage;
 class RemoteWorkerChild;
+class TimeoutHandler;
 class WorkerControlRunnable;
 class WorkerCSPEventListener;
 class WorkerDebugger;
@@ -248,8 +250,8 @@ class WorkerPrivate : public RelativeTimeline {
   static void ReportErrorToConsole(const char* aMessage,
                                    const nsTArray<nsString>& aParams);
 
-  int32_t SetTimeout(JSContext* aCx, nsIScriptTimeoutHandler* aHandler,
-                     int32_t aTimeout, bool aIsInterval, ErrorResult& aRv);
+  int32_t SetTimeout(JSContext* aCx, TimeoutHandler* aHandler, int32_t aTimeout,
+                     bool aIsInterval, ErrorResult& aRv);
 
   void ClearTimeout(int32_t aId);
 
@@ -275,6 +277,8 @@ class WorkerPrivate : public RelativeTimeline {
   void UpdateGCZealInternal(JSContext* aCx, uint8_t aGCZeal,
                             uint32_t aFrequency);
 #endif
+
+  void SetLowMemoryStateInternal(JSContext* aCx, bool aState);
 
   void GarbageCollectInternal(JSContext* aCx, bool aShrinking,
                               bool aCollectChildren);
@@ -683,14 +687,6 @@ class WorkerPrivate : public RelativeTimeline {
     return *mLoadInfo.mPrincipalInfo;
   }
 
-  // The CSPInfo returned is the same CSP as stored inside the Principal
-  // returned from GetPrincipalInfo. Please note that after Bug 965637
-  // we do not have a a CSP stored inside the Principal anymore which
-  // allows us to clean that part up.
-  const nsTArray<mozilla::ipc::ContentSecurityPolicy>& GetCSPInfos() const {
-    return mLoadInfo.mCSPInfos;
-  }
-
   const mozilla::ipc::PrincipalInfo& GetEffectiveStoragePrincipalInfo() const {
     return *mLoadInfo.mStoragePrincipalInfo;
   }
@@ -715,15 +711,23 @@ class WorkerPrivate : public RelativeTimeline {
   nsresult SetCSPFromHeaderValues(const nsACString& aCSPHeaderValue,
                                   const nsACString& aCSPReportOnlyHeaderValue);
 
-  void SetReferrerPolicyFromHeaderValue(
-      const nsACString& aReferrerPolicyHeaderValue);
+  void StoreCSPOnClient();
 
-  net::ReferrerPolicy GetReferrerPolicy() const {
-    return mLoadInfo.mReferrerPolicy;
+  const mozilla::ipc::CSPInfo& GetCSPInfo() const {
+    return *mLoadInfo.mCSPInfo;
   }
 
-  void SetReferrerPolicy(net::ReferrerPolicy aReferrerPolicy) {
-    mLoadInfo.mReferrerPolicy = aReferrerPolicy;
+  void UpdateReferrerInfoFromHeader(
+      const nsACString& aReferrerPolicyHeaderValue);
+
+  nsIReferrerInfo* GetReferrerInfo() const { return mLoadInfo.mReferrerInfo; }
+
+  uint32_t GetReferrerPolicy() const {
+    return mLoadInfo.mReferrerInfo->GetReferrerPolicy();
+  }
+
+  void SetReferrerInfo(nsIReferrerInfo* aReferrerInfo) {
+    mLoadInfo.mReferrerInfo = aReferrerInfo;
   }
 
   bool IsEvalAllowed() const { return mLoadInfo.mEvalAllowed; }
@@ -744,10 +748,10 @@ class WorkerPrivate : public RelativeTimeline {
     mLoadInfo.mXHRParamsAllowed = aAllowed;
   }
 
-  nsContentUtils::StorageAccess StorageAccess() const {
+  mozilla::StorageAccess StorageAccess() const {
     AssertIsOnWorkerThread();
     if (mLoadInfo.mFirstPartyStorageAccessGranted) {
-      return nsContentUtils::StorageAccess::eAllow;
+      return mozilla::StorageAccess::eAllow;
     }
 
     return mLoadInfo.mStorageAccess;
@@ -768,9 +772,7 @@ class WorkerPrivate : public RelativeTimeline {
     return mLoadInfo.mServiceWorkersTestingInWindow;
   }
 
-  bool IsWatchedByDevtools() const {
-    return mLoadInfo.mWatchedByDevtools;
-  }
+  bool IsWatchedByDevtools() const { return mLoadInfo.mWatchedByDevtools; }
 
   // Determine if the worker is currently loading its top level script.
   bool IsLoadingWorkerScript() const { return mLoadingWorkerScript; }
@@ -803,15 +805,18 @@ class WorkerPrivate : public RelativeTimeline {
 
   bool ProxyReleaseMainThreadObjects();
 
+  void SetLowMemoryState(bool aState);
+
   void GarbageCollect(bool aShrinking);
 
   void CycleCollect(bool aDummy);
 
-  nsresult SetPrincipalsOnMainThread(nsIPrincipal* aPrincipal,
-                                     nsIPrincipal* aStoragePrincipal,
-                                     nsILoadGroup* aLoadGroup);
+  nsresult SetPrincipalsAndCSPOnMainThread(nsIPrincipal* aPrincipal,
+                                           nsIPrincipal* aStoragePrincipal,
+                                           nsILoadGroup* aLoadGroup,
+                                           nsIContentSecurityPolicy* aCsp);
 
-  nsresult SetPrincipalsFromChannel(nsIChannel* aChannel);
+  nsresult SetPrincipalsAndCSPFromChannel(nsIChannel* aChannel);
 
   bool FinalChannelPrincipalIsValid(nsIChannel* aChannel);
 

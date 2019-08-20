@@ -13,6 +13,7 @@
 
 #include "jit/BaselineJIT.h"
 #include "jit/IonAnalysis.h"
+#include "jit/JitScript.h"
 #include "vm/EnvironmentObject.h"
 #include "vm/RegExpObject.h"
 #include "wasm/AsmJS.h"
@@ -163,11 +164,28 @@ inline void JSScript::setBaselineScript(
     JSRuntime* rt, js::jit::BaselineScript* baselineScript) {
   if (hasBaselineScript()) {
     js::jit::BaselineScript::writeBarrierPre(zone(), baseline);
+    clearBaselineScript();
   }
   MOZ_ASSERT(!ion || ion == ION_DISABLED_SCRIPT);
+
   baseline = baselineScript;
+  if (hasBaselineScript()) {
+    AddCellMemory(this, baseline->allocBytes(), js::MemoryUse::BaselineScript);
+  }
   resetWarmUpResetCounter();
   updateJitCodeRaw(rt);
+}
+
+inline void JSScript::clearBaselineScript() {
+  MOZ_ASSERT(hasBaselineScript());
+  RemoveCellMemory(this, baseline->allocBytes(), js::MemoryUse::BaselineScript);
+  baseline = nullptr;
+}
+
+inline void JSScript::clearIonScript() {
+  MOZ_ASSERT(hasIonScript());
+  RemoveCellMemory(this, ion->allocBytes(), js::MemoryUse::IonScript);
+  ion = nullptr;
 }
 
 inline bool JSScript::ensureHasAnalyzedArgsUsage(JSContext* cx) {
@@ -179,11 +197,6 @@ inline bool JSScript::ensureHasAnalyzedArgsUsage(JSContext* cx) {
 
 inline bool JSScript::isDebuggee() const {
   return realm_->debuggerObservesAllExecution() || hasDebugScript();
-}
-
-inline js::jit::ICScript* JSScript::icScript() const {
-  MOZ_ASSERT(hasICScript());
-  return types_->icScript();
 }
 
 #endif /* vm_JSScript_inl_h */

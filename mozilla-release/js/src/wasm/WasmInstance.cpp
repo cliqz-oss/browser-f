@@ -19,10 +19,10 @@
 #include "wasm/WasmInstance.h"
 
 #include "jit/AtomicOperations.h"
-#include "jit/BaselineJIT.h"
 #include "jit/InlinableNatives.h"
 #include "jit/JitCommon.h"
 #include "jit/JitRealm.h"
+#include "jit/JitScript.h"
 #include "util/StringBuffer.h"
 #include "util/Text.h"
 #include "wasm/WasmBuiltins.h"
@@ -175,27 +175,19 @@ bool Instance::callImport(JSContext* cx, uint32_t funcImportIndex,
   }
 
   JSScript* script = importFun->nonLazyScript();
-  if (!script->hasBaselineScript()) {
-    MOZ_ASSERT(!script->hasIonScript());
-    return true;
-  }
-
-  // Don't enable jit entry when we have a pending ion builder.
-  // Take the interpreter path which will link it and enable
-  // the fast path on the next call.
-  if (script->baselineScript()->hasPendingIonBuilder()) {
+  if (!script->hasJitScript()) {
     return true;
   }
 
   // Ensure the argument types are included in the argument TypeSets stored in
-  // the TypeScript. This is necessary for Ion, because the import will use
-  // the skip-arg-checks entry point.
-  //
-  // Note that the TypeScript is never discarded while the script has a
-  // BaselineScript, so if those checks hold now they must hold at least until
-  // the BaselineScript is discarded and when that happens the import is
-  // patched back.
-  if (!TypeScript::ThisTypes(script)->hasType(TypeSet::UndefinedType())) {
+  // the JitScript. This is necessary for Ion, because the import will use
+  // the skip-arg-checks entry point. When the JitScript is discarded the import
+  // is patched back.
+  AutoSweepJitScript sweep(script);
+  JitScript* jitScript = script->jitScript();
+
+  StackTypeSet* thisTypes = jitScript->thisTypes(sweep, script);
+  if (!thisTypes->hasType(TypeSet::UndefinedType())) {
     return true;
   }
 
@@ -228,7 +220,9 @@ bool Instance::callImport(JSContext* cx, uint32_t funcImportIndex,
       case ValType::NullRef:
         MOZ_CRASH("NullRef not expressible");
     }
-    if (!TypeScript::ArgTypes(script, i)->hasType(type)) {
+
+    StackTypeSet* argTypes = jitScript->argTypes(sweep, script, i);
+    if (!argTypes->hasType(type)) {
       return true;
     }
   }
@@ -237,19 +231,19 @@ bool Instance::callImport(JSContext* cx, uint32_t funcImportIndex,
   // arguments rectifier: check that the imported function can handle
   // undefined there.
   for (uint32_t i = importArgs.length(); i < importFun->nargs(); i++) {
-    if (!TypeScript::ArgTypes(script, i)->hasType(TypeSet::UndefinedType())) {
+    StackTypeSet* argTypes = jitScript->argTypes(sweep, script, i);
+    if (!argTypes->hasType(TypeSet::UndefinedType())) {
       return true;
     }
   }
 
   // Let's optimize it!
-  if (!script->baselineScript()->addDependentWasmImport(cx, *this,
-                                                        funcImportIndex)) {
+  if (!jitScript->addDependentWasmImport(cx, *this, funcImportIndex)) {
     return false;
   }
 
   import.code = jitExitCode;
-  import.baselineScript = script->baselineScript();
+  import.jitScript = jitScript;
   return true;
 }
 
@@ -892,8 +886,8 @@ void Instance::initElems(uint32_t tableIndex, const ElemSegment& seg,
                                          uint32_t tableIndex) {
   MOZ_ASSERT(SASigTableFill.failureMode == FailureMode::FailOnNegI32);
 
+  JSContext* cx = TlsContext.get();
   Table& table = *instance->tables()[tableIndex];
-  MOZ_RELEASE_ASSERT(table.kind() == TableKind::AnyRef);
 
   if (len == 0) {
     // Even though the length is zero, we must check for a valid offset.  But
@@ -918,10 +912,17 @@ void Instance::initElems(uint32_t tableIndex, const ElemSegment& seg,
       mustTrap = true;
     }
 
-    for (uint32_t i = 0; i < len; i++) {
-      uint32_t index = start + i;
-      MOZ_ASSERT(index < table.length());
-      table.setAnyRef(index, AnyRef::fromCompiledCode(value));
+    AnyRef ref = AnyRef::fromCompiledCode(value);
+
+    switch (table.kind()) {
+      case TableKind::AnyRef:
+        table.fillAnyRef(start, len, ref);
+        break;
+      case TableKind::FuncRef:
+        table.fillFuncRef(start, len, ref, cx);
+        break;
+      case TableKind::AsmJS:
+        MOZ_CRASH("not asm.js");
     }
 
     if (!mustTrap) {
@@ -929,7 +930,6 @@ void Instance::initElems(uint32_t tableIndex, const ElemSegment& seg,
     }
   }
 
-  JSContext* cx = TlsContext.get();
   JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr,
                             JSMSG_WASM_TABLE_OUT_OF_BOUNDS);
   return -1;
@@ -938,30 +938,52 @@ void Instance::initElems(uint32_t tableIndex, const ElemSegment& seg,
 /* static */ void* Instance::tableGet(Instance* instance, uint32_t index,
                                       uint32_t tableIndex) {
   MOZ_ASSERT(SASigTableGet.failureMode == FailureMode::FailOnInvalidRef);
+
   const Table& table = *instance->tables()[tableIndex];
-  MOZ_RELEASE_ASSERT(table.kind() == TableKind::AnyRef);
   if (index >= table.length()) {
     JS_ReportErrorNumberASCII(TlsContext.get(), GetErrorMessage, nullptr,
                               JSMSG_WASM_TABLE_OUT_OF_BOUNDS);
     return AnyRef::invalid().forCompiledCode();
   }
-  return table.getAnyRef(index).forCompiledCode();
+
+  if (table.kind() == TableKind::AnyRef) {
+    return table.getAnyRef(index).forCompiledCode();
+  }
+
+  MOZ_RELEASE_ASSERT(table.kind() == TableKind::FuncRef);
+
+  JSContext* cx = TlsContext.get();
+  RootedFunction fun(cx);
+  if (!table.getFuncRef(cx, index, &fun)) {
+    return AnyRef::invalid().forCompiledCode();
+  }
+
+  return AnyRef::fromJSObject(fun).forCompiledCode();
 }
 
 /* static */ uint32_t Instance::tableGrow(Instance* instance, void* initValue,
                                           uint32_t delta, uint32_t tableIndex) {
   MOZ_ASSERT(SASigTableGrow.failureMode == FailureMode::Infallible);
 
-  RootedAnyRef obj(TlsContext.get(), AnyRef::fromCompiledCode(initValue));
+  RootedAnyRef ref(TlsContext.get(), AnyRef::fromCompiledCode(initValue));
   Table& table = *instance->tables()[tableIndex];
-  MOZ_RELEASE_ASSERT(table.kind() == TableKind::AnyRef);
 
-  uint32_t oldSize = table.grow(delta, TlsContext.get());
+  JSContext* cx = TlsContext.get();
+  uint32_t oldSize = table.grow(delta, cx);
+
   if (oldSize != uint32_t(-1) && initValue != nullptr) {
-    for (uint32_t i = 0; i < delta; i++) {
-      table.setAnyRef(oldSize + i, obj.get());
+    switch (table.kind()) {
+      case TableKind::AnyRef:
+        table.fillAnyRef(oldSize, delta, ref);
+        break;
+      case TableKind::FuncRef:
+        table.fillFuncRef(oldSize, delta, ref, cx);
+        break;
+      case TableKind::AsmJS:
+        MOZ_CRASH("not asm.js");
     }
   }
+
   return oldSize;
 }
 
@@ -970,13 +992,25 @@ void Instance::initElems(uint32_t tableIndex, const ElemSegment& seg,
   MOZ_ASSERT(SASigTableSet.failureMode == FailureMode::FailOnNegI32);
 
   Table& table = *instance->tables()[tableIndex];
-  MOZ_RELEASE_ASSERT(table.kind() == TableKind::AnyRef);
   if (index >= table.length()) {
     JS_ReportErrorNumberASCII(TlsContext.get(), GetErrorMessage, nullptr,
                               JSMSG_WASM_TABLE_OUT_OF_BOUNDS);
     return -1;
   }
-  table.setAnyRef(index, AnyRef::fromCompiledCode(value));
+
+  AnyRef ref = AnyRef::fromCompiledCode(value);
+
+  switch (table.kind()) {
+    case TableKind::AnyRef:
+      table.fillAnyRef(index, 1, ref);
+      break;
+    case TableKind::FuncRef:
+      table.fillFuncRef(index, 1, ref, TlsContext.get());
+      break;
+    case TableKind::AsmJS:
+      MOZ_CRASH("not asm.js");
+  }
+
   return 0;
 }
 
@@ -991,7 +1025,8 @@ void Instance::initElems(uint32_t tableIndex, const ElemSegment& seg,
                                         gc::Cell** location) {
   MOZ_ASSERT(SASigPostBarrier.failureMode == FailureMode::Infallible);
   MOZ_ASSERT(location);
-  TlsContext.get()->runtime()->gc.storeBuffer().putCell(location);
+  TlsContext.get()->runtime()->gc.storeBuffer().putCell(
+      reinterpret_cast<JSObject**>(location));
 }
 
 /* static */ void Instance::postBarrierFiltering(Instance* instance,
@@ -1001,7 +1036,8 @@ void Instance::initElems(uint32_t tableIndex, const ElemSegment& seg,
   if (*location == nullptr || !gc::IsInsideNursery(*location)) {
     return;
   }
-  TlsContext.get()->runtime()->gc.storeBuffer().putCell(location);
+  TlsContext.get()->runtime()->gc.storeBuffer().putCell(
+      reinterpret_cast<JSObject**>(location));
 }
 
 // The typeIndex is an index into the structTypeDescrs_ table in the instance.
@@ -1207,17 +1243,17 @@ Instance::Instance(JSContext* cx, Handle<WasmInstanceObject*> object,
       import.realm = f->realm();
       import.code =
           calleeInstance.codeBase(calleeTier) + codeRange.funcNormalEntry();
-      import.baselineScript = nullptr;
+      import.jitScript = nullptr;
     } else if (void* thunk = MaybeGetBuiltinThunk(f, fi.funcType())) {
       import.tls = tlsData();
       import.realm = f->realm();
       import.code = thunk;
-      import.baselineScript = nullptr;
+      import.jitScript = nullptr;
     } else {
       import.tls = tlsData();
       import.realm = f->realm();
       import.code = codeBase(callerTier) + fi.interpExitCodeOffset();
-      import.baselineScript = nullptr;
+      import.jitScript = nullptr;
     }
   }
 
@@ -1341,8 +1377,8 @@ Instance::~Instance() {
 
   for (unsigned i = 0; i < funcImports.length(); i++) {
     FuncImportTls& import = funcImportTls(funcImports[i]);
-    if (import.baselineScript) {
-      import.baselineScript->removeDependentWasmImport(*this, i);
+    if (import.jitScript) {
+      import.jitScript->removeDependentWasmImport(*this, i);
     }
   }
 
@@ -1412,8 +1448,7 @@ bool Instance::memoryAccessInBounds(uint8_t* addr, unsigned numBytes) const {
 void Instance::tracePrivate(JSTracer* trc) {
   // This method is only called from WasmInstanceObject so the only reason why
   // TraceEdge is called is so that the pointer can be updated during a moving
-  // GC. TraceWeakEdge may sound better, but it is less efficient given that
-  // we know object_ is already marked.
+  // GC.
   MOZ_ASSERT(!gc::IsAboutToBeFinalized(&object_));
   TraceEdge(trc, &object_, "wasm instance object");
 
@@ -1886,7 +1921,7 @@ void Instance::deoptimizeImportExit(uint32_t funcImportIndex) {
   const FuncImport& fi = metadata(t).funcImports[funcImportIndex];
   FuncImportTls& import = funcImportTls(fi);
   import.code = codeBase(t) + fi.interpExitCodeOffset();
-  import.baselineScript = nullptr;
+  import.jitScript = nullptr;
 }
 
 JSString* Instance::createDisplayURL(JSContext* cx) {

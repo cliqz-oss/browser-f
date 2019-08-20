@@ -178,8 +178,10 @@ nsFaviconService::ExpireAllFavicons() {
       mDB->GetAsyncStatement("DELETE FROM moz_icons_to_pages");
   NS_ENSURE_STATE(unlinkIconsStmt);
 
-  mozIStorageBaseStatement* stmts[] = {
-      removePagesStmt.get(), removeIconsStmt.get(), unlinkIconsStmt.get()};
+  nsTArray<RefPtr<mozIStorageBaseStatement>> stmts = {removePagesStmt.forget(),
+
+                                                      removeIconsStmt.forget(),
+                                                      unlinkIconsStmt.forget()};
   nsCOMPtr<mozIStorageConnection> conn = mDB->MainConn();
   if (!conn) {
     return NS_ERROR_UNEXPECTED;
@@ -187,8 +189,7 @@ nsFaviconService::ExpireAllFavicons() {
   nsCOMPtr<mozIStoragePendingStatement> ps;
   RefPtr<ExpireFaviconsStatementCallbackNotifier> callback =
       new ExpireFaviconsStatementCallbackNotifier();
-  return conn->ExecuteAsync(stmts, ArrayLength(stmts), callback,
-                            getter_AddRefs(ps));
+  return conn->ExecuteAsync(stmts, callback, getter_AddRefs(ps));
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -300,15 +301,14 @@ nsFaviconService::SetAndFetchFaviconForPage(
              "please provide aLoadingPrincipal for this favicon");
   if (!loadingPrincipal) {
     // Let's default to the nullPrincipal if no loadingPrincipal is provided.
-    const char16_t* params[] = {
-        u"nsFaviconService::setAndFetchFaviconForPage()",
-        u"nsFaviconService::setAndFetchFaviconForPage(..., [optional "
-        u"aLoadingPrincipal])"};
+    AutoTArray<nsString, 2> params = {
+        NS_LITERAL_STRING("nsFaviconService::setAndFetchFaviconForPage()"),
+        NS_LITERAL_STRING("nsFaviconService::setAndFetchFaviconForPage(..., "
+                          "[optional aLoadingPrincipal])")};
     nsContentUtils::ReportToConsole(
         nsIScriptError::warningFlag, NS_LITERAL_CSTRING("Security by Default"),
         nullptr,  // aDocument
-        nsContentUtils::eNECKO_PROPERTIES, "APIDeprecationWarning", params,
-        ArrayLength(params));
+        nsContentUtils::eNECKO_PROPERTIES, "APIDeprecationWarning", params);
     loadingPrincipal = NullPrincipal::CreateWithoutOriginAttributes();
   }
   NS_ENSURE_TRUE(loadingPrincipal, NS_ERROR_FAILURE);
@@ -495,15 +495,14 @@ nsFaviconService::ReplaceFaviconDataFromDataURL(
              "please provide aLoadingPrincipal for this favicon");
   if (!loadingPrincipal) {
     // Let's default to the nullPrincipal if no loadingPrincipal is provided.
-    const char16_t* params[] = {
-        u"nsFaviconService::ReplaceFaviconDataFromDataURL()",
-        u"nsFaviconService::ReplaceFaviconDataFromDataURL(..., [optional "
-        u"aLoadingPrincipal])"};
+    AutoTArray<nsString, 2> params = {
+        NS_LITERAL_STRING("nsFaviconService::ReplaceFaviconDataFromDataURL()"),
+        NS_LITERAL_STRING("nsFaviconService::ReplaceFaviconDataFromDataURL(...,"
+                          " [optional aLoadingPrincipal])")};
     nsContentUtils::ReportToConsole(
         nsIScriptError::warningFlag, NS_LITERAL_CSTRING("Security by Default"),
         nullptr,  // aDocument
-        nsContentUtils::eNECKO_PROPERTIES, "APIDeprecationWarning", params,
-        ArrayLength(params));
+        nsContentUtils::eNECKO_PROPERTIES, "APIDeprecationWarning", params);
 
     loadingPrincipal = NullPrincipal::CreateWithoutOriginAttributes();
   }

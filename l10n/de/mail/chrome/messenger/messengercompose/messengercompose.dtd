@@ -378,6 +378,9 @@
 <!ENTITY customizeFromAddress.label "Benutzerdefinierte Absenderadresse…">
 <!ENTITY customizeFromAddress.accesskey "A">
 
+<!-- Accessibility name for the document -->
+<!ENTITY aria.message.bodyName "Nachrichteninhalt">
+
 <!-- Status Bar -->
 <!ENTITY languageStatusButton.tooltip "Sprache für Rechtschreibprüfung ändern">
 <!ENTITY encodingStatusPanel.tooltip "Zeichenkodierung">

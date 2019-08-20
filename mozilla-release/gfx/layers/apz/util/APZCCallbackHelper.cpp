@@ -8,7 +8,7 @@
 
 #include "TouchActionHelper.h"
 #include "gfxPlatform.h"  // For gfxPlatform::UseTiling
-#include "gfxPrefs.h"
+
 #include "LayersLogging.h"  // For Stringify
 #include "mozilla/dom/Element.h"
 #include "mozilla/dom/MouseEventBinding.h"
@@ -406,7 +406,7 @@ void APZCCallbackHelper::InitializeRootDisplayport(PresShell* aPresShell) {
                                                        &viewId)) {
     nsPresContext* pc = aPresShell->GetPresContext();
     // This code is only correct for root content or toplevel documents.
-    MOZ_ASSERT(!pc || pc->IsRootContentDocument() ||
+    MOZ_ASSERT(!pc || pc->IsRootContentDocumentCrossProcess() ||
                !pc->GetParentPresContext());
     nsIFrame* frame = aPresShell->GetRootScrollFrame();
     if (!frame) {
@@ -666,8 +666,7 @@ static bool PrepareForSetTargetAPZCNotification(
     nsIWidget* aWidget, const LayersId& aLayersId, nsIFrame* aRootFrame,
     const LayoutDeviceIntPoint& aRefPoint,
     nsTArray<SLGuidAndRenderRoot>* aTargets) {
-  SLGuidAndRenderRoot guid(aLayersId, 0,
-                           ScrollableLayerGuid::NULL_SCROLL_ID,
+  SLGuidAndRenderRoot guid(aLayersId, 0, ScrollableLayerGuid::NULL_SCROLL_ID,
                            wr::RenderRoot::Default);
   nsPoint point = nsLayoutUtils::GetEventCoordinatesRelativeTo(
       aWidget, aRefPoint, aRootFrame);
@@ -694,7 +693,8 @@ static bool PrepareForSetTargetAPZCNotification(
   if (XRE_IsContentProcess()) {
     guid.mRenderRoot = gfxUtils::GetContentRenderRoot();
   } else {
-    guid.mRenderRoot = gfxUtils::RecursivelyGetRenderRootForElement(dpElement);
+    guid.mRenderRoot = gfxUtils::RecursivelyGetRenderRootForFrame(
+        target ? target : aRootFrame);
   }
 
 #ifdef APZCCH_LOGGING
@@ -818,9 +818,11 @@ void DisplayportSetListener::DidRefresh() {
 }
 
 UniquePtr<DisplayportSetListener>
-APZCCallbackHelper::SendSetTargetAPZCNotification(
-    nsIWidget* aWidget, dom::Document* aDocument, const WidgetGUIEvent& aEvent,
-    const LayersId& aLayersId, uint64_t aInputBlockId) {
+APZCCallbackHelper::SendSetTargetAPZCNotification(nsIWidget* aWidget,
+                                                  dom::Document* aDocument,
+                                                  const WidgetGUIEvent& aEvent,
+                                                  const LayersId& aLayersId,
+                                                  uint64_t aInputBlockId) {
   if (!aWidget || !aDocument) {
     return nullptr;
   }

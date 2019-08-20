@@ -4813,10 +4813,6 @@ AttachDecision CallIRGenerator::tryAttachIsSuspendedGenerator() {
 }
 
 AttachDecision CallIRGenerator::tryAttachFunCall() {
-  if (JitOptions.disableCacheIRCalls) {
-    return AttachDecision::NoAction;
-  }
-
   if (!thisval_.isObject() || !thisval_.toObject().is<JSFunction>()) {
     return AttachDecision::NoAction;
   }
@@ -4867,10 +4863,6 @@ AttachDecision CallIRGenerator::tryAttachFunCall() {
 }
 
 AttachDecision CallIRGenerator::tryAttachFunApply() {
-  if (JitOptions.disableCacheIRCalls) {
-    return AttachDecision::NoAction;
-  }
-
   if (argc_ != 2) {
     return AttachDecision::NoAction;
   }
@@ -5034,10 +5026,6 @@ bool CallIRGenerator::getTemplateObjectForScripted(HandleFunction calleeFunc,
 
 AttachDecision CallIRGenerator::tryAttachCallScripted(
     HandleFunction calleeFunc) {
-  if (JitOptions.disableCacheIRCalls) {
-    return AttachDecision::NoAction;
-  }
-
   // Never attach optimized scripted call stubs for JSOP_FUNAPPLY.
   // MagicArguments may escape the frame through them.
   if (op_ == JSOP_FUNAPPLY) {
@@ -5254,9 +5242,6 @@ AttachDecision CallIRGenerator::tryAttachCallNative(HandleFunction calleeFunc) {
   if (isSpecialized) {
     TRY_ATTACH(tryAttachSpecialCaseCallNative(calleeFunc));
   }
-  if (JitOptions.disableCacheIRCalls) {
-    return AttachDecision::NoAction;
-  }
 
   RootedObject templateObj(cx_);
   if (isSpecialized && !getTemplateObjectForNative(calleeFunc, &templateObj)) {
@@ -5338,10 +5323,6 @@ bool CallIRGenerator::getTemplateObjectForClassHook(
 }
 
 AttachDecision CallIRGenerator::tryAttachCallHook(HandleObject calleeObj) {
-  if (JitOptions.disableCacheIRCalls) {
-    return AttachDecision::NoAction;
-  }
-
   if (op_ == JSOP_FUNAPPLY) {
     return AttachDecision::NoAction;
   }

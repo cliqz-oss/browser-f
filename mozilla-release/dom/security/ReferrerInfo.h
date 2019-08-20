@@ -26,6 +26,8 @@
 class nsIURI;
 class nsIChannel;
 class nsILoadInfo;
+class nsINode;
+class nsIPrincipal;
 
 namespace mozilla {
 namespace net {
@@ -68,6 +70,24 @@ class ReferrerInfo : public nsIReferrerInfo {
   // create an copy of the ReferrerInfo with new referrer policy
   already_AddRefed<nsIReferrerInfo> CloneWithNewPolicy(uint32_t aPolicy) const;
 
+  // create an copy of the ReferrerInfo with new send referrer
+  already_AddRefed<nsIReferrerInfo> CloneWithNewSendReferrer(
+      bool aSendReferrer) const;
+
+  // create an copy of the ReferrerInfo with new original referrer
+  already_AddRefed<nsIReferrerInfo> CloneWithNewOriginalReferrer(
+      nsIURI* aOriginalReferrer) const;
+
+  /*
+   * Implements step 3.1 and 3.3 of the Determine request's Referrer algorithm
+   * from the Referrer Policy specification.
+   *
+   * https://w3c.github.io/webappsec/specs/referrer-policy/#determine-requests-referrer
+   */
+
+  static already_AddRefed<nsIReferrerInfo> CreateForFetch(
+      nsIPrincipal* aPrincipal, Document* aDoc);
+
   /**
    * Check whether the given referrer's scheme is allowed to be computed and
    * sent. The whitelist schemes are: http, https, ftp.
@@ -75,10 +95,38 @@ class ReferrerInfo : public nsIReferrerInfo {
   static bool IsReferrerSchemeAllowed(nsIURI* aReferrer);
 
   /*
+   * The Referrer Policy should be inherited for nested browsing contexts that
+   * are not created from responses. Such as: srcdoc, data, blob.
+   */
+  static bool ShouldResponseInheritReferrerInfo(nsIChannel* aChannel);
+
+  /*
    * Check whether we need to hide referrer when leaving a .onion domain.
    * Controlled by user pref: network.http.referer.hideOnionSource
    */
   static bool HideOnionReferrerSource();
+
+  /*
+   * Check whether referrer is allowed to send in secure to insecure scenario.
+   */
+  static nsresult HandleSecureToInsecureReferral(nsIURI* aOriginalURI,
+                                                 nsIURI* aURI, uint32_t aPolicy,
+                                                 bool& aAllowed);
+
+  /**
+   * Returns true if the given channel is cross-origin request
+   *
+   * Computing whether the request is cross-origin may be expensive, so please
+   * do that in cases where we're going to use this information later on.
+   */
+  static bool IsCrossOriginRequest(nsIHttpChannel* aChannel);
+
+  /**
+   * Returns true if the given channel is suppressed by Referrer-Policy header
+   * and should set "null" to Origin header.
+   */
+  static bool ShouldSetNullOriginHeader(net::HttpBaseChannel* aChannel,
+                                        nsIURI* aOriginURI);
 
   /**
    * Return default referrer policy which is controlled by user
@@ -94,7 +142,7 @@ class ReferrerInfo : public nsIReferrerInfo {
                                            nsIURI* aURI = nullptr,
                                            bool privateBrowsing = false);
 
-  NS_DECL_ISUPPORTS
+  NS_DECL_THREADSAFE_ISUPPORTS
   NS_DECL_NSIREFERRERINFO
   NS_DECL_NSISERIALIZABLE
 
@@ -146,17 +194,17 @@ class ReferrerInfo : public nsIReferrerInfo {
   };
 
   /**
-   * Returns true if the given channel is cross-origin request
-   *
-   * Computing whether the request is cross-origin may be expensive, so please
-   * do that in cases where we're going to use this information later on.
+   * Check whether the given node has referrerpolicy attribute and parse
+   * referrer policy from the attribute.
+   * Currently, referrerpolicy attribute is supported in a, area, img, iframe,
+   * script, or link element.
    */
-  bool IsCrossOriginRequest(nsIHttpChannel* aChannel) const;
+  void GetReferrerPolicyFromAtribute(nsINode* aNode, uint32_t& aPolicy) const;
 
-  /*
-   * Check whether referrer is allowed to send in secure to insecure scenario.
+  /**
+   * Return true if node has a rel="noreferrer" attribute.
    */
-  nsresult HandleSecureToInsecureReferral(nsIURI* aURI, bool& aAllowed) const;
+  bool HasRelNoReferrer(nsINode* aNode) const;
 
   /*
    * Handle user controlled pref network.http.referer.XOriginPolicy
@@ -199,8 +247,9 @@ class ReferrerInfo : public nsIReferrerInfo {
    */
   bool IsInitialized() { return mInitialized; }
 
-  // nsHttpChannel could access IsPolicyOverrided();
+  // nsHttpChannel, Document could access IsPolicyOverrided();
   friend class mozilla::net::nsHttpChannel;
+  friend class mozilla::dom::Document;
   /*
    * Check whether if unset referrer policy is overrided by default or not
    */

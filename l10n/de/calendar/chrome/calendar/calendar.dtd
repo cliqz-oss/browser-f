@@ -327,8 +327,8 @@
 <!ENTITY calendar.alarm.location.label              "Ort:">
 <!ENTITY calendar.alarm.details.label               "Details…">
 
-<!ENTITY calendar.alarm.snoozefor.label             "Erneut erinnern in">
-<!ENTITY calendar.alarm.snoozeallfor.label          "An alle erneut erinnern in">
+<!ENTITY calendar.alarm.snoozefor.label             "Zurückstellen für">
+<!ENTITY calendar.alarm.snoozeallfor.label          "Alle zurückstellen für">
 <!ENTITY calendar.alarm.title.label                 "Kalendererinnerungen">
 <!ENTITY calendar.alarm.dismiss.label               "Schließen">
 <!ENTITY calendar.alarm.dismissall.label            "Alle schließen">
@@ -346,7 +346,7 @@
      This string is not seen in the UI, it is read by screen readers when the
      user focuses the "Cancel" button in the "Snooze for..." popup of the alarm
      dialog. -->
-<!ENTITY calendar.alarm.snooze.cancel               "Erneutes Erinnern abbrechen">
+<!ENTITY calendar.alarm.snooze.cancel               "Zurückstellen abbrechen">
 
 <!-- Calendar Server Dialog -->
 <!ENTITY calendar.server.dialog.title.edit          "Kalender bearbeiten">

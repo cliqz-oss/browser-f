@@ -13,6 +13,7 @@
 #include "mozilla/gfx/GPUParent.h"
 #include "mozilla/layers/CompositorThread.h"
 #include "mozilla/layers/CompositorBridgeParent.h"
+#include "mozilla/layers/CompositorManagerParent.h"
 #include "mozilla/layers/WebRenderBridgeParent.h"
 #include "mozilla/layers/SharedSurfacesParent.h"
 #include "mozilla/StaticPtr.h"
@@ -28,6 +29,7 @@
 
 #ifdef MOZ_WIDGET_ANDROID
 #  include "GLLibraryEGL.h"
+#  include "GeneratedJNIWrappers.h"
 #endif
 
 using namespace mozilla;
@@ -46,7 +48,8 @@ RenderThread::RenderThread(base::Thread* aThread)
       mWindowInfos("RenderThread.mWindowInfos"),
       mRenderTextureMapLock("RenderThread.mRenderTextureMapLock"),
       mHasShutdown(false),
-      mHandlingDeviceReset(false) {}
+      mHandlingDeviceReset(false),
+      mHandlingWebRenderError(false) {}
 
 RenderThread::~RenderThread() {
   MOZ_ASSERT(mRenderTexturesDeferred.empty());
@@ -101,7 +104,9 @@ void RenderThread::ShutDown() {
 
   sRenderThread = nullptr;
 #ifdef XP_WIN
-  widget::WinCompositorWindowThread::ShutDown();
+  if (widget::WinCompositorWindowThread::Get()) {
+    widget::WinCompositorWindowThread::ShutDown();
+  }
 #endif
 }
 
@@ -196,6 +201,7 @@ void RenderThread::RemoveRenderer(wr::WindowId aWindowId) {
   }
 
   mRenderers.erase(aWindowId);
+  mCompositionRecorders.erase(aWindowId);
 
   if (mRenderers.size() == 0 && mHandlingDeviceReset) {
     mHandlingDeviceReset = false;
@@ -225,6 +231,37 @@ RendererOGL* RenderThread::GetRenderer(wr::WindowId aWindowId) {
 size_t RenderThread::RendererCount() {
   MOZ_ASSERT(IsInRenderThread());
   return mRenderers.size();
+}
+
+void RenderThread::SetCompositionRecorderForWindow(
+    wr::WindowId aWindowId,
+    RefPtr<layers::WebRenderCompositionRecorder>&& aCompositionRecorder) {
+  MOZ_ASSERT(IsInRenderThread());
+  MOZ_ASSERT(GetRenderer(aWindowId));
+
+  auto it = mCompositionRecorders.find(aWindowId);
+  if (it != mCompositionRecorders.end() && it->second->ForceFinishRecording()) {
+    // This case should never occur since the |CompositorBridgeParent| will
+    // receive its "EndRecording" IPC message before another "BeginRecording"
+    // IPC message.
+    //
+    // However, if we do hit this case, then we should handle it gracefully.
+    // We free the structures here because any captured frames are not going
+    // to be read back.
+    if (RendererOGL* renderer = GetRenderer(aWindowId)) {
+      wr_renderer_release_composition_recorder_structures(
+          renderer->GetRenderer());
+    }
+  }
+
+  // If we have finished recording, then we have received
+  // |SetCompositionRecorderEvent| after the compositor brige parent finished
+  // writing but before we handled another frame to delete the data structure.
+  //
+  // In this case we do not need to free the |wr::Renderer|'s composition
+  // recorder structures since we can re-use them.
+
+  mCompositionRecorders[aWindowId] = std::move(aCompositionRecorder);
 }
 
 void RenderThread::HandleFrame(wr::WindowId aWindowId, bool aRender) {
@@ -380,12 +417,27 @@ void RenderThread::UpdateAndRender(
   renderer->CheckGraphicsResetStatus();
 
   TimeStamp end = TimeStamp::Now();
-  auto info = renderer->FlushPipelineInfo();
+  RefPtr<WebRenderPipelineInfo> info = renderer->FlushPipelineInfo();
 
   layers::CompositorThreadHolder::Loop()->PostTask(
       NewRunnableFunction("NotifyDidRenderRunnable", &NotifyDidRender,
                           renderer->GetCompositorBridge(), info, aStartId,
                           aStartTime, start, end, aRender, stats));
+
+  if (rendered) {
+    auto recorderIt = mCompositionRecorders.find(aWindowId);
+    if (recorderIt != mCompositionRecorders.end()) {
+      bool shouldRelease = recorderIt->second->MaybeRecordFrame(
+          renderer->GetRenderer(), info.get());
+
+      if (shouldRelease) {
+        mCompositionRecorders.erase(recorderIt);
+
+        wr_renderer_release_composition_recorder_structures(
+            renderer->GetRenderer());
+      }
+    }
+  }
 
   if (rendered) {
     // Wait for GPU after posting NotifyDidRender, since the wait is not
@@ -626,7 +678,10 @@ void RenderThread::NotifyNotUsed(uint64_t aExternalImageId) {
   }
 
   auto it = mRenderTextures.find(aExternalImageId);
+#ifndef MOZ_WIDGET_ANDROID
+  // This assert fails on GeckoView intermittently. Bug 1559958 tracks it.
   MOZ_ASSERT(it != mRenderTextures.end());
+#endif
   if (it == mRenderTextures.end()) {
     return;
   }
@@ -757,6 +812,34 @@ void RenderThread::SimulateDeviceReset() {
     // them.
     HandleDeviceReset("SimulateDeviceReset", /* aNotify */ false);
   }
+}
+
+static void DoNotifyWebRenderError(WebRenderError aError) {
+  layers::CompositorManagerParent::NotifyWebRenderError(aError);
+}
+
+void RenderThread::HandleWebRenderError(WebRenderError aError) {
+  if (mHandlingWebRenderError) {
+    return;
+  }
+
+  layers::CompositorThreadHolder::Loop()->PostTask(NewRunnableFunction(
+      "DoNotifyWebRenderErrorRunnable", &DoNotifyWebRenderError, aError));
+  {
+    MutexAutoLock lock(mRenderTextureMapLock);
+    mRenderTexturesDeferred.clear();
+    for (const auto& entry : mRenderTextures) {
+      entry.second->ClearCachedResources();
+    }
+  }
+  mHandlingWebRenderError = true;
+  // WebRender is going to be disabled by
+  // GPUProcessManager::NotifyWebRenderError()
+}
+
+bool RenderThread::IsHandlingWebRenderError() {
+  MOZ_ASSERT(IsInRenderThread());
+  return mHandlingWebRenderError;
 }
 
 gl::GLContext* RenderThread::SharedGL() {

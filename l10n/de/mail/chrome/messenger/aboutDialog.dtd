@@ -101,6 +101,7 @@
 <!ENTITY update.downloading.end     "">
 
 <!ENTITY update.applying            "Update wird durchgeführt…">
+<!ENTITY update.restarting          "Wird neu gestartet…">
 
 <!-- LOCALIZATION NOTE (channel.description.start,channel.description.end): channel.description.start and
      channel.description.end create one sentence, with the current channel label inserted in between.

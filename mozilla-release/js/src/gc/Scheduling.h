@@ -310,23 +310,14 @@
 #include "mozilla/Atomics.h"
 #include "mozilla/DebugOnly.h"
 
+#include "gc/GCEnum.h"
 #include "js/HashTable.h"
+#include "threading/ProtectedData.h"
 
 namespace js {
 
-#define JS_FOR_EACH_INTERNAL_MEMORY_USE(_)      \
-  _(ArrayBufferContents)                        \
-  _(StringContents)
-
-#define JS_FOR_EACH_MEMORY_USE(_)               \
-  JS_FOR_EACH_PUBLIC_MEMORY_USE(_)              \
-  JS_FOR_EACH_INTERNAL_MEMORY_USE(_)
-
-enum class MemoryUse : uint8_t {
-#define DEFINE_MEMORY_USE(Name) Name,
-  JS_FOR_EACH_MEMORY_USE(DEFINE_MEMORY_USE)
-#undef DEFINE_MEMORY_USE
-};
+class AutoLockGC;
+class ZoneAllocPolicy;
 
 namespace gc {
 
@@ -627,23 +618,82 @@ class MemoryCounter {
                      const AutoLockGC& lock);
 };
 
-// This class encapsulates the data that determines when we need to do a zone
-// GC.
-class ZoneHeapThreshold {
-  // The "growth factor" for computing our next thresholds after a GC.
-  GCLockData<float> gcHeapGrowthFactor_;
+/*
+ * Tracks the used sizes for owned heap data and automatically maintains the
+ * memory usage relationship between GCRuntime and Zones.
+ */
+class HeapSize {
+  /*
+   * A heap usage that contains our parent's heap usage, or null if this is
+   * the top-level usage container.
+   */
+  HeapSize* const parent_;
 
-  // GC trigger threshold for allocations on the GC heap.
+  /*
+   * The approximate number of bytes in use on the GC heap, to the nearest
+   * ArenaSize. This does not include any malloc data. It also does not
+   * include not-actively-used addresses that are still reserved at the OS
+   * level for GC usage. It is atomic because it is updated by both the active
+   * and GC helper threads.
+   */
+  mozilla::Atomic<size_t, mozilla::ReleaseAcquire,
+                  mozilla::recordreplay::Behavior::DontPreserve>
+      gcBytes_;
+
+ public:
+  explicit HeapSize(HeapSize* parent) : parent_(parent), gcBytes_(0) {}
+
+  size_t gcBytes() const { return gcBytes_; }
+
+  void addGCArena() { addBytes(ArenaSize); }
+  void removeGCArena() { removeBytes(ArenaSize); }
+
+  void addBytes(size_t nbytes) {
+    mozilla::DebugOnly<size_t> initialBytes(gcBytes_);
+    MOZ_ASSERT(initialBytes + nbytes > initialBytes);
+    gcBytes_ += nbytes;
+    if (parent_) {
+      parent_->addBytes(nbytes);
+    }
+  }
+  void removeBytes(size_t nbytes) {
+    MOZ_ASSERT(gcBytes_ >= nbytes);
+    gcBytes_ -= nbytes;
+    if (parent_) {
+      parent_->removeBytes(nbytes);
+    }
+  }
+
+  /* Pair to adoptArenas. Adopts the attendant usage statistics. */
+  void adopt(HeapSize& other) {
+    gcBytes_ += other.gcBytes_;
+    other.gcBytes_ = 0;
+  }
+};
+
+// Base class for GC heap and malloc thresholds.
+class ZoneThreshold {
+ protected:
+  // GC trigger threshold.
   mozilla::Atomic<size_t, mozilla::Relaxed,
                   mozilla::recordreplay::Behavior::DontPreserve>
       gcTriggerBytes_;
 
  public:
-  ZoneHeapThreshold() : gcHeapGrowthFactor_(3.0f), gcTriggerBytes_(0) {}
-
-  float gcHeapGrowthFactor() const { return gcHeapGrowthFactor_; }
   size_t gcTriggerBytes() const { return gcTriggerBytes_; }
   float eagerAllocTrigger(bool highFrequencyGC) const;
+};
+
+// This class encapsulates the data that determines when we need to do a zone GC
+// base on GC heap size.
+class ZoneHeapThreshold : public ZoneThreshold {
+  // The "growth factor" for computing our next thresholds after a GC.
+  GCLockData<float> gcHeapGrowthFactor_;
+
+ public:
+  ZoneHeapThreshold() : gcHeapGrowthFactor_(3.0f) {}
+
+  float gcHeapGrowthFactor() const { return gcHeapGrowthFactor_; }
 
   void updateAfterGC(size_t lastBytes, JSGCInvocationKind gckind,
                      const GCSchedulingTunables& tunables,
@@ -660,59 +710,57 @@ class ZoneHeapThreshold {
                                         const AutoLockGC& lock);
 };
 
+// This class encapsulates the data that determines when we need to do a zone
+// GC based on malloc data.
+class ZoneMallocThreshold : public ZoneThreshold {
+ public:
+  void updateAfterGC(size_t lastBytes, size_t baseBytes,
+                     const AutoLockGC& lock);
+
+ private:
+  static size_t computeZoneTriggerBytes(float growthFactor, size_t lastBytes,
+                                        size_t baseBytes,
+                                        const AutoLockGC& lock);
+};
+
+#ifdef DEBUG
+
 // Counts memory associated with GC things in a zone.
 //
-// In debug builds, this records details of the cell the memory allocations is
-// associated with to check the correctness of the information provided. In opt
-// builds it's just a counter.
+// This records details of the cell the memory allocations is associated with to
+// check the correctness of the information provided. This is not present in opt
+// builds.
 class MemoryTracker {
  public:
-#ifdef DEBUG
   MemoryTracker();
-  ~MemoryTracker();
   void fixupAfterMovingGC();
-#endif
-
-  void addMemory(Cell* cell, size_t nbytes, MemoryUse use) {
-    MOZ_ASSERT(cell);
-    MOZ_ASSERT(nbytes);
-    mozilla::DebugOnly<size_t> initialBytes(bytes_);
-    MOZ_ASSERT(initialBytes + nbytes > initialBytes);
-
-    bytes_ += nbytes;
-
-#ifdef DEBUG
-    trackMemory(cell, nbytes, use);
-#endif
-  }
-  void removeMemory(Cell* cell, size_t nbytes, MemoryUse use) {
-    MOZ_ASSERT(cell);
-    MOZ_ASSERT(nbytes);
-    MOZ_ASSERT(bytes_ >= nbytes);
-
-    bytes_ -= nbytes;
-
-#ifdef DEBUG
-    untrackMemory(cell, nbytes, use);
-#endif
-  }
-
-  size_t bytes() const { return bytes_; }
+  void checkEmptyOnDestroy();
 
   void adopt(MemoryTracker& other);
 
- private:
-  mozilla::Atomic<size_t, mozilla::Relaxed,
-                  mozilla::recordreplay::Behavior::DontPreserve>
-      bytes_;
-
-#ifdef DEBUG
   void trackMemory(Cell* cell, size_t nbytes, MemoryUse use);
   void untrackMemory(Cell* cell, size_t nbytes, MemoryUse use);
+  void swapMemory(Cell* a, Cell* b, MemoryUse use);
+  void registerPolicy(ZoneAllocPolicy* policy);
+  void unregisterPolicy(ZoneAllocPolicy* policy);
+  void incPolicyMemory(ZoneAllocPolicy* policy, size_t nbytes);
+  void decPolicyMemory(ZoneAllocPolicy* policy, size_t nbytes);
 
+ private:
   struct Key {
-    Cell* cell;
-    MemoryUse use;
+    Key(Cell* cell, MemoryUse use);
+    Cell* cell() const;
+    MemoryUse use() const;
+
+   private:
+#  ifdef JS_64BIT
+    // Pack this into a single word on 64 bit platforms.
+    uintptr_t cell_ : 56;
+    uintptr_t use_ : 8;
+#  else
+    uintptr_t cell_ : 32;
+    uintptr_t use_ : 8;
+#  endif
   };
 
   struct Hasher {
@@ -722,12 +770,25 @@ class MemoryTracker {
     static void rekey(Key& k, const Key& newKey);
   };
 
-  Mutex mutex;
-
+  // Map containing the allocated size associated with (cell, use) pairs.
   using Map = HashMap<Key, size_t, Hasher, SystemAllocPolicy>;
+
+  // Map containing the allocated size associated with each instance of a
+  // container that uses ZoneAllocPolicy.
+  using ZoneAllocPolicyMap =
+      HashMap<ZoneAllocPolicy*, size_t, DefaultHasher<ZoneAllocPolicy*>,
+              SystemAllocPolicy>;
+
+  bool allowMultipleAssociations(MemoryUse use) const;
+
+  size_t getAndRemoveEntry(const Key& key, LockGuard<Mutex>& lock);
+
+  Mutex mutex;
   Map map;
-#endif
+  ZoneAllocPolicyMap policyMap;
 };
+
+#endif  // DEBUG
 
 }  // namespace gc
 }  // namespace js

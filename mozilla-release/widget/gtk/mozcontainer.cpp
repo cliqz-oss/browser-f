@@ -609,10 +609,10 @@ struct wl_surface* moz_container_get_wl_surface(MozContainer* container) {
 
     wl_surface_commit(container->surface);
     wl_display_flush(waylandDisplay->GetDisplay());
-  }
 
-  LOGWAYLAND(("%s [%p] created surface %p\n", __FUNCTION__, (void*)container,
-              (void*)container->surface));
+    LOGWAYLAND(("%s [%p] created surface %p\n", __FUNCTION__, (void*)container,
+                (void*)container->surface));
+  }
 
   return container->surface;
 }
@@ -633,10 +633,10 @@ struct wl_egl_window* moz_container_get_wl_egl_window(MozContainer* container) {
         wl_egl_window_create(surface, gdk_window_get_width(window) * scale,
                              gdk_window_get_height(window) * scale);
     wl_surface_set_buffer_scale(surface, scale);
-  }
 
-  LOGWAYLAND(("%s [%p] created eglwindow %p\n", __FUNCTION__, (void*)container,
-              (void*)container->eglwindow));
+    LOGWAYLAND(("%s [%p] created eglwindow %p\n", __FUNCTION__,
+                (void*)container, (void*)container->eglwindow));
+  }
 
   return container->eglwindow;
 }
@@ -646,9 +646,9 @@ gboolean moz_container_has_wl_egl_window(MozContainer* container) {
 }
 
 gboolean moz_container_surface_needs_clear(MozContainer* container) {
-  gboolean state = container->surface_needs_clear;
+  int ret = container->surface_needs_clear;
   container->surface_needs_clear = false;
-  return state;
+  return ret;
 }
 #endif
 

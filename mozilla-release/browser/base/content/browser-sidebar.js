@@ -10,6 +10,7 @@ var SidebarUI = {
     if (this._sidebars) {
       return this._sidebars;
     }
+<<<<<<< HEAD
     return this._sidebars = new Map([
       ["viewBookmarksSidebar", {
         title: document.getElementById("sidebar-switcher-bookmarks")
@@ -37,14 +38,80 @@ var SidebarUI = {
       }],
 #endif
     ]);
+||||||| merged common ancestors
+    return this._sidebars = new Map([
+      ["viewBookmarksSidebar", {
+        title: document.getElementById("sidebar-switcher-bookmarks")
+                       .getAttribute("label"),
+        url: "chrome://browser/content/places/bookmarksSidebar.xul",
+        menuId: "menu_bookmarksSidebar",
+        buttonId: "sidebar-switcher-bookmarks",
+      }],
+      ["viewHistorySidebar", {
+        title: document.getElementById("sidebar-switcher-history")
+                       .getAttribute("label"),
+        url: "chrome://browser/content/places/historySidebar.xul",
+        menuId: "menu_historySidebar",
+        buttonId: "sidebar-switcher-history",
+        triggerButtonId: "appMenuViewHistorySidebar",
+      }],
+      ["viewTabsSidebar", {
+        title: document.getElementById("sidebar-switcher-tabs")
+                       .getAttribute("label"),
+        url: "chrome://browser/content/syncedtabs/sidebar.xhtml",
+        menuId: "menu_tabsSidebar",
+        buttonId: "sidebar-switcher-tabs",
+        triggerButtonId: "PanelUI-remotetabs-view-sidebar",
+      }],
+    ]);
+=======
+    return (this._sidebars = new Map([
+      [
+        "viewBookmarksSidebar",
+        {
+          title: document
+            .getElementById("sidebar-switcher-bookmarks")
+            .getAttribute("label"),
+          url: "chrome://browser/content/places/bookmarksSidebar.xul",
+          menuId: "menu_bookmarksSidebar",
+          buttonId: "sidebar-switcher-bookmarks",
+        },
+      ],
+      [
+        "viewHistorySidebar",
+        {
+          title: document
+            .getElementById("sidebar-switcher-history")
+            .getAttribute("label"),
+          url: "chrome://browser/content/places/historySidebar.xul",
+          menuId: "menu_historySidebar",
+          buttonId: "sidebar-switcher-history",
+          triggerButtonId: "appMenuViewHistorySidebar",
+        },
+      ],
+      [
+        "viewTabsSidebar",
+        {
+          title: document
+            .getElementById("sidebar-switcher-tabs")
+            .getAttribute("label"),
+          url: "chrome://browser/content/syncedtabs/sidebar.xhtml",
+          menuId: "menu_tabsSidebar",
+          buttonId: "sidebar-switcher-tabs",
+          triggerButtonId: "PanelUI-remotetabs-view-sidebar",
+        },
+      ],
+    ]));
+>>>>>>> origin/upstream-releases
   },
 
   // Avoid getting the browser element from init() to avoid triggering the
   // <browser> constructor during startup if the sidebar is hidden.
   get browser() {
-    if (this._browser)
+    if (this._browser) {
       return this._browser;
-    return this._browser = document.getElementById("sidebar");
+    }
+    return (this._browser = document.getElementById("sidebar"));
   },
   POSITION_START_PREF: "sidebar.position_start",
   DEFAULT_SIDEBAR_ID: "viewBookmarksSidebar",
@@ -57,9 +124,10 @@ var SidebarUI = {
   // The constructor of this label accesses the browser element due to the
   // control="sidebar" attribute, so avoid getting this label during startup.
   get _title() {
-    if (this.__title)
+    if (this.__title) {
       return this.__title;
-    return this.__title = document.getElementById("sidebar-title");
+    }
+    return (this.__title = document.getElementById("sidebar-title"));
   },
   _splitter: null,
   _icon: null,
@@ -83,7 +151,9 @@ var SidebarUI = {
     this._box = document.getElementById("sidebar-box");
     this._splitter = document.getElementById("sidebar-splitter");
     this._icon = document.getElementById("sidebar-icon");
-    this._reversePositionButton = document.getElementById("sidebar-reverse-position");
+    this._reversePositionButton = document.getElementById(
+      "sidebar-reverse-position"
+    );
     this._switcherPanel = document.getElementById("sidebarMenu-popup");
     this._switcherTarget = document.getElementById("sidebar-switcher-target");
     this._switcherArrow = document.getElementById("sidebar-switcher-arrow");
@@ -108,7 +178,11 @@ var SidebarUI = {
       if (this._box.hasAttribute("positionend")) {
         xulStore.persist(this._box, "positionend");
       } else {
-        xulStore.removeValue(document.documentURI, "sidebar-box", "positionend");
+        xulStore.removeValue(
+          document.documentURI,
+          "sidebar-box",
+          "positionend"
+        );
       }
       if (this._box.hasAttribute("checked")) {
         xulStore.persist(this._box, "checked");
@@ -125,7 +199,10 @@ var SidebarUI = {
    * Opens the switcher panel if it's closed, or closes it if it's open.
    */
   toggleSwitcherPanel() {
-    if (this._switcherPanel.state == "open" || this._switcherPanel.state == "showing") {
+    if (
+      this._switcherPanel.state == "open" ||
+      this._switcherPanel.state == "showing"
+    ) {
       this.hideSwitcherPanel();
     } else if (this._switcherPanel.state == "closed") {
       this.showSwitcherPanel();
@@ -138,14 +215,19 @@ var SidebarUI = {
 
   showSwitcherPanel() {
     this._ensureShortcutsShown();
-    this._switcherPanel.addEventListener("popuphiding", () => {
-      this._switcherTarget.classList.remove("active");
-    }, {once: true});
+    this._switcherPanel.addEventListener(
+      "popuphiding",
+      () => {
+        this._switcherTarget.classList.remove("active");
+      },
+      { once: true }
+    );
 
     // Combine start/end position with ltr/rtl to set the label in the popup appropriately.
-    let label = this._positionStart == RTL_UI ?
-                  gNavigatorBundle.getString("sidebar.moveToLeft") :
-                  gNavigatorBundle.getString("sidebar.moveToRight");
+    let label =
+      this._positionStart == RTL_UI
+        ? gNavigatorBundle.getString("sidebar.moveToLeft")
+        : gNavigatorBundle.getString("sidebar.moveToRight");
     this._reversePositionButton.setAttribute("label", label);
 
     this._switcherPanel.hidden = false;
@@ -153,7 +235,7 @@ var SidebarUI = {
     this._switcherTarget.classList.add("active");
   },
 
-  updateShortcut({button, key}) {
+  updateShortcut({ button, key }) {
     // If the shortcuts haven't been rendered yet then it will be set correctly
     // on the first render so there's nothing to do now.
     if (!this._addedShortcuts) {
@@ -178,8 +260,10 @@ var SidebarUI = {
       return;
     }
     this._addedShortcuts = true;
-    for (let button of this._switcherPanel.querySelectorAll("toolbarbutton[key]")) {
-      this.updateShortcut({button});
+    for (let button of this._switcherPanel.querySelectorAll(
+      "toolbarbutton[key]"
+    )) {
+      this.updateShortcut({ button });
     }
   },
 
@@ -257,14 +341,20 @@ var SidebarUI = {
       return true;
     }
 
-    this._box.setAttribute("width", sourceUI._box.getBoundingClientRect().width);
+    this._box.setAttribute(
+      "width",
+      sourceUI._box.getBoundingClientRect().width
+    );
     this.showInitially(commandID);
 
     return true;
   },
 
   windowPrivacyMatches(w1, w2) {
-    return PrivateBrowsingUtils.isWindowPrivate(w1) === PrivateBrowsingUtils.isWindowPrivate(w2);
+    return (
+      PrivateBrowsingUtils.isWindowPrivate(w1) ===
+      PrivateBrowsingUtils.isWindowPrivate(w2)
+    );
   },
 
   /**
@@ -276,8 +366,11 @@ var SidebarUI = {
     // opened from another window, check that it is one we might open a sidebar
     // for.
     if (sourceWindow) {
-      if (sourceWindow.closed || sourceWindow.location.protocol != "chrome:" ||
-        !this.windowPrivacyMatches(sourceWindow, window)) {
+      if (
+        sourceWindow.closed ||
+        sourceWindow.location.protocol != "chrome:" ||
+        !this.windowPrivacyMatches(sourceWindow, window)
+      ) {
         return;
       }
       // Try to adopt the sidebar state from the source window
@@ -318,7 +411,7 @@ var SidebarUI = {
    * a chance to update the button or whatever.
    */
   _fireShowEvent() {
-    let event = new CustomEvent("SidebarShown", {bubbles: true});
+    let event = new CustomEvent("SidebarShown", { bubbles: true });
     this._switcherTarget.dispatchEvent(event);
   },
 
@@ -329,7 +422,7 @@ var SidebarUI = {
    * window, only when the user opens the sidebar.
    */
   _fireFocusedEvent() {
-    let event = new CustomEvent("SidebarFocused", {bubbles: true});
+    let event = new CustomEvent("SidebarFocused", { bubbles: true });
     this.browser.contentWindow.dispatchEvent(event);
   },
 
@@ -386,10 +479,13 @@ var SidebarUI = {
 
   _loadSidebarExtension(commandID) {
     let sidebar = this.sidebars.get(commandID);
-    let {extensionId} = sidebar;
+    let { extensionId } = sidebar;
     if (extensionId) {
-      SidebarUI.browser.contentWindow.loadPanel(extensionId, sidebar.panel,
-                                                sidebar.browserStyle);
+      SidebarUI.browser.contentWindow.loadPanel(
+        extensionId,
+        sidebar.panel,
+        sidebar.browserStyle
+      );
     }
   },
 
@@ -461,21 +557,25 @@ var SidebarUI = {
       this._box.setAttribute("sidebarcommand", commandID);
       this.lastOpenedId = commandID;
 
-      let {url, title} = this.sidebars.get(commandID);
+      let { url, title } = this.sidebars.get(commandID);
       this.title = title;
       this.browser.setAttribute("src", url); // kick off async load
 
       if (this.browser.contentDocument.location.href != url) {
-        this.browser.addEventListener("load", event => {
-          // We're handling the 'load' event before it bubbles up to the usual
-          // (non-capturing) event handlers. Let it bubble up before resolving.
-          setTimeout(() => {
-            resolve();
+        this.browser.addEventListener(
+          "load",
+          event => {
+            // We're handling the 'load' event before it bubbles up to the usual
+            // (non-capturing) event handlers. Let it bubble up before resolving.
+            setTimeout(() => {
+              resolve();
 
-            // Now that the currentId is updated, fire a show event.
-            this._fireShowEvent();
-          }, 0);
-        }, {capture: true, once: true});
+              // Now that the currentId is updated, fire a show event.
+              this._fireShowEvent();
+            }, 0);
+          },
+          { capture: true, once: true }
+        );
       } else {
         resolve();
 
@@ -484,9 +584,10 @@ var SidebarUI = {
       }
 
       let selBrowser = gBrowser.selectedBrowser;
-      selBrowser.messageManager.sendAsyncMessage("Sidebar:VisibilityChange",
-        {commandID, isOpen: true}
-      );
+      selBrowser.messageManager.sendAsyncMessage("Sidebar:VisibilityChange", {
+        commandID,
+        isOpen: true,
+      });
     });
   },
 
@@ -512,16 +613,17 @@ var SidebarUI = {
     // until about:blank has loaded (which does not happen as long as the
     // element is hidden).
     this.browser.setAttribute("src", "about:blank");
-    this.browser.docShell.createAboutBlankContentViewer(null);
+    this.browser.docShell.createAboutBlankContentViewer(null, null);
 
     this._box.removeAttribute("checked");
     this._box.hidden = this._splitter.hidden = true;
 
     let selBrowser = gBrowser.selectedBrowser;
     selBrowser.focus();
-    selBrowser.messageManager.sendAsyncMessage("Sidebar:VisibilityChange",
-      {commandID, isOpen: false}
-    );
+    selBrowser.messageManager.sendAsyncMessage("Sidebar:VisibilityChange", {
+      commandID,
+      isOpen: false,
+    });
     if (triggerNode) {
       updateToggleControlLabel(triggerNode);
     }
@@ -532,10 +634,11 @@ var SidebarUI = {
    * none if the argument is an empty string.
    */
   selectMenuItem(commandID) {
-    for (let [id, {menuId, buttonId, triggerButtonId}] of this.sidebars) {
+    for (let [id, { menuId, buttonId, triggerButtonId }] of this.sidebars) {
       let menu = document.getElementById(menuId);
       let button = document.getElementById(buttonId);
-      let triggerbutton = triggerButtonId && document.getElementById(triggerButtonId);
+      let triggerbutton =
+        triggerButtonId && document.getElementById(triggerButtonId);
       if (id == commandID) {
         menu.setAttribute("checked", "true");
         button.setAttribute("checked", "true");
@@ -557,5 +660,10 @@ var SidebarUI = {
 
 // Add getters related to the position here, since we will want them
 // available for both startDelayedLoad and init.
-XPCOMUtils.defineLazyPreferenceGetter(SidebarUI, "_positionStart",
-  SidebarUI.POSITION_START_PREF, true, SidebarUI.setPosition.bind(SidebarUI));
+XPCOMUtils.defineLazyPreferenceGetter(
+  SidebarUI,
+  "_positionStart",
+  SidebarUI.POSITION_START_PREF,
+  true,
+  SidebarUI.setPosition.bind(SidebarUI)
+);

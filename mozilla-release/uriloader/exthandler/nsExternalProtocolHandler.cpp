@@ -407,7 +407,7 @@ NS_IMETHODIMP nsExtProtocolChannel::SetClassifierMatchedInfo(
 }
 
 NS_IMETHODIMP nsExtProtocolChannel::SetClassifierMatchedTrackingInfo(
-    const nsACString &aLists, const nsACString &aFullHashes) {
+    const nsACString& aLists, const nsACString& aFullHashes) {
   // nothing to do
   return NS_OK;
 }
@@ -509,15 +509,6 @@ NS_IMETHODIMP nsExternalProtocolHandler::GetProtocolFlags(uint32_t* aUritype) {
   *aUritype = URI_NORELATIVE | URI_NOAUTH | URI_LOADABLE_BY_ANYONE |
               URI_NON_PERSISTABLE | URI_DOES_NOT_RETURN_DATA;
   return NS_OK;
-}
-
-NS_IMETHODIMP nsExternalProtocolHandler::NewURI(
-    const nsACString& aSpec,
-    const char* aCharset,  // ignore charset info
-    nsIURI* aBaseURI, nsIURI** _retval) {
-  return NS_MutateURI(NS_SIMPLEURIMUTATOR_CONTRACTID)
-      .SetSpec(aSpec)
-      .Finalize(_retval);
 }
 
 NS_IMETHODIMP

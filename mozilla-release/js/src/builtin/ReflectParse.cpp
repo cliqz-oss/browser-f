@@ -2469,6 +2469,9 @@ bool ASTSerializer::statement(ParseNode* pn, MutableHandleValue dst) {
       }
 
       for (ParseNode* item : memberList->contents()) {
+        if (item->is<LexicalScopeNode>()) {
+          item = item->as<LexicalScopeNode>().scopeBody();
+        }
         if (item->is<ClassField>()) {
           ClassField* field = &item->as<ClassField>();
           MOZ_ASSERT(memberList->pn_pos.encloses(field->pn_pos));
@@ -2647,8 +2650,8 @@ bool ASTSerializer::expression(ParseNode* pn, MutableHandleValue dst) {
   switch (pn->getKind()) {
     case ParseNodeKind::Function: {
       FunctionNode* funNode = &pn->as<FunctionNode>();
-      ASTType type = funNode->funbox()->function()->isArrow() ? AST_ARROW_EXPR
-                                                              : AST_FUNC_EXPR;
+      ASTType type =
+          funNode->funbox()->isArrow() ? AST_ARROW_EXPR : AST_FUNC_EXPR;
       return function(funNode, type, dst);
     }
 
@@ -2830,7 +2833,6 @@ bool ASTSerializer::expression(ParseNode* pn, MutableHandleValue dst) {
 
     case ParseNodeKind::DotExpr: {
       PropertyAccess* prop = &pn->as<PropertyAccess>();
-      // TODO(khyperia): Implement private field access.
       MOZ_ASSERT(prop->pn_pos.encloses(prop->expression().pn_pos));
 
       RootedValue expr(cx);
@@ -3141,9 +3143,9 @@ bool ASTSerializer::property(ParseNode* pn, MutableHandleValue dst) {
   ParseNode* valNode = node->right();
 
   bool isShorthand = node->isKind(ParseNodeKind::Shorthand);
-  bool isMethod = valNode->is<FunctionNode>() &&
-                  valNode->as<FunctionNode>().funbox()->function()->kind() ==
-                      JSFunction::Method;
+  bool isMethod =
+      valNode->is<FunctionNode>() &&
+      valNode->as<FunctionNode>().funbox()->kind() == JSFunction::Method;
   RootedValue key(cx), val(cx);
   return propertyName(keyNode, &key) && expression(valNode, &val) &&
          builder.propertyInitializer(key, val, kind, isShorthand, isMethod,
@@ -3325,7 +3327,6 @@ bool ASTSerializer::identifier(NameNode* id, MutableHandleValue dst) {
 bool ASTSerializer::function(FunctionNode* funNode, ASTType type,
                              MutableHandleValue dst) {
   FunctionBox* funbox = funNode->funbox();
-  RootedFunction func(cx, funbox->function());
 
   GeneratorStyle generatorStyle =
       funbox->isGenerator() ? GeneratorStyle::ES6 : GeneratorStyle::None;
@@ -3334,7 +3335,7 @@ bool ASTSerializer::function(FunctionNode* funNode, ASTType type,
   bool isExpression = funbox->hasExprBody();
 
   RootedValue id(cx);
-  RootedAtom funcAtom(cx, func->explicitName());
+  RootedAtom funcAtom(cx, funbox->explicitName());
   if (!optIdentifier(funcAtom, nullptr, &id)) {
     return false;
   }

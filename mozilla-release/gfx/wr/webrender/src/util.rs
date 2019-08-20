@@ -275,6 +275,9 @@ pub trait MatrixHelpers<Src, Dst> {
     /// It ignores the Z coordinate and is usable for "flattened" transformations,
     /// since they are not generally inversible.
     fn inverse_project_2d_origin(&self) -> Option<TypedPoint2D<f32, Src>>;
+    /// Turn Z transformation into identity. This is useful when crossing "flat"
+    /// transform styled stacking contexts upon traversing the coordinate systems.
+    fn flatten_z_output(&mut self);
 }
 
 impl<Src, Dst> MatrixHelpers<Src, Dst> for TypedTransform3D<f32, Src, Dst> {
@@ -391,6 +394,13 @@ impl<Src, Dst> MatrixHelpers<Src, Dst> for TypedTransform3D<f32, Src, Dst> {
         } else {
             None
         }
+    }
+
+    fn flatten_z_output(&mut self) {
+        self.m13 = 0.0;
+        self.m23 = 0.0;
+        self.m33 = 1.0;
+        self.m43 = 0.0;
     }
 }
 
@@ -636,7 +646,6 @@ impl<Src, Dst> FastTransform<Src, Dst> {
         FastTransform::Offset(offset)
     }
 
-    #[allow(unused)]
     pub fn with_scale_offset(scale_offset: ScaleOffset) -> Self {
         if scale_offset.scale == Vector2D::new(1.0, 1.0) {
             FastTransform::Offset(TypedVector2D::from_untyped(&scale_offset.offset))
@@ -659,27 +668,12 @@ impl<Src, Dst> FastTransform<Src, Dst> {
         FastTransform::Transform { transform, inverse, is_2d}
     }
 
-    pub fn kind(&self) -> TransformedRectKind {
-        match *self {
-            FastTransform::Offset(_) => TransformedRectKind::AxisAligned,
-            FastTransform::Transform { ref transform, .. } if transform.preserves_2d_axis_alignment() => TransformedRectKind::AxisAligned,
-            FastTransform::Transform { .. } => TransformedRectKind::Complex,
-        }
-    }
-
     pub fn to_transform(&self) -> Cow<TypedTransform3D<f32, Src, Dst>> {
         match *self {
             FastTransform::Offset(offset) => Cow::Owned(
                 TypedTransform3D::create_translation(offset.x, offset.y, 0.0)
             ),
             FastTransform::Transform { ref transform, .. } => Cow::Borrowed(transform),
-        }
-    }
-
-    pub fn is_invertible(&self) -> bool {
-        match *self {
-            FastTransform::Offset(..) => true,
-            FastTransform::Transform { ref inverse, .. } => inverse.is_some(),
         }
     }
 
@@ -760,14 +754,6 @@ impl<Src, Dst> FastTransform<Src, Dst> {
     }
 
     #[inline(always)]
-    pub fn project_to_2d(&self) -> Self {
-        match *self {
-            FastTransform::Offset(..) => self.clone(),
-            FastTransform::Transform { ref transform, .. } => FastTransform::with_transform(transform.project_to_2d()),
-        }
-    }
-
-    #[inline(always)]
     pub fn is_backface_visible(&self) -> bool {
         match *self {
             FastTransform::Offset(..) => false,
@@ -820,7 +806,6 @@ impl<Src, Dst> From<TypedVector2D<f32, Src>> for FastTransform<Src, Dst> {
 
 pub type LayoutFastTransform = FastTransform<LayoutPixel, LayoutPixel>;
 pub type LayoutToWorldFastTransform = FastTransform<LayoutPixel, WorldPixel>;
-pub type WorldToLayoutFastTransform = FastTransform<WorldPixel, LayoutPixel>;
 
 pub fn project_rect<F, T>(
     transform: &TypedTransform3D<f32, F, T>,
@@ -1073,6 +1058,15 @@ impl<T> ComparableVec<T> where T: PartialEq + Clone + fmt::Debug {
 
         // Increment where the next item will be pushed.
         self.current_index += 1;
+    }
+
+    #[allow(dead_code)]
+    pub fn dump(&self, tag: &str) {
+        println!("{}", tag);
+        let items = self.items();
+        for (i, item) in items.iter().enumerate() {
+            println!("{}/{}: {:?}", i, items.len(), item);
+        }
     }
 
     /// Return true if the contents of the vec are the same as the previous time.

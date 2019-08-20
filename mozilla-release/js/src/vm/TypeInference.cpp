@@ -52,6 +52,8 @@ using mozilla::PodArrayZero;
 using mozilla::PodCopy;
 using mozilla::PodZero;
 
+using js::jit::JitScript;
+
 #ifdef DEBUG
 
 static inline jsid id___proto__(JSContext* cx) {
@@ -758,7 +760,7 @@ void ConstraintTypeSet::addType(const AutoSweepBase& sweep, JSContext* cx,
             InferSpewColorReset(), TypeString(type).get());
 
   /* Propagate the type to all constraints. */
-  if (!cx->helperThread()) {
+  if (!cx->isHelperThreadContext()) {
     TypeConstraint* constraint = constraintList(sweep);
     while (constraint) {
       constraint->newType(cx, this, type);
@@ -1186,16 +1188,16 @@ CompilerConstraintList* js::NewCompilerConstraintList(
 }
 
 /* static */
-bool TypeScript::FreezeTypeSets(CompilerConstraintList* constraints,
-                                JSScript* script, TemporaryTypeSet** pThisTypes,
-                                TemporaryTypeSet** pArgTypes,
-                                TemporaryTypeSet** pBytecodeTypes) {
+bool JitScript::FreezeTypeSets(CompilerConstraintList* constraints,
+                               JSScript* script, TemporaryTypeSet** pThisTypes,
+                               TemporaryTypeSet** pArgTypes,
+                               TemporaryTypeSet** pBytecodeTypes) {
   LifoAlloc* alloc = constraints->alloc();
-  AutoSweepTypeScript sweep(script);
-  TypeScript* typeScript = script->types();
-  StackTypeSet* existing = typeScript->typeArray(sweep);
+  AutoSweepJitScript sweep(script);
+  JitScript* jitScript = script->jitScript();
+  StackTypeSet* existing = jitScript->typeArray(sweep);
 
-  size_t count = typeScript->numTypeSets();
+  size_t count = jitScript->numTypeSets();
   TemporaryTypeSet* types =
       alloc->newArrayUninitialized<TemporaryTypeSet>(count);
   if (!types) {
@@ -1208,11 +1210,17 @@ bool TypeScript::FreezeTypeSets(CompilerConstraintList* constraints,
     }
   }
 
-  *pThisTypes = types + (ThisTypes(script) - existing);
-  *pArgTypes = (script->functionNonDelazifying() &&
-                script->functionNonDelazifying()->nargs())
-                   ? (types + (ArgTypes(script, 0) - existing))
-                   : nullptr;
+  size_t thisTypesIndex = jitScript->thisTypes(sweep, script) - existing;
+  *pThisTypes = types + thisTypesIndex;
+
+  if (script->functionNonDelazifying() &&
+      script->functionNonDelazifying()->nargs() > 0) {
+    size_t firstArgIndex = jitScript->argTypes(sweep, script, 0) - existing;
+    *pArgTypes = types + firstArgIndex;
+  } else {
+    *pArgTypes = nullptr;
+  }
+
   *pBytecodeTypes = types;
 
   constraints->freezeScript(script, *pThisTypes, *pArgTypes, *pBytecodeTypes);
@@ -1420,7 +1428,7 @@ bool HeapTypeSetKey::instantiate(JSContext* cx) {
   return maybeTypes_ != nullptr;
 }
 
-static bool CheckFrozenTypeSet(const AutoSweepTypeScript& sweep, JSContext* cx,
+static bool CheckFrozenTypeSet(const AutoSweepJitScript& sweep, JSContext* cx,
                                TemporaryTypeSet* frozen, StackTypeSet* actual) {
   // Return whether the types frozen for a script during compilation are
   // still valid. Also check for any new types added to the frozen set during
@@ -1503,8 +1511,8 @@ bool js::FinishCompilation(JSContext* cx, HandleScript script,
   for (size_t i = 0; i < constraints->numFrozenScripts(); i++) {
     const CompilerConstraintList::FrozenScript& entry =
         constraints->frozenScript(i);
-    TypeScript* types = entry.script->types();
-    if (!types) {
+    JitScript* jitScript = entry.script->jitScript();
+    if (!jitScript) {
       succeeded = false;
       break;
     }
@@ -1517,9 +1525,9 @@ bool js::FinishCompilation(JSContext* cx, HandleScript script,
       break;
     }
 
-    AutoSweepTypeScript sweep(entry.script);
+    AutoSweepJitScript sweep(entry.script);
     if (!CheckFrozenTypeSet(sweep, cx, entry.thisTypes,
-                            TypeScript::ThisTypes(entry.script))) {
+                            jitScript->thisTypes(sweep, entry.script))) {
       succeeded = false;
     }
     unsigned nargs = entry.script->functionNonDelazifying()
@@ -1527,13 +1535,13 @@ bool js::FinishCompilation(JSContext* cx, HandleScript script,
                          : 0;
     for (size_t i = 0; i < nargs; i++) {
       if (!CheckFrozenTypeSet(sweep, cx, &entry.argTypes[i],
-                              TypeScript::ArgTypes(entry.script, i))) {
+                              jitScript->argTypes(sweep, entry.script, i))) {
         succeeded = false;
       }
     }
     for (size_t i = 0; i < entry.script->numBytecodeTypeSets(); i++) {
       if (!CheckFrozenTypeSet(sweep, cx, &entry.bytecodeTypes[i],
-                              &types->typeArray(sweep)[i])) {
+                              &jitScript->typeArray(sweep)[i])) {
         succeeded = false;
       }
     }
@@ -1541,19 +1549,19 @@ bool js::FinishCompilation(JSContext* cx, HandleScript script,
     // Add this compilation to the inlinedCompilations list of each inlined
     // script, so we can invalidate it on changes to stack type sets.
     if (entry.script != script) {
-      if (!types->addInlinedCompilation(sweep, recompileInfo)) {
+      if (!jitScript->addInlinedCompilation(sweep, recompileInfo)) {
         succeeded = false;
       }
     }
 
     // If necessary, add constraints to trigger invalidation on the script
     // after any future changes to the stack type sets.
-    if (types->hasFreezeConstraints(sweep)) {
+    if (jitScript->hasFreezeConstraints(sweep)) {
       continue;
     }
 
-    size_t count = types->numTypeSets();
-    StackTypeSet* array = types->typeArray(sweep);
+    size_t count = jitScript->numTypeSets();
+    StackTypeSet* array = jitScript->typeArray(sweep);
     for (size_t i = 0; i < count; i++) {
       if (!array[i].addConstraint(
               cx,
@@ -1564,7 +1572,7 @@ bool js::FinishCompilation(JSContext* cx, HandleScript script,
     }
 
     if (succeeded) {
-      types->setHasFreezeConstraints(sweep);
+      jitScript->setHasFreezeConstraints(sweep);
     }
   }
 
@@ -1578,7 +1586,7 @@ bool js::FinishCompilation(JSContext* cx, HandleScript script,
   return true;
 }
 
-static void CheckDefinitePropertiesTypeSet(const AutoSweepTypeScript& sweep,
+static void CheckDefinitePropertiesTypeSet(const AutoSweepJitScript& sweep,
                                            JSContext* cx,
                                            TemporaryTypeSet* frozen,
                                            StackTypeSet* actual) {
@@ -1608,20 +1616,22 @@ void js::FinishDefinitePropertiesAnalysis(JSContext* cx,
     const CompilerConstraintList::FrozenScript& entry =
         constraints->frozenScript(i);
     JSScript* script = entry.script;
-    MOZ_ASSERT(script->types());
+    JitScript* jitScript = script->jitScript();
+    MOZ_ASSERT(jitScript);
 
-    MOZ_ASSERT(TypeScript::ThisTypes(script)->isSubset(entry.thisTypes));
+    AutoSweepJitScript sweep(script);
+    MOZ_ASSERT(jitScript->thisTypes(sweep, script)->isSubset(entry.thisTypes));
 
     unsigned nargs = entry.script->functionNonDelazifying()
                          ? entry.script->functionNonDelazifying()->nargs()
                          : 0;
     for (size_t j = 0; j < nargs; j++) {
-      MOZ_ASSERT(TypeScript::ArgTypes(script, j)->isSubset(&entry.argTypes[j]));
+      StackTypeSet* argTypes = jitScript->argTypes(sweep, script, j);
+      MOZ_ASSERT(argTypes->isSubset(&entry.argTypes[j]));
     }
 
-    AutoSweepTypeScript sweep(script);
     for (size_t j = 0; j < script->numBytecodeTypeSets(); j++) {
-      MOZ_ASSERT(script->types()->typeArray(sweep)[j].isSubset(
+      MOZ_ASSERT(script->jitScript()->typeArray(sweep)[j].isSubset(
           &entry.bytecodeTypes[j]));
     }
   }
@@ -1631,26 +1641,26 @@ void js::FinishDefinitePropertiesAnalysis(JSContext* cx,
     const CompilerConstraintList::FrozenScript& entry =
         constraints->frozenScript(i);
     JSScript* script = entry.script;
-    TypeScript* types = script->types();
-    if (!types) {
+    JitScript* jitScript = script->jitScript();
+    if (!jitScript) {
       MOZ_CRASH();
     }
 
-    AutoSweepTypeScript sweep(script);
+    AutoSweepJitScript sweep(script);
     CheckDefinitePropertiesTypeSet(sweep, cx, entry.thisTypes,
-                                   TypeScript::ThisTypes(script));
+                                   jitScript->thisTypes(sweep, script));
 
     unsigned nargs = script->functionNonDelazifying()
                          ? script->functionNonDelazifying()->nargs()
                          : 0;
     for (size_t j = 0; j < nargs; j++) {
-      CheckDefinitePropertiesTypeSet(sweep, cx, &entry.argTypes[j],
-                                     TypeScript::ArgTypes(script, j));
+      StackTypeSet* argTypes = jitScript->argTypes(sweep, script, j);
+      CheckDefinitePropertiesTypeSet(sweep, cx, &entry.argTypes[j], argTypes);
     }
 
     for (size_t j = 0; j < script->numBytecodeTypeSets(); j++) {
       CheckDefinitePropertiesTypeSet(sweep, cx, &entry.bytecodeTypes[j],
-                                     &types->typeArray(sweep)[j]);
+                                     &jitScript->typeArray(sweep)[j]);
     }
   }
 }
@@ -2043,7 +2053,7 @@ static void ObjectStateChange(const AutoSweepObjectGroup& sweep, JSContext* cx,
   }
 
   if (types) {
-    if (!cx->helperThread()) {
+    if (!cx->isHelperThreadContext()) {
       TypeConstraint* constraint = types->constraintList(sweep);
       while (constraint) {
         constraint->newObjectState(cx, group);
@@ -2687,12 +2697,12 @@ void TypeZone::addPendingRecompile(JSContext* cx, JSScript* script) {
   }
 
   // Trigger recompilation of any callers inlining this script.
-  if (TypeScript* types = script->types()) {
-    AutoSweepTypeScript sweep(script);
-    for (const RecompileInfo& info : types->inlinedCompilations(sweep)) {
+  if (JitScript* jitScript = script->jitScript()) {
+    AutoSweepJitScript sweep(script);
+    for (const RecompileInfo& info : jitScript->inlinedCompilations(sweep)) {
       addPendingRecompile(cx, info);
     }
-    types->inlinedCompilations(sweep).clearAndFree();
+    jitScript->inlinedCompilations(sweep).clearAndFree();
   }
 }
 
@@ -2724,8 +2734,8 @@ void js::PrintTypes(JSContext* cx, Compartment* comp, bool force) {
   RootedScript script(cx);
   for (auto iter = zone->cellIter<JSScript>(); !iter.done(); iter.next()) {
     script = iter;
-    if (TypeScript* types = script->types()) {
-      types->printTypes(cx, script);
+    if (JitScript* jitScript = script->jitScript()) {
+      jitScript->printTypes(cx, script);
     }
   }
 
@@ -2963,7 +2973,7 @@ void ObjectGroup::markStateChange(const AutoSweepObjectGroup& sweep,
   AutoEnterAnalysis enter(cx);
   HeapTypeSet* types = maybeGetProperty(sweep, JSID_EMPTY);
   if (types) {
-    if (!cx->helperThread()) {
+    if (!cx->isHelperThreadContext()) {
       TypeConstraint* constraint = types->constraintList(sweep);
       while (constraint) {
         constraint->newObjectState(cx, this);
@@ -3110,7 +3120,7 @@ void ObjectGroup::clearNewScript(JSContext* cx,
 
   detachNewScript(/* writeBarrier = */ true, replacement);
 
-  if (!cx->helperThread()) {
+  if (!cx->isHelperThreadContext()) {
     bool found = newScript->rollbackPartiallyInitializedObjects(cx, this);
 
     // If we managed to rollback any partially initialized objects, then
@@ -3243,41 +3253,44 @@ class TypeConstraintClearDefiniteGetterSetter : public TypeConstraint {
   Compartment* maybeCompartment() override { return group->compartment(); }
 };
 
-bool js::AddClearDefiniteGetterSetterForPrototypeChain(JSContext* cx,
-                                                       ObjectGroup* group,
-                                                       HandleId id) {
+bool js::AddClearDefiniteGetterSetterForPrototypeChain(
+    JSContext* cx, DPAConstraintInfo& constraintInfo, ObjectGroup* group,
+    HandleId id, bool* added) {
   /*
    * Ensure that if the properties named here could have a getter, setter or
    * a permanent property in any transitive prototype, the definite
    * properties get cleared from the group.
    */
+
+  *added = false;
+
   RootedObject proto(cx, group->proto().toObjectOrNull());
   while (proto) {
     if (!proto->hasStaticPrototype()) {
-      return false;
+      return true;
     }
     ObjectGroup* protoGroup = JSObject::getGroup(cx, proto);
     if (!protoGroup) {
-      cx->recoverFromOutOfMemory();
       return false;
     }
     AutoSweepObjectGroup sweep(protoGroup);
     if (protoGroup->unknownProperties(sweep)) {
-      return false;
+      return true;
     }
     HeapTypeSet* protoTypes = protoGroup->getProperty(sweep, cx, proto, id);
-    if (!protoTypes || protoTypes->nonDataProperty() ||
-        protoTypes->nonWritableProperty()) {
+    if (!protoTypes) {
       return false;
     }
-    if (!protoTypes->addConstraint(
-            cx,
-            cx->typeLifoAlloc().new_<TypeConstraintClearDefiniteGetterSetter>(
-                group))) {
+    if (protoTypes->nonDataProperty() || protoTypes->nonWritableProperty()) {
+      return true;
+    }
+    if (!constraintInfo.addProtoConstraint(proto, id)) {
       return false;
     }
     proto = proto->staticPrototype();
   }
+
+  *added = true;
   return true;
 }
 
@@ -3325,10 +3338,10 @@ bool js::AddClearDefiniteFunctionUsesInScript(JSContext* cx, ObjectGroup* group,
   TypeSet::ObjectKey* calleeKey =
       TypeSet::ObjectType(calleeScript->functionNonDelazifying()).objectKey();
 
-  AutoSweepTypeScript sweep(script);
-  TypeScript* typeScript = script->types();
-  unsigned count = typeScript->numTypeSets();
-  StackTypeSet* typeArray = typeScript->typeArray(sweep);
+  AutoSweepJitScript sweep(script);
+  JitScript* jitScript = script->jitScript();
+  unsigned count = jitScript->numTypeSets();
+  StackTypeSet* typeArray = jitScript->typeArray(sweep);
 
   for (unsigned i = 0; i < count; i++) {
     StackTypeSet* types = &typeArray[i];
@@ -3372,7 +3385,7 @@ void js::TypeMonitorCallSlow(JSContext* cx, JSObject* callee,
   JSScript* script = callee->as<JSFunction>().nonLazyScript();
 
   if (!constructing) {
-    TypeScript::SetThis(cx, script, args.thisv());
+    JitScript::MonitorThisType(cx, script, args.thisv());
   }
 
   /*
@@ -3382,38 +3395,24 @@ void js::TypeMonitorCallSlow(JSContext* cx, JSObject* callee,
    */
   unsigned arg = 0;
   for (; arg < args.length() && arg < nargs; arg++) {
-    TypeScript::SetArgument(cx, script, arg, args[arg]);
+    JitScript::MonitorArgType(cx, script, arg, args[arg]);
   }
 
   /* Watch for fewer actuals than formals to the call. */
   for (; arg < nargs; arg++) {
-    TypeScript::SetArgument(cx, script, arg, UndefinedValue());
+    JitScript::MonitorArgType(cx, script, arg, UndefinedValue());
   }
 }
 
-static void FillBytecodeTypeMap(JSScript* script, uint32_t* bytecodeMap) {
-  uint32_t added = 0;
-  for (jsbytecode* pc = script->code(); pc < script->codeEnd();
-       pc += GetBytecodeLength(pc)) {
-    JSOp op = JSOp(*pc);
-    if (CodeSpec[op].format & JOF_TYPESET) {
-      bytecodeMap[added++] = script->pcToOffset(pc);
-      if (added == script->numBytecodeTypeSets()) {
-        break;
-      }
-    }
-  }
-  MOZ_ASSERT(added == script->numBytecodeTypeSets());
-}
-
-void js::TypeMonitorResult(JSContext* cx, JSScript* script, jsbytecode* pc,
-                           TypeSet::Type type) {
+/* static */
+void JitScript::MonitorBytecodeType(JSContext* cx, JSScript* script,
+                                    jsbytecode* pc, TypeSet::Type type) {
   cx->check(script, type);
 
   AutoEnterAnalysis enter(cx);
 
-  AutoSweepTypeScript sweep(script);
-  StackTypeSet* types = TypeScript::BytecodeTypes(script, pc);
+  AutoSweepJitScript sweep(script);
+  StackTypeSet* types = script->jitScript()->bytecodeTypes(sweep, script, pc);
   if (types->hasType(type)) {
     return;
   }
@@ -3423,15 +3422,17 @@ void js::TypeMonitorResult(JSContext* cx, JSScript* script, jsbytecode* pc,
   types->addType(sweep, cx, type);
 }
 
-void js::TypeMonitorResult(JSContext* cx, JSScript* script, jsbytecode* pc,
-                           StackTypeSet* types, TypeSet::Type type) {
+/* static */
+void JitScript::MonitorBytecodeTypeSlow(JSContext* cx, JSScript* script,
+                                        jsbytecode* pc, StackTypeSet* types,
+                                        TypeSet::Type type) {
   cx->check(script, type);
 
   AutoEnterAnalysis enter(cx);
 
-  AutoSweepTypeScript sweep(script);
+  AutoSweepJitScript sweep(script);
 
-  MOZ_ASSERT(types == TypeScript::BytecodeTypes(script, pc));
+  MOZ_ASSERT(types == script->jitScript()->bytecodeTypes(sweep, script, pc));
   MOZ_ASSERT(!types->hasType(type));
 
   InferSpew(ISpewOps, "bytecodeType: %p %05zu: %s", script,
@@ -3439,131 +3440,16 @@ void js::TypeMonitorResult(JSContext* cx, JSScript* script, jsbytecode* pc,
   types->addType(sweep, cx, type);
 }
 
-void js::TypeMonitorResult(JSContext* cx, JSScript* script, jsbytecode* pc,
-                           const js::Value& rval) {
-  // Allow the non-TYPESET scenario to simplify stubs used in compound
-  // opcodes.
-  if (!(CodeSpec[*pc].format & JOF_TYPESET)) {
+/* static */
+void JitScript::MonitorBytecodeType(JSContext* cx, JSScript* script,
+                                    jsbytecode* pc, const js::Value& rval) {
+  MOZ_ASSERT(CodeSpec[*pc].format & JOF_TYPESET);
+
+  if (!script->jitScript()) {
     return;
   }
 
-  if (!script->types()) {
-    return;
-  }
-
-  TypeMonitorResult(cx, script, pc, TypeSet::GetValueType(rval));
-}
-
-/////////////////////////////////////////////////////////////////////
-// TypeScript
-/////////////////////////////////////////////////////////////////////
-
-static size_t NumTypeSets(JSScript* script) {
-  size_t num = script->numBytecodeTypeSets() + 1 /* this */;
-  if (JSFunction* fun = script->functionNonDelazifying()) {
-    num += fun->nargs();
-  }
-
-  // We rely on |num| being in a safe range to prevent overflow when allocating
-  // TypeScript.
-  static_assert(JSScript::MaxBytecodeTypeSets == UINT16_MAX,
-                "JSScript typesets should have safe range to avoid overflow");
-  static_assert(JSFunction::NArgsBits == 16,
-                "JSFunction nargs should have safe range to avoid overflow");
-
-  return num;
-}
-
-TypeScript::TypeScript(JSScript* script, ICScriptPtr&& icScript,
-                       uint32_t numTypeSets)
-    : icScript_(std::move(icScript)), numTypeSets_(numTypeSets) {
-  setTypesGeneration(script->zone()->types.generation);
-
-  StackTypeSet* array = typeArrayDontCheckGeneration();
-  for (unsigned i = 0; i < numTypeSets; i++) {
-    new (&array[i]) StackTypeSet();
-  }
-
-  FillBytecodeTypeMap(script, bytecodeTypeMap());
-}
-
-bool JSScript::makeTypes(JSContext* cx) {
-  MOZ_ASSERT(!types_);
-  cx->check(this);
-
-  // Scripts that will never run in the Baseline Interpreter or the JITs don't
-  // need a TypeScript.
-  MOZ_ASSERT(!hasForceInterpreterOp());
-
-  AutoEnterAnalysis enter(cx);
-
-  // Run the arguments-analysis if needed. Both the Baseline Interpreter and
-  // Compiler rely on this.
-  if (!ensureHasAnalyzedArgsUsage(cx)) {
-    return false;
-  }
-
-  // If ensureHasAnalyzedArgsUsage allocated the TypeScript we're done.
-  if (types_) {
-    return true;
-  }
-
-  UniquePtr<jit::ICScript> icScript(jit::ICScript::create(cx, this));
-  if (!icScript) {
-    return false;
-  }
-
-  // We need to call prepareForDestruction on ICScript before we |delete| it.
-  auto prepareForDestruction = mozilla::MakeScopeExit(
-      [&] { icScript->prepareForDestruction(cx->zone()); });
-
-  size_t numTypeSets = NumTypeSets(this);
-  size_t bytecodeTypeMapEntries = numBytecodeTypeSets();
-
-  // Calculate allocation size. This cannot overflow, see comment in
-  // NumTypeSets.
-  static_assert(sizeof(TypeScript) ==
-                    sizeof(StackTypeSet) + offsetof(TypeScript, typeArray_),
-                "typeArray_ must be last member of TypeScript");
-  size_t allocSize =
-      (offsetof(TypeScript, typeArray_) + numTypeSets * sizeof(StackTypeSet) +
-       bytecodeTypeMapEntries * sizeof(uint32_t));
-
-  auto typeScript =
-      reinterpret_cast<TypeScript*>(cx->pod_malloc<uint8_t>(allocSize));
-  if (!typeScript) {
-    return false;
-  }
-
-  prepareForDestruction.release();
-
-  MOZ_ASSERT(!types_);
-  types_ = new (typeScript) TypeScript(this, std::move(icScript), numTypeSets);
-
-  // We have a TypeScript so we can set the script's jitCodeRaw_ pointer to the
-  // Baseline Interpreter code.
-  updateJitCodeRaw(cx->runtime());
-
-#ifdef DEBUG
-  StackTypeSet* typeArray = typeScript->typeArrayDontCheckGeneration();
-  for (unsigned i = 0; i < numBytecodeTypeSets(); i++) {
-    InferSpew(ISpewOps, "typeSet: %sT%p%s bytecode%u %p",
-              InferSpewColor(&typeArray[i]), &typeArray[i],
-              InferSpewColorReset(), i, this);
-  }
-  TypeSet* thisTypes = TypeScript::ThisTypes(this);
-  InferSpew(ISpewOps, "typeSet: %sT%p%s this %p", InferSpewColor(thisTypes),
-            thisTypes, InferSpewColorReset(), this);
-  unsigned nargs =
-      functionNonDelazifying() ? functionNonDelazifying()->nargs() : 0;
-  for (unsigned i = 0; i < nargs; i++) {
-    TypeSet* types = TypeScript::ArgTypes(this, i);
-    InferSpew(ISpewOps, "typeSet: %sT%p%s arg%u %p", InferSpewColor(types),
-              types, InferSpewColorReset(), i, this);
-  }
-#endif
-
-  return true;
+  MonitorBytecodeType(cx, script, pc, TypeSet::GetValueType(rval));
 }
 
 /* static */
@@ -3796,6 +3682,26 @@ size_t TypeNewScript::sizeOfIncludingThis(
   return n;
 }
 
+/* static */ size_t TypeNewScript::sizeOfInitializerList(size_t length) {
+  // TypeNewScriptInitializer struct contains [1] element in its size.
+  size_t size = sizeof(TypeNewScript::InitializerList);
+  if (length > 0) {
+    size += (length - 1) * sizeof(TypeNewScriptInitializer);
+  }
+  return size;
+}
+
+size_t TypeNewScript::gcMallocBytes() const {
+  size_t size = sizeof(TypeNewScript);
+  if (preliminaryObjects) {
+    size += sizeof(PreliminaryObjectArray);
+  }
+  if (initializerList) {
+    size += sizeOfInitializerList(initializerList->length);
+  }
+  return size;
+}
+
 void TypeNewScript::registerNewObject(PlainObject* res) {
   MOZ_ASSERT(!analyzed());
 
@@ -3818,6 +3724,44 @@ static bool ChangeObjectFixedSlotCount(JSContext* cx, PlainObject* obj,
   }
 
   obj->setLastPropertyShrinkFixedSlots(newShape);
+  return true;
+}
+
+bool DPAConstraintInfo::finishConstraints(JSContext* cx, ObjectGroup* group) {
+  for (const ProtoConstraint& constraint : protoConstraints_) {
+    ObjectGroup* protoGroup = constraint.proto->group();
+
+    // Note: we rely on the group's type information being unchanged since
+    // AddClearDefiniteGetterSetterForPrototypeChain.
+
+    AutoSweepObjectGroup sweep(protoGroup);
+    bool unknownProperties = protoGroup->unknownProperties(sweep);
+    MOZ_RELEASE_ASSERT(!unknownProperties);
+
+    HeapTypeSet* protoTypes =
+        protoGroup->getProperty(sweep, cx, constraint.proto, constraint.id);
+    MOZ_RELEASE_ASSERT(protoTypes);
+
+    MOZ_ASSERT(!protoTypes->nonDataProperty());
+    MOZ_ASSERT(!protoTypes->nonWritableProperty());
+
+    if (!protoTypes->addConstraint(
+            cx,
+            cx->typeLifoAlloc().new_<TypeConstraintClearDefiniteGetterSetter>(
+                group))) {
+      ReportOutOfMemory(cx);
+      return false;
+    }
+  }
+
+  for (const InliningConstraint& constraint : inliningConstraints_) {
+    if (!AddClearDefiniteFunctionUsesInScript(cx, group, constraint.caller,
+                                              constraint.callee)) {
+      ReportOutOfMemory(cx);
+      return false;
+    }
+  }
+
   return true;
 }
 
@@ -3939,10 +3883,12 @@ bool TypeNewScript::maybeAnalyze(JSContext* cx, ObjectGroup* group,
 
   Vector<TypeNewScriptInitializer> initializerVector(cx);
 
+  DPAConstraintInfo constraintInfo(cx);
+
   RootedPlainObject templateRoot(cx, templateObject());
   RootedFunction fun(cx, function());
-  if (!jit::AnalyzeNewScriptDefiniteProperties(cx, fun, group, templateRoot,
-                                               &initializerVector)) {
+  if (!jit::AnalyzeNewScriptDefiniteProperties(
+          cx, constraintInfo, fun, group, templateRoot, &initializerVector)) {
     return false;
   }
 
@@ -3952,6 +3898,8 @@ bool TypeNewScript::maybeAnalyze(JSContext* cx, ObjectGroup* group,
 
   MOZ_ASSERT(OnlyHasDataProperties(templateObject()->lastProperty()));
 
+  MOZ_ASSERT(!initializerList);
+  InitializerList* newInitializerList = nullptr;
   if (templateObject()->slotSpan() != 0) {
     // Make sure that all definite properties found are reflected in the
     // prefix shape. Otherwise, the constructor behaved differently before
@@ -3983,29 +3931,39 @@ bool TypeNewScript::maybeAnalyze(JSContext* cx, ObjectGroup* group,
       }
     }
 
-    TypeNewScriptInitializer done(TypeNewScriptInitializer::DONE, 0);
-
-    if (!initializerVector.append(done)) {
-      return false;
-    }
-
-    initializerList = group->zone()->pod_calloc<TypeNewScriptInitializer>(
-        initializerVector.length());
-    if (!initializerList) {
+    size_t nbytes = sizeOfInitializerList(initializerVector.length());
+    newInitializerList = reinterpret_cast<InitializerList*>(
+        group->zone()->pod_calloc<uint8_t>(nbytes));
+    if (!newInitializerList) {
       ReportOutOfMemory(cx);
       return false;
     }
-    PodCopy(initializerList, initializerVector.begin(),
+    newInitializerList->length = initializerVector.length();
+    PodCopy(newInitializerList->entries, initializerVector.begin(),
             initializerVector.length());
   }
 
+  RemoveCellMemory(group, gcMallocBytes(), MemoryUse::ObjectGroupAddendum);
+
+  initializerList = newInitializerList;
+
   js_delete(preliminaryObjects);
   preliminaryObjects = nullptr;
+
+  AddCellMemory(group, gcMallocBytes(), MemoryUse::ObjectGroupAddendum);
 
   if (prefixShape->slotSpan() == templateObject()->slotSpan()) {
     // The definite properties analysis found exactly the properties that
     // are held in common by the preliminary objects. No further analysis
     // is needed.
+
+    if (!constraintInfo.finishConstraints(cx, group)) {
+      return false;
+    }
+    if (!group->newScript(sweep)) {
+      return true;
+    }
+
     group->addDefiniteProperties(cx, templateObject()->lastProperty());
 
     destroyNewScript.release();
@@ -4027,6 +3985,16 @@ bool TypeNewScript::maybeAnalyze(JSContext* cx, ObjectGroup* group,
       cx, group->realm(), group->clasp(), protoRoot, initialFlags);
   if (!initialGroup) {
     return false;
+  }
+
+  // Add the constraints. Use the initialGroup as group referenced by the
+  // constraints because that's the group that will have the TypeNewScript
+  // associated with it. See the detachNewScript and setNewScript calls below.
+  if (!constraintInfo.finishConstraints(cx, initialGroup)) {
+    return false;
+  }
+  if (!group->newScript(sweep)) {
+    return true;
   }
 
   initialGroup->addDefiniteProperties(cx, templateObject()->lastProperty());
@@ -4107,9 +4075,6 @@ bool TypeNewScript::rollbackPartiallyInitializedObjects(JSContext* cx,
     // Found a matching frame.
     RootedPlainObject obj(cx, &thisv.toObject().as<PlainObject>());
 
-    // Whether all identified 'new' properties have been initialized.
-    bool finished = false;
-
     // If not finished, number of properties that have been added.
     uint32_t numProperties = 0;
 
@@ -4123,9 +4088,11 @@ bool TypeNewScript::rollbackPartiallyInitializedObjects(JSContext* cx,
     // Index in pcOffsets of the frame currently being checked for a SETPROP.
     int setpropDepth = callDepth;
 
-    for (TypeNewScriptInitializer* init = initializerList;; init++) {
-      if (init->kind == TypeNewScriptInitializer::SETPROP) {
-        if (!pastProperty && pcOffsets[setpropDepth] < init->offset) {
+    size_t i;
+    for (i = 0; i < initializerList->length; i++) {
+      const TypeNewScriptInitializer init = initializerList->entries[i];
+      if (init.kind == TypeNewScriptInitializer::SETPROP) {
+        if (!pastProperty && pcOffsets[setpropDepth] < init.offset) {
           // Have not yet reached this setprop.
           break;
         }
@@ -4133,12 +4100,13 @@ bool TypeNewScript::rollbackPartiallyInitializedObjects(JSContext* cx,
         numProperties++;
         pastProperty = false;
         setpropDepth = callDepth;
-      } else if (init->kind == TypeNewScriptInitializer::SETPROP_FRAME) {
+      } else {
+        MOZ_ASSERT(init.kind == TypeNewScriptInitializer::SETPROP_FRAME);
         if (!pastProperty) {
-          if (pcOffsets[setpropDepth] < init->offset) {
+          if (pcOffsets[setpropDepth] < init.offset) {
             // Have not yet reached this inner call.
             break;
-          } else if (pcOffsets[setpropDepth] > init->offset) {
+          } else if (pcOffsets[setpropDepth] > init.offset) {
             // Have advanced past this inner call.
             pastProperty = true;
           } else if (setpropDepth == 0) {
@@ -4149,12 +4117,11 @@ bool TypeNewScript::rollbackPartiallyInitializedObjects(JSContext* cx,
             setpropDepth--;
           }
         }
-      } else {
-        MOZ_ASSERT(init->kind == TypeNewScriptInitializer::DONE);
-        finished = true;
-        break;
       }
     }
+
+    // Whether all identified 'new' properties have been initialized.
+    bool finished = i == initializerList->length;
 
     if (!finished) {
       (void)NativeObject::rollbackProperties(cx, obj, numProperties);
@@ -4488,7 +4455,7 @@ void ObjectGroup::sweep(const AutoSweepObjectGroup& sweep) {
 }
 
 /* static */
-void TypeScript::sweepTypes(const js::AutoSweepTypeScript& sweep, Zone* zone) {
+void JitScript::sweepTypes(const js::AutoSweepJitScript& sweep, Zone* zone) {
   MOZ_ASSERT(typesGeneration() != zone->types.generation);
   setTypesGeneration(zone->types.generation);
 
@@ -4529,25 +4496,6 @@ void TypeScript::sweepTypes(const js::AutoSweepTypeScript& sweep, Zone* zone) {
   }
 }
 
-void JSScript::maybeReleaseTypes() {
-  if (!types_ || zone()->types.keepTypeScripts || hasBaselineScript() ||
-      types_->active()) {
-    return;
-  }
-
-  MOZ_ASSERT(!hasIonScript());
-
-  types_->destroy(zone());
-  types_ = nullptr;
-  updateJitCodeRaw(runtimeFromMainThread());
-}
-
-void TypeScript::destroy(Zone* zone) {
-  icScript_->prepareForDestruction(zone);
-
-  js_delete(this);
-}
-
 void Zone::addSizeOfIncludingThis(
     mozilla::MallocSizeOf mallocSizeOf, size_t* typePool, size_t* regexpZone,
     size_t* jitZone, size_t* baselineStubsOptimized, size_t* cachedCFG,
@@ -4580,12 +4528,12 @@ TypeZone::TypeZone(Zone* zone)
       sweepTypeLifoAlloc(zone, (size_t)TYPE_LIFO_ALLOC_PRIMARY_CHUNK_SIZE),
       sweepingTypes(zone, false),
       oomSweepingTypes(zone, false),
-      keepTypeScripts(zone, false),
+      keepJitScripts(zone, false),
       activeAnalysis(zone, nullptr) {}
 
 TypeZone::~TypeZone() {
   MOZ_RELEASE_ASSERT(!sweepingTypes);
-  MOZ_ASSERT(!keepTypeScripts);
+  MOZ_ASSERT(!keepJitScripts);
 }
 
 void TypeZone::beginSweep() {
@@ -4627,65 +4575,6 @@ AutoClearTypeInferenceStateOnOOM::~AutoClearTypeInferenceStateOnOOM() {
 
   zone->types.setSweepingTypes(false);
 }
-
-#ifdef DEBUG
-void TypeScript::printTypes(JSContext* cx, HandleScript script) {
-  AutoSweepTypeScript sweep(script);
-  MOZ_ASSERT(script->types() == this);
-
-  AutoEnterAnalysis enter(nullptr, script->zone());
-  Fprinter out(stderr);
-
-  if (script->functionNonDelazifying()) {
-    fprintf(stderr, "Function");
-  } else if (script->isForEval()) {
-    fprintf(stderr, "Eval");
-  } else {
-    fprintf(stderr, "Main");
-  }
-  fprintf(stderr, " %#" PRIxPTR " %s:%u ", uintptr_t(script.get()),
-          script->filename(), script->lineno());
-
-  if (script->functionNonDelazifying()) {
-    if (JSAtom* name = script->functionNonDelazifying()->explicitName()) {
-      name->dumpCharsNoNewline(out);
-    }
-  }
-
-  fprintf(stderr, "\n    this:");
-  TypeScript::ThisTypes(script)->print();
-
-  for (unsigned i = 0; script->functionNonDelazifying() &&
-                       i < script->functionNonDelazifying()->nargs();
-       i++) {
-    fprintf(stderr, "\n    arg%u:", i);
-    TypeScript::ArgTypes(script, i)->print();
-  }
-  fprintf(stderr, "\n");
-
-  for (jsbytecode* pc = script->code(); pc < script->codeEnd();
-       pc += GetBytecodeLength(pc)) {
-    {
-      fprintf(stderr, "%p:", script.get());
-      Sprinter sprinter(cx);
-      if (!sprinter.init()) {
-        return;
-      }
-      Disassemble1(cx, script, pc, script->pcToOffset(pc), true, &sprinter);
-      fprintf(stderr, "%s", sprinter.string());
-    }
-
-    if (CodeSpec[*pc].format & JOF_TYPESET) {
-      StackTypeSet* types = TypeScript::BytecodeTypes(script, pc);
-      fprintf(stderr, "  typeset %u:", unsigned(types - typeArray(sweep)));
-      types->print();
-      fprintf(stderr, "\n");
-    }
-  }
-
-  fprintf(stderr, "\n");
-}
-#endif /* DEBUG */
 
 JS::ubi::Node::Size JS::ubi::Concrete<js::ObjectGroup>::size(
     mozilla::MallocSizeOf mallocSizeOf) const {

@@ -11,7 +11,10 @@ import platform
 import subprocess
 import sys
 import uuid
-import __builtin__
+if sys.version_info[0] < 3:
+    import __builtin__ as builtins
+else:
+    import builtins
 
 from types import ModuleType
 
@@ -36,6 +39,7 @@ MACH_MODULES = [
     'build/valgrind/mach_commands.py',
     'devtools/shared/css/generated/mach_commands.py',
     'dom/bindings/mach_commands.py',
+    'gfx/thebes/mach_commands.py',
     'layout/tools/reftest/mach_commands.py',
     'python/mach_commands.py',
     'python/safety/mach_commands.py',
@@ -43,7 +47,10 @@ MACH_MODULES = [
     'python/mach/mach/commands/settings.py',
     'python/mozboot/mozboot/mach_commands.py',
     'python/mozbuild/mozbuild/mach_commands.py',
+    'python/mozbuild/mozbuild/artifact_commands.py',
+    'python/mozbuild/mozbuild/build_commands.py',
     'python/mozbuild/mozbuild/backend/mach_commands.py',
+    'python/mozbuild/mozbuild/code-analysis/mach_commands.py',
     'python/mozbuild/mozbuild/compilation/codecomplete.py',
     'python/mozbuild/mozbuild/frontend/mach_commands.py',
     'python/mozrelease/mozrelease/mach_commands.py',
@@ -385,6 +392,9 @@ class ImportHook(object):
 
     def __call__(self, name, globals=None, locals=None, fromlist=None,
                  level=-1):
+        if sys.version_info[0] >= 3 and level < 0:
+            level = 0
+
         # name might be a relative import. Instead of figuring out what that
         # resolves to, which is complex, just rely on the real import.
         # Since we don't know the full module name, we can't check sys.modules,
@@ -434,4 +444,4 @@ class ImportHook(object):
 
 
 # Install our hook
-__builtin__.__import__ = ImportHook(__builtin__.__import__)
+builtins.__import__ = ImportHook(builtins.__import__)

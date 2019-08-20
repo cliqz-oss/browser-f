@@ -38,7 +38,7 @@ lazy_static = "1"
 log = "0.4"
 malloc_size_of_derive = "0.1"
 num-traits = "0.2"
-plane-split = "0.13.7"
+plane-split = "0.13.9"
 png = { optional = true, version = "0.14" }
 rayon = "1"
 ron = { optional = true, version = "0.1.7" }
@@ -85,7 +85,7 @@ freetype = { version = "0.4", default-features = false }
 libc = "0.2"
 
 [target.'cfg(target_os = "windows")'.dependencies]
-dwrote = "0.8"
+dwrote = "0.9"
 
 [target.'cfg(target_os = "macos")'.dependencies]
 core-foundation = "0.6"

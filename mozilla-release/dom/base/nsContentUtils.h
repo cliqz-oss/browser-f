@@ -129,6 +129,8 @@ class HTMLEditor;
 class PresShell;
 class TextEditor;
 
+enum class StorageAccess;
+
 namespace dom {
 class ContentFrameMessageManager;
 struct CustomElementDefinition;
@@ -149,6 +151,7 @@ class ContentParent;
 class BrowserChild;
 class Selection;
 class BrowserParent;
+class WorkerPrivate;
 }  // namespace dom
 
 namespace ipc {
@@ -236,6 +239,9 @@ class nsContentUtils {
     return ThreadsafeIsSystemCaller(aCx) || IsFuzzingEnabled();
   }
 
+  static bool IsCallerChromeOrElementTransformGettersEnabled(JSContext* aCx,
+                                                             JSObject*);
+
   // The APIs for checking whether the caller is system (in the sense of system
   // principal) should only be used when the JSContext is known to accurately
   // represent the caller.  In practice, that means you should only use them in
@@ -305,6 +311,8 @@ class nsContentUtils {
   static bool ShouldResistFingerprinting();
   static bool ShouldResistFingerprinting(nsIDocShell* aDocShell);
   static bool ShouldResistFingerprinting(nsIPrincipal* aPrincipal);
+  static bool ShouldResistFingerprinting(
+      mozilla::dom::WorkerPrivate* aWorkerPrivate);
   static bool ShouldResistFingerprinting(const Document* aDoc);
 
   // Prevent system colors from being exposed to CSS or canvas.
@@ -504,9 +512,11 @@ class nsContentUtils {
                                nsINode* aParent2, int32_t aOffset2,
                                bool* aDisconnected = nullptr,
                                ComparePointsCache* aParent1Cache = nullptr);
-  static int32_t ComparePoints(const mozilla::RawRangeBoundary& aFirst,
-                               const mozilla::RawRangeBoundary& aSecond,
-                               bool* aDisconnected = nullptr);
+  template <typename FPT, typename FRT, typename SPT, typename SRT>
+  static int32_t ComparePoints(
+      const mozilla::RangeBoundaryBase<FPT, FRT>& aFirstBoundary,
+      const mozilla::RangeBoundaryBase<SPT, SRT>& aSecondBoundary,
+      bool* aDisconnected = nullptr);
 
   /**
    * Brute-force search of the element subtree rooted at aContent for
@@ -591,17 +601,16 @@ class nsContentUtils {
 
   enum ParseHTMLIntegerResultFlags {
     eParseHTMLInteger_NoFlags = 0,
-    eParseHTMLInteger_IsPercent = 1 << 0,
     // eParseHTMLInteger_NonStandard is set if the string representation of the
     // integer was not the canonical one (e.g. had extra leading '+' or '0').
-    eParseHTMLInteger_NonStandard = 1 << 1,
-    eParseHTMLInteger_DidNotConsumeAllInput = 1 << 2,
+    eParseHTMLInteger_NonStandard = 1 << 0,
+    eParseHTMLInteger_DidNotConsumeAllInput = 1 << 1,
     // Set if one or more error flags were set.
-    eParseHTMLInteger_Error = 1 << 3,
-    eParseHTMLInteger_ErrorNoValue = 1 << 4,
-    eParseHTMLInteger_ErrorOverflow = 1 << 5,
+    eParseHTMLInteger_Error = 1 << 2,
+    eParseHTMLInteger_ErrorNoValue = 1 << 3,
+    eParseHTMLInteger_ErrorOverflow = 1 << 4,
     // Use this flag to detect the difference between overflow and underflow
-    eParseHTMLInteger_Negative = 1 << 6,
+    eParseHTMLInteger_Negative = 1 << 5,
   };
   static int32_t ParseHTMLInteger(const nsAString& aValue,
                                   ParseHTMLIntegerResultFlags* aResult);
@@ -714,8 +723,8 @@ class nsContentUtils {
   // with a single realm.
   static nsIPrincipal* ObjectPrincipal(JSObject* aObj);
 
-  static nsresult GenerateStateKey(nsIContent* aContent, Document* aDocument,
-                                   nsACString& aKey);
+  static void GenerateStateKey(nsIContent* aContent, Document* aDocument,
+                               nsACString& aKey);
 
   /**
    * Create a new nsIURI from aSpec, using aBaseURI as the base.  The
@@ -1090,9 +1099,8 @@ class nsContentUtils {
    *   @param aDocument Reference to the document which triggered the message.
    *   @param aFile Properties file containing localized message.
    *   @param aMessageName Name of localized message.
-   *   @param [aParams=nullptr] (Optional) Parameters to be substituted into
+   *   @param [aParams=empty-array] (Optional) Parameters to be substituted into
               localized message.
-   *   @param [aParamsLength=0] (Optional) Length of aParams.
    *   @param [aURI=nullptr] (Optional) URI of resource containing error.
    *   @param [aSourceLine=EmptyString()] (Optional) The text of the line that
               contains the error (may be empty).
@@ -1122,7 +1130,7 @@ class nsContentUtils {
   static nsresult ReportToConsole(
       uint32_t aErrorFlags, const nsACString& aCategory,
       const Document* aDocument, PropertiesFile aFile, const char* aMessageName,
-      const char16_t** aParams = nullptr, uint32_t aParamsLength = 0,
+      const nsTArray<nsString>& aParams = nsTArray<nsString>(),
       nsIURI* aURI = nullptr, const nsString& aSourceLine = EmptyString(),
       uint32_t aLineNumber = 0, uint32_t aColumnNumber = 0);
 
@@ -1198,22 +1206,21 @@ class nsContentUtils {
   // "*.", it matches any sub-domains.
   static bool IsURIInPrefList(nsIURI* aURI, const char* aPrefName);
 
- private:
-  /**
-   * Fill (with the parameters given) the localized string named |aKey| in
-   * properties file |aFile|.
+  /*&
+   * A convenience version of FormatLocalizedString that can be used if all the
+   * params are in same-typed strings.  The variadic template args need to come
+   * at the end, so we put aResult at the beginning to make sure it's clear
+   * which is the output and which are the inputs.
    */
-  static nsresult FormatLocalizedString(PropertiesFile aFile, const char* aKey,
-                                        const char16_t** aParams,
-                                        uint32_t aParamsLength,
-                                        nsAString& aResult);
-
- public:
-  template <uint32_t N>
-  static nsresult FormatLocalizedString(PropertiesFile aFile, const char* aKey,
-                                        const char16_t* (&aParams)[N],
-                                        nsAString& aResult) {
-    return FormatLocalizedString(aFile, aKey, aParams, N, aResult);
+  template <typename... T>
+  static nsresult FormatLocalizedString(nsAString& aResult,
+                                        PropertiesFile aFile, const char* aKey,
+                                        const T&... aParams) {
+    static_assert(sizeof...(aParams) != 0, "Use GetLocalizedString()");
+    AutoTArray<nsString, sizeof...(aParams)> params = {
+        aParams...,
+    };
+    return FormatLocalizedString(aFile, aKey, params, aResult);
   }
 
   /**
@@ -1511,14 +1518,6 @@ class nsContentUtils {
                                       const nsAString& aEventName, CanBubble,
                                       Cancelable,
                                       bool* aDefaultAction = nullptr);
-
-  /**
-   * Helper function for dispatching a "DOMWindowFocus" event to
-   * the chrome event handler of the given DOM Window. This has the effect
-   * of focusing the corresponding tab and bringing the browser window
-   * to the foreground.
-   */
-  static nsresult DispatchFocusChromeEvent(nsPIDOMWindowOuter* aWindow);
 
   /**
    * Helper to dispatch a "framefocusrequested" event to chrome, which will only
@@ -2146,10 +2145,8 @@ class nsContentUtils {
    */
   static nsresult GetASCIIOrigin(nsIPrincipal* aPrincipal, nsACString& aOrigin);
   static nsresult GetASCIIOrigin(nsIURI* aURI, nsACString& aOrigin);
-  static nsresult GetThreadSafeASCIIOrigin(nsIURI* aURI, nsACString& aOrigin);
   static nsresult GetUTFOrigin(nsIPrincipal* aPrincipal, nsAString& aOrigin);
   static nsresult GetUTFOrigin(nsIURI* aURI, nsAString& aOrigin);
-  static nsresult GetThreadSafeUTFOrigin(nsIURI* aURI, nsAString& aOrigin);
 
   /**
    * This method creates and dispatches "command" event, which implements
@@ -2332,12 +2329,14 @@ class nsContentUtils {
   static bool IsFocusedContent(const nsIContent* aContent);
 
   /**
-   * Returns true if requests for fullscreen are allowed in the current
+   * Returns nullptr if requests for fullscreen are allowed in the current
    * context. Requests are only allowed if the user initiated them (like with
    * a mouse-click or key press), unless this check has been disabled by
    * setting the pref "full-screen-api.allow-trusted-requests-only" to false.
+   * If fullscreen is not allowed, a key for the error message is returned.
    */
-  static bool IsRequestFullscreenAllowed(mozilla::dom::CallerType aCallerType);
+  static const char* CheckRequestFullscreenAllowed(
+      mozilla::dom::CallerType aCallerType);
 
   /**
    * Returns true if calling execCommand with 'cut' or 'copy' arguments is
@@ -2655,6 +2654,16 @@ class nsContentUtils {
   static mozilla::HTMLEditor* GetHTMLEditor(nsPresContext* aPresContext);
 
   /**
+   * Returns pointer to a text editor if <input> or <textarea> element is
+   * active element in the document for aPresContext, or pointer to HTML
+   * editor if there is (i.e., even if non-editable element has focus or
+   * nobody has focus).  The reason is, HTML editor may handle some input
+   * even if there is no active editing host.
+   * Note that this does not return editor in descendant documents.
+   */
+  static mozilla::TextEditor* GetActiveEditor(nsPresContext* aPresContext);
+
+  /**
    * Returns a LogModule that dump calls from content script are logged to.
    * This can be enabled with the 'Dump' module, and is useful for synchronizing
    * content JS to other logging modules.
@@ -2740,8 +2749,7 @@ class nsContentUtils {
    * includes Windows headers which aren't allowed there.
    */
   static void SetKeyboardIndicatorsOnRemoteChildren(
-      nsPIDOMWindowOuter* aWindow, UIStateChangeType aShowAccelerators,
-      UIStateChangeType aShowFocusRings);
+      nsPIDOMWindowOuter* aWindow, UIStateChangeType aShowFocusRings);
 
   /**
    * Given an nsIFile, attempts to read it into aString.
@@ -2844,25 +2852,6 @@ class nsContentUtils {
   static already_AddRefed<nsPIWindowRoot> GetWindowRoot(Document* aDoc);
 
   /*
-   * Implements step 3.1 and 3.3 of the Determine request's Referrer algorithm
-   * from the Referrer Policy specification.
-   *
-   * The referrer policy of the document is applied by Necko when using
-   * channels.
-   *
-   * For documents representing an iframe srcdoc attribute, the document sets
-   * its own URI correctly, so this method simply uses the document's original
-   * or current URI as appropriate.
-   *
-   * aDoc may be null.
-   *
-   * https://w3c.github.io/webappsec/specs/referrer-policy/#determine-requests-referrer
-   */
-  static nsresult SetFetchReferrerURIWithPolicy(
-      nsIPrincipal* aPrincipal, Document* aDoc, nsIHttpChannel* aChannel,
-      mozilla::net::ReferrerPolicy aReferrerPolicy);
-
-  /*
    * If there is a Referrer-Policy response header in |aChannel|, parse a
    * referrer policy from the header.
    *
@@ -2885,98 +2874,6 @@ class nsContentUtils {
   static bool IsNonSubresourceRequest(nsIChannel* aChannel);
 
   static bool IsNonSubresourceInternalPolicyType(nsContentPolicyType aType);
-
-  // The order of these entries matters, as we use std::min for total ordering
-  // of permissions. Private Browsing is considered to be more limiting
-  // then session scoping
-  enum class StorageAccess {
-    // The storage should be partitioned. if the caller is unable to do it, deny
-    // the storage access.
-    ePartitionedOrDeny = -1,
-    // Don't allow access to the storage
-    eDeny = 0,
-    // Allow access to the storage, but only if it is secure to do so in a
-    // private browsing context.
-    ePrivateBrowsing = 1,
-    // Allow access to the storage, but only persist it for the current session
-    eSessionScoped = 2,
-    // Allow access to the storage
-    eAllow = 3,
-    // Keep this at the end.  Used for serialization, but not a valid value.
-    eNumValues = 4,
-  };
-
-  /*
-   * Checks if storage for the given window is permitted by a combination of
-   * the user's preferences, and whether the window is a third-party iframe.
-   *
-   * This logic is intended to be shared between the different forms of
-   * persistent storage which are available to web pages. Cookies don't use
-   * this logic, and security logic related to them must be updated separately.
-   */
-  static StorageAccess StorageAllowedForWindow(
-      nsPIDOMWindowInner* aWindow, uint32_t* aRejectedReason = nullptr);
-
-  /*
-   * Checks if storage for the given document is permitted by a combination of
-   * the user's preferences, and whether the document's window is a third-party
-   * iframe.
-   *
-   * Note, this may be used on documents during the loading process where
-   * the window's extant document has not been set yet.  The code in
-   * StorageAllowedForWindow(), however, will not work in these cases.
-   */
-  static StorageAccess StorageAllowedForDocument(const Document* aDoc);
-
-  /*
-   * Checks if storage should be allowed for a new window with the given
-   * principal, load URI, and parent.
-   */
-  static StorageAccess StorageAllowedForNewWindow(nsIPrincipal* aPrincipal,
-                                                  nsIURI* aURI,
-                                                  nsPIDOMWindowInner* aParent);
-
-  /*
-   * Checks if storage should be allowed for the given channel.  The check will
-   * be based on the channel result principal and, depending on preferences and
-   * permissions, mozIThirdPartyUtil.isThirdPartyChannel().
-   */
-  static StorageAccess StorageAllowedForChannel(nsIChannel* aChannel);
-
-  /*
-   * Checks if storage for the given principal is permitted by the user's
-   * preferences. This method should be used only by ServiceWorker loading.
-   */
-  static StorageAccess StorageAllowedForServiceWorker(
-      nsIPrincipal* aPrincipal, nsICookieSettings* aCookieSettings);
-
-  /*
-   * Returns true if this document should disable storages because of the
-   * anti-tracking feature.
-   */
-  static bool StorageDisabledByAntiTracking(Document* aDocument, nsIURI* aURI) {
-    uint32_t rejectedReason = 0;
-    // Note that GetChannel() below may return null, but that's OK, since the
-    // callee is able to deal with a null channel argument, and if passed null,
-    // will only fail to notify the UI in case storage gets blocked.
-    return StorageDisabledByAntiTracking(
-        aDocument->GetInnerWindow(), aDocument->GetChannel(),
-        aDocument->NodePrincipal(), aURI, rejectedReason);
-  }
-
- private:
-  /*
-   * Returns true if this window/channel/aPrincipal should disable storages
-   * because of the anti-tracking feature.
-   * Note that either aWindow or aChannel may be null when calling this
-   * function. If the caller wants the UI to be notified when the storage gets
-   * disabled, it must pass a non-null channel object.
-   */
-  static bool StorageDisabledByAntiTracking(nsPIDOMWindowInner* aWindow,
-                                            nsIChannel* aChannel,
-                                            nsIPrincipal* aPrincipal,
-                                            nsIURI* aURI,
-                                            uint32_t& aRejectedReason);
 
  public:
   /*
@@ -3309,33 +3206,6 @@ class nsContentUtils {
   static bool CallOnAllRemoteChildren(
       mozilla::dom::MessageBroadcaster* aManager,
       CallOnRemoteChildFunction aCallback, void* aArg);
-
-  /**
-   * Gets the cookie lifetime policy for a given cookieSettings and a given
-   * principal by checking the permission value.
-   *
-   * Used in the implementation of InternalStorageAllowedCheck.
-   */
-  static void GetCookieLifetimePolicyFromCookieSettings(
-      nsICookieSettings* aCookieSettings, nsIPrincipal* aPrincipal,
-      uint32_t* aLifetimePolicy);
-
-  /*
-   * Checks if storage for a given principal is permitted by the user's
-   * preferences. If aWindow is non-null, its principal must be passed as
-   * aPrincipal, and the third-party iframe and sandboxing status of the window
-   * are also checked.  If aURI is non-null, then it is used as the comparison
-   * against aWindow to determine if this is a third-party load.  We also
-   * allow a channel instead of the window reference when determining 3rd party
-   * status.
-   *
-   * Used in the implementation of StorageAllowedForWindow,
-   * StorageAllowedForChannel and StorageAllowedForServiceWorker.
-   */
-  static StorageAccess InternalStorageAllowedCheck(
-      nsIPrincipal* aPrincipal, nsPIDOMWindowInner* aWindow, nsIURI* aURI,
-      nsIChannel* aChannel, nsICookieSettings* aCookieSettings,
-      uint32_t& aRejectedReason);
 
   static nsINode* GetCommonAncestorHelper(nsINode* aNode1, nsINode* aNode2);
   static nsIContent* GetCommonFlattenedTreeAncestorHelper(

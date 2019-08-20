@@ -71,6 +71,8 @@ using namespace js;
 using mozilla::DebugOnly;
 using mozilla::NumberEqualsInt32;
 
+using js::jit::JitScript;
+
 template <bool Eq>
 static MOZ_ALWAYS_INLINE bool LooseEqualityOp(JSContext* cx,
                                               InterpreterRegs& regs) {
@@ -429,6 +431,9 @@ bool js::RunScript(JSContext* cx, RunState& state) {
 STATIC_PRECONDITION_ASSUME(ubound(args.argv_) >= argc)
 MOZ_ALWAYS_INLINE bool CallJSNative(JSContext* cx, Native native,
                                     const CallArgs& args) {
+  TraceLoggerThread* logger = TraceLoggerForCurrentThread(cx);
+  AutoTraceLog traceLog(logger, TraceLogger_Call);
+
   if (!CheckRecursionLimit(cx)) {
     return false;
   }
@@ -1308,6 +1313,7 @@ again:
 #define PUSH_DOUBLE(d) REGS.sp++->setDouble(d)
 #define PUSH_INT32(i) REGS.sp++->setInt32(i)
 #define PUSH_SYMBOL(s) REGS.sp++->setSymbol(s)
+#define PUSH_BIGINT(b) REGS.sp++->setBigInt(b)
 #define PUSH_STRING(s)               \
   do {                               \
     REGS.sp++->setString(s);         \
@@ -1543,15 +1549,15 @@ static MOZ_ALWAYS_INLINE bool SetObjectElementOperation(
   // receiver != obj happens only at super[expr], where we expect to find the
   // property. People probably aren't building hashtables with |super|
   // anyway.
-  TypeScript::MonitorAssign(cx, obj, id);
+  JitScript::MonitorAssign(cx, obj, id);
 
   if (obj->isNative() && JSID_IS_INT(id)) {
     uint32_t length = obj->as<NativeObject>().getDenseInitializedLength();
     int32_t i = JSID_TO_INT(id);
     if ((uint32_t)i >= length) {
       // Annotate script if provided with information (e.g. baseline)
-      if (script && script->hasICScript() && IsSetElemPC(pc)) {
-        script->icScript()->noteHasDenseAdd(script->pcToOffset(pc));
+      if (script && script->hasJitScript() && IsSetElemPC(pc)) {
+        script->jitScript()->noteHasDenseAdd(script->pcToOffset(pc));
       }
     }
   }
@@ -2116,11 +2122,11 @@ static MOZ_NEVER_INLINE JS_HAZ_JSNATIVE_CALLER bool Interpret(JSContext* cx,
 
         /* Resume execution in the calling frame. */
         if (MOZ_LIKELY(interpReturnOK)) {
-          TypeScript::Monitor(cx, script, REGS.pc, REGS.sp[-1]);
-
           if (JSOp(*REGS.pc) == JSOP_RESUME) {
             ADVANCE_AND_DISPATCH(JSOP_RESUME_LENGTH);
           }
+
+          JitScript::MonitorBytecodeType(cx, script, REGS.pc, REGS.sp[-1]);
           MOZ_ASSERT(CodeSpec[*REGS.pc].length == JSOP_CALL_LENGTH);
           ADVANCE_AND_DISPATCH(JSOP_CALL_LENGTH);
         }
@@ -2770,7 +2776,7 @@ static MOZ_NEVER_INLINE JS_HAZ_JSNATIVE_CALLER bool Interpret(JSContext* cx,
         goto error;
       }
 
-      TypeScript::Monitor(cx, script, REGS.pc, lval);
+      JitScript::MonitorBytecodeType(cx, script, REGS.pc, lval);
       cx->debugOnlyCheck(lval);
     }
     END_CASE(JSOP_GETPROP)
@@ -2784,7 +2790,7 @@ static MOZ_NEVER_INLINE JS_HAZ_JSNATIVE_CALLER bool Interpret(JSContext* cx,
         goto error;
       }
 
-      TypeScript::Monitor(cx, script, REGS.pc, rref);
+      JitScript::MonitorBytecodeType(cx, script, REGS.pc, rref);
       cx->debugOnlyCheck(rref);
 
       REGS.sp--;
@@ -2799,7 +2805,7 @@ static MOZ_NEVER_INLINE JS_HAZ_JSNATIVE_CALLER bool Interpret(JSContext* cx,
         goto error;
       }
 
-      TypeScript::Monitor(cx, script, REGS.pc, rval);
+      JitScript::MonitorBytecodeType(cx, script, REGS.pc, rval);
       cx->debugOnlyCheck(rval);
     }
     END_CASE(JSOP_GETBOUNDNAME)
@@ -2892,7 +2898,7 @@ static MOZ_NEVER_INLINE JS_HAZ_JSNATIVE_CALLER bool Interpret(JSContext* cx,
         }
       }
 
-      TypeScript::Monitor(cx, script, REGS.pc, res);
+      JitScript::MonitorBytecodeType(cx, script, REGS.pc, res);
       REGS.sp--;
     }
     END_CASE(JSOP_GETELEM)
@@ -2912,7 +2918,7 @@ static MOZ_NEVER_INLINE JS_HAZ_JSNATIVE_CALLER bool Interpret(JSContext* cx,
         goto error;
       }
 
-      TypeScript::Monitor(cx, script, REGS.pc, res);
+      JitScript::MonitorBytecodeType(cx, script, REGS.pc, res);
       REGS.sp -= 2;
     }
     END_CASE(JSOP_GETELEM_SUPER)
@@ -2977,7 +2983,7 @@ static MOZ_NEVER_INLINE JS_HAZ_JSNATIVE_CALLER bool Interpret(JSContext* cx,
       }
 
       REGS.sp = args.spAfterCall();
-      TypeScript::Monitor(cx, script, REGS.pc, REGS.sp[-1]);
+      JitScript::MonitorBytecodeType(cx, script, REGS.pc, REGS.sp[-1]);
     }
     END_CASE(JSOP_EVAL)
 
@@ -3084,7 +3090,7 @@ static MOZ_NEVER_INLINE JS_HAZ_JSNATIVE_CALLER bool Interpret(JSContext* cx,
           }
         }
         Value* newsp = args.spAfterCall();
-        TypeScript::Monitor(cx, script, REGS.pc, newsp[-1]);
+        JitScript::MonitorBytecodeType(cx, script, REGS.pc, newsp[-1]);
         REGS.sp = newsp;
         ADVANCE_AND_DISPATCH(JSOP_CALL_LENGTH);
       }
@@ -3234,7 +3240,7 @@ static MOZ_NEVER_INLINE JS_HAZ_JSNATIVE_CALLER bool Interpret(JSContext* cx,
       }
 
       PUSH_COPY(rval);
-      TypeScript::Monitor(cx, script, REGS.pc, rval);
+      JitScript::MonitorBytecodeType(cx, script, REGS.pc, rval);
       static_assert(JSOP_GETNAME_LENGTH == JSOP_GETGNAME_LENGTH,
                     "We're sharing the END_CASE so the lengths better match");
     }
@@ -3248,7 +3254,7 @@ static MOZ_NEVER_INLINE JS_HAZ_JSNATIVE_CALLER bool Interpret(JSContext* cx,
         goto error;
       }
 
-      TypeScript::Monitor(cx, script, REGS.pc, rval);
+      JitScript::MonitorBytecodeType(cx, script, REGS.pc, rval);
     }
     END_CASE(JSOP_GETIMPORT)
 
@@ -3259,7 +3265,7 @@ static MOZ_NEVER_INLINE JS_HAZ_JSNATIVE_CALLER bool Interpret(JSContext* cx,
       }
 
       PUSH_COPY(rval);
-      TypeScript::Monitor(cx, script, REGS.pc, rval);
+      JitScript::MonitorBytecodeType(cx, script, REGS.pc, rval);
     }
     END_CASE(JSOP_GETINTRINSIC)
 
@@ -3421,7 +3427,7 @@ static MOZ_NEVER_INLINE JS_HAZ_JSNATIVE_CALLER bool Interpret(JSContext* cx,
       }
 #endif
       PUSH_COPY(val);
-      TypeScript::Monitor(cx, script, REGS.pc, REGS.sp[-1]);
+      JitScript::MonitorBytecodeType(cx, script, REGS.pc, REGS.sp[-1]);
     }
     END_CASE(JSOP_GETALIASEDVAR)
 
@@ -4346,10 +4352,7 @@ static MOZ_NEVER_INLINE JS_HAZ_JSNATIVE_CALLER bool Interpret(JSContext* cx,
     }
     END_CASE(JSOP_TONUMERIC)
 
-    CASE(JSOP_BIGINT) {
-      PUSH_COPY(script->getConst(GET_UINT32_INDEX(REGS.pc)));
-      MOZ_ASSERT(REGS.sp[-1].isBigInt());
-    }
+    CASE(JSOP_BIGINT) { PUSH_BIGINT(script->getBigInt(REGS.pc)); }
     END_CASE(JSOP_BIGINT)
 
     DEFAULT() {
@@ -5102,7 +5105,7 @@ bool js::SpreadCallOperation(JSContext* cx, HandleScript script, jsbytecode* pc,
     }
   }
 
-  TypeScript::Monitor(cx, script, pc, res);
+  JitScript::MonitorBytecodeType(cx, script, pc, res);
   return true;
 }
 

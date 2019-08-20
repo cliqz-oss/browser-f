@@ -10,7 +10,9 @@
  * via XMLHttpRequest).
  */
 
+#include "nsContentPolicyUtils.h"
 #include "nsContentUtils.h"
+#include "nsContentPolicyUtils.h"
 #include "nsDataDocumentContentPolicy.h"
 #include "nsNetUtil.h"
 #include "nsIProtocolHandler.h"
@@ -20,6 +22,8 @@
 #include "nsINode.h"
 #include "nsIDOMWindow.h"
 #include "nsIURI.h"
+
+using namespace mozilla;
 
 NS_IMPL_ISUPPORTS(nsDataDocumentContentPolicy, nsIContentPolicy)
 
@@ -40,7 +44,7 @@ nsDataDocumentContentPolicy::ShouldLoad(nsIURI* aContentLocation,
                                         nsILoadInfo* aLoadInfo,
                                         const nsACString& aMimeGuess,
                                         int16_t* aDecision) {
-  auto setBlockingReason = MakeScopeExit([&]() {
+  auto setBlockingReason = mozilla::MakeScopeExit([&]() {
     if (NS_CP_REJECTED(*aDecision)) {
       NS_SetRequestBlockingReason(
           aLoadInfo, nsILoadInfo::BLOCKING_REASON_CONTENT_POLICY_DATA_DOCUMENT);

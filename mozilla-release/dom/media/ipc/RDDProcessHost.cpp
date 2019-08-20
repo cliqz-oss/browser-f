@@ -67,6 +67,7 @@ bool RDDProcessHost::Launch(StringVector aExtraOpts) {
 
   if (!GeckoChildProcessHost::AsyncLaunch(aExtraOpts)) {
     mLaunchPhase = LaunchPhase::Complete;
+    mPrefSerializer = nullptr;
     return false;
   }
   return true;
@@ -77,7 +78,7 @@ bool RDDProcessHost::WaitForLaunch() {
     return !!mRDDChild;
   }
 
-  int32_t timeoutMs = StaticPrefs::MediaRddProcessStartupTimeoutMs();
+  int32_t timeoutMs = StaticPrefs::media_rdd_process_startup_timeout_ms();
 
   // If one of the following environment variables are set we can
   // effectively ignore the timeout - as we can guarantee the RDD
@@ -260,15 +261,16 @@ void RDDProcessHost::DestroyProcess() {
 
 #if defined(XP_MACOSX) && defined(MOZ_SANDBOX)
 /* static */
-void RDDProcessHost::StaticFillMacSandboxInfo(MacSandboxInfo& aInfo) {
+bool RDDProcessHost::StaticFillMacSandboxInfo(MacSandboxInfo& aInfo) {
   GeckoChildProcessHost::StaticFillMacSandboxInfo(aInfo);
   if (!aInfo.shouldLog && PR_GetEnv("MOZ_SANDBOX_RDD_LOGGING")) {
     aInfo.shouldLog = true;
   }
+  return true;
 }
 
-void RDDProcessHost::FillMacSandboxInfo(MacSandboxInfo& aInfo) {
-  RDDProcessHost::StaticFillMacSandboxInfo(aInfo);
+bool RDDProcessHost::FillMacSandboxInfo(MacSandboxInfo& aInfo) {
+  return RDDProcessHost::StaticFillMacSandboxInfo(aInfo);
 }
 
 /* static */

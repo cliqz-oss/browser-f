@@ -6,9 +6,9 @@ from collections import OrderedDict
 from distutils.spawn import find_executable
 from datetime import timedelta
 
-import config
-import wpttest
-from formatters import chromium, wptreport, wptscreenshot
+from . import config
+from . import wpttest
+from .formatters import chromium, wptreport, wptscreenshot
 
 def abs_path(path):
     return os.path.abspath(os.path.expanduser(path))
@@ -53,6 +53,8 @@ scheme host and port.""")
                         help="Prevent regeneration of the test manifest.")
     parser.add_argument("--manifest-download", action="store_true", default=None,
                         help="Attempt to download a preexisting manifest when updating.")
+    parser.add_argument("--no-manifest-download", action="store_false", dest="manifest_download",
+                        help="Prevent download of the test manifest.")
 
     parser.add_argument("--timeout-multiplier", action="store", type=float, default=None,
                         help="Multiplier relative to standard test timeout to use")
@@ -254,6 +256,8 @@ scheme host and port.""")
                              help="Path to the folder containing browser prefs")
     gecko_group.add_argument("--disable-e10s", dest="gecko_e10s", action="store_false", default=True,
                              help="Run tests without electrolysis preferences")
+    gecko_group.add_argument("--enable-webrender", dest="enable_webrender", action="store_true", default=False,
+                             help="Enable the WebRender compositor in Gecko.")
     gecko_group.add_argument("--stackfix-dir", dest="stackfix_dir", action="store",
                              help="Path to directory containing assertion stack fixing scripts")
     gecko_group.add_argument("--lsan-dir", dest="lsan_dir", action="store",
@@ -600,8 +604,8 @@ def create_parser_update(product_choices=None):
                         help="Don't create a VCS commit containing the changes.")
     parser.add_argument("--sync", dest="sync", action="store_true", default=False,
                         help="Sync the tests with the latest from upstream (implies --patch)")
-    parser.add_argument("--ignore-existing", action="store_true",
-                        help="When updating test results only consider results from the logfiles provided, not existing expectations.")
+    parser.add_argument("--full", action="store_true", default=False,
+                        help=("For all tests that are updated, remove any existing conditions and missing subtests"))
     parser.add_argument("--stability", nargs="?", action="store", const="unstable", default=None,
         help=("Reason for disabling tests. When updating test results, disable tests that have "
               "inconsistent results across many runs with the given reason."))

@@ -10,18 +10,23 @@ import BaseHTTPServer
 import datetime
 import json
 import os
+import shutil
 import socket
 import threading
 import time
 
-from mozlog import get_proxy_logger
+from logger.logger import RaptorLogger
 
-LOG = get_proxy_logger(component='raptor-control-server')
+LOG = RaptorLogger(component='raptor-control-server')
 
 here = os.path.abspath(os.path.dirname(__file__))
 
 
-def MakeCustomHandlerClass(results_handler, shutdown_browser, write_raw_gecko_profile):
+def MakeCustomHandlerClass(results_handler,
+                           shutdown_browser,
+                           handle_gecko_profile,
+                           background_app,
+                           foreground_app):
 
     class MyHandler(BaseHTTPServer.BaseHTTPRequestHandler, object):
         """
@@ -103,7 +108,9 @@ def MakeCustomHandlerClass(results_handler, shutdown_browser, write_raw_gecko_pr
         def __init__(self, *args, **kwargs):
             self.results_handler = results_handler
             self.shutdown_browser = shutdown_browser
-            self.write_raw_gecko_profile = write_raw_gecko_profile
+            self.handle_gecko_profile = handle_gecko_profile
+            self.background_app = background_app
+            self.foreground_app = foreground_app
             super(MyHandler, self).__init__(*args, **kwargs)
 
         def log_request(self, code='-', size='-'):
@@ -116,9 +123,9 @@ def MakeCustomHandlerClass(results_handler, shutdown_browser, write_raw_gecko_pr
             head, tail = os.path.split(self.path)
 
             if tail.startswith('raptor') and tail.endswith('.json'):
-                LOG.info('reading test settings from ' + tail)
+                LOG.info('reading test settings from json/' + tail)
                 try:
-                    with open(tail) as json_settings:
+                    with open("json/{}".format(tail)) as json_settings:
                         self.send_header('Access-Control-Allow-Origin', '*')
                         self.send_header('Content-type', 'application/json')
                         self.end_headers()
@@ -169,12 +176,11 @@ def MakeCustomHandlerClass(results_handler, shutdown_browser, write_raw_gecko_pr
                 MyHandler.wait_after_messages[wait_key] = True
 
             if data['type'] == "webext_gecko_profile":
-                # received gecko profiling results
-                _test = str(data['data'][0])
-                _pagecycle = str(data['data'][1])
-                _raw_profile = data['data'][2]
-                LOG.info("received gecko profile for test %s pagecycle %s" % (_test, _pagecycle))
-                self.write_raw_gecko_profile(_test, _pagecycle, _raw_profile)
+                # received file name of the saved gecko profile
+                filename = str(data['data'])
+                LOG.info("received gecko profile filename: {}".format(filename))
+                self.handle_gecko_profile(filename)
+
             elif data['type'] == 'webext_results':
                 LOG.info("received " + data['type'] + ": " + str(data['data']))
                 self.results_handler.add(data['data'])
@@ -187,10 +193,15 @@ def MakeCustomHandlerClass(results_handler, shutdown_browser, write_raw_gecko_pr
                 self.results_handler.add_page_timeout(str(data['data'][0]),
                                                       str(data['data'][1]),
                                                       dict(data['data'][2]))
-            elif data['type'] == 'webext_status' and data['data'] == "__raptor_shutdownBrowser":
-                LOG.info("received " + data['type'] + ": " + str(data['data']))
-                # webext is telling us it's done, and time to shutdown the browser
+            elif data['type'] == "webext_shutdownBrowser":
+                LOG.info("received request to shutdown the browser")
                 self.shutdown_browser()
+            elif data['type'] == 'webext_start_background':
+                LOG.info("received request to background app")
+                self.background_app()
+            elif data['type'] == 'webext_end_background':
+                LOG.info("received request to foreground app")
+                self.foreground_app()
             elif data['type'] == 'webext_screenshot':
                 LOG.info("received " + data['type'])
                 self.results_handler.add_image(str(data['data'][0]),
@@ -271,6 +282,7 @@ class RaptorControlServer():
         self.app_name = None
         self.gecko_profile_dir = None
         self.debug_mode = debug_mode
+        self.user_profile = None
 
     def start(self):
         config_dir = os.path.join(here, 'tests')
@@ -286,7 +298,9 @@ class RaptorControlServer():
         server_class = ThreadedHTTPServer
         handler_class = MakeCustomHandlerClass(self.results_handler,
                                                self.shutdown_browser,
-                                               self.write_raw_gecko_profile)
+                                               self.handle_gecko_profile,
+                                               self.background_app,
+                                               self.foreground_app)
 
         httpd = server_class(server_address, handler_class)
 
@@ -312,17 +326,38 @@ class RaptorControlServer():
         self.kill_thread.daemon = True
         self.kill_thread.start()
 
-    def write_raw_gecko_profile(self, test, pagecycle, profile):
-        profile_file = '%s_pagecycle_%s.profile' % (test, pagecycle)
-        profile_path = os.path.join(self.gecko_profile_dir, profile_file)
-        LOG.info("writing raw gecko profile to disk: %s" % str(profile_path))
+    def handle_gecko_profile(self, filename):
+        # Move the stored profile to a location outside the Firefox profile
+        source_path = os.path.join(self.user_profile.profile, "profiler", filename)
+        target_path = os.path.join(self.gecko_profile_dir, filename)
+        shutil.move(source_path, target_path)
+        LOG.info("moved gecko profile to {}".format(target_path))
 
-        try:
-            with open(profile_path, 'w') as profile_file:
-                json.dump(profile, profile_file)
-                profile_file.close()
-        except Exception:
-            LOG.critical("Encountered an exception whie writing raw gecko profile to disk")
+    def is_app_in_background(self):
+        # Get the app view state: foreground->False, background->True
+        current_focus = self.device.shell_output(
+            "dumpsys window windows | grep mCurrentFocus"
+        ).strip()
+        return self.app_name not in current_focus
+
+    def background_app(self):
+        # Disable Doze, background the app, then disable App Standby
+        self.device.shell_output("dumpsys deviceidle whitelist +%s" % self.app_name)
+        self.device.shell_output("input keyevent 3")
+        if not self.is_app_in_background():
+            LOG.critical("%s is still in foreground after background request" % self.app_name)
+        else:
+            LOG.info("%s was successfully backgrounded" % self.app_name)
+
+    def foreground_app(self):
+        self.device.shell_output(
+            "am start --activity-single-top %s" % self.app_name
+        )
+        self.device.shell_output("dumpsys deviceidle enable")
+        if self.is_app_in_background():
+            LOG.critical("%s is still in background after foreground request" % self.app_name)
+        else:
+            LOG.info("%s was successfully foregrounded" % self.app_name)
 
     def wait_for_quit(self, timeout=15):
         """Wait timeout seconds for the process to exit. If it hasn't

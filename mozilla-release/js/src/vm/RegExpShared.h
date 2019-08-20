@@ -19,7 +19,7 @@
 #include "gc/Barrier.h"
 #include "gc/Heap.h"
 #include "gc/Marking.h"
-#include "gc/Zone.h"
+#include "gc/ZoneAllocator.h"
 #include "js/AllocPolicy.h"
 #include "js/RegExpFlags.h"  // JS::RegExpFlag, JS::RegExpFlags
 #include "js/UbiNode.h"
@@ -43,6 +43,14 @@ enum RegExpRunStatus {
   RegExpRunStatus_Error,
   RegExpRunStatus_Success,
   RegExpRunStatus_Success_NotFound
+};
+
+/*
+ * Layout of the reg exp bytecode header.
+ */
+struct RegExpByteCodeHeader {
+  uint32_t length;        // Number of instructions.
+  uint32_t numRegisters;  // Number of registers used.
 };
 
 /*
@@ -77,23 +85,27 @@ class RegExpShared : public gc::TenuredCell {
 
   struct RegExpCompilation {
     WeakHeapPtr<jit::JitCode*> jitCode;
-    uint8_t* byteCode;
-
-    RegExpCompilation() : byteCode(nullptr) {}
+    uint8_t* byteCode = nullptr;
 
     bool compiled(ForceByteCodeEnum force = DontForceByteCode) const {
       return byteCode || (force == DontForceByteCode && jitCode);
     }
+
+    size_t byteCodeLength() const {
+      MOZ_ASSERT(byteCode);
+      auto header = reinterpret_cast<RegExpByteCodeHeader*>(byteCode);
+      return header->length;
+    }
   };
+
+  RegExpCompilation compilationArray[4];
 
   /* Source to the RegExp, for lazy compilation. */
   GCPtr<JSAtom*> source;
 
+  uint32_t parenCount;
   JS::RegExpFlags flags;
   bool canStringMatch;
-  size_t parenCount;
-
-  RegExpCompilation compilationArray[4];
 
   static int CompilationIndex(CompilationMode mode, bool latin1) {
     switch (mode) {

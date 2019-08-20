@@ -26,7 +26,13 @@
 @namespace xbl url("http://www.mozilla.org/xbl"); /* namespace for XBL elements */
 
 :root {
+  text-rendering: optimizeLegibility;
+  -moz-control-character-visibility: visible;
   --animation-easing-function: cubic-bezier(.07, .95, 0, 1);
+}
+
+:root:-moz-locale-dir(rtl) {
+  direction: rtl;
 }
 
 /* ::::::::::
@@ -106,15 +112,6 @@ label html|span.accesskey {
 }
 
 /********** toolbarbutton **********/
-
-toolbarbutton {
-  -moz-binding: url("chrome://global/content/bindings/toolbarbutton.xml#toolbarbutton");
-}
-
-toolbarbutton.badged-button > toolbarbutton,
-toolbarbutton.badged-button {
-  -moz-binding: url("chrome://global/content/bindings/toolbarbutton.xml#toolbarbutton-badged");
-}
 
 .toolbarbutton-badge:not([value]),
 .toolbarbutton-badge[value=""] {
@@ -411,12 +408,10 @@ tabbox {
 }
 
 tabs {
-  -moz-binding: url("chrome://global/content/bindings/tabbox.xml#tabs");
   -moz-box-orient: horizontal;
 }
 
 tab {
-  -moz-binding: url("chrome://global/content/bindings/tabbox.xml#tab");
   -moz-box-align: center;
   -moz-box-pack: center;
 }
@@ -535,10 +530,6 @@ menulist > menupopup > .popup-internal-box > .arrowscrollbox-scrollbox {
   overflow: auto;
 }
 
-dropmarker > .dropmarker-icon {
-  pointer-events: none;
-}
-
 /********** splitter **********/
 
 .tree-splitter {
@@ -583,7 +574,6 @@ stringbundleset {
 
 dialog,
 dialog:root /* override :root from above */ {
-  -moz-binding: url("chrome://global/content/bindings/dialog.xml#dialog");
   -moz-box-orient: vertical;
 }
 
@@ -597,7 +587,6 @@ page {
 
 wizard,
 wizard:root /* override :root from above */ {
-  -moz-binding: url("chrome://global/content/bindings/wizard.xml#wizard");
   -moz-box-orient: vertical;
   width: 40em;
   height: 30em;
@@ -614,11 +603,6 @@ richlistbox {
   -moz-user-focus: normal;
   -moz-box-orient: vertical;
 }
-
-richlistitem {
-  -moz-binding: url('chrome://global/content/bindings/richlistbox.xml#richlistitem');
-}
-
 
 /*********** findbar ************/
 findbar {

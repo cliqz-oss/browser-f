@@ -12,12 +12,24 @@
  * - devtools/client/definitions for tool-specifics entries
  */
 
-const {Cu} = require("chrome");
-const {LocalizationHelper} = require("devtools/shared/l10n");
-const MENUS_L10N = new LocalizationHelper("devtools/client/locales/menus.properties");
+const { Cu } = require("chrome");
+const { LocalizationHelper } = require("devtools/shared/l10n");
+const MENUS_L10N = new LocalizationHelper(
+  "devtools/client/locales/menus.properties"
+);
 
-loader.lazyRequireGetter(this, "gDevTools", "devtools/client/framework/devtools", true);
-loader.lazyRequireGetter(this, "gDevToolsBrowser", "devtools/client/framework/devtools-browser", true);
+loader.lazyRequireGetter(
+  this,
+  "gDevTools",
+  "devtools/client/framework/devtools",
+  true
+);
+loader.lazyRequireGetter(
+  this,
+  "gDevToolsBrowser",
+  "devtools/client/framework/devtools-browser",
+  true
+);
 loader.lazyRequireGetter(this, "Telemetry", "devtools/client/shared/telemetry");
 
 let telemetry = null;
@@ -78,7 +90,7 @@ function createToolMenuElements(toolDefinition, doc) {
     return;
   }
 
-  const oncommand = (async function(id, event) {
+  const oncommand = async function(id, event) {
     try {
       const window = event.target.ownerDocument.defaultView;
       await gDevToolsBrowser.selectToolCommand(window, id, Cu.now());
@@ -86,7 +98,7 @@ function createToolMenuElements(toolDefinition, doc) {
     } catch (e) {
       console.error(`Exception while opening ${id}: ${e}\n${e.stack}`);
     }
-  }).bind(null, id);
+  }.bind(null, id);
 
   const menuitem = createMenuItem({
     doc,
@@ -118,7 +130,12 @@ function sendEntryPointTelemetry(window) {
   telemetry.addEventProperty(window, "open", "tools", null, "shortcut", "");
 
   telemetry.addEventProperty(
-    window, "open", "tools", null, "entrypoint", "SystemMenu"
+    window,
+    "open",
+    "tools",
+    null,
+    "entrypoint",
+    "SystemMenu"
   );
 }
 
@@ -249,7 +266,7 @@ function addTopLevelItems(doc) {
   const menu = doc.getElementById("menuWebDeveloperPopup");
   menu.appendChild(menuItems);
 
-  // There is still "Page Source" menuitem hardcoded into browser.xul. Instead
+  // There is still "Page Source" menuitem hardcoded into browser.xhtml. Instead
   // of manually inserting everything around it, move it to the expected
   // position.
   const pageSource = doc.getElementById("menu_pageSource");

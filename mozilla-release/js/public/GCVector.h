@@ -36,7 +36,10 @@ class GCVector {
   mozilla::Vector<T, MinInlineCapacity, AllocPolicy> vector;
 
  public:
-  explicit GCVector(AllocPolicy alloc = AllocPolicy()) : vector(alloc) {}
+  using ElementType = T;
+
+  explicit GCVector(AllocPolicy alloc = AllocPolicy())
+      : vector(std::move(alloc)) {}
 
   GCVector(GCVector&& vec) : vector(std::move(vec.vector)) {}
 

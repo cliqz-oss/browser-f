@@ -30,11 +30,14 @@ class WebRenderTextureHost : public TextureHost {
 
   void DeallocateDeviceData() override {}
 
-  void SetTextureSourceProvider(TextureSourceProvider* aProvider) override;
-
   bool Lock() override;
 
   void Unlock() override;
+
+  void PrepareTextureSource(CompositableTextureSourceRef& aTexture) override;
+  bool BindTextureSource(CompositableTextureSourceRef& aTexture) override;
+  void UnbindTextureSource() override;
+  void SetTextureSourceProvider(TextureSourceProvider* aProvider) override;
 
   gfx::SurfaceFormat GetFormat() const override;
 
@@ -45,8 +48,6 @@ class WebRenderTextureHost : public TextureHost {
   // treat these textureHost as the read-format when we read them.
   // Please check TextureHost::GetReadFormat().
   gfx::SurfaceFormat GetReadFormat() const override;
-
-  bool BindTextureSource(CompositableTextureSourceRef& aTexture) override;
 
   already_AddRefed<gfx::DataSourceSurface> GetAsSurface() override;
 
@@ -68,7 +69,7 @@ class WebRenderTextureHost : public TextureHost {
 
   bool HasIntermediateBuffer() const override;
 
-  uint32_t NumSubTextures() const override;
+  uint32_t NumSubTextures() override;
 
   void PushResourceUpdates(wr::TransactionBuilder& aResources,
                            ResourceUpdateOp aOp,

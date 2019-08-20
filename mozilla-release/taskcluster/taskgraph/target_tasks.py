@@ -400,91 +400,52 @@ def target_tasks_ship_desktop(full_task_graph, parameters, graph_config):
     return [l for l, t in full_task_graph.tasks.iteritems() if filter(t)]
 
 
-def _get_filter_promote_fennec(fennec_release_type):
-    def filter_(task):
+@_target_task('promote_fennec')
+def target_tasks_promote_fennec(full_task_graph, parameters, graph_config):
+    """Select the set of tasks required for a candidates build of fennec. The
+    nightly build process involves a pipeline of builds, signing,
+    and, eventually, uploading the tasks to balrog."""
+
+    def filter(task):
         attr = task.attributes.get
         # Don't ship single locale fennec anymore - Bug 1408083
         if attr("locale") or attr("chunk_locales"):
             return False
+        if task.attributes.get('shipping_product') == 'fennec' and \
+                task.attributes.get('shipping_phase') == 'promote':
+            return True
 
-        return attr('shipping_product') == 'fennec' and \
-            attr('shipping_phase') == 'promote' and \
-            attr('release-type') in (None, fennec_release_type)
-
-    return filter_
+    return [l for l, t in full_task_graph.tasks.iteritems() if filter(full_task_graph[l])]
 
 
-def _get_filter_ship_fennec(fennec_release_type, filtered_for_candidates, parameters):
-    is_rc = (parameters.get('release_type') == 'esr68-rc')
+@_target_task('ship_fennec')
+def target_tasks_ship_fennec(full_task_graph, parameters, graph_config):
+    """Select the set of tasks required to ship fennec.
+    Previous build deps will be optimized out via action task."""
+    is_rc = (parameters.get('release_type') == 'release-rc')
+    filtered_for_candidates = target_tasks_promote_fennec(
+        full_task_graph, parameters, graph_config,
+    )
 
-    def filter_(task):
-        # XXX Starting 68, Geckoview is shipped in a separate target_tasks
-        if task.kind == 'beetmover-geckoview':
-            return False
-
+    def filter(task):
         # Include candidates build tasks; these will be optimized out
         if task.label in filtered_for_candidates:
             return True
-
-        attr = task.attributes.get
-        if attr('shipping_product') != 'fennec' or \
-                attr('shipping_phase') not in ('ship', 'push'):
+        if task.attributes.get('shipping_product') != 'fennec' or \
+                task.attributes.get('shipping_phase') not in ('ship', 'push'):
             return False
+        # We always run push-apk during ship
+        if task.kind == 'push-apk':
+            return True
+        # secondary-notify-ship is only for RC
+        if task.kind in (
+            'release-secondary-notify-ship',
+        ):
+            return is_rc
 
-        if attr('release-type') in (None, fennec_release_type):
-            if is_rc:
-                return task.kind in ('release-secondary-notify-ship', 'push-apk')
-            else:
-                return task.kind != 'release-secondary-notify-ship'
+        # Everything else is only for non-RC
+        return not is_rc
 
-    return filter_
-
-
-@_target_task('promote_fennec_beta')
-def target_tasks_promote_fennec_beta(full_task_graph, parameters, graph_config):
-    """Select the set of tasks required for a candidates build of fennec. The
-    beta build process involves a pipeline of builds, signing,
-    and, eventually, uploading the tasks to balrog."""
-
-    filter = _get_filter_promote_fennec(fennec_release_type='beta')
-    return [l for l, t in full_task_graph.tasks.iteritems() if filter(full_task_graph[l])]
-
-
-@_target_task('promote_fennec_release')
-def target_tasks_promote_fennec_release(full_task_graph, parameters, graph_config):
-    """Select the set of tasks required for a candidates build of fennec. The
-    release build process involves a pipeline of builds, signing,
-    and, eventually, uploading the tasks to balrog."""
-
-    filter = _get_filter_promote_fennec(fennec_release_type='release')
-    return [l for l, t in full_task_graph.tasks.iteritems() if filter(full_task_graph[l])]
-
-
-@_target_task('ship_fennec_beta')
-def target_tasks_ship_fennec_beta(full_task_graph, parameters, graph_config):
-    """Select the set of tasks required to ship fennec.
-    Previous build deps will be optimized out via action task."""
-    filter = _get_filter_ship_fennec(
-        fennec_release_type='beta',
-        filtered_for_candidates=target_tasks_promote_fennec_beta(
-            full_task_graph, parameters, graph_config,
-        ),
-        parameters=parameters,
-    )
-    return [l for l, t in full_task_graph.tasks.iteritems() if filter(full_task_graph[l])]
-
-
-@_target_task('ship_fennec_release')
-def target_tasks_ship_fennec_release(full_task_graph, parameters, graph_config):
-    """Select the set of tasks required to ship fennec.
-    Previous build deps will be optimized out via action task."""
-    filter = _get_filter_ship_fennec(
-        fennec_release_type='release',
-        filtered_for_candidates=target_tasks_promote_fennec_release(
-            full_task_graph, parameters, graph_config,
-        ),
-        parameters=parameters,
-    )
     return [l for l, t in full_task_graph.tasks.iteritems() if filter(full_task_graph[l])]
 
 
@@ -505,43 +466,62 @@ def target_tasks_pine(full_task_graph, parameters, graph_config):
     return [l for l, t in full_task_graph.tasks.iteritems() if filter(t)]
 
 
-@_target_task('nightly_fennec')
-def target_tasks_nightly_fennec(full_task_graph, parameters, graph_config):
-    """Select the set of tasks required for a nightly build of fennec. The
-    nightly build process involves a pipeline of builds, signing,
-    and, eventually, uploading the tasks to balrog."""
+@_target_task('ship_geckoview')
+def target_tasks_ship_geckoview(full_task_graph, parameters, graph_config):
+    """Select the set of tasks required to ship geckoview nightly. The
+    nightly build process involves a pipeline of builds and an upload to
+    maven.mozilla.org."""
     def filter(task):
-        # XXX Starting 68, we ship Fennec outside of mozilla-central, but geckoview must remain
-        # shipped from there
-        if task.kind == 'beetmover-geckoview':
-            return False
-
-        if not filter_for_project(task, parameters):
-            return False
-        if task.attributes.get('shipping_product') == 'fennec':
-            if task.attributes.get('release-type') == 'nightly':
-                if not task.attributes.get('nightly', False):
-                    return False
-                return True
+        # XXX Starting 69, we don't ship Fennec Nightly anymore. We just want geckoview to be
+        # uploaded
+        return (
+            task.attributes.get('shipping_product') == 'fennec' and
+            task.kind in ('beetmover-geckoview', 'upload-symbols')
+        )
 
     return [l for l, t in full_task_graph.tasks.iteritems() if filter(t)]
 
 
-@_target_task('ship_geckoview_release')
-def target_tasks_ship_geckoview_release(full_task_graph, parameters, graph_config):
-    """Select the set of tasks required to ship geckoview release. The
-    build process involves a pipeline of builds and an upload to
-    maven.mozilla.org."""
-
+@_target_task('fennec_v64')
+def target_tasks_fennec_v64(full_task_graph, parameters, graph_config):
+    """
+    Select tasks required for running tp6m fennec v64 tests
+    """
     def filter(task):
-        # XXX Starting 69, we don't ship Fennec Nightly anymore. We just want geckoview and
-        # its symbols to be uploaded
-        return (
-            task.attributes.get('release-type') == 'release' and
-            # XXX The shippable geckoview release are flagged as "nightly"
-            task.attributes.get('nightly') is True and
-            task.kind in ('beetmover-geckoview', 'upload-symbols')
-        )
+        platform = task.attributes.get('build_platform')
+        attributes = task.attributes
+
+        if platform and 'android' not in platform:
+            return False
+        if attributes.get('unittest_suite') != 'raptor':
+            return False
+        if '-fennec64-' in attributes.get('raptor_try_name'):
+            return True
+
+    return [l for l, t in full_task_graph.tasks.iteritems() if filter(t)]
+
+
+@_target_task('android_power')
+def target_tasks_android_power(full_task_graph, parameters, graph_config):
+    """
+    Select tasks required for running android power tests
+    """
+    def filter(task):
+        platform = task.attributes.get('build_platform')
+        attributes = task.attributes
+
+        if platform and 'android' not in platform:
+            return False
+        if attributes.get('unittest_suite') != 'raptor':
+            return False
+        try_name = attributes.get('raptor_try_name')
+        if 'geckoview' not in try_name:
+            return False
+        if '-power' in try_name and 'pgo' in platform:
+            if '-speedometer-' in try_name:
+                return True
+            if '-scn-power-idle' in try_name:
+                return True
 
     return [l for l, t in full_task_graph.tasks.iteritems() if filter(t)]
 

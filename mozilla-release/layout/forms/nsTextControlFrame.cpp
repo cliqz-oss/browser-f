@@ -164,8 +164,9 @@ LogicalSize nsTextControlFrame::CalcIntrinsicSize(
   RefPtr<nsFontMetrics> fontMet =
       nsLayoutUtils::GetFontMetricsForFrame(this, aFontSizeInflation);
 
-  lineHeight = ReflowInput::CalcLineHeight(GetContent(), Style(), PresContext(),
-                                           NS_AUTOHEIGHT, aFontSizeInflation);
+  lineHeight =
+      ReflowInput::CalcLineHeight(GetContent(), Style(), PresContext(),
+                                  NS_UNCONSTRAINEDSIZE, aFontSizeInflation);
   charWidth = fontMet->AveCharWidth();
   charMaxAdvance = fontMet->MaxAdvance();
 
@@ -581,19 +582,22 @@ void nsTextControlFrame::Reflow(nsPresContext* aPresContext,
           aReflowInput.ComputedLogicalBorderPadding().BStartEnd(wm));
   aDesiredSize.SetSize(wm, finalSize);
 
-  // Calculate the baseline and store it in mFirstBaseline.
-  nscoord lineHeight = aReflowInput.ComputedBSize();
-  float inflation = nsLayoutUtils::FontSizeInflationFor(this);
-  if (!IsSingleLineTextControl()) {
-    lineHeight = ReflowInput::CalcLineHeight(
-        GetContent(), Style(), PresContext(), NS_AUTOHEIGHT, inflation);
-  }
-  RefPtr<nsFontMetrics> fontMet =
-      nsLayoutUtils::GetFontMetricsForFrame(this, inflation);
-  mFirstBaseline = nsLayoutUtils::GetCenteredFontBaseline(fontMet, lineHeight,
-                                                          wm.IsLineInverted()) +
-                   aReflowInput.ComputedLogicalBorderPadding().BStart(wm);
-  aDesiredSize.SetBlockStartAscent(mFirstBaseline);
+  if (!aReflowInput.mStyleDisplay->IsContainLayout()) {
+    // Calculate the baseline and store it in mFirstBaseline.
+    nscoord lineHeight = aReflowInput.ComputedBSize();
+    float inflation = nsLayoutUtils::FontSizeInflationFor(this);
+    if (!IsSingleLineTextControl()) {
+      lineHeight =
+          ReflowInput::CalcLineHeight(GetContent(), Style(), PresContext(),
+                                      NS_UNCONSTRAINEDSIZE, inflation);
+    }
+    RefPtr<nsFontMetrics> fontMet =
+        nsLayoutUtils::GetFontMetricsForFrame(this, inflation);
+    mFirstBaseline = nsLayoutUtils::GetCenteredFontBaseline(
+                         fontMet, lineHeight, wm.IsLineInverted()) +
+                     aReflowInput.ComputedLogicalBorderPadding().BStart(wm);
+    aDesiredSize.SetBlockStartAscent(mFirstBaseline);
+  }  // else: we're layout-contained, and so we have no baseline.
 
   // overflow handling
   aDesiredSize.SetOverflowAreasToDesiredBounds();
@@ -834,7 +838,8 @@ nsresult nsTextControlFrame::SetSelectionInternal(
     return err.StealNSResult();
   }
 
-  selection->AddRange(*range, err);  // NOTE: can destroy the world
+  selection->AddRangeAndSelectFramesAndNotifyListeners(
+      *range, err);  // NOTE: can destroy the world
   if (NS_WARN_IF(err.Failed())) {
     return err.StealNSResult();
   }
@@ -888,8 +893,7 @@ nsresult nsTextControlFrame::SelectAllOrCollapseToEndOfText(bool aSelect) {
       child = child->GetPreviousSibling();
       if (child && child->IsText()) {
         rootNode = child;
-        const nsTextFragment* fragment = child->GetText();
-        numChildren = fragment ? fragment->GetLength() : 0;
+        numChildren = child->AsText()->TextDataLength();
       }
     }
   }

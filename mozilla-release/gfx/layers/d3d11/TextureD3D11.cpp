@@ -11,13 +11,15 @@
 #include "ReadbackManagerD3D11.h"
 #include "gfx2DGlue.h"
 #include "gfxContext.h"
-#include "gfxPrefs.h"
+#include "mozilla/StaticPrefs.h"
 #include "gfxWindowsPlatform.h"
+#include "MainThreadUtils.h"
 #include "mozilla/gfx/DataSurfaceHelpers.h"
 #include "mozilla/gfx/DeviceManagerDx.h"
 #include "mozilla/gfx/Logging.h"
 #include "mozilla/gfx/gfxVars.h"
 #include "mozilla/layers/CompositorBridgeChild.h"
+#include "mozilla/Telemetry.h"
 #include "mozilla/webrender/RenderD3D11TextureHostOGL.h"
 #include "mozilla/webrender/RenderThread.h"
 #include "mozilla/webrender/WebRenderAPI.h"
@@ -286,7 +288,8 @@ static void DestroyDrawTarget(RefPtr<DrawTarget>& aDT,
 
 D3D11TextureData::~D3D11TextureData() {
   if (mDrawTarget) {
-    if (PaintThread::Get() && gfxPrefs::Direct2DDestroyDTOnPaintThread()) {
+    if (PaintThread::Get() &&
+        StaticPrefs::gfx_direct2d_destroy_dt_on_paintthread()) {
       RefPtr<DrawTarget> dt = mDrawTarget;
       RefPtr<ID3D11Texture2D> tex = mTexture;
       RefPtr<Runnable> task = NS_NewRunnableFunction(
@@ -553,6 +556,17 @@ void D3D11TextureData::GetDXGIResource(IDXGIResource** aOutResource) {
   mTexture->QueryInterface(aOutResource);
 }
 
+TextureFlags D3D11TextureData::GetTextureFlags() const {
+  TextureFlags flags = TextureFlags::NO_FLAGS;
+  // With WebRender, resource open happens asynchronously on RenderThread.
+  // During opening the resource on host side, TextureClient needs to be alive.
+  // With WAIT_HOST_USAGE_END, keep TextureClient alive during host side usage.
+  if (gfx::gfxVars::UseWebRender()) {
+    flags |= TextureFlags::WAIT_HOST_USAGE_END;
+  }
+  return flags;
+}
+
 DXGIYCbCrTextureData* DXGIYCbCrTextureData::Create(
     IDirect3DTexture9* aTextureY, IDirect3DTexture9* aTextureCb,
     IDirect3DTexture9* aTextureCr, HANDLE aHandleY, HANDLE aHandleCb,
@@ -681,6 +695,17 @@ void DXGIYCbCrTextureData::Deallocate(LayersIPCChannel*) {
   mD3D11Textures[2] = nullptr;
 }
 
+TextureFlags DXGIYCbCrTextureData::GetTextureFlags() const {
+  TextureFlags flags = TextureFlags::DEALLOCATE_MAIN_THREAD;
+  // With WebRender, resource open happens asynchronously on RenderThread.
+  // During opening the resource on host side, TextureClient needs to be alive.
+  // With WAIT_HOST_USAGE_END, keep TextureClient alive during host side usage.
+  if (gfx::gfxVars::UseWebRender()) {
+    flags |= TextureFlags::WAIT_HOST_USAGE_END;
+  }
+  return flags;
+}
+
 already_AddRefed<TextureHost> CreateTextureHostD3D11(
     const SurfaceDescriptor& aDesc, ISurfaceAllocator* aDeallocator,
     LayersBackend aBackend, TextureFlags aFlags) {
@@ -704,7 +729,8 @@ already_AddRefed<TextureHost> CreateTextureHostD3D11(
 }
 
 already_AddRefed<DrawTarget> D3D11TextureData::BorrowDrawTarget() {
-  MOZ_ASSERT(NS_IsMainThread() || PaintThread::IsOnPaintThread());
+  MOZ_ASSERT(NS_IsMainThread() || PaintThread::IsOnPaintThread() ||
+             NS_IsInCanvasThread());
 
   if (!mDrawTarget && mTexture) {
     // This may return a null DrawTarget
@@ -957,7 +983,7 @@ void DXGITextureHostD3D11::CreateRenderTexture(
                                                  texture.forget());
 }
 
-uint32_t DXGITextureHostD3D11::NumSubTextures() const {
+uint32_t DXGITextureHostD3D11::NumSubTextures() {
   switch (GetFormat()) {
     case gfx::SurfaceFormat::R8G8B8X8:
     case gfx::SurfaceFormat::R8G8B8A8:
@@ -997,8 +1023,9 @@ void DXGITextureHostD3D11::PushResourceUpdates(
       MOZ_ASSERT(aImageKeys.length() == 1);
 
       wr::ImageDescriptor descriptor(mSize, GetFormat());
-      auto bufferType = wr::WrExternalImageBufferType::TextureExternalHandle;
-      (aResources.*method)(aImageKeys[0], descriptor, aExtID, bufferType, 0);
+      auto imageType =
+          wr::ExternalImageType::TextureHandle(wr::TextureTarget::External);
+      (aResources.*method)(aImageKeys[0], descriptor, aExtID, imageType, 0);
       break;
     }
     case gfx::SurfaceFormat::P010:
@@ -1015,9 +1042,10 @@ void DXGITextureHostD3D11::PushResourceUpdates(
                                       mFormat == gfx::SurfaceFormat::NV12
                                           ? gfx::SurfaceFormat::R8G8
                                           : gfx::SurfaceFormat::R16G16);
-      auto bufferType = wr::WrExternalImageBufferType::TextureExternalHandle;
-      (aResources.*method)(aImageKeys[0], descriptor0, aExtID, bufferType, 0);
-      (aResources.*method)(aImageKeys[1], descriptor1, aExtID, bufferType, 1);
+      auto imageType =
+          wr::ExternalImageType::TextureHandle(wr::TextureTarget::External);
+      (aResources.*method)(aImageKeys[0], descriptor0, aExtID, imageType, 0);
+      (aResources.*method)(aImageKeys[1], descriptor1, aExtID, imageType, 1);
       break;
     }
     default: {
@@ -1215,7 +1243,7 @@ void DXGIYCbCrTextureHostD3D11::CreateRenderTexture(
                                                  texture.forget());
 }
 
-uint32_t DXGIYCbCrTextureHostD3D11::NumSubTextures() const {
+uint32_t DXGIYCbCrTextureHostD3D11::NumSubTextures() {
   // ycbcr use 3 sub textures.
   return 3;
 }
@@ -1239,15 +1267,16 @@ void DXGIYCbCrTextureHostD3D11::PushResourceUpdates(
   auto method = aOp == TextureHost::ADD_IMAGE
                     ? &wr::TransactionBuilder::AddExternalImage
                     : &wr::TransactionBuilder::UpdateExternalImage;
-  auto bufferType = wr::WrExternalImageBufferType::TextureExternalHandle;
+  auto imageType =
+      wr::ExternalImageType::TextureHandle(wr::TextureTarget::External);
 
   // y
   wr::ImageDescriptor descriptor0(mSize, gfx::SurfaceFormat::A8);
   // cb and cr
   wr::ImageDescriptor descriptor1(mSizeCbCr, gfx::SurfaceFormat::A8);
-  (aResources.*method)(aImageKeys[0], descriptor0, aExtID, bufferType, 0);
-  (aResources.*method)(aImageKeys[1], descriptor1, aExtID, bufferType, 1);
-  (aResources.*method)(aImageKeys[2], descriptor1, aExtID, bufferType, 2);
+  (aResources.*method)(aImageKeys[0], descriptor0, aExtID, imageType, 0);
+  (aResources.*method)(aImageKeys[1], descriptor1, aExtID, imageType, 1);
+  (aResources.*method)(aImageKeys[2], descriptor1, aExtID, imageType, 2);
 }
 
 void DXGIYCbCrTextureHostD3D11::PushDisplayItems(

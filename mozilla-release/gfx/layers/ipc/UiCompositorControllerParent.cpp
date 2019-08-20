@@ -7,11 +7,13 @@
 
 #if defined(MOZ_WIDGET_ANDROID)
 #  include "apz/src/APZCTreeManager.h"
+#  include "mozilla/layers/AsyncCompositionManager.h"
 #endif
 #include "mozilla/layers/Compositor.h"
 #include "mozilla/layers/CompositorBridgeParent.h"
 #include "mozilla/layers/CompositorThread.h"
 #include "mozilla/layers/LayerManagerComposite.h"
+#include "mozilla/layers/UiCompositorControllerMessageTypes.h"
 #include "mozilla/gfx/Types.h"
 #include "mozilla/Move.h"
 #include "mozilla/Unused.h"
@@ -213,7 +215,7 @@ UiCompositorControllerParent::RecvToolbarPixelsToCompositor(
 
 void UiCompositorControllerParent::ActorDestroy(ActorDestroyReason aWhy) {}
 
-void UiCompositorControllerParent::DeallocPUiCompositorControllerParent() {
+void UiCompositorControllerParent::ActorDealloc() {
   MOZ_ASSERT(CompositorThreadHolder::IsInCompositorThread());
   Shutdown();
   Release();  // For AddRef in Initialize()

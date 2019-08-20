@@ -260,12 +260,10 @@ nsresult PuppetWidget::ConfigureChildren(
   return NS_OK;
 }
 
-nsresult PuppetWidget::SetFocus(bool aRaise) {
-  if (aRaise && mBrowserChild) {
+void PuppetWidget::SetFocus(Raise aRaise) {
+  if (aRaise == Raise::Yes && mBrowserChild) {
     mBrowserChild->SendRequestFocus(true);
   }
-
-  return NS_OK;
 }
 
 void PuppetWidget::Invalidate(const LayoutDeviceIntRect& aRect) {
@@ -1158,6 +1156,15 @@ LayoutDeviceIntPoint PuppetWidget::GetWindowPosition() {
 
 LayoutDeviceIntRect PuppetWidget::GetScreenBounds() {
   return LayoutDeviceIntRect(WidgetToScreenOffset(), mBounds.Size());
+}
+
+LayoutDeviceIntSize PuppetWidget::GetCompositionSize() {
+  Maybe<LayoutDeviceIntRect> visibleRect =
+      mBrowserChild ? mBrowserChild->GetVisibleRect() : Nothing();
+  if (!visibleRect) {
+    return nsBaseWidget::GetCompositionSize();
+  }
+  return visibleRect->Size();
 }
 
 uint32_t PuppetWidget::GetMaxTouchPoints() const {

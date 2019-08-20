@@ -10,8 +10,10 @@
 #include "base/shared_memory.h"
 #include "mozilla/Atomics.h"
 #include "mozilla/Attributes.h"
+#include "mozilla/dom/BrowserBridgeChild.h"
 #include "mozilla/dom/PBrowserOrId.h"
 #include "mozilla/dom/PContentChild.h"
+#include "mozilla/dom/RemoteBrowser.h"
 #include "mozilla/dom/CPOWManagerGetter.h"
 #include "mozilla/StaticPtr.h"
 #include "mozilla/ipc/Shmem.h"
@@ -38,6 +40,7 @@ class nsIDomainPolicy;
 class nsIURIClassifierCallback;
 struct LookAndFeelInt;
 class nsDocShellLoadState;
+class nsFrameLoader;
 
 namespace mozilla {
 class RemoteSpellcheckEngineChild;
@@ -54,14 +57,6 @@ using mozilla::loader::PScriptCacheChild;
 bool IsDevelopmentBuild();
 #endif /* !XP_WIN */
 
-#if defined(XP_MACOSX)
-// Return the repo directory and the repo object directory respectively. These
-// should only be used on Mac developer builds to determine the path to the
-// repo or object directory.
-nsresult GetRepoDir(nsIFile** aRepoDir);
-nsresult GetObjDir(nsIFile** aObjDir);
-#endif /* XP_MACOSX */
-
 namespace ipc {
 class URIParams;
 }  // namespace ipc
@@ -77,6 +72,7 @@ class ConsoleListener;
 class ClonedMessageData;
 class BrowserChild;
 class GetFilesHelperChild;
+class TabContext;
 
 class ContentChild final : public PContentChild,
                            public nsIWindowProvider,
@@ -159,6 +155,10 @@ class ContentChild final : public PContentChild,
 
   static void UpdateCookieStatus(nsIChannel* aChannel);
 
+  static already_AddRefed<RemoteBrowser> CreateBrowser(
+      nsFrameLoader* aFrameLoader, const TabContext& aContext,
+      const nsString& aRemoteType, BrowsingContext* aBrowsingContext);
+
   mozilla::ipc::IPCResult RecvInitGMPService(
       Endpoint<PGMPServiceChild>&& aGMPService);
 
@@ -175,7 +175,7 @@ class ContentChild final : public PContentChild,
       Endpoint<PCompositorManagerChild>&& aCompositor,
       Endpoint<PImageBridgeChild>&& aImageBridge,
       Endpoint<PVRManagerChild>&& aVRBridge,
-      Endpoint<PVideoDecoderManagerChild>&& aVideoManager,
+      Endpoint<PRemoteDecoderManagerChild>&& aVideoManager,
       nsTArray<uint32_t>&& namespaces);
 
   mozilla::ipc::IPCResult RecvRequestPerformanceMetrics(const nsID& aID);
@@ -184,7 +184,7 @@ class ContentChild final : public PContentChild,
       Endpoint<PCompositorManagerChild>&& aCompositor,
       Endpoint<PImageBridgeChild>&& aImageBridge,
       Endpoint<PVRManagerChild>&& aVRBridge,
-      Endpoint<PVideoDecoderManagerChild>&& aVideoManager,
+      Endpoint<PRemoteDecoderManagerChild>&& aVideoManager,
       nsTArray<uint32_t>&& namespaces);
 
   mozilla::ipc::IPCResult RecvAudioDefaultDeviceChange();
@@ -341,6 +341,12 @@ class ContentChild final : public PContentChild,
   mozilla::ipc::IPCResult RecvPreferenceUpdate(const Pref& aPref);
   mozilla::ipc::IPCResult RecvVarUpdate(const GfxVarUpdate& pref);
 
+  mozilla::ipc::IPCResult RecvUpdatePerfStatsCollectionMask(
+      const uint64_t& aMask);
+
+  mozilla::ipc::IPCResult RecvCollectPerfStatsJSON(
+      CollectPerfStatsJSONResolver&& aResolver);
+
   mozilla::ipc::IPCResult RecvDataStoragePut(const nsString& aFilename,
                                              const DataStorageItem& aItem);
 
@@ -409,6 +415,8 @@ class ContentChild final : public PContentChild,
 
   mozilla::ipc::IPCResult RecvRemoteType(const nsString& aRemoteType);
 
+  // Call RemoteTypePrefix() on the result to remove URIs if you want to use
+  // this for telemetry.
   const nsAString& GetRemoteType() const;
 
   mozilla::ipc::IPCResult RecvInitServiceWorkers(
@@ -515,7 +523,8 @@ class ContentChild final : public PContentChild,
       ManagedEndpoint<PBrowserChild>&& aBrowserEp, const TabId& aTabId,
       const TabId& aSameTabGroupAs, const IPCTabContext& aContext,
       BrowsingContext* aBrowsingContext, const uint32_t& aChromeFlags,
-      const ContentParentId& aCpID, const bool& aIsForBrowser);
+      const ContentParentId& aCpID, const bool& aIsForBrowser,
+      const bool& aIsTopLevel);
 
   FORWARD_SHMEM_ALLOCATOR_TO(PContentChild)
 
@@ -674,6 +683,9 @@ class ContentChild final : public PContentChild,
   mozilla::ipc::IPCResult RecvStartDelayedAutoplayMediaComponents(
       BrowsingContext* aContext);
 
+  mozilla::ipc::IPCResult RecvSetMediaMuted(BrowsingContext* aContext,
+                                            bool aMuted);
+
   void HoldBrowsingContextGroup(BrowsingContextGroup* aBCG);
 
 #ifdef NIGHTLY_BUILD
@@ -711,7 +723,7 @@ class ContentChild final : public PContentChild,
       BrowsingContext* aContext);
 
   mozilla::ipc::IPCResult RecvRestoreBrowsingContextChildren(
-      BrowsingContext* aContext, nsTArray<BrowsingContextId>&& aChildren);
+      BrowsingContext* aContext, BrowsingContext::Children&& aChildren);
 
   mozilla::ipc::IPCResult RecvRegisterBrowsingContextGroup(
       nsTArray<BrowsingContext::IPCInitializer>&& aInits);

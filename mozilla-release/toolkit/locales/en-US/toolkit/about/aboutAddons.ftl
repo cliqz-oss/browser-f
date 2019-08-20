@@ -140,9 +140,19 @@ detail-private-browsing-label = Run in Forget Windows
 
 detail-private-browsing-description2 = When allowed, the extension will have access to your online activities while private browsing. <label data-l10n-name="detail-private-browsing-learn-more">Learn more</label>
 
+<<<<<<< HEAD
 # Some add-ons may elect to not run in Forget Windows by setting incognito: not_allowed in the manifest.  This
 # cannot be overriden by the user.
 detail-private-disallowed-label = Not Allowed in Forget Windows
+||||||| merged common ancestors
+# Some add-ons may elect to not run in private windows by setting incognito: not_allowed in the manifest.  This
+# cannot be overriden by the user.
+detail-private-disallowed-label = Not Allowed in Private Windows
+=======
+# Some add-ons may elect to not run in private windows by setting incognito: not_allowed in the manifest.  This
+# cannot be overridden by the user.
+detail-private-disallowed-label = Not Allowed in Private Windows
+>>>>>>> origin/upstream-releases
 detail-private-disallowed-description = This extension does not run while private browsing. <label data-l10n-name="detail-private-browsing-learn-more">Learn more</label>
 
 # Some special add-ons are privileged, run in Forget mode automatically, and this permission can't be revoked

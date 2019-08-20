@@ -2,7 +2,7 @@
 
 /* eslint-disable no-console */
 
-const {cp, set} = require("shelljs");
+const { cp, set } = require("shelljs");
 const path = require("path");
 
 const filesToVendor = {
@@ -13,16 +13,16 @@ const filesToVendor = {
   "react/umd/react.development.js": "react-dev.js",
   "react-dom/umd/react-dom.production.min.js": "react-dom.js",
   "react-dom/umd/react-dom.development.js": "react-dom-dev.js",
-  "react-intl/LICENSE.md": "REACT_INTL_LICENSE",
-  "react-intl/dist/react-intl.min.js": "react-intl.js",
   "react-redux/LICENSE.md": "REACT_REDUX_LICENSE",
   "react-redux/dist/react-redux.min.js": "react-redux.js",
 };
 
 set("-v"); // Echo all the copy commands so the user can see what's going on
 for (let srcPath of Object.keys(filesToVendor)) {
-  cp(path.join("node_modules", srcPath),
-    path.join("vendor", filesToVendor[srcPath]));
+  cp(
+    path.join("node_modules", srcPath),
+    path.join("vendor", filesToVendor[srcPath])
+  );
 }
 
 console.log(`

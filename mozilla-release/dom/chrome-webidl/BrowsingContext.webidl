@@ -9,6 +9,8 @@ interface nsIDocShell;
 interface BrowsingContext {
   static BrowsingContext? get(unsigned long long aId);
 
+  static BrowsingContext? getFromWindow(WindowProxy window);
+
   BrowsingContext? findChildWithName(DOMString name);
   BrowsingContext? findWithName(DOMString name);
 
@@ -46,6 +48,7 @@ interface CanonicalBrowsingContext : BrowsingContext {
   readonly attribute WindowGlobalParent? embedderWindowGlobal;
 
   void notifyStartDelayedAutoplayMedia();
+  void notifyMediaMutedChanged(boolean muted);
 };
 
 [Exposed=Window, ChromeOnly]

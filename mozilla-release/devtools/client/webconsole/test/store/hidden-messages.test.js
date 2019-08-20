@@ -6,10 +6,14 @@
 const expect = require("expect");
 
 const actions = require("devtools/client/webconsole/actions/index");
-const { getFilteredMessagesCount } = require("devtools/client/webconsole/selectors/messages");
+const {
+  getFilteredMessagesCount,
+} = require("devtools/client/webconsole/selectors/messages");
 const { setupStore } = require("devtools/client/webconsole/test/helpers");
 const { FILTERS } = require("devtools/client/webconsole/constants");
-const { stubPackets } = require("devtools/client/webconsole/test/fixtures/stubs/index");
+const {
+  stubPackets,
+} = require("devtools/client/webconsole/test/fixtures/stubs/index");
 
 describe("Filtering - Hidden messages", () => {
   let store;
@@ -100,19 +104,23 @@ describe("Filtering - Hidden messages", () => {
     store.dispatch(actions.filterToggle(FILTERS.LOG));
 
     let counter = getFilteredMessagesCount(store.getState());
-    expect(counter).toEqual(Object.assign({}, BASIC_TEST_CASE_FILTERED_MESSAGE_COUNT, {
-      [FILTERS.LOG]: 0,
-      global: 6,
-    }));
+    expect(counter).toEqual(
+      Object.assign({}, BASIC_TEST_CASE_FILTERED_MESSAGE_COUNT, {
+        [FILTERS.LOG]: 0,
+        global: 6,
+      })
+    );
 
     store.dispatch(actions.filterToggle(FILTERS.ERROR));
 
     counter = getFilteredMessagesCount(store.getState());
-    expect(counter).toEqual(Object.assign({}, BASIC_TEST_CASE_FILTERED_MESSAGE_COUNT, {
-      [FILTERS.ERROR]: 0,
-      [FILTERS.LOG]: 0,
-      global: 3,
-    }));
+    expect(counter).toEqual(
+      Object.assign({}, BASIC_TEST_CASE_FILTERED_MESSAGE_COUNT, {
+        [FILTERS.ERROR]: 0,
+        [FILTERS.LOG]: 0,
+        global: 3,
+      })
+    );
 
     store.dispatch(actions.filterToggle(FILTERS.LOG));
     store.dispatch(actions.filterToggle(FILTERS.ERROR));
@@ -124,22 +132,6 @@ describe("Filtering - Hidden messages", () => {
     // Add a text search to make sure it is handled as well.
     store.dispatch(actions.filterTextSet("danger, will robinson!"));
     store.dispatch(actions.messagesClear());
-    const counter = getFilteredMessagesCount(store.getState());
-    expect(counter).toEqual({
-      [FILTERS.ERROR]: 0,
-      [FILTERS.WARN]: 0,
-      [FILTERS.LOG]: 0,
-      [FILTERS.INFO]: 0,
-      [FILTERS.DEBUG]: 0,
-      [FILTERS.TEXT]: 0,
-      global: 0,
-    });
-  });
-
-  it("has the expected numbers after filter reset", () => {
-    // Add a text search to make sure it is handled as well.
-    store.dispatch(actions.filterTextSet("danger, will robinson!"));
-    store.dispatch(actions.defaultFiltersReset());
     const counter = getFilteredMessagesCount(store.getState());
     expect(counter).toEqual({
       [FILTERS.ERROR]: 0,

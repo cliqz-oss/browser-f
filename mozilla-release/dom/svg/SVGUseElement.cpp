@@ -149,18 +149,16 @@ nsresult SVGUseElement::Clone(dom::NodeInfo* aNodeInfo,
   return NS_FAILED(rv1) ? rv1 : rv2;
 }
 
-nsresult SVGUseElement::BindToTree(Document* aDocument, nsIContent* aParent,
-                                   nsIContent* aBindingParent) {
-  nsresult rv =
-      SVGUseElementBase::BindToTree(aDocument, aParent, aBindingParent);
+nsresult SVGUseElement::BindToTree(BindContext& aContext, nsINode& aParent) {
+  nsresult rv = SVGUseElementBase::BindToTree(aContext, aParent);
   NS_ENSURE_SUCCESS(rv, rv);
 
   TriggerReclone();
   return NS_OK;
 }
 
-void SVGUseElement::UnbindFromTree(bool aDeep, bool aNullParent) {
-  SVGUseElementBase::UnbindFromTree(aDeep, aNullParent);
+void SVGUseElement::UnbindFromTree(bool aNullParent) {
+  SVGUseElementBase::UnbindFromTree(aNullParent);
   OwnerDoc()->UnscheduleSVGUseElementShadowTreeUpdate(*this);
 }
 
@@ -193,7 +191,8 @@ already_AddRefed<DOMSVGAnimatedLength> SVGUseElement::Height() {
 
 void SVGUseElement::CharacterDataChanged(nsIContent* aContent,
                                          const CharacterDataChangeInfo&) {
-  if (nsContentUtils::IsInSameAnonymousTree(this, aContent)) {
+  if (nsContentUtils::IsInSameAnonymousTree(mReferencedElementTracker.get(),
+                                            aContent)) {
     TriggerReclone();
   }
 }
@@ -201,7 +200,8 @@ void SVGUseElement::CharacterDataChanged(nsIContent* aContent,
 void SVGUseElement::AttributeChanged(Element* aElement, int32_t aNamespaceID,
                                      nsAtom* aAttribute, int32_t aModType,
                                      const nsAttrValue* aOldValue) {
-  if (nsContentUtils::IsInSameAnonymousTree(this, aElement)) {
+  if (nsContentUtils::IsInSameAnonymousTree(mReferencedElementTracker.get(),
+                                            aElement)) {
     TriggerReclone();
   }
 }
@@ -209,7 +209,7 @@ void SVGUseElement::AttributeChanged(Element* aElement, int32_t aNamespaceID,
 void SVGUseElement::ContentAppended(nsIContent* aFirstNewContent) {
   // FIXME(emilio, bug 1442336): Why does this check the parent but
   // ContentInserted the child?
-  if (nsContentUtils::IsInSameAnonymousTree(this,
+  if (nsContentUtils::IsInSameAnonymousTree(mReferencedElementTracker.get(),
                                             aFirstNewContent->GetParent())) {
     TriggerReclone();
   }
@@ -218,14 +218,16 @@ void SVGUseElement::ContentAppended(nsIContent* aFirstNewContent) {
 void SVGUseElement::ContentInserted(nsIContent* aChild) {
   // FIXME(emilio, bug 1442336): Why does this check the child but
   // ContentAppended the parent?
-  if (nsContentUtils::IsInSameAnonymousTree(this, aChild)) {
+  if (nsContentUtils::IsInSameAnonymousTree(mReferencedElementTracker.get(),
+                                            aChild)) {
     TriggerReclone();
   }
 }
 
 void SVGUseElement::ContentRemoved(nsIContent* aChild,
                                    nsIContent* aPreviousSibling) {
-  if (nsContentUtils::IsInSameAnonymousTree(this, aChild)) {
+  if (nsContentUtils::IsInSameAnonymousTree(mReferencedElementTracker.get(),
+                                            aChild)) {
     TriggerReclone();
   }
 }

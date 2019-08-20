@@ -66,7 +66,7 @@
 #include "LayerUserData.h"
 #include "ClientLayerManager.h"
 #include "mozilla/dom/NotifyPaintEvent.h"
-#include "gfxPrefs.h"
+
 #include "nsIDOMChromeWindow.h"
 #include "nsFrameLoader.h"
 #include "nsContentUtils.h"
@@ -339,10 +339,6 @@ bool nsPresContext::IsChromeOriginImage() const {
 }
 
 void nsPresContext::GetDocumentColorPreferences() {
-  // Make sure the preferences are initialized.  In the normal run,
-  // they would already be, because gfxPlatform would have been created,
-  // but in some reference tests, that is not the case.
-  gfxPrefs::GetSingleton();
   PreferenceSheet::EnsureInitialized();
 }
 
@@ -1019,14 +1015,9 @@ static bool CheckOverflow(ComputedStyle* aComputedStyle,
                           ScrollStyles* aStyles) {
   const nsStyleDisplay* display = aComputedStyle->StyleDisplay();
   if (display->mOverflowX == StyleOverflow::Visible &&
-      display->mScrollBehavior == NS_STYLE_SCROLL_BEHAVIOR_AUTO &&
       display->mOverscrollBehaviorX == StyleOverscrollBehavior::Auto &&
       display->mOverscrollBehaviorY == StyleOverscrollBehavior::Auto &&
-      display->mScrollSnapType.strictness == StyleScrollSnapStrictness::None &&
-      display->mScrollSnapPointsX == nsStyleCoord(eStyleUnit_None) &&
-      display->mScrollSnapPointsY == nsStyleCoord(eStyleUnit_None) &&
-      display->mScrollSnapDestination.horizontal == LengthPercentage::Zero() &&
-      display->mScrollSnapDestination.vertical == LengthPercentage::Zero()) {
+      display->mScrollSnapType.strictness == StyleScrollSnapStrictness::None) {
     return false;
   }
 
@@ -1300,6 +1291,7 @@ void nsPresContext::ThemeChangedInternal() {
   }
 
   RefreshSystemMetrics();
+  PreferenceSheet::Refresh();
 
   // Recursively notify all remote leaf descendants that the
   // system theme has changed.
@@ -1397,8 +1389,8 @@ bool nsPresContext::UIResolutionChangedSubdocumentCallback(
   return true;
 }
 
-static void NotifyTabUIResolutionChanged(BrowserParent* aTab, void* aArg) {
-  aTab->UIResolutionChanged();
+static void NotifyTabUIResolutionChanged(nsIRemoteTab* aTab, void* aArg) {
+  aTab->NotifyResolutionChanged();
 }
 
 static void NotifyChildrenUIResolutionChanged(nsPIDOMWindowOuter* aWindow) {
@@ -2320,8 +2312,12 @@ size_t nsPresContext::SizeOfExcludingThis(MallocSizeOf aMallocSizeOf) const {
 }
 
 bool nsPresContext::IsRootContentDocument() const {
-  // We are a root content document if: we are not a resource doc, we are
-  // not chrome, and we either have no parent or our parent is chrome.
+  // Default to the in process version for now, but we should try
+  // to remove callers of this.
+  return IsRootContentDocumentInProcess();
+}
+
+bool nsPresContext::IsRootContentDocumentInProcess() const {
   if (mDocument->IsResourceDoc()) {
     return false;
   }
@@ -2344,6 +2340,14 @@ bool nsPresContext::IsRootContentDocument() const {
 
   nsIFrame* f = view->GetFrame();
   return (f && f->PresContext()->IsChrome());
+}
+
+bool nsPresContext::IsRootContentDocumentCrossProcess() const {
+  if (mDocument->IsResourceDoc()) {
+    return false;
+  }
+
+  return mDocument->IsTopLevelContentDocument();
 }
 
 void nsPresContext::NotifyNonBlankPaint() {

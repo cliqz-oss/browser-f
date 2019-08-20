@@ -5,12 +5,12 @@ from __future__ import absolute_import
 
 import os
 
-from mozlog import get_proxy_logger
+from logger.logger import RaptorLogger
 
 
 here = os.path.abspath(os.path.dirname(__file__))
 webext_dir = os.path.join(os.path.dirname(here), 'webext', 'raptor')
-LOG = get_proxy_logger(component="raptor-gen-test-config")
+LOG = RaptorLogger(component='raptor-gen-test-config')
 
 
 def gen_test_config(browser, test, cs_port, post_startup_delay,
@@ -23,7 +23,7 @@ function getTestConfig() {
     return {"browser": "%s",
             "cs_port": "%d",
             "test_name": "%s",
-            "test_settings_url": "http://%s:%d/%s.json",
+            "test_settings_url": "http://%s:%d/json/%s.json",
             "post_startup_delay": "%s",
             "benchmark_port": "%d",
             "host": "%s",

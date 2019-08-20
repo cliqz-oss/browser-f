@@ -3,7 +3,7 @@
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
 <%namespace name="helpers" file="/helpers.mako.rs" />
-<% from data import Keyword, Method, to_rust_ident, to_camel_case%>
+<% from data import ALL_AXES, Keyword, Method, to_rust_ident, to_camel_case%>
 
 <% data.new_style_struct("Box",
                          inherited=False,
@@ -114,27 +114,22 @@ ${helpers.single_keyword("-servo-overflow-clip-box", "padding-box content-box",
 // FIXME(pcwalton, #2742): Implement scrolling for `scroll` and `auto`.
 //
 // We allow it to apply to placeholders for UA sheets, which set it !important.
-${helpers.predefined_type(
-    "overflow-x",
-    "Overflow",
-    "computed::Overflow::Visible",
-    animation_value_type="discrete",
-    flags="APPLIES_TO_PLACEHOLDER",
-    spec="https://drafts.csswg.org/css-overflow/#propdef-overflow-x",
-    needs_context=False,
-    servo_restyle_damage = "reflow",
-)}
-
-${helpers.predefined_type(
-    "overflow-y",
-    "Overflow",
-    "computed::Overflow::Visible",
-    animation_value_type="discrete",
-    flags="APPLIES_TO_PLACEHOLDER",
-    spec="https://drafts.csswg.org/css-overflow/#propdef-overflow-y",
-    needs_context=False,
-    servo_restyle_damage = "reflow",
-)}
+% for (axis, logical) in ALL_AXES:
+    <% full_name = "overflow-{}".format(axis) %>
+    ${helpers.predefined_type(
+        full_name,
+        "Overflow",
+        "computed::Overflow::Visible",
+        logical_group="overflow",
+        logical=logical,
+        animation_value_type="discrete",
+        flags="APPLIES_TO_PLACEHOLDER",
+        spec="https://drafts.csswg.org/css-overflow-3/#propdef-{}".format(full_name),
+        needs_context=False,
+        servo_restyle_damage = "reflow",
+        gecko_pref="layout.css.overflow-logical.enabled" if logical else None,
+    )}
+% endfor
 
 ${helpers.predefined_type(
     "overflow-anchor",
@@ -309,41 +304,6 @@ ${helpers.predefined_type(
     allowed_in_keyframe_block=False,
 )}
 
-% for axis in ["x", "y"]:
-    ${helpers.predefined_type(
-        "scroll-snap-points-" + axis,
-        "ScrollSnapPoint",
-        "computed::ScrollSnapPoint::none()",
-        animation_value_type="discrete",
-        gecko_pref="layout.css.scroll-snap.enabled",
-        products="gecko",
-        spec="Nonstandard (https://www.w3.org/TR/2015/WD-css-snappoints-1-20150326/#scroll-snap-points)",
-    )}
-% endfor
-
-${helpers.predefined_type(
-    "scroll-snap-destination",
-    "Position",
-    "computed::Position::zero()",
-    products="gecko",
-    gecko_pref="layout.css.scroll-snap.enabled",
-    boxed=True,
-    spec="Nonstandard (https://developer.mozilla.org/en-US/docs/Web/CSS/scroll-snap-destination)",
-    animation_value_type="discrete",
-)}
-
-${helpers.predefined_type(
-    "scroll-snap-coordinate",
-    "Position",
-    "computed::Position::zero()",
-    vector=True,
-    allow_empty=True,
-    products="gecko",
-    gecko_pref="layout.css.scroll-snap.enabled",
-    spec="Nonstandard (https://developer.mozilla.org/en-US/docs/Web/CSS/scroll-snap-destination)",
-    animation_value_type="discrete",
-)}
-
 <% transform_extra_prefixes = "moz:layout.css.prefixes.transforms webkit" %>
 
 ${helpers.predefined_type(
@@ -404,6 +364,31 @@ ${helpers.predefined_type(
     gecko_pref="layout.css.motion-path.enabled",
     flags="CREATES_STACKING_CONTEXT FIXPOS_CB",
     spec="https://drafts.fxtf.org/motion-1/#offset-path-property",
+    servo_restyle_damage="reflow_out_of_flow"
+)}
+
+// Motion Path Module Level 1
+${helpers.predefined_type(
+    "offset-distance",
+    "LengthPercentage",
+    "computed::LengthPercentage::zero()",
+    products="gecko",
+    animation_value_type="ComputedValue",
+    gecko_pref="layout.css.motion-path.enabled",
+    spec="https://drafts.fxtf.org/motion-1/#offset-distance-property",
+    servo_restyle_damage="reflow_out_of_flow"
+)}
+
+// Motion Path Module Level 1
+${helpers.predefined_type(
+    "offset-rotate",
+    "OffsetRotate",
+    "computed::OffsetRotate::auto()",
+    products="gecko",
+    animation_value_type="ComputedValue",
+    gecko_pref="layout.css.motion-path.enabled",
+    spec="https://drafts.fxtf.org/motion-1/#offset-rotate-property",
+    servo_restyle_damage="reflow_out_of_flow"
 )}
 
 // CSSOM View Module
@@ -654,7 +639,6 @@ ${helpers.predefined_type(
     "basic_shape::FloatAreaShape",
     "generics::basic_shape::ShapeSource::None",
     products="gecko",
-    boxed=True,
     animation_value_type="basic_shape::FloatAreaShape",
     flags="APPLIES_TO_FIRST_LETTER",
     spec="https://drafts.csswg.org/css-shapes/#shape-outside-property",

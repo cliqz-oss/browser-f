@@ -238,13 +238,13 @@ void PromiseNativeThenHandlerBase::ResolvedCallback(
   if (promise) {
     mPromise->MaybeResolve(promise);
   } else {
-    mPromise->MaybeResolve(JS::UndefinedHandleValue);
+    mPromise->MaybeResolveWithUndefined();
   }
 }
 
 void PromiseNativeThenHandlerBase::RejectedCallback(
     JSContext* aCx, JS::Handle<JS::Value> aValue) {
-  mPromise->MaybeReject(aCx, aValue);
+  mPromise->MaybeReject(aValue);
 }
 
 NS_IMPL_CYCLE_COLLECTION_CLASS(PromiseNativeThenHandlerBase)
@@ -470,7 +470,7 @@ void Promise::HandleException(JSContext* aCx) {
   JS::Rooted<JS::Value> exn(aCx);
   if (JS_GetPendingException(aCx, &exn)) {
     JS_ClearPendingException(aCx);
-    // This is only called from MaybeSomething, so it's OK to MaybeReject here.
+    // Always reject even if this was called in *Resolve.
     MaybeReject(aCx, exn);
   }
 }
@@ -525,20 +525,17 @@ void Promise::ReportRejectedPromise(JSContext* aCx, JS::HandleObject aPromise) {
       isMainThread ? xpc::WindowGlobalOrNull(aPromise) : nullptr;
 
   js::ErrorReport report(aCx);
-  if (report.init(aCx, result, js::ErrorReport::NoSideEffects)) {
+  RefPtr<Exception> exn;
+  if (result.isObject() &&
+      (NS_SUCCEEDED(UNWRAP_OBJECT(DOMException, &result, exn)) ||
+       NS_SUCCEEDED(UNWRAP_OBJECT(Exception, &result, exn)))) {
+    xpcReport->Init(aCx, exn, isChrome, win ? win->WindowID() : 0);
+  } else if (report.init(aCx, result, js::ErrorReport::NoSideEffects)) {
     xpcReport->Init(report.report(), report.toStringResult().c_str(), isChrome,
                     win ? win->WindowID() : 0);
   } else {
     JS_ClearPendingException(aCx);
-
-    RefPtr<Exception> exn;
-    if (result.isObject() &&
-        (NS_SUCCEEDED(UNWRAP_OBJECT(DOMException, &result, exn)) ||
-         NS_SUCCEEDED(UNWRAP_OBJECT(Exception, &result, exn)))) {
-      xpcReport->Init(aCx, exn, isChrome, win ? win->WindowID() : 0);
-    } else {
-      return;
-    }
+    return;
   }
 
   // Now post an event to do the real reporting async
@@ -559,7 +556,10 @@ void Promise::MaybeResolveWithClone(JSContext* aCx,
 
   xpc::StackScopedCloneOptions options;
   options.wrapReflectors = true;
-  StackScopedClone(cx, options, sourceScope, &value);
+  if (!StackScopedClone(cx, options, sourceScope, &value)) {
+    HandleException(cx);
+    return;
+  }
   MaybeResolve(aCx, value);
 }
 
@@ -572,7 +572,10 @@ void Promise::MaybeRejectWithClone(JSContext* aCx,
 
   xpc::StackScopedCloneOptions options;
   options.wrapReflectors = true;
-  StackScopedClone(cx, options, sourceScope, &value);
+  if (!StackScopedClone(cx, options, sourceScope, &value)) {
+    HandleException(cx);
+    return;
+  }
   MaybeReject(aCx, value);
 }
 

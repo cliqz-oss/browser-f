@@ -81,10 +81,8 @@ void HTMLStyleElement::ContentChanged(nsIContent* aContent) {
   }
 }
 
-nsresult HTMLStyleElement::BindToTree(Document* aDocument, nsIContent* aParent,
-                                      nsIContent* aBindingParent) {
-  nsresult rv =
-      nsGenericHTMLElement::BindToTree(aDocument, aParent, aBindingParent);
+nsresult HTMLStyleElement::BindToTree(BindContext& aContext, nsINode& aParent) {
+  nsresult rv = nsGenericHTMLElement::BindToTree(aContext, aParent);
   NS_ENSURE_SUCCESS(rv, rv);
 
   void (HTMLStyleElement::*update)() =
@@ -95,11 +93,11 @@ nsresult HTMLStyleElement::BindToTree(Document* aDocument, nsIContent* aParent,
   return rv;
 }
 
-void HTMLStyleElement::UnbindFromTree(bool aDeep, bool aNullParent) {
+void HTMLStyleElement::UnbindFromTree(bool aNullParent) {
   nsCOMPtr<Document> oldDoc = GetUncomposedDoc();
   ShadowRoot* oldShadow = GetContainingShadow();
 
-  nsGenericHTMLElement::UnbindFromTree(aDeep, aNullParent);
+  nsGenericHTMLElement::UnbindFromTree(aNullParent);
 
   if (oldShadow && GetContainingShadow()) {
     // The style is in a shadow tree and is still in the

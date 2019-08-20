@@ -8,8 +8,23 @@
 // This shouldn't happen, but Fronts should rather be part of client anyway.
 // Otherwise gDevTools is only used for local tabs and should propably only
 // used by a subclass, specific to local tabs.
-loader.lazyRequireGetter(this, "gDevTools", "devtools/client/framework/devtools", true);
-loader.lazyRequireGetter(this, "TargetFactory", "devtools/client/framework/target", true);
+loader.lazyRequireGetter(
+  this,
+  "gDevTools",
+  "devtools/client/framework/devtools",
+  true
+);
+loader.lazyRequireGetter(
+  this,
+  "TargetFactory",
+  "devtools/client/framework/target",
+  true
+);
+loader.lazyRequireGetter(
+  this,
+  "ThreadClient",
+  "devtools/shared/client/deprecated-thread-client"
+);
 loader.lazyRequireGetter(this, "getFront", "devtools/shared/protocol", true);
 
 /**
@@ -106,7 +121,10 @@ function TargetMixin(parentClass) {
      * }
      */
     async getActorDescription(actorName) {
-      if (this._protocolDescription && this._protocolDescription.types[actorName]) {
+      if (
+        this._protocolDescription &&
+        this._protocolDescription.types[actorName]
+      ) {
         return this._protocolDescription.types[actorName];
       }
       const description = await this.client.mainRoot.protocolDescription();
@@ -181,7 +199,11 @@ function TargetMixin(parentClass) {
       if (this._inspector && this._inspector.actorID) {
         return this._inspector;
       }
-      this._inspector = await getFront(this.client, "inspector", this.targetForm);
+      this._inspector = await getFront(
+        this.client,
+        "inspector",
+        this.targetForm
+      );
       this.emit("inspector", this._inspector);
       return this._inspector;
     }
@@ -201,7 +223,10 @@ function TargetMixin(parentClass) {
     async getFront(typeName) {
       let front = this.fronts.get(typeName);
       // the front might have been destroyed and no longer have an actor ID
-      if ((front && front.actorID) || (front && typeof front.then === "function")) {
+      if (
+        (front && front.actorID) ||
+        (front && typeof front.then === "function")
+      ) {
         return front;
       }
       front = getFront(this.client, typeName, this.targetForm);
@@ -401,22 +426,29 @@ function TargetMixin(parentClass) {
     async attachThread(options = {}) {
       if (!this._threadActor) {
         throw new Error(
-          "TargetMixin sub class should set _threadActor before calling " + "attachThread"
+          "TargetMixin sub class should set _threadActor before calling " +
+            "attachThread"
         );
       }
-      const [response, threadClient] = await this._client.attachThread(
-        this._threadActor,
-        options
-      );
-      this.threadClient = threadClient;
+      if (this.getTrait("hasThreadFront")) {
+        this.threadClient = await this.getFront("context");
+      } else {
+        // Backwards compat for Firefox 68
+        // mimics behavior of a front
+        this.threadClient = new ThreadClient(this._client, this._threadActor);
+        this.fronts.set("context", this.threadClient);
+        this.threadClient.actorID = this._threadActor;
+        this.manage(this.threadClient);
+      }
+      const result = await this.threadClient.attach(options);
 
-      this.threadClient.addListener("newSource", this._onNewSource);
+      this.threadClient.on("newSource", this._onNewSource);
 
-      return [response, threadClient];
+      return [result, this.threadClient];
     }
 
     // Listener for "newSource" event fired by the thread actor
-    _onNewSource(type, packet) {
+    _onNewSource(packet) {
       this.emit("source-updated", packet);
     }
 
@@ -444,7 +476,7 @@ function TargetMixin(parentClass) {
      * Setup listeners for remote debugging, updating existing ones as necessary.
      */
     _setupRemoteListeners() {
-      this.client.addListener("closed", this.destroy);
+      this.client.on("closed", this.destroy);
 
       this.on("tabDetached", this.destroy);
     }
@@ -454,12 +486,14 @@ function TargetMixin(parentClass) {
      */
     _teardownRemoteListeners() {
       // Remove listeners set in _setupRemoteListeners
-      this.client.removeListener("closed", this.destroy);
+      if (this.client) {
+        this.client.off("closed", this.destroy);
+      }
       this.off("tabDetached", this.destroy);
 
       // Remove listeners set in attachThread
       if (this.threadClient) {
-        this.threadClient.removeListener("newSource", this._onNewSource);
+        this.threadClient.off("newSource", this._onNewSource);
       }
 
       // Remove listeners set in attachConsole
@@ -536,6 +570,8 @@ function TargetMixin(parentClass) {
 
         this._teardownRemoteListeners();
 
+        this.threadClient = null;
+
         if (this.isLocalTab) {
           // We started with a local tab and created the client ourselves, so we
           // should close it.
@@ -552,14 +588,6 @@ function TargetMixin(parentClass) {
             await this.detach();
           } catch (e) {
             console.warn(`Error while detaching target: ${e.message}`);
-          }
-        }
-
-        if (this.threadClient) {
-          try {
-            await this.threadClient.detach();
-          } catch (e) {
-            console.warn(`Error while detaching the thread front: ${e.message}`);
           }
         }
 
@@ -590,7 +618,9 @@ function TargetMixin(parentClass) {
     }
 
     toString() {
-      const id = this._tab ? this._tab : this.targetForm && this.targetForm.actor;
+      const id = this._tab
+        ? this._tab
+        : this.targetForm && this.targetForm.actor;
       return `Target:${id}`;
     }
 

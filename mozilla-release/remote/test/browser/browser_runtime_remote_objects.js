@@ -8,23 +8,7 @@
 const TEST_URI = "data:text/html;charset=utf-8,default-test-page";
 
 add_task(async function() {
-  // Open a test page, to prevent debugging the random default page
-  await BrowserTestUtils.openNewForegroundTab(gBrowser, TEST_URI);
-
-  // Start the CDP server
-  await RemoteAgent.listen(Services.io.newURI("http://localhost:9222"));
-
-  // Retrieve the chrome-remote-interface library object
-  const CDP = await getCDP();
-
-  // Connect to the server
-  const client = await CDP({
-    target(list) {
-      // Ensure debugging the right target, i.e. the one for our test tab.
-      return list.find(target => target.url == TEST_URI);
-    },
-  });
-  ok(true, "CDP client has been instantiated");
+  const { client } = await setupTestForUri(TEST_URI);
 
   const firstContext = await testRuntimeEnable(client);
   const contextId = firstContext.id;
@@ -54,7 +38,10 @@ async function testRuntimeEnable({ Runtime }) {
 }
 
 async function testObjectRelease({ Runtime }, contextId) {
-  const { result } = await Runtime.evaluate({ contextId, expression: "({ foo: 42 })" });
+  const { result } = await Runtime.evaluate({
+    contextId,
+    expression: "({ foo: 42 })",
+  });
   is(result.subtype, null, "JS Object have no subtype");
   is(result.type, "object", "The type is correct");
   ok(!!result.objectId, "Got an object id");
@@ -87,7 +74,10 @@ async function testObjectRelease({ Runtime }, contextId) {
     });
     ok(false, "callFunctionOn with a released object as argument should throw");
   } catch (e) {
-    ok(e.message.includes("Cannot find object with ID:"), "callFunctionOn throws on released argument");
+    ok(
+      e.message.includes("Cannot find object with ID:"),
+      "callFunctionOn throws on released argument"
+    );
   }
   try {
     await Runtime.callFunctionOn({
@@ -96,6 +86,9 @@ async function testObjectRelease({ Runtime }, contextId) {
     });
     ok(false, "callFunctionOn with a released object as target should throw");
   } catch (e) {
-    ok(e.message.includes("Unable to get the context for object with id"), "callFunctionOn throws on released target");
+    ok(
+      e.message.includes("Unable to get the context for object with id"),
+      "callFunctionOn throws on released target"
+    );
   }
 }

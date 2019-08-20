@@ -57,6 +57,8 @@ interface nsIRemoteTab : nsISupports
 
   readonly attribute uint64_t tabId;
 
+  readonly attribute uint64_t contentProcessId;
+
   /**
    * The OS level process Id of the related child process.
    */
@@ -68,11 +70,6 @@ interface nsIRemoteTab : nsISupports
    * it.
    */
   readonly attribute boolean hasPresented;
-
-  /**
-   * Gets all of the WindowGlobalParent actors for this remote tab.
-   */
-  readonly attribute Array<WindowGlobalParent> windowGlobalParents;
 
   /**
    * Ensures that the content process which has this remote tab has all of the
@@ -94,7 +91,7 @@ interface nsIRemoteTab : nsISupports
   /**
    * Notify APZ to start autoscrolling.
    * (aAnchorX, aAnchorY) are the coordinates of the autoscroll anchor,
-   * in CSS coordinates relative to the screen. aScrollId and 
+   * in CSS coordinates relative to the screen. aScrollId and
    * aPresShellId identify the scroll frame that content chose to scroll.
    * Returns whether we were successfully able to notify APZ.
    * If this function returns true, APZ (which may live in another process)
@@ -144,4 +141,9 @@ interface nsIRemoteTab : nsISupports
   void maybeCancelContentJSExecution(
       in nsIRemoteTab_NavigationType aNavigationType,
       [optional] in jsval aCancelContentJSOptions);
+
+  /**
+   * Notify the remote tab that the resolution has changed.
+   */
+  [noscript] void notifyResolutionChanged();
 };

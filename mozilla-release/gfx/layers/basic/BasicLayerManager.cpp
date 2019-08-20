@@ -4,26 +4,26 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-#include <stdint.h>                 // for uint32_t
-#include <stdlib.h>                 // for rand, RAND_MAX
-#include <sys/types.h>              // for int32_t
-#include <stack>                    // for stack
-#include "BasicContainerLayer.h"    // for BasicContainerLayer
-#include "BasicLayersImpl.h"        // for ToData, BasicReadbackLayer, etc
-#include "GeckoProfiler.h"          // for AUTO_PROFILER_LABEL
-#include "ImageContainer.h"         // for ImageFactory
-#include "Layers.h"                 // for Layer, ContainerLayer, etc
-#include "ReadbackLayer.h"          // for ReadbackLayer
-#include "ReadbackProcessor.h"      // for ReadbackProcessor
-#include "RenderTrace.h"            // for RenderTraceLayers, etc
-#include "basic/BasicImplData.h"    // for BasicImplData
-#include "basic/BasicLayers.h"      // for BasicLayerManager, etc
-#include "gfxASurface.h"            // for gfxASurface, etc
-#include "gfxContext.h"             // for gfxContext, etc
-#include "gfxImageSurface.h"        // for gfxImageSurface
-#include "gfxMatrix.h"              // for gfxMatrix
-#include "gfxPlatform.h"            // for gfxPlatform
-#include "gfxPrefs.h"               // for gfxPrefs
+#include <stdint.h>               // for uint32_t
+#include <stdlib.h>               // for rand, RAND_MAX
+#include <sys/types.h>            // for int32_t
+#include <stack>                  // for stack
+#include "BasicContainerLayer.h"  // for BasicContainerLayer
+#include "BasicLayersImpl.h"      // for ToData, BasicReadbackLayer, etc
+#include "GeckoProfiler.h"        // for AUTO_PROFILER_LABEL
+#include "ImageContainer.h"       // for ImageFactory
+#include "Layers.h"               // for Layer, ContainerLayer, etc
+#include "ReadbackLayer.h"        // for ReadbackLayer
+#include "ReadbackProcessor.h"    // for ReadbackProcessor
+#include "RenderTrace.h"          // for RenderTraceLayers, etc
+#include "basic/BasicImplData.h"  // for BasicImplData
+#include "basic/BasicLayers.h"    // for BasicLayerManager, etc
+#include "gfxASurface.h"          // for gfxASurface, etc
+#include "gfxContext.h"           // for gfxContext, etc
+#include "gfxImageSurface.h"      // for gfxImageSurface
+#include "gfxMatrix.h"            // for gfxMatrix
+#include "gfxPlatform.h"          // for gfxPlatform
+
 #include "gfxPoint.h"               // for IntSize, gfxPoint
 #include "gfxRect.h"                // for gfxRect
 #include "gfxUtils.h"               // for gfxUtils
@@ -661,7 +661,7 @@ bool BasicLayerManager::EndTransactionInternal(
 }
 
 void BasicLayerManager::FlashWidgetUpdateArea(gfxContext* aContext) {
-  if (gfxPrefs::WidgetUpdateFlashing()) {
+  if (StaticPrefs::nglayout_debug_widget_update_flashing()) {
     float r = float(rand()) / RAND_MAX;
     float g = float(rand()) / RAND_MAX;
     float b = float(rand()) / RAND_MAX;

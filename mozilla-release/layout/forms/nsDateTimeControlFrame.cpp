@@ -105,7 +105,7 @@ void nsDateTimeControlFrame::Reflow(nsPresContext* aPresContext,
       aReflowInput.ComputedLogicalBorderPadding().IStartEnd(myWM);
 
   nscoord borderBoxBSize;
-  if (contentBoxBSize != NS_INTRINSICSIZE) {
+  if (contentBoxBSize != NS_UNCONSTRAINEDSIZE) {
     borderBoxBSize =
         contentBoxBSize +
         aReflowInput.ComputedLogicalBorderPadding().BStartEnd(myWM);
@@ -113,7 +113,7 @@ void nsDateTimeControlFrame::Reflow(nsPresContext* aPresContext,
 
   nsIFrame* inputAreaFrame = mFrames.FirstChild();
   if (!inputAreaFrame) {  // display:none?
-    if (contentBoxBSize == NS_INTRINSICSIZE) {
+    if (contentBoxBSize == NS_UNCONSTRAINEDSIZE) {
       contentBoxBSize = 0;
       borderBoxBSize =
           aReflowInput.ComputedLogicalBorderPadding().BStartEnd(myWM);
@@ -154,7 +154,7 @@ void nsDateTimeControlFrame::Reflow(nsPresContext* aPresContext,
     nscoord childMarginBoxBSize =
         childDesiredSize.BSize(myWM) + childMargin.BStartEnd(myWM);
 
-    if (contentBoxBSize == NS_INTRINSICSIZE) {
+    if (contentBoxBSize == NS_UNCONSTRAINEDSIZE) {
       // We are intrinsically sized -- we should shrinkwrap the input area's
       // block-size:
       contentBoxBSize = childMarginBoxBSize;
@@ -185,11 +185,15 @@ void nsDateTimeControlFrame::Reflow(nsPresContext* aPresContext,
     FinishReflowChild(inputAreaFrame, aPresContext, childDesiredSize,
                       &childReflowOuput, myWM, childOffset, borderBoxSize, 0);
 
-    nsSize contentBoxSize = LogicalSize(myWM, contentBoxISize, contentBoxBSize)
-                                .GetPhysicalSize(myWM);
-    aDesiredSize.SetBlockStartAscent(
-        childDesiredSize.BlockStartAscent() +
-        inputAreaFrame->BStart(aReflowInput.GetWritingMode(), contentBoxSize));
+    if (!aReflowInput.mStyleDisplay->IsContainLayout()) {
+      nsSize contentBoxSize =
+          LogicalSize(myWM, contentBoxISize, contentBoxBSize)
+              .GetPhysicalSize(myWM);
+      aDesiredSize.SetBlockStartAscent(
+          childDesiredSize.BlockStartAscent() +
+          inputAreaFrame->BStart(aReflowInput.GetWritingMode(),
+                                 contentBoxSize));
+    }  // else: we're layout-contained, and so we have no baseline.
   }
 
   LogicalSize logicalDesiredSize(myWM, borderBoxISize, borderBoxBSize);

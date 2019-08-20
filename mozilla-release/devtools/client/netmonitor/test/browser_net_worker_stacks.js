@@ -70,6 +70,16 @@ const EXPECTED_REQUESTS = [
       { file: WORKER_FILE_NAME, line: 18 },
     ],
   },
+  {
+    method: "GET",
+    url: EXAMPLE_URL + "missing.txt",
+    causeType: "fetch",
+    causeUri: TOP_URL,
+    stack: [
+      { fn: "fetchThing", file: WORKER_FILE_NAME, line: 29 },
+      { file: WORKER_FILE_NAME, line: 26 },
+    ],
+  },
 ];
 
 add_task(async function() {
@@ -78,21 +88,27 @@ add_task(async function() {
   const { tab, monitor } = await initNetMonitor(SIMPLE_URL);
 
   const { store, windowRequire, connector } = monitor.panelWin;
-  const {
-    getSortedRequests,
-  } = windowRequire("devtools/client/netmonitor/src/selectors/index");
+  const { getSortedRequests } = windowRequire(
+    "devtools/client/netmonitor/src/selectors/index"
+  );
 
   BrowserTestUtils.loadURI(tab.linkedBrowser, TOP_URL);
 
   await waitForNetworkEvents(monitor, EXPECTED_REQUESTS.length);
 
-  is(store.getState().requests.requests.size, EXPECTED_REQUESTS.length,
-    "All the page events should be recorded.");
+  is(
+    store.getState().requests.requests.size,
+    EXPECTED_REQUESTS.length,
+    "All the page events should be recorded."
+  );
 
   // Wait for stack traces from all requests.
   const requests = getSortedRequests(store.getState());
-  await Promise.all(requests.map(requestItem =>
-    connector.requestData(requestItem.id, "stackTrace")));
+  await Promise.all(
+    requests.map(requestItem =>
+      connector.requestData(requestItem.id, "stackTrace")
+    )
+  );
 
   validateRequests(EXPECTED_REQUESTS, monitor);
 

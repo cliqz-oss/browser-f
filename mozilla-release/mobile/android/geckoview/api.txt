@@ -393,7 +393,7 @@ package org.mozilla.geckoview {
     method @AnyThread @NonNull public SessionFinder getFinder();
     method @AnyThread @Nullable public GeckoSession.HistoryDelegate getHistoryDelegate();
     method @AnyThread @Nullable public GeckoSession.MediaDelegate getMediaDelegate();
-    method @AnyThread @Nullable public WebExtension.MessageDelegate getMessageDelegate(@NonNull String);
+    method @AnyThread @Nullable public WebExtension.MessageDelegate getMessageDelegate(@NonNull WebExtension, @NonNull String);
     method @UiThread @Nullable public GeckoSession.NavigationDelegate getNavigationDelegate();
     method @UiThread @NonNull public OverscrollEdgeEffect getOverscrollEdgeEffect();
     method @UiThread public void getPageToScreenMatrix(@NonNull Matrix);
@@ -431,7 +431,7 @@ package org.mozilla.geckoview {
     method @AnyThread public void setFocused(boolean);
     method @AnyThread public void setHistoryDelegate(@Nullable GeckoSession.HistoryDelegate);
     method @AnyThread public void setMediaDelegate(@Nullable GeckoSession.MediaDelegate);
-    method @AnyThread public void setMessageDelegate(@Nullable WebExtension.MessageDelegate, @NonNull String);
+    method @AnyThread public void setMessageDelegate(@NonNull WebExtension, @Nullable WebExtension.MessageDelegate, @NonNull String);
     method @UiThread public void setNavigationDelegate(@Nullable GeckoSession.NavigationDelegate);
     method @UiThread public void setPermissionDelegate(@Nullable GeckoSession.PermissionDelegate);
     method @UiThread public void setProgressDelegate(@Nullable GeckoSession.ProgressDelegate);
@@ -465,6 +465,7 @@ package org.mozilla.geckoview {
     method @UiThread default public void onFirstComposite(@NonNull GeckoSession);
     method @UiThread default public void onFocusRequest(@NonNull GeckoSession);
     method @UiThread default public void onFullScreen(@NonNull GeckoSession, boolean);
+    method @UiThread default public void onKill(@NonNull GeckoSession);
     method @UiThread default public void onTitleChange(@NonNull GeckoSession, @Nullable String);
     method @UiThread default public void onWebAppManifest(@NonNull GeckoSession, @NonNull JSONObject);
   }
@@ -524,8 +525,6 @@ package org.mozilla.geckoview {
 
   public static class GeckoSession.MediaDelegate.RecordingDevice {
     ctor protected RecordingDevice();
-    field public static final int TYPE_CAMERA = 0;
-    field public static final int TYPE_MICROPHONE = 1;
     field public final long status;
     field public final long type;
   }
@@ -585,14 +584,11 @@ package org.mozilla.geckoview {
 
   public static class GeckoSession.PermissionDelegate.MediaSource {
     ctor protected MediaSource();
-    field public static final int SOURCE_APPLICATION = 2;
-    field public static final int SOURCE_AUDIOCAPTURE = 6;
-    field public static final int SOURCE_BROWSER = 4;
+    field public static final int SOURCE_AUDIOCAPTURE = 3;
     field public static final int SOURCE_CAMERA = 0;
-    field public static final int SOURCE_MICROPHONE = 5;
-    field public static final int SOURCE_OTHER = 7;
+    field public static final int SOURCE_MICROPHONE = 2;
+    field public static final int SOURCE_OTHER = 4;
     field public static final int SOURCE_SCREEN = 1;
-    field public static final int SOURCE_WINDOW = 3;
     field public static final int TYPE_AUDIO = 1;
     field public static final int TYPE_VIDEO = 0;
     field @NonNull public final String id;
