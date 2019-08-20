@@ -120,7 +120,7 @@
       color: rgb(255,255,255);
     }
 
-    :root[tabsintitlebar]:not([inFullscreen]):not(:-moz-lwtheme) {
+    :root[tabsintitlebar]:not([inFullscreen]):not(:-moz-window-inactive) {
       color: rgb(255,255,255);
     }
 
