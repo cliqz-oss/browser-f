@@ -705,7 +705,7 @@ var SessionStoreInternal = {
     let state;
     let ss = SessionStartup;
 
-    if (ss.willRestore() || ss.sessionType == ss.DEFER_SESSION) {
+    if (ss.willRestoreCliqz() || ss.sessionType == ss.DEFER_SESSION) {
       state = ss.state;
     }
 
@@ -1343,7 +1343,6 @@ var SessionStoreInternal = {
           // Restore session cookies before loading any tabs.
           SessionCookies.restore(aInitialState.cookies || []);
 
-<<<<<<< HEAD
           // SessionStartup.willOverrideHomepage returns a boolean or a promise that resolves
           // to a boolean. Converting to a general promise for simplicity.
           let willOverrideHomepagePromise = Promise.all([SessionStartup.willOverrideHomepage]);
@@ -1353,15 +1352,6 @@ var SessionStoreInternal = {
             this.restoreWindows(aWindow, aInitialState, options);
           });
 
-||||||| merged common ancestors
-          let overwrite = this._isCmdLineEmpty(aWindow, aInitialState);
-          let options = {firstWindow: true, overwriteTabs: overwrite};
-          this.restoreWindows(aWindow, aInitialState, options);
-=======
-          let overwrite = this._isCmdLineEmpty(aWindow, aInitialState);
-          let options = { firstWindow: true, overwriteTabs: overwrite };
-          this.restoreWindows(aWindow, aInitialState, options);
->>>>>>> origin/upstream-releases
         }
       } else {
         // Nothing to restore, notify observers things are complete.
@@ -1419,7 +1409,7 @@ var SessionStoreInternal = {
         let newWindowState;
         if (
           AppConstants.platform == "macosx" ||
-          !SessionStartup.willRestore()
+          !SessionStartup.willRestoreCliqz()
         ) {
           // We want to split the window up into pinned tabs and unpinned tabs.
           // Pinned tabs should be restored. If there are any remaining tabs,
@@ -2953,15 +2943,9 @@ var SessionStoreInternal = {
 
     let tabOptions = {
       userContextId,
-<<<<<<< HEAD
-      ...(aTab == aWindow.gBrowser.selectedTab ? {relatedToCurrent: true, ownerTab: aTab, private: aPrivate} : {private: aPrivate}),
-||||||| merged common ancestors
-      ...(aTab == aWindow.gBrowser.selectedTab ? {relatedToCurrent: true, ownerTab: aTab} : {}),
-=======
       ...(aTab == aWindow.gBrowser.selectedTab
-        ? { relatedToCurrent: true, ownerTab: aTab }
-        : {}),
->>>>>>> origin/upstream-releases
+        ? { relatedToCurrent: true, ownerTab: aTab, private: aPrivate }
+        : { private: aPrivate }),
     };
     let newTab = aWindow.gBrowser.addTrustedTab(null, tabOptions);
 
@@ -3802,16 +3786,8 @@ var SessionStoreInternal = {
     let homePages = ["about:blank"];
     let removableTabs = [];
     let tabbrowser = aWindow.gBrowser;
-<<<<<<< HEAD
     let addFreshTab = this._prefBranch.getBoolPref("startup.addFreshTab");
     if (addFreshTab)
-||||||| merged common ancestors
-    let startupPref = this._prefBranch.getIntPref("startup.page");
-    if (startupPref == 1)
-=======
-    let startupPref = this._prefBranch.getIntPref("startup.page");
-    if (startupPref == 1) {
->>>>>>> origin/upstream-releases
       homePages = homePages.concat(HomePage.get(aWindow).split("|"));
     }
 
@@ -5351,28 +5327,6 @@ var SessionStoreInternal = {
   },
 
   /**
-<<<<<<< HEAD
-   * Whether or not to resume session, if not recovering from a crash.
-   * @returns bool
-   */
-  _doResumeSession: function ssi_doResumeSession() {
-    return this._prefBranch.getBoolPref("startup.restoreTabs") ||
-           this._prefBranch.getBoolPref("sessionstore.resume_session_once");
-  },
-
-  /**
-||||||| merged common ancestors
-   * Whether or not to resume session, if not recovering from a crash.
-   * @returns bool
-   */
-  _doResumeSession: function ssi_doResumeSession() {
-    return this._prefBranch.getIntPref("startup.page") == 3 ||
-           this._prefBranch.getBoolPref("sessionstore.resume_session_once");
-  },
-
-  /**
-=======
->>>>>>> origin/upstream-releases
    * whether the user wants to load any other page at startup
    * (except the homepage) - needed for determining whether to overwrite the current tabs
    * C.f.: nsBrowserContentHandler's defaultArgs implementation.

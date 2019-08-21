@@ -36,21 +36,11 @@ const Strings = Services.strings.createBundle(
 const ExtensionIcon = "chrome://mozapps/skin/extensions/extensionGeneric.svg";
 const CHROME_ENABLED_PREF = "devtools.chrome.enabled";
 const REMOTE_ENABLED_PREF = "devtools.debugger.remote-enabled";
-<<<<<<< HEAD
 //const SYSTEM_ENABLED_PREF = "devtools.aboutdebugging.showHiddenAddons";
 const SYSTEM_ENABLED_PREF = "extensions.cliqz.listed";
-const WEB_EXT_URL = "https://developer.mozilla.org/Add-ons" +
-                    "/WebExtensions/Getting_started_with_web-ext";
-||||||| merged common ancestors
-const SYSTEM_ENABLED_PREF = "devtools.aboutdebugging.showHiddenAddons";
-const WEB_EXT_URL = "https://developer.mozilla.org/Add-ons" +
-                    "/WebExtensions/Getting_started_with_web-ext";
-=======
-const SYSTEM_ENABLED_PREF = "devtools.aboutdebugging.showHiddenAddons";
 const WEB_EXT_URL =
   "https://developer.mozilla.org/Add-ons" +
   "/WebExtensions/Getting_started_with_web-ext";
->>>>>>> origin/upstream-releases
 
 class AddonsPanel extends Component {
   static get propTypes() {

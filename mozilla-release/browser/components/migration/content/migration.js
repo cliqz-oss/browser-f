@@ -7,9 +7,10 @@
 const kIMig = Ci.nsIBrowserProfileMigrator;
 const kIPStartup = Ci.nsIProfileStartup;
 
-<<<<<<< HEAD
-const {Services} = ChromeUtils.import("resource://gre/modules/Services.jsm");
-const {MigrationUtils} = ChromeUtils.import("resource:///modules/MigrationUtils.jsm");
+const { Services } = ChromeUtils.import("resource://gre/modules/Services.jsm");
+const { MigrationUtils } = ChromeUtils.import(
+  "resource:///modules/MigrationUtils.jsm"
+);
 
 // For yet undiscovered reason `Cu.reportError()` doesn't work in this file.
 // Same as `dump()` :-/
@@ -18,30 +19,11 @@ function logError(e) {
       e.stack);
 }
 
-var MigrationWizard = { /* exported MigrationWizard */
-  _source: "",                  // Source Profile Migrator ContractID suffix
-  _itemsFlags: kIMig.ALL,       // Selected Import Data Sources (16-bit bitfield)
-  _selectedProfile: null,       // Selected Profile name to import from
-||||||| merged common ancestors
-const {Services} = ChromeUtils.import("resource://gre/modules/Services.jsm");
-const {MigrationUtils} = ChromeUtils.import("resource:///modules/MigrationUtils.jsm");
-
-var MigrationWizard = { /* exported MigrationWizard */
-  _source: "",                  // Source Profile Migrator ContractID suffix
-  _itemsFlags: kIMig.ALL,       // Selected Import Data Sources (16-bit bitfield)
-  _selectedProfile: null,       // Selected Profile name to import from
-=======
-const { Services } = ChromeUtils.import("resource://gre/modules/Services.jsm");
-const { MigrationUtils } = ChromeUtils.import(
-  "resource:///modules/MigrationUtils.jsm"
-);
-
 var MigrationWizard = {
   /* exported MigrationWizard */
   _source: "", // Source Profile Migrator ContractID suffix
   _itemsFlags: kIMig.ALL, // Selected Import Data Sources (16-bit bitfield)
   _selectedProfile: null, // Selected Profile name to import from
->>>>>>> origin/upstream-releases
   _wiz: null,
   _migrator: null,
   _autoMigrate: null,
@@ -86,39 +68,23 @@ var MigrationWizard = {
       }
     }
 
-<<<<<<< HEAD
-    document.addEventListener("wizardcancel", function() { MigrationWizard.onWizardCancel(); });
-
-    document.getElementById("selectProfile").addEventListener("pageshow", function() { MigrationWizard.onSelectProfilePageShow(); });
-    document.getElementById("importItems").addEventListener("pageshow", function() { MigrationWizard.onImportItemsPageShow(); });
-    document.getElementById("migrating").addEventListener("pageshow", function() { MigrationWizard.onMigratingPageShow(); });
-    document.getElementById("selectAddons").addEventListener("pageshow", function() { MigrationWizard.onImportAddonsPageShow(); });
-    document.getElementById("done").addEventListener("pageshow", function() { MigrationWizard.onDonePageShow(); });
-||||||| merged common ancestors
-    document.addEventListener("wizardcancel", function() { MigrationWizard.onWizardCancel(); });
-
-    document.getElementById("selectProfile").addEventListener("pageshow", function() { MigrationWizard.onSelectProfilePageShow(); });
-    document.getElementById("importItems").addEventListener("pageshow", function() { MigrationWizard.onImportItemsPageShow(); });
-    document.getElementById("migrating").addEventListener("pageshow", function() { MigrationWizard.onMigratingPageShow(); });
-    document.getElementById("done").addEventListener("pageshow", function() { MigrationWizard.onDonePageShow(); });
-=======
     document.addEventListener("wizardcancel", function() {
       MigrationWizard.onWizardCancel();
     });
->>>>>>> origin/upstream-releases
+    document.getElementById("selectAddons")
+      .addEventListener("pageshow", function() {
+        MigrationWizard.onImportAddonsPageShow();
+      });
 
-<<<<<<< HEAD
-    document.getElementById("selectProfile").addEventListener("pagerewound", function() { MigrationWizard.onSelectProfilePageRewound(); });
-    document.getElementById("selectAddons").addEventListener("pagerewound", function() { MigrationWizard.onImportAddonsPageRewound(); });
-    document.getElementById("importItems").addEventListener("pagerewound", function() { MigrationWizard.onImportItemsPageRewound(); });
-||||||| merged common ancestors
-    document.getElementById("selectProfile").addEventListener("pagerewound", function() { MigrationWizard.onSelectProfilePageRewound(); });
-    document.getElementById("importItems").addEventListener("pagerewound", function() { MigrationWizard.onImportItemsPageRewound(); });
-=======
     document
       .getElementById("selectProfile")
       .addEventListener("pageshow", function() {
         MigrationWizard.onSelectProfilePageShow();
+      });
+    document
+      .getElementById("selectAddons")
+      .addEventListener("pagerewound", function() {
+        MigrationWizard.onImportAddonsPageRewound();
       });
     document
       .getElementById("importItems")
@@ -133,18 +99,7 @@ var MigrationWizard = {
     document.getElementById("done").addEventListener("pageshow", function() {
       MigrationWizard.onDonePageShow();
     });
->>>>>>> origin/upstream-releases
 
-<<<<<<< HEAD
-    document.getElementById("selectProfile").addEventListener("pageadvanced", function() { MigrationWizard.onSelectProfilePageAdvanced(); });
-    document.getElementById("importItems").addEventListener("pageadvanced", function() { MigrationWizard.onImportItemsPageAdvanced(); });
-    document.getElementById("selectAddons").addEventListener("pageadvanced", function(e) { MigrationWizard.onImportAddonsPageAdvanced(e); });
-    document.getElementById("importSource").addEventListener("pageadvanced", function(e) { MigrationWizard.onImportSourcePageAdvanced(e); });
-||||||| merged common ancestors
-    document.getElementById("selectProfile").addEventListener("pageadvanced", function() { MigrationWizard.onSelectProfilePageAdvanced(); });
-    document.getElementById("importItems").addEventListener("pageadvanced", function() { MigrationWizard.onImportItemsPageAdvanced(); });
-    document.getElementById("importSource").addEventListener("pageadvanced", function(e) { MigrationWizard.onImportSourcePageAdvanced(e); });
-=======
     document
       .getElementById("selectProfile")
       .addEventListener("pagerewound", function() {
@@ -154,6 +109,11 @@ var MigrationWizard = {
       .getElementById("importItems")
       .addEventListener("pagerewound", function() {
         MigrationWizard.onImportItemsPageRewound();
+      });
+    document
+      .getElementById("selectAddons")
+      .addEventListener("pageadvanced", function(e) {
+        MigrationWizard.onImportAddonsPageAdvanced(e);
       });
 
     document
@@ -171,7 +131,6 @@ var MigrationWizard = {
       .addEventListener("pageadvanced", function(e) {
         MigrationWizard.onImportSourcePageAdvanced(e);
       });
->>>>>>> origin/upstream-releases
 
     this.onImportSourcePageShow();
   },
@@ -213,17 +172,13 @@ var MigrationWizard = {
         );
         visibility = migrator.sourceLocked ? "visible" : "hidden";
       }
-<<<<<<< HEAD
-      document.getElementById("closeSourceBrowser").style.visibility = visibility;
-      // CLIQZ-SPECIAL: Make warning a bit more prominent
-      document.getElementById("closeSourceBrowser").style.fontSize = "12px";
-||||||| merged common ancestors
-      document.getElementById("closeSourceBrowser").style.visibility = visibility;
-=======
       document.getElementById(
         "closeSourceBrowser"
       ).style.visibility = visibility;
->>>>>>> origin/upstream-releases
+      // CLIQZ-SPECIAL: Make warning a bit more prominent
+      document.getElementById(
+        "closeSourceBrowser"
+      ).style.fontSize = "12px";
     };
     this._wiz.canRewind = false;
 
@@ -285,17 +240,9 @@ var MigrationWizard = {
     }
   },
 
-<<<<<<< HEAD
   maybeTakeUserSelectedMigrator(event) {
-    var newSource = document.getElementById("importSourceGroup").selectedItem.id;
-||||||| merged common ancestors
-  onImportSourcePageAdvanced(event) {
-    var newSource = document.getElementById("importSourceGroup").selectedItem.id;
-=======
-  onImportSourcePageAdvanced(event) {
     var newSource = document.getElementById("importSourceGroup").selectedItem
       .id;
->>>>>>> origin/upstream-releases
 
     if (newSource == "nothing") {
       // Need to do telemetry here because we're closing the dialog before we get to
@@ -401,14 +348,8 @@ var MigrationWizard = {
   // 3 - ImportItems
   onImportItemsPageShow() {
     var dataSources = document.getElementById("dataSources");
-<<<<<<< HEAD
     let hasAddon = false;
-    while (dataSources.hasChildNodes())
-||||||| merged common ancestors
-    while (dataSources.hasChildNodes())
-=======
     while (dataSources.hasChildNodes()) {
->>>>>>> origin/upstream-releases
       dataSources.firstChild.remove();
     }
 
@@ -453,15 +394,11 @@ var MigrationWizard = {
       var checkbox = dataSources.childNodes[i];
       if (checkbox.localName == "checkbox" && checkbox.checked) {
         this._itemsFlags |= parseInt(checkbox.id);
-<<<<<<< HEAD
         // CLIQZ: If addon is not selected, directly advance to step 4
-        if (checkbox.id == Ci.nsIBrowserProfileMigrator.ADDONS)
+        if (checkbox.id == Ci.nsIBrowserProfileMigrator.ADDONS) {
           isAddonSelected = true;
+        }
       }
-||||||| merged common ancestors
-=======
-      }
->>>>>>> origin/upstream-releases
     }
     if (!isAddonSelected)
       this._wiz.currentPage.next = "migrating";
@@ -544,24 +481,12 @@ var MigrationWizard = {
   },
 
   async onMigratingMigrate() {
-<<<<<<< HEAD
-    if (this._addons.size > 0) {
-      Services.prefs.setStringPref(
-        "browser.migrate.addons", JSON.stringify(Array.from(this._addons))
-      );
-    }
-
-    await this._migrator.migrate(this._itemsFlags, this._autoMigrate, this._selectedProfile);
-
-    Services.telemetry.getHistogramById("FX_MIGRATION_SOURCE_BROWSER")
-                      .add(MigrationUtils.getSourceIdForTelemetry(this._source));
-||||||| merged common ancestors
-    await this._migrator.migrate(this._itemsFlags, this._autoMigrate, this._selectedProfile);
-
-    Services.telemetry.getHistogramById("FX_MIGRATION_SOURCE_BROWSER")
-                      .add(MigrationUtils.getSourceIdForTelemetry(this._source));
-=======
-    await this._migrator.migrate(
+   if (this._addons.size > 0) {
+     Services.prefs.setStringPref(
+       "browser.migrate.addons", JSON.stringify(Array.from(this._addons))
+     );
+   }
+   await this._migrator.migrate(
       this._itemsFlags,
       this._autoMigrate,
       this._selectedProfile
@@ -570,7 +495,6 @@ var MigrationWizard = {
     Services.telemetry
       .getHistogramById("FX_MIGRATION_SOURCE_BROWSER")
       .add(MigrationUtils.getSourceIdForTelemetry(this._source));
->>>>>>> origin/upstream-releases
     if (!this._autoMigrate) {
       let hist = Services.telemetry.getKeyedHistogramById("FX_MIGRATION_USAGE");
       let exp = 0;

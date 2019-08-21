@@ -191,22 +191,10 @@ exports.menuitems = [
       gDevToolsBrowser.openConnectScreen(window.gBrowser);
     },
   },
-<<<<<<< HEAD
-  { separator: true,
-    id: "devToolsEndSeparator",
-  },
-/* blocked by Cliqz
-  { id: "getMoreDevtools",
-||||||| merged common ancestors
-  { separator: true,
-    id: "devToolsEndSeparator",
-  },
-  { id: "getMoreDevtools",
-=======
   { separator: true, id: "devToolsEndSeparator" },
+/* blocked by Cliqz
   {
     id: "getMoreDevtools",
->>>>>>> origin/upstream-releases
     l10nKey: "getMoreDevtoolsCmd",
     oncommand(event) {
       openDocLink(

@@ -23,15 +23,9 @@ const USER_PREFERENCES = {
   snippets: "browser.newtabpage.activity-stream.feeds.snippets",
 #if 0
   cfrAddons: "browser.newtabpage.activity-stream.asrouter.userprefs.cfr.addons",
-<<<<<<< HEAD
-  cfrFeatures: "browser.newtabpage.activity-stream.asrouter.userprefs.cfr.features",
-#endif
-||||||| merged common ancestors
-  cfrFeatures: "browser.newtabpage.activity-stream.asrouter.userprefs.cfr.features",
-=======
   cfrFeatures:
     "browser.newtabpage.activity-stream.asrouter.userprefs.cfr.features",
->>>>>>> origin/upstream-releases
+#endif
 };
 
 // Preferences that influence targeting attributes. When these change we need

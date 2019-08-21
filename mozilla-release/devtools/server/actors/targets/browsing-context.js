@@ -1601,7 +1601,6 @@ DebuggerProgressListener.prototype = {
     }
 
     const handler = getDocShellChromeEventHandler(docShell);
-<<<<<<< HEAD
 
     for (let i = 0, l = this._windowCreatedListeners.length; i < l; i++) {
       const listenerDocShell = this._windowCreatedListeners[i][0];
@@ -1610,25 +1609,17 @@ DebuggerProgressListener.prototype = {
         continue;
       }
 
-      handler.removeEventListener("DOMWindowCreated", onWindowCreated, true);
+      handler.removeEventListener(
+        "DOMWindowCreated",
+        onWindowCreated,
+        true
+      );
       handler.removeEventListener("pageshow", onWindowCreated, true);
 
       this._windowCreatedListeners.splice(i, 1);
       break;
     }
 
-||||||| merged common ancestors
-    handler.removeEventListener("DOMWindowCreated",
-      this._onWindowCreated, true);
-    handler.removeEventListener("pageshow", this._onWindowCreated, true);
-=======
-    handler.removeEventListener(
-      "DOMWindowCreated",
-      this._onWindowCreated,
-      true
-    );
-    handler.removeEventListener("pageshow", this._onWindowCreated, true);
->>>>>>> origin/upstream-releases
     handler.removeEventListener("pagehide", this._onWindowHidden, true);
 
     for (const win of this._getWindowsInDocShell(docShell)) {

@@ -33,17 +33,11 @@ XPCOMUtils.defineLazyGetter(this, "bundle", function() {
   );
 });
 
-<<<<<<< HEAD
 XPCOMUtils.defineLazyScriptGetter(this, "goSetCommandEnabled",
   "chrome://global/content/globalOverlay.js");
 
-const gInContentProcess = Services.appinfo.processType == Ci.nsIXULRuntime.PROCESS_TYPE_CONTENT;
-||||||| merged common ancestors
-const gInContentProcess = Services.appinfo.processType == Ci.nsIXULRuntime.PROCESS_TYPE_CONTENT;
-=======
 const gInContentProcess =
   Services.appinfo.processType == Ci.nsIXULRuntime.PROCESS_TYPE_CONTENT;
->>>>>>> origin/upstream-releases
 const FAVICON_REQUEST_TIMEOUT = 60 * 1000;
 // Map from windows to arrays of data about pending favicon loads.
 let gFaviconLoadDataMap = new Map();
@@ -478,18 +472,8 @@ var PlacesUIUtils = {
       "placesCmd_paste",
       "placesCmd_delete",
     ]) {
-<<<<<<< HEAD
       goSetCommandEnabled(command,
         controller && controller.isCommandEnabled(command), win);
-||||||| merged common ancestors
-      win.goSetCommandEnabled(command,
-                              controller && controller.isCommandEnabled(command));
-=======
-      win.goSetCommandEnabled(
-        command,
-        controller && controller.isCommandEnabled(command)
-      );
->>>>>>> origin/upstream-releases
     }
   },
 

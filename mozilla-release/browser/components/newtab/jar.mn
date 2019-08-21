@@ -31,11 +31,5 @@ browser.jar:
 #ifndef RELEASE_OR_BETA
   res/activity-stream/prerendered/activity-stream-debug.html (./prerendered/activity-stream-debug.html)
 #endif
-<<<<<<< HEAD
-  res/activity-stream/prerendered/ (./prerendered/locales/*)
-#endif
-||||||| merged common ancestors
-  res/activity-stream/prerendered/ (./prerendered/locales/*)
-=======
   res/activity-stream/prerendered/activity-stream-noscripts.html (./prerendered/activity-stream-noscripts.html)
->>>>>>> origin/upstream-releases
+#endif

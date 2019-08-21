@@ -12,31 +12,6 @@ const { NewTabUtils } = ChromeUtils.import(
 );
 XPCOMUtils.defineLazyGlobalGetters(this, ["fetch"]);
 
-<<<<<<< HEAD
-const {actionTypes: at, actionCreators: ac} = ChromeUtils.import("resource://activity-stream/common/Actions.jsm");
-const {Prefs} = ChromeUtils.import("resource://activity-stream/lib/ActivityStreamPrefs.jsm");
-const {shortURL} = ChromeUtils.import("resource://activity-stream/lib/ShortURL.jsm");
-const {SectionsManager} = ChromeUtils.import("resource://activity-stream/lib/SectionsManager.jsm");
-const {UserDomainAffinityProvider} = ChromeUtils.import("resource://activity-stream/lib/UserDomainAffinityProvider.jsm");
-const {PersonalityProvider} = ChromeUtils.import("resource://activity-stream/lib/PersonalityProvider.jsm");
-const {PersistentCache} = ChromeUtils.import("resource://activity-stream/lib/PersistentCache.jsm");
-
-ChromeUtils.defineModuleGetter(this, "perfService", "resource://activity-stream/common/PerfService.jsm");
-#if 0
-ChromeUtils.defineModuleGetter(this, "pktApi", "chrome://pocket/content/pktApi.jsm");
-#endif
-||||||| merged common ancestors
-const {actionTypes: at, actionCreators: ac} = ChromeUtils.import("resource://activity-stream/common/Actions.jsm");
-const {Prefs} = ChromeUtils.import("resource://activity-stream/lib/ActivityStreamPrefs.jsm");
-const {shortURL} = ChromeUtils.import("resource://activity-stream/lib/ShortURL.jsm");
-const {SectionsManager} = ChromeUtils.import("resource://activity-stream/lib/SectionsManager.jsm");
-const {UserDomainAffinityProvider} = ChromeUtils.import("resource://activity-stream/lib/UserDomainAffinityProvider.jsm");
-const {PersonalityProvider} = ChromeUtils.import("resource://activity-stream/lib/PersonalityProvider.jsm");
-const {PersistentCache} = ChromeUtils.import("resource://activity-stream/lib/PersistentCache.jsm");
-
-ChromeUtils.defineModuleGetter(this, "perfService", "resource://activity-stream/common/PerfService.jsm");
-ChromeUtils.defineModuleGetter(this, "pktApi", "chrome://pocket/content/pktApi.jsm");
-=======
 const { actionTypes: at, actionCreators: ac } = ChromeUtils.import(
   "resource://activity-stream/common/Actions.jsm"
 );
@@ -64,12 +39,13 @@ ChromeUtils.defineModuleGetter(
   "perfService",
   "resource://activity-stream/common/PerfService.jsm"
 );
+#if 0
 ChromeUtils.defineModuleGetter(
   this,
   "pktApi",
   "chrome://pocket/content/pktApi.jsm"
 );
->>>>>>> origin/upstream-releases
+#endif
 
 const STORIES_UPDATE_TIME = 30 * 60 * 1000; // 30 minutes
 const TOPICS_UPDATE_TIME = 3 * 60 * 60 * 1000; // 3 hours
@@ -193,35 +169,21 @@ this.TopStoriesFeed = class TopStoriesFeed {
   }
 
   getPocketState(target) {
-<<<<<<< HEAD
 #if 0
-    const action = {type: at.POCKET_LOGGED_IN, data: pktApi.isUserLoggedIn()};
-||||||| merged common ancestors
-    const action = {type: at.POCKET_LOGGED_IN, data: pktApi.isUserLoggedIn()};
-=======
     const action = { type: at.POCKET_LOGGED_IN, data: pktApi.isUserLoggedIn() };
->>>>>>> origin/upstream-releases
     this.store.dispatch(ac.OnlyToOneContent(action, target));
 #endif
   }
 
   dispatchPocketCta(data, shouldBroadcast) {
-<<<<<<< HEAD
 #if 0
-    const action = {type: at.POCKET_CTA, data: JSON.parse(data)};
-    this.store.dispatch(shouldBroadcast ? ac.BroadcastToContent(action) : ac.AlsoToPreloaded(action));
-#endif
-||||||| merged common ancestors
-    const action = {type: at.POCKET_CTA, data: JSON.parse(data)};
-    this.store.dispatch(shouldBroadcast ? ac.BroadcastToContent(action) : ac.AlsoToPreloaded(action));
-=======
     const action = { type: at.POCKET_CTA, data: JSON.parse(data) };
     this.store.dispatch(
       shouldBroadcast
         ? ac.BroadcastToContent(action)
         : ac.AlsoToPreloaded(action)
     );
->>>>>>> origin/upstream-releases
+#endif
   }
 
   /**

@@ -2,41 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-<<<<<<< HEAD
- /* import-globals-from extensionControlled.js */
- /* import-globals-from preferences.js */
- /* import-globals-from main.js */
-
- // HOME PAGE
- /*
-  * Preferences:
-  *
-  * browser.startup.homepage
-  * - the user's home page, as a string; if the home page is a set of tabs,
-  *   this will be those URLs separated by the pipe character "|"
-  * browser.startup.restoreTabs
-  * - whether to restore windows and tabs from the last session (a.k.a. session
-  *   restore)
-  */
-||||||| merged common ancestors
- /* import-globals-from extensionControlled.js */
- /* import-globals-from preferences.js */
- /* import-globals-from main.js */
-
- // HOME PAGE
-
- /*
-   * Preferences:
-   *
-   * browser.startup.homepage
-   * - the user's home page, as a string; if the home page is a set of tabs,
-   *   this will be those URLs separated by the pipe character "|"
-   * browser.newtabpage.enabled
-   * - determines that is shown on the user's new tab page.
-   *   true = Activity Stream is shown,
-   *   false = about:blank is shown
-   */
-=======
 /* import-globals-from extensionControlled.js */
 /* import-globals-from preferences.js */
 /* import-globals-from main.js */
@@ -54,7 +19,6 @@
  *   true = Activity Stream is shown,
  *   false = about:blank is shown
  */
->>>>>>> origin/upstream-releases
 
 Preferences.addAll([
   { id: "browser.startup.homepage", type: "wstring" },

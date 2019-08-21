@@ -470,7 +470,6 @@
   <label><html:h2 data-l10n-id="logins-header"/></label>
 
   <vbox id="passwordSettings">
-<<<<<<< HEAD
     <hbox id="savePasswordsBox" align="top">
       <checkbox id="savePasswords"
                 flex="2"
@@ -507,80 +506,6 @@
                 search-l10n-ids="forms-saved-logins.label"
                 preference="pref.privacy.disable_button.view_passwords"/>
       </hbox>
-||||||| merged common ancestors
-    <hbox id="savePasswordsBox">
-      <checkbox id="savePasswords"
-                data-l10n-id="forms-ask-to-save-logins"
-                preference="signon.rememberSignons"
-                onsyncfrompreference="return gPrivacyPane.readSavePasswords();"
-                flex="1" />
-      <!-- Please don't remove the wrapping hbox/vbox/box for these elements. It's used to properly compute the search tooltip position. -->
-      <hbox>
-        <button id="passwordExceptions"
-                is="highlightable-button"
-                class="accessory-button"
-                data-l10n-id="forms-exceptions"
-                preference="pref.privacy.disable_button.view_passwords_exceptions"
-                search-l10n-ids="
-                  permissions-address,
-                  permissions-exceptions-saved-logins-window.title,
-                  permissions-exceptions-saved-logins-desc,
-                "/>
-      </hbox>
-    </hbox>
-    <hbox id="showPasswordBox" pack="end">
-      <!-- Please don't remove the wrapping hbox/vbox/box for these elements. It's used to properly compute the search tooltip position. -->
-      <hbox>
-        <button id="showPasswords"
-                is="highlightable-button"
-                class="accessory-button"
-                data-l10n-id="forms-saved-logins"
-                search-l10n-ids="forms-saved-logins.label"
-                preference="pref.privacy.disable_button.view_passwords"/>
-      </hbox>
-=======
-    <hbox>
-      <vbox flex="1">
-        <hbox>
-          <checkbox id="savePasswords"
-                    data-l10n-id="forms-ask-to-save-logins"
-                    preference="signon.rememberSignons"
-                    onsyncfrompreference="return gPrivacyPane.readSavePasswords();"
-                    flex="1" />
-        </hbox>
-        <hbox class="indent" id="generatePasswordsBox" flex="1">
-          <checkbox id="generatePasswords"
-                    data-l10n-id="forms-generate-passwords"
-                    search-l10n-ids="forms-generate-passwords.label"
-                    preference="signon.generation.enabled"
-                    flex="1" />
-        </hbox>
-      </vbox>
-      <vbox>
-        <!-- Please don't remove the wrapping hbox/vbox/box for these elements. It's used to properly compute the search tooltip position. -->
-        <hbox>
-          <button id="passwordExceptions"
-                  is="highlightable-button"
-                  class="accessory-button"
-                  data-l10n-id="forms-exceptions"
-                  preference="pref.privacy.disable_button.view_passwords_exceptions"
-                  search-l10n-ids="
-                    permissions-address,
-                    permissions-exceptions-saved-logins-window.title,
-                    permissions-exceptions-saved-logins-desc,
-                  "/>
-        </hbox>
-        <!-- Please don't remove the wrapping hbox/vbox/box for these elements. It's used to properly compute the search tooltip position. -->
-        <hbox pack="end">
-          <button id="showPasswords"
-                  is="highlightable-button"
-                  class="accessory-button"
-                  data-l10n-id="forms-saved-logins"
-                  search-l10n-ids="forms-saved-logins.label"
-                  preference="pref.privacy.disable_button.view_passwords"/>
-        </hbox>
-      </vbox>
->>>>>>> origin/upstream-releases
     </hbox>
   </vbox>
   <hbox id="masterPasswordRow">
@@ -928,50 +853,6 @@
 
   <separator flex="1"/>
 
-<<<<<<< HEAD
-  <hbox align="start" id="autoplayMediaCheckboxWrapper">
-    <hbox flex="1">
-    <checkbox id="autoplayMediaCheckbox"
-              data-l10n-id="permissions-block-autoplay-media2"
-              />
-    </hbox>
-    <!-- Please don't remove the wrapping hbox/vbox/box for these elements. It's used to properly compute the search tooltip position. -->
-    <hbox>
-      <button id="autoplayMediaPolicyButton"
-              is="highlightable-button"
-              class="accessory-button"
-              data-l10n-id="permissions-block-autoplay-media-exceptions"
-              search-l10n-ids="permissions-address,
-                               permissions-button-cancel.label,
-                               permissions-button-ok.label,
-                               permissions-exceptions-autoplay-media-window2.title,
-                               permissions-exceptions-autoplay-media-desc2
-                               " />
-    </hbox>
-  </hbox>
-
-||||||| merged common ancestors
-  <hbox align="start" id="autoplayMediaCheckboxWrapper">
-    <checkbox id="autoplayMediaCheckbox"
-              data-l10n-id="permissions-block-autoplay-media2"
-              flex="1" />
-    <!-- Please don't remove the wrapping hbox/vbox/box for these elements. It's used to properly compute the search tooltip position. -->
-    <hbox>
-      <button id="autoplayMediaPolicyButton"
-              is="highlightable-button"
-              class="accessory-button"
-              data-l10n-id="permissions-block-autoplay-media-exceptions"
-              search-l10n-ids="permissions-address,
-                               permissions-button-cancel.label,
-                               permissions-button-ok.label,
-                               permissions-exceptions-autoplay-media-window2.title,
-                               permissions-exceptions-autoplay-media-desc2
-                               " />
-    </hbox>
-  </hbox>
-
-=======
->>>>>>> origin/upstream-releases
   <hbox data-subcategory="permissions-block-popups">
     <hbox flex="1">
     <checkbox id="popupPolicy" preference="dom.disable_open_during_load"

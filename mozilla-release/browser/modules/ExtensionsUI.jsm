@@ -273,26 +273,13 @@ var ExtensionsUI = {
         });
       }
 
-<<<<<<< HEAD
-      this.showPermissionsPrompt(browser, strings, icon, histkey, info.changesNewTab)
-          .then(answer => {
-            if (answer) {
-              info.resolve();
-            } else {
-              info.reject();
-            }
-          });
-||||||| merged common ancestors
-      this.showPermissionsPrompt(browser, strings, icon, histkey)
-          .then(answer => {
-            if (answer) {
-              info.resolve();
-            } else {
-              info.reject();
-            }
-          });
-=======
-      this.showPermissionsPrompt(browser, strings, icon, histkey).then(
+      this.showPermissionsPrompt(
+        browser,
+        strings,
+        icon,
+        histkey,
+        info.changesNewTab
+      ).then(
         answer => {
           if (answer) {
             info.resolve();
@@ -301,7 +288,6 @@ var ExtensionsUI = {
           }
         }
       );
->>>>>>> origin/upstream-releases
     } else if (topic == "webextension-update-permissions") {
       let info = subject.wrappedJSObject;
       info.type = "update";
@@ -400,16 +386,8 @@ var ExtensionsUI = {
     return strings;
   },
 
-<<<<<<< HEAD
   async showPermissionsPrompt(target, strings, icon, histkey, changesNewTab) {
-    let {browser, window} = getTabBrowser(target);
-||||||| merged common ancestors
-  async showPermissionsPrompt(target, strings, icon, histkey) {
-    let {browser, window} = getTabBrowser(target);
-=======
-  async showPermissionsPrompt(target, strings, icon, histkey) {
     let { browser, window } = getTabBrowser(target);
->>>>>>> origin/upstream-releases
 
     // Wait for any pending prompts in this window to complete before
     // showing the next one.

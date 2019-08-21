@@ -14,15 +14,9 @@ const { Services } = ChromeUtils.import("resource://gre/modules/Services.jsm");
 XPCOMUtils.defineLazyModuleGetters(this, {
 #if 0
   ActivityStream: "resource://activity-stream/lib/ActivityStream.jsm",
-<<<<<<< HEAD
 #endif
-  RemotePages: "resource://gre/modules/remotepagemanager/RemotePageManagerParent.jsm",
-||||||| merged common ancestors
-  RemotePages: "resource://gre/modules/remotepagemanager/RemotePageManagerParent.jsm",
-=======
   RemotePages:
     "resource://gre/modules/remotepagemanager/RemotePageManagerParent.jsm",
->>>>>>> origin/upstream-releases
 });
 
 const BROWSER_READY_NOTIFICATION = "sessionstore-windows-restored";

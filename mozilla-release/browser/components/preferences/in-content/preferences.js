@@ -18,27 +18,8 @@
 
 "use strict";
 
-<<<<<<< HEAD
-var {Services} = ChromeUtils.import("resource://gre/modules/Services.jsm");
-var {CliqzResources} = ChromeUtils.import("resource:///modules/CliqzResources.jsm");
-
-ChromeUtils.defineModuleGetter(this, "AMTelemetry",
-                               "resource://gre/modules/AddonManager.jsm");
-ChromeUtils.defineModuleGetter(this, "formAutofillParent",
-                               "resource://formautofill/FormAutofillParent.jsm");
-
-var gLastCategory = {category: undefined, subcategory: undefined};
-||||||| merged common ancestors
-var {Services} = ChromeUtils.import("resource://gre/modules/Services.jsm");
-
-ChromeUtils.defineModuleGetter(this, "AMTelemetry",
-                               "resource://gre/modules/AddonManager.jsm");
-ChromeUtils.defineModuleGetter(this, "formAutofillParent",
-                               "resource://formautofill/FormAutofillParent.jsm");
-
-var gLastCategory = {category: undefined, subcategory: undefined};
-=======
 var { Services } = ChromeUtils.import("resource://gre/modules/Services.jsm");
+var { CliqzResources } = ChromeUtils.import("resource:///modules/CliqzResources.jsm");
 
 ChromeUtils.defineModuleGetter(
   this,
@@ -52,7 +33,6 @@ ChromeUtils.defineModuleGetter(
 );
 
 var gLastCategory = { category: undefined, subcategory: undefined };
->>>>>>> origin/upstream-releases
 const gXULDOMParser = new DOMParser();
 
 var gCategoryInits = new Map();

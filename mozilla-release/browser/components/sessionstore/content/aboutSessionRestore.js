@@ -4,21 +4,6 @@
 
 "use strict";
 
-<<<<<<< HEAD
-const {Services} = ChromeUtils.import("resource://gre/modules/Services.jsm");
-ChromeUtils.defineModuleGetter(this, "AppConstants",
-  "resource://gre/modules/AppConstants.jsm");
-ChromeUtils.defineModuleGetter(this, "SessionStore",
-  "resource:///modules/sessionstore/SessionStore.jsm");
-ChromeUtils.defineModuleGetter(this, "HomePage",
-  "resource:///modules/HomePage.jsm");
-||||||| merged common ancestors
-const {Services} = ChromeUtils.import("resource://gre/modules/Services.jsm");
-ChromeUtils.defineModuleGetter(this, "AppConstants",
-  "resource://gre/modules/AppConstants.jsm");
-ChromeUtils.defineModuleGetter(this, "SessionStore",
-  "resource:///modules/sessionstore/SessionStore.jsm");
-=======
 const { Services } = ChromeUtils.import("resource://gre/modules/Services.jsm");
 ChromeUtils.defineModuleGetter(
   this,
@@ -30,7 +15,11 @@ ChromeUtils.defineModuleGetter(
   "SessionStore",
   "resource:///modules/sessionstore/SessionStore.jsm"
 );
->>>>>>> origin/upstream-releases
+ChromeUtils.defineModuleGetter(
+  this,
+  "HomePage",
+  "resource:///modules/HomePage.jsm"
+);
 
 var gStateObject;
 var gTreeData;
@@ -227,30 +216,19 @@ function restoreSession() {
 }
 
 function startNewSession() {
-<<<<<<< HEAD
   let addNTP = HomePage.canBeDisplayed();
-  if (addNTP)
+  if (addNTP) {
     getBrowserWindow().BrowserHome();
-  else
-||||||| merged common ancestors
-  if (Services.prefs.getIntPref("browser.startup.page") == 0)
-=======
-  if (Services.prefs.getIntPref("browser.startup.page") == 0) {
->>>>>>> origin/upstream-releases
-    getBrowserWindow().gBrowser.loadURI("about:blank", {
-      triggeringPrincipal: Services.scriptSecurityManager.createNullPrincipal(
-        {}
-      ),
-    });
-<<<<<<< HEAD
-||||||| merged common ancestors
-  else
-    getBrowserWindow().BrowserHome();
-=======
   } else {
-    getBrowserWindow().BrowserHome();
+    getBrowserWindow().gBrowser.loadURI(
+      "about:blank",
+      {
+        triggeringPrincipal:
+          Services.scriptSecurityManager.createNullPrincipal(
+            {}
+          ),
+      });
   }
->>>>>>> origin/upstream-releases
 }
 
 function onListClick(aEvent) {

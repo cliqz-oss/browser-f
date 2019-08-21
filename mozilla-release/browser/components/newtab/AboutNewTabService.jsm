@@ -6,16 +6,6 @@
 
 "use strict";
 
-<<<<<<< HEAD
-const {Services} = ChromeUtils.import("resource://gre/modules/Services.jsm");
-const {AppConstants} = ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
-const {E10SUtils} = ChromeUtils.import("resource://gre/modules/E10SUtils.jsm");
-const {CliqzResources} = ChromeUtils.import("resource:///modules/CliqzResources.jsm");
-||||||| merged common ancestors
-const {Services} = ChromeUtils.import("resource://gre/modules/Services.jsm");
-const {AppConstants} = ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
-const {E10SUtils} = ChromeUtils.import("resource://gre/modules/E10SUtils.jsm");
-=======
 const { Services } = ChromeUtils.import("resource://gre/modules/Services.jsm");
 const { AppConstants } = ChromeUtils.import(
   "resource://gre/modules/AppConstants.jsm"
@@ -23,23 +13,17 @@ const { AppConstants } = ChromeUtils.import(
 const { E10SUtils } = ChromeUtils.import(
   "resource://gre/modules/E10SUtils.jsm"
 );
->>>>>>> origin/upstream-releases
+const { CliqzResources } = ChromeUtils.import(
+  "resource:///modules/CliqzResources.jsm"
+);
 
-<<<<<<< HEAD
 #ifdef MOZ_ACTIVITY_STREAM
-ChromeUtils.defineModuleGetter(this, "AboutNewTab",
-                               "resource:///modules/AboutNewTab.jsm");
-#endif
-||||||| merged common ancestors
-ChromeUtils.defineModuleGetter(this, "AboutNewTab",
-                               "resource:///modules/AboutNewTab.jsm");
-=======
 ChromeUtils.defineModuleGetter(
   this,
   "AboutNewTab",
   "resource:///modules/AboutNewTab.jsm"
 );
->>>>>>> origin/upstream-releases
+#endif
 
 const LOCAL_NEWTAB_URL = CliqzResources.freshTab;
 const TOPIC_APP_QUIT = "quit-application-granted";
@@ -259,21 +243,11 @@ AboutNewTabService.prototype = {
    */
   get defaultURL() {
     // Generate the desired activity stream resource depending on state, e.g.,
-<<<<<<< HEAD
-    // resource://activity-stream/prerendered/ar/activity-stream.html
-    // resource://activity-stream/prerendered/en-US/activity-stream-prerendered.html
-    // resource://activity-stream/prerendered/static/activity-stream-debug.html
-    return LOCAL_NEWTAB_URL;  // Cliqz. Default URL is NewTab page. Always.
-#if 0
-||||||| merged common ancestors
-    // resource://activity-stream/prerendered/ar/activity-stream.html
-    // resource://activity-stream/prerendered/en-US/activity-stream-prerendered.html
-    // resource://activity-stream/prerendered/static/activity-stream-debug.html
-=======
     // "resource://activity-stream/prerendered/activity-stream.html"
     // "resource://activity-stream/prerendered/activity-stream-debug.html"
     // "resource://activity-stream/prerendered/activity-stream-noscripts.html"
->>>>>>> origin/upstream-releases
+    return LOCAL_NEWTAB_URL;  // Cliqz. Default URL is NewTab page. Always.
+#if 0
     return [
       "resource://activity-stream/prerendered/",
       "activity-stream",

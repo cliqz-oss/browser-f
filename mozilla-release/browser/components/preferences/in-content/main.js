@@ -7,43 +7,14 @@
 /* import-globals-from ../../../../toolkit/mozapps/preferences/fontbuilder.js */
 /* import-globals-from ../../../base/content/aboutDialog-appUpdater.js */
 
-<<<<<<< HEAD
-var {Services} = ChromeUtils.import("resource://gre/modules/Services.jsm");
-var {Downloads} = ChromeUtils.import("resource://gre/modules/Downloads.jsm");
-var {FileUtils} = ChromeUtils.import("resource://gre/modules/FileUtils.jsm");
-var {TransientPrefs} = ChromeUtils.import("resource:///modules/TransientPrefs.jsm");
-var {AddonManager} = ChromeUtils.import("resource://gre/modules/AddonManager.jsm");
-var {AppConstants} = ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
-var {L10nRegistry} = ChromeUtils.import("resource://gre/modules/L10nRegistry.jsm");
-var {Localization} = ChromeUtils.import("resource://gre/modules/Localization.jsm");
-var {HomePage} = ChromeUtils.import("resource:///modules/HomePage.jsm");
-ChromeUtils.defineModuleGetter(this, "CloudStorage",
-  "resource://gre/modules/CloudStorage.jsm");
-ChromeUtils.defineModuleGetter(this, "SelectionChangedMenulist",
-                               "resource:///modules/SelectionChangedMenulist.jsm");
-ChromeUtils.defineModuleGetter(this, "UpdateUtils",
-  "resource://gre/modules/UpdateUtils.jsm");
-||||||| merged common ancestors
-var {Services} = ChromeUtils.import("resource://gre/modules/Services.jsm");
-var {Downloads} = ChromeUtils.import("resource://gre/modules/Downloads.jsm");
-var {FileUtils} = ChromeUtils.import("resource://gre/modules/FileUtils.jsm");
-var {TransientPrefs} = ChromeUtils.import("resource:///modules/TransientPrefs.jsm");
-var {AppConstants} = ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
-var {L10nRegistry} = ChromeUtils.import("resource://gre/modules/L10nRegistry.jsm");
-var {Localization} = ChromeUtils.import("resource://gre/modules/Localization.jsm");
-var {HomePage} = ChromeUtils.import("resource:///modules/HomePage.jsm");
-ChromeUtils.defineModuleGetter(this, "CloudStorage",
-  "resource://gre/modules/CloudStorage.jsm");
-ChromeUtils.defineModuleGetter(this, "SelectionChangedMenulist",
-                               "resource:///modules/SelectionChangedMenulist.jsm");
-ChromeUtils.defineModuleGetter(this, "UpdateUtils",
-  "resource://gre/modules/UpdateUtils.jsm");
-=======
 var { Services } = ChromeUtils.import("resource://gre/modules/Services.jsm");
 var { Downloads } = ChromeUtils.import("resource://gre/modules/Downloads.jsm");
 var { FileUtils } = ChromeUtils.import("resource://gre/modules/FileUtils.jsm");
 var { TransientPrefs } = ChromeUtils.import(
   "resource:///modules/TransientPrefs.jsm"
+);
+var { AddonManager } = ChromeUtils.import(
+  "resource://gre/modules/AddonManager.jsm"
 );
 var { AppConstants } = ChromeUtils.import(
   "resource://gre/modules/AppConstants.jsm"
@@ -67,7 +38,6 @@ ChromeUtils.defineModuleGetter(
   "UpdateUtils",
   "resource://gre/modules/UpdateUtils.jsm"
 );
->>>>>>> origin/upstream-releases
 
 XPCOMUtils.defineLazyServiceGetters(this, {
   gHandlerService: [
@@ -175,14 +145,6 @@ Preferences.addAll([
 
 #if 0
   // CFR
-<<<<<<< HEAD
-  {id: "browser.newtabpage.activity-stream.asrouter.userprefs.cfr.addons", type: "bool"},
-  {id: "browser.newtabpage.activity-stream.asrouter.userprefs.cfr.features", type: "bool"},
-#endif
-||||||| merged common ancestors
-  {id: "browser.newtabpage.activity-stream.asrouter.userprefs.cfr.addons", type: "bool"},
-  {id: "browser.newtabpage.activity-stream.asrouter.userprefs.cfr.features", type: "bool"},
-=======
   {
     id: "browser.newtabpage.activity-stream.asrouter.userprefs.cfr.addons",
     type: "bool",
@@ -353,21 +315,9 @@ var gMainPane = {
    */
   init() {
     function setEventListener(aId, aEventType, aCallback) {
-<<<<<<< HEAD
-      try {
-        document.getElementById(aId)
-          .addEventListener(aEventType, aCallback.bind(gMainPane));
-      } catch (e) {
-        Cu.reportError("setEventListener for id '" + aId + "' failed:" + e);
-      }
-||||||| merged common ancestors
-      document.getElementById(aId)
-        .addEventListener(aEventType, aCallback.bind(gMainPane));
-=======
       document
         .getElementById(aId)
         .addEventListener(aEventType, aCallback.bind(gMainPane));
->>>>>>> origin/upstream-releases
     }
 
     if (AppConstants.HAVE_SHELL_SERVICE) {
@@ -445,16 +395,10 @@ var gMainPane = {
       gMainPane.initBrowserLocale();
     }
 
-<<<<<<< HEAD
 #if 0
-    let cfrLearnMoreUrl = Services.urlFormatter.formatURLPref("app.support.baseURL") + "extensionrecommendations";
-||||||| merged common ancestors
-    let cfrLearnMoreUrl = Services.urlFormatter.formatURLPref("app.support.baseURL") + "extensionrecommendations";
-=======
     let cfrLearnMoreUrl =
       Services.urlFormatter.formatURLPref("app.support.baseURL") +
       "extensionrecommendations";
->>>>>>> origin/upstream-releases
     for (const id of ["cfrLearnMore", "cfrFeaturesLearnMore"]) {
       let link = document.getElementById(id);
       link.setAttribute("href", cfrLearnMoreUrl);
@@ -482,33 +426,8 @@ var gMainPane = {
     }
 
     // Startup pref
-<<<<<<< HEAD
-    setEventListener("restoreSessionCheckbox", "command",
-      gMainPane.onBrowserRestoreSessionChange);
-    gMainPane.updateBrowserStartupUI = gMainPane.updateBrowserStartupUI.bind(gMainPane);
-    Preferences.get("browser.privatebrowsing.autostart").on("change",
-      gMainPane.updateBrowserStartupUI);
-#if 0
-    Preferences.get("browser.startup.page").on("change",
-      gMainPane.updateBrowserStartupUI);
-#endif
-
-    Preferences.get("browser.startup.homepage").on("change",
-      gMainPane.updateBrowserStartupUI);
-
-||||||| merged common ancestors
-    setEventListener("browserRestoreSession", "command",
-      gMainPane.onBrowserRestoreSessionChange);
-    gMainPane.updateBrowserStartupUI = gMainPane.updateBrowserStartupUI.bind(gMainPane);
-    Preferences.get("browser.privatebrowsing.autostart").on("change",
-      gMainPane.updateBrowserStartupUI);
-    Preferences.get("browser.startup.page").on("change",
-      gMainPane.updateBrowserStartupUI);
-    Preferences.get("browser.startup.homepage").on("change",
-      gMainPane.updateBrowserStartupUI);
-=======
     setEventListener(
-      "browserRestoreSession",
+      "restoreSessionCheckbox",
       "command",
       gMainPane.onBrowserRestoreSessionChange
     );
@@ -519,85 +438,19 @@ var gMainPane = {
       "change",
       gMainPane.updateBrowserStartupUI
     );
+#if 0
     Preferences.get("browser.startup.page").on(
       "change",
       gMainPane.updateBrowserStartupUI
     );
+#endif
     Preferences.get("browser.startup.homepage").on(
       "change",
       gMainPane.updateBrowserStartupUI
     );
->>>>>>> origin/upstream-releases
     gMainPane.updateBrowserStartupUI();
 
     if (AppConstants.HAVE_SHELL_SERVICE) {
-<<<<<<< HEAD
-      setEventListener("setDefaultButton", "command",
-        gMainPane.setDefaultBrowser);
-    }
-
-#if 0
-    setEventListener("useCurrent", "command",
-      gMainPane.setHomePageToCurrent);
-    setEventListener("useBookmark", "command",
-      gMainPane.setHomePageToBookmark);
-    setEventListener("restoreDefaultHomePage", "command",
-      gMainPane.restoreDefaultHomePage);
-    setEventListener("disableHomePageExtension", "command",
-                     makeDisableControllingExtension(PREF_SETTING_TYPE, HOMEPAGE_OVERRIDE_KEY));
-#endif
-    setEventListener("disableContainersExtension", "command",
-                     makeDisableControllingExtension(PREF_SETTING_TYPE, CONTAINERS_KEY));
-    // CLIQZ-SPECIAL: DB-2015, Remove option to choose language packs from AMO
-#if 0
-    setEventListener("chooseLanguage", "command",
-      gMainPane.showLanguages);
-#endif
-    setEventListener("translationAttributionImage", "click",
-      gMainPane.openTranslationProviderAttribution);
-    setEventListener("translateButton", "command",
-      gMainPane.showTranslationExceptions);
-    Preferences.get("font.language.group").on("change",
-      gMainPane._rebuildFonts.bind(gMainPane));
-    setEventListener("advancedFonts", "command",
-      gMainPane.configureFonts);
-    setEventListener("colors", "command",
-      gMainPane.configureColors);
-    Preferences.get("layers.acceleration.disabled").on("change",
-      gMainPane.updateHardwareAcceleration.bind(gMainPane));
-    setEventListener("connectionSettings", "command",
-      gMainPane.showConnections);
-    setEventListener("browserContainersCheckbox", "command",
-      gMainPane.checkBrowserContainers);
-    setEventListener("browserContainersSettings", "command",
-      gMainPane.showContainerSettings);
-||||||| merged common ancestors
-      setEventListener("setDefaultButton", "command",
-        gMainPane.setDefaultBrowser);
-    }
-    setEventListener("disableContainersExtension", "command",
-                     makeDisableControllingExtension(PREF_SETTING_TYPE, CONTAINERS_KEY));
-    setEventListener("chooseLanguage", "command",
-      gMainPane.showLanguages);
-    setEventListener("translationAttributionImage", "click",
-      gMainPane.openTranslationProviderAttribution);
-    setEventListener("translateButton", "command",
-      gMainPane.showTranslationExceptions);
-    Preferences.get("font.language.group").on("change",
-      gMainPane._rebuildFonts.bind(gMainPane));
-    setEventListener("advancedFonts", "command",
-      gMainPane.configureFonts);
-    setEventListener("colors", "command",
-      gMainPane.configureColors);
-    Preferences.get("layers.acceleration.disabled").on("change",
-      gMainPane.updateHardwareAcceleration.bind(gMainPane));
-    setEventListener("connectionSettings", "command",
-      gMainPane.showConnections);
-    setEventListener("browserContainersCheckbox", "command",
-      gMainPane.checkBrowserContainers);
-    setEventListener("browserContainersSettings", "command",
-      gMainPane.showContainerSettings);
-=======
       setEventListener(
         "setDefaultButton",
         "command",
@@ -609,7 +462,10 @@ var gMainPane = {
       "command",
       makeDisableControllingExtension(PREF_SETTING_TYPE, CONTAINERS_KEY)
     );
+    // CLIQZ-SPECIAL: DB-2015, Remove option to choose language packs from AMO
+#if 0
     setEventListener("chooseLanguage", "command", gMainPane.showLanguages);
+#endif
     setEventListener(
       "translationAttributionImage",
       "click",
@@ -645,7 +501,6 @@ var gMainPane = {
       "command",
       gMainPane.showContainerSettings
     );
->>>>>>> origin/upstream-releases
 
     // Initializes the fonts dropdowns displayed in this pane.
     this._rebuildFonts();
@@ -807,28 +662,14 @@ var gMainPane = {
         // If it isn't installed, don't show the preference at all.
         let installed;
         try {
-<<<<<<< HEAD
-          let wrk = Cc["@mozilla.org/windows-registry-key;1"]
-                    .createInstance(Ci.nsIWindowsRegKey);
-          wrk.open(wrk.ROOT_KEY_LOCAL_MACHINE,
-                   "SOFTWARE\\Cliqz\\MaintenanceService",
-                   wrk.ACCESS_READ | wrk.WOW64_64);
-||||||| merged common ancestors
-          let wrk = Cc["@mozilla.org/windows-registry-key;1"]
-                    .createInstance(Ci.nsIWindowsRegKey);
-          wrk.open(wrk.ROOT_KEY_LOCAL_MACHINE,
-                   "SOFTWARE\\Mozilla\\MaintenanceService",
-                   wrk.ACCESS_READ | wrk.WOW64_64);
-=======
           let wrk = Cc["@mozilla.org/windows-registry-key;1"].createInstance(
             Ci.nsIWindowsRegKey
           );
           wrk.open(
             wrk.ROOT_KEY_LOCAL_MACHINE,
-            "SOFTWARE\\Mozilla\\MaintenanceService",
+            "SOFTWARE\\Cliqz\\MaintenanceService",
             wrk.ACCESS_READ | wrk.WOW64_64
           );
->>>>>>> origin/upstream-releases
           installed = wrk.readIntValue("Installed");
           wrk.close();
         } catch (e) {}
@@ -1197,71 +1038,31 @@ var gMainPane = {
    * on the value of the browser.privatebrowsing.autostart pref.
    */
   updateBrowserStartupUI() {
-<<<<<<< HEAD
-    const pbAutoStartPref = Preferences.get("browser.privatebrowsing.autostart");
-    const restoreCheckbox = document.getElementById("restoreSessionCheckbox");
-    let warnOnQuitCheckbox = document.getElementById("browserRestoreSessionQuitWarning");
-    if (pbAutoStartPref.value) {
-      restoreCheckbox.setAttribute("disabled", "true");
-      restoreCheckbox.checked = false;
-||||||| merged common ancestors
-    const pbAutoStartPref = Preferences.get("browser.privatebrowsing.autostart");
-    const startupPref = Preferences.get("browser.startup.page");
-
-    let newValue;
-    let checkbox = document.getElementById("browserRestoreSession");
-    let warnOnQuitCheckbox = document.getElementById("browserRestoreSessionQuitWarning");
-    if (pbAutoStartPref.value || startupPref.locked) {
-      checkbox.setAttribute("disabled", "true");
-=======
     const pbAutoStartPref = Preferences.get(
       "browser.privatebrowsing.autostart"
     );
-    const startupPref = Preferences.get("browser.startup.page");
 
     let newValue;
-    let checkbox = document.getElementById("browserRestoreSession");
+    let checkbox = document.getElementById("restoreSessionCheckbox");
     let warnOnQuitCheckbox = document.getElementById(
       "browserRestoreSessionQuitWarning"
     );
-    if (pbAutoStartPref.value || startupPref.locked) {
+    if (pbAutoStartPref.value) {
       checkbox.setAttribute("disabled", "true");
->>>>>>> origin/upstream-releases
+      checkbox.checked = false;
       warnOnQuitCheckbox.setAttribute("disabled", "true");
     } else {
       restoreCheckbox.removeAttribute("disabled");
     }
-<<<<<<< HEAD
 
     const restoreSessionPref = Preferences.get("browser.startup.restoreTabs");
-    const newValue = pbAutoStartPref.value ? false : restoreSessionPref.value;
+    newValue = pbAutoStartPref.value
+      ? false
+      : restoreSessionPref.value;
     if (newValue) {
       warnOnQuitCheckbox.removeAttribute("disabled");
     } else {
       warnOnQuitCheckbox.setAttribute("disabled", "true");
-||||||| merged common ancestors
-    newValue = pbAutoStartPref.value ? false : startupPref.value === this.STARTUP_PREF_RESTORE_SESSION;
-    if (checkbox.checked !== newValue) {
-      checkbox.checked = newValue;
-      let warnOnQuitPref = Preferences.get("browser.sessionstore.warnOnQuit");
-      if (newValue && !warnOnQuitPref.locked && !pbAutoStartPref.value) {
-        warnOnQuitCheckbox.removeAttribute("disabled");
-      } else {
-        warnOnQuitCheckbox.setAttribute("disabled", "true");
-      }
-=======
-    newValue = pbAutoStartPref.value
-      ? false
-      : startupPref.value === this.STARTUP_PREF_RESTORE_SESSION;
-    if (checkbox.checked !== newValue) {
-      checkbox.checked = newValue;
-      let warnOnQuitPref = Preferences.get("browser.sessionstore.warnOnQuit");
-      if (newValue && !warnOnQuitPref.locked && !pbAutoStartPref.value) {
-        warnOnQuitCheckbox.removeAttribute("disabled");
-      } else {
-        warnOnQuitCheckbox.setAttribute("disabled", "true");
-      }
->>>>>>> origin/upstream-releases
     }
   },
 
@@ -1442,23 +1243,12 @@ var gMainPane = {
   },
 
   onBrowserRestoreSessionChange(event) {
-    // Cliqz. Some code was remove without ifdef (for simplicity)
+    // CLIQZ-SPECIAL:
+    // Some code was remove without ifdef (for simplicity)
     const value = event.target.checked;
-<<<<<<< HEAD
-    let warnOnQuitCheckbox = document.getElementById("browserRestoreSessionQuitWarning");
-||||||| merged common ancestors
-    const startupPref = Preferences.get("browser.startup.page");
-    let newValue;
-
-    let warnOnQuitCheckbox = document.getElementById("browserRestoreSessionQuitWarning");
-=======
-    const startupPref = Preferences.get("browser.startup.page");
-    let newValue;
-
     let warnOnQuitCheckbox = document.getElementById(
       "browserRestoreSessionQuitWarning"
     );
->>>>>>> origin/upstream-releases
     if (value) {
       let warnOnQuitPref = Preferences.get("browser.sessionstore.warnOnQuit");
       if (!warnOnQuitPref.locked) {

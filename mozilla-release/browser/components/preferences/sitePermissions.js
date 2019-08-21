@@ -4,16 +4,6 @@
 
 /* import-globals-from in-content/extensionControlled.js */
 
-<<<<<<< HEAD
-var {Services} = ChromeUtils.import("resource://gre/modules/Services.jsm");
-var {AppConstants} = ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
-const {SitePermissions} = ChromeUtils.import("resource:///modules/SitePermissions.jsm");
-const DependencyManager = ChromeUtils.import("resource://gre/modules/DependencyManager.jsm", {}).DependencyManager;
-||||||| merged common ancestors
-var {Services} = ChromeUtils.import("resource://gre/modules/Services.jsm");
-var {AppConstants} = ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
-const {SitePermissions} = ChromeUtils.import("resource:///modules/SitePermissions.jsm");
-=======
 var { Services } = ChromeUtils.import("resource://gre/modules/Services.jsm");
 var { AppConstants } = ChromeUtils.import(
   "resource://gre/modules/AppConstants.jsm"
@@ -21,7 +11,8 @@ var { AppConstants } = ChromeUtils.import(
 const { SitePermissions } = ChromeUtils.import(
   "resource:///modules/SitePermissions.jsm"
 );
->>>>>>> origin/upstream-releases
+const DependencyManager = ChromeUtils.import(
+  "resource://gre/modules/DependencyManager.jsm", {}).DependencyManager;
 
 const sitePermissionsL10n = {
   "desktop-notification": {

@@ -1787,15 +1787,12 @@ toolbarpaletteitem[place="menu-panel"] > .subviewbutton-nav::after {
 .subviewbutton.download:-moz-any([canShow],[canRetry]) > .action-button@buttonStateActive@ {
   background-color: var(--arrowpanel-dimmed-even-further);
 }
-<<<<<<< HEAD
 
 /* Hidden in Cliqz
    Search pannel in navbar */
 toolbarpaletteitem#wrapper-search-container {
   display: none!important;
 }
-||||||| merged common ancestors
-=======
 
 /* What's New panel */
 #customizationui-widget-multiview #PanelUI-whatsNew {
@@ -1818,4 +1815,3 @@ toolbarpaletteitem#wrapper-search-container {
 #customizationui-widget-multiview #PanelUI-whatsNew-title {
   display: flex;
 }
->>>>>>> origin/upstream-releases

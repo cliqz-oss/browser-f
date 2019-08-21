@@ -17,12 +17,7 @@ ChromeUtils.defineModuleGetter(
 );
 
 const kPrefName = "browser.startup.homepage";
-<<<<<<< HEAD
 const freshTabPrefName = "browser.startup.addFreshTab";
-||||||| merged common ancestors
-=======
-const kDefaultHomePage = "about:home";
->>>>>>> origin/upstream-releases
 
 function getHomepagePref(useDefault) {
   let homePage;

@@ -301,17 +301,11 @@ class _BookmarkPanelHub {
 
   sendUserEventTelemetry(event, win) {
     // Only send pings for non private browsing windows
-<<<<<<< HEAD
-    const aTab = win.ownerGlobal.gBrowser.getTabForBrowser(win.ownerGlobal.gBrowser.selectedBrowser);
-    if (!PrivateBrowsingUtils.isTabContextPrivate(aTab)) {
-      this._sendTelemetry({message_id: this._response.id, bucket_id: this._response.id, event});
-||||||| merged common ancestors
-    if (!PrivateBrowsingUtils.isBrowserPrivate(win.ownerGlobal.gBrowser.selectedBrowser)) {
-      this._sendTelemetry({message_id: this._response.id, bucket_id: this._response.id, event});
-=======
+    const aTab = win.ownerGlobal.gBrowser
+      .getTabForBrowser(win.ownerGlobal.gBrowser.selectedBrowser);
     if (
-      !PrivateBrowsingUtils.isBrowserPrivate(
-        win.ownerGlobal.gBrowser.selectedBrowser
+      !PrivateBrowsingUtils.isTabContextPrivate(
+        aTab
       )
     ) {
       this._sendTelemetry({
@@ -319,7 +313,6 @@ class _BookmarkPanelHub {
         bucket_id: this._response.id,
         event,
       });
->>>>>>> origin/upstream-releases
     }
   }
 

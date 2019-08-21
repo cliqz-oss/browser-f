@@ -66,32 +66,16 @@ let ShellServiceInternal = {
     }
 
     if (AppConstants.platform == "win") {
-<<<<<<< HEAD
-      let optOutValue = WindowsRegistry.readRegKey(Ci.nsIWindowsRegKey.ROOT_KEY_CURRENT_USER,
-                                                   "Software\\CLIQZ",
-                                                   "DefaultBrowserOptOut");
-      WindowsRegistry.removeRegKey(Ci.nsIWindowsRegKey.ROOT_KEY_CURRENT_USER,
-                                   "Software\\CLIQZ",
-                                   "DefaultBrowserOptOut");
-||||||| merged common ancestors
-      let optOutValue = WindowsRegistry.readRegKey(Ci.nsIWindowsRegKey.ROOT_KEY_CURRENT_USER,
-                                                   "Software\\Mozilla\\Firefox",
-                                                   "DefaultBrowserOptOut");
-      WindowsRegistry.removeRegKey(Ci.nsIWindowsRegKey.ROOT_KEY_CURRENT_USER,
-                                   "Software\\Mozilla\\Firefox",
-                                   "DefaultBrowserOptOut");
-=======
       let optOutValue = WindowsRegistry.readRegKey(
         Ci.nsIWindowsRegKey.ROOT_KEY_CURRENT_USER,
-        "Software\\Mozilla\\Firefox",
+        "Software\\CLIQZ",
         "DefaultBrowserOptOut"
       );
       WindowsRegistry.removeRegKey(
         Ci.nsIWindowsRegKey.ROOT_KEY_CURRENT_USER,
-        "Software\\Mozilla\\Firefox",
+        "Software\\CLIQZ",
         "DefaultBrowserOptOut"
       );
->>>>>>> origin/upstream-releases
       if (optOutValue == "True") {
         Services.prefs.setBoolPref("browser.shell.checkDefaultBrowser", false);
         return false;

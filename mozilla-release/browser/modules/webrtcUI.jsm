@@ -1079,19 +1079,12 @@ function prompt(aBrowser, aRequest) {
     },
   };
 
-<<<<<<< HEAD
-  // Don't offer "always remember" action in PB mode.
-  if (!PrivateBrowsingUtils.isTabContextPrivate(aBrowser.ownerGlobal.gBrowser.getTabForBrowser(aBrowser))) {
-||||||| merged common ancestors
-  // Don't offer "always remember" action in PB mode.
-  if (!PrivateBrowsingUtils.isBrowserPrivate(aBrowser)) {
-=======
   // Don't offer "always remember" action in PB mode or from third party
   if (
-    !PrivateBrowsingUtils.isBrowserPrivate(aBrowser) &&
+    !PrivateBrowsingUtils.isTabContextPrivate(
+      aBrowser.ownerGlobal.gBrowser.getTabForBrowser(aBrowser)) &&
     !aRequest.isThirdPartyOrigin
   ) {
->>>>>>> origin/upstream-releases
     // Disable the permanent 'Allow' action if the connection isn't secure, or for
     // screen/audio sharing (because we can't guess which window the user wants to
     // share without prompting).

@@ -5,30 +5,6 @@
 /* import-globals-from extensionControlled.js */
 /* import-globals-from preferences.js */
 
-<<<<<<< HEAD
-var {AppConstants} = ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
-
-ChromeUtils.defineModuleGetter(this, "DownloadUtils",
-  "resource://gre/modules/DownloadUtils.jsm");
-ChromeUtils.defineModuleGetter(this, "LoginHelper",
-  "resource://gre/modules/LoginHelper.jsm");
-ChromeUtils.defineModuleGetter(this, "SiteDataManager",
-  "resource:///modules/SiteDataManager.jsm");
-
-var {PrivateBrowsingUtils} = ChromeUtils.import("resource://gre/modules/PrivateBrowsingUtils.jsm");
-var {AddonManager} = ChromeUtils.import("resource://gre/modules/AddonManager.jsm");
-||||||| merged common ancestors
-var {AppConstants} = ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
-
-ChromeUtils.defineModuleGetter(this, "DownloadUtils",
-  "resource://gre/modules/DownloadUtils.jsm");
-ChromeUtils.defineModuleGetter(this, "LoginHelper",
-  "resource://gre/modules/LoginHelper.jsm");
-ChromeUtils.defineModuleGetter(this, "SiteDataManager",
-  "resource:///modules/SiteDataManager.jsm");
-
-var {PrivateBrowsingUtils} = ChromeUtils.import("resource://gre/modules/PrivateBrowsingUtils.jsm");
-=======
 var { AppConstants } = ChromeUtils.import(
   "resource://gre/modules/AppConstants.jsm"
 );
@@ -52,7 +28,9 @@ ChromeUtils.defineModuleGetter(
 var { PrivateBrowsingUtils } = ChromeUtils.import(
   "resource://gre/modules/PrivateBrowsingUtils.jsm"
 );
->>>>>>> origin/upstream-releases
+var { AddonManager } = ChromeUtils.import(
+  "resource://gre/modules/AddonManager.jsm"
+);
 
 const PREF_UPLOAD_ENABLED = "datareporting.healthreport.uploadEnabled";
 
@@ -471,38 +449,6 @@ var gPrivacyPane = {
     );
 
     // Watch all of the prefs that the new Cookies & Site Data UI depends on
-<<<<<<< HEAD
-    Preferences.get("network.cookie.cookieBehavior").on("change",
-      gPrivacyPane.networkCookieBehaviorReadPrefs.bind(gPrivacyPane));
-    Preferences.get("network.cookie.lifetimePolicy").on("change",
-      gPrivacyPane.networkCookieBehaviorReadPrefs.bind(gPrivacyPane));
-#endif
-    Preferences.get("browser.privatebrowsing.autostart").on("change",
-      gPrivacyPane.networkCookieBehaviorReadPrefs.bind(gPrivacyPane));
-#if 0
-    setEventListener("trackingProtectionExceptions", "command",
-      gPrivacyPane.showTrackingProtectionExceptions);
-#endif
-    Preferences.get("privacy.sanitize.sanitizeOnShutdown").on("change",
-      gPrivacyPane._updateSanitizeSettingsButton.bind(gPrivacyPane));
-    Preferences.get("browser.privatebrowsing.autostart").on("change",
-      gPrivacyPane.updatePrivacyMicroControls.bind(gPrivacyPane));
-||||||| merged common ancestors
-    Preferences.get("network.cookie.cookieBehavior").on("change",
-      gPrivacyPane.networkCookieBehaviorReadPrefs.bind(gPrivacyPane));
-    Preferences.get("network.cookie.lifetimePolicy").on("change",
-      gPrivacyPane.networkCookieBehaviorReadPrefs.bind(gPrivacyPane));
-    Preferences.get("browser.privatebrowsing.autostart").on("change",
-      gPrivacyPane.networkCookieBehaviorReadPrefs.bind(gPrivacyPane));
-
-    setEventListener("trackingProtectionExceptions", "command",
-      gPrivacyPane.showTrackingProtectionExceptions);
-
-    Preferences.get("privacy.sanitize.sanitizeOnShutdown").on("change",
-      gPrivacyPane._updateSanitizeSettingsButton.bind(gPrivacyPane));
-    Preferences.get("browser.privatebrowsing.autostart").on("change",
-      gPrivacyPane.updatePrivacyMicroControls.bind(gPrivacyPane));
-=======
     Preferences.get("network.cookie.cookieBehavior").on(
       "change",
       gPrivacyPane.networkCookieBehaviorReadPrefs.bind(gPrivacyPane)
@@ -511,16 +457,19 @@ var gPrivacyPane = {
       "change",
       gPrivacyPane.networkCookieBehaviorReadPrefs.bind(gPrivacyPane)
     );
+#endif
     Preferences.get("browser.privatebrowsing.autostart").on(
       "change",
       gPrivacyPane.networkCookieBehaviorReadPrefs.bind(gPrivacyPane)
     );
 
+#if 0
     setEventListener(
       "trackingProtectionExceptions",
       "command",
       gPrivacyPane.showTrackingProtectionExceptions
     );
+#endif
 
     Preferences.get("privacy.sanitize.sanitizeOnShutdown").on(
       "change",
@@ -530,7 +479,6 @@ var gPrivacyPane = {
       "change",
       gPrivacyPane.updatePrivacyMicroControls.bind(gPrivacyPane)
     );
->>>>>>> origin/upstream-releases
     setEventListener("historyMode", "command", function() {
       gPrivacyPane.updateHistoryModePane();
       gPrivacyPane.updateHistoryModePrefs();
@@ -549,57 +497,6 @@ var gPrivacyPane = {
       }
       return false;
     });
-<<<<<<< HEAD
-    setEventListener("privateBrowsingAutoStart", "command",
-      gPrivacyPane.updateAutostart);
-    setEventListener("cookieExceptions", "command",
-      gPrivacyPane.showCookieExceptions);
-    setEventListener("clearDataSettings", "command",
-      gPrivacyPane.showClearPrivateDataSettings);
-    setEventListener("passwordExceptions", "command",
-      gPrivacyPane.showPasswordExceptions);
-    setEventListener("useMasterPassword", "command",
-      gPrivacyPane.updateMasterPasswordButton);
-    setEventListener("changeMasterPassword", "command",
-      gPrivacyPane.changeMasterPassword);
-    setEventListener("showPasswords", "command",
-      gPrivacyPane.showPasswords);
-    setEventListener("jumpToHistory", "click", function() {
-      const h = document.querySelector('.search-container')
-        .getBoundingClientRect().height;
-      document.querySelector('.main-content').scrollTop +=
-        document.querySelector('#historyGroup').getBoundingClientRect().top - h;
-    });
-#if 0
-    setEventListener("addonExceptions", "command",
-      gPrivacyPane.showAddonExceptions);
-#endif
-    setEventListener("viewCertificatesButton", "command",
-      gPrivacyPane.showCertificates);
-    setEventListener("viewSecurityDevicesButton", "command",
-      gPrivacyPane.showSecurityDevices);
-||||||| merged common ancestors
-    setEventListener("privateBrowsingAutoStart", "command",
-      gPrivacyPane.updateAutostart);
-    setEventListener("cookieExceptions", "command",
-      gPrivacyPane.showCookieExceptions);
-    setEventListener("clearDataSettings", "command",
-      gPrivacyPane.showClearPrivateDataSettings);
-    setEventListener("passwordExceptions", "command",
-      gPrivacyPane.showPasswordExceptions);
-    setEventListener("useMasterPassword", "command",
-      gPrivacyPane.updateMasterPasswordButton);
-    setEventListener("changeMasterPassword", "command",
-      gPrivacyPane.changeMasterPassword);
-    setEventListener("showPasswords", "command",
-      gPrivacyPane.showPasswords);
-    setEventListener("addonExceptions", "command",
-      gPrivacyPane.showAddonExceptions);
-    setEventListener("viewCertificatesButton", "command",
-      gPrivacyPane.showCertificates);
-    setEventListener("viewSecurityDevicesButton", "command",
-      gPrivacyPane.showSecurityDevices);
-=======
     setEventListener(
       "privateBrowsingAutoStart",
       "command",
@@ -631,11 +528,19 @@ var gPrivacyPane = {
       gPrivacyPane.changeMasterPassword
     );
     setEventListener("showPasswords", "command", gPrivacyPane.showPasswords);
+    setEventListener("jumpToHistory", "click", function() {
+      const h = document.querySelector('.search-container')
+        .getBoundingClientRect().height;
+      document.querySelector('.main-content').scrollTop +=
+        document.querySelector('#historyGroup').getBoundingClientRect().top - h;
+    });
+#if 0
     setEventListener(
       "addonExceptions",
       "command",
       gPrivacyPane.showAddonExceptions
     );
+#endif
     setEventListener(
       "viewCertificatesButton",
       "command",
@@ -646,7 +551,6 @@ var gPrivacyPane = {
       "command",
       gPrivacyPane.showSecurityDevices
     );
->>>>>>> origin/upstream-releases
 
     this._pane = document.getElementById("panePrivacy");
 
@@ -734,20 +638,12 @@ var gPrivacyPane = {
         this.initSubmitCrashes();
       }
       this.initSubmitHealthReport();
-<<<<<<< HEAD
-      setEventListener("submitHealthReportBox", "command",
-        gPrivacyPane.updateSubmitHealthReport);
-#if 0
-||||||| merged common ancestors
-      setEventListener("submitHealthReportBox", "command",
-        gPrivacyPane.updateSubmitHealthReport);
-=======
       setEventListener(
         "submitHealthReportBox",
         "command",
         gPrivacyPane.updateSubmitHealthReport
       );
->>>>>>> origin/upstream-releases
+#if 0
       this.initOptOutStudyCheckbox();
       this.initAddonRecommendationsCheckbox();
 #endif
@@ -819,28 +715,18 @@ var gPrivacyPane = {
     setEventListener("strictArrow", "command", this.toggleExpansion);
     setEventListener("customArrow", "command", this.toggleExpansion);
 
-<<<<<<< HEAD
-    Preferences.get("network.cookie.cookieBehavior").on("change",
-      gPrivacyPane.readBlockCookies.bind(gPrivacyPane));
-    Preferences.get("network.cookie.cookieBehavior").on("change",
-      gPrivacyPane.readBlockCookiesMenu.bind(gPrivacyPane));
-    Preferences.get("browser.contentblocking.category").on("change",
-      gPrivacyPane.highlightCBCategory);
-||||||| merged common ancestors
-    Preferences.get("network.cookie.cookieBehavior").on("change",
-      gPrivacyPane.readBlockCookies.bind(gPrivacyPane));
-    Preferences.get("browser.contentblocking.category").on("change",
-      gPrivacyPane.highlightCBCategory);
-=======
     Preferences.get("network.cookie.cookieBehavior").on(
       "change",
       gPrivacyPane.readBlockCookies.bind(gPrivacyPane)
+    );
+    Preferences.get("network.cookie.cookieBehavior").on(
+      "change",
+      gPrivacyPane.readBlockCookiesMenu.bind(gPrivacyPane)
     );
     Preferences.get("browser.contentblocking.category").on(
       "change",
       gPrivacyPane.highlightCBCategory
     );
->>>>>>> origin/upstream-releases
 
     // If any relevant content blocking pref changes, show a warning that the changes will
     // not be implemented until they refresh their tabs.
@@ -1103,18 +989,10 @@ var gPrivacyPane = {
     let enabledPref = Preferences.get("privacy.trackingprotection.enabled");
     let pbmPref = Preferences.get("privacy.trackingprotection.pbmode.enabled");
     let tpMenu = document.getElementById("trackingProtectionMenu");
-<<<<<<< HEAD
-    let tpCheckbox = document.getElementById("contentBlockingTrackingProtectionCheckbox");
-#if 0
-||||||| merged common ancestors
-    let tpCheckbox = document.getElementById("contentBlockingTrackingProtectionCheckbox");
-
-=======
     let tpCheckbox = document.getElementById(
       "contentBlockingTrackingProtectionCheckbox"
     );
-
->>>>>>> origin/upstream-releases
+#if 0
     this._updateTrackingProtectionUI();
 #endif
     // Global enable takes precedence over enabled in Private Browsing.
@@ -1136,47 +1014,7 @@ var gPrivacyPane = {
   networkCookieBehaviorReadPrefs() {
     let behavior = Preferences.get("network.cookie.cookieBehavior").value;
     let blockCookiesMenu = document.getElementById("blockCookiesMenu");
-<<<<<<< HEAD
     let blockCookiesCtrl = document.getElementById("blockCookies");
-||||||| merged common ancestors
-    let deleteOnCloseCheckbox = document.getElementById("deleteOnClose");
-    let deleteOnCloseNote = document.getElementById("deleteOnCloseNote");
-
-    let blockCookies = (behavior != Ci.nsICookieService.BEHAVIOR_ACCEPT);
-    let cookieBehaviorLocked = Services.prefs.prefIsLocked("network.cookie.cookieBehavior");
-    let blockCookiesControlsDisabled = !blockCookies || cookieBehaviorLocked;
-    blockCookiesMenu.disabled = blockCookiesControlsDisabled;
-
-    let completelyBlockCookies = (behavior == Ci.nsICookieService.BEHAVIOR_REJECT);
-    let privateBrowsing = Preferences.get("browser.privatebrowsing.autostart").value;
-    let cookieExpirationLocked = Services.prefs.prefIsLocked("network.cookie.lifetimePolicy");
-    deleteOnCloseCheckbox.disabled = privateBrowsing || completelyBlockCookies ||
-                                     cookieExpirationLocked;
-    deleteOnCloseNote.hidden = !privateBrowsing;
-
-=======
-    let deleteOnCloseCheckbox = document.getElementById("deleteOnClose");
-    let deleteOnCloseNote = document.getElementById("deleteOnCloseNote");
-
-    let blockCookies = behavior != Ci.nsICookieService.BEHAVIOR_ACCEPT;
-    let cookieBehaviorLocked = Services.prefs.prefIsLocked(
-      "network.cookie.cookieBehavior"
-    );
-    let blockCookiesControlsDisabled = !blockCookies || cookieBehaviorLocked;
-    blockCookiesMenu.disabled = blockCookiesControlsDisabled;
-
-    let completelyBlockCookies =
-      behavior == Ci.nsICookieService.BEHAVIOR_REJECT;
-    let privateBrowsing = Preferences.get("browser.privatebrowsing.autostart")
-      .value;
-    let cookieExpirationLocked = Services.prefs.prefIsLocked(
-      "network.cookie.lifetimePolicy"
-    );
-    deleteOnCloseCheckbox.disabled =
-      privateBrowsing || completelyBlockCookies || cookieExpirationLocked;
-    deleteOnCloseNote.hidden = !privateBrowsing;
-
->>>>>>> origin/upstream-releases
     switch (behavior) {
       case Ci.nsICookieService.BEHAVIOR_ACCEPT:
         blockCookiesCtrl.value = "allow";
@@ -2372,37 +2210,21 @@ var gPrivacyPane = {
   },
 
   initDataCollection() {
-<<<<<<< HEAD
 #if 0
-    this._setupLearnMoreLink("toolkit.datacollection.infoURL",
-      "dataCollectionPrivacyNotice");
-#endif
-||||||| merged common ancestors
-    this._setupLearnMoreLink("toolkit.datacollection.infoURL",
-      "dataCollectionPrivacyNotice");
-=======
     this._setupLearnMoreLink(
       "toolkit.datacollection.infoURL",
       "dataCollectionPrivacyNotice"
     );
->>>>>>> origin/upstream-releases
+#endif
   },
 
   initSubmitCrashes() {
-<<<<<<< HEAD
 #if 0
-    this._setupLearnMoreLink("toolkit.crashreporter.infoURL",
-      "crashReporterLearnMore");
-#endif
-||||||| merged common ancestors
-    this._setupLearnMoreLink("toolkit.crashreporter.infoURL",
-      "crashReporterLearnMore");
-=======
     this._setupLearnMoreLink(
       "toolkit.crashreporter.infoURL",
       "crashReporterLearnMore"
     );
->>>>>>> origin/upstream-releases
+#endif
   },
 
   /**
@@ -2424,20 +2246,13 @@ var gPrivacyPane = {
    * Initialize the health report service reference and checkbox.
    */
   initSubmitHealthReport() {
-<<<<<<< HEAD
 #if 0
-    this._setupLearnMoreLink("datareporting.healthreport.infoURL", "FHRLearnMore");
-#endif
-||||||| merged common ancestors
-    this._setupLearnMoreLink("datareporting.healthreport.infoURL", "FHRLearnMore");
-
-=======
     this._setupLearnMoreLink(
       "datareporting.healthreport.infoURL",
       "FHRLearnMore"
     );
+#endif
 
->>>>>>> origin/upstream-releases
     let checkbox = document.getElementById("submitHealthReportBox");
 
     // Telemetry is only sending data if MOZ_TELEMETRY_REPORTING is defined.
@@ -2464,12 +2279,7 @@ var gPrivacyPane = {
     Services.prefs.setBoolPref(PREF_UPLOAD_ENABLED, checkbox.checked);
   },
 
-<<<<<<< HEAD
 #if 0
-||||||| merged common ancestors
-
-=======
->>>>>>> origin/upstream-releases
   /**
    * Initialize the opt-out-study preference checkbox into about:preferences and
    * handles events coming from the UI for it.

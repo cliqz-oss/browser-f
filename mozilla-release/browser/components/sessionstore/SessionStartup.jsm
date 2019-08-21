@@ -33,31 +33,6 @@ var EXPORTED_SYMBOLS = ["SessionStartup"];
 
 /* :::::::: Constants and Helpers ::::::::::::::: */
 
-<<<<<<< HEAD
-const {Services} = ChromeUtils.import("resource://gre/modules/Services.jsm");
-
-ChromeUtils.defineModuleGetter(this, "SessionFile",
-  "resource:///modules/sessionstore/SessionFile.jsm");
-ChromeUtils.defineModuleGetter(this, "StartupPerformance",
-  "resource:///modules/sessionstore/StartupPerformance.jsm");
-ChromeUtils.defineModuleGetter(this, "CrashMonitor",
-  "resource://gre/modules/CrashMonitor.jsm");
-ChromeUtils.defineModuleGetter(this, "PrivateBrowsingUtils",
-  "resource://gre/modules/PrivateBrowsingUtils.jsm");
-ChromeUtils.defineModuleGetter(this, "HomePage",
-  "resource:///modules/HomePage.jsm");
-||||||| merged common ancestors
-const {Services} = ChromeUtils.import("resource://gre/modules/Services.jsm");
-
-ChromeUtils.defineModuleGetter(this, "SessionFile",
-  "resource:///modules/sessionstore/SessionFile.jsm");
-ChromeUtils.defineModuleGetter(this, "StartupPerformance",
-  "resource:///modules/sessionstore/StartupPerformance.jsm");
-ChromeUtils.defineModuleGetter(this, "CrashMonitor",
-  "resource://gre/modules/CrashMonitor.jsm");
-ChromeUtils.defineModuleGetter(this, "PrivateBrowsingUtils",
-  "resource://gre/modules/PrivateBrowsingUtils.jsm");
-=======
 const { Services } = ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 ChromeUtils.defineModuleGetter(
@@ -80,7 +55,11 @@ ChromeUtils.defineModuleGetter(
   "PrivateBrowsingUtils",
   "resource://gre/modules/PrivateBrowsingUtils.jsm"
 );
->>>>>>> origin/upstream-releases
+ChromeUtils.defineModuleGetter(
+  this,
+  "HomePage",
+  "resource:///modules/HomePage.jsm"
+);
 
 const STATE_RUNNING_STR = "running";
 
@@ -89,18 +68,7 @@ const TYPE_RECOVER_SESSION = 1;
 const TYPE_RESUME_SESSION = 2;
 const TYPE_DEFER_SESSION = 3;
 
-<<<<<<< HEAD
-function warning(aMsg, aException) {
-  let consoleMsg = Cc["@mozilla.org/scripterror;1"].createInstance(Ci.nsIScriptError);
-consoleMsg.init(aMsg, aException.fileName, null, aException.lineNumber, 0, Ci.nsIScriptError.warningFlag, "component javascript");
-||||||| merged common ancestors
-// 'browser.startup.page' preference value to resume the previous session.
-const BROWSER_STARTUP_RESUME_SESSION = 3;
-
-function warning(aMsg, aException) {
-  let consoleMsg = Cc["@mozilla.org/scripterror;1"].createInstance(Ci.nsIScriptError);
-consoleMsg.init(aMsg, aException.fileName, null, aException.lineNumber, 0, Ci.nsIScriptError.warningFlag, "component javascript");
-=======
+// CLIQZ-SPECIAL: not used in Cliqz
 // 'browser.startup.page' preference value to resume the previous session.
 const BROWSER_STARTUP_RESUME_SESSION = 3;
 
@@ -117,7 +85,6 @@ function warning(msg, exception) {
     Ci.nsIScriptError.warningFlag,
     "component javascript"
   );
->>>>>>> origin/upstream-releases
   Services.console.logMessage(consoleMsg);
 }
 
@@ -187,27 +154,11 @@ var SessionStartup = {
       );
     }
 
-<<<<<<< HEAD
     this._resumeSessionEnabled =
       Services.prefs.getBoolPref("browser.sessionstore.resume_session_once") ||
       Services.prefs.getBoolPref("browser.startup.restoreTabs");
 
-    SessionFile.read().then(
-      this._onSessionFileRead.bind(this),
-      console.error
-    );
-||||||| merged common ancestors
-    this._resumeSessionEnabled =
-      Services.prefs.getBoolPref("browser.sessionstore.resume_session_once") ||
-      Services.prefs.getIntPref("browser.startup.page") == BROWSER_STARTUP_RESUME_SESSION;
-
-    SessionFile.read().then(
-      this._onSessionFileRead.bind(this),
-      console.error
-    );
-=======
     SessionFile.read().then(this._onSessionFileRead.bind(this), console.error);
->>>>>>> origin/upstream-releases
   },
 
   // Wrap a string as a nsISupports.
@@ -385,15 +336,8 @@ var SessionStartup = {
             BROWSER_STARTUP_RESUME_SESSION);
     }
 
-<<<<<<< HEAD
-    return Services.prefs.getBoolPref("browser.sessionstore.resume_session_once") ||
-           Services.prefs.getBoolPref("browser.startup.restoreTabs");
-||||||| merged common ancestors
-    return Services.prefs.getBoolPref("browser.sessionstore.resume_session_once") ||
-           Services.prefs.getIntPref("browser.startup.page") == BROWSER_STARTUP_RESUME_SESSION;
-=======
-    return this._resumeSessionEnabled;
->>>>>>> origin/upstream-releases
+    return this._resumeSessionEnabled ||
+      Services.prefs.getBoolPref("browser.startup.restoreTabs");
   },
 
   /**
@@ -418,7 +362,7 @@ var SessionStartup = {
 
   // CLIQZ-SPECIAL
   // This method is called to determine whether to restore previously opened pages.
-  _willRestoreCliqz() {
+  willRestoreCliqz() {
     //     Either we'll show a recovery page
     return this._sessionType == this.RECOVER_SESSION ||
     //        Or just previously open tabs (without start pages)
@@ -452,24 +396,12 @@ var SessionStartup = {
       this.onceInitialized.then(() => {
         // If there are valid windows with not only pinned tabs, signal that we
         // will override the default homepage by restoring a session.
-<<<<<<< HEAD
-        resolve(this._willRestoreCliqz() &&
-                this._initialState &&
-                this._initialState.windows &&
-                this._initialState.windows.some(w => w.tabs.some(t => !t.pinned)));
-||||||| merged common ancestors
-        resolve(this._willRestore() &&
-                this._initialState &&
-                this._initialState.windows &&
-                this._initialState.windows.some(w => w.tabs.some(t => !t.pinned)));
-=======
         resolve(
-          this.willRestore() &&
+          this.willRestoreCliqz() &&
             this._initialState &&
             this._initialState.windows &&
             this._initialState.windows.some(w => w.tabs.some(t => !t.pinned))
         );
->>>>>>> origin/upstream-releases
       });
     });
   },

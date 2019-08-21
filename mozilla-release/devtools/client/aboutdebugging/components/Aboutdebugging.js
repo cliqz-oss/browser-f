@@ -15,32 +15,6 @@ const dom = require("devtools/client/shared/vendor/react-dom-factories");
 const Services = require("Services");
 
 const PanelMenu = createFactory(require("./PanelMenu"));
-<<<<<<< HEAD
-loader.lazyGetter(this, "AddonsPanel",
-  () => createFactory(require("./addons/Panel")));
-loader.lazyGetter(this, "TabsPanel",
-  () => createFactory(require("./tabs/Panel")));
-loader.lazyGetter(this, "WorkersPanel",
-  () => createFactory(require("./workers/Panel")));
-
-loader.lazyRequireGetter(this, "DebuggerClient",
-  "devtools/shared/client/debugger-client", true);
-loader.lazyRequireGetter(this, "Telemetry",
-  "devtools/client/shared/telemetry");
-||||||| merged common ancestors
-
-loader.lazyGetter(this, "AddonsPanel",
-  () => createFactory(require("./addons/Panel")));
-loader.lazyGetter(this, "TabsPanel",
-  () => createFactory(require("./tabs/Panel")));
-loader.lazyGetter(this, "WorkersPanel",
-  () => createFactory(require("./workers/Panel")));
-
-loader.lazyRequireGetter(this, "DebuggerClient",
-  "devtools/shared/client/debugger-client", true);
-loader.lazyRequireGetter(this, "Telemetry",
-  "devtools/client/shared/telemetry");
-=======
 
 loader.lazyGetter(this, "AddonsPanel", () =>
   createFactory(require("./addons/Panel"))
@@ -59,7 +33,6 @@ loader.lazyRequireGetter(
   true
 );
 loader.lazyRequireGetter(this, "Telemetry", "devtools/client/shared/telemetry");
->>>>>>> origin/upstream-releases
 
 const Strings = Services.strings.createBundle(
   "chrome://devtools/locale/aboutdebugging.properties"

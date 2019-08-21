@@ -51,22 +51,12 @@ var SessionMigrationInternal = {
         var tab = {};
         // Keep only titles, urls and triggeringPrincipals for history entries
         tab.entries = oldTab.entries.map(function(entry) {
-<<<<<<< HEAD
-          return { url: entry.url,
-                   triggeringPrincipal_base64: entry.triggeringPrincipal_base64,
-                   isCliqzPage: entry.isCliqzPage,
-                   title: entry.title };
-||||||| merged common ancestors
-          return { url: entry.url,
-                   triggeringPrincipal_base64: entry.triggeringPrincipal_base64,
-                   title: entry.title };
-=======
           return {
             url: entry.url,
             triggeringPrincipal_base64: entry.triggeringPrincipal_base64,
             title: entry.title,
+            isCliqzPage: entry.isCliqzPage,
           };
->>>>>>> origin/upstream-releases
         });
         tab.index = oldTab.index;
         tab.hidden = oldTab.hidden;
@@ -77,25 +67,13 @@ var SessionMigrationInternal = {
       win._closedTabs = [];
       return win;
     });
-<<<<<<< HEAD
     let url = aRestorePageURL;
-    let formdata = {id: {sessionData: state}, url};
-    let entry = { url, triggeringPrincipal_base64: E10SUtils.SERIALIZED_SYSTEMPRINCIPAL };
-    return { windows: [{ tabs: [{ entries: [ entry ], formdata}]}]};
-||||||| merged common ancestors
-    let url = "about:welcomeback";
-    let formdata = {id: {sessionData: state}, url};
-    let entry = { url, triggeringPrincipal_base64: E10SUtils.SERIALIZED_SYSTEMPRINCIPAL };
-    return { windows: [{ tabs: [{ entries: [ entry ], formdata}]}]};
-=======
-    let url = "about:welcomeback";
     let formdata = { id: { sessionData: state }, url };
     let entry = {
       url,
       triggeringPrincipal_base64: E10SUtils.SERIALIZED_SYSTEMPRINCIPAL,
     };
     return { windows: [{ tabs: [{ entries: [entry], formdata }] }] };
->>>>>>> origin/upstream-releases
   },
   /**
    * Asynchronously read session restore state (JSON) from a path
