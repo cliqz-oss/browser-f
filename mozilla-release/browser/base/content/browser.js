@@ -2210,10 +2210,12 @@ var gBrowserInit = {
 
 #if 0
     // Cliqz. DB-2056. The part of cliqz extension now.
-    if (AppConstants.MOZ_DATA_REPORTING)
+    if (AppConstants.MOZ_DATA_REPORTING) {
       gDataNotificationInfoBar.init();
-    if (!AppConstants.MOZILLA_RELEASE)
+    }
+    if (!AppConstants.MOZILLA_RELEASE) {
       DevelopmentHelpers.init();
+    }
 #endif
     gExtensionsNotifications.init();
 
@@ -7927,7 +7929,7 @@ var ToolbarContextMenu = {
     }
 
     reportExtension.hidden =
-      !addon || !gAddonAbuseReportEnabled || !gHtmlAboutAddonsEnabled;
+      !addon || !gAddonAbuseReportEnabled || isCliqzButton || !gHtmlAboutAddonsEnabled;
 
     if (addon) {
       removeExtension.disabled = !(
