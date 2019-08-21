@@ -5,7 +5,7 @@
 print-setup =
     .title = Seite einrichten
 custom-prompt-title = Benutzerdefiniert…
-custom-prompt-prompt = Geben Sie Ihren benutzerdefinierten Kopf-/Fußzeilentext an
+custom-prompt-prompt = Gib deinen benutzerdefinierten Kopf-/Fußzeilentext an
 basic-tab =
     .label = Format & Optionen
 advanced-tab =

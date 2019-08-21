@@ -53,19 +53,11 @@ connection-proxy-socks5 =
     .accesskey = v
 connection-proxy-noproxy = Kein Proxy für:
     .accesskey = n
-<<<<<<< HEAD
-
 connection-proxy-noproxy-desc = Beispiel: .cliqz.com, .net.de, 192.168.1.0/24
-
-||||||| merged common ancestors
-connection-proxy-noproxy-desc = Beispiel: .mozilla.org, .net.de, 192.168.1.0/24
-=======
-connection-proxy-noproxy-desc = Beispiel: .mozilla.org, .net.de, 192.168.1.0/24
 
 # Do not translate localhost, 127.0.0.1 and ::1.
 connection-proxy-noproxy-localhost-desc = Verbindungen mit localhost, 127.0.0.1 und ::1 werden nie über einen Proxy geleitet.
 
->>>>>>> origin/upstream-releases
 connection-proxy-autotype =
     .label = Automatische Proxy-Konfigurations-Adresse:
     .accesskey = u

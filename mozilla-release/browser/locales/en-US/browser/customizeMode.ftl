@@ -43,11 +43,7 @@ customize-mode-undo-cmd =
     .label = Undo
 customize-mode-lwthemes-my-themes =
     .value = My Themes
-<<<<<<< HEAD
 customize-mode-cliqz-blue-theme =
     .label = Blue Tab Bar
-||||||| merged common ancestors
-=======
 customize-mode-touchbar-cmd =
     .label = Customize Touch Bar…
->>>>>>> origin/upstream-releases

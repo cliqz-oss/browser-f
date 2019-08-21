@@ -43,11 +43,7 @@ customize-mode-undo-cmd =
     .label = Rückgängig
 customize-mode-lwthemes-my-themes =
     .value = Installiert
-<<<<<<< HEAD
 customize-mode-cliqz-blue-theme =
     .label = Blaue Tab-Leiste
-||||||| merged common ancestors
-=======
 customize-mode-touchbar-cmd =
     .label = Touch Bar anpassen…
->>>>>>> origin/upstream-releases

@@ -21,17 +21,17 @@ rights-intro-point-1 = { -brand-short-name } wird dir unter den Bedingungen der 
 rights-intro-point-4-unbranded = Jegliche Datenschutzerklärungen, die für dieses Produkt gelten, sollten hier gelistet werden:
 rights-intro-point-5-unbranded = Falls dieses Produkt Web-Dienste enthält, sollten gültige Service-Bedingungen für den Dienst oder die Dienste zum Bereich <a data-l10n-name="mozilla-website-services-link">Website-Dienste</a> verlinkt werden.
 rights-webservices-header = { -brand-full-name } web-basierte Informationsdienste
-rights-webservices = { -brand-full-name } verwendet web-basierte Informationsdienste ("Services"), um einige der Funktionen anbieten zu können, die Ihnen für den Gebrauch mit der Binaryversion von { -brand-short-name } unter den unten angegebenen Bedingungen zur Verfügung gestellt werden. Falls Sie die Dienste oder einen davon nicht verwenden möchten oder die Bedingungen für Sie nicht akzeptabel sind, können Sie die Funktion oder die Service(s) deaktivieren. Anleitungen dafür, wie Sie eine bestimmte Funktion oder einen Service deaktivieren können, finden Sie <a data-l10n-name="mozilla-disable-service-link">hier</a>. Andere Funktionen und Dienste können in den Anwendungseinstellungen deaktiviert werden.
-rights-safebrowsing = <strong>SafeBrowsing: </strong>Das Deaktivieren von SafeBrowsing wird nicht empfohlen, da Sie auf unsichere Seiten stoßen könnten.  Wenn Sie diese Funktion komplett deaktivieren möchten, führen Sie bitte folgende Schritte aus:
-rights-safebrowsing-term-1 = Öffnen Sie das Einstellungen-Fenster
-rights-safebrowsing-term-2 = Wählen Sie den Tab Sicherheit
-rights-safebrowsing-term-3 = Wählen Sie die Option "{ enableSafeBrowsing-label }" ab
+rights-webservices = { -brand-full-name } verwendet web-basierte Informationsdienste ("Services"), um einige der Funktionen anbieten zu können, die dir für den Gebrauch mit der Binaryversion von { -brand-short-name } unter den unten angegebenen Bedingungen zur Verfügung gestellt werden. Falls du die Dienste oder einen davon nicht verwenden möchtest oder die Bedingungen für dich nicht akzeptabel sind, kannst du die Funktion oder die Service(s) deaktivieren. Anleitungen dafür, wie du eine bestimmte Funktion oder einen Service deaktivieren kannst, findest du <a data-l10n-name="mozilla-disable-service-link">hier</a>. Andere Funktionen und Dienste können in den Anwendungseinstellungen deaktiviert werden.
+rights-safebrowsing = <strong>SafeBrowsing: </strong>Das Deaktivieren von SafeBrowsing wird nicht empfohlen, da du auf unsichere Seiten stoßen könntest.  Wenn du diese Funktion komplett deaktivieren möchtest, führe bitte folgende Schritte aus:
+rights-safebrowsing-term-1 = Öffne das Einstellungen-Fenster
+rights-safebrowsing-term-2 = Wähle den Tab Sicherheit
+rights-safebrowsing-term-3 = Wähle die Option "{ enableSafeBrowsing-label }" ab
 enableSafeBrowsing-label = Gefährliche und betrügerische Inhalte blockieren
 rights-safebrowsing-term-4 = SafeBrowsing ist nun deaktiviert
-rights-locationawarebrowsing = <strong>Standortbezogenes Browsing: </strong>ist immer eine Opt-in-Funktion.  Standortdaten werden niemals ohne Ihre Erlaubnis gesendet.  Wenn Sie diese Funktion komplett deaktivieren möchten, führen Sie bitte folgende Schritte aus:
-rights-locationawarebrowsing-term-1 = Rufen Sie in der Adressleiste<code>about:config</code>
-rights-locationawarebrowsing-term-2 = auf. Tippen Sie dann geo.enabled
-rights-locationawarebrowsing-term-3 = Führen Sie einen Doppelklick auf geo.enabled aus
+rights-locationawarebrowsing = <strong>Standortbezogenes Browsing: </strong>ist immer eine Opt-in-Funktion.  Standortdaten werden niemals ohne deine Erlaubnis gesendet.  Wenn du diese Funktion komplett deaktivieren möchtest, führe bitte folgende Schritte aus:
+rights-locationawarebrowsing-term-1 = Rufe in der Adressleiste<code>about:config</code>
+rights-locationawarebrowsing-term-2 = auf. Tippe dann geo.enabled
+rights-locationawarebrowsing-term-3 = Führe einen Doppelklick auf geo.enabled aus
 rights-locationawarebrowsing-term-4 = Standortbezogenes Browsing ist nun deaktiviert
 rights-webservices-unbranded = Ein Überblick über die verwendeten Website-Dienste und eine Anleitung, wie sie deaktiviert werden können, wenn das vorgesehen ist, sollte hier eingefügt werden.
 rights-webservices-term-unbranded = Jegliche Bedingungen für die Dienste, die dieses Produkt verwendet, sollten hier gelistet werden.
