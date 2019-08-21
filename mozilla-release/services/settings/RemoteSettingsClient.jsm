@@ -263,7 +263,6 @@ class RemoteSettingsClient extends EventEmitter {
    * @return {Promise}
    */
   async get(options = {}) {
-<<<<<<< HEAD
     try {
       const {
         filters = {},
@@ -278,9 +277,16 @@ class RemoteSettingsClient extends EventEmitter {
           // We'll try to avoid returning an empty list.
           if (await Utils.hasLocalDump(this.bucketName, this.collectionName)) {
             // Since there is a JSON dump, load it as default data.
-            await RemoteSettingsWorker.importJSONDump(this.bucketName, this.collectionName);
+            console.debug(`${this.identifier} Local DB is empty, load JSON dump`);
+            await RemoteSettingsWorker.importJSONDump(
+              this.bucketName,
+              this.collectionName
+            );
           } else {
             // There is no JSON dump, force a synchronization from the server.
+            console.debug(
+              `${this.identifier} Local DB is empty, pull data from server`
+            );
             await this.sync({ loadDump: false });
           }
           // Either from trusted dump, or already done during sync.
@@ -289,108 +295,35 @@ class RemoteSettingsClient extends EventEmitter {
           // Report but return an empty list since there will be no data anyway.
           Cu.reportError(e);
           return [];
-||||||| merged common ancestors
-    const {
-      filters = {},
-      order = "", // not sorted by default.
-      syncIfEmpty = true,
-    } = options;
-    let { verifySignature = false } = options;
-
-    if (syncIfEmpty && !(await Utils.hasLocalData(this))) {
-      try {
-        // .get() was called before we had the chance to synchronize the local database.
-        // We'll try to avoid returning an empty list.
-        if (await Utils.hasLocalDump(this.bucketName, this.collectionName)) {
-          // Since there is a JSON dump, load it as default data.
-          await RemoteSettingsWorker.importJSONDump(this.bucketName, this.collectionName);
-        } else {
-          // There is no JSON dump, force a synchronization from the server.
-          await this.sync({ loadDump: false });
-=======
-    const {
-      filters = {},
-      order = "", // not sorted by default.
-      syncIfEmpty = true,
-    } = options;
-    let { verifySignature = false } = options;
-
-    if (syncIfEmpty && !(await Utils.hasLocalData(this))) {
-      try {
-        // .get() was called before we had the chance to synchronize the local database.
-        // We'll try to avoid returning an empty list.
-        if (await Utils.hasLocalDump(this.bucketName, this.collectionName)) {
-          // Since there is a JSON dump, load it as default data.
-          console.debug(`${this.identifier} Local DB is empty, load JSON dump`);
-          await RemoteSettingsWorker.importJSONDump(
-            this.bucketName,
-            this.collectionName
-          );
-        } else {
-          // There is no JSON dump, force a synchronization from the server.
-          console.debug(
-            `${this.identifier} Local DB is empty, pull data from server`
-          );
-          await this.sync({ loadDump: false });
->>>>>>> origin/upstream-releases
         }
       }
 
-<<<<<<< HEAD
       // Read from the local DB.
       const kintoCollection = await this.openCollection();
       const { data } = await kintoCollection.list({ filters, order });
 
       // Verify signature of local data.
       if (verifySignature) {
-        const localRecords = data.map(r => kintoCollection.cleanLocalFields(r));
+        console.debug(`${this.identifier} verify signature of local data`);
+        const { data: allData } = await kintoCollection.list({ order: "" });
+        const localRecords = allData.map(r =>
+          kintoCollection.cleanLocalFields(r)
+        );
         const timestamp = await kintoCollection.db.getLastModified();
         const metadata = await kintoCollection.metadata();
-        await this._validateCollectionSignature([],
-                                                timestamp,
-                                                metadata,
-                                                { localRecords });
+        // CLIQZ-AFTER-MERGE:
+        // need to check whether we really need this if-clause in Cliqz
+        if (syncIfEmpty && ObjectUtils.isEmpty(metadata)) {
+          // No sync occured yet, may have records from dump but no metadata.
+          console.debug(
+            `Required metadata for ${this.identifier}, fetching from server.`
+          );
+          metadata = await kintoCollection.pullMetadata(this.httpClient());
+        }
+        await this._validateCollectionSignature([], timestamp, metadata, {
+          localRecords,
+        });
       }
-||||||| merged common ancestors
-    // Read from the local DB.
-    const kintoCollection = await this.openCollection();
-    const { data } = await kintoCollection.list({ filters, order });
-
-    // Verify signature of local data.
-    if (verifySignature) {
-      const localRecords = data.map(r => kintoCollection.cleanLocalFields(r));
-      const timestamp = await kintoCollection.db.getLastModified();
-      const metadata = await kintoCollection.metadata();
-      await this._validateCollectionSignature([],
-                                              timestamp,
-                                              metadata,
-                                              { localRecords });
-    }
-=======
-    // Read from the local DB.
-    const kintoCollection = await this.openCollection();
-    const { data } = await kintoCollection.list({ filters, order });
-
-    if (verifySignature) {
-      console.debug(`${this.identifier} verify signature of local data`);
-      const { data: allData } = await kintoCollection.list({ order: "" });
-      const localRecords = allData.map(r =>
-        kintoCollection.cleanLocalFields(r)
-      );
-      const timestamp = await kintoCollection.db.getLastModified();
-      let metadata = await kintoCollection.metadata();
-      if (syncIfEmpty && ObjectUtils.isEmpty(metadata)) {
-        // No sync occured yet, may have records from dump but no metadata.
-        console.debug(
-          `Required metadata for ${this.identifier}, fetching from server.`
-        );
-        metadata = await kintoCollection.pullMetadata(this.httpClient());
-      }
-      await this._validateCollectionSignature([], timestamp, metadata, {
-        localRecords,
-      });
-    }
->>>>>>> origin/upstream-releases
 
       // Filter the records based on `this.filterFunc` results.
       return this._filterEntries(data);

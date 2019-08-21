@@ -86,17 +86,13 @@ static const RedirEntry kRedirMap[] = {
          nsIAboutModule::MAKE_LINKABLE},
     {"memory", "chrome://global/content/aboutMemory.xhtml",
      nsIAboutModule::ALLOW_SCRIPT},
-<<<<<<< HEAD
 #if 0
 # Disabled in Cliqz
-||||||| merged common ancestors
-=======
     {"certificate", "chrome://global/content/certviewer/certviewer.html",
      nsIAboutModule::ALLOW_SCRIPT |
          nsIAboutModule::URI_SAFE_FOR_UNTRUSTED_CONTENT |
          nsIAboutModule::URI_MUST_LOAD_IN_CHILD |
          nsIAboutModule::URI_CAN_LOAD_IN_PRIVILEGEDABOUT_PROCESS},
->>>>>>> origin/upstream-releases
     {"mozilla", "chrome://global/content/mozilla.xhtml",
      nsIAboutModule::URI_SAFE_FOR_UNTRUSTED_CONTENT},
 #endif

@@ -161,15 +161,9 @@ class BrowserChild final : public nsMessageManagerScriptExecutor,
                            public nsIWebProgressListener2,
                            public TabContext,
                            public nsITooltipListener,
-<<<<<<< HEAD
                            public mozilla::ipc::IShmemAllocator,
                            public nsIPrivacyTransitionObserver {
-||||||| merged common ancestors
-                           public mozilla::ipc::IShmemAllocator {
-=======
-                           public mozilla::ipc::IShmemAllocator {
   typedef mozilla::widget::PuppetWidget PuppetWidget;
->>>>>>> origin/upstream-releases
   typedef mozilla::dom::ClonedMessageData ClonedMessageData;
   typedef mozilla::dom::CoalescedMouseData CoalescedMouseData;
   typedef mozilla::dom::CoalescedWheelData CoalescedWheelData;

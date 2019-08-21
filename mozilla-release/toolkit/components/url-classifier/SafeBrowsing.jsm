@@ -110,23 +110,13 @@ const FEATURES = [
       );
     },
   },
-<<<<<<< HEAD
 #if 0
-  { name: "trackingAnnotation",
-    list: ["urlclassifier.trackingAnnotationTable",
-           "urlclassifier.trackingAnnotationWhitelistTable"],
-||||||| merged common ancestors
-  { name: "trackingAnnotation",
-    list: ["urlclassifier.trackingAnnotationTable",
-           "urlclassifier.trackingAnnotationWhitelistTable"],
-=======
   {
     name: "trackingAnnotation",
     list: [
       "urlclassifier.trackingAnnotationTable",
       "urlclassifier.trackingAnnotationWhitelistTable",
     ],
->>>>>>> origin/upstream-releases
     enabled() {
       return Services.prefs.getBoolPref(
         "privacy.trackingprotection.annotate_channels"
@@ -158,24 +148,7 @@ const FEATURES = [
       );
     },
   },
-<<<<<<< HEAD
 #endif
-  { name: "flashBlock",
-    list: ["urlclassifier.flashAllowTable",
-           "urlclassifier.flashAllowExceptTable",
-           "urlclassifier.flashTable",
-           "urlclassifier.flashExceptTable",
-           "urlclassifier.flashSubDocTable",
-           "urlclassifier.flashSubDocExceptTable"],
-||||||| merged common ancestors
-  { name: "flashBlock",
-    list: ["urlclassifier.flashAllowTable",
-           "urlclassifier.flashAllowExceptTable",
-           "urlclassifier.flashTable",
-           "urlclassifier.flashExceptTable",
-           "urlclassifier.flashSubDocTable",
-           "urlclassifier.flashSubDocExceptTable"],
-=======
   {
     name: "flashBlock",
     list: [
@@ -186,7 +159,6 @@ const FEATURES = [
       "urlclassifier.flashSubDocTable",
       "urlclassifier.flashSubDocExceptTable",
     ],
->>>>>>> origin/upstream-releases
     enabled() {
       return Services.prefs.getBoolPref("plugins.flashBlock.enabled");
     },
@@ -382,20 +354,14 @@ var SafeBrowsing = {
         break;
 
       case "MalwareMistake":
-<<<<<<< HEAD
-        pref = "browser.safebrowsing.provider." + info.provider + ".report" + kind + "URL";
-        Services.telemetry.getHistogramById("REPORT_DECEPTIVE_SITE").add(2);
-        reportPhishingURL(info.uri, 'user-report-malware-mistake');
-||||||| merged common ancestors
-        pref = "browser.safebrowsing.provider." + info.provider + ".report" + kind + "URL";
-=======
         pref =
           "browser.safebrowsing.provider." +
           info.provider +
           ".report" +
           kind +
           "URL";
->>>>>>> origin/upstream-releases
+        Services.telemetry.getHistogramById("REPORT_DECEPTIVE_SITE").add(2);
+        reportPhishingURL(info.uri, 'user-report-malware-mistake');
         break;
 
       default:

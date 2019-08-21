@@ -121,64 +121,6 @@ const PENDING_INSTALL_METADATA = [
 ];
 
 // Properties to save in JSON file
-<<<<<<< HEAD
-const PROP_JSON_FIELDS = ["id", "syncGUID", "version", "type",
-                          "loader", "updateURL", "optionsURL",
-                          "optionsType", "optionsBrowserStyle", "aboutURL",
-                          "defaultLocale", "visible", "active", "userDisabled",
-                          "appDisabled", "pendingUninstall", "installDate",
-                          "updateDate", "applyBackgroundUpdates", "path",
-                          "skinnable", "sourceURI", "releaseNotesURI",
-                          "softDisabled", "foreignInstall",
-                          "strictCompatibility", "locales", "targetApplications",
-                          "targetPlatforms", "signedState",
-                          "seen", "dependencies", "incognito",
-                          "userPermissions", "icons", "iconURL",
-                          "blocklistState", "blocklistURL", "startupData",
-                          "previewImage", "hidden", "installTelemetryInfo",
-                          "recommendationState", "rootURI"];
-
-const LEGACY_TYPES = new Set([
-  "extension",
-]);
-
-const SIGNED_TYPES = new Set([
-  "extension",
-  "experiment",
-  "multipackage",
-  "webextension",
-  "webextension-langpack",
-  "webextension-theme",
-  "locale",
-  "theme",
-]);
-||||||| merged common ancestors
-const PROP_JSON_FIELDS = ["id", "syncGUID", "version", "type",
-                          "loader", "updateURL", "optionsURL",
-                          "optionsType", "optionsBrowserStyle", "aboutURL",
-                          "defaultLocale", "visible", "active", "userDisabled",
-                          "appDisabled", "pendingUninstall", "installDate",
-                          "updateDate", "applyBackgroundUpdates", "path",
-                          "skinnable", "sourceURI", "releaseNotesURI",
-                          "softDisabled", "foreignInstall",
-                          "strictCompatibility", "locales", "targetApplications",
-                          "targetPlatforms", "signedState",
-                          "seen", "dependencies", "incognito",
-                          "userPermissions", "icons", "iconURL",
-                          "blocklistState", "blocklistURL", "startupData",
-                          "previewImage", "hidden", "installTelemetryInfo",
-                          "recommendationState", "rootURI"];
-
-const LEGACY_TYPES = new Set([
-  "extension",
-]);
-
-const SIGNED_TYPES = new Set([
-  "extension",
-  "locale",
-  "theme",
-]);
-=======
 const PROP_JSON_FIELDS = [
   "id",
   "syncGUID",
@@ -228,8 +170,13 @@ const PROP_JSON_FIELDS = [
 
 const LEGACY_TYPES = new Set(["extension"]);
 
-const SIGNED_TYPES = new Set(["extension", "locale", "theme"]);
->>>>>>> origin/upstream-releases
+const SIGNED_TYPES = new Set([
+  "extension",
+  "experiment",
+  "multipackage",
+  "locale",
+  "theme",
+]);
 
 // Time to wait before async save of XPI JSON database, in milliseconds
 const ASYNC_SAVE_DELAY_MS = 20;

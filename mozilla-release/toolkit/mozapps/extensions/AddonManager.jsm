@@ -2330,19 +2330,9 @@ var AddonManagerInternal = {
           aInstall
         );
         return;
-<<<<<<< HEAD
       // CLIQZ-SPECIAL: Mark AMO as safe site
-      } else if (!this.isAMOOrigin(aInstallingPrincipal) &&
-                 (aInstallingPrincipal.isNullPrincipal ||
-                  !aBrowser.contentPrincipal ||
-                  !aInstallingPrincipal.subsumes(aBrowser.contentPrincipal) ||
-                  !this.isInstallAllowedByPolicy(aInstallingPrincipal, aInstall, false /* explicit */))) {
-||||||| merged common ancestors
-      } else if (aInstallingPrincipal.isNullPrincipal || !aBrowser.contentPrincipal ||
-                 !aInstallingPrincipal.subsumes(aBrowser.contentPrincipal) ||
-                 !this.isInstallAllowedByPolicy(aInstallingPrincipal, aInstall, false /* explicit */)) {
-=======
       } else if (
+        !this.isAMOOrigin(aInstallingPrincipal) &&
         aInstallingPrincipal.isNullPrincipal ||
         !aBrowser.contentPrincipal ||
         !aInstallingPrincipal.subsumes(aBrowser.contentPrincipal) ||
@@ -2352,7 +2342,6 @@ var AddonManagerInternal = {
           false /* explicit */
         )
       ) {
->>>>>>> origin/upstream-releases
         aInstall.cancel();
 
         this.installNotifyObservers(
@@ -2385,23 +2374,16 @@ var AddonManagerInternal = {
         );
       };
 
-<<<<<<< HEAD
       // CLIQZ-SPECIAL: Mark AMO as safe site
-      let installAllowed = this.isAMOOrigin(aInstallingPrincipal) || this.isInstallAllowed(aMimetype, aInstallingPrincipal);
-      let installPerm = Services.perms.testPermissionFromPrincipal(aInstallingPrincipal, "install");
-||||||| merged common ancestors
-      let installAllowed = this.isInstallAllowed(aMimetype, aInstallingPrincipal);
-      let installPerm = Services.perms.testPermissionFromPrincipal(aInstallingPrincipal, "install");
-=======
-      let installAllowed = this.isInstallAllowed(
-        aMimetype,
-        aInstallingPrincipal
-      );
+      let installAllowed = this.isAMOOrigin(aInstallingPrincipal) ||
+        this.isInstallAllowed(
+          aMimetype,
+          aInstallingPrincipal
+        );
       let installPerm = Services.perms.testPermissionFromPrincipal(
         aInstallingPrincipal,
         "install"
       );
->>>>>>> origin/upstream-releases
 
       if (installAllowed) {
         startInstall("AMO");

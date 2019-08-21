@@ -26,16 +26,10 @@ var EXPORTED_SYMBOLS = ["WindowsGPOParser"];
 
 var WindowsGPOParser = {
   readPolicies(wrk, policies) {
-<<<<<<< HEAD
-    let childWrk = wrk.openChild("Cliqz", wrk.ACCESS_READ);
-||||||| merged common ancestors
-    let childWrk = wrk.openChild("Mozilla\\" + Services.appinfo.name, wrk.ACCESS_READ);
-=======
     let childWrk = wrk.openChild(
-      "Mozilla\\" + Services.appinfo.name,
+      "Cliqz",
       wrk.ACCESS_READ
     );
->>>>>>> origin/upstream-releases
     if (!policies) {
       policies = {};
     }

@@ -79,22 +79,10 @@ def repackage_msi(topsrcdir, wsx, version, locale, arch, setupexe, candle, light
         try:
             wsx_file = os.path.split(wsx)[1]
             shutil.copy(wsx, tmpdir)
-<<<<<<< HEAD
             temp_wsx_file  = os.path.join(tmpdir, wsx_file)
             temp_wsx_file  = mozpath.realpath(temp_wsx_file)
             pre_values = {'Vendor': 'Cliqz GmbH',
                           'BrandFullName': 'Cliqz',
-||||||| merged common ancestors
-            temp_wsx_file  = os.path.join(tmpdir, wsx_file)
-            temp_wsx_file  = mozpath.realpath(temp_wsx_file)
-            pre_values = {'Vendor': 'Mozilla',
-                          'BrandFullName': 'Mozilla Firefox',
-=======
-            temp_wsx_file = os.path.join(tmpdir, wsx_file)
-            temp_wsx_file = mozpath.realpath(temp_wsx_file)
-            pre_values = {'Vendor': 'Mozilla',
-                          'BrandFullName': 'Mozilla Firefox',
->>>>>>> origin/upstream-releases
                           'Version': version,
                           'AB_CD':  locale,
                           'Architecture': _MSI_ARCH[arch],

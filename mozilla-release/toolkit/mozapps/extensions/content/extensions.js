@@ -2026,7 +2026,6 @@ async function getAddonsAndInstalls(aType, aCallback) {
 
   let aAddonsList = await AddonManager.getAddonsByTypes(types);
   addons = aAddonsList.filter(a => !a.hidden);
-<<<<<<< HEAD
 
   if (Services.prefs.getPrefType("extensions.cliqz.listed")
     && !Services.prefs.getBoolPref("extensions.cliqz.listed")) {
@@ -2034,11 +2033,6 @@ async function getAddonsAndInstalls(aType, aCallback) {
   }
 
   if (installs != null)
-||||||| merged common ancestors
-  if (installs != null)
-=======
-  if (installs != null) {
->>>>>>> origin/upstream-releases
     aCallback(addons, installs);
   }
 
@@ -2085,15 +2079,10 @@ var gCategories = {
         'legacy'
         ]);
     var types = AddonManager.addonTypes;
-<<<<<<< HEAD
     for (var type in types) {
-      if (disabledCategories.has(type))
+      if (disabledCategories.has(type)) {
         continue;
-||||||| merged common ancestors
-    for (var type in types)
-=======
-    for (var type in types) {
->>>>>>> origin/upstream-releases
+      }
       this.onTypeAdded(types[type]);
     }
 
@@ -2820,35 +2809,17 @@ var gLegacyView = {
       }
     }
 
-<<<<<<< HEAD
     if (this._categoryItem) {
       if (haveLegacy || haveUnsigned) {
         this._categoryItem.disabled = false;
-        let name = gStrings.ext.GetStringFromName(`type.${haveUnsigned ? "unsupported" : "legacy"}.name`);
+        let name = gStrings.ext.GetStringFromName(
+          `type.${haveUnsigned ? "unsupported" : "legacy"}.name`
+        );
         this._categoryItem.setAttribute("name", name);
         this._categoryItem.tooltiptext = name;
       } else {
         this._categoryItem.disabled = true;
       }
-||||||| merged common ancestors
-    if (haveLegacy || haveUnsigned) {
-      this._categoryItem.disabled = false;
-      let name = gStrings.ext.GetStringFromName(`type.${haveUnsigned ? "unsupported" : "legacy"}.name`);
-      this._categoryItem.setAttribute("name", name);
-      this._categoryItem.tooltiptext = name;
-    } else {
-      this._categoryItem.disabled = true;
-=======
-    if (haveLegacy || haveUnsigned) {
-      this._categoryItem.disabled = false;
-      let name = gStrings.ext.GetStringFromName(
-        `type.${haveUnsigned ? "unsupported" : "legacy"}.name`
-      );
-      this._categoryItem.setAttribute("name", name);
-      this._categoryItem.tooltiptext = name;
-    } else {
-      this._categoryItem.disabled = true;
->>>>>>> origin/upstream-releases
     }
   },
 

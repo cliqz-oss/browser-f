@@ -535,25 +535,14 @@ function internalSave(
 
     let isPrivate = aIsContentWindowPrivate;
     if (isPrivate === undefined) {
-<<<<<<< HEAD
-      isPrivate = aInitiatingDocument.nodeType == 9 /* DOCUMENT_NODE */
-        ? PrivateBrowsingUtils.isContentWindowPrivate(
-              aInitiatingDocument.defaultView) ||
-              // TODO: This needs testing.
-              aInitiatingDocument.docShell.usePrivateBrowsing
-        : aInitiatingDocument.isPrivate;
-||||||| merged common ancestors
-      isPrivate = aInitiatingDocument.nodeType == 9 /* DOCUMENT_NODE */
-        ? PrivateBrowsingUtils.isContentWindowPrivate(aInitiatingDocument.defaultView)
-        : aInitiatingDocument.isPrivate;
-=======
       isPrivate =
         aInitiatingDocument.nodeType == 9 /* DOCUMENT_NODE */
           ? PrivateBrowsingUtils.isContentWindowPrivate(
-              aInitiatingDocument.defaultView
+              aInitiatingDocument.defaultView ||
+              // TODO: This needs testing.
+              aInitiatingDocument.docShell.usePrivateBrowsing
             )
           : aInitiatingDocument.isPrivate;
->>>>>>> origin/upstream-releases
     }
 
     // We have to cover the cases here where we were either passed an explicit

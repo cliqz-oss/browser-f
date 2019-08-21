@@ -6823,22 +6823,13 @@ VARCACHE_PREF(
   plugins_flashBlock_enabled,
   bool, false
 )
-
+// CLIQZ-AFTER-MERGE:
+// needs to check whether it has to be true;
 VARCACHE_PREF(
-<<<<<<< HEAD
-  "browser.contentblocking.allowlist.annotations.enabled",
-   browser_contentblocking_allowlist_annotations_enabled,
-  bool, false
-||||||| merged common ancestors
-  "browser.contentblocking.allowlist.annotations.enabled",
-   browser_contentblocking_allowlist_annotations_enabled,
-  bool, true
-=======
   Live,
   "plugins.http_https_only",
   plugins_http_https_only,
   bool, true
->>>>>>> origin/upstream-releases
 )
 
 //---------------------------------------------------------------------------

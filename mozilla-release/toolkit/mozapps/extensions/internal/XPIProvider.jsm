@@ -2413,19 +2413,11 @@ var XPIProvider = {
       // Since we use only 2 themes: dark and light.
 #if 0
       this.maybeInstallBuiltinAddon(
-<<<<<<< HEAD
-          "default-theme@mozilla.org", "1.0",
-          "resource://gre/modules/themes/default/");
-#endif
-||||||| merged common ancestors
-          "default-theme@mozilla.org", "1.0",
-          "resource://gre/modules/themes/default/");
-=======
         "default-theme@mozilla.org",
         "1.0",
         "resource://gre/modules/themes/default/"
       );
->>>>>>> origin/upstream-releases
+#endif
 
       resolveProviderReady(Promise.all(this.startupPromises));
 
@@ -2611,16 +2603,6 @@ var XPIProvider = {
 
       AddonManagerPrivate.recordTimestamp("XPI_startup_end");
 
-<<<<<<< HEAD
-      timerManager.registerTimer("xpi-signature-verification", () => {
-        XPIDatabase.verifySignatures();
-      }, XPI_SIGNATURE_CHECK_PERIOD);
-
-||||||| merged common ancestors
-      timerManager.registerTimer("xpi-signature-verification", () => {
-        XPIDatabase.verifySignatures();
-      }, XPI_SIGNATURE_CHECK_PERIOD);
-=======
       timerManager.registerTimer(
         "xpi-signature-verification",
         () => {
@@ -2628,7 +2610,6 @@ var XPIProvider = {
         },
         XPI_SIGNATURE_CHECK_PERIOD
       );
->>>>>>> origin/upstream-releases
     } catch (e) {
       logger.error("startup failed", e);
       AddonManagerPrivate.recordException("XPI", "startup failed", e);

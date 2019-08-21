@@ -1375,7 +1375,6 @@ var removeByFilter = async function(db, filter, onResult = null) {
   let pages = [];
   let hasPagesToRemove = false;
 
-<<<<<<< HEAD
   await db.executeCached(
     query,
     params,
@@ -1401,67 +1400,13 @@ var removeByFilter = async function(db, filter, onResult = null) {
     pages.push(page);
     if (onResult) {
       onResultData.push({
-||||||| merged common ancestors
-  await db.executeCached(
-    query,
-    params,
-    row => {
-      let hasForeign = row.getResultByName("foreign_count") != 0;
-      if (!hasForeign) {
-        hasPagesToRemove = true;
-      }
-      let id = row.getResultByName("id");
-      let guid = row.getResultByName("guid");
-      let url = row.getResultByName("url");
-      let page = {
-        id,
-=======
-  await db.executeCached(query, params, row => {
-    let hasForeign = row.getResultByName("foreign_count") != 0;
-    if (!hasForeign) {
-      hasPagesToRemove = true;
-    }
-    let id = row.getResultByName("id");
-    let guid = row.getResultByName("guid");
-    let url = row.getResultByName("url");
-    let page = {
-      id,
-      guid,
-      hasForeign,
-      hasVisits: false,
-      url: new URL(url),
-      hash: row.getResultByName("url_hash"),
-    };
-    pages.push(page);
-    if (onResult) {
-      onResultData.push({
->>>>>>> origin/upstream-releases
         guid,
         title: row.getResultByName("title"),
         frecency: row.getResultByName("frecency"),
         url: new URL(url),
-<<<<<<< HEAD
       });
     }
   }
-||||||| merged common ancestors
-        hash: row.getResultByName("url_hash"),
-      };
-      pages.push(page);
-      if (onResult) {
-        onResultData.push({
-          guid,
-          title: row.getResultByName("title"),
-          frecency: row.getResultByName("frecency"),
-          url: new URL(url),
-        });
-      }
-    });
-=======
-      });
-    }
-  });
->>>>>>> origin/upstream-releases
 
   if (pages.length === 0) {
     // Nothing to do

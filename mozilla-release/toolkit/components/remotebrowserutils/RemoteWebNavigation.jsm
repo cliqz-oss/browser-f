@@ -114,17 +114,11 @@ RemoteWebNavigation.prototype = {
           let aTab = this._browser.ownerGlobal.gBrowser.getTabForBrowser(this._browser);
           let attrs = {
             userContextId: this._browser.getAttribute("usercontextid") || 0,
-<<<<<<< HEAD
-            privateBrowsingId: PrivateBrowsingUtils.isTabContextPrivate(aTab) ? 1 : 0,
-||||||| merged common ancestors
-            privateBrowsingId: PrivateBrowsingUtils.isBrowserPrivate(this._browser) ? 1 : 0,
-=======
-            privateBrowsingId: PrivateBrowsingUtils.isBrowserPrivate(
-              this._browser
+            privateBrowsingId: PrivateBrowsingUtils.isTabContextPrivate(
+              aTab
             )
               ? 1
               : 0,
->>>>>>> origin/upstream-releases
           };
           principal = Services.scriptSecurityManager.createCodebasePrincipal(
             uri,

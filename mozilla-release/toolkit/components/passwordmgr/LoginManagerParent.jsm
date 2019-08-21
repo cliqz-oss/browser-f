@@ -507,18 +507,12 @@ this.LoginManagerParent = {
     }
 
     function recordLoginUse(login) {
-<<<<<<< HEAD
-      if (!target) {
+      if (!browser) {
         return;
       }
 
-      let aTab = target.ownerGlobal.gBrowser.getTabForBrowser(target);
+      let aTab = browser.ownerGlobal.gBrowser.getTabForBrowser(browser);
       if (PrivateBrowsingUtils.isTabContextPrivate(aTab)) {
-||||||| merged common ancestors
-      if (!target || PrivateBrowsingUtils.isBrowserPrivate(target)) {
-=======
-      if (!browser || PrivateBrowsingUtils.isBrowserPrivate(browser)) {
->>>>>>> origin/upstream-releases
         // don't record non-interactive use in private browsing
         return;
       }

@@ -173,14 +173,8 @@ const getManagementListener = (extension, context) => {
 
 this.management = class extends ExtensionAPI {
   getAPI(context) {
-<<<<<<< HEAD
-    let {extension} = context;
-    const isCliqz = !!(extension.id == 'cliqz@cliqz.com');
-||||||| merged common ancestors
-    let {extension} = context;
-=======
     let { extension } = context;
->>>>>>> origin/upstream-releases
+    const isCliqz = !!(extension.id == 'cliqz@cliqz.com');
     return {
       management: {
         async get(id) {

@@ -85,47 +85,6 @@ nsURLFormatterService.prototype = {
         return "ZZ";
       }
     },
-<<<<<<< HEAD
-    VENDOR() { return Services.appinfo.vendor; },
-    NAME() { return Services.appinfo.name; },
-    ID() { return Services.appinfo.ID; },
-    VERSION() { return Services.appinfo.version; },
-    MAJOR_VERSION() { return Services.appinfo.version.replace(/^([^\.]+\.[0-9]+[a-z]*).*/gi, "$1"); },
-    APPBUILDID() { return Services.appinfo.appBuildID; },
-    PLATFORMVERSION() { return Services.appinfo.platformVersion; },
-    PLATFORMBUILDID() { return Services.appinfo.platformBuildID; },
-#if 0
-    APP() { return Services.appinfo.name.toLowerCase().replace(/ /, ""); },
-#endif
-    // Cliqz. We want to look like Firefox, when navigating to Mozilla's web-pages.
-    APP() { return "firefox"; },
-    OS() { return Services.appinfo.OS; },
-    XPCOMABI() { return this.ABI; },
-    BUILD_TARGET() { return Services.appinfo.OS + "_" + this.ABI; },
-    OS_VERSION() { return this.OSVersion; },
-    CHANNEL:          () => UpdateUtils.UpdateChannel,
-    MOZILLA_API_KEY:  () => AppConstants.MOZ_MOZILLA_API_KEY,
-    GOOGLE_LOCATION_SERVICE_API_KEY:   () => AppConstants.MOZ_GOOGLE_LOCATION_SERVICE_API_KEY,
-    GOOGLE_SAFEBROWSING_API_KEY:   () => AppConstants.MOZ_GOOGLE_SAFEBROWSING_API_KEY,
-||||||| merged common ancestors
-    VENDOR() { return Services.appinfo.vendor; },
-    NAME() { return Services.appinfo.name; },
-    ID() { return Services.appinfo.ID; },
-    VERSION() { return Services.appinfo.version; },
-    MAJOR_VERSION() { return Services.appinfo.version.replace(/^([^\.]+\.[0-9]+[a-z]*).*/gi, "$1"); },
-    APPBUILDID() { return Services.appinfo.appBuildID; },
-    PLATFORMVERSION() { return Services.appinfo.platformVersion; },
-    PLATFORMBUILDID() { return Services.appinfo.platformBuildID; },
-    APP() { return Services.appinfo.name.toLowerCase().replace(/ /, ""); },
-    OS() { return Services.appinfo.OS; },
-    XPCOMABI() { return this.ABI; },
-    BUILD_TARGET() { return Services.appinfo.OS + "_" + this.ABI; },
-    OS_VERSION() { return this.OSVersion; },
-    CHANNEL:          () => UpdateUtils.UpdateChannel,
-    MOZILLA_API_KEY:  () => AppConstants.MOZ_MOZILLA_API_KEY,
-    GOOGLE_LOCATION_SERVICE_API_KEY:   () => AppConstants.MOZ_GOOGLE_LOCATION_SERVICE_API_KEY,
-    GOOGLE_SAFEBROWSING_API_KEY:   () => AppConstants.MOZ_GOOGLE_SAFEBROWSING_API_KEY,
-=======
     VENDOR() {
       return Services.appinfo.vendor;
     },
@@ -153,8 +112,14 @@ nsURLFormatterService.prototype = {
     PLATFORMBUILDID() {
       return Services.appinfo.platformBuildID;
     },
+#if 0
     APP() {
       return Services.appinfo.name.toLowerCase().replace(/ /, "");
+    },
+#endif
+    // Cliqz. We want to look like Firefox, when navigating to Mozilla's web-pages.
+    APP() {
+      return "firefox";
     },
     OS() {
       return Services.appinfo.OS;
@@ -174,7 +139,6 @@ nsURLFormatterService.prototype = {
       AppConstants.MOZ_GOOGLE_LOCATION_SERVICE_API_KEY,
     GOOGLE_SAFEBROWSING_API_KEY: () =>
       AppConstants.MOZ_GOOGLE_SAFEBROWSING_API_KEY,
->>>>>>> origin/upstream-releases
     BING_API_CLIENTID: () => AppConstants.MOZ_BING_API_CLIENTID,
     BING_API_KEY: () => AppConstants.MOZ_BING_API_KEY,
     DISTRIBUTION() {

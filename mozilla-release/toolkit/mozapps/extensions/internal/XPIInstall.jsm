@@ -259,7 +259,6 @@ class Package {
       };
     }
 
-<<<<<<< HEAD
     /*
      * CLIQZ - allow both Firefox and Cliqz certificate for installing addons
      * Prevent pre integrated addons from installing - Cliqz/Ghostery/HttpsEverywhere
@@ -288,19 +287,6 @@ class Package {
           cert: null
         };
       }
-||||||| merged common ancestors
-    let root = Ci.nsIX509CertDB.AddonsPublicRoot;
-    if (!AppConstants.MOZ_REQUIRE_SIGNING &&
-        Services.prefs.getBoolPref(PREF_XPI_SIGNATURES_DEV_ROOT, false)) {
-      root = Ci.nsIX509CertDB.AddonsStageRoot;
-=======
-    let root = Ci.nsIX509CertDB.AddonsPublicRoot;
-    if (
-      !AppConstants.MOZ_REQUIRE_SIGNING &&
-      Services.prefs.getBoolPref(PREF_XPI_SIGNATURES_DEV_ROOT, false)
-    ) {
-      root = Ci.nsIX509CertDB.AddonsStageRoot;
->>>>>>> origin/upstream-releases
     }
 
     return this.verifySignedStateForRoot(addon, rootFirefox)
@@ -743,25 +729,17 @@ var loadManifest = async function(aPackage, aLocation, aOldAddon) {
     }
   }
 
-<<<<<<< HEAD
-  if (addon.type === "extension" && !addon.location.isBuiltin) {
-    /* CLIQZ-SPECIAL: remove recommended status
-    addon.recommendationState = await readRecommendationStates(aPackage, addon.id);
-    */
-||||||| merged common ancestors
-  if (addon.type === "extension" && !addon.location.isBuiltin) {
-    addon.recommendationState = await readRecommendationStates(aPackage, addon.id);
-=======
   if (
     addon.type === "extension" &&
     !aLocation.isBuiltin &&
     !aLocation.isTemporary
   ) {
+    /* CLIQZ-SPECIAL: remove recommended status
     addon.recommendationState = await readRecommendationStates(
       aPackage,
       addon.id
     );
->>>>>>> origin/upstream-releases
+    */
   }
 
   addon.propagateDisabledState(aOldAddon);
@@ -1623,43 +1601,28 @@ class AddonInstall {
           const manifest = this.addon;
           this.addon = null;
 
-<<<<<<< HEAD
           if (state == AddonManager.SIGNEDSTATE_MISSING ||
-            state == AddonManager.SIGNEDSTATE_UNKNOWN)
-          return Promise.reject([AddonManager.ERROR_SIGNEDSTATE_REQUIRED,
-                                 "signature is required but missing",
-                                 manifest]);
-
-          if (state == AddonManager.SIGNEDSTATE_CLIQZ)
-            return Promise.reject([AddonManager.ERROR_SIGNEDSTATE_CLIQZ,
-                                   "cliqz addon - already integrated",
-                                   manifest]);
-||||||| merged common ancestors
-          if (state == AddonManager.SIGNEDSTATE_MISSING)
-            return Promise.reject([AddonManager.ERROR_SIGNEDSTATE_REQUIRED,
-                                   "signature is required but missing"]);
-=======
-          if (state == AddonManager.SIGNEDSTATE_MISSING) {
+            state == AddonManager.SIGNEDSTATE_UNKNOWN) {
             return Promise.reject([
               AddonManager.ERROR_SIGNEDSTATE_REQUIRED,
               "signature is required but missing",
+              manifest
             ]);
           }
->>>>>>> origin/upstream-releases
 
-<<<<<<< HEAD
-          return Promise.reject([AddonManager.ERROR_CORRUPT_FILE,
-                                 "signature verification failed",
-                                 manifest]);
-||||||| merged common ancestors
-          return Promise.reject([AddonManager.ERROR_CORRUPT_FILE,
-                                 "signature verification failed"]);
-=======
+          if (state == AddonManager.SIGNEDSTATE_CLIQZ) {
+            return Promise.reject([
+              AddonManager.ERROR_SIGNEDSTATE_CLIQZ,
+              "cliqz addon - already integrated",
+              manifest
+            ]);
+          }
+
           return Promise.reject([
             AddonManager.ERROR_CORRUPT_FILE,
             "signature verification failed",
+            manifest
           ]);
->>>>>>> origin/upstream-releases
         }
       }
     } finally {
@@ -2561,26 +2524,16 @@ var DownloadAddonInstall = class extends AddonInstall {
               );
             }
           },
-          ([error, message]) => {
+          ([error, message, manifest]) => {
+            manifest = manifest || this.addon;
+            XPIDatabase.reportAddonInstallationAttempt(
+              manifest.id,
+              manifest.type,
+              "download"
+            );
             this.removeTemporaryFile();
             this.downloadFailed(error, message);
-          }
-<<<<<<< HEAD
-        }, ([error, message, manifest]) => {
-          manifest = manifest || this.addon;
-          XPIDatabase.reportAddonInstallationAttempt(manifest.id, manifest.type,
-              "download");
-          this.removeTemporaryFile();
-          this.downloadFailed(error, message);
-        });
-||||||| merged common ancestors
-        }, ([error, message]) => {
-          this.removeTemporaryFile();
-          this.downloadFailed(error, message);
-        });
-=======
-        );
->>>>>>> origin/upstream-releases
+          });
       } else if (aRequest instanceof Ci.nsIHttpChannel) {
         this.downloadFailed(
           AddonManager.ERROR_NETWORK_FAILURE,

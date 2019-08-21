@@ -98,19 +98,11 @@ function addReportRow(isPending, id, date, dateFormatter) {
     document.getElementById("unsubmitted").appendChild(row);
   } else {
     const linkTemplate = document.getElementById("viewCrashLink");
-<<<<<<< HEAD
-    const link = document.importNode(linkTemplate.content, true).querySelector("a");
-    link.href = `#${id}`;
-    link.style.visibility = "hidden";
-||||||| merged common ancestors
-    const link = document.importNode(linkTemplate.content, true).querySelector("a");
-    link.href = `${reportURL}${id}`;
-=======
     const link = document
       .importNode(linkTemplate.content, true)
       .querySelector("a");
-    link.href = `${reportURL}${id}`;
->>>>>>> origin/upstream-releases
+    link.href = `#${id}`;
+    link.style.visibility = "hidden";
     cells[2].appendChild(link);
     document.getElementById("submitted").appendChild(row);
   }

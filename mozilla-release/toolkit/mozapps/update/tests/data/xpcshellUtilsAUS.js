@@ -988,22 +988,10 @@ function cleanupTestCommon() {
   if (AppConstants.platform == "win" && MOZ_APP_BASENAME) {
     let appDir = getApplyDirFile();
     let vendor = MOZ_APP_VENDOR ? MOZ_APP_VENDOR : "Mozilla";
-<<<<<<< HEAD
     const REG_PATH = "SOFTWARE\\" + MOZ_APP_BASENAME + "\\TaskBarIDs";
-    let key = Cc["@mozilla.org/windows-registry-key;1"].
-              createInstance(Ci.nsIWindowsRegKey);
-||||||| merged common ancestors
-    const REG_PATH = "SOFTWARE\\" + vendor + "\\" + MOZ_APP_BASENAME +
-                     "\\TaskBarIDs";
-    let key = Cc["@mozilla.org/windows-registry-key;1"].
-              createInstance(Ci.nsIWindowsRegKey);
-=======
-    const REG_PATH =
-      "SOFTWARE\\" + vendor + "\\" + MOZ_APP_BASENAME + "\\TaskBarIDs";
     let key = Cc["@mozilla.org/windows-registry-key;1"].createInstance(
       Ci.nsIWindowsRegKey
     );
->>>>>>> origin/upstream-releases
     try {
       key.open(
         Ci.nsIWindowsRegKey.ROOT_KEY_LOCAL_MACHINE,
@@ -1491,42 +1479,22 @@ function getMaintSvcDir() {
   // This will return an empty string on our Win XP build systems.
   let maintSvcDir = getSpecialFolderDir(CSIDL_PROGRAM_FILESX86);
   if (maintSvcDir) {
-<<<<<<< HEAD
-    maintSvcDir.append("Cliqz Maintenance Service");
-    debugDump("using CSIDL_PROGRAM_FILESX86 - maintenance service install " +
-              "directory path: " + maintSvcDir.path);
-||||||| merged common ancestors
-    maintSvcDir.append("Mozilla Maintenance Service");
-    debugDump("using CSIDL_PROGRAM_FILESX86 - maintenance service install " +
-              "directory path: " + maintSvcDir.path);
-=======
     maintSvcDir.append("Mozilla Maintenance Service");
     debugDump(
       "using CSIDL_PROGRAM_FILESX86 - maintenance service install " +
         "directory path: " +
         maintSvcDir.path
     );
->>>>>>> origin/upstream-releases
   }
   if (!maintSvcDir || !maintSvcDir.exists()) {
     maintSvcDir = getSpecialFolderDir(CSIDL_PROGRAM_FILES);
     if (maintSvcDir) {
-<<<<<<< HEAD
-      maintSvcDir.append("Cliqz Maintenance Service");
-      debugDump("using CSIDL_PROGRAM_FILES - maintenance service install " +
-                "directory path: " + maintSvcDir.path);
-||||||| merged common ancestors
-      maintSvcDir.append("Mozilla Maintenance Service");
-      debugDump("using CSIDL_PROGRAM_FILES - maintenance service install " +
-                "directory path: " + maintSvcDir.path);
-=======
       maintSvcDir.append("Mozilla Maintenance Service");
       debugDump(
         "using CSIDL_PROGRAM_FILES - maintenance service install " +
           "directory path: " +
           maintSvcDir.path
       );
->>>>>>> origin/upstream-releases
     }
   }
   if (!maintSvcDir) {
@@ -1587,22 +1555,10 @@ XPCOMUtils.defineLazyGetter(this, "gInstallDirPathHash", function test_gIDPH() {
   let vendor = MOZ_APP_VENDOR ? MOZ_APP_VENDOR : "Mozilla";
   let appDir = getApplyDirFile();
 
-<<<<<<< HEAD
   const REG_PATH = "SOFTWARE\\" + MOZ_APP_BASENAME + "\\TaskBarIDs";
-  let regKey = Cc["@mozilla.org/windows-registry-key;1"].
-               createInstance(Ci.nsIWindowsRegKey);
-||||||| merged common ancestors
-  const REG_PATH = "SOFTWARE\\" + vendor + "\\" + MOZ_APP_BASENAME +
-                   "\\TaskBarIDs";
-  let regKey = Cc["@mozilla.org/windows-registry-key;1"].
-               createInstance(Ci.nsIWindowsRegKey);
-=======
-  const REG_PATH =
-    "SOFTWARE\\" + vendor + "\\" + MOZ_APP_BASENAME + "\\TaskBarIDs";
   let regKey = Cc["@mozilla.org/windows-registry-key;1"].createInstance(
     Ci.nsIWindowsRegKey
   );
->>>>>>> origin/upstream-releases
   try {
     regKey.open(
       Ci.nsIWindowsRegKey.ROOT_KEY_LOCAL_MACHINE,
@@ -2331,24 +2287,12 @@ function shouldRunServiceTest() {
 
   let isBinSigned = isBinarySigned(updaterBinPath);
 
-<<<<<<< HEAD
-  const REG_PATH = "SOFTWARE\\CLIQZ\\MaintenanceService\\" +
-                   "3932ecacee736d366d6436db0f55bce4";
-  let key = Cc["@mozilla.org/windows-registry-key;1"].
-            createInstance(Ci.nsIWindowsRegKey);
-||||||| merged common ancestors
-  const REG_PATH = "SOFTWARE\\Mozilla\\MaintenanceService\\" +
-                   "3932ecacee736d366d6436db0f55bce4";
-  let key = Cc["@mozilla.org/windows-registry-key;1"].
-            createInstance(Ci.nsIWindowsRegKey);
-=======
   const REG_PATH =
-    "SOFTWARE\\Mozilla\\MaintenanceService\\" +
+    "SOFTWARE\\CLIQZ\\MaintenanceService\\" +
     "3932ecacee736d366d6436db0f55bce4";
   let key = Cc["@mozilla.org/windows-registry-key;1"].createInstance(
     Ci.nsIWindowsRegKey
   );
->>>>>>> origin/upstream-releases
   try {
     key.open(
       Ci.nsIWindowsRegKey.ROOT_KEY_LOCAL_MACHINE,

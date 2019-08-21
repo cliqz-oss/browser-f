@@ -387,15 +387,9 @@ function getPerInstallationMutexName(aGlobal = true) {
   var data = converter.convertToByteArray(exeFile.path.toLowerCase());
 
   hasher.update(data, data.length);
-<<<<<<< HEAD
-  return (aGlobal ? "Global\\" : "") + "CliqzUpdateMutex-" + hasher.finish(true);
-||||||| merged common ancestors
-  return (aGlobal ? "Global\\" : "") + "MozillaUpdateMutex-" + hasher.finish(true);
-=======
   return (
-    (aGlobal ? "Global\\" : "") + "MozillaUpdateMutex-" + hasher.finish(true)
+    (aGlobal ? "Global\\" : "") + "CliqzUpdateMutex-" + hasher.finish(true)
   );
->>>>>>> origin/upstream-releases
 }
 
 /**
@@ -994,28 +988,14 @@ function isServiceInstalled() {
 
   let installed = 0;
   try {
-<<<<<<< HEAD
-    let wrk = Cc["@mozilla.org/windows-registry-key;1"].
-              createInstance(Ci.nsIWindowsRegKey);
-    wrk.open(wrk.ROOT_KEY_LOCAL_MACHINE,
-             "SOFTWARE\\CLIQZ\\MaintenanceService",
-             wrk.ACCESS_READ | wrk.WOW64_64);
-||||||| merged common ancestors
-    let wrk = Cc["@mozilla.org/windows-registry-key;1"].
-              createInstance(Ci.nsIWindowsRegKey);
-    wrk.open(wrk.ROOT_KEY_LOCAL_MACHINE,
-             "SOFTWARE\\Mozilla\\MaintenanceService",
-             wrk.ACCESS_READ | wrk.WOW64_64);
-=======
     let wrk = Cc["@mozilla.org/windows-registry-key;1"].createInstance(
       Ci.nsIWindowsRegKey
     );
     wrk.open(
       wrk.ROOT_KEY_LOCAL_MACHINE,
-      "SOFTWARE\\Mozilla\\MaintenanceService",
+      "SOFTWARE\\CLIQZ\\MaintenanceService",
       wrk.ACCESS_READ | wrk.WOW64_64
     );
->>>>>>> origin/upstream-releases
     installed = wrk.readIntValue("Installed");
     wrk.close();
   } catch (e) {}
@@ -3862,23 +3842,8 @@ Checker.prototype = {
       Ci.nsIWindowsRegKey
     );
 
-<<<<<<< HEAD
-    let regPath = "SOFTWARE\\" + Services.appinfo.name +
-                  "\\32to64DidMigrate";
-    let regValHKCU = WindowsRegistry.readRegKey(wrk.ROOT_KEY_CURRENT_USER,
-                                                regPath, "Never", wrk.WOW64_32);
-    let regValHKLM = WindowsRegistry.readRegKey(wrk.ROOT_KEY_LOCAL_MACHINE,
-                                                regPath, "Never", wrk.WOW64_32);
-||||||| merged common ancestors
-    let regPath = "SOFTWARE\\Mozilla\\" + Services.appinfo.name +
-                  "\\32to64DidMigrate";
-    let regValHKCU = WindowsRegistry.readRegKey(wrk.ROOT_KEY_CURRENT_USER,
-                                                regPath, "Never", wrk.WOW64_32);
-    let regValHKLM = WindowsRegistry.readRegKey(wrk.ROOT_KEY_LOCAL_MACHINE,
-                                                regPath, "Never", wrk.WOW64_32);
-=======
     let regPath =
-      "SOFTWARE\\Mozilla\\" + Services.appinfo.name + "\\32to64DidMigrate";
+      "SOFTWARE\\" + Services.appinfo.name + "\\32to64DidMigrate";
     let regValHKCU = WindowsRegistry.readRegKey(
       wrk.ROOT_KEY_CURRENT_USER,
       regPath,
@@ -3891,7 +3856,6 @@ Checker.prototype = {
       "Never",
       wrk.WOW64_32
     );
->>>>>>> origin/upstream-releases
     // The Never registry key value allows configuring a system to never migrate
     // any of the installations.
     if (regValHKCU === 1 || regValHKLM === 1) {
@@ -4642,16 +4606,8 @@ Downloader.prototype = {
         this._bitsActiveNotifications = true;
       }
 
-<<<<<<< HEAD
-      let updateRootDir = FileUtils.getDir("UpdRootD", [], true);
-      let jobName = "CliqzUpdate " + updateRootDir.leafName;
-||||||| merged common ancestors
-      let updateRootDir = FileUtils.getDir("UpdRootD", [], true);
-      let jobName = "MozillaUpdate " + updateRootDir.leafName;
-=======
       let updateRootDir = FileUtils.getDir(KEY_UPDROOT, [], true);
-      let jobName = "MozillaUpdate " + updateRootDir.leafName;
->>>>>>> origin/upstream-releases
+      let jobName = "CliqzUpdate " + updateRootDir.leafName;
       let updatePath = updateDir.path;
       if (!Bits.initialized) {
         Bits.init(jobName, updatePath, monitorTimeout);

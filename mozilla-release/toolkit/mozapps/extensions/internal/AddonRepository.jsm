@@ -44,34 +44,6 @@ var EXPORTED_SYMBOLS = ["AddonRepository"];
 
 Cu.importGlobalProperties(["fetch"]);
 
-<<<<<<< HEAD
-const PREF_GETADDONS_CACHE_ENABLED       = "extensions.getAddons.cache.enabled";
-const PREF_GETADDONS_CACHE_TYPES         = "extensions.getAddons.cache.types";
-const PREF_GETADDONS_CACHE_ID_ENABLED    = "extensions.%ID%.getAddons.cache.enabled";
-const PREF_GETADDONS_BROWSEADDONS        = "extensions.getAddons.browseAddons";
-const PREF_GETADDONS_BYIDS               = "extensions.getAddons.get.url";
-const PREF_COMPAT_OVERRIDES              = "extensions.getAddons.compatOverides.url";
-const PREF_GETADDONS_BROWSESEARCHRESULTS = "extensions.getAddons.search.browseURL";
-const PREF_GETADDONS_DB_SCHEMA           = "extensions.getAddons.databaseSchema";
-const PREF_GET_LANGPACKS                 = "extensions.getAddons.langpacks.url";
-const PREF_ADDONS_UPDATE_URL             = "extensions.update.url";
-
-const PREF_METADATA_LASTUPDATE           = "extensions.getAddons.cache.lastUpdate";
-const PREF_METADATA_UPDATETHRESHOLD_SEC  = "extensions.getAddons.cache.updateThreshold";
-||||||| merged common ancestors
-const PREF_GETADDONS_CACHE_ENABLED       = "extensions.getAddons.cache.enabled";
-const PREF_GETADDONS_CACHE_TYPES         = "extensions.getAddons.cache.types";
-const PREF_GETADDONS_CACHE_ID_ENABLED    = "extensions.%ID%.getAddons.cache.enabled";
-const PREF_GETADDONS_BROWSEADDONS        = "extensions.getAddons.browseAddons";
-const PREF_GETADDONS_BYIDS               = "extensions.getAddons.get.url";
-const PREF_COMPAT_OVERRIDES              = "extensions.getAddons.compatOverides.url";
-const PREF_GETADDONS_BROWSESEARCHRESULTS = "extensions.getAddons.search.browseURL";
-const PREF_GETADDONS_DB_SCHEMA           = "extensions.getAddons.databaseSchema";
-const PREF_GET_LANGPACKS                 = "extensions.getAddons.langpacks.url";
-
-const PREF_METADATA_LASTUPDATE           = "extensions.getAddons.cache.lastUpdate";
-const PREF_METADATA_UPDATETHRESHOLD_SEC  = "extensions.getAddons.cache.updateThreshold";
-=======
 const PREF_GETADDONS_CACHE_ENABLED = "extensions.getAddons.cache.enabled";
 const PREF_GETADDONS_CACHE_TYPES = "extensions.getAddons.cache.types";
 const PREF_GETADDONS_CACHE_ID_ENABLED =
@@ -83,11 +55,11 @@ const PREF_GETADDONS_BROWSESEARCHRESULTS =
   "extensions.getAddons.search.browseURL";
 const PREF_GETADDONS_DB_SCHEMA = "extensions.getAddons.databaseSchema";
 const PREF_GET_LANGPACKS = "extensions.getAddons.langpacks.url";
+const PREF_ADDONS_UPDATE_URL = "extensions.update.url";
 
 const PREF_METADATA_LASTUPDATE = "extensions.getAddons.cache.lastUpdate";
 const PREF_METADATA_UPDATETHRESHOLD_SEC =
   "extensions.getAddons.cache.updateThreshold";
->>>>>>> origin/upstream-releases
 const DEFAULT_METADATA_UPDATETHRESHOLD_SEC = 172800; // two days
 
 const DEFAULT_CACHE_TYPES = "extension,theme,locale,dictionary";

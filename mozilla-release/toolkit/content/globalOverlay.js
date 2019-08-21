@@ -107,19 +107,11 @@ function goDoCommand(aCommand) {
   }
 }
 
-<<<<<<< HEAD
-
 function goSetCommandEnabled(aID, aEnabled, win) {
   if (win != null) {
     document = win.document;
   }
 
-||||||| merged common ancestors
-
-function goSetCommandEnabled(aID, aEnabled) {
-=======
-function goSetCommandEnabled(aID, aEnabled) {
->>>>>>> origin/upstream-releases
   var node = document.getElementById(aID);
 
   if (node) {

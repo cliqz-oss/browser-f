@@ -96,14 +96,6 @@ const SEARCH_GEO_DEFAULT_UPDATE_INTERVAL = 2592000; // 30 days.
 // engines we use engine-locale to address the engine.
 // This is to be removed in https://bugzilla.mozilla.org/show_bug.cgi?id=1532246
 const MULTI_LOCALE_ENGINES = [
-<<<<<<< HEAD
-  "amazon", "amazondotcom", "bolcom", "ebay", "google", "marktplaats",
-  "mercadolibre", "twitter", "wikipedia", "wiktionary", "yandex", "multilocale",
-  "qwant", "yahoo", "gimages", "gmaps", "startpage", "youtube",
-||||||| merged common ancestors
-  "amazon", "amazondotcom", "bolcom", "ebay", "google", "marktplaats",
-  "mercadolibre", "twitter", "wikipedia", "wiktionary", "yandex", "multilocale",
-=======
   "amazon",
   "amazondotcom",
   "bolcom",
@@ -116,7 +108,12 @@ const MULTI_LOCALE_ENGINES = [
   "wiktionary",
   "yandex",
   "multilocale",
->>>>>>> origin/upstream-releases
+  "qwant",
+  "yahoo",
+  "gimages",
+  "gmaps",
+  "startpage",
+  "youtube",
 ];
 
 // A tag to denote when we are using the "default_locale" of an engine
@@ -1993,10 +1990,9 @@ SearchService.prototype = {
   async getVisibleEngines() {
     await this.init();
     SearchUtils.log("getVisibleEngines: getting all visible engines");
-<<<<<<< HEAD
     var engines = this._getSortedEngines(false);
 
-    //Cliqz. DB-927: Restore alternate search engines' alias
+    //CLIQZ-SPECIAL. DB-927: Restore alternate search engines' alias
     engines.forEach(engine => {
       if(!engine.alias && engine.identifier) {
         SearchUtils.log("Set alias for: " + engine.identifier);
@@ -2007,12 +2003,6 @@ SearchService.prototype = {
       }
     });
     return engines;
-||||||| merged common ancestors
-    var engines = this._getSortedEngines(false);
-    return engines;
-=======
-    return this._getSortedEngines(false);
->>>>>>> origin/upstream-releases
   },
 
   async getDefaultEngines() {

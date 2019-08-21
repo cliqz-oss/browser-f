@@ -1916,18 +1916,10 @@ class AddonCard extends HTMLElement {
 
     /* CLIQZ-SPECIAL: we do not support recommended addon feature for now
     // Show the recommended badge if needed.
-<<<<<<< HEAD
-    card.querySelector(".addon-badge-recommended")
-      .hidden = !addon.isRecommended;
-    */
-||||||| merged common ancestors
-    card.querySelector(".addon-badge-recommended")
-      .hidden = !addon.isRecommended;
-=======
     card.querySelector(
       ".addon-badge-recommended"
     ).hidden = !addon.isRecommended;
->>>>>>> origin/upstream-releases
+    */
 
     // Update description.
     card.querySelector(".addon-description").textContent = addon.description;

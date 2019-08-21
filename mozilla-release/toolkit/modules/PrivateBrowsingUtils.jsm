@@ -48,9 +48,9 @@ var PrivateBrowsingUtils = {
         // content window doesn't exist.
         return this.isWindowPrivate(chromeWin);
       }
-      return this.privacyContextFromWindow(aBrowser.contentWindow).usePrivateBrowsing;
+      return this.privacyContextFromWindow(aBrowser.contentWindow)
+        .usePrivateBrowsing;
     }
-<<<<<<< HEAD
 
     try {
       return aBrowser.loadContext.usePrivateBrowsing;
@@ -69,17 +69,14 @@ var PrivateBrowsingUtils = {
       return false;
     }
 
-    if (aTab.linkedBrowser == null || aTab.linkedBrowser.loadContext == null) {
+    if (
+      aTab.linkedBrowser == null ||
+      aTab.linkedBrowser.loadContext == null
+    ) {
       return aTab.getAttribute("private") === "true";
     }
 
     return this.isBrowserPrivate(aTab.linkedBrowser, fromContainer);
-||||||| merged common ancestors
-    return this.privacyContextFromWindow(aBrowser.contentWindow).usePrivateBrowsing;
-=======
-    return this.privacyContextFromWindow(aBrowser.contentWindow)
-      .usePrivateBrowsing;
->>>>>>> origin/upstream-releases
   },
 
   privacyContextFromWindow: function pbu_privacyContextFromWindow(aWindow) {

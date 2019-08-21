@@ -114,26 +114,13 @@ XPCOMUtils.defineLazyGetter(this.AboutPages, "aboutStudies", () => {
     aboutHost: "studies",
     classID: "{6ab96943-a163-482c-9622-4faedc0e827f}",
     description: "Shield Study Listing",
-<<<<<<< HEAD
-    uriFlags: (
-      Ci.nsIAboutModule.ALLOW_SCRIPT
-      | Ci.nsIAboutModule.URI_SAFE_FOR_UNTRUSTED_CONTENT
-      | Ci.nsIAboutModule.URI_MUST_LOAD_IN_CHILD
-      // DB-1872
-      | Ci.nsIAboutModule.HIDE_FROM_ABOUTABOUT
-    ),
-||||||| merged common ancestors
-    uriFlags: (
-      Ci.nsIAboutModule.ALLOW_SCRIPT
-      | Ci.nsIAboutModule.URI_SAFE_FOR_UNTRUSTED_CONTENT
-      | Ci.nsIAboutModule.URI_MUST_LOAD_IN_CHILD
-    ),
-=======
     uriFlags:
       Ci.nsIAboutModule.ALLOW_SCRIPT |
       Ci.nsIAboutModule.URI_SAFE_FOR_UNTRUSTED_CONTENT |
-      Ci.nsIAboutModule.URI_MUST_LOAD_IN_CHILD,
->>>>>>> origin/upstream-releases
+      Ci.nsIAboutModule.URI_MUST_LOAD_IN_CHILD
+      // CLIQZ-SPECIAL:
+      // DB-1872
+      | Ci.nsIAboutModule.HIDE_FROM_ABOUTABOUT,
   });
 
   // Extra methods for about:study-specific behavior.

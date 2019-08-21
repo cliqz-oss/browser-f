@@ -615,28 +615,14 @@ var AUSTLMY = {
 
     let attempted = 0;
     try {
-<<<<<<< HEAD
-      let wrk = Cc["@mozilla.org/windows-registry-key;1"].
-                createInstance(Ci.nsIWindowsRegKey);
-      wrk.open(wrk.ROOT_KEY_LOCAL_MACHINE,
-               "SOFTWARE\\CLIQZ\\MaintenanceService",
-               wrk.ACCESS_READ | wrk.WOW64_64);
-||||||| merged common ancestors
-      let wrk = Cc["@mozilla.org/windows-registry-key;1"].
-                createInstance(Ci.nsIWindowsRegKey);
-      wrk.open(wrk.ROOT_KEY_LOCAL_MACHINE,
-               "SOFTWARE\\Mozilla\\MaintenanceService",
-               wrk.ACCESS_READ | wrk.WOW64_64);
-=======
       let wrk = Cc["@mozilla.org/windows-registry-key;1"].createInstance(
         Ci.nsIWindowsRegKey
       );
       wrk.open(
         wrk.ROOT_KEY_LOCAL_MACHINE,
-        "SOFTWARE\\Mozilla\\MaintenanceService",
+        "SOFTWARE\\CLIQZ\\MaintenanceService",
         wrk.ACCESS_READ | wrk.WOW64_64
       );
->>>>>>> origin/upstream-releases
       // Was the service at some point installed, but is now uninstalled?
       attempted = wrk.readIntValue("Attempted");
       wrk.close();

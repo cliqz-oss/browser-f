@@ -28,39 +28,6 @@ try {
 }
 #endif
 
-<<<<<<< HEAD
-ChromeUtils.defineModuleGetter(this, "PlacesUtils",
-  "resource://gre/modules/PlacesUtils.jsm");
-
-ChromeUtils.defineModuleGetter(this, "PageThumbs",
-  "resource://gre/modules/PageThumbs.jsm");
-
-ChromeUtils.defineModuleGetter(this, "BinarySearch",
-  "resource://gre/modules/BinarySearch.jsm");
-
-#if 0
-ChromeUtils.defineModuleGetter(this, "pktApi",
-  "chrome://pocket/content/pktApi.jsm");
-
-ChromeUtils.defineModuleGetter(this, "Pocket",
-  "chrome://pocket/content/Pocket.jsm");
-#endif
-||||||| merged common ancestors
-ChromeUtils.defineModuleGetter(this, "PlacesUtils",
-  "resource://gre/modules/PlacesUtils.jsm");
-
-ChromeUtils.defineModuleGetter(this, "PageThumbs",
-  "resource://gre/modules/PageThumbs.jsm");
-
-ChromeUtils.defineModuleGetter(this, "BinarySearch",
-  "resource://gre/modules/BinarySearch.jsm");
-
-ChromeUtils.defineModuleGetter(this, "pktApi",
-  "chrome://pocket/content/pktApi.jsm");
-
-ChromeUtils.defineModuleGetter(this, "Pocket",
-  "chrome://pocket/content/Pocket.jsm");
-=======
 ChromeUtils.defineModuleGetter(
   this,
   "PlacesUtils",
@@ -79,6 +46,7 @@ ChromeUtils.defineModuleGetter(
   "resource://gre/modules/BinarySearch.jsm"
 );
 
+#if 0
 ChromeUtils.defineModuleGetter(
   this,
   "pktApi",
@@ -90,7 +58,7 @@ ChromeUtils.defineModuleGetter(
   "Pocket",
   "chrome://pocket/content/Pocket.jsm"
 );
->>>>>>> origin/upstream-releases
+#endif
 
 XPCOMUtils.defineLazyGetter(this, "gCryptoHash", function() {
   return Cc["@mozilla.org/security/hash;1"].createInstance(Ci.nsICryptoHash);
@@ -1037,16 +1005,10 @@ var ActivityStreamProvider = {
    * saved Pocket items.
    */
   fetchSavedPocketItems(requestData) {
-<<<<<<< HEAD
     return Promise.reject(null);
 #if 0
-    const latestSince = (Services.prefs.getStringPref(PREF_POCKET_LATEST_SINCE, 0) * 1000);
-||||||| merged common ancestors
-    const latestSince = (Services.prefs.getStringPref(PREF_POCKET_LATEST_SINCE, 0) * 1000);
-=======
     const latestSince =
       Services.prefs.getStringPref(PREF_POCKET_LATEST_SINCE, 0) * 1000;
->>>>>>> origin/upstream-releases
 
     // Do not fetch Pocket items for users that have been inactive for too long, or are not logged in
     if (
@@ -1540,16 +1502,10 @@ var ActivityStreamLinks = {
     return Promise.reject(null);
 #if 0
     this._savedPocketStories = null;
-<<<<<<< HEAD
-    return new Promise((success, error) => pktApi.deleteItem(aItemID, {success, error}));
-#endif
-||||||| merged common ancestors
-    return new Promise((success, error) => pktApi.deleteItem(aItemID, {success, error}));
-=======
     return new Promise((success, error) =>
       pktApi.deleteItem(aItemID, { success, error })
     );
->>>>>>> origin/upstream-releases
+#endif
   },
 
   /**
@@ -1565,16 +1521,10 @@ var ActivityStreamLinks = {
     return Promise.reject(null);
 #if 0
     this._savedPocketStories = null;
-<<<<<<< HEAD
-    return new Promise((success, error) => pktApi.archiveItem(aItemID, {success, error}));
-#endif
-||||||| merged common ancestors
-    return new Promise((success, error) => pktApi.archiveItem(aItemID, {success, error}));
-=======
     return new Promise((success, error) =>
       pktApi.archiveItem(aItemID, { success, error })
     );
->>>>>>> origin/upstream-releases
+#endif
   },
 
   /**

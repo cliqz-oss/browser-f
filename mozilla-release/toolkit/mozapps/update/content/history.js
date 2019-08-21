@@ -24,13 +24,7 @@ var gUpdateHistory = {
       for (var i = 0; i < uc; ++i) {
         var update = um.getUpdateAt(i);
 
-<<<<<<< HEAD
-        if (!update || !update.name || !update.displayVersion)
-||||||| merged common ancestors
-        if (!update || !update.name)
-=======
-        if (!update || !update.name) {
->>>>>>> origin/upstream-releases
+        if (!update || !update.name || !update.displayVersion) {
           continue;
         }
 
