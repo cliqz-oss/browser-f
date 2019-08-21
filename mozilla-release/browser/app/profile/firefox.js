@@ -1319,12 +1319,6 @@ pref("browser.newtab.preload", false);
 pref("browser.newtabpage.enabled", true);
 
 // Activity Stream prefs that control to which page to redirect
-<<<<<<< HEAD
-pref("browser.newtabpage.activity-stream.prerender", false);
-||||||| merged common ancestors
-pref("browser.newtabpage.activity-stream.prerender", true);
-=======
->>>>>>> origin/upstream-releases
 #ifndef RELEASE_OR_BETA
 pref("browser.newtabpage.activity-stream.debug", false);
 #endif
@@ -1536,15 +1530,9 @@ pref("media.gmp-gmpopenh264.enabled", true);
 // Switch block autoplay logic to v2, and enable UI.
 pref("media.autoplay.enabled.user-gestures-needed", true);
 // Set Firefox to block autoplay, asking for permission by default.
-<<<<<<< HEAD
-pref("media.autoplay.default", 1); // 0=Allowed, 1=Blocked
+pref("media.autoplay.default", 1); // 0=Allowed, 1=Blocked, 5=All Blocked
 // CLIQZ-SPECIAL: whitelist for unblocking autoplay.
 pref("blockautoplay.whitelist.add", "https://www.youtube.com/");
-||||||| merged common ancestors
-pref("media.autoplay.default", 1); // 0=Allowed, 1=Blocked
-=======
-pref("media.autoplay.default", 1); // 0=Allowed, 1=Blocked, 5=All Blocked
->>>>>>> origin/upstream-releases
 
 #ifdef NIGHTLY_BUILD
 // Block WebAudio from playing automatically.
@@ -1613,31 +1601,18 @@ pref("network.cookie.cookieBehavior", 4 /* BEHAVIOR_REJECT_TRACKER */);
 pref("privacy.trackingprotection.fingerprinting.enabled", true);
 #endif
 
-<<<<<<< HEAD
-pref("browser.contentblocking.allowlist.storage.enabled", false);
-||||||| merged common ancestors
-pref("browser.contentblocking.allowlist.storage.enabled", true);
-=======
 // Enable cryptomining blocking by default for all channels, only on desktop.
 pref("privacy.trackingprotection.cryptomining.enabled", true);
 
-pref("browser.contentblocking.database.enabled", true);
->>>>>>> origin/upstream-releases
+pref("browser.contentblocking.database.enabled", false);
+pref("browser.contentblocking.allowlist.storage.enabled", false);
 
 pref("dom.storage_access.enabled", true);
 pref("dom.storage_access.auto_grants", true);
 pref("dom.storage_access.max_concurrent_auto_grants", 5);
 
 // Define a set of default features for the Content Blocking UI.
-<<<<<<< HEAD
 pref("browser.contentblocking.trackingprotection.control-center.ui.enabled", false);
-pref("browser.contentblocking.rejecttrackers.control-center.ui.enabled", false);
-||||||| merged common ancestors
-pref("browser.contentblocking.trackingprotection.control-center.ui.enabled", true);
-pref("browser.contentblocking.rejecttrackers.control-center.ui.enabled", true);
-=======
-pref("browser.contentblocking.trackingprotection.control-center.ui.enabled", true);
->>>>>>> origin/upstream-releases
 
 pref("browser.contentblocking.control-center.ui.showBlockedLabels", false);
 pref("browser.contentblocking.control-center.ui.showAllowedLabels", false);
@@ -1680,16 +1655,8 @@ pref("browser.contentblocking.rejecttrackers.reportBreakage.enabled", false);
 pref("browser.contentblocking.reportBreakage.url", "https://tracking-protection-issues.herokuapp.com/new");
 
 pref("browser.contentblocking.introCount", 0);
-<<<<<<< HEAD
-// Cliqz. Don't use FF intro
-pref("browser.contentblocking.maxIntroCount", 0);
-||||||| merged common ancestors
-
-pref("browser.contentblocking.maxIntroCount", 5);
-=======
 
 pref("browser.contentblocking.maxIntroCount", 0);
->>>>>>> origin/upstream-releases
 // 1800 = 30 min in seconds
 pref("browser.contentblocking.introDelaySeconds", 1800);
 

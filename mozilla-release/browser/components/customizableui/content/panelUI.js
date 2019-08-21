@@ -123,23 +123,17 @@ const PanelUI = {
     );
     this.updateOverflowStatus();
 
-<<<<<<< HEAD
-    Services.obs.notifyObservers(null, "appMenu-notifications-request", "refresh");
+    Services.obs.notifyObservers(
+      null,
+      "appMenu-notifications-request",
+      "refresh"
+    );
     if (Services.prefs.getBoolPref("extensions.cliqz.onion-mode", false)) {
       document.getElementById("appMenu-cliqz-connect-button").hidden = true;
       document.getElementById("appMenu-tp-separator").hidden = true;
       document.getElementById("appMenu-new-window-button").hidden = true;
       document.getElementById("appMenu-private-window-button").hidden = true;
     }
-||||||| merged common ancestors
-    Services.obs.notifyObservers(null, "appMenu-notifications-request", "refresh");
-=======
-    Services.obs.notifyObservers(
-      null,
-      "appMenu-notifications-request",
-      "refresh"
-    );
->>>>>>> origin/upstream-releases
 
     this._initialized = true;
   },

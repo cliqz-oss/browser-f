@@ -405,6 +405,14 @@
         ContextualIdentityService.setTabStyle(tab);
       }
 
+      // CLIQZ-SPECIAL:
+      // DB-2208:
+      // The idea to do that does not look nice but what an adventure! ;)
+      tab.setAttribute("private", window.arguments != null
+        ? window.arguments[0] === "about:privatebrowsing"
+        : false
+      );
+
       this._tabForBrowser.set(browser, tab);
 
       this._appendStatusPanel();
@@ -469,25 +477,12 @@
       return this.selectedBrowser.stop();
     },
 
-<<<<<<< HEAD
-    // CLIQZ-SPECIAL:
-    // DB-2208:
-    // The idea to do that does not look nice but what an adventure! ;)
-    tab.setAttribute("private", window.arguments != null ?
-      window.arguments[0] === "about:privatebrowsing" :
-      false);
-
-    this._tabForBrowser.set(browser, tab);
-||||||| merged common ancestors
-    this._tabForBrowser.set(browser, tab);
-=======
     /**
      * throws exception for unknown schemes
      */
     loadURI(aURI, aParams) {
       return this.selectedBrowser.loadURI(aURI, aParams);
     },
->>>>>>> origin/upstream-releases
 
     gotoIndex(aIndex) {
       return this.selectedBrowser.gotoIndex(aIndex);
@@ -1599,6 +1594,7 @@
       var aFocusUrlBar;
       var aName;
       var aCsp;
+      var aPrivate;
       if (
         arguments.length == 2 &&
         typeof arguments[1] == "object" &&
@@ -1629,6 +1625,7 @@
         aFocusUrlBar = params.focusUrlBar;
         aName = params.name;
         aCsp = params.csp;
+        aPrivate = params.private;
       }
 
       // all callers of loadOneTab need to pass a valid triggeringPrincipal.
@@ -1669,6 +1666,7 @@
         focusUrlBar: aFocusUrlBar,
         name: aName,
         csp: aCsp,
+        private: aPrivate,
       });
       if (!bgLoad) {
         this.selectedTab = tab;
@@ -2043,188 +2041,19 @@
         "BrowserTab"
       );
 
-<<<<<<< HEAD
-  loadOneTab(aURI, aReferrerInfoOrParams, aCharset, aPostData, aLoadInBackground, aAllowThirdPartyFixup) {
-    var aTriggeringPrincipal;
-    var aReferrerInfo;
-    var aFromExternal;
-    var aRelatedToCurrent;
-    var aAllowInheritPrincipal;
-    var aAllowMixedContent;
-    var aSkipAnimation;
-    var aForceNotRemote;
-    var aPreferredRemoteType;
-    var aUserContextId;
-    var aSameProcessAsFrameLoader;
-    var aOriginPrincipal;
-    var aOpener;
-    var aOpenerBrowser;
-    var aCreateLazyBrowser;
-    var aNextRemoteTabId;
-    var aFocusUrlBar;
-    var aName;
-    var aCsp;
-    var aPrivate;
-    if (arguments.length == 2 &&
-        typeof arguments[1] == "object" &&
-        !(arguments[1] instanceof Ci.nsIURI)) {
-      let params = arguments[1];
-      aTriggeringPrincipal = params.triggeringPrincipal;
-      aReferrerInfo = params.referrerInfo;
-      aCharset = params.charset;
-      aPostData = params.postData;
-      aLoadInBackground = params.inBackground;
-      aAllowThirdPartyFixup = params.allowThirdPartyFixup;
-      aFromExternal = params.fromExternal;
-      aRelatedToCurrent = params.relatedToCurrent;
-      aAllowInheritPrincipal = !!params.allowInheritPrincipal;
-      aAllowMixedContent = params.allowMixedContent;
-      aSkipAnimation = params.skipAnimation;
-      aForceNotRemote = params.forceNotRemote;
-      aPreferredRemoteType = params.preferredRemoteType;
-      aUserContextId = params.userContextId;
-      aSameProcessAsFrameLoader = params.sameProcessAsFrameLoader;
-      aOriginPrincipal = params.originPrincipal;
-      aOpener = params.opener;
-      aOpenerBrowser = params.openerBrowser;
-      aCreateLazyBrowser = params.createLazyBrowser;
-      aNextRemoteTabId = params.nextRemoteTabId;
-      aFocusUrlBar = params.focusUrlBar;
-      aName = params.name;
-      aCsp = params.csp;
-      aPrivate = params.private;
-    }
-||||||| merged common ancestors
-  loadOneTab(aURI, aReferrerInfoOrParams, aCharset, aPostData, aLoadInBackground, aAllowThirdPartyFixup) {
-    var aTriggeringPrincipal;
-    var aReferrerInfo;
-    var aFromExternal;
-    var aRelatedToCurrent;
-    var aAllowInheritPrincipal;
-    var aAllowMixedContent;
-    var aSkipAnimation;
-    var aForceNotRemote;
-    var aPreferredRemoteType;
-    var aUserContextId;
-    var aSameProcessAsFrameLoader;
-    var aOriginPrincipal;
-    var aOpener;
-    var aOpenerBrowser;
-    var aCreateLazyBrowser;
-    var aNextRemoteTabId;
-    var aFocusUrlBar;
-    var aName;
-    var aCsp;
-    if (arguments.length == 2 &&
-        typeof arguments[1] == "object" &&
-        !(arguments[1] instanceof Ci.nsIURI)) {
-      let params = arguments[1];
-      aTriggeringPrincipal = params.triggeringPrincipal;
-      aReferrerInfo = params.referrerInfo;
-      aCharset = params.charset;
-      aPostData = params.postData;
-      aLoadInBackground = params.inBackground;
-      aAllowThirdPartyFixup = params.allowThirdPartyFixup;
-      aFromExternal = params.fromExternal;
-      aRelatedToCurrent = params.relatedToCurrent;
-      aAllowInheritPrincipal = !!params.allowInheritPrincipal;
-      aAllowMixedContent = params.allowMixedContent;
-      aSkipAnimation = params.skipAnimation;
-      aForceNotRemote = params.forceNotRemote;
-      aPreferredRemoteType = params.preferredRemoteType;
-      aUserContextId = params.userContextId;
-      aSameProcessAsFrameLoader = params.sameProcessAsFrameLoader;
-      aOriginPrincipal = params.originPrincipal;
-      aOpener = params.opener;
-      aOpenerBrowser = params.openerBrowser;
-      aCreateLazyBrowser = params.createLazyBrowser;
-      aNextRemoteTabId = params.nextRemoteTabId;
-      aFocusUrlBar = params.focusUrlBar;
-      aName = params.name;
-      aCsp = params.csp;
-    }
-=======
       evt = document.createEvent("Events");
       evt.initEvent("TabRemotenessChange", true, false);
       tab.dispatchEvent(evt);
->>>>>>> origin/upstream-releases
 
       return true;
     },
 
-<<<<<<< HEAD
-    var bgLoad = (aLoadInBackground != null) ? aLoadInBackground :
-      Services.prefs.getBoolPref("browser.tabs.loadInBackground");
-    var owner = bgLoad ? null : this.selectedTab;
-
-    var tab = this.addTab(aURI, {
-      triggeringPrincipal: aTriggeringPrincipal,
-      referrerInfo: aReferrerInfo,
-      charset: aCharset,
-      postData: aPostData,
-      ownerTab: owner,
-      allowInheritPrincipal: aAllowInheritPrincipal,
-      allowThirdPartyFixup: aAllowThirdPartyFixup,
-      fromExternal: aFromExternal,
-      relatedToCurrent: aRelatedToCurrent,
-      skipAnimation: aSkipAnimation,
-      allowMixedContent: aAllowMixedContent,
-      forceNotRemote: aForceNotRemote,
-      createLazyBrowser: aCreateLazyBrowser,
-      preferredRemoteType: aPreferredRemoteType,
-      userContextId: aUserContextId,
-      originPrincipal: aOriginPrincipal,
-      sameProcessAsFrameLoader: aSameProcessAsFrameLoader,
-      opener: aOpener,
-      openerBrowser: aOpenerBrowser,
-      nextRemoteTabId: aNextRemoteTabId,
-      focusUrlBar: aFocusUrlBar,
-      name: aName,
-      csp: aCsp,
-      private: aPrivate,
-    });
-    if (!bgLoad)
-      this.selectedTab = tab;
-||||||| merged common ancestors
-    var bgLoad = (aLoadInBackground != null) ? aLoadInBackground :
-      Services.prefs.getBoolPref("browser.tabs.loadInBackground");
-    var owner = bgLoad ? null : this.selectedTab;
-
-    var tab = this.addTab(aURI, {
-      triggeringPrincipal: aTriggeringPrincipal,
-      referrerInfo: aReferrerInfo,
-      charset: aCharset,
-      postData: aPostData,
-      ownerTab: owner,
-      allowInheritPrincipal: aAllowInheritPrincipal,
-      allowThirdPartyFixup: aAllowThirdPartyFixup,
-      fromExternal: aFromExternal,
-      relatedToCurrent: aRelatedToCurrent,
-      skipAnimation: aSkipAnimation,
-      allowMixedContent: aAllowMixedContent,
-      forceNotRemote: aForceNotRemote,
-      createLazyBrowser: aCreateLazyBrowser,
-      preferredRemoteType: aPreferredRemoteType,
-      userContextId: aUserContextId,
-      originPrincipal: aOriginPrincipal,
-      sameProcessAsFrameLoader: aSameProcessAsFrameLoader,
-      opener: aOpener,
-      openerBrowser: aOpenerBrowser,
-      nextRemoteTabId: aNextRemoteTabId,
-      focusUrlBar: aFocusUrlBar,
-      name: aName,
-      csp: aCsp,
-    });
-    if (!bgLoad)
-      this.selectedTab = tab;
-=======
     updateBrowserRemotenessByURL(aBrowser, aURL, aOptions = {}) {
       if (!gMultiProcessBrowser) {
         return this.updateBrowserRemoteness(aBrowser, {
           remoteType: E10SUtils.NOT_REMOTE,
         });
       }
->>>>>>> origin/upstream-releases
 
       let oldRemoteType = aBrowser.remoteType;
 
@@ -2256,6 +2085,7 @@
       sameProcessAsFrameLoader,
       uriIsAboutBlank,
       userContextId,
+      private,
     } = {}) {
       let b = document.createXULElement("browser");
       // Use the JSM global to create the permanentKey, so that if the
@@ -2283,6 +2113,10 @@
       if (remoteType) {
         b.setAttribute("remoteType", remoteType);
         b.setAttribute("remote", "true");
+      }
+
+      if (private) {
+        b.setAttribute("mozprivatebrowsing", 1);
       }
 
       if (recordExecution) {
@@ -2702,70 +2536,6 @@
       return this.addTab(aURI, params);
     },
 
-<<<<<<< HEAD
-  createBrowser({
-    isPreloadBrowser,
-    name,
-    nextRemoteTabId,
-    openerWindow,
-    recordExecution,
-    remoteType,
-    replayExecution,
-    sameProcessAsFrameLoader,
-    uriIsAboutBlank,
-    userContextId,
-    private,
-  } = {}) {
-    let b = document.createXULElement("browser");
-    // Use the JSM global to create the permanentKey, so that if the
-    // permanentKey is held by something after this window closes, it
-    // doesn't keep the window alive.
-    b.permanentKey = new (Cu.getGlobalForObject(Services).Object);
-
-    const defaultBrowserAttributes = {
-      contextmenu: "contentAreaContextMenu",
-      datetimepicker: "DateTimePickerPanel",
-      message: "true",
-      messagemanagergroup: "browsers",
-      selectmenulist: "ContentSelectDropdown",
-      tooltip: "aHTMLTooltip",
-      type: "content",
-    };
-    for (let attribute in defaultBrowserAttributes) {
-      b.setAttribute(attribute, defaultBrowserAttributes[attribute]);
-    }
-||||||| merged common ancestors
-  createBrowser({
-    isPreloadBrowser,
-    name,
-    nextRemoteTabId,
-    openerWindow,
-    recordExecution,
-    remoteType,
-    replayExecution,
-    sameProcessAsFrameLoader,
-    uriIsAboutBlank,
-    userContextId,
-  } = {}) {
-    let b = document.createXULElement("browser");
-    // Use the JSM global to create the permanentKey, so that if the
-    // permanentKey is held by something after this window closes, it
-    // doesn't keep the window alive.
-    b.permanentKey = new (Cu.getGlobalForObject(Services).Object);
-
-    const defaultBrowserAttributes = {
-      contextmenu: "contentAreaContextMenu",
-      datetimepicker: "DateTimePickerPanel",
-      message: "true",
-      messagemanagergroup: "browsers",
-      selectmenulist: "ContentSelectDropdown",
-      tooltip: "aHTMLTooltip",
-      type: "content",
-    };
-    for (let attribute in defaultBrowserAttributes) {
-      b.setAttribute(attribute, defaultBrowserAttributes[attribute]);
-    }
-=======
     // eslint-disable-next-line complexity
     addTab(
       aURI,
@@ -2812,7 +2582,6 @@
           "Required argument triggeringPrincipal missing within addTab"
         );
       }
->>>>>>> origin/upstream-releases
 
       // if we're adding tabs, we're past interrupt mode, ditch the owner
       if (this.selectedTab.owner) {
@@ -2851,25 +2620,11 @@
         /* we'll try to fix up this URL later */
       }
 
-<<<<<<< HEAD
-    if (private) {
-      b.setAttribute("mozprivatebrowsing", 1);
-    }
-
-    if (recordExecution) {
-      b.setAttribute("recordExecution", recordExecution);
-    }
-||||||| merged common ancestors
-    if (recordExecution) {
-      b.setAttribute("recordExecution", recordExecution);
-    }
-=======
       let lazyBrowserURI;
       if (createLazyBrowser && aURI != "about:blank") {
         lazyBrowserURI = aURIObject;
         aURI = "about:blank";
       }
->>>>>>> origin/upstream-releases
 
       var uriIsAboutBlank = aURI == "about:blank";
 
@@ -3199,27 +2954,6 @@
       return t;
     },
 
-<<<<<<< HEAD
-  /**
-   * Must only be used sparingly for content that came from Chrome context
-   * If in doubt use addWebTab
-   */
-  addTrustedTab(aURI, params = {}) {
-    params.triggeringPrincipal = Services.scriptSecurityManager.getSystemPrincipal();
-    params.private = typeof params.private == "boolean" ? params.private : false;
-
-    return this.addTab(aURI, params);
-  },
-||||||| merged common ancestors
-  /**
-   * Must only be used sparingly for content that came from Chrome context
-   * If in doubt use addWebTab
-   */
-  addTrustedTab(aURI, params = {}) {
-    params.triggeringPrincipal = Services.scriptSecurityManager.getSystemPrincipal();
-    return this.addTab(aURI, params);
-  },
-=======
     moveTabsToStart(contextTab) {
       let tabs = contextTab.multiselected ? this.selectedTabs : [contextTab];
       // Walk the array in reverse order so the tabs are kept in order.
@@ -3230,92 +2964,7 @@
         }
       }
     },
->>>>>>> origin/upstream-releases
 
-<<<<<<< HEAD
-  // eslint-disable-next-line complexity
-  addTab(aURI, {
-    allowInheritPrincipal,
-    allowMixedContent,
-    allowThirdPartyFixup,
-    bulkOrderedOpen,
-    charset,
-    createLazyBrowser,
-    eventDetail,
-    focusUrlBar,
-    forceNotRemote,
-    fromExternal,
-    index,
-    lazyTabTitle,
-    name,
-    nextRemoteTabId,
-    noInitialLabel,
-    opener,
-    openerBrowser,
-    originPrincipal,
-    ownerTab,
-    pinned,
-    postData,
-    private,
-    preferredRemoteType,
-    referrerInfo,
-    relatedToCurrent,
-    sameProcessAsFrameLoader,
-    skipAnimation,
-    skipBackgroundNotify,
-    triggeringPrincipal,
-    userContextId,
-    recordExecution,
-    replayExecution,
-    csp,
-  } = {}) {
-    // all callers of addTab that pass a params object need to pass
-    // a valid triggeringPrincipal.
-    if (!triggeringPrincipal) {
-      throw new Error("Required argument triggeringPrincipal missing within addTab");
-    }
-||||||| merged common ancestors
-  // eslint-disable-next-line complexity
-  addTab(aURI, {
-    allowInheritPrincipal,
-    allowMixedContent,
-    allowThirdPartyFixup,
-    bulkOrderedOpen,
-    charset,
-    createLazyBrowser,
-    eventDetail,
-    focusUrlBar,
-    forceNotRemote,
-    fromExternal,
-    index,
-    lazyTabTitle,
-    name,
-    nextRemoteTabId,
-    noInitialLabel,
-    opener,
-    openerBrowser,
-    originPrincipal,
-    ownerTab,
-    pinned,
-    postData,
-    preferredRemoteType,
-    referrerInfo,
-    relatedToCurrent,
-    sameProcessAsFrameLoader,
-    skipAnimation,
-    skipBackgroundNotify,
-    triggeringPrincipal,
-    userContextId,
-    recordExecution,
-    replayExecution,
-    csp,
-  } = {}) {
-    // all callers of addTab that pass a params object need to pass
-    // a valid triggeringPrincipal.
-    if (!triggeringPrincipal) {
-      throw new Error("Required argument triggeringPrincipal missing within addTab");
-    }
-=======
     moveTabsToEnd(contextTab) {
       let tabs = contextTab.multiselected ? this.selectedTabs : [contextTab];
       for (let tab of tabs) {
@@ -3324,7 +2973,6 @@
         }
       }
     },
->>>>>>> origin/upstream-releases
 
     warnAboutClosingTabs(tabsToClose, aCloseTabs) {
       if (tabsToClose <= 1) {
@@ -3397,16 +3045,8 @@
         Services.prefs.setBoolPref(pref, false);
       }
 
-<<<<<<< HEAD
-    t.setAttribute("private", private == true);
-
-    t.openerTab = openerTab;
-||||||| merged common ancestors
-    t.openerTab = openerTab;
-=======
       return reallyClose;
     },
->>>>>>> origin/upstream-releases
 
     getTabsToTheEndFrom(aTab) {
       let tabsToEnd = [];
@@ -3587,30 +3227,6 @@
       // We're animating, so we can cancel the non-animation stopwatch.
       TelemetryStopwatch.cancel("FX_TAB_CLOSE_TIME_NO_ANIM_MS", aTab);
 
-<<<<<<< HEAD
-      // If we open a new tab with the newtab URL in the default
-      // userContext, check if there is a preloaded browser ready.
-      if (aURI == BROWSER_NEW_TAB_URL &&
-          !userContextId &&
-          !private &&
-          !recordExecution &&
-          !replayExecution) {
-        b = NewTabPagePreloading.getPreloadedBrowser(window);
-        if (b) {
-          usingPreloadedContent = true;
-        }
-||||||| merged common ancestors
-      // If we open a new tab with the newtab URL in the default
-      // userContext, check if there is a preloaded browser ready.
-      if (aURI == BROWSER_NEW_TAB_URL &&
-          !userContextId &&
-          !recordExecution &&
-          !replayExecution) {
-        b = NewTabPagePreloading.getPreloadedBrowser(window);
-        if (b) {
-          usingPreloadedContent = true;
-        }
-=======
       aTab.style.maxWidth = ""; // ensure that fade-out transition happens
       aTab.removeAttribute("fadein");
       aTab.removeAttribute("bursting");
@@ -3638,41 +3254,10 @@
       let browser = aTab.linkedBrowser;
       if (browser.isRemoteBrowser && browser.frameLoader) {
         return PermitUnloader.hasBeforeUnload(browser.frameLoader);
->>>>>>> origin/upstream-releases
       }
       return false;
     },
 
-<<<<<<< HEAD
-      if (!b) {
-        // No preloaded browser found, create one.
-        b = this.createBrowser({
-          remoteType,
-          uriIsAboutBlank,
-          userContextId,
-          sameProcessAsFrameLoader,
-          openerWindow: opener,
-          nextRemoteTabId,
-          name,
-          private,
-          recordExecution,
-          replayExecution,
-        });
-||||||| merged common ancestors
-      if (!b) {
-        // No preloaded browser found, create one.
-        b = this.createBrowser({
-          remoteType,
-          uriIsAboutBlank,
-          userContextId,
-          sameProcessAsFrameLoader,
-          openerWindow: opener,
-          nextRemoteTabId,
-          name,
-          recordExecution,
-          replayExecution,
-        });
-=======
     _beginRemoveTab(
       aTab,
       {
@@ -3684,7 +3269,6 @@
     ) {
       if (aTab.closing || this._windowIsClosing) {
         return false;
->>>>>>> origin/upstream-releases
       }
 
       var browser = this.getBrowserForTab(aTab);
@@ -3797,48 +3381,14 @@
       if (this.tabContainer._hoveredTab == aTab) {
         aTab._mouseleave();
       }
-<<<<<<< HEAD
-      try {
-        b.loadURI(aURI, {
-          flags,
-          triggeringPrincipal,
-          referrerInfo,
-          charset,
-          postData,
-          csp,
-          private,
-||||||| merged common ancestors
-      try {
-        b.loadURI(aURI, {
-          flags,
-          triggeringPrincipal,
-          referrerInfo,
-          charset,
-          postData,
-          csp,
-=======
 
       if (newTab) {
         this.addTrustedTab(BROWSER_NEW_TAB_URL, {
           skipAnimation: true,
->>>>>>> origin/upstream-releases
         });
       } else {
         TabBarVisibility.update();
       }
-<<<<<<< HEAD
-    }
-    // Reload blank page in private mode, if requested so.
-    else if (private) {
-      b.loadURIWithFlags(
-          aURI, {
-          ensurePrivate: true,
-      });
-    }
-||||||| merged common ancestors
-    }
-=======
->>>>>>> origin/upstream-releases
 
       // Splice this tab out of any lines of succession before any events are
       // dispatched.
@@ -4307,30 +3857,12 @@
       // aOurTab's browser needs to be inserted now if it hasn't already.
       this._insertBrowser(aOurTab);
 
-<<<<<<< HEAD
-    // In the multi-process case, it's possible an asynchronous tab switch
-    // is still underway. If so, then it's possible that the last visible
-    // browser is the one we're in the process of removing. There's the
-    // risk of displaying preloaded browsers that are at the end of the
-    // deck if we remove the browser before the switch is complete, so
-    // we alert the switcher in order to show a spinner instead.
-    if (this._switcher) {
-      this._switcher.onTabRemoved(aTab);
-    }
-
-    // Remove the tab ...
-    aTab.remove();
-||||||| merged common ancestors
-    // Remove the tab ...
-    aTab.remove();
-=======
       // Unhook our progress listener
       const filter = this._tabFilters.get(aOurTab);
       let tabListener = this._tabListeners.get(aOurTab);
       let ourBrowser = this.getBrowserForTab(aOurTab);
       ourBrowser.webProgress.removeProgressListener(filter);
       filter.removeProgressListener(tabListener);
->>>>>>> origin/upstream-releases
 
       // Make sure to unregister any open URIs.
       this._swapRegisteredOpenURIs(ourBrowser, aOtherBrowser);
@@ -4371,49 +3903,6 @@
         );
       }
 
-<<<<<<< HEAD
-    // update tab positional properties and attributes
-    this.selectedTab._selected = true;
-    this.tabContainer._setPositionalAttributes();
-
-    // Removing the panel requires fixing up selectedPanel immediately
-    // (see below), which would be hindered by the potentially expensive
-    // browser removal. So we remove the browser and the panel in two
-    // steps.
-
-    var panel = this.getPanel(browser);
-
-    // This will unload the document. An unload handler could remove
-    // dependant tabs, so it's important that the tabbrowser is now in
-    // a consistent state (tab removed, tab positions updated, etc.).
-    browser.remove();
-||||||| merged common ancestors
-    // update tab positional properties and attributes
-    this.selectedTab._selected = true;
-    this.tabContainer._setPositionalAttributes();
-
-    // Removing the panel requires fixing up selectedPanel immediately
-    // (see below), which would be hindered by the potentially expensive
-    // browser removal. So we remove the browser and the panel in two
-    // steps.
-
-    var panel = this.getPanel(browser);
-
-    // In the multi-process case, it's possible an asynchronous tab switch
-    // is still underway. If so, then it's possible that the last visible
-    // browser is the one we're in the process of removing. There's the
-    // risk of displaying preloaded browsers that are at the end of the
-    // deck if we remove the browser before the switch is complete, so
-    // we alert the switcher in order to show a spinner instead.
-    if (this._switcher) {
-      this._switcher.onTabRemoved(aTab);
-    }
-
-    // This will unload the document. An unload handler could remove
-    // dependant tabs, so it's important that the tabbrowser is now in
-    // a consistent state (tab removed, tab positions updated, etc.).
-    browser.remove();
-=======
       // Swap permanentKey properties.
       let ourPermanentKey = ourBrowser.permanentKey;
       ourBrowser.permanentKey = aOtherBrowser.permanentKey;
@@ -4435,7 +3924,6 @@
         aStateFlags
       );
       this._tabListeners.set(aOurTab, tabListener);
->>>>>>> origin/upstream-releases
 
       const notifyAll = Ci.nsIWebProgress.NOTIFY_ALL;
       filter.addProgressListener(tabListener, notifyAll);
@@ -4528,31 +4016,6 @@
       return aTab.linkedBrowser;
     },
 
-<<<<<<< HEAD
-  /**
-   * @returns {boolean}
-   *   False if swapping isn't permitted, true otherwise.
-   */
-  swapBrowsersAndCloseOther(aOurTab, aOtherTab) {
-    // Cliqz. Auto-Forget-Tabs:
-    // Transfering a private tab to a non-private window is fine.
-    // Transfering a normal tab to a private window is not.
-    if (PrivateBrowsingUtils.isWindowPrivate(window) &&
-        !aOtherTab.private)
-      return;
-||||||| merged common ancestors
-  /**
-   * @returns {boolean}
-   *   False if swapping isn't permitted, true otherwise.
-   */
-  swapBrowsersAndCloseOther(aOurTab, aOtherTab) {
-    // Do not allow transfering a private tab to a non-private window
-    // and vice versa.
-    if (PrivateBrowsingUtils.isWindowPrivate(window) !=
-        PrivateBrowsingUtils.isWindowPrivate(aOtherTab.ownerGlobal)) {
-      return false;
-    }
-=======
     showOnlyTheseTabs(aTabs) {
       for (let tab of this.tabs) {
         if (!aTabs.includes(tab)) {
@@ -4561,7 +4024,6 @@
           this.showTab(tab);
         }
       }
->>>>>>> origin/upstream-releases
 
       this.tabContainer._updateHiddenTabsStatus();
       this.tabContainer._handleTabSelect(true);
@@ -4954,56 +4416,10 @@
       const indexOfTab1 = tabs.indexOf(aTab1);
       const indexOfTab2 = tabs.indexOf(aTab2);
 
-<<<<<<< HEAD
-  /**
-   * Moves a tab to a new browser window, unless it's already the only tab
-   * in the current window, in which case this will do nothing.
-   */
-  replaceTabWithWindow(aTab, aOptions) {
-    if (this.tabs.length == 1)
-      return null;
-
-    var options = "chrome,dialog=no,all";
-    for (var name in aOptions)
-      options += "," + name + "=" + aOptions[name];
-
-    // Open private window if tab is private.
-    if (aTab.private)
-      options += ",private"
-
-    // Play the tab closing animation to give immediate feedback while
-    // waiting for the new window to appear.
-    // content area when the docshells are swapped.
-    if (this.animationsEnabled) {
-      aTab.style.maxWidth = ""; // ensure that fade-out transition happens
-      aTab.removeAttribute("fadein");
-    }
-||||||| merged common ancestors
-  /**
-   * Moves a tab to a new browser window, unless it's already the only tab
-   * in the current window, in which case this will do nothing.
-   */
-  replaceTabWithWindow(aTab, aOptions) {
-    if (this.tabs.length == 1)
-      return null;
-
-    var options = "chrome,dialog=no,all";
-    for (var name in aOptions)
-      options += "," + name + "=" + aOptions[name];
-
-    // Play the tab closing animation to give immediate feedback while
-    // waiting for the new window to appear.
-    // content area when the docshells are swapped.
-    if (this.animationsEnabled) {
-      aTab.style.maxWidth = ""; // ensure that fade-out transition happens
-      aTab.removeAttribute("fadein");
-    }
-=======
       const [lowerIndex, higherIndex] =
         indexOfTab1 < indexOfTab2
           ? [indexOfTab1, indexOfTab2]
           : [indexOfTab2, indexOfTab1];
->>>>>>> origin/upstream-releases
 
       for (let i = lowerIndex; i <= higherIndex; i++) {
         this.addToMultiSelectedTabs(tabs[i], true);
@@ -5156,298 +4572,11 @@
       return tabs.sort((a, b) => a._tPos > b._tPos);
     },
 
-<<<<<<< HEAD
-    if (wasFocused)
-      this.selectedTab.focus();
-
-    this.tabContainer._handleTabSelect(true);
-
-    if (aTab.pinned)
-      this.tabContainer._positionPinnedTabs();
-
-    this.tabContainer._setPositionalAttributes();
-
-    var evt = document.createEvent("UIEvents");
-    evt.initUIEvent("TabMove", true, false, window, oldPosition);
-    aTab.dispatchEvent(evt);
-  },
-
-  moveTabForward() {
-    let nextTab = this.selectedTab.nextElementSibling;
-    while (nextTab && nextTab.hidden)
-      nextTab = nextTab.nextElementSibling;
-
-    if (nextTab)
-      this.moveTabTo(this.selectedTab, nextTab._tPos);
-    else if (this.arrowKeysShouldWrap)
-      this.moveTabToStart();
-  },
-
-  /**
-   * Adopts a tab from another browser window, and inserts it at aIndex
-   *
-   * @returns {object}
-   *    The new tab in the current window, null if the tab couldn't be adopted.
-   */
-  adoptTab(aTab, aIndex, aSelectTab) {
-    // Swap the dropped tab with a new one we create and then close
-    // it in the other window (making it seem to have moved between
-    // windows). We also ensure that the tab we create to swap into has
-    // the same remote type and process as the one we're swapping in.
-    // This makes sure we don't get a short-lived process for the new tab.
-    // Cliqz. We must create private tab in order to swap docShells with
-    // another private tab.
-    let linkedBrowser = aTab.linkedBrowser;
-    let createLazyBrowser = !aTab.linkedPanel;
-    let params = {
-      eventDetail: { adoptedTab: aTab },
-      preferredRemoteType: linkedBrowser.remoteType,
-      sameProcessAsFrameLoader: linkedBrowser.frameLoader,
-      skipAnimation: true,
-      index: aIndex,
-      createLazyBrowser,
-      allowInheritPrincipal: createLazyBrowser,
-      private: !!aTab.private,
-    };
-
-    let numPinned = this._numPinnedTabs;
-    if (aIndex < numPinned || (aTab.pinned && aIndex == numPinned)) {
-      params.pinned = true;
-    }
-
-    if (aTab.hasAttribute("usercontextid")) {
-      // new tab must have the same usercontextid as the old one
-      params.userContextId = aTab.getAttribute("usercontextid");
-    }
-    let newTab = this.addWebTab("about:blank", params);
-    let newBrowser = this.getBrowserForTab(newTab);
-
-    aTab.parentNode._finishAnimateTabMove();
-
-    if (!createLazyBrowser) {
-      // Stop the about:blank load.
-      newBrowser.stop();
-      // Make sure it has a docshell.
-      newBrowser.docShell;
-    }
-
-    if (!this.swapBrowsersAndCloseOther(newTab, aTab)) {
-      // Swapping wasn't permitted. Bail out.
-      this.removeTab(newTab);
-      return null;
-    }
-
-    if (aSelectTab) {
-      this.selectedTab = newTab;
-    }
-
-    return newTab;
-  },
-
-  moveTabBackward() {
-    let previousTab = this.selectedTab.previousElementSibling;
-    while (previousTab && previousTab.hidden)
-      previousTab = previousTab.previousElementSibling;
-
-    if (previousTab)
-      this.moveTabTo(this.selectedTab, previousTab._tPos);
-    else if (this.arrowKeysShouldWrap)
-      this.moveTabToEnd();
-  },
-
-  moveTabToStart() {
-    let tabPos = this.selectedTab._tPos;
-    if (tabPos > 0)
-      this.moveTabTo(this.selectedTab, 0);
-  },
-
-  moveTabToEnd() {
-    let tabPos = this.selectedTab._tPos;
-    if (tabPos < this.browsers.length - 1)
-      this.moveTabTo(this.selectedTab, this.browsers.length - 1);
-  },
-
-  moveTabOver(aEvent) {
-    if ((!RTL_UI && aEvent.keyCode == KeyEvent.DOM_VK_RIGHT) ||
-        (RTL_UI && aEvent.keyCode == KeyEvent.DOM_VK_LEFT)) {
-      this.moveTabForward();
-    } else {
-      this.moveTabBackward();
-    }
-  },
-
-  /**
-   * @param   aTab
-   *          Can be from a different window as well
-   * @param   aRestoreTabImmediately
-   *          Can defer loading of the tab contents
-   */
-  duplicateTab(aTab, aRestoreTabImmediately) {
-    return SessionStore.duplicateTab(window, aTab, 0, aRestoreTabImmediately);
-  },
-
-  addToMultiSelectedTabs(aTab, multiSelectMayChangeMore) {
-    if (aTab.multiselected) {
-      return;
-    }
-
-    aTab.setAttribute("multiselected", "true");
-    aTab.setAttribute("aria-selected", "true");
-    this._multiSelectedTabsSet.add(aTab);
-    this._startMultiSelectChange();
-    if (this._multiSelectChangeRemovals.has(aTab)) {
-      this._multiSelectChangeRemovals.delete(aTab);
-    } else {
-      this._multiSelectChangeAdditions.add(aTab);
-    }
-||||||| merged common ancestors
-    if (wasFocused)
-      this.selectedTab.focus();
-
-    this.tabContainer._handleTabSelect(true);
-
-    if (aTab.pinned)
-      this.tabContainer._positionPinnedTabs();
-
-    this.tabContainer._setPositionalAttributes();
-
-    var evt = document.createEvent("UIEvents");
-    evt.initUIEvent("TabMove", true, false, window, oldPosition);
-    aTab.dispatchEvent(evt);
-  },
-
-  moveTabForward() {
-    let nextTab = this.selectedTab.nextElementSibling;
-    while (nextTab && nextTab.hidden)
-      nextTab = nextTab.nextElementSibling;
-
-    if (nextTab)
-      this.moveTabTo(this.selectedTab, nextTab._tPos);
-    else if (this.arrowKeysShouldWrap)
-      this.moveTabToStart();
-  },
-
-  /**
-   * Adopts a tab from another browser window, and inserts it at aIndex
-   *
-   * @returns {object}
-   *    The new tab in the current window, null if the tab couldn't be adopted.
-   */
-  adoptTab(aTab, aIndex, aSelectTab) {
-    // Swap the dropped tab with a new one we create and then close
-    // it in the other window (making it seem to have moved between
-    // windows). We also ensure that the tab we create to swap into has
-    // the same remote type and process as the one we're swapping in.
-    // This makes sure we don't get a short-lived process for the new tab.
-    let linkedBrowser = aTab.linkedBrowser;
-    let createLazyBrowser = !aTab.linkedPanel;
-    let params = {
-      eventDetail: { adoptedTab: aTab },
-      preferredRemoteType: linkedBrowser.remoteType,
-      sameProcessAsFrameLoader: linkedBrowser.frameLoader,
-      skipAnimation: true,
-      index: aIndex,
-      createLazyBrowser,
-      allowInheritPrincipal: createLazyBrowser,
-    };
-
-    let numPinned = this._numPinnedTabs;
-    if (aIndex < numPinned || (aTab.pinned && aIndex == numPinned)) {
-      params.pinned = true;
-    }
-
-    if (aTab.hasAttribute("usercontextid")) {
-      // new tab must have the same usercontextid as the old one
-      params.userContextId = aTab.getAttribute("usercontextid");
-    }
-    let newTab = this.addWebTab("about:blank", params);
-    let newBrowser = this.getBrowserForTab(newTab);
-
-    aTab.parentNode._finishAnimateTabMove();
-
-    if (!createLazyBrowser) {
-      // Stop the about:blank load.
-      newBrowser.stop();
-      // Make sure it has a docshell.
-      newBrowser.docShell;
-    }
-
-    if (!this.swapBrowsersAndCloseOther(newTab, aTab)) {
-      // Swapping wasn't permitted. Bail out.
-      this.removeTab(newTab);
-      return null;
-    }
-
-    if (aSelectTab) {
-      this.selectedTab = newTab;
-    }
-
-    return newTab;
-  },
-
-  moveTabBackward() {
-    let previousTab = this.selectedTab.previousElementSibling;
-    while (previousTab && previousTab.hidden)
-      previousTab = previousTab.previousElementSibling;
-
-    if (previousTab)
-      this.moveTabTo(this.selectedTab, previousTab._tPos);
-    else if (this.arrowKeysShouldWrap)
-      this.moveTabToEnd();
-  },
-
-  moveTabToStart() {
-    let tabPos = this.selectedTab._tPos;
-    if (tabPos > 0)
-      this.moveTabTo(this.selectedTab, 0);
-  },
-
-  moveTabToEnd() {
-    let tabPos = this.selectedTab._tPos;
-    if (tabPos < this.browsers.length - 1)
-      this.moveTabTo(this.selectedTab, this.browsers.length - 1);
-  },
-
-  moveTabOver(aEvent) {
-    if ((!RTL_UI && aEvent.keyCode == KeyEvent.DOM_VK_RIGHT) ||
-        (RTL_UI && aEvent.keyCode == KeyEvent.DOM_VK_LEFT)) {
-      this.moveTabForward();
-    } else {
-      this.moveTabBackward();
-    }
-  },
-
-  /**
-   * @param   aTab
-   *          Can be from a different window as well
-   * @param   aRestoreTabImmediately
-   *          Can defer loading of the tab contents
-   */
-  duplicateTab(aTab, aRestoreTabImmediately) {
-    return SessionStore.duplicateTab(window, aTab, 0, aRestoreTabImmediately);
-  },
-
-  addToMultiSelectedTabs(aTab, multiSelectMayChangeMore) {
-    if (aTab.multiselected) {
-      return;
-    }
-
-    aTab.setAttribute("multiselected", "true");
-    aTab.setAttribute("aria-selected", "true");
-    this._multiSelectedTabsSet.add(aTab);
-    this._startMultiSelectChange();
-    if (this._multiSelectChangeRemovals.has(aTab)) {
-      this._multiSelectChangeRemovals.delete(aTab);
-    } else {
-      this._multiSelectChangeAdditions.add(aTab);
-    }
-=======
     get multiSelectedTabsCount() {
       return ChromeUtils.nondeterministicGetWeakSetKeys(
         this._multiSelectedTabsSet
       ).filter(tab => tab.isConnected && !tab.closing).length;
     },
->>>>>>> origin/upstream-releases
 
     get lastMultiSelectedTab() {
       let tab = this._lastMultiSelectedTabRef
@@ -6774,41 +5903,6 @@
           this.mBrowser.mIconURL = null;
         }
 
-<<<<<<< HEAD
-      let userContextId = this.mBrowser.getAttribute("usercontextid") || 0;
-      if (this.mBrowser.registeredOpenURI) {
-        let uri = this.mBrowser.registeredOpenURI;
-        gBrowser.UrlbarProviderOpenTabs.unregisterOpenTab(uri.spec, userContextId);
-        delete this.mBrowser.registeredOpenURI;
-      }
-      // Tabs in private windows aren't registered as "Open" so
-      // that they don't appear as switch-to-tab candidates.
-      // CLIQZ: also don't register windows from Forget tabs.
-      if (!isBlankPageURL(aLocation.spec) &&
-          ((!PrivateBrowsingUtils.isWindowPrivate(window) &&
-            !PrivateBrowsingUtils.isTabContextPrivate(this.mTab)) ||
-            PrivateBrowsingUtils.permanentPrivateBrowsing)) {
-        gBrowser.UrlbarProviderOpenTabs.registerOpenTab(aLocation.spec,
-                                                        userContextId);
-        this.mBrowser.registeredOpenURI = aLocation;
-      }
-||||||| merged common ancestors
-      let userContextId = this.mBrowser.getAttribute("usercontextid") || 0;
-      if (this.mBrowser.registeredOpenURI) {
-        let uri = this.mBrowser.registeredOpenURI;
-        gBrowser.UrlbarProviderOpenTabs.unregisterOpenTab(uri.spec, userContextId);
-        delete this.mBrowser.registeredOpenURI;
-      }
-      // Tabs in private windows aren't registered as "Open" so
-      // that they don't appear as switch-to-tab candidates.
-      if (!isBlankPageURL(aLocation.spec) &&
-          (!PrivateBrowsingUtils.isWindowPrivate(window) ||
-            PrivateBrowsingUtils.permanentPrivateBrowsing)) {
-        gBrowser.UrlbarProviderOpenTabs.registerOpenTab(aLocation.spec,
-                                                        userContextId);
-        this.mBrowser.registeredOpenURI = aLocation;
-      }
-=======
         let userContextId = this.mBrowser.getAttribute("usercontextid") || 0;
         if (this.mBrowser.registeredOpenURI) {
           let uri = this.mBrowser.registeredOpenURI;
@@ -6831,7 +5925,6 @@
           );
           this.mBrowser.registeredOpenURI = aLocation;
         }
->>>>>>> origin/upstream-releases
 
         if (this.mTab != gBrowser.selectedTab) {
           let tabCacheIndex = gBrowser._tabLayerCache.indexOf(this.mTab);
@@ -7129,21 +6222,6 @@ var TabContextMenu = {
     contextPinTab.hidden = this.contextTab.pinned || multiselectionContext;
     let contextUnpinTab = document.getElementById("context_unpinTab");
     contextUnpinTab.hidden = !this.contextTab.pinned || multiselectionContext;
-<<<<<<< HEAD
-    let contextPinSelectedTabs = document.getElementById("context_pinSelectedTabs");
-    contextPinSelectedTabs.hidden = this.contextTab.pinned || !multiselectionContext;
-    let contextUnpinSelectedTabs = document.getElementById("context_unpinSelectedTabs");
-    contextUnpinSelectedTabs.hidden = !this.contextTab.pinned || !multiselectionContext;
-#if 0
-    let contextMoveTabOptions = document.getElementById("context_moveTabOptions");
-||||||| merged common ancestors
-    let contextPinSelectedTabs = document.getElementById("context_pinSelectedTabs");
-    contextPinSelectedTabs.hidden = this.contextTab.pinned || !multiselectionContext;
-    let contextUnpinSelectedTabs = document.getElementById("context_unpinSelectedTabs");
-    contextUnpinSelectedTabs.hidden = !this.contextTab.pinned || !multiselectionContext;
-
-    let contextMoveTabOptions = document.getElementById("context_moveTabOptions");
-=======
     let contextPinSelectedTabs = document.getElementById(
       "context_pinSelectedTabs"
     );
@@ -7158,7 +6236,6 @@ var TabContextMenu = {
     let contextMoveTabOptions = document.getElementById(
       "context_moveTabOptions"
     );
->>>>>>> origin/upstream-releases
     contextMoveTabOptions.disabled = gBrowser.allTabsSelected();
     document.l10n.setAttributes(
       contextMoveTabOptions,

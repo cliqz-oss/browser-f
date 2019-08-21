@@ -444,31 +444,23 @@ nsContextMenu.prototype = {
     var shouldShow =
       this.onSaveableLink || isMailtoInternal || this.onPlainTextLink;
     var isWindowPrivate = PrivateBrowsingUtils.isWindowPrivate(window);
-<<<<<<< HEAD
-    const isTabPrivate = this.browser.loadContext.usePrivateBrowsing;
-    var showContainers = Services.prefs.getBoolPref("privacy.userContext.enabled");
-
-    this.showItem("context-openlink",
-        shouldShow && !isWindowPrivate && !isTabPrivate);
-    this.showItem("context-openlinkprivate", shouldShow && PrivateBrowsingUtils.enabled);
-    this.showItem("context-openlinkintab", shouldShow && !inContainer && !isTabPrivate);
-    this.showItem("context-openLinkInForgetTab", shouldShow && isTabPrivate);
-||||||| merged common ancestors
-    var showContainers = Services.prefs.getBoolPref("privacy.userContext.enabled");
-    this.showItem("context-openlink", shouldShow && !isWindowPrivate);
-    this.showItem("context-openlinkprivate", shouldShow && PrivateBrowsingUtils.enabled);
-    this.showItem("context-openlinkintab", shouldShow && !inContainer);
-=======
+    var isTabPrivate = this.browser.loadContext.usePrivateBrowsing;
     var showContainers = Services.prefs.getBoolPref(
       "privacy.userContext.enabled"
     );
-    this.showItem("context-openlink", shouldShow && !isWindowPrivate);
+    this.showItem(
+      "context-openlink",
+      shouldShow && !isWindowPrivate && !isTabPrivate
+    );
     this.showItem(
       "context-openlinkprivate",
       shouldShow && PrivateBrowsingUtils.enabled
     );
-    this.showItem("context-openlinkintab", shouldShow && !inContainer);
->>>>>>> origin/upstream-releases
+    this.showItem(
+      "context-openlinkintab",
+      shouldShow && !inContainer && !isTabPrivate
+    );
+    this.showItem("context-openLinkInForgetTab", shouldShow && isTabPrivate);
     this.showItem("context-openlinkincontainertab", shouldShow && inContainer);
     this.showItem(
       "context-openlinkinusercontext-menu",
@@ -704,20 +696,6 @@ nsContextMenu.prototype = {
     );
     this.showItem("frame", this.inFrame);
 
-<<<<<<< HEAD
-    let showSearchSelect = !this.inAboutDevtoolsToolbox &&
-                           (this.isTextSelected || this.onLink) && !this.onImage;
-    // CLIQZ-SPECIAL:
-    // DB-2138
-    // We should not show an option to search for with another engine if
-    // a context menu is initiated over our extension dropdown.
-    if (gContextMenuContentData != null && gContextMenuContentData.browser != null) {
-      showSearchSelect = showSearchSelect && gContextMenuContentData.browser.id !== 'cliqz-popup';
-    }
-||||||| merged common ancestors
-    let showSearchSelect = !this.inAboutDevtoolsToolbox &&
-                           (this.isTextSelected || this.onLink) && !this.onImage;
-=======
     if (this.inFrame) {
       // To make it easier to debug the browser running with out-of-process iframes, we
       // display the process PID of the iframe in the context menu for the subframe.
@@ -730,7 +708,17 @@ nsContextMenu.prototype = {
       !this.inAboutDevtoolsToolbox &&
       (this.isTextSelected || this.onLink) &&
       !this.onImage;
->>>>>>> origin/upstream-releases
+
+    // CLIQZ-SPECIAL:
+    // DB-2138
+    // We should not show an option to search for with another engine if
+    // a context menu is initiated over our extension dropdown.
+    if (gContextMenuContentData != null && gContextMenuContentData.browser != null) {
+      showSearchSelect =
+        showSearchSelect &&
+        gContextMenuContentData.browser.id !== 'cliqz-popup';
+    }
+
     this.showItem("context-searchselect", showSearchSelect);
     if (showSearchSelect) {
       this.formatSearchContextItem();
@@ -1098,20 +1086,6 @@ nsContextMenu.prototype = {
   },
 
   _openLinkInParameters(extra) {
-<<<<<<< HEAD
-    let params = { charset: gContextMenuContentData.charSet,
-                   originPrincipal: this.principal,
-                   triggeringPrincipal: this.principal,
-                   csp: this.csp,
-                   frameOuterWindowID: gContextMenuContentData.frameOuterWindowID,
-                   private: this.browser.loadContext.usePrivateBrowsing};
-||||||| merged common ancestors
-    let params = { charset: gContextMenuContentData.charSet,
-                   originPrincipal: this.principal,
-                   triggeringPrincipal: this.principal,
-                   csp: this.csp,
-                   frameOuterWindowID: gContextMenuContentData.frameOuterWindowID};
-=======
     let params = {
       charset: gContextMenuContentData.charSet,
       originPrincipal: this.principal,
@@ -1119,8 +1093,8 @@ nsContextMenu.prototype = {
       triggeringPrincipal: this.principal,
       csp: this.csp,
       frameOuterWindowID: gContextMenuContentData.frameOuterWindowID,
+      private: this.browser.loadContext.usePrivateBrowsing,
     };
->>>>>>> origin/upstream-releases
     for (let p in extra) {
       params[p] = extra[p];
     }
@@ -1355,16 +1329,8 @@ nsContextMenu.prototype = {
   },
 
   saveVideoFrameAsImage() {
-<<<<<<< HEAD
-    let mm = this.browser.messageManager;
     let aTab = this.browser.ownerGlobal.gBrowser.getTabForBrowser(this.browser);
     let isPrivate = PrivateBrowsingUtils.isTabContextPrivate(aTab);
-||||||| merged common ancestors
-    let mm = this.browser.messageManager;
-    let isPrivate = PrivateBrowsingUtils.isBrowserPrivate(this.browser);
-=======
-    let isPrivate = PrivateBrowsingUtils.isBrowserPrivate(this.browser);
->>>>>>> origin/upstream-releases
 
     let name = "";
     if (this.mediaURL) {

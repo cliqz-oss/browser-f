@@ -84,7 +84,6 @@ extensions.on("page-shutdown", (type, context) => {
       // WebExtension as an embedded inline options page.
       return;
     }
-<<<<<<< HEAD
     // CLIQZ-SPECIAL
     // DB-2057:
     // We do not need to shutdown extension pages in case a user has refreshed one's profile.
@@ -94,12 +93,7 @@ extensions.on("page-shutdown", (type, context) => {
       return;
     }
 
-    let {gBrowser} = context.xulBrowser.ownerGlobal;
-||||||| merged common ancestors
-    let {gBrowser} = context.xulBrowser.ownerGlobal;
-=======
     let { gBrowser } = context.xulBrowser.ownerGlobal;
->>>>>>> origin/upstream-releases
     if (gBrowser && gBrowser.getTabForBrowser) {
       let nativeTab = gBrowser.getTabForBrowser(context.xulBrowser);
       if (nativeTab) {
@@ -1163,18 +1157,10 @@ class TabManager extends TabManagerBase {
   }
 
   canAccessTab(nativeTab) {
-<<<<<<< HEAD
-    return this.extension.privateBrowsingAllowed ||
-           !isPrivateTab(nativeTab);
-||||||| merged common ancestors
-    return this.extension.privateBrowsingAllowed ||
-           !PrivateBrowsingUtils.isBrowserPrivate(nativeTab.linkedBrowser);
-=======
     return (
       this.extension.privateBrowsingAllowed ||
-      !PrivateBrowsingUtils.isBrowserPrivate(nativeTab.linkedBrowser)
+      !isPrivateTab(nativeTab)
     );
->>>>>>> origin/upstream-releases
   }
 
   wrapTab(nativeTab) {

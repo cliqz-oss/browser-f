@@ -27,15 +27,7 @@ browser.jar:
         content/browser/aboutTabCrashed.js            (content/aboutTabCrashed.js)
         content/browser/aboutTabCrashed.xhtml         (content/aboutTabCrashed.xhtml)
 *       content/browser/browser.css                   (content/browser.css)
-<<<<<<< HEAD
 *       content/browser/browser.js                    (content/browser.js)
-#ifdef MOZ_BROWSER_XHTML
-||||||| merged common ancestors
-        content/browser/browser.js                    (content/browser.js)
-#ifdef MOZ_BROWSER_XHTML
-=======
-        content/browser/browser.js                    (content/browser.js)
->>>>>>> origin/upstream-releases
 *       content/browser/browser.xhtml                 (content/browser.xhtml)
         content/browser/browser-addons.js             (content/browser-addons.js)
         content/browser/browser-allTabsMenu.js        (content/browser-allTabsMenu.js)
@@ -103,17 +95,9 @@ browser.jar:
         content/browser/contentSearchUI.js            (content/contentSearchUI.js)
         content/browser/contentSearchUI.css           (content/contentSearchUI.css)
         content/browser/tabbrowser.css                (content/tabbrowser.css)
-<<<<<<< HEAD
 *       content/browser/tabbrowser.js                 (content/tabbrowser.js)
-        content/browser/tabbrowser.xml                (content/tabbrowser.xml)
-||||||| merged common ancestors
-        content/browser/tabbrowser.js                 (content/tabbrowser.js)
-        content/browser/tabbrowser.xml                (content/tabbrowser.xml)
-=======
-        content/browser/tabbrowser.js                 (content/tabbrowser.js)
         content/browser/tabbrowser-tab.js             (content/tabbrowser-tab.js)
         content/browser/tabbrowser-tabs.js            (content/tabbrowser-tabs.js)
->>>>>>> origin/upstream-releases
 *       content/browser/urlbarBindings.xml            (content/urlbarBindings.xml)
 *       content/browser/utilityOverlay.js             (content/utilityOverlay.js)
         content/browser/webext-panels.js              (content/webext-panels.js)

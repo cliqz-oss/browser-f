@@ -236,7 +236,6 @@
                        oncommand="PanelUI._onBannerItemSelected(event)"
                        wrap="true"
                        hidden="true"/>
-<<<<<<< HEAD
         <toolbarbutton
                        id="addon-enabled-banner"
                        class="panel-banner-item"
@@ -251,21 +250,10 @@
                        class="subviewbutton subviewbutton-iconic"
                        oncommand="openPreferences('connect', {origin: 'ContainersCommand'});"/>
 #ifdef 0
-        <toolbaritem id="appMenu-fxa-container" class="sync-ui-item">
-          <hbox id="appMenu-fxa-status"
-                flex="1"
-                defaultlabel="&fxaSignIn.label;"
-||||||| merged common ancestors
-        <toolbaritem id="appMenu-fxa-container" class="sync-ui-item">
-          <hbox id="appMenu-fxa-status"
-                flex="1"
-                defaultlabel="&fxaSignIn.label;"
-=======
         <toolbaritem id="appMenu-fxa-status"
                      class="sync-ui-item"
                      flex="1"
                      defaultlabel="&fxaSignIn.label;"
->>>>>>> origin/upstream-releases
 # Despite the name, the tooltip says "Open Sync Preferences" and it is only used when *not* signed in.
 # Bug 1542334 changed the behaviour of the item when signed in so the tooltip was no longer appropriate there.
                      tooltiptext="&fxaSignedIn.tooltip;"

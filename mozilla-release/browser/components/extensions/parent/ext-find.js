@@ -28,21 +28,11 @@ function runFindOperation(context, params, message) {
   let browser = tab.linkedBrowser;
   let mm = browser.messageManager;
   tabId = tabId || tabTracker.getId(tab);
-<<<<<<< HEAD
-  if (!context.privateBrowsingAllowed &&
-      PrivateBrowsingUtils.isTabContextPrivate(tab)) {
-    return Promise.reject({message: `Unable to search: ${tabId}`});
-||||||| merged common ancestors
-  if (!context.privateBrowsingAllowed &&
-      PrivateBrowsingUtils.isBrowserPrivate(browser)) {
-    return Promise.reject({message: `Unable to search: ${tabId}`});
-=======
   if (
     !context.privateBrowsingAllowed &&
-    PrivateBrowsingUtils.isBrowserPrivate(browser)
+    PrivateBrowsingUtils.isTabContextPrivate(tab)
   ) {
     return Promise.reject({ message: `Unable to search: ${tabId}` });
->>>>>>> origin/upstream-releases
   }
   // We disallow find in about: urls.
   if (
@@ -139,16 +129,10 @@ this.find = class extends ExtensionAPI {
          */
         removeHighlighting(tabId) {
           let tab = tabId ? tabTracker.getTab(tabId) : tabTracker.activeTab;
-<<<<<<< HEAD
-          if (!context.privateBrowsingAllowed && PrivateBrowsingUtils.isTabContextPrivate(tab)) {
-||||||| merged common ancestors
-          if (!context.privateBrowsingAllowed && PrivateBrowsingUtils.isBrowserPrivate(tab.linkedBrowser)) {
-=======
           if (
             !context.privateBrowsingAllowed &&
-            PrivateBrowsingUtils.isBrowserPrivate(tab.linkedBrowser)
+            PrivateBrowsingUtils.isTabContextPrivate(tab)
           ) {
->>>>>>> origin/upstream-releases
             throw new ExtensionError(`Invalid tab ID: ${tabId}`);
           }
           tab.linkedBrowser.messageManager.sendAsyncMessage(

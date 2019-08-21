@@ -10,61 +10,6 @@ var SidebarUI = {
     if (this._sidebars) {
       return this._sidebars;
     }
-<<<<<<< HEAD
-    return this._sidebars = new Map([
-      ["viewBookmarksSidebar", {
-        title: document.getElementById("sidebar-switcher-bookmarks")
-                       .getAttribute("label"),
-        url: "chrome://browser/content/places/bookmarksSidebar.xul",
-        menuId: "menu_bookmarksSidebar",
-        buttonId: "sidebar-switcher-bookmarks",
-      }],
-      ["viewHistorySidebar", {
-        title: document.getElementById("sidebar-switcher-history")
-                       .getAttribute("label"),
-        url: "chrome://browser/content/places/historySidebar.xul",
-        menuId: "menu_historySidebar",
-        buttonId: "sidebar-switcher-history",
-        triggerButtonId: "appMenuViewHistorySidebar",
-      }],
-#ifdef MOZ_SERVICES_SYNC
-      ["viewTabsSidebar", {
-        title: document.getElementById("sidebar-switcher-tabs")
-                       .getAttribute("label"),
-        url: "chrome://browser/content/syncedtabs/sidebar.xhtml",
-        menuId: "menu_tabsSidebar",
-        buttonId: "sidebar-switcher-tabs",
-        triggerButtonId: "PanelUI-remotetabs-view-sidebar",
-      }],
-#endif
-    ]);
-||||||| merged common ancestors
-    return this._sidebars = new Map([
-      ["viewBookmarksSidebar", {
-        title: document.getElementById("sidebar-switcher-bookmarks")
-                       .getAttribute("label"),
-        url: "chrome://browser/content/places/bookmarksSidebar.xul",
-        menuId: "menu_bookmarksSidebar",
-        buttonId: "sidebar-switcher-bookmarks",
-      }],
-      ["viewHistorySidebar", {
-        title: document.getElementById("sidebar-switcher-history")
-                       .getAttribute("label"),
-        url: "chrome://browser/content/places/historySidebar.xul",
-        menuId: "menu_historySidebar",
-        buttonId: "sidebar-switcher-history",
-        triggerButtonId: "appMenuViewHistorySidebar",
-      }],
-      ["viewTabsSidebar", {
-        title: document.getElementById("sidebar-switcher-tabs")
-                       .getAttribute("label"),
-        url: "chrome://browser/content/syncedtabs/sidebar.xhtml",
-        menuId: "menu_tabsSidebar",
-        buttonId: "sidebar-switcher-tabs",
-        triggerButtonId: "PanelUI-remotetabs-view-sidebar",
-      }],
-    ]);
-=======
     return (this._sidebars = new Map([
       [
         "viewBookmarksSidebar",
@@ -89,6 +34,7 @@ var SidebarUI = {
           triggerButtonId: "appMenuViewHistorySidebar",
         },
       ],
+#ifdef MOZ_SERVICES_SYNC
       [
         "viewTabsSidebar",
         {
@@ -101,8 +47,8 @@ var SidebarUI = {
           triggerButtonId: "PanelUI-remotetabs-view-sidebar",
         },
       ],
+#endif
     ]));
->>>>>>> origin/upstream-releases
   },
 
   // Avoid getting the browser element from init() to avoid triggering the

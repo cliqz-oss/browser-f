@@ -234,19 +234,14 @@ var MigratorPrototype = {
       return [];
     }
     let types = resources.map(r => r.type);
-<<<<<<< HEAD
-    // CLIQZ: to prevent addons import window at startup/automigration
-    if (isAutoMigration)
+    // CLIQZ-SPECIAL: to prevent addons import window at startup/automigration
+    if (isAutoMigration) {
       types = types.filter(t => t.type !== MigrationUtils.resourceTypes.ADDONS);
-    return types.reduce((a, b) => { a |= b; return a; }, 0);
-||||||| merged common ancestors
-    return types.reduce((a, b) => { a |= b; return a; }, 0);
-=======
+    }
     return types.reduce((a, b) => {
       a |= b;
       return a;
     }, 0);
->>>>>>> origin/upstream-releases
   },
 
   getAddons: async function MP_getAddons(aProfile) {
@@ -443,9 +438,8 @@ var MigratorPrototype = {
       }
     };
 
-<<<<<<< HEAD
     /**
-     * Cliqz
+     * CLIQZ-SPECIAL
      * In Cliqz browser it is possible to import data from Firefox always, not
      * only on startup, this is one of the product in import list. Code below
      * doesn't expecting such behavior (startupOnlyMigrator flag). If change
@@ -454,18 +448,11 @@ var MigratorPrototype = {
      * copied). So we replace this flag to our own, which signal about importing
      * from Firefox.
      */
-    if (MigrationUtils.isStartupMigration && !this.isFirefoxMigrator &&
-        Services.policies.isAllowed("defaultBookmarks")) {
-||||||| merged common ancestors
-    if (MigrationUtils.isStartupMigration && !this.startupOnlyMigrator &&
-        Services.policies.isAllowed("defaultBookmarks")) {
-=======
     if (
       MigrationUtils.isStartupMigration &&
-      !this.startupOnlyMigrator &&
+      !this.isFirefoxMigrator &&
       Services.policies.isAllowed("defaultBookmarks")
     ) {
->>>>>>> origin/upstream-releases
       MigrationUtils.profileStartup.doStartup();
       // First import the default bookmarks.
       // Note: We do not need to do so for the Firefox migrator
@@ -563,26 +550,6 @@ var MigratorPrototype = {
 
 var MigrationUtils = Object.freeze({
   resourceTypes: {
-<<<<<<< HEAD
-    SETTINGS:   Ci.nsIBrowserProfileMigrator.SETTINGS,
-    COOKIES:    Ci.nsIBrowserProfileMigrator.COOKIES,
-    HISTORY:    Ci.nsIBrowserProfileMigrator.HISTORY,
-    FORMDATA:   Ci.nsIBrowserProfileMigrator.FORMDATA,
-    PASSWORDS:  Ci.nsIBrowserProfileMigrator.PASSWORDS,
-    BOOKMARKS:  Ci.nsIBrowserProfileMigrator.BOOKMARKS,
-    OTHERDATA:  Ci.nsIBrowserProfileMigrator.OTHERDATA,
-    SESSION:    Ci.nsIBrowserProfileMigrator.SESSION,
-    ADDONS:     Ci.nsIBrowserProfileMigrator.ADDONS,
-||||||| merged common ancestors
-    SETTINGS:   Ci.nsIBrowserProfileMigrator.SETTINGS,
-    COOKIES:    Ci.nsIBrowserProfileMigrator.COOKIES,
-    HISTORY:    Ci.nsIBrowserProfileMigrator.HISTORY,
-    FORMDATA:   Ci.nsIBrowserProfileMigrator.FORMDATA,
-    PASSWORDS:  Ci.nsIBrowserProfileMigrator.PASSWORDS,
-    BOOKMARKS:  Ci.nsIBrowserProfileMigrator.BOOKMARKS,
-    OTHERDATA:  Ci.nsIBrowserProfileMigrator.OTHERDATA,
-    SESSION:    Ci.nsIBrowserProfileMigrator.SESSION,
-=======
     SETTINGS: Ci.nsIBrowserProfileMigrator.SETTINGS,
     COOKIES: Ci.nsIBrowserProfileMigrator.COOKIES,
     HISTORY: Ci.nsIBrowserProfileMigrator.HISTORY,
@@ -591,7 +558,7 @@ var MigrationUtils = Object.freeze({
     BOOKMARKS: Ci.nsIBrowserProfileMigrator.BOOKMARKS,
     OTHERDATA: Ci.nsIBrowserProfileMigrator.OTHERDATA,
     SESSION: Ci.nsIBrowserProfileMigrator.SESSION,
->>>>>>> origin/upstream-releases
+    ADDONS: Ci.nsIBrowserProfileMigrator.ADDONS,
   },
 
   /**

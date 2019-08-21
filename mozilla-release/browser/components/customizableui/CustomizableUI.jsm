@@ -380,19 +380,12 @@ var CustomizableUIInternal = {
       gSavedState.placements[CustomizableUI.AREA_NAVBAR]
     ) {
       let placements = gSavedState.placements[CustomizableUI.AREA_NAVBAR];
-<<<<<<< HEAD
       /* Cliqz. "home-button" removed from default placements we add on upgrade. */
-      let newPlacements = ["back-button", "forward-button", "stop-reload-button"];
-||||||| merged common ancestors
-      let newPlacements = ["back-button", "forward-button", "stop-reload-button", "home-button"];
-=======
       let newPlacements = [
         "back-button",
         "forward-button",
         "stop-reload-button",
-        "home-button",
       ];
->>>>>>> origin/upstream-releases
       for (let button of placements) {
         if (!newPlacements.includes(button)) {
           newPlacements.push(button);
@@ -457,18 +450,12 @@ var CustomizableUIInternal = {
       }
     }
 
-<<<<<<< HEAD
 #if 0
-    if (currentVersion < 9 && gSavedState.placements && gSavedState.placements["nav-bar"]) {
-||||||| merged common ancestors
-    if (currentVersion < 9 && gSavedState.placements && gSavedState.placements["nav-bar"]) {
-=======
     if (
       currentVersion < 9 &&
       gSavedState.placements &&
       gSavedState.placements["nav-bar"]
     ) {
->>>>>>> origin/upstream-releases
       let placements = gSavedState.placements["nav-bar"];
       if (placements.includes("urlbar-container")) {
         let urlbarIndex = placements.indexOf("urlbar-container");
@@ -2588,23 +2575,17 @@ var CustomizableUIInternal = {
   },
 
   createWidget(aProperties) {
-<<<<<<< HEAD
     /**
      * CLIQZ-SPECIAL: pushing https-everywhere always to customize pane
      */
-    if (aProperties.id === 'https-everywhere_cliqz_com-browser-action') {
+    if (aProperties.id === "https-everywhere_cliqz_com-browser-action") {
       aProperties.defaultArea = null;
     }
 
-    let widget = this.normalizeWidget(aProperties, CustomizableUI.SOURCE_EXTERNAL);
-||||||| merged common ancestors
-    let widget = this.normalizeWidget(aProperties, CustomizableUI.SOURCE_EXTERNAL);
-=======
     let widget = this.normalizeWidget(
       aProperties,
       CustomizableUI.SOURCE_EXTERNAL
     );
->>>>>>> origin/upstream-releases
     // XXXunf This should probably throw.
     if (!widget) {
       log.error("unable to normalize widget");
@@ -2627,19 +2608,11 @@ var CustomizableUIInternal = {
     if (widget.defaultArea) {
       let addToDefaultPlacements = false;
       let area = gAreas.get(widget.defaultArea);
-<<<<<<< HEAD
-      if (!CustomizableUI.isBuiltinToolbar(widget.defaultArea) &&
-          widget.defaultArea != CustomizableUI.AREA_FIXED_OVERFLOW_PANEL ||
-          CustomizableUI.isCliqzWidget(widget.id)) {
-||||||| merged common ancestors
-      if (!CustomizableUI.isBuiltinToolbar(widget.defaultArea) &&
-          widget.defaultArea != CustomizableUI.AREA_FIXED_OVERFLOW_PANEL) {
-=======
       if (
         !CustomizableUI.isBuiltinToolbar(widget.defaultArea) &&
-        widget.defaultArea != CustomizableUI.AREA_FIXED_OVERFLOW_PANEL
+        widget.defaultArea != CustomizableUI.AREA_FIXED_OVERFLOW_PANEL ||
+        CustomizableUI.isCliqzWidget(widget.id)
       ) {
->>>>>>> origin/upstream-releases
         addToDefaultPlacements = true;
       }
 
@@ -3508,7 +3481,6 @@ var CustomizableUI = {
    */
   REASON_AREA_UNREGISTERED: "area-unregistered",
 
-<<<<<<< HEAD
   /**
    * Cliqz.
    * List of Cliqz widget ids.
@@ -3518,10 +3490,6 @@ var CustomizableUI = {
     "cliqz_cliqz_com-browser-action2", // Cliqz control center
   ],
 
-||||||| merged common ancestors
-
-=======
->>>>>>> origin/upstream-releases
   /**
    * An iteratable property of windows managed by CustomizableUI.
    * Note that this can *only* be used as an iterator. ie:

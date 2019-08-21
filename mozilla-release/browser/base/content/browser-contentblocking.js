@@ -1411,14 +1411,6 @@ var ContentBlocking = {
       anyBlocking = anyBlocking || blocker.activated;
     }
 
-<<<<<<< HEAD
-    let isBrowserPrivate = PrivateBrowsingUtils.isTabContextPrivate(gBrowser.getTabForBrowser(gBrowser.selectedBrowser));
-
-||||||| merged common ancestors
-    let isBrowserPrivate = PrivateBrowsingUtils.isBrowserPrivate(gBrowser.selectedBrowser);
-
-=======
->>>>>>> origin/upstream-releases
     // Check whether the user has added an exception for this site.
     let hasException = ContentBlockingAllowList.includes(
       gBrowser.selectedBrowser
@@ -1434,8 +1426,8 @@ var ContentBlocking = {
     } else if (anyBlocking && !this.iconBox.hasAttribute("active")) {
       this.iconBox.setAttribute("animate", "true");
 
-      let isBrowserPrivate = PrivateBrowsingUtils.isBrowserPrivate(
-        gBrowser.selectedBrowser
+      let isBrowserPrivate = PrivateBrowsingUtils.isTabContextPrivate(
+        gBrowser.getTabForBrowser(gBrowser.selectedBrowser)
       );
       if (!isBrowserPrivate) {
         let introCount = Services.prefs.getIntPref(this.prefIntroCount);
@@ -1528,63 +1520,13 @@ var ContentBlocking = {
   },
 
   disableForCurrentPage() {
-<<<<<<< HEAD
-    let baseURI = this._baseURIForChannelClassifier;
-
-    // Add the current host in the 'trackingprotection' consumer of
-    // the permission manager using a normalized URI. This effectively
-    // places this host on the tracking protection allowlist.
-    if (PrivateBrowsingUtils.isTabContextPrivate(gBrowser.getTabForBrowser(gBrowser.selectedBrowser))) {
-      PrivateBrowsingUtils.addToTrackingAllowlist(baseURI);
-    } else {
-      Services.perms.add(baseURI,
-        "trackingprotection", Services.perms.ALLOW_ACTION);
-    }
-||||||| merged common ancestors
-    let baseURI = this._baseURIForChannelClassifier;
-
-    // Add the current host in the 'trackingprotection' consumer of
-    // the permission manager using a normalized URI. This effectively
-    // places this host on the tracking protection allowlist.
-    if (PrivateBrowsingUtils.isBrowserPrivate(gBrowser.selectedBrowser)) {
-      PrivateBrowsingUtils.addToTrackingAllowlist(baseURI);
-    } else {
-      Services.perms.add(baseURI,
-        "trackingprotection", Services.perms.ALLOW_ACTION);
-    }
-=======
     ContentBlockingAllowList.add(gBrowser.selectedBrowser);
->>>>>>> origin/upstream-releases
 
     this.hideIdentityPopupAndReload();
   },
 
   enableForCurrentPage() {
-<<<<<<< HEAD
-    // Remove the current host from the 'trackingprotection' consumer
-    // of the permission manager. This effectively removes this host
-    // from the tracking protection allowlist.
-    let baseURI = this._baseURIForChannelClassifier;
-
-    if (PrivateBrowsingUtils.isTabContextPrivate(gBrowser.getTabForBrowser(gBrowser.selectedBrowser))) {
-      PrivateBrowsingUtils.removeFromTrackingAllowlist(baseURI);
-    } else {
-      Services.perms.remove(baseURI, "trackingprotection");
-    }
-||||||| merged common ancestors
-    // Remove the current host from the 'trackingprotection' consumer
-    // of the permission manager. This effectively removes this host
-    // from the tracking protection allowlist.
-    let baseURI = this._baseURIForChannelClassifier;
-
-    if (PrivateBrowsingUtils.isBrowserPrivate(gBrowser.selectedBrowser)) {
-      PrivateBrowsingUtils.removeFromTrackingAllowlist(baseURI);
-    } else {
-      Services.perms.remove(baseURI, "trackingprotection");
-    }
-=======
     ContentBlockingAllowList.remove(gBrowser.selectedBrowser);
->>>>>>> origin/upstream-releases
 
     this.hideIdentityPopupAndReload();
   },

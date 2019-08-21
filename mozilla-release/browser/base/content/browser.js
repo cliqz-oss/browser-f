@@ -3,22 +3,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-<<<<<<< HEAD
-var {XPCOMUtils} = ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
-var {Services} = ChromeUtils.import("resource://gre/modules/Services.jsm");
-var {AppConstants} = ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
-var {NotificationDB} = ChromeUtils.import("resource://gre/modules/NotificationDB.jsm");
-
-var {CliqzResources} = ChromeUtils.import("resource:///modules/CliqzResources.jsm");
-#ifdef CQZ_TOR_MODE
-var {ExtensionUtils} = ChromeUtils.import("resource://gre/modules/ExtensionUtils.jsm");
-#endif
-||||||| merged common ancestors
-var {XPCOMUtils} = ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
-var {Services} = ChromeUtils.import("resource://gre/modules/Services.jsm");
-var {AppConstants} = ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
-ChromeUtils.import("resource://gre/modules/NotificationDB.jsm");
-=======
 var { XPCOMUtils } = ChromeUtils.import(
   "resource://gre/modules/XPCOMUtils.jsm"
 );
@@ -27,7 +11,15 @@ var { AppConstants } = ChromeUtils.import(
   "resource://gre/modules/AppConstants.jsm"
 );
 ChromeUtils.import("resource://gre/modules/NotificationDB.jsm");
->>>>>>> origin/upstream-releases
+
+var { CliqzResources } = ChromeUtils.import(
+  "resource:///modules/CliqzResources.jsm"
+);
+#ifdef CQZ_TOR_MODE
+var { ExtensionUtils } = ChromeUtils.import(
+  "resource://gre/modules/ExtensionUtils.jsm"
+);
+#endif
 
 // lazy module getters
 
@@ -116,136 +108,36 @@ if (AppConstants.MOZ_CRASHREPORTER) {
   );
 }
 
-<<<<<<< HEAD
-XPCOMUtils.defineLazyScriptGetter(this, ["isBlankPageURL"],
-                                  "chrome://browser/content/utilityOverlay.js");
-XPCOMUtils.defineLazyScriptGetter(this, "BookmarkingUI",
-                                  "chrome://browser/content/browser-places.js");
-XPCOMUtils.defineLazyScriptGetter(this, "BrowserPageActions",
-                                  "chrome://browser/content/browser-pageActions.js");
-XPCOMUtils.defineLazyScriptGetter(this, "SidebarUI",
-                                  "chrome://browser/content/browser-sidebar.js");
-XPCOMUtils.defineLazyScriptGetter(this, "gPluginHandler",
-                                  "chrome://browser/content/browser-plugins.js");
-XPCOMUtils.defineLazyScriptGetter(this, "TabsInTitlebar",
-                                  "chrome://browser/content/browser-tabsintitlebar.js");
-
-XPCOMUtils.defineLazyScriptGetter(this, "PlacesTreeView",
-                                  "chrome://browser/content/places/treeView.js");
-XPCOMUtils.defineLazyScriptGetter(this, ["PlacesInsertionPoint", "PlacesController",
-                                         "PlacesControllerDragHelper"],
-                                  "chrome://browser/content/places/controller.js");
-XPCOMUtils.defineLazyScriptGetter(this, "PrintUtils",
-                                  "chrome://global/content/printUtils.js");
-XPCOMUtils.defineLazyScriptGetter(this, "ZoomManager",
-                                  "chrome://global/content/viewZoomOverlay.js");
-XPCOMUtils.defineLazyScriptGetter(this, "FullZoom",
-                                  "chrome://browser/content/browser-fullZoom.js");
-XPCOMUtils.defineLazyScriptGetter(this, "PanelUI",
-                                  "chrome://browser/content/customizableui/panelUI.js");
-XPCOMUtils.defineLazyScriptGetter(this, "gViewSourceUtils",
-                                  "chrome://global/content/viewSourceUtils.js");
-XPCOMUtils.defineLazyScriptGetter(this, "gTabsPanel",
-                                  "chrome://browser/content/browser-allTabsMenu.js");
-XPCOMUtils.defineLazyScriptGetter(this, ["gExtensionsNotifications",
-                                         "gXPInstallObserver"],
-                                  "chrome://browser/content/browser-addons.js");
-XPCOMUtils.defineLazyScriptGetter(this, "ctrlTab",
-                                  "chrome://browser/content/browser-ctrlTab.js");
-XPCOMUtils.defineLazyScriptGetter(this, ["CustomizationHandler", "AutoHideMenubar"],
-                                  "chrome://browser/content/browser-customization.js");
-XPCOMUtils.defineLazyScriptGetter(this, ["PointerLock", "FullScreen"],
-                                  "chrome://browser/content/browser-fullScreenAndPointerLock.js");
-XPCOMUtils.defineLazyScriptGetter(this, "gIdentityHandler",
-                                  "chrome://browser/content/browser-siteIdentity.js");
-XPCOMUtils.defineLazyScriptGetter(this, "gProtectionsHandler",
-                                  "chrome://browser/content/browser-siteProtections.js");
-XPCOMUtils.defineLazyScriptGetter(this, ["gGestureSupport", "gHistorySwipeAnimation"],
-                                  "chrome://browser/content/browser-gestureSupport.js");
-XPCOMUtils.defineLazyScriptGetter(this, "gSafeBrowsing",
-                                  "chrome://browser/content/browser-safebrowsing.js");
-#ifdef MOZ_SERVICES_SYNC
-XPCOMUtils.defineLazyScriptGetter(this, "gSync",
-                                  "chrome://browser/content/browser-sync.js");
-#endif
-XPCOMUtils.defineLazyScriptGetter(this, "gBrowserThumbnails",
-                                  "chrome://browser/content/browser-thumbnails.js");
-XPCOMUtils.defineLazyScriptGetter(this, ["setContextMenuContentData",
-                                         "openContextMenu", "nsContextMenu"],
-                                  "chrome://browser/content/nsContextMenu.js");
-XPCOMUtils.defineLazyScriptGetter(this, ["DownloadsPanel",
-                                         "DownloadsOverlayLoader",
-                                         "DownloadsSubview",
-                                         "DownloadsView", "DownloadsViewUI",
-                                         "DownloadsViewController",
-                                         "DownloadsSummary", "DownloadsFooter",
-                                         "DownloadsBlockedSubview"],
-                                  "chrome://browser/content/downloads/downloads.js");
-XPCOMUtils.defineLazyScriptGetter(this, ["DownloadsButton",
-                                         "DownloadsIndicatorView"],
-                                  "chrome://browser/content/downloads/indicator.js");
-XPCOMUtils.defineLazyScriptGetter(this, "gEditItemOverlay",
-                                  "chrome://browser/content/places/editBookmark.js");
-XPCOMUtils.defineLazyScriptGetter(this, "SearchOneOffs",
-                                  "chrome://browser/content/search/search-one-offs.js");
-||||||| merged common ancestors
-XPCOMUtils.defineLazyScriptGetter(this, "PlacesTreeView",
-                                  "chrome://browser/content/places/treeView.js");
-XPCOMUtils.defineLazyScriptGetter(this, ["PlacesInsertionPoint", "PlacesController",
-                                         "PlacesControllerDragHelper"],
-                                  "chrome://browser/content/places/controller.js");
-XPCOMUtils.defineLazyScriptGetter(this, "PrintUtils",
-                                  "chrome://global/content/printUtils.js");
-XPCOMUtils.defineLazyScriptGetter(this, "ZoomManager",
-                                  "chrome://global/content/viewZoomOverlay.js");
-XPCOMUtils.defineLazyScriptGetter(this, "FullZoom",
-                                  "chrome://browser/content/browser-fullZoom.js");
-XPCOMUtils.defineLazyScriptGetter(this, "PanelUI",
-                                  "chrome://browser/content/customizableui/panelUI.js");
-XPCOMUtils.defineLazyScriptGetter(this, "gViewSourceUtils",
-                                  "chrome://global/content/viewSourceUtils.js");
-XPCOMUtils.defineLazyScriptGetter(this, "gTabsPanel",
-                                  "chrome://browser/content/browser-allTabsMenu.js");
-XPCOMUtils.defineLazyScriptGetter(this, ["gExtensionsNotifications",
-                                         "gXPInstallObserver"],
-                                  "chrome://browser/content/browser-addons.js");
-XPCOMUtils.defineLazyScriptGetter(this, "ctrlTab",
-                                  "chrome://browser/content/browser-ctrlTab.js");
-XPCOMUtils.defineLazyScriptGetter(this, ["CustomizationHandler", "AutoHideMenubar"],
-                                  "chrome://browser/content/browser-customization.js");
-XPCOMUtils.defineLazyScriptGetter(this, ["PointerLock", "FullScreen"],
-                                  "chrome://browser/content/browser-fullScreenAndPointerLock.js");
-XPCOMUtils.defineLazyScriptGetter(this, "gIdentityHandler",
-                                  "chrome://browser/content/browser-siteIdentity.js");
-XPCOMUtils.defineLazyScriptGetter(this, "gProtectionsHandler",
-                                  "chrome://browser/content/browser-siteProtections.js");
-XPCOMUtils.defineLazyScriptGetter(this, ["gGestureSupport", "gHistorySwipeAnimation"],
-                                  "chrome://browser/content/browser-gestureSupport.js");
-XPCOMUtils.defineLazyScriptGetter(this, "gSafeBrowsing",
-                                  "chrome://browser/content/browser-safebrowsing.js");
-XPCOMUtils.defineLazyScriptGetter(this, "gSync",
-                                  "chrome://browser/content/browser-sync.js");
-XPCOMUtils.defineLazyScriptGetter(this, "gBrowserThumbnails",
-                                  "chrome://browser/content/browser-thumbnails.js");
-XPCOMUtils.defineLazyScriptGetter(this, ["setContextMenuContentData",
-                                         "openContextMenu", "nsContextMenu"],
-                                  "chrome://browser/content/nsContextMenu.js");
-XPCOMUtils.defineLazyScriptGetter(this, ["DownloadsPanel",
-                                         "DownloadsOverlayLoader",
-                                         "DownloadsSubview",
-                                         "DownloadsView", "DownloadsViewUI",
-                                         "DownloadsViewController",
-                                         "DownloadsSummary", "DownloadsFooter",
-                                         "DownloadsBlockedSubview"],
-                                  "chrome://browser/content/downloads/downloads.js");
-XPCOMUtils.defineLazyScriptGetter(this, ["DownloadsButton",
-                                         "DownloadsIndicatorView"],
-                                  "chrome://browser/content/downloads/indicator.js");
-XPCOMUtils.defineLazyScriptGetter(this, "gEditItemOverlay",
-                                  "chrome://browser/content/places/editBookmark.js");
-XPCOMUtils.defineLazyScriptGetter(this, "SearchOneOffs",
-                                  "chrome://browser/content/search/search-one-offs.js");
-=======
+XPCOMUtils.defineLazyScriptGetter(
+  this,
+  ["isBlankPageURL"],
+  "chrome://browser/content/utilityOverlay.js"
+);
+XPCOMUtils.defineLazyScriptGetter(
+  this,
+  "BookmarkingUI",
+  "chrome://browser/content/browser-places.js"
+);
+XPCOMUtils.defineLazyScriptGetter(
+  this,
+  "BrowserPageActions",
+  "chrome://browser/content/browser-pageActions.js"
+);
+XPCOMUtils.defineLazyScriptGetter(
+  this,
+  "SidebarUI",
+  "chrome://browser/content/browser-sidebar.js"
+);
+XPCOMUtils.defineLazyScriptGetter(
+  this,
+  "gPluginHandler",
+  "chrome://browser/content/browser-plugins.js"
+);
+XPCOMUtils.defineLazyScriptGetter(
+  this,
+  "TabsInTitlebar",
+  "chrome://browser/content/browser-tabsintitlebar.js"
+);
 XPCOMUtils.defineLazyScriptGetter(
   this,
   "PlacesTreeView",
@@ -326,11 +218,13 @@ XPCOMUtils.defineLazyScriptGetter(
   "gSafeBrowsing",
   "chrome://browser/content/browser-safebrowsing.js"
 );
+#ifdef MOZ_SERVICES_SYNC
 XPCOMUtils.defineLazyScriptGetter(
   this,
   "gSync",
   "chrome://browser/content/browser-sync.js"
 );
+#endif
 XPCOMUtils.defineLazyScriptGetter(
   this,
   "gBrowserThumbnails",
@@ -371,7 +265,7 @@ XPCOMUtils.defineLazyScriptGetter(
   "SearchOneOffs",
   "chrome://browser/content/search/search-one-offs.js"
 );
->>>>>>> origin/upstream-releases
+
 if (AppConstants.NIGHTLY_BUILD) {
   XPCOMUtils.defineLazyScriptGetter(
     this,
@@ -681,21 +575,13 @@ XPCOMUtils.defineLazyPreferenceGetter(
   }
 );
 
-<<<<<<< HEAD
 #ifdef MOZ_SERVICES_SYNC
-XPCOMUtils.defineLazyPreferenceGetter(this, "gFxaToolbarEnabled",
-  "identity.fxaccounts.toolbar.enabled", false, (aPref, aOldVal, aNewVal) => {
-||||||| merged common ancestors
-XPCOMUtils.defineLazyPreferenceGetter(this, "gFxaToolbarEnabled",
-  "identity.fxaccounts.toolbar.enabled", false, (aPref, aOldVal, aNewVal) => {
-=======
 XPCOMUtils.defineLazyPreferenceGetter(
   this,
   "gFxaToolbarEnabled",
   "identity.fxaccounts.toolbar.enabled",
   false,
   (aPref, aOldVal, aNewVal) => {
->>>>>>> origin/upstream-releases
     showFxaToolbarMenu(aNewVal);
   }
 );
@@ -707,15 +593,9 @@ XPCOMUtils.defineLazyPreferenceGetter(
   false,
   (aPref, aOldVal, aNewVal) => {
     showFxaToolbarMenu(gFxaToolbarEnabled);
-<<<<<<< HEAD
-  });
-#endif
-||||||| merged common ancestors
-  });
-=======
   }
 );
->>>>>>> origin/upstream-releases
+#endif
 
 XPCOMUtils.defineLazyPreferenceGetter(
   this,
@@ -1744,15 +1624,6 @@ function _loadURI(browser, uri, params = {}) {
     requiredRemoteType,
     mustChangeProcess,
     newFrameloader,
-<<<<<<< HEAD
-  } = E10SUtils.shouldLoadURIInBrowser(browser, uri, gMultiProcessBrowser,
-                                       gFissionBrowser, flags);
-
-  uri = CliqzResources.matchUrlByString(uri);
-||||||| merged common ancestors
-  } = E10SUtils.shouldLoadURIInBrowser(browser, uri, gMultiProcessBrowser,
-                                       gFissionBrowser, flags);
-=======
   } = E10SUtils.shouldLoadURIInBrowser(
     browser,
     uri,
@@ -1760,7 +1631,9 @@ function _loadURI(browser, uri, params = {}) {
     gFissionBrowser,
     loadFlags
   );
->>>>>>> origin/upstream-releases
+
+  uri = CliqzResources.matchUrlByString(uri);
+
   if (uriObject && handleUriInChrome(browser, uriObject)) {
     // If we've handled the URI in Chrome then just return here.
     return;
@@ -1789,15 +1662,9 @@ function _loadURI(browser, uri, params = {}) {
         let aTab = browser.ownerGlobal.gBrowser.getTabForBrowser(browser);
         browser.webNavigation.setOriginAttributesBeforeLoading({
           userContextId,
-<<<<<<< HEAD
-          privateBrowsingId: PrivateBrowsingUtils.isTabContextPrivate(aTab) ? 1 : 0,
-||||||| merged common ancestors
-          privateBrowsingId: PrivateBrowsingUtils.isBrowserPrivate(browser) ? 1 : 0,
-=======
-          privateBrowsingId: PrivateBrowsingUtils.isBrowserPrivate(browser)
+          privateBrowsingId: PrivateBrowsingUtils.isTabContextPrivate(aTab)
             ? 1
             : 0,
->>>>>>> origin/upstream-releases
         });
       }
       if (CliqzResources.isCliqzPage(uri)) {
@@ -1851,15 +1718,9 @@ function _loadURI(browser, uri, params = {}) {
         let aTab = browser.ownerGlobal.gBrowser.getTabForBrowser(browser);
         browser.webNavigation.setOriginAttributesBeforeLoading({
           userContextId,
-<<<<<<< HEAD
-          privateBrowsingId: PrivateBrowsingUtils.isTabContextPrivate(aTab) ? 1 : 0,
-||||||| merged common ancestors
-          privateBrowsingId: PrivateBrowsingUtils.isBrowserPrivate(browser) ? 1 : 0,
-=======
-          privateBrowsingId: PrivateBrowsingUtils.isBrowserPrivate(browser)
+          privateBrowsingId: PrivateBrowsingUtils.isTabContextPrivate(aTab)
             ? 1
             : 0,
->>>>>>> origin/upstream-releases
         });
       }
       browser.webNavigation.loadURI(uri, loadURIOptions);
@@ -2347,35 +2208,13 @@ var gBrowserInit = {
       MenuTouchModeObserver.init();
     }
 
-<<<<<<< HEAD
 #if 0
     // Cliqz. DB-2056. The part of cliqz extension now.
     if (AppConstants.MOZ_DATA_REPORTING)
-||||||| merged common ancestors
-    if (AppConstants.MOZ_DATA_REPORTING)
-=======
-    if (AppConstants.MOZ_DATA_REPORTING) {
->>>>>>> origin/upstream-releases
       gDataNotificationInfoBar.init();
-<<<<<<< HEAD
     if (!AppConstants.MOZILLA_RELEASE)
-||||||| merged common ancestors
-
-    if (!AppConstants.MOZILLA_OFFICIAL)
-=======
-    }
-
-    if (!AppConstants.MOZILLA_OFFICIAL) {
->>>>>>> origin/upstream-releases
       DevelopmentHelpers.init();
-<<<<<<< HEAD
 #endif
-||||||| merged common ancestors
-
-=======
-    }
-
->>>>>>> origin/upstream-releases
     gExtensionsNotifications.init();
 
     let wasMinimized = window.windowState == window.STATE_MINIMIZED;
@@ -3064,84 +2903,11 @@ function BrowserHome(aEvent) {
 
   // openTrustedLinkIn in utilityOverlay.js doesn't handle loading multiple pages
   switch (where) {
-<<<<<<< HEAD
-  case "current":
-    // If we're going to load an initial page in the current tab as the
-    // home page, we set initialPageLoadedFromURLBar so that the URL
-    // bar is cleared properly (even during a remoteness flip).
-    if (CliqzResources.isInitialPage(homePage)) {
-      gBrowser.selectedBrowser.initialPageLoadedFromUserAction = homePage;
-    }
-    loadOneOrMoreURIs(homePage, Services.scriptSecurityManager.getSystemPrincipal(), null);
-    if (isBlankPageURL(homePage)) {
-      focusAndSelectUrlBar();
-    } else {
-      gBrowser.selectedBrowser.focus();
-    }
-    notifyObservers = true;
-    break;
-  case "tabshifted":
-  case "tab":
-    urls = homePage.split("|");
-    var loadInBackground = Services.prefs.getBoolPref("browser.tabs.loadBookmarksInBackground", false);
-    // The homepage observer event should only be triggered when the homepage opens
-    // in the foreground. This is mostly to support the homepage changed by extension
-    // doorhanger which doesn't currently support background pages. This may change in
-    // bug 1438396.
-    notifyObservers = !loadInBackground;
-    gBrowser.loadTabs(urls, {
-      inBackground: loadInBackground,
-      triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal(),
-      csp: null,
-    });
-    break;
-  case "window":
-    // OpenBrowserWindow will trigger the observer event, so no need to do so here.
-    notifyObservers = false;
-    OpenBrowserWindow();
-    break;
-||||||| merged common ancestors
-  case "current":
-    // If we're going to load an initial page in the current tab as the
-    // home page, we set initialPageLoadedFromURLBar so that the URL
-    // bar is cleared properly (even during a remoteness flip).
-    if (isInitialPage(homePage)) {
-      gBrowser.selectedBrowser.initialPageLoadedFromUserAction = homePage;
-    }
-    loadOneOrMoreURIs(homePage, Services.scriptSecurityManager.getSystemPrincipal(), null);
-    if (isBlankPageURL(homePage)) {
-      focusAndSelectUrlBar();
-    } else {
-      gBrowser.selectedBrowser.focus();
-    }
-    notifyObservers = true;
-    break;
-  case "tabshifted":
-  case "tab":
-    urls = homePage.split("|");
-    var loadInBackground = Services.prefs.getBoolPref("browser.tabs.loadBookmarksInBackground", false);
-    // The homepage observer event should only be triggered when the homepage opens
-    // in the foreground. This is mostly to support the homepage changed by extension
-    // doorhanger which doesn't currently support background pages. This may change in
-    // bug 1438396.
-    notifyObservers = !loadInBackground;
-    gBrowser.loadTabs(urls, {
-      inBackground: loadInBackground,
-      triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal(),
-      csp: null,
-    });
-    break;
-  case "window":
-    // OpenBrowserWindow will trigger the observer event, so no need to do so here.
-    notifyObservers = false;
-    OpenBrowserWindow();
-    break;
-=======
     case "current":
       // If we're going to load an initial page in the current tab as the
       // home page, we set initialPageLoadedFromURLBar so that the URL
       // bar is cleared properly (even during a remoteness flip).
-      if (isInitialPage(homePage)) {
+      if (CliqzResources.isInitialPage(homePage)) {
         gBrowser.selectedBrowser.initialPageLoadedFromUserAction = homePage;
       }
       loadOneOrMoreURIs(
@@ -3179,7 +2945,6 @@ function BrowserHome(aEvent) {
       notifyObservers = false;
       OpenBrowserWindow();
       break;
->>>>>>> origin/upstream-releases
   }
   if (notifyObservers) {
     // A notification for when a user has triggered their homepage. This is used
@@ -3307,38 +3072,18 @@ function BrowserOpenTab(event) {
   //         with the linked browser when the tab gets created
   // Note 2: This is also used to notify a user that an extension has changed
   //         the New Tab page.
-<<<<<<< HEAD
-  Services.obs.notifyObservers({
-    wrappedJSObject: new Promise(resolve => {
-      openTrustedLinkIn(BROWSER_NEW_TAB_URL, where, {
-        relatedToCurrent,
-        resolveOnNewTabCreated: resolve,
-        private: PrivateBrowsingUtils.isWindowPrivate(window),
-      });
-    }),
-  }, "browser-open-newtab-start");
-||||||| merged common ancestors
-  Services.obs.notifyObservers({
-    wrappedJSObject: new Promise(resolve => {
-      openTrustedLinkIn(BROWSER_NEW_TAB_URL, where, {
-        relatedToCurrent,
-        resolveOnNewTabCreated: resolve,
-      });
-    }),
-  }, "browser-open-newtab-start");
-=======
   Services.obs.notifyObservers(
     {
       wrappedJSObject: new Promise(resolve => {
         openTrustedLinkIn(BROWSER_NEW_TAB_URL, where, {
           relatedToCurrent,
           resolveOnNewTabCreated: resolve,
+          private: PrivateBrowsingUtils.isWindowPrivate(window),
         });
       }),
     },
     "browser-open-newtab-start"
   );
->>>>>>> origin/upstream-releases
 }
 
 #if CQZ_AUTO_PRIVATE_TAB
@@ -3745,18 +3490,10 @@ function URLBarSetURI(aURI, updatePopupNotifications) {
 
     // Replace initial page URIs with an empty string
     // only if there's no opener (bug 370555).
-<<<<<<< HEAD
-    if (CliqzResources.isInitialPage(uri) &&
-        checkEmptyPageOrigin(gBrowser.selectedBrowser, uri)) {
-||||||| merged common ancestors
-    if (isInitialPage(uri) &&
-        checkEmptyPageOrigin(gBrowser.selectedBrowser, uri)) {
-=======
     if (
-      isInitialPage(uri) &&
+      CliqzResources.isInitialPage(uri) &&
       checkEmptyPageOrigin(gBrowser.selectedBrowser, uri)
     ) {
->>>>>>> origin/upstream-releases
       value = "";
     } else {
       // We should deal with losslessDecodeURI throwing for exotic URIs
@@ -3768,26 +3505,20 @@ function URLBarSetURI(aURI, updatePopupNotifications) {
     }
 
     valid = !isBlankPageURL(uri.spec) || uri.schemeIs("moz-extension");
-<<<<<<< HEAD
 
     // Cliqz. Invalidate page proxy state for inital pages opened in private tabs
     // and Cliqz pages.
     let aTab = gBrowser.getTabForBrowser(gBrowser.selectedBrowser);
-    if (PrivateBrowsingUtils.isTabContextPrivate(aTab) &&
-        CliqzResources.isInitialPage(uri.spec)) {
+    if (
+      PrivateBrowsingUtils.isTabContextPrivate(aTab) &&
+      CliqzResources.isInitialPage(uri.spec)
+    ) {
       valid = false;
     }
-  } else if (CliqzResources.isInitialPage(value) &&
-             checkEmptyPageOrigin(gBrowser.selectedBrowser)) {
-||||||| merged common ancestors
-  } else if (isInitialPage(value) &&
-             checkEmptyPageOrigin(gBrowser.selectedBrowser)) {
-=======
   } else if (
-    isInitialPage(value) &&
+    CliqzResources.isInitialPage(value) &&
     checkEmptyPageOrigin(gBrowser.selectedBrowser)
   ) {
->>>>>>> origin/upstream-releases
     value = "";
     valid = true;
   }
@@ -4119,16 +3850,10 @@ var BrowserOnClick = {
           flags |= overrideService.ERROR_TIME;
         }
         let uri = Services.uriFixup.createFixupURI(location, 0);
-<<<<<<< HEAD
         let aTab = browser.ownerGlobal.gBrowser.getTabForBrowser(browser);
-        let permanentOverride = !PrivateBrowsingUtils.isTabContextPrivate(aTab) && Services.prefs.getBoolPref("security.certerrors.permanentOverride");
-||||||| merged common ancestors
-        let permanentOverride = !PrivateBrowsingUtils.isBrowserPrivate(browser) && Services.prefs.getBoolPref("security.certerrors.permanentOverride");
-=======
         let permanentOverride =
-          !PrivateBrowsingUtils.isBrowserPrivate(browser) &&
+          !PrivateBrowsingUtils.isTabContextPrivate(aTab) &&
           Services.prefs.getBoolPref("security.certerrors.permanentOverride");
->>>>>>> origin/upstream-releases
         cert = securityInfo.serverCert;
         overrideService.rememberValidityOverride(
           uri.asciiHost,
@@ -5146,12 +4871,8 @@ const BrowserSearch = {
       searchBar.setAttribute("addengines", "true");
     } else {
       searchBar.removeAttribute("addengines");
-<<<<<<< HEAD
-#endif
-||||||| merged common ancestors
-=======
     }
->>>>>>> origin/upstream-releases
+#endif
   },
 
   /**
@@ -5617,35 +5338,9 @@ function OpenBrowserWindow(options) {
       defaultArgs
     );
   }
-<<<<<<< HEAD
+
 // Cliqz. Not used
 #if 0
-  win.addEventListener("MozAfterPaint", () => {
-    TelemetryStopwatch.finish("FX_NEW_WINDOW_MS", telemetryObj);
-    if (Services.prefs.getIntPref("browser.startup.page") == 1
-        && defaultArgs == HomePage.get()) {
-      // A notification for when a user has triggered their homepage. This is used
-      // to display a doorhanger explaining that an extension has modified the
-      // homepage, if necessary.
-      Services.obs.notifyObservers(win, "browser-open-homepage-start");
-    }
-  }, {once: true});
-#endif
-||||||| merged common ancestors
-
-  win.addEventListener("MozAfterPaint", () => {
-    TelemetryStopwatch.finish("FX_NEW_WINDOW_MS", telemetryObj);
-    if (Services.prefs.getIntPref("browser.startup.page") == 1
-        && defaultArgs == HomePage.get()) {
-      // A notification for when a user has triggered their homepage. This is used
-      // to display a doorhanger explaining that an extension has modified the
-      // homepage, if necessary.
-      Services.obs.notifyObservers(win, "browser-open-homepage-start");
-    }
-  }, {once: true});
-
-=======
-
   win.addEventListener(
     "MozAfterPaint",
     () => {
@@ -5662,8 +5357,7 @@ function OpenBrowserWindow(options) {
     },
     { once: true }
   );
-
->>>>>>> origin/upstream-releases
+#endif
   return win;
 }
 
@@ -7858,17 +7552,11 @@ function contentAreaClick(event, isPanelClick) {
   // pages loaded in frames are embed visits and lost with the session, while
   // visits across frames should be preserved.
   try {
-<<<<<<< HEAD
     const doc = event.target.ownerDocument;
     // We should never reach this code in e10s mode, as this function is only
     // called in single-process mode. Hence docShell should be accessible.
     const privateTab = doc && doc.docShell.usePrivateBrowsing;
-    if (!PrivateBrowsingUtils.isWindowPrivate(window) && !privateTab)
-||||||| merged common ancestors
-    if (!PrivateBrowsingUtils.isWindowPrivate(window))
-=======
-    if (!PrivateBrowsingUtils.isWindowPrivate(window)) {
->>>>>>> origin/upstream-releases
+    if (!PrivateBrowsingUtils.isWindowPrivate(window) && !privateTab) {
       PlacesUIUtils.markPageAsFollowedLink(href);
     }
   } catch (ex) {
@@ -7897,13 +7585,6 @@ function handleLinkClick(event, href, linkNode) {
   const privateTab = doc && doc.docShell.usePrivateBrowsing;
 
   if (where == "save") {
-<<<<<<< HEAD
-    saveURL(href, linkNode ? gatherTextUnder(linkNode) : "", null, true,
-            true, doc.documentURIObject, doc, privateTab);
-||||||| merged common ancestors
-    saveURL(href, linkNode ? gatherTextUnder(linkNode) : "", null, true,
-            true, doc.documentURIObject, doc);
-=======
     saveURL(
       href,
       linkNode ? gatherTextUnder(linkNode) : "",
@@ -7911,9 +7592,9 @@ function handleLinkClick(event, href, linkNode) {
       true,
       true,
       doc.documentURIObject,
-      doc
+      doc,
+      privateTab
     );
->>>>>>> origin/upstream-releases
     event.preventDefault();
     return true;
   }
@@ -8245,19 +7926,8 @@ var ToolbarContextMenu = {
       element.hidden = !addon || isCliqzButton;
     }
 
-<<<<<<< HEAD
-    reportExtension.hidden = !addon ||
-                             !gAddonAbuseReportEnabled ||
-                             isCliqzButton ||
-                             !gHtmlAboutAddonsEnabled;
-||||||| merged common ancestors
-    reportExtension.hidden = !addon ||
-                             !gAddonAbuseReportEnabled ||
-                             !gHtmlAboutAddonsEnabled;
-=======
     reportExtension.hidden =
       !addon || !gAddonAbuseReportEnabled || !gHtmlAboutAddonsEnabled;
->>>>>>> origin/upstream-releases
 
     if (addon) {
       removeExtension.disabled = !(

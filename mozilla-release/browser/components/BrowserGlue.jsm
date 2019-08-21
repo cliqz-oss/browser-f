@@ -6,16 +6,6 @@ var EXPORTED_SYMBOLS = ["BrowserGlue", "ContentPermissionPrompt"];
 
 const XULNS = "http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul";
 
-<<<<<<< HEAD
-const {XPCOMUtils} = ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
-const {Services} = ChromeUtils.import("resource://gre/modules/Services.jsm");
-const {AppConstants} = ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
-const {PermissionsUtils} = ChromeUtils.import("resource://gre/modules/PermissionsUtils.jsm");
-||||||| merged common ancestors
-const {XPCOMUtils} = ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
-const {Services} = ChromeUtils.import("resource://gre/modules/Services.jsm");
-const {AppConstants} = ChromeUtils.import("resource://gre/modules/AppConstants.jsm");
-=======
 const { XPCOMUtils } = ChromeUtils.import(
   "resource://gre/modules/XPCOMUtils.jsm"
 );
@@ -23,7 +13,9 @@ const { Services } = ChromeUtils.import("resource://gre/modules/Services.jsm");
 const { AppConstants } = ChromeUtils.import(
   "resource://gre/modules/AppConstants.jsm"
 );
->>>>>>> origin/upstream-releases
+const { PermissionsUtils } = ChromeUtils.import(
+  "resource://gre/modules/PermissionsUtils.jsm"
+);
 
 ChromeUtils.defineModuleGetter(
   this,
@@ -456,19 +448,11 @@ XPCOMUtils.defineLazyServiceGetters(this, {
     "nsIAboutNewTabService",
   ],
 });
-<<<<<<< HEAD
 #ifdef MOZ_SERVICES_SYNC
-XPCOMUtils.defineLazyGetter(this, "WeaveService", () =>
-  Cc["@mozilla.org/weave/service;1"].getService().wrappedJSObject
-||||||| merged common ancestors
-XPCOMUtils.defineLazyGetter(this, "WeaveService", () =>
-  Cc["@mozilla.org/weave/service;1"].getService().wrappedJSObject
-=======
 XPCOMUtils.defineLazyGetter(
   this,
   "WeaveService",
   () => Cc["@mozilla.org/weave/service;1"].getService().wrappedJSObject
->>>>>>> origin/upstream-releases
 );
 #endif
 
@@ -1621,36 +1605,16 @@ BrowserGlue.prototype = {
         ).UpdateUtils.UpdateChannel;
       } catch (ex) {}
       if (updateChannel) {
-<<<<<<< HEAD
-        let uninstalledValue =
-          WindowsRegistry.readRegKey(Ci.nsIWindowsRegKey.ROOT_KEY_CURRENT_USER,
-                                     "Software\\Cliqz",
-                                     `Uninstalled-${updateChannel}`);
-        let removalSuccessful =
-          WindowsRegistry.removeRegKey(Ci.nsIWindowsRegKey.ROOT_KEY_CURRENT_USER,
-                                       "Software\\Cliqz",
-                                       `Uninstalled-${updateChannel}`);
-||||||| merged common ancestors
-        let uninstalledValue =
-          WindowsRegistry.readRegKey(Ci.nsIWindowsRegKey.ROOT_KEY_CURRENT_USER,
-                                     "Software\\Mozilla\\Firefox",
-                                     `Uninstalled-${updateChannel}`);
-        let removalSuccessful =
-          WindowsRegistry.removeRegKey(Ci.nsIWindowsRegKey.ROOT_KEY_CURRENT_USER,
-                                       "Software\\Mozilla\\Firefox",
-                                       `Uninstalled-${updateChannel}`);
-=======
         let uninstalledValue = WindowsRegistry.readRegKey(
           Ci.nsIWindowsRegKey.ROOT_KEY_CURRENT_USER,
-          "Software\\Mozilla\\Firefox",
+          "Software\\Cliqz",
           `Uninstalled-${updateChannel}`
         );
         let removalSuccessful = WindowsRegistry.removeRegKey(
           Ci.nsIWindowsRegKey.ROOT_KEY_CURRENT_USER,
-          "Software\\Mozilla\\Firefox",
+          "Software\\Cliqz",
           `Uninstalled-${updateChannel}`
         );
->>>>>>> origin/upstream-releases
         if (removalSuccessful && uninstalledValue == "True") {
           this._resetProfileNotification("uninstall");
         }
@@ -2278,18 +2242,9 @@ BrowserGlue.prototype = {
     }
 
     // If we're going to automatically restore the session, only warn if the user asked for that.
-<<<<<<< HEAD
     let sessionWillBeRestored =
-        Services.prefs.getBoolPref("browser.startup.restoreTabs") ||
-        Services.prefs.getBoolPref("browser.sessionstore.resume_session_once");
-||||||| merged common ancestors
-    let sessionWillBeRestored = Services.prefs.getIntPref("browser.startup.page") == 3 ||
-                                Services.prefs.getBoolPref("browser.sessionstore.resume_session_once");
-=======
-    let sessionWillBeRestored =
-      Services.prefs.getIntPref("browser.startup.page") == 3 ||
+      Services.prefs.getBoolPref("browser.startup.restoreTabs") ||
       Services.prefs.getBoolPref("browser.sessionstore.resume_session_once");
->>>>>>> origin/upstream-releases
     // In the sessionWillBeRestored case, we only check the sessionstore-specific pref:
     if (sessionWillBeRestored) {
       if (
@@ -3172,18 +3127,10 @@ BrowserGlue.prototype = {
       );
 
     const usePromptLimit = !AppConstants.RELEASE_OR_BETA;
-<<<<<<< HEAD
-    let promptCount =
-      usePromptLimit ? Services.prefs.getIntPref("browser.shell.defaultBrowserCheckCount") : 0;
-    let popupCount = Services.prefs.getIntPref("browser.shell.defaultBrowserCheckCount");
-||||||| merged common ancestors
-    let promptCount =
-      usePromptLimit ? Services.prefs.getIntPref("browser.shell.defaultBrowserCheckCount") : 0;
-=======
     let promptCount = usePromptLimit
       ? Services.prefs.getIntPref("browser.shell.defaultBrowserCheckCount")
       : 0;
->>>>>>> origin/upstream-releases
+    let popupCount = Services.prefs.getIntPref("browser.shell.defaultBrowserCheckCount");
 
     let willRecoverSession =
       SessionStartup.sessionType == SessionStartup.RECOVER_SESSION;
@@ -4248,20 +4195,6 @@ var DefaultBrowserCheck = {
 
       let ps = Services.prompt;
       let shouldAsk = { value: true };
-<<<<<<< HEAD
-      let buttonFlags = (ps.BUTTON_TITLE_IS_STRING * ps.BUTTON_POS_0) +
-                        (ps.BUTTON_TITLE_IS_STRING * ps.BUTTON_POS_1) +
-                        ps.BUTTON_POS_0_DEFAULT;
-      // CLIQZ-SPECIAL: suppress the checkbox for opt-out default browser check
-      let rv = ps.confirmEx(win, promptTitle, promptMessage, buttonFlags,
-                            yesButton, notNowButton, null, null, {value: 0});
-||||||| merged common ancestors
-      let buttonFlags = (ps.BUTTON_TITLE_IS_STRING * ps.BUTTON_POS_0) +
-                        (ps.BUTTON_TITLE_IS_STRING * ps.BUTTON_POS_1) +
-                        ps.BUTTON_POS_0_DEFAULT;
-      let rv = ps.confirmEx(win, promptTitle, promptMessage, buttonFlags,
-                            yesButton, notNowButton, null, askLabel, shouldAsk);
-=======
       let buttonFlags =
         ps.BUTTON_TITLE_IS_STRING * ps.BUTTON_POS_0 +
         ps.BUTTON_TITLE_IS_STRING * ps.BUTTON_POS_1 +
@@ -4274,10 +4207,9 @@ var DefaultBrowserCheck = {
         yesButton,
         notNowButton,
         null,
-        askLabel,
-        shouldAsk
+        null,
+        { value: 0 }
       );
->>>>>>> origin/upstream-releases
       if (rv == 0) {
         this.setAsDefault();
       } else if (!shouldAsk.value) {

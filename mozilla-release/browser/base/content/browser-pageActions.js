@@ -898,24 +898,10 @@ var BrowserPageActions = {
     }
 
     let state;
-<<<<<<< HEAD
     if (this._contextAction._isMozillaAction || (this._contextAction._extensionID.includes("@cliqz.com"))) {
-      state =
-        this._contextAction.pinnedToUrlbar ?
-        "builtInPinned" :
-        "builtInUnpinned";
-||||||| merged common ancestors
-    if (this._contextAction._isMozillaAction) {
-      state =
-        this._contextAction.pinnedToUrlbar ?
-        "builtInPinned" :
-        "builtInUnpinned";
-=======
-    if (this._contextAction._isMozillaAction) {
       state = this._contextAction.pinnedToUrlbar
         ? "builtInPinned"
         : "builtInUnpinned";
->>>>>>> origin/upstream-releases
     } else {
       state = this._contextAction.pinnedToUrlbar
         ? "extensionPinned"

@@ -663,17 +663,11 @@ this.tabs = class extends ExtensionAPI {
             let options = {};
             if (createProperties.cookieStoreId) {
               // May throw if validation fails.
-<<<<<<< HEAD
-              options.userContextId = getUserContextIdForCookieStoreId(extension, createProperties.cookieStoreId, PrivateBrowsingUtils.isBrowserPrivate(window.gBrowser, true));
-||||||| merged common ancestors
-              options.userContextId = getUserContextIdForCookieStoreId(extension, createProperties.cookieStoreId, PrivateBrowsingUtils.isBrowserPrivate(window.gBrowser));
-=======
               options.userContextId = getUserContextIdForCookieStoreId(
                 extension,
                 createProperties.cookieStoreId,
-                PrivateBrowsingUtils.isBrowserPrivate(window.gBrowser)
+                PrivateBrowsingUtils.isBrowserPrivate(window.gBrowser, true)
               );
->>>>>>> origin/upstream-releases
             }
 
             if (createProperties.url !== null) {
@@ -699,29 +693,18 @@ this.tabs = class extends ExtensionAPI {
               // and instead always get a NullPrincipal.
               options.allowInheritPrincipal = false;
               // Falling back to codebase here as about: requires it, however is safe.
-<<<<<<< HEAD
-              principal = Services.scriptSecurityManager.createCodebasePrincipal(Services.io.newURI(url), {
-                userContextId: options.userContextId,
-                privateBrowsingId: PrivateBrowsingUtils.isBrowserPrivate(window.gBrowser, true) ? 1 : 0,
-              });
-||||||| merged common ancestors
-              principal = Services.scriptSecurityManager.createCodebasePrincipal(Services.io.newURI(url), {
-                userContextId: options.userContextId,
-                privateBrowsingId: PrivateBrowsingUtils.isBrowserPrivate(window.gBrowser) ? 1 : 0,
-              });
-=======
               principal = Services.scriptSecurityManager.createCodebasePrincipal(
                 Services.io.newURI(url),
                 {
                   userContextId: options.userContextId,
                   privateBrowsingId: PrivateBrowsingUtils.isBrowserPrivate(
-                    window.gBrowser
+                    window.gBrowser,
+                    true
                   )
                     ? 1
                     : 0,
                 }
               );
->>>>>>> origin/upstream-releases
             } else {
               options.allowInheritPrincipal = true;
               options.triggeringPrincipal = context.principal;
@@ -1046,23 +1029,14 @@ this.tabs = class extends ExtensionAPI {
             }
             // If moving between windows, be sure privacy matches.  While gBrowser
             // prevents this, we want to silently ignore it.
-<<<<<<< HEAD
-            if (nativeTab.ownerGlobal != window &&
-                PrivateBrowsingUtils.isBrowserPrivate(window.gBrowser, true) !=
-                PrivateBrowsingUtils.isBrowserPrivate(nativeTab.ownerGlobal.gBrowser, true)) {
-||||||| merged common ancestors
-            if (nativeTab.ownerGlobal != window &&
-                PrivateBrowsingUtils.isBrowserPrivate(window.gBrowser) !=
-                PrivateBrowsingUtils.isBrowserPrivate(nativeTab.ownerGlobal.gBrowser)) {
-=======
             if (
               nativeTab.ownerGlobal != window &&
-              PrivateBrowsingUtils.isBrowserPrivate(window.gBrowser) !=
+              PrivateBrowsingUtils.isBrowserPrivate(window.gBrowser, true) !=
                 PrivateBrowsingUtils.isBrowserPrivate(
-                  nativeTab.ownerGlobal.gBrowser
+                  nativeTab.ownerGlobal.gBrowser,
+                  true
                 )
             ) {
->>>>>>> origin/upstream-releases
               continue;
             }
 

@@ -24,31 +24,11 @@ XPCOMUtils.defineLazyModuleGetters(this, {
   SessionStartup: "resource:///modules/sessionstore/SessionStartup.jsm",
   ShellService: "resource:///modules/ShellService.jsm",
   UpdatePing: "resource://gre/modules/UpdatePing.jsm",
-<<<<<<< HEAD
 #if 0
-  RemotePages: "resource://gre/modules/remotepagemanager/RemotePageManagerParent.jsm",
-#endif
-||||||| merged common ancestors
-  RemotePages: "resource://gre/modules/remotepagemanager/RemotePageManagerParent.jsm",
-=======
   RemotePages:
     "resource://gre/modules/remotepagemanager/RemotePageManagerParent.jsm",
->>>>>>> origin/upstream-releases
+#endif
 });
-<<<<<<< HEAD
-XPCOMUtils.defineLazyServiceGetter(this, "WindowsUIUtils",
-  "@mozilla.org/windows-ui-utils;1", "nsIWindowsUIUtils");
-
-XPCOMUtils.defineLazyGetter(this, "gSystemPrincipal",
-  () => Services.scriptSecurityManager.getSystemPrincipal());
-#if 0
-||||||| merged common ancestors
-XPCOMUtils.defineLazyServiceGetter(this, "WindowsUIUtils",
-  "@mozilla.org/windows-ui-utils;1", "nsIWindowsUIUtils");
-
-XPCOMUtils.defineLazyGetter(this, "gSystemPrincipal",
-  () => Services.scriptSecurityManager.getSystemPrincipal());
-=======
 XPCOMUtils.defineLazyServiceGetter(
   this,
   "WindowsUIUtils",
@@ -59,7 +39,7 @@ XPCOMUtils.defineLazyServiceGetter(
 XPCOMUtils.defineLazyGetter(this, "gSystemPrincipal", () =>
   Services.scriptSecurityManager.getSystemPrincipal()
 );
->>>>>>> origin/upstream-releases
+#if 0
 XPCOMUtils.defineLazyGlobalGetters(this, [URL]);
 
 const NEWINSTALL_PAGE = "about:newinstall";
@@ -141,41 +121,31 @@ const OVERRIDE_ALTERNATE_PROFILE = 4;
  *  OVERRIDE_NONE otherwise.
  */
 function needHomepageOverride(prefb) {
-<<<<<<< HEAD
 #if 0
-  let pService = Cc["@mozilla.org/toolkit/profile-service;1"].
-                 getService(Ci.nsIToolkitProfileService);
-||||||| merged common ancestors
-  let pService = Cc["@mozilla.org/toolkit/profile-service;1"].
-                 getService(Ci.nsIToolkitProfileService);
-=======
   let pService = Cc["@mozilla.org/toolkit/profile-service;1"].getService(
     Ci.nsIToolkitProfileService
   );
->>>>>>> origin/upstream-releases
   if (pService.createdAlternateProfile) {
     return OVERRIDE_ALTERNATE_PROFILE;
   }
-<<<<<<< HEAD
 #endif
-  var savedmstone = prefb.getCharPref("browser.startup.homepage_override.mstone", "");
-  // CLIQZ-SPECIAL: DB-2131 | DB-2186,
-  // We should show WhatsNewPage for a user only in case of there is something to tell about;
-  // That includes major updates only + the fact that these updates have definitely
-  // features we would like to promote.
-  const shouldShowWhatsNew = prefb.getBoolPref("browser.migration.showWhatsNew", false);
-  if (shouldShowWhatsNew) {
-    // set the flag to false to not show next time
-    Services.prefs.setBoolPref("browser.migration.showWhatsNew", false);
-  }
-||||||| merged common ancestors
-  var savedmstone = prefb.getCharPref("browser.startup.homepage_override.mstone", "");
-=======
   var savedmstone = prefb.getCharPref(
     "browser.startup.homepage_override.mstone",
     ""
   );
->>>>>>> origin/upstream-releases
+
+  // CLIQZ-SPECIAL: DB-2131 | DB-2186,
+  // We should show WhatsNewPage for a user only in case of there is something to tell about;
+  // That includes major updates only + the fact that these updates have definitely
+  // features we would like to promote.
+  const shouldShowWhatsNew = prefb.getBoolPref(
+    "browser.migration.showWhatsNew",
+    false
+  );
+  if (shouldShowWhatsNew) {
+    // set the flag to false to not show next time
+    Services.prefs.setBoolPref("browser.migration.showWhatsNew", false);
+  }
 
   if (savedmstone == "ignore") {
     return OVERRIDE_NONE;
@@ -201,13 +171,7 @@ function needHomepageOverride(prefb) {
 
     prefb.setCharPref("browser.startup.homepage_override.mstone", mstone);
     prefb.setCharPref("browser.startup.homepage_override.buildID", buildID);
-<<<<<<< HEAD
-    return (shouldShowWhatsNew ? OVERRIDE_NEW_MSTONE : OVERRIDE_NEW_PROFILE);
-||||||| merged common ancestors
-    return (savedmstone ? OVERRIDE_NEW_MSTONE : OVERRIDE_NEW_PROFILE);
-=======
-    return savedmstone ? OVERRIDE_NEW_MSTONE : OVERRIDE_NEW_PROFILE;
->>>>>>> origin/upstream-releases
+    return shouldShowWhatsNew ? OVERRIDE_NEW_MSTONE : OVERRIDE_NEW_PROFILE;
   }
 
   if (buildID != savedBuildID) {
@@ -311,31 +275,13 @@ function openBrowserWindow(
   let args;
   if (!urlOrUrlList) {
     // Just pass in the defaultArgs directly. We'll use system principal on the other end.
-<<<<<<< HEAD
     args = [gBrowserContentHandler.getDefaultArgs(isCommandLineInitialLaunch(cmdLine))];
-||||||| merged common ancestors
-    args = [gBrowserContentHandler.defaultArgs];
-=======
-    args = [gBrowserContentHandler.getArgs(isStartup)];
->>>>>>> origin/upstream-releases
   } else {
-<<<<<<< HEAD
 #if 0
-    let pService = Cc["@mozilla.org/toolkit/profile-service;1"].
-                  getService(Ci.nsIToolkitProfileService);
-    if (cmdLine && cmdLine.state == Ci.nsICommandLine.STATE_INITIAL_LAUNCH &&
-        pService.createdAlternateProfile) {
-||||||| merged common ancestors
-    let pService = Cc["@mozilla.org/toolkit/profile-service;1"].
-                  getService(Ci.nsIToolkitProfileService);
-    if (cmdLine && cmdLine.state == Ci.nsICommandLine.STATE_INITIAL_LAUNCH &&
-        pService.createdAlternateProfile) {
-=======
     let pService = Cc["@mozilla.org/toolkit/profile-service;1"].getService(
       Ci.nsIToolkitProfileService
     );
     if (isStartup && pService.createdAlternateProfile) {
->>>>>>> origin/upstream-releases
       let url = getNewInstallPage();
       if (Array.isArray(urlOrUrlList)) {
         urlOrUrlList.unshift(url);
@@ -387,13 +333,7 @@ function openBrowserWindow(
     }
   }
 
-<<<<<<< HEAD
-  if (isCommandLineInitialLaunch(cmdLine)) {
-||||||| merged common ancestors
-  if (cmdLine && cmdLine.state == Ci.nsICommandLine.STATE_INITIAL_LAUNCH) {
-=======
   if (isStartup) {
->>>>>>> origin/upstream-releases
     let win = Services.wm.getMostRecentWindow("navigator:blank");
     if (win) {
       // Remove the windowtype of our blank window so that we don't close it
@@ -701,7 +641,6 @@ nsBrowserContentHandler.prototype = {
   /* nsIBrowserHandler */
 
   get defaultArgs() {
-<<<<<<< HEAD
     return this.getDefaultArgs();
   },
 
@@ -751,15 +690,6 @@ nsBrowserContentHandler.prototype = {
     if (overridePage !== '') {
       return overridePage;
     }
-||||||| merged common ancestors
-    var prefb = Services.prefs;
-=======
-    return this.getArgs();
-  },
-
-  getArgs(isStartup = false) {
-    var prefb = Services.prefs;
->>>>>>> origin/upstream-releases
 
     if (!gFirstWindow) {
       gFirstWindow = true;
@@ -1159,17 +1089,7 @@ nsDefaultCommandLineHandler.prototype = {
     }
 
     if (urilist.length) {
-<<<<<<< HEAD
       if (!isCommandLineInitialLaunch(cmdLine) && urilist.length == 1) {
-||||||| merged common ancestors
-      if (cmdLine.state != Ci.nsICommandLine.STATE_INITIAL_LAUNCH &&
-          urilist.length == 1) {
-=======
-      if (
-        cmdLine.state != Ci.nsICommandLine.STATE_INITIAL_LAUNCH &&
-        urilist.length == 1
-      ) {
->>>>>>> origin/upstream-releases
         // Try to find an existing window and load our URI into the
         // current tab, new tab, or new window as prefs determine.
         try {
@@ -1195,21 +1115,11 @@ nsDefaultCommandLineHandler.prototype = {
         openBrowserWindow(cmdLine, gSystemPrincipal, URLlist);
       }
     } else if (!cmdLine.preventDefault) {
-<<<<<<< HEAD
-      if (AppConstants.isPlatformAndVersionAtLeast("win", "10") &&
-          !isCommandLineInitialLaunch(cmdLine) &&
-          WindowsUIUtils.inTabletMode) {
-||||||| merged common ancestors
-      if (AppConstants.isPlatformAndVersionAtLeast("win", "10") &&
-          cmdLine.state != Ci.nsICommandLine.STATE_INITIAL_LAUNCH &&
-          WindowsUIUtils.inTabletMode) {
-=======
       if (
         AppConstants.isPlatformAndVersionAtLeast("win", "10") &&
-        cmdLine.state != Ci.nsICommandLine.STATE_INITIAL_LAUNCH &&
+        !isCommandLineInitialLaunch(cmdLine) &&
         WindowsUIUtils.inTabletMode
       ) {
->>>>>>> origin/upstream-releases
         // In windows 10 tablet mode, do not create a new window, but reuse the existing one.
         let win = BrowserWindowTracker.getTopWindow();
         if (win) {

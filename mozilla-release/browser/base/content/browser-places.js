@@ -5,24 +5,14 @@
 // This file is loaded into the browser window scope.
 /* eslint-env mozilla/browser-window */
 
-<<<<<<< HEAD
-XPCOMUtils.defineLazyScriptGetter(this, ["PlacesToolbar", "PlacesMenu",
-                                         "PlacesPanelview", "PlacesPanelMenuView"],
-                                  "chrome://browser/content/places/browserPlacesViews.js");
-
-/*
-CLIQZ-SPECIAL: remove bookmark recommendation served from activity stream
-||||||| merged common ancestors
-XPCOMUtils.defineLazyScriptGetter(this, ["PlacesToolbar", "PlacesMenu",
-                                         "PlacesPanelview", "PlacesPanelMenuView"],
-                                  "chrome://browser/content/places/browserPlacesViews.js");
-=======
 XPCOMUtils.defineLazyScriptGetter(
   this,
   ["PlacesToolbar", "PlacesMenu", "PlacesPanelview", "PlacesPanelMenuView"],
   "chrome://browser/content/places/browserPlacesViews.js"
 );
->>>>>>> origin/upstream-releases
+
+/*
+CLIQZ-SPECIAL: remove bookmark recommendation served from activity stream
 XPCOMUtils.defineLazyModuleGetters(this, {
   BookmarkPanelHub: "resource://activity-stream/lib/BookmarkPanelHub.jsm",
 });

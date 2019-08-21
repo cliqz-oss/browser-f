@@ -748,41 +748,6 @@ var gXPInstallObserver = {
               install.sourceURI.host;
           }
 
-<<<<<<< HEAD
-        if (!host)
-          host = (install.sourceURI instanceof Ci.nsIStandardURL) &&
-                 install.sourceURI.host;
-
-        let error = (host || install.error == 0) ? "addonInstallError" : "addonLocalInstallError";
-        let args;
-        if (install.error < 0) {
-          error += install.error;
-          args = [brandShortName, install.name];
-        } else if (install.addon.blocklistState == Ci.nsIBlocklistService.STATE_BLOCKED) {
-          error += "Blocklisted";
-          args = [install.name];
-        } else {
-          error += "Incompatible";
-          args = [brandShortName, Services.prefs.getCharPref("distribution.version"), install.name];
-        }
-||||||| merged common ancestors
-        if (!host)
-          host = (install.sourceURI instanceof Ci.nsIStandardURL) &&
-                 install.sourceURI.host;
-
-        let error = (host || install.error == 0) ? "addonInstallError" : "addonLocalInstallError";
-        let args;
-        if (install.error < 0) {
-          error += install.error;
-          args = [brandShortName, install.name];
-        } else if (install.addon.blocklistState == Ci.nsIBlocklistService.STATE_BLOCKED) {
-          error += "Blocklisted";
-          args = [install.name];
-        } else {
-          error += "Incompatible";
-          args = [brandShortName, Services.appinfo.version, install.name];
-        }
-=======
           let error =
             host || install.error == 0
               ? "addonInstallError"
@@ -798,9 +763,8 @@ var gXPInstallObserver = {
             args = [install.name];
           } else {
             error += "Incompatible";
-            args = [brandShortName, Services.appinfo.version, install.name];
+            args = [brandShortName, Services.prefs.getCharPref("distribution.version"), install.name];
           }
->>>>>>> origin/upstream-releases
 
           if (
             install.addon &&
@@ -820,24 +784,15 @@ var gXPInstallObserver = {
             args = [install.name, install.addon.id, message];
           }
 
-<<<<<<< HEAD
-        // Add Learn More link when refusing to install an unsigned add-on
-        if (install.error == AddonManager.ERROR_UNSUPPORTED_API_CLIQZ) {
-          options.learnMoreURL = "https://cliqz.com/support/blocked-add-ons-apis";
-        }
-||||||| merged common ancestors
-        // Add Learn More link when refusing to install an unsigned add-on
-        if (install.error == AddonManager.ERROR_SIGNEDSTATE_REQUIRED) {
-          options.learnMoreURL = Services.urlFormatter.formatURLPref("app.support.baseURL") + "unsigned-addons";
-        }
-=======
           // Add Learn More link when refusing to install an unsigned add-on
           if (install.error == AddonManager.ERROR_SIGNEDSTATE_REQUIRED) {
-            options.learnMoreURL =
-              Services.urlFormatter.formatURLPref("app.support.baseURL") +
-              "unsigned-addons";
+            // CLIQZ-AFTER-MERGE:
+            // it takes a proper support url in case a user tried to install
+            // unsinged addon.
+            options.learnMoreURL = "https://cliqz.com/support";
+          } else if (install.error == AddonManager.ERROR_UNSUPPORTED_API_CLIQZ) {
+            options.learnMoreURL = "https://cliqz.com/support/blocked-add-ons-apis";
           }
->>>>>>> origin/upstream-releases
 
           messageString = gNavigatorBundle.getFormattedString(error, args);
 

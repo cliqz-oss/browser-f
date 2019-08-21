@@ -334,20 +334,14 @@ function openWebLinkIn(url, where, params) {
  *   targetBrowser        (XUL browser)
  *   private              (boolean)
  */
-<<<<<<< HEAD
-function openUILinkIn(url, where, aAllowThirdPartyFixup, aPostData,
-    aReferrerInfo, aPrivate) {
-||||||| merged common ancestors
-function openUILinkIn(url, where, aAllowThirdPartyFixup, aPostData, aReferrerInfo) {
-=======
 function openUILinkIn(
   url,
   where,
   aAllowThirdPartyFixup,
   aPostData,
-  aReferrerInfo
+  aReferrerInfo,
+  aPrivate
 ) {
->>>>>>> origin/upstream-releases
   var params;
 
   if (arguments.length == 3 && typeof arguments[2] == "object") {
@@ -379,28 +373,12 @@ function openLinkIn(url, where, params) {
     : new ReferrerInfo(Ci.nsIHttpChannel.REFERRER_POLICY_UNSET, true, null);
   var aRelatedToCurrent = params.relatedToCurrent;
   var aAllowInheritPrincipal = !!params.allowInheritPrincipal;
-<<<<<<< HEAD
-  var aAllowMixedContent    = params.allowMixedContent;
-  var aForceAllowDataURI    = params.forceAllowDataURI;
-  var aInBackground         = params.inBackground;
-  var aInitiatingDoc        = params.initiatingDoc;
-  var aIsPrivate            = params.private || params.isContentWindowPrivate || false;
-  var aSkipTabAnimation     = params.skipTabAnimation;
-||||||| merged common ancestors
-  var aAllowMixedContent    = params.allowMixedContent;
-  var aForceAllowDataURI    = params.forceAllowDataURI;
-  var aInBackground         = params.inBackground;
-  var aInitiatingDoc        = params.initiatingDoc;
-  var aIsPrivate            = params.private;
-  var aSkipTabAnimation     = params.skipTabAnimation;
-=======
   var aAllowMixedContent = params.allowMixedContent;
   var aForceAllowDataURI = params.forceAllowDataURI;
   var aInBackground = params.inBackground;
   var aInitiatingDoc = params.initiatingDoc;
-  var aIsPrivate = params.private;
+  var aIsPrivate = params.private || params.isContentWindowPrivate || false;
   var aSkipTabAnimation = params.skipTabAnimation;
->>>>>>> origin/upstream-releases
   var aAllowPinnedTabHostChange = !!params.allowPinnedTabHostChange;
   var aAllowPopups = !!params.allowPopups;
   var aUserContextId = params.userContextId;
@@ -698,60 +676,6 @@ function openLinkIn(url, where, params) {
     case "tabshifted":
       loadInBackground = !loadInBackground;
     // fall through
-<<<<<<< HEAD
-  case "tab":
-    focusUrlBar = !loadInBackground && w.isBlankPageURL(url)
-      && !aboutNewTabService.willNotifyUser;
-
-    let tabUsedForLoad = w.gBrowser.loadOneTab(url, {
-      referrerInfo: aReferrerInfo,
-      charset: aCharset,
-      postData: aPostData,
-      inBackground: loadInBackground,
-      allowThirdPartyFixup: aAllowThirdPartyFixup,
-      relatedToCurrent: aRelatedToCurrent,
-      skipAnimation: aSkipTabAnimation,
-      allowMixedContent: aAllowMixedContent,
-      userContextId: aUserContextId,
-      originPrincipal: aPrincipal,
-      triggeringPrincipal: aTriggeringPrincipal,
-      allowInheritPrincipal: aAllowInheritPrincipal,
-      csp: aCsp,
-      focusUrlBar,
-      private: aIsPrivate
-    });
-    targetBrowser = tabUsedForLoad.linkedBrowser;
-
-    if (aResolveOnNewTabCreated) {
-      aResolveOnNewTabCreated(targetBrowser);
-    }
-||||||| merged common ancestors
-  case "tab":
-    focusUrlBar = !loadInBackground && w.isBlankPageURL(url)
-      && !aboutNewTabService.willNotifyUser;
-
-    let tabUsedForLoad = w.gBrowser.loadOneTab(url, {
-      referrerInfo: aReferrerInfo,
-      charset: aCharset,
-      postData: aPostData,
-      inBackground: loadInBackground,
-      allowThirdPartyFixup: aAllowThirdPartyFixup,
-      relatedToCurrent: aRelatedToCurrent,
-      skipAnimation: aSkipTabAnimation,
-      allowMixedContent: aAllowMixedContent,
-      userContextId: aUserContextId,
-      originPrincipal: aPrincipal,
-      triggeringPrincipal: aTriggeringPrincipal,
-      allowInheritPrincipal: aAllowInheritPrincipal,
-      csp: aCsp,
-      focusUrlBar,
-    });
-    targetBrowser = tabUsedForLoad.linkedBrowser;
-
-    if (aResolveOnNewTabCreated) {
-      aResolveOnNewTabCreated(targetBrowser);
-    }
-=======
     case "tab":
       focusUrlBar =
         !loadInBackground &&
@@ -774,13 +698,13 @@ function openLinkIn(url, where, params) {
         allowInheritPrincipal: aAllowInheritPrincipal,
         csp: aCsp,
         focusUrlBar,
+        private: aIsPrivate,
       });
       targetBrowser = tabUsedForLoad.linkedBrowser;
 
       if (aResolveOnNewTabCreated) {
         aResolveOnNewTabCreated(targetBrowser);
       }
->>>>>>> origin/upstream-releases
 
       if (params.frameOuterWindowID != undefined && w) {
         // Only notify it as a WebExtensions' webNavigation.onCreatedNavigationTarget
@@ -1176,28 +1100,15 @@ function openTourPage() {
 }
 
 function buildHelpMenu() {
-<<<<<<< HEAD
 #if 0
-  document.getElementById("feedbackPage")
-          .disabled = !Services.policies.isAllowed("feedbackCommands");
-#endif
-  document.getElementById("helpSafeMode")
-          .disabled = !Services.policies.isAllowed("safeMode");
-||||||| merged common ancestors
-  document.getElementById("feedbackPage")
-          .disabled = !Services.policies.isAllowed("feedbackCommands");
-
-  document.getElementById("helpSafeMode")
-          .disabled = !Services.policies.isAllowed("safeMode");
-=======
   document.getElementById(
     "feedbackPage"
   ).disabled = !Services.policies.isAllowed("feedbackCommands");
+#endif
 
   document.getElementById(
     "helpSafeMode"
   ).disabled = !Services.policies.isAllowed("safeMode");
->>>>>>> origin/upstream-releases
 
   let supportMenu = Services.policies.getSupportMenu();
   if (supportMenu) {
