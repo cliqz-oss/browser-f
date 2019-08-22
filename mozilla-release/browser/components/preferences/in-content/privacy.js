@@ -425,9 +425,6 @@ var gPrivacyPane = {
     document.getElementById("forgetMode").hidden = !autoForgetTabs.hasDatabase;
 #endif
 
-    this.blockAutoplayReadPrefs();
-    Preferences.get("media.autoplay.default").on("change",
-      gPrivacyPane.blockAutoplayReadPrefs.bind(gPrivacyPane));
 
     /* Initialize Content Blocking */
 #if 0
@@ -554,7 +551,9 @@ var gPrivacyPane = {
 
     this._pane = document.getElementById("panePrivacy");
 
+#if 0
     this._initPasswordGenerationUI();
+#endif
     this._initMasterPasswordUI();
 
     this._initSafeBrowsing();
@@ -1936,7 +1935,7 @@ var gPrivacyPane = {
       this._initMasterPasswordUI.bind(this)
     );
   },
-
+#if 0
   /**
    * Set up the initial state for the password generation UI.
    * It will be hidden unless the .available pref is true
@@ -1949,6 +1948,7 @@ var gPrivacyPane = {
     );
     document.getElementById("generatePasswordsBox").hidden = !prefValue;
   },
+#endif
 
   /**
    * Shows the sites where the user has saved passwords and the associated login

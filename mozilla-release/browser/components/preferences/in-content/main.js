@@ -153,7 +153,7 @@ Preferences.addAll([
     id: "browser.newtabpage.activity-stream.asrouter.userprefs.cfr.features",
     type: "bool",
   },
->>>>>>> origin/upstream-releases
+#endif
 
   // Fonts
   { id: "font.language.group", type: "wstring" },
@@ -1052,7 +1052,7 @@ var gMainPane = {
       checkbox.checked = false;
       warnOnQuitCheckbox.setAttribute("disabled", "true");
     } else {
-      restoreCheckbox.removeAttribute("disabled");
+      checkbox.removeAttribute("disabled");
     }
 
     const restoreSessionPref = Preferences.get("browser.startup.restoreTabs");
