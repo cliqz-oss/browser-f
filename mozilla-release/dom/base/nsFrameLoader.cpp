@@ -3423,10 +3423,11 @@ nsresult nsFrameLoader::GetNewTabContext(MutableTabContext* aTabContext,
   NS_ENSURE_STATE(parentContext);
 
   bool isPrivate = parentContext->UsePrivateBrowsing();
+  if (auto* browserParent = GetBrowserParent()) {
+    isPrivate = isPrivate || browserParent->OriginAttributesRef().mPrivateBrowsingId > 0;
+  }
   isPrivate = isPrivate ||
       // Remote browser could switch into private mode automatically.
-      (mBrowserParent &&
-       mBrowserParent->OriginAttributesRef().mPrivateBrowsingId > 0) ||
       // Normally, this is inly needed for tab browser initialization.
       mOwnerContent->HasAttr(kNameSpaceID_None, nsGkAtoms::mozprivatebrowsing);
   attrs.SyncAttributesWithPrivateBrowsing(isPrivate);
