@@ -1897,7 +1897,7 @@
             "navigator:browser" &&
           sourceNode.ownerGlobal.gBrowser.tabContainer == sourceNode.container
         ) {
-#ifdef 0
+#if 0
           // Do not allow transfering a private tab to a non-private window
           // and vice versa.
           if (

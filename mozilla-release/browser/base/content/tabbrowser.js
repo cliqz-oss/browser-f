@@ -2533,6 +2533,7 @@
      */
     addTrustedTab(aURI, params = {}) {
       params.triggeringPrincipal = Services.scriptSecurityManager.getSystemPrincipal();
+      params.private = typeof params.private == "boolean" ? params.private : false;
       return this.addTab(aURI, params);
     },
 
@@ -2573,6 +2574,7 @@
         recordExecution,
         replayExecution,
         csp,
+        private,
       } = {}
     ) {
       // all callers of addTab that pass a params object need to pass
@@ -2611,6 +2613,7 @@
 
       var t = document.createXULElement("tab", { is: "tabbrowser-tab" });
       t.openerTab = openerTab;
+      t.setAttribute("private", private == true);
 
       aURI = aURI || "about:blank";
       let aURIObject = null;
@@ -2786,7 +2789,8 @@
           aURI == BROWSER_NEW_TAB_URL &&
           !userContextId &&
           !recordExecution &&
-          !replayExecution
+          !replayExecution &&
+          !private
         ) {
           b = NewTabPagePreloading.getPreloadedBrowser(window);
           if (b) {
@@ -2806,6 +2810,7 @@
             name,
             recordExecution,
             replayExecution,
+            private,
           });
         }
 
@@ -2929,10 +2934,15 @@
             charset,
             postData,
             csp,
+            private,
           });
         } catch (ex) {
           Cu.reportError(ex);
         }
+      } else if (private) {
+        b.loadURIWithFlags(aURI, {
+          ensurePrivate: true,
+        });
       }
 
       // This field is updated regardless if we actually animate
@@ -3518,6 +3528,16 @@
 
       var wasPinned = aTab.pinned;
 
+      // In the multi-process case, it's possible an asynchronous tab switch
+      // is still underway. If so, then it's possible that the last visible
+      // browser is the one we're in the process of removing. There's the
+      // risk of displaying preloaded browsers that are at the end of the
+      // deck if we remove the browser before the switch is complete, so
+      // we alert the switcher in order to show a spinner instead.
+      if (this._switcher) {
+        this._switcher.onTabRemoved(aTab);
+      }
+
       // Remove the tab ...
       aTab.remove();
       this._invalidateCachedTabs();
@@ -3659,6 +3679,16 @@
      *   False if swapping isn't permitted, true otherwise.
      */
     swapBrowsersAndCloseOther(aOurTab, aOtherTab) {
+      // CLIQZ-SPECIAL. Auto-Forget-Tabs:
+      // Transfering a private tab to a non-private window is fine.
+      // Transfering a normal tab to a private window is not.
+      if (
+        PrivateBrowsingUtils.isWindowPrivate(window) &&
+        !aOtherTab.private
+      ) {
+          return false;
+      }
+#if 0
       // Do not allow transfering a private tab to a non-private window
       // and vice versa.
       if (
@@ -3667,6 +3697,7 @@
       ) {
         return false;
       }
+#endif
 
       let ourBrowser = this.getBrowserForTab(aOurTab);
       let otherBrowser = aOtherTab.linkedBrowser;
@@ -4113,6 +4144,12 @@
         options += "," + name + "=" + aOptions[name];
       }
 
+      // CLIQZ-SPECIAL:
+      // Open private window if tab is private.
+      if (aTab.private) {
+        options += ",private";
+      }
+
       // Play the tab closing animation to give immediate feedback while
       // waiting for the new window to appear.
       // content area when the docshells are swapped.
@@ -4286,6 +4323,8 @@
       // windows). We also ensure that the tab we create to swap into has
       // the same remote type and process as the one we're swapping in.
       // This makes sure we don't get a short-lived process for the new tab.
+      // Cliqz. We must create private tab in order to swap docShells with
+      // another private tab.
       let linkedBrowser = aTab.linkedBrowser;
       let createLazyBrowser = !aTab.linkedPanel;
       let params = {
@@ -4296,6 +4335,7 @@
         index: aIndex,
         createLazyBrowser,
         allowInheritPrincipal: createLazyBrowser,
+        private: !!aTab.private,
       };
 
       let numPinned = this._numPinnedTabs;
@@ -5914,9 +5954,11 @@
         }
         // Tabs in private windows aren't registered as "Open" so
         // that they don't appear as switch-to-tab candidates.
+        // CLIQZ-SPECIAL: also don't register windows from Forget tabs.
         if (
           !isBlankPageURL(aLocation.spec) &&
-          (!PrivateBrowsingUtils.isWindowPrivate(window) ||
+          ((!PrivateBrowsingUtils.isWindowPrivate(window) &&
+           !PrivateBrowsingUtils.isTabContextPrivate(this.mTab)) ||
             PrivateBrowsingUtils.permanentPrivateBrowsing)
         ) {
           gBrowser.UrlbarProviderOpenTabs.registerOpenTab(
@@ -6233,6 +6275,7 @@ var TabContextMenu = {
     contextUnpinSelectedTabs.hidden =
       !this.contextTab.pinned || !multiselectionContext;
 
+#if 0
     let contextMoveTabOptions = document.getElementById(
       "context_moveTabOptions"
     );
