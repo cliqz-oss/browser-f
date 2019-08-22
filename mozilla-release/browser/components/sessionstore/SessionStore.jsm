@@ -172,8 +172,11 @@ const RESTORE_TAB_CONTENT_REASON = {
   NAVIGATE_AND_RESTORE: 1,
 };
 
+#if 0
+// CLIQZ-SPECIAL: we use browser.startup.restoreTabs;
 // 'browser.startup.page' preference value to resume the previous session.
 const BROWSER_STARTUP_RESUME_SESSION = 3;
+#endif
 
 ChromeUtils.import("resource://gre/modules/PrivateBrowsingUtils.jsm", this);
 ChromeUtils.import("resource://gre/modules/Services.jsm", this);
@@ -671,8 +674,7 @@ var SessionStoreInternal = {
     return (
       !PrivateBrowsingUtils.permanentPrivateBrowsing &&
       (Services.prefs.getBoolPref("browser.sessionstore.resume_session_once") ||
-        Services.prefs.getIntPref("browser.startup.page") ==
-          BROWSER_STARTUP_RESUME_SESSION)
+        Services.prefs.getBoolPref("browser.startup.restoreTabs"))
     );
   },
 

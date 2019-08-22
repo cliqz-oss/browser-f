@@ -20,7 +20,6 @@ EXTRA_JS_MODULES.sessionstore = [
     'SessionMigration.jsm',
     'SessionSaver.jsm',
     'SessionStartup.jsm',
-    'SessionStore.jsm',
     'SessionWorker.jsm',
     'StartupPerformance.jsm',
     'TabAttributes.jsm',
@@ -30,6 +29,7 @@ EXTRA_JS_MODULES.sessionstore = [
 ]
 
 EXTRA_PP_JS_MODULES.sessionstore = [
+    'SessionStore.jsm',
     'SessionWorker.js'
 ]
 
