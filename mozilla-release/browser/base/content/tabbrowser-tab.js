@@ -128,6 +128,10 @@
       this._linkedBrowser = val;
     }
 
+    get linkedBrowser() {
+      return this._linkedBrowser;
+    }
+
     get tabId() {
       const frameLoader = this.linkedBrowser.frameLoader;
       return frameLoader && frameLoader.tabParent.tabId || undefined;
@@ -210,7 +214,7 @@
       return null;
     }
 
-    set private() {
+    set private(value) {
       throw new Error("Setting private mode directly is impossible!");
     }
 

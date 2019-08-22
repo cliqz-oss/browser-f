@@ -3787,7 +3787,7 @@ var SessionStoreInternal = {
     let removableTabs = [];
     let tabbrowser = aWindow.gBrowser;
     let addFreshTab = this._prefBranch.getBoolPref("startup.addFreshTab");
-    if (addFreshTab)
+    if (addFreshTab) {
       homePages = homePages.concat(HomePage.get(aWindow).split("|"));
     }
 
