@@ -353,7 +353,7 @@ def parse_manifest(root, path, fileobj=None):
         try:
             fileobj = open(path)
         except Exception as e:
-            print "File " + path + " can not be open."
+            print("File " + path + " can not be open.")
             return
     linenum = 0
     for line in fileobj:
