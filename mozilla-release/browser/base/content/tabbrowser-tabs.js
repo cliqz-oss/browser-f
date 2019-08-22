@@ -1897,11 +1897,20 @@
             "navigator:browser" &&
           sourceNode.ownerGlobal.gBrowser.tabContainer == sourceNode.container
         ) {
+#ifdef 0
           // Do not allow transfering a private tab to a non-private window
           // and vice versa.
           if (
             PrivateBrowsingUtils.isWindowPrivate(window) !=
             PrivateBrowsingUtils.isWindowPrivate(sourceNode.ownerGlobal)
+          ) {
+#endif
+          // Cliqz. Auto-Forget-Tabs:
+          // Transfering a private tab to a non-private window is fine.
+          // Transfering a normal tab to a private window is not.
+          if (
+            PrivateBrowsingUtils.isWindowPrivate(window) &&
+            !sourceNode.private
           ) {
             return "none";
           }
