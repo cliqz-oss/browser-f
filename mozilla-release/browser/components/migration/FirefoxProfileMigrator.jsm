@@ -13,31 +13,61 @@
  * from the source profile.
  */
 
-<<<<<<< HEAD
-const {MigrationUtils, MigratorPrototype} = ChromeUtils.import("resource:///modules/MigrationUtils.jsm");
-const {Services} = ChromeUtils.import("resource://gre/modules/Services.jsm");
-const {NetUtil} = ChromeUtils.import("resource://gre/modules/NetUtil.jsm");
-
-ChromeUtils.defineModuleGetter(this, "PlacesBackups",
-                               "resource://gre/modules/PlacesBackups.jsm");
-ChromeUtils.defineModuleGetter(this, "SessionMigration",
-                               "resource:///modules/sessionstore/SessionMigration.jsm");
-ChromeUtils.defineModuleGetter(this, "OS",
-                               "resource://gre/modules/osfile.jsm");
-ChromeUtils.defineModuleGetter(this, "FileUtils",
-                               "resource://gre/modules/FileUtils.jsm");
-ChromeUtils.defineModuleGetter(this, "ProfileAge",
-                               "resource://gre/modules/ProfileAge.jsm");
-ChromeUtils.defineModuleGetter(this, "PlacesUtils",
-                               "resource://gre/modules/PlacesUtils.jsm");
-ChromeUtils.defineModuleGetter(this, "Sqlite",
-                               "resource://gre/modules/Sqlite.jsm");
-ChromeUtils.defineModuleGetter(this, "FormHistory",
-                               "resource://gre/modules/FormHistory.jsm");
-ChromeUtils.defineModuleGetter(this, "AddonManager",
-                               "resource://gre/modules/AddonManager.jsm");
-ChromeUtils.defineModuleGetter(this, "AddonRepository",
-                               "resource://gre/modules/addons/AddonRepository.jsm");
+const { MigrationUtils, MigratorPrototype } = ChromeUtils.import(
+  "resource:///modules/MigrationUtils.jsm"
+);
+const { Services } = ChromeUtils.import(
+  "resource://gre/modules/Services.jsm"
+);
+const { NetUtil } = ChromeUtils.import(
+  "resource://gre/modules/NetUtil.jsm"
+);
+ChromeUtils.defineModuleGetter(
+  this,
+  "PlacesBackups",
+  "resource://gre/modules/PlacesBackups.jsm"
+);
+ChromeUtils.defineModuleGetter(
+  this,
+  "SessionMigration",
+  "resource:///modules/sessionstore/SessionMigration.jsm"
+);
+ChromeUtils.defineModuleGetter(this, "OS", "resource://gre/modules/osfile.jsm");
+ChromeUtils.defineModuleGetter(
+  this,
+  "FileUtils",
+  "resource://gre/modules/FileUtils.jsm"
+);
+ChromeUtils.defineModuleGetter(
+  this,
+  "ProfileAge",
+  "resource://gre/modules/ProfileAge.jsm"
+);
+ChromeUtils.defineModuleGetter(
+  this,
+  "PlacesUtils",
+  "resource://gre/modules/PlacesUtils.jsm"
+);
+ChromeUtils.defineModuleGetter(
+  this,
+  "Sqlite",
+  "resource://gre/modules/Sqlite.jsm"
+);
+ChromeUtils.defineModuleGetter(
+  this,
+  "FormHistory",
+  "resource://gre/modules/FormHistory.jsm"
+);
+ChromeUtils.defineModuleGetter(
+  this,
+  "AddonManager",
+  "resource://gre/modules/AddonManager.jsm"
+);
+ChromeUtils.defineModuleGetter(
+  this,
+  "AddonRepository",
+  "resource://gre/modules/addons/AddonRepository.jsm"
+);
 
 const { classes: Cc, interfaces: Ci, utils: Cu } = Components;
 
@@ -94,49 +124,6 @@ async function insertWholeBookmarkFolder(db, aId, aGuid) {
     }
   }
 }
-||||||| merged common ancestors
-const {MigrationUtils, MigratorPrototype} = ChromeUtils.import("resource:///modules/MigrationUtils.jsm");
-const {Services} = ChromeUtils.import("resource://gre/modules/Services.jsm");
-
-ChromeUtils.defineModuleGetter(this, "PlacesBackups",
-                               "resource://gre/modules/PlacesBackups.jsm");
-ChromeUtils.defineModuleGetter(this, "SessionMigration",
-                               "resource:///modules/sessionstore/SessionMigration.jsm");
-ChromeUtils.defineModuleGetter(this, "OS",
-                               "resource://gre/modules/osfile.jsm");
-ChromeUtils.defineModuleGetter(this, "FileUtils",
-                               "resource://gre/modules/FileUtils.jsm");
-ChromeUtils.defineModuleGetter(this, "ProfileAge",
-                               "resource://gre/modules/ProfileAge.jsm");
-
-=======
-const { MigrationUtils, MigratorPrototype } = ChromeUtils.import(
-  "resource:///modules/MigrationUtils.jsm"
-);
-const { Services } = ChromeUtils.import("resource://gre/modules/Services.jsm");
-
-ChromeUtils.defineModuleGetter(
-  this,
-  "PlacesBackups",
-  "resource://gre/modules/PlacesBackups.jsm"
-);
-ChromeUtils.defineModuleGetter(
-  this,
-  "SessionMigration",
-  "resource:///modules/sessionstore/SessionMigration.jsm"
-);
-ChromeUtils.defineModuleGetter(this, "OS", "resource://gre/modules/osfile.jsm");
-ChromeUtils.defineModuleGetter(
-  this,
-  "FileUtils",
-  "resource://gre/modules/FileUtils.jsm"
-);
-ChromeUtils.defineModuleGetter(
-  this,
-  "ProfileAge",
-  "resource://gre/modules/ProfileAge.jsm"
-);
->>>>>>> origin/upstream-releases
 
 function isValidUrl(aUrl) {
   let url = NetUtil.newURI(aUrl);
@@ -270,24 +257,7 @@ FirefoxProfileMigrator.prototype._getFileObject = function(dir, fileName) {
   return file.exists() ? file : null;
 };
 
-<<<<<<< HEAD
 FirefoxProfileMigrator.prototype.getResources = async function(aProfile) {
-  let sourceProfileDir = aProfile ? this._getAllProfiles().get(aProfile.id) :
-    Cc["@mozilla.org/toolkit/profile-service;1"]
-      .getService(Ci.nsIToolkitProfileService)
-      .defaultProfile.rootDir;
-  if (!sourceProfileDir || !sourceProfileDir.exists() ||
-      !sourceProfileDir.isReadable())
-||||||| merged common ancestors
-FirefoxProfileMigrator.prototype.getResources = function(aProfile) {
-  let sourceProfileDir = aProfile ? this._getAllProfiles().get(aProfile.id) :
-    Cc["@mozilla.org/toolkit/profile-service;1"]
-      .getService(Ci.nsIToolkitProfileService)
-      .defaultProfile.rootDir;
-  if (!sourceProfileDir || !sourceProfileDir.exists() ||
-      !sourceProfileDir.isReadable())
-=======
-FirefoxProfileMigrator.prototype.getResources = function(aProfile) {
   let sourceProfileDir = aProfile
     ? this._getAllProfiles().get(aProfile.id)
     : Cc["@mozilla.org/toolkit/profile-service;1"].getService(
@@ -298,7 +268,6 @@ FirefoxProfileMigrator.prototype.getResources = function(aProfile) {
     !sourceProfileDir.exists() ||
     !sourceProfileDir.isReadable()
   ) {
->>>>>>> origin/upstream-releases
     return null;
   }
 
@@ -327,16 +296,10 @@ FirefoxProfileMigrator.prototype.getLastUsedDate = function() {
   return Promise.resolve(new Date(0));
 };
 
-<<<<<<< HEAD
-FirefoxProfileMigrator.prototype._getResourcesInternal = async function(sourceProfileDir, currentProfileDir) {
-||||||| merged common ancestors
-FirefoxProfileMigrator.prototype._getResourcesInternal = function(sourceProfileDir, currentProfileDir) {
-=======
-FirefoxProfileMigrator.prototype._getResourcesInternal = function(
+FirefoxProfileMigrator.prototype._getResourcesInternal = async function(
   sourceProfileDir,
   currentProfileDir
 ) {
->>>>>>> origin/upstream-releases
   let getFileResource = (aMigrationType, aFileNames) => {
     let files = [];
     for (let fileName of aFileNames) {
@@ -658,7 +621,6 @@ FirefoxProfileMigrator.prototype._getResourcesInternal = function(
   }
 
   let types = MigrationUtils.resourceTypes;
-<<<<<<< HEAD
   if (!this.startupOnlyMigrator && !MigrationUtils.isStartupMigration) {
     const addons = await getAddons();
     let places = getHistoryAndBookmarksResource("places.sqlite");
@@ -667,18 +629,6 @@ FirefoxProfileMigrator.prototype._getResourcesInternal = function(
     let formData = getFormDataResource("formhistory.sqlite");
     return [places, cookies, passwords, formData, addons].filter(r => r);
   }
-  let places = getFileResource(types.HISTORY, ["places.sqlite", "places.sqlite-wal"]);
-  let favicons = getFileResource(types.HISTORY, ["favicons.sqlite", "favicons.sqlite-wal"]);
-  let cookies = getFileResource(types.COOKIES, ["cookies.sqlite", "cookies.sqlite-wal"]);
-  let passwords = getFileResource(types.PASSWORDS,
-    ["signons.sqlite", "logins.json", "key3.db", "key4.db"]);
-||||||| merged common ancestors
-  let places = getFileResource(types.HISTORY, ["places.sqlite", "places.sqlite-wal"]);
-  let favicons = getFileResource(types.HISTORY, ["favicons.sqlite", "favicons.sqlite-wal"]);
-  let cookies = getFileResource(types.COOKIES, ["cookies.sqlite", "cookies.sqlite-wal"]);
-  let passwords = getFileResource(types.PASSWORDS,
-    ["signons.sqlite", "logins.json", "key3.db", "key4.db"]);
-=======
   let places = getFileResource(types.HISTORY, [
     "places.sqlite",
     "places.sqlite-wal",
@@ -697,7 +647,6 @@ FirefoxProfileMigrator.prototype._getResourcesInternal = function(
     "key3.db",
     "key4.db",
   ]);
->>>>>>> origin/upstream-releases
   let formData = getFileResource(types.FORMDATA, [
     "formhistory.sqlite",
     "autofill-profiles.json",
@@ -736,43 +685,10 @@ FirefoxProfileMigrator.prototype._getResourcesInternal = function(
           );
           let newSessionFile = currentProfileDir.clone();
           newSessionFile.append("sessionstore.jsonlz4");
-<<<<<<< HEAD
-          let migrationPromise = SessionMigration.migrate(sessionFile.path,
-              newSessionFile.path, tabsRestoreURL);
-          migrationPromise.then(function() {
-            let buildID = Services.appinfo.platformBuildID;
-            let mstone = Services.appinfo.platformVersion;
-            // Force the browser to one-off resume the session that we give it:
-            Services.prefs.setBoolPref("browser.sessionstore.resume_session_once", true);
-            // Reset the homepage_override prefs so that the browser doesn't override our
-            // session with the "what's new" page:
-            Services.prefs.setCharPref("browser.startup.homepage_override.mstone", mstone);
-            Services.prefs.setCharPref("browser.startup.homepage_override.buildID", buildID);
-            savePrefs();
-            aCallback(true);
-          }, function() {
-            aCallback(false);
-          });
-||||||| merged common ancestors
-          let migrationPromise = SessionMigration.migrate(sessionFile.path, newSessionFile.path);
-          migrationPromise.then(function() {
-            let buildID = Services.appinfo.platformBuildID;
-            let mstone = Services.appinfo.platformVersion;
-            // Force the browser to one-off resume the session that we give it:
-            Services.prefs.setBoolPref("browser.sessionstore.resume_session_once", true);
-            // Reset the homepage_override prefs so that the browser doesn't override our
-            // session with the "what's new" page:
-            Services.prefs.setCharPref("browser.startup.homepage_override.mstone", mstone);
-            Services.prefs.setCharPref("browser.startup.homepage_override.buildID", buildID);
-            savePrefs();
-            aCallback(true);
-          }, function() {
-            aCallback(false);
-          });
-=======
           let migrationPromise = SessionMigration.migrate(
             sessionFile.path,
-            newSessionFile.path
+            newSessionFile.path,
+            tabsRestoreURL
           );
           migrationPromise.then(
             function() {
@@ -800,7 +716,6 @@ FirefoxProfileMigrator.prototype._getResourcesInternal = function(
               aCallback(false);
             }
           );
->>>>>>> origin/upstream-releases
         },
       };
     }
@@ -924,7 +839,6 @@ Object.defineProperty(FirefoxProfileMigrator.prototype, "isFirefoxMigrator", {
   get: () => true,
 });
 
-<<<<<<< HEAD
 Object.defineProperty(FirefoxProfileMigrator.prototype, "tabsRestoreURL", {
   get: () => "about:importedtabs"
 });
@@ -943,10 +857,6 @@ Object.defineProperty(CliqzProfileMigrator.prototype, "startupOnlyMigrator", {
   get: () => true
 });
 
-||||||| merged common ancestors
-
-=======
->>>>>>> origin/upstream-releases
 FirefoxProfileMigrator.prototype.classDescription = "Firefox Profile Migrator";
 FirefoxProfileMigrator.prototype.contractID =
   "@mozilla.org/profile/migrator;1?app=browser&type=firefox";

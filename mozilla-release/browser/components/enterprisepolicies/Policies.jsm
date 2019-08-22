@@ -382,16 +382,9 @@ var Policies = {
       }
     },
   },
-<<<<<<< HEAD
 #if 0
-  "DisableFirefoxAccounts": {
-||||||| merged common ancestors
-
-  "DisableFirefoxAccounts": {
-=======
 
   DisableFirefoxAccounts: {
->>>>>>> origin/upstream-releases
     onBeforeAddons(manager, param) {
       if (param) {
         setAndLockPref("identity.fxaccounts.enabled", false);
@@ -422,16 +415,9 @@ var Policies = {
       }
     },
   },
-<<<<<<< HEAD
 #endif
-  "DisableForgetButton": {
-||||||| merged common ancestors
-
-  "DisableForgetButton": {
-=======
 
   DisableForgetButton: {
->>>>>>> origin/upstream-releases
     onProfileAfterChange(manager, param) {
       if (param) {
         setAndLockPref("privacy.panicButton.enabled", false);
@@ -454,32 +440,18 @@ var Policies = {
       }
     },
   },
-<<<<<<< HEAD
 #if 0
-  "DisablePocket": {
-||||||| merged common ancestors
-
-  "DisablePocket": {
-=======
 
   DisablePocket: {
->>>>>>> origin/upstream-releases
     onBeforeAddons(manager, param) {
       if (param) {
         setAndLockPref("extensions.pocket.enabled", false);
       }
     },
   },
-<<<<<<< HEAD
 #endif
-  "DisablePrivateBrowsing": {
-||||||| merged common ancestors
-
-  "DisablePrivateBrowsing": {
-=======
 
   DisablePrivateBrowsing: {
->>>>>>> origin/upstream-releases
     onBeforeAddons(manager, param) {
       if (param) {
         manager.disallowFeature("privatebrowsing");
@@ -624,16 +596,9 @@ var Policies = {
       setAndLockPref("browser.download.useDownloadDir", true);
     },
   },
-<<<<<<< HEAD
 #if 0
-  "EnableTrackingProtection": {
-||||||| merged common ancestors
-
-  "EnableTrackingProtection": {
-=======
 
   EnableTrackingProtection: {
->>>>>>> origin/upstream-releases
     onBeforeUIStartup(manager, param) {
       if (param.Value) {
         setDefaultPref(
@@ -652,16 +617,9 @@ var Policies = {
       }
     },
   },
-<<<<<<< HEAD
 #endif
-  "Extensions": {
-||||||| merged common ancestors
-
-  "Extensions": {
-=======
 
   Extensions: {
->>>>>>> origin/upstream-releases
     onBeforeUIStartup(manager, param) {
       let uninstallingPromise = Promise.resolve();
       if ("Uninstall" in param) {
@@ -829,16 +787,9 @@ var Policies = {
       }
     },
   },
-<<<<<<< HEAD
 #if 0
-  "FirefoxHome": {
-||||||| merged common ancestors
-
-  "FirefoxHome": {
-=======
 
   FirefoxHome: {
->>>>>>> origin/upstream-releases
     onBeforeAddons(manager, param) {
       let locked = param.Locked || false;
       if ("Search" in param) {
@@ -878,16 +829,9 @@ var Policies = {
       }
     },
   },
-<<<<<<< HEAD
 #endif
-  "FlashPlugin": {
-||||||| merged common ancestors
-
-  "FlashPlugin": {
-=======
 
   FlashPlugin: {
->>>>>>> origin/upstream-releases
     onBeforeUIStartup(manager, param) {
       addAllowDenyPermissions("plugin:flash", param.Allow, param.Block);
 
@@ -916,18 +860,11 @@ var Policies = {
     },
   },
 
-<<<<<<< HEAD
-  "Startup": {
-||||||| merged common ancestors
-  "Homepage": {
-=======
-  Homepage: {
->>>>>>> origin/upstream-releases
+  Startup: {
     onBeforeUIStartup(manager, param) {
       // |homepages| will be a string containing a pipe-separated ('|') list of
       // URLs because that is what the "Custom URLs..." section of about:preferences
       // (and therefore what the pref |browser.startup.homepage|) accepts.
-<<<<<<< HEAD
       // Cliqz. This part totally re-worked in Cliqz browser because we have
       // different Startup options, so we can not follow FF's settings at all.
       let homepages = "about:home";
@@ -935,60 +872,6 @@ var Policies = {
         switch (param.Homepage) {
           case "default":
             homepages = "about:home";
-||||||| merged common ancestors
-      if (param.URL) {
-        let homepages = param.URL.href;
-        if (param.Additional && param.Additional.length > 0) {
-          homepages += "|" + param.Additional.map(url => url.href).join("|");
-        }
-        setDefaultPref("browser.startup.homepage", homepages, param.Locked);
-        if (param.Locked) {
-          setAndLockPref("pref.browser.homepage.disable_button.current_page", true);
-          setAndLockPref("pref.browser.homepage.disable_button.bookmark_page", true);
-          setAndLockPref("pref.browser.homepage.disable_button.restore_default", true);
-        } else {
-          runOncePerModification("setHomepage", homepages, () => {
-            Services.prefs.clearUserPref("browser.startup.homepage");
-          });
-        }
-      }
-      if (param.StartPage) {
-        let prefValue;
-        switch (param.StartPage) {
-          case "none":
-            prefValue = 0;
-=======
-      if (param.URL) {
-        let homepages = param.URL.href;
-        if (param.Additional && param.Additional.length > 0) {
-          homepages += "|" + param.Additional.map(url => url.href).join("|");
-        }
-        setDefaultPref("browser.startup.homepage", homepages, param.Locked);
-        if (param.Locked) {
-          setAndLockPref(
-            "pref.browser.homepage.disable_button.current_page",
-            true
-          );
-          setAndLockPref(
-            "pref.browser.homepage.disable_button.bookmark_page",
-            true
-          );
-          setAndLockPref(
-            "pref.browser.homepage.disable_button.restore_default",
-            true
-          );
-        } else {
-          runOncePerModification("setHomepage", homepages, () => {
-            Services.prefs.clearUserPref("browser.startup.homepage");
-          });
-        }
-      }
-      if (param.StartPage) {
-        let prefValue;
-        switch (param.StartPage) {
-          case "none":
-            prefValue = 0;
->>>>>>> origin/upstream-releases
             break;
           case "urls":
             if (param.URLs && param.URLs.length > 0) {
@@ -1005,9 +888,18 @@ var Policies = {
       setDefaultPref("browser.startup.addFreshTab", param.ShowHomepage, param.Locked);
       setDefaultPref("browser.startup.homepage", homepages, param.Locked);
       if (param.Locked) {
-        setAndLockPref("pref.browser.homepage.disable_button.current_page", true);
-        setAndLockPref("pref.browser.homepage.disable_button.bookmark_page", true);
-        setAndLockPref("pref.browser.homepage.disable_button.restore_default", true);
+        setAndLockPref(
+          "pref.browser.homepage.disable_button.current_page",
+          true
+        );
+        setAndLockPref(
+          "pref.browser.homepage.disable_button.bookmark_page",
+          true
+        );
+        setAndLockPref(
+          "pref.browser.homepage.disable_button.restore_default",
+          true
+        );
       } else {
         runOncePerModification("setHomepage", homepages, () => {
           Services.prefs.clearUserPref("browser.startup.homepage");
@@ -1064,30 +956,16 @@ var Policies = {
       setAndLockPref("network.dns.disablePrefetchFromHTTPS", !param);
     },
   },
-<<<<<<< HEAD
 #if 0
-  "NewTabPage": {
-||||||| merged common ancestors
-
-  "NewTabPage": {
-=======
 
   NewTabPage: {
->>>>>>> origin/upstream-releases
     onBeforeAddons(manager, param) {
       setAndLockPref("browser.newtabpage.enabled", param);
     },
   },
-<<<<<<< HEAD
 #endif
-  "NoDefaultBookmarks": {
-||||||| merged common ancestors
-
-  "NoDefaultBookmarks": {
-=======
 
   NoDefaultBookmarks: {
->>>>>>> origin/upstream-releases
     onProfileAfterChange(manager, param) {
       if (param) {
         manager.disallowFeature("defaultBookmarks");
@@ -1199,16 +1077,9 @@ var Policies = {
       }
     },
   },
-<<<<<<< HEAD
 #if 0
-  "RequestedLocales": {
-||||||| merged common ancestors
-
-  "RequestedLocales": {
-=======
 
   RequestedLocales: {
->>>>>>> origin/upstream-releases
     onBeforeAddons(manager, param) {
       if (Array.isArray(param)) {
         Services.locale.requestedLocales = param;
@@ -1217,16 +1088,9 @@ var Policies = {
       }
     },
   },
-<<<<<<< HEAD
 #endif
-  "SanitizeOnShutdown": {
-||||||| merged common ancestors
-
-  "SanitizeOnShutdown": {
-=======
 
   SanitizeOnShutdown: {
->>>>>>> origin/upstream-releases
     onBeforeUIStartup(manager, param) {
       if (typeof param === "boolean") {
         setAndLockPref("privacy.sanitize.sanitizeOnShutdown", param);
@@ -1287,16 +1151,9 @@ var Policies = {
       }
     },
   },
-<<<<<<< HEAD
 #if 0
-  "SearchBar": {
-||||||| merged common ancestors
-
-  "SearchBar": {
-=======
 
   SearchBar: {
->>>>>>> origin/upstream-releases
     onAllWindowsRestored(manager, param) {
       // This policy is meant to change the default behavior, not to force it.
       // If this policy was already applied and the user chose move the search
@@ -1412,16 +1269,9 @@ var Policies = {
       setAndLockPref("browser.search.suggest.enabled", param);
     },
   },
-<<<<<<< HEAD
 #endif
-  "SecurityDevices": {
-||||||| merged common ancestors
-
-  "SecurityDevices": {
-=======
 
   SecurityDevices: {
->>>>>>> origin/upstream-releases
     onProfileAfterChange(manager, param) {
       let securityDevices = param;
       let pkcs11db = Cc["@mozilla.org/security/pkcs11moduledb;1"].getService(

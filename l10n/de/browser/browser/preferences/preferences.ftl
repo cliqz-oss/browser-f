@@ -32,22 +32,12 @@ search-input-box =
             [windows] In Einstellungen suchen
            *[other] In Einstellungen suchen
         }
-<<<<<<< HEAD
 policies-notice =
     { PLATFORM() ->
         [windows] Deine Organisation hat das Ändern einiger Einstellungen deaktiviert.
        *[other] Deine Organisation hat das Ändern einiger Einstellungen deaktiviert.
     }
 
-||||||| merged common ancestors
-policies-notice =
-    { PLATFORM() ->
-        [windows] Ihre Organisation hat das Ändern einiger Einstellungen deaktiviert.
-       *[other] Ihre Organisation hat das Ändern einiger Einstellungen deaktiviert.
-    }
-
-=======
->>>>>>> origin/upstream-releases
 managed-notice = Der Browser wird durch Ihre Organisation verwaltet.
 pane-general-title = Allgemein
 category-general =
@@ -64,22 +54,13 @@ category-privacy =
 pane-sync-title2 = { -sync-brand-short-name }
 category-sync2 =
     .tooltiptext = { pane-sync-title2 }
-<<<<<<< HEAD
 
 pane-connect-title = Connect
 category-connect =
     .tooltiptext = { pane-connect-title }
 
-help-button-label = Mozilla Support
-addons-button-label = Erweiterungen
-||||||| merged common ancestors
-
 help-button-label = Hilfe für { -brand-short-name }
 addons-button-label = Erweiterungen & Themes
-=======
-help-button-label = Hilfe für { -brand-short-name }
-addons-button-label = Erweiterungen & Themes
->>>>>>> origin/upstream-releases
 focus-search =
     .key = f
 close-button =
@@ -767,28 +748,14 @@ content-blocking-setting-strict =
 content-blocking-setting-custom =
     .label = Benutzerdefiniert
     .accesskey = B
-<<<<<<< HEAD
 
 content-blocking-standard-description = Nur in Vergessen Modus bekannte Elemente zur Aktivitätenverfolgung blockieren
 
-||||||| merged common ancestors
-
-content-blocking-standard-description = Nur in privaten Fenstern bekannte Elemente zur Aktivitätenverfolgung blockieren
-
-=======
->>>>>>> origin/upstream-releases
 content-blocking-standard-desc = Ausgewogenes Blockieren für gleichzeitigen Schutz und Leistung. Einige Elemente zur Aktivitätenverfolgung werden erlaubt, damit Websites funktionieren.
 content-blocking-strict-description = Besserer Schutz. Einige Websites funktionieren eventuell nicht richtig.
 content-blocking-custom-desc = Entsprechend den Einstellungen blockieren:
-<<<<<<< HEAD
 
 content-blocking-private-trackers = Bekannte Elemente zur Aktivitätenverfolgung nur in Vergessen Modus
-||||||| merged common ancestors
-
-content-blocking-private-trackers = Bekannte Elemente zur Aktivitätenverfolgung nur in privaten Fenstern
-=======
-content-blocking-private-trackers = Bekannte Elemente zur Aktivitätenverfolgung nur in privaten Fenstern
->>>>>>> origin/upstream-releases
 content-blocking-third-party-cookies = Cookies zur Aktivitätenverfolgung von Drittanbietern
 content-blocking-all-cookies = Alle Cookies
 content-blocking-unvisited-cookies = Cookies von nicht besuchten Websites
@@ -816,20 +783,10 @@ content-blocking-tracking-protection-change-block-list = Blockierliste ändern
 content-blocking-cookies-label =
     .label = Cookies
     .accesskey = C
-<<<<<<< HEAD
 
-content-blocking-expand-section =
-  .tooltiptext = Weitere Informationen
-
-||||||| merged common ancestors
-
-content-blocking-expand-section = 
-  .tooltiptext = Weitere Informationen
-
-=======
 content-blocking-expand-section =
     .tooltiptext = Weitere Informationen
->>>>>>> origin/upstream-releases
+
 # Cryptomining refers to using scripts on websites that can use a computer’s resources to mine cryptocurrency without a user’s knowledge.
 content-blocking-cryptominers-label =
     .label = Heimliche Digitalwährungsberechner (Krypto-Miner)

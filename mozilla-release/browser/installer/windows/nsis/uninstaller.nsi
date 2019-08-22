@@ -435,28 +435,12 @@ Section "Uninstall"
   ${If} ${FileExists} "$INSTDIR\defaults\pref\channel-prefs.js"
     Delete /REBOOTOK "$INSTDIR\defaults\pref\channel-prefs.js"
   ${EndIf}
-<<<<<<< HEAD
   ; Cliqz Browser: remove distribution.js file on uninstall stage
   ${If} ${FileExists} "$INSTDIR\defaults\pref\distribution.js"
     Delete /REBOOTOK "$INSTDIR\defaults\pref\distribution.js"
   ${EndIf}
-  ${If} ${FileExists} "$INSTDIR\defaults\pref"
-    RmDir /REBOOTOK "$INSTDIR\defaults\pref"
-  ${EndIf}
-  ${If} ${FileExists} "$INSTDIR\defaults"
-    RmDir /REBOOTOK "$INSTDIR\defaults"
-  ${EndIf}
-||||||| merged common ancestors
-  ${If} ${FileExists} "$INSTDIR\defaults\pref"
-    RmDir /REBOOTOK "$INSTDIR\defaults\pref"
-  ${EndIf}
-  ${If} ${FileExists} "$INSTDIR\defaults"
-    RmDir /REBOOTOK "$INSTDIR\defaults"
-  ${EndIf}
-=======
   RmDir "$INSTDIR\defaults\pref"
   RmDir "$INSTDIR\defaults"
->>>>>>> origin/upstream-releases
   ${If} ${FileExists} "$INSTDIR\uninstall"
     ; Remove the uninstall directory that we control
     RmDir /r /REBOOTOK "$INSTDIR\uninstall"

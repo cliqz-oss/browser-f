@@ -5842,25 +5842,20 @@ end:
 
 !ifndef NO_INSTDIR_FROM_REG
       SetShellVarContext all      ; Set SHCTX to HKLM
-<<<<<<< HEAD
       ${GetSingleInstallPath} "Software\${BrandFullNameInternal}" $R9
-||||||| merged common ancestors
-      ${GetSingleInstallPath} "Software\Mozilla\${BrandFullNameInternal}" $R9
-=======
 
       ${If} ${IsNativeAMD64}
       ${OrIf} ${IsNativeARM64}
         SetRegView 64
-        ${GetSingleInstallPath} "Software\Mozilla\${BrandFullNameInternal}" $R9
+        ${GetSingleInstallPath} "Software\${BrandFullNameInternal}" $R9
         SetRegView lastused
       ${EndIf}
 
       StrCmp "$R9" "false" +1 finish_get_install_dir
 
       SetRegView 32
-      ${GetSingleInstallPath} "Software\Mozilla\${BrandFullNameInternal}" $R9
+      ${GetSingleInstallPath} "Software\${BrandFullNameInternal}" $R9
       SetRegView lastused
->>>>>>> origin/upstream-releases
 
       StrCmp "$R9" "false" +1 finish_get_install_dir
 

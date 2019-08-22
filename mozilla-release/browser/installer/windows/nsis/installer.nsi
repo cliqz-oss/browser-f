@@ -1486,22 +1486,8 @@ Function preSummary
     ; Check if Cliqz is the http handler for this user.
     SetShellVarContext current ; Set SHCTX to the current user
     ${IsHandlerForInstallDir} "http" $R9
-<<<<<<< HEAD
-    ${If} $TmpVal == "HKLM"
-      SetShellVarContext all ; Set SHCTX to all users
-    ${EndIf}
     ; If Cliqz isn't the http handler for this user show the option to set
     ; Cliqz as the default browser.
-||||||| merged common ancestors
-    ${If} $TmpVal == "HKLM"
-      SetShellVarContext all ; Set SHCTX to all users
-    ${EndIf}
-    ; If Firefox isn't the http handler for this user show the option to set
-    ; Firefox as the default browser.
-=======
-    ; If Firefox isn't the http handler for this user show the option to set
-    ; Firefox as the default browser.
->>>>>>> origin/upstream-releases
     ${If} "$R9" != "true"
     ${AndIf} ${AtMostWin2008R2}
       WriteINIStr "$PLUGINSDIR\summary.ini" "Settings" NumFields "4"
