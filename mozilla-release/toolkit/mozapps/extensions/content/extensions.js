@@ -112,8 +112,6 @@ const LOADING_MSG_DELAY = 100;
 
 const UPDATES_RECENT_TIMESPAN = 2 * 24 * 3600000; // 2 days (in milliseconds)
 
-const HTML_NS = "http://www.w3.org/1999/xhtml";
-
 const RECOMMENDED_ADDONS = {
   "firefox@ghostery.com": {
     "id": "firefox@ghostery.com",
@@ -2032,7 +2030,7 @@ async function getAddonsAndInstalls(aType, aCallback) {
       addons = addons.filter(isNotSystemExtension);
   }
 
-  if (installs != null)
+  if (installs != null) {
     aCallback(addons, installs);
   }
 
