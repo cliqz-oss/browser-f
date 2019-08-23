@@ -729,18 +729,18 @@ var loadManifest = async function(aPackage, aLocation, aOldAddon) {
     }
   }
 
+  /* CLIQZ-SPECIAL: remove recommended status
   if (
     addon.type === "extension" &&
     !aLocation.isBuiltin &&
     !aLocation.isTemporary
   ) {
-    /* CLIQZ-SPECIAL: remove recommended status
     addon.recommendationState = await readRecommendationStates(
       aPackage,
       addon.id
     );
-    */
   }
+  */
 
   addon.propagateDisabledState(aOldAddon);
   await addon.updateBlocklistState();

@@ -302,7 +302,6 @@ class RemoteSettingsClient extends EventEmitter {
       const kintoCollection = await this.openCollection();
       const { data } = await kintoCollection.list({ filters, order });
 
-      // Verify signature of local data.
       if (verifySignature) {
         console.debug(`${this.identifier} verify signature of local data`);
         const { data: allData } = await kintoCollection.list({ order: "" });
@@ -310,7 +309,7 @@ class RemoteSettingsClient extends EventEmitter {
           kintoCollection.cleanLocalFields(r)
         );
         const timestamp = await kintoCollection.db.getLastModified();
-        const metadata = await kintoCollection.metadata();
+        let metadata = await kintoCollection.metadata();
         // CLIQZ-AFTER-MERGE:
         // need to check whether we really need this if-clause in Cliqz
         if (syncIfEmpty && ObjectUtils.isEmpty(metadata)) {

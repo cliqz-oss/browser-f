@@ -2609,8 +2609,8 @@ var CustomizableUIInternal = {
       let addToDefaultPlacements = false;
       let area = gAreas.get(widget.defaultArea);
       if (
-        !CustomizableUI.isBuiltinToolbar(widget.defaultArea) &&
-        widget.defaultArea != CustomizableUI.AREA_FIXED_OVERFLOW_PANEL ||
+        (!CustomizableUI.isBuiltinToolbar(widget.defaultArea) &&
+         widget.defaultArea != CustomizableUI.AREA_FIXED_OVERFLOW_PANEL) ||
         CustomizableUI.isCliqzWidget(widget.id)
       ) {
         addToDefaultPlacements = true;
