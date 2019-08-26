@@ -5842,7 +5842,6 @@ end:
 
 !ifndef NO_INSTDIR_FROM_REG
       SetShellVarContext all      ; Set SHCTX to HKLM
-      ${GetSingleInstallPath} "Software\${BrandFullNameInternal}" $R9
 
       ${If} ${IsNativeAMD64}
       ${OrIf} ${IsNativeARM64}
