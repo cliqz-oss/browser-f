@@ -1978,17 +1978,23 @@ var gPrivacyPane = {
   readSavePasswords() {
     var pref = Preferences.get("signon.rememberSignons");
     var excepts = document.getElementById("passwordExceptions");
+#if 0
     var generatePasswords = document.getElementById("generatePasswords");
+#endif
 
     if (PrivateBrowsingUtils.permanentPrivateBrowsing) {
       document.getElementById("savePasswords").disabled = true;
       document.getElementById("passwordsBoxHint").hidden = false;
       excepts.disabled = true;
+#if 0
       generatePasswords.disabled = true;
+#endif
       return false;
     }
     excepts.disabled = !pref.value;
+#if 0
     generatePasswords.disabled = !pref.value;
+#endif
 
     // don't override pref value in UI
     return undefined;
