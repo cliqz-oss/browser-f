@@ -136,10 +136,6 @@ export CQZ_AUTO_PRIVATE_TAB=1
 export CQZ_ADULT_DOMAINS_BF=../adult-domains.bin
 # automatic forget tab - end
 
-if [ "$CQZ_RELEASE_CHANNEL" == "beta" ] ; then
-  export CQZ_TOR_MODE=1
-fi
-
 export ROOT_PATH=$PWD
 export SHELL=$SHELL
 

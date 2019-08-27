@@ -976,4 +976,3 @@ you can use these alternative items. Otherwise, their values should be empty.  -
 <!-- Cliqz -->
 <!ENTITY allowAddons.panelUI.label "Cliqz now supports Firefox add-ons">
 <!ENTITY connect.panelUI.label "Connect">
-<!ENTITY torbrowsing.panelUI.label "New Tor Window">

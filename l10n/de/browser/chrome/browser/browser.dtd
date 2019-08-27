@@ -1201,4 +1201,3 @@ you can use these alternative items. Otherwise, their values should be empty.  -
 <!-- Cliqz -->
 <!ENTITY allowAddons.panelUI.label "Cliqz lässt ab sofort Firefox Add-ons zu">
 <!ENTITY connect.panelUI.label "Connect">
-<!ENTITY torbrowsing.panelUI.label "Neues Tor Fenster">
