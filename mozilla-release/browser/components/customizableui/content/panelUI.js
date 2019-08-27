@@ -128,12 +128,6 @@ const PanelUI = {
       "appMenu-notifications-request",
       "refresh"
     );
-    if (Services.prefs.getBoolPref("extensions.cliqz.onion-mode", false)) {
-      document.getElementById("appMenu-cliqz-connect-button").hidden = true;
-      document.getElementById("appMenu-tp-separator").hidden = true;
-      document.getElementById("appMenu-new-window-button").hidden = true;
-      document.getElementById("appMenu-private-window-button").hidden = true;
-    }
 
     this._initialized = true;
   },
