@@ -102,7 +102,8 @@ bool D3D11YCbCrImage::SetData(KnowsCompositor* aAllocator,
 
 IntSize D3D11YCbCrImage::GetSize() const { return mPictureRect.Size(); }
 
-TextureClient* D3D11YCbCrImage::GetTextureClient(KnowsCompositor* aForwarder) {
+TextureClient* D3D11YCbCrImage::GetTextureClient(
+    KnowsCompositor* aKnowsCompositor) {
   return mTextureClient;
 }
 

@@ -17,9 +17,10 @@ function run_test() {
   initTestDebuggerServer();
   gDebuggee = addTestGlobal("test-grips");
   Cu.evalInSandbox(
-    "" + function stopMe(arg1) {
-      debugger;
-    },
+    "" +
+      function stopMe(arg1) {
+        debugger;
+      },
     gDebuggee,
     "1.8",
     getFileUrl("test_source-02.js")
@@ -27,11 +28,14 @@ function run_test() {
 
   gClient = new DebuggerClient(DebuggerServer.connectPipe());
   gClient.connect().then(function() {
-    attachTestTabAndResume(gClient, "test-grips",
-                           function(response, targetFront, threadClient) {
-                             gThreadClient = threadClient;
-                             test_source();
-                           });
+    attachTestTabAndResume(gClient, "test-grips", function(
+      response,
+      targetFront,
+      threadClient
+    ) {
+      gThreadClient = threadClient;
+      test_source();
+    });
   });
   do_test_pending();
 }
@@ -47,7 +51,7 @@ const SOURCE_CONTENT = `
 function test_source() {
   DebuggerServer.LONG_STRING_LENGTH = 200;
 
-  gThreadClient.addOneTimeListener("paused", function(event, packet) {
+  gThreadClient.once("paused", function(packet) {
     gThreadClient.getSources().then(async function(response) {
       Assert.ok(!!response);
       Assert.ok(!!response.sources);
@@ -61,50 +65,46 @@ function test_source() {
       const sourceFront = gThreadClient.source(source);
       response = await sourceFront.getBreakpointPositions();
       Assert.ok(!!response);
-      Assert.deepEqual(
-        response,
-        [{
+      Assert.deepEqual(response, [
+        {
           line: 2,
           column: 2,
-        }, {
+        },
+        {
           line: 3,
           column: 14,
-        }, {
+        },
+        {
           line: 3,
           column: 17,
-        }, {
+        },
+        {
           line: 3,
           column: 24,
-        }, {
+        },
+        {
           line: 4,
           column: 4,
-        }, {
+        },
+        {
           line: 6,
           column: 0,
-        }]
-      );
+        },
+      ]);
 
       response = await sourceFront.getBreakpointPositionsCompressed();
       Assert.ok(!!response);
-      Assert.deepEqual(
-        response,
-        {
-          2: [2],
-          3: [14, 17, 24],
-          4: [4],
-          6: [0],
-        }
-      );
+      Assert.deepEqual(response, {
+        2: [2],
+        3: [14, 17, 24],
+        4: [4],
+        6: [0],
+      });
 
       await gThreadClient.resume();
       finishClient(gClient);
     });
   });
 
-  Cu.evalInSandbox(
-    SOURCE_CONTENT,
-    gDebuggee,
-    "1.8",
-    SOURCE_URL
-  );
+  Cu.evalInSandbox(SOURCE_CONTENT, gDebuggee, "1.8", SOURCE_URL);
 }

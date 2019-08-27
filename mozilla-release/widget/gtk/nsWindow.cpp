@@ -119,6 +119,9 @@ using namespace mozilla::widget;
 #include "mozilla/layers/CompositorThread.h"
 #include "mozilla/layers/KnowsCompositor.h"
 
+#include "mozilla/layers/APZInputBridge.h"
+#include "mozilla/layers/IAPZCTreeManager.h"
+
 #ifdef MOZ_X11
 #  include "GLContextGLX.h"  // for GLContextGLX::FindVisual()
 #  include "GtkCompositorWidget.h"
@@ -1313,7 +1316,24 @@ void nsWindow::NativeMoveResizeWaylandPopup(GdkPoint* aPosition,
     hints = GdkAnchorHints(hints | GDK_ANCHOR_RESIZE);
   }
 
+  // A workaround for https://gitlab.gnome.org/GNOME/gtk/issues/1986
+  // gdk_window_move_to_rect() does not reposition visible windows.
+  static auto sGtkWidgetIsVisible =
+      (gboolean(*)(GtkWidget*))dlsym(RTLD_DEFAULT, "gtk_widget_is_visible");
+
+  bool isWidgetVisible =
+      (sGtkWidgetIsVisible != nullptr) && sGtkWidgetIsVisible(mShell);
+  if (isWidgetVisible) {
+    HideWaylandWindow();
+  }
+
   sGdkWindowMoveToRect(gdkWindow, &rect, rectAnchor, menuAnchor, hints, 0, 0);
+
+  if (isWidgetVisible) {
+    // We show the popup with the same configuration so no need to call
+    // ConfigureWaylandPopupWindows() before gtk_widget_show().
+    gtk_widget_show(mShell);
+  }
 }
 
 void nsWindow::NativeMove() {
@@ -1471,20 +1491,20 @@ guint32 nsWindow::GetLastUserInputTime() {
   return timestamp;
 }
 
-nsresult nsWindow::SetFocus(bool aRaise) {
+void nsWindow::SetFocus(Raise aRaise) {
   // Make sure that our owning widget has focus.  If it doesn't try to
   // grab it.  Note that we don't set our focus flag in this case.
 
-  LOGFOCUS(("  SetFocus %d [%p]\n", aRaise, (void*)this));
+  LOGFOCUS(("  SetFocus %d [%p]\n", aRaise == Raise::Yes, (void*)this));
 
   GtkWidget* owningWidget = GetMozContainerWidget();
-  if (!owningWidget) return NS_ERROR_FAILURE;
+  if (!owningWidget) return;
 
   // Raise the window if someone passed in true and the prefs are
   // set properly.
   GtkWidget* toplevelWidget = gtk_widget_get_toplevel(owningWidget);
 
-  if (gRaiseWindows && aRaise && toplevelWidget &&
+  if (gRaiseWindows && aRaise == Raise::Yes && toplevelWidget &&
       !gtk_widget_has_focus(owningWidget) &&
       !gtk_widget_has_focus(toplevelWidget)) {
     GtkWidget* top_window = GetToplevelWidget();
@@ -1496,10 +1516,10 @@ nsresult nsWindow::SetFocus(bool aRaise) {
   }
 
   RefPtr<nsWindow> owningWindow = get_window_for_gtk_widget(owningWidget);
-  if (!owningWindow) return NS_ERROR_FAILURE;
+  if (!owningWindow) return;
 
-  if (aRaise) {
-    // aRaise == true means request toplevel activation.
+  if (aRaise == Raise::Yes) {
+    // means request toplevel activation.
 
     // This is asynchronous.
     // If and when the window manager accepts the request, then the focus
@@ -1518,12 +1538,11 @@ nsresult nsWindow::SetFocus(bool aRaise) {
 
       if (GTKToolkit) GTKToolkit->SetFocusTimestamp(0);
     }
-
-    return NS_OK;
+    return;
   }
 
-  // aRaise == false means that keyboard events should be dispatched
-  // from this widget.
+  // aRaise == No means that keyboard events should be dispatched from this
+  // widget.
 
   // Ensure owningWidget is the focused GtkWidget within its toplevel window.
   //
@@ -1542,7 +1561,7 @@ nsresult nsWindow::SetFocus(bool aRaise) {
   // If this is the widget that already has focus, return.
   if (gFocusWindow == this) {
     LOGFOCUS(("  already have focus [%p]\n", (void*)this));
-    return NS_OK;
+    return;
   }
 
   // Set this window to be the focused child window
@@ -1553,8 +1572,6 @@ nsresult nsWindow::SetFocus(bool aRaise) {
   }
 
   LOGFOCUS(("  widget now has focus in SetFocus() [%p]\n", (void*)this));
-
-  return NS_OK;
 }
 
 LayoutDeviceIntRect nsWindow::GetScreenBounds() {
@@ -3037,8 +3054,11 @@ void nsWindow::OnScrollEvent(GdkEventScroll* aEvent) {
 #if GTK_CHECK_VERSION(3, 4, 0)
   // check for duplicate legacy scroll event, see GNOME bug 726878
   if (aEvent->direction != GDK_SCROLL_SMOOTH &&
-      mLastScrollEventTime == aEvent->time)
+      mLastScrollEventTime == aEvent->time) {
+    LOG(("[%d] duplicate legacy scroll event %d\n", aEvent->time,
+         aEvent->direction));
     return;
+  }
 #endif
   WidgetWheelEvent wheelEvent(true, eWheel, this);
   wheelEvent.mDeltaMode = dom::WheelEvent_Binding::DOM_DELTA_LINE;
@@ -3046,21 +3066,56 @@ void nsWindow::OnScrollEvent(GdkEventScroll* aEvent) {
 #if GTK_CHECK_VERSION(3, 4, 0)
     case GDK_SCROLL_SMOOTH: {
       // As of GTK 3.4, all directional scroll events are provided by
-      // the GDK_SCROLL_SMOOTH direction on XInput2 devices.
+      // the GDK_SCROLL_SMOOTH direction on XInput2 and Wayland devices.
       mLastScrollEventTime = aEvent->time;
+
+      // Special handling for touchpads to support flings
+      // (also known as kinetic/inertial/momentum scrolling)
+      GdkDevice* device = gdk_event_get_source_device((GdkEvent*)aEvent);
+      GdkInputSource source = gdk_device_get_source(device);
+      if (source == GDK_SOURCE_TOUCHSCREEN || source == GDK_SOURCE_TOUCHPAD) {
+        if (StaticPrefs::apz_gtk_kinetic_scroll_enabled() &&
+            gtk_check_version(3, 20, 0) == nullptr) {
+          static auto sGdkEventIsScrollStopEvent =
+              (gboolean(*)(const GdkEvent*))dlsym(
+                  RTLD_DEFAULT, "gdk_event_is_scroll_stop_event");
+
+          LOG(("[%d] pan smooth event dx=%f dy=%f inprogress=%d\n",
+               aEvent->time, aEvent->delta_x, aEvent->delta_y, mPanInProgress));
+          PanGestureInput::PanGestureType eventType =
+              PanGestureInput::PANGESTURE_PAN;
+          if (sGdkEventIsScrollStopEvent((GdkEvent*)aEvent)) {
+            eventType = PanGestureInput::PANGESTURE_END;
+            mPanInProgress = false;
+          } else if (!mPanInProgress) {
+            eventType = PanGestureInput::PANGESTURE_START;
+            mPanInProgress = true;
+          }
+
+          LayoutDeviceIntPoint touchPoint = GetRefPoint(this, aEvent);
+          PanGestureInput panEvent(
+              eventType, aEvent->time, GetEventTimeStamp(aEvent->time),
+              ScreenPoint(touchPoint.x, touchPoint.y),
+              ScreenPoint(aEvent->delta_x, aEvent->delta_y),
+              KeymapWrapper::ComputeKeyModifiers(aEvent->state));
+          panEvent.mDeltaType = PanGestureInput::PANDELTA_PAGE;
+          panEvent.mSimulateMomentum = true;
+
+          DispatchPanGestureInput(panEvent);
+
+          return;
+        }
+
+        // Older GTK doesn't support stop events, so we can't support fling
+        wheelEvent.mScrollType = WidgetWheelEvent::SCROLL_ASYNCHRONOUSELY;
+      }
+
       // TODO - use a more appropriate scrolling unit than lines.
       // Multiply event deltas by 3 to emulate legacy behaviour.
       wheelEvent.mDeltaX = aEvent->delta_x * 3;
       wheelEvent.mDeltaY = aEvent->delta_y * 3;
       wheelEvent.mIsNoLineOrPageDelta = true;
-      // This next step manually unsets smooth scrolling for touch devices
-      // that trigger GDK_SCROLL_SMOOTH. We use the slave device, which
-      // represents the actual input.
-      GdkDevice* device = gdk_event_get_source_device((GdkEvent*)aEvent);
-      GdkInputSource source = gdk_device_get_source(device);
-      if (source == GDK_SOURCE_TOUCHSCREEN || source == GDK_SOURCE_TOUCHPAD) {
-        wheelEvent.mScrollType = WidgetWheelEvent::SCROLL_ASYNCHRONOUSELY;
-      }
+
       break;
     }
 #endif
@@ -3178,8 +3233,19 @@ void nsWindow::OnWindowStateEvent(GtkWidget* aWidget,
   }
 
   // We don't care about anything but changes in the maximized/icon/fullscreen
-  // states
-  if ((aEvent->changed_mask &
+  // states but we need a workaround for bug in Wayland:
+  // https://gitlab.gnome.org/GNOME/gtk/issues/67
+  // Under wayland the gtk_window_iconify implementation does NOT synthetize
+  // window_state_event where the GDK_WINDOW_STATE_ICONIFIED is set.
+  // During restore we  won't get aEvent->changed_mask with
+  // the GDK_WINDOW_STATE_ICONIFIED so to detect that change we use the stored
+  // mSizeState and obtaining a focus.
+  bool waylandWasIconified =
+      (!mIsX11Display && aEvent->changed_mask & GDK_WINDOW_STATE_FOCUSED &&
+       aEvent->new_window_state & GDK_WINDOW_STATE_FOCUSED &&
+       mSizeState == nsSizeMode_Minimized);
+  if (!waylandWasIconified &&
+      (aEvent->changed_mask &
        (GDK_WINDOW_STATE_ICONIFIED | GDK_WINDOW_STATE_MAXIMIZED |
         GDK_WINDOW_STATE_FULLSCREEN)) == 0) {
     return;
@@ -4281,7 +4347,8 @@ LayoutDeviceIntSize nsWindow::GetSafeWindowSize(LayoutDeviceIntSize aSize) {
   LayoutDeviceIntSize result = aSize;
   int32_t maxSize = 32767;
   if (mLayerManager && mLayerManager->AsKnowsCompositor()) {
-    maxSize = std::min(maxSize, mLayerManager->AsKnowsCompositor()->GetMaxTextureSize());
+    maxSize = std::min(maxSize,
+                       mLayerManager->AsKnowsCompositor()->GetMaxTextureSize());
   }
   if (result.width > maxSize) {
     result.width = maxSize;
@@ -5117,7 +5184,11 @@ bool nsWindow::CheckForRollup(gdouble aMouseX, gdouble aMouseY, bool aIsWheel,
 
     // if we've determined that we should still rollup, do it.
     bool usePoint = !aIsWheel && !aAlwaysRollup;
-    IntPoint point = IntPoint::Truncate(aMouseX, aMouseY);
+    IntPoint point;
+    if (usePoint) {
+      LayoutDeviceIntPoint p = GdkEventCoordsToDevicePixels(aMouseX, aMouseY);
+      point = p.ToUnknownPoint();
+    }
     if (rollup &&
         rollupListener->Rollup(popupsToRollup, true,
                                usePoint ? &point : nullptr, nullptr)) {
@@ -6871,9 +6942,6 @@ bool nsWindow::WaylandSurfaceNeedsClear() {
   if (mContainer) {
     return moz_container_surface_needs_clear(MOZ_CONTAINER(mContainer));
   }
-
-  NS_WARNING(
-      "nsWindow::WaylandSurfaceNeedsClear(): We don't have any mContainer!");
   return false;
 }
 #endif

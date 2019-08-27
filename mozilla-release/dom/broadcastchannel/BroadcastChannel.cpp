@@ -17,6 +17,7 @@
 #include "mozilla/ipc/BackgroundChild.h"
 #include "mozilla/ipc/BackgroundUtils.h"
 #include "mozilla/ipc/PBackgroundChild.h"
+#include "mozilla/StorageAccess.h"
 #include "nsContentUtils.h"
 
 #include "nsIBFCacheEntry.h"
@@ -231,8 +232,9 @@ already_AddRefed<BroadcastChannel> BroadcastChannel::Constructor(
   nsAutoCString origin;
   PrincipalInfo storagePrincipalInfo;
 
-  nsContentUtils::StorageAccess storageAccess;
+  StorageAccess storageAccess;
 
+  nsCOMPtr<nsICookieSettings> cs;
   if (NS_IsMainThread()) {
     nsCOMPtr<nsPIDOMWindowInner> window = do_QueryInterface(global);
     if (NS_WARN_IF(!window)) {
@@ -269,7 +271,12 @@ already_AddRefed<BroadcastChannel> BroadcastChannel::Constructor(
       return nullptr;
     }
 
-    storageAccess = nsContentUtils::StorageAllowedForWindow(window);
+    storageAccess = StorageAllowedForWindow(window);
+
+    Document* doc = window->GetExtantDoc();
+    if (doc) {
+      cs = doc->CookieSettings();
+    }
   } else {
     JSContext* cx = aGlobal.Context();
 
@@ -296,13 +303,15 @@ already_AddRefed<BroadcastChannel> BroadcastChannel::Constructor(
 
     storageAccess = workerPrivate->StorageAccess();
     bc->mWorkerRef = workerRef;
+
+    cs = workerPrivate->CookieSettings();
   }
 
   // We want to allow opaque origins.
   if (storagePrincipalInfo.type() != PrincipalInfo::TNullPrincipalInfo &&
-      (storageAccess == nsContentUtils::StorageAccess::eDeny ||
-       (storageAccess == nsContentUtils::StorageAccess::ePartitionedOrDeny &&
-        !StaticPrefs::privacy_storagePrincipal_enabledForTrackers()))) {
+      (storageAccess == StorageAccess::eDeny ||
+       (ShouldPartitionStorage(storageAccess) &&
+        !StoragePartitioningEnabled(storageAccess, cs)))) {
     aRv.Throw(NS_ERROR_DOM_SECURITY_ERR);
     return nullptr;
   }

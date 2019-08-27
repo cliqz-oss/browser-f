@@ -16,8 +16,8 @@
 #include "nsGkAtoms.h"
 #include "nsPageContentFrame.h"
 #include "nsDisplayList.h"
-#include "nsSimplePageSequenceFrame.h"  // for nsSharedPageData
-#include "nsTextFormatter.h"  // for page number localization formatting
+#include "nsPageSequenceFrame.h"  // for nsSharedPageData
+#include "nsTextFormatter.h"      // for page number localization formatting
 #include "nsBidiUtils.h"
 #include "nsIPrintSettings.h"
 
@@ -405,8 +405,8 @@ static void BuildDisplayListForExtraPage(nsDisplayListBuilder* aBuilder,
                                          nsPageFrame* aPage,
                                          nsIFrame* aExtraPage,
                                          nsDisplayList* aList) {
-  // The only content in aExtraPage we care about is out-of-flow content whose
-  // placeholders have occurred in aPage. If
+  // The only content in aExtraPage we care about is out-of-flow content from
+  // aPage, whose placeholders have occurred in aExtraPage. If
   // NS_FRAME_FORCE_DISPLAY_LIST_DESCEND_INTO is not set, then aExtraPage has
   // no such content.
   if (!aExtraPage->HasAnyStateBits(NS_FRAME_FORCE_DISPLAY_LIST_DESCEND_INTO)) {
@@ -520,13 +520,27 @@ void nsPageFrame::BuildDisplayList(nsDisplayListBuilder* aBuilder,
     // these extra pages are pruned so that only display items for the
     // page we currently care about (which we would have reached by
     // following placeholders to their out-of-flows) end up on the list.
-    nsIFrame* page = child;
-    while ((page = GetNextPage(page)) != nullptr) {
-      nsRect childVisible = visibleRect + child->GetOffsetTo(page);
+    //
+    // Stacking context frames that wrap content on their normal page,
+    // as well as OOF content for this page will have their container
+    // items duplicated. We tell the builder to include our page number
+    // in the unique key for any extra page items so that they can be
+    // differentiated from the ones created on the normal page.
+    NS_ASSERTION(mPageNum <= 255, "Too many pages to handle OOFs");
+    if (mPageNum <= 255) {
+      uint8_t oldPageNum = aBuilder->GetBuildingExtraPagesForPageNum();
+      aBuilder->SetBuildingExtraPagesForPageNum(mPageNum);
 
-      nsDisplayListBuilder::AutoBuildingDisplayList buildingForChild(
-          aBuilder, page, childVisible, childVisible);
-      BuildDisplayListForExtraPage(aBuilder, this, page, &content);
+      nsIFrame* page = child;
+      while ((page = GetNextPage(page)) != nullptr) {
+        nsRect childVisible = visibleRect + child->GetOffsetTo(page);
+
+        nsDisplayListBuilder::AutoBuildingDisplayList buildingForChild(
+            aBuilder, page, childVisible, childVisible);
+        BuildDisplayListForExtraPage(aBuilder, this, page, &content);
+      }
+
+      aBuilder->SetBuildingExtraPagesForPageNum(oldPageNum);
     }
 
     // Invoke AutoBuildingDisplayList to ensure that the correct visibleRect
@@ -542,7 +556,7 @@ void nsPageFrame::BuildDisplayList(nsDisplayListBuilder* aBuilder,
         nsRect(aBuilder->ToReferenceFrame(child), child->GetSize());
 
     PresContext()->GetPresShell()->AddCanvasBackgroundColorItem(
-        *aBuilder, content, child, backgroundRect, NS_RGBA(0, 0, 0, 0));
+        aBuilder, &content, child, backgroundRect, NS_RGBA(0, 0, 0, 0));
   }
 
   content.AppendNewToTop<nsDisplayTransform>(aBuilder, child, &content,

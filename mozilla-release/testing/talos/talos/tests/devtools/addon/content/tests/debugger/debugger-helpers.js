@@ -101,14 +101,11 @@ function waitForText(dbg, url, text) {
 }
 
 function waitForSymbols(dbg) {
-  return waitUntil(
-    () => {
-      const state = dbg.store.getState();
-      const source = dbg.selectors.getSelectedSource(state);
-      return dbg.selectors.hasSymbols(state, source);
-    },
-    "has file metadata"
-  );
+  return waitUntil(() => {
+    const state = dbg.store.getState();
+    const source = dbg.selectors.getSelectedSource(state);
+    return dbg.selectors.hasSymbols(state, source);
+  }, "has file metadata");
 }
 
 function waitForSources(dbg, expectedSources) {
@@ -132,13 +129,10 @@ async function waitForPaused(dbg) {
   const {
     selectors: { getSelectedScope, getIsPaused, getCurrentThread },
   } = dbg;
-  const onStateChange =  waitForState(
-    dbg,
-    state => {
-      const thread = getCurrentThread(state);
-      return getSelectedScope(state, thread) && getIsPaused(state, thread);
-    },
-  );
+  const onStateChange = waitForState(dbg, state => {
+    const thread = getCurrentThread(state);
+    return getSelectedScope(state, thread) && getIsPaused(state, thread);
+  });
   return Promise.all([onLoadedScope, onStateChange]);
 }
 
@@ -158,7 +152,7 @@ async function waitForElement(dbg, name) {
 }
 
 async function waitForLoadedScopes(dbg) {
-  const element = ".scopes-list .tree-node[aria-level=\"1\"]";
+  const element = '.scopes-list .tree-node[aria-level="1"]';
   return waitForElement(dbg, element);
 }
 
@@ -184,7 +178,9 @@ function selectSource(dbg, url) {
   return waitForState(
     dbg,
     state => {
-      const { source, content } = dbg.selectors.getSelectedSourceWithContent(state);
+      const { source, content } = dbg.selectors.getSelectedSourceWithContent(
+        state
+      );
       if (!content) {
         return false;
       }
@@ -203,11 +199,16 @@ function evalInContent(dbg, tab, testFunction) {
   // inside of the content process and trigger debugger functionality
   // as needed
   const messageManager = tab.linkedBrowser.messageManager;
-  return messageManager.loadFrameScript("data:,(" + encodeURIComponent(
-    `function () {
+  return messageManager.loadFrameScript(
+    "data:,(" +
+      encodeURIComponent(
+        `function () {
         content.window.eval("${testFunction}");
     }`
-  ) + ")()", true);
+      ) +
+      ")()",
+    true
+  );
 }
 
 async function openDebuggerAndLog(label, expected) {
@@ -219,7 +220,11 @@ async function openDebuggerAndLog(label, expected) {
     await waitForSymbols(dbg);
   };
 
-  const toolbox = await openToolboxAndLog(label + ".jsdebugger", "jsdebugger", onLoad);
+  const toolbox = await openToolboxAndLog(
+    label + ".jsdebugger",
+    "jsdebugger",
+    onLoad
+  );
   return toolbox;
 }
 exports.openDebuggerAndLog = openDebuggerAndLog;
@@ -290,3 +295,23 @@ async function step(dbg, stepType) {
   return waitForPaused(dbg);
 }
 exports.step = step;
+
+async function hoverOnToken(dbg, cx, textToWaitFor, textToHover) {
+  await waitForText(dbg, null, textToWaitFor);
+  const tokenElement = [
+    ...dbg.win.document.querySelectorAll(".CodeMirror span"),
+  ].find(el => el.textContent === "window");
+
+  const mouseOverEvent = new dbg.win.MouseEvent("mouseover", {
+    bubbles: true,
+    cancelable: true,
+    view: dbg.win,
+  });
+  tokenElement.dispatchEvent(mouseOverEvent);
+
+  const setPreviewDispatch = waitForDispatch(dbg, "SET_PREVIEW");
+  const tokenPosition = { line: 21, column: 3 };
+  dbg.actions.updatePreview(cx, tokenElement, tokenPosition, getCM(dbg));
+  await setPreviewDispatch;
+}
+exports.hoverOnToken = hoverOnToken;

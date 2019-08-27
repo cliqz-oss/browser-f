@@ -21,6 +21,7 @@
 #include "mozilla/ipc/PBackground.h"
 #include "mozilla/ipc/PBackgroundChild.h"
 #include "mozilla/StaticPrefs.h"
+#include "mozilla/StorageAccess.h"
 #include "mozilla/Telemetry.h"
 #include "mozIThirdPartyUtil.h"
 #include "nsAboutProtocolUtils.h"
@@ -166,7 +167,7 @@ nsresult IDBFactory::CreateForMainThreadJS(nsIGlobalObject* aGlobal,
   }
 
   nsAutoPtr<PrincipalInfo> principalInfo(new PrincipalInfo());
-  nsIPrincipal* principal = sop->GetPrincipal();
+  nsIPrincipal* principal = sop->GetEffectiveStoragePrincipal();
   MOZ_ASSERT(principal);
   bool isSystem;
   if (!AllowedForPrincipal(principal, &isSystem)) {
@@ -295,18 +296,18 @@ nsresult IDBFactory::AllowedForWindowInternal(nsPIDOMWindowInner* aWindow,
     return NS_ERROR_DOM_INDEXEDDB_UNKNOWN_ERR;
   }
 
-  nsContentUtils::StorageAccess access =
-      nsContentUtils::StorageAllowedForWindow(aWindow);
+  StorageAccess access = StorageAllowedForWindow(aWindow);
 
   // the factory callsite records whether the browser is in private browsing.
   // and thus we don't have to respect that setting here. IndexedDB has no
   // concept of session-local storage, and thus ignores it.
-  if (access == nsContentUtils::StorageAccess::eDeny) {
+  if (access == StorageAccess::eDeny) {
     return NS_ERROR_DOM_SECURITY_ERR;
   }
 
-  if (access == nsContentUtils::StorageAccess::ePartitionedOrDeny &&
-      !StaticPrefs::privacy_storagePrincipal_enabledForTrackers()) {
+  if (ShouldPartitionStorage(access) &&
+      !StoragePartitioningEnabled(access,
+                                  aWindow->GetExtantDoc()->CookieSettings())) {
     return NS_ERROR_DOM_SECURITY_ERR;
   }
 
@@ -501,13 +502,19 @@ already_AddRefed<IDBOpenDBRequest> IDBFactory::DeleteDatabase(
 int16_t IDBFactory::Cmp(JSContext* aCx, JS::Handle<JS::Value> aFirst,
                         JS::Handle<JS::Value> aSecond, ErrorResult& aRv) {
   Key first, second;
-  first.SetFromJSVal(aCx, aFirst, aRv);
-  if (aRv.Failed()) {
+  auto result = first.SetFromJSVal(aCx, aFirst, aRv);
+  if (!result.Is(Ok, aRv)) {
+    if (result.Is(Invalid, aRv)) {
+      aRv.Throw(NS_ERROR_DOM_INDEXEDDB_DATA_ERR);
+    }
     return 0;
   }
 
-  second.SetFromJSVal(aCx, aSecond, aRv);
-  if (aRv.Failed()) {
+  result = second.SetFromJSVal(aCx, aSecond, aRv);
+  if (!result.Is(Ok, aRv)) {
+    if (result.Is(Invalid, aRv)) {
+      aRv.Throw(NS_ERROR_DOM_INDEXEDDB_DATA_ERR);
+    }
     return 0;
   }
 

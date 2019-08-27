@@ -420,15 +420,26 @@ const void* GetSecurityWrapper() {
   return &js::CrossCompartmentSecurityWrapper::singleton;
 }
 
-JS::ReadOnlyCompileOptions* NewCompileOptions(JSContext* aCx, const char* aFile,
-                                              unsigned aLine) {
-  JS::OwningCompileOptions* opts = new JS::OwningCompileOptions(aCx);
-  opts->setFileAndLine(aCx, aFile, aLine);
-  return opts;
-}
-
 void DeleteCompileOptions(JS::ReadOnlyCompileOptions* aOpts) {
   delete static_cast<JS::OwningCompileOptions*>(aOpts);
+}
+
+JS::ReadOnlyCompileOptions* NewCompileOptions(JSContext* aCx, const char* aFile,
+                                              unsigned aLine) {
+  JS::CompileOptions opts(aCx);
+  opts.setFileAndLine(aFile, aLine);
+
+  JS::OwningCompileOptions* owned = new JS::OwningCompileOptions(aCx);
+  if (!owned) {
+    return nullptr;
+  }
+
+  if (!owned->copy(aCx, opts)) {
+    DeleteCompileOptions(owned);
+    return nullptr;
+  }
+
+  return owned;
 }
 
 JSObject* NewProxyObject(JSContext* aCx, const void* aHandler,
@@ -554,25 +565,23 @@ const jsid* SliceRootedIdVector(const JS::PersistentRootedIdVector* v,
 
 void DestroyRootedIdVector(JS::PersistentRootedIdVector* v) { delete v; }
 
-JS::MutableHandleIdVector GetMutableHandleIdVector(JS::PersistentRootedIdVector* v) {
+JS::MutableHandleIdVector GetMutableHandleIdVector(
+    JS::PersistentRootedIdVector* v) {
   return JS::MutableHandleIdVector(v);
 }
 
-JS::PersistentRootedObjectVector* CreateRootedObjectVector(
-    JSContext* aCx) {
+JS::PersistentRootedObjectVector* CreateRootedObjectVector(JSContext* aCx) {
   JS::PersistentRootedObjectVector* vec =
       new JS::PersistentRootedObjectVector(aCx);
   return vec;
 }
 
 bool AppendToRootedObjectVector(JS::PersistentRootedObjectVector* v,
-                                          JSObject* obj) {
+                                JSObject* obj) {
   return v->append(obj);
 }
 
-void DeleteRootedObjectVector(JS::PersistentRootedObjectVector* v) {
-  delete v;
-}
+void DeleteRootedObjectVector(JS::PersistentRootedObjectVector* v) { delete v; }
 
 #if defined(__linux__)
 #  include <malloc.h>

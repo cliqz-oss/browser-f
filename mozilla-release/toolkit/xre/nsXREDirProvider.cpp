@@ -51,6 +51,7 @@
 #ifdef XP_WIN
 #  include <windows.h>
 #  include <shlobj.h>
+#  include "WinUtils.h"
 #endif
 #ifdef XP_MACOSX
 #  include "nsILocalFileMac.h"
@@ -71,7 +72,6 @@
 #  include "mozilla/Unused.h"
 #  if defined(XP_WIN)
 #    include "sandboxBroker.h"
-#    include "WinUtils.h"
 #  endif
 #endif
 
@@ -98,6 +98,8 @@ static already_AddRefed<nsIFile> CreateProcessSandboxTempDir(
 nsXREDirProvider* gDirServiceProvider = nullptr;
 nsIFile* gDataDirHomeLocal = nullptr;
 nsIFile* gDataDirHome = nullptr;
+nsCOMPtr<nsIFile> gDataDirProfileLocal = nullptr;
+nsCOMPtr<nsIFile> gDataDirProfile = nullptr;
 
 // These are required to allow nsXREDirProvider to be usable in xpcshell tests.
 // where gAppData is null.
@@ -1071,6 +1073,9 @@ nsXREDirProvider::DoStartup() {
 void nsXREDirProvider::DoShutdown() {
   AUTO_PROFILER_LABEL("nsXREDirProvider::DoShutdown", OTHER);
 
+  gDataDirProfileLocal = nullptr;
+  gDataDirProfile = nullptr;
+
   if (mProfileNotified) {
     nsCOMPtr<nsIObserverService> obsSvc =
         mozilla::services::GetObserverService();
@@ -1175,7 +1180,74 @@ static nsresult GetRegWindowsAppDataFolder(bool aLocal, nsAString& _retval) {
 }
 #endif
 
+static nsresult HashInstallPath(nsAString& aInstallPath, nsAString& aPathHash) {
+  const char* vendor = GetAppVendor();
+  if (vendor && vendor[0] == '\0') {
+    vendor = nullptr;
+  }
+
+  mozilla::UniquePtr<NS_tchar[]> hash;
+  nsresult rv =
+      ::GetInstallHash(PromiseFlatString(aInstallPath).get(), vendor, hash);
+  NS_ENSURE_SUCCESS(rv, rv);
+
+  // The hash string is a NS_tchar*, which is wchar* in Windows and char*
+  // elsewhere.
+#ifdef XP_WIN
+  aPathHash.Assign(hash.get());
+#else
+  aPathHash.AssignASCII(hash.get());
+#endif
+  return NS_OK;
+}
+
+/**
+ * Gets a hash of the installation directory.
+ */
 nsresult nsXREDirProvider::GetInstallHash(nsAString& aPathHash) {
+  nsCOMPtr<nsIFile> installDir;
+  nsCOMPtr<nsIFile> appFile;
+  bool per = false;
+  nsresult rv = GetFile(XRE_EXECUTABLE_FILE, &per, getter_AddRefs(appFile));
+  NS_ENSURE_SUCCESS(rv, rv);
+  rv = appFile->GetParent(getter_AddRefs(installDir));
+  NS_ENSURE_SUCCESS(rv, rv);
+
+  // It is possible that the path we have is on a case insensitive
+  // filesystem in which case the path may vary depending on how the
+  // application is called. We want to normalize the case somehow.
+#ifdef XP_WIN
+  // Windows provides a way to get the correct case.
+  if (!mozilla::widget::WinUtils::ResolveJunctionPointsAndSymLinks(
+          installDir)) {
+    NS_WARNING("Failed to resolve install directory.");
+  }
+#elif defined(MOZ_WIDGET_COCOA)
+  // On OSX roundtripping through an FSRef fixes the case.
+  FSRef ref;
+  nsCOMPtr<nsILocalFileMac> macFile = do_QueryInterface(installDir);
+  rv = macFile->GetFSRef(&ref);
+  NS_ENSURE_SUCCESS(rv, rv);
+  rv = NS_NewLocalFileWithFSRef(&ref, true, getter_AddRefs(macFile));
+  NS_ENSURE_SUCCESS(rv, rv);
+  installDir = static_cast<nsIFile*>(macFile);
+#endif
+  // On linux XRE_EXECUTABLE_FILE already seems to be set to the correct path.
+
+  nsAutoString installPath;
+  rv = installDir->GetPath(installPath);
+  NS_ENSURE_SUCCESS(rv, rv);
+
+  return HashInstallPath(installPath, aPathHash);
+}
+
+/**
+ * Before bug 1555319 the directory hashed can have had an incorrect case.
+ * Access to that hash is still available through this function. It is needed so
+ * we can migrate users who may have an incorrect hash in profiles.ini. This
+ * support can probably be removed in a few releases time.
+ */
+nsresult nsXREDirProvider::GetLegacyInstallHash(nsAString& aPathHash) {
   nsCOMPtr<nsIFile> installDir;
   nsCOMPtr<nsIFile> appFile;
   bool per = false;
@@ -1188,23 +1260,7 @@ nsresult nsXREDirProvider::GetInstallHash(nsAString& aPathHash) {
   rv = installDir->GetPath(installPath);
   NS_ENSURE_SUCCESS(rv, rv);
 
-  const char* vendor = GetAppVendor();
-  if (vendor && vendor[0] == '\0') {
-    vendor = nullptr;
-  }
-
-  mozilla::UniquePtr<NS_tchar[]> hash;
-  rv = ::GetInstallHash(PromiseFlatString(installPath).get(), vendor, hash);
-  NS_ENSURE_SUCCESS(rv, rv);
-
-  // The hash string is a NS_tchar*, which is wchar* in Windows and char*
-  // elsewhere.
-#ifdef XP_WIN
-  aPathHash.Assign(hash.get());
-#else
-  aPathHash.AssignASCII(hash.get());
-#endif
-  return NS_OK;
+  return HashInstallPath(installPath, aPathHash);
 }
 
 nsresult nsXREDirProvider::GetUpdateRootDir(nsIFile** aResult,
@@ -1332,6 +1388,18 @@ nsXREDirProvider::SetUserDataDirectory(nsIFile* aFile, bool aLocal) {
   } else {
     NS_IF_RELEASE(gDataDirHome);
     NS_IF_ADDREF(gDataDirHome = aFile);
+  }
+
+  return NS_OK;
+}
+
+/* static */
+nsresult nsXREDirProvider::SetUserDataProfileDirectory(nsCOMPtr<nsIFile>& aFile,
+                                                       bool aLocal) {
+  if (aLocal) {
+    gDataDirProfileLocal = aFile;
+  } else {
+    gDataDirProfile = aFile;
   }
 
   return NS_OK;
@@ -1502,41 +1570,35 @@ nsresult nsXREDirProvider::GetSystemExtensionsDirectory(nsIFile** aFile) {
 
 nsresult nsXREDirProvider::GetUserDataDirectory(nsIFile** aFile, bool aLocal) {
   nsCOMPtr<nsIFile> localDir;
+
+  if (aLocal && gDataDirProfileLocal) {
+    return gDataDirProfileLocal->Clone(aFile);
+  }
+  if (!aLocal && gDataDirProfile) {
+    return gDataDirProfile->Clone(aFile);
+  }
+
   nsresult rv = GetUserDataDirectoryHome(getter_AddRefs(localDir), aLocal);
   NS_ENSURE_SUCCESS(rv, rv);
 
   rv = AppendProfilePath(localDir, aLocal);
   NS_ENSURE_SUCCESS(rv, rv);
 
-#ifdef DEBUG_jungshik
-  nsAutoCString cwd;
-  localDir->GetNativePath(cwd);
-  printf("nsXREDirProvider::GetUserDataDirectory: %s\n", cwd.get());
-#endif
   rv = EnsureDirectoryExists(localDir);
   NS_ENSURE_SUCCESS(rv, rv);
+
+  nsXREDirProvider::SetUserDataProfileDirectory(localDir, aLocal);
 
   localDir.forget(aFile);
   return NS_OK;
 }
 
 nsresult nsXREDirProvider::EnsureDirectoryExists(nsIFile* aDirectory) {
-  bool exists;
-  nsresult rv = aDirectory->Exists(&exists);
-  NS_ENSURE_SUCCESS(rv, rv);
-#ifdef DEBUG_jungshik
-  if (!exists) {
-    nsAutoCString cwd;
-    aDirectory->GetNativePath(cwd);
-    printf("nsXREDirProvider::EnsureDirectoryExists: %s does not\n", cwd.get());
-  }
-#endif
-  if (!exists) rv = aDirectory->Create(nsIFile::DIRECTORY_TYPE, 0700);
-#ifdef DEBUG_jungshik
-  if (NS_FAILED(rv))
-    NS_WARNING("nsXREDirProvider::EnsureDirectoryExists: create failed");
-#endif
+  nsresult rv = aDirectory->Create(nsIFile::DIRECTORY_TYPE, 0700);
 
+  if (rv == NS_ERROR_FILE_ALREADY_EXISTS) {
+    rv = NS_OK;
+  }
   return rv;
 }
 

@@ -28,7 +28,6 @@
 #include "XULDocument.h"
 
 #include "nsError.h"
-#include "nsIBoxObject.h"
 #include "nsView.h"
 #include "nsViewManager.h"
 #include "nsIContentViewer.h"
@@ -43,8 +42,6 @@
 #include "nsDocElementCreatedNotificationRunner.h"
 #include "nsNetUtil.h"
 #include "nsParserCIID.h"
-#include "nsPIBoxObject.h"
-#include "mozilla/dom/BoxObject.h"
 #include "nsString.h"
 #include "nsPIDOMWindow.h"
 #include "nsPIWindowRoot.h"
@@ -78,7 +75,6 @@
 #include "nsURILoader.h"
 #include "mozilla/BasicEvents.h"
 #include "mozilla/CycleCollectedJSContext.h"
-#include "mozilla/dom/DocumentL10n.h"
 #include "mozilla/dom/Element.h"
 #include "mozilla/dom/NodeInfoInlines.h"
 #include "mozilla/dom/ProcessingInstruction.h"
@@ -278,10 +274,7 @@ nsresult XULDocument::StartDocumentLoad(const char* aCommand,
   return NS_OK;
 }
 
-void XULDocument::EndLoad() {
-  mSynchronousDOMContentLoaded = true;
-  Document::EndLoad();
-}
+void XULDocument::EndLoad() { Document::EndLoad(); }
 
 //----------------------------------------------------------------------
 //

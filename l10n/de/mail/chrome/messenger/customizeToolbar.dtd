@@ -10,8 +10,11 @@
 <!ENTITY iconsAndText.label       "Symbole und Text">
 <!ENTITY icons.label              "Symbole">
 <!ENTITY text.label               "Text">
+<!ENTITY iconsBesideText.label    "Symbole neben Text">
 <!ENTITY useSmallIcons.label      "kleine Symbole">
 <!ENTITY restoreDefaultSet.label  "Standard wiederherstellen">
 <!ENTITY addNewToolbar.label      "Neue Symbolleiste">
+<!ENTITY showTitlebar.label       "Titelleiste">
+<!ENTITY extraDragSpace.label     "Fläche zum Ziehen">
 <!ENTITY saveChanges.label        "Fertig">
 <!ENTITY undoChanges.label        "Änderungen verwerfen">

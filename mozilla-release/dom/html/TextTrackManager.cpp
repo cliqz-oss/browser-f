@@ -166,7 +166,7 @@ already_AddRefed<TextTrack> TextTrackManager::AddTextTrack(
     RefPtr<nsIRunnable> task = NewRunnableMethod(
         "dom::TextTrackManager::HonorUserPreferencesForTrackSelection", this,
         &TextTrackManager::HonorUserPreferencesForTrackSelection);
-    nsContentUtils::RunInStableState(task.forget());
+    NS_DispatchToMainThread(task.forget());
   }
 
   return track.forget();
@@ -185,7 +185,7 @@ void TextTrackManager::AddTextTrack(TextTrack* aTextTrack) {
     RefPtr<nsIRunnable> task = NewRunnableMethod(
         "dom::TextTrackManager::HonorUserPreferencesForTrackSelection", this,
         &TextTrackManager::HonorUserPreferencesForTrackSelection);
-    nsContentUtils::RunInStableState(task.forget());
+    NS_DispatchToMainThread(task.forget());
   }
 }
 
@@ -240,40 +240,39 @@ void TextTrackManager::UpdateCueDisplay() {
   mUpdateCueDisplayDispatched = false;
 
   if (!mMediaElement || !mTextTracks || IsShutdown()) {
+    WEBVTT_LOG("Abort UpdateCueDisplay.");
     return;
   }
 
   nsIFrame* frame = mMediaElement->GetPrimaryFrame();
   nsVideoFrame* videoFrame = do_QueryFrame(frame);
   if (!videoFrame) {
+    WEBVTT_LOG("Abort UpdateCueDisplay, because of no video frame.");
     return;
   }
 
   nsCOMPtr<nsIContent> overlay = videoFrame->GetCaptionOverlay();
-  nsCOMPtr<nsIContent> controls = videoFrame->GetVideoControls();
   if (!overlay) {
+    WEBVTT_LOG("Abort UpdateCueDisplay, because of no overlay.");
     return;
+  }
+
+  nsPIDOMWindowInner* window = mMediaElement->OwnerDoc()->GetInnerWindow();
+  if (!window) {
+    WEBVTT_LOG("Abort UpdateCueDisplay, because of no window.");
   }
 
   nsTArray<RefPtr<TextTrackCue>> showingCues;
   mTextTracks->GetShowingCues(showingCues);
 
-  if (showingCues.Length() > 0) {
-    WEBVTT_LOG("UpdateCueDisplay, processCues, showingCuesNum=%zu",
-               showingCues.Length());
-    RefPtr<nsVariantCC> jsCues = new nsVariantCC();
-
-    jsCues->SetAsArray(nsIDataType::VTYPE_INTERFACE, &NS_GET_IID(EventTarget),
-                       showingCues.Length(),
-                       static_cast<void*>(showingCues.Elements()));
-    nsPIDOMWindowInner* window = mMediaElement->OwnerDoc()->GetInnerWindow();
-    if (window) {
-      sParserWrapper->ProcessCues(window, jsCues, overlay, controls);
-    }
-  } else if (overlay->Length() > 0) {
-    WEBVTT_LOG("UpdateCueDisplay EmptyString");
-    nsContentUtils::SetNodeTextContent(overlay, EmptyString(), true);
-  }
+  WEBVTT_LOG("UpdateCueDisplay, processCues, showingCuesNum=%zu",
+             showingCues.Length());
+  RefPtr<nsVariantCC> jsCues = new nsVariantCC();
+  jsCues->SetAsArray(nsIDataType::VTYPE_INTERFACE, &NS_GET_IID(EventTarget),
+                     showingCues.Length(),
+                     static_cast<void*>(showingCues.Elements()));
+  nsCOMPtr<nsIContent> controls = videoFrame->GetVideoControls();
+  sParserWrapper->ProcessCues(window, jsCues, overlay, controls);
 }
 
 void TextTrackManager::NotifyCueAdded(TextTrackCue& aCue) {
@@ -312,6 +311,8 @@ void TextTrackManager::PopulatePendingList() {
 
 void TextTrackManager::AddListeners() {
   if (mMediaElement) {
+    mMediaElement->AddEventListener(NS_LITERAL_STRING("resizecaption"), this,
+                                    false, false);
     mMediaElement->AddEventListener(NS_LITERAL_STRING("resizevideocontrols"),
                                     this, false, false);
     mMediaElement->AddEventListener(NS_LITERAL_STRING("seeked"), this, false,
@@ -417,14 +418,20 @@ TextTrackManager::HandleEvent(Event* aEvent) {
 
   nsAutoString type;
   aEvent->GetType(type);
-  if (type.EqualsLiteral("resizevideocontrols") ||
-      type.EqualsLiteral("seeked")) {
+  WEBVTT_LOG("Handle event %s", NS_ConvertUTF16toUTF8(type).get());
+
+  const bool setDirty = type.EqualsLiteral("seeked") ||
+                        type.EqualsLiteral("resizecaption") ||
+                        type.EqualsLiteral("resizevideocontrols");
+  const bool updateDisplay = type.EqualsLiteral("controlbarchange") ||
+                             type.EqualsLiteral("resizecaption");
+
+  if (setDirty) {
     for (uint32_t i = 0; i < mTextTracks->Length(); i++) {
       ((*mTextTracks)[i])->SetCuesDirty();
     }
   }
-
-  if (type.EqualsLiteral("controlbarchange")) {
+  if (updateDisplay) {
     UpdateCueDisplay();
   }
 

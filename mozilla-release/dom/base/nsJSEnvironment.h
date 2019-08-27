@@ -47,9 +47,6 @@ class nsJSContext : public nsIScriptContext {
     return mGlobalObjectRef;
   }
 
-  virtual nsresult InitContext() override;
-  virtual bool IsContextInitialized() override;
-
   virtual nsresult SetProperty(JS::Handle<JSObject*> aTarget,
                                const char* aPropName,
                                nsISupports* aVal) override;
@@ -58,9 +55,6 @@ class nsJSContext : public nsIScriptContext {
   virtual void SetProcessingScriptTag(bool aResult) override;
 
   virtual nsresult InitClasses(JS::Handle<JSObject*> aGlobalObj) override;
-
-  virtual void WillInitializeContext() override;
-  virtual void DidInitializeContext() override;
 
   virtual void SetWindowProxy(JS::Handle<JSObject*> aWindowProxy) override;
   virtual JSObject* GetWindowProxy() override;
@@ -71,6 +65,8 @@ class nsJSContext : public nsIScriptContext {
 
   // Setup all the statics etc - safe to call multiple times after Startup().
   static void EnsureStatics();
+
+  static void SetLowMemoryState(bool aState);
 
   static void GarbageCollectNow(JS::GCReason reason,
                                 IsIncremental aIncremental = NonIncrementalGC,
@@ -146,7 +142,6 @@ class nsJSContext : public nsIScriptContext {
 
   JS::Heap<JSObject*> mWindowProxy;
 
-  bool mIsInitialized;
   bool mGCOnDestruction;
   bool mProcessingScriptTag;
 

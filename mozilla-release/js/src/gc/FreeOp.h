@@ -9,6 +9,7 @@
 
 #include "mozilla/Assertions.h"  // MOZ_ASSERT
 
+#include "gc/GCEnum.h"                // js::MemoryUse
 #include "jit/ExecutableAllocator.h"  // jit::JitPoisonRangeVector
 #include "js/AllocPolicy.h"           // SystemAllocPolicy
 #include "js/MemoryFunctions.h"       // JSFreeOp
@@ -18,8 +19,6 @@
 struct JSRuntime;
 
 namespace js {
-
-enum class MemoryUse : uint8_t;
 
 /*
  * A FreeOp can do one thing: free memory. For convenience, it has delete_
@@ -51,7 +50,11 @@ class FreeOp : public JSFreeOp {
 
   void free_(void* p) { js_free(p); }
 
-  // Free memory that was associated with a GC thing using js::AddCellMemory.
+  // Free memory associated with a GC thing and update the memory accounting.
+  //
+  // The memory should have been associated with the GC thing using
+  // js::InitReservedSlot or js::InitObjectPrivate, or possibly
+  // js::AddCellMemory.
   void free_(gc::Cell* cell, void* p, size_t nbytes, MemoryUse use);
 
   // Queue an allocation to be freed when the FreeOp is destroyed.
@@ -83,16 +86,23 @@ class FreeOp : public JSFreeOp {
     }
   }
 
-  // Delete a C++ object that was associated with a GC thing using
-  // js::AddCellMemory. The size is determined by the type T.
+  // Delete a C++ object that was associated with a GC thing and update the
+  // memory accounting. The size is determined by the type T.
+  //
+  // The memory should have been associated with the GC thing using
+  // js::InitReservedSlot or js::InitObjectPrivate, or possibly
+  // js::AddCellMemory.
   template <class T>
   void delete_(gc::Cell* cell, T* p, MemoryUse use) {
     delete_(cell, p, sizeof(T), use);
   }
 
-  // Delete a C++ object that was associated with a GC thing using
-  // js::AddCellMemory. The size of the allocation is passed in to allow for
-  // allocations with trailing data after the object.
+  // Delete a C++ object that was associated with a GC thing and update the
+  // memory accounting.
+  //
+  // The memory should have been associated with the GC thing using
+  // js::InitReservedSlot or js::InitObjectPrivate, or possibly
+  // js::AddCellMemory.
   template <class T>
   void delete_(gc::Cell* cell, T* p, size_t nbytes, MemoryUse use) {
     if (p) {
@@ -100,6 +110,31 @@ class FreeOp : public JSFreeOp {
       free_(cell, p, nbytes, use);
     }
   }
+
+  // Release a RefCounted object that was associated with a GC thing and update
+  // the memory accounting.
+  //
+  // The memory should have been associated with the GC thing using
+  // js::InitReservedSlot or js::InitObjectPrivate, or possibly
+  // js::AddCellMemory.
+  //
+  // This counts the memory once per association with a GC thing. It's not
+  // expected that the same object is associated with more than one GC thing in
+  // each zone. If this is the case then some other form of accounting would be
+  // more appropriate.
+  template <class T>
+  void release(gc::Cell* cell, T* p, MemoryUse use) {
+    release(cell, p, sizeof(T), use);
+  }
+
+  // Release a RefCounted object and that was associated with a GC thing and
+  // update the memory accounting.
+  //
+  // The memory should have been associated with the GC thing using
+  // js::InitReservedSlot or js::InitObjectPrivate, or possibly
+  // js::AddCellMemory.
+  template <class T>
+  void release(gc::Cell* cell, T* p, size_t nbytes, MemoryUse use);
 };
 
 }  // namespace js

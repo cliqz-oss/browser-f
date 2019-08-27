@@ -72,6 +72,25 @@ static BYTE GetSystemTextQuality() {
   return DEFAULT_QUALITY;
 }
 
+#ifndef SPI_GETFONTSMOOTHINGCONTRAST
+#  define SPI_GETFONTSMOOTHINGCONTRAST 0x200c
+#endif
+
+// "Retrieves a contrast value that is used in ClearType smoothing. Valid
+// contrast values are from 1000 to 2200. The default value is 1400."
+static FLOAT GetSystemGDIGamma() {
+  static FLOAT sGDIGamma = 0.0f;
+  if (!sGDIGamma) {
+    UINT value = 0;
+    if (!SystemParametersInfo(SPI_GETFONTSMOOTHINGCONTRAST, 0, &value, 0) ||
+        value < 1000 || value > 2200) {
+      value = 1400;
+    }
+    sGDIGamma = value / 1000.0f;
+  }
+  return sGDIGamma;
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // gfxDWriteFont
 gfxDWriteFont::gfxDWriteFont(const RefPtr<UnscaledFontDWrite>& aUnscaledFont,
@@ -635,8 +654,6 @@ already_AddRefed<ScaledFont> gfxDWriteFont::GetScaledFont(
   }
   if (!mAzureScaledFont) {
     gfxDWriteFontEntry* fe = static_cast<gfxDWriteFontEntry*>(mFontEntry.get());
-    bool useEmbeddedBitmap =
-        fe->IsCJKFont() && HasBitmapStrikeForSize(NS_lround(mAdjustedSize));
     bool forceGDI = GetForceGDIClassic();
 
     IDWriteRenderingParams* params =
@@ -646,11 +663,24 @@ already_AddRefed<ScaledFont> gfxDWriteFont::GetScaledFont(
                             : gfxWindowsPlatform::TEXT_RENDERING_NORMAL)
                 : gfxWindowsPlatform::TEXT_RENDERING_NO_CLEARTYPE);
 
+    DWRITE_RENDERING_MODE renderingMode = params->GetRenderingMode();
+    FLOAT gamma = params->GetGamma();
+    FLOAT contrast = params->GetEnhancedContrast();
+    if (forceGDI || renderingMode == DWRITE_RENDERING_MODE_GDI_CLASSIC) {
+      renderingMode = DWRITE_RENDERING_MODE_GDI_CLASSIC;
+      gamma = GetSystemGDIGamma();
+      contrast = 0.0f;
+    }
+
+    bool useEmbeddedBitmap =
+        (renderingMode == DWRITE_RENDERING_MODE_DEFAULT ||
+         renderingMode == DWRITE_RENDERING_MODE_GDI_CLASSIC) &&
+        fe->IsCJKFont() && HasBitmapStrikeForSize(NS_lround(mAdjustedSize));
+
     const gfxFontStyle* fontStyle = GetStyle();
     mAzureScaledFont = Factory::CreateScaledFontForDWriteFont(
         mFontFace, fontStyle, GetUnscaledFont(), GetAdjustedSize(),
-        useEmbeddedBitmap, forceGDI, params, params->GetGamma(),
-        params->GetEnhancedContrast());
+        useEmbeddedBitmap, (int)renderingMode, params, gamma, contrast);
     if (!mAzureScaledFont) {
       return nullptr;
     }

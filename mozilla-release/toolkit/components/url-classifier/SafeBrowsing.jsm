@@ -4,7 +4,7 @@
 
 var EXPORTED_SYMBOLS = ["SafeBrowsing"];
 
-const {Services} = ChromeUtils.import("resource://gre/modules/Services.jsm");
+const { Services } = ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 const PREF_DEBUG_ENABLED = "browser.safebrowsing.debug";
 let loggingEnabled = false;
@@ -33,128 +33,216 @@ function getLists(prefName) {
 }
 
 const FEATURES = [
-  { name: "phishing",
+  {
+    name: "phishing",
     list: ["urlclassifier.phishTable"],
     enabled() {
-      return Services.prefs.getBoolPref("browser.safebrowsing.phishing.enabled");
+      return Services.prefs.getBoolPref(
+        "browser.safebrowsing.phishing.enabled"
+      );
     },
     update() {
-      return Services.prefs.getBoolPref("browser.safebrowsing.features.phishing.update", this.enabled());
+      return Services.prefs.getBoolPref(
+        "browser.safebrowsing.features.phishing.update",
+        this.enabled()
+      );
     },
   },
-  { name: "malware",
+  {
+    name: "malware",
     list: ["urlclassifier.malwareTable"],
     enabled() {
       return Services.prefs.getBoolPref("browser.safebrowsing.malware.enabled");
     },
     update() {
-      return Services.prefs.getBoolPref("browser.safebrowsing.features.malware.update", this.enabled());
+      return Services.prefs.getBoolPref(
+        "browser.safebrowsing.features.malware.update",
+        this.enabled()
+      );
     },
   },
-  { name: "blockedURIs",
+  {
+    name: "blockedURIs",
     list: ["urlclassifier.blockedTable"],
     enabled() {
-      return Services.prefs.getBoolPref("browser.safebrowsing.blockedURIs.enabled");
+      return Services.prefs.getBoolPref(
+        "browser.safebrowsing.blockedURIs.enabled"
+      );
     },
     update() {
-      return Services.prefs.getBoolPref("browser.safebrowsing.features.blockedURIs.update", this.enabled());
+      return Services.prefs.getBoolPref(
+        "browser.safebrowsing.features.blockedURIs.update",
+        this.enabled()
+      );
     },
   },
-  { name: "passwords",
+  {
+    name: "passwords",
     list: ["urlclassifier.passwordAllowTable"],
     enabled() {
-      return Services.prefs.getBoolPref("browser.safebrowsing.passwords.enabled");
+      return Services.prefs.getBoolPref(
+        "browser.safebrowsing.passwords.enabled"
+      );
     },
     update() {
-      return Services.prefs.getBoolPref("browser.safebrowsing.features.passwords.update", this.enabled());
+      return Services.prefs.getBoolPref(
+        "browser.safebrowsing.features.passwords.update",
+        this.enabled()
+      );
     },
   },
-  { name: "downloads",
-    list: ["urlclassifier.downloadBlockTable",
-           "urlclassifier.downloadAllowTable"],
+  {
+    name: "downloads",
+    list: [
+      "urlclassifier.downloadBlockTable",
+      "urlclassifier.downloadAllowTable",
+    ],
     enabled() {
-      return Services.prefs.getBoolPref("browser.safebrowsing.downloads.enabled") &&
-             Services.prefs.getBoolPref("browser.safebrowsing.malware.enabled");
+      return (
+        Services.prefs.getBoolPref("browser.safebrowsing.downloads.enabled") &&
+        Services.prefs.getBoolPref("browser.safebrowsing.malware.enabled")
+      );
     },
     update() {
-      return Services.prefs.getBoolPref("browser.safebrowsing.features.downloads.update", this.enabled());
+      return Services.prefs.getBoolPref(
+        "browser.safebrowsing.features.downloads.update",
+        this.enabled()
+      );
     },
   },
 #if 0
-  { name: "trackingAnnotation",
-    list: ["urlclassifier.trackingAnnotationTable",
-           "urlclassifier.trackingAnnotationWhitelistTable"],
+  {
+    name: "trackingAnnotation",
+    list: [
+      "urlclassifier.trackingAnnotationTable",
+      "urlclassifier.trackingAnnotationWhitelistTable",
+    ],
     enabled() {
-      return Services.prefs.getBoolPref("privacy.trackingprotection.annotate_channels");
+      return Services.prefs.getBoolPref(
+        "privacy.trackingprotection.annotate_channels"
+      );
     },
     update() {
-      return Services.prefs.getBoolPref("browser.safebrowsing.features.trackingAnnotation.update", this.enabled());
+      return Services.prefs.getBoolPref(
+        "browser.safebrowsing.features.trackingAnnotation.update",
+        this.enabled()
+      );
     },
   },
-  { name: "trackingProtection",
-    list: ["urlclassifier.trackingTable",
-           "urlclassifier.trackingWhitelistTable"],
+  {
+    name: "trackingProtection",
+    list: [
+      "urlclassifier.trackingTable",
+      "urlclassifier.trackingWhitelistTable",
+    ],
     enabled() {
-      return Services.prefs.getBoolPref("privacy.trackingprotection.enabled") ||
-             Services.prefs.getBoolPref("privacy.trackingprotection.pbmode.enabled");
+      return (
+        Services.prefs.getBoolPref("privacy.trackingprotection.enabled") ||
+        Services.prefs.getBoolPref("privacy.trackingprotection.pbmode.enabled")
+      );
     },
     update() {
-      return Services.prefs.getBoolPref("browser.safebrowsing.features.trackingProtection.update", this.enabled());
+      return Services.prefs.getBoolPref(
+        "browser.safebrowsing.features.trackingProtection.update",
+        this.enabled()
+      );
     },
   },
 #endif
-  { name: "flashBlock",
-    list: ["urlclassifier.flashAllowTable",
-           "urlclassifier.flashAllowExceptTable",
-           "urlclassifier.flashTable",
-           "urlclassifier.flashExceptTable",
-           "urlclassifier.flashSubDocTable",
-           "urlclassifier.flashSubDocExceptTable"],
+  {
+    name: "flashBlock",
+    list: [
+      "urlclassifier.flashAllowTable",
+      "urlclassifier.flashAllowExceptTable",
+      "urlclassifier.flashTable",
+      "urlclassifier.flashExceptTable",
+      "urlclassifier.flashSubDocTable",
+      "urlclassifier.flashSubDocExceptTable",
+    ],
     enabled() {
       return Services.prefs.getBoolPref("plugins.flashBlock.enabled");
     },
     update() {
-      return Services.prefs.getBoolPref("browser.safebrowsing.features.flashBlock.update", this.enabled());
+      return Services.prefs.getBoolPref(
+        "browser.safebrowsing.features.flashBlock.update",
+        this.enabled()
+      );
     },
   },
-  { name: "fingerprinting-annotation",
-    list: ["urlclassifier.features.fingerprinting.annotate.blacklistTables",
-           "urlclassifier.features.fingerprinting.annotate.whitelistTables"],
+  {
+    name: "fingerprinting-annotation",
+    list: [
+      "urlclassifier.features.fingerprinting.annotate.blacklistTables",
+      "urlclassifier.features.fingerprinting.annotate.whitelistTables",
+    ],
     enabled() {
-      return Services.prefs.getBoolPref("privacy.trackingprotection.fingerprinting.annotate.enabled", false);
+      return Services.prefs.getBoolPref(
+        "privacy.trackingprotection.fingerprinting.annotate.enabled",
+        false
+      );
     },
     update() {
-      return Services.prefs.getBoolPref("browser.safebrowsing.features.fingerprinting.annotate.update", this.enabled());
+      return Services.prefs.getBoolPref(
+        "browser.safebrowsing.features.fingerprinting.annotate.update",
+        this.enabled()
+      );
     },
   },
-  { name: "fingerprinting-protection",
-    list: ["urlclassifier.features.fingerprinting.blacklistTables",
-           "urlclassifier.features.fingerprinting.whitelistTables"],
+  {
+    name: "fingerprinting-protection",
+    list: [
+      "urlclassifier.features.fingerprinting.blacklistTables",
+      "urlclassifier.features.fingerprinting.whitelistTables",
+    ],
     enabled() {
-      return Services.prefs.getBoolPref("privacy.trackingprotection.fingerprinting.enabled", false);
+      return Services.prefs.getBoolPref(
+        "privacy.trackingprotection.fingerprinting.enabled",
+        false
+      );
     },
     update() {
-      return Services.prefs.getBoolPref("browser.safebrowsing.features.fingerprinting.update", this.enabled());
+      return Services.prefs.getBoolPref(
+        "browser.safebrowsing.features.fingerprinting.update",
+        this.enabled()
+      );
     },
   },
-  { name: "cryptomining-annotation",
-    list: ["urlclassifier.features.cryptomining.annotate.blacklistTables",
-           "urlclassifier.features.cryptomining.annotate.whitelistTables"],
+  {
+    name: "cryptomining-annotation",
+    list: [
+      "urlclassifier.features.cryptomining.annotate.blacklistTables",
+      "urlclassifier.features.cryptomining.annotate.whitelistTables",
+    ],
     enabled() {
-      return Services.prefs.getBoolPref("privacy.trackingprotection.annotate.cryptomining.enabled", false);
+      return Services.prefs.getBoolPref(
+        "privacy.trackingprotection.annotate.cryptomining.enabled",
+        false
+      );
     },
     update() {
-      return Services.prefs.getBoolPref("browser.safebrowsing.features.cryptomining.annotate.update", this.enabled());
+      return Services.prefs.getBoolPref(
+        "browser.safebrowsing.features.cryptomining.annotate.update",
+        this.enabled()
+      );
     },
   },
-  { name: "cryptomining-protection",
-    list: ["urlclassifier.features.cryptomining.blacklistTables",
-           "urlclassifier.features.cryptomining.whitelistTables"],
+  {
+    name: "cryptomining-protection",
+    list: [
+      "urlclassifier.features.cryptomining.blacklistTables",
+      "urlclassifier.features.cryptomining.whitelistTables",
+    ],
     enabled() {
-      return Services.prefs.getBoolPref("privacy.trackingprotection.cryptomining.enabled", false);
+      return Services.prefs.getBoolPref(
+        "privacy.trackingprotection.cryptomining.enabled",
+        false
+      );
     },
     update() {
-      return Services.prefs.getBoolPref("browser.safebrowsing.features.cryptomining.update", this.enabled());
+      return Services.prefs.getBoolPref(
+        "browser.safebrowsing.features.cryptomining.update",
+        this.enabled()
+      );
     },
   },
 ];
@@ -174,8 +262,6 @@ function reportPhishingURL(url, kind) {
 }
 
 var SafeBrowsing = {
-
-
   init() {
     if (this.initialized) {
       log("Already initialized");
@@ -190,7 +276,6 @@ var SafeBrowsing = {
     Services.prefs.addObserver("plugins.flashBlock.enabled", this);
 
     this.readPrefs();
-    this.addMozEntries();
 
     this.controlUpdateChecking();
     this.initialized = true;
@@ -199,8 +284,9 @@ var SafeBrowsing = {
   },
 
   registerTableWithURLs(listname) {
-    let listManager = Cc["@mozilla.org/url-classifier/listmanager;1"].
-      getService(Ci.nsIUrlListManager);
+    let listManager = Cc[
+      "@mozilla.org/url-classifier/listmanager;1"
+    ].getService(Ci.nsIUrlListManager);
 
     let providerName = this.listToProvider[listname];
     let provider = this.providers[providerName];
@@ -216,7 +302,12 @@ var SafeBrowsing = {
       return;
     }
 
-    listManager.registerTable(listname, providerName, provider.updateURL, provider.gethashURL);
+    listManager.registerTable(
+      listname,
+      providerName,
+      provider.updateURL,
+      provider.gethashURL
+    );
   },
 
   registerTables() {
@@ -228,8 +319,9 @@ var SafeBrowsing = {
   },
 
   unregisterTables(obsoleteLists) {
-    let listManager = Cc["@mozilla.org/url-classifier/listmanager;1"].
-      getService(Ci.nsIUrlListManager);
+    let listManager = Cc[
+      "@mozilla.org/url-classifier/listmanager;1"
+    ].getService(Ci.nsIUrlListManager);
 
     obsoleteLists.forEach(list => {
       list.forEach(table => {
@@ -238,14 +330,13 @@ var SafeBrowsing = {
     });
   },
 
+  initialized: false,
 
-  initialized:          false,
+  features: [],
 
-  features:                [],
-
-  updateURL:             null,
-  gethashURL:            null,
-  reportURL:             null,
+  updateURL: null,
+  gethashURL: null,
+  reportURL: null,
 
   getReportURL(kind, info) {
     let pref;
@@ -263,13 +354,19 @@ var SafeBrowsing = {
         break;
 
       case "MalwareMistake":
-        pref = "browser.safebrowsing.provider." + info.provider + ".report" + kind + "URL";
+        pref =
+          "browser.safebrowsing.provider." +
+          info.provider +
+          ".report" +
+          kind +
+          "URL";
         Services.telemetry.getHistogramById("REPORT_DECEPTIVE_SITE").add(2);
         reportPhishingURL(info.uri, 'user-report-malware-mistake');
         break;
 
       default:
-        let err = "SafeBrowsing getReportURL() called with unknown kind: " + kind;
+        let err =
+          "SafeBrowsing getReportURL() called with unknown kind: " + kind;
         Cu.reportError(err);
         throw err;
     }
@@ -310,7 +407,6 @@ var SafeBrowsing = {
     loggingEnabled = Services.prefs.getBoolPref(PREF_DEBUG_ENABLED);
     log("reading prefs");
 
-
     let obsoleteLists = [];
     // Make a copy of the original lists before we re-read the prefs.
     if (this.initialized) {
@@ -334,8 +430,9 @@ var SafeBrowsing = {
     }
 
     for (let i = 0; i < obsoleteLists.length; ++i) {
-      obsoleteLists[i] = obsoleteLists[i]
-        .filter(list => !this.features[i].list.includes(list));
+      obsoleteLists[i] = obsoleteLists[i].filter(
+        list => !this.features[i].list.includes(list)
+      );
     }
 
     this.updateProviderURLs();
@@ -352,7 +449,6 @@ var SafeBrowsing = {
     }
   },
 
-
   updateProviderURLs() {
     try {
       var clientID = Services.prefs.getCharPref("browser.safebrowsing.id");
@@ -364,13 +460,13 @@ var SafeBrowsing = {
 
     // Get the different providers
     let branch = Services.prefs.getBranch("browser.safebrowsing.provider.");
-    let children = branch.getChildList("", {});
+    let children = branch.getChildList("");
     this.providers = {};
     this.listToProvider = {};
 
     for (let child of children) {
       log("Child: " + child);
-      let prefComponents =  child.split(".");
+      let prefComponents = child.split(".");
       let providerName = prefComponents[0];
       this.providers[providerName] = {};
     }
@@ -392,17 +488,26 @@ var SafeBrowsing = {
         return; // skip
       }
       let updateURL = Services.urlFormatter.formatURLPref(
-        "browser.safebrowsing.provider." + provider + ".updateURL");
+        "browser.safebrowsing.provider." + provider + ".updateURL"
+      );
       let gethashURL = Services.urlFormatter.formatURLPref(
-        "browser.safebrowsing.provider." + provider + ".gethashURL");
+        "browser.safebrowsing.provider." + provider + ".gethashURL"
+      );
       updateURL = updateURL.replace("SAFEBROWSING_ID", clientID);
       gethashURL = gethashURL.replace("SAFEBROWSING_ID", clientID);
 
       // Disable updates and gethash if the Google API key is missing.
-      let googleSafebrowsingKey = Services.urlFormatter.formatURL("%GOOGLE_SAFEBROWSING_API_KEY%").trim();
-      if ((provider == "google" || provider == "google4") &&
-          (!googleSafebrowsingKey || googleSafebrowsingKey == "no-google-safebrowsing-api-key")) {
-        log("Missing Google SafeBrowsing API key, clearing updateURL and gethashURL.");
+      let googleSafebrowsingKey = Services.urlFormatter
+        .formatURL("%GOOGLE_SAFEBROWSING_API_KEY%")
+        .trim();
+      if (
+        (provider == "google" || provider == "google4") &&
+        (!googleSafebrowsingKey ||
+          googleSafebrowsingKey == "no-google-safebrowsing-api-key")
+      ) {
+        log(
+          "Missing Google SafeBrowsing API key, clearing updateURL and gethashURL."
+        );
         updateURL = "";
         gethashURL = "";
       }
@@ -411,11 +516,13 @@ var SafeBrowsing = {
       log("Provider: " + provider + " gethashURL=" + gethashURL);
 
       // Urls used to update DB
-      this.providers[provider].updateURL  = updateURL;
+      this.providers[provider].updateURL = updateURL;
       this.providers[provider].gethashURL = gethashURL;
 
       // Get lists this provider manages
-      let lists = getLists("browser.safebrowsing.provider." + provider + ".lists");
+      let lists = getLists(
+        "browser.safebrowsing.provider." + provider + ".lists"
+      );
       if (lists) {
         lists.forEach(function(list) {
           this.listToProvider[list] = provider;
@@ -436,8 +543,9 @@ var SafeBrowsing = {
       });
     }
 
-    let listManager = Cc["@mozilla.org/url-classifier/listmanager;1"].
-                      getService(Ci.nsIUrlListManager);
+    let listManager = Cc[
+      "@mozilla.org/url-classifier/listmanager;1"
+    ].getService(Ci.nsIUrlListManager);
 
     listManager.disableAllUpdates();
 
@@ -451,88 +559,4 @@ var SafeBrowsing = {
 
     listManager.maybeToggleUpdateChecking();
   },
-
-
-  addMozEntries() {
-    // Add test entries to the DB.
-    // XXX bug 779008 - this could be done by DB itself?
-    const phishURL    = "itisatrap.org/firefox/its-a-trap.html";
-    const malwareURL  = "itisatrap.org/firefox/its-an-attack.html";
-    const unwantedURL = "itisatrap.org/firefox/unwanted.html";
-    const harmfulURL  = "itisatrap.org/firefox/harmful.html";
-    const trackerURLs = [
-      "trackertest.org/",
-      "itisatracker.org/",
-    ];
-    const whitelistURL  = "itisatrap.org/?resource=itisatracker.org";
-    const blockedURL    = "itisatrap.org/firefox/blocked.html";
-
-    let update = "n:1000\ni:test-malware-simple\nad:1\n" +
-                 "a:1:32:" + malwareURL.length + "\n" +
-                 malwareURL + "\n";
-    update += "n:1000\ni:test-phish-simple\nad:1\n" +
-              "a:1:32:" + phishURL.length + "\n" +
-              phishURL + "\n";
-    update += "n:1000\ni:test-unwanted-simple\nad:1\n" +
-              "a:1:32:" + unwantedURL.length + "\n" +
-              unwantedURL + "\n";
-    update += "n:1000\ni:test-harmful-simple\nad:1\n" +
-              "a:1:32:" + harmfulURL.length + "\n" +
-              harmfulURL + "\n";
-    update += "n:1000\ni:test-track-simple\n" +
-              "ad:" + trackerURLs.length + "\n";
-    trackerURLs.forEach((trackerURL, i) => {
-      update += "a:" + (i + 1) + ":32:" + trackerURL.length + "\n" +
-                trackerURL + "\n";
-    });
-    update += "n:1000\ni:test-trackwhite-simple\nad:1\n" +
-              "a:1:32:" + whitelistURL.length + "\n" +
-              whitelistURL;
-    update += "n:1000\ni:test-block-simple\nad:1\n" +
-              "a:1:32:" + blockedURL.length + "\n" +
-              blockedURL;
-    log("addMozEntries:", update);
-
-    let db = Cc["@mozilla.org/url-classifier/dbservice;1"].
-             getService(Ci.nsIUrlClassifierDBService);
-
-    // nsIUrlClassifierUpdateObserver
-    let dummyListener = {
-      updateUrlRequested() { },
-      streamFinished() { },
-      // We notify observers when we're done in order to be able to make perf
-      // test results more consistent
-      updateError() {
-        Services.obs.notifyObservers(db, "mozentries-update-finished", "error");
-      },
-      updateSuccess() {
-        Services.obs.notifyObservers(db, "mozentries-update-finished", "success");
-      },
-    };
-
-    try {
-      let tables = "test-malware-simple,test-phish-simple,test-unwanted-simple,test-harmful-simple,test-track-simple,test-trackwhite-simple,test-block-simple";
-      db.beginUpdate(dummyListener, tables, "");
-      db.beginStream("", "");
-      db.updateStream(update);
-      db.finishStream();
-      db.finishUpdate();
-    } catch (ex) {
-      // beginUpdate will throw harmlessly if there's an existing update in progress, ignore failures.
-      log("addMozEntries failed!", ex);
-      Services.obs.notifyObservers(db, "mozentries-update-finished", "exception");
-    }
-  },
-
-  addMozEntriesFinishedPromise: new Promise(resolve => {
-    let finished = (subject, topic, data) => {
-      Services.obs.removeObserver(finished, "mozentries-update-finished");
-      if (data == "error") {
-        Cu.reportError("addMozEntries failed to update the db!");
-      }
-      resolve();
-    };
-    Services.obs.addObserver(finished, "mozentries-update-finished");
-  }),
-
 };

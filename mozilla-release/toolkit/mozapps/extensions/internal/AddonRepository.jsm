@@ -4,7 +4,9 @@
 
 "use strict";
 
-const {XPCOMUtils} = ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+const { XPCOMUtils } = ChromeUtils.import(
+  "resource://gre/modules/XPCOMUtils.jsm"
+);
 
 XPCOMUtils.defineLazyModuleGetters(this, {
   AddonManager: "resource://gre/modules/AddonManager.jsm",
@@ -38,31 +40,34 @@ XPCOMUtils.defineLazyGetter(this, "PLATFORM", () => {
   return platform;
 });
 
-var EXPORTED_SYMBOLS = [ "AddonRepository" ];
+var EXPORTED_SYMBOLS = ["AddonRepository"];
 
 Cu.importGlobalProperties(["fetch"]);
 
-const PREF_GETADDONS_CACHE_ENABLED       = "extensions.getAddons.cache.enabled";
-const PREF_GETADDONS_CACHE_TYPES         = "extensions.getAddons.cache.types";
-const PREF_GETADDONS_CACHE_ID_ENABLED    = "extensions.%ID%.getAddons.cache.enabled";
-const PREF_GETADDONS_BROWSEADDONS        = "extensions.getAddons.browseAddons";
-const PREF_GETADDONS_BYIDS               = "extensions.getAddons.get.url";
-const PREF_COMPAT_OVERRIDES              = "extensions.getAddons.compatOverides.url";
-const PREF_GETADDONS_BROWSESEARCHRESULTS = "extensions.getAddons.search.browseURL";
-const PREF_GETADDONS_DB_SCHEMA           = "extensions.getAddons.databaseSchema";
-const PREF_GET_LANGPACKS                 = "extensions.getAddons.langpacks.url";
-const PREF_ADDONS_UPDATE_URL             = "extensions.update.url";
+const PREF_GETADDONS_CACHE_ENABLED = "extensions.getAddons.cache.enabled";
+const PREF_GETADDONS_CACHE_TYPES = "extensions.getAddons.cache.types";
+const PREF_GETADDONS_CACHE_ID_ENABLED =
+  "extensions.%ID%.getAddons.cache.enabled";
+const PREF_GETADDONS_BROWSEADDONS = "extensions.getAddons.browseAddons";
+const PREF_GETADDONS_BYIDS = "extensions.getAddons.get.url";
+const PREF_COMPAT_OVERRIDES = "extensions.getAddons.compatOverides.url";
+const PREF_GETADDONS_BROWSESEARCHRESULTS =
+  "extensions.getAddons.search.browseURL";
+const PREF_GETADDONS_DB_SCHEMA = "extensions.getAddons.databaseSchema";
+const PREF_GET_LANGPACKS = "extensions.getAddons.langpacks.url";
+const PREF_ADDONS_UPDATE_URL = "extensions.update.url";
 
-const PREF_METADATA_LASTUPDATE           = "extensions.getAddons.cache.lastUpdate";
-const PREF_METADATA_UPDATETHRESHOLD_SEC  = "extensions.getAddons.cache.updateThreshold";
+const PREF_METADATA_LASTUPDATE = "extensions.getAddons.cache.lastUpdate";
+const PREF_METADATA_UPDATETHRESHOLD_SEC =
+  "extensions.getAddons.cache.updateThreshold";
 const DEFAULT_METADATA_UPDATETHRESHOLD_SEC = 172800; // two days
 
 const DEFAULT_CACHE_TYPES = "extension,theme,locale,dictionary";
 
-const FILE_DATABASE         = "addons.json";
-const DB_SCHEMA             = 5;
-const DB_MIN_JSON_SCHEMA    = 5;
-const DB_BATCH_TIMEOUT_MS   = 50;
+const FILE_DATABASE = "addons.json";
+const DB_SCHEMA = 5;
+const DB_MIN_JSON_SCHEMA = 5;
+const DB_BATCH_TIMEOUT_MS = 50;
 
 const BLANK_DB = function() {
   return {
@@ -72,9 +77,9 @@ const BLANK_DB = function() {
   };
 };
 
-const TOOLKIT_ID     = "toolkit@mozilla.org";
+const TOOLKIT_ID = "toolkit@mozilla.org";
 
-const {Log} = ChromeUtils.import("resource://gre/modules/Log.jsm");
+const { Log } = ChromeUtils.import("resource://gre/modules/Log.jsm");
 const LOGGER_ID = "addons.repository";
 
 // Create a new logger for use by the Addons Repository
@@ -82,25 +87,30 @@ const LOGGER_ID = "addons.repository";
 var logger = Log.repository.getLogger(LOGGER_ID);
 
 function convertHTMLToPlainText(html) {
-  if (!html)
+  if (!html) {
     return html;
-  var converter = Cc["@mozilla.org/widget/htmlformatconverter;1"].
-                  createInstance(Ci.nsIFormatConverter);
+  }
+  var converter = Cc[
+    "@mozilla.org/widget/htmlformatconverter;1"
+  ].createInstance(Ci.nsIFormatConverter);
 
-  var input = Cc["@mozilla.org/supports-string;1"].
-              createInstance(Ci.nsISupportsString);
+  var input = Cc["@mozilla.org/supports-string;1"].createInstance(
+    Ci.nsISupportsString
+  );
   input.data = html.replace(/\n/g, "<br>");
 
   var output = {};
   converter.convert("text/html", input, "text/unicode", output);
 
-  if (output.value instanceof Ci.nsISupportsString)
+  if (output.value instanceof Ci.nsISupportsString) {
     return output.value.data.replace(/\r\n/g, "\n");
+  }
   return html;
 }
 
 async function getAddonsToCache(aIds) {
-  let types = Preferences.get(PREF_GETADDONS_CACHE_TYPES) || DEFAULT_CACHE_TYPES;
+  let types =
+    Preferences.get(PREF_GETADDONS_CACHE_TYPES) || DEFAULT_CACHE_TYPES;
 
   types = types.split(",");
 
@@ -110,8 +120,9 @@ async function getAddonsToCache(aIds) {
   for (let [i, addon] of addons.entries()) {
     var preference = PREF_GETADDONS_CACHE_ID_ENABLED.replace("%ID%", aIds[i]);
     // If the preference doesn't exist caching is enabled by default
-    if (!Preferences.get(preference, true))
+    if (!Preferences.get(preference, true)) {
       continue;
+    }
 
     // The add-ons manager may not know about this ID yet if it is a pending
     // install. In that case we'll just cache it regardless
@@ -191,7 +202,7 @@ AddonSearchResult.prototype = {
     return this.icons && this.icons[32];
   },
 
-   /**
+  /**
    * The URLs of the add-on's icons, as an object with icon size as key
    */
   icons: null,
@@ -256,9 +267,9 @@ AddonSearchResult.prototype = {
 
     for (let property of Object.keys(this)) {
       let value = this[property];
-      if (property.startsWith("_") ||
-          typeof(value) === "function")
+      if (property.startsWith("_") || typeof value === "function") {
         continue;
+      }
 
       try {
         switch (property) {
@@ -280,8 +291,9 @@ AddonSearchResult.prototype = {
 
     for (let property of Object.keys(this._unsupportedProperties)) {
       let value = this._unsupportedProperties[property];
-      if (!property.startsWith("_"))
+      if (!property.startsWith("_")) {
         json[property] = value;
+      }
     }
 
     return json;
@@ -306,7 +318,7 @@ var AddonRepository = {
    */
   get homepageURL() {
     let url = this._formatURLPref(PREF_GETADDONS_BROWSEADDONS, {});
-    return (url != null) ? url : "about:blank";
+    return url != null ? url : "about:blank";
   },
 
   /**
@@ -321,7 +333,7 @@ var AddonRepository = {
     let url = this._formatURLPref(PREF_GETADDONS_BROWSESEARCHRESULTS, {
       TERMS: aSearchTerms,
     });
-    return (url != null) ? url : "about:blank";
+    return url != null ? url : "about:blank";
   },
 
   /**
@@ -347,8 +359,11 @@ var AddonRepository = {
   },
 
   isMetadataStale() {
-    let threshold = Services.prefs.getIntPref(PREF_METADATA_UPDATETHRESHOLD_SEC, DEFAULT_METADATA_UPDATETHRESHOLD_SEC);
-    return (this.metadataAge() > threshold);
+    let threshold = Services.prefs.getIntPref(
+      PREF_METADATA_UPDATETHRESHOLD_SEC,
+      DEFAULT_METADATA_UPDATETHRESHOLD_SEC
+    );
+    return this.metadataAge() > threshold;
   },
 
   /**
@@ -422,7 +437,8 @@ var AddonRepository = {
    */
   _clearCache() {
     return AddonDatabase.delete().then(() =>
-      AddonManagerPrivate.updateAddonRepositoryData());
+      AddonManagerPrivate.updateAddonRepositoryData()
+    );
   },
 
   /**
@@ -443,7 +459,7 @@ var AddonRepository = {
    *                         the API call(s).
    */
   _fetchPaged(ids, pref, handler) {
-    let startURL = this._formatURLPref(pref, {IDS: ids.join(",")});
+    let startURL = this._formatURLPref(pref, { IDS: ids.join(",") });
     let results = [];
     let idCheck = ids.map(id => {
       if (id.startsWith("rta:")) {
@@ -452,9 +468,9 @@ var AddonRepository = {
       return id;
     });
 
-    const fetchNextPage = (url) => {
+    const fetchNextPage = url => {
       return new Promise((resolve, reject) => {
-        let request = new ServiceRequest({mozAnon: true});
+        let request = new ServiceRequest({ mozAnon: true });
         request.mozBackgroundRequest = true;
         request.open("GET", url, true);
         request.responseType = "json";
@@ -473,7 +489,9 @@ var AddonRepository = {
           }
 
           try {
-            let newResults = handler(response.results).filter(e => idCheck.includes(e.id));
+            let newResults = handler(response.results).filter(e =>
+              idCheck.includes(e.id)
+            );
             results.push(...newResults);
           } catch (err) {
             reject(err);
@@ -501,9 +519,9 @@ var AddonRepository = {
    * @returns {array<AddonSearchResult>}
    */
   async getAddonsByIDs(aIDs) {
-    return this._fetchPaged(aIDs, PREF_GETADDONS_BYIDS,
-                            results => results.map(
-                              entry => this._parseAddon(entry)));
+    return this._fetchPaged(aIDs, PREF_GETADDONS_BYIDS, results =>
+      results.map(entry => this._parseAddon(entry))
+    );
   },
 
   /**
@@ -522,17 +540,23 @@ var AddonRepository = {
   async _getFullData(aIDs) {
     let metadataPromise = this.getAddonsByIDs(aIDs, false);
 
-    let overridesPromise = this._fetchPaged(aIDs, PREF_COMPAT_OVERRIDES,
-                                            results => results.map(
-                                              entry => this._parseCompatEntry(entry)));
-    let addons = [], overrides = [];
+    let overridesPromise = this._fetchPaged(
+      aIDs,
+      PREF_COMPAT_OVERRIDES,
+      results => results.map(entry => this._parseCompatEntry(entry))
+    );
+    let addons = [],
+      overrides = [];
     try {
-      [addons, overrides] = await Promise.all([metadataPromise, overridesPromise]);
+      [addons, overrides] = await Promise.all([
+        metadataPromise,
+        overridesPromise,
+      ]);
     } catch (err) {
       logger.error(`Error in addon metadata check: ${err.message}`);
     }
 
-    return {addons, overrides};
+    return { addons, overrides };
   },
 
   /**
@@ -543,7 +567,9 @@ var AddonRepository = {
    *         The array of add-on ids to add to the cache
    */
   async cacheAddons(aIds) {
-    logger.debug("cacheAddons: enabled " + this.cacheEnabled + " IDs " + aIds.toSource());
+    logger.debug(
+      "cacheAddons: enabled " + this.cacheEnabled + " IDs " + aIds.toSource()
+    );
     if (!this.cacheEnabled) {
       return [];
     }
@@ -555,7 +581,7 @@ var AddonRepository = {
       return [];
     }
 
-    let {addons, overrides} = await this._getFullData(ids);
+    let { addons, overrides } = await this._getFullData(ids);
     await AddonDatabase.update(addons, overrides);
 
     return Array.from(addons.values());
@@ -588,7 +614,7 @@ var AddonRepository = {
       return;
     }
 
-    let {addons, overrides} = await this._getFullData(addonsToCache);
+    let { addons, overrides } = await this._getFullData(addonsToCache);
 
     AddonDatabase.repopulate(addons, overrides);
 
@@ -644,7 +670,9 @@ var AddonRepository = {
     }
 
     if (Array.isArray(aEntry.authors)) {
-      let authors = aEntry.authors.map(author => new AddonManagerPrivate.AddonAuthor(author.name, author.url));
+      let authors = aEntry.authors.map(
+        author => new AddonManagerPrivate.AddonAuthor(author.name, author.url)
+      );
       if (authors.length > 0) {
         addon.creator = authors[0];
         addon.developers = authors.slice(1);
@@ -653,16 +681,19 @@ var AddonRepository = {
 
     if (typeof aEntry.previews == "object") {
       addon.screenshots = aEntry.previews.map(shot => {
-        let safeSize = orig => Array.isArray(orig) && orig.length >= 2 ? orig : [null, null];
+        let safeSize = orig =>
+          Array.isArray(orig) && orig.length >= 2 ? orig : [null, null];
         let imageSize = safeSize(shot.image_size);
         let thumbSize = safeSize(shot.thumbnail_size);
-        return new AddonManagerPrivate.AddonScreenshot(shot.image_url,
-                                                       imageSize[0],
-                                                       imageSize[1],
-                                                       shot.thumbnail_url,
-                                                       thumbSize[0],
-                                                       thumbSize[1],
-                                                       shot.caption);
+        return new AddonManagerPrivate.AddonScreenshot(
+          shot.image_url,
+          imageSize[0],
+          imageSize[1],
+          shot.thumbnail_url,
+          thumbSize[0],
+          thumbSize[1],
+          shot.caption
+        );
       });
     }
 
@@ -706,7 +737,9 @@ var AddonRepository = {
         return null;
       }
 
-      let override = new AddonManagerPrivate.AddonCompatibilityOverride("incompatible");
+      let override = new AddonManagerPrivate.AddonCompatibilityOverride(
+        "incompatible"
+      );
       override.minVersion = range.addon_min_version;
       override.maxVersion = range.addon_max_version;
 
@@ -727,7 +760,9 @@ var AddonRepository = {
       }
 
       if (!override.appID) {
-        logger.debug("Compatibility override is missing a valid application range.");
+        logger.debug(
+          "Compatibility override is missing a valid application range."
+        );
         continue;
       }
 
@@ -749,8 +784,9 @@ var AddonRepository = {
     }
 
     url = url.replace(/%([A-Z_]+)%/g, function(aMatch, aKey) {
-      return (aKey in aSubstitutions) ? encodeURIComponent(aSubstitutions[aKey])
-                                      : aMatch;
+      return aKey in aSubstitutions
+        ? encodeURIComponent(aSubstitutions[aKey])
+        : aMatch;
     });
 
     return Services.urlFormatter.formatURL(url);
@@ -758,21 +794,26 @@ var AddonRepository = {
 
   // Find a AddonCompatibilityOverride that matches a given aAddonVersion and
   // application/platform version.
-  findMatchingCompatOverride(aAddonVersion,
-                             aCompatOverrides,
-                             aAppVersion,
-                             aPlatformVersion) {
+  findMatchingCompatOverride(
+    aAddonVersion,
+    aCompatOverrides,
+    aAppVersion,
+    aPlatformVersion
+  ) {
     for (let override of aCompatOverrides) {
       let appVersion = null;
-      if (override.appID == TOOLKIT_ID)
+      if (override.appID == TOOLKIT_ID) {
         appVersion = aPlatformVersion || Services.appinfo.platformVersion;
-      else
+      } else {
         appVersion = aAppVersion || Services.appinfo.version;
+      }
 
-      if (Services.vc.compare(override.minVersion, aAddonVersion) <= 0 &&
-          Services.vc.compare(aAddonVersion, override.maxVersion) <= 0 &&
-          Services.vc.compare(override.appMinVersion, appVersion) <= 0 &&
-          Services.vc.compare(appVersion, override.appMaxVersion) <= 0) {
+      if (
+        Services.vc.compare(override.minVersion, aAddonVersion) <= 0 &&
+        Services.vc.compare(aAddonVersion, override.maxVersion) <= 0 &&
+        Services.vc.compare(override.appMinVersion, appVersion) <= 0 &&
+        Services.vc.compare(appVersion, override.appMaxVersion) <= 0
+      ) {
         return override;
       }
     }
@@ -788,7 +829,7 @@ var AddonRepository = {
     // http://addons-server.readthedocs.io/en/latest/topics/api/addons.html#language-tools
     let url = this._formatURLPref(PREF_GET_LANGPACKS);
 
-    let response = await fetch(url, {credentials: "omit"});
+    let response = await fetch(url, { credentials: "omit" });
     if (!response.ok) {
       throw new Error("fetching available language packs failed");
     }
@@ -797,13 +838,18 @@ var AddonRepository = {
 
     let result = [];
     for (let entry of data.results) {
-      if (!entry.current_compatible_version ||
-          !entry.current_compatible_version.files) {
-         continue;
+      if (
+        !entry.current_compatible_version ||
+        !entry.current_compatible_version.files
+      ) {
+        continue;
       }
 
       for (let file of entry.current_compatible_version.files) {
-        if (file.platform == "all" || file.platform == Services.appinfo.OS.toLowerCase()) {
+        if (
+          file.platform == "all" ||
+          file.platform == Services.appinfo.OS.toLowerCase()
+        ) {
           result.push({
             target_locale: entry.target_locale,
             url: file.url,
@@ -891,66 +937,69 @@ var AddonDatabase = {
   openConnection() {
     if (!this.connectionPromise) {
       this.connectionPromise = (async () => {
-       let inputDB, schema;
+        let inputDB, schema;
 
-       try {
-         let data = await OS.File.read(this.jsonFile, { encoding: "utf-8"});
-         inputDB = JSON.parse(data);
+        try {
+          let data = await OS.File.read(this.jsonFile, { encoding: "utf-8" });
+          inputDB = JSON.parse(data);
 
-         if (!inputDB.hasOwnProperty("addons") ||
-             !Array.isArray(inputDB.addons)) {
-           throw new Error("No addons array.");
-         }
+          if (
+            !inputDB.hasOwnProperty("addons") ||
+            !Array.isArray(inputDB.addons)
+          ) {
+            throw new Error("No addons array.");
+          }
 
-         if (!inputDB.hasOwnProperty("schema")) {
-           throw new Error("No schema specified.");
-         }
+          if (!inputDB.hasOwnProperty("schema")) {
+            throw new Error("No schema specified.");
+          }
 
-         schema = parseInt(inputDB.schema, 10);
+          schema = parseInt(inputDB.schema, 10);
 
-         if (!Number.isInteger(schema) ||
-             schema < DB_MIN_JSON_SCHEMA) {
-           throw new Error("Invalid schema value.");
-         }
-       } catch (e) {
-         if (e instanceof OS.File.Error && e.becauseNoSuchFile) {
-           logger.debug("No " + FILE_DATABASE + " found.");
-         } else {
-           logger.error(`Malformed ${FILE_DATABASE}: ${e} - resetting to empty`);
-         }
+          if (!Number.isInteger(schema) || schema < DB_MIN_JSON_SCHEMA) {
+            throw new Error("Invalid schema value.");
+          }
+        } catch (e) {
+          if (e instanceof OS.File.Error && e.becauseNoSuchFile) {
+            logger.debug("No " + FILE_DATABASE + " found.");
+          } else {
+            logger.error(
+              `Malformed ${FILE_DATABASE}: ${e} - resetting to empty`
+            );
+          }
 
-         // Create a blank addons.json file
-         this.save();
+          // Create a blank addons.json file
+          this.save();
 
-         Services.prefs.setIntPref(PREF_GETADDONS_DB_SCHEMA, DB_SCHEMA);
-         this._loaded = true;
-         return this.DB;
-       }
+          Services.prefs.setIntPref(PREF_GETADDONS_DB_SCHEMA, DB_SCHEMA);
+          this._loaded = true;
+          return this.DB;
+        }
 
-       Services.prefs.setIntPref(PREF_GETADDONS_DB_SCHEMA, DB_SCHEMA);
+        Services.prefs.setIntPref(PREF_GETADDONS_DB_SCHEMA, DB_SCHEMA);
 
-       // Convert the addon and compat override objects as necessary
-       // and store them in our in-memory copy of the database.
-       for (let addon of inputDB.addons) {
-         let id = addon.id;
+        // Convert the addon and compat override objects as necessary
+        // and store them in our in-memory copy of the database.
+        for (let addon of inputDB.addons) {
+          let id = addon.id;
 
-         let entry = this._parseAddon(addon);
-         this.DB.addons.set(id, entry);
+          let entry = this._parseAddon(addon);
+          this.DB.addons.set(id, entry);
 
-         if (entry.compatibilityOverrides) {
-           this.DB.compatOverrides.set(id, entry.compatibilityOverrides);
-         }
-       }
+          if (entry.compatibilityOverrides) {
+            this.DB.compatOverrides.set(id, entry.compatibilityOverrides);
+          }
+        }
 
-       if (inputDB.compatOverrides) {
-         for (let entry of inputDB.compatOverrides) {
-           this.DB.compatOverrides.set(entry.id, entry.compatRanges);
-         }
-       }
+        if (inputDB.compatOverrides) {
+          for (let entry of inputDB.compatOverrides) {
+            this.DB.compatOverrides.set(entry.id, entry.compatRanges);
+          }
+        }
 
         this._loaded = true;
-       return this.DB;
-     })();
+        return this.DB;
+      })();
     }
 
     return this.connectionPromise;
@@ -1000,9 +1049,13 @@ var AddonDatabase = {
     // shutdown(true) never rejects
     this._deleting = this.shutdown(true)
       .then(() => OS.File.remove(this.jsonFile, {}))
-      .catch(error => logger.error("Unable to delete Addon Repository file " +
-                                 this.jsonFile, error))
-      .then(() => this._deleting = null)
+      .catch(error =>
+        logger.error(
+          "Unable to delete Addon Repository file " + this.jsonFile,
+          error
+        )
+      )
+      .then(() => (this._deleting = null))
       .then(aCallback);
 
     return this._deleting;
@@ -1016,20 +1069,26 @@ var AddonDatabase = {
     };
 
     for (let [id, overrides] of this.DB.compatOverrides.entries()) {
-      json.compatOverrides.push({id, compatRanges: overrides});
+      json.compatOverrides.push({ id, compatRanges: overrides });
     }
 
-    await OS.File.writeAtomic(this.jsonFile, JSON.stringify(json),
-                              {tmpPath: `${this.jsonFile}.tmp`});
+    await OS.File.writeAtomic(this.jsonFile, JSON.stringify(json), {
+      tmpPath: `${this.jsonFile}.tmp`,
+    });
   },
 
   save() {
     if (!this._saveTask) {
-      this._saveTask = new DeferredTask(() => this._saveNow(), DB_BATCH_TIMEOUT_MS);
+      this._saveTask = new DeferredTask(
+        () => this._saveNow(),
+        DB_BATCH_TIMEOUT_MS
+      );
 
       if (!this._blockerAdded) {
         AsyncShutdown.profileBeforeChange.addBlocker(
-          "Flush AddonRepository", () => this.flush());
+          "Flush AddonRepository",
+          () => this.flush()
+        );
         this._blockerAdded = true;
       }
     }
@@ -1092,7 +1151,9 @@ var AddonDatabase = {
     this._update(aAddons, aCompatOverrides);
 
     let now = Math.round(Date.now() / 1000);
-    logger.debug("Cache repopulated, setting " + PREF_METADATA_LASTUPDATE + " to " + now);
+    logger.debug(
+      "Cache repopulated, setting " + PREF_METADATA_LASTUPDATE + " to " + now
+    );
     Services.prefs.setIntPref(PREF_METADATA_LASTUPDATE, now);
   },
 
@@ -1141,19 +1202,24 @@ var AddonDatabase = {
    * @return Returns an AddonSearchResult object.
    */
   _parseAddon(aObj) {
-    if (aObj instanceof AddonSearchResult)
+    if (aObj instanceof AddonSearchResult) {
       return aObj;
+    }
 
     let id = aObj.id;
-    if (!aObj.id)
+    if (!aObj.id) {
       return null;
+    }
 
     let addon = new AddonSearchResult(id);
 
     for (let expectedProperty of Object.keys(AddonSearchResult.prototype)) {
-      if (!(expectedProperty in aObj) ||
-          typeof(aObj[expectedProperty]) === "function")
+      if (
+        !(expectedProperty in aObj) ||
+        typeof aObj[expectedProperty] === "function"
+      ) {
         continue;
+      }
 
       let value = aObj[expectedProperty];
 
@@ -1164,9 +1230,7 @@ var AddonDatabase = {
             break;
 
           case "creator":
-            addon.creator = value
-                            ? this._makeDeveloper(value)
-                            : null;
+            addon.creator = value ? this._makeDeveloper(value) : null;
             break;
 
           case "updateDate":
@@ -1174,21 +1238,27 @@ var AddonDatabase = {
             break;
 
           case "developers":
-            if (!addon.developers) addon.developers = [];
+            if (!addon.developers) {
+              addon.developers = [];
+            }
             for (let developer of value) {
               addon.developers.push(this._makeDeveloper(developer));
             }
             break;
 
           case "screenshots":
-            if (!addon.screenshots) addon.screenshots = [];
+            if (!addon.screenshots) {
+              addon.screenshots = [];
+            }
             for (let screenshot of value) {
               addon.screenshots.push(this._makeScreenshot(screenshot));
             }
             break;
 
           case "icons":
-            if (!addon.icons) addon.icons = {};
+            if (!addon.icons) {
+              addon.icons = {};
+            }
             for (let size of Object.keys(aObj.icons)) {
               addon.icons[size] = aObj.icons[size];
             }
@@ -1201,7 +1271,9 @@ var AddonDatabase = {
             addon[expectedProperty] = value;
         }
       } catch (ex) {
-        logger.warn("Error in parsing property value for " + expectedProperty + " | " + ex);
+        logger.warn(
+          "Error in parsing property value for " + expectedProperty + " | " + ex
+        );
       }
 
       // delete property from obj to indicate we've already
@@ -1216,7 +1288,7 @@ var AddonDatabase = {
     // The properties will be merged in the same object
     // prior to being written back through toJSON.
     for (let remainingProperty of Object.keys(aObj)) {
-      switch (typeof(aObj[remainingProperty])) {
+      switch (typeof aObj[remainingProperty]) {
         case "boolean":
         case "number":
         case "string":
@@ -1227,9 +1299,10 @@ var AddonDatabase = {
           continue;
       }
 
-      if (!remainingProperty.startsWith("_"))
+      if (!remainingProperty.startsWith("_")) {
         addon._unsupportedProperties[remainingProperty] =
           aObj[remainingProperty];
+      }
     }
 
     return addon;
@@ -1265,7 +1338,14 @@ var AddonDatabase = {
     let thumbnailWidth = aObj.thumbnailWidth;
     let thumbnailHeight = aObj.thumbnailHeight;
     let caption = aObj.caption;
-    return new AddonManagerPrivate.AddonScreenshot(url, width, height, thumbnailURL,
-                                                   thumbnailWidth, thumbnailHeight, caption);
+    return new AddonManagerPrivate.AddonScreenshot(
+      url,
+      width,
+      height,
+      thumbnailURL,
+      thumbnailWidth,
+      thumbnailHeight,
+      caption
+    );
   },
 };

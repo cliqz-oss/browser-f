@@ -34,6 +34,8 @@ class nsPIDOMWindowInner;
 namespace mozilla {
 class DOMEventTargetHelper;
 namespace dom {
+class VoidFunction;
+class DebuggerNotificationManager;
 class ServiceWorker;
 class ServiceWorkerRegistration;
 class ServiceWorkerRegistrationDescriptor;
@@ -130,6 +132,16 @@ class nsIGlobalObject : public nsISupports,
 
   virtual bool IsInSyncOperation() { return false; }
 
+  virtual mozilla::dom::DebuggerNotificationManager*
+  GetOrCreateDebuggerNotificationManager() {
+    return nullptr;
+  }
+
+  virtual mozilla::dom::DebuggerNotificationManager*
+  GetExistingDebuggerNotificationManager() {
+    return nullptr;
+  }
+
   virtual mozilla::Maybe<mozilla::dom::ClientInfo> GetClientInfo() const;
 
   virtual mozilla::Maybe<mozilla::dom::ServiceWorkerDescriptor> GetController()
@@ -156,6 +168,8 @@ class nsIGlobalObject : public nsISupports,
   // Returns a pointer to this object as an inner window if this is one or
   // nullptr otherwise.
   nsPIDOMWindowInner* AsInnerWindow();
+
+  void QueueMicrotask(mozilla::dom::VoidFunction& aCallback);
 
  protected:
   virtual ~nsIGlobalObject();

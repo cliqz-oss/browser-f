@@ -25,7 +25,6 @@
 #include "jit/JitOptions.h"
 #include "js/BuildId.h"  // JS::BuildIdCharVector
 #include "threading/LockGuard.h"
-#include "util/NSPR.h"
 #include "wasm/WasmBaselineCompile.h"
 #include "wasm/WasmCompile.h"
 #include "wasm/WasmInstance.h"
@@ -64,6 +63,9 @@ class Module::Tier2GeneratorTaskImpl : public Tier2GeneratorTask {
 
   void runTask() override {
     CompileTier2(*compileArgs_, bytecode_->bytes, *module_, &cancelled_);
+  }
+  ThreadType threadType() override {
+    return ThreadType::THREAD_TYPE_WASM_TIER2;
   }
 };
 
@@ -357,39 +359,8 @@ bool wasm::GetOptimizedEncodingBuildId(JS::BuildIdCharVector* buildId) {
   return true;
 }
 
-struct MemUnmap {
-  uint32_t size;
-  MemUnmap() : size(0) {}
-  explicit MemUnmap(uint32_t size) : size(size) {}
-  void operator()(uint8_t* p) {
-    MOZ_ASSERT(size);
-    PR_MemUnmap(p, size);
-  }
-};
-
-typedef UniquePtr<uint8_t, MemUnmap> UniqueMapping;
-
-static UniqueMapping MapFile(PRFileDesc* file, PRFileInfo* info) {
-  if (PR_GetOpenFileInfo(file, info) != PR_SUCCESS) {
-    return nullptr;
-  }
-
-  PRFileMap* map = PR_CreateFileMap(file, info->size, PR_PROT_READONLY);
-  if (!map) {
-    return nullptr;
-  }
-
-  // PRFileMap objects do not need to be kept alive after the memory has been
-  // mapped, so unconditionally close the PRFileMap, regardless of whether
-  // PR_MemMap succeeds.
-  uint8_t* memory = (uint8_t*)PR_MemMap(map, 0, info->size);
-  PR_CloseFileMap(map);
-  return UniqueMapping(memory, MemUnmap(info->size));
-}
-
-RefPtr<JS::WasmModule> wasm::DeserializeModule(PRFileDesc* bytecodeFile,
-                                               UniqueChars filename,
-                                               unsigned line) {
+RefPtr<JS::WasmModule> wasm::DeserializeModule(const uint8_t* bytecode,
+                                               size_t bytecodeLength) {
   // We have to compile new code here so if we're fundamentally unable to
   // compile, we have to fail. If you change this code, update the
   // MutableCompileArgs setting below.
@@ -397,23 +368,17 @@ RefPtr<JS::WasmModule> wasm::DeserializeModule(PRFileDesc* bytecodeFile,
     return nullptr;
   }
 
-  PRFileInfo bytecodeInfo;
-  UniqueMapping bytecodeMapping = MapFile(bytecodeFile, &bytecodeInfo);
-  if (!bytecodeMapping) {
+  MutableBytes bytecodeCopy = js_new<ShareableBytes>();
+  if (!bytecodeCopy ||
+      !bytecodeCopy->bytes.initLengthUninitialized(bytecodeLength)) {
     return nullptr;
   }
 
-  MutableBytes bytecode = js_new<ShareableBytes>();
-  if (!bytecode ||
-      !bytecode->bytes.initLengthUninitialized(bytecodeInfo.size)) {
-    return nullptr;
-  }
-
-  memcpy(bytecode->bytes.begin(), bytecodeMapping.get(), bytecodeInfo.size);
+  memcpy(bytecodeCopy->bytes.begin(), bytecode, bytecodeLength);
 
   ScriptedCaller scriptedCaller;
-  scriptedCaller.filename = std::move(filename);
-  scriptedCaller.line = line;
+  scriptedCaller.filename = nullptr;
+  scriptedCaller.line = 0;
 
   MutableCompileArgs args = js_new<CompileArgs>(std::move(scriptedCaller));
   if (!args) {
@@ -438,7 +403,7 @@ RefPtr<JS::WasmModule> wasm::DeserializeModule(PRFileDesc* bytecodeFile,
 
   UniqueChars error;
   UniqueCharsVector warnings;
-  SharedModule module = CompileBuffer(*args, *bytecode, &error, &warnings);
+  SharedModule module = CompileBuffer(*args, *bytecodeCopy, &error, &warnings);
   if (!module) {
     return nullptr;
   }
@@ -465,6 +430,16 @@ void Module::addSizeOfMisc(MallocSizeOf mallocSizeOf,
   if (debugUnlinkedCode_) {
     *data += debugUnlinkedCode_->sizeOfExcludingThis(mallocSizeOf);
   }
+}
+
+void Module::initGCMallocBytesExcludingCode() {
+  // The size doesn't have to be exact so use the serialization framework to
+  // calculate a value.
+  gcMallocBytesExcludingCode_ = sizeof(*this) + SerializedVectorSize(imports_) +
+                                SerializedVectorSize(exports_) +
+                                SerializedVectorSize(dataSegments_) +
+                                SerializedVectorSize(elemSegments_) +
+                                SerializedVectorSize(customSections_);
 }
 
 // Extracting machine code as JS object. The result has the "code" property, as
@@ -593,81 +568,84 @@ bool Module::initSegments(JSContext* cx, HandleWasmInstanceObject instanceObj,
   Instance& instance = instanceObj->instance();
   const SharedTableVector& tables = instance.tables();
 
-#ifndef ENABLE_WASM_BULKMEM_OPS
   // Bulk memory changes the error checking behavior: we may write partial data.
+  // We enable bulk memory semantics if shared memory is enabled.
+#ifdef ENABLE_WASM_BULKMEM_OPS
+  const bool eagerBoundsCheck = false;
+#else
+  // Bulk memory must be available if shared memory is enabled.
+  const bool eagerBoundsCheck =
+      !cx->realm()->creationOptions().getSharedMemoryAndAtomicsEnabled();
+#endif
 
-  // Perform all error checks up front so that this function does not perform
-  // partial initialization if an error is reported.
+  if (eagerBoundsCheck) {
+    // Perform all error checks up front so that this function does not perform
+    // partial initialization if an error is reported.
 
-  for (const ElemSegment* seg : elemSegments_) {
-    if (!seg->active()) {
-      continue;
-    }
-
-    uint32_t tableLength = tables[seg->tableIndex]->length();
-    uint32_t offset = EvaluateInitExpr(globalImportValues, seg->offset());
-
-    if (offset > tableLength || tableLength - offset < seg->length()) {
-      JS_ReportErrorNumberUTF8(cx, GetErrorMessage, nullptr, JSMSG_WASM_BAD_FIT,
-                               "elem", "table");
-      return false;
-    }
-  }
-
-  if (memoryObj) {
-    uint32_t memoryLength = memoryObj->volatileMemoryLength();
-    for (const DataSegment* seg : dataSegments_) {
+    for (const ElemSegment* seg : elemSegments_) {
       if (!seg->active()) {
         continue;
       }
 
+      uint32_t tableLength = tables[seg->tableIndex]->length();
       uint32_t offset = EvaluateInitExpr(globalImportValues, seg->offset());
 
-      if (offset > memoryLength ||
-          memoryLength - offset < seg->bytes.length()) {
+      if (offset > tableLength || tableLength - offset < seg->length()) {
         JS_ReportErrorNumberUTF8(cx, GetErrorMessage, nullptr,
-                                 JSMSG_WASM_BAD_FIT, "data", "memory");
+                                 JSMSG_WASM_BAD_FIT, "elem", "table");
         return false;
+      }
+    }
+
+    if (memoryObj) {
+      uint32_t memoryLength = memoryObj->volatileMemoryLength();
+      for (const DataSegment* seg : dataSegments_) {
+        if (!seg->active()) {
+          continue;
+        }
+
+        uint32_t offset = EvaluateInitExpr(globalImportValues, seg->offset());
+
+        if (offset > memoryLength ||
+            memoryLength - offset < seg->bytes.length()) {
+          JS_ReportErrorNumberUTF8(cx, GetErrorMessage, nullptr,
+                                   JSMSG_WASM_BAD_FIT, "data", "memory");
+          return false;
+        }
       }
     }
   }
 
-  // Now that initialization can't fail partway through, write data/elem
-  // segments into memories/tables.
-#endif
+  // Write data/elem segments into memories/tables.
 
   for (const ElemSegment* seg : elemSegments_) {
     if (seg->active()) {
       uint32_t offset = EvaluateInitExpr(globalImportValues, seg->offset());
       uint32_t count = seg->length();
-#ifdef ENABLE_WASM_BULKMEM_OPS
-      uint32_t tableLength = tables[seg->tableIndex]->length();
       bool fail = false;
-      if (offset > tableLength) {
-        fail = true;
-        count = 0;
-      } else if (tableLength - offset < count) {
-        fail = true;
-        count = tableLength - offset;
+      if (!eagerBoundsCheck) {
+        uint32_t tableLength = tables[seg->tableIndex]->length();
+        if (offset > tableLength) {
+          fail = true;
+          count = 0;
+        } else if (tableLength - offset < count) {
+          fail = true;
+          count = tableLength - offset;
+        }
       }
-#endif
       if (count) {
         instance.initElems(seg->tableIndex, *seg, offset, 0, count);
       }
-#ifdef ENABLE_WASM_BULKMEM_OPS
       if (fail) {
         JS_ReportErrorNumberUTF8(cx, GetErrorMessage, nullptr,
                                  JSMSG_WASM_BAD_FIT, "elem", "table");
         return false;
       }
-#endif
     }
   }
 
   if (memoryObj) {
-#ifdef ENABLE_WASM_BULKMEM_OPS
     uint32_t memoryLength = memoryObj->volatileMemoryLength();
-#endif
     uint8_t* memoryBase =
         memoryObj->buffer().dataPointerEither().unwrap(/* memcpy */);
 
@@ -678,26 +656,24 @@ bool Module::initSegments(JSContext* cx, HandleWasmInstanceObject instanceObj,
 
       uint32_t offset = EvaluateInitExpr(globalImportValues, seg->offset());
       uint32_t count = seg->bytes.length();
-#ifdef ENABLE_WASM_BULKMEM_OPS
       bool fail = false;
-      if (offset > memoryLength) {
-        fail = true;
-        count = 0;
-      } else if (memoryLength - offset < count) {
-        fail = true;
-        count = memoryLength - offset;
+      if (!eagerBoundsCheck) {
+        if (offset > memoryLength) {
+          fail = true;
+          count = 0;
+        } else if (memoryLength - offset < count) {
+          fail = true;
+          count = memoryLength - offset;
+        }
       }
-#endif
       if (count) {
         memcpy(memoryBase + offset, seg->bytes.begin(), count);
       }
-#ifdef ENABLE_WASM_BULKMEM_OPS
       if (fail) {
         JS_ReportErrorNumberUTF8(cx, GetErrorMessage, nullptr,
                                  JSMSG_WASM_BAD_FIT, "data", "memory");
         return false;
       }
-#endif
     }
   }
 

@@ -8,9 +8,8 @@
 
 #include "mozilla/dom/BrowserBridgeChild.h"  // for BrowserBridgeChild
 #include "mozilla/dom/EventTarget.h"         // for EventTarget
-#include "mozilla/dom/BrowserParent.h"       // for BrowserParent
+#include "mozilla/dom/RemoteBrowser.h"       // For RemoteBrowser
 #include "mozilla/EventDispatcher.h"         // for EventDispatcher
-#include "mozilla/layout/RenderFrame.h"      // For RenderFrame
 #include "mozilla/PresShell.h"               // For PresShell
 #include "nsIContentInlines.h"               // for nsINode::IsEditable()
 #include "nsLayoutUtils.h"                   // for nsLayoutUtils
@@ -139,7 +138,7 @@ FocusTarget::FocusTarget(PresShell* aRootPresShell,
 
   // Check if there are key event listeners that could prevent default or change
   // the focus or selection of the page.
-  if (gfxPrefs::APZKeyboardPassiveListeners()) {
+  if (StaticPrefs::apz_keyboard_passive_listeners()) {
     mFocusHasKeyEventListeners =
         HasListenersForNonPassiveKeyEvents(keyEventTarget.get());
   } else {
@@ -157,17 +156,16 @@ FocusTarget::FocusTarget(PresShell* aRootPresShell,
   }
 
   // Check if the key event target is a remote browser
-  if (BrowserParent* browserParent = BrowserParent::GetFrom(keyEventTarget)) {
-    RenderFrame* rf = browserParent->GetRenderFrame();
+  if (RemoteBrowser* remoteBrowser = RemoteBrowser::GetFrom(keyEventTarget)) {
+    LayersId layersId = remoteBrowser->GetLayersId();
 
     // The globally focused element for scrolling is in a remote layer tree
-    if (rf) {
+    if (layersId.IsValid()) {
       FT_LOG("Creating reflayer target with seq=%" PRIu64 ", kl=%d, lt=%" PRIu64
              "\n",
-             aFocusSequenceNumber, mFocusHasKeyEventListeners,
-             rf->GetLayersId());
+             aFocusSequenceNumber, mFocusHasKeyEventListeners, layersId);
 
-      mData = AsVariant<LayersId>(rf->GetLayersId());
+      mData = AsVariant<LayersId>(std::move(layersId));
       return;
     }
 
@@ -175,17 +173,6 @@ FocusTarget::FocusTarget(PresShell* aRootPresShell,
            ", kl=%d (remote browser missing layers id)\n",
            aFocusSequenceNumber, mFocusHasKeyEventListeners);
 
-    return;
-  }
-
-  // Check if the key event target is a remote browser
-  if (BrowserBridgeChild* bbc = BrowserBridgeChild::GetFrom(keyEventTarget)) {
-    FT_LOG("Creating oopif reflayer target with seq=%" PRIu64
-           ", kl=%d, lt=%" PRIu64 "\n",
-           aFocusSequenceNumber, mFocusHasKeyEventListeners,
-           bbc->GetLayersId());
-
-    mData = AsVariant<LayersId>(bbc->GetLayersId());
     return;
   }
 
@@ -220,17 +207,19 @@ FocusTarget::FocusTarget(PresShell* aRootPresShell,
   target.mHorizontal = nsLayoutUtils::FindIDForScrollableFrame(horizontal);
   target.mVertical = nsLayoutUtils::FindIDForScrollableFrame(vertical);
   if (XRE_IsContentProcess()) {
-    target.mHorizontalRenderRoot = gfxUtils::GetContentRenderRoot();
-    target.mVerticalRenderRoot = gfxUtils::GetContentRenderRoot();
+    target.mHorizontalRenderRoot = Some(gfxUtils::GetContentRenderRoot());
+    target.mVerticalRenderRoot = Some(gfxUtils::GetContentRenderRoot());
   } else {
-    target.mHorizontalRenderRoot =
-        horizontal ? gfxUtils::RecursivelyGetRenderRootForFrame(
-                         horizontal->GetScrolledFrame())
-                   : wr::RenderRoot::Default;
-    target.mVerticalRenderRoot =
-        vertical ? gfxUtils::RecursivelyGetRenderRootForFrame(
-                       vertical->GetScrolledFrame())
-                 : wr::RenderRoot::Default;
+    if (horizontal) {
+      auto renderRoot = gfxUtils::RecursivelyGetRenderRootForFrame(
+          horizontal->GetScrolledFrame());
+      target.mHorizontalRenderRoot = Some(renderRoot);
+    }
+    if (vertical) {
+      auto renderRoot = gfxUtils::RecursivelyGetRenderRootForFrame(
+          vertical->GetScrolledFrame());
+      target.mVerticalRenderRoot = Some(renderRoot);
+    }
   }
   mData = AsVariant(target);
 

@@ -14,6 +14,24 @@
   background: var(--theme-sidebar-background);
 }
 
+/* Let the component gain focus when a click hits an empty area */
+#storage-tree {
+  -moz-user-focus: normal;
+}
+
+#storage-tree:focus {
+  outline: 0;
+}
+
+/* Let the component gain focus when a click hits an empty area */
+#storage-table {
+  -moz-user-focus: normal;
+}
+
+#storage-table:focus {
+  outline: 0;
+}
+
 /* The minimum column width needs to be determined by the header width */
 .table-widget-cell {
   min-width: unset;
@@ -51,16 +69,20 @@
 }
 
 /* Text input in storage table */
-#storage-table textbox {
+#storage-table input {
   -moz-appearance: none;
+  -moz-box-flex: 1;
   /* make sure the outline is not cut off */
   position: relative;
-  max-width: calc(100% - 1px);
-  padding: 3px 3px;
+  box-sizing: border-box;
+  padding: 0 2px;
   font: inherit;
-  line-height: 14px;
   color: var(--theme-text-color-strong);
   background-color: var(--theme-body-background);
+}
+
+#storage-table input:focus {
+  outline: 1px solid var(--blue-50);
 }
 
 /* Variables View Sidebar */
@@ -78,6 +100,10 @@
 */
 #storage-toolbar {
   display: -moz-box;
+}
+
+#storage-searchbox {
+  -moz-box-flex: 1;
 }
 
 #storage-toolbar .add-button::before {

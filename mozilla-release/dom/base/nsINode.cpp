@@ -28,6 +28,7 @@
 #include "mozilla/Telemetry.h"
 #include "mozilla/TextEditor.h"
 #include "mozilla/TimeStamp.h"
+#include "mozilla/dom/BindContext.h"
 #include "mozilla/dom/CharacterData.h"
 #include "mozilla/dom/DocumentType.h"
 #include "mozilla/dom/Element.h"
@@ -35,7 +36,7 @@
 #include "mozilla/dom/ShadowRoot.h"
 #include "mozilla/dom/SVGUseElement.h"
 #include "mozilla/dom/ScriptSettings.h"
-#include "mozilla/dom/l10n/DOMOverlays.h"
+#include "mozilla/dom/L10nOverlays.h"
 #include "mozilla/StaticPrefs.h"
 #include "nsAttrValueOrString.h"
 #include "nsBindingManager.h"
@@ -83,7 +84,6 @@
 #include "nsNameSpaceManager.h"
 #include "nsNodeInfoManager.h"
 #include "nsNodeUtils.h"
-#include "nsPIBoxObject.h"
 #include "nsPIDOMWindow.h"
 #include "nsPresContext.h"
 #include "nsString.h"
@@ -122,7 +122,7 @@ nsINode::nsSlots::nsSlots() : mWeakReference(nullptr) {}
 
 nsINode::nsSlots::~nsSlots() {
   if (mChildNodes) {
-    mChildNodes->DropReference();
+    mChildNodes->InvalidateCacheIfAvailable();
   }
 
   if (mWeakReference) {
@@ -137,7 +137,8 @@ void nsINode::nsSlots::Traverse(nsCycleCollectionTraversalCallback& cb) {
 
 void nsINode::nsSlots::Unlink() {
   if (mChildNodes) {
-    mChildNodes->DropReference();
+    mChildNodes->InvalidateCacheIfAvailable();
+    ImplCycleCollectionUnlink(mChildNodes);
   }
 }
 
@@ -193,6 +194,10 @@ void nsINode::DeleteProperty(const nsAtom* aPropertyName) {
 void* nsINode::UnsetProperty(const nsAtom* aPropertyName, nsresult* aStatus) {
   return OwnerDoc()->PropertyTable().UnsetProperty(this, aPropertyName,
                                                    aStatus);
+}
+
+nsIContentSecurityPolicy* nsINode::GetCsp() const {
+  return OwnerDoc()->GetCsp();
 }
 
 nsINode::nsSlots* nsINode::CreateSlots() { return new nsSlots(); }
@@ -1219,7 +1224,6 @@ nsresult nsINode::InsertChildBefore(nsIContent* aKid,
   nsMutationGuard::DidMutate();
 
   // Do this before checking the child-count since this could cause mutations
-  Document* doc = GetUncomposedDoc();
   mozAutoDocUpdate updateBatch(GetComposedDoc(), aNotify);
 
   if (OwnerDoc() != aKid->OwnerDoc()) {
@@ -1245,8 +1249,8 @@ nsresult nsINode::InsertChildBefore(nsIContent* aKid,
 
   // XXXbz Do we even need this code anymore?
   bool wasInNACScope = ShouldUseNACScope(aKid);
-  nsresult rv = aKid->BindToTree(doc, parent,
-                                 parent ? parent->GetBindingParent() : nullptr);
+  BindContext context(*this);
+  nsresult rv = aKid->BindToTree(context, *this);
   if (NS_SUCCEEDED(rv) && !wasInNACScope && ShouldUseNACScope(aKid)) {
     MOZ_ASSERT(ShouldUseNACScope(this),
                "Why does the kid need to use an the anonymous content scope?");

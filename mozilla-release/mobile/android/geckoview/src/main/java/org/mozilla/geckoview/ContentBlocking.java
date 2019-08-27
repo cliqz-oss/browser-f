@@ -90,7 +90,7 @@ public class ContentBlocking {
         /* package */ final Pref<Boolean> mSbPhishing = new Pref<Boolean>(
             "browser.safebrowsing.phishing.enabled", true);
         /* package */ final Pref<Integer> mCookieBehavior = new Pref<Integer>(
-            "network.cookie.cookieBehavior", COOKIE_ACCEPT_ALL);
+            "network.cookie.cookieBehavior", COOKIE_ACCEPT_NON_TRACKERS);
         /* package */ final Pref<Integer> mCookieLifetime = new Pref<Integer>(
             "network.cookie.lifetimePolicy", COOKIE_LIFETIME_NORMAL);
 
@@ -432,7 +432,7 @@ public class ContentBlocking {
     }
 
 
-    private static final String TEST = "test-track-simple";
+    private static final String TEST = "moztest-track-simple";
     private static final String AD = "ads-track-digest256";
     private static final String ANALYTIC = "analytics-track-digest256";
     private static final String SOCIAL = "social-track-digest256";

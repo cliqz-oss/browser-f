@@ -43,6 +43,7 @@
 #include "VTuneProfiler.h"
 
 #include "js/TraceLoggerAPI.h"
+#include "js/ProfilingFrameIterator.h"
 #include "memory_hooks.h"
 #include "mozilla/ArrayUtils.h"
 #include "mozilla/Atomics.h"
@@ -59,6 +60,7 @@
 #include "mozilla/Tuple.h"
 #include "mozilla/UniquePtr.h"
 #include "mozilla/Vector.h"
+#include "BaseProfiler.h"
 #include "nsDirectoryServiceDefs.h"
 #include "nsDirectoryServiceUtils.h"
 #include "nsIHttpProtocolHandler.h"
@@ -86,8 +88,8 @@
 #endif
 
 #if defined(GP_OS_android)
-#  include "FennecJNINatives.h"
-#  include "FennecJNIWrappers.h"
+#  include "GeneratedJNINatives.h"
+#  include "GeneratedJNIWrappers.h"
 #endif
 
 // Win32 builds always have frame pointers, so FramePointerStackWalk() always
@@ -461,12 +463,6 @@ class ActivePS {
     // Filter out any features unavailable in this platform/configuration.
     aFeatures &= AvailableFeatures();
 
-#if defined(GP_OS_android)
-    if (!jni::IsFennec()) {
-      aFeatures &= ~ProfilerFeature::Java;
-    }
-#endif
-
     // Always enable ProfilerFeature::Threads if we have a filter, because
     // users sometimes ask to filter by a list of threads but forget to
     // explicitly specify ProfilerFeature::Threads.
@@ -477,7 +473,7 @@ class ActivePS {
     return aFeatures;
   }
 
-  ActivePS(PSLockRef aLock, uint32_t aCapacity, double aInterval,
+  ActivePS(PSLockRef aLock, PowerOfTwo32 aCapacity, double aInterval,
            uint32_t aFeatures, const char** aFilters, uint32_t aFilterCount,
            const Maybe<double>& aDuration)
       : mGeneration(sNextGeneration++),
@@ -580,7 +576,7 @@ class ActivePS {
   }
 
  public:
-  static void Create(PSLockRef aLock, uint32_t aCapacity, double aInterval,
+  static void Create(PSLockRef aLock, PowerOfTwo32 aCapacity, double aInterval,
                      uint32_t aFeatures, const char** aFilters,
                      uint32_t aFilterCount, const Maybe<double>& aDuration) {
     sInstance = new ActivePS(aLock, aCapacity, aInterval, aFeatures, aFilters,
@@ -597,7 +593,7 @@ class ActivePS {
 
   static bool Exists(PSLockRef) { return !!sInstance; }
 
-  static bool Equals(PSLockRef, uint32_t aCapacity,
+  static bool Equals(PSLockRef, PowerOfTwo32 aCapacity,
                      const Maybe<double>& aDuration, double aInterval,
                      uint32_t aFeatures, const char** aFilters,
                      uint32_t aFilterCount) {
@@ -640,7 +636,7 @@ class ActivePS {
 
   PS_GET(uint32_t, Generation)
 
-  PS_GET(uint32_t, Capacity)
+  PS_GET(PowerOfTwo32, Capacity)
 
   PS_GET(Maybe<double>, Duration)
 
@@ -659,12 +655,17 @@ class ActivePS {
 
   static uint32_t JSFlags(PSLockRef aLock) {
     uint32_t Flags = 0;
-    Flags |= FeatureJS(aLock) ? uint32_t(JSSamplingFlags::StackSampling) : 0;
-    Flags |= FeatureTrackOptimizations(aLock)
-                 ? uint32_t(JSSamplingFlags::TrackOptimizations)
-                 : 0;
     Flags |=
-        FeatureJSTracer(aLock) ? uint32_t(JSSamplingFlags::TraceLogging) : 0;
+        FeatureJS(aLock) ? uint32_t(JSInstrumentationFlags::StackSampling) : 0;
+    Flags |= FeatureTrackOptimizations(aLock)
+                 ? uint32_t(JSInstrumentationFlags::TrackOptimizations)
+                 : 0;
+    Flags |= FeatureJSTracer(aLock)
+                 ? uint32_t(JSInstrumentationFlags::TraceLogging)
+                 : 0;
+    Flags |= FeatureJSAllocations(aLock)
+                 ? uint32_t(JSInstrumentationFlags::Allocations)
+                 : 0;
     return Flags;
   }
 
@@ -854,11 +855,29 @@ class ActivePS {
   static void ClearExpiredExitProfiles(PSLockRef) {
     uint64_t bufferRangeStart = sInstance->mBuffer->mRangeStart;
     // Discard exit profiles that were gathered before our buffer RangeStart.
+#ifdef MOZ_BASE_PROFILER
+    if (bufferRangeStart != 0 && sInstance->mBaseProfileThreads) {
+      sInstance->mBaseProfileThreads.reset();
+    }
+#endif
     sInstance->mExitProfiles.eraseIf(
         [bufferRangeStart](const ExitProfile& aExitProfile) {
           return aExitProfile.mBufferPositionAtGatherTime < bufferRangeStart;
         });
   }
+
+#ifdef MOZ_BASE_PROFILER
+  static void AddBaseProfileThreads(PSLockRef aLock,
+                                    UniquePtr<char[]> aBaseProfileThreads) {
+    sInstance->mBaseProfileThreads = std::move(aBaseProfileThreads);
+  }
+
+  static UniquePtr<char[]> MoveBaseProfileThreads(PSLockRef aLock) {
+    ClearExpiredExitProfiles(aLock);
+
+    return std::move(sInstance->mBaseProfileThreads);
+  }
+#endif
 
   static void AddExitProfile(PSLockRef aLock, const nsCString& aExitProfile) {
     ClearExpiredExitProfiles(aLock);
@@ -905,7 +924,7 @@ class ActivePS {
   static uint32_t sNextGeneration;
 
   // The maximum number of entries in mBuffer.
-  const uint32_t mCapacity;
+  const PowerOfTwo32 mCapacity;
 
   // The maximum duration of entries in mBuffer, in seconds.
   const Maybe<double> mDuration;
@@ -952,6 +971,11 @@ class ActivePS {
   // Used to record whether the profiler was paused just before forking. False
   // at all times except just before/after forking.
   bool mWasPaused;
+#endif
+
+#ifdef MOZ_BASE_PROFILER
+  // Optional startup profile thread array from BaseProfiler.
+  UniquePtr<char[]> mBaseProfileThreads;
 #endif
 
   struct ExitProfile {
@@ -1284,10 +1308,19 @@ static void MergeStacks(uint32_t aFeatures, bool aIsSynchronous,
       if (aIsSynchronous ||
           jsFrame.kind == JS::ProfilingFrameIterator::Frame_Wasm) {
         aCollector.CollectWasmFrame(jsFrame.label);
+      } else if (jsFrame.kind ==
+                 JS::ProfilingFrameIterator::Frame_BaselineInterpreter) {
+        // For now treat this as a C++ Interpreter frame by materializing a
+        // ProfilingStackFrame.
+        JSScript* script = jsFrame.interpreterScript;
+        jsbytecode* pc = jsFrame.interpreterPC();
+        js::ProfilingStackFrame stackFrame;
+        stackFrame.initJsFrame("", jsFrame.label, script, pc);
+        aCollector.CollectProfilingStackFrame(stackFrame);
       } else {
         MOZ_ASSERT(jsFrame.kind == JS::ProfilingFrameIterator::Frame_Ion ||
                    jsFrame.kind == JS::ProfilingFrameIterator::Frame_Baseline);
-        aCollector.CollectJitReturnAddr(jsFrame.returnAddress);
+        aCollector.CollectJitReturnAddr(jsFrame.returnAddress());
       }
 
       jsIndex--;
@@ -1809,14 +1842,35 @@ static void StreamTaskTracer(PSLockRef aLock, SpliceableJSONWriter& aWriter) {
 }
 
 static void StreamCategories(SpliceableJSONWriter& aWriter) {
-  // Same order as ProfilingCategory.
+  // Same order as ProfilingCategory. Format:
+  // [
+  //   {
+  //     name: "Idle",
+  //     color: "transparent",
+  //     subcategories: ["Other"],
+  //   },
+  //   {
+  //     name: "Other",
+  //     color: "grey",
+  //     subcategories: [
+  //       "JSM loading",
+  //       "Subprocess launching",
+  //       "DLL loading"
+  //     ]
+  //   },
+  //   ...
+  // ]
 
 #define CATEGORY_JSON_BEGIN_CATEGORY(name, labelAsString, color) \
   aWriter.Start();                                               \
   aWriter.StringProperty("name", labelAsString);                 \
-  aWriter.StringProperty("color", color);
-#define CATEGORY_JSON_SUBCATEGORY(category, name, labelAsString)
-#define CATEGORY_JSON_END_CATEGORY aWriter.EndObject();
+  aWriter.StringProperty("color", color);                        \
+  aWriter.StartArrayProperty("subcategories");
+#define CATEGORY_JSON_SUBCATEGORY(supercategory, name, labelAsString) \
+  aWriter.StringElement(labelAsString);
+#define CATEGORY_JSON_END_CATEGORY \
+  aWriter.EndArray();              \
+  aWriter.EndObject();
 
   PROFILING_CATEGORY_LIST(CATEGORY_JSON_BEGIN_CATEGORY,
                           CATEGORY_JSON_SUBCATEGORY, CATEGORY_JSON_END_CATEGORY)
@@ -1831,12 +1885,12 @@ static void StreamMetaJSCustomObject(PSLockRef aLock,
                                      bool aIsShuttingDown) {
   MOZ_RELEASE_ASSERT(CorePS::Exists() && ActivePS::Exists(aLock));
 
-  aWriter.IntProperty("version", 15);
+  aWriter.IntProperty("version", 16);
 
   // The "startTime" field holds the number of milliseconds since midnight
   // January 1, 1970 GMT. This grotty code computes (Now - (Now -
   // ProcessStartTime)) to convert CorePS::ProcessStartTime() into that form.
-  TimeDuration delta = TimeStamp::Now() - CorePS::ProcessStartTime();
+  TimeDuration delta = TimeStamp::NowUnfuzzed() - CorePS::ProcessStartTime();
   aWriter.DoubleProperty(
       "startTime",
       static_cast<double>(PR_Now() / 1000.0 - delta.ToMilliseconds()));
@@ -1998,7 +2052,7 @@ static UniquePtr<ProfileBuffer> CollectJavaThreadProfileData() {
   // locked_profiler_start uses sample count is 1000 for Java thread.
   // This entry size is enough now, but we might have to estimate it
   // if we can customize it
-  auto buffer = MakeUnique<ProfileBuffer>(1000 * 1000);
+  auto buffer = MakeUnique<ProfileBuffer>(MakePowerOfTwo32<1024 * 1024>());
 
   int sampleId = 0;
   while (true) {
@@ -2117,6 +2171,14 @@ static void locked_profiler_stream_json_for_this_process(
       java::GeckoJavaSampler::Unpause();
     }
 #endif
+
+#ifdef MOZ_BASE_PROFILER
+    UniquePtr<char[]> baseProfileThreads =
+        ActivePS::MoveBaseProfileThreads(aLock);
+    if (baseProfileThreads) {
+      aWriter.Splice(baseProfileThreads.get());
+    }
+#endif
   }
   aWriter.EndArray();
 
@@ -2207,6 +2269,9 @@ static void PrintUsageThenExit(int aExitCode) {
       "\n"
       "  MOZ_PROFILER_HELP\n"
       "  If set to any value, prints this message.\n"
+#ifdef MOZ_BASE_PROFILER
+      "  Use MOZ_BASE_PROFILER_HELP for BaseProfiler help.\n"
+#endif
       "\n"
       "  MOZ_LOG\n"
       "  Enables logging. The levels of logging available are\n"
@@ -2250,10 +2315,11 @@ static void PrintUsageThenExit(int aExitCode) {
       "\n"
       "    Features: (x=unavailable, D/d=default/unavailable,\n"
       "               S/s=MOZ_PROFILER_STARTUP extra default/unavailable)\n",
-      unsigned(PROFILER_DEFAULT_ENTRIES),
-      unsigned(PROFILER_DEFAULT_STARTUP_ENTRIES), sizeof(ProfileBufferEntry),
-      sizeof(ProfileBufferEntry) * PROFILER_DEFAULT_ENTRIES,
-      sizeof(ProfileBufferEntry) * PROFILER_DEFAULT_STARTUP_ENTRIES);
+      unsigned(PROFILER_DEFAULT_ENTRIES.Value()),
+      unsigned(PROFILER_DEFAULT_STARTUP_ENTRIES.Value()),
+      sizeof(ProfileBufferEntry),
+      sizeof(ProfileBufferEntry) * PROFILER_DEFAULT_ENTRIES.Value(),
+      sizeof(ProfileBufferEntry) * PROFILER_DEFAULT_STARTUP_ENTRIES.Value());
 
 #define PRINT_FEATURE(n_, str_, Name_, desc_)                                  \
   printf("    %c %5u: \"%s\" (%s)\n", FeatureCategory(ProfilerFeature::Name_), \
@@ -2416,13 +2482,13 @@ void SamplerThread::Run() {
   // This will be positive if we are running behind schedule (sampling less
   // frequently than desired) and negative if we are ahead of schedule.
   TimeDuration lastSleepOvershoot = 0;
-  TimeStamp sampleStart = TimeStamp::Now();
+  TimeStamp sampleStart = TimeStamp::NowUnfuzzed();
 
   while (true) {
     // This scope is for |lock|. It ends before we sleep below.
     {
       PSAutoLock lock(gPSMutex);
-      TimeStamp lockAcquired = TimeStamp::Now();
+      TimeStamp lockAcquired = TimeStamp::NowUnfuzzed();
 
       if (!ActivePS::Exists(lock)) {
         return;
@@ -2438,7 +2504,7 @@ void SamplerThread::Run() {
       ActivePS::ClearExpiredExitProfiles(lock);
 
       ActivePS::Buffer(lock).DeleteExpiredStoredMarkers();
-      TimeStamp expiredMarkersCleaned = TimeStamp::Now();
+      TimeStamp expiredMarkersCleaned = TimeStamp::NowUnfuzzed();
 
       if (!ActivePS::IsPaused(lock)) {
         const Vector<LiveProfiledThreadData>& liveThreads =
@@ -2466,7 +2532,7 @@ void SamplerThread::Run() {
 
         // handle per-process generic counters
         const Vector<BaseProfilerCount*>& counters = CorePS::Counters(lock);
-        TimeStamp now = TimeStamp::Now();
+        TimeStamp now = TimeStamp::NowUnfuzzed();
         for (auto& counter : counters) {
           // create Buffer entries for each counter
           buffer.AddEntry(ProfileBufferEntry::CounterId(counter));
@@ -2484,7 +2550,7 @@ void SamplerThread::Run() {
             buffer.AddEntry(ProfileBufferEntry::Number(number));
           }
         }
-        TimeStamp countersSampled = TimeStamp::Now();
+        TimeStamp countersSampled = TimeStamp::NowUnfuzzed();
 
         for (auto& thread : liveThreads) {
           RegisteredThread* registeredThread = thread.mRegisteredThread;
@@ -2511,7 +2577,7 @@ void SamplerThread::Run() {
             resp->Update();
           }
 
-          now = TimeStamp::Now();
+          now = TimeStamp::NowUnfuzzed();
           SuspendAndSampleAndResumeThread(
               lock, *registeredThread, [&](const Registers& aRegs) {
                 DoPeriodicSample(lock, *registeredThread, *profiledThreadData,
@@ -2532,7 +2598,7 @@ void SamplerThread::Run() {
         // SuspendAndSampleAndResumeThread, which is why it is done here.
         CorePS::Lul(lock)->MaybeShowStats();
 #endif
-        TimeStamp threadsSampled = TimeStamp::Now();
+        TimeStamp threadsSampled = TimeStamp::NowUnfuzzed();
 
         buffer.AddEntry(
             ProfileBufferEntry::ProfilerOverheadTime(delta.ToMilliseconds()));
@@ -2549,7 +2615,7 @@ void SamplerThread::Run() {
       Maybe<double> duration = ActivePS::Duration(lock);
       if (duration) {
         ActivePS::Buffer(lock).DiscardSamplesBeforeTime(
-            (TimeStamp::Now() - TimeDuration::FromSeconds(*duration) -
+            (TimeStamp::NowUnfuzzed() - TimeDuration::FromSeconds(*duration) -
              CorePS::ProcessStartTime())
                 .ToMilliseconds());
       }
@@ -2563,12 +2629,12 @@ void SamplerThread::Run() {
     // actual sleep intervals.
     TimeStamp targetSleepEndTime =
         sampleStart + TimeDuration::FromMicroseconds(mIntervalMicroseconds);
-    TimeStamp beforeSleep = TimeStamp::Now();
+    TimeStamp beforeSleep = TimeStamp::NowUnfuzzed();
     TimeDuration targetSleepDuration = targetSleepEndTime - beforeSleep;
     double sleepTime = std::max(
         0.0, (targetSleepDuration - lastSleepOvershoot).ToMicroseconds());
     SleepMicro(static_cast<uint32_t>(sleepTime));
-    sampleStart = TimeStamp::Now();
+    sampleStart = TimeStamp::NowUnfuzzed();
     lastSleepOvershoot =
         sampleStart - (beforeSleep + TimeDuration::FromMicroseconds(sleepTime));
   }
@@ -2752,7 +2818,7 @@ static void NotifyObservers(const char* aTopic,
   }
 }
 
-static void NotifyProfilerStarted(const int aCapacity,
+static void NotifyProfilerStarted(const PowerOfTwo32& aCapacity,
                                   const Maybe<double>& aDuration,
                                   double aInterval, uint32_t aFeatures,
                                   const char** aFilters,
@@ -2762,21 +2828,22 @@ static void NotifyProfilerStarted(const int aCapacity,
     filtersArray.AppendElement(aFilters[i]);
   }
 
-  nsCOMPtr<nsIProfilerStartParams> params = new nsProfilerStartParams(
-      aCapacity, aDuration, aInterval, aFeatures, std::move(filtersArray));
+  nsCOMPtr<nsIProfilerStartParams> params =
+      new nsProfilerStartParams(aCapacity.Value(), aDuration, aInterval,
+                                aFeatures, std::move(filtersArray));
 
   ProfilerParent::ProfilerStarted(params);
   NotifyObservers("profiler-started", params);
 }
 
-static void locked_profiler_start(PSLockRef aLock, uint32_t aCapacity,
+static void locked_profiler_start(PSLockRef aLock, PowerOfTwo32 aCapacity,
                                   double aInterval, uint32_t aFeatures,
                                   const char** aFilters, uint32_t aFilterCount,
                                   const Maybe<double>& aDuration);
 
 // This basically duplicates AutoProfilerLabel's constructor.
-ProfilingStack* MozGlueLabelEnter(const char* aLabel,
-                                  const char* aDynamicString, void* aSp) {
+static void* MozGlueLabelEnter(const char* aLabel, const char* aDynamicString,
+                               void* aSp) {
   ProfilingStack* profilingStack = AutoProfilerLabel::sProfilingStack.get();
   if (profilingStack) {
     profilingStack->pushLabelFrame(aLabel, aDynamicString, aSp,
@@ -2786,9 +2853,9 @@ ProfilingStack* MozGlueLabelEnter(const char* aLabel,
 }
 
 // This basically duplicates AutoProfilerLabel's destructor.
-void MozGlueLabelExit(ProfilingStack* sProfilingStack) {
+static void MozGlueLabelExit(void* sProfilingStack) {
   if (sProfilingStack) {
-    sProfilingStack->pop();
+    reinterpret_cast<ProfilingStack*>(sProfilingStack)->pop();
   }
 }
 
@@ -2836,7 +2903,7 @@ void profiler_init(void* aStackTop) {
   MOZ_RELEASE_ASSERT(filters.append("Compositor"));
   MOZ_RELEASE_ASSERT(filters.append("DOM Worker"));
 
-  uint32_t capacity = PROFILER_DEFAULT_ENTRIES;
+  PowerOfTwo32 capacity = PROFILER_DEFAULT_ENTRIES;
   Maybe<double> duration = Nothing();
   double interval = PROFILER_DEFAULT_INTERVAL;
 
@@ -2857,13 +2924,10 @@ void profiler_init(void* aStackTop) {
 #endif
 
 #if defined(GP_OS_android)
-    if (jni::IsFennec()) {
+    if (jni::IsAvailable()) {
       GeckoJavaSampler::Init();
     }
 #endif
-
-    // Setup support for pushing/popping labels in mozglue.
-    RegisterProfilerLabelEnterExit(MozGlueLabelEnter, MozGlueLabelExit);
 
     // (Linux-only) We could create CorePS::mLul and read unwind info into it
     // at this point. That would match the lifetime implied by destruction of
@@ -2886,12 +2950,13 @@ void profiler_init(void* aStackTop) {
       errno = 0;
       long capacityLong = strtol(startupCapacity, nullptr, 10);
       // `long` could be 32 or 64 bits, so we force a 64-bit comparison with
-      // the maximum 32-bit unsigned number.
+      // the maximum 32-bit signed number (as more than that is clamped down to
+      // 2^31 anyway).
       if (errno == 0 && capacityLong > 0 &&
           static_cast<uint64_t>(capacityLong) <=
-              static_cast<uint64_t>(UINT32_MAX)) {
-        capacity = static_cast<uint32_t>(capacityLong);
-        LOG("- MOZ_PROFILER_STARTUP_ENTRIES = %u", unsigned(capacity));
+              static_cast<uint64_t>(INT32_MAX)) {
+        capacity = PowerOfTwo32(static_cast<uint32_t>(capacityLong));
+        LOG("- MOZ_PROFILER_STARTUP_ENTRIES = %u", unsigned(capacity.Value()));
       } else {
         LOG("- MOZ_PROFILER_STARTUP_ENTRIES not a valid integer: %s",
             startupCapacity);
@@ -2968,11 +3033,9 @@ void profiler_init(void* aStackTop) {
   }
 
 #if defined(MOZ_REPLACE_MALLOC) && defined(MOZ_PROFILER_MEMORY)
-  if (ProfilerFeature::HasMemory(features)) {
-    // start counting memory allocations (outside of lock because this may call
-    // profiler_add_sampled_counter which would attempt to take the lock.)
-    mozilla::profiler::install_memory_counter(true);
-  }
+  // Start counting memory allocations (outside of lock because this may call
+  // profiler_add_sampled_counter which would attempt to take the lock.)
+  mozilla::profiler::install_memory_counter(true);
 #endif
 
   // We do this with gPSMutex unlocked. The comment in profiler_stop() explains
@@ -3111,7 +3174,7 @@ void profiler_get_start_params(int* aCapacity, Maybe<double>* aDuration,
     return;
   }
 
-  *aCapacity = ActivePS::Capacity(lock);
+  *aCapacity = ActivePS::Capacity(lock).Value();
   *aDuration = ActivePS::Duration(lock);
   *aInterval = ActivePS::Interval(lock);
   *aFeatures = ActivePS::Features(lock);
@@ -3137,7 +3200,8 @@ void GetProfilerEnvVarsForChildProcess(
   }
 
   aSetEnv("MOZ_PROFILER_STARTUP", "1");
-  auto capacityString = Smprintf("%d", ActivePS::Capacity(lock));
+  auto capacityString =
+      Smprintf("%u", unsigned(ActivePS::Capacity(lock).Value()));
   aSetEnv("MOZ_PROFILER_STARTUP_ENTRIES", capacityString.get());
 
   // Use AppendFloat instead of Smprintf with %f because the decimal
@@ -3160,6 +3224,24 @@ void GetProfilerEnvVarsForChildProcess(
     }
   }
   aSetEnv("MOZ_PROFILER_STARTUP_FILTERS", filtersString.c_str());
+
+#ifdef MOZ_BASE_PROFILER
+  // Blindly copy MOZ_BASE_PROFILER_STARTUP* env-vars.
+  auto copyEnv = [&](const char* aName) {
+    const char* env = getenv(aName);
+    if (!env) {
+      return;
+    }
+    aSetEnv(aName, env);
+  };
+  copyEnv("MOZ_BASE_PROFILER_STARTUP");
+  copyEnv("MOZ_BASE_PROFILER_STARTUP_ENTRIES");
+  copyEnv("MOZ_BASE_PROFILER_STARTUP_DURATION");
+  copyEnv("MOZ_BASE_PROFILER_STARTUP_INTERVAL");
+  copyEnv("MOZ_BASE_PROFILER_STARTUP_FEATURES_BITFIELD");
+  copyEnv("MOZ_BASE_PROFILER_STARTUP_FEATURES");
+  copyEnv("MOZ_BASE_PROFILER_STARTUP_FILTERS");
+#endif
 }
 
 }  // namespace mozilla
@@ -3244,7 +3326,7 @@ Maybe<ProfilerBufferInfo> profiler_get_buffer_info() {
 
   return Some(ProfilerBufferInfo{ActivePS::Buffer(lock).mRangeStart,
                                  ActivePS::Buffer(lock).mRangeEnd,
-                                 ActivePS::Capacity(lock)});
+                                 ActivePS::Capacity(lock).Value()});
 }
 
 static void PollJSSamplingForCurrentThread() {
@@ -3283,13 +3365,13 @@ static void TriggerPollJSSamplingOnMainThread() {
   }
 }
 
-static void locked_profiler_start(PSLockRef aLock, uint32_t aCapacity,
+static void locked_profiler_start(PSLockRef aLock, PowerOfTwo32 aCapacity,
                                   double aInterval, uint32_t aFeatures,
                                   const char** aFilters, uint32_t aFilterCount,
                                   const Maybe<double>& aDuration) {
   if (LOG_TEST) {
     LOG("locked_profiler_start");
-    LOG("- capacity  = %d", aCapacity);
+    LOG("- capacity  = %u", unsigned(aCapacity.Value()));
     LOG("- duration  = %.2f", aDuration ? *aDuration : -1);
     LOG("- interval = %.2f", aInterval);
 
@@ -3314,7 +3396,10 @@ static void locked_profiler_start(PSLockRef aLock, uint32_t aCapacity,
 #endif
 
   // Fall back to the default values if the passed-in values are unreasonable.
-  uint32_t capacity = aCapacity > 0 ? aCapacity : PROFILER_DEFAULT_ENTRIES;
+  // Less than 1024 would not be enough for the most complex stack, so we should
+  // be able to store at least one full stack. TODO: Review magic numbers.
+  PowerOfTwo32 capacity =
+      (aCapacity.Value() >= 1024) ? aCapacity : PROFILER_DEFAULT_ENTRIES;
   Maybe<double> duration = aDuration;
 
   if (aDuration && *aDuration <= 0) {
@@ -3324,6 +3409,36 @@ static void locked_profiler_start(PSLockRef aLock, uint32_t aCapacity,
 
   ActivePS::Create(aLock, capacity, interval, aFeatures, aFilters, aFilterCount,
                    duration);
+
+  // ActivePS::Create can only succeed or crash.
+  MOZ_ASSERT(ActivePS::Exists(aLock));
+
+#ifdef MOZ_BASE_PROFILER
+  if (baseprofiler::profiler_is_active()) {
+    // Note that we still hold the lock, so the sampler cannot run yet and
+    // interact negatively with the still-active BaseProfiler sampler.
+    // Assume that BaseProfiler is active because of MOZ_BASE_PROFILER_STARTUP.
+    // Capture the BaseProfiler startup profile threads (if any).
+    UniquePtr<char[]> baseprofile = baseprofiler::profiler_get_profile(
+        /* aSinceTime */ 0, /* aIsShuttingDown */ false,
+        /* aOnlyThreads */ true);
+
+    // Now stop BaseProfiler, as further recording will be ignored anyway, and
+    // so that it won't clash with Gecko Profiler sampling starting after the
+    // lock is dropped.
+    // TODO: Allow non-sampling profiling to continue.
+    // TODO: Re-start BaseProfiler after Gecko Profiler shutdown, to capture
+    // post-XPCOM shutdown.
+    baseprofiler::profiler_stop();
+
+    if (baseprofile && baseprofile.get()[0] != '\0') {
+      // The BaseProfiler startup profile will be stored as a separate process
+      // in the Gecko Profiler profile, and shown as a new track under the
+      // corresponding Gecko Profiler thread.
+      ActivePS::AddBaseProfileThreads(aLock, std::move(baseprofile));
+    }
+  }
+#endif
 
   // Set up profiling for each registered thread, if appropriate.
   int tid = profiler_current_thread_id();
@@ -3359,6 +3474,9 @@ static void locked_profiler_start(PSLockRef aLock, uint32_t aCapacity,
     }
   }
 
+  // Setup support for pushing/popping labels in mozglue.
+  RegisterProfilerLabelEnterExit(MozGlueLabelEnter, MozGlueLabelExit);
+
 #ifdef MOZ_TASK_TRACER
   if (ActivePS::FeatureTaskTracer(aLock)) {
     tasktracer::StartLogging();
@@ -3380,9 +3498,9 @@ static void locked_profiler_start(PSLockRef aLock, uint32_t aCapacity,
   RacyFeatures::SetActive(ActivePS::Features(aLock));
 }
 
-void profiler_start(uint32_t aCapacity, double aInterval, uint32_t aFeatures,
-                    const char** aFilters, uint32_t aFilterCount,
-                    const Maybe<double>& aDuration) {
+void profiler_start(PowerOfTwo32 aCapacity, double aInterval,
+                    uint32_t aFeatures, const char** aFilters,
+                    uint32_t aFilterCount, const Maybe<double>& aDuration) {
   LOG("profiler_start");
 
   SamplerThread* samplerThread = nullptr;
@@ -3404,11 +3522,9 @@ void profiler_start(uint32_t aCapacity, double aInterval, uint32_t aFeatures,
   }
 
 #if defined(MOZ_REPLACE_MALLOC) && defined(MOZ_PROFILER_MEMORY)
-  if (ProfilerFeature::HasMemory(aFeatures)) {
-    // start counting memory allocations (outside of lock because this may call
-    // profiler_add_sampled_counter which would attempt to take the lock.)
-    mozilla::profiler::install_memory_counter(true);
-  }
+  // Start counting memory allocations (outside of lock because this may call
+  // profiler_add_sampled_counter which would attempt to take the lock.)
+  mozilla::profiler::install_memory_counter(true);
 #endif
 
   // We do these operations with gPSMutex unlocked. The comments in
@@ -3422,7 +3538,7 @@ void profiler_start(uint32_t aCapacity, double aInterval, uint32_t aFeatures,
                         aFilterCount);
 }
 
-void profiler_ensure_started(uint32_t aCapacity, double aInterval,
+void profiler_ensure_started(PowerOfTwo32 aCapacity, double aInterval,
                              uint32_t aFeatures, const char** aFilters,
                              uint32_t aFilterCount,
                              const Maybe<double>& aDuration) {
@@ -3444,12 +3560,6 @@ void profiler_ensure_started(uint32_t aCapacity, double aInterval,
                             aFilters, aFilterCount)) {
         // Stop and restart with different settings.
         samplerThread = locked_profiler_stop(lock);
-#if defined(MOZ_REPLACE_MALLOC) && defined(MOZ_PROFILER_MEMORY)
-        if (!ProfilerFeature::HasMemory(aFeatures)) {
-          // Ensure we don't record memory measurements anymore (if we were).
-          mozilla::profiler::install_memory_counter(false);
-        }
-#endif
         locked_profiler_start(lock, aCapacity, aInterval, aFeatures, aFilters,
                               aFilterCount, aDuration);
         startedProfiler = true;
@@ -3463,12 +3573,10 @@ void profiler_ensure_started(uint32_t aCapacity, double aInterval,
   }
 
 #if defined(MOZ_REPLACE_MALLOC) && defined(MOZ_PROFILER_MEMORY)
-  if (startedProfiler && ProfilerFeature::HasMemory(aFeatures)) {
-    // start counting memory allocations (outside of lock because this may
-    // call profiler_add_sampled_counter which would attempt to take the
-    // lock.)
-    mozilla::profiler::install_memory_counter(true);
-  }
+  // Start counting memory allocations (outside of lock because this may
+  // call profiler_add_sampled_counter which would attempt to take the
+  // lock.)
+  mozilla::profiler::install_memory_counter(true);
 #endif
 
   // We do these operations with gPSMutex unlocked. The comments in
@@ -3508,6 +3616,9 @@ static MOZ_MUST_USE SamplerThread* locked_profiler_stop(PSLockRef aLock) {
     tasktracer::StopLogging();
   }
 #endif
+
+  // Remove support for pushing/popping labels in mozglue.
+  RegisterProfilerLabelEnterExit(nullptr, nullptr);
 
   // Stop sampling live threads.
   int tid = profiler_current_thread_id();
@@ -3835,7 +3946,7 @@ void profiler_js_interrupt_callback() {
 double profiler_time() {
   MOZ_RELEASE_ASSERT(CorePS::Exists());
 
-  TimeDuration delta = TimeStamp::Now() - CorePS::ProcessStartTime();
+  TimeDuration delta = TimeStamp::NowUnfuzzed() - CorePS::ProcessStartTime();
   return delta.ToMilliseconds();
 }
 
@@ -3857,7 +3968,7 @@ UniqueProfilerBacktrace profiler_get_backtrace() {
 
   int tid = profiler_current_thread_id();
 
-  TimeStamp now = TimeStamp::Now();
+  TimeStamp now = TimeStamp::NowUnfuzzed();
 
   Registers regs;
 #if defined(HAVE_NATIVE_UNWIND)
@@ -3866,8 +3977,8 @@ UniqueProfilerBacktrace profiler_get_backtrace() {
   regs.Clear();
 #endif
 
-  // 1000 should be plenty for a single backtrace.
-  auto buffer = MakeUnique<ProfileBuffer>(1000);
+  // 1024 should be plenty for a single backtrace.
+  auto buffer = MakeUnique<ProfileBuffer>(MakePowerOfTwo32<1024>());
 
   DoSyncSample(lock, *registeredThread, now, regs, *buffer.get());
 
@@ -3899,7 +4010,7 @@ static void racy_profiler_add_marker(
 
   TimeStamp origin = (aPayload && !aPayload->GetStartTime().IsNull())
                          ? aPayload->GetStartTime()
-                         : TimeStamp::Now();
+                         : TimeStamp::NowUnfuzzed();
   TimeDuration delta = origin - CorePS::ProcessStartTime();
   racyRegisteredThread->AddPendingMarker(
       aMarkerName, aCategoryPair, std::move(aPayload), delta.ToMilliseconds());
@@ -3927,6 +4038,13 @@ void profiler_add_marker(const char* aMarkerName,
 // into the JS engine.
 void profiler_add_js_marker(const char* aMarkerName) {
   profiler_add_marker(aMarkerName, JS::ProfilingCategoryPair::JS, nullptr);
+}
+
+void profiler_add_js_allocation_marker(JS::RecordAllocationInfo&& info) {
+  profiler_add_marker(
+      "JS allocation", JS::ProfilingCategoryPair::JS,
+      MakeUnique<JsAllocationMarkerPayload>(TimeStamp::Now(), std::move(info),
+                                            profiler_get_backtrace()));
 }
 
 void profiler_add_network_marker(
@@ -3974,7 +4092,7 @@ void profiler_add_marker_for_thread(int aThreadId,
   // Create the ProfilerMarker which we're going to store.
   TimeStamp origin = (aPayload && !aPayload->GetStartTime().IsNull())
                          ? aPayload->GetStartTime()
-                         : TimeStamp::Now();
+                         : TimeStamp::NowUnfuzzed();
   TimeDuration delta = origin - CorePS::ProcessStartTime();
   ProfilerMarker* marker =
       new ProfilerMarker(aMarkerName, aCategoryPair, aThreadId,

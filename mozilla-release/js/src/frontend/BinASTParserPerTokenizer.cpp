@@ -16,6 +16,7 @@
 
 #include "frontend/BinAST-macros.h"
 #include "frontend/BinASTParser.h"
+#include "frontend/BinASTTokenReaderContext.h"
 #include "frontend/BinASTTokenReaderMultipart.h"
 #include "frontend/FullParseHandler.h"
 #include "frontend/ParseNode.h"
@@ -132,7 +133,7 @@ JS::Result<ParseNode*> BinASTParserPerTokenizer<Tok>::parseAux(
   MOZ_TRY(tokenizer_->readHeader());
 
   ParseNode* result(nullptr);
-  const Context topContext(Context::topLevel());
+  const Context topContext((RootContext()));
   MOZ_TRY_VAR(result, asFinalParser()->parseProgram(topContext));
 
   mozilla::Maybe<GlobalScope::Data*> bindings =
@@ -195,7 +196,7 @@ JS::Result<FunctionNode*> BinASTParserPerTokenizer<Tok>::parseLazyFunction(
 
   // Inject a toplevel context (i.e. no parent) to parse the lazy content.
   // In the future, we may move this to a more specific context.
-  const Context context(Context::topLevel());
+  const Context context((RootContext()));
   MOZ_TRY(
       (asFinalParser()->*parseFunc)(func->nargs(), &params, &tmpBody, context));
 
@@ -274,9 +275,9 @@ JS::Result<FunctionBox*> BinASTParserPerTokenizer<Tok>::buildFunctionBox(
 
   traceListHead_ = funbox;
   if (pc_) {
-    funbox->initWithEnclosingParseContext(pc_, syntax);
+    funbox->initWithEnclosingParseContext(pc_, fun, syntax);
   } else {
-    funbox->initFromLazyFunction();
+    funbox->initFromLazyFunction(fun);
   }
   return funbox;
 }
@@ -378,7 +379,7 @@ JS::Result<FunctionNode*> BinASTParserPerTokenizer<Tok>::buildFunction(
 
   funbox->functionScopeBindings().set(*bindings);
 
-  if (funbox->function()->isNamedLambda()) {
+  if (funbox->isNamedLambda()) {
     BINJS_TRY_DECL(
         recursiveBinding,
         NewLexicalScopeData(cx_, pc_->namedLambdaScope(), alloc_, pc_));
@@ -416,9 +417,9 @@ JS::Result<Ok> BinASTParserPerTokenizer<Tok>::addScopeName(
 template <typename Tok>
 void BinASTParserPerTokenizer<Tok>::captureFunctionName() {
   MOZ_ASSERT(pc_->isFunctionBox());
-  MOZ_ASSERT(pc_->functionBox()->function()->isNamedLambda());
+  MOZ_ASSERT(pc_->functionBox()->isNamedLambda());
 
-  RootedAtom funName(cx_, pc_->functionBox()->function()->explicitName());
+  RootedAtom funName(cx_, pc_->functionBox()->explicitName());
   MOZ_ASSERT(funName);
 
   auto ptr = pc_->namedLambdaScope().lookupDeclaredName(funName);
@@ -625,7 +626,7 @@ JS::Result<Ok> BinASTParserPerTokenizer<Tok>::checkFunctionClosedVars() {
 
   MOZ_TRY(checkClosedVars(*pc_->innermostScope()));
   MOZ_TRY(checkClosedVars(pc_->functionScope()));
-  if (pc_->functionBox()->function()->isNamedLambda()) {
+  if (pc_->functionBox()->isNamedLambda()) {
     MOZ_TRY(checkClosedVars(pc_->namedLambdaScope()));
   }
 
@@ -813,6 +814,7 @@ BinASTParserPerTokenizer<Tok>::asFinalParser() const {
 // Force class instantiation.
 // This ensures that the symbols are built, without having to export all our
 // code (and its baggage of #include and macros) in the header.
+template class BinASTParserPerTokenizer<BinASTTokenReaderContext>;
 template class BinASTParserPerTokenizer<BinASTTokenReaderMultipart>;
 
 }  // namespace frontend

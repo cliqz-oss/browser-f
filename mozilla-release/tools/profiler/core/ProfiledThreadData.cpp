@@ -87,6 +87,7 @@ void ProfiledThreadData::StreamJSON(const ProfileBuffer& aBuffer,
         schema.WriteField("line");
         schema.WriteField("column");
         schema.WriteField("category");
+        schema.WriteField("subcategory");
       }
 
       aWriter.StartArrayProperty("data");
@@ -113,6 +114,8 @@ void ProfiledThreadData::StreamTraceLoggerJSON(
   aWriter.StartObjectProperty("jsTracerEvents");
   {
     JS::AutoTraceLoggerLockGuard lockGuard;
+    JS::SpewTraceLoggerThread(aCx);
+
     uint32_t length = 0;
 
     // Collect Event Ids

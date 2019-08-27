@@ -28,7 +28,7 @@ pref("devtools.webconsole.groupWarningMessages", false);
 pref("devtools.webconsole.input.editor", false);
 pref("devtools.webconsole.input.autocomplete", true);
 pref("devtools.browserconsole.contentMessages", true);
-pref("devtools.browserconsole.filterContentMessages", false);
+pref("devtools.webconsole.features.editor", true);
 
 global.loader = {
   lazyServiceGetter: () => {},
@@ -67,6 +67,14 @@ if (!global.URLSearchParams) {
   global.URLSearchParams = require("url").URLSearchParams;
 }
 
+if (!global.ResizeObserver) {
+  global.ResizeObserver = class ResizeObserver {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  };
+}
+
 // Mock ChromeUtils.
 global.ChromeUtils = {
   import: () => {},
@@ -75,6 +83,7 @@ global.ChromeUtils = {
 
 // Point to vendored-in files and mocks when needed.
 const requireHacker = require("require-hacker");
+/* eslint-disable complexity */
 requireHacker.global_hook("default", (path, module) => {
   switch (path) {
     // For Enzyme
@@ -138,6 +147,7 @@ requireHacker.global_hook("default", (path, module) => {
 
   return undefined;
 });
+/* eslint-enable complexity */
 
 // Configure enzyme with React 16 adapter. This needs to be done after we set the
 // requireHack hook so `require()` calls in Enzyme are handled as well.

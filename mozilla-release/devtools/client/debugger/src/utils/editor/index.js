@@ -163,7 +163,13 @@ function isVisible(codeMirror: any, top: number, left: number) {
   return inXView && inYView;
 }
 
-export function getLocationsInViewport({ codeMirror }: Object) {
+export function getLocationsInViewport(
+  { codeMirror }: Object,
+  // Offset represents an allowance of characters or lines offscreen to improve
+  // perceived performance of column breakpoint rendering
+  offsetHorizontalCharacters: number = 100,
+  offsetVerticalLines: number = 20
+) {
   // Get scroll position
   if (!codeMirror) {
     return {
@@ -175,20 +181,25 @@ export function getLocationsInViewport({ codeMirror }: Object) {
   const scrollArea = codeMirror.getScrollInfo();
   const { scrollLeft } = codeMirror.doc;
   const rect = codeMirror.getWrapperElement().getBoundingClientRect();
-  const topVisibleLine = codeMirror.lineAtHeight(rect.top, "window");
-  const bottomVisibleLine = codeMirror.lineAtHeight(rect.bottom, "window");
+  const topVisibleLine =
+    codeMirror.lineAtHeight(rect.top, "window") - offsetVerticalLines;
+  const bottomVisibleLine =
+    codeMirror.lineAtHeight(rect.bottom, "window") + offsetVerticalLines;
 
-  const leftColumn = Math.floor(scrollLeft > 0 ? scrollLeft / charWidth : 0);
+  const leftColumn = Math.floor(
+    scrollLeft > 0 ? scrollLeft / charWidth - offsetHorizontalCharacters : 0
+  );
   const rightPosition = scrollLeft + (scrollArea.clientWidth - 30);
-  const rightCharacter = Math.floor(rightPosition / charWidth);
+  const rightCharacter =
+    Math.floor(rightPosition / charWidth) + offsetHorizontalCharacters;
 
   return {
     start: {
-      line: topVisibleLine,
-      column: leftColumn,
+      line: topVisibleLine || 0,
+      column: leftColumn || 0,
     },
     end: {
-      line: bottomVisibleLine,
+      line: bottomVisibleLine || 0,
       column: rightCharacter,
     },
   };
@@ -224,11 +235,12 @@ export function getSourceLocationFromMouseEvent(
     left: e.clientX,
     top: e.clientY,
   });
+  const sourceId = source.id;
 
   return {
-    sourceId: source.id,
-    line: line + 1,
-    column: ch + 1,
+    sourceId,
+    line: fromEditorLine(sourceId, line),
+    column: isWasm(sourceId) ? 0 : ch + 1,
   };
 }
 
@@ -265,6 +277,7 @@ export function getTokenEnd(codeMirror: Object, line: number, column: number) {
     line: line,
     ch: column + 1,
   });
+  const tokenString = token.string;
 
-  return token.end;
+  return tokenString === "{" || tokenString === "[" ? null : token.end;
 }

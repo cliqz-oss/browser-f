@@ -1482,7 +1482,7 @@ static unsigned Disassemble1(JSContext* cx, HandleScript script, jsbytecode* pc,
     }
 
     case JOF_BIGINT: {
-      RootedValue v(cx, script->getConst(GET_UINT32_INDEX(pc)));
+      RootedValue v(cx, BigIntValue(script->getBigInt(pc)));
       UniqueChars bytes = ToDisassemblySource(cx, v);
       if (!bytes) {
         return 0;
@@ -1980,7 +1980,7 @@ bool ExpressionDecompiler::decompilePC(jsbytecode* pc, uint8_t defIndex) {
     case JSOP_BIGINT:
 #if defined(DEBUG) || defined(JS_JITSPEW)
       // BigInt::dump() only available in this configuration.
-      script->getConst(GET_UINT32_INDEX(pc)).toBigInt()->dump(sprinter);
+      script->getBigInt(pc)->dump(sprinter);
       return !sprinter.hadOutOfMemory();
 #else
       return write("[bigint]");
@@ -2531,11 +2531,10 @@ extern bool js::IsValidBytecodeOffset(JSContext* cx, JSScript* script,
  * PurgePCCounts            None      None      None
  */
 
-static void ReleaseScriptCounts(FreeOp* fop) {
-  JSRuntime* rt = fop->runtime();
+static void ReleaseScriptCounts(JSRuntime* rt) {
   MOZ_ASSERT(rt->scriptAndCountsVector);
 
-  fop->delete_(rt->scriptAndCountsVector.ref());
+  js_delete(rt->scriptAndCountsVector.ref());
   rt->scriptAndCountsVector = nullptr;
 }
 
@@ -2547,7 +2546,7 @@ JS_FRIEND_API void js::StartPCCountProfiling(JSContext* cx) {
   }
 
   if (rt->scriptAndCountsVector) {
-    ReleaseScriptCounts(rt->defaultFreeOp());
+    ReleaseScriptCounts(rt);
   }
 
   ReleaseAllJITCode(rt->defaultFreeOp());
@@ -2566,7 +2565,7 @@ JS_FRIEND_API void js::StopPCCountProfiling(JSContext* cx) {
   ReleaseAllJITCode(rt->defaultFreeOp());
 
   auto* vec = cx->new_<PersistentRooted<ScriptAndCountsVector>>(
-      cx, ScriptAndCountsVector(SystemAllocPolicy()));
+      cx, ScriptAndCountsVector());
   if (!vec) {
     return;
   }
@@ -2574,7 +2573,7 @@ JS_FRIEND_API void js::StopPCCountProfiling(JSContext* cx) {
   for (ZonesIter zone(rt, SkipAtoms); !zone.done(); zone.next()) {
     for (auto script = zone->cellIter<JSScript>(); !script.done();
          script.next()) {
-      if (script->hasScriptCounts() && script->types()) {
+      if (script->hasScriptCounts() && script->jitScript()) {
         if (!vec->append(script)) {
           return;
         }
@@ -2594,7 +2593,7 @@ JS_FRIEND_API void js::PurgePCCounts(JSContext* cx) {
   }
   MOZ_ASSERT(!rt->profilingScripts);
 
-  ReleaseScriptCounts(rt->defaultFreeOp());
+  ReleaseScriptCounts(rt);
 }
 
 JS_FRIEND_API size_t js::GetPCCountScriptCount(JSContext* cx) {
@@ -2914,12 +2913,14 @@ static bool GenerateLcovInfo(JSContext* cx, JS::Realm* realm,
     // the functions them visited in the opposite order when popping
     // elements from the stack of remaining scripts, such that the
     // functions are more-less listed with increasing line numbers.
-    if (!script->hasObjects()) {
-      continue;
-    }
-    auto objects = script->objects();
-    for (JSObject* obj : mozilla::Reversed(objects)) {
+    auto gcthings = script->gcthings();
+    for (JS::GCCellPtr gcThing : mozilla::Reversed(gcthings)) {
+      if (!gcThing.is<JSObject>()) {
+        continue;
+      }
+
       // Only continue on JSFunction objects.
+      JSObject* obj = &gcThing.as<JSObject>();
       if (!obj->is<JSFunction>()) {
         continue;
       }

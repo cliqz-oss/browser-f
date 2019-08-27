@@ -21,7 +21,7 @@ webidl Node;
 /**
  * The nsIXULBrowserWindow supplies the methods that may be called from the
  * internals of the browser area to tell the containing xul window to update
- * its ui. 
+ * its ui.
  */
 [scriptable, uuid(a8675fa9-c8b4-4350-9803-c38f344a9e38)]
 interface nsIXULBrowserWindow : nsISupports
@@ -96,6 +96,6 @@ interface nsIXULBrowserWindow : nsISupports
   void updateDocShellCaps(in ACString aDisCaps);
   void updateIsPrivate(in boolean aIsPrivate);
   void updateScrollPositions(in Array<ACString> aPositions, in Array<long> aChildren);
-  void updateSessionStore(in Element aBrowser, in uint32_t aFlushId);
+  void updateSessionStore(in Element aBrowser, in uint32_t aFlushId, in boolean aIsFinal);
 };
 

@@ -37,20 +37,26 @@ class JSWindowActorChild final : public JSWindowActor {
   NS_DECL_CYCLE_COLLECTION_SCRIPT_HOLDER_CLASS_INHERITED(JSWindowActorChild,
                                                          JSWindowActor)
 
+  explicit JSWindowActorChild(nsIGlobalObject* aGlobal = nullptr);
+
+  nsIGlobalObject* GetParentObject() const override { return mGlobal; }
+
   JSObject* WrapObject(JSContext* aCx,
                        JS::Handle<JSObject*> aGivenProto) override;
 
   static already_AddRefed<JSWindowActorChild> Constructor(GlobalObject& aGlobal,
                                                           ErrorResult& aRv) {
-    return MakeAndAddRef<JSWindowActorChild>();
+    nsCOMPtr<nsIGlobalObject> global(do_QueryInterface(aGlobal.GetAsSupports()));
+    return MakeAndAddRef<JSWindowActorChild>(global);
   }
 
-  WindowGlobalChild* Manager() const;
+  WindowGlobalChild* GetManager() const;
   void Init(const nsAString& aName, WindowGlobalChild* aManager);
   void StartDestroy();
   void AfterDestroy();
   Document* GetDocument(ErrorResult& aRv);
   BrowsingContext* GetBrowsingContext(ErrorResult& aRv);
+  nsIDocShell* GetDocShell(ErrorResult& aRv);
   Nullable<WindowProxyHolder> GetContentWindow(ErrorResult& aRv);
 
  protected:
@@ -63,6 +69,8 @@ class JSWindowActorChild final : public JSWindowActor {
 
   bool mCanSend = true;
   RefPtr<WindowGlobalChild> mManager;
+
+  nsCOMPtr<nsIGlobalObject> mGlobal;
 };
 
 }  // namespace dom

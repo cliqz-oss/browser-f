@@ -82,7 +82,7 @@ pub fn cascade<E>(
     parent_style_ignoring_first_line: Option<&ComputedValues>,
     layout_parent_style: Option<&ComputedValues>,
     visited_rules: Option<&StrongRuleNode>,
-    font_metrics_provider: &FontMetricsProvider,
+    font_metrics_provider: &dyn FontMetricsProvider,
     quirks_mode: QuirksMode,
     rule_cache: Option<&RuleCache>,
     rule_cache_conditions: &mut RuleCacheConditions,
@@ -116,7 +116,7 @@ fn cascade_rules<E>(
     parent_style: Option<&ComputedValues>,
     parent_style_ignoring_first_line: Option<&ComputedValues>,
     layout_parent_style: Option<&ComputedValues>,
-    font_metrics_provider: &FontMetricsProvider,
+    font_metrics_provider: &dyn FontMetricsProvider,
     cascade_mode: CascadeMode,
     quirks_mode: QuirksMode,
     rule_cache: Option<&RuleCache>,
@@ -213,7 +213,7 @@ pub fn apply_declarations<'a, E, F, I>(
     parent_style: Option<&ComputedValues>,
     parent_style_ignoring_first_line: Option<&ComputedValues>,
     layout_parent_style: Option<&ComputedValues>,
-    font_metrics_provider: &FontMetricsProvider,
+    font_metrics_provider: &dyn FontMetricsProvider,
     cascade_mode: CascadeMode,
     quirks_mode: QuirksMode,
     rule_cache: Option<&RuleCache>,
@@ -421,7 +421,7 @@ impl<'a, 'b: 'a> Cascade<'a, 'b> {
     }
 
     #[inline(always)]
-    fn apply_declaration<Phase: CascadePhase>(
+    fn apply_declaration(
         &mut self,
         longhand_id: LonghandId,
         declaration: &PropertyDeclaration,
@@ -544,7 +544,7 @@ impl<'a, 'b: 'a> Cascade<'a, 'b> {
             // FIXME(emilio): We should avoid generating code for logical
             // longhands and just use the physical ones, then rename
             // physical_longhand_id to just longhand_id.
-            self.apply_declaration::<Phase>(longhand_id, &*declaration);
+            self.apply_declaration(longhand_id, &*declaration);
         }
 
         if Phase::is_early() {
@@ -686,7 +686,7 @@ impl<'a, 'b: 'a> Cascade<'a, 'b> {
             return;
         }
 
-        let use_document_fonts = unsafe { structs::StaticPrefs_sVarCache_browser_display_use_document_fonts != 0 };
+        let use_document_fonts = unsafe { structs::StaticPrefs::sVarCache_browser_display_use_document_fonts != 0 };
         let builder = &mut self.context.builder;
         let (default_font_type, prioritize_user_fonts) = {
             let font = builder.get_font().gecko();

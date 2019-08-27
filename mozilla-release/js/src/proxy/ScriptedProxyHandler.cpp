@@ -620,6 +620,12 @@ bool ScriptedProxyHandler::getOwnPropertyDescriptor(
     if (targetDesc.configurable()) {
       return js::Throw(cx, id, JSMSG_CANT_REPORT_C_AS_NC);
     }
+
+    if (resultDesc.hasWritable() && !resultDesc.writable()) {
+      if (targetDesc.writable()) {
+        return js::Throw(cx, id, JSMSG_CANT_REPORT_W_AS_NW);
+      }
+    }
   }
 
   // Step 18.
@@ -733,6 +739,17 @@ bool ScriptedProxyHandler::defineProperty(JSContext* cx, HandleObject proxy,
       return js::Throw(cx, id, JSMSG_CANT_DEFINE_INVALID,
                        DETAILS_CANT_REPORT_C_AS_NC);
     }
+
+    if (targetDesc.isDataDescriptor() && !targetDesc.configurable() &&
+        targetDesc.writable()) {
+      if (desc.hasWritable() && !desc.writable()) {
+        static const char DETAILS_CANT_DEFINE_NW[] =
+            "proxy can't define an existing non-configurable writable property "
+            "as non-writable";
+        return js::Throw(cx, id, JSMSG_CANT_DEFINE_INVALID,
+                         DETAILS_CANT_DEFINE_NW);
+      }
+    }
   }
 
   // Step 17.
@@ -744,8 +761,8 @@ bool ScriptedProxyHandler::defineProperty(JSContext* cx, HandleObject proxy,
 static bool CreateFilteredListFromArrayLike(JSContext* cx, HandleValue v,
                                             MutableHandleIdVector props) {
   // Step 2.
-  RootedObject obj(
-      cx, NonNullObjectWithName(cx, "return value of the ownKeys trap", v));
+  RootedObject obj(cx, RequireObject(cx, JSMSG_OBJECT_REQUIRED_RET_OWNKEYS,
+                                     JSDVG_IGNORE_STACK, v));
   if (!obj) {
     return false;
   }
@@ -992,12 +1009,26 @@ bool ScriptedProxyHandler::delete_(JSContext* cx, HandleObject proxy,
     return false;
   }
 
+  // Step 11.
+  if (!desc.object()) {
+    return result.succeed();
+  }
+
   // Step 12.
-  if (desc.object() && !desc.configurable()) {
+  if (!desc.configurable()) {
     return Throw(cx, id, JSMSG_CANT_DELETE);
   }
 
-  // Steps 11,13.
+  bool extensible;
+  if (!IsExtensible(cx, target, &extensible)) {
+    return false;
+  }
+
+  if (!extensible) {
+    return Throw(cx, id, JSMSG_CANT_DELETE_NON_EXTENSIBLE);
+  }
+
+  // Step 13.
   return result.succeed();
 }
 
@@ -1447,7 +1478,7 @@ static bool ProxyCreate(JSContext* cx, CallArgs& args, const char* callerName) {
 
   // Step 1.
   RootedObject target(cx,
-                      NonNullObjectArg(cx, "`target`", callerName, args[0]));
+                      RequireObjectArg(cx, "`target`", callerName, args[0]));
   if (!target) {
     return false;
   }
@@ -1461,7 +1492,7 @@ static bool ProxyCreate(JSContext* cx, CallArgs& args, const char* callerName) {
 
   // Step 3.
   RootedObject handler(cx,
-                       NonNullObjectArg(cx, "`handler`", callerName, args[1]));
+                       RequireObjectArg(cx, "`handler`", callerName, args[1]));
   if (!handler) {
     return false;
   }

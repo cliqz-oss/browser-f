@@ -6,10 +6,20 @@
 
 var EXPORTED_SYMBOLS = ["AboutLoginsChild"];
 
-const {ActorChild} = ChromeUtils.import("resource://gre/modules/ActorChild.jsm");
-const {LoginHelper} = ChromeUtils.import("resource://gre/modules/LoginHelper.jsm");
-ChromeUtils.defineModuleGetter(this, "AppConstants",
-                               "resource://gre/modules/AppConstants.jsm");
+const { ActorChild } = ChromeUtils.import(
+  "resource://gre/modules/ActorChild.jsm"
+);
+const { LoginHelper } = ChromeUtils.import(
+  "resource://gre/modules/LoginHelper.jsm"
+);
+const { Services } = ChromeUtils.import("resource://gre/modules/Services.jsm");
+
+ChromeUtils.defineModuleGetter(
+  this,
+  "AppConstants",
+  "resource://gre/modules/AppConstants.jsm"
+);
+const TELEMETRY_EVENT_CATEGORY = "pwmgr";
 
 class AboutLoginsChild extends ActorChild {
   handleEvent(event) {
@@ -18,7 +28,10 @@ class AboutLoginsChild extends ActorChild {
         this.mm.sendAsyncMessage("AboutLogins:Subscribe");
 
         let documentElement = this.content.document.documentElement;
-        documentElement.classList.toggle("official-branding", AppConstants.MOZILLA_OFFICIAL);
+        documentElement.classList.toggle(
+          "official-branding",
+          AppConstants.MOZILLA_OFFICIAL
+        );
 
         let waivedContent = Cu.waiveXrays(this.content);
         let AboutLoginsUtils = {
@@ -26,21 +39,68 @@ class AboutLoginsChild extends ActorChild {
             return LoginHelper.doLoginsMatch(loginA, loginB, {});
           },
         };
-        waivedContent.AboutLoginsUtils = Cu.cloneInto(AboutLoginsUtils, waivedContent, {
-          cloneFunctions: true,
+        waivedContent.AboutLoginsUtils = Cu.cloneInto(
+          AboutLoginsUtils,
+          waivedContent,
+          {
+            cloneFunctions: true,
+          }
+        );
+        break;
+      }
+      case "AboutLoginsCreateLogin": {
+        this.mm.sendAsyncMessage("AboutLogins:CreateLogin", {
+          login: event.detail,
         });
         break;
       }
       case "AboutLoginsDeleteLogin": {
-        this.mm.sendAsyncMessage("AboutLogins:DeleteLogin", {login: event.detail});
+        this.mm.sendAsyncMessage("AboutLogins:DeleteLogin", {
+          login: event.detail,
+        });
+        break;
+      }
+      case "AboutLoginsImport": {
+        this.mm.sendAsyncMessage("AboutLogins:Import");
+        break;
+      }
+      case "AboutLoginsOpenFAQ": {
+        this.mm.sendAsyncMessage("AboutLogins:OpenFAQ");
+        break;
+      }
+      case "AboutLoginsOpenFeedback": {
+        this.mm.sendAsyncMessage("AboutLogins:OpenFeedback");
+        break;
+      }
+      case "AboutLoginsOpenPreferences": {
+        this.mm.sendAsyncMessage("AboutLogins:OpenPreferences");
         break;
       }
       case "AboutLoginsOpenSite": {
-        this.mm.sendAsyncMessage("AboutLogins:OpenSite", {login: event.detail});
+        this.mm.sendAsyncMessage("AboutLogins:OpenSite", {
+          login: event.detail,
+        });
+        break;
+      }
+      case "AboutLoginsRecordTelemetryEvent": {
+        let { method, object } = event.detail;
+        try {
+          Services.telemetry.recordEvent(
+            TELEMETRY_EVENT_CATEGORY,
+            method,
+            object
+          );
+        } catch (ex) {
+          Cu.reportError(
+            "AboutLoginsChild: error recording telemetry event: " + ex.message
+          );
+        }
         break;
       }
       case "AboutLoginsUpdateLogin": {
-        this.mm.sendAsyncMessage("AboutLogins:UpdateLogin", {login: event.detail});
+        this.mm.sendAsyncMessage("AboutLogins:UpdateLogin", {
+          login: event.detail,
+        });
         break;
       }
     }
@@ -64,7 +124,7 @@ class AboutLoginsChild extends ActorChild {
   }
 
   sendToContent(messageType, detail) {
-    let message = Object.assign({messageType}, {value: detail});
+    let message = Object.assign({ messageType }, { value: detail });
     let event = new this.content.CustomEvent("AboutLoginsChromeToContent", {
       detail: Cu.cloneInto(message, this.content),
     });

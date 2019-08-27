@@ -46,6 +46,8 @@ class Document;
 class Element;
 class Selection;
 class BrowserParent;
+class RemoteDragStartData;
+
 }  // namespace dom
 
 class OverOutElementsWrapper final : public nsISupports {
@@ -242,6 +244,12 @@ class EventStateManager : public nsSupportsWeakReference, public nsIObserver {
   nsresult SetCursor(StyleCursorKind aCursor, imgIContainer* aContainer,
                      const Maybe<gfx::IntPoint>& aHotspot, nsIWidget* aWidget,
                      bool aLockCursor);
+
+  /**
+   * Returns true if the event is considered as user interaction event. I.e.,
+   * enough obvious input to allow to open popup, etc. Otherwise, returns false.
+   */
+  static bool IsUserInteractionEvent(const WidgetEvent* aEvent);
 
   /**
    * StartHandlingUserInput() is called when we start to handle a user input.
@@ -1044,7 +1052,8 @@ class EventStateManager : public nsSupportsWeakReference, public nsIObserver {
   LayoutDeviceIntPoint GetEventRefPoint(WidgetEvent* aEvent) const;
 
   friend class mozilla::dom::BrowserParent;
-  void BeginTrackingRemoteDragGesture(nsIContent* aContent);
+  void BeginTrackingRemoteDragGesture(nsIContent* aContent,
+                                      dom::RemoteDragStartData* aDragStartData);
   void StopTrackingDragGesture();
   MOZ_CAN_RUN_SCRIPT
   void GenerateDragGesture(nsPresContext* aPresContext,
@@ -1069,12 +1078,11 @@ class EventStateManager : public nsSupportsWeakReference, public nsIObserver {
    * aPrincipal - [out] set to the triggering principal of the drag, or null
    *                    if it's from browser chrome or OS
    */
-  void DetermineDragTargetAndDefaultData(nsPIDOMWindowOuter* aWindow,
-                                         nsIContent* aSelectionTarget,
-                                         dom::DataTransfer* aDataTransfer,
-                                         dom::Selection** aSelection,
-                                         nsIContent** aTargetNode,
-                                         nsIPrincipal** aPrincipal);
+  void DetermineDragTargetAndDefaultData(
+      nsPIDOMWindowOuter* aWindow, nsIContent* aSelectionTarget,
+      dom::DataTransfer* aDataTransfer, dom::Selection** aSelection,
+      dom::RemoteDragStartData** aRemoteDragStartData, nsIContent** aTargetNode,
+      nsIPrincipal** aPrincipal);
 
   /*
    * Perform the default handling for the dragstart event and set up a
@@ -1085,6 +1093,7 @@ class EventStateManager : public nsSupportsWeakReference, public nsIObserver {
    * aDataTransfer - the data transfer that holds the data to be dragged
    * aDragTarget - the target of the drag
    * aSelection - the selection to be dragged
+   * aData - information pertaining to a drag started in a child process
    * aPrincipal - the triggering principal of the drag, or null if it's from
    *              browser chrome or OS
    */
@@ -1093,6 +1102,7 @@ class EventStateManager : public nsSupportsWeakReference, public nsIObserver {
                           WidgetDragEvent* aDragEvent,
                           dom::DataTransfer* aDataTransfer,
                           nsIContent* aDragTarget, dom::Selection* aSelection,
+                          dom::RemoteDragStartData* aDragStartData,
                           nsIPrincipal* aPrincipal);
 
   bool IsTrackingDragGesture() const { return mGestureDownContent != nullptr; }
@@ -1209,6 +1219,8 @@ class EventStateManager : public nsSupportsWeakReference, public nsIObserver {
   // as the target in most cases but not always - for example when dragging
   // an <area> of an image map this is the image. (bug 289667)
   nsCOMPtr<nsIContent> mGestureDownFrameOwner;
+  // Data associated with a drag started in a content process.
+  RefPtr<dom::RemoteDragStartData> mGestureDownDragStartData;
   // State of keys when the original gesture-down happened
   Modifiers mGestureModifiers;
   uint16_t mGestureDownButtons;
@@ -1262,6 +1274,7 @@ class EventStateManager : public nsSupportsWeakReference, public nsIObserver {
   static int32_t sUserKeyboardEventDepth;
 
   static bool sNormalLMouseEventInProcess;
+  static int16_t sCurrentMouseBtn;
 
   static EventStateManager* sActiveESM;
 
@@ -1285,19 +1298,13 @@ class EventStateManager : public nsSupportsWeakReference, public nsIObserver {
  */
 class MOZ_RAII AutoHandlingUserInputStatePusher final {
  public:
-  AutoHandlingUserInputStatePusher(bool aIsHandlingUserInput,
-                                   WidgetEvent* aEvent,
-                                   dom::Document* aDocument);
+  explicit AutoHandlingUserInputStatePusher(bool aIsHandlingUserInput,
+                                            WidgetEvent* aEvent = nullptr);
   ~AutoHandlingUserInputStatePusher();
 
  protected:
-  RefPtr<dom::Document> mMouseButtonEventHandlingDocument;
   EventMessage mMessage;
   bool mIsHandlingUserInput;
-
-  bool NeedsToResetFocusManagerMouseButtonHandlingState() const {
-    return mMessage == eMouseDown || mMessage == eMouseUp;
-  }
 };
 
 }  // namespace mozilla

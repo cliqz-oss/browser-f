@@ -939,7 +939,7 @@ impl CSSWideKeyword {
 
 bitflags! {
     /// A set of flags for properties.
-    pub struct PropertyFlags: u8 {
+    pub struct PropertyFlags: u16 {
         /// This property requires a stacking context.
         const CREATES_STACKING_CONTEXT = 1 << 0;
         /// This property has values that can establish a containing block for
@@ -954,13 +954,17 @@ bitflags! {
         const APPLIES_TO_FIRST_LINE = 1 << 4;
         /// This longhand property applies to ::placeholder.
         const APPLIES_TO_PLACEHOLDER = 1 << 5;
+        ///  This longhand property applies to ::cue.
+        const APPLIES_TO_CUE = 1 << 6;
+        /// This longhand property applies to ::marker.
+        const APPLIES_TO_MARKER = 1 << 7;
         /// This property's getComputedStyle implementation requires layout
         /// to be flushed.
-        const GETCS_NEEDS_LAYOUT_FLUSH = 1 << 6;
+        const GETCS_NEEDS_LAYOUT_FLUSH = 1 << 8;
         /// This property is a legacy shorthand.
         ///
         /// https://drafts.csswg.org/css-cascade/#legacy-shorthand
-        const IS_LEGACY_SHORTHAND = 1 << 7;
+        const IS_LEGACY_SHORTHAND = 1 << 9;
 
         /* The following flags are currently not used in Rust code, they
          * only need to be listed in corresponding properties so that
@@ -1184,7 +1188,7 @@ impl LonghandId {
     pub fn flags(self) -> PropertyFlags {
         // TODO(emilio): This can be simplified further as Rust gains more
         // constant expression support.
-        const FLAGS: [u8; ${len(data.longhands)}] = [
+        const FLAGS: [u16; ${len(data.longhands)}] = [
             % for property in data.longhands:
                 % for flag in property.flags:
                     PropertyFlags::${flag}.bits |
@@ -1446,7 +1450,7 @@ impl ShorthandId {
     /// Returns PropertyFlags for the given shorthand property.
     #[inline]
     pub fn flags(self) -> PropertyFlags {
-        const FLAGS: [u8; ${len(data.shorthands)}] = [
+        const FLAGS: [u16; ${len(data.shorthands)}] = [
             % for property in data.shorthands:
                 % for flag in property.flags:
                     PropertyFlags::${flag}.bits |
@@ -2337,6 +2341,14 @@ impl SourcePropertyDeclaration {
         }
     }
 
+    /// Create one with a single PropertyDeclaration.
+    #[inline]
+    pub fn with_one(decl: PropertyDeclaration) -> Self {
+        let mut result = Self::new();
+        result.declarations.push(decl);
+        result
+    }
+
     /// Similar to Vec::drain: leaves this empty when the return value is dropped.
     pub fn drain(&mut self) -> SourcePropertyDeclarationDrain {
         SourcePropertyDeclarationDrain {
@@ -2474,20 +2486,7 @@ pub mod style_structs {
                 % if longhand.logical:
                     ${helpers.logical_setter(name=longhand.name)}
                 % else:
-                    % if longhand.is_vector:
-                        /// Set ${longhand.name}.
-                        #[allow(non_snake_case)]
-                        #[inline]
-                        pub fn set_${longhand.ident}<I>(&mut self, v: I)
-                        where
-                            I: IntoIterator<Item = longhands::${longhand.ident}
-                                                              ::computed_value::single_value::T>,
-                            I::IntoIter: ExactSizeIterator
-                        {
-                            self.${longhand.ident} = longhands::${longhand.ident}::computed_value
-                                                              ::List(v.into_iter().collect());
-                        }
-                    % elif longhand.ident == "display":
+                    % if longhand.ident == "display":
                         /// Set `display`.
                         ///
                         /// We need to keep track of the original display for hypothetical boxes,
@@ -2837,7 +2836,20 @@ impl ComputedValues {
     ///   style.resolve_color(style.get_border().clone_border_top_color());
     #[inline]
     pub fn resolve_color(&self, color: computed::Color) -> RGBA {
-        color.to_rgba(self.get_color().clone_color())
+        color.to_rgba(self.get_inherited_text().clone_color())
+    }
+
+    /// Returns which longhand properties have different values in the two
+    /// ComputedValues.
+    #[cfg(feature = "gecko_debug")]
+    pub fn differing_properties(&self, other: &ComputedValues) -> LonghandIdSet {
+        let mut set = LonghandIdSet::new();
+        % for prop in data.longhands:
+        if self.clone_${prop.ident}() != other.clone_${prop.ident}() {
+            set.insert(LonghandId::${prop.camel_case});
+        }
+        % endfor
+        set
     }
 }
 
@@ -3101,7 +3113,7 @@ impl ComputedValuesInner {
     pub fn transform_requires_layer(&self) -> bool {
         use crate::values::generics::transform::TransformOperation;
         // Check if the transform matrix is 2D or 3D
-        for transform in &self.get_box().transform.0 {
+        for transform in &*self.get_box().transform.0 {
             match *transform {
                 TransformOperation::Perspective(..) => {
                     return true;
@@ -3444,7 +3456,7 @@ impl<'a> StyleBuilder<'a> {
     }
     % endif
 
-    % if not property.is_vector or property.simple_vector_bindings:
+    % if not property.is_vector or property.simple_vector_bindings or product != "gecko":
     /// Set the `${property.ident}` to the computed value `value`.
     #[allow(non_snake_case)]
     pub fn set_${property.ident}(

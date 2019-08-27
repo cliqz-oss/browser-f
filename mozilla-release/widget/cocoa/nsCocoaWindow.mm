@@ -36,12 +36,12 @@
 #include "VibrancyManager.h"
 
 #include "gfxPlatform.h"
-#include "gfxPrefs.h"
 #include "qcms.h"
 
 #include "mozilla/AutoRestore.h"
 #include "mozilla/BasicEvents.h"
 #include "mozilla/Preferences.h"
+#include "mozilla/StaticPrefs.h"
 #include "mozilla/PresShell.h"
 #include <algorithm>
 
@@ -62,6 +62,8 @@ int32_t gXULModalLevel = 0;
 // windows.  (A non-sheet window that appears above an app-modal window is
 // also made app-modal.)  See nsCocoaWindow::SetModal().
 nsCocoaWindowList* gGeckoAppModalWindowList = NULL;
+
+BOOL sTouchBarIsInitialized = NO;
 
 // defined in nsMenuBarX.mm
 extern NSMenu* sApplicationMenu;  // Application menu shared by all menubars
@@ -1838,12 +1840,14 @@ void nsCocoaWindow::SetMenuBar(nsMenuBarX* aMenuBar) {
     mMenuBar->Paint();
 }
 
-nsresult nsCocoaWindow::SetFocus(bool aState) {
-  if (!mWindow) return NS_OK;
+void nsCocoaWindow::SetFocus(Raise aRaise) {
+  if (!mWindow) return;
 
   if (mPopupContentView) {
-    mPopupContentView->SetFocus(aState);
-  } else if (aState && ([mWindow isVisible] || [mWindow isMiniaturized])) {
+    return mPopupContentView->SetFocus(aRaise);
+  }
+
+  if (aRaise == Raise::Yes && ([mWindow isVisible] || [mWindow isMiniaturized])) {
     if ([mWindow isMiniaturized]) {
       [mWindow deminiaturize:nil];
     }
@@ -1851,8 +1855,6 @@ nsresult nsCocoaWindow::SetFocus(bool aState) {
     [mWindow makeKeyAndOrderFront:nil];
     SendSetZLevelEvent();
   }
-
-  return NS_OK;
 }
 
 LayoutDeviceIntPoint nsCocoaWindow::WidgetToScreenOffset() {
@@ -1913,7 +1915,7 @@ void nsCocoaWindow::CaptureRollupEvents(nsIRollupListener* aListener, bool aDoCa
       // the active application. We only set this up when needed
       // because they cause spurious mouse event after crash
       // and gdb sessions. See bug 699538.
-      nsToolkit::GetToolkit()->RegisterForAllProcessMouseEvents();
+      nsToolkit::GetToolkit()->MonitorAllProcessMouseEvents();
     }
     gRollupListener = aListener;
 
@@ -1931,7 +1933,7 @@ void nsCocoaWindow::CaptureRollupEvents(nsIRollupListener* aListener, bool aDoCa
     // may be visible.
     if (mWindow && (mWindowType == eWindowType_popup)) SetPopupWindowLevel();
   } else {
-    nsToolkit::GetToolkit()->UnregisterAllProcessMouseEventHandlers();
+    nsToolkit::GetToolkit()->StopMonitoringAllProcessMouseEvents();
 
     // XXXndeakin this doesn't make sense.
     // Why is the new window assumed to be a modal panel?
@@ -2007,7 +2009,7 @@ void nsCocoaWindow::SetWindowTransform(const gfx::Matrix& aTransform) {
     return;
   }
 
-  if (gfxPrefs::WindowTransformsDisabled()) {
+  if (StaticPrefs::widget_window_transforms_disabled()) {
     // CGSSetWindowTransform is a private API. In case calling it causes
     // problems either now or in the future, we'll want to have an easy kill
     // switch. So we allow disabling it with a pref.
@@ -2797,6 +2799,9 @@ static NSImage* GetMenuMaskImage() {
 
 - (NSTouchBar*)makeTouchBar {
   mTouchBar = [[nsTouchBar alloc] init];
+  if (mTouchBar) {
+    sTouchBarIsInitialized = YES;
+  }
   return mTouchBar;
 }
 

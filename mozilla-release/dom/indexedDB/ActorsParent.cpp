@@ -2134,7 +2134,12 @@ class EncodeKeysFunction final : public mozIStorageFunction {
     } else if (type == mozIStorageStatement::VALUE_TYPE_TEXT) {
       nsString stringKey;
       aArguments->GetString(0, stringKey);
-      key.SetFromString(stringKey);
+      ErrorResult errorResult;
+      auto result = key.SetFromString(stringKey, errorResult);
+      if (!result.Is(Ok, errorResult)) {
+        return result.Is(Invalid, errorResult) ? NS_ERROR_DOM_INDEXEDDB_DATA_ERR
+                                               : errorResult.StealNSResult();
+      }
     } else {
       NS_WARNING("Don't call me with the wrong type of arguments!");
       return NS_ERROR_UNEXPECTED;
@@ -5484,6 +5489,16 @@ class TransactionDatabaseOperationBase : public DatabaseOperationBase {
   bool mWaitingForContinue;
   const bool mTransactionIsAborted;
 
+#ifdef MOZ_DIAGNOSTIC_ASSERT_ENABLED
+ protected:
+  // A check only enables when the diagnostic assert turns on. It assumes the
+  // mUpdateRefcountFunction is a nullptr because the previous
+  // StartTransactionOp failed on the connection thread and the next write
+  // operation (e.g. ObjectstoreAddOrPutRequestOp) doesn't have enough time to
+  // catch up the failure information.
+  bool mAssumingPreviousOperationFail;
+#endif
+
  public:
   void AssertIsOnConnectionThread() const
 #ifdef DEBUG
@@ -6584,6 +6599,12 @@ class FactoryOp
   bool HasBlockedDatabases() const { return !mMaybeBlockedDatabases.IsEmpty(); }
 #endif
 
+  const nsCString& Origin() const {
+    AssertIsOnOwningThread();
+
+    return mOrigin;
+  }
+
   bool DatabaseFilePathIsKnown() const {
     AssertIsOnOwningThread();
 
@@ -6598,8 +6619,6 @@ class FactoryOp
   }
 
   void StringifyPersistenceType(nsCString& aResult) const;
-
-  void GetSanitizedOrigin(nsCString& aResult) const;
 
   void StringifyState(nsCString& aResult) const;
 
@@ -8954,23 +8973,6 @@ nsresult RemoveDatabaseFilesAndDirectory(nsIFile* aBaseDirectory,
   return NS_OK;
 }
 
-void SanitizeString(nsACString& aOrigin) {
-  char* iter = aOrigin.BeginWriting();
-  char* end = aOrigin.EndWriting();
-
-  while (iter != end) {
-    char c = *iter;
-
-    if (IsAsciiAlpha(c)) {
-      *iter = 'a';
-    } else if (IsAsciiDigit(c)) {
-      *iter = 'D';
-    }
-
-    ++iter;
-  }
-}
-
 /*******************************************************************************
  * Globals
  ******************************************************************************/
@@ -10085,11 +10087,14 @@ nsresult DatabaseConnection::AutoSavepoint::Start(
   MOZ_ASSERT(connection);
   connection->AssertIsOnConnectionThread();
 
-  // This is just a quick fix for preventing accessing the nullptr. The cause is
-  // probably because the connection was unexpectedly closed.
+  // The previous operation failed to begin a write transaction and the
+  // following opertion jumped to the connection thread before the previous
+  // operation has updated its failure to the transaction.
   if (!connection->GetUpdateRefcountFunction()) {
-    NS_WARNING("The connection was closed for some reasons!");
-    return NS_ERROR_DOM_INDEXEDDB_UNKNOWN_ERR;
+    NS_WARNING(
+        "The connection was closed because the previous operation "
+        "failed!");
+    return NS_ERROR_DOM_INDEXEDDB_ABORT_ERR;
   }
 
   MOZ_ASSERT(!mConnection);
@@ -11170,6 +11175,8 @@ bool ConnectionPool::ScheduleTransaction(TransactionInfo* aTransactionInfo,
         nsresult rv = NS_NewNamedThread(runnable->GetThreadName(),
                                         getter_AddRefs(newThread), runnable);
         if (NS_SUCCEEDED(rv)) {
+          newThread->SetNameForWakeupTelemetry(
+              NS_LITERAL_CSTRING("IndexedDB (all)"));
           MOZ_ASSERT(newThread);
 
           IDB_DEBUG_LOG(("ConnectionPool created thread %" PRIu32,
@@ -16340,8 +16347,8 @@ void QuotaClient::ShutdownTimedOut() {
       nsCString persistenceType;
       factoryOp->StringifyPersistenceType(persistenceType);
 
-      nsCString origin;
-      factoryOp->GetSanitizedOrigin(origin);
+      nsCString origin(factoryOp->Origin());
+      SanitizeOrigin(origin);
 
       nsCString state;
       factoryOp->StringifyState(state);
@@ -18336,9 +18343,13 @@ nsresult DatabaseOperationBase::BindKeyRangeToStatement(
 
   if (!aKeyRange.lower().IsUnset()) {
     Key lower;
-    rv = aKeyRange.lower().ToLocaleBasedKey(lower, aLocale);
-    if (NS_WARN_IF(NS_FAILED(rv))) {
-      return rv;
+    ErrorResult errorResult;
+    auto result =
+        aKeyRange.lower().ToLocaleBasedKey(lower, aLocale, errorResult);
+    if (!result.Is(Ok, errorResult)) {
+      return NS_WARN_IF(result.Is(Exception, errorResult))
+                 ? errorResult.StealNSResult()
+                 : NS_ERROR_DOM_INDEXEDDB_DATA_ERR;
     }
 
     rv = lower.BindToStatement(aStatement, NS_LITERAL_CSTRING("lower_key"));
@@ -18353,9 +18364,13 @@ nsresult DatabaseOperationBase::BindKeyRangeToStatement(
 
   if (!aKeyRange.upper().IsUnset()) {
     Key upper;
-    rv = aKeyRange.upper().ToLocaleBasedKey(upper, aLocale);
-    if (NS_WARN_IF(NS_FAILED(rv))) {
-      return rv;
+    ErrorResult errorResult;
+    auto result =
+        aKeyRange.upper().ToLocaleBasedKey(upper, aLocale, errorResult);
+    if (!result.Is(Ok, errorResult)) {
+      return NS_WARN_IF(result.Is(Exception, errorResult))
+                 ? errorResult.StealNSResult()
+                 : NS_ERROR_DOM_INDEXEDDB_DATA_ERR;
     }
 
     rv = upper.BindToStatement(aStatement, NS_LITERAL_CSTRING("upper_key"));
@@ -19145,25 +19160,6 @@ void FactoryOp::StringifyPersistenceType(nsCString& aResult) const {
   PersistenceType persistenceType = mCommonParams.metadata().persistenceType();
 
   PersistenceTypeToText(persistenceType, aResult);
-}
-
-void FactoryOp::GetSanitizedOrigin(nsCString& aResult) const {
-  AssertIsOnOwningThread();
-
-  int32_t colonPos = mOrigin.FindChar(':');
-  if (colonPos >= 0) {
-    const nsACString& prefix = Substring(mOrigin, 0, colonPos);
-
-    nsCString normSuffix(Substring(mOrigin, colonPos));
-    SanitizeString(normSuffix);
-
-    aResult = prefix + normSuffix;
-  } else {
-    nsCString origin(mOrigin);
-    SanitizeString(origin);
-
-    aResult = origin;
-  }
 }
 
 void FactoryOp::StringifyState(nsCString& aResult) const {
@@ -20589,9 +20585,12 @@ nsresult OpenDatabaseOp::UpdateLocaleAwareIndex(
       return rv;
     }
 
-    rv = oldKey.ToLocaleBasedKey(newSortKey, aLocale);
-    if (NS_WARN_IF(NS_FAILED(rv))) {
-      return rv;
+    ErrorResult errorResult;
+    auto result = oldKey.ToLocaleBasedKey(newSortKey, aLocale, errorResult);
+    if (!result.Is(Ok, errorResult)) {
+      return NS_WARN_IF(result.Is(Exception, errorResult))
+                 ? errorResult.StealNSResult()
+                 : NS_ERROR_DOM_INDEXEDDB_DATA_ERR;
     }
 
     rv = newSortKey.BindToStatement(writeStmt,
@@ -21703,7 +21702,12 @@ TransactionDatabaseOperationBase::TransactionDatabaseOperationBase(
       mTransactionLoggingSerialNumber(aTransaction->LoggingSerialNumber()),
       mInternalState(InternalState::Initial),
       mWaitingForContinue(false),
+#ifdef MOZ_DIAGNOSTIC_ASSERT_ENABLED
+      mTransactionIsAborted(aTransaction->IsAborted()),
+      mAssumingPreviousOperationFail(false) {
+#else
       mTransactionIsAborted(aTransaction->IsAborted()) {
+#endif
   MOZ_ASSERT(aTransaction);
   MOZ_ASSERT(LoggingSerialNumber());
 }
@@ -21715,7 +21719,12 @@ TransactionDatabaseOperationBase::TransactionDatabaseOperationBase(
       mTransaction(aTransaction),
       mTransactionLoggingSerialNumber(aTransaction->LoggingSerialNumber()),
       mInternalState(InternalState::Initial),
+#ifdef MOZ_DIAGNOSTIC_ASSERT_ENABLED
+      mTransactionIsAborted(aTransaction->IsAborted()),
+      mAssumingPreviousOperationFail(false) {
+#else
       mTransactionIsAborted(aTransaction->IsAborted()) {
+#endif
   MOZ_ASSERT(aTransaction);
 }
 
@@ -21892,6 +21901,13 @@ void TransactionDatabaseOperationBase::SendPreprocessInfoOrResults(
   MOZ_ASSERT(mInternalState == InternalState::SendingPreprocess ||
              mInternalState == InternalState::SendingResults);
   MOZ_ASSERT(mTransaction);
+
+  // The flag is raised only when there is no mUpdateRefcountFunction for the
+  // executing operation. It assume that is because the previous
+  // StartTransactionOp was failed to begin a write transaction and it reported
+  // when this operation has already jumped to the Connection thread.
+  MOZ_DIAGNOSTIC_ASSERT_IF(mAssumingPreviousOperationFail,
+                           mTransaction->IsAborted());
 
   if (NS_WARN_IF(IsActorDestroyed())) {
     // Normally we wouldn't need to send any notifications if the actor was
@@ -22518,6 +22534,11 @@ nsresult CreateObjectStoreOp::DoDatabaseWork(DatabaseConnection* aConnection) {
   DatabaseConnection::AutoSavepoint autoSave;
   nsresult rv = autoSave.Start(Transaction());
   if (NS_WARN_IF(NS_FAILED(rv))) {
+#ifdef MOZ_DIAGNOSTIC_ASSERT_ENABLED
+    if (!aConnection->GetUpdateRefcountFunction()) {
+      mAssumingPreviousOperationFail = true;
+    }
+#endif
     return rv;
   }
 
@@ -22632,6 +22653,11 @@ nsresult DeleteObjectStoreOp::DoDatabaseWork(DatabaseConnection* aConnection) {
   DatabaseConnection::AutoSavepoint autoSave;
   nsresult rv = autoSave.Start(Transaction());
   if (NS_WARN_IF(NS_FAILED(rv))) {
+#ifdef MOZ_DIAGNOSTIC_ASSERT_ENABLED
+    if (!aConnection->GetUpdateRefcountFunction()) {
+      mAssumingPreviousOperationFail = true;
+    }
+#endif
     return rv;
   }
 
@@ -22826,6 +22852,11 @@ nsresult RenameObjectStoreOp::DoDatabaseWork(DatabaseConnection* aConnection) {
   DatabaseConnection::AutoSavepoint autoSave;
   nsresult rv = autoSave.Start(Transaction());
   if (NS_WARN_IF(NS_FAILED(rv))) {
+#ifdef MOZ_DIAGNOSTIC_ASSERT_ENABLED
+    if (!aConnection->GetUpdateRefcountFunction()) {
+      mAssumingPreviousOperationFail = true;
+    }
+#endif
     return rv;
   }
 
@@ -22991,6 +23022,11 @@ nsresult CreateIndexOp::DoDatabaseWork(DatabaseConnection* aConnection) {
   DatabaseConnection::AutoSavepoint autoSave;
   nsresult rv = autoSave.Start(Transaction());
   if (NS_WARN_IF(NS_FAILED(rv))) {
+#ifdef MOZ_DIAGNOSTIC_ASSERT_ENABLED
+    if (!aConnection->GetUpdateRefcountFunction()) {
+      mAssumingPreviousOperationFail = true;
+    }
+#endif
     return rv;
   }
 
@@ -23447,6 +23483,11 @@ nsresult DeleteIndexOp::DoDatabaseWork(DatabaseConnection* aConnection) {
   DatabaseConnection::AutoSavepoint autoSave;
   nsresult rv = autoSave.Start(Transaction());
   if (NS_WARN_IF(NS_FAILED(rv))) {
+#ifdef MOZ_DIAGNOSTIC_ASSERT_ENABLED
+    if (!aConnection->GetUpdateRefcountFunction()) {
+      mAssumingPreviousOperationFail = true;
+    }
+#endif
     return rv;
   }
 
@@ -23732,6 +23773,11 @@ nsresult RenameIndexOp::DoDatabaseWork(DatabaseConnection* aConnection) {
   DatabaseConnection::AutoSavepoint autoSave;
   nsresult rv = autoSave.Start(Transaction());
   if (NS_WARN_IF(NS_FAILED(rv))) {
+#ifdef MOZ_DIAGNOSTIC_ASSERT_ENABLED
+    if (!aConnection->GetUpdateRefcountFunction()) {
+      mAssumingPreviousOperationFail = true;
+    }
+#endif
     return rv;
   }
 
@@ -24179,6 +24225,11 @@ nsresult ObjectStoreAddOrPutRequestOp::DoDatabaseWork(
   DatabaseConnection::AutoSavepoint autoSave;
   nsresult rv = autoSave.Start(Transaction());
   if (NS_WARN_IF(NS_FAILED(rv))) {
+#ifdef MOZ_DIAGNOSTIC_ASSERT_ENABLED
+    if (!aConnection->GetUpdateRefcountFunction()) {
+      mAssumingPreviousOperationFail = true;
+    }
+#endif
     return rv;
   }
 
@@ -24942,6 +24993,11 @@ nsresult ObjectStoreDeleteRequestOp::DoDatabaseWork(
   DatabaseConnection::AutoSavepoint autoSave;
   nsresult rv = autoSave.Start(Transaction());
   if (NS_WARN_IF(NS_FAILED(rv))) {
+#ifdef MOZ_DIAGNOSTIC_ASSERT_ENABLED
+    if (!aConnection->GetUpdateRefcountFunction()) {
+      mAssumingPreviousOperationFail = true;
+    }
+#endif
     return rv;
   }
 
@@ -25025,6 +25081,11 @@ nsresult ObjectStoreClearRequestOp::DoDatabaseWork(
   DatabaseConnection::AutoSavepoint autoSave;
   nsresult rv = autoSave.Start(Transaction());
   if (NS_WARN_IF(NS_FAILED(rv))) {
+#ifdef MOZ_DIAGNOSTIC_ASSERT_ENABLED
+    if (!aConnection->GetUpdateRefcountFunction()) {
+      mAssumingPreviousOperationFail = true;
+    }
+#endif
     return rv;
   }
 
@@ -25733,23 +25794,30 @@ void Cursor::OpenOp::GetRangeKeyInfo(bool aLowerBound, Key* aKey, bool* aOpen) {
   MOZ_ASSERT(aOpen);
 
   if (mOptionalKeyRange.isSome()) {
+    ErrorResult rv;
     const SerializedKeyRange& range = mOptionalKeyRange.ref();
     if (range.isOnly()) {
       *aKey = range.lower();
       *aOpen = false;
       if (mCursor->IsLocaleAware()) {
-        range.lower().ToLocaleBasedKey(*aKey, mCursor->mLocale);
+        Unused << range.lower().ToLocaleBasedKey(*aKey, mCursor->mLocale, rv);
       }
     } else {
       *aKey = aLowerBound ? range.lower() : range.upper();
       *aOpen = aLowerBound ? range.lowerOpen() : range.upperOpen();
       if (mCursor->IsLocaleAware()) {
         if (aLowerBound) {
-          range.lower().ToLocaleBasedKey(*aKey, mCursor->mLocale);
+          Unused << range.lower().ToLocaleBasedKey(*aKey, mCursor->mLocale, rv);
         } else {
-          range.upper().ToLocaleBasedKey(*aKey, mCursor->mLocale);
+          Unused << range.upper().ToLocaleBasedKey(*aKey, mCursor->mLocale, rv);
         }
       }
+    }
+
+    // XXX Explain why the error is ignored here (If it's impossible, then we
+    //     should change this to an assertion.)
+    if (rv.Failed()) {
+      rv.SuppressException();
     }
   } else {
     *aOpen = false;

@@ -149,6 +149,9 @@ nsresult GMPParent::LoadProcess() {
 
   if (!mProcess) {
     mProcess = new GMPProcessParent(NS_ConvertUTF16toUTF8(path).get());
+#if defined(XP_MACOSX) && defined(MOZ_SANDBOX)
+    mProcess->SetRequiresWindowServer(mAdapter.EqualsLiteral("chromium"));
+#endif
     if (!mProcess->Launch(30 * 1000)) {
       LOGD("%s: Failed to launch new child process", __FUNCTION__);
       mProcess->Delete();
@@ -420,7 +423,7 @@ bool GMPParent::EnsureProcessLoaded() {
   return NS_SUCCEEDED(rv);
 }
 
-void GMPParent::WriteExtraDataForMinidump() {
+void GMPParent::AddCrashAnnotations() {
   mCrashReporter->AddAnnotation(CrashReporter::Annotation::GMPPlugin, true);
   mCrashReporter->AddAnnotation(CrashReporter::Annotation::PluginFilename,
                                 NS_ConvertUTF16toUTF8(mName));
@@ -432,10 +435,12 @@ void GMPParent::WriteExtraDataForMinidump() {
 
 bool GMPParent::GetCrashID(nsString& aResult) {
   if (!mCrashReporter) {
+    CrashReporter::FinalizeOrphanedMinidump(OtherPid(),
+                                            GeckoProcessType_GMPlugin);
     return false;
   }
 
-  WriteExtraDataForMinidump();
+  AddCrashAnnotations();
   if (!mCrashReporter->GenerateCrashReport(OtherPid())) {
     return false;
   }

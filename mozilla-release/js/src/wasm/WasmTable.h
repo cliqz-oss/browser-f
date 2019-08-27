@@ -41,9 +41,10 @@ STATIC_ASSERT_ANYREF_IS_JSOBJECT;
 typedef GCVector<HeapPtr<JSObject*>, 0, SystemAllocPolicy> TableAnyRefVector;
 
 class Table : public ShareableBase<Table> {
-  using InstanceSet = JS::WeakCache<GCHashSet<
-      WeakHeapPtrWasmInstanceObject,
-      MovableCellHasher<WeakHeapPtrWasmInstanceObject>, SystemAllocPolicy>>;
+  using InstanceSet =
+      JS::WeakCache<GCHashSet<WeakHeapPtrWasmInstanceObject,
+                              MovableCellHasher<WeakHeapPtrWasmInstanceObject>,
+                              SystemAllocPolicy>>;
   using UniqueFuncRefArray = UniquePtr<FunctionTableElem[], JS::FreePolicy>;
 
   WeakHeapPtrWasmTableObject maybeObject_;
@@ -79,14 +80,19 @@ class Table : public ShareableBase<Table> {
   // Only for function values.  Raw pointer to the table.
   uint8_t* functionBase() const;
 
-  // get/setFuncRef is allowed only on table-of-funcref.
-  // get/setAnyRef is allowed only on table-of-anyref.
+  // set/get/fillFuncRef is allowed only on table-of-funcref.
+  // get/fillAnyRef is allowed only on table-of-anyref.
   // setNull is allowed on either.
+
   const FunctionTableElem& getFuncRef(uint32_t index) const;
+  bool getFuncRef(JSContext* cx, uint32_t index,
+                  MutableHandleFunction fun) const;
   void setFuncRef(uint32_t index, void* code, const Instance* instance);
+  void fillFuncRef(uint32_t index, uint32_t fillCount, AnyRef ref,
+                   JSContext* cx);
 
   AnyRef getAnyRef(uint32_t index) const;
-  void setAnyRef(uint32_t index, AnyRef);
+  void fillAnyRef(uint32_t index, uint32_t fillCount, AnyRef ref);
 
   void setNull(uint32_t index);
 
@@ -102,6 +108,8 @@ class Table : public ShareableBase<Table> {
   // about:memory reporting:
 
   size_t sizeOfExcludingThis(MallocSizeOf mallocSizeOf) const;
+
+  size_t gcMallocBytes() const;
 };
 
 typedef RefPtr<Table> SharedTable;

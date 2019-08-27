@@ -453,9 +453,8 @@ void SMILCSSValueType::ValueFromString(nsCSSPropertyID aPropID,
   }
 
   Document* doc = aTargetElement->GetComposedDoc();
-  if (doc && !nsStyleUtil::CSPAllowsInlineStyle(nullptr, doc->NodePrincipal(),
-                                                nullptr, doc->GetDocumentURI(),
-                                                0, 0, aString, nullptr)) {
+  if (doc && !nsStyleUtil::CSPAllowsInlineStyle(nullptr, doc, nullptr, 0, 0,
+                                                aString, nullptr)) {
     return;
   }
 
@@ -492,9 +491,8 @@ SMILValue SMILCSSValueType::ValueFromAnimationValue(
   // in that case, we just use a generic placeholder string instead.
   static const nsLiteralString kPlaceholderText =
       NS_LITERAL_STRING("[SVG animation of CSS]");
-  if (doc && !nsStyleUtil::CSPAllowsInlineStyle(
-                 nullptr, doc->NodePrincipal(), nullptr, doc->GetDocumentURI(),
-                 0, 0, kPlaceholderText, nullptr)) {
+  if (doc && !nsStyleUtil::CSPAllowsInlineStyle(nullptr, doc, nullptr, 0, 0,
+                                                kPlaceholderText, nullptr)) {
     return result;
   }
 
@@ -516,8 +514,8 @@ bool SMILCSSValueType::SetPropertyValues(const SMILValue& aValue,
 
   bool changed = false;
   for (const auto& value : wrapper->mServoValues) {
-    changed |=
-        Servo_DeclarationBlock_SetPropertyToAnimationValue(aDecl.Raw(), value);
+    changed |= Servo_DeclarationBlock_SetPropertyToAnimationValue(aDecl.Raw(),
+                                                                  value, {});
   }
 
   return changed;

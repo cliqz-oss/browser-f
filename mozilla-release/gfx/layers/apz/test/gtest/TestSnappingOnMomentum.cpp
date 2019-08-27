@@ -26,7 +26,7 @@ TEST_F(APZCSnappingOnMomentumTester, Snap_On_Momentum) {
 
   // Set up some basic scroll snapping
   ScrollSnapInfo snap;
-  snap.mScrollSnapTypeY = StyleScrollSnapStrictness::Mandatory;
+  snap.mScrollSnapStrictnessY = StyleScrollSnapStrictness::Mandatory;
 
   if (StaticPrefs::layout_css_scroll_snap_v1_enabled()) {
     snap.mSnapPositionY.AppendElement(0 * AppUnitsPerCSSPixel());
@@ -41,7 +41,7 @@ TEST_F(APZCSnappingOnMomentumTester, Snap_On_Momentum) {
 
   UniquePtr<ScopedLayerTreeRegistration> registration =
       MakeUnique<ScopedLayerTreeRegistration>(manager, LayersId{0}, root, mcc);
-  manager->UpdateHitTestingTree(LayersId{0}, root, false, LayersId{0}, 0);
+  manager->UpdateHitTestingTree(root, false, LayersId{0}, 0);
 
   RefPtr<TestAsyncPanZoomController> apzc = ApzcOf(root);
 

@@ -226,8 +226,9 @@ Maybe<TextureHost::ResourceUpdateOp> AsyncImagePipelineManager::UpdateImageKeys(
     return Nothing();
   }
 
-  if (!texture) {
-    // We don't have a new texture, there isn't much we can do.
+  if (!texture || texture->NumSubTextures() == 0) {
+    // We don't have a new texture or texture does not have SubTextures, there
+    // isn't much we can do.
     aKeys = aPipeline->mKeys;
     if (aPipeline->mWrTextureWrapper) {
       HoldExternalImage(aPipelineId, aEpoch, aPipeline->mWrTextureWrapper);
@@ -251,10 +252,13 @@ Maybe<TextureHost::ResourceUpdateOp> AsyncImagePipelineManager::UpdateImageKeys(
   // WebRenderTextureHost that supports NativeTexture
   bool useWrTextureWrapper =
       useExternalImage && wrTexture && wrTexture->SupportsWrNativeTexture();
+  // XXX Re-enable fast path for async native texture updates(Bug 1559294)
+  useWrTextureWrapper = false;
 
   // The non-external image code path falls back to converting the texture into
   // an rgb image.
   auto numKeys = useExternalImage ? texture->NumSubTextures() : 1;
+  MOZ_ASSERT(numKeys > 0);
 
   // If we already had a texture and the format hasn't changed, better to reuse
   // the image keys than create new ones.

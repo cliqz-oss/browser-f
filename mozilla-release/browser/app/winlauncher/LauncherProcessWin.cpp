@@ -60,6 +60,11 @@ static mozilla::LauncherVoidResult PostCreationSetup(
     (0x00000001ULL << 60)
 #endif  // !defined(PROCESS_CREATION_MITIGATION_POLICY_IMAGE_LOAD_PREFER_SYSTEM32_ALWAYS_ON)
 
+#if !defined(PROCESS_CREATION_MITIGATION_POLICY_CONTROL_FLOW_GUARD_ALWAYS_OFF)
+#  define PROCESS_CREATION_MITIGATION_POLICY_CONTROL_FLOW_GUARD_ALWAYS_OFF \
+    (0x00000002ULL << 40)
+#endif  // !defined(PROCESS_CREATION_MITIGATION_POLICY_CONTROL_FLOW_GUARD_ALWAYS_OFF)
+
 #if (_WIN32_WINNT < 0x0602)
 BOOL WINAPI
 SetProcessMitigationPolicy(PROCESS_MITIGATION_POLICY aMitigationPolicy,
@@ -76,6 +81,14 @@ static void SetMitigationPolicies(mozilla::ProcThreadAttributes& aAttrs,
     aAttrs.AddMitigationPolicy(
         PROCESS_CREATION_MITIGATION_POLICY_IMAGE_LOAD_PREFER_SYSTEM32_ALWAYS_ON);
   }
+
+#if defined(_M_ARM64)
+  // Disable CFG on older versions of ARM64 Windows to avoid a crash in COM.
+  if (!mozilla::IsWin10Sep2018UpdateOrLater()) {
+    aAttrs.AddMitigationPolicy(
+        PROCESS_CREATION_MITIGATION_POLICY_CONTROL_FLOW_GUARD_ALWAYS_OFF);
+  }
+#endif  // defined(_M_ARM64)
 }
 
 static mozilla::LauncherFlags ProcessCmdLine(int& aArgc, wchar_t* aArgv[]) {
@@ -96,10 +109,7 @@ static mozilla::LauncherFlags ProcessCmdLine(int& aArgc, wchar_t* aArgv[]) {
     result |= mozilla::LauncherFlags::eWaitForBrowser;
   }
 
-  if (mozilla::CheckArg(
-          aArgc, aArgv, L"no-deelevate", static_cast<const wchar_t**>(nullptr),
-          mozilla::CheckArgFlag::CheckOSInt |
-              mozilla::CheckArgFlag::RemoveArg) == mozilla::ARG_FOUND) {
+  if (mozilla::CheckArg(aArgc, aArgv, L"no-deelevate") == mozilla::ARG_FOUND) {
     result |= mozilla::LauncherFlags::eNoDeelevate;
   }
 
@@ -163,11 +173,11 @@ static mozilla::Maybe<bool> RunAsLauncherProcess(int& argc, wchar_t** argv) {
   bool runAsLauncher = DoLauncherProcessChecks(argc, argv);
 
 #if defined(MOZ_LAUNCHER_PROCESS)
-  bool forceLauncher = runAsLauncher &&
-                       mozilla::CheckArg(argc, argv, L"force-launcher",
-                                         static_cast<const wchar_t**>(nullptr),
-                                         mozilla::CheckArgFlag::RemoveArg) ==
-                       mozilla::ARG_FOUND;
+  bool forceLauncher =
+      runAsLauncher &&
+      mozilla::CheckArg(argc, argv, L"force-launcher",
+                        static_cast<const wchar_t**>(nullptr),
+                        mozilla::CheckArgFlag::RemoveArg) == mozilla::ARG_FOUND;
 
   mozilla::LauncherRegistryInfo::ProcessType desiredType =
       runAsLauncher ? mozilla::LauncherRegistryInfo::ProcessType::Launcher
@@ -203,6 +213,8 @@ namespace mozilla {
 
 Maybe<int> LauncherMain(int& argc, wchar_t* argv[],
                         const StaticXREAppData& aAppData) {
+  EnsureCommandlineSafe(argc, argv);
+
   SetLauncherErrorAppData(aAppData);
 
   if (CheckArg(argc, argv, L"log-launcher-error",

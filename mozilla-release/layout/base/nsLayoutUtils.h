@@ -19,7 +19,6 @@
 #include "mozilla/layers/ScrollableLayerGuid.h"
 #include "nsThreadUtils.h"
 #include "nsCSSPropertyIDSet.h"
-#include "nsStyleCoord.h"
 #include "nsStyleConsts.h"
 #include "nsGkAtoms.h"
 #include "mozilla/gfx/2D.h"
@@ -55,7 +54,6 @@ class nsBlockFrame;
 class nsContainerFrame;
 class nsView;
 class nsIFrame;
-class nsStyleCoord;
 class nsPIDOMWindowOuter;
 class imgIRequest;
 struct nsStyleFont;
@@ -135,12 +133,6 @@ enum class DrawStringFlags {
 };
 MOZ_MAKE_ENUM_CLASS_BITWISE_OPERATORS(DrawStringFlags)
 
-enum class ReparentingDirection {
-  Backwards,
-  Forwards,
-  Variable  // Could be either of the above; take most pessimistic action.
-};
-
 /**
  * nsLayoutUtils is a namespace class used for various helper
  * functions that are useful in multiple places in layout.  The goal
@@ -204,6 +196,11 @@ class nsLayoutUtils {
    * Find content for given ID.
    */
   static nsIContent* FindContentFor(ViewID aId);
+
+  /**
+   * Find the scrollable frame for a given content element.
+   */
+  static nsIScrollableFrame* FindScrollableFrameFor(nsIContent* aContent);
 
   /**
    * Find the scrollable frame for a given ID.
@@ -1101,7 +1098,7 @@ class nsLayoutUtils {
                                         const nsRect& aTestRect);
 
   static bool MaybeCreateDisplayPortInFirstScrollFrameEncountered(
-      nsIFrame* aFrame, nsDisplayListBuilder& aBuilder);
+      nsIFrame* aFrame, nsDisplayListBuilder* aBuilder);
 
   enum class PaintFrameFlags : uint32_t {
     InTransform = 0x01,
@@ -2163,6 +2160,9 @@ class nsLayoutUtils {
     nsCOMPtr<nsIPrincipal> mPrincipal;
     /* The image request, if the element is an nsIImageLoadingContent */
     nsCOMPtr<imgIRequest> mImageRequest;
+    /* True if cross-origins redirects have been done in order to load this
+     * resource */
+    bool mHadCrossOriginRedirects;
     /* Whether the element was "write only", that is, the bits should not be
      * exposed to content */
     bool mIsWriteOnly;
@@ -2245,8 +2245,8 @@ class nsLayoutUtils {
   static mozilla::dom::Element* GetEditableRootContentByContentEditable(
       mozilla::dom::Document* aDocument);
 
-  static void AddExtraBackgroundItems(nsDisplayListBuilder& aBuilder,
-                                      nsDisplayList& aList, nsIFrame* aFrame,
+  static void AddExtraBackgroundItems(nsDisplayListBuilder* aBuilder,
+                                      nsDisplayList* aList, nsIFrame* aFrame,
                                       const nsRect& aCanvasArea,
                                       const nsRegion& aVisibleRegion,
                                       nscolor aBackstop);
@@ -2821,7 +2821,7 @@ class nsLayoutUtils {
    * Returns true if there is a displayport on an async scrollable scrollframe
    * after this call, either because one was just added or it already existed.
    */
-  static bool MaybeCreateDisplayPort(nsDisplayListBuilder& aBuilder,
+  static bool MaybeCreateDisplayPort(nsDisplayListBuilder* aBuilder,
                                      nsIFrame* aScrollFrame,
                                      RepaintMode aRepaintMode);
 

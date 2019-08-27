@@ -11,13 +11,13 @@
 
 #include "nsSubDocumentFrame.h"
 
-#include "gfxPrefs.h"
-
 #include "mozilla/Preferences.h"
 #include "mozilla/PresShell.h"
+#include "mozilla/StaticPrefs.h"
+#include "mozilla/Unused.h"
 #include "mozilla/dom/Document.h"
 #include "mozilla/dom/HTMLFrameElement.h"
-#include "mozilla/layout/RenderFrame.h"
+#include "mozilla/dom/BrowserParent.h"
 
 #include "nsCOMPtr.h"
 #include "nsGenericHTMLElement.h"
@@ -46,9 +46,15 @@
 #include "nsQueryObject.h"
 #include "RetainedDisplayListBuilder.h"
 
+#include "Layers.h"
+#include "BasicLayers.h"
+#include "mozilla/layers/WebRenderUserData.h"
+#include "mozilla/layers/WebRenderScrollData.h"
+#include "mozilla/layers/RenderRootStateManager.h"
+
 using namespace mozilla;
+using namespace mozilla::layers;
 using mozilla::dom::Document;
-using mozilla::layout::RenderFrame;
 
 static bool sShowPreviousPage = true;
 
@@ -427,7 +433,7 @@ void nsSubDocumentFrame::BuildDisplayList(nsDisplayListBuilder* aBuilder,
           aBuilder, &copyOfVisible, &copyOfDirty,
           /* aSetBase = */ true);
 
-      if (!gfxPrefs::LayoutUseContainersForRootFrames() ||
+      if (!StaticPrefs::layout_scroll_root_frame_containers() ||
           !aBuilder->IsPaintingToWindow()) {
         haveDisplayPort = false;
       }
@@ -458,30 +464,6 @@ void nsSubDocumentFrame::BuildDisplayList(nsDisplayListBuilder* aBuilder,
       presContext->IsRootContentDocument() ||
       (sf && sf->IsScrollingActive(aBuilder))) {
     needsOwnLayer = true;
-  }
-
-  if (subdocRootFrame && aBuilder->IsRetainingDisplayList()) {
-    // Caret frame changed, rebuild the entire subdoc.
-    // We could just invalidate the old and new frame
-    // areas and save some work here. RetainedDisplayListBuilder
-    // does this, so we could teach it to find and check all
-    // subdocs in advance.
-    if (mPreviousCaret != aBuilder->GetCaretFrame()) {
-      dirty = visible;
-      aBuilder->MarkFrameModifiedDuringBuilding(subdocRootFrame);
-      aBuilder->RebuildAllItemsInCurrentSubtree();
-      // Mark the old caret frame as invalid so that we remove the
-      // old nsDisplayCaret. We don't mark the current frame as invalid
-      // since we want the nsDisplaySubdocument to retain it's place
-      // in the retained display list.
-      if (mPreviousCaret) {
-        aBuilder->MarkFrameModifiedDuringBuilding(mPreviousCaret);
-      }
-      if (aBuilder->GetCaretFrame()) {
-        aBuilder->MarkFrameModifiedDuringBuilding(aBuilder->GetCaretFrame());
-      }
-    }
-    mPreviousCaret = aBuilder->GetCaretFrame();
   }
 
   nsDisplayList childItems;
@@ -537,7 +519,7 @@ void nsSubDocumentFrame::BuildDisplayList(nsDisplayListBuilder* aBuilder,
       // background behind the page, not the canvas color. The canvas color gets
       // painted on the page itself.
       if (nsLayoutUtils::NeedsPrintPreviewBackground(presContext)) {
-        presShell->AddPrintPreviewBackgroundItem(*aBuilder, childItems, frame,
+        presShell->AddPrintPreviewBackgroundItem(aBuilder, &childItems, frame,
                                                  bounds);
       } else {
         // Add the canvas background color to the bottom of the list. This
@@ -548,7 +530,7 @@ void nsSubDocumentFrame::BuildDisplayList(nsDisplayListBuilder* aBuilder,
             AddCanvasBackgroundColorFlags::ForceDraw |
             AddCanvasBackgroundColorFlags::AddForSubDocument;
         presShell->AddCanvasBackgroundColorItem(
-            *aBuilder, childItems, frame, bounds, NS_RGBA(0, 0, 0, 0), flags);
+            aBuilder, &childItems, frame, bounds, NS_RGBA(0, 0, 0, 0), flags);
       }
     }
   }
@@ -608,7 +590,7 @@ void nsSubDocumentFrame::BuildDisplayList(nsDisplayListBuilder* aBuilder,
   // unscrolled color item for overscroll. Try again now that we're
   // outside the scrolled ContainerLayer.
   if (!aBuilder->IsForEventDelivery() &&
-      gfxPrefs::LayoutUseContainersForRootFrames() &&
+      StaticPrefs::layout_scroll_root_frame_containers() &&
       !nsLayoutUtils::NeedsPrintPreviewBackground(presContext)) {
     nsRect bounds =
         GetContentRectRelativeToSelf() + aBuilder->ToReferenceFrame(this);
@@ -624,7 +606,7 @@ void nsSubDocumentFrame::BuildDisplayList(nsDisplayListBuilder* aBuilder,
     AddCanvasBackgroundColorFlags flags =
         AddCanvasBackgroundColorFlags::ForceDraw |
         AddCanvasBackgroundColorFlags::AppendUnscrolledOnly;
-    presShell->AddCanvasBackgroundColorItem(*aBuilder, childItems, this, bounds,
+    presShell->AddCanvasBackgroundColorItem(aBuilder, &childItems, this, bounds,
                                             NS_RGBA(0, 0, 0, 0), flags);
   }
 
@@ -807,7 +789,7 @@ void nsSubDocumentFrame::Reflow(nsPresContext* aPresContext,
   NS_ASSERTION(aReflowInput.ComputedWidth() != NS_UNCONSTRAINEDSIZE,
                "Shouldn't have unconstrained stuff here "
                "thanks to the rules of reflow");
-  NS_ASSERTION(NS_INTRINSICSIZE != aReflowInput.ComputedHeight(),
+  NS_ASSERTION(NS_UNCONSTRAINEDSIZE != aReflowInput.ComputedHeight(),
                "Shouldn't have unconstrained stuff here "
                "thanks to ComputeAutoSize");
 
@@ -1337,4 +1319,214 @@ nsIFrame* nsSubDocumentFrame::ObtainIntrinsicSizeFrame() {
     }
   }
   return nullptr;
+}
+
+/**
+ * Gets the layer-pixel offset of aContainerFrame's content rect top-left
+ * from the nearest display item reference frame (which we assume will be
+ * inducing a ContainerLayer).
+ */
+static mozilla::LayoutDeviceIntPoint GetContentRectLayerOffset(
+    nsIFrame* aContainerFrame, nsDisplayListBuilder* aBuilder) {
+  nscoord auPerDevPixel = aContainerFrame->PresContext()->AppUnitsPerDevPixel();
+
+  // Offset to the content rect in case we have borders or padding
+  // Note that aContainerFrame could be a reference frame itself, so
+  // we need to be careful here to ensure that we call ToReferenceFrame
+  // on aContainerFrame and not its parent.
+  nsPoint frameOffset =
+      aBuilder->ToReferenceFrame(aContainerFrame) +
+      aContainerFrame->GetContentRectRelativeToSelf().TopLeft();
+
+  return mozilla::LayoutDeviceIntPoint::FromAppUnitsToNearest(frameOffset,
+                                                              auPerDevPixel);
+}
+
+// Return true iff |aManager| is a "temporary layer manager".  They're
+// used for small software rendering tasks, like drawWindow.  That's
+// currently implemented by a BasicLayerManager without a backing
+// widget, and hence in non-retained mode.
+inline static bool IsTempLayerManager(LayerManager* aManager) {
+  return (LayersBackend::LAYERS_BASIC == aManager->GetBackendType() &&
+          !static_cast<BasicLayerManager*>(aManager)->IsRetained());
+}
+
+nsDisplayRemote::nsDisplayRemote(nsDisplayListBuilder* aBuilder,
+                                 nsSubDocumentFrame* aFrame)
+    : nsPaintedDisplayItem(aBuilder, aFrame),
+      mTabId{0},
+      mEventRegionsOverride(EventRegionsOverride::NoOverride) {
+  bool frameIsPointerEventsNone = aFrame->StyleUI()->GetEffectivePointerEvents(
+                                      aFrame) == NS_STYLE_POINTER_EVENTS_NONE;
+  if (aBuilder->IsInsidePointerEventsNoneDoc() || frameIsPointerEventsNone) {
+    mEventRegionsOverride |= EventRegionsOverride::ForceEmptyHitRegion;
+  }
+  if (nsLayoutUtils::HasDocumentLevelListenersForApzAwareEvents(
+          aFrame->PresShell())) {
+    mEventRegionsOverride |= EventRegionsOverride::ForceDispatchToContent;
+  }
+
+  nsFrameLoader* frameLoader = GetFrameLoader();
+  MOZ_ASSERT(frameLoader && frameLoader->IsRemoteFrame());
+  if (frameLoader->GetRemoteBrowser()) {
+    mLayersId = frameLoader->GetLayersId();
+    mTabId = frameLoader->GetRemoteBrowser()->GetTabId();
+  }
+}
+
+mozilla::LayerState nsDisplayRemote::GetLayerState(
+    nsDisplayListBuilder* aBuilder, LayerManager* aManager,
+    const ContainerLayerParameters& aParameters) {
+  if (IsTempLayerManager(aManager)) {
+    return mozilla::LayerState::LAYER_NONE;
+  }
+  return mozilla::LayerState::LAYER_ACTIVE_FORCE;
+}
+
+already_AddRefed<mozilla::layers::Layer> nsDisplayRemote::BuildLayer(
+    nsDisplayListBuilder* aBuilder, LayerManager* aManager,
+    const ContainerLayerParameters& aContainerParameters) {
+  MOZ_ASSERT(mFrame, "Makes no sense to have a shadow tree without a frame");
+
+  if (IsTempLayerManager(aManager)) {
+    // This can happen if aManager is a "temporary" manager, or if the
+    // widget's layer manager changed out from under us.  We need to
+    // FIXME handle the former case somehow, probably with an API to
+    // draw a manager's subtree.  The latter is bad bad bad, but the the
+    // MOZ_ASSERT() above will flag it.  Returning nullptr here will just
+    // cause the shadow subtree not to be rendered.
+    NS_WARNING("Remote iframe not rendered");
+    return nullptr;
+  }
+
+  if (!mLayersId.IsValid()) {
+    return nullptr;
+  }
+
+  if (RefPtr<RemoteBrowser> remoteBrowser =
+          GetFrameLoader()->GetRemoteBrowser()) {
+    // Adjust mItemVisibleRect, which is relative to the reference frame, to be
+    // relative to this frame
+    nsRect visibleRect;
+    if (aContainerParameters.mItemVisibleRect) {
+      visibleRect = *aContainerParameters.mItemVisibleRect;
+    } else {
+      visibleRect = GetBuildingRect();
+    }
+    visibleRect -= ToReferenceFrame();
+
+    // Generate an effects update notifying the browser it is visible
+    aBuilder->AddEffectUpdate(remoteBrowser,
+                              EffectsInfo::VisibleWithinRect(
+                                  visibleRect, aContainerParameters.mXScale,
+                                  aContainerParameters.mYScale));
+    // FrameLayerBuilder will take care of notifying the browser when it is no
+    // longer visible
+  }
+
+  RefPtr<Layer> layer =
+      aManager->GetLayerBuilder()->GetLeafLayerFor(aBuilder, this);
+
+  if (!layer) {
+    layer = aManager->CreateRefLayer();
+  }
+  if (!layer || !layer->AsRefLayer()) {
+    // Probably a temporary layer manager that doesn't know how to
+    // use ref layers.
+    return nullptr;
+  }
+  RefLayer* refLayer = layer->AsRefLayer();
+
+  LayoutDeviceIntPoint offset = GetContentRectLayerOffset(Frame(), aBuilder);
+  // We can only have an offset if we're a child of an inactive
+  // container, but our display item is LAYER_ACTIVE_FORCE which
+  // forces all layers above to be active.
+  MOZ_ASSERT(aContainerParameters.mOffset == nsIntPoint());
+  Matrix4x4 m = Matrix4x4::Translation(offset.x, offset.y, 0.0);
+  // Remote content can't be repainted by us, so we multiply down
+  // the resolution that our container expects onto our container.
+  m.PreScale(aContainerParameters.mXScale, aContainerParameters.mYScale, 1.0);
+  refLayer->SetBaseTransform(m);
+  refLayer->SetEventRegionsOverride(mEventRegionsOverride);
+  refLayer->SetReferentId(mLayersId);
+
+  return layer.forget();
+}
+
+void nsDisplayRemote::Paint(nsDisplayListBuilder* aBuilder, gfxContext* aCtx) {
+  DrawTarget* target = aCtx->GetDrawTarget();
+  if (!target->IsRecording() || mTabId == 0) {
+    NS_WARNING("Remote iframe not rendered");
+    return;
+  }
+
+  int32_t appUnitsPerDevPixel = mFrame->PresContext()->AppUnitsPerDevPixel();
+  Rect destRect = mozilla::NSRectToSnappedRect(GetContentRect(),
+                                               appUnitsPerDevPixel, *target);
+  target->DrawDependentSurface(mTabId, destRect);
+}
+
+bool nsDisplayRemote::CreateWebRenderCommands(
+    mozilla::wr::DisplayListBuilder& aBuilder,
+    mozilla::wr::IpcResourceUpdateQueue& aResources,
+    const StackingContextHelper& aSc,
+    mozilla::layers::RenderRootStateManager* aManager,
+    nsDisplayListBuilder* aDisplayListBuilder) {
+  if (!mLayersId.IsValid()) {
+    return true;
+  }
+
+  if (RefPtr<RemoteBrowser> remoteBrowser =
+          GetFrameLoader()->GetRemoteBrowser()) {
+    // Adjust mItemVisibleRect, which is relative to the reference frame, to be
+    // relative to this frame
+    nsRect visibleRect = GetBuildingRect() - ToReferenceFrame();
+
+    // Generate an effects update notifying the browser it is visible
+    // TODO - Gather scaling factors
+    aDisplayListBuilder->AddEffectUpdate(
+        remoteBrowser, EffectsInfo::VisibleWithinRect(visibleRect, 1.0f, 1.0f));
+
+    // Create a WebRenderRemoteData to notify the RemoteBrowser when it is no
+    // longer visible
+    RefPtr<WebRenderRemoteData> userData =
+        aManager->CommandBuilder()
+            .CreateOrRecycleWebRenderUserData<WebRenderRemoteData>(
+                this, aBuilder.GetRenderRoot(), nullptr);
+    userData->SetRemoteBrowser(remoteBrowser);
+  }
+
+  mOffset = GetContentRectLayerOffset(mFrame, aDisplayListBuilder);
+
+  LayoutDeviceRect rect = LayoutDeviceRect::FromAppUnits(
+      mFrame->GetContentRectRelativeToSelf(),
+      mFrame->PresContext()->AppUnitsPerDevPixel());
+  rect += mOffset;
+
+  aBuilder.PushIFrame(mozilla::wr::ToRoundedLayoutRect(rect),
+                      !BackfaceIsHidden(), mozilla::wr::AsPipelineId(mLayersId),
+                      /*ignoreMissingPipelines*/ true);
+
+  return true;
+}
+
+bool nsDisplayRemote::UpdateScrollData(
+    mozilla::layers::WebRenderScrollData* aData,
+    mozilla::layers::WebRenderLayerScrollData* aLayerData) {
+  if (!mLayersId.IsValid()) {
+    return true;
+  }
+
+  if (aLayerData) {
+    aLayerData->SetReferentId(mLayersId);
+    aLayerData->SetTransform(
+        mozilla::gfx::Matrix4x4::Translation(mOffset.x, mOffset.y, 0.0));
+    aLayerData->SetEventRegionsOverride(mEventRegionsOverride);
+  }
+  return true;
+}
+
+nsFrameLoader* nsDisplayRemote::GetFrameLoader() const {
+  return mFrame ? static_cast<nsSubDocumentFrame*>(mFrame)->FrameLoader()
+                : nullptr;
 }

@@ -116,7 +116,7 @@ void GeckoProfilerRuntime::enable(bool enabled) {
    * but not jitcode for scripts with active frames on the stack.  These scripts
    * need to have their profiler state toggled so they behave properly.
    */
-  jit::ToggleBaselineProfiling(rt, enabled);
+  jit::ToggleBaselineProfiling(cx, enabled);
 
   // Update lastProfilingFrame to point to the top-most JS jit-frame currently
   // on stack.
@@ -151,6 +151,15 @@ void GeckoProfilerRuntime::enable(bool enabled) {
   for (RealmsIter r(rt); !r.done(); r.next()) {
     r->wasm.ensureProfilingLabels(enabled);
   }
+
+#ifdef JS_STRUCTURED_SPEW
+  // Enable the structured spewer if the environment variable is set.
+  if (enabled) {
+    cx->spewer().enableSpewing();
+  } else {
+    cx->spewer().disableSpewing();
+  }
+#endif
 }
 
 /* Lookup the string for the function/script, creating one if necessary */

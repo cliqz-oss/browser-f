@@ -8,7 +8,7 @@
 
 #include "ActiveElementManager.h"
 #include "APZCCallbackHelper.h"
-#include "gfxPrefs.h"
+
 #include "LayersLogging.h"
 #include "mozilla/BasicEvents.h"
 #include "mozilla/dom/MouseEventBinding.h"
@@ -176,8 +176,8 @@ void APZEventState::ProcessSingleTap(const CSSPoint& aPoint,
                                      const CSSToLayoutDeviceScale& aScale,
                                      Modifiers aModifiers,
                                      int32_t aClickCount) {
-  APZES_LOG("Handling single tap at %s with %d\n",
-            Stringify(aPoint).c_str(), mTouchEndCancelled);
+  APZES_LOG("Handling single tap at %s with %d\n", Stringify(aPoint).c_str(),
+            mTouchEndCancelled);
 
   RefPtr<nsIContent> touchRollup = GetTouchRollup();
   mTouchRollup = nullptr;
@@ -396,7 +396,7 @@ void APZEventState::ProcessTouchEvent(const WidgetTouchEvent& aEvent,
 
   if (sentContentResponse && !isTouchPrevented &&
       aApzResponse == nsEventStatus_eConsumeDoDefault &&
-      gfxPrefs::PointerEventsEnabled()) {
+      StaticPrefs::dom_w3c_pointer_events_enabled()) {
     WidgetTouchEvent cancelEvent(aEvent);
     cancelEvent.mMessage = eTouchPointerCancel;
     cancelEvent.mFlags.mCancelable = false;  // mMessage != eTouchCancel;

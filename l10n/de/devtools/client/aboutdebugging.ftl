@@ -257,7 +257,7 @@ about-debugging-connection-prompt-enable-button = Verbindungsbestätigung aktivi
 about-debugging-connection-prompt-disable-button = Verbindungsbestätigung deaktivieren
 
 # Title of a modal dialog displayed on remote runtime pages after clicking on the Profile Runtime button.
-about-debugging-profiler-dialog-title2 = Leistungsanalyse
+about-debugging-profiler-dialog-title2 = Laufzeitanalyse
 
 # Clicking on the header of a debug target category will expand or collapse the debug
 # target items in the category. This text is used as ’title’ attribute of the header,

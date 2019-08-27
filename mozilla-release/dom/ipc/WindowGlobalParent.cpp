@@ -11,6 +11,7 @@
 #include "mozilla/dom/BrowserBridgeParent.h"
 #include "mozilla/dom/CanonicalBrowsingContext.h"
 #include "mozilla/dom/ContentParent.h"
+#include "mozilla/dom/BrowserHost.h"
 #include "mozilla/dom/BrowserParent.h"
 #include "mozilla/dom/WindowGlobalActorsBinding.h"
 #include "mozilla/dom/WindowGlobalChild.h"
@@ -26,6 +27,8 @@
 #include "nsGlobalWindowInner.h"
 #include "nsQueryObject.h"
 #include "nsFrameLoaderOwner.h"
+#include "nsSerializationHelper.h"
+#include "nsITransportSecurityInfo.h"
 
 #include "mozilla/dom/JSWindowActorBinding.h"
 #include "mozilla/dom/JSWindowActorParent.h"
@@ -47,8 +50,8 @@ WindowGlobalParent::WindowGlobalParent(const WindowGlobalInit& aInit,
       mInnerWindowId(aInit.innerWindowId()),
       mOuterWindowId(aInit.outerWindowId()),
       mInProcess(aInProcess),
-      mIPCClosed(true)  // Closed until WGP::Init
-{
+      mIPCClosed(true),  // Closed until WGP::Init
+      mIsInitialDocument(false) {
   MOZ_DIAGNOSTIC_ASSERT(XRE_IsParentProcess(), "Parent process only");
   MOZ_RELEASE_ASSERT(mDocumentPrincipal, "Must have a valid principal");
 
@@ -74,7 +77,7 @@ void WindowGlobalParent::Init(const WindowGlobalInit& aInit) {
   entry.OrInsert([&] { return this; });
 
   // Determine which content process the window global is coming from.
-  ContentParentId processId(0);
+  dom::ContentParentId processId(0);
   if (!mInProcess) {
     processId = static_cast<ContentParent*>(Manager()->Manager())->ChildID();
   }
@@ -97,7 +100,7 @@ void WindowGlobalParent::Init(const WindowGlobalInit& aInit) {
   if (mInProcess) {
     // In the in-process case, we can get it from the other side's
     // WindowGlobalChild.
-    MOZ_ASSERT(Manager()->GetProtocolTypeId() == PInProcessMsgStart);
+    MOZ_ASSERT(Manager()->GetProtocolId() == PInProcessMsgStart);
     RefPtr<WindowGlobalChild> otherSide = GetChildActor();
     if (otherSide && otherSide->WindowGlobal()) {
       // Get the toplevel window from the other side.
@@ -109,7 +112,7 @@ void WindowGlobalParent::Init(const WindowGlobalInit& aInit) {
     }
   } else {
     // In the cross-process case, we can get the frame element from our manager.
-    MOZ_ASSERT(Manager()->GetProtocolTypeId() == PBrowserMsgStart);
+    MOZ_ASSERT(Manager()->GetProtocolId() == PBrowserMsgStart);
     frameElement = static_cast<BrowserParent*>(Manager())->GetOwnerElement();
   }
 
@@ -143,11 +146,36 @@ already_AddRefed<WindowGlobalChild> WindowGlobalParent::GetChildActor() {
   return do_AddRef(static_cast<WindowGlobalChild*>(otherSide));
 }
 
-already_AddRefed<BrowserParent> WindowGlobalParent::GetRemoteTab() {
+already_AddRefed<BrowserParent> WindowGlobalParent::GetBrowserParent() {
   if (IsInProcess() || mIPCClosed) {
     return nullptr;
   }
   return do_AddRef(static_cast<BrowserParent*>(Manager()));
+}
+
+uint64_t WindowGlobalParent::ContentParentId() {
+  RefPtr<BrowserParent> browserParent = GetBrowserParent();
+  return browserParent ? browserParent->Manager()->ChildID() : 0;
+}
+
+int32_t WindowGlobalParent::OsPid() {
+  RefPtr<BrowserParent> browserParent = GetBrowserParent();
+  return browserParent ? browserParent->Manager()->Pid() : -1;
+}
+
+// A WindowGlobalPaernt is the root in its process if it has no parent, or its
+// embedder is in a different process.
+bool WindowGlobalParent::IsProcessRoot() {
+  if (!BrowsingContext()->GetParent()) {
+    return true;
+  }
+
+  auto* embedder = BrowsingContext()->GetEmbedderWindowGlobal();
+  if (NS_WARN_IF(!embedder)) {
+    return false;
+  }
+
+  return ContentParentId() != embedder->ContentParentId();
 }
 
 IPCResult WindowGlobalParent::RecvUpdateDocumentURI(nsIURI* aURI) {
@@ -164,7 +192,7 @@ IPCResult WindowGlobalParent::RecvBecomeCurrentWindowGlobal() {
 
 IPCResult WindowGlobalParent::RecvDestroy() {
   if (!mIPCClosed) {
-    RefPtr<BrowserParent> browserParent = GetRemoteTab();
+    RefPtr<BrowserParent> browserParent = GetBrowserParent();
     if (!browserParent || !browserParent->IsDestroyed()) {
       // Make a copy so that we can avoid potential iterator invalidation when
       // calling the user-provided Destroy() methods.
@@ -200,7 +228,7 @@ void WindowGlobalParent::ReceiveRawMessage(
 }
 
 const nsAString& WindowGlobalParent::GetRemoteType() {
-  if (RefPtr<BrowserParent> browserParent = GetRemoteTab()) {
+  if (RefPtr<BrowserParent> browserParent = GetBrowserParent()) {
     return browserParent->Manager()->GetRemoteType();
   }
 
@@ -232,7 +260,7 @@ already_AddRefed<JSWindowActorParent> WindowGlobalParent::GetActor(
     return nullptr;
   }
 
-  MOZ_RELEASE_ASSERT(!actor->Manager(),
+  MOZ_RELEASE_ASSERT(!actor->GetManager(),
                      "mManager was already initialized once!");
   actor->Init(aName, this);
   mWindowActors.Put(aName, actor);
@@ -253,8 +281,8 @@ IPCResult WindowGlobalParent::RecvDidEmbedBrowsingContext(
 already_AddRefed<Promise> WindowGlobalParent::ChangeFrameRemoteness(
     dom::BrowsingContext* aBc, const nsAString& aRemoteType,
     uint64_t aPendingSwitchId, ErrorResult& aRv) {
-  RefPtr<BrowserParent> browserParent = GetRemoteTab();
-  if (NS_WARN_IF(!browserParent)) {
+  RefPtr<BrowserParent> embedderBrowserParent = GetBrowserParent();
+  if (NS_WARN_IF(!embedderBrowserParent)) {
     aRv.Throw(NS_ERROR_FAILURE);
     return nullptr;
   }
@@ -264,6 +292,9 @@ already_AddRefed<Promise> WindowGlobalParent::ChangeFrameRemoteness(
   if (aRv.Failed()) {
     return nullptr;
   }
+
+  RefPtr<CanonicalBrowsingContext> browsingContext =
+      CanonicalBrowsingContext::Cast(aBc);
 
   // When the reply comes back from content, either resolve or reject.
   auto resolve =
@@ -276,14 +307,31 @@ already_AddRefed<Promise> WindowGlobalParent::ChangeFrameRemoteness(
           return;
         }
 
-        // If we got a BrowserBridgeParent, the frame is out-of-process, so pull
-        // our target BrowserParent off of it. Otherwise, it's an in-process
-        // frame, so we can directly use ours.
+        // If we got a `BrowserBridgeParent`, the frame is out-of-process, so we
+        // can get the target off of it. Otherwise, it's an in-process frame, so
+        // we can use the embedder `BrowserParent`.
+        RefPtr<BrowserParent> browserParent;
         if (bridge) {
-          promise->MaybeResolve(bridge->GetBrowserParent());
+          browserParent = bridge->GetBrowserParent();
         } else {
-          promise->MaybeResolve(browserParent);
+          browserParent = embedderBrowserParent;
         }
+        MOZ_ASSERT(browserParent);
+
+        if (!browserParent || !browserParent->CanSend()) {
+          promise->MaybeReject(NS_ERROR_FAILURE);
+          return;
+        }
+
+        // Update our BrowsingContext to its new owner, if it hasn't been
+        // updated yet. This can happen when switching from a out-of-process to
+        // in-process frame. For remote frames, the BrowserBridgeParent::Init
+        // method should've already set up the OwnerProcessId.
+        uint64_t childId = browserParent->Manager()->ChildID();
+        MOZ_ASSERT_IF(bridge, browsingContext->IsOwnedByProcess(childId));
+        browsingContext->SetOwnerProcessId(childId);
+
+        promise->MaybeResolve(childId);
       };
 
   auto reject = [=](ResponseRejectReason aReason) {
@@ -292,6 +340,45 @@ already_AddRefed<Promise> WindowGlobalParent::ChangeFrameRemoteness(
 
   SendChangeFrameRemoteness(aBc, PromiseFlatString(aRemoteType),
                             aPendingSwitchId, resolve, reject);
+  return promise.forget();
+}
+
+already_AddRefed<Promise> WindowGlobalParent::GetSecurityInfo(
+    ErrorResult& aRv) {
+  RefPtr<BrowserParent> browserParent = GetBrowserParent();
+  if (NS_WARN_IF(!browserParent)) {
+    aRv.Throw(NS_ERROR_FAILURE);
+    return nullptr;
+  }
+
+  nsIGlobalObject* global = xpc::NativeGlobal(xpc::PrivilegedJunkScope());
+  RefPtr<Promise> promise = Promise::Create(global, aRv);
+  if (aRv.Failed()) {
+    return nullptr;
+  }
+
+  SendGetSecurityInfo(
+      [promise](Maybe<nsCString>&& aResult) {
+        if (aResult) {
+          nsCOMPtr<nsISupports> infoObj;
+          nsresult rv =
+              NS_DeserializeObject(aResult.value(), getter_AddRefs(infoObj));
+          if (NS_WARN_IF(NS_FAILED(rv))) {
+            promise->MaybeReject(NS_ERROR_FAILURE);
+          }
+          nsCOMPtr<nsITransportSecurityInfo> info = do_QueryInterface(infoObj);
+          if (!info) {
+            promise->MaybeReject(NS_ERROR_FAILURE);
+          }
+          promise->MaybeResolve(info);
+        } else {
+          promise->MaybeResolveWithUndefined();
+        }
+      },
+      [promise](ResponseRejectReason&& aReason) {
+        promise->MaybeReject(NS_ERROR_FAILURE);
+      });
+
   return promise.forget();
 }
 

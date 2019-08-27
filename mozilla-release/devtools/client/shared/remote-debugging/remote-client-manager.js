@@ -4,7 +4,9 @@
 
 "use strict";
 
-const { CONNECTION_TYPES } = require("devtools/client/shared/remote-debugging/constants");
+const {
+  CONNECTION_TYPES,
+} = require("devtools/client/shared/remote-debugging/constants");
 
 /**
  * This class is designed to be a singleton shared by all DevTools to get access to
@@ -34,7 +36,7 @@ class RemoteClientManager {
     if (runtimeInfo) {
       this._runtimeInfoMap.set(key, runtimeInfo);
     }
-    client.addOneTimeListener("closed", this._onClientClosed);
+    client.once("closed", this._onClientClosed);
   }
 
   // See JSDoc for id, type from setClient.
@@ -118,7 +120,7 @@ class RemoteClientManager {
   _removeClientByKey(key) {
     const client = this._clients.get(key);
     if (client) {
-      client.removeListener("closed", this._onClientClosed);
+      client.off("closed", this._onClientClosed);
       this._clients.delete(key);
       this._runtimeInfoMap.delete(key);
     }

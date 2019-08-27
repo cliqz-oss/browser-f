@@ -10,9 +10,11 @@
  * which is Copyright 2018 The Chromium Authors. All rights reserved.
  */
 
-var EXPORTED_SYMBOLS = ["PasswordGenerator"];
+const EXPORTED_SYMBOLS = ["PasswordGenerator"];
 
-const {XPCOMUtils} = ChromeUtils.import("resource://gre/modules/XPCOMUtils.jsm");
+const { XPCOMUtils } = ChromeUtils.import(
+  "resource://gre/modules/XPCOMUtils.jsm"
+);
 
 XPCOMUtils.defineLazyGlobalGetters(this, ["crypto"]);
 
@@ -26,13 +28,9 @@ const UPPER_CASE_ALPHA = "ABCDEFGHJKLMNPQRSTUVWXYZ"; // no 'I' or 'O'
 const DIGITS = "23456789"; // no '1' or '0'
 const ALL_CHARACTERS = LOWER_CASE_ALPHA + UPPER_CASE_ALPHA + DIGITS;
 
-const REQUIRED_CHARACTER_CLASSES = [
-  LOWER_CASE_ALPHA,
-  UPPER_CASE_ALPHA,
-  DIGITS,
-];
+const REQUIRED_CHARACTER_CLASSES = [LOWER_CASE_ALPHA, UPPER_CASE_ALPHA, DIGITS];
 
-const PasswordGenerator = {
+this.PasswordGenerator = {
   /**
    * @param {Number} length of the password to generate
    * @returns {string} password that was generated
@@ -52,7 +50,8 @@ const PasswordGenerator = {
 
     // Generate one of each required class
     for (const charClassString of REQUIRED_CHARACTER_CLASSES) {
-      password += charClassString[this._randomUInt8Index(charClassString.length)];
+      password +=
+        charClassString[this._randomUInt8Index(charClassString.length)];
     }
 
     // Now fill the rest of the password with random characters.

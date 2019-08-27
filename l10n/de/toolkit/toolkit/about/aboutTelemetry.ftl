@@ -65,7 +65,7 @@ about-telemetry-upload-type =
 about-telemetry-histogram-stats = 
     { $sampleCount ->
         [one] { $sampleCount } Messung, Durchschnitt = { $prettyAverage }, Summe = { $sum }
-       *[other] { $sampleCount } Messung, Durchschnitt = { $prettyAverage }, Summe = { $sum }
+       *[other] { $sampleCount } Messungen, Durchschnitt = { $prettyAverage }, Summe = { $sum }
     }
 # Variables:
 #   $telemetryServerOwner (String): the value of the toolkit.telemetry.server_owner preference. Typically "Mozilla"
@@ -130,7 +130,7 @@ about-telemetry-captured-stacks-title = { $stackKey } (Anzahl der Aufzeichnungen
 about-telemetry-late-writes-title = Später Schreibvorgang { $lateWriteCount }
 about-telemetry-stack-title = Aufrufliste:
 about-telemetry-memory-map-title = Speichernutzung:
-about-telemetry-error-fetching-symbols = Beim Abrufen der Symbole trat ein Fehler auf. Überprüfen Sie die Internetverbindung und versuchen Sie es erneut.
+about-telemetry-error-fetching-symbols = Beim Abrufen der Symbole trat ein Fehler auf. Überprüfe die Internetverbindung und versuche es erneut.
 about-telemetry-time-stamp-header = Zeitstempel
 about-telemetry-category-header = Kategorie
 about-telemetry-method-header = Methode
@@ -142,3 +142,6 @@ about-telemetry-origin-count = Anzahl
 # Variables:
 #   $telemetryServerOwner (String): the value of the toolkit.telemetry.server_owner preference. Typically "Mozilla"
 about-telemetry-origins-explanation = Die <a data-l10n-name="origin-doc-link">Quellen-Telemetrie von Firefox</a> kodiert Daten vor dem Senden, sodass { $telemetryServerOwner } etwas zählen aber nicht bestimmen kann, ob eine bestimmte { -brand-product-name }-Installation zu der Zählung beigetragen hat. <a data-l10n-name="prio-blog-link">Weitere Informationen</a>
+# Variables:
+#  $process (String): type of process in subsection headers ( e.g. "content", "parent" )
+about-telemetry-process = { $process }-Prozess

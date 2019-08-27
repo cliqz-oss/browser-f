@@ -7,10 +7,10 @@
 #ifndef mozilla_LauncherRegistryInfo_h
 #define mozilla_LauncherRegistryInfo_h
 
-#include "mozilla/CmdLineAndEnvUtils.h"
 #include "mozilla/LauncherResult.h"
 #include "mozilla/Maybe.h"
 #include "mozilla/UniquePtr.h"
+#include "mozilla/WinHeaderOnlyUtils.h"
 #include "nsWindowsHelpers.h"
 
 #include <string>
@@ -43,9 +43,9 @@ class LauncherRegistryInfo final {
   LauncherResult<EnabledState> IsEnabled();
   LauncherResult<bool> IsTelemetryEnabled();
   LauncherVoidResult ReflectTelemetryPrefToRegistry(const bool aEnable);
-  LauncherResult<ProcessType> Check(const ProcessType aDesiredType,
-                                    const CheckOption aOption =
-                                      CheckOption::Default);
+  LauncherResult<ProcessType> Check(
+      const ProcessType aDesiredType,
+      const CheckOption aOption = CheckOption::Default);
   LauncherVoidResult DisableDueToFailure();
 
  private:

@@ -135,7 +135,7 @@ class MarionetteTestharnessProtocolPart(TestharnessProtocolPart):
                 "Loading initial page %s failed. Ensure that the "
                 "there are no other programs bound to this port and "
                 "that your firewall rules or network setup does not "
-                "prevent access.\e%s" % (url, traceback.format_exc(e)))
+                r"prevent access.\e%s" % (url, traceback.format_exc(e)))
             raise
         self.runner_handle = self.marionette.current_window_handle
         format_map = {"title": threading.current_thread().name.replace("'", '"')}
@@ -212,7 +212,7 @@ class MarionetteTestharnessProtocolPart(TestharnessProtocolPart):
             if test_window is None:
                 handles = self.marionette.window_handles
                 if len(handles) == 2:
-                    test_window = next(iter(set(handles) - set([parent])))
+                    test_window = next(iter(set(handles) - {parent}))
                 elif handles[0] == parent and len(handles) > 2:
                     # Hope the first one here is the test window
                     test_window = handles[1]
@@ -257,6 +257,25 @@ class MarionettePrefsProtocolPart(PrefsProtocolPart):
                 case prefInterface.PREF_INT:
                     prefInterface.setIntPref(pref, value);
                     break;
+                case prefInterface.PREF_INVALID:
+                    // Pref doesn't seem to be defined already; guess at the
+                    // right way to set it based on the type of value we have.
+                    switch (typeof value) {
+                        case "boolean":
+                            prefInterface.setBoolPref(pref, value);
+                            break;
+                        case "string":
+                            prefInterface.setCharPref(pref, value);
+                            break;
+                        case "number":
+                            prefInterface.setIntPref(pref, value);
+                            break;
+                        default:
+                            throw new Error("Unknown pref value type: " + (typeof value));
+                    }
+                    break;
+                default:
+                    throw new Error("Unknown pref type " + type);
             }
             """ % (name, value)
         with self.marionette.using_context(self.marionette.CONTEXT_CHROME):

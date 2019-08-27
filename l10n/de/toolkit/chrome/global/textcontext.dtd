@@ -29,6 +29,8 @@
 
 <!ENTITY fillLoginMenu.label          "Zugangsdaten einfügen">
 <!ENTITY fillLoginMenu.accesskey      "Z">
+<!ENTITY fillSuggestedPassword.label  "Passwort erzeugen und verwenden">
+<!ENTITY fillSuggestedPassword.accesskey "e">
 <!ENTITY fillPasswordMenu.label       "Passwort einfügen">
 <!ENTITY fillPasswordMenu.accesskey   "P">
 <!ENTITY fillUsernameMenu.label       "Benutzernamen einfügen">

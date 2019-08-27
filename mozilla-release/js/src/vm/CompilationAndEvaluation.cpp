@@ -151,6 +151,19 @@ JSScript* JS::CompileUtf8Path(JSContext* cx,
 
   CompileOptions options(cx, optionsArg);
   options.setFileAndLine(filename, 1);
+  return CompileUtf8File(cx, options, file.fp());
+}
+
+JSScript* JS::CompileUtf8PathDontInflate(
+    JSContext* cx, const ReadOnlyCompileOptions& optionsArg,
+    const char* filename) {
+  AutoFile file;
+  if (!file.open(cx, filename)) {
+    return nullptr;
+  }
+
+  CompileOptions options(cx, optionsArg);
+  options.setFileAndLine(filename, 1);
   return CompileUtf8FileDontInflate(cx, options, file.fp());
 }
 
@@ -550,8 +563,9 @@ JS_PUBLIC_API bool JS::Evaluate(JSContext* cx,
 
   size_t length = srcBuf.length();
   auto chars = UniqueTwoByteChars(
-      UTF8CharsToNewTwoByteCharsZ(cx, UTF8Chars(srcBuf.get(), length),
-                                  &length, js::MallocArena).get());
+      UTF8CharsToNewTwoByteCharsZ(cx, UTF8Chars(srcBuf.get(), length), &length,
+                                  js::MallocArena)
+          .get());
   if (!chars) {
     return false;
   }
@@ -618,4 +632,29 @@ JS_PUBLIC_API bool JS::EvaluateUtf8Path(
   }
 
   return Evaluate(cx, options, srcBuf, rval);
+}
+
+JS_PUBLIC_API bool JS::EvaluateUtf8PathDontInflate(
+    JSContext* cx, const ReadOnlyCompileOptions& optionsArg,
+    const char* filename, MutableHandleValue rval) {
+  FileContents buffer(cx);
+  {
+    AutoFile file;
+    if (!file.open(cx, filename) || !file.readAll(cx, buffer)) {
+      return false;
+    }
+  }
+
+  CompileOptions options(cx, optionsArg);
+  options.setFileAndLine(filename, 1);
+
+  auto contents = reinterpret_cast<const char*>(buffer.begin());
+  size_t length = buffer.length();
+
+  JS::SourceText<Utf8Unit> srcBuf;
+  if (!srcBuf.init(cx, contents, length, JS::SourceOwnership::Borrowed)) {
+    return false;
+  }
+
+  return EvaluateDontInflate(cx, options, srcBuf, rval);
 }

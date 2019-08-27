@@ -209,6 +209,7 @@ pub use lmdb::{
 mod env;
 pub mod error;
 mod manager;
+pub mod migrate;
 mod readwrite;
 pub mod store;
 pub mod value;
@@ -216,6 +217,7 @@ pub mod value;
 pub use lmdb::{
     Cursor,
     Database,
+    Info,
     Iter as LmdbIter,
     RoCursor,
     Stat,

@@ -31,7 +31,7 @@ These checks and actions are done in several components. Here's how they interac
 2/3. Scriptworker polls for pending tasks and check their scopes.
 4. It downloads APKs via Chain of Trust. Scriptworker checks if the upstream tasks were altered.
 5. Scriptworker defers valid tasks to pushapkscript. The latter validates APKs signatures, makes sure every APK architecture is present.
-6. Pushapkscript calls MozApkPublisher with credentials and on-disk locations of APKs
+6. Pushapkscript calls MozApkPublisher with credentials and on-disk locations of APKs.
 6/7. MozApkPublisher sanity checks the APKs.
 8. MozApkPublisher opens the Google play credentials.
 9. MozApkPublisher publishes APKs, listings and “what’s new”

@@ -77,8 +77,11 @@
 <!ENTITY Birthday.label                 "Geburtstag:">
 <!ENTITY Birthday.accesskey             "G">
 <!ENTITY In.label                       "">
+<!ENTITY Month.placeholder              "Monat">
+<!ENTITY Day.placeholder                "Tag">
 <!ENTITY Year.placeholder               "Jahr">
 <!ENTITY Or.value                       "Alter:">
+<!ENTITY Age.label                      "Alter:">
 <!ENTITY Age.placeholder                "Jahre">
 <!ENTITY YearsOld.label                 "Jahre alt">
 

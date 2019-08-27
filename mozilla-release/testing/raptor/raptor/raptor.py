@@ -19,8 +19,9 @@ import requests
 
 import mozcrash
 import mozinfo
+from logger.logger import RaptorLogger
 from mozdevice import ADBDevice
-from mozlog import commandline, get_default_logger
+from mozlog import commandline
 from mozprofile import create_profile
 from mozproxy import get_playback
 from mozrunner import runners
@@ -28,12 +29,6 @@ from mozrunner import runners
 # need this so raptor imports work both from /raptor and via mach
 here = os.path.abspath(os.path.dirname(__file__))
 paths = [here]
-if os.environ.get('SCRIPTSPATH') is not None:
-    # in production it is env SCRIPTS_PATH
-    paths.append(os.environ['SCRIPTSPATH'])
-else:
-    # locally it's in source tree
-    paths.append(os.path.join(here, '..', '..', 'mozharness'))
 
 webext_dir = os.path.join(here, '..', 'webext')
 paths.append(webext_dir)
@@ -60,10 +55,12 @@ from gen_test_config import gen_test_config
 from outputhandler import OutputHandler
 from manifest import get_raptor_test_list
 from memory import generate_android_memory_profile
-from mozproxy import get_playback
 from power import init_android_power_test, finish_android_power_test
 from results import RaptorResultsHandler
 from utils import view_gecko_profile
+from cpu import generate_android_cpu_profile
+
+LOG = RaptorLogger(component='raptor-main')
 
 
 class SignalHandler:
@@ -85,9 +82,9 @@ class Raptor(object):
 
     def __init__(self, app, binary, run_local=False, obj_path=None, profile_class=None,
                  gecko_profile=False, gecko_profile_interval=None, gecko_profile_entries=None,
-                 symbols_path=None, host=None, power_test=False, memory_test=False,
+                 symbols_path=None, host=None, power_test=False, cpu_test=False, memory_test=False,
                  is_release_build=False, debug_mode=False, post_startup_delay=None,
-                 interrupt_handler=None, e10s=True, **kwargs):
+                 interrupt_handler=None, e10s=True, enable_webrender=False, **kwargs):
 
         # Override the magic --host HOST_IP with the value of the environment variable.
         if host == 'HOST_IP':
@@ -107,13 +104,18 @@ class Raptor(object):
             'host': host,
             'power_test': power_test,
             'memory_test': memory_test,
+            'cpu_test': cpu_test,
             'is_release_build': is_release_build,
             'enable_control_server_wait': memory_test,
             'e10s': e10s,
+            'enable_webrender': enable_webrender,
         }
+        # We can never use e10s on fennec
+        if self.config['app'] == 'fennec':
+            self.config['e10s'] = False
 
         self.raptor_venv = os.path.join(os.getcwd(), 'raptor-venv')
-        self.log = get_default_logger(component='raptor-main')
+        self.raptor_webext = None
         self.control_server = None
         self.playback = None
         self.benchmark = None
@@ -131,16 +133,16 @@ class Raptor(object):
         # if running debug-mode reduce the pause after browser startup
         if self.debug_mode:
             self.post_startup_delay = min(self.post_startup_delay, 3000)
-            self.log.info("debug-mode enabled, reducing post-browser startup pause to %d ms"
-                          % self.post_startup_delay)
+            LOG.info("debug-mode enabled, reducing post-browser startup pause to %d ms"
+                     % self.post_startup_delay)
 
-        self.log.info("main raptor init, config is: %s" % str(self.config))
+        LOG.info("main raptor init, config is: %s" % str(self.config))
 
-        # create results holder
-        self.results_handler = RaptorResultsHandler()
+        # setup the control server
+        self.results_handler = RaptorResultsHandler(self.config)
+        self.start_control_server()
 
         self.build_browser_profile()
-        self.start_control_server()
 
     @property
     def profile_data_dir(self):
@@ -154,9 +156,9 @@ class Raptor(object):
         raise NotImplementedError
 
     def run_test_setup(self, test):
-        self.log.info("starting raptor test: %s" % test['name'])
-        self.log.info("test settings: %s" % str(test))
-        self.log.info("raptor config: %s" % str(self.config))
+        LOG.info("starting raptor test: %s" % test['name'])
+        LOG.info("test settings: %s" % str(test))
+        LOG.info("raptor config: %s" % str(self.config))
 
         if test.get('type') == "benchmark":
             self.serve_benchmark_source(test)
@@ -183,26 +185,39 @@ class Raptor(object):
     def run_tests(self, tests, test_names):
         try:
             for test in tests:
-                self.run_test(test, timeout=int(test['page_timeout']))
+                self.run_test(test, timeout=int(test.get('page_timeout')))
 
             return self.process_results(test_names)
-
         finally:
             self.clean_up()
 
-    def run_test(self, test, timeout=None):
+    def run_test(self, test, timeout):
         raise NotImplementedError()
 
     def wait_for_test_finish(self, test, timeout):
+        # this is a 'back-stop' i.e. if for some reason Raptor doesn't finish for some
+        # serious problem; i.e. the test was unable to send a 'page-timeout' to the control
+        # server, etc. Therefore since this is a 'back-stop' we want to be generous here;
+        # we don't want this timeout occurring unless abosultely necessary
+
         # convert timeout to seconds and account for page cycles
         timeout = int(timeout / 1000) * int(test.get('page_cycles', 1))
         # account for the pause the raptor webext runner takes after browser startup
         # and the time an exception is propagated through the framework
         timeout += (int(self.post_startup_delay / 1000) + 10)
 
+        # for page-load tests we don't start the page-timeout timer until the pageload.js content
+        # is successfully injected and invoked; which differs per site being tested; therefore we
+        # need to be generous here - let's add 10 seconds extra per page-cycle
+        if test.get('type') == "pageload":
+            timeout += (10 * int(test.get('page_cycles', 1)))
+
         # if geckoProfile enabled, give browser more time for profiling
         if self.config['gecko_profile'] is True:
             timeout += 5 * 60
+
+        # we also need to give time for results processing, not just page/browser cycles!
+        timeout += 60
 
         elapsed_time = 0
         while not self.control_server._finished:
@@ -218,7 +233,7 @@ class Raptor(object):
             if not self.debug_mode:
                 elapsed_time += 1
                 if elapsed_time > (timeout) - 5:  # stop 5 seconds early
-                    self.log.info("application timed out after {} seconds".format(timeout))
+                    LOG.info("application timed out after {} seconds".format(timeout))
                     self.control_server.wait_for_quit()
                     break
 
@@ -234,12 +249,12 @@ class Raptor(object):
         if self.config['gecko_profile'] is True:
             self.gecko_profiler.symbolicate()
             # clean up the temp gecko profiling folders
-            self.log.info("cleaning up after gecko profiling")
+            LOG.info("cleaning up after gecko profiling")
             self.gecko_profiler.clean()
 
     def set_browser_test_prefs(self, raw_prefs):
         # add test specific preferences
-        self.log.info("setting test-specific Firefox preferences")
+        LOG.info("setting test-specific Firefox preferences")
         self.profile.set_preferences(json.loads(raw_prefs))
 
     def build_browser_profile(self):
@@ -251,11 +266,12 @@ class Raptor(object):
 
         for profile in base_profiles:
             path = os.path.join(self.profile_data_dir, profile)
-            self.log.info("Merging profile: {}".format(path))
+            LOG.info("Merging profile: {}".format(path))
             self.profile.merge(path)
 
-        # add profile dir to our config
+        # share the profile dir with the config and the control server
         self.config['local_profile_dir'] = self.profile.profile
+        self.control_server.user_profile = self.profile
 
     def start_control_server(self):
         self.control_server = RaptorControlServer(self.results_handler, self.debug_mode)
@@ -276,12 +292,18 @@ class Raptor(object):
             'playback_binary_manifest': test.get('playback_binary_manifest'),
             'playback_pageset_manifest': test.get('playback_pageset_manifest'),
         })
+        # By default we are connecting to upstream. In the future we might want
+        # to flip that default to false so all tests will stop connecting to
+        # the upstream server.
+        upstream = test.get("playback_upstream_cert", "true")
+        self.config["playback_upstream_cert"] = upstream.lower() in ("true", "1")
+
         for key in ('playback_pageset_manifest', 'playback_pageset_zip'):
             if self.config.get(key) is None:
                 continue
             self.config[key] = os.path.join(playback_dir, self.config[key])
 
-        self.log.info("test uses playback tool: %s " % self.config['playback_tool'])
+        LOG.info("test uses playback tool: %s " % self.config['playback_tool'])
 
     def serve_benchmark_source(self, test):
         # benchmark-type tests require the benchmark test to be served out
@@ -294,7 +316,7 @@ class Raptor(object):
         # note: for chrome the addon is just a list of paths that ultimately are added
         # to the chromium command line '--load-extension' argument
         self.raptor_webext = os.path.join(webext_dir, 'raptor')
-        self.log.info("installing webext %s" % self.raptor_webext)
+        LOG.info("installing webext %s" % self.raptor_webext)
         self.profile.addons.install(self.raptor_webext)
 
         # on firefox we can get an addon id; chrome addon actually is just cmd line arg
@@ -305,7 +327,11 @@ class Raptor(object):
 
     def remove_raptor_webext(self):
         # remove the raptor webext; as it must be reloaded with each subtest anyway
-        self.log.info("removing webext %s" % self.raptor_webext)
+        if not self.raptor_webext:
+            LOG.info("raptor webext not installed - not attempting removal")
+            return
+
+        LOG.info("removing webext %s" % self.raptor_webext)
         if self.config['app'] in ['firefox', 'geckoview', 'fennec', 'refbrow', 'fenix']:
             self.profile.addons.remove_addon(self.webext_id)
 
@@ -317,14 +343,8 @@ class Raptor(object):
     def get_proxy_command_for_mitm(self, test, version):
         # Generate Mitmproxy playback args
         script = os.path.join(here, "playback", "alternate-server-replay-{}.py".format(version))
-        recordings = test.get("playback_recordings")
-        if recordings:
-            recording_paths = []
-            proxy_dir = self.playback.mozproxy_dir
-            for recording in recordings.split():
-                if not recording:
-                    continue
-                recording_paths.append(os.path.join(proxy_dir, recording))
+
+        recording_paths = self.get_recording_paths(test)
 
         # this part is platform-specific
         if mozinfo.os == "win":
@@ -333,16 +353,31 @@ class Raptor(object):
                                for recording_path in recording_paths]
 
         if version == "2.0.2":
-            self.playback.config['playback_tool_args'] = ["--replay-kill-extra",
-                                                          "--script",
-                                                          '""{} {}""'.
-                                                          format(script,
-                                                                 " ".join(recording_paths))]
+            args = [
+                "--replay-kill-extra",
+                "-v",
+                "--script",
+                '""{} {}""'.format(script, " ".join(recording_paths)),
+            ]
+
+            if not self.config["playback_upstream_cert"]:
+                LOG.info("No upstream certificate sniffing")
+                args.insert(0, "--no-upstream-cert")
+            self.playback.config["playback_tool_args"] = args
         elif version == "4.0.4":
-            self.playback.config['playback_tool_args'] = ["--scripts", script,
-                                                          "--set",
-                                                          "server_replay={}".
-                                                          format(" ".join(recording_paths))]
+            args = [
+                "-v",
+                "--set",
+                "websocket=false",
+                "--set",
+                "server_replay_files={}".format(" ".join(recording_paths)),
+                "--scripts",
+                script,
+            ]
+            if not self.config["playback_upstream_cert"]:
+                LOG.info("No upstream certificate sniffing")
+                args = ["--set", "upstream_cert=false"] + args
+            self.playback.config["playback_tool_args"] = args
         else:
             raise Exception("Mitmproxy version is unknown!")
 
@@ -356,6 +391,38 @@ class Raptor(object):
         # let's start it!
         self.playback.start()
 
+        self.log_recording_dates(test)
+
+    def get_recording_paths(self, test):
+        recordings = test.get("playback_recordings")
+
+        if recordings:
+            recording_paths = []
+            proxy_dir = self.playback.mozproxy_dir
+
+            for recording in recordings.split():
+                if not recording:
+                    continue
+                recording_paths.append(os.path.join(proxy_dir, recording))
+
+            return recording_paths
+
+    def log_recording_dates(self, test):
+        for r in self.get_recording_paths(test):
+            json_path = '{}.json'.format(r.split('.')[0])
+
+            if os.path.exists(json_path):
+                with open(json_path) as f:
+                    recording_date = json.loads(f.read()).get('recording_date')
+
+                    if recording_date is not None:
+                        LOG.info('Playback recording date: {} '.
+                                 format(recording_date.split(' ')[0]))
+                    else:
+                        LOG.info('Playback recording date not available')
+            else:
+                LOG.info('Playback recording information not available')
+
     def delete_proxy_settings_from_profile(self):
         # Must delete the proxy settings from the profile if running
         # the test with a host different from localhost.
@@ -367,10 +434,10 @@ class Raptor(object):
             userjsfile.writelines(prefs)
 
     def _init_gecko_profiling(self, test):
-        self.log.info("initializing gecko profiler")
+        LOG.info("initializing gecko profiler")
         upload_dir = os.getenv('MOZ_UPLOAD_DIR')
         if not upload_dir:
-            self.log.critical("Profiling ignored because MOZ_UPLOAD_DIR was not set")
+            LOG.critical("Profiling ignored because MOZ_UPLOAD_DIR was not set")
         else:
             self.gecko_profiler = GeckoProfile(upload_dir,
                                                self.config,
@@ -399,7 +466,7 @@ class Raptor(object):
             self.control_server_wait_clear('all')
 
         self.control_server.stop()
-        self.log.info("finished")
+        LOG.info("finished")
 
     def control_server_wait_set(self, state):
         response = requests.post("http://127.0.0.1:%s/" % self.control_server.port,
@@ -433,7 +500,7 @@ class RaptorDesktop(Raptor):
         super(RaptorDesktop, self).__init__(*args, **kwargs)
 
         # create the desktop browser runner
-        self.log.info("creating browser runner using mozrunner")
+        LOG.info("creating browser runner using mozrunner")
         self.output_handler = OutputHandler()
         process_args = {
             'processOutputLine': [self.output_handler],
@@ -443,27 +510,34 @@ class RaptorDesktop(Raptor):
             self.config['binary'], profile=self.profile, process_args=process_args,
             symbols_path=self.config['symbols_path'])
 
+        if self.config['enable_webrender']:
+            self.runner.env['MOZ_WEBRENDER'] = '1'
+            self.runner.env['MOZ_ACCELERATED'] = '1'
+        else:
+            self.runner.env['MOZ_WEBRENDER'] = '0'
+
     def launch_desktop_browser(self, test):
         raise NotImplementedError
 
     def start_runner_proc(self):
         # launch the browser via our previously-created runner
         self.runner.start()
+
         proc = self.runner.process_handler
         self.output_handler.proc = proc
 
         # give our control server the browser process so it can shut it down later
         self.control_server.browser_proc = proc
 
-    def run_test(self, test, timeout=None):
+    def run_test(self, test, timeout):
         # tests will be run warm (i.e. NO browser restart between page-cycles)
         # unless otheriwse specified in the test INI by using 'cold = true'
         if test.get('cold', False) is True:
-            self.run_test_cold(test, timeout)
+            self.__run_test_cold(test, timeout)
         else:
-            self.run_test_warm(test, timeout)
+            self.__run_test_warm(test, timeout)
 
-    def run_test_cold(self, test, timeout=None):
+    def __run_test_cold(self, test, timeout):
         '''
         Run the Raptor test but restart the entire browser app between page-cycles.
 
@@ -483,13 +557,13 @@ class RaptorDesktop(Raptor):
 
         The default will be to run in warm mode; unless 'cold = true' is set in the test INI.
         '''
-        self.log.info("test %s is running in cold mode; browser WILL be restarted between "
-                      "page cycles" % test['name'])
+        LOG.info("test %s is running in cold mode; browser WILL be restarted between "
+                 "page cycles" % test['name'])
 
         for test['browser_cycle'] in range(1, test['expected_browser_cycles'] + 1):
 
-            self.log.info("begin browser cycle %d of %d for test %s"
-                          % (test['browser_cycle'], test['expected_browser_cycles'], test['name']))
+            LOG.info("begin browser cycle %d of %d for test %s"
+                     % (test['browser_cycle'], test['expected_browser_cycles'], test['name']))
 
             self.run_test_setup(test)
 
@@ -518,7 +592,7 @@ class RaptorDesktop(Raptor):
 
         self.run_test_teardown()
 
-    def run_test_warm(self, test, timeout=None):
+    def __run_test_warm(self, test, timeout):
         self.run_test_setup(test)
 
         try:
@@ -547,7 +621,7 @@ class RaptorDesktop(Raptor):
         else:
             # in debug mode, and running locally, leave the browser running
             if self.config['run_local']:
-                self.log.info("* debug-mode enabled - please shutdown the browser manually...")
+                LOG.info("* debug-mode enabled - please shutdown the browser manually...")
                 self.runner.wait(timeout=None)
 
         super(RaptorDesktop, self).run_test_teardown()
@@ -570,16 +644,16 @@ class RaptorDesktopFirefox(RaptorDesktop):
         # For Firefox we need to set MOZ_DISABLE_NONLOCAL_CONNECTIONS=1 env var before startup
         # when testing release builds from mozilla-beta/release. This is because of restrictions
         # on release builds that require webextensions to be signed unless this env var is set
-        self.log.info("setting MOZ_DISABLE_NONLOCAL_CONNECTIONS=1")
+        LOG.info("setting MOZ_DISABLE_NONLOCAL_CONNECTIONS=1")
         os.environ['MOZ_DISABLE_NONLOCAL_CONNECTIONS'] = "1"
 
     def enable_non_local_connections(self):
         # pageload tests need to be able to access non-local connections via mitmproxy
-        self.log.info("setting MOZ_DISABLE_NONLOCAL_CONNECTIONS=0")
+        LOG.info("setting MOZ_DISABLE_NONLOCAL_CONNECTIONS=0")
         os.environ['MOZ_DISABLE_NONLOCAL_CONNECTIONS'] = "0"
 
     def launch_desktop_browser(self, test):
-        self.log.info("starting %s" % self.config['app'])
+        LOG.info("starting %s" % self.config['app'])
         if self.config['is_release_build']:
             self.disable_non_local_connections()
 
@@ -595,9 +669,10 @@ class RaptorDesktopFirefox(RaptorDesktop):
         # if geckoProfile is enabled, initialize it
         if self.config['gecko_profile'] is True:
             self._init_gecko_profiling(test)
-            # tell the control server the gecko_profile dir; the control server will
-            # receive the actual gecko profiles from the web ext and will write them
-            # to disk; then profiles are picked up by gecko_profile.symbolicate
+            # tell the control server the gecko_profile dir; the control server
+            # will receive the filename of the stored gecko profile from the web
+            # extension, and will move it out of the browser user profile to
+            # this directory; where it is picked-up by gecko_profile.symbolicate
             self.control_server.gecko_profile_dir = self.gecko_profiler.gecko_profile_dir
 
 
@@ -618,7 +693,7 @@ class RaptorDesktopChrome(RaptorDesktop):
             self.runner.cmdargs.extend(chrome_args)
 
     def launch_desktop_browser(self, test):
-        self.log.info("starting %s" % self.config['app'])
+        LOG.info("starting %s" % self.config['app'])
         # some chromium-specfic cmd line opts required
         self.runner.cmdargs.extend(['--use-mock-keychain', '--no-default-browser-check'])
 
@@ -633,7 +708,7 @@ class RaptorDesktopChrome(RaptorDesktop):
 
     def set_browser_test_prefs(self, raw_prefs):
         # add test-specific preferences
-        self.log.info("preferences were configured for the test, however \
+        LOG.info("preferences were configured for the test, however \
                         we currently do not install them on non-Firefox browsers.")
 
 
@@ -649,6 +724,7 @@ class RaptorAndroid(Raptor):
 
         self.remote_test_root = os.path.abspath(os.path.join(os.sep, 'sdcard', 'raptor'))
         self.remote_profile = os.path.join(self.remote_test_root, "profile")
+        self.os_baseline_data = None
 
     def set_reverse_port(self, port):
         tcp_port = "tcp:{}".format(port)
@@ -657,15 +733,15 @@ class RaptorAndroid(Raptor):
     def set_reverse_ports(self, is_benchmark=False):
         # Make services running on the host available to the device
         if self.config['host'] in ('localhost', '127.0.0.1'):
-            self.log.info("making the raptor control server port available to device")
+            LOG.info("making the raptor control server port available to device")
             self.set_reverse_port(self.control_server.port)
 
         if self.config['host'] in ('localhost', '127.0.0.1'):
-            self.log.info("making the raptor playback server port available to device")
+            LOG.info("making the raptor playback server port available to device")
             self.set_reverse_port(8080)
 
         if is_benchmark and self.config['host'] in ('localhost', '127.0.0.1'):
-            self.log.info("making the raptor benchmarks server port available to device")
+            LOG.info("making the raptor benchmarks server port available to device")
             self.set_reverse_port(self.benchmark_port)
 
     def setup_adb_device(self):
@@ -673,7 +749,7 @@ class RaptorAndroid(Raptor):
             self.device = ADBDevice(verbose=True)
             self.tune_performance()
 
-        self.log.info("creating remote root folder for raptor: %s" % self.remote_test_root)
+        LOG.info("creating remote root folder for raptor: %s" % self.remote_test_root)
         self.device.rm(self.remote_test_root, force=True, recursive=True)
         self.device.mkdir(self.remote_test_root)
         self.device.chmod(self.remote_test_root, recursive=True, root=True)
@@ -685,10 +761,10 @@ class RaptorAndroid(Raptor):
 
         For more information, see https://bugzilla.mozilla.org/show_bug.cgi?id=1547135.
         """
-        self.log.info("tuning android device performance")
+        LOG.info("tuning android device performance")
         self.set_svc_power_stayon()
         if (self.device._have_su or self.device._have_android_su):
-            self.log.info("executing additional tuning commands requiring root")
+            LOG.info("executing additional tuning commands requiring root")
             device_name = self.device.shell_output('getprop ro.product.model')
             # all commands require root shell from here on
             self.set_scheduler()
@@ -698,22 +774,22 @@ class RaptorAndroid(Raptor):
             self.set_gpu_performance_parameters(device_name)
             self.set_kernel_performance_parameters()
         self.device.clear_logcat()
-        self.log.info("android device performance tuning complete")
+        LOG.info("android device performance tuning complete")
 
     def _set_value_and_check_exitcode(self, file_name, value, root=False):
-        self.log.info('setting {} to {}'.format(file_name, value))
+        LOG.info('setting {} to {}'.format(file_name, value))
         process = self.device.shell(' '.join(['echo', str(value), '>', str(file_name)]), root=root)
         if process.exitcode == 0:
-            self.log.info('successfully set {} to {}'.format(file_name, value))
+            LOG.info('successfully set {} to {}'.format(file_name, value))
         else:
-            self.log.warning('command failed with exitcode {}'.format(str(process.exitcode)))
+            LOG.warning('command failed with exitcode {}'.format(str(process.exitcode)))
 
     def set_svc_power_stayon(self):
-        self.log.info('set device to stay awake on usb')
+        LOG.info('set device to stay awake on usb')
         self.device.shell('svc power stayon usb')
 
     def set_scheduler(self):
-        self.log.info('setting scheduler to noop')
+        LOG.info('setting scheduler to noop')
         scheduler_location = '/sys/block/sda/queue/scheduler'
 
         self._set_value_and_check_exitcode(scheduler_location, 'noop')
@@ -725,18 +801,18 @@ class RaptorAndroid(Raptor):
             'thermald',
         ]
         for service in services:
-            self.log.info(' '.join(['turning off service:', service]))
+            LOG.info(' '.join(['turning off service:', service]))
             self.device.shell(' '.join(['stop', service]), root=True)
 
         services_list_output = self.device.shell_output('service list')
         for service in services:
             if service not in services_list_output:
-                self.log.info(' '.join(['successfully terminated:', service]))
+                LOG.info(' '.join(['successfully terminated:', service]))
             else:
-                self.log.warning(' '.join(['failed to terminate:', service]))
+                LOG.warning(' '.join(['failed to terminate:', service]))
 
     def disable_animations(self):
-        self.log.info('disabling animations')
+        LOG.info('disabling animations')
         commands = {
             'animator_duration_scale': 0.0,
             'transition_animation_scale': 0.0,
@@ -745,12 +821,12 @@ class RaptorAndroid(Raptor):
 
         for key, value in commands.items():
             command = ' '.join(['settings', 'put', 'global', key, str(value)])
-            self.log.info('setting {} to {}'.format(key, value))
+            LOG.info('setting {} to {}'.format(key, value))
             self.device.shell(command)
 
     def restore_animations(self):
         # animation settings are not restored to default by reboot
-        self.log.info('restoring animations')
+        LOG.info('restoring animations')
         commands = {
             'animator_duration_scale': 1.0,
             'transition_animation_scale': 1.0,
@@ -762,7 +838,7 @@ class RaptorAndroid(Raptor):
             self.device.shell(command)
 
     def set_virtual_memory_parameters(self):
-        self.log.info('setting virtual memory parameters')
+        LOG.info('setting virtual memory parameters')
         commands = {
             '/proc/sys/vm/swappiness': 0,
             '/proc/sys/vm/dirty_ratio': 85,
@@ -773,7 +849,7 @@ class RaptorAndroid(Raptor):
             self._set_value_and_check_exitcode(key, value, root=True)
 
     def set_cpu_performance_parameters(self, device_name):
-        self.log.info('setting cpu performance parameters')
+        LOG.info('setting cpu performance parameters')
         commands = {}
 
         if device_name == 'Pixel 2':
@@ -805,7 +881,7 @@ class RaptorAndroid(Raptor):
             self._set_value_and_check_exitcode(key, value, root=True)
 
     def set_gpu_performance_parameters(self, device_name):
-        self.log.info('setting gpu performance parameters')
+        LOG.info('setting gpu performance parameters')
         commands = {
             '/sys/class/kgsl/kgsl-3d0/bus_split': '0',
             '/sys/class/kgsl/kgsl-3d0/force_bus_on': '1',
@@ -841,7 +917,7 @@ class RaptorAndroid(Raptor):
             self._set_value_and_check_exitcode(key, value, root=True)
 
     def set_kernel_performance_parameters(self):
-        self.log.info('setting kernel performance parameters')
+        LOG.info('setting kernel performance parameters')
         commands = {
             '/sys/kernel/debug/msm-bus-dbg/shell-client/update_request': '1',
             '/sys/kernel/debug/msm-bus-dbg/shell-client/mas': '1',
@@ -851,8 +927,17 @@ class RaptorAndroid(Raptor):
         for key, value in commands.items():
             self._set_value_and_check_exitcode(key, value, root=True)
 
+    def build_browser_profile(self):
+        super(RaptorAndroid, self).build_browser_profile()
+
+        # Merge in the android profile
+        path = os.path.join(self.profile_data_dir, 'raptor-android')
+        LOG.info("Merging profile: {}".format(path))
+        self.profile.merge(path)
+        self.profile.set_preferences({'browser.tabs.remote.autostart': self.config['e10s']})
+
     def clear_app_data(self):
-        self.log.info("clearing %s app data" % self.config['binary'])
+        LOG.info("clearing %s app data" % self.config['binary'])
         self.device.shell("pm clear %s" % self.config['binary'])
 
     def copy_profile_to_device(self):
@@ -861,21 +946,21 @@ class RaptorAndroid(Raptor):
             raise Exception('%s is not installed' % self.config['binary'])
 
         try:
-            self.log.info("copying profile to device: %s" % self.remote_profile)
+            LOG.info("copying profile to device: %s" % self.remote_profile)
             self.device.rm(self.remote_profile, force=True, recursive=True)
             # self.device.mkdir(self.remote_profile)
             self.device.push(self.profile.profile, self.remote_profile)
             self.device.chmod(self.remote_profile, recursive=True, root=True)
 
         except Exception:
-            self.log.error("Unable to copy profile to device.")
+            LOG.error("Unable to copy profile to device.")
             raise
 
     def turn_on_android_app_proxy(self):
         # for geckoview/android pageload playback we can't use a policy to turn on the
         # proxy; we need to set prefs instead; note that the 'host' may be different
         # than '127.0.0.1' so we must set the prefs accordingly
-        self.log.info("setting profile prefs to turn on the android app proxy")
+        LOG.info("setting profile prefs to turn on the android app proxy")
         proxy_prefs = {}
         proxy_prefs["network.proxy.type"] = 1
         proxy_prefs["network.proxy.http"] = self.config['host']
@@ -885,12 +970,25 @@ class RaptorAndroid(Raptor):
         proxy_prefs["network.proxy.no_proxies_on"] = self.config['host']
         self.profile.set_preferences(proxy_prefs)
 
+    def log_android_device_temperature(self):
+        try:
+            # retrieve and log the android device temperature
+            thermal_zone0 = self.device.shell_output('cat sys/class/thermal/thermal_zone0/temp')
+            thermal_zone0 = float(thermal_zone0)
+            zone_type = self.device.shell_output('cat sys/class/thermal/thermal_zone0/type')
+            LOG.info("(thermal_zone0) device temperature: %.3f zone type: %s"
+                     % (thermal_zone0 / 1000, zone_type))
+        except Exception as exc:
+            LOG.warning("Unexpected error: {} - {}"
+                        .format(exc.__class__.__name__, exc))
+
     def launch_firefox_android_app(self, test_name):
-        self.log.info("starting %s" % self.config['app'])
+        LOG.info("starting %s" % self.config['app'])
 
         extra_args = ["-profile", self.remote_profile,
                       "--es", "env0", "LOG_VERBOSE=1",
-                      "--es", "env1", "R_LOG_LEVEL=6"]
+                      "--es", "env1", "R_LOG_LEVEL=6",
+                      "--es", "env2", "MOZ_WEBRENDER=%d" % self.config['enable_webrender']]
 
         try:
             # make sure the android app is not already running
@@ -924,8 +1022,8 @@ class RaptorAndroid(Raptor):
                 raise Exception("Error launching %s. App did not start properly!" %
                                 self.config['binary'])
         except Exception as e:
-            self.log.error("Exception launching %s" % self.config['binary'])
-            self.log.error("Exception: %s %s" % (type(e).__name__, str(e)))
+            LOG.error("Exception launching %s" % self.config['binary'])
+            LOG.error("Exception: %s %s" % (type(e).__name__, str(e)))
             if self.config['power_test']:
                 finish_android_power_test(self, test_name)
             raise
@@ -941,10 +1039,10 @@ class RaptorAndroid(Raptor):
             _source = os.path.join(source_dir, next_file)
             _dest = os.path.join(target_dir, next_file)
             if os.path.exists(_source):
-                self.log.info("copying %s to %s" % (_source, _dest))
+                LOG.info("copying %s to %s" % (_source, _dest))
                 shutil.copyfile(_source, _dest)
             else:
-                self.log.critical("unable to find ssl cert db file: %s" % _source)
+                LOG.critical("unable to find ssl cert db file: %s" % _source)
 
     def run_tests(self, tests, test_names):
         self.setup_adb_device()
@@ -958,19 +1056,30 @@ class RaptorAndroid(Raptor):
         self.set_reverse_ports(is_benchmark=is_benchmark)
 
     def run_test_teardown(self):
-        self.log.info('removing reverse socket connections')
+        LOG.info('removing reverse socket connections')
         self.device.remove_socket_connections('reverse')
 
         super(RaptorAndroid, self).run_test_teardown()
 
-    def run_test(self, test, timeout=None):
+    def run_test(self, test, timeout):
         # tests will be run warm (i.e. NO browser restart between page-cycles)
         # unless otheriwse specified in the test INI by using 'cold = true'
         try:
+
+            if self.config['power_test']:
+                # gather OS baseline data
+                init_android_power_test(self)
+                LOG.info("Running OS baseline, pausing for 1 minute...")
+                time.sleep(60)
+                finish_android_power_test(self, 'os-baseline', os_baseline=True)
+
+                # initialize for the test
+                init_android_power_test(self)
+
             if test.get('cold', False) is True:
-                self.run_test_cold(test, timeout)
+                self.__run_test_cold(test, timeout)
             else:
-                self.run_test_warm(test, timeout)
+                self.__run_test_warm(test, timeout)
 
         except SignalHandlerException:
             self.device.stop_application(self.config['binary'])
@@ -978,10 +1087,9 @@ class RaptorAndroid(Raptor):
         finally:
             if self.config['power_test']:
                 finish_android_power_test(self, test['name'])
-
             self.run_test_teardown()
 
-    def run_test_cold(self, test, timeout=None):
+    def __run_test_cold(self, test, timeout):
         '''
         Run the Raptor test but restart the entire browser app between page-cycles.
 
@@ -1005,16 +1113,13 @@ class RaptorAndroid(Raptor):
 
         The default will be to run in warm mode; unless 'cold = true' is set in the test INI.
         '''
-        self.log.info("test %s is running in cold mode; browser WILL be restarted between "
-                      "page cycles" % test['name'])
-
-        if self.config['power_test']:
-            init_android_power_test(self)
+        LOG.info("test %s is running in cold mode; browser WILL be restarted between "
+                 "page cycles" % test['name'])
 
         for test['browser_cycle'] in range(1, test['expected_browser_cycles'] + 1):
 
-            self.log.info("begin browser cycle %d of %d for test %s"
-                          % (test['browser_cycle'], test['expected_browser_cycles'], test['name']))
+            LOG.info("begin browser cycle %d of %d for test %s"
+                     % (test['browser_cycle'], test['expected_browser_cycles'], test['name']))
 
             self.run_test_setup(test)
 
@@ -1028,7 +1133,7 @@ class RaptorAndroid(Raptor):
                     # an ssl cert db has now been created in the profile; copy it out so we
                     # can use the same cert db in future test cycles / browser restarts
                     local_cert_db_dir = tempfile.mkdtemp()
-                    self.log.info("backing up browser ssl cert db that was created via certutil")
+                    LOG.info("backing up browser ssl cert db that was created via certutil")
                     self.copy_cert_db(self.config['local_profile_dir'], local_cert_db_dir)
 
                 if self.config['host'] not in ('localhost', '127.0.0.1'):
@@ -1045,7 +1150,7 @@ class RaptorAndroid(Raptor):
                 if test.get('playback') is not None:
                     # get cert db from previous cycle profile and copy into new clean profile
                     # this saves us from having to start playback again / recreate cert db etc.
-                    self.log.info("copying existing ssl cert db into new browser profile")
+                    LOG.info("copying existing ssl cert db into new browser profile")
                     self.copy_cert_db(local_cert_db_dir, self.config['local_profile_dir'])
 
                 self.run_test_setup(test)
@@ -1054,9 +1159,14 @@ class RaptorAndroid(Raptor):
                 self.turn_on_android_app_proxy()
 
             self.copy_profile_to_device()
+            self.log_android_device_temperature()
 
             # now start the browser/app under test
             self.launch_firefox_android_app(test['name'])
+
+            # If we are measuring CPU, let's grab a snapshot
+            if self.config['cpu_test']:
+                generate_android_cpu_profile(self, test['name'])
 
             # set our control server flag to indicate we are running the browser/app
             self.control_server._finished = False
@@ -1065,18 +1175,16 @@ class RaptorAndroid(Raptor):
 
             # in debug mode, and running locally, leave the browser running
             if self.debug_mode and self.config['run_local']:
-                self.log.info("* debug-mode enabled - please shutdown the browser manually...")
+                LOG.info("* debug-mode enabled - please shutdown the browser manually...")
                 self.runner.wait(timeout=None)
 
             # break test execution if a exception is present
             if len(self.results_handler.page_timeout_list) > 0:
                 break
 
-    def run_test_warm(self, test, timeout=None):
-        self.log.info("test %s is running in warm mode; browser will NOT be restarted between "
-                      "page cycles" % test['name'])
-        if self.config['power_test']:
-            init_android_power_test(self)
+    def __run_test_warm(self, test, timeout):
+        LOG.info("test %s is running in warm mode; browser will NOT be restarted between "
+                 "page cycles" % test['name'])
 
         self.run_test_setup(test)
 
@@ -1091,9 +1199,14 @@ class RaptorAndroid(Raptor):
 
         self.clear_app_data()
         self.copy_profile_to_device()
+        self.log_android_device_temperature()
 
         # now start the browser/app under test
         self.launch_firefox_android_app(test['name'])
+
+        # If we are collecting CPU info, let's grab the details
+        if self.config['cpu_test']:
+            generate_android_cpu_profile(self, test['name'])
 
         # set our control server flag to indicate we are running the browser/app
         self.control_server._finished = False
@@ -1102,7 +1215,7 @@ class RaptorAndroid(Raptor):
 
         # in debug mode, and running locally, leave the browser running
         if self.debug_mode and self.config['run_local']:
-            self.log.info("* debug-mode enabled - please shutdown the browser manually...")
+            LOG.info("* debug-mode enabled - please shutdown the browser manually...")
             self.runner.wait(timeout=None)
 
     def check_for_crashes(self):
@@ -1118,18 +1231,18 @@ class RaptorAndroid(Raptor):
             dump_dir = tempfile.mkdtemp()
             remote_dir = posixpath.join(self.remote_profile, 'minidumps')
             if not self.device.is_dir(remote_dir):
-                self.log.error("No crash directory (%s) found on remote device" % remote_dir)
+                LOG.error("No crash directory (%s) found on remote device" % remote_dir)
                 return
             self.device.pull(remote_dir, dump_dir)
-            mozcrash.log_crashes(self.log, dump_dir, self.config['symbols_path'])
+            mozcrash.log_crashes(LOG, dump_dir, self.config['symbols_path'])
         finally:
             try:
                 shutil.rmtree(dump_dir)
             except Exception:
-                self.log.warning("unable to remove directory: %s" % dump_dir)
+                LOG.warning("unable to remove directory: %s" % dump_dir)
 
     def clean_up(self):
-        self.log.info("removing test folder for raptor: %s" % self.remote_test_root)
+        LOG.info("removing test folder for raptor: %s" % self.remote_test_root)
         self.device.rm(self.remote_test_root, force=True, recursive=True)
 
         super(RaptorAndroid, self).clean_up()
@@ -1138,7 +1251,6 @@ class RaptorAndroid(Raptor):
 def main(args=sys.argv[1:]):
     args = parse_args()
     commandline.setup_logging('raptor', args, {'tbpl': sys.stdout})
-    LOG = get_default_logger(component='raptor-main')
 
     LOG.info("raptor-start")
 
@@ -1154,7 +1266,7 @@ def main(args=sys.argv[1:]):
 
     # ensure we have at least one valid test to run
     if len(raptor_test_list) == 0:
-        LOG.critical("abort: no tests found")
+        LOG.critical("this test is not targeted for {}".format(args.app))
         sys.exit(1)
 
     LOG.info("raptor tests scheduled to run:")
@@ -1178,6 +1290,7 @@ def main(args=sys.argv[1:]):
                           symbols_path=args.symbols_path,
                           host=args.host,
                           power_test=args.power_test,
+                          cpu_test=args.cpu_test,
                           memory_test=args.memory_test,
                           is_release_build=args.is_release_build,
                           debug_mode=args.debug_mode,
@@ -1185,6 +1298,7 @@ def main(args=sys.argv[1:]):
                           activity=args.activity,
                           intent=args.intent,
                           interrupt_handler=SignalHandler(),
+                          enable_webrender=args.enable_webrender,
                           )
 
     success = raptor.run_tests(raptor_test_list, raptor_test_names)

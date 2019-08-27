@@ -48,24 +48,9 @@ job-defaults:
                 default: false
 
 jobs:
-    fennec-beta:
-        attributes:
-            release-type: beta
-        name: fennec-beta-version-bump
+    fennec:
+        name: fennec-version-bump
         shipping-product: fennec
-        worker:
-            bump-files:
-                - mobile/android/config/version-files/beta/version_display.txt
-
-    fennec-release:
-        attributes:
-            release-type: release
-        name: fennec-release-version-bump
-        shipping-product: fennec
-        worker:
-            bump-files:
-                - mobile/android/config/version-files/release/version.txt
-                - mobile/android/config/version-files/release/version_display.txt
 
     firefox:
         name: firefox-version-bump

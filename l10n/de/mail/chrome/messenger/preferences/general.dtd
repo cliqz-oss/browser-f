@@ -38,3 +38,7 @@
 <!ENTITY browse.accesskey                 "u">
 
 <!ENTITY defaultSearchEngine.label        "Standardsuchmaschine">
+<!ENTITY addSearchEngine.label            "Aus Datei hinzufügen">
+<!ENTITY addSearchEngine.accesskey        "D">
+<!ENTITY removeSearchEngine.label         "Entfernen">
+<!ENTITY removeSearchEngine.accesskey     "f">

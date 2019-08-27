@@ -448,7 +448,7 @@ void GetDOMFileOrDirectoryPath(const OwningFileOrDirectory& aData,
 
 /* static */
 bool HTMLInputElement::ValueAsDateEnabled(JSContext* cx, JSObject* obj) {
-  return IsExperimentalFormsEnabled() || IsInputDateTimeEnabled() ||
+  return IsExperimentalFormsEnabled() || StaticPrefs::dom_forms_datetime() ||
          IsInputDateTimeOthersEnabled();
 }
 
@@ -939,7 +939,7 @@ void HTMLInputElement::Shutdown() {
 HTMLInputElement::HTMLInputElement(
     already_AddRefed<mozilla::dom::NodeInfo>&& aNodeInfo,
     FromParser aFromParser, FromClone aFromClone)
-    : nsGenericHTMLFormElementWithState(std::move(aNodeInfo),
+    : nsGenericHTMLFormElementWithState(std::move(aNodeInfo), aFromParser,
                                         kInputDefaultType->value),
       mAutocompleteAttrState(nsContentUtils::eAutocompleteAttrState_Unknown),
       mAutocompleteInfoState(nsContentUtils::eAutocompleteAttrState_Unknown),
@@ -1918,7 +1918,7 @@ nsresult HTMLInputElement::ApplyStep(int32_t aStep) {
 /* static */
 bool HTMLInputElement::IsExperimentalMobileType(uint8_t aType) {
   return (aType == NS_FORM_INPUT_DATE || aType == NS_FORM_INPUT_TIME) &&
-         !IsInputDateTimeEnabled();
+         !StaticPrefs::dom_forms_datetime();
 }
 
 bool HTMLInputElement::IsDateTimeInputType(uint8_t aType) {
@@ -2336,7 +2336,7 @@ void HTMLInputElement::GetDisplayFileName(nsAString& aValue) const {
   nsAutoString value;
 
   if (mFileData->mFilesOrDirectories.IsEmpty()) {
-    if ((IsDirPickerEnabled() && Allowdirs()) ||
+    if ((StaticPrefs::dom_input_dirpicker() && Allowdirs()) ||
         (StaticPrefs::dom_webkitBlink_dirPicker_enabled() &&
          HasAttr(kNameSpaceID_None, nsGkAtoms::webkitdirectory))) {
       nsContentUtils::GetLocalizedString(nsContentUtils::eFORMS_PROPERTIES,
@@ -2352,9 +2352,8 @@ void HTMLInputElement::GetDisplayFileName(nsAString& aValue) const {
     nsString count;
     count.AppendInt(int(mFileData->mFilesOrDirectories.Length()));
 
-    const char16_t* params[] = {count.get()};
-    nsContentUtils::FormatLocalizedString(nsContentUtils::eFORMS_PROPERTIES,
-                                          "XFilesSelected", params, value);
+    nsContentUtils::FormatLocalizedString(
+        value, nsContentUtils::eFORMS_PROPERTIES, "XFilesSelected", count);
   }
 
   aValue = value;
@@ -2376,7 +2375,7 @@ void HTMLInputElement::SetFilesOrDirectories(
 
   mFileData->ClearGetFilesHelpers();
 
-  if (IsWebkitFileSystemEnabled()) {
+  if (StaticPrefs::dom_webkitBlink_filesystem_enabled()) {
     HTMLInputElement_Binding::ClearCachedWebkitEntriesValue(this);
     mFileData->mEntries.Clear();
   }
@@ -2393,7 +2392,7 @@ void HTMLInputElement::SetFiles(FileList* aFiles, bool aSetValueChanged) {
   mFileData->mFilesOrDirectories.Clear();
   mFileData->ClearGetFilesHelpers();
 
-  if (IsWebkitFileSystemEnabled()) {
+  if (StaticPrefs::dom_webkitBlink_filesystem_enabled()) {
     HTMLInputElement_Binding::ClearCachedWebkitEntriesValue(this);
     mFileData->mEntries.Clear();
   }
@@ -2419,7 +2418,7 @@ void HTMLInputElement::MozSetDndFilesAndDirectories(
 
   SetFilesOrDirectories(aFilesOrDirectories, true);
 
-  if (IsWebkitFileSystemEnabled()) {
+  if (StaticPrefs::dom_webkitBlink_filesystem_enabled()) {
     UpdateEntries(aFilesOrDirectories);
   }
 
@@ -2500,7 +2499,7 @@ FileList* HTMLInputElement::GetFiles() {
     return nullptr;
   }
 
-  if (IsDirPickerEnabled() && Allowdirs() &&
+  if (StaticPrefs::dom_input_dirpicker() && Allowdirs() &&
       (!StaticPrefs::dom_webkitBlink_dirPicker_enabled() ||
        !HasAttr(kNameSpaceID_None, nsGkAtoms::webkitdirectory))) {
     return nullptr;
@@ -3648,7 +3647,7 @@ nsresult HTMLInputElement::MaybeInitPickers(EventChainPostVisitor& aVisitor) {
     nsCOMPtr<nsIContent> target =
         do_QueryInterface(aVisitor.mEvent->mOriginalTarget);
     if (target && target->FindFirstNonChromeOnlyAccessContent() == this &&
-        ((IsDirPickerEnabled() && Allowdirs()) ||
+        ((StaticPrefs::dom_input_dirpicker() && Allowdirs()) ||
          (StaticPrefs::dom_webkitBlink_dirPicker_enabled() &&
           HasAttr(kNameSpaceID_None, nsGkAtoms::webkitdirectory)))) {
       type = FILE_PICKER_DIRECTORY;
@@ -4273,13 +4272,12 @@ void HTMLInputElement::MaybeLoadImage() {
   }
 }
 
-nsresult HTMLInputElement::BindToTree(Document* aDocument, nsIContent* aParent,
-                                      nsIContent* aBindingParent) {
-  nsresult rv = nsGenericHTMLFormElementWithState::BindToTree(
-      aDocument, aParent, aBindingParent);
+nsresult HTMLInputElement::BindToTree(BindContext& aContext, nsINode& aParent) {
+  nsresult rv =
+      nsGenericHTMLFormElementWithState::BindToTree(aContext, aParent);
   NS_ENSURE_SUCCESS(rv, rv);
 
-  nsImageLoadingContent::BindToTree(aDocument, aParent, aBindingParent);
+  nsImageLoadingContent::BindToTree(aContext, aParent);
 
   if (mType == NS_FORM_INPUT_IMAGE) {
     // Our base URI may have changed; claim that our URI changed, and the
@@ -4342,7 +4340,7 @@ nsresult HTMLInputElement::BindToTree(Document* aDocument, nsIContent* aParent,
   return rv;
 }
 
-void HTMLInputElement::UnbindFromTree(bool aDeep, bool aNullParent) {
+void HTMLInputElement::UnbindFromTree(bool aNullParent) {
   // If we have a form and are unbound from it,
   // nsGenericHTMLFormElementWithState::UnbindFromTree() will unset the form and
   // that takes care of form's WillRemove so we just have to take care
@@ -4357,8 +4355,8 @@ void HTMLInputElement::UnbindFromTree(bool aDeep, bool aNullParent) {
     NotifyUAWidgetTeardown();
   }
 
-  nsImageLoadingContent::UnbindFromTree(aDeep, aNullParent);
-  nsGenericHTMLFormElementWithState::UnbindFromTree(aDeep, aNullParent);
+  nsImageLoadingContent::UnbindFromTree(aNullParent);
+  nsGenericHTMLFormElementWithState::UnbindFromTree(aNullParent);
 
   // GetCurrentDoc is returning nullptr so we can update the value
   // missing validity state to reflect we are no longer into a doc.
@@ -5110,37 +5108,12 @@ bool HTMLInputElement::ParseTime(const nsAString& aValue, uint32_t* aResult) {
 bool HTMLInputElement::IsDateTimeTypeSupported(uint8_t aDateTimeInputType) {
   return ((aDateTimeInputType == NS_FORM_INPUT_DATE ||
            aDateTimeInputType == NS_FORM_INPUT_TIME) &&
-          (IsInputDateTimeEnabled() || IsExperimentalFormsEnabled())) ||
+          (StaticPrefs::dom_forms_datetime() ||
+           IsExperimentalFormsEnabled())) ||
          ((aDateTimeInputType == NS_FORM_INPUT_MONTH ||
            aDateTimeInputType == NS_FORM_INPUT_WEEK ||
            aDateTimeInputType == NS_FORM_INPUT_DATETIME_LOCAL) &&
           IsInputDateTimeOthersEnabled());
-}
-
-/* static */
-bool HTMLInputElement::IsWebkitFileSystemEnabled() {
-  static bool sWebkitFileSystemEnabled = false;
-  static bool sWebkitFileSystemPrefCached = false;
-  if (!sWebkitFileSystemPrefCached) {
-    sWebkitFileSystemPrefCached = true;
-    Preferences::AddBoolVarCache(&sWebkitFileSystemEnabled,
-                                 "dom.webkitBlink.filesystem.enabled", false);
-  }
-
-  return sWebkitFileSystemEnabled;
-}
-
-/* static */
-bool HTMLInputElement::IsDirPickerEnabled() {
-  static bool sDirPickerEnabled = false;
-  static bool sDirPickerPrefCached = false;
-  if (!sDirPickerPrefCached) {
-    sDirPickerPrefCached = true;
-    Preferences::AddBoolVarCache(&sDirPickerEnabled, "dom.input.dirpicker",
-                                 false);
-  }
-
-  return sDirPickerEnabled;
 }
 
 /* static */
@@ -5154,19 +5127,6 @@ bool HTMLInputElement::IsExperimentalFormsEnabled() {
   }
 
   return sExperimentalFormsEnabled;
-}
-
-/* static */
-bool HTMLInputElement::IsInputDateTimeEnabled() {
-  static bool sDateTimeEnabled = false;
-  static bool sDateTimePrefCached = false;
-  if (!sDateTimePrefCached) {
-    sDateTimePrefCached = true;
-    Preferences::AddBoolVarCache(&sDateTimeEnabled, "dom.forms.datetime",
-                                 false);
-  }
-
-  return sDateTimeEnabled;
 }
 
 /* static */
@@ -5225,10 +5185,10 @@ bool HTMLInputElement::ParseAttribute(int32_t aNamespaceID, nsAtom* aAttribute,
       return true;
     }
     if (aAttribute == nsGkAtoms::width) {
-      return aResult.ParseSpecialIntValue(aValue);
+      return aResult.ParseHTMLDimension(aValue);
     }
     if (aAttribute == nsGkAtoms::height) {
-      return aResult.ParseSpecialIntValue(aValue);
+      return aResult.ParseHTMLDimension(aValue);
     }
     if (aAttribute == nsGkAtoms::maxlength) {
       return aResult.ParseNonNegativeIntValue(aValue);
@@ -5238,9 +5198,6 @@ bool HTMLInputElement::ParseAttribute(int32_t aNamespaceID, nsAtom* aAttribute,
     }
     if (aAttribute == nsGkAtoms::size) {
       return aResult.ParsePositiveIntValue(aValue);
-    }
-    if (aAttribute == nsGkAtoms::border) {
-      return aResult.ParseIntWithBounds(aValue, 0);
     }
     if (aAttribute == nsGkAtoms::align) {
       return ParseAlignValue(aValue, aResult);
@@ -5934,9 +5891,11 @@ void HTMLInputElement::DoneCreatingElement() {
   // Restore state as needed.  Note that disabled state applies to all control
   // types.
   //
-  bool restoredCheckedState = !mInhibitRestoration &&
-                              NS_SUCCEEDED(GenerateStateKey()) &&
-                              RestoreFormControlState();
+  bool restoredCheckedState = false;
+  if (!mInhibitRestoration) {
+    GenerateStateKey();
+    restoredCheckedState = RestoreFormControlState();
+  }
 
   //
   // If restore does not occur, we initialize .checked using the CHECKED

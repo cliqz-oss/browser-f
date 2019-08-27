@@ -238,7 +238,7 @@ impl FontInstance {
     ) -> Self {
         FontInstance {
             transform: FontTransform::identity(),
-            color: color.into(),
+            color,
             size: base.size,
             base,
             render_mode,
@@ -395,9 +395,9 @@ impl SubpixelOffset {
         let apos = ((pos - pos.floor()) * 8.0) as i32;
 
         match apos {
-            1...2 => SubpixelOffset::Quarter,
-            3...4 => SubpixelOffset::Half,
-            5...6 => SubpixelOffset::ThreeQuarters,
+            1..=2 => SubpixelOffset::Quarter,
+            3..=4 => SubpixelOffset::Half,
+            5..=6 => SubpixelOffset::ThreeQuarters,
             _ => SubpixelOffset::Zero,
         }
     }
@@ -863,7 +863,7 @@ mod test_glyph_rasterizer {
             .build();
         let workers = Arc::new(worker.unwrap());
         let mut glyph_rasterizer = GlyphRasterizer::new(workers).unwrap();
-        let mut glyph_cache = GlyphCache::new();
+        let mut glyph_cache = GlyphCache::new(GlyphCache::DEFAULT_MAX_BYTES_USED);
         let mut gpu_cache = GpuCache::new_for_testing();
         let mut texture_cache = TextureCache::new_for_testing(2048, 1024);
         let mut render_task_cache = RenderTaskCache::new();

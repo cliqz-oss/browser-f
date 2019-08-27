@@ -52,12 +52,6 @@ cron_yml_schema = Schema({
                 'rebuild-kinds',
                 description='Kinds that should not be re-used from the on-push graph.',
             ): [basestring],
-            Optional(
-                'android-release-type',
-                description='If specified, this indicates whether we intend to '
-                            'either a Fennec Nightly, a Fennec beta or a Fennec'
-                            'Release.'
-            ): basestring,
         },
 
         # when to run it

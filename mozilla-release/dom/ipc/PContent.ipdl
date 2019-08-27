@@ -41,7 +41,6 @@ include protocol PPresentation;
 include protocol PURLClassifier;
 include protocol PURLClassifierLocal;
 include protocol PVRManager;
-include protocol PVideoDecoderManager;
 include protocol PRemoteDecoderManager;
 include protocol PProfiler;
 include protocol PScriptCache;
@@ -49,6 +48,7 @@ include protocol PSessionStorageObserver;
 include DOMTypes;
 include JavaScriptTypes;
 include IPCBlob;
+include IPCStream;
 include PTabContext;
 include URIParams;
 include PluginTypes;
@@ -97,7 +97,6 @@ using mozilla::Telemetry::DiscardedData from "mozilla/TelemetryComms.h";
 using mozilla::CrossProcessMutexHandle from "mozilla/ipc/CrossProcessMutex.h";
 using refcounted class nsIInputStream from "mozilla/ipc/IPCStreamUtils.h";
 using refcounted class mozilla::dom::BrowsingContext from "mozilla/dom/BrowsingContext.h";
-using mozilla::dom::BrowsingContextId from "mozilla/dom/ipc/IdType.h";
 using mozilla::dom::BrowsingContextTransaction from "mozilla/dom/BrowsingContext.h";
 using mozilla::dom::BrowsingContextFieldEpochs from "mozilla/dom/BrowsingContext.h";
 using mozilla::dom::BrowsingContextInitializer from "mozilla/dom/BrowsingContext.h";
@@ -227,7 +226,7 @@ struct JSWindowActorInfo
 {
   nsString name;
   bool allFrames;
-  nsCString url;
+  nsCString? url;
 
   JSWindowActorEventDecl[] events;
   nsCString[] observers;
@@ -393,7 +392,7 @@ child:
                            IPCTabContext context,
                            BrowsingContext browsingContext,
                            uint32_t chromeFlags, ContentParentId cpId,
-                           bool isForBrowser);
+                           bool isForBrowser, bool isTopLevel);
 
 both:
     async PFileDescriptorSet(FileDescriptor fd);
@@ -415,7 +414,7 @@ child:
       Endpoint<PCompositorManagerChild> compositor,
       Endpoint<PImageBridgeChild> imageBridge,
       Endpoint<PVRManagerChild> vr,
-      Endpoint<PVideoDecoderManagerChild> video,
+      Endpoint<PRemoteDecoderManagerChild> video,
       uint32_t[] namespaces);
 
     // Re-create the rendering stack using the given endpoints. This is sent
@@ -425,7 +424,7 @@ child:
       Endpoint<PCompositorManagerChild> compositor,
       Endpoint<PImageBridgeChild> bridge,
       Endpoint<PVRManagerChild> vr,
-      Endpoint<PVideoDecoderManagerChild> video,
+      Endpoint<PRemoteDecoderManagerChild> video,
       uint32_t[] namespaces);
 
     async AudioDefaultDeviceChange();
@@ -482,6 +481,9 @@ child:
 
     async PreferenceUpdate(Pref pref);
     async VarUpdate(GfxVarUpdate var);
+
+    async UpdatePerfStatsCollectionMask(uint64_t aMask);
+    async CollectPerfStatsJSON() returns (nsCString aStats);
 
     async DataStoragePut(nsString aFilename, DataStorageItem aItem);
     async DataStorageRemove(nsString aFilename, nsCString aKey, DataStorageType aType);
@@ -800,6 +802,11 @@ child:
     */
     async StartDelayedAutoplayMediaComponents(BrowsingContext aContext);
 
+    /**
+    * This method is used to notifty content process to mute or unmute media.
+    */
+    async SetMediaMuted(BrowsingContext aContext, bool aMuted);
+
     // Begin subscribing to a new BrowsingContextGroup, sending down the current
     // value for every individual BrowsingContext.
     async RegisterBrowsingContextGroup(BrowsingContextInitializer[] aInits);
@@ -868,7 +875,7 @@ parent:
 
     async PPresentation();
 
-    async CreateAudioIPCConnection() returns (FileDescriptor fd);
+    async CreateAudioIPCConnection() returns (FileDescOrError fd);
 
     sync PURLClassifier(Principal principal)
         returns (bool success);
@@ -1039,23 +1046,6 @@ parent:
     async BackUpXResources(FileDescriptor aXSocketFd);
 
     async RequestAnonymousTemporaryFile(uint64_t aID);
-
-    /**
-     * Keygen requires us to call it after a <keygen> element is parsed and
-     * before one is submitted. This is urgent because an extension might use
-     * a CPOW to synchronously submit a keygen element.
-     */
-    nested(inside_cpow) sync KeygenProcessValue(nsString oldValue,
-                                                nsString challenge,
-                                                nsString keytype,
-                                                nsString keyparams)
-        returns (nsString newValue);
-
-    /**
-     * Called to provide the options for <keygen> elements.
-     */
-    sync KeygenProvideContent()
-        returns (nsString aAttribute, nsString[] aContent);
 
     /** Clear RemoteFrameInfo of the given tab id. */
     async UnregisterRemoteFrame(TabId tabId,
@@ -1307,7 +1297,7 @@ parent:
       nsCString aFeatures,
       float aFullZoom,
       nsString aName,
-      Principal aTriggeringPrincipal,
+      nsIPrincipal aTriggeringPrincipal,
       nsIContentSecurityPolicy aCsp,
       nsIReferrerInfo aReferrerInfo);
 
@@ -1363,6 +1353,8 @@ parent:
     async RecordChildEvents(ChildEventData[] events);
     async RecordDiscardedData(DiscardedData data);
     async RecordOrigin(uint32_t metricId, nsCString origin);
+
+    async ReportContentBlockingLog(IPCStream aJSONStream);
 
     sync GetA11yContentId() returns (uint32_t aContentId);
     async A11yHandlerControl(uint32_t aPid,
@@ -1445,7 +1437,7 @@ both:
      * Re-attach all BrowsingContexts in a 'aContext'.
      */
     async RestoreBrowsingContextChildren(BrowsingContext aContext,
-                                         BrowsingContextId[] aChildren);
+                                         BrowsingContext[] aChildren);
 
     async WindowClose(BrowsingContext aContext, bool aTrustedCaller);
     async WindowFocus(BrowsingContext aContext);

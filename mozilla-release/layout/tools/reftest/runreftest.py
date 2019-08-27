@@ -11,6 +11,7 @@ import json
 import multiprocessing
 import os
 import platform
+import posixpath
 import re
 import shutil
 import signal
@@ -191,7 +192,7 @@ class ReftestResolver(object):
             found = True
             while not os.path.exists(os.path.join(dirname, default_manifest)):
                 dirname, suffix = os.path.split(dirname)
-                pathname = os.path.join(suffix, pathname)
+                pathname = posixpath.join(suffix, pathname)
                 if os.path.dirname(dirname) == dirname:
                     found = False
                     break
@@ -454,6 +455,12 @@ class RefTest(object):
         # Enable leaks detection to its own log file.
         self.leakLogFile = os.path.join(profileDir, "runreftest_leaks.log")
         browserEnv["XPCOM_MEM_BLOAT_LOG"] = self.leakLogFile
+
+        if options.enable_webrender:
+            browserEnv["MOZ_WEBRENDER"] = "1"
+            browserEnv["MOZ_ACCELERATED"] = "1"
+        else:
+            browserEnv["MOZ_WEBRENDER"] = "0"
         return browserEnv
 
     def cleanup(self, profileDir):

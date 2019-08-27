@@ -6,7 +6,6 @@ from __future__ import absolute_import, print_function, unicode_literals
 
 import argparse
 import copy
-import json
 import os
 import re
 import sys
@@ -18,8 +17,9 @@ import mozharness
 
 from mozharness.base.errors import PythonErrorList
 from mozharness.base.log import OutputParser, DEBUG, ERROR, CRITICAL, INFO
-from mozharness.mozilla.testing.testbase import TestingMixin, testing_config_options
 from mozharness.mozilla.testing.android import AndroidMixin
+from mozharness.mozilla.testing.errors import HarnessErrorList
+from mozharness.mozilla.testing.testbase import TestingMixin, testing_config_options
 from mozharness.base.vcs.vcsbase import MercurialScript
 from mozharness.mozilla.testing.codecoverage import (
     CodeCoverageMixin,
@@ -30,12 +30,11 @@ scripts_path = os.path.abspath(os.path.dirname(os.path.dirname(mozharness.__file
 external_tools_path = os.path.join(scripts_path, 'external_tools')
 here = os.path.abspath(os.path.dirname(__file__))
 
-RaptorErrorList = PythonErrorList + [
+RaptorErrorList = PythonErrorList + HarnessErrorList + [
     {'regex': re.compile(r'''run-as: Package '.*' is unknown'''), 'level': DEBUG},
-    {'substr': r'''FAIL: Busted:''', 'level': CRITICAL},
-    {'substr': r'''FAIL: failed to cleanup''', 'level': ERROR},
-    {'substr': r'''erfConfigurator.py: Unknown error''', 'level': CRITICAL},
-    {'substr': r'''raptorError''', 'level': CRITICAL},
+    {'substr': r'''raptorDebug''', 'level': DEBUG},
+    {'regex': re.compile(r'''^raptor[a-zA-Z-]*( - )?( )?(?i)error(:)?'''), 'level': ERROR},
+    {'regex': re.compile(r'''^raptor[a-zA-Z-]*( - )?( )?(?i)critical(:)?'''), 'level': CRITICAL},
     {'regex': re.compile(r'''No machine_name called '.*' can be found'''), 'level': CRITICAL},
     {'substr': r"""No such file or directory: 'browser_output.txt'""",
      'level': CRITICAL,
@@ -86,7 +85,7 @@ class Raptor(TestingMixin, MercurialScript, CodeCoverageMixin, AndroidMixin):
             "action": "store_true",
             "dest": "enable_webrender",
             "default": False,
-            "help": "Tries to enable the WebRender compositor.",
+            "help": "Enable the WebRender compositor in Gecko.",
         }],
         [["--geckoProfile"], {
             "dest": "gecko_profile",
@@ -156,6 +155,12 @@ class Raptor(TestingMixin, MercurialScript, CodeCoverageMixin, AndroidMixin):
             "action": "store_true",
             "default": False,
             "help": "Use Raptor to measure memory usage.",
+        }],
+        [["--cpu-test"], {
+            "dest": "cpu_test",
+            "action": "store_true",
+            "default": False,
+            "help": "Use Raptor to measure CPU usage"
         }],
         [["--debug-mode"], {
             "dest": "debug_mode",
@@ -254,6 +259,7 @@ class Raptor(TestingMixin, MercurialScript, CodeCoverageMixin, AndroidMixin):
             self.host = os.environ['HOST_IP']
         self.power_test = self.config.get('power_test')
         self.memory_test = self.config.get('memory_test')
+        self.cpu_test = self.config.get('cpu_test')
         self.is_release_build = self.config.get('is_release_build')
         self.debug_mode = self.config.get('debug_mode', False)
         self.firefox_android_browsers = ["fennec", "geckoview", "refbrow", "fenix"]
@@ -389,6 +395,10 @@ class Raptor(TestingMixin, MercurialScript, CodeCoverageMixin, AndroidMixin):
             options.extend(['--power-test'])
         if self.config.get('memory_test', False):
             options.extend(['--memory-test'])
+        if self.config.get('cpu_test', False):
+            options.extend(['--cpu-test'])
+        if self.config.get('enable_webrender', False):
+            options.extend(['--enable-webrender'])
         for key, value in kw_options.items():
             options.extend(['--%s' % key, value])
 
@@ -496,6 +506,7 @@ class Raptor(TestingMixin, MercurialScript, CodeCoverageMixin, AndroidMixin):
 
     def install(self):
         if self.app in self.firefox_android_browsers:
+            self.device.uninstall_app(self.binary_path)
             self.install_apk(self.installer_path)
         else:
             super(Raptor, self).install()
@@ -510,32 +521,6 @@ class Raptor(TestingMixin, MercurialScript, CodeCoverageMixin, AndroidMixin):
                                                   'requirements.txt')
             self.info("installing requirements for the view-gecko-profile tool")
             self.install_module(requirements=[view_gecko_profile_req])
-
-    def _validate_treeherder_data(self, parser):
-        # late import is required, because install is done in create_virtualenv
-        import jsonschema
-
-        expected_perfherder = 1
-        if self.config.get('power_test', None):
-            expected_perfherder += 1
-        if self.config.get('memory_test', None):
-            expected_perfherder += 1
-        if len(parser.found_perf_data) != expected_perfherder:
-            self.critical("PERFHERDER_DATA was seen %d times, expected %d."
-                          % (len(parser.found_perf_data), expected_perfherder))
-            return
-
-        schema_path = os.path.join(external_tools_path,
-                                   'performance-artifact-schema.json')
-        self.info("Validating PERFHERDER_DATA against %s" % schema_path)
-        try:
-            with open(schema_path) as f:
-                schema = json.load(f)
-            data = json.loads(parser.found_perf_data[0])
-            jsonschema.validate(data, schema)
-        except Exception as e:
-            self.exception("Error while validating PERFHERDER_DATA")
-            self.info(str(e))
 
     def _artifact_perf_data(self, src, dest):
         if not os.path.isdir(os.path.dirname(dest)):
@@ -574,12 +559,6 @@ class Raptor(TestingMixin, MercurialScript, CodeCoverageMixin, AndroidMixin):
             env['PYTHONPATH'] = self.raptor_path + os.pathsep + env['PYTHONPATH']
         else:
             env['PYTHONPATH'] = self.raptor_path
-
-        # if running in production on a quantum_render build
-        if self.config['enable_webrender']:
-            self.info("webrender is enabled so setting MOZ_WEBRENDER=1 and MOZ_ACCELERATED=1")
-            env['MOZ_WEBRENDER'] = '1'
-            env['MOZ_ACCELERATED'] = '1'
 
         # mitmproxy needs path to mozharness when installing the cert, and tooltool
         env['SCRIPTSPATH'] = scripts_path
@@ -639,31 +618,32 @@ class Raptor(TestingMixin, MercurialScript, CodeCoverageMixin, AndroidMixin):
             for item in parser.minidump_output:
                 self.run_command(["ls", "-l", item])
 
-        elif '--no-upload-results' not in options:
-            if not self.gecko_profile:
-                self._validate_treeherder_data(parser)
-            if not self.run_local:
-                # copy results to upload dir so they are included as an artifact
-                self.info("copying raptor results to upload dir:")
+        elif not self.run_local:
+            # copy results to upload dir so they are included as an artifact
+            self.info("copying raptor results to upload dir:")
 
-                src = os.path.join(self.query_abs_dirs()['abs_work_dir'], 'raptor.json')
-                dest = os.path.join(env['MOZ_UPLOAD_DIR'], 'perfherder-data.json')
-                self.info(str(dest))
+            src = os.path.join(self.query_abs_dirs()['abs_work_dir'], 'raptor.json')
+            dest = os.path.join(env['MOZ_UPLOAD_DIR'], 'perfherder-data.json')
+            self.info(str(dest))
+            self._artifact_perf_data(src, dest)
+
+            if self.power_test:
+                src = os.path.join(self.query_abs_dirs()['abs_work_dir'], 'raptor-power.json')
                 self._artifact_perf_data(src, dest)
 
-                if self.power_test:
-                    src = os.path.join(self.query_abs_dirs()['abs_work_dir'], 'raptor-power.json')
-                    self._artifact_perf_data(src, dest)
+            if self.memory_test:
+                src = os.path.join(self.query_abs_dirs()['abs_work_dir'], 'raptor-memory.json')
+                self._artifact_perf_data(src, dest)
 
-                if self.memory_test:
-                    src = os.path.join(self.query_abs_dirs()['abs_work_dir'], 'raptor-memory.json')
-                    self._artifact_perf_data(src, dest)
+            if self.cpu_test:
+                src = os.path.join(self.query_abs_dirs()['abs_work_dir'], 'raptor-cpu.json')
+                self._artifact_perf_data(src, dest)
 
-                src = os.path.join(self.query_abs_dirs()['abs_work_dir'], 'screenshots.html')
-                if os.path.exists(src):
-                    dest = os.path.join(env['MOZ_UPLOAD_DIR'], 'screenshots.html')
-                    self.info(str(dest))
-                    self._artifact_perf_data(src, dest)
+            src = os.path.join(self.query_abs_dirs()['abs_work_dir'], 'screenshots.html')
+            if os.path.exists(src):
+                dest = os.path.join(env['MOZ_UPLOAD_DIR'], 'screenshots.html')
+                self.info(str(dest))
+                self._artifact_perf_data(src, dest)
 
 
 class RaptorOutputParser(OutputParser):

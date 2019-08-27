@@ -6,10 +6,17 @@
 
 var EXPORTED_SYMBOLS = ["Runtime"];
 
-const {ContentProcessDomain} = ChromeUtils.import("chrome://remote/content/domains/ContentProcessDomain.jsm");
-const {Services} = ChromeUtils.import("resource://gre/modules/Services.jsm");
-const {ExecutionContext} = ChromeUtils.import("chrome://remote/content/domains/content/runtime/ExecutionContext.jsm");
-const {addDebuggerToGlobal} = ChromeUtils.import("resource://gre/modules/jsdebugger.jsm", {});
+const { ContentProcessDomain } = ChromeUtils.import(
+  "chrome://remote/content/domains/ContentProcessDomain.jsm"
+);
+const { Services } = ChromeUtils.import("resource://gre/modules/Services.jsm");
+const { ExecutionContext } = ChromeUtils.import(
+  "chrome://remote/content/domains/content/runtime/ExecutionContext.jsm"
+);
+const { addDebuggerToGlobal } = ChromeUtils.import(
+  "resource://gre/modules/jsdebugger.jsm",
+  {}
+);
 
 // Import the `Debugger` constructor in the current scope
 addDebuggerToGlobal(Cu.getGlobalForObject(this));
@@ -29,6 +36,8 @@ class Runtime extends ContentProcessDomain {
 
   destructor() {
     this.disable();
+
+    super.destructor();
   }
 
   // commands
@@ -61,13 +70,27 @@ class Runtime extends ContentProcessDomain {
   evaluate(request) {
     const context = this.contexts.get(request.contextId);
     if (!context) {
-      throw new Error(`Unable to find execution context with id: ${request.contextId}`);
+      throw new Error(
+        `Unable to find execution context with id: ${request.contextId}`
+      );
     }
-    if (typeof(request.expression) != "string") {
-      throw new Error(`Expecting 'expression' attribute to be a string. ` +
-        `But was: ${typeof(request.expression)}`);
+    if (typeof request.expression != "string") {
+      throw new Error(
+        `Expecting 'expression' attribute to be a string. ` +
+          `But was: ${typeof request.expression}`
+      );
     }
     return context.evaluate(request.expression);
+  }
+
+  getRemoteObject(objectId) {
+    for (const ctx of this.contexts.values()) {
+      const obj = ctx.getRemoteObject(objectId);
+      if (typeof obj != "undefined") {
+        return obj;
+      }
+    }
+    return null;
   }
 
   releaseObject({ objectId }) {
@@ -96,27 +119,51 @@ class Runtime extends ContentProcessDomain {
         }
       }
       if (!context) {
-        throw new Error(`Unable to get the context for object with id: ${request.objectId}`);
+        throw new Error(
+          `Unable to get the context for object with id: ${request.objectId}`
+        );
       }
     } else {
       context = this.contexts.get(request.executionContextId);
       if (!context) {
-        throw new Error(`Unable to find execution context with id: ${request.executionContextId}`);
+        throw new Error(
+          `Unable to find execution context with id: ${
+            request.executionContextId
+          }`
+        );
       }
     }
-    if (typeof(request.functionDeclaration) != "string") {
-      throw new Error("Expect 'functionDeclaration' attribute to be passed and be a string");
+    if (typeof request.functionDeclaration != "string") {
+      throw new Error(
+        "Expect 'functionDeclaration' attribute to be passed and be a string"
+      );
     }
     if (request.arguments && !Array.isArray(request.arguments)) {
       throw new Error("Expect 'arguments' to be an array");
     }
-    if (request.returnByValue && typeof(request.returnByValue) != "boolean") {
+    if (request.returnByValue && typeof request.returnByValue != "boolean") {
       throw new Error("Expect 'returnByValue' to be a boolean");
     }
-    if (request.awaitPromise && typeof(request.awaitPromise) != "boolean") {
+    if (request.awaitPromise && typeof request.awaitPromise != "boolean") {
       throw new Error("Expect 'awaitPromise' to be a boolean");
     }
-    return context.callFunctionOn(request.functionDeclaration, request.arguments, request.returnByValue, request.awaitPromise, request.objectId);
+    return context.callFunctionOn(
+      request.functionDeclaration,
+      request.arguments,
+      request.returnByValue,
+      request.awaitPromise,
+      request.objectId
+    );
+  }
+
+  getProperties({ objectId, ownProperties }) {
+    for (const ctx of this.contexts.values()) {
+      const obj = ctx.getRemoteObject(objectId);
+      if (typeof obj != "undefined") {
+        return ctx.getProperties({ objectId, ownProperties });
+      }
+    }
+    return null;
   }
 
   get _debugger() {

@@ -224,7 +224,7 @@ void SamplerThread::SleepMicro(uint32_t aMicroseconds) {
   if (mIntervalMicroseconds >= 1000) {
     ::Sleep(std::max(1u, aMicroseconds / 1000));
   } else {
-    TimeStamp start = TimeStamp::Now();
+    TimeStamp start = TimeStamp::NowUnfuzzed();
     TimeStamp end = start + TimeDuration::FromMicroseconds(aMicroseconds);
 
     // First, sleep for as many whole milliseconds as possible.
@@ -233,7 +233,7 @@ void SamplerThread::SleepMicro(uint32_t aMicroseconds) {
     }
 
     // Then, spin until enough time has passed.
-    while (TimeStamp::Now() < end) {
+    while (TimeStamp::NowUnfuzzed() < end) {
       YieldProcessor();
     }
   }
@@ -269,6 +269,10 @@ void Registers::SyncPopulate() {
 #endif
 
 #if defined(GP_PLAT_amd64_windows)
+
+#  ifndef MOZ_BASE_PROFILER
+// If MOZ_BASE_PROFILER is *not* #defined, we need to implement this here, as
+// the one in mozglue/baseprofiler will not even be built.
 static WindowsDllInterceptor NtDllIntercept;
 
 typedef NTSTATUS(NTAPI* LdrUnloadDll_func)(HMODULE module);
@@ -308,4 +312,18 @@ void InitializeWin64ProfilerHooks() {
                                       &patched_LdrResolveDelayLoadedAPI);
   }
 }
-#endif  // defined(GP_PLAT_amd64_windows)
+
+#  else  // ndef MOZ_BASE_PROFILER
+// If MOZ_BASE_PROFILER is #defined, we just use InitializeWin64ProfilerHooks
+// that it implements.
+
+namespace mozilla {
+namespace baseprofiler {
+MFBT_API void InitializeWin64ProfilerHooks();
+}  // namespace baseprofiler
+}  // namespace mozilla
+
+using mozilla::baseprofiler::InitializeWin64ProfilerHooks;
+
+#  endif  // ndef MOZ_BASE_PROFILER else
+#endif    // defined(GP_PLAT_amd64_windows)

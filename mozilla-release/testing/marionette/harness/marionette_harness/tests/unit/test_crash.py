@@ -2,13 +2,13 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-from __future__ import absolute_import
+from __future__ import absolute_import, print_function
 
 import glob
 import os
-import platform
 import shutil
-import unittest
+import sys
+from io import StringIO
 
 from marionette_driver import Wait
 from marionette_driver.errors import (
@@ -99,8 +99,25 @@ class BaseCrashTestCase(MarionetteTestCase):
 
 class TestCrash(BaseCrashTestCase):
 
-    @unittest.skipIf(platform.machine() == "ARM64" and platform.system() == "Windows",
-                     "Bug 1540784 - crashreporter related issues on Windows 10 aarch64. ")
+    def setUp(self):
+        if os.environ.get('MOZ_AUTOMATION'):
+            # Capture stdout, otherwise the Gecko output causes mozharness to fail
+            # the task due to "A content process has crashed" appearing in the log.
+            # To view stdout for debugging, use `print(self.new_out.getvalue())`
+            print("Suppressing GECKO output. To view, add `print(self.new_out.getvalue())` "
+                  "to the end of this test.")
+            self.new_out, self.new_err = StringIO(), StringIO()
+            self.old_out, self.old_err = sys.stdout, sys.stderr
+            sys.stdout, sys.stderr = self.new_out, self.new_err
+
+        super(TestCrash, self).setUp()
+
+    def tearDown(self):
+        super(TestCrash, self).tearDown()
+
+        if os.environ.get('MOZ_AUTOMATION'):
+            sys.stdout, sys.stderr = self.old_out, self.old_err
+
     def test_crash_chrome_process(self):
         self.assertRaisesRegexp(IOError, "Process crashed",
                                 self.crash, parent=True)
@@ -119,8 +136,6 @@ class TestCrash(BaseCrashTestCase):
         self.marionette.get_url()
 
     @run_if_e10s("Content crashes only exist in e10s mode")
-    @unittest.skipIf(platform.machine() == "ARM64" and platform.system() == "Windows",
-                     "Bug 1540784 - crashreporter related issues on Windows 10 aarch64. ")
     def test_crash_content_process(self):
         # For a content process crash and MOZ_CRASHREPORTER_SHUTDOWN set the top
         # browsing context will be gone first. As such the raised NoSuchWindowException
@@ -166,8 +181,6 @@ class TestCrashInSetUp(BaseCrashTestCase):
         self.assertEqual(self.marionette.crashed, 1)
         self.assertIsNone(self.marionette.session)
 
-    @unittest.skipIf(platform.machine() == "ARM64" and platform.system() == "Windows",
-                     "Bug 1540784 - crashreporter related issues on Windows 10 aarch64. ")
     def test_crash_in_setup(self):
         self.marionette.start_session()
         self.assertNotEqual(self.marionette.process_id, self.pid)
@@ -189,7 +202,5 @@ class TestCrashInTearDown(BaseCrashTestCase):
         finally:
             super(TestCrashInTearDown, self).tearDown()
 
-    @unittest.skipIf(platform.machine() == "ARM64" and platform.system() == "Windows",
-                     "Bug 1540784 - crashreporter related issues on Windows 10 aarch64. ")
     def test_crash_in_teardown(self):
         pass

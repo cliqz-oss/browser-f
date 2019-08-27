@@ -145,7 +145,7 @@ interface IHandlerControl : IUnknown
                        [in] IA2TextSegment* aText);
 }
 
-typedef struct _IARelationData 
+typedef struct _IARelationData
 {
   BSTR mType;
   long mNTargets;

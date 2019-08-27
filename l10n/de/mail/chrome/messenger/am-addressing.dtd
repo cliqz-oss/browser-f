@@ -28,6 +28,9 @@
 <!-- LOCALIZATION NOTE (then.label): This will concatenate with the 4 strings that follow. -->
 <!ENTITY then.label                           "Dabei">
 <!ENTITY then.accesskey                       "D">
+<!-- LOCALIZATION NOTE (quoting.label): This will concatenate with the 4 strings that follow. -->
+<!ENTITY quoting.label                        "Beim Zitieren">
+<!ENTITY quoting.accesskey                    "Z">
 <!ENTITY aboveQuote.label                     "meine Antwort über dem Zitat beginnen">
 <!ENTITY belowQuote.label                     "meine Antwort unter dem Zitat beginnen">
 <!ENTITY selectAndQuote.label                 "das Zitat auswählen">

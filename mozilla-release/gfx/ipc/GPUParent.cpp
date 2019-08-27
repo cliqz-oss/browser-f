@@ -10,15 +10,16 @@
 #include "gfxConfig.h"
 #include "gfxCrashReporterUtils.h"
 #include "gfxPlatform.h"
-#include "gfxPrefs.h"
 #include "GLContextProvider.h"
 #include "GPUProcessHost.h"
 #include "GPUProcessManager.h"
 #include "mozilla/Assertions.h"
+#include "mozilla/PerfStats.h"
+#include "mozilla/StaticPrefs.h"
 #include "mozilla/Telemetry.h"
 #include "mozilla/TimeStamp.h"
-#include "mozilla/VideoDecoderManagerChild.h"
-#include "mozilla/VideoDecoderManagerParent.h"
+#include "mozilla/RemoteDecoderManagerChild.h"
+#include "mozilla/RemoteDecoderManagerParent.h"
 #include "mozilla/dom/MemoryReportRequest.h"
 #include "mozilla/gfx/2D.h"
 #include "mozilla/gfx/gfxVars.h"
@@ -106,11 +107,13 @@ bool GPUParent::Init(base::ProcessId aParentPid, const char* aParentBuildID,
     ProcessChild::QuickExit();
   }
 
+  if (NS_FAILED(NS_InitMinimalXPCOM())) {
+    return false;
+  }
+
   // Init crash reporter support.
   CrashReporterClient::InitSingleton(this);
 
-  // Ensure gfxPrefs are initialized.
-  gfxPrefs::GetSingleton();
   gfxConfig::Init();
   gfxVars::Initialize();
   gfxPlatform::InitNullMetadata();
@@ -120,10 +123,6 @@ bool GPUParent::Init(base::ProcessId aParentPid, const char* aParentBuildID,
 #if defined(XP_WIN)
   DeviceManagerDx::Init();
 #endif
-
-  if (NS_FAILED(NS_InitMinimalXPCOM())) {
-    return false;
-  }
 
   CompositorThreadHolder::Start();
   APZThreadUtils::SetControllerThread(MessageLoop::current());
@@ -174,13 +173,8 @@ bool GPUParent::DeallocPAPZInputBridgeParent(PAPZInputBridgeParent* aActor) {
 }
 
 mozilla::ipc::IPCResult GPUParent::RecvInit(
-    nsTArray<GfxPrefSetting>&& prefs, nsTArray<GfxVarUpdate>&& vars,
-    const DevicePrefs& devicePrefs, nsTArray<LayerTreeIdMapping>&& aMappings) {
-  const nsTArray<gfxPrefs::Pref*>& globalPrefs = gfxPrefs::all();
-  for (auto& setting : prefs) {
-    gfxPrefs::Pref* pref = globalPrefs[setting.index()];
-    pref->SetCachedValue(setting.value());
-  }
+    nsTArray<GfxVarUpdate>&& vars, const DevicePrefs& devicePrefs,
+    nsTArray<LayerTreeIdMapping>&& aMappings) {
   for (const auto& var : vars) {
     gfxVars::ApplyUpdate(var);
   }
@@ -212,7 +206,11 @@ mozilla::ipc::IPCResult GPUParent::RecvInit(
 
 #if defined(XP_WIN)
   if (gfxConfig::IsEnabled(Feature::D3D11_COMPOSITING)) {
-    DeviceManagerDx::Get()->CreateCompositorDevices();
+    if (DeviceManagerDx::Get()->CreateCompositorDevices() &&
+        gfxVars::RemoteCanvasEnabled()) {
+      MOZ_ALWAYS_TRUE(DeviceManagerDx::Get()->CreateCanvasDevice());
+      MOZ_ALWAYS_TRUE(Factory::EnsureDWriteFactory());
+    }
   }
   if (gfxVars::UseWebRender()) {
     DeviceManagerDx::Get()->CreateDirectCompositionDevice();
@@ -266,7 +264,7 @@ mozilla::ipc::IPCResult GPUParent::RecvInit(
   }
 #ifdef XP_WIN
   else {
-    if (gfxPrefs::Direct3D11UseDoubleBuffering() && IsWin10OrLater()) {
+    if (gfxVars::UseDoubleBufferingWithCompositor()) {
       // This is needed to avoid freezing the window on a device crash on double
       // buffering, see bug 1549674.
       widget::WinCompositorWindowThread::Start();
@@ -330,15 +328,13 @@ mozilla::ipc::IPCResult GPUParent::RecvInitProfiler(
   return IPC_OK();
 }
 
-mozilla::ipc::IPCResult GPUParent::RecvUpdatePref(
-    const GfxPrefSetting& setting) {
-  gfxPrefs::Pref* pref = gfxPrefs::all()[setting.index()];
-  pref->SetCachedValue(setting.value());
+mozilla::ipc::IPCResult GPUParent::RecvUpdateVar(const GfxVarUpdate& aUpdate) {
+  gfxVars::ApplyUpdate(aUpdate);
   return IPC_OK();
 }
 
-mozilla::ipc::IPCResult GPUParent::RecvUpdateVar(const GfxVarUpdate& aUpdate) {
-  gfxVars::ApplyUpdate(aUpdate);
+mozilla::ipc::IPCResult GPUParent::RecvPreferenceUpdate(const Pref& aPref) {
+  Preferences::SetPreference(aPref);
   return IPC_OK();
 }
 
@@ -418,9 +414,9 @@ mozilla::ipc::IPCResult GPUParent::RecvNewContentVRManager(
   return IPC_OK();
 }
 
-mozilla::ipc::IPCResult GPUParent::RecvNewContentVideoDecoderManager(
-    Endpoint<PVideoDecoderManagerParent>&& aEndpoint) {
-  if (!VideoDecoderManagerParent::CreateForContent(std::move(aEndpoint))) {
+mozilla::ipc::IPCResult GPUParent::RecvNewContentRemoteDecoderManager(
+    Endpoint<PRemoteDecoderManagerParent>&& aEndpoint) {
+  if (!RemoteDecoderManagerParent::CreateForContent(std::move(aEndpoint))) {
     return IPC_FAIL_NO_REASON(this);
   }
   return IPC_OK();
@@ -482,9 +478,21 @@ mozilla::ipc::IPCResult GPUParent::RecvRequestMemoryReport(
 }
 
 mozilla::ipc::IPCResult GPUParent::RecvShutdownVR() {
-  if (gfxPrefs::VRProcessEnabled()) {
+  if (StaticPrefs::dom_vr_process_enabled()) {
     VRGPUChild::Shutdown();
   }
+  return IPC_OK();
+}
+
+mozilla::ipc::IPCResult GPUParent::RecvUpdatePerfStatsCollectionMask(
+    const uint64_t& aMask) {
+  PerfStats::SetCollectionMask(static_cast<PerfStats::MetricMask>(aMask));
+  return IPC_OK();
+}
+
+mozilla::ipc::IPCResult GPUParent::RecvCollectPerfStatsJSON(
+    CollectPerfStatsJSONResolver&& aResolver) {
+  aResolver(PerfStats::CollectLocalPerfStatsJSON());
   return IPC_OK();
 }
 
@@ -515,7 +523,7 @@ void GPUParent::ActorDestroy(ActorDestroyReason aWhy) {
     mVsyncBridge->Shutdown();
     mVsyncBridge = nullptr;
   }
-  VideoDecoderManagerParent::ShutdownVideoBridge();
+  RemoteDecoderManagerParent::ShutdownVideoBridge();
   CompositorThreadHolder::Shutdown();
   // There is a case that RenderThread exists when gfxVars::UseWebRender() is
   // false. This could happen when WebRender was fallbacked to compositor.
@@ -523,7 +531,7 @@ void GPUParent::ActorDestroy(ActorDestroyReason aWhy) {
     wr::RenderThread::ShutDown();
   }
 #ifdef XP_WIN
-  else if (gfxPrefs::Direct3D11UseDoubleBuffering() && IsWin10OrLater()) {
+  if (widget::WinCompositorWindowThread::Get()) {
     widget::WinCompositorWindowThread::ShutDown();
   }
 #endif
@@ -558,7 +566,6 @@ void GPUParent::ActorDestroy(ActorDestroyReason aWhy) {
   LayerTreeOwnerTracker::Shutdown();
   gfxVars::Shutdown();
   gfxConfig::Shutdown();
-  gfxPrefs::DestroySingleton();
   CrashReporterClient::DestroySingleton();
   XRE_ShutdownChildProcess();
 }

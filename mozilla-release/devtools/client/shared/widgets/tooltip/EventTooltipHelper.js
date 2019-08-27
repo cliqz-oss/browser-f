@@ -6,8 +6,10 @@
 
 "use strict";
 
-const {LocalizationHelper} = require("devtools/shared/l10n");
-const L10N = new LocalizationHelper("devtools/client/locales/inspector.properties");
+const { LocalizationHelper } = require("devtools/shared/l10n");
+const L10N = new LocalizationHelper(
+  "devtools/client/locales/inspector.properties"
+);
 
 const Editor = require("devtools/client/shared/sourceeditor/editor");
 const beautify = require("devtools/shared/jsbeautify/beautify");
@@ -76,7 +78,10 @@ EventTooltip.prototype = {
 
       // Header
       const header = doc.createElementNS(XHTML_NS, "div");
-      header.className = "event-header devtools-toolbar";
+      header.className = "event-header";
+      const arrow = doc.createElementNS(XHTML_NS, "span");
+      arrow.className = "theme-twisty";
+      header.appendChild(arrow);
       this.container.appendChild(header);
 
       if (!listener.hide.type) {
@@ -121,7 +126,12 @@ EventTooltip.prototype = {
             }
           };
 
-          sourceMapService.subscribe(location.url, location.line, null, callback);
+          sourceMapService.subscribe(
+            location.url,
+            location.line,
+            null,
+            callback
+          );
           this._subscriptions.push({
             url: location.url,
             line: location.line,
@@ -221,19 +231,26 @@ EventTooltip.prototype = {
     const doc = this._tooltip.doc;
     const header = event.currentTarget;
     const content = header.nextElementSibling;
-    header.classList.toggle("content-expanded");
 
     if (content.hasAttribute("open")) {
+      header.classList.remove("content-expanded");
       content.removeAttribute("open");
     } else {
-      const contentNodes = doc.querySelectorAll(".event-tooltip-content-box");
-
-      for (const node of contentNodes) {
-        if (node !== content) {
-          node.removeAttribute("open");
-        }
+      // Close other open events first
+      const openHeaders = doc.querySelectorAll(
+        ".event-header.content-expanded"
+      );
+      const openContent = doc.querySelectorAll(
+        ".event-tooltip-content-box[open]"
+      );
+      for (const node of openHeaders) {
+        node.classList.remove("content-expanded");
+      }
+      for (const node of openContent) {
+        node.removeAttribute("open");
       }
 
+      header.classList.add("content-expanded");
       content.setAttribute("open", "");
 
       const eventEditor = this._eventEditors.get(content);
@@ -242,13 +259,16 @@ EventTooltip.prototype = {
         return;
       }
 
-      const {editor, handler} = eventEditor;
+      const { editor, handler } = eventEditor;
 
       const iframe = doc.createElementNS(XHTML_NS, "iframe");
-      iframe.setAttribute("style", "width: 100%; height: 100%; border-style: none;");
+      iframe.setAttribute(
+        "style",
+        "width: 100%; height: 100%; border-style: none;"
+      );
 
       editor.appendTo(content, iframe).then(() => {
-        const tidied = beautify.js(handler, { "indent_size": 2 });
+        const tidied = beautify.js(handler, { indent_size: 2 });
         editor.setText(tidied);
 
         eventEditor.appended = true;
@@ -269,7 +289,7 @@ EventTooltip.prototype = {
     const header = event.currentTarget;
     const content = header.nextElementSibling;
 
-    const {sourceActor, uri} = this._eventEditors.get(content);
+    const { sourceActor, uri } = this._eventEditors.get(content);
 
     const location = this._parseLocation(uri);
     if (location) {
@@ -278,8 +298,12 @@ EventTooltip.prototype = {
 
       this._tooltip.hide();
 
-      toolbox.viewSourceInDebugger(location.url, location.line,
-        location.column, sourceActor);
+      toolbox.viewSourceInDebugger(
+        location.url,
+        location.line,
+        location.column,
+        sourceActor
+      );
     }
   },
 
@@ -298,7 +322,7 @@ EventTooltip.prototype = {
           line: parseInt(matches[2], 10),
         };
       }
-      return {url: uri, line: 1};
+      return { url: uri, line: 1 };
     }
     return null;
   },
@@ -307,10 +331,12 @@ EventTooltip.prototype = {
     if (this._tooltip) {
       this._tooltip.off("hidden", this.destroy);
 
-      const boxes = this.container.querySelectorAll(".event-tooltip-content-box");
+      const boxes = this.container.querySelectorAll(
+        ".event-tooltip-content-box"
+      );
 
       for (const box of boxes) {
-        const {editor} = this._eventEditors.get(box);
+        const { editor } = this._eventEditors.get(box);
         editor.destroy();
       }
 
@@ -324,15 +350,21 @@ EventTooltip.prototype = {
       node.removeEventListener("click", this._headerClicked);
     }
 
-    const sourceNodes = this.container.querySelectorAll(".event-tooltip-debugger-icon");
+    const sourceNodes = this.container.querySelectorAll(
+      ".event-tooltip-debugger-icon"
+    );
     for (const node of sourceNodes) {
       node.removeEventListener("click", this._debugClicked);
     }
 
     const sourceMapService = this._toolbox.sourceMapURLService;
     for (const subscription of this._subscriptions) {
-      sourceMapService.unsubscribe(subscription.url, subscription.line, null,
-                                   subscription.callback);
+      sourceMapService.unsubscribe(
+        subscription.url,
+        subscription.line,
+        null,
+        subscription.callback
+      );
     }
 
     this._eventListenerInfos = this._toolbox = this._tooltip = null;

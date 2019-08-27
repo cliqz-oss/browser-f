@@ -35,11 +35,11 @@ bool RemoteDecoderModule::SupportsMimeType(
   bool supports = false;
 
 #ifdef MOZ_AV1
-  if (StaticPrefs::MediaAv1Enabled()) {
+  if (StaticPrefs::media_av1_enabled()) {
     supports |= AOMDecoder::IsAV1(aMimeType);
   }
 #endif
-  if (StaticPrefs::MediaRddVorbisEnabled()) {
+  if (StaticPrefs::media_rdd_vorbis_enabled()) {
     supports |= VorbisDataDecoder::IsVorbis(aMimeType);
   }
 
@@ -71,8 +71,9 @@ void RemoteDecoderModule::LaunchRDDProcessIfNeeded() {
   if (mManagerThread) {
     RefPtr<Runnable> task = NS_NewRunnableFunction(
         "RemoteDecoderModule::LaunchRDDProcessIfNeeded-CheckSend", [&]() {
-          if (RemoteDecoderManagerChild::GetSingleton()) {
-            needsLaunch = !RemoteDecoderManagerChild::GetSingleton()->CanSend();
+          if (RemoteDecoderManagerChild::GetRDDProcessSingleton()) {
+            needsLaunch =
+                !RemoteDecoderManagerChild::GetRDDProcessSingleton()->CanSend();
           }
         });
     SyncRunnable::DispatchToThread(mManagerThread, task);
@@ -94,9 +95,21 @@ already_AddRefed<MediaDataDecoder> RemoteDecoderModule::CreateAudioDecoder(
 
   RefPtr<RemoteAudioDecoderChild> child = new RemoteAudioDecoderChild();
   MediaResult result(NS_OK);
-  RefPtr<Runnable> task = NS_NewRunnableFunction(
-      "RemoteDecoderModule::CreateAudioDecoder", [&, child]() {
+  // We can use child as a ref here because this is a sync dispatch. In
+  // the error case for InitIPDL, we can't just let the RefPtr go out of
+  // scope at the end of the method because it will release the
+  // RemoteAudioDecoderChild on the wrong thread.  This will assert in
+  // RemoteDecoderChild's destructor.  Passing the RefPtr by reference
+  // allows us to release the RemoteAudioDecoderChild on the manager
+  // thread during this single dispatch.
+  RefPtr<Runnable> task =
+      NS_NewRunnableFunction("RemoteDecoderModule::CreateAudioDecoder", [&]() {
         result = child->InitIPDL(aParams.AudioConfig(), aParams.mOptions);
+        if (NS_FAILED(result)) {
+          // Release RemoteAudioDecoderChild here, while we're on
+          // manager thread.  Don't just let the RefPtr go out of scope.
+          child = nullptr;
+        }
       });
   SyncRunnable::DispatchToThread(mManagerThread, task);
 
@@ -124,10 +137,25 @@ already_AddRefed<MediaDataDecoder> RemoteDecoderModule::CreateVideoDecoder(
 
   RefPtr<RemoteVideoDecoderChild> child = new RemoteVideoDecoderChild();
   MediaResult result(NS_OK);
-  RefPtr<Runnable> task = NS_NewRunnableFunction(
-      "RemoteDecoderModule::CreateVideoDecoder", [&, child]() {
-        result = child->InitIPDL(aParams.VideoConfig(), aParams.mRate.mValue,
-                                 aParams.mOptions);
+  // We can use child as a ref here because this is a sync dispatch. In
+  // the error case for InitIPDL, we can't just let the RefPtr go out of
+  // scope at the end of the method because it will release the
+  // RemoteVideoDecoderChild on the wrong thread.  This will assert in
+  // RemoteDecoderChild's destructor.  Passing the RefPtr by reference
+  // allows us to release the RemoteVideoDecoderChild on the manager
+  // thread during this single dispatch.
+  RefPtr<Runnable> task =
+      NS_NewRunnableFunction("RemoteDecoderModule::CreateVideoDecoder", [&]() {
+        result = child->InitIPDL(
+            aParams.VideoConfig(), aParams.mRate.mValue, aParams.mOptions,
+            aParams.mKnowsCompositor
+                ? &aParams.mKnowsCompositor->GetTextureFactoryIdentifier()
+                : nullptr);
+        if (NS_FAILED(result)) {
+          // Release RemoteVideoDecoderChild here, while we're on
+          // manager thread.  Don't just let the RefPtr go out of scope.
+          child = nullptr;
+        }
       });
   SyncRunnable::DispatchToThread(mManagerThread, task);
 

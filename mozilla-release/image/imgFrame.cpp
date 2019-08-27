@@ -13,7 +13,7 @@
 
 #include "gfx2DGlue.h"
 #include "gfxPlatform.h"
-#include "gfxPrefs.h"
+
 #include "gfxUtils.h"
 
 #include "GeckoProfiler.h"
@@ -81,14 +81,14 @@ static bool ShouldUseHeap(const IntSize& aSize, int32_t aStride,
 
   // For as long as an animated image is retained, its frames will never be
   // released to let the OS purge volatile buffers.
-  if (aIsAnimated && gfxPrefs::ImageMemAnimatedUseHeap()) {
+  if (aIsAnimated && StaticPrefs::image_mem_animated_use_heap()) {
     return true;
   }
 
   // Lets us avoid too many small images consuming all of the handles. The
   // actual allocation checks for overflow.
   int32_t bufferSize = (aStride * aSize.width) / 1024;
-  if (bufferSize < gfxPrefs::ImageMemVolatileMinThresholdKB()) {
+  if (bufferSize < StaticPrefs::image_mem_volatile_min_threshold_kb()) {
     return true;
   }
 
@@ -99,7 +99,7 @@ static already_AddRefed<DataSourceSurface> AllocateBufferForImage(
     const IntSize& size, SurfaceFormat format, bool aIsAnimated = false) {
   int32_t stride = VolatileSurfaceStride(size, format);
 
-  if (gfxVars::GetUseWebRenderOrDefault() && gfxPrefs::ImageMemShared()) {
+  if (gfxVars::GetUseWebRenderOrDefault() && StaticPrefs::image_mem_shared()) {
     RefPtr<SourceSurfaceSharedData> newSurf = new SourceSurfaceSharedData();
     if (newSurf->Init(size, stride, format)) {
       return newSurf.forget();
@@ -358,7 +358,7 @@ nsresult imgFrame::InitForDecoderRecycle(const AnimationParams& aAnimParams) {
 nsresult imgFrame::InitWithDrawable(
     gfxDrawable* aDrawable, const nsIntSize& aSize, const SurfaceFormat aFormat,
     SamplingFilter aSamplingFilter, uint32_t aImageFlags,
-    gfx::BackendType aBackend, DrawTarget* aTargetDT) {
+    gfx::BackendType aBackend) {
   // Assert for properties that should be verified by decoders,
   // warn for properties related to bad content.
   if (!SurfaceCache::IsLegalSize(aSize)) {
@@ -407,16 +407,12 @@ nsresult imgFrame::InitWithDrawable(
     // the documentation for this method.
     MOZ_ASSERT(!mOptSurface, "Called imgFrame::InitWithDrawable() twice?");
 
-    if (aTargetDT && !gfxVars::UseWebRender()) {
-      target = aTargetDT->CreateSimilarDrawTarget(mImageSize, mFormat);
+    if (gfxPlatform::GetPlatform()->SupportsAzureContentForType(aBackend)) {
+      target = gfxPlatform::GetPlatform()->CreateDrawTargetForBackend(
+          aBackend, mImageSize, mFormat);
     } else {
-      if (gfxPlatform::GetPlatform()->SupportsAzureContentForType(aBackend)) {
-        target = gfxPlatform::GetPlatform()->CreateDrawTargetForBackend(
-            aBackend, mImageSize, mFormat);
-      } else {
-        target = gfxPlatform::GetPlatform()->CreateOffscreenContentDrawTarget(
-            mImageSize, mFormat);
-      }
+      target = gfxPlatform::GetPlatform()->CreateOffscreenContentDrawTarget(
+          mImageSize, mFormat);
     }
   }
 

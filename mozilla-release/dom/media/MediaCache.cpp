@@ -326,19 +326,19 @@ class MediaCache {
 
   static size_t CacheSize() {
     MOZ_ASSERT(sThread->IsOnCurrentThread());
-    return sOnCellular ? StaticPrefs::MediaCacheCellularSize()
-                       : StaticPrefs::MediaCacheSize();
+    return sOnCellular ? StaticPrefs::media_cache_size_cellular()
+                       : StaticPrefs::media_cache_size();
   }
 
   static size_t ReadaheadLimit() {
     MOZ_ASSERT(sThread->IsOnCurrentThread());
-    return sOnCellular ? StaticPrefs::MediaCacheCellularReadaheadLimit()
-                       : StaticPrefs::MediaCacheReadaheadLimit();
+    return sOnCellular ? StaticPrefs::media_cache_readahead_limit_cellular()
+                       : StaticPrefs::media_cache_readahead_limit();
   }
 
   static size_t ResumeThreshold() {
-    return sOnCellular ? StaticPrefs::MediaCacheCellularResumeThreshold()
-                       : StaticPrefs::MediaCacheResumeThreshold();
+    return sOnCellular ? StaticPrefs::media_cache_resume_threshold_cellular()
+                       : StaticPrefs::media_cache_resume_threshold();
   }
 
   // Find a free or reusable block and return its index. If there are no
@@ -485,7 +485,8 @@ class MediaCache {
 
   // Used by MediaCacheStream::GetDebugInfo() only for debugging.
   // Don't add new callers to this function.
-  friend nsCString MediaCacheStream::GetDebugInfo();
+  friend void MediaCacheStream::GetDebugInfo(
+      dom::MediaCacheStreamDebugInfo& aInfo);
   mozilla::Monitor& GetMonitorOnTheMainThread() {
     MOZ_DIAGNOSTIC_ASSERT(NS_IsMainThread());
     return mMonitor;
@@ -553,6 +554,8 @@ MediaCacheStream::MediaCacheStream(ChannelMediaResource* aClient,
       mIsPrivateBrowsing(aIsPrivateBrowsing) {}
 
 size_t MediaCacheStream::SizeOfExcludingThis(MallocSizeOf aMallocSizeOf) const {
+  AutoLock lock(mMediaCache->Monitor());
+
   // Looks like these are not owned:
   // - mClient
   size_t size = mBlocks.ShallowSizeOfExcludingThis(aMallocSizeOf);
@@ -788,7 +791,7 @@ RefPtr<MediaCache> MediaCache::GetMediaCache(int64_t aContentLength) {
 
   if (aContentLength > 0 &&
       aContentLength <=
-          int64_t(StaticPrefs::MediaMemoryCacheMaxSize()) * 1024) {
+          int64_t(StaticPrefs::media_memory_cache_max_size()) * 1024) {
     // Small-enough resource, use a new memory-backed MediaCache.
     RefPtr<MediaBlockCacheBase> bc = new MemoryBlockCache(aContentLength);
     nsresult rv = bc->Init();
@@ -2775,12 +2778,13 @@ double MediaCacheStream::GetDownloadRate(bool* aIsReliable) {
   return mDownloadStatistics.GetRate(aIsReliable);
 }
 
-nsCString MediaCacheStream::GetDebugInfo() {
+void MediaCacheStream::GetDebugInfo(dom::MediaCacheStreamDebugInfo& aInfo) {
   AutoLock lock(mMediaCache->GetMonitorOnTheMainThread());
-  return nsPrintfCString("mStreamLength=%" PRId64 " mChannelOffset=%" PRId64
-                         " mCacheSuspended=%d mChannelEnded=%d mLoadID=%u",
-                         mStreamLength, mChannelOffset, mCacheSuspended,
-                         mChannelEnded, mLoadID);
+  aInfo.mStreamLength = mStreamLength;
+  aInfo.mChannelOffset = mChannelOffset;
+  aInfo.mCacheSuspended = mCacheSuspended;
+  aInfo.mChannelEnded = mChannelEnded;
+  aInfo.mLoadID = mLoadID;
 }
 
 }  // namespace mozilla

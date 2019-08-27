@@ -1574,7 +1574,7 @@ class DebugEnvironmentProxyHandler : public BaseProxyHandler {
         }
 
         if (action == SET) {
-          TypeScript::SetArgument(cx, script, i, vp);
+          jit::JitScript::MonitorArgType(cx, script, i, vp);
         }
       }
 
@@ -1787,7 +1787,8 @@ class DebugEnvironmentProxyHandler : public BaseProxyHandler {
       return env.as<CallObject>().callee().nonLazyScript()->bodyScope();
     }
     if (env.is<ModuleEnvironmentObject>()) {
-      JSScript* script = env.as<ModuleEnvironmentObject>().module().maybeScript();
+      JSScript* script =
+          env.as<ModuleEnvironmentObject>().module().maybeScript();
       return script ? script->bodyScope() : nullptr;
     }
     if (isNonExtensibleLexicalEnvironment(env)) {
@@ -3800,20 +3801,23 @@ static bool RemoveReferencedNames(JSContext* cx, HandleScript script,
     }
   }
 
-  if (script->hasObjects()) {
-    RootedFunction fun(cx);
-    RootedScript innerScript(cx);
-    for (JSObject* obj : script->objects()) {
-      if (obj->is<JSFunction>() && obj->as<JSFunction>().isInterpreted()) {
-        fun = &obj->as<JSFunction>();
-        innerScript = JSFunction::getOrCreateScript(cx, fun);
-        if (!innerScript) {
-          return false;
-        }
+  RootedFunction fun(cx);
+  RootedScript innerScript(cx);
+  for (JS::GCCellPtr gcThing : script->gcthings()) {
+    if (!gcThing.is<JSObject>()) {
+      continue;
+    }
 
-        if (!RemoveReferencedNames(cx, innerScript, remainingNames)) {
-          return false;
-        }
+    JSObject* obj = &gcThing.as<JSObject>();
+    if (obj->is<JSFunction>() && obj->as<JSFunction>().isInterpreted()) {
+      fun = &obj->as<JSFunction>();
+      innerScript = JSFunction::getOrCreateScript(cx, fun);
+      if (!innerScript) {
+        return false;
+      }
+
+      if (!RemoveReferencedNames(cx, innerScript, remainingNames)) {
+        return false;
       }
     }
   }
@@ -3872,17 +3876,20 @@ static bool AnalyzeEntrainedVariablesInScript(JSContext* cx,
     printf("%s\n", buf.string());
   }
 
-  if (innerScript->hasObjects()) {
-    RootedFunction fun(cx);
-    RootedScript innerInnerScript(cx);
-    for (JSObject* obj : script->objects()) {
-      if (obj->is<JSFunction>() && obj->as<JSFunction>().isInterpreted()) {
-        fun = &obj->as<JSFunction>();
-        innerInnerScript = JSFunction::getOrCreateScript(cx, fun);
-        if (!innerInnerScript ||
-            !AnalyzeEntrainedVariablesInScript(cx, script, innerInnerScript)) {
-          return false;
-        }
+  RootedFunction fun(cx);
+  RootedScript innerInnerScript(cx);
+  for (JS::GCCellPtr gcThing : script->gcthings()) {
+    if (!gcThing.is<JSObject>()) {
+      continue;
+    }
+
+    JSObject* obj = &gcThing.as<JSObject>();
+    if (obj->is<JSFunction>() && obj->as<JSFunction>().isInterpreted()) {
+      fun = &obj->as<JSFunction>();
+      innerInnerScript = JSFunction::getOrCreateScript(cx, fun);
+      if (!innerInnerScript ||
+          !AnalyzeEntrainedVariablesInScript(cx, script, innerInnerScript)) {
+        return false;
       }
     }
   }
@@ -3902,13 +3909,14 @@ static bool AnalyzeEntrainedVariablesInScript(JSContext* cx,
 //
 // |bar| unnecessarily entrains |b|, and |baz| unnecessarily entrains |a|.
 bool js::AnalyzeEntrainedVariables(JSContext* cx, HandleScript script) {
-  if (!script->hasObjects()) {
-    return true;
-  }
-
   RootedFunction fun(cx);
   RootedScript innerScript(cx);
-  for (JSObject* obj : script->objects()) {
+  for (JS::GCCellPtr gcThing : script->gcthings()) {
+    if (!gcThing.is<JSObject>()) {
+      continue;
+    }
+
+    JSObject* obj = &gcThing.as<JSObject>();
     if (obj->is<JSFunction>() && obj->as<JSFunction>().isInterpreted()) {
       fun = &obj->as<JSFunction>();
       innerScript = JSFunction::getOrCreateScript(cx, fun);

@@ -656,8 +656,7 @@ public abstract class TreeBuilder<T> implements TokenHandler,
                 );
                 currentPtr++;
                 stack[currentPtr] = node;
-                tokenizer.setStateAndEndTagExpectation(Tokenizer.DATA,
-                        contextName);
+                tokenizer.setState(Tokenizer.DATA);
                 // The frameset-ok flag is set even though <frameset> never
                 // ends up being allowed as HTML frameset in the fragment case.
                 mode = FRAMESET_OK;
@@ -687,8 +686,7 @@ public abstract class TreeBuilder<T> implements TokenHandler,
                 );
                 currentPtr++;
                 stack[currentPtr] = node;
-                tokenizer.setStateAndEndTagExpectation(Tokenizer.DATA,
-                        contextName);
+                tokenizer.setState(Tokenizer.DATA);
                 // The frameset-ok flag is set even though <frameset> never
                 // ends up being allowed as HTML frameset in the fragment case.
                 mode = FRAMESET_OK;
@@ -707,23 +705,18 @@ public abstract class TreeBuilder<T> implements TokenHandler,
                 resetTheInsertionMode();
                 formPointer = getFormPointerForContext(contextNode);
                 if ("title" == contextName || "textarea" == contextName) {
-                    tokenizer.setStateAndEndTagExpectation(Tokenizer.RCDATA,
-                            contextName);
+                    tokenizer.setState(Tokenizer.RCDATA);
                 } else if ("style" == contextName || "xmp" == contextName
                         || "iframe" == contextName || "noembed" == contextName
                         || "noframes" == contextName
                         || (scriptingEnabled && "noscript" == contextName)) {
-                    tokenizer.setStateAndEndTagExpectation(Tokenizer.RAWTEXT,
-                            contextName);
+                    tokenizer.setState(Tokenizer.RAWTEXT);
                 } else if ("plaintext" == contextName) {
-                    tokenizer.setStateAndEndTagExpectation(Tokenizer.PLAINTEXT,
-                            contextName);
+                    tokenizer.setState(Tokenizer.PLAINTEXT);
                 } else if ("script" == contextName) {
-                    tokenizer.setStateAndEndTagExpectation(
-                            Tokenizer.SCRIPT_DATA, contextName);
+                    tokenizer.setState(Tokenizer.SCRIPT_DATA);
                 } else {
-                    tokenizer.setStateAndEndTagExpectation(Tokenizer.DATA,
-                            contextName);
+                    tokenizer.setState(Tokenizer.DATA);
                 }
             }
             contextName = null;
@@ -2096,11 +2089,11 @@ public abstract class TreeBuilder<T> implements TokenHandler,
                         case OBJECT:
                         case TABLE:
                         case AREA_OR_WBR:
+                        case KEYGEN:
                         case BR:
                         case EMBED:
                         case IMG:
                         case INPUT:
-                        case KEYGEN:
                         case HR:
                         case TEXTAREA:
                         case XMP:
@@ -2332,6 +2325,7 @@ public abstract class TreeBuilder<T> implements TokenHandler,
                             case BR:
                             case EMBED:
                             case AREA_OR_WBR:
+                            case KEYGEN:
                                 reconstructTheActiveFormattingElements();
                                 // FALL THROUGH to PARAM_OR_SOURCE_OR_TRACK
                                 // CPPONLY: MOZ_FALLTHROUGH;
@@ -2356,7 +2350,6 @@ public abstract class TreeBuilder<T> implements TokenHandler,
                                 elementName = ElementName.IMG;
                                 continue starttagloop;
                             case IMG:
-                            case KEYGEN:
                             case INPUT:
                                 reconstructTheActiveFormattingElements();
                                 appendVoidElementToCurrentMayFoster(
@@ -2740,7 +2733,6 @@ public abstract class TreeBuilder<T> implements TokenHandler,
                             }
                         case INPUT:
                         case TEXTAREA:
-                        case KEYGEN:
                             errStartTagWithSelectOpen(name);
                             eltPos = findLastInTableScope("select");
                             if (eltPos == TreeBuilder.NOT_FOUND_ON_STACK) {
@@ -3802,13 +3794,13 @@ public abstract class TreeBuilder<T> implements TokenHandler,
                             // fall through to IN_HEAD;
                             break;
                         case AREA_OR_WBR:
+                        case KEYGEN: // XXX??
                         // CPPONLY: case MENUITEM:
                         case PARAM_OR_SOURCE_OR_TRACK:
                         case EMBED:
                         case IMG:
                         case IMAGE:
                         case INPUT:
-                        case KEYGEN: // XXX??
                         case HR:
                         case IFRAME:
                         case NOEMBED: // XXX???

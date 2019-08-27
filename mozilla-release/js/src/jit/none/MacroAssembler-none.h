@@ -37,6 +37,7 @@ struct ScratchDoubleScope : FloatRegister {
 
 static constexpr Register OsrFrameReg{Registers::invalid_reg};
 static constexpr Register PreBarrierReg{Registers::invalid_reg};
+static constexpr Register InterpreterPCReg{Registers::invalid_reg};
 static constexpr Register CallTempReg0{Registers::invalid_reg};
 static constexpr Register CallTempReg1{Registers::invalid_reg};
 static constexpr Register CallTempReg2{Registers::invalid_reg};
@@ -456,6 +457,10 @@ class MacroAssemblerNone : public Assembler {
 
   void boxDouble(FloatRegister, ValueOperand, FloatRegister) { MOZ_CRASH(); }
   void boxNonDouble(JSValueType, Register, ValueOperand) { MOZ_CRASH(); }
+  template <typename T>
+  void boxDouble(FloatRegister src, const T& dest) {
+    MOZ_CRASH();
+  }
   template <typename T>
   void unboxInt32(T, Register) {
     MOZ_CRASH();

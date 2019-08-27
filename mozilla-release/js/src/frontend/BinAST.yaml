@@ -39,6 +39,7 @@ cpp:
     #include "mozilla/Vector.h"
 
     #include "frontend/BinAST-macros.h"
+    #include "frontend/BinASTTokenReaderContext.h"
     #include "frontend/BinASTTokenReaderMultipart.h"
     #include "frontend/FullParseHandler.h"
     #include "frontend/ParseNode.h"
@@ -67,6 +68,7 @@ cpp:
     // Force class instantiation.
     // This ensures that the symbols are built, without having to export all our
     // code (and its baggage of #include and macros) in the header.
+    template class BinASTParser<BinASTTokenReaderContext>;
     template class BinASTParser<BinASTTokenReaderMultipart>;
 
     } // namespace frontend
@@ -89,10 +91,12 @@ hpp:
       #define frontend_BinASTParser_h
 
       #include "mozilla/Maybe.h"
+      #include "mozilla/Variant.h"
 
       #include "frontend/BCEParserHandle.h"
       #include "frontend/BinASTParserPerTokenizer.h"
       #include "frontend/BinASTToken.h"
+      #include "frontend/BinASTTokenReaderContext.h"
       #include "frontend/BinASTTokenReaderMultipart.h"
       #include "frontend/FullParseHandler.h"
       #include "frontend/ParseContext.h"
@@ -119,6 +123,9 @@ hpp:
         using AutoTaggedTuple = typename Tokenizer::AutoTaggedTuple;
         using Chars = typename Tokenizer::Chars;
         using Context = typename BinASTTokenReaderBase::Context;
+        using ListContext = typename BinASTTokenReaderBase::ListContext;
+        using FieldContext = typename BinASTTokenReaderBase::FieldContext;
+        using RootContext = typename BinASTTokenReaderBase::RootContext;
 
        public:
         // Auto-generated types.
@@ -197,6 +204,7 @@ hpp:
     footer: |
       };
 
+      extern template class BinASTParser<BinASTTokenReaderContext>;
       extern template class BinASTParser<BinASTTokenReaderMultipart>;
 
       } // namespace frontend
@@ -339,6 +347,11 @@ hpp:
        * Return a string describing a `BinASTField`.
        */
       const char* describeBinASTField(const BinASTField& field);
+
+      /**
+       * Return a string describing a `BinASTInterfaceAndField`.
+       */
+      const char* describeBinASTInterfaceAndField(const BinASTInterfaceAndField& field);
 
       /**
        * Return a string describing a `BinASTVariant`.
@@ -628,7 +641,7 @@ BreakStatement:
       block:
         replace: |
           RootedAtom label(cx_);
-          MOZ_TRY_VAR(label, tokenizer_->readMaybeAtom(fieldContext++));
+          MOZ_TRY_VAR(label, tokenizer_->readMaybeAtom(Context(FieldContext(BinASTInterfaceAndField::BreakStatement__Label))));
 
   build: |
     if (label) {
@@ -772,7 +785,7 @@ ContinueStatement:
       block:
         replace: |
           RootedAtom label(cx_);
-          MOZ_TRY_VAR(label, tokenizer_->readMaybeAtom(fieldContext++));
+          MOZ_TRY_VAR(label, tokenizer_->readMaybeAtom(Context(FieldContext(BinASTInterfaceAndField::ContinueStatement__Label))));
 
   build: |
     if (label) {
@@ -860,7 +873,7 @@ FunctionExpressionContents:
         // Per spec, isFunctionNameCaptured can be true for anonymous
         // function.  Check isFunctionNameCaptured only for named
         // function.
-        if (pc_->functionBox()->function()->isNamedLambda() &&
+        if (pc_->functionBox()->isNamedLambda() &&
           isFunctionNameCaptured) {
           captureFunctionName();
         }
@@ -1197,7 +1210,7 @@ ListOfObjectProperty:
       result->setHasNonConstInitializer();
     result->appendWithoutOrderAssumption(item);
 
-ListOfOptionalSpreadElementOrExpression:
+ListOfOptionalExpressionOrSpreadElement:
   type-ok:
     ListNode*
   init:
@@ -1285,7 +1298,7 @@ LiteralRegExpExpression:
       block:
         replace: |
           Chars flags(cx_);
-          MOZ_TRY(tokenizer_->readChars(flags, fieldContext++));
+          MOZ_TRY(tokenizer_->readChars(flags, Context(FieldContext(BinASTInterfaceAndField::BreakStatement__Label))));
   build: |
     RegExpFlags reflags = RegExpFlag::NoFlags;
     for (auto c : flags) {

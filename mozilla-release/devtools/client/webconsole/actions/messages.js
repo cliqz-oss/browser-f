@@ -6,11 +6,13 @@
 
 "use strict";
 
+const { prepareMessage } = require("devtools/client/webconsole/utils/messages");
 const {
-  prepareMessage,
-} = require("devtools/client/webconsole/utils/messages");
-const { IdGenerator } = require("devtools/client/webconsole/utils/id-generator");
-const { batchActions } = require("devtools/client/shared/redux/middleware/debounce");
+  IdGenerator,
+} = require("devtools/client/webconsole/utils/id-generator");
+const {
+  batchActions,
+} = require("devtools/client/shared/redux/middleware/debounce");
 
 const {
   MESSAGES_ADD,
@@ -22,7 +24,6 @@ const {
   MESSAGE_CLOSE,
   MESSAGE_TYPE,
   MESSAGE_UPDATE_PAYLOAD,
-  MESSAGE_TABLE_RECEIVE,
   PAUSED_EXCECUTION_POINT,
   PRIVATE_MESSAGES_CLEAR,
 } = require("../constants");
@@ -117,33 +118,29 @@ function messageGetMatchingElements(id, cssSelectors) {
   };
 }
 
-function messageTableDataGet(id, client, dataType) {
-  return ({dispatch}) => {
+function messageGetTableData(id, client, dataType) {
+  return ({ dispatch }) => {
     let fetchObjectActorData;
     if (["Map", "WeakMap", "Set", "WeakSet"].includes(dataType)) {
-      fetchObjectActorData = (cb) => client.enumEntries(cb);
+      fetchObjectActorData = cb => client.enumEntries(cb);
     } else {
-      fetchObjectActorData = (cb) => client.enumProperties({
-        ignoreNonIndexedProperties: dataType === "Array",
-      }, cb);
+      fetchObjectActorData = cb =>
+        client.enumProperties(
+          {
+            ignoreNonIndexedProperties: dataType === "Array",
+          },
+          cb
+        );
     }
 
     fetchObjectActorData(enumResponse => {
-      const {iterator} = enumResponse;
+      const { iterator } = enumResponse;
       // eslint-disable-next-line mozilla/use-returnValue
       iterator.slice(0, iterator.count, sliceResponse => {
-        const {ownProperties} = sliceResponse;
-        dispatch(messageTableDataReceive(id, ownProperties));
+        const { ownProperties } = sliceResponse;
+        dispatch(messageUpdatePayload(id, ownProperties));
       });
     });
-  };
-}
-
-function messageTableDataReceive(id, data) {
-  return {
-    type: MESSAGE_TABLE_RECEIVE,
-    id,
-    data,
   };
 }
 
@@ -192,12 +189,11 @@ module.exports = {
   messageOpen,
   messageClose,
   messageGetMatchingElements,
-  messageTableDataGet,
+  messageGetTableData,
   messageUpdatePayload,
   networkMessageUpdate,
   networkUpdateRequest,
   privateMessagesClear,
   // for test purpose only.
-  messageTableDataReceive,
   setPauseExecutionPoint,
 };

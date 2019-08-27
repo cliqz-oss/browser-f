@@ -18,6 +18,7 @@
 #include "mozilla/PodOperations.h"
 #include "mozilla/TimeStamp.h"
 #include "mozilla/TypeTraits.h"
+#include "mozilla/Utf8.h"  // mozilla::Utf8Unit
 #include "mozilla/Variant.h"
 
 #include "jsapi.h"
@@ -552,7 +553,7 @@ bool StartOffThreadIonFree(jit::IonBuilder* builder,
 struct AllCompilations {};
 struct ZonesInState {
   JSRuntime* runtime;
-  JS::Zone::GCState state;
+  JS::shadow::Zone::GCState state;
 };
 struct CompilationsUsingNursery {
   JSRuntime* runtime;
@@ -581,7 +582,7 @@ inline void CancelOffThreadIonCompile(Zone* zone) {
 }
 
 inline void CancelOffThreadIonCompile(JSRuntime* runtime,
-                                      JS::Zone::GCState state) {
+                                      JS::shadow::Zone::GCState state) {
   CancelOffThreadIonCompile(CompilationSelector(ZonesInState{runtime, state}),
                             true);
 }
@@ -611,10 +612,20 @@ bool StartOffThreadParseScript(JSContext* cx,
                                JS::SourceText<char16_t>& srcBuf,
                                JS::OffThreadCompileCallback callback,
                                void* callbackData);
+bool StartOffThreadParseScript(JSContext* cx,
+                               const JS::ReadOnlyCompileOptions& options,
+                               JS::SourceText<mozilla::Utf8Unit>& srcBuf,
+                               JS::OffThreadCompileCallback callback,
+                               void* callbackData);
 
 bool StartOffThreadParseModule(JSContext* cx,
                                const JS::ReadOnlyCompileOptions& options,
                                JS::SourceText<char16_t>& srcBuf,
+                               JS::OffThreadCompileCallback callback,
+                               void* callbackData);
+bool StartOffThreadParseModule(JSContext* cx,
+                               const JS::ReadOnlyCompileOptions& options,
+                               JS::SourceText<mozilla::Utf8Unit>& srcBuf,
                                JS::OffThreadCompileCallback callback,
                                void* callbackData);
 
@@ -741,22 +752,7 @@ struct ParseTask : public mozilla::LinkedListElement<ParseTask>,
   }
 
   void runTask() override;
-};
-
-struct ScriptParseTask : public ParseTask {
-  JS::SourceText<char16_t> data;
-
-  ScriptParseTask(JSContext* cx, JS::SourceText<char16_t>& srcBuf,
-                  JS::OffThreadCompileCallback callback, void* callbackData);
-  void parse(JSContext* cx) override;
-};
-
-struct ModuleParseTask : public ParseTask {
-  JS::SourceText<char16_t> data;
-
-  ModuleParseTask(JSContext* cx, JS::SourceText<char16_t>& srcBuf,
-                  JS::OffThreadCompileCallback callback, void* callbackData);
-  void parse(JSContext* cx) override;
+  ThreadType threadType() override { return ThreadType::THREAD_TYPE_PARSE; }
 };
 
 struct ScriptDecodeTask : public ParseTask {
@@ -847,6 +843,8 @@ class SourceCompressionTask : public RunnableTask {
   void runTask() override;
   void complete();
 
+  ThreadType threadType() override { return ThreadType::THREAD_TYPE_COMPRESS; }
+
  private:
   struct PerformTaskWork;
   friend struct PerformTaskWork;
@@ -880,6 +878,7 @@ struct PromiseHelperTask : OffThreadPromiseTask, public RunnableTask {
   // the caller must immediately return from the stream callback.
   void executeAndResolveAndDestroy(JSContext* cx);
   void runTask() override;
+  ThreadType threadType() override { return THREAD_TYPE_PROMISE_TASK; }
 };
 
 } /* namespace js */

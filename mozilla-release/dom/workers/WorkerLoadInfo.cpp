@@ -8,10 +8,12 @@
 #include "WorkerPrivate.h"
 
 #include "mozilla/BasePrincipal.h"
+#include "mozilla/dom/nsCSPUtils.h"
 #include "mozilla/dom/BrowserChild.h"
 #include "mozilla/ipc/BackgroundUtils.h"
 #include "mozilla/ipc/PBackgroundSharedTypes.h"
 #include "mozilla/LoadContext.h"
+#include "mozilla/StorageAccess.h"
 #include "nsContentUtils.h"
 #include "nsIContentSecurityPolicy.h"
 #include "nsINetworkInterceptController.h"
@@ -81,21 +83,21 @@ inline void SwapToISupportsArray(SmartPtr<T>& aSrc,
 WorkerLoadInfoData::WorkerLoadInfoData()
     : mLoadFlags(nsIRequest::LOAD_NORMAL),
       mWindowID(UINT64_MAX),
-      mReferrerPolicy(net::RP_Unset),
+      mReferrerInfo(new ReferrerInfo(nullptr)),
       mFromWindow(false),
       mEvalAllowed(false),
       mReportCSPViolations(false),
       mXHRParamsAllowed(false),
       mPrincipalIsSystem(false),
       mWatchedByDevtools(false),
-      mStorageAccess(nsContentUtils::StorageAccess::eDeny),
+      mStorageAccess(StorageAccess::eDeny),
       mFirstPartyStorageAccessGranted(false),
       mServiceWorkersTestingInWindow(false),
       mSecureContext(eNotSet) {}
 
-nsresult WorkerLoadInfo::SetPrincipalsOnMainThread(
+nsresult WorkerLoadInfo::SetPrincipalsAndCSPOnMainThread(
     nsIPrincipal* aPrincipal, nsIPrincipal* aStoragePrincipal,
-    nsILoadGroup* aLoadGroup) {
+    nsILoadGroup* aLoadGroup, nsIContentSecurityPolicy* aCsp) {
   AssertIsOnMainThread();
   MOZ_ASSERT(NS_LoadGroupMatchesPrincipal(aLoadGroup, aPrincipal));
 
@@ -103,15 +105,15 @@ nsresult WorkerLoadInfo::SetPrincipalsOnMainThread(
   mStoragePrincipal = aStoragePrincipal;
   mPrincipalIsSystem = nsContentUtils::IsSystemPrincipal(aPrincipal);
 
-  nsresult rv = aPrincipal->GetCsp(getter_AddRefs(mCSP));
-  NS_ENSURE_SUCCESS(rv, rv);
-
-  mCSPInfos.Clear();
+  mCSP = aCsp;
 
   if (mCSP) {
     mCSP->GetAllowsEval(&mReportCSPViolations, &mEvalAllowed);
-    rv = PopulateContentSecurityPolicies(mCSP, mCSPInfos);
-    NS_ENSURE_SUCCESS(rv, rv);
+    mCSPInfo = new CSPInfo();
+    nsresult rv = CSPToCSPInfo(aCsp, mCSPInfo);
+    if (NS_WARN_IF(NS_FAILED(rv))) {
+      return rv;
+    }
   } else {
     mEvalAllowed = true;
     mReportCSPViolations = false;
@@ -123,7 +125,7 @@ nsresult WorkerLoadInfo::SetPrincipalsOnMainThread(
   mStoragePrincipalInfo = new PrincipalInfo();
   mOriginAttributes = nsContentUtils::GetOriginAttributes(aLoadGroup);
 
-  rv = PrincipalToPrincipalInfo(aPrincipal, mPrincipalInfo);
+  nsresult rv = PrincipalToPrincipalInfo(aPrincipal, mPrincipalInfo);
   NS_ENSURE_SUCCESS(rv, rv);
 
   if (aPrincipal->Equals(aStoragePrincipal)) {
@@ -224,7 +226,7 @@ nsresult WorkerLoadInfo::GetPrincipalsAndLoadGroupFromChannel(
   return NS_OK;
 }
 
-nsresult WorkerLoadInfo::SetPrincipalsFromChannel(nsIChannel* aChannel) {
+nsresult WorkerLoadInfo::SetPrincipalsAndCSPFromChannel(nsIChannel* aChannel) {
   AssertIsOnMainThread();
 
   nsCOMPtr<nsIPrincipal> principal;
@@ -235,7 +237,15 @@ nsresult WorkerLoadInfo::SetPrincipalsFromChannel(nsIChannel* aChannel) {
       getter_AddRefs(loadGroup));
   NS_ENSURE_SUCCESS(rv, rv);
 
-  return SetPrincipalsOnMainThread(principal, storagePrincipal, loadGroup);
+  // Workers themselves can have their own CSP - Workers of an opaque origin
+  // however inherit the CSP of the document that spawned the worker.
+  nsCOMPtr<nsIContentSecurityPolicy> csp;
+  if (CSP_ShouldResponseInheritCSP(aChannel)) {
+    nsCOMPtr<nsILoadInfo> loadinfo = aChannel->LoadInfo();
+    csp = loadinfo->GetCsp();
+  }
+  return SetPrincipalsAndCSPOnMainThread(principal, storagePrincipal, loadGroup,
+                                         csp);
 }
 
 bool WorkerLoadInfo::FinalChannelPrincipalIsValid(nsIChannel* aChannel) {

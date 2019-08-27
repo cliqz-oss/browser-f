@@ -6,14 +6,14 @@ from __future__ import absolute_import
 import json
 import os
 
+from logger.logger import RaptorLogger
 from manifestparser import TestManifest
-from mozlog import get_proxy_logger
 from utils import transform_platform
 
 here = os.path.abspath(os.path.dirname(__file__))
 raptor_ini = os.path.join(here, 'raptor.ini')
 tests_dir = os.path.join(here, 'tests')
-LOG = get_proxy_logger(component="raptor-manifest")
+LOG = RaptorLogger(component='raptor-manifest')
 
 LIVE_SITE_TIMEOUT_MULTIPLIER = 1.2
 
@@ -93,7 +93,7 @@ def validate_test_ini(test_details):
             if setting == "page-cycles" and test_details.get('browser_cycles') is not None:
                 continue
             valid_settings = False
-            LOG.error("ERROR: setting '%s' is required but not found in %s"
+            LOG.error("setting '%s' is required but not found in %s"
                       % (setting, test_details['manifest']))
 
     test_details.setdefault("page_timeout", 30000)
@@ -103,7 +103,7 @@ def validate_test_ini(test_details):
         for setting in playback_settings:
             if test_details.get(setting) is None:
                 valid_settings = False
-                LOG.error("ERROR: setting '%s' is required but not found in %s"
+                LOG.error("setting '%s' is required but not found in %s"
                           % (setting, test_details['manifest']))
 
     # if 'alert-on' is specified, we need to make sure that the value given is valid
@@ -117,7 +117,7 @@ def validate_test_ini(test_details):
         # now make sure each alert_on value provided is valid
         for alert_on_value in test_details['alert_on']:
             if alert_on_value not in test_details['measure']:
-                LOG.error("ERROR: The 'alert_on' value of '%s' is not valid because "
+                LOG.error("The 'alert_on' value of '%s' is not valid because "
                           "it doesn't exist in the 'measure' test setting!"
                           % alert_on_value)
                 valid_settings = False
@@ -211,8 +211,18 @@ def write_test_settings_json(args, test_details, oskey):
 
     if test_details['type'] == "scenario":
         test_settings['raptor-options']['scenario_time'] = test_details['scenario_time']
+        if 'background_test' in test_details:
+            test_settings['raptor-options']['background_test'] = \
+                bool(test_details['background_test'])
+        else:
+            test_settings['raptor-options']['background_test'] = False
 
-    settings_file = os.path.join(tests_dir, test_details['name'] + '.json')
+    jsons_dir = os.path.join(tests_dir, 'json')
+
+    if not os.path.exists(jsons_dir):
+        os.mkdir(os.path.join(tests_dir, 'json'))
+
+    settings_file = os.path.join(jsons_dir, test_details['name'] + '.json')
     try:
         with open(settings_file, 'w') as out_file:
             json.dump(test_settings, out_file, indent=4, ensure_ascii=False)

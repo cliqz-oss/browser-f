@@ -4,6 +4,7 @@
 
 from __future__ import absolute_import, print_function
 
+import io
 import os
 import posixpath
 import re
@@ -15,6 +16,9 @@ import time
 import traceback
 
 from distutils import dir_util
+import six
+from six.moves import range
+
 from . import version_codes
 
 
@@ -189,7 +193,10 @@ class ADBCommand(object):
                                       stdout=subprocess.PIPE,
                                       stderr=subprocess.PIPE).communicate()
             re_version = re.compile(r'Android Debug Bridge version (.*)')
-            self._adb_version = re_version.match(output[0]).group(1)
+            if isinstance(output[0], six.binary_type):
+                self._adb_version = re_version.match(output[0].decode('utf-8', 'replace')).group(1)
+            else:
+                self._adb_version = re_version.match(output[0]).group(1)
 
         except Exception as exc:
             raise ADBError('%s: %s is not executable.' % (exc, adb))
@@ -320,7 +327,7 @@ class ADBCommand(object):
 
             return output
         finally:
-            if adb_process and isinstance(adb_process.stdout_file, file):
+            if adb_process and isinstance(adb_process.stdout_file, io.IOBase):
                 adb_process.stdout_file.close()
 
 
@@ -805,7 +812,7 @@ class ADBDevice(ADBCommand):
                 re_device_serial_tcpip.match(serial) is not None or \
                 ":" not in serial
 
-        if isinstance(device, (str, unicode)):
+        if isinstance(device, six.string_types):
             # Treat this as a device serial
             if not is_valid_serial(device):
                 raise ValueError("Device serials containing ':' characters are "
@@ -1355,8 +1362,8 @@ class ADBDevice(ADBCommand):
         if cwd:
             cmd = "cd %s && %s" % (cwd, cmd)
         if env:
-            envstr = '&& '.join(map(lambda x: 'export %s=%s' %
-                                    (x[0], x[1]), env.iteritems()))
+            envstr = '&& '.join(['export %s=%s' %
+                                 (x[0], x[1]) for x in env.items()])
             cmd = envstr + "&& " + cmd
         cmd += "; echo adb_returncode=$?"
 
@@ -1380,7 +1387,7 @@ class ADBDevice(ADBCommand):
                 time.sleep(self._polling_interval)
                 exitcode = adb_process.proc.poll()
         else:
-            stdout2 = open(adb_process.stdout_file.name, 'rb')
+            stdout2 = io.open(adb_process.stdout_file.name, 'rb')
             while ((time.time() - start_time) <= float(timeout)) and exitcode is None:
                 try:
                     line = _timed_read_line(stdout2)
@@ -1494,7 +1501,7 @@ class ADBDevice(ADBCommand):
 
             return output
         finally:
-            if adb_process and isinstance(adb_process.stdout_file, file):
+            if adb_process and isinstance(adb_process.stdout_file, io.IOBase):
                 adb_process.stdout_file.close()
 
     # Informational methods
@@ -2092,7 +2099,7 @@ class ADBDevice(ADBCommand):
             else:
                 entry = line
             entries[entry] = 1
-        entry_list = entries.keys()
+        entry_list = list(entries.keys())
         entry_list.sort()
         return entry_list
 
@@ -2116,13 +2123,25 @@ class ADBDevice(ADBCommand):
                  * ADBRootError
                  * ADBError
         """
+        def verify_mkdir(path):
+            # Verify that the directory was actually created. On some devices
+            # (x86_64 emulator, v 29.0.11) the directory is sometimes not
+            # immediately visible, so retries are allowed.
+            retry = 0
+            while retry < 10:
+                if self.is_dir(path, timeout=timeout, root=root):
+                    return True
+                time.sleep(1)
+                retry += 1
+            return False
+
         path = posixpath.normpath(path)
         if parents:
             if self._mkdir_p is None or self._mkdir_p:
                 # Use shell_bool to catch the possible
                 # non-zero exitcode if -p is not supported.
                 if self.shell_bool('mkdir -p %s' % path, timeout=timeout,
-                                   root=root):
+                                   root=root) or verify_mkdir(path):
                     self._mkdir_p = True
                     return
             # mkdir -p is not supported. create the parent
@@ -2145,7 +2164,7 @@ class ADBDevice(ADBCommand):
         # directory, mkdir will fail and we will raise an ADBError.
         if not parents or not self.is_dir(path, root=root):
             self.shell_output('mkdir %s' % path, timeout=timeout, root=root)
-        if not self.is_dir(path, timeout=timeout, root=root):
+        if not verify_mkdir(path):
             raise ADBError('mkdir %s Failed' % path)
 
     def push(self, local, remote, timeout=None):
@@ -2265,7 +2284,7 @@ class ADBDevice(ADBCommand):
         """
         with tempfile.NamedTemporaryFile() as tf:
             self.pull(remote, tf.name, timeout=timeout)
-            with open(tf.name) as tf2:
+            with io.open(tf.name, mode='rb') as tf2:
                 # ADB pull does not support offset and length, but we can
                 # instead read only the requested portion of the local file
                 if offset is not None and length is not None:
@@ -2304,8 +2323,8 @@ class ADBDevice(ADBCommand):
             cmd += " -r"
         try:
             self.shell_output("%s %s" % (cmd, path), timeout=timeout, root=root)
-            if self.is_file(path, timeout=timeout, root=root):
-                raise ADBError('rm("%s") failed to remove file.' % path)
+            if self.exists(path, timeout=timeout, root=root):
+                raise ADBError('rm("%s") failed to remove path.' % path)
         except ADBError as e:
             if not force and 'No such file or directory' in e.message:
                 raise
@@ -2499,7 +2518,7 @@ class ADBDevice(ADBCommand):
         :raises: * ADBTimeoutError
                  * ADBError
         """
-        if not isinstance(process_name, basestring):
+        if not isinstance(process_name, six.string_types):
             raise ADBError("Process name %s is not a string" % process_name)
 
         # Filter out extra spaces.
@@ -3027,7 +3046,7 @@ class ADBDevice(ADBCommand):
         # against bool prior to testing it against int in order to
         # prevent falsely identifying a bool value as an int.
         if extras:
-            for (key, val) in extras.iteritems():
+            for (key, val) in extras.items():
                 if isinstance(val, bool):
                     extra_type_param = "--ez"
                 elif isinstance(val, int):
@@ -3082,7 +3101,7 @@ class ADBDevice(ADBCommand):
         if moz_env:
             # moz_env is expected to be a dictionary of environment variables:
             # Fennec itself will set them when launched
-            for (env_count, (env_key, env_val)) in enumerate(moz_env.iteritems()):
+            for (env_count, (env_key, env_val)) in enumerate(moz_env.items()):
                 extras["env" + str(env_count)] = env_key + "=" + env_val
 
         # Additional command line arguments that fennec will read and use (e.g.
@@ -3132,7 +3151,7 @@ class ADBDevice(ADBCommand):
         if moz_env:
             # moz_env is expected to be a dictionary of environment variables:
             # geckoview_example itself will set them when launched
-            for (env_count, (env_key, env_val)) in enumerate(moz_env.iteritems()):
+            for (env_count, (env_key, env_val)) in enumerate(moz_env.items()):
                 extras["env" + str(env_count)] = env_key + "=" + env_val
 
         # Additional command line arguments that the app will read and use (e.g.

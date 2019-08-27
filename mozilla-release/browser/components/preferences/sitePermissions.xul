@@ -32,6 +32,10 @@
   </keyset>
 
   <vbox class="contentPane">
+
+    <hbox align="center" id="setAutoplayPref" hidden="true">
+      <label data-l10n-id="permissions-autoplay-menu"/>
+    </hbox>
     <description id="permissionsText" control="url"/>
     <separator class="thin"/>
     <hbox align="start">
@@ -40,9 +44,9 @@
     </hbox>
     <separator class="thin"/>
     <listheader>
-      <treecol id="siteCol" data-l10n-id="permissions-site-name" flex="3" width="50"
+      <treecol id="siteCol" data-l10n-id="permissions-site-name" flex="3" width="75"
                onclick="gSitePermissionsManager.buildPermissionsList(event.target)"/>
-      <treecol id="statusCol" data-l10n-id="permissions-status" flex="1" width="50"
+      <treecol id="statusCol" data-l10n-id="permissions-status" flex="1" width="75"
                data-isCurrentSortCol="true"
                onclick="gSitePermissionsManager.buildPermissionsList(event.target);"/>
     </listheader>
@@ -74,7 +78,7 @@
             data-l10n-id="disable-extension"/>
   </hbox>
   <hbox class="actionButtons" align="right" flex="1">
-    <button oncommand="close();" icon="close" id="cancel"
+    <button oncommand="window.close();" icon="close" id="cancel"
             data-l10n-id="permissions-button-cancel" />
     <button id="btnApplyChanges" oncommand="gSitePermissionsManager.onApplyChanges();" icon="save"
             data-l10n-id="permissions-button-ok" />

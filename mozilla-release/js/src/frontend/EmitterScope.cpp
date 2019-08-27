@@ -342,8 +342,7 @@ bool EmitterScope::internScope(BytecodeEmitter* bce, ScopeCreator createScope) {
     return false;
   }
   hasEnvironment_ = scope->hasEnvironment();
-  scopeIndex_ = bce->perScriptData().scopeList().length();
-  return bce->perScriptData().scopeList().append(scope);
+  return bce->perScriptData().gcThingList().append(scope, &scopeIndex_);
 }
 
 template <typename ScopeCreator>
@@ -351,7 +350,7 @@ bool EmitterScope::internBodyScope(BytecodeEmitter* bce,
                                    ScopeCreator createScope) {
   MOZ_ASSERT(bce->bodyScopeIndex == UINT32_MAX,
              "There can be only one body scope");
-  bce->bodyScopeIndex = bce->perScriptData().scopeList().length();
+  bce->bodyScopeIndex = bce->perScriptData().gcThingList().length();
   return internScope(bce, createScope);
 }
 
@@ -1055,12 +1054,15 @@ bool EmitterScope::leave(BytecodeEmitter* bce, bool nonLocal) {
     // Popping scopes due to non-local jumps generate additional scope
     // notes. See NonLocalExitControl::prepareForNonLocalJump.
     if (ScopeKindIsInBody(kind)) {
-      // The extra function var scope is never popped once it's pushed,
-      // so its scope note extends until the end of any possible code.
-      uint32_t offset = kind == ScopeKind::FunctionBodyVar
-                            ? UINT32_MAX
-                            : bce->bytecodeSection().offset();
-      bce->bytecodeSection().scopeNoteList().recordEnd(noteIndex_, offset);
+      if (kind == ScopeKind::FunctionBodyVar) {
+        // The extra function var scope is never popped once it's pushed,
+        // so its scope note extends until the end of any possible code.
+        bce->bytecodeSection().scopeNoteList().recordEndFunctionBodyVar(
+            noteIndex_);
+      } else {
+        bce->bytecodeSection().scopeNoteList().recordEnd(
+            noteIndex_, bce->bytecodeSection().offset());
+      }
     }
   }
 
@@ -1068,7 +1070,7 @@ bool EmitterScope::leave(BytecodeEmitter* bce, bool nonLocal) {
 }
 
 Scope* EmitterScope::scope(const BytecodeEmitter* bce) const {
-  return bce->perScriptData().scopeList().vector[index()];
+  return bce->perScriptData().gcThingList().getScope(index());
 }
 
 NameLocation EmitterScope::lookup(BytecodeEmitter* bce, JSAtom* name) {

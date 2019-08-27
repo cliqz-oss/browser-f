@@ -631,6 +631,20 @@ if buildconfig.substs.get('commtopsrcdir'):
         'dest': 'mozharness/configs'
     }
     ARCHIVE_FILES['mozharness'].append(mozharness_comm)
+    marionette_comm = {
+        'source': commtopsrcdir,
+        'base': '',
+        'manifest': 'testing/marionette/unit-tests.ini',
+        'dest': 'marionette/tests/comm',
+    }
+    ARCHIVE_FILES['common'].append(marionette_comm)
+    thunderbirdinstance = {
+        'source': commtopsrcdir,
+        'base': 'testing/marionette',
+        'pattern': 'thunderbirdinstance.py',
+        'dest': 'marionette/client/marionette_driver',
+    }
+    ARCHIVE_FILES['common'].append(thunderbirdinstance)
 
 
 # "common" is our catch all archive and it ignores things from other archives.
@@ -642,7 +656,7 @@ for k, v in ARCHIVE_FILES.items():
         continue
 
     ignores = set(itertools.chain(*(e.get('ignore', [])
-                                  for e in ARCHIVE_FILES['common'])))
+                                    for e in ARCHIVE_FILES['common'])))
 
     if not any(p.startswith('%s/' % k) for p in ignores):
         raise Exception('"common" ignore list probably should contain %s' % k)
@@ -707,7 +721,7 @@ def find_files(archive):
         if manifest:
             manifests.append(manifest)
         if manifests:
-            dirs = find_manifest_dirs(buildconfig.topsrcdir, manifests)
+            dirs = find_manifest_dirs(os.path.join(source, base), manifests)
             patterns.extend({'{}/**'.format(d) for d in dirs})
 
         ignore = list(entry.get('ignore', []))

@@ -226,7 +226,8 @@ button > hbox > label {
 .androidIcon,
 .iOSIcon,
 #updateSettingCrossUserWarning,
-.extension-controlled > description {
+.extension-controlled > description,
+.info-panel > description {
   -moz-context-properties: fill;
   fill: currentColor;
 }
@@ -315,6 +316,7 @@ button > hbox > label {
 }
 
 #downloadFolder {
+  -moz-box-flex: 1;
   margin-inline-start: 0;
   padding-inline-start: 30px;
   background-repeat: no-repeat;
@@ -622,7 +624,7 @@ button > hbox > label {
   height: 80px;
   border-radius: 50%;
   border: 1px solid transparent;
-  list-style-image: url("chrome://browser/skin/preferences/in-content/fxa-avatar.svg");
+  list-style-image: url(chrome://browser/skin/fxa/avatar-color.svg);
   margin-inline-end: 24px;
   -moz-user-focus: normal;
 }
@@ -650,6 +652,7 @@ button > hbox > label {
 }
 
 #fxaSyncComputerName {
+  -moz-box-flex: 1;
   margin-inline-start: 0;
   margin-bottom: 4px;
 }
@@ -678,7 +681,7 @@ button > hbox > label {
 }
 
 .fxaSyncIllustration {
-  list-style-image: url("chrome://browser/skin/preferences/in-content/sync-devices.svg");
+  list-style-image: url(chrome://browser/skin/fxa/sync-devices.svg);
   width: 312px;
   height: 136px;
 }

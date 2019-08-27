@@ -274,97 +274,6 @@ nsScriptSecurityManager::GetChannelResultPrincipals(
                                         aStoragePrincipal);
 }
 
-static void InheritAndSetCSPOnPrincipalIfNeeded(nsIChannel* aChannel,
-                                                nsIPrincipal* aPrincipal) {
-  // loading a data: URI into an iframe, or loading frame[srcdoc] need
-  // to inherit the CSP (see Bug 1073952, 1381761).
-  MOZ_ASSERT(aChannel && aPrincipal, "need a valid channel and principal");
-  if (!aChannel) {
-    return;
-  }
-
-  nsCOMPtr<nsILoadInfo> loadInfo = aChannel->LoadInfo();
-  if (loadInfo->GetExternalContentPolicyType() !=
-      nsIContentPolicy::TYPE_SUBDOCUMENT) {
-    return;
-  }
-
-  nsCOMPtr<nsIURI> uri;
-  nsresult rv = aChannel->GetURI(getter_AddRefs(uri));
-  NS_ENSURE_SUCCESS_VOID(rv);
-  nsAutoCString URISpec;
-  rv = uri->GetSpec(URISpec);
-  NS_ENSURE_SUCCESS_VOID(rv);
-
-  bool isSrcDoc = URISpec.EqualsLiteral("about:srcdoc");
-  bool isData = (NS_SUCCEEDED(uri->SchemeIs("data", &isData)) && isData);
-
-  if (!isSrcDoc && !isData) {
-    return;
-  }
-
-  nsCOMPtr<nsIPrincipal> principalToInherit =
-      loadInfo->FindPrincipalToInherit(aChannel);
-
-  nsCOMPtr<nsIContentSecurityPolicy> originalCSP;
-  principalToInherit->GetCsp(getter_AddRefs(originalCSP));
-  if (!originalCSP) {
-    return;
-  }
-
-  // if the principalToInherit had a CSP, add it to the before
-  // created NullPrincipal (unless it already has one)
-  MOZ_ASSERT(aPrincipal->GetIsNullPrincipal(),
-             "inheriting the CSP only valid for NullPrincipal");
-  nsCOMPtr<nsIContentSecurityPolicy> nullPrincipalCSP;
-  aPrincipal->GetCsp(getter_AddRefs(nullPrincipalCSP));
-  if (nullPrincipalCSP) {
-    MOZ_ASSERT(nsCSPContext::Equals(originalCSP, nullPrincipalCSP));
-    // CSPs are equal, no need to set it again.
-    return;
-  }
-
-  // After 965637 all that magical CSP inheritance goes away. For now,
-  // we have to create a clone of the current CSP and have to manually
-  // set it on the Principal.
-  uint32_t count = 0;
-  rv = originalCSP->GetPolicyCount(&count);
-  if (NS_WARN_IF(NS_FAILED(rv))) {
-    return;
-  }
-
-  if (count == 0) {
-    // fast path: if there is nothing to inherit, we can return here.
-    return;
-  }
-
-  RefPtr<nsCSPContext> newCSP = new nsCSPContext();
-  nsWeakPtr loadingContext =
-      static_cast<nsCSPContext*>(originalCSP.get())->GetLoadingContext();
-  nsCOMPtr<Document> doc = do_QueryReferent(loadingContext);
-
-  rv = doc ? newCSP->SetRequestContext(doc, nullptr)
-           : newCSP->SetRequestContext(nullptr, aPrincipal);
-  if (NS_WARN_IF(NS_FAILED(rv))) {
-    return;
-  }
-
-  for (uint32_t i = 0; i < count; ++i) {
-    const nsCSPPolicy* policy = originalCSP->GetPolicy(i);
-    MOZ_ASSERT(policy);
-
-    nsAutoString policyString;
-    policy->toString(policyString);
-
-    rv = newCSP->AppendPolicy(policyString, policy->getReportOnlyFlag(),
-                              policy->getDeliveredViaMetaTagFlag());
-    if (NS_WARN_IF(NS_FAILED(rv))) {
-      return;
-    }
-  }
-  aPrincipal->SetCsp(newCSP);
-}
-
 nsresult nsScriptSecurityManager::GetChannelResultPrincipal(
     nsIChannel* aChannel, nsIPrincipal** aPrincipal, bool aIgnoreSandboxing) {
   MOZ_ASSERT(aChannel, "Must have channel!");
@@ -391,7 +300,6 @@ nsresult nsScriptSecurityManager::GetChannelResultPrincipal(
     nsCOMPtr<nsIPrincipal> sandboxedLoadingPrincipal =
         loadInfo->GetSandboxedLoadingPrincipal();
     MOZ_ASSERT(sandboxedLoadingPrincipal);
-    InheritAndSetCSPOnPrincipalIfNeeded(aChannel, sandboxedLoadingPrincipal);
     sandboxedLoadingPrincipal.forget(aPrincipal);
     return NS_OK;
   }
@@ -433,10 +341,7 @@ nsresult nsScriptSecurityManager::GetChannelResultPrincipal(
       return NS_OK;
     }
   }
-  nsresult rv = GetChannelURIPrincipal(aChannel, aPrincipal);
-  NS_ENSURE_SUCCESS(rv, rv);
-  InheritAndSetCSPOnPrincipalIfNeeded(aChannel, *aPrincipal);
-  return NS_OK;
+  return GetChannelURIPrincipal(aChannel, aPrincipal);
 }
 
 /* The principal of the URI that this channel is loading. This is never
@@ -494,16 +399,18 @@ NS_IMPL_ISUPPORTS(nsScriptSecurityManager, nsIScriptSecurityManager)
 bool nsScriptSecurityManager::ContentSecurityPolicyPermitsJSAction(
     JSContext* cx, JS::HandleValue aValue) {
   MOZ_ASSERT(cx == nsContentUtils::GetCurrentJSContext());
-  nsCOMPtr<nsIPrincipal> subjectPrincipal = nsContentUtils::SubjectPrincipal();
 
 #if defined(DEBUG) && !defined(ANDROID)
+  nsCOMPtr<nsIPrincipal> subjectPrincipal = nsContentUtils::SubjectPrincipal();
   nsContentSecurityManager::AssertEvalNotUsingSystemPrincipal(subjectPrincipal,
                                                               cx);
 #endif
 
+  // Get the window, if any, corresponding to the current global
   nsCOMPtr<nsIContentSecurityPolicy> csp;
-  nsresult rv = subjectPrincipal->GetCsp(getter_AddRefs(csp));
-  NS_ASSERTION(NS_SUCCEEDED(rv), "CSP: Failed to get CSP from principal.");
+  if (nsGlobalWindowInner* win = xpc::CurrentWindowOrNull(cx)) {
+    csp = win->GetCsp();
+  }
 
   // don't do anything unless there's a CSP
   if (!csp) return true;
@@ -519,7 +426,7 @@ bool nsScriptSecurityManager::ContentSecurityPolicyPermitsJSAction(
 
   bool evalOK = true;
   bool reportViolation = false;
-  rv = csp->GetAllowsEval(&reportViolation, &evalOK);
+  nsresult rv = csp->GetAllowsEval(&reportViolation, &evalOK);
 
   if (NS_FAILED(rv)) {
     NS_WARNING("CSP: failed to get allowsEval");
@@ -1077,10 +984,10 @@ nsresult nsScriptSecurityManager::CheckLoadURIFlags(
     nsCOMPtr<nsIStringBundle> bundle = BundleHelper::GetOrCreate();
     if (bundle) {
       nsAutoString message;
-      NS_ConvertASCIItoUTF16 ucsTargetScheme(targetScheme);
-      const char16_t* formatStrings[] = {ucsTargetScheme.get()};
+      AutoTArray<nsString, 1> formatStrings;
+      CopyASCIItoUTF16(targetScheme, *formatStrings.AppendElement());
       rv = bundle->FormatStringFromName("ProtocolFlagError", formatStrings,
-                                        ArrayLength(formatStrings), message);
+                                        message);
       if (NS_SUCCEEDED(rv)) {
         nsCOMPtr<nsIConsoleService> console(
             do_GetService("@mozilla.org/consoleservice;1"));
@@ -1117,11 +1024,10 @@ nsresult nsScriptSecurityManager::ReportError(const char* aMessageTag,
 
   // Localize the error message
   nsAutoString message;
-  NS_ConvertASCIItoUTF16 ucsSourceSpec(sourceSpec);
-  NS_ConvertASCIItoUTF16 ucsTargetSpec(targetSpec);
-  const char16_t* formatStrings[] = {ucsSourceSpec.get(), ucsTargetSpec.get()};
-  rv = bundle->FormatStringFromName(aMessageTag, formatStrings,
-                                    ArrayLength(formatStrings), message);
+  AutoTArray<nsString, 2> formatStrings;
+  CopyASCIItoUTF16(sourceSpec, *formatStrings.AppendElement());
+  CopyASCIItoUTF16(targetSpec, *formatStrings.AppendElement());
+  rv = bundle->FormatStringFromName(aMessageTag, formatStrings, message);
   NS_ENSURE_SUCCESS(rv, rv);
 
   nsCOMPtr<nsIConsoleService> console(
@@ -1246,6 +1152,40 @@ nsScriptSecurityManager::CreateCodebasePrincipalFromOrigin(
 }
 
 NS_IMETHODIMP
+nsScriptSecurityManager::PrincipalToJSON(nsIPrincipal* aPrincipal,
+                                         nsACString& aJSON) {
+  aJSON.Truncate();
+  if (!aPrincipal) {
+    return NS_ERROR_FAILURE;
+  }
+
+  BasePrincipal::Cast(aPrincipal)->ToJSON(aJSON);
+
+  if (aJSON.IsEmpty()) {
+    return NS_ERROR_FAILURE;
+  }
+
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+nsScriptSecurityManager::JSONToPrincipal(const nsACString& aJSON,
+                                         nsIPrincipal** aPrincipal) {
+  if (aJSON.IsEmpty()) {
+    return NS_ERROR_FAILURE;
+  }
+
+  nsCOMPtr<nsIPrincipal> principal = BasePrincipal::FromJSON(aJSON);
+
+  if (!principal) {
+    return NS_ERROR_FAILURE;
+  }
+
+  principal.forget(aPrincipal);
+  return NS_OK;
+}
+
+NS_IMETHODIMP
 nsScriptSecurityManager::CreateNullPrincipal(
     JS::Handle<JS::Value> aOriginAttributes, JSContext* aCx,
     nsIPrincipal** aPrincipal) {
@@ -1348,13 +1288,13 @@ nsScriptSecurityManager::CanCreateWrapper(JSContext* cx, const nsIID& aIID,
   nsresult rv;
   nsAutoString errorMsg;
   if (originUTF16.IsEmpty()) {
-    const char16_t* formatStrings[] = {classInfoUTF16.get()};
-    rv = bundle->FormatStringFromName("CreateWrapperDenied", formatStrings, 1,
+    AutoTArray<nsString, 1> formatStrings = {classInfoUTF16};
+    rv = bundle->FormatStringFromName("CreateWrapperDenied", formatStrings,
                                       errorMsg);
   } else {
-    const char16_t* formatStrings[] = {classInfoUTF16.get(), originUTF16.get()};
+    AutoTArray<nsString, 2> formatStrings = {classInfoUTF16, originUTF16};
     rv = bundle->FormatStringFromName("CreateWrapperDeniedForOrigin",
-                                      formatStrings, 2, errorMsg);
+                                      formatStrings, errorMsg);
   }
   NS_ENSURE_SUCCESS(rv, rv);
 

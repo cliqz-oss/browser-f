@@ -59,8 +59,9 @@ void ResizeObserverNotificationHelper::Unregister() {
   }
 
   nsRefreshDriver* refreshDriver = GetRefreshDriver();
-  MOZ_RELEASE_ASSERT(refreshDriver,
-                     "We should not leave a dangling reference to the observer around");
+  MOZ_RELEASE_ASSERT(
+      refreshDriver,
+      "We should not leave a dangling reference to the observer around");
 
   bool rv = refreshDriver->RemoveRefreshObserver(this, FlushType::Display);
   MOZ_DIAGNOSTIC_ASSERT(rv, "Should remove the observer successfully");
@@ -146,10 +147,7 @@ void ResizeObserverController::Notify() {
 
     nsEventStatus status = nsEventStatus_eIgnore;
 
-    nsCOMPtr<nsPIDOMWindowInner> window =
-        doc->GetWindow()->GetCurrentInnerWindow();
-
-    if (window) {
+    if (nsCOMPtr<nsPIDOMWindowInner> window = doc->GetInnerWindow()) {
       nsCOMPtr<nsIScriptGlobalObject> sgo = do_QueryInterface(window);
       MOZ_ASSERT(sgo);
 

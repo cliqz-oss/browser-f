@@ -4,6 +4,10 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+#if defined(ACCESSIBILITY) && defined(XP_WIN)
+#  include "mozilla/a11y/ProxyAccessible.h"
+#  include "mozilla/a11y/ProxyWrappers.h"
+#endif
 #include "mozilla/dom/BrowserBridgeChild.h"
 #include "mozilla/dom/BrowsingContext.h"
 #include "nsFocusManager.h"
@@ -18,94 +22,20 @@ namespace mozilla {
 namespace dom {
 
 BrowserBridgeChild::BrowserBridgeChild(nsFrameLoader* aFrameLoader,
-                                       BrowsingContext* aBrowsingContext)
-    : mLayersId{0},
+                                       BrowsingContext* aBrowsingContext,
+                                       TabId aId)
+    : mId{aId},
+      mLayersId{0},
       mIPCOpen(true),
       mFrameLoader(aFrameLoader),
       mBrowsingContext(aBrowsingContext) {}
 
-BrowserBridgeChild::~BrowserBridgeChild() {}
-
-already_AddRefed<BrowserBridgeChild> BrowserBridgeChild::Create(
-    nsFrameLoader* aFrameLoader, const TabContext& aContext,
-    const nsString& aRemoteType, BrowsingContext* aBrowsingContext) {
-  MOZ_ASSERT(XRE_IsContentProcess());
-
-  // Determine our embedder's BrowserChild actor.
-  RefPtr<Element> owner = aFrameLoader->GetOwnerContent();
-  MOZ_DIAGNOSTIC_ASSERT(owner);
-
-  nsCOMPtr<nsIDocShell> docShell = do_GetInterface(owner->GetOwnerGlobal());
-  MOZ_DIAGNOSTIC_ASSERT(docShell);
-
-  RefPtr<BrowserChild> browserChild = BrowserChild::GetFrom(docShell);
-  MOZ_DIAGNOSTIC_ASSERT(browserChild);
-
-  uint32_t chromeFlags = 0;
-
-  nsCOMPtr<nsIDocShellTreeOwner> treeOwner;
-  if (docShell) {
-    docShell->GetTreeOwner(getter_AddRefs(treeOwner));
+BrowserBridgeChild::~BrowserBridgeChild() {
+#if defined(ACCESSIBILITY) && defined(XP_WIN)
+  if (mEmbeddedDocAccessible) {
+    mEmbeddedDocAccessible->Shutdown();
   }
-  if (treeOwner) {
-    nsCOMPtr<nsIWebBrowserChrome> wbc = do_GetInterface(treeOwner);
-    if (wbc) {
-      wbc->GetChromeFlags(&chromeFlags);
-    }
-  }
-
-  // Checking that this actually does something useful is
-  // https://bugzilla.mozilla.org/show_bug.cgi?id=1542710
-  nsCOMPtr<nsILoadContext> loadContext = do_QueryInterface(docShell);
-  if (loadContext && loadContext->UsePrivateBrowsing()) {
-    chromeFlags |= nsIWebBrowserChrome::CHROME_PRIVATE_WINDOW;
-  }
-  if (docShell->GetAffectPrivateSessionLifetime()) {
-    chromeFlags |= nsIWebBrowserChrome::CHROME_PRIVATE_LIFETIME;
-  }
-
-  RefPtr<BrowserBridgeChild> browserBridge =
-      new BrowserBridgeChild(aFrameLoader, aBrowsingContext);
-  // Reference is freed in BrowserChild::DeallocPBrowserBridgeChild.
-  browserChild->SendPBrowserBridgeConstructor(
-      do_AddRef(browserBridge).take(),
-      PromiseFlatString(aContext.PresentationURL()), aRemoteType,
-      aBrowsingContext, chromeFlags);
-  browserBridge->mIPCOpen = true;
-
-  return browserBridge.forget();
-}
-
-void BrowserBridgeChild::UpdateDimensions(const nsIntRect& aRect,
-                                          const mozilla::ScreenIntSize& aSize) {
-  MOZ_DIAGNOSTIC_ASSERT(mIPCOpen);
-
-  RefPtr<Element> owner = mFrameLoader->GetOwnerContent();
-  nsCOMPtr<nsIWidget> widget = nsContentUtils::WidgetForContent(owner);
-  if (!widget) {
-    widget = nsContentUtils::WidgetForDocument(owner->OwnerDoc());
-  }
-  MOZ_DIAGNOSTIC_ASSERT(widget);
-
-  CSSToLayoutDeviceScale widgetScale = widget->GetDefaultScale();
-
-  LayoutDeviceIntRect devicePixelRect = ViewAs<LayoutDevicePixel>(
-      aRect, PixelCastJustification::LayoutDeviceIsScreenForTabDims);
-  LayoutDeviceIntSize devicePixelSize = ViewAs<LayoutDevicePixel>(
-      aSize, PixelCastJustification::LayoutDeviceIsScreenForTabDims);
-
-  // XXX What are clientOffset and chromeOffset used for? Are they meaningful
-  // for nested iframes with transforms?
-  LayoutDeviceIntPoint clientOffset;
-  LayoutDeviceIntPoint chromeOffset;
-
-  CSSRect unscaledRect = devicePixelRect / widgetScale;
-  CSSSize unscaledSize = devicePixelSize / widgetScale;
-  hal::ScreenOrientation orientation = hal::eScreenOrientation_Default;
-  DimensionInfo di(unscaledRect, unscaledSize, orientation, clientOffset,
-                   chromeOffset);
-
-  Unused << SendUpdateDimensions(di);
+#endif
 }
 
 void BrowserBridgeChild::NavigateByKey(bool aForward,
@@ -194,6 +124,38 @@ mozilla::ipc::IPCResult BrowserBridgeChild::RecvMoveFocus(
                  : static_cast<uint32_t>(nsIFocusManager::MOVEFOCUS_BACKWARD));
   fm->MoveFocus(nullptr, owner, type, nsIFocusManager::FLAG_BYKEY,
                 getter_AddRefs(dummy));
+  return IPC_OK();
+}
+
+mozilla::ipc::IPCResult
+BrowserBridgeChild::RecvSetEmbeddedDocAccessibleCOMProxy(
+    const a11y::IDispatchHolder& aCOMProxy) {
+#if defined(ACCESSIBILITY) && defined(XP_WIN)
+  MOZ_ASSERT(!aCOMProxy.IsNull());
+  if (mEmbeddedDocAccessible) {
+    mEmbeddedDocAccessible->Shutdown();
+  }
+  RefPtr<IDispatch> comProxy(aCOMProxy.Get());
+  mEmbeddedDocAccessible =
+      new a11y::RemoteIframeDocProxyAccessibleWrap(comProxy);
+#endif
+  return IPC_OK();
+}
+
+mozilla::ipc::IPCResult BrowserBridgeChild::RecvFireFrameLoadEvent(
+    bool aIsTrusted) {
+  RefPtr<Element> owner = mFrameLoader->GetOwnerContent();
+  if (!owner) {
+    return IPC_OK();
+  }
+
+  // Fire the `load` event on our embedder element.
+  nsEventStatus status = nsEventStatus_eIgnore;
+  WidgetEvent event(aIsTrusted, eLoad);
+  event.mFlags.mBubbles = false;
+  event.mFlags.mCancelable = false;
+  EventDispatcher::Dispatch(owner, nullptr, &event, nullptr, &status);
+
   return IPC_OK();
 }
 

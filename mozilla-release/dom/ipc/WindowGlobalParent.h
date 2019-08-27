@@ -64,7 +64,7 @@ class WindowGlobalParent final : public WindowGlobalActor,
 
   // Get this actor's manager if it is not an in-process actor. Returns
   // |nullptr| if the actor has been torn down, or is in-process.
-  already_AddRefed<BrowserParent> GetRemoteTab();
+  already_AddRefed<BrowserParent> GetBrowserParent();
 
   void ReceiveRawMessage(const JSWindowActorMessageMeta& aMeta,
                          ipc::StructuredCloneData&& aData);
@@ -92,12 +92,22 @@ class WindowGlobalParent final : public WindowGlobalActor,
   uint64_t OuterWindowId() { return mOuterWindowId; }
   uint64_t InnerWindowId() { return mInnerWindowId; }
 
+  uint64_t ContentParentId();
+
+  int32_t OsPid();
+
   bool IsCurrentGlobal();
+
+  bool IsProcessRoot();
+
+  bool IsInitialDocument() { return mIsInitialDocument; }
 
   already_AddRefed<Promise> ChangeFrameRemoteness(dom::BrowsingContext* aBc,
                                                   const nsAString& aRemoteType,
                                                   uint64_t aPendingSwitchId,
                                                   ErrorResult& aRv);
+
+  already_AddRefed<Promise> GetSecurityInfo(ErrorResult& aRv);
 
   // Create a WindowGlobalParent from over IPC. This method should not be called
   // from outside of the IPC constructors.
@@ -117,6 +127,10 @@ class WindowGlobalParent final : public WindowGlobalActor,
 
   // IPC messages
   mozilla::ipc::IPCResult RecvUpdateDocumentURI(nsIURI* aURI);
+  mozilla::ipc::IPCResult RecvSetIsInitialDocument(bool aIsInitialDocument) {
+    mIsInitialDocument = aIsInitialDocument;
+    return IPC_OK();
+  }
   mozilla::ipc::IPCResult RecvBecomeCurrentWindowGlobal();
   mozilla::ipc::IPCResult RecvDestroy();
   mozilla::ipc::IPCResult RecvRawMessage(const JSWindowActorMessageMeta& aMeta,
@@ -140,6 +154,7 @@ class WindowGlobalParent final : public WindowGlobalActor,
   uint64_t mOuterWindowId;
   bool mInProcess;
   bool mIPCClosed;
+  bool mIsInitialDocument;
 };
 
 }  // namespace dom

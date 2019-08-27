@@ -89,16 +89,6 @@ struct PCMappingIndexEntry {
   uint32_t bufferOffset;
 };
 
-// Describes a single wasm::ImportExit which jumps (via an import with
-// the given index) directly to a BaselineScript or IonScript.
-struct DependentWasmImport {
-  wasm::Instance* instance;
-  size_t importIndex;
-
-  DependentWasmImport(wasm::Instance& instance, size_t importIndex)
-      : instance(&instance), importIndex(importIndex) {}
-};
-
 // Largest script that the baseline compiler will attempt to compile.
 #if defined(JS_CODEGEN_ARM)
 // ARM branches can only reach 32MB, and the macroassembler doesn't mitigate
@@ -215,10 +205,6 @@ struct BaselineScript final {
   // scope).
   HeapPtr<EnvironmentObject*> templateEnv_ = nullptr;
 
-  // If non-null, the list of wasm::Modules that contain an optimized call
-  // directly to this script.
-  Vector<DependentWasmImport>* dependentWasmImports_ = nullptr;
-
   // Early Ion bailouts will enter at this address. This is after frame
   // construction and before environment chain is initialized.
   uint32_t bailoutPrologueOffset_;
@@ -248,6 +234,42 @@ struct BaselineScript final {
   TraceLoggerEvent traceLoggerScriptEvent_ = {};
 #endif
 
+ private:
+  void trace(JSTracer* trc);
+
+  uint32_t retAddrEntriesOffset_ = 0;
+  uint32_t retAddrEntries_ = 0;
+
+  uint32_t pcMappingIndexOffset_ = 0;
+  uint32_t pcMappingIndexEntries_ = 0;
+
+  uint32_t pcMappingOffset_ = 0;
+  uint32_t pcMappingSize_ = 0;
+
+  // We store the native code address corresponding to each bytecode offset in
+  // the script's resumeOffsets list.
+  uint32_t resumeEntriesOffset_ = 0;
+
+  // By default tracelogger is disabled. Therefore we disable the logging code
+  // by default. We store the offsets we must patch to enable the logging.
+  uint32_t traceLoggerToggleOffsetsOffset_ = 0;
+  uint32_t numTraceLoggerToggleOffsets_ = 0;
+
+  // Total size of the allocation including BaselineScript and trailing data.
+  uint32_t allocBytes_ = 0;
+
+  // The total bytecode length of all scripts we inlined when we Ion-compiled
+  // this script. 0 if Ion did not compile this script or if we didn't inline
+  // anything.
+  uint16_t inlinedBytecodeLength_ = 0;
+
+  // The max inlining depth where we can still inline all functions we inlined
+  // when we Ion-compiled this script. This starts as UINT8_MAX, since we have
+  // no data yet, and won't affect inlining heuristics in that case. The value
+  // is updated when we Ion-compile this script. See makeInliningDecision for
+  // more info.
+  uint8_t maxInliningDepth_ = UINT8_MAX;
+
  public:
   enum Flag {
     // (1 << 0) and (1 << 1) are unused.
@@ -275,40 +297,7 @@ struct BaselineScript final {
   };
 
  private:
-  uint32_t flags_ = 0;
-
- private:
-  void trace(JSTracer* trc);
-
-  uint32_t retAddrEntriesOffset_ = 0;
-  uint32_t retAddrEntries_ = 0;
-
-  uint32_t pcMappingIndexOffset_ = 0;
-  uint32_t pcMappingIndexEntries_ = 0;
-
-  uint32_t pcMappingOffset_ = 0;
-  uint32_t pcMappingSize_ = 0;
-
-  // We store the native code address corresponding to each bytecode offset in
-  // the script's resumeOffsets list.
-  uint32_t resumeEntriesOffset_ = 0;
-
-  // By default tracelogger is disabled. Therefore we disable the logging code
-  // by default. We store the offsets we must patch to enable the logging.
-  uint32_t traceLoggerToggleOffsetsOffset_ = 0;
-  uint32_t numTraceLoggerToggleOffsets_ = 0;
-
-  // The total bytecode length of all scripts we inlined when we Ion-compiled
-  // this script. 0 if Ion did not compile this script or if we didn't inline
-  // anything.
-  uint16_t inlinedBytecodeLength_ = 0;
-
-  // The max inlining depth where we can still inline all functions we inlined
-  // when we Ion-compiled this script. This starts as UINT8_MAX, since we have
-  // no data yet, and won't affect inlining heuristics in that case. The value
-  // is updated when we Ion-compile this script. See makeInliningDecision for
-  // more info.
-  uint8_t maxInliningDepth_ = UINT8_MAX;
+  uint8_t flags_ = 0;
 
   // An ion compilation that is ready, but isn't linked yet.
   IonBuilder* pendingBuilder_ = nullptr;
@@ -453,13 +442,6 @@ struct BaselineScript final {
   jsbytecode* approximatePcForNativeAddress(JSScript* script,
                                             uint8_t* nativeAddress);
 
-  MOZ_MUST_USE bool addDependentWasmImport(JSContext* cx,
-                                           wasm::Instance& instance,
-                                           uint32_t idx);
-  void removeDependentWasmImport(wasm::Instance& instance, uint32_t idx);
-  void unlinkDependentWasmImports(FreeOp* fop);
-  void clearDependentWasmImports();
-
   // Toggle debug traps (used for breakpoints and step mode) in the script.
   // If |pc| is nullptr, toggle traps for all ops in the script. Else, only
   // toggle traps at |pc|.
@@ -486,7 +468,6 @@ struct BaselineScript final {
   }
 #endif
 
-  static size_t offsetOfFlags() { return offsetof(BaselineScript, flags_); }
   static size_t offsetOfResumeEntriesOffset() {
     return offsetof(BaselineScript, resumeEntriesOffset_);
   }
@@ -525,9 +506,6 @@ struct BaselineScript final {
 
     pendingBuilder_ = builder;
 
-    // lazy linking cannot happen during asmjs to ion.
-    clearDependentWasmImports();
-
     script->updateJitCodeRaw(rt);
   }
   void removePendingIonBuilder(JSRuntime* rt, JSScript* script) {
@@ -542,6 +520,8 @@ struct BaselineScript final {
   void setControlFlowGraph(ControlFlowGraph* controlFlowGraph) {
     controlFlowGraph_ = controlFlowGraph;
   }
+
+  size_t allocBytes() const { return allocBytes_; }
 };
 static_assert(
     sizeof(BaselineScript) % sizeof(uintptr_t) == 0,
@@ -575,9 +555,9 @@ bool BaselineCompileFromBaselineInterpreter(JSContext* cx, BaselineFrame* frame,
 void FinishDiscardBaselineScript(FreeOp* fop, JSScript* script);
 
 void AddSizeOfBaselineData(JSScript* script, mozilla::MallocSizeOf mallocSizeOf,
-                           size_t* data, size_t* fallbackStubs);
+                           size_t* data);
 
-void ToggleBaselineProfiling(JSRuntime* runtime, bool enable);
+void ToggleBaselineProfiling(JSContext* cx, bool enable);
 
 void ToggleBaselineTraceLoggerScripts(JSRuntime* runtime, bool enable);
 void ToggleBaselineTraceLoggerEngine(JSRuntime* runtime, bool enable);
@@ -638,16 +618,8 @@ MOZ_MUST_USE bool BailoutIonToBaseline(
     bool invalidate, BaselineBailoutInfo** bailoutInfo,
     const ExceptionBailoutInfo* exceptionInfo);
 
-// Mark TypeScripts on the stack as active, so that they are not discarded
-// during GC.
-void MarkActiveTypeScripts(Zone* zone);
-
 MethodStatus BaselineCompile(JSContext* cx, JSScript* script,
                              bool forceDebugInstrumentation = false);
-
-#ifdef JS_STRUCTURED_SPEW
-void JitSpewBaselineICStats(JSScript* script, const char* dumpReason);
-#endif
 
 static const unsigned BASELINE_MAX_ARGS_LENGTH = 20000;
 
@@ -658,6 +630,9 @@ class BaselineInterpreter {
 
   // Offset of the code to start interpreting a bytecode op.
   uint32_t interpretOpOffset_ = 0;
+
+  // Like interpretOpOffset_ but skips the debug trap for the current op.
+  uint32_t interpretOpNoDebugTrapOffset_ = 0;
 
   // The offsets for the toggledJump instructions for profiler instrumentation.
   uint32_t profilerEnterToggleOffset_ = 0;
@@ -682,6 +657,7 @@ class BaselineInterpreter {
   void operator=(const BaselineInterpreter&) = delete;
 
   void init(JitCode* code, uint32_t interpretOpOffset,
+            uint32_t interpretOpNoDebugTrapOffset,
             uint32_t profilerEnterToggleOffset,
             uint32_t profilerExitToggleOffset, uint32_t debuggeeCheckOffset,
             CodeOffsetVector&& debugTrapOffsets,
@@ -691,6 +667,9 @@ class BaselineInterpreter {
 
   TrampolinePtr interpretOpAddr() const {
     return TrampolinePtr(codeRaw() + interpretOpOffset_);
+  }
+  TrampolinePtr interpretOpNoDebugTrapAddr() const {
+    return TrampolinePtr(codeRaw() + interpretOpNoDebugTrapOffset_);
   }
 
   void toggleProfilerInstrumentation(bool enable);

@@ -171,7 +171,7 @@ Var AppLaunchWaitTickCount
 !define DownloadMinSizeBytes 15728640 ; 15 MB
 
 ; Maximum size expected to download in bytes
-!define DownloadMaxSizeBytes 73400320 ; 70 MB
+!define DownloadMaxSizeBytes 157286400 ; 150 MB
 
 ; Interval before retrying to download. 3 seconds is used along with 10
 ; attempted downloads (the first attempt along with 9 retries) to give a
@@ -380,23 +380,6 @@ Function .onInit
   ${If} "$R9" == "false"
     SetShellVarContext current ; Set SHCTX to HKCU
     ${GetSingleInstallPath} "Software\Cliqz\${BrandFullNameInternal}" $R9
-
-    ${If} ${RunningX64}
-      ; In HKCU there is no WOW64 redirection, which means we may have gotten
-      ; the path to a 32-bit install even though we're 64-bit.
-      ; In that case, just use the default path instead of offering an upgrade.
-      ; But only do that override if the existing install is in Program Files,
-      ; because that's the only place we can be sure is specific
-      ; to either 32 or 64 bit applications.
-      ; The WordFind syntax below searches for the first occurence of the
-      ; "delimiter" (the Program Files path) in the install path and returns
-      ; anything that appears before that. If nothing appears before that,
-      ; then the install is under Program Files.
-      ${WordFind} $R9 $PROGRAMFILES32 "+1{" $0
-      ${If} $0 == ""
-        StrCpy $R9 "false"
-      ${EndIf}
-    ${EndIf}
   ${EndIf}
 
   StrCpy $PreviousInstallDir ""

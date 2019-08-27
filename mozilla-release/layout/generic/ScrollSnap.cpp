@@ -7,7 +7,7 @@
 #include "ScrollSnap.h"
 
 #include "FrameMetrics.h"
-#include "gfxPrefs.h"
+
 #include "mozilla/Maybe.h"
 #include "mozilla/Preferences.h"
 #include "nsLineLayout.h"
@@ -275,8 +275,8 @@ Maybe<nsPoint> ScrollSnapUtils::GetSnapPointForDestination(
     const ScrollSnapInfo& aSnapInfo, nsIScrollableFrame::ScrollUnit aUnit,
     const nsRect& aScrollRange, const nsPoint& aStartPos,
     const nsPoint& aDestination) {
-  if (aSnapInfo.mScrollSnapTypeY == StyleScrollSnapStrictness::None &&
-      aSnapInfo.mScrollSnapTypeX == StyleScrollSnapStrictness::None) {
+  if (aSnapInfo.mScrollSnapStrictnessY == StyleScrollSnapStrictness::None &&
+      aSnapInfo.mScrollSnapStrictnessX == StyleScrollSnapStrictness::None) {
     return Nothing();
   }
 
@@ -333,15 +333,18 @@ Maybe<nsPoint> ScrollSnapUtils::GetSnapPointForDestination(
 
   bool snapped = false;
   nsPoint finalPos = calcSnapPoints.GetBestEdge();
-  nscoord proximityThreshold = gfxPrefs::ScrollSnapProximityThreshold();
+  nscoord proximityThreshold =
+      StaticPrefs::layout_css_scroll_snap_proximity_threshold();
   proximityThreshold = nsPresContext::CSSPixelsToAppUnits(proximityThreshold);
-  if (aSnapInfo.mScrollSnapTypeY == StyleScrollSnapStrictness::Proximity &&
+  if (aSnapInfo.mScrollSnapStrictnessY ==
+          StyleScrollSnapStrictness::Proximity &&
       std::abs(aDestination.y - finalPos.y) > proximityThreshold) {
     finalPos.y = aDestination.y;
   } else {
     snapped = true;
   }
-  if (aSnapInfo.mScrollSnapTypeX == StyleScrollSnapStrictness::Proximity &&
+  if (aSnapInfo.mScrollSnapStrictnessX ==
+          StyleScrollSnapStrictness::Proximity &&
       std::abs(aDestination.x - finalPos.x) > proximityThreshold) {
     finalPos.x = aDestination.x;
   } else {

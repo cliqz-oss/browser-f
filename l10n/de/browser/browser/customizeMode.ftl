@@ -45,3 +45,5 @@ customize-mode-lwthemes-my-themes =
     .value = Installiert
 customize-mode-cliqz-blue-theme =
     .label = Blaue Tab-Leiste
+customize-mode-touchbar-cmd =
+    .label = Touch Bar anpassen…

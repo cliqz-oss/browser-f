@@ -6,15 +6,21 @@
 const { mount } = require("enzyme");
 
 const { createFactory } = require("devtools/client/shared/vendor/react");
-const Provider = createFactory(require("devtools/client/shared/vendor/react-redux").Provider);
-const { setupStore } = require("devtools/client/accessibility/test/jest/helpers");
+const Provider = createFactory(
+  require("devtools/client/shared/vendor/react-redux").Provider
+);
+const {
+  setupStore,
+} = require("devtools/client/accessibility/test/jest/helpers");
 
-const { accessibility: { AUDIT_TYPE } } = require("devtools/shared/constants");
+const {
+  accessibility: { AUDIT_TYPE },
+} = require("devtools/shared/constants");
 const { AUDIT_PROGRESS } = require("devtools/client/accessibility/constants");
 
-const ConnectedAuditProgressOverlayClass =
-  require("devtools/client/accessibility/components/AuditProgressOverlay");
-const AuditProgressOverlayClass = ConnectedAuditProgressOverlayClass.WrappedComponent;
+const ConnectedAuditProgressOverlayClass = require("devtools/client/accessibility/components/AuditProgressOverlay");
+const AuditProgressOverlayClass =
+  ConnectedAuditProgressOverlayClass.WrappedComponent;
 const AuditProgressOverlay = createFactory(ConnectedAuditProgressOverlayClass);
 
 function testTextProgressBar(store, expectedText) {
@@ -50,7 +56,7 @@ describe("AuditProgressOverlay component:", () => {
 
   it("render auditing initializing", () => {
     const store = setupStore({
-      preloadedState: { audit: { auditing: AUDIT_TYPE.CONTRAST } },
+      preloadedState: { audit: { auditing: [AUDIT_TYPE.CONTRAST] } },
     });
 
     testTextProgressBar(store, "accessibility.progress.initializing");
@@ -60,7 +66,7 @@ describe("AuditProgressOverlay component:", () => {
     const store = setupStore({
       preloadedState: {
         audit: {
-          auditing: AUDIT_TYPE.CONTRAST,
+          auditing: [AUDIT_TYPE.CONTRAST],
           progress: { total: 5, percentage: 0 },
         },
       },
@@ -105,7 +111,7 @@ describe("AuditProgressOverlay component:", () => {
     const store = setupStore({
       preloadedState: {
         audit: {
-          auditing: AUDIT_TYPE.CONTRAST,
+          auditing: [AUDIT_TYPE.CONTRAST],
           progress: { total: 5, percentage: 100 },
         },
       },

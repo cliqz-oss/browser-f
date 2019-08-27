@@ -141,6 +141,11 @@ WINDOWS_WORKER_TYPES = {
       'virtual-with-gpu': 't-win10-64-gpu',
       'hardware': 't-win10-64-ux',
     },
+    # 'windows10-64-ref-hw-2017': {
+    #   'virtual': 't-win10-64',
+    #   'virtual-with-gpu': 't-win10-64-gpu',
+    #   'hardware': 't-win10-64-ref-hw',
+    # },
 }
 
 # os x worker types keyed by test-platform
@@ -154,7 +159,30 @@ def runs_on_central(test):
     return match_run_on_projects('mozilla-central', test['run-on-projects'])
 
 
+def fission_filter(test):
+    return (
+        runs_on_central(test) and
+        test.get('e10s') in (True, 'both') and
+        get_mobile_project(test) != 'fennec'
+    )
+
+
 TEST_VARIANTS = {
+    'fission': {
+        'description': "{description} with fission enabled",
+        'filterfn': fission_filter,
+        'suffix': 'fis',
+        'replace': {
+            'e10s': True,
+            'run-on-projects': ['ash', 'try'],
+        },
+        'merge': {
+            'tier': 2,
+            'mozharness': {
+                'extra-options': ['--setpref="fission.autostart=true"'],
+            },
+        },
+    },
     'serviceworker': {
         'description': "{description} with serviceworker-e10s redesign enabled",
         'filterfn': runs_on_central,
@@ -705,12 +733,8 @@ def set_treeherder_machine_platform(config, tests):
         # The build names for Android platforms have partially evolved over the
         # years and need to be translated.
         'android-api-16/debug': 'android-em-4-3-armv7-api16/debug',
-        'android-api-16-beta/debug': 'android-em-4-3-armv7-api16-beta/debug',
-        'android-api-16-release/debug': 'android-em-4-3-armv7-api16-release/debug',
         'android-api-16-ccov/debug': 'android-em-4-3-armv7-api16-ccov/debug',
         'android-api-16/opt': 'android-em-4-3-armv7-api16/opt',
-        'android-api-16-beta-test/opt': 'android-em-4-3-armv7-api16-beta/opt',
-        'android-api-16-release-test/opt': 'android-em-4-3-armv7-api16-release/opt',
         'android-api-16-pgo/opt': 'android-em-4-3-armv7-api16/pgo',
         'android-x86/opt': 'android-em-4-2-x86/opt',
         'android-api-16-gradle/opt': 'android-api-16-gradle/opt',
@@ -730,12 +754,15 @@ def set_treeherder_machine_platform(config, tests):
             test['treeherder-machine-platform'] = test['test-platform']
         elif 'android-hw' in test['test-platform']:
             test['treeherder-machine-platform'] = test['test-platform']
+        elif 'android-em-7.0-x86_64' in test['test-platform']:
+            opt = test['test-platform'].split('/')[1]
+            test['treeherder-machine-platform'] = 'android-em-7-0-x86_64/'+opt
+        elif 'android-em-7.0-x86' in test['test-platform']:
+            opt = test['test-platform'].split('/')[1]
+            test['treeherder-machine-platform'] = 'android-em-7-0-x86/'+opt
         else:
             test['treeherder-machine-platform'] = translation.get(
                 test['build-platform'], test['test-platform'])
-
-        test['treeherder-machine-platform'] = test['treeherder-machine-platform'].replace('.', '-')
-
         yield test
 
 
@@ -801,17 +828,11 @@ def set_tier(config, tests):
                                          'macosx1014-64-qr/debug',
                                          'android-em-4.3-arm7-api-16/opt',
                                          'android-em-4.3-arm7-api-16/debug',
-                                         'android-em-4.3-arm7-api-16-beta/debug',
-                                         'android-em-4.3-arm7-api-16-release/debug',
                                          'android-em-4.3-arm7-api-16/pgo',
-                                         'android-em-4.3-arm7-api-16-beta/opt',
-                                         'android-em-4.3-arm7-api-16-release/opt',
+                                         'android-em-4.2-x86/opt',
                                          'android-em-7.0-x86_64/opt',
-                                         'android-em-7.0-x86_64-beta/opt',
-                                         'android-em-7.0-x86_64-release/opt',
                                          'android-em-7.0-x86_64/debug',
-                                         'android-em-7.0-x86_64-beta/debug',
-                                         'android-em-7.0-x86_64-release/debug']:
+                                         'android-em-7.0-x86/opt']:
                 test['tier'] = 1
             else:
                 test['tier'] = 2
@@ -992,7 +1013,7 @@ def handle_run_on_projects(config, tests):
 @transforms.add
 def split_variants(config, tests):
     for test in tests:
-        variants = test.pop('variants')
+        variants = test.pop('variants') or []
 
         yield copy.deepcopy(test)
 
@@ -1112,11 +1133,6 @@ def enable_webrender(config, tests):
         if test.get('webrender'):
             test['mozharness'].setdefault('extra-options', [])\
                               .append("--enable-webrender")
-        # Explicitly disable WebRender on non-WR AWSY, since that job runs on
-        # virtual-with-gpu and thus is considered qualified hardware.
-        elif test['suite'] == 'awsy':
-            test['mozharness'].setdefault('extra-options', [])\
-                              .append("--disable-webrender")
 
         yield test
 
@@ -1198,6 +1214,8 @@ def set_worker_type(config, tests):
                 # some jobs like talos and reftest run on real h/w - those are all win10
                 if test_platform.startswith('windows10-64-ux'):
                     win_worker_type_platform = WINDOWS_WORKER_TYPES['windows10-64-ux']
+                # elif test_platform.startswith('windows10-64-ref-hw-2017'):
+                #     win_worker_type_platform = WINDOWS_WORKER_TYPES['windows10-64-ref-hw-2017']
                 elif test_platform.startswith('windows10-aarch64'):
                     win_worker_type_platform = WINDOWS_WORKER_TYPES['windows10-aarch64']
                 else:

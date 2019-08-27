@@ -34,6 +34,7 @@ class nsContainerFrame;
 class nsFirstLineFrame;
 class nsFirstLetterFrame;
 class nsCSSAnonBoxPseudoStaticAtom;
+class nsPageSequenceFrame;
 
 class nsPageContentFrame;
 struct PendingBinding;
@@ -342,7 +343,7 @@ class nsCSSFrameConstructor final : public nsFrameManager {
   // This returns the frame for the root element that does not
   // have a psuedo-element style
   nsIFrame* GetRootElementStyleFrame() { return mRootElementStyleFrame; }
-  nsIFrame* GetPageSequenceFrame() { return mPageSequenceFrame; }
+  nsPageSequenceFrame* GetPageSequenceFrame() { return mPageSequenceFrame; }
 
   // Get the frame that is the parent of the root element.
   nsContainerFrame* GetDocElementContainingBlock() {
@@ -357,6 +358,16 @@ class nsCSSFrameConstructor final : public nsFrameManager {
  private:
   struct FrameConstructionItem;
   class FrameConstructionItemList;
+
+  // Set the root element frame, and create frames for anonymous content if
+  // there is a canvas frame.
+  //
+  // It's important to do this _before_ constructing the children of the root
+  // element, because XUL popups depend on the anonymous root popupgroup being
+  // constructed already.
+  void SetRootElementFrameAndConstructCanvasAnonContent(
+      nsContainerFrame* aRootElementFrame, nsFrameConstructorState&,
+      nsFrameList&);
 
   nsContainerFrame* ConstructPageFrame(PresShell* aPresShell,
                                        nsContainerFrame* aParentFrame,
@@ -433,7 +444,7 @@ class nsCSSFrameConstructor final : public nsFrameManager {
    */
   already_AddRefed<nsIContent> CreateGenConTextNode(
       nsFrameConstructorState& aState, const nsString& aString,
-      RefPtr<nsTextNode>* aText, nsGenConInitializer* aInitializer);
+      mozilla::UniquePtr<nsGenConInitializer> aInitializer);
 
   /**
    * Create a content node for the given generated content style.
@@ -1920,14 +1931,14 @@ class nsCSSFrameConstructor final : public nsFrameManager {
   // Methods support :first-letter style
 
   nsFirstLetterFrame* CreateFloatingLetterFrame(
-      nsFrameConstructorState& aState, nsIContent* aTextContent,
+      nsFrameConstructorState& aState, mozilla::dom::Text* aTextContent,
       nsIFrame* aTextFrame, nsContainerFrame* aParentFrame,
       ComputedStyle* aParentComputedStyle, ComputedStyle* aComputedStyle,
       nsFrameList& aResult);
 
   void CreateLetterFrame(nsContainerFrame* aBlockFrame,
                          nsContainerFrame* aBlockContinuation,
-                         nsIContent* aTextContent,
+                         mozilla::dom::Text* aTextContent,
                          nsContainerFrame* aParentFrame, nsFrameList& aResult);
 
   void WrapFramesInFirstLetterFrame(nsContainerFrame* aBlockFrame,
@@ -2099,10 +2110,10 @@ class nsCSSFrameConstructor final : public nsFrameManager {
   void QuotesDirty();
   void CountersDirty();
 
-  // Create touch caret frame.
   void ConstructAnonymousContentForCanvas(nsFrameConstructorState& aState,
                                           nsIFrame* aFrame,
-                                          nsIContent* aDocElement);
+                                          nsIContent* aDocElement,
+                                          nsFrameList&);
 
  public:
   friend class nsFrameConstructorState;
@@ -2125,7 +2136,7 @@ class nsCSSFrameConstructor final : public nsFrameManager {
   // This is the containing block that contains the root element ---
   // the real "initial containing block" according to CSS 2.1.
   nsContainerFrame* mDocElementContainingBlock;
-  nsIFrame* mPageSequenceFrame;
+  nsPageSequenceFrame* mPageSequenceFrame;
 
   // FrameConstructionItem arena + list of freed items available for re-use.
   mozilla::ArenaAllocator<4096, 8> mFCItemPool;

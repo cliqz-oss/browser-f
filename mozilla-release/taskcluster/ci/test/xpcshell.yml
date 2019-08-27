@@ -6,8 +6,8 @@ job-defaults:
     suite: xpcshell
     variants:
         by-test-platform:
-            linux64/debug: ['serviceworker']
-            default: []
+            linux64/debug: ['fission', 'serviceworker']
+            default: ['fission']
     mozharness:
         script:
             by-test-platform:
@@ -20,7 +20,7 @@ job-defaults:
                     - android/androidarm_4_3.py
                 android-em-7.*:
                     - android/android_common.py
-                    - android/androidx86_7_0.py
+                    - android/androidx86_7_0-old.py
                 linux.*:
                     - unittests/linux_unittest.py
                     - remove_executables.py
@@ -41,16 +41,16 @@ xpcshell:
         by-test-platform:
             windows10-64-asan/opt: []  # No XPCShell on ASAN yet
             windows10-aarch64/opt: ['try', 'mozilla-central']
-            android-em-4.3-arm7-api-16/opt: ['try']
+            android-em-4.*/.*: ['try', 'mozilla-central']  # bug 1548659
             default: built-projects
     chunks:
         by-test-platform:
+            .*-ccov/debug: 6
             android-em-4.*: 8
             android-em-4.3-arm7-api-16/debug: 12
             android-em-7.*: 3
-            macosx10(10|14)-64/.*: 2
+            macosx.*(?!-ccov)...../.*: 2
             linux64(-qr)?/debug: 6
-            .*-ccov/debug: 6
             windows(7-32|10-64)(-shippable|-devedition|-asan|.*-qr)?/.*: 2
             windows10-aarch64/opt: 3
             default: 5
@@ -66,5 +66,6 @@ xpcshell:
     tier:
         by-test-platform:
             windows10-64-asan.*: 3
+            android-em-4.*: 2
             windows10-aarch64.*: 2
             default: default

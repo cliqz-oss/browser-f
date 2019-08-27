@@ -83,7 +83,6 @@
 #include "nsIEditorObserver.h"         // for nsIEditorObserver
 #include "nsIEditorSpellCheck.h"       // for nsIEditorSpellCheck
 #include "nsIFrame.h"                  // for nsIFrame
-#include "nsIHTMLDocument.h"           // for nsIHTMLDocument
 #include "nsIInlineSpellChecker.h"     // for nsIInlineSpellChecker, etc.
 #include "nsNameSpaceManager.h"        // for kNameSpaceID_None, etc.
 #include "nsINode.h"                   // for nsINode, etc.
@@ -389,8 +388,19 @@ nsresult EditorBase::InstallEventListeners() {
 
   nsresult rv = mEventListener->Connect(this);
   if (mComposition) {
-    // Restart to handle composition with new editor contents.
-    mComposition->StartHandlingComposition(this);
+    // If mComposition has already been destroyed, we should forget it.
+    // This may happen if it ended while we don't listen to composition
+    // events.
+    if (mComposition->Destroyed()) {
+      // XXX We may need to fix existing composition transaction here.
+      //     However, this may be called when it's not safe.
+      //     Perhaps, we should stop handling composition with events.
+      mComposition = nullptr;
+    }
+    // Otherwise, Restart to handle composition with new editor contents.
+    else {
+      mComposition->StartHandlingComposition(this);
+    }
   }
   return rv;
 }
@@ -448,8 +458,7 @@ bool EditorBase::GetDesiredSpellCheckState() {
     // Some of the page content might be editable and some not, if spellcheck=
     // is explicitly set anywhere, so if there's anything editable on the page,
     // return true and let the spellchecker figure it out.
-    nsCOMPtr<nsIHTMLDocument> doc =
-        do_QueryInterface(content->GetComposedDoc());
+    Document* doc = content->GetComposedDoc();
     return doc && doc->IsEditingOn();
   }
 
@@ -794,7 +803,11 @@ EditorBase::GetTransactionManager(nsITransactionManager** aTransactionManager) {
 }
 
 NS_IMETHODIMP
-EditorBase::Undo(uint32_t aCount) { return NS_ERROR_NOT_IMPLEMENTED; }
+EditorBase::Undo(uint32_t aCount) {
+  nsresult rv = MOZ_KnownLive(AsTextEditor())->UndoAsAction(aCount);
+  NS_WARNING_ASSERTION(NS_SUCCEEDED(rv), "Failed to do Undo");
+  return rv;
+}
 
 NS_IMETHODIMP
 EditorBase::CanUndo(bool* aIsEnabled, bool* aCanUndo) {
@@ -807,7 +820,11 @@ EditorBase::CanUndo(bool* aIsEnabled, bool* aCanUndo) {
 }
 
 NS_IMETHODIMP
-EditorBase::Redo(uint32_t aCount) { return NS_ERROR_NOT_IMPLEMENTED; }
+EditorBase::Redo(uint32_t aCount) {
+  nsresult rv = MOZ_KnownLive(AsTextEditor())->RedoAsAction(aCount);
+  NS_WARNING_ASSERTION(NS_SUCCEEDED(rv), "Failed to do Redo");
+  return rv;
+}
 
 NS_IMETHODIMP
 EditorBase::CanRedo(bool* aIsEnabled, bool* aCanRedo) {
@@ -1099,7 +1116,11 @@ EditorBase::SetDocumentCharacterSet(const nsACString& characterSet) {
 }
 
 NS_IMETHODIMP
-EditorBase::Cut() { return NS_ERROR_NOT_IMPLEMENTED; }
+EditorBase::Cut() {
+  nsresult rv = MOZ_KnownLive(AsTextEditor())->CutAsAction();
+  NS_WARNING_ASSERTION(NS_SUCCEEDED(rv), "Failed to do Cut");
+  return rv;
+}
 
 NS_IMETHODIMP
 EditorBase::CanCut(bool* aCanCut) {
@@ -1133,18 +1154,18 @@ EditorBase::CanDelete(bool* aCanDelete) {
 
 NS_IMETHODIMP
 EditorBase::Paste(int32_t aClipboardType) {
-  // MOZ_KnownLive because we know "this" must be alive.
   nsresult rv =
       MOZ_KnownLive(AsTextEditor())->PasteAsAction(aClipboardType, true);
-  if (NS_WARN_IF(NS_FAILED(rv))) {
-    return rv;
-  }
-  return NS_OK;
+  NS_WARNING_ASSERTION(NS_SUCCEEDED(rv), "Failed to do Paste");
+  return rv;
 }
 
 NS_IMETHODIMP
 EditorBase::PasteTransferable(nsITransferable* aTransferable) {
-  return NS_ERROR_NOT_IMPLEMENTED;
+  nsresult rv =
+      MOZ_KnownLive(AsTextEditor())->PasteTransferableAsAction(aTransferable);
+  NS_WARNING_ASSERTION(NS_SUCCEEDED(rv), "Failed to do Paste transferable");
+  return rv;
 }
 
 NS_IMETHODIMP
@@ -2983,15 +3004,14 @@ void EditorBase::DoSplitNode(const EditorDOMPoint& aStartOfRightNode,
       }
     }
 
-    RefPtr<nsRange> newRange;
-    nsresult rv = nsRange::CreateRange(
-        range.mStartContainer, range.mStartOffset, range.mEndContainer,
-        range.mEndOffset, getter_AddRefs(newRange));
-    if (NS_WARN_IF(NS_FAILED(rv))) {
-      aError.Throw(rv);
+    RefPtr<nsRange> newRange =
+        nsRange::Create(range.mStartContainer, range.mStartOffset,
+                        range.mEndContainer, range.mEndOffset, aError);
+    if (NS_WARN_IF(aError.Failed())) {
       return;
     }
-    range.mSelection->AddRange(*newRange, aError);
+    range.mSelection->AddRangeAndSelectFramesAndNotifyListeners(*newRange,
+                                                                aError);
     if (NS_WARN_IF(aError.Failed())) {
       return;
     }
@@ -3149,13 +3169,15 @@ nsresult EditorBase::DoJoinNodes(nsINode* aNodeToKeep, nsINode* aNodeToJoin,
       range.mEndOffset += firstNodeLength;
     }
 
-    RefPtr<nsRange> newRange;
-    nsresult rv = nsRange::CreateRange(
-        range.mStartContainer, range.mStartOffset, range.mEndContainer,
-        range.mEndOffset, getter_AddRefs(newRange));
-    NS_ENSURE_SUCCESS(rv, rv);
+    RefPtr<nsRange> newRange =
+        nsRange::Create(range.mStartContainer, range.mStartOffset,
+                        range.mEndContainer, range.mEndOffset, IgnoreErrors());
+    if (NS_WARN_IF(!newRange)) {
+      return NS_ERROR_FAILURE;
+    }
+
     ErrorResult err;
-    range.mSelection->AddRange(*newRange, err);
+    range.mSelection->AddRangeAndSelectFramesAndNotifyListeners(*newRange, err);
     if (NS_WARN_IF(err.Failed())) {
       return err.StealNSResult();
     }
@@ -4175,8 +4197,13 @@ already_AddRefed<EditTransactionBase> EditorBase::CreateTxnForDeleteRange(
 nsresult EditorBase::CreateRange(nsINode* aStartContainer, int32_t aStartOffset,
                                  nsINode* aEndContainer, int32_t aEndOffset,
                                  nsRange** aRange) {
-  return nsRange::CreateRange(aStartContainer, aStartOffset, aEndContainer,
-                              aEndOffset, aRange);
+  RefPtr<nsRange> range = nsRange::Create(
+      aStartContainer, aStartOffset, aEndContainer, aEndOffset, IgnoreErrors());
+  if (NS_WARN_IF(!range)) {
+    return NS_ERROR_FAILURE;
+  }
+  range.forget(aRange);
+  return NS_OK;
 }
 
 nsresult EditorBase::AppendNodeToSelectionAsRange(nsINode* aNode) {
@@ -4204,7 +4231,7 @@ nsresult EditorBase::AppendNodeToSelectionAsRange(nsINode* aNode) {
   }
 
   ErrorResult err;
-  SelectionRefPtr()->AddRange(*range, err);
+  SelectionRefPtr()->AddRangeAndSelectFramesAndNotifyListeners(*range, err);
   NS_WARNING_ASSERTION(!err.Failed(), "Failed to add range to Selection");
   return err.StealNSResult();
 }
@@ -4580,8 +4607,9 @@ nsresult EditorBase::DetermineCurrentDirection() {
   return NS_OK;
 }
 
-nsresult EditorBase::ToggleTextDirection() {
-  AutoEditActionDataSetter editActionData(*this, EditAction::eSetTextDirection);
+nsresult EditorBase::ToggleTextDirectionAsAction(nsIPrincipal* aPrincipal) {
+  AutoEditActionDataSetter editActionData(*this, EditAction::eSetTextDirection,
+                                          aPrincipal);
   if (NS_WARN_IF(!editActionData.CanHandle())) {
     return NS_ERROR_NOT_INITIALIZED;
   }
@@ -4859,7 +4887,8 @@ void EditorBase::AutoSelectionRestorer::Abort() {
  *****************************************************************************/
 
 EditorBase::AutoEditActionDataSetter::AutoEditActionDataSetter(
-    const EditorBase& aEditorBase, EditAction aEditAction)
+    const EditorBase& aEditorBase, EditAction aEditAction,
+    nsIPrincipal* aPrincipal /* = nullptr */)
     : mEditorBase(const_cast<EditorBase&>(aEditorBase)),
       mParentData(aEditorBase.mEditActionData),
       mData(VoidString()),

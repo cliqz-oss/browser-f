@@ -55,7 +55,13 @@ RenderCompositorEGL::RenderCompositorEGL(
     RefPtr<widget::CompositorWidget> aWidget)
     : RenderCompositor(std::move(aWidget)), mEGLSurface(EGL_NO_SURFACE) {}
 
-RenderCompositorEGL::~RenderCompositorEGL() { DestroyEGLSurface(); }
+RenderCompositorEGL::~RenderCompositorEGL() {
+#ifdef MOZ_WIDGET_ANDROID
+  java::GeckoSurfaceTexture::DestroyUnused((int64_t)gl());
+  java::GeckoSurfaceTexture::DetachAllFromGLContext((int64_t)gl());
+#endif
+  DestroyEGLSurface();
+}
 
 bool RenderCompositorEGL::BeginFrame() {
 #ifdef MOZ_WAYLAND
@@ -79,14 +85,16 @@ bool RenderCompositorEGL::BeginFrame() {
     // non-blocking buffer swaps. We need MakeCurrent() to set our current EGL
     // context before we call eglSwapInterval, which is why we do it here rather
     // than where the surface was created.
-    const auto* egl = gl::GLLibraryEGL::Get();
+    const auto& gle = gl::GLContextEGL::Cast(gl());
+    const auto& egl = gle->mEgl;
     // Make eglSwapBuffers() non-blocking on wayland.
-    egl->fSwapInterval(gl::EGL_DISPLAY(), 0);
+    egl->fSwapInterval(egl->Display(), 0);
   }
 #endif
 
 #ifdef MOZ_WIDGET_ANDROID
   java::GeckoSurfaceTexture::DestroyUnused((int64_t)gl());
+  gl()->MakeCurrent();  // DestroyUnused can change the current context!
 #endif
 
   return true;
@@ -128,11 +136,12 @@ bool RenderCompositorEGL::MakeCurrent() {
 }
 
 void RenderCompositorEGL::DestroyEGLSurface() {
-  auto* egl = gl::GLLibraryEGL::Get();
+  const auto& gle = gl::GLContextEGL::Cast(gl());
+  const auto& egl = gle->mEgl;
 
   // Release EGLSurface of back buffer before calling ResizeBuffers().
   if (mEGLSurface) {
-    gl::GLContextEGL::Cast(gl())->SetEGLSurfaceOverride(EGL_NO_SURFACE);
+    gle->SetEGLSurfaceOverride(EGL_NO_SURFACE);
     egl->fDestroySurface(egl->Display(), mEGLSurface);
     mEGLSurface = nullptr;
   }

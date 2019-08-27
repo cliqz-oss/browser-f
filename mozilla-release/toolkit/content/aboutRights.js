@@ -13,7 +13,9 @@ document.body.addEventListener("click", event => {
   }
 });
 
-var disablingServicesDiv = document.getElementById("disabling-webservices-container");
+var disablingServicesDiv = document.getElementById(
+  "disabling-webservices-container"
+);
 
 function showDisablingServices() {
   disablingServicesDiv.style.display = "";

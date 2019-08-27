@@ -1346,7 +1346,8 @@ nsFtpState::R_pasv() {
       if (NS_FAILED(rv)) return FTP_ERROR;
     }
 
-    rv = sts->CreateTransport(nullptr, 0, host, port, mChannel->ProxyInfo(),
+    rv = sts->CreateTransport(nsTArray<nsCString>(), host, port,
+                              mChannel->ProxyInfo(),
                               getter_AddRefs(strans));  // the data socket
     if (NS_FAILED(rv)) return FTP_ERROR;
     mDataTransport = strans;
@@ -1844,7 +1845,7 @@ nsFtpState::CloseWithStatus(nsresult status) {
 
   // Shutdown the control connection processing if we are being closed with an
   // error.  Note: This method may be called several times.
-  if (!IsClosed() && status != NS_BASE_STREAM_CLOSED && NS_FAILED(status)) {
+  if (!IsClosed() && NS_FAILED(status)) {
     if (NS_SUCCEEDED(mInternalError)) mInternalError = status;
     StopProcessing();
   }

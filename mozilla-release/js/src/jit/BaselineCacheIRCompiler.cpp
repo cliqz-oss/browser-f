@@ -24,6 +24,9 @@ using namespace js::jit;
 
 using mozilla::Maybe;
 
+namespace js {
+namespace jit {
+
 class AutoStubFrame;
 
 Address CacheRegisterAllocator::addressOf(MacroAssembler& masm,
@@ -41,89 +44,13 @@ BaseValueIndex CacheRegisterAllocator::addressOf(MacroAssembler& masm,
 }
 
 // BaselineCacheIRCompiler compiles CacheIR to BaselineIC native code.
-class MOZ_RAII BaselineCacheIRCompiler : public CacheIRCompiler {
-  bool inStubFrame_;
-  bool makesGCCalls_;
-  BaselineCacheIRStubKind kind_;
-
-  void callVMInternal(MacroAssembler& masm, VMFunctionId id);
-
-  template <typename Fn, Fn fn>
-  void callVM(MacroAssembler& masm) {
-    VMFunctionId id = VMFunctionToId<Fn, fn>::id;
-    callVMInternal(masm, id);
-  }
-
-  void tailCallVMInternal(MacroAssembler& masm, TailCallVMFunctionId id);
-
-  template <typename Fn, Fn fn>
-  void tailCallVM(MacroAssembler& masm) {
-    TailCallVMFunctionId id = TailCallVMFunctionToId<Fn, fn>::id;
-    tailCallVMInternal(masm, id);
-  }
-
-  MOZ_MUST_USE bool callTypeUpdateIC(Register obj, ValueOperand val,
-                                     Register scratch,
-                                     LiveGeneralRegisterSet saveRegs);
-
-  MOZ_MUST_USE bool emitStoreSlotShared(bool isFixed);
-  MOZ_MUST_USE bool emitAddAndStoreSlotShared(CacheOp op);
-
-  bool updateArgc(CallFlags flags, Register argcReg, Register scratch);
-  void loadStackObject(ArgumentKind kind, CallFlags flags, size_t stackPushed,
-                       Register argcReg, Register dest);
-  void pushArguments(Register argcReg, Register calleeReg, Register scratch,
-                     Register scratch2, CallFlags flags, bool isJitCall);
-  void pushStandardArguments(Register argcReg, Register scratch,
-                             Register scratch2, bool isJitCall,
-                             bool isConstructing);
-  void pushArrayArguments(Register argcReg, Register scratch, Register scratch2,
-                          bool isJitCall, bool isConstructing);
-  void pushFunCallArguments(Register argcReg, Register calleeReg,
-                            Register scratch, Register scratch2,
-                            bool isJitCall);
-  void pushFunApplyArgs(Register argcReg, Register calleeReg, Register scratch,
-                        Register scratch2, bool isJitCall);
-  void createThis(Register argcReg, Register calleeReg, Register scratch,
-                  CallFlags flags);
-  void updateReturnValue();
-
-  enum class NativeCallType { Native, ClassHook };
-  bool emitCallNativeShared(NativeCallType callType);
-
-  MOZ_MUST_USE bool emitCallScriptedGetterResultShared(
-      TypedOrValueRegister receiver);
-
-  template <typename T, typename CallVM>
-  MOZ_MUST_USE bool emitCallNativeGetterResultShared(T receiver,
-                                                     const CallVM& emitCallVM);
-
- public:
-  friend class AutoStubFrame;
-
-  BaselineCacheIRCompiler(JSContext* cx, const CacheIRWriter& writer,
-                          uint32_t stubDataOffset,
-                          BaselineCacheIRStubKind stubKind)
-      : CacheIRCompiler(cx, writer, stubDataOffset, Mode::Baseline,
-                        StubFieldPolicy::Address),
-        inStubFrame_(false),
-        makesGCCalls_(false),
-        kind_(stubKind) {}
-
-  MOZ_MUST_USE bool init(CacheKind kind);
-
-  JitCode* compile();
-
-  bool makesGCCalls() const { return makesGCCalls_; }
-
- private:
-#define DEFINE_OP(op, ...) MOZ_MUST_USE bool emit##op();
-  CACHE_IR_OPS(DEFINE_OP)
-#undef DEFINE_OP
-  Address stubAddress(uint32_t offset) const {
-    return Address(ICStubReg, stubDataOffset_ + offset);
-  }
-};
+BaselineCacheIRCompiler::BaselineCacheIRCompiler(
+    JSContext* cx, const CacheIRWriter& writer, uint32_t stubDataOffset,
+    BaselineCacheIRStubKind stubKind)
+    : CacheIRCompiler(cx, writer, stubDataOffset, Mode::Baseline,
+                      StubFieldPolicy::Address),
+      makesGCCalls_(false),
+      kind_(stubKind) {}
 
 #define DEFINE_SHARED_OP(op)                 \
   bool BaselineCacheIRCompiler::emit##op() { \
@@ -132,77 +59,73 @@ class MOZ_RAII BaselineCacheIRCompiler : public CacheIRCompiler {
 CACHE_IR_SHARED_OPS(DEFINE_SHARED_OP)
 #undef DEFINE_SHARED_OP
 
-enum class CallCanGC { CanGC, CanNotGC };
-
-// Instructions that have to perform a callVM require a stub frame. Call its
-// enter() and leave() methods to enter/leave the stub frame.
-class MOZ_RAII AutoStubFrame {
-  BaselineCacheIRCompiler& compiler;
+// AutoStubFrame methods
+AutoStubFrame::AutoStubFrame(BaselineCacheIRCompiler& compiler)
+    : compiler(compiler)
 #ifdef DEBUG
-  uint32_t framePushedAtEnterStubFrame_;
+      ,
+      framePushedAtEnterStubFrame_(0)
+#endif
+{
+}
+void AutoStubFrame::enter(MacroAssembler& masm, Register scratch,
+                          CallCanGC canGC) {
+  MOZ_ASSERT(compiler.allocator.stackPushed() == 0);
+
+  EmitBaselineEnterStubFrame(masm, scratch);
+
+#ifdef DEBUG
+  framePushedAtEnterStubFrame_ = masm.framePushed();
 #endif
 
-  AutoStubFrame(const AutoStubFrame&) = delete;
-  void operator=(const AutoStubFrame&) = delete;
-
- public:
-  explicit AutoStubFrame(BaselineCacheIRCompiler& compiler)
-      : compiler(compiler)
-#ifdef DEBUG
-        ,
-        framePushedAtEnterStubFrame_(0)
-#endif
-  {
+  MOZ_ASSERT(!compiler.preparedForVMCall_);
+  compiler.preparedForVMCall_ = true;
+  if (canGC == CallCanGC::CanGC) {
+    compiler.makesGCCalls_ = true;
   }
-
-  void enter(MacroAssembler& masm, Register scratch,
-             CallCanGC canGC = CallCanGC::CanGC) {
-    MOZ_ASSERT(compiler.allocator.stackPushed() == 0);
-
-    EmitBaselineEnterStubFrame(masm, scratch);
+}
+void AutoStubFrame::leave(MacroAssembler& masm, bool calledIntoIon) {
+  MOZ_ASSERT(compiler.preparedForVMCall_);
+  compiler.preparedForVMCall_ = false;
 
 #ifdef DEBUG
-    framePushedAtEnterStubFrame_ = masm.framePushed();
-#endif
-
-    MOZ_ASSERT(!compiler.inStubFrame_);
-    compiler.inStubFrame_ = true;
-    if (canGC == CallCanGC::CanGC) {
-      compiler.makesGCCalls_ = true;
-    }
+  masm.setFramePushed(framePushedAtEnterStubFrame_);
+  if (calledIntoIon) {
+    masm.adjustFrame(sizeof(intptr_t));  // Calls into ion have this extra.
   }
-  void leave(MacroAssembler& masm, bool calledIntoIon = false) {
-    MOZ_ASSERT(compiler.inStubFrame_);
-    compiler.inStubFrame_ = false;
-
-#ifdef DEBUG
-    masm.setFramePushed(framePushedAtEnterStubFrame_);
-    if (calledIntoIon) {
-      masm.adjustFrame(sizeof(intptr_t));  // Calls into ion have this extra.
-    }
 #endif
 
-    EmitBaselineLeaveStubFrame(masm, calledIntoIon);
-  }
+  EmitBaselineLeaveStubFrame(masm, calledIntoIon);
+}
 
 #ifdef DEBUG
-  ~AutoStubFrame() { MOZ_ASSERT(!compiler.inStubFrame_); }
+AutoStubFrame::~AutoStubFrame() { MOZ_ASSERT(!compiler.preparedForVMCall_); }
 #endif
-};
 
-void BaselineCacheIRCompiler::callVMInternal(MacroAssembler& masm,
-                                             VMFunctionId id) {
-  MOZ_ASSERT(inStubFrame_);
+}  // namespace jit
+}  // namespace js
 
-  TrampolinePtr code = cx_->runtime()->jitRuntime()->getVMWrapper(id);
-  MOZ_ASSERT(GetVMFunction(id).expectTailCall == NonTailCall);
+bool BaselineCacheIRCompiler::makesGCCalls() const { return makesGCCalls_; }
 
-  EmitBaselineCallVM(code, masm);
+Address BaselineCacheIRCompiler::stubAddress(uint32_t offset) const {
+  return Address(ICStubReg, stubDataOffset_ + offset);
+}
+
+template <typename Fn, Fn fn>
+void BaselineCacheIRCompiler::callVM(MacroAssembler& masm) {
+  VMFunctionId id = VMFunctionToId<Fn, fn>::id;
+  callVMInternal(masm, id);
+}
+
+template <typename Fn, Fn fn>
+void BaselineCacheIRCompiler::tailCallVM(MacroAssembler& masm) {
+  TailCallVMFunctionId id = TailCallVMFunctionToId<Fn, fn>::id;
+  tailCallVMInternal(masm, id);
 }
 
 void BaselineCacheIRCompiler::tailCallVMInternal(MacroAssembler& masm,
                                                  TailCallVMFunctionId id) {
-  MOZ_ASSERT(!inStubFrame_);
+  MOZ_ASSERT(!preparedForVMCall_);
 
   TrampolinePtr code = cx_->runtime()->jitRuntime()->getVMWrapper(id);
   const VMFunctionData& fun = GetVMFunction(id);
@@ -256,7 +179,7 @@ JitCode* BaselineCacheIRCompiler::compile() {
     allocator.nextOp();
   } while (reader.more());
 
-  MOZ_ASSERT(!inStubFrame_);
+  MOZ_ASSERT(!preparedForVMCall_);
   masm.assumeUnreachable("Should have returned from IC");
 
   // Done emitting the main IC code. Now emit the failure paths.
@@ -709,81 +632,6 @@ bool BaselineCacheIRCompiler::emitCallProxyGetResult() {
 
   using Fn = bool (*)(JSContext*, HandleObject, HandleId, MutableHandleValue);
   callVM<Fn, ProxyGetProperty>(masm);
-
-  stubFrame.leave(masm);
-  return true;
-}
-
-bool BaselineCacheIRCompiler::emitCallProxyGetByValueResult() {
-  JitSpew(JitSpew_Codegen, __FUNCTION__);
-  Register obj = allocator.useRegister(masm, reader.objOperandId());
-  ValueOperand idVal = allocator.useValueRegister(masm, reader.valOperandId());
-
-  AutoScratchRegister scratch(allocator, masm);
-
-  allocator.discardStack(masm);
-
-  AutoStubFrame stubFrame(*this);
-  stubFrame.enter(masm, scratch);
-
-  masm.Push(idVal);
-  masm.Push(obj);
-
-  using Fn =
-      bool (*)(JSContext*, HandleObject, HandleValue, MutableHandleValue);
-  callVM<Fn, ProxyGetPropertyByValue>(masm);
-
-  stubFrame.leave(masm);
-  return true;
-}
-
-bool BaselineCacheIRCompiler::emitCallProxyHasPropResult() {
-  JitSpew(JitSpew_Codegen, __FUNCTION__);
-  Register obj = allocator.useRegister(masm, reader.objOperandId());
-  ValueOperand idVal = allocator.useValueRegister(masm, reader.valOperandId());
-  bool hasOwn = reader.readBool();
-
-  AutoScratchRegister scratch(allocator, masm);
-
-  allocator.discardStack(masm);
-
-  AutoStubFrame stubFrame(*this);
-  stubFrame.enter(masm, scratch);
-
-  masm.Push(idVal);
-  masm.Push(obj);
-
-  using Fn =
-      bool (*)(JSContext*, HandleObject, HandleValue, MutableHandleValue);
-  if (hasOwn) {
-    callVM<Fn, ProxyHasOwn>(masm);
-  } else {
-    callVM<Fn, ProxyHas>(masm);
-  }
-
-  stubFrame.leave(masm);
-  return true;
-}
-
-bool BaselineCacheIRCompiler::emitCallNativeGetElementResult() {
-  JitSpew(JitSpew_Codegen, __FUNCTION__);
-  Register obj = allocator.useRegister(masm, reader.objOperandId());
-  Register index = allocator.useRegister(masm, reader.int32OperandId());
-
-  AutoScratchRegister scratch(allocator, masm);
-
-  allocator.discardStack(masm);
-
-  AutoStubFrame stubFrame(*this);
-  stubFrame.enter(masm, scratch);
-
-  masm.Push(index);
-  masm.Push(TypedOrValueRegister(MIRType::Object, AnyRegister(obj)));
-  masm.Push(obj);
-
-  using Fn = bool (*)(JSContext*, HandleNativeObject, HandleValue, int32_t,
-                      MutableHandleValue);
-  callVM<Fn, NativeGetElement>(masm);
 
   stubFrame.leave(masm);
   return true;
@@ -1881,28 +1729,6 @@ bool BaselineCacheIRCompiler::emitCallAddOrUpdateSparseElementHelper() {
   return true;
 }
 
-bool BaselineCacheIRCompiler::emitCallGetSparseElementResult() {
-  JitSpew(JitSpew_Codegen, __FUNCTION__);
-  Register obj = allocator.useRegister(masm, reader.objOperandId());
-  Register id = allocator.useRegister(masm, reader.int32OperandId());
-  AutoScratchRegister scratch(allocator, masm);
-
-  allocator.discardStack(masm);
-
-  AutoStubFrame stubFrame(*this);
-  stubFrame.enter(masm, scratch);
-
-  masm.Push(id);
-  masm.Push(obj);
-
-  using Fn = bool (*)(JSContext * cx, HandleArrayObject obj, int32_t int_id,
-                      MutableHandleValue result);
-  callVM<Fn, GetSparseElementHelper>(masm);
-
-  stubFrame.leave(masm);
-  return true;
-}
-
 bool BaselineCacheIRCompiler::emitMegamorphicSetElement() {
   JitSpew(JitSpew_Codegen, __FUNCTION__);
   Register obj = allocator.useRegister(masm, reader.objOperandId());
@@ -2005,7 +1831,7 @@ bool BaselineCacheIRCompiler::emitGuardAndGetIterator() {
   EmitPreBarrier(masm, iterObjAddr, MIRType::Object);
 
   // Mark iterator as active.
-  Address iterFlagsAddr(niScratch, NativeIterator::offsetOfFlags());
+  Address iterFlagsAddr(niScratch, NativeIterator::offsetOfFlagsAndCount());
   masm.storePtr(obj, iterObjAddr);
   masm.or32(Imm32(NativeIterator::Flags::Active), iterFlagsAddr);
 

@@ -30,7 +30,6 @@ window {
   min-width: 125px;
   display: flex;
   flex-direction: column;
-  flex: 1 1 auto;
 }
 
 /* Inspector Panel Splitter */
@@ -148,6 +147,7 @@ window {
   flex: 1;
   display: flex;
   overflow: hidden;
+  direction: ltr;
 }
 
 #inspector-breadcrumbs .breadcrumbs-widget-item {

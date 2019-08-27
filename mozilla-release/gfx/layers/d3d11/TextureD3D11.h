@@ -91,6 +91,8 @@ class D3D11TextureData final : public TextureData {
   gfx::IntSize GetSize() const { return mSize; }
   gfx::SurfaceFormat GetSurfaceFormat() const { return mFormat; }
 
+  TextureFlags GetTextureFlags() const override;
+
  private:
   D3D11TextureData(ID3D11Texture2D* aTexture, gfx::IntSize aSize,
                    gfx::SurfaceFormat aFormat, TextureAllocationFlags aFlags);
@@ -159,9 +161,7 @@ class DXGIYCbCrTextureData : public TextureData {
 
   bool UpdateFromSurface(gfx::SourceSurface*) override { return false; }
 
-  TextureFlags GetTextureFlags() const override {
-    return TextureFlags::DEALLOCATE_MAIN_THREAD;
-  }
+  TextureFlags GetTextureFlags() const override;
 
   DXGIYCbCrTextureData* AsDXGIYCbCrTextureData() override { return this; }
 
@@ -342,7 +342,7 @@ class DXGITextureHostD3D11 : public TextureHost {
   void CreateRenderTexture(
       const wr::ExternalImageId& aExternalImageId) override;
 
-  uint32_t NumSubTextures() const override;
+  uint32_t NumSubTextures() override;
 
   void PushResourceUpdates(wr::TransactionBuilder& aResources,
                            ResourceUpdateOp aOp,
@@ -411,7 +411,7 @@ class DXGIYCbCrTextureHostD3D11 : public TextureHost {
   void CreateRenderTexture(
       const wr::ExternalImageId& aExternalImageId) override;
 
-  uint32_t NumSubTextures() const override;
+  uint32_t NumSubTextures() override;
 
   void PushResourceUpdates(wr::TransactionBuilder& aResources,
                            ResourceUpdateOp aOp,

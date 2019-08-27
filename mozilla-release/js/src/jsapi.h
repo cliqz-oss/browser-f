@@ -34,6 +34,7 @@
 #include "js/GCVector.h"
 #include "js/HashTable.h"
 #include "js/Id.h"
+#include "js/MemoryFunctions.h"
 #include "js/OffThreadScriptCompilation.h"
 #include "js/Principals.h"
 #include "js/PropertyDescriptor.h"
@@ -71,8 +72,6 @@ class MOZ_RAII AutoValueArray : public AutoGCRooter {
  public:
   explicit AutoValueArray(JSContext* cx MOZ_GUARD_OBJECT_NOTIFIER_PARAM)
       : AutoGCRooter(cx, AutoGCRooter::Tag::ValueArray), length_(N) {
-    /* Always initialize in case we GC before assignment. */
-    mozilla::PodArrayZero(elements_);
     MOZ_GUARD_OBJECT_NOTIFIER_INIT;
   }
 
@@ -252,12 +251,6 @@ JS_PUBLIC_API bool JS_StringHasBeenPinned(JSContext* cx, JSString* str);
 extern JS_PUBLIC_API int64_t JS_Now(void);
 
 /** Don't want to export data, so provide accessors for non-inline Values. */
-extern JS_PUBLIC_API JS::Value JS_GetNaNValue(JSContext* cx);
-
-extern JS_PUBLIC_API JS::Value JS_GetNegativeInfinityValue(JSContext* cx);
-
-extern JS_PUBLIC_API JS::Value JS_GetPositiveInfinityValue(JSContext* cx);
-
 extern JS_PUBLIC_API JS::Value JS_GetEmptyStringValue(JSContext* cx);
 
 extern JS_PUBLIC_API JSString* JS_GetEmptyString(JSContext* cx);
@@ -401,6 +394,12 @@ JS_PUBLIC_API bool InitSelfHostedCode(JSContext* cx);
 JS_PUBLIC_API void AssertObjectBelongsToCurrentThread(JSObject* obj);
 
 } /* namespace JS */
+
+/**
+ * Set callback to send tasks to XPCOM thread pools
+ */
+JS_PUBLIC_API void SetHelperThreadTaskCallback(
+    void (*callback)(js::RunnableTask*));
 
 extern JS_PUBLIC_API const char* JS_GetImplementationVersion(void);
 
@@ -918,6 +917,9 @@ extern JS_PUBLIC_API bool InstanceofOperator(JSContext* cx, HandleObject obj,
 extern JS_PUBLIC_API void* JS_GetPrivate(JSObject* obj);
 
 extern JS_PUBLIC_API void JS_SetPrivate(JSObject* obj, void* data);
+
+extern JS_PUBLIC_API void JS_InitPrivate(JSObject* obj, void* data,
+                                         size_t nbytes, JS::MemoryUse use);
 
 extern JS_PUBLIC_API void* JS_GetInstancePrivate(JSContext* cx,
                                                  JS::Handle<JSObject*> obj,
@@ -1766,6 +1768,19 @@ extern JS_PUBLIC_API JS::Value JS_GetReservedSlot(JSObject* obj,
 extern JS_PUBLIC_API void JS_SetReservedSlot(JSObject* obj, uint32_t index,
                                              const JS::Value& v);
 
+extern JS_PUBLIC_API void JS_InitReservedSlot(JSObject* obj, uint32_t index,
+                                              void* ptr, size_t nbytes,
+                                              JS::MemoryUse use);
+
+template <typename T>
+void JS_InitReservedSlot(JSObject* obj, uint32_t index, T* ptr,
+                         JS::MemoryUse use) {
+  JS_InitReservedSlot(obj, index, ptr, sizeof(T), use);
+}
+
+extern JS_PUBLIC_API void JS_InitPrivate(JSObject* obj, void* data,
+                                         size_t nbytes, JS::MemoryUse use);
+
 /************************************************************************/
 
 /* native that can be called as a ctor */
@@ -1793,7 +1808,8 @@ extern JS_PUBLIC_API JSFunction* GetSelfHostedFunction(
 /**
  * Create a new function based on the given JSFunctionSpec, *fs.
  * id is the result of a successful call to
- * `PropertySpecNameToPermanentId(cx, fs->name, &id)`.
+ * `PropertySpecNameToId(cx, fs->name, &id)` or
+   `PropertySpecNameToPermanentId(cx, fs->name, &id)`.
  *
  * Unlike JS_DefineFunctions, this does not treat fs as an array.
  * *fs must not be JS_FS_END.
@@ -1801,6 +1817,13 @@ extern JS_PUBLIC_API JSFunction* GetSelfHostedFunction(
 extern JS_PUBLIC_API JSFunction* NewFunctionFromSpec(JSContext* cx,
                                                      const JSFunctionSpec* fs,
                                                      HandleId id);
+
+/**
+ * Same as above, but without an id arg, for callers who don't have
+ * the id already.
+ */
+extern JS_PUBLIC_API JSFunction* NewFunctionFromSpec(JSContext* cx,
+                                                     const JSFunctionSpec* fs);
 
 } /* namespace JS */
 
@@ -1905,78 +1928,6 @@ extern JS_PUBLIC_API JSString* JS_DecompileFunction(
 
 namespace JS {
 
-using ModuleResolveHook = JSObject* (*)(JSContext*, HandleValue, HandleString);
-
-/**
- * Get the HostResolveImportedModule hook for the runtime.
- */
-extern JS_PUBLIC_API ModuleResolveHook GetModuleResolveHook(JSRuntime* rt);
-
-/**
- * Set the HostResolveImportedModule hook for the runtime to the given function.
- */
-extern JS_PUBLIC_API void SetModuleResolveHook(JSRuntime* rt,
-                                               ModuleResolveHook func);
-
-using ModuleMetadataHook = bool (*)(JSContext*, HandleValue, HandleObject);
-
-/**
- * Get the hook for populating the import.meta metadata object.
- */
-extern JS_PUBLIC_API ModuleMetadataHook GetModuleMetadataHook(JSRuntime* rt);
-
-/**
- * Set the hook for populating the import.meta metadata object to the given
- * function.
- */
-extern JS_PUBLIC_API void SetModuleMetadataHook(JSRuntime* rt,
-                                                ModuleMetadataHook func);
-
-using ModuleDynamicImportHook = bool (*)(JSContext* cx,
-                                         HandleValue referencingPrivate,
-                                         HandleString specifier,
-                                         HandleObject promise);
-
-/**
- * Get the HostImportModuleDynamically hook for the runtime.
- */
-extern JS_PUBLIC_API ModuleDynamicImportHook
-GetModuleDynamicImportHook(JSRuntime* rt);
-
-/**
- * Set the HostImportModuleDynamically hook for the runtime to the given
- * function.
- *
- * If this hook is not set (or set to nullptr) then the JS engine will throw an
- * exception if dynamic module import is attempted.
- */
-extern JS_PUBLIC_API void SetModuleDynamicImportHook(
-    JSRuntime* rt, ModuleDynamicImportHook func);
-
-extern JS_PUBLIC_API bool FinishDynamicModuleImport(
-    JSContext* cx, HandleValue referencingPrivate, HandleString specifier,
-    HandleObject promise);
-
-/**
- * Parse the given source buffer as a module in the scope of the current global
- * of cx and return a source text module record.
- */
-extern JS_PUBLIC_API bool CompileModule(JSContext* cx,
-                                        const ReadOnlyCompileOptions& options,
-                                        SourceText<char16_t>& srcBuf,
-                                        JS::MutableHandleObject moduleRecord);
-
-/**
- * Set a private value associated with a source text module record.
- */
-extern JS_PUBLIC_API void SetModulePrivate(JSObject* module,
-                                           const JS::Value& value);
-
-/**
- * Get the private value associated with a source text module record.
- */
-extern JS_PUBLIC_API JS::Value GetModulePrivate(JSObject* module);
-
 /**
  * Set a private value associated with a script. Note that this value is shared
  * by all nested scripts compiled from a single source file.
@@ -2009,60 +1960,6 @@ using ScriptPrivateReferenceHook = void (*)(const JS::Value&);
 extern JS_PUBLIC_API void SetScriptPrivateReferenceHooks(
     JSRuntime* rt, ScriptPrivateReferenceHook addRefHook,
     ScriptPrivateReferenceHook releaseHook);
-
-/*
- * Perform the ModuleInstantiate operation on the given source text module
- * record.
- *
- * This transitively resolves all module dependencies (calling the
- * HostResolveImportedModule hook) and initializes the environment record for
- * the module.
- */
-extern JS_PUBLIC_API bool ModuleInstantiate(JSContext* cx,
-                                            JS::HandleObject moduleRecord);
-
-/*
- * Perform the ModuleEvaluate operation on the given source text module record.
- *
- * This does nothing if this module has already been evaluated. Otherwise, it
- * transitively evaluates all dependences of this module and then evaluates this
- * module.
- *
- * ModuleInstantiate must have completed prior to calling this.
- */
-extern JS_PUBLIC_API bool ModuleEvaluate(JSContext* cx,
-                                         JS::HandleObject moduleRecord);
-
-/*
- * Get a list of the module specifiers used by a source text module
- * record to request importation of modules.
- *
- * The result is a JavaScript array of object values.  To extract the individual
- * values use only JS_GetArrayLength and JS_GetElement with indices 0 to length
- * - 1.
- *
- * The element values are objects with the following properties:
- *  - moduleSpecifier: the module specifier string
- *  - lineNumber: the line number of the import in the source text
- *  - columnNumber: the column number of the import in the source text
- *
- * These property values can be extracted with GetRequestedModuleSpecifier() and
- * GetRequestedModuleSourcePos()
- */
-extern JS_PUBLIC_API JSObject* GetRequestedModules(
-    JSContext* cx, JS::HandleObject moduleRecord);
-
-extern JS_PUBLIC_API JSString* GetRequestedModuleSpecifier(
-    JSContext* cx, JS::HandleValue requestedModuleObject);
-
-extern JS_PUBLIC_API void GetRequestedModuleSourcePos(
-    JSContext* cx, JS::HandleValue requestedModuleObject, uint32_t* lineNumber,
-    uint32_t* columnNumber);
-
-/*
- * Get the top-level script for a module which has not yet been executed.
- */
-extern JS_PUBLIC_API JSScript* GetModuleScript(JS::HandleObject moduleRecord);
 
 } /* namespace JS */
 
@@ -3147,7 +3044,7 @@ extern JS_PUBLIC_API RefPtr<WasmModule> GetWasmModule(HandleObject obj);
  */
 
 extern JS_PUBLIC_API RefPtr<WasmModule> DeserializeWasmModule(
-    PRFileDesc* bytecode, JS::UniqueChars filename, unsigned line);
+    const uint8_t* bytecode, size_t bytecodeLength);
 
 /**
  * If a large allocation fails when calling pod_{calloc,realloc}CanGC, the JS

@@ -17,6 +17,16 @@ from utils import call, get, untar, unzip
 uname = platform.uname()
 
 
+def _get_fileversion(binary, logger=None):
+    command = "(Get-Item '%s').VersionInfo.FileVersion" % binary.replace("'", "''")
+    try:
+        return call("powershell.exe", command).strip()
+    except (subprocess.CalledProcessError, OSError):
+        if logger is not None:
+            logger.warning("Failed to call %s in PowerShell" % command)
+        return None
+
+
 class Browser(object):
     __metaclass__ = ABCMeta
 
@@ -101,14 +111,14 @@ class Firefox(Browser):
         product = {
             "nightly": "firefox-nightly-latest-ssl",
             "beta": "firefox-beta-latest-ssl",
-            "stable": "firefox-beta-latest-ssl"
+            "stable": "firefox-latest-ssl"
         }
 
         os_builds = {
             ("linux", "x86"): "linux",
             ("linux", "x86_64"): "linux64",
             ("win", "x86"): "win",
-            ("win", "x86_64"): "win64",
+            ("win", "AMD64"): "win64",
             ("macos", "x86_64"): "osx",
         }
         os_key = (self.platform, uname[4])
@@ -149,7 +159,7 @@ class Firefox(Browser):
 
         installer_path = os.path.join(dest, filename)
 
-        with open(installer_path, "w") as f:
+        with open(installer_path, "wb") as f:
             f.write(resp.content)
 
         try:
@@ -179,7 +189,11 @@ class Firefox(Browser):
             binary = find_executable("firefox", os.path.join(path, "firefox"))
         elif self.platform == "win":
             import mozinstall
-            binary = mozinstall.get_binary(path, "firefox")
+            try:
+                binary = mozinstall.get_binary(path, "firefox")
+            except mozinstall.InvalidBinary:
+                # ignore the case where we fail to get a binary
+                pass
         elif self.platform == "macos":
             binary = find_executable("firefox", os.path.join(path, self.application_name.get(channel, "Firefox Nightly.app"),
                                                              "Contents", "MacOS"))
@@ -192,6 +206,14 @@ class Firefox(Browser):
 
         path = os.path.join(venv_path, "browsers", channel)
         binary = self.find_binary_path(path, channel)
+
+        if not binary and self.platform == "win":
+            winpaths = [os.path.expandvars("$SYSTEMDRIVE\\Program Files\\Mozilla Firefox"),
+                        os.path.expandvars("$SYSTEMDRIVE\\Program Files (x86)\\Mozilla Firefox")]
+            for winpath in winpaths:
+                binary = self.find_binary_path(winpath, channel)
+                if binary is not None:
+                    break
 
         if not binary and self.platform == "macos":
             macpaths = ["/Applications/Firefox Nightly.app/Contents/MacOS",
@@ -211,7 +233,7 @@ class Firefox(Browser):
         path = find_executable("certutil")
         if path is None:
             return None
-        if os.path.splitdrive(path)[1].split(os.path.sep) == ["", "Windows", "system32", "certutil.exe"]:
+        if os.path.splitdrive(os.path.normcase(path))[1].split(os.path.sep) == ["", "windows", "system32", "certutil.exe"]:
             return None
         return path
 
@@ -267,7 +289,7 @@ class Firefox(Browser):
         if version:
             dest = os.path.join(dest, version)
         have_cache = False
-        if os.path.exists(dest):
+        if os.path.exists(dest) and len(os.listdir(dest)) > 0:
             if channel != "nightly":
                 have_cache = True
             else:
@@ -304,7 +326,7 @@ class Firefox(Browser):
         # This is used rather than an API call to avoid rate limits
         tags = call("git", "ls-remote", "--tags", "--refs",
                     "https://github.com/mozilla/geckodriver.git")
-        release_re = re.compile(".*refs/tags/v(\d+)\.(\d+)\.(\d+)")
+        release_re = re.compile(r".*refs/tags/v(\d+)\.(\d+)\.(\d+)")
         latest_release = 0
         for item in tags.split("\n"):
             m = release_re.match(item)
@@ -414,7 +436,8 @@ class Chrome(Browser):
             return "/usr/bin/google-chrome"
         if uname[0] == "Darwin":
             return "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
-        # TODO Windows?
+        if uname[0] == "Windows":
+            return os.path.expandvars("$SYSTEMDRIVE\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe")
         self.logger.warning("Unable to find the browser binary.")
         return None
 
@@ -461,33 +484,47 @@ class Chrome(Browser):
     def find_webdriver(self, channel=None):
         return find_executable("chromedriver")
 
-    def _latest_chromedriver_url(self, browser_binary=None):
-        latest = None
-        chrome_version = self.version(browser_binary)
-        if chrome_version is not None:
-            parts = chrome_version.split(".")
-            if len(parts) == 4:
-                latest_url = "https://chromedriver.storage.googleapis.com/LATEST_RELEASE_%s.%s.%s" % (
-                    parts[0], parts[1], parts[2])
-                try:
-                    latest = get(latest_url).text.strip()
-                except requests.RequestException:
-                    latest_url = "https://chromedriver.storage.googleapis.com/LATEST_RELEASE_%s" % parts[0]
-                    try:
-                        latest = get(latest_url).text.strip()
-                    except requests.RequestException:
-                        pass
-        if latest is None:
-            # Fall back to the tip-of-tree *Chromium* build.
-            latest_url = "https://storage.googleapis.com/chromium-browser-snapshots/%s/LAST_CHANGE" % (
-                self.chromium_platform_string())
+    def _official_chromedriver_url(self, chrome_version):
+        # http://chromedriver.chromium.org/downloads/version-selection
+        parts = chrome_version.split(".")
+        assert len(parts) == 4
+        latest_url = "https://chromedriver.storage.googleapis.com/LATEST_RELEASE_%s.%s.%s" % tuple(parts[:-1])
+        try:
             latest = get(latest_url).text.strip()
+        except requests.RequestException:
+            latest_url = "https://chromedriver.storage.googleapis.com/LATEST_RELEASE_%s" % parts[0]
+            try:
+                latest = get(latest_url).text.strip()
+            except requests.RequestException:
+                return None
+        return "https://chromedriver.storage.googleapis.com/%s/chromedriver_%s.zip" % (
+            latest, self.platform_string())
+
+    def _chromium_chromedriver_url(self, chrome_version):
+        try:
+            # Try to find the Chromium build with the same revision.
+            omaha = get("https://omahaproxy.appspot.com/deps.json?version=" + chrome_version).json()
+            revision = omaha['chromium_base_position']
             url = "https://storage.googleapis.com/chromium-browser-snapshots/%s/%s/chromedriver_%s.zip" % (
-                self.chromium_platform_string(), latest, self.platform_string())
-        else:
-            url = "https://chromedriver.storage.googleapis.com/%s/chromedriver_%s.zip" % (
-                latest, self.platform_string())
+                self.chromium_platform_string(), revision, self.platform_string())
+            # Check the status without downloading the content (this is a streaming request).
+            get(url)
+        except requests.RequestException:
+            # Fall back to the tip-of-tree Chromium build.
+            revision_url = "https://storage.googleapis.com/chromium-browser-snapshots/%s/LAST_CHANGE" % (
+                self.chromium_platform_string())
+            revision = get(revision_url).text.strip()
+            url = "https://storage.googleapis.com/chromium-browser-snapshots/%s/%s/chromedriver_%s.zip" % (
+                self.chromium_platform_string(), revision, self.platform_string())
         return url
+
+    def _latest_chromedriver_url(self, browser_binary=None):
+        chrome_version = self.version(browser_binary)
+        assert chrome_version, "Cannot detect the version of Chrome"
+        # Remove channel suffixes (e.g. " dev").
+        chrome_version = chrome_version.split(' ')[0]
+        return (self._official_chromedriver_url(chrome_version) or
+                self._chromium_chromedriver_url(chrome_version))
 
     def install_webdriver(self, dest=None, channel=None, browser_binary=None):
         if dest is None:
@@ -503,19 +540,19 @@ class Chrome(Browser):
 
     def version(self, binary=None, webdriver_binary=None):
         binary = binary or self.binary
-        if uname[0] != "Windows":
-            try:
-                version_string = call(binary, "--version").strip()
-            except subprocess.CalledProcessError:
-                self.logger.warning("Failed to call %s" % binary)
-                return None
-            m = re.match(r"(?:Google Chrome|Chromium) (.*)", version_string)
-            if not m:
-                self.logger.warning("Failed to extract version from: %s" % version_string)
-                return None
-            return m.group(1)
-        self.logger.warning("Unable to extract version from binary on Windows.")
-        return None
+        if uname[0] == "Windows":
+            return _get_fileversion(binary, self.logger)
+
+        try:
+            version_string = call(binary, "--version").strip()
+        except subprocess.CalledProcessError:
+            self.logger.warning("Failed to call %s" % binary)
+            return None
+        m = re.match(r"(?:Google Chrome|Chromium) (.*)", version_string)
+        if not m:
+            self.logger.warning("Failed to extract version from: %s" % version_string)
+            return None
+        return m.group(1)
 
 
 class ChromeAndroid(Browser):
@@ -618,6 +655,84 @@ class Opera(Browser):
         if m:
             return m.group(0)
 
+class EdgeChromium(Browser):
+    """MicrosoftEdge-specific interface."""
+    platform = {
+        "Linux": "linux",
+        "Windows": "win",
+        "Darwin": "macos"
+    }.get(uname[0])
+    product = "edgechromium"
+    requirements = "requirements_edge_chromium.txt"
+
+    def install(self, dest=None, channel=None):
+        raise NotImplementedError
+
+    def find_binary(self, venv_path=None, channel=None):
+        binary = None
+        if self.platform == "win":
+            binaryname = "msedge"
+            binary = find_executable(binaryname)
+            if not binary:
+                # Use paths from different Edge channels starting with Release\Beta\Dev\Canary
+                winpaths = [os.path.expanduser("~\\AppData\\Local\\Microsoft\\Edge\\Application"),
+                            os.path.expandvars("$SYSTEMDRIVE\\Program Files\\Microsoft\\Edge Beta\\Application"),
+                            os.path.expandvars("$SYSTEMDRIVE\\Program Files\\Microsoft\\Edge Dev\\Application"),
+                            os.path.expandvars("$SYSTEMDRIVE\\Program Files (x86)\\Microsoft\\Edge Beta\\Application"),
+                            os.path.expandvars("$SYSTEMDRIVE\\Program Files (x86)\\Microsoft\\Edge Dev\\Application"),
+                            os.path.expanduser("~\\AppData\Local\\Microsoft\\Edge SxS\\Application"),]
+                return find_executable(binaryname, os.pathsep.join(winpaths))
+        if self.platform == "macos":
+            binaryname = "Microsoft Edge Canary"
+            binary = find_executable(binaryname)
+            if not binary:
+                macpaths = ["/Applications/Microsoft Edge.app/Contents/MacOS",
+                    os.path.expanduser("~/Applications/Microsoft Edge.app/Contents/MacOS"),
+                    "/Applications/Microsoft Edge Canary.app/Contents/MacOS",
+                    os.path.expanduser("~/Applications/Microsoft Edge Canary.app/Contents/MacOS")]
+                return find_executable("Microsoft Edge Canary", os.pathsep.join(macpaths))
+        return binary
+
+    def find_webdriver(self, channel=None):
+        return find_executable("msedgedriver")
+
+    def install_webdriver(self, dest=None, channel=None, browser_binary=None):
+        if self.platform != "win":
+            raise ValueError("Only Windows platform is currently supported")
+
+        if dest is None:
+            dest = os.pwd
+
+        platform = "x64" if uname[4] == "x86_64" else "x86"
+        url = "https://az813057.vo.msecnd.net/webdriver/msedgedriver_%s/msedgedriver.exe" % platform
+
+        self.logger.info("Downloading MSEdgeDriver from %s" % url)
+        resp = get(url)
+        installer_path = os.path.join(dest, "msedgedriver.exe")
+        with open(installer_path, "wb") as f:
+            f.write(resp.content)
+
+        return find_executable("msedgedriver", dest)
+
+    def version(self, binary=None, webdriver_binary=None):
+        if binary is None:
+            binary = self.find_binary()
+        if self.platform != "win":
+            try:
+                version_string = call(binary, "--version").strip()
+            except subprocess.CalledProcessError:
+                self.logger.warning("Failed to call %s" % binary)
+                return None
+            m = re.match(r"Microsoft Edge (.*) ", version_string)
+            if not m:
+                self.logger.warning("Failed to extract version from: %s" % version_string)
+                return None
+            return m.group(1)
+        else:
+            if binary is not None:
+                return _get_fileversion(binary, self.logger)
+            self.logger.warning("Failed to find Edge binary.")
+            return None
 
 class Edge(Browser):
     """Edge-specific interface."""

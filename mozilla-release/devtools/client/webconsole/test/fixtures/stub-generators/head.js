@@ -12,12 +12,15 @@
 // Load the shared-head file first.
 Services.scriptloader.loadSubScript(
   "chrome://mochitests/content/browser/devtools/client/shared/test/shared-head.js",
-  this);
+  this
+);
 
 const { PREFS } = require("devtools/client/webconsole/constants");
 
 const { prepareMessage } = require("devtools/client/webconsole/utils/messages");
-const { stubPackets } = require("devtools/client/webconsole/test/fixtures/stubs/index.js");
+const {
+  stubPackets,
+} = require("devtools/client/webconsole/test/fixtures/stubs/index.js");
 const {
   consoleApi,
   cssMessage,
@@ -26,11 +29,13 @@ const {
   pageError,
 } = require("devtools/client/webconsole/test/fixtures/stub-generators/stub-snippets.js");
 
-const BASE_PATH = env.get("MOZ_DEVELOPER_REPO_DIR") +
-                  "/devtools/client/webconsole/test/fixtures";
+const BASE_PATH =
+  env.get("MOZ_DEVELOPER_REPO_DIR") +
+  "/devtools/client/webconsole/test/fixtures";
 
 const cachedPackets = {};
 
+/* eslint-disable complexity */
 function getCleanedPacket(key, packet) {
   if (Object.keys(cachedPackets).includes(key)) {
     return cachedPackets[key];
@@ -74,6 +79,10 @@ function getCleanedPacket(key, packet) {
       res.actor = existingPacket.actor;
     }
 
+    if (res.channelId) {
+      res.channelId = existingPacket.channelId;
+    }
+
     if (res.message) {
       // Clean timeStamp on the message prop.
       res.message.timeStamp = existingPacket.message.timeStamp;
@@ -106,7 +115,8 @@ function getCleanedPacket(key, packet) {
             // `window`'s properties count can vary from OS to OS, so we
             // clean the `ownPropertyLength` property from the grip.
             if (newArgument.class === "Window") {
-              newArgument.ownPropertyLength = existingArgument.ownPropertyLength;
+              newArgument.ownPropertyLength =
+                existingArgument.ownPropertyLength;
             }
           }
           return newArgument;
@@ -134,7 +144,8 @@ function getCleanedPacket(key, packet) {
       if (res.result.preview) {
         if (res.result.preview.timestamp) {
           // Clean timestamp there too.
-          res.result.preview.timestamp = existingPacket.result.preview.timestamp;
+          res.result.preview.timestamp =
+            existingPacket.result.preview.timestamp;
         }
       }
     }
@@ -148,12 +159,13 @@ function getCleanedPacket(key, packet) {
       if (res.exception.preview) {
         if (res.exception.preview.timestamp) {
           // Clean timestamp there too.
-          res.exception.preview.timestamp = existingPacket.exception.preview.timestamp;
+          res.exception.preview.timestamp =
+            existingPacket.exception.preview.timestamp;
         }
 
         if (
-          typeof res.exception.preview.message === "object"
-          && res.exception.preview.message.type === "longString"
+          typeof res.exception.preview.message === "object" &&
+          res.exception.preview.message.type === "longString"
         ) {
           res.exception.preview.message.actor =
             existingPacket.exception.preview.message.actor;
@@ -161,18 +173,18 @@ function getCleanedPacket(key, packet) {
       }
 
       if (
-        typeof res.exceptionMessage === "object"
-        && res.exceptionMessage.type === "longString"
+        typeof res.exceptionMessage === "object" &&
+        res.exceptionMessage.type === "longString"
       ) {
-        res.exceptionMessage.actor =
-          existingPacket.exceptionMessage.actor;
+        res.exceptionMessage.actor = existingPacket.exceptionMessage.actor;
       }
     }
 
     if (res.eventActor) {
       // Clean actor ids, timeStamp and startedDateTime on network messages.
       res.eventActor.actor = existingPacket.eventActor.actor;
-      res.eventActor.startedDateTime = existingPacket.eventActor.startedDateTime;
+      res.eventActor.startedDateTime =
+        existingPacket.eventActor.startedDateTime;
       res.eventActor.timeStamp = existingPacket.eventActor.timeStamp;
     }
 
@@ -182,10 +194,11 @@ function getCleanedPacket(key, packet) {
       res.pageError.innerWindowID = existingPacket.pageError.innerWindowID;
 
       if (
-        typeof res.pageError.errorMessage === "object"
-        && res.pageError.errorMessage.type === "longString"
+        typeof res.pageError.errorMessage === "object" &&
+        res.pageError.errorMessage.type === "longString"
       ) {
-        res.pageError.errorMessage.actor = existingPacket.pageError.errorMessage.actor;
+        res.pageError.errorMessage.actor =
+          existingPacket.pageError.errorMessage.actor;
       }
 
       if (res.pageError.sourceId) {
@@ -234,7 +247,8 @@ function getCleanedPacket(key, packet) {
       }
 
       if (res.networkInfo.startedDateTime) {
-        res.networkInfo.startedDateTime = existingPacket.networkInfo.startedDateTime;
+        res.networkInfo.startedDateTime =
+          existingPacket.networkInfo.startedDateTime;
       }
 
       if (res.networkInfo.totalTime) {
@@ -251,19 +265,22 @@ function getCleanedPacket(key, packet) {
       }
 
       if (
-        res.networkInfo.response
-        && res.networkInfo.response.headersSize !== undefined
+        res.networkInfo.response &&
+        res.networkInfo.response.headersSize !== undefined
       ) {
         res.networkInfo.response.headersSize =
           existingPacket.networkInfo.response.headersSize;
       }
-      if (res.networkInfo.response && res.networkInfo.response.bodySize !== undefined) {
+      if (
+        res.networkInfo.response &&
+        res.networkInfo.response.bodySize !== undefined
+      ) {
         res.networkInfo.response.bodySize =
           existingPacket.networkInfo.response.bodySize;
       }
       if (
-        res.networkInfo.response
-        && res.networkInfo.response.transferredSize !== undefined
+        res.networkInfo.response &&
+        res.networkInfo.response.transferredSize !== undefined
       ) {
         res.networkInfo.response.transferredSize =
           existingPacket.networkInfo.response.transferredSize;
@@ -272,7 +289,8 @@ function getCleanedPacket(key, packet) {
 
     if (res.helperResult) {
       if (res.helperResult.object) {
-        res.helperResult.object.actor = existingPacket.helperResult.object.actor;
+        res.helperResult.object.actor =
+          existingPacket.helperResult.object.actor;
       }
     }
   } else {
@@ -282,20 +300,23 @@ function getCleanedPacket(key, packet) {
   cachedPackets[key] = res;
   return res;
 }
+/* eslint-enable complexity */
 
 function formatPacket(key, packet) {
-  const stringifiedPacket = JSON.stringify(getCleanedPacket(key, packet), null, 2);
+  const stringifiedPacket = JSON.stringify(
+    getCleanedPacket(key, packet),
+    null,
+    2
+  );
   return `stubPackets.set(\`${key}\`, ${stringifiedPacket});`;
 }
 
 function formatStub(key, packet) {
-  const prepared = prepareMessage(
-    getCleanedPacket(key, packet),
-    {getNextId: () => "1"}
-  );
+  const prepared = prepareMessage(getCleanedPacket(key, packet), {
+    getNextId: () => "1",
+  });
   const stringifiedMessage = JSON.stringify(prepared, null, 2);
-  return (
-    `stubPreparedMessages.set(\`${key}\`, new ConsoleMessage(${stringifiedMessage}));`);
+  return `stubPreparedMessages.set(\`${key}\`, new ConsoleMessage(${stringifiedMessage}));`;
 }
 
 function formatNetworkEventStub(key, packet) {
@@ -304,13 +325,12 @@ function formatNetworkEventStub(key, packet) {
     ? cleanedPacket.networkInfo
     : cleanedPacket;
 
-  const prepared = prepareMessage(
-    networkInfo,
-    {getNextId: () => "1"}
-  );
+  const prepared = prepareMessage(networkInfo, { getNextId: () => "1" });
   const stringifiedMessage = JSON.stringify(prepared, null, 2);
-  return `stubPreparedMessages.set("${key}", ` +
-    `new NetworkEventMessage(${stringifiedMessage}));`;
+  return (
+    `stubPreparedMessages.set("${key}", ` +
+    `new NetworkEventMessage(${stringifiedMessage}));`
+  );
 }
 
 function formatFile(stubs, type) {
@@ -341,7 +361,8 @@ module.exports = {
 }
 
 async function generateConsoleApiStubs() {
-  const TEST_URI = "http://example.com/browser/devtools/client/webconsole/test/fixtures/stub-generators/test-console-api.html";
+  const TEST_URI =
+    "http://example.com/browser/devtools/client/webconsole/test/fixtures/stub-generators/test-console-api.html";
 
   // Hiding log messages so we don't get unwanted client/server communication.
   Services.prefs.setBoolPref(PREFS.FILTER.LOG, false);
@@ -353,14 +374,14 @@ async function generateConsoleApiStubs() {
 
   const toolbox = await openNewTabAndToolbox(TEST_URI, "webconsole");
   const hud = toolbox.getCurrentPanel().hud;
-  const {ui} = hud;
+  const { ui } = hud;
   ok(ui.jsterm, "jsterm exists");
   ok(ui.wrapper, "wrapper exists");
 
-  for (const [key, {keys, code}] of consoleApi) {
+  for (const [key, { keys, code }] of consoleApi) {
     const received = new Promise(resolve => {
       let i = 0;
-      const listener = async (res) => {
+      const listener = async res => {
         const callKey = keys[i];
         stubs.packets.push(formatPacket(callKey, res));
         stubs.preparedMessages.push(formatStub(callKey, res));
@@ -372,18 +393,17 @@ async function generateConsoleApiStubs() {
       toolbox.target.activeConsole.on("consoleAPICall", listener);
     });
 
-    await ContentTask.spawn(
-      gBrowser.selectedBrowser,
-      [key, code],
-      function([subKey, subCode]) {
-        const script = content.document.createElement("script");
-        // eslint-disable-next-line no-unsanitized/property
-        script.innerHTML = `function triggerPacket() {${subCode}}`;
-        content.document.body.appendChild(script);
-        content.wrappedJSObject.triggerPacket();
-        script.remove();
-      }
-    );
+    await ContentTask.spawn(gBrowser.selectedBrowser, [key, code], function([
+      subKey,
+      subCode,
+    ]) {
+      const script = content.document.createElement("script");
+      // eslint-disable-next-line no-unsanitized/property
+      script.innerHTML = `function triggerPacket() {${subCode}}`;
+      content.document.body.appendChild(script);
+      content.wrappedJSObject.triggerPacket();
+      script.remove();
+    });
 
     await received;
   }
@@ -395,7 +415,8 @@ async function generateConsoleApiStubs() {
 }
 
 async function generateCssMessageStubs() {
-  const TEST_URI = "http://example.com/browser/devtools/client/webconsole/test/fixtures/stub-generators/test-css-message.html";
+  const TEST_URI =
+    "http://example.com/browser/devtools/client/webconsole/test/fixtures/stub-generators/test-css-message.html";
 
   const stubs = {
     preparedMessages: [],
@@ -409,26 +430,28 @@ async function generateCssMessageStubs() {
       /* CSS errors are considered as pageError on the server */
       toolbox.target.activeConsole.on("pageError", function onPacket(packet) {
         toolbox.target.activeConsole.off("pageError", onPacket);
-        info("Received css message: pageError " + JSON.stringify(packet, null, "\t"));
+        info(
+          "Received css message: pageError " +
+            JSON.stringify(packet, null, "\t")
+        );
 
-        const message = prepareMessage(packet, {getNextId: () => 1});
+        const message = prepareMessage(packet, { getNextId: () => 1 });
         stubs.packets.push(formatPacket(message.messageText, packet));
         stubs.preparedMessages.push(formatStub(message.messageText, packet));
         resolve();
       });
     });
 
-    await ContentTask.spawn(
-      gBrowser.selectedBrowser,
-      [key, code],
-      function([subKey, subCode]) {
-        content.docShell.cssErrorReportingEnabled = true;
-        const style = content.document.createElement("style");
-        // eslint-disable-next-line no-unsanitized/property
-        style.innerHTML = subCode;
-        content.document.body.appendChild(style);
-      }
-    );
+    await ContentTask.spawn(gBrowser.selectedBrowser, [key, code], function([
+      subKey,
+      subCode,
+    ]) {
+      content.docShell.cssErrorReportingEnabled = true;
+      const style = content.document.createElement("style");
+      // eslint-disable-next-line no-unsanitized/property
+      style.innerHTML = subCode;
+      content.document.body.appendChild(style);
+    });
 
     await received;
   }
@@ -459,7 +482,8 @@ async function generateEvaluationResultStubs() {
 }
 
 async function generateNetworkEventStubs() {
-  const TEST_URI = "http://example.com/browser/devtools/client/webconsole/test/fixtures/stub-generators/test-network-event.html";
+  const TEST_URI =
+    "http://example.com/browser/devtools/client/webconsole/test/fixtures/stub-generators/test-network-event.html";
 
   const stubs = {
     preparedMessages: [],
@@ -467,12 +491,14 @@ async function generateNetworkEventStubs() {
   };
 
   const toolbox = await openNewTabAndToolbox(TEST_URI, "webconsole");
-  const {ui} = toolbox.getCurrentPanel().hud;
+  const { ui } = toolbox.getCurrentPanel().hud;
 
-  for (const [key, {keys, code}] of networkEvent) {
+  for (const [key, { keys, code }] of networkEvent) {
     const onNetwork = new Promise(resolve => {
       let i = 0;
-      toolbox.target.activeConsole.on("networkEvent", function onNetworkEvent(res) {
+      toolbox.target.activeConsole.on("networkEvent", function onNetworkEvent(
+        res
+      ) {
         stubs.packets.push(formatPacket(keys[i], res));
         stubs.preparedMessages.push(formatNetworkEventStub(keys[i], res));
         if (++i === keys.length) {
@@ -508,18 +534,17 @@ async function generateNetworkEventStubs() {
       });
     });
 
-    await ContentTask.spawn(
-      gBrowser.selectedBrowser,
-      [key, code],
-      function([subKey, subCode]) {
-        const script = content.document.createElement("script");
-        // eslint-disable-next-line no-unsanitized/property
-        script.innerHTML = `function triggerPacket() {${subCode}}`;
-        content.document.body.appendChild(script);
-        content.wrappedJSObject.triggerPacket();
-        script.remove();
-      }
-    );
+    await ContentTask.spawn(gBrowser.selectedBrowser, [key, code], function([
+      subKey,
+      subCode,
+    ]) {
+      const script = content.document.createElement("script");
+      // eslint-disable-next-line no-unsanitized/property
+      script.innerHTML = `function triggerPacket() {${subCode}}`;
+      content.document.body.appendChild(script);
+      content.wrappedJSObject.triggerPacket();
+      script.remove();
+    });
 
     await Promise.all([onNetwork, onNetworkUpdate]);
   }
@@ -529,7 +554,8 @@ async function generateNetworkEventStubs() {
 }
 
 async function generatePageErrorStubs() {
-  const TEST_URI = "http://example.com/browser/devtools/client/webconsole/test/fixtures/stub-generators/test-console-api.html";
+  const TEST_URI =
+    "http://example.com/browser/devtools/client/webconsole/test/fixtures/stub-generators/test-console-api.html";
 
   const stubs = {
     preparedMessages: [],
@@ -555,17 +581,16 @@ async function generatePageErrorStubs() {
       expectUncaughtException();
     }
 
-    await ContentTask.spawn(
-      gBrowser.selectedBrowser,
-      [key, code],
-      function([subKey, subCode]) {
-        const script = content.document.createElement("script");
-        // eslint-disable-next-line no-unsanitized/property
-        script.innerHTML = subCode;
-        content.document.body.appendChild(script);
-        script.remove();
-      }
-    );
+    await ContentTask.spawn(gBrowser.selectedBrowser, [key, code], function([
+      subKey,
+      subCode,
+    ]) {
+      const script = content.document.createElement("script");
+      // eslint-disable-next-line no-unsanitized/property
+      script.innerHTML = subCode;
+      content.document.body.appendChild(script);
+      script.remove();
+    });
 
     await received;
   }

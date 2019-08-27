@@ -18,22 +18,30 @@
 
 "use strict";
 
-var {Services} = ChromeUtils.import("resource://gre/modules/Services.jsm");
-var {CliqzResources} = ChromeUtils.import("resource:///modules/CliqzResources.jsm");
+var { Services } = ChromeUtils.import("resource://gre/modules/Services.jsm");
+var { CliqzResources } = ChromeUtils.import("resource:///modules/CliqzResources.jsm");
 
-ChromeUtils.defineModuleGetter(this, "AMTelemetry",
-                               "resource://gre/modules/AddonManager.jsm");
-ChromeUtils.defineModuleGetter(this, "formAutofillParent",
-                               "resource://formautofill/FormAutofillParent.jsm");
+ChromeUtils.defineModuleGetter(
+  this,
+  "AMTelemetry",
+  "resource://gre/modules/AddonManager.jsm"
+);
+ChromeUtils.defineModuleGetter(
+  this,
+  "formAutofillParent",
+  "resource://formautofill/FormAutofillParent.jsm"
+);
 
-var gLastCategory = {category: undefined, subcategory: undefined};
+var gLastCategory = { category: undefined, subcategory: undefined };
 const gXULDOMParser = new DOMParser();
 
 var gCategoryInits = new Map();
 function init_category_if_required(category) {
   let categoryInfo = gCategoryInits.get(category);
   if (!categoryInfo) {
-    throw new Error("Unknown in-content prefs category! Can't init " + category);
+    throw new Error(
+      "Unknown in-content prefs category! Can't init " + category
+    );
   }
   if (categoryInfo.inited) {
     return null;
@@ -67,7 +75,7 @@ function register_module(categoryName, categoryObject) {
   });
 }
 
-document.addEventListener("DOMContentLoaded", init_all, {once: true});
+document.addEventListener("DOMContentLoaded", init_all, { once: true });
 
 function init_all() {
   Preferences.forceEnableInstantApply();
@@ -125,23 +133,26 @@ function init_all() {
 
   gotoPref().then(() => {
     let helpButton = document.getElementById("helpButton");
-    let helpUrl = Services.urlFormatter.formatURLPref("app.support.baseURL") + "preferences";
+    let helpUrl =
+      Services.urlFormatter.formatURLPref("app.support.baseURL") +
+      "preferences";
     helpButton.setAttribute("href", helpUrl);
 
-    document.getElementById("addonsButton")
-      .addEventListener("click", () => {
-        let mainWindow = window.docShell.rootTreeItem.domWindow;
-        mainWindow.BrowserOpenAddonsMgr();
-        AMTelemetry.recordLinkEvent({
-          object: "aboutPreferences",
-          value: "about:addons",
-        });
+    document.getElementById("addonsButton").addEventListener("click", () => {
+      let mainWindow = window.docShell.rootTreeItem.domWindow;
+      mainWindow.BrowserOpenAddonsMgr();
+      AMTelemetry.recordLinkEvent({
+        object: "aboutPreferences",
+        value: "about:addons",
       });
+    });
 
-    document.dispatchEvent(new CustomEvent("Initialized", {
-      "bubbles": true,
-      "cancelable": true,
-    }));
+    document.dispatchEvent(
+      new CustomEvent("Initialized", {
+        bubbles: true,
+        cancelable: true,
+      })
+    );
   });
 }
 
@@ -197,8 +208,9 @@ async function gotoPref(aCategory) {
 
   // Updating the hash (below) or changing the selected category
   // will re-enter gotoPref.
-  if (gLastCategory.category == category && !subcategory)
+  if (gLastCategory.category == category && !subcategory) {
     return;
+  }
 
   // CLIQZ-SPECIAL:
   // I have put it here after the previous IF-CLAUSE because otherwise
@@ -221,7 +233,11 @@ async function gotoPref(aCategory) {
     }
   }
 
-  if (gLastCategory.category || category != kDefaultCategoryInternalName || subcategory) {
+  if (
+    gLastCategory.category ||
+    category != kDefaultCategoryInternalName ||
+    subcategory
+  ) {
     let friendlyName = internalPrefCategoryNameToFriendlyName(category);
     document.location.hash = friendlyName;
   }
@@ -239,14 +255,20 @@ async function gotoPref(aCategory) {
   try {
     await init_category_if_required(category);
   } catch (ex) {
-    Cu.reportError(new Error("Error initializing preference category " + category + ": " + ex));
+    Cu.reportError(
+      new Error(
+        "Error initializing preference category " + category + ": " + ex
+      )
+    );
     throw ex;
   }
 
   // Bail out of this goToPref if the category
   // or subcategory changed during async operation.
-  if (gLastCategory.category !== category ||
-      gLastCategory.subcategory !== subcategory) {
+  if (
+    gLastCategory.category !== category ||
+    gLastCategory.subcategory !== subcategory
+  ) {
     return;
   }
 
@@ -264,16 +286,20 @@ function search(aQuery, aAttribute) {
   for (let element of elements) {
     // If the "data-hidden-from-search" is "true", the
     // element will not get considered during search.
-    if (element.getAttribute("data-hidden-from-search") != "true" ||
-        element.getAttribute("data-subpanel") == "true") {
+    if (
+      element.getAttribute("data-hidden-from-search") != "true" ||
+      element.getAttribute("data-subpanel") == "true"
+    ) {
       let attributeValue = element.getAttribute(aAttribute);
       if (attributeValue == aQuery) {
         element.hidden = false;
       } else {
         element.hidden = true;
       }
-    } else if (element.getAttribute("data-hidden-from-search") == "true" &&
-               !element.hidden) {
+    } else if (
+      element.getAttribute("data-hidden-from-search") == "true" &&
+      !element.hidden
+    ) {
       element.hidden = true;
     }
     element.classList.remove("visually-hidden");
@@ -282,10 +308,11 @@ function search(aQuery, aAttribute) {
   let keysets = mainPrefPane.getElementsByTagName("keyset");
   for (let element of keysets) {
     let attributeValue = element.getAttribute(aAttribute);
-    if (attributeValue == aQuery)
+    if (attributeValue == aQuery) {
       element.removeAttribute("disabled");
-    else
+    } else {
       element.setAttribute("disabled", true);
+    }
   }
 }
 
@@ -320,15 +347,19 @@ async function scrollAndHighlight(subcategory, category) {
 function getClosestDisplayedHeader(element) {
   let header = element.closest("groupbox");
   let searchHeader = header.querySelector(".search-header");
-  if (searchHeader && searchHeader.hidden &&
-      header.previousElementSibling.classList.contains("subcategory")) {
+  if (
+    searchHeader &&
+    searchHeader.hidden &&
+    header.previousElementSibling.classList.contains("subcategory")
+  ) {
     header = header.previousElementSibling;
   }
   return header;
 }
 
 function scrollContentTo(element) {
-  const STICKY_CONTAINER_HEIGHT = document.querySelector(".sticky-container").clientHeight;
+  const STICKY_CONTAINER_HEIGHT = document.querySelector(".sticky-container")
+    .clientHeight;
   let mainContent = document.querySelector(".main-content");
   let top = element.getBoundingClientRect().top - STICKY_CONTAINER_HEIGHT;
   mainContent.scroll({
@@ -338,14 +369,17 @@ function scrollContentTo(element) {
 }
 
 function friendlyPrefCategoryNameToInternalName(aName) {
-  if (aName.startsWith("pane"))
+  if (aName.startsWith("pane")) {
     return aName;
+  }
   return "pane" + aName.substring(0, 1).toUpperCase() + aName.substr(1);
 }
 
 // This function is duplicated inside of utilityOverlay.js's openPreferences.
 function internalPrefCategoryNameToFriendlyName(aName) {
-  return (aName || "").replace(/^pane./, function(toReplace) { return toReplace[4].toLowerCase(); });
+  return (aName || "").replace(/^pane./, function(toReplace) {
+    return toReplace[4].toLowerCase();
+  });
 }
 
 // Put up a confirm dialog with "ok to restart", "revert without restarting"
@@ -357,39 +391,48 @@ function internalPrefCategoryNameToFriendlyName(aName) {
 const CONFIRM_RESTART_PROMPT_RESTART_NOW = 0;
 const CONFIRM_RESTART_PROMPT_CANCEL = 1;
 const CONFIRM_RESTART_PROMPT_RESTART_LATER = 2;
-async function confirmRestartPrompt(aRestartToEnable, aDefaultButtonIndex,
-                                    aWantRevertAsCancelButton,
-                                    aWantRestartLaterButton) {
+async function confirmRestartPrompt(
+  aRestartToEnable,
+  aDefaultButtonIndex,
+  aWantRevertAsCancelButton,
+  aWantRestartLaterButton
+) {
   let [
-    msg, title, restartButtonText, noRestartButtonText, restartLaterButtonText,
+    msg,
+    title,
+    restartButtonText,
+    noRestartButtonText,
+    restartLaterButtonText,
   ] = await document.l10n.formatValues([
-    {id: aRestartToEnable ?
-      "feature-enable-requires-restart" : "feature-disable-requires-restart"},
-    {id: "should-restart-title"},
-    {id: "should-restart-ok"},
-    {id: "cancel-no-restart-button"},
-    {id: "restart-later"},
+    {
+      id: aRestartToEnable
+        ? "feature-enable-requires-restart"
+        : "feature-disable-requires-restart",
+    },
+    { id: "should-restart-title" },
+    { id: "should-restart-ok" },
+    { id: "cancel-no-restart-button" },
+    { id: "restart-later" },
   ]);
 
   // Set up the first (index 0) button:
-  let buttonFlags = (Services.prompt.BUTTON_POS_0 *
-                     Services.prompt.BUTTON_TITLE_IS_STRING);
-
+  let buttonFlags =
+    Services.prompt.BUTTON_POS_0 * Services.prompt.BUTTON_TITLE_IS_STRING;
 
   // Set up the second (index 1) button:
   if (aWantRevertAsCancelButton) {
-    buttonFlags += (Services.prompt.BUTTON_POS_1 *
-                    Services.prompt.BUTTON_TITLE_IS_STRING);
+    buttonFlags +=
+      Services.prompt.BUTTON_POS_1 * Services.prompt.BUTTON_TITLE_IS_STRING;
   } else {
     noRestartButtonText = null;
-    buttonFlags += (Services.prompt.BUTTON_POS_1 *
-                    Services.prompt.BUTTON_TITLE_CANCEL);
+    buttonFlags +=
+      Services.prompt.BUTTON_POS_1 * Services.prompt.BUTTON_TITLE_CANCEL;
   }
 
   // Set up the third (index 2) button:
   if (aWantRestartLaterButton) {
-    buttonFlags += (Services.prompt.BUTTON_POS_2 *
-                    Services.prompt.BUTTON_TITLE_IS_STRING);
+    buttonFlags +=
+      Services.prompt.BUTTON_POS_2 * Services.prompt.BUTTON_TITLE_IS_STRING;
   } else {
     restartLaterButtonText = null;
   }
@@ -408,17 +451,29 @@ async function confirmRestartPrompt(aRestartToEnable, aDefaultButtonIndex,
       break;
   }
 
-  let buttonIndex = Services.prompt.confirmEx(window, title, msg, buttonFlags,
-                                              restartButtonText, noRestartButtonText,
-                                              restartLaterButtonText, null, {});
+  let buttonIndex = Services.prompt.confirmEx(
+    window,
+    title,
+    msg,
+    buttonFlags,
+    restartButtonText,
+    noRestartButtonText,
+    restartLaterButtonText,
+    null,
+    {}
+  );
 
   // If we have the second confirmation dialog for restart, see if the user
   // cancels out at that point.
   if (buttonIndex == CONFIRM_RESTART_PROMPT_RESTART_NOW) {
-    let cancelQuit = Cc["@mozilla.org/supports-PRBool;1"]
-                       .createInstance(Ci.nsISupportsPRBool);
-    Services.obs.notifyObservers(cancelQuit, "quit-application-requested",
-                                  "restart");
+    let cancelQuit = Cc["@mozilla.org/supports-PRBool;1"].createInstance(
+      Ci.nsISupportsPRBool
+    );
+    Services.obs.notifyObservers(
+      cancelQuit,
+      "quit-application-requested",
+      "restart"
+    );
     if (cancelQuit.data) {
       buttonIndex = CONFIRM_RESTART_PROMPT_CANCEL;
     }
@@ -452,7 +507,7 @@ function maybeDisplayPoliciesNotice() {
  * to be installed, so if it isn't installed remove it from availableLocales.
  */
 async function getAvailableLocales() {
-  let {availableLocales, defaultLocale, lastFallbackLocale} = Services.locale;
+  let { availableLocales, defaultLocale, lastFallbackLocale } = Services.locale;
   // If defaultLocale isn't lastFallbackLocale, then we still need the langpack
   // for lastFallbackLocale for it to be useful.
   if (defaultLocale != lastFallbackLocale) {

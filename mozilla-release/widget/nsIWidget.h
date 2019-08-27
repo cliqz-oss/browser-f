@@ -853,16 +853,18 @@ class nsIWidget : public nsISupports {
    */
   virtual bool IsEnabled() const = 0;
 
+  /*
+   * Whether we should request activation of this widget's toplevel window.
+   */
+  enum class Raise {
+    No,
+    Yes,
+  };
+
   /**
    * Request activation of this window or give focus to this widget.
-   *
-   * @param aRaise If true, this function requests activation of this
-   *               widget's toplevel window.
-   *               If false, the appropriate toplevel window (which in
-   *               the case of popups may not be this widget's toplevel
-   *               window) is already active.
    */
-  virtual nsresult SetFocus(bool aRaise = false) = 0;
+  virtual void SetFocus(Raise) = 0;
 
   /**
    * Get this widget's outside dimensions relative to its parent widget. For
@@ -933,6 +935,16 @@ class nsIWidget : public nsISupports {
     // Depending on the backend, overloading this method may be useful if
     // requesting the client offset is expensive.
     return GetClientBounds().Size();
+  }
+
+  /**
+   * Get the size of the bounds of this widget that will be visible when
+   * rendered.
+   *
+   * @return the width and height of the composition size of this widget.
+   */
+  virtual LayoutDeviceIntSize GetCompositionSize() {
+    return GetBounds().Size();
   }
 
   /**

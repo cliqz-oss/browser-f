@@ -157,7 +157,7 @@ static inline bool IsMarkingTrace(JSTracer* trc) {
   //
   //   1. During TraceRuntime, RuntimeHeapIsBusy() is true, but the
   //      tracer might not be a marking tracer.
-  //   2. When a write barrier executes, IsMarkingTracer is true, but
+  //   2. When a write barrier executes, isMarkingTracer is true, but
   //      RuntimeHeapIsBusy() will be false.
 
   return JS::RuntimeHeapIsCollecting() && trc->isMarkingTracer();
@@ -903,7 +903,7 @@ bool js::StringHasRegExpMetaChars(JSLinearString* str) {
 /* RegExpShared */
 
 RegExpShared::RegExpShared(JSAtom* source, RegExpFlags flags)
-    : source(source), flags(flags), canStringMatch(false), parenCount(0) {}
+    : source(source), parenCount(0), flags(flags), canStringMatch(false) {}
 
 void RegExpShared::traceChildren(JSTracer* trc) {
   // Discard code to avoid holding onto ExecutablePools.
@@ -928,7 +928,10 @@ void RegExpShared::discardJitCode() {
 
 void RegExpShared::finalize(FreeOp* fop) {
   for (auto& comp : compilationArray) {
-    js_free(comp.byteCode);
+    if (comp.byteCode) {
+      size_t length = comp.byteCodeLength();
+      fop->free_(this, comp.byteCode, length, MemoryUse::RegExpSharedBytecode);
+    }
   }
   tables.~JitCodeTables();
 }
@@ -995,6 +998,8 @@ bool RegExpShared::compile(JSContext* cx, MutableHandleRegExpShared re,
   } else if (code.byteCode) {
     MOZ_ASSERT(tables.empty(), "RegExpInterpreter does not use data tables");
     compilation.byteCode = code.byteCode;
+    AddCellMemory(re, compilation.byteCodeLength(),
+                  MemoryUse::RegExpSharedBytecode);
   }
 
   return true;

@@ -64,3 +64,11 @@ cfr-doorhanger-bookmark-fxa-link-text = Lesezeichen jetzt synchronisieren…
 cfr-doorhanger-bookmark-fxa-close-btn-tooltip =
   .aria-label = Schließen-Schaltfläche
   .title = Schließen
+
+## What's New toolbar button and panel
+
+cfr-whatsnew-button =
+  .label = Neue Funktionen und Änderungen
+  .tooltiptext = Neue Funktionen und Änderungen
+
+cfr-whatsnew-panel-header = Neue Funktionen und Änderungen

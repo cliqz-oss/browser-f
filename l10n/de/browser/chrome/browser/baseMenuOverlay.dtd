@@ -52,3 +52,5 @@
 <!ENTITY hideOtherAppsCmdMac.commandkey "H">
 
 <!ENTITY showAllAppsCmdMac.label        "Alle einblenden">
+
+<!ENTITY touchBarCmdMac.label           "Touch Bar anpassen…">

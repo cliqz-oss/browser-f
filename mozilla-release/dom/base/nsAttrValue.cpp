@@ -273,7 +273,7 @@ void nsAttrValue::SetTo(const nsAttrValue& aOther) {
       break;
     }
     case ePercent: {
-      cont->mValue.mPercent = otherCont->mValue.mPercent;
+      cont->mDoubleValue = otherCont->mDoubleValue;
       break;
     }
     case eColor: {
@@ -541,9 +541,13 @@ void nsAttrValue::ToString(nsAString& aResult) const {
       break;
     }
     case ePercent: {
-      nsAutoString intStr;
-      intStr.AppendInt(cont ? cont->mValue.mPercent : GetIntInternal());
-      aResult = intStr + NS_LITERAL_STRING("%");
+      nsAutoString str;
+      if (cont) {
+        str.AppendFloat(cont->mDoubleValue);
+      } else {
+        str.AppendInt(GetIntInternal());
+      }
+      aResult = str + NS_LITERAL_STRING("%");
 
       break;
     }
@@ -757,7 +761,7 @@ uint32_t nsAttrValue::HashValue() const {
       return cont->mValue.mEnumValue;
     }
     case ePercent: {
-      return cont->mValue.mPercent;
+      return cont->mDoubleValue;
     }
     case eColor: {
       return cont->mValue.mColor;
@@ -842,7 +846,7 @@ bool nsAttrValue::Equals(const nsAttrValue& aOther) const {
       break;
     }
     case ePercent: {
-      if (thisCont->mValue.mPercent == otherCont->mValue.mPercent) {
+      if (thisCont->mDoubleValue == otherCont->mDoubleValue) {
         needsStringComparison = true;
       }
       break;
@@ -1169,7 +1173,7 @@ void nsAttrValue::SetIntValueAndType(int32_t aValue, ValueType aType,
         break;
       }
       case ePercent: {
-        cont->mValue.mPercent = aValue;
+        cont->mDoubleValue = aValue;
         break;
       }
       case eEnum: {
@@ -1187,6 +1191,15 @@ void nsAttrValue::SetIntValueAndType(int32_t aValue, ValueType aType,
     NS_ASSERTION(!mBits, "Reset before calling SetIntValueAndType!");
     mBits = (aValue * NS_ATTRVALUE_INTEGERTYPE_MULTIPLIER) | aType;
   }
+}
+
+void nsAttrValue::SetDoubleValueAndType(double aValue, ValueType aType,
+                                        const nsAString* aStringValue) {
+  MOZ_ASSERT(aType == eDoubleValue || aType == ePercent, "Unexpected type");
+  MiscContainer* cont = EnsureEmptyMiscContainer();
+  cont->mDoubleValue = aValue;
+  cont->mType = aType;
+  SetMiscAtomOrString(aStringValue);
 }
 
 int16_t nsAttrValue::GetEnumTableIndex(const EnumTable* aTable) {
@@ -1249,31 +1262,126 @@ bool nsAttrValue::ParseEnumValue(const nsAString& aValue,
   return false;
 }
 
-bool nsAttrValue::ParseSpecialIntValue(const nsAString& aString) {
+bool nsAttrValue::DoParseHTMLDimension(const nsAString& aInput,
+                                       bool aEnsureNonzero) {
   ResetIfSet();
 
-  nsAutoString tmp(aString);
-  nsContentUtils::ParseHTMLIntegerResultFlags result;
-  int32_t originalVal = nsContentUtils::ParseHTMLInteger(aString, &result);
+  // We don't use nsContentUtils::ParseHTMLInteger here because we
+  // need a bunch of behavioral differences from it.  We _could_ try to
+  // use it, but it would not be a great fit.
 
-  if (result & nsContentUtils::eParseHTMLInteger_Error) {
+  // https://html.spec.whatwg.org/multipage/#rules-for-parsing-dimension-values
+
+  // Steps 1 and 2.
+  const char16_t* position = aInput.BeginReading();
+  const char16_t* end = aInput.EndReading();
+
+  // We will need to keep track of whether this was a canonical representation
+  // or not.  It's non-canonical if it has leading whitespace, leading '+',
+  // leading '0' characters, or trailing garbage.
+  bool canonical = true;
+
+  // Step 3.
+  while (position != end && nsContentUtils::IsHTMLWhitespace(*position)) {
+    canonical = false;  // Leading whitespace
+    ++position;
+  }
+
+  // Step 4.
+  if (position == end || *position < char16_t('0') ||
+      *position > char16_t('9')) {
     return false;
   }
 
-  bool isPercent = result & nsContentUtils::eParseHTMLInteger_IsPercent;
-  int32_t val = std::max(originalVal, 0);
-  bool nonStrict =
-      val != originalVal ||
-      (result & nsContentUtils::eParseHTMLInteger_NonStandard) ||
-      (result & nsContentUtils::eParseHTMLInteger_DidNotConsumeAllInput);
+  // Step 5.
+  CheckedInt32 value = 0;
 
-  // % (percent)
-  if (isPercent || tmp.RFindChar('%') >= 0) {
-    isPercent = true;
+  // Collect up leading '0' first to avoid extra branching in the main
+  // loop to set 'canonical' properly.
+  while (position != end && *position == char16_t('0')) {
+    canonical = false;  // Leading '0'
+    ++position;
   }
 
-  SetIntValueAndType(val, isPercent ? ePercent : eInteger,
-                     nonStrict ? &aString : nullptr);
+  // Now collect up other digits.
+  while (position != end && *position >= char16_t('0') &&
+         *position <= char16_t('9')) {
+    value = value * 10 + (*position - char16_t('0'));
+    if (!value.isValid()) {
+      // The spec assumes we can deal with arbitrary-size integers here, but we
+      // really can't.  If someone sets something too big, just bail out and
+      // ignore it.
+      return false;
+    }
+    ++position;
+  }
+
+  // Step 6 is implemented implicitly via the various "position != end" guards
+  // from this point on.
+
+  Maybe<double> doubleValue;
+  // Step 7.  The return in step 7.2 is handled by just falling through to the
+  // code below this block when we reach end of input or a non-digit, because
+  // the while loop will terminate at that point.
+  if (position != end && *position == char16_t('.')) {
+    canonical = false;  // Let's not rely on double serialization reproducing
+                        // the string we started with.
+    // Step 7.1.
+    ++position;
+    // If we have a '.' _not_ followed by digits, this is not as efficient as it
+    // could be, because we will store as a double while we could have stored as
+    // an int.  But that seems like a pretty rare case.
+    doubleValue.emplace(value.value());
+    // Step 7.3.
+    double divisor = 1.0f;
+    // Step 7.4.
+    while (position != end && *position >= char16_t('0') &&
+           *position <= char16_t('9')) {
+      // Step 7.4.1.
+      divisor = divisor * 10.0f;
+      // Step 7.4.2.
+      doubleValue.ref() += (*position - char16_t('0')) / divisor;
+      // Step 7.4.3.
+      ++position;
+      // Step 7.4.4 and 7.4.5 are captured in the while loop condition and the
+      // "position != end" checks below.
+    }
+  }
+
+  if (aEnsureNonzero && value.value() == 0 &&
+      (!doubleValue || *doubleValue == 0.0f)) {
+    // Not valid.  Just drop it.
+    return false;
+  }
+
+  // Step 8 and the spec's early return from step 7.2.
+  ValueType type;
+  if (position != end && *position == char16_t('%')) {
+    type = ePercent;
+    ++position;
+  } else if (doubleValue) {
+    type = eDoubleValue;
+  } else {
+    type = eInteger;
+  }
+
+  if (position != end) {
+    canonical = false;
+  }
+
+  if (doubleValue) {
+    MOZ_ASSERT(!canonical, "We set it false above!");
+    SetDoubleValueAndType(*doubleValue, type, &aInput);
+  } else {
+    SetIntValueAndType(value.value(), type, canonical ? nullptr : &aInput);
+  }
+
+#ifdef DEBUG
+  nsAutoString str;
+  ToString(str);
+  MOZ_ASSERT(str == aInput, "We messed up our 'canonical' boolean!");
+#endif
+
   return true;
 }
 
@@ -1293,7 +1401,6 @@ bool nsAttrValue::ParseIntWithBounds(const nsAString& aString, int32_t aMin,
   val = std::min(val, aMax);
   bool nonStrict =
       (val != originalVal) ||
-      (result & nsContentUtils::eParseHTMLInteger_IsPercent) ||
       (result & nsContentUtils::eParseHTMLInteger_NonStandard) ||
       (result & nsContentUtils::eParseHTMLInteger_DidNotConsumeAllInput);
 
@@ -1319,8 +1426,7 @@ void nsAttrValue::ParseIntWithFallback(const nsAString& aString,
     nonStrict = true;
   }
 
-  if ((result & nsContentUtils::eParseHTMLInteger_IsPercent) ||
-      (result & nsContentUtils::eParseHTMLInteger_NonStandard) ||
+  if ((result & nsContentUtils::eParseHTMLInteger_NonStandard) ||
       (result & nsContentUtils::eParseHTMLInteger_DidNotConsumeAllInput)) {
     nonStrict = true;
   }
@@ -1336,7 +1442,6 @@ void nsAttrValue::ParseClampedNonNegativeInt(const nsAString& aString,
   nsContentUtils::ParseHTMLIntegerResultFlags result;
   int32_t val = nsContentUtils::ParseHTMLInteger(aString, &result);
   bool nonStrict =
-      (result & nsContentUtils::eParseHTMLInteger_IsPercent) ||
       (result & nsContentUtils::eParseHTMLInteger_NonStandard) ||
       (result & nsContentUtils::eParseHTMLInteger_DidNotConsumeAllInput);
 
@@ -1371,7 +1476,6 @@ bool nsAttrValue::ParseNonNegativeIntValue(const nsAString& aString) {
   }
 
   bool nonStrict =
-      (result & nsContentUtils::eParseHTMLInteger_IsPercent) ||
       (result & nsContentUtils::eParseHTMLInteger_NonStandard) ||
       (result & nsContentUtils::eParseHTMLInteger_DidNotConsumeAllInput);
 
@@ -1390,7 +1494,6 @@ bool nsAttrValue::ParsePositiveIntValue(const nsAString& aString) {
   }
 
   bool nonStrict =
-      (result & nsContentUtils::eParseHTMLInteger_IsPercent) ||
       (result & nsContentUtils::eParseHTMLInteger_NonStandard) ||
       (result & nsContentUtils::eParseHTMLInteger_DidNotConsumeAllInput);
 

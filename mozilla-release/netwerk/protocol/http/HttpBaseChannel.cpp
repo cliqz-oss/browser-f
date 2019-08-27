@@ -209,6 +209,7 @@ HttpBaseChannel::HttpBaseChannel()
       mAddedAsNonTailRequest(false),
       mAsyncOpenWaitingForStreamLength(false),
       mUpgradableToSecure(true),
+      mHasSandboxedNavigations(false),
       mTlsFlags(0),
       mSuspendCount(0),
       mInitialRwin(0),
@@ -1914,10 +1915,12 @@ HttpBaseChannel::RedirectTo(nsIURI* targetURI) {
   NS_ENSURE_FALSE(mOnStartRequestCalled, NS_ERROR_NOT_AVAILABLE);
 
   mAPIRedirectToURI = targetURI;
-  // Only Web Extensions are allowed to redirect a channel to a data:
-  // URI. To avoid any bypasses after the channel was flagged by
+  // Only Web Extensions are allowed to redirect a channel to a data URI
+  // and to bypass CORS for early redirects.
+  // To avoid any bypasses after the channel was flagged by
   // the WebRequst API, we are dropping the flag here.
   if (mLoadInfo) {
+    mLoadInfo->SetBypassCORSChecks(false);
     mLoadInfo->SetAllowInsecureRedirectToDataURI(false);
   }
   return NS_OK;
@@ -2115,22 +2118,24 @@ HttpBaseChannel::GetResponseVersion(uint32_t* major, uint32_t* minor) {
   return NS_OK;
 }
 
-void HttpBaseChannel::NotifySetCookie(char const* aCookie) {
+void HttpBaseChannel::NotifySetCookie(const nsACString& aCookie) {
   nsCOMPtr<nsIObserverService> obs = services::GetObserverService();
   if (obs) {
     nsAutoString cookie;
-    CopyASCIItoUTF16(mozilla::MakeStringSpan(aCookie), cookie);
     obs->NotifyObservers(static_cast<nsIChannel*>(this),
-                         "http-on-response-set-cookie", cookie.get());
+                         "http-on-response-set-cookie",
+                         NS_ConvertASCIItoUTF16(aCookie).get());
   }
 }
 
 NS_IMETHODIMP
-HttpBaseChannel::SetCookie(const char* aCookieHeader) {
+HttpBaseChannel::SetCookie(const nsACString& aCookieHeader) {
   if (mLoadFlags & LOAD_ANONYMOUS) return NS_OK;
 
   // empty header isn't an error
-  if (!(aCookieHeader && *aCookieHeader)) return NS_OK;
+  if (aCookieHeader.IsEmpty()) {
+    return NS_OK;
+  }
 
   nsICookieService* cs = gHttpHandler->GetCookieService();
   NS_ENSURE_TRUE(cs, NS_ERROR_FAILURE);
@@ -2139,7 +2144,7 @@ HttpBaseChannel::SetCookie(const char* aCookieHeader) {
   // empty date is not an error
   Unused << mResponseHead->GetHeader(nsHttp::Date, date);
   nsresult rv = cs->SetCookieStringFromHttp(mURI, nullptr, nullptr,
-                                            aCookieHeader, date.get(), this);
+                                            aCookieHeader, date, this);
   if (NS_SUCCEEDED(rv)) {
     NotifySetCookie(aCookieHeader);
   }
@@ -2990,10 +2995,10 @@ void HttpBaseChannel::DoNotifyListener() {
 
   if (mListener && !mOnStartRequestCalled) {
     nsCOMPtr<nsIStreamListener> listener = mListener;
-    listener->OnStartRequest(this);
-
     mOnStartRequestCalled = true;
+    listener->OnStartRequest(this);
   }
+  mOnStartRequestCalled = true;
 
   // Make sure mIsPending is set to false. At this moment we are done from
   // the point of view of our consumer and we have to report our self
@@ -3002,10 +3007,10 @@ void HttpBaseChannel::DoNotifyListener() {
 
   if (mListener && !mOnStopRequestCalled) {
     nsCOMPtr<nsIStreamListener> listener = mListener;
-    listener->OnStopRequest(this, mStatus);
-
     mOnStopRequestCalled = true;
+    listener->OnStopRequest(this, mStatus);
   }
+  mOnStopRequestCalled = true;
 
   // notify "http-on-stop-connect" observers
   gHttpHandler->OnStopRequest(this);
@@ -3042,11 +3047,11 @@ void HttpBaseChannel::AddCookiesToRequest() {
   }
 
   bool useCookieService = (XRE_IsParentProcess());
-  nsCString cookie;
+  nsAutoCString cookie;
   if (useCookieService) {
     nsICookieService* cs = gHttpHandler->GetCookieService();
     if (cs) {
-      cs->GetCookieStringFromHttp(mURI, nullptr, this, getter_Copies(cookie));
+      cs->GetCookieStringFromHttp(mURI, nullptr, this, cookie);
     }
 
     if (cookie.IsEmpty()) {

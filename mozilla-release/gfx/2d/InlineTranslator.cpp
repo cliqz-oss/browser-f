@@ -32,11 +32,12 @@ bool InlineTranslator::TranslateRecording(char* aData, size_t aLen) {
       } else {
         // We've requested more data than is available
         // set the Reader into an eof state
-        mData = mEnd + 1;
+        SetIsBad();
       }
     }
     bool eof() { return mData > mEnd; }
     bool good() { return !eof(); }
+    void SetIsBad() { mData = mEnd + 1; }
 
     char* mData;
     char* mEnd;
@@ -69,7 +70,7 @@ bool InlineTranslator::TranslateRecording(char* aData, size_t aLen) {
   while (reader.good()) {
     bool success = RecordedEvent::DoWithEvent(
         reader, static_cast<RecordedEvent::EventType>(eventType),
-        [&](RecordedEvent* recordedEvent) {
+        [&](RecordedEvent* recordedEvent) -> bool {
           // Make sure that the whole event was read from the stream
           // successfully.
           if (!reader.good()) {

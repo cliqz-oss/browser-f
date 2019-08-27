@@ -56,8 +56,8 @@
   return slowPathCheckNoExecute(cx, script);
 }
 
-/* static */ inline js::ResumeMode js::Debugger::onEnterFrame(JSContext* cx,
-                                                       AbstractFramePtr frame) {
+/* static */ inline js::ResumeMode js::Debugger::onEnterFrame(
+    JSContext* cx, AbstractFramePtr frame) {
   MOZ_ASSERT_IF(frame.hasScript() && frame.script()->isDebuggee(),
                 frame.isDebuggee());
   if (!frame.isDebuggee()) {
@@ -99,8 +99,8 @@
   }
 }
 
-/* static */ inline void js::Debugger::onNewPromise(JSContext* cx,
-                                             Handle<PromiseObject*> promise) {
+/* static */ inline void js::Debugger::onNewPromise(
+    JSContext* cx, Handle<PromiseObject*> promise) {
   if (MOZ_UNLIKELY(cx->realm()->isDebuggee())) {
     slowPathPromiseHook(cx, Debugger::OnNewPromise, promise);
   }
@@ -134,6 +134,17 @@ inline js::PromiseObject* js::DebuggerObject::promise() const {
   }
 
   return &referent->as<PromiseObject>();
+}
+
+inline bool js::DebuggerFrame::hasGenerator() const {
+  return !getReservedSlot(GENERATOR_INFO_SLOT).isUndefined();
+}
+
+inline js::DebuggerFrame::GeneratorInfo* js::DebuggerFrame::generatorInfo()
+    const {
+  MOZ_ASSERT(hasGenerator());
+  return static_cast<GeneratorInfo*>(
+      getReservedSlot(GENERATOR_INFO_SLOT).toPrivate());
 }
 
 #endif /* vm_Debugger_inl_h */

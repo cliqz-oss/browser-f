@@ -61,6 +61,7 @@ struct ID3D11Texture2D;
 struct ID3D11Device;
 struct ID2D1Device;
 struct ID2D1DeviceContext;
+struct ID2D1Multithread;
 struct IDWriteFactory;
 struct IDWriteRenderingParams;
 struct IDWriteFontFace;
@@ -376,6 +377,12 @@ class SourceSurface : public external::AtomicRefCounted<SourceSurface> {
    */
   virtual already_AddRefed<DataSourceSurface> GetDataSurface() = 0;
 
+  /** This function will return a SourceSurface without any offset. */
+  virtual already_AddRefed<SourceSurface> GetUnderlyingSurface() {
+    RefPtr<SourceSurface> surface = this;
+    return surface.forget();
+  }
+
   /** Tries to get this SourceSurface's native surface.  This will fail if aType
    * is not the type of this SourceSurface's native surface.
    */
@@ -587,10 +594,23 @@ class PathSink : public RefCounted<PathSink> {
   /** Add an arc to the current figure */
   virtual void Arc(const Point& aOrigin, float aRadius, float aStartAngle,
                    float aEndAngle, bool aAntiClockwise = false) = 0;
+
+  virtual Point CurrentPoint() const { return mCurrentPoint; }
+
+  virtual Point BeginPoint() const { return mBeginPoint; }
+
+  virtual void SetCurrentPoint(const Point& aPoint) { mCurrentPoint = aPoint; }
+
+  virtual void SetBeginPoint(const Point& aPoint) { mBeginPoint = aPoint; }
+
+ protected:
   /** Point the current subpath is at - or where the next subpath will start
    * if there is no active subpath.
    */
-  virtual Point CurrentPoint() const = 0;
+  Point mCurrentPoint;
+
+  /** Position of the previous MoveTo operation. */
+  Point mBeginPoint;
 };
 
 class PathBuilder;
@@ -1344,14 +1364,12 @@ class DrawTarget : public external::AtomicRefCounted<DrawTarget> {
   }
 
   /**
-   * Create a similar DrawTarget whose requested size may be clipped based
-   * on this DrawTarget's rect transformed to the new target's space.
+   * Create a similar DrawTarget in the same space as this DrawTarget whose
+   * device size may be clipped based on the active clips intersected with
+   * aBounds (if it is not empty).
    */
-  virtual RefPtr<DrawTarget> CreateClippedDrawTarget(
-      const IntSize& aMaxSize, const Matrix& aTransform,
-      SurfaceFormat aFormat) const {
-    return CreateSimilarDrawTarget(aMaxSize, aFormat);
-  }
+  virtual RefPtr<DrawTarget> CreateClippedDrawTarget(const Rect& aBounds,
+                                                     SurfaceFormat aFormat) = 0;
 
   /**
    * Create a similar draw target, but if the draw target is not backed by a
@@ -1821,7 +1839,7 @@ class GFX2D_API Factory {
   static already_AddRefed<ScaledFont> CreateScaledFontForDWriteFont(
       IDWriteFontFace* aFontFace, const gfxFontStyle* aStyle,
       const RefPtr<UnscaledFont>& aUnscaledFont, Float aSize,
-      bool aUseEmbeddedBitmap, bool aForceGDIMode,
+      bool aUseEmbeddedBitmap, int aRenderingMode,
       IDWriteRenderingParams* aParams, Float aGamma, Float aContrast);
 
   static void SetSystemTextQuality(uint8_t aQuality);
@@ -1848,6 +1866,17 @@ class GFX2D_API Factory {
 
  private:
   static DrawEventRecorder* mRecorder;
+};
+
+class MOZ_RAII AutoSerializeWithMoz2D final {
+ public:
+  explicit AutoSerializeWithMoz2D(BackendType aBackendType);
+  ~AutoSerializeWithMoz2D();
+
+ private:
+#if defined(WIN32)
+  RefPtr<ID2D1Multithread> mMT;
+#endif
 };
 
 }  // namespace gfx

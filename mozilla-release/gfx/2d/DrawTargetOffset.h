@@ -34,6 +34,9 @@ class SourceSurfaceOffset : public SourceSurface {
   virtual already_AddRefed<DataSourceSurface> GetDataSurface() override {
     return mSurface->GetDataSurface();
   }
+  virtual already_AddRefed<SourceSurface> GetUnderlyingSurface() override {
+    return mSurface->GetUnderlyingSurface();
+  }
 
  private:
   RefPtr<SourceSurface> mSurface;
@@ -64,7 +67,7 @@ class DrawTargetOffset : public DrawTarget {
   virtual void DetachAllSnapshots() override;
   virtual IntSize GetSize() const override { return mDrawTarget->GetSize(); }
   virtual IntRect GetRect() const override {
-    return IntRect(mOrigin, GetSize());
+    return mDrawTarget->GetRect() + mOrigin;
   }
 
   virtual void Flush() override;
@@ -92,6 +95,9 @@ class DrawTargetOffset : public DrawTarget {
 
   virtual void FillRect(const Rect& aRect, const Pattern& aPattern,
                         const DrawOptions& aOptions = DrawOptions()) override;
+  virtual void FillRoundedRect(const RoundedRect& aRect,
+                               const Pattern& aPattern,
+                               const DrawOptions& aOptions = DrawOptions()) override;
   virtual void StrokeRect(const Rect& aRect, const Pattern& aPattern,
                           const StrokeOptions& aStrokeOptions = StrokeOptions(),
                           const DrawOptions& aOptions = DrawOptions()) override;
@@ -107,6 +113,10 @@ class DrawTargetOffset : public DrawTarget {
   virtual void FillGlyphs(ScaledFont* aFont, const GlyphBuffer& aBuffer,
                           const Pattern& aPattern,
                           const DrawOptions& aOptions = DrawOptions()) override;
+  virtual void StrokeGlyphs(ScaledFont* aFont, const GlyphBuffer& aBuffer,
+                            const Pattern& aPattern,
+                            const StrokeOptions& aStrokeOptions = StrokeOptions(),
+                            const DrawOptions& aOptions = DrawOptions()) override;
   virtual void Mask(const Pattern& aSource, const Pattern& aMask,
                     const DrawOptions& aOptions = DrawOptions()) override;
   virtual void PushClip(const Path* aPath) override;
@@ -121,6 +131,8 @@ class DrawTargetOffset : public DrawTarget {
       const Matrix& aMaskTransform, const IntRect& aBounds = IntRect(),
       bool aCopyBackground = false,
       CompositionOp = CompositionOp::OP_OVER) override;
+  virtual bool Draw3DTransformedSurface(SourceSurface* aSurface,
+                                        const Matrix4x4& aMatrix) override;
   virtual void PopLayer() override;
 
   virtual void SetTransform(const Matrix& aTransform) override;
@@ -151,6 +163,15 @@ class DrawTargetOffset : public DrawTarget {
   virtual bool CanCreateSimilarDrawTarget(
       const IntSize& aSize, SurfaceFormat aFormat) const override {
     return mDrawTarget->CanCreateSimilarDrawTarget(aSize, aFormat);
+  }
+  virtual RefPtr<DrawTarget> CreateClippedDrawTarget(
+      const Rect& aBounds, SurfaceFormat aFormat) override {
+    RefPtr<DrawTarget> dt =
+        mDrawTarget->CreateClippedDrawTarget(aBounds, aFormat);
+    RefPtr<DrawTarget> result =
+        gfx::Factory::CreateOffsetDrawTarget(dt, mOrigin);
+    result->SetTransform(mTransform);
+    return result;
   }
 
   virtual already_AddRefed<PathBuilder> CreatePathBuilder(

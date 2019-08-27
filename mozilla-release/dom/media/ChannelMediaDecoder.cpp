@@ -5,6 +5,7 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "ChannelMediaDecoder.h"
+#include "ChannelMediaResource.h"
 #include "DecoderTraits.h"
 #include "MediaDecoderStateMachine.h"
 #include "MediaFormatReader.h"
@@ -467,7 +468,7 @@ bool ChannelMediaDecoder::ShouldThrottleDownload(
 
   int64_t length = aStats.mTotalBytes;
   if (length > 0 &&
-      length <= int64_t(StaticPrefs::MediaMemoryCacheMaxSize()) * 1024) {
+      length <= int64_t(StaticPrefs::media_memory_cache_max_size()) * 1024) {
     // Don't throttle the download of small resources. This is to speed
     // up seeking, as seeks into unbuffered ranges would require starting
     // up a new HTTP transaction, which adds latency.
@@ -498,6 +499,11 @@ void ChannelMediaDecoder::AddSizeOfResources(ResourceSizes* aSizes) {
 already_AddRefed<nsIPrincipal> ChannelMediaDecoder::GetCurrentPrincipal() {
   MOZ_ASSERT(NS_IsMainThread());
   return mResource ? mResource->GetCurrentPrincipal() : nullptr;
+}
+
+bool ChannelMediaDecoder::HadCrossOriginRedirects() {
+  MOZ_ASSERT(NS_IsMainThread());
+  return mResource ? mResource->HadCrossOriginRedirects() : false;
 }
 
 bool ChannelMediaDecoder::IsTransportSeekable() {
@@ -535,12 +541,11 @@ void ChannelMediaDecoder::MetadataLoaded(
   mResource->SetReadMode(MediaCacheStream::MODE_PLAYBACK);
 }
 
-nsCString ChannelMediaDecoder::GetDebugInfo() {
-  nsCString str = MediaDecoder::GetDebugInfo();
+void ChannelMediaDecoder::GetDebugInfo(dom::MediaDecoderDebugInfo& aInfo) {
+  MediaDecoder::GetDebugInfo(aInfo);
   if (mResource) {
-    AppendStringIfNotEmpty(str, mResource->GetDebugInfo());
+    mResource->GetDebugInfo(aInfo.mResource);
   }
-  return str;
 }
 
 }  // namespace mozilla

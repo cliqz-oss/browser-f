@@ -228,6 +228,7 @@ nsComboboxControlFrame::nsComboboxControlFrame(ComputedStyle* aStyle,
       mDropdownFrame(nullptr),
       mListControlFrame(nullptr),
       mDisplayISize(0),
+      mMaxDisplayISize(0),
       mRecentSelectedIndex(NS_SKIP_NOTIFY_INDEX),
       mDisplayedIndex(-1),
       mLastDropDownBeforeScreenBCoord(nscoord_MIN),
@@ -716,8 +717,9 @@ nscoord nsComboboxControlFrame::GetIntrinsicISize(
         presContext, aRenderingContext, GetWritingMode());
   }
 
+  const bool isContainSize = StyleDisplay()->IsContainSize();
   nscoord displayISize = 0;
-  if (MOZ_LIKELY(mDisplayFrame)) {
+  if (MOZ_LIKELY(mDisplayFrame) && !isContainSize) {
     displayISize = nsLayoutUtils::IntrinsicForContainer(aRenderingContext,
                                                         mDisplayFrame, aType);
   }
@@ -727,13 +729,15 @@ nscoord nsComboboxControlFrame::GetIntrinsicISize(
     bool isUsingOverlayScrollbars =
         LookAndFeel::GetInt(LookAndFeel::eIntID_UseOverlayScrollbars) != 0;
     if (aType == nsLayoutUtils::MIN_ISIZE) {
-      dropdownContentISize = mDropdownFrame->GetMinISize(aRenderingContext);
+      dropdownContentISize =
+          isContainSize ? 0 : mDropdownFrame->GetMinISize(aRenderingContext);
       if (isUsingOverlayScrollbars) {
         dropdownContentISize += scrollbarWidth;
       }
     } else {
       NS_ASSERTION(aType == nsLayoutUtils::PREF_ISIZE, "Unexpected type");
-      dropdownContentISize = mDropdownFrame->GetPrefISize(aRenderingContext);
+      dropdownContentISize =
+          isContainSize ? 0 : mDropdownFrame->GetPrefISize(aRenderingContext);
       if (isUsingOverlayScrollbars) {
         dropdownContentISize += scrollbarWidth;
       }
@@ -824,6 +828,9 @@ void nsComboboxControlFrame::Reflow(nsPresContext* aPresContext,
   }
 
   mDisplayISize = aReflowInput.ComputedISize() - buttonISize;
+
+  mMaxDisplayISize =
+      mDisplayISize + aReflowInput.ComputedLogicalPadding().IEnd(wm);
 
   nsBlockFrame::Reflow(aPresContext, aDesiredSize, aReflowInput, aStatus);
 
@@ -1230,7 +1237,7 @@ void nsComboboxDisplayFrame::Reflow(nsPresContext* aPresContext,
   MOZ_ASSERT(aStatus.IsEmpty(), "Caller should pass a fresh reflow status!");
 
   ReflowInput state(aReflowInput);
-  if (state.ComputedBSize() == NS_INTRINSICSIZE) {
+  if (state.ComputedBSize() == NS_UNCONSTRAINEDSIZE) {
     float inflation = nsLayoutUtils::FontSizeInflationFor(mComboBox);
     // We intentionally use the combobox frame's style here, which has
     // the 'line-height' specified by the author, if any.
@@ -1242,12 +1249,24 @@ void nsComboboxDisplayFrame::Reflow(nsPresContext* aPresContext,
     state.SetComputedBSize(lh);
   }
   WritingMode wm = aReflowInput.GetWritingMode();
-  nscoord computedISize = mComboBox->mDisplayISize -
-                          state.ComputedLogicalBorderPadding().IStartEnd(wm);
-  if (computedISize < 0) {
-    computedISize = 0;
+  nscoord inlineBp = state.ComputedLogicalBorderPadding().IStartEnd(wm);
+  nscoord computedISize = mComboBox->mDisplayISize - inlineBp;
+
+  // Other UAs ignore padding in some (but not all) platforms for (themed only)
+  // comboboxes. Instead of doing that, we prevent that padding if present from
+  // clipping the display text, by enforcing the display text minimum size in
+  // that situation.
+  const bool shouldHonorMinISize =
+      mComboBox->StyleDisplay()->mAppearance == StyleAppearance::Menulist;
+  if (shouldHonorMinISize) {
+    computedISize = std::max(state.ComputedMinISize(), computedISize);
+    // Don't let this size go over mMaxDisplayISize, since that'd be
+    // observable via clientWidth / scrollWidth.
+    computedISize =
+        std::min(computedISize, mComboBox->mMaxDisplayISize - inlineBp);
   }
-  state.SetComputedISize(computedISize);
+
+  state.SetComputedISize(std::max(0, computedISize));
   nsBlockFrame::Reflow(aPresContext, aDesiredSize, state, aStatus);
   aStatus.Reset();  // this type of frame can't be split
 }
@@ -1494,7 +1513,7 @@ void nsComboboxControlFrame::PaintFocus(DrawTarget& aDrawTarget, nsPoint aPt) {
 
   StrokeOptions strokeOptions;
   nsLayoutUtils::InitDashPattern(strokeOptions, StyleBorderStyle::Dotted);
-  ColorPattern color(ToDeviceColor(StyleColor()->mColor));
+  ColorPattern color(ToDeviceColor(StyleText()->mColor));
   nscoord onePixel = nsPresContext::CSSPixelsToAppUnits(1);
   clipRect.width -= onePixel;
   clipRect.height -= onePixel;
@@ -1566,16 +1585,14 @@ nsComboboxControlFrame::RestoreState(PresState* aState) {
 // Append a suffix so that the state key for the combobox is different
 // from the state key the list control uses to sometimes save the scroll
 // position for the same Element
-NS_IMETHODIMP
-nsComboboxControlFrame::GenerateStateKey(nsIContent* aContent,
-                                         Document* aDocument,
-                                         nsACString& aKey) {
-  nsresult rv = nsContentUtils::GenerateStateKey(aContent, aDocument, aKey);
-  if (NS_FAILED(rv) || aKey.IsEmpty()) {
-    return rv;
+void nsComboboxControlFrame::GenerateStateKey(nsIContent* aContent,
+                                              Document* aDocument,
+                                              nsACString& aKey) {
+  nsContentUtils::GenerateStateKey(aContent, aDocument, aKey);
+  if (aKey.IsEmpty()) {
+    return;
   }
   aKey.AppendLiteral("CCF");
-  return NS_OK;
 }
 
 // Fennec uses a custom combobox built-in widget.
