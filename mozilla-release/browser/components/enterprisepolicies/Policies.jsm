@@ -388,6 +388,7 @@ var Policies = {
     onBeforeAddons(manager, param) {
       if (param) {
         setAndLockPref("identity.fxaccounts.enabled", false);
+        setAndLockPref("trailhead.firstrun.branches", "nofirstrun");
       }
     },
   },
@@ -655,18 +656,13 @@ var Policies = {
             for (let location of param.Install) {
               let uri;
               try {
-                uri = Services.io.newURI(location);
-              } catch (e) {
-                // If it's not a URL, it's probably a file path.
-                // Assume location is a file path
+                // We need to try as a file first because
+                // Windows paths are valid URIs.
                 // This is done for legacy support (old API)
-                try {
-                  let xpiFile = new FileUtils.File(location);
-                  uri = Services.io.newFileURI(xpiFile);
-                } catch (ex) {
-                  log.error(`Invalid extension path location - ${location}`);
-                  return;
-                }
+                let xpiFile = new FileUtils.File(location);
+                uri = Services.io.newFileURI(xpiFile);
+              } catch (e) {
+                uri = Services.io.newURI(location);
               }
               installAddonFromURL(uri.spec);
             }
@@ -865,6 +861,7 @@ var Policies = {
       // |homepages| will be a string containing a pipe-separated ('|') list of
       // URLs because that is what the "Custom URLs..." section of about:preferences
       // (and therefore what the pref |browser.startup.homepage|) accepts.
+<<<<<<< HEAD
       // Cliqz. This part totally re-worked in Cliqz browser because we have
       // different Startup options, so we can not follow FF's settings at all.
       let homepages = "about:home";
@@ -872,6 +869,68 @@ var Policies = {
         switch (param.Homepage) {
           case "default":
             homepages = "about:home";
+||||||| merged common ancestors
+      if (param.URL) {
+        let homepages = param.URL.href;
+        if (param.Additional && param.Additional.length > 0) {
+          homepages += "|" + param.Additional.map(url => url.href).join("|");
+        }
+        setDefaultPref("browser.startup.homepage", homepages, param.Locked);
+        if (param.Locked) {
+          setAndLockPref(
+            "pref.browser.homepage.disable_button.current_page",
+            true
+          );
+          setAndLockPref(
+            "pref.browser.homepage.disable_button.bookmark_page",
+            true
+          );
+          setAndLockPref(
+            "pref.browser.homepage.disable_button.restore_default",
+            true
+          );
+        } else {
+          runOncePerModification("setHomepage", homepages, () => {
+            Services.prefs.clearUserPref("browser.startup.homepage");
+          });
+        }
+      }
+      if (param.StartPage) {
+        let prefValue;
+        switch (param.StartPage) {
+          case "none":
+            prefValue = 0;
+=======
+      if (param.URL) {
+        let homepages = param.URL.href;
+        if (param.Additional && param.Additional.length > 0) {
+          homepages += "|" + param.Additional.map(url => url.href).join("|");
+        }
+        setDefaultPref("browser.startup.homepage", homepages, param.Locked);
+        if (param.Locked) {
+          setAndLockPref(
+            "pref.browser.homepage.disable_button.current_page",
+            true
+          );
+          setAndLockPref(
+            "pref.browser.homepage.disable_button.bookmark_page",
+            true
+          );
+          setAndLockPref(
+            "pref.browser.homepage.disable_button.restore_default",
+            true
+          );
+        } else {
+          // Clear out old run once modification that is no longer used.
+          clearRunOnceModification("setHomepage");
+        }
+      }
+      if (param.StartPage) {
+        let prefValue;
+        switch (param.StartPage) {
+          case "none":
+            prefValue = 0;
+>>>>>>> 2f748bd41301ec38ed203316fa8eb715ad7baee1
             break;
           case "urls":
             if (param.URLs && param.URLs.length > 0) {
@@ -983,6 +1042,7 @@ var Policies = {
     onProfileAfterChange(manager, param) {
       let url = param ? param.href : "";
       setAndLockPref("startup.homepage_welcome_url", url);
+      setAndLockPref("trailhead.firstrun.branches", "nofirstrun");
     },
   },
 

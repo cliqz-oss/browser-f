@@ -2253,6 +2253,7 @@ this.XPIDatabase = {
     aNewAddon.seen = aOldAddon.seen;
     aNewAddon.active =
       aNewAddon.visible && !aNewAddon.disabled && !aNewAddon.pendingUninstall;
+    aNewAddon.installTelemetryInfo = aOldAddon.installTelemetryInfo;
 
     return this.addToDatabase(aNewAddon, aPath);
   },
@@ -2995,6 +2996,7 @@ this.XPIDatabaseReconcile = {
         "sourceURI",
         "releaseNotesURI",
         "targetApplications",
+        "installTelemetryInfo",
       ];
 
       let props = PROP_JSON_FIELDS.filter(a => !remove.includes(a));

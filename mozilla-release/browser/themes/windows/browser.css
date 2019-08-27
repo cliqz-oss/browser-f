@@ -562,12 +562,22 @@ menuitem.bookmark-item {
   }
 }
 
+<<<<<<< HEAD
 html|*.urlbar-input:-moz-lwtheme::placeholder,
 .searchbar-textbox:-moz-lwtheme > moz-input-box > html|*.textbox-input::placeholder {
   opacity: 1.0;
   color: #919191;
 }
 
+||||||| merged common ancestors
+html|*.urlbar-input:-moz-lwtheme::placeholder,
+.searchbar-textbox:-moz-lwtheme > moz-input-box > html|*.textbox-input::placeholder {
+  opacity: 1.0;
+  color: #777;
+}
+
+=======
+>>>>>>> 2f748bd41301ec38ed203316fa8eb715ad7baee1
 /* ::::: URL Bar Zoom Reset Button ::::: */
 @keyframes urlbar-zoom-reset-pulse {
   0% {
@@ -610,10 +620,7 @@ html|*.urlbar-input:-moz-lwtheme::placeholder,
 }
 
 .urlbar-display {
-  margin-top: 0;
-  margin-bottom: 0;
   margin-inline-start: 0;
-  color: GrayText;
 }
 
 #pageAction-urlbar-shareURL,
