@@ -739,25 +739,33 @@ class UrlbarInput {
    *   to false so that state is maintained during a single interaction.  The
    *   intended use for this parameter is that it should be set to false when
    *   this method is called due to input events.
+   * @param {event} [options.event]
+   *   The user-generated event that triggered the query, if any.  If given, we
+   *   will record engagement event telemetry for the query.
    */
   startQuery({
     allowAutofill = true,
     searchString = null,
     resetSearchState = true,
+    event = null,
   } = {}) {
+    if (!searchString) {
+      searchString =
+        this.getAttribute("pageproxystate") == "valid" ? "" : this.textValue;
+    } else if (!this.textValue.startsWith(searchString)) {
+      throw new Error("The current value doesn't start with the search string");
+    }
+
+    if (event) {
+      this.controller.engagementEvent.start(event, searchString);
+    }
+
     if (this._suppressStartQuery) {
       return;
     }
 
     if (resetSearchState) {
       this._resetSearchState();
-    }
-
-    if (!searchString) {
-      searchString =
-        this.getAttribute("pageproxystate") == "valid" ? "" : this.textValue;
-    } else if (!this.textValue.startsWith(searchString)) {
-      throw new Error("The current value doesn't start with the search string");
     }
 
     this._lastSearchString = searchString;
@@ -1479,6 +1487,11 @@ class UrlbarInput {
       numChars: this._lastSearchString.length,
     });
 
+    // Clear selection unless we are switching application windows.
+    if (this.document.activeElement != this.inputField) {
+      this.selectionStart = this.selectionEnd = 0;
+    }
+
     // In certain cases, like holding an override key and confirming an entry,
     // we don't key a keyup event for the override key, thus we make this
     // additional cleanup on blur.
@@ -1545,9 +1558,9 @@ class UrlbarInput {
         this.editor.selectAll();
         event.preventDefault();
       } else if (this.openViewOnFocusForCurrentTab && !this.view.isOpen) {
-        this.controller.engagementEvent.start(event);
         this.startQuery({
           allowAutofill: false,
+          event,
         });
       }
       return;
@@ -1561,9 +1574,9 @@ class UrlbarInput {
         this.view.close();
       } else {
         this.focus();
-        this.controller.engagementEvent.start(event);
         this.startQuery({
           allowAutofill: false,
+          event,
         });
         this._maybeSelectAll();
       }
@@ -1615,8 +1628,6 @@ class UrlbarInput {
       return;
     }
 
-    this.controller.engagementEvent.start(event);
-
     // Autofill only when text is inserted (i.e., event.data is not empty) and
     // it's not due to pasting.
     let allowAutofill =
@@ -1628,6 +1639,7 @@ class UrlbarInput {
       searchString: value,
       allowAutofill,
       resetSearchState: false,
+      event,
     });
   }
 
