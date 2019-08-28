@@ -87,7 +87,7 @@ RUN set -eux; \
     cargo --version; \
     rustc --version
 
-RUN cargo install --version 0.8.7 cbindgen
+RUN cargo install --version 0.9.0 cbindgen
 
 ARG uid
 ARG gid
