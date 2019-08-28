@@ -1,24 +1,14 @@
-# mozconfig to cross build on osx
+# mozconfig to cross build a MacOS version on Linux
+# copied and modified from mozilla-release/build/macosx/cross-mozconfig.common
+
 . $topsrcdir/browser/config/cliqz.mozconfig
 
-export NODEJS=$TOOLCHAIN/node/bin/node
-RUSTC="$TOOLCHAIN/rustc/bin/rustc"
-CARGO="$TOOLCHAIN/rustc/bin/cargo"
-RUSTDOC="$TOOLCHAIN/rustc/bin/rustdoc"
-RUSTFMT="$TOOLCHAIN/rustc/bin/rustfmt"
-CBINDGEN="$TOOLCHAIN/cbindgen/cbindgen"
-NASM="$TOOLCHAIN/nasm/nasm"
-
-ac_add_options --enable-rust-simd
-ac_add_options --enable-crashreporter
+# cctools for ld, ar, and other related tools ; dsymutil for rust.
+mk_add_options "export PATH=$TOOLCHAIN/cctools/bin:$topsrcdir/binutils/bin:$TOOLCHAIN/llvm-dsymutil/bin:$PATH"
 
 # ld needs libLTO.so from llvm
 mk_add_options "export LD_LIBRARY_PATH=$TOOLCHAIN/clang/lib"
 
-#Rust requires dsymutil into PATH
-mk_add_options "export PATH=$TOOLCHAIN/llvm-dsymutil/bin:$PATH"
-
-CROSS_CCTOOLS_PATH=$TOOLCHAIN/cctools
 # This SDK was copied from a local XCode install and uploaded to tooltool.
 # Generate the tarball by running this command with the proper SDK version:
 #   sdk_path=$(xcrun --sdk macosx10.12 --show-sdk-path)
@@ -27,28 +17,41 @@ CROSS_CCTOOLS_PATH=$TOOLCHAIN/cctools
 # `browser/config/tooltool-manifests/macosx64/cross-releng.manifest`.
 CROSS_SYSROOT=$TOOLCHAIN/MacOSX10.11.sdk
 CROSS_PRIVATE_FRAMEWORKS=$CROSS_SYSROOT/System/Library/PrivateFrameworks
-FLAGS="-target x86_64-darwin11 -B $CROSS_CCTOOLS_PATH/bin -isysroot $CROSS_SYSROOT"
 
-export LLVM_CONFIG="$TOOLCHAIN/clang/bin/llvm-config"
-export CC="$TOOLCHAIN/clang/bin/clang $FLAGS"
-export CXX="$TOOLCHAIN/clang/bin/clang++ $FLAGS"
-export CPP="$TOOLCHAIN/clang/bin/clang $FLAGS -E"
+export CC="$TOOLCHAIN/clang/bin/clang"
+export CXX="$TOOLCHAIN/clang/bin/clang++"
 export LLVMCONFIG=$TOOLCHAIN/clang/bin/llvm-config
-export LDFLAGS="-Wl,-syslibroot,$CROSS_SYSROOT -Wl,-dead_strip"
-export BINDGEN_CFLAGS="$FLAGS"
-export TOOLCHAIN_PREFIX=$CROSS_CCTOOLS_PATH/bin/x86_64-darwin11-
+export BINDGEN_CFLAGS="-isysroot $CROSS_SYSROOT"
 export DSYMUTIL=$topsrcdir/build/macosx/llvm-dsymutil
 mk_add_options "export REAL_DSYMUTIL=$TOOLCHAIN/llvm-dsymutil/bin/dsymutil"
 export MKFSHFS=$TOOLCHAIN/hfsplus-tools/newfs_hfs
 export DMG_TOOL=$TOOLCHAIN/dmg/dmg
 export HFS_TOOL=$TOOLCHAIN/dmg/hfsplus
 
-export HOST_CC="$TOOLCHAIN/clang/bin/clang"
-export HOST_CXX="$TOOLCHAIN/clang/bin/clang++"
-export HOST_CPP="$TOOLCHAIN/clang/bin/clang -E"
-#export HOST_CFLAGS="-g"
-#export HOST_CXXFLAGS="-g"
-#export HOST_LDFLAGS="-g"
+export HOST_CFLAGS="-g"
+export HOST_CXXFLAGS="-g"
+export HOST_LDFLAGS="-g"
 
-ac_add_options --target=x86_64-darwin
-ac_add_options --with-macos-private-frameworks=$CROSS_PRIVATE_FRAMEWORKS
+ac_add_options --target=x86_64-apple-darwin
+export MACOS_SDK_DIR=$CROSS_SYSROOT
+export MACOS_PRIVATE_FRAMEWORKS_DIR=$CROSS_PRIVATE_FRAMEWORKS
+
+if [ "x$MOZ_PKG_SPECIAL" != "xasan" -a -z "$MOZ_AUTOMATION_ARTIFACT_BUILDS" ]; then
+  # Enable static analysis checks by default on OSX cross builds.
+  # Exception is ASan, where this breaks.
+  # The option is not valid on artifact builds, so don't add it there either.
+  ac_add_options --enable-clang-plugin
+fi
+
+unset MOZ_STDCXX_COMPAT
+
+# all other artifacts for build
+export NODEJS=$TOOLCHAIN/node/bin/node
+export NASM=$TOOLCHAIN/nasm/nasm
+export CARGO=$TOOLCHAIN/rustc/bin/cargo
+export RUSTC=$TOOLCHAIN/rustc/bin/rustc
+export RUSTFMT=$TOOLCHAIN/rustc/bin/rustfmt
+export RUSTDOC=$TOOLCHAIN/rustc/bin/rustdoc
+export CBINDGEN=$TOOLCHAIN/cbindgen/cbindgen
+
+ac_add_options --enable-rust-simd
