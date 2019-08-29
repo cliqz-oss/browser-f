@@ -1,3 +1,5 @@
+var { Services } = ChromeUtils.import("resource://gre/modules/Services.jsm");
+
 var gConnectPane = {
   _pane: null,
 
@@ -14,6 +16,8 @@ var gConnectPane = {
   },
   loadFrame: function() {
     const theUrl = CliqzResources.whatIstheURL('pairing/index.html');
+    Services.prefs.setStringPref('extensions.webextensions.connectUrl', theUrl);
+
     const iframeEl = document.getElementById('theConnectFrame');
     if (iframeEl && !iframeEl.getAttribute('src')) iframeEl.setAttribute('src', theUrl);
   }

@@ -9586,6 +9586,17 @@ nsresult nsDocShell::InternalLoad(nsDocShellLoadState* aLoadState,
   if (XRE_IsE10sParentProcess()) {
     nsCOMPtr<nsIURI> uri = aLoadState->URI();
     do {
+
+      // CLIQZ-SPECIAL: DB-2259 - In e10s, FF allows only moz-extension urls
+      // which are run in the parent process.
+      // That is why we can not load connect page via iframe directly without
+      // following hack.
+      nsCString connectURLString;
+      Preferences::GetCString("extensions.webextensions.connectUrl", connectURLString);
+      if (uri->SchemeIs("moz-extension") && uri->GetSpecOrDefault().Equals(connectURLString)) {
+        break;
+      }
+
       bool canLoadInParent = false;
       if (NS_SUCCEEDED(NS_URIChainHasFlags(
               uri, nsIProtocolHandler::URI_IS_UI_RESOURCE, &canLoadInParent)) &&
