@@ -429,7 +429,7 @@ var MigrationWizard = {
 
     if (addons.length > 0) {
       addons.forEach(addon => {
-        const checkbox = document.createElement("checkbox");
+        const checkbox = document.createXULElement("checkbox");
         checkbox.id = addon.id;
         checkbox.setAttribute("label", addon.name);
         availableAddons.appendChild(checkbox);
