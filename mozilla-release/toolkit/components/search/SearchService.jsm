@@ -1990,7 +1990,7 @@ SearchService.prototype = {
   async getVisibleEngines() {
     await this.init();
     SearchUtils.log("getVisibleEngines: getting all visible engines");
-    var engines = this._getSortedEngines(false);
+    var engines = this._getSortedEngines(false) || [];
 
     //CLIQZ-SPECIAL. DB-927: Restore alternate search engines' alias
     engines.forEach(engine => {
