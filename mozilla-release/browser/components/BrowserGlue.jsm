@@ -384,6 +384,7 @@ let LEGACY_ACTORS = {
     return;
   }
 
+  //trishul
   let browserWindowFeatures =
     "chrome,all,dialog=no,extrachrome,menubar,resizable,scrollbars,status," +
     "location,toolbar,personalbar";

@@ -94,7 +94,8 @@ AutoForgetTabsService.prototype = {
     }
   },
 
-  blacklisted: function AFTSvc_blacklisted(domain) {
+  blacklisted: function AFTSvc_blacklisted(domain, isURL) {
+    if (isURL) domain = maybeGetDomain(domain);
     return !this._usrWhiteList.has(domain) &&
         (this._adultDomainsBF.test(domain) || this._usrBlackList.has(domain));
   },

@@ -35,7 +35,7 @@ var PrivateBrowsingUtils = {
   isContentWindowPrivate: function pbu_isWindowPrivate(aWindow) {
     return this.privacyContextFromWindow(aWindow).usePrivateBrowsing;
   },
-
+//
   isBrowserPrivate(aBrowser, fromContainer) {
     // CLIQZ-SPECIAL: Force default Firefox isBrowserPrivate in case of containers
     if (fromContainer) {

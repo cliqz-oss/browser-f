@@ -16,6 +16,12 @@ const { Services } = ChromeUtils.import("resource://gre/modules/Services.jsm");
 const { XPCOMUtils } = ChromeUtils.import(
   "resource://gre/modules/XPCOMUtils.jsm"
 );
+const { PrivateBrowsingUtils } = ChromeUtils.import(
+  "resource://gre/modules/PrivateBrowsingUtils.jsm"
+);
+
+const autoForgetTabs= Cc["@cliqz.com/browser/auto_forget_tabs_service;1"].
+    getService(Ci.nsISupports).wrappedJSObject;
 
 XPCOMUtils.defineLazyModuleGetters(this, {
   ExtensionUtils: "resource://gre/modules/ExtensionUtils.jsm",
@@ -672,8 +678,24 @@ HttpObserverManager = {
 
   observe(subject, topic, data) {
     let channel = this.getWrapper(subject);
+    const isAdult = url => autoForgetTabs.blacklisted(url, true);
+
     switch (topic) {
       case "http-on-modify-request":
+        if (
+            isAdult(channel.finalURL) &&
+            channel.type === 'main_frame' &&
+            !PrivateBrowsingUtils.isBrowserPrivate(channel.browserElement)
+        ){
+          channel.suspended = false;
+          channel.cancel(Cr.NS_ERROR_ABORT);
+          const browser = channel.browserElement;
+          browser.ownerGlobal.openTrustedLinkIn(
+            channel.finalURL,
+            "window",
+            { private: true });
+          break;
+        }
         this.runChannelListener(channel, "opening");
         break;
       case "http-on-before-connect":
@@ -943,6 +965,7 @@ HttpObserverManager = {
         if (!channel.canModify) {
           continue;
         }
+// trishul
 
         if (result.cancel) {
           channel.suspended = false;
@@ -1071,6 +1094,7 @@ var onBeforeRequest = {
     ContentPolicyManager.addListener(callback, opts);
 
     opts = Object.assign({}, opts, optionsObject);
+    // trishul
     HttpObserverManager.addListener("opening", callback, opts);
   },
 
