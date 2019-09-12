@@ -19,9 +19,12 @@ const { XPCOMUtils } = ChromeUtils.import(
 const { PrivateBrowsingUtils } = ChromeUtils.import(
   "resource://gre/modules/PrivateBrowsingUtils.jsm"
 );
-
 const autoForgetTabs= Cc["@cliqz.com/browser/auto_forget_tabs_service;1"].
     getService(Ci.nsISupports).wrappedJSObject;
+
+const { CliqzResources } = ChromeUtils.import(
+  "resource:///modules/CliqzResources.jsm"
+);
 
 XPCOMUtils.defineLazyModuleGetters(this, {
   ExtensionUtils: "resource://gre/modules/ExtensionUtils.jsm",
@@ -689,11 +692,26 @@ HttpObserverManager = {
         ){
           channel.suspended = false;
           channel.cancel(Cr.NS_ERROR_ABORT);
-          const browser = channel.browserElement;
-          browser.ownerGlobal.openTrustedLinkIn(
+          const { gBrowser, openTrustedLinkIn } = channel.browserElement.ownerGlobal;
+          const { selectedTab, selectedTabs } = gBrowser;
+          openTrustedLinkIn(
             channel.finalURL,
             "window",
-            { private: true });
+            { private: true }
+          );
+          const { originURL } = channel;
+          if (
+            originURL.startsWith('moz-extension') ||
+            originURL === ''
+          ) {
+            if (selectedTabs.length > 1) {
+              gBrowser.removeTab(selectedTab);
+            } else {
+              selectedTab.linkedBrowser.loadURI(CliqzResources.getFreshTabUrl(), {
+                triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal()
+              });
+            }
+          }
           break;
         }
         this.runChannelListener(channel, "opening");
