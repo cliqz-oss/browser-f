@@ -6405,24 +6405,38 @@ var TabContextMenu = {
     // Privateness related menu items.
     const windowIsPrivate = PrivateBrowsingUtils.isWindowPrivate(window);
     const tabIsPrivate = this.contextTab.private;
+    const { spec: currentUrl} = this.contextTab._linkedBrowser.currentURI;
+    const isAdult = autoForgetTabs.blacklisted(currentUrl, true);
     const togglePrivateItem = document.getElementById("context_togglePrivate");
     const addExceptionItem =
         document.getElementById("context_togglePrivateAndRememberDomain");
-    if (tabIsPrivate === null) {
-      togglePrivateItem.hidden = true;
-      addExceptionItem.hidden = true;
-    } else {
-      togglePrivateItem.hidden = windowIsPrivate;
-      togglePrivateItem.label =
-          gNavigatorBundle.getString(
-              tabIsPrivate ? "apt.tabContext.reloadInNormalMode"
-                           : "apt.tabContext.reloadInForgetMode");
-      addExceptionItem.hidden = windowIsPrivate || !autoForgetTabs.isActive();
-      addExceptionItem.label =
-          gNavigatorBundle.getString(
-              tabIsPrivate ? "apt.tabContext.alwaysInNormalMode"
-                           : "apt.tabContext.alwaysInForgetMode");
+    const whiteListToggle =
+        document.getElementById("context_togglePrivatePinUnpin");
+    togglePrivateItem.hidden = true;
+    addExceptionItem.hidden = true;
+    whiteListToggle.hidden = true;
+    if (windowIsPrivate) {
+      whiteListToggle.hidden = false;
+      whiteListToggle.label = gNavigatorBundle
+        .getString(isAdult ? "afw.tabContext.unpinToFW" : "afw.tabContext.pinToFW");
     }
+    /*
+      if (tabIsPrivate === null) {
+        togglePrivateItem.hidden = true;
+        addExceptionItem.hidden = true;
+      } else {
+        togglePrivateItem.hidden = windowIsPrivate;
+        togglePrivateItem.label =
+            gNavigatorBundle.getString(
+                tabIsPrivate ? "apt.tabContext.reloadInNormalMode"
+                            : "apt.tabContext.reloadInForgetMode");
+        addExceptionItem.hidden = windowIsPrivate || !autoForgetTabs.isActive();
+        addExceptionItem.label =
+            gNavigatorBundle.getString(
+                tabIsPrivate ? "apt.tabContext.alwaysInNormalMode"
+                            : "apt.tabContext.alwaysInForgetMode");
+      }
+    */
 #endif
 
     let selectAllTabs = document.getElementById("context_selectAllTabs");
@@ -6444,6 +6458,18 @@ var TabContextMenu = {
   togglePrivateMode: function(rememberDomain) {
     autoForgetTabs.toggleBrowserPrivateMode(
         this.contextTab.linkedBrowser, rememberDomain);
+  },
+  togglePrivatePinUnpin: function() {
+    const { spec: currentUrl} = this.contextTab._linkedBrowser.currentURI;
+    const isAdult = autoForgetTabs.blacklisted(currentUrl, true);
+    if (isAdult) {
+      autoForgetTabs.whitelistDomain(currentUrl, true);
+    } else {
+      autoForgetTabs.blacklistDomain(currentUrl, true);
+    }
+    // Shall we delete the tab? And shall we open in normal window?
+    // const { ownerGlobal } = this.contextTab._linkedBrowser;
+    // ownerGlobal.gBrowser.removeTab(this.contextTab)
   },
 #endif
 

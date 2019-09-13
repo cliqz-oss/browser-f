@@ -106,7 +106,8 @@ AutoForgetTabsService.prototype = {
    * @param {String} domain to add.
    * @returns {Boolean} whether actual changes to the list were made.
    */
-  whitelistDomain: function AFTSvc_whitelistDomain(domain) {
+  whitelistDomain: function AFTSvc_whitelistDomain(domain, isURL) {
+    if (isURL) domain = maybeGetDomain(domain);
     if (!domain || this._usrWhiteList.has(domain))
       return false;
     this._usrBlackList.delete(domain);
@@ -121,7 +122,8 @@ AutoForgetTabsService.prototype = {
    * @param {String} domain to add.
    * @returns {Boolean} whether actual changes to the list were made.
    */
-  blacklistDomain: function AFTSvc_blacklistDomain(domain) {
+  blacklistDomain: function AFTSvc_blacklistDomain(domain, isURL) {
+    if (isURL) domain = maybeGetDomain(domain);
     if (!domain || this.blacklisted(domain))
       return false;
     this._usrBlackList.add(domain);
