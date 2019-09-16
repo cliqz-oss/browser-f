@@ -679,39 +679,42 @@ HttpObserverManager = {
     this.addOrRemove();
   },
 
+  maybeAFW(channel) {
+    if (
+      autoForgetTabs.blacklisted(channel.finalURL, true) &&
+      channel.type === 'main_frame' &&
+      !PrivateBrowsingUtils.isBrowserPrivate(channel.browserElement)
+    ){
+      channel.suspended = false;
+      channel.cancel(Cr.NS_ERROR_ABORT);
+      const { gBrowser, openTrustedLinkIn } = channel.browserElement.ownerGlobal;
+      const { selectedTab, _tabs: tabs = [] } = gBrowser;
+      const freshTabURL = CliqzResources.getFreshTabUrl();
+      openTrustedLinkIn(
+        channel.finalURL,
+        "window",
+        { private: true }
+      );
+      const { originURL } = channel;
+      if (
+        originURL === freshTabURL ||
+        originURL === ''
+      ) {
+        if (tabs.length === 1) {
+          openTrustedLinkIn(freshTabURL, "tab");
+        }
+        gBrowser.removeTab(selectedTab);
+      }
+      return true;
+    }
+    return false;
+  },
+
   observe(subject, topic, data) {
     let channel = this.getWrapper(subject);
-    const isAdult = url => autoForgetTabs.blacklisted(url, true);
-
     switch (topic) {
       case "http-on-modify-request":
-        if (
-            isAdult(channel.finalURL) &&
-            channel.type === 'main_frame' &&
-            !PrivateBrowsingUtils.isBrowserPrivate(channel.browserElement)
-        ){
-          channel.suspended = false;
-          channel.cancel(Cr.NS_ERROR_ABORT);
-          const { gBrowser, openTrustedLinkIn } = channel.browserElement.ownerGlobal;
-          const { selectedTab, selectedTabs } = gBrowser;
-          openTrustedLinkIn(
-            channel.finalURL,
-            "window",
-            { private: true }
-          );
-          const { originURL } = channel;
-          if (
-            originURL.startsWith('moz-extension') ||
-            originURL === ''
-          ) {
-            if (selectedTabs.length > 1) {
-              gBrowser.removeTab(selectedTab);
-            } else {
-              selectedTab.linkedBrowser.loadURI(CliqzResources.getFreshTabUrl(), {
-                triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal()
-              });
-            }
-          }
+        if (this.maybeAFW(channel)) {
           break;
         }
         this.runChannelListener(channel, "opening");
