@@ -95,7 +95,9 @@ AutoForgetTabsService.prototype = {
   },
 
   blacklisted: function AFTSvc_blacklisted(domain, isURL) {
-    if (isURL) domain = maybeGetDomain(domain);
+    if (isURL) {
+      domain = maybeGetDomain(domain);
+    }
     return !this._usrWhiteList.has(domain) &&
         (this._adultDomainsBF.test(domain) || this._usrBlackList.has(domain));
   },
@@ -107,7 +109,9 @@ AutoForgetTabsService.prototype = {
    * @returns {Boolean} whether actual changes to the list were made.
    */
   whitelistDomain: function AFTSvc_whitelistDomain(domain, isURL) {
-    if (isURL) domain = maybeGetDomain(domain);
+    if (isURL) {
+      domain = maybeGetDomain(domain);
+    }
     if (!domain || this._usrWhiteList.has(domain))
       return false;
     this._usrBlackList.delete(domain);
@@ -123,7 +127,9 @@ AutoForgetTabsService.prototype = {
    * @returns {Boolean} whether actual changes to the list were made.
    */
   blacklistDomain: function AFTSvc_blacklistDomain(domain, isURL) {
-    if (isURL) domain = maybeGetDomain(domain);
+    if (isURL) {
+      domain = maybeGetDomain(domain);
+    }
     if (!domain || this.blacklisted(domain))
       return false;
     this._usrBlackList.add(domain);
