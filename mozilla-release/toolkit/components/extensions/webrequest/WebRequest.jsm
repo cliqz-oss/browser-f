@@ -680,6 +680,7 @@ HttpObserverManager = {
   },
 
   maybeAFW(channel) {
+#if CQZ_AUTO_PRIVATE_TAB
     if (
       autoForgetTabs.blacklisted(channel.finalURL, true) &&
       channel.type === 'main_frame' &&
@@ -707,6 +708,7 @@ HttpObserverManager = {
       }
       return true;
     }
+#endif
     return false;
   },
 
@@ -986,7 +988,6 @@ HttpObserverManager = {
         if (!channel.canModify) {
           continue;
         }
-// trishul
 
         if (result.cancel) {
           channel.suspended = false;
@@ -1115,7 +1116,6 @@ var onBeforeRequest = {
     ContentPolicyManager.addListener(callback, opts);
 
     opts = Object.assign({}, opts, optionsObject);
-    // trishul
     HttpObserverManager.addListener("opening", callback, opts);
   },
 
