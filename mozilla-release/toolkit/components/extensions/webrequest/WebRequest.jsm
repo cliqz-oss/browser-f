@@ -682,9 +682,10 @@ HttpObserverManager = {
   maybeAFW(channel) {
 #if CQZ_AUTO_PRIVATE_TAB
     if (
-      autoForgetTabs.blacklisted(channel.finalURL, true) &&
       channel.type === 'main_frame' &&
-      !PrivateBrowsingUtils.isBrowserPrivate(channel.browserElement)
+      !PrivateBrowsingUtils.isBrowserPrivate(channel.browserElement) &&
+      autoForgetTabs.isOn(true) &&
+      autoForgetTabs.blacklisted(channel.finalURL, true)
     ){
       channel.suspended = false;
       channel.cancel(Cr.NS_ERROR_ABORT);

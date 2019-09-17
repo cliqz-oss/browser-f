@@ -6404,15 +6404,17 @@ var TabContextMenu = {
 #if CQZ_AUTO_PRIVATE_TAB
     // Privateness related menu items.
     const windowIsPrivate = PrivateBrowsingUtils.isWindowPrivate(window);
-    const { spec: currentUrl} = this.contextTab._linkedBrowser.currentURI;
-    const isAdult = autoForgetTabs.blacklisted(currentUrl, true);
-    const whiteListToggle =
-        document.getElementById("context_togglePrivatePinUnpin");
-    whiteListToggle.hidden = true;
     if (windowIsPrivate) {
-      whiteListToggle.hidden = false;
-      whiteListToggle.label = gNavigatorBundle
-        .getString(isAdult ? "afw.tabContext.unpinToFW" : "afw.tabContext.pinToFW");
+      const whiteListToggle =
+        document.getElementById("context_togglePrivatePinUnpin");
+      whiteListToggle.hidden = true;
+      if (autoForgetTabs.isOn(true)) {
+        const { spec: currentUrl} = this.contextTab._linkedBrowser.currentURI;
+        const isAdult = autoForgetTabs.blacklisted(currentUrl, true);
+        whiteListToggle.hidden = false;
+        whiteListToggle.label = gNavigatorBundle
+          .getString(isAdult ? "afw.tabContext.unpinToFW" : "afw.tabContext.pinToFW");
+      }
     }
 #endif
 

@@ -139,7 +139,16 @@ AutoForgetTabsService.prototype = {
   },
 
   // RPC
-  isActive: function AFTSvc_isActive() {
+  isActive: function AFTSvc_isActive(isAFW = false) {
+    // CLIQZ-SPECIAL: Hack to prevent AFT mode and work only for AFW
+    // Needs to be removed while cleaning up AFT code
+    return false;
+    return !!(this.hasDatabase() && Preferences.get(PREF_NAME_ENABLED, false));
+  },
+
+  isOn: function AFTSvc_isOn() {
+    // CLIQZ-SPECIAL: Hack to prevent AFT mode and work only for AFW
+    // Needs to be removed while cleaning up AFT code
     return !!(this.hasDatabase() && Preferences.get(PREF_NAME_ENABLED, false));
   },
 
