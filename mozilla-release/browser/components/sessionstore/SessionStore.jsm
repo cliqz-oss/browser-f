@@ -707,7 +707,7 @@ var SessionStoreInternal = {
     let state;
     let ss = SessionStartup;
 
-    if (ss.willRestoreCliqz() || ss.sessionType == ss.DEFER_SESSION) {
+    if (ss.willRestore() || ss.sessionType == ss.DEFER_SESSION) {
       state = ss.state;
     }
 
