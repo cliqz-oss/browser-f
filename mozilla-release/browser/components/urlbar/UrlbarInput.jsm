@@ -842,7 +842,7 @@ class UrlbarInput {
   // Getters and Setters below.
 
   get focused() {
-    return this.textbox.getAttribute("focused") == "true";
+    return this.textbox && this.textbox.getAttribute("focused") == "true";
   }
 
   get goButton() {
