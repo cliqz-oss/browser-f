@@ -21,8 +21,6 @@ this.EXPORTED_SYMBOLS = [
 const AFTSvcRPCMethods = {
   hasDatabase: [],
   isActive: [],
-  shouldForget: ["domain"],
-  notifyAutoSwitched: []
 };
 
 // List of methods exposed to RPC by |AutoForgetTabsMonitor|.

@@ -6407,7 +6407,7 @@ var TabContextMenu = {
       const whiteListToggle =
         document.getElementById("context_togglePrivatePinUnpin");
       whiteListToggle.hidden = true;
-      if (autoForgetTabs.isOn(true)) {
+      if (autoForgetTabs.isActive()) {
         const { spec: currentUrl} = this.contextTab._linkedBrowser.currentURI;
         const isAdult = autoForgetTabs.blacklisted(currentUrl, true);
         whiteListToggle.hidden = false;

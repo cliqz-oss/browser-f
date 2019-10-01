@@ -683,7 +683,7 @@ HttpObserverManager = {
     if (
       channel.type === 'main_frame' &&
       !PrivateBrowsingUtils.isBrowserPrivate(channel.browserElement) &&
-      autoForgetTabs.isOn(true) &&
+      autoForgetTabs.isActive() &&
       autoForgetTabs.blacklisted(channel.finalURL, true)
     ){
       channel.suspended = false;
