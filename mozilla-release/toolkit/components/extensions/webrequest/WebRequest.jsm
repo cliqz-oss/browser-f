@@ -680,7 +680,6 @@ HttpObserverManager = {
   },
 
   maybeAFW(channel) {
-#if CQZ_AUTO_PRIVATE_TAB
     if (
       channel.type === 'main_frame' &&
       !PrivateBrowsingUtils.isBrowserPrivate(channel.browserElement) &&
@@ -709,7 +708,6 @@ HttpObserverManager = {
       }
       return true;
     }
-#endif
     return false;
   },
 

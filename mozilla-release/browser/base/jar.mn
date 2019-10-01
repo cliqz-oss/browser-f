@@ -75,9 +75,6 @@ browser.jar:
         content/browser/defaultthemes/5.icon.jpg      (content/defaultthemes/5.icon.jpg)
         content/browser/defaultthemes/5.preview.jpg   (content/defaultthemes/5.preview.jpg)
         content/browser/history-swipe-arrow.svg       (content/history-swipe-arrow.svg)
-#if CQZ_AUTO_PRIVATE_TAB
-        content/browser/PrivateTabUI.jsm              (content/PrivateTabUI.jsm)
-#endif
 *       content/browser/pageinfo/pageInfo.xul         (content/pageinfo/pageInfo.xul)
         content/browser/pageinfo/pageInfo.js          (content/pageinfo/pageInfo.js)
         content/browser/pageinfo/pageInfo.css         (content/pageinfo/pageInfo.css)

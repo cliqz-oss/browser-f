@@ -37,31 +37,17 @@ var PrivateBrowsingUtils = {
   },
 
   isBrowserPrivate(aBrowser, fromContainer) {
-    // CLIQZ-SPECIAL: Force default Firefox isBrowserPrivate in case of containers
-    if (fromContainer) {
-      let chromeWin = aBrowser.ownerGlobal;
-      if (chromeWin.gMultiProcessBrowser || !aBrowser.contentWindow) {
-        // In e10s we have to look at the chrome window's private
-        // browsing status since the only alternative is to check the
-        // content window, which is in another process.  If the browser
-        // is lazy or is running in windowless configuration then the
-        // content window doesn't exist.
-        return this.isWindowPrivate(chromeWin);
-      }
-      return this.privacyContextFromWindow(aBrowser.contentWindow)
-        .usePrivateBrowsing;
+    let chromeWin = aBrowser.ownerGlobal;
+    if (chromeWin.gMultiProcessBrowser || !aBrowser.contentWindow) {
+      // In e10s we have to look at the chrome window's private
+      // browsing status since the only alternative is to check the
+      // content window, which is in another process.  If the browser
+      // is lazy or is running in windowless configuration then the
+      // content window doesn't exist.
+      return this.isWindowPrivate(chromeWin);
     }
-
-    try {
-      return aBrowser.loadContext.usePrivateBrowsing;
-    } catch(e) {
-      // There might be cases when aBrowser.loadContext is not yet (or not anymore)
-      // exists for a given aBrowser. As we don't have any other way to know if it's
-      // private or not, it's safer to assume it is.
-      Components.utils.reportError("Browser passed to PrivateBrowsingUtils.isBrowserPrivate " +
-                                   "does not have loadContext.");
-      return true;
-    }
+    return this.privacyContextFromWindow(aBrowser.contentWindow)
+      .usePrivateBrowsing;
   },
 
   isTabContextPrivate(aTab, fromContainer) {

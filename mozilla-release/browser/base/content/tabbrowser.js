@@ -6401,7 +6401,6 @@ var TabContextMenu = {
     this.contextTab.toggleMultiSelectMuteMenuItem = toggleMultiSelectMute;
     this._updateToggleMuteMenuItems(this.contextTab);
 
-#if CQZ_AUTO_PRIVATE_TAB
     // Privateness related menu items.
     const windowIsPrivate = PrivateBrowsingUtils.isWindowPrivate(window);
     if (windowIsPrivate) {
@@ -6416,7 +6415,6 @@ var TabContextMenu = {
           .getString(isAdult ? "afw.tabContext.unpinToFW" : "afw.tabContext.pinToFW");
       }
     }
-#endif
 
     let selectAllTabs = document.getElementById("context_selectAllTabs");
     selectAllTabs.disabled = gBrowser.allTabsSelected();
@@ -6433,11 +6431,6 @@ var TabContextMenu = {
       PrivateBrowsingUtils.isWindowPrivate(window);
   },
 
-#if CQZ_AUTO_PRIVATE_TAB
-  togglePrivateMode: function(rememberDomain) {
-    autoForgetTabs.toggleBrowserPrivateMode(
-        this.contextTab.linkedBrowser, rememberDomain);
-  },
   togglePrivatePinUnpin: function() {
     const { spec: currentUrl} = this.contextTab._linkedBrowser.currentURI;
     const isAdult = autoForgetTabs.blacklisted(currentUrl, true);
@@ -6447,7 +6440,6 @@ var TabContextMenu = {
       autoForgetTabs.blacklistDomain(currentUrl, true);
     }
   },
-#endif
 
   handleEvent(aEvent) {
     switch (aEvent.type) {

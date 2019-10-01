@@ -339,6 +339,9 @@ XPCOMUtils.defineLazyGetter(this, "gNavToolbox", () => {
 
 XPCOMUtils.defineLazyGetter(this, "gURLBar", () => gURLBarHandler.urlbar);
 
+const autoForgetTabs = Cc["@cliqz.com/browser/auto_forget_tabs_service;1"].
+        getService(Ci.nsISupports).wrappedJSObject;
+
 /**
  * Tracks the urlbar object, allowing to reinitiate it when necessary, e.g. on
  * customization or when the quantumbar pref changes.
@@ -659,14 +662,6 @@ async function gLazyFindCommand(cmd, ...args) {
     fb[cmd].apply(fb, args);
   }
 }
-
-#if CQZ_AUTO_PRIVATE_TAB
-let autoForgetTabs= Cc["@cliqz.com/browser/auto_forget_tabs_service;1"].
-    getService(Ci.nsISupports).wrappedJSObject;
-
-XPCOMUtils.defineLazyModuleGetter(this, "PrivateTabUI",
-  "chrome://browser/content/PrivateTabUI.jsm");
-#endif
 
 // CLIQZ Blue Theme
 // TODO - move this out into a separate file!
@@ -2020,11 +2015,6 @@ var gBrowserInit = {
       ToolbarKeyboardNavigator.init();
     }
 
-#if CQZ_AUTO_PRIVATE_TAB
-    this._privateTabUI = new PrivateTabUI(gBrowser, gNavToolbox);
-    this._privateTabUI.start();
-#endif
-
     gRemoteControl.updateVisualCue(Marionette.running);
 
     // If we are given a tab to swap in, take care of it before first paint to
@@ -2573,10 +2563,6 @@ var gBrowserInit = {
       return;
     }
 
-#if CQZ_AUTO_PRIVATE_TAB
-    this._privateTabUI.stop();
-#endif
-
     // First clean up services initialized in gBrowserInit.onLoad (or those whose
     // uninit methods don't depend on the services having been initialized).
 
@@ -3079,14 +3065,6 @@ function BrowserOpenTab(event) {
     "browser-open-newtab-start"
   );
 }
-
-#if CQZ_AUTO_PRIVATE_TAB
-function BrowserOpenPrivateTab() {
-  // use openTrustedLinkIn as it adds system principal to triggeringPrincipal by default
-  openTrustedLinkIn("about:privatebrowsing", "tab", {private: true});
-  gURLBar.focus();
-}
-#endif
 
 var gLastOpenDirectory = {
   _lastDir: null,

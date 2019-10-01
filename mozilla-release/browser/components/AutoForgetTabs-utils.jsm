@@ -6,10 +6,7 @@ const {classes: Cc, interfaces: Ci, utils: Cu, results: Cr} = Components;
 
 const {Services} = ChromeUtils.import("resource://gre/modules/Services.jsm");
 
-const RPC_PREFIX = "AutoForgetTabsService:";
-
 this.EXPORTED_SYMBOLS = [
-  "RPC_PREFIX",
   "AFTSvcRPCMethods",
   "AFTMonRPCMethods",
 

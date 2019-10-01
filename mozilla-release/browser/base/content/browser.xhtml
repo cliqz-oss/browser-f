@@ -133,12 +133,10 @@
                 oncommand="gBrowser.reloadTab(TabContextMenu.contextTab);"/>
       <menuitem id="context_reloadSelectedTabs" data-lazy-l10n-id="reload-tabs" hidden="true"
                 oncommand="gBrowser.reloadMultiSelectedTabs();"/>
-#if CQZ_AUTO_PRIVATE_TAB
       <menuitem
           id="context_togglePrivatePinUnpin"
           oncommand="TabContextMenu.togglePrivatePinUnpin();"
           />
-#endif
       <menuseparator/>
       <menuitem id="context_toggleMuteTab" oncommand="TabContextMenu.contextTab.toggleMuteAudio();"/>
       <menuitem id="context_toggleMuteSelectedTabs" hidden="true"

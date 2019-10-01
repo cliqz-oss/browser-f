@@ -11,9 +11,7 @@ var { Services } = ChromeUtils.import("resource://gre/modules/Services.jsm");
 var { XPCOMUtils } = ChromeUtils.import(
   "resource://gre/modules/XPCOMUtils.jsm"
 );
-var { AutoForgetTabsMonitor } = ChromeUtils.import(
-  "resource:///modules/AutoForgetTabsMonitor.jsm"
-);
+
 var { ActorManagerChild } = ChromeUtils.import(
   "resource://gre/modules/ActorManagerChild.jsm"
 );
@@ -39,9 +37,6 @@ XPCOMUtils.defineLazyServiceGetter(
 );
 
 var global = this;
-
-var aftMon = new AutoForgetTabsMonitor(docShell, global);
-addEventListener("unload", () => { aftMon.shutdown(); });
 
 var AutoScrollListener = {
   handleEvent(event) {

@@ -419,12 +419,9 @@ var gPrivacyPane = {
 
     this._initHttpsEverywhere();
     this._initConsentric();
-#if CQZ_AUTO_PRIVATE_TAB
     const autoForgetTabs = Cc["@cliqz.com/browser/auto_forget_tabs_service;1"].
         getService(Ci.nsISupports).wrappedJSObject;
     document.getElementById("forgetMode").hidden = !autoForgetTabs.hasDatabase;
-#endif
-
 
     /* Initialize Content Blocking */
 #if 0
