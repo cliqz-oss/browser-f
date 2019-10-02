@@ -471,7 +471,7 @@ var PermissionPromptPrototype = {
               // Permanently store permission.
               let scope = SitePermissions.SCOPE_PERSISTENT;
               // Only remember permission for session if in PB mode.
-              if (PrivateBrowsingUtils.isTabContextPrivate(chromeWin.gBrowser.getTabForBrowser(this.browser))) {
+              if (PrivateBrowsingUtils.isBrowserPrivate(this.browser)) {
                 scope = SitePermissions.SCOPE_SESSION;
               }
               SitePermissions.setForPrincipal(
@@ -566,7 +566,7 @@ var PermissionPromptPrototype = {
           // by permanent entries in the permission manager.
           let scope = SitePermissions.SCOPE_PERSISTENT;
           // Only remember permission for session if in PB mode.
-          if (PrivateBrowsingUtils.isTabContextPrivate(chromeWin.gBrowser.getTabForBrowser(browser))) {
+          if (PrivateBrowsingUtils.isBrowserPrivate(browser)) {
             scope = SitePermissions.SCOPE_SESSION;
           }
           SitePermissions.setForPrincipal(
@@ -888,7 +888,7 @@ DesktopNotificationPermissionPrompt.prototype = {
         action: SitePermissions.BLOCK,
       },
     ];
-    if (!PrivateBrowsingUtils.isTabContextPrivate(this.browser.ownerGlobal.gBrowser.getTabForBrowser(this.browser))) {
+    if (!PrivateBrowsingUtils.isBrowserPrivate(this.browser)) {
       actions.push({
         label: gBrowserBundle.GetStringFromName("webNotifications.never"),
         accessKey: gBrowserBundle.GetStringFromName(

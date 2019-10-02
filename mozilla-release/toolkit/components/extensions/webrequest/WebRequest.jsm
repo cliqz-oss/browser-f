@@ -16,6 +16,15 @@ const { Services } = ChromeUtils.import("resource://gre/modules/Services.jsm");
 const { XPCOMUtils } = ChromeUtils.import(
   "resource://gre/modules/XPCOMUtils.jsm"
 );
+const { PrivateBrowsingUtils } = ChromeUtils.import(
+  "resource://gre/modules/PrivateBrowsingUtils.jsm"
+);
+const autoForgetTabs= Cc["@cliqz.com/browser/auto_forget_tabs_service;1"].
+    getService(Ci.nsISupports).wrappedJSObject;
+
+const { CliqzResources } = ChromeUtils.import(
+  "resource:///modules/CliqzResources.jsm"
+);
 
 XPCOMUtils.defineLazyModuleGetters(this, {
   ExtensionUtils: "resource://gre/modules/ExtensionUtils.jsm",
@@ -670,10 +679,45 @@ HttpObserverManager = {
     this.addOrRemove();
   },
 
+  maybeAFW(channel) {
+    if (
+      channel.type === 'main_frame' &&
+      !PrivateBrowsingUtils.isBrowserPrivate(channel.browserElement) &&
+      autoForgetTabs.isActive() &&
+      autoForgetTabs.blacklisted(channel.finalURL, true)
+    ){
+      channel.suspended = false;
+      channel.cancel(Cr.NS_ERROR_ABORT);
+      const { gBrowser, openTrustedLinkIn } = channel.browserElement.ownerGlobal;
+      const { selectedTab, _tabs: tabs = [] } = gBrowser;
+      const freshTabURL = CliqzResources.getFreshTabUrl();
+      openTrustedLinkIn(
+        channel.finalURL,
+        "window",
+        { private: true }
+      );
+      const { originURL } = channel;
+      if (
+        originURL === freshTabURL ||
+        originURL === ''
+      ) {
+        if (tabs.length === 1) {
+          openTrustedLinkIn(freshTabURL, "tab");
+        }
+        gBrowser.removeTab(selectedTab);
+      }
+      return true;
+    }
+    return false;
+  },
+
   observe(subject, topic, data) {
     let channel = this.getWrapper(subject);
     switch (topic) {
       case "http-on-modify-request":
+        if (this.maybeAFW(channel)) {
+          break;
+        }
         this.runChannelListener(channel, "opening");
         break;
       case "http-on-before-connect":

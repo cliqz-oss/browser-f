@@ -405,14 +405,6 @@
         ContextualIdentityService.setTabStyle(tab);
       }
 
-      // CLIQZ-SPECIAL:
-      // DB-2208:
-      // The idea to do that does not look nice but what an adventure! ;)
-      tab.setAttribute("private", window.arguments != null
-        ? window.arguments[0] === "about:privatebrowsing"
-        : false
-      );
-
       this._tabForBrowser.set(browser, tab);
 
       this._appendStatusPanel();
@@ -2613,7 +2605,6 @@
 
       var t = document.createXULElement("tab", { is: "tabbrowser-tab" });
       t.openerTab = openerTab;
-      t.setAttribute("private", private == true);
 
       aURI = aURI || "about:blank";
       let aURIObject = null;
@@ -3679,16 +3670,6 @@
      *   False if swapping isn't permitted, true otherwise.
      */
     swapBrowsersAndCloseOther(aOurTab, aOtherTab) {
-      // CLIQZ-SPECIAL. Auto-Forget-Tabs:
-      // Transfering a private tab to a non-private window is fine.
-      // Transfering a normal tab to a private window is not.
-      if (
-        PrivateBrowsingUtils.isWindowPrivate(window) &&
-        !aOtherTab.private
-      ) {
-          return false;
-      }
-#if 0
       // Do not allow transfering a private tab to a non-private window
       // and vice versa.
       if (
@@ -3697,7 +3678,6 @@
       ) {
         return false;
       }
-#endif
 
       let ourBrowser = this.getBrowserForTab(aOurTab);
       let otherBrowser = aOtherTab.linkedBrowser;
@@ -4142,12 +4122,6 @@
       var options = "chrome,dialog=no,all";
       for (var name in aOptions) {
         options += "," + name + "=" + aOptions[name];
-      }
-
-      // CLIQZ-SPECIAL:
-      // Open private window if tab is private.
-      if (aTab.private) {
-        options += ",private";
       }
 
       // Play the tab closing animation to give immediate feedback while
@@ -5954,11 +5928,9 @@
         }
         // Tabs in private windows aren't registered as "Open" so
         // that they don't appear as switch-to-tab candidates.
-        // CLIQZ-SPECIAL: also don't register windows from Forget tabs.
         if (
           !isBlankPageURL(aLocation.spec) &&
-          ((!PrivateBrowsingUtils.isWindowPrivate(window) &&
-           !PrivateBrowsingUtils.isTabContextPrivate(this.mTab)) ||
+          (!PrivateBrowsingUtils.isWindowPrivate(window) ||
             PrivateBrowsingUtils.permanentPrivateBrowsing)
         ) {
           gBrowser.UrlbarProviderOpenTabs.registerOpenTab(
@@ -6401,29 +6373,20 @@ var TabContextMenu = {
     this.contextTab.toggleMultiSelectMuteMenuItem = toggleMultiSelectMute;
     this._updateToggleMuteMenuItems(this.contextTab);
 
-#if CQZ_AUTO_PRIVATE_TAB
     // Privateness related menu items.
     const windowIsPrivate = PrivateBrowsingUtils.isWindowPrivate(window);
-    const tabIsPrivate = this.contextTab.private;
-    const togglePrivateItem = document.getElementById("context_togglePrivate");
-    const addExceptionItem =
-        document.getElementById("context_togglePrivateAndRememberDomain");
-    if (tabIsPrivate === null) {
-      togglePrivateItem.hidden = true;
-      addExceptionItem.hidden = true;
-    } else {
-      togglePrivateItem.hidden = windowIsPrivate;
-      togglePrivateItem.label =
-          gNavigatorBundle.getString(
-              tabIsPrivate ? "apt.tabContext.reloadInNormalMode"
-                           : "apt.tabContext.reloadInForgetMode");
-      addExceptionItem.hidden = windowIsPrivate || !autoForgetTabs.isActive();
-      addExceptionItem.label =
-          gNavigatorBundle.getString(
-              tabIsPrivate ? "apt.tabContext.alwaysInNormalMode"
-                           : "apt.tabContext.alwaysInForgetMode");
+    if (windowIsPrivate) {
+      const whiteListToggle =
+        document.getElementById("context_togglePrivatePinUnpin");
+      whiteListToggle.hidden = true;
+      if (autoForgetTabs.isActive()) {
+        const { spec: currentUrl} = this.contextTab._linkedBrowser.currentURI;
+        const isAdult = autoForgetTabs.blacklisted(currentUrl, true);
+        whiteListToggle.hidden = false;
+        whiteListToggle.label = gNavigatorBundle
+          .getString(isAdult ? "afw.tabContext.unpinToFW" : "afw.tabContext.pinToFW");
+      }
     }
-#endif
 
     let selectAllTabs = document.getElementById("context_selectAllTabs");
     selectAllTabs.disabled = gBrowser.allTabsSelected();
@@ -6440,12 +6403,15 @@ var TabContextMenu = {
       PrivateBrowsingUtils.isWindowPrivate(window);
   },
 
-#if CQZ_AUTO_PRIVATE_TAB
-  togglePrivateMode: function(rememberDomain) {
-    autoForgetTabs.toggleBrowserPrivateMode(
-        this.contextTab.linkedBrowser, rememberDomain);
+  togglePrivatePinUnpin: function() {
+    const { spec: currentUrl} = this.contextTab._linkedBrowser.currentURI;
+    const isAdult = autoForgetTabs.blacklisted(currentUrl, true);
+    if (isAdult) {
+      autoForgetTabs.whitelistDomain(currentUrl, true);
+    } else {
+      autoForgetTabs.blacklistDomain(currentUrl, true);
+    }
   },
-#endif
 
   handleEvent(aEvent) {
     switch (aEvent.type) {

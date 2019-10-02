@@ -507,12 +507,7 @@ this.LoginManagerParent = {
     }
 
     function recordLoginUse(login) {
-      if (!browser) {
-        return;
-      }
-
-      let aTab = browser.ownerGlobal.gBrowser.getTabForBrowser(browser);
-      if (PrivateBrowsingUtils.isTabContextPrivate(aTab)) {
+      if (!browser || PrivateBrowsingUtils.isBrowserPrivate(browser)) {
         // don't record non-interactive use in private browsing
         return;
       }

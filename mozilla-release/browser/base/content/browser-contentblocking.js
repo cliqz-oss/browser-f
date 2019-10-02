@@ -1426,9 +1426,8 @@ var ContentBlocking = {
     } else if (anyBlocking && !this.iconBox.hasAttribute("active")) {
       this.iconBox.setAttribute("animate", "true");
 
-      let isBrowserPrivate = PrivateBrowsingUtils.isTabContextPrivate(
-        gBrowser.getTabForBrowser(gBrowser.selectedBrowser)
-      );
+      let isBrowserPrivate = PrivateBrowsingUtils.isBrowserPrivate(gBrowser.selectedBrowser);
+
       if (!isBrowserPrivate) {
         let introCount = Services.prefs.getIntPref(this.prefIntroCount);
         let installStamp = Services.prefs.getIntPref(
@@ -1532,7 +1531,7 @@ var ContentBlocking = {
   },
 
   dontShowIntroPanelAgain() {
-    if (!PrivateBrowsingUtils.isTabContextPrivate(gBrowser.getTabForBrowser(gBrowser.selectedBrowser))) {
+    if (!PrivateBrowsingUtils.isBrowserPrivate(gBrowser.selectedBrowser)) {
       Services.prefs.setIntPref(this.prefIntroCount, this.MAX_INTROS);
       Services.prefs.savePrefFile(null);
     }

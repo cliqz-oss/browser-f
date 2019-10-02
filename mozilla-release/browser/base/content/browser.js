@@ -339,6 +339,9 @@ XPCOMUtils.defineLazyGetter(this, "gNavToolbox", () => {
 
 XPCOMUtils.defineLazyGetter(this, "gURLBar", () => gURLBarHandler.urlbar);
 
+const autoForgetTabs = Cc["@cliqz.com/browser/auto_forget_tabs_service;1"].
+        getService(Ci.nsISupports).wrappedJSObject;
+
 /**
  * Tracks the urlbar object, allowing to reinitiate it when necessary, e.g. on
  * customization or when the quantumbar pref changes.
@@ -659,14 +662,6 @@ async function gLazyFindCommand(cmd, ...args) {
     fb[cmd].apply(fb, args);
   }
 }
-
-#if CQZ_AUTO_PRIVATE_TAB
-let autoForgetTabs= Cc["@cliqz.com/browser/auto_forget_tabs_service;1"].
-    getService(Ci.nsISupports).wrappedJSObject;
-
-XPCOMUtils.defineLazyModuleGetter(this, "PrivateTabUI",
-  "chrome://browser/content/PrivateTabUI.jsm");
-#endif
 
 // CLIQZ Blue Theme
 // TODO - move this out into a separate file!
@@ -1654,7 +1649,7 @@ function _loadURI(browser, uri, params = {}) {
         let aTab = browser.ownerGlobal.gBrowser.getTabForBrowser(browser);
         browser.webNavigation.setOriginAttributesBeforeLoading({
           userContextId,
-          privateBrowsingId: PrivateBrowsingUtils.isTabContextPrivate(aTab)
+          privateBrowsingId: PrivateBrowsingUtils.isBrowserPrivate(browser)
             ? 1
             : 0,
         });
@@ -1710,7 +1705,7 @@ function _loadURI(browser, uri, params = {}) {
         let aTab = browser.ownerGlobal.gBrowser.getTabForBrowser(browser);
         browser.webNavigation.setOriginAttributesBeforeLoading({
           userContextId,
-          privateBrowsingId: PrivateBrowsingUtils.isTabContextPrivate(aTab)
+          privateBrowsingId: PrivateBrowsingUtils.isBrowserPrivate(browser)
             ? 1
             : 0,
         });
@@ -2019,11 +2014,6 @@ var gBrowserInit = {
     if (gToolbarKeyNavEnabled) {
       ToolbarKeyboardNavigator.init();
     }
-
-#if CQZ_AUTO_PRIVATE_TAB
-    this._privateTabUI = new PrivateTabUI(gBrowser, gNavToolbox);
-    this._privateTabUI.start();
-#endif
 
     gRemoteControl.updateVisualCue(Marionette.running);
 
@@ -2573,10 +2563,6 @@ var gBrowserInit = {
       return;
     }
 
-#if CQZ_AUTO_PRIVATE_TAB
-    this._privateTabUI.stop();
-#endif
-
     // First clean up services initialized in gBrowserInit.onLoad (or those whose
     // uninit methods don't depend on the services having been initialized).
 
@@ -3080,14 +3066,6 @@ function BrowserOpenTab(event) {
   );
 }
 
-#if CQZ_AUTO_PRIVATE_TAB
-function BrowserOpenPrivateTab() {
-  // use openTrustedLinkIn as it adds system principal to triggeringPrincipal by default
-  openTrustedLinkIn("about:privatebrowsing", "tab", {private: true});
-  gURLBar.focus();
-}
-#endif
-
 var gLastOpenDirectory = {
   _lastDir: null,
   get path() {
@@ -3484,9 +3462,8 @@ function URLBarSetURI(aURI, updatePopupNotifications) {
 
     // Cliqz. Invalidate page proxy state for inital pages opened in private tabs
     // and Cliqz pages.
-    let aTab = gBrowser.getTabForBrowser(gBrowser.selectedBrowser);
     if (
-      PrivateBrowsingUtils.isTabContextPrivate(aTab) &&
+      PrivateBrowsingUtils.isBrowserPrivate(gBrowser.selectedBrowser) &&
       CliqzResources.isInitialPage(uri.spec)
     ) {
       valid = false;
@@ -3826,9 +3803,8 @@ var BrowserOnClick = {
           flags |= overrideService.ERROR_TIME;
         }
         let uri = Services.uriFixup.createFixupURI(location, 0);
-        let aTab = browser.ownerGlobal.gBrowser.getTabForBrowser(browser);
         let permanentOverride =
-          !PrivateBrowsingUtils.isTabContextPrivate(aTab) &&
+          !PrivateBrowsingUtils.isBrowserPrivate(browser) &&
           Services.prefs.getBoolPref("security.certerrors.permanentOverride");
         cert = securityInfo.serverCert;
         overrideService.rememberValidityOverride(

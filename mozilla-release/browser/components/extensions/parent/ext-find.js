@@ -30,7 +30,7 @@ function runFindOperation(context, params, message) {
   tabId = tabId || tabTracker.getId(tab);
   if (
     !context.privateBrowsingAllowed &&
-    PrivateBrowsingUtils.isTabContextPrivate(tab)
+    PrivateBrowsingUtils.isBrowserPrivate(browser)
   ) {
     return Promise.reject({ message: `Unable to search: ${tabId}` });
   }
@@ -131,7 +131,7 @@ this.find = class extends ExtensionAPI {
           let tab = tabId ? tabTracker.getTab(tabId) : tabTracker.activeTab;
           if (
             !context.privateBrowsingAllowed &&
-            PrivateBrowsingUtils.isTabContextPrivate(tab)
+            PrivateBrowsingUtils.isBrowserPrivate(tab.linkedBrowser)
           ) {
             throw new ExtensionError(`Invalid tab ID: ${tabId}`);
           }

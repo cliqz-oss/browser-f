@@ -146,11 +146,9 @@
 @BINPATH@/@DLL_PREFIX@mozavcodec@DLL_SUFFIX@
 #endif
 @RESPATH@/browser/blocklist.xml
-#if CQZ_AUTO_PRIVATE_TAB
 #if CQZ_ADULT_DOMAINS_BF
 @RESPATH@/browser/adult-domains.bin
 #endif  ; CQZ_ADULT_DOMAINS_BF
-#endif  ; CQZ_AUTO_PRIVATE_TAB
 #ifdef XP_WIN
 #ifdef _AMD64_
 @BINPATH@/@DLL_PREFIX@qipcap64@DLL_SUFFIX@
@@ -171,7 +169,6 @@
 
 ; JavaScript components
 @RESPATH@/browser/components/AutoForgetTabsService.js
-@RESPATH@/browser/components/BrowserComponents.manifest
 @RESPATH@/components/EnterprisePolicies.js
 @RESPATH@/components/EnterprisePoliciesContent.js
 @RESPATH@/components/EnterprisePolicies.manifest

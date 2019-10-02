@@ -36,47 +36,26 @@ var PrivateBrowsingUtils = {
     return this.privacyContextFromWindow(aWindow).usePrivateBrowsing;
   },
 
-  isBrowserPrivate(aBrowser, fromContainer) {
-    // CLIQZ-SPECIAL: Force default Firefox isBrowserPrivate in case of containers
-    if (fromContainer) {
-      let chromeWin = aBrowser.ownerGlobal;
-      if (chromeWin.gMultiProcessBrowser || !aBrowser.contentWindow) {
-        // In e10s we have to look at the chrome window's private
-        // browsing status since the only alternative is to check the
-        // content window, which is in another process.  If the browser
-        // is lazy or is running in windowless configuration then the
-        // content window doesn't exist.
-        return this.isWindowPrivate(chromeWin);
-      }
-      return this.privacyContextFromWindow(aBrowser.contentWindow)
-        .usePrivateBrowsing;
-    }
+  isBrowserPrivate(aBrowser) {
+    // CLIQZ-SPECIAL: Maybe in some cases browser can be null,
+    // especially some weird requests coming from extensions
+    // we return true, so as not to blow JS execution
 
-    try {
-      return aBrowser.loadContext.usePrivateBrowsing;
-    } catch(e) {
-      // There might be cases when aBrowser.loadContext is not yet (or not anymore)
-      // exists for a given aBrowser. As we don't have any other way to know if it's
-      // private or not, it's safer to assume it is.
-      Components.utils.reportError("Browser passed to PrivateBrowsingUtils.isBrowserPrivate " +
-                                   "does not have loadContext.");
+    if (!aBrowser) {
       return true;
     }
-  },
 
-  isTabContextPrivate(aTab, fromContainer) {
-    if (aTab == null) {
-      return false;
+    let chromeWin = aBrowser.ownerGlobal;
+    if (chromeWin.gMultiProcessBrowser || !aBrowser.contentWindow) {
+      // In e10s we have to look at the chrome window's private
+      // browsing status since the only alternative is to check the
+      // content window, which is in another process.  If the browser
+      // is lazy or is running in windowless configuration then the
+      // content window doesn't exist.
+      return this.isWindowPrivate(chromeWin);
     }
-
-    if (
-      aTab.linkedBrowser == null ||
-      aTab.linkedBrowser.loadContext == null
-    ) {
-      return aTab.getAttribute("private") === "true";
-    }
-
-    return this.isBrowserPrivate(aTab.linkedBrowser, fromContainer);
+    return this.privacyContextFromWindow(aBrowser.contentWindow)
+      .usePrivateBrowsing;
   },
 
   privacyContextFromWindow: function pbu_privacyContextFromWindow(aWindow) {

@@ -4,10 +4,9 @@
 
 const {classes: Cc, interfaces: Ci, utils: Cu, results: Cr} = Components;
 
-const RPC_PREFIX = "AutoForgetTabsService:";
+const {Services} = ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 this.EXPORTED_SYMBOLS = [
-  "RPC_PREFIX",
   "AFTSvcRPCMethods",
   "AFTMonRPCMethods",
 
@@ -22,8 +21,6 @@ this.EXPORTED_SYMBOLS = [
 const AFTSvcRPCMethods = {
   hasDatabase: [],
   isActive: [],
-  shouldForget: ["domain"],
-  notifyAutoSwitched: []
 };
 
 // List of methods exposed to RPC by |AutoForgetTabsMonitor|.

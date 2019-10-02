@@ -651,7 +651,6 @@
   </hbox>
 </groupbox>
 
-#if CQZ_AUTO_PRIVATE_TAB
 <!-- Forget mode tabs -->
 <vbox data-category="panePrivacy" hidden="true">
   <groupbox id="forgetMode" hidden="true" class="formatBoxSize">
@@ -673,7 +672,6 @@
     <label href="https://cliqz.com/support/automatic-forget-mode" is="text-link" data-l10n-id="forget-mode-learn-more"/>
   </groupbox>
 </vbox>
-#endif
 
 <!-- Address Bar -->
 <groupbox id="locationBarGroup"
