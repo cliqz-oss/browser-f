@@ -405,14 +405,6 @@
         ContextualIdentityService.setTabStyle(tab);
       }
 
-      // CLIQZ-SPECIAL:
-      // DB-2208:
-      // The idea to do that does not look nice but what an adventure! ;)
-      tab.setAttribute("private", window.arguments != null
-        ? window.arguments[0] === "about:privatebrowsing"
-        : false
-      );
-
       this._tabForBrowser.set(browser, tab);
 
       this._appendStatusPanel();
@@ -2613,7 +2605,6 @@
 
       var t = document.createXULElement("tab", { is: "tabbrowser-tab" });
       t.openerTab = openerTab;
-      t.setAttribute("private", private == true);
 
       aURI = aURI || "about:blank";
       let aURIObject = null;
@@ -3679,16 +3670,6 @@
      *   False if swapping isn't permitted, true otherwise.
      */
     swapBrowsersAndCloseOther(aOurTab, aOtherTab) {
-      // CLIQZ-SPECIAL. Auto-Forget-Tabs:
-      // Transfering a private tab to a non-private window is fine.
-      // Transfering a normal tab to a private window is not.
-      if (
-        PrivateBrowsingUtils.isWindowPrivate(window) &&
-        !aOtherTab.private
-      ) {
-          return false;
-      }
-#if 0
       // Do not allow transfering a private tab to a non-private window
       // and vice versa.
       if (
@@ -3697,7 +3678,6 @@
       ) {
         return false;
       }
-#endif
 
       let ourBrowser = this.getBrowserForTab(aOurTab);
       let otherBrowser = aOtherTab.linkedBrowser;
@@ -4142,12 +4122,6 @@
       var options = "chrome,dialog=no,all";
       for (var name in aOptions) {
         options += "," + name + "=" + aOptions[name];
-      }
-
-      // CLIQZ-SPECIAL:
-      // Open private window if tab is private.
-      if (aTab.private) {
-        options += ",private";
       }
 
       // Play the tab closing animation to give immediate feedback while
@@ -5954,7 +5928,6 @@
         }
         // Tabs in private windows aren't registered as "Open" so
         // that they don't appear as switch-to-tab candidates.
-        // CLIQZ-SPECIAL: also don't register windows from Forget tabs.
         if (
           !isBlankPageURL(aLocation.spec) &&
           (!PrivateBrowsingUtils.isWindowPrivate(window) ||
