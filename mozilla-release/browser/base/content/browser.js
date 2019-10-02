@@ -1649,7 +1649,7 @@ function _loadURI(browser, uri, params = {}) {
         let aTab = browser.ownerGlobal.gBrowser.getTabForBrowser(browser);
         browser.webNavigation.setOriginAttributesBeforeLoading({
           userContextId,
-          privateBrowsingId: PrivateBrowsingUtils.isTabContextPrivate(aTab)
+          privateBrowsingId: PrivateBrowsingUtils.isBrowserPrivate(browser)
             ? 1
             : 0,
         });
@@ -1705,7 +1705,7 @@ function _loadURI(browser, uri, params = {}) {
         let aTab = browser.ownerGlobal.gBrowser.getTabForBrowser(browser);
         browser.webNavigation.setOriginAttributesBeforeLoading({
           userContextId,
-          privateBrowsingId: PrivateBrowsingUtils.isTabContextPrivate(aTab)
+          privateBrowsingId: PrivateBrowsingUtils.isBrowserPrivate(browser)
             ? 1
             : 0,
         });
@@ -3462,9 +3462,8 @@ function URLBarSetURI(aURI, updatePopupNotifications) {
 
     // Cliqz. Invalidate page proxy state for inital pages opened in private tabs
     // and Cliqz pages.
-    let aTab = gBrowser.getTabForBrowser(gBrowser.selectedBrowser);
     if (
-      PrivateBrowsingUtils.isTabContextPrivate(aTab) &&
+      PrivateBrowsingUtils.isBrowserPrivate(gBrowser.selectedBrowser) &&
       CliqzResources.isInitialPage(uri.spec)
     ) {
       valid = false;
@@ -3804,9 +3803,8 @@ var BrowserOnClick = {
           flags |= overrideService.ERROR_TIME;
         }
         let uri = Services.uriFixup.createFixupURI(location, 0);
-        let aTab = browser.ownerGlobal.gBrowser.getTabForBrowser(browser);
         let permanentOverride =
-          !PrivateBrowsingUtils.isTabContextPrivate(aTab) &&
+          !PrivateBrowsingUtils.isBrowserPrivate(browser) &&
           Services.prefs.getBoolPref("security.certerrors.permanentOverride");
         cert = securityInfo.serverCert;
         overrideService.rememberValidityOverride(

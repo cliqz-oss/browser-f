@@ -36,7 +36,7 @@ var PrivateBrowsingUtils = {
     return this.privacyContextFromWindow(aWindow).usePrivateBrowsing;
   },
 
-  isBrowserPrivate(aBrowser, fromContainer) {
+  isBrowserPrivate(aBrowser) {
     let chromeWin = aBrowser.ownerGlobal;
     if (chromeWin.gMultiProcessBrowser || !aBrowser.contentWindow) {
       // In e10s we have to look at the chrome window's private
@@ -48,21 +48,6 @@ var PrivateBrowsingUtils = {
     }
     return this.privacyContextFromWindow(aBrowser.contentWindow)
       .usePrivateBrowsing;
-  },
-
-  isTabContextPrivate(aTab, fromContainer) {
-    if (aTab == null) {
-      return false;
-    }
-
-    if (
-      aTab.linkedBrowser == null ||
-      aTab.linkedBrowser.loadContext == null
-    ) {
-      return aTab.getAttribute("private") === "true";
-    }
-
-    return this.isBrowserPrivate(aTab.linkedBrowser, fromContainer);
   },
 
   privacyContextFromWindow: function pbu_privacyContextFromWindow(aWindow) {

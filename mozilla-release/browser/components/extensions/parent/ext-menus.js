@@ -115,7 +115,7 @@ var gMenuBuilder = {
       let nativeTab = contextData.tab;
       if (
         nativeTab &&
-        PrivateBrowsingUtils.isTabContextPrivate(nativeTab)
+        PrivateBrowsingUtils.isBrowserPrivate(nativeTab.linkedBrowser)
       ) {
         return false;
       } else if (

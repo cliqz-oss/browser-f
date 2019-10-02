@@ -301,11 +301,9 @@ class _BookmarkPanelHub {
 
   sendUserEventTelemetry(event, win) {
     // Only send pings for non private browsing windows
-    const aTab = win.ownerGlobal.gBrowser
-      .getTabForBrowser(win.ownerGlobal.gBrowser.selectedBrowser);
     if (
-      !PrivateBrowsingUtils.isTabContextPrivate(
-        aTab
+      !PrivateBrowsingUtils.isBrowserPrivate(
+        win.ownerGlobal.gBrowser.selectedBrowser
       )
     ) {
       this._sendTelemetry({

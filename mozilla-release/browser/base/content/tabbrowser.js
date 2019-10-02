@@ -5957,8 +5957,7 @@
         // CLIQZ-SPECIAL: also don't register windows from Forget tabs.
         if (
           !isBlankPageURL(aLocation.spec) &&
-          ((!PrivateBrowsingUtils.isWindowPrivate(window) &&
-           !PrivateBrowsingUtils.isTabContextPrivate(this.mTab)) ||
+          (!PrivateBrowsingUtils.isWindowPrivate(window) ||
             PrivateBrowsingUtils.permanentPrivateBrowsing)
         ) {
           gBrowser.UrlbarProviderOpenTabs.registerOpenTab(

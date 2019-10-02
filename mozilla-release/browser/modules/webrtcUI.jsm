@@ -1081,8 +1081,7 @@ function prompt(aBrowser, aRequest) {
 
   // Don't offer "always remember" action in PB mode or from third party
   if (
-    !PrivateBrowsingUtils.isTabContextPrivate(
-      aBrowser.ownerGlobal.gBrowser.getTabForBrowser(aBrowser)) &&
+    !PrivateBrowsingUtils.isBrowserPrivate(aBrowser) &&
     !aRequest.isThirdPartyOrigin
   ) {
     // Disable the permanent 'Allow' action if the connection isn't secure, or for
