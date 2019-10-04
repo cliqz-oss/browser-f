@@ -1653,13 +1653,7 @@ function _loadURI(browser, uri, params = {}) {
             : 0,
         });
       }
-      if (CliqzResources.isCliqzPage(uri)) {
-        CliqzResources.addonIsReadyAsync().then(() => {
-          browser.webNavigation.loadURI(uri, loadURIOptions);
-        });
-      } else {
-        browser.webNavigation.loadURI(uri, loadURIOptions);
-      }
+      browser.webNavigation.loadURI(uri, loadURIOptions);
     } else {
       // Check if the current browser is allowed to unload.
       let { permitUnload, timedOut } = browser.permitUnload();

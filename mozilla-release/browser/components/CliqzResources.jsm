@@ -49,16 +49,6 @@ const CliqzResources = {
         return key;
     }
   },
-  addonIsReadyAsync: function(addonId = 'cliqz@cliqz.com') {
-    const AddonManager = DependencyManager.get("AddonManager",
-      "resource://gre/modules/AddonManager.jsm");
-
-    return new Promise((resolve, reject) => {
-      AddonManager.isReadyAsync().then(() => {
-        AddonManager.getAddonByID(addonId).then(resolve, reject);
-      }, reject);
-    });
-  },
   // CLIQZ-SPECIAL: we do not need BROWSER_NEW_TAB_URL check as we never change it
   // return gInitialPages.includes(url) || url == BROWSER_NEW_TAB_URL;
   isInitialPage: function(url) {
