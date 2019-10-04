@@ -1646,7 +1646,6 @@ function _loadURI(browser, uri, params = {}) {
   try {
     if (!mustChangeProcess) {
       if (userContextId) {
-        let aTab = browser.ownerGlobal.gBrowser.getTabForBrowser(browser);
         browser.webNavigation.setOriginAttributesBeforeLoading({
           userContextId,
           privateBrowsingId: PrivateBrowsingUtils.isBrowserPrivate(browser)

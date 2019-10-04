@@ -169,6 +169,7 @@
 
 ; JavaScript components
 @RESPATH@/browser/components/AutoForgetTabsService.js
+@RESPATH@/browser/components/BrowserComponents.manifest
 @RESPATH@/components/EnterprisePolicies.js
 @RESPATH@/components/EnterprisePoliciesContent.js
 @RESPATH@/components/EnterprisePolicies.manifest
