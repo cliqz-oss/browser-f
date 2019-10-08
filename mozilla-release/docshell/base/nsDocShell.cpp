@@ -424,9 +424,7 @@ nsDocShell::nsDocShell(BrowsingContext* aBrowsingContext)
 
 nsDocShell::~nsDocShell() {
   MOZ_ASSERT(!mObserved);
-#ifdef DEBUG
-  MOZ_LOG(gDocShellLog, LogLevel::Debug, ("nsDocShell[%p]::DTOR!!!\n", this));
-#endif
+
   // Avoid notifying observers while we're in the dtor.
   mIsBeingDestroyed = true;
 
@@ -1486,11 +1484,6 @@ nsDocShell::SetPrivateBrowsing(bool aUsePrivateBrowsing) {
   MOZ_ASSERT(!mIsBeingDestroyed);
 
   bool changed = aUsePrivateBrowsing != (mPrivateBrowsingId > 0);
-#ifdef DEBUG
-  MOZ_LOG(gDocShellLog, LogLevel::Debug,
-          ("nsDocShell[%p]::SetPrivateBrowsing(%d), changed = %d\n",
-           this, aUsePrivateBrowsing, changed));
-#endif
   if (changed) {
     mPrivateBrowsingId = aUsePrivateBrowsing ? 1 : 0;
 
@@ -1529,11 +1522,6 @@ nsDocShell::SetPrivateBrowsing(bool aUsePrivateBrowsing) {
   }
 
   AssertOriginAttributesMatchPrivateBrowsing();
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-nsDocShell::SetPrivateness(bool mBool) {
   return NS_OK;
 }
 
@@ -2715,13 +2703,7 @@ nsresult nsDocShell::SetDocLoaderParent(nsDocLoader* aParent) {
 
   nsCOMPtr<nsILoadContext> parentAsLoadContext(do_QueryInterface(parent));
   if (parentAsLoadContext && mInheritPrivateBrowsingId &&
-      NS_SUCCEEDED(parentAsLoadContext->GetUsePrivateBrowsing(&value)) &&
-      // Never switch from private to non-private mode. This happens when
-      // DocShells are swapped during tab being dragged between windows, and
-      // we don't want private tabs to lose their privacy flag.
-      // See DB-911.
-      // Note: this path seems obsolete after merge with Fx-50.
-      value) {
+      NS_SUCCEEDED(parentAsLoadContext->GetUsePrivateBrowsing(&value))) {
     SetPrivateBrowsing(value);
   }
 
@@ -4063,12 +4045,6 @@ nsresult nsDocShell::LoadURI(const nsAString& aURI,
     MaybeNotifyKeywordSearchLoading(searchProvider, keyword);
   }
 
-  if (aLoadURIOptions.mEnsurePrivate) {
-    rv = SetPrivateBrowsing(true);
-    if (NS_FAILED(rv)) {
-      return rv;
-    }
-  }
   rv = LoadURI(loadState);
 
   // Save URI string in case it's needed later when
@@ -4956,9 +4932,7 @@ nsDocShell::Create() {
     // We've already been created
     return NS_OK;
   }
-#ifdef DEBUG
-  MOZ_LOG(gDocShellLog, LogLevel::Debug, ("nsDocShell[%p]::Create", this));
-#endif
+
   NS_ASSERTION(mItemType == typeContent || mItemType == typeChrome,
                "Unexpected item type in docshell");
 
@@ -5013,14 +4987,6 @@ nsDocShell::Destroy() {
 
   NS_ASSERTION(mItemType == typeContent || mItemType == typeChrome,
                "Unexpected item type in docshell");
-
-#if defined(DEBUG)
-  nsAutoCString uri;
-  if (mCurrentURI.get())
-    mCurrentURI->GetSpec(uri);
-  MOZ_LOG(gDocShellLog, LogLevel::Debug,
-         ("nsDocShell[%p]::Destroy() %s\n", this, uri.get()));
-#endif
 
   AssertOriginAttributesMatchPrivateBrowsing();
 
@@ -13315,9 +13281,6 @@ nsDocShell::GetOriginAttributes(JSContext* aCx,
 }
 
 bool nsDocShell::CanSetOriginAttributes() {
-  // TODO: Cliqz, find a better way to switch tab's privateness. See DB-1260.
-  return true;
-
   MOZ_ASSERT(mChildList.IsEmpty());
   if (!mChildList.IsEmpty()) {
     return false;
@@ -13370,11 +13333,7 @@ nsresult nsDocShell::SetOriginAttributes(const OriginAttributes& aAttrs) {
   if (!CanSetOriginAttributes()) {
     return NS_ERROR_FAILURE;
   }
-#ifdef DEBUG
-  MOZ_LOG(gDocShellLog, LogLevel::Debug,
-          ("nsDocShell[%p]::SetOriginAttributes(%d)\n",
-           this, aAttrs.mPrivateBrowsingId));
-#endif
+
   AssertOriginAttributesMatchPrivateBrowsing();
   mOriginAttributes = aAttrs;
 

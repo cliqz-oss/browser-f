@@ -22,7 +22,6 @@
 #include "nsIDocShell.h"
 #include "nsIInterfaceRequestorUtils.h"
 #include "nsFrameMessageManager.h"
-#include "nsIPrivacyTransitionObserver.h"
 #include "nsWeakReference.h"
 #include "nsIBrowserChild.h"
 #include "nsITooltipListener.h"
@@ -161,8 +160,7 @@ class BrowserChild final : public nsMessageManagerScriptExecutor,
                            public nsIWebProgressListener2,
                            public TabContext,
                            public nsITooltipListener,
-                           public mozilla::ipc::IShmemAllocator,
-                           public nsIPrivacyTransitionObserver {
+                           public mozilla::ipc::IShmemAllocator {
   typedef mozilla::widget::PuppetWidget PuppetWidget;
   typedef mozilla::dom::ClonedMessageData ClonedMessageData;
   typedef mozilla::dom::CoalescedMouseData CoalescedMouseData;
@@ -220,7 +218,6 @@ class BrowserChild final : public nsMessageManagerScriptExecutor,
   NS_DECL_NSIWEBPROGRESSLISTENER
   NS_DECL_NSIWEBPROGRESSLISTENER2
   NS_DECL_NSITOOLTIPLISTENER
-  NS_DECL_NSIPRIVACYTRANSITIONOBSERVER
 
   NS_DECL_CYCLE_COLLECTION_SCRIPT_HOLDER_CLASS_AMBIGUOUS(BrowserChild,
                                                          nsIBrowserChild)

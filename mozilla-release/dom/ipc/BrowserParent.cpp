@@ -304,33 +304,25 @@ void BrowserParent::RemoveBrowserParentFromTable(layers::LayersId aLayersId) {
 }
 
 already_AddRefed<nsILoadContext> BrowserParent::GetLoadContext() {
-  CreateLoadContext();
-  //RefPtr<LoadContext> loadContext;
   nsCOMPtr<nsILoadContext> loadContext;
-  loadContext = mLoadContext;
-  return loadContext.forget();
-}
-
-void BrowserParent::CreateLoadContext() {
   if (mLoadContext) {
-    return;
+    loadContext = mLoadContext;
   } else {
-#if 0  // Privateness is already passed with TabContext to our constructor.
     bool isPrivate = mChromeFlags & nsIWebBrowserChrome::CHROME_PRIVATE_WINDOW;
     SetPrivateBrowsingAttributes(isPrivate);
-#endif
     bool useTrackingProtection = false;
     nsCOMPtr<nsIDocShell> docShell = mFrameElement->OwnerDoc()->GetDocShell();
     if (docShell) {
       docShell->GetUseTrackingProtection(&useTrackingProtection);
     }
-    mLoadContext = new LoadContext(
-        GetOwnerElement(), true /* aIsContent */,
-        OriginAttributesRef().mPrivateBrowsingId != 0,
+    loadContext = new LoadContext(
+        GetOwnerElement(), true /* aIsContent */, isPrivate,
         mChromeFlags & nsIWebBrowserChrome::CHROME_REMOTE_WINDOW,
         mChromeFlags & nsIWebBrowserChrome::CHROME_FISSION_WINDOW,
         useTrackingProtection, OriginAttributesRef());
+    mLoadContext = loadContext;
   }
+  return loadContext.forget();
 }
 
 /**
@@ -2950,14 +2942,6 @@ mozilla::ipc::IPCResult BrowserParent::RecvDispatchFocusToTopLevelWindow() {
   return IPC_OK();
 }
 
-mozilla::ipc::IPCResult
-BrowserParent::RecvLoadContextPrivatenessChanged(const bool& isPrivate) {
-  SetPrivateBrowsingAttributes(isPrivate);
-  nsCOMPtr<nsILoadContext> loadContext = GetLoadContext();
-  mLoadContext->SetPrivateness(isPrivate);
-  return IPC_OK();
-}
-
 bool BrowserParent::ReceiveMessage(const nsString& aMessage, bool aSync,
                                    StructuredCloneData* aData,
                                    CpowHolder* aCpows, nsIPrincipal* aPrincipal,
@@ -3573,14 +3557,11 @@ class FakeChannel final : public nsIChannel,
   NS_IMETHOD GetUsePrivateBrowsing(bool*) NO_IMPL;
   NS_IMETHOD SetUsePrivateBrowsing(bool) NO_IMPL;
   NS_IMETHOD SetPrivateBrowsing(bool) NO_IMPL;
-  NS_IMETHOD SetPrivateness(bool) NO_IMPL;
   NS_IMETHOD GetIsInIsolatedMozBrowserElement(bool*) NO_IMPL;
   NS_IMETHOD GetScriptableOriginAttributes(JSContext*,
                                            JS::MutableHandleValue) NO_IMPL;
-  NS_IMETHOD
-      AddWeakPrivacyTransitionObserver(nsIPrivacyTransitionObserver *obs) NO_IMPL;
   NS_IMETHOD_(void)
-      GetOriginAttributes(mozilla::OriginAttributes& aAttrs) override {}
+  GetOriginAttributes(mozilla::OriginAttributes& aAttrs) override {}
   NS_IMETHOD GetUseRemoteTabs(bool*) NO_IMPL;
   NS_IMETHOD SetRemoteTabs(bool) NO_IMPL;
   NS_IMETHOD GetUseRemoteSubframes(bool*) NO_IMPL;
