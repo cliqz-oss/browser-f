@@ -7500,6 +7500,7 @@ function handleLinkClick(event, href, linkNode) {
       true,
       true,
       doc.documentURIObject,
+      doc
     );
     event.preventDefault();
     return true;
