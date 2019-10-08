@@ -57,3 +57,12 @@ rcwn-avg-long = Durchschnitt lang
 rcwn-std-dev-long = Standardabweichung Durchschnitt lang
 rcwn-cache-slow = Anzahl Cache langsam
 rcwn-cache-not-slow = Anzahl Cache nicht langsam
+networkid = Netzwerk-ID
+networkid-id = Netzwerk-ID
+
+## Link is intended as "network link"
+
+networkid-isUp = Verbindung (Link) bestätigt
+networkid-statusKnown = Status der Verbindung (Link) bekannt
+
+##

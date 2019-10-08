@@ -3,16 +3,16 @@
 
 "use strict";
 
-ChromeUtils.defineModuleGetter(
-  this,
-  "AddonManager",
-  "resource://gre/modules/AddonManager.jsm"
+const { XPCOMUtils } = ChromeUtils.import(
+  "resource://gre/modules/XPCOMUtils.jsm"
 );
-ChromeUtils.defineModuleGetter(
-  this,
-  "ExtensionSettingsStore",
-  "resource://gre/modules/ExtensionSettingsStore.jsm"
-);
+
+XPCOMUtils.defineLazyModuleGetters(this, {
+  AddonManager: "resource://gre/modules/AddonManager.jsm",
+  ExtensionSettingsStore: "resource://gre/modules/ExtensionSettingsStore.jsm",
+  HomePage: "resource:///modules/HomePage.jsm",
+  TelemetryTestUtils: "resource://testing-common/TelemetryTestUtils.jsm",
+});
 
 // Named this way so they correspond to the extensions
 const HOME_URI_2 = "http://example.com/";
@@ -24,6 +24,8 @@ const CONTROLLED_BY_OTHER = "controlled_by_other_extensions";
 const NOT_CONTROLLABLE = "not_controllable";
 
 const HOMEPAGE_URL_PREF = "browser.startup.homepage";
+const HOMEPAGE_EXTENSION_CONTROLLED =
+  "browser.startup.homepage_override.extensionControlled";
 
 const getHomePageURL = () => {
   return Services.prefs.getStringPref(HOMEPAGE_URL_PREF);
@@ -388,6 +390,8 @@ add_task(async function test_doorhanger_homepage_button() {
   await popupHidden;
   await prefPromise;
 
+  await BrowserTestUtils.waitForLocationChange(gBrowser, defaultHomePage);
+
   is(getHomePageURL(), defaultHomePage, "The homepage is set back to default");
 
   await ext1.unload();
@@ -609,4 +613,50 @@ add_task(async function test_overriding_home_page_incognito_external() {
 
   await extension.unload();
   await BrowserTestUtils.closeWindow(win);
+});
+
+add_task(async function test_overriding_with_ignored_url() {
+  // Manually poke into the ignore list a value to be ignored.
+  HomePage._ignoreList.push("ignore=me");
+  Services.prefs.setBoolPref(HOMEPAGE_EXTENSION_CONTROLLED, false);
+
+  let extension = ExtensionTestUtils.loadExtension({
+    manifest: {
+      browser_specific_settings: {
+        gecko: {
+          id: "ignore_homepage@example.com",
+        },
+      },
+      chrome_settings_overrides: { homepage: "https://example.com/?ignore=me" },
+      name: "extension",
+    },
+    useAddonManager: "temporary",
+  });
+
+  await extension.startup();
+
+  ok(HomePage.isDefault, "Should still have the default homepage");
+  is(
+    Services.prefs.getBoolPref(
+      "browser.startup.homepage_override.extensionControlled"
+    ),
+    false,
+    "Should not be extension controlled."
+  );
+  TelemetryTestUtils.assertEvents(
+    [
+      {
+        object: "ignore",
+        value: "set_blocked_extension",
+        extra: { webExtensionId: "ignore_homepage@example.com" },
+      },
+    ],
+    {
+      category: "homepage",
+      method: "preference",
+    }
+  );
+
+  await extension.unload();
+  HomePage._ignoreList.pop();
 });

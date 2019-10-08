@@ -15,6 +15,7 @@ import os
 import re
 import time
 from copy import deepcopy
+from six import text_type
 
 import attr
 
@@ -39,6 +40,7 @@ from taskgraph.util.scriptworker import (
     add_scope_prefix,
 )
 from taskgraph.util.signed_artifacts import get_signed_artifacts
+from taskgraph.util.workertypes import worker_type_implementation
 from voluptuous import Any, Required, Optional, Extra, Match
 from taskgraph import GECKO, MAX_DEPENDENCIES
 from ..util import docker as dockerutil
@@ -339,7 +341,7 @@ class PayloadBuilder(object):
 
 
 def payload_builder(name, schema):
-    schema = Schema({Required('implementation'): name}).extend(schema)
+    schema = Schema({Required('implementation'): name, Optional('os'): text_type}).extend(schema)
 
     def wrap(func):
         payload_builders[name] = PayloadBuilder(schema, func)
@@ -892,7 +894,7 @@ def build_generic_worker_payload(config, task, task_def):
 
     # behavior for mac iscript
     Optional('mac-behavior'): Any(
-        "mac_notarize", "mac_sign", "mac_sign_and_pkg", "mac_pkg",
+        "mac_notarize", "mac_sign", "mac_sign_and_pkg", "mac_geckodriver",
     ),
     Optional('entitlements-url'): basestring,
 })
@@ -1131,6 +1133,7 @@ def build_bouncer_locations_payload(config, task, task_def):
     task_def['payload'] = {
         'bouncer_products': worker['bouncer-products'],
         'version': release_config['version'],
+        'product': task['shipping-product'],
     }
 
 
@@ -1201,7 +1204,7 @@ def build_ship_it_shipped_payload(config, task, task_def):
     }
 
 
-@payload_builder('sign-and-push-addons', schema={
+@payload_builder('push-addons', schema={
     Required('channel'): Any('listed', 'unlisted'),
     Required('upstream-artifacts'): [{
         Required('taskId'): taskref_or_string,
@@ -1209,7 +1212,7 @@ def build_ship_it_shipped_payload(config, task, task_def):
         Required('paths'): [basestring],
     }],
 })
-def build_sign_and_push_addons_payload(config, task, task_def):
+def build_push_addons_payload(config, task, task_def):
     worker = task['worker']
 
     task_def['payload'] = {
@@ -1344,6 +1347,30 @@ def build_script_engine_autophone_payload(config, task, task_def):
 
 
 transforms = TransformSequence()
+
+
+@transforms.add
+def set_implementation(config, tasks):
+    """
+    Set the worker implementation based on the worker-type alias.
+    """
+    for task in tasks:
+        if 'implementation' in task['worker']:
+            yield task
+            continue
+
+        impl, os = worker_type_implementation(config.graph_config, task['worker-type'])
+
+        tags = task.setdefault('tags', {})
+        tags['worker-implementation'] = impl
+        if os:
+            task['tags']['os'] = os
+        worker = task.setdefault('worker', {})
+        worker['implementation'] = impl
+        if os:
+            worker['os'] = os
+
+        yield task
 
 
 @transforms.add
@@ -1793,7 +1820,7 @@ def build_task(config, tasks):
                 'description': task['description'],
                 'name': task['label'],
                 'owner': config.params['owner'],
-                'source': config.params.file_url(config.path),
+                'source': config.params.file_url(config.path, pretty=True),
             },
             'extra': extra,
             'tags': tags,

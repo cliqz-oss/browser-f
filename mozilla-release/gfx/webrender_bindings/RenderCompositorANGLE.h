@@ -39,9 +39,9 @@ class RenderCompositorANGLE : public RenderCompositor {
   virtual ~RenderCompositorANGLE();
   bool Initialize();
 
-  bool BeginFrame() override;
+  bool BeginFrame(layers::NativeLayer* aNativeLayer) override;
   void EndFrame() override;
-  void WaitForGPU() override;
+  bool WaitForGPU() override;
   void Pause() override;
   bool Resume() override;
 
@@ -57,9 +57,11 @@ class RenderCompositorANGLE : public RenderCompositor {
 
   LayoutDeviceIntSize GetBufferSize() override;
 
+  bool IsContextLost() override;
+
  protected:
   void InsertPresentWaitQuery();
-  void WaitForPreviousPresentQuery();
+  bool WaitForPreviousPresentQuery();
   bool ResizeBufferIfNeeded();
   void DestroyEGLSurface();
   ID3D11Device* GetDeviceOfEGLDisplay();

@@ -12,7 +12,7 @@ ifndef MOZ_PKG_FORMAT
             ifeq (SunOS,$(OS_ARCH))
                 MOZ_PKG_FORMAT  = BZ2
             else
-                ifeq (gtk3,$(MOZ_WIDGET_TOOLKIT))
+                ifeq (gtk,$(MOZ_WIDGET_TOOLKIT))
                     MOZ_PKG_FORMAT  = BZ2
                 else
                     ifeq (android,$(MOZ_WIDGET_TOOLKIT))
@@ -225,7 +225,12 @@ endif #Create an RPM file
 
 
 ifeq ($(MOZ_PKG_FORMAT),APK)
+ifdef MOZ_ANDROID_WITH_FENNEC
 include $(MOZILLA_DIR)/toolkit/mozapps/installer/upload-files-$(MOZ_PKG_FORMAT).mk
+else
+INNER_MAKE_PACKAGE = true
+INNER_UNMAKE_PACKAGE = true
+endif # MOZ_ANDROID_WITH_FENNEC
 endif
 
 ifeq ($(MOZ_PKG_FORMAT),DMG)
@@ -274,9 +279,9 @@ NO_PKG_FILES += \
 	shlibsign* \
 	certutil* \
 	pk12util* \
-	BadCertServer* \
+	BadCertAndPinningServer* \
 	OCSPStaplingServer* \
-	SymantecSanctionsServer* \
+	SanctionsTestServer* \
 	GenerateOCSPResponse* \
 	chrome/chrome.rdf \
 	chrome/app-chrome.manifest \

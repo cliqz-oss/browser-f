@@ -1,4 +1,7 @@
 #! /usr/bin/env python
+# This Source Code Form is subject to the terms of the Mozilla Public
+# License, v. 2.0. If a copy of the MPL was not distributed with this file,
+# You can obtain one at http://mozilla.org/MPL/2.0/.
 
 from __future__ import absolute_import, print_function
 
@@ -34,6 +37,16 @@ TRANSFORMS = [
         'channel_prefix': ['aurora', 'beta', 'release', 'esr'],
         'side': 'source',
         'deletion': '//@line 6 "',
+    },
+    {
+        # warning comments from bug 1576546
+        'files': [
+            'defaults/pref/channel-prefs.js',
+            'Contents/Resources/defaults/pref/channel-prefs.js',
+        ],
+        'channel_prefix': ['aurora', 'beta', 'release', 'esr'],
+        'side': 'target',
+        'deletion': '//',
     },
     {
         # updates from a beta to an RC build, the latter specifies the release channel

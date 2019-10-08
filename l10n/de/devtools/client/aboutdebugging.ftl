@@ -328,6 +328,17 @@ about-debugging-worker-action-push = Push
 # This string is displayed as a label of the button that starts a service worker.
 about-debugging-worker-action-start = Starten
 
+# This string is displayed as a label of the button that pushes a test payload
+# to a service worker.
+# Note this relates to the "Push" API, which is normally not localized so it is
+# probably better to not localize it.
+about-debugging-worker-action-push2 = Push
+  .disabledTitle = Push für Service-Worker ist derzeit deaktiviert, falls { -brand-shorter-name } mit mehr als einem Prozess ausgeführt wird.
+
+# This string is displayed as a label of the button that starts a service worker.
+about-debugging-worker-action-start2 = Starten
+  .disabledTitle = Das Starten von Service-Workern ist derzeit deaktiviert, falls { -brand-shorter-name } mit mehr als einem Prozess ausgeführt wird.
+
 # This string is displayed as a label of the button that unregisters a service worker.
 about-debugging-worker-action-unregister = Abmelden
 
@@ -359,6 +370,10 @@ about-debugging-worker-scope =
 # of a worker
 about-debugging-worker-push-service =
   .label = Push-Dienst
+
+# Displayed as title of the inspect button when service worker debugging is disabled.
+about-debugging-worker-inspect-action-disabled =
+  .title = Das Untersuchen von Service-Workern ist derzeit deaktiviert, falls { -brand-shorter-name } mit mehr als einem Prozess ausgeführt wird.
 
 # Displayed as name for the Main Process debug target in the Processes category. Only for
 # remote runtimes, if `devtools.aboutdebugging.process-debugging` is true.

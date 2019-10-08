@@ -19,11 +19,11 @@ WORKER_TYPES = {
     'invalid/always-optimized': ('always-optimized', None),
     'scriptworker-prov-v1/balrog-dev': ('balrog', None),
     'scriptworker-prov-v1/balrogworker-v1': ('balrog', None),
-    'scriptworker-prov-v1/beetmoverworker-v1': ('beetmover', None),
+    'scriptworker-k8s/gecko-3-beetmover': ('beetmover', None),
     'scriptworker-prov-v1/pushapk-v1': ('push-apk', None),
     "scriptworker-prov-v1/signing-linux-v1": ('scriptworker-signing', None),
-    "scriptworker-prov-v1/shipit": ('shipit', None),
-    "scriptworker-prov-v1/shipit-dev": ('shipit', None),
+    "scriptworker-k8s/gecko-3-shipit": ('shipit', None),
+    "scriptworker-k8s/gecko-1-shipit": ('shipit', None),
     "scriptworker-prov-v1/treescript-v1": ('treescript', None),
     'terraform-packet/gecko-t-linux': ('docker-worker', 'linux'),
     'releng-hardware/gecko-t-osx-1014': ('generic-worker', 'macosx'),
@@ -75,7 +75,7 @@ def worker_type_implementation(graph_config, worker_type):
     OS represents the host system, not the target OS, in the case of
     cross-compiles."""
     worker_config = _get(graph_config, worker_type, '1')
-    return worker_config['implementation'], worker_config['os']
+    return worker_config['implementation'], worker_config.get('os')
 
 
 @memoize

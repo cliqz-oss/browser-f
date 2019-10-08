@@ -86,7 +86,10 @@ ActorManagerParent.flush();
 
 const { promiseDocumentLoaded, promiseEvent, promiseObserved } = ExtensionUtils;
 
-var REMOTE_CONTENT_SCRIPTS = false;
+var REMOTE_CONTENT_SCRIPTS = Services.prefs.getBoolPref(
+  "browser.tabs.remote.autostart",
+  false
+);
 
 let BASE_MANIFEST = Object.freeze({
   applications: Object.freeze({
@@ -464,6 +467,13 @@ class ExtensionWrapper {
     }
     this.state = "unloading";
 
+    if (this.addonPromise) {
+      // If addonPromise is still pending resolution, wait for it to make sure
+      // that add-ons that are installed through the AddonManager are properly
+      // uninstalled.
+      await this.addonPromise;
+    }
+
     if (this.addon) {
       await this.addon.uninstall();
     } else {
@@ -607,11 +617,19 @@ class AOMExtensionWrapper extends ExtensionWrapper {
   onEvent(kind, ...args) {
     switch (kind) {
       case "addon-manager-started":
+        if (this.state === "uninitialized") {
+          // startup() not called yet, ignore AddonManager startup notification.
+          return;
+        }
         this.addonPromise = AddonManager.getAddonByID(this.id).then(addon => {
           this.addon = addon;
+          this.addonPromise = null;
         });
       // FALLTHROUGH
       case "addon-manager-shutdown":
+        if (this.state === "uninitialized") {
+          return;
+        }
         this.addon = null;
 
         this.setRestarting();

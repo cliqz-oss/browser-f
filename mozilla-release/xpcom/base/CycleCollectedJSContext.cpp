@@ -14,6 +14,7 @@
 #include "mozilla/Move.h"
 #include "mozilla/MemoryReporting.h"
 #include "mozilla/Sprintf.h"
+#include "mozilla/StaticPrefs_dom.h"
 #include "mozilla/Telemetry.h"
 #include "mozilla/TimelineConsumers.h"
 #include "mozilla/TimelineMarker.h"
@@ -383,7 +384,7 @@ void CycleCollectedJSContext::PromiseRejectionTrackerCallback(
       if (!promise) {
         nsIGlobalObject* global = xpc::NativeGlobal(aPromise);
         if (nsCOMPtr<EventTarget> owner = do_QueryInterface(global)) {
-          PromiseRejectionEventInit init;
+          RootedDictionary<PromiseRejectionEventInit> init(aCx);
           init.mPromise = Promise::CreateFromExisting(global, aPromise);
           init.mReason = JS::GetPromiseResult(aPromise);
 
@@ -715,7 +716,8 @@ NS_IMETHODIMP CycleCollectedJSContext::NotifyUnhandledRejections::Run() {
       continue;
     }
 
-    JS::RootedObject promiseObj(mCx->RootingCx(), promise->PromiseObj());
+    JS::RootingContext* cx = mCx->RootingCx();
+    JS::RootedObject promiseObj(cx, promise->PromiseObj());
     MOZ_ASSERT(JS::IsPromiseObject(promiseObj));
 
     // Only fire unhandledrejection if the promise is still not handled;
@@ -723,7 +725,7 @@ NS_IMETHODIMP CycleCollectedJSContext::NotifyUnhandledRejections::Run() {
     if (!JS::GetPromiseIsHandled(promiseObj)) {
       if (nsCOMPtr<EventTarget> target =
               do_QueryInterface(promise->GetParentObject())) {
-        PromiseRejectionEventInit init;
+        RootedDictionary<PromiseRejectionEventInit> init(cx);
         init.mPromise = promise;
         init.mReason = JS::GetPromiseResult(promiseObj);
         init.mCancelable = true;

@@ -611,6 +611,20 @@ var Policies = {
         setAndLockPref("privacy.trackingprotection.enabled", false);
         setAndLockPref("privacy.trackingprotection.pbmode.enabled", false);
       }
+      if ("Cryptomining" in param) {
+        setDefaultPref(
+          "privacy.trackingprotection.cryptomining.enabled",
+          param.Cryptomining,
+          param.Locked
+        );
+      }
+      if ("Fingerprinting" in param) {
+        setDefaultPref(
+          "privacy.trackingprotection.fingerprinting.enabled",
+          param.Fingerprinting,
+          param.Locked
+        );
+      }
     },
   },
 
@@ -964,6 +978,12 @@ var Policies = {
     },
   },
 
+  OfferToSaveLoginsDefault: {
+    onBeforeUIStartup(manager, param) {
+      setDefaultPref("signon.rememberSignons", param);
+    },
+  },
+
   OverrideFirstRunPage: {
     onProfileAfterChange(manager, param) {
       let url = param ? param.href : "";
@@ -980,6 +1000,17 @@ var Policies = {
       // as a fallback when the update.xml file hasn't provided
       // a specific post-update URL.
       manager.disallowFeature("postUpdateCustomPage");
+    },
+  },
+
+  PasswordManagerEnabled: {
+    onBeforeUIStartup(manager, param) {
+      if (!param) {
+        blockAboutPage(manager, "about:logins", true);
+        gBlockedChromePages.push("passwordManager.xul");
+        setAndLockPref("pref.privacy.disable_button.view_passwords", true);
+      }
+      setAndLockPref("signon.rememberSignons", param);
     },
   },
 
@@ -1432,7 +1463,7 @@ function setDefaultPermission(policyName, policyParam) {
 /**
  * addAllowDenyPermissions
  *
- * Helper function to call the permissions manager (Services.perms.add)
+ * Helper function to call the permissions manager (Services.perms.addFromPrincipal)
  * for two arrays of URLs.
  *
  * @param {string} permissionName
@@ -1448,8 +1479,8 @@ function addAllowDenyPermissions(permissionName, allowList, blockList) {
 
   for (let origin of allowList) {
     try {
-      Services.perms.add(
-        Services.io.newURI(origin.href),
+      Services.perms.addFromPrincipal(
+        Services.scriptSecurityManager.createContentPrincipalFromOrigin(origin),
         permissionName,
         Ci.nsIPermissionManager.ALLOW_ACTION,
         Ci.nsIPermissionManager.EXPIRE_POLICY
@@ -1461,8 +1492,8 @@ function addAllowDenyPermissions(permissionName, allowList, blockList) {
   }
 
   for (let origin of blockList) {
-    Services.perms.add(
-      Services.io.newURI(origin.href),
+    Services.perms.addFromPrincipal(
+      Services.scriptSecurityManager.createContentPrincipalFromOrigin(origin),
       permissionName,
       Ci.nsIPermissionManager.DENY_ACTION,
       Ci.nsIPermissionManager.EXPIRE_POLICY

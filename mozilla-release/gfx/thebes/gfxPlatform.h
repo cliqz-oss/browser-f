@@ -326,7 +326,7 @@ class gfxPlatform : public mozilla::layers::MemoryPressureListener {
    * content process. Currently implemented only on MacOSX and Linux.
    */
   virtual void ReadSystemFontList(
-      InfallibleTArray<mozilla::dom::SystemFontListEntry>* aFontList) {}
+      nsTArray<mozilla::dom::SystemFontListEntry>* aFontList) {}
 
   /**
    * Rebuilds the any cached system font lists
@@ -676,7 +676,8 @@ class gfxPlatform : public mozilla::layers::MemoryPressureListener {
 
   /**
    * Wrapper around StaticPrefs::gfx_perf_warnings_enabled().
-   * Extracted into a function to avoid including StaticPrefs.h from this file.
+   * Extracted into a function to avoid including StaticPrefs_gfx.h from this
+   * file.
    */
   static bool PerfWarnings();
 

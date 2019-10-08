@@ -5,72 +5,54 @@
 permissions-window =
     .title = Ausnahmen
     .style = width: 36em
-
 permissions-close-key =
     .key = w
-
 permissions-address = Adresse der Website:
     .accesskey = d
-
 permissions-block =
     .label = Blockieren
     .accesskey = B
-
 permissions-session =
     .label = Für diese Sitzung erlauben
     .accesskey = F
-
 permissions-allow =
     .label = Erlauben
     .accesskey = E
-
 permissions-site-name =
     .label = Website
-
 permissions-status =
     .label = Status
-
 permissions-remove =
     .label = Website entfernen
     .accesskey = n
-
 permissions-remove-all =
     .label = Alle Websites entfernen
     .accesskey = a
-
 permissions-button-cancel =
     .label = Abbrechen
     .accesskey = r
-
 permissions-button-ok =
     .label = Änderungen speichern
     .accesskey = s
-
 permissions-autoplay-menu = Standard für alle Websites:
-
 permissions-searchbox =
     .placeholder = Website suchen
-
 permissions-capabilities-autoplay-allow =
     .label = Audio und Video erlauben
 permissions-capabilities-autoplay-block =
     .label = Medien mit Audio blockieren
 permissions-capabilities-autoplay-blockall =
     .label = Audio und Video blockieren
-
 permissions-capabilities-allow =
     .label = Erlauben
 permissions-capabilities-block =
     .label = Blockieren
 permissions-capabilities-prompt =
     .label = Immer fragen
-
 permissions-capabilities-listitem-allow =
     .value = Erlauben
 permissions-capabilities-listitem-block =
     .value = Blockieren
-permissions-capabilities-listitem-allow-first-party =
-    .value = Nur als aufgerufene Seite erlauben
 permissions-capabilities-listitem-allow-session =
     .value = Für diese Sitzung erlauben
 
@@ -81,15 +63,14 @@ permissions-invalid-uri-label = Bitte tragen Sie einen gültigen Hostnamen ein
 
 ## Exceptions - Tracking Protection
 
-permissions-exceptions-tracking-protection-window =
-    .title = Ausnahmen - Schutz vor Aktivitätenverfolgung
-    .style = { permissions-window.style }
-permissions-exceptions-tracking-protection-desc = Sie haben den Schutz vor Aktivitätenverfolgung auf folgenden Seiten deaktiviert.
-
 permissions-exceptions-content-blocking-window =
     .title = Ausnahmen - Blockieren von Seitenelementen
     .style = { permissions-window.style }
 permissions-exceptions-content-blocking-desc = Sie haben das Blockieren von Seitenelementen auf diesen Websites deaktiviert.
+permissions-exceptions-etp-window =
+    .title = Ausnahmen - Verbesserter Schutz vor Aktivitätenverfolgung
+    .style = { permissions-window.style }
+permissions-exceptions-etp-desc = Sie haben die Schutzmaßnahmen für folgende Websites deaktiviert.
 
 ## Exceptions - Cookies
 
@@ -108,9 +89,9 @@ permissions-exceptions-popup-desc = Sie können festlegen, welchen Websites Sie 
 ## Exceptions - Saved Logins
 
 permissions-exceptions-saved-logins-window =
-    .title = Ausnahmen - Gespeicherte Anmeldedaten
+    .title = Ausnahmen - Gespeicherte Zugangsdaten
     .style = { permissions-window.style }
-permissions-exceptions-saved-logins-desc = Anmeldedaten für die folgenden Websites werden nicht gespeichert:
+permissions-exceptions-saved-logins-desc = Zugangsdaten für die folgenden Websites werden nicht gespeichert:
 
 ## Exceptions - Add-ons
 
@@ -123,13 +104,15 @@ permissions-exceptions-addons-desc = Sie können festlegen, welchen Websites Sie
 
 permissions-exceptions-autoplay-media-window2 =
     .title = Ausnahmen - Automatische Wiedergabe
+    .style = { permissions-window.style }
+permissions-exceptions-autoplay-media-desc2 = Hier können die Websites festgelegt werden, welche immer oder nie automatisch Medien mit Ton wiedergeben dürfen. Geben Sie die Adresse der Website ein und klicken Sie dann auf "Blockieren" oder "Erlauben".
+
 ## Site Permissions - Autoplay
 
 permissions-site-autoplay-window =
     .title = Einstellungen - Automatische Wiedergabe
     .style = { permissions-window.style }
 permissions-site-autoplay-desc = Hier können die Websites verwaltet werden, welche benutzerdefinierte Einstellungen für die automatische Wiedergabe verwenden.
-permissions-exceptions-autoplay-media-desc2 = Hier können die Websites festgelegt werden, welche immer oder nie automatisch Medien mit Ton wiedergeben dürfen. Geben Sie die Adresse der Website ein und klicken Sie dann auf "Blockieren" oder "Erlauben".
 
 ## Site Permissions - Notifications
 

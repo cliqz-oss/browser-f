@@ -128,8 +128,10 @@ const AddonCardListenerHandler = {
     if (this.MANAGER_EVENTS.has(name)) {
       cards = document.querySelectorAll("addon-card");
     } else {
-      let card = document.querySelector(`addon-card[addon-id="${addon.id}"]`);
-      cards = card ? [card] : [];
+      let cardSelector = `addon-card[addon-id="${addon.id}"]`;
+      cards = document.querySelectorAll(
+        `${cardSelector}, ${cardSelector} addon-details`
+      );
     }
     for (let card of cards) {
       try {
@@ -518,6 +520,28 @@ var DiscoveryAPI = {
     return results.map(details => new DiscoAddonWrapper(details));
   },
 };
+
+class SupportLink extends HTMLAnchorElement {
+  static get observedAttributes() {
+    return ["support-page"];
+  }
+
+  connectedCallback() {
+    this.setHref();
+    this.setAttribute("target", "_blank");
+  }
+
+  attributeChangedCallback(name, oldVal, newVal) {
+    if (name === "support-page") {
+      this.setHref();
+    }
+  }
+
+  setHref() {
+    this.href = SUPPORT_URL + this.getAttribute("support-page");
+  }
+}
+customElements.define("support-link", SupportLink, { extends: "a" });
 
 class PanelList extends HTMLElement {
   static get observedAttributes() {
@@ -1326,9 +1350,8 @@ class AddonPermissionsList extends HTMLElement {
     // Add a learn more link.
     let learnMoreRow = document.createElement("div");
     learnMoreRow.classList.add("addon-detail-row");
-    let learnMoreLink = document.createElement("a");
-    learnMoreLink.setAttribute("target", "_blank");
-    learnMoreLink.href = SUPPORT_URL + "extension-permissions";
+    let learnMoreLink = document.createElement("a", { is: "support-link" });
+    learnMoreLink.setAttribute("support-page", "extension-permissions");
     learnMoreLink.textContent = browserBundle.GetStringFromName(
       "webextPerms.learnMore"
     );
@@ -1344,13 +1367,11 @@ class AddonDetails extends HTMLElement {
       this.render();
     }
     this.deck.addEventListener("view-changed", this);
-    this.addEventListener("keypress", this);
   }
 
   disconnectedCallback() {
     this.inlineOptions.destroyBrowser();
     this.deck.removeEventListener("view-changed", this);
-    this.removeEventListener("keypress", this);
   }
 
   handleEvent(e) {
@@ -1375,13 +1396,39 @@ class AddonDetails extends HTMLElement {
           }
           break;
       }
-    } else if (e.type == "keypress") {
-      if (
-        e.keyCode == KeyEvent.DOM_VK_RETURN &&
-        e.target.getAttribute("action") === "pb-learn-more"
-      ) {
-        e.target.click();
-      }
+
+      // When a details view is rendered again, the default details view is
+      // unconditionally shown. So if any other tab is selected, do not save
+      // the current scroll offset, but start at the top of the page instead.
+      ScrollOffsets.canRestore = this.deck.selectedViewName === "details";
+    }
+  }
+
+  onInstalled() {
+    let policy = WebExtensionPolicy.getByID(this.addon.id);
+    let extension = policy && policy.extension;
+    if (extension && extension.startupReason === "ADDON_UPGRADE") {
+      // Ensure the options browser is recreated when a new version starts.
+      this.extensionShutdown();
+      this.extensionStartup();
+    }
+  }
+
+  onDisabled(addon) {
+    this.extensionShutdown();
+  }
+
+  onEnabled(addon) {
+    this.extensionStartup();
+  }
+
+  extensionShutdown() {
+    this.inlineOptions.destroyBrowser();
+  }
+
+  extensionStartup() {
+    if (this.deck.selectedViewName === "preferences") {
+      this.inlineOptions.ensureBrowserCreated();
     }
   }
 
@@ -1407,7 +1454,11 @@ class AddonDetails extends HTMLElement {
     notesBtn.hidden = !this.releaseNotesUri;
     let prefsBtn = getButtonByName("preferences");
     prefsBtn.hidden = getOptionsType(addon) !== "inline";
-    if (!prefsBtn.hidden) {
+    if (prefsBtn.hidden) {
+      if (this.deck.selectedViewName === "preferences") {
+        this.deck.selectedViewName = "details";
+      }
+    } else {
       isAddonOptionsUIAllowed(addon).then(allowed => {
         prefsBtn.hidden = !allowed;
       });
@@ -1492,10 +1543,6 @@ class AddonDetails extends HTMLElement {
       pbRow.nextElementSibling.hidden = false;
       let isAllowed = await isAllowedInPrivateBrowsing(addon);
       pbRow.querySelector(`[value="${isAllowed ? 1 : 0}"]`).checked = true;
-      let learnMore = pbRow.nextElementSibling.querySelector(
-        'a[data-l10n-name="learn-more"]'
-      );
-      learnMore.href = SUPPORT_URL + "extensions-pb";
     }
 
     // Author.
@@ -1621,11 +1668,7 @@ class AddonCard extends HTMLElement {
   }
 
   set reloading(val) {
-    if (val) {
-      this.setAttribute("reloading", "true");
-    } else {
-      this.removeAttribute("reloading");
-    }
+    this.toggleAttribute("reloading", val);
   }
 
   /**
@@ -1772,15 +1815,12 @@ class AddonCard extends HTMLElement {
             );
           }
           break;
-        case "pb-learn-more":
-          windowRoot.ownerGlobal.openTrustedLinkIn(
-            SUPPORT_URL + "extensions-pb",
-            "tab"
-          );
-          break;
         default:
           // Handle a click on the card itself.
-          if (!this.expanded) {
+          if (
+            !this.expanded &&
+            (e.target === this.addonNameEl || !e.target.closest("a"))
+          ) {
             loadViewFn(`detail/${this.addon.id}`, e);
           } else if (
             e.target.localName == "a" &&
@@ -1840,6 +1880,9 @@ class AddonCard extends HTMLElement {
       }
     } else if (e.type === "shown" || e.type === "hidden") {
       let panelOpen = e.type === "shown";
+      // The card will be dimmed if it's disabled, but when the panel is open
+      // that should be reverted so the menu items can be easily read.
+      this.toggleAttribute("panelopen", panelOpen);
       this.optionsButton.setAttribute("aria-expanded", panelOpen);
     }
   }
@@ -1915,6 +1958,8 @@ class AddonCard extends HTMLElement {
    */
   update() {
     let { addon, card } = this;
+
+    card.setAttribute("active", addon.isActive);
 
     // Update the icon.
     let icon;
@@ -2969,12 +3014,6 @@ class DiscoveryPane extends RecommendedSection {
   get template() {
     return "discopane";
   }
-
-  render() {
-    super.render();
-    this.querySelector(".discopane-intro-learn-more-link").href =
-      SUPPORT_URL + "recommended-extensions-program";
-  }
 }
 customElements.define("discovery-pane", DiscoveryPane);
 
@@ -2991,12 +3030,12 @@ class ListView {
     list.type = this.type;
     list.setSections([
       {
-        headingId: "addons-enabled-heading",
+        headingId: this.type + "-enabled-heading",
         filterFn: addon =>
           !addon.hidden && addon.isActive && !isPending(addon, "uninstall"),
       },
       {
-        headingId: "addons-disabled-heading",
+        headingId: this.type + "-disabled-heading",
         filterFn: addon =>
           !addon.hidden && !addon.isActive && !isPending(addon, "uninstall"),
       },
@@ -3134,6 +3173,40 @@ function getTelemetryViewName(el) {
 }
 
 /**
+ * Helper for saving and restoring the scroll offsets when a previously loaded
+ * view is accessed again.
+ */
+var ScrollOffsets = {
+  _key: null,
+  _offsets: new Map(),
+  canRestore: true,
+
+  setView(historyEntryId) {
+    this._key = historyEntryId;
+    this.canRestore = true;
+  },
+
+  getPosition() {
+    if (!this.canRestore) {
+      return { top: 0, left: 0 };
+    }
+    let { scrollTop: top, scrollLeft: left } = document.documentElement;
+    return { top, left };
+  },
+
+  save() {
+    if (this._key) {
+      this._offsets.set(this._key, this.getPosition());
+    }
+  },
+
+  restore() {
+    let { top = 0, left = 0 } = this._offsets.get(this._key) || {};
+    window.scrollTo({ top, left, behavior: "auto" });
+  },
+};
+
+/**
  * Called from extensions.js once, when about:addons is loading.
  */
 function initialize(opts) {
@@ -3159,7 +3232,7 @@ function initialize(opts) {
  * resolve once the view has been updated to conform with other about:addons
  * views.
  */
-async function show(type, param, { isKeyboardNavigation }) {
+async function show(type, param, { isKeyboardNavigation, historyEntryId }) {
   let container = document.createElement("div");
   container.setAttribute("current-view", type);
   if (type == "list") {
@@ -3180,10 +3253,26 @@ async function show(type, param, { isKeyboardNavigation }) {
   } else {
     throw new Error(`Unknown view type: ${type}`);
   }
+
+  ScrollOffsets.save();
+  ScrollOffsets.setView(historyEntryId);
   mainEl.textContent = "";
   mainEl.appendChild(container);
+
+  // Most content has been rendered at this point. The only exception are
+  // recommendations in the discovery pane and extension/theme list, because
+  // they rely on remote data. If loaded before, then these may be rendered
+  // within one tick, so wait a frame before restoring scroll offsets.
+  return new Promise(resolve => {
+    window.requestAnimationFrame(() => {
+      ScrollOffsets.restore();
+      resolve();
+    });
+  });
 }
 
 function hide() {
+  ScrollOffsets.save();
+  ScrollOffsets.setView(null);
   mainEl.textContent = "";
 }

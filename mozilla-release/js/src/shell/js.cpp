@@ -71,6 +71,7 @@
 #include "builtin/Promise.h"
 #include "builtin/RegExp.h"
 #include "builtin/TestingFunctions.h"
+#include "debugger/DebugAPI.h"
 #if defined(JS_BUILD_BINAST)
 #  include "frontend/BinASTParser.h"
 #endif  // defined(JS_BUILD_BINAST)
@@ -119,7 +120,6 @@
 #include "util/Windows.h"
 #include "vm/ArgumentsObject.h"
 #include "vm/Compression.h"
-#include "vm/Debugger.h"
 #include "vm/HelperThreads.h"
 #include "vm/JSAtom.h"
 #include "vm/JSContext.h"
@@ -466,11 +466,8 @@ struct MOZ_STACK_CLASS EnvironmentPreparer
 static bool enableCodeCoverage = false;
 static bool enableDisassemblyDumps = false;
 static bool offthreadCompilation = false;
-static bool enableBaseline = false;
-static bool enableIon = false;
 static bool enableAsmJS = false;
 static bool enableWasm = false;
-static bool enableNativeRegExp = false;
 static bool enableSharedMemory = SHARED_MEMORY_DEFAULT;
 static bool enableWasmBaseline = false;
 static bool enableWasmIon = false;
@@ -482,7 +479,6 @@ static bool enableWasmVerbose = false;
 static bool enableTestWasmAwaitTier2 = false;
 static bool enableAsyncStacks = false;
 static bool enableStreams = false;
-static bool enableBigInt = false;
 static bool enableFields = false;
 static bool enableAwaitFix = false;
 #ifdef JS_GC_ZEAL
@@ -525,7 +521,7 @@ static JSObject* NewGlobalObject(JSContext* cx, JS::RealmOptions& options,
  * where global |this| is a WindowProxy. All requests are forwarded to the
  * underlying global and no navigation is supported.
  */
-const js::Class ShellWindowProxyClass =
+const JSClass ShellWindowProxyClass =
     PROXY_CLASS_DEF("ShellWindowProxy", JSCLASS_HAS_RESERVED_SLOTS(1));
 
 JSObject* NewShellWindowProxy(JSContext* cx, JS::HandleObject global) {
@@ -1260,6 +1256,10 @@ static bool AddIntlExtras(JSContext* cx, unsigned argc, Value* vp) {
   }
 
   if (!js::AddMozDateTimeFormatConstructor(cx, intl)) {
+    return false;
+  }
+
+  if (!js::AddLocaleConstructor(cx, intl)) {
     return false;
   }
 
@@ -2841,8 +2841,7 @@ static bool GetScriptAndPCArgs(JSContext* cx, CallArgs& args,
   if (!args.get(0).isUndefined()) {
     HandleValue v = args[0];
     unsigned intarg = 0;
-    if (v.isObject() &&
-        JS_GetClass(&v.toObject()) == Jsvalify(&JSFunction::class_)) {
+    if (v.isObject() && JS_GetClass(&v.toObject()) == &JSFunction::class_) {
       script = TestingFunctionArgumentToScript(cx, v);
       if (!script) {
         return false;
@@ -3160,10 +3159,6 @@ static const char* TryNoteName(JSTryNoteKind kind) {
 
 static MOZ_MUST_USE bool TryNotes(JSContext* cx, HandleScript script,
                                   Sprinter* sp) {
-  if (!script->hasTrynotes()) {
-    return true;
-  }
-
   if (!sp->put(
           "\nException table:\nkind               stack    start      end\n")) {
     return false;
@@ -3181,10 +3176,6 @@ static MOZ_MUST_USE bool TryNotes(JSContext* cx, HandleScript script,
 
 static MOZ_MUST_USE bool ScopeNotes(JSContext* cx, HandleScript script,
                                     Sprinter* sp) {
-  if (!script->hasScopeNotes()) {
-    return true;
-  }
-
   if (!sp->put("\nScope notes:\n   index   parent    start      end\n")) {
     return false;
   }
@@ -3791,7 +3782,6 @@ static const JSClass sandbox_class = {"sandbox", JSCLASS_GLOBAL_FLAGS,
 static void SetStandardRealmOptions(JS::RealmOptions& options) {
   options.creationOptions()
       .setSharedMemoryAndAtomicsEnabled(enableSharedMemory)
-      .setBigIntEnabled(enableBigInt)
       .setStreamsEnabled(enableStreams)
       .setFieldsEnabled(enableFields)
       .setAwaitFixEnabled(enableAwaitFix);
@@ -3995,6 +3985,8 @@ static bool ShellBuildId(JS::BuildIdCharVector* buildId);
 
 static void WorkerMain(WorkerInput* input) {
   MOZ_ASSERT(input->parentRuntime);
+
+  auto mutexShutdown = mozilla::MakeScopeExit([] { Mutex::ShutDown(); });
 
   JSContext* cx = JS_NewContext(8L * 1024L * 1024L, 2L * 1024L * 1024L,
                                 input->parentRuntime);
@@ -4262,37 +4254,41 @@ static void WatchdogMain(JSContext* cx) {
 
   ShellContext* sc = GetShellContext(cx);
 
-  LockGuard<Mutex> guard(sc->watchdogLock);
-  while (sc->watchdogThread) {
-    auto now = TimeStamp::Now();
-    if (sc->watchdogTimeout && now >= sc->watchdogTimeout.value()) {
-      /*
-       * The timeout has just expired. Request an interrupt callback
-       * outside the lock.
-       */
-      sc->watchdogTimeout = Nothing();
-      {
-        UnlockGuard<Mutex> unlock(guard);
-        CancelExecution(cx);
-      }
-
-      /* Wake up any threads doing sleep. */
-      sc->sleepWakeup.notify_all();
-    } else {
-      if (sc->watchdogTimeout) {
+  {
+    LockGuard<Mutex> guard(sc->watchdogLock);
+    while (sc->watchdogThread) {
+      auto now = TimeStamp::Now();
+      if (sc->watchdogTimeout && now >= sc->watchdogTimeout.value()) {
         /*
-         * Time hasn't expired yet. Simulate an interrupt callback
-         * which doesn't abort execution.
+         * The timeout has just expired. Request an interrupt callback
+         * outside the lock.
          */
-        JS_RequestInterruptCallback(cx);
-      }
+        sc->watchdogTimeout = Nothing();
+        {
+          UnlockGuard<Mutex> unlock(guard);
+          CancelExecution(cx);
+        }
 
-      TimeDuration sleepDuration = sc->watchdogTimeout
-                                       ? TimeDuration::FromSeconds(0.1)
-                                       : TimeDuration::Forever();
-      sc->watchdogWakeup.wait_for(guard, sleepDuration);
+        /* Wake up any threads doing sleep. */
+        sc->sleepWakeup.notify_all();
+      } else {
+        if (sc->watchdogTimeout) {
+          /*
+           * Time hasn't expired yet. Simulate an interrupt callback
+           * which doesn't abort execution.
+           */
+          JS_RequestInterruptCallback(cx);
+        }
+
+        TimeDuration sleepDuration = sc->watchdogTimeout
+                                         ? TimeDuration::FromSeconds(0.1)
+                                         : TimeDuration::Forever();
+        sc->watchdogWakeup.wait_for(guard, sleepDuration);
+      }
     }
   }
+
+  Mutex::ShutDown();
 }
 
 static bool ScheduleWatchdog(JSContext* cx, double t) {
@@ -5822,7 +5818,7 @@ static int sArgc;
 static char** sArgv;
 static const char sWasmCompileAndSerializeFlag[] =
     "--wasm-compile-and-serialize";
-static Vector<const char*, 4, js::SystemAllocPolicy> sCompilerProcessFlags;
+static Vector<const char*, 5, js::SystemAllocPolicy> sCompilerProcessFlags;
 
 static bool CompileAndSerializeInSeparateProcess(JSContext* cx,
                                                  const uint8_t* bytecode,
@@ -6206,13 +6202,6 @@ static bool NewGlobal(JSContext* cx, unsigned argc, Value* vp) {
     if (v.isBoolean()) {
       kind = v.toBoolean() ? ShellGlobalKind::WindowProxy
                            : ShellGlobalKind::GlobalObject;
-    }
-
-    if (!JS_GetProperty(cx, opts, "enableBigInt", &v)) {
-      return false;
-    }
-    if (v.isBoolean()) {
-      creationOptions.setBigIntEnabled(v.toBoolean());
     }
 
     if (!JS_GetProperty(cx, opts, "systemPrincipal", &v)) {
@@ -6987,10 +6976,10 @@ typedef RefPtr<StreamCacheEntry> StreamCacheEntryPtr;
 
 class StreamCacheEntryObject : public NativeObject {
   static const unsigned CACHE_ENTRY_SLOT = 0;
-  static const ClassOps classOps_;
+  static const JSClassOps classOps_;
   static const JSPropertySpec properties_;
 
-  static void finalize(FreeOp*, JSObject* obj) {
+  static void finalize(JSFreeOp*, JSObject* obj) {
     obj->as<StreamCacheEntryObject>().cache().Release();
   }
 
@@ -7029,7 +7018,7 @@ class StreamCacheEntryObject : public NativeObject {
 
  public:
   static const unsigned RESERVED_SLOTS = 1;
-  static const Class class_;
+  static const JSClass class_;
   static const JSPropertySpec properties[];
 
   static bool construct(JSContext* cx, unsigned argc, Value* vp) {
@@ -7084,7 +7073,7 @@ class StreamCacheEntryObject : public NativeObject {
   }
 };
 
-const ClassOps StreamCacheEntryObject::classOps_ = {
+const JSClassOps StreamCacheEntryObject::classOps_ = {
     nullptr, /* addProperty */
     nullptr, /* delProperty */
     nullptr, /* enumerate */
@@ -7093,7 +7082,7 @@ const ClassOps StreamCacheEntryObject::classOps_ = {
     nullptr, /* mayResolve */
     StreamCacheEntryObject::finalize};
 
-const Class StreamCacheEntryObject::class_ = {
+const JSClass StreamCacheEntryObject::class_ = {
     "StreamCacheEntryObject",
     JSCLASS_HAS_RESERVED_SLOTS(StreamCacheEntryObject::RESERVED_SLOTS) |
         JSCLASS_BACKGROUND_FINALIZE,
@@ -7124,6 +7113,8 @@ struct BufferStreamState {
 static ExclusiveWaitableData<BufferStreamState>* bufferStreamState;
 
 static void BufferStreamMain(BufferStreamJob* job) {
+  auto mutexShutdown = MakeScopeExit([] { Mutex::ShutDown(); });
+
   const uint8_t* bytes;
   size_t byteLength;
   JS::OptimizedEncodingListener* listener;
@@ -8107,7 +8098,7 @@ static const JSClass TransplantableDOMObjectClass = {
     "TransplantableDOMObject",
     JSCLASS_IS_DOMJSCLASS | JSCLASS_HAS_RESERVED_SLOTS(1)};
 
-static const Class TransplantableDOMProxyObjectClass =
+static const JSClass TransplantableDOMProxyObjectClass =
     PROXY_CLASS_DEF("TransplantableDOMProxyObject",
                     JSCLASS_IS_DOMJSCLASS | JSCLASS_HAS_RESERVED_SLOTS(1));
 
@@ -8334,8 +8325,8 @@ static bool TransplantableObject(JSContext* cx, unsigned argc, Value* vp) {
 
   if (!source) {
     if (!createProxy) {
-      source = NewBuiltinClassInstance(
-          cx, Valueify(&TransplantableDOMObjectClass), TenuredObject);
+      source = NewBuiltinClassInstance(cx, &TransplantableDOMObjectClass,
+                                       TenuredObject);
       if (!source) {
         return false;
       }
@@ -9794,7 +9785,7 @@ static void InitDOMObject(HandleObject obj) {
 
 static JSObject* GetDOMPrototype(JSContext* cx, JSObject* global) {
   MOZ_ASSERT(JS_IsGlobalObject(global));
-  if (GetObjectJSClass(global) != &global_class) {
+  if (GetObjectClass(global) != &global_class) {
     JS_ReportErrorASCII(cx, "Can't get FakeDOMObject prototype in sandbox");
     return nullptr;
   }
@@ -9829,10 +9820,10 @@ static bool dom_constructor(JSContext* cx, unsigned argc, JS::Value* vp) {
   return true;
 }
 
-static bool InstanceClassHasProtoAtDepth(const Class* clasp, uint32_t protoID,
+static bool InstanceClassHasProtoAtDepth(const JSClass* clasp, uint32_t protoID,
                                          uint32_t depth) {
   // Only the (fake) DOM object supports any JIT optimizations.
-  return clasp == Valueify(GetDomClass());
+  return clasp == GetDomClass();
 }
 
 static bool ShellBuildId(JS::BuildIdCharVector* buildId) {
@@ -10176,10 +10167,7 @@ static MOZ_MUST_USE bool ProcessArgs(JSContext* cx, OptionParser* op) {
 }
 
 static bool SetContextOptions(JSContext* cx, const OptionParser& op) {
-  enableBaseline = !op.getBoolOption("no-baseline");
-  enableIon = !op.getBoolOption("no-ion");
   enableAsmJS = !op.getBoolOption("no-asmjs");
-  enableNativeRegExp = !op.getBoolOption("no-native-regexp");
 
   // Default values for wasm.
   enableWasm = true;
@@ -10216,13 +10204,10 @@ static bool SetContextOptions(JSContext* cx, const OptionParser& op) {
   enableTestWasmAwaitTier2 = op.getBoolOption("test-wasm-await-tier2");
   enableAsyncStacks = !op.getBoolOption("no-async-stacks");
   enableStreams = !op.getBoolOption("no-streams");
-  enableBigInt = !op.getBoolOption("no-bigint");
   enableFields = !op.getBoolOption("disable-experimental-fields");
   enableAwaitFix = op.getBoolOption("enable-experimental-await-fix");
 
   JS::ContextOptionsRef(cx)
-      .setBaseline(enableBaseline)
-      .setIon(enableIon)
       .setAsmJS(enableAsmJS)
       .setWasm(enableWasm)
       .setWasmBaseline(enableWasmBaseline)
@@ -10235,7 +10220,6 @@ static bool SetContextOptions(JSContext* cx, const OptionParser& op) {
 #endif
       .setWasmVerbose(enableWasmVerbose)
       .setTestWasmAwaitTier2(enableTestWasmAwaitTier2)
-      .setNativeRegExp(enableNativeRegExp)
       .setAsyncStack(enableAsyncStacks);
 
   if (const char* str = op.getStringOption("cache-ir-stubs")) {
@@ -10413,11 +10397,40 @@ static bool SetContextOptions(JSContext* cx, const OptionParser& op) {
 
   warmUpThreshold = op.getIntOption("baseline-warmup-threshold");
   if (warmUpThreshold >= 0) {
-    jit::JitOptions.baselineWarmUpThreshold = warmUpThreshold;
+    jit::JitOptions.baselineJitWarmUpThreshold = warmUpThreshold;
   }
 
   if (op.getBoolOption("baseline-eager")) {
-    jit::JitOptions.baselineWarmUpThreshold = 0;
+    jit::JitOptions.setEagerBaselineCompilation();
+  }
+
+  if (op.getBoolOption("blinterp")) {
+    jit::JitOptions.baselineInterpreter = true;
+  }
+
+  if (op.getBoolOption("no-blinterp")) {
+    jit::JitOptions.baselineInterpreter = false;
+  }
+
+  warmUpThreshold = op.getIntOption("blinterp-warmup-threshold");
+  if (warmUpThreshold >= 0) {
+    jit::JitOptions.baselineInterpreterWarmUpThreshold = warmUpThreshold;
+  }
+
+  if (op.getBoolOption("blinterp-eager")) {
+    jit::JitOptions.baselineInterpreterWarmUpThreshold = 0;
+  }
+
+  if (op.getBoolOption("no-baseline")) {
+    jit::JitOptions.baselineJit = false;
+  }
+
+  if (op.getBoolOption("no-ion")) {
+    jit::JitOptions.ion = false;
+  }
+
+  if (op.getBoolOption("no-native-regexp")) {
+    jit::JitOptions.nativeRegExp = false;
   }
 
   if (const char* str = op.getStringOption("ion-regalloc")) {
@@ -10522,8 +10535,6 @@ static bool SetContextOptions(JSContext* cx, const OptionParser& op) {
 static void SetWorkerContextOptions(JSContext* cx) {
   // Copy option values from the main thread.
   JS::ContextOptionsRef(cx)
-      .setBaseline(enableBaseline)
-      .setIon(enableIon)
       .setAsmJS(enableAsmJS)
       .setWasm(enableWasm)
       .setWasmBaseline(enableWasmBaseline)
@@ -10535,8 +10546,7 @@ static void SetWorkerContextOptions(JSContext* cx) {
       .setWasmGc(enableWasmGc)
 #endif
       .setWasmVerbose(enableWasmVerbose)
-      .setTestWasmAwaitTier2(enableTestWasmAwaitTier2)
-      .setNativeRegExp(enableNativeRegExp);
+      .setTestWasmAwaitTier2(enableTestWasmAwaitTier2);
 
   cx->runtime()->setOffthreadIonCompilationEnabled(offthreadCompilation);
   cx->runtime()->profilingScripts =
@@ -10929,6 +10939,8 @@ int main(int argc, char** argv, char** envp) {
           "none/baseline/ion/cranelift/baseline+ion/baseline+cranelift)") ||
       !op.addBoolOption('\0', "wasm-verbose",
                         "Enable WebAssembly verbose logging") ||
+      !op.addBoolOption('\0', "disable-wasm-huge-memory",
+                        "Disable WebAssembly huge memory") ||
       !op.addBoolOption('\0', "test-wasm-await-tier2",
                         "Forcibly activate tiering and block "
                         "instantiation on completion of tier2") ||
@@ -10945,7 +10957,6 @@ int main(int argc, char** argv, char** envp) {
       !op.addBoolOption('\0', "enable-streams",
                         "Enable WHATWG Streams (default)") ||
       !op.addBoolOption('\0', "no-streams", "Disable WHATWG Streams") ||
-      !op.addBoolOption('\0', "no-bigint", "Disable BigInt support") ||
       !op.addBoolOption('\0', "disable-experimental-fields",
                         "Disable public fields in classes") ||
       !op.addBoolOption('\0', "enable-experimental-await-fix",
@@ -11037,6 +11048,16 @@ int main(int argc, char** argv, char** envp) {
       !op.addIntOption(
           '\0', "baseline-warmup-threshold", "COUNT",
           "Wait for COUNT calls or iterations before baseline-compiling "
+          "(default: 10)",
+          -1) ||
+      !op.addBoolOption('\0', "blinterp",
+                        "Enable Baseline Interpreter (default)") ||
+      !op.addBoolOption('\0', "no-blinterp", "Disable Baseline Interpreter") ||
+      !op.addBoolOption('\0', "blinterp-eager",
+                        "Always Baseline-interpret scripts") ||
+      !op.addIntOption(
+          '\0', "blinterp-warmup-threshold", "COUNT",
+          "Wait for COUNT calls or iterations before Baseline-interpreting "
           "(default: 10)",
           -1) ||
       !op.addBoolOption(
@@ -11223,8 +11244,8 @@ int main(int argc, char** argv, char** envp) {
   if (cpuCount < 0) {
     cpuCount = op.getIntOption("thread-count");  // Legacy name
   }
-  if (cpuCount >= 0) {
-    SetFakeCPUCount(cpuCount);
+  if (cpuCount >= 0 && !SetFakeCPUCount(cpuCount)) {
+    return 1;
   }
 
   size_t nurseryBytes = JS::DefaultNurseryBytes;
@@ -11340,6 +11361,14 @@ int main(int argc, char** argv, char** envp) {
   JS::SetModuleResolveHook(cx->runtime(), ShellModuleResolveHook);
   JS::SetModuleDynamicImportHook(cx->runtime(), ShellModuleDynamicImportHook);
   JS::SetModuleMetadataHook(cx->runtime(), CallModuleMetadataHook);
+
+  if (op.getBoolOption("disable-wasm-huge-memory")) {
+    if (!sCompilerProcessFlags.append("--disable-wasm-huge-memory")) {
+      return EXIT_FAILURE;
+    }
+    bool disabledHugeMemory = JS::DisableWasmHugeMemory();
+    MOZ_RELEASE_ASSERT(disabledHugeMemory);
+  }
 
   result = Shell(cx, &op, envp);
 
