@@ -111,7 +111,6 @@ RemoteWebNavigation.prototype = {
         // don't have one or if it's a SystemPrincipal, let's create it with OA
         // inferred from the current context.
         if (!principal || principal.isSystemPrincipal) {
-          let aTab = this._browser.ownerGlobal.gBrowser.getTabForBrowser(this._browser);
           let attrs = {
             userContextId: this._browser.getAttribute("usercontextid") || 0,
             privateBrowsingId: PrivateBrowsingUtils.isBrowserPrivate(
