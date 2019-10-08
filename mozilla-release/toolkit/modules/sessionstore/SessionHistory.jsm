@@ -331,7 +331,6 @@ var SessionHistoryInternal = {
    * @return A reference to the docShell's nsISHistory interface.
    */
   restore(docShell, tabData) {
-    docShell.usePrivateBrowsing = !!tabData.isPrivate;  // Cliqz. DB-866
     let webNavigation = docShell.QueryInterface(Ci.nsIWebNavigation);
     let history = webNavigation.sessionHistory.legacySHistory;
     if (history.count > 0) {

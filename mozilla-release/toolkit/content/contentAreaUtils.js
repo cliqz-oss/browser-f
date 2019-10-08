@@ -538,9 +538,7 @@ function internalSave(
       isPrivate =
         aInitiatingDocument.nodeType == 9 /* DOCUMENT_NODE */
           ? PrivateBrowsingUtils.isContentWindowPrivate(
-              aInitiatingDocument.defaultView ||
-              // TODO: This needs testing.
-              aInitiatingDocument.docShell.usePrivateBrowsing
+              aInitiatingDocument.defaultView
             )
           : aInitiatingDocument.isPrivate;
     }

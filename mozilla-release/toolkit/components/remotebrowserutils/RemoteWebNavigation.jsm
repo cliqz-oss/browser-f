@@ -158,7 +158,6 @@ RemoteWebNavigation.prototype = {
         ? E10SUtils.serializeCSP(aLoadURIOptions.csp)
         : null,
       cancelContentJSEpoch,
-      ensurePrivate: !!aLoadURIOptions.ensurePrivate,
     });
   },
   setOriginAttributesBeforeLoading(aOriginAttributes) {

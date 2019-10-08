@@ -105,7 +105,6 @@ class WebNavigationChild extends ActorChild {
       triggeringPrincipal,
       csp,
       cancelContentJSEpoch,
-      ensurePrivate,
     } = params || {};
 
     if (AppConstants.MOZ_CRASHREPORTER && CrashReporter.enabled) {
@@ -162,7 +161,6 @@ class WebNavigationChild extends ActorChild {
       postData,
       headers,
       baseURI,
-      ensurePrivate,
     };
     this.mm.docShell.setCancelContentJSEpoch(cancelContentJSEpoch);
     this._wrapURIChangeCall(() => {

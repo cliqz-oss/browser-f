@@ -1586,7 +1586,6 @@
       var aFocusUrlBar;
       var aName;
       var aCsp;
-      var aPrivate;
       if (
         arguments.length == 2 &&
         typeof arguments[1] == "object" &&
@@ -1617,7 +1616,6 @@
         aFocusUrlBar = params.focusUrlBar;
         aName = params.name;
         aCsp = params.csp;
-        aPrivate = params.private;
       }
 
       // all callers of loadOneTab need to pass a valid triggeringPrincipal.
@@ -1658,7 +1656,6 @@
         focusUrlBar: aFocusUrlBar,
         name: aName,
         csp: aCsp,
-        private: aPrivate,
       });
       if (!bgLoad) {
         this.selectedTab = tab;
@@ -2077,7 +2074,6 @@
       sameProcessAsFrameLoader,
       uriIsAboutBlank,
       userContextId,
-      private,
     } = {}) {
       let b = document.createXULElement("browser");
       // Use the JSM global to create the permanentKey, so that if the
@@ -2105,10 +2101,6 @@
       if (remoteType) {
         b.setAttribute("remoteType", remoteType);
         b.setAttribute("remote", "true");
-      }
-
-      if (private) {
-        b.setAttribute("mozprivatebrowsing", 1);
       }
 
       if (recordExecution) {
@@ -2525,7 +2517,6 @@
      */
     addTrustedTab(aURI, params = {}) {
       params.triggeringPrincipal = Services.scriptSecurityManager.getSystemPrincipal();
-      params.private = typeof params.private == "boolean" ? params.private : false;
       return this.addTab(aURI, params);
     },
 
@@ -2566,7 +2557,6 @@
         recordExecution,
         replayExecution,
         csp,
-        private,
       } = {}
     ) {
       // all callers of addTab that pass a params object need to pass
@@ -2780,8 +2770,7 @@
           aURI == BROWSER_NEW_TAB_URL &&
           !userContextId &&
           !recordExecution &&
-          !replayExecution &&
-          !private
+          !replayExecution
         ) {
           b = NewTabPagePreloading.getPreloadedBrowser(window);
           if (b) {
@@ -2801,7 +2790,6 @@
             name,
             recordExecution,
             replayExecution,
-            private,
           });
         }
 
@@ -2925,15 +2913,10 @@
             charset,
             postData,
             csp,
-            private,
           });
         } catch (ex) {
           Cu.reportError(ex);
         }
-      } else if (private) {
-        b.loadURIWithFlags(aURI, {
-          ensurePrivate: true,
-        });
       }
 
       // This field is updated regardless if we actually animate
@@ -3518,16 +3501,6 @@
       }
 
       var wasPinned = aTab.pinned;
-
-      // In the multi-process case, it's possible an asynchronous tab switch
-      // is still underway. If so, then it's possible that the last visible
-      // browser is the one we're in the process of removing. There's the
-      // risk of displaying preloaded browsers that are at the end of the
-      // deck if we remove the browser before the switch is complete, so
-      // we alert the switcher in order to show a spinner instead.
-      if (this._switcher) {
-        this._switcher.onTabRemoved(aTab);
-      }
 
       // Remove the tab ...
       aTab.remove();
@@ -4297,8 +4270,6 @@
       // windows). We also ensure that the tab we create to swap into has
       // the same remote type and process as the one we're swapping in.
       // This makes sure we don't get a short-lived process for the new tab.
-      // Cliqz. We must create private tab in order to swap docShells with
-      // another private tab.
       let linkedBrowser = aTab.linkedBrowser;
       let createLazyBrowser = !aTab.linkedPanel;
       let params = {
@@ -4309,7 +4280,6 @@
         index: aIndex,
         createLazyBrowser,
         allowInheritPrincipal: createLazyBrowser,
-        private: !!aTab.private,
       };
 
       let numPinned = this._numPinnedTabs;
@@ -6380,7 +6350,7 @@ var TabContextMenu = {
         document.getElementById("context_togglePrivatePinUnpin");
       whiteListToggle.hidden = true;
       if (autoForgetTabs.isActive()) {
-        const { spec: currentUrl} = this.contextTab._linkedBrowser.currentURI;
+        const { spec: currentUrl} = this.contextTab.linkedBrowser.currentURI;
         const isAdult = autoForgetTabs.blacklisted(currentUrl, true);
         whiteListToggle.hidden = false;
         whiteListToggle.label = gNavigatorBundle
@@ -6404,7 +6374,7 @@ var TabContextMenu = {
   },
 
   togglePrivatePinUnpin: function() {
-    const { spec: currentUrl} = this.contextTab._linkedBrowser.currentURI;
+    const { spec: currentUrl} = this.contextTab.linkedBrowser.currentURI;
     const isAdult = autoForgetTabs.blacklisted(currentUrl, true);
     if (isAdult) {
       autoForgetTabs.whitelistDomain(currentUrl, true);

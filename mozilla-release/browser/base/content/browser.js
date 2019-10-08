@@ -110,31 +110,6 @@ XPCOMUtils.defineLazyScriptGetter(
 );
 XPCOMUtils.defineLazyScriptGetter(
   this,
-  "BookmarkingUI",
-  "chrome://browser/content/browser-places.js"
-);
-XPCOMUtils.defineLazyScriptGetter(
-  this,
-  "BrowserPageActions",
-  "chrome://browser/content/browser-pageActions.js"
-);
-XPCOMUtils.defineLazyScriptGetter(
-  this,
-  "SidebarUI",
-  "chrome://browser/content/browser-sidebar.js"
-);
-XPCOMUtils.defineLazyScriptGetter(
-  this,
-  "gPluginHandler",
-  "chrome://browser/content/browser-plugins.js"
-);
-XPCOMUtils.defineLazyScriptGetter(
-  this,
-  "TabsInTitlebar",
-  "chrome://browser/content/browser-tabsintitlebar.js"
-);
-XPCOMUtils.defineLazyScriptGetter(
-  this,
   "PlacesTreeView",
   "chrome://browser/content/places/treeView.js"
 );
@@ -1641,7 +1616,6 @@ function _loadURI(browser, uri, params = {}) {
     loadFlags,
     referrerInfo,
     postData,
-    ensurePrivate: !!params.ensurePrivate,
   };
   try {
     if (!mustChangeProcess) {
@@ -1695,7 +1669,6 @@ function _loadURI(browser, uri, params = {}) {
       gBrowser.updateBrowserRemotenessByURL(browser, uri);
 
       if (userContextId) {
-        let aTab = browser.ownerGlobal.gBrowser.getTabForBrowser(browser);
         browser.webNavigation.setOriginAttributesBeforeLoading({
           userContextId,
           privateBrowsingId: PrivateBrowsingUtils.isBrowserPrivate(browser)
@@ -1718,7 +1691,6 @@ function _loadURI(browser, uri, params = {}) {
 // process
 function LoadInOtherProcess(browser, loadOptions, historyIndex = -1) {
   let tab = gBrowser.getTabForBrowser(browser);
-  // TODO: May need to pass privateness here as well.
   SessionStore.navigateAndRestore(tab, loadOptions, historyIndex);
 }
 
@@ -2678,8 +2650,6 @@ var gBrowserInit = {
       .getInterface(Ci.nsIXULWindow).XULBrowserWindow = null;
     window.browserDOMWindow = null;
   },
-
-  _privateTabUI: null
 };
 
 gBrowserInit.idleTasksFinishedPromise = new Promise(resolve => {
@@ -3051,7 +3021,6 @@ function BrowserOpenTab(event) {
         openTrustedLinkIn(BROWSER_NEW_TAB_URL, where, {
           relatedToCurrent,
           resolveOnNewTabCreated: resolve,
-          private: PrivateBrowsingUtils.isWindowPrivate(window),
         });
       }),
     },
@@ -7497,11 +7466,7 @@ function contentAreaClick(event, isPanelClick) {
   // pages loaded in frames are embed visits and lost with the session, while
   // visits across frames should be preserved.
   try {
-    const doc = event.target.ownerDocument;
-    // We should never reach this code in e10s mode, as this function is only
-    // called in single-process mode. Hence docShell should be accessible.
-    const privateTab = doc && doc.docShell.usePrivateBrowsing;
-    if (!PrivateBrowsingUtils.isWindowPrivate(window) && !privateTab) {
+    if (!PrivateBrowsingUtils.isWindowPrivate(window)) {
       PlacesUIUtils.markPageAsFollowedLink(href);
     }
   } catch (ex) {
@@ -7526,8 +7491,6 @@ function handleLinkClick(event, href, linkNode) {
   }
 
   var doc = event.target.ownerDocument;
-  // We should never reach this code in e10s mode.
-  const privateTab = doc && doc.docShell.usePrivateBrowsing;
 
   if (where == "save") {
     saveURL(
@@ -7537,8 +7500,6 @@ function handleLinkClick(event, href, linkNode) {
       true,
       true,
       doc.documentURIObject,
-      doc,
-      privateTab
     );
     event.preventDefault();
     return true;
@@ -7586,7 +7547,6 @@ function handleLinkClick(event, href, linkNode) {
     triggeringPrincipal: doc.nodePrincipal,
     csp: doc.csp,
     frameOuterWindowID,
-    private: privateTab,
   };
 
   // The new tab/window must use the same userContextId

@@ -444,23 +444,18 @@ nsContextMenu.prototype = {
     var shouldShow =
       this.onSaveableLink || isMailtoInternal || this.onPlainTextLink;
     var isWindowPrivate = PrivateBrowsingUtils.isWindowPrivate(window);
-    var isTabPrivate = this.browser.loadContext.usePrivateBrowsing;
     var showContainers = Services.prefs.getBoolPref(
       "privacy.userContext.enabled"
     );
     this.showItem(
       "context-openlink",
-      shouldShow && !isWindowPrivate && !isTabPrivate
+      shouldShow && !isWindowPrivate
     );
     this.showItem(
       "context-openlinkprivate",
       shouldShow && PrivateBrowsingUtils.enabled
     );
-    this.showItem(
-      "context-openlinkintab",
-      shouldShow && !inContainer && !isTabPrivate
-    );
-    this.showItem("context-openLinkInForgetTab", shouldShow && isTabPrivate);
+    this.showItem("context-openlinkintab", shouldShow && !inContainer);
     this.showItem("context-openlinkincontainertab", shouldShow && inContainer);
     this.showItem(
       "context-openlinkinusercontext-menu",
@@ -1093,7 +1088,6 @@ nsContextMenu.prototype = {
       triggeringPrincipal: this.principal,
       csp: this.csp,
       frameOuterWindowID: gContextMenuContentData.frameOuterWindowID,
-      private: this.browser.loadContext.usePrivateBrowsing,
     };
     for (let p in extra) {
       params[p] = extra[p];
