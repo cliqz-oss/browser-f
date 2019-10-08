@@ -214,10 +214,6 @@ NS_IMETHODIMP
 OfflineCacheUpdateParent::SetUsePrivateBrowsing(bool aUsePrivateBrowsing) {
   return NS_ERROR_NOT_IMPLEMENTED;
 }
-NS_IMETHODIMP
-OfflineCacheUpdateParent::SetPrivateness(bool aFlag) {
-  return NS_ERROR_NOT_IMPLEMENTED;
-}
 
 NS_IMETHODIMP
 OfflineCacheUpdateParent::SetPrivateBrowsing(bool aUsePrivateBrowsing) {
@@ -261,11 +257,6 @@ OfflineCacheUpdateParent::GetScriptableOriginAttributes(
   NS_ENSURE_SUCCESS(rv, rv);
 
   return NS_OK;
-}
-
-NS_IMETHODIMP OfflineCacheUpdateParent::AddWeakPrivacyTransitionObserver(
-    nsIPrivacyTransitionObserver *obs) {
-  return NS_ERROR_NOT_IMPLEMENTED;
 }
 
 NS_IMETHODIMP_(void)

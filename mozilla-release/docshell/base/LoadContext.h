@@ -104,7 +104,6 @@ class LoadContext final : public nsILoadContext, public nsIInterfaceRequestor {
  private:
   ~LoadContext() {}
 
-  nsTObserverArray<nsWeakPtr> mPrivacyObservers;
   nsWeakPtr mTopFrameElement;
   uint64_t mNestedFrameId;
   bool mIsContent;

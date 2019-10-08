@@ -168,8 +168,6 @@ NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(nsFrameLoader)
   NS_INTERFACE_MAP_ENTRY(nsISupports)
 NS_INTERFACE_MAP_END
 
-static mozilla::LazyLogModule gFrameLoaderLog("nsFrameLoader");
-
 nsFrameLoader::nsFrameLoader(Element* aOwner, BrowsingContext* aBrowsingContext,
                              bool aNetworkCreated)
     : mBrowsingContext(aBrowsingContext),
@@ -1437,9 +1435,6 @@ nsresult nsFrameLoader::SwapWithOtherLoader(nsFrameLoader* aOther,
       static_cast<nsDocShell*>(GetExistingDocShell());
   RefPtr<nsDocShell> otherDocshell =
       static_cast<nsDocShell*>(aOther->GetExistingDocShell());
-  MOZ_LOG(gFrameLoaderLog, LogLevel::Info,
-      ("Swapping DocShells %p and %p \n",
-       ourDocshell.get(), otherDocshell.get()));
   if (!ourDocshell || !otherDocshell) {
     // How odd
     return NS_ERROR_NOT_IMPLEMENTED;
@@ -3423,13 +3418,6 @@ nsresult nsFrameLoader::GetNewTabContext(MutableTabContext* aTabContext,
   NS_ENSURE_STATE(parentContext);
 
   bool isPrivate = parentContext->UsePrivateBrowsing();
-  if (auto* browserParent = GetBrowserParent()) {
-    isPrivate = isPrivate || browserParent->OriginAttributesRef().mPrivateBrowsingId > 0;
-  }
-  isPrivate = isPrivate ||
-      // Remote browser could switch into private mode automatically.
-      // Normally, this is inly needed for tab browser initialization.
-      mOwnerContent->HasAttr(kNameSpaceID_None, nsGkAtoms::mozprivatebrowsing);
   attrs.SyncAttributesWithPrivateBrowsing(isPrivate);
 
   UIStateChangeType showFocusRings = UIStateChangeType_NoChange;

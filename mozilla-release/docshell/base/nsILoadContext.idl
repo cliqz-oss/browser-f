@@ -7,7 +7,6 @@
 #include "nsISupports.idl"
 
 interface mozIDOMWindowProxy;
-interface nsIPrivacyTransitionObserver;
 
 webidl Element;
 
@@ -156,10 +155,6 @@ interface nsILoadContext : nsISupports
    */
   [binaryname(ScriptableOriginAttributes), implicit_jscontext]
   readonly attribute jsval originAttributes;
-
-  void addWeakPrivacyTransitionObserver(in nsIPrivacyTransitionObserver obs);
-
-  void SetPrivateness(in boolean enable);
 
   /**
    * The C++ getter for origin attributes.
