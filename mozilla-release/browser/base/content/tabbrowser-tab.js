@@ -47,7 +47,7 @@
           "selected=visuallyselected,multiselected,before-multiselected",
         ".tab-loading-burst": "pinned,bursting,notselectedsinceload",
         ".tab-content":
-          "pinned,selected=visuallyselected,titlechanged,attention,private",
+          "pinned,selected=visuallyselected,titlechanged,attention",
         ".tab-throbber":
           "fadein,pinned,busy,progress,selected=visuallyselected",
         ".tab-icon-pending":
@@ -118,25 +118,6 @@
       return gBrowser.tabContainer;
     }
 
-    set linkedBrowser(val) {
-      if (this._linkedBrowser && val) {
-        Cu.reportError("We're in trouble. Somebody sets linkedBrowser " +
-          "after it's already set. Since we cannot unsubscribe from " +
-          "privacy events, this is a bad situation!");
-        Cu.reportError((new Error()).stack);
-      }
-      this._linkedBrowser = val;
-    }
-
-    get linkedBrowser() {
-      return this._linkedBrowser;
-    }
-
-    get tabId() {
-      const frameLoader = this.linkedBrowser.frameLoader;
-      return frameLoader && frameLoader.tabParent.tabId || undefined;
-    }
-
     set _visuallySelected(val) {
       if (val == (this.getAttribute("visuallyselected") == "true")) {
         return val;
@@ -204,18 +185,6 @@
 
     get soundPlaying() {
       return this.getAttribute("soundplaying") == "true";
-    }
-
-    get private() {
-      // docShell is null for foreign tabs.
-      if (this._linkedBrowser.loadContext != null) {
-        return this._linkedBrowser.loadContext.usePrivateBrowsing;
-      }
-      return null;
-    }
-
-    set private(value) {
-      throw new Error("Setting private mode directly is impossible!");
     }
 
     get pictureinpicture() {

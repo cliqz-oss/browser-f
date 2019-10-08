@@ -2216,7 +2216,7 @@ var SessionStoreInternal = {
 
     // Don't save private tabs
     let isPrivateWindow = PrivateBrowsingUtils.isWindowPrivate(aWindow);
-    if (isPrivateWindow || tabState.isPrivate) {
+    if (!isPrivateWindow && tabState.isPrivate) {
       return;
     }
 
@@ -2938,16 +2938,13 @@ var SessionStoreInternal = {
     }
 
     // Create a new tab.
-    // Cliqz. DB-919: Added aTab.private param into addTab so that new tab will be private
-    // if it's duplicated from a private tab
-    let aPrivate = aTab.getAttribute("private") === "true";
     let userContextId = aTab.getAttribute("usercontextid");
 
     let tabOptions = {
       userContextId,
       ...(aTab == aWindow.gBrowser.selectedTab
-        ? { relatedToCurrent: true, ownerTab: aTab, private: aPrivate }
-        : { private: aPrivate }),
+        ? { relatedToCurrent: true, ownerTab: aTab }
+        : {}),
     };
     let newTab = aWindow.gBrowser.addTrustedTab(null, tabOptions);
 

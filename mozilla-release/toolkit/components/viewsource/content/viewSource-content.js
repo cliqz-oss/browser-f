@@ -638,7 +638,6 @@ var ViewSourceContent = {
       triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal(),
       loadFlags,
       baseURI: Services.io.newURI(baseURI),
-      ensurePrivate: false,
     };
     webNav.loadURI(uri, loadURIOptions);
   },

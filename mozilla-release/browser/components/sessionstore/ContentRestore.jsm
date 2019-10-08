@@ -249,7 +249,6 @@ ContentRestoreInternal.prototype = {
           referrerInfo,
           postData,
           csp,
-          ensurePrivate: false,
         };
         webNavigation.loadURI(loadArguments.uri, loadURIOptions);
       } else if (tabData.userTypedValue && tabData.userTypedClear) {
