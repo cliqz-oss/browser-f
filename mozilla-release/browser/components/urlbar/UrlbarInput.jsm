@@ -425,13 +425,7 @@ class UrlbarInput {
     } else {
       // Use the current value if we don't have a UrlbarResult e.g. because the
       // view is closed.
-<<<<<<< HEAD
-      url = this.value || this.textValue;
-||||||| merged common ancestors
-      url = this.value;
-=======
       url = this.untrimmedValue;
->>>>>>> upstream/upstream-releases
       openParams.postData = null;
     }
 
@@ -899,13 +893,7 @@ class UrlbarInput {
   }
 
   get focused() {
-<<<<<<< HEAD
-    return this.textbox && this.textbox.getAttribute("focused") == "true";
-||||||| merged common ancestors
-    return this.textbox.getAttribute("focused") == "true";
-=======
     return this.getAttribute("focused") == "true";
->>>>>>> upstream/upstream-releases
   }
 
   get goButton() {

@@ -24,15 +24,7 @@
 #include "addons-public.inc"
 #include "addons-public-intermediate.inc"
 #include "addons-stage.inc"
-<<<<<<< HEAD
-// Privileged Package Certificates
-#include "privileged-package-root.inc"
 #include "cliqz-addons-cert.inc"
-||||||| merged common ancestors
-// Privileged Package Certificates
-#include "privileged-package-root.inc"
-=======
->>>>>>> upstream/upstream-releases
 
 using namespace mozilla::pkix;
 

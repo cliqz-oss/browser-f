@@ -82,15 +82,10 @@
   --orange-50: #ff9400;
   /* CLIQZ-SPECIAL This is on purpose to overwrite forget mode color everywhere
   --purple-70: #6200a4;
-<<<<<<< HEAD
   --purple-70-a40: rgba(98, 0, 164, 0.4);
   */
   --purple-70: #BBC6D4;
   --purple-70-a40: rgba(187, 198, 212, 0.4);
-||||||| merged common ancestors
-  --purple-70-a40: rgba(98, 0, 164, 0.4);
-=======
->>>>>>> upstream/upstream-releases
   --red-50: #ff0039;
   --red-50-a30: rgba(255, 0, 57, 0.3);
   --red-60: #d70022;

@@ -164,25 +164,14 @@ pref("app.update.url", "https://updatecheck.cliqz.com/update/6/%PRODUCT%/%VERSIO
   pref("app.update.service.enabled", true);
 #endif
 
-<<<<<<< HEAD
-#ifdef XP_WIN
-// Cliqz. This looks very experimental, especially a used languages and
-// libraries (XPCOM-C++-rust chain). Need to check how winapi-rs really works,
-// I didn't find any popular service or project which use it.
-// If set to true, the Update Service will attempt to use Windows BITS to
-// download updates and will fallback to downloading internally if that fails.
-pref("app.update.BITS.enabled", false);
-||||||| merged common ancestors
-#ifdef XP_WIN
-// If set to true, the Update Service will attempt to use Windows BITS to
-// download updates and will fallback to downloading internally if that fails.
-pref("app.update.BITS.enabled", true);
-=======
 #ifdef MOZ_BITS_DOWNLOAD
   // If set to true, the Update Service will attempt to use Windows BITS to
   // download updates and will fallback to downloading internally if that fails.
-  pref("app.update.BITS.enabled", true);
->>>>>>> upstream/upstream-releases
+  // pref("app.update.BITS.enabled", true);
+  // Cliqz. This looks very experimental, especially a used languages and
+  // libraries (XPCOM-C++-rust chain). Need to check how winapi-rs really works,
+  // I didn't find any popular service or project which use it.
+  pref("app.update.BITS.enabled", false);
 #endif
 
 // Symmetric (can be overridden by individual extensions) update preferences.
@@ -288,32 +277,17 @@ pref("browser.warnOnQuit", true);
 pref("browser.fullscreen.autohide", true);
 pref("browser.overlink-delay", 80);
 
-<<<<<<< HEAD
-pref("browser.urlbar.clickSelectsAll", true);
-pref("browser.urlbar.doubleClickSelectsAll", false);
-||||||| merged common ancestors
-#ifdef UNIX_BUT_NOT_MAC
-pref("browser.urlbar.clickSelectsAll", false);
-#else
-pref("browser.urlbar.clickSelectsAll", true);
-#endif
-#ifdef UNIX_BUT_NOT_MAC
-pref("browser.urlbar.doubleClickSelectsAll", true);
-#else
-pref("browser.urlbar.doubleClickSelectsAll", false);
-#endif
-=======
-#ifdef UNIX_BUT_NOT_MAC
-  pref("browser.urlbar.clickSelectsAll", false);
-#else
+// CLIQZ-SPECIAL, carried from before
+// #ifdef UNIX_BUT_NOT_MAC
+//   pref("browser.urlbar.clickSelectsAll", false);
+// #else
   pref("browser.urlbar.clickSelectsAll", true);
-#endif
-#ifdef UNIX_BUT_NOT_MAC
-  pref("browser.urlbar.doubleClickSelectsAll", true);
-#else
+// #endif
+// #ifdef UNIX_BUT_NOT_MAC
+//   pref("browser.urlbar.doubleClickSelectsAll", true);
+// #else
   pref("browser.urlbar.doubleClickSelectsAll", false);
-#endif
->>>>>>> upstream/upstream-releases
+// #endif
 
 // Whether using `ctrl` when hitting return/enter in the URL bar
 // (or clicking 'go') should prefix 'www.' and suffix
@@ -380,24 +354,8 @@ pref("browser.urlbar.openintab", false);
 pref("browser.urlbar.usepreloadedtopurls.enabled", false);
 pref("browser.urlbar.usepreloadedtopurls.expire_days", 14);
 
-<<<<<<< HEAD
-// Enable the new Address Bar code.
-// CLIQZ-SPECIAL:
-// DB-2204
-// Since I have already disabled quantumbar search results in
-// fb497cd8e531c2c4bf904a23fe070bb74fcb5f5f commit
-// we also need to turn off the old autocomplete FF dropdown.
-// However, unlike new quantumbar that old source code got spreaded across
-// many files and it is not error-proof at all.
-// So it is easier for us to have quantumbar on by default.
-pref("browser.urlbar.quantumbar", true);
-||||||| merged common ancestors
-// Enable the new Address Bar code.
-pref("browser.urlbar.quantumbar", true);
-=======
 // Whether the quantum bar displays the major design update.
 pref("browser.urlbar.megabar", false);
->>>>>>> upstream/upstream-releases
 
 pref("browser.urlbar.openViewOnFocus", false);
 pref("browser.urlbar.eventTelemetry.enabled", false);
@@ -1472,60 +1430,27 @@ pref("security.cert_pinning.enforcement_level", 1);
 // before content.
 pref("dom.debug.propagate_gesture_events_through_content", false);
 
+// CLIQZ-SPECIAL - force mozilla location service only
 // All the Geolocation preferences are here.
 //
-<<<<<<< HEAD
-//#ifndef EARLY_BETA_OR_EARLIER
-//pref("geo.wifi.uri", "https://www.googleapis.com/geolocation/v1/geolocate?key=%GOOGLE_LOCATION_SERVICE_API_KEY%");
-//#else
-// Use MLS on Nightly and early Beta.
-pref("geo.wifi.uri", "https://location.services.mozilla.com/v1/geolocate?key=%MOZILLA_API_KEY%");
-//#endif
-||||||| merged common ancestors
-#ifndef EARLY_BETA_OR_EARLIER
-pref("geo.wifi.uri", "https://www.googleapis.com/geolocation/v1/geolocate?key=%GOOGLE_LOCATION_SERVICE_API_KEY%");
-#else
-// Use MLS on Nightly and early Beta.
-pref("geo.wifi.uri", "https://location.services.mozilla.com/v1/geolocate?key=%MOZILLA_API_KEY%");
-#endif
-=======
-#ifndef EARLY_BETA_OR_EARLIER
-  pref("geo.wifi.uri", "https://www.googleapis.com/geolocation/v1/geolocate?key=%GOOGLE_LOCATION_SERVICE_API_KEY%");
-#else
+// #ifndef EARLY_BETA_OR_EARLIER
+//   pref("geo.wifi.uri", "https://www.googleapis.com/geolocation/v1/geolocate?key=%GOOGLE_LOCATION_SERVICE_API_KEY%");
+// #else
   // Use MLS on Nightly and early Beta.
   pref("geo.wifi.uri", "https://location.services.mozilla.com/v1/geolocate?key=%MOZILLA_API_KEY%");
-#endif
->>>>>>> upstream/upstream-releases
+// #endif
 
 #ifdef XP_MACOSX
-<<<<<<< HEAD
-pref("geo.provider.use_corelocation", false);
-||||||| merged common ancestors
-pref("geo.provider.use_corelocation", true);
-=======
-  pref("geo.provider.use_corelocation", true);
->>>>>>> upstream/upstream-releases
+  pref("geo.provider.use_corelocation", false);
 #endif
 
 // Set to false if things are really broken.
 #ifdef XP_WIN
-<<<<<<< HEAD
-pref("geo.provider.ms-windows-location", false);
-||||||| merged common ancestors
-pref("geo.provider.ms-windows-location", true);
-=======
-  pref("geo.provider.ms-windows-location", true);
->>>>>>> upstream/upstream-releases
+  pref("geo.provider.ms-windows-location", false);
 #endif
 
 #if defined(MOZ_WIDGET_GTK) && defined(MOZ_GPSD)
-<<<<<<< HEAD
-pref("geo.provider.use_gpsd", false);
-||||||| merged common ancestors
-pref("geo.provider.use_gpsd", true);
-=======
-  pref("geo.provider.use_gpsd", true);
->>>>>>> upstream/upstream-releases
+  pref("geo.provider.use_gpsd", false);
 #endif
 
 // CustomizableUI debug logging.
@@ -1686,30 +1611,11 @@ pref("browser.contentblocking.database.enabled", false);
 pref("browser.contentblocking.allowlist.storage.enabled", false);
 
 pref("dom.storage_access.enabled", true);
-<<<<<<< HEAD
-pref("dom.storage_access.auto_grants", true);
-pref("dom.storage_access.max_concurrent_auto_grants", 5);
-
-// Define a set of default features for the Content Blocking UI.
-pref("browser.contentblocking.trackingprotection.control-center.ui.enabled", false);
 
 pref("browser.contentblocking.control-center.ui.showBlockedLabels", false);
-||||||| merged common ancestors
-
-pref("dom.storage_access.auto_grants", true);
-pref("dom.storage_access.max_concurrent_auto_grants", 5);
-
-// Define a set of default features for the Content Blocking UI.
-pref("browser.contentblocking.trackingprotection.control-center.ui.enabled", true);
-
-pref("browser.contentblocking.control-center.ui.showBlockedLabels", true);
-=======
-
-pref("browser.contentblocking.control-center.ui.showBlockedLabels", true);
->>>>>>> upstream/upstream-releases
 pref("browser.contentblocking.control-center.ui.showAllowedLabels", false);
 
-pref("browser.contentblocking.cryptomining.preferences.ui.enabled", true);
+pref("browser.contentblocking.cryptomining.preferences.ui.enabled", false);
 pref("browser.contentblocking.fingerprinting.preferences.ui.enabled", true);
 
 // Possible values for browser.contentblocking.features.strict pref:
@@ -1738,39 +1644,19 @@ pref("browser.contentblocking.fingerprinting.preferences.ui.enabled", true);
 // One value from each section must be included in the browser.contentblocking.features.strict pref.
 pref("browser.contentblocking.features.strict", "tp,tpPrivate,cookieBehavior4,cm,fp,stp");
 
-<<<<<<< HEAD
-// Enable the Report Breakage UI on Nightly and Beta but not on Release yet.
-#ifdef EARLY_BETA_OR_EARLIER
-pref("browser.contentblocking.reportBreakage.enabled", false);
-#else
-pref("browser.contentblocking.reportBreakage.enabled", false);
-#endif
-// Show report breakage for tracking cookies in all channels.
-pref("browser.contentblocking.rejecttrackers.reportBreakage.enabled", false);
-||||||| merged common ancestors
-// Enable the Report Breakage UI on Nightly and Beta but not on Release yet.
-#ifdef EARLY_BETA_OR_EARLIER
-pref("browser.contentblocking.reportBreakage.enabled", true);
-#else
-pref("browser.contentblocking.reportBreakage.enabled", false);
-#endif
-// Show report breakage for tracking cookies in all channels.
-pref("browser.contentblocking.rejecttrackers.reportBreakage.enabled", true);
-=======
 // Hide the "Change Block List" link for trackers/tracking content in the custom
 // Content Blocking/ETP panel. By default, it will not be visible. There is also
 // an UI migration in place to set this pref to true if a user has a custom block
 // lists enabled.
 pref("browser.contentblocking.customBlockList.preferences.ui.enabled", false);
->>>>>>> upstream/upstream-releases
 
 pref("browser.contentblocking.reportBreakage.url", "https://tracking-protection-issues.herokuapp.com/new");
 
 // Enable Protections report's Lockwise card by default.
-pref("browser.contentblocking.report.lockwise.enabled", true);
+pref("browser.contentblocking.report.lockwise.enabled", false);
 
 // Enable Protections report's Monitor card by default.
-pref("browser.contentblocking.report.monitor.enabled", true);
+pref("browser.contentblocking.report.monitor.enabled", false);
 
 // Disable Protections report's Proxy card by default.
 pref("browser.contentblocking.report.proxy.enabled", false);
@@ -2030,14 +1916,7 @@ pref("app.normandy.logging.level", 50); // Warn
 pref("app.normandy.run_interval_seconds", 21600); // 6 hours
 pref("app.normandy.shieldLearnMoreUrl", "https://support.mozilla.org/1/firefox/%VERSION%/%OS%/%LOCALE%/shield");
 #ifdef MOZ_DATA_REPORTING
-<<<<<<< HEAD
-// Cliqz. Always false
-pref("app.shield.optoutstudies.enabled", false);
-||||||| merged common ancestors
-pref("app.shield.optoutstudies.enabled", true);
-=======
-  pref("app.shield.optoutstudies.enabled", true);
->>>>>>> upstream/upstream-releases
+  pref("app.shield.optoutstudies.enabled", false);
 #else
   pref("app.shield.optoutstudies.enabled", false);
 #endif

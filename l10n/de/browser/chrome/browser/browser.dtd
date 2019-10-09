@@ -270,30 +270,13 @@ These should match what Safari and other Apple applications use on OS X Lion. --
 <!ENTITY urlbar.emeNotificationAnchor.tooltip             "Verwendung von DRM-geschützter Software verwalten">
 <!ENTITY urlbar.midiNotificationAnchor.tooltip            "MIDI-Ansicht öffnen">
 
-<<<<<<< HEAD
+<!ENTITY urlbar.permissionsGranted.tooltip       "Du hast dieser Website zusätzliche Berechtigungen erteilt.">
 <!ENTITY urlbar.cameraBlocked.tooltip            "Du hast den Zugriff auf deine Kamera durch diese Website blockiert.">
 <!ENTITY urlbar.microphoneBlocked.tooltip        "Du hast den Zugriff auf dein Mikrofon durch diese Website blockiert.">
 <!ENTITY urlbar.screenBlocked.tooltip            "Du hast den Zugriff auf deinen Bildschirm durch diese Website blockiert.">
 <!ENTITY urlbar.geolocationBlocked.tooltip       "Du hast den Zugriff auf deinen Standort durch diese Website blockiert.">
 <!ENTITY urlbar.webNotificationsBlocked.tooltip  "Du hast das Anzeigen von Benachrichtungen durch diese Website blockiert.">
 <!ENTITY urlbar.persistentStorageBlocked.tooltip "Du hast die Verwendung von dauerhaftem Speicher für diese Website blockiert.">
-||||||| merged common ancestors
-<!ENTITY urlbar.cameraBlocked.tooltip            "Sie haben den Zugriff auf Ihre Kamera durch diese Website blockiert.">
-<!ENTITY urlbar.microphoneBlocked.tooltip        "Sie haben den Zugriff auf Ihr Mikrofon durch diese Website blockiert.">
-<!ENTITY urlbar.screenBlocked.tooltip            "Sie haben den Zugriff auf Ihren Bildschirm durch diese Website blockiert.">
-<!ENTITY urlbar.geolocationBlocked.tooltip       "Sie haben den Zugriff auf Ihren Standort durch diese Website blockiert.">
-<!ENTITY urlbar.webNotificationsBlocked.tooltip  "Sie haben das Anzeigen von Benachrichtungen durch diese Website blockiert.">
-<!ENTITY urlbar.persistentStorageBlocked.tooltip "Sie haben die Verwendung von dauerhaftem Speicher für diese Website blockiert.">
-=======
-<!ENTITY urlbar.permissionsGranted.tooltip       "Sie haben dieser Website zusätzliche Berechtigungen erteilt.">
-
-<!ENTITY urlbar.cameraBlocked.tooltip            "Sie haben den Zugriff auf Ihre Kamera durch diese Website blockiert.">
-<!ENTITY urlbar.microphoneBlocked.tooltip        "Sie haben den Zugriff auf Ihr Mikrofon durch diese Website blockiert.">
-<!ENTITY urlbar.screenBlocked.tooltip            "Sie haben den Zugriff auf Ihren Bildschirm durch diese Website blockiert.">
-<!ENTITY urlbar.geolocationBlocked.tooltip       "Sie haben den Zugriff auf Ihren Standort durch diese Website blockiert.">
-<!ENTITY urlbar.webNotificationsBlocked.tooltip  "Sie haben das Anzeigen von Benachrichtungen durch diese Website blockiert.">
-<!ENTITY urlbar.persistentStorageBlocked.tooltip "Sie haben die Verwendung von dauerhaftem Speicher für diese Website blockiert.">
->>>>>>> upstream/upstream-releases
 <!ENTITY urlbar.popupBlocked.tooltip             "Sie haben das Anzeigen von Pop-ups für diese Website blockiert.">
 <!ENTITY urlbar.autoplayMediaBlocked.tooltip     "Sie haben die automatische Wiedergabe von Medien mit Ton für diese Website blockiert.">
 <!ENTITY urlbar.canvasBlocked.tooltip            "Sie haben das Abfragen von Canvas-Daten durch diese Website blockiert.">

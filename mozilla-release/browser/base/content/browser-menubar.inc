@@ -151,29 +151,11 @@
                     <menuitem id="menu_historySidebar"
                               type="checkbox"
                               key="key_gotoHistory"
-<<<<<<< HEAD
-                              oncommand="SidebarUI.toggle('viewHistorySidebar');"
-                              label="&historyButton.label;"/>
-#ifdef MOZ_SERVICES_SYNC
-||||||| merged common ancestors
-                              oncommand="SidebarUI.toggle('viewHistorySidebar');"
-                              label="&historyButton.label;"/>
-=======
                               oncommand="SidebarUI.toggle('viewHistorySidebar');" data-l10n-id="menu-view-history-button"/>
->>>>>>> upstream/upstream-releases
                     <menuitem id="menu_tabsSidebar"
                               type="checkbox"
                               class="sync-ui-item"
-<<<<<<< HEAD
-                              oncommand="SidebarUI.toggle('viewTabsSidebar');"
-                              label="&syncedTabs.sidebar.label;"/>
-#endif
-||||||| merged common ancestors
-                              oncommand="SidebarUI.toggle('viewTabsSidebar');"
-                              label="&syncedTabs.sidebar.label;"/>
-=======
                               oncommand="SidebarUI.toggle('viewTabsSidebar');" data-l10n-id="menu-view-synced-tabs-sidebar"/>
->>>>>>> upstream/upstream-releases
                   </menupopup>
                 </menu>
                 <menuseparator/>
@@ -273,14 +255,8 @@
 #ifdef MOZ_SERVICES_SYNC
                 <menuitem id="sync-tabs-menuitem"
                           oncommand="gSync.openSyncedTabsPanel();"
-<<<<<<< HEAD
-                          hidden="true"/>
-#endif
-||||||| merged common ancestors
-                          hidden="true"/>
-=======
                           hidden="true" data-l10n-id="menu-history-synced-tabs"/>
->>>>>>> upstream/upstream-releases
+#endif
                 <menuitem id="historyRestoreLastSession"
                           command="Browser:RestoreLastSession" data-l10n-id="menu-history-restore-last-session"/>
                 <menuitem id="hiddenTabsMenu"
@@ -388,16 +364,8 @@
                         command="Tools:Downloads" data-l10n-id="menu-tools-downloads"/>
               <menuitem id="menu_openAddons"
                         key="key_openAddons"
-<<<<<<< HEAD
-                        command="Tools:Addons"/>
-#ifdef MOZ_SERVICES_SYNC
-||||||| merged common ancestors
-                        command="Tools:Addons"/>
-
-=======
                         command="Tools:Addons" data-l10n-id="menu-tools-addons"/>
-
->>>>>>> upstream/upstream-releases
+#ifdef MOZ_SERVICES_SYNC
               <!-- only one of sync-setup, sync-unverifieditem, sync-syncnowitem or sync-reauthitem will be showing at once -->
               <menuitem id="sync-setup"
                         class="sync-ui-item"
@@ -414,15 +382,9 @@
               <menuitem id="sync-reauthitem"
                         class="sync-ui-item"
                         hidden="true"
-<<<<<<< HEAD
-                        oncommand="gSync.openSignInAgainPage('menubar');"/>
-#endif
-||||||| merged common ancestors
-                        oncommand="gSync.openSignInAgainPage('menubar');"/>
-=======
                         oncommand="gSync.openSignInAgainPage('menubar');" data-l10n-id="menu-tools-sync-re-auth"/>
->>>>>>> upstream/upstream-releases
               <menuseparator id="devToolsSeparator"/>
+#endif
               <menu id="webDeveloperMenu" data-l10n-id="menu-tools-web-developer">
                 <menupopup id="menuWebDeveloperPopup">
                   <menuitem id="menu_pageSource"
@@ -490,41 +452,19 @@
 #endif
 #if 0
                 <menuitem id="menu_openTour"
-<<<<<<< HEAD
-                          oncommand="openTourPage();"
-                          label="&helpShowTour2.label;"
-                          accesskey="&helpShowTour2.accesskey;"/>
-#endif
-||||||| merged common ancestors
-                          oncommand="openTourPage();"
-                          label="&helpShowTour2.label;"
-                          accesskey="&helpShowTour2.accesskey;"/>
-=======
                           oncommand="openTourPage();" data-l10n-id="menu-help-show-tour"/>
->>>>>>> upstream/upstream-releases
+#endif
                 <menuitem id="menu_keyboardShortcuts"
                           oncommand="openHelpLink('keyboard-shortcuts')"
                           onclick="checkForMiddleClick(this, event);" data-l10n-id="menu-help-keyboard-shortcuts"/>
                 <menuitem id="troubleShooting"
                           oncommand="openTroubleshootingPage()"
-<<<<<<< HEAD
-                          onclick="checkForMiddleClick(this, event);"/>
-#if 0
-||||||| merged common ancestors
-                          onclick="checkForMiddleClick(this, event);"/>
-=======
                           onclick="checkForMiddleClick(this, event);" data-l10n-id="menu-help-troubleshooting-info"/>
->>>>>>> upstream/upstream-releases
+#if 0
                 <menuitem id="feedbackPage"
                           oncommand="openFeedbackPage()"
-<<<<<<< HEAD
-                          onclick="checkForMiddleClick(this, event);"/>
-#endif
-||||||| merged common ancestors
-                          onclick="checkForMiddleClick(this, event);"/>
-=======
                           onclick="checkForMiddleClick(this, event);" data-l10n-id="menu-help-feedback-page"/>
->>>>>>> upstream/upstream-releases
+#endif
                 <menuitem id="helpSafeMode"
                           oncommand="safeModeRestart();" data-l10n-id="menu-help-safe-mode-without-addons"/>
                 <menuitem id="menu_HelpPopup_reportPhishingtoolmenu"

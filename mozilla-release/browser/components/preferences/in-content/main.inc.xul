@@ -28,24 +28,37 @@
           hidden="true">
   <label><html:h2 data-l10n-id="startup-header"/></label>
 
-  <vbox id="startupPageBox">
+  <vbox id="startupPageBox" class="formatBoxSize">
+#if 0
     <checkbox id="browserRestoreSession"
               data-l10n-id="startup-restore-previous-session"/>
+#endif
+    <label data-l10n-id="startup-page-2" control="browserStartupPage"/>
+    <checkbox id="restoreSessionCheckbox"
+              preference="browser.startup.restoreTabs"
+              data-l10n-id="startup-prev-session"/>
     <hbox class="indent">
       <checkbox id="browserRestoreSessionQuitWarning"
                 preference="browser.sessionstore.warnOnQuit"
                 disabled="true"
                 data-l10n-id="startup-restore-warn-on-quit"/>
     </hbox>
+    <checkbox id="addCliqzFrashTabCheckbox"
+              preference="browser.startup.addFreshTab"
+              data-l10n-id="startup-user-home-page"/>
   </vbox>
 
 #ifdef HAVE_SHELL_SERVICE
   <vbox id="defaultBrowserBox">
+    <hbox>
     <checkbox id="alwaysCheckDefault" preference="browser.shell.checkDefaultBrowser"
               data-l10n-id="always-check-default"/>
+    </hbox>
     <deck id="setDefaultPane">
       <hbox align="center" class="indent">
+#if 0
         <image class="face-sad"/>
+#endif
         <label id="isNotDefaultLabel" flex="1" data-l10n-id="is-not-default"/>
         <button id="setDefaultButton"
                 is="highlightable-button"
@@ -54,7 +67,9 @@
                 preference="pref.general.disable_button.default_browser"/>
       </hbox>
       <hbox align="center" class="indent">
+#if 0
         <image class="face-smile"/>
+#endif
         <label id="isDefaultLabel" flex="1" data-l10n-id="is-default"/>
       </hbox>
     </deck>
@@ -62,6 +77,9 @@
 #endif
 
 </groupbox>
+
+<!-- Home Page -->
+#include cliqz.home.xul
 
 <!-- Tab preferences -->
 <groupbox data-category="paneGeneral"
@@ -272,7 +290,9 @@
 </groupbox>
 
 <!-- Languages -->
-<groupbox id="languagesGroup" data-category="paneGeneral" hidden="true">
+<!-- CLIQZ-SPECIAL, DB-2146: temporarily hide Language section
+		  until we know how to run the browser with different locales (>= 2) -->
+<groupbox id="languagesGroup" data-category="paneGeneral" hidden="true" data-hidden-from-search="true">
   <label><html:h2 data-l10n-id="language-header"/></label>
 
   <vbox id="browserLanguagesBox" align="start" hidden="true">
@@ -281,21 +301,25 @@
       <menulist id="defaultBrowserLanguage">
         <menupopup/>
       </menulist>
+      <!-- CLIQZ-SPECIAL, DB-2015: Remove option to download language packs from AMO
       <button id="manageBrowserLanguagesButton"
               is="highlightable-button"
               class="accessory-button"
               data-l10n-id="manage-browser-languages-button"
               oncommand="gMainPane.showBrowserLanguages({search: false})"/>
+      -->
     </hbox>
   </vbox>
   <hbox id="confirmBrowserLanguage" class="message-bar" align="center" hidden="true">
     <image class="message-bar-icon"/>
     <vbox class="message-bar-content-container" align="stretch" flex="1"/>
   </hbox>
-
+<!-- CLIQZ-SPECIAL, DB-2015: Remove option to choose language packs from AMO
   <hbox id="languagesBox" align="center">
     <description flex="1" control="chooseLanguage" data-l10n-id="choose-language-description"/>
+-->
     <!-- Please don't remove the wrapping hbox/vbox/box for these elements. It's used to properly compute the search tooltip position. -->
+<!--
     <hbox>
       <button id="chooseLanguage"
               is="highlightable-button"
@@ -312,7 +336,7 @@
               " />
     </hbox>
   </hbox>
-
+-->
   <hbox id="translationBox" hidden="true">
     <hbox align="center" flex="1">
       <checkbox id="translate" preference="browser.translation.detectLanguage"
@@ -330,9 +354,11 @@
             class="accessory-button"
             data-l10n-id="translate-exceptions"/>
   </hbox>
+  <hbox flex="1">
   <checkbox id="checkSpelling"
           data-l10n-id="check-user-spelling"
           preference="layout.spellcheckDefault"/>
+  </hbox>
 </groupbox>
 
 <!-- Files and Applications -->
@@ -363,12 +389,14 @@
               data-l10n-id="download-choose-folder"/>
     </hbox>
     <!-- Additional radio button added to support CloudStorage - Bug 1357171 -->
+    <vbox class="formatBoxSize">
     <radio id="saveToCloud"
            value="true"
            hidden="true"/>
     <radio id="alwaysAsk"
            value="false"
            data-l10n-id="download-always-ask-where"/>
+    </vbox>
   </radiogroup>
 </groupbox>
 
@@ -548,7 +576,7 @@
 #ifdef MOZ_UPDATER
   <description id="updateAllowDescription" data-l10n-id="update-application-allow-description"></description>
   <vbox id="updateSettingsContainer">
-    <radiogroup id="updateRadioGroup">
+    <radiogroup id="updateRadioGroup" class="formatBoxSize">
       <radio id="autoDesktop"
              value="true"
              data-l10n-id="update-application-auto"/>
@@ -561,14 +589,18 @@
     </description>
   </vbox>
 #ifdef MOZ_MAINTENANCE_SERVICE
+  <hbox>
   <checkbox id="useService"
             data-l10n-id="update-application-use-service"
             preference="app.update.service.enabled"/>
+  </hbox>
 #endif
 #endif
+  <hbox>
   <checkbox id="enableSearchUpdate"
             data-l10n-id="update-enable-search-update"
             preference="browser.search.update"/>
+  </hbox>
 </groupbox>
 
 <hbox id="performanceCategory"
@@ -591,7 +623,7 @@
   </hbox>
   <description class="indent tip-caption" data-l10n-id="performance-use-recommended-settings-desc"/>
 
-  <vbox id="performanceSettings" class="indent" hidden="true">
+  <vbox id="performanceSettings" class="indent formatBoxSize" hidden="true">
     <checkbox id="allowHWAccel"
               data-l10n-id="performance-allow-hw-accel"
               preference="layers.acceleration.disabled"/>
@@ -625,7 +657,7 @@
 </hbox>
 
 <!-- Browsing -->
-<groupbox id="browsingGroup" data-category="paneGeneral" hidden="true">
+<groupbox id="browsingGroup" data-category="paneGeneral" hidden="true"  class="formatBoxSize">
   <label class="search-header" hidden="true"><html:h2 data-l10n-id="browsing-title"/></label>
 
   <checkbox id="useAutoScroll"
@@ -654,6 +686,7 @@
             preference="media.videocontrols.picture-in-picture.video-toggle.enabled"/>
     <label id="pictureInPictureLearnMore" class="learnMore" data-l10n-id="browsing-picture-in-picture-learn-more" is="text-link"/>
   </hbox>
+#if 0
   <hbox align="center" data-subcategory="cfraddons">
     <checkbox id="cfrRecommendations"
             class="tail-with-learn-more"
@@ -668,6 +701,7 @@
             preference="browser.newtabpage.activity-stream.asrouter.userprefs.cfr.features"/>
     <label id="cfrFeaturesLearnMore" class="learnMore" data-l10n-id="browsing-cfr-recommendations-learn-more" is="text-link"/>
   </hbox>
+#endif
 </groupbox>
 
 <hbox id="networkProxyCategory"
@@ -682,7 +716,7 @@
   <label class="search-header" hidden="true"><html:h2 data-l10n-id="network-settings-title"/></label>
 
   <hbox align="center">
-    <hbox align="center" flex="1">
+    <hbox align="center" flex="2">
       <description id="connectionSettingsDescription" control="connectionSettings"/>
       <spacer width="5"/>
       <label id="connectionSettingsLearnMore" class="learnMore" is="text-link"
@@ -692,7 +726,7 @@
     </hbox>
 
     <!-- Please don't remove the wrapping hbox/vbox/box for these elements. It's used to properly compute the search tooltip position. -->
-    <hbox>
+    <hbox flex="1">
       <button id="connectionSettings"
               is="highlightable-button"
               class="accessory-button"

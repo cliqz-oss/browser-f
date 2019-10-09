@@ -208,21 +208,17 @@ Preferences.addAll([
   { id: "browser.search.update", type: "bool" },
 
   { id: "privacy.userContext.enabled", type: "bool" },
-<<<<<<< HEAD
 
   // Cliqz
   { id: "browser.privatebrowsing.apt", type: "bool" },
   { id: "browser.startup.restoreTabs", type: "bool" },
   { id: "browser.startup.addFreshTab", type: "bool" },
-||||||| merged common ancestors
-=======
 
   // Picture-in-Picture
   {
     id: "media.videocontrols.picture-in-picture.video-toggle.enabled",
     type: "bool",
   },
->>>>>>> upstream/upstream-releases
 ]);
 
 if (AppConstants.HAVE_SHELL_SERVICE) {
@@ -1304,27 +1300,36 @@ var gMainPane = {
   },
 
   onBrowserRestoreSessionChange(event) {
-    // CLIQZ-SPECIAL:
-    // Some code was remove without ifdef (for simplicity)
+    /* 
+      // CLIQZ-SPECIAL: removed startup prefs
+      const value = event.target.checked;
+      const startupPref = Preferences.get("browser.startup.page");
+      let newValue;
+
+      let warnOnQuitCheckbox = document.getElementById(
+        "browserRestoreSessionQuitWarning"
+      );
+      if (value) {
+        // We need to restore the blank homepage setting in our other pref
+        if (startupPref.value === this.STARTUP_PREF_BLANK) {
+          HomePage.safeSet("about:blank");
+        }
+        newValue = this.STARTUP_PREF_RESTORE_SESSION;
+        let warnOnQuitPref = Preferences.get("browser.sessionstore.warnOnQuit");
+        if (!warnOnQuitPref.locked) {
+          warnOnQuitCheckbox.removeAttribute("disabled");
+        }
+      } else {
+        newValue = this.STARTUP_PREF_HOMEPAGE;
+        warnOnQuitCheckbox.setAttribute("disabled", "true");
+      }
+      startupPref.value = newValue;
+    */
     const value = event.target.checked;
     let warnOnQuitCheckbox = document.getElementById(
       "browserRestoreSessionQuitWarning"
     );
     if (value) {
-<<<<<<< HEAD
-||||||| merged common ancestors
-      // We need to restore the blank homepage setting in our other pref
-      if (startupPref.value === this.STARTUP_PREF_BLANK) {
-        HomePage.set("about:blank");
-      }
-      newValue = this.STARTUP_PREF_RESTORE_SESSION;
-=======
-      // We need to restore the blank homepage setting in our other pref
-      if (startupPref.value === this.STARTUP_PREF_BLANK) {
-        HomePage.safeSet("about:blank");
-      }
-      newValue = this.STARTUP_PREF_RESTORE_SESSION;
->>>>>>> upstream/upstream-releases
       let warnOnQuitPref = Preferences.get("browser.sessionstore.warnOnQuit");
       if (!warnOnQuitPref.locked) {
         warnOnQuitCheckbox.removeAttribute("disabled");

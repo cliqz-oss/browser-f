@@ -106,36 +106,18 @@ detail-update-manual =
 detail-private-browsing-label = In Vergessen-Fenstern ausführen
 detail-private-browsing-description2 = Falls erlaubt, hat die Erweiterung Zugriff auf Ihre Online-Aktivitäten im Vergessen-Modus. <label data-l10n-name="detail-private-browsing-learn-more">Weitere Informationen</label>
 # Some add-ons may elect to not run in private windows by setting incognito: not_allowed in the manifest.  This
-<<<<<<< HEAD
-# cannot be overriden by the user.
+# cannot be overridden by the user.
 detail-private-disallowed-label = In Vergessen-Fenstern nicht erlaubt
-detail-private-disallowed-description = Die Erweiterung wird in Vergessen-Fenstern nicht ausgeführt. <label data-l10n-name="detail-private-browsing-learn-more">Weitere Informationen</label>
-||||||| merged common ancestors
-# cannot be overridden by the user.
-detail-private-disallowed-label = In privaten Fenstern nicht erlaubt
-detail-private-disallowed-description = Die Erweiterung wird im Privaten Modus nicht ausgeführt. <label data-l10n-name="detail-private-browsing-learn-more">Weitere Informationen</label>
-=======
-# cannot be overridden by the user.
-detail-private-disallowed-label = In privaten Fenstern nicht erlaubt
-detail-private-disallowed-description = Die Erweiterung wird im Privaten Modus nicht ausgeführt. <label data-l10n-name="detail-private-browsing-learn-more">Weitere Informationen</label>
+detail-private-disallowed-description = Die Erweiterung wird im Vergessen-Fenstern nicht ausgeführt. <label data-l10n-name="detail-private-browsing-learn-more">Weitere Informationen</label>
 
-detail-private-disallowed-description2 = Die Erweiterung wird im Privaten Modus nicht ausgeführt. <a data-l10n-name="learn-more">Weitere Informationen</a>
+detail-private-disallowed-description2 = Die Erweiterung wird im Vergessen-Fenstern nicht ausgeführt. <a data-l10n-name="learn-more">Weitere Informationen</a>
 
->>>>>>> upstream/upstream-releases
 # Some special add-ons are privileged, run in private windows automatically, and this permission can't be revoked
-<<<<<<< HEAD
-detail-private-required-label = Benötigt Zugriff auf Vergessen-Fenster
-detail-private-required-description = Die Erweiterung hat Zugriff auf Ihre Online-Aktivitäten in Vergessen-Fenstern. <label data-l10n-name="detail-private-browsing-learn-more">Weitere Informationen</label>
-||||||| merged common ancestors
-detail-private-required-label = Benötigt Zugriff auf private Fenster
-detail-private-required-description = Die Erweiterung hat Zugriff auf Ihre Online-Aktivitäten im Privaten Modus. <label data-l10n-name="detail-private-browsing-learn-more">Weitere Informationen</label>
-=======
-detail-private-required-label = Benötigt Zugriff auf private Fenster
-detail-private-required-description = Die Erweiterung hat Zugriff auf Ihre Online-Aktivitäten im Privaten Modus. <label data-l10n-name="detail-private-browsing-learn-more">Weitere Informationen</label>
+detail-private-required-label = Benötigt Zugriff auf Vergessen-Fenstern
+detail-private-required-description = Die Erweiterung hat Zugriff auf Ihre Online-Aktivitäten im Vergessen-Fenstern. <label data-l10n-name="detail-private-browsing-learn-more">Weitere Informationen</label>
 
-detail-private-required-description2 = Die Erweiterung hat Zugriff auf Ihre Online-Aktivitäten im Privaten Modus. <a data-l10n-name="learn-more">Weitere Informationen</a>
+detail-private-required-description2 = Die Erweiterung hat Zugriff auf Ihre Online-Aktivitäten im Vergessen-Fenstern. <a data-l10n-name="learn-more">Weitere Informationen</a>
 
->>>>>>> upstream/upstream-releases
 detail-private-browsing-on =
     .label = Erlauben
     .tooltiptext = Aktivieren in Vergessen-Fenstern

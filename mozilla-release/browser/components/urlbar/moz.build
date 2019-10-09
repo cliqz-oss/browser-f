@@ -6,13 +6,8 @@ with Files("**"):
     BUG_COMPONENT = ("Firefox", "Address Bar")
 
 EXTRA_JS_MODULES += [
-<<<<<<< HEAD
-||||||| merged common ancestors
-    'UrlbarController.jsm',
-=======
     'UrlbarContextualTip.jsm',
     'UrlbarController.jsm',
->>>>>>> upstream/upstream-releases
     'UrlbarEventBufferer.jsm',
     'UrlbarInput.jsm',
     'UrlbarMuxerUnifiedComplete.jsm',
@@ -26,10 +21,6 @@ EXTRA_JS_MODULES += [
     'UrlbarUtils.jsm',
     'UrlbarValueFormatter.jsm',
     'UrlbarView.jsm',
-]
-
-EXTRA_PP_JS_MODULES += [
-    'UrlbarController.jsm',
 ]
 
 TESTING_JS_MODULES += [

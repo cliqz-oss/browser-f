@@ -201,7 +201,6 @@
             hidden="true"/>
         </hbox>
         <vbox id="mainPrefPane">
-<<<<<<< HEAD
 #include searchResults.xul
 #include main.xul
 #if 0
@@ -214,23 +213,6 @@
   #include sync.xul
 #endif
 #include connect.xul
-||||||| merged common ancestors
-#include searchResults.xul
-#include main.xul
-#include home.xul
-#include search.xul
-#include privacy.xul
-#include containers.xul
-#include sync.xul
-=======
-#include searchResults.inc.xul
-#include main.inc.xul
-#include home.inc.xul
-#include search.inc.xul
-#include privacy.inc.xul
-#include containers.inc.xul
-#include sync.inc.xul
->>>>>>> upstream/upstream-releases
         </vbox>
       </vbox>
     </vbox>

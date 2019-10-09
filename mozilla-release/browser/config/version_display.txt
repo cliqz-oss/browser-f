@@ -1,7 +1,1 @@
-<<<<<<< HEAD
 1.30.0
-||||||| merged common ancestors
-69.0.1
-=======
-70.0b13
->>>>>>> upstream/upstream-releases

@@ -10,15 +10,7 @@ toolkit.jar:
 #ifndef MOZ_FENNEC
 * content/mozapps/extensions/extensions.xul                     (content/extensions.xul)
   content/mozapps/extensions/extensions.css                     (content/extensions.css)
-<<<<<<< HEAD
-* content/mozapps/extensions/extensions.js                      (content/extensions.js)
-* content/mozapps/extensions/extensions.xml                     (content/extensions.xml)
-||||||| merged common ancestors
   content/mozapps/extensions/extensions.js                      (content/extensions.js)
-* content/mozapps/extensions/extensions.xml                     (content/extensions.xml)
-=======
-  content/mozapps/extensions/extensions.js                      (content/extensions.js)
->>>>>>> upstream/upstream-releases
   content/mozapps/extensions/blocklist.xul                      (content/blocklist.xul)
   content/mozapps/extensions/blocklist.js                       (content/blocklist.js)
   content/mozapps/extensions/pluginPrefs.xul                    (content/pluginPrefs.xul)

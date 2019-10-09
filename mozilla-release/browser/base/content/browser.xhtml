@@ -71,12 +71,7 @@
         sizemode="normal"
         retargetdocumentfocus="urlbar-input"
         persist="screenX screenY width height sizemode"
-<<<<<<< HEAD
         cliqzBrowser="true"
-        >
-||||||| merged common ancestors
-        >
-=======
         data-l10n-sync="true">
 
 <linkset>
@@ -84,7 +79,6 @@
   <html:link rel="localization" href="browser/branding/sync-brand.ftl"/>
   <html:link rel="localization" href="browser/menubar.ftl"/>
 </linkset>
->>>>>>> upstream/upstream-releases
 
 # All JS files which are needed by browser.xhtml and other top level windows to
 # support MacOS specific features *must* go into the global-scripts.inc file so
@@ -95,14 +89,6 @@
   /* eslint-env mozilla/browser-window */
   Services.scriptloader.loadSubScript("chrome://global/content/contentAreaUtils.js", this);
   Services.scriptloader.loadSubScript("chrome://browser/content/browser-captivePortal.js", this);
-<<<<<<< HEAD
-#ifdef 0
-  Services.scriptloader.loadSubScript("chrome://browser/content/browser-contentblocking.js", this);
-#endif
-||||||| merged common ancestors
-  Services.scriptloader.loadSubScript("chrome://browser/content/browser-contentblocking.js", this);
-=======
->>>>>>> upstream/upstream-releases
   if (AppConstants.MOZ_DATA_REPORTING) {
     Services.scriptloader.loadSubScript("chrome://browser/content/browser-data-submission-info-bar.js", this);
   }

@@ -63,20 +63,6 @@ permissions-invalid-uri-label = Bitte trage einen gültigen Hostnamen ein
 
 ## Exceptions - Tracking Protection
 
-<<<<<<< HEAD
-permissions-exceptions-tracking-protection-window =
-    .title = Ausnahmen - Schutz vor Aktivitätenverfolgung
-    .style = { permissions-window.style }
-permissions-exceptions-tracking-protection-desc = Du hast den Schutz vor Aktivitätenverfolgung auf folgenden Seiten deaktiviert.
-
-||||||| merged common ancestors
-permissions-exceptions-tracking-protection-window =
-    .title = Ausnahmen - Schutz vor Aktivitätenverfolgung
-    .style = { permissions-window.style }
-permissions-exceptions-tracking-protection-desc = Sie haben den Schutz vor Aktivitätenverfolgung auf folgenden Seiten deaktiviert.
-
-=======
->>>>>>> upstream/upstream-releases
 permissions-exceptions-content-blocking-window =
     .title = Ausnahmen - Blockieren von Seitenelementen
     .style = { permissions-window.style }

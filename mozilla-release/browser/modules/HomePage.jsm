@@ -17,16 +17,11 @@ XPCOMUtils.defineLazyModuleGetters(this, {
 });
 
 const kPrefName = "browser.startup.homepage";
-<<<<<<< HEAD
 const freshTabPrefName = "browser.startup.addFreshTab";
-||||||| merged common ancestors
-const kDefaultHomePage = "about:home";
-=======
 const kDefaultHomePage = "about:home";
 const kExtensionControllerPref =
   "browser.startup.homepage_override.extensionControlled";
 const kHomePageIgnoreListId = "homepage-urls";
->>>>>>> upstream/upstream-releases
 
 function getHomepagePref(useDefault) {
   let homePage;
@@ -136,7 +131,6 @@ let HomePage = {
     return homePages;
   },
 
-<<<<<<< HEAD
   getAsString(isDefault) {
     const res = isDefault === true ? this.getDefault() : this.get();
 
@@ -151,13 +145,10 @@ let HomePage = {
     return Services.prefs.getBoolPref(freshTabPrefName) === true;
   },
 
-||||||| merged common ancestors
-=======
   /**
    * @returns {string}
    *   Returns the application default homepage.
    */
->>>>>>> upstream/upstream-releases
   getDefault() {
     return getHomepagePref(true);
   },

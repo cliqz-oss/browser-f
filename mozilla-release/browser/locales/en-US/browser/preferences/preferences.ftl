@@ -803,10 +803,10 @@ history-remember-option-custom =
     .label = Use custom settings for history
 
 history-remember-description = { -brand-short-name } will remember your browsing, download, form and search history.
-history-dontremember-description = { -brand-short-name } will use the same settings as private browsing, and will not remember any history as you browse the Web.
+history-dontremember-description = { -brand-short-name } will use the same settings as forget mode, and will not remember any history as you browse the Web.
 
 history-private-browsing-permanent =
-    .label = Always use private browsing mode
+    .label = Always use forget mode
     .accesskey = p
 
 history-remember-browser-option =
@@ -935,17 +935,9 @@ content-blocking-etp-standard-desc = Balanced for protection and performance. Pa
 content-blocking-etp-strict-desc = Stronger protection, but may cause some sites or content to break.
 content-blocking-etp-custom-desc = Choose which trackers and scripts to block.
 
-<<<<<<< HEAD
-content-blocking-private-trackers = Known trackers only in Forget Mode
-content-blocking-third-party-cookies = Third-party tracking cookies
-||||||| merged common ancestors
-content-blocking-private-trackers = Known trackers only in Private Windows
-content-blocking-third-party-cookies = Third-party tracking cookies
-=======
-content-blocking-private-windows = Tracking content in Private Windows
+content-blocking-private-windows = Tracking content in Forget Mode
 content-blocking-cross-site-tracking-cookies = Cross-site tracking cookies
 content-blocking-social-media-trackers = Social media trackers
->>>>>>> upstream/upstream-releases
 content-blocking-all-cookies = All cookies
 content-blocking-unvisited-cookies = Cookies from unvisited sites
 content-blocking-all-windows-tracking-content = Tracking content in all windows

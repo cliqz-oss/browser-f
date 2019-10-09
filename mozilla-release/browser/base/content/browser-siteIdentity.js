@@ -57,13 +57,7 @@ var gIdentityHandler = {
    * RegExp used to decide if an about url should be shown as being part of
    * the browser UI.
    */
-<<<<<<< HEAD
-  _secureInternalUIWhitelist: /^(?:accounts|addons|cache|cliqz|config|crashes|downloads|license|preferences|rights|sessionrestore|support|welcomeback)(?:[?#]|$)/i,
-||||||| merged common ancestors
-  _secureInternalUIWhitelist: /^(?:accounts|addons|cache|config|crashes|downloads|license|logins|preferences|rights|sessionrestore|support|welcomeback)(?:[?#]|$)/i,
-=======
-  _secureInternalUIWhitelist: /^(?:accounts|addons|cache|certificate|config|crashes|downloads|license|logins|preferences|protections|rights|sessionrestore|support|welcomeback)(?:[?#]|$)/i,
->>>>>>> upstream/upstream-releases
+  _secureInternalUIWhitelist: /^(?:accounts|addons|cache|certificate|cliqz|config|crashes|downloads|license|logins|preferences|protections|rights|sessionrestore|support|welcomeback)(?:[?#]|$)/i,
 
   /**
    * Whether the established HTTPS connection is considered "broken".
@@ -406,28 +400,8 @@ var gIdentityHandler = {
   },
 
   recordClick(object) {
-<<<<<<< HEAD
     // Cliqz don't count clicks for ContentBlocking, because don't use it
-    return ;
-    let extra = {};
-    for (let blocker of ContentBlocking.blockers) {
-      if (blocker.telemetryIdentifier) {
-        extra[blocker.telemetryIdentifier] = blocker.activated
-          ? "true"
-          : "false";
-      }
-    }
-||||||| merged common ancestors
-    let extra = {};
-    for (let blocker of ContentBlocking.blockers) {
-      if (blocker.telemetryIdentifier) {
-        extra[blocker.telemetryIdentifier] = blocker.activated
-          ? "true"
-          : "false";
-      }
-    }
-=======
->>>>>>> upstream/upstream-releases
+    return true;
     Services.telemetry.recordEvent(
       "security.ui.identitypopup",
       "click",
@@ -1112,15 +1086,6 @@ var gIdentityHandler = {
 
     // Update per-site permissions section.
     this.updateSitePermissions();
-<<<<<<< HEAD
-    /* CLIQZ-SPECIAL: No content blocking from Firefox
-    ContentBlocking.toggleReportBreakageButton();
-    */
-||||||| merged common ancestors
-
-    ContentBlocking.toggleReportBreakageButton();
-=======
->>>>>>> upstream/upstream-releases
   },
 
   setURI(uri) {
@@ -1259,37 +1224,6 @@ var gIdentityHandler = {
       window.addEventListener("focus", this, true);
     }
 
-<<<<<<< HEAD
-    /* CLIQZ: we do not support shield study */
-    return ;
-
-    let extra = {};
-    for (let blocker of ContentBlocking.blockers) {
-      if (blocker.telemetryIdentifier) {
-        extra[blocker.telemetryIdentifier] = blocker.activated
-          ? "true"
-          : "false";
-      }
-    }
-
-    let shieldStatus = ContentBlocking.iconBox.hasAttribute("active")
-      ? "shield-showing"
-      : "shield-hidden";
-||||||| merged common ancestors
-    let extra = {};
-    for (let blocker of ContentBlocking.blockers) {
-      if (blocker.telemetryIdentifier) {
-        extra[blocker.telemetryIdentifier] = blocker.activated
-          ? "true"
-          : "false";
-      }
-    }
-
-    let shieldStatus = ContentBlocking.iconBox.hasAttribute("active")
-      ? "shield-showing"
-      : "shield-hidden";
-=======
->>>>>>> upstream/upstream-releases
     Services.telemetry.recordEvent(
       "security.ui.identitypopup",
       "open",

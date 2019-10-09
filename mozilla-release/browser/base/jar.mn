@@ -42,33 +42,15 @@ browser.jar:
         content/browser/browser-ctrlTab.js            (content/browser-ctrlTab.js)
         content/browser/browser-customization.js      (content/browser-customization.js)
         content/browser/browser-data-submission-info-bar.js (content/browser-data-submission-info-bar.js)
-<<<<<<< HEAD
-        content/browser/browser-contentblocking.js    (content/browser-contentblocking.js)
-#if 0
-||||||| merged common ancestors
-        content/browser/browser-contentblocking.js    (content/browser-contentblocking.js)
 #ifndef MOZILLA_OFFICIAL
-=======
-#ifndef MOZILLA_OFFICIAL
->>>>>>> upstream/upstream-releases
         content/browser/browser-development-helpers.js (content/browser-development-helpers.js)
 #endif
         content/browser/browser-fullScreenAndPointerLock.js  (content/browser-fullScreenAndPointerLock.js)
         content/browser/browser-fullZoom.js           (content/browser-fullZoom.js)
         content/browser/browser-gestureSupport.js     (content/browser-gestureSupport.js)
         content/browser/browser-media.js              (content/browser-media.js)
-<<<<<<< HEAD
 *       content/browser/browser-pageActions.js        (content/browser-pageActions.js)
 *       content/browser/browser-places.js             (content/browser-places.js)
-        content/browser/browser-plugins.js            (content/browser-plugins.js)
-||||||| merged common ancestors
-        content/browser/browser-pageActions.js        (content/browser-pageActions.js)
-        content/browser/browser-places.js             (content/browser-places.js)
-        content/browser/browser-plugins.js            (content/browser-plugins.js)
-=======
-        content/browser/browser-pageActions.js        (content/browser-pageActions.js)
-        content/browser/browser-places.js             (content/browser-places.js)
->>>>>>> upstream/upstream-releases
         content/browser/browser-safebrowsing.js       (content/browser-safebrowsing.js)
 *       content/browser/browser-sidebar.js            (content/browser-sidebar.js)
         content/browser/browser-siteIdentity.js       (content/browser-siteIdentity.js)
@@ -118,15 +100,7 @@ browser.jar:
 *       content/browser/tabbrowser.js                 (content/tabbrowser.js)
         content/browser/tabbrowser-tab.js             (content/tabbrowser-tab.js)
         content/browser/tabbrowser-tabs.js            (content/tabbrowser-tabs.js)
-<<<<<<< HEAD
-*       content/browser/urlbarBindings.xml            (content/urlbarBindings.xml)
 *       content/browser/utilityOverlay.js             (content/utilityOverlay.js)
-||||||| merged common ancestors
-*       content/browser/urlbarBindings.xml            (content/urlbarBindings.xml)
-        content/browser/utilityOverlay.js             (content/utilityOverlay.js)
-=======
-        content/browser/utilityOverlay.js             (content/utilityOverlay.js)
->>>>>>> upstream/upstream-releases
         content/browser/webext-panels.js              (content/webext-panels.js)
 *       content/browser/webext-panels.xul             (content/webext-panels.xul)
 *       content/browser/nsContextMenu.js              (content/nsContextMenu.js)

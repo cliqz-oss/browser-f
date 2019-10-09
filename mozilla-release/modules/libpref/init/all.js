@@ -149,7 +149,9 @@ pref("security.webauth.webauthn_enable_softtoken", false);
 #endif
 
 pref("security.ssl.errorReporting.enabled", true);
-pref("security.ssl.errorReporting.url", "https://incoming.telemetry.mozilla.org/submit/sslreports/");
+// CLIQZ-SPECIAL
+// pref("security.ssl.errorReporting.url", "https://incoming.telemetry.mozilla.org/submit/sslreports/");
+pref("security.ssl.errorReporting.url", "https://reports.cliqz.com/submit/sslreports/");
 pref("security.ssl.errorReporting.automatic", false);
 
 // Impose a maximum age on HPKP headers, to avoid sites getting permanently
@@ -1301,27 +1303,14 @@ pref("privacy.restrict3rdpartystorage.url_decorations", "");
 // opened more than this number of popups.
 pref("privacy.popups.maxReported", 100);
 
-<<<<<<< HEAD
 // Enforce tracking protection in all modes
 pref("privacy.trackingprotection.enabled",  false);
 // Enforce tracking protection in Private Browsing mode
 pref("privacy.trackingprotection.pbmode.enabled",  false);
-||||||| merged common ancestors
-// Enforce tracking protection in all modes
-pref("privacy.trackingprotection.enabled",  false);
-// Enforce tracking protection in Private Browsing mode
-pref("privacy.trackingprotection.pbmode.enabled",  true);
-=======
->>>>>>> upstream/upstream-releases
+
 // Enable Origin Telemetry by default
 #ifdef NIGHTLY_BUILD
-<<<<<<< HEAD
-pref("privacy.trackingprotection.origin_telemetry.enabled", false);
-||||||| merged common ancestors
-pref("privacy.trackingprotection.origin_telemetry.enabled", true);
-=======
   pref("privacy.trackingprotection.origin_telemetry.enabled", true);
->>>>>>> upstream/upstream-releases
 #endif
 
 pref("dom.event.contextmenu.enabled",       true);
@@ -5411,7 +5400,8 @@ pref("toolkit.legacyUserProfileCustomizations.stylesheets", false);
   pref("datareporting.policy.currentPolicyVersion", 2);
   pref("datareporting.policy.minimumPolicyVersion", 1);
   pref("datareporting.policy.minimumPolicyVersion.channel-beta", 2);
-  pref("datareporting.policy.firstRunURL", "https://www.mozilla.org/privacy/firefox/");
+  // CLIQZ-SPECIAL: removed by us
+  // pref("datareporting.policy.firstRunURL", "https://www.mozilla.org/privacy/firefox/");
 #endif
 
 #ifdef MOZ_SERVICES_HEALTHREPORT

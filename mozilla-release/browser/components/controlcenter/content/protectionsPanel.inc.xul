@@ -57,7 +57,7 @@
                          oncommand="gProtectionsHandler.onTPSwitchCommand();" />
         </vbox>
       </hbox>
-
+#if 0
       <!-- Tracking Protection Section -->
       <vbox id="tracking-protection-container" class="protections-popup-section">
         <description id="protections-popup-no-trackers-found-description">&protections.noTrackersFound.description;</description>
@@ -128,7 +128,7 @@
           </vbox>
         </vbox>
       </vbox>
-
+#endif
       <vbox id="protections-popup-footer" class="protections-popup-section">
         <!-- wrap=true is needed for descriptionheightworkaround, see bug 1564077 -->
         <toolbarbutton id="protections-popup-settings-button"

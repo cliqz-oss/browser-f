@@ -484,6 +484,7 @@ static void AppendValueToCollectedData(Document& aDocument, nsINode* aNode,
       nsAutoCString url;
       Unused << aDocument.GetDocumentURI()->GetSpecIgnoringRef(url);
       if (url.EqualsLiteral("about:sessionrestore") ||
+          url.EqualsLiteral("about:importedtabs") ||
           url.EqualsLiteral("about:welcomeback")) {
         JS::Rooted<JS::Value> jsval(aCx);
         if (JS_ParseJSON(aCx, aValue.get(), aValue.Length(), &jsval) &&
@@ -660,65 +661,8 @@ void SessionStoreUtils::CollectFromInputElement(Document& aDocument,
                              eCaseMatters)) {
         continue;
       }
-<<<<<<< HEAD
-      if (!id.IsEmpty()) {
-        // We want to avoid saving data for about:sessionrestore as a string.
-        // Since it's stored in the form as stringified JSON, stringifying
-        // further causes an explosion of escape characters. cf. bug 467409
-        if (id.EqualsLiteral("sessionData")) {
-          nsAutoCString url;
-          Unused << aDocument.GetDocumentURI()->GetSpecIgnoringRef(url);
-          if (url.EqualsLiteral("about:sessionrestore") ||
-              url.EqualsLiteral("about:welcomeback") ||
-              url.EqualsLiteral("about:importedtabs")) {
-            JS::Rooted<JS::Value> jsval(aCx);
-            if (JS_ParseJSON(aCx, value.get(), value.Length(), &jsval) &&
-                jsval.isObject()) {
-              Record<nsString, OwningStringOrBooleanOrObject>::EntryType*
-                  entry = AppendEntryToCollectedData(input, id, aGeneratedCount,
-                                                     aRetVal);
-              entry->mValue.SetAsObject() = &jsval.toObject();
-            } else {
-              JS_ClearPendingException(aCx);
-            }
-            continue;
-          }
-        }
-      }
-      Record<nsString, OwningStringOrBooleanOrObject>::EntryType* entry =
-          AppendEntryToCollectedData(input, id, aGeneratedCount, aRetVal);
-      entry->mValue.SetAsString() = value;
-||||||| merged common ancestors
-      if (!id.IsEmpty()) {
-        // We want to avoid saving data for about:sessionrestore as a string.
-        // Since it's stored in the form as stringified JSON, stringifying
-        // further causes an explosion of escape characters. cf. bug 467409
-        if (id.EqualsLiteral("sessionData")) {
-          nsAutoCString url;
-          Unused << aDocument.GetDocumentURI()->GetSpecIgnoringRef(url);
-          if (url.EqualsLiteral("about:sessionrestore") ||
-              url.EqualsLiteral("about:welcomeback")) {
-            JS::Rooted<JS::Value> jsval(aCx);
-            if (JS_ParseJSON(aCx, value.get(), value.Length(), &jsval) &&
-                jsval.isObject()) {
-              Record<nsString, OwningStringOrBooleanOrObject>::EntryType*
-                  entry = AppendEntryToCollectedData(input, id, aGeneratedCount,
-                                                     aRetVal);
-              entry->mValue.SetAsObject() = &jsval.toObject();
-            } else {
-              JS_ClearPendingException(aCx);
-            }
-            continue;
-          }
-        }
-      }
-      Record<nsString, OwningStringOrBooleanOrObject>::EntryType* entry =
-          AppendEntryToCollectedData(input, id, aGeneratedCount, aRetVal);
-      entry->mValue.SetAsString() = value;
-=======
       AppendValueToCollectedData(aDocument, input, id, value, aGeneratedCount,
                                  std::forward<ArgsT>(args)...);
->>>>>>> upstream/upstream-releases
     }
   }
 }

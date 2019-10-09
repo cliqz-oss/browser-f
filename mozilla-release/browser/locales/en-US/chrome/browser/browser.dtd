@@ -50,21 +50,9 @@ in "Search through tabs". -->
 
 <!ENTITY tabCmd.label "New Tab">
 <!ENTITY tabCmd.commandkey "t">
-<<<<<<< HEAD
 <!ENTITY forgetTabCmd.label "New Forget Tab">
 <!ENTITY forgetTabCmd.accesskey "F">
 <!ENTITY forgetTabCmd.commandkey "f">
-<!-- LOCALIZATION NOTE (openLocationCmd.label): "Open Location" is only
-displayed on OS X, and only on windows that aren't main browser windows, or
-when there are no windows but Firefox is still running. -->
-<!ENTITY openLocationCmd.label "Open Location…">
-||||||| merged common ancestors
-<!-- LOCALIZATION NOTE (openLocationCmd.label): "Open Location" is only
-displayed on OS X, and only on windows that aren't main browser windows, or
-when there are no windows but Firefox is still running. -->
-<!ENTITY openLocationCmd.label "Open Location…">
-=======
->>>>>>> upstream/upstream-releases
 <!ENTITY openFileCmd.label "Open File…">
 <!ENTITY openFileCmd.commandkey "o">
 <!ENTITY printCmd.label "Print…">
@@ -287,17 +275,9 @@ convenience of Safari and Chrome users on macOS. See bug 1398988. -->
 <!ENTITY manageUserContext.accesskey      "O">
 <!ENTITY newNavigatorCmd.label        "New Window">
 <!ENTITY newNavigatorCmd.key        "N">
-<<<<<<< HEAD
 <!ENTITY newNavigatorCmd.accesskey      "N">
 <!ENTITY newPrivateWindow.label     "New Forget Window">
 <!ENTITY newPrivateWindow.accesskey "W">
-||||||| merged common ancestors
-<!ENTITY newNavigatorCmd.accesskey      "N">
-<!ENTITY newPrivateWindow.label     "New Private Window">
-<!ENTITY newPrivateWindow.accesskey "W">
-=======
-<!ENTITY newPrivateWindow.label     "New Private Window">
->>>>>>> upstream/upstream-releases
 
 <!ENTITY editMenu.label         "Edit">
 <!ENTITY undoCmd.label            "Undo">

@@ -268,22 +268,6 @@
       "type": "string"
     },
 
-<<<<<<< HEAD
-||||||| merged common ancestors
-    "EnableTrackingProtection": {
-      "type": "object",
-      "properties": {
-        "Value": {
-          "type": "boolean"
-        },
-        "Locked": {
-          "type": "boolean"
-        }
-      },
-      "required": ["Value"]
-    },
-
-=======
     "EnableTrackingProtection": {
       "type": "object",
       "properties": {
@@ -302,7 +286,6 @@
       }
     },
 
->>>>>>> upstream/upstream-releases
     "Extensions": {
       "type": "object",
       "properties": {

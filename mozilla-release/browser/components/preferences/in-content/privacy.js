@@ -719,16 +719,10 @@ var gPrivacyPane = {
         "command",
         gPrivacyPane.updateSubmitHealthReport
       );
-<<<<<<< HEAD
 #if 0
-      this.initOptOutStudyCheckbox();
-||||||| merged common ancestors
-      this.initOptOutStudyCheckbox();
-=======
       if (AppConstants.MOZ_NORMANDY) {
         this.initOptOutStudyCheckbox();
       }
->>>>>>> upstream/upstream-releases
       this.initAddonRecommendationsCheckbox();
 #endif
     }

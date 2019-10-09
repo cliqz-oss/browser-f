@@ -291,14 +291,8 @@ Section "Uninstall"
   ${un.InitHashAppModelId} "$INSTDIR" "Software\${AppName}\TaskBarIDs"
 
   SetShellVarContext current  ; Set SHCTX to HKCU
-<<<<<<< HEAD
   ${un.RegCleanMain} "Software\CLIQZ"
-||||||| merged common ancestors
-  ${un.RegCleanMain} "Software\Mozilla"
-=======
-  ${un.RegCleanMain} "Software\Mozilla"
-  ${un.RegCleanPrefs} "Software\Mozilla\${AppName}"
->>>>>>> upstream/upstream-releases
+  ${un.RegCleanPrefs} "Software\CLIQZ\${AppName}"
   ${un.RegCleanUninstall}
   ${un.DeleteShortcuts}
 
@@ -334,7 +328,6 @@ Section "Uninstall"
   ${un.RegCleanProtocolHandler} "ftp"
   ${un.RegCleanProtocolHandler} "http"
   ${un.RegCleanProtocolHandler} "https"
-<<<<<<< HEAD
   ${un.RegCleanFileHandler}  ".htm"   "CliqzHTML-$AppUserModelID"
   ${un.RegCleanFileHandler}  ".html"  "CliqzHTML-$AppUserModelID"
   ${un.RegCleanFileHandler}  ".shtml" "CliqzHTML-$AppUserModelID"
@@ -345,30 +338,7 @@ Section "Uninstall"
   ${un.RegCleanFileHandler}  ".ogv"  "CliqzHTML-$AppUserModelID"
   ${un.RegCleanFileHandler}  ".pdf"  "CliqzHTML-$AppUserModelID"
   ${un.RegCleanFileHandler}  ".webm"  "CliqzHTML-$AppUserModelID"
-||||||| merged common ancestors
-  ${un.RegCleanFileHandler}  ".htm"   "FirefoxHTML-$AppUserModelID"
-  ${un.RegCleanFileHandler}  ".html"  "FirefoxHTML-$AppUserModelID"
-  ${un.RegCleanFileHandler}  ".shtml" "FirefoxHTML-$AppUserModelID"
-  ${un.RegCleanFileHandler}  ".xht"   "FirefoxHTML-$AppUserModelID"
-  ${un.RegCleanFileHandler}  ".xhtml" "FirefoxHTML-$AppUserModelID"
-  ${un.RegCleanFileHandler}  ".oga"  "FirefoxHTML-$AppUserModelID"
-  ${un.RegCleanFileHandler}  ".ogg"  "FirefoxHTML-$AppUserModelID"
-  ${un.RegCleanFileHandler}  ".ogv"  "FirefoxHTML-$AppUserModelID"
-  ${un.RegCleanFileHandler}  ".pdf"  "FirefoxHTML-$AppUserModelID"
-  ${un.RegCleanFileHandler}  ".webm"  "FirefoxHTML-$AppUserModelID"
-=======
-  ${un.RegCleanFileHandler}  ".htm"   "FirefoxHTML-$AppUserModelID"
-  ${un.RegCleanFileHandler}  ".html"  "FirefoxHTML-$AppUserModelID"
-  ${un.RegCleanFileHandler}  ".shtml" "FirefoxHTML-$AppUserModelID"
-  ${un.RegCleanFileHandler}  ".xht"   "FirefoxHTML-$AppUserModelID"
-  ${un.RegCleanFileHandler}  ".xhtml" "FirefoxHTML-$AppUserModelID"
-  ${un.RegCleanFileHandler}  ".oga"  "FirefoxHTML-$AppUserModelID"
-  ${un.RegCleanFileHandler}  ".ogg"  "FirefoxHTML-$AppUserModelID"
-  ${un.RegCleanFileHandler}  ".ogv"  "FirefoxHTML-$AppUserModelID"
-  ${un.RegCleanFileHandler}  ".pdf"  "FirefoxHTML-$AppUserModelID"
-  ${un.RegCleanFileHandler}  ".webm"  "FirefoxHTML-$AppUserModelID"
-  ${un.RegCleanFileHandler} ".svg" "FirefoxHTML-$AppUserModelID"
->>>>>>> upstream/upstream-releases
+  ${un.RegCleanFileHandler}  ".svg"  "CliqzHTML-$AppUserModelID"
 
   SetShellVarContext all  ; Set SHCTX to HKLM
   ${un.GetSecondInstallPath} "Software\CLIQZ" $R9

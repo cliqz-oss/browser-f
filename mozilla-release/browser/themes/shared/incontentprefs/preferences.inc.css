@@ -762,21 +762,27 @@ image.update-throbber {
 }
 
 .face-sad {
+  display: none;
+  /* CLIQZ-SPECIAL: hide all images
   list-style-image: url("chrome://browser/skin/preferences/in-content/face-sad.svg");
   width: 20px;
   height: 20px;
   margin-inline-end: 8px;
   margin-top: 5px;
   margin-bottom: 5px;
+  */
 }
 
 .face-smile {
+  display: none;
+  /* CLIQZ-SPECIAL: hide all images
   list-style-image: url("chrome://browser/skin/preferences/in-content/face-smile.svg");
   width: 20px;
   height: 20px;
   margin-inline-end: 8px;
   margin-top: 5px;
   margin-bottom: 5px;
+  */
 }
 
 #policies-container,

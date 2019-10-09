@@ -305,18 +305,6 @@
 ; gre location for now.
 @RESPATH@/defaults/pref/channel-prefs.js
 
-<<<<<<< HEAD
-; Services (gre) prefs
-#ifdef MOZ_SERVICES_SYNC
-@RESPATH@/defaults/pref/services-sync.js
-#endif
-
-||||||| merged common ancestors
-; Services (gre) prefs
-@RESPATH@/defaults/pref/services-sync.js
-
-=======
->>>>>>> upstream/upstream-releases
 ; [Layout Engine Resources]
 ; Style Sheets, Graphics and other Resources used by the layout engine.
 @RESPATH@/res/EditorOverride.css

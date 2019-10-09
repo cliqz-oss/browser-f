@@ -138,40 +138,14 @@ detail-update-manual =
 # Used as a description for the option to allow or block an add-on in private windows.
 detail-private-browsing-label = Run in Forget Windows
 
-<<<<<<< HEAD
-detail-private-browsing-description2 = When allowed, the extension will have access to your online activities while private browsing. <label data-l10n-name="detail-private-browsing-learn-more">Learn more</label>
-
-# Some add-ons may elect to not run in Forget Windows by setting incognito: not_allowed in the manifest.  This
-# cannot be overriden by the user.
-detail-private-disallowed-label = Not Allowed in Forget Windows
-detail-private-disallowed-description = This extension does not run while private browsing. <label data-l10n-name="detail-private-browsing-learn-more">Learn more</label>
-||||||| merged common ancestors
-detail-private-browsing-description2 = When allowed, the extension will have access to your online activities while private browsing. <label data-l10n-name="detail-private-browsing-learn-more">Learn more</label>
-
 # Some add-ons may elect to not run in private windows by setting incognito: not_allowed in the manifest.  This
 # cannot be overridden by the user.
-detail-private-disallowed-label = Not Allowed in Private Windows
-detail-private-disallowed-description = This extension does not run while private browsing. <label data-l10n-name="detail-private-browsing-learn-more">Learn more</label>
-=======
-# Some add-ons may elect to not run in private windows by setting incognito: not_allowed in the manifest.  This
-# cannot be overridden by the user.
-detail-private-disallowed-label = Not Allowed in Private Windows
-detail-private-disallowed-description2 = This extension does not run while private browsing. <a data-l10n-name="learn-more">Learn more</a>
->>>>>>> upstream/upstream-releases
+detail-private-disallowed-label = Not Allowed in Forget mode
+detail-private-disallowed-description2 = This extension does not run while in Forget mode. <a data-l10n-name="learn-more">Learn more</a>
 
-<<<<<<< HEAD
-# Some special add-ons are privileged, run in Forget mode automatically, and this permission can't be revoked
-detail-private-required-label = Requires Access to Forget mode
-detail-private-required-description = This extension has access to your online activities while private browsing. <label data-l10n-name="detail-private-browsing-learn-more">Learn more</label>
-||||||| merged common ancestors
 # Some special add-ons are privileged, run in private windows automatically, and this permission can't be revoked
-detail-private-required-label = Requires Access to Private Windows
-detail-private-required-description = This extension has access to your online activities while private browsing. <label data-l10n-name="detail-private-browsing-learn-more">Learn more</label>
-=======
-# Some special add-ons are privileged, run in private windows automatically, and this permission can't be revoked
-detail-private-required-label = Requires Access to Private Windows
+detail-private-required-label = Requires Access to Forget Mode
 detail-private-required-description2 = This extension has access to your online activities while private browsing. <a data-l10n-name="learn-more">Learn more</a>
->>>>>>> upstream/upstream-releases
 
 detail-private-browsing-on =
     .label = Allow
