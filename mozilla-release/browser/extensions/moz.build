@@ -5,8 +5,15 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 DIRS += [
+<<<<<<< HEAD
 #    'formautofill',
 #    'fxmonitor',
+||||||| merged common ancestors
+    'formautofill',
+    'fxmonitor',
+=======
+    'formautofill',
+>>>>>>> upstream/upstream-releases
     'pdfjs',
 #   'screenshots',
 #   'webcompat',

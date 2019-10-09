@@ -5,6 +5,7 @@
 
 #include "WinCompositorWidget.h"
 
+#include "mozilla/StaticPrefs_layers.h"
 #include "mozilla/gfx/DeviceManagerDx.h"
 #include "mozilla/gfx/Point.h"
 #include "mozilla/layers/Compositor.h"
@@ -156,12 +157,12 @@ bool WinCompositorWidget::NeedsToDeferEndRemoteDrawing() {
 }
 
 already_AddRefed<gfx::DrawTarget> WinCompositorWidget::GetBackBufferDrawTarget(
-    gfx::DrawTarget* aScreenTarget, const LayoutDeviceIntRect& aRect,
-    const LayoutDeviceIntRect& aClearRect) {
+    gfx::DrawTarget* aScreenTarget, const gfx::IntRect& aRect,
+    bool* aOutIsCleared) {
   MOZ_ASSERT(!mLockedBackBufferData);
 
   RefPtr<gfx::DrawTarget> target = CompositorWidget::GetBackBufferDrawTarget(
-      aScreenTarget, aRect, aClearRect);
+      aScreenTarget, aRect, aOutIsCleared);
   if (!target) {
     return nullptr;
   }

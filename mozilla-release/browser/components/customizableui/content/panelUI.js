@@ -17,6 +17,11 @@ ChromeUtils.defineModuleGetter(
   "PanelMultiView",
   "resource:///modules/PanelMultiView.jsm"
 );
+ChromeUtils.defineModuleGetter(
+  this,
+  "ToolbarPanelHub",
+  "resource://activity-stream/lib/ToolbarPanelHub.jsm"
+);
 
 /**
  * Maintains the state and dispatches events for the main menu panel.
@@ -45,6 +50,7 @@ const PanelUI = {
       overflowFixedList: "widget-overflow-fixed-list",
       overflowPanel: "widget-overflow",
       navbar: "nav-bar",
+      whatsNewPanel: "PanelUI-whatsNew",
     };
   },
 
@@ -186,6 +192,7 @@ const PanelUI = {
     this.menuButton.removeEventListener("keypress", this);
     CustomizableUI.removeListener(this);
     this.libraryView.removeEventListener("ViewShowing", this);
+    this.whatsNewPanel.removeEventListener("ViewShowing", this);
   },
 
   /**
@@ -317,6 +324,8 @@ const PanelUI = {
       case "ViewShowing":
         if (aEvent.target == this.libraryView) {
           this.onLibraryViewShowing(aEvent.target).catch(Cu.reportError);
+        } else if (aEvent.target == this.whatsNewPanel) {
+          this.onWhatsNewPanelShowing();
         }
         break;
     }
@@ -442,6 +451,7 @@ const PanelUI = {
     }
 
     this.ensureLibraryInitialized(viewNode);
+    this.ensureWhatsNewInitialized(viewNode);
 
     let container = aAnchor.closest("panelmultiview");
     if (container) {
@@ -452,7 +462,7 @@ const PanelUI = {
       let tempPanel = document.createXULElement("panel");
       tempPanel.setAttribute("type", "arrow");
       tempPanel.setAttribute("id", "customizationui-widget-panel");
-      tempPanel.setAttribute("class", "cui-widget-panel");
+      tempPanel.setAttribute("class", "cui-widget-panel panel-no-padding");
       tempPanel.setAttribute("viewId", aViewId);
       if (aAnchor.getAttribute("tabspecific")) {
         tempPanel.setAttribute("tabspecific", true);
@@ -461,7 +471,6 @@ const PanelUI = {
         tempPanel.setAttribute("animate", "false");
       }
       tempPanel.setAttribute("context", "");
-      tempPanel.setAttribute("photon", true);
       document
         .getElementById(CustomizableUI.AREA_NAVBAR)
         .appendChild(tempPanel);
@@ -653,6 +662,31 @@ const PanelUI = {
         {}
       ),
     });
+  },
+
+  /**
+   * Sets up the event listener for when the What's New panel is shown.
+   *
+   * @param {panelview} panelView The What's New panelview.
+   */
+  ensureWhatsNewInitialized(panelView) {
+    if (panelView != this.whatsNewPanel || panelView._initialized) {
+      return;
+    }
+
+    panelView._initialized = true;
+    panelView.addEventListener("ViewShowing", this);
+  },
+
+  /**
+   * When the What's New panel is showing, we fetch the messages to show.
+   */
+  onWhatsNewPanelShowing() {
+    ToolbarPanelHub.renderMessages(
+      window,
+      document,
+      "PanelUI-whatsNew-message-container"
+    );
   },
 
   /**

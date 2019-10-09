@@ -35,9 +35,6 @@ function waitForThemeChange(list) {
 }
 
 add_task(async function enableHtmlViews() {
-  await SpecialPowers.pushPrefEnv({
-    set: [["extensions.htmlaboutaddons.enabled", true]],
-  });
   promptService = mockPromptService();
   Services.telemetry.clearEvents();
 });
@@ -810,4 +807,118 @@ add_task(async function testExtensionGenericIcon() {
 
   await extension.unload();
   await closeView(win);
+});
+
+add_task(async function testSectionHeadingKeys() {
+  let mockProvider = new MockProvider();
+
+  mockProvider.createAddons([
+    {
+      id: "test-theme",
+      name: "Test Theme",
+      type: "theme",
+    },
+    {
+      id: "test-extension-disabled",
+      name: "Test Disabled Extension",
+      type: "extension",
+      userDisabled: true,
+    },
+    {
+      id: "test-plugin-disabled",
+      name: "Test Disabled Plugin",
+      type: "plugin",
+      userDisabled: true,
+    },
+    {
+      id: "test-locale",
+      name: "Test Enabled Locale",
+      type: "locale",
+    },
+    {
+      id: "test-locale-disabled",
+      name: "Test Disabled Locale",
+      type: "locale",
+      userDisabled: true,
+    },
+    {
+      id: "test-dictionary",
+      name: "Test Enabled Dictionary",
+      type: "dictionary",
+    },
+    {
+      id: "test-dictionary-disabled",
+      name: "Test Disabled Dictionary",
+      type: "dictionary",
+      userDisabled: true,
+    },
+  ]);
+
+  for (let type of ["extension", "theme", "plugin", "locale", "dictionary"]) {
+    let win = await loadInitialView(type);
+    let doc = win.document;
+
+    for (let status of ["enabled", "disabled"]) {
+      let section = getSection(doc, status);
+      let el = section.querySelector(".list-section-heading");
+      isnot(el, null, "Should have heading present");
+      is(
+        doc.l10n.getAttributes(el).id,
+        `${type}-${status}-heading`,
+        `Should have correct ${status} heading for ${type} section`
+      );
+    }
+
+    await closeView(win);
+  }
+});
+
+add_task(async function testDisabledDimming() {
+  const id = "disabled@mochi.test";
+  let extension = ExtensionTestUtils.loadExtension({
+    manifest: {
+      name: "Disable me",
+      applications: { gecko: { id } },
+    },
+    useAddonManager: "temporary",
+  });
+  await extension.startup();
+
+  let addon = await AddonManager.getAddonByID(id);
+
+  let win = await loadInitialView("extension");
+  let doc = win.document;
+
+  const checkOpacity = (card, expected, msg) => {
+    let { opacity } = card.ownerGlobal.getComputedStyle(card.firstElementChild);
+    is(opacity, expected, msg);
+  };
+  const waitForTransition = card =>
+    BrowserTestUtils.waitForEvent(
+      card.firstElementChild,
+      "transitionend",
+      e => e.propertyName === "opacity"
+    );
+
+  let card = getCardByAddonId(doc, id);
+  checkOpacity(card, "1", "The opacity is 1 when enabled");
+
+  // Disable the add-on, check again.
+  await addon.disable();
+  checkOpacity(card, "0.6", "The opacity is dimmed when disabled");
+
+  // Click on the menu button, this should un-dim the card.
+  let transitionEnded = waitForTransition(card);
+  card.panel.open = true;
+  await transitionEnded;
+  checkOpacity(card, "1", "The opacity is 1 when the menu is open");
+
+  // Close the menu, opacity should return.
+  transitionEnded = waitForTransition(card);
+  card.panel.open = false;
+  await transitionEnded;
+  checkOpacity(card, "0.6", "The card is dimmed again");
+
+  await closeView(win);
+  await extension.unload();
 });

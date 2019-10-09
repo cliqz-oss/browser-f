@@ -12,6 +12,8 @@ UNIFIED_SOURCES += [
     'AppTrustDomain.cpp',
 ]
 
+include('/ipc/chromium/chromium-config.mozbuild')
+
 FINAL_LIBRARY = 'xul'
 
 LOCAL_INCLUDES += [
@@ -41,8 +43,13 @@ headers_arrays_certs = [
     ('addons-public.inc', 'addonsPublicRoot', 'addons-public.crt'),
     ('addons-public-intermediate.inc', 'addonsPublicIntermediate', 'addons-public-intermediate.crt'),
     ('addons-stage.inc', 'addonsStageRoot', 'addons-stage.crt'),
+<<<<<<< HEAD
     ('privileged-package-root.inc', 'privilegedPackageRoot', 'privileged-package-root.der'),
     ('cliqz-addons-cert.inc', 'cliqzAddonsRoot', 'cliqz-addons.crt'),
+||||||| merged common ancestors
+    ('privileged-package-root.inc', 'privilegedPackageRoot', 'privileged-package-root.der'),
+=======
+>>>>>>> upstream/upstream-releases
 ]
 
 for header, array_name, cert in headers_arrays_certs:

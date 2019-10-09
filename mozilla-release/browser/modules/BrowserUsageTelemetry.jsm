@@ -7,6 +7,7 @@
 
 var EXPORTED_SYMBOLS = [
   "BrowserUsageTelemetry",
+  "getUniqueDomainsVisitedInPast24Hours",
   "URICountListener",
   "URLBAR_SELECTED_RESULT_TYPES",
   "URLBAR_SELECTED_RESULT_METHODS",
@@ -524,10 +525,11 @@ let BrowserUsageTelemetry = {
       return;
     }
 
-    const isOneOff = !!details.isOneOff;
-    const countId = getSearchEngineId(engine) + "." + source;
+    const countIdPrefix = getSearchEngineId(engine) + ".";
+    const countIdSource = countIdPrefix + source;
+    let histogram = Services.telemetry.getKeyedHistogramById("SEARCH_COUNTS");
 
-    if (isOneOff) {
+    if (details.isOneOff) {
       if (!KNOWN_ONEOFF_SOURCES.includes(source)) {
         // Silently drop the error if this bogus call
         // came from 'urlbar' or 'searchbar'. They're
@@ -535,9 +537,7 @@ let BrowserUsageTelemetry = {
         // code paths because they want to record the search
         // in SEARCH_COUNTS.
         if (["urlbar", "searchbar"].includes(source)) {
-          Services.telemetry
-            .getKeyedHistogramById("SEARCH_COUNTS")
-            .add(countId);
+          histogram.add(countIdSource);
           return;
         }
         throw new Error("Unknown source for one-off search: " + source);
@@ -546,15 +546,15 @@ let BrowserUsageTelemetry = {
       if (!KNOWN_SEARCH_SOURCES.includes(source)) {
         throw new Error("Unknown source for search: " + source);
       }
-      let histogram = Services.telemetry.getKeyedHistogramById("SEARCH_COUNTS");
-      histogram.add(countId);
-
       if (
         details.alias &&
         engine.wrappedJSObject._internalAliases.includes(details.alias)
       ) {
-        let aliasCountId = getSearchEngineId(engine) + ".alias";
-        histogram.add(aliasCountId);
+        // This search uses an internal @search keyword.  Record the source as
+        // "alias", not "urlbar".
+        histogram.add(countIdPrefix + "alias");
+      } else {
+        histogram.add(countIdSource);
       }
     }
 
@@ -890,3 +890,8 @@ let BrowserUsageTelemetry = {
     }
   },
 };
+
+// Used by nsIBrowserUsage
+function getUniqueDomainsVisitedInPast24Hours() {
+  return URICountListener.uniqueDomainsVisitedInPast24Hours;
+}

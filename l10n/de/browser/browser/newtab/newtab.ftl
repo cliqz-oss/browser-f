@@ -47,6 +47,8 @@ newtab-topsites-add-button = Hinzufügen
 
 ## Top Sites - Delete history confirmation dialog. 
 
+## Top Sites - Delete history confirmation dialog.
+
 newtab-confirm-delete-history-p1 = Soll wirklich jede Instanz dieser Seite aus Ihrer Chronik gelöscht werden?
 # "This action" refers to deleting a page from history.
 newtab-confirm-delete-history-p2 = Diese Aktion kann nicht rückgängig gemacht werden.
@@ -57,6 +59,7 @@ newtab-confirm-delete-history-p2 = Diese Aktion kann nicht rückgängig gemacht 
 newtab-menu-section-tooltip =
     .title = Menü öffnen
     .aria-label = Menü öffnen
+
 # This tooltip is for the context menu of Pocket cards or Topsites
 # Variables:
 #  $title (String): The label or hostname of the site. This is for screen readers when the context menu button is focused/active.
@@ -109,11 +112,15 @@ newtab-menu-open-file = Datei öffnen
 
 newtab-label-visited = Besucht
 newtab-label-bookmarked = Lesezeichen
+newtab-label-removed-bookmark = Lesezeichen entfernt
 newtab-label-recommended = Beliebt
 newtab-label-saved = Bei { -pocket-brand-name } gespeichert
 newtab-label-download = Heruntergeladen
 
 ## Section Menu: These strings are displayed in the section context menu and are 
+## meant as a call to action for the given section.
+
+## Section Menu: These strings are displayed in the section context menu and are
 ## meant as a call to action for the given section.
 
 newtab-section-menu-remove-section = Abschnitt entfernen
@@ -126,6 +133,13 @@ newtab-section-menu-add-search-engine = Suchmaschine hinzufügen
 newtab-section-menu-move-up = Nach oben schieben
 newtab-section-menu-move-down = Nach unten schieben
 newtab-section-menu-privacy-notice = Datenschutzhinweis
+
+## Section aria-labels
+
+newtab-section-collapse-section-label =
+    .aria-label = Abschnitt einklappen
+newtab-section-expand-section-label =
+    .aria-label = Abschnitt ausklappen
 
 ## Section Headers.
 
@@ -142,6 +156,16 @@ newtab-empty-section-highlights = Surfen Sie los und wir zeigen Ihnen hier einig
 # Variables:
 #  $provider (String): Name of the content provider for this section, e.g "Pocket".
 newtab-empty-section-topstories = Jetzt kennen Sie die Neuigkeiten. Schauen Sie später wieder vorbei, um neue Informationen von { $provider } zu erhalten. Können Sie nicht warten? Wählen Sie ein beliebtes Thema und lesen Sie weitere interessante Geschichten aus dem Internet.
+
+
+## Empty Section (Content Discovery Experience). These show when there are no more stories or when some stories fail to load.
+
+newtab-discovery-empty-section-topstories-header = Alle Artikel gelesen
+newtab-discovery-empty-section-topstories-content = Öffnen Sie diese Seite später ein weiteres Mal, um neue Artikel angezeigt zu bekommen.
+newtab-discovery-empty-section-topstories-try-again-button = Erneut versuchen
+newtab-discovery-empty-section-topstories-loading = Wird geladen…
+# Displays when a layout in a section took too long to fetch articles.
+newtab-discovery-empty-section-topstories-timed-out = Leider ist ein Fehler beim Laden des Abschnitts aufgetreten.
 
 ## Pocket Content Section.
 

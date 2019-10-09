@@ -4,9 +4,15 @@
 
 case "$(uname -s)" in
 MINGW*)
+<<<<<<< HEAD
     export NODEJS=$TOOLTOOL_DIR/node/node.exe
+||||||| merged common ancestors
+    export NODEJS=$topsrcdir/node/node.exe
+=======
+    export NODEJS=$MOZ_FETCHES_DIR/node/node.exe
+>>>>>>> upstream/upstream-releases
     ;;
 *)
-    export NODEJS=$topsrcdir/node/bin/node
+    export NODEJS=$MOZ_FETCHES_DIR/node/bin/node
     ;;
 esac

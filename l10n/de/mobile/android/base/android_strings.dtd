@@ -34,6 +34,8 @@
 <!ENTITY firstrun_button_notnow "Nicht sofort">
 <!ENTITY firstrun_button_next "Weiter">
 
+<!ENTITY firstrun_signin_button2 "Anmelden">
+
 <!ENTITY firstrun_tabqueue_title "Links">
 <!-- Localization note (firstrun_tabqueue_message): 'Tab queue' is a feature that allows users to queue up or save links from outside of Firefox (without switching apps) - these links will be loaded in Firefox the next time Firefox is opened. -->
 <!ENTITY firstrun_tabqueue_message_off "Links später öffnen lassen">
@@ -906,6 +908,13 @@ just addresses the organization to follow, e.g. "This site is run by " -->
 <!ENTITY helper_triple_readerview_open_title "Offline verfügbar">
 <!ENTITY helper_triple_readerview_open_message "Fügen Sie Seiten in der Leseansicht als Lesezeichen hinzu, um sie auch offline lesen zu können.">
 <!ENTITY helper_triple_readerview_open_button "Zu Lesezeichen hinzufügen">
+
+<!-- LOCALIZATION NOTE (activity_stream_signin_title, activity_stream_signin_description, activity_stream_signup_button,
+activity_stream_signin_prompt, activity_stream_signin_prompt_button):
+- These labels are shown in the Activity Stream recommending the user to sign in. -->
+<!ENTITY activity_stream_signin_title "Willkommen bei &brandShortName;">
+<!ENTITY activity_stream_signin_description "Beginnen Sie mit dem Synchronisieren von Lesezeichen, Passwörtern und mehr mittels Ihres Firefox-Kontos.">
+<!ENTITY activity_stream_signin_button "Anmelden">
 
 <!ENTITY activity_stream_topsites "Wichtige Seiten">
 <!-- LOCALIZATION NOTE (activity_stream_topstories): &brandPocket is the brand of the company, Pocket, that is being used to provide suggestions for articles. -->

@@ -30,6 +30,13 @@ const LoginInfo = Components.Constructor(
 const BRAND_BUNDLE = "chrome://branding/locale/brand.properties";
 
 /**
+ * The maximum age of the password in ms (using `timePasswordChanged`) whereby
+ * a user can toggle the password visibility in a doorhanger to add a username to
+ * a saved login.
+ */
+const VISIBILITY_TOGGLE_MAX_PW_AGE_MS = 2 * 60 * 1000; // 2 minutes
+
+/**
  * Constants for password prompt telemetry.
  * Mirrored in mobile/android/components/LoginManagerPrompter.js */
 const PROMPT_DISPLAYED = 0;
@@ -925,13 +932,21 @@ LoginManagerPrompter.prototype = {
     this._openerBrowser = aOpenerBrowser;
   },
 
-  promptToSavePassword(aLogin, dismissed) {
+  promptToSavePassword(aLogin, dismissed = false, notifySaved = false) {
     this.log("promptToSavePassword");
     var notifyObj = this._getPopupNote();
     if (notifyObj) {
-      this._showLoginCaptureDoorhanger(aLogin, "password-save", {
-        dismissed: this._inPrivateBrowsing || dismissed,
-      });
+      this._showLoginCaptureDoorhanger(
+        aLogin,
+        "password-save",
+        {
+          dismissed: this._inPrivateBrowsing || dismissed,
+          extraAttr: notifySaved ? "attention" : "",
+        },
+        {
+          notifySaved,
+        }
+      );
       Services.obs.notifyObservers(aLogin, "passwordmgr-prompt-save");
     } else {
       this._showSaveLoginDialog(aLogin);
@@ -943,16 +958,33 @@ LoginManagerPrompter.prototype = {
    *
    * @param {nsILoginInfo} login
    *        Login to save or change. For changes, this login should contain the
-   *        new password.
+   *        new password and/or username
    * @param {string} type
    *        This is "password-save" or "password-change" depending on the
    *        original notification type. This is used for telemetry and tests.
+   * @param {object} showOptions
+   *        Options to pass along to PopupNotifications.show().
+   * @param {bool} [options.notifySaved = false]
+   *        Whether to indicate to the user that the login was already saved.
+   * @param {string} [options.messageStringID = undefined]
+   *        An optional string ID to override the default message.
+   * @param {string} [options.autoSavedLoginGuid = ""]
+   *        A string guid value for the auto-saved login to be removed if the changes
+   *        match it to an different login
    */
-  _showLoginCaptureDoorhanger(login, type, options = {}) {
+  _showLoginCaptureDoorhanger(
+    login,
+    type,
+    showOptions = {},
+    { notifySaved = false, messageStringID, autoSavedLoginGuid = "" } = {}
+  ) {
     let { browser } = this._getNotifyWindow();
     if (!browser) {
       return;
     }
+    this.log(
+      `_showLoginCaptureDoorhanger, got autoSavedLoginGuid: ${autoSavedLoginGuid}`
+    );
 
     let saveMsgNames = {
       prompt: login.username === "" ? "saveLoginMsgNoUser" : "saveLoginMsg",
@@ -972,6 +1004,10 @@ LoginManagerPrompter.prototype = {
 
     let initialMsgNames =
       type == "password-save" ? saveMsgNames : changeMsgNames;
+
+    if (messageStringID) {
+      changeMsgNames.prompt = messageStringID;
+    }
 
     let brandBundle = Services.strings.createBundle(BRAND_BUNDLE);
     let brandShortName = brandBundle.GetStringFromName("brandShortName");
@@ -1014,6 +1050,9 @@ LoginManagerPrompter.prototype = {
     };
 
     let updateButtonLabel = () => {
+      if (!currentNotification) {
+        Cu.reportError("updateButtonLabel, no currentNotification");
+      }
       let foundLogins = LoginHelper.searchLoginsWithObject({
         formActionOrigin: login.formActionOrigin,
         origin: login.origin,
@@ -1021,7 +1060,11 @@ LoginManagerPrompter.prototype = {
         schemeUpgrades: LoginHelper.schemeUpgrades,
       });
 
-      let logins = this._filterUpdatableLogins(login, foundLogins);
+      let logins = this._filterUpdatableLogins(
+        login,
+        foundLogins,
+        autoSavedLoginGuid
+      );
       let msgNames = logins.length == 0 ? saveMsgNames : changeMsgNames;
 
       // Update the label based on whether this will be a new login or not.
@@ -1109,7 +1152,11 @@ LoginManagerPrompter.prototype = {
         schemeUpgrades: LoginHelper.schemeUpgrades,
       });
 
-      let logins = this._filterUpdatableLogins(login, foundLogins);
+      let logins = this._filterUpdatableLogins(
+        login,
+        foundLogins,
+        autoSavedLoginGuid
+      );
       let resolveBy = ["scheme", "timePasswordChanged"];
       logins = LoginHelper.dedupeLogins(
         logins,
@@ -1117,8 +1164,28 @@ LoginManagerPrompter.prototype = {
         resolveBy,
         login.origin
       );
+      // sort exact username matches to the top
+      logins.sort(l => (l.username == login.username ? -1 : 1));
 
-      if (logins.length == 0) {
+      this.log(`persistData: Matched ${logins.length} logins`);
+
+      let loginToRemove;
+      let loginToUpdate = logins.shift();
+
+      if (logins.length && logins[0].guid == autoSavedLoginGuid) {
+        loginToRemove = logins.shift();
+      }
+      if (logins.length) {
+        this.log(
+          "multiple logins, loginToRemove:",
+          loginToRemove && loginToRemove.guid
+        );
+        Cu.reportError("Unexpected match of multiple logins.");
+        return;
+      }
+
+      if (!loginToUpdate) {
+        // Create a new login, don't update an original.
         // The original login we have been provided with might have its own
         // metadata, but we don't want it propagated to the newly created one.
         Services.logins.addLogin(
@@ -1132,18 +1199,28 @@ LoginManagerPrompter.prototype = {
             login.passwordField
           )
         );
-      } else if (logins.length == 1) {
-        if (
-          logins[0].password == login.password &&
-          logins[0].username == login.username
-        ) {
-          // We only want to touch the login's use count and last used time.
-          this._updateLogin(logins[0]);
-        } else {
-          this._updateLogin(logins[0], login);
-        }
+      } else if (
+        loginToUpdate.password == login.password &&
+        loginToUpdate.username == login.username
+      ) {
+        // We only want to touch the login's use count and last used time.
+        this.log("persistData: Touch matched login", loginToUpdate.guid);
+        this._updateLogin(loginToUpdate);
       } else {
-        Cu.reportError("Unexpected match of multiple logins.");
+        this.log("persistData: Update matched login", loginToUpdate.guid);
+        this._updateLogin(loginToUpdate, login);
+        // notify that this auto-saved login been merged
+        if (loginToRemove && loginToRemove.guid == autoSavedLoginGuid) {
+          Services.obs.notifyObservers(
+            loginToRemove,
+            "passwordmgr-autosaved-login-merged"
+          );
+        }
+      }
+
+      if (loginToRemove) {
+        this.log("persistData: removing login", loginToRemove.guid);
+        Services.logins.removeLogin(loginToRemove);
       }
     };
 
@@ -1154,7 +1231,7 @@ LoginManagerPrompter.prototype = {
       callback: () => {
         histogram.add(PROMPT_ADD_OR_UPDATE);
         if (histogramName == "PWMGR_PROMPT_REMEMBER_ACTION") {
-          Services.obs.notifyObservers(null, "LoginStats:NewSavedPassword");
+          Services.obs.notifyObservers(browser, "LoginStats:NewSavedPassword");
         }
         readDataFromUI();
         persistData();
@@ -1208,9 +1285,11 @@ LoginManagerPrompter.prototype = {
       "togglePasswordAccessKey2"
     );
 
-    this._getPopupNote().show(
+    let popupNote = this._getPopupNote();
+    let notificationID = "password";
+    popupNote.show(
       browser,
-      "password",
+      notificationID,
       promptMsg,
       "password-notification-icon",
       mainAction,
@@ -1249,20 +1328,29 @@ LoginManagerPrompter.prototype = {
                   toggleBtn.addEventListener("command", onVisibilityToggle);
                   toggleBtn.setAttribute("label", togglePasswordLabel);
                   toggleBtn.setAttribute("accesskey", togglePasswordAccessKey);
-                  toggleBtn.setAttribute(
-                    "hidden",
-                    LoginHelper.isMasterPasswordSet()
-                  );
-                }
-                if (this.wasDismissed) {
-                  chromeDoc
-                    .getElementById("password-notification-visibilityToggle")
-                    .setAttribute("hidden", true);
+                  let hideToggle =
+                    LoginHelper.isMasterPasswordSet() ||
+                    // Dismissed-by-default prompts should still show the toggle.
+                    (this.timeShown && this.wasDismissed) ||
+                    // If we are only adding a username then the password is
+                    // one that is already saved and we don't want to reveal
+                    // it as the submitter of this form may not be the account
+                    // owner, they may just be using the saved password.
+                    (messageStringID == "updateLoginMsgAddUsername" &&
+                      login.timePasswordChanged <
+                        Date.now() - VISIBILITY_TOGGLE_MAX_PW_AGE_MS);
+                  toggleBtn.setAttribute("hidden", hideToggle);
                 }
                 break;
-              case "shown":
+              case "shown": {
                 writeDataToUI();
+                let anchorIcon = this.anchorElement;
+                if (anchorIcon && this.options.extraAttr == "attention") {
+                  anchorIcon.removeAttribute("extraAttr");
+                  delete this.options.extraAttr;
+                }
                 break;
+              }
               case "dismissed":
                 this.wasDismissed = true;
                 readDataFromUI();
@@ -1283,9 +1371,15 @@ LoginManagerPrompter.prototype = {
             return false;
           },
         },
-        options
+        showOptions
       )
     );
+
+    if (notifySaved) {
+      let notification = popupNote.getNotification(notificationID);
+      let anchor = notification.anchorElement;
+      anchor.ownerGlobal.ConfirmationHint.show(anchor, "passwordSaved");
+    }
   },
 
   _removeLoginNotifications() {
@@ -1367,12 +1461,21 @@ LoginManagerPrompter.prototype = {
    *                       The old login we may want to update.
    * @param {nsILoginInfo} aNewLogin
    *                       The new login from the page form.
-   * @param dismissed
-   *        A boolean indicating if the prompt should be automatically
-   *        dismissed on being shown.
+   * @param {boolean} [dismissed = false]
+   *                  If the prompt should be automatically dismissed on being shown.
+   * @param {boolean} [notifySaved = false]
+   *                  Whether the notification should indicate that a login has been saved
+   * @param {string} [autoSavedLoginGuid = ""]
+   *                 A guid value for the old login to be removed if the changes match it
+   *                 to a different login
    */
-  promptToChangePassword(aOldLogin, aNewLogin, dismissed) {
-    this.log("promptToChangePassword");
+  promptToChangePassword(
+    aOldLogin,
+    aNewLogin,
+    dismissed = false,
+    notifySaved = false,
+    autoSavedLoginGuid = ""
+  ) {
     let notifyObj = this._getPopupNote();
 
     if (notifyObj) {
@@ -1380,7 +1483,9 @@ LoginManagerPrompter.prototype = {
         notifyObj,
         aOldLogin,
         aNewLogin,
-        dismissed
+        dismissed,
+        notifySaved,
+        autoSavedLoginGuid
       );
     } else {
       this._showChangeLoginDialog(aOldLogin, aNewLogin);
@@ -1401,20 +1506,49 @@ LoginManagerPrompter.prototype = {
    * @param dismissed
    *        A boolean indicating if the prompt should be automatically
    *        dismissed on being shown.
+   * @param notifySaved
+   *        A boolean value indicating whether the notification should indicate that
+   *        a login has been saved
    */
   _showChangeLoginNotification(
     aNotifyObj,
     aOldLogin,
     aNewLogin,
-    dismissed = false
+    dismissed = false,
+    notifySaved = false,
+    autoSavedLoginGuid = ""
   ) {
-    aOldLogin.origin = aNewLogin.origin;
-    aOldLogin.formActionOrigin = aNewLogin.formActionOrigin;
-    aOldLogin.password = aNewLogin.password;
-    aOldLogin.username = aNewLogin.username;
-    this._showLoginCaptureDoorhanger(aOldLogin, "password-change", {
-      dismissed,
-    });
+    let login = aOldLogin.clone();
+    login.origin = aNewLogin.origin;
+    login.formActionOrigin = aNewLogin.formActionOrigin;
+    login.password = aNewLogin.password;
+    login.username = aNewLogin.username;
+
+    let messageStringID;
+    if (
+      aOldLogin.username === "" &&
+      login.username !== "" &&
+      login.password == aOldLogin.password
+    ) {
+      // If the saved password matches the password we're prompting with then we
+      // are only prompting to let the user add a username since there was one in
+      // the form. Change the message so the purpose of the prompt is clearer.
+      messageStringID = "updateLoginMsgAddUsername";
+    }
+
+    this._showLoginCaptureDoorhanger(
+      login,
+      "password-change",
+      {
+        dismissed,
+        extraAttr: notifySaved ? "attention" : "",
+      },
+      {
+        notifySaved,
+        messageStringID,
+        autoSavedLoginGuid,
+      }
+    );
 
     let oldGUID = aOldLogin.QueryInterface(Ci.nsILoginMetaInfo).guid;
     Services.obs.notifyObservers(
@@ -1804,21 +1938,26 @@ LoginManagerPrompter.prototype = {
    * to match a submitted login, instead of creating a new one.
    *
    * Given a login and a loginList, it filters the login list
-   * to find every login with either the same username as aLogin
-   * or with the same password as aLogin and an empty username
-   * so the user can add a username.
+   * to find every login with either:
+   * - the same username as aLogin
+   * - the same password as aLogin and an empty username
+   *   so the user can add a username.
+   * - the same guid as the given login when it has an empty username
    *
    * @param {nsILoginInfo} aLogin
    *                       login to use as filter.
    * @param {nsILoginInfo[]} aLoginList
    *                         Array of logins to filter.
+   * @param {String} includeGUID
+   *                 guid value for login that not be filtered out
    * @returns {nsILoginInfo[]} the filtered array of logins.
    */
-  _filterUpdatableLogins(aLogin, aLoginList) {
+  _filterUpdatableLogins(aLogin, aLoginList, includeGUID) {
     return aLoginList.filter(
       l =>
         l.username == aLogin.username ||
-        (l.password == aLogin.password && !l.username)
+        (l.password == aLogin.password && !l.username) ||
+        (includeGUID && includeGUID == l.guid)
     );
   },
 }; // end of LoginManagerPrompter implementation

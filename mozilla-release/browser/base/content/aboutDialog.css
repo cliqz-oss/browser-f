@@ -15,6 +15,7 @@
   /* Cliqz. Don't use
   background-image: url("chrome://branding/content/about-wordmark.svg");*/
   background-repeat: no-repeat;
+  background-size: 288px auto;
   /* padding-top creates room for the wordmark */
   margin-top: 20px;
   margin-bottom: 38px;

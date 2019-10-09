@@ -655,7 +655,12 @@ class FileSource {
       // `true` means that the file is indexed, but hasn't
       // been fetched yet.
       if (this.cache[fullPath] !== true) {
-        return this.cache[fullPath];
+        if (this.cache[fullPath] instanceof Promise && options.sync) {
+          console.warn(`[l10nregistry] Attempting to synchronously load file
+            ${fullPath} while it's being loaded asynchronously.`);
+        } else {
+          return this.cache[fullPath];
+        }
       }
     } else if (this.indexed) {
       return false;
@@ -666,7 +671,7 @@ class FileSource {
       if (data === false) {
         this.cache[fullPath] = false;
       } else {
-        this.cache[fullPath] = FluentResource.fromString(data);
+        this.cache[fullPath] = new FluentResource(data);
       }
 
       return this.cache[fullPath];
@@ -675,7 +680,7 @@ class FileSource {
     // async
     return this.cache[fullPath] = L10nRegistry.load(fullPath).then(
       data => {
-        return this.cache[fullPath] = FluentResource.fromString(data);
+        return this.cache[fullPath] = new FluentResource(data);
       },
       err => {
         this.cache[fullPath] = false;

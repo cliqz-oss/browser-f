@@ -267,6 +267,62 @@ applications-type-column =
 applications-action-column =
     .label = Aktion
     .accesskey = A
+# Variables:
+#   $extension (String) - file extension (e.g .TXT)
+applications-file-ending = { $extension }-Datei
+applications-action-save =
+    .label = Datei speichern
+# Variables:
+#   $app-name (String) - Name of an application (e.g Adobe Acrobat)
+applications-use-app =
+    .label = Mit { $app-name } öffnen
+# Variables:
+#   $app-name (String) - Name of an application (e.g Adobe Acrobat)
+applications-use-app-default =
+    .label = Mit { $app-name } öffnen (Standard)
+applications-use-other =
+    .label = Andere Anwendung…
+applications-select-helper = Hilfsanwendung wählen
+applications-manage-app =
+    .label = Anwendungsdetails…
+applications-always-ask =
+    .label = Jedes Mal nachfragen
+applications-type-pdf = Portable Document Format (PDF)
+# Variables:
+#   $type (String) - the MIME type (e.g application/binary)
+applications-type-pdf-with-type = { applications-type-pdf } ({ $type })
+# Variables:
+#   $type-description (String) - Description of the type (e.g "Portable Document Format")
+#   $type (String) - the MIME type (e.g application/binary)
+applications-type-description-with-type = { $type-description } ({ $type })
+# Variables:
+#   $plugin-name (String) - Name of a plugin (e.g Adobe Flash)
+applications-use-plugin-in =
+    .label = { $plugin-name } (in { -brand-short-name }) verwenden
+applications-preview-inapp =
+    .label = Vorschau in { -brand-short-name }
+
+## The strings in this group are used to populate
+## selected label element based on the string from
+## the selected menu item.
+
+applications-use-plugin-in-label =
+    .value = { applications-use-plugin-in.label }
+applications-action-save-label =
+    .value = { applications-action-save.label }
+applications-use-app-label =
+    .value = { applications-use-app.label }
+applications-preview-inapp-label =
+    .value = { applications-preview-inapp.label }
+applications-always-ask-label =
+    .value = { applications-always-ask.label }
+applications-use-app-default-label =
+    .value = { applications-use-app-default.label }
+applications-use-other-label =
+    .value = { applications-use-other.label }
+
+##
+
 drm-content-header = Inhalte mit DRM-Kopierschutz
 play-drm-content =
     .label = Inhalte mit DRM-Kopierschutz wiedergeben
@@ -296,28 +352,24 @@ update-enable-search-update =
     .label = Suchmaschinen automatisch aktualisieren
     .accesskey = S
 update-pref-write-failure-title = Schreibfehler
-
+# Variables:
+#   $path (String) - Path to the configuration file
+update-pref-write-failure-message = Einstellung konnte nicht gespeichert werden. Fehler beim Schreiben dieser Datei: { $path }
 update-setting-write-failure-title = Fehler beim Speichern der Update-Einstellungen
-
 # Variables:
 #   $path (String) - Path to the configuration file
 # The newlines between the main text and the line containing the path is
 # intentional so the path is easier to identify.
 update-setting-write-failure-message =
     { -brand-short-name } bemerkte einen Fehler und hat diese Änderung nicht gespeichert. Das Setzen dieser Update-Einstellung benötigt Schreibrechte für die unten genannte Datei. Sie oder ein Systemadministrator können das Problem eventuell beheben, indem Sie der Gruppe "Benutzer" vollständige Kontrolle über die Datei gewähren.
-
+    
     Konnte folgende Datei nicht speichern: { $path }
-
 update-in-progress-title = Update wird durchgeführt
-
 update-in-progress-message = Soll { -brand-short-name } mit dem Update fortfahren?
-
 update-in-progress-ok-button = &Verwerfen
 # Continue is the cancel button so pressing escape or using a platform standard
 # method of closing the UI will not discard the update.
 update-in-progress-cancel-button = &Fortfahren
-
-update-pref-write-failure-message = Einstellung konnte nicht gespeichert werden. Fehler beim Schreiben dieser Datei: { $path }
 
 ## General Section - Performance
 
@@ -357,6 +409,10 @@ browsing-use-cursor-navigation =
 browsing-search-on-start-typing =
     .label = Beim Tippen automatisch im Seitentext suchen
     .accesskey = u
+browsing-picture-in-picture-toggle-enabled =
+    .label = Videosteuerung für Bild-im-Bild (PiP) anzeigen
+    .accesskey = V
+browsing-picture-in-picture-learn-more = Weitere Informationen
 browsing-cfr-recommendations =
     .label = Erweiterungen während des Surfens empfehlen
     .accesskey = h
@@ -613,13 +669,20 @@ privacy-header = Browser-Datenschutz
 logins-header = Zugangsdaten & Passwörter
 forms-ask-to-save-logins =
     .label = Fragen, ob Zugangsdaten und Passwörter für Websites gespeichert werden sollen
-    .accesskey = Z
+    .accesskey = F
 forms-exceptions =
     .label = Ausnahmen…
     .accesskey = u
 forms-generate-passwords =
     .label = Starke Passwörter erzeugen und vorschlagen
     .accesskey = P
+forms-breach-alerts =
+    .label = Alarme für Passwörter, deren Websites von einem Datenleck betroffen waren
+    .accesskey = A
+forms-breach-alerts-learn-more-link = Weitere Informationen
+forms-fill-logins-and-passwords =
+    .label = Zugangsdaten und Passwörter automatisch ausfüllen
+    .accesskey = Z
 forms-saved-logins =
     .label = Gespeicherte Zugangsdaten…
     .accesskey = G
@@ -629,6 +692,8 @@ forms-master-pw-use =
 forms-master-pw-change =
     .label = Master-Passwort ändern…
     .accesskey = M
+forms-master-pw-fips-title = Sie sind derzeit im FIPS-Modus. FIPS benötigt ein nicht leeres Master-Passwort.
+forms-master-pw-fips-desc = Ändern des Passworts fehlgeschlagen
 
 ## Privacy Section - History
 
@@ -701,6 +766,10 @@ sitedata-block-desc = Zu blockieren:
     .accesskey = Z
 sitedata-option-block-trackers =
     .label = Nutzer verfolgende Elemente von Drittanbietern
+sitedata-option-block-cross-site-trackers =
+    .label = Zur seitenübergreifenden Aktivitätenverfolgung
+sitedata-option-block-cross-site-and-social-media-trackers =
+    .label = Zur seitenübergreifenden Aktivitätenverfolgung und von sozialen Netzwerken
 sitedata-option-block-unvisited =
     .label = Cookies von nicht besuchten Websites
 sitedata-option-block-all-third-party =
@@ -736,6 +805,8 @@ addressbar-suggestions-settings = Einstellungen für Suchvorschläge ändern
 
 content-blocking-header = Seitenelemente blockieren
 content-blocking-section-description = Schützen Sie Ihre Privatsphäre während des Surfens, indem Sie unsichtbare Inhalte blockieren. Diese verfolgen sonst, welche Websites Sie besuchen, und legen ein Profil über Sie an. Das Blockieren einiger dieser Inhalte kann das Laden von Websites beschleunigen.
+content-blocking-enhanced-tracking-protection = Verbesserter Schutz vor Aktivitätenverfolgung
+content-blocking-section-top-level-description = Skripte zur Aktivitätenverfolgung folgen Ihnen und sammeln Informationen über Ihre Internet-Gewohnheiten und Interessen. { -brand-short-name } blockiert viele dieser Skripte zur Aktivitätenverfolgung und andere böswillige Skripte.
 content-blocking-learn-more = Weitere Informationen
 # The terminology used to refer to categories of Content Blocking is also used in chrome/browser/browser.properties and should be translated consistently.
 # "Standard" in this case is an adjective, meaning "default" or "normal".
@@ -757,15 +828,41 @@ content-blocking-custom-desc = Entsprechend den Einstellungen blockieren:
 
 content-blocking-private-trackers = Bekannte Elemente zur Aktivitätenverfolgung nur in Vergessen Modus
 content-blocking-third-party-cookies = Cookies zur Aktivitätenverfolgung von Drittanbietern
+
+## These strings are used to define the different levels of
+## Enhanced Tracking Protection.
+
+# "Standard" in this case is an adjective, meaning "default" or "normal".
+enhanced-tracking-protection-setting-standard =
+    .label = Standard
+    .accesskey = S
+enhanced-tracking-protection-setting-strict =
+    .label = Streng
+    .accesskey = r
+enhanced-tracking-protection-setting-custom =
+    .label = Benutzerdefiniert
+    .accesskey = B
+
+##
+
+content-blocking-etp-standard-desc = Ausgewogen zwischen Schutz und Leistung. Seiten laden normal.
+content-blocking-etp-strict-desc = Stärkerer Schutz, einige Websites oder mancher Inhalt funktioniert eventuell nicht.
+content-blocking-etp-custom-desc = Wählen Sie, welche Art von Skripten zur Aktivitätenverfolgung und sonstige Inhalte blockiert werden.
+content-blocking-private-windows = Inhalte zur Aktivitätenverfolgung in privaten Fenstern
+content-blocking-cross-site-tracking-cookies = Cookies zur seitenübergreifenden Aktivitätenverfolgung
+content-blocking-social-media-trackers = Skripte zur Aktivitätenverfolgung durch soziale Netzwerke
 content-blocking-all-cookies = Alle Cookies
 content-blocking-unvisited-cookies = Cookies von nicht besuchten Websites
 content-blocking-all-windows-trackers = Erkannte Elemente zur Aktivitätenverfolgung in allen Fenstern
+content-blocking-all-windows-tracking-content = Inhalte zur Aktivitätenverfolgung in allen Fenstern
 content-blocking-all-third-party-cookies = Alle Cookies von Drittanbietern
 content-blocking-cryptominers = Heimliche Digitalwährungsberechner (Krypto-Miner)
 content-blocking-fingerprinters = Identifizierer (Fingerprinter)
 content-blocking-warning-title = Achtung!
 content-blocking-warning-description = Das Blockieren von Inhalten kann bei einigen Websites zu Problemen führen. Das Deaktivieren des Blockierens für von Ihnen vertraute Seiten ist ganz einfach.
 content-blocking-learn-how = Erfahren Sie mehr
+content-blocking-etp-warning-description = Das Blockieren von Skripten zur Aktivitätenverfolgung kann Auswirkungen auf das Funktionieren einiger Websites haben. Laden Sie eine Seite einschließlich Skripten zur Aktivitätenverfolgung neu, damit der komplette Inhalte geladen wird.
+content-blocking-warning-learn-how = Weitere Informationen
 content-blocking-reload-description = Um die Änderungen anzuwenden, müssen alle Tabs neu geladen werden.
 content-blocking-reload-tabs-button =
     .label = Alle Tabs neu laden
@@ -773,6 +870,9 @@ content-blocking-reload-tabs-button =
 content-blocking-trackers-label =
     .label = Elemente zur Aktivitätenverfolgung
     .accesskey = E
+content-blocking-tracking-content-label =
+    .label = Inhalte zur Aktivitätenverfolgung
+    .accesskey = n
 content-blocking-tracking-protection-option-all-windows =
     .label = In allen Fenstern
     .accesskey = a
@@ -833,13 +933,10 @@ permissions-block-autoplay-media2 =
 permissions-block-autoplay-media-exceptions =
     .label = Ausnahmen…
     .accesskey = A
-
 permissions-autoplay = Automatische Wiedergabe
-
 permissions-autoplay-settings =
     .label = Einstellungen…
     .accesskey = E
-
 permissions-block-popups =
     .label = Pop-up-Fenster blockieren
     .accesskey = P

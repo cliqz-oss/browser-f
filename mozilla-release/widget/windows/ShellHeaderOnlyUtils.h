@@ -161,7 +161,7 @@ inline LauncherVoidResult ShellExecuteByExplorer(const _bstr_t& aPath,
 using UniqueAbsolutePidl =
     UniquePtr<RemovePointer<PIDLIST_ABSOLUTE>::Type, CoTaskMemFreeDeleter>;
 
-inline LauncherResult<PIDLIST_ABSOLUTE> ShellParseDisplayName(
+inline LauncherResult<UniqueAbsolutePidl> ShellParseDisplayName(
     const wchar_t* aPath) {
   PIDLIST_ABSOLUTE rawAbsPidl = nullptr;
   SFGAOF sfgao;
@@ -170,7 +170,7 @@ inline LauncherResult<PIDLIST_ABSOLUTE> ShellParseDisplayName(
     return LAUNCHER_ERROR_FROM_HRESULT(hr);
   }
 
-  return rawAbsPidl;
+  return UniqueAbsolutePidl(rawAbsPidl);
 }
 
 }  // namespace mozilla

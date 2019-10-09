@@ -308,6 +308,16 @@ function getUsage(usageHandler, getAll) {
   return request;
 }
 
+function getOriginUsage(principal, fromMemory = false) {
+  let request = Services.qms.getUsageForPrincipal(
+    principal,
+    function() {},
+    fromMemory
+  );
+
+  return request;
+}
+
 function getCurrentUsage(usageHandler) {
   let principal = Cc["@mozilla.org/systemprincipal;1"].createInstance(
     Ci.nsIPrincipal
@@ -327,7 +337,7 @@ function getPrincipal(url) {
   let ssm = Cc["@mozilla.org/scriptsecuritymanager;1"].getService(
     Ci.nsIScriptSecurityManager
   );
-  return ssm.createCodebasePrincipal(uri, {});
+  return ssm.createContentPrincipal(uri, {});
 }
 
 function getCurrentPrincipal() {

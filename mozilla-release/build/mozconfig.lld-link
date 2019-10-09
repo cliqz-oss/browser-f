@@ -1,5 +1,13 @@
+<<<<<<< HEAD
 if test -d "$TOOLTOOL_DIR/clang/bin"; then
     CLANG_DIR=`cd "$TOOLTOOL_DIR/clang/bin" ; pwd`
+||||||| merged common ancestors
+if test -d "$topsrcdir/clang/bin"; then
+    CLANG_DIR=`cd "$topsrcdir/clang/bin" ; pwd`
+=======
+if test -d "$MOZ_FETCHES_DIR/clang/bin"; then
+    CLANG_DIR=`cd "$MOZ_FETCHES_DIR/clang/bin" ; pwd`
+>>>>>>> upstream/upstream-releases
     export PATH="${CLANG_DIR}:${PATH}"
 fi
 

@@ -4,9 +4,15 @@
 
 case "$(uname -s)" in
 MINGW*)
+<<<<<<< HEAD
     export NASM=$TOOLTOOL_DIR/nasm/nasm.exe
+||||||| merged common ancestors
+    export NASM=$topsrcdir/nasm/nasm.exe
+=======
+    export NASM=$MOZ_FETCHES_DIR/nasm/nasm.exe
+>>>>>>> upstream/upstream-releases
     ;;
 *)
-    export NASM=$topsrcdir/nasm/nasm
+    export NASM=$MOZ_FETCHES_DIR/nasm/nasm
     ;;
 esac

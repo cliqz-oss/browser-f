@@ -10,6 +10,10 @@ const { ExtensionPermissions } = ChromeUtils.import(
   {}
 );
 
+const SUPPORT_URL = Services.urlFormatter.formatURL(
+  Services.prefs.getStringPref("app.support.baseURL")
+);
+const PB_SUMO_URL = SUPPORT_URL + "extensions-pb";
 const DEFAULT_THEME_ID = "default-theme@mozilla.org";
 const DARK_THEME_ID = "firefox-compact-dark@mozilla.org";
 
@@ -112,10 +116,7 @@ async function hasPrivateAllowed(id) {
 
 add_task(async function enableHtmlViews() {
   await SpecialPowers.pushPrefEnv({
-    set: [
-      ["extensions.htmlaboutaddons.enabled", true],
-      ["extensions.allowPrivateBrowsingByDefault", false],
-    ],
+    set: [["extensions.allowPrivateBrowsingByDefault", false]],
   });
 
   gProvider = new MockProvider();
@@ -775,14 +776,37 @@ add_task(async function testPrivateBrowsingExtension() {
   ok(!(await hasPrivateAllowed(id)), "PB is not allowed");
 
   let pbRow = card.querySelector(".addon-detail-row-private-browsing");
+  let name = card.querySelector(".addon-name");
 
   // Allow private browsing.
   let [allow, disallow] = pbRow.querySelectorAll("input");
   let updated = BrowserTestUtils.waitForEvent(card, "update");
+
+  // Check that the disabled state isn't shown while reloading the add-on.
+  let addonDisabled = AddonTestUtils.promiseAddonEvent("onDisabled");
   allow.click();
+  await addonDisabled;
+  is(
+    doc.l10n.getAttributes(name).id,
+    null,
+    "The disabled message is not shown for the add-on"
+  );
+
+  // Check the PB stuff.
   await updated;
   ok(!badge.hidden, "The PB badge is now shown");
   ok(await hasPrivateAllowed(id), "PB is allowed");
+  is(
+    doc.l10n.getAttributes(name).id,
+    null,
+    "The disabled message is not shown for the add-on"
+  );
+
+  info("Verify the badge links to the support page");
+  let tabOpened = BrowserTestUtils.waitForNewTab(gBrowser, PB_SUMO_URL);
+  EventUtils.synthesizeMouseAtCenter(badge, {}, win);
+  let tab = await tabOpened;
+  BrowserTestUtils.removeTab(tab);
 
   // Disable the add-on and change the value.
   updated = BrowserTestUtils.waitForEvent(card, "update");

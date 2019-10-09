@@ -268,6 +268,41 @@
       "type": "string"
     },
 
+<<<<<<< HEAD
+||||||| merged common ancestors
+    "EnableTrackingProtection": {
+      "type": "object",
+      "properties": {
+        "Value": {
+          "type": "boolean"
+        },
+        "Locked": {
+          "type": "boolean"
+        }
+      },
+      "required": ["Value"]
+    },
+
+=======
+    "EnableTrackingProtection": {
+      "type": "object",
+      "properties": {
+        "Value": {
+          "type": "boolean"
+        },
+        "Locked": {
+          "type": "boolean"
+        },
+        "Cryptomining": {
+          "type": "boolean"
+        },
+        "Fingerprinting": {
+          "type": "boolean"
+        }
+      }
+    },
+
+>>>>>>> upstream/upstream-releases
     "Extensions": {
       "type": "object",
       "properties": {
@@ -438,12 +473,20 @@
       "type": "boolean"
     },
 
+    "OfferToSaveLoginsDefault": {
+      "type": "boolean"
+    },
+
     "OverrideFirstRunPage": {
       "type": "URLorEmpty"
     },
 
     "OverridePostUpdatePage": {
       "type": "URLorEmpty"
+    },
+
+    "PasswordManagerEnabled": {
+      "type": "boolean"
     },
 
     "Permissions": {

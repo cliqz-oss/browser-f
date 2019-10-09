@@ -8,6 +8,8 @@ accessibility-learn-more = Weitere Informationen
 
 accessibility-text-label-header = Textbeschriftungen und -namen
 
+accessibility-keyboard-header = Tastatur
+
 ## Text entries that are used as text alternative for icons that depict accessibility isses.
 
 accessibility-warning =
@@ -37,6 +39,8 @@ accessibility-text-label-issue-fieldset = <code>fieldset</code>-Elemente müssen
 
 accessibility-text-label-issue-fieldset-legend = Verwenden Sie <code>legend</code>-Elemente zum Beschriften von <span>fieldset</span>-Elementen. <a>Weitere Informationen</a>
 
+accessibility-text-label-issue-fieldset-legend2 = Verwenden Sie ein <code>legend</code>-Element zum Beschriften eines <span>fieldset</span>-Elements. <a>Weitere Informationen</a>
+
 accessibility-text-label-issue-form = Formularelemente müssen beschriftet werden. <a>Weitere Informationen</a>
 
 accessibility-text-label-issue-form-visible = Formularelemente sollten eine sichtbare Textbeschriftung besitzen. <a>Weitere Informationen</a>
@@ -57,4 +61,22 @@ accessibility-text-label-issue-interactive = Interaktive Elemente müssen beschr
 
 accessibility-text-label-issue-optgroup-label = Verwenden Sie das <code>label</code>-Attribut zum Beschriften von <span>optgroup</span>-Elementen. <a>Weitere Informationen</a>
 
+accessibility-text-label-issue-optgroup-label2 = Verwenden Sie das <code>label</code>-Attribut zum Beschriften eines <span>optgroup</span>-Elements. <a>Weitere Informationen</a>
+
 accessibility-text-label-issue-toolbar = Symbolleisten benötigen eine Beschriftung, falls mehr als eine Symbolleiste vorhanden ist. <a>Weitere Informationen</a>
+
+## Text entries for a paragraph used in the accessibility panel sidebar's checks section
+## that describe that currently selected accessible object has a keyboard accessibility
+## issue.
+
+accessibility-keyboard-issue-semantics = Fokusierbare Elemente sollten interaktiv sein. <a>Weitere Informationen</a>
+
+accessibility-keyboard-issue-tabindex = Vermeiden Sie <code>tabindex</code>-Attribute größer als 0. <a>Weitere Informationen</a>
+
+accessibility-keyboard-issue-action = Interaktive Elemente müssen sich mit einer Tastatur aktivieren lassen. <a>Weitere Informationen</a>
+
+accessibility-keyboard-issue-focusable = Interaktive Elemente müssen fokusierbar sein. <a>Weitere Informationen</a>
+
+accessibility-keyboard-issue-focus-visible = Fokusierbare Elemente besitzen eventuell keine Hervorhebung als fokusiert. <a>Weitere Informationen</a>
+
+accessibility-keyboard-issue-mouse-only = Klickbare Elemente müssen fokusierbar und sollten interaktiv sein. <a>Weitere Informationen</a>

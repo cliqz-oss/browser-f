@@ -57,6 +57,32 @@ let RPMAccessManager = {
       getFormatURLPref: ["app.support.baseURL"],
       isWindowPrivate: ["yes"],
     },
+    "about:protections": {
+      getBoolPref: [
+        "browser.contentblocking.report.lockwise.enabled",
+        "browser.contentblocking.report.monitor.enabled",
+        "privacy.socialtracking.block_cookies.enabled",
+        "browser.contentblocking.report.proxy.enabled",
+      ],
+      getStringPref: [
+        "browser.contentblocking.category",
+        "browser.contentblocking.report.lockwise.url",
+        "browser.contentblocking.report.monitor.url",
+        "browser.contentblocking.report.monitor.sign_in_url",
+        "browser.contentblocking.report.manage_devices.url",
+        "browser.contentblocking.report.proxy_extension.url",
+      ],
+      getFormatURLPref: [
+        "browser.contentblocking.report.monitor.how_it_works.url",
+        "browser.contentblocking.report.lockwise.how_it_works.url",
+        "browser.contentblocking.report.social.url",
+        "browser.contentblocking.report.cookie.url",
+        "browser.contentblocking.report.tracker.url",
+        "browser.contentblocking.report.fingerprinter.url",
+        "browser.contentblocking.report.cryptominer.url",
+      ],
+      recordTelemetryEvent: ["yes"],
+    },
     "about:newinstall": {
       getUpdateChannel: ["yes"],
       getFxAccountsEndpoint: ["yes"],
@@ -389,6 +415,16 @@ class MessagePort {
     return Services.prefs.getIntPref(aPref);
   }
 
+  getStringPref(aPref) {
+    let principal = this.window.document.nodePrincipal;
+    if (!RPMAccessManager.checkAllowAccess(principal, "getStringPref", aPref)) {
+      throw new Error(
+        "RPMAccessManager does not allow access to getStringPref"
+      );
+    }
+    return Services.prefs.getStringPref(aPref);
+  }
+
   getBoolPref(aPref, defaultValue) {
     let principal = this.window.document.nodePrincipal;
     if (!RPMAccessManager.checkAllowAccess(principal, "getBoolPref", aPref)) {
@@ -461,5 +497,27 @@ class MessagePort {
     }
 
     return this.sendRequest("FxAccountsEndpoint", aEntrypoint);
+  }
+
+  recordTelemetryEvent(category, event, object, value, extra) {
+    let principal = this.window.document.nodePrincipal;
+    if (
+      !RPMAccessManager.checkAllowAccess(
+        principal,
+        "recordTelemetryEvent",
+        "yes"
+      )
+    ) {
+      throw new Error(
+        "RPMAccessManager does not allow access to recordTelemetryEvent"
+      );
+    }
+    return Services.telemetry.recordEvent(
+      category,
+      event,
+      object,
+      value,
+      extra
+    );
   }
 }

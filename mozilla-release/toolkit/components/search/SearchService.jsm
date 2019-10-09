@@ -19,9 +19,9 @@ XPCOMUtils.defineLazyModuleGetters(this, {
   ExtensionParent: "resource://gre/modules/ExtensionParent.jsm",
   getVerificationHash: "resource://gre/modules/SearchEngine.jsm",
   OS: "resource://gre/modules/osfile.jsm",
-  RemoteSettings: "resource://services-settings/remote-settings.js",
-  RemoteSettingsClient: "resource://services-settings/RemoteSettingsClient.jsm",
+  IgnoreLists: "resource://gre/modules/IgnoreLists.jsm",
   SearchEngine: "resource://gre/modules/SearchEngine.jsm",
+  SearchEngineSelector: "resource://gre/modules/SearchEngineSelector.jsm",
   SearchStaticData: "resource://gre/modules/SearchStaticData.jsm",
   SearchUtils: "resource://gre/modules/SearchUtils.jsm",
   Services: "resource://gre/modules/Services.jsm",
@@ -34,8 +34,22 @@ XPCOMUtils.defineLazyServiceGetters(this, {
 
 XPCOMUtils.defineLazyPreferenceGetter(
   this,
+  "gSeparatePrivateDefault",
+  SearchUtils.BROWSER_SEARCH_PREF + "separatePrivateDefault",
+  false
+);
+
+XPCOMUtils.defineLazyPreferenceGetter(
+  this,
   "gGeoSpecificDefaultsEnabled",
   SearchUtils.BROWSER_SEARCH_PREF + "geoSpecificDefaults",
+  false
+);
+
+XPCOMUtils.defineLazyPreferenceGetter(
+  this,
+  "gModernConfig",
+  SearchUtils.BROWSER_SEARCH_PREF + "modernConfig",
   false
 );
 
@@ -152,7 +166,7 @@ var ensureKnownRegion = async function(ss) {
       // storeRegion if it gets a result (even if that happens after the
       // promise resolves) and fetchRegionDefault.
       await fetchRegion(ss);
-    } else if (gGeoSpecificDefaultsEnabled) {
+    } else if (gGeoSpecificDefaultsEnabled && !gModernConfig) {
       // The territory default we have already fetched may have expired.
       let expired = (ss.getGlobalAttr("searchDefaultExpir") || 0) <= Date.now();
       // If we have a default engine or a list of visible default engines
@@ -204,7 +218,7 @@ var ensureKnownRegion = async function(ss) {
 
 // Store the result of the geoip request as well as any other values and
 // telemetry which depend on it.
-function storeRegion(region) {
+async function storeRegion(region) {
   let isTimezoneUS = isUSTimezone();
   // If it's a US region, but not a US timezone, we don't store the value.
   // This works because no region defaults to ZZ (unknown) in nsURLFormatter
@@ -227,7 +241,7 @@ function storeRegion(region) {
   }
   // telemetry to compare our geoip response with platform-specific country data.
   // On Mac and Windows, we can get a country code via sysinfo
-  let platformCC = Services.sysinfo.get("countryCode");
+  let platformCC = await Services.sysinfo.countryCode;
   if (platformCC) {
     let probeUSMismatched, probeNonUSMismatched;
     switch (Services.appinfo.OS) {
@@ -313,7 +327,7 @@ function fetchRegion(ss) {
       // Even if we timed out, we want to save the region and everything
       // related so next startup sees the value and doesn't retry this dance.
       if (result) {
-        storeRegion(result);
+        storeRegion(result).catch(Cu.reportError);
       }
       Services.telemetry
         .getHistogramById("SEARCH_SERVICE_COUNTRY_FETCH_RESULT")
@@ -343,7 +357,7 @@ function fetchRegion(ss) {
         resolve();
       };
 
-      if (result && gGeoSpecificDefaultsEnabled) {
+      if (result && gGeoSpecificDefaultsEnabled && !gModernConfig) {
         fetchRegionDefault(ss)
           .then(callback)
           .catch(err => {
@@ -582,6 +596,7 @@ const gEmptyParseSubmissionResult = Object.freeze(
  */
 function SearchService() {
   this._initObservers = PromiseUtils.defer();
+  this._engines = new Map();
 }
 
 SearchService.prototype = {
@@ -614,6 +629,85 @@ SearchService.prototype = {
    * in this list. The list is controlled via remote settings.
    */
   _loadPathIgnoreList: [],
+
+  /**
+   * A map of engine short names to `SearchEngine`.
+   */
+  _engines: null,
+
+  /**
+   * An array of engine short names sorted into display order.
+   */
+  __sortedEngines: null,
+
+  /**
+   * This holds the current list of visible engines from the configuration,
+   * and is used to update the cache. If the cache value is different to those
+   * in the configuration, then the configuration has changed. The engines
+   * are loaded using both the new set, and the user's current set (if they
+   * still exist).
+   */
+  _visibleDefaultEngines: [],
+
+  /**
+   * The user visible name of the configuration suggested default search engine.
+   */
+  _searchDefault: null,
+
+  /**
+   * The user visible name of the configuration suggested default search engine
+   * for private browsing mode.
+   */
+  _searchPrivateDefault: null,
+
+  /**
+   * The suggested order of engines from the configuration.
+   */
+  _searchOrder: [],
+
+  /**
+   * A Set of installed search extensions reported by AddonManager
+   * startup before SearchSevice has started. Will be installed
+   * during init().
+   */
+  _startupExtensions: new Set(),
+
+  /**
+   * The current metadata stored in the cache. This stores:
+   *   - current
+   *       The current user-set default engine. The associated hash is called
+   *       'hash'.
+   *   - private
+   *       The current user-set private engine. The associated hash is called
+   *       'privateHash'.
+   *   - searchDefault
+   *       The current default engine (if any) specified by the region server.
+   *   - searchDefaultExpir
+   *       The expiry time for the default engine when the region server should
+   *       be re-checked.
+   *   - visibleDefaultEngines
+   *       The list of visible default engines supplied by the region server.
+   *
+   * All of the above except `searchDefaultExpir` have associated hash fields
+   * to validate the value is set by the application.
+   */
+  _metaData: {},
+
+  /**
+   * Resets the locally stored data to the original empty values in preparation
+   * for a reinit or a reset.
+   */
+  _resetLocalData() {
+    this._engines.clear();
+    this.__sortedEngines = null;
+    this._currentEngine = null;
+    this._currentPrivateEngine = null;
+    this._visibleDefaultEngines = [];
+    this._searchDefault = null;
+    this._searchPrivateDefault = null;
+    this._searchOrder = [];
+    this._metaData = {};
+  },
 
   // If initialization has not been completed yet, perform synchronous
   // initialization.
@@ -700,46 +794,6 @@ SearchService.prototype = {
   },
 
   /**
-   * Obtains the current ignore list from remote settings. This includes
-   * verifying the signature of the ignore list within the database.
-   *
-   * If the signature in the database is invalid, the database will be wiped
-   * and the stored dump will be used, until the settings next update.
-   *
-   * Note that this may cause a network check of the certificate, but that
-   * should generally be quick.
-   *
-   * @param {RemoteSettings} ignoreListSettings
-   *   The remote settings object associated with the ignore list.
-   * @param {boolean} [firstTime]
-   *   Internal boolean to indicate if this is the first time check or not.
-   * @returns {array}
-   *   An array of objects in the database, or an empty array if none
-   *   could be obtained.
-   */
-  async _getRemoteSettings(ignoreListSettings, firstTime = true) {
-    try {
-      return ignoreListSettings.get({ verifySignature: true });
-    } catch (ex) {
-      if (
-        ex instanceof RemoteSettingsClient.InvalidSignatureError &&
-        firstTime
-      ) {
-        // The local database is invalid, try and reset it.
-        const collection = await ignoreListSettings.openCollection();
-        await collection.clear();
-        await collection.db.close();
-        // Now call this again.
-        return this._getRemoteSettings(ignoreListSettings, false);
-      }
-      // Don't throw an error just log it, just continue with no data, and hopefully
-      // a sync will fix things later on.
-      Cu.reportError(ex);
-      return [];
-    }
-  },
-
-  /**
    * Obtains the remote settings for the search service. This should only be
    * called from init(). Any subsequent updates to the remote settings are
    * handled via a sync listener.
@@ -749,15 +803,10 @@ SearchService.prototype = {
    * hence the `get` may take a while to return.
    */
   async _setupRemoteSettings() {
-    const ignoreListSettings = RemoteSettings(
-      SearchUtils.SETTINGS_IGNORELIST_KEY
-    );
-    // Trigger a get of the initial value.
-    const current = await this._getRemoteSettings(ignoreListSettings);
-
     // Now we have the values, listen for future updates.
     this._ignoreListListener = this._handleIgnoreListUpdated.bind(this);
-    ignoreListSettings.on("sync", this._ignoreListListener);
+
+    const current = await IgnoreLists.getAndSubscribe(this._ignoreListListener);
 
     await this._handleIgnoreListUpdated({ data: { current } });
     Services.obs.notifyObservers(
@@ -796,8 +845,7 @@ SearchService.prototype = {
     // We try to remove engines manually, as this should be more efficient and
     // we don't really want to cause a re-init as this upsets unit tests.
     let engineRemoved = false;
-    for (let name in this._engines) {
-      let engine = this._engines[name];
+    for (let engine of this._engines.values()) {
       if (this._engineMatchesIgnoreLists(engine)) {
         await this.removeEngine(engine);
         engineRemoved = true;
@@ -806,7 +854,7 @@ SearchService.prototype = {
     // If we've removed an engine, and we don't have any left, we need to do
     // a re-init - it is possible the cache just had one engine in it, and that
     // is now empty, so we need to load from our main list.
-    if (engineRemoved && !Object.keys(this._engines).length) {
+    if (engineRemoved && !this._engines.size) {
       this._reInit();
     }
   },
@@ -837,7 +885,6 @@ SearchService.prototype = {
     return false;
   },
 
-  _metaData: {},
   setGlobalAttr(name, val) {
     this._metaData[name] = val;
     this.batchTask.disarm();
@@ -865,16 +912,6 @@ SearchService.prototype = {
       ? APP_SEARCH_PREFIX
       : EXT_SEARCH_PREFIX) + "list.json",
 
-  _engines: {},
-  __sortedEngines: null,
-  _visibleDefaultEngines: [],
-  _searchDefault: null,
-  _searchOrder: [],
-  // A Set of installed search extensions reported by AddonManager
-  // startup before SearchSevice has started. Will be installed
-  // during init().
-  _startupExtensions: new Set(),
-
   get _sortedEngines() {
     if (!this.__sortedEngines) {
       return this._buildSortedEngineList();
@@ -882,24 +919,32 @@ SearchService.prototype = {
     return this.__sortedEngines;
   },
 
-  // Get the original Engine object that is the default for this region,
-  // ignoring changes the user may have subsequently made.
-  get originalDefaultEngine() {
-    let defaultEngineName = this.getVerifiedGlobalAttr("searchDefault");
+  /**
+   * Returns the engine that is the default for this locale/region, ignoring any
+   * user changes to the default engine.
+   *
+   * @param {boolean} privateMode
+   *   Set to true to return the default engine in private mode,
+   *   false for normal mode.
+   * @returns {SearchEngine}
+   *   The engine that is default.
+   */
+  _originalDefaultEngine(privateMode = false) {
+    let defaultEngineName = this.getVerifiedGlobalAttr(
+      privateMode ? "searchDefaultPrivate" : "searchDefault"
+    );
     if (!defaultEngineName) {
       // We only allow the old defaultenginename pref for distributions
       // We can't use isPartnerBuild because we need to allow reading
       // of the defaultengine name pref for funnelcakes.
-      if (distroID) {
+      if (distroID && !privateMode) {
         let defaultPrefB = Services.prefs.getDefaultBranch(
           SearchUtils.BROWSER_SEARCH_PREF
         );
-        let nsIPLS = Ci.nsIPrefLocalizedString;
-
         try {
           defaultEngineName = defaultPrefB.getComplexValue(
             "defaultenginename",
-            nsIPLS
+            Ci.nsIPrefLocalizedString
           ).data;
         } catch (ex) {
           // If the default pref is invalid (e.g. an add-on set it to a bogus value)
@@ -910,18 +955,45 @@ SearchService.prototype = {
           defaultEngineName = this._searchDefault;
         }
       } else {
-        defaultEngineName = this._searchDefault;
+        defaultEngineName = privateMode
+          ? this._searchPrivateDefault
+          : this._searchDefault;
       }
+    }
+
+    if (!defaultEngineName && privateMode) {
+      // We don't have a separate engine, fall back to the non-private one.
+      return this._originalDefaultEngine(false);
     }
 
     let defaultEngine = this.getEngineByName(defaultEngineName);
     if (!defaultEngine) {
       // Something unexpected as happened. In order to recover the original default engine,
-      // use the first visible engine which us what currentEngine will use.
+      // use the first visible engine which is the best we can do.
       return this._getSortedEngines(false)[0];
     }
 
     return defaultEngine;
+  },
+
+  /**
+   * @returns {SearchEngine}
+   *   The engine that is the default for this locale/region, ignoring any
+   *   user changes to the default engine.
+   */
+  get originalDefaultEngine() {
+    return this._originalDefaultEngine();
+  },
+
+  /**
+   * @returns {SearchEngine}
+   *   The engine that is the default for this locale/region in private browsing
+   *   mode, ignoring any user changes to the default engine.
+   *   Note: if there is no default for this locale/region, then the non-private
+   *   browsing engine will be returned.
+   */
+  get originalPrivateDefaultEngine() {
+    return this._originalDefaultEngine(gSeparatePrivateDefault);
   },
 
   resetToOriginalDefaultEngine() {
@@ -954,11 +1026,7 @@ SearchService.prototype = {
 
     cache.visibleDefaultEngines = this._visibleDefaultEngines;
     cache.metaData = this._metaData;
-    cache.engines = [];
-
-    for (let name in this._engines) {
-      cache.engines.push(this._engines[name]);
-    }
+    cache.engines = [...this._engines.values()];
 
     try {
       if (!cache.engines.length) {
@@ -1019,6 +1087,10 @@ SearchService.prototype = {
         if (!done) {
           distDirs.push(dir);
         }
+      } catch (ex) {
+        if (!(ex instanceof OS.File.Error) || !ex.becauseNoSuchFile) {
+          throw ex;
+        }
       } finally {
         iterator.close();
       }
@@ -1039,10 +1111,25 @@ SearchService.prototype = {
         this._visibleDefaultEngines.length ||
       this._visibleDefaultEngines.some(notInCacheVisibleEngines);
 
+    let enginesCorrupted = false;
+    if (
+      !rebuildCache &&
+      cache.engines.filter(e => e._isBuiltin).length !=
+        cache.visibleDefaultEngines.length
+    ) {
+      rebuildCache = true;
+      enginesCorrupted = true;
+    }
+
+    Services.telemetry.scalarSet(
+      "browser.searchinit.engines_cache_corrupted",
+      enginesCorrupted
+    );
+
     if (!rebuildCache) {
       SearchUtils.log("_loadEngines: loading from cache directories");
       this._loadEnginesFromCache(cache);
-      if (Object.keys(this._engines).length) {
+      if (this._engines.size) {
         SearchUtils.log("_loadEngines: done using existing cache");
         return;
       }
@@ -1062,11 +1149,14 @@ SearchService.prototype = {
       let enginesFromURLs = await this._loadFromChromeURLs(engines, isReload);
       enginesFromURLs.forEach(this._addEngineToStore, this);
     } else {
-      let engineList = this._enginesToLocales(engines);
-      for (let [id, locales] of engineList) {
-        await this.ensureBuiltinExtension(id, locales);
+      if (gModernConfig) {
+        await this._loadEnginesFromConfig(engines);
+      } else {
+        let engineList = this._enginesToLocales(engines);
+        for (let [id, locales] of engineList) {
+          await this.ensureBuiltinExtension(id, locales, isReload);
+        }
       }
-
       SearchUtils.log(
         "_loadEngines: loading " +
           this._startupExtensions.size +
@@ -1087,6 +1177,19 @@ SearchService.prototype = {
     SearchUtils.log("_loadEngines: done using rebuilt cache");
   },
 
+  async _loadEnginesFromConfig(engineConfigs) {
+    for (let config of engineConfigs) {
+      // TODO: Support multiple locales per engine
+      // https://bugzilla.mozilla.org/show_bug.cgi?id=1575555
+      SearchUtils.log("_loadEnginesFromConfig: " + JSON.stringify(config));
+      let locales =
+        "webExtensionLocale" in config
+          ? [config.webExtensionLocale]
+          : [DEFAULT_TAG];
+      await this.ensureBuiltinExtension(config.webExtensionId, locales);
+    }
+  },
+
   /**
    * Ensures a built in search WebExtension is installed, installing
    * it if necessary.
@@ -1097,8 +1200,10 @@ SearchService.prototype = {
    *   An array of locales to use for the WebExtension. If more than
    *   one is specified, different versions of the same engine may
    *   be installed.
+   * @param {boolean} [isReload]
+   *   is being called from maybeReloadEngines.
    */
-  async ensureBuiltinExtension(id, locales = [DEFAULT_TAG]) {
+  async ensureBuiltinExtension(id, locales = [DEFAULT_TAG], isReload = false) {
     SearchUtils.log("ensureBuiltinExtension: " + id);
     try {
       let policy = WebExtensionPolicy.getByID(id);
@@ -1111,7 +1216,12 @@ SearchService.prototype = {
       // On startup the extension may have not finished parsing the
       // manifest, wait for that here.
       await policy.readyPromise;
-      await this._installExtensionEngine(policy.extension, locales);
+      await this._installExtensionEngine(
+        policy.extension,
+        locales,
+        false,
+        isReload
+      );
       SearchUtils.log("ensureBuiltinExtension: " + id + " installed.");
     } catch (err) {
       Cu.reportError(
@@ -1170,7 +1280,8 @@ SearchService.prototype = {
   async _maybeReloadEngines() {
     // There's no point in already reloading the list of engines, when the service
     // hasn't even initialized yet.
-    if (!gInitialized) {
+    if (!gInitialized || gModernConfig) {
+      SearchUtils.log("Ignoring maybeReloadEngines() as inside init()");
       return;
     }
 
@@ -1180,9 +1291,12 @@ SearchService.prototype = {
       this._batchTask = null;
       await task.finalize();
     }
+
     // Capture the current engine state, in case we need to notify below.
-    let prevCurrentEngine = this._currentEngine;
+    const prevCurrentEngine = this._currentEngine;
+    const prevPrivateEngine = this._currentPrivateEngine;
     this._currentEngine = null;
+    this._currentPrivateEngine = null;
 
     await this._loadEngines(await this._readCacheFile(), true);
     // Make sure the current list of engines is persisted.
@@ -1194,6 +1308,16 @@ SearchService.prototype = {
       SearchUtils.notifyAction(
         this._currentEngine,
         SearchUtils.MODIFIED_TYPE.DEFAULT
+      );
+    }
+    if (
+      gSeparatePrivateDefault &&
+      prevPrivateEngine &&
+      this.defaultPrivateEngine !== prevPrivateEngine
+    ) {
+      SearchUtils.notifyAction(
+        this._currentEngine,
+        SearchUtils.MODIFIED_TYPE.DEFAULT_PRIVATE
       );
     }
     Services.obs.notifyObservers(
@@ -1232,13 +1356,7 @@ SearchService.prototype = {
         }
 
         // Clear the engines, too, so we don't stick with the stale ones.
-        this._engines = {};
-        this.__sortedEngines = null;
-        this._currentEngine = null;
-        this._visibleDefaultEngines = [];
-        this._searchDefault = null;
-        this._searchOrder = [];
-        this._metaData = {};
+        this._resetLocalData();
 
         // Tests that want to force a synchronous re-initialization need to
         // be notified when we are done uninitializing.
@@ -1263,6 +1381,22 @@ SearchService.prototype = {
         }
 
         await this._loadEngines(cache);
+
+        // If we've got this far, but the application is now shutting down,
+        // then we need to abandon any further work, especially not writing
+        // the cache. We do this, because the add-on manager has also
+        // started shutting down and as a result, we might have an incomplete
+        // picture of the installed search engines. Writing the cache at
+        // this stage would potentially mean the user would loose their engine
+        // data.
+        // We will however, rebuild the cache on next start up if we detect
+        // it is necessary.
+        if (Services.startup.shuttingDown) {
+          SearchUtils.log("_reInit: abandoning reInit due to shutting down");
+          this._initObservers.reject();
+          return;
+        }
+
         // Make sure the current list of engines is persisted.
         await this._buildCache();
 
@@ -1299,13 +1433,10 @@ SearchService.prototype = {
    */
   reset() {
     gInitialized = false;
+    this._resetLocalData();
     this._initObservers = PromiseUtils.defer();
-    this._initStarted = this.__sortedEngines = this._currentEngine = this._searchDefault = null;
+    this._initStarted = null;
     this._startupExtensions = new Set();
-    this._engines = {};
-    this._visibleDefaultEngines = [];
-    this._searchOrder = [];
-    this._metaData = {};
   },
 
   /**
@@ -1366,7 +1497,7 @@ SearchService.prototype = {
     // engine is updating another engine, it's allowed to have the same name.
     var hasSameNameAsUpdate =
       engine._engineToUpdate && engine.name == engine._engineToUpdate.name;
-    if (engine.name in this._engines && !hasSameNameAsUpdate) {
+    if (this._engines.has(engine.name) && !hasSameNameAsUpdate) {
       SearchUtils.log("_addEngineToStore: Duplicate engine found, aborting!");
       return;
     }
@@ -1377,7 +1508,7 @@ SearchService.prototype = {
 
       // Remove the old engine from the hash, since it's keyed by name, and our
       // name might change (the update might have a new name).
-      delete this._engines[oldEngine.name];
+      this._engines.delete(oldEngine.name);
 
       // Hack: we want to replace the old engine with the new one, but since
       // people may be holding refs to the nsISearchEngine objects themselves,
@@ -1392,11 +1523,11 @@ SearchService.prototype = {
       engine._engineToUpdate = null;
 
       // Add the engine back
-      this._engines[engine.name] = engine;
+      this._engines.set(engine.name, engine);
       SearchUtils.notifyAction(engine, SearchUtils.MODIFIED_TYPE.CHANGED);
     } else {
       // Not an update, just add the new engine.
-      this._engines[engine.name] = engine;
+      this._engines.set(engine.name, engine);
       // Only add the engine to the list of sorted engines if the initial list
       // has already been built (i.e. if this.__sortedEngines is non-null). If
       // it hasn't, we're loading engines from disk and the sorted engine list
@@ -1423,11 +1554,11 @@ SearchService.prototype = {
 
     for (let engine of cache.engines) {
       let name = engine._name;
-      if (name in this._engines) {
+      if (this._engines.has(name)) {
         SearchUtils.log(
           "_loadEnginesMetadataFromCache, transfering metadata for " + name
         );
-        this._engines[name]._metaData = engine._metaData || {};
+        this._engines.get(name)._metaData = engine._metaData || {};
       }
     }
   },
@@ -1554,15 +1685,39 @@ SearchService.prototype = {
         });
         await engine._initFromURI(uri);
         // If there is an existing engine with the same name then update that engine.
-        // Only do this during reloads so it doesnt interfere with distribution
+        // Only do this during reloads so it doesn't interfere with distribution
         // engines
-        if (isReload && engine.name in this._engines) {
-          engine._engineToUpdate = this._engines[engine.name];
+        if (isReload && this._engines.has(engine.name)) {
+          engine._engineToUpdate = this._engines.get(engine.name);
         }
         engines.push(engine);
       } catch (ex) {
         SearchUtils.log("_loadFromChromeURLs: failed to load engine: " + ex);
       }
+    }
+    return engines;
+  },
+
+  async _findEngineSelectorEngines() {
+    SearchUtils.log("_findEngineSelectorEngines: init");
+
+    let engineSelector = new SearchEngineSelector();
+    let locale = Services.locale.appLocaleAsBCP47;
+    // TODO: engineSelector needs to support default region, we cant
+    // just use "us" as a default region.
+    // https://bugzilla.mozilla.org/show_bug.cgi?id=1575554
+    let region = Services.prefs.getCharPref("browser.search.region", "us");
+
+    await engineSelector.init();
+    let { engines, privateDefault } = engineSelector.fetchEngineConfiguration(
+      region,
+      locale
+    );
+
+    this._searchDefault = engines[0].engineName;
+    this._searchOrder = engines.map(e => e.engineName);
+    if (privateDefault) {
+      this._searchPrivateDefault = privateDefault;
     }
     return engines;
   },
@@ -1574,6 +1729,9 @@ SearchService.prototype = {
    *   Returns an array of engine names.
    */
   async _findEngines() {
+    if (gModernConfig) {
+      return this._findEngineSelectorEngines();
+    }
     SearchUtils.log("_findEngines: looking for engines in list.json");
 
     let chan = SearchUtils.makeChannel(this._listJSONURL);
@@ -1761,6 +1919,24 @@ SearchService.prototype = {
     if (
       searchRegion &&
       searchRegion in searchSettings &&
+      "searchPrivateDefault" in searchSettings[searchRegion]
+    ) {
+      this._searchPrivateDefault =
+        searchSettings[searchRegion].searchPrivateDefault;
+    } else if ("searchPrivateDefault" in searchSettings.default) {
+      this._searchPrivateDefault = searchSettings.default.searchPrivateDefault;
+    } else {
+      this._searchPrivateDefault = json.default.searchPrivateDefault;
+    }
+
+    if (!this._searchPrivateDefault) {
+      // Fallback to the normal default if nothing is specified for private mode.
+      this._searchPrivateDefault = this._searchDefault;
+    }
+
+    if (
+      searchRegion &&
+      searchRegion in searchSettings &&
       "searchOrder" in searchSettings[searchRegion]
     ) {
       this._searchOrder = searchSettings[searchRegion].searchOrder;
@@ -1809,8 +1985,7 @@ SearchService.prototype = {
       // Flag to keep track of whether or not we need to call _saveSortedEngineList.
       let needToSaveEngineList = false;
 
-      for (let name in this._engines) {
-        let engine = this._engines[name];
+      for (let engine of this._engines.values()) {
         var orderNumber = engine.getAttr("order");
 
         // Since the DB isn't regularly cleared, and engine files may disappear
@@ -1844,11 +2019,18 @@ SearchService.prototype = {
       var prefName;
 
       // The original default engine should always be first in the list
-      if (this.originalDefaultEngine) {
-        this.__sortedEngines.push(this.originalDefaultEngine);
-        addedEngines[
-          this.originalDefaultEngine.name
-        ] = this.originalDefaultEngine;
+      const originalDefault = this.originalDefaultEngine;
+      if (originalDefault) {
+        this.__sortedEngines.push(originalDefault);
+        addedEngines[originalDefault.name] = originalDefault;
+      }
+
+      // If there's a private default, and it is different to the normal
+      // default, then it should be second in the list.
+      const originalPrivateDefault = this.originalPrivateDefaultEngine;
+      if (originalPrivateDefault && originalPrivateDefault != originalDefault) {
+        this.__sortedEngines.push(originalPrivateDefault);
+        addedEngines[originalPrivateDefault.name] = originalPrivateDefault;
       }
 
       if (distroID) {
@@ -1860,7 +2042,7 @@ SearchService.prototype = {
           for (prefName of extras) {
             let engineName = Services.prefs.getCharPref(prefName);
 
-            let engine = this._engines[engineName];
+            let engine = this._engines.get(engineName);
             if (!engine || engine.name in addedEngines) {
               continue;
             }
@@ -1877,7 +2059,7 @@ SearchService.prototype = {
             break;
           }
 
-          let engine = this._engines[engineName];
+          let engine = this._engines.get(engineName);
           if (!engine || engine.name in addedEngines) {
             continue;
           }
@@ -1888,7 +2070,7 @@ SearchService.prototype = {
       }
 
       for (let engineName of this._searchOrder) {
-        let engine = this._engines[engineName];
+        let engine = this._engines.get(engineName);
         if (!engine || engine.name in addedEngines) {
           continue;
         }
@@ -1901,10 +2083,9 @@ SearchService.prototype = {
     // Array for the remaining engines, alphabetically sorted.
     let alphaEngines = [];
 
-    for (let name in this._engines) {
-      let engine = this._engines[name];
+    for (let engine of this._engines.values()) {
       if (!(engine.name in addedEngines)) {
-        alphaEngines.push(this._engines[engine.name]);
+        alphaEngines.push(engine);
       }
     }
 
@@ -1938,7 +2119,7 @@ SearchService.prototype = {
 
   // nsISearchService
   async init(skipRegionCheck = false) {
-    SearchUtils.log("SearchService.init");
+    SearchUtils.log("SearchService.init: " + skipRegionCheck);
     if (this._initStarted) {
       if (!skipRegionCheck) {
         await this._ensureKnownRegionPromise;
@@ -2088,15 +2269,22 @@ SearchService.prototype = {
     return engines;
   },
 
+  /**
+   * Returns the engine associated with the name.
+   *
+   * @param {string} engineName
+   *   The name of the engine.
+   * @returns {SearchEngine}
+   *   The associated engine if found, null otherwise.
+   */
   getEngineByName(engineName) {
     this._ensureInitialized();
-    return this._engines[engineName] || null;
+    return this._engines.get(engineName) || null;
   },
 
   getEngineByAlias(alias) {
     this._ensureInitialized();
-    for (var engineName in this._engines) {
-      var engine = this._engines[engineName];
+    for (var engine of this._engines.values()) {
       if (
         engine &&
         (engine.alias == alias || engine._internalAliases.includes(alias))
@@ -2107,7 +2295,7 @@ SearchService.prototype = {
     return null;
   },
 
-  async addEngineWithDetails(name, details) {
+  async addEngineWithDetails(name, details, isReload = false) {
     SearchUtils.log('addEngineWithDetails: Adding "' + name + '".');
     let isCurrent = false;
     var params = details;
@@ -2125,8 +2313,8 @@ SearchService.prototype = {
     if (!params.template) {
       SearchUtils.fail("Invalid template passed to addEngineWithDetails!");
     }
-    let existingEngine = this._engines[name];
-    if (existingEngine) {
+    let existingEngine = this._engines.get(name);
+    if (!isReload && existingEngine) {
       if (
         params.extensionID &&
         existingEngine._loadPath.startsWith(
@@ -2154,6 +2342,9 @@ SearchService.prototype = {
     if (params.extensionID) {
       newEngine._loadPath += ":" + params.extensionID;
     }
+    if (isReload && this._engines.has(newEngine.name)) {
+      newEngine._engineToUpdate = this._engines.get(newEngine.name);
+    }
 
     this._addEngineToStore(newEngine);
     if (isCurrent) {
@@ -2177,7 +2368,7 @@ SearchService.prototype = {
     return this._installExtensionEngine(extension, [DEFAULT_TAG]);
   },
 
-  async _installExtensionEngine(extension, locales, initEngine) {
+  async _installExtensionEngine(extension, locales, initEngine, isReload) {
     SearchUtils.log("installExtensionEngine: " + extension.id);
 
     let installLocale = async locale => {
@@ -2189,7 +2380,8 @@ SearchService.prototype = {
         extension,
         manifest,
         locale,
-        initEngine
+        initEngine,
+        isReload
       );
     };
 
@@ -2210,8 +2402,16 @@ SearchService.prototype = {
     extension,
     manifest,
     locale = DEFAULT_TAG,
-    initEngine = false
+    initEngine = false,
+    isReload
   ) {
+    let params = this.getEngineParams(extension, manifest, locale, {
+      initEngine,
+    });
+    return this.addEngineWithDetails(params.name, params, isReload);
+  },
+
+  getEngineParams(extension, manifest, locale, extraParams = {}) {
     let { IconDetails } = ExtensionParent;
 
     // General set of icons for an engine.
@@ -2245,6 +2445,11 @@ SearchService.prototype = {
       shortName += "-" + locale;
     }
 
+    let searchUrlGetParams = searchProvider.search_url_get_params;
+    if (extraParams.code) {
+      searchUrlGetParams = "?" + extraParams.code;
+    }
+
     let params = {
       name: searchProvider.name.trim(),
       shortName,
@@ -2253,7 +2458,7 @@ SearchService.prototype = {
       // AddonManager will sometimes encode the URL via `new URL()`. We want
       // to ensure we're always dealing with decoded urls.
       template: decodeURI(searchProvider.search_url),
-      searchGetParams: searchProvider.search_url_get_params,
+      searchGetParams: searchUrlGetParams,
       searchPostParams: searchProvider.search_url_post_params,
       iconURL: searchProvider.favicon_url || preferredIconUrl,
       icons: iconList,
@@ -2266,10 +2471,10 @@ SearchService.prototype = {
       suggestGetParams: searchProvider.suggest_url_get_params,
       queryCharset: searchProvider.encoding || "UTF-8",
       mozParams: searchProvider.params,
-      initEngine,
+      initEngine: extraParams.initEngine || false,
     };
 
-    return this.addEngineWithDetails(params.name, params);
+    return params;
   },
 
   async addEngine(engineURL, iconURL, confirm, extensionID) {
@@ -2324,9 +2529,9 @@ SearchService.prototype = {
     }
 
     var engineToRemove = null;
-    for (var e in this._engines) {
-      if (engine.wrappedJSObject == this._engines[e]) {
-        engineToRemove = this._engines[e];
+    for (var e of this._engines.values()) {
+      if (engine.wrappedJSObject == e) {
+        engineToRemove = e;
       }
     }
 
@@ -2339,6 +2544,18 @@ SearchService.prototype = {
 
     if (engineToRemove == this.defaultEngine) {
       this._currentEngine = null;
+    }
+
+    // Bug 1575649 - We can't just check the default private engine here when
+    // we're not using separate, as that re-checks the normal default, and
+    // triggers update of the default search engine, which messes up various
+    // tests. Really, removeEngine should always commit to updating any
+    // changed defaults.
+    if (
+      gSeparatePrivateDefault &&
+      engineToRemove == this.defaultPrivateEngine
+    ) {
+      this._currentPrivateEngine = null;
     }
 
     if (engineToRemove._readOnly || engineToRemove.isBuiltin) {
@@ -2368,7 +2585,7 @@ SearchService.prototype = {
       this.__sortedEngines.splice(index, 1);
 
       // Remove the engine from the internal store
-      delete this._engines[engineToRemove.name];
+      this._engines.delete(engineToRemove.name);
 
       // Since we removed an engine, we need to update the preferences.
       this._saveSortedEngineList();
@@ -2448,8 +2665,7 @@ SearchService.prototype = {
 
   restoreDefaultEngines() {
     this._ensureInitialized();
-    for (let name in this._engines) {
-      let e = this._engines[name];
+    for (let e of this._engines.values()) {
       // Unhide all default engines
       if (e.hidden && e._isDefault) {
         e.hidden = false;
@@ -2457,35 +2673,57 @@ SearchService.prototype = {
     }
   },
 
-  get defaultEngine() {
+  /**
+   * Helper function to get the current default engine.
+   *
+   * @param {boolean} privateMode
+   *   If true, returns the default engine for private browsing mode, otherwise
+   *   the default engine for the normal mode. Note, this function does not
+   *   check the "separatePrivateDefault" preference - that is up to the caller.
+   * @returns {nsISearchEngine|null}
+   *   The appropriate search engine, or null if one could not be determined.
+   */
+  _getEngineDefault(privateMode) {
     this._ensureInitialized();
-    if (!this._currentEngine) {
-      let name = this.getGlobalAttr("current");
+    const currentEngine = privateMode
+      ? "_currentPrivateEngine"
+      : "_currentEngine";
+    if (!this[currentEngine]) {
+      let name = this.getGlobalAttr(privateMode ? "private" : "current");
       let engine = this.getEngineByName(name);
       if (
         engine &&
-        (this.getGlobalAttr("hash") == getVerificationHash(name) ||
+        (this.getGlobalAttr(privateMode ? "privateHash" : "hash") ==
+          getVerificationHash(name) ||
           engine._isDefault)
       ) {
         // If the current engine is a default one, we can relax the
         // verification hash check to reduce the annoyance for users who
         // backup/sync their profile in custom ways.
-        this._currentEngine = engine;
+        this[currentEngine] = engine;
       }
       if (!name) {
-        this._currentEngine = this.originalDefaultEngine;
+        this[currentEngine] = privateMode
+          ? this.originalPrivateDefaultEngine
+          : this.originalDefaultEngine;
       }
     }
 
     // If the current engine is not set or hidden, we fallback...
-    if (!this._currentEngine || this._currentEngine.hidden) {
+    if (!this[currentEngine] || this[currentEngine].hidden) {
       // first to the original default engine
-      let originalDefault = this.originalDefaultEngine;
+      let originalDefault = privateMode
+        ? this.originalPrivateDefaultEngine
+        : this.originalDefaultEngine;
       if (!originalDefault || originalDefault.hidden) {
         // then to the first visible engine
         let firstVisible = this._getSortedEngines(false)[0];
         if (firstVisible && !firstVisible.hidden) {
-          this.defaultEngine = firstVisible;
+          if (privateMode) {
+            this.defaultPrivateEngine = firstVisible;
+          } else {
+            this.defaultEngine = firstVisible;
+          }
           return firstVisible;
         }
         // and finally as a last resort we unhide the original default engine.
@@ -2501,25 +2739,39 @@ SearchService.prototype = {
       // to pick a new current engine. As soon as we return it, this new
       // current engine will become user-visible, so we should persist it.
       // by calling the setter.
-      this.defaultEngine = originalDefault;
+      if (privateMode) {
+        this.defaultPrivateEngine = originalDefault;
+      } else {
+        this.defaultEngine = originalDefault;
+      }
     }
 
-    return this._currentEngine;
+    return this[currentEngine];
   },
 
-  set defaultEngine(val) {
+  /**
+   * Helper function to set the current default engine.
+   *
+   * @param {boolean} privateMode
+   *   If true, sets the default engine for private browsing mode, otherwise
+   *   sets the default engine for the normal mode. Note, this function does not
+   *   check the "separatePrivateDefault" preference - that is up to the caller.
+   * @param {nsISearchEngine} newEngine
+   *   The search engine to select
+   */
+  _setEngineDefault(privateMode, newEngine) {
     this._ensureInitialized();
     // Sometimes we get wrapped nsISearchEngine objects (external XPCOM callers),
     // and sometimes we get raw Engine JS objects (callers in this file), so
     // handle both.
     if (
-      !(val instanceof Ci.nsISearchEngine) &&
-      !(val instanceof SearchEngine)
+      !(newEngine instanceof Ci.nsISearchEngine) &&
+      !(newEngine instanceof SearchEngine)
     ) {
       SearchUtils.fail("Invalid argument passed to defaultEngine setter");
     }
 
-    var newCurrentEngine = this.getEngineByName(val.name);
+    const newCurrentEngine = this.getEngineByName(newEngine.name);
     if (!newCurrentEngine) {
       SearchUtils.fail("Can't find engine in store!", Cr.NS_ERROR_UNEXPECTED);
     }
@@ -2541,29 +2793,53 @@ SearchService.prototype = {
       }
     }
 
-    if (newCurrentEngine == this._currentEngine) {
+    const currentEngine = `_current${privateMode ? "Private" : ""}Engine`;
+
+    if (newCurrentEngine == this[currentEngine]) {
       return;
     }
 
-    this._currentEngine = newCurrentEngine;
+    this[currentEngine] = newCurrentEngine;
 
     // If we change the default engine in the future, that change should impact
     // users who have switched away from and then back to the build's "default"
     // engine. So clear the user pref when the currentEngine is set to the
     // build's default engine, so that the currentEngine getter falls back to
     // whatever the default is.
-    let newName = this._currentEngine.name;
-    if (this._currentEngine == this.originalDefaultEngine) {
+    let newName = this[currentEngine].name;
+    const originalDefault = privateMode
+      ? this.originalPrivateDefaultEngine
+      : this.originalDefaultEngine;
+    if (this[currentEngine] == originalDefault) {
       newName = "";
     }
 
-    this.setGlobalAttr("current", newName);
-    this.setGlobalAttr("hash", getVerificationHash(newName));
+    this.setGlobalAttr(privateMode ? "private" : "current", newName);
+    this.setGlobalAttr(
+      privateMode ? "privateHash" : "hash",
+      getVerificationHash(newName)
+    );
 
     SearchUtils.notifyAction(
-      this._currentEngine,
-      SearchUtils.MODIFIED_TYPE.DEFAULT
+      this[currentEngine],
+      SearchUtils.MODIFIED_TYPE[privateMode ? "DEFAULT_PRIVATE" : "DEFAULT"]
     );
+  },
+
+  get defaultEngine() {
+    return this._getEngineDefault(false);
+  },
+
+  set defaultEngine(newEngine) {
+    this._setEngineDefault(false, newEngine);
+  },
+
+  get defaultPrivateEngine() {
+    return this._getEngineDefault(gSeparatePrivateDefault);
+  },
+
+  set defaultPrivateEngine(newEngine) {
+    this._setEngineDefault(gSeparatePrivateDefault, newEngine);
   },
 
   async getDefault() {
@@ -2576,22 +2852,14 @@ SearchService.prototype = {
     return (this.defaultEngine = engine);
   },
 
-  get defaultPrivateEngine() {
-    return this.defaultEngine;
-  },
-
-  set defaultPrivateEngine(engine) {
-    return (this.defaultEngine = engine);
-  },
-
   async getDefaultPrivate() {
     await this.init(true);
-    return this.defaultEngine;
+    return this.defaultPrivateEngine;
   },
 
   async setDefaultPrivate(engine) {
     await this.init(true);
-    return (this.defaultEngine = engine);
+    return (this.defaultPrivateEngine = engine);
   },
 
   async getDefaultEngineInfo() {
@@ -2673,8 +2941,7 @@ SearchService.prototype = {
         // ... or engines that are the same domain as a default engine.
         let engineHost = engine._getURLOfType(SearchUtils.URL_TYPE.SEARCH)
           .templateHost;
-        for (let name in this._engines) {
-          let innerEngine = this._engines[name];
+        for (let innerEngine of this._engines.values()) {
           if (!innerEngine._isDefault) {
             continue;
           }
@@ -2976,11 +3243,21 @@ SearchService.prototype = {
       case TOPIC_LOCALES_CHANGE:
         // Locale changed. Re-init. We rely on observers, because we can't
         // return this promise to anyone.
-        // FYI, This is also used by the search tests to do an async reinit.
-        // Locales are removed during shutdown, so ignore this message
-        if (!Services.startup.shuttingDown) {
-          this._reInit(verb);
-        }
+
+        // At the time of writing, when the user does a "Apply and Restart" for
+        // a new language the preferences code triggers the locales change and
+        // restart straight after, so we delay the check, which means we should
+        // be able to avoid the reInit on shutdown, and we'll rebuild the cache
+        // on next start instead.
+        // This also helps to avoid issues with the add-on manager shutting
+        // down at the same time (see _reInit for more info).
+        Services.tm.dispatchToMainThread(() => {
+          // FYI, This is also used by the search tests to do an async reinit.
+          // Locales are removed during shutdown, so ignore this message
+          if (!Services.startup.shuttingDown) {
+            this._reInit(verb);
+          }
+        });
         break;
     }
   },
@@ -3002,8 +3279,8 @@ SearchService.prototype = {
     // Therefore, we need to walk our engine-list, looking for expired engines
     var currentTime = Date.now();
     SearchUtils.log("currentTime: " + currentTime);
-    for (let name in this._engines) {
-      let engine = this._engines[name].wrappedJSObject;
+    for (let e of this._engines.values()) {
+      let engine = e.wrappedJSObject;
       if (!engine._hasUpdates) {
         continue;
       }
@@ -3061,6 +3338,21 @@ SearchService.prototype = {
       "Search service: shutting down",
       () =>
         (async () => {
+          // If we are in initialization or re-initialization, then don't attempt
+          // to save the cache. It is likely that shutdown will have caused the
+          // add-on manager to stop, which can cause initialization to fail.
+          // Hence at that stage, we could have a broken cache which we don't
+          // want to write.
+          // The good news is, that if we don't write the cache here, we'll
+          // detect the out-of-date cache on next state, and automatically
+          // rebuild it.
+          if (!gInitialized || gReinitializing) {
+            SearchUtils.log(
+              "not saving cache on shutdown due to initializing."
+            );
+            return;
+          }
+
           if (this._batchTask) {
             shutdownState.step = "Finalizing batched task";
             try {
@@ -3088,10 +3380,7 @@ SearchService.prototype = {
 
   _removeObservers() {
     if (this._ignoreListListener) {
-      RemoteSettings(SearchUtils.SETTINGS_IGNORELIST_KEY).off(
-        "sync",
-        this._ignoreListListener
-      );
+      IgnoreLists.unsubscribe(this._ignoreListListener);
       delete this._ignoreListListener;
     }
 

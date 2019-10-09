@@ -1,6 +1,12 @@
+<!-- This Source Code Form is subject to the terms of the Mozilla Public
+   - License, v. 2.0. If a copy of the MPL was not distributed with this file,
+   - You can obtain one at http://mozilla.org/MPL/2.0/. -->
+
 <!DOCTYPE html>
 <html>
   <head>
+    <!-- Bug 1571346 Remove 'unsafe-inline' from style-src within about:addons -->
+    <meta http-equiv="Content-Security-Policy" content="default-src chrome:; script-src chrome:; style-src chrome: 'unsafe-inline'; img-src chrome: file: jar: https: http:; connect-src chrome: data: https: http:">
     <link rel="stylesheet" href="chrome://global/content/tabprompts.css">
     <link rel="stylesheet" href="chrome://global/skin/tabprompts.css">
 
@@ -36,7 +42,7 @@
         <panel-item-separator></panel-item-separator>
         <panel-item data-l10n-id="report-addon-button" action="report"></panel-item>
         <panel-item-separator></panel-item-separator>
-        <panel-item data-l10n-id="expand-addon-button" action="expand"></panel-item>
+        <panel-item data-l10n-id="manage-addon-button" action="expand"></panel-item>
       </panel-list>
     </template>
 
@@ -48,7 +54,7 @@
         <panel-item-separator></panel-item-separator>
         <panel-item data-l10n-id="preferences-addon-button" action="preferences"></panel-item>
         <panel-item-separator></panel-item-separator>
-        <panel-item data-l10n-id="expand-addon-button" action="expand"></panel-item>
+        <panel-item data-l10n-id="manage-addon-button" action="expand"></panel-item>
       </panel-list>
     </template>
 
@@ -59,12 +65,18 @@
           <img class="card-heading-icon addon-icon" alt="">
           <div class="card-contents">
             <div class="addon-name-container">
-              <div class="addon-badge addon-badge-recommended"
-                   data-l10n-id="addon-badge-recommended"
-                   hidden></div>
-              <div class="addon-badge addon-badge-private-browsing-allowed"
-                   data-l10n-id="addon-badge-private-browsing-allowed"
-                   hidden></div>
+              <a class="addon-badge addon-badge-recommended"
+                 is="support-link"
+                 support-page="recommended-extensions-program"
+                 data-l10n-id="addon-badge-recommended2"
+                 hidden>
+              </a>
+              <a class="addon-badge addon-badge-private-browsing-allowed"
+                 is="support-link"
+                 support-page="extensions-pb"
+                 data-l10n-id="addon-badge-private-browsing-allowed2"
+                 hidden>
+              </a>
             </div>
             <span class="addon-permissions"></span>
             <!-- This ends up in the tab order when the ellipsis happens, but it isn't necessary. -->
@@ -74,6 +86,7 @@
             <button
               class="more-options-button ghost-button"
               action="more-options"
+              data-l10n-id="addon-options-button"
               aria-haspopup="menu"
               aria-expanded="false"></button>
           </div>
@@ -158,19 +171,19 @@
             </div>
           </div>
           <div class="addon-detail-row addon-detail-help-row" data-l10n-id="addon-detail-private-browsing-help" hidden>
-            <a target="_blank" data-l10n-name="learn-more"></a>
+            <a is="support-link" support-page="extensions-pb" data-l10n-name="learn-more"></a>
           </div>
           <div class="addon-detail-row addon-detail-row-has-help addon-detail-row-private-browsing-disallowed" hidden>
             <label data-l10n-id="detail-private-disallowed-label"></label>
           </div>
-          <div class="addon-detail-row addon-detail-help-row" data-l10n-id="detail-private-disallowed-description" hidden>
-            <label class="text-link" data-l10n-name="detail-private-browsing-learn-more" action="pb-learn-more" aria-role="link" tabindex="0"></label>
+          <div class="addon-detail-row addon-detail-help-row" data-l10n-id="detail-private-disallowed-description2" hidden>
+            <a is="support-link" data-l10n-name="learn-more" support-page="extensions-pb"></a>
           </div>
           <div class="addon-detail-row addon-detail-row-has-help addon-detail-row-private-browsing-required" hidden>
             <label class="learn-more-label-link" data-l10n-id="detail-private-required-label"></label>
           </div>
-          <div class="addon-detail-row addon-detail-help-row" data-l10n-id="detail-private-required-description" hidden>
-            <label class="text-link" data-l10n-name="detail-private-browsing-learn-more" action="pb-learn-more" aria-role="link" tabindex="0"></label>
+          <div class="addon-detail-row addon-detail-help-row" data-l10n-id="detail-private-required-description2" hidden>
+            <a is="support-link" data-l10n-name="learn-more" support-page="extensions-pb"></a>
           </div>
           <div class="addon-detail-row addon-detail-row-author">
             <label data-l10n-id="addon-detail-author-label"></label>
@@ -247,8 +260,9 @@
           <span data-l10n-id="discopane-intro">
             <a
               class="discopane-intro-learn-more-link"
-              data-l10n-name="learn-more-trigger"
-              target="_blank">
+              is="support-link"
+              support-page="recommended-extensions-program"
+              data-l10n-name="learn-more-trigger">
             </a>
           </span>
         </p>
