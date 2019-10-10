@@ -561,105 +561,11 @@ menuitem.bookmark-item {
   }
 }
 
-<<<<<<< HEAD
 html|*.urlbar-input:-moz-lwtheme::placeholder,
 .searchbar-textbox:-moz-lwtheme > moz-input-box > html|*.textbox-input::placeholder {
   color: #919191;
 }
 
-/* ::::: URL Bar Zoom Reset Button ::::: */
-@keyframes urlbar-zoom-reset-pulse {
-  0% {
-    transform: scale(0);
-  }
-  75% {
-    transform: scale(1.5);
-  }
-  100% {
-    transform: scale(1.0);
-  }
-}
-
-#urlbar-zoom-button {
-  -moz-appearance: none;
-  color: inherit;
-}
-
-#urlbar-search-footer {
-  border-top: 1px solid var(--panel-separator-color);
-  background-color: var(--arrowpanel-dimmed);
-}
-
-#urlbar-search-settings {
-  -moz-appearance: none;
-  -moz-user-focus: ignore;
-  color: GrayText;
-  margin: 0;
-  border: 0;
-  padding: 8px 20px;
-  background: transparent;
-}
-
-#urlbar-search-settings:hover {
-  background-color: var(--arrowpanel-dimmed);
-}
-
-#urlbar-search-settings:hover:active {
-  background-color: var(--arrowpanel-dimmed-further);
-}
-
-.urlbar-display {
-  margin-inline-start: 0;
-}
-
-||||||| merged common ancestors
-/* ::::: URL Bar Zoom Reset Button ::::: */
-@keyframes urlbar-zoom-reset-pulse {
-  0% {
-    transform: scale(0);
-  }
-  75% {
-    transform: scale(1.5);
-  }
-  100% {
-    transform: scale(1.0);
-  }
-}
-
-#urlbar-zoom-button {
-  -moz-appearance: none;
-  color: inherit;
-}
-
-#urlbar-search-footer {
-  border-top: 1px solid var(--panel-separator-color);
-  background-color: var(--arrowpanel-dimmed);
-}
-
-#urlbar-search-settings {
-  -moz-appearance: none;
-  -moz-user-focus: ignore;
-  color: GrayText;
-  margin: 0;
-  border: 0;
-  padding: 8px 20px;
-  background: transparent;
-}
-
-#urlbar-search-settings:hover {
-  background-color: var(--arrowpanel-dimmed);
-}
-
-#urlbar-search-settings:hover:active {
-  background-color: var(--arrowpanel-dimmed-further);
-}
-
-.urlbar-display {
-  margin-inline-start: 0;
-}
-
-=======
->>>>>>> upstream/upstream-releases
 #pageAction-urlbar-shareURL,
 #pageAction-panel-shareURL {
   list-style-image: url("chrome://browser/skin/share.svg");

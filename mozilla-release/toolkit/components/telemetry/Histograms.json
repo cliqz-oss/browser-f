@@ -7244,6 +7244,7 @@
   },
   "FX_MIGRATION_ADDONS_IMPORT_MS": {
     "record_in_processes": ["main", "content"],
+    "products": ["firefox"],
     "bug_numbers": [1289436],
     "alert_emails": ["gijs@mozilla.com"],
     "expires_in_version": "65",
@@ -7256,6 +7257,7 @@
   },
   "FX_MIGRATION_COOKIES_IMPORT_MS": {
     "record_in_processes": ["main", "content"],
+    "products": ["firefox"],
     "bug_numbers": [1289436],
     "alert_emails": ["gijs@mozilla.com"],
     "expires_in_version": "65",
@@ -7307,6 +7309,7 @@
   },
   "FX_MIGRATION_ADDONS_JANK_MS": {
     "record_in_processes": ["main", "content"],
+    "products": ["firefox"],
     "bug_numbers": [1338522],
     "alert_emails": ["dao@mozilla.com"],
     "expires_in_version": "65",
@@ -7319,6 +7322,7 @@
   },
   "FX_MIGRATION_COOKIES_JANK_MS": {
     "record_in_processes": ["main", "content"],
+    "products": ["firefox"],
     "bug_numbers": [1338522],
     "alert_emails": ["dao@mozilla.com"],
     "expires_in_version": "65",
@@ -14393,16 +14397,6 @@
     "description": "Time spent painting the contents of a remote browser (ms).",
     "releaseChannelCollection": "opt-out"
   },
-  "AUTO_FORGET_TAB_NOTIFICATION_STATES": {
-    "record_in_processes": ["main", "content"],
-    "alert_emails": [],
-    "expires_in_version": "never",
-    "bug_numbers": [],
-    "kind": "enumerated",
-    "n_values": 6,
-    "description": "The states the Auto Forget Tab notification goes through. 0: The notification was displayed. 1: User picked 'Reload in Normal Mode'. 2: User picked 'Always load in Normal Mode'. 3: User picked 'Change Settings'. Other values are reserved for future uses.",
-    "releaseChannelCollection": "opt-out"
-  },
   "TIME_TO_NON_BLANK_PAINT_MS": {
     "record_in_processes": ["main", "content"],
     "products": ["firefox", "fennec", "geckoview"],
@@ -15470,6 +15464,7 @@
   },
   "REPORT_DECEPTIVE_SITE": {
     "record_in_processes": ["main", "content"],
+    "products": ["firefox"],
     "alert_emails": [],
     "expires_in_version": "never",
     "bug_numbers": [],

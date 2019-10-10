@@ -1,25 +1,9 @@
-<<<<<<< HEAD
-if test -d "$TOOLTOOL_DIR/clang/bin"; then
-    CLANG_DIR=`cd "$TOOLTOOL_DIR/clang/bin" ; pwd`
-||||||| merged common ancestors
-if test -d "$topsrcdir/clang/bin"; then
-    CLANG_DIR=`cd "$topsrcdir/clang/bin" ; pwd`
-=======
 if test -d "$MOZ_FETCHES_DIR/clang/bin"; then
     CLANG_DIR=`cd "$MOZ_FETCHES_DIR/clang/bin" ; pwd`
->>>>>>> upstream/upstream-releases
     export PATH="${CLANG_DIR}:${PATH}"
 
-<<<<<<< HEAD
-    if $(cd $TOOLTOOL_DIR/clang/lib/clang/* && test -d lib/windows); then
-        CLANG_LIB_DIR="$(cd $TOOLTOOL_DIR/clang/lib/clang/* && cd lib/windows && pwd)"
-||||||| merged common ancestors
-    if $(cd $topsrcdir/clang/lib/clang/* && test -d lib/windows); then
-        CLANG_LIB_DIR="$(cd $topsrcdir/clang/lib/clang/* && cd lib/windows && pwd)"
-=======
     if $(cd $MOZ_FETCHES_DIR/clang/lib/clang/* && test -d lib/windows); then
         CLANG_LIB_DIR="$(cd $MOZ_FETCHES_DIR/clang/lib/clang/* && cd lib/windows && pwd)"
->>>>>>> upstream/upstream-releases
         export LIB=$LIB:$CLANG_LIB_DIR
     fi
 fi

@@ -58,113 +58,11 @@ nsresult AppTrustDomain::SetTrustedRoot(AppTrustedRoot trustedRoot) {
       trustedDER.len = mozilla::ArrayLength(addonsStageRoot);
       break;
 
-<<<<<<< HEAD
     case nsIX509CertDB::CliqzAddonsRoot:
       trustedDER.data = const_cast<uint8_t*>(cliqzAddonsRoot);
       trustedDER.len = mozilla::ArrayLength(cliqzAddonsRoot);
       break;
 
-    case nsIX509CertDB::PrivilegedPackageRoot:
-      trustedDER.data = const_cast<uint8_t*>(privilegedPackageRoot);
-      trustedDER.len = mozilla::ArrayLength(privilegedPackageRoot);
-      break;
-
-    case nsIX509CertDB::DeveloperImportedRoot: {
-      StaticMutexAutoLock lock(sMutex);
-      if (!sDevImportedDERData) {
-        MOZ_ASSERT(!NS_IsMainThread());
-        nsCOMPtr<nsIFile> file(do_CreateInstance("@mozilla.org/file/local;1"));
-        if (!file) {
-          return NS_ERROR_FAILURE;
-        }
-        nsAutoCString path;
-        Preferences::GetCString(kDevImportedDER, path);
-        nsresult rv = file->InitWithNativePath(path);
-        if (NS_FAILED(rv)) {
-          return rv;
-        }
-
-        nsCOMPtr<nsIInputStream> inputStream;
-        rv = NS_NewLocalFileInputStream(getter_AddRefs(inputStream), file, -1,
-                                        -1, nsIFileInputStream::CLOSE_ON_EOF);
-        if (NS_FAILED(rv)) {
-          return rv;
-        }
-
-        uint64_t length;
-        rv = inputStream->Available(&length);
-        if (NS_FAILED(rv)) {
-          return rv;
-        }
-
-        auto data = MakeUnique<char[]>(length);
-        rv = inputStream->Read(data.get(), length, &sDevImportedDERLen);
-        if (NS_FAILED(rv)) {
-          return rv;
-        }
-
-        MOZ_ASSERT(length == sDevImportedDERLen);
-        sDevImportedDERData.reset(
-            BitwiseCast<unsigned char*, char*>(data.release()));
-      }
-
-      trustedDER.data = sDevImportedDERData.get();
-      trustedDER.len = sDevImportedDERLen;
-      break;
-    }
-
-||||||| merged common ancestors
-    case nsIX509CertDB::PrivilegedPackageRoot:
-      trustedDER.data = const_cast<uint8_t*>(privilegedPackageRoot);
-      trustedDER.len = mozilla::ArrayLength(privilegedPackageRoot);
-      break;
-
-    case nsIX509CertDB::DeveloperImportedRoot: {
-      StaticMutexAutoLock lock(sMutex);
-      if (!sDevImportedDERData) {
-        MOZ_ASSERT(!NS_IsMainThread());
-        nsCOMPtr<nsIFile> file(do_CreateInstance("@mozilla.org/file/local;1"));
-        if (!file) {
-          return NS_ERROR_FAILURE;
-        }
-        nsAutoCString path;
-        Preferences::GetCString(kDevImportedDER, path);
-        nsresult rv = file->InitWithNativePath(path);
-        if (NS_FAILED(rv)) {
-          return rv;
-        }
-
-        nsCOMPtr<nsIInputStream> inputStream;
-        rv = NS_NewLocalFileInputStream(getter_AddRefs(inputStream), file, -1,
-                                        -1, nsIFileInputStream::CLOSE_ON_EOF);
-        if (NS_FAILED(rv)) {
-          return rv;
-        }
-
-        uint64_t length;
-        rv = inputStream->Available(&length);
-        if (NS_FAILED(rv)) {
-          return rv;
-        }
-
-        auto data = MakeUnique<char[]>(length);
-        rv = inputStream->Read(data.get(), length, &sDevImportedDERLen);
-        if (NS_FAILED(rv)) {
-          return rv;
-        }
-
-        MOZ_ASSERT(length == sDevImportedDERLen);
-        sDevImportedDERData.reset(
-            BitwiseCast<unsigned char*, char*>(data.release()));
-      }
-
-      trustedDER.data = sDevImportedDERData.get();
-      trustedDER.len = sDevImportedDERLen;
-      break;
-    }
-
-=======
->>>>>>> upstream/upstream-releases
     default:
       return NS_ERROR_INVALID_ARG;
   }

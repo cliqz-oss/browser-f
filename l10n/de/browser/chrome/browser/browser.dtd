@@ -837,32 +837,17 @@ you can use these alternative items. Otherwise, their values should be empty.  -
 <!ENTITY identity.connection "Verbindung">
 <!ENTITY identity.connectionSecure "Sichere Verbindung">
 <!ENTITY identity.connectionNotSecure "Verbindung ist nicht sicher">
-<<<<<<< HEAD
-<!ENTITY identity.connectionFile "Diese Seite ist auf deinem Computer gespeichert.">
-<!ENTITY identity.connectionVerified2 "Du bist derzeit über eine gesicherte Verbindung mit dieser Website verbunden, welche betrieben wird von:">
-||||||| merged common ancestors
-<!ENTITY identity.connectionFile "Diese Seite ist auf Ihrem Computer gespeichert.">
-<!ENTITY identity.connectionVerified2 "Sie sind derzeit über eine gesicherte Verbindung mit dieser Website verbunden, welche betrieben wird von:">
-=======
 
 <!ENTITY identity.connectionSecure3 "Verbindung gesichert">
 <!ENTITY identity.connectionNotSecure2 "Verbindung nicht sicher">
 <!ENTITY identity.connectionNotSecureSecurityView "Sie kommunizieren mit dieser Seite über eine ungesicherte Verbindung.">
-<!ENTITY identity.connectionFile "Diese Seite ist auf Ihrem Computer gespeichert.">
-<!ENTITY identity.connectionVerified2 "Sie sind derzeit über eine gesicherte Verbindung mit dieser Website verbunden, welche betrieben wird von:">
-<!ENTITY identity.connectionVerified3 "Sie sind derzeit über eine gesicherte Verbindung mit dieser Website verbunden.">
->>>>>>> upstream/upstream-releases
+<!ENTITY identity.connectionFile "Diese Seite ist auf deinem Computer gespeichert.">
+<!ENTITY identity.connectionVerified2 "Du bist derzeit über eine gesicherte Verbindung mit dieser Website verbunden, welche betrieben wird von:">
+<!ENTITY identity.connectionVerified3 "Du bist derzeit über eine gesicherte Verbindung mit dieser Website verbunden.">
 <!ENTITY identity.connectionInternal "Dies ist eine sichere &brandShortName;-Seite.">
 <!ENTITY identity.extensionPage "Diese Seite wurde durch eine Erweiterung bereitgestellt.">
-<<<<<<< HEAD
+
 <!ENTITY identity.insecureLoginForms2 "Deine Zugangsdaten könnten auf dieser Seite in falsche Hände geraten.">
-
-||||||| merged common ancestors
-<!ENTITY identity.insecureLoginForms2 "Ihre Zugangsdaten könnten auf dieser Seite in falsche Hände geraten.">
-
-=======
-<!ENTITY identity.insecureLoginForms2 "Ihre Zugangsdaten könnten auf dieser Seite in falsche Hände geraten.">
->>>>>>> upstream/upstream-releases
 <!ENTITY identity.customRoot "Die Verbindung wurde durch eine Zertifizierungsstelle bestätigt, welche standardmäßig nicht von Mozilla anerkannt wird.">
 
 <!ENTITY identity.evOwnerLabel2 "Zertifikat ausgestellt für:">
@@ -969,7 +954,6 @@ you can use these alternative items. Otherwise, their values should be empty.  -
 <!ENTITY syncTabsMenu3.label     "Synchronisierte Tabs">
 
 <!ENTITY syncedTabs.sidebar.label              "Synchronisierte Tabs">
-<<<<<<< HEAD
 <!ENTITY syncedTabs.sidebar.noclients.label    "Melde dich auf Ihren anderen Geräten bei Firefox an, um deren Tabs hier angezeigt zu bekommen.">
 <!ENTITY syncedTabs.sidebar.noclients.subtitle "Willst du deine Tabs von deinen anderen Geräten hier angezeigt bekommen?">
 <!ENTITY syncedTabs.sidebar.notsignedin.label  "Melde dich an, um eine Liste der Tabs von deinen anderen Geräten angezeigt zu bekommen.">
@@ -1004,43 +988,6 @@ you can use these alternative items. Otherwise, their values should be empty.  -
 <!ENTITY syncedTabs.context.managedevices.label              "Geräte verwalten…">
 <!ENTITY syncedTabs.context.managedevices.accesskey          "v">
 
-||||||| merged common ancestors
-<!ENTITY syncedTabs.sidebar.noclients.label    "Melden Sie sich auf Ihren anderen Geräten bei Firefox an, um deren Tabs hier angezeigt zu bekommen.">
-<!ENTITY syncedTabs.sidebar.noclients.subtitle "Wollen Sie Ihre Tabs von Ihren anderen Geräten hier angezeigt bekommen?">
-<!ENTITY syncedTabs.sidebar.notsignedin.label  "Melden Sie sich an, um eine Liste der Tabs von Ihren anderen Geräten angezeigt zu bekommen.">
-<!ENTITY syncedTabs.sidebar.unverified.label   "Ihr Konto muss verifiziert werden.">
-<!ENTITY syncedTabs.sidebar.notabs.label       "Keine offenen Tabs">
-<!ENTITY syncedTabs.sidebar.openprefs.label    "Einstellungen von &syncBrand.shortName.label; öffnen">
-<!-- LOCALIZATION NOTE (syncedTabs.sidebar.tabsnotsyncing.label): This is shown
-     when Sync is configured but syncing tabs is disabled. -->
-<!ENTITY syncedTabs.sidebar.tabsnotsyncing.label       "Aktivieren Sie das Synchronisieren von Tabs, um die Tabs von Ihren anderen Geräten angezeigt zu bekommen.">
-<!ENTITY syncedTabs.sidebar.searchPlaceholder  "Synchronisierte Tabs durchsuchen">
-<!ENTITY syncedTabs.sidebar.connectAnotherDevice  "Weiteres Gerät verbinden">
-
-<!-- LOCALIZATION NOTE (syncedTabs.context.open.accesskey,
-                        syncedTabs.context.openAllInTabs.accesskey):
-     These access keys are identical because their associated menu items are
-     mutually exclusive -->
-<!ENTITY syncedTabs.context.open.label                       "Öffnen">
-<!ENTITY syncedTabs.context.open.accesskey                   "n">
-<!ENTITY syncedTabs.context.openInNewTab.label               "In neuem Tab öffnen">
-<!ENTITY syncedTabs.context.openInNewTab.accesskey           "T">
-<!ENTITY syncedTabs.context.openInNewWindow.label            "In neuem Fenster öffnen">
-<!ENTITY syncedTabs.context.openInNewWindow.accesskey        "F">
-<!ENTITY syncedTabs.context.openInNewPrivateWindow.label     "In neuem privaten Fenster öffnen">
-<!ENTITY syncedTabs.context.openInNewPrivateWindow.accesskey "p">
-<!ENTITY syncedTabs.context.bookmarkSingleTab.label          "Diesen Tab als Lesezeichen hinzufügen…">
-<!ENTITY syncedTabs.context.bookmarkSingleTab.accesskey      "L">
-<!ENTITY syncedTabs.context.copy.label                       "Adresse kopieren">
-<!ENTITY syncedTabs.context.copy.accesskey                   "k">
-
-<!ENTITY syncedTabs.context.openAllInTabs.label              "Alle in Tabs öffnen">
-<!ENTITY syncedTabs.context.openAllInTabs.accesskey          "A">
-<!ENTITY syncedTabs.context.managedevices.label              "Geräte verwalten…">
-<!ENTITY syncedTabs.context.managedevices.accesskey          "v">
-
-=======
->>>>>>> upstream/upstream-releases
 
 <!ENTITY syncBrand.shortName.label    "Sync">
 
@@ -1054,83 +1001,6 @@ you can use these alternative items. Otherwise, their values should be empty.  -
 <!ENTITY syncReAuthItem.accesskey     "v">
 <!ENTITY syncToolbarButton.label      "Synchronisieren">
 
-<<<<<<< HEAD
-<!ENTITY customizeMode.menuAndToolbars.header3 "Ziehe deine Lieblingswerkzeuge in die Symbolleiste oder das Überhangmenü.">
-<!ENTITY customizeMode.restoreDefaults "Standard wiederherstellen">
-<!ENTITY customizeMode.done "Fertig">
-<!ENTITY customizeMode.titlebar "Titelleiste">
-<!ENTITY customizeMode.extraDragSpace "Fläche zum Ziehen">
-<!ENTITY customizeMode.cliqzBlueTheme "Blaue Tab-Leiste">
-<!ENTITY customizeMode.toolbars2 "Symbolleisten">
-<!ENTITY customizeMode.lwthemes "Themes">
-<!ENTITY customizeMode.lwthemes.myThemes "Installiert">
-<!ENTITY customizeMode.lwthemes.recommended "Empfehlungen">
-<!ENTITY customizeMode.lwthemes.menuManage "Verwalten">
-<!ENTITY customizeMode.lwthemes.menuManage.accessKey "V">
-<!ENTITY customizeMode.lwthemes.menuGetMore "Weitere Themes herunterladen">
-<!ENTITY customizeMode.lwthemes.menuGetMore.accessKey "W">
-<!ENTITY customizeMode.overflowList.title2 "Überhangmenü">
-<!ENTITY customizeMode.overflowList.description "Ziehe Elemente hier her und lasse dann los, um schnell auf sie zugreifen zu können, sie aber außerhalb der Symbolleiste zu lassen.">
-<!ENTITY customizeMode.uidensity "Abstände">
-<!-- LOCALIZATION NOTE (customizeMode.uidensity.menuNormal.*):
-     “Normal” is displayed in the Customize screen, under the Density menu. -->
-<!ENTITY customizeMode.uidensity.menuNormal.label "Normal">
-<!ENTITY customizeMode.uidensity.menuNormal.tooltip "Normal">
-<!ENTITY customizeMode.uidensity.menuNormal.accessKey "N">
-<!-- LOCALIZATION NOTE (customizeMode.uidensity.menuCompact.*):
-     “Compact” is displayed in the Customize screen, under the Density menu.
-     It’s an adjective (Density -> Compact). -->
-<!ENTITY customizeMode.uidensity.menuCompact.label "Kompakt">
-<!ENTITY customizeMode.uidensity.menuCompact.tooltip "Kompakt">
-<!ENTITY customizeMode.uidensity.menuCompact.accessKey "K">
-<!-- LOCALIZATION NOTE (customizeMode.uidensity.menuTouch.*):
-     “Touch” is displayed in the Customize screen, under the Density menu.
-     It’s an adjective (Density -> Touch), and it means that control layout is
-     optimized for touch devices. -->
-<!ENTITY customizeMode.uidensity.menuTouch.label "Touch">
-<!ENTITY customizeMode.uidensity.menuTouch.tooltip "Touch">
-<!ENTITY customizeMode.uidensity.menuTouch.accessKey "T">
-<!ENTITY customizeMode.uidensity.autoTouchMode.checkbox.label "Verwende Touch für den Tablet-Modus">
-
-||||||| merged common ancestors
-<!ENTITY customizeMode.menuAndToolbars.header3 "Ziehen Sie Ihre Lieblingswerkzeuge in die Symbolleiste oder das Überhangmenü.">
-<!ENTITY customizeMode.restoreDefaults "Standard wiederherstellen">
-<!ENTITY customizeMode.done "Fertig">
-<!ENTITY customizeMode.titlebar "Titelleiste">
-<!ENTITY customizeMode.extraDragSpace "Fläche zum Ziehen">
-<!ENTITY customizeMode.toolbars2 "Symbolleisten">
-<!ENTITY customizeMode.lwthemes "Themes">
-<!ENTITY customizeMode.lwthemes.myThemes "Installiert">
-<!ENTITY customizeMode.lwthemes.recommended "Empfehlungen">
-<!ENTITY customizeMode.lwthemes.menuManage "Verwalten">
-<!ENTITY customizeMode.lwthemes.menuManage.accessKey "V">
-<!ENTITY customizeMode.lwthemes.menuGetMore "Weitere Themes herunterladen">
-<!ENTITY customizeMode.lwthemes.menuGetMore.accessKey "W">
-<!ENTITY customizeMode.overflowList.title2 "Überhangmenü">
-<!ENTITY customizeMode.overflowList.description "Ziehen Sie Elemente hier her und lassen Sie dann los, um schnell auf sie zugreifen zu können, sie aber außerhalb der Symbolleiste zu lassen.">
-<!ENTITY customizeMode.uidensity "Dichte">
-<!-- LOCALIZATION NOTE (customizeMode.uidensity.menuNormal.*):
-     “Normal” is displayed in the Customize screen, under the Density menu. -->
-<!ENTITY customizeMode.uidensity.menuNormal.label "Normal">
-<!ENTITY customizeMode.uidensity.menuNormal.tooltip "Normal">
-<!ENTITY customizeMode.uidensity.menuNormal.accessKey "N">
-<!-- LOCALIZATION NOTE (customizeMode.uidensity.menuCompact.*):
-     “Compact” is displayed in the Customize screen, under the Density menu.
-     It’s an adjective (Density -> Compact). -->
-<!ENTITY customizeMode.uidensity.menuCompact.label "Kompakt">
-<!ENTITY customizeMode.uidensity.menuCompact.tooltip "Kompakt">
-<!ENTITY customizeMode.uidensity.menuCompact.accessKey "K">
-<!-- LOCALIZATION NOTE (customizeMode.uidensity.menuTouch.*):
-     “Touch” is displayed in the Customize screen, under the Density menu.
-     It’s an adjective (Density -> Touch), and it means that control layout is
-     optimized for touch devices. -->
-<!ENTITY customizeMode.uidensity.menuTouch.label "Touch">
-<!ENTITY customizeMode.uidensity.menuTouch.tooltip "Touch">
-<!ENTITY customizeMode.uidensity.menuTouch.accessKey "T">
-<!ENTITY customizeMode.uidensity.autoTouchMode.checkbox.label "Verwenden Sie Touch für den Tablet-Modus">
-
-=======
->>>>>>> upstream/upstream-releases
 <!ENTITY customizeMode.autoHideDownloadsButton.label "Automatisch ausblenden">
 
 <!ENTITY getUserMedia.selectCamera.label "Zugriff auf folgende Kamera erlauben:">
@@ -1218,45 +1088,7 @@ you can use these alternative items. Otherwise, their values should be empty.  -
 <!ENTITY emeLearnMoreContextMenu.label            "Mehr über DRM-Kopierschutz erfahren…">
 <!ENTITY emeLearnMoreContextMenu.accesskey        "D">
 
-<<<<<<< HEAD
-<!ENTITY updateAvailable.message "Aktualisiere &brandShorterName; für die neuesten Verbesserungen in Sachen Geschwindigkeit und Datenschutz.">
-<!ENTITY updateAvailable.whatsnew.label "Die Änderungen im Detail.">
-<!ENTITY updateAvailable.header.message "Es ist ein neues &brandShorterName;-Update verfügbar.">
-<!ENTITY updateAvailable.acceptButton.label "Update herunterladen">
-<!ENTITY updateAvailable.acceptButton.accesskey "h">
-<!ENTITY updateAvailable.cancelButton.label "Nicht jetzt">
-<!ENTITY updateAvailable.cancelButton.accesskey "N">
-||||||| merged common ancestors
-<!ENTITY updateAvailable.message "Aktualisieren Sie &brandShorterName; für die neuesten Verbesserungen in Sachen Geschwindigkeit und Datenschutz.">
-<!ENTITY updateAvailable.whatsnew.label "Die Änderungen im Detail.">
-<!ENTITY updateAvailable.header.message "Es ist ein neues &brandShorterName;-Update verfügbar.">
-<!ENTITY updateAvailable.acceptButton.label "Update herunterladen">
-<!ENTITY updateAvailable.acceptButton.accesskey "h">
-<!ENTITY updateAvailable.cancelButton.label "Nicht jetzt">
-<!ENTITY updateAvailable.cancelButton.accesskey "N">
-=======
->>>>>>> upstream/upstream-releases
 <!ENTITY updateAvailable.panelUI.label "&brandShorterName;-Update herunterladen">
-<<<<<<< HEAD
-
-<!ENTITY updateManual.message "Lade dir die aktuelle Version von &brandShorterName; herunter, und wir helfen dir bei der Installation.">
-<!ENTITY updateManual.whatsnew.label "Die Änderungen im Detail.">
-<!ENTITY updateManual.header.message "&brandShorterName; kann nicht auf die neueste Version aktualisieren.">
-<!ENTITY updateManual.acceptButton.label "&brandShorterName; herunterladen">
-<!ENTITY updateManual.acceptButton.accesskey "h">
-<!ENTITY updateManual.cancelButton.label "Nicht jetzt">
-<!ENTITY updateManual.cancelButton.accesskey "N">
-||||||| merged common ancestors
-
-<!ENTITY updateManual.message "Laden Sie sich die aktuelle Version von &brandShorterName; herunter und wir helfen Ihnen bei der Installation.">
-<!ENTITY updateManual.whatsnew.label "Die Änderungen im Detail.">
-<!ENTITY updateManual.header.message "&brandShorterName; kann nicht auf die neueste Version aktualisieren.">
-<!ENTITY updateManual.acceptButton.label "&brandShorterName; herunterladen">
-<!ENTITY updateManual.acceptButton.accesskey "h">
-<!ENTITY updateManual.cancelButton.label "Nicht jetzt">
-<!ENTITY updateManual.cancelButton.accesskey "N">
-=======
->>>>>>> upstream/upstream-releases
 <!ENTITY updateManual.panelUI.label "Die aktuelle Version von &brandShorterName; herunterladen">
 <!ENTITY updateUnsupported.panelUI.label "Weitere Updates können nicht angewendet werden">
 <!ENTITY updateRestart.panelUI.label2 "Zum Aktualisieren von &brandShorterName; neu starten">
@@ -1298,41 +1130,7 @@ you can use these alternative items. Otherwise, their values should be empty.  -
      used as a textual label for the indicator used by assistive technology
      users. -->
 <!ENTITY accessibilityIndicator.tooltip "Funktionen für Barrierefreiheit aktiviert">
-<<<<<<< HEAD
-
-<!-- LOCALIZATION NOTE: (addonPostInstallMessage.label):
-     The first <image> tag is replaced with the icon for the add-ons menu.
-     The second <image> tag is replaced with the icon for the toolbar menu. -->
-<!ENTITY addonPostInstallMessage.label "Die Add-ons lassen sich durch Klicken auf <image class='addon-addon-icon'/> im <image class='addon-toolbar-icon'/>-Menü verwalten.">
-<!ENTITY addonPostInstall.incognito.checkbox.label "Ausführen der Erweiterung auch in Vergessen-Fenstern erlauben">
-<!ENTITY addonPostInstall.incognito.checkbox.accesskey "p">
-
-<!ENTITY addonPrivateBrowsing.header2.label "Änderung an Ausführung von Erweiterungen in Vergessen-Fenstern">
-<!ENTITY addonPrivateBrowsing.body2.label "In &brandShorterName; neu installierte Erweiterungen werden in Vergessen-Fenstern nicht ausgeführt, außer dies wird in den Einstellungen aktiviert.">
-<!ENTITY addonPrivateBrowsing.learnMore.label "Weitere Informationen zur Verwaltung von Erweiterungseinstellungen">
-<!ENTITY addonPrivateBrowsing.okButton.label "OK">
-<!ENTITY addonPrivateBrowsing.okButton.accesskey "O">
-<!ENTITY addonPrivateBrowsing.manageButton.label "Erweiterungen verwalten">
-<!ENTITY addonPrivateBrowsing.manageButton.accesskey "w">
 
 <!-- Cliqz -->
 <!ENTITY allowAddons.panelUI.label "Cliqz lässt ab sofort Firefox Add-ons zu">
 <!ENTITY connect.panelUI.label "Connect">
-||||||| merged common ancestors
-
-<!-- LOCALIZATION NOTE: (addonPostInstallMessage.label):
-     The first <image> tag is replaced with the icon for the add-ons menu.
-     The second <image> tag is replaced with the icon for the toolbar menu. -->
-<!ENTITY addonPostInstallMessage.label "Die Add-ons lassen sich durch Klicken auf <image class='addon-addon-icon'/> im <image class='addon-toolbar-icon'/>-Menü verwalten.">
-<!ENTITY addonPostInstall.incognito.checkbox.label "Ausführen der Erweiterung auch in privaten Fenstern erlauben">
-<!ENTITY addonPostInstall.incognito.checkbox.accesskey "p">
-
-<!ENTITY addonPrivateBrowsing.header2.label "Änderung an Ausführung von Erweiterungen in privaten Fenstern">
-<!ENTITY addonPrivateBrowsing.body2.label "In &brandShorterName; neu installierte Erweiterungen werden in privaten Fenstern nicht ausgeführt, außer dies wird in den Einstellungen aktiviert.">
-<!ENTITY addonPrivateBrowsing.learnMore.label "Weitere Informationen zur Verwaltung von Erweiterungseinstellungen">
-<!ENTITY addonPrivateBrowsing.okButton.label "OK">
-<!ENTITY addonPrivateBrowsing.okButton.accesskey "O">
-<!ENTITY addonPrivateBrowsing.manageButton.label "Erweiterungen verwalten">
-<!ENTITY addonPrivateBrowsing.manageButton.accesskey "w">
-=======
->>>>>>> upstream/upstream-releases

@@ -1717,13 +1717,6 @@ var gPrivacyPane = {
       case "always":
         return Ci.nsICookieService.BEHAVIOR_REJECT;
     }
-<<<<<<< HEAD
-||||||| merged common ancestors
-
-    return Ci.nsICookieService.BEHAVIOR_ACCEPT;
-=======
-    return Ci.nsICookieService.BEHAVIOR_ACCEPT;
->>>>>>> upstream/upstream-releases
   },
 
 #if 0
@@ -2134,38 +2127,21 @@ var gPrivacyPane = {
   readSavePasswords() {
     var pref = Preferences.get("signon.rememberSignons");
     var excepts = document.getElementById("passwordExceptions");
-#if 0
-    var generatePasswords = document.getElementById("generatePasswords");
-<<<<<<< HEAD
-#endif
-||||||| merged common ancestors
-=======
+    // CLIQZ_SPECIAL: remove generatePasswords instance
+    // var generatePasswords = document.getElementById("generatePasswords");
     var autofillCheckbox = document.getElementById("passwordAutofillCheckbox");
->>>>>>> upstream/upstream-releases
 
     if (PrivateBrowsingUtils.permanentPrivateBrowsing) {
       document.getElementById("savePasswords").disabled = true;
       document.getElementById("passwordsBoxHint").hidden = false;
       excepts.disabled = true;
-#if 0
-      generatePasswords.disabled = true;
-<<<<<<< HEAD
-#endif
-||||||| merged common ancestors
-=======
+      // generatePasswords.disabled = true;
       autofillCheckbox.disabled = true;
->>>>>>> upstream/upstream-releases
       return false;
     }
     excepts.disabled = !pref.value;
-#if 0
-    generatePasswords.disabled = !pref.value;
-<<<<<<< HEAD
-#endif
-||||||| merged common ancestors
-=======
+    // generatePasswords.disabled = !pref.value;
     autofillCheckbox.disabled = !pref.value;
->>>>>>> upstream/upstream-releases
 
     // don't override pref value in UI
     return undefined;

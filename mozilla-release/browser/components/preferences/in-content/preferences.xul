@@ -201,16 +201,16 @@
             hidden="true"/>
         </hbox>
         <vbox id="mainPrefPane">
-#include searchResults.xul
-#include main.xul
+#include searchResults.inc.xul
+#include main.inc.xul
 #if 0
-  #include home.xul
+  #include home.inc.xul
 #endif
-#include search.xul
-#include privacy.xul
-#include containers.xul
+#include search.inc.xul
+#include privacy.inc.xul
+#include containers.inc.xul
 #if MOZ_SERVICES_SYNC
-  #include sync.xul
+  #include sync.inc.xul
 #endif
 #include connect.xul
         </vbox>
