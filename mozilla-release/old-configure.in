@@ -1626,14 +1626,6 @@ MOZ_SANDBOX=1
 MOZ_BINARY_EXTENSIONS=
 MOZ_DEVTOOLS=server
 
-# Set this ENV variable to 0 to disable Automatic private tab feature.
-# NB: CQZ_ADULT_DOMAINS_BF should be set to let feature actually work.
-AC_SUBST(CQZ_AUTO_PRIVATE_TAB)
-if test -z "$CQZ_AUTO_PRIVATE_TAB"; then
-  CQZ_AUTO_PRIVATE_TAB=1
-fi
-AC_DEFINE(CQZ_AUTO_PRIVATE_TAB)
-
 # Path to bloom filter database of adult domains.
 # NB: This must be relative to source root.
 # NB: File name must be exactly "adult-domains.bin" :(

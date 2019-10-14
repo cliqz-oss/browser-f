@@ -1089,7 +1089,7 @@
               flex="2"
               data-l10n-id="certs-enable-ocsp"
               preference="security.OCSP.enabled"
-              flex="1" />
+              />
     <vbox flex="1">
       <!-- Please don't remove the wrapping hbox/vbox/box for these elements. It's used to properly compute the search tooltip position. -->
       <hbox pack="end">

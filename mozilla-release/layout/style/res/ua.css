@@ -500,9 +500,3 @@ div:-moz-native-anonymous.moz-custom-content-container {
   height: 100%;
 }
 
-/* Cliqz - DB-1071 */
-#ConnectionsDialog .mozilla-support-label {
-  margin-top: 6px;
-  color: #999;
-  font-size: 14px;
-}

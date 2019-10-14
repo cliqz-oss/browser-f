@@ -788,6 +788,7 @@ xul|*.radio-label-box {
   -moz-user-select: none;
 }
 
+/*
 *|*.header-mozilla-support-label {
   margin-inline-end: 3px;
   font-weight: initial;
@@ -799,6 +800,7 @@ xul|*.radio-label-box {
 *|*.header-mozilla-support-label > html|a.help-button {
   margin-bottom: -3px;
 }
+*/
 
 /* List boxes */
 

@@ -132,7 +132,6 @@ SRC_BASE=mozilla-release
 
 # automatic forget tab - start
 wget -O adult-domains.bin https://s3.amazonaws.com/cdn.cliqz.com/browser-f/APT/adult-domains.bin
-export CQZ_AUTO_PRIVATE_TAB=0
 export CQZ_ADULT_DOMAINS_BF=../adult-domains.bin
 # automatic forget tab - end
 
