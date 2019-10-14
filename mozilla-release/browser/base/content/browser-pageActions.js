@@ -1163,10 +1163,7 @@ BrowserPageActions.sendToDevice = {
   },
 
   onShowingSubview(panelViewNode) {
-    gSync.populateSendTabToDevicesView(
-      panelViewNode,
-      this.onShowingSubview.bind(this)
-    );
+    gSync.populateSendTabToDevicesView(panelViewNode);
   },
 };
 #endif
