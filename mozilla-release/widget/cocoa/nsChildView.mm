@@ -226,10 +226,6 @@ static NSMutableDictionary* sNativeKeyEventsMap = [NSMutableDictionary dictionar
 - (float)roundedCornerRadius;
 @end
 
-@interface NSWindow (NSWindowShouldZoomOnDoubleClick)
-+ (BOOL)_shouldZoomOnDoubleClick;  // present on 10.7 and above
-@end
-
 // Starting with 10.7 the bottom corners of all windows are rounded.
 // Unfortunately, the standard rounding that OS X applies to OpenGL views
 // does not use anti-aliasing and looks very crude. Since we want a smooth,
@@ -2031,10 +2027,10 @@ void nsChildView::PostRender(WidgetRenderingContext* aContext) {
       compositingState->mNativeLayerChangesPending = true;
     } else {
       // Force a CoreAnimation layer tree update from this thread.
-      [CATransaction begin];
+      [NSAnimationContext beginGrouping];
       mNativeLayerRoot->ApplyChanges();
       compositingState->mNativeLayerChangesPending = false;
-      [CATransaction commit];
+      [NSAnimationContext endGrouping];
     }
   } else {
     UniquePtr<GLManager> manager(GLManager::CreateGLManager(aContext->mLayerManager));
@@ -4316,11 +4312,10 @@ NSEvent* gLastDragMouseDownEvent = nil;
   // Check to see if we are double-clicking in draggable parts of the window.
   if (!defaultPrevented && [theEvent clickCount] == 2 &&
       !mGeckoChild->GetNonDraggableRegion().Contains(pos.x, pos.y)) {
-    if ([self shouldZoomOnDoubleClick]) {
+    if (nsCocoaUtils::ShouldZoomOnTitlebarDoubleClick()) {
       [[self window] performZoom:nil];
-    } else if ([self shouldMinimizeOnTitlebarDoubleClick]) {
-      NSButton* minimizeButton = [[self window] standardWindowButton:NSWindowMiniaturizeButton];
-      [minimizeButton performClick:self];
+    } else if (nsCocoaUtils::ShouldMinimizeOnTitlebarDoubleClick()) {
+      [[self window] performMiniaturize:nil];
     }
   }
 
@@ -4861,21 +4856,6 @@ static gfx::IntPoint GetIntegerDeltaForEvent(NSEvent* aEvent) {
   NS_OBJC_BEGIN_TRY_ABORT_BLOCK_RETURN
   sIsTabletPointerActivated = [theEvent isEnteringProximity];
   NS_OBJC_END_TRY_ABORT_BLOCK
-}
-
-- (BOOL)shouldZoomOnDoubleClick {
-  if ([NSWindow respondsToSelector:@selector(_shouldZoomOnDoubleClick)]) {
-    return [NSWindow _shouldZoomOnDoubleClick];
-  }
-  return nsCocoaFeatures::OnYosemiteOrLater();
-}
-
-- (BOOL)shouldMinimizeOnTitlebarDoubleClick {
-  NSString* MDAppleMiniaturizeOnDoubleClickKey = @"AppleMiniaturizeOnDoubleClick";
-  NSUserDefaults* userDefaults = [NSUserDefaults standardUserDefaults];
-  bool shouldMinimize = [[userDefaults objectForKey:MDAppleMiniaturizeOnDoubleClickKey] boolValue];
-
-  return shouldMinimize;
 }
 
 #pragma mark -
