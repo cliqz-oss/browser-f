@@ -83,6 +83,7 @@
 
 <!-- Tab preferences -->
 <groupbox data-category="paneGeneral"
+          class="formatBoxSize"
           hidden="true">
     <label><html:h2 data-l10n-id="tabs-group-header"/></label>
 
@@ -337,6 +338,7 @@
     </hbox>
   </hbox>
 -->
+
   <hbox id="translationBox" hidden="true">
     <hbox align="center" flex="1">
       <checkbox id="translate" preference="browser.translation.detectLanguage"
@@ -529,7 +531,9 @@
                 disabled="true"/>
       </hbox>
       <hbox id="noUpdatesFound" align="start">
+#if 0
         <image class="face-smile"/>
+#endif
         <label data-l10n-id="update-noUpdatesFound"></label>
         <spacer flex="1"/>
         <button data-l10n-id="update-checkForUpdatesButton"
@@ -544,7 +548,9 @@
                 disabled="true"/>
       </hbox>
       <hbox id="manualUpdate" align="start">
+#if 0
         <image class="face-sad"/>
+#endif
         <description flex="1" data-l10n-id="update-manual">
           <label id="manualLink" data-l10n-name="manual-link" is="text-link"/>
         </description>
@@ -657,7 +663,7 @@
 </hbox>
 
 <!-- Browsing -->
-<groupbox id="browsingGroup" data-category="paneGeneral" hidden="true"  class="formatBoxSize">
+<groupbox id="browsingGroup" data-category="paneGeneral" hidden="true" class="formatBoxSize">
   <label class="search-header" hidden="true"><html:h2 data-l10n-id="browsing-title"/></label>
 
   <checkbox id="useAutoScroll"

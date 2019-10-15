@@ -152,10 +152,12 @@
                               type="checkbox"
                               key="key_gotoHistory"
                               oncommand="SidebarUI.toggle('viewHistorySidebar');" data-l10n-id="menu-view-history-button"/>
+#ifdef MOZ_SERVICES_SYNC
                     <menuitem id="menu_tabsSidebar"
                               type="checkbox"
                               class="sync-ui-item"
                               oncommand="SidebarUI.toggle('viewTabsSidebar');" data-l10n-id="menu-view-synced-tabs-sidebar"/>
+#endif
                   </menupopup>
                 </menu>
                 <menuseparator/>
@@ -365,6 +367,7 @@
               <menuitem id="menu_openAddons"
                         key="key_openAddons"
                         command="Tools:Addons" data-l10n-id="menu-tools-addons"/>
+
 #ifdef MOZ_SERVICES_SYNC
               <!-- only one of sync-setup, sync-unverifieditem, sync-syncnowitem or sync-reauthitem will be showing at once -->
               <menuitem id="sync-setup"
@@ -383,8 +386,8 @@
                         class="sync-ui-item"
                         hidden="true"
                         oncommand="gSync.openSignInAgainPage('menubar');" data-l10n-id="menu-tools-sync-re-auth"/>
-              <menuseparator id="devToolsSeparator"/>
 #endif
+              <menuseparator id="devToolsSeparator"/>
               <menu id="webDeveloperMenu" data-l10n-id="menu-tools-web-developer">
                 <menupopup id="menuWebDeveloperPopup">
                   <menuitem id="menu_pageSource"

@@ -326,6 +326,7 @@ this.chrome_settings_overrides = class extends ExtensionAPI {
     } catch(e) {
       // in case there is no SignedState
     }
+
     // If this is a page we ignore, just skip the homepage setting completely.
     if (homepageUrl) {
       const ignoreHomePageUrl = await HomePage.shouldIgnore(homepageUrl);

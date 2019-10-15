@@ -138,13 +138,13 @@ detail-update-manual =
 # Used as a description for the option to allow or block an add-on in private windows.
 detail-private-browsing-label = Run in Forget Windows
 
-# Some add-ons may elect to not run in private windows by setting incognito: not_allowed in the manifest.  This
+# Some add-ons may elect to not run in Forget Windows by setting incognito: not_allowed in the manifest.  This
 # cannot be overridden by the user.
-detail-private-disallowed-label = Not Allowed in Forget mode
-detail-private-disallowed-description2 = This extension does not run while in Forget mode. <a data-l10n-name="learn-more">Learn more</a>
+detail-private-disallowed-label = Not Allowed in Forget Windows
+detail-private-disallowed-description2 = This extension does not run while private browsing. <a data-l10n-name="learn-more">Learn more</a>
 
-# Some special add-ons are privileged, run in private windows automatically, and this permission can't be revoked
-detail-private-required-label = Requires Access to Forget Mode
+# Some special add-ons are privileged, run in Forget mode automatically, and this permission can't be revoked
+detail-private-required-label = Requires Access to Forget mode
 detail-private-required-description2 = This extension has access to your online activities while private browsing. <a data-l10n-name="learn-more">Learn more</a>
 
 detail-private-browsing-on =

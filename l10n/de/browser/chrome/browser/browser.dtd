@@ -54,10 +54,7 @@ in "Search through tabs". -->
 <!ENTITY forgetTabCmd.label "Neuer Vergessen Tab">
 <!ENTITY forgetTabCmd.accesskey "V">
 <!ENTITY forgetTabCmd.commandkey "f">
-<!-- LOCALIZATION NOTE (openLocationCmd.label): "Open Location" is only
-displayed on OS X, and only on windows that aren't main browser windows, or
-when there are no windows but Firefox is still running. -->
-<!ENTITY openLocationCmd.label "Adresse öffnen…">
+
 <!ENTITY openFileCmd.label "Datei öffnen…">
 <!ENTITY openFileCmd.accesskey "f">
 <!ENTITY openFileCmd.commandkey "o">
@@ -271,18 +268,19 @@ These should match what Safari and other Apple applications use on OS X Lion. --
 <!ENTITY urlbar.midiNotificationAnchor.tooltip            "MIDI-Ansicht öffnen">
 
 <!ENTITY urlbar.permissionsGranted.tooltip       "Du hast dieser Website zusätzliche Berechtigungen erteilt.">
+
 <!ENTITY urlbar.cameraBlocked.tooltip            "Du hast den Zugriff auf deine Kamera durch diese Website blockiert.">
 <!ENTITY urlbar.microphoneBlocked.tooltip        "Du hast den Zugriff auf dein Mikrofon durch diese Website blockiert.">
 <!ENTITY urlbar.screenBlocked.tooltip            "Du hast den Zugriff auf deinen Bildschirm durch diese Website blockiert.">
 <!ENTITY urlbar.geolocationBlocked.tooltip       "Du hast den Zugriff auf deinen Standort durch diese Website blockiert.">
 <!ENTITY urlbar.webNotificationsBlocked.tooltip  "Du hast das Anzeigen von Benachrichtungen durch diese Website blockiert.">
 <!ENTITY urlbar.persistentStorageBlocked.tooltip "Du hast die Verwendung von dauerhaftem Speicher für diese Website blockiert.">
-<!ENTITY urlbar.popupBlocked.tooltip             "Sie haben das Anzeigen von Pop-ups für diese Website blockiert.">
-<!ENTITY urlbar.autoplayMediaBlocked.tooltip     "Sie haben die automatische Wiedergabe von Medien mit Ton für diese Website blockiert.">
-<!ENTITY urlbar.canvasBlocked.tooltip            "Sie haben das Abfragen von Canvas-Daten durch diese Website blockiert.">
-<!ENTITY urlbar.flashPluginBlocked.tooltip       "Sie haben den Zugriff auf das Adobe-Flash-Plugin für diese Website blockiert.">
-<!ENTITY urlbar.midiBlocked.tooltip              "Sie haben den Zugriff auf MIDI für diese Website blockiert.">
-<!ENTITY urlbar.installBlocked.tooltip           "Sie haben die Installation von Erweiterungen von dieser Website blockiert.">
+<!ENTITY urlbar.popupBlocked.tooltip             "Du hast das Anzeigen von Pop-ups für diese Website blockiert.">
+<!ENTITY urlbar.autoplayMediaBlocked.tooltip     "Du hast die automatische Wiedergabe von Medien mit Ton für diese Website blockiert.">
+<!ENTITY urlbar.canvasBlocked.tooltip            "Du hast das Abfragen von Canvas-Daten durch diese Website blockiert.">
+<!ENTITY urlbar.flashPluginBlocked.tooltip       "Du hast den Zugriff auf das Adobe-Flash-Plugin für diese Website blockiert.">
+<!ENTITY urlbar.midiBlocked.tooltip              "Du hast den Zugriff auf MIDI für diese Website blockiert.">
+<!ENTITY urlbar.installBlocked.tooltip           "Du hast die Installation von Erweiterungen von dieser Website blockiert.">
 
 <!ENTITY urlbar.openHistoryPopup.tooltip                "Chronik anzeigen">
 
@@ -840,13 +838,12 @@ you can use these alternative items. Otherwise, their values should be empty.  -
 
 <!ENTITY identity.connectionSecure3 "Verbindung gesichert">
 <!ENTITY identity.connectionNotSecure2 "Verbindung nicht sicher">
-<!ENTITY identity.connectionNotSecureSecurityView "Sie kommunizieren mit dieser Seite über eine ungesicherte Verbindung.">
+<!ENTITY identity.connectionNotSecureSecurityView "Du kommunizierst mit dieser Seite über eine ungesicherte Verbindung.">
 <!ENTITY identity.connectionFile "Diese Seite ist auf deinem Computer gespeichert.">
 <!ENTITY identity.connectionVerified2 "Du bist derzeit über eine gesicherte Verbindung mit dieser Website verbunden, welche betrieben wird von:">
 <!ENTITY identity.connectionVerified3 "Du bist derzeit über eine gesicherte Verbindung mit dieser Website verbunden.">
 <!ENTITY identity.connectionInternal "Dies ist eine sichere &brandShortName;-Seite.">
 <!ENTITY identity.extensionPage "Diese Seite wurde durch eine Erweiterung bereitgestellt.">
-
 <!ENTITY identity.insecureLoginForms2 "Deine Zugangsdaten könnten auf dieser Seite in falsche Hände geraten.">
 <!ENTITY identity.customRoot "Die Verbindung wurde durch eine Zertifizierungsstelle bestätigt, welche standardmäßig nicht von Mozilla anerkannt wird.">
 
@@ -954,40 +951,6 @@ you can use these alternative items. Otherwise, their values should be empty.  -
 <!ENTITY syncTabsMenu3.label     "Synchronisierte Tabs">
 
 <!ENTITY syncedTabs.sidebar.label              "Synchronisierte Tabs">
-<!ENTITY syncedTabs.sidebar.noclients.label    "Melde dich auf Ihren anderen Geräten bei Firefox an, um deren Tabs hier angezeigt zu bekommen.">
-<!ENTITY syncedTabs.sidebar.noclients.subtitle "Willst du deine Tabs von deinen anderen Geräten hier angezeigt bekommen?">
-<!ENTITY syncedTabs.sidebar.notsignedin.label  "Melde dich an, um eine Liste der Tabs von deinen anderen Geräten angezeigt zu bekommen.">
-<!ENTITY syncedTabs.sidebar.unverified.label   "Ihr Konto muss verifiziert werden.">
-<!ENTITY syncedTabs.sidebar.notabs.label       "Keine offenen Tabs">
-<!ENTITY syncedTabs.sidebar.openprefs.label    "Einstellungen von &syncBrand.shortName.label; öffnen">
-<!-- LOCALIZATION NOTE (syncedTabs.sidebar.tabsnotsyncing.label): This is shown
-     when Sync is configured but syncing tabs is disabled. -->
-<!ENTITY syncedTabs.sidebar.tabsnotsyncing.label       "Aktiviere das Synchronisieren von Tabs, um die Tabs von Ihren anderen Geräten angezeigt zu bekommen.">
-<!ENTITY syncedTabs.sidebar.searchPlaceholder  "Synchronisierte Tabs durchsuchen">
-<!ENTITY syncedTabs.sidebar.connectAnotherDevice  "Weiteres Gerät verbinden">
-
-<!-- LOCALIZATION NOTE (syncedTabs.context.open.accesskey,
-                        syncedTabs.context.openAllInTabs.accesskey):
-     These access keys are identical because their associated menu items are
-     mutually exclusive -->
-<!ENTITY syncedTabs.context.open.label                       "Öffnen">
-<!ENTITY syncedTabs.context.open.accesskey                   "n">
-<!ENTITY syncedTabs.context.openInNewTab.label               "In neuem Tab öffnen">
-<!ENTITY syncedTabs.context.openInNewTab.accesskey           "T">
-<!ENTITY syncedTabs.context.openInNewWindow.label            "In neuem Fenster öffnen">
-<!ENTITY syncedTabs.context.openInNewWindow.accesskey        "F">
-<!ENTITY syncedTabs.context.openInNewPrivateWindow.label     "In neuem privaten Fenster öffnen">
-<!ENTITY syncedTabs.context.openInNewPrivateWindow.accesskey "p">
-<!ENTITY syncedTabs.context.bookmarkSingleTab.label          "Diesen Tab als Lesezeichen hinzufügen…">
-<!ENTITY syncedTabs.context.bookmarkSingleTab.accesskey      "L">
-<!ENTITY syncedTabs.context.copy.label                       "Adresse kopieren">
-<!ENTITY syncedTabs.context.copy.accesskey                   "k">
-
-<!ENTITY syncedTabs.context.openAllInTabs.label              "Alle in Tabs öffnen">
-<!ENTITY syncedTabs.context.openAllInTabs.accesskey          "A">
-<!ENTITY syncedTabs.context.managedevices.label              "Geräte verwalten…">
-<!ENTITY syncedTabs.context.managedevices.accesskey          "v">
-
 
 <!ENTITY syncBrand.shortName.label    "Sync">
 

@@ -893,7 +893,7 @@ class UrlbarInput {
   }
 
   get focused() {
-    return this.getAttribute("focused") == "true";
+    return this.textbox && this.textbox.getAttribute("focused") == "true";
   }
 
   get goButton() {
@@ -1863,6 +1863,24 @@ class UrlbarInput {
 
   _on_TabSelect(event) {
     this._resetSearchState();
+
+    // CLIQZ-SPECIAL: DB-2272
+    // There might be a case when opening and selecting a new tab
+    // results in displaying the gradient mask-image on url bar.
+    // Even if the value of it is empty or not long enough for
+    // horizontal scrollbar to appear.
+    // In that case _inOverflow is always true.
+    // And since scrollWidth and clientWidth might have been changed since
+    // the last time call we first check the value of _inOverflow.
+    // But even if _inOverflow equals "true" it still requires to check
+    // whether inputField does really have horizontal scrollbar.
+    // If the latter is not there then we need to updateTextOverflow
+    // as if the input field is not overflown.
+    let input = this.inputField;
+    if (this._overflowing && input.scrollWidth === input.clientWidth) {
+      this._overflowing = false;
+      this._updateTextOverflow();
+    }
   }
 
   _on_keydown(event) {

@@ -63,14 +63,15 @@ permissions-invalid-uri-label = Bitte trage einen gültigen Hostnamen ein
 
 ## Exceptions - Tracking Protection
 
+permissions-exceptions-tracking-protection-desc = Du hast den Schutz vor Aktivitätenverfolgung auf folgenden Seiten deaktiviert.
 permissions-exceptions-content-blocking-window =
     .title = Ausnahmen - Blockieren von Seitenelementen
     .style = { permissions-window.style }
-permissions-exceptions-content-blocking-desc = Sie haben das Blockieren von Seitenelementen auf diesen Websites deaktiviert.
+permissions-exceptions-content-blocking-desc = Du hast das Blockieren von Seitenelementen auf diesen Websites deaktiviert.
 permissions-exceptions-etp-window =
     .title = Ausnahmen - Verbesserter Schutz vor Aktivitätenverfolgung
     .style = { permissions-window.style }
-permissions-exceptions-etp-desc = Sie haben die Schutzmaßnahmen für folgende Websites deaktiviert.
+permissions-exceptions-etp-desc = Du hast die Schutzmaßnahmen für folgende Websites deaktiviert.
 
 ## Exceptions - Cookies
 
@@ -105,7 +106,7 @@ permissions-exceptions-addons-desc = Du kannst festlegen, welchen Websites du er
 permissions-exceptions-autoplay-media-window2 =
     .title = Ausnahmen - Automatische Wiedergabe
     .style = { permissions-window.style }
-permissions-exceptions-autoplay-media-desc2 = Hier können die Websites festgelegt werden, welche immer oder nie automatisch Medien mit Ton wiedergeben dürfen. Geben Sie die Adresse der Website ein und klicken Sie dann auf "Blockieren" oder "Erlauben".
+permissions-exceptions-autoplay-media-desc2 = Hier können die Websites festgelegt werden, welche immer oder nie automatisch Medien mit Ton wiedergeben dürfen. Gib die Adresse der Website ein und klicke dann auf "Blockieren" oder "Erlauben".
 
 ## Site Permissions - Autoplay
 

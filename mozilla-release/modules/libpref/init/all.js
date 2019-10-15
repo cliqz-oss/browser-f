@@ -1310,7 +1310,7 @@ pref("privacy.trackingprotection.pbmode.enabled",  false);
 
 // Enable Origin Telemetry by default
 #ifdef NIGHTLY_BUILD
-  pref("privacy.trackingprotection.origin_telemetry.enabled", true);
+  pref("privacy.trackingprotection.origin_telemetry.enabled", false);
 #endif
 
 pref("dom.event.contextmenu.enabled",       true);

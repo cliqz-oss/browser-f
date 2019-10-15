@@ -1717,6 +1717,7 @@ var gPrivacyPane = {
       case "always":
         return Ci.nsICookieService.BEHAVIOR_REJECT;
     }
+    return Ci.nsICookieService.BEHAVIOR_ACCEPT;
   },
 
 #if 0
@@ -2133,7 +2134,6 @@ var gPrivacyPane = {
 
     if (PrivateBrowsingUtils.permanentPrivateBrowsing) {
       document.getElementById("savePasswords").disabled = true;
-      document.getElementById("passwordsBoxHint").hidden = false;
       excepts.disabled = true;
       // generatePasswords.disabled = true;
       autofillCheckbox.disabled = true;

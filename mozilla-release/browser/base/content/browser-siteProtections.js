@@ -1676,7 +1676,6 @@ var gProtectionsHandler = {
 
   // This triggers from top level location changes.
   onLocationChange() {
-    // Trishul check again
     if (["http", "https"].includes(gBrowser.currentURI.scheme)) {
       SocialTracking.sessionPageLoad += 1;
     }

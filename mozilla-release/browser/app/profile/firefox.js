@@ -277,17 +277,16 @@ pref("browser.warnOnQuit", true);
 pref("browser.fullscreen.autohide", true);
 pref("browser.overlink-delay", 80);
 
-// CLIQZ-SPECIAL, carried from before
-// #ifdef UNIX_BUT_NOT_MAC
-//   pref("browser.urlbar.clickSelectsAll", false);
-// #else
+#ifdef UNIX_BUT_NOT_MAC
+  pref("browser.urlbar.clickSelectsAll", false);
+#else
   pref("browser.urlbar.clickSelectsAll", true);
-// #endif
-// #ifdef UNIX_BUT_NOT_MAC
-//   pref("browser.urlbar.doubleClickSelectsAll", true);
-// #else
+#endif
+#ifdef UNIX_BUT_NOT_MAC
+  pref("browser.urlbar.doubleClickSelectsAll", true);
+#else
   pref("browser.urlbar.doubleClickSelectsAll", false);
-// #endif
+#endif
 
 // Whether using `ctrl` when hitting return/enter in the URL bar
 // (or clicking 'go') should prefix 'www.' and suffix
@@ -1916,6 +1915,7 @@ pref("app.normandy.logging.level", 50); // Warn
 pref("app.normandy.run_interval_seconds", 21600); // 6 hours
 pref("app.normandy.shieldLearnMoreUrl", "https://support.mozilla.org/1/firefox/%VERSION%/%OS%/%LOCALE%/shield");
 #ifdef MOZ_DATA_REPORTING
+  // Cliqz. Always false
   pref("app.shield.optoutstudies.enabled", false);
 #else
   pref("app.shield.optoutstudies.enabled", false);

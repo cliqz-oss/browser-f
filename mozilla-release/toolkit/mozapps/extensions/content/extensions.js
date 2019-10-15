@@ -703,6 +703,7 @@ var gViewController = {
     this.headeredViews = document.getElementById("headered-views");
     this.headeredViewsDeck = document.getElementById("headered-views-content");
     this.backButton = document.getElementById("go-back");
+
     this.viewObjects.shortcuts = gShortcutsView;
 
     this.viewObjects.list = htmlView("list");

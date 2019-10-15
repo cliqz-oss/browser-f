@@ -57,7 +57,7 @@ var gIdentityHandler = {
    * RegExp used to decide if an about url should be shown as being part of
    * the browser UI.
    */
-  _secureInternalUIWhitelist: /^(?:accounts|addons|cache|certificate|cliqz|config|crashes|downloads|license|logins|preferences|protections|rights|sessionrestore|support|welcomeback)(?:[?#]|$)/i,
+  _secureInternalUIWhitelist: /^(?:accounts|addons|cache|certificate|cliqz|config|crashes|downloads|license|preferences|protections|rights|sessionrestore|support|welcomeback)(?:[?#]|$)/i,
 
   /**
    * Whether the established HTTPS connection is considered "broken".
@@ -401,7 +401,7 @@ var gIdentityHandler = {
 
   recordClick(object) {
     // Cliqz don't count clicks for ContentBlocking, because don't use it
-    return true;
+    return ;
     Services.telemetry.recordEvent(
       "security.ui.identitypopup",
       "click",
@@ -1224,6 +1224,8 @@ var gIdentityHandler = {
       window.addEventListener("focus", this, true);
     }
 
+    /* CLIQZ: we do not support shield study */
+    return ;
     Services.telemetry.recordEvent(
       "security.ui.identitypopup",
       "open",

@@ -371,6 +371,21 @@
         <label id="siteDataLearnMoreLink"
           class="learnMore" is="text-link" data-l10n-id="sitedata-learn-more"/>
       </description>
+      <description class="description-with-side-element warning-description"
+                   flex="1" hidden="true" id="blockCookiesWarning"
+                   data-l10n-id="sitedata-warning-your-settings-prevent-changes"/>
+      <radiogroup id="blockCookies"
+                  class="formatBoxSize"
+                  preference="network.cookie.cookieBehavior"
+                  onsyncfrompreference="return gPrivacyPane.readBlockCookies();"
+                  onsynctopreference="return gPrivacyPane.writeBlockCookies(this.value);">
+        <radio value="allow"
+               data-l10n-id="sitedata-allow-cookies-option"
+               flex="1" />
+        <radio value="disallow"
+               data-l10n-id="sitedata-disallow-cookies-option"
+               flex="1" />
+      </radiogroup>
       <hbox flex="1" id="deleteOnCloseNote" class="info-panel">
         <description flex="1" data-l10n-id="sitedata-delete-on-close-private-browsing" />
       </hbox>
@@ -454,8 +469,8 @@
         class="indent"
         align="center">
     <label id="keepUntil"
-            control="keepCookiesUntil"
-            data-l10n-id="sitedata-keep-until"/>
+           control="keepCookiesUntil"
+           data-l10n-id="sitedata-keep-until"/>
     <!-- Please don't remove the wrapping hbox/vbox/box for these elements. It's used to properly compute the search tooltip position. -->
     <hbox>
       <menulist id="keepCookiesUntil"
@@ -468,6 +483,7 @@
       </menulist>
     </hbox>
   </hbox>
+
 </groupbox>
 
 <!-- Passwords -->
@@ -475,15 +491,15 @@
   <label><html:h2 data-l10n-id="logins-header"/></label>
 
   <vbox id="passwordSettings">
-    <hbox>
-      <vbox flex="1">
+    <hbox id="savePasswordsBox" align="top">
+      <vbox flex="2">
         <hbox>
           <checkbox id="savePasswords"
                     data-l10n-id="forms-ask-to-save-logins"
                     preference="signon.rememberSignons"
                     flex="1" />
         </hbox>
-        <hbox class="indent" flex="1">
+        <hbox class="indent" flex="1" pack="end">
           <checkbox id="passwordAutofillCheckbox"
                     data-l10n-id="forms-fill-logins-and-passwords"
                     search-l10n-id="forms-fill-logins-and-passwords.label"
@@ -551,7 +567,7 @@
   </hbox>
 </groupbox>
 
-	<!-- Consentric -->
+<!-- Consentric -->
 <groupbox id="consentricGroup" data-category="panePrivacy" hidden="true" class="formatBoxSize">
   <label><html:h2 data-l10n-id="consentric-header"/></label>
   <checkbox id="consentricEnable"
@@ -572,7 +588,6 @@
 <groupbox id="formAutofillGroupBox"
           data-category="panePrivacy"
           data-subcategory="form-autofill" hidden="true"></groupbox>
-
 #endif
 
 <!-- History -->
@@ -877,9 +892,11 @@
   <separator flex="1"/>
 
   <hbox data-subcategory="permissions-block-popups">
+    <hbox flex="1">
     <checkbox id="popupPolicy" preference="dom.disable_open_during_load"
               data-l10n-id="permissions-block-popups"
               flex="1" />
+    </hbox>
     <!-- Please don't remove the wrapping hbox/vbox/box for these elements. It's used to properly compute the search tooltip position. -->
     <hbox>
       <button id="popupPolicyButton"
@@ -1015,11 +1032,11 @@
 #endif
     </hbox>
 #endif
-    <description data-l10n-id="cliqz-firefox-privacy">
-      <label data-l10n-name="cliqz-firefox-privacy-mozilla" is="text-link" href="https://www.mozilla.org"/>
-      <label data-l10n-name="cliqz-firefox-privacy-mozilla-privacy" is="text-link" href="https://www.mozilla.org/en-US/privacy/firefox"/>
-      <label data-l10n-name="cliqz-firefox-privacy-privacy-browser" is="text-link" href="https://cliqz.com/en/privacy-browser"/>
-    </description>
+  <description data-l10n-id="cliqz-firefox-privacy">
+    <label data-l10n-name="cliqz-firefox-privacy-mozilla" is="text-link" href="https://www.mozilla.org"/>
+    <label data-l10n-name="cliqz-firefox-privacy-mozilla-privacy" is="text-link" href="https://www.mozilla.org/en-US/privacy/firefox"/>
+    <label data-l10n-name="cliqz-firefox-privacy-privacy-browser" is="text-link" href="https://cliqz.com/en/privacy-browser"/>
+  </description>
   </vbox>
 </groupbox>
 #endif
