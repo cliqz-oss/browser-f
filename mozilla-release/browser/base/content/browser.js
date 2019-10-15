@@ -172,11 +172,15 @@ XPCOMUtils.defineLazyScriptGetter(
   "gIdentityHandler",
   "chrome://browser/content/browser-siteIdentity.js"
 );
+
+#if 0
 XPCOMUtils.defineLazyScriptGetter(
   this,
   "gProtectionsHandler",
   "chrome://browser/content/browser-siteProtections.js"
 );
+#endif
+
 XPCOMUtils.defineLazyScriptGetter(
   this,
   ["gGestureSupport", "gHistorySwipeAnimation"],
@@ -2153,7 +2157,9 @@ var gBrowserInit = {
     BookmarkingUI.init();
     BrowserSearch.delayedStartupInit();
     AutoShowBookmarksToolbar.init();
+#if 0
     gProtectionsHandler.init();
+#endif
     HomePage.init().catch(Cu.reportError);
 
     let safeMode = document.getElementById("helpSafeMode");
@@ -2633,7 +2639,9 @@ var gBrowserInit = {
       Services.prefs.removeObserver(ctrlTab.prefName, ctrlTab);
       ctrlTab.uninit();
       gBrowserThumbnails.uninit();
+#if 0
       gProtectionsHandler.uninit();
+#endif
       FullZoom.destroy();
 
       Services.obs.removeObserver(gIdentityHandler, "perm-changed");
@@ -5876,7 +5884,9 @@ var XULBrowserWindow = {
 
       gIdentityHandler.onLocationChange();
 
+#if 0
       gProtectionsHandler.onLocationChange();
+#endif
 
       BrowserPageActions.onLocationChange();
 
@@ -6019,11 +6029,13 @@ var XULBrowserWindow = {
       );
     }
 
+#if 0
     gProtectionsHandler.onContentBlockingEvent(
       this._event,
       aWebProgress,
       aIsSimulated
     );
+#endif
     // Because this function will only receive content blocking event updates
     // for the currently selected tab, we handle updates to background tabs in
     // TabsProgressListener.onContentBlockingEvent.

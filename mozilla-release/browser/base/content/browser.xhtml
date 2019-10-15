@@ -881,6 +881,7 @@
                   pageproxystate="invalid">
               <!-- Use onclick instead of normal popup= syntax since the popup
                    code fires onmousedown, and hence eats our favicon drag events. -->
+#if 0
               <box id="tracking-protection-icon-container" align="center"
                    role="button"
                    onclick="gProtectionsHandler.handleProtectionsButtonEvent(event);"
@@ -898,6 +899,7 @@
                   <description id="tracking-protection-icon-tooltip-label" class="tooltip-label"/>
                 </tooltip>
               </box>
+#endif
               <box id="identity-box" role="button"
                    align="center"
                    aria-label="&urlbar.viewSiteInfo.label;"

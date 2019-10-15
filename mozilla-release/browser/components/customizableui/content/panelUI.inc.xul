@@ -262,7 +262,6 @@
                         oncommand="gSync.toggleAccountPanel('PanelUI-fxa', this, event)"/>
         </toolbaritem>
         <toolbarseparator class="sync-ui-item"/>
-#endif
         <toolbaritem>
           <toolbarbutton id="appMenu-protection-report-button"
                class="subviewbutton subviewbutton-iconic"
@@ -271,6 +270,7 @@
             <label id="appMenu-protection-report-text" class="toolbarbutton-text">Privacy Protections</label>
           </toolbarbutton>
         </toolbaritem>
+#endif
         <toolbarseparator id="appMenu-tp-separator"/>
         <toolbarbutton id="appMenu-new-window-button"
                        class="subviewbutton subviewbutton-iconic"

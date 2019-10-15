@@ -274,13 +274,14 @@ var gIdentityHandler = {
     }
     return (this._permissionAnchors = permissionAnchors);
   },
+#if 0
   get _trackingProtectionIconContainer() {
     delete this._trackingProtectionIconContainer;
     return (this._trackingProtectionIconContainer = document.getElementById(
       "tracking-protection-icon-container"
     ));
   },
-
+#endif
   get _geoSharingIcon() {
     delete this._geoSharingIcon;
     return (this._geoSharingIcon = document.getElementById("geo-sharing-icon"));
@@ -835,11 +836,13 @@ var gIdentityHandler = {
       }
     }
 
+#if 0
     // Hide the shield icon if it is a chrome page.
     this._trackingProtectionIconContainer.classList.toggle(
       "chromeUI",
       this._isSecureInternalUI
     );
+#endif
 
     if (this._isCertUserOverridden) {
       this._identityBox.classList.add("certUserOverridden");
@@ -877,7 +880,13 @@ var gIdentityHandler = {
       }
     }
 
-    if (hasGrantedPermissions) {
+    // CLIQZ-SPECIAL: dont need permissions for internal cliqz extension pages
+    let isSystemAddon = false;
+    if (this._pageExtensionPolicy && this._pageExtensionPolicy.extension) {
+      isSystemAddon = this._pageExtensionPolicy.extension.addonData.signedState  == 3 || this._pageExtensionPolicy.extension.addonData.builtIn;
+    }
+
+    if (hasGrantedPermissions && !isSystemAddon) {
       this._identityBox.classList.add("grantedPermissions");
     }
 
@@ -1208,9 +1217,11 @@ var gIdentityHandler = {
     this._identityBox.setAttribute("open", "true");
 
     // Check the panel state of the protections panel. Hide it if needed.
+#if 0
     if (gProtectionsHandler._protectionsPopup.state != "closed") {
       PanelMultiView.hidePopup(gProtectionsHandler._protectionsPopup);
     }
+#endif
 
     // Now open the popup, anchored off the primary chrome element
     PanelMultiView.openPopup(this._identityPopup, this._identityIcon, {

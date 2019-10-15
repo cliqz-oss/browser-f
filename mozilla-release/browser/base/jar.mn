@@ -53,8 +53,10 @@ browser.jar:
 *       content/browser/browser-places.js             (content/browser-places.js)
         content/browser/browser-safebrowsing.js       (content/browser-safebrowsing.js)
 *       content/browser/browser-sidebar.js            (content/browser-sidebar.js)
-        content/browser/browser-siteIdentity.js       (content/browser-siteIdentity.js)
+*       content/browser/browser-siteIdentity.js       (content/browser-siteIdentity.js)
+#if 0
         content/browser/browser-siteProtections.js    (content/browser-siteProtections.js)
+#endif
 #ifdef MOZ_SERVICES_SYNC
         content/browser/browser-sync.js               (content/browser-sync.js)
 #endif
