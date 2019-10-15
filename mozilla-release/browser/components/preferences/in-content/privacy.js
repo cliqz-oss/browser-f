@@ -563,12 +563,6 @@ var gPrivacyPane = {
       gPrivacyPane.changeMasterPassword
     );
     setEventListener("showPasswords", "command", gPrivacyPane.showPasswords);
-    setEventListener("jumpToHistory", "click", function() {
-      const h = document.querySelector('.search-container')
-        .getBoundingClientRect().height;
-      document.querySelector('.main-content').scrollTop +=
-        document.querySelector('#historyGroup').getBoundingClientRect().top - h;
-    });
 #if 0
     setEventListener(
       "addonExceptions",
@@ -640,6 +634,7 @@ var gPrivacyPane = {
       gPrivacyPane.toggleDoNotDisturbNotifications
     );
 
+#if 0
     setSyncFromPrefListener("contentBlockingBlockCookiesCheckbox", () =>
       this.readBlockCookies()
     );
@@ -654,6 +649,8 @@ var gPrivacyPane = {
     );
     setSyncFromPrefListener("deleteOnClose", () => this.readDeleteOnClose());
     setSyncToPrefListener("deleteOnClose", () => this.writeDeleteOnClose());
+#endif
+
     setSyncFromPrefListener("savePasswords", () => this.readSavePasswords());
 
     let microControlHandler = el =>
@@ -665,9 +662,12 @@ var gPrivacyPane = {
     setSyncFromPrefListener("popupPolicy", () =>
       this.updateButtons("popupPolicyButton", "dom.disable_open_during_load")
     );
+#if 0
     setSyncFromPrefListener("warnAddonInstall", () =>
       this.readWarnAddonInstall()
     );
+#endif
+
     setSyncFromPrefListener("enableOCSP", () => this.readEnableOCSP());
     setSyncToPrefListener("enableOCSP", () => this.writeEnableOCSP());
 
@@ -864,8 +864,9 @@ var gPrivacyPane = {
         "sitedata-option-block-cross-site-and-social-media-trackers"
       );
     }
-
+#if 0
     addCustomBlockingLearnMore();
+#endif
   },
 
   populateCategoryContents() {

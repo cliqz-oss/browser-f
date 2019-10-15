@@ -386,6 +386,7 @@
                data-l10n-id="sitedata-disallow-cookies-option"
                flex="1" />
       </radiogroup>
+#if 0
       <hbox flex="1" id="deleteOnCloseNote" class="info-panel">
         <description flex="1" data-l10n-id="sitedata-delete-on-close-private-browsing" />
       </hbox>
@@ -396,6 +397,7 @@
                   preference="network.cookie.lifetimePolicy"
                   flex="1" />
       </hbox>
+#endif
     </vbox>
     <vbox align="end">
       <!-- Please don't remove the wrapping hbox/vbox/box for these elements. It's used to properly compute the search tooltip position. -->

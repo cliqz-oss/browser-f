@@ -1279,7 +1279,7 @@ var removeVisitsByFilter = async function(db, filter, onResult = null) {
       FROM moz_historyvisits v
       JOIN moz_historyvisits fv ON fv.id = v.from_visit
       JOIN moz_places h ON h.id = fv.place_id
-      WHERE v.id IN (${ sqlList(visitsToRemove) }) AND h.url LIKE :cliqzSearch`,
+      WHERE v.id IN (${ sqlBindPlaceholders(visitsToRemove) }) AND h.url LIKE :cliqzSearch`,
     {
       cliqzSearch: "https://cliqz.com/search?q=%"
     },
@@ -1442,7 +1442,7 @@ var removeByFilter = async function(db, filter, onResult = null) {
       JOIN moz_historyvisits v ON v.place_id = p.id
       JOIN moz_historyvisits fv ON v.from_visit = fv.id
       JOIN moz_places h ON fv.place_id = h.id
-        WHERE p.id IN (${ sqlList(pages.map(p => p.id)) })
+        WHERE p.id IN (${ sqlBindPlaceholders(pages.map(p => p.id)) })
         AND h.url LIKE :cliqzSearch`,
     {
       cliqzSearch: "https://cliqz.com/search?q=%"
@@ -1520,7 +1520,7 @@ var remove = async function(db, { guids, urls }, onResult = null) {
       JOIN moz_historyvisits v ON v.place_id = p.id
       JOIN moz_historyvisits fv ON v.from_visit = fv.id
       JOIN moz_places h ON fv.place_id = h.id
-        WHERE p.id IN (${ sqlList(pages.map(p => p.id)) })
+        WHERE p.id IN (${ sqlBindPlaceholders(pages.map(p => p.id)) })
         AND h.url LIKE :cliqzSearch`,
     {
       cliqzSearch: "https://cliqz.com/search?q=%"
