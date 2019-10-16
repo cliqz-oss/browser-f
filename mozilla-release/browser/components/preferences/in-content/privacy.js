@@ -2106,6 +2106,7 @@ var gPrivacyPane = {
    * information.
    */
   showPasswords() {
+    /* CLIQZ-SPECIAL: Force use old password manage not lockwise
     if (LoginHelper.managementURI) {
       window.docShell.messageManager.sendAsyncMessage(
         "PasswordManager:OpenPreferences",
@@ -2115,6 +2116,7 @@ var gPrivacyPane = {
       );
       return;
     }
+    */
     Services.telemetry.recordEvent("pwmgr", "open_management", "preferences");
     gSubDialog.open("chrome://passwordmgr/content/passwordManager.xul");
   },

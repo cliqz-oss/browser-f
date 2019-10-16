@@ -781,6 +781,8 @@ this.LoginHelper = {
    *                 The name of the entry point, used for telemetry
    */
   openPasswordManager(window, { filterString = "", entryPoint = "" } = {}) {
+/*
+    CLIQZ-SPECIAL: Force use old password manage not lockwise
     if (this.managementURI && window.openTrustedLinkIn) {
       let managementURL = this.managementURI.replace(
         "%DOMAIN%",
@@ -793,6 +795,7 @@ this.LoginHelper = {
       );
       return;
     }
+*/
     Services.telemetry.recordEvent("pwmgr", "open_management", entryPoint);
     let win = Services.wm.getMostRecentWindow("Toolkit:PasswordManager");
     if (win) {
