@@ -469,8 +469,10 @@ XPCOMUtils.defineLazyModuleGetters(this, {
     "resource:///modules/aboutpages/AboutNetErrorHandler.jsm",
   AboutPrivateBrowsingHandler:
     "resource:///modules/aboutpages/AboutPrivateBrowsingHandler.jsm",
+#if 0
   AboutProtectionsHandler:
     "resource:///modules/aboutpages/AboutProtectionsHandler.jsm",
+#endif
   AddonManager: "resource://gre/modules/AddonManager.jsm",
   AppMenuNotifications: "resource://gre/modules/AppMenuNotifications.jsm",
   AsyncShutdown: "resource://gre/modules/AsyncShutdown.jsm",
@@ -1653,7 +1655,9 @@ BrowserGlue.prototype = {
 
     AboutPrivateBrowsingHandler.init();
 
+#if 0
     AboutProtectionsHandler.init();
+#endif
 
     PageActions.init();
 
@@ -1877,7 +1881,9 @@ BrowserGlue.prototype = {
     NewTabUtils.uninit();
     AboutNetErrorHandler.uninit();
     AboutPrivateBrowsingHandler.uninit();
+#if 0
     AboutProtectionsHandler.uninit();
+#endif
     AutoCompletePopup.uninit();
 
     Normandy.uninit();
@@ -2053,9 +2059,11 @@ BrowserGlue.prototype = {
       this._togglePermissionPromptTelemetry();
     });
 
+#if 0
     Services.tm.idleDispatchToMainThread(() => {
       this._recordContentBlockingTelemetry();
     });
+#endif
 
     // Load the Login Manager data from disk off the main thread, some time
     // after startup.  If the data is required before this runs, for example
