@@ -1485,7 +1485,9 @@ var remove = async function(db, { guids, urls }, onResult = null) {
   let onResultData = onResult ? [] : null;
   let pages = [];
   let hasPagesToRemove = false;
-  await db.execute(query, params, function(row) {
+  await db.execute(query, params, onTableRow);
+
+  function onTableRow(row) {
     let hasForeign = row.getResultByName("foreign_count") != 0;
     if (!hasForeign) {
       hasPagesToRemove = true;
@@ -1510,7 +1512,7 @@ var remove = async function(db, { guids, urls }, onResult = null) {
         url: new URL(url),
       });
     }
-  });
+  };
 
   // CLIQZ-SPECIAL:
   // Also remove cliqz-search pages related to the pages we are going to delete
