@@ -763,7 +763,7 @@ WebRenderMemoryReporter::CollectReports(nsIHandleReportCallback* aHandleReport,
 #undef REPORT_DATA_STORE
 
 static const char* const WR_ROLLOUT_PREF = "gfx.webrender.all.qualified";
-static const bool WR_ROLLOUT_PREF_DEFAULTVALUE = true;
+static const bool WR_ROLLOUT_PREF_DEFAULTVALUE = false;
 static const char* const WR_ROLLOUT_DEFAULT_PREF =
     "gfx.webrender.all.qualified.default";
 static const bool WR_ROLLOUT_DEFAULT_PREF_DEFAULTVALUE = false;
@@ -2776,18 +2776,6 @@ static void UpdateWRQualificationForIntel(FeatureState& aFeature,
       0x163b,
       0x163d,
       0x163e,
-
-      // HD Graphics 4600
-      0x0412,
-      0x0416,
-      0x041a,
-      0x041b,
-      0x041e,
-      0x0a12,
-      0x0a16,
-      0x0a1a,
-      0x0a1b,
-      0x0a1e,
   };
   bool supported = false;
   for (uint16_t id : supportedDevices) {
