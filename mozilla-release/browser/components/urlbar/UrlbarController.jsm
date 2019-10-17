@@ -463,6 +463,10 @@ class UrlbarController {
    *   The selected result.
    */
   recordSelectedResult(event, result) {
+    if (!event) {
+      // CLIQZ-SPECIAL: extension do not send event
+      return;
+    }
     let resultIndex = result ? result.uiIndex : -1;
     let selectedResult = -1;
     if (resultIndex >= 0) {
@@ -698,7 +702,8 @@ class TelemetryEvent {
   }
 
   _internalRecord(event, details) {
-    if (!this._category || !this._startEventInfo) {
+    // CLIQZ-SPECIAL: extension do not send event
+    if (!this._category || !this._startEventInfo || !event) {
       return;
     }
     if (
