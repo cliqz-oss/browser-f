@@ -140,11 +140,13 @@ async function handleHomepageUrl(extension, homepageUrl) {
     );
     // Also set this now as an upgraded browser will need this.
     Services.prefs.setBoolPref(HOMEPAGE_EXTENSION_CONTROLLED, true);
+    /* CLIQZ-SPECIAL: Hide warning popup for homepage
     if (extension.startupReason == "APP_STARTUP") {
       handleInitialHomepagePopup(extension.id, homepageUrl);
     } else {
       homepagePopup.addObserver(extension.id);
     }
+    */
   }
 
   // We need to monitor permission change and update the preferences.
@@ -321,7 +323,7 @@ this.chrome_settings_overrides = class extends ExtensionAPI {
     try {
       // CLIQZ: if its not system addon dont change homepage
       if (!(extension.addonData.signedState == 3)) {
-        homepageUrl = null
+        homepageUrl = null;
       }
     } catch(e) {
       // in case there is no SignedState
@@ -528,7 +530,8 @@ ExtensionPreferencesManager.addSetting("homepage_override", {
   // has been returned to the user.
   onPrefsChanged(item) {
     if (item.id) {
-      homepagePopup.addObserver(item.id);
+      // CLIQZ-SPECIAL: Hide warning popup for homepage
+      // homepagePopup.addObserver(item.id);
 
       let policy = ExtensionParent.WebExtensionPolicy.getByID(item.id);
       Services.prefs.setBoolPref(
@@ -537,7 +540,8 @@ ExtensionPreferencesManager.addSetting("homepage_override", {
       );
       Services.prefs.setBoolPref(HOMEPAGE_EXTENSION_CONTROLLED, true);
     } else {
-      homepagePopup.removeObserver();
+      // CLIQZ-SPECIAL: Hide warning popup for homepage
+      // homepagePopup.removeObserver();
 
       Services.prefs.clearUserPref(HOMEPAGE_PRIVATE_ALLOWED);
       Services.prefs.clearUserPref(HOMEPAGE_EXTENSION_CONTROLLED);
