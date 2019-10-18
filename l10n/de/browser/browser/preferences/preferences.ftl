@@ -131,7 +131,7 @@ startup-header = Start
 # since this setting is only exposed in Firefox Developer Edition
 separate-profile-mode =
     .label = Gleichzeitiges Ausführen von { -brand-short-name } und Firefox erlauben
-use-firefox-sync = Tipp: Dabei werden getrennte Profile verwendet. Verwende Sync, um Daten zwischen diesen zu synchronisieren.
+use-firefox-sync = Tipp: Dabei werden getrennte Profile verwendet. Verwende { -sync-brand-short-name }, um Daten zwischen diesen zu synchronisieren.
 get-started-not-logged-in = Bei { -sync-brand-short-name } anmelden…
 get-started-configured = { -sync-brand-short-name }-Einstellungen öffnen
 always-check-default =

@@ -4,7 +4,7 @@
 
 rights-intro-point2a = You are not granted any trademark rights or licenses
     to the trademarks of Cliqz GmbH or any party, including without limitation
-    the Cliqz name or logo.
+    the { -brand-short-name } name or logo.
 # point 2.5 text for official branded builds
 rights-intro-point2-5 = Some features in { -brand-short-name }, such as the
     Crash Reporter, give you the option to provide feedback to { -brand-short-name }.
@@ -30,7 +30,7 @@ rights-intro-point4a = Some { -brand-short-name } features make use of web-based
 rights-intro-point5 = In order to play back certain types of video content,
     { -brand-short-name } downloads certain content decryption modules from
     third parties.
-#intro paragraph for branded builds
+# intro paragraph for branded builds
 rights2-webservices-cliqz = Parts of the Cliqz Browser are building upon the
     Mozilla open source project. Cliqz uses web-based information services
     provided by Mozilla Firefox.

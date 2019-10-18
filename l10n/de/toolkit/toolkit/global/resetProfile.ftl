@@ -3,16 +3,16 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 refresh-profile-dialog =
-    .title = { -brand-shorter-name } bereinigen
+    .title = { -brand-short-name } bereinigen
 refresh-profile-dialog-button =
-    .label = { -brand-shorter-name } bereinigen
+    .label = { -brand-short-name } bereinigen
 refresh-profile-description =
-    .value = Ein Neuanfang löst { -brand-shorter-name }-Probleme und stellt die Leistung wieder her.
+    .value = Ein Neuanfang löst Probleme und stellt die Leistung wieder her.
 refresh-profile-description-details = Dies wird:
 refresh-profile-remove = Ihre Add-ons und Anpassungen entfernen
 refresh-profile-restore = Die Browser-Einstellungen auf den Standard zurücksetzen
-refresh-profile = Machen Sie { -brand-shorter-name } wieder flott.
-refresh-profile-button = { -brand-shorter-name } bereinigen…
+refresh-profile = Machen Sie { -brand-short-name } wieder flott.
+refresh-profile-button = { -brand-short-name } bereinigen…
 refresh-profile-dialog-items-label3 = Folgende Daten werden zurückgesetzt:
 refresh-profile-dialog-items-label4 = • Website-Berechtigungen
 refresh-profile-dialog-items-label5 = • Angepasste Einstellungen (inkl. Cliqz Tab)

@@ -61,7 +61,7 @@ pane-connect-title = Connect
 category-connect =
     .tooltiptext = { pane-connect-title }
 
-help-button-label = Mozilla Support
+help-button-label = { -brand-short-name } Support
 addons-button-label = Extensions
 
 focus-search =

@@ -2,7 +2,6 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-
 ## Firefox Brand
 ##
 ## Firefox must be treated as a brand, and kept in English.
@@ -13,8 +12,11 @@
 ##
 ## Reference: https://www.mozilla.org/styleguide/communications/translation/
 
--brand-short-name = Cliqz
--vendor-short-name = Cliqz
--brand-full-name = Cliqz
 -brand-shorter-name = Cliqz
+-brand-short-name = Cliqz
+-brand-full-name = Cliqz
+# This brand name can be used in messages where the product name needs to
+# remain unchanged across different versions (Nightly, Beta, etc.).
+-brand-product-name = Cliqz
+-vendor-short-name = Cliqz
 trademarkInfo = Cliqz und die Cliqz-Logos sind Warenzeichen der Cliqz GmbH.
