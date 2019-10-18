@@ -727,6 +727,7 @@
       </vbox>
     </panelview>
 
+#ifdef MOZ_SERVICES_SYNC
     <panelview id="PanelUI-fxa" title="&fxa.menu.account.label;" class="PanelUI-subView" descriptionheightworkaround="true">
       <vbox id="PanelUI-fxa-menu" class="panel-subview-body">
         <toolbarbutton id="fxa-manage-account-button" flex="1"
@@ -819,6 +820,7 @@
                        oncommand="gSync.openConnectAnotherDeviceFromFxaMenu(this);"/>
       </vbox>
     </panelview>
+#endif
 
     <panelview id="PanelUI-bookmarkingTools" class="PanelUI-subView">
       <vbox class="panel-subview-body">
