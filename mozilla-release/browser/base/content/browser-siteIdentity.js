@@ -724,12 +724,20 @@ var gIdentityHandler = {
       return;
     }
 
+    let isSystemAddon = false;
+    if (this._pageExtensionPolicy && this._pageExtensionPolicy.extension) {
+      isSystemAddon = this._pageExtensionPolicy.extension.addonData.signedState  == 3 || this._pageExtensionPolicy.extension.addonData.builtIn;
+    }
+
     let icon_label = "";
     let tooltip = "";
     let icon_country_label = "";
     let icon_labels_dir = "ltr";
 
+    // CLIQZ-SPECIAL: Show search glass in identity box when cliqz pages are open
     if (this._isSecureInternalUI) {
+      this._identityBox.setAttribute('pageproxystate', 'invalid');
+    } else if (this._isSecureInternalUI) {
       // This is a secure internal Firefox page.
       this._identityBox.className = "chromeUI";
       let brandBundle = document.getElementById("bundle_brand");
@@ -881,11 +889,6 @@ var gIdentityHandler = {
     }
 
     // CLIQZ-SPECIAL: dont need permissions for internal cliqz extension pages
-    let isSystemAddon = false;
-    if (this._pageExtensionPolicy && this._pageExtensionPolicy.extension) {
-      isSystemAddon = this._pageExtensionPolicy.extension.addonData.signedState  == 3 || this._pageExtensionPolicy.extension.addonData.builtIn;
-    }
-
     if (hasGrantedPermissions && !isSystemAddon) {
       this._identityBox.classList.add("grantedPermissions");
     }
