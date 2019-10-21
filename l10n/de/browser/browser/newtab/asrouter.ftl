@@ -2,9 +2,14 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
-cfr-doorhanger-extension-heading = Empfohlene Erweiterung
 
+## These messages are used as headings in the recommendation doorhanger
+
+cfr-doorhanger-extension-heading = Empfohlene Erweiterung
+cfr-doorhanger-feature-heading = Empfohlene Funktion
 cfr-doorhanger-pintab-heading = Probieren Sie es aus: Tab anheften
+
+
 
 cfr-doorhanger-extension-sumo-link =
     .tooltiptext = Warum wird das angezeigt?
@@ -13,7 +18,7 @@ cfr-doorhanger-extension-cancel-button = Nicht jetzt
 cfr-doorhanger-extension-ok-button = Jetzt hinzufügen
     .accesskey = h
 cfr-doorhanger-pintab-ok-button = Diesen Tab anheften
-  .accesskey = a
+    .accesskey = a
 cfr-doorhanger-extension-manage-settings-button = Einstellungen für Empfehlungen verwalten
     .accesskey = E
 cfr-doorhanger-extension-never-show-recommendation = Diese Empfehlung nicht anzeigen
@@ -46,29 +51,104 @@ cfr-doorhanger-extension-total-users =
         [one] { $total } Benutzer
        *[other] { $total } Benutzer
     }
-
 cfr-doorhanger-pintab-description = Schneller Zugriff auf die meistverwendeten Seiten. Seiten bleiben geöffnet, selbst nach einem Neustart.
 
 ## These messages are steps on how to use the feature and are shown together.
+
 cfr-doorhanger-pintab-step1 = Klicken Sie mit der <b>rechten Maustaste</b> auf den anzuheftenden Tab.
 cfr-doorhanger-pintab-step2 = Wählen Sie <b>Tab anheften</b> aus dem Menü.
 cfr-doorhanger-pintab-step3 = Falls die Seite auf eine Aktualisierung aufmerksam machen will, wird ein blauer Punkt auf dem angehefteten Tab angezeigt.
-
 cfr-doorhanger-pintab-animation-pause = Anhalten
 cfr-doorhanger-pintab-animation-resume = Fortfahren
 
 ## Firefox Accounts Message
+
 cfr-doorhanger-bookmark-fxa-header = Synchronisieren Sie Ihre Lesezeichen, um sie überall verfügbar zu haben.
 cfr-doorhanger-bookmark-fxa-body = Jederzeit Zugriff auf dieses Lesezeichen - auch auf mobilen Geräten. Nutzen Sie dafür ein { -fxaccount-brand-name }.
 cfr-doorhanger-bookmark-fxa-link-text = Lesezeichen jetzt synchronisieren…
 cfr-doorhanger-bookmark-fxa-close-btn-tooltip =
-  .aria-label = Schließen-Schaltfläche
-  .title = Schließen
+    .aria-label = Schließen-Schaltfläche
+    .title = Schließen
+
+## Protections panel
+
+cfr-protections-panel-header = Surfen ohne verfolgt zu werden
+cfr-protections-panel-body = Behalten Sie die Kontrolle über Ihre Daten. { -brand-short-name } schützt Sie vor den verbreitetsten Skripten, welche Ihre Online-Aktivitäten verfolgen.
+cfr-protections-panel-link-text = Weitere Information
 
 ## What's New toolbar button and panel
 
 cfr-whatsnew-button =
-  .label = Neue Funktionen und Änderungen
-  .tooltiptext = Neue Funktionen und Änderungen
-
+    .label = Neue Funktionen und Änderungen
+    .tooltiptext = Neue Funktionen und Änderungen
 cfr-whatsnew-panel-header = Neue Funktionen und Änderungen
+cfr-whatsnew-release-notes-link-text = Release Notes lesen
+cfr-whatsnew-fx70-title = { -brand-short-name } kämpft noch stärker für deine Privatsphäre
+cfr-whatsnew-fx70-body =
+    Das neueste Update verbessert den Tracking-Schutz und macht es
+    dir einfacher denn je, sichere Kennwörter für jede Webseite zu erstellen.
+cfr-whatsnew-tracking-protect-title = Schütze dich vor Online-Tracking
+cfr-whatsnew-tracking-protect-body =
+    { -brand-short-name } blockt gängige Online-Tracker sozialer Plattformen und anderer Webseiten,
+    die dir durchs Web folgen wollen.
+cfr-whatsnew-tracking-protect-link-text = Deinen Bericht anzeigen
+# This string is displayed before a large numeral that indicates the total
+# number of tracking elements blocked. Don’t add $blockedCount to your
+# localization, because it would result in the number showing twice.
+cfr-whatsnew-tracking-blocked-title =
+    { $blockedCount ->
+        [one] Tracker geblockt
+       *[other] Tracker geblockt
+    }
+cfr-whatsnew-tracking-blocked-subtitle = Seit { DATETIME($earliestDate, month: "long", year: "numeric") }
+cfr-whatsnew-tracking-blocked-link-text = Bericht anzeigen
+cfr-whatsnew-lockwise-backup-title = Speichere deine Passwörter ab
+cfr-whatsnew-lockwise-backup-body = Generiere jetzt sichere Passwörter, auf die du mit deinem Konto von überall aus zugreifen kannst.
+cfr-whatsnew-lockwise-backup-link-text = Backups einschalten
+cfr-whatsnew-lockwise-take-title = Nimm deine Passwörter mit
+cfr-whatsnew-lockwise-take-body =
+    Mit der { -lockwise-brand-short-name } App für mobile Geräte kannst du von überall aus sicher auf deine
+    gespeicherten Passwörter zugreifen.
+cfr-whatsnew-lockwise-take-link-text = Hol dir die App
+
+## Bookmark Sync
+
+cfr-doorhanger-sync-bookmarks-header = Auf dieses Lesezeichen auf dem Handy zugreifen
+cfr-doorhanger-sync-bookmarks-body = Haben Sie Ihre Passwörter, Chronik und mehr überall griffbereit, wo Sie mit { -brand-product-name } angemeldet sind.
+cfr-doorhanger-sync-bookmarks-ok-button = { -sync-brand-short-name } aktivieren
+    .accesskey = T
+
+## Login Sync
+
+cfr-doorhanger-sync-logins-header = Nie wieder ein Passwort verlieren
+cfr-doorhanger-sync-logins-body = Speichern Sie Ihre Passwörter sicher und synchronisieren Sie diese mit allen Ihren Geräten.
+cfr-doorhanger-sync-logins-ok-button = { -sync-brand-short-name } aktivieren
+    .accesskey = k
+
+## Send Tab
+
+cfr-doorhanger-send-tab-header = Das unterwegs lesen
+cfr-doorhanger-send-tab-recipe-header = Dieses Rezept in die Küche mitnehmen
+cfr-doorhanger-send-tab-body = Die Funktion "Tab senden" ermöglicht es, diesen Link ganz einfach mit Ihrem Handy oder einem anderen mit { -brand-product-name } verbundenen Gerät zu teilen.
+cfr-doorhanger-send-tab-ok-button = "Tab senden" ausprobieren
+    .accesskey = T
+
+## Firefox Send
+
+cfr-doorhanger-firefox-send-header = Diese PDF-Datei sicher teilen
+cfr-doorhanger-firefox-send-body = Schützen Sie Ihre Dokumente vor neugierigen Blicken mittels Ende-zu-Ende-Verschlüsselung und Links, welche nach der Benutzung ungültig werden.
+cfr-doorhanger-firefox-send-ok-button = { -send-brand-name } ausprobieren
+    .accesskey = p
+
+## Social Tracking Protection
+
+cfr-doorhanger-socialtracking-ok-button = Schutzmaßnahmen anzeigen
+    .accesskey = M
+cfr-doorhanger-socialtracking-close-button = Schließen
+    .accesskey = S
+cfr-doorhanger-socialtracking-heading = { -brand-short-name } hat ein soziales Netzwerk daran gehindert, deine Aktivitäten hier zu verfolgen.
+cfr-doorhanger-socialtracking-description = Deine Privatsphäre ist wichtig. { -brand-short-name } blockiert jetzt auch bekannte Skripte zur Aktivitätenverfolgung durch soziale Netzwerke und begrenzt damit, wie viel Informationen diese über deine Online-Aktivitäten sammeln können.
+cfr-doorhanger-fingerprinters-heading = { -brand-short-name } hat einen Fingerabdruck auf dieser Seite blockiert
+cfr-doorhanger-fingerprinters-description = Deine Privatsphäre ist uns wichtig. { -brand-short-name } blockiert jetzt Fingerabdrücke, die eindeutig identifizierbare Informationen zu deinem Gerät sammeln, um dich zu tracken.
+cfr-doorhanger-cryptominers-heading = { -brand-short-name } hat einen Fingerabdruck auf dieser Seite blockiert
+cfr-doorhanger-cryptominers-description = Deine Privatsphäre ist uns wichtig. { -brand-short-name } blockiert jetzt Krypto-Miner, die die Rechenleistung deines Systems nutzen wollen, um digitale Währungen zu schürfen.

@@ -16,7 +16,7 @@ list-empty-installed =
 list-empty-available-updates =
     .value = Keine Updates gefunden
 list-empty-recent-updates =
-    .value = Sie haben in letzter Zeit keine Add-ons aktualisiert
+    .value = Du hast in letzter Zeit keine Add-ons aktualisiert
 list-empty-find-updates =
     .label = Nach Updates suchen
 list-empty-button =
@@ -74,18 +74,18 @@ cmd-contribute =
     .tooltiptext = Zur Entwicklung dieses Add-ons beitragen
 discover-title = Was sind Add-ons?
 discover-description =
-    Add-ons sind Anwendungen, mit denen Sie { -brand-short-name } mit
-    zusätzlichen Funktionen oder einem anderen Stil ausstatten können. Probieren Sie eine zeitsparende Sidebar, eine Wettervorhersage  oder ein Theme, um Ihren ganz persönlichen { -brand-short-name }
+    Add-ons sind Anwendungen, mit denen du { -brand-short-name } mit
+    zusätzlichen Funktionen oder einem anderen Stil ausstatten kannst. Probiere eine zeitsparende Sidebar, eine Wettervorhersage  oder ein Theme, um deinen ganz persönlichen { -brand-short-name }
     zu bekommen.
 discover-footer =
-    Wenn Sie mit dem Internet verbunden sind, wird diese Seite
+    Wenn du mit dem Internet verbunden bist, wird diese Seite
     einige der besten und populärsten Add-ons zum Ausprobieren anbieten.
 detail-version =
     .label = Version
 detail-last-updated =
     .label = Zuletzt aktualisiert
 
-detail-contributions-description = Der Entwickler dieses Add-ons bittet Sie, dass Sie die Entwicklung unterstützen, indem Sie einen kleinen Betrag spenden.
+detail-contributions-description = Der Entwickler dieses Add-ons bittet dich, dass du die Entwicklung unterstützt, indem du einen kleinen Betrag spendest.
 
 detail-contributions-button = Unterstützen
     .title = Die Entwicklung dieses Add-ons unterstützen
@@ -104,14 +104,20 @@ detail-update-manual =
     .tooltiptext = Updates nicht automatisch installieren
 # Used as a description for the option to allow or block an add-on in private windows.
 detail-private-browsing-label = In Vergessen-Fenstern ausführen
-detail-private-browsing-description2 = Falls erlaubt, hat die Erweiterung Zugriff auf Ihre Online-Aktivitäten im Vergessen-Modus. <label data-l10n-name="detail-private-browsing-learn-more">Weitere Informationen</label>
+detail-private-browsing-description2 = Falls erlaubt, hat die Erweiterung Zugriff auf deine Online-Aktivitäten im Vergessen-Modus. <label data-l10n-name="detail-private-browsing-learn-more">Weitere Informationen</label>
 # Some add-ons may elect to not run in private windows by setting incognito: not_allowed in the manifest.  This
 # cannot be overriden by the user.
 detail-private-disallowed-label = In Vergessen-Fenstern nicht erlaubt
 detail-private-disallowed-description = Die Erweiterung wird in Vergessen-Fenstern nicht ausgeführt. <label data-l10n-name="detail-private-browsing-learn-more">Weitere Informationen</label>
+
+detail-private-disallowed-description2 = Die Erweiterung wird in Vergessen-Fenstern nicht ausgeführt. <a data-l10n-name="learn-more">Weitere Informationen</a>
+
 # Some special add-ons are privileged, run in private windows automatically, and this permission can't be revoked
 detail-private-required-label = Benötigt Zugriff auf Vergessen-Fenster
-detail-private-required-description = Die Erweiterung hat Zugriff auf Ihre Online-Aktivitäten in Vergessen-Fenstern. <label data-l10n-name="detail-private-browsing-learn-more">Weitere Informationen</label>
+detail-private-required-description = Die Erweiterung hat Zugriff auf deine Online-Aktivitäten in Vergessen-Fenstern. <label data-l10n-name="detail-private-browsing-learn-more">Weitere Informationen</label>
+
+detail-private-required-description2 = Die Erweiterung hat Zugriff auf deine Online-Aktivitäten in Vergessen-Fenstern. <a data-l10n-name="learn-more">Weitere Informationen</a>
+
 detail-private-browsing-on =
     .label = Erlauben
     .tooltiptext = Aktivieren in Vergessen-Fenstern
@@ -153,8 +159,8 @@ addon-restart-now =
     .label = Jetzt neu starten
 disabled-unsigned-heading =
     .value = Einige Add-ons wurden deaktiviert
-disabled-unsigned-description = Die folgenden Add-ons wurden nicht für die Verwendung in { -brand-short-name } verifiziert. Sie können <label data-l10n-name="find-addons">nach Alternativen suchen</label> oder die Entwickler bitten, sie verifizieren zu lassen.
-disabled-unsigned-learn-more = Erfahren Sie mehr über unsere Bestrebungen, Sie beim Surfen im Internet zu schützen.
+disabled-unsigned-description = Die folgenden Add-ons wurden nicht für die Verwendung in { -brand-short-name } verifiziert. Du kannst <label data-l10n-name="find-addons">nach Alternativen suchen</label> oder die Entwickler bitten, sie verifizieren zu lassen.
+disabled-unsigned-learn-more = Erfahre mehr über unsere Bestrebungen, dich beim Surfen im Internet zu schützen.
 disabled-unsigned-devinfo = An der Verifizierung ihrer Add-ons interessierte Entwickler können mehr dazu in unserer <label data-l10n-name="learn-more">Anleitung</label> erfahren.
 plugin-deprecation-description = Fehlt etwas? Einige Plugins werden nicht mehr von { -brand-short-name } unterstützt. <label data-l10n-name="learn-more">Weitere Informationen</label>
 legacy-warning-show-legacy = Erweiterungen des alten Add-on-Typs anzeigen
@@ -164,7 +170,7 @@ legacy-extensions-description = Diese Erweiterungen erfüllen nicht die aktuelle
 private-browsing-description2 =
     { -brand-short-name } ändert die Verwendung von Erweiterungen im Vergessen-Modus.
     Neu in { -brand-short-name } installierte Erweiterungen werden standardmäßig in Vergessen-Fenstern nicht ausgeführt und haben keinen Zugriff auf die Online-Aktivitäten in diesen, außer die Erweiterung wird in den Einstellungen für die Verwendung in Vergessen-Fenstern freigegeben.
-    Diese Änderung dient Ihrem Datenschutz im Vergessen-Modus.
+    Diese Änderung dient deinem Datenschutz im Vergessen-Modus.
     <label data-l10n-name="private-browsing-learn-more">Weitere Informationen zur Verwaltung der Erweiterungseinstellungen</label>
 extensions-view-discover =
     .name = Add-ons entdecken
@@ -186,14 +192,14 @@ extensions-warning-safe-mode-label =
 extensions-warning-safe-mode-container =
     .tooltiptext = { extensions-warning-safe-mode-label.value }
 extensions-warning-check-compatibility-label =
-    .value = Die Addon-Kompatibilitäts-Prüfung ist deaktiviert. Sie könnten inkompatible Add-ons haben.
+    .value = Die Addon-Kompatibilitäts-Prüfung ist deaktiviert. Du könntest inkompatible Add-ons haben.
 extensions-warning-check-compatibility-container =
     .tooltiptext = { extensions-warning-check-compatibility-label.value }
 extensions-warning-check-compatibility-enable =
     .label = Aktivieren
     .tooltiptext = Addon-Kompatibilitäts-Prüfung aktivieren
 extensions-warning-update-security-label =
-    .value = Die Überprüfung der Sicherheit von Add-on-Updates ist deaktiviert. Ihre Sicherheit könnte durch Updates kompromittiert worden sein.
+    .value = Die Überprüfung der Sicherheit von Add-on-Updates ist deaktiviert. Deine Sicherheit könnte durch Updates kompromittiert worden sein.
 extensions-warning-update-security-container =
     .tooltiptext = { extensions-warning-update-security-label.value }
 extensions-warning-update-security-enable =
@@ -234,9 +240,9 @@ extensions-updates-reset-updates-to-manual =
 extensions-updates-updating =
     .value = Add-ons werden aktualisiert
 extensions-updates-installed =
-    .value = Ihre Add-ons wurden aktualisiert.
+    .value = Deine Add-ons wurden aktualisiert.
 extensions-updates-downloaded =
-    .value = Ihre Add-ons wurden heruntergeladen.
+    .value = Deine Add-ons wurden heruntergeladen.
 extensions-updates-restart =
     .label = Jetzt neu starten, um die Installation abzuschließen
 extensions-updates-none-found =
@@ -256,14 +262,25 @@ shortcuts-no-addons = Es sind keine Erweiterungen installiert.
 shortcuts-no-commands = Folgende Erweiterungen verfügen über keine Tastenkombinationen:
 shortcuts-input =
     .placeholder = Tastenkombination drücken
+
 shortcuts-browserAction = Aktion für Erweiterung aktivieren
 shortcuts-pageAction = Aktion für Seite aktivieren
 shortcuts-sidebarAction = Sidebar umschalten
+
 shortcuts-modifier-mac = Mit Strg-, Alt- oder ⌘-Taste kombinieren
 shortcuts-modifier-other = Mit Strg- oder Alt-Taste kombinieren
 shortcuts-invalid = Ungültige Kombination
 shortcuts-letter = Zeichen eingeben
 shortcuts-system = { -brand-short-name }-Tastenkombinationen können nicht überschrieben werden.
+
+# String displayed in warning label when there is a duplicate shortcut
+shortcuts-duplicate = Doppelt verwendete Tastenkombination
+
+# String displayed when a keyboard shortcut is already assigned to more than one add-on
+# Variables:
+#   $shortcut (string) - Shortcut string for the add-on
+shortcuts-duplicate-warning-message = { $shortcut } wird mehrmals als Tastenkombination verwendet. Dies kann zu unerwartetem Verhalten führen.
+
 # String displayed when a keyboard shortcut is already used by another add-on
 # Variables:
 #   $addon (string) - Name of the add-on
@@ -291,7 +308,7 @@ discopane-intro =
 
 # Notice to make user aware that the recommendations are personalized.
 discopane-notice-recommendations =
-    Einige dieser Empfehlungen sind personalisiert, da sie auf Ihren bereits installierten Erweiterungen,
+    Einige dieser Empfehlungen sind personalisiert, da sie auf deinen bereits installierten Erweiterungen,
     Profileinstellungen und Nutzungsstatistiken basieren.
 discopane-notice-learn-more = Weitere Informationen
 
@@ -312,6 +329,11 @@ install-theme-button = Theme installieren
 manage-addon-button = Verwalten
 find-more-addons = Mehr Add-ons ansehen
 
+# This is a label for the button to open the "more options" menu, it is only
+# used for screen readers.
+addon-options-button =
+    .aria-label = Weitere Optionen
+
 ## Add-on actions
 
 report-addon-button = Melden
@@ -329,8 +351,24 @@ details-addon-button = Details
 release-notes-addon-button = Versionshinweise
 permissions-addon-button = Berechtigungen
 
+
 addons-enabled-heading = Aktiviert
 addons-disabled-heading = Deaktiviert
+
+extension-enabled-heading = Aktiviert
+extension-disabled-heading = Deaktiviert
+
+theme-enabled-heading = Aktiviert
+theme-disabled-heading = Deaktiviert
+
+plugin-enabled-heading = Aktiviert
+plugin-disabled-heading = Deaktiviert
+
+dictionary-enabled-heading = Aktiviert
+dictionary-disabled-heading = Deaktiviert
+
+locale-enabled-heading = Aktiviert
+locale-disabled-heading = Deaktiviert
 
 ask-to-activate-button = Nachfragen, ob aktiviert werden soll
 always-activate-button = Immer aktivieren
@@ -381,7 +419,13 @@ install-update-button = Aktualisieren
 # badge is the private browsing icon included next to the extension's name.
 addon-badge-private-browsing-allowed =
     .title = In privaten Fenstern erlaubt
-addon-detail-private-browsing-help = Falls erlaubt, hat die Erweiterung Zugriff auf Ihre Online-Aktivitäten im Privaten Modus. <a data-l10n-name="learn-more">Weitere Informationen</a>
+
+# This is the tooltip text for the private browsing badge in about:addons. The
+# badge is the private browsing icon included next to the extension's name.
+addon-badge-private-browsing-allowed2 =
+    .title = In privaten Fenstern erlaubt
+    .aria-label = { addon-badge-private-browsing-allowed2.title }
+addon-detail-private-browsing-help = Falls erlaubt, hat die Erweiterung Zugriff auf deine Online-Aktivitäten im Privaten Modus. <a data-l10n-name="learn-more">Weitere Informationen</a>
 addon-detail-private-browsing-allow = Erlauben
 addon-detail-private-browsing-disallow = Nicht erlauben
 
@@ -390,6 +434,12 @@ addon-detail-private-browsing-disallow = Nicht erlauben
 addon-badge-recommended =
   .title = Empfohlen
   .alt = Empfohlen
+
+# This is the tooltip text for the recommended badge for an extension in about:addons. The
+# badge is a small icon displayed next to an extension when it is recommended on AMO.
+addon-badge-recommended2 =
+  .title = { -brand-product-name } empfiehlt nur Erweiterungen, die unsere Standards für Sicherheit und Leistung erfüllen.
+  .aria-label = { addon-badge-recommended2.title }
 
 available-updates-heading = Verfügbare Updates
 recent-updates-heading = Kürzlich durchgeführte Updates
@@ -406,4 +456,4 @@ recommended-addon-learn-more = Weitere Informationen…
 
 # A recommendation for the Firefox Color theme shown at the bottom of the theme
 # list view. The "Firefox Color" name itself should not be translated.
-recommended-theme-1 = Fühlen Sie sich inspiriert? <a data-l10n-name="link">Erstellen Sie eigene Themes mit Firefox Color.</a>
+recommended-theme-1 = Fühlst du dich inspiriert? <a data-l10n-name="link">Erstelle eigene Themes mit Firefox Color.</a>

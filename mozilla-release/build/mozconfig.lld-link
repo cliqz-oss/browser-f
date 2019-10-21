@@ -1,5 +1,5 @@
-if test -d "$TOOLTOOL_DIR/clang/bin"; then
-    CLANG_DIR=`cd "$TOOLTOOL_DIR/clang/bin" ; pwd`
+if test -d "$MOZ_FETCHES_DIR/clang/bin"; then
+    CLANG_DIR=`cd "$MOZ_FETCHES_DIR/clang/bin" ; pwd`
     export PATH="${CLANG_DIR}:${PATH}"
 fi
 

@@ -14,12 +14,8 @@ select-all =
 menu-select-all =
     .label = Alles auswählen
     .accesskey = u
-close-window =
-    .key = A
-
 close-dialog =
     .key = w
-
 general-tab =
     .label = Allgemein
     .accesskey = A
@@ -123,6 +119,8 @@ security-site-data-cookies-only = Ja, Cookies
 security-site-data-no = Nein
 image-size-unknown = Unbekannt
 not-set-verified-by = Nicht angegeben
+page-info-not-specified =
+    .value = Nicht angegeben
 not-set-alternative-text = Nicht angegeben
 not-set-date = Nicht angegeben
 media-img = Grafik
@@ -145,13 +143,14 @@ general-quirks-mode =
 general-strict-mode =
     .value = Standardkonformer Modus
 security-no-owner = Diese Website stellt keine Informationen über den Besitzer zur Verfügung.
+page-info-security-no-owner =
+    .value = Diese Website stellt keine Informationen über den Besitzer zur Verfügung.
 media-select-folder = Wählen Sie einen Ordner, um die Grafiken zu speichern
 media-unknown-not-cached =
     .value = Unbekannt (nicht gecacht)
 permissions-use-default =
     .label = Standard verwenden
 security-no-visits = Nein
-
 # This string is used to display the number of meta tags
 # in the General Tab
 # Variables:
@@ -159,42 +158,40 @@ security-no-visits = Nein
 general-meta-tags =
     .value =
         { $tags ->
-             [one] Meta (1 Schlagwort)
-            *[other] Meta ({ $tags } Schlagwörter)
+            [one] Meta (1 Schlagwort)
+           *[other] Meta ({ $tags } Schlagwörter)
         }
-
 # This string is used to display the number of times
 # the user has visited the website prior
 # Variables:
 #   $visits (number) - The number of previous visits
 security-visits-number =
     { $visits ->
-         [0] Nein
-         [one] Ja, ein Mal
-        *[other] Ja, { $visits } Mal
+        [0] Nein
+        [one] Ja, ein Mal
+       *[other] Ja, { $visits } Mal
     }
-
 # This string is used to display the size of a media file
 # Variables:
 #   $kb (number) - The size of an image in Kilobytes
 #   $bytes (number) - The size of an image in Bytes
 properties-general-size =
-    .value = { $bytes ->
-         [one] { $kb } KB ({ $bytes } Byte)
-        *[other] { $kb } KB ({ $bytes } Bytes)
-    }
-
+    .value =
+        { $bytes ->
+            [one] { $kb } KB ({ $bytes } Byte)
+           *[other] { $kb } KB ({ $bytes } Bytes)
+        }
 # This string is used to display the type and number
 # of frames of a animated image
 # Variables:
 #   $type (string) - The type of a animated image
 #   $frames (number) - The number of frames in an animated image
 media-animated-image-type =
-    .value = { $frames ->
-         [one] { $type } Grafik (animiert, { $frames } Frame)
-        *[other] { $type } Grafik (animiert, { $frames } Frames)
-    }
-
+    .value =
+        { $frames ->
+            [one] { $type } Grafik (animiert, { $frames } Frame)
+           *[other] { $type } Grafik (animiert, { $frames } Frames)
+        }
 # This string is used to display the type of
 # an image
 # Variables:

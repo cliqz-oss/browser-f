@@ -11,7 +11,7 @@ rights-intro-point3a = Cliqz respektiert deine Privatsphäre. Der Schutz deiner 
 rights-intro-point4a = Einige { -brand-short-name }-Funktionen verwenden web-basierte Informationsdienste. Allerdings können wir keine Garantie dafür übernehmen, dass sie 100&#37; genau und fehlerfrei sind. Weitere Details, inklusive Informationen darüber, wie du diese Funktionen deaktivieren kannst, findest du in den <a data-l10n-name="rights-intro-point4b">Service-Bedingungen</a>.
 # point 5
 rights-intro-point5 = Zur Wiedergabe einiger Videoinhalte lädt { -brand-short-name } bestimmte Entschlüsselungskomponenten von Dritten herunter.
-#intro paragraph for branded builds
+# intro paragraph for branded builds
 rights2-webservices-cliqz = Der Cliqz Browser baut auf dem Mozilla Open Source Projekt auf. Cliqz nutzt web-basierte Informationsservices von Mozilla Firefox.
 rights2-webservices-a = Mozilla Firefox verwendet web-basierte Informationsdienste (&quot;Services&quot;), um einige der Funktionen anbieten zu können, die dir für den Gebrauch mit der Binaryversion von Firefox unter den unten angegebenen Bedingungen zur Verfügung gestellt werden. Falls du die Dienste oder einen davon nicht verwenden möchtest oder die Bedingungen für dich nicht akzeptabel sind, kannst du die Funktion oder die Service(s) deaktivieren. Anleitungen dafür, wie du eine bestimmte Funktion oder einen Service deaktivieren kannst, findest du <a data-l10n-name="rights2-webservices-b">hier</a>. Andere Funktionen und Dienste können in den Anwendungseinstellungen deaktiviert werden.
 

@@ -629,10 +629,10 @@ Function createProfileCleanup
     StrCpy $CheckboxCleanupProfile 0
     Abort ; Skip this page
   ${Case} 1
-    StrCpy $ProfileCleanupHeaderString $(STUB_CLEANUP_REINSTALL_HEADER)
+    StrCpy $ProfileCleanupHeaderString $(STUB_CLEANUP_REINSTALL_HEADER2)
     StrCpy $ProfileCleanupButtonString $(STUB_CLEANUP_REINSTALL_BUTTON)
   ${Case} 2
-    StrCpy $ProfileCleanupHeaderString $(STUB_CLEANUP_PAVEOVER_HEADER)
+    StrCpy $ProfileCleanupHeaderString $(STUB_CLEANUP_PAVEOVER_HEADER2)
     StrCpy $ProfileCleanupButtonString $(STUB_CLEANUP_PAVEOVER_BUTTON)
   ${EndSelect}
 

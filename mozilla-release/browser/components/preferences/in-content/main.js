@@ -213,6 +213,12 @@ Preferences.addAll([
   { id: "browser.privatebrowsing.apt", type: "bool" },
   { id: "browser.startup.restoreTabs", type: "bool" },
   { id: "browser.startup.addFreshTab", type: "bool" },
+
+  // Picture-in-Picture
+  {
+    id: "media.videocontrols.picture-in-picture.video-toggle.enabled",
+    type: "bool",
+  },
 ]);
 
 if (AppConstants.HAVE_SHELL_SERVICE) {
@@ -404,6 +410,20 @@ var gMainPane = {
       link.setAttribute("href", cfrLearnMoreUrl);
     }
 #endif
+
+    if (
+      Services.prefs.getBoolPref(
+        "media.videocontrols.picture-in-picture.enabled"
+      )
+    ) {
+      document.getElementById("pictureInPictureBox").hidden = false;
+
+      let pipLearnMoreUrl =
+        Services.urlFormatter.formatURLPref("app.support.baseURL") +
+        "picture-in-picture";
+      let link = document.getElementById("pictureInPictureLearnMore");
+      link.setAttribute("href", pipLearnMoreUrl);
+    }
 
     if (AppConstants.platform == "win") {
       // Functionality for "Show tabs in taskbar" on Windows 7 and up.
@@ -729,6 +749,43 @@ var gMainPane = {
 
     // Notify observers that the UI is now ready
     Services.obs.notifyObservers(window, "main-pane-loaded");
+
+    Preferences.addSyncFromPrefListener(
+      document.getElementById("defaultFont"),
+      element => FontBuilder.readFontSelection(element)
+    );
+    Preferences.addSyncFromPrefListener(
+      document.getElementById("translate"),
+      () =>
+        this.updateButtons(
+          "translateButton",
+          "browser.translation.detectLanguage"
+        )
+    );
+    Preferences.addSyncFromPrefListener(
+      document.getElementById("checkSpelling"),
+      () => this.readCheckSpelling()
+    );
+    Preferences.addSyncToPrefListener(
+      document.getElementById("checkSpelling"),
+      () => this.writeCheckSpelling()
+    );
+    Preferences.addSyncFromPrefListener(
+      document.getElementById("saveWhere"),
+      () => this.readUseDownloadDir()
+    );
+    Preferences.addSyncFromPrefListener(
+      document.getElementById("linkTargeting"),
+      () => this.readLinkTarget()
+    );
+    Preferences.addSyncToPrefListener(
+      document.getElementById("linkTargeting"),
+      () => this.writeLinkTarget()
+    );
+    Preferences.addSyncFromPrefListener(
+      document.getElementById("browserContainersCheckbox"),
+      () => this.readBrowserContainersCheckbox()
+    );
 
     this.setInitialized();
   },
@@ -1243,8 +1300,31 @@ var gMainPane = {
   },
 
   onBrowserRestoreSessionChange(event) {
-    // CLIQZ-SPECIAL:
-    // Some code was remove without ifdef (for simplicity)
+    /* 
+      // CLIQZ-SPECIAL: removed startup prefs
+      const value = event.target.checked;
+      const startupPref = Preferences.get("browser.startup.page");
+      let newValue;
+
+      let warnOnQuitCheckbox = document.getElementById(
+        "browserRestoreSessionQuitWarning"
+      );
+      if (value) {
+        // We need to restore the blank homepage setting in our other pref
+        if (startupPref.value === this.STARTUP_PREF_BLANK) {
+          HomePage.safeSet("about:blank");
+        }
+        newValue = this.STARTUP_PREF_RESTORE_SESSION;
+        let warnOnQuitPref = Preferences.get("browser.sessionstore.warnOnQuit");
+        if (!warnOnQuitPref.locked) {
+          warnOnQuitCheckbox.removeAttribute("disabled");
+        }
+      } else {
+        newValue = this.STARTUP_PREF_HOMEPAGE;
+        warnOnQuitCheckbox.setAttribute("disabled", "true");
+      }
+      startupPref.value = newValue;
+    */
     const value = event.target.checked;
     let warnOnQuitCheckbox = document.getElementById(
       "browserRestoreSessionQuitWarning"
@@ -3351,6 +3431,7 @@ class HandlerInfoWrapper {
         if (this instanceof InternalHandlerInfoWrapper) {
           return "ask";
         }
+        break;
 
       case kActionUsePlugin:
         return "plugin";
@@ -3369,10 +3450,10 @@ class HandlerInfoWrapper {
         if (gMainPane.isValidHandlerApp(preferredApp)) {
           return gMainPane._getIconURLForHandlerApp(preferredApp);
         }
-      // Explicit fall-through
 
       // This should never happen, but if preferredAction is set to some weird
       // value, then fall back to the generic application icon.
+      // Explicit fall-through
       default:
         return ICON_URL_APP;
     }

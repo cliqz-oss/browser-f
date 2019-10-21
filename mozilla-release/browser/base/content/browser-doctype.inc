@@ -16,7 +16,7 @@
 <!ENTITY % syncBrandDTD SYSTEM "chrome://browser/locale/syncBrand.dtd">
 %syncBrandDTD;
 #endif
-<!ENTITY % reportphishDTD SYSTEM "chrome://browser/locale/safebrowsing/report-phishing.dtd">
-%reportphishDTD;
+<!ENTITY % brandingsDTD SYSTEM "chrome://browser/locale/brandings.dtd">
+%brandingsDTD;
 <!ENTITY % editBookmarkOverlayDTD SYSTEM "chrome://browser/locale/places/editBookmarkOverlay.dtd">
 %editBookmarkOverlayDTD;

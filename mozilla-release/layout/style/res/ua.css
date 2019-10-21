@@ -256,8 +256,8 @@
   /* make unicode-bidi inherit, otherwise it has no effect on column boxes */
   unicode-bidi: inherit;
   text-overflow: inherit;
-  /* inherit the outer frame's display, otherwise we turn into an inline */
-  display: inherit;
+  /* Both -moz-column-set and -moz-column-content need to be blocks. */
+  display: block;
   /* -moz-column-set and -moz-column-content's max block size cannot exceed
    * ColumnSetWrapperFrame's block size. */
   max-block-size: 100%;
@@ -500,9 +500,3 @@ div:-moz-native-anonymous.moz-custom-content-container {
   height: 100%;
 }
 
-/* Cliqz - DB-1071 */
-#ConnectionsDialog .mozilla-support-label {
-  margin-top: 6px;
-  color: #999;
-  font-size: 14px;
-}

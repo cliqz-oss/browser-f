@@ -80,6 +80,10 @@ if [ "$CQZ_RELEASE_CHANNEL" == "release" ]; then
   fi
 fi
 
+# specify update channel name, for now it is same for all builds
+export ACCEPTED_MAR_CHANNEL_IDS=firefox-mozilla-release
+export MAR_CHANNEL_ID=firefox-mozilla-release
+
 export MOZ_OBJDIR=../obj
 # Set proper mozconfig
 if [ $IS_WIN ]; then
@@ -132,7 +136,6 @@ SRC_BASE=mozilla-release
 
 # automatic forget tab - start
 wget -O adult-domains.bin https://s3.amazonaws.com/cdn.cliqz.com/browser-f/APT/adult-domains.bin
-export CQZ_AUTO_PRIVATE_TAB=0
 export CQZ_ADULT_DOMAINS_BF=../adult-domains.bin
 # automatic forget tab - end
 

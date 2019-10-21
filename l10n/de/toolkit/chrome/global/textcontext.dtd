@@ -31,6 +31,8 @@
 <!ENTITY fillLoginMenu.accesskey      "Z">
 <!ENTITY fillSuggestedPassword.label  "Passwort erzeugen und verwenden">
 <!ENTITY fillSuggestedPassword.accesskey "e">
+<!ENTITY fillGeneratedPassword.label  "Sicher erzeugtes Passwort verwenden">
+<!ENTITY fillGeneratedPassword.accesskey "S">
 <!ENTITY fillPasswordMenu.label       "Passwort einfügen">
 <!ENTITY fillPasswordMenu.accesskey   "P">
 <!ENTITY fillUsernameMenu.label       "Benutzernamen einfügen">

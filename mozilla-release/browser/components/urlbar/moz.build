@@ -6,6 +6,8 @@ with Files("**"):
     BUG_COMPONENT = ("Firefox", "Address Bar")
 
 EXTRA_JS_MODULES += [
+    'UrlbarContextualTip.jsm',
+    'UrlbarController.jsm',
     'UrlbarEventBufferer.jsm',
     'UrlbarInput.jsm',
     'UrlbarMuxerUnifiedComplete.jsm',
@@ -21,15 +23,12 @@ EXTRA_JS_MODULES += [
     'UrlbarView.jsm',
 ]
 
-EXTRA_PP_JS_MODULES += [
-    'UrlbarController.jsm',
-]
-
 TESTING_JS_MODULES += [
     'tests/UrlbarTestUtils.jsm',
 ]
 BROWSER_CHROME_MANIFESTS += [
     'tests/browser/browser.ini',
-    'tests/legacy/browser.ini',
 ]
 XPCSHELL_TESTS_MANIFESTS += ['tests/unit/xpcshell.ini']
+
+SPHINX_TREES['/browser/browser/urlbar'] = 'docs'

@@ -42,6 +42,7 @@ SET CQZ_CERT_DB_PATH=c:\certdb
 SET BUILD_SHELL=c:\mozilla-build\start-shell.bat
 :: Paths for build tools
 SET TOOLTOOL_DIR=c:\build
+SET MOZ_FETCHES_DIR=c:\build
 SET CLZ_SIGNTOOL_PATH=%TOOLTOOL_DIR%\vs2017_15.9.10\SDK\bin\10.0.17763.0\x64\signtool.exe
 
 :::::::::::::::::::::::::::::::::::

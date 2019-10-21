@@ -35,7 +35,6 @@ class FxDesktopBuild(BuildScript, TryToolsMixin, object):
                 'clobber',
                 'build',
                 'static-analysis-autotest',
-                'check-test',
                 'valgrind-test',
                 'multi-l10n',
                 'package-source',
@@ -65,7 +64,7 @@ class FxDesktopBuild(BuildScript, TryToolsMixin, object):
                     "%(objdir)s/dist/thunderbird*",
                     "%(objdir)s/dist/install/sea/*.exe"
                 ],
-                'build_resources_path': '%(abs_obj_dir)s/.mozbuild/build_resources.json',
+                'build_resources_path': '%(upload_path)s/build_resources.json',
                 'nightly_promotion_branches': ['mozilla-central', 'mozilla-aurora'],
 
                 # try will overwrite these
@@ -111,6 +110,7 @@ class FxDesktopBuild(BuildScript, TryToolsMixin, object):
                                         'src',
                                         self._query_objdir())
             },
+            'upload_path': self.config["upload_env"]["UPLOAD_PATH"],
         }
         abs_dirs.update(dirs)
         self.abs_dirs = abs_dirs

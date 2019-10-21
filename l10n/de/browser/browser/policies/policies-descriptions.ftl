@@ -4,7 +4,7 @@
 
 
 ## The Enterprise Policies feature is aimed at system administrators
-## who want to deploy these settings across several Firefox installations
+## who want to deploy these settings across several Cliqz installations
 ## all at once. This is traditionally done through the Windows Group Policy
 ## feature, but the system also supports other forms of deployment.
 ## These are short descriptions for individual policies, to be displayed
@@ -34,7 +34,7 @@ policy-DisableDeveloperTools = Zugriff auf Entwicklerwerkzeuge deaktivieren
 policy-DisableFeedbackCommands = Feedback senden über "Hilfe"-Menü deaktivieren ("Feedback senden…" und "Betrügerische Website melden…")
 policy-DisableFirefoxAccounts = { -fxaccount-brand-name }-basierte Dienste (z.B. Sync) deaktivieren
 # Firefox Screenshots is the name of the feature, and should not be translated.
-policy-DisableFirefoxScreenshots = "Firefox Screenshots"-Funktion deaktivieren
+policy-DisableFirefoxScreenshots = "Cliqz Screenshots"-Funktion deaktivieren
 policy-DisableFirefoxStudies = { -brand-short-name } keine Studien durchführen lassen
 policy-DisableForgetButton = Zugriff auf "Vergessen"-Schaltfläche verhindern
 policy-DisableFormHistory = Formular- und Suchchronik nicht speichern
@@ -48,7 +48,7 @@ policy-DisableSecurityBypass = Umgehen einiger Sicherheitswarnungen durch Benutz
 policy-DisableSetDesktopBackground = "Als Hintergrundbild einrichten"-Menüeintrag deaktivieren
 policy-DisableSetAsDesktopBackground = "Als Hintergrundbild einrichten"-Menüeintrag deaktivieren
 policy-DisableSystemAddonUpdate = Installieren und Aktualisieren von System-Add-ons durch den Browser deaktivieren
-policy-DisableTelemetry = Datenerhebung zur Verbesserung von Firefox (Telemetrie) deaktivieren
+policy-DisableTelemetry = Datenerhebung zur Verbesserung von Cliqz (Telemetrie) deaktivieren
 policy-DisplayBookmarksToolbar = Lesezeichen-Symbolleiste standardmäßig anzeigen
 policy-DisplayMenuBar = Menüleiste standardmäßig anzeigen
 policy-DNSOverHTTPS = DNS über HTTPS einrichten
@@ -66,7 +66,7 @@ policy-ExtensionSettings = Alle Einstellungen für die Erweiterungsinstallation 
 
 policy-ExtensionUpdate = Automatische Add-on-Updates aktivieren oder deaktivieren
 
-policy-FirefoxHome = Firefox-Startseite konfigurieren
+policy-FirefoxHome = Cliqz-Startseite konfigurieren
 
 policy-FlashPlugin = Flash-Plugin-Verwendung erlauben oder verbieten
 policy-HardwareAcceleration = Hardwarebeschleunigung deaktiviert, falls false
@@ -82,8 +82,14 @@ policy-NewTabPage = Startseite für neue Tabs aktivieren oder deaktivieren
 
 policy-NoDefaultBookmarks = Standardlesezeichen von { -brand-short-name } und Intelligente Lesezeichenordner ("Meistbesucht", "Kürzlich verwendete Schlagwörter") nicht erstellen. Hinweis: Diese Richtlinie findet nur Anwendung, wenn sie vor dem ersten Ausführen des Profils aktiv wurde.
 policy-OfferToSaveLogins = Frage zum Speichern von Zugangsdaten durch { -brand-short-name } anzeigen. Die Werte true und false werden akzeptiert.
+
+policy-OfferToSaveLoginsDefault = Standardwert, ob Nachfrage zum Speichern von Zugangsdaten und Passwörtern in { -brand-short-name } angezeigt werden soll. Sowohl true als auch false sind gültige Werte.
+
 policy-OverrideFirstRunPage = Einmalig geöffnete Einführungsseite beim Starten eines neuen Profils festlegen. Ein leerer Wert deaktiviert das Öffnen der Seite.
-policy-OverridePostUpdatePage = Firefox-Neuigkeiten-Seite - angezeigt nach Programmaktualisierung - festlegen. Ein leerer Wert deaktiviert das Öffnen der Seite.
+policy-OverridePostUpdatePage = Cliqz-Neuigkeiten-Seite - angezeigt nach Programmaktualisierung - festlegen. Ein leerer Wert deaktiviert das Öffnen der Seite.
+
+policy-PasswordManagerEnabled = Speichern von Passwörtern in der Passwortverwaltung aktivieren
+
 policy-Permissions = Berechtigungen für Kamera, Mikrofon, Standort und Benachrichtigungen festlegen
 policy-PopupBlocking = Popups für festgelegte Websites standardmäßig anzeigen
 

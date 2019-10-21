@@ -34,7 +34,6 @@ array_names = [
     'addonsPublicRoot',
     'addonsPublicIntermediate',
     'addonsStageRoot',
-    'privilegedPackageRoot',
     'cliqzAddonsRoot',
 ]
 

@@ -16,7 +16,7 @@
 #include "mozilla/layers/SyncObject.h"
 #include "mozilla/gfx/2D.h"
 #include "mozilla/Preferences.h"
-#include "mozilla/StaticPrefs.h"
+#include "mozilla/StaticPrefs_layers.h"
 #include "mozilla/SharedThreadPool.h"
 #include "mozilla/SyncRunnable.h"
 #ifdef XP_MACOSX
@@ -52,7 +52,7 @@ void PaintThread::AddRef() {}
 /* static */
 int32_t PaintThread::CalculatePaintWorkerCount() {
   int32_t cpuCores = PR_GetNumberOfProcessors();
-  int32_t workerCount = StaticPrefs::layers_omtp_paint_workers();
+  int32_t workerCount = StaticPrefs::layers_omtp_paint_workers_AtStartup();
 
   // If not manually specified, default to (cpuCores * 3) / 4, and clamp
   // between 1 and 4. If a user wants more, they can manually specify it
