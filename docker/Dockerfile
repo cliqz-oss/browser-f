@@ -80,14 +80,14 @@ RUN set -eux; \
     wget "$url"; \
     echo "${rustupSha256} *rustup-init" | sha256sum -c -; \
     chmod +x rustup-init; \
-    ./rustup-init -y --no-modify-path --default-toolchain 1.35.0; \
+    ./rustup-init -y --no-modify-path --default-toolchain 1.37.0; \
     rm rustup-init; \
     chmod -R a+w $RUSTUP_HOME $CARGO_HOME; \
     rustup --version; \
     cargo --version; \
     rustc --version
 
-RUN cargo install --version 0.9.0 cbindgen
+RUN cargo install --version 0.9.1 cbindgen
 
 ARG uid
 ARG gid
