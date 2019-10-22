@@ -1602,8 +1602,6 @@ function _loadURI(browser, uri, params = {}) {
     loadFlags
   );
 
-  uri = CliqzResources.matchUrlByString(uri);
-
   if (uriObject && handleUriInChrome(browser, uriObject)) {
     // If we've handled the URI in Chrome then just return here.
     return;
