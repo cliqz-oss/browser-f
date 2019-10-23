@@ -51,9 +51,6 @@ in "Search through tabs". -->
 <!ENTITY tabCmd.label "Neuer Tab">
 <!ENTITY tabCmd.accesskey "T">
 <!ENTITY tabCmd.commandkey "t">
-<!ENTITY forgetTabCmd.label "Neuer Vergessen Tab">
-<!ENTITY forgetTabCmd.accesskey "V">
-<!ENTITY forgetTabCmd.commandkey "f">
 
 <!ENTITY openFileCmd.label "Datei öffnen…">
 <!ENTITY openFileCmd.accesskey "f">
@@ -574,7 +571,6 @@ These should match what Safari and other Apple applications use on OS X Lion. --
 <!ENTITY searchSetAsDefault.accesskey "S">
 
 <!ENTITY openLinkCmdInTab.label       "Link in neuem Tab öffnen">
-<!ENTITY openLinkCmdInForgetTab.label "Link in neuem Vergessen Tab öffnen">
 <!ENTITY openLinkCmdInTab.accesskey   "T">
 <!ENTITY openLinkCmd.label            "Link in neuem Fenster öffnen">
 <!ENTITY openLinkCmd.accesskey        "F">

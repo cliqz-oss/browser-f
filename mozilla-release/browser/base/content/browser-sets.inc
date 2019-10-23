@@ -117,11 +117,6 @@
          modifiers="accel" reserved="true"/>
     <key id="key_newNavigatorTab" key="&tabCmd.commandkey;" modifiers="accel"
          command="cmd_newNavigatorTabNoEvent" reserved="true"/>
-    <key id="key_newForgetTab"
-         key="&forgetTabCmd.commandkey;"
-         modifiers="accel,shift"
-         command="cmd_newForgetTab"
-         reserved="true"/>
     <key id="focusURLBar" key="&openCmd.commandkey;" command="Browser:OpenLocation"
          modifiers="accel"/>
 #ifndef XP_MACOSX

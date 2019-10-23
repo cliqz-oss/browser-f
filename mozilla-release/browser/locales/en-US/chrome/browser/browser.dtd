@@ -50,9 +50,6 @@ in "Search through tabs". -->
 
 <!ENTITY tabCmd.label "New Tab">
 <!ENTITY tabCmd.commandkey "t">
-<!ENTITY forgetTabCmd.label "New Forget Tab">
-<!ENTITY forgetTabCmd.accesskey "F">
-<!ENTITY forgetTabCmd.commandkey "f">
 <!ENTITY openFileCmd.label "Open File…">
 <!ENTITY openFileCmd.commandkey "o">
 <!ENTITY printCmd.label "Print…">
@@ -452,7 +449,6 @@ convenience of Safari and Chrome users on macOS. See bug 1398988. -->
 <!ENTITY searchSetAsDefault.accesskey "D">
 
 <!ENTITY openLinkCmdInTab.label       "Open Link in New Tab">
-<!ENTITY openLinkCmdInForgetTab.label "Open Link in New Forget Tab">
 <!ENTITY openLinkCmdInTab.accesskey   "T">
 <!ENTITY openLinkCmd.label            "Open Link in New Window">
 <!ENTITY openLinkCmd.accesskey        "W">
