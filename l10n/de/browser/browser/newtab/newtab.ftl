@@ -75,7 +75,7 @@ newtab-menu-topsites-placeholder-tooltip =
 
 newtab-menu-edit-topsites = Bearbeiten
 newtab-menu-open-new-window = In neuem Fenster öffnen
-newtab-menu-open-new-private-window = In neuem privaten Fenster öffnen
+newtab-menu-open-new-private-window = In neuem Vergessen Fenster öffnen
 newtab-menu-dismiss = Entfernen
 newtab-menu-pin = Anheften
 newtab-menu-unpin = Ablösen

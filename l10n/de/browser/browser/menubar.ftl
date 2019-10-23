@@ -18,7 +18,7 @@ menu-file-new-window =
     .label = ­Neues Fenster
     .accesskey = N
 menu-file-new-private-window =
-    .label = Neues privates Fenster
+    .label = Neues Vergessen Fenster
     .accesskey = p
 # "Open Location" is only displayed on macOS, and only on windows
 # that aren't main browser windows, or when there are no windows
