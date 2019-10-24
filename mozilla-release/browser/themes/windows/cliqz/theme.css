@@ -195,9 +195,6 @@ toolbar .toolbarbutton-1 > .toolbarbutton-icon {
 #navigator-toolbox #nav-bar #urlbar-container #urlbar .textbox-input {
   padding-bottom: 2px;
 }
-#navigator-toolbox[on_private_tab="true"] #nav-bar #urlbar-container #urlbar:-moz-lwtheme-darktext {
-  background-color: #BBC6D4;
-}
 #navigator-toolbox #nav-bar #urlbar-container #urlbar:-moz-lwtheme-darktext:hover, #navigator-toolbox #nav-bar #urlbar-container #urlbar:-moz-lwtheme-darktext[focused=true] {
   box-shadow: 0 1px 6px rgba(0, 0, 0, 0.15);
   background-color: #fff;
@@ -222,15 +219,6 @@ toolbar .toolbarbutton-1 > .toolbarbutton-icon {
 }
 #navigator-toolbox:-moz-window-inactive:after {
   box-shadow: rgba(0, 0, 0, 0.19) 0 -2px 1px 3px;
-}
-#navigator-toolbox[on_private_tab=true] #nav-bar #urlbar-container #urlbar {
-  /* Change box-shadow and background color when focused and hovering */
-}
-#navigator-toolbox[on_private_tab=true] #nav-bar #urlbar-container #urlbar:hover, #navigator-toolbox[on_private_tab=true] #nav-bar #urlbar-container #urlbar[focused=true] {
-  background-color: #cbd3de;
-}
-#navigator-toolbox[on_private_tab=true] #nav-bar #urlbar-container #urlbar:-moz-lwtheme {
-  color: #000;
 }
 
 :root {
