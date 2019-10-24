@@ -518,7 +518,7 @@ FirefoxProfileMigrator.prototype._getResourcesInternal = async function(
                                   false,
                                   row.getResultByName("expiry"),
                                   {},
-                                  Ci.nsICookie2.SAMESITE_UNSET);
+                                  Ci.nsICookie.SAMESITE_UNSET);
           }
         } catch(e) {
           Cu.reportError(e);
