@@ -936,8 +936,12 @@ Search.prototype = {
     // are not enabled).
 
     // Check for Preloaded Sites Expiry before Autofill
-    await this._checkPreloadedSitesExpiry();
 
+    /* CLIQZ-SPECIAL: we dont need preloaded sites
+    await this._checkPreloadedSitesExpiry();
+    */
+
+    /* CLIQZ-SPECIAL: we dont support @search engine search
     // If the query is simply "@", then the results should be a list of all the
     // search engines with "@" aliases, without a hueristic result.
     if (this._trimmedOriginalSearchString == "@") {
@@ -948,10 +952,14 @@ Search.prototype = {
         return;
       }
     }
+    */
 
     // Add the first heuristic result, if any.  Set _addingHeuristicFirstMatch
     // to true so that when the result is added, "heuristic" can be included in
     // its style.
+
+    let hasHeuristic = false;
+    /* CLIQZ-SPECIAL: we dont support heuristic search
     this._addingHeuristicFirstMatch = true;
     let hasHeuristic = await this._matchFirstHeuristicResult(conn);
     this._addingHeuristicFirstMatch = false;
@@ -959,6 +967,7 @@ Search.prototype = {
     if (!this.pending) {
       return;
     }
+    */
 
     // We sleep a little between adding the heuristicFirstMatch and matching
     // any other searches so we aren't kicking off potentially expensive
@@ -997,6 +1006,8 @@ Search.prototype = {
     // Only add extension suggestions if the first token is a registered keyword
     // and the search string has characters after the first token.
     let extensionsCompletePromise = Promise.resolve();
+
+    /* CLIQZ-SPECIAL: we dont support extension search
     if (
       this._heuristicToken &&
       ExtensionSearchHandler.isKeywordRegistered(this._heuristicToken) &&
@@ -1009,10 +1020,13 @@ Search.prototype = {
     } else if (ExtensionSearchHandler.hasActiveInputSession()) {
       ExtensionSearchHandler.handleInputCancelled();
     }
+    */
 
     // Start adding search suggestions, unless they aren't required or the
     // window is private.
     let searchSuggestionsCompletePromise = Promise.resolve();
+
+    /* CLIQZ-SPECIAL: we dont support extension search
     if (
       this._enableActions &&
       this.hasBehavior("search") &&
@@ -1069,6 +1083,7 @@ Search.prototype = {
       this._autocompleteSearch.finishSearch(true);
       return;
     }
+    */
 
     // Clear previous search suggestions.
     searchSuggestionsCompletePromise.then(() => {
@@ -1085,6 +1100,7 @@ Search.prototype = {
       return;
     }
 
+    /* CLIQZ-SPECIAL: we dont support extension search
     // Then fetch remote tabs.
     if (this._enableActions && this.hasBehavior("openpage")) {
       await this._matchRemoteTabs();
@@ -1092,15 +1108,20 @@ Search.prototype = {
         return;
       }
     }
+    */
 
     // Get the final query, based on the tokens found in the search string and
     // the keyword substitution, if any.
     let queries = [];
     // "openpage" behavior is supported by the default query.
     // _switchToTabQuery instead returns only pages not supported by history.
+
+    /* CLIQZ-SPECIAL: handled in cliqz extension
     if (this.hasBehavior("openpage")) {
       queries.push(this._switchToTabQuery);
     }
+    */
+
     queries.push(this._searchQuery);
 
     // Finally run all the other queries.
@@ -1119,6 +1140,7 @@ Search.prototype = {
       this._addFilteredQueryMatch(this._extraAdaptiveRows.shift());
     }
 
+    /* CLIQZ-SPECIAL: we dont support remote tab search
     // If we have some unused remote tab matches, add them now.
     while (
       this._extraRemoteTabRows.length &&
@@ -1126,6 +1148,7 @@ Search.prototype = {
     ) {
       this._addMatch(this._extraRemoteTabRows.shift());
     }
+    */
 
     // Ideally we should wait until MATCH_BOUNDARY_ANYWHERE, but that query
     // may be really slow and we may end up showing old results for too long.
@@ -1148,7 +1171,9 @@ Search.prototype = {
       }
     }
 
+    /* CLIQZ-SPECIAL: we dont support preload sites
     this._matchPreloadedSites();
+    */
 
     // Ensure to fill any remaining space.
     await searchSuggestionsCompletePromise;
