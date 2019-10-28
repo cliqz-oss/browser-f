@@ -26,10 +26,13 @@
   --urlbar-icon-padding: 7px;
 }
 
+%if 0
+/* CLIQZ-SPECIAL: stick to older fomrat of URLbar */
 #urlbar-container,
 #search-container {
   padding: 3px 5px;
 }
+%endif
 
 #urlbar,
 #searchbar {
