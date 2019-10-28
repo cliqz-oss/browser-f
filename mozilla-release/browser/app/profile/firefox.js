@@ -277,6 +277,15 @@ pref("browser.warnOnQuit", true);
 pref("browser.fullscreen.autohide", true);
 pref("browser.overlink-delay", 80);
 
+// CLIQZ-SPECIAL: unify behavior on all platforms. Comment special case for
+// Linux systems and replace with two prefs below. Reason: This default behavior
+// was initially changed to prevent a 16-years old bug in SeaMonkey, which was
+// already fixed in Firefox since 2007. See following issues for more
+// details:stick to older fomrat of URLbar
+//
+// * https://bugzilla.mozilla.org/show_bug.cgi?id=190615
+// * https://bugzilla.mozilla.org/show_bug.cgi?id=611162
+#if 0
 #ifdef UNIX_BUT_NOT_MAC
   pref("browser.urlbar.clickSelectsAll", false);
 #else
@@ -287,6 +296,10 @@ pref("browser.overlink-delay", 80);
 #else
   pref("browser.urlbar.doubleClickSelectsAll", false);
 #endif
+#endif
+
+pref("browser.urlbar.clickSelectsAll", true);
+pref("browser.urlbar.doubleClickSelectsAll", false);
 
 // Whether using `ctrl` when hitting return/enter in the URL bar
 // (or clicking 'go') should prefix 'www.' and suffix
