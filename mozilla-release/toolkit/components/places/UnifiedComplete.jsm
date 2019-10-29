@@ -630,6 +630,8 @@ function Search(
   this._inPrivateWindow = params.has("private-window");
   this._prohibitAutoFill = params.has("prohibit-autofill");
   this._disableTelemetry = params.has("disable-telemetry");
+  this._disableAdaptive = params.has("disable-adaptive");
+  this._enableAtSearch = params.has("enable-at-search");
 
   // Extract the max-results param.
   let maxResults = searchParam.match(REGEXP_MAX_RESULTS);
@@ -945,18 +947,18 @@ Search.prototype = {
     await this._checkPreloadedSitesExpiry();
     */
 
-    /* CLIQZ-SPECIAL: we dont support @search engine search
-    // If the query is simply "@", then the results should be a list of all the
-    // search engines with "@" aliases, without a hueristic result.
-    if (this._trimmedOriginalSearchString == "@") {
-      let added = await this._addSearchEngineTokenAliasMatches();
-      if (added) {
-        this._cleanUpNonCurrentMatches(null);
-        this._autocompleteSearch.finishSearch(true);
-        return;
+    if (this._enableAtSearch) {
+      // If the query is simply "@", then the results should be a list of all the
+      // search engines with "@" aliases, without a hueristic result.
+      if (this._trimmedOriginalSearchString == "@") {
+        let added = await this._addSearchEngineTokenAliasMatches();
+        if (added) {
+          this._cleanUpNonCurrentMatches(null);
+          this._autocompleteSearch.finishSearch(true);
+          return;
+        }
       }
     }
-    */
 
     // Add the first heuristic result, if any.  Set _addingHeuristicFirstMatch
     // to true so that when the result is added, "heuristic" can be included in
@@ -1030,7 +1032,7 @@ Search.prototype = {
     // window is private.
     let searchSuggestionsCompletePromise = Promise.resolve();
 
-    /* CLIQZ-SPECIAL: we dont support extension search
+    /* CLIQZ-SPECIAL: we dont support search engine search in toolbar
     if (
       this._enableActions &&
       this.hasBehavior("search") &&
@@ -1094,17 +1096,19 @@ Search.prototype = {
       this._cleanUpNonCurrentMatches(UrlbarUtils.RESULT_GROUP.SUGGESTION);
     });
 
-    // Run the adaptive query first.
-    await conn.executeCached(
-      this._adaptiveQuery[0],
-      this._adaptiveQuery[1],
-      this._onResultRow.bind(this)
-    );
-    if (!this.pending) {
-      return;
+    if (!this._disableAdaptive) {
+      // Run the adaptive query first.
+      await conn.executeCached(
+        this._adaptiveQuery[0],
+        this._adaptiveQuery[1],
+        this._onResultRow.bind(this)
+      );
+      if (!this.pending) {
+        return;
+      }
     }
 
-    /* CLIQZ-SPECIAL: we dont support extension search
+    /* CLIQZ-SPECIAL: we dont support remote tabs
     // Then fetch remote tabs.
     if (this._enableActions && this.hasBehavior("openpage")) {
       await this._matchRemoteTabs();
@@ -1120,11 +1124,9 @@ Search.prototype = {
     // "openpage" behavior is supported by the default query.
     // _switchToTabQuery instead returns only pages not supported by history.
 
-    /* CLIQZ-SPECIAL: handled in cliqz extension
     if (this.hasBehavior("openpage")) {
       queries.push(this._switchToTabQuery);
     }
-    */
 
     queries.push(this._searchQuery);
 
