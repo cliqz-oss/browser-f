@@ -192,8 +192,8 @@ this.urlOverrides = class extends ExtensionAPI {
       );
 
       try {
-        // CLIQZ: if its system addon do not add notification observer
-        const isSystem = extension.addonData.signedState == 3;
+        // CLIQZ-SPECIAL: if its system or built-in addon do not add notification observer
+        const isSystem = extension.addonData.signedState == 3 || extension.addonData.builtIn;
         // Set the newTabURL to the current value of the setting.
         if (item) {
           setNewTabURL(item.id, item.value || item.initialValue, isSystem);
