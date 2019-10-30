@@ -11,10 +11,6 @@ var { ExtensionParent } = ChromeUtils.import(
   "resource://gre/modules/ExtensionParent.jsm"
 );
 
-const { DependencyManager } = ChromeUtils.import(
-  "resource://gre/modules/DependencyManager.jsm"
-);
-
 ChromeUtils.defineModuleGetter(
   this,
   "ExtensionSettingsStore",
@@ -335,6 +331,10 @@ this.chrome_settings_overrides = class extends ExtensionAPI {
         // of Cliqz extension.
         // Since we run in parent process we can take benefits of CliqzResources to get
         // a freshtab url eventually as a homepageUrl;
+
+        const { DependencyManager } = ChromeUtils.import(
+          "resource://gre/modules/DependencyManager.jsm"
+        );
         const AddonManager = DependencyManager.get(
           "AddonManager", "resource://gre/modules/AddonManager.jsm");
         const CliqzResources = DependencyManager.get(
