@@ -320,32 +320,15 @@ this.chrome_settings_overrides = class extends ExtensionAPI {
     let { manifest } = extension;
     let homepageUrl = manifest.chrome_settings_overrides.homepage;
 
-    try {
-      // CLIQZ: if its not system addon dont change homepage
-      if (!(extension.addonData.signedState == 3) && !extension.addonData.builtIn) {
-        homepageUrl = null;
-      } else if (homepageUrl == null && extension.id === "cliqz@cliqz.com") {
-        // CLIQZ-SPECIAL: so far the extension is either system or built-in.
-        // For users without chrome_settings_overrides.homepage set.
-        // We can not show a blank page for the users even though they use old version
-        // of Cliqz extension.
-        // Since we run in parent process we can take benefits of CliqzResources to get
-        // a freshtab url eventually as a homepageUrl;
-
-        const { DependencyManager } = ChromeUtils.import(
-          "resource://gre/modules/DependencyManager.jsm"
-        );
-        const AddonManager = DependencyManager.get(
-          "AddonManager", "resource://gre/modules/AddonManager.jsm");
-        const CliqzResources = DependencyManager.get(
-          "CliqzResources", "resource:///modules/CliqzResources.jsm");
-
-        await AddonManager.isReadyAsync();
-
-        homepageUrl = CliqzResources.getFreshTabUrl();
-      }
-    } catch(e) {
-      // in case there is no SignedState
+    // CLIQZ: if its not system addon dont change homepage
+    if (extension.id === "cliqz@cliqz.com") {
+      // CLIQZ-SPECIAL: Only for Cliqz Addon and for the very first run.
+      // So far the extension is either system or built-in.
+      // First we try to get the value of chrome_settings_overrides.homepage or
+      // fall back to baseURL which is always there.
+      homepageUrl = homepageUrl || `${extension.baseURL}modules/freshtab/home.html`;
+    } else {
+      homepageUrl = null;
     }
 
     // If this is a page we ignore, just skip the homepage setting completely.
