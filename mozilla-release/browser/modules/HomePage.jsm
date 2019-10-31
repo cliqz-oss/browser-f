@@ -53,6 +53,19 @@ function getHomepagePref(useDefault) {
     homePage = getHomepagePref(true);
   }
 
+  if (homePage === kDefaultHomePage) {
+    // CLIQZ-SPECIAL: in case of homePage ends up with "about:home"
+    // this url will be handled by AboutRedirector.cpp which in turn
+    // will go to AboutNewTabService to get a defaultUrl value.
+    // Then this value will be retrieved from extension manifest.json.
+    // To workaround that path we can get the freshtab url from
+    // CliqzResources.
+    const { CliqzResources } = ChromeUtils.import(
+      "resource:///modules/CliqzResources.jsm"
+    );
+    homePage = CliqzResources.getFreshTabUrl();
+  }
+
   return homePage;
 }
 
