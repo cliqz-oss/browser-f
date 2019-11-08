@@ -6369,17 +6369,16 @@ var TabContextMenu = {
 
     // Privateness related menu items.
     const windowIsPrivate = PrivateBrowsingUtils.isWindowPrivate(window);
-    if (windowIsPrivate) {
-      const whiteListToggle =
-        document.getElementById("context_togglePrivatePinUnpin");
-      whiteListToggle.hidden = true;
-      if (autoForgetTabs.isActive()) {
-        const { spec: currentUrl} = this.contextTab.linkedBrowser.currentURI;
-        const isAdult = autoForgetTabs.blacklisted(currentUrl, true);
-        whiteListToggle.hidden = false;
-        whiteListToggle.label = gNavigatorBundle
-          .getString(isAdult ? "afw.tabContext.unpinToFW" : "afw.tabContext.pinToFW");
-      }
+    const whiteListToggle =
+      document.getElementById("context_togglePrivatePinUnpin");
+    // CLIQZ-SPECIAL: DB-2322; we show this menu option only for non-private window and if
+    // Enable automatic forget mode is on.
+    whiteListToggle.hidden = !!windowIsPrivate || !autoForgetTabs.isActive();
+    if (autoForgetTabs.isActive()) {
+      const { spec: currentUrl} = this.contextTab.linkedBrowser.currentURI;
+      const isAdult = autoForgetTabs.blacklisted(currentUrl, true);
+      whiteListToggle.label = gNavigatorBundle
+        .getString(isAdult ? "afw.tabContext.unpinToFW" : "afw.tabContext.pinToFW");
     }
 
     let selectAllTabs = document.getElementById("context_selectAllTabs");
