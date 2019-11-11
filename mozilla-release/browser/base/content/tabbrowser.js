@@ -6371,9 +6371,9 @@ var TabContextMenu = {
     const windowIsPrivate = PrivateBrowsingUtils.isWindowPrivate(window);
     const whiteListToggle =
       document.getElementById("context_togglePrivatePinUnpin");
-    // CLIQZ-SPECIAL: DB-2322; we show this menu option only for non-private window and if
+    // CLIQZ-SPECIAL: DB-2322; we show this menu option only for private window and if
     // Enable automatic forget mode is on.
-    whiteListToggle.hidden = !!windowIsPrivate || !autoForgetTabs.isActive();
+    whiteListToggle.hidden = !windowIsPrivate || !autoForgetTabs.isActive();
     if (autoForgetTabs.isActive()) {
       const { spec: currentUrl} = this.contextTab.linkedBrowser.currentURI;
       const isAdult = autoForgetTabs.blacklisted(currentUrl, true);
