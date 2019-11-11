@@ -777,6 +777,22 @@ HttpObserverManager = {
       popupIconURL: "chrome://browser/skin/private-browsing.svg",
       name: gBrowserBundle.GetStringFromName("forgetModeNotification.header"),
       persistent: true,
+      eventCallback: topic => {
+        if (topic !== "showing") {
+          return;
+        }
+        try {
+          let doc = window.gBrowser.selectedBrowser.ownerDocument;
+          let description = doc.getElementById("forget-mode-notification-description");
+          let learnMore = doc.getElementById("forget-mode-notification-link");
+
+          description.textContent = gBrowserBundle.GetStringFromName("forgetModeNotification.description");
+          learnMore.textContent = gBrowserBundle.GetStringFromName("forgetModeNotification.link");
+          learnMore.href = "https://cliqz.com/support/automatic-forget-mode";
+        } catch(e) {
+          // can't do anything :(
+        }
+      }
     };
 
     const shouldSuppress = () => false;
@@ -791,8 +807,8 @@ HttpObserverManager = {
       { shouldSuppress }
     )).show(
       window.gBrowser.selectedBrowser,
-      "forget-mode-notification",
-      gBrowserBundle.GetStringFromName("forgetModeNotification.description"),
+      "forget-mode",
+      "",
       "forget-mode-notification-icon",
       mainAction,
       null,
