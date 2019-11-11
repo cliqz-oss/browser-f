@@ -1390,14 +1390,3 @@ toolbar[keyNav=true]:not([collapsed=true]):not([customizing=true]) toolbartabsto
 #wrapper-https-everywhere_cliqz_com-browser-action {
   display: none;
 }
-
-/* Cliqz - background color of urlbar in forget mode */
-[privatebrowsingmode] #nav-bar #urlbar-container #urlbar:-moz-lwtheme-darktext {
-  background-color: #BBC6D4 !important;
-}
-[privatebrowsingmode] #nav-bar #urlbar-container #urlbar:hover, [privatebrowsingmode] #nav-bar #urlbar-container #urlbar[focused=true] {
-  background-color: #cbd3de !important;
-}
-[privatebrowsingmode] #nav-bar #urlbar-container #urlbar:-moz-lwtheme {
-  color: #000 !important;
-}
