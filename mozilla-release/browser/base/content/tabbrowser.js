@@ -6374,7 +6374,7 @@ var TabContextMenu = {
     // CLIQZ-SPECIAL: DB-2322; we show this menu option only for private window and if
     // Enable automatic forget mode is on.
     whiteListToggle.hidden = !windowIsPrivate || !autoForgetTabs.isActive();
-    if (autoForgetTabs.isActive()) {
+    if (!whiteListToggle.hidden) {
       const { spec: currentUrl} = this.contextTab.linkedBrowser.currentURI;
       const isAdult = autoForgetTabs.blacklisted(currentUrl, true);
       whiteListToggle.label = gNavigatorBundle
