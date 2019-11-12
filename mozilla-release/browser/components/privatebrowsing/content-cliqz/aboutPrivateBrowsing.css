@@ -44,3 +44,12 @@ a:hover,
 a:active {
   color: #6F6F6F;
 }
+
+.hidden {
+  display: none;
+}
+
+#isNormalWindow {
+  line-height: 100vh;
+  text-align: center;
+}

@@ -705,7 +705,6 @@
       <description>
         <html:li data-l10n-id="forget-mode-explanation1"/>
         <html:li data-l10n-id="forget-mode-explanation2"/>
-        <html:li data-l10n-id="forget-mode-explanation3"/>
       </description>
     </html:ul>
     <separator class="thin"/>
