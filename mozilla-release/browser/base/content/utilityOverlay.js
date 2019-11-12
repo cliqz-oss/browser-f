@@ -545,7 +545,7 @@ function openLinkIn(url, where, params) {
       features,
       sa
     );
-    return;
+    return win;
   }
 
   // We're now committed to loading the link in an existing browser window.
