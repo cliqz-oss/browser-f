@@ -2782,9 +2782,6 @@ BrowserGlue.prototype = {
       // This is a new profile, nothing to migrate.
       Services.prefs.setIntPref("browser.migration.version", UI_VERSION);
 
-      // CLIQZ-SPECIAL: Default disabled AFT for new users.
-      Services.prefs.setBoolPref("browser.privatebrowsing.apt", false);
-
       try {
         // New profiles may have existing bookmarks (imported from another browser or
         // copied into the profile) and we want to show the bookmark toolbar for them
