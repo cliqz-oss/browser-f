@@ -1185,9 +1185,8 @@ select-bookmark =
 forget-mode-header = Automatic Forget Mode
 forget-mode-enable-checkbox =
     .label = Enable automatic forget mode
-forget-mode-explanation1 = Automatically opens websites with adult content inside a forget tab, so that these websites will not be saved in your history.
+forget-mode-explanation1 = Automatically opens websites with adult content inside a forget window, so that these websites will not be saved in your history.
 forget-mode-explanation2 = Behavior can be changed for each website via the tab context menu (right-click on respective tab in tab bar)
-forget-mode-explanation3 = May not work in combination with 'Containers' add-on."
 forget-mode-note = Note: for improved privacy, it is recommended to always open websites with sensitive content in <b>Forget Windows</b> which allow for more reliable removal of temporary files.
 forget-mode-learn-more = Learn more
 

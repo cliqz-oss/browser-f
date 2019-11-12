@@ -1071,7 +1071,6 @@ forget-mode-enable-checkbox =
     .label = Automatischen Vergessen Modus aktivieren
 forget-mode-explanation1 = Öffnet Websites mit expliziten Inhalten automatisch im Vergessen Modus, so dass sie nicht in der Chronik gespeichert werden.
 forget-mode-explanation2 = Kann im Tab-Kontextmenü (rechter Mausklick auf Tab in Tableiste) für jede Website eingestellt werden.
-forget-mode-explanation3 = Funktioniert nicht in Verbindung mit 'Containers' Add-on.
 forget-mode-note = Hinweis: Für umfassendere Privatsphäre bitte Websites in einem <b>Vergessen Fenster</b> öffnen, weil dort u.a. temporäre Dateien zuverlässiger entfernt werden können.
 forget-mode-learn-more = Mehr erfahren
 

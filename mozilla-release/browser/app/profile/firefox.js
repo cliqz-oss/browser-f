@@ -191,6 +191,9 @@ pref("extensions.update.interval", 86400);  // Check for updates to Extensions a
                                             // Themes every day
 #endif
 
+// CLIQZ-SPECIAL: Enable AFW by default
+pref("browser.privatebrowsing.apt", true);
+
 pref("lightweightThemes.getMoreURL", "https://addons.mozilla.org/%LOCALE%/firefox/themes");
 
 #if defined(MOZ_WIDEVINE_EME)

@@ -10,5 +10,6 @@ browser.jar:
     content/browser/aboutPrivateBrowsing.js               (content/aboutPrivateBrowsing.js)
 #endif
     content/browser/aboutPrivateBrowsing.css              (content-cliqz/aboutPrivateBrowsing.css)
+    content/browser/aboutPrivateBrowsing.js               (content-cliqz/aboutPrivateBrowsing.js)
     content/browser/aboutPrivateBrowsing.xhtml            (content-cliqz/aboutPrivateBrowsing.xhtml)
     content/browser/eraser.svg                            (content-cliqz/eraser.svg)

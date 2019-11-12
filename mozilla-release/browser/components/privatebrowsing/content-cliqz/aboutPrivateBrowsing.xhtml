@@ -15,20 +15,26 @@
         href="chrome://browser/content/aboutPrivateBrowsing.css"
         />
     <title>&cliqzPrivateBrowsing.title;</title>
+    <script src="chrome://browser/content/aboutPrivateBrowsing.js"></script>
   </head>
 
   <body dir="&locale.dir;" class="private">
-    <div id="header">
-      <p>&cliqzPrivateBrowsing.header;</p>
+    <div id="isNormalWindow" class="hidden">
+      <label>&cliqzPrivateBrowsing.notForget;</label>
     </div>
-    <div id="logo">
-    </div>
-    <div id="main">
-      <p id="explanation">&cliqzPrivateBrowsing.explanation;</p>
-      <p id="note">&cliqzPrivateBrowsing.note;</p>
-      <a href="https://cliqz.com/support/automatic-forget-mode">
-        &cliqzPrivateBrowsing.learnMore;
-      </a>
+    <div id="isForgetWindow">
+      <div id="header">
+        <p>&cliqzPrivateBrowsing.header;</p>
+      </div>
+      <div id="logo">
+      </div>
+      <div id="main">
+        <p id="explanation">&cliqzPrivateBrowsing.explanation;</p>
+        <p id="note">&cliqzPrivateBrowsing.note;</p>
+        <a href="https://cliqz.com/support/automatic-forget-mode">
+          &cliqzPrivateBrowsing.learnMore;
+        </a>
+      </div>
     </div>
   </body>
 </html>
