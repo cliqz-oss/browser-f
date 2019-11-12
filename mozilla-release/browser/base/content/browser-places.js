@@ -1620,9 +1620,18 @@ var BookmarkingUI = {
   },
 
   onLocationChange: function BUI_onLocationChange() {
-    if (this._uri && gBrowser.currentURI.equals(this._uri)) {
+    // CLIQZ-SPECIAL: DB-2327: for unknown reasons equals throws an exception for
+    // moz-extension urls (specifically for history page).
+    // This error first was noticed in 1.29.x
+    // Remove this try/catch clause after solving this issue.
+    try {
+      if (this._uri && gBrowser.currentURI.equals(this._uri)) {
+        return;
+      }
+    } catch (e) {
       return;
     }
+
     this.updateStarState();
   },
 
