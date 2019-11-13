@@ -702,11 +702,12 @@ HttpObserverManager = {
     ){
       channel.suspended = false;
       channel.cancel(Cr.NS_ERROR_ABORT);
+      const { finalURL, originURL } = channel;
       const { gBrowser, openLinkIn, openTrustedLinkIn } = channel.browserElement.ownerGlobal;
-      const { selectedTab, _tabs: tabs = [] } = gBrowser;
+      const { selectedTab, tabs = [] } = gBrowser;
       const freshTabURL = CliqzResources.getFreshTabUrl();
       const otherWin = openLinkIn(
-        channel.finalURL,
+        finalURL,
         "window",
         {
           fromChrome: true,
@@ -719,16 +720,38 @@ HttpObserverManager = {
         this.handleForgetModeNotification(otherWin);
       }
 
-      const { originURL } = channel;
-      if (
-        originURL === freshTabURL ||
-        originURL === ''
-      ) {
+      const isSecondaryTab = tabs.find(t => t.owner == selectedTab);
+      let isSecondaryWindow = false;
+      try {
+        const { BrowserWindowTracker } = ChromeUtils.import("resource:///modules/BrowserWindowTracker.jsm");
+        BrowserWindowTracker.orderedWindows.forEach(w => {
+          if (w.gBrowser.tabs[0]._fullLabel === originURL) {
+            w.gBrowser.removeTab(tabs[0]);
+            isSecondaryWindow = true;
+          }
+        });
+      } catch(e){
+        // Hopefully it never enters here.
+      }
+
+      if (isSecondaryTab) {
+        gBrowser.removeTab(isSecondaryTab);
+      } else if (!isSecondaryWindow){
         if (tabs.length === 1) {
           openTrustedLinkIn(freshTabURL, "tab");
         }
         gBrowser.removeTab(selectedTab);
       }
+
+      try {
+        if (originURL && originURL !== "" && originURL !== finalURL) {
+          const { History } = ChromeUtils.import("resource://gre/modules/History.jsm");
+          History.remove(originURL);
+        }
+      } catch(e){
+        // Hopefully it never enters here.
+      }
+
       return true;
     }
     return false;
