@@ -386,38 +386,30 @@ var gPrivacyPane = {
    */
   _initHttpsEverywhere() {
     const ADDON_ID = "https-everywhere@cliqz.com";
-    const PREF = "extensions.https_everywhere.globalEnabled";
-    const versionChecker = Components.classes["@mozilla.org/xpcom/version-comparator;1"]
-                             .getService(Components.interfaces.nsIVersionComparator);
-    const FIRST_WEB_EXTENSION_VERSION = "2017.10.30";
 
     AddonManager.getAddonByID(ADDON_ID).then(function(addon) {
       if (!addon) {
+        document.getElementById("httpsEverywhereGroup").style.display = "none";
         return;
       }
-      var stateCheckbox = document.getElementById("httpsEverywhereEnable");
+      let stateCheckbox = document.getElementById("httpsEverywhereEnable");
+      stateCheckbox.checked = !addon.userDisabled;
+      let listener = {
+        onEnabled: () => stateCheckbox.checked = true,
+        onDisabled: () => stateCheckbox.checked = false,
+      };
+      AddonManager.addAddonListener(listener);
 
-      if (versionChecker.compare(addon.version, FIRST_WEB_EXTENSION_VERSION) >= 0) {
-        // HTTPS Everywhere is an web extension
-        stateCheckbox.checked = !addon.userDisabled;
-      }
-      else if (addon && addon.isActive) {
-        // HTTPS Everywhere is bootstraped
-        stateCheckbox.checked = Services.prefs.getBoolPref(PREF);
-      }
+      let unload = () => {
+        window.removeEventListener("unload", unload);
+        AddonManager.removeAddonListener(listener);
+      };
+      window.addEventListener("unload", unload);
     });
 
     this.toggleHttpsEverywhere = function() {
       AddonManager.getAddonByID(ADDON_ID).then(function(addon) {
-        if (versionChecker.compare(addon.version, FIRST_WEB_EXTENSION_VERSION) >= 0) {
-          // HTTPS_Everywhere version 2017.10.30 and above is an WebExtension
-          // and we control it by its userDisabled state
-          (!addon.userDisabled) ? addon.disable() : addon.enable();
-        } else {
-          // HTTPS_Everywhere version below 2017.10.30 is using bootstrap technology
-          // and we control it by the globalEnabled pref
-          Services.prefs.setBoolPref(PREF, !Services.prefs.getBoolPref(PREF));
-        }
+        (!addon.userDisabled) ? addon.disable() : addon.enable();
       })
     };
   },
