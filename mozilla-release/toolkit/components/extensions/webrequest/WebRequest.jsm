@@ -720,7 +720,17 @@ HttpObserverManager = {
         this.handleForgetModeNotification(otherWin);
       }
 
-      const isSecondaryTab = tabs.find(t => t.owner == selectedTab);
+      const isSecondaryTab = tabs.find(t => {
+        if (t.owner == selectedTab) {
+          return t;
+        } else if (t.hasOwnProperty('openerTab') && finalURL.includes(t._fullLabel)) {
+          // This deals with Ctrl + enter opener
+          // Need to use includes as the label can be just domain name or with protocol
+          // but final url is a complete URI
+          return t;
+        }
+      });
+
       let isSecondaryWindow = false;
       try {
         const { BrowserWindowTracker } = ChromeUtils.import("resource:///modules/BrowserWindowTracker.jsm");
