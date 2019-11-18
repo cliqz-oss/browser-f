@@ -65,6 +65,7 @@
   /* NAVIGATION TOOLBAR */
   /* Line on the bottom of the nav-bar/toolbar */
   /* Forget mode urlbar */
+  border-bottom: none;
 }
 #navigator-toolbox #TabsToolbar {
   /* Customize tabs toolbar background color for light theme */
