@@ -292,7 +292,7 @@ Section "Uninstall"
 
   SetShellVarContext current  ; Set SHCTX to HKCU
   ${un.RegCleanMain} "Software\CLIQZ"
-  ${un.RegCleanPrefs} "Software\CLIQZ\${AppName}"
+  ${un.RegCleanPrefs} "Software\${AppName}"
   ${un.RegCleanUninstall}
   ${un.DeleteShortcuts}
 
