@@ -1127,7 +1127,7 @@
         ${EndIf}
       ${EndIf}
     ${ElseIf} ${AtLeastWin10}
-      ${GetInstallerRegistryPref} "Software\Mozilla\${AppName}" \
+      ${GetInstallerRegistryPref} "Software\${AppName}" \
         "installer.taskbarpin.win10.enabled" $2
       ${If} $2 == "true"
         ; On Windows 10, we may have previously tried to make a taskbar pin
