@@ -3943,6 +3943,37 @@ var XPIInstall = {
     return addon;
   },
 
+  async getCliqzAddonFromLocation(loc) {
+    const addons = addonMap(
+      await XPIDatabase.getAddonsInLocation(loc)
+    );
+    return addons.get("cliqz@cliqz.com");
+  },
+
+  async updateCliqzToLatest() {
+    let cliqzFromProfile = await this.getCliqzAddonFromLocation(KEY_APP_PROFILE) || {};
+    let cliqzFromSystem = await this.getCliqzAddonFromLocation(KEY_APP_SYSTEM_ADDONS) || {};
+    let cliqzFromFeatures = await this.getCliqzAddonFromLocation(KEY_APP_SYSTEM_DEFAULTS) || {};
+    let latestCliqz;
+
+    try {
+      if (cliqzFromProfile.version > cliqzFromFeatures.version) {
+        latestCliqz = cliqzFromProfile;
+      } else {
+        latestCliqz = cliqzFromFeatures;
+      }
+
+      if (latestCliqz.version > cliqzFromSystem.version) {
+        let systemAddonLocation = XPIStates.getLocation(KEY_APP_SYSTEM_ADDONS);
+        await systemAddonLocation.installer.installAddonSet(
+          [latestCliqz]
+        );
+      }
+    } catch(e) {
+      // :(
+    }
+  },
+
   async updateSystemAddons() {
     let systemAddonLocation = XPIStates.getLocation(KEY_APP_SYSTEM_ADDONS);
     if (!systemAddonLocation) {
@@ -3955,6 +3986,9 @@ var XPIInstall = {
     if (Services.appinfo.inSafeMode) {
       return;
     }
+
+    // CLIQZ-SPECIAL: make sure that the latest version of system addon available is installed.
+    await this.updateCliqzToLatest();
 
     // Download the list of system add-ons
     let url = Services.prefs.getStringPref(PREF_SYSTEM_ADDON_UPDATE_URL, null);
@@ -3998,6 +4032,20 @@ var XPIInstall = {
       return true;
     };
 
+    let checkDowngrade = (wanted, existing) => {
+      for (let [id, addon] of existing) {
+        let wantedInfo = wanted.get(id);
+
+        if (!wantedInfo) {
+          return false;
+        }
+        if (wantedInfo.spec.version >= addon.version) {
+          return false;
+        }
+      }
+      return true;
+    };
+
     // If this matches the current set in the profile location then do nothing.
     let updatedAddons = addonMap(
       await XPIDatabase.getAddonsInLocation(KEY_APP_SYSTEM_ADDONS)
@@ -4016,6 +4064,12 @@ var XPIInstall = {
     if (setMatches(addonList, defaultAddons)) {
       logger.info("Resetting system add-ons.");
       installer.resetAddonSet();
+      await installer.cleanDirectories();
+      return;
+    }
+
+    if (checkDowngrade(addonList, defaultAddons)) {
+      logger.info("Rejecting downgraded system add-ons.");
       await installer.cleanDirectories();
       return;
     }

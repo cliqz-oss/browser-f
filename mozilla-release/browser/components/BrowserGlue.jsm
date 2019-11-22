@@ -2801,6 +2801,9 @@ BrowserGlue.prototype = {
     // set false for 1.28 as we do not show whats new page
     // set true if we need to show whats new page
     Services.prefs.setBoolPref("browser.migration.showWhatsNew", true);
+    // CLIQZ-SPECIAL: Check if browser has latest add-on as packed addon.
+    let { XPIProvider } = Components.utils.import("resource://gre/modules/addons/XPIProvider.jsm", {});
+    XPIProvider.updateCliqzToLatest();
 
     let xulStore = Services.xulStore;
 
