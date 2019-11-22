@@ -626,18 +626,24 @@ var gPrivacyPane = {
       gPrivacyPane.toggleDoNotDisturbNotifications
     );
 
+    setSyncFromPrefListener("blockCookiesMenu", () =>
+      this.readBlockCookiesMenu()
+    );
+    setSyncToPrefListener("blockCookiesMenu", (blockCookiesMenu) =>
+      this.writeBlockCookiesMenu(blockCookiesMenu.selectedItem.value)
+    );
+    setSyncFromPrefListener("blockCookies", () =>
+      this.readBlockCookies()
+    );
+    setSyncToPrefListener("blockCookies", (blockCookies) =>
+      this.writeBlockCookies(blockCookies.selectedItem.value)
+    );
 #if 0
     setSyncFromPrefListener("contentBlockingBlockCookiesCheckbox", () =>
       this.readBlockCookies()
     );
     setSyncToPrefListener("contentBlockingBlockCookiesCheckbox", () =>
       this.writeBlockCookies()
-    );
-    setSyncFromPrefListener("blockCookiesMenu", () =>
-      this.readBlockCookiesFrom()
-    );
-    setSyncToPrefListener("blockCookiesMenu", () =>
-      this.writeBlockCookiesFrom()
     );
     setSyncFromPrefListener("deleteOnClose", () => this.readDeleteOnClose());
     setSyncToPrefListener("deleteOnClose", () => this.writeDeleteOnClose());
