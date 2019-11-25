@@ -133,10 +133,6 @@ ifeq ($(MOZ_PKG_FORMAT),BZ2)
 endif
 
 ifeq ($(MOZ_PKG_FORMAT),ZIP)
-  ifdef MOZ_EXTERNAL_SIGNING_FORMAT
-    # We can't use sha2signcode on zip files
-    MOZ_EXTERNAL_SIGNING_FORMAT := $(filter-out sha2signcode,$(MOZ_EXTERNAL_SIGNING_FORMAT))
-  endif
   PKG_SUFFIX	= .zip
   INNER_MAKE_PACKAGE = $(call py_action,make_zip,'$(MOZ_PKG_DIR)' '$(PACKAGE)')
   INNER_UNMAKE_PACKAGE = $(call py_action,make_unzip,$(UNPACKAGE))
@@ -225,12 +221,8 @@ endif #Create an RPM file
 
 
 ifeq ($(MOZ_PKG_FORMAT),APK)
-ifdef MOZ_ANDROID_WITH_FENNEC
-include $(MOZILLA_DIR)/toolkit/mozapps/installer/upload-files-$(MOZ_PKG_FORMAT).mk
-else
 INNER_MAKE_PACKAGE = true
 INNER_UNMAKE_PACKAGE = true
-endif # MOZ_ANDROID_WITH_FENNEC
 endif
 
 ifeq ($(MOZ_PKG_FORMAT),DMG)
@@ -280,6 +272,7 @@ NO_PKG_FILES += \
 	certutil* \
 	pk12util* \
 	BadCertAndPinningServer* \
+	DelegatedCredentialsServer* \
 	OCSPStaplingServer* \
 	SanctionsTestServer* \
 	GenerateOCSPResponse* \

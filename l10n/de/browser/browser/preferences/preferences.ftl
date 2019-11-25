@@ -14,6 +14,11 @@ pref-page =
             [windows] Einstellungen
            *[other] Einstellungen
         }
+pref-page-title =
+    { PLATFORM() ->
+        [windows] Einstellungen
+       *[other] Einstellungen
+    }
 # This is used to determine the width of the search field in about:preferences,
 # in order to make the entire placeholder string visible
 #
@@ -282,6 +287,10 @@ applications-type-pdf-with-type = { applications-type-pdf } ({ $type })
 #   $type (String) - the MIME type (e.g application/binary)
 applications-type-description-with-type = { $type-description } ({ $type })
 # Variables:
+#   $extension (String) - file extension (e.g .TXT)
+#   $type (String) - the MIME type (e.g application/binary)
+applications-file-ending-with-type = { applications-file-ending } ({ $type })
+# Variables:
 #   $plugin-name (String) - Name of a plugin (e.g Adobe Flash)
 applications-use-plugin-in =
     .label = { $plugin-name } (in { -brand-short-name }) verwenden
@@ -307,7 +316,7 @@ applications-use-app-default-label =
 applications-use-other-label =
     .value = { applications-use-other.label }
 
-##
+
 
 drm-content-header = Inhalte mit DRM-Kopierschutz
 play-drm-content =
@@ -457,12 +466,11 @@ choose-bookmark =
 
 home-prefs-content-header = Inhalte des Firefox-Startbildschirms
 home-prefs-content-description = Wählen Sie, welche Inhalte auf Ihrem Firefox-Startbildschirm angezeigt werden sollen.
-home-prefs-content-discovery-description = "Neues aus dem Netz" macht auf gute Inhalte im Internet aufmerksam.
 home-prefs-search-header =
     .label = Internetsuche
 home-prefs-topsites-header =
     .label = Wichtige Seiten
-home-prefs-topsites-description = Die von die Ihnen am meisten besuchten Websites
+home-prefs-topsites-description = Die von Ihnen am meisten besuchten Websites
 # Variables:
 #  $provider (String): Name of the corresponding content provider, e.g "Pocket".
 home-prefs-recommended-by-header =
@@ -505,6 +513,13 @@ search-bar-shown =
     .label = Suchleiste zur Symbolleiste hinzufügen
 search-engine-default-header = Standardsuchmaschine
 search-engine-default-desc = Wählen Sie Ihre Standardsuchmaschine für die Adress- und Suchleiste.
+search-engine-default-desc-2 = Das ist Ihre Standardsuchmaschine in der Adress- und Suchleiste. Sie können diese jederzeit ändern.
+search-engine-default-private-desc-2 = Wählen Sie eine andere Standardsuchmaschine nur für private Fenster.
+search-separate-default-engine =
+    .label = Diese Suchmaschine in privaten Fenstern verwenden
+    .accesskey = p
+search-suggestions-header = Suchvorschläge
+search-suggestions-desc = Wählen Sie, wie Suchvorschläge von Suchmaschinen angezeigt werden.
 search-suggestions-option =
     .label = Suchvorschläge anzeigen
     .accesskey = S
@@ -518,6 +533,9 @@ search-show-suggestions-url-bar-option =
 # (appearing before).
 search-show-suggestions-above-history-option =
     .label = In Adressleiste Suchvorschläge vor Einträgen aus der Browser-Chronik anzeigen
+search-show-suggestions-private-windows =
+    .label = Suchvorschläge in privaten Fenstern anzeigen
+suggestions-addressbar-settings = Einstellungen für Chronik, Lesezeichen und vorgeschlagene offene Tabs ändern
 search-suggestions-cant-show = Suchvorschläge werden nicht in der Adressleiste angezeigt, weil { -brand-short-name } angewiesen wurde, keine Chronik zu speichern.
 search-one-click-header = Ein-Klick-Suchmaschinen
 search-one-click-desc = Wählen Sie die Suchmaschinen, welche unterhalb der Adress- bzw. Suchleiste angezeigt werden, nachdem Sie den Suchbegriff eingegeben haben.
@@ -554,6 +572,10 @@ containers-remove-button =
 
 ## Sync Section - Signed out
 
+
+## Firefox Account - Signed out. Note that "Sync" and "Firefox Account" are now
+## more discrete ("signed in" no longer means "and sync is connected").
+
 sync-signedout-caption = So haben Sie das Web überall dabei.
 sync-signedout-description = Synchronisieren Sie Ihre Lesezeichen, Chronik, Tabs, Passwörter, Add-ons und Einstellungen zwischen allen Ihren Geräten.
 sync-signedout-account-title = Verbinden Sie mit einem { -fxaccount-brand-name }
@@ -562,6 +584,9 @@ sync-signedout-account-create = Haben Sie noch kein Konto? Erstellen Sie eines.
 sync-signedout-account-signin =
     .label = Anmelden…
     .accesskey = A
+sync-signedout-account-signin2 =
+    .label = Bei { -sync-brand-short-name } anmelden…
+    .accesskey = B
 # This message contains two links and two icon images.
 #   `<img data-l10n-name="android-icon"/>` - Android logo icon
 #   `<a data-l10n-name="android-link">` - Link to Android Download
@@ -574,11 +599,17 @@ sync-mobile-promo = Firefox für <img data-l10n-name="android-icon"/> <a data-l1
 
 ## Sync Section - Signed in
 
+
+## Firefox Account - Signed in
+
 sync-profile-picture =
     .tooltiptext = Profilbild ändern
 sync-disconnect =
     .label = Trennen…
     .accesskey = r
+sync-sign-out =
+    .label = Abmelden…
+    .accesskey = b
 sync-manage-account = Konto verwalten
     .accesskey = v
 sync-signedin-unverified = { $email } wurde noch nicht bestätigt.
@@ -594,6 +625,48 @@ sync-sign-in =
     .accesskey = m
 sync-signedin-settings-header = Sync-Einstellungen
 sync-signedin-settings-desc = Wählen Sie die zwischen den Geräten zu synchronisierenden { -brand-short-name }-Eigenschaften.
+
+## Sync section - enabling or disabling sync.
+
+prefs-syncing-on = Synchronisation: EIN
+prefs-syncing-off = Synchronisation: AUS
+prefs-sync-setup =
+    .label = { -sync-brand-short-name } einrichten…
+    .accesskey = e
+prefs-sync-offer-setup-label = Synchronisieren Sie Ihre Lesezeichen, Chronik, Tabs, Passwörter, Add-ons und Einstellungen zwischen allen Ihren Geräten.
+prefs-sync-now =
+    .labelnotsyncing = Jetzt synchronisieren
+    .accesskeynotsyncing = J
+    .labelsyncing = Wird synchronisiert…
+
+## The list of things currently syncing.
+
+sync-currently-syncing-heading = Derzeit werden folgende Elemente synchronisiert:
+sync-currently-syncing-bookmarks = Lesezeichen
+sync-currently-syncing-history = Chronik
+sync-currently-syncing-tabs = Offene Tabs
+sync-currently-syncing-logins-passwords = Zugangsdaten und Passwörter
+sync-currently-syncing-addresses = Adressen
+sync-currently-syncing-creditcards = Kreditkarten
+sync-currently-syncing-addons = Add-ons
+sync-currently-syncing-prefs =
+    { PLATFORM() ->
+        [windows] Einstellungen
+       *[other] Einstellungen
+    }
+sync-change-options =
+    .label = Ändern…
+    .accesskey = Ä
+
+## The "Choose what to sync" dialog.
+
+sync-choose-what-to-sync-dialog =
+    .title = Auswählen, was synchronisiert wird
+    .style = width: 36em; min-height: 35em;
+    .buttonlabelaccept = Änderungen speichern
+    .buttonaccesskeyaccept = s
+    .buttonlabelextra2 = Trennen…
+    .buttonaccesskeyextra2 = T
 sync-engine-bookmarks =
     .label = Lesezeichen
     .accesskey = L
@@ -608,9 +681,13 @@ sync-engine-logins =
     .label = Zugangsdaten
     .tooltiptext = Durch Sie gespeicherte Benutzernamen und Passwörter
     .accesskey = Z
+sync-engine-logins-passwords =
+    .label = Zugangsdaten und Passwörter
+    .tooltiptext = Gespeicherte Benutzernamen und Passwörter
+    .accesskey = Z
 sync-engine-addresses =
     .label = Adressen
-    .tooltiptext = Durch Sie gespeicherte postalische Adressen (nur für Desktops)
+    .tooltiptext = Gespeicherte postalische Adressen (nur für Desktops)
     .accesskey = d
 sync-engine-creditcards =
     .label = Kreditkarten
@@ -628,6 +705,9 @@ sync-engine-prefs =
         }
     .tooltiptext = Durch Sie geänderte allgemeine, Datenschutz- und Sicherheitseinstellungen
     .accesskey = E
+
+## The device name controls.
+
 sync-device-name-header = Gerätename
 sync-device-name-change =
     .label = Gerät umbenennen…
@@ -650,7 +730,11 @@ privacy-header = Browser-Datenschutz
 
 ## Privacy Section - Forms
 
+
+## Privacy Section - Logins and Passwords
+
 logins-header = Zugangsdaten & Passwörter
+# Checkbox to control whether UI is shown to users to save or fill logins/passwords.
 forms-ask-to-save-logins =
     .label = Fragen, ob Zugangsdaten und Passwörter für Websites gespeichert werden sollen
     .accesskey = F
@@ -664,6 +748,7 @@ forms-breach-alerts =
     .label = Alarme für Passwörter, deren Websites von einem Datenleck betroffen waren
     .accesskey = A
 forms-breach-alerts-learn-more-link = Weitere Informationen
+# Checkbox which controls filling saved logins into fields automatically when they appear, in some cases without user interaction.
 forms-fill-logins-and-passwords =
     .label = Zugangsdaten und Passwörter automatisch ausfüllen
     .accesskey = Z
@@ -699,7 +784,7 @@ history-remember-option-never =
     .label = niemals anlegen
 history-remember-option-custom =
     .label = nach benutzerdefinierten Einstellungen anlegen
-history-remember-description = { -brand-short-name } wird die Adressen der besuchten Webseiten, Downloads sowie eingebene Formular- und Suchdaten speichern.
+history-remember-description = { -brand-short-name } wird die Adressen der besuchten Webseiten, Downloads sowie eingegebene Formular- und Suchdaten speichern.
 history-dontremember-description = { -brand-short-name } wird dieselben Einstellungen wie im Privaten Modus verwenden und keinerlei Chronik anlegen, während Sie { -brand-short-name } benutzen.
 history-private-browsing-permanent =
     .label = Immer den Privaten Modus verwenden
@@ -818,7 +903,7 @@ enhanced-tracking-protection-setting-custom =
     .label = Benutzerdefiniert
     .accesskey = B
 
-##
+
 
 content-blocking-etp-standard-desc = Ausgewogen zwischen Schutz und Leistung. Seiten laden normal.
 content-blocking-etp-strict-desc = Stärkerer Schutz, einige Websites oder mancher Inhalt funktioniert eventuell nicht.

@@ -44,7 +44,7 @@ macosx64-cbindgen:
     fetches:
         toolchain:
             - linux64-cctools-port
-            - linux64-clang-8
+            - linux64-clang-9
             - linux64-llvm-dsymutil
             - linux64-rust-macos-1.32
 
@@ -60,6 +60,7 @@ win64-cbindgen:
         resources:
             - taskcluster/scripts/misc/tooltool-download.sh
         toolchain-artifact: public/build/cbindgen.tar.bz2
+        tooltool-downloads: internal
     fetches:
         toolchain:
             - win64-rust-1.34

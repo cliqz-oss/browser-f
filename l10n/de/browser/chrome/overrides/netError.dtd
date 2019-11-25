@@ -9,9 +9,7 @@
 <!ENTITY retry.label "Nochmals versuchen">
 <!ENTITY returnToPreviousPage.label "Zurück">
 <!ENTITY returnToPreviousPage1.label "Zurück (empfohlen)">
-<!ENTITY advanced.label "Erweitert">
 <!ENTITY advanced2.label "Erweitert…">
-<!ENTITY moreInformation.label "Weitere Informationen">
 <!ENTITY viewCertificate.label "Zertifikat anzeigen">
 
 <!-- Specific error messages -->
@@ -149,13 +147,11 @@
 </ul>
 ">
 
-<!ENTITY certerror.longpagetitle1 "Diese Verbindung ist nicht sicher">
 <!ENTITY certerror.longpagetitle2 "Warnung: Mögliches Sicherheitsrisiko erkannt">
 <!ENTITY certerror.sts.longpagetitle  "Kein Verbindungsversuch unternommen: Mögliches Sicherheitsproblem">
-<!-- Localization note (certerror.introPara, certerror.introPara2) - The text content of the span tag
+<!-- Localization note (certerror.introPara2) - The text content of the span tag
 will be replaced at runtime with the name of the server to which the user
 was trying to connect. -->
-<!ENTITY certerror.introPara "Der Inhaber von <span class='hostname'/> hat die Website nicht richtig konfiguriert. &brandShortName; hat keine Verbindung mit dieser Website aufgebaut, um Ihre Informationen vor Diebstahl zu schützen.">
 <!ENTITY certerror.introPara2 "&brandShortName; hat ein mögliches Sicherheitsrisiko erkannt und <span class='hostname'/> nicht geladen. Falls Sie die Website besuchen, könnten Angreifer versuchen, Passwörter, E-Mails oder Kreditkartendaten zu stehlen.">
 <!ENTITY certerror.sts.introPara "&brandShortName; hat ein mögliches Sicherheitsrisiko erkannt und daher <span class='hostname'/> nicht aufgerufen, denn die Website benötigt eine verschlüsselte Verbindung.">
 
@@ -193,11 +189,10 @@ was trying to connect. -->
 <!ENTITY cspBlocked.title "Blockiert von der Inhaltsicherheitsrichtlinie (CSP)">
 <!ENTITY cspBlocked.longDesc "<p>&brandShortName; hat diese Webseite daran gehindert, auf diese Weise geladen zu werden, weil die Webseite eine Inhaltsicherheitsrichtlinie (Content Security Policy) hat, die dies nicht erlaubt.</p>">
 
+
 <!ENTITY corruptedContentErrorv2.title "Fehler: Beschädigte Inhalte">
 <!ENTITY corruptedContentErrorv2.longDesc "<p>Die Seite, die Sie anzusehen versuchen, kann nicht angezeigt werden, da ein Fehler in der Datenübertragung festgestellt wurde.</p><ul><li>Bitte kontaktieren Sie die Website-Betreiber, um sie über dieses Problem zu verständigen.</li></ul>">
 
-
-<!ENTITY securityOverride.exceptionButtonLabel "Ausnahme hinzufügen…">
 <!ENTITY securityOverride.exceptionButton1Label "Risiko akzeptieren und fortfahren">
 
 <!ENTITY errorReporting.automatic2 "Fehler an Mozilla melden, um beim Identifizieren und Blockieren böswilliger Websites zu helfen">
@@ -211,16 +206,8 @@ was trying to connect. -->
      "SSL_ERROR_UNSUPPORTED_VERSION". -->
 <!ENTITY sslv3Used.longDesc2 "Weitere Informationen: SSL_ERROR_UNSUPPORTED_VERSION">
 
-<!-- LOCALIZATION NOTE (certerror.wrongSystemTime2,
-                        certerror.wrongSystemTimeWithoutReference) - The <span id='..' />
-     tags will be injected with actual values, please leave them unchanged. -->
-<!ENTITY certerror.wrongSystemTime2 "<p> &brandShortName; konnte mit <span id='wrongSystemTime_URL'/> keine gesicherte Verbindung aufbauen, da Ihr Computer ein falsches Datum oder eine falsche Uhrzeit zu verwenden scheint.</p> <p>Auf Ihrem Computer ist es der <span id='wrongSystemTime_systemDate'/>, während es der <span id='wrongSystemTime_actualDate'/> sein sollte. Korrigieren Sie Datum und Uhrzeit auf Ihrem Computer auf die richtigen Werte, um das Problem zu beheben.</p>">
-<!ENTITY certerror.wrongSystemTimeWithoutReference "<p>&brandShortName; konnte mit <span id='wrongSystemTimeWithoutReference_URL'/> keine gesicherte Verbindung aufbauen, da Ihr Computer ein falsches Datum oder eine falsche Uhrzeit zu verwenden scheint.</p> <p>Auf Ihrem Computer ist es der <span id='wrongSystemTimeWithoutReference_systemDate'/>. Korrigieren Sie Datum und Uhrzeit auf Ihrem Computer auf die richtigen Werte, um das Problem zu beheben.</p>">
-
-<!ENTITY certerror.pagetitle1  "Nicht gesicherte Verbindung">
 <!ENTITY certerror.pagetitle2  "Warnung: Mögliches Sicherheitsrisiko erkannt">
 <!ENTITY certerror.sts.pagetitle  "Keine Verbindung aufgebaut: Mögliches Sicherheitsproblem">
-<!ENTITY certerror.whatShouldIDo.badStsCertExplanation "Diese Website verwendet HTTP Strict Transport Security (HSTS), um mitzuteilen, dass &brandShortName; nur über gesicherte Verbindungen mit ihr kommunizieren soll. Daher ist es nicht möglich, eine Ausnahme für dieses Zertifikat anzulegen.">
 <!ENTITY certerror.whatShouldIDo.badStsCertExplanation1 "<span class='hostname'></span> verwendet eine Sicherheitstechnologie namens &quot;HTTP Strict Transport Security (HSTS)&quot;, durch welche &brandShortName; nur über gesicherte Verbindungen mit der Website verbinden darf. Daher kann keine Ausnahme für die Website hinzugefügt werden.">
 <!ENTITY certerror.copyToClipboard.label "In Zwischenablage kopieren">
 
@@ -243,6 +230,10 @@ was trying to connect. -->
 
 <!ENTITY prefReset.longDesc "Dies könnte durch die Netzwerk-Sicherheitseinstellungen verursacht werden. Sollen die Standardeinstellungen wiederhergestellt werden?">
 <!ENTITY prefReset.label "Standardeinstellungen wiederherstellen">
+
+<!ENTITY enableTls10.longDesc "Diese Website unterstützt eventuell Version 1.2 des TLS-Protokolls nicht, welche die niedrigste von &brandShortName; unterstützte Version ist. Nach dem Aktivieren von TLS 1.0 und 1.1 ist die Verbindung möglicherweise erfolgreich.">
+<!ENTITY enableTls10.note "TLS 1.0 und TLS 1.1 werden in einer zukünftigen Version dauerhaft deaktiviert.">
+<!ENTITY enableTls10.label "TLS 1.0 und 1.1 aktivieren">
 
 <!ENTITY networkProtocolError.title "Netzwerkprotokoll-Fehler">
 <!ENTITY networkProtocolError.longDesc "<p>Die angeforderte Seite kann nicht angezeigt werden, da ein Fehler bei der Verwendung des Netzwerkprotokolls erkannt wurde.</p><ul><li>Kontaktieren Sie bitte den Inhaber der Website, um ihn über dieses Problem zu informieren.</li></ul>">

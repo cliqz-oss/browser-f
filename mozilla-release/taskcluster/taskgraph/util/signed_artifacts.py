@@ -37,11 +37,6 @@ def generate_specifications_of_artifacts_to_sign(
         }]
     elif 'android' in build_platform:
         artifacts_specifications = [{
-            'artifacts': [
-                get_artifact_path(job, '{locale}/target.apk'),
-            ],
-            'formats': ['autograph_apk_fennec_sha1'],
-        }, {
             'artifacts': get_geckoview_artifacts_to_sign(config, job),
             'formats': ['autograph_gpg'],
         }]
@@ -67,12 +62,12 @@ def generate_specifications_of_artifacts_to_sign(
             'artifacts': [
                 get_artifact_path(job, '{locale}/setup.exe'),
             ],
-            'formats': ['sha2signcode'],
+            'formats': ['autograph_authenticode'],
         }, {
             'artifacts': [
                 get_artifact_path(job, '{locale}/target.zip'),
             ],
-            'formats': ['sha2signcode', 'autograph_widevine', 'autograph_omnija'],
+            'formats': ['autograph_authenticode', 'autograph_widevine', 'autograph_omnija'],
         }]
 
         if use_stub:

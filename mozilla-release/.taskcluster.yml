@@ -96,8 +96,8 @@ tasks:
                   name: "Decision Task for cron job ${cron.job_name}"
                   description: 'Created by a [cron task](https://tools.taskcluster.net/tasks/${cron.task_id})'
 
-        provisionerId: "aws-provisioner-v1"
-        workerType: "gecko-${repository.level}-decision"
+        provisionerId: "gecko-${repository.level}"
+        workerType: "decision"
 
         tags:
           $if: 'tasks_for == "hg-push"'
@@ -198,6 +198,10 @@ tasks:
                 GECKO_HEAD_REV: '${push.revision}'
                 HG_STORE_PATH: /builds/worker/checkouts/hg-store
                 TASKCLUSTER_CACHES: /builds/worker/checkouts
+                # mach generates pyc files when reading `mach_commands.py`
+                # This causes cached_task digest generation to be random for
+                # some tasks. Disable bytecode generation to work around that.
+                PYTHONDONTWRITEBYTECODE: '1'
                 # someday, these will be provided by the worker - Bug 1492664
                 TASKCLUSTER_ROOT_URL: https://taskcluster.net
                 TASKCLUSTER_PROXY_URL: http://taskcluster
