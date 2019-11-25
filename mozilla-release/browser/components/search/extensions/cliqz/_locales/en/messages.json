@@ -6,15 +6,15 @@
     "message": "Cliqz"
   },
   "searchUrl": {
-    "message": "https://suchen.cliqz.com/"
+    "message": "https://beta.cliqz.com/search?q={searchTerms}"
   },
   "searchForm": {
-    "message": "https://suchen.cliqz.com/"
+    "message": "https://beta.cliqz.com/search?q={searchTerms}"
   },
   "suggestUrl": {
-    "message": "https://suchen.cliqz.com/"
+    "message": "https://beta.cliqz.com/search?q={searchTerms}"
   },
   "searchUrlGetParams": {
-    "message": "{cliqzSearchTermsKey}={searchTerms}"
+    "message": "#channel=dbrowser"
   }
 }
