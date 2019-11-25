@@ -3971,6 +3971,7 @@ var XPIInstall = {
       }
     } catch(e) {
       // :(
+        logger.warn('System addon update failed', e)
     }
   },
 
