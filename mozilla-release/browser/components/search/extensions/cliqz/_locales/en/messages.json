@@ -15,6 +15,6 @@
     "message": "https://beta.cliqz.com/search?q={searchTerms}"
   },
   "searchUrlGetParams": {
-    "message": ""
+    "message": "#channel=dbrowser"
   }
 }
