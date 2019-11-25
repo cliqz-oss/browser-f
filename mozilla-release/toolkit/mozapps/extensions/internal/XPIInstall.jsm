@@ -4039,11 +4039,12 @@ var XPIInstall = {
         if (!wantedInfo) {
           return false;
         }
-        if (wantedInfo.spec.version >= addon.version) {
-          return false;
+        if (wantedInfo.spec.version < addon.version) {
+          console.error('Rejecting add-on set: downgrade not allowed.')
+          return true;
         }
       }
-      return true;
+      return false;
     };
 
     // If this matches the current set in the profile location then do nothing.
