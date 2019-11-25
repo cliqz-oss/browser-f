@@ -291,36 +291,35 @@
 </groupbox>
 
 <!-- Languages -->
-<!-- CLIQZ-SPECIAL, DB-2146: temporarily hide Language section
-		  until we know how to run the browser with different locales (>= 2) -->
-<groupbox id="languagesGroup" data-category="paneGeneral" hidden="true" data-hidden-from-search="true">
+<groupbox id="languagesGroup" data-category="paneGeneral">
   <label><html:h2 data-l10n-id="language-header"/></label>
 
+<!-- CLIQZ-SPECIAL, DB-2146: temporarily hide Language section
+		  until we know how to run the browser with different locales (>= 2)
   <vbox id="browserLanguagesBox" align="start" hidden="true">
     <description flex="1" controls="chooseBrowserLanguage" data-l10n-id="choose-browser-language-description"/>
     <hbox>
       <menulist id="defaultBrowserLanguage">
         <menupopup/>
       </menulist>
-      <!-- CLIQZ-SPECIAL, DB-2015: Remove option to download language packs from AMO
       <button id="manageBrowserLanguagesButton"
               is="highlightable-button"
               class="accessory-button"
               data-l10n-id="manage-browser-languages-button"
               oncommand="gMainPane.showBrowserLanguages({search: false})"/>
-      -->
     </hbox>
   </vbox>
   <hbox id="confirmBrowserLanguage" class="message-bar" align="center" hidden="true">
     <image class="message-bar-icon"/>
     <vbox class="message-bar-content-container" align="stretch" flex="1"/>
   </hbox>
-<!-- CLIQZ-SPECIAL, DB-2015: Remove option to choose language packs from AMO
+-->
+
   <hbox id="languagesBox" align="center">
     <description flex="1" control="chooseLanguage" data-l10n-id="choose-language-description"/>
--->
+
     <!-- Please don't remove the wrapping hbox/vbox/box for these elements. It's used to properly compute the search tooltip position. -->
-<!--
+
     <hbox>
       <button id="chooseLanguage"
               is="highlightable-button"
@@ -337,7 +336,6 @@
               " />
     </hbox>
   </hbox>
--->
 
   <hbox id="translationBox" hidden="true">
     <hbox align="center" flex="1">
