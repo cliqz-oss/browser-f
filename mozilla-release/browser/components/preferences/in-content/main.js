@@ -482,10 +482,7 @@ var gMainPane = {
       "command",
       makeDisableControllingExtension(PREF_SETTING_TYPE, CONTAINERS_KEY)
     );
-    // CLIQZ-SPECIAL: DB-2015, Remove option to choose language packs from AMO
-#if 0
     setEventListener("chooseLanguage", "command", gMainPane.showLanguages);
-#endif
     setEventListener(
       "translationAttributionImage",
       "click",
@@ -1130,12 +1127,14 @@ var gMainPane = {
       true
     );
 
+#if 0
+    // CLIQZ-SPECIAL, DB-2146: temporarily hide Language section
     // This will register the "command" listener.
     let menulist = document.getElementById("defaultBrowserLanguage");
     new SelectionChangedMenulist(menulist, event => {
       gMainPane.onBrowserLanguageChange(event);
     });
-
+#endif
     gMainPane.setBrowserLocales(Services.locale.appLocaleAsBCP47);
   },
 
@@ -1159,6 +1158,7 @@ var gMainPane = {
     }
 
 #if 0
+    // CLIQZ-SPECIAL: DB-2146: temporarily hide Language section
     // Add an option to search for more languages if downloading is supported.
     if (Services.prefs.getBoolPref("intl.multilingual.downloadEnabled")) {
       let menuitem = document.createXULElement("menuitem");
@@ -1170,7 +1170,6 @@ var gMainPane = {
       menuitem.setAttribute("value", "search");
       fragment.appendChild(menuitem);
     }
-#endif
 
     let menulist = document.getElementById("defaultBrowserLanguage");
     let menupopup = menulist.querySelector("menupopup");
@@ -1179,6 +1178,8 @@ var gMainPane = {
     menulist.value = selected;
 
     document.getElementById("browserLanguagesBox").hidden = false;
+
+#endif
   },
 
   /* Show the confirmation message bar to allow a restart into the new locales. */
