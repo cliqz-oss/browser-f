@@ -639,23 +639,15 @@ search-bar-hidden =
 search-bar-shown =
     .label = Add search bar in toolbar
 
-<<<<<<< HEAD
 search-engine-default-header = Complementary search engine
-search-engine-default-desc = Choose your backup search engine. If you are not happy with { -brand-short-name }’ suggestions for your query, you will be redirected to the results of this search engine when you hit „enter“.
-||||||| merged common ancestors
-search-engine-default-header = Default Search Engine
-search-engine-default-desc = Choose the default search engine to use in the address bar and search bar.
-=======
-search-engine-default-header = Default Search Engine
-search-engine-default-desc-2 = This is your default search engine in the address bar and search bar. You can switch it at any time.
-search-engine-default-private-desc-2 = Choose a different default search engine for Private Windows only
+search-engine-default-desc-2 = Choose your backup search engine. If you are not happy with { -brand-short-name }’ suggestions for your query, you will be redirected to the results of this search engine when you hit „enter“.
+search-engine-default-private-desc-2 = Choose a different default search engine for Forget Windows only
 search-separate-default-engine =
-    .label = Use this search engine in Private Windows
+    .label = Use this search engine in Forget Windows
     .accesskey = U
 
 search-suggestions-header = Search Suggestions
 search-suggestions-desc = Choose how suggestions from search engines appear.
->>>>>>> origin/upstream-releases
 
 search-suggestions-option =
     .label = Provide search suggestions
@@ -674,7 +666,7 @@ search-show-suggestions-above-history-option =
     .label = Show search suggestions ahead of browsing history in address bar results
 
 search-show-suggestions-private-windows =
-    .label = Show search suggestions in Private Windows
+    .label = Show search suggestions in Forget Windows
 
 suggestions-addressbar-settings = Change preferences for browsing history, bookmarks, and tab suggestions
 

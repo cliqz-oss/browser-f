@@ -90,14 +90,8 @@ let HomePage = {
    * homepage, but this is deemed acceptable, as we'll correct it once
    * initialised.
    */
-<<<<<<< HEAD
-  async init() {
-    /* CLIQZ-SPECIAL: we do not allow homepage change so no use of ignore list
-||||||| merged common ancestors
-  async init() {
-=======
   async delayedStartup() {
->>>>>>> origin/upstream-releases
+    /* CLIQZ-SPECIAL: we do not allow homepage change so no use of ignore list
     if (this._initializationPromise) {
       await this._initializationPromise;
       return;
@@ -219,14 +213,8 @@ let HomePage = {
    *   `|` separated list of URLs.
    */
   async set(value) {
-<<<<<<< HEAD
 /* CLIQZ-SPECIAL: we do not allow homepage change so no use of ignore list
-    await this.init();
-||||||| merged common ancestors
-    await this.init();
-=======
     await this.delayedStartup();
->>>>>>> origin/upstream-releases
 
     if (await this.shouldIgnore(value)) {
       Cu.reportError(

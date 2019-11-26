@@ -137,14 +137,14 @@ These should match what Safari and other Apple applications use on OS X Lion. --
 
  <!-- LOCALIZATION NOTE (fxa.signin) Used to define the different labels
      for the Firefox Account toolbar signin menu screen. -->
-<!ENTITY fxa.signin.callout.label "Haben Sie alles parat mit Firefox">
-<!ENTITY fxa.signin.description.label "Nehmen Sie Ihre Lesezeichen, Chronik, Passwörter und andere Einstellungen auf allen Geräten mit.">
+<!ENTITY fxa.signin.callout.label "Habe alles parat mit Firefox">
+<!ENTITY fxa.signin.description.label "Nimm deine Lesezeichen, Chronik, Passwörter und andere Einstellungen auf allen Geräten mit.">
 <!ENTITY fxa.signin.button.label "&syncBrand.shortName.label; aktivieren…">
 
 <!-- LOCALIZATION NOTE (fxa.unverified) Used to define the different labels
      for the Firefox Account toolbar unverified menu screen. -->
-<!ENTITY fxa.unverified.callout.label "Rufen Sie jetzt Ihre E-Mails ab.">
-<!ENTITY fxa.unverified.description.label "Sie müssen Ihr Konto erst bestätigen, damit die Synchronisation gestart werden kann.">
+<!ENTITY fxa.unverified.callout.label "Rufe jetzt deine E-Mails ab.">
+<!ENTITY fxa.unverified.description.label "Du musst dein Konto erst bestätigen, damit die Synchronisation gestart werden kann.">
 <!ENTITY fxa.unverified.button.label "Einstellungen für &syncBrand.shortName.label; öffnen…">
 
 <!ENTITY pictureInPictureHideToggle.label "Schalter für Bild-im-Bild (PiP) ausblenden">
@@ -177,7 +177,7 @@ These should match what Safari and other Apple applications use on OS X Lion. --
 
 <!-- LOCALIZATION NOTE (fxa.service) Used to define the different FxA services
      for the Firefox Account toolbar menu screen.  -->
-<!ENTITY fxa.service.sendTab.description "Tab sofort an alle Geräte senden, auf denen Sie angemeldet sind.">
+<!ENTITY fxa.service.sendTab.description "Tab sofort an alle Geräte senden, auf denen du angemeldet bist.">
 
 <!-- LOCALIZATION NOTE (fullscreenWarning.beforeDomain.label,
      fullscreenWarning.afterDomain.label): these two strings are used
@@ -445,15 +445,9 @@ These should match what Safari and other Apple applications use on OS X Lion. --
      the account. We also show links to download Firefox for android/ios. -->
 <!ENTITY appMenuRemoteTabs.noclients.subtitle "Willst du deine Tabs von deinen anderen Geräten hier angezeigt bekommen?">
 <!ENTITY appMenuRemoteTabs.opensyncprefs.label "Sync-Einstellungen öffnen">
-<<<<<<< HEAD
 <!ENTITY appMenuRemoteTabs.notsignedin.label "Melde dich an, um eine Liste der Tabs auf deinen anderen Geräten zu sehen.">
-||||||| merged common ancestors
-<!ENTITY appMenuRemoteTabs.notsignedin.label "Melden Sie sich an, um eine Liste der Tabs auf Ihren anderen Geräten zu sehen.">
-=======
-<!ENTITY appMenuRemoteTabs.notsignedin.label "Melden Sie sich an, um eine Liste der Tabs auf Ihren anderen Geräten zu sehen.">
-<!ENTITY appMenuRemoteTabs.welcome.label "Zeigt eine Liste der Tabs von Ihren anderen Geräten an.">
->>>>>>> origin/upstream-releases
-<!ENTITY appMenuRemoteTabs.unverified.label "Ihr Konto muss verifiziert werden.">
+<!ENTITY appMenuRemoteTabs.welcome.label "Zeigt eine Liste der Tabs von deinen anderen Geräten an.">
+<!ENTITY appMenuRemoteTabs.unverified.label "Dein Konto muss verifiziert werden.">
 <!ENTITY appMenuRemoteTabs.signin.label "Bei Sync anmelden">
 <!ENTITY appMenuRemoteTabs.signintosync.label "Bei &syncBrand.shortName.label; anmelden…">
 <!ENTITY appMenuRemoteTabs.turnonsync.label "&syncBrand.shortName.label; aktivieren…">
@@ -922,7 +916,7 @@ you can use these alternative items. Otherwise, their values should be empty.  -
      the user is experiencing issues with any of a variety of functionality.
      protections.siteNotWorkingView.header: The header of the list
      protections.siteNotWorkingView.issueList.*: The list items, shown in a <ul> -->
-<!ENTITY protections.siteNotWorkingView.header "Deaktivieren Sie die Schutzmaßnahmen, falls es Probleme gibt mit:">
+<!ENTITY protections.siteNotWorkingView.header "Deaktiviere die Schutzmaßnahmen, falls es Probleme gibt mit:">
 <!ENTITY protections.siteNotWorkingView.issueList.logInFields "Anmeldefeldern">
 <!ENTITY protections.siteNotWorkingView.issueList.forms "Formularen">
 <!ENTITY protections.siteNotWorkingView.issueList.payments "Zahlungen">
@@ -944,7 +938,7 @@ you can use these alternative items. Otherwise, their values should be empty.  -
      a tooltip explaining why these items were not blocked in the page. -->
 <!ENTITY protections.notBlocking.why.label "Warum?">
 <!ENTITY protections.notBlocking.why.etpOn.tooltip "Das Blockieren könnte Probleme mit Inhalten einiger Websites verursachen. Ohne Skripte zur Aktivitätenverfolgung funktionieren einige Schaltflächen, Formulare und Anmeldefelder vielleicht nicht.">
-<!ENTITY protections.notBlocking.why.etpOff.tooltip "Das Deaktivieren der Schutzmaßnahmen erlaubt Skripten, Ihre Aktivitäten auf dieser Website zu verfolgen. Weiterhin könnten Probleme mit der Website behoben sein.">
+<!ENTITY protections.notBlocking.why.etpOff.tooltip "Das Deaktivieren der Schutzmaßnahmen erlaubt Skripten, deine Aktivitäten auf dieser Website zu verfolgen. Weiterhin könnten Probleme mit der Website behoben sein.">
 <!ENTITY protections.socialMediaTrackers.label "Skripte zur Aktivitätenverfolgung durch soziale Netzwerke">
 <!ENTITY protections.crossSiteTrackingCookies.label "Cookies zur seitenübergreifenden Aktivitätenverfolgung">
 <!ENTITY protections.trackingContent.label "Inhalte zur Aktivitätenverfolgung">
@@ -953,11 +947,11 @@ you can use these alternative items. Otherwise, their values should be empty.  -
 <!ENTITY protections.notBlocking.why.etpOff2.tooltip "Alle Elemente zur Aktivitätenverfolgung auf dieser Website wurden geladen, da der Schutz deaktiviert ist.">
 <!ENTITY protections.noTrackersFound.description "&brandShortName; erkannte keine Skripte zur Aktivitätenverfolgung auf dieser Seite.">
 
-<!ENTITY protections.crossSiteTrackingCookies.description "Diese Cookies werden über viele Websites hinweg verwendet und sammeln Informationen über Ihre Online-Aktivitäten. Sie werden durch Drittanbieter wie Werbe- oder Analyseunternehmen gesetzt.">
-<!ENTITY protections.cryptominers.description "Heimliche Digitalwährungsberechner (Krypto-Miner) verwenden die Rechenleistung Ihres Computers, um digitales Geld zu berechnen. Die dabei verwendeten Skripte verursachen ein schnelles Absinken des Batterieladestands, verlangsamen den Computer und können die Energierechnung in die Höhe treiben.">
-<!ENTITY protections.fingerprinters.description "Identifizierer (Fingerprinter) sammeln Eigenschaften Ihres Browsers und Computers und erstellen daraus ein Profil. Mit diesem digitalen Fingerabdruck können diese Sie über Websites hinweg verfolgen.">
+<!ENTITY protections.crossSiteTrackingCookies.description "Diese Cookies werden über viele Websites hinweg verwendet und sammeln Informationen über deine Online-Aktivitäten. Du wirst durch Drittanbieter wie Werbe- oder Analyseunternehmen gesetzt.">
+<!ENTITY protections.cryptominers.description "Heimliche Digitalwährungsberechner (Krypto-Miner) verwenden die Rechenleistung deines Computers, um digitales Geld zu berechnen. Die dabei verwendeten Skripte verursachen ein schnelles Absinken des Batterieladestands, verlangsamen den Computer und können die Energierechnung in die Höhe treiben.">
+<!ENTITY protections.fingerprinters.description "Identifizierer (Fingerprinter) sammeln Eigenschaften deines Browsers und Computers und erstellen daraus ein Profil. Mit diesem digitalen Fingerabdruck können diese dich über Websites hinweg verfolgen.">
 <!ENTITY protections.trackingContent2.description "Websites können Werbung, Videos und andere Inhalte mit Skripten zur Aktivitätenverfolgung von anderen Websites laden. Das Blockieren von Inhalten zur Aktivitätenverfolgung ermöglicht es unter Umständen, dass Websites schneller laden, aber einige Schaltflächen, Formulare und Anmeldefelder funktionieren dann eventuell nicht richtig.">
-<!ENTITY protections.socialMediaTrackers.description "Auf anderen Websites eingebundene Elemente sozialer Netzwerke (z.B. zum Teilen von Inhalten) können Skripte enthalten, die verfolgen, was Sie online machen, angezeigt bekommen und sich anschauen. Dies ermöglicht den Unternehmen hinter den sozialen Netzwerken, mehr über Sie zu erfahren als allein durch die Inhalte, die Sie mit Ihrem Profil im sozialen Netzwerk teilen.">
+<!ENTITY protections.socialMediaTrackers.description "Auf anderen Websites eingebundene Elemente sozialer Netzwerke (z.B. zum Teilen von Inhalten) können Skripte enthalten, die verfolgen, was du online machst, angezeigt bekommen und sich anschauen. Dies ermöglicht den Unternehmen hinter den sozialen Netzwerken, mehr über dich zu erfahren als allein durch die Inhalte, die du mit deinem Profil im sozialen Netzwerk teilst.">
 
 <!-- Name for the tabs toolbar as spoken by screen readers.
      The word "toolbar" is appended automatically and should not be contained below! -->
@@ -1021,15 +1015,15 @@ you can use these alternative items. Otherwise, their values should be empty.  -
 
 <!ENTITY contentBlocking.openBreakageReportView2.label "Problem melden">
 <!ENTITY contentBlocking.breakageReportView.label "Probleme melden">
-<!ENTITY contentBlocking.breakageReportView2.description "Das Blockieren von Seitenelementen kann bei einigen Websites zu Problemen führen. Wenn Sie Probleme melden, helfen Sie &brandShortName; für alle besser zu machen. (Dabei werden die Adresse sowie Informationen über Ihre Browsereinstellungen an Mozilla gesendet.)">
+<!ENTITY contentBlocking.breakageReportView2.description "Das Blockieren von Seitenelementen kann bei einigen Websites zu Problemen führen. Wenn du Probleme meldest, hilfst du &brandShortName; für alle besser zu machen. (Dabei werden die Adresse sowie Informationen über deine Browsereinstellungen an Mozilla gesendet.)">
 <!ENTITY contentBlocking.breakageReportView.learnMore "Weitere Informationen">
 
 <!ENTITY contentBlocking.breakageReportView.title "Problem mit Website melden">
-<!ENTITY contentBlocking.breakageReportView3.description "Das Blockieren bestimmter Skripte zur Aktivitätenverfolgung kann bei einigen Websites zu Problemen führen. Wenn Sie Probleme melden, helfen Sie &brandShortName; für alle besser zu machen. Beim Senden des Berichts werden eine Adresse sowie Informationen über Ihre Browser-Einstellungen an Mozilla gesendet.">
+<!ENTITY contentBlocking.breakageReportView3.description "Das Blockieren bestimmter Skripte zur Aktivitätenverfolgung kann bei einigen Websites zu Problemen führen. Wenn du Probleme meldest, hilfst du &brandShortName; für alle besser zu machen. Beim Senden des Berichts werden eine Adresse sowie Informationen über deine Browser-Einstellungen an Mozilla gesendet.">
 <!ENTITY contentBlocking.breakageReportView2.learnMore "Weitere Informationen">
 <!ENTITY contentBlocking.breakageReportView.collection.url.label "Adresse">
-<!ENTITY contentBlocking.breakageReportView.collection.comments.label "Welche Probleme traten bei Ihnen auf? (freiwillig)">
-<!ENTITY contentBlocking.breakageReportView2.collection.comments.label "Freiwillig: Beschreiben Sie das Problem.">
+<!ENTITY contentBlocking.breakageReportView.collection.comments.label "Welche Probleme traten bei dir auf? (freiwillig)">
+<!ENTITY contentBlocking.breakageReportView2.collection.comments.label "Freiwillig: Beschreibe das Problem.">
 <!ENTITY contentBlocking.breakageReportView.sendReport.label "Bericht senden">
 <!ENTITY contentBlocking.breakageReportView.cancel.label "Abbrechen">
 
@@ -1078,9 +1072,9 @@ you can use these alternative items. Otherwise, their values should be empty.  -
 <!ENTITY newTabControlled.disableButton.label "Erweiterung deaktivieren">
 <!ENTITY newTabControlled.disableButton.accesskey "d">
 
-<!ENTITY homepageControlled.message "Eine Erweiterung hat die Startseite geändert. Falls Sie diese Änderung nicht wollen, können Sie die entsprechenden Einstellungen zurücksetzen.">
+<!ENTITY homepageControlled.message "Eine Erweiterung hat die Startseite geändert. Falls du diese Änderung nicht willst, kannst du die entsprechenden Einstellungen zurücksetzen.">
 
-<!ENTITY homepageControlled.header.message "Ihre Startseite hat sich geändert.">
+<!ENTITY homepageControlled.header.message "Deine Startseite hat sich geändert.">
 <!ENTITY homepageControlled.keepButton.label "Änderungen behalten">
 <!ENTITY homepageControlled.keepButton.accesskey "b">
 <!ENTITY homepageControlled.disableButton.label "Erweiterung deaktivieren">

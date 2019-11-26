@@ -1369,7 +1369,6 @@ toolbarpaletteitem > toolbaritem {
 toolbar[keyNav=true]:not([collapsed=true]):not([customizing=true]) toolbartabstop {
   -moz-user-focus: normal;
 }
-<<<<<<< HEAD
 
 /* Cliqz - Hide https everywhere toolbar button */
 #https-everywhere_cliqz_com-browser-action, #https-everywhere_cliqz_com-browser-action * {
@@ -1382,8 +1381,6 @@ toolbar[keyNav=true]:not([collapsed=true]):not([customizing=true]) toolbartabsto
 #wrapper-https-everywhere_cliqz_com-browser-action {
   display: none;
 }
-||||||| merged common ancestors
-=======
 
 /* Frame used for rendering the DevTools inspector highlighters */
 iframe.devtools-highlighter-renderer {
@@ -1405,4 +1402,3 @@ iframe.devtools-highlighter-renderer {
 .browserStack > iframe.devtools-highlighter-renderer {
   -moz-box-flex: 1;
 }
->>>>>>> origin/upstream-releases

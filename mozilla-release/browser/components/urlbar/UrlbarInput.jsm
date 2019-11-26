@@ -207,20 +207,14 @@ class UrlbarInput {
     // recording abandonment events when the command causes a blur event.
     this.view.panel.addEventListener("command", this, true);
 
-<<<<<<< HEAD
     // CLIQZ-SPECIAL: we do not need to attach controller, as its hijacked by extension also DB-2229
     // this._copyCutController = new CopyCutController(this);
     this._copyCutController = null;
     // this.inputField.controllers.insertControllerAt(0, this._copyCutController);
-||||||| merged common ancestors
-    this._copyCutController = new CopyCutController(this);
-    this.inputField.controllers.insertControllerAt(0, this._copyCutController);
-=======
     this.window.gBrowser.tabContainer.addEventListener("TabSelect", this);
 
     this.window.addEventListener("customizationstarting", this);
     this.window.addEventListener("aftercustomization", this);
->>>>>>> origin/upstream-releases
 
     this.updateLayoutBreakout();
 
@@ -921,13 +915,7 @@ class UrlbarInput {
   }
 
   get focused() {
-<<<<<<< HEAD
-    return this.textbox && this.textbox.getAttribute("focused") == "true";
-||||||| merged common ancestors
-    return this.getAttribute("focused") == "true";
-=======
     return this.document.activeElement == this.inputField;
->>>>>>> origin/upstream-releases
   }
 
   get goButton() {

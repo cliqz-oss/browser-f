@@ -84,17 +84,7 @@ detail-version =
     .label = Version
 detail-last-updated =
     .label = Zuletzt aktualisiert
-<<<<<<< HEAD
-
 detail-contributions-description = Der Entwickler dieses Add-ons bittet dich, dass du die Entwicklung unterstützt, indem du einen kleinen Betrag spendest.
-
-||||||| merged common ancestors
-
-detail-contributions-description = Der Entwickler dieses Add-ons bittet Sie, dass Sie die Entwicklung unterstützen, indem Sie einen kleinen Betrag spenden.
-
-=======
-detail-contributions-description = Der Entwickler dieses Add-ons bittet Sie, dass Sie die Entwicklung unterstützen, indem Sie einen kleinen Betrag spenden.
->>>>>>> origin/upstream-releases
 detail-contributions-button = Unterstützen
     .title = Die Entwicklung dieses Add-ons unterstützen
     .accesskey = U
@@ -113,44 +103,14 @@ detail-update-manual =
 detail-private-browsing-label = In Vergessen-Fenstern ausführen
 detail-private-browsing-description2 = Falls erlaubt, hat die Erweiterung Zugriff auf deine Online-Aktivitäten im Vergessen-Modus. <label data-l10n-name="detail-private-browsing-learn-more">Weitere Informationen</label>
 # Some add-ons may elect to not run in private windows by setting incognito: not_allowed in the manifest.  This
-<<<<<<< HEAD
 # cannot be overriden by the user.
 detail-private-disallowed-label = In Vergessen-Fenstern nicht erlaubt
 detail-private-disallowed-description = Die Erweiterung wird in Vergessen-Fenstern nicht ausgeführt. <label data-l10n-name="detail-private-browsing-learn-more">Weitere Informationen</label>
-
 detail-private-disallowed-description2 = Die Erweiterung wird in Vergessen-Fenstern nicht ausgeführt. <a data-l10n-name="learn-more">Weitere Informationen</a>
-
-||||||| merged common ancestors
-# cannot be overridden by the user.
-detail-private-disallowed-label = In privaten Fenstern nicht erlaubt
-detail-private-disallowed-description = Die Erweiterung wird im Privaten Modus nicht ausgeführt. <label data-l10n-name="detail-private-browsing-learn-more">Weitere Informationen</label>
-
-detail-private-disallowed-description2 = Die Erweiterung wird im Privaten Modus nicht ausgeführt. <a data-l10n-name="learn-more">Weitere Informationen</a>
-
-=======
-# cannot be overridden by the user.
-detail-private-disallowed-label = In privaten Fenstern nicht erlaubt
-detail-private-disallowed-description = Die Erweiterung wird im Privaten Modus nicht ausgeführt. <label data-l10n-name="detail-private-browsing-learn-more">Weitere Informationen</label>
-detail-private-disallowed-description2 = Die Erweiterung wird im Privaten Modus nicht ausgeführt. <a data-l10n-name="learn-more">Weitere Informationen</a>
->>>>>>> origin/upstream-releases
 # Some special add-ons are privileged, run in private windows automatically, and this permission can't be revoked
-<<<<<<< HEAD
 detail-private-required-label = Benötigt Zugriff auf Vergessen-Fenster
 detail-private-required-description = Die Erweiterung hat Zugriff auf deine Online-Aktivitäten in Vergessen-Fenstern. <label data-l10n-name="detail-private-browsing-learn-more">Weitere Informationen</label>
-
 detail-private-required-description2 = Die Erweiterung hat Zugriff auf deine Online-Aktivitäten in Vergessen-Fenstern. <a data-l10n-name="learn-more">Weitere Informationen</a>
-
-||||||| merged common ancestors
-detail-private-required-label = Benötigt Zugriff auf private Fenster
-detail-private-required-description = Die Erweiterung hat Zugriff auf Ihre Online-Aktivitäten im Privaten Modus. <label data-l10n-name="detail-private-browsing-learn-more">Weitere Informationen</label>
-
-detail-private-required-description2 = Die Erweiterung hat Zugriff auf Ihre Online-Aktivitäten im Privaten Modus. <a data-l10n-name="learn-more">Weitere Informationen</a>
-
-=======
-detail-private-required-label = Benötigt Zugriff auf private Fenster
-detail-private-required-description = Die Erweiterung hat Zugriff auf Ihre Online-Aktivitäten im Privaten Modus. <label data-l10n-name="detail-private-browsing-learn-more">Weitere Informationen</label>
-detail-private-required-description2 = Die Erweiterung hat Zugriff auf Ihre Online-Aktivitäten im Privaten Modus. <a data-l10n-name="learn-more">Weitere Informationen</a>
->>>>>>> origin/upstream-releases
 detail-private-browsing-on =
     .label = Erlauben
     .tooltiptext = Aktivieren in Vergessen-Fenstern
@@ -236,10 +196,10 @@ extensions-warning-update-security-enable =
     .label = Aktivieren
     .tooltiptext = Überprüfung auf Sicherheitsupdates für Add-ons aktivieren
 extensions-warning-safe-mode = Alle Add-ons wurden durch den Abgesicherten Modus deaktiviert.
-extensions-warning-check-compatibility = Die Addon-Kompatibilitäts-Prüfung ist deaktiviert. Sie könnten inkompatible Add-ons haben.
+extensions-warning-check-compatibility = Die Addon-Kompatibilitäts-Prüfung ist deaktiviert. Du kannst inkompatible Add-ons haben.
 extensions-warning-check-compatibility-button = Aktivieren
     .title = Addon-Kompatibilitäts-Prüfung aktivieren
-extensions-warning-update-security = Die Überprüfung der Sicherheit von Add-on-Updates ist deaktiviert. Ihre Sicherheit könnte durch Updates kompromittiert worden sein.
+extensions-warning-update-security = Die Überprüfung der Sicherheit von Add-on-Updates ist deaktiviert. Deine Sicherheit könnte durch Updates kompromittiert worden sein.
 extensions-warning-update-security-button = Aktivieren
     .title = Überprüfung auf Sicherheitsupdates für Add-ons aktivieren
 
@@ -300,7 +260,7 @@ extensions-updates-update-selected =
     .label = Updates installieren
     .tooltiptext = In dieser Liste verfügbare Updates installieren
 addon-updates-updating = Add-ons werden aktualisiert
-addon-updates-installed = Ihre Add-ons wurden aktualisiert.
+addon-updates-installed = Deine Add-ons wurden aktualisiert.
 addon-updates-none-found = Keine Updates gefunden
 addon-updates-manual-updates-found = Verfügbare Updates anzeigen
 
@@ -468,7 +428,7 @@ addon-badge-private-browsing-allowed =
 addon-badge-private-browsing-allowed2 =
     .title = In Vergessen Fenstern erlaubt
     .aria-label = { addon-badge-private-browsing-allowed2.title }
-addon-detail-private-browsing-help = Falls erlaubt, hat die Erweiterung Zugriff auf deine Online-Aktivitäten im Privaten Modus. <a data-l10n-name="learn-more">Weitere Informationen</a>
+addon-detail-private-browsing-help = Falls erlaubt, hat die Erweiterung Zugriff auf deine Online-Aktivitäten im Vergessen-Modus. <a data-l10n-name="learn-more">Weitere Informationen</a>
 addon-detail-private-browsing-allow = Erlauben
 addon-detail-private-browsing-disallow = Nicht erlauben
 # This is the tooltip text for the recommended badge for an extension in about:addons. The
@@ -493,13 +453,7 @@ recommended-addon-learn-more = Weitere Informationen…
 
 # A recommendation for the Firefox Color theme shown at the bottom of the theme
 # list view. The "Firefox Color" name itself should not be translated.
-<<<<<<< HEAD
 recommended-theme-1 = Fühlst du dich inspiriert? <a data-l10n-name="link">Erstelle eigene Themes mit Firefox Color.</a>
-||||||| merged common ancestors
-recommended-theme-1 = Fühlen Sie sich inspiriert? <a data-l10n-name="link">Erstellen Sie eigene Themes mit Firefox Color.</a>
-=======
-recommended-theme-1 = Fühlen Sie sich inspiriert? <a data-l10n-name="link">Erstellen Sie eigene Themes mit Firefox Color.</a>
-
 ## Page headings
 
 extension-heading = Erweiterungen verwalten
@@ -513,4 +467,3 @@ theme-heading-search-label = Weitere Themes suchen
 extension-heading-search-label = Weitere Erweiterungen suchen
 addons-heading-search-input =
     .placeholder = Auf addons.mozilla.org suchen
->>>>>>> origin/upstream-releases

@@ -111,32 +111,25 @@ ifeq ($(MOZ_PKG_FORMAT),ZIP)
 	$(MAKE) -C windows ZIP_IN='$(ABS_DIST)/$(PACKAGE)' installer
 endif
 endif
+ifdef MOZ_AUTOMATION
 	cp $(DEPTH)/mozinfo.json $(MOZ_MOZINFO_FILE)
 	$(PYTHON) $(MOZILLA_DIR)/toolkit/mozapps/installer/informulate.py \
-<<<<<<< HEAD
 		$(MOZ_BUILDINFO_FILE) \
 		BUILDID=$(BUILDID) \
 		$(addprefix MOZ_SOURCE_REPO=,$(shell awk '$$2 == "MOZ_SOURCE_REPO" {print $$3}' $(DEPTH)/source-repo.h)) \
 		MOZ_SOURCE_STAMP=$(shell awk '$$2 == "MOZ_SOURCE_STAMP" {print $$3}' $(DEPTH)/source-repo.h) \
 		MOZ_PKG_PLATFORM=$(MOZ_PKG_PLATFORM)
 	echo "buildID=$(BUILDID)" > $(MOZ_BUILDID_INFO_TXT_FILE)
-||||||| merged common ancestors
-		$(MOZ_BUILDINFO_FILE) $(MOZ_BUILDHUB_JSON) $(MOZ_BUILDID_INFO_TXT_FILE) \
-		$(MOZ_PKG_PLATFORM) \
-		--package=$(DIST)/$(PACKAGE) \
-		--installer=$(INSTALLER_PACKAGE)
+	# CLIQZ-MERGE: DB-2343, do we need the following sources from FF 71.0b2?
+#		$(MOZ_BUILDINFO_FILE) $(MOZ_BUILDHUB_JSON) $(MOZ_BUILDID_INFO_TXT_FILE) \
+#		$(MOZ_PKG_PLATFORM) \
+#		$(if $(or $(filter-out mobile/android,$(MOZ_BUILD_APP)),$(MOZ_ANDROID_WITH_FENNEC)), \
+#		--package=$(DIST)/$(PACKAGE) --installer=$(INSTALLER_PACKAGE), \
+#		--no-download \
+#	  )
+	# END-CLIQZ-MERGE
 endif
 	$(TOUCH) $@
-=======
-		$(MOZ_BUILDINFO_FILE) $(MOZ_BUILDHUB_JSON) $(MOZ_BUILDID_INFO_TXT_FILE) \
-		$(MOZ_PKG_PLATFORM) \
-		$(if $(or $(filter-out mobile/android,$(MOZ_BUILD_APP)),$(MOZ_ANDROID_WITH_FENNEC)), \
-		--package=$(DIST)/$(PACKAGE) --installer=$(INSTALLER_PACKAGE), \
-		--no-download \
-	  )
-endif
-	$(TOUCH) $@
->>>>>>> origin/upstream-releases
 
 GARBAGE += make-package
 

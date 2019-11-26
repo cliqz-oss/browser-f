@@ -211,13 +211,6 @@
       "type": "boolean"
     },
 
-<<<<<<< HEAD
-||||||| merged common ancestors
-    "DisablePocket": {
-      "type": "boolean"
-    },
-
-=======
     "DisablePasswordReveal": {
       "type": "boolean"
     },
@@ -226,7 +219,6 @@
       "type": "boolean"
     },
 
->>>>>>> origin/upstream-releases
     "DisablePrivateBrowsing": {
       "type": "boolean"
     },
@@ -868,73 +860,6 @@
       }
     },
 
-<<<<<<< HEAD
-||||||| merged common ancestors
-    "SearchBar": {
-      "type": "string",
-      "enum": ["unified", "separate"]
-    },
-
-    "SearchEngines": {
-      "enterprise_only": true,
-
-      "type": "object",
-      "properties": {
-        "Add": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "required": ["Name", "URLTemplate"],
-
-            "properties": {
-              "Name": {
-                "type": "string"
-              },
-              "IconURL": {
-                "type": "URLorEmpty"
-              },
-              "Alias": {
-                "type": "string"
-              },
-              "Description": {
-                "type": "string"
-              },
-              "Method": {
-                "type": "string",
-                "enum": ["GET", "POST"]
-              },
-              "URLTemplate": {
-                "type": "string"
-              },
-              "PostData": {
-                "type": "string"
-              },
-              "SuggestURLTemplate": {
-                "type": "string"
-              }
-            }
-          }
-        },
-        "Default": {
-          "type": "string"
-        },
-        "PreventInstalls": {
-          "type": "boolean"
-        },
-        "Remove": {
-          "type": "array",
-          "items": {
-            "type": "string"
-          }
-        }
-      }
-    },
-
-    "SearchSuggestEnabled": {
-      "type": "boolean"
-    },
-
-=======
     "SearchBar": {
       "type": "string",
       "enum": ["unified", "separate"]
@@ -1002,7 +927,6 @@
       "type": "boolean"
     },
 
->>>>>>> origin/upstream-releases
     "SecurityDevices": {
       "type": "object",
       "patternProperties": {

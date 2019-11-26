@@ -1494,15 +1494,7 @@ var remove = async function(db, { guids, urls }, onResult = null) {
   let onResultData = onResult ? [] : null;
   let pages = [];
   let hasPagesToRemove = false;
-<<<<<<< HEAD
-  await db.execute(query, params, onTableRow);
-
-  function onTableRow(row) {
-||||||| merged common ancestors
-  await db.execute(query, params, function(row) {
-=======
   function onRow(row) {
->>>>>>> origin/upstream-releases
     let hasForeign = row.getResultByName("foreign_count") != 0;
     if (!hasForeign) {
       hasPagesToRemove = true;
@@ -1527,9 +1519,7 @@ var remove = async function(db, { guids, urls }, onResult = null) {
         url: new URL(url),
       });
     }
-<<<<<<< HEAD
-  };
-
+  }
   // CLIQZ-SPECIAL:
   // Also remove cliqz-search pages related to the pages we are going to delete
   await db.execute(
@@ -1543,12 +1533,9 @@ var remove = async function(db, { guids, urls }, onResult = null) {
     {
       cliqzSearch: "https://cliqz.com/search?q=%"
     },
-    onTableRow
+    onRow
   );
-||||||| merged common ancestors
-  });
-=======
-  }
+
   for (let chunk of PlacesUtils.chunkArray(guids, db.variableLimit)) {
     let query = `SELECT id, url, url_hash, guid, foreign_count, title, frecency
        FROM moz_places
@@ -1572,7 +1559,6 @@ var remove = async function(db, { guids, urls }, onResult = null) {
       `;
     await db.execute(query, chunk, onRow);
   }
->>>>>>> origin/upstream-releases
 
   try {
     if (!pages.length) {

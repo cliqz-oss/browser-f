@@ -464,17 +464,11 @@ class UrlbarController {
    *   The selected result.
    */
   recordSelectedResult(event, result) {
-<<<<<<< HEAD
     if (!event) {
       // CLIQZ-SPECIAL: extension do not send event
       return;
     }
-    let resultIndex = result ? result.uiIndex : -1;
-||||||| merged common ancestors
-    let resultIndex = result ? result.uiIndex : -1;
-=======
     let resultIndex = result ? result.rowIndex : -1;
->>>>>>> origin/upstream-releases
     let selectedResult = -1;
     if (resultIndex >= 0) {
       // Except for the history popup, the urlbar always has a selection.  The

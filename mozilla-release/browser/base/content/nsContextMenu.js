@@ -682,38 +682,7 @@ nsContextMenu.prototype = {
       this.setItemAttr("context-frameOsPid", "label", "PID: " + frameOsPid);
     }
 
-<<<<<<< HEAD
-    let showSearchSelect =
-      !this.inAboutDevtoolsToolbox &&
-      (this.isTextSelected || this.onLink) &&
-      !this.onImage;
-
-    // CLIQZ-SPECIAL:
-    // DB-2138
-    // We should not show an option to search for with another engine if
-    // a context menu is initiated over our extension dropdown.
-    if (gContextMenuContentData != null && gContextMenuContentData.browser != null) {
-      showSearchSelect =
-        showSearchSelect &&
-        gContextMenuContentData.browser.id !== 'cliqz-popup';
-    }
-
-    this.showItem("context-searchselect", showSearchSelect);
-    if (showSearchSelect) {
-      this.formatSearchContextItem();
-    }
-||||||| merged common ancestors
-    let showSearchSelect =
-      !this.inAboutDevtoolsToolbox &&
-      (this.isTextSelected || this.onLink) &&
-      !this.onImage;
-    this.showItem("context-searchselect", showSearchSelect);
-    if (showSearchSelect) {
-      this.formatSearchContextItem();
-    }
-=======
     this.showAndFormatSearchContextItem();
->>>>>>> origin/upstream-releases
 
     // srcdoc cannot be opened separately due to concerns about web
     // content with about:srcdoc in location bar masquerading as trusted
@@ -1976,6 +1945,17 @@ nsContextMenu.prototype = {
       !this.inAboutDevtoolsToolbox &&
       (this.isTextSelected || this.onLink) &&
       !this.onImage;
+
+    // CLIQZ-SPECIAL:
+    // DB-2138
+    // We should not show an option to search for with another engine if
+    // a context menu is initiated over our extension dropdown.
+    if (gContextMenuContentData != null && gContextMenuContentData.browser != null) {
+      showSearchSelect =
+        showSearchSelect &&
+        gContextMenuContentData.browser.id !== 'cliqz-popup';
+    }
+
     // Don't show the private search item when we're already in a private
     // browsing window.
     let showPrivateSearchSelect =

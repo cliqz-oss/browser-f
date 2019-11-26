@@ -1910,13 +1910,7 @@ BrowserGlue.prototype = {
     AboutPrivateBrowsingHandler.uninit();
 #if 0
     AboutProtectionsHandler.uninit();
-<<<<<<< HEAD
 #endif
-    AutoCompletePopup.uninit();
-||||||| merged common ancestors
-    AutoCompletePopup.uninit();
-=======
->>>>>>> origin/upstream-releases
 
     Normandy.uninit();
     RFPHelper.uninit();
@@ -2080,16 +2074,12 @@ BrowserGlue.prototype = {
       this._togglePermissionPromptTelemetry();
     });
 
-<<<<<<< HEAD
 #if 0
-||||||| merged common ancestors
-=======
     // Begin listening for incoming push messages.
     Services.tm.idleDispatchToMainThread(() => {
       PushService.wrappedJSObject.ensureReady();
     });
 
->>>>>>> origin/upstream-releases
     Services.tm.idleDispatchToMainThread(() => {
       this._recordContentBlockingTelemetry();
     });

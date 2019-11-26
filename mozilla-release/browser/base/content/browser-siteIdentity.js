@@ -404,28 +404,6 @@ var gIdentityHandler = {
     openPreferences("privacy-permissions");
   },
 
-<<<<<<< HEAD
-  recordClick(object) {
-    // Cliqz don't count clicks for ContentBlocking, because don't use it
-    return ;
-    Services.telemetry.recordEvent(
-      "security.ui.identitypopup",
-      "click",
-      object
-    );
-  },
-
-||||||| merged common ancestors
-  recordClick(object) {
-    Services.telemetry.recordEvent(
-      "security.ui.identitypopup",
-      "click",
-      object
-    );
-  },
-
-=======
->>>>>>> origin/upstream-releases
   /**
    * Handler for mouseclicks on the "More Information" button in the
    * "identity-popup" panel.
@@ -725,46 +703,11 @@ var gIdentityHandler = {
   /**
    * Updates the security identity in the identity block.
    */
-<<<<<<< HEAD
-  refreshIdentityBlock() {
-    if (!this._identityBox) {
-      return;
-    }
-
-    // If this condition is true, the URL bar will have an "invalid"
-    // pageproxystate, which will hide the security indicators. Thus, we can
-    // safely avoid updating the security UI.
-    //
-    // This will also filter out intermediate about:blank loads to avoid
-    // flickering the identity block and doing unnecessary work.
-    if (this._hasInvalidPageProxyState()) {
-      return;
-    }
-
+  _refreshIdentityIcons() {
     let isSystemAddon = false;
     if (this._pageExtensionPolicy && this._pageExtensionPolicy.extension) {
       isSystemAddon = this._pageExtensionPolicy.extension.addonData.signedState  == 3 || this._pageExtensionPolicy.extension.addonData.builtIn;
     }
-
-||||||| merged common ancestors
-  refreshIdentityBlock() {
-    if (!this._identityBox) {
-      return;
-    }
-
-    // If this condition is true, the URL bar will have an "invalid"
-    // pageproxystate, which will hide the security indicators. Thus, we can
-    // safely avoid updating the security UI.
-    //
-    // This will also filter out intermediate about:blank loads to avoid
-    // flickering the identity block and doing unnecessary work.
-    if (this._hasInvalidPageProxyState()) {
-      return;
-    }
-
-=======
-  _refreshIdentityIcons() {
->>>>>>> origin/upstream-releases
     let icon_label = "";
     let tooltip = "";
     let icon_country_label = "";
@@ -884,24 +827,6 @@ var gIdentityHandler = {
       }
     }
 
-<<<<<<< HEAD
-#if 0
-    // Hide the shield icon if it is a chrome page.
-    this._trackingProtectionIconContainer.classList.toggle(
-      "chromeUI",
-      this._isSecureInternalUI
-    );
-#endif
-
-||||||| merged common ancestors
-    // Hide the shield icon if it is a chrome page.
-    this._trackingProtectionIconContainer.classList.toggle(
-      "chromeUI",
-      this._isSecureInternalUI
-    );
-
-=======
->>>>>>> origin/upstream-releases
     if (this._isCertUserOverridden) {
       this._identityBox.classList.add("certUserOverridden");
       // Cert is trusted because of a security exception, verifier is a special string.
@@ -1313,24 +1238,6 @@ var gIdentityHandler = {
     if (event.target == this._identityPopup) {
       window.addEventListener("focus", this, true);
     }
-<<<<<<< HEAD
-
-    /* CLIQZ: we do not support shield study */
-    return ;
-    Services.telemetry.recordEvent(
-      "security.ui.identitypopup",
-      "open",
-      "identity_popup"
-    );
-||||||| merged common ancestors
-
-    Services.telemetry.recordEvent(
-      "security.ui.identitypopup",
-      "open",
-      "identity_popup"
-    );
-=======
->>>>>>> origin/upstream-releases
   },
 
   onPopupHidden(event) {

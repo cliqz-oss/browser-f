@@ -722,15 +722,9 @@
 <!-- Address Bar -->
 <groupbox id="locationBarGroup"
           data-category="panePrivacy"
-<<<<<<< HEAD
           class="formatBoxSize"
-          hidden="true">
-||||||| merged common ancestors
-          hidden="true">
-=======
           hidden="true"
           data-subcategory="locationBar">
->>>>>>> origin/upstream-releases
   <label><html:h2 data-l10n-id="addressbar-header"/></label>
   <label id="locationBarSuggestionLabel" data-l10n-id="addressbar-suggest"/>
   <checkbox id="historySuggestion" data-l10n-id="addressbar-locbar-history-option"
@@ -955,16 +949,9 @@
   <vbox id="a11yPermissionsBox">
     <hbox flex="1" align="center">
       <checkbox id="a11yPrivacyCheckbox" class="tail-with-learn-more"
-<<<<<<< HEAD
-                data-l10n-id="permissions-a11y-privacy-checkbox"
                 flex="2"
-                oncommand="return gPrivacyPane.updateA11yPrefs(this.checked)"/>
-||||||| merged common ancestors
-                data-l10n-id="permissions-a11y-privacy-checkbox"
-                oncommand="return gPrivacyPane.updateA11yPrefs(this.checked)"/>
-=======
+                oncommand="return gPrivacyPane.updateA11yPrefs(this.checked)"
                 data-l10n-id="permissions-a11y-privacy-checkbox"/>
->>>>>>> origin/upstream-releases
       <label id="a11yLearnMoreLink" class="learnMore" is="text-link"
              flex="1"
              data-l10n-id="permissions-a11y-privacy-link"/>

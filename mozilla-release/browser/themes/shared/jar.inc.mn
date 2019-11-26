@@ -114,38 +114,20 @@
   skin/classic/browser/panel-icon-magnifier.svg                (../shared/panel-icon-magnifier.svg)
 #endif
   skin/classic/browser/panel-icon-retry.svg                    (../shared/panel-icon-retry.svg)
-<<<<<<< HEAD
   skin/classic/browser/preferences/in-content/connect.svg      (../shared/incontentprefs/connect.svg)
-#if 0
-||||||| merged common ancestors
-=======
   skin/classic/browser/preferences/in-content/bookmark.svg     (../shared/incontentprefs/bookmark.svg)
->>>>>>> origin/upstream-releases
+#if 0
   skin/classic/browser/preferences/in-content/critters-postcard.jpg       (../shared/incontentprefs/critters-postcard.jpg)
-<<<<<<< HEAD
 #endif
-||||||| merged common ancestors
-=======
   skin/classic/browser/preferences/in-content/extensions.svg   (../shared/incontentprefs/extensions.svg)
->>>>>>> origin/upstream-releases
   skin/classic/browser/preferences/in-content/face-sad.svg      (../shared/incontentprefs/face-sad.svg)
   skin/classic/browser/preferences/in-content/face-smile.svg    (../shared/incontentprefs/face-smile.svg)
   skin/classic/browser/preferences/in-content/formfill.svg      (../shared/incontentprefs/formfill.svg)
   skin/classic/browser/preferences/in-content/fxaPairDevice.css (../shared/incontentprefs/fxaPairDevice.css)
-<<<<<<< HEAD
-  skin/classic/browser/preferences/in-content/general.svg      (../shared/incontentprefs/general.svg)
-  skin/classic/browser/preferences/in-content/logo-android.svg (../shared/incontentprefs/logo-android.svg)
-  skin/classic/browser/preferences/in-content/logo-ios.svg     (../shared/incontentprefs/logo-ios.svg)
-||||||| merged common ancestors
-  skin/classic/browser/preferences/in-content/general.svg       (../shared/incontentprefs/general.svg)
-  skin/classic/browser/preferences/in-content/logo-android.svg  (../shared/incontentprefs/logo-android.svg)
-  skin/classic/browser/preferences/in-content/logo-ios.svg      (../shared/incontentprefs/logo-ios.svg)
-=======
   skin/classic/browser/preferences/in-content/general.svg       (../shared/incontentprefs/general.svg)
   skin/classic/browser/preferences/in-content/history.svg       (../shared/incontentprefs/history.svg)
   skin/classic/browser/preferences/in-content/logo-android.svg  (../shared/incontentprefs/logo-android.svg)
   skin/classic/browser/preferences/in-content/logo-ios.svg      (../shared/incontentprefs/logo-ios.svg)
->>>>>>> origin/upstream-releases
   skin/classic/browser/preferences/in-content/no-search-bar.svg           (../shared/incontentprefs/no-search-bar.svg)
   skin/classic/browser/preferences/in-content/no-search-results.svg       (../shared/incontentprefs/no-search-results.svg)
   skin/classic/browser/preferences/in-content/preferences.svg   (../shared/incontentprefs/preferences.svg)

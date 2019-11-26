@@ -2614,20 +2614,13 @@ var SessionStoreInternal = {
   },
 
   // Examine the channel response to see if we should change the process
-<<<<<<< HEAD
   // performing the given load.
   // CLIQZ-TODO
   // DB-2143: we need to remember about this function since
   // we let a prefuseHTTPResponseProcessSelection stay false by default (as in 1.26.x),
   // whilst FF 67.x set it to true intentionally.
-  onMayChangeProcess(aChannel) {
-||||||| merged common ancestors
-  // performing the given load.
-  onMayChangeProcess(aChannel) {
-=======
   // performing the given load. aRequestor implements nsIProcessSwitchRequestor
   onMayChangeProcess(aRequestor) {
->>>>>>> origin/upstream-releases
     if (
       !E10SUtils.useHttpResponseProcessSelection() &&
       !E10SUtils.useCrossOriginOpenerPolicy()

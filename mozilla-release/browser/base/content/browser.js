@@ -331,139 +331,12 @@ XPCOMUtils.defineLazyGetter(this, "gNavToolbox", () => {
   return document.getElementById("navigator-toolbox");
 });
 
-<<<<<<< HEAD
-XPCOMUtils.defineLazyGetter(this, "gURLBar", () => gURLBarHandler.urlbar);
-
-const autoForgetTabs = Cc["@cliqz.com/browser/auto_forget_tabs_service;1"].
-        getService(Ci.nsISupports).wrappedJSObject;
-
-/**
- * Tracks the urlbar object, allowing to reinitiate it when necessary, e.g. on
- * customization.
- */
-var gURLBarHandler = {
-  /**
-   * The urlbar binding or object.
-   */
-  get urlbar() {
-    if (!this._urlbar) {
-      let textbox = document.getElementById("urlbar");
-      this._urlbar = new UrlbarInput({
-        textbox,
-        eventTelemetryCategory: "urlbar",
-      });
-      if (this._lastValue) {
-        this._urlbar.value = this._lastValue;
-        delete this._lastValue;
-      }
-      gBrowser.tabContainer.addEventListener("TabSelect", this._urlbar);
-    }
-    return this._urlbar;
-  },
-
-  /**
-   * Invoked by CustomizationHandler when a customization starts.
-   */
-  customizeStart() {
-#if 0
-    // CLIQZ-SPECIAL:
-    // removeCopyCutController gets triggered in
-    // ./mozilla-release/browser/base/content/urlbarBindings.xml destructor
-    // when a user enters customization mode.
-    // If we keep triggered it here then nsXULControllers.cpp#nsXULControllers::RemoveController
-    // returns NS_ERROR_FAILURE code which will raise an exception in UrlbarInput.jsm
-    // This happens because copyCutController instance can not be found in
-    // nsXULControllers.cpp#mControllers (urlbarBindings destructor removes that).
-    if (this._urlbar) {
-      this._urlbar.removeCopyCutController();
-    }
-#endif
-  },
-
-  /**
-   * Invoked by CustomizationHandler when a customization ends.
-   */
-  customizeEnd() {
-    this._reset();
-  },
-
-  /**
-   *  Used to reset the gURLBar value.
-   */
-  _reset() {
-    if (this._urlbar) {
-      gBrowser.tabContainer.removeEventListener("TabSelect", this._urlbar);
-      this._lastValue = this._urlbar.value;
-      this._urlbar.uninit();
-      delete this._urlbar;
-      gURLBar = this.urlbar;
-    }
-  },
-};
-||||||| merged common ancestors
-XPCOMUtils.defineLazyGetter(this, "gURLBar", () => gURLBarHandler.urlbar);
-
-/**
- * Tracks the urlbar object, allowing to reinitiate it when necessary, e.g. on
- * customization.
- */
-var gURLBarHandler = {
-  /**
-   * The urlbar binding or object.
-   */
-  get urlbar() {
-    if (!this._urlbar) {
-      let textbox = document.getElementById("urlbar");
-      this._urlbar = new UrlbarInput({
-        textbox,
-        eventTelemetryCategory: "urlbar",
-      });
-      if (this._lastValue) {
-        this._urlbar.value = this._lastValue;
-        delete this._lastValue;
-      }
-      gBrowser.tabContainer.addEventListener("TabSelect", this._urlbar);
-    }
-    return this._urlbar;
-  },
-
-  /**
-   * Invoked by CustomizationHandler when a customization starts.
-   */
-  customizeStart() {
-    if (this._urlbar) {
-      this._urlbar.removeCopyCutController();
-    }
-  },
-
-  /**
-   * Invoked by CustomizationHandler when a customization ends.
-   */
-  customizeEnd() {
-    this._reset();
-  },
-
-  /**
-   *  Used to reset the gURLBar value.
-   */
-  _reset() {
-    if (this._urlbar) {
-      gBrowser.tabContainer.removeEventListener("TabSelect", this._urlbar);
-      this._lastValue = this._urlbar.value;
-      this._urlbar.uninit();
-      delete this._urlbar;
-      gURLBar = this.urlbar;
-    }
-  },
-};
-=======
 XPCOMUtils.defineLazyGetter(this, "gURLBar", () => {
   return new UrlbarInput({
     textbox: document.getElementById("urlbar"),
     eventTelemetryCategory: "urlbar",
   });
 });
->>>>>>> origin/upstream-releases
 
 XPCOMUtils.defineLazyGetter(this, "ReferrerInfo", () =>
   Components.Constructor(
@@ -819,14 +692,8 @@ var gNavigatorBundle = {
   },
 };
 
-<<<<<<< HEAD
 #ifdef MOZ_SERVICES_SYNC
-function showFxaToolbarMenu(enable) {
-||||||| merged common ancestors
-function showFxaToolbarMenu(enable) {
-=======
 function updateFxaToolbarMenu(enable, isInitialUpdate = false) {
->>>>>>> origin/upstream-releases
   // We only show the Firefox Account toolbar menu if the feature is enabled and
   // if sync is enabled.
   const syncEnabled = Services.prefs.getBoolPref(
@@ -2023,15 +1890,9 @@ var gBrowserInit = {
 
     this._setInitialFocus();
 
-<<<<<<< HEAD
 #ifdef MOZ_SERVICES_SYNC
-    showFxaToolbarMenu(gFxaToolbarEnabled);
-#endif
-||||||| merged common ancestors
-    showFxaToolbarMenu(gFxaToolbarEnabled);
-=======
     updateFxaToolbarMenu(gFxaToolbarEnabled, true);
->>>>>>> origin/upstream-releases
+#endif
   },
 
   onLoad() {
@@ -2284,14 +2145,8 @@ var gBrowserInit = {
     AutoShowBookmarksToolbar.init();
 #if 0
     gProtectionsHandler.init();
-<<<<<<< HEAD
 #endif
-    HomePage.init().catch(Cu.reportError);
-||||||| merged common ancestors
-    HomePage.init().catch(Cu.reportError);
-=======
     HomePage.delayedStartup().catch(Cu.reportError);
->>>>>>> origin/upstream-releases
 
     let safeMode = document.getElementById("helpSafeMode");
     if (Services.appinfo.inSafeMode) {

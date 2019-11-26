@@ -490,15 +490,11 @@ var gPrivacyPane = {
       gPrivacyPane.networkCookieBehaviorReadPrefs.bind(gPrivacyPane)
     );
 
-<<<<<<< HEAD
-#if 0
-||||||| merged common ancestors
-=======
     setEventListener("a11yPrivacyCheckbox", "command", ev => {
       this.updateA11yPrefs(ev.target.checked);
     });
 
->>>>>>> origin/upstream-releases
+#if 0
     setEventListener(
       "trackingProtectionExceptions",
       "command",

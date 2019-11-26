@@ -8,54 +8,8 @@
 
 <!ENTITY aboutProduct2.label      "About &brandShorterName;">
 <!ENTITY aboutProduct2.accesskey  "A">
-<<<<<<< HEAD
-<!ENTITY productHelp2.label       "Mozilla Help">
-<!ENTITY productHelp2.accesskey   "H">
-||||||| merged common ancestors
-<!ENTITY productHelp2.label       "&brandShorterName; Help">
-<!ENTITY productHelp2.accesskey   "H">
-=======
->>>>>>> origin/upstream-releases
 <!ENTITY helpMac.commandkey       "?">
 
-<<<<<<< HEAD
-<!ENTITY helpKeyboardShortcuts.label     "Keyboard Shortcuts (Firefox)">
-<!ENTITY helpKeyboardShortcuts.accesskey "K">
-
-<!ENTITY helpSafeMode.label       "Restart in safe mode…">
-<!ENTITY helpSafeMode.accesskey   "R">
-<!ENTITY helpSafeMode.stop.label       "Restart in normal mode">
-<!ENTITY helpSafeMode.stop.accesskey   "R">
-
-<!ENTITY helpTroubleshootingInfo.label      "Troubleshooting Information">
-<!ENTITY helpTroubleshootingInfo.accesskey  "T">
-
-<!ENTITY helpFeedbackPage.label      "Submit Feedback…">
-<!ENTITY helpFeedbackPage.accesskey  "S">
-
-<!ENTITY helpShowTour2.label            "&brandShorterName; Tour">
-<!ENTITY helpShowTour2.accesskey        "o">
-
-||||||| merged common ancestors
-<!ENTITY helpKeyboardShortcuts.label     "Keyboard Shortcuts">
-<!ENTITY helpKeyboardShortcuts.accesskey "K">
-
-<!ENTITY helpSafeMode.label       "Restart with Add-ons Disabled…">
-<!ENTITY helpSafeMode.accesskey   "R">
-<!ENTITY helpSafeMode.stop.label       "Restart with Add-ons Enabled">
-<!ENTITY helpSafeMode.stop.accesskey   "R">
-
-<!ENTITY helpTroubleshootingInfo.label      "Troubleshooting Information">
-<!ENTITY helpTroubleshootingInfo.accesskey  "T">
-
-<!ENTITY helpFeedbackPage.label      "Submit Feedback…">
-<!ENTITY helpFeedbackPage.accesskey  "S">
-
-<!ENTITY helpShowTour2.label            "&brandShorterName; Tour">
-<!ENTITY helpShowTour2.accesskey        "o">
-
-=======
->>>>>>> origin/upstream-releases
 <!ENTITY preferencesCmdMac.label        "Preferences…">
 <!ENTITY preferencesCmdMac.commandkey   ",">
 

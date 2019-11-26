@@ -7,17 +7,6 @@
 /* eslint no-unused-vars: ["error", {args: "none"}] */
 
 var { Services } = ChromeUtils.import("resource://gre/modules/Services.jsm");
-<<<<<<< HEAD
-var { XPCOMUtils } = ChromeUtils.import(
-  "resource://gre/modules/XPCOMUtils.jsm"
-);
-
-||||||| merged common ancestors
-var { XPCOMUtils } = ChromeUtils.import(
-  "resource://gre/modules/XPCOMUtils.jsm"
-);
-=======
->>>>>>> origin/upstream-releases
 var { ActorManagerChild } = ChromeUtils.import(
   "resource://gre/modules/ActorManagerChild.jsm"
 );

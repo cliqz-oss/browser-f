@@ -44,13 +44,7 @@
     locale/browser/feeds/subscribe.properties       (%chrome/browser/feeds/subscribe.properties)
     locale/browser/migration/migration.dtd         (%chrome/browser/migration/migration.dtd)
     locale/browser/migration/migration.properties  (%chrome/browser/migration/migration.properties)
-<<<<<<< HEAD
-    locale/browser/preferences/preferences.properties     (%chrome/browser/preferences/preferences.properties)
 #ifdef MOZ_SERVICES_SYNC
-||||||| merged common ancestors
-    locale/browser/preferences/preferences.properties     (%chrome/browser/preferences/preferences.properties)
-=======
->>>>>>> origin/upstream-releases
     locale/browser/syncBrand.dtd                (%chrome/browser/syncBrand.dtd)
     locale/browser/syncSetup.properties         (%chrome/browser/syncSetup.properties)
 #endif

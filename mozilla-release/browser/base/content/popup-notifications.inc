@@ -132,13 +132,6 @@
         </xul:vbox>
       </popupnotificationcontent>
     </popupnotification>
-<<<<<<< HEAD
-
-    <popupnotification id="socialblock-notification" hidden="true">
-      <popupnotificationcontent id="socialblock-content" orient="vertical">
-        <description id="socialblock-message"></description>
-      </popupnotificationcontent>
-    </popupnotification>
 
     <popupnotification id="forget-mode-notification" hidden="true">
       <popupnotificationcontent id="forget-mode-notification-content" orient="vertical">
@@ -146,12 +139,3 @@
         <label id="forget-mode-notification-link" is="text-link"/>
       </popupnotificationcontent>
     </popupnotification>
-||||||| merged common ancestors
-
-    <popupnotification id="socialblock-notification" hidden="true">
-      <popupnotificationcontent id="socialblock-content" orient="vertical">
-        <description id="socialblock-message"></description>
-      </popupnotificationcontent>
-    </popupnotification>
-=======
->>>>>>> origin/upstream-releases

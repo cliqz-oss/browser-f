@@ -56,17 +56,9 @@ policy-EnableTrackingProtection = Seitenelementeblockierung aktivieren oder deak
 policy-Extensions = Installieren, Deinstallieren oder Fixieren von Erweiterungen. Die Install-Option akzeptiert Adressen und Pfade als Werte. Die Uninstall- und Locked-Optionen erfordern Erweiterungs-IDs.
 policy-ExtensionSettings = Alle Einstellungen für die Erweiterungsinstallation verwalten
 policy-ExtensionUpdate = Automatische Add-on-Updates aktivieren oder deaktivieren
-<<<<<<< HEAD
 
 policy-FirefoxHome = Cliqz-Startseite konfigurieren
 
-||||||| merged common ancestors
-
-policy-FirefoxHome = Firefox-Startseite konfigurieren
-
-=======
-policy-FirefoxHome = Firefox-Startseite konfigurieren
->>>>>>> origin/upstream-releases
 policy-FlashPlugin = Flash-Plugin-Verwendung erlauben oder verbieten
 policy-HardwareAcceleration = Hardwarebeschleunigung deaktiviert, falls false
 # “lock” means that the user won’t be able to change this setting
@@ -80,15 +72,8 @@ policy-NoDefaultBookmarks = Standardlesezeichen von { -brand-short-name } und In
 policy-OfferToSaveLogins = Frage zum Speichern von Zugangsdaten durch { -brand-short-name } anzeigen. Die Werte true und false werden akzeptiert.
 policy-OfferToSaveLoginsDefault = Standardwert, ob Nachfrage zum Speichern von Zugangsdaten und Passwörtern in { -brand-short-name } angezeigt werden soll. Sowohl true als auch false sind gültige Werte.
 policy-OverrideFirstRunPage = Einmalig geöffnete Einführungsseite beim Starten eines neuen Profils festlegen. Ein leerer Wert deaktiviert das Öffnen der Seite.
-<<<<<<< HEAD
 policy-OverridePostUpdatePage = Cliqz-Neuigkeiten-Seite - angezeigt nach Programmaktualisierung - festlegen. Ein leerer Wert deaktiviert das Öffnen der Seite.
 
-||||||| merged common ancestors
-policy-OverridePostUpdatePage = Firefox-Neuigkeiten-Seite - angezeigt nach Programmaktualisierung - festlegen. Ein leerer Wert deaktiviert das Öffnen der Seite.
-
-=======
-policy-OverridePostUpdatePage = Firefox-Neuigkeiten-Seite - angezeigt nach Programmaktualisierung - festlegen. Ein leerer Wert deaktiviert das Öffnen der Seite.
->>>>>>> origin/upstream-releases
 policy-PasswordManagerEnabled = Speichern von Passwörtern in der Passwortverwaltung aktivieren
 policy-Permissions = Berechtigungen für Kamera, Mikrofon, Standort und Benachrichtigungen festlegen
 policy-PopupBlocking = Popups für festgelegte Websites standardmäßig anzeigen

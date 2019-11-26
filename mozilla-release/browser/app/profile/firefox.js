@@ -1841,30 +1841,12 @@ pref("signon.privateBrowsingCapture.enabled", true);
 pref("signon.showAutoCompleteFooter", true);
 pref("signon.management.page.enabled", true);
 pref("signon.management.page.breach-alerts.enabled", true);
-<<<<<<< HEAD
 /* CLIQZ-SPECIAL: force use old password
-||||||| merged common ancestors
-=======
 pref("signon.management.page.sort", "name");
->>>>>>> origin/upstream-releases
 pref("signon.management.overrideURI", "about:logins?filter=%DOMAIN%");
-<<<<<<< HEAD
 */
-#ifdef NIGHTLY_BUILD
-  // Bug 1563330 tracks shipping this by default.
-  pref("signon.showAutoCompleteOrigins", true);
-  pref("signon.includeOtherSubdomainsInLookup", true);
-#endif
-||||||| merged common ancestors
-#ifdef NIGHTLY_BUILD
-  // Bug 1563330 tracks shipping this by default.
-  pref("signon.showAutoCompleteOrigins", true);
-  pref("signon.includeOtherSubdomainsInLookup", true);
-#endif
-=======
 pref("signon.showAutoCompleteOrigins", true);
 pref("signon.includeOtherSubdomainsInLookup", true);
->>>>>>> origin/upstream-releases
 // The utm_creative value is appended within the code (specific to the location on
 // where it is clicked). Be sure that if these two prefs are updated, that
 // the utm_creative param be last.

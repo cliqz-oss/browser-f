@@ -99,13 +99,8 @@ function resolveURIInternal(aCmdLine, aArgument) {
   return uri;
 }
 
-<<<<<<< HEAD
-#if 0
-||||||| merged common ancestors
-=======
 let gKiosk = false;
-
->>>>>>> origin/upstream-releases
+#if 0
 let gRemoteInstallPage = null;
 
 function getNewInstallPage() {

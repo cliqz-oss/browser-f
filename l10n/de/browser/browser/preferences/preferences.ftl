@@ -43,7 +43,7 @@ policies-notice =
        *[other] Deine Organisation hat das Ändern einiger Einstellungen deaktiviert.
     }
 
-managed-notice = Der Browser wird durch Ihre Organisation verwaltet.
+managed-notice = Der Browser wird durch deine Organisation verwaltet.
 pane-general-title = Allgemein
 category-general =
     .tooltiptext = { pane-general-title }
@@ -370,7 +370,7 @@ update-setting-write-failure-title = Fehler beim Speichern der Update-Einstellun
 # The newlines between the main text and the line containing the path is
 # intentional so the path is easier to identify.
 update-setting-write-failure-message =
-    { -brand-short-name } bemerkte einen Fehler und hat diese Änderung nicht gespeichert. Das Setzen dieser Update-Einstellung benötigt Schreibrechte für die unten genannte Datei. Sie oder ein Systemadministrator können das Problem eventuell beheben, indem Sie der Gruppe "Benutzer" vollständige Kontrolle über die Datei gewähren.
+    { -brand-short-name } bemerkte einen Fehler und hat diese Änderung nicht gespeichert. Das Setzen dieser Update-Einstellung benötigt Schreibrechte für die unten genannte Datei. Du oder ein Systemadministrator können das Problem eventuell beheben, indem du der Gruppe "Benutzer" vollständige Kontrolle über die Datei gewährst.
     
     Konnte folgende Datei nicht speichern: { $path }
 update-in-progress-title = Update wird durchgeführt
@@ -479,23 +479,23 @@ choose-bookmark =
 ## Home Section - Firefox Home Content Customization
 
 home-prefs-content-header = Inhalte des Firefox-Startbildschirms
-home-prefs-content-description = Wählen Sie, welche Inhalte auf Ihrem Firefox-Startbildschirm angezeigt werden sollen.
+home-prefs-content-description = Wähle, welche Inhalte auf deinem Firefox-Startbildschirm angezeigt werden sollen.
 home-prefs-search-header =
     .label = Internetsuche
 home-prefs-topsites-header =
     .label = Wichtige Seiten
-home-prefs-topsites-description = Die von Ihnen am meisten besuchten Websites
+home-prefs-topsites-description = Die von deinen am meisten besuchten Websites
 # Variables:
 #  $provider (String): Name of the corresponding content provider, e.g "Pocket".
 home-prefs-recommended-by-header =
     .label = Empfohlen von { $provider }
-home-prefs-recommended-by-description = Tolle Inhalte aus dem ganzen Internet, für Sie personalisiert
+home-prefs-recommended-by-description = Tolle Inhalte aus dem ganzen Internet, für dich personalisiert
 home-prefs-recommended-by-learn-more = Wie es funktioniert
 home-prefs-recommended-by-option-sponsored-stories =
     .label = Gesponserte Inhalte
 home-prefs-highlights-header =
     .label = Überblick
-home-prefs-highlights-description = Eine Auswahl von Websites, die Sie gespeichert oder besucht haben
+home-prefs-highlights-description = Eine Auswahl von Websites, die du gespeichert oder besucht hast
 home-prefs-highlights-option-visited-pages =
     .label = Besuchte Seiten
 home-prefs-highlights-options-bookmarks =
@@ -525,23 +525,15 @@ search-bar-hidden =
     .label = Adressleiste für Suche und Seitenaufrufe verwenden
 search-bar-shown =
     .label = Suchleiste zur Symbolleiste hinzufügen
-<<<<<<< HEAD
 search-engine-default-header = Ergänzende Suchmaschine
 search-engine-default-desc = Wähle deine alternative Suchmaschine. Wenn du mit { -brand-short-name }’ Vorschlägen nicht zufrieden bist, siehst du deren Ergebnisse wenn du „Enter“ drückst.
-||||||| merged common ancestors
-search-engine-default-header = Standardsuchmaschine
-search-engine-default-desc = Wählen Sie Ihre Standardsuchmaschine für die Adress- und Suchleiste.
-=======
-search-engine-default-header = Standardsuchmaschine
-search-engine-default-desc = Wählen Sie Ihre Standardsuchmaschine für die Adress- und Suchleiste.
-search-engine-default-desc-2 = Das ist Ihre Standardsuchmaschine in der Adress- und Suchleiste. Sie können diese jederzeit ändern.
-search-engine-default-private-desc-2 = Wählen Sie eine andere Standardsuchmaschine nur für private Fenster.
+search-engine-default-desc-2 = Das ist deine Standardsuchmaschine in der Adress- und Suchleiste. Du kannst diese jederzeit ändern.
+search-engine-default-private-desc-2 = Wähle eine andere Standardsuchmaschine nur für Vergessen Fenster.
 search-separate-default-engine =
-    .label = Diese Suchmaschine in privaten Fenstern verwenden
+    .label = Diese Suchmaschine in Vergessen Fenstern verwenden
     .accesskey = p
 search-suggestions-header = Suchvorschläge
-search-suggestions-desc = Wählen Sie, wie Suchvorschläge von Suchmaschinen angezeigt werden.
->>>>>>> origin/upstream-releases
+search-suggestions-desc = Wähle, wie Suchvorschläge von Suchmaschinen angezeigt werden.
 search-suggestions-option =
     .label = Suchvorschläge anzeigen
     .accesskey = S
@@ -556,7 +548,7 @@ search-show-suggestions-url-bar-option =
 search-show-suggestions-above-history-option =
     .label = In Adressleiste Suchvorschläge vor Einträgen aus der Browser-Chronik anzeigen
 search-show-suggestions-private-windows =
-    .label = Suchvorschläge in privaten Fenstern anzeigen
+    .label = Suchvorschläge in Vergessen Fenstern anzeigen
 suggestions-addressbar-settings = Einstellungen für Chronik, Lesezeichen und vorgeschlagene offene Tabs ändern
 search-suggestions-cant-show = Suchvorschläge werden nicht in der Adressleiste angezeigt, weil { -brand-short-name } angewiesen wurde, keine Chronik zu speichern.
 search-one-click-header = Direkt suchen
@@ -600,10 +592,10 @@ containers-remove-button =
 ## Firefox Account - Signed out. Note that "Sync" and "Firefox Account" are now
 ## more discrete ("signed in" no longer means "and sync is connected").
 
-sync-signedout-caption = So haben Sie das Web überall dabei.
-sync-signedout-description = Synchronisieren Sie Ihre Lesezeichen, Chronik, Tabs, Passwörter, Add-ons und Einstellungen zwischen allen Ihren Geräten.
-sync-signedout-account-title = Verbinden Sie mit einem { -fxaccount-brand-name }
-sync-signedout-account-create = Haben Sie noch kein Konto? Erstellen Sie eines.
+sync-signedout-caption = So hast du das Web überall dabei.
+sync-signedout-description = Synchronisiere deine Lesezeichen, Chronik, Tabs, Passwörter, Add-ons und Einstellungen zwischen allen deinen Geräten.
+sync-signedout-account-title = Verbinde mit einem { -fxaccount-brand-name }
+sync-signedout-account-create = Hast du noch kein Konto? Erstelle eines.
     .accesskey = H
 sync-signedout-account-signin =
     .label = Anmelden…
@@ -619,7 +611,7 @@ sync-signedout-account-signin2 =
 #
 # They can be moved within the sentence as needed to adapt
 # to your language, but should not be changed or translated.
-sync-mobile-promo = Firefox für <img data-l10n-name="android-icon"/> <a data-l10n-name="android-link">Android</a> oder <img data-l10n-name="ios-icon"/> <a data-l10n-name="ios-link">iOS</a> herunterladen, um mit Ihrem Handy zu synchronisieren.
+sync-mobile-promo = Firefox für <img data-l10n-name="android-icon"/> <a data-l10n-name="android-link">Android</a> oder <img data-l10n-name="ios-icon"/> <a data-l10n-name="ios-link">iOS</a> herunterladen, um mit deinem Handy zu synchronisieren.
 
 ## Sync Section - Signed in
 
@@ -637,7 +629,7 @@ sync-sign-out =
 sync-manage-account = Konto verwalten
     .accesskey = v
 sync-signedin-unverified = { $email } wurde noch nicht bestätigt.
-sync-signedin-login-failure = Melden Sie sich an, um erneut mit { $email } zu verbinden.
+sync-signedin-login-failure = Melde dich an, um erneut mit { $email } zu verbinden.
 sync-resend-verification =
     .label = E-Mail zur Verifizierung erneut senden
     .accesskey = V
@@ -648,7 +640,7 @@ sync-sign-in =
     .label = Anmelden
     .accesskey = m
 sync-signedin-settings-header = Sync-Einstellungen
-sync-signedin-settings-desc = Wählen Sie die zwischen den Geräten zu synchronisierenden { -brand-short-name }-Eigenschaften.
+sync-signedin-settings-desc = Wähle die zwischen den Geräten zu synchronisierenden { -brand-short-name }-Eigenschaften.
 
 ## Sync section - enabling or disabling sync.
 
@@ -657,7 +649,7 @@ prefs-syncing-off = Synchronisation: AUS
 prefs-sync-setup =
     .label = { -sync-brand-short-name } einrichten…
     .accesskey = e
-prefs-sync-offer-setup-label = Synchronisieren Sie Ihre Lesezeichen, Chronik, Tabs, Passwörter, Add-ons und Einstellungen zwischen allen Ihren Geräten.
+prefs-sync-offer-setup-label = Synchronisiere deine Lesezeichen, Chronik, Tabs, Passwörter, Add-ons und Einstellungen zwischen allen deinen Geräten.
 prefs-sync-now =
     .labelnotsyncing = Jetzt synchronisieren
     .accesskeynotsyncing = J
@@ -703,7 +695,7 @@ sync-engine-tabs =
     .accesskey = T
 sync-engine-logins =
     .label = Zugangsdaten
-    .tooltiptext = Durch Sie gespeicherte Benutzernamen und Passwörter
+    .tooltiptext = Durch du gespeicherte Benutzernamen und Passwörter
     .accesskey = Z
 sync-engine-logins-passwords =
     .label = Zugangsdaten und Passwörter
@@ -727,7 +719,7 @@ sync-engine-prefs =
             [windows] Einstellungen
            *[other] Einstellungen
         }
-    .tooltiptext = Durch Sie geänderte allgemeine, Datenschutz- und Sicherheitseinstellungen
+    .tooltiptext = Durch du geänderte allgemeine, Datenschutz- und Sicherheitseinstellungen
     .accesskey = E
 
 ## The device name controls.
@@ -785,7 +777,7 @@ forms-master-pw-use =
 forms-master-pw-change =
     .label = Master-Passwort ändern…
     .accesskey = M
-forms-master-pw-fips-title = Sie sind derzeit im FIPS-Modus. FIPS benötigt ein nicht leeres Master-Passwort.
+forms-master-pw-fips-title = Du bist derzeit im FIPS-Modus. FIPS benötigt ein nicht leeres Master-Passwort.
 forms-master-pw-fips-desc = Ändern des Passworts fehlgeschlagen
 
 ## Privacy Section - History
@@ -808,16 +800,8 @@ history-remember-option-never =
     .label = niemals anlegen
 history-remember-option-custom =
     .label = nach benutzerdefinierten Einstellungen anlegen
-<<<<<<< HEAD
-history-remember-description = { -brand-short-name } wird die Adressen der besuchten Webseits, Downloads sowie eingebene Formular- und Suchdaten speichern.
-history-dontremember-description = { -brand-short-name } wird dieselben Einstellungen wie im Vergessen Modus verwenden und keinerlei Chronik anlegen, während du { -brand-short-name } benutzen.
-||||||| merged common ancestors
-history-remember-description = { -brand-short-name } wird die Adressen der besuchten Webseiten, Downloads sowie eingebene Formular- und Suchdaten speichern.
-history-dontremember-description = { -brand-short-name } wird dieselben Einstellungen wie im Privaten Modus verwenden und keinerlei Chronik anlegen, während Sie { -brand-short-name } benutzen.
-=======
 history-remember-description = { -brand-short-name } wird die Adressen der besuchten Webseiten, Downloads sowie eingegebene Formular- und Suchdaten speichern.
-history-dontremember-description = { -brand-short-name } wird dieselben Einstellungen wie im Privaten Modus verwenden und keinerlei Chronik anlegen, während Sie { -brand-short-name } benutzen.
->>>>>>> origin/upstream-releases
+history-dontremember-description = { -brand-short-name } wird dieselben Einstellungen wie im Vergessen Modus verwenden und keinerlei Chronik anlegen, während du { -brand-short-name } benutzen.
 history-private-browsing-permanent =
     .label = Immer den Vergessen Modus verwenden
     .accesskey = V
@@ -905,9 +889,9 @@ addressbar-suggestions-settings = Einstellungen für Suchvorschläge ändern
 ## Privacy Section - Content Blocking
 
 content-blocking-header = Seitenelemente blockieren
-content-blocking-section-description = Schützen Sie Ihre Privatsphäre während des Surfens, indem Sie unsichtbare Inhalte blockieren. Diese verfolgen sonst, welche Websites Sie besuchen, und legen ein Profil über Sie an. Das Blockieren einiger dieser Inhalte kann das Laden von Websites beschleunigen.
+content-blocking-section-description = Schütze deine Privatsphäre während des Surfens, indem du unsichtbare Inhalte blockierst. Diese verfolgen sonst, welche Websites du besuchst, und lege ein Profil über dich an. Das Blockieren einiger dieser Inhalte kann das Laden von Websites beschleunigen.
 content-blocking-enhanced-tracking-protection = Verbesserter Schutz vor Aktivitätenverfolgung
-content-blocking-section-top-level-description = Skripte zur Aktivitätenverfolgung folgen Ihnen und sammeln Informationen über Ihre Internet-Gewohnheiten und Interessen. { -brand-short-name } blockiert viele dieser Skripte zur Aktivitätenverfolgung und andere böswillige Skripte.
+content-blocking-section-top-level-description = Skripte zur Aktivitätenverfolgung folgen deinen und sammeln Informationen über deine Internet-Gewohnheiten und Interessen. { -brand-short-name } blockiert viele dieser Skripte zur Aktivitätenverfolgung und andere böswillige Skripte.
 content-blocking-learn-more = Weitere Informationen
 # The terminology used to refer to categories of Content Blocking is also used in chrome/browser/browser.properties and should be translated consistently.
 # "Standard" in this case is an adjective, meaning "default" or "normal".
@@ -948,8 +932,8 @@ enhanced-tracking-protection-setting-custom =
 
 content-blocking-etp-standard-desc = Ausgewogen zwischen Schutz und Leistung. Seiten laden normal.
 content-blocking-etp-strict-desc = Stärkerer Schutz, einige Websites oder mancher Inhalt funktioniert eventuell nicht.
-content-blocking-etp-custom-desc = Wählen Sie, welche Art von Skripten zur Aktivitätenverfolgung und sonstige Inhalte blockiert werden.
-content-blocking-private-windows = Inhalte zur Aktivitätenverfolgung in privaten Fenstern
+content-blocking-etp-custom-desc = Wähle, welche Art von Skripten zur Aktivitätenverfolgung und sonstige Inhalte blockiert werden.
+content-blocking-private-windows = Inhalte zur Aktivitätenverfolgung in Vergessen Fenstern
 content-blocking-cross-site-tracking-cookies = Cookies zur seitenübergreifenden Aktivitätenverfolgung
 content-blocking-social-media-trackers = Skripte zur Aktivitätenverfolgung durch soziale Netzwerke
 content-blocking-all-cookies = Alle Cookies
@@ -960,9 +944,9 @@ content-blocking-all-third-party-cookies = Alle Cookies von Drittanbietern
 content-blocking-cryptominers = Heimliche Digitalwährungsberechner (Krypto-Miner)
 content-blocking-fingerprinters = Identifizierer (Fingerprinter)
 content-blocking-warning-title = Achtung!
-content-blocking-warning-description = Das Blockieren von Inhalten kann bei einigen Websites zu Problemen führen. Das Deaktivieren des Blockierens für von Ihnen vertraute Seiten ist ganz einfach.
-content-blocking-learn-how = Erfahren Sie mehr
-content-blocking-etp-warning-description = Das Blockieren von Skripten zur Aktivitätenverfolgung kann Auswirkungen auf das Funktionieren einiger Websites haben. Laden Sie eine Seite einschließlich Skripten zur Aktivitätenverfolgung neu, damit der komplette Inhalte geladen wird.
+content-blocking-warning-description = Das Blockieren von Inhalten kann bei einigen Websites zu Problemen führen. Das Deaktivieren des Blockierens für von deinen vertraute Seiten ist ganz einfach.
+content-blocking-learn-how = Erfahre mehr
+content-blocking-etp-warning-description = Das Blockieren von Skripten zur Aktivitätenverfolgung kann Auswirkungen auf das Funktionieren einiger Websites haben. Lade eine Seite einschließlich Skripten zur Aktivitätenverfolgung neu, damit der komplette Inhalte geladen wird.
 content-blocking-warning-learn-how = Weitere Informationen
 content-blocking-reload-description = Um die Änderungen anzuwenden, müssen alle Tabs neu geladen werden.
 content-blocking-reload-tabs-button =
@@ -1131,13 +1115,13 @@ space-alert-over-5gb-pref-button =
         }
 space-alert-over-5gb-message =
     { PLATFORM() ->
-        [windows] { -brand-short-name } hat nur noch wenig Speicherplatz zur Verfügung. Webinhalte werden eventuell nicht richtig angezeigt. Sie können gespeicherte Daten im Menü Einstellungen > Datenschutz & Sicherheit > Cookies und Website-Daten löschen.
-       *[other] { -brand-short-name } verfügt über nur noch wenig freien Speicherplatz. Website-Inhalte werden vielleicht nicht richtig angezeigt. Sie können gespeicherte Daten im Menü Einstellungen > Datenschutz & Sicherheit > Cookies und Website-Daten löschen.
+        [windows] { -brand-short-name } hat nur noch wenig Speicherplatz zur Verfügung. Webinhalte werden eventuell nicht richtig angezeigt. Du kannst gespeicherte Daten im Menü Einstellungen > Datenschutz & Sicherheit > Cookies und Website-Daten löschen.
+       *[other] { -brand-short-name } verfügt über nur noch wenig freien Speicherplatz. Website-Inhalte werden vielleicht nicht richtig angezeigt. Du kannst gespeicherte Daten im Menü Einstellungen > Datenschutz & Sicherheit > Cookies und Website-Daten löschen.
     }
 space-alert-under-5gb-ok-button =
     .label = OK
     .accesskey = O
-space-alert-under-5gb-message = { -brand-short-name } verfügt über nur noch wenig freien Speicherplatz. Website-Inhalte werden vielleicht nicht richtig angezeigt. Besuchen Sie "Weitere Informationen", um die Speichernutzung für ein besseres Weberlebnis zu optimieren.
+space-alert-under-5gb-message = { -brand-short-name } verfügt über nur noch wenig freien Speicherplatz. Website-Inhalte werden vielleicht nicht richtig angezeigt. Besuche "Weitere Informationen", um die Speichernutzung für ein besseres Weberlebnis zu optimieren.
 
 ## The following strings are used in the Download section of settings
 

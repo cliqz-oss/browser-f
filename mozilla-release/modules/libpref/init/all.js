@@ -153,18 +153,10 @@ pref("security.webauth.webauthn_enable_softtoken", false);
   pref("security.webauth.webauthn_enable_usbtoken", true);
 #endif
 
-<<<<<<< HEAD
 pref("security.ssl.errorReporting.enabled", true);
 // CLIQZ-SPECIAL
 // pref("security.ssl.errorReporting.url", "https://incoming.telemetry.mozilla.org/submit/sslreports/");
 pref("security.ssl.errorReporting.url", "https://reports.cliqz.com/submit/sslreports/");
-||||||| merged common ancestors
-pref("security.ssl.errorReporting.enabled", true);
-pref("security.ssl.errorReporting.url", "https://incoming.telemetry.mozilla.org/submit/sslreports/");
-=======
-pref("security.ssl.errorReporting.enabled", false);
-pref("security.ssl.errorReporting.url", "https://incoming.telemetry.mozilla.org/submit/sslreports/");
->>>>>>> origin/upstream-releases
 pref("security.ssl.errorReporting.automatic", false);
 
 // Impose a maximum age on HPKP headers, to avoid sites getting permanently
@@ -1045,25 +1037,6 @@ pref("privacy.restrict3rdpartystorage.url_decorations", "");
 // opened more than this number of popups.
 pref("privacy.popups.maxReported", 100);
 
-<<<<<<< HEAD
-// Enforce tracking protection in all modes
-pref("privacy.trackingprotection.enabled",  false);
-// Enforce tracking protection in Private Browsing mode
-pref("privacy.trackingprotection.pbmode.enabled",  false);
-
-// Enable Origin Telemetry by default
-#ifdef NIGHTLY_BUILD
-  pref("privacy.trackingprotection.origin_telemetry.enabled", false);
-#endif
-
-||||||| merged common ancestors
-// Enable Origin Telemetry by default
-#ifdef NIGHTLY_BUILD
-  pref("privacy.trackingprotection.origin_telemetry.enabled", true);
-#endif
-
-=======
->>>>>>> origin/upstream-releases
 pref("dom.event.contextmenu.enabled",       true);
 pref("dom.event.coalesce_mouse_move",       true);
 
@@ -2344,22 +2317,14 @@ pref("services.settings.security.onecrl.collection", "onecrl");
 pref("services.settings.security.onecrl.signer", "onecrl.content-signature.mozilla.org");
 pref("services.settings.security.onecrl.checked", 0);
 
-<<<<<<< HEAD
 // CLIQZ-SPECIAL: we do not support abuse report feature for now
 pref("extensions.abuseReport.enabled", false);
-pref("extensions.abuseReport.url", "https://addons.mozilla.org/api/v4/abuse/report/addon/");
-||||||| merged common ancestors
-pref("extensions.abuseReport.enabled", true);
-pref("extensions.abuseReport.url", "https://addons.mozilla.org/api/v4/abuse/report/addon/");
-=======
-pref("extensions.abuseReport.enabled", true);
 // Allow AMO to handoff reports to the Firefox integrated dialog.
-pref("extensions.abuseReport.amWebAPI.enabled", true);
+pref("extensions.abuseReport.amWebAPI.enabled", false);
 // Opened as a sub-frame of the about:addons page when set to false.
 pref("extensions.abuseReport.openDialog", false);
 pref("extensions.abuseReport.url", "https://services.addons.mozilla.org/api/v4/abuse/report/addon/");
 pref("extensions.abuseReport.amoDetailsURL", "https://services.addons.mozilla.org/api/v4/addons/addon/");
->>>>>>> origin/upstream-releases
 
 // Blocklist preferences
 pref("extensions.blocklist.enabled", true);
