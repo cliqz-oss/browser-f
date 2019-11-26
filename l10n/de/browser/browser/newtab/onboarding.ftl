@@ -21,6 +21,11 @@ onboarding-button-label-get-started = Einführung
 onboarding-welcome-header = Willkommen bei { -brand-short-name }
 onboarding-welcome-body = Den Browser hast du schon. <br/>Lerne jetzt auch den Rest von { -brand-product-name } kennen.
 onboarding-welcome-learn-more = Weitere Infos zu den Vorteilen.
+onboarding-welcome-modal-get-body = Den Browser haben Sie schon.<br/> Holen Sie jetzt das Beste aus { -brand-product-name } heraus.
+onboarding-welcome-modal-supercharge-body = Erhöhe deinen Datenschutz.
+onboarding-welcome-modal-privacy-body = Du hast den Browser. Erhöhe deinen Datenschutz.
+onboarding-welcome-modal-family-learn-more = Erfahre mehr über die Produkte rund um { -brand-product-name }.
+onboarding-welcome-form-header = Beginne hier
 onboarding-join-form-header = Komm zu { -brand-product-name }
 onboarding-join-form-body = Gib deine E-Mail-Adresse ein und leg los.
 onboarding-join-form-email =
@@ -28,10 +33,20 @@ onboarding-join-form-email =
 onboarding-join-form-email-error = Gültige E-Mail-Adresse erforderlich
 onboarding-join-form-legal = Indem du fortfährst, stimmst du unseren <a data-l10n-name="terms">Nutzungsbedingungen</a> und unserer <a data-l10n-name="privacy">Datenschutzerklärung</a> zu.
 onboarding-join-form-continue = Weiter
+# This message is followed by a link using onboarding-join-form-signin ("Sign In") as text.
+onboarding-join-form-signin-label = Haben Sie schon ein Konto?
+# Text for link to submit the sign in form
+onboarding-join-form-signin = Anmelden
 onboarding-start-browsing-button-label = Hier geht’s zum Browser
 onboarding-cards-dismiss =
     .title = Entfernen
     .aria-label = Entfernen
+
+## Welcome full page string
+
+onboarding-fullpage-welcome-subheader = Erfahre mehr über deine Möglichkeiten.
+onboarding-fullpage-form-email =
+    .placeholder = Ihre E-Mail-Adresse…
 
 ## Firefox Sync modal dialog strings.
 
@@ -64,6 +79,12 @@ onboarding-benefit-privacy-title = Echte Privatsphäre
 # make and do. We take less data. We keep it safe. And we make sure that we are
 # transparent about how we use it."
 onboarding-benefit-privacy-text = Hinter allem, was wir tun, steht unser Versprechen für deine persönlichen Daten: Wenig sammeln. Sicher speichern. Ehrlich sein.
+onboarding-benefit-sync-title = { -sync-brand-short-name }
+onboarding-benefit-sync-text = Habe deine Lesezeichen, Passwörter, Chronik und mehr überall griffbereit, wo Du { -brand-product-name } benutzt.
+onboarding-benefit-monitor-title = { -monitor-brand-short-name }
+onboarding-benefit-monitor-text = Erhalte Benachrichtigungen, wenn deine persönlichen Daten in einem bekanntgewordenen Datenleck enthalten sind.
+onboarding-benefit-lockwise-title = { -lockwise-brand-short-name }
+onboarding-benefit-lockwise-text = Verwalte Deine Passwörter sicher und nimm sie überall mit hin.
 
 ## These strings belong to the individual onboarding messages.
 
@@ -92,6 +113,7 @@ onboarding-data-sync-text2 = Synchronisiere Lesezeichen und Passwörter überall
 onboarding-data-sync-button2 = Für { -sync-brand-short-name } anmelden
 onboarding-firefox-monitor-title = Lass dich bei Datenlecks warnen
 onboarding-firefox-monitor-text = { -monitor-brand-name } überprüft, ob deine E-Mail-Adresse schon einmal Teil eines Datenlecks war und warnt dich, wenn sie in neuen Leaks auftaucht.
+onboarding-firefox-monitor-text2 = { -monitor-brand-name } überwacht, ob deine E-Mail-Adresse bereits Teil eines Datenlecks war, und warnt dich, falls sie in neuen Lecks enthalten ist.
 onboarding-firefox-monitor-button = Für Warnmeldungen anmelden
 onboarding-browse-privately-title = Privater Modus
 onboarding-browse-privately-text = Der Private Modus löscht Chronik und Suchverlauf automatisch für dich und hält sie so vor anderen Benutzern geheim.

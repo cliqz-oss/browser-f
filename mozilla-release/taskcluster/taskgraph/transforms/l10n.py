@@ -98,7 +98,7 @@ l10n_description_schema = schema.extend({
 
     # Docker image required for task.  We accept only in-tree images
     # -- generally desktop-build or android-build -- for now.
-    Required('docker-image'): _by_platform(Any(
+    Required('docker-image', default=None): _by_platform(Any(
         # an in-tree generated docker image (from `taskcluster/docker/<name>`)
         {'in-tree': basestring},
         None,
@@ -385,6 +385,7 @@ def make_job_description(config, jobs):
         if job.get('extra'):
             job_description['extra'] = job['extra']
 
+        job_description['run']['tooltool-downloads'] = job['tooltool']
         if job['worker-type'] == "b-win2012":
             job_description['worker'] = {
                 'os': 'windows',
@@ -398,7 +399,6 @@ def make_job_description(config, jobs):
                 'max-run-time': job['run-time'],
                 'chain-of-trust': True,
             }
-            job_description['run']['tooltool-downloads'] = job['tooltool']
             job_description['run']['need-xvfb'] = True
 
         if job.get('docker-image'):

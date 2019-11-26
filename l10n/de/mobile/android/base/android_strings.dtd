@@ -21,10 +21,13 @@
 <!ENTITY firstrun_data_message "Weniger Datenvolumen, größere Ersparnis">
 <!ENTITY firstrun_data_subtext2 "Sperren Sie das Laden von Grafiken, damit für jede besuchte Seite weniger Daten geladen werden müssen.">
 <!ENTITY firstrun_sync_title "Sync">
+<!ENTITY firstrun_sync_message3 "Synchronisieren Sie Ihre Lesezeichen, Chronik und Passwörter mit Ihrem Telefon.">
 <!ENTITY updatednewfirstrun_sync_title "Konto">
 <!ENTITY firstrun_sync_message2 "Machen Sie da weiter, wo Sie aufgehört haben.">
 <!ENTITY firstrun_sync_subtext2 "Mit Sync können Sie jederzeit auf alle Ihre Lesezeichen, Passwörter und anderen Dinge zugreifen, die Sie in &brandShortName; auf anderen Geräten speichern.">
-<!ENTITY newfirstrun_sync_subtext "Synchronisieren Sie in Firefox für Android gespeicherte Einträge mit Firefox für Windows, macOS oder Linux - privat und sicher.">
+<!ENTITY newfirstrun_sync_subtext "Synchronisieren Sie die in Firefox für Android gespeicherten Einträge mit Firefox für Desktop (Windows, macOS oder Linux) - privat und sicher.">
+<!ENTITY firstrun_sendtab_title "Tab senden">
+<!ENTITY firstrun_sendtab_message "Teilen Sie Tabs von Mobilgeräten zum Desktop — sofort.">
 <!ENTITY updatednewfirstrun_sync_subtext "Melden Sie sich mit Ihrem Konto an und nutzen Sie &brandShortName; effektiver.">
 <!ENTITY firstrun_signin_message "Verbinden Sie und legen Sie los">
 <!ENTITY firstrun_signin_button "Bei Sync anmelden">
@@ -33,21 +36,16 @@
 <!ENTITY  onboard_start_button_browser "Mit dem Surfen beginnen">
 <!ENTITY firstrun_button_notnow "Nicht sofort">
 <!ENTITY firstrun_button_next "Weiter">
+<!ENTITY firstrun_signup_button "Registrieren">
 
 <!ENTITY firstrun_signin_button2 "Anmelden">
 
 <!ENTITY firstrun_tabqueue_title "Links">
-<!-- Localization note (firstrun_tabqueue_message): 'Tab queue' is a feature that allows users to queue up or save links from outside of Firefox (without switching apps) - these links will be loaded in Firefox the next time Firefox is opened. -->
-<!ENTITY firstrun_tabqueue_message_off "Links später öffnen lassen">
-<!ENTITY firstrun_tabqueue_subtext_off "Lassen Sie &brandShortName; sich Links merken, welche Sie aus anderen Apps heraus öffnen.">
-
-<!ENTITY firstrun_tabqueue_message_on "Fertig!">
-<!ENTITY firstrun_tabqueue_subtext_on "Sie können dies jederzeit in &settings; > &pref_category_general; deaktivieren.">
 
 <!ENTITY firstrun_readerview_title "Artikel">
 <!-- Localization note (firstrun_readerview_message): This is a casual way of describing getting rid of unnecessary things, and is referring to simplifying websites so only the article text and images are visible, removing unnecessary headers or ads. -->
 <!ENTITY firstrun_readerview_message "Einfachere Darstellung">
-<!ENTITY firstrun_readerview_subtext "Verwenden Sie die Leseansicht, um Artikel in einer angenehmeren Leseansicht angezeigt zu bekommen \u2014 sogar offline.">
+<!ENTITY firstrun_readerview_subtext "Verwenden Sie die Leseansicht, um Artikel in einer angenehmeren Darstellung anzuzeigen \u2014 sogar offline.">
 
 <!-- Localization note (firstrun_devices_title): This is a casual way of addressing the user, somewhat referring to their online identity (which would include other devices, Firefox usage, accounts, etc). -->
 <!ENTITY firstrun_account_title "Sie">
@@ -77,7 +75,6 @@
 <!ENTITY  sending_crash_report "Absturzbericht wird versandt\u2026">
 <!ENTITY  crash_close_label "Schließen">
 <!ENTITY  crash_restart_label "&brandShortName; neu starten">
-
 <!-- Localization note (crash_notification_title, crash_notification_message, crash_notification_negative_button_text)
      Text displayed in a system notification to allow starting the Crash Reporter (Android Q and later).-->
 <!ENTITY  crash_notification_title "&brandShortName; ist abgestürzt">
@@ -125,7 +122,6 @@
 <!ENTITY bookmark_folder_updated "Ordner aktualisiert">
 <!ENTITY bookmark_parent_folder "Enthalten in Ordner">
 <!ENTITY bookmark_add_folder "Neuen Ordner hinzufügen">
-
 <!-- Localization note (bookmark_default_folder_title): Default title is used if user doesn't specify
      one when he is creating a bookmark folder -->
 <!ENTITY bookmark_default_folder_title "(kein Titel)">
@@ -240,7 +236,6 @@
      “storing data”. -->
 <!ENTITY pref_category_advanced_summary3 "Tabs wiederherstellen, geringerer Datenverbrauch, Entwicklerwerkzeuge">
 <!ENTITY pref_category_notifications "Benachrichtigungen">
-<!ENTITY pref_category_notifications_summary "Neue Funktionen, Website-Aktualisierungen">
 <!ENTITY pref_category_notifications_summary2 "Neue Funktionen + App-Tipps">
 <!ENTITY pref_developer_remotedebugging_usb "Externes Debugging über USB">
 <!ENTITY pref_developer_remotedebugging_wifi "Externes Debugging über WLAN">
@@ -324,12 +319,6 @@
 <!-- Localization note (pref_feature_tips_notification_summary): Description of a new toggleable setting in Settings-Notifications screen.
      Similar to the already existing "pref_whats_new_notification_summary"-->
 <!ENTITY pref_feature_tips_notification_summary "Weitere Informationen über &brandShortName; und andere Produkte von &vendorShortName;">
-
-<!-- Localization note (pref_feature_tips_notification_enabling_hint):
-     Describe the action the user should do to enable this preference
-     Will be used in the context "<Turn on> ... to enable this feature" -->
-<!ENTITY pref_feature_tips_notification_enabling_hint "Zusätzlich notwendige Aktivierung:">
-
 <!-- Localization note (pref_feature_tips_notification_enabling_path):
      Nothing to translate. Simple concatenation of already localized strings. Result is used below. -->
 <!ENTITY pref_feature_tips_notification_enabling_path "&pref_category_privacy_short; > &pref_category_datareporting; > &datareporting_fhr_title;">
@@ -356,11 +345,6 @@
 
 <!ENTITY pref_pwa "Progressive Web Apps">
 <!ENTITY pref_pwa_summary "Hinzufügen von Web-Apps zum Startbildschirm erlauben">
-
-<!ENTITY tracking_protection_prompt_title "Nun mit Schutz vor Aktivitätenverfolgung">
-<!ENTITY tracking_protection_prompt_text "Blockiert selbständig Inhalte zur Aktivitätenverfolgung, damit Sie sich keine Sorgen machen müssen.">
-<!ENTITY tracking_protection_prompt_tip_text "Rufen Sie die Datenschutz-Einstellungen auf, um mehr zu erfahren">
-<!ENTITY tracking_protection_prompt_action_button "Verstanden!">
 
 <!ENTITY tab_queue_toast_message3 "Tab abgelegt in &brandShortName;">
 <!ENTITY tab_queue_toast_action "Jetzt öffnen">
@@ -412,7 +396,6 @@ shown from Android O while a tab is being queued.-->
 <!ENTITY pref_use_system_font_size_summary "Webinhalte entsprechend der Systemschriftgröße anpassen">
 
 <!ENTITY pref_media_autoplay_enabled "Automatische Wiedergabe">
-<!ENTITY pref_media_autoplay_enabled_summary "Webseiten die automatische Wiedergabe von Videos und anderen Medieninhalten erlauben">
 <!ENTITY pref_media_autoplay_allow "Automatische Wiedergabe erlauben">
 <!ENTITY pref_media_autoplay_block "Automatische Wiedergabe blockieren">
 <!ENTITY pref_zoom_force_enabled "Zoom immer aktivieren">
@@ -437,21 +420,17 @@ shown from Android O while a tab is being queued.-->
 <!ENTITY pref_private_data_searchHistory "Eingegebene Suchbegriffe">
 <!ENTITY pref_private_data_formdata2 "Gespeicherte Formulardaten">
 <!ENTITY pref_private_data_cookies2 "Cookies &amp; Aktive Logins">
-<!ENTITY pref_private_data_passwords2 "Gespeicherte Zugangsdaten">
 <!ENTITY pref_private_data_cache "Cache">
 <!ENTITY pref_private_data_offlineApps "Offline-Website-Daten">
 <!ENTITY pref_private_data_siteSettings2 "Website-Einstellungen">
 <!ENTITY pref_private_data_downloadFiles2 "Downloads">
 <!ENTITY pref_private_data_syncedTabs "Synchronisierte Tabs">
 
-<!ENTITY pref_default_browser "Als Standardbrowser verwenden">
-
 <!ENTITY pref_default_browser2 "&brandShortName; als Standardbrowser verwenden">
 <!-- LOCALIZATION NOTE (default_browser_system_settings_toast):
     Message of an Android Toast that appears after our app opens "Android System Settings -> Apps -> Default apps"
     and instruct users to tap on the "Browser app" option on that settings screen to choose a default browser app. -->
 <!ENTITY default_browser_system_settings_toast "Tippen Sie auf \&quot;Browser-App\&quot; &amp; wählen Sie &brandShortName;.">
-<!ENTITY pref_default_browser_mozilla_support_tablet "Mozilla-Hilfe aufrufen">
 <!ENTITY pref_about_firefox "Über &brandShortName;">
 <!ENTITY pref_vendor_faqs "Häufig gestellte Fragen">
 <!ENTITY pref_vendor_feedback "Feedback senden">
@@ -522,6 +501,7 @@ shown from Android O while a tab is being queued.-->
 <!ENTITY share "Teilen">
 <!ENTITY share_title "Teilen mittels">
 <!ENTITY share_image_failed "Grafik konnte auf Grund eines Fehlers nicht geteilt werden">
+<!ENTITY share_error_toast_message "Teilen mit der angegebenen App nicht möglich">
 <!ENTITY save_as_pdf "Als PDF speichern">
 <!ENTITY print "Drucken">
 <!ENTITY view_page_source "Seitenquelltext anzeigen">
@@ -611,7 +591,7 @@ shown from Android O while a tab is being queued.-->
 <!ENTITY pref_compact_tabs_summary2 "Tabs in zwei Spalten bei Hochformat">
 
 <!-- Localization note (page_removed): This string appears in a toast message when
-     any page is removed frome about:home. This includes pages that are in history,
+     any page is removed from about:home. This includes pages that are in history,
      bookmarks, or reading list. -->
 <!ENTITY page_removed "Seite entfernt">
 <!ENTITY folder_removed "Ordner gelöscht">
@@ -622,7 +602,6 @@ shown from Android O while a tab is being queued.-->
 <!ENTITY bookmark_edit_location "Adresse">
 <!ENTITY bookmark_edit_keyword "Schlüsselwort">
 <!ENTITY bookmark_select_folder "Ordner auswählen">
-
 <!ENTITY bookmark_edit_undo "Rückgängig">
 
 <!-- Localization note (site_settings_*) : These strings are used in the "Site Settings"
@@ -712,7 +691,6 @@ shown from Android O while a tab is being queued.-->
 <!ENTITY filepicker_audio_title "Einen Ton auswählen oder aufnehmen">
 <!ENTITY filepicker_image_title "Ein Bild auswählen oder aufnehmen">
 <!ENTITY filepicker_video_title "Ein Video auswählen oder aufnehmen">
-
 <!ENTITY filepicker_permission_denied "Benötigte Berechtigungen nicht gewährt, Dateiauswahl des Systems wird verwendet">
 
 <!-- Site identity popup -->
@@ -830,7 +808,7 @@ just addresses the organization to follow, e.g. "This site is run by " -->
      "Last synced" is one of the user's other Sync clients, typically Firefox on
      their desktop or laptop.-->
 <!ENTITY remote_tabs_last_synced "Letzte Synchronisierung: &formatS;">
-<!-- Localization note: Used when the sync has not happend yet, showed in place of a date -->
+<!-- Localization note: Used when the sync has not happened yet, showed in place of a date -->
 <!ENTITY remote_tabs_never_synced "Letzte Synchronisierung: nie">
 
 <!-- LOCALIZATION NOTE (intent_uri_private_browsing_prompt): This string will
@@ -891,15 +869,10 @@ just addresses the organization to follow, e.g. "This site is run by " -->
 <!-- LOCALIZATION NOTE(corrupt_apk): This notification is shown if corruption has been detected on startup and the user has to reinstall Firefox -->
 <!ENTITY corrupt_apk "&brandShortName; kann nicht geöffnet werden. Bitte installieren Sie noch einmal und versuchen Sie es erneut.">
 
-<!ENTITY eol_notification_title2 "&brandShortName; wird sich nicht länger aktualisieren.">
-<!ENTITY eol_notification_summary "Hier tippen, um mehr zu erfahren.">
-
 <!-- LOCALIZATION NOTE (whatsnew_notification_title, whatsnew_notification_summary): These strings
      are used for a system notification that's shown to users after the app updates. -->
 <!ENTITY whatsnew_notification_title "&brandShortName; ist aktuell">
 <!ENTITY whatsnew_notification_summary "Neue Funktionen und Änderungen">
-
-<!ENTITY promotion_add_page_shortcut "Seitenverknüpfung hinzufügen">
 
 <!ENTITY helper_first_offline_bookmark_title "Offline lesen">
 <!ENTITY helper_first_offline_bookmark_message "Finden Sie Ihre Einträge der Leseliste als offline verfügbare Lesezeichen.">
@@ -909,11 +882,15 @@ just addresses the organization to follow, e.g. "This site is run by " -->
 <!ENTITY helper_triple_readerview_open_message "Fügen Sie Seiten in der Leseansicht als Lesezeichen hinzu, um sie auch offline lesen zu können.">
 <!ENTITY helper_triple_readerview_open_button "Zu Lesezeichen hinzufügen">
 
-<!-- LOCALIZATION NOTE (activity_stream_signin_title, activity_stream_signin_description, activity_stream_signup_button,
-activity_stream_signin_prompt, activity_stream_signin_prompt_button):
+<!-- LOCALIZATION NOTE (activity_stream_signin_title, activity_stream_signin_description, activity_stream_signin_button):
 - These labels are shown in the Activity Stream recommending the user to sign in. -->
 <!ENTITY activity_stream_signin_title "Willkommen bei &brandShortName;">
 <!ENTITY activity_stream_signin_description "Beginnen Sie mit dem Synchronisieren von Lesezeichen, Passwörtern und mehr mittels Ihres Firefox-Kontos.">
+<!ENTITY activity_stream_signup_button "Registrieren">
+<!ENTITY activity_stream_signin_prompt "Sie haben schon ein Konto?">
+<!-- LOCALIZATION NOTE (activity_stream_signin_prompt_button): To be used in continuation of activity_stream_signin_prompt. -->
+<!ENTITY activity_stream_signin_prompt_button "Anmelden.">
+
 <!ENTITY activity_stream_signin_button "Anmelden">
 
 <!ENTITY activity_stream_topsites "Wichtige Seiten">
@@ -965,17 +942,11 @@ Picture-in-picture mini window -->
 <!ENTITY pip_pause_button_title "Anhalten">
 <!ENTITY pip_pause_button_description "Wiedergabe anhalten">
 
-<!-- Notification channels names -->
-<!ENTITY default_notification_channel "&brandShortName;">
-
 <!ENTITY pref_notification_settings_link "Benachrichtigungs-Einstellungen verwalten">
 <!-- Notification channels names -->
 <!ENTITY default_notification_channel2 "Browser">
 <!ENTITY mls_notification_channel "&vendorShortName;-Standortdienst">
 <!ENTITY download_notification_channel "Downloads">
-<!ENTITY media_notification_channel "Medienwiedergabe">
-<!-- These push notifications come without a specific channel and/or name from Leanplum -->
-<!ENTITY leanplum_default_notifications_channel "&brandShortName;-Push-Benachrichtigungen">
 <!ENTITY media_notification_channel2 "Ton und Video">
 <!-- These push notifications come without a specific channel and/or name from Leanplum -->
 <!ENTITY leanplum_default_notifications_channel2 "&vendorShortName; - nützliche Hinweise">

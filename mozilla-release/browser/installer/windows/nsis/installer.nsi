@@ -968,7 +968,7 @@ Function LaunchApp
   ${GetParameters} $0
   ${GetOptions} "$0" "/UAC:" $1
   ${If} ${Errors}
-    ${ExecAndWaitForInputIdle} "$\"$INSTDIR\${FileMainEXE}$\""
+    ${ExecAndWaitForInputIdle} "$\"$INSTDIR\${FileMainEXE}$\" -first-startup"
   ${Else}
     GetFunctionAddress $0 LaunchAppFromElevatedProcess
     UAC::ExecCodeSegment $0
@@ -981,7 +981,7 @@ Function LaunchAppFromElevatedProcess
   ; Set our current working directory to the application's install directory
   ; otherwise the 7-Zip temp directory will be in use and won't be deleted.
   SetOutPath "$INSTDIR"
-  ${ExecAndWaitForInputIdle} "$\"$INSTDIR\${FileMainEXE}$\""
+  ${ExecAndWaitForInputIdle} "$\"$INSTDIR\${FileMainEXE}$\" -first-startup"
 FunctionEnd
 
 Function SendPing

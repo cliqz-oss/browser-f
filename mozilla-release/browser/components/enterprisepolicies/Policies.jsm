@@ -85,49 +85,61 @@ var Policies = {
 
   Authentication: {
     onBeforeAddons(manager, param) {
+      let locked = true;
+      if ("Locked" in param) {
+        locked = param.Locked;
+      }
+
       if ("SPNEGO" in param) {
-        setAndLockPref(
+        setDefaultPref(
           "network.negotiate-auth.trusted-uris",
-          param.SPNEGO.join(", ")
+          param.SPNEGO.join(", "),
+          locked
         );
       }
       if ("Delegated" in param) {
-        setAndLockPref(
+        setDefaultPref(
           "network.negotiate-auth.delegation-uris",
-          param.Delegated.join(", ")
+          param.Delegated.join(", "),
+          locked
         );
       }
       if ("NTLM" in param) {
-        setAndLockPref(
+        setDefaultPref(
           "network.automatic-ntlm-auth.trusted-uris",
-          param.NTLM.join(", ")
+          param.NTLM.join(", "),
+          locked
         );
       }
       if ("AllowNonFQDN" in param) {
         if ("NTLM" in param.AllowNonFQDN) {
-          setAndLockPref(
+          setDefaultPref(
             "network.automatic-ntlm-auth.allow-non-fqdn",
-            param.AllowNonFQDN.NTLM
+            param.AllowNonFQDN.NTLM,
+            locked
           );
         }
         if ("SPNEGO" in param.AllowNonFQDN) {
-          setAndLockPref(
+          setDefaultPref(
             "network.negotiate-auth.allow-non-fqdn",
-            param.AllowNonFQDN.SPNEGO
+            param.AllowNonFQDN.SPNEGO,
+            locked
           );
         }
       }
       if ("AllowProxies" in param) {
         if ("NTLM" in param.AllowProxies) {
-          setAndLockPref(
+          setDefaultPref(
             "network.automatic-ntlm-auth.allow-proxies",
-            param.AllowProxies.NTLM
+            param.AllowProxies.NTLM,
+            locked
           );
         }
         if ("SPNEGO" in param.AllowProxies) {
-          setAndLockPref(
+          setDefaultPref(
             "network.negotiate-auth.allow-proxies",
-            param.AllowProxies.SPNEGO
+            param.AllowProxies.SPNEGO,
+            locked
           );
         }
       }
@@ -456,6 +468,14 @@ var Policies = {
     },
   },
 #if 0
+
+  DisablePasswordReveal: {
+    onBeforeUIStartup(manager, param) {
+      if (param) {
+        manager.disallowFeature("passwordReveal");
+      }
+    },
+  },
 
   DisablePocket: {
     onBeforeAddons(manager, param) {
@@ -889,6 +909,7 @@ var Policies = {
       // |homepages| will be a string containing a pipe-separated ('|') list of
       // URLs because that is what the "Custom URLs..." section of about:preferences
       // (and therefore what the pref |browser.startup.homepage|) accepts.
+<<<<<<< HEAD
       // Cliqz. This part totally re-worked in Cliqz browser because we have
       // different Startup options, so we can not follow FF's settings at all.
       let homepages = "about:home";
@@ -896,6 +917,67 @@ var Policies = {
         switch (param.Homepage) {
           case "default":
             homepages = "about:home";
+||||||| merged common ancestors
+      if (param.URL) {
+        let homepages = param.URL.href;
+        if (param.Additional && param.Additional.length > 0) {
+          homepages += "|" + param.Additional.map(url => url.href).join("|");
+        }
+        setDefaultPref("browser.startup.homepage", homepages, param.Locked);
+        if (param.Locked) {
+          setAndLockPref(
+            "pref.browser.homepage.disable_button.current_page",
+            true
+          );
+          setAndLockPref(
+            "pref.browser.homepage.disable_button.bookmark_page",
+            true
+          );
+          setAndLockPref(
+            "pref.browser.homepage.disable_button.restore_default",
+            true
+          );
+        } else {
+          // Clear out old run once modification that is no longer used.
+          clearRunOnceModification("setHomepage");
+        }
+      }
+      if (param.StartPage) {
+        let prefValue;
+        switch (param.StartPage) {
+          case "none":
+            prefValue = 0;
+=======
+      if (param.URL) {
+        let homepages = param.URL.href;
+        if (param.Additional && param.Additional.length) {
+          homepages += "|" + param.Additional.map(url => url.href).join("|");
+        }
+        setDefaultPref("browser.startup.homepage", homepages, param.Locked);
+        if (param.Locked) {
+          setAndLockPref(
+            "pref.browser.homepage.disable_button.current_page",
+            true
+          );
+          setAndLockPref(
+            "pref.browser.homepage.disable_button.bookmark_page",
+            true
+          );
+          setAndLockPref(
+            "pref.browser.homepage.disable_button.restore_default",
+            true
+          );
+        } else {
+          // Clear out old run once modification that is no longer used.
+          clearRunOnceModification("setHomepage");
+        }
+      }
+      if (param.StartPage) {
+        let prefValue;
+        switch (param.StartPage) {
+          case "none":
+            prefValue = 0;
+>>>>>>> origin/upstream-releases
             break;
           case "urls":
             if (param.URLs && param.URLs.length > 0) {
@@ -1299,6 +1381,40 @@ var Policies = {
                   await Services.search.setDefault(defaultEngine);
                 } catch (ex) {
                   log.error("Unable to set the default search engine", ex);
+                }
+              }
+            }
+          );
+        }
+        if (param.DefaultPrivate) {
+          await runOncePerModification(
+            "setDefaultPrivateSearchEngine",
+            param.DefaultPrivate,
+            async () => {
+              let defaultPrivateEngine;
+              try {
+                defaultPrivateEngine = Services.search.getEngineByName(
+                  param.DefaultPrivate
+                );
+                if (!defaultPrivateEngine) {
+                  throw new Error("No engine by that name could be found");
+                }
+              } catch (ex) {
+                log.error(
+                  `Search engine lookup failed when attempting to set ` +
+                    `the default private engine. Requested engine was ` +
+                    `"${param.DefaultPrivate}".`,
+                  ex
+                );
+              }
+              if (defaultPrivateEngine) {
+                try {
+                  await Services.search.setDefaultPrivate(defaultPrivateEngine);
+                } catch (ex) {
+                  log.error(
+                    "Unable to set the default private search engine",
+                    ex
+                  );
                 }
               }
             }

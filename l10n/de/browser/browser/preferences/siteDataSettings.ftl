@@ -19,6 +19,8 @@ site-data-column-storage =
     .label = Speicher
 site-data-column-last-used =
     .label = Zuletzt verwendet
+# This label is used in the "Host" column for local files, which have no host.
+site-data-local-file-host = (lokale Dateien)
 site-data-remove-selected =
     .label = Ausgewählte entfernen
     .accesskey = g
@@ -31,17 +33,10 @@ site-data-button-save =
 # Variables:
 #   $value (Number) - Value of the unit (for example: 4.6, 500)
 #   $unit (String) - Name of the unit (for example: "bytes", "KB")
-site-usage-pattern = { $value } { $unit }
-site-usage-persistent = { site-usage-pattern } (dauerhaft)
-
-# Variables:
-#   $value (Number) - Value of the unit (for example: 4.6, 500)
-#   $unit (String) - Name of the unit (for example: "bytes", "KB")
 site-storage-usage =
     .value = { $value } { $unit }
 site-storage-persistent =
     .value = { site-storage-usage.value } (dauerhaft)
-
 site-data-remove-all =
     .label = Alle löschen
     .accesskey = A
@@ -51,8 +46,6 @@ site-data-remove-shown =
 
 ## Removing
 
-site-data-removing-window =
-    .title = { site-data-removing-header }
 site-data-removing-dialog =
     .title = { site-data-removing-header }
     .buttonlabelaccept = Entfernen

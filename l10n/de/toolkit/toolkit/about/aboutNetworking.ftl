@@ -9,6 +9,7 @@ ok = OK
 http = HTTP
 sockets = Sockets
 dns = DNS
+dnssuffix = DNS-Suffixe
 websockets = WebSockets
 refresh = Aktualisieren
 auto-refresh = Automatisch alle 3 Sekunden aktualisieren
@@ -65,4 +66,5 @@ networkid-id = Netzwerk-ID
 networkid-isUp = Verbindung (Link) bestätigt
 networkid-statusKnown = Status der Verbindung (Link) bekannt
 
-##
+
+

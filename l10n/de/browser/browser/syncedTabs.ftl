@@ -5,6 +5,7 @@
 synced-tabs-sidebar-title = Synchronisierte Tabs
 synced-tabs-sidebar-noclients-subtitle = Wollen Sie Ihre Tabs von Ihren anderen Geräten hier angezeigt bekommen?
 synced-tabs-sidebar-notsignedin = Melden Sie sich an, um eine Liste der Tabs von Ihren anderen Geräten angezeigt zu bekommen.
+synced-tabs-sidebar-intro = Zeigt eine Liste der Tabs von Ihren anderen Geräten an.
 synced-tabs-sidebar-unverified = Ihr Konto muss verifiziert werden.
 synced-tabs-sidebar-notabs = Keine offenen Tabs
 synced-tabs-sidebar-openprefs = Einstellungen von { -sync-brand-short-name } öffnen
@@ -36,4 +37,8 @@ synced-tabs-context-open-all-in-tabs =
 synced-tabs-context-manage-devices =
     .label = Geräte verwalten…
     .accesskey = v
+synced-tabs-context-sync-now =
+    .label = Jetzt synchronisieren
+    .accesskey = J
 fxa-sign-in = Bei { -sync-brand-short-name } anmelden
+turn-on-sync = { -sync-brand-short-name } aktivieren

@@ -76,11 +76,13 @@ in "Search through tabs". -->
 <!-- LOCALIZATION NOTE: The accessibleLabel is a spoken label that should not
 include the word "toolbar" or such, because screen readers already know that
 this container is a toolbar. This avoids double-speaking. -->
+<!ENTITY navbar.accessibleLabel "Navigation">
 <!ENTITY personalbarCmd.label "Lesezeichen-Symbolleiste">
 <!ENTITY personalbarCmd.accesskey "L">
 <!-- LOCALIZATION NOTE: The accessibleLabel is a spoken label that should not
 include the word "toolbar" or such, because screen readers already know that
 this container is a toolbar. This avoids double-speaking. -->
+<!ENTITY personalbar.accessibleLabel "Lesezeichen">
 <!ENTITY bookmarksToolbarItem.label "Lesezeichen-Symbole">
 
 <!ENTITY pageSourceCmd.label "Seitenquelltext anzeigen">
@@ -122,7 +124,8 @@ These should match what Safari and other Apple applications use on OS X Lion. --
 <!ENTITY fxaUnverified.label "Bestätige dein Konto">
 
 
- <!-- } is above this key on many keyboards -->
+<!ENTITY togglePictureInPicture.key2 ")">
+<!ENTITY togglePictureInPicture.key "]"> <!-- } is above this key on many keyboards -->
 
 <!ENTITY fullScreenMinimize.tooltip "Minimieren">
 <!ENTITY fullScreenRestore.tooltip "Wiederherstellen">
@@ -157,6 +160,7 @@ These should match what Safari and other Apple applications use on OS X Lion. --
 <!-- LOCALIZATION NOTE (fxa.menu) Used to define the different labels
      for the Firefox Account toolbar menu screen. The `Signed in as` text is
      followed by the user's email. -->
+<!ENTITY fxa.menu.syncSettings2.label "&syncBrand.shortName.label;-Einstellungen">
 <!ENTITY fxa.menu.connectAnotherDevice2.label "Weiteres Gerät verbinden…">
 <!ENTITY fxa.menu.firefoxAccount "&syncBrand.fxAccount.label;">
 
@@ -165,6 +169,11 @@ These should match what Safari and other Apple applications use on OS X Lion. --
 <!ENTITY fxa.menu.firefoxServices.label "&brandProductName;-Dienste">
 
 <!ENTITY fxa.menu.account.label "Konto">
+<!ENTITY fxa.menu.settings.label "Einstellungen">
+<!ENTITY fxa.menu.accountSettings.label "Kontoeinstellungen">
+<!ENTITY fxa.menu.signOut.label "Abmelden…">
+<!ENTITY fxa.menu.deviceSettings.label "Geräteeinstellungen">
+<!ENTITY fxa.menu.setupSync.label "&syncBrand.shortName.label; einrichten…">
 
 <!-- LOCALIZATION NOTE (fxa.service) Used to define the different FxA services
      for the Firefox Account toolbar menu screen.  -->
@@ -278,6 +287,7 @@ These should match what Safari and other Apple applications use on OS X Lion. --
 <!ENTITY urlbar.flashPluginBlocked.tooltip       "Du hast den Zugriff auf das Adobe-Flash-Plugin für diese Website blockiert.">
 <!ENTITY urlbar.midiBlocked.tooltip              "Du hast den Zugriff auf MIDI für diese Website blockiert.">
 <!ENTITY urlbar.installBlocked.tooltip           "Du hast die Installation von Erweiterungen von dieser Website blockiert.">
+
 
 <!ENTITY urlbar.openHistoryPopup.tooltip                "Chronik anzeigen">
 
@@ -435,9 +445,18 @@ These should match what Safari and other Apple applications use on OS X Lion. --
      the account. We also show links to download Firefox for android/ios. -->
 <!ENTITY appMenuRemoteTabs.noclients.subtitle "Willst du deine Tabs von deinen anderen Geräten hier angezeigt bekommen?">
 <!ENTITY appMenuRemoteTabs.opensyncprefs.label "Sync-Einstellungen öffnen">
+<<<<<<< HEAD
 <!ENTITY appMenuRemoteTabs.notsignedin.label "Melde dich an, um eine Liste der Tabs auf deinen anderen Geräten zu sehen.">
+||||||| merged common ancestors
+<!ENTITY appMenuRemoteTabs.notsignedin.label "Melden Sie sich an, um eine Liste der Tabs auf Ihren anderen Geräten zu sehen.">
+=======
+<!ENTITY appMenuRemoteTabs.notsignedin.label "Melden Sie sich an, um eine Liste der Tabs auf Ihren anderen Geräten zu sehen.">
+<!ENTITY appMenuRemoteTabs.welcome.label "Zeigt eine Liste der Tabs von Ihren anderen Geräten an.">
+>>>>>>> origin/upstream-releases
 <!ENTITY appMenuRemoteTabs.unverified.label "Ihr Konto muss verifiziert werden.">
 <!ENTITY appMenuRemoteTabs.signin.label "Bei Sync anmelden">
+<!ENTITY appMenuRemoteTabs.signintosync.label "Bei &syncBrand.shortName.label; anmelden…">
+<!ENTITY appMenuRemoteTabs.turnonsync.label "&syncBrand.shortName.label; aktivieren…">
 <!ENTITY appMenuRemoteTabs.managedevices.label "Geräte verwalten…">
 <!ENTITY appMenuRemoteTabs.sidebar.label "Sidebar mit synchronisierten Tabs">
 <!ENTITY appMenuRemoteTabs.hidesidebar.label "Sidebar mit synchronisierten Tabs schließen">
@@ -931,6 +950,7 @@ you can use these alternative items. Otherwise, their values should be empty.  -
 <!ENTITY protections.trackingContent.label "Inhalte zur Aktivitätenverfolgung">
 <!ENTITY protections.fingerprinters.label "Identifizierer (Fingerprinter)">
 <!ENTITY protections.cryptominers.label "Heimliche Digitalwährungsberechner (Krypto-Miner)">
+<!ENTITY protections.notBlocking.why.etpOff2.tooltip "Alle Elemente zur Aktivitätenverfolgung auf dieser Website wurden geladen, da der Schutz deaktiviert ist.">
 <!ENTITY protections.noTrackersFound.description "&brandShortName; erkannte keine Skripte zur Aktivitätenverfolgung auf dieser Seite.">
 
 <!ENTITY protections.crossSiteTrackingCookies.description "Diese Cookies werden über viele Websites hinweg verwendet und sammeln Informationen über Ihre Online-Aktivitäten. Sie werden durch Drittanbieter wie Werbe- oder Analyseunternehmen gesetzt.">

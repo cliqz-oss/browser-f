@@ -546,7 +546,7 @@ var BlockedLinks = {
    * @return Whether the list is empty.
    */
   isEmpty: function BlockedLinks_isEmpty() {
-    return Object.keys(this.links).length == 0;
+    return !Object.keys(this.links).length;
   },
 
   /**
@@ -970,6 +970,7 @@ var ActivityStreamProvider = {
     return Promise.all(
       aLinks.map(
         link =>
+          // eslint-disable-next-line no-async-promise-executor
           new Promise(async resolve => {
             // Never add favicon data for pocket items
             if (link.type === "pocket") {

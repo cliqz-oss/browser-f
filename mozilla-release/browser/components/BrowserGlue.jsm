@@ -23,6 +23,13 @@ ChromeUtils.defineModuleGetter(
   "resource://gre/modules/ActorManagerParent.jsm"
 );
 
+XPCOMUtils.defineLazyServiceGetter(
+  this,
+  "PushService",
+  "@mozilla.org/push/Service;1",
+  "nsIPushService"
+);
+
 const PREF_PDFJS_ENABLED_CACHE_STATE = "pdfjs.enabledCache.state";
 
 let ACTORS = {
@@ -57,6 +64,26 @@ let ACTORS = {
     allFrames: true,
   },
 
+  DOMFullscreen: {
+    parent: {
+      moduleURI: "resource:///actors/DOMFullscreenParent.jsm",
+    },
+
+    child: {
+      moduleURI: "resource:///actors/DOMFullscreenChild.jsm",
+      group: "browsers",
+      events: {
+        "MozDOMFullscreen:Request": {},
+        "MozDOMFullscreen:Entered": {},
+        "MozDOMFullscreen:NewOrigin": {},
+        "MozDOMFullscreen:Exit": {},
+        "MozDOMFullscreen:Exited": {},
+      },
+    },
+
+    allFrames: true,
+  },
+
   FormValidation: {
     parent: {
       moduleURI: "resource:///actors/FormValidationParent.jsm",
@@ -67,6 +94,14 @@ let ACTORS = {
       events: {
         MozInvalidForm: {},
       },
+    },
+
+    allFrames: true,
+  },
+
+  PageInfo: {
+    child: {
+      moduleURI: "resource:///actors/PageInfoChild.jsm",
     },
 
     allFrames: true,
@@ -101,6 +136,20 @@ let ACTORS = {
     allFrames: true,
   },
 
+  RFPHelper: {
+    parent: {
+      moduleURI: "resource:///actors/RFPHelperParent.jsm",
+    },
+    child: {
+      moduleURI: "resource:///actors/RFPHelperChild.jsm",
+      events: {
+        resize: {},
+      },
+    },
+
+    allFrames: true,
+  },
+
   SwitchDocumentDirection: {
     child: {
       moduleURI: "resource:///actors/SwitchDocumentDirectionChild.jsm",
@@ -129,6 +178,7 @@ let LEGACY_ACTORS = {
         AboutLoginsOpenPreferences: { wantUntrusted: true },
         AboutLoginsOpenSite: { wantUntrusted: true },
         AboutLoginsRecordTelemetryEvent: { wantUntrusted: true },
+        AboutLoginsSortChanged: { wantUntrusted: true },
         AboutLoginsSyncEnable: { wantUntrusted: true },
         AboutLoginsSyncOptions: { wantUntrusted: true },
         AboutLoginsUpdateLogin: { wantUntrusted: true },
@@ -138,6 +188,7 @@ let LEGACY_ACTORS = {
         "AboutLogins:LoginAdded",
         "AboutLogins:LoginModified",
         "AboutLogins:LoginRemoved",
+        "AboutLogins:MasterPasswordAuthRequired",
         "AboutLogins:MasterPasswordResponse",
         "AboutLogins:SendFavicons",
         "AboutLogins:SetBreaches",
@@ -204,31 +255,6 @@ let LEGACY_ACTORS = {
     },
   },
 
-  ContextMenuSpecialProcess: {
-    child: {
-      module: "resource:///actors/ContextMenuSpecialProcessChild.jsm",
-      events: {
-        contextmenu: { mozSystemGroup: true },
-      },
-    },
-    allFrames: true,
-  },
-
-  DOMFullscreen: {
-    child: {
-      module: "resource:///actors/DOMFullscreenChild.jsm",
-      group: "browsers",
-      events: {
-        "MozDOMFullscreen:Request": {},
-        "MozDOMFullscreen:Entered": {},
-        "MozDOMFullscreen:NewOrigin": {},
-        "MozDOMFullscreen:Exit": {},
-        "MozDOMFullscreen:Exited": {},
-      },
-      messages: ["DOMFullscreen:Entered", "DOMFullscreen:CleanUp"],
-    },
-  },
-
   LightweightTheme: {
     child: {
       module: "resource:///actors/LightweightThemeChild.jsm",
@@ -256,7 +282,6 @@ let LEGACY_ACTORS = {
     child: {
       module: "resource:///actors/NetErrorChild.jsm",
       events: {
-        AboutNetErrorLoad: { wantUntrusted: true },
         AboutNetErrorSetAutomatic: { wantUntrusted: true },
         AboutNetErrorResetPreferences: { wantUntrusted: true },
         click: {},
@@ -276,13 +301,6 @@ let LEGACY_ACTORS = {
     },
   },
 
-  PageInfo: {
-    child: {
-      module: "resource:///actors/PageInfoChild.jsm",
-      messages: ["PageInfo:getData"],
-    },
-  },
-
   PageStyle: {
     child: {
       module: "resource:///actors/PageStyleChild.jsm",
@@ -294,17 +312,6 @@ let LEGACY_ACTORS = {
       // Only matching web pages, as opposed to internal about:, chrome: or
       // resource: pages. See https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/Match_patterns
       matches: ["*://*/*"],
-    },
-  },
-
-  RFPHelper: {
-    child: {
-      module: "resource:///actors/RFPHelperChild.jsm",
-      group: "browsers",
-      events: {
-        resize: {},
-      },
-      messages: ["Finder:FindbarOpen", "Finder:FindbarClose"],
     },
   },
 
@@ -476,7 +483,6 @@ XPCOMUtils.defineLazyModuleGetters(this, {
   AddonManager: "resource://gre/modules/AddonManager.jsm",
   AppMenuNotifications: "resource://gre/modules/AppMenuNotifications.jsm",
   AsyncShutdown: "resource://gre/modules/AsyncShutdown.jsm",
-  AutoCompletePopup: "resource://gre/modules/AutoCompletePopup.jsm",
   Blocklist: "resource://gre/modules/Blocklist.jsm",
   BookmarkHTMLUtils: "resource://gre/modules/BookmarkHTMLUtils.jsm",
   BookmarkJSONUtils: "resource://gre/modules/BookmarkJSONUtils.jsm",
@@ -634,6 +640,7 @@ const listeners = {
     "AboutLogins:OpenMobileAndroid": ["AboutLoginsParent"],
     "AboutLogins:OpenMobileIos": ["AboutLoginsParent"],
     "AboutLogins:OpenSite": ["AboutLoginsParent"],
+    "AboutLogins:SortChanged": ["AboutLoginsParent"],
     "AboutLogins:Subscribe": ["AboutLoginsParent"],
     "AboutLogins:SyncEnable": ["AboutLoginsParent"],
     "AboutLogins:SyncOptions": ["AboutLoginsParent"],
@@ -654,7 +661,6 @@ const listeners = {
     "PasswordManager:onGeneratedPasswordFilledOrEdited": ["LoginManagerParent"],
     "PasswordManager:autoCompleteLogins": ["LoginManagerParent"],
     "PasswordManager:removeLogin": ["LoginManagerParent"],
-    "PasswordManager:insecureLoginFormPresent": ["LoginManagerParent"],
     "PasswordManager:OpenPreferences": ["LoginManagerParent"],
     // PLEASE KEEP THIS LIST IN SYNC WITH THE MOBILE LISTENERS IN BrowserCLH.js
     "rtcpeer:CancelRequest": ["webrtcUI"],
@@ -908,7 +914,7 @@ BrowserGlue.prototype = {
         this._setSyncAutoconnectDelay();
         break;
       case "fxaccounts:onverified":
-        this._showSyncStartedDoorhanger();
+        this._onThisDeviceConnected();
         break;
       case "fxaccounts:device_connected":
         this._onDeviceConnected(data);
@@ -1639,7 +1645,6 @@ BrowserGlue.prototype = {
 
     this._checkForOldBuildUpdates();
 
-    AutoCompletePopup.init();
     // Check if Sync is configured
     if (Services.prefs.prefHasUserValue("services.sync.username")) {
 #ifdef MOZ_SERVICES_SYNC
@@ -1747,19 +1752,6 @@ BrowserGlue.prototype = {
   },
 
   _recordContentBlockingTelemetry() {
-    let recordIdentityPopupEvents = Services.prefs.prefHasUserValue(
-      "security.identitypopup.recordEventElemetry"
-    )
-      ? Services.prefs.getBoolPref("security.identitypopup.recordEventElemetry")
-      : Services.prefs.getBoolPref(
-          "security.identitypopup.recordEventTelemetry"
-        );
-
-    Services.telemetry.setEventRecordingEnabled(
-      "security.ui.identitypopup",
-      recordIdentityPopupEvents
-    );
-
     Services.telemetry.setEventRecordingEnabled(
       "security.ui.protectionspopup",
       Services.prefs.getBoolPref(
@@ -1830,6 +1822,41 @@ BrowserGlue.prototype = {
     Services.telemetry.scalarSet("contentblocking.category", categoryPref);
   },
 
+  _recordContentBlockerTelemetry() {
+    [
+      "other",
+      "script",
+      "image",
+      "stylesheet",
+      "object",
+      "document",
+      "subdocument",
+      "refresh",
+      "xbl",
+      "ping",
+      "xmlhttprequest",
+      "objectsubrequest",
+      "dtd",
+      "font",
+      "media",
+      "websocket",
+      "csp_report",
+      "xslt",
+      "beacon",
+      "fetch",
+      "image",
+      "manifest",
+      "saveas_download",
+      "speculative",
+    ].forEach(type => {
+      Services.telemetry.keyedScalarSet(
+        "security.contentblocker_permissions",
+        type,
+        Services.perms.getAllWithTypePrefix(type).length
+      );
+    });
+  },
+
   _sendMediaTelemetry() {
     let win = Services.wm.getMostRecentWindow("navigator:browser");
     if (win) {
@@ -1883,8 +1910,13 @@ BrowserGlue.prototype = {
     AboutPrivateBrowsingHandler.uninit();
 #if 0
     AboutProtectionsHandler.uninit();
+<<<<<<< HEAD
 #endif
     AutoCompletePopup.uninit();
+||||||| merged common ancestors
+    AutoCompletePopup.uninit();
+=======
+>>>>>>> origin/upstream-releases
 
     Normandy.uninit();
     RFPHelper.uninit();
@@ -2041,17 +2073,6 @@ BrowserGlue.prototype = {
     });
 
     Services.tm.idleDispatchToMainThread(() => {
-      let enableCertErrorUITelemetry = Services.prefs.getBoolPref(
-        "security.certerrors.recordEventTelemetry",
-        false
-      );
-      Services.telemetry.setEventRecordingEnabled(
-        "security.ui.certerror",
-        enableCertErrorUITelemetry
-      );
-    });
-
-    Services.tm.idleDispatchToMainThread(() => {
       Services.prefs.addObserver(
         "permissions.eventTelemetry.enabled",
         this._togglePermissionPromptTelemetry
@@ -2059,11 +2080,24 @@ BrowserGlue.prototype = {
       this._togglePermissionPromptTelemetry();
     });
 
+<<<<<<< HEAD
 #if 0
+||||||| merged common ancestors
+=======
+    // Begin listening for incoming push messages.
+    Services.tm.idleDispatchToMainThread(() => {
+      PushService.wrappedJSObject.ensureReady();
+    });
+
+>>>>>>> origin/upstream-releases
     Services.tm.idleDispatchToMainThread(() => {
       this._recordContentBlockingTelemetry();
     });
 #endif
+
+    Services.tm.idleDispatchToMainThread(() => {
+      this._recordContentBlockerTelemetry();
+    });
 
     // Load the Login Manager data from disk off the main thread, some time
     // after startup.  If the data is required before this runs, for example
@@ -2687,15 +2721,12 @@ BrowserGlue.prototype = {
     notification.persistence = -1; // Until user closes it
   },
 
-  _showSyncStartedDoorhanger() {
+  _onThisDeviceConnected() {
     let bundle = Services.strings.createBundle(
       "chrome://browser/locale/accounts.properties"
     );
-    let productName = gBrandBundle.GetStringFromName("brandShortName");
-    let title = bundle.GetStringFromName("syncStartNotification.title");
-    let body = bundle.formatStringFromName("syncStartNotification.body2", [
-      productName,
-    ]);
+    let title = bundle.GetStringFromName("deviceConnDisconnTitle");
+    let body = bundle.GetStringFromName("thisDeviceConnectedBody");
 
     let clickCallback = (subject, topic, data) => {
       if (topic != "alertclickcallback") {
@@ -3621,9 +3652,9 @@ BrowserGlue.prototype = {
     let accountsBundle = Services.strings.createBundle(
       "chrome://browser/locale/accounts.properties"
     );
-    let title = accountsBundle.GetStringFromName("deviceConnectedTitle");
+    let title = accountsBundle.GetStringFromName("deviceConnDisconnTitle");
     let body = accountsBundle.formatStringFromName(
-      "deviceConnectedBody" + (deviceName ? "" : ".noDeviceName"),
+      "otherDeviceConnectedBody" + (deviceName ? "" : ".noDeviceName"),
       [deviceName]
     );
 
@@ -3660,10 +3691,8 @@ BrowserGlue.prototype = {
     let bundle = Services.strings.createBundle(
       "chrome://browser/locale/accounts.properties"
     );
-    let title = bundle.GetStringFromName(
-      "deviceDisconnectedNotification.title"
-    );
-    let body = bundle.GetStringFromName("deviceDisconnectedNotification.body");
+    let title = bundle.GetStringFromName("deviceConnDisconnTitle");
+    let body = bundle.GetStringFromName("thisDeviceDisconnectedBody");
 
     let clickCallback = (subject, topic, data) => {
       if (topic != "alertclickcallback") {
@@ -4094,16 +4123,10 @@ ContentPermissionPrompt.prototype = {
     );
     let scheme = 0;
     try {
-      // URI is null for system principals.
-      if (request.principal.URI) {
-        switch (request.principal.URI.scheme) {
-          case "http":
-            scheme = 1;
-            break;
-          case "https":
-            scheme = 2;
-            break;
-        }
+      if (request.principal.schemeIs("http")) {
+        scheme = 1;
+      } else if (request.principal.schemeIs("https")) {
+        scheme = 2;
       }
     } catch (ex) {
       // If the request principal is not available at this point,

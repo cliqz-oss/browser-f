@@ -119,6 +119,7 @@ jobs:
                 - builds/taskcluster_base_windows.py
                 - builds/taskcluster_base_win64.py
                 - builds/taskcluster_sub_win64/searchfox_debug.py
+            tooltool-downloads: internal
         fetches:
             toolchain:
                 - win64-clang-cl

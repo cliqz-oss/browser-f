@@ -153,7 +153,7 @@ menu-view-full-screen =
     .label = Vollbild
     .accesskey = V
 
-##
+
 
 menu-view-show-all-tabs =
     .label = Alle Tabs anzeigen
@@ -212,11 +212,20 @@ menu-tools-addons =
 menu-tools-sync-sign-in =
     .label = Bei { -sync-brand-short-name } anmelden…
     .accesskey = Y
+menu-tools-fxa-sign-in =
+    .label = Bei { -brand-product-name } anmelden…
+    .accesskey = B
+menu-tools-turn-on-sync =
+    .label = { -sync-brand-short-name } aktivieren…
+    .accesskey = n
 menu-tools-sync-now =
     .label = Jetzt synchronisieren
     .accesskey = J
 menu-tools-sync-re-auth =
     .label = Wieder mit { -sync-brand-short-name } verbinden…
+    .accesskey = v
+menu-tools-fxa-re-auth =
+    .label = Wieder mit { -brand-product-name } verbinden…
     .accesskey = v
 menu-tools-web-developer =
     .label = Web-Entwickler
@@ -276,8 +285,10 @@ menu-help-safe-mode-with-addons =
     .label = Mit aktivierten Add-ons neu starten
     .accesskey = A
 # Label of the Help menu item. Either this or
-# safeb.palm.notdeceptive.label from
-# phishing-afterload-warning-message.dtd is shown.
+# menu-help-notdeceptive is shown.
 menu-help-report-deceptive-site =
     .label = Betrügerische Website melden…
     .accesskey = m
+menu-help-not-deceptive =
+    .label = Dies ist keine betrügerische Website…
+    .accesskey = g
