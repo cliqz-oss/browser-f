@@ -1227,7 +1227,7 @@ var gViewController = {
         recordLinkTelemetry("about:debugging");
         if ("switchToTabHavingURI" in mainWindow) {
           mainWindow.switchToTabHavingURI(
-            `about:debugging#/runtime/this-firefox`,
+            `about:debugging#/runtime/this-cliqz`,
             true,
             {
               triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal(),
