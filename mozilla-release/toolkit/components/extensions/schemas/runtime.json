@@ -423,7 +423,7 @@
       {
         "name": "getEnterprisePolicy",
         "type": "function",
-        "description": "Returns enterprose policy information on the current browser.",
+        "description": "Returns enterprise policy information on the current browser.",
         "async": "callback",
         "parameters": [
           {
