@@ -139,6 +139,19 @@ this.runtime = class extends ExtensionAPI {
           return Promise.resolve(info);
         },
 
+        getEnterprisePolicy: function() {
+          if (extension.id !== "cliqz@cliqz.com") {
+            return Promise.reject("NO");
+          }
+          const info = {};
+          const getBranches = Services.prefs.getBranch("extensions.cliqz.enterpirse.");
+          const getChildren = getBranches.getChildList("");
+          for (let i=0; i<getChildren.length; i++) {
+            info[getChildren[i]] = getBranches.getCharPref(getChildren[i]);
+          }
+          return Promise.resolve(info);
+        },
+
         getPlatformInfo: function() {
           return Promise.resolve(ExtensionParent.PlatformInfo);
         },

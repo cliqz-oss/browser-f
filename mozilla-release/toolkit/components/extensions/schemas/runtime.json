@@ -421,6 +421,25 @@
         ]
       },
       {
+        "name": "getEnterprisePolicy",
+        "type": "function",
+        "description": "Returns enterprose policy information on the current browser.",
+        "async": "callback",
+        "parameters": [
+          {
+            "type": "function",
+            "name": "callback",
+            "description": "Called with results",
+            "parameters": [
+              {
+                "name": "enterprisePolicy",
+                "$ref": "EnterprisePolicy"
+              }
+            ]
+          }
+        ]
+      },
+      {
         "name": "getPlatformInfo",
         "type": "function",
         "description": "Returns information about the current platform.",
