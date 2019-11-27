@@ -436,9 +436,12 @@ var gMainPane = {
     setEventListener("ctrlTabRecentlyUsedOrder", "command", function() {
       Services.prefs.clearUserPref("browser.ctrlTab.migrated");
     });
+#if 0
+    // CLIQZ-SPECIAL: DB-2343, see comment in main.inc.xul about hiding language switcher
     setEventListener("manageBrowserLanguagesButton", "command", function() {
       gMainPane.showBrowserLanguages({ search: false });
     });
+#endif
     if (AppConstants.MOZ_UPDATER) {
       // These elements are only compiled in when the updater is enabled
       setEventListener("checkForUpdatesButton", "command", function() {
