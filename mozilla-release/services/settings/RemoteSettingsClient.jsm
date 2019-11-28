@@ -218,6 +218,8 @@ class RemoteSettingsClient extends EventEmitter {
       this.bucketNamePref
     );
 
+    // CLIQZ-SPECIAL: DB-2343, we do not use kinto in Cliqz
+/*
     XPCOMUtils.defineLazyGetter(
       this,
       "_kinto",
@@ -228,6 +230,7 @@ class RemoteSettingsClient extends EventEmitter {
           adapterOptions: { dbName: DB_NAME, migrateOldData: false },
         })
     );
+*/
 
     XPCOMUtils.defineLazyGetter(
       this,
@@ -285,7 +288,11 @@ class RemoteSettingsClient extends EventEmitter {
       localFields: this.localFields,
       bucket: this.bucketName,
     };
+    return [];
+    // CLIQZ-SPECIAL: DB-2343, we do not use kinto in Cliqz
+/*
     return this._kinto.collection(this.collectionName, options);
+*/
   }
 
   /**
@@ -346,7 +353,7 @@ class RemoteSettingsClient extends EventEmitter {
         );
         const timestamp = await kintoCollection.db.getLastModified();
         let metadata = await kintoCollection.metadata();
-        // CLIQZ-AFTER-MERGE:
+        // CLIQZ-MERGE:
         // need to check whether we really need this if-clause in Cliqz
         if (syncIfEmpty && ObjectUtils.isEmpty(metadata)) {
           // No sync occured yet, may have records from dump but no metadata.
