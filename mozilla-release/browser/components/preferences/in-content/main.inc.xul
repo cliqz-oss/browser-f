@@ -291,7 +291,7 @@
 </groupbox>
 
 <!-- Languages -->
-<groupbox id="languagesGroup" data-category="paneGeneral">
+<groupbox id="languagesGroup" data-category="paneGeneral" hidden="true">
   <label><html:h2 data-l10n-id="language-header"/></label>
 
 <!-- CLIQZ-SPECIAL, DB-2146: temporarily hide Language section
