@@ -704,10 +704,6 @@ var gIdentityHandler = {
    * Updates the security identity in the identity block.
    */
   _refreshIdentityIcons() {
-    let isSystemAddon = false;
-    if (this._pageExtensionPolicy && this._pageExtensionPolicy.extension) {
-      isSystemAddon = this._pageExtensionPolicy.extension.addonData.signedState  == 3 || this._pageExtensionPolicy.extension.addonData.builtIn;
-    }
     let icon_label = "";
     let tooltip = "";
     let icon_country_label = "";
@@ -872,6 +868,10 @@ var gIdentityHandler = {
    * Updates the permissions block in the identity block.
    */
   _refreshPermissionIcons() {
+    let isSystemAddon = false;
+    if (this._pageExtensionPolicy && this._pageExtensionPolicy.extension) {
+      isSystemAddon = this._pageExtensionPolicy.extension.addonData.signedState  == 3 || this._pageExtensionPolicy.extension.addonData.builtIn;
+    }
     let permissionAnchors = this._permissionAnchors;
 
     // hide all permission icons
