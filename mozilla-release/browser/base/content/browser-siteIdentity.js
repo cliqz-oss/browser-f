@@ -937,12 +937,13 @@ var gIdentityHandler = {
     this._refreshIdentityIcons();
 
     this._refreshPermissionIcons();
-
+#if 0
     // Hide the shield icon if it is a chrome page.
     this._trackingProtectionIconContainer.classList.toggle(
       "chromeUI",
       this._isSecureInternalUI
     );
+#endif
   },
 
   /**
