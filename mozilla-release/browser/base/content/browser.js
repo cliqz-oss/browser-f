@@ -2519,6 +2519,19 @@ var gBrowserInit = {
         Ci.nsIBrowserHandler
       ).defaultArgs;
 
+      // CLIQZ-SPECIAL: DB-2345, this is how it works now.
+      // If show homepage at the browser start up is selected
+      // then defaultArgs will have a value of whatever is set to homepage.
+      // Otherwise defaultArgs equals "about:blank".
+      //
+      // In case of uri equals "about:blank" (a user opens the browser just by clicking on its'
+      // icon or in case of Windows OS click on "Open new tab" in the context menu, etc.)
+      // but at the same time defaultArgs does not (has other value than "about:blank") then
+      // it makes sense to load defaultArgs rather then showing empty page.
+      if (uri == "about:blank" && uri != defaultArgs) {
+        return defaultArgs;
+      }
+
       // If the given URI is different from the homepage, we want to load it.
       if (uri != defaultArgs) {
         if (uri instanceof Ci.nsIArray) {
