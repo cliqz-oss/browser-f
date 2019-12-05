@@ -218,8 +218,6 @@ class RemoteSettingsClient extends EventEmitter {
       this.bucketNamePref
     );
 
-    // CLIQZ-SPECIAL: DB-2343, we do not use kinto in Cliqz
-/*
     XPCOMUtils.defineLazyGetter(
       this,
       "_kinto",
@@ -230,7 +228,6 @@ class RemoteSettingsClient extends EventEmitter {
           adapterOptions: { dbName: DB_NAME, migrateOldData: false },
         })
     );
-*/
 
     XPCOMUtils.defineLazyGetter(
       this,
@@ -288,11 +285,7 @@ class RemoteSettingsClient extends EventEmitter {
       localFields: this.localFields,
       bucket: this.bucketName,
     };
-    return [];
-    // CLIQZ-SPECIAL: DB-2343, we do not use kinto in Cliqz
-/*
     return this._kinto.collection(this.collectionName, options);
-*/
   }
 
   /**

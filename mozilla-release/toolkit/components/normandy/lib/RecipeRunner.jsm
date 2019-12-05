@@ -549,15 +549,12 @@ var RecipeRunner = {
      * "normandy-recipes-capabilities" collection now.
      */
     async migration01RemoveOldRecipesCollection() {
-      // CLIQZ-SPECIAL: DB-2343, we do not use kinto in Cliqz
-/*
       const kintoCollection = new Kinto({
         bucket: "main",
         adapter: Kinto.adapters.IDB,
         adapterOptions: { dbName: "remote-settings" },
       }).collection("normandy-recipes");
       await kintoCollection.clear();
-*/
     },
   },
 };

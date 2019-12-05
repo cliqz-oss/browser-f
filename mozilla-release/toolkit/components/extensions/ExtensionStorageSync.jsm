@@ -364,8 +364,6 @@ global.KeyRingEncryptionRemoteTransformer = KeyRingEncryptionRemoteTransformer;
  * @returns {Promise<Object>}
  */
 async function storageSyncInit() {
-  // CLIQZ-SPECIAL: DB-2343, we do not use kinto in Cliqz
-/*
   // Memoize the result to share the connection.
 
   if (storageSyncInit.promise === undefined) {
@@ -390,7 +388,6 @@ async function storageSyncInit() {
       });
   }
   return storageSyncInit.promise;
-*/
 }
 
 // Kinto record IDs have two conditions:
