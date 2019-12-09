@@ -1652,7 +1652,7 @@ SearchEngine.prototype = {
           break;
       }
     }
-    if (!this.name || this._urls.length == 0) {
+    if (!this.name || !this._urls.length) {
       SearchUtils.fail("_parse: No name, or missing URL!", Cr.NS_ERROR_FAILURE);
     }
     if (!this.supportsResponseType(SearchUtils.URL_TYPE.SEARCH)) {

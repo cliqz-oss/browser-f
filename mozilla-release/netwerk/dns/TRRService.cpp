@@ -140,6 +140,11 @@ void TRRService::GetPrefBranch(nsIPrefBranch** result) {
 
 nsresult TRRService::ReadPrefs(const char* name) {
   MOZ_ASSERT(NS_IsMainThread(), "wrong thread");
+
+  // Whenever a pref change occurs that would cause us to clear the cache
+  // we set this to true then do it at the end of the method.
+  bool clearEntireCache = false;
+
   if (!name || !strcmp(name, TRR_PREF("mode"))) {
     // 0 - off, 1 - reserved, 2 - TRR first, 3 - TRR only, 4 - reserved,
     // 5 - explicit off
@@ -208,6 +213,7 @@ nsresult TRRService::ReadPrefs(const char* name) {
     if (!old.IsEmpty() && !mPrivateURI.Equals(old)) {
       mClearTRRBLStorage = true;
       LOG(("TRRService clearing blacklist because of change is uri service\n"));
+      clearEntireCache = true;
     }
   }
   if (!name || !strcmp(name, TRR_PREF("credentials"))) {
@@ -227,6 +233,7 @@ nsresult TRRService::ReadPrefs(const char* name) {
   if (!name || !strcmp(name, TRR_PREF("bootstrapAddress"))) {
     MutexAutoLock lock(mLock);
     Preferences::GetCString(TRR_PREF("bootstrapAddress"), mBootstrapAddr);
+    clearEntireCache = true;
   }
   if (!name || !strcmp(name, TRR_PREF("wait-for-portal"))) {
     // Wait for captive portal?
@@ -295,18 +302,29 @@ nsresult TRRService::ReadPrefs(const char* name) {
     }
   }
   if (!name || !strcmp(name, TRR_PREF("excluded-domains")) ||
+      !strcmp(name, TRR_PREF("builtin-excluded-domains")) ||
       !strcmp(name, kCaptivedetectCanonicalURL)) {
-    nsAutoCString excludedDomains;
-    Preferences::GetCString(TRR_PREF("excluded-domains"), excludedDomains);
-
     mExcludedDomains.Clear();
-    nsCCharSeparatedTokenizer tokenizer(
-        excludedDomains, ',', nsCCharSeparatedTokenizer::SEPARATOR_OPTIONAL);
-    while (tokenizer.hasMoreTokens()) {
-      nsAutoCString token(tokenizer.nextToken());
-      LOG(("TRRService::ReadPrefs excluded-domains host:[%s]\n", token.get()));
-      mExcludedDomains.PutEntry(token);
-    }
+
+    auto parseExcludedDomains = [this](const char* aPrefName) {
+      nsAutoCString excludedDomains;
+      Preferences::GetCString(aPrefName, excludedDomains);
+      if (excludedDomains.IsEmpty()) {
+        return;
+      }
+
+      nsCCharSeparatedTokenizer tokenizer(
+          excludedDomains, ',', nsCCharSeparatedTokenizer::SEPARATOR_OPTIONAL);
+      while (tokenizer.hasMoreTokens()) {
+        nsAutoCString token(tokenizer.nextToken());
+        LOG(("TRRService::ReadPrefs %s host:[%s]\n", aPrefName, token.get()));
+        mExcludedDomains.PutEntry(token);
+      }
+    };
+
+    parseExcludedDomains(TRR_PREF("excluded-domains"));
+    parseExcludedDomains(TRR_PREF("builtin-excluded-domains"));
+    clearEntireCache = true;
 
     nsAutoCString canonicalSiteURL;
     Preferences::GetCString(kCaptivedetectCanonicalURL, canonicalSiteURL);
@@ -317,9 +335,22 @@ nsresult TRRService::ReadPrefs(const char* name) {
     if (NS_SUCCEEDED(rv)) {
       nsAutoCString host;
       uri->GetHost(host);
-      LOG(("TRRService::ReadPrefs excluded-domains captive portal URL:[%s]\n",
-           host.get()));
+      LOG(("TRRService::ReadPrefs captive portal URL:[%s]\n", host.get()));
       mExcludedDomains.PutEntry(host);
+    }
+  }
+
+  // if name is null, then we're just now initializing. In that case we don't
+  // need to clear the cache.
+  if (name && clearEntireCache) {
+    bool tmp;
+    if (NS_SUCCEEDED(Preferences::GetBool(
+            TRR_PREF("clear-cache-on-pref-change"), &tmp)) &&
+        tmp) {
+      nsCOMPtr<nsIDNSService> dns = do_GetService(NS_DNSSERVICE_CONTRACTID);
+      if (dns) {
+        dns->ClearCache(true);
+      }
     }
   }
 

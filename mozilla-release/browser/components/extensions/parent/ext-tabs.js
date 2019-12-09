@@ -214,14 +214,6 @@ class TabsUpdateFilterEventManager extends EventManager {
         // Default is to listen for all events.
         needsModified = filter.properties.some(p => allAttrs.has(p));
         filter.properties = new Set(filter.properties);
-        // TODO Bug 1465520 remove warning when ready.
-        if (filter.properties.has("isarticle")) {
-          extension.logger.warn(
-            "The isarticle filter name is deprecated, use isArticle."
-          );
-          filter.properties.delete("isarticle");
-          filter.properties.add("isArticle");
-        }
       } else {
         filter.properties = allProperties;
       }
@@ -836,12 +828,8 @@ this.tabs = class extends ExtensionAPI {
             nativeTab.linkedBrowser.loadURI(url, options);
           }
 
-          if (updateProperties.active !== null) {
-            if (updateProperties.active) {
-              tabbrowser.selectedTab = nativeTab;
-            } else {
-              // Not sure what to do here? Which tab should we select?
-            }
+          if (updateProperties.active) {
+            tabbrowser.selectedTab = nativeTab;
           }
           if (updateProperties.highlighted !== null) {
             if (!gMultiSelectEnabled) {
@@ -1594,7 +1582,7 @@ this.tabs = class extends ExtensionAPI {
               }
             }
           }
-          if (hidden.length > 0) {
+          if (hidden.length) {
             let win = Services.wm.getMostRecentWindow("navigator:browser");
             tabHidePopup.open(win, extension.id);
           }
@@ -1618,7 +1606,7 @@ this.tabs = class extends ExtensionAPI {
 
           if (!Array.isArray(tabs)) {
             tabs = [tabs];
-          } else if (tabs.length == 0) {
+          } else if (!tabs.length) {
             throw new ExtensionError("No highlighted tab.");
           }
           window.gBrowser.selectedTabs = tabs.map(tabIndex => {

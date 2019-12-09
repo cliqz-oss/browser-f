@@ -768,7 +768,7 @@ if (Services.prefs.getBoolPref("identity.fxaccounts.enabled")) {
 
       attachFragment.appendChild(clientItem);
 
-      if (client.tabs.length == 0) {
+      if (!client.tabs.length) {
         let label = this._appendMessageLabel(
           "notabsforclientlabel",
           attachFragment

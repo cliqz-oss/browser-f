@@ -394,9 +394,9 @@ class Accessible : public nsISupports {
   virtual bool RemoveChild(Accessible* aChild);
 
   /**
-   * Reallocates the child withing its parent.
+   * Reallocates the child within its parent.
    */
-  void MoveChild(uint32_t aNewIndex, Accessible* aChild);
+  virtual void RelocateChild(uint32_t aNewIndex, Accessible* aChild);
 
   //////////////////////////////////////////////////////////////////////////////
   // Accessible tree traverse methods
@@ -1041,7 +1041,7 @@ class Accessible : public nsISupports {
     eKidsMutating = 1 << 6,      // subtree is being mutated
     eIgnoreDOMUIEvent = 1 << 7,  // don't process DOM UI events for a11y events
     eRelocated = 1 << 8,         // accessible was moved in tree
-    eNoKidsFromDOM = 1 << 9,    // accessible doesn't allow children from DOM
+    eNoKidsFromDOM = 1 << 9,     // accessible doesn't allow children from DOM
     eHasTextKids = 1 << 10,      // accessible have a text leaf in children
 
     eLastStateFlag = eHasTextKids
@@ -1074,6 +1074,13 @@ class Accessible : public nsISupports {
    * Returns the accessible name specified by ARIA.
    */
   void ARIAName(nsString& aName) const;
+
+  /**
+   * Returns the accessible name specified for this control using XUL
+   * <label control="id" ...>.
+   */
+  static void NameFromAssociatedXULLabel(DocAccessible* aDocument,
+                                         nsIContent* aElm, nsString& aName);
 
   /**
    * Return the name for XUL element.

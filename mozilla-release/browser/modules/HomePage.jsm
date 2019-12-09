@@ -90,7 +90,7 @@ let HomePage = {
    * homepage, but this is deemed acceptable, as we'll correct it once
    * initialised.
    */
-  async init() {
+  async delayedStartup() {
     /* CLIQZ-SPECIAL: we do not allow homepage change so no use of ignore list
     if (this._initializationPromise) {
       await this._initializationPromise;
@@ -214,7 +214,7 @@ let HomePage = {
    */
   async set(value) {
 /* CLIQZ-SPECIAL: we do not allow homepage change so no use of ignore list
-    await this.init();
+    await this.delayedStartup();
 
     if (await this.shouldIgnore(value)) {
       Cu.reportError(
@@ -271,7 +271,7 @@ let HomePage = {
    *   True if the url should be ignored.
    */
   async shouldIgnore(url) {
-    await this.init();
+    await this.delayedStartup();
 
     const lowerURL = url.toLowerCase();
     return this._ignoreList.some(code => lowerURL.includes(code.toLowerCase()));

@@ -577,7 +577,7 @@ var AddonRepository = {
     let ids = await getAddonsToCache(aIds);
 
     // If there are no add-ons to cache, act as if caching is disabled
-    if (ids.length == 0) {
+    if (!ids.length) {
       return [];
     }
 
@@ -608,7 +608,7 @@ var AddonRepository = {
     let addonsToCache = await getAddonsToCache(ids);
 
     // Completely remove cache if there are no add-ons to cache
-    if (addonsToCache.length == 0) {
+    if (!addonsToCache.length) {
       logger.debug("Clearing cache because 0 add-ons were requested");
       await this._clearCache();
       return;
@@ -673,7 +673,7 @@ var AddonRepository = {
       let authors = aEntry.authors.map(
         author => new AddonManagerPrivate.AddonAuthor(author.name, author.url)
       );
-      if (authors.length > 0) {
+      if (authors.length) {
         addon.creator = authors[0];
         addon.developers = authors.slice(1);
       }

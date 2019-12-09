@@ -246,7 +246,7 @@ this.chrome_settings_overrides = class extends ExtensionAPI {
 
     try {
       let engines = await Services.search.getEnginesByExtensionID(id);
-      if (engines.length > 0) {
+      if (engines.length) {
         await Services.search.removeWebExtensionEngine(id);
       }
     } catch (e) {
@@ -476,7 +476,7 @@ this.chrome_settings_overrides = class extends ExtensionAPI {
       !extension.addonData.builtIn
     ) {
       let engines = await Services.search.getEnginesByExtensionID(extension.id);
-      if (engines.length > 0) {
+      if (engines.length) {
         let firstEngine = engines[0];
         let firstEngineName = firstEngine.name;
         // There can be only one engine right now
@@ -491,7 +491,7 @@ this.chrome_settings_overrides = class extends ExtensionAPI {
     }
     try {
       let engines = await Services.search.addEnginesFromExtension(extension);
-      if (engines.length > 0) {
+      if (engines.length) {
         await ExtensionSettingsStore.initialize();
         await ExtensionSettingsStore.addSetting(
           extension.id,

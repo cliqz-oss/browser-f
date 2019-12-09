@@ -296,8 +296,6 @@ class BuildOptionParser(object):
         'api-16-gradle': 'builds/releng_sub_%s_configs/%s_api_16_gradle.py',
         'api-16-profile-generate': 'builds/releng_sub_%s_configs/%s_api_16_profile_generate.py',
         'api-16-profile-use': 'builds/releng_sub_%s_configs/%s_api_16_profile_use.py',
-        'api-16-without-google-play-services':
-            'builds/releng_sub_%s_configs/%s_api_16_without_google_play_services.py',
         'rusttests': 'builds/releng_sub_%s_configs/%s_rusttests.py',
         'rusttests-debug': 'builds/releng_sub_%s_configs/%s_rusttests_debug.py',
         'x86': 'builds/releng_sub_%s_configs/%s_x86.py',
@@ -497,11 +495,6 @@ BUILD_BASE_CONFIG_OPTIONS = [
         "type": "string",
         "dest": "branch",
         "help": "This sets the branch we will be building this for."}],
-    [['--enable-pgo'], {
-        "action": "store_true",
-        "dest": "pgo_build",
-        "default": False,
-        "help": "Sets the build to run in PGO mode"}],
     [['--enable-nightly'], {
         "action": "store_true",
         "dest": "nightly_build",
@@ -603,33 +596,6 @@ items from that key's value."
         self.info("Both --dump-config and --dump-config-hierarchy don't "
                   "actually run any actions.")
 
-    def _assert_cfg_valid_for_action(self, dependencies, action):
-        """ assert dependency keys are in config for given action.
-
-        Takes a list of dependencies and ensures that each have an
-        assoctiated key in the config. Displays error messages as
-        appropriate.
-
-        """
-        # TODO add type and value checking, not just keys
-        # TODO solution should adhere to: bug 699343
-        # TODO add this to BaseScript when the above is done
-        # for now, let's just use this as a way to save typing...
-        c = self.config
-        undetermined_keys = []
-        err_template = "The key '%s' could not be determined \
-and is needed for the action '%s'. Please add this to your config \
-or run without that action (ie: --no-{action})"
-        for dep in dependencies:
-            if dep not in c:
-                undetermined_keys.append(dep)
-        if undetermined_keys:
-            fatal_msgs = [err_template % (key, action)
-                          for key in undetermined_keys]
-            self.fatal("".join(fatal_msgs))
-        # otherwise:
-        return  # all good
-
     def _query_build_prop_from_app_ini(self, prop, app_ini_path=None):
         dirs = self.query_abs_dirs()
         print_conf_setting_path = os.path.join(dirs['abs_src_dir'],
@@ -708,9 +674,6 @@ or run without that action (ie: --no-{action})"
                 env["MOZ_UPDATE_CHANNEL"] = "nightly-%s" % (self.branch,)
             self.info("Update channel set to: {}".format(env["MOZ_UPDATE_CHANNEL"]))
 
-        if self.config.get('pgo_build') or self._compile_against_pgo():
-            env['MOZ_PGO'] = '1'
-
         return env
 
     def query_mach_build_env(self, multiLocale=None):
@@ -729,20 +692,6 @@ or run without that action (ie: --no-{action})"
                 mach_env['UPLOAD_PATH'] = os.path.join(mach_env['UPLOAD_PATH'],
                                                        'en-US')
         return mach_env
-
-    def _compile_against_pgo(self):
-        """determines whether a build should be run with pgo even if it is
-        not a classified as a 'pgo build'.
-
-        requirements:
-        1) must be a platform that can run against pgo
-        2) must be a nightly build
-        """
-        c = self.config
-        if self.stage_platform in c['pgo_platforms']:
-            if self.query_is_nightly():
-                return True
-        return False
 
     def _rm_old_package(self):
         """rm the old package."""
@@ -805,10 +754,6 @@ or run without that action (ie: --no-{action})"
         env = self.query_build_env()
         env.update(self.query_mach_build_env())
 
-        self._assert_cfg_valid_for_action(
-            ['tooltool_url'],
-            'build'
-        )
         c = self.config
         dirs = self.query_abs_dirs()
         toolchains = os.environ.get('MOZ_TOOLCHAINS')
@@ -831,8 +776,6 @@ or run without that action (ie: --no-{action})"
             cmd.extend([
                 '--tooltool-manifest',
                 os.path.join(dirs['abs_src_dir'], manifest_src),
-                '--tooltool-url',
-                c['tooltool_url'],
             ])
             auth_file = self._get_tooltool_auth_file()
             if auth_file:
@@ -1128,10 +1071,6 @@ or run without that action (ie: --no-{action})"
         # one-off configs for variants isn't conducive to this since derived
         # configs we need to be reset and we don't like requiring boilerplate
         # in derived configs.
-
-        # All PGO builds are shipped. This takes care of Linux and Windows.
-        if self.config.get('pgo_build'):
-            return True
 
         # Debug builds are never shipped.
         if self.config.get('debug_build'):

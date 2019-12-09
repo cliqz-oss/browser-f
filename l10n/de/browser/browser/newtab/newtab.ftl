@@ -45,8 +45,6 @@ newtab-topsites-save-button = Speichern
 newtab-topsites-preview-button = Vorschau
 newtab-topsites-add-button = Hinzufügen
 
-## Top Sites - Delete history confirmation dialog. 
-
 ## Top Sites - Delete history confirmation dialog.
 
 newtab-confirm-delete-history-p1 = Soll wirklich jede Instanz dieser Seite aus Ihrer Chronik gelöscht werden?
@@ -59,7 +57,6 @@ newtab-confirm-delete-history-p2 = Diese Aktion kann nicht rückgängig gemacht 
 newtab-menu-section-tooltip =
     .title = Menü öffnen
     .aria-label = Menü öffnen
-
 # This tooltip is for the context menu of Pocket cards or Topsites
 # Variables:
 #  $title (String): The label or hostname of the site. This is for screen readers when the context menu button is focused/active.
@@ -83,12 +80,27 @@ newtab-menu-delete-history = Aus Chronik löschen
 newtab-menu-save-to-pocket = Bei { -pocket-brand-name } speichern
 newtab-menu-delete-pocket = Aus { -pocket-brand-name } löschen
 newtab-menu-archive-pocket = In { -pocket-brand-name } archivieren
+newtab-menu-show-privacy-info = Unsere Sponsoren & Ihre Privatsphäre
+
+## Message displayed in a modal window to explain privacy and provide context for sponsored content.
+
+newtab-privacy-modal-button-done = Fertig
+newtab-privacy-modal-header = Ihre Privatsphäre ist wichtig.
+newtab-privacy-modal-paragraph =
+    Neben spannenden Geschichten zeigen wir Ihnen auch relevante,
+    geprüfte Inhalte von ausgewählten Sponsoren. Ihre 
+    Surf-Daten verlassen niemals Ihre { -brand-product-name }-Installation - wir sehen sie nicht und unsere
+    Sponsoren auch nicht.
+newtab-privacy-modal-link = Wie Datenschutz für die Tab-Startseite funktioniert
+
+
+
 # Bookmark is a noun in this case, "Remove bookmark".
 newtab-menu-remove-bookmark = Lesezeichen entfernen
 # Bookmark is a verb here.
 newtab-menu-bookmark = Lesezeichen
 
-## Context Menu - Downloaded Menu. "Download" in these cases is not a verb, 
+## Context Menu - Downloaded Menu. "Download" in these cases is not a verb,
 ## it is a noun. As in, "Copy the link that belongs to this downloaded item".
 
 newtab-menu-copy-download-link = Download-Link kopieren
@@ -116,9 +128,6 @@ newtab-label-removed-bookmark = Lesezeichen entfernt
 newtab-label-recommended = Beliebt
 newtab-label-saved = Bei { -pocket-brand-name } gespeichert
 newtab-label-download = Heruntergeladen
-
-## Section Menu: These strings are displayed in the section context menu and are 
-## meant as a call to action for the given section.
 
 ## Section Menu: These strings are displayed in the section context menu and are
 ## meant as a call to action for the given section.
@@ -156,7 +165,6 @@ newtab-empty-section-highlights = Surfen Sie los und wir zeigen Ihnen hier einig
 # Variables:
 #  $provider (String): Name of the content provider for this section, e.g "Pocket".
 newtab-empty-section-topstories = Jetzt kennen Sie die Neuigkeiten. Schauen Sie später wieder vorbei, um neue Informationen von { $provider } zu erhalten. Können Sie nicht warten? Wählen Sie ein beliebtes Thema und lesen Sie weitere interessante Geschichten aus dem Internet.
-
 
 ## Empty Section (Content Discovery Experience). These show when there are no more stories or when some stories fail to load.
 

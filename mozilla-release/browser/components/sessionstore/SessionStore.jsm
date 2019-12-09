@@ -2078,7 +2078,7 @@ var SessionStoreInternal = {
           }
         }
       }
-      if (openTabs.length == 0) {
+      if (!openTabs.length) {
         this._closedWindows.splice(ix, 1);
       } else if (openTabs.length != openTabCount) {
         // Adjust the window's title if we removed an open tab
@@ -2610,8 +2610,7 @@ var SessionStoreInternal = {
       );
     }
 
-    let wg = aBrowsingContext.embedderWindowGlobal;
-    return wg.changeFrameRemoteness(aBrowsingContext, aRemoteType, aSwitchId);
+    return aBrowsingContext.changeFrameRemoteness(aRemoteType, aSwitchId);
   },
 
   // Examine the channel response to see if we should change the process
@@ -2620,7 +2619,8 @@ var SessionStoreInternal = {
   // DB-2143: we need to remember about this function since
   // we let a prefuseHTTPResponseProcessSelection stay false by default (as in 1.26.x),
   // whilst FF 67.x set it to true intentionally.
-  onMayChangeProcess(aChannel) {
+  // performing the given load. aRequestor implements nsIProcessSwitchRequestor
+  onMayChangeProcess(aRequestor) {
     if (
       !E10SUtils.useHttpResponseProcessSelection() &&
       !E10SUtils.useCrossOriginOpenerPolicy()
@@ -2628,17 +2628,26 @@ var SessionStoreInternal = {
       return;
     }
 
-    if (!aChannel.isDocument || !aChannel.loadInfo) {
+    let switchRequestor;
+    try {
+      switchRequestor = aRequestor.QueryInterface(Ci.nsIProcessSwitchRequestor);
+    } catch (e) {
+      debug(`[process-switch]: object not compatible with process switching `);
+      return;
+    }
+
+    const channel = switchRequestor.channel;
+    if (!channel.isDocument || !channel.loadInfo) {
       return; // Not a document load.
     }
 
     // Check that the document has a corresponding BrowsingContext.
     let browsingContext;
-    let cp = aChannel.loadInfo.externalContentPolicyType;
+    let cp = channel.loadInfo.externalContentPolicyType;
     if (cp == Ci.nsIContentPolicy.TYPE_DOCUMENT) {
-      browsingContext = aChannel.loadInfo.browsingContext;
+      browsingContext = channel.loadInfo.browsingContext;
     } else {
-      browsingContext = aChannel.loadInfo.frameBrowsingContext;
+      browsingContext = channel.loadInfo.frameBrowsingContext;
     }
 
     if (!browsingContext) {
@@ -2702,7 +2711,7 @@ var SessionStoreInternal = {
 
     // Determine the process type the load should be performed in.
     let resultPrincipal = Services.scriptSecurityManager.getChannelResultPrincipal(
-      aChannel
+      channel
     );
     let remoteType = E10SUtils.getRemoteTypeForPrincipal(
       resultPrincipal,
@@ -2714,7 +2723,7 @@ var SessionStoreInternal = {
     if (
       currentRemoteType == remoteType &&
       (!E10SUtils.useCrossOriginOpenerPolicy() ||
-        !aChannel.hasCrossOriginOpenerPolicyMismatch())
+        !switchRequestor.hasCrossOriginOpenerPolicyMismatch())
     ) {
       debug(`[process-switch]: type (${remoteType}) is compatible - ignoring`);
       return;
@@ -2730,7 +2739,7 @@ var SessionStoreInternal = {
 
     const isCOOPSwitch =
       E10SUtils.useCrossOriginOpenerPolicy() &&
-      aChannel.hasCrossOriginOpenerPolicyMismatch();
+      switchRequestor.hasCrossOriginOpenerPolicyMismatch();
 
     // ------------------------------------------------------------------------
     // DANGER ZONE: Perform a process switch into the new process. This is
@@ -2740,11 +2749,11 @@ var SessionStoreInternal = {
     let tabPromise = this._doProcessSwitch(
       browsingContext,
       remoteType,
-      aChannel,
+      channel,
       identifier,
       isCOOPSwitch
     );
-    aChannel.switchProcessTo(tabPromise, identifier);
+    switchRequestor.switchProcessTo(tabPromise, identifier);
   },
 
   /* ........ nsISessionStore API .............. */
@@ -3835,7 +3844,7 @@ var SessionStoreInternal = {
     var hidden = WINDOW_HIDEABLE_FEATURES.filter(function(aItem) {
       return aWindow[aItem] && !aWindow[aItem].visible;
     });
-    if (hidden.length != 0) {
+    if (hidden.length) {
       winData.hidden = hidden.join(",");
     } else if (winData.hidden) {
       delete winData.hidden;
@@ -3926,14 +3935,14 @@ var SessionStoreInternal = {
       //        its own check for popups. c.f. bug 597619
       if (
         nonPopupCount == 0 &&
-        lastClosedWindowsCopy.length > 0 &&
+        !!lastClosedWindowsCopy.length &&
         RunState.isQuitting
       ) {
         // prepend the last non-popup browser window, so that if the user loads more tabs
         // at startup we don't accidentally add them to a popup window
         do {
           total.unshift(lastClosedWindowsCopy.shift());
-        } while (total[0].isPopup && lastClosedWindowsCopy.length > 0);
+        } while (total[0].isPopup && lastClosedWindowsCopy.length);
       }
     }
 
@@ -4119,7 +4128,7 @@ var SessionStoreInternal = {
       firstWindow &&
       !overwriteTabs &&
       winData.tabs.length == 1 &&
-      (!winData.tabs[0].entries || winData.tabs[0].entries.length == 0)
+      (!winData.tabs[0].entries || !winData.tabs[0].entries.length)
     ) {
       winData.tabs = [];
     }
@@ -5429,7 +5438,7 @@ var SessionStoreInternal = {
 
     // don't display the page when there's nothing to restore
     let winData = aState.windows || null;
-    if (!winData || winData.length == 0) {
+    if (!winData || !winData.length) {
       return false;
     }
 

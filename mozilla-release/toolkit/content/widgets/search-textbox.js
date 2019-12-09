@@ -131,9 +131,6 @@
       // Ensure the button state is up to date:
       this.searchButton = this.searchButton;
 
-      // Set is attribute for styling
-      this.setAttribute("is", "search-textbox");
-
       this.initializeAttributeInheritance();
     }
 
@@ -204,16 +201,6 @@
       return this.inputField.disabled;
     }
 
-    reset() {
-      this.value = this.defaultValue;
-      // XXX: Is this still needed ?
-      try {
-        this.editor.transactionManager.clear();
-        return true;
-      } catch (e) {}
-      return false;
-    }
-
     _fireCommand(me) {
       if (me._timer) {
         clearTimeout(me._timer);
@@ -251,7 +238,5 @@
     }
   }
 
-  customElements.define("search-textbox", MozSearchTextbox, {
-    extends: "textbox",
-  });
+  customElements.define("search-textbox", MozSearchTextbox);
 }

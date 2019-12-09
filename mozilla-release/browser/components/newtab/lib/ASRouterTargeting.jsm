@@ -2,9 +2,6 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-const { FilterExpressions } = ChromeUtils.import(
-  "resource://gre/modules/components-utils/FilterExpressions.jsm"
-);
 const SEARCH_REGION_PREF = "browser.search.region";
 const FXA_ENABLED_PREF = "identity.fxaccounts.enabled";
 
@@ -13,52 +10,19 @@ const { XPCOMUtils } = ChromeUtils.import(
   "resource://gre/modules/XPCOMUtils.jsm"
 );
 
-ChromeUtils.defineModuleGetter(
-  this,
-  "ASRouterPreferences",
-  "resource://activity-stream/lib/ASRouterPreferences.jsm"
-);
-ChromeUtils.defineModuleGetter(
-  this,
-  "AddonManager",
-  "resource://gre/modules/AddonManager.jsm"
-);
-ChromeUtils.defineModuleGetter(
-  this,
-  "NewTabUtils",
-  "resource://gre/modules/NewTabUtils.jsm"
-);
-ChromeUtils.defineModuleGetter(
-  this,
-  "ProfileAge",
-  "resource://gre/modules/ProfileAge.jsm"
-);
-ChromeUtils.defineModuleGetter(
-  this,
-  "ShellService",
-  "resource:///modules/ShellService.jsm"
-);
-ChromeUtils.defineModuleGetter(
-  this,
-  "TelemetryEnvironment",
-  "resource://gre/modules/TelemetryEnvironment.jsm"
-);
-ChromeUtils.defineModuleGetter(
-  this,
-  "AppConstants",
-  "resource://gre/modules/AppConstants.jsm"
-);
-ChromeUtils.defineModuleGetter(
-  this,
-  "AttributionCode",
-  "resource:///modules/AttributionCode.jsm"
-);
-XPCOMUtils.defineLazyServiceGetter(
-  this,
-  "UpdateManager",
-  "@mozilla.org/updates/update-manager;1",
-  "nsIUpdateManager"
-);
+XPCOMUtils.defineLazyModuleGetters(this, {
+  ASRouterPreferences: "resource://activity-stream/lib/ASRouterPreferences.jsm",
+  AddonManager: "resource://gre/modules/AddonManager.jsm",
+  NewTabUtils: "resource://gre/modules/NewTabUtils.jsm",
+  ProfileAge: "resource://gre/modules/ProfileAge.jsm",
+  ShellService: "resource:///modules/ShellService.jsm",
+  TelemetryEnvironment: "resource://gre/modules/TelemetryEnvironment.jsm",
+  AppConstants: "resource://gre/modules/AppConstants.jsm",
+  AttributionCode: "resource:///modules/AttributionCode.jsm",
+  FilterExpressions:
+    "resource://gre/modules/components-utils/FilterExpressions.jsm",
+  fxAccounts: "resource://gre/modules/FxAccounts.jsm",
+});
 
 XPCOMUtils.defineLazyPreferenceGetter(
   this,
@@ -155,6 +119,9 @@ const FRECENT_SITES_IGNORE_BLOCKED = false;
 const FRECENT_SITES_NUM_ITEMS = 25;
 const FRECENT_SITES_MIN_FRECENCY = 100;
 
+const CACHE_EXPIRATION = 60 * 1000;
+const jexlEvaluationCache = new Map();
+
 /**
  * CachedTargetingGetter
  * @param property {string} Name of the method called on ActivityStreamProvider
@@ -206,7 +173,7 @@ function CheckBrowserNeedsUpdate(
         const now = Date.now();
         const updateServiceListener = {
           onCheckComplete(request, updates) {
-            checker._value = updates.length > 0;
+            checker._value = !!updates.length;
             resolve(checker._value);
           },
           onError(request, update) {
@@ -248,6 +215,7 @@ const QueryCache = {
     }),
     TotalBookmarksCount: new CachedTargetingGetter("getTotalBookmarksCount"),
     CheckBrowserNeedsUpdate: new CheckBrowserNeedsUpdate(),
+    RecentBookmarks: new CachedTargetingGetter("getRecentBookmarks"),
   },
 };
 
@@ -433,6 +401,9 @@ const TargetingGetters = {
       }))
     );
   },
+  get recentBookmarks() {
+    return QueryCache.queries.RecentBookmarks.get();
+  },
   get pinnedSites() {
     return NewTabUtils.pinnedLinks.links.map(site =>
       site
@@ -480,16 +451,6 @@ const TargetingGetters = {
   get isWhatsNewPanelEnabled() {
     return isWhatsNewPanelEnabled;
   },
-  get earliestFirefoxVersion() {
-    if (UpdateManager.updateCount) {
-      const earliestFirefoxVersion = UpdateManager.getUpdateAt(
-        UpdateManager.updateCount - 1
-      ).previousAppVersion;
-      return parseInt(earliestFirefoxVersion.match(/\d+/), 10);
-    }
-
-    return null;
-  },
   get isFxABadgeEnabled() {
     return isFxABadgeEnabled;
   },
@@ -502,6 +463,12 @@ const TargetingGetters = {
   },
   get totalBlockedCount() {
     return TrackingDBService.sumAllEvents();
+  },
+  get attachedFxAOAuthClients() {
+    return this.usesFirefoxSync ? fxAccounts.listAttachedOAuthClients() : [];
+  },
+  get platformName() {
+    return AppConstants.platform;
   },
 };
 
@@ -560,12 +527,35 @@ this.ASRouterTargeting = {
 
     return (
       (candidateMessageTrigger.params &&
+        trigger.param.host &&
         candidateMessageTrigger.params.includes(trigger.param.host)) ||
+      (candidateMessageTrigger.params &&
+        trigger.param.type &&
+        candidateMessageTrigger.params.includes(trigger.param.type)) ||
       (candidateMessageTrigger.patterns &&
+        trigger.param.url &&
         new MatchPatternSet(candidateMessageTrigger.patterns).matches(
           trigger.param.url
         ))
     );
+  },
+
+  /**
+   * getCachedEvaluation - Return a cached jexl evaluation if available
+   *
+   * @param {string} targeting JEXL expression to lookup
+   * @returns {obj|null} Object with value result or null if not available
+   */
+  getCachedEvaluation(targeting) {
+    if (jexlEvaluationCache.has(targeting)) {
+      const { timestamp, value } = jexlEvaluationCache.get(targeting);
+      if (Date.now() - timestamp <= CACHE_EXPIRATION) {
+        return { value };
+      }
+      jexlEvaluationCache.delete(targeting);
+    }
+
+    return null;
   },
 
   /**
@@ -574,16 +564,29 @@ this.ASRouterTargeting = {
    * @param {*} message An AS router message
    * @param {obj} context A FilterExpression context
    * @param {func} onError A function to handle errors (takes two params; error, message)
+   * @param {boolean} shouldCache Should the JEXL evaluations be cached and reused.
    * @returns
    */
-  async checkMessageTargeting(message, context, onError) {
+  async checkMessageTargeting(message, context, onError, shouldCache) {
     // If no targeting is specified,
     if (!message.targeting) {
       return true;
     }
     let result;
     try {
+      if (shouldCache) {
+        result = this.getCachedEvaluation(message.targeting);
+        if (result) {
+          return result.value;
+        }
+      }
       result = await this.isMatch(message.targeting, context);
+      if (shouldCache) {
+        jexlEvaluationCache.set(message.targeting, {
+          timestamp: Date.now(),
+          value: result,
+        });
+      }
     } catch (error) {
       Cu.reportError(error);
       if (onError) {
@@ -608,7 +611,7 @@ this.ASRouterTargeting = {
     return this.combineContexts(context, triggerContext);
   },
 
-  _isMessageMatch(message, trigger, context, onError) {
+  _isMessageMatch(message, trigger, context, onError, shouldCache = false) {
     return (
       message &&
       (trigger
@@ -616,7 +619,7 @@ this.ASRouterTargeting = {
         : !message.trigger) &&
       // If a trigger expression was passed to this function, the message should match it.
       // Otherwise, we should choose a message with no trigger property (i.e. a message that can show up at any time)
-      this.checkMessageTargeting(message, context, onError)
+      this.checkMessageTargeting(message, context, onError, shouldCache)
     );
   },
 
@@ -628,15 +631,28 @@ this.ASRouterTargeting = {
    * @param {trigger} string A trigger expression if a message for that trigger is desired
    * @param {obj|null} context A FilterExpression context. Defaults to TargetingGetters above.
    * @param {func} onError A function to handle errors (takes two params; error, message)
+   * @param {boolean} shouldCache Should the JEXL evaluations be cached and reused.
    * @returns {obj} an AS router message
    */
-  async findMatchingMessage({ messages, trigger, context, onError }) {
+  async findMatchingMessage({
+    messages,
+    trigger,
+    context,
+    onError,
+    shouldCache = false,
+  }) {
     const sortedMessages = this._getSortedMessages(messages);
     const combinedContext = this._getCombinedContext(trigger, context);
 
     for (const candidate of sortedMessages) {
       if (
-        await this._isMessageMatch(candidate, trigger, combinedContext, onError)
+        await this._isMessageMatch(
+          candidate,
+          trigger,
+          combinedContext,
+          onError,
+          shouldCache
+        )
       ) {
         return candidate;
       }

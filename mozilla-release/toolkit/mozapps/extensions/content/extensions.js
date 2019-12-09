@@ -172,11 +172,15 @@ function initialize(event) {
   helpButton.setAttribute("href", helpUrl);
   helpButton.addEventListener("click", () => recordLinkTelemetry("support"));
 
-  document.getElementById("preferencesButton").addEventListener("click", () => {
+  document.getElementById("preferencesButton").addEventListener("click", e => {
+    if (e.button >= 2) {
+      return;
+    }
     let mainWindow = window.windowRoot.ownerGlobal;
     recordLinkTelemetry("about:preferences");
     if ("switchToTabHavingURI" in mainWindow) {
       mainWindow.switchToTabHavingURI("about:preferences", true, {
+        ignoreFragment: "whenComparing",
         triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal(),
       });
     }
@@ -219,7 +223,7 @@ function initialize(event) {
   // Allow passing in a view through the window arguments
   if (
     "arguments" in window &&
-    window.arguments.length > 0 &&
+    !!window.arguments.length &&
     window.arguments[0] !== null &&
     "view" in window.arguments[0]
   ) {
@@ -704,8 +708,7 @@ var gViewController = {
     this.headeredViewsDeck = document.getElementById("headered-views-content");
     this.backButton = document.getElementById("go-back");
 
-    this.viewObjects.shortcuts = gShortcutsView;
-
+    this.viewObjects.shortcuts = htmlView("shortcuts");
     this.viewObjects.list = htmlView("list");
     this.viewObjects.detail = htmlView("detail");
     this.viewObjects.updates = htmlView("updates");
@@ -1520,7 +1523,7 @@ var gCategories = {
 
       gPendingInitializations++;
       getAddonsAndInstalls(aType.id, (aAddonsList, aInstallsList) => {
-        var hidden = aAddonsList.length == 0 && aInstallsList.length == 0;
+        var hidden = !aAddonsList.length && !aInstallsList.length;
         var item = this.get(aViewId);
 
         // Don't load view that is becoming hidden
@@ -1531,7 +1534,7 @@ var gCategories = {
         item.hidden = hidden;
         Services.prefs.setBoolPref(prefName, hidden);
 
-        if (aAddonsList.length > 0 || aInstallsList.length > 0) {
+        if (aAddonsList.length || aInstallsList.length) {
           notifyInitialized();
           return;
         }
@@ -1640,7 +1643,7 @@ var gHeader = {
 
     this._search.addEventListener("command", function(aEvent) {
       var query = aEvent.target.value;
-      if (query.length == 0) {
+      if (!query.length) {
         return;
       }
 
@@ -2135,38 +2138,6 @@ var gUpdatesView = {
   },
 };
 
-var gShortcutsView = {
-  node: null,
-  loaded: null,
-  isRoot: false,
-
-  initialize() {
-    this.node = document.getElementById("shortcuts-view");
-    this.node.loadURI("chrome://mozapps/content/extensions/shortcuts.html", {
-      triggeringPrincipal: Services.scriptSecurityManager.getSystemPrincipal(),
-    });
-    // Store a Promise for when the contentWindow will exist.
-    this.loaded = new Promise(resolve =>
-      this.node.addEventListener("load", resolve, { once: true })
-    );
-  },
-
-  async show() {
-    // Ensure the Extensions category is selected in case of refresh/restart.
-    gCategories.select("addons://list/extension");
-
-    await this.loaded;
-    await this.node.contentWindow.render();
-    gViewController.notifyViewChanged();
-  },
-
-  hide() {},
-
-  getSelectedAddon() {
-    return null;
-  },
-};
-
 var gDragDrop = {
   onDragOver(aEvent) {
     if (!XPINSTALL_ENABLED) {
@@ -2285,11 +2256,12 @@ function getHtmlBrowser() {
   return htmlBrowser;
 }
 
+let leafViewTypes = ["detail", "shortcuts"];
 function htmlView(type) {
   return {
     _browser: null,
     node: null,
-    isRoot: type != "detail",
+    isRoot: !leafViewTypes.includes(type),
 
     initialize() {
       this._browser = getHtmlBrowser();

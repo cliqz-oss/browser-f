@@ -32,11 +32,13 @@
   transform: scaleX(-1);
 }
 
-#defaultEngine {
+#defaultEngine,
+#defaultPrivateEngine {
  margin-inline-start: 0;
 }
 
-#defaultEngine > .menulist-label-box > .menulist-icon {
+#defaultEngine > .menulist-label-box > .menulist-icon,
+#defaultPrivateEngine > .menulist-label-box > .menulist-icon {
   /* Preferences -> Search engine list
    * Cliqz browser uses an svg icon.
    * xul:image does not display it if a width value
