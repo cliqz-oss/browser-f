@@ -1618,7 +1618,7 @@ pref("browser.ping-centre.production.endpoint", "");
 pref("media.gmp-provider.enabled", true);
 
 // Enable blocking access to storage from tracking resources by default.
-pref("network.cookie.cookieBehavior", 3 /* BEHAVIOR_REJECT_UNVISITED */);
+pref("network.cookie.cookieBehavior", 3 /* BEHAVIOR_LIMIT_FOREIGN */);
 #ifdef EARLY_BETA_OR_EARLIER
   // Enable fingerprinting blocking by default only in nightly and early beta.
   pref("privacy.trackingprotection.fingerprinting.enabled", true);
