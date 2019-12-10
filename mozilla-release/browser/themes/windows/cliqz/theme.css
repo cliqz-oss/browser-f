@@ -460,3 +460,14 @@ toolbar .toolbarbutton-1 > .toolbarbutton-icon {
 #main-window.cliqz-purple #new-tab-button:hover {
   --toolbarbutton-icon-fill-opacity: 1;
 }
+
+@media (-moz-os-version: windows-win7) {
+  /* CLIQZ-SPECIAL: DB-2281, light-theme */
+  :root[lwthemetextcolor="dark"] #navigator-toolbox #toolbar-menubar:-moz-lwtheme {
+    background-color: inherit;
+  }
+  :root[lwthemetextcolor="bright"] #navigator-toolbox #toolbar-menubar:-moz-lwtheme {
+    background-color: #000;
+    color: #fff;
+  }
+}
