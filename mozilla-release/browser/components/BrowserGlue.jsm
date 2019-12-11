@@ -32,6 +32,18 @@ XPCOMUtils.defineLazyServiceGetter(
 
 const PREF_PDFJS_ENABLED_CACHE_STATE = "pdfjs.enabledCache.state";
 
+// CLIQZ-SPECIAL: DB-2352
+// Temporarily deactivate BEHAVIOR_REJECT_TRACKER falling back to BEHAVIOR_LIMIT_FOREIGN in case of
+// the former was initially set.
+const cliqz_cookieBehaviorDidUpdate = function() {
+  const cookieBehaviorDefault = Ci.nsICookieService.BEHAVIOR_LIMIT_FOREIGN;
+
+  let cookieBehavior = Services.prefs.getIntPref('network.cookie.cookieBehavior', cookieBehaviorDefault);
+  if (cookieBehavior == Ci.nsICookieService.BEHAVIOR_REJECT_TRACKER) {
+    Services.prefs.setIntPref('network.cookie.cookieBehavior', cookieBehaviorDefault);
+  }
+}
+
 let ACTORS = {
   BrowserTab: {
     parent: {
@@ -1726,6 +1738,10 @@ BrowserGlue.prototype = {
   },
 
   _matchCBCategory() {
+    // CLIQZ-SPECIAL: DB-2352, check to make sure a user has not
+    // selected Ci.nsICookieService.BEHAVIOR_REJECT_TRACKER
+    cliqz_cookieBehaviorDidUpdate();
+
     ContentBlockingCategoriesPrefs.matchCBCategory();
   },
 
