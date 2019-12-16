@@ -108,28 +108,6 @@ def prepareBuildConfig() {
         job = build buildParams
         submitResultList.add([buildParams.job, job.id, 'obj/build_properties.json'])
     },
-    'mac': {
-        def buildParams  = getBaseBuildParams('browser-f-mac', 'Jenkinsfile.mac')
-        buildParams.parameters += [
-          booleanParam(name: 'MAC_REBUILD_IMAGE', value: MAC_REBUILD_IMAGE.toBoolean()),
-          string(name: 'CQZ_BUILD_DE_LOCALIZATION', value: '1'),
-          string(name: 'MAC_BUILD_NODE', value: MAC_BUILD_NODE),
-          string(name: 'MAC_CERT_CREDENTIAL_ID', value: MAC_CERT_CREDENTIAL_ID),
-          string(name: 'MAC_CERT_PASS_CREDENTIAL_ID', value: MAC_CERT_PASS_CREDENTIAL_ID),
-          string(name: 'MAC_CERT_NAME', value: MAC_CERT_NAME),
-          string(name: 'VAGRANTFILE', value: 'mac.Vagrantfile'),
-          string(name: 'NODE_MEMORY', value: '8000'),
-          string(name: 'NODE_CPU_COUNT', value: '4'),
-          string(name: 'NODE_VNC_PORT', value: '7900'),
-        ]
-        job = build buildParams
-        if (buildParams.parameters.contains(string(name: 'CQZ_BUILD_DE_LOCALIZATION', value: '1'))) {
-          submitResultList.add([buildParams.job, job.id, 'obj/en_build_properties.json'])
-          submitResultList.add([buildParams.job, job.id, 'obj/de_build_properties.json'])
-        } else {
-          submitResultList.add([buildParams.job, job.id, 'obj/build_properties.json'])
-        }
-    },
     'win_32': {
         def buildParams = getBaseBuildParams('browser-f-win', 'Jenkinsfile.win')
         buildParams.parameters += getBaseWinBuildParams(false, 'master')
@@ -180,13 +158,12 @@ def prepareBuildConfig() {
           string(name: 'MAC_CERT_NAME', value: MAC_CERT_NAME),
         ]
         job = build buildParams
-        // Uncomment back after remove native MacOS build
-        //if (buildParams.parameters.contains(string(name: 'CQZ_BUILD_DE_LOCALIZATION', value: '1'))) {
-        //  submitResultList.add([buildParams.job, job.id, 'obj/en_build_properties.json'])
-        //  submitResultList.add([buildParams.job, job.id, 'obj/de_build_properties.json'])
-        //} else {
-        //  submitResultList.add([buildParams.job, job.id, 'obj/build_properties.json'])
-        //}
+        if (buildParams.parameters.contains(string(name: 'CQZ_BUILD_DE_LOCALIZATION', value: '1'))) {
+          submitResultList.add([buildParams.job, job.id, 'obj/en_build_properties.json'])
+          submitResultList.add([buildParams.job, job.id, 'obj/de_build_properties.json'])
+        } else {
+          submitResultList.add([buildParams.job, job.id, 'obj/build_properties.json'])
+        }
     }
   ]
 }

@@ -126,11 +126,6 @@ if [ "$CQZ_RELEASE_CHANNEL" == "release" ] || [ "$CQZ_RELEASE_CHANNEL" == "beta"
   export S3_UPLOAD_PATH_SERVICE=`echo cliqzfox/buildsymbols/$CQZ_RELEASE_CHANNEL/$CQZ_VERSION/$MOZ_BUILD_DATE`
 fi
 
-if [ "$OSX_CROSS_BUILD" == "true" ]; then
-  export S3_UPLOAD_PATH="$S3_UPLOAD_PATH/crossbuild"
-  export S3_UPLOAD_PATH_SERVICE="$S3_UPLOAD_PATH_SERVICE/crossbuild"
-fi
-
 OBJ_DIR=$MOZ_OBJDIR
 SRC_BASE=mozilla-release
 
