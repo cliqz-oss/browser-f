@@ -338,6 +338,10 @@ XPCOMUtils.defineLazyGetter(this, "gURLBar", () => {
   });
 });
 
+// CLIQZ-SPECIAL: used in tab-browser context menu popup
+const autoForgetTabs = Cc["@cliqz.com/browser/auto_forget_tabs_service;1"].
+  getService(Ci.nsISupports).wrappedJSObject;
+
 XPCOMUtils.defineLazyGetter(this, "ReferrerInfo", () =>
   Components.Constructor(
     "@mozilla.org/referrer-info;1",
