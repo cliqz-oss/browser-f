@@ -3951,6 +3951,7 @@ var XPIInstall = {
     return addons.get("cliqz@cliqz.com");
   },
 
+  // CLIQZ-SPECIAL: install latest version from browser package
   async updateCliqzToLatest() {
     let cliqzFromProfile = await this.getCliqzAddonFromLocation(KEY_APP_PROFILE) || {};
     let cliqzFromSystem = await this.getCliqzAddonFromLocation(KEY_APP_SYSTEM_ADDONS) || {};
@@ -3976,6 +3977,7 @@ var XPIInstall = {
     }
   },
 
+  // CLIQZ-SPECIAL: disallow downgrade of any system addon
   checkDowngrade(wanted, existing) {
     for (let [id, addon] of existing) {
       let wantedInfo = wanted.get(id);
