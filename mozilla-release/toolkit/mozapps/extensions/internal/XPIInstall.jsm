@@ -4041,7 +4041,22 @@ var XPIInstall = {
         if (!wantedInfo) {
           return false;
         }
-        if (wantedInfo.spec.version < addon.version) {
+
+        if (wantedInfo.spec.version == addon.version) continue;
+
+        const newVersion = wantedInfo.spec.version.split('.');
+        const oldVersion = addon.version.split('.');
+        let shouldUpdate = false;
+        for (let i=0; i < newVersion.length; i++) {
+          if (~~newVersion[i] <= ~~oldVersion[i]) {
+            continue;
+          } else {
+            shouldUpdate = true;
+            break;
+          }
+        }
+
+        if (!shouldUpdate) {
           console.error('Rejecting add-on set: downgrade not allowed.')
           return true;
         }
