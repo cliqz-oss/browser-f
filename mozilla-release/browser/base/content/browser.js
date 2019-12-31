@@ -8793,7 +8793,8 @@ function checkEmptyPageOrigin(
     ) {
       return true;
     }
-    return contentPrincipal.URI.equals(uri);
+    // CLIQZ-SPECIAL: DB-2359, compare two uris ignoring their hash parameters.
+    return contentPrincipal.URI.equalsExceptRef(uri);
   }
   // ... so for those that don't have them, enforce that the page has the
   // system principal (this matches e.g. on about:newtab).
