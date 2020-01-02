@@ -109,6 +109,15 @@ function init_all() {
   } catch (e) {
     Cu.reportError(e);
   }
+  if (typeof gExperimentsPane !== 'undefined') {
+    register_module("paneExperiments", gExperimentsPane);
+    fetch(CliqzResources.getExtensionURL('/pages/settings.html', 'dat@cliqz.com')).then((res) => {
+      if (res.status === 200) {
+        document.getElementById('category-experiments').hidden = false;
+      }
+    }, (err) => {})
+  }
+
   register_module("paneSearchResults", gSearchResultsPane);
   gSearchResultsPane.init();
   gMainPane.preInit();
@@ -219,6 +228,9 @@ async function gotoPref(aCategory) {
   // connect page gets rendered twice on every demand.
   if (category === "paneConnect" && gConnectPane && gConnectPane.loadFrame) {
     gConnectPane.loadFrame();
+  }
+  if (category === "paneExperiments" && gExperimentsPane && gExperimentsPane.loadFrame) {
+    gExperimentsPane.loadFrame();
   }
 
   let item;

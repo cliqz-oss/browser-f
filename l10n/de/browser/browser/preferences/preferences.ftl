@@ -64,6 +64,10 @@ pane-connect-title = Connect
 category-connect =
     .tooltiptext = { pane-connect-title }
 
+pane-experiments-title = Labor
+category-experiments =
+    .tooltiptext = { pane-experiments-title }
+
 help-button-label = Hilfe für { -brand-short-name }
 addons-button-label = Erweiterungen & Themes
 focus-search =
@@ -1174,3 +1178,5 @@ consentric-enable =
     .label = re:consent aktivieren
     .accesskey = C
 consentric-desc = re:consent zeigt auf übersichtliche Weise welche personenbezogenen Daten von Websites<br/>verarbeitet werden und macht es dem Nutzer leicht zuzustimmen oder abzulehnen. <label data-l10n-name="consentric-learn-more">Erfahre mehr</label>
+
+experiments-desc = Here you will find settings for the latest browser features that we are testing out. These may or may not become standard features of the Cliqz browser after this testing phase.

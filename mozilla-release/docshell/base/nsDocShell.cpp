@@ -9180,6 +9180,11 @@ nsresult nsDocShell::InternalLoad(nsDocShellLoadState* aLoadState,
       if (uri->SchemeIs("moz-extension") && uri->GetSpecOrDefault().Equals(connectURLString)) {
         break;
       }
+      nsCString datURLString;
+      Preferences::GetCString("extensions.webextensions.datUrl", datURLString);
+      if (uri->SchemeIs("moz-extension") && uri->GetSpecOrDefault().Equals(datURLString)) {
+        break;
+      }
 
       bool canLoadInParent = false;
       if (NS_SUCCEEDED(NS_URIChainHasFlags(

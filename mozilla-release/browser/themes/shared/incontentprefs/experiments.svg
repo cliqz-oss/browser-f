@@ -1,0 +1,13 @@
+<svg width="64px" height="64px" viewBox="0 0 64 64" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <g id="Artboard" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g id="Group-2" transform="translate(-0.044156, 2.000000)">
+            <g id="Group" transform="translate(25.500000, 35.870058) rotate(-45.000000) translate(-25.500000, -35.870058) translate(-1.000000, 26.370058)">
+                <path d="M9.5,-8.8817842e-15 L52.582031,-8.8817842e-15 L52.582031,19 L9.5,19 C4.25329488,19 7.74796342e-15,14.7467051 7.10542736e-15,9.5 L7.10542736e-15,9.5 C6.46289129e-15,4.25329488 4.25329488,-7.9179801e-15 9.5,-8.8817842e-15 Z" id="Rectangle" stroke="context-fill" stroke-width="6" transform="translate(26.291016, 9.500000) rotate(-360.000000) translate(-26.291016, -9.500000) "></path>
+                <path d="M9.79355569,6.29289322 L31.5756321,6.29289322 L38.4019117,13.1191728 L9.79350367,13.2751342 C7.87068093,13.2856167 6.30342741,11.7353586 6.29294495,9.81253584 C6.29291046,9.80620918 6.29289322,9.79988244 6.29289322,9.79355569 L6.29289322,9.79355569 C6.29289322,7.86019319 7.86019319,6.29289322 9.79355569,6.29289322 Z" id="Rectangle" fill="context-fill"></path>
+            </g>
+            <circle id="Oval" fill="context-fill" cx="47.0441559" cy="5" r="4"></circle>
+            <circle id="Oval" fill="context-fill" cx="51.0441559" cy="14" r="3"></circle>
+            <circle id="Oval" fill="context-fill" cx="57.5441559" cy="4.5" r="4.5"></circle>
+        </g>
+    </g>
+</svg>

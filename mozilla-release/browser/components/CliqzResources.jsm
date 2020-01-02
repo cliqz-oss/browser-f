@@ -22,14 +22,15 @@ const INITIAL_PAGES = [
   "about:cliqz",
   "about:welcome",
 ];
+const DEFAULT_EXTENSION_ID = "cliqz@cliqz.com"
 
-const getWebExtId = function() {
+const getWebExtId = function(extensionId = DEFAULT_EXTENSION_ID) {
   const getExtensionUUID = DependencyManager.get("getExtensionUUID", "resource://gre/modules/Extension.jsm");
-  return getExtensionUUID("cliqz@cliqz.com");
+  return getExtensionUUID(extensionId);
 };
 
-const getWebExtPrefix = function() {
-  return `moz-extension://${getWebExtId()}/modules/`;
+const getWebExtPrefix = function(extensionId = DEFAULT_EXTENSION_ID) {
+  return `moz-extension://${getWebExtId(extensionId)}`;
 };
 
 const CliqzResources = {
@@ -69,9 +70,10 @@ const CliqzResources = {
   isCliqzPage: function(uri) {
     return typeof uri == 'string' && uri.indexOf(getWebExtPrefix()) === 0;
   },
-  whatIstheURL: u => `${getWebExtPrefix()}${u}`,
-  getFreshTabUrl: () => `${getWebExtPrefix()}freshtab/home.html`,
-  getWelcomeUrl: () => `${getWebExtPrefix()}onboarding-v3/index.html`,
+  whatIstheURL: (u) => `${getWebExtPrefix()}/modules/${u}`,
+  getExtensionURL: (path, extensionId = DEFAULT_EXTENSION_ID) => `${getWebExtPrefix(extensionId)}${path}`,
+  getFreshTabUrl: () => `${getWebExtPrefix()}/modules/freshtab/home.html`,
+  getWelcomeUrl: () => `${getWebExtPrefix()}/modules/onboarding-v3/index.html`,
   getUrlWithProperExtentionId: function(url = '') {
     if (!url || typeof url != 'string') {
       return url;

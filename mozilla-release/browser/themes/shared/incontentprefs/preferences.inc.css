@@ -212,6 +212,10 @@ button > hbox > label {
   list-style-image: url("chrome://browser/skin/preferences/in-content/connect.svg");
 }
 
+#category-experiments > .category-icon {
+  list-style-image: url("chrome://browser/skin/preferences/in-content/experiments.svg");
+}
+
 /* header */
 .header {
   display: flex;
