@@ -1624,6 +1624,11 @@ pref("network.cookie.cookieBehavior", 3 /* BEHAVIOR_LIMIT_FOREIGN */);
   pref("privacy.trackingprotection.fingerprinting.enabled", true);
 #endif
 
+// Start Cliqz referer options
+// Limit referer to origin only for cross-origin requests: https://wiki.mozilla.org/Security/Referrer
+pref("network.http.referer.XOriginTrimmingPolicy", 2);
+// End Cliqz
+
 // Enable cryptomining blocking by default for all channels, only on desktop.
 pref("privacy.trackingprotection.cryptomining.enabled", true);
 
