@@ -381,19 +381,24 @@ var gPrivacyPane = {
     );
   },
 
-  /**
-   * Handles HttpsEverywhere integration
+   /**
+   * Handles https and consentrik integration integration
    */
-  _initHttpsEverywhere() {
-    const ADDON_ID = "https-everywhere@cliqz.com";
+  _handleAddons(addonId, groupId, checkboxId) {
+    const toggleAddon = function() {
+      AddonManager.getAddonByID(addonId).then(function(addon) {
+        (!addon.userDisabled) ? addon.disable() : addon.enable();
+      })
+    };
 
-    AddonManager.getAddonByID(ADDON_ID).then(function(addon) {
+    AddonManager.getAddonByID(addonId).then(function(addon) {
       if (!addon) {
-        document.getElementById("httpsEverywhereGroup").style.display = "none";
+        document.getElementById(groupId).style.display = "none";
         return;
       }
-      let stateCheckbox = document.getElementById("httpsEverywhereEnable");
+      let stateCheckbox = document.getElementById(checkboxId);
       stateCheckbox.checked = !addon.userDisabled;
+      stateCheckbox.addEventListener('click', toggleAddon);
       let listener = {
         onEnabled: () => stateCheckbox.checked = true,
         onDisabled: () => stateCheckbox.checked = false,
@@ -402,39 +407,31 @@ var gPrivacyPane = {
 
       let unload = () => {
         window.removeEventListener("unload", unload);
+        stateCheckbox.removeEventListener('click', toggleAddon);
         AddonManager.removeAddonListener(listener);
       };
       window.addEventListener("unload", unload);
     });
+  },
 
-    this.toggleHttpsEverywhere = function() {
-      AddonManager.getAddonByID(ADDON_ID).then(function(addon) {
-        (!addon.userDisabled) ? addon.disable() : addon.enable();
-      })
-    };
+  /**
+   * Handles HttpsEverywhere integration
+   */
+  _initHttpsEverywhere() {
+    const addonId = "https-everywhere@cliqz.com";
+    const groupId = "httpsEverywhereGroup";
+    const checkboxId = "httpsEverywhereEnable";
+    this._handleAddons(addonId, groupId, checkboxId);
   },
 
   /**
    * Handles Consentric integration
    */
   _initConsentric() {
-    const ADDON_ID = "gdprtool@cliqz.com";
-    AddonManager.getAddonByID(ADDON_ID).then(function(addon) {
-      if (!addon) {
-        // Hide Consentric setting, not exist yet
-        document.getElementById("consentricGroup").style.display = "none";
-      } else {
-        // Set state
-        var stateCheckbox = document.getElementById("consentricEnable");
-        stateCheckbox.checked = !addon.userDisabled;
-      }
-    });
-
-    this.toggleConsentric = function() {
-      AddonManager.getAddonByID(ADDON_ID).then(function(addon) {
-        (!addon.userDisabled) ? addon.disable() : addon.enable();
-      })
-    };
+    const addonId = "gdprtool@cliqz.com";
+    const groupId = "consentricGroup";
+    const checkboxId = "consentricEnable";
+    this._handleAddons(addonId, groupId, checkboxId);
   },
 
   /**

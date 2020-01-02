@@ -580,9 +580,7 @@
 <!-- Consentric -->
 <groupbox id="consentricGroup" data-category="panePrivacy" hidden="true" class="formatBoxSize">
   <label><html:h2 data-l10n-id="consentric-header"/></label>
-  <checkbox id="consentricEnable"
-            data-l10n-id="consentric-enable"
-            oncommand="gPrivacyPane.toggleConsentric();"/>
+  <checkbox id="consentricEnable" data-l10n-id="consentric-enable"/>
   <vbox>
     <description class="tail-with-learn-more" data-l10n-id="consentric-desc">
       <label class="learnMore" is="text-link"
@@ -1079,9 +1077,7 @@
 <!-- HTTPS Everywhere -->
 <groupbox id="httpsEverywhereGroup" data-category="panePrivacy" hidden="true"  class="formatBoxSize">
   <label><html:h2 data-l10n-id="https-everywhere-header"/></label>
-  <checkbox id="httpsEverywhereEnable"
-            data-l10n-id="https-everywhere-checkbox"
-            oncommand="gPrivacyPane.toggleHttpsEverywhere();"/>
+  <checkbox id="httpsEverywhereEnable" data-l10n-id="https-everywhere-checkbox"/>
   <hbox>
     <description class="tail-with-learn-more" data-l10n-id="https-everywhere-desc">
       <label class="learnMore" is="text-link"
