@@ -3992,8 +3992,11 @@ var XPIInstall = {
       const oldVersion = addon.version.split('.');
       let shouldUpdate = false;
       for (let i=0; i < newVersion.length; i++) {
-        if (~~newVersion[i] <= ~~oldVersion[i]) {
+        if (~~newVersion[i] == ~~oldVersion[i]) {
           continue;
+        } else if (~~newVersion[i] < ~~oldVersion[i]) {
+          shouldUpdate = false;
+          break;
         } else {
           shouldUpdate = true;
           break;
