@@ -3951,6 +3951,7 @@ var XPIInstall = {
     return addons.get("cliqz@cliqz.com");
   },
 
+  // CLIQZ-SPECIAL: install latest version from browser package
   async updateCliqzToLatest() {
     let cliqzFromProfile = await this.getCliqzAddonFromLocation(KEY_APP_PROFILE) || {};
     let cliqzFromSystem = await this.getCliqzAddonFromLocation(KEY_APP_SYSTEM_ADDONS) || {};
@@ -3974,6 +3975,40 @@ var XPIInstall = {
       // :(
         logger.warn('System addon update failed', e)
     }
+  },
+
+  // CLIQZ-SPECIAL: disallow downgrade of any system addon
+  checkDowngrade(wanted, existing) {
+    for (let [id, addon] of existing) {
+      let wantedInfo = wanted.get(id);
+
+      if (!wantedInfo || !wantedInfo.spec) {
+        return false;
+      }
+
+      if (wantedInfo.spec.version == addon.version) continue;
+
+      const newVersion = wantedInfo.spec.version.split('.');
+      const oldVersion = addon.version.split('.');
+      let shouldUpdate = false;
+      for (let i=0; i < newVersion.length; i++) {
+        if (~~newVersion[i] == ~~oldVersion[i]) {
+          continue;
+        } else if (~~newVersion[i] < ~~oldVersion[i]) {
+          shouldUpdate = false;
+          break;
+        } else {
+          shouldUpdate = true;
+          break;
+        }
+      }
+
+      if (!shouldUpdate) {
+        console.error('Rejecting add-on set: downgrade not allowed.')
+        return true;
+      }
+    }
+    return false;
   },
 
   async updateSystemAddons() {
@@ -4034,21 +4069,6 @@ var XPIInstall = {
       return true;
     };
 
-    let checkDowngrade = (wanted, existing) => {
-      for (let [id, addon] of existing) {
-        let wantedInfo = wanted.get(id);
-
-        if (!wantedInfo) {
-          return false;
-        }
-        if (wantedInfo.spec.version < addon.version) {
-          console.error('Rejecting add-on set: downgrade not allowed.')
-          return true;
-        }
-      }
-      return false;
-    };
-
     // If this matches the current set in the profile location then do nothing.
     let updatedAddons = addonMap(
       await XPIDatabase.getAddonsInLocation(KEY_APP_SYSTEM_ADDONS)
@@ -4071,7 +4091,7 @@ var XPIInstall = {
       return;
     }
 
-    if (checkDowngrade(addonList, defaultAddons)) {
+    if (this.checkDowngrade(addonList, defaultAddons)) {
       logger.info("Rejecting downgraded system add-ons.");
       await installer.cleanDirectories();
       return;
