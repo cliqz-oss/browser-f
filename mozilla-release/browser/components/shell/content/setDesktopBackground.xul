@@ -30,7 +30,7 @@
         style="width: 30em;">
 
 #ifdef XP_MACOSX
-#include ../../../base/content/macWindow.inc.xul
+#include ../../../base/content/macWindow.inc.xhtml
 #endif
 
     <stringbundle id="backgroundBundle"
@@ -76,7 +76,7 @@
 #ifdef XP_MACOSX
     <separator/>
 
-    <hbox align="right">
+    <hbox pack="end">
       <button id="setDesktopBackground"
               label="&setDesktopBackground.title;"
               oncommand="gSetBackground.setDesktopBackground();"/>

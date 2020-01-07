@@ -1,12 +1,14 @@
 browser/components/newtab/vendor/
+browser/components/pocket/content/panels/js/vendor/
 browser/components/translation/cld2/
+browser/extensions/formautofill/content/third-party/
 browser/extensions/screenshots/build/raven.js
 build/pymake
 devtools/client/debugger/flow-typed/npm/
 devtools/client/shared/build/babel.js
 devtools/client/shared/sourceeditor/codemirror/
-devtools/client/shared/sourceeditor/tern/
 devtools/client/shared/vendor/
+devtools/shared/acorn/
 devtools/shared/heapsnapshot/CoreDump.pb.cc
 devtools/shared/heapsnapshot/CoreDump.pb.h
 devtools/shared/jsbeautify/
@@ -48,7 +50,6 @@ gfx/skia/
 gfx/vr/service/openvr/
 gfx/wr/
 gfx/ycbcr/
-intl/hyphenation/hyphen/
 intl/icu/
 ipc/chromium/src/third_party/
 js/src/ctypes/libffi/

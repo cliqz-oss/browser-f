@@ -30,8 +30,8 @@ pub mod expected {
     pub const TOTAL_PRIMITIVES: Range<u64> =        1..5000;
     pub const VISIBLE_PRIMITIVES: Range<u64> =      1..5000;
     pub const USED_TARGETS: Range<u64> =            1..4;
-    pub const COLOR_TARGETS: Range<u64> =           1..4;
-    pub const ALPHA_TARGETS: Range<u64> =           0..2;
+    pub const COLOR_PASSES: Range<u64> =            1..4;
+    pub const ALPHA_PASSES: Range<u64> =            0..3;
     pub const RENDERED_PICTURE_CACHE_TILES: Range<u64> = 0..5;
     pub const TOTAL_PICTURE_CACHE_TILES: Range<u64> = 0..15;
     pub const CREATED_TARGETS: Range<u64> =         0..3;
@@ -44,6 +44,7 @@ pub mod expected {
     pub const GPU_CACHE_BLOCKS_SAVED: Range<u64> =  0..50_000;
     pub const DISPLAY_LIST_BUILD_TIME: Range<f64> = 0.0..3.0;
     pub const DISPLAY_LIST_CONSUME_TIME: Range<f64> = 0.0..2.0;
+    pub const MAX_SCENE_BUILD_TIME: Range<f64> = 0.0..3.0;
     pub const DISPLAY_LIST_SEND_TIME: Range<f64> =  0.0..1.0;
     pub const DISPLAY_LIST_TOTAL_TIME: Range<f64> = 0.0..4.0;
     pub const NUM_FONT_TEMPLATES: Range<usize> =    0..50;
@@ -198,6 +199,10 @@ impl IntProfileCounter {
     #[inline(always)]
     pub fn inc(&mut self) {
         self.value += 1;
+    }
+
+    pub fn set(&mut self, value: usize) {
+        self.value = value;
     }
 }
 
@@ -668,6 +673,7 @@ impl GpuCacheProfileCounters {
 #[derive(Clone)]
 pub struct BackendProfileCounters {
     pub total_time: TimeProfileCounter,
+    pub scene_build_time: TimeProfileCounter,
     pub resources: ResourceProfileCounters,
     pub ipc: IpcProfileCounters,
     pub intern: InternProfileCounters,
@@ -679,6 +685,7 @@ pub struct ResourceProfileCounters {
     pub image_templates: ResourceProfileCounter,
     pub texture_cache: TextureCacheProfileCounters,
     pub gpu_cache: GpuCacheProfileCounters,
+    pub content_slices: IntProfileCounter,
 }
 
 #[derive(Clone)]
@@ -751,6 +758,10 @@ impl BackendProfileCounters {
                 "Backend CPU Time", false,
                 Some(expected::MAX_BACKEND_CPU_TIME),
             ),
+            scene_build_time: TimeProfileCounter::new(
+                "Scene build time", false,
+                Some(expected::MAX_SCENE_BUILD_TIME),
+            ),
             resources: ResourceProfileCounters {
                 font_templates: ResourceProfileCounter::new(
                     "Font Templates",
@@ -761,6 +772,10 @@ impl BackendProfileCounters {
                     "Image Templates",
                     Some(expected::NUM_IMAGE_TEMPLATES),
                     Some(expected::IMAGE_TEMPLATES_MB),
+                ),
+                content_slices: IntProfileCounter::new(
+                    "Content Slices",
+                    None,
                 ),
                 texture_cache: TextureCacheProfileCounters::new(),
                 gpu_cache: GpuCacheProfileCounters::new(),
@@ -823,8 +838,8 @@ pub struct RendererProfileCounters {
     pub draw_calls: AverageIntProfileCounter,
     pub vertices: AverageIntProfileCounter,
     pub vao_count_and_size: ResourceProfileCounter,
-    pub color_targets: AverageIntProfileCounter,
-    pub alpha_targets: AverageIntProfileCounter,
+    pub color_passes: AverageIntProfileCounter,
+    pub alpha_passes: AverageIntProfileCounter,
     pub texture_data_uploaded: AverageIntProfileCounter,
     pub rendered_picture_cache_tiles: AverageIntProfileCounter,
     pub total_picture_cache_tiles: AverageIntProfileCounter,
@@ -852,13 +867,13 @@ impl RendererProfileCounters {
                 None, Some(expected::VERTICES),
             ),
             vao_count_and_size: ResourceProfileCounter::new("VAO", None, None),
-            color_targets: AverageIntProfileCounter::new(
-                "Color Targets",
-                None, Some(expected::COLOR_TARGETS),
+            color_passes: AverageIntProfileCounter::new(
+                "Color passes",
+                None, Some(expected::COLOR_PASSES),
             ),
-            alpha_targets: AverageIntProfileCounter::new(
-                "Alpha Targets",
-                None, Some(expected::ALPHA_TARGETS),
+            alpha_passes: AverageIntProfileCounter::new(
+                "Alpha passes",
+                None, Some(expected::ALPHA_PASSES),
             ),
             texture_data_uploaded: AverageIntProfileCounter::new(
                 "Texture data, kb",
@@ -878,8 +893,8 @@ impl RendererProfileCounters {
     pub fn reset(&mut self) {
         self.draw_calls.reset();
         self.vertices.reset();
-        self.color_targets.reset();
-        self.alpha_targets.reset();
+        self.color_passes.reset();
+        self.alpha_passes.reset();
         self.texture_data_uploaded.reset();
         self.rendered_picture_cache_tiles.reset();
         self.total_picture_cache_tiles.reset();
@@ -1190,6 +1205,7 @@ pub struct Profiler {
     renderer_graph: ProfileGraph,
     gpu_graph: ProfileGraph,
     ipc_graph: ProfileGraph,
+    scene_build_graph: ProfileGraph,
     blob_raster_graph: ProfileGraph,
     backend_time: AverageTimeProfileCounter,
     renderer_time: AverageTimeProfileCounter,
@@ -1213,6 +1229,7 @@ impl Profiler {
             renderer_graph: ProfileGraph::new(600, to_ms_scale, "Renderer:", "ms"),
             gpu_graph: ProfileGraph::new(600, to_ms_scale, "GPU:", "ms"),
             ipc_graph: ProfileGraph::new(600, to_ms_scale, "IPC:", "ms"),
+            scene_build_graph: ProfileGraph::new(600, to_ms_scale, "Scene build:", "ms"),
             blob_raster_graph: ProfileGraph::new(600, 1.0, "Rasterized blob pixels:", "px"),
             gpu_frames: GpuFrameCollection::new(),
             backend_time: AverageTimeProfileCounter::new(
@@ -1464,18 +1481,20 @@ impl Profiler {
 
     fn draw_compact_profile(
         &mut self,
+        backend_profile: &BackendProfileCounters,
         renderer_profile: &RendererProfileCounters,
         debug_renderer: &mut DebugRenderer,
     ) {
         Profiler::draw_counters(
             &[
                 &renderer_profile.frame_time as &dyn ProfileCounter,
-                &renderer_profile.color_targets,
-                &renderer_profile.alpha_targets,
+                &renderer_profile.color_passes,
+                &renderer_profile.alpha_passes,
                 &renderer_profile.draw_calls,
                 &renderer_profile.vertices,
                 &renderer_profile.rendered_picture_cache_tiles,
                 &renderer_profile.texture_data_uploaded,
+                &backend_profile.resources.content_slices,
                 &self.ipc_time,
                 &self.backend_time,
                 &self.renderer_time,
@@ -1502,11 +1521,12 @@ impl Profiler {
             &[
                 &renderer_profile.frame_time as &dyn ProfileCounter,
                 &renderer_profile.frame_counter,
-                &renderer_profile.color_targets,
-                &renderer_profile.alpha_targets,
+                &renderer_profile.color_passes,
+                &renderer_profile.alpha_passes,
                 &renderer_profile.rendered_picture_cache_tiles,
                 &renderer_profile.total_picture_cache_tiles,
                 &renderer_profile.texture_data_uploaded,
+                &backend_profile.resources.content_slices,
             ],
             None,
             debug_renderer,
@@ -1631,6 +1651,11 @@ impl Profiler {
             self.ipc_graph
                 .draw_graph(self.draw_state.x_right, self.draw_state.y_right, "DisplayList IPC", debug_renderer);
         self.draw_state.y_right += rect.size.height + PROFILE_PADDING;
+
+        let rect = self.scene_build_graph
+            .draw_graph(self.draw_state.x_right, self.draw_state.y_right, "Scene build", debug_renderer);
+        self.draw_state.y_right += rect.size.height + PROFILE_PADDING;
+
         let rect = self.gpu_graph
             .draw_graph(self.draw_state.x_right, self.draw_state.y_right, "GPU", debug_renderer);
         self.draw_state.y_right += rect.size.height + PROFILE_PADDING;
@@ -1673,8 +1698,8 @@ impl Profiler {
                 &self.gpu_time,
             ],
             &[
-                &renderer_profile.color_targets,
-                &renderer_profile.alpha_targets,
+                &renderer_profile.color_passes,
+                &renderer_profile.alpha_passes,
                 &renderer_profile.draw_calls,
                 &renderer_profile.vertices,
                 &renderer_profile.rendered_picture_cache_tiles,
@@ -1739,6 +1764,8 @@ impl Profiler {
         self.renderer_time.set(renderer_timers.cpu_time.nanoseconds);
         self.ipc_graph
             .push(backend_profile.ipc.total_time.nanoseconds);
+        self.scene_build_graph
+            .push(backend_profile.scene_build_time.nanoseconds);
         self.blob_raster_graph
             .push(backend_profile.resources.texture_cache.rasterized_blob_pixels.size as u64);
         self.ipc_time.set(backend_profile.ipc.total_time.nanoseconds);
@@ -1760,6 +1787,7 @@ impl Profiler {
             }
             ProfileStyle::Compact => {
                 self.draw_compact_profile(
+                    backend_profile,
                     renderer_profile,
                     debug_renderer,
                 );
@@ -1769,7 +1797,7 @@ impl Profiler {
                     backend_profile,
                     renderer_profile,
                     debug_renderer,
-                );                
+                );
             }
         }
     }

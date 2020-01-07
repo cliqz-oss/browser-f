@@ -1400,6 +1400,15 @@ bool DocAccessible::PruneOrInsertSubtree(nsIContent* aRoot) {
       return true;
     }
 
+    // If the frame is an OuterDoc frame but this isn't an OuterDocAccessible,
+    // we need to recreate the Accessible. This can happen for embed or object
+    // elements if their embedded content changes to be web content.
+    if (frame && !acc->IsOuterDoc() &&
+        frame->AccessibleType() == eOuterDocType) {
+      ContentRemoved(aRoot);
+      return true;
+    }
+
     // The accessible can be reparented or reordered in its parent.
     // We schedule it for reinsertion. For example, a slotted element
     // can change its slot attribute to a different slot.
@@ -1946,7 +1955,8 @@ void DocAccessible::ProcessContentInserted(
           // previousSibling should be later in the insertion list, so the tree
           // will get adjusted when we process it later.
           MOZ_DIAGNOSTIC_ASSERT(parent == aContainer,
-            "Child moving to new parent, but previous sibling in wrong parent");
+                                "Child moving to new parent, but previous "
+                                "sibling in wrong parent");
           continue;
         }
 #ifdef A11Y_LOG

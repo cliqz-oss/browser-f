@@ -64,8 +64,6 @@ let gContainersPane = {
 
       let containerButtons = document.createXULElement("hbox");
       containerButtons.className = "container-buttons";
-      containerButtons.setAttribute("flex", 1);
-      containerButtons.setAttribute("align", "right");
       item.appendChild(containerButtons);
 
       let prefsButton = document.createXULElement("button");
@@ -156,7 +154,7 @@ let gContainersPane = {
 
     const params = { userContextId, identity };
     gSubDialog.open(
-      "chrome://browser/content/preferences/containers.xul",
+      "chrome://browser/content/preferences/containers.xhtml",
       null,
       params
     );

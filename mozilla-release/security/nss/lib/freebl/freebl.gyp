@@ -133,6 +133,24 @@
       ]
     },
     {
+      'target_name': 'gcm-aes-ppc_c_lib',
+      'type': 'static_library',
+      'sources': [
+        'gcm-ppc.c'
+      ],
+      'dependencies': [
+        '<(DEPTH)/exports.gyp:nss_exports'
+      ],
+      'cflags': [
+        '-mcrypto',
+        '-maltivec'
+      ],
+      'cflags_mozilla': [
+        '-mcrypto',
+        '-maltivec'
+      ]
+    },
+    {
       'target_name': 'armv8_c_lib',
       'type': 'static_library',
       'sources': [
@@ -199,6 +217,11 @@
             'gcm-aes-aarch64_c_lib',
           ],
         }],
+        [ 'target_arch=="ppc64le"', {
+          'dependencies': [
+            'gcm-aes-ppc_c_lib',
+          ],
+        }],
         [ 'OS=="linux"', {
           'defines!': [
             'FREEBL_NO_DEPEND',
@@ -243,6 +266,11 @@
         [ 'target_arch=="arm64" or target_arch=="aarch64"', {
           'dependencies': [
             'gcm-aes-aarch64_c_lib',
+          ],
+        }],
+        [ 'target_arch=="ppc64" or target_arch=="ppc64le"', {
+          'dependencies': [
+            'gcm-aes-ppc_c_lib',
           ],
         }],
         [ 'OS!="linux"', {
@@ -361,15 +389,6 @@
       'MP_API_COMPATIBLE'
     ],
     'conditions': [
-      [ 'OS=="mac"', {
-        'xcode_settings': {
-          # I'm not sure since when this is supported.
-          # But I hope that doesn't matter. We also assume this is x86/x64.
-          'OTHER_CFLAGS': [
-            '-std=gnu99',
-          ],
-        },
-      }],
       [ 'OS=="win" and target_arch=="ia32"', {
         'msvs_settings': {
           'VCCLCompilerTool': {
@@ -423,14 +442,6 @@
         'defines': [
           'FREEBL_LOWHASH',
           'FREEBL_NO_DEPEND',
-        ],
-        'cflags': [
-          '-std=gnu99',
-        ],
-      }],
-      [ 'OS=="dragonfly" or OS=="freebsd" or OS=="netbsd" or OS=="openbsd"', {
-        'cflags': [
-          '-std=gnu99',
         ],
       }],
       [ 'OS=="linux" or OS=="android"', {

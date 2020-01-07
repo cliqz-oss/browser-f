@@ -27,7 +27,7 @@ from .util.schema import validate_schema, Schema
 from .util.taskcluster import get_artifact
 from .util.taskgraph import find_decision_task, find_existing_tasks_from_previous_kinds
 from .util.yaml import load_yaml
-from voluptuous import Required, Optional, Url
+from voluptuous import Required, Optional
 
 
 logger = logging.getLogger(__name__)
@@ -120,26 +120,35 @@ PER_PROJECT_PARAMETERS = {
 visual_metrics_jobs_schema = Schema({
         Required('jobs'): [
             {
-                Required('browsertime_json_url'): Url(),
-                Required('video_url'): Url(),
+                Required('json_location'): str,
+                Required('video_location'): str,
             }
         ]
 })
 
 try_task_config_schema = Schema({
     Required('tasks'): [basestring],
-    Optional('templates'): {basestring: object},
-    Optional('disable-pgo'): bool,
     Optional('browsertime'): bool,
+    Optional('chemspill-prio'): bool,
+    Optional('disable-pgo'): bool,
+    Optional('env'): {basestring: basestring},
     Optional('gecko-profile'): bool,
+    Optional('rebuild'): int,
+    Optional('use-artifact-builds'): bool,
     # Keep in sync with JOB_SCHEMA in taskcluster/docker/visual-metrics/run-visual-metrics.py.
     Optional('visual-metrics-jobs'): visual_metrics_jobs_schema,
     Optional(
         "debian-tests",
         description="Run linux desktop tests on debian 10 (buster)."
         ): bool,
+    Optional(
+        "ubuntu-bionic",
+        description="Run linux desktop tests on Ubuntu 18.04 (bionic)."
+        ): bool,
 })
-
+"""
+Schema for try_task_config.json files.
+"""
 
 try_task_config_schema_v2 = Schema({
     Optional('parameters'): {basestring: object},

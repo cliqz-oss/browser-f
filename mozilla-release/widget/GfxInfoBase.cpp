@@ -234,6 +234,10 @@ static void SetPrefValueForFeature(int32_t aFeature, int32_t aValue,
                                    const nsACString& aFailureId) {
   const char* prefname = GetPrefNameForFeature(aFeature);
   if (!prefname) return;
+  if (XRE_IsParentProcess()) {
+    delete GfxInfoBase::sFeatureStatus;
+    GfxInfoBase::sFeatureStatus = nullptr;
+  }
 
   Preferences::SetInt(prefname, aValue);
   if (!aFailureId.IsEmpty()) {
@@ -247,6 +251,10 @@ static void RemovePrefForFeature(int32_t aFeature) {
   const char* prefname = GetPrefNameForFeature(aFeature);
   if (!prefname) return;
 
+  if (XRE_IsParentProcess()) {
+    delete GfxInfoBase::sFeatureStatus;
+    GfxInfoBase::sFeatureStatus = nullptr;
+  }
   Preferences::ClearUser(prefname);
 }
 
@@ -653,6 +661,27 @@ GfxInfoBase::GetFeatureStatus(int32_t aFeature, nsACString& aFailureId,
   nsresult rv =
       GetFeatureStatusImpl(aFeature, aStatus, version, driverInfo, aFailureId);
   return rv;
+}
+
+void GfxInfoBase::GetAllFeatures(dom::XPCOMInitData& xpcomInit) {
+  MOZ_RELEASE_ASSERT(XRE_IsParentProcess());
+  if (!sFeatureStatus) {
+    sFeatureStatus = new nsTArray<dom::GfxInfoFeatureStatus>();
+    for (int32_t i = 1; i <= nsIGfxInfo::FEATURE_MAX_VALUE; ++i) {
+      int32_t status = 0;
+      nsAutoCString failureId;
+      GetFeatureStatus(i, failureId, &status);
+      dom::GfxInfoFeatureStatus gfxFeatureStatus;
+      gfxFeatureStatus.feature() = i;
+      gfxFeatureStatus.status() = status;
+      gfxFeatureStatus.failureId() = failureId;
+      sFeatureStatus->AppendElement(gfxFeatureStatus);
+    }
+  }
+  for (const auto& status : *sFeatureStatus) {
+    dom::GfxInfoFeatureStatus copy = status;
+    xpcomInit.gfxFeatureStatus().AppendElement(copy);
+  }
 }
 
 // Matching OS go somewhat beyond the simple equality check because of the
@@ -1216,26 +1245,6 @@ GfxInfoBase::GetMonitors(JSContext* aCx, JS::MutableHandleValue aResult) {
   return NS_OK;
 }
 
-static const char* GetLayersBackendName(layers::LayersBackend aBackend) {
-  switch (aBackend) {
-    case layers::LayersBackend::LAYERS_NONE:
-      return "none";
-    case layers::LayersBackend::LAYERS_OPENGL:
-      return "opengl";
-    case layers::LayersBackend::LAYERS_D3D11:
-      return "d3d11";
-    case layers::LayersBackend::LAYERS_CLIENT:
-      return "client";
-    case layers::LayersBackend::LAYERS_WR:
-      return "webrender";
-    case layers::LayersBackend::LAYERS_BASIC:
-      return "basic";
-    default:
-      MOZ_ASSERT_UNREACHABLE("unknown layers backend");
-      return "unknown";
-  }
-}
-
 static inline bool SetJSPropertyString(JSContext* aCx,
                                        JS::Handle<JSObject*> aObj,
                                        const char* aProp, const char* aString) {
@@ -1270,7 +1279,7 @@ nsresult GfxInfoBase::GetFeatures(JSContext* aCx,
       gfxPlatform::Initialized()
           ? gfxPlatform::GetPlatform()->GetCompositorBackend()
           : layers::LayersBackend::LAYERS_NONE;
-  const char* backendName = GetLayersBackendName(backend);
+  const char* backendName = layers::GetLayersBackendName(backend);
   SetJSPropertyString(aCx, obj, "compositor", backendName);
 
   // If graphics isn't initialized yet, just stop now.
@@ -1390,19 +1399,20 @@ bool GfxInfoBase::BuildFeatureStateLog(JSContext* aCx,
 void GfxInfoBase::DescribeFeatures(JSContext* aCx, JS::Handle<JSObject*> aObj) {
   JS::Rooted<JSObject*> obj(aCx);
 
-  gfx::FeatureStatus gpuProcess = gfxConfig::GetValue(Feature::GPU_PROCESS);
+  gfx::FeatureStatus gpuProcess =
+      gfxConfig::GetValue(gfx::Feature::GPU_PROCESS);
   InitFeatureObject(aCx, aObj, "gpuProcess", gpuProcess, &obj);
 
   gfx::FeatureStatus wrQualified =
-      gfxConfig::GetValue(Feature::WEBRENDER_QUALIFIED);
+      gfxConfig::GetValue(gfx::Feature::WEBRENDER_QUALIFIED);
   InitFeatureObject(aCx, aObj, "wrQualified", wrQualified, &obj);
 
-  gfx::FeatureStatus webrender = gfxConfig::GetValue(Feature::WEBRENDER);
+  gfx::FeatureStatus webrender = gfxConfig::GetValue(gfx::Feature::WEBRENDER);
   InitFeatureObject(aCx, aObj, "webrender", webrender, &obj);
 
   // Only include AL if the platform attempted to use it.
   gfx::FeatureStatus advancedLayers =
-      gfxConfig::GetValue(Feature::ADVANCED_LAYERS);
+      gfxConfig::GetValue(gfx::Feature::ADVANCED_LAYERS);
   if (advancedLayers != FeatureStatus::Unused) {
     InitFeatureObject(aCx, aObj, "advancedLayers", advancedLayers, &obj);
 
@@ -1488,14 +1498,14 @@ GfxInfoBase::GetContentUsesTiling(bool* aUsesTiling) {
 
 NS_IMETHODIMP
 GfxInfoBase::GetOffMainThreadPaintEnabled(bool* aOffMainThreadPaintEnabled) {
-  *aOffMainThreadPaintEnabled = gfxConfig::IsEnabled(Feature::OMTP);
+  *aOffMainThreadPaintEnabled = gfxConfig::IsEnabled(gfx::Feature::OMTP);
   return NS_OK;
 }
 
 NS_IMETHODIMP
 GfxInfoBase::GetOffMainThreadPaintWorkerCount(
     int32_t* aOffMainThreadPaintWorkerCount) {
-  if (gfxConfig::IsEnabled(Feature::OMTP)) {
+  if (gfxConfig::IsEnabled(gfx::Feature::OMTP)) {
     *aOffMainThreadPaintWorkerCount =
         layers::PaintThread::CalculatePaintWorkerCount();
   } else {
@@ -1560,13 +1570,13 @@ GfxInfoBase::ControlGPUProcessForXPCShell(bool aEnable, bool* _retval) {
 
   GPUProcessManager* gpm = GPUProcessManager::Get();
   if (aEnable) {
-    if (!gfxConfig::IsEnabled(Feature::GPU_PROCESS)) {
-      gfxConfig::UserForceEnable(Feature::GPU_PROCESS, "xpcshell-test");
+    if (!gfxConfig::IsEnabled(gfx::Feature::GPU_PROCESS)) {
+      gfxConfig::UserForceEnable(gfx::Feature::GPU_PROCESS, "xpcshell-test");
     }
     gpm->LaunchGPUProcess();
     gpm->EnsureGPUReady();
   } else {
-    gfxConfig::UserDisable(Feature::GPU_PROCESS, "xpcshell-test");
+    gfxConfig::UserDisable(gfx::Feature::GPU_PROCESS, "xpcshell-test");
     gpm->KillProcess();
   }
 

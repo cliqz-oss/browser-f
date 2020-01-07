@@ -82,7 +82,7 @@
 #include "nsTransitionManager.h"
 
 #if defined(MOZ_WIDGET_ANDROID)
-#  include "VRManager.h"
+#  include "VRManagerChild.h"
 #endif  // defined(MOZ_WIDGET_ANDROID)
 
 #ifdef MOZ_XUL
@@ -452,7 +452,7 @@ class VsyncRefreshDriverTimer : public RefreshDriverTimer {
         gfxPlatform::GetPlatform()->GetHardwareVsync();
     MOZ_ALWAYS_TRUE(mVsyncDispatcher =
                         vsyncSource->GetRefreshTimerVsyncDispatcher());
-    mVsyncDispatcher->SetParentRefreshTimer(mVsyncObserver);
+    mVsyncDispatcher->AddChildRefreshTimer(mVsyncObserver);
     mVsyncRate = vsyncSource->GetGlobalDisplay().GetVsyncRate();
   }
 
@@ -464,6 +464,18 @@ class VsyncRefreshDriverTimer : public RefreshDriverTimer {
     mVsyncObserver = new RefreshDriverVsyncObserver(this);
     mVsyncChild->SetVsyncObserver(mVsyncObserver);
     mVsyncRate = mVsyncChild->GetVsyncRate();
+  }
+
+  explicit VsyncRefreshDriverTimer(const RefPtr<gfx::VsyncSource>& aVsyncSource)
+      : mVsyncChild(nullptr) {
+    MOZ_ASSERT(XRE_IsParentProcess());
+    MOZ_ASSERT(NS_IsMainThread());
+    mVsyncSource = aVsyncSource;
+    mVsyncObserver = new RefreshDriverVsyncObserver(this);
+    MOZ_ALWAYS_TRUE(mVsyncDispatcher =
+                        aVsyncSource->GetRefreshTimerVsyncDispatcher());
+    mVsyncDispatcher->AddChildRefreshTimer(mVsyncObserver);
+    mVsyncRate = aVsyncSource->GetGlobalDisplay().GetVsyncRate();
   }
 
   TimeDuration GetTimerRate() override {
@@ -750,7 +762,7 @@ class VsyncRefreshDriverTimer : public RefreshDriverTimer {
 
   ~VsyncRefreshDriverTimer() override {
     if (XRE_IsParentProcess()) {
-      mVsyncDispatcher->SetParentRefreshTimer(nullptr);
+      mVsyncDispatcher->RemoveChildRefreshTimer(mVsyncObserver);
       mVsyncDispatcher = nullptr;
     } else {
       // Since the PVsyncChild actors live through the life of the process, just
@@ -775,7 +787,7 @@ class VsyncRefreshDriverTimer : public RefreshDriverTimer {
     mLastFireTime = TimeStamp::Now();
 
     if (XRE_IsParentProcess()) {
-      mVsyncDispatcher->SetParentRefreshTimer(mVsyncObserver);
+      mVsyncDispatcher->AddChildRefreshTimer(mVsyncObserver);
     } else {
       Unused << mVsyncChild->SendObserve();
       mVsyncObserver->OnTimerStart();
@@ -789,7 +801,7 @@ class VsyncRefreshDriverTimer : public RefreshDriverTimer {
     MOZ_ASSERT(NS_IsMainThread());
 
     if (XRE_IsParentProcess()) {
-      mVsyncDispatcher->SetParentRefreshTimer(nullptr);
+      mVsyncDispatcher->RemoveChildRefreshTimer(mVsyncObserver);
     } else {
       Unused << mVsyncChild->SendUnobserve();
     }
@@ -807,6 +819,9 @@ class VsyncRefreshDriverTimer : public RefreshDriverTimer {
     Tick(aId, aTimeStamp);
   }
 
+  // Used to hold external vsync sources alive. Must be destroyed *after*
+  // mVsyncDispatcher.
+  RefPtr<gfx::VsyncSource> mVsyncSource;
   RefPtr<RefreshDriverVsyncObserver> mVsyncObserver;
   // Used for parent process.
   RefPtr<RefreshTimerVsyncDispatcher> mVsyncDispatcher;
@@ -1004,13 +1019,23 @@ static void CreateContentVsyncRefreshTimer(void*) {
   nsRefreshDriver::PVsyncActorCreated(child);
 }
 
-static void CreateVsyncRefreshTimer() {
+void nsRefreshDriver::CreateVsyncRefreshTimer() {
   MOZ_ASSERT(NS_IsMainThread());
 
   PodArrayZero(sJankLevels);
 
   if (gfxPlatform::IsInLayoutAsapMode()) {
     return;
+  }
+
+  // If available, we fetch the widget-specific vsync source.
+  nsIWidget* widget = GetPresContext()->GetRootWidget();
+  if (widget) {
+    RefPtr<gfx::VsyncSource> localVsyncSource = widget->GetVsyncSource();
+    if (localVsyncSource) {
+      mOwnTimer = new VsyncRefreshDriverTimer(localVsyncSource);
+      return;
+    }
   }
 
   if (XRE_IsParentProcess()) {
@@ -1089,7 +1114,7 @@ nsRefreshDriver::GetMinRecomputeVisibilityInterval() {
   return TimeDuration::FromMilliseconds(interval);
 }
 
-RefreshDriverTimer* nsRefreshDriver::ChooseTimer() const {
+RefreshDriverTimer* nsRefreshDriver::ChooseTimer() {
   if (mThrottled) {
     if (!sThrottledRateTimer)
       sThrottledRateTimer = new InactiveRefreshDriverTimer(
@@ -1098,21 +1123,31 @@ RefreshDriverTimer* nsRefreshDriver::ChooseTimer() const {
     return sThrottledRateTimer;
   }
 
-  if (!sRegularRateTimer) {
+  if (!sRegularRateTimer && !mOwnTimer) {
     double rate = GetRegularTimerInterval();
 
     // Try to use vsync-base refresh timer first for sRegularRateTimer.
     CreateVsyncRefreshTimer();
 
+    if (mOwnTimer) {
+      return mOwnTimer.get();
+    }
+
     if (!sRegularRateTimer) {
       sRegularRateTimer = new StartupRefreshDriverTimer(rate);
     }
   }
+
+  if (mOwnTimer) {
+    return mOwnTimer.get();
+  }
+
   return sRegularRateTimer;
 }
 
 nsRefreshDriver::nsRefreshDriver(nsPresContext* aPresContext)
     : mActiveTimer(nullptr),
+      mOwnTimer(nullptr),
       mPresContext(aPresContext),
       mRootRefresh(nullptr),
       mNextTransactionId{0},
@@ -1550,23 +1585,17 @@ static void GetProfileTimelineSubDocShells(nsDocShell* aRootDocShell,
     return;
   }
 
-  nsCOMPtr<nsISimpleEnumerator> enumerator;
-  nsresult rv = aRootDocShell->GetDocShellEnumerator(
+  nsTArray<RefPtr<nsIDocShell>> docShells;
+  nsresult rv = aRootDocShell->GetAllDocShellsInSubtree(
       nsIDocShellTreeItem::typeAll, nsIDocShell::ENUMERATE_BACKWARDS,
-      getter_AddRefs(enumerator));
+      docShells);
 
   if (NS_FAILED(rv)) {
     return;
   }
 
-  nsCOMPtr<nsIDocShell> curItem;
-  bool hasMore = false;
-  while (NS_SUCCEEDED(enumerator->HasMoreElements(&hasMore)) && hasMore) {
-    nsCOMPtr<nsISupports> curSupports;
-    enumerator->GetNext(getter_AddRefs(curSupports));
-    curItem = do_QueryInterface(curSupports);
-
-    if (!curItem || !curItem->GetRecordProfileTimelineMarkers()) {
+  for (const auto& curItem : docShells) {
+    if (!curItem->GetRecordProfileTimelineMarkers()) {
       continue;
     }
 
@@ -1778,13 +1807,12 @@ void nsRefreshDriver::CancelIdleRunnable(nsIRunnable* aRunnable) {
   }
 }
 
-static bool ReduceAnimations(Document* aDocument, void* aData) {
-  if (aDocument->GetPresContext() &&
-      aDocument->GetPresContext()->EffectCompositor()->NeedsReducing()) {
-    aDocument->GetPresContext()->EffectCompositor()->ReduceAnimations();
+static bool ReduceAnimations(Document& aDocument, void* aData) {
+  if (aDocument.GetPresContext() &&
+      aDocument.GetPresContext()->EffectCompositor()->NeedsReducing()) {
+    aDocument.GetPresContext()->EffectCompositor()->ReduceAnimations();
   }
-  aDocument->EnumerateSubDocuments(ReduceAnimations, nullptr);
-
+  aDocument.EnumerateSubDocuments(ReduceAnimations, nullptr);
   return true;
 }
 
@@ -1817,7 +1845,15 @@ void nsRefreshDriver::Tick(VsyncId aId, TimeStamp aNowTime) {
     return;
   }
 
-  if (IsWaitingForPaint(aNowTime)) {
+  bool isPresentingInVR = false;
+#if defined(MOZ_WIDGET_ANDROID)
+  isPresentingInVR = gfx::VRManagerChild::IsPresenting();
+#endif  // defined(MOZ_WIDGET_ANDROID)
+
+  if (!isPresentingInVR && IsWaitingForPaint(aNowTime)) {
+    // In immersive VR mode, we do not get notifications when frames are
+    // presented, so we do not wait for the compositor in that mode.
+
     // We're currently suspended waiting for earlier Tick's to
     // be completed (on the Compositor). Mark that we missed the paint
     // and keep waiting.
@@ -1948,7 +1984,7 @@ void nsRefreshDriver::Tick(VsyncId aId, TimeStamp aNowTime) {
     // https://drafts.csswg.org/web-animations-1/#update-animations-and-send-events
     if (i == 1) {
       nsAutoMicroTask mt;
-      ReduceAnimations(mPresContext->Document(), nullptr);
+      ReduceAnimations(*mPresContext->Document(), nullptr);
     }
 
     // Check if running the microtask checkpoint caused the pres context to
@@ -1988,9 +2024,8 @@ void nsRefreshDriver::Tick(VsyncId aId, TimeStamp aNowTime) {
           presShell->NotifyFontFaceSetOnRefresh();
           mNeedToRecomputeVisibility = true;
 
-          // Record the telemetry for the # of flushes that occurred between
-          // ticks.
-          presShell->PingFlushPerTickTelemetry(FlushType::Style);
+          // Record the telemetry for events that occurred between ticks.
+          presShell->PingPerTickTelemetry(FlushType::Style);
         }
       }
     } else if (i == 2) {
@@ -2017,9 +2052,8 @@ void nsRefreshDriver::Tick(VsyncId aId, TimeStamp aNowTime) {
         presShell->NotifyFontFaceSetOnRefresh();
         mNeedToRecomputeVisibility = true;
 
-        // Record the telemetry for the # of flushes that occured between
-        // ticks.
-        presShell->PingFlushPerTickTelemetry(FlushType::Layout);
+        // Record the telemetry for events that occurred between ticks.
+        presShell->PingPerTickTelemetry(FlushType::Layout);
       }
     }
 
@@ -2133,11 +2167,10 @@ void nsRefreshDriver::Tick(VsyncId aId, TimeStamp aNowTime) {
 
     mViewManagerFlushIsPending = false;
     RefPtr<nsViewManager> vm = mPresContext->GetPresShell()->GetViewManager();
-    bool skipPaint = false;
-#if defined(MOZ_WIDGET_ANDROID)
-    gfx::VRManager* vrm = gfx::VRManager::Get();
-    skipPaint = vrm->IsPresenting();
-#endif  // defined(MOZ_WIDGET_ANDROID)
+    const bool skipPaint = isPresentingInVR;
+    // Skip the paint in immersive VR mode because whatever we paint here will
+    // not end up on the screen. The screen is displaying WebGL content from a
+    // single canvas in that mode.
     if (!skipPaint) {
       PaintTelemetry::AutoRecordPaint record;
       vm->ProcessPendingUpdates();

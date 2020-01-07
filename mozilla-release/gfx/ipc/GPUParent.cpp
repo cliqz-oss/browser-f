@@ -22,7 +22,6 @@
 #include "mozilla/RemoteDecoderManagerChild.h"
 #include "mozilla/RemoteDecoderManagerParent.h"
 #include "mozilla/dom/MemoryReportRequest.h"
-#include "mozilla/webgpu/WebGPUThreading.h"
 #include "mozilla/gfx/2D.h"
 #include "mozilla/gfx/gfxVars.h"
 #include "mozilla/image/ImageMemoryReporter.h"
@@ -38,6 +37,7 @@
 #include "mozilla/layers/LayerTreeOwnerTracker.h"
 #include "mozilla/layers/UiCompositorControllerParent.h"
 #include "mozilla/layers/MemoryReportingMLGPU.h"
+#include "mozilla/layers/VideoBridgeParent.h"
 #include "mozilla/webrender/RenderThread.h"
 #include "mozilla/webrender/WebRenderAPI.h"
 #include "mozilla/HangDetails.h"
@@ -271,10 +271,6 @@ mozilla::ipc::IPCResult GPUParent::RecvInit(
   }
 #endif
 
-  if (gfxConfig::IsEnabled(Feature::WEBGPU)) {
-    webgpu::WebGPUThreading::Start();
-  }
-
   VRManager::ManagerInit();
   // Send a message to the UI process that we're done.
   GPUDeviceData data;
@@ -312,6 +308,12 @@ mozilla::ipc::IPCResult GPUParent::RecvInitVsyncBridge(
 mozilla::ipc::IPCResult GPUParent::RecvInitImageBridge(
     Endpoint<PImageBridgeParent>&& aEndpoint) {
   ImageBridgeParent::CreateForGPUProcess(std::move(aEndpoint));
+  return IPC_OK();
+}
+
+mozilla::ipc::IPCResult GPUParent::RecvInitVideoBridge(
+    Endpoint<PVideoBridgeParent>&& aEndpoint) {
+  VideoBridgeParent::Open(std::move(aEndpoint), VideoBridgeSource::RddProcess);
   return IPC_OK();
 }
 
@@ -551,10 +553,6 @@ void GPUParent::ActorDestroy(ActorDestroyReason aWhy) {
 #endif
 
   image::ImageMemoryReporter::ShutdownForWebRender();
-
-  if (gfxConfig::IsEnabled(Feature::WEBGPU)) {
-    webgpu::WebGPUThreading::ShutDown();
-  }
 
   // Shut down the default GL context provider.
   gl::GLContextProvider::Shutdown();

@@ -3,7 +3,7 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-#define ENABLE_SET_CUBEB_BACKEND 1
+#include "CubebUtils.h"
 #include "GraphDriver.h"
 #include "MediaTrackGraphImpl.h"
 
@@ -27,9 +27,9 @@ RefPtr<MediaTrackGraphImpl> MakeMTGImpl() {
 }
 
 TEST(TestAudioCallbackDriver, StartStop)
-{
+MOZ_CAN_RUN_SCRIPT_FOR_DEFINITION {
   MockCubeb* mock = new MockCubeb();
-  mozilla::CubebUtils::ForceSetCubebContext(mock->AsCubebContext());
+  CubebUtils::ForceSetCubebContext(mock->AsCubebContext());
 
   RefPtr<MediaTrackGraphImpl> graph = MakeMTGImpl();
   EXPECT_TRUE(!!graph->mDriver) << "AudioCallbackDriver created.";
@@ -45,7 +45,7 @@ TEST(TestAudioCallbackDriver, StartStop)
   EXPECT_TRUE(driver->IsStarted()) << "Verify thread is started";
 
   // This will block untill all events have been executed.
-  driver->AsAudioCallbackDriver()->Shutdown();
+  MOZ_KnownLive(driver->AsAudioCallbackDriver())->Shutdown();
   EXPECT_FALSE(driver->ThreadRunning()) << "Verify thread is not running";
   EXPECT_FALSE(driver->IsStarted()) << "Verify thread is not started";
 
@@ -54,5 +54,6 @@ TEST(TestAudioCallbackDriver, StartStop)
   // block for ever if it is not cleared. The same logic exists in
   // MediaTrackGraphShutDownRunnable
   graph->mDriver = nullptr;
+
+  graph->RemoveShutdownBlocker();
 }
-#undef ENABLE_SET_CUBEB_BACKEND

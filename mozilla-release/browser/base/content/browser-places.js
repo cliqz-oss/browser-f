@@ -321,7 +321,9 @@ var StarUI = {
     }
 
     let canvas = PageThumbs.createCanvas(window);
-    PageThumbs.captureToCanvas(gBrowser.selectedBrowser, canvas);
+    PageThumbs.captureToCanvas(gBrowser.selectedBrowser, canvas).catch(e =>
+      Cu.reportError(e)
+    );
     document.mozSetImageElement("editBookmarkPanelImageCanvas", canvas);
   },
 
@@ -388,7 +390,7 @@ var StarUI = {
     } else if (index == -1) {
       lastUsedFolderGuids.unshift(selectedFolderGuid);
     }
-    if (lastUsedFolderGuids.length > 5) {
+    while (lastUsedFolderGuids.length > PlacesUIUtils.maxRecentFolders) {
       lastUsedFolderGuids.pop();
     }
 

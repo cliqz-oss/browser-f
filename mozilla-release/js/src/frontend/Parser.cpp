@@ -356,7 +356,8 @@ FunctionBox* PerHandlerParser<ParseHandler>::newFunctionBox(
    */
 
   FunctionBox* funbox;
-  if (getTreeHolder().isDeferred()) {
+
+  if (parseInfo_.isDeferred()) {
     funbox = alloc_.new_<FunctionBox>(
         cx_, traceListHead_, fcd, toStringStart, inheritedDirectives,
         options().extraWarningsOption, generatorKind, asyncKind);
@@ -1441,7 +1442,7 @@ LexicalScopeNode* Parser<FullParseHandler, Unit>::evalBody(
           continue;
         }
         MOZ_ASSERT(fun->allowSuperProperty());
-        MOZ_ASSERT(fun->nonLazyScript()->needsHomeObject());
+        MOZ_ASSERT(fun->baseScript()->needsHomeObject());
         break;
       }
     }
@@ -1773,7 +1774,7 @@ bool PerHandlerParser<SyntaxParseHandler>::finishFunction(
   }
 
   // If we can defer the LazyScript creation, we are now done.
-  if (getTreeHolder().isDeferred()) {
+  if (parseInfo_.isDeferred()) {
     cleanupGuard.release();
     return true;
   }
@@ -2623,14 +2624,14 @@ bool Parser<FullParseHandler, Unit>::skipLazyInnerFunction(
     return false;
   }
 
-  LazyScript* lazy = fun->lazyScript();
-  if (lazy->needsHomeObject()) {
+  BaseScript* base = fun->baseScript();
+  if (base->needsHomeObject()) {
     funbox->setNeedsHomeObject();
   }
 
-  PropagateTransitiveParseFlags(lazy, pc_->sc());
+  PropagateTransitiveParseFlags(base, pc_->sc());
 
-  if (!tokenStream.advance(fun->lazyScript()->sourceEnd())) {
+  if (!tokenStream.advance(base->sourceEnd())) {
     return false;
   }
 
@@ -2738,7 +2739,6 @@ GeneralParser<ParseHandler, Unit>::templateLiteral(
 AutoPushTree::AutoPushTree(FunctionTreeHolder& holder)
     : holder_(holder), oldParent_(holder_.getCurrentParent()) {
   MOZ_ASSERT(holder_.getCurrentParent());
-  MOZ_ASSERT(!holder_.isEager());
 }
 
 bool AutoPushTree::init(JSContext* cx, FunctionBox* funbox) {
@@ -7212,11 +7212,14 @@ bool GeneralParser<ParseHandler, Unit>::finishClassConstructor(
 
     // Set the same information, but on the lazyScript.
     if (ctorbox->isInterpretedLazy()) {
-      ctorbox->function()->lazyScript()->setToStringEnd(classEndOffset);
+      ctorbox->function()->baseScript()->setToStringEnd(classEndOffset);
 
       if (numFields > 0) {
-        ctorbox->function()->lazyScript()->setHasThisBinding();
+        ctorbox->function()->baseScript()->setHasThisBinding();
       }
+    } else {
+      // There should not be any non-lazy script yet.
+      MOZ_ASSERT_IF(ctorbox->hasObject(), ctorbox->function()->isIncomplete());
     }
 
     if (numFields == 0) {
@@ -8318,35 +8321,40 @@ static ParseNodeKind BinaryOpTokenKindToParseNodeKind(TokenKind tok) {
                        (size_t(tok) - size_t(TokenKind::BinOpFirst)));
 }
 
+// This list must be kept in the same order in several places:
+//   - The binary operators in ParseNode.h ,
+//   - the binary operators in TokenKind.h
+//   - the JSOp code list in BytecodeEmitter.cpp
 static const int PrecedenceTable[] = {
     1,  /* ParseNodeKind::PipeLine */
-    2,  /* ParseNodeKind::Or */
-    3,  /* ParseNodeKind::And */
-    4,  /* ParseNodeKind::BitOr */
-    5,  /* ParseNodeKind::BitXor */
-    6,  /* ParseNodeKind::BitAnd */
-    7,  /* ParseNodeKind::StrictEq */
-    7,  /* ParseNodeKind::Eq */
-    7,  /* ParseNodeKind::StrictNe */
-    7,  /* ParseNodeKind::Ne */
-    8,  /* ParseNodeKind::Lt */
-    8,  /* ParseNodeKind::Le */
-    8,  /* ParseNodeKind::Gt */
-    8,  /* ParseNodeKind::Ge */
-    8,  /* ParseNodeKind::InstanceOf */
-    8,  /* ParseNodeKind::In */
-    9,  /* ParseNodeKind::Lsh */
-    9,  /* ParseNodeKind::Rsh */
-    9,  /* ParseNodeKind::Ursh */
-    10, /* ParseNodeKind::Add */
-    10, /* ParseNodeKind::Sub */
-    11, /* ParseNodeKind::Star */
-    11, /* ParseNodeKind::Div */
-    11, /* ParseNodeKind::Mod */
-    12  /* ParseNodeKind::Pow */
+    2,  /* ParseNodeKind::Coalesce */
+    3,  /* ParseNodeKind::Or */
+    4,  /* ParseNodeKind::And */
+    5,  /* ParseNodeKind::BitOr */
+    6,  /* ParseNodeKind::BitXor */
+    7,  /* ParseNodeKind::BitAnd */
+    8,  /* ParseNodeKind::StrictEq */
+    8,  /* ParseNodeKind::Eq */
+    8,  /* ParseNodeKind::StrictNe */
+    8,  /* ParseNodeKind::Ne */
+    9,  /* ParseNodeKind::Lt */
+    9,  /* ParseNodeKind::Le */
+    9,  /* ParseNodeKind::Gt */
+    9,  /* ParseNodeKind::Ge */
+    9,  /* ParseNodeKind::InstanceOf */
+    9,  /* ParseNodeKind::In */
+    10, /* ParseNodeKind::Lsh */
+    10, /* ParseNodeKind::Rsh */
+    10, /* ParseNodeKind::Ursh */
+    11, /* ParseNodeKind::Add */
+    11, /* ParseNodeKind::Sub */
+    12, /* ParseNodeKind::Star */
+    12, /* ParseNodeKind::Div */
+    12, /* ParseNodeKind::Mod */
+    13  /* ParseNodeKind::Pow */
 };
 
-static const int PRECEDENCE_CLASSES = 12;
+static const int PRECEDENCE_CLASSES = 13;
 
 static int Precedence(ParseNodeKind pnk) {
   // Everything binds tighter than ParseNodeKind::Limit, because we want
@@ -8360,6 +8368,8 @@ static int Precedence(ParseNodeKind pnk) {
   MOZ_ASSERT(pnk <= ParseNodeKind::BinOpLast);
   return PrecedenceTable[size_t(pnk) - size_t(ParseNodeKind::BinOpFirst)];
 }
+
+enum class EnforcedParentheses : uint8_t { CoalesceExpr, AndOrExpr, None };
 
 template <class ParseHandler, typename Unit>
 MOZ_ALWAYS_INLINE typename ParseHandler::Node
@@ -8376,6 +8386,7 @@ GeneralParser<ParseHandler, Unit>::orExpr(
   ParseNodeKind kindStack[PRECEDENCE_CLASSES];
   int depth = 0;
   Node pn;
+  EnforcedParentheses unparenthesizedExpression = EnforcedParentheses::None;
   for (;;) {
     pn = unaryExpr(yieldHandling, tripledotHandling, possibleError, invoked);
     if (!pn) {
@@ -8397,12 +8408,45 @@ GeneralParser<ParseHandler, Unit>::orExpr(
       if (possibleError && !possibleError->checkForExpressionError()) {
         return null();
       }
-      // Report an error for unary expressions on the LHS of **.
-      if (tok == TokenKind::Pow &&
-          handler_.isUnparenthesizedUnaryExpression(pn)) {
-        error(JSMSG_BAD_POW_LEFTSIDE);
-        return null();
+
+      switch (tok) {
+        // Report an error for unary expressions on the LHS of **.
+        case TokenKind::Pow:
+          if (handler_.isUnparenthesizedUnaryExpression(pn)) {
+            error(JSMSG_BAD_POW_LEFTSIDE);
+            return null();
+          }
+          break;
+
+        case TokenKind::Or:
+        case TokenKind::And:
+          // In the case that the `??` is on the left hand side of the
+          // expression: Disallow Mixing of ?? and other logical operators (||
+          // and &&) unless one expression is parenthesized
+          if (unparenthesizedExpression == EnforcedParentheses::CoalesceExpr) {
+            error(JSMSG_BAD_COALESCE_MIXING);
+            return null();
+          }
+          // If we have not detected a mixing error at this point, record that
+          // we have an unparenthesized expression, in case we have one later.
+          unparenthesizedExpression = EnforcedParentheses::AndOrExpr;
+          break;
+
+        case TokenKind::Coalesce:
+          if (unparenthesizedExpression == EnforcedParentheses::AndOrExpr) {
+            error(JSMSG_BAD_COALESCE_MIXING);
+            return null();
+          }
+          // If we have not detected a mixing error at this point, record that
+          // we have an unparenthesized expression, in case we have one later.
+          unparenthesizedExpression = EnforcedParentheses::CoalesceExpr;
+          break;
+
+        default:
+          // do nothing in other cases
+          break;
       }
+
       pnk = BinaryOpTokenKindToParseNodeKind(tok);
     } else {
       tok = TokenKind::Eof;
@@ -8423,6 +8467,7 @@ GeneralParser<ParseHandler, Unit>::orExpr(
       depth--;
       ParseNodeKind combiningPnk = kindStack[depth];
       pn = handler_.appendOrCreateList(combiningPnk, nodeStack[depth], pn, pc_);
+
       if (!pn) {
         return null();
       }
@@ -9583,7 +9628,37 @@ RegExpLiteral* Parser<FullParseHandler, Unit>::newRegExp() {
 
   // Create the regexp and check its syntax.
   const auto& chars = tokenStream.getCharBuffer();
+  mozilla::Range<const char16_t> range(chars.begin(), chars.length());
   RegExpFlags flags = anyChars.currentToken().regExpFlags();
+
+  if (this->parseInfo_.isDeferred()) {
+    {
+      LifoAllocScope allocScope(&cx_->tempLifoAlloc());
+      // Verify that the Regexp will syntax parse when the time comes to
+      // instantiate it.
+      if (!irregexp::ParsePatternSyntax(anyChars, allocScope.alloc(), range,
+                                        flags.unicode())) {
+        return nullptr;
+      }
+    }
+
+    // With RegExpCreationData stack allocated, it is responsible for cleanup
+    // until the data is moved into, after the potentially OOMing operations
+    // are done, at which point the responsibility for cleanup becomes the
+    // deferred allocation list, stored in the ParseInfo.
+    RegExpCreationData data;
+    if (!data.init(cx_, range, flags)) {
+      return nullptr;
+    }
+
+    RegExpLiteral* node = handler_.newRegExp(pos());
+    if (!node) {
+      return nullptr;
+    }
+
+    node->init(std::move(data));
+    return node;
+  }
 
   Rooted<RegExpObject*> reobj(cx_);
   reobj = RegExpObject::create(cx_, chars.begin(), chars.length(), flags,
@@ -9630,7 +9705,7 @@ BigIntLiteral* Parser<FullParseHandler, Unit>::newBigInt() {
   // productions may start with 0[bBoOxX], indicating binary/octal/hex.
   const auto& chars = tokenStream.getCharBuffer();
 
-  if (this->getTreeHolder().isDeferred()) {
+  if (this->parseInfo_.isDeferred()) {
     BigIntCreationData data;
     if (!data.init(this->cx_, chars)) {
       return null();

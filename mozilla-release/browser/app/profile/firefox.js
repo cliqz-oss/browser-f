@@ -147,12 +147,7 @@ pref("app.update.elevation.promptMaxAttempts", 2);
 
 // If set to true, the Update Service will apply updates in the background
 // when it finishes downloading them.
-#ifdef XP_WIN
-  // Staging is disabled on Windows due to bug 1596778
-  pref("app.update.staging.enabled", false);
-#else
-  pref("app.update.staging.enabled", true);
-#endif
+pref("app.update.staging.enabled", true);
 
 // Update service URL:
 pref("app.update.url", "https://updatecheck.cliqz.com/update/6/%PRODUCT%/%VERSION%/%BUILD_ID%/%BUILD_TARGET%/%LOCALE%/%CHANNEL%/%OS_VERSION%/%SYSTEM_CAPABILITIES%/%DISTRIBUTION%/%DISTRIBUTION_VERSION%/update.xml");
@@ -343,11 +338,20 @@ pref("browser.urlbar.suggest.searches",             true);
 #endif
 pref("browser.urlbar.suggest.searches",             false);
 
+<<<<<<< HEAD
 // Whether the user made a choice in the old search suggestions opt-in bar.
 pref("browser.urlbar.userMadeSearchSuggestionsChoice", true);
 // The suggestion opt-out hint will be hidden right away.
 pref("browser.urlbar.timesBeforeHidingSuggestionsHint", 0);
 
+||||||| merged common ancestors
+// Whether the user made a choice in the old search suggestions opt-in bar.
+pref("browser.urlbar.userMadeSearchSuggestionsChoice", false);
+// The suggestion opt-out hint will be hidden after being shown 4 times.
+pref("browser.urlbar.timesBeforeHidingSuggestionsHint", 4);
+
+=======
+>>>>>>> e86e1fad9bb754a69bba83334ae55a625468dd48
 // Limit the number of characters sent to the current search engine to fetch
 // suggestions.
 pref("browser.urlbar.maxCharsForSearchSuggestions", 20);
@@ -373,12 +377,13 @@ pref("browser.urlbar.openintab", false);
 pref("browser.urlbar.usepreloadedtopurls.enabled", false);
 pref("browser.urlbar.usepreloadedtopurls.expire_days", 14);
 
-// Whether the quantum bar displays the major design update.
-#ifdef NIGHTLY_BUILD
-  pref("browser.urlbar.megabar", true);
-#else
-  pref("browser.urlbar.megabar", false);
-#endif
+// Whether the quantum bar displays design update 1.
+pref("browser.urlbar.update1", false);
+// Whether we expand the font size when when the urlbar is
+// focused in design update 1.
+pref("browser.urlbar.update1.expandTextOnFocus", false);
+// Whether the urlbar should strip https from urls in the view.
+pref("browser.urlbar.update1.view.stripHttps", false);
 
 pref("browser.urlbar.openViewOnFocus", false);
 pref("browser.urlbar.eventTelemetry.enabled", false);
@@ -454,12 +459,7 @@ pref("permissions.default.geo", 0);
 pref("permissions.default.desktop-notification", 0);
 pref("permissions.default.shortcuts", 0);
 
-#ifdef EARLY_BETA_OR_EARLIER
-  pref("permissions.desktop-notification.postPrompt.enabled", true);
-#else
-  pref("permissions.desktop-notification.postPrompt.enabled", false);
-#endif
-
+pref("permissions.desktop-notification.postPrompt.enabled", true);
 pref("permissions.desktop-notification.notNow.enabled", false);
 
 pref("permissions.fullscreen.allowed", false);
@@ -471,6 +471,12 @@ pref("permissions.postPrompt.animate", true);
   pref("permissions.eventTelemetry.enabled", true);
 #else
   pref("permissions.eventTelemetry.enabled", false);
+#endif
+
+#ifdef NIGHTLY_BUILD
+  pref("permissions.delegation.enable", true);
+#else
+  pref("permissions.delegation.enable", false);
 #endif
 
 // handle links targeting new windows
@@ -781,16 +787,6 @@ pref("plugins.show_infobar", false);
   pref("plugin.default.state", 1);
 #endif
 
-// Plugins bundled in XPIs are enabled by default.
-pref("plugin.defaultXpi.state", 2);
-
-// Flash is Click-to-Activate by default on all channels. Disabled for ARM builds.
-#if defined(_ARM64_) && defined(XP_WIN)
-  pref("plugin.state.flash", 0);
-#else
-  pref("plugin.state.flash", 1);
-#endif
-
 // Enables the download and use of the flash blocklists.
 pref("plugins.flashBlock.enabled", true);
 
@@ -1051,6 +1047,9 @@ pref("browser.bookmarks.editDialog.showForNewBookmarks", true);
 // bookmarking dialog
 pref("browser.bookmarks.editDialog.firstEditField", "namePicker");
 
+// The number of recently selected folders in the edit bookmarks dialog.
+pref("browser.bookmarks.editDialog.maxRecentFolders", 7);
+
 pref("dom.ipc.plugins.flash.disable-protected-mode", false);
 
 // Feature-disable the protected-mode auto-flip
@@ -1176,11 +1175,7 @@ pref("dom.ipc.shims.enabledWarnings", false);
 #endif
 
 #if defined(XP_OPENBSD) && defined(MOZ_SANDBOX)
-  // default pledge strings for the main & content processes, cf bug 1457092
-  // broad list for now, has to be refined over time
-  pref("security.sandbox.pledge.main", "stdio rpath wpath cpath inet proc exec prot_exec flock ps sendfd recvfd dns vminfo tty drm unix fattr getpw mcast");
   pref("security.sandbox.content.level", 1);
-  pref("security.sandbox.pledge.content", "stdio rpath wpath cpath inet recvfd sendfd prot_exec unix drm ps");
 #endif
 
 #if defined(MOZ_SANDBOX)
@@ -1355,7 +1350,7 @@ pref("browser.newtabpage.activity-stream.improvesearch.topSiteSearchShortcuts", 
 
 // ASRouter provider configuration
 pref("browser.newtabpage.activity-stream.asrouter.providers.cfr", "{\"id\":\"cfr\",\"enabled\":true,\"type\":\"remote-settings\",\"bucket\":\"cfr\",\"frequency\":{\"custom\":[{\"period\":\"daily\",\"cap\":1}]},\"categories\":[\"cfrAddons\",\"cfrFeatures\"],\"updateCycleInMs\":3600000}");
-pref("browser.newtabpage.activity-stream.asrouter.providers.whats-new-panel", "{\"id\":\"whats-new-panel\",\"enabled\":true,\"type\":\"remote-settings\",\"bucket\":\"whats-new-panel\",\"updateCycleInMs\":3600000,\"exclude\":[\"EXTENDED_TRIPLETS_PRETRAILHEAD\"]}");
+pref("browser.newtabpage.activity-stream.asrouter.providers.whats-new-panel", "{\"id\":\"whats-new-panel\",\"enabled\":true,\"type\":\"remote-settings\",\"bucket\":\"whats-new-panel\",\"updateCycleInMs\":3600000}");
 // This url, if changed, MUST continue to point to an https url. Pulling arbitrary content to inject into
 // this page over http opens us up to a man-in-the-middle attack that we'd rather not face. If you are a downstream
 // repackager of this code using an alternate snippet url, please keep your users safe
@@ -1369,6 +1364,8 @@ pref("browser.newtabpage.activity-stream.asrouter.useRemoteL10n", true);
 pref("browser.newtabpage.activity-stream.discoverystream.enabled", true);
 pref("browser.newtabpage.activity-stream.discoverystream.hardcoded-basic-layout", false);
 pref("browser.newtabpage.activity-stream.discoverystream.spocs-endpoint", "");
+// List of langs that get the 7 row layout.
+pref("browser.newtabpage.activity-stream.discoverystream.lang-layout-config", "en");
 
 // The pref controls if search hand-off is enabled for Activity Stream.
 #ifdef NIGHTLY_BUILD
@@ -1383,6 +1380,9 @@ pref("trailhead.firstrun.branches", "");
 pref("browser.messaging-system.whatsNewPanel.enabled", true);
 // Whether to use Messaging System to add a badge to the FxA toolbar button
 pref("browser.messaging-system.fxatoolbarbadge.enabled", true);
+// Used for CFR messages with scores. See Bug 1594422.
+pref("browser.messaging-system.personalized-cfr.scores", "{}");
+pref("browser.messaging-system.personalized-cfr.score-threshold", 5000);
 
 // Enable the DOM fullscreen API.
 pref("full-screen-api.enabled", true);
@@ -1570,11 +1570,11 @@ pref("blockautoplay.whitelist.add", "https://www.youtube.com/");
   pref("media.autoplay.block-webaudio", false);
 #endif
 
-// Picture-in-Picture is currently enabled by default on Windows.
-#if defined(XP_WIN)
-  pref("media.videocontrols.picture-in-picture.enabled", true);
-  pref("media.videocontrols.picture-in-picture.video-toggle.enabled", true);
-#endif
+pref("media.videocontrols.picture-in-picture.enabled", true);
+pref("media.videocontrols.picture-in-picture.video-toggle.enabled", true);
+
+// Show the audio toggle for Picture-in-Picture.
+pref("media.videocontrols.picture-in-picture.audio-toggle.enabled", false);
 
 pref("browser.translation.detectLanguage", false);
 pref("browser.translation.neverForLanguages", "");
@@ -1598,8 +1598,6 @@ pref("toolkit.telemetry.newProfilePing.enabled", true);
 pref("toolkit.telemetry.updatePing.enabled", true);
 // Enables sending 'bhr' pings when the browser hangs.
 pref("toolkit.telemetry.bhrPing.enabled", true);
-// Enables using Hybrid Content Telemetry from Mozilla privileged pages.
-pref("toolkit.telemetry.hybridContent.enabled", true);
 // Whether to enable Ecosystem Telemetry, requires a restart.
 #ifdef NIGHTLY_BUILD
   pref("toolkit.telemetry.ecosystemtelemetry.enabled", true);
@@ -1610,19 +1608,38 @@ pref("toolkit.telemetry.hybridContent.enabled", true);
 // Ping Centre Telemetry settings.
 pref("browser.ping-centre.telemetry", true);
 pref("browser.ping-centre.log", false);
+<<<<<<< HEAD
 // Cliqz. Don't use in our browser
 pref("browser.ping-centre.staging.endpoint", "");
 pref("browser.ping-centre.production.endpoint", "");
+||||||| merged common ancestors
+pref("browser.ping-centre.staging.endpoint", "https://onyx_tiles.stage.mozaws.net/v3/links/ping-centre");
+pref("browser.ping-centre.production.endpoint", "https://tiles.services.mozilla.com/v3/links/ping-centre");
+=======
+>>>>>>> e86e1fad9bb754a69bba83334ae55a625468dd48
 
 // Enable GMP support in the addon manager.
 pref("media.gmp-provider.enabled", true);
 
 // Enable blocking access to storage from tracking resources by default.
+<<<<<<< HEAD
 pref("network.cookie.cookieBehavior", 3 /* BEHAVIOR_LIMIT_FOREIGN */);
 #ifdef EARLY_BETA_OR_EARLIER
   // Enable fingerprinting blocking by default only in nightly and early beta.
   pref("privacy.trackingprotection.fingerprinting.enabled", true);
 #endif
+||||||| merged common ancestors
+pref("network.cookie.cookieBehavior", 4 /* BEHAVIOR_REJECT_TRACKER */);
+#ifdef EARLY_BETA_OR_EARLIER
+  // Enable fingerprinting blocking by default only in nightly and early beta.
+  pref("privacy.trackingprotection.fingerprinting.enabled", true);
+#endif
+=======
+pref("network.cookie.cookieBehavior", 4 /* BEHAVIOR_REJECT_TRACKER */);
+
+// Enable fingerprinting blocking by default for all channels, only on desktop.
+pref("privacy.trackingprotection.fingerprinting.enabled", true);
+>>>>>>> e86e1fad9bb754a69bba83334ae55a625468dd48
 
 // Enable cryptomining blocking by default for all channels, only on desktop.
 pref("privacy.trackingprotection.cryptomining.enabled", true);
@@ -1768,28 +1785,12 @@ pref("browser.tabs.crashReporting.email", "");
 
 pref("extensions.legacy.enabled", true);
 
-// How often to check for CPOW timeouts. CPOWs are only timed out by
-// the hang monitor.
-pref("dom.ipc.cpow.timeout", 500);
-
 // Causes access on unsafe CPOWs from browser code to throw by default.
 pref("dom.ipc.cpows.forbid-unsafe-from-browser", true);
-
-// Enable e10s hang monitoring (slow script checking and plugin hang
-// detection).
-pref("dom.ipc.processHangMonitor", true);
 
 #if defined(XP_WIN)
   // Allows us to deprioritize the processes of background tabs at an OS level
   pref("dom.ipc.processPriorityManager.enabled", true);
-#endif
-
-#ifdef DEBUG
-  // Don't report hangs in DEBUG builds. They're too slow and often a
-  // debugger is attached.
-  pref("dom.ipc.reportProcessHangs", false);
-#else
-  pref("dom.ipc.reportProcessHangs", true);
 #endif
 
 // Don't limit how many nodes we care about on desktop:
@@ -1854,8 +1855,8 @@ pref("signon.management.page.mobileAndroidURL", "https://app.adjust.com/6tteyjo?
 pref("signon.management.page.mobileAppleURL", "https://app.adjust.com/6tteyjo?redirect=https%3A%2F%2Fitunes.apple.com%2Fapp%2Fid1314000270%3Fmt%3D8&utm_campaign=Desktop&utm_adgroup=InProduct&utm_creative=");
 pref("signon.management.page.breachAlertUrl",
      "https://monitor.firefox.com/breach-details/");
-
 pref("signon.management.page.hideMobileFooter", false);
+pref("signon.management.page.showPasswordSyncNotification", true);
 
 // Enable the "Simplify Page" feature in Print Preview. This feature
 // is disabled by default in toolkit.
@@ -2037,7 +2038,6 @@ pref("devtools.command-button-pick.enabled", true);
 pref("devtools.command-button-frames.enabled", true);
 pref("devtools.command-button-splitconsole.enabled", true);
 pref("devtools.command-button-paintflashing.enabled", false);
-pref("devtools.command-button-scratchpad.enabled", false);
 pref("devtools.command-button-responsive.enabled", true);
 pref("devtools.command-button-screenshot.enabled", false);
 pref("devtools.command-button-rulers.enabled", false);
@@ -2074,6 +2074,8 @@ pref("devtools.inspector.new-rulesview.enabled", false);
 pref("devtools.inspector.compatibility.enabled", false);
 // Enable the new Box Model Highlighter with renderer in parent process
 pref("devtools.inspector.use-new-box-model-highlighter", false);
+// Enable color scheme simulation in the inspector.
+pref("devtools.inspector.color-scheme-simulation.enabled", false);
 
 // Grid highlighter preferences
 pref("devtools.gridinspector.gridOutlineMaxColumns", 50);
@@ -2164,17 +2166,6 @@ pref("devtools.performance.ui.enable-memory-flame", false);
   pref("devtools.performance.ui.experimental", false);
 #endif
 
-// Preferences for the new performance panel. This pref configures the base URL
-// for the profiler.firefox.com instance to use. This is useful so that a
-// developer can change it while working on profiler.firefox.com, or in tests.
-// This isn't exposed directly to the user.
-pref("devtools.performance.recording.ui-base-url", "https://profiler.firefox.com");
-
-// A JSON array of strings, where each string is a file path to an objdir on
-// the host machine. This is used in order to look up symbol information from
-// build artifacts of local builds.
-pref("devtools.performance.recording.objdirs", "[]");
-
 // The default cache UI setting
 pref("devtools.cache.disabled", false);
 
@@ -2185,7 +2176,6 @@ pref("devtools.serviceWorkers.testing.enabled", false);
 pref("devtools.netmonitor.enabled", true);
 
 pref("devtools.netmonitor.features.search", true);
-
 pref("devtools.netmonitor.features.requestBlocking", true);
 
 // Enable the Application panel
@@ -2226,23 +2216,6 @@ pref("devtools.netmonitor.har.enableAutoExportToFile", false);
 
 pref("devtools.netmonitor.features.webSockets", true);
 
-// Scratchpad settings
-// - recentFileMax: The maximum number of recently-opened files
-//                  stored. Setting this preference to 0 will not
-//                  clear any recent files, but rather hide the
-//                  'Open Recent'-menu.
-// - lineNumbers: Whether to show line numbers or not.
-// - wrapText: Whether to wrap text or not.
-// - showTrailingSpace: Whether to highlight trailing space or not.
-// - editorFontSize: Editor font size configuration.
-// - enableAutocompletion: Whether to enable JavaScript autocompletion.
-pref("devtools.scratchpad.recentFilesMax", 10);
-pref("devtools.scratchpad.lineNumbers", true);
-pref("devtools.scratchpad.wrapText", false);
-pref("devtools.scratchpad.showTrailingSpace", false);
-pref("devtools.scratchpad.editorFontSize", 12);
-pref("devtools.scratchpad.enableAutocompletion", true);
-
 // Enable the Storage Inspector
 pref("devtools.storage.enabled", true);
 
@@ -2257,9 +2230,6 @@ pref("devtools.styleeditor.transitions", true);
 // Screenshot Option Settings.
 pref("devtools.screenshot.clipboard.enabled", false);
 pref("devtools.screenshot.audio.enabled", true);
-
-// Enable Scratchpad
-pref("devtools.scratchpad.enabled", false);
 
 // Make sure the DOM panel is hidden by default
 pref("devtools.dom.enabled", false);
@@ -2372,7 +2342,14 @@ pref("devtools.responsive.reloadNotification.enabled", true);
 pref("devtools.responsive.touchSimulation.enabled", false);
 // Whether or not meta viewport is enabled, if and only if touchSimulation
 // is also enabled.
-pref("devtools.responsive.metaViewport.enabled", false);
+// For now this is only available in nightly, dev-edition and early betas. It is planned
+// to be gradually rolled out with release 72. Starting with 73, this pref needs to be set
+// to true on all channels.
+#if defined(EARLY_BETA_OR_EARLIER) || defined(MOZ_DEV_EDITION)
+  pref("devtools.responsive.metaViewport.enabled", true);
+#else
+  pref("devtools.responsive.metaViewport.enabled", false);
+#endif
 // The user agent of the viewport.
 pref("devtools.responsive.userAgent", "");
 // Whether or not the RDM UI is embedded in the browser.

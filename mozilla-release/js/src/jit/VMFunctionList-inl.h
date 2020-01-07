@@ -48,6 +48,29 @@ namespace jit {
   _(BaselineGetFunctionThis, js::jit::BaselineGetFunctionThis)                 \
   _(BaselineThrowInitializedThis, js::jit::BaselineThrowInitializedThis)       \
   _(BaselineThrowUninitializedThis, js::jit::BaselineThrowUninitializedThis)   \
+  _(BigIntAdd, js::jit::BigIntAdd)                                             \
+  _(BigIntBitAnd, js::jit::BigIntBitAnd)                                       \
+  _(BigIntBitNot, js::jit::BigIntBitNot)                                       \
+  _(BigIntBitOr, js::jit::BigIntBitOr)                                         \
+  _(BigIntBitXor, js::jit::BigIntBitXor)                                       \
+  _(BigIntDec, js::jit::BigIntDec)                                             \
+  _(BigIntDiv, js::jit::BigIntDiv)                                             \
+  _(BigIntInc, js::jit::BigIntInc)                                             \
+  _(BigIntLeftShift, js::jit::BigIntLeftShift)                                 \
+  _(BigIntMod, js::jit::BigIntMod)                                             \
+  _(BigIntMul, js::jit::BigIntMul)                                             \
+  _(BigIntNeg, js::jit::BigIntNeg)                                             \
+  _(BigIntPow, js::jit::BigIntPow)                                             \
+  _(BigIntRightShift, js::jit::BigIntRightShift)                               \
+  _(BigIntStringEqual,                                                         \
+    js::jit::BigIntStringEqual<js::jit::EqualityKind::Equal>)                  \
+  _(BigIntStringGreaterThanOrEqual,                                            \
+    js::jit::BigIntStringCompare<js::jit::ComparisonKind::GreaterThanOrEqual>) \
+  _(BigIntStringLessThan,                                                      \
+    js::jit::BigIntStringCompare<js::jit::ComparisonKind::LessThan>)           \
+  _(BigIntStringNotEqual,                                                      \
+    js::jit::BigIntStringEqual<js::jit::EqualityKind::NotEqual>)               \
+  _(BigIntSub, js::jit::BigIntSub)                                             \
   _(BindVarOperation, js::BindVarOperation)                                    \
   _(BitAnd, js::BitAnd)                                                        \
   _(BitLsh, js::BitLsh)                                                        \
@@ -55,6 +78,7 @@ namespace jit {
   _(BitOr, js::BitOr)                                                          \
   _(BitRsh, js::BitRsh)                                                        \
   _(BitXor, js::BitXor)                                                        \
+  _(BoxBoxableValue, js::wasm::BoxBoxableValue)                                \
   _(BoxNonStrictThis, js::BoxNonStrictThis)                                    \
   _(BuiltinProtoOperation, js::BuiltinProtoOperation)                          \
   _(CallNativeGetter, js::jit::CallNativeGetter)                               \
@@ -230,6 +254,10 @@ namespace jit {
   _(StartDynamicModuleImport, js::StartDynamicModuleImport)                    \
   _(StrictlyEqual, js::jit::StrictlyEqual<js::jit::EqualityKind::Equal>)       \
   _(StrictlyNotEqual, js::jit::StrictlyEqual<js::jit::EqualityKind::NotEqual>) \
+  _(StringBigIntGreaterThanOrEqual,                                            \
+    js::jit::StringBigIntCompare<js::jit::ComparisonKind::GreaterThanOrEqual>) \
+  _(StringBigIntLessThan,                                                      \
+    js::jit::StringBigIntCompare<js::jit::ComparisonKind::LessThan>)           \
   _(StringFlatReplaceString, js::StringFlatReplaceString)                      \
   _(StringFromCharCode, js::jit::StringFromCharCode)                           \
   _(StringFromCodePoint, js::jit::StringFromCodePoint)                         \

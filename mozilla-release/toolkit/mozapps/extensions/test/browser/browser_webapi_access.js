@@ -7,17 +7,11 @@ registerCleanupFunction(() => {
 });
 
 function check_frame_availability(browser) {
-  return ContentTask.spawn(browser, null, async function() {
-    let frame = content.document.getElementById("frame");
-    return (
-      frame.contentWindow.document.getElementById("result").textContent ==
-      "true"
-    );
-  });
+  return check_availability(browser.browsingContext.getChildren()[0]);
 }
 
 function check_availability(browser) {
-  return ContentTask.spawn(browser, null, async function() {
+  return SpecialPowers.spawn(browser, [], async function() {
     return content.document.getElementById("result").textContent == "true";
   });
 }
@@ -145,7 +139,7 @@ add_task(async function test_chrome_frame() {
   });
 
   await BrowserTestUtils.withNewTab(
-    `${CHROMEROOT}webapi_checkchromeframe.xul`,
+    `${CHROMEROOT}webapi_checkchromeframe.xhtml`,
     async function test_available(browser) {
       let available = await check_frame_availability(browser);
       ok(available, "API should be available.");

@@ -371,8 +371,18 @@ nsresult TextEditor::HandleKeyPressEvent(WidgetKeyboardEvent* aKeyboardEvent) {
     // we don't PreventDefault() here or keybindings like control-x won't work
     return NS_OK;
   }
+  // Our widget shouldn't set `\r` to `mCharCode`, but it may be synthesized
+  // keyboard event and its value may be `\r`.  In such case, we should treat
+  // it as `\n` for the backward compatibility because we stopped converting
+  // `\r` and `\r\n` to `\n` at getting `HTMLInputElement.value` and
+  // `HTMLTextAreaElement.value` for the performance (i.e., we don't need to
+  // take care in `HTMLEditor`).
+  char16_t charCode =
+      static_cast<char16_t>(aKeyboardEvent->mCharCode) == nsCRT::CR
+          ? nsCRT::LF
+          : static_cast<char16_t>(aKeyboardEvent->mCharCode);
   aKeyboardEvent->PreventDefault();
-  nsAutoString str(aKeyboardEvent->mCharCode);
+  nsAutoString str(charCode);
   return OnInputText(str);
 }
 
@@ -409,15 +419,21 @@ nsresult TextEditor::InsertLineBreakAsAction(nsIPrincipal* aPrincipal) {
   return NS_OK;
 }
 
+static bool UseFrameSelectionToExtendSelection(nsIEditor::EDirection aAction,
+                                               const Selection& aSelection) {
+  bool bCollapsed = aSelection.IsCollapsed();
+  return (aAction == nsIEditor::eNextWord ||
+          aAction == nsIEditor::ePreviousWord ||
+          (aAction == nsIEditor::eNext && bCollapsed) ||
+          (aAction == nsIEditor::ePrevious && bCollapsed) ||
+          aAction == nsIEditor::eToBeginningOfLine ||
+          aAction == nsIEditor::eToEndOfLine);
+}
+
 nsresult TextEditor::ExtendSelectionForDelete(nsIEditor::EDirection* aAction) {
   MOZ_ASSERT(IsEditActionDataAvailable());
 
-  bool bCollapsed = SelectionRefPtr()->IsCollapsed();
-
-  if (*aAction == eNextWord || *aAction == ePreviousWord ||
-      (*aAction == eNext && bCollapsed) ||
-      (*aAction == ePrevious && bCollapsed) || *aAction == eToBeginningOfLine ||
-      *aAction == eToEndOfLine) {
+  if (UseFrameSelectionToExtendSelection(*aAction, *SelectionRefPtr())) {
     nsCOMPtr<nsISelectionController> selCont;
     GetSelectionController(getter_AddRefs(selCont));
     NS_ENSURE_TRUE(selCont, NS_ERROR_NO_INTERFACE);
@@ -525,17 +541,6 @@ nsresult TextEditor::DeleteSelectionAsAction(EDirection aDirection,
                "operation "
                "unless mutation event listener nests some operations");
 
-  // Although ExtendSelectionForDelete will use nsFrameSelection, if it
-  // still has dirty frame, nsFrameSelection doesn't extend selection
-  // since we block script.
-  RefPtr<PresShell> presShell = GetPresShell();
-  if (presShell) {
-    presShell->FlushPendingNotifications(FlushType::Layout);
-    if (NS_WARN_IF(Destroyed())) {
-      return NS_ERROR_EDITOR_DESTROYED;
-    }
-  }
-
   EditAction editAction = EditAction::eDeleteSelection;
   switch (aDirection) {
     case nsIEditor::ePrevious:
@@ -610,6 +615,19 @@ nsresult TextEditor::DeleteSelectionAsAction(EDirection aDirection,
         break;
       default:
         break;
+    }
+  }
+
+  if (UseFrameSelectionToExtendSelection(aDirection, *SelectionRefPtr())) {
+    // Although ExtendSelectionForDelete will use nsFrameSelection, if it
+    // still has dirty frame, nsFrameSelection doesn't extend selection
+    // since we block script.
+    RefPtr<PresShell> presShell = GetPresShell();
+    if (presShell) {
+      presShell->FlushPendingNotifications(FlushType::Layout);
+      if (NS_WARN_IF(Destroyed())) {
+        return NS_ERROR_EDITOR_DESTROYED;
+      }
     }
   }
 
@@ -913,8 +931,12 @@ nsresult TextEditor::InsertTextAsAction(const nsAString& aStringToInsert,
   MOZ_ASSERT(!aStringToInsert.IsVoid());
   editActionData.SetData(aStringToInsert);
 
+  nsString stringToInsert(aStringToInsert);
+  if (!AsHTMLEditor()) {
+    nsContentUtils::PlatformToDOMLineBreaks(stringToInsert);
+  }
   AutoPlaceholderBatch treatAsOneTransaction(*this);
-  nsresult rv = InsertTextAsSubAction(aStringToInsert);
+  nsresult rv = InsertTextAsSubAction(stringToInsert);
   if (NS_WARN_IF(NS_FAILED(rv))) {
     return EditorBase::ToGenericNSResult(rv);
   }
@@ -924,6 +946,8 @@ nsresult TextEditor::InsertTextAsAction(const nsAString& aStringToInsert,
 nsresult TextEditor::InsertTextAsSubAction(const nsAString& aStringToInsert) {
   MOZ_ASSERT(IsEditActionDataAvailable());
   MOZ_ASSERT(mPlaceholderBatch);
+  MOZ_ASSERT(AsHTMLEditor() ||
+             aStringToInsert.FindChar(nsCRT::CR) == kNotFound);
 
   if (NS_WARN_IF(!mInitSucceeded)) {
     return NS_ERROR_NOT_INITIALIZED;
@@ -996,7 +1020,7 @@ nsresult TextEditor::InsertLineBreakAsSubAction() {
 
 nsresult TextEditor::SetTextAsAction(const nsAString& aString,
                                      nsIPrincipal* aPrincipal) {
-  MOZ_ASSERT(aString.FindChar(static_cast<char16_t>('\r')) == kNotFound);
+  MOZ_ASSERT(aString.FindChar(nsCRT::CR) == kNotFound);
 
   AutoEditActionDataSetter editActionData(*this, EditAction::eSetText,
                                           aPrincipal);
@@ -1013,6 +1037,8 @@ nsresult TextEditor::SetTextAsAction(const nsAString& aString,
 nsresult TextEditor::ReplaceTextAsAction(const nsAString& aString,
                                          nsRange* aReplaceRange,
                                          nsIPrincipal* aPrincipal) {
+  MOZ_ASSERT(aString.FindChar(nsCRT::CR) == kNotFound);
+
   AutoEditActionDataSetter editActionData(*this, EditAction::eReplaceText,
                                           aPrincipal);
   if (NS_WARN_IF(!editActionData.CanHandle())) {
@@ -1260,7 +1286,11 @@ nsresult TextEditor::OnCompositionChange(
     MOZ_ASSERT(
         mIsInEditSubAction,
         "AutoPlaceholderBatch should've notified the observes of before-edit");
-    rv = InsertTextAsSubAction(aCompositionChangeEvent.mData);
+    nsString data(aCompositionChangeEvent.mData);
+    if (!AsTextEditor()) {
+      nsContentUtils::PlatformToDOMLineBreaks(data);
+    }
+    rv = InsertTextAsSubAction(data);
     NS_WARNING_ASSERTION(NS_SUCCEEDED(rv),
                          "Failed to insert new composition string");
 
@@ -1967,10 +1997,11 @@ nsresult TextEditor::PasteAsQuotationAsAction(int32_t aClipboardType,
   }
 
   if (nsCOMPtr<nsISupportsString> text = do_QueryInterface(genericDataObj)) {
-    nsAutoString stuffToPaste;
+    nsString stuffToPaste;
     text->GetData(stuffToPaste);
     editActionData.SetData(stuffToPaste);
     if (!stuffToPaste.IsEmpty()) {
+      nsContentUtils::PlatformToDOMLineBreaks(stuffToPaste);
       AutoPlaceholderBatch treatAsOneTransaction(*this);
       nsresult rv = InsertWithQuotationsAsSubAction(stuffToPaste);
       NS_WARNING_ASSERTION(NS_SUCCEEDED(rv),
@@ -2082,7 +2113,7 @@ nsresult TextEditor::SelectEntireDocument() {
   if (childNode && EditorBase::IsPaddingBRElementForEmptyLastLine(*childNode)) {
     ErrorResult error;
     MOZ_KnownLive(SelectionRefPtr())
-        ->SetStartAndEndInLimiter(RawRangeBoundary(anonymousDivElement, 0),
+        ->SetStartAndEndInLimiter(RawRangeBoundary(anonymousDivElement, 0u),
                                   EditorRawDOMPoint(childNode), error);
     NS_WARNING_ASSERTION(!error.Failed(),
                          "Failed to select all children of the editor root "
@@ -2283,10 +2314,9 @@ nsresult TextEditor::SetUnmaskRangeInternal(uint32_t aStart, uint32_t aLength,
 
     // Scroll caret into the view since masking or unmasking character may
     // move caret to outside of the view.
-    ScrollSelectionIntoView(false);
-
-    if (NS_WARN_IF(Destroyed())) {
-      return NS_ERROR_EDITOR_DESTROYED;
+    nsresult rv = ScrollSelectionFocusIntoView();
+    if (NS_WARN_IF(NS_FAILED(rv))) {
+      return rv;
     }
   }
 

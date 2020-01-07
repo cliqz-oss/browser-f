@@ -37,11 +37,12 @@ const { updatePref } = require("../actions/ui");
 const { connect } = require("devtools/client/shared/vendor/react-redux");
 const { PREFS } = require("../constants");
 
-class AccessibilityTreeFilter extends Component {
+class AccessibilityPrefs extends Component {
   static get propTypes() {
     return {
       dispatch: PropTypes.func.isRequired,
       [PREFS.SCROLL_INTO_VIEW]: PropTypes.bool.isRequired,
+      toolboxDoc: PropTypes.object.isRequired,
     };
   }
 
@@ -64,7 +65,7 @@ class AccessibilityTreeFilter extends Component {
     return MenuButton(
       {
         menuId: "accessibility-tree-filters-prefs-menu",
-        doc: document,
+        toolboxDoc: this.props.toolboxDoc,
         className: `devtools-button badge toolbar-menu-button prefs`,
         title: L10N.getStr("accessibility.tree.filters.prefs"),
       },
@@ -96,4 +97,4 @@ const mapStateToProps = ({ ui }) => ({
 });
 
 // Exports from this module
-module.exports = connect(mapStateToProps)(AccessibilityTreeFilter);
+module.exports = connect(mapStateToProps)(AccessibilityPrefs);

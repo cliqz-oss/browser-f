@@ -575,9 +575,8 @@ struct DIGroup {
     GP("\n\n");
     GP("Begin EndGroup\n");
 
-    mVisibleRect = mVisibleRect.Intersect(
-            ViewAs<LayerPixel>(mActualBounds,
-                               PixelCastJustification::LayerIsImage));
+    mVisibleRect = mVisibleRect.Intersect(ViewAs<LayerPixel>(
+        mActualBounds, PixelCastJustification::LayerIsImage));
 
     if (mVisibleRect.IsEmpty()) {
       return;
@@ -749,7 +748,7 @@ struct DIGroup {
     // cf. Bug 1455422.
     // wr::LayoutRect clip = wr::ToLayoutRect(bounds.Intersect(mVisibleRect));
 
-    aBuilder.SetHitTestInfo(mScrollId, hitInfo);
+    aBuilder.SetHitTestInfo(mScrollId, hitInfo, SideBits::eNone);
     aBuilder.PushImage(dest, dest, !backfaceHidden,
                        wr::ToImageRendering(sampleFilter),
                        wr::AsImageKey(mKey.value().second()));
@@ -785,7 +784,8 @@ struct DIGroup {
         dirty = false;
         BlobItemData* data = GetBlobItemData(item);
         if (data->mInvalid) {
-          gfxCriticalError() << "DisplayItem" << item->Name() << "-should be invalid";
+          gfxCriticalError()
+              << "DisplayItem" << item->Name() << "-should be invalid";
         }
         // if the item is invalid it needs to be fully contained
         MOZ_RELEASE_ASSERT(!data->mInvalid);

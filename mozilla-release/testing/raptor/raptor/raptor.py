@@ -10,11 +10,15 @@ from abc import ABCMeta, abstractmethod
 import json
 import os
 import posixpath
+import re
 import shutil
 import signal
+import six
+import subprocess
 import sys
 import tempfile
 import time
+import tarfile
 
 import requests
 
@@ -22,6 +26,9 @@ import mozcrash
 import mozinfo
 import mozprocess
 import mozproxy.utils as mpu
+import mozversion
+from condprof.client import get_profile
+from condprof.util import get_current_platform
 from logger.logger import RaptorLogger
 from mozdevice import ADBDevice
 from mozlog import commandline
@@ -70,6 +77,8 @@ LOG = RaptorLogger(component='raptor-main')
 # - mozproxy.utils LOG displayed INFO messages even when LOG.error() was used in mitm.py
 mpu.LOG = RaptorLogger(component='raptor-mitmproxy')
 
+DEFAULT_CHROMEVERSION = '77'
+
 
 class SignalHandler:
 
@@ -92,12 +101,12 @@ either Raptor or browsertime."""
     __metaclass__ = ABCMeta
 
     def __init__(self, app, binary, run_local=False, noinstall=False,
-                 obj_path=None, profile_class=None,
+                 obj_path=None, profile_class=None, installerpath=None,
                  gecko_profile=False, gecko_profile_interval=None, gecko_profile_entries=None,
                  symbols_path=None, host=None, power_test=False, cpu_test=False, memory_test=False,
                  is_release_build=False, debug_mode=False, post_startup_delay=None,
                  interrupt_handler=None, e10s=True, enable_webrender=False,
-                 results_handler_class=RaptorResultsHandler,
+                 results_handler_class=RaptorResultsHandler, with_conditioned_profile=False,
                  **kwargs):
 
         # Override the magic --host HOST_IP with the value of the environment variable.
@@ -123,12 +132,17 @@ either Raptor or browsertime."""
             'enable_control_server_wait': memory_test or cpu_test,
             'e10s': e10s,
             'enable_webrender': enable_webrender,
+            'with_conditioned_profile': with_conditioned_profile,
         }
         # We can never use e10s on fennec
         if self.config['app'] == 'fennec':
             self.config['e10s'] = False
 
+        self.browser_name = None
+        self.browser_version = None
+
         self.raptor_venv = os.path.join(os.getcwd(), 'raptor-venv')
+        self.installerpath = installerpath
         self.playback = None
         self.benchmark = None
         self.benchmark_port = 0
@@ -136,9 +150,15 @@ either Raptor or browsertime."""
         self.post_startup_delay = post_startup_delay
         self.device = None
         self.profile_class = profile_class or app
+        self.conditioned_profile_dir = None
         self.firefox_android_apps = FIREFOX_ANDROID_APPS
         self.interrupt_handler = interrupt_handler
-        self.results_handler = results_handler_class(self.config)
+        self.results_handler = results_handler_class(**self.config)
+
+        self.browser_name, self.browser_version = self.get_browser_meta()
+
+        browser_name, browser_version = self.get_browser_meta()
+        self.results_handler.add_browser_meta(self.config['app'], browser_version)
 
         # debug mode is currently only supported when running locally
         self.debug_mode = debug_mode if self.config['run_local'] else False
@@ -149,12 +169,50 @@ either Raptor or browsertime."""
             LOG.info("debug-mode enabled, reducing post-browser startup pause to %d ms"
                      % self.post_startup_delay)
 
+        if self.config['with_conditioned_profile']:
+            self.post_startup_delay = 0
+            LOG.info("Using conditioned profile; setting post-startup-delay to: {}"
+                     .format(self.post_startup_delay))
+
         LOG.info("main raptor init, config is: %s" % str(self.config))
 
         self.build_browser_profile()
 
+    def get_conditioned_profile(self):
+        """Downloads a platform-specific conditioned profile, using the
+        condprofile client API; returns a self.conditioned_profile_dir"""
+
+        # create a temp file to help ensure uniqueness
+        temp_download_dir = tempfile.mkdtemp()
+        LOG.info("Making temp_download_dir from inside get_conditioned_profile {}"
+                 .format(temp_download_dir))
+        platform = get_current_platform()
+        cond_prof_target_dir = get_profile(temp_download_dir, platform, "cold")
+        LOG.info("temp_download_dir is: {}".format(temp_download_dir))
+        LOG.info("cond_prof_target_dir is: {}".format(cond_prof_target_dir))
+
+        self.conditioned_profile_dir = os.path.join(temp_download_dir, cond_prof_target_dir)
+        if not os.path.exists(cond_prof_target_dir):
+            LOG.critical("Can't find target_dir {}, from get_profile()"
+                         "temp_download_dir {}, platform {}, cold"
+                         .format(cond_prof_target_dir, temp_download_dir, platform))
+            raise OSError
+
+        LOG.info("self.conditioned_profile_dir is now set: {}"
+                 .format(self.conditioned_profile_dir))
+        shutil.rmtree(temp_download_dir)
+
+        return self.conditioned_profile_dir
+
     def build_browser_profile(self):
-        self.profile = create_profile(self.profile_class)
+        # if --with-conditioned-profile was passed in via the commandline,
+        # we need to fetch and use a conditioned profile
+        if self.config['with_conditioned_profile']:
+            self.get_conditioned_profile()
+            self.profile = create_profile(self.profile_class, profile=self.conditioned_profile_dir)
+        else:
+            # have mozprofile create a new profile for us
+            self.profile = create_profile(self.profile_class)
 
         # Merge extra profile data from testing/profiles
         with open(os.path.join(self.profile_data_dir, 'profiles.json'), 'r') as fh:
@@ -200,6 +258,14 @@ either Raptor or browsertime."""
         if test.get("preferences") is not None:
             self.set_browser_test_prefs(test['preferences'])
 
+    @abstractmethod
+    def setup_chrome_args(self):
+        pass
+
+    @abstractmethod
+    def get_browser_meta(self):
+        pass
+
     def run_tests(self, tests, test_names):
         try:
             for test in tests:
@@ -237,6 +303,7 @@ either Raptor or browsertime."""
             raptor_json_path = os.path.join(os.getcwd(), 'local.json')
 
         self.config['raptor_json_path'] = raptor_json_path
+        self.config['artifact_dir'] = self.artifact_dir
         return self.results_handler.summarize_and_output(self.config, tests, test_names)
 
     @abstractmethod
@@ -332,21 +399,184 @@ either Raptor or browsertime."""
         self.log_recording_dates(test)
 
 
-class Browsertime(Perftest):
-    """Container class for Browsertime"""
+class PerftestDesktop(Perftest):
+    """Mixin class for Desktop-specific Perftest subclasses"""
 
-    def __init__(self, *args, **kwargs):
-        for key in kwargs.keys():
+    def setup_chrome_args(self, test):
+        '''Sets up chrome/chromium cmd-line arguments.
+
+        Needs to be "implemented" here to deal with Python 2
+        unittest failures.
+        '''
+        raise NotImplementedError
+
+    def desktop_chrome_args(self, test):
+        '''Returns cmd line options required to run pageload tests on Desktop Chrome
+        and Chromium. Also add the cmd line options to turn on the proxy and
+        ignore security certificate errors if using host localhost, 127.0.0.1.
+        '''
+        chrome_args = [
+            '--use-mock-keychain',
+            '--no-default-browser-check',
+        ]
+
+        if test.get('playback', False):
+            pb_args = [
+                '--proxy-server=127.0.0.1:8080',
+                '--proxy-bypass-list=localhost;127.0.0.1',
+                '--ignore-certificate-errors',
+            ]
+
+            if self.config['host'] not in ('localhost', '127.0.0.1'):
+                pb_args[0] = pb_args[0].replace('127.0.0.1', self.config['host'])
+
+            chrome_args.extend(pb_args)
+
+        if self.debug_mode:
+            chrome_args.extend(['--auto-open-devtools-for-tabs'])
+
+        return chrome_args
+
+    def get_browser_meta(self):
+        '''Returns the browser name and version in a tuple (name, version).
+
+        On desktop, we use mozversion but a fallback method also exists
+        for non-firefox browsers, where mozversion is known to fail. The
+        methods are OS-specific, with windows being the outlier.
+        '''
+        browser_name = None
+        browser_version = None
+
+        try:
+            meta = mozversion.get_version(binary=self.config['binary'])
+            browser_name = meta.get('application_name')
+            browser_version = meta.get('application_version')
+        except Exception as e:
+            LOG.warning(
+                "Failed to get browser meta data through mozversion: %s-%s" %
+                (e.__class__.__name__, e)
+            )
+            LOG.info("Attempting to get version through fallback method...")
+
+            # Fall-back method to get browser version on desktop
+            try:
+                if 'linux' in self.config['platform'] or 'mac' in self.config['platform']:
+                    command = [self.config['binary'], '--version']
+                    proc = mozprocess.ProcessHandler(command)
+                    proc.run(timeout=10, outputTimeout=10)
+                    proc.wait()
+
+                    bmeta = proc.output
+                    meta_re = re.compile(r"([A-z\s]+)\s+([\w.]*)")
+                    if len(bmeta) != 0:
+                        match = meta_re.match(bmeta[0])
+                        if match:
+                            browser_name = self.config['app']
+                            browser_version = match.group(2)
+                    else:
+                        LOG.info("Couldn't get browser version and name")
+                else:
+                    # On windows we need to use wimc to get the version
+                    command = r'wmic datafile where name="{0}"'.format(
+                        self.config['binary'].replace('\\', r"\\")
+                    )
+                    bmeta = subprocess.check_output(command)
+
+                    meta_re = re.compile(r"\s+([\d.a-z]+)\s+")
+                    match = meta_re.findall(bmeta)
+                    if len(match) > 0:
+                        browser_name = self.config['app']
+                        browser_version = match[-1]
+                    else:
+                        LOG.info("Couldn't get browser version and name")
+            except Exception as e:
+                LOG.warning(
+                    "Failed to get browser meta data through fallback method: %s-%s" %
+                    (e.__class__.__name__, e)
+                )
+
+        if not browser_name:
+            LOG.warning("Could not find a browser name")
+        else:
+            LOG.info("Browser name: %s" % browser_name)
+
+        if not browser_version:
+            LOG.warning("Could not find a browser version")
+        else:
+            LOG.info("Browser version: %s" % browser_version)
+
+        return (browser_name, browser_version)
+
+
+class PerftestAndroid(Perftest):
+    """Mixin class for Android-specific Perftest subclasses."""
+
+    def setup_chrome_args(self, test):
+        '''Sets up chrome/chromium cmd-line arguments.
+
+        Needs to be "implemented" here to deal with Python 2
+        unittest failures.
+        '''
+        raise NotImplementedError
+
+    def get_browser_meta(self):
+        '''Returns the browser name and version in a tuple (name, version).
+
+        Uses mozversion as the primary method to get this meta data and for
+        android this is the only method which exists to get this data. With android,
+        we use the installerpath attribute to determine this and this only works
+        with Firefox browsers.
+        '''
+        browser_name = None
+        browser_version = None
+
+        if self.config['app'] in self.firefox_android_apps:
+            try:
+                meta = mozversion.get_version(binary=self.installerpath)
+                browser_name = meta.get('application_name')
+                browser_version = meta.get('application_version')
+            except Exception as e:
+                LOG.warning(
+                    "Failed to get android browser meta data through mozversion: %s-%s" %
+                    (e.__class__.__name__, e)
+                )
+
+        if not browser_name:
+            LOG.warning("Could not find a browser name")
+        else:
+            LOG.info("Browser name: %s" % browser_name)
+
+        if not browser_version:
+            LOG.warning("Could not find a browser version")
+        else:
+            LOG.info("Browser version: %s" % browser_version)
+
+        return (browser_name, browser_version)
+
+
+class Browsertime(Perftest):
+    """Abstract base class for Browsertime"""
+
+    __metaclass__ = ABCMeta
+
+    @property
+    @abstractmethod
+    def browsertime_args(self):
+        pass
+
+    def __init__(self, app, binary, process_handler=None, **kwargs):
+        self.process_handler = process_handler or mozprocess.ProcessHandler
+        for key in list(kwargs):
             if key.startswith('browsertime_'):
                 value = kwargs.pop(key)
                 setattr(self, key, value)
 
-        def klass(config):
+        def klass(**config):
             root_results_dir = os.path.join(os.environ.get('MOZ_UPLOAD_DIR', os.getcwd()),
                                             'browsertime-results')
             return BrowsertimeResultsHandler(config, root_results_dir=root_results_dir)
 
-        super(Browsertime, self).__init__(*args, results_handler_class=klass, **kwargs)
+        super(Browsertime, self).__init__(app, binary, results_handler_class=klass, **kwargs)
         LOG.info("cwd: '{}'".format(os.getcwd()))
 
         # For debugging.
@@ -355,8 +585,10 @@ class Browsertime(Perftest):
                   "browsertime_ffmpeg",
                   "browsertime_geckodriver",
                   "browsertime_chromedriver"):
-            LOG.info("{}: {}".format(k, getattr(self, k)))
             try:
+                if not self.browsertime_video and k == "browsertime_ffmpeg":
+                    continue
+                LOG.info("{}: {}".format(k, getattr(self, k)))
                 LOG.info("{}: {}".format(k, os.stat(getattr(self, k))))
             except Exception as e:
                 LOG.info("{}: {}".format(k, e))
@@ -389,6 +621,12 @@ class Browsertime(Perftest):
     def run_test_setup(self, test):
         super(Browsertime, self).run_test_setup(test)
 
+        if test.get('type') == "benchmark":
+            # benchmark-type tests require the benchmark test to be served out
+            self.benchmark = Benchmark(self.config, test)
+            test['test_url'] = test['test_url'].replace('<host>', self.benchmark.host)
+            test['test_url'] = test['test_url'].replace('<port>', self.benchmark.port)
+
         if test.get('playback') is not None:
             self.start_playback(test)
 
@@ -397,7 +635,21 @@ class Browsertime(Perftest):
         if self.browsertime_geckodriver:
             self.driver_paths.extend(['--firefox.geckodriverPath', self.browsertime_geckodriver])
         if self.browsertime_chromedriver:
-            self.driver_paths.extend(['--chrome.chromedriverPath', self.browsertime_chromedriver])
+            if not self.config.get('run_local', None) or '{}' in self.browsertime_chromedriver:
+                if self.browser_version:
+                    bvers = str(self.browser_version)
+                    chromedriver_version = bvers.split('.')[0]
+                else:
+                    chromedriver_version = DEFAULT_CHROMEVERSION
+
+                self.browsertime_chromedriver = self.browsertime_chromedriver.format(
+                    chromedriver_version
+                )
+
+            self.driver_paths.extend([
+                '--chrome.chromedriverPath',
+                self.browsertime_chromedriver
+            ])
 
         LOG.info('test: {}'.format(test))
 
@@ -414,24 +666,51 @@ class Browsertime(Perftest):
     def clean_up(self):
         super(Browsertime, self).clean_up()
 
-    @property
-    def browsertime_args(self):
-        binary_path = self.config['binary']
-        LOG.info('binary_path: {}'.format(binary_path))
-
-        return ['--browser', 'firefox', '--firefox.binaryPath', binary_path]
-
-    def run_test(self, test, timeout):
-        self.run_test_setup(test)
-
+    def _compose_cmd(self, test, timeout):
         browsertime_script = [os.path.join(os.path.dirname(__file__), "..",
                               "browsertime", "browsertime_pageload.js")]
 
-        browsertime_script.extend(self.browsertime_args)
+        btime_args = self.browsertime_args
+        if self.config['app'] in ('chrome', 'chromium'):
+            btime_args.extend(self.setup_chrome_args(test))
 
-        # timeout is a single page-load timeout value (ms) from the test INI
-        # this will be used for btime --timeouts.pageLoad
+        browsertime_script.extend(btime_args)
 
+        # pass a few extra options to the browsertime script
+        # XXX maybe these should be in the browsertime_args() func
+        browsertime_script.extend(["--browsertime.page_cycles",
+                                   str(test.get("page_cycles", 1))])
+        browsertime_script.extend(["--browsertime.url", test["test_url"]])
+
+        # Raptor's `pageCycleDelay` delay (ms) between pageload cycles
+        browsertime_script.extend(["--browsertime.page_cycle_delay", "1000"])
+        # Raptor's `foregroundDelay` delay (ms) for foregrounding app
+        browsertime_script.extend(["--browsertime.foreground_delay", "5000"])
+
+        # Raptor's `post startup delay` is settle time after the browser has started
+        browsertime_script.extend(["--browsertime.post_startup_delay",
+                                   str(self.post_startup_delay)])
+
+        if self.config['with_conditioned_profile']:
+            self.profile.profile = self.conditioned_profile_dir
+
+        return ([self.browsertime_node, self.browsertime_browsertimejs] +
+                self.driver_paths +
+                browsertime_script +
+                ['--firefox.profileTemplate', str(self.profile.profile),
+                 '--skipHar',
+                 '--video', self.browsertime_video and 'true' or 'false',
+                 '--visualMetrics', 'false',
+                 # url load timeout (milliseconds)
+                 '--timeouts.pageLoad', str(timeout),
+                 # running browser scripts timeout (milliseconds)
+                 '--timeouts.script', str(timeout * int(test.get("page_cycles", 1))),
+                 '-vv',
+                 '--resultDir', self.results_handler.result_dir_for_test(test),
+                 # -n option for the browsertime to restart the browser
+                 '-n', str(test.get('browser_cycles', 1))])
+
+    def _compute_process_timeout(self, test, timeout):
         # bt_timeout will be the overall browsertime cmd/session timeout (seconds)
         # browsertime deals with page cycles internally, so we need to give it a timeout
         # value that includes all page cycles
@@ -453,49 +732,34 @@ class Browsertime(Perftest):
         # if geckoProfile enabled, give browser more time for profiling
         if self.config['gecko_profile'] is True:
             bt_timeout += 5 * 60
+        return bt_timeout
 
-        # pass a few extra options to the browsertime script
-        # XXX maybe these should be in the browsertime_args() func
-        browsertime_script.extend(["--browsertime.page_cycles",
-                                  str(test.get("page_cycles", 1))])
-        browsertime_script.extend(["--browsertime.url", test["test_url"]])
+    def run_test(self, test, timeout):
+        self.run_test_setup(test)
+        # timeout is a single page-load timeout value (ms) from the test INI
+        # this will be used for btime --timeouts.pageLoad
+        cmd = self._compose_cmd(test, timeout)
 
-        # Raptor's `pageCycleDelay` delay (ms) between pageload cycles
-        browsertime_script.extend(["--browsertime.page_cycle_delay", "1000"])
-        # Raptor's `foregroundDelay` delay (ms) for foregrounding app
-        browsertime_script.extend(["--browsertime.foreground_delay", "5000"])
-
-        # Raptor's `post startup delay` is settle time after the browser has started
-        browsertime_script.extend(["--browsertime.post_startup_delay",
-                                  str(self.post_startup_delay)])
-
-        # the browser time script cannot restart the browser itself,
-        # so we have to keep -n option here.
-        cmd = ([self.browsertime_node, self.browsertime_browsertimejs] +
-               self.driver_paths +
-               browsertime_script +
-               ['--firefox.profileTemplate', str(self.profile.profile),
-                '--skipHar',
-                '--video', 'false',
-                '--visualMetrics', 'false',
-                '--timeouts.pageLoad', str(timeout),
-                '-vv',
-                '--resultDir', self.results_handler.result_dir_for_test(test),
-                '-n', str(test.get('browser_cycles', 1))])
+        if test.get('type') == "benchmark":
+            cmd.extend(['--script',
+                        os.path.join(os.path.dirname(__file__), "..",
+                                     "browsertime", "browsertime_benchmark.js")
+                        ])
 
         LOG.info('timeout (s): {}'.format(timeout))
         LOG.info('browsertime cwd: {}'.format(os.getcwd()))
-        LOG.info('browsertime cmd: {}'.format(cmd))
-        LOG.info('browsertime_ffmpeg: {}'.format(self.browsertime_ffmpeg))
+        LOG.info('browsertime cmd: {}'.format(" ".join(cmd)))
+        if self.browsertime_video:
+            LOG.info('browsertime_ffmpeg: {}'.format(self.browsertime_ffmpeg))
 
         # browsertime requires ffmpeg on the PATH for `--video=true`.
         # It's easier to configure the PATH here than at the TC level.
         env = dict(os.environ)
-        if self.browsertime_ffmpeg:
+        if self.browsertime_video and self.browsertime_ffmpeg:
             ffmpeg_dir = os.path.dirname(os.path.abspath(self.browsertime_ffmpeg))
             old_path = env.setdefault('PATH', '')
             new_path = os.pathsep.join([ffmpeg_dir, old_path])
-            if isinstance(new_path, unicode):
+            if isinstance(new_path, six.text_type):
                 # Python 2 doesn't like unicode in the environment.
                 new_path = new_path.encode('utf-8', 'strict')
             env['PATH'] = new_path
@@ -503,8 +767,8 @@ class Browsertime(Perftest):
         LOG.info('PATH: {}'.format(env['PATH']))
 
         try:
-            proc = mozprocess.ProcessHandler(cmd, env=env)
-            proc.run(timeout=bt_timeout,
+            proc = self.process_handler(cmd, env=env)
+            proc.run(timeout=self._compute_process_timeout(test, timeout),
                      outputTimeout=2*60)
             proc.wait()
 
@@ -513,7 +777,37 @@ class Browsertime(Perftest):
             raise
 
 
-class BrowsertimeAndroid(Browsertime):
+class BrowsertimeDesktop(PerftestDesktop, Browsertime):
+    def __init__(self, *args, **kwargs):
+        super(BrowsertimeDesktop, self).__init__(*args, **kwargs)
+
+    @property
+    def browsertime_args(self):
+        binary_path = self.config['binary']
+        LOG.info('binary_path: {}'.format(binary_path))
+
+        if self.config['app'] == 'chrome':
+            return ['--browser', self.config['app'], '--chrome.binaryPath', binary_path]
+        return ['--browser', self.config['app'], '--firefox.binaryPath', binary_path]
+
+    def setup_chrome_args(self, test):
+        # Setup required chrome arguments
+        chrome_args = self.desktop_chrome_args(test)
+
+        # Add this argument here, it's added by mozrunner
+        # for raptor
+        chrome_args.append('--no-first-run')
+
+        btime_chrome_args = []
+        for arg in chrome_args:
+            btime_chrome_args.extend([
+                '--chrome.args=' + str(arg.replace("'", '"'))
+            ])
+
+        return btime_chrome_args
+
+
+class BrowsertimeAndroid(PerftestAndroid, Browsertime):
 
     def __init__(self, app, binary, activity=None, intent=None, **kwargs):
         super(BrowsertimeAndroid, self).__init__(app, binary, profile_class="firefox", **kwargs)
@@ -564,7 +858,10 @@ class Raptor(Perftest):
             power_test=self.config.get('power_test'),
             cpu_test=self.config.get('cpu_test'),
             memory_test=self.config.get('memory_test'),
+            with_conditioned_profile=self.config['with_conditioned_profile']
         )
+        browser_name, browser_version = self.get_browser_meta()
+        self.results_handler.add_browser_meta(self.config['app'], browser_version)
 
         self.start_control_server()
 
@@ -723,30 +1020,30 @@ class Raptor(Perftest):
     def control_server_wait_set(self, state):
         response = requests.post("http://127.0.0.1:%s/" % self.control_server.port,
                                  json={"type": "wait-set", "data": state})
-        return response.content
+        return response.text
 
     def control_server_wait_timeout(self, timeout):
         response = requests.post("http://127.0.0.1:%s/" % self.control_server.port,
                                  json={"type": "wait-timeout", "data": timeout})
-        return response.content
+        return response.text
 
     def control_server_wait_get(self):
         response = requests.post("http://127.0.0.1:%s/" % self.control_server.port,
                                  json={"type": "wait-get", "data": ""})
-        return response.content
+        return response.text
 
     def control_server_wait_continue(self):
         response = requests.post("http://127.0.0.1:%s/" % self.control_server.port,
                                  json={"type": "wait-continue", "data": ""})
-        return response.content
+        return response.text
 
     def control_server_wait_clear(self, state):
         response = requests.post("http://127.0.0.1:%s/" % self.control_server.port,
                                  json={"type": "wait-clear", "data": state})
-        return response.content
+        return response.text
 
 
-class RaptorDesktop(Raptor):
+class RaptorDesktop(PerftestDesktop, Raptor):
 
     def __init__(self, *args, **kwargs):
         super(RaptorDesktop, self).__init__(*args, **kwargs)
@@ -829,8 +1126,10 @@ class RaptorDesktop(Raptor):
                 shutil.make_archive(power_data_path, 'zip', power_data_path)
                 shutil.rmtree(power_data_path)
 
-            self.control_server.submit_supporting_data(perfherder_data['utilization'])
-            self.control_server.submit_supporting_data(perfherder_data['power-usage'])
+            for data_type in perfherder_data:
+                self.control_server.submit_supporting_data(
+                    perfherder_data[data_type]
+                )
 
     def __run_test_cold(self, test, timeout):
         '''
@@ -972,32 +1271,17 @@ class RaptorDesktopFirefox(RaptorDesktop):
 
 class RaptorDesktopChrome(RaptorDesktop):
 
-    def setup_chrome_desktop_for_playback(self):
-        # if running a pageload test on google chrome, add the cmd line options
-        # to turn on the proxy and ignore security certificate errors
-        # if using host localhost, 127.0.0.1.
-        chrome_args = [
-            '--proxy-server=127.0.0.1:8080',
-            '--proxy-bypass-list=localhost;127.0.0.1',
-            '--ignore-certificate-errors',
-        ]
-        if self.config['host'] not in ('localhost', '127.0.0.1'):
-            chrome_args[0] = chrome_args[0].replace('127.0.0.1', self.config['host'])
+    def setup_chrome_args(self, test):
+        # Setup chrome args and add them to the runner's args
+        chrome_args = self.desktop_chrome_args(test)
         if ' '.join(chrome_args) not in ' '.join(self.runner.cmdargs):
             self.runner.cmdargs.extend(chrome_args)
 
     def launch_desktop_browser(self, test):
         LOG.info("starting %s" % self.config['app'])
-        # some chromium-specfic cmd line opts required
-        self.runner.cmdargs.extend(['--use-mock-keychain', '--no-default-browser-check'])
 
-        # if running in debug-mode, open the devtools on the raptor test tab
-        if self.debug_mode:
-            self.runner.cmdargs.extend(['--auto-open-devtools-for-tabs'])
-
-        if test.get('playback') is not None:
-            self.setup_chrome_desktop_for_playback()
-
+        # Setup chrome/chromium specific arguments then start the runner
+        self.setup_chrome_args(test)
         self.start_runner_proc()
 
     def set_browser_test_prefs(self, raw_prefs):
@@ -1006,7 +1290,7 @@ class RaptorDesktopChrome(RaptorDesktop):
                         we currently do not install them on non-Firefox browsers.")
 
 
-class RaptorAndroid(Raptor):
+class RaptorAndroid(PerftestAndroid, Raptor):
 
     def __init__(self, app, binary, activity=None, intent=None, **kwargs):
         super(RaptorAndroid, self).__init__(app, binary, profile_class="firefox", **kwargs)
@@ -1405,7 +1689,6 @@ class RaptorAndroid(Raptor):
             dump_dir = tempfile.mkdtemp()
             remote_dir = posixpath.join(self.remote_profile, 'minidumps')
             if not self.device.is_dir(remote_dir):
-                LOG.error("No crash directory (%s) found on remote device" % remote_dir)
                 return
             self.device.pull(remote_dir, dump_dir)
             mozcrash.log_crashes(LOG, dump_dir, self.config['symbols_path'])
@@ -1463,10 +1746,8 @@ def main(args=sys.argv[1:]):
                     value = outer_kwargs.pop(key)
                     inner_kwargs[key] = value
 
-            if args.app == "firefox":
-                klass = Browsertime
-            elif args.app in CHROMIUM_DISTROS:
-                klass = Browsertime
+            if args.app == "firefox" or args.app in CHROMIUM_DISTROS:
+                klass = BrowsertimeDesktop
             else:
                 klass = BrowsertimeAndroid
 
@@ -1476,6 +1757,7 @@ def main(args=sys.argv[1:]):
                           args.binary,
                           run_local=args.run_local,
                           noinstall=args.noinstall,
+                          installerpath=args.installerpath,
                           obj_path=args.obj_path,
                           gecko_profile=args.gecko_profile,
                           gecko_profile_interval=args.gecko_profile_interval,
@@ -1492,6 +1774,7 @@ def main(args=sys.argv[1:]):
                           intent=args.intent,
                           interrupt_handler=SignalHandler(),
                           enable_webrender=args.enable_webrender,
+                          with_conditioned_profile=args.with_conditioned_profile,
                           )
 
     success = raptor.run_tests(raptor_test_list, raptor_test_names)
@@ -1510,11 +1793,21 @@ def main(args=sys.argv[1:]):
         for _page in pages_that_timed_out:
             message = [("TEST-UNEXPECTED-FAIL", "test '%s'" % _page['test_name']),
                        ("timed out loading test page", _page['url'])]
-            if raptor_test.get("type") == 'pageload':
+            if _page.get('pending_metrics') is not None:
                 message.append(("pending metrics", _page['pending_metrics']))
 
             LOG.critical(" ".join("%s: %s" % (subject, msg) for subject, msg in message))
         os.sys.exit(1)
+
+    # if we're running browsertime in the CI, we want to zip the result dir
+    if args.browsertime and not args.run_local:
+        result_dir = raptor.results_handler.result_dir()
+        if os.path.exists(result_dir):
+            LOG.info("Creating tarball at %s" % result_dir + ".tgz")
+            with tarfile.open(result_dir + ".tgz", "w:gz") as tar:
+                tar.add(result_dir, arcname=os.path.basename(result_dir))
+            LOG.info("Removing %s" % result_dir)
+            shutil.rmtree(result_dir)
 
     # when running raptor locally with gecko profiling on, use the view-gecko-profile
     # tool to automatically load the latest gecko profile in profiler.firefox.com

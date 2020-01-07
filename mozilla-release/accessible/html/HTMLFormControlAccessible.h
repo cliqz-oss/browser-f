@@ -73,7 +73,8 @@ class HTMLTextFieldAccessible final : public HyperTextAccessibleWrap {
                                        HyperTextAccessibleWrap)
 
   // HyperTextAccessible
-  virtual already_AddRefed<TextEditor> GetEditor() const override;
+  MOZ_CAN_RUN_SCRIPT_BOUNDARY virtual already_AddRefed<TextEditor> GetEditor()
+      const override;
 
   // Accessible
   virtual void Value(nsString& aValue) const override;
@@ -100,15 +101,15 @@ class HTMLTextFieldAccessible final : public HyperTextAccessibleWrap {
   /**
    * Return a widget element this input is part of, for example, search-textbox
    * or HTML:input@type="number".
+   *
+   * FIXME: This should probably be renamed.
    */
   nsIContent* BindingOrWidgetParent() const {
-    nsIContent* el = mContent->GetBindingParent();
-    if (el) {
+    if (auto* el = mContent->GetClosestNativeAnonymousSubtreeRootParent()) {
       return el;
     }
     // XUL search-textbox custom element
-    ErrorResult rv;
-    return Elm()->Closest(NS_LITERAL_STRING("search-textbox"), rv);
+    return Elm()->Closest(NS_LITERAL_STRING("search-textbox"), IgnoreErrors());
   }
 };
 

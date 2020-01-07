@@ -8,6 +8,7 @@
 
 #include "jit/CacheIRCompiler.h"
 #include "jit/Linker.h"
+#include "util/DiagnosticAssertions.h"
 
 #include "jit/MacroAssembler-inl.h"
 #include "vm/Interpreter-inl.h"
@@ -609,6 +610,24 @@ bool IonBinaryArithIC::update(JSContext* cx, HandleScript outerScript,
     }
     case JSOP_BITAND: {
       if (!BitAnd(cx, &lhsCopy, &rhsCopy, ret)) {
+        return false;
+      }
+      break;
+    }
+    case JSOP_LSH: {
+      if (!BitLsh(cx, &lhsCopy, &rhsCopy, ret)) {
+        return false;
+      }
+      break;
+    }
+    case JSOP_RSH: {
+      if (!BitRsh(cx, &lhsCopy, &rhsCopy, ret)) {
+        return false;
+      }
+      break;
+    }
+    case JSOP_URSH: {
+      if (!UrshOperation(cx, &lhsCopy, &rhsCopy, ret)) {
         return false;
       }
       break;

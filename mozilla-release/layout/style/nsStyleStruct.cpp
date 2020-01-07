@@ -40,6 +40,7 @@
 #include "mozilla/Likely.h"
 #include "nsIURI.h"
 #include "mozilla/dom/Document.h"
+#include "mozilla/dom/DocumentInlines.h"
 #include <algorithm>
 #include "ImageLoader.h"
 
@@ -262,10 +263,6 @@ nsStyleMargin::nsStyleMargin(const nsStyleMargin& aSrc)
 
 nsChangeHint nsStyleMargin::CalcDifference(
     const nsStyleMargin& aNewData) const {
-  if (mMargin == aNewData.mMargin && mScrollMargin == aNewData.mScrollMargin) {
-    return nsChangeHint(0);
-  }
-
   nsChangeHint hint = nsChangeHint(0);
 
   if (mMargin != aNewData.mMargin) {
@@ -296,11 +293,6 @@ nsStylePadding::nsStylePadding(const nsStylePadding& aSrc)
 
 nsChangeHint nsStylePadding::CalcDifference(
     const nsStylePadding& aNewData) const {
-  if (mPadding == aNewData.mPadding &&
-      mScrollPadding == aNewData.mScrollPadding) {
-    return nsChangeHint(0);
-  }
-
   nsChangeHint hint = nsChangeHint(0);
 
   if (mPadding != aNewData.mPadding) {
@@ -753,11 +745,11 @@ nsStyleSVG::nsStyleSVG(const Document& aDocument)
       mColorInterpolationFilters(NS_STYLE_COLOR_INTERPOLATION_LINEARRGB),
       mFillRule(StyleFillRule::Nonzero),
       mPaintOrder(0),
-      mShapeRendering(NS_STYLE_SHAPE_RENDERING_AUTO),
-      mStrokeLinecap(NS_STYLE_STROKE_LINECAP_BUTT),
+      mShapeRendering(StyleShapeRendering::Auto),
+      mStrokeLinecap(StyleStrokeLinecap::Butt),
       mStrokeLinejoin(NS_STYLE_STROKE_LINEJOIN_MITER),
       mDominantBaseline(NS_STYLE_DOMINANT_BASELINE_AUTO),
-      mTextAnchor(NS_STYLE_TEXT_ANCHOR_START),
+      mTextAnchor(StyleTextAnchor::Start),
       mContextFlags(
           (eStyleSVGOpacitySource_Normal << FILL_OPACITY_SOURCE_SHIFT) |
           (eStyleSVGOpacitySource_Normal << STROKE_OPACITY_SOURCE_SHIFT)) {
@@ -1177,7 +1169,7 @@ nsStylePosition::nsStylePosition(const Document& aDocument)
       mJustifySelf(NS_STYLE_JUSTIFY_AUTO),
       mFlexDirection(StyleFlexDirection::Row),
       mFlexWrap(StyleFlexWrap::Nowrap),
-      mObjectFit(NS_STYLE_OBJECT_FIT_FILL),
+      mObjectFit(StyleObjectFit::Fill),
       mOrder(NS_STYLE_ORDER_INITIAL),
       mFlexGrow(0.0f),
       mFlexShrink(1.0f),
@@ -1910,7 +1902,7 @@ bool nsStyleImage::StartDecoding() const {
   }
   // null image types always return false from IsComplete, so we do the same
   // here.
-  return mType != eStyleImageType_Null ? true : false;
+  return mType != eStyleImageType_Null;
 }
 
 bool nsStyleImage::IsOpaque() const {
@@ -2656,8 +2648,7 @@ bool StyleAnimation::operator==(const StyleAnimation& aOther) const {
 // nsStyleDisplay
 //
 nsStyleDisplay::nsStyleDisplay(const Document& aDocument)
-    : mBinding(StyleUrlOrNone::None()),
-      mTransitions(
+    : mTransitions(
           nsStyleAutoArray<StyleTransition>::WITH_SINGLE_INITIAL_ELEMENT),
       mTransitionTimingFunctionCount(1),
       mTransitionDurationCount(1),
@@ -2691,14 +2682,16 @@ nsStyleDisplay::nsStyleDisplay(const Document& aDocument)
       mResize(StyleResize::None),
       mOrient(StyleOrient::Inline),
       mIsolation(NS_STYLE_ISOLATION_AUTO),
-      mTopLayer(NS_STYLE_TOP_LAYER_NONE),
+      mTopLayer(StyleTopLayer::None),
       mTouchAction(StyleTouchAction_AUTO),
       mScrollBehavior(NS_STYLE_SCROLL_BEHAVIOR_AUTO),
       mOverscrollBehaviorX(StyleOverscrollBehavior::Auto),
       mOverscrollBehaviorY(StyleOverscrollBehavior::Auto),
       mOverflowAnchor(StyleOverflowAnchor::Auto),
-      mScrollSnapType(
-          {StyleScrollSnapAxis::Both, StyleScrollSnapStrictness::None}),
+      mScrollSnapAlign{StyleScrollSnapAlignKeyword::None,
+                       StyleScrollSnapAlignKeyword::None},
+      mScrollSnapType{StyleScrollSnapAxis::Both,
+                      StyleScrollSnapStrictness::None},
       mLineClamp(0),
       mRotate(StyleRotate::None()),
       mTranslate(StyleTranslate::None()),
@@ -2725,8 +2718,7 @@ nsStyleDisplay::nsStyleDisplay(const Document& aDocument)
 }
 
 nsStyleDisplay::nsStyleDisplay(const nsStyleDisplay& aSource)
-    : mBinding(aSource.mBinding),
-      mTransitions(aSource.mTransitions),
+    : mTransitions(aSource.mTransitions),
       mTransitionTimingFunctionCount(aSource.mTransitionTimingFunctionCount),
       mTransitionDurationCount(aSource.mTransitionDurationCount),
       mTransitionDelayCount(aSource.mTransitionDelayCount),
@@ -2763,6 +2755,8 @@ nsStyleDisplay::nsStyleDisplay(const nsStyleDisplay& aSource)
       mScrollBehavior(aSource.mScrollBehavior),
       mOverscrollBehaviorX(aSource.mOverscrollBehaviorX),
       mOverscrollBehaviorY(aSource.mOverscrollBehaviorY),
+      mOverflowAnchor(aSource.mOverflowAnchor),
+      mScrollSnapAlign(aSource.mScrollSnapAlign),
       mScrollSnapType(aSource.mScrollSnapType),
       mLineClamp(aSource.mLineClamp),
       mTransform(aSource.mTransform),
@@ -2842,12 +2836,22 @@ static inline nsChangeHint CompareMotionValues(
   return result;
 }
 
+static bool ScrollbarGenerationChanged(const nsStyleDisplay& aOld,
+                                       const nsStyleDisplay& aNew) {
+  auto changed = [](StyleOverflow aOld, StyleOverflow aNew) {
+    return aOld != aNew &&
+           (aOld == StyleOverflow::Hidden || aNew == StyleOverflow::Hidden);
+  };
+  return changed(aOld.mOverflowX, aNew.mOverflowX) ||
+         changed(aOld.mOverflowY, aNew.mOverflowY);
+}
+
 nsChangeHint nsStyleDisplay::CalcDifference(
     const nsStyleDisplay& aNewData, const nsStylePosition& aOldPosition) const {
   nsChangeHint hint = nsChangeHint(0);
 
-  if (mBinding != aNewData.mBinding || mPosition != aNewData.mPosition ||
-      mDisplay != aNewData.mDisplay || mContain != aNewData.mContain ||
+  if (mPosition != aNewData.mPosition || mDisplay != aNewData.mDisplay ||
+      mContain != aNewData.mContain ||
       (mFloat == StyleFloat::None) != (aNewData.mFloat == StyleFloat::None) ||
       mScrollBehavior != aNewData.mScrollBehavior ||
       mScrollSnapType != aNewData.mScrollSnapType ||
@@ -2874,7 +2878,37 @@ nsChangeHint nsStyleDisplay::CalcDifference(
   }
 
   if (mOverflowX != aNewData.mOverflowX || mOverflowY != aNewData.mOverflowY) {
-    hint |= nsChangeHint_ScrollbarChange;
+    const bool isScrollable = IsScrollableOverflow();
+    if (isScrollable != aNewData.IsScrollableOverflow()) {
+      // We may need to construct or destroy a scroll frame as a result of this
+      // change.
+      hint |= nsChangeHint_ScrollbarChange;
+    } else if (isScrollable) {
+      if (ScrollbarGenerationChanged(*this, aNewData)) {
+        // We need to reframe in the case of hidden -> non-hidden case though,
+        // since ScrollFrameHelper::CreateAnonymousContent avoids creating
+        // scrollbars altogether for overflow: hidden. That seems it could
+        // create some interesting perf cliffs...
+        //
+        // We reframe when non-hidden -> hidden too, for now.
+        //
+        // FIXME(bug 1590247): Seems we could avoid reframing once we've created
+        // scrollbars, which should get us the optimization for elements that
+        // have toggled scrollbars, but would prevent the cliff of toggling
+        // overflow causing jank.
+        hint |= nsChangeHint_ScrollbarChange;
+      } else {
+        // Otherwise, for changes where both overflow values are scrollable,
+        // means that scrollbars may appear or disappear. We need to reflow,
+        // since reflow is what determines which scrollbars if any are visible.
+        hint |= nsChangeHint_ReflowHintsForScrollbarChange;
+      }
+    } else {
+      // Otherwise this is a change between visible and
+      // -moz-hidden-unscrollable. Here only whether we have a clip changes, so
+      // just repaint and update our overflow areas in that case.
+      hint |= nsChangeHint_UpdateOverflow | nsChangeHint_RepaintFrame;
+    }
   }
 
   /* Note: When mScrollBehavior or mScrollSnapType are changed,
@@ -2888,6 +2922,9 @@ nsChangeHint nsStyleDisplay::CalcDifference(
    * if this does become common perhaps a faster-path might be worth while.
    *
    * FIXME(emilio): Can we do what we do for overflow changes?
+   *
+   * FIXME(emilio): These properties no longer propagate from the body to the
+   * viewport.
    */
 
   if (mFloat != aNewData.mFloat) {
@@ -3098,7 +3135,7 @@ nsStyleVisibility::nsStyleVisibility(const Document& aDocument)
       mVisible(NS_STYLE_VISIBILITY_VISIBLE),
       mImageRendering(NS_STYLE_IMAGE_RENDERING_AUTO),
       mWritingMode(NS_STYLE_WRITING_MODE_HORIZONTAL_TB),
-      mTextOrientation(NS_STYLE_TEXT_ORIENTATION_MIXED),
+      mTextOrientation(StyleTextOrientation::Mixed),
       mColorAdjust(StyleColorAdjust::Economy) {
   MOZ_COUNT_CTOR(nsStyleVisibility);
 }
@@ -3374,9 +3411,9 @@ nsStyleText::nsStyleText(const Document& aDocument)
       mTextJustify(StyleTextJustify::Auto),
       mWhiteSpace(StyleWhiteSpace::Normal),
       mHyphens(StyleHyphens::Manual),
-      mRubyAlign(NS_STYLE_RUBY_ALIGN_SPACE_AROUND),
+      mRubyAlign(StyleRubyAlign::SpaceAround),
       mRubyPosition(NS_STYLE_RUBY_POSITION_OVER),
-      mTextSizeAdjust(NS_STYLE_TEXT_SIZE_ADJUST_AUTO),
+      mTextSizeAdjust(StyleTextSizeAdjust::Auto),
       mTextCombineUpright(NS_STYLE_TEXT_COMBINE_UPRIGHT_NONE),
       mControlCharacterVisibility(
           nsLayoutUtils::ControlCharVisibilityDefault()),
@@ -3633,7 +3670,10 @@ nsChangeHint nsStyleUI::CalcDifference(const nsStyleUI& aNewData) const {
     // of pointer-events. See SVGGeometryFrame::ReflowSVG's use of
     // GetHitTestFlags. (Only a reflow, no visual change.)
     hint |= nsChangeHint_NeedReflow |
-            nsChangeHint_NeedDirtyReflow;  // XXX remove me: bug 876085
+            nsChangeHint_NeedDirtyReflow |  // XXX remove me: bug 876085
+            nsChangeHint_SchedulePaint;     // pointer-events changes can change
+                                            // event regions overrides on layers
+                                            // and so needs a repaint.
   }
 
   if (mUserModify != aNewData.mUserModify) {
@@ -3669,9 +3709,9 @@ nsStyleUIReset::nsStyleUIReset(const Document& aDocument)
     : mUserSelect(StyleUserSelect::Auto),
       mScrollbarWidth(StyleScrollbarWidth::Auto),
       mForceBrokenImageIcon(0),
-      mIMEMode(NS_STYLE_IME_MODE_AUTO),
+      mIMEMode(StyleImeMode::Auto),
       mWindowDragging(StyleWindowDragging::Default),
-      mWindowShadow(NS_STYLE_WINDOW_SHADOW_DEFAULT),
+      mWindowShadow(StyleWindowShadow::Default),
       mWindowOpacity(1.0),
       mWindowTransformOrigin{LengthPercentage::FromPercentage(0.5),
                              LengthPercentage::FromPercentage(0.5),
@@ -3721,12 +3761,9 @@ nsChangeHint nsStyleUIReset::CalcDifference(
     hint |= nsChangeHint_SchedulePaint;
   }
 
-  if (mWindowOpacity != aNewData.mWindowOpacity ||
-      mMozWindowTransform != aNewData.mMozWindowTransform) {
-    hint |= nsChangeHint_UpdateWidgetProperties;
-  }
-
-  if (!hint && mIMEMode != aNewData.mIMEMode) {
+  if (!hint && (mIMEMode != aNewData.mIMEMode ||
+                mWindowOpacity != aNewData.mWindowOpacity ||
+                mMozWindowTransform != aNewData.mMozWindowTransform)) {
     hint |= nsChangeHint_NeutralChange;
   }
 

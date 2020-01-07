@@ -14,6 +14,7 @@
 #include "frontend/SharedContext.h"  // FunctionBox
 #include "vm/BytecodeUtil.h"         // INDEX_LIMIT, StackUses, StackDefs
 #include "vm/JSContext.h"            // JSContext
+#include "vm/RegExpObject.h"         // RegexpObject
 
 using namespace js;
 using namespace js::frontend;
@@ -62,6 +63,24 @@ bool GCThingList::finish(JSContext* cx, mozilla::Span<JS::GCCellPtr> array) {
         return false;
       }
       array[i] = JS::GCCellPtr(bi);
+      return true;
+    }
+
+    bool operator()(RegExpCreationData& data) {
+      RegExpObject* regexp = data.createRegExp(cx);
+      if (!regexp) {
+        return false;
+      }
+      array[i] = JS::GCCellPtr(regexp);
+      return true;
+    }
+
+    bool operator()(ObjLiteralCreationData& data) {
+      JSObject* obj = data.create(cx);
+      if (!obj) {
+        return false;
+      }
+      array[i] = JS::GCCellPtr(obj);
       return true;
     }
   };
@@ -144,6 +163,10 @@ void CGResumeOffsetList::finish(mozilla::Span<uint32_t> array) {
   for (unsigned i = 0; i < length(); i++) {
     array[i] = list[i];
   }
+}
+
+JSObject* ObjLiteralCreationData::create(JSContext* cx) {
+  return InterpretObjLiteral(cx, atoms_, writer_);
 }
 
 BytecodeSection::BytecodeSection(JSContext* cx, uint32_t lineNum)

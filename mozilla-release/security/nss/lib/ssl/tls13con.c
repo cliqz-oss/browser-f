@@ -798,7 +798,6 @@ tls13_HandleKeyUpdate(sslSocket *ss, PRUint8 *b, unsigned int length)
     PORT_Assert(ss->opt.noLocks || ssl_HaveRecvBufLock(ss));
     PORT_Assert(ss->opt.noLocks || ssl_HaveSSL3HandshakeLock(ss));
 
-    PORT_Assert(ss->firstHsDone);
     if (!tls13_IsPostHandshake(ss)) {
         FATAL_ERROR(ss, SSL_ERROR_RX_UNEXPECTED_KEY_UPDATE, unexpected_message);
         return SECFailure;
@@ -4184,8 +4183,10 @@ tls13_HandleCertificateVerify(sslSocket *ss, PRUint8 *b, PRUint32 length)
     if (tls13_IsVerifyingWithDelegatedCredential(ss)) {
         /* DelegatedCredential.cred.expected_cert_verify_algorithm is expected
          * to match CertificateVerify.scheme.
+         * DelegatedCredential.cred.expected_cert_verify_algorithm must also be
+         * the same as was reported in ssl3_AuthCertificate.
          */
-        if (sigScheme != dc->expectedCertVerifyAlg) {
+        if (sigScheme != dc->expectedCertVerifyAlg || sigScheme != ss->sec.signatureScheme) {
             FATAL_ERROR(ss, SSL_ERROR_DC_CERT_VERIFY_ALG_MISMATCH, illegal_parameter);
             return SECFailure;
         }
@@ -4245,12 +4246,19 @@ tls13_HandleCertificateVerify(sslSocket *ss, PRUint8 *b, PRUint32 length)
         goto loser;
     }
 
-    /* Set the auth type. */
+    /* Set the auth type and verify it is what we captured in ssl3_AuthCertificate */
     if (!ss->sec.isServer) {
         ss->sec.authType = ssl_SignatureSchemeToAuthType(sigScheme);
+
+        uint32_t prelimAuthKeyBits = ss->sec.authKeyBits;
         rv = ssl_SetAuthKeyBits(ss, pubKey);
         if (rv != SECSuccess) {
             goto loser; /* Alert sent and code set. */
+        }
+
+        if (prelimAuthKeyBits != ss->sec.authKeyBits) {
+            FATAL_ERROR(ss, SSL_ERROR_DC_CERT_VERIFY_ALG_MISMATCH, illegal_parameter);
+            goto loser;
         }
     }
 
@@ -5823,6 +5831,15 @@ tls13_NegotiateVersion(sslSocket *ss, const TLSExtension *supportedVersions)
         return SECFailure;
     }
     for (version = ss->vrange.max; version >= ss->vrange.min; --version) {
+        if (ss->ssl3.hs.helloRetry && version < SSL_LIBRARY_VERSION_TLS_1_3) {
+            /* Prevent negotiating to a lower version in response to a TLS 1.3 HRR.
+             * Since we check in descending (local) order, this will only fail if
+             * our vrange has changed or the client didn't offer 1.3 in response. */
+            PORT_SetError(SSL_ERROR_UNSUPPORTED_VERSION);
+            FATAL_ERROR(ss, SSL_ERROR_UNSUPPORTED_VERSION, protocol_version);
+            return SECFailure;
+        }
+
         PRUint16 wire = tls13_EncodeDraftVersion(version, ss->protocolVariant);
         unsigned long offset;
 

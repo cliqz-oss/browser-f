@@ -25,6 +25,7 @@
 #include "js/SourceText.h"
 #include "js/StableStringChars.h"
 #include "nsString.h"
+#include "xpcpublic.h"
 
 class nsIScriptContext;
 class nsIScriptElement;
@@ -240,29 +241,42 @@ class nsJSUtils {
       JSContext* aCx, mozilla::dom::Element* aElement,
       JS::MutableHandleVector<JSObject*> aScopeChain);
 
-#ifdef MOZ_XBL
-  // Returns a scope chain suitable for XBL execution.
-  //
-  // This is by default GetScopeChainForElemenet, but will be different if the
-  // <binding> element had the simpleScopeChain attribute.
-  //
-  // This is to prevent footguns like bug 1446342.
-  static bool GetScopeChainForXBL(
-      JSContext* aCx, mozilla::dom::Element* aBoundElement,
-      const nsXBLPrototypeBinding& aProtoBinding,
-      JS::MutableHandleVector<JSObject*> aScopeChain);
-#endif
-
   static void ResetTimeZone();
 
   static bool DumpEnabled();
 };
+
+inline void AssignFromStringBuffer(nsStringBuffer* buffer, size_t len,
+                                   nsAString& dest) {
+  buffer->ToString(len, dest);
+}
 
 template <typename T>
 inline bool AssignJSString(JSContext* cx, T& dest, JSString* s) {
   size_t len = JS::GetStringLength(s);
   static_assert(js::MaxStringLength < (1 << 30),
                 "Shouldn't overflow here or in SetCapacity");
+
+  const char16_t* chars;
+  if (XPCStringConvert::MaybeGetDOMStringChars(s, &chars)) {
+    // The characters represent an existing string buffer that we shared with
+    // JS.  We can share that buffer ourselves if the string corresponds to the
+    // whole buffer; otherwise we have to copy.
+    if (chars[len] == '\0') {
+      AssignFromStringBuffer(
+          nsStringBuffer::FromData(const_cast<char16_t*>(chars)), len, dest);
+      return true;
+    }
+  } else if (XPCStringConvert::MaybeGetLiteralStringChars(s, &chars)) {
+    // The characters represent a literal char16_t string constant
+    // compiled into libxul; we can just use it as-is.
+    dest.AssignLiteral(chars, len);
+    return true;
+  }
+
+  // We don't bother checking for a dynamic-atom external string, because we'd
+  // just need to copy out of it anyway.
+
   if (MOZ_UNLIKELY(!dest.SetLength(len, mozilla::fallible))) {
     JS_ReportOutOfMemory(cx);
     return false;

@@ -114,6 +114,7 @@ const ThreadActor = ActorClassWithSpec(threadSpec, {
 
     this._options = {
       autoBlackBox: false,
+      skipBreakpoints: false,
     };
 
     this.breakpointActorMap = new BreakpointActorMap(this);
@@ -197,7 +198,7 @@ const ThreadActor = ActorClassWithSpec(threadSpec, {
 
   get threadLifetimePool() {
     if (!this._threadLifetimePool) {
-      this._threadLifetimePool = new ActorPool(this.conn);
+      this._threadLifetimePool = new ActorPool(this.conn, "thread");
       this.conn.addActorPool(this._threadLifetimePool);
       this._threadLifetimePool.objectActors = new WeakMap();
     }
@@ -285,6 +286,7 @@ const ThreadActor = ActorClassWithSpec(threadSpec, {
       this.doResume();
     }
 
+    this.removeAllWatchpoints();
     this._xhrBreakpoints = [];
     this._updateNetworkObserver();
 
@@ -353,7 +355,7 @@ const ThreadActor = ActorClassWithSpec(threadSpec, {
 
     this._debuggerSourcesSeen = new WeakSet();
 
-    Object.assign(this._options, options || {});
+    this._options = { ...this._options, ...options };
     this.sources.setOptions(this._options);
     this.sources.on("newSource", this.onNewSourceEvent);
 
@@ -685,7 +687,7 @@ const ThreadActor = ActorClassWithSpec(threadSpec, {
       }
     }
 
-    Object.assign(this._options, options);
+    this._options = { ...this._options, ...options };
 
     // Update the global source store
     this.sources.setOptions(options);
@@ -1318,7 +1320,7 @@ const ThreadActor = ActorClassWithSpec(threadSpec, {
     return stepFrame;
   },
 
-  onFrames: function(request) {
+  frames: function(start, count) {
     if (this.state !== "paused") {
       return {
         error: "wrongState",
@@ -1326,9 +1328,6 @@ const ThreadActor = ActorClassWithSpec(threadSpec, {
           "Stack frames are only available while the debuggee is paused.",
       };
     }
-
-    const start = request.start ? request.start : 0;
-    const count = request.count;
 
     // Find the starting frame...
     let frame = this.youngestFrame;
@@ -1338,31 +1337,18 @@ const ThreadActor = ActorClassWithSpec(threadSpec, {
       i++;
     }
 
-    // Return request.count frames, or all remaining
-    // frames if count is not defined.
+    // Return count frames, or all remaining frames if count is not defined.
     const frames = [];
     for (; frame && (!count || i < start + count); i++, frame = frame.older) {
-      const form = this._createFrameActor(frame).form();
-      form.depth = i;
-
-      let frameItem = null;
-
-      const frameSourceActor = this.sources.createSourceActor(
-        frame.script.source
-      );
-      if (frameSourceActor) {
-        form.where = {
-          actor: frameSourceActor.actorID,
-          line: form.where.line,
-          column: form.where.column,
-        };
-        frameItem = form;
+      const sourceActor = this.sources.createSourceActor(frame.script.source);
+      if (!sourceActor) {
+        continue;
       }
-      frames.push(frameItem);
+      const frameActor = this._createFrameActor(frame, i);
+      frames.push(frameActor);
     }
 
-    // Filter null values because createSourceActor can be falsey
-    return { frames: frames.filter(x => !!x) };
+    return { frames };
   },
 
   addAllSources() {
@@ -1418,6 +1404,14 @@ const ThreadActor = ActorClassWithSpec(threadSpec, {
   disableAllBreakpoints: function() {
     for (const bpActor of this.breakpointActorMap.findActors()) {
       bpActor.removeScripts();
+    }
+  },
+
+  removeAllWatchpoints: function() {
+    for (const actor of this.threadLifetimePool.poolChildren()) {
+      if (actor.typeName == "obj") {
+        actor.removeWatchpoints();
+      }
     }
   },
 
@@ -1506,7 +1500,7 @@ const ThreadActor = ActorClassWithSpec(threadSpec, {
     // Create the actor pool that will hold the pause actor and its
     // children.
     assert(!this._pausePool, "No pause pool should exist yet");
-    this._pausePool = new ActorPool(this.conn);
+    this._pausePool = new ActorPool(this.conn, "pause");
     this.conn.addActorPool(this._pausePool);
 
     // Give children of the pause pool a quick link back to the
@@ -1525,15 +1519,20 @@ const ThreadActor = ActorClassWithSpec(threadSpec, {
     const packet = {
       actor: this._pauseActor.actorID,
     };
+
     if (frame) {
-      packet.frame = this._createFrameActor(frame).form();
+      packet.frame = this._createFrameActor(frame);
     }
 
     if (this.dbg.replaying) {
       const point = this.dbg.replayCurrentExecutionPoint();
       packet.executionPoint = point;
       packet.recordingEndpoint = this.dbg.replayRecordingEndpoint();
-      this.onFramePositions(point, frame);
+      if (point) {
+        this.dbg
+          .replayFramePositions(point)
+          .then(positions => this.onFramePositions(positions, frame));
+      }
     }
 
     if (poppedFrames) {
@@ -1543,35 +1542,44 @@ const ThreadActor = ActorClassWithSpec(threadSpec, {
     return packet;
   },
 
-  onFramePositions: function(point, frame) {
-    if (!point) {
+  fetchAncestorFramePositions: function(index) {
+    const point = this.dbg.replayCurrentExecutionPoint();
+
+    let frame = this.youngestFrame;
+    for (let i = 0; frame && i < index; i++) {
+      frame = frame.older;
+    }
+
+    this.dbg.replayAncestorFramePositions(point, index).then(points => {
+      this.onFramePositions(points, frame);
+    });
+  },
+
+  onFramePositions: function(positions, frame) {
+    if (!positions) {
       return;
     }
 
-    this.dbg.replayFramePositions(point).then(positions => {
-      if (!positions) {
-        return;
+    const mappedPositions = positions.map(mappedPoint => {
+      let location = {};
+      if (mappedPoint.position.kind === "OnStep") {
+        const offsetLocation = this.sources.getScriptOffsetLocation(
+          frame.script,
+          mappedPoint.position.offset
+        );
+        location = {
+          line: offsetLocation.line,
+          column: offsetLocation.column,
+          sourceUrl: offsetLocation.url,
+        };
       }
+      return { ...mappedPoint, location };
+    });
 
-      const mappedPositions = positions.map(mappedPoint => {
-        let location = {};
-        if (mappedPoint.position.kind === "OnStep") {
-          const offsetLocation = this.sources.getScriptOffsetLocation(
-            frame.script,
-            mappedPoint.position.offset
-          );
-          location = {
-            line: offsetLocation.line,
-            column: offsetLocation.column,
-          };
-        }
-        return { ...mappedPoint, location };
-      });
-
-      this.emit("replayFramePositions", {
-        positions: mappedPositions,
-        frame: frame.actor.actorID,
-      });
+    this.emit("replayFramePositions", {
+      positions: mappedPositions,
+      frame: frame.actor.actorID,
+      thread: this.actorID,
     });
   },
 
@@ -1584,12 +1592,12 @@ const ThreadActor = ActorClassWithSpec(threadSpec, {
     const popped = [];
 
     // Create the actor pool that will hold the still-living frames.
-    const framePool = new ActorPool(this.conn);
+    const framesPool = new ActorPool(this.conn, "frames");
     const frameList = [];
 
     for (const frameActor of this._frameActors) {
       if (frameActor.frame.live) {
-        framePool.addActor(frameActor);
+        framesPool.addActor(frameActor);
         frameList.push(frameActor);
       } else {
         popped.push(frameActor.actorID);
@@ -1598,25 +1606,25 @@ const ThreadActor = ActorClassWithSpec(threadSpec, {
 
     // Remove the old frame actor pool, this will expire
     // any actors that weren't added to the new pool.
-    if (this._framePool) {
-      this.conn.removeActorPool(this._framePool);
+    if (this._framesPool) {
+      this.conn.removeActorPool(this._framesPool);
     }
 
     this._frameActors = frameList;
-    this._framePool = framePool;
-    this.conn.addActorPool(framePool);
+    this._framesPool = framesPool;
+    this.conn.addActorPool(framesPool);
 
     return popped;
   },
 
-  _createFrameActor: function(frame) {
+  _createFrameActor: function(frame, depth) {
     if (frame.actor) {
       return frame.actor;
     }
 
-    const actor = new FrameActor(frame, this);
+    const actor = new FrameActor(frame, this, depth);
     this._frameActors.push(actor);
-    this._framePool.addActor(actor);
+    this._framesPool.addActor(actor);
     frame.actor = actor;
 
     return actor;
@@ -1717,11 +1725,23 @@ const ThreadActor = ActorClassWithSpec(threadSpec, {
    *        The object actor.
    */
   threadObjectGrip: function(actor) {
-    // We want to reuse the existing actor ID, so we just remove it from the
-    // current pool's weak map and then let pool.addActor do the rest.
-    actor.registeredPool.objectActors.delete(actor.obj);
+    // Save the reference for when we need to demote the object
+    // back to its original registered pool
+    actor.originalRegisteredPool = actor.registeredPool;
+
     this.threadLifetimePool.addActor(actor);
     this.threadLifetimePool.objectActors.set(actor.obj, actor);
+  },
+
+  demoteObjectGrip: function(actor) {
+    // We want to reuse the existing actor ID, so we just remove it from the
+    // current pool's weak map and then let ActorPool.addActor do the rest.
+    actor.registeredPool.objectActors.delete(actor.obj);
+
+    actor.originalRegisteredPool.addActor(actor);
+    actor.originalRegisteredPool.objectActors.set(actor.obj, actor);
+
+    delete actor.originalRegisteredPool;
   },
 
   _onWindowReady: function({ isTopLevel, isBFCache, window }) {
@@ -1758,6 +1778,8 @@ const ThreadActor = ActorClassWithSpec(threadSpec, {
       this.unsafeSynchronize(Promise.resolve(this.doResume()));
       this.dbg.disable();
     }
+
+    this.removeAllWatchpoints();
     this.disableAllBreakpoints();
   },
 
@@ -1859,7 +1881,11 @@ const ThreadActor = ActorClassWithSpec(threadSpec, {
   },
 
   onPauseOnExceptions: function({ pauseOnExceptions, ignoreCaughtExceptions }) {
-    Object.assign(this._options, { pauseOnExceptions, ignoreCaughtExceptions });
+    this._options = {
+      ...this._options,
+      pauseOnExceptions,
+      ignoreCaughtExceptions,
+    };
     this.maybePauseOnExceptions();
     return {};
   },
@@ -2177,7 +2203,6 @@ Object.assign(ThreadActor.prototype.requestTypes, {
   detach: ThreadActor.prototype.onDetach,
   reconfigure: ThreadActor.prototype.onReconfigure,
   resume: ThreadActor.prototype.onResume,
-  frames: ThreadActor.prototype.onFrames,
   interrupt: ThreadActor.prototype.onInterrupt,
   sources: ThreadActor.prototype.onSources,
   skipBreakpoints: ThreadActor.prototype.onSkipBreakpoints,

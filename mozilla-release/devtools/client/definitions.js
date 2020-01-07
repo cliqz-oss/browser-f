@@ -60,11 +60,6 @@ loader.lazyGetter(
 );
 loader.lazyGetter(
   this,
-  "ScratchpadPanel",
-  () => require("devtools/client/scratchpad/panel").ScratchpadPanel
-);
-loader.lazyGetter(
-  this,
   "DomPanel",
   () => require("devtools/client/dom/panel").DomPanel
 );
@@ -106,11 +101,6 @@ loader.lazyRequireGetter(
   "ResponsiveUIManager",
   "devtools/client/responsive/manager"
 );
-loader.lazyImporter(
-  this,
-  "ScratchpadManager",
-  "resource://devtools/client/scratchpad/scratchpad-manager.jsm"
-);
 
 loader.lazyRequireGetter(
   this,
@@ -129,10 +119,6 @@ const L10N = new MultiLocalizationHelper(
   "devtools/client/locales/startup.properties",
   "devtools/startup/locales/key-shortcuts.properties"
 );
-
-// URL to direct people to the deprecated tools panel
-const DEPRECATION_URL =
-  "https://developer.mozilla.org/docs/Tools/Deprecated_tools";
 
 var Tools = {};
 exports.Tools = Tools;
@@ -261,7 +247,7 @@ Tools.styleEditor = {
   visibilityswitch: "devtools.styleeditor.enabled",
   accesskey: l10n("open.accesskey"),
   icon: "chrome://devtools/skin/images/tool-styleeditor.svg",
-  url: "chrome://devtools/content/styleeditor/index.xul",
+  url: "chrome://devtools/content/styleeditor/index.xhtml",
   label: l10n("ToolboxStyleEditor.label"),
   panelLabel: l10n("ToolboxStyleEditor.panelLabel"),
   get tooltip() {
@@ -316,7 +302,7 @@ function switchPerformancePanel() {
       return target.isLocalTab;
     };
   } else {
-    Tools.performance.url = "chrome://devtools/content/performance/index.xul";
+    Tools.performance.url = "chrome://devtools/content/performance/index.xhtml";
     Tools.performance.build = function(frame, target) {
       return new PerformancePanel(frame, target);
     };
@@ -387,7 +373,7 @@ Tools.storage = {
   accesskey: l10n("storage.accesskey"),
   visibilityswitch: "devtools.storage.enabled",
   icon: "chrome://devtools/skin/images/tool-storage.svg",
-  url: "chrome://devtools/content/storage/index.xul",
+  url: "chrome://devtools/content/storage/index.xhtml",
   label: l10n("storage.label"),
   menuLabel: l10n("storage.menuLabel"),
   panelLabel: l10n("storage.panelLabel"),
@@ -408,26 +394,6 @@ Tools.storage = {
 
   build: function(iframeWindow, toolbox) {
     return new StoragePanel(iframeWindow, toolbox);
-  },
-};
-
-Tools.scratchpad = {
-  id: "scratchpad",
-  deprecated: true,
-  deprecationURL: `${DEPRECATION_URL}#Scratchpad`,
-  ordinal: 12,
-  visibilityswitch: "devtools.scratchpad.enabled",
-  icon: "chrome://devtools/skin/images/tool-scratchpad.svg",
-  url: "chrome://devtools/content/scratchpad/index.xul",
-  label: l10n("scratchpad.label"),
-  panelLabel: l10n("scratchpad.panelLabel"),
-  tooltip: l10n("scratchpad.tooltip"),
-  inMenu: false,
-  isTargetSupported: function(target) {
-    return target.hasActor("console");
-  },
-  build: function(iframeWindow, toolbox) {
-    return new ScratchpadPanel(iframeWindow, toolbox);
   },
 };
 
@@ -503,7 +469,7 @@ Tools.application = {
   hiddenInOptions: true,
 
   isTargetSupported: function(target) {
-    return target.isLocalTab;
+    return target.hasActor("manifest");
   },
 
   build: function(iframeWindow, toolbox) {
@@ -558,7 +524,6 @@ var defaultTools = [
   Tools.performance,
   Tools.netMonitor,
   Tools.storage,
-  Tools.scratchpad,
   Tools.memory,
   Tools.dom,
   Tools.accessibility,
@@ -602,24 +567,24 @@ exports.ToolboxButtons = [
     },
   },
   {
-    id: "command-button-scratchpad",
-    description: l10n("toolbox.buttons.scratchpad"),
-    isTargetSupported: target => target.isLocalTab,
-    onClick(event, toolbox) {
-      ScratchpadManager.openScratchpad();
-    },
-  },
-  {
     id: "command-button-replay",
     description: l10n("toolbox.buttons.replay"),
-    isTargetSupported: target => !target.canRewind && target.isLocalTab,
+    isTargetSupported: target =>
+      Services.prefs.getBoolPref("devtools.recordreplay.enabled") &&
+      !target.canRewind &&
+      target.isLocalTab,
     onClick: () => reloadAndRecordTab(),
     isChecked: () => false,
+    experimentalURL:
+      "https://developer.mozilla.org/en-US/docs/Mozilla/Projects/WebReplay",
   },
   {
     id: "command-button-stop-replay",
     description: l10n("toolbox.buttons.stopReplay"),
-    isTargetSupported: target => target.canRewind && target.isLocalTab,
+    isTargetSupported: target =>
+      Services.prefs.getBoolPref("devtools.recordreplay.enabled") &&
+      target.canRewind &&
+      target.isLocalTab,
     onClick: () => reloadAndStopRecordingTab(),
     isChecked: () => true,
   },

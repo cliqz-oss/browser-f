@@ -12,10 +12,10 @@ path = "lib.rs"
 gecko_debug = ["style/gecko_debug", "nsstring/gecko_debug"]
 gecko_profiler = ["style/gecko_profiler"]
 gecko_refcount_logging = ["style/gecko_refcount_logging", "servo_arc/gecko_refcount_logging"]
-moz_xbl = ["style/moz_xbl"]
 
 [dependencies]
 atomic_refcell = "0.1"
+bincode = "1.0"
 cssparser = "0.25"
 cstr = "0.1.2"
 libc = "0.2"

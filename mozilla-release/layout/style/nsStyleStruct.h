@@ -1034,7 +1034,7 @@ struct MOZ_NEEDS_MEMMOVABLE_MEMBERS nsStylePosition {
   uint8_t mJustifySelf;
   mozilla::StyleFlexDirection mFlexDirection;
   mozilla::StyleFlexWrap mFlexWrap;
-  uint8_t mObjectFit;  // NS_STYLE_OBJECT_FIT_*
+  mozilla::StyleObjectFit mObjectFit;
   int32_t mOrder;
   float mFlexGrow;
   float mFlexShrink;
@@ -1146,9 +1146,9 @@ struct MOZ_NEEDS_MEMMOVABLE_MEMBERS nsStyleText {
 
  public:
   mozilla::StyleHyphens mHyphens;
-  uint8_t mRubyAlign;           // NS_STYLE_RUBY_ALIGN_*
+  mozilla::StyleRubyAlign mRubyAlign;
   uint8_t mRubyPosition;        // NS_STYLE_RUBY_POSITION_*
-  uint8_t mTextSizeAdjust;      // NS_STYLE_TEXT_SIZE_ADJUST_*
+  mozilla::StyleTextSizeAdjust mTextSizeAdjust;
   uint8_t mTextCombineUpright;  // NS_STYLE_TEXT_COMBINE_UPRIGHT_*
   uint8_t
       mControlCharacterVisibility;  // NS_STYLE_CONTROL_CHARACTER_VISIBILITY_*
@@ -1266,11 +1266,11 @@ struct MOZ_NEEDS_MEMMOVABLE_MEMBERS nsStyleVisibility {
   nsChangeHint CalcDifference(const nsStyleVisibility& aNewData) const;
 
   mozilla::StyleImageOrientation mImageOrientation;
-  uint8_t mDirection;        // NS_STYLE_DIRECTION_*
-  uint8_t mVisible;          // NS_STYLE_VISIBILITY_VISIBLE_*
-  uint8_t mImageRendering;   // NS_STYLE_IMAGE_RENDERING_*
-  uint8_t mWritingMode;      // NS_STYLE_WRITING_MODE_*
-  uint8_t mTextOrientation;  // NS_STYLE_TEXT_ORIENTATION_MIXED_*
+  uint8_t mDirection;       // NS_STYLE_DIRECTION_*
+  uint8_t mVisible;         // NS_STYLE_VISIBILITY_VISIBLE_*
+  uint8_t mImageRendering;  // NS_STYLE_IMAGE_RENDERING_*
+  uint8_t mWritingMode;     // NS_STYLE_WRITING_MODE_*
+  mozilla::StyleTextOrientation mTextOrientation;
   mozilla::StyleColorAdjust mColorAdjust;
 
   bool IsVisible() const { return (mVisible == NS_STYLE_VISIBILITY_VISIBLE); }
@@ -1470,7 +1470,6 @@ struct MOZ_NEEDS_MEMMOVABLE_MEMBERS nsStyleDisplay {
   nsChangeHint CalcDifference(const nsStyleDisplay& aNewData,
                               const nsStylePosition& aOldPosition) const;
 
-  mozilla::StyleUrlOrNone mBinding;
   nsStyleAutoArray<mozilla::StyleTransition> mTransitions;
   // The number of elements in mTransitions that are not from repeating
   // a list due to another property being longer.
@@ -1513,7 +1512,7 @@ struct MOZ_NEEDS_MEMMOVABLE_MEMBERS nsStyleDisplay {
   mozilla::StyleResize mResize;
   mozilla::StyleOrient mOrient;
   uint8_t mIsolation;  // NS_STYLE_ISOLATION_*
-  uint8_t mTopLayer;   // NS_STYLE_TOP_LAYER_*
+  mozilla::StyleTopLayer mTopLayer;
 
   mozilla::StyleTouchAction mTouchAction;
   uint8_t mScrollBehavior;  // NS_STYLE_SCROLL_BEHAVIOR_*
@@ -1635,9 +1634,7 @@ struct MOZ_NEEDS_MEMMOVABLE_MEMBERS nsStyleDisplay {
     return DisplayInside(aDisplay) == mozilla::StyleDisplayInside::Inline;
   }
 
-  bool IsInlineFlow() const {
-    return IsInlineFlow(mDisplay);
-  }
+  bool IsInlineFlow() const { return IsInlineFlow(mDisplay); }
 
   bool IsInlineInsideStyle() const {
     auto inside = DisplayInside();
@@ -2077,9 +2074,9 @@ struct MOZ_NEEDS_MEMMOVABLE_MEMBERS nsStyleUIReset {
   mozilla::StyleUserSelect mUserSelect;  // [reset](selection-style)
   mozilla::StyleScrollbarWidth mScrollbarWidth;
   uint8_t mForceBrokenImageIcon;  // (0 if not forcing, otherwise forcing)
-  uint8_t mIMEMode;
+  mozilla::StyleImeMode mIMEMode;
   mozilla::StyleWindowDragging mWindowDragging;
-  uint8_t mWindowShadow;
+  mozilla::StyleWindowShadow mWindowShadow;
   float mWindowOpacity;
   mozilla::StyleTransform mMozWindowTransform;
   mozilla::StyleTransformOrigin mWindowTransformOrigin;
@@ -2223,11 +2220,11 @@ struct MOZ_NEEDS_MEMMOVABLE_MEMBERS nsStyleSVG {
   uint8_t mColorInterpolationFilters;  // NS_STYLE_COLOR_INTERPOLATION_*
   mozilla::StyleFillRule mFillRule;
   mozilla::StyleSVGPaintOrder mPaintOrder;
-  uint8_t mShapeRendering;    // NS_STYLE_SHAPE_RENDERING_*
-  uint8_t mStrokeLinecap;     // NS_STYLE_STROKE_LINECAP_*
+  mozilla::StyleShapeRendering mShapeRendering;
+  mozilla::StyleStrokeLinecap mStrokeLinecap;
   uint8_t mStrokeLinejoin;    // NS_STYLE_STROKE_LINEJOIN_*
   uint8_t mDominantBaseline;  // NS_STYLE_DOMINANT_BASELINE_*
-  uint8_t mTextAnchor;        // NS_STYLE_TEXT_ANCHOR_*
+  mozilla::StyleTextAnchor mTextAnchor;
 
   /// Returns true if style has been set to expose the computed values of
   /// certain properties (such as 'fill') to the contents of any linked images.

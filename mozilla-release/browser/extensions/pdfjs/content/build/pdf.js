@@ -123,8 +123,8 @@ return /******/ (function(modules) { // webpackBootstrap
 "use strict";
 
 
-var pdfjsVersion = '2.4.43';
-var pdfjsBuild = '16ae7c69';
+var pdfjsVersion = '2.4.152';
+var pdfjsBuild = '827eb64b';
 
 var pdfjsSharedUtil = __w_pdfjs_require__(1);
 
@@ -912,6 +912,10 @@ function stringToPDFString(str) {
     for (let i = 2; i < length; i += 2) {
       strBuf.push(String.fromCharCode(str.charCodeAt(i) << 8 | str.charCodeAt(i + 1)));
     }
+  } else if (str[0] === '\xFF' && str[1] === '\xFE') {
+    for (let i = 2; i < length; i += 2) {
+      strBuf.push(String.fromCharCode(str.charCodeAt(i + 1) << 8 | str.charCodeAt(i)));
+    }
   } else {
     for (let i = 0; i < length; ++i) {
       const code = PDFStringTranslateTable[str.charCodeAt(i)];
@@ -1027,7 +1031,9 @@ exports.createObjectURL = createObjectURL;
 "use strict";
 
 
-const globalScope = __w_pdfjs_require__(3);
+const {
+  globalScope
+} = __w_pdfjs_require__(3);
 
 ;
 
@@ -1038,7 +1044,12 @@ const globalScope = __w_pdfjs_require__(3);
 "use strict";
 
 
-module.exports = typeof window !== 'undefined' && window.Math === Math ? window : typeof global !== 'undefined' && global.Math === Math ? global : typeof self !== 'undefined' && self.Math === Math ? self : {};
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.globalScope = void 0;
+const globalScope = typeof window !== 'undefined' && window.Math === Math ? window : typeof global !== 'undefined' && global.Math === Math ? global : typeof self !== 'undefined' && self.Math === Math ? self : {};
+exports.globalScope = globalScope;
 
 /***/ }),
 /* 4 */
@@ -1079,7 +1090,7 @@ var _api_compatibility = __w_pdfjs_require__(8);
 
 var _canvas = __w_pdfjs_require__(9);
 
-var _global_scope = _interopRequireDefault(__w_pdfjs_require__(3));
+var _global_scope = __w_pdfjs_require__(3);
 
 var _worker_options = __w_pdfjs_require__(11);
 
@@ -1090,8 +1101,6 @@ var _metadata = __w_pdfjs_require__(13);
 var _transport_stream = __w_pdfjs_require__(15);
 
 var _webgl = __w_pdfjs_require__(16);
-
-function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 
 const DEFAULT_RANGE_CHUNK_SIZE = 65536;
 const RENDERING_CANCELLED_TIMEOUT = 100;
@@ -1271,7 +1280,7 @@ function _fetchDocument(worker, source, pdfDataRangeTransport, docId) {
 
   return worker.messageHandler.sendWithPromise('GetDocRequest', {
     docId,
-    apiVersion: '2.4.43',
+    apiVersion: '2.4.152',
     source: {
       data: source.data,
       url: source.url,
@@ -1518,7 +1527,7 @@ class PDFPageProxy {
     this.pageIndex = pageIndex;
     this._pageInfo = pageInfo;
     this._transport = transport;
-    this._stats = pdfBug ? new _display_utils.StatTimer() : _display_utils.DummyStatTimer;
+    this._stats = pdfBug ? new _display_utils.StatTimer() : null;
     this._pdfBug = pdfBug;
     this.commonObjs = transport.commonObjs;
     this.objs = new PDFObjects();
@@ -1551,12 +1560,16 @@ class PDFPageProxy {
   getViewport({
     scale,
     rotation = this.rotate,
+    offsetX = 0,
+    offsetY = 0,
     dontFlip = false
   } = {}) {
     return new _display_utils.PageViewport({
       viewBox: this.view,
       scale,
       rotation,
+      offsetX,
+      offsetY,
       dontFlip
     });
   }
@@ -1583,8 +1596,10 @@ class PDFPageProxy {
     canvasFactory = null,
     background = null
   }) {
-    const stats = this._stats;
-    stats.time('Overall');
+    if (this._stats) {
+      this._stats.time('Overall');
+    }
+
     const renderingIntent = intent === 'print' ? 'print' : 'display';
     this.pendingCleanup = false;
 
@@ -1611,7 +1626,10 @@ class PDFPageProxy {
         argsArray: [],
         lastChunk: false
       };
-      stats.time('Page Request');
+
+      if (this._stats) {
+        this._stats.time('Page Request');
+      }
 
       this._pumpOperatorList({
         pageIndex: this.pageNumber - 1,
@@ -1644,8 +1662,11 @@ class PDFPageProxy {
         internalRenderTask.capability.resolve();
       }
 
-      stats.timeEnd('Rendering');
-      stats.timeEnd('Overall');
+      if (this._stats) {
+        this._stats.timeEnd('Rendering');
+
+        this._stats.timeEnd('Overall');
+      }
     };
 
     const internalRenderTask = new InternalRenderTask({
@@ -1679,7 +1700,10 @@ class PDFPageProxy {
         return;
       }
 
-      stats.time('Rendering');
+      if (this._stats) {
+        this._stats.time('Rendering');
+      }
+
       internalRenderTask.initializeGraphics(transparency);
       internalRenderTask.operatorListChanged();
     }).catch(complete);
@@ -1719,7 +1743,9 @@ class PDFPageProxy {
         lastChunk: false
       };
 
-      this._stats.time('Page Request');
+      if (this._stats) {
+        this._stats.time('Page Request');
+      }
 
       this._pumpOperatorList({
         pageIndex: this.pageIndex,
@@ -1826,7 +1852,7 @@ class PDFPageProxy {
     this.objs.clear();
     this.annotationsPromise = null;
 
-    if (resetStats && this._stats instanceof _display_utils.StatTimer) {
+    if (resetStats && this._stats) {
       this._stats = new _display_utils.StatTimer();
     }
 
@@ -1840,7 +1866,9 @@ class PDFPageProxy {
       return;
     }
 
-    this._stats.timeEnd('Page Request');
+    if (this._stats) {
+      this._stats.timeEnd('Page Request');
+    }
 
     if (intentState.displayReadyCapability) {
       intentState.displayReadyCapability.resolve(transparency);
@@ -1925,7 +1953,7 @@ class PDFPageProxy {
     reason,
     force = false
   }) {
-    (0, _util.assert)(reason instanceof Error, 'PDFPageProxy._abortOperatorList: Expected "reason" argument.');
+    (0, _util.assert)(reason instanceof Error || typeof reason === 'object' && reason !== null, 'PDFPageProxy._abortOperatorList: Expected "reason" argument.');
 
     if (!intentState.streamReader) {
       return;
@@ -1969,7 +1997,7 @@ class PDFPageProxy {
   }
 
   get stats() {
-    return this._stats instanceof _display_utils.StatTimer ? this._stats : null;
+    return this._stats;
   }
 
 }
@@ -2514,6 +2542,33 @@ class WorkerTransport {
 
       loadingTask._capability.resolve(new PDFDocumentProxy(pdfInfo, this));
     });
+    messageHandler.on('DocException', function (ex) {
+      let reason;
+
+      switch (ex.name) {
+        case 'PasswordException':
+          reason = new _util.PasswordException(ex.message, ex.code);
+          break;
+
+        case 'InvalidPDFException':
+          reason = new _util.InvalidPDFException(ex.message);
+          break;
+
+        case 'MissingPDFException':
+          reason = new _util.MissingPDFException(ex.message);
+          break;
+
+        case 'UnexpectedResponseException':
+          reason = new _util.UnexpectedResponseException(ex.message, ex.status);
+          break;
+
+        case 'UnknownErrorException':
+          reason = new _util.UnknownErrorException(ex.message, ex.details);
+          break;
+      }
+
+      loadingTask._capability.reject(reason);
+    });
     messageHandler.on('PasswordRequest', exception => {
       this._passwordCapability = (0, _util.createPromiseCapability)();
 
@@ -2534,21 +2589,6 @@ class WorkerTransport {
       }
 
       return this._passwordCapability.promise;
-    });
-    messageHandler.on('PasswordException', function (exception) {
-      loadingTask._capability.reject(new _util.PasswordException(exception.message, exception.code));
-    });
-    messageHandler.on('InvalidPDF', function (exception) {
-      loadingTask._capability.reject(new _util.InvalidPDFException(exception.message));
-    });
-    messageHandler.on('MissingPDF', function (exception) {
-      loadingTask._capability.reject(new _util.MissingPDFException(exception.message));
-    });
-    messageHandler.on('UnexpectedResponse', function (exception) {
-      loadingTask._capability.reject(new _util.UnexpectedResponseException(exception.message, exception.status));
-    });
-    messageHandler.on('UnknownError', function (exception) {
-      loadingTask._capability.reject(new _util.UnknownErrorException(exception.message, exception.details));
     });
     messageHandler.on('DataLoaded', data => {
       if (loadingTask.onProgress) {
@@ -2593,10 +2633,10 @@ class WorkerTransport {
 
           let fontRegistry = null;
 
-          if (params.pdfBug && _global_scope.default.FontInspector && _global_scope.default.FontInspector.enabled) {
+          if (params.pdfBug && _global_scope.globalScope.FontInspector && _global_scope.globalScope.FontInspector.enabled) {
             fontRegistry = {
               registerFont(font, url) {
-                _global_scope.default['FontInspector'].fontAdded(font, url);
+                _global_scope.globalScope['FontInspector'].fontAdded(font, url);
               }
 
             };
@@ -3060,8 +3100,8 @@ const InternalRenderTask = function InternalRenderTaskClosure() {
         canvasInRendering.add(this._canvas);
       }
 
-      if (this._pdfBug && _global_scope.default.StepperManager && _global_scope.default.StepperManager.enabled) {
-        this.stepper = _global_scope.default.StepperManager.create(this.pageNumber - 1);
+      if (this._pdfBug && _global_scope.globalScope.StepperManager && _global_scope.globalScope.StepperManager.enabled) {
+        this.stepper = _global_scope.globalScope.StepperManager.create(this.pageNumber - 1);
         this.stepper.init(this.operatorList);
         this.stepper.nextBreakPoint = this.stepper.getNextBreakPoint();
       }
@@ -3174,9 +3214,9 @@ const InternalRenderTask = function InternalRenderTaskClosure() {
   return InternalRenderTask;
 }();
 
-const version = '2.4.43';
+const version = '2.4.152';
 exports.version = version;
-const build = '16ae7c69';
+const build = '827eb64b';
 exports.build = build;
 
 /***/ }),
@@ -3196,7 +3236,7 @@ exports.isValidFetchUrl = isValidFetchUrl;
 exports.loadScript = loadScript;
 exports.deprecated = deprecated;
 exports.releaseImageResources = releaseImageResources;
-exports.PDFDateString = exports.DummyStatTimer = exports.StatTimer = exports.DOMSVGFactory = exports.DOMCMapReaderFactory = exports.DOMCanvasFactory = exports.DEFAULT_LINK_REL = exports.LinkTarget = exports.RenderingCancelledException = exports.PageViewport = void 0;
+exports.PDFDateString = exports.StatTimer = exports.DOMSVGFactory = exports.DOMCMapReaderFactory = exports.DOMCanvasFactory = exports.DEFAULT_LINK_REL = exports.LinkTarget = exports.RenderingCancelledException = exports.PageViewport = void 0;
 
 var _util = __w_pdfjs_require__(1);
 
@@ -3395,14 +3435,16 @@ class PageViewport {
   clone({
     scale = this.scale,
     rotation = this.rotation,
+    offsetX = this.offsetX,
+    offsetY = this.offsetY,
     dontFlip = false
   } = {}) {
     return new PageViewport({
       viewBox: this.viewBox.slice(),
       scale,
       rotation,
-      offsetX: this.offsetX,
-      offsetY: this.offsetY,
+      offsetX,
+      offsetY,
       dontFlip
     });
   }
@@ -3444,7 +3486,6 @@ const LinkTarget = {
   TOP: 4
 };
 exports.LinkTarget = LinkTarget;
-const LinkTargetStringMap = ['', '_self', '_blank', '_parent', '_top'];
 
 function addLinkAttributes(link, {
   url,
@@ -3466,9 +3507,30 @@ function addLinkAttributes(link, {
     };
   }
 
-  const LinkTargetValues = Object.values(LinkTarget);
-  const targetIndex = LinkTargetValues.includes(target) ? target : LinkTarget.NONE;
-  link.target = LinkTargetStringMap[targetIndex];
+  let targetStr = '';
+
+  switch (target) {
+    case LinkTarget.NONE:
+      break;
+
+    case LinkTarget.SELF:
+      targetStr = '_self';
+      break;
+
+    case LinkTarget.BLANK:
+      targetStr = '_blank';
+      break;
+
+    case LinkTarget.PARENT:
+      targetStr = '_parent';
+      break;
+
+    case LinkTarget.TOP:
+      targetStr = '_top';
+      break;
+  }
+
+  link.target = targetStr;
   link.rel = typeof rel === 'string' ? rel : DEFAULT_LINK_REL;
 }
 
@@ -3480,31 +3542,22 @@ function getFilenameFromUrl(url) {
 }
 
 class StatTimer {
-  constructor(enable = true) {
-    this.enabled = !!enable;
+  constructor() {
     this.started = Object.create(null);
     this.times = [];
   }
 
   time(name) {
-    if (!this.enabled) {
-      return;
-    }
-
     if (name in this.started) {
-      (0, _util.warn)('Timer is already running for ' + name);
+      (0, _util.warn)(`Timer is already running for ${name}`);
     }
 
     this.started[name] = Date.now();
   }
 
   timeEnd(name) {
-    if (!this.enabled) {
-      return;
-    }
-
     if (!(name in this.started)) {
-      (0, _util.warn)('Timer has not been started for ' + name);
+      (0, _util.warn)(`Timer has not been started for ${name}`);
     }
 
     this.times.push({
@@ -3516,7 +3569,7 @@ class StatTimer {
   }
 
   toString() {
-    let out = '',
+    let outBuf = [],
         longest = 0;
 
     for (const time of this.times) {
@@ -3529,32 +3582,15 @@ class StatTimer {
 
     for (const time of this.times) {
       const duration = time.end - time.start;
-      out += `${time.name.padEnd(longest)} ${duration}ms\n`;
+      outBuf.push(`${time.name.padEnd(longest)} ${duration}ms\n`);
     }
 
-    return out;
+    return outBuf.join('');
   }
 
 }
 
 exports.StatTimer = StatTimer;
-
-class DummyStatTimer {
-  constructor() {
-    (0, _util.unreachable)('Cannot initialize DummyStatTimer.');
-  }
-
-  static time(name) {}
-
-  static timeEnd(name) {}
-
-  static toString() {
-    return '';
-  }
-
-}
-
-exports.DummyStatTimer = DummyStatTimer;
 
 function isFetchSupported() {
   return typeof fetch !== 'undefined' && typeof Response !== 'undefined' && 'body' in Response.prototype && typeof ReadableStream !== 'undefined';
@@ -6455,10 +6491,15 @@ GlobalWorkerOptions.workerSrc = GlobalWorkerOptions.workerSrc === undefined ? ''
 Object.defineProperty(exports, "__esModule", {
   value: true
 });
-exports.MessageHandler = MessageHandler;
+exports.MessageHandler = void 0;
 
 var _util = __w_pdfjs_require__(1);
 
+const CallbackKind = {
+  UNKNOWN: 0,
+  DATA: 1,
+  ERROR: 2
+};
 const StreamKind = {
   UNKNOWN: 0,
   CANCEL: 1,
@@ -6494,55 +6535,69 @@ function wrapReason(reason) {
   }
 }
 
-function MessageHandler(sourceName, targetName, comObj) {
-  this.sourceName = sourceName;
-  this.targetName = targetName;
-  this.comObj = comObj;
-  this.callbackId = 1;
-  this.streamId = 1;
-  this.postMessageTransfers = true;
-  this.streamSinks = Object.create(null);
-  this.streamControllers = Object.create(null);
-  let callbacksCapabilities = this.callbacksCapabilities = Object.create(null);
-  let ah = this.actionHandler = Object.create(null);
+class MessageHandler {
+  constructor(sourceName, targetName, comObj) {
+    this.sourceName = sourceName;
+    this.targetName = targetName;
+    this.comObj = comObj;
+    this.callbackId = 1;
+    this.streamId = 1;
+    this.postMessageTransfers = true;
+    this.streamSinks = Object.create(null);
+    this.streamControllers = Object.create(null);
+    this.callbackCapabilities = Object.create(null);
+    this.actionHandler = Object.create(null);
 
-  this._onComObjOnMessage = event => {
-    let data = event.data;
+    this._onComObjOnMessage = event => {
+      const data = event.data;
 
-    if (data.targetName !== this.sourceName) {
-      return;
-    }
-
-    if (data.stream) {
-      this._processStreamMessage(data);
-    } else if (data.isReply) {
-      let callbackId = data.callbackId;
-
-      if (data.callbackId in callbacksCapabilities) {
-        let callback = callbacksCapabilities[callbackId];
-        delete callbacksCapabilities[callbackId];
-
-        if ('reason' in data) {
-          callback.reject(wrapReason(data.reason));
-        } else {
-          callback.resolve(data.data);
-        }
-      } else {
-        throw new Error(`Cannot resolve callback ${callbackId}`);
+      if (data.targetName !== this.sourceName) {
+        return;
       }
-    } else if (data.action in ah) {
-      let action = ah[data.action];
+
+      if (data.stream) {
+        this._processStreamMessage(data);
+
+        return;
+      }
+
+      if (data.callback) {
+        const callbackId = data.callbackId;
+        const capability = this.callbackCapabilities[callbackId];
+
+        if (!capability) {
+          throw new Error(`Cannot resolve callback ${callbackId}`);
+        }
+
+        delete this.callbackCapabilities[callbackId];
+
+        if (data.callback === CallbackKind.DATA) {
+          capability.resolve(data.data);
+        } else if (data.callback === CallbackKind.ERROR) {
+          capability.reject(wrapReason(data.reason));
+        } else {
+          throw new Error('Unexpected callback case');
+        }
+
+        return;
+      }
+
+      const action = this.actionHandler[data.action];
+
+      if (!action) {
+        throw new Error(`Unknown action from worker: ${data.action}`);
+      }
 
       if (data.callbackId) {
-        let sourceName = this.sourceName;
-        let targetName = data.sourceName;
+        const sourceName = this.sourceName;
+        const targetName = data.sourceName;
         new Promise(function (resolve) {
           resolve(action(data.data));
         }).then(function (result) {
           comObj.postMessage({
             sourceName,
             targetName,
-            isReply: true,
+            callback: CallbackKind.DATA,
             callbackId: data.callbackId,
             data: result
           });
@@ -6550,51 +6605,52 @@ function MessageHandler(sourceName, targetName, comObj) {
           comObj.postMessage({
             sourceName,
             targetName,
-            isReply: true,
+            callback: CallbackKind.ERROR,
             callbackId: data.callbackId,
             reason: wrapReason(reason)
           });
         });
-      } else if (data.streamId) {
-        this._createStreamSink(data);
-      } else {
-        action(data.data);
+        return;
       }
-    } else {
-      throw new Error(`Unknown action from worker: ${data.action}`);
-    }
-  };
 
-  comObj.addEventListener('message', this._onComObjOnMessage);
-}
+      if (data.streamId) {
+        this._createStreamSink(data);
 
-MessageHandler.prototype = {
+        return;
+      }
+
+      action(data.data);
+    };
+
+    comObj.addEventListener('message', this._onComObjOnMessage);
+  }
+
   on(actionName, handler) {
-    var ah = this.actionHandler;
+    const ah = this.actionHandler;
 
     if (ah[actionName]) {
       throw new Error(`There is already an actionName called "${actionName}"`);
     }
 
     ah[actionName] = handler;
-  },
+  }
 
   send(actionName, data, transfers) {
-    this.postMessage({
+    this._postMessage({
       sourceName: this.sourceName,
       targetName: this.targetName,
       action: actionName,
       data
     }, transfers);
-  },
+  }
 
   sendWithPromise(actionName, data, transfers) {
-    var callbackId = this.callbackId++;
-    var capability = (0, _util.createPromiseCapability)();
-    this.callbacksCapabilities[callbackId] = capability;
+    const callbackId = this.callbackId++;
+    const capability = (0, _util.createPromiseCapability)();
+    this.callbackCapabilities[callbackId] = capability;
 
     try {
-      this.postMessage({
+      this._postMessage({
         sourceName: this.sourceName,
         targetName: this.targetName,
         action: actionName,
@@ -6606,16 +6662,16 @@ MessageHandler.prototype = {
     }
 
     return capability.promise;
-  },
+  }
 
   sendWithStream(actionName, data, queueingStrategy, transfers) {
-    let streamId = this.streamId++;
-    let sourceName = this.sourceName;
-    let targetName = this.targetName;
+    const streamId = this.streamId++;
+    const sourceName = this.sourceName;
+    const targetName = this.targetName;
     const comObj = this.comObj;
     return new _util.ReadableStream({
       start: controller => {
-        let startCapability = (0, _util.createPromiseCapability)();
+        const startCapability = (0, _util.createPromiseCapability)();
         this.streamControllers[streamId] = {
           controller,
           startCall: startCapability,
@@ -6623,7 +6679,8 @@ MessageHandler.prototype = {
           cancelCall: null,
           isClosed: false
         };
-        this.postMessage({
+
+        this._postMessage({
           sourceName,
           targetName,
           action: actionName,
@@ -6631,10 +6688,11 @@ MessageHandler.prototype = {
           data,
           desiredSize: controller.desiredSize
         }, transfers);
+
         return startCapability.promise;
       },
       pull: controller => {
-        let pullCapability = (0, _util.createPromiseCapability)();
+        const pullCapability = (0, _util.createPromiseCapability)();
         this.streamControllers[streamId].pullCall = pullCapability;
         comObj.postMessage({
           sourceName,
@@ -6647,7 +6705,7 @@ MessageHandler.prototype = {
       },
       cancel: reason => {
         (0, _util.assert)(reason instanceof Error, 'cancel must have a valid reason');
-        let cancelCapability = (0, _util.createPromiseCapability)();
+        const cancelCapability = (0, _util.createPromiseCapability)();
         this.streamControllers[streamId].cancelCall = cancelCapability;
         this.streamControllers[streamId].isClosed = true;
         comObj.postMessage({
@@ -6660,24 +6718,22 @@ MessageHandler.prototype = {
         return cancelCapability.promise;
       }
     }, queueingStrategy);
-  },
+  }
 
   _createStreamSink(data) {
-    let self = this;
-    let action = this.actionHandler[data.action];
-    let streamId = data.streamId;
-    let desiredSize = data.desiredSize;
-    let sourceName = this.sourceName;
-    let targetName = data.sourceName;
-    let capability = (0, _util.createPromiseCapability)();
+    const self = this;
+    const action = this.actionHandler[data.action];
+    const streamId = data.streamId;
+    const sourceName = this.sourceName;
+    const targetName = data.sourceName;
     const comObj = this.comObj;
-    let streamSink = {
+    const streamSink = {
       enqueue(chunk, size = 1, transfers) {
         if (this.isCancelled) {
           return;
         }
 
-        let lastDesiredSize = this.desiredSize;
+        const lastDesiredSize = this.desiredSize;
         this.desiredSize -= size;
 
         if (lastDesiredSize > 0 && this.desiredSize <= 0) {
@@ -6685,7 +6741,7 @@ MessageHandler.prototype = {
           this.ready = this.sinkCapability.promise;
         }
 
-        self.postMessage({
+        self._postMessage({
           sourceName,
           targetName,
           stream: StreamKind.ENQUEUE,
@@ -6726,11 +6782,11 @@ MessageHandler.prototype = {
         });
       },
 
-      sinkCapability: capability,
+      sinkCapability: (0, _util.createPromiseCapability)(),
       onPull: null,
       onCancel: null,
       isCancelled: false,
-      desiredSize,
+      desiredSize: data.desiredSize,
       ready: null
     };
     streamSink.sinkCapability.resolve();
@@ -6755,12 +6811,12 @@ MessageHandler.prototype = {
         reason: wrapReason(reason)
       });
     });
-  },
+  }
 
   _processStreamMessage(data) {
-    let sourceName = this.sourceName;
-    let targetName = data.sourceName;
     const streamId = data.streamId;
+    const sourceName = this.sourceName;
+    const targetName = data.sourceName;
     const comObj = this.comObj;
 
     switch (data.stream) {
@@ -6901,28 +6957,30 @@ MessageHandler.prototype = {
       default:
         throw new Error('Unexpected stream case');
     }
-  },
+  }
 
   async _deleteStreamController(streamId) {
     await Promise.all([this.streamControllers[streamId].startCall, this.streamControllers[streamId].pullCall, this.streamControllers[streamId].cancelCall].map(function (capability) {
       return capability && capability.promise.catch(function () {});
     }));
     delete this.streamControllers[streamId];
-  },
+  }
 
-  postMessage(message, transfers) {
+  _postMessage(message, transfers) {
     if (transfers && this.postMessageTransfers) {
       this.comObj.postMessage(message, transfers);
     } else {
       this.comObj.postMessage(message);
     }
-  },
+  }
 
   destroy() {
     this.comObj.removeEventListener('message', this._onComObjOnMessage);
   }
 
-};
+}
+
+exports.MessageHandler = MessageHandler;
 
 /***/ }),
 /* 13 */
@@ -8308,9 +8366,7 @@ exports.renderTextLayer = void 0;
 
 var _util = __w_pdfjs_require__(1);
 
-var _global_scope = _interopRequireDefault(__w_pdfjs_require__(3));
-
-function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+var _global_scope = __w_pdfjs_require__(3);
 
 var renderTextLayer = function renderTextLayerClosure() {
   var MAX_TEXT_DIVS_TO_RENDER = 100000;
@@ -8738,7 +8794,7 @@ var renderTextLayer = function renderTextLayerClosure() {
     this._textDivs = textDivs || [];
     this._textContentItemsStr = textContentItemsStr || [];
     this._enhanceTextSelection = !!enhanceTextSelection;
-    this._fontInspectorEnabled = !!(_global_scope.default.FontInspector && _global_scope.default.FontInspector.enabled);
+    this._fontInspectorEnabled = !!(_global_scope.globalScope.FontInspector && _global_scope.globalScope.FontInspector.enabled);
     this._reader = null;
     this._layoutTextLastFontSize = null;
     this._layoutTextLastFontFamily = null;
@@ -9637,7 +9693,7 @@ class LineAnnotationElement extends AnnotationElement {
     line.setAttribute('y1', data.rect[3] - data.lineCoordinates[1]);
     line.setAttribute('x2', data.rect[2] - data.lineCoordinates[2]);
     line.setAttribute('y2', data.rect[3] - data.lineCoordinates[3]);
-    line.setAttribute('stroke-width', data.borderStyle.width);
+    line.setAttribute('stroke-width', data.borderStyle.width || 1);
     line.setAttribute('stroke', 'transparent');
     svg.appendChild(line);
     this.container.append(svg);
@@ -9667,7 +9723,7 @@ class SquareAnnotationElement extends AnnotationElement {
     square.setAttribute('y', borderWidth / 2);
     square.setAttribute('width', width - borderWidth);
     square.setAttribute('height', height - borderWidth);
-    square.setAttribute('stroke-width', borderWidth);
+    square.setAttribute('stroke-width', borderWidth || 1);
     square.setAttribute('stroke', 'transparent');
     square.setAttribute('fill', 'none');
     svg.appendChild(square);
@@ -9698,7 +9754,7 @@ class CircleAnnotationElement extends AnnotationElement {
     circle.setAttribute('cy', height / 2);
     circle.setAttribute('rx', width / 2 - borderWidth / 2);
     circle.setAttribute('ry', height / 2 - borderWidth / 2);
-    circle.setAttribute('stroke-width', borderWidth);
+    circle.setAttribute('stroke-width', borderWidth || 1);
     circle.setAttribute('stroke', 'transparent');
     circle.setAttribute('fill', 'none');
     svg.appendChild(circle);
@@ -9736,7 +9792,7 @@ class PolylineAnnotationElement extends AnnotationElement {
     points = points.join(' ');
     const polyline = this.svgFactory.createElement(this.svgElementName);
     polyline.setAttribute('points', points);
-    polyline.setAttribute('stroke-width', data.borderStyle.width);
+    polyline.setAttribute('stroke-width', data.borderStyle.width || 1);
     polyline.setAttribute('stroke', 'transparent');
     polyline.setAttribute('fill', 'none');
     svg.appendChild(polyline);
@@ -9803,7 +9859,7 @@ class InkAnnotationElement extends AnnotationElement {
       points = points.join(' ');
       const polyline = this.svgFactory.createElement(this.svgElementName);
       polyline.setAttribute('points', points);
-      polyline.setAttribute('stroke-width', data.borderStyle.width);
+      polyline.setAttribute('stroke-width', data.borderStyle.width || 1);
       polyline.setAttribute('stroke', 'transparent');
       polyline.setAttribute('fill', 'none');
 
@@ -10011,9 +10067,7 @@ var _util = __w_pdfjs_require__(1);
 
 var _display_utils = __w_pdfjs_require__(6);
 
-var _is_node = _interopRequireDefault(__w_pdfjs_require__(20));
-
-function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
+var _is_node = __w_pdfjs_require__(20);
 
 let SVGGraphics = function () {
   throw new Error('Not implemented: SVGGraphics');
@@ -10029,9 +10083,12 @@ exports.SVGGraphics = SVGGraphics;
 "use strict";
 
 
-module.exports = function isNodeJS() {
-  return typeof process === 'object' && process + '' === '[object process]' && !process.versions['nw'] && !process.versions['electron'];
-};
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.isNodeJS = void 0;
+const isNodeJS = typeof process === 'object' && process + '' === '[object process]' && !process.versions['nw'] && !process.versions['electron'];
+exports.isNodeJS = isNodeJS;
 
 /***/ })
 /******/ ]);

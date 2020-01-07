@@ -77,12 +77,41 @@ class DebugAPI {
   /*** Methods for interaction with the GC. ***********************************/
 
   /*
+   * Trace (inferred) owning edges from stack frames to Debugger.Frames, as part
+   * of root marking.
+   *
+   * Even if a Debugger.Frame for a live stack frame is entirely unreachable
+   * from JS, if it has onStep or onPop hooks set, then collecting it would have
+   * observable side effects - namely, the hooks would fail to run. The effect
+   * is the same as if the stack frame held an owning edge to its
+   * Debugger.Frame.
+   *
+   * Debugger.Frames must also be retained if the Debugger to which they belong
+   * is reachable, even if they have no hooks set, but we handle that elsewhere;
+   * this function is only concerned with the inferred roots from stack frames
+   * to Debugger.Frames that have hooks set.
+   */
+  static void traceFramesWithLiveHooks(JSTracer* tracer);
+
+  /*
+   * Trace (inferred) owning edges from generator objects to Debugger.Frames.
+   *
+   * Even if a Debugger.Frame for a live suspended generator object is entirely
+   * unreachable from JS, if it has onStep or onPop hooks set, then collecting
+   * it would have observable side effects - namely, the hooks would fail to run
+   * if the generator is resumed. The effect is the same as if the generator
+   * object held an owning edge to its Debugger.Frame.
+   */
+  static inline void traceGeneratorFrame(JSTracer* tracer,
+                                         AbstractGeneratorObject* generator);
+
+  /*
    * A Debugger object is live if:
    *   * the Debugger JSObject is live (Debugger::trace handles this case); OR
    *   * it is in the middle of dispatching an event (the event dispatching
    *     code roots it in this case); OR
-   *   * it is enabled, and it is debugging at least one live compartment,
-   *     and at least one of the following is true:
+   *   * it is debugging at least one live compartment, and at least one of the
+   *     following is true:
    *       - it has a debugger hook installed
    *       - it has a breakpoint set on a live script
    *       - it has a watchpoint set on a live object.
@@ -99,6 +128,9 @@ class DebugAPI {
   // Trace all debugger-owned GC things unconditionally, during a moving GC.
   static void traceAllForMovingGC(JSTracer* trc);
 
+  // Trace debugging information for a JSScript.
+  static void traceDebugScript(JSTracer* trc, JSScript* script);
+
   // The garbage collector calls this after everything has been marked, but
   // before anything has been finalized. We use this to clear Debugger /
   // debuggee edges at a point where the parties concerned are all still
@@ -107,9 +139,6 @@ class DebugAPI {
 
   // Add sweep group edges due to the presence of any debuggers.
   static MOZ_MUST_USE bool findSweepGroupEdges(JSRuntime* rt);
-
-  // Sweep breakpoints in a script associated with any debugger.
-  static inline void sweepBreakpoints(JSFreeOp* fop, JSScript* script);
 
   // Destroy the debugging information associated with a script.
   static void destroyDebugScript(JSFreeOp* fop, JSScript* script);
@@ -349,7 +378,6 @@ class DebugAPI {
  private:
   static bool stepModeEnabledSlow(JSScript* script);
   static bool hasBreakpointsAtSlow(JSScript* script, jsbytecode* pc);
-  static void sweepBreakpointsSlow(JSFreeOp* fop, JSScript* script);
   static void slowPathOnNewScript(JSContext* cx, HandleScript script);
   static void slowPathOnNewGlobalObject(JSContext* cx,
                                         Handle<GlobalObject*> global);
@@ -382,6 +410,8 @@ class DebugAPI {
   static void slowPathOnPromiseSettled(JSContext* cx,
                                        Handle<PromiseObject*> promise);
   static bool inFrameMaps(AbstractFramePtr frame);
+  static void slowPathTraceGeneratorFrame(JSTracer* tracer,
+                                          AbstractGeneratorObject* generator);
 };
 
 // Suppresses all debuggee NX checks, i.e., allow all execution. Used to allow

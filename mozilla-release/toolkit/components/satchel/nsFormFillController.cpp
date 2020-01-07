@@ -67,8 +67,8 @@ static nsIFormAutoComplete* GetFormAutoComplete() {
 }
 
 NS_IMPL_CYCLE_COLLECTION(nsFormFillController, mController, mLoginManagerAC,
-                         mLoginReputationService, mFocusedPopup,
-                         mPopups, mLastListener, mLastFormAutoComplete)
+                         mLoginReputationService, mFocusedPopup, mPopups,
+                         mLastListener, mLastFormAutoComplete)
 
 NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(nsFormFillController)
   NS_INTERFACE_MAP_ENTRY_AMBIGUOUS(nsISupports, nsIFormFillController)
@@ -87,7 +87,7 @@ nsFormFillController::nsFormFillController()
       mListNode(nullptr),
       // The amount of time a context menu event supresses showing a
       // popup from a focus event in ms. This matches the threshold in
-      // toolkit/components/passwordmgr/LoginManagerContent.jsm.
+      // toolkit/components/passwordmgr/LoginManagerChild.jsm.
       mFocusAfterRightClickThreshold(400),
       mTimeout(50),
       mMinResultsForPopup(1),
@@ -211,8 +211,9 @@ void nsFormFillController::MaybeRemoveMutationObserver(nsINode* aNode) {
 NS_IMETHODIMP
 nsFormFillController::AttachToDocument(Document* aDocument,
                                        nsIAutoCompletePopup* aPopup) {
-  MOZ_LOG(sLogger, LogLevel::Debug,
-          ("AttachToDocument for document %p with popup %p", aDocument, aPopup));
+  MOZ_LOG(
+      sLogger, LogLevel::Debug,
+      ("AttachToDocument for document %p with popup %p", aDocument, aPopup));
   NS_ENSURE_TRUE(aDocument && aPopup, NS_ERROR_ILLEGAL_VALUE);
 
   mPopups.Put(aDocument, aPopup);

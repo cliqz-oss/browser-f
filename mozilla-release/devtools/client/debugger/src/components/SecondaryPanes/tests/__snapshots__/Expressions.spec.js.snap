@@ -7,7 +7,6 @@ exports[`Expressions should always have unique keys 1`] = `
   <li
     className="expression-container"
     key="expression1"
-    onDoubleClick={[Function]}
     title="expression1"
   >
     <div
@@ -15,11 +14,12 @@ exports[`Expressions should always have unique keys 1`] = `
     >
       <Component
         autoExpandDepth={0}
-        createObjectClient={[Function]}
+        createObjectFront={[Function]}
         disableWrap={true}
         onDOMNodeClick={[Function]}
         onDOMNodeMouseOut={[Function]}
         onDOMNodeMouseOver={[Function]}
+        onDoubleClick={[Function]}
         onInspectIconClick={[Function]}
         roots={
           Array [
@@ -49,7 +49,6 @@ exports[`Expressions should always have unique keys 1`] = `
   <li
     className="expression-container"
     key="expression2"
-    onDoubleClick={[Function]}
     title="expression2"
   >
     <div
@@ -57,11 +56,12 @@ exports[`Expressions should always have unique keys 1`] = `
     >
       <Component
         autoExpandDepth={0}
-        createObjectClient={[Function]}
+        createObjectFront={[Function]}
         disableWrap={true}
         onDOMNodeClick={[Function]}
         onDOMNodeMouseOut={[Function]}
         onDOMNodeMouseOver={[Function]}
+        onDoubleClick={[Function]}
         onInspectIconClick={[Function]}
         roots={
           Array [
@@ -98,7 +98,6 @@ exports[`Expressions should render 1`] = `
   <li
     className="expression-container"
     key="expression1"
-    onDoubleClick={[Function]}
     title="expression1"
   >
     <div
@@ -106,11 +105,12 @@ exports[`Expressions should render 1`] = `
     >
       <Component
         autoExpandDepth={0}
-        createObjectClient={[Function]}
+        createObjectFront={[Function]}
         disableWrap={true}
         onDOMNodeClick={[Function]}
         onDOMNodeMouseOut={[Function]}
         onDOMNodeMouseOver={[Function]}
+        onDoubleClick={[Function]}
         onInspectIconClick={[Function]}
         roots={
           Array [
@@ -140,7 +140,6 @@ exports[`Expressions should render 1`] = `
   <li
     className="expression-container"
     key="expression2"
-    onDoubleClick={[Function]}
     title="expression2"
   >
     <div
@@ -148,11 +147,12 @@ exports[`Expressions should render 1`] = `
     >
       <Component
         autoExpandDepth={0}
-        createObjectClient={[Function]}
+        createObjectFront={[Function]}
         disableWrap={true}
         onDOMNodeClick={[Function]}
         onDOMNodeMouseOut={[Function]}
         onDOMNodeMouseOver={[Function]}
+        onDoubleClick={[Function]}
         onInspectIconClick={[Function]}
         roots={
           Array [

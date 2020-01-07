@@ -123,10 +123,6 @@ class TransportSecurityInfo : public nsITransportSecurityInfo,
   nsCOMPtr<nsIInterfaceRequestor> mCallbacks;
   nsTArray<RefPtr<nsIX509Cert>> mSucceededCertChain;
 
-  static nsresult ConvertCertArrayToCertList(
-      const nsTArray<RefPtr<nsIX509Cert>>& aCertArray,
-      nsIX509CertList** aCertList);
-
  private:
   uint32_t mSecurityState;
 
@@ -142,9 +138,6 @@ class TransportSecurityInfo : public nsITransportSecurityInfo,
   nsTArray<RefPtr<nsIX509Cert>> mFailedCertChain;
 
   nsresult ReadSSLStatus(nsIObjectInputStream* aStream);
-  static nsresult ConvertCertListToCertArray(
-      const nsCOMPtr<nsIX509CertList>& aCertList,
-      nsTArray<RefPtr<nsIX509Cert>>& aCertArray);
 
   // This function is used to read the binary that are serialized
   // by using nsIX509CertList

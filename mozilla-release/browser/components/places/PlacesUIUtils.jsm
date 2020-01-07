@@ -1175,6 +1175,12 @@ XPCOMUtils.defineLazyPreferenceGetter(
   "browser.bookmarks.openInTabClosesMenu",
   false
 );
+XPCOMUtils.defineLazyPreferenceGetter(
+  PlacesUIUtils,
+  "maxRecentFolders",
+  "browser.bookmarks.editDialog.maxRecentFolders",
+  7
+);
 
 /**
  * Determines if an unwrapped node can be moved.

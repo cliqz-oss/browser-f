@@ -17,6 +17,9 @@ ChromeUtils.defineModuleGetter(
   "Preferences",
   "resource://gre/modules/Preferences.jsm"
 );
+var { PromiseUtils } = ChromeUtils.import(
+  "resource://gre/modules/PromiseUtils.jsm"
+);
 
 const {
   createAppInfo,
@@ -563,8 +566,13 @@ add_task(async function test_preference_manager_set_when_disabled() {
   ok(isUndefinedPref("foo"), "test pref is not set");
 
   await ExtensionSettingsStore.initialize();
+  let lastItemChange = PromiseUtils.defer();
   ExtensionPreferencesManager.addSetting("some-pref", {
     prefNames: ["foo", "bar"],
+    onPrefsChanged(item) {
+      lastItemChange.resolve(item);
+      lastItemChange = PromiseUtils.defer();
+    },
     setCallback(value) {
       return { [this.prefNames[0]]: value, [this.prefNames[1]]: false };
     },
@@ -620,11 +628,16 @@ add_task(async function test_preference_manager_set_when_disabled() {
   await ExtensionSettingsStore._reloadFile(true);
 
   // Now unload the extension to test prefs are reset properly.
+  let promise = lastItemChange.promise;
   await extension.unload();
 
   // Test that the pref is unset when an extension is uninstalled.
-  item = await ExtensionPreferencesManager.getSetting("prefs", "some-pref");
-  equal(item, null, "The value has been reset");
+  item = await promise;
+  deepEqual(
+    item,
+    { key: "some-pref", initialValue: { bar: true } },
+    "The value has been reset"
+  );
   ok(isUndefinedPref("foo"), "user pref is not set");
   equal(
     Services.prefs.getBoolPref("bar"),
@@ -633,5 +646,51 @@ add_task(async function test_preference_manager_set_when_disabled() {
   );
   Services.prefs.clearUserPref("bar");
 
+  await promiseShutdownManager();
+});
+
+add_task(async function test_preference_default_upgraded() {
+  await promiseStartupManager();
+
+  let id = "@upgrade-pref";
+  let extension = ExtensionTestUtils.loadExtension({
+    useAddonManager: "temporary",
+    manifest: {
+      applications: { gecko: { id } },
+    },
+  });
+
+  await extension.startup();
+
+  // We set the default value for a pref here so it will be
+  // picked up by EPM.
+  let defaultPrefs = Services.prefs.getDefaultBranch(null);
+  defaultPrefs.setStringPref("bar", "initial default");
+
+  await ExtensionSettingsStore.initialize();
+  ExtensionPreferencesManager.addSetting("some-pref", {
+    prefNames: ["bar"],
+    setCallback(value) {
+      return { [this.prefNames[0]]: value };
+    },
+  });
+
+  await ExtensionPreferencesManager.setSetting(id, "some-pref", "new value");
+  let item = ExtensionSettingsStore.getSetting("prefs", "some-pref");
+  equal(item.value, "new value", "The value is set");
+
+  defaultPrefs.setStringPref("bar", "new default");
+
+  item = ExtensionSettingsStore.getSetting("prefs", "some-pref");
+  equal(item.value, "new value", "The value is still set");
+
+  let prefsChanged = await ExtensionPreferencesManager.removeSetting(
+    id,
+    "some-pref"
+  );
+  ok(prefsChanged, "pref changed on removal of setting.");
+  equal(Preferences.get("bar"), "new default", "default value is correct");
+
+  await extension.unload();
   await promiseShutdownManager();
 });

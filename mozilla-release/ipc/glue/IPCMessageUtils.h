@@ -24,11 +24,14 @@
 #endif
 #include "mozilla/TypeTraits.h"
 #include "mozilla/IntegerTypeTraits.h"
+#include "mozilla/Vector.h"
 
 #include <limits>
 #include <stdint.h>
 #include <type_traits>
+#include <vector>
 
+#include "nsDebug.h"
 #include "nsExceptionHandler.h"
 #include "nsHashKeys.h"
 #include "nsID.h"
@@ -638,6 +641,162 @@ struct ParamTraits<AutoTArray<E, N>> : ParamTraits<nsTArray<E>> {
   typedef AutoTArray<E, N> paramType;
 };
 
+template <typename E, size_t N, typename AP>
+struct ParamTraits<mozilla::Vector<E, N, AP>> {
+  typedef mozilla::Vector<E, N, AP> paramType;
+
+  // We write arrays of integer or floating-point data using a single pickling
+  // call, rather than writing each element individually.  We deliberately do
+  // not use mozilla::IsPod here because it is perfectly reasonable to have
+  // a data structure T for which IsPod<T>::value is true, yet also have a
+  // ParamTraits<T> specialization.
+  static const bool sUseWriteBytes =
+      (mozilla::IsIntegral<E>::value || mozilla::IsFloatingPoint<E>::value);
+
+  static void Write(Message* aMsg, const paramType& aParam) {
+    uint32_t length = aParam.length();
+    WriteParam(aMsg, length);
+
+    if (sUseWriteBytes) {
+      int pickledLength = 0;
+      MOZ_RELEASE_ASSERT(ByteLengthIsValid(length, sizeof(E), &pickledLength));
+      aMsg->WriteBytes(aParam.begin(), pickledLength);
+      return;
+    }
+
+    for (const E& elem : aParam) {
+      WriteParam(aMsg, elem);
+    }
+  }
+
+  static bool Read(const Message* aMsg, PickleIterator* aIter,
+                   paramType* aResult) {
+    uint32_t length;
+    if (!ReadParam(aMsg, aIter, &length)) {
+      return false;
+    }
+
+    if (sUseWriteBytes) {
+      int pickledLength = 0;
+      if (!ByteLengthIsValid(length, sizeof(E), &pickledLength)) {
+        return false;
+      }
+
+      if (!aResult->resizeUninitialized(length)) {
+        // So that OOM failure shows up as OOM crash instead of IPC FatalError.
+        NS_ABORT_OOM(length * sizeof(E));
+      }
+
+      E* elements = aResult->begin();
+      return aMsg->ReadBytesInto(aIter, elements, pickledLength);
+    }
+
+    // Each ReadParam<E> may read more than 1 byte each; this is an attempt
+    // to minimally validate that the length isn't much larger than what's
+    // actually available in aMsg.
+    if (!aMsg->HasBytesAvailable(aIter, length)) {
+      return false;
+    }
+
+    if (!aResult->resize(length)) {
+      // So that OOM failure shows up as OOM crash instead of IPC FatalError.
+      NS_ABORT_OOM(length * sizeof(E));
+    }
+
+    for (uint32_t index = 0; index < length; ++index) {
+      if (!ReadParam(aMsg, aIter, &((*aResult)[index]))) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  static void Log(const paramType& aParam, std::wstring* aLog) {
+    for (uint32_t index = 0, len = aParam.length(); index < len; ++index) {
+      if (index) {
+        aLog->append(L" ");
+      }
+      LogParam(aParam[index], aLog);
+    }
+  }
+};
+
+template <typename E>
+struct ParamTraits<std::vector<E>> {
+  typedef std::vector<E> paramType;
+
+  // We write arrays of integer or floating-point data using a single pickling
+  // call, rather than writing each element individually.  We deliberately do
+  // not use mozilla::IsPod here because it is perfectly reasonable to have
+  // a data structure T for which IsPod<T>::value is true, yet also have a
+  // ParamTraits<T> specialization.
+  static const bool sUseWriteBytes =
+      (mozilla::IsIntegral<E>::value || mozilla::IsFloatingPoint<E>::value);
+
+  static void Write(Message* aMsg, const paramType& aParam) {
+    uint32_t length = aParam.size();
+    WriteParam(aMsg, length);
+
+    if (sUseWriteBytes) {
+      int pickledLength = 0;
+      MOZ_RELEASE_ASSERT(ByteLengthIsValid(length, sizeof(E), &pickledLength));
+      aMsg->WriteBytes(aParam.data(), pickledLength);
+      return;
+    }
+
+    for (const E& elem : aParam) {
+      WriteParam(aMsg, elem);
+    }
+  }
+
+  static bool Read(const Message* aMsg, PickleIterator* aIter,
+                   paramType* aResult) {
+    uint32_t length;
+    if (!ReadParam(aMsg, aIter, &length)) {
+      return false;
+    }
+
+    if (sUseWriteBytes) {
+      int pickledLength = 0;
+      if (!ByteLengthIsValid(length, sizeof(E), &pickledLength)) {
+        return false;
+      }
+
+      aResult->resize(length);
+
+      E* elements = aResult->data();
+      return aMsg->ReadBytesInto(aIter, elements, pickledLength);
+    }
+
+    // Each ReadParam<E> may read more than 1 byte each; this is an attempt
+    // to minimally validate that the length isn't much larger than what's
+    // actually available in aMsg.
+    if (!aMsg->HasBytesAvailable(aIter, length)) {
+      return false;
+    }
+
+    aResult->resize(length);
+
+    for (uint32_t index = 0; index < length; ++index) {
+      if (!ReadParam(aMsg, aIter, &((*aResult)[index]))) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
+  static void Log(const paramType& aParam, std::wstring* aLog) {
+    for (uint32_t index = 0, len = aParam.size(); index < len; ++index) {
+      if (index) {
+        aLog->append(L" ");
+      }
+      LogParam(aParam[index], aLog);
+    }
+  }
+};
+
 template <>
 struct ParamTraits<float> {
   typedef float paramType;
@@ -1105,6 +1264,54 @@ struct BitfieldHelper {
     return false;
   }
 };
+
+// A couple of recursive helper functions, allows syntax like:
+// WriteParams(aMsg, aParam.foo, aParam.bar, aParam.baz)
+// ReadParams(aMsg, aIter, aParam.foo, aParam.bar, aParam.baz)
+
+// Base case
+void WriteParams(Message* aMsg);
+
+template <typename T0, typename... Tn>
+static void WriteParams(Message* aMsg, const T0& aArg,
+                        const Tn&... aRemainingArgs) {
+  WriteParam(aMsg, aArg);                // Write first arg
+  WriteParams(aMsg, aRemainingArgs...);  // Recurse for the rest
+}
+
+// Base case
+bool ReadParams(const Message* aMsg, PickleIterator* aIter);
+
+template <typename T0, typename... Tn>
+static bool ReadParams(const Message* aMsg, PickleIterator* aIter, T0& aArg,
+                       Tn&... aRemainingArgs) {
+  return ReadParam(aMsg, aIter, &aArg) &&             // Read first arg
+         ReadParams(aMsg, aIter, aRemainingArgs...);  // Recurse for the rest
+}
+
+// Macros that allow syntax like:
+// DEFINE_IPC_SERIALIZER_WITH_FIELDS(SomeType, member1, member2, member3)
+// Makes sure that serialize/deserialize code do the same members in the same
+// order.
+#define ACCESS_PARAM_FIELD(Field) aParam.Field
+
+#define DEFINE_IPC_SERIALIZER_WITH_FIELDS(Type, ...)                         \
+  template <>                                                                \
+  struct ParamTraits<Type> {                                                 \
+    typedef Type paramType;                                                  \
+    static void Write(Message* aMsg, const paramType& aParam) {              \
+      WriteParams(aMsg, MOZ_FOR_EACH_SEPARATED(ACCESS_PARAM_FIELD, (, ), (), \
+                                               (__VA_ARGS__)));              \
+    }                                                                        \
+                                                                             \
+    static bool Read(const Message* aMsg, PickleIterator* aIter,             \
+                     paramType* aResult) {                                   \
+      paramType& aParam = *aResult;                                          \
+      return ReadParams(aMsg, aIter,                                         \
+                        MOZ_FOR_EACH_SEPARATED(ACCESS_PARAM_FIELD, (, ), (), \
+                                               (__VA_ARGS__)));              \
+    }                                                                        \
+  };
 
 } /* namespace IPC */
 

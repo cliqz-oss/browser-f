@@ -15,11 +15,11 @@
         return;
 
       assert_header_equals(e.data, {
-        "dest": "document",
         "site": "same-origin",
         "user": "",
         "mode": "navigate",
-      });
+        "dest": "document"
+      }, "Same-origin window, forced");
       t.done();
     }));
   }, "Same-origin window, forced");
@@ -32,11 +32,11 @@
         return;
 
       assert_header_equals(e.data, {
-        "dest": "document",
         "site": "same-site",
         "user": "",
         "mode": "navigate",
-      });
+        "dest": "document"
+      }, "Same-site window, forced");
       t.done();
     }));
   }, "Same-site window, forced");
@@ -49,11 +49,11 @@
         return;
 
       assert_header_equals(e.data, {
-        "dest": "document",
         "site": "cross-site",
         "user": "",
         "mode": "navigate",
-      });
+        "dest": "document"
+      }, "Cross-site window, forced");
       t.done();
     }));
   }, "Cross-site window, forced");
@@ -68,11 +68,11 @@
         return;
 
       assert_header_equals(e.data, {
-        "dest": "document",
         "site": "same-origin",
         "user": "",
         "mode": "navigate",
-      });
+        "dest": "document"
+      }, "Same-origin window, forced, reloaded");
 
       if (messages == 1) {
         w.location.reload();
@@ -92,11 +92,11 @@
         return;
 
       assert_header_equals(e.data, {
-        "dest": "document",
         "site": "same-site",
         "user": "",
         "mode": "navigate",
-      });
+        "dest": "document"
+      }, "Same-site window, forced, reloaded");
 
       if (messages == 1) {
         w.location.reload();
@@ -116,11 +116,11 @@
         return;
 
       assert_header_equals(e.data, {
-        "dest": "document",
         "site": "cross-site",
         "user": "",
         "mode": "navigate",
-      });
+        "dest": "document"
+      }, "Cross-site window, forced, reloaded");
 
       if (messages == 1) {
         w.location.reload();
@@ -141,11 +141,11 @@
           return;
 
         assert_header_equals(e.data, {
-          "dest": "document",
           "site": "same-origin",
           "user": "?1",
           "mode": "navigate",
-        });
+          "dest": "document"
+        }, "Same-origin window, user-activated");
         t.done();
       }));
     });
@@ -163,11 +163,11 @@
           return;
 
         assert_header_equals(e.data, {
-          "dest": "document",
           "site": "same-site",
           "user": "?1",
           "mode": "navigate",
-        });
+          "dest": "document"
+        }, "Same-site window, user-activated");
         t.done();
       }));
     });
@@ -185,11 +185,11 @@
           return;
 
         assert_header_equals(e.data, {
-          "dest": "document",
           "site": "cross-site",
           "user": "?1",
           "mode": "navigate",
-        });
+          "dest": "document"
+        }, "Cross-site window, user-activated");
         t.done();
       }));
     });

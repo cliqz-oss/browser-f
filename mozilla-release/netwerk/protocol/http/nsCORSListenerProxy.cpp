@@ -44,6 +44,7 @@
 #include "mozilla/NullPrincipal.h"
 #include "nsIHttpHeaderVisitor.h"
 #include "nsQueryObject.h"
+#include "mozilla/StaticPrefs_network.h"
 #include <algorithm>
 
 using namespace mozilla;
@@ -957,30 +958,16 @@ nsresult nsCORSListenerProxy::UpdateChannel(nsIChannel* aChannel,
 
   // Add the Origin header
   nsAutoCString origin;
-  rv = nsContentUtils::GetASCIIOrigin(mOriginHeaderPrincipal, origin);
+  rv = mOriginHeaderPrincipal->GetAsciiOrigin(origin);
   NS_ENSURE_SUCCESS(rv, rv);
 
   nsCOMPtr<nsIHttpChannel> http = do_QueryInterface(aChannel);
   NS_ENSURE_TRUE(http, NS_ERROR_FAILURE);
 
   // hide the Origin header when requesting from .onion and requesting CORS
-  if (dom::ReferrerInfo::HideOnionReferrerSource()) {
-    nsCOMPtr<nsIURI> potentialOnionUri;  // the candidate uri in header Origin:
-    rv = mOriginHeaderPrincipal->GetURI(getter_AddRefs(potentialOnionUri));
-    NS_ENSURE_SUCCESS(rv, rv);
-
-    nsAutoCString potentialOnionHost;
-    rv = potentialOnionUri ? potentialOnionUri->GetAsciiHost(potentialOnionHost)
-                           : NS_ERROR_FAILURE;
-    NS_ENSURE_SUCCESS(rv, rv);
-
-    nsAutoCString currentOrgin;
-    rv = nsContentUtils::GetASCIIOrigin(originalURI, currentOrgin);
-    NS_ENSURE_SUCCESS(rv, rv);
-
-    if (!currentOrgin.EqualsIgnoreCase(origin.get()) &&
-        StringEndsWith(potentialOnionHost, NS_LITERAL_CSTRING(".onion"))) {
-      origin.Truncate();
+  if (StaticPrefs::network_http_referer_hideOnionSource()) {
+    if (mOriginHeaderPrincipal->GetIsOnion()) {
+      origin.AssignLiteral("null");
     }
   }
 

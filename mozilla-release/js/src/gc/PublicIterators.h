@@ -13,12 +13,15 @@
 
 #include "mozilla/Maybe.h"
 
+#include "jstypes.h"
 #include "gc/GCRuntime.h"
 #include "gc/Zone.h"
 #include "vm/Compartment.h"
 
+struct JSRuntime;
+
 namespace JS {
-class Realm;
+class JS_PUBLIC_API Realm;
 }
 
 namespace js {

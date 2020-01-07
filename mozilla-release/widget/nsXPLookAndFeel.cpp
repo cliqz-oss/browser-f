@@ -146,6 +146,8 @@ const char nsXPLookAndFeel::sColorPrefs[][41] = {
     "ui.buttonshadow",
     "ui.buttontext",
     "ui.captiontext",
+    "ui.-moz-field",
+    "ui.-moz-fieldtext",
     "ui.graytext",
     "ui.highlight",
     "ui.highlighttext",
@@ -166,8 +168,8 @@ const char nsXPLookAndFeel::sColorPrefs[][41] = {
     "ui.windowframe",
     "ui.windowtext",
     "ui.-moz-buttondefault",
-    "ui.-moz-field",
-    "ui.-moz-fieldtext",
+    "ui.-moz-default-color",
+    "ui.-moz-default-background-color",
     "ui.-moz-dialog",
     "ui.-moz-dialogtext",
     "ui.-moz-dragtargetzone",
@@ -211,6 +213,9 @@ const char nsXPLookAndFeel::sColorPrefs[][41] = {
     "ui.-moz-win-mediatext",
     "ui.-moz-win-communicationstext",
     "ui.-moz-nativehyperlinktext",
+    "ui.-moz-hyperlinktext",
+    "ui.-moz-activehyperlinktext",
+    "ui.-moz-visitedhyperlinktext",
     "ui.-moz-comboboxtext",
     "ui.-moz-combobox",
     "ui.-moz-gtk-info-bar-text"};
@@ -629,10 +634,10 @@ nscolor nsXPLookAndFeel::GetStandinForNativeColor(ColorID aID) {
     case ColorID::MozButtondefault:
       result = NS_RGB(0x69, 0x69, 0x69);
       break;
-    case ColorID::MozField:
+    case ColorID::Field:
       result = NS_RGB(0xFF, 0xFF, 0xFF);
       break;
-    case ColorID::MozFieldtext:
+    case ColorID::Fieldtext:
       result = NS_RGB(0x00, 0x00, 0x00);
       break;
     case ColorID::MozDialog:
@@ -837,8 +842,8 @@ nsresult nsXPLookAndFeel::GetColorImpl(ColorID aID,
         // from the CSS3 working draft (not yet finalized)
         // http://www.w3.org/tr/2000/wd-css3-userint-20000216.html#color
 
-      case ColorID::MozField:
-      case ColorID::MozFieldtext:
+      case ColorID::Field:
+      case ColorID::Fieldtext:
         aResult = NS_RGB(0xff, 0x00, 0xff);
         break;
 

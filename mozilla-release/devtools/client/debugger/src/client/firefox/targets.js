@@ -4,10 +4,10 @@
 
 // @flow
 
-import { addThreadEventListeners } from "./events";
-import { prefs } from "../../utils/prefs";
+import { addThreadEventListeners, attachAllTargets } from "./events";
+import { features } from "../../utils/prefs";
+import { sameOrigin } from "../../utils/url";
 import type { DebuggerClient, Target } from "./types";
-import type { ThreadType } from "../../types";
 
 // $FlowIgnore
 const { defaultThreadOptions } = require("devtools/client/shared/thread-utils");
@@ -15,71 +15,102 @@ const { defaultThreadOptions } = require("devtools/client/shared/thread-utils");
 type Args = {
   currentTarget: Target,
   debuggerClient: DebuggerClient,
-  targets: { [ThreadType]: { [string]: Target } },
+  targets: { [string]: Target },
   options: Object,
 };
 
-async function attachTargets(type, targetLists, args) {
-  const newTargets = {};
-  const targets = args.targets[type] || {};
+async function attachTargets(targetLists, args) {
+  const { targets } = args;
+
+  for (const actor of Object.keys(targets)) {
+    if (!targetLists.some(target => target.targetForm.threadActor == actor)) {
+      delete targets[actor];
+    }
+  }
 
   for (const targetFront of targetLists) {
     try {
       await targetFront.attach();
+
       const threadActorID = targetFront.targetForm.threadActor;
       if (targets[threadActorID]) {
-        newTargets[threadActorID] = targets[threadActorID];
-      } else {
-        // Content process targets have already been attached by the toolbox.
-        // And the thread front has been initialized from there.
-        // So we only need to retrieve it here.
-        let threadFront = targetFront.threadFront;
-
-        // But workers targets are still only managed by the debugger codebase
-        // and so we have to attach their thread actor
-        if (!threadFront) {
-          [, threadFront] = await targetFront.attachThread({
-            ...defaultThreadOptions(),
-            ...args.options,
-          });
-          // NOTE: resume is not necessary for ProcessDescriptors and can be removed
-          // once we switch to WorkerDescriptors
-          threadFront.resume();
-        }
-
-        addThreadEventListeners(threadFront);
-
-        newTargets[threadFront.actor] = targetFront;
+        continue;
       }
+      targets[threadActorID] = targetFront;
+
+      // Content process targets have already been attached by the toolbox.
+      // And the thread front has been initialized from there.
+      // So we only need to retrieve it here.
+      let threadFront = targetFront.threadFront;
+
+      // But workers targets are still only managed by the debugger codebase
+      // and so we have to attach their thread actor
+      if (!threadFront) {
+        [, threadFront] = await targetFront.attachThread({
+          ...defaultThreadOptions(),
+          ...args.options,
+        });
+        // NOTE: resume is not necessary for ProcessDescriptors and can be removed
+        // once we switch to WorkerDescriptors
+        threadFront.resume();
+      }
+
+      addThreadEventListeners(threadFront);
     } catch (e) {
       // If any of the workers have terminated since the list command initiated
       // then we will get errors. Ignore these.
     }
   }
-
-  return newTargets;
 }
 
-export async function updateWorkerTargets(
-  type: ThreadType,
-  args: Args
-): Promise<{ string: Target }> {
-  const { currentTarget } = args;
+async function listWorkerTargets(args: Args) {
+  const { currentTarget, debuggerClient } = args;
   if (!currentTarget.isBrowsingContext || currentTarget.isContentProcess) {
-    return {};
+    return [];
   }
 
   const { workers } = await currentTarget.listWorkers();
-  return attachTargets(type, workers, args);
+
+  if (features.windowlessServiceWorkers && currentTarget.url) {
+    const { service } = await debuggerClient.mainRoot.listAllWorkers();
+    for (const { active, id, url } of service) {
+      // Attach to any service workers that are same-origin with our target.
+      // For now, ignore service workers associated with cross-origin iframes.
+      if (active && sameOrigin(url, currentTarget.url)) {
+        const workerTarget = await debuggerClient.mainRoot.getWorker(id);
+        workers.push(workerTarget);
+      }
+    }
+  } else if (attachAllTargets(currentTarget)) {
+    const {
+      other,
+      service,
+      shared,
+    } = await debuggerClient.mainRoot.listAllWorkers();
+
+    for (const { workerTargetFront, url } of [...other, ...shared]) {
+      // subprocess workers are ignored because they take several seconds to
+      // attach to when opening the browser toolbox. See bug 1594597.
+      if (!url.includes("subprocess_worker")) {
+        workers.push(workerTargetFront);
+      }
+    }
+
+    for (const { active, id } of service) {
+      if (active) {
+        const workerTarget = await debuggerClient.mainRoot.getWorker(id);
+        workers.push(workerTarget);
+      }
+    }
+  }
+
+  return workers;
 }
 
-export async function updateProcessTargets(
-  type: ThreadType,
-  args: Args
-): Promise<{ string: Target }> {
+async function listProcessTargets(args: Args) {
   const { currentTarget, debuggerClient } = args;
-  if (!prefs.fission || !currentTarget.chrome || currentTarget.isAddon) {
-    return Promise.resolve({});
+  if (!attachAllTargets(currentTarget)) {
+    return [];
   }
 
   const { processes } = await debuggerClient.mainRoot.listProcesses();
@@ -89,17 +120,11 @@ export async function updateProcessTargets(
       .map(descriptor => descriptor.getTarget())
   );
 
-  return attachTargets(type, targets, args);
+  return targets;
 }
 
-export async function updateTargets(type: ThreadType, args: Args) {
-  if (type == "worker") {
-    return updateWorkerTargets(type, args);
-  }
-
-  if (type == "contentProcess") {
-    return updateProcessTargets(type, args);
-  }
-
-  throw new Error(`Unable to fetch targts for ${type}`);
+export async function updateTargets(args: Args) {
+  const workers = await listWorkerTargets(args);
+  const processes = await listProcessTargets(args);
+  await attachTargets([...workers, ...processes], args);
 }

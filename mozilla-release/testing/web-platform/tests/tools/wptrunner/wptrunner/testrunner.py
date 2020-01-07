@@ -51,19 +51,19 @@ for level_name in structuredlog.log_levels:
 
 
 class TestRunner(object):
+    """Class implementing the main loop for running tests.
+
+    This class delegates the job of actually running a test to the executor
+    that is passed in.
+
+    :param logger: Structured logger
+    :param command_queue: subprocess.Queue used to send commands to the
+                          process
+    :param result_queue: subprocess.Queue used to send results to the
+                         parent TestRunnerManager process
+    :param executor: TestExecutor object that will actually run a test.
+    """
     def __init__(self, logger, command_queue, result_queue, executor):
-        """Class implementing the main loop for running tests.
-
-        This class delegates the job of actually running a test to the executor
-        that is passed in.
-
-        :param logger: Structured logger
-        :param command_queue: subprocess.Queue used to send commands to the
-                              process
-        :param result_queue: subprocess.Queue used to send results to the
-                             parent TestRunnerManager process
-        :param executor: TestExecutor object that will actually run a test.
-        """
         self.command_queue = command_queue
         self.result_queue = result_queue
 
@@ -572,10 +572,16 @@ class TestRunnerManager(threading.Thread):
         # Write the result of each subtest
         file_result, test_results = results
         subtest_unexpected = False
+        expect_any_subtest_status = test.expect_any_subtest_status()
+        if expect_any_subtest_status:
+            self.logger.debug("Ignoring subtest statuses for test %s" % test.id)
         for result in test_results:
             if test.disabled(result.name):
                 continue
-            expected = test.expected(result.name)
+            if expect_any_subtest_status:
+                expected = result.status
+            else:
+                expected = test.expected(result.name)
             known_intermittent = test.known_intermittent(result.name)
             is_unexpected = expected != result.status and result.status not in known_intermittent
 
@@ -707,6 +713,7 @@ class TestRunnerManager(threading.Thread):
         if self.test_runner_proc is None:
             return
 
+        self.browser.stop(force=True)
         self.logger.debug("waiting for runner process to end")
         self.test_runner_proc.join(10)
         self.logger.debug("After join")
@@ -773,6 +780,7 @@ def make_test_queue(tests, test_source_cls, **test_source_kwargs):
 
 
 class ManagerGroup(object):
+    """Main thread object that owns all the TestRunnerManager threads."""
     def __init__(self, suite_name, size, test_source_cls, test_source_kwargs,
                  browser_cls, browser_kwargs,
                  executor_cls, executor_kwargs,
@@ -782,7 +790,6 @@ class ManagerGroup(object):
                  restart_on_unexpected=True,
                  debug_info=None,
                  capture_stdio=True):
-        """Main thread object that owns all the TestRunnerManager threads."""
         self.suite_name = suite_name
         self.size = size
         self.test_source_cls = test_source_cls

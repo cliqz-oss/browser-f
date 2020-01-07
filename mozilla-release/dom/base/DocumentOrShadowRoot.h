@@ -25,6 +25,7 @@ class StyleSheet;
 
 namespace dom {
 
+class Animation;
 class Element;
 class DocumentOrShadowRoot;
 class HTMLInputElement;
@@ -46,17 +47,20 @@ class DocumentOrShadowRoot {
   };
 
  public:
-  explicit DocumentOrShadowRoot(Document&);
-  explicit DocumentOrShadowRoot(ShadowRoot&);
+  // These should always be non-null, but can't use a reference because
+  // dereferencing `this` on initializer lists is UB, apparently, see
+  // bug 1596499.
+  explicit DocumentOrShadowRoot(Document*);
+  explicit DocumentOrShadowRoot(ShadowRoot*);
 
   // Unusual argument naming is because of cycle collection macros.
   static void Traverse(DocumentOrShadowRoot* tmp,
                        nsCycleCollectionTraversalCallback& cb);
   static void Unlink(DocumentOrShadowRoot* tmp);
 
-  nsINode& AsNode() { return mAsNode; }
+  nsINode& AsNode() { return *mAsNode; }
 
-  const nsINode& AsNode() const { return mAsNode; }
+  const nsINode& AsNode() const { return *mAsNode; }
 
   StyleSheet* SheetAt(size_t aIndex) const {
     return mStyleSheets.SafeElementAt(aIndex);
@@ -178,6 +182,10 @@ class DocumentOrShadowRoot {
 
   void ReportEmptyGetElementByIdArg();
 
+  // Web Animations
+  MOZ_CAN_RUN_SCRIPT
+  void GetAnimations(nsTArray<RefPtr<Animation>>& aAnimations);
+
   // nsIRadioGroupContainer
   NS_IMETHOD WalkRadioGroup(const nsAString& aName, nsIRadioVisitor* aVisitor,
                             bool aFlushContent);
@@ -230,7 +238,9 @@ class DocumentOrShadowRoot {
 
   nsClassHashtable<nsStringHashKey, nsRadioGroupStruct> mRadioGroups;
 
-  nsINode& mAsNode;
+  // Always non-null, see comment in the constructor as to why a pointer instead
+  // of a reference.
+  nsINode* mAsNode;
   const Kind mKind;
 };
 

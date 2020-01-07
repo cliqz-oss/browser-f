@@ -34,7 +34,7 @@
 #include "ClientLayerManager.h"
 #include "mozilla/layers/Compositor.h"
 #include "nsIXULRuntime.h"
-#include "nsIXULWindow.h"
+#include "nsIAppWindow.h"
 #include "nsIBaseWindow.h"
 #include "nsXULPopupManager.h"
 #include "nsIWidgetListener.h"
@@ -54,6 +54,7 @@
 #include "mozilla/StaticPrefs_apz.h"
 #include "mozilla/StaticPrefs_dom.h"
 #include "mozilla/StaticPrefs_layout.h"
+#include "mozilla/StaticPrefs_layers.h"
 #include "mozilla/Unused.h"
 #include "mozilla/IMEStateManager.h"
 #include "mozilla/VsyncDispatcher.h"
@@ -72,7 +73,6 @@
 #include "mozilla/gfx/gfxVars.h"
 #include "mozilla/Move.h"
 #include "mozilla/Sprintf.h"
-#include "mozilla/StaticPrefs_layout.h"
 #include "mozilla/webrender/WebRenderTypes.h"
 #include "nsRefPtrHashtable.h"
 #include "TouchEvents.h"
@@ -172,6 +172,7 @@ nsBaseWidget::nsBaseWidget()
       mPopupLevel(ePopupLevelTop),
       mPopupType(ePopupTypeAny),
       mHasRemoteContent(false),
+      mFissionWindow(false),
       mUpdateCursor(true),
       mUseAttachedEvents(false),
       mIMEHasFocus(false),
@@ -391,6 +392,7 @@ void nsBaseWidget::BaseCreate(nsIWidget* aParent, nsWidgetInitData* aInitData) {
     mPopupLevel = aInitData->mPopupLevel;
     mPopupType = aInitData->mPopupHint;
     mHasRemoteContent = aInitData->mHasRemoteContent;
+    mFissionWindow = aInitData->mFissionWindow;
   }
 
   if (aParent) {
@@ -1178,7 +1180,9 @@ void nsBaseWidget::CreateCompositorVsyncDispatcher() {
           MakeUnique<Mutex>("mCompositorVsyncDispatcherLock");
     }
     MutexAutoLock lock(*mCompositorVsyncDispatcherLock.get());
-    mCompositorVsyncDispatcher = new CompositorVsyncDispatcher();
+    if (!mCompositorVsyncDispatcher) {
+      mCompositorVsyncDispatcher = new CompositorVsyncDispatcher();
+    }
   }
 }
 
@@ -1213,7 +1217,11 @@ already_AddRefed<LayerManager> nsBaseWidget::CreateCompositorSession(
     bool enableAPZ = UseAPZ();
     CompositorOptions options(enableAPZ, enableWR);
 
-    bool enableAL = gfx::gfxConfig::IsEnabled(gfx::Feature::ADVANCED_LAYERS);
+    // Bug 1588484 - Advanced Layers is currently disabled for fission windows,
+    // since it doesn't properly support nested RefLayers.
+    bool enableAL =
+        gfx::gfxConfig::IsEnabled(gfx::Feature::ADVANCED_LAYERS) &&
+        (!mFissionWindow || StaticPrefs::layers_advanced_fission_enabled());
     options.SetUseAdvancedLayers(enableAL);
 
 #ifdef MOZ_WIDGET_ANDROID
@@ -1642,10 +1650,10 @@ nsIRollupListener* nsBaseWidget::GetActiveRollupListener() {
 void nsBaseWidget::NotifyWindowDestroyed() {
   if (!mWidgetListener) return;
 
-  nsCOMPtr<nsIXULWindow> window = mWidgetListener->GetXULWindow();
-  nsCOMPtr<nsIBaseWindow> xulWindow(do_QueryInterface(window));
-  if (xulWindow) {
-    xulWindow->Destroy();
+  nsCOMPtr<nsIAppWindow> window = mWidgetListener->GetAppWindow();
+  nsCOMPtr<nsIBaseWindow> appWindow(do_QueryInterface(window));
+  if (appWindow) {
+    appWindow->Destroy();
   }
 }
 
@@ -2028,11 +2036,11 @@ void nsBaseWidget::NotifyLiveResizeStarted() {
   if (!mWidgetListener) {
     return;
   }
-  nsCOMPtr<nsIXULWindow> xulWindow = mWidgetListener->GetXULWindow();
-  if (!xulWindow) {
+  nsCOMPtr<nsIAppWindow> appWindow = mWidgetListener->GetAppWindow();
+  if (!appWindow) {
     return;
   }
-  mLiveResizeListeners = xulWindow->GetLiveResizeListeners();
+  mLiveResizeListeners = appWindow->GetLiveResizeListeners();
   for (uint32_t i = 0; i < mLiveResizeListeners.Length(); i++) {
     mLiveResizeListeners[i]->LiveResizeStarted();
   }
@@ -2217,11 +2225,12 @@ nsresult nsIWidget::OnWindowedPluginKeyEvent(
 
 void nsIWidget::PostHandleKeyEvent(mozilla::WidgetKeyboardEvent* aEvent) {}
 
-void nsIWidget::GetEditCommands(nsIWidget::NativeKeyBindingsType aType,
+bool nsIWidget::GetEditCommands(nsIWidget::NativeKeyBindingsType aType,
                                 const WidgetKeyboardEvent& aEvent,
                                 nsTArray<CommandInt>& aCommands) {
   MOZ_ASSERT(aEvent.IsTrusted());
   MOZ_ASSERT(aCommands.IsEmpty());
+  return true;
 }
 
 already_AddRefed<nsIBidiKeyboard> nsIWidget::CreateBidiKeyboard() {

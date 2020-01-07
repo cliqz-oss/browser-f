@@ -1559,29 +1559,8 @@ bool BigInt::literalIsZero(const Range<const CharT> chars) {
 
 template bool BigInt::literalIsZero(const Range<const char16_t> chars);
 
-// BigInt proposal section 5.1.1
-static bool IsInteger(double d) {
-  // Step 1 is an assertion checked by the caller.
-  // Step 2.
-  if (!mozilla::IsFinite(d)) {
-    return false;
-  }
-
-  // Step 3.
-  double i = JS::ToInteger(d);
-
-  // Step 4.
-  if (i != d) {
-    return false;
-  }
-
-  // Step 5.
-  return true;
-}
-
 BigInt* BigInt::createFromDouble(JSContext* cx, double d) {
-  MOZ_ASSERT(::IsInteger(d),
-             "Only integer-valued doubles can convert to BigInt");
+  MOZ_ASSERT(IsInteger(d), "Only integer-valued doubles can convert to BigInt");
 
   if (d == 0) {
     return zero(cx);
@@ -1701,7 +1680,7 @@ BigInt* BigInt::createFromInt64(JSContext* cx, int64_t n) {
 BigInt* js::NumberToBigInt(JSContext* cx, double d) {
   // Step 1 is an assertion checked by the caller.
   // Step 2.
-  if (!::IsInteger(d)) {
+  if (!IsInteger(d)) {
     JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr,
                               JSMSG_NUMBER_TO_BIGINT);
     return nullptr;
@@ -3194,6 +3173,16 @@ bool BigInt::equal(BigInt* lhs, double rhs) {
   return compare(lhs, rhs) == 0;
 }
 
+JS::Result<bool> BigInt::equal(JSContext* cx, Handle<BigInt*> lhs,
+                               HandleString rhs) {
+  BigInt* rhsBigInt;
+  MOZ_TRY_VAR(rhsBigInt, StringToBigInt(cx, rhs));
+  if (!rhsBigInt) {
+    return false;
+  }
+  return equal(lhs, rhsBigInt);
+}
+
 // BigInt proposal section 3.2.5
 JS::Result<bool> BigInt::looselyEqual(JSContext* cx, HandleBigInt lhs,
                                       HandleValue rhs) {
@@ -3206,13 +3195,8 @@ JS::Result<bool> BigInt::looselyEqual(JSContext* cx, HandleBigInt lhs,
 
   // Steps 6-7.
   if (rhs.isString()) {
-    RootedBigInt rhsBigInt(cx);
     RootedString rhsString(cx, rhs.toString());
-    MOZ_TRY_VAR(rhsBigInt, StringToBigInt(cx, rhsString));
-    if (!rhsBigInt) {
-      return false;
-    }
-    return equal(lhs, rhsBigInt);
+    return equal(cx, lhs, rhsString);
   }
 
   // Steps 8-9 (not applicable).

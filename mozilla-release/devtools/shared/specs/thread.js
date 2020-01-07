@@ -15,10 +15,16 @@ types.addDictType("available-breakpoint-group", {
   name: "string",
   events: "array:available-breakpoint-event",
 });
+
 types.addDictType("available-breakpoint-event", {
   id: "string",
   name: "string",
 });
+
+types.addDictType("thread.frames", {
+  frames: "array:frame",
+});
+
 types.addDictType("paused-reason", {
   type: "string",
 
@@ -47,7 +53,7 @@ const threadSpec = generateActorSpec({
   events: {
     paused: {
       actor: Option(0, "nullable:string"),
-      frame: Option(0, "nullable:json"),
+      frame: Option(0, "frame"),
       why: Option(0, "paused-reason"),
       poppedFrames: Option(0, "nullable:json"),
       error: Option(0, "nullable:json"),
@@ -69,6 +75,7 @@ const threadSpec = generateActorSpec({
     replayFramePositions: {
       positions: Option(0, "array:json"),
       frame: Option(0, "string"),
+      thread: Option(0, "string"),
     },
   },
 
@@ -101,7 +108,7 @@ const threadSpec = generateActorSpec({
         start: Arg(0, "number"),
         count: Arg(1, "number"),
       },
-      response: RetVal("json"),
+      response: RetVal("thread.frames"),
     },
     interrupt: {
       request: {
@@ -117,6 +124,11 @@ const threadSpec = generateActorSpec({
       },
       response: {
         skip: Arg(0, "json"),
+      },
+    },
+    fetchAncestorFramePositions: {
+      request: {
+        index: Arg(0, "number"),
       },
     },
     dumpThread: {

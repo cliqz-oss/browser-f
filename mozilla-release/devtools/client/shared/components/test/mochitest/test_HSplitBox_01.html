@@ -24,6 +24,9 @@ Basic tests for the HSplitBox component.
 <pre id="test">
 <script src="head.js" type="application/javascript"></script>
 <script type="application/javascript">
+
+'use strict'
+
 const FUDGE_FACTOR = .1;
 function aboutEq(a, b) {
   dumpn(`Checking ${a} ~= ${b}`);
@@ -35,7 +38,7 @@ window.onload = async function () {
     const React = browserRequire("devtools/client/shared/vendor/react");
     const ReactDOM = browserRequire("devtools/client/shared/vendor/react-dom");
 
-    let HSplitBox = React.createFactory(browserRequire("devtools/client/shared/components/HSplitBox"));
+    const HSplitBox = React.createFactory(browserRequire("devtools/client/shared/components/HSplitBox"));
     ok(HSplitBox, "Should get HSplitBox");
 
     const newSizes = [];
@@ -57,7 +60,7 @@ window.onload = async function () {
       return el;
     }
 
-    const box = await renderBox();
+    await renderBox();
 
     // Test that we properly rendered our two panes.
 
@@ -78,7 +81,7 @@ window.onload = async function () {
 
     // Mouse moves without having grabbed the splitter should have no effect.
 
-    let container = document.querySelector(".h-split-box");
+    const container = document.querySelector(".h-split-box");
     ok(container, "Should get our container .h-split-box");
 
     const { left, top, width } = container.getBoundingClientRect();

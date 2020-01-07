@@ -6,7 +6,8 @@
 "use strict";
 
 const mcRoot = `${__dirname}/../../../../../`;
-const getModule = mcPath => `module.exports = require("${mcRoot}${mcPath}");`;
+const getModule = mcPath =>
+  `module.exports = require("${(mcRoot + mcPath).replace(/\\/gi, "/")}");`;
 
 const { pref } = require("devtools-services");
 pref("devtools.debugger.remote-timeout", 10000);
@@ -112,8 +113,9 @@ requireHacker.global_hook("default", (path, module) => {
     "devtools/shared/plural-form": () =>
       getModule("devtools/client/webconsole/test/node/fixtures/PluralForm"),
     Services: () => `module.exports = require("devtools-services")`,
-    "devtools/shared/client/object-client": () => `() => {}`,
-    "devtools/shared/client/long-string-client": () => `() => {}`,
+    "devtools/shared/fronts/object": () => `() => {}`,
+    "devtools/shared/fronts/string": () =>
+      `() => ({LongStringFront: () => {}})`,
     "devtools/client/shared/components/SmartTrace": () => "{}",
     "devtools/client/netmonitor/src/components/TabboxPanel": () => "{}",
     "devtools/client/webconsole/utils/context-menu": () => "{}",

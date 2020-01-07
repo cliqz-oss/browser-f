@@ -138,7 +138,7 @@ function getPromptState(ui) {
     // We can't just check window.opener because that'll be
     // a content window, which therefore isn't exposed (it'll lie and
     // be null).
-    let flags = treeOwner.getInterface(Ci.nsIXULWindow).chromeFlags;
+    let flags = treeOwner.getInterface(Ci.nsIAppWindow).chromeFlags;
     state.chrome = (flags & Ci.nsIWebBrowserChrome.CHROME_OPENAS_CHROME) != 0;
     state.dialog = (flags & Ci.nsIWebBrowserChrome.CHROME_OPENAS_DIALOG) != 0;
     state.chromeDependent =
@@ -222,7 +222,7 @@ function getDialogDoc() {
   // that has either commonDialog.xul or selectDialog.xul loaded.
   // var enumerator = Services.wm.getEnumerator("navigator:browser");
   for (let { docShell } of Services.wm.getEnumerator(null)) {
-    var containedDocShells = docShell.getDocShellEnumerator(
+    var containedDocShells = docShell.getAllDocShellsInSubtree(
       docShell.typeChrome,
       docShell.ENUMERATE_FORWARDS
     );

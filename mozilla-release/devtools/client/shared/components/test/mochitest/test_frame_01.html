@@ -21,11 +21,14 @@ with optional columns, unknown and non-URL sources.
     <pre id="test">
 <script src="head.js" type="application/javascript"></script>
 <script type="application/javascript">
+
+'use strict'
+
 window.onload = async function () {
   try {
-    let ReactDOM = browserRequire("devtools/client/shared/vendor/react-dom");
-    let React = browserRequire("devtools/client/shared/vendor/react");
-    let Frame = React.createFactory(browserRequire("devtools/client/shared/components/Frame"));
+    const ReactDOM = browserRequire("devtools/client/shared/vendor/react-dom");
+    const React = browserRequire("devtools/client/shared/vendor/react");
+    const Frame = React.createFactory(browserRequire("devtools/client/shared/components/Frame"));
     ok(Frame, "Should get Frame");
 
     // Check when there's a column
@@ -164,22 +167,6 @@ window.onload = async function () {
       tooltip: "View source in Debugger → http://myfile.com/mahscripts.js",
     });
 
-    // Check when source is via Scratchpad; we should render out the
-    // lines and columns as this is linkable.
-    await checkFrameComponent({
-      frame: {
-        source: "Scratchpad/1",
-        line: 10,
-        column: 50,
-      }
-    }, {
-      file: "Scratchpad/1",
-      line: 10,
-      column: 50,
-      shouldLink: true,
-      tooltip: "View source in Debugger → Scratchpad/1:10:50",
-    });
-
     // Check that line and column can be strings
     await checkFrameComponent({
       frame: {
@@ -311,7 +298,7 @@ window.onload = async function () {
       line: 23,
       sourceUrl: "https://bugzilla.mozilla.org/original.js",
     };
-    let mockSourceMapService = {
+    const mockSourceMapService = {
       subscribe: function (url, line, column, callback) {
 	// Resolve immediately.
         callback(true, resolvedLocation.sourceUrl, resolvedLocation.line);
@@ -351,10 +338,10 @@ window.onload = async function () {
     });
 
     function checkFrameComponent(input, expected) {
-      let props = Object.assign({ onClick: () => {} }, input);
-      let frame = ReactDOM.render(Frame(props), window.document.body);
-      let el = ReactDOM.findDOMNode(frame);
-      let { source } = input.frame;
+      const props = Object.assign({ onClick: () => {} }, input);
+      const frame = ReactDOM.render(Frame(props), window.document.body);
+      const el = ReactDOM.findDOMNode(frame);
+      const { source } = input.frame;
       checkFrameString(Object.assign({ el, source }, expected));
       ReactDOM.unmountComponentAtNode(window.document.body);
     }

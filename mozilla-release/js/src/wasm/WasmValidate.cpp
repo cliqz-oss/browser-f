@@ -488,7 +488,7 @@ static bool DecodeFunctionBodyExprs(const ModuleEnvironment& env,
     switch (op.b0) {
       case uint16_t(Op::End): {
         LabelKind unusedKind;
-        if (!iter.readEnd(&unusedKind, &unusedType, &nothings)) {
+        if (!iter.readEnd(&unusedKind, &unusedType, &nothings, &nothings)) {
           return false;
         }
         iter.popEnd();
@@ -578,13 +578,13 @@ static bool DecodeFunctionBodyExprs(const ModuleEnvironment& env,
                               &nothing));
       }
       case uint16_t(Op::Block):
-        CHECK(iter.readBlock());
+        CHECK(iter.readBlock(&unusedType));
       case uint16_t(Op::Loop):
-        CHECK(iter.readLoop());
+        CHECK(iter.readLoop(&unusedType));
       case uint16_t(Op::If):
-        CHECK(iter.readIf(&nothing));
+        CHECK(iter.readIf(&unusedType, &nothing));
       case uint16_t(Op::Else):
-        CHECK(iter.readElse(&unusedType, &nothings));
+        CHECK(iter.readElse(&unusedType, &unusedType, &nothings));
       case uint16_t(Op::I32Clz):
       case uint16_t(Op::I32Ctz):
       case uint16_t(Op::I32Popcnt):
@@ -1215,6 +1215,8 @@ static bool DecodeFunctionBodyExprs(const ModuleEnvironment& env,
 bool wasm::ValidateFunctionBody(const ModuleEnvironment& env,
                                 uint32_t funcIndex, uint32_t bodySize,
                                 Decoder& d) {
+  MOZ_ASSERT(env.funcTypes[funcIndex]->results().length() <= MaxFuncResults);
+
   ValTypeVector locals;
   if (!locals.appendAll(env.funcTypes[funcIndex]->args())) {
     return false;
@@ -1326,7 +1328,7 @@ static bool DecodeFuncType(Decoder& d, ModuleEnvironment* env,
   if (!d.readVarU32(&numResults)) {
     return d.fail("bad number of function returns");
   }
-  if (numResults > 1) {
+  if (numResults > MaxResults) {
     return d.fail("too many returns in signature");
   }
   ValTypeVector results;
@@ -1580,8 +1582,16 @@ static bool DecodeSignatureIndex(Decoder& d, const TypeDefVector& types,
     return d.fail("signature index out of range");
   }
 
-  if (!types[*funcTypeIndex].isFuncType()) {
+  const TypeDef& def = types[*funcTypeIndex];
+
+  if (!def.isFuncType()) {
     return d.fail("signature index references non-signature");
+  }
+
+  // FIXME: Remove this check when full multi-value function returns land.
+  // Bug 1585909.
+  if (def.funcType().results().length() > MaxFuncResults) {
+    return d.fail("too many returns in signature");
   }
 
   return true;

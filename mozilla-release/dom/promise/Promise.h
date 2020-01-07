@@ -89,6 +89,13 @@ class Promise : public nsISupports, public SupportsWeakPtr<Promise> {
   void MaybeReject(JS::Handle<JS::Value> aValue) {
     MaybeSomething(aValue, &Promise::MaybeReject);
   }
+
+  // This method is deprecated.  Consumers should MaybeRejectWithDOMException if
+  // they are rejecting with a DOMException, or use one of the other
+  // MaybeReject* methods otherwise.  If they have a random nsresult which may
+  // or may not correspond to a DOMException type, they should consider using an
+  // appropriate DOMException-type nsresult with an informative message and
+  // calling MaybeRejectWithDOMException.
   inline void MaybeReject(nsresult aArg) {
     MOZ_ASSERT(NS_FAILED(aArg));
     MaybeSomething(aArg, &Promise::MaybeReject);
@@ -274,12 +281,11 @@ class Promise : public nsISupports, public SupportsWeakPtr<Promise> {
 
   virtual ~Promise();
 
-  // Do JS-wrapping after Promise creation.  Passing null for aDesiredProto will
-  // use the default prototype for the sort of Promise we have.
+  // Do JS-wrapping after Promise creation.
   // Pass ePropagateUserInteraction for aPropagateUserInteraction if you want
   // the promise resolve handler to be called as if we were handling user
   // input events in case we are currently handling user input events.
-  void CreateWrapper(JS::Handle<JSObject*> aDesiredProto, ErrorResult& aRv,
+  void CreateWrapper(ErrorResult& aRv,
                      PropagateUserInteraction aPropagateUserInteraction =
                          eDontPropagateUserInteraction);
 

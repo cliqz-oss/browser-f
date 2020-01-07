@@ -3119,7 +3119,6 @@ exports.CSS_PROPERTIES = {
       "transform-origin",
       "contain",
       "-moz-appearance",
-      "-moz-binding",
       "-moz-orient",
       "will-change",
       "shape-image-threshold",
@@ -10961,10 +10960,6 @@ exports.PREFERENCES = [
     "layout.css.text-underline-offset.enabled"
   ],
   [
-    "-moz-binding",
-    "layout.css.moz-binding.content.enabled"
-  ],
-  [
     "offset-distance",
     "layout.css.motion-path.enabled"
   ],
@@ -10979,6 +10974,10 @@ exports.PREFERENCES = [
   [
     "offset",
     "layout.css.motion-path.enabled"
+  ],
+  [
+    "zoom",
+    "layout.css.zoom-transform-hack.enabled"
   ],
   [
     "-moz-transition-duration",

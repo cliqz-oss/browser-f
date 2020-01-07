@@ -195,8 +195,8 @@ interface nsICookieManager : nsISupports
    * @see countCookiesFromHost
    */
   [implicit_jscontext]
-  nsISimpleEnumerator getCookiesFromHost(in AUTF8String aHost,
-                                         in jsval aOriginAttributes);
+  Array<nsICookie> getCookiesFromHost(in AUTF8String aHost,
+                                      in jsval aOriginAttributes);
 
   /**
    * Import an old-style cookie file. Imported cookies will be added to the
@@ -208,7 +208,7 @@ interface nsICookieManager : nsISupports
   void importCookies(in nsIFile aCookieFile);
 
   /**
-   * Returns an enumerator of all cookies whose origin attributes matches aPattern
+   * Returns an array of all cookies whose origin attributes matches aPattern
    *
    * @param aPattern origin attribute pattern in JSON format
    *
@@ -218,8 +218,8 @@ interface nsICookieManager : nsISupports
    *        acceptable host strings. This attribute is optional. It will search
    *        all hosts if this attribute is not given.
    */
-  nsISimpleEnumerator getCookiesWithOriginAttributes(in AString aPattern,
-                                                     [optional] in AUTF8String aHost);
+  Array<nsICookie> getCookiesWithOriginAttributes(in AString aPattern,
+                                                  [optional] in AUTF8String aHost);
 
   /**
    * Remove all the cookies whose origin attributes matches aPattern
@@ -237,4 +237,15 @@ interface nsICookieManager : nsISupports
    * @param aPattern origin attribute pattern in JSON format
    */
   void removeCookiesFromExactHost(in AUTF8String aHost, in AString aPattern);
+
+  /**
+   * Removes all cookies that were created on or after aSinceWhen, and returns
+   * a Promise which will be resolved when the last such cookie has been
+   * removed.
+   *
+   * @param aSinceWhen the starting point in time after which no cookies should
+   *        be created when the Promise returned from this method is resolved.
+   */
+  [implicit_jscontext]
+  Promise removeAllSince(in int64_t aSinceWhen);
 };

@@ -7,6 +7,7 @@
 #include "nsScriptSecurityManager.h"
 
 #include "mozilla/ArrayUtils.h"
+#include "mozilla/StaticPrefs_extensions.h"
 #include "mozilla/StaticPrefs_security.h"
 #include "mozilla/StoragePrincipalHelper.h"
 
@@ -84,7 +85,6 @@ using namespace mozilla;
 using namespace mozilla::dom;
 
 nsIIOService* nsScriptSecurityManager::sIOService = nullptr;
-JSContext* nsScriptSecurityManager::sContext = nullptr;
 bool nsScriptSecurityManager::sStrictFileOriginPolicy = true;
 
 namespace {
@@ -416,8 +416,24 @@ bool nsScriptSecurityManager::ContentSecurityPolicyPermitsJSAction(
     csp = win->GetCsp();
   }
 
-  // don't do anything unless there's a CSP
-  if (!csp) return true;
+  nsCOMPtr<nsIPrincipal> subjectPrincipal = nsContentUtils::SubjectPrincipal();
+  if (!csp) {
+    if (!StaticPrefs::extensions_content_script_csp_enabled()) {
+      return true;
+    }
+    // Get the CSP for addon sandboxes.  If the principal is expanded and has a
+    // csp, we're probably in luck.
+    auto* basePrin = BasePrincipal::Cast(subjectPrincipal);
+    // ContentScriptAddonPolicy means it is also an expanded principal, thus
+    // this is in a sandbox used as a content script.
+    if (basePrin->ContentScriptAddonPolicy()) {
+      basePrin->As<ExpandedPrincipal>()->GetCsp(getter_AddRefs(csp));
+    }
+    // don't do anything unless there's a CSP
+    if (!csp) {
+      return true;
+    }
+  }
 
   nsCOMPtr<nsICSPEventListener> cspEventListener;
   if (!NS_IsMainThread()) {
@@ -436,7 +452,6 @@ bool nsScriptSecurityManager::ContentSecurityPolicyPermitsJSAction(
   // or b) passing it to AssertEvalNotUsingSystemPrincipal or c) we're in the
   // parent process. So do the work to get it if either of those cases is true.
   nsAutoJSString scriptSample;
-  nsCOMPtr<nsIPrincipal> subjectPrincipal = nsContentUtils::SubjectPrincipal();
   if (reportViolation || subjectPrincipal->IsSystemPrincipal() ||
       XRE_IsE10sParentProcess()) {
     JS::Rooted<JSString*> jsString(cx, JS::ToString(cx, aValue));
@@ -1355,30 +1370,36 @@ nsresult nsScriptSecurityManager::Init() {
 
   mSystemPrincipal = system;
 
+  return NS_OK;
+}
+
+void nsScriptSecurityManager::InitJSCallbacks(JSContext* aCx) {
   //-- Register security check callback in the JS engine
   //   Currently this is used to control access to function.caller
-  sContext = danger::GetJSContext();
 
   static const JSSecurityCallbacks securityCallbacks = {
       ContentSecurityPolicyPermitsJSAction,
       JSPrincipalsSubsume,
   };
 
-  MOZ_ASSERT(!JS_GetSecurityCallbacks(sContext));
-  JS_SetSecurityCallbacks(sContext, &securityCallbacks);
-  JS_InitDestroyPrincipalsCallback(sContext, nsJSPrincipals::Destroy);
+  MOZ_ASSERT(!JS_GetSecurityCallbacks(aCx));
+  JS_SetSecurityCallbacks(aCx, &securityCallbacks);
+  JS_InitDestroyPrincipalsCallback(aCx, nsJSPrincipals::Destroy);
 
-  JS_SetTrustedPrincipals(sContext, system);
+  JS_SetTrustedPrincipals(aCx, BasePrincipal::Cast(mSystemPrincipal));
+}
 
-  return NS_OK;
+/* static */
+void nsScriptSecurityManager::ClearJSCallbacks(JSContext* aCx) {
+  JS_SetSecurityCallbacks(aCx, nullptr);
+  JS_SetTrustedPrincipals(aCx, nullptr);
 }
 
 static StaticRefPtr<nsScriptSecurityManager> gScriptSecMan;
 
 nsScriptSecurityManager::~nsScriptSecurityManager(void) {
   Preferences::UnregisterPrefixCallbacks(
-      PREF_CHANGE_METHOD(nsScriptSecurityManager::ScriptSecurityPrefChanged),
-      kObservedPrefs, this);
+      nsScriptSecurityManager::ScriptSecurityPrefChanged, kObservedPrefs, this);
   if (mDomainPolicy) {
     mDomainPolicy->Deactivate();
   }
@@ -1389,12 +1410,6 @@ nsScriptSecurityManager::~nsScriptSecurityManager(void) {
 }
 
 void nsScriptSecurityManager::Shutdown() {
-  if (sContext) {
-    JS_SetSecurityCallbacks(sContext, nullptr);
-    JS_SetTrustedPrincipals(sContext, nullptr);
-    sContext = nullptr;
-  }
-
   NS_IF_RELEASE(sIOService);
   BundleHelper::Shutdown();
 }
@@ -1449,6 +1464,13 @@ uint32_t SkipUntil(const nsCString& str, uint32_t base) {
     ++base;
   }
   return base;
+}
+
+// static
+void nsScriptSecurityManager::ScriptSecurityPrefChanged(const char* aPref,
+                                                        void* aSelf) {
+  static_cast<nsScriptSecurityManager*>(aSelf)->ScriptSecurityPrefChanged(
+      aPref);
 }
 
 inline void nsScriptSecurityManager::ScriptSecurityPrefChanged(
@@ -1508,8 +1530,7 @@ nsresult nsScriptSecurityManager::InitPrefs() {
 
   // set observer callbacks in case the value of the prefs change
   Preferences::RegisterPrefixCallbacks(
-      PREF_CHANGE_METHOD(nsScriptSecurityManager::ScriptSecurityPrefChanged),
-      kObservedPrefs, this);
+      nsScriptSecurityManager::ScriptSecurityPrefChanged, kObservedPrefs, this);
 
   return NS_OK;
 }

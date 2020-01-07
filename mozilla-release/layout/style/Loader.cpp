@@ -25,6 +25,7 @@
 #include "nsCOMPtr.h"
 #include "nsString.h"
 #include "nsIContent.h"
+#include "nsIContentInlines.h"
 #include "mozilla/dom/Document.h"
 #include "nsIURI.h"
 #include "nsNetUtil.h"
@@ -779,7 +780,7 @@ static nsresult VerifySheetIntegrity(const SRIMetadata& aMetadata,
                                      nsIConsoleReportCollector* aReporter) {
   NS_ENSURE_ARG_POINTER(aReporter);
 
-  if (MOZ_LOG_TEST(SRILogHelper::GetSriLog(), mozilla::LogLevel::Debug)) {
+  if (MOZ_LOG_TEST(SRILogHelper::GetSriLog(), LogLevel::Debug)) {
     nsAutoCString requestURL;
     nsCOMPtr<nsIURI> originalURI;
     if (aChannel &&
@@ -787,7 +788,7 @@ static nsresult VerifySheetIntegrity(const SRIMetadata& aMetadata,
         originalURI) {
       originalURI->GetAsciiSpec(requestURL);
     }
-    MOZ_LOG(SRILogHelper::GetSriLog(), mozilla::LogLevel::Debug,
+    MOZ_LOG(SRILogHelper::GetSriLog(), LogLevel::Debug,
             ("VerifySheetIntegrity (unichar stream)"));
   }
 
@@ -994,7 +995,7 @@ nsresult SheetLoadData::VerifySheetReadyToParse(nsresult aStatus,
 
     if (NS_FAILED(rv)) {
       LOG(("  Load was blocked by SRI"));
-      MOZ_LOG(gSriPRLog, mozilla::LogLevel::Debug,
+      MOZ_LOG(gSriPRLog, LogLevel::Debug,
               ("css::Loader::OnStreamComplete, bad metadata"));
       mLoader->SheetComplete(*this, NS_ERROR_SRI_CORRUPT);
       return NS_OK;
@@ -1057,9 +1058,9 @@ nsresult Loader::CheckContentPolicy(nsIPrincipal* aLoadingPrincipal,
   }
 
   nsContentPolicyType contentPolicyType =
-      aIsPreload == IsPreload::Yes
-          ? nsIContentPolicy::TYPE_INTERNAL_STYLESHEET_PRELOAD
-          : nsIContentPolicy::TYPE_INTERNAL_STYLESHEET;
+      aIsPreload == IsPreload::No
+          ? nsIContentPolicy::TYPE_INTERNAL_STYLESHEET
+          : nsIContentPolicy::TYPE_INTERNAL_STYLESHEET_PRELOAD;
 
   nsCOMPtr<nsILoadInfo> secCheckLoadInfo = new net::LoadInfo(
       aLoadingPrincipal, aTriggeringPrincipal, aRequestingNode,
@@ -1120,7 +1121,7 @@ Tuple<RefPtr<StyleSheet>, Loader::SheetState> Loader::CreateSheet(
 
   SRIMetadata sriMetadata;
   if (!aIntegrity.IsEmpty()) {
-    MOZ_LOG(gSriPRLog, mozilla::LogLevel::Debug,
+    MOZ_LOG(gSriPRLog, LogLevel::Debug,
             ("css::Loader::CreateSheet, integrity=%s",
              NS_ConvertUTF16toUTF8(aIntegrity).get()));
     nsAutoCString sourceUri;
@@ -1330,9 +1331,9 @@ nsresult Loader::LoadSheet(SheetLoadData& aLoadData, SheetState aSheetState,
     nsCOMPtr<nsIStreamListener> streamLoader = new StreamLoader(aLoadData);
 
     if (mDocument) {
-      mozilla::net::PredictorLearn(aLoadData.mURI, mDocument->GetDocumentURI(),
-                                   nsINetworkPredictor::LEARN_LOAD_SUBRESOURCE,
-                                   mDocument);
+      net::PredictorLearn(aLoadData.mURI, mDocument->GetDocumentURI(),
+                          nsINetworkPredictor::LEARN_LOAD_SUBRESOURCE,
+                          mDocument);
     }
 
     nsSecurityFlags securityFlags =
@@ -1340,9 +1341,9 @@ nsresult Loader::LoadSheet(SheetLoadData& aLoadData, SheetState aSheetState,
         nsILoadInfo::SEC_ALLOW_CHROME;
 
     nsContentPolicyType contentPolicyType =
-        aIsPreload == IsPreload::Yes
-            ? nsIContentPolicy::TYPE_INTERNAL_STYLESHEET_PRELOAD
-            : nsIContentPolicy::TYPE_INTERNAL_STYLESHEET;
+        aIsPreload == IsPreload::No
+            ? nsIContentPolicy::TYPE_INTERNAL_STYLESHEET
+            : nsIContentPolicy::TYPE_INTERNAL_STYLESHEET_PRELOAD;
 
     // Just load it
     nsCOMPtr<nsIChannel> channel;
@@ -1481,9 +1482,9 @@ nsresult Loader::LoadSheet(SheetLoadData& aLoadData, SheetState aSheetState,
   securityFlags |= nsILoadInfo::SEC_ALLOW_CHROME;
 
   nsContentPolicyType contentPolicyType =
-      aIsPreload == IsPreload::Yes
-          ? nsIContentPolicy::TYPE_INTERNAL_STYLESHEET_PRELOAD
-          : nsIContentPolicy::TYPE_INTERNAL_STYLESHEET;
+      aIsPreload == IsPreload::No
+          ? nsIContentPolicy::TYPE_INTERNAL_STYLESHEET
+          : nsIContentPolicy::TYPE_INTERNAL_STYLESHEET_PRELOAD;
 
   nsCOMPtr<nsIChannel> channel;
   // Note we are calling NS_NewChannelWithTriggeringPrincipal here with a node
@@ -1526,6 +1527,11 @@ nsresult Loader::LoadSheet(SheetLoadData& aLoadData, SheetState aSheetState,
   if (!aLoadData.ShouldDefer()) {
     if (nsCOMPtr<nsIClassOfService> cos = do_QueryInterface(channel)) {
       cos->AddClassFlags(nsIClassOfService::Leader);
+    }
+    if (aIsPreload == IsPreload::FromLink) {
+      if (nsCOMPtr<nsISupportsPriority> sp = do_QueryInterface(channel)) {
+        sp->AdjustPriority(nsISupportsPriority::PRIORITY_HIGHEST);
+      }
     }
   }
 
@@ -1597,9 +1603,8 @@ nsresult Loader::LoadSheet(SheetLoadData& aLoadData, SheetState aSheetState,
   nsCOMPtr<nsIStreamListener> streamLoader = new StreamLoader(aLoadData);
 
   if (mDocument) {
-    mozilla::net::PredictorLearn(aLoadData.mURI, mDocument->GetDocumentURI(),
-                                 nsINetworkPredictor::LEARN_LOAD_SUBRESOURCE,
-                                 mDocument);
+    net::PredictorLearn(aLoadData.mURI, mDocument->GetDocumentURI(),
+                        nsINetworkPredictor::LEARN_LOAD_SUBRESOURCE, mDocument);
   }
 
   rv = channel->AsyncOpen(streamLoader);

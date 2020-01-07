@@ -387,7 +387,7 @@ function RegExpReplaceSlowPath(rx, S, lengthS, replaceValue,
         var matchLength = matched.length;
 
         // Steps 14.e-f.
-        var position = std_Math_max(std_Math_min(ToInteger(result.index), lengthS), 0);
+        var position = std_Math_max(std_Math_min(ToIntegerPositiveZero(result.index), lengthS), 0);
 
         var n, capN, replacement;
         if (functionalReplace || firstDollarIndex !== -1) {
@@ -1309,4 +1309,24 @@ function RegExpStringIteratorNext() {
     // Steps 11.a.iii and 11.b.ii.
     result.value = match;
     return result;
+}
+
+// ES2020 draft rev e97c95d064750fb949b6778584702dd658cf5624
+// 7.2.8 IsRegExp ( argument )
+function IsRegExp(argument) {
+    // Step 1.
+    if (!IsObject(argument)) {
+        return false;
+    }
+
+    // Step 2.
+    var matcher = argument[std_match];
+
+    // Step 3.
+    if (matcher !== undefined) {
+        return !!matcher;
+    }
+
+    // Steps 4-5.
+    return IsPossiblyWrappedRegExpObject(argument);
 }

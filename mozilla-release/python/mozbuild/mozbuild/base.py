@@ -22,6 +22,7 @@ from mozversioncontrol import (
     GitRepository,
     HgRepository,
     InvalidRepoPath,
+    MissingConfigureInfo,
 )
 
 from .backend.configenvironment import (
@@ -109,7 +110,7 @@ class MozbuildObject(ProcessExecutionMixin):
         self._virtualenv_manager = None
 
     @classmethod
-    def from_environment(cls, cwd=None, detect_virtualenv_mozinfo=True):
+    def from_environment(cls, cwd=None, detect_virtualenv_mozinfo=True, **kwargs):
         """Create a MozbuildObject by detecting the proper one from the env.
 
         This examines environment state like the current working directory and
@@ -186,7 +187,7 @@ class MozbuildObject(ProcessExecutionMixin):
         # If we can't resolve topobjdir, oh well. We'll figure out when we need
         # one.
         return cls(topsrcdir, None, None, topobjdir=topobjdir,
-                   mozconfig=mozconfig)
+                   mozconfig=mozconfig, **kwargs)
 
     def resolve_mozconfig_topobjdir(self, default=None):
         topobjdir = self.mozconfig['topobjdir'] or default
@@ -402,7 +403,7 @@ class MozbuildObject(ProcessExecutionMixin):
         # If we don't have a configure context, fall back to auto-detection.
         try:
             return get_repository_from_build_config(self)
-        except BuildEnvironmentNotFoundException:
+        except (BuildEnvironmentNotFoundException, MissingConfigureInfo):
             pass
 
         return get_repository_object(self.topsrcdir)

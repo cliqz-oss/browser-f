@@ -19,6 +19,7 @@
 #include "mozilla/TextEditor.h"
 #include "mozilla/TextEvents.h"
 #include "mozilla/TouchEvents.h"
+#include "mozilla/Telemetry.h"
 #include "mozilla/dom/ContentChild.h"
 #include "mozilla/dom/DragEvent.h"
 #include "mozilla/dom/Event.h"
@@ -52,7 +53,6 @@
 #include "mozilla/dom/Document.h"
 #include "nsIFrame.h"
 #include "nsFrameLoaderOwner.h"
-#include "nsITextControlElement.h"
 #include "nsIWidget.h"
 #include "nsPresContext.h"
 #include "nsGkAtoms.h"
@@ -1016,11 +1016,12 @@ bool EventStateManager::LookForAccessKeyAndExecute(
     nsTArray<uint32_t>& aAccessCharCodes, bool aIsTrustedEvent, bool aIsRepeat,
     bool aExecute) {
   int32_t count, start = -1;
-  nsIContent* focusedContent = GetFocusedContent();
-  if (focusedContent) {
+  if (nsIContent* focusedContent = GetFocusedContent()) {
     start = mAccessKeys.IndexOf(focusedContent);
-    if (start == -1 && focusedContent->GetBindingParent())
-      start = mAccessKeys.IndexOf(focusedContent->GetBindingParent());
+    if (start == -1 && focusedContent->IsInNativeAnonymousSubtree()) {
+      start = mAccessKeys.IndexOf(
+          focusedContent->GetClosestNativeAnonymousSubtreeRootParent());
+    }
   }
   RefPtr<Element> element;
   nsIFrame* frame;
@@ -1274,16 +1275,9 @@ void EventStateManager::DispatchCrossProcessEvent(WidgetEvent* aEvent,
     return;
   }
 
-  if (aEvent->mLayersId.IsValid()) {
-    BrowserParent* preciseRemote =
-        BrowserParent::GetBrowserParentFromLayersId(aEvent->mLayersId);
-    if (preciseRemote) {
-      remote = preciseRemote;
-    }
-    // else there is a race between APZ and the LayersId to BrowserParent
-    // mapping, so fall back to delivering the event to the topmost child
-    // process.
-  } else if (aEvent->mClass == eKeyboardEventClass) {
+  WidgetMouseEvent* mouseEvent = aEvent->AsMouseEvent();
+  bool isContextMenuKey = mouseEvent && mouseEvent->IsContextMenuKeyEvent();
+  if (aEvent->mClass == eKeyboardEventClass || isContextMenuKey) {
     // APZ attaches a LayersId to hit-testable events, for keyboard events,
     // we use focus.
     BrowserParent* preciseRemote = BrowserParent::GetFocused();
@@ -1292,11 +1286,20 @@ void EventStateManager::DispatchCrossProcessEvent(WidgetEvent* aEvent,
     }
     // else there is a race between layout and focus tracking,
     // so fall back to delivering the event to the topmost child process.
+  } else if (aEvent->mLayersId.IsValid()) {
+    BrowserParent* preciseRemote =
+        BrowserParent::GetBrowserParentFromLayersId(aEvent->mLayersId);
+    if (preciseRemote) {
+      remote = preciseRemote;
+    }
+    // else there is a race between APZ and the LayersId to BrowserParent
+    // mapping, so fall back to delivering the event to the topmost child
+    // process.
   }
 
   switch (aEvent->mClass) {
     case eMouseEventClass: {
-      remote->SendRealMouseEvent(*aEvent->AsMouseEvent());
+      remote->SendRealMouseEvent(*mouseEvent);
       return;
     }
     case eKeyboardEventClass: {
@@ -4999,6 +5002,11 @@ nsresult EventStateManager::InitAndDispatchClickEvent(
   nsEventStatus status = nsEventStatus_eIgnore;
   nsresult rv = aPresShell->HandleEventWithTarget(
       &event, targetFrame, MOZ_KnownLive(target), &status);
+
+  if (event.mFlags.mHadNonPrivilegedClickListeners && !aNoContentDispatch) {
+    Telemetry::AccumulateCategorical(
+        Telemetry::LABELS_TYPES_OF_USER_CLICKS::Has_JS_Listener);
+  }
   // Copy mMultipleActionsPrevented flag from a click event to the mouseup
   // event only when it's set to true.  It may be set to true if an editor has
   // already handled it.  This is important to avoid two or more default
@@ -5123,6 +5131,14 @@ nsresult EventStateManager::DispatchClickEvents(
     if (NS_WARN_IF(NS_FAILED(rv))) {
       return rv;
     }
+  }
+
+  // notDispatchToContents is used here because we don't want to
+  // count auxclicks.
+  if (XRE_IsParentProcess() && !IsRemoteTarget(aClickTarget) &&
+      !notDispatchToContents) {
+    Telemetry::AccumulateCategorical(
+        Telemetry::LABELS_TYPES_OF_USER_CLICKS::Browser_Chrome);
   }
 
   return rv;
@@ -5512,20 +5528,17 @@ void EventStateManager::RemoveNodeFromChainIfNeeded(EventStates aState,
       aState == NS_EVENT_STATE_HOVER ? mHoverContent : mActiveContent;
 
   MOZ_ASSERT(leaf);
-  // XBL Likes to unbind content without notifying, thus the
-  // NODE_IS_ANONYMOUS_ROOT check...
-  //
-  // This can also happen for Shadow DOM sometimes, and it's not clear how to
-  // best handle it, see https://github.com/whatwg/html/issues/4795 and
-  // bug 1551621.
-  NS_ASSERTION(nsContentUtils::ContentIsFlattenedTreeDescendantOf(
-                   leaf, aContentRemoved) ||
-                   leaf->SubtreeRoot()->HasFlag(NODE_IS_ANONYMOUS_ROOT),
-               "Flat tree and active / hover chain got out of sync");
+  // These two NS_ASSERTIONS below can fail for Shadow DOM sometimes, and it's
+  // not clear how to best handle it, see
+  // https://github.com/whatwg/html/issues/4795 and bug 1551621.
+  NS_ASSERTION(
+      nsContentUtils::ContentIsFlattenedTreeDescendantOf(leaf, aContentRemoved),
+      "Flat tree and active / hover chain got out of sync");
 
   nsIContent* newLeaf = aContentRemoved->GetFlattenedTreeParent();
-  MOZ_ASSERT_IF(newLeaf, newLeaf->IsElement() &&
-                             newLeaf->AsElement()->State().HasState(aState));
+  MOZ_ASSERT(!newLeaf || newLeaf->IsElement());
+  NS_ASSERTION(!newLeaf || newLeaf->AsElement()->State().HasState(aState),
+               "State got out of sync because of shadow DOM");
   if (aNotify) {
     SetContentState(newLeaf, aState);
   } else {
@@ -5543,6 +5556,24 @@ void EventStateManager::NativeAnonymousContentRemoved(nsIContent* aContent) {
   MOZ_ASSERT(aContent->IsRootOfNativeAnonymousSubtree());
   RemoveNodeFromChainIfNeeded(NS_EVENT_STATE_HOVER, aContent, false);
   RemoveNodeFromChainIfNeeded(NS_EVENT_STATE_ACTIVE, aContent, false);
+
+  if (mLastLeftMouseDownContent &&
+      nsContentUtils::ContentIsFlattenedTreeDescendantOf(
+          mLastLeftMouseDownContent, aContent)) {
+    mLastLeftMouseDownContent = aContent->GetFlattenedTreeParent();
+  }
+
+  if (mLastMiddleMouseDownContent &&
+      nsContentUtils::ContentIsFlattenedTreeDescendantOf(
+          mLastMiddleMouseDownContent, aContent)) {
+    mLastMiddleMouseDownContent = aContent->GetFlattenedTreeParent();
+  }
+
+  if (mLastRightMouseDownContent &&
+      nsContentUtils::ContentIsFlattenedTreeDescendantOf(
+          mLastRightMouseDownContent, aContent)) {
+    mLastRightMouseDownContent = aContent->GetFlattenedTreeParent();
+  }
 }
 
 void EventStateManager::ContentRemoved(Document* aDocument,

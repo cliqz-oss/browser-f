@@ -119,7 +119,6 @@ class JUnitTestRunner(MochitestDesktop):
         if self.fillCertificateDB(self.options):
             self.log.error("Certificate integration failed")
 
-        self.device.mkdir(self.remote_profile, parents=True)
         self.device.push(self.profile.profile, self.remote_profile)
         self.log.debug("profile %s -> %s" %
                        (str(self.profile.profile), str(self.remote_profile)))
@@ -190,6 +189,13 @@ class JUnitTestRunner(MochitestDesktop):
         self._locations = ServerLocations(locations_file)
         return self._locations
 
+    def need_more_runs(self):
+        if self.options.run_until_failure and (self.fail_count == 0):
+            return True
+        if self.runs <= self.options.repeat:
+            return True
+        return False
+
     def run_tests(self, test_filters=None):
         """
            Run the tests.
@@ -205,9 +211,7 @@ class JUnitTestRunner(MochitestDesktop):
         self.pass_count = 0
         self.fail_count = 0
         self.todo_count = 0
-        self.class_name = ""
-        self.test_name = ""
-        self.current_full_name = ""
+        self.runs = 0
 
         def callback(line):
             # Output callback: Parse the raw junit log messages, translating into
@@ -268,11 +272,16 @@ class JUnitTestRunner(MochitestDesktop):
         try:
             self.device.grant_runtime_permissions(self.options.app)
             cmd = self.build_command_line(test_filters)
-            self.log.info("launching %s" % cmd)
-            p = self.device.shell(cmd, timeout=self.options.max_time, stdout_callback=callback)
-            if p.timedout:
-                self.log.error("TEST-UNEXPECTED-TIMEOUT | runjunit.py | "
-                               "Timed out after %d seconds" % self.options.max_time)
+            while self.need_more_runs():
+                self.class_name = ""
+                self.test_name = ""
+                self.current_full_name = ""
+                self.runs += 1
+                self.log.info("launching %s" % cmd)
+                p = self.device.shell(cmd, timeout=self.options.max_time, stdout_callback=callback)
+                if p.timedout:
+                    self.log.error("TEST-UNEXPECTED-TIMEOUT | runjunit.py | "
+                                   "Timed out after %d seconds" % self.options.max_time)
             self.log.info("Passed: %d" % self.pass_count)
             self.log.info("Failed: %d" % self.fail_count)
             self.log.info("Todo: %d" % self.todo_count)
@@ -304,13 +313,7 @@ class JUnitTestRunner(MochitestDesktop):
             dump_dir = tempfile.mkdtemp()
             remote_dir = posixpath.join(self.remote_profile, 'minidumps')
             if not self.device.is_dir(remote_dir):
-                # If crash reporting is enabled (MOZ_CRASHREPORTER=1), the
-                # minidumps directory is automatically created when the app
-                # (first) starts, so its lack of presence is a hint that
-                # something went wrong.
-                print("Automation Error: " +
-                      "No crash directory ({}) found on remote device".format(remote_dir))
-                return True
+                return False
             self.device.pull(remote_dir, dump_dir)
             crashed = mozcrash.log_crashes(self.log, dump_dir, symbols_path,
                                            test=self.current_full_name)
@@ -407,6 +410,20 @@ class JunitArgumentParser(argparse.ArgumentParser):
                           dest="coverage_output_dir",
                           default=None,
                           help="If collecting code coverage, save the report file in this dir.")
+        self.add_argument("--enable-webrender",
+                          action="store_true",
+                          dest="enable_webrender",
+                          default=False,
+                          help="Enable the WebRender compositor in Gecko.")
+        self.add_argument("--repeat",
+                          type=int,
+                          default=0,
+                          help="Repeat the tests the given number of times.")
+        self.add_argument("--run-until-failure",
+                          action="store_true",
+                          dest="run_until_failure",
+                          default=False,
+                          help="Run tests repeatedly but stop the first time a test fails.")
         # Additional options for server.
         self.add_argument("--certificate-path",
                           action="store",
@@ -431,11 +448,6 @@ class JunitArgumentParser(argparse.ArgumentParser):
                           dest="sslPort",
                           default=DEFAULT_PORTS['https'],
                           help="ssl port of the remote web server.")
-        self.add_argument("--enable-webrender",
-                          action="store_true",
-                          dest="enable_webrender",
-                          default=False,
-                          help="Enable the WebRender compositor in Gecko.")
         # Remaining arguments are test filters.
         self.add_argument("test_filters",
                           nargs="*",

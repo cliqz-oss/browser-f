@@ -48,7 +48,11 @@ const EmulationActor = protocol.ActorClassWithSpec(emulationSpec, {
   },
 
   destroy() {
-    this.stopPrintMediaSimulation();
+    if (this._printSimulationEnabled) {
+      this.stopPrintMediaSimulation();
+    }
+
+    this.setEmulatedColorScheme();
     this.clearDPPXOverride();
     this.clearNetworkThrottling();
     this.clearTouchEventsOverride();
@@ -150,6 +154,48 @@ const EmulationActor = protocol.ActorClassWithSpec(emulationSpec, {
 
     return false;
   },
+
+  /* Color scheme simulation */
+
+  /**
+   * Returns the currently emulated color scheme.
+   */
+  getEmulatedColorScheme() {
+    return this._emulatedColorScheme;
+  },
+
+  /**
+   * Sets the currently emulated color scheme or if an invalid value is given,
+   * the override is cleared.
+   */
+  setEmulatedColorScheme(scheme = null) {
+    if (this._emulatedColorScheme === scheme) {
+      return;
+    }
+
+    let internalColorScheme;
+    switch (scheme) {
+      case "light":
+        internalColorScheme = Ci.nsIContentViewer.PREFERS_COLOR_SCHEME_LIGHT;
+        break;
+      case "dark":
+        internalColorScheme = Ci.nsIContentViewer.PREFERS_COLOR_SCHEME_DARK;
+        break;
+      case "no-preference":
+        internalColorScheme =
+          Ci.nsIContentViewer.PREFERS_COLOR_SCHEME_NO_PREFERENCE;
+        break;
+      default:
+        internalColorScheme = Ci.nsIContentViewer.PREFERS_COLOR_SCHEME_NONE;
+    }
+
+    this._emulatedColorScheme = scheme;
+    this.docShell.contentViewer.emulatePrefersColorScheme(internalColorScheme);
+  },
+
+  // The current emulated color scheme value. It's possible values are listed in the
+  // COLOR_SCHEMES constant in devtools/client/inspector/rules/constants.
+  _emulatedColorScheme: null,
 
   /* Network Throttling */
 
@@ -413,6 +459,12 @@ const EmulationActor = protocol.ActorClassWithSpec(emulationSpec, {
 
   async captureScreenshot() {
     return this.screenshotActor.capture({});
+  },
+
+  async setDocumentInRDMPane(inRDMPane) {
+    if (this.docShell && this.docShell.document) {
+      this.docShell.browsingContext.inRDMPane = inRDMPane;
+    }
   },
 });
 

@@ -26,53 +26,6 @@ class SpecialPowersError extends Error {
   }
 }
 
-function parseKeyValuePairs(text) {
-  var lines = text.split("\n");
-  var data = {};
-  for (let i = 0; i < lines.length; i++) {
-    if (lines[i] == "") {
-      continue;
-    }
-
-    // can't just .split() because the value might contain = characters
-    let eq = lines[i].indexOf("=");
-    if (eq != -1) {
-      let [key, value] = [
-        lines[i].substring(0, eq),
-        lines[i].substring(eq + 1),
-      ];
-      if (key && value) {
-        data[key] = value.replace(/\\n/g, "\n").replace(/\\\\/g, "\\");
-      }
-    }
-  }
-  return data;
-}
-
-function parseKeyValuePairsFromFile(file) {
-  var fstream = Cc["@mozilla.org/network/file-input-stream;1"].createInstance(
-    Ci.nsIFileInputStream
-  );
-  fstream.init(file, -1, 0, 0);
-  var is = Cc["@mozilla.org/intl/converter-input-stream;1"].createInstance(
-    Ci.nsIConverterInputStream
-  );
-  is.init(
-    fstream,
-    "UTF-8",
-    1024,
-    Ci.nsIConverterInputStream.DEFAULT_REPLACEMENT_CHARACTER
-  );
-  var str = {};
-  var contents = "";
-  while (is.readString(4096, str) != 0) {
-    contents += str.value;
-  }
-  is.close();
-  fstream.close();
-  return parseKeyValuePairs(contents);
-}
-
 function getTestPlugin(pluginName) {
   var ph = Cc["@mozilla.org/plugin/host;1"].getService(Ci.nsIPluginHost);
   var tags = ph.getPluginTags();
@@ -160,7 +113,37 @@ class SpecialPowersParent extends JSWindowActorParent {
               },
               type: permission.type,
             };
-          // fall through
+            this._self.sendAsyncMessage("specialpowers-" + aTopic, msg);
+            return;
+          case "csp-on-violate-policy":
+            // the subject is either an nsIURI or an nsISupportsCString
+            let subject = null;
+            if (aSubject instanceof Ci.nsIURI) {
+              subject = aSubject.asciiSpec;
+            } else if (aSubject instanceof Ci.nsISupportsCString) {
+              subject = aSubject.data;
+            } else {
+              throw new Error("Subject must be nsIURI or nsISupportsCString");
+            }
+            msg = {
+              subject,
+              data: aData,
+            };
+            this._self.sendAsyncMessage("specialpowers-" + aTopic, msg);
+            return;
+          case "xfo-on-violate-policy":
+            let uriSpec = null;
+            if (aSubject instanceof Ci.nsIURI) {
+              uriSpec = aSubject.asciiSpec;
+            } else {
+              throw new Error("Subject must be nsIURI");
+            }
+            msg = {
+              subject: uriSpec,
+              data: aData,
+            };
+            this._self.sendAsyncMessage("specialpowers-" + aTopic, msg);
+            return;
           default:
             this._self.sendAsyncMessage("specialpowers-" + aTopic, msg);
         }
@@ -248,12 +231,13 @@ class SpecialPowersParent extends JSWindowActorParent {
         aSubject = aSubject.QueryInterface(Ci.nsIPropertyBag2);
         if (aTopic == "plugin-crashed") {
           addDumpIDToMessage("pluginDumpID");
-          addDumpIDToMessage("browserDumpID");
 
           let pluginID = aSubject.getPropertyAsAString("pluginDumpID");
-          let extra = this._getExtraData(pluginID);
-          if (extra && "additional_minidumps" in extra) {
-            let dumpNames = extra.additional_minidumps.split(",");
+          let additionalMinidumps = aSubject.getPropertyAsACString(
+            "additionalMinidumps"
+          );
+          if (additionalMinidumps.length != 0) {
+            let dumpNames = additionalMinidumps.split(",");
             for (let name of dumpNames) {
               message.dumpIDs.push({
                 id: pluginID + "-" + name,
@@ -289,15 +273,6 @@ class SpecialPowersParent extends JSWindowActorParent {
       this._pendingCrashDumpDir.append("pending");
     }
     return this._pendingCrashDumpDir;
-  }
-
-  _getExtraData(dumpId) {
-    let extraFile = this._getCrashDumpDir().clone();
-    extraFile.append(dumpId + ".extra");
-    if (!extraFile.exists()) {
-      return null;
-    }
-    return parseKeyValuePairsFromFile(extraFile);
   }
 
   _deleteCrashDumpFiles(aFilenames) {
@@ -602,7 +577,9 @@ class SpecialPowersParent extends JSWindowActorParent {
         return undefined;
 
       case "SpecialPowers.Focus":
-        this.manager.rootFrameLoader.ownerElement.focus();
+        if (this.manager.rootFrameLoader) {
+          this.manager.rootFrameLoader.ownerElement.focus();
+        }
         return undefined;
 
       case "SpecialPowers.CreateFiles":

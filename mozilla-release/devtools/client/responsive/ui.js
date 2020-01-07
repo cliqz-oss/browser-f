@@ -207,7 +207,18 @@ class ResponsiveUI {
     // Restore the previous state of RDM.
     await this.restoreState();
 
+    if (this.isBrowserUIEnabled) {
+      await this.emulationFront.setDocumentInRDMPane(true);
+    }
+
     if (!this.isBrowserUIEnabled) {
+      // Force the newly created Zoom actor to cache its 1.0 zoom level. This
+      // prevents it from sending out FullZoomChange events when the content
+      // full zoom level is changed the first time.
+      const bc = this.toolWindow.docShell.browsingContext;
+      const zoomActor = bc.currentWindowGlobal.getActor("Zoom");
+      zoomActor.sendAsyncMessage("FullZoom", { value: 1.0 });
+
       // Re-apply our cached zoom levels. Other Zoom UI update events have finished
       // by now.
       rdmContent.fullZoom = fullZoom;
@@ -231,8 +242,7 @@ class ResponsiveUI {
     const { document: doc, gBrowser } = this.browserWindow;
     const rdmFrame = doc.createElement("iframe");
     rdmFrame.src = "chrome://devtools/content/responsive/toolbar.xhtml";
-    rdmFrame.style.height = rdmFrame.style.minHeight = "30px";
-    rdmFrame.style.borderStyle = "none";
+    rdmFrame.classList.add("rdm-toolbar");
 
     this.browserContainerEl = gBrowser.getBrowserContainer(
       gBrowser.getBrowserForTab(this.tab)
@@ -243,8 +253,8 @@ class ResponsiveUI {
 
     this.browserContainerEl.classList.add("responsive-mode");
 
-    // Prepend the RDM iframe inside of the current tab's browser container.
-    this.browserContainerEl.prepend(rdmFrame);
+    // Prepend the RDM iframe inside of the current tab's browser stack.
+    this.browserStackEl.prepend(rdmFrame);
 
     // Wait for the frame script to be loaded.
     message.wait(rdmFrame.contentWindow, "script-init").then(async () => {
@@ -296,6 +306,10 @@ class ResponsiveUI {
       await this.inited;
     }
 
+    if (this.isBrowserUIEnabled) {
+      await this.emulationFront.setDocumentInRDMPane(false);
+    }
+
     this.tab.removeEventListener("TabClose", this);
     this.tab.removeEventListener("BeforeTabRemotenessChange", this);
     this.browserWindow.removeEventListener("unload", this);
@@ -308,8 +322,8 @@ class ResponsiveUI {
       this.rdmFrame.remove();
 
       this.browserContainerEl.classList.remove("responsive-mode");
-      this.browserStackEl.style.maxWidth = this.browserStackEl.style.minWidth = null;
-      this.browserStackEl.style.maxHeight = this.browserStackEl.style.minHeight = null;
+      this.browserStackEl.style.removeProperty("--rdm-width");
+      this.browserStackEl.style.removeProperty("--rdm-height");
     }
 
     if (!this.isBrowserUIEnabled && !isTabContentDestroying) {
@@ -451,6 +465,12 @@ class ResponsiveUI {
         break;
       case "screenshot":
         this.onScreenshot();
+        break;
+      case "toggle-left-alignment":
+        this.onToggleLeftAlignment(event);
+        break;
+      case "update-device-modal":
+        this.onUpdateDeviceModal(event);
     }
   }
 
@@ -569,10 +589,31 @@ class ResponsiveUI {
     }
   }
 
+  onToggleLeftAlignment(event) {
+    this.updateUIAlignment(event.data.leftAlignmentEnabled);
+  }
+
+  onUpdateDeviceModal(event) {
+    this.browserStackEl.classList.toggle(
+      "device-modal-opened",
+      event.data.isOpen
+    );
+  }
+
   /**
    * Restores the previous state of RDM.
    */
   async restoreState() {
+    // Restore UI alignment.
+    if (this.isBrowserUIEnabled) {
+      const leftAlignmentEnabled = Services.prefs.getBoolPref(
+        "devtools.responsive.leftAlignViewport.enabled",
+        false
+      );
+
+      this.updateUIAlignment(leftAlignmentEnabled);
+    }
+
     const deviceState = await asyncStorage.getItem(
       "devtools.responsive.deviceState"
     );
@@ -750,6 +791,19 @@ class ResponsiveUI {
   }
 
   /**
+   * Sets whether or not the RDM UI should be left-aligned.
+   *
+   * @param {Boolean} leftAlignmentEnabled
+   *        Whether or not the UI is left-aligned.
+   */
+  updateUIAlignment(leftAlignmentEnabled) {
+    this.browserContainerEl.classList.toggle(
+      "left-aligned",
+      leftAlignmentEnabled
+    );
+  }
+
+  /**
    * Sets the browser element to be the given width and height.
    *
    * @param {Number} width
@@ -762,8 +816,10 @@ class ResponsiveUI {
       return;
     }
 
-    this.browserStackEl.style.maxWidth = this.browserStackEl.style.minWidth = `${width}px`;
-    this.browserStackEl.style.maxHeight = this.browserStackEl.style.minHeight = `${height}px`;
+    // Setting this with a variable on the stack instead of directly as width/height
+    // on the <browser> because we'll need to use this for the alert dialog as well.
+    this.browserStackEl.style.setProperty("--rdm-width", `${width}px`);
+    this.browserStackEl.style.setProperty("--rdm-height", `${height}px`);
   }
 
   /**

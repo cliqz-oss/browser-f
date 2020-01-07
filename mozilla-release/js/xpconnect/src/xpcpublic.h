@@ -91,10 +91,6 @@ JSObject* TransplantObjectNukingXrayWaiver(JSContext* cx,
                                            JS::HandleObject origObj,
                                            JS::HandleObject target);
 
-bool IsContentXBLCompartment(JS::Compartment* compartment);
-bool IsContentXBLScope(JS::Realm* realm);
-bool IsInContentXBLScope(JSObject* obj);
-
 bool IsUAWidgetCompartment(JS::Compartment* compartment);
 bool IsUAWidgetScope(JS::Realm* realm);
 bool IsInUAWidgetScope(JSObject* obj);
@@ -103,32 +99,9 @@ bool MightBeWebContentCompartment(JS::Compartment* compartment);
 
 void SetCompartmentChangedDocumentDomain(JS::Compartment* compartment);
 
-// Return a raw XBL scope object corresponding to contentScope, which must
-// be an object whose global is a DOM window.
-//
-// The return value is not wrapped into cx->compartment, so be sure to enter
-// its compartment before doing anything meaningful.
-//
-// Also note that XBL scopes are lazily created, so the return-value should be
-// null-checked unless the caller can ensure that the scope must already
-// exist.
-//
-// This function asserts if |contentScope| is itself in an XBL scope to catch
-// sloppy consumers. Conversely, GetXBLScopeOrGlobal will handle objects that
-// are in XBL scope (by just returning the global).
-JSObject* GetXBLScope(JSContext* cx, JSObject* contentScope);
-
 JSObject* GetUAWidgetScope(JSContext* cx, nsIPrincipal* principal);
 
 JSObject* GetUAWidgetScope(JSContext* cx, JSObject* contentScope);
-
-inline JSObject* GetXBLScopeOrGlobal(JSContext* cx, JSObject* obj) {
-  MOZ_ASSERT(!js::IsCrossCompartmentWrapper(obj));
-  if (IsInContentXBLScope(obj)) {
-    return JS::GetNonCCWObjectGlobal(obj);
-  }
-  return GetXBLScope(cx, obj);
-}
 
 // Returns whether XBL scopes have been explicitly disabled for code running
 // in this compartment. See the comment around mAllowContentXBLScope.
@@ -247,9 +220,9 @@ class XPCStringConvert {
                                                     uint32_t length,
                                                     JS::MutableHandleValue rval,
                                                     bool* sharedBuffer) {
-    JSString* str =
-        JS_NewMaybeExternalString(cx, static_cast<char16_t*>(buf->Data()),
-                                  length, &sDOMStringFinalizer, sharedBuffer);
+    JSString* str = JS_NewMaybeExternalString(
+        cx, static_cast<char16_t*>(buf->Data()), length,
+        &sDOMStringExternalString, sharedBuffer);
     if (!str) {
       return false;
     }
@@ -262,8 +235,8 @@ class XPCStringConvert {
                                           uint32_t length,
                                           JS::MutableHandleValue rval) {
     bool ignored;
-    JSString* str = JS_NewMaybeExternalString(cx, literal, length,
-                                              &sLiteralFinalizer, &ignored);
+    JSString* str = JS_NewMaybeExternalString(
+        cx, literal, length, &sLiteralExternalString, &ignored);
     if (!str) {
       return false;
     }
@@ -276,7 +249,7 @@ class XPCStringConvert {
     bool sharedAtom;
     JSString* str =
         JS_NewMaybeExternalString(cx, atom->GetUTF16String(), atom->GetLength(),
-                                  &sDynamicAtomFinalizer, &sharedAtom);
+                                  &sDynamicAtomExternalString, &sharedAtom);
     if (!str) {
       return false;
     }
@@ -291,26 +264,45 @@ class XPCStringConvert {
     return true;
   }
 
-  static MOZ_ALWAYS_INLINE bool IsLiteral(JSString* str) {
-    return JS_IsExternalString(str) &&
-           JS_GetExternalStringFinalizer(str) == &sLiteralFinalizer;
+  static MOZ_ALWAYS_INLINE bool MaybeGetExternalStringChars(
+      JSString* str, const JSExternalStringCallbacks* desiredCallbacks,
+      const char16_t** chars) {
+    const JSExternalStringCallbacks* callbacks;
+    return js::IsExternalString(str, &callbacks, chars) &&
+           callbacks == desiredCallbacks;
   }
 
-  static MOZ_ALWAYS_INLINE bool IsDOMString(JSString* str) {
-    return JS_IsExternalString(str) &&
-           JS_GetExternalStringFinalizer(str) == &sDOMStringFinalizer;
+  // Returns non-null chars if the given string is a literal external string.
+  static MOZ_ALWAYS_INLINE bool MaybeGetLiteralStringChars(
+      JSString* str, const char16_t** chars) {
+    return MaybeGetExternalStringChars(str, &sLiteralExternalString, chars);
+  }
+
+  // Returns non-null chars if the given string is a DOM external string.
+  static MOZ_ALWAYS_INLINE bool MaybeGetDOMStringChars(JSString* str,
+                                                       const char16_t** chars) {
+    return MaybeGetExternalStringChars(str, &sDOMStringExternalString, chars);
   }
 
  private:
-  static const JSStringFinalizer sLiteralFinalizer, sDOMStringFinalizer,
-      sDynamicAtomFinalizer;
-
-  static void FinalizeLiteral(const JSStringFinalizer* fin, char16_t* chars);
-
-  static void FinalizeDOMString(const JSStringFinalizer* fin, char16_t* chars);
-
-  static void FinalizeDynamicAtom(const JSStringFinalizer* fin,
-                                  char16_t* chars);
+  struct LiteralExternalString : public JSExternalStringCallbacks {
+    void finalize(char16_t* aChars) const override;
+    size_t sizeOfBuffer(const char16_t* aChars,
+                        mozilla::MallocSizeOf aMallocSizeOf) const override;
+  };
+  struct DOMStringExternalString : public JSExternalStringCallbacks {
+    void finalize(char16_t* aChars) const override;
+    size_t sizeOfBuffer(const char16_t* aChars,
+                        mozilla::MallocSizeOf aMallocSizeOf) const override;
+  };
+  struct DynamicAtomExternalString : public JSExternalStringCallbacks {
+    void finalize(char16_t* aChars) const override;
+    size_t sizeOfBuffer(const char16_t* aChars,
+                        mozilla::MallocSizeOf aMallocSizeOf) const override;
+  };
+  static const LiteralExternalString sLiteralExternalString;
+  static const DOMStringExternalString sDOMStringExternalString;
+  static const DynamicAtomExternalString sDynamicAtomExternalString;
 
   XPCStringConvert() = delete;
 };
@@ -691,15 +683,7 @@ inline bool IsInAutomation() {
   return sAutomationPrefIsSet && AreNonLocalConnectionsDisabled();
 }
 
-void CreateCooperativeContext();
-
-void DestroyCooperativeContext();
-
-// Please see JS_YieldCooperativeContext in jsapi.h.
-void YieldCooperativeContext();
-
-// Please see JS_ResumeCooperativeContext in jsapi.h.
-void ResumeCooperativeContext();
+void InitializeJSContext();
 
 /**
  * Extract the native nsID object from a JS ID, IfaceID, ClassID, or ContractID

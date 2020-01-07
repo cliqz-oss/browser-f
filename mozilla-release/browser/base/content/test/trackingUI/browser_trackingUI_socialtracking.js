@@ -4,7 +4,7 @@
 "use strict";
 
 const TRACKING_PAGE =
-  "http://example.org/browser/browser/base/content/test/trackingUI/trackingPage.html";
+  "http://example.com/browser/browser/base/content/test/trackingUI/trackingPage.html";
 
 const ST_PROTECTION_PREF = "privacy.trackingprotection.socialtracking.enabled";
 const ST_BLOCK_COOKIES_PREF = "privacy.socialtracking.block_cookies.enabled";
@@ -12,24 +12,20 @@ const ST_BLOCK_COOKIES_PREF = "privacy.socialtracking.block_cookies.enabled";
 add_task(async function setup() {
   await SpecialPowers.pushPrefEnv({
     set: [
-      [ST_PROTECTION_PREF, true],
       [ST_BLOCK_COOKIES_PREF, true],
       [
         "urlclassifier.features.socialtracking.blacklistHosts",
-        "socialtracking.example.com",
+        "social-tracking.example.org",
       ],
       [
         "urlclassifier.features.socialtracking.annotate.blacklistHosts",
-        "socialtracking.example.com",
+        "social-tracking.example.org",
       ],
+      // Whitelist trackertest.org loaded by default in trackingPage.html
+      ["urlclassifier.trackingSkipURLs", "trackertest.org"],
+      ["urlclassifier.trackingAnnotationSkipURLs", "trackertest.org"],
       ["privacy.trackingprotection.enabled", false],
-      ["privacy.trackingprotection.annotate_channels", false],
-      ["privacy.trackingprotection.cryptomining.enabled", false],
-      ["urlclassifier.features.cryptomining.annotate.blacklistHosts", ""],
-      ["urlclassifier.features.cryptomining.annotate.blacklistTables", ""],
-      ["privacy.trackingprotection.fingerprinting.enabled", false],
-      ["urlclassifier.features.fingerprinting.annotate.blacklistHosts", ""],
-      ["urlclassifier.features.fingerprinting.annotate.blacklistTables", ""],
+      ["privacy.trackingprotection.annotate_channels", true],
     ],
   });
 });
@@ -51,8 +47,12 @@ async function testIdentityState(hasException) {
     await loaded;
   }
 
+  let categoryItem = document.getElementById(
+    "protections-popup-category-socialblock"
+  );
+
   ok(
-    !gProtectionsHandler._protectionsPopup.hasAttribute("detected"),
+    categoryItem.classList.contains("notFound"),
     "socialtrackings are not detected"
   );
 
@@ -61,17 +61,21 @@ async function testIdentityState(hasException) {
     "icon box is visible regardless the exception"
   );
 
-  promise = waitForContentBlockingEvent();
-
-  await ContentTask.spawn(tab.linkedBrowser, {}, function() {
+  await SpecialPowers.spawn(tab.linkedBrowser, [], function() {
     content.postMessage("socialtracking", "*");
   });
 
-  await promise;
+  await TestUtils.waitForCondition(() => {
+    return !categoryItem.classList.contains("notFound");
+  });
 
   ok(
     gProtectionsHandler._protectionsPopup.hasAttribute("detected"),
     "trackers are detected"
+  );
+  ok(
+    !categoryItem.classList.contains("notFound"),
+    "social trackers are detected"
   );
   ok(
     BrowserTestUtils.is_visible(gProtectionsHandler.iconBox),
@@ -114,7 +118,7 @@ async function testSubview(hasException) {
   }
 
   promise = waitForContentBlockingEvent();
-  await ContentTask.spawn(tab.linkedBrowser, {}, function() {
+  await SpecialPowers.spawn(tab.linkedBrowser, [], function() {
     content.postMessage("socialtracking", "*");
   });
   await promise;
@@ -140,7 +144,7 @@ async function testSubview(hasException) {
   ok(BrowserTestUtils.is_visible(listItem), "List item is visible");
   is(
     listItem.querySelector("label").value,
-    "socialtracking.example.com",
+    "social-tracking.example.org",
     "Has the correct host"
   );
 
@@ -165,7 +169,11 @@ async function testSubview(hasException) {
   BrowserTestUtils.removeTab(tab);
 }
 
-async function testCategoryItem() {
+async function testCategoryItem(blockLoads) {
+  if (blockLoads) {
+    Services.prefs.setBoolPref(ST_PROTECTION_PREF, true);
+  }
+
   Services.prefs.setBoolPref(ST_BLOCK_COOKIES_PREF, false);
 
   let promise = BrowserTestUtils.openNewForegroundTab({
@@ -174,67 +182,102 @@ async function testCategoryItem() {
   });
   let [tab] = await Promise.all([promise, waitForContentBlockingEvent()]);
 
+  await openProtectionsPopup();
+
   let categoryItem = document.getElementById(
     "protections-popup-category-socialblock"
   );
 
+  let noTrackersDetectedDesc = document.getElementById(
+    "protections-popup-no-trackers-found-description"
+  );
+
+  ok(categoryItem.hasAttribute("uidisabled"), "Category should be uidisabled");
+
   ok(
     !categoryItem.classList.contains("blocked"),
     "Category not marked as blocked"
   );
+  ok(!BrowserTestUtils.is_visible(categoryItem), "Item should be hidden");
   ok(
-    categoryItem.classList.contains("notFound"),
-    "Category marked as not found"
-  );
-  Services.prefs.setBoolPref(ST_BLOCK_COOKIES_PREF, true);
-  ok(categoryItem.classList.contains("blocked"), "Category marked as blocked");
-  ok(
-    categoryItem.classList.contains("notFound"),
-    "Category marked as not found"
-  );
-  Services.prefs.setBoolPref(ST_BLOCK_COOKIES_PREF, false);
-  ok(
-    !categoryItem.classList.contains("blocked"),
-    "Category not marked as blocked"
-  );
-  ok(
-    categoryItem.classList.contains("notFound"),
-    "Category marked as not found"
+    !gProtectionsHandler._protectionsPopup.hasAttribute("detected"),
+    "trackers are not detected"
   );
 
-  promise = waitForContentBlockingEvent();
-
-  await ContentTask.spawn(tab.linkedBrowser, {}, function() {
+  await SpecialPowers.spawn(tab.linkedBrowser, [], function() {
     content.postMessage("socialtracking", "*");
   });
 
-  await promise;
-
   ok(
     !categoryItem.classList.contains("blocked"),
     "Category not marked as blocked"
   );
+  ok(!BrowserTestUtils.is_visible(categoryItem), "Item should be hidden");
   ok(
-    !categoryItem.classList.contains("notFound"),
-    "Category not marked as not found"
+    !gProtectionsHandler._protectionsPopup.hasAttribute("detected"),
+    "trackers are not detected"
   );
+  ok(
+    BrowserTestUtils.is_visible(noTrackersDetectedDesc),
+    "No Trackers Detcted should be shown"
+  );
+
+  BrowserTestUtils.removeTab(tab);
+
   Services.prefs.setBoolPref(ST_BLOCK_COOKIES_PREF, true);
+
+  promise = BrowserTestUtils.openNewForegroundTab({
+    url: TRACKING_PAGE,
+    gBrowser,
+  });
+  [tab] = await Promise.all([promise, waitForContentBlockingEvent()]);
+
+  await openProtectionsPopup();
+
+  ok(!categoryItem.hasAttribute("uidisabled"), "Item shouldn't be uidisabled");
+
+  ok(categoryItem.classList.contains("blocked"), "Category marked as blocked");
+  ok(
+    categoryItem.classList.contains("notFound"),
+    "Category marked as not found"
+  );
+  // At this point we should still be showing "No Trackers Detected"
+  ok(!BrowserTestUtils.is_visible(categoryItem), "Item should not be visible");
+  ok(
+    BrowserTestUtils.is_visible(noTrackersDetectedDesc),
+    "No Trackers Detcted should be shown"
+  );
+  ok(
+    !gProtectionsHandler._protectionsPopup.hasAttribute("detected"),
+    "trackers are not detected"
+  );
+
+  await SpecialPowers.spawn(tab.linkedBrowser, [], function() {
+    content.postMessage("socialtracking", "*");
+  });
+
+  await TestUtils.waitForCondition(() => {
+    return !categoryItem.classList.contains("notFound");
+  });
+
   ok(categoryItem.classList.contains("blocked"), "Category marked as blocked");
   ok(
     !categoryItem.classList.contains("notFound"),
     "Category not marked as not found"
   );
-  Services.prefs.setBoolPref(ST_BLOCK_COOKIES_PREF, false);
+  ok(BrowserTestUtils.is_visible(categoryItem), "Item should be visible");
   ok(
-    !categoryItem.classList.contains("blocked"),
-    "Category not marked as blocked"
+    !BrowserTestUtils.is_visible(noTrackersDetectedDesc),
+    "No Trackers Detcted should be hidden"
   );
   ok(
-    !categoryItem.classList.contains("notFound"),
-    "Category not marked as not found"
+    gProtectionsHandler._protectionsPopup.hasAttribute("detected"),
+    "trackers are not detected"
   );
 
   BrowserTestUtils.removeTab(tab);
+
+  Services.prefs.clearUserPref(ST_PROTECTION_PREF);
 }
 
 add_task(async function testIdentityUI() {
@@ -246,5 +289,6 @@ add_task(async function testIdentityUI() {
   await testSubview(false);
   await testSubview(true);
 
-  await testCategoryItem();
+  await testCategoryItem(false);
+  await testCategoryItem(true);
 });

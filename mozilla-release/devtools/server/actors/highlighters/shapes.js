@@ -515,7 +515,7 @@ class ShapesHighlighter extends AutoRefreshHighlighter {
     this.viewport = { left, right, top, bottom, padding };
   }
 
-  /* eslint-disable complexity */
+  // eslint-disable-next-line complexity
   handleEvent(event, id) {
     // No event handling if the highlighter is hidden
     if (this.areShapesHidden()) {
@@ -621,7 +621,6 @@ class ShapesHighlighter extends AutoRefreshHighlighter {
         break;
     }
   }
-  /* eslint-enable complexity */
 
   /**
    * Handle a mouse click in transform mode.
@@ -1981,7 +1980,7 @@ class ShapesHighlighter extends AutoRefreshHighlighter {
    * @returns {String} "top", "left", "right", or "bottom" if any of those edges were
    *          clicked. "" if none were clicked.
    */
-  /* eslint-disable complexity */
+  // eslint-disable-next-line complexity
   getInsetPointAt(pageX, pageY) {
     const { top, left, right, bottom } = this.coordinates;
     const zoom = getCurrentZoom(this.win);
@@ -2049,7 +2048,6 @@ class ShapesHighlighter extends AutoRefreshHighlighter {
 
     return "";
   }
-  /* eslint-enable complexity */
 
   /**
    * Parses the CSS definition given and returns the shape type associated
@@ -2296,7 +2294,7 @@ class ShapesHighlighter extends AutoRefreshHighlighter {
     );
 
     let radii = values[0] ? values[0].trim() : "closest-side closest-side";
-    radii = splitCoords(values[0]).map((radius, i) => {
+    radii = splitCoords(radii).map((radius, i) => {
       if (radius === "closest-side") {
         // radius is the distance from center to closest x/y side of reference box
         return i % 2 === 0

@@ -1,4 +1,7 @@
 @charset "UTF-8";
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 /* This is the linux variant */
 html {
   box-sizing: border-box; }
@@ -2742,20 +2745,21 @@ main {
       background: rgba(12, 12, 13, 0.1); }
       [lwt-newtab-brighttext] .ds-card .meta .cta-button {
         color: #F9F9FA;
-        background: rgba(12, 12, 13, 0.3); }
+        background: rgba(12, 12, 13, 0.7); }
+      .ds-card .meta .cta-button:focus {
+        background: rgba(12, 12, 13, 0.1);
+        box-shadow: 0 0 0 2px #FFF, 0 0 0 5px rgba(10, 132, 255, 0.5); }
+        [lwt-newtab-brighttext] .ds-card .meta .cta-button:focus {
+          background: rgba(12, 12, 13, 0.7);
+          box-shadow: 0 0 0 2px #2A2A2E, 0 0 0 5px rgba(10, 132, 255, 0.5); }
+      .ds-card .meta .cta-button:hover {
+        background: rgba(12, 12, 13, 0.2); }
+        [lwt-newtab-brighttext] .ds-card .meta .cta-button:hover {
+          background: rgba(12, 12, 13, 0.5); }
       .ds-card .meta .cta-button:active {
         background: rgba(12, 12, 13, 0.3); }
         [lwt-newtab-brighttext] .ds-card .meta .cta-button:active {
           background: rgba(12, 12, 13, 0.7); }
-      .ds-card .meta .cta-button:hover {
-        background: rgba(12, 12, 13, 0.3); }
-        [lwt-newtab-brighttext] .ds-card .meta .cta-button:hover {
-          background: rgba(12, 12, 13, 0.5); }
-      .ds-card .meta .cta-button:focus {
-        box-shadow: 0 0 0 2px #FFF, 0 0 0 5px rgba(10, 132, 255, 0.5); }
-        [lwt-newtab-brighttext] .ds-card .meta .cta-button:focus {
-          background: rgba(12, 12, 13, 0.3);
-          box-shadow: 0 0 0 2px #2A2A2E, 0 0 0 5px rgba(10, 132, 255, 0.5); }
     .ds-card .meta .cta-link {
       font-size: 15px;
       font-weight: 600;
@@ -3109,6 +3113,9 @@ main {
     display: inline-block; }
     [lwt-newtab-brighttext] .ds-chevron-link::after {
       background-color: #45A1FF; }
+
+.ds-privacy-modal a:hover {
+  text-decoration: underline; }
 
 .ds-privacy-modal .privacy-notice {
   width: 492px;
@@ -3864,18 +3871,21 @@ body[lwt-newtab-brighttext] .scene2Icon .icon-light-theme {
     content: none; }
 
 .onboardingMessageImage {
-  height: 100px;
+  height: 112px;
   width: 120px;
-  background-size: 120px;
+  background-size: auto 140px;
   background-position: center center;
   background-repeat: no-repeat;
-  display: inline-block;
-  vertical-align: middle; }
+  display: inline-block; }
   @media (max-width: 865px) {
     .onboardingMessageImage {
       height: 75px;
       min-width: 80px;
-      background-size: 80px; } }
+      background-size: 140px; } }
+  @media (min-width: 1122px) {
+    .onboardingMessageImage {
+      width: 230px;
+      background-size: auto 140px; } }
   .onboardingMessageImage.addons {
     background-image: url("../data/content/assets/illustration-addons@2x.png"); }
   .onboardingMessageImage.privatebrowsing {
@@ -3887,27 +3897,29 @@ body[lwt-newtab-brighttext] .scene2Icon .icon-light-theme {
   .onboardingMessageImage.sync {
     background-image: url("../data/content/assets/illustration-sync@2x.png"); }
   .onboardingMessageImage.devices {
-    background-image: url("../data/content/assets/trailhead/card-illo-devices.png"); }
+    background-image: url("../data/content/assets/trailhead/card-illo-devices.svg"); }
   .onboardingMessageImage.fbcont {
-    background-image: url("../data/content/assets/trailhead/card-illo-fbcont.png"); }
+    background-image: url("../data/content/assets/trailhead/card-illo-fbcont.svg"); }
+  .onboardingMessageImage.import {
+    background-image: url("../data/content/assets/trailhead/card-illo-import.svg"); }
   .onboardingMessageImage.ffmonitor {
-    background-image: url("../data/content/assets/trailhead/card-illo-ffmonitor.png"); }
+    background-image: url("../data/content/assets/trailhead/card-illo-ffmonitor.svg"); }
   .onboardingMessageImage.ffsend {
-    background-image: url("../data/content/assets/trailhead/card-illo-ffsend.png"); }
+    background-image: url("../data/content/assets/trailhead/card-illo-ffsend.svg"); }
   .onboardingMessageImage.lockwise {
-    background-image: url("../data/content/assets/trailhead/card-illo-lockwise.png"); }
+    background-image: url("../data/content/assets/trailhead/card-illo-lockwise.svg"); }
   .onboardingMessageImage.mobile {
-    background-image: url("../data/content/assets/trailhead/card-illo-mobile.png"); }
+    background-image: url("../data/content/assets/trailhead/card-illo-mobile.svg"); }
   .onboardingMessageImage.pledge {
-    background-image: url("../data/content/assets/trailhead/card-illo-pledge.png"); }
+    background-image: url("../data/content/assets/trailhead/card-illo-pledge.svg"); }
   .onboardingMessageImage.pocket {
-    background-image: url("../data/content/assets/trailhead/card-illo-pocket.png"); }
+    background-image: url("../data/content/assets/trailhead/card-illo-pocket.svg"); }
   .onboardingMessageImage.private {
-    background-image: url("../data/content/assets/trailhead/card-illo-private.png"); }
+    background-image: url("../data/content/assets/trailhead/card-illo-private.svg"); }
   .onboardingMessageImage.sendtab {
-    background-image: url("../data/content/assets/trailhead/card-illo-sendtab.png"); }
+    background-image: url("../data/content/assets/trailhead/card-illo-sendtab.svg"); }
   .onboardingMessageImage.tracking {
-    background-image: url("../data/content/assets/trailhead/card-illo-tracking.png"); }
+    background-image: url("../data/content/assets/trailhead/card-illo-tracking.svg"); }
 
 .EOYSnippetForm {
   margin: 10px 0 8px;
@@ -4198,11 +4210,13 @@ body[lwt-newtab-brighttext] .scene2Icon .icon-light-theme {
   border-radius: 4px;
   box-shadow: var(--newtab-card-shadow);
   font-size: 13px;
-  padding: 20px; }
+  padding: 20px 40px 60px; }
+  @media (max-width: 865px) {
+    .trailheadCard {
+      padding: 20px 40px; } }
   @media (min-width: 1122px) {
     .trailheadCard {
-      font-size: 15px;
-      padding: 40px; } }
+      font-size: 15px; } }
   .trailheadCard .onboardingTitle {
     font-weight: normal;
     color: var(--newtab-text-primary-color);
@@ -4244,7 +4258,7 @@ body[lwt-newtab-brighttext] .scene2Icon .icon-light-theme {
 .inline-onboarding.activity-stream.welcome {
   overflow-y: hidden; }
 
-.inline-onboarding .modalOverlayInner {
+.inline-onboarding .trailhead.modalOverlayInner {
   position: absolute; }
 
 .inline-onboarding .outer-wrapper {
@@ -4456,8 +4470,7 @@ body[lwt-newtab-brighttext] .scene2Icon .icon-light-theme {
         background: rgba(12, 12, 13, 0.3); }
     .fullpage-wrapper .trailheadCard .onboardingMessageImage {
       height: 112px;
-      width: 154px;
-      background-size: 154px; }
+      width: 154px; }
     @media screen and (max-width: 975px) {
       .fullpage-wrapper .trailheadCard {
         width: 300px; } }

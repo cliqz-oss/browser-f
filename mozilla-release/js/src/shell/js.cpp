@@ -22,6 +22,7 @@
 #include "mozilla/Utf8.h"
 #include "mozilla/Variant.h"
 
+#include <algorithm>
 #include <chrono>
 #ifdef XP_WIN
 #  include <direct.h>
@@ -59,7 +60,6 @@
 #include "jsapi.h"
 #include "jsfriendapi.h"
 #include "jstypes.h"
-#include "jsutil.h"
 #ifndef JS_WITHOUT_NSPR
 #  include "prerror.h"
 #  include "prlink.h"
@@ -471,45 +471,45 @@ struct MOZ_STACK_CLASS EnvironmentPreparer
   void invoke(JS::HandleObject global, Closure& closure) override;
 };
 
-// Shell state set once at startup.
-static bool enableDeferredMode = false;
-static bool enableCodeCoverage = false;
-static bool enableDisassemblyDumps = false;
-static bool offthreadCompilation = false;
-static bool enableAsmJS = false;
-static bool enableWasm = false;
-static bool enableSharedMemory = SHARED_MEMORY_DEFAULT;
-static bool enableWasmBaseline = false;
-static bool enableWasmIon = false;
-static bool enableWasmCranelift = false;
+bool shell::enableDeferredMode = false;
+bool shell::enableCodeCoverage = false;
+bool shell::enableDisassemblyDumps = false;
+bool shell::offthreadCompilation = false;
+bool shell::enableAsmJS = false;
+bool shell::enableWasm = false;
+bool shell::enableSharedMemory = SHARED_MEMORY_DEFAULT;
+bool shell::enableWasmBaseline = false;
+bool shell::enableWasmIon = false;
+bool shell::enableWasmCranelift = false;
 #ifdef ENABLE_WASM_GC
-static bool enableWasmGc = false;
+bool shell::enableWasmGc = false;
 #endif
-static bool enableWasmVerbose = false;
-static bool enableTestWasmAwaitTier2 = false;
-static bool enableAsyncStacks = false;
-static bool enableStreams = false;
-static bool enableReadableByteStreams = false;
-static bool enableBYOBStreamReaders = false;
-static bool enableWritableStreams = false;
-static bool enableFields = false;
-static bool enableAwaitFix = false;
+bool shell::enableWasmVerbose = false;
+bool shell::enableTestWasmAwaitTier2 = false;
+bool shell::enableAsyncStacks = false;
+bool shell::enableStreams = false;
+bool shell::enableReadableByteStreams = false;
+bool shell::enableBYOBStreamReaders = false;
+bool shell::enableWritableStreams = false;
+bool shell::enableFields = false;
+bool shell::enableAwaitFix = false;
+bool shell::enableWeakRefs = false;
 #ifdef JS_GC_ZEAL
-static uint32_t gZealBits = 0;
-static uint32_t gZealFrequency = 0;
+uint32_t shell::gZealBits = 0;
+uint32_t shell::gZealFrequency = 0;
 #endif
-static bool printTiming = false;
-static RCFile* gErrFile = nullptr;
-static RCFile* gOutFile = nullptr;
-static bool reportWarnings = true;
-static bool compileOnly = false;
-static bool fuzzingSafe = false;
-static bool disableOOMFunctions = false;
-static bool defaultToSameCompartment = true;
+bool shell::printTiming = false;
+RCFile* shell::gErrFile = nullptr;
+RCFile* shell::gOutFile = nullptr;
+bool shell::reportWarnings = true;
+bool shell::compileOnly = false;
+bool shell::fuzzingSafe = false;
+bool shell::disableOOMFunctions = false;
+bool shell::defaultToSameCompartment = true;
 
 #ifdef DEBUG
-static bool dumpEntrainedVariables = false;
-static bool OOM_printAllocationCount = false;
+bool shell::dumpEntrainedVariables = false;
+bool shell::OOM_printAllocationCount = false;
 #endif
 
 static bool SetTimeoutValue(JSContext* cx, double t);
@@ -637,7 +637,8 @@ ShellContext::ShellContext(JSContext* cx)
       readLineBufPos(0),
       errFilePtr(nullptr),
       outFilePtr(nullptr),
-      offThreadMonitor(mutexid::ShellOffThreadState) {}
+      offThreadMonitor(mutexid::ShellOffThreadState),
+      finalizationGroupsToCleanUp(cx) {}
 
 ShellContext::~ShellContext() { MOZ_ASSERT(offThreadJobs.empty()); }
 
@@ -910,7 +911,8 @@ static MOZ_MUST_USE bool RunFile(JSContext* cx, const char* filename,
 #if defined(JS_BUILD_BINAST)
 
 static MOZ_MUST_USE bool RunBinAST(JSContext* cx, const char* filename,
-                                   FILE* file, bool compileOnly) {
+                                   FILE* file, bool compileOnly,
+                                   JS::BinASTFormat format) {
   RootedScript script(cx);
 
   {
@@ -919,7 +921,7 @@ static MOZ_MUST_USE bool RunBinAST(JSContext* cx, const char* filename,
         .setIsRunOnce(true)
         .setNoScriptRval(true);
 
-    script = JS::DecodeBinAST(cx, options, file);
+    script = JS::DecodeBinAST(cx, options, file, format);
     if (!script) {
       return false;
     }
@@ -1014,6 +1016,40 @@ static MOZ_MUST_USE bool RunModule(JSContext* cx, const char* filename,
   return JS_CallFunction(cx, nullptr, importFun, args, &value);
 }
 
+static void ShellCleanupFinalizationGroupCallback(JSObject* group, void* data) {
+  // In the browser this queues a task. Shell jobs correspond to microtasks so
+  // we arrange for cleanup to happen after all jobs/microtasks have run.
+  auto sc = static_cast<ShellContext*>(data);
+  AutoEnterOOMUnsafeRegion oomUnsafe;
+  if (!sc->finalizationGroupsToCleanUp.append(group)) {
+    oomUnsafe.crash("ShellCleanupFinalizationGroupCallback");
+  }
+}
+
+static void MaybeRunFinalizationGroupCleanupTasks(JSContext* cx) {
+  ShellContext* sc = GetShellContext(cx);
+  MOZ_ASSERT(!sc->quitting);
+
+  Rooted<ShellContext::ObjectVector> groups(cx);
+  std::swap(groups.get(), sc->finalizationGroupsToCleanUp.get());
+
+  RootedObject group(cx);
+  for (const auto& g : groups) {
+    group = g;
+
+    AutoRealm ar(cx, group);
+
+    {
+      AutoReportException are(cx);
+      mozilla::Unused << JS::CleanupQueuedFinalizationGroup(cx, group);
+    }
+
+    if (sc->quitting) {
+      break;
+    }
+  }
+}
+
 static bool EnqueueJob(JSContext* cx, unsigned argc, Value* vp) {
   CallArgs args = CallArgsFromVp(argc, vp);
 
@@ -1028,6 +1064,22 @@ static bool EnqueueJob(JSContext* cx, unsigned argc, Value* vp) {
   return js::EnqueueJob(cx, job);
 }
 
+static void RunShellJobs(JSContext* cx) {
+  ShellContext* sc = GetShellContext(cx);
+  if (sc->quitting) {
+    return;
+  }
+
+  // Run microtasks.
+  js::RunJobs(cx);
+  if (sc->quitting) {
+    return;
+  }
+
+  // Run tasks (only finalization group clean tasks are possible).
+  MaybeRunFinalizationGroupCleanupTasks(cx);
+}
+
 static bool DrainJobQueue(JSContext* cx, unsigned argc, Value* vp) {
   CallArgs args = CallArgsFromVp(argc, vp);
 
@@ -1037,7 +1089,7 @@ static bool DrainJobQueue(JSContext* cx, unsigned argc, Value* vp) {
     return false;
   }
 
-  js::RunJobs(cx);
+  RunShellJobs(cx);
 
   if (GetShellContext(cx)->quitting) {
     return false;
@@ -1249,7 +1301,7 @@ static bool BindToAsyncStack(JSContext* cx, unsigned argc, Value* vp) {
   return true;
 }
 
-#ifdef ENABLE_INTL_API
+#ifdef JS_HAS_INTL_API
 static bool AddIntlExtras(JSContext* cx, unsigned argc, Value* vp) {
   CallArgs args = CallArgsFromVp(argc, vp);
   if (!args.get(0).isObject()) {
@@ -1283,7 +1335,7 @@ static bool AddIntlExtras(JSContext* cx, unsigned argc, Value* vp) {
   args.rval().setUndefined();
   return true;
 }
-#endif  // ENABLE_INTL_API
+#endif  // JS_HAS_INTL_API
 
 static MOZ_MUST_USE bool EvalUtf8AndPrint(JSContext* cx, const char* bytes,
                                           size_t length, int lineno,
@@ -1402,10 +1454,7 @@ static MOZ_MUST_USE bool ReadEvalPrintLoop(JSContext* cx, FILE* in,
           stderr);
     }
 
-    if (!GetShellContext(cx)->quitting) {
-      js::RunJobs(cx);
-    }
-
+    RunShellJobs(cx);
   } while (!hitEOF && !sc->quitting);
 
   if (gOutFile->isOpen()) {
@@ -1419,7 +1468,8 @@ enum FileKind {
   FileScript,       // UTF-8, directly parsed as such
   FileScriptUtf16,  // FileScript, but inflate to UTF-16 before parsing
   FileModule,
-  FileBinAST
+  FileBinASTMultipart,
+  FileBinASTContext,
 };
 
 static void ReportCantOpenErrorUnknownEncoding(JSContext* cx,
@@ -1473,8 +1523,15 @@ static MOZ_MUST_USE bool Process(JSContext* cx, const char* filename,
         }
         break;
 #if defined(JS_BUILD_BINAST)
-      case FileBinAST:
-        if (!RunBinAST(cx, filename, file, compileOnly)) {
+      case FileBinASTMultipart:
+        if (!RunBinAST(cx, filename, file, compileOnly,
+                       JS::BinASTFormat::Multipart)) {
+          return false;
+        }
+        break;
+      case FileBinASTContext:
+        if (!RunBinAST(cx, filename, file, compileOnly,
+                       JS::BinASTFormat::Context)) {
           return false;
         }
         break;
@@ -2941,37 +2998,6 @@ static bool PCToLine(JSContext* cx, unsigned argc, Value* vp) {
 
 #if defined(DEBUG) || defined(JS_JITSPEW)
 
-static void UpdateSwitchTableBounds(JSContext* cx, HandleScript script,
-                                    unsigned offset, unsigned* start,
-                                    unsigned* end) {
-  jsbytecode* pc;
-  JSOp op;
-  ptrdiff_t jmplen;
-  int32_t low, high, n;
-
-  pc = script->offsetToPC(offset);
-  op = JSOp(*pc);
-  switch (op) {
-    case JSOP_TABLESWITCH:
-      jmplen = JUMP_OFFSET_LEN;
-      pc += jmplen;
-      low = GET_JUMP_OFFSET(pc);
-      pc += JUMP_OFFSET_LEN;
-      high = GET_JUMP_OFFSET(pc);
-      pc += JUMP_OFFSET_LEN;
-      n = high - low + 1;
-      break;
-
-    default:
-      /* [condswitch] switch does not have any jump or lookup tables. */
-      MOZ_ASSERT(op == JSOP_CONDSWITCH);
-      return;
-  }
-
-  *start = script->pcToOffset(pc);
-  *end = *start + (unsigned)(n * jmplen);
-}
-
 static MOZ_MUST_USE bool SrcNotes(JSContext* cx, HandleScript script,
                                   Sprinter* sp) {
   if (!sp->put("\nSource notes:\n") ||
@@ -2985,7 +3011,6 @@ static MOZ_MUST_USE bool SrcNotes(JSContext* cx, HandleScript script,
   unsigned colspan = 0;
   unsigned lineno = script->lineno();
   jssrcnote* notes = script->notes();
-  unsigned switchTableEnd = 0, switchTableStart = 0;
   for (jssrcnote* sn = notes; !SN_IS_TERMINATOR(sn); sn = SN_NEXT(sn)) {
     unsigned delta = SN_DELTA(sn);
     offset += delta;
@@ -2998,13 +3023,6 @@ static MOZ_MUST_USE bool SrcNotes(JSContext* cx, HandleScript script,
 
     switch (type) {
       case SRC_NULL:
-      case SRC_IF:
-      case SRC_IF_ELSE:
-      case SRC_COND:
-      case SRC_CONTINUE:
-      case SRC_BREAK:
-      case SRC_BREAK2LABEL:
-      case SRC_SWITCHBREAK:
       case SRC_ASSIGNOP:
       case SRC_BREAKPOINT:
       case SRC_STEP_SEP:
@@ -3032,9 +3050,8 @@ static MOZ_MUST_USE bool SrcNotes(JSContext* cx, HandleScript script,
 
       case SRC_FOR:
         if (!sp->jsprintf(
-                " cond %u update %u backjump %u",
+                " cond %u backjump %u",
                 unsigned(GetSrcNoteOffset(sn, SrcNote::For::CondOffset)),
-                unsigned(GetSrcNoteOffset(sn, SrcNote::For::UpdateOffset)),
                 unsigned(GetSrcNoteOffset(sn, SrcNote::For::BackJumpOffset)))) {
           return false;
         }
@@ -3059,53 +3076,12 @@ static MOZ_MUST_USE bool SrcNotes(JSContext* cx, HandleScript script,
         break;
 
       case SRC_DO_WHILE:
-        if (!sp->jsprintf(
-                " cond %u backjump %u",
-                unsigned(GetSrcNoteOffset(sn, SrcNote::DoWhile::CondOffset)),
-                unsigned(
-                    GetSrcNoteOffset(sn, SrcNote::DoWhile::BackJumpOffset)))) {
-          return false;
-        }
-        break;
-
-      case SRC_NEXTCASE:
-        if (!sp->jsprintf(" next case offset %u",
+        if (!sp->jsprintf(" backjump %u",
                           unsigned(GetSrcNoteOffset(
-                              sn, SrcNote::NextCase::NextCaseOffset)))) {
+                              sn, SrcNote::DoWhile::BackJumpOffset)))) {
           return false;
         }
         break;
-
-      case SRC_TABLESWITCH: {
-        mozilla::DebugOnly<JSOp> op = JSOp(script->code()[offset]);
-        MOZ_ASSERT(op == JSOP_TABLESWITCH);
-        if (!sp->jsprintf(" end offset %u",
-                          unsigned(GetSrcNoteOffset(
-                              sn, SrcNote::TableSwitch::EndOffset)))) {
-          return false;
-        }
-        UpdateSwitchTableBounds(cx, script, offset, &switchTableStart,
-                                &switchTableEnd);
-        break;
-      }
-      case SRC_CONDSWITCH: {
-        mozilla::DebugOnly<JSOp> op = JSOp(script->code()[offset]);
-        MOZ_ASSERT(op == JSOP_CONDSWITCH);
-        if (!sp->jsprintf(" end offset %u",
-                          unsigned(GetSrcNoteOffset(
-                              sn, SrcNote::CondSwitch::EndOffset)))) {
-          return false;
-        }
-        if (unsigned caseOff = unsigned(
-                GetSrcNoteOffset(sn, SrcNote::CondSwitch::FirstCaseOffset))) {
-          if (!sp->jsprintf(" first case offset %u", caseOff)) {
-            return false;
-          }
-        }
-        UpdateSwitchTableBounds(cx, script, offset, &switchTableStart,
-                                &switchTableEnd);
-        break;
-      }
 
       case SRC_TRY:
         MOZ_ASSERT(JSOp(script->code()[offset]) == JSOP_TRY);
@@ -3652,59 +3628,6 @@ static bool Intern(JSContext* cx, unsigned argc, Value* vp) {
   return true;
 }
 
-static bool Clone(JSContext* cx, unsigned argc, Value* vp) {
-  CallArgs args = CallArgsFromVp(argc, vp);
-
-  if (args.length() == 0) {
-    JS_ReportErrorASCII(cx, "Invalid arguments to clone");
-    return false;
-  }
-
-  RootedObject funobj(cx);
-  {
-    Maybe<JSAutoRealm> ar;
-    RootedObject obj(cx, args[0].isPrimitive() ? nullptr : &args[0].toObject());
-
-    if (obj && obj->is<CrossCompartmentWrapperObject>()) {
-      obj = UncheckedUnwrap(obj);
-      ar.emplace(cx, obj);
-      args[0].setObject(*obj);
-    }
-    if (obj && obj->is<JSFunction>()) {
-      funobj = obj;
-    } else {
-      JSFunction* fun = JS_ValueToFunction(cx, args[0]);
-      if (!fun) {
-        return false;
-      }
-      funobj = JS_GetFunctionObject(fun);
-    }
-  }
-
-  RootedObject env(cx);
-  if (args.length() > 1) {
-    if (!JS_ValueToObject(cx, args[1], &env)) {
-      return false;
-    }
-  } else {
-    env = JS::CurrentGlobalOrNull(cx);
-    MOZ_ASSERT(env);
-  }
-
-  // Should it worry us that we might be getting with wrappers
-  // around with wrappers here?
-  JS::RootedObjectVector envChain(cx);
-  if (env && !env->is<GlobalObject>() && !envChain.append(env)) {
-    return false;
-  }
-  JSObject* clone = JS::CloneFunctionObject(cx, funobj, envChain);
-  if (!clone) {
-    return false;
-  }
-  args.rval().setObject(*clone);
-  return true;
-}
-
 static bool Crash(JSContext* cx, unsigned argc, Value* vp) {
   CallArgs args = CallArgsFromVp(argc, vp);
   if (args.length() == 0) {
@@ -3808,12 +3731,14 @@ static const JSClass sandbox_class = {"sandbox", JSCLASS_GLOBAL_FLAGS,
 static void SetStandardRealmOptions(JS::RealmOptions& options) {
   options.creationOptions()
       .setSharedMemoryAndAtomicsEnabled(enableSharedMemory)
+      .setCoopAndCoepEnabled(false)
       .setStreamsEnabled(enableStreams)
       .setReadableByteStreamsEnabled(enableReadableByteStreams)
       .setBYOBStreamReadersEnabled(enableBYOBStreamReaders)
       .setWritableStreamsEnabled(enableWritableStreams)
       .setFieldsEnabled(enableFields)
-      .setAwaitFixEnabled(enableAwaitFix);
+      .setAwaitFixEnabled(enableAwaitFix)
+      .setWeakRefsEnabled(enableWeakRefs);
   options.behaviors().setDeferredParserAlloc(enableDeferredMode);
 }
 
@@ -4052,6 +3977,9 @@ static void WorkerMain(WorkerInput* input) {
 
   js::UseInternalJobQueues(cx);
 
+  JS::SetHostCleanupFinalizationGroupCallback(
+      cx, ShellCleanupFinalizationGroupCallback, sc);
+
   if (!JS::InitSelfHostedCode(cx)) {
     return;
   }
@@ -4232,7 +4160,7 @@ static bool Sleep_fn(JSContext* cx, unsigned argc, Value* vp) {
       return false;
     }
 
-    duration = TimeDuration::FromSeconds(Max(0.0, t_secs));
+    duration = TimeDuration::FromSeconds(std::max(0.0, t_secs));
     const TimeDuration MAX_TIMEOUT_INTERVAL =
         TimeDuration::FromSeconds(MAX_TIMEOUT_SECONDS);
     if (duration > MAX_TIMEOUT_INTERVAL) {
@@ -5848,8 +5776,9 @@ class AutoPipe {
   }
 };
 
-static int sArgc;
-static char** sArgv;
+int shell::sArgc;
+char** shell::sArgv;
+
 static const char sWasmCompileAndSerializeFlag[] =
     "--wasm-compile-and-serialize";
 static Vector<const char*, 5, js::SystemAllocPolicy> sCompilerProcessFlags;
@@ -6272,6 +6201,13 @@ static bool NewGlobal(JSContext* cx, unsigned argc, Value* vp) {
         return false;
       }
       principals.reset(newPrincipals);
+    }
+
+    if (!JS_GetProperty(cx, opts, "enableCoopAndCoep", &v)) {
+      return false;
+    }
+    if (v.isBoolean()) {
+      creationOptions.setCoopAndCoepEnabled(v.toBoolean());
     }
   }
 
@@ -7244,7 +7180,7 @@ static void BufferStreamMain(BufferStreamJob* job) {
 
     std::this_thread::sleep_for(std::chrono::milliseconds(delayMillis));
 
-    chunkSize = Min(chunkSize, byteLength - byteOffset);
+    chunkSize = std::min(chunkSize, byteLength - byteOffset);
 
     if (!job->consumer->consumeChunk(bytes + byteOffset, chunkSize)) {
       break;
@@ -8459,10 +8395,6 @@ static bool TransplantableObject(JSContext* cx, unsigned argc, Value* vp) {
 
 // clang-format off
 static const JSFunctionSpecWithHelp shell_functions[] = {
-    JS_FN_HELP("clone", Clone, 1, 0,
-"clone(fun[, scope])",
-"  Clone function object."),
-
     JS_FN_HELP("options", Options, 0, 0,
 "options([option ...])",
 "  Get or toggle JavaScript options."),
@@ -9088,7 +9020,7 @@ JS_FN_HELP("parseBin", BinParse, 1, 0,
 "            or only when there are no other JavaScript frames on the stack\n"
 "            below it (false). If omitted, this is treated as 'true'."),
 
-#ifdef ENABLE_INTL_API
+#ifdef JS_HAS_INTL_API
     JS_FN_HELP("addIntlExtras", AddIntlExtras, 1, 0,
 "addIntlExtras(obj)",
 "Adds various not-yet-standardized Intl functions as properties on the\n"
@@ -9096,7 +9028,7 @@ JS_FN_HELP("parseBin", BinParse, 1, 0,
 "functions and their behavior are experimental: don't depend upon them\n"
 "unless you're willing to update your code if these experimental APIs change\n"
 "underneath you."),
-#endif // ENABLE_INTL_API
+#endif // JS_HAS_INTL_API
 
     JS_FN_HELP("wasmCompileInSeparateProcess", WasmCompileInSeparateProcess, 1, 0,
 "wasmCompileInSeparateProcess(buffer)",
@@ -9479,7 +9411,7 @@ static FILE* ErrorFilePointer() {
   return stderr;
 }
 
-static bool PrintStackTrace(JSContext* cx, HandleObject stackObj) {
+bool shell::PrintStackTrace(JSContext* cx, HandleObject stackObj) {
   if (!stackObj || !stackObj->is<SavedFrame>()) {
     return true;
   }
@@ -10113,8 +10045,18 @@ static MOZ_MUST_USE bool ProcessArgs(JSContext* cx, OptionParser* op) {
   MultiStringRange codeChunks = op->getMultiStringOption('e');
   MultiStringRange modulePaths = op->getMultiStringOption('m');
   MultiStringRange binASTPaths(nullptr, nullptr);
+  FileKind binASTFileKind = FileBinASTMultipart;
 #if defined(JS_BUILD_BINAST)
   binASTPaths = op->getMultiStringOption('B');
+  if (const char* str = op->getStringOption("binast-format")) {
+    if (strcmp(str, "multipart") == 0) {
+      binASTFileKind = FileBinASTMultipart;
+    } else if (strcmp(str, "context") == 0) {
+      binASTFileKind = FileBinASTContext;
+    } else {
+      return OptionFailure("binast-format", str);
+    }
+  }
 #endif  // JS_BUILD_BINAST
 
   if (filePaths.empty() && utf16FilePaths.empty() && codeChunks.empty() &&
@@ -10206,7 +10148,7 @@ static MOZ_MUST_USE bool ProcessArgs(JSContext* cx, OptionParser* op) {
     if (baArgno < fpArgno && baArgno < ufpArgno && baArgno < ccArgno &&
         baArgno < mpArgno) {
       char* path = binASTPaths.front();
-      if (!Process(cx, path, false, FileBinAST)) {
+      if (!Process(cx, path, false, binASTFileKind)) {
         return false;
       }
 
@@ -10288,6 +10230,7 @@ static bool SetContextOptions(JSContext* cx, const OptionParser& op) {
   enableWritableStreams = op.getBoolOption("enable-writable-streams");
   enableFields = !op.getBoolOption("disable-experimental-fields");
   enableAwaitFix = op.getBoolOption("enable-experimental-await-fix");
+  enableWeakRefs = op.getBoolOption("enable-weak-refs");
 
   JS::ContextOptionsRef(cx)
       .setAsmJS(enableAsmJS)
@@ -10835,9 +10778,7 @@ static int Shell(JSContext* cx, OptionParser* op, char** envp) {
    * tasks before the main thread JSRuntime is torn down. Drain after
    * uncaught exceptions have been reported since draining runs callbacks.
    */
-  if (!GetShellContext(cx)->quitting) {
-    js::RunJobs(cx);
-  }
+  RunShellJobs(cx);
 
   // Only if there's no other error, report unhandled rejections.
   if (!result && !sc->exitCode) {
@@ -10987,8 +10928,11 @@ int main(int argc, char** argv, char** envp) {
       !op.addMultiStringOption('m', "module", "PATH", "Module path to run") ||
 #if defined(JS_BUILD_BINAST)
       !op.addMultiStringOption('B', "binast", "PATH", "BinAST path to run") ||
+      !op.addStringOption('\0', "binast-format", "[format]",
+                          "Format of BinAST file (multipart/context)") ||
 #else
       !op.addMultiStringOption('B', "binast", "", "No-op") ||
+      !op.addStringOption('\0', "binast-format", "[format]", "No-op") ||
 #endif  // JS_BUILD_BINAST
       !op.addMultiStringOption('e', "execute", "CODE", "Inline code to run") ||
       !op.addBoolOption('i', "shell", "Enter prompt after running code") ||
@@ -11062,6 +11006,7 @@ int main(int argc, char** argv, char** envp) {
                         "Disable public fields in classes") ||
       !op.addBoolOption('\0', "enable-experimental-await-fix",
                         "Enable new, faster await semantics") ||
+      !op.addBoolOption('\0', "enable-weak-refs", "Enable weak references") ||
       !op.addStringOption('\0', "shared-memory", "on/off",
                           "SharedArrayBuffer and Atomics "
 #if SHARED_MEMORY_DEFAULT
@@ -11423,6 +11368,9 @@ int main(int argc, char** argv, char** envp) {
   JS::dbg::SetDebuggerMallocSizeOf(cx, moz_malloc_size_of);
 
   js::UseInternalJobQueues(cx);
+
+  JS::SetHostCleanupFinalizationGroupCallback(
+      cx, ShellCleanupFinalizationGroupCallback, sc.get());
 
   auto shutdownShellThreads = MakeScopeExit([cx] {
     KillWatchdog(cx);

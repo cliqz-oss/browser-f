@@ -1,23 +1,14 @@
 {
   "type": "object",
   "required": [
-    "engineName"
+    "webExtension"
   ],
   "properties": {
-    "engineName": {
-      "type": "string",
-      "title": "Engine Name",
-      "description": "General short name for this engine, only used as an identifier",
-      "pattern": "^[a-zA-Z-]+$"
-    },
     "default": {
       "$ref": "#/definitions/default"
     },
     "defaultPrivate": {
       "$ref": "#/definitions/defaultPrivate"
-    },
-    "application": {
-      "$ref": "#/definitions/application"
     },
     "orderHint": {
       "$ref": "#/definitions/orderHint"
@@ -38,8 +29,11 @@
     "webExtension": {
       "$ref": "#/definitions/webExtension"
     },
-    "codes": {
-      "$ref": "#/definitions/codes"
+    "params": {
+      "$ref": "#/definitions/params"
+    },
+    "extraParams": {
+      "$ref": "#/definitions/extraParams"
     }
   },
   "definitions": {
@@ -57,10 +51,10 @@
             "android"
           ]
         },
-        "branches": {
+        "channel": {
           "type": "array",
-          "title": "Branches",
-          "description": "Which branches this belongs to (not set = everywhere)",
+          "title": "Channel",
+          "description": "Which channel this belongs to (not set = everywhere). For ESR this is also keyed from the display version.",
           "items": {
             "type": "string",
             "enum": [
@@ -106,6 +100,52 @@
         "no"
       ]
     },
+    "extraParams": {
+      "type": "array",
+      "title": "Extra Parameters",
+      "description": "Extra parameters for the search engine (aka MozParams)",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "Name of the parameter that will be used in the search query"
+          },
+          "condition": {
+            "type": "string",
+            "title": "Condition",
+            "description": "The type of parameter (pref or purpose)",
+            "enum": [
+              "pref",
+              "purpose"
+            ]
+          },
+          "purpose": {
+            "type": "string",
+            "title": "Purpose",
+            "description": "The search purpose that triggers this parameter being appended.",
+            "enum": [
+              "searchbar",
+              "keyword",
+              "contextmenu",
+              "homepage",
+              "newtab"
+            ]
+          },
+          "value": {
+            "type": "string",
+            "title": "Value",
+            "description": "If this is a purpose type, the value is used as the value of the parameter in the query"
+          },
+          "pref": {
+            "type": "string",
+            "title": "Preference name",
+            "description": "The preference name to get the value from (i.e. browser.search.param.<preference name>)."
+          }
+        }
+      }
+    },
     "orderHint": {
       "type": "number",
       "title": "Order Hint",
@@ -148,20 +188,38 @@
         }
       }
     },
-    "codes": {
+    "searchUrlCodes": {
       "type": "object",
       "title": "Codes",
-      "description": "Various codes for the search engines",
+      "description": "A map of parameter name to the parameter value.",
+      "additionalProperties": {
+        "type": "string"
+      }
+    },
+    "params": {
+      "type": "object",
+      "title": "Parameters",
+      "description": "Various parameters for the search engines",
       "properties": {
-        "searchUrlGetExtraCodes": {
-          "type": "string",
-          "title": "Search URL Get Extra codes",
-          "description": "Extra params (for SAP codes) for the search URL (e.g. 'pc=foo')."
+        "searchUrlGetParams": {
+          "title": "Search URL GET Parameters",
+          "description": "Extra parameters for search URLs (e.g. 'pc=foo').",
+          "$ref": "#/definitions/searchUrlCodes"
         },
-        "searchFormExtraCodes": {
-          "type": "string",
-          "title": "Search Form Extra codes",
-          "description": "Extra params (for SAP codes) for the search form URL (e.g. 'pc=foo')."
+        "suggestUrlGetParams": {
+          "title": "Suggestion URL GET Parameters",
+          "description": "Extra parameters for search suggestion URLs (e.g. 'pc=foo').",
+          "$ref": "#/definitions/searchUrlCodes"
+        },
+        "searchUrlPostParams": {
+          "title": "Search URL POST Parameters",
+          "description": "Extra parameters for search URLs (e.g. 'pc=foo').",
+          "$ref": "#/definitions/searchUrlCodes"
+        },
+        "suggestUrlPostParams": {
+          "title": "Suggestion URL POST Parameters",
+          "description": "Extra parameters for search suggestion URLs (e.g. 'pc=foo').",
+          "$ref": "#/definitions/searchUrlCodes"
         },
         "sapCodes": {
           "$ref": "#/definitions/sapCodes"
@@ -177,25 +235,25 @@
       "type": "object",
       "title": "WebExtension",
       "dependencies": {
-        "webExtensionId": [
-          "webExtensionVersion"
+        "id": [
+          "version"
         ],
-        "webExtensionVersion": [
-          "webExtensionId"
+        "version": [
+          "id"
         ]
       },
       "properties": {
-        "webExtensionId": {
+        "id": {
           "type": "string",
           "title": "WebExtension Id",
           "description": "The identifier (local part) of the associated WebExtension"
         },
-        "webExtensionVersion": {
+        "version": {
           "type": "string",
           "title": "WebExtension Version",
           "description": "The version of the WebExtension to use"
         },
-        "webExtensionLocale": {
+        "locale": {
           "type": "string",
           "title": "WebExtension Locale",
           "description": "Overrides the WebExtension locales and specifies to use a particular one. Ideally this should only be used when really necessary, otherwise considered deprecated."
@@ -208,9 +266,9 @@
       "description": "Two-letter region codes.",
       "items": {
         "type": "string",
-        "pattern": "^[a-z][a-z]$",
+        "pattern": "^([a-z][a-z]|default)$",
         "minLength": 2,
-        "maxLength": 2
+        "maxLength": 7
       }
     },
     "localeDetails": {
@@ -223,9 +281,8 @@
           "title": "Matches exactly the codes",
           "items": {
             "type": "string",
-            "pattern": "^[a-z][a-z](\\-[A-Z][A-Z])?$",
-            "minLength": 2,
-            "maxLength": 5
+            "pattern": "^([a-z]{2,3}(\\-[a-zA-Z]{2,})?(-macos)?|default)$",
+            "minLength": 2
           }
         },
         "startsWith": {
@@ -233,9 +290,9 @@
           "title": "Matches any code starting with",
           "items": {
             "type": "string",
-            "pattern": "^[a-z][a-z]$",
+            "pattern": "^[a-z]{2,3}$",
             "minLength": 2,
-            "maxLength": 2
+            "maxLength": 3
           }
         }
       }
@@ -298,8 +355,11 @@
         "telemetryId": {
           "$ref": "#/definitions/telemetryId"
         },
-        "codes": {
-          "$ref": "#/definitions/codes"
+        "params": {
+          "$ref": "#/definitions/params"
+        },
+        "extraParams": {
+          "$ref": "#/definitions/extraParams"
         }
       }
     }

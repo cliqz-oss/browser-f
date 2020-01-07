@@ -106,7 +106,7 @@ class VirtualenvManager(object):
 
     def get_exe_info(self):
         """Returns the version and file size of the python executable that was in
-        use when this virutalenv was created.
+        use when this virtualenv was created.
         """
         with open(self.exe_info_path, 'r') as fh:
             version, size = fh.read().splitlines()
@@ -114,7 +114,7 @@ class VirtualenvManager(object):
 
     def write_exe_info(self, python):
         """Records the the version of the python executable that was in use when
-        this virutalenv was created. We record this explicitly because
+        this virtualenv was created. We record this explicitly because
         on OS X our python path may end up being a different or modified
         executable.
         """
@@ -132,7 +132,6 @@ class VirtualenvManager(object):
         # check if virtualenv exists
         if not os.path.exists(self.virtualenv_root) or \
                 not os.path.exists(self.activate_path):
-
             return False
 
         # check modification times
@@ -187,7 +186,10 @@ class VirtualenvManager(object):
                                 stderr=subprocess.STDOUT, **kwargs)
 
         for line in proc.stdout:
-            self.log_handle.write(line)
+            if PY2:
+                self.log_handle.write(line)
+            else:
+                self.log_handle.write(line.decode('UTF-8'))
 
         return proc.wait()
 
@@ -199,7 +201,6 @@ class VirtualenvManager(object):
         write output to.
         """
         env = dict(os.environ)
-        env.pop('PYTHONDONTWRITEBYTECODE', None)
 
         args = [python, self.virtualenv_script_path,
                 # Without this, virtualenv.py may attempt to contact the outside
@@ -379,8 +380,7 @@ class VirtualenvManager(object):
         # configure or a mozconfig activated in the current shell. We trust
         # Python is smart enough to find a proper compiler and to use the
         # proper compiler flags. If it isn't your Python is likely broken.
-        IGNORE_ENV_VARIABLES = ('CC', 'CXX', 'CFLAGS', 'CXXFLAGS', 'LDFLAGS',
-                                'PYTHONDONTWRITEBYTECODE')
+        IGNORE_ENV_VARIABLES = ('CC', 'CXX', 'CFLAGS', 'CXXFLAGS', 'LDFLAGS')
 
         try:
             old_target = os.environ.get('MACOSX_DEPLOYMENT_TARGET', None)
@@ -592,18 +592,20 @@ class VirtualenvManager(object):
         """
         pipenv = os.path.join(self.bin_path, 'pipenv')
         env = os.environ.copy()
-        env.update({
-            b'PIPENV_IGNORE_VIRTUALENVS': b'1',
-            b'WORKON_HOME': str(os.path.normpath(os.path.join(self.topobjdir, '_virtualenvs'))),
-        })
+        env.update(ensure_subprocess_env({
+            'PIPENV_IGNORE_VIRTUALENVS': '1',
+            'WORKON_HOME': str(os.path.normpath(os.path.join(self.topobjdir, '_virtualenvs')))
+        }))
         # On mac, running pipenv with LC_CTYPE set to "UTF-8" (which happens
         # when wrapping with run-task on automation) fails.
         # Unsetting it doesn't really matter for what pipenv does.
         env.pop('LC_CTYPE', None)
 
         if python is not None:
-            env[b'PIPENV_DEFAULT_PYTHON_VERSION'] = str(python)
-            env[b'PIPENV_PYTHON'] = str(python)
+            env.update(ensure_subprocess_env({
+                'PIPENV_DEFAULT_PYTHON_VERSION': str(python),
+                'PIPENV_PYTHON': str(python)
+            }))
 
         def ensure_venv():
             """Create virtual environment if needed and return path"""
@@ -621,16 +623,19 @@ class VirtualenvManager(object):
             """Return path to virtual environment or None"""
             try:
                 return subprocess.check_output(
-                    [pipenv, '--venv'],
-                    stderr=subprocess.STDOUT,
-                    env=env).rstrip()
+                        [pipenv, '--venv'],
+                        stderr=subprocess.STDOUT,
+                        env=env, universal_newlines=True).rstrip()
+
             except subprocess.CalledProcessError:
                 # virtual environment does not exist
                 return None
 
         if pipfile is not None:
             # Install from Pipfile
-            env[b'PIPENV_PIPFILE'] = str(pipfile)
+            env.update(ensure_subprocess_env({
+                'PIPENV_PIPFILE': str(pipfile)
+            }))
             subprocess.check_call([pipenv, 'install'], stderr=subprocess.STDOUT, env=env)
 
         self.virtualenv_root = ensure_venv()
@@ -663,6 +668,56 @@ def verify_python_version(log_handle):
             log_handle.write(UPGRADE_OTHER)
 
         sys.exit(1)
+
+
+def ensure_subprocess_env(env, encoding='utf-8'):
+    """Ensure the environment is in the correct format for the `subprocess`
+    module.
+
+    This method uses the method with same name from mozbuild.utils as
+    virtualenv.py must be a standalone module.
+
+    This will convert all keys and values to bytes on Python 2, and text on
+    Python 3.
+
+    Args:
+        env (dict): Environment to ensure.
+        encoding (str): Encoding to use when converting to/from bytes/text
+                        (default: utf-8).
+    """
+    # We can't import six.ensure_binary() or six.ensure_text() because this module
+    # has to run stand-alone.  Instead we'll implement an abbreviated version of the
+    # checks it does.
+
+    if PY3:
+        text_type = str
+        binary_type = bytes
+    else:
+        text_type = unicode
+        binary_type = str
+
+    def ensure_binary(s):
+        if isinstance(s, text_type):
+            return s.encode(encoding, errors='strict')
+        elif isinstance(s, binary_type):
+            return s
+        else:
+            raise TypeError("not expecting type '%s'" % type(s))
+
+    def ensure_text(s):
+        if isinstance(s, binary_type):
+            return s.decode(encoding, errors='strict')
+        elif isinstance(s, text_type):
+            return s
+        else:
+            raise TypeError("not expecting type '%s'" % type(s))
+
+    ensure = ensure_binary if PY2 else ensure_text
+
+    try:
+        return {ensure(k): ensure(v) for k, v in env.iteritems()}
+    except AttributeError:
+        return {ensure(k): ensure(v) for k, v in env.items()}
 
 
 if __name__ == '__main__':

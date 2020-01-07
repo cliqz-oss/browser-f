@@ -134,12 +134,17 @@ BROWSER_CHROME_MANIFESTS += [
 XPCSHELL_TESTS_MANIFESTS += ['test/unit/xpcshell.ini']
 
 EXTRA_JS_MODULES += [
+<<<<<<< HEAD
+||||||| merged common ancestors
+    'AboutNewTab.jsm',
+=======
+    'AboutNewTab.jsm',
+    'AppUpdater.jsm',
+>>>>>>> e86e1fad9bb754a69bba83334ae55a625468dd48
     'AsyncTabSwitcher.jsm',
     'BrowserUsageTelemetry.jsm',
     'BrowserWindowTracker.jsm',
-    'ContentClick.jsm',
     'ContentCrashHandlers.jsm',
-    'ContentMetaHandler.jsm',
     'ContentObservers.js',
     'ContentSearch.jsm',
     'Discovery.jsm',

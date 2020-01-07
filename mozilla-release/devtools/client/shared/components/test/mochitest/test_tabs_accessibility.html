@@ -16,6 +16,9 @@ Test tabs accessibility.
 <pre id="test">
 <script src="head.js" type="application/javascript"></script>
 <script type="application/javascript">
+
+'use strict'
+
 window.onload = async function () {
   try {
     const ReactDOM = browserRequire("devtools/client/shared/vendor/react-dom");
@@ -55,7 +58,7 @@ window.onload = async function () {
 
     function addTabWithPanel(tabId) {
       // Setup for InspectorTabPanel
-      let panel = document.createElement("div");
+      const panel = document.createElement("div");
       panel.id = `sidebar-${tabId}`;
       document.body.appendChild(panel);
 

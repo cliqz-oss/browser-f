@@ -18,9 +18,6 @@ const QUERYTYPE_AUTOFILL_ORIGIN = 1;
 const QUERYTYPE_AUTOFILL_URL = 2;
 const QUERYTYPE_ADAPTIVE = 3;
 
-// Telemetry probes.
-const TELEMETRY_1ST_RESULT = "PLACES_AUTOCOMPLETE_1ST_RESULT_TIME_MS";
-const TELEMETRY_6_FIRST_RESULTS = "PLACES_AUTOCOMPLETE_6_FIRST_RESULTS_TIME_MS";
 // The default frecency value used when inserting matches with unknown frecency.
 const FRECENCY_DEFAULT = 1000;
 
@@ -520,7 +517,7 @@ function stripHttpAndTrim(spec, trimSlash = true) {
 function makeKeyForMatch(match) {
   // For autofill entries, we need to have a key based on the comment rather
   // than the value field, because the latter may have been trimmed.
-  if (match.hasOwnProperty("style") && match.style.includes("autofill")) {
+  if (match.style && match.style.includes("autofill")) {
     return [stripHttpAndTrim(match.comment), null];
   }
 
@@ -598,6 +595,28 @@ function substringAfter(sourceStr, targetStr) {
 }
 
 /**
+ * Makes a moz-action url for the given action and set of parameters.
+ *
+ * @param   type
+ *          The action type.
+ * @param   params
+ *          A JS object of action params.
+ * @returns A moz-action url as a string.
+ */
+function makeActionUrl(type, params) {
+  let encodedParams = {};
+  for (let key in params) {
+    // Strip null or undefined.
+    // Regardless, don't encode them or they would be converted to a string.
+    if (params[key] === null || params[key] === undefined) {
+      continue;
+    }
+    encodedParams[key] = encodeURIComponent(params[key]);
+  }
+  return `moz-action:${type},${JSON.stringify(encodedParams)}`;
+}
+
+/**
  * Manages a single instance of an autocomplete search.
  *
  * The first three parameters all originate from the similarly named parameters
@@ -656,9 +675,14 @@ function Search(
   this._disablePrivateActions = params.has("disable-private-actions");
   this._inPrivateWindow = params.has("private-window");
   this._prohibitAutoFill = params.has("prohibit-autofill");
+<<<<<<< HEAD
   this._disableTelemetry = params.has("disable-telemetry");
   this._disableAdaptive = params.has("disable-adaptive");
   this._enableAtSearch = params.has("enable-at-search");
+||||||| merged common ancestors
+  this._disableTelemetry = params.has("disable-telemetry");
+=======
+>>>>>>> e86e1fad9bb754a69bba83334ae55a625468dd48
 
   // Extract the max-results param.
   let maxResults = searchParam.match(REGEXP_MAX_RESULTS);
@@ -933,11 +957,6 @@ Search.prototype = {
         conn.interrupt();
       }
     };
-
-    if (!this._disableTelemetry) {
-      TelemetryStopwatch.start(TELEMETRY_1ST_RESULT, this);
-      TelemetryStopwatch.start(TELEMETRY_6_FIRST_RESULTS, this);
-    }
 
     // Since we call the synchronous parseSubmissionURL function later, we must
     // wait for the initialization of PlacesSearchAutocompleteProvider first.
@@ -1364,7 +1383,7 @@ Search.prototype = {
           this._result.setDefaultIndex(0);
           this._addMatch({
             value,
-            finalCompleteValue: PlacesUtils.mozActionURI("searchengine", {
+            finalCompleteValue: makeActionUrl("searchengine", {
               engineName: engine.name,
               alias: aliasPreservingUserCase,
               input: value,
@@ -1673,7 +1692,7 @@ Search.prototype = {
     let value = url;
     if (this._enableActions) {
       style = "action " + style;
-      value = PlacesUtils.mozActionURI("keyword", {
+      value = makeActionUrl("keyword", {
         url,
         keyword,
         input: this._originalSearchString,
@@ -1818,7 +1837,7 @@ Search.prototype = {
     }
 
     this._addMatch({
-      value: PlacesUtils.mozActionURI("extension", {
+      value: makeActionUrl("extension", {
         content,
         keyword: this._heuristicToken,
       }),
@@ -1887,7 +1906,7 @@ Search.prototype = {
       match.type = UrlbarUtils.RESULT_GROUP.SUGGESTION;
     }
 
-    match.value = PlacesUtils.mozActionURI("searchengine", actionURLParams);
+    match.value = makeActionUrl("searchengine", actionURLParams);
     this._addMatch(match);
   },
 
@@ -1946,7 +1965,7 @@ Search.prototype = {
       let match = {
         // We include the deviceName in the action URL so we can render it in
         // the URLBar.
-        value: PlacesUtils.mozActionURI("remotetab", { url, deviceName }),
+        value: makeActionUrl("remotetab", { url, deviceName }),
         comment: title || url,
         style: "action remotetab",
         // we want frecency > FRECENCY_DEFAULT so it doesn't get pushed out
@@ -1990,7 +2009,7 @@ Search.prototype = {
         e.result == Cr.NS_ERROR_MALFORMED_URI &&
         !UrlbarPrefs.get("keyword.enabled")
       ) {
-        let value = PlacesUtils.mozActionURI("visiturl", {
+        let value = makeActionUrl("visiturl", {
           url: searchUrl,
           input: searchUrl,
         });
@@ -2036,7 +2055,7 @@ Search.prototype = {
       escapedURL
     );
 
-    let value = PlacesUtils.mozActionURI("visiturl", {
+    let value = makeActionUrl("visiturl", {
       url: escapedURL,
       input: searchUrl,
     });
@@ -2115,7 +2134,7 @@ Search.prototype = {
     }
 
     // Turn the match into a searchengine action with a favicon.
-    match.value = PlacesUtils.mozActionURI("searchengine", {
+    match.value = makeActionUrl("searchengine", {
       engineName: parseResult.engineName,
       input: parseResult.terms,
       searchQuery: parseResult.terms,
@@ -2175,14 +2194,6 @@ Search.prototype = {
     this._currentMatchCount++;
     this._counts[match.type]++;
 
-    if (!this._disableTelemetry) {
-      if (this._currentMatchCount == 1) {
-        TelemetryStopwatch.finish(TELEMETRY_1ST_RESULT, this);
-      }
-      if (this._currentMatchCount == 6) {
-        TelemetryStopwatch.finish(TELEMETRY_6_FIRST_RESULTS, this);
-      }
-    }
     this.notifyResult(true, match.type == UrlbarUtils.RESULT_GROUP.HEURISTIC);
   },
 
@@ -2474,7 +2485,7 @@ Search.prototype = {
       this.hasBehavior("openpage")
     ) {
       // Actions are enabled and the page is open.  Add a switch-to-tab result.
-      match.value = PlacesUtils.mozActionURI("switchtab", { url: match.value });
+      match.value = makeActionUrl("switchtab", { url: match.value });
       match.style = "action switchtab";
     } else if (
       this.hasBehavior("history") &&
@@ -2981,10 +2992,6 @@ UnifiedComplete.prototype = {
    *        results or not.
    */
   finishSearch(notify = false) {
-    if (!this._disableTelemetry) {
-      TelemetryStopwatch.cancel(TELEMETRY_1ST_RESULT, this);
-      TelemetryStopwatch.cancel(TELEMETRY_6_FIRST_RESULTS, this);
-    }
     // Clear state now to avoid race conditions, see below.
     let search = this._currentSearch;
     if (!search) {

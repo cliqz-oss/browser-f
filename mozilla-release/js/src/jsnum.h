@@ -40,9 +40,8 @@ class StringBuffer;
 
 extern MOZ_MUST_USE bool InitRuntimeNumberState(JSRuntime* rt);
 
-#if !ENABLE_INTL_API
+// This is a no-op if built with JS_HAS_INTL_API.
 extern void FinishRuntimeNumberState(JSRuntime* rt);
-#endif
 
 /* Initialize the Number class, returning its prototype object. */
 extern JSObject* InitNumberClass(JSContext* cx, Handle<GlobalObject*> global);
@@ -68,6 +67,8 @@ extern JSAtom* Int32ToAtom(JSContext* cx, int32_t si);
 
 // ES6 15.7.3.12
 extern bool IsInteger(const Value& val);
+
+extern bool IsInteger(double d);
 
 /*
  * Convert an integer or double (contained in the given value) to a string and
@@ -110,7 +111,7 @@ extern char* NumberToCString(JSContext* cx, ToCStringBuf* cbuf, double d,
  * The largest positive integer such that all positive integers less than it
  * may be precisely represented using the IEEE-754 double-precision format.
  */
-const double DOUBLE_INTEGRAL_PRECISION_LIMIT = uint64_t(1) << 53;
+constexpr double DOUBLE_INTEGRAL_PRECISION_LIMIT = uint64_t(1) << 53;
 
 /*
  * Parse a decimal number encoded in |chars|.  The decimal number must be

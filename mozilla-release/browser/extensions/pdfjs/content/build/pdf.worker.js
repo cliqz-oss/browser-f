@@ -123,8 +123,8 @@ return /******/ (function(modules) { // webpackBootstrap
 "use strict";
 
 
-const pdfjsVersion = '2.4.43';
-const pdfjsBuild = '16ae7c69';
+const pdfjsVersion = '2.4.152';
+const pdfjsBuild = '827eb64b';
 
 const pdfjsCoreWorker = __w_pdfjs_require__(1);
 
@@ -148,15 +148,13 @@ var _primitives = __w_pdfjs_require__(6);
 
 var _pdf_manager = __w_pdfjs_require__(7);
 
-var _is_node = _interopRequireDefault(__w_pdfjs_require__(46));
+var _is_node = __w_pdfjs_require__(46);
 
 var _message_handler = __w_pdfjs_require__(47);
 
 var _worker_stream = __w_pdfjs_require__(48);
 
 var _core_utils = __w_pdfjs_require__(9);
-
-function _interopRequireDefault(obj) { return obj && obj.__esModule ? obj : { default: obj }; }
 
 var WorkerTask = function WorkerTaskClosure() {
   function WorkerTask(name) {
@@ -225,7 +223,7 @@ var WorkerMessageHandler = {
     var WorkerTasks = [];
     const verbosity = (0, _util.getVerbosityLevel)();
     const apiVersion = docParams.apiVersion;
-    const workerVersion = '2.4.43';
+    const workerVersion = '2.4.152';
 
     if (apiVersion !== workerVersion) {
       throw new Error(`The API version "${apiVersion}" does not match ` + `the Worker version "${workerVersion}".`);
@@ -398,28 +396,24 @@ var WorkerMessageHandler = {
         });
       }
 
-      function onFailure(e) {
+      function onFailure(ex) {
         ensureNotTerminated();
 
-        if (e instanceof _util.PasswordException) {
-          var task = new WorkerTask('PasswordException: response ' + e.code);
+        if (ex instanceof _util.PasswordException) {
+          var task = new WorkerTask(`PasswordException: response ${ex.code}`);
           startWorkerTask(task);
-          handler.sendWithPromise('PasswordRequest', e).then(function (data) {
+          handler.sendWithPromise('PasswordRequest', ex).then(function (data) {
             finishWorkerTask(task);
             pdfManager.updatePassword(data.password);
             pdfManagerReady();
-          }).catch(function (boundException) {
+          }).catch(function () {
             finishWorkerTask(task);
-            handler.send('PasswordException', boundException);
-          }.bind(null, e));
-        } else if (e instanceof _util.InvalidPDFException) {
-          handler.send('InvalidPDF', e);
-        } else if (e instanceof _util.MissingPDFException) {
-          handler.send('MissingPDF', e);
-        } else if (e instanceof _util.UnexpectedResponseException) {
-          handler.send('UnexpectedResponse', e);
+            handler.send('DocException', ex);
+          });
+        } else if (ex instanceof _util.InvalidPDFException || ex instanceof _util.MissingPDFException || ex instanceof _util.UnexpectedResponseException || ex instanceof _util.UnknownErrorException) {
+          handler.send('DocException', ex);
         } else {
-          handler.send('UnknownError', new _util.UnknownErrorException(e.message, e.toString()));
+          handler.send('DocException', new _util.UnknownErrorException(ex.message, ex.toString()));
         }
       }
 
@@ -655,7 +649,7 @@ function isMessagePort(maybePort) {
   return typeof maybePort.postMessage === 'function' && 'onmessage' in maybePort;
 }
 
-if (typeof window === 'undefined' && !(0, _is_node.default)() && typeof self !== 'undefined' && isMessagePort(self)) {
+if (typeof window === 'undefined' && !_is_node.isNodeJS && typeof self !== 'undefined' && isMessagePort(self)) {
   WorkerMessageHandler.initializeFromPort(self);
 }
 
@@ -1393,6 +1387,10 @@ function stringToPDFString(str) {
     for (let i = 2; i < length; i += 2) {
       strBuf.push(String.fromCharCode(str.charCodeAt(i) << 8 | str.charCodeAt(i + 1)));
     }
+  } else if (str[0] === '\xFF' && str[1] === '\xFE') {
+    for (let i = 2; i < length; i += 2) {
+      strBuf.push(String.fromCharCode(str.charCodeAt(i + 1) << 8 | str.charCodeAt(i)));
+    }
   } else {
     for (let i = 0; i < length; ++i) {
       const code = PDFStringTranslateTable[str.charCodeAt(i)];
@@ -1508,7 +1506,9 @@ exports.createObjectURL = createObjectURL;
 "use strict";
 
 
-const globalScope = __w_pdfjs_require__(4);
+const {
+  globalScope
+} = __w_pdfjs_require__(4);
 
 ;
 
@@ -1519,7 +1519,12 @@ const globalScope = __w_pdfjs_require__(4);
 "use strict";
 
 
-module.exports = typeof window !== 'undefined' && window.Math === Math ? window : typeof global !== 'undefined' && global.Math === Math ? global : typeof self !== 'undefined' && self.Math === Math ? self : {};
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.globalScope = void 0;
+const globalScope = typeof window !== 'undefined' && window.Math === Math ? window : typeof global !== 'undefined' && global.Math === Math ? global : typeof self !== 'undefined' && self.Math === Math ? self : {};
+exports.globalScope = globalScope;
 
 /***/ }),
 /* 5 */
@@ -2277,7 +2282,11 @@ class ChunkedStream {
 
   peekByte() {
     const peekedByte = this.getByte();
-    this.pos--;
+
+    if (peekedByte !== -1) {
+      this.pos--;
+    }
+
     return peekedByte;
   }
 
@@ -2347,6 +2356,14 @@ class ChunkedStream {
       }
 
       return missingChunks;
+    };
+
+    ChunkedStreamSubstream.prototype.allChunksLoaded = function () {
+      if (this.numChunksLoaded === this.numChunks) {
+        return true;
+      }
+
+      return this.getMissingChunks().length === 0;
     };
 
     const subStream = new ChunkedStreamSubstream();
@@ -3222,7 +3239,7 @@ class PDFDocument {
       stream.reset();
 
       if (find(stream, 'endobj', 1024)) {
-        startXRef = stream.pos + 6;
+        startXRef = stream.pos + 6 - stream.start;
       }
     } else {
       const step = 1024;
@@ -3483,8 +3500,6 @@ var _primitives = __w_pdfjs_require__(6);
 var _parser = __w_pdfjs_require__(12);
 
 var _core_utils = __w_pdfjs_require__(9);
-
-var _chunked_stream = __w_pdfjs_require__(8);
 
 var _crypto = __w_pdfjs_require__(23);
 
@@ -4927,7 +4942,7 @@ var XRef = function XRefClosure() {
           const num = m[1] | 0,
                 gen = m[2] | 0;
 
-          if (typeof this.entries[num] === 'undefined') {
+          if (!this.entries[num] || this.entries[num].gen === gen) {
             this.entries[num] = {
               offset: position - stream.start,
               gen,
@@ -5574,12 +5589,12 @@ exports.FileSpec = FileSpec;
 
 let ObjectLoader = function () {
   function mayHaveChildren(value) {
-    return (0, _primitives.isRef)(value) || (0, _primitives.isDict)(value) || Array.isArray(value) || (0, _primitives.isStream)(value);
+    return value instanceof _primitives.Ref || value instanceof _primitives.Dict || Array.isArray(value) || (0, _primitives.isStream)(value);
   }
 
   function addChildren(node, nodesToVisit) {
-    if ((0, _primitives.isDict)(node) || (0, _primitives.isStream)(node)) {
-      let dict = (0, _primitives.isDict)(node) ? node : node.dict;
+    if (node instanceof _primitives.Dict || (0, _primitives.isStream)(node)) {
+      let dict = node instanceof _primitives.Dict ? node : node.dict;
       let dictKeys = dict.getKeys();
 
       for (let i = 0, ii = dictKeys.length; i < ii; i++) {
@@ -5605,16 +5620,12 @@ let ObjectLoader = function () {
     this.keys = keys;
     this.xref = xref;
     this.refSet = null;
-    this.capability = null;
   }
 
   ObjectLoader.prototype = {
-    load() {
-      this.capability = (0, _util.createPromiseCapability)();
-
-      if (!(this.xref.stream instanceof _chunked_stream.ChunkedStream) || this.xref.stream.getMissingChunks().length === 0) {
-        this.capability.resolve();
-        return this.capability.promise;
+    async load() {
+      if (!this.xref.stream.allChunksLoaded || this.xref.stream.allChunksLoaded()) {
+        return undefined;
       }
 
       let {
@@ -5632,19 +5643,17 @@ let ObjectLoader = function () {
         }
       }
 
-      this._walk(nodesToVisit);
-
-      return this.capability.promise;
+      return this._walk(nodesToVisit);
     },
 
-    _walk(nodesToVisit) {
+    async _walk(nodesToVisit) {
       let nodesToRevisit = [];
       let pendingRequests = [];
 
       while (nodesToVisit.length) {
         let currentNode = nodesToVisit.pop();
 
-        if ((0, _primitives.isRef)(currentNode)) {
+        if (currentNode instanceof _primitives.Ref) {
           if (this.refSet.has(currentNode)) {
             continue;
           }
@@ -5672,7 +5681,7 @@ let ObjectLoader = function () {
           for (let i = 0, ii = baseStreams.length; i < ii; i++) {
             let stream = baseStreams[i];
 
-            if (stream.getMissingChunks && stream.getMissingChunks().length) {
+            if (stream.allChunksLoaded && !stream.allChunksLoaded()) {
               foundMissingData = true;
               pendingRequests.push({
                 begin: stream.start,
@@ -5690,22 +5699,21 @@ let ObjectLoader = function () {
       }
 
       if (pendingRequests.length) {
-        this.xref.stream.manager.requestRanges(pendingRequests).then(() => {
-          for (let i = 0, ii = nodesToRevisit.length; i < ii; i++) {
-            let node = nodesToRevisit[i];
+        await this.xref.stream.manager.requestRanges(pendingRequests);
 
-            if ((0, _primitives.isRef)(node)) {
-              this.refSet.remove(node);
-            }
+        for (let i = 0, ii = nodesToRevisit.length; i < ii; i++) {
+          let node = nodesToRevisit[i];
+
+          if (node instanceof _primitives.Ref) {
+            this.refSet.remove(node);
           }
+        }
 
-          this._walk(nodesToRevisit);
-        }, this.capability.reject);
-        return;
+        return this._walk(nodesToRevisit);
       }
 
       this.refSet = null;
-      this.capability.resolve();
+      return undefined;
     }
 
   };
@@ -7078,7 +7086,11 @@ var Stream = function StreamClosure() {
 
     peekByte: function Stream_peekByte() {
       var peekedByte = this.getByte();
-      this.pos--;
+
+      if (peekedByte !== -1) {
+        this.pos--;
+      }
+
       return peekedByte;
     },
 
@@ -7241,7 +7253,11 @@ var DecodeStream = function DecodeStreamClosure() {
 
     peekByte: function DecodeStream_peekByte() {
       var peekedByte = this.getByte();
-      this.pos--;
+
+      if (peekedByte !== -1) {
+        this.pos--;
+      }
+
       return peekedByte;
     },
 
@@ -7512,9 +7528,9 @@ var FlateStream = function FlateStreamClosure() {
 
       this.codeBuf = 0;
       this.codeSize = 0;
-      var bufferLength = this.bufferLength;
-      buffer = this.ensureBuffer(bufferLength + blockLen);
-      var end = bufferLength + blockLen;
+      const bufferLength = this.bufferLength,
+            end = bufferLength + blockLen;
+      buffer = this.ensureBuffer(end);
       this.bufferLength = end;
 
       if (blockLen === 0) {
@@ -7522,13 +7538,11 @@ var FlateStream = function FlateStreamClosure() {
           this.eof = true;
         }
       } else {
-        for (var n = bufferLength; n < end; ++n) {
-          if ((b = str.getByte()) === -1) {
-            this.eof = true;
-            break;
-          }
+        const block = str.getBytes(blockLen);
+        buffer.set(block, bufferLength);
 
-          buffer[n] = b;
+        if (block.length < blockLen) {
+          this.eof = true;
         }
       }
 
@@ -19898,8 +19912,25 @@ var PartialEvaluator = function PartialEvaluatorClosure() {
     }
   };
 
-  function normalizeBlendMode(value) {
+  function normalizeBlendMode(value, parsingArray = false) {
+    if (Array.isArray(value)) {
+      for (let i = 0, ii = value.length; i < ii; i++) {
+        const maybeBM = normalizeBlendMode(value[i], true);
+
+        if (maybeBM) {
+          return maybeBM;
+        }
+      }
+
+      (0, _util.warn)(`Unsupported blend mode Array: ${value}`);
+      return 'source-over';
+    }
+
     if (!(0, _primitives.isName)(value)) {
+      if (parsingArray) {
+        return null;
+      }
+
       return 'source-over';
     }
 
@@ -19954,7 +19985,11 @@ var PartialEvaluator = function PartialEvaluatorClosure() {
         return 'luminosity';
     }
 
-    (0, _util.warn)('Unsupported blend mode: ' + value.name);
+    if (parsingArray) {
+      return null;
+    }
+
+    (0, _util.warn)(`Unsupported blend mode: ${value.name}`);
     return 'source-over';
   }
 
@@ -20009,10 +20044,22 @@ var PartialEvaluator = function PartialEvaluatorClosure() {
               processed[graphicState.objId] = true;
             }
 
-            var bm = graphicState.get('BM');
+            const bm = graphicState.get('BM');
 
-            if (bm instanceof _primitives.Name && bm.name !== 'Normal') {
-              return true;
+            if (bm instanceof _primitives.Name) {
+              if (bm.name !== 'Normal') {
+                return true;
+              }
+
+              continue;
+            }
+
+            if (bm !== undefined && Array.isArray(bm)) {
+              for (let j = 0, jj = bm.length; j < jj; j++) {
+                if (bm[j] instanceof _primitives.Name && bm[j].name !== 'Normal') {
+                  return true;
+                }
+              }
             }
           }
         }
@@ -20063,7 +20110,8 @@ var PartialEvaluator = function PartialEvaluatorClosure() {
 
       return false;
     },
-    buildFormXObject: function PartialEvaluator_buildFormXObject(resources, xobj, smask, operatorList, task, initialState) {
+
+    async buildFormXObject(resources, xobj, smask, operatorList, task, initialState) {
       var dict = xobj.dict;
       var matrix = dict.getArray('Matrix');
       var bbox = dict.getArray('BBox');
@@ -20092,13 +20140,10 @@ var PartialEvaluator = function PartialEvaluatorClosure() {
           groupOptions.knockout = group.get('K') || false;
 
           if (group.has('CS')) {
-            colorSpace = group.get('CS');
-
-            if (colorSpace) {
-              colorSpace = _colorspace.ColorSpace.parse(colorSpace, this.xref, resources, this.pdfFunctionFactory);
-            } else {
-              (0, _util.warn)('buildFormXObject - invalid/non-existent Group /CS entry: ' + group.getRaw('CS'));
-            }
+            colorSpace = await this.parseColorSpace({
+              cs: group.get('CS'),
+              resources
+            });
           }
         }
 
@@ -20645,6 +20690,29 @@ var PartialEvaluator = function PartialEvaluatorClosure() {
       }
     },
 
+    parseColorSpace({
+      cs,
+      resources
+    }) {
+      return new Promise(resolve => {
+        resolve(_colorspace.ColorSpace.parse(cs, this.xref, resources, this.pdfFunctionFactory));
+      }).catch(reason => {
+        if (reason instanceof _util.AbortException) {
+          return null;
+        }
+
+        if (this.options.ignoreErrors) {
+          this.handler.send('UnsupportedFeature', {
+            featureId: _util.UNSUPPORTED_FEATURES.unknown
+          });
+          (0, _util.warn)(`parseColorSpace - ignoring ColorSpace: "${reason}".`);
+          return null;
+        }
+
+        throw reason;
+      });
+    },
+
     async handleColorN(operatorList, fn, args, cs, patterns, resources, task) {
       var patternName = args[args.length - 1];
       var pattern;
@@ -20887,12 +20955,26 @@ var PartialEvaluator = function PartialEvaluatorClosure() {
               break;
 
             case _util.OPS.setFillColorSpace:
-              stateManager.state.fillColorSpace = _colorspace.ColorSpace.parse(args[0], xref, resources, self.pdfFunctionFactory);
-              continue;
+              next(self.parseColorSpace({
+                cs: args[0],
+                resources
+              }).then(function (colorSpace) {
+                if (colorSpace) {
+                  stateManager.state.fillColorSpace = colorSpace;
+                }
+              }));
+              return;
 
             case _util.OPS.setStrokeColorSpace:
-              stateManager.state.strokeColorSpace = _colorspace.ColorSpace.parse(args[0], xref, resources, self.pdfFunctionFactory);
-              continue;
+              next(self.parseColorSpace({
+                cs: args[0],
+                resources
+              }).then(function (colorSpace) {
+                if (colorSpace) {
+                  stateManager.state.strokeColorSpace = colorSpace;
+                }
+              }));
+              return;
 
             case _util.OPS.setFillColor:
               cs = stateManager.state.fillColorSpace;
@@ -25029,8 +25111,8 @@ var Font = function FontClosure() {
       this.remeasure = Object.keys(this.widths).length > 0;
 
       if (isStandardFont && type === 'CIDFontType2' && this.cidEncoding.startsWith('Identity-')) {
-        var GlyphMapForStandardFonts = (0, _standard_fonts.getGlyphMapForStandardFonts)();
-        var map = [];
+        const GlyphMapForStandardFonts = (0, _standard_fonts.getGlyphMapForStandardFonts)();
+        const map = [];
 
         for (charCode in GlyphMapForStandardFonts) {
           map[+charCode] = GlyphMapForStandardFonts[charCode];
@@ -25071,7 +25153,8 @@ var Font = function FontClosure() {
       } else if (isStandardFont) {
         this.toFontChar = buildToFontChar(this.defaultEncoding, (0, _glyphlist.getGlyphsUnicode)(), this.differences);
       } else {
-        var glyphsUnicodeMap = (0, _glyphlist.getGlyphsUnicode)();
+        const glyphsUnicodeMap = (0, _glyphlist.getGlyphsUnicode)();
+        const map = [];
         this.toUnicode.forEach((charCode, unicodeCharCode) => {
           if (!this.composite) {
             var glyphName = this.differences[charCode] || this.defaultEncoding[charCode];
@@ -25082,8 +25165,20 @@ var Font = function FontClosure() {
             }
           }
 
-          this.toFontChar[charCode] = unicodeCharCode;
+          map[+charCode] = unicodeCharCode;
         });
+
+        if (this.composite && this.toUnicode instanceof IdentityToUnicodeMap) {
+          if (/Verdana/i.test(name)) {
+            const GlyphMapForStandardFonts = (0, _standard_fonts.getGlyphMapForStandardFonts)();
+
+            for (charCode in GlyphMapForStandardFonts) {
+              map[+charCode] = GlyphMapForStandardFonts[charCode];
+            }
+          }
+        }
+
+        this.toFontChar = map;
       }
 
       this.loadedName = fontName.split('-')[0];
@@ -25620,9 +25715,8 @@ var Font = function FontClosure() {
         }
 
         var numGlyphsOut = dupFirstEntry ? numGlyphs + 1 : numGlyphs;
-        var locaData = loca.data;
         var locaDataSize = itemSize * (1 + numGlyphsOut);
-        locaData = new Uint8Array(locaDataSize);
+        var locaData = new Uint8Array(locaDataSize);
         locaData.set(loca.data.subarray(0, locaDataSize));
         loca.data = locaData;
         var oldGlyfData = glyf.data;
@@ -44652,9 +44746,12 @@ exports.PDFImage = PDFImage;
 "use strict";
 
 
-module.exports = function isNodeJS() {
-  return typeof process === 'object' && process + '' === '[object process]' && !process.versions['nw'] && !process.versions['electron'];
-};
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.isNodeJS = void 0;
+const isNodeJS = typeof process === 'object' && process + '' === '[object process]' && !process.versions['nw'] && !process.versions['electron'];
+exports.isNodeJS = isNodeJS;
 
 /***/ }),
 /* 47 */
@@ -44666,10 +44763,15 @@ module.exports = function isNodeJS() {
 Object.defineProperty(exports, "__esModule", {
   value: true
 });
-exports.MessageHandler = MessageHandler;
+exports.MessageHandler = void 0;
 
 var _util = __w_pdfjs_require__(2);
 
+const CallbackKind = {
+  UNKNOWN: 0,
+  DATA: 1,
+  ERROR: 2
+};
 const StreamKind = {
   UNKNOWN: 0,
   CANCEL: 1,
@@ -44705,55 +44807,69 @@ function wrapReason(reason) {
   }
 }
 
-function MessageHandler(sourceName, targetName, comObj) {
-  this.sourceName = sourceName;
-  this.targetName = targetName;
-  this.comObj = comObj;
-  this.callbackId = 1;
-  this.streamId = 1;
-  this.postMessageTransfers = true;
-  this.streamSinks = Object.create(null);
-  this.streamControllers = Object.create(null);
-  let callbacksCapabilities = this.callbacksCapabilities = Object.create(null);
-  let ah = this.actionHandler = Object.create(null);
+class MessageHandler {
+  constructor(sourceName, targetName, comObj) {
+    this.sourceName = sourceName;
+    this.targetName = targetName;
+    this.comObj = comObj;
+    this.callbackId = 1;
+    this.streamId = 1;
+    this.postMessageTransfers = true;
+    this.streamSinks = Object.create(null);
+    this.streamControllers = Object.create(null);
+    this.callbackCapabilities = Object.create(null);
+    this.actionHandler = Object.create(null);
 
-  this._onComObjOnMessage = event => {
-    let data = event.data;
+    this._onComObjOnMessage = event => {
+      const data = event.data;
 
-    if (data.targetName !== this.sourceName) {
-      return;
-    }
-
-    if (data.stream) {
-      this._processStreamMessage(data);
-    } else if (data.isReply) {
-      let callbackId = data.callbackId;
-
-      if (data.callbackId in callbacksCapabilities) {
-        let callback = callbacksCapabilities[callbackId];
-        delete callbacksCapabilities[callbackId];
-
-        if ('reason' in data) {
-          callback.reject(wrapReason(data.reason));
-        } else {
-          callback.resolve(data.data);
-        }
-      } else {
-        throw new Error(`Cannot resolve callback ${callbackId}`);
+      if (data.targetName !== this.sourceName) {
+        return;
       }
-    } else if (data.action in ah) {
-      let action = ah[data.action];
+
+      if (data.stream) {
+        this._processStreamMessage(data);
+
+        return;
+      }
+
+      if (data.callback) {
+        const callbackId = data.callbackId;
+        const capability = this.callbackCapabilities[callbackId];
+
+        if (!capability) {
+          throw new Error(`Cannot resolve callback ${callbackId}`);
+        }
+
+        delete this.callbackCapabilities[callbackId];
+
+        if (data.callback === CallbackKind.DATA) {
+          capability.resolve(data.data);
+        } else if (data.callback === CallbackKind.ERROR) {
+          capability.reject(wrapReason(data.reason));
+        } else {
+          throw new Error('Unexpected callback case');
+        }
+
+        return;
+      }
+
+      const action = this.actionHandler[data.action];
+
+      if (!action) {
+        throw new Error(`Unknown action from worker: ${data.action}`);
+      }
 
       if (data.callbackId) {
-        let sourceName = this.sourceName;
-        let targetName = data.sourceName;
+        const sourceName = this.sourceName;
+        const targetName = data.sourceName;
         new Promise(function (resolve) {
           resolve(action(data.data));
         }).then(function (result) {
           comObj.postMessage({
             sourceName,
             targetName,
-            isReply: true,
+            callback: CallbackKind.DATA,
             callbackId: data.callbackId,
             data: result
           });
@@ -44761,51 +44877,52 @@ function MessageHandler(sourceName, targetName, comObj) {
           comObj.postMessage({
             sourceName,
             targetName,
-            isReply: true,
+            callback: CallbackKind.ERROR,
             callbackId: data.callbackId,
             reason: wrapReason(reason)
           });
         });
-      } else if (data.streamId) {
-        this._createStreamSink(data);
-      } else {
-        action(data.data);
+        return;
       }
-    } else {
-      throw new Error(`Unknown action from worker: ${data.action}`);
-    }
-  };
 
-  comObj.addEventListener('message', this._onComObjOnMessage);
-}
+      if (data.streamId) {
+        this._createStreamSink(data);
 
-MessageHandler.prototype = {
+        return;
+      }
+
+      action(data.data);
+    };
+
+    comObj.addEventListener('message', this._onComObjOnMessage);
+  }
+
   on(actionName, handler) {
-    var ah = this.actionHandler;
+    const ah = this.actionHandler;
 
     if (ah[actionName]) {
       throw new Error(`There is already an actionName called "${actionName}"`);
     }
 
     ah[actionName] = handler;
-  },
+  }
 
   send(actionName, data, transfers) {
-    this.postMessage({
+    this._postMessage({
       sourceName: this.sourceName,
       targetName: this.targetName,
       action: actionName,
       data
     }, transfers);
-  },
+  }
 
   sendWithPromise(actionName, data, transfers) {
-    var callbackId = this.callbackId++;
-    var capability = (0, _util.createPromiseCapability)();
-    this.callbacksCapabilities[callbackId] = capability;
+    const callbackId = this.callbackId++;
+    const capability = (0, _util.createPromiseCapability)();
+    this.callbackCapabilities[callbackId] = capability;
 
     try {
-      this.postMessage({
+      this._postMessage({
         sourceName: this.sourceName,
         targetName: this.targetName,
         action: actionName,
@@ -44817,16 +44934,16 @@ MessageHandler.prototype = {
     }
 
     return capability.promise;
-  },
+  }
 
   sendWithStream(actionName, data, queueingStrategy, transfers) {
-    let streamId = this.streamId++;
-    let sourceName = this.sourceName;
-    let targetName = this.targetName;
+    const streamId = this.streamId++;
+    const sourceName = this.sourceName;
+    const targetName = this.targetName;
     const comObj = this.comObj;
     return new _util.ReadableStream({
       start: controller => {
-        let startCapability = (0, _util.createPromiseCapability)();
+        const startCapability = (0, _util.createPromiseCapability)();
         this.streamControllers[streamId] = {
           controller,
           startCall: startCapability,
@@ -44834,7 +44951,8 @@ MessageHandler.prototype = {
           cancelCall: null,
           isClosed: false
         };
-        this.postMessage({
+
+        this._postMessage({
           sourceName,
           targetName,
           action: actionName,
@@ -44842,10 +44960,11 @@ MessageHandler.prototype = {
           data,
           desiredSize: controller.desiredSize
         }, transfers);
+
         return startCapability.promise;
       },
       pull: controller => {
-        let pullCapability = (0, _util.createPromiseCapability)();
+        const pullCapability = (0, _util.createPromiseCapability)();
         this.streamControllers[streamId].pullCall = pullCapability;
         comObj.postMessage({
           sourceName,
@@ -44858,7 +44977,7 @@ MessageHandler.prototype = {
       },
       cancel: reason => {
         (0, _util.assert)(reason instanceof Error, 'cancel must have a valid reason');
-        let cancelCapability = (0, _util.createPromiseCapability)();
+        const cancelCapability = (0, _util.createPromiseCapability)();
         this.streamControllers[streamId].cancelCall = cancelCapability;
         this.streamControllers[streamId].isClosed = true;
         comObj.postMessage({
@@ -44871,24 +44990,22 @@ MessageHandler.prototype = {
         return cancelCapability.promise;
       }
     }, queueingStrategy);
-  },
+  }
 
   _createStreamSink(data) {
-    let self = this;
-    let action = this.actionHandler[data.action];
-    let streamId = data.streamId;
-    let desiredSize = data.desiredSize;
-    let sourceName = this.sourceName;
-    let targetName = data.sourceName;
-    let capability = (0, _util.createPromiseCapability)();
+    const self = this;
+    const action = this.actionHandler[data.action];
+    const streamId = data.streamId;
+    const sourceName = this.sourceName;
+    const targetName = data.sourceName;
     const comObj = this.comObj;
-    let streamSink = {
+    const streamSink = {
       enqueue(chunk, size = 1, transfers) {
         if (this.isCancelled) {
           return;
         }
 
-        let lastDesiredSize = this.desiredSize;
+        const lastDesiredSize = this.desiredSize;
         this.desiredSize -= size;
 
         if (lastDesiredSize > 0 && this.desiredSize <= 0) {
@@ -44896,7 +45013,7 @@ MessageHandler.prototype = {
           this.ready = this.sinkCapability.promise;
         }
 
-        self.postMessage({
+        self._postMessage({
           sourceName,
           targetName,
           stream: StreamKind.ENQUEUE,
@@ -44937,11 +45054,11 @@ MessageHandler.prototype = {
         });
       },
 
-      sinkCapability: capability,
+      sinkCapability: (0, _util.createPromiseCapability)(),
       onPull: null,
       onCancel: null,
       isCancelled: false,
-      desiredSize,
+      desiredSize: data.desiredSize,
       ready: null
     };
     streamSink.sinkCapability.resolve();
@@ -44966,12 +45083,12 @@ MessageHandler.prototype = {
         reason: wrapReason(reason)
       });
     });
-  },
+  }
 
   _processStreamMessage(data) {
-    let sourceName = this.sourceName;
-    let targetName = data.sourceName;
     const streamId = data.streamId;
+    const sourceName = this.sourceName;
+    const targetName = data.sourceName;
     const comObj = this.comObj;
 
     switch (data.stream) {
@@ -45112,28 +45229,30 @@ MessageHandler.prototype = {
       default:
         throw new Error('Unexpected stream case');
     }
-  },
+  }
 
   async _deleteStreamController(streamId) {
     await Promise.all([this.streamControllers[streamId].startCall, this.streamControllers[streamId].pullCall, this.streamControllers[streamId].cancelCall].map(function (capability) {
       return capability && capability.promise.catch(function () {});
     }));
     delete this.streamControllers[streamId];
-  },
+  }
 
-  postMessage(message, transfers) {
+  _postMessage(message, transfers) {
     if (transfers && this.postMessageTransfers) {
       this.comObj.postMessage(message, transfers);
     } else {
       this.comObj.postMessage(message);
     }
-  },
+  }
 
   destroy() {
     this.comObj.removeEventListener('message', this._onComObjOnMessage);
   }
 
-};
+}
+
+exports.MessageHandler = MessageHandler;
 
 /***/ }),
 /* 48 */

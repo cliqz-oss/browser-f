@@ -24,14 +24,13 @@
 #include "nsISecureBrowserUI.h"
 #include "nsIWebProgressListener.h"
 #include "mozilla/AntiTrackingCommon.h"
+#include "mozilla/dom/BrowserChild.h"
 #include "mozilla/dom/ContentFrameMessageManager.h"
 #include "mozilla/dom/EventTarget.h"
 #include "mozilla/dom/LocalStorage.h"
 #include "mozilla/dom/LSObject.h"
 #include "mozilla/dom/Storage.h"
 #include "mozilla/dom/MaybeCrossOriginObject.h"
-#include "mozilla/dom/MediaController.h"
-#include "mozilla/dom/MediaControlUtils.h"
 #include "mozilla/dom/Performance.h"
 #include "mozilla/dom/StorageEvent.h"
 #include "mozilla/dom/StorageEventBinding.h"
@@ -100,6 +99,7 @@
 #include "mozilla/PresShell.h"
 #include "mozilla/ProcessHangMonitor.h"
 #include "mozilla/StaticPrefs_dom.h"
+#include "mozilla/StaticPrefs_fission.h"
 #include "mozilla/ThrottledEventQueue.h"
 #include "AudioChannelService.h"
 #include "nsAboutProtocolUtils.h"
@@ -154,7 +154,7 @@
 #include "mozilla/EventStateManager.h"
 #include "nsIObserverService.h"
 #include "nsFocusManager.h"
-#include "nsIXULWindow.h"
+#include "nsIAppWindow.h"
 #include "nsITimedChannel.h"
 #include "nsServiceManagerUtils.h"
 #include "mozilla/dom/CustomEvent.h"
@@ -178,10 +178,6 @@
 #include "nsIDOMXULCommandDispatcher.h"
 
 #include "mozilla/GlobalKeyListener.h"
-#ifdef MOZ_XBL
-#  include "nsBindingManager.h"
-#  include "nsXBLService.h"
-#endif
 
 #include "nsIDragService.h"
 #include "mozilla/dom/Element.h"
@@ -200,6 +196,8 @@
 #include "mozilla/dom/GamepadManager.h"
 
 #include "gfxVR.h"
+#include "VRShMem.h"
+#include "FxRWindowManager.h"
 #include "mozilla/dom/VRDisplay.h"
 #include "mozilla/dom/VRDisplayEvent.h"
 #include "mozilla/dom/VRDisplayEventBinding.h"
@@ -221,6 +219,7 @@
 #include "nsXULControllers.h"
 #include "mozilla/dom/AudioContext.h"
 #include "mozilla/dom/BrowserElementDictionariesBinding.h"
+#include "mozilla/dom/BrowsingContextGroup.h"
 #include "mozilla/dom/cache/CacheStorage.h"
 #include "mozilla/dom/Console.h"
 #include "mozilla/dom/Fetch.h"
@@ -273,12 +272,6 @@ using namespace mozilla::dom::ipc;
 using mozilla::BasePrincipal;
 using mozilla::OriginAttributes;
 using mozilla::TimeStamp;
-
-extern mozilla::LazyLogModule gMediaControlLog;
-
-#define MC_LOG(msg, ...)                     \
-  MOZ_LOG(gMediaControlLog, LogLevel::Debug, \
-          ("WindowOuter=%p, " msg, this, ##__VA_ARGS__))
 
 #define FORWARD_TO_INNER(method, args, err_rval)       \
   PR_BEGIN_MACRO                                       \
@@ -610,6 +603,10 @@ bool nsOuterWindowProxy::getOwnPropertyDescriptor(
 
   // Step 3.
   if (isSameOrigin) {
+    if (StaticPrefs::dom_missing_prop_counters_enabled() && JSID_IS_ATOM(id)) {
+      Window_Binding::CountMaybeMissingProperty(proxy, id);
+    }
+
     // Fall through to js::Wrapper.
     {  // Scope for JSAutoRealm while we are dealing with js::Wrapper.
       // When forwarding to js::Wrapper, we should just enter the Realm of proxy
@@ -890,6 +887,10 @@ bool nsOuterWindowProxy::get(JSContext* cx, JS::Handle<JSObject*> proxy,
 
   if (found) {
     return true;
+  }
+
+  if (StaticPrefs::dom_missing_prop_counters_enabled() && JSID_IS_ATOM(id)) {
+    Window_Binding::CountMaybeMissingProperty(proxy, id);
   }
 
   {  // Scope for JSAutoRealm
@@ -1472,6 +1473,8 @@ nsresult nsGlobalWindowOuter::EnsureScriptEnvironment() {
     return NS_OK;
   }
 
+  NS_ENSURE_STATE(!mCleanedUp);
+
   NS_ASSERTION(!GetCurrentInnerWindowInternal(),
                "No cached wrapper, but we have an inner window?");
   NS_ASSERTION(!mContext, "Will overwrite mContext!");
@@ -1534,7 +1537,7 @@ void nsGlobalWindowOuter::SetInitialPrincipalToSubject(
   // We should never create windows with an expanded principal.
   // If we have a system principal, make sure we're not using it for a content
   // docshell.
-  // NOTE: Please keep this logic in sync with nsWebShellWindow::Initialize().
+  // NOTE: Please keep this logic in sync with AppWindow::Initialize().
   if (nsContentUtils::IsExpandedPrincipal(newWindowPrincipal) ||
       (nsContentUtils::IsSystemPrincipal(newWindowPrincipal) &&
        GetDocShell()->ItemType() != nsIDocShellTreeItem::typeChrome)) {
@@ -2812,26 +2815,6 @@ SuspendTypes nsPIDOMWindowOuter::GetMediaSuspend() const {
   return mMediaSuspend;
 }
 
-void nsPIDOMWindowOuter::UpdateMediaAction(const MediaControlActions aAction) {
-  // TODO : we now temporarily map MediaControlActions to nsISuspendedTypes in
-  // order to control media, but for long term goal in which we should not rely
-  // on nsISuspendedTypes and completely decouple them. See bug1571493.
-  MC_LOG("UpdateMediaAction %s", ToMediaControlActionsStr(aAction));
-  switch (aAction) {
-    case MediaControlActions::ePlay:
-      SetMediaSuspend(nsISuspendedTypes::NONE_SUSPENDED);
-      break;
-    case MediaControlActions::ePause:
-      SetMediaSuspend(nsISuspendedTypes::SUSPENDED_PAUSE_DISPOSABLE);
-      break;
-    case MediaControlActions::eStop:
-      SetMediaSuspend(nsISuspendedTypes::SUSPENDED_STOP_DISPOSABLE);
-      break;
-    default:
-      MOZ_ASSERT_UNREACHABLE("Invalid action.");
-  };
-}
-
 void nsPIDOMWindowOuter::SetMediaSuspend(SuspendTypes aSuspend) {
   if (!IsDisposableSuspend(aSuspend)) {
     MaybeNotifyMediaResumedFromBlock(aSuspend);
@@ -3641,7 +3624,10 @@ Maybe<CSSIntSize> nsGlobalWindowOuter::GetRDMDeviceSize(
   // Bug 1576256: This does not work for cross-process subframes.
   const Document* topInProcessContentDoc =
       aDocument.GetTopLevelContentDocument();
-  if (topInProcessContentDoc && topInProcessContentDoc->InRDMPane()) {
+  BrowsingContext* bc = topInProcessContentDoc
+                            ? topInProcessContentDoc->GetBrowsingContext()
+                            : nullptr;
+  if (bc && bc->InRDMPane()) {
     nsIDocShell* docShell = topInProcessContentDoc->GetDocShell();
     if (docShell) {
       nsPresContext* presContext = docShell->GetPresContext();
@@ -4023,13 +4009,6 @@ bool nsGlobalWindowOuter::DispatchResizeEvent(const CSSIntSize& aSize) {
   return target->DispatchEvent(*domEvent, CallerType::System, IgnoreErrors());
 }
 
-static already_AddRefed<nsIDocShellTreeItem> GetCallerDocShellTreeItem() {
-  nsCOMPtr<nsIWebNavigation> callerWebNav = do_GetInterface(GetEntryGlobal());
-  nsCOMPtr<nsIDocShellTreeItem> callerItem = do_QueryInterface(callerWebNav);
-
-  return callerItem.forget();
-}
-
 bool nsGlobalWindowOuter::WindowExists(const nsAString& aName,
                                        bool aForceNoOpener,
                                        bool aLookForCallerOnJSStack) {
@@ -4041,20 +4020,7 @@ bool nsGlobalWindowOuter::WindowExists(const nsAString& aName,
            aName.LowerCaseEqualsLiteral("_parent");
   }
 
-  nsCOMPtr<nsIDocShellTreeItem> caller;
-  if (aLookForCallerOnJSStack) {
-    caller = GetCallerDocShellTreeItem();
-  }
-
-  if (!caller) {
-    caller = mDocShell;
-  }
-
-  nsCOMPtr<nsIDocShellTreeItem> namedItem;
-  mDocShell->FindItemWithName(aName, nullptr, caller,
-                              /* aSkipTabGroup = */ false,
-                              getter_AddRefs(namedItem));
-  return namedItem != nullptr;
+  return !!mBrowsingContext->FindWithName(aName, aLookForCallerOnJSStack);
 }
 
 already_AddRefed<nsIWidget> nsGlobalWindowOuter::GetMainWidget() {
@@ -4412,9 +4378,9 @@ nsresult nsGlobalWindowOuter::SetFullscreenInternal(FullscreenReason aReason,
   // Prevent chrome documents which are still loading from resizing
   // the window after we set fullscreen mode.
   nsCOMPtr<nsIBaseWindow> treeOwnerAsWin = GetTreeOwnerWindow();
-  nsCOMPtr<nsIXULWindow> xulWin(do_GetInterface(treeOwnerAsWin));
-  if (aFullscreen && xulWin) {
-    xulWin->SetIntrinsicallySized(false);
+  nsCOMPtr<nsIAppWindow> appWin(do_GetInterface(treeOwnerAsWin));
+  if (aFullscreen && appWin) {
+    appWin->SetIntrinsicallySized(false);
   }
 
   // Set this before so if widget sends an event indicating its
@@ -4437,6 +4403,12 @@ nsresult nsGlobalWindowOuter::SetFullscreenInternal(FullscreenReason aReason,
     }
   }
 
+#if defined(NIGHTLY_BUILD) && defined(XP_WIN)
+  if (FxRWindowManager::GetInstance()->IsFxRWindow(mWindowID)) {
+    mozilla::gfx::VRShMem shmem(nullptr, true /*aRequiresMutex*/);
+    shmem.SendFullscreenState(mWindowID, aFullscreen);
+  }
+#endif  // NIGHTLY_BUILD && XP_WIN
   FinishFullscreenChange(aFullscreen);
   return NS_OK;
 }
@@ -5392,7 +5364,8 @@ void nsGlobalWindowOuter::NotifyContentBlockingEvent(
         aReason) {
   MOZ_ASSERT(aURIHint);
   DebugOnly<bool> isCookiesBlockedTracker =
-      aEvent == nsIWebProgressListener::STATE_COOKIES_BLOCKED_TRACKER;
+      aEvent == nsIWebProgressListener::STATE_COOKIES_BLOCKED_TRACKER ||
+      aEvent == nsIWebProgressListener::STATE_COOKIES_BLOCKED_SOCIALTRACKER;
   MOZ_ASSERT_IF(aBlocked, aReason.isNothing());
   MOZ_ASSERT_IF(!isCookiesBlockedTracker, aReason.isNothing());
   MOZ_ASSERT_IF(isCookiesBlockedTracker && !aBlocked, aReason.isSome());
@@ -5441,11 +5414,17 @@ void nsGlobalWindowOuter::NotifyContentBlockingEvent(
           if (!aBlocked) {
             unblocked = !doc->GetHasTrackingContentBlocked();
           }
-        } else if (aEvent ==
-                   nsIWebProgressListener::STATE_LOADED_TRACKING_CONTENT) {
-          doc->SetHasTrackingContentLoaded(aBlocked, origin);
+        } else if (aEvent == nsIWebProgressListener::
+                                 STATE_LOADED_LEVEL_1_TRACKING_CONTENT) {
+          doc->SetHasLevel1TrackingContentLoaded(aBlocked, origin);
           if (!aBlocked) {
-            unblocked = !doc->GetHasTrackingContentLoaded();
+            unblocked = !doc->GetHasLevel1TrackingContentLoaded();
+          }
+        } else if (aEvent == nsIWebProgressListener::
+                                 STATE_LOADED_LEVEL_2_TRACKING_CONTENT) {
+          doc->SetHasLevel2TrackingContentLoaded(aBlocked, origin);
+          if (!aBlocked) {
+            unblocked = !doc->GetHasLevel2TrackingContentLoaded();
           }
         } else if (aEvent == nsIWebProgressListener::
                                  STATE_BLOCKED_FINGERPRINTING_CONTENT) {
@@ -5501,6 +5480,19 @@ void nsGlobalWindowOuter::NotifyContentBlockingEvent(
 
           if (!aBlocked) {
             unblocked = !doc->GetHasTrackingCookiesBlocked();
+          }
+        } else if (aEvent == nsIWebProgressListener::
+                                 STATE_COOKIES_BLOCKED_SOCIALTRACKER) {
+          nsTArray<nsCString> trackingFullHashes;
+          if (trackingChannel) {
+            Unused << trackingChannel->GetMatchedTrackingFullHashes(
+                trackingFullHashes);
+          }
+          doc->SetHasSocialTrackingCookiesBlocked(aBlocked, origin, aReason,
+                                                  trackingFullHashes);
+
+          if (!aBlocked) {
+            unblocked = !doc->GetHasSocialTrackingCookiesBlocked();
           }
         } else if (aEvent ==
                    nsIWebProgressListener::STATE_COOKIES_BLOCKED_ALL) {
@@ -5852,7 +5844,8 @@ bool nsGlobalWindowOuter::GatherPostMessageData(
     JSContext* aCx, const nsAString& aTargetOrigin, BrowsingContext** aSource,
     nsAString& aOrigin, nsIURI** aTargetOriginURI,
     nsIPrincipal** aCallerPrincipal, nsGlobalWindowInner** aCallerInnerWindow,
-    nsIURI** aCallerDocumentURI, ErrorResult& aError) {
+    nsIURI** aCallerDocumentURI, Maybe<nsID>* aCallerAgentClusterId,
+    ErrorResult& aError) {
   //
   // Window.postMessage is an intentional subversion of the same-origin policy.
   // As such, this code must be particularly careful in the information it
@@ -5863,7 +5856,7 @@ bool nsGlobalWindowOuter::GatherPostMessageData(
 
   // First, get the caller's window
   RefPtr<nsGlobalWindowInner> callerInnerWin =
-      nsContentUtils::CallerInnerWindow(aCx);
+      nsContentUtils::CallerInnerWindow();
   nsIPrincipal* callerPrin;
   if (callerInnerWin) {
     RefPtr<Document> doc = callerInnerWin->GetExtantDoc();
@@ -5936,6 +5929,12 @@ bool nsGlobalWindowOuter::GatherPostMessageData(
                              ->GetBrowsingContext());
   } else {
     *aSource = nullptr;
+  }
+
+  if (aCallerAgentClusterId && callerInnerWin &&
+      callerInnerWin->GetDocGroup()) {
+    *aCallerAgentClusterId =
+        Some(callerInnerWin->GetDocGroup()->AgentClusterId());
   }
 
   callerInnerWin.forget(aCallerInnerWindow);
@@ -6045,11 +6044,12 @@ void nsGlobalWindowOuter::PostMessageMozOuter(JSContext* aCx,
   nsCOMPtr<nsIPrincipal> callerPrincipal;
   RefPtr<nsGlobalWindowInner> callerInnerWindow;
   nsCOMPtr<nsIURI> callerDocumentURI;
-  if (!GatherPostMessageData(aCx, aTargetOrigin, getter_AddRefs(sourceBc),
-                             origin, getter_AddRefs(targetOriginURI),
-                             getter_AddRefs(callerPrincipal),
-                             getter_AddRefs(callerInnerWindow),
-                             getter_AddRefs(callerDocumentURI), aError)) {
+  Maybe<nsID> callerAgentClusterId = Nothing();
+  if (!GatherPostMessageData(
+          aCx, aTargetOrigin, getter_AddRefs(sourceBc), origin,
+          getter_AddRefs(targetOriginURI), getter_AddRefs(callerPrincipal),
+          getter_AddRefs(callerInnerWindow), getter_AddRefs(callerDocumentURI),
+          &callerAgentClusterId, aError)) {
     return;
   }
 
@@ -6064,11 +6064,12 @@ void nsGlobalWindowOuter::PostMessageMozOuter(JSContext* aCx,
   // event creation and dispatch.
   RefPtr<PostMessageEvent> event = new PostMessageEvent(
       sourceBc, origin, this, providedPrincipal,
-      callerInnerWindow ? callerInnerWindow->WindowID() : 0, callerDocumentURI);
+      callerInnerWindow ? callerInnerWindow->WindowID() : 0, callerDocumentURI,
+      callerAgentClusterId);
 
   JS::CloneDataPolicy clonePolicy;
   if (GetDocGroup() && callerInnerWindow &&
-      callerInnerWindow->CanShareMemory(GetDocGroup()->AgentClusterId())) {
+      callerInnerWindow->IsSharedMemoryAllowed()) {
     clonePolicy.allowSharedMemory();
   }
   event->Write(aCx, aMessage, aTransfer, clonePolicy, aError);
@@ -6076,45 +6077,7 @@ void nsGlobalWindowOuter::PostMessageMozOuter(JSContext* aCx,
     return;
   }
 
-  if (mDoc &&
-      StaticPrefs::dom_separate_event_queue_for_post_message_enabled() &&
-      !DocGroup::TryToLoadIframesInBackground()) {
-    Document* doc = mDoc->GetTopLevelContentDocument();
-    if (doc && doc->GetReadyStateEnum() < Document::READYSTATE_COMPLETE) {
-      // As long as the top level is loading, we can dispatch events to the
-      // queue because the queue will be flushed eventually
-      mozilla::dom::TabGroup* tabGroup = TabGroup();
-      aError = tabGroup->QueuePostMessageEvent(event.forget());
-      return;
-    }
-  }
-
-  if (mDoc && DocGroup::TryToLoadIframesInBackground()) {
-    RefPtr<nsIDocShell> docShell = GetDocShell();
-    RefPtr<nsDocShell> dShell = nsDocShell::Cast(docShell);
-
-    // PostMessage that are added to the tabGroup are the ones that
-    // can be flushed when the top level document is loaded
-    if (dShell) {
-      if (!dShell->TreatAsBackgroundLoad()) {
-        Document* doc = mDoc->GetTopLevelContentDocument();
-        if (doc && doc->GetReadyStateEnum() < Document::READYSTATE_COMPLETE) {
-          // As long as the top level is loading, we can dispatch events to the
-          // queue because the queue will be flushed eventually
-          mozilla::dom::TabGroup* tabGroup = TabGroup();
-          aError = tabGroup->QueuePostMessageEvent(event.forget());
-          return;
-        }
-      } else if (mDoc->GetReadyStateEnum() < Document::READYSTATE_COMPLETE) {
-        mozilla::dom::DocGroup* docGroup = GetDocGroup();
-        aError = docGroup->QueueIframePostMessages(event.forget(),
-                                                   dShell->GetOuterWindowID());
-        return;
-      }
-    }
-  }
-
-  aError = Dispatch(TaskCategory::Other, event.forget());
+  event->DispatchToTargetThread(aError);
 }
 
 class nsCloseEvent : public Runnable {
@@ -6774,10 +6737,10 @@ void nsGlobalWindowOuter::ActivateOrDeactivate(bool aActivate) {
     // Get the top level widget's nsGlobalWindowOuter
     nsCOMPtr<nsPIDOMWindowOuter> topLevelWindow;
 
-    // widgetListener should be a nsXULWindow
+    // widgetListener should be an AppWindow
     nsIWidgetListener* listener = topLevelWidget->GetWidgetListener();
     if (listener) {
-      nsCOMPtr<nsIXULWindow> window = listener->GetXULWindow();
+      nsCOMPtr<nsIAppWindow> window = listener->GetAppWindow();
       nsCOMPtr<nsIInterfaceRequestor> req(do_QueryInterface(window));
       topLevelWindow = do_GetInterface(req);
     }
@@ -6788,16 +6751,16 @@ void nsGlobalWindowOuter::ActivateOrDeactivate(bool aActivate) {
   }
 }
 
-static bool NotifyDocumentTree(Document* aDocument, void* aData) {
-  aDocument->EnumerateSubDocuments(NotifyDocumentTree, nullptr);
-  aDocument->UpdateDocumentStates(NS_DOCUMENT_STATE_WINDOW_INACTIVE, true);
+static bool NotifyDocumentTree(Document& aDocument, void*) {
+  aDocument.EnumerateSubDocuments(NotifyDocumentTree, nullptr);
+  aDocument.UpdateDocumentStates(NS_DOCUMENT_STATE_WINDOW_INACTIVE, true);
   return true;
 }
 
 void nsGlobalWindowOuter::SetActive(bool aActive) {
   nsPIDOMWindowOuter::SetActive(aActive);
   if (mDoc) {
-    NotifyDocumentTree(mDoc, nullptr);
+    NotifyDocumentTree(*mDoc, nullptr);
   }
 }
 
@@ -7754,8 +7717,14 @@ mozilla::dom::TabGroup* nsGlobalWindowOuter::TabGroupOuter() {
       RefPtr<BrowsingContext> openerBC = GetBrowsingContext()->GetOpener();
       nsPIDOMWindowOuter* opener =
           openerBC ? openerBC->GetDOMWindow() : nullptr;
-      MOZ_ASSERT_IF(opener && Cast(opener) != this,
-                    opener->TabGroup() == mTabGroup);
+      // For the case that a page A (foo.com) contains an iframe B (bar.com) and
+      // B contains an iframe C (foo.com), it can not guarantee that A and C are
+      // in same tabgroup in Fission mode. And if C reference back to A via
+      // window.open, we hit this assertion. Ignore this assertion in Fission
+      // given that tabgroup eventually will be removed after bug 1561715.
+      MOZ_ASSERT_IF(
+          !StaticPrefs::fission_autostart() && opener && Cast(opener) != this,
+          opener->TabGroup() == mTabGroup);
     }
     mIsValidatingTabGroup = false;
   }

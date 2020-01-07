@@ -59,17 +59,23 @@ abuse-report-messagebar-action-cancel = Abbrechen
 ## Abuse report reasons (optionally paired with related examples and/or suggestions)
 
 abuse-report-damage-reason = Beschädigt meinen Computer oder meine Daten
+abuse-report-damage-reason-v2 = Es hat meinen Computer beschädigt oder meine Daten kompromittiert
 abuse-report-damage-example = Beispiel: Installiert Malware oder stiehlt Daten
 abuse-report-spam-reason = Erzeugt Spam oder Werbung
+abuse-report-spam-reason-v2 = Es enthält Spam oder fügt unerwünschte Werbung ein
 abuse-report-spam-example = Beispiel: Fügt Werbung zu Webseiten hinzu
 abuse-report-settings-reason = Ändert meine Suchmaschine oder die Startseite beim Start von Firefox oder eines neuen Tabs, ohne mich darüber zu informieren oder um Erlaubnis zu bitten
+abuse-report-settings-reason-v2 = Es hat meine Suchmaschine oder die Startseite beim Start von Firefox oder eines neuen Tabs geändert, ohne mich darüber zu informieren oder um Erlaubnis zu bitten
 abuse-report-settings-suggestions = Sie können Folgendes versuchen, bevor Sie die Erweiterung melden:
 abuse-report-settings-suggestions-search = Ändern Sie die Standardsucheinstellungen
 abuse-report-settings-suggestions-homepage = Ändern Sie die Startseiten für den Start von Firefox oder eines neuen Tabs
 abuse-report-deceptive-reason = Täuscht vor, etwas zu sein, das es nicht ist
+abuse-report-deceptive-reason-v2 = Es täuscht vor, etwas zu sein, das es nicht ist
 abuse-report-deceptive-example = Beispiel: Irreführende Beschreibung oder Bilder
 abuse-report-broken-reason-extension = Funktioniert nicht, verursacht Probleme mit Websites oder verlangsamt { -brand-product-name }
 abuse-report-broken-reason-theme = Funktioniert nicht oder verursacht Probleme mit der Browser-Darstellung
+abuse-report-broken-reason-extension-v2 = Es funktioniert nicht, verursacht Probleme mit Websites oder verlangsamt { -brand-product-name }
+abuse-report-broken-reason-theme-v2 = Es funktioniert nicht oder verursacht Probleme mit der Browser-Darstellung
 abuse-report-broken-example = Beispiel: Das Programm reagiert langsam auf Befehle und ist schwierig zu verwenden oder funktioniert nicht; Teile von Webseiten laden nicht oder sehen nicht wie erwartet aus
 abuse-report-broken-suggestions-extension =
     Vermutlich haben Sie ein Problem mit der Erweiterung erkannt. Damit es behoben wird, sollten Sie zusätzlich zum Senden der Meldung hier die Entwickler der Erweiterung kontaktieren.
@@ -78,9 +84,11 @@ abuse-report-broken-suggestions-theme =
     Vermutlich haben Sie ein Problem mit dem Theme erkannt. Damit es behoben wird, sollten Sie zusätzlich zum Senden der Meldung hier die Entwickler des Themes kontaktieren.
     Besuchen Sie die <a data-l10n-name="support-link">Homepage des Themes</a>, um Informationen dafür zu erhalten.
 abuse-report-policy-reason = Inhalt mit Hass oder Gewalt sowie illegale Inhalte
+abuse-report-policy-reason-v2 = Es enthält hasserfüllte, gewalttätige oder illegale Inhalte
 abuse-report-policy-suggestions =
     Hinweis: Probleme bezüglich das Urheberrechts oder der Verletzung von Marken müssen in einem eigenen Prozess gemeldet werden.
     Folgen Sie <a data-l10n-name="report-infringement-link">diesen Anweisungen</a>, um ein derartiges Problem zu melden.
 abuse-report-unwanted-reason = Ich wollte diese Erweiterung nie und werde sie nicht los
+abuse-report-unwanted-reason-v2 = Ich wollte es nie und weiß nicht, wie ich es loswerden kann
 abuse-report-unwanted-example = Beispiel: Eine Anwendung hat die Erweiterung ohne meine Erlaubnis installiert.
 abuse-report-other-reason = Etwas Anderes

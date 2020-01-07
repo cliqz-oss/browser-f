@@ -3,6 +3,11 @@
 
 /* Basic UI tests for the protections panel */
 
+"use strict";
+
+const TRACKING_PAGE =
+  "http://tracking.example.org/browser/browser/base/content/test/trackingUI/trackingPage.html";
+
 ChromeUtils.defineModuleGetter(
   this,
   "ContentBlockingAllowList",
@@ -19,6 +24,7 @@ add_task(async function setup() {
       ["browser.contentblocking.report.monitor.enabled", false],
       ["browser.contentblocking.report.lockwise.enabled", false],
       ["browser.contentblocking.report.proxy.enabled", false],
+      ["privacy.trackingprotection.enabled", true],
     ],
   });
   let oldCanRecord = Services.telemetry.canRecordExtended;
@@ -34,8 +40,13 @@ add_task(async function setup() {
 add_task(async function testToggleSwitch() {
   let tab = await BrowserTestUtils.openNewForegroundTab(
     gBrowser,
-    "https://example.com"
+    TRACKING_PAGE
   );
+
+  await TestUtils.waitForCondition(() => {
+    return gProtectionsHandler._protectionsPopup.hasAttribute("blocking");
+  });
+
   await openProtectionsPanel();
   let events = Services.telemetry.snapshotEvents(
     Ci.nsITelemetry.DATASET_PRERELEASE_CHANNELS
@@ -56,6 +67,50 @@ add_task(async function testToggleSwitch() {
     "The 'Site not working?' link should be visible."
   );
 
+  // The 'Site Fixed?' link should be hidden.
+  ok(
+    BrowserTestUtils.is_hidden(
+      gProtectionsHandler._protectionsPopupTPSwitchBreakageFixedLink
+    ),
+    "The 'Site Fixed?' link should be hidden."
+  );
+
+  // Navigate through the 'Site Not Working?' flow and back to the main view,
+  // checking for telemetry on the way.
+  let siteNotWorkingView = document.getElementById(
+    "protections-popup-siteNotWorkingView"
+  );
+  let viewShown = BrowserTestUtils.waitForEvent(
+    siteNotWorkingView,
+    "ViewShown"
+  );
+  gProtectionsHandler._protectionsPopupTPSwitchBreakageLink.click();
+  await viewShown;
+
+  checkClickTelemetry("sitenotworking_link");
+
+  let sendReportButton = document.getElementById(
+    "protections-popup-siteNotWorkingView-sendReport"
+  );
+  let sendReportView = document.getElementById(
+    "protections-popup-sendReportView"
+  );
+  viewShown = BrowserTestUtils.waitForEvent(sendReportView, "ViewShown");
+  sendReportButton.click();
+  await viewShown;
+
+  checkClickTelemetry("send_report_link");
+
+  viewShown = BrowserTestUtils.waitForEvent(siteNotWorkingView, "ViewShown");
+  sendReportView.querySelector(".subviewbutton-back").click();
+  await viewShown;
+
+  let mainView = document.getElementById("protections-popup-mainView");
+
+  viewShown = BrowserTestUtils.waitForEvent(mainView, "ViewShown");
+  siteNotWorkingView.querySelector(".subviewbutton-back").click();
+  await viewShown;
+
   ok(
     gProtectionsHandler._protectionsPopupTPSwitch.hasAttribute("enabled"),
     "TP Switch should be enabled"
@@ -73,6 +128,13 @@ add_task(async function testToggleSwitch() {
       gProtectionsHandler._protectionsPopupTPSwitchBreakageLink
     ),
     "The 'Site not working?' link should be hidden after TP switch turns to off."
+  );
+  // Same for the 'Site Fixed?' link
+  ok(
+    BrowserTestUtils.is_hidden(
+      gProtectionsHandler._protectionsPopupTPSwitchBreakageFixedLink
+    ),
+    "The 'Site Fixed?' link should be hidden."
   );
 
   await popuphiddenPromise;
@@ -110,6 +172,25 @@ add_task(async function testToggleSwitch() {
     "The 'Site not working?' link should be hidden if TP is off."
   );
 
+  // The 'Site Fixed?' link should be shown if TP is off.
+  ok(
+    BrowserTestUtils.is_visible(
+      gProtectionsHandler._protectionsPopupTPSwitchBreakageFixedLink
+    ),
+    "The 'Site Fixed?' link should be visible."
+  );
+
+  // Check telemetry for 'Site Fixed?' link.
+  viewShown = BrowserTestUtils.waitForEvent(sendReportView, "ViewShown");
+  gProtectionsHandler._protectionsPopupTPSwitchBreakageFixedLink.click();
+  await viewShown;
+
+  checkClickTelemetry("sitenotworking_link", "sitefixed");
+
+  viewShown = BrowserTestUtils.waitForEvent(mainView, "ViewShown");
+  sendReportView.querySelector(".subviewbutton-back").click();
+  await viewShown;
+
   // Click the TP switch again and check the visibility of the 'Site not
   // Working?'. It should be hidden after toggling the TP switch.
   browserLoadedPromise = BrowserTestUtils.browserLoaded(tab.linkedBrowser);
@@ -121,6 +202,12 @@ add_task(async function testToggleSwitch() {
     ),
     `The 'Site not working?' link should be still hidden after toggling TP
      switch to on from off.`
+  );
+  ok(
+    BrowserTestUtils.is_hidden(
+      gProtectionsHandler._protectionsPopupTPSwitchBreakageFixedLink
+    ),
+    "The 'Site Fixed?' link should be hidden."
   );
 
   await browserLoadedPromise;

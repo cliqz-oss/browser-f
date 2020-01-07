@@ -2,12 +2,11 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 // @ts-check
-"use strict";
-
 /**
- * @typedef {import("../@types/perf").PerfFront} PerfFront
- * @typedef {import("../@types/perf").PreferenceFront} PreferenceFront
+ * @typedef {import("../@types/perf").InitializeStoreValues} InitializeStoreValues
+ * @typedef {import("../@types/perf").PopupWindow} PopupWindow
  */
+"use strict";
 
 /**
  * This file initializes the profiler popup UI. It is in charge of initializing
@@ -17,17 +16,27 @@
  * Tools -> Web Developer -> Enable Profiler Toolbar Icon
  */
 
-/**
- * Initialize the require function through a BrowserLoader. This loader ensures
- * that the popup can use require and has access to the window object.
- */
-const { BrowserLoader } = ChromeUtils.import(
-  "resource://devtools/client/shared/browser-loader.js"
-);
-const { require } = BrowserLoader({
-  baseURI: "resource://devtools/client/performance-new/popup/",
-  window,
-});
+{
+  // Create the browser loader, but take care not to conflict with
+  // TypeScript. See devtools/client/performance-new/typescript.md and
+  // the section on "Do not overload require" for more information.
+
+  const { BrowserLoader } = ChromeUtils.import(
+    "resource://devtools/client/shared/browser-loader.js"
+  );
+  const browserLoader = BrowserLoader({
+    baseURI: "resource://devtools/client/performance-new/popup",
+    window,
+  });
+
+  /**
+   * @type {any} - Coerce the current scope into an `any`, and assign the
+   *     loaders to the scope. They can then be used freely below.
+   */
+  const scope = this;
+  scope.require = browserLoader.require;
+  scope.loader = browserLoader.loader;
+}
 
 /**
  * The background.jsm.js manages the profiler state, and can be loaded multiple time
@@ -54,7 +63,21 @@ const actions = require("devtools/client/performance-new/store/actions");
 const { Provider } = require("devtools/client/shared/vendor/react-redux");
 const {
   ActorReadyGeckoProfilerInterface,
-} = require("devtools/server/performance-new/gecko-profiler-interface");
+} = require("devtools/shared/performance-new/gecko-profiler-interface");
+
+const { LightweightThemeManager } = ChromeUtils.import(
+  "resource://gre/modules/LightweightThemeManager.jsm"
+);
+
+/* Force one of our two themes depending on what theme the browser is
+ * currently using. This might be different from the selected theme in
+ * the devtools panel. By forcing a theme here, we're unaffected by
+ * the devtools setting when we show the popup.
+ */
+document.documentElement.setAttribute(
+  "force-theme",
+  isCurrentThemeDark() ? "dark" : "light"
+);
 
 document.addEventListener("DOMContentLoaded", () => {
   gInit();
@@ -66,6 +89,7 @@ document.addEventListener("DOMContentLoaded", () => {
 async function gInit() {
   const store = createStore(reducers);
   const perfFrontInterface = new ActorReadyGeckoProfilerInterface();
+  const supportedFeatures = await perfFrontInterface.getSupportedFeatures();
 
   // Do some initialization, especially with privileged things that are part of the
   // the browser.
@@ -73,6 +97,7 @@ async function gInit() {
     actions.initializeStore({
       perfFront: perfFrontInterface,
       receiveProfile,
+      supportedFeatures,
       // Get the preferences from the current browser
       recordingPreferences: getRecordingPreferencesFromBrowser(),
       // In the popup, the preferences are stored directly on the current browser.
@@ -100,9 +125,26 @@ async function gInit() {
 
 function resizeWindow() {
   window.requestAnimationFrame(() => {
-    const { gResizePopup } = /** @type {any} */ (window);
+    // Coerce the window object into the PopupWindow interface.
+    /** @type {any} */
+    const anyWindow = window;
+    /** @type {PopupWindow} */
+    const { gResizePopup } = anyWindow;
     if (gResizePopup) {
       gResizePopup(document.body.clientHeight);
     }
   });
+}
+
+/**
+ * Return true if the current (non-devtools) theme is the built in
+ * dark theme.
+ */
+function isCurrentThemeDark() {
+  const DARK_THEME_ID = "firefox-compact-dark@mozilla.org";
+  return (
+    LightweightThemeManager.themeData &&
+    LightweightThemeManager.themeData.theme &&
+    LightweightThemeManager.themeData.theme.id === DARK_THEME_ID
+  );
 }

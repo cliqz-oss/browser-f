@@ -45,6 +45,8 @@
 #include "mozilla/DebugOnly.h"
 #include "mozilla/LoadInfo.h"
 #include "mozilla/dom/BlobURLProtocolHandler.h"
+#include "mozilla/dom/BrowsingContext.h"
+#include "mozilla/dom/BrowsingContextGroup.h"
 #include "mozilla/dom/ContentParent.h"
 #include "mozilla/dom/ContentChild.h"
 #include "mozilla/dom/CustomElementRegistry.h"
@@ -106,6 +108,7 @@
 #include "mozilla/StaticPrefs_privacy.h"
 #include "mozilla/StaticPrefs_test.h"
 #include "mozilla/StaticPrefs_ui.h"
+#include "mozilla/TextControlState.h"
 #include "mozilla/TextEditor.h"
 #include "mozilla/TextEvents.h"
 #include "nsArrayUtils.h"
@@ -113,9 +116,6 @@
 #include "nsAttrName.h"
 #include "nsAttrValue.h"
 #include "nsAttrValueInlines.h"
-#ifdef MOZ_XBL
-#  include "nsBindingManager.h"
-#endif
 #include "nsCanvasFrame.h"
 #include "nsCaret.h"
 #include "nsCCUncollectableMarker.h"
@@ -226,7 +226,6 @@
 #include "nsScriptSecurityManager.h"
 #include "nsSerializationHelper.h"
 #include "nsStreamUtils.h"
-#include "nsTextEditorState.h"
 #include "nsTextFragment.h"
 #include "nsTextNode.h"
 #include "nsThreadUtils.h"
@@ -1802,7 +1801,7 @@ void nsContentUtils::Shutdown() {
     NS_RELEASE(sUserInteractionObserver);
   }
 
-  HTMLInputElement::Shutdown();
+  TextControlState::Shutdown();
   nsMappedAttributes::Shutdown();
 }
 
@@ -2116,7 +2115,7 @@ bool nsContentUtils::IsCallerContentXBL() {
     return true;
   }
 
-  return xpc::IsContentXBLScope(realm);
+  return false;
 }
 
 bool nsContentUtils::IsCallerUAWidget() {
@@ -2149,13 +2148,7 @@ bool nsContentUtils::ThreadsafeIsSystemCaller(JSContext* aCx) {
 bool nsContentUtils::LookupBindingMember(
     JSContext* aCx, nsIContent* aContent, JS::Handle<jsid> aId,
     JS::MutableHandle<JS::PropertyDescriptor> aDesc) {
-#ifdef MOZ_XBL
-  nsXBLBinding* binding = aContent->GetXBLBinding();
-  if (!binding) return true;
-  return binding->LookupMember(aCx, aId, aDesc);
-#else
   return true;
-#endif
 }
 
 // static
@@ -2919,8 +2912,7 @@ bool nsContentUtils::IsNameWithDash(nsAtom* aName) {
 
   uint32_t i = 1;
   while (i < len) {
-    if (NS_IS_HIGH_SURROGATE(name[i]) && i + 1 < len &&
-        NS_IS_LOW_SURROGATE(name[i + 1])) {
+    if (i + 1 < len && NS_IS_SURROGATE_PAIR(name[i], name[i + 1])) {
       // Merged two 16-bit surrogate pairs into code point.
       char32_t code = SURROGATE_TO_UCS4(name[i], name[i + 1]);
 
@@ -3193,7 +3185,7 @@ bool nsContentUtils::CanLoadImage(nsIURI* aURI, nsINode* aNode,
                                  EmptyCString(),  // mime guess
                                  &decision, GetContentPolicy());
 
-  return NS_FAILED(rv) ? false : NS_CP_ACCEPTED(decision);
+  return NS_SUCCEEDED(rv) && NS_CP_ACCEPTED(decision);
 }
 
 // static
@@ -3558,7 +3550,6 @@ void nsContentUtils::GetEventArgNames(int32_t aNameSpaceID, nsAtom* aEventName,
 static const char* gPropertiesFiles[nsContentUtils::PropertiesFile_COUNT] = {
     // Must line up with the enum values in |PropertiesFile| enum.
     "chrome://global/locale/css.properties",
-    "chrome://global/locale/xbl.properties",
     "chrome://global/locale/xul.properties",
     "chrome://global/locale/layout_errors.properties",
     "chrome://global/locale/layout/HtmlForm.properties",
@@ -3571,8 +3562,8 @@ static const char* gPropertiesFiles[nsContentUtils::PropertiesFile_COUNT] = {
     "chrome://global/locale/mathml/mathml.properties",
     "chrome://global/locale/security/security.properties",
     "chrome://necko/locale/necko.properties",
-    "chrome://global/locale/layout/HtmlForm.properties",
-    "resource://gre/res/locale/layout/HtmlForm.properties"};
+    "resource://gre/res/locale/layout/HtmlForm.properties",
+    "resource://gre/res/locale/dom/dom.properties"};
 
 /* static */
 nsresult nsContentUtils::EnsureStringBundle(PropertiesFile aFile) {
@@ -3621,22 +3612,47 @@ void nsContentUtils::AsyncPrecreateStringBundles() {
   }
 }
 
-static bool SpoofLocaleEnglish() {
+/* static */
+bool nsContentUtils::SpoofLocaleEnglish() {
   // 0 - will prompt
   // 1 - don't spoof
   // 2 - spoof
   return StaticPrefs::privacy_spoof_english() == 2;
 }
 
+static nsContentUtils::PropertiesFile GetMaybeSpoofedPropertiesFile(
+    nsContentUtils::PropertiesFile aFile, const char* aKey,
+    Document* aDocument) {
+  // When we spoof English, use en-US properties in strings that are accessible
+  // by content.
+  bool spoofLocale = nsContentUtils::SpoofLocaleEnglish() &&
+                     (!aDocument || !aDocument->AllowsL10n());
+  if (spoofLocale) {
+    switch (aFile) {
+      case nsContentUtils::eFORMS_PROPERTIES:
+        return nsContentUtils::eFORMS_PROPERTIES_en_US;
+      case nsContentUtils::eDOM_PROPERTIES:
+        return nsContentUtils::eDOM_PROPERTIES_en_US;
+      default:
+        break;
+    }
+  }
+  return aFile;
+}
+
+/* static */
+nsresult nsContentUtils::GetMaybeLocalizedString(PropertiesFile aFile,
+                                                 const char* aKey,
+                                                 Document* aDocument,
+                                                 nsAString& aResult) {
+  return GetLocalizedString(
+      GetMaybeSpoofedPropertiesFile(aFile, aKey, aDocument), aKey, aResult);
+}
+
 /* static */
 nsresult nsContentUtils::GetLocalizedString(PropertiesFile aFile,
                                             const char* aKey,
                                             nsAString& aResult) {
-  // When we spoof English, use en-US default strings in HTML forms.
-  if (aFile == eFORMS_PROPERTIES_MAYBESPOOF && SpoofLocaleEnglish()) {
-    aFile = eFORMS_PROPERTIES_en_US;
-  }
-
   nsresult rv = EnsureStringBundle(aFile);
   NS_ENSURE_SUCCESS(rv, rv);
   nsIStringBundle* bundle = sStringBundles[aFile];
@@ -3644,14 +3660,18 @@ nsresult nsContentUtils::GetLocalizedString(PropertiesFile aFile,
 }
 
 /* static */
+nsresult nsContentUtils::FormatMaybeLocalizedString(
+    PropertiesFile aFile, const char* aKey, Document* aDocument,
+    const nsTArray<nsString>& aParams, nsAString& aResult) {
+  return FormatLocalizedString(
+      GetMaybeSpoofedPropertiesFile(aFile, aKey, aDocument), aKey, aParams,
+      aResult);
+}
+
+/* static */
 nsresult nsContentUtils::FormatLocalizedString(
     PropertiesFile aFile, const char* aKey, const nsTArray<nsString>& aParams,
     nsAString& aResult) {
-  // When we spoof English, use en-US default strings in HTML forms.
-  if (aFile == eFORMS_PROPERTIES_MAYBESPOOF && SpoofLocaleEnglish()) {
-    aFile = eFORMS_PROPERTIES_en_US;
-  }
-
   nsresult rv = EnsureStringBundle(aFile);
   NS_ENSURE_SUCCESS(rv, rv);
   nsIStringBundle* bundle = sStringBundles[aFile];
@@ -4067,9 +4087,7 @@ nsresult nsContentUtils::DispatchInputEvent(Element* aEventTargetElement,
   }
 #ifdef DEBUG
   else {
-    nsCOMPtr<nsITextControlElement> textControlElement =
-        do_QueryInterface(aEventTargetElement);
-    MOZ_ASSERT(!textControlElement,
+    MOZ_ASSERT(!aEventTargetElement->IsTextControlElement(),
                "The event target may have editor, but we've not known it yet.");
   }
 #endif  // #ifdef DEBUG
@@ -4091,6 +4109,7 @@ nsresult nsContentUtils::DispatchInputEvent(Element* aEventTargetElement,
     WidgetEvent widgetEvent(true, eUnidentifiedEvent);
     widgetEvent.mSpecifiedEventType = nsGkAtoms::oninput;
     widgetEvent.mFlags.mCancelable = false;
+    widgetEvent.mFlags.mComposed = true;
     // Using same time as nsContentUtils::DispatchEvent() for backward
     // compatibility.
     widgetEvent.mTime = PR_Now();
@@ -4359,14 +4378,6 @@ bool nsContentUtils::HasMutationListeners(nsINode* aNode, uint32_t aType,
       return true;
     }
 
-    if (aNode->IsContent()) {
-      nsIContent* insertionPoint = aNode->AsContent()->GetXBLInsertionPoint();
-      if (insertionPoint) {
-        aNode = insertionPoint->GetParent();
-        MOZ_ASSERT(aNode);
-        continue;
-      }
-    }
     aNode = aNode->GetParentNode();
   }
 
@@ -4603,7 +4614,22 @@ already_AddRefed<DocumentFragment> nsContentUtils::CreateContextualFragment(
 
   while (content && content->IsElement()) {
     nsString& tagName = *tagStack.AppendElement();
-    tagName = content->NodeInfo()->QualifiedName();
+    // It mostly doesn't actually matter what tag name we use here: XML doesn't
+    // have parsing that depends on the open tag stack, apart from namespace
+    // declarations.  So this whole tagStack bit is just there to get the right
+    // namespace declarations to the XML parser.  That said, the parser _is_
+    // going to create elements with the tag names we provide here, so we need
+    // to make sure they are not names that can trigger custom element
+    // constructors.  Just make up a name that is never going to be a valid
+    // custom element name.
+    //
+    // The principled way to do this would probably be to add a new FromParser
+    // value and make sure we use it when creating the context elements, then
+    // make sure we teach all FromParser consumers (and in particular the custom
+    // element code) about it as needed.  But right now the XML parser never
+    // actually uses FromParser values other than NOT_FROM_PARSER, and changing
+    // that is pretty complicated.
+    tagName.AssignLiteral("notacustomelement");
 
     // see if we need to add xmlns declarations
     uint32_t count = content->AsElement()->GetAttrCount();
@@ -4982,18 +5008,19 @@ bool nsContentUtils::IsInSameAnonymousTree(const nsINode* aNode,
   MOZ_ASSERT(aNode, "Must have a node to work with");
   MOZ_ASSERT(aContent, "Must have a content to work with");
 
-  if (!aNode->IsContent()) {
-    /**
-     * The root isn't an nsIContent, so it's a document or attribute.  The only
-     * nodes in the same anonymous subtree as it will have a null
-     * bindingParent.
-     *
-     * XXXbz strictly speaking, that's not true for attribute nodes.
-     */
-    return aContent->GetBindingParent() == nullptr;
+  if (aNode->IsInNativeAnonymousSubtree() !=
+      aContent->IsInNativeAnonymousSubtree()) {
+    return false;
   }
 
-  return aNode->AsContent()->GetBindingParent() == aContent->GetBindingParent();
+  if (aNode->IsInNativeAnonymousSubtree()) {
+    return aContent->GetClosestNativeAnonymousSubtreeRoot() ==
+           aNode->GetClosestNativeAnonymousSubtreeRoot();
+  }
+
+  // FIXME: This doesn't deal with disconnected nodes whatsoever, but it didn't
+  // use to either. Maybe that's fine.
+  return aNode->GetContainingShadow() == aContent->GetContainingShadow();
 }
 
 /* static */
@@ -8549,9 +8576,8 @@ bool nsContentUtils::SerializeNodeToMarkup(nsINode* aRoot,
   // If you pass in a DOCUMENT_NODE, you must pass aDescendentsOnly as true
   MOZ_ASSERT(aDescendentsOnly || aRoot->NodeType() != nsINode::DOCUMENT_NODE);
 
-  nsINode* current = aDescendentsOnly
-                         ? nsNodeUtils::GetFirstChildOfTemplateOrNode(aRoot)
-                         : aRoot;
+  nsINode* current =
+      aDescendentsOnly ? aRoot->GetFirstChildOfTemplateOrNode() : aRoot;
 
   if (!current) {
     return true;
@@ -8566,8 +8592,7 @@ bool nsContentUtils::SerializeNodeToMarkup(nsINode* aRoot,
         Element* elem = current->AsElement();
         StartElement(elem, builder);
         isVoid = IsVoidTag(elem);
-        if (!isVoid &&
-            (next = nsNodeUtils::GetFirstChildOfTemplateOrNode(current))) {
+        if (!isVoid && (next = current->GetFirstChildOfTemplateOrNode())) {
           current = next;
           continue;
         }
@@ -8641,7 +8666,7 @@ bool nsContentUtils::SerializeNodeToMarkup(nsINode* aRoot,
           current->NodeType() == nsINode::DOCUMENT_FRAGMENT_NODE) {
         DocumentFragment* frag = static_cast<DocumentFragment*>(current);
         nsIContent* fragHost = frag->GetHost();
-        if (fragHost && nsNodeUtils::IsTemplateElement(fragHost)) {
+        if (fragHost && fragHost->IsTemplateElement()) {
           current = fragHost;
         }
       }
@@ -9304,7 +9329,11 @@ bool nsContentUtils::AttemptLargeAllocationLoad(nsIHttpChannel* aChannel) {
   }
 
   nsIDocShell* docShell = outer->GetDocShell();
-  if (!docShell->GetIsOnlyToplevelInTabGroup()) {
+  BrowsingContext* browsingContext = docShell->GetBrowsingContext();
+  bool isOnlyToplevelBrowsingContext =
+      !browsingContext->GetParent() &&
+      browsingContext->Group()->Toplevels().Length() == 1;
+  if (!isOnlyToplevelBrowsingContext) {
     outer->SetLargeAllocStatus(LargeAllocStatus::NOT_ONLY_TOPLEVEL_IN_TABGROUP);
     return false;
   }
@@ -9421,11 +9450,8 @@ void nsContentUtils::AppendDocumentLevelNativeAnonymousContentTo(
           "scroll frame should always implement nsIAnonymousContentCreator");
       creator->AppendAnonymousContentTo(aElements, 0);
     }
-
     if (nsCanvasFrame* canvasFrame = presShell->GetCanvasFrame()) {
-      if (Element* container = canvasFrame->GetCustomContentContainer()) {
-        aElements.AppendElement(container);
-      }
+      canvasFrame->AppendAnonymousContentTo(aElements, 0);
     }
   }
 
@@ -9778,7 +9804,8 @@ static constexpr uint64_t kIdTotalBits = 53;
 static constexpr uint64_t kIdProcessBits = 22;
 static constexpr uint64_t kIdBits = kIdTotalBits - kIdProcessBits;
 
-/* static */ uint64_t GenerateProcessSpecificId(uint64_t aId) {
+/* static */
+uint64_t nsContentUtils::GenerateProcessSpecificId(uint64_t aId) {
   uint64_t processId = 0;
   if (XRE_IsContentProcess()) {
     ContentChild* cc = ContentChild::GetSingleton();
@@ -10118,11 +10145,13 @@ bool nsContentUtils::
 }
 
 /* static */
-nsGlobalWindowInner* nsContentUtils::CallerInnerWindow(JSContext* aCx) {
+nsGlobalWindowInner* nsContentUtils::CallerInnerWindow() {
   nsIGlobalObject* global = GetIncumbentGlobal();
   NS_ENSURE_TRUE(global, nullptr);
-  JS::Rooted<JSObject*> scope(aCx, global->GetGlobalJSObject());
-  NS_ENSURE_TRUE(scope, nullptr);
+
+  if (auto* window = global->AsInnerWindow()) {
+    return nsGlobalWindowInner::Cast(window);
+  }
 
   // When Extensions run content scripts inside a sandbox, it uses
   // sandboxPrototype to make them appear as though they're running in the
@@ -10130,10 +10159,16 @@ nsGlobalWindowInner* nsContentUtils::CallerInnerWindow(JSContext* aCx) {
   // the |source| of the received message to be the window set as the
   // sandboxPrototype. This used to work incidentally for unrelated reasons, but
   // now we need to do some special handling to support it.
+  JS::Rooted<JSObject*> scope(RootingCx(), global->GetGlobalJSObject());
+  NS_ENSURE_TRUE(scope, nullptr);
+
   if (xpc::IsSandbox(scope)) {
-    JSAutoRealm ar(aCx, scope);
-    JS::Rooted<JSObject*> scopeProto(aCx);
-    bool ok = JS_GetPrototype(aCx, scope, &scopeProto);
+    AutoJSAPI jsapi;
+    MOZ_ALWAYS_TRUE(jsapi.Init(scope));
+    JSContext* cx = jsapi.cx();
+
+    JS::Rooted<JSObject*> scopeProto(cx);
+    bool ok = JS_GetPrototype(cx, scope, &scopeProto);
     NS_ENSURE_TRUE(ok, nullptr);
     if (scopeProto && xpc::IsSandboxPrototypeProxy(scopeProto) &&
         // Our current Realm on aCx is the sandbox.  Using that for the
@@ -10141,7 +10176,7 @@ nsGlobalWindowInner* nsContentUtils::CallerInnerWindow(JSContext* aCx) {
         // window, we can use it.  And we do want CheckedUnwrapDynamic, because
         // the whole point is to unwrap windows.
         (scopeProto = js::CheckedUnwrapDynamic(
-             scopeProto, aCx, /* stopAtWindowProxy = */ false))) {
+             scopeProto, cx, /* stopAtWindowProxy = */ false))) {
       global = xpc::NativeGlobal(scopeProto);
       NS_ENSURE_TRUE(global, nullptr);
     }
@@ -10149,8 +10184,7 @@ nsGlobalWindowInner* nsContentUtils::CallerInnerWindow(JSContext* aCx) {
 
   // The calling window must be holding a reference, so we can return a weak
   // pointer.
-  nsCOMPtr<nsPIDOMWindowInner> win = do_QueryInterface(global);
-  return nsGlobalWindowInner::Cast(win);
+  return nsGlobalWindowInner::Cast(global->AsInnerWindow());
 }
 
 /* static */
@@ -10182,13 +10216,6 @@ bool nsContentUtils::IsURIInList(nsIURI* aURI, const nsCString& aBlackList) {
     return false;
   }
 
-  nsAutoCString host;
-  aURI->GetHost(host);
-  if (host.IsEmpty()) {
-    return false;
-  }
-  ToLowerCase(host);
-
   if (aBlackList.IsEmpty()) {
     return false;
   }
@@ -10196,42 +10223,55 @@ bool nsContentUtils::IsURIInList(nsIURI* aURI, const nsCString& aBlackList) {
   // The list is comma separated domain list.  Each item may start with "*.".
   // If starts with "*.", it matches any sub-domains.
 
-  for (;;) {
-    int32_t index = aBlackList.Find(host, false);
-    if (index >= 0 &&
-        static_cast<uint32_t>(index) + host.Length() <= aBlackList.Length() &&
-        // If start of the black list or next to ","?
-        (!index || aBlackList[index - 1] == ',')) {
-      // If end of the black list or immediately before ","?
-      size_t indexAfterHost = index + host.Length();
-      if (indexAfterHost == aBlackList.Length() ||
-          aBlackList[indexAfterHost] == ',') {
-        return true;
-      }
-      // If next character is '/', we need to check the path too.
-      // We assume the path in blacklist means "/foo" + "*".
-      if (aBlackList[indexAfterHost] == '/') {
-        int32_t endOfPath = aBlackList.Find(",", false, indexAfterHost);
-        nsDependentCSubstring::size_type length =
-            endOfPath < 0 ? static_cast<nsDependentCSubstring::size_type>(-1)
-                          : endOfPath - indexAfterHost;
-        nsDependentCSubstring pathInBlackList(aBlackList, indexAfterHost,
-                                              length);
-        nsAutoCString filePath;
-        aURI->GetFilePath(filePath);
-        ToLowerCase(filePath);
-        if (StringBeginsWith(filePath, pathInBlackList)) {
-          return true;
-        }
-      }
-    }
-    int32_t startIndexOfCurrentLevel = host[0] == '*' ? 1 : 0;
-    int32_t startIndexOfNextLevel =
-        host.Find(".", false, startIndexOfCurrentLevel + 1);
-    if (startIndexOfNextLevel <= 0) {
+  nsCCharSeparatedTokenizer tokenizer(aBlackList, ',');
+  while (tokenizer.hasMoreTokens()) {
+    const nsCString token(tokenizer.nextToken());
+
+    nsAutoCString host;
+    aURI->GetHost(host);
+    if (host.IsEmpty()) {
       return false;
     }
-    host = NS_LITERAL_CSTRING("*") +
-           nsDependentCSubstring(host, startIndexOfNextLevel);
+    ToLowerCase(host);
+
+    for (;;) {
+      int32_t index = token.Find(host, false);
+      if (index >= 0 &&
+          static_cast<uint32_t>(index) + host.Length() <= token.Length()) {
+        // If we found a full match, return true.
+        size_t indexAfterHost = index + host.Length();
+        if (index == 0 && indexAfterHost == token.Length()) {
+          return true;
+        }
+        // If next character is '/', we need to check the path too.
+        // We assume the path in blacklist means "/foo" + "*".
+        if (token[indexAfterHost] == '/') {
+          nsDependentCSubstring pathInBlackList(
+              token, indexAfterHost,
+              static_cast<nsDependentCSubstring::size_type>(-1));
+          nsAutoCString filePath;
+          aURI->GetFilePath(filePath);
+          ToLowerCase(filePath);
+          if (StringBeginsWith(filePath, pathInBlackList) &&
+              (filePath.Length() == pathInBlackList.Length() ||
+               pathInBlackList.EqualsLiteral("/") ||
+               filePath[pathInBlackList.Length() - 1] == '/' ||
+               filePath[pathInBlackList.Length() - 1] == '?' ||
+               filePath[pathInBlackList.Length() - 1] == '#')) {
+            return true;
+          }
+        }
+      }
+      int32_t startIndexOfCurrentLevel = host[0] == '*' ? 1 : 0;
+      int32_t startIndexOfNextLevel =
+          host.Find(".", false, startIndexOfCurrentLevel + 1);
+      if (startIndexOfNextLevel <= 0) {
+        break;
+      }
+      host = NS_LITERAL_CSTRING("*") +
+             nsDependentCSubstring(host, startIndexOfNextLevel);
+    }
   }
+
+  return false;
 }

@@ -31,7 +31,7 @@ class TaskQueue::EventTargetWrapper final : public nsISerialEventTarget {
   Dispatch(already_AddRefed<nsIRunnable> aEvent, uint32_t aFlags) override {
     nsCOMPtr<nsIRunnable> runnable = aEvent;
     MonitorAutoLock mon(mTaskQueue->mQueueMonitor);
-    return mTaskQueue->DispatchLocked(/* passed by ref */ runnable,
+    return mTaskQueue->DispatchLocked(/* passed by ref */ runnable, aFlags,
                                       NormalDispatch);
   }
 
@@ -85,7 +85,7 @@ TaskDispatcher& TaskQueue::TailDispatcher() {
 // Note aRunnable is passed by ref to support conditional ownership transfer.
 // See Dispatch() in TaskQueue.h for more details.
 nsresult TaskQueue::DispatchLocked(nsCOMPtr<nsIRunnable>& aRunnable,
-                                   DispatchReason aReason) {
+                                   uint32_t aFlags, DispatchReason aReason) {
   mQueueMonitor.AssertCurrentThreadOwns();
   if (mIsShutdown) {
     return NS_ERROR_FAILURE;
@@ -94,6 +94,8 @@ nsresult TaskQueue::DispatchLocked(nsCOMPtr<nsIRunnable>& aRunnable,
   AbstractThread* currentThread;
   if (aReason != TailDispatch && (currentThread = GetCurrent()) &&
       RequiresTailDispatch(currentThread)) {
+    MOZ_ASSERT(aFlags == NS_DISPATCH_NORMAL,
+               "Tail dispatch doesn't support flags");
     return currentThread->TailDispatcher().AddTask(this, aRunnable.forget());
   }
 
@@ -102,7 +104,7 @@ nsresult TaskQueue::DispatchLocked(nsCOMPtr<nsIRunnable>& aRunnable,
     return NS_OK;
   }
   RefPtr<nsIRunnable> runner(new Runner(this));
-  nsresult rv = mTarget->Dispatch(runner.forget(), NS_DISPATCH_NORMAL);
+  nsresult rv = mTarget->Dispatch(runner.forget(), aFlags);
   if (NS_FAILED(rv)) {
     NS_WARNING("Failed to dispatch runnable to run TaskQueue");
     return rv;

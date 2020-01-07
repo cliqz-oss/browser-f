@@ -499,7 +499,8 @@ bool ConvertToStringPolicy<Op>::staticAdjustInputs(TempAllocator& alloc,
     return true;
   }
 
-  MToString* replace = MToString::New(alloc, in);
+  MToString* replace =
+      MToString::New(alloc, in, MToString::SideEffectHandling::Bailout);
   ins->block()->insertBefore(ins, replace);
   ins->replaceOperand(Op, replace);
 
@@ -787,7 +788,8 @@ bool ToDoublePolicy::staticAdjustInputs(TempAllocator& alloc,
 
 bool ToInt32Policy::staticAdjustInputs(TempAllocator& alloc,
                                        MInstruction* ins) {
-  MOZ_ASSERT(ins->isToNumberInt32() || ins->isTruncateToInt32());
+  MOZ_ASSERT(ins->isToNumberInt32() || ins->isTruncateToInt32() ||
+             ins->isToIntegerInt32());
 
   IntConversionInputKind conversion = IntConversionInputKind::Any;
   if (ins->isToNumberInt32()) {
@@ -804,7 +806,9 @@ bool ToInt32Policy::staticAdjustInputs(TempAllocator& alloc,
       return true;
     case MIRType::Undefined:
       // No need for boxing when truncating.
-      if (ins->isTruncateToInt32()) {
+      // Also no need for boxing when performing ToInteger, because
+      // ToInteger(undefined) = ToInteger(NaN) = 0.
+      if (ins->isTruncateToInt32() || ins->isToIntegerInt32()) {
         return true;
       }
       break;
@@ -1214,6 +1218,21 @@ bool FilterTypeSetPolicy::adjustInputs(TempAllocator& alloc,
   return true;
 }
 
+bool TypedArrayIndexPolicy::adjustInputs(TempAllocator& alloc,
+                                         MInstruction* ins) const {
+  MOZ_ASSERT(ins->isTypedArrayIndexToInt32());
+  MIRType specialization = ins->typePolicySpecialization();
+
+  // MTypedArrayIndexToInt32 is specialized for int32 input types.
+  if (specialization == MIRType::Int32) {
+    return UnboxedInt32Policy<0>::staticAdjustInputs(alloc, ins);
+  }
+
+  // Otherwise convert input to double.
+  MOZ_ASSERT(specialization == MIRType::Double);
+  return DoublePolicy<0>::staticAdjustInputs(alloc, ins);
+}
+
 // Lists of all TypePolicy specializations which are used by MIR Instructions.
 #define TYPE_POLICY_LIST(_)         \
   _(AllDoublePolicy)                \
@@ -1237,7 +1256,8 @@ bool FilterTypeSetPolicy::adjustInputs(TempAllocator& alloc,
   _(ToDoublePolicy)                 \
   _(ToInt32Policy)                  \
   _(ToStringPolicy)                 \
-  _(TypeBarrierPolicy)
+  _(TypeBarrierPolicy)              \
+  _(TypedArrayIndexPolicy)
 
 #define TEMPLATE_TYPE_POLICY_LIST(_)                                          \
   _(BoxExceptPolicy<0, MIRType::Object>)                                      \

@@ -53,6 +53,12 @@ loader.lazyRequireGetter(
 );
 loader.lazyRequireGetter(
   this,
+  "COLOR_SCHEMES",
+  "devtools/client/inspector/rules/constants",
+  true
+);
+loader.lazyRequireGetter(
+  this,
   "StyleInspectorMenu",
   "devtools/client/inspector/shared/style-inspector-menu"
 );
@@ -156,6 +162,9 @@ function CssRuleView(inspector, document, store) {
   this._onTogglePseudoClassPanel = this._onTogglePseudoClassPanel.bind(this);
   this._onTogglePseudoClass = this._onTogglePseudoClass.bind(this);
   this._onToggleClassPanel = this._onToggleClassPanel.bind(this);
+  this._onToggleColorSchemeSimulation = this._onToggleColorSchemeSimulation.bind(
+    this
+  );
   this._onTogglePrintSimulation = this._onTogglePrintSimulation.bind(this);
   this.highlightElementRule = this.highlightElementRule.bind(this);
   this.highlightProperty = this.highlightProperty.bind(this);
@@ -170,9 +179,12 @@ function CssRuleView(inspector, document, store) {
   this.pseudoClassToggle = doc.getElementById("pseudo-class-panel-toggle");
   this.classPanel = doc.getElementById("ruleview-class-panel");
   this.classToggle = doc.getElementById("class-panel-toggle");
+  this.colorSchemeSimulationButton = doc.getElementById(
+    "color-scheme-simulation-toggle"
+  );
   this.printSimulationButton = doc.getElementById("print-simulation-toggle");
 
-  this._initPrintSimulation();
+  this._initSimulationFeatures();
 
   this.searchClearButton.hidden = true;
 
@@ -393,30 +405,40 @@ CssRuleView.prototype = {
   },
 
   /**
-   * Check the print emulation actor's backwards-compatibility via the target actor's
-   * actorHasMethod.
+   * Initializes the emulation front and enable the print and color scheme simulation
+   * if they are supported in the current target.
    */
-  async _initPrintSimulation() {
-    // In order to query if the emulation actor's print simulation methods are supported,
-    // we have to call the emulation front so that the actor is lazily loaded. This allows
-    // us to use `actorHasMethod`. Please see `getActorDescription` for more information.
+  async _initSimulationFeatures() {
+    // In order to query if the emulation actor's print and color simulation methods are
+    // supported, we have to call the emulation front so that the actor is lazily loaded.
+    // This allows us to use `actorHasMethod`. Please see `getActorDescription` for more
+    // information.
     this._emulationFront = await this.currentTarget.getFront("emulation");
 
-    // Show the toggle button if:
-    // - Print simulation is supported for the current target.
-    // - Not debugging content document.
-    if (
-      (await this.currentTarget.actorHasMethod(
-        "emulation",
-        "getIsPrintSimulationEnabled"
-      )) &&
-      !this.currentTarget.chrome
-    ) {
+    if (!this.currentTarget.chrome) {
       this.printSimulationButton.removeAttribute("hidden");
-
       this.printSimulationButton.addEventListener(
         "click",
         this._onTogglePrintSimulation
+      );
+    }
+
+    // Show the color scheme simulation toggle button if:
+    // - The feature pref is enabled.
+    // - Color scheme simulation is supported for the current target.
+    if (
+      Services.prefs.getBoolPref(
+        "devtools.inspector.color-scheme-simulation.enabled"
+      ) &&
+      (await this.currentTarget.actorHasMethod(
+        "emulation",
+        "getEmulatedColorScheme"
+      ))
+    ) {
+      this.colorSchemeSimulationButton.removeAttribute("hidden");
+      this.colorSchemeSimulationButton.addEventListener(
+        "click",
+        this._onToggleColorSchemeSimulation
       );
     }
   },
@@ -433,7 +455,7 @@ CssRuleView.prototype = {
    * - value {Object} Depends on the type of the node
    * returns null of the node isn't anything we care about
    */
-  /* eslint-disable complexity */
+  // eslint-disable-next-line complexity
   getNodeInfo: function(node) {
     if (!node) {
       return null;
@@ -559,7 +581,6 @@ CssRuleView.prototype = {
       value,
     };
   },
-  /* eslint-enable complexity */
 
   /**
    * Retrieve the RuleEditor instance.
@@ -827,6 +848,10 @@ CssRuleView.prototype = {
 
     // Clean-up for print simulation.
     if (this._emulationFront) {
+      this.colorSchemeSimulationButton.removeEventListener(
+        "click",
+        this._onToggleColorSchemeSimulation
+      );
       this.printSimulationButton.removeEventListener(
         "click",
         this._onTogglePrintSimulation
@@ -834,6 +859,7 @@ CssRuleView.prototype = {
 
       this._emulationFront.destroy();
 
+      this.colorSchemeSimulationButton = null;
       this.printSimulationButton = null;
       this._emulationFront = null;
     }
@@ -1276,7 +1302,7 @@ CssRuleView.prototype = {
   /**
    * Creates editor UI for each of the rules in _elementStyle.
    */
-  /* eslint-disable complexity */
+  // eslint-disable-next-line complexity
   _createEditors: function() {
     // Run through the current list of rules, attaching
     // their editors in order.  Create editors if needed.
@@ -1359,7 +1385,6 @@ CssRuleView.prototype = {
 
     return promise.all(editorReadyPromises);
   },
-  /* eslint-enable complexity */
 
   /**
    * Highlight rules that matches the filter search value and returns a
@@ -1711,6 +1736,21 @@ CssRuleView.prototype = {
       event.preventDefault();
       event.stopPropagation();
     }
+  },
+
+  async _onToggleColorSchemeSimulation() {
+    const currentState = await this.emulationFront.getEmulatedColorScheme();
+    const index = COLOR_SCHEMES.indexOf(currentState);
+    const nextState = COLOR_SCHEMES[(index + 1) % COLOR_SCHEMES.length];
+
+    if (nextState) {
+      this.colorSchemeSimulationButton.setAttribute("state", nextState);
+    } else {
+      this.colorSchemeSimulationButton.removeAttribute("state");
+    }
+
+    await this.emulationFront.setEmulatedColorScheme(nextState);
+    this.refreshPanel();
   },
 
   async _onTogglePrintSimulation() {

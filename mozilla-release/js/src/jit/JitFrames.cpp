@@ -8,7 +8,7 @@
 
 #include "mozilla/ScopeExit.h"
 
-#include "jsutil.h"
+#include <algorithm>
 
 #include "gc/Marking.h"
 #include "jit/BaselineDebugModeOSR.h"
@@ -664,7 +664,7 @@ void HandleException(ResumeFromException* rfe) {
         // is exiting.
 
         JSScript* script = frames.script();
-        probes::ExitScript(cx, script, script->functionNonDelazifying(),
+        probes::ExitScript(cx, script, script->function(),
                            /* popProfilerFrame = */ false);
         if (!frames.more()) {
           TraceLogStopEvent(logger, TraceLogger_IonMonkey);
@@ -697,7 +697,7 @@ void HandleException(ResumeFromException* rfe) {
 
       // Unwind profiler pseudo-stack
       JSScript* script = frame.script();
-      probes::ExitScript(cx, script, script->functionNonDelazifying(),
+      probes::ExitScript(cx, script, script->function(),
                          /* popProfilerFrame = */ false);
 
       if (rfe->kind == ResumeFromException::RESUME_FORCED_RETURN) {
@@ -803,7 +803,7 @@ static void TraceThisAndArguments(JSTracer* trc, const JSJitFrameIter& frame,
     nformals = fun->nargs();
   }
 
-  size_t newTargetOffset = Max(nargs, fun->nargs());
+  size_t newTargetOffset = std::max(nargs, fun->nargs());
 
   Value* argv = layout->argv();
 
@@ -1109,8 +1109,9 @@ static void TraceJitExitFrame(JSTracer* trc, const JSJitFrameIter& frame) {
   }
 
   if (frame.isExitFrameLayout<DirectWasmJitCallFrameLayout>()) {
-    // Nothing to do: we can't have object arguments (yet!) and the callee
-    // is traced elsewhere.
+    // Nothing needs to be traced here at the moment -- the arguments to the
+    // callee are traced by the callee, and the inlined caller does not push
+    // anything else.
     return;
   }
 
@@ -1155,6 +1156,9 @@ static void TraceJitExitFrame(JSTracer* trc, const JSJitFrameIter& frame) {
         TraceGenericPointerRoot(trc, reinterpret_cast<gc::Cell**>(argBase),
                                 "ion-vm-args");
         break;
+      case VMFunctionData::RootBigInt:
+        TraceRoot(trc, reinterpret_cast<JS::BigInt**>(argBase), "ion-vm-args");
+        break;
     }
 
     switch (f->argProperties(explicitArg)) {
@@ -1191,6 +1195,9 @@ static void TraceJitExitFrame(JSTracer* trc, const JSJitFrameIter& frame) {
       case VMFunctionData::RootCell:
         TraceGenericPointerRoot(trc, footer->outParam<gc::Cell*>(),
                                 "ion-vm-out");
+        break;
+      case VMFunctionData::RootBigInt:
+        TraceRoot(trc, footer->outParam<JS::BigInt*>(), "ion-vm-out");
         break;
     }
   }

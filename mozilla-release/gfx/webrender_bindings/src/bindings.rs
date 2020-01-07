@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
 use std::ffi::{CStr, CString};
 #[cfg(not(target_os = "macos"))]
 use std::ffi::OsString;
@@ -22,10 +26,10 @@ use gleam::gl;
 
 use webrender::{
     api::*, api::units::*, ApiRecordingReceiver, AsyncPropertySampler, AsyncScreenshotHandle,
-    BinaryRecorder, DebugFlags, Device, ExternalImage, ExternalImageHandler, ExternalImageSource,
-    PipelineInfo, ProfilerHooks, RecordedFrameHandle, Renderer, RendererOptions, RendererStats,
+    BinaryRecorder, Compositor, DebugFlags, Device,
+    NativeSurfaceId, PipelineInfo, ProfilerHooks, RecordedFrameHandle, Renderer, RendererOptions, RendererStats,
     SceneBuilderHooks, ShaderPrecacheFlags, Shaders, ThreadListener, UploadMethod, VertexUsageHint,
-    WrShaders, set_profiler_hooks,
+    WrShaders, set_profiler_hooks, CompositorConfig, NativeSurfaceInfo
 };
 use thread_profiler::register_thread_with_profiler;
 use moz2d_renderer::Moz2dBlobImageHandler;
@@ -611,19 +615,34 @@ pub extern "C" fn wr_renderer_update(renderer: &mut Renderer) {
     renderer.update();
 }
 
+#[repr(C)]
+pub struct WrRenderResult {
+    result: bool,
+    dirty_rects: FfiVec<DeviceIntRect>,
+}
+
+#[no_mangle]
+pub unsafe extern "C" fn wr_render_result_delete(_result: WrRenderResult) {
+    // _result will be dropped here, and the drop impl on FfiVec will free
+    // the underlying vec memory
+}
+
 #[no_mangle]
 pub extern "C" fn wr_renderer_render(renderer: &mut Renderer,
                                      width: i32,
                                      height: i32,
                                      had_slow_frame: bool,
-                                     out_stats: &mut RendererStats) -> bool {
+                                     out_stats: &mut RendererStats) -> WrRenderResult {
     if had_slow_frame {
       renderer.notify_slow_frame();
     }
     match renderer.render(DeviceIntSize::new(width, height)) {
         Ok(results) => {
             *out_stats = results.stats;
-            true
+            WrRenderResult {
+                result: true,
+                dirty_rects: FfiVec::from_vec(results.dirty_rects),
+            }
         }
         Err(errors) => {
             for e in errors {
@@ -633,9 +652,17 @@ pub extern "C" fn wr_renderer_render(renderer: &mut Renderer,
                     gfx_critical_note(msg.as_ptr());
                 }
             }
-            false
+            WrRenderResult {
+                result: false,
+                dirty_rects: FfiVec::from_vec(vec![]),
+            }
         },
     }
+}
+
+#[no_mangle]
+pub extern "C" fn wr_renderer_force_redraw(renderer: &mut Renderer) {
+    renderer.force_redraw();
 }
 
 #[no_mangle]
@@ -1132,8 +1159,135 @@ fn wr_device_new(gl_context: *mut c_void, pc: Option<&mut WrProgramCache>)
       None => None,
     };
 
-    Device::new(gl, resource_override_path, upload_method, cached_programs, false, true, true, None)
+    Device::new(gl, resource_override_path, upload_method, cached_programs, false, true, true, None, false)
 }
+
+extern "C" {
+    fn wr_compositor_create_surface(
+        compositor: *mut c_void,
+        id: NativeSurfaceId,
+        size: DeviceIntSize,
+        is_opaque: bool,
+    );
+    fn wr_compositor_destroy_surface(
+        compositor: *mut c_void,
+        id: NativeSurfaceId,
+    );
+    fn wr_compositor_bind(
+        compositor: *mut c_void,
+        id: NativeSurfaceId,
+        offset: &mut DeviceIntPoint,
+        fbo_id: &mut u32,
+        dirty_rect: DeviceIntRect,
+    );
+    fn wr_compositor_unbind(compositor: *mut c_void);
+    fn wr_compositor_begin_frame(compositor: *mut c_void);
+    fn wr_compositor_add_surface(
+        compositor: *mut c_void,
+        id: NativeSurfaceId,
+        position: DeviceIntPoint,
+        clip_rect: DeviceIntRect,
+    );
+    fn wr_compositor_end_frame(compositor: *mut c_void);
+}
+
+pub struct WrCompositor(*mut c_void);
+
+impl Compositor for WrCompositor {
+    fn create_surface(
+        &mut self,
+        id: NativeSurfaceId,
+        size: DeviceIntSize,
+        is_opaque: bool,
+    ) {
+        unsafe {
+            wr_compositor_create_surface(
+                self.0,
+                id,
+                size,
+                is_opaque,
+            );
+        }
+    }
+
+    fn destroy_surface(
+        &mut self,
+        id: NativeSurfaceId,
+    ) {
+        unsafe {
+            wr_compositor_destroy_surface(
+                self.0,
+                id,
+            );
+        }
+    }
+
+    fn bind(
+        &mut self,
+        id: NativeSurfaceId,
+        dirty_rect: DeviceIntRect,
+    ) -> NativeSurfaceInfo {
+        let mut surface_info = NativeSurfaceInfo {
+            origin: DeviceIntPoint::zero(),
+            fbo_id: 0,
+        };
+
+        unsafe {
+            wr_compositor_bind(
+                self.0,
+                id,
+                &mut surface_info.origin,
+                &mut surface_info.fbo_id,
+                dirty_rect,
+            );
+        }
+
+        surface_info
+    }
+
+    fn unbind(
+        &mut self,
+    ) {
+        unsafe {
+            wr_compositor_unbind(
+                self.0,
+            );
+        }
+    }
+
+    fn begin_frame(&mut self) {
+        unsafe {
+            wr_compositor_begin_frame(
+                self.0,
+            );
+        }
+    }
+
+    fn add_surface(
+        &mut self,
+        id: NativeSurfaceId,
+        position: DeviceIntPoint,
+        clip_rect: DeviceIntRect,
+    ) {
+        unsafe {
+            wr_compositor_add_surface(
+                self.0,
+                id,
+                position,
+                clip_rect,
+            );
+        }
+    }
+
+    fn end_frame(&mut self) {
+        unsafe {
+            wr_compositor_end_frame(
+                self.0,
+            );
+        }
+    }
+}
+
 
 // Call MakeCurrent before this.
 #[no_mangle]
@@ -1145,15 +1299,20 @@ pub extern "C" fn wr_window_new(window_id: WrWindowId,
                                 enable_picture_caching: bool,
                                 start_debug_server: bool,
                                 gl_context: *mut c_void,
+                                surface_origin_is_top_left: bool,
                                 program_cache: Option<&mut WrProgramCache>,
                                 shaders: Option<&mut WrShaders>,
                                 thread_pool: *mut WrThreadPool,
                                 size_of_op: VoidPtrToSizeFn,
                                 enclosing_size_of_op: VoidPtrToSizeFn,
                                 document_id: u32,
+                                compositor: *mut c_void,
+                                max_update_rects: usize,
+                                max_partial_present_rects: usize,
                                 out_handle: &mut *mut DocumentHandle,
                                 out_renderer: &mut *mut Renderer,
-                                out_max_texture_size: *mut i32)
+                                out_max_texture_size: *mut i32,
+                                enable_gpu_markers: bool)
                                 -> bool {
     assert!(unsafe { is_in_render_thread() });
 
@@ -1203,8 +1362,20 @@ pub extern "C" fn wr_window_new(window_id: WrWindowId,
         ColorF::new(0.0, 0.0, 0.0, 0.0)
     };
 
+    let compositor_config = if compositor != ptr::null_mut() {
+        CompositorConfig::Native {
+            max_update_rects,
+            compositor: Box::new(WrCompositor(compositor)),
+        }
+    } else {
+        CompositorConfig::Draw {
+            max_partial_present_rects,
+        }
+    };
+
     let opts = RendererOptions {
         enable_aa: true,
+        force_subpixel_aa: false,
         enable_subpixel_aa: cfg!(not(target_os = "android")),
         support_low_priority_transactions,
         allow_texture_swizzling,
@@ -1237,6 +1408,9 @@ pub extern "C" fn wr_window_new(window_id: WrWindowId,
         enable_picture_caching,
         allow_pixel_local_storage_support: false,
         start_debug_server,
+        surface_origin_is_top_left,
+        compositor_config,
+        enable_gpu_markers,
         ..Default::default()
     };
 
@@ -1568,12 +1742,12 @@ pub extern "C" fn wr_transaction_pinch_zoom(
 }
 
 #[no_mangle]
-pub extern "C" fn wr_transaction_set_is_transform_pinch_zooming(
+pub extern "C" fn wr_transaction_set_is_transform_async_zooming(
     txn: &mut Transaction,
     animation_id: u64,
     is_zooming: bool
 ) {
-    txn.set_is_transform_pinch_zooming(is_zooming, PropertyBindingId::new(animation_id));
+    txn.set_is_transform_async_zooming(is_zooming, PropertyBindingId::new(animation_id));
 }
 
 #[no_mangle]
@@ -1832,6 +2006,13 @@ pub extern "C" fn wr_api_capture(
             path = PathBuf::from(storage_path).join(path);
         }
     }
+
+	#[cfg(target_os = "windows")]
+	{
+		if let Some(storage_path) = dirs::data_local_dir() {
+			path = PathBuf::from(storage_path).join(path);
+		}
+	}
 
     // Increment the extension until we find a fresh path
     while path.is_dir() {

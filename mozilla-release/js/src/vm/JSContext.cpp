@@ -45,10 +45,12 @@
 #ifdef JS_SIMULATOR_ARM
 #  include "jit/arm/Simulator-arm.h"
 #endif
+#include "util/DiagnosticAssertions.h"
 #include "util/DoubleToString.h"
 #include "util/NativeStack.h"
 #include "util/Windows.h"
 #include "vm/BytecodeUtil.h"
+#include "vm/ErrorObject.h"
 #include "vm/ErrorReporting.h"
 #include "vm/HelperThreads.h"
 #include "vm/Iteration.h"
@@ -1248,6 +1250,7 @@ JSContext::JSContext(JSRuntime* runtime, const JS::ContextOptions& options)
 #ifdef DEBUG
       gcSweeping(this, false),
       gcSweepingZone(this, nullptr),
+      gcMarking(this, false),
       isTouchingGrayThings(this, false),
       noNurseryAllocationCheck(this, 0),
       disableStrictProxyCheckingCount(this, 0),
@@ -1400,13 +1403,9 @@ void JSContext::setPendingException(HandleValue v, HandleSavedFrame stack) {
   check(v);
 }
 
-static const size_t MAX_REPORTED_STACK_DEPTH = 1u << 7;
-
 void JSContext::setPendingExceptionAndCaptureStack(HandleValue value) {
   RootedObject stack(this);
-  if (!CaptureCurrentStack(
-          this, &stack,
-          JS::StackCapture(JS::MaxFrames(MAX_REPORTED_STACK_DEPTH)))) {
+  if (!CaptureStack(this, &stack)) {
     clearPendingException();
   }
 
@@ -1515,8 +1514,13 @@ void AutoEnterOOMUnsafeRegion::crash(const char* reason) {
   char msgbuf[1024];
   js::NoteIntentionalCrash();
   SprintfLiteral(msgbuf, "[unhandlable oom] %s", reason);
-  MOZ_ReportAssertionFailure(msgbuf, __FILE__, __LINE__);
-  MOZ_CRASH();
+#ifndef DEBUG
+  // In non-DEBUG builds MOZ_CRASH normally doesn't print to stderr so we have
+  // to do this explicitly (the jit-test allow-unhandlable-oom annotation and
+  // fuzzers depend on it).
+  MOZ_ReportCrash(msgbuf, __FILE__, __LINE__);
+#endif
+  MOZ_CRASH_UNSAFE(msgbuf);
 }
 
 AutoEnterOOMUnsafeRegion::AnnotateOOMAllocationSizeCallback

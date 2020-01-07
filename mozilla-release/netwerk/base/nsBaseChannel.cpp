@@ -137,11 +137,8 @@ nsresult nsBaseChannel::Redirect(nsIChannel* newChannel, uint32_t redirectFlags,
     }
   }
 
-  nsCOMPtr<nsIWritablePropertyBag> bag = ::do_QueryInterface(newChannel);
-  if (bag) {
-    for (auto iter = mPropertyHash.Iter(); !iter.Done(); iter.Next()) {
-      bag->SetProperty(iter.Key(), iter.UserData());
-    }
+  if (nsCOMPtr<nsIWritablePropertyBag> bag = ::do_QueryInterface(newChannel)) {
+    nsHashPropertyBag::CopyFrom(bag, static_cast<nsIPropertyBag2*>(this));
   }
 
   // Notify consumer, giving chance to cancel redirect.
@@ -353,7 +350,6 @@ NS_IMPL_RELEASE(nsBaseChannel)
 NS_INTERFACE_MAP_BEGIN(nsBaseChannel)
   NS_INTERFACE_MAP_ENTRY(nsIRequest)
   NS_INTERFACE_MAP_ENTRY(nsIChannel)
-  NS_INTERFACE_MAP_ENTRY_CONDITIONAL(nsIIdentChannel, mChannelId.isSome())
   NS_INTERFACE_MAP_ENTRY(nsIThreadRetargetableRequest)
   NS_INTERFACE_MAP_ENTRY(nsIInterfaceRequestor)
   NS_INTERFACE_MAP_ENTRY(nsITransportEventSink)
@@ -432,7 +428,8 @@ nsBaseChannel::SetLoadFlags(nsLoadFlags aLoadFlags) {
 
 NS_IMETHODIMP
 nsBaseChannel::GetLoadGroup(nsILoadGroup** aLoadGroup) {
-  NS_IF_ADDREF(*aLoadGroup = mLoadGroup);
+  nsCOMPtr<nsILoadGroup> loadGroup(mLoadGroup);
+  loadGroup.forget(aLoadGroup);
   return NS_OK;
 }
 
@@ -467,13 +464,15 @@ nsBaseChannel::SetOriginalURI(nsIURI* aURI) {
 
 NS_IMETHODIMP
 nsBaseChannel::GetURI(nsIURI** aURI) {
-  NS_IF_ADDREF(*aURI = mURI);
+  nsCOMPtr<nsIURI> uri(mURI);
+  uri.forget(aURI);
   return NS_OK;
 }
 
 NS_IMETHODIMP
 nsBaseChannel::GetOwner(nsISupports** aOwner) {
-  NS_IF_ADDREF(*aOwner = mOwner);
+  nsCOMPtr<nsISupports> owner(mOwner);
+  owner.forget(aOwner);
   return NS_OK;
 }
 
@@ -495,7 +494,8 @@ nsBaseChannel::SetLoadInfo(nsILoadInfo* aLoadInfo) {
 
 NS_IMETHODIMP
 nsBaseChannel::GetLoadInfo(nsILoadInfo** aLoadInfo) {
-  NS_IF_ADDREF(*aLoadInfo = mLoadInfo);
+  nsCOMPtr<nsILoadInfo> loadInfo(mLoadInfo);
+  loadInfo.forget(aLoadInfo);
   return NS_OK;
 }
 
@@ -506,7 +506,8 @@ nsBaseChannel::GetIsDocument(bool* aIsDocument) {
 
 NS_IMETHODIMP
 nsBaseChannel::GetNotificationCallbacks(nsIInterfaceRequestor** aCallbacks) {
-  NS_IF_ADDREF(*aCallbacks = mCallbacks);
+  nsCOMPtr<nsIInterfaceRequestor> callbacks(mCallbacks);
+  callbacks.forget(aCallbacks);
   return NS_OK;
 }
 
@@ -524,7 +525,8 @@ nsBaseChannel::SetNotificationCallbacks(nsIInterfaceRequestor* aCallbacks) {
 
 NS_IMETHODIMP
 nsBaseChannel::GetSecurityInfo(nsISupports** aSecurityInfo) {
-  NS_IF_ADDREF(*aSecurityInfo = mSecurityInfo);
+  nsCOMPtr<nsISupports> securityInfo(mSecurityInfo);
+  securityInfo.forget(aSecurityInfo);
   return NS_OK;
 }
 
@@ -705,27 +707,6 @@ nsBaseChannel::AsyncOpen(nsIStreamListener* aListener) {
 
   ClassifyURI();
 
-  return NS_OK;
-}
-
-//-----------------------------------------------------------------------------
-// nsBaseChannel::nsIIdentChannel
-
-NS_IMETHODIMP
-nsBaseChannel::GetChannelId(uint64_t* aChannelId) {
-  if (!mChannelId) {
-    return NS_ERROR_NOT_IMPLEMENTED;
-  }
-  *aChannelId = *mChannelId;
-  return NS_OK;
-}
-
-NS_IMETHODIMP
-nsBaseChannel::SetChannelId(uint64_t aChannelId) {
-  if (!mChannelId) {
-    return NS_ERROR_NOT_IMPLEMENTED;
-  }
-  *mChannelId = aChannelId;
   return NS_OK;
 }
 

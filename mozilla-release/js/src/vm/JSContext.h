@@ -22,6 +22,7 @@
 #include "js/Vector.h"
 #include "threading/ProtectedData.h"
 #include "util/StructuredSpewer.h"
+#include "vm/Activation.h"  // js::Activation
 #include "vm/ErrorReporting.h"
 #include "vm/MallocProvider.h"
 #include "vm/Runtime.h"
@@ -35,6 +36,7 @@ class AutoMaybeLeaveAtomsZone;
 class AutoRealm;
 
 namespace jit {
+class JitActivation;
 class JitContext;
 class DebugModeOSRVolatileJitFrameIter;
 }  // namespace jit
@@ -43,8 +45,6 @@ namespace gc {
 class AutoCheckCanAccessAtomsDuringGC;
 class AutoSuppressNurseryCellAlloc;
 }  // namespace gc
-
-typedef HashSet<Shape*> ShapeSet;
 
 /* Detects cycles when traversing an object graph. */
 class MOZ_RAII AutoCycleDetector {
@@ -251,8 +251,8 @@ struct JSContext : public JS::RootingContext,
    * on OOM and retry the allocation.
    */
   template <typename T>
-  T* pod_callocCanGC(size_t numElems, arena_id_t arena = js::MallocArena) {
-    T* p = maybe_pod_calloc<T>(numElems, arena);
+  T* pod_arena_callocCanGC(arena_id_t arena, size_t numElems) {
+    T* p = maybe_pod_arena_calloc<T>(arena, numElems);
     if (MOZ_LIKELY(!!p)) {
       return p;
     }
@@ -547,6 +547,10 @@ struct JSContext : public JS::RootingContext,
   // The specific zone currently being swept, if any. Setting this restricts
   // IsAboutToBeFinalized and IsMarked calls to this zone.
   js::ContextData<JS::Zone*> gcSweepingZone;
+
+  // Whether this thread is currently marking GC things. This thread could
+  // be the main thread or a helper thread doing sweep-marking.
+  js::ContextData<bool> gcMarking;
 
   // Whether this thread is currently manipulating possibly-gray GC things.
   js::ContextData<size_t> isTouchingGrayThings;
@@ -1347,6 +1351,21 @@ class MOZ_RAII AutoSuppressNurseryCellAlloc {
   }
   ~AutoSuppressNurseryCellAlloc() { cx_->nurserySuppressions_--; }
 };
+
+#ifdef DEBUG
+// Set/reset the GC marking flag for the current thread.
+struct MOZ_RAII AutoSetThreadIsMarking {
+  AutoSetThreadIsMarking() : cx(TlsContext.get()), prevState(cx->gcMarking) {
+    cx->gcMarking = true;
+  }
+
+  ~AutoSetThreadIsMarking() { cx->gcMarking = prevState; }
+
+ private:
+  JSContext* cx;
+  bool prevState;
+};
+#endif  // DEBUG
 
 }  // namespace gc
 

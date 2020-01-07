@@ -22,6 +22,18 @@
     "resource://gre/actors/BrowserElementParent.jsm"
   );
 
+  ChromeUtils.defineModuleGetter(
+    LazyModules,
+    "E10SUtils",
+    "resource://gre/modules/E10SUtils.jsm"
+  );
+
+  ChromeUtils.defineModuleGetter(
+    LazyModules,
+    "RemoteWebNavigation",
+    "resource://gre/modules/RemoteWebNavigation.jsm"
+  );
+
   const elementsToDestroyOnUnload = new Set();
 
   window.addEventListener(
@@ -48,9 +60,8 @@
       // Only do this when the rebuild frameloaders pref is off. This update isn't
       // required when we rebuild the frameloaders in the backend.
       let rebuildFrameLoaders =
-        Services.prefs.getBoolPref(
-          "fission.rebuild_frameloaders_on_remoteness_change"
-        ) || this.ownerGlobal.docShell.nsILoadContext.useRemoteSubframes;
+        LazyModules.E10SUtils.rebuildFrameloadersOnRemotenessChange ||
+        this.ownerGlobal.docShell.nsILoadContext.useRemoteSubframes;
       if (
         !rebuildFrameLoaders &&
         name === "remote" &&
@@ -493,7 +504,7 @@
       }
 
       // Create an anchor for the popup
-      popupAnchor = document.createXULElement("hbox");
+      popupAnchor = document.createElement("div");
       popupAnchor.className = "popup-anchor";
       popupAnchor.hidden = true;
       stack.appendChild(popupAnchor);
@@ -680,7 +691,10 @@
     }
 
     get browsingContext() {
-      return this.frameLoader.browsingContext;
+      if (this.frameLoader) {
+        return this.frameLoader.browsingContext;
+      }
+      return null;
     }
     /**
      * Note that this overrides webNavigation on XULFrameElement, and duplicates the return value for the non-remote case
@@ -789,18 +803,6 @@
       }
     }
 
-    set showWindowResizer(val) {
-      if (val) {
-        this.setAttribute("showresizer", "true");
-      } else {
-        this.removeAttribute("showresizer");
-      }
-    }
-
-    get showWindowResizer() {
-      return this.getAttribute("showresizer") == "true";
-    }
-
     set fullZoom(val) {
       if (this.isRemoteBrowser) {
         let changed = val.toFixed(2) != this._fullZoom.toFixed(2);
@@ -861,10 +863,7 @@
     }
 
     get hasContentOpener() {
-      if (this.isRemoteBrowser) {
-        return this.frameLoader.remoteTab.hasContentOpener;
-      }
-      return !!this.contentWindow.opener;
+      return !!this.browsingContext.opener;
     }
 
     get mStrBundle() {
@@ -1263,16 +1262,9 @@
          * the <browser> element may not be initialized yet.
          */
 
-        this._remoteWebNavigation = Cc[
-          "@mozilla.org/remote-web-navigation;1"
-        ].createInstance(Ci.nsIWebNavigation);
-        this._remoteWebNavigationImpl = this._remoteWebNavigation.wrappedJSObject;
-        this._remoteWebNavigationImpl.swapBrowser(this);
+        this._remoteWebNavigation = new LazyModules.RemoteWebNavigation(this);
 
         // Initialize contentPrincipal to the about:blank principal for this loadcontext
-        let { Services } = ChromeUtils.import(
-          "resource://gre/modules/Services.jsm"
-        );
         let aboutBlank = Services.io.newURI("about:blank");
         let ssm = Services.scriptSecurityManager;
         this._contentPrincipal = ssm.getLoadContextContentPrincipal(
@@ -1586,9 +1578,8 @@
 
     updateWebNavigationForLocationChange(aCanGoBack, aCanGoForward) {
       if (this.isRemoteBrowser && this.messageManager) {
-        let remoteWebNav = this._remoteWebNavigationImpl;
-        remoteWebNav.canGoBack = aCanGoBack;
-        remoteWebNav.canGoForward = aCanGoForward;
+        this._remoteWebNavigation.canGoBack = aCanGoBack;
+        this._remoteWebNavigation.canGoForward = aCanGoForward;
       }
     }
 
@@ -1621,7 +1612,7 @@
           this._documentContentType = aContentType;
         }
 
-        this._remoteWebNavigationImpl._currentURI = aLocation;
+        this._remoteWebNavigation._currentURI = aLocation;
         this._documentURI = aDocumentURI;
         this._contentTitle = aTitle;
         this._imageDocument = null;
@@ -1640,8 +1631,8 @@
 
     purgeSessionHistory() {
       if (this.isRemoteBrowser) {
-        this._remoteWebNavigationImpl.canGoBack = false;
-        this._remoteWebNavigationImpl.canGoForward = false;
+        this._remoteWebNavigation.canGoBack = false;
+        this._remoteWebNavigation.canGoForward = false;
       }
       try {
         this.sendMessageToActor(
@@ -1735,9 +1726,6 @@
     _createAutoScrollPopup() {
       var popup = document.createXULElement("panel");
       popup.className = "autoscroller";
-      // We set this attribute on the element so that mousemove
-      // events can be handled by browser-content.js.
-      popup.setAttribute("mousethrough", "always");
       popup.setAttribute("consumeoutsideclicks", "true");
       popup.setAttribute("rolluponmousewheel", "true");
       popup.setAttribute("hidden", "true");
@@ -1964,7 +1952,6 @@
         fieldsToSwap.push(
           ...[
             "_remoteWebNavigation",
-            "_remoteWebNavigationImpl",
             "_remoteWebProgressManager",
             "_remoteWebProgress",
             "_remoteFinder",
@@ -2017,8 +2004,8 @@
         this._fastFind = aOtherBrowser._fastFind = null;
       } else {
         // Rewire the remote listeners
-        this._remoteWebNavigationImpl.swapBrowser(this);
-        aOtherBrowser._remoteWebNavigationImpl.swapBrowser(aOtherBrowser);
+        this._remoteWebNavigation.swapBrowser(this);
+        aOtherBrowser._remoteWebNavigation.swapBrowser(aOtherBrowser);
 
         if (
           this._remoteWebProgressManager &&
@@ -2096,11 +2083,17 @@
       );
     }
 
-    drawSnapshot(x, y, w, h, scale, backgroundColor) {
-      if (!this.frameLoader) {
-        throw Components.Exception("No frame loader.", Cr.NS_ERROR_FAILURE);
+    async drawSnapshot(x, y, w, h, scale, backgroundColor) {
+      let rect = new DOMRect(x, y, w, h);
+      try {
+        return this.browsingContext.currentWindowGlobal.drawSnapshot(
+          rect,
+          scale,
+          backgroundColor
+        );
+      } catch (e) {
+        return false;
       }
-      return this.frameLoader.drawSnapshot(x, y, w, h, scale, backgroundColor);
     }
 
     dropLinks(aLinks, aTriggeringPrincipal) {

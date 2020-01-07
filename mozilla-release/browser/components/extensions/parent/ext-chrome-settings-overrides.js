@@ -13,6 +13,12 @@ var { ExtensionParent } = ChromeUtils.import(
 
 ChromeUtils.defineModuleGetter(
   this,
+  "ExtensionPermissions",
+  "resource://gre/modules/ExtensionPermissions.jsm"
+);
+
+ChromeUtils.defineModuleGetter(
+  this,
   "ExtensionSettingsStore",
   "resource://gre/modules/ExtensionSettingsStore.jsm"
 );
@@ -85,8 +91,19 @@ XPCOMUtils.defineLazyGetter(this, "homepagePopup", () => {
 // startup case we need to check if the preferences are set to load the homepage
 // and check if the homepage is active, then show the doorhanger in that case.
 async function handleInitialHomepagePopup(extensionId, homepageUrl) {
+<<<<<<< HEAD
   // browser.startup.addFreshTab == true means we would like to show a home page
   if (Services.prefs.getBoolPref("browser.startup.addFreshTab")) {
+||||||| merged common ancestors
+  // browser.startup.page == 1 is show homepage.
+  if (Services.prefs.getIntPref("browser.startup.page") == 1) {
+=======
+  // browser.startup.page == 1 is show homepage.
+  if (
+    Services.prefs.getIntPref("browser.startup.page") == 1 &&
+    windowTracker.topWindow
+  ) {
+>>>>>>> e86e1fad9bb754a69bba83334ae55a625468dd48
     let { gBrowser } = windowTracker.topWindow;
     let tab = gBrowser.selectedTab;
     let currentUrl = gBrowser.currentURI.spec;
@@ -130,7 +147,7 @@ async function handleHomepageUrl(extension, homepageUrl) {
     let item = await ExtensionPreferencesManager.getSetting(
       "homepage_override"
     );
-    inControl = item && item.id == extension.id;
+    inControl = item && item.id && item.id == extension.id;
   }
 
   if (inControl) {
@@ -259,6 +276,10 @@ this.chrome_settings_overrides = class extends ExtensionAPI {
       this.processDefaultSearchSetting("removeSetting", id),
       this.removeEngine(id),
     ]);
+  }
+
+  static async onEnabling(id) {
+    chrome_settings_overrides.processDefaultSearchSetting("enable", id);
   }
 
   static async onUninstall(id) {
@@ -524,22 +545,29 @@ this.chrome_settings_overrides = class extends ExtensionAPI {
 };
 
 ExtensionPreferencesManager.addSetting("homepage_override", {
-  prefNames: [HOMEPAGE_PREF, HOMEPAGE_EXTENSION_CONTROLLED],
+  prefNames: [
+    HOMEPAGE_PREF,
+    HOMEPAGE_EXTENSION_CONTROLLED,
+    HOMEPAGE_PRIVATE_ALLOWED,
+  ],
   // ExtensionPreferencesManager will call onPrefsChanged when control changes
   // and it updates the preferences. We are passed the item from
   // ExtensionSettingsStore that details what is in control. If there is an id
   // then control has changed to an extension, if there is no id then control
   // has been returned to the user.
-  onPrefsChanged(item) {
+  async onPrefsChanged(item) {
     if (item.id) {
       // CLIQZ-SPECIAL: Hide warning popup for homepage
       // homepagePopup.addObserver(item.id);
 
       let policy = ExtensionParent.WebExtensionPolicy.getByID(item.id);
-      Services.prefs.setBoolPref(
-        HOMEPAGE_PRIVATE_ALLOWED,
-        policy && policy.privateBrowsingAllowed
-      );
+      let allowed = policy && policy.privateBrowsingAllowed;
+      if (!policy) {
+        // We'll generally hit this path during safe mode changes.
+        let perms = await ExtensionPermissions.get(item.id);
+        allowed = perms.permissions.includes("internal:privateBrowsingAllowed");
+      }
+      Services.prefs.setBoolPref(HOMEPAGE_PRIVATE_ALLOWED, allowed);
       Services.prefs.setBoolPref(HOMEPAGE_EXTENSION_CONTROLLED, true);
     } else {
       // CLIQZ-SPECIAL: Hide warning popup for homepage
@@ -550,9 +578,13 @@ ExtensionPreferencesManager.addSetting("homepage_override", {
     }
   },
   setCallback(value) {
+    // Setting the pref will result in onPrefsChanged being called, which
+    // will then set HOMEPAGE_PRIVATE_ALLOWED.  We want to ensure that this
+    // pref will be set/unset as apropriate.
     return {
       [HOMEPAGE_PREF]: value,
       [HOMEPAGE_EXTENSION_CONTROLLED]: !!value,
+      [HOMEPAGE_PRIVATE_ALLOWED]: false,
     };
   },
 });

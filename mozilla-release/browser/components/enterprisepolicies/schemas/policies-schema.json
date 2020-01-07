@@ -265,7 +265,8 @@
     },
 
     "DisplayMenuBar": {
-      "type": "boolean"
+      "type": ["boolean", "string"],
+      "enum": ["always", "never", "default-on", "default-off"]
     },
 
     "DNSOverHTTPS": {
@@ -669,6 +670,9 @@
         "browser.fixup.dns_first_for_single_words": {
           "type": "boolean"
         },
+        "browser.newtabpage.activity-stream.default.sites": {
+          "type": "string"
+        },
         "browser.safebrowsing.phishing.enabled": {
           "type": "boolean"
         },
@@ -726,6 +730,9 @@
         "extensions.getAddons.showPane": {
           "type": "boolean"
         },
+        "extensions.htmlaboutaddons.recommendations.enabled": {
+          "type": "boolean"
+        },
         "geo.enabled": {
           "type": "boolean"
         },
@@ -740,6 +747,12 @@
         },
         "media.gmp-widevinecdm.enabled": {
           "type": "boolean"
+        },
+        "media.peerconnection.enabled": {
+          "type": "boolean"
+        },
+        "media.peerconnection.ice.obfuscate_host_addresses.whitelist": {
+          "type": "string"
         },
         "network.dns.disableIPv6": {
           "type": "boolean"
@@ -759,14 +772,23 @@
         "security.default_personal_cert": {
           "type": "string"
         },
+        "security.mixed_content.block_active_content": {
+          "type": "boolean"
+        },
+        "security.osclientcerts.autoload": {
+          "type": "boolean"
+        },
         "security.ssl.errorReporting.enabled": {
           "type": "boolean"
         },
-        "security.mixed_content.block_active_content": {
+        "security.tls.hello_downgrade_check": {
           "type": "boolean"
         },
         "ui.key.menuAccessKeyFocuses": {
           "type": "boolean"
+        },
+        "widget.content.gtk-theme-override": {
+          "type": "string"
         }
       }
     },

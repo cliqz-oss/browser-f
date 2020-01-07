@@ -70,7 +70,7 @@ already_AddRefed<CacheStorage> CreateCacheStorage(JSContext* aCx,
   // explicitly fails for private browsing so there should never be
   // a service worker running in private browsing mode.  Therefore if
   // we are purging scripts or running a comparison algorithm we cannot
-  // be in private browing.
+  // be in private browsing.
   //
   // Also, bypass the CacheStorage trusted origin checks.  The ServiceWorker
   // has validated the origin prior to this point.  All the information
@@ -559,7 +559,7 @@ class CompareManager final : public PromiseNativeHandler {
         new Response(aCache->GetGlobalObject(), ir, nullptr);
 
     RequestOrUSVString request;
-    request.SetAsUSVString().Rebind(aCN->URL().Data(), aCN->URL().Length());
+    request.SetAsUSVString().ShareOrDependUpon(aCN->URL());
 
     // For now we have to wait until the Put Promise is fulfilled before we can
     // continue since Cache does not yet support starting a read that is being
@@ -982,7 +982,7 @@ nsresult CompareCache::Initialize(Cache* const aCache, const nsAString& aURL) {
   jsapi.Init();
 
   RequestOrUSVString request;
-  request.SetAsUSVString().Rebind(aURL.Data(), aURL.Length());
+  request.SetAsUSVString().ShareOrDependUpon(aURL);
   ErrorResult error;
   CacheQueryOptions params;
   RefPtr<Promise> promise = aCache->Match(jsapi.cx(), request, params, error);

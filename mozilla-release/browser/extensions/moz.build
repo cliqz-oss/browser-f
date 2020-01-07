@@ -5,7 +5,14 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 DIRS += [
+<<<<<<< HEAD
 #   'formautofill',
+||||||| merged common ancestors
+    'formautofill',
+=======
+    'doh-rollout',
+    'formautofill',
+>>>>>>> e86e1fad9bb754a69bba83334ae55a625468dd48
     'pdfjs',
 #   'screenshots',
 #   'webcompat',

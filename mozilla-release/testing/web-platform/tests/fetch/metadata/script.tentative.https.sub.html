@@ -10,11 +10,11 @@
     t.add_cleanup(_ => { header = null; });
 
     assert_header_equals(header, {
-      "dest": "script",
       "site": "same-origin",
       "user": "",
       "mode": "no-cors",
-    });
+      "dest": "script"
+    }, "Same-origin script");
   }, "Same-origin script");
 </script>
 
@@ -25,11 +25,11 @@
     t.add_cleanup(_ => { header = null; });
 
     assert_header_equals(header, {
-      "dest": "script",
       "site": "same-site",
       "user": "",
       "mode": "no-cors",
-    });
+      "dest": "script"
+    }, "Same-site script");
   }, "Same-site script");
 </script>
 
@@ -40,11 +40,11 @@
     t.add_cleanup(_ => { header = null; });
 
     assert_header_equals(header, {
-      "dest": "script",
       "site": "cross-site",
       "user": "",
       "mode": "no-cors",
-    });
+      "dest": "script"
+    }, "Cross-site script");
   }, "Cross-site script");
 </script>
 
@@ -55,10 +55,10 @@
     t.add_cleanup(_ => { header = null; });
 
     assert_header_equals(header, {
-      "dest": "script",
       "site": "same-origin",
       "user": "",
       "mode": "cors",
-    });
+      "dest": "script"
+    }, "Same-origin CORS script");
   }, "Same-origin CORS script");
 </script>

@@ -60,6 +60,7 @@ import {
   type SourceActorId,
   type SourceActorOuterState,
 } from "./source-actors";
+import { getThreads, getMainThread } from "./threads";
 import type {
   Source,
   SourceId,
@@ -130,7 +131,7 @@ export type SourcesState = {
   pendingSelectedLocation?: PendingSelectedLocation,
   selectedLocation: ?SourceLocation,
   projectDirectoryRoot: string,
-  chromeAndExtenstionsEnabled: boolean,
+  chromeAndExtensionsEnabled: boolean,
   focusedItem: ?FocusItem,
 };
 
@@ -147,7 +148,7 @@ export function initialSourcesState(): SourcesState {
     selectedLocation: undefined,
     pendingSelectedLocation: prefs.pendingSelectedLocation,
     projectDirectoryRoot: prefs.projectDirectoryRoot,
-    chromeAndExtenstionsEnabled: prefs.chromeAndExtenstionsEnabled,
+    chromeAndExtensionsEnabled: prefs.chromeAndExtensionsEnabled,
     focusedItem: null,
   };
 }
@@ -796,6 +797,7 @@ const queryAllDisplayedSources: ReduceQuery<
     projectDirectoryRoot: string,
     chromeAndExtensionsEnabled: boolean,
     debuggeeIsWebExtension: boolean,
+    threadActors: Array<ThreadId>,
   |},
   Array<SourceId>
 > = makeReduceQuery(
@@ -807,11 +809,12 @@ const queryAllDisplayedSources: ReduceQuery<
         projectDirectoryRoot,
         chromeAndExtensionsEnabled,
         debuggeeIsWebExtension,
+        threadActors,
       }
     ) => ({
       id: resource.id,
       displayed:
-        underRoot(resource, projectDirectoryRoot) &&
+        underRoot(resource, projectDirectoryRoot, threadActors) &&
         (!resource.isExtension ||
           chromeAndExtensionsEnabled ||
           debuggeeIsWebExtension),
@@ -831,8 +834,12 @@ function getAllDisplayedSources(
 ): Array<SourceId> {
   return queryAllDisplayedSources(state.sources.sources, {
     projectDirectoryRoot: state.sources.projectDirectoryRoot,
-    chromeAndExtensionsEnabled: state.sources.chromeAndExtenstionsEnabled,
+    chromeAndExtensionsEnabled: state.sources.chromeAndExtensionsEnabled,
     debuggeeIsWebExtension: state.threads.isWebExtension,
+    threadActors: [
+      getMainThread(state).actor,
+      ...getThreads(state).map(t => t.actor),
+    ],
   });
 }
 

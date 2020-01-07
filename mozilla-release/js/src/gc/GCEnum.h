@@ -103,7 +103,7 @@ enum class ZealMode {
   _(BigIntDigits)                          \
   _(ScopeData)                             \
   _(WeakMapObject)                         \
-  _(ShapeKids)                             \
+  _(ShapeChildren)                         \
   _(ShapeCache)                            \
   _(ModuleBindingMap)                      \
   _(BaselineScript)                        \
@@ -137,7 +137,11 @@ enum class ZealMode {
   _(DebuggerFrameIterData)                 \
   _(DebuggerOnStepHandler)                 \
   _(DebuggerOnPopHandler)                  \
-  _(RealmInstrumentation)
+  _(RealmInstrumentation)                  \
+  _(ICUObject)                             \
+  _(FinalizationGroupHoldingsVector)       \
+  _(FinalizationGroupRegistrations)        \
+  _(FinalizationRecordVector)
 
 #define JS_FOR_EACH_MEMORY_USE(_)  \
   JS_FOR_EACH_PUBLIC_MEMORY_USE(_) \

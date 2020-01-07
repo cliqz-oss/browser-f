@@ -8,34 +8,38 @@
 #define mozilla_dom_ChildProcessChannelListener_h
 
 #include <functional>
-#include "nsCOMPtr.h"
+
+#include "mozilla/net/NeckoChannelParams.h"
 #include "nsDataHashtable.h"
-#include "nsIChildProcessChannelListener.h"
 #include "nsIChildChannel.h"
-#include "mozilla/Variant.h"
 
 namespace mozilla {
 namespace dom {
 
-class ChildProcessChannelListener final
-    : public nsIChildProcessChannelListener {
- public:
-  typedef std::function<void(nsIChildChannel*)> Callback;
+class ChildProcessChannelListener final {
+  NS_INLINE_DECL_REFCOUNTING(ChildProcessChannelListener)
 
-  ChildProcessChannelListener();
-
-  NS_DECL_ISUPPORTS
-  NS_DECL_NSICHILDPROCESSCHANNELLISTENER
+  using Callback = std::function<void(
+      nsIChildChannel*, nsTArray<net::DocumentChannelRedirect>&&)>;
 
   void RegisterCallback(uint64_t aIdentifier, Callback&& aCallback);
+
+  void OnChannelReady(nsIChildChannel* aChannel, uint64_t aIdentifier,
+                      nsTArray<net::DocumentChannelRedirect>&& aRedirects);
 
   static already_AddRefed<ChildProcessChannelListener> GetSingleton();
 
  private:
-  virtual ~ChildProcessChannelListener();
+  ChildProcessChannelListener() = default;
+  ~ChildProcessChannelListener() = default;
+  struct CallbackArgs {
+    nsCOMPtr<nsIChildChannel> mChannel;
+    nsTArray<net::DocumentChannelRedirect> mRedirects;
+  };
 
+  // TODO Backtrack.
   nsDataHashtable<nsUint64HashKey, Callback> mCallbacks;
-  nsDataHashtable<nsUint64HashKey, nsCOMPtr<nsIChildChannel>> mChannels;
+  nsDataHashtable<nsUint64HashKey, CallbackArgs> mChannelArgs;
 };
 
 }  // namespace dom

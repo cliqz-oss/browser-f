@@ -10,12 +10,11 @@
 #include "mozilla/Atomics.h"
 #include "mozilla/DebugOnly.h"
 
-#include "jsutil.h"
-
 #include "ds/BitArray.h"
 #include "gc/AllocKind.h"
 #include "gc/GCEnum.h"
 #include "js/TypeDecls.h"
+#include "util/Poison.h"
 
 namespace js {
 

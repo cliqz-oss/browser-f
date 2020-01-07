@@ -15,6 +15,7 @@
 #include "nsWrapperCache.h"
 #include "nsTHashtable.h"
 #include "nsHashKeys.h"
+#include "nsISHistory.h"
 
 class nsIDocShell;
 
@@ -60,6 +61,10 @@ class CanonicalBrowsingContext final : public BrowsingContext {
 
   already_AddRefed<WindowGlobalParent> GetEmbedderWindowGlobal() const;
 
+  nsISHistory* GetSessionHistory();
+  void SetSessionHistory(nsISHistory* aSHistory) {
+    mSessionHistory = aSHistory;
+  }
   JSObject* WrapObject(JSContext* aCx,
                        JS::Handle<JSObject*> aGivenProto) override;
 
@@ -77,6 +82,11 @@ class CanonicalBrowsingContext final : public BrowsingContext {
   // This function would update the media action for the current outer window
   // and propogate the action to other browsing contexts in content processes.
   void UpdateMediaAction(MediaControlActions aAction);
+
+  // Triggers a load in the process
+  using BrowsingContext::LoadURI;
+  void LoadURI(const nsAString& aURI, const LoadURIOptions& aOptions,
+               ErrorResult& aError);
 
   using RemotenessPromise = MozPromise<RefPtr<BrowserParent>, nsresult, false>;
   RefPtr<RemotenessPromise> ChangeFrameRemoteness(const nsAString& aRemoteType,
@@ -139,6 +149,8 @@ class CanonicalBrowsingContext final : public BrowsingContext {
 
   // The current remoteness change which is in a pending state.
   RefPtr<PendingRemotenessChange> mPendingRemotenessChange;
+
+  nsCOMPtr<nsISHistory> mSessionHistory;
 };
 
 }  // namespace dom

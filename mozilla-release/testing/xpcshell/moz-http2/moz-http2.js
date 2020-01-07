@@ -588,12 +588,23 @@ function handleRequest(req, res) {
     }
 
     if (u.query["push"]) {
-      // push.example.com has AAAA entry 2018::2018
-      var pcontent= Buffer.from("0000010000010001000000000470757368076578616D706C6503636F6D00001C0001C00C001C000100000037001020180000000000000000000000002018", "hex");
+      // push.example.org has AAAA entry 2018::2018
+      let pcontent = dnsPacket.encode({
+        id: 0,
+        type: 'response',
+        flags: dnsPacket.RECURSION_DESIRED,
+        questions: [ { name: 'push.example.org', type: 'AAAA', class: 'IN' } ],
+        answers: [ { name: 'push.example.org',
+                     type: 'AAAA',
+                     ttl: 55,
+                     class: 'IN',
+                     flush: false,
+                     data: '2018::2018' } ],
+      });
       push = res.push({
         hostname: 'foo.example.com:' + serverPort,
         port: serverPort,
-        path: '/dns-pushed-response?dns=AAAAAAABAAAAAAAABHB1c2gHZXhhbXBsZQNjb20AABwAAQ',
+        path: '/dns-pushed-response?dns=AAAAAAABAAAAAAAABHB1c2gHZXhhbXBsZQNvcmcAABwAAQ',
         method: 'GET',
         headers: {
           'accept' : 'application/dns-message'
@@ -660,6 +671,13 @@ function handleRequest(req, res) {
           flush: false,
           data: "pointing-elsewhere.example.com",
         });
+      }
+
+      if (req.headers["accept-language"]) {
+        // If we get this header, don't send back any response. This should
+        // cause the tests to fail. This is easier then actually sending back
+        // the header value into test_trr.js
+        answers = [];
       }
 
       let buf = dnsPacket.encode({

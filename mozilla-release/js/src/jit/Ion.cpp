@@ -47,11 +47,14 @@
 #include "jit/WasmBCE.h"
 #include "js/Printf.h"
 #include "js/UniquePtr.h"
+#include "util/Memory.h"
 #include "util/Windows.h"
 #include "vm/HelperThreads.h"
 #include "vm/Realm.h"
 #include "vm/TraceLogging.h"
-#include "vtune/VTuneWrapper.h"
+#ifdef MOZ_VTUNE
+#  include "vtune/VTuneWrapper.h"
+#endif
 
 #include "debugger/DebugAPI-inl.h"
 #include "gc/PrivateIterators-inl.h"
@@ -153,8 +156,7 @@ bool jit::InitializeJit() {
 }
 
 JitRuntime::JitRuntime()
-    : execAlloc_(),
-      nextCompilationId_(0),
+    : nextCompilationId_(0),
       exceptionTailOffset_(0),
       bailoutTailOffset_(0),
       profilerExitFrameTailOffset_(0),
@@ -422,6 +424,7 @@ void jit::FreeIonBuilder(IonBuilder* builder) {
   // destroy the builder and all other data accumulated during compilation,
   // except any final codegen (which includes an assembler and needs to be
   // explicitly destroyed).
+  MOZ_ASSERT(!builder->hasPendingEdgesMap(), "Should not leak malloc memory");
   js_delete(builder->backgroundCodegen());
   js_delete(builder->alloc().lifoAlloc());
 }
@@ -606,17 +609,17 @@ size_t JitRealm::sizeOfIncludingThis(mozilla::MallocSizeOf mallocSizeOf) const {
 }
 
 void JitZone::addSizeOfIncludingThis(mozilla::MallocSizeOf mallocSizeOf,
-                                     size_t* jitZone,
-                                     size_t* baselineStubsOptimized,
-                                     size_t* cachedCFG) const {
+                                     JS::CodeSizes* code, size_t* jitZone,
+                                     size_t* baselineStubsOptimized) const {
   *jitZone += mallocSizeOf(this);
   *jitZone +=
       baselineCacheIRStubCodes_.shallowSizeOfExcludingThis(mallocSizeOf);
   *jitZone += ionCacheIRStubInfoSet_.shallowSizeOfExcludingThis(mallocSizeOf);
 
+  execAlloc().addSizeOfCode(code);
+
   *baselineStubsOptimized +=
       optimizedStubSpace_.sizeOfExcludingThis(mallocSizeOf);
-  *cachedCFG += cfgSpace_.sizeOfExcludingThis(mallocSizeOf);
 }
 
 TrampolinePtr JitRuntime::getBailoutTable(
@@ -1744,10 +1747,6 @@ static AbortReason IonCompile(JSContext* cx, JSScript* script,
 
   cx->check(script);
 
-  // Make sure the script's canonical function isn't lazy. We can't de-lazify
-  // it in a helper thread.
-  script->ensureNonLazyCanonicalFunction();
-
   auto alloc =
       cx->make_unique<LifoAlloc>(TempAllocator::PreferredLifoChunkSize);
   if (!alloc) {
@@ -1781,9 +1780,8 @@ static AbortReason IonCompile(JSContext* cx, JSScript* script,
   }
 
   CompileInfo* info = alloc->new_<CompileInfo>(
-      CompileRuntime::get(cx->runtime()), script,
-      script->functionNonDelazifying(), osrPc, Analysis_None,
-      script->needsArgsObj(), inlineScriptTree);
+      CompileRuntime::get(cx->runtime()), script, script->function(), osrPc,
+      Analysis_None, script->needsArgsObj(), inlineScriptTree);
   if (!info) {
     return AbortReason::Alloc;
   }
@@ -1979,7 +1977,7 @@ static bool CanIonCompileOrInlineScript(JSScript* script, const char** reason) {
     return false;
   }
 
-  if (script->hasNonSyntacticScope() && !script->functionNonDelazifying()) {
+  if (script->hasNonSyntacticScope() && !script->function()) {
     // Support functions with a non-syntactic global scope but not other
     // scripts. For global scripts, IonBuilder currently uses the global
     // object as scope chain, this is not valid when the script has a

@@ -31,6 +31,7 @@ protection-report-page-title = Privatsphäre-Schutzmaßnahmen
 protection-report-content-title = Privatsphäre-Schutzmaßnahmen
 etp-card-title = Verbesserter Tracking-Schutz (Schutz vor Aktivitätenverfolgung)
 etp-card-content = Skripte zur Aktivitätenverfolgung (Online-Tracker) folgen Ihnen über Websites hinweg und sammeln Informationen über Ihre Browser-Gewohnheiten und Interessen. { -brand-short-name } blockiert viele dieser Skripte zur Aktivitätenverfolgung und andere böswillige Skripte.
+protection-report-etp-card-content-custom-not-blocking = Derzeit sind alle Schutzmaßnahmen deaktiviert. Die zu blockierenden Elemente zur Aktivitätenverfolgung können in den Schutzmaßnahmen-Einstellungen von { -brand-short-name } festgelegt werden.
 protection-report-manage-protections = Einstellungen verwalten
 # This string is used to label the X axis of a graph. Other days of the week are generated via Intl.DateTimeFormat,
 # capitalization for this string should match the output for your locale.
@@ -73,10 +74,18 @@ lockwise-sync-status =
        *[other] Synchronisiert mit { $count } anderen Geräten
     }
 lockwise-sync-not-syncing-devices = Synchronisiert nicht mit anderen Geräten
+manage-connected-devices = Geräte verwalten…
+# Variables:
+#   $count (Number) - Number of devices connected with sync.
+lockwise-connected-device-status =
+    { $count ->
+        [one] Verbunden mit { $count } Gerät
+       *[other] Verbunden mit { $count } Geräten
+    }
 monitor-title = Nach Datenlecks Ausschau halten
 monitor-link = So funktioniert's
 monitor-header-content-no-account = Testen Sie mit { -monitor-brand-name }, ob Sie von einem Datenleck betroffen sind, und lassen Sie sich bei zukünftigen Datenlecks benachrichtigen.
-monitor-header-content-signed-in = { -monitor-brand-name } benachrichtigt Sie, falls Ihre Informationen von einem bekannt gwordenen Datenleck betroffen sind.
+monitor-header-content-signed-in = { -monitor-brand-name } benachrichtigt Sie, falls Ihre Informationen von einem bekannt gewordenen Datenleck betroffen sind.
 monitor-sign-up = Für Warnmeldungen zu Datenlecks anmelden
 auto-scan = Heute automatisch überprüft
 # This string is displayed after a large numeral that indicates the total number

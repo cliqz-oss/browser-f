@@ -14,15 +14,24 @@ const { UnsupportedError } = ChromeUtils.import(
   "chrome://remote/content/Error.jsm"
 );
 
+const {
+  LOAD_FLAGS_BYPASS_CACHE,
+  LOAD_FLAGS_BYPASS_PROXY,
+  LOAD_FLAGS_NONE,
+} = Ci.nsIWebNavigation;
+
 class Page extends ContentProcessDomain {
   constructor(session) {
     super(session);
+
     this.enabled = false;
+    this.lifecycleEnabled = false;
 
     this.onFrameNavigated = this.onFrameNavigated.bind(this);
   }
 
   destructor() {
+    this.setLifecycleEventsEnabled({ enabled: false });
     this.disable();
 
     super.destructor();
@@ -38,6 +47,9 @@ class Page extends ContentProcessDomain {
       this.chromeEventHandler.addEventListener("DOMContentLoaded", this, {
         mozSystemGroup: true,
       });
+      this.chromeEventHandler.addEventListener("pagehide", this, {
+        mozSystemGroup: true,
+      });
       this.chromeEventHandler.addEventListener("pageshow", this, {
         mozSystemGroup: true,
       });
@@ -49,6 +61,9 @@ class Page extends ContentProcessDomain {
       this.contextObserver.off("frame-navigated", this.onFrameNavigated);
 
       this.chromeEventHandler.removeEventListener("DOMContentLoaded", this, {
+        mozSystemGroup: true,
+      });
+      this.chromeEventHandler.removeEventListener("pagehide", this, {
         mozSystemGroup: true,
       });
       this.chromeEventHandler.removeEventListener("pageshow", this, {
@@ -84,8 +99,13 @@ class Page extends ContentProcessDomain {
     };
   }
 
-  async reload() {
-    this.docShell.reload(Ci.nsIWebNavigation.LOAD_FLAGS_NONE);
+  async reload({ ignoreCache }) {
+    let flags = LOAD_FLAGS_NONE;
+    if (ignoreCache) {
+      flags |= LOAD_FLAGS_BYPASS_CACHE;
+      flags |= LOAD_FLAGS_BYPASS_PROXY;
+    }
+    this.docShell.reload(flags);
   }
 
   getFrameTree() {
@@ -104,9 +124,21 @@ class Page extends ContentProcessDomain {
     };
   }
 
-  setLifecycleEventsEnabled() {}
   addScriptToEvaluateOnNewDocument() {}
   createIsolatedWorld() {}
+
+  /**
+   * Controls whether page will emit lifecycle events.
+   *
+   * @param {Object} options
+   * @param {boolean} options.enabled
+   *     If true, starts emitting lifecycle events.
+   */
+  setLifecycleEventsEnabled(options) {
+    const { enabled } = options;
+
+    this.lifecycleEnabled = enabled;
+  }
 
   url() {
     return this.content.location.href;
@@ -125,8 +157,16 @@ class Page extends ContentProcessDomain {
     });
   }
 
+  emitLifecycleEvent(frameId, loaderId, name, timestamp) {
+    if (this.lifecycleEnabled) {
+      this.emit("Page.lifecycleEvent", { frameId, loaderId, name, timestamp });
+    }
+  }
+
   handleEvent({ type, target }) {
-    if (target.defaultView != this.content) {
+    const isFrame = target.defaultView != this.content;
+
+    if (isFrame) {
       // Ignore iframes for now
       return;
     }
@@ -138,13 +178,44 @@ class Page extends ContentProcessDomain {
     switch (type) {
       case "DOMContentLoaded":
         this.emit("Page.domContentEventFired", { timestamp });
+        if (!isFrame) {
+          this.emitLifecycleEvent(
+            frameId,
+            /* loaderId */ null,
+            "DOMContentLoaded",
+            timestamp
+          );
+        }
+        break;
+
+      case "pagehide":
+        // Maybe better to bound to "unload" once we can register for this event
+        this.emit("Page.frameStartedLoading", { frameId });
+        if (!isFrame) {
+          this.emitLifecycleEvent(
+            frameId,
+            /* loaderId */ null,
+            "init",
+            timestamp
+          );
+        }
         break;
 
       case "pageshow":
-        this.emit("Page.loadEventFired", { timestamp, frameId });
+        this.emit("Page.loadEventFired", { timestamp });
+        if (!isFrame) {
+          this.emitLifecycleEvent(
+            frameId,
+            /* loaderId */ null,
+            "load",
+            timestamp
+          );
+        }
+
         // XXX this should most likely be sent differently
-        this.emit("Page.navigatedWithinDocument", { timestamp, frameId, url });
-        this.emit("Page.frameStoppedLoading", { timestamp, frameId });
+        this.emit("Page.navigatedWithinDocument", { frameId, url });
+        this.emit("Page.frameStoppedLoading", { frameId });
+
         break;
     }
   }

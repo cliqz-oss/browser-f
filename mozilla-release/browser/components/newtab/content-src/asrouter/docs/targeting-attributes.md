@@ -42,6 +42,10 @@ Please note that some targeting attributes require stricter controls on the tele
 * [userPrefs](#userprefs)
 * [attachedFxAOAuthClients](#attachedfxaoauthclients)
 * [platformName](#platformname)
+* [scores](#scores)
+* [scoreThreshold](#scorethreshold)
+* [messageImpressions](#messageimpressions)
+* [blockedCountByType](#blockedcountbytype)
 
 ## Detailed usage
 
@@ -176,7 +180,7 @@ type ECMA262DateString = string;
 ```
 
 ### `devToolsOpenedCount`
-Number of usages of the web console or scratchpad.
+Number of usages of the web console.
 
 #### Examples
 * Has the user opened the web console more than 10 times?
@@ -561,18 +565,19 @@ declare const userPrefs: {
 ### `attachedFxAOAuthClients`
 
 Information about connected services associated with the FxA Account.
+Return an empty array if no account is found or an error occurs.
 
 #### Definition
 
 ```
 interface OAuthClient {
+  // OAuth client_id of the service
+  // https://docs.telemetry.mozilla.org/datasets/fxa_metrics/attribution.html#service-attribution
   id: string;
-  // FxA service name
-  name: string;
-  lastAccessTime: UnixEpochNumber;
+  lastAccessedDaysAgo: number;
 }
 
-declare const attachedFxAOAuthClients: Array<OAuthClient>
+declare const attachedFxAOAuthClients: Promise<OAuthClient[]>
 ```
 
 #### Examples
@@ -592,4 +597,65 @@ declare const attachedFxAOAuthClients: Array<OAuthClient>
 
 ```
 declare const platformName = "linux" | "win" | "macosx" | "android" | "other";
+```
+
+### `scores`
+
+#### Definition
+
+See more in [CFR Machine Learning Experiment](https://bugzilla.mozilla.org/show_bug.cgi?id=1594422).
+
+```
+declare const scores = { [cfrId: string]: number (integer); }
+```
+
+### `scoreThreshold`
+
+#### Definition
+
+See more in [CFR Machine Learning Experiment](https://bugzilla.mozilla.org/show_bug.cgi?id=1594422).
+
+```
+declare const scoreThreshold = integer;
+```
+
+### `messageImpressions`
+
+Dictionary that maps message ids to impression timestamps. Timestamps are stored in
+consecutive order. Can be used to detect first impression of a message, number of
+impressions. Can be used in targeting to show a message if another message has been
+seen.
+Impressions are used for frequency capping so we only store them if the message has
+`frequency` configured.
+Impressions for badges might not work as expected: we add a badge for every opened
+window so the number of impressions stored might be higher than expected. Additionally
+not all badges have `frequency` cap so `messageImpressions` might not be defined.
+Badge impressions should not be used for targeting.
+
+#### Definition
+
+```
+declare const messageImpressions: { [key: string]: Array<UnixEpochNumber> };
+```
+
+### `blockedCountByType`
+
+Returns a breakdown by category of all blocked resources in the past 42 days.
+
+#### Definition
+
+```
+declare const messageImpressions: { [key: string]: number };
+```
+
+#### Examples
+
+```javascript
+Object {
+  trackerCount: 0,
+  cookieCount: 34,
+  cryptominerCount: 0,
+  fingerprinterCount: 3,
+  socialCount: 2
+}
 ```

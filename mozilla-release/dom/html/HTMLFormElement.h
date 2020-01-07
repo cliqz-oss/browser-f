@@ -264,17 +264,10 @@ class HTMLFormElement final : public nsGenericHTMLElement,
    *
    * @note Do not call this method if novalidate/formnovalidate is used.
    * @note This method might disappear with bug 592124, hopefuly.
+   * @see
+   * https://html.spec.whatwg.org/multipage/form-control-infrastructure.html#interactively-validate-the-constraints
    */
   bool CheckValidFormSubmission();
-
-  /**
-   * Check whether submission can proceed for this form.  This basically
-   * implements steps 1-4 (more or less) of
-   * <https://html.spec.whatwg.org/multipage/forms.html#concept-form-submit>.
-   * aSubmitter, if not null, is the "submitter" from that algorithm.  Therefore
-   * it must be a valid submit control.
-   */
-  bool SubmissionCanProceed(Element* aSubmitter);
 
   /**
    * Contruct the entry list to get their data pumped into the FormData and
@@ -360,6 +353,15 @@ class HTMLFormElement final : public nsGenericHTMLElement,
 
   int32_t Length();
 
+  /**
+   * Check whether submission can proceed for this form then fire submit event.
+   * This basically implements steps 1-6 (more or less) of
+   * <https://html.spec.whatwg.org/multipage/forms.html#concept-form-submit>.
+   * @param aSubmitter If not null, is the "submitter" from that algorithm.
+   *                   Therefore it must be a valid submit control.
+   */
+  MOZ_CAN_RUN_SCRIPT void MaybeSubmit(Element* aSubmitter);
+  MOZ_CAN_RUN_SCRIPT void MaybeReset(Element* aSubmitter);
   void Submit(ErrorResult& aRv);
   void Reset();
 
@@ -476,7 +478,7 @@ class HTMLFormElement final : public nsGenericHTMLElement,
 
   /**
    * Check the form validity following this algorithm:
-   * http://www.whatwg.org/specs/web-apps/current-work/#statically-validate-the-constraints
+   * https://html.spec.whatwg.org/multipage/form-control-infrastructure.html#statically-validate-the-constraints
    *
    * @param aInvalidElements [out] parameter containing the list of unhandled
    * invalid controls.
@@ -614,6 +616,8 @@ class HTMLFormElement final : public nsGenericHTMLElement,
   bool mEverTriedInvalidSubmit;
   /** Whether we are constructing entry list */
   bool mIsConstructingEntryList;
+  /** Whether we are firing submission event */
+  bool mIsFiringSubmissionEvents;
 
  private:
   NotNull<const Encoding*> GetSubmitEncoding();

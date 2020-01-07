@@ -52,8 +52,9 @@
 #include "mozilla/dom/AbstractRange.h"   // for AbstractRange
 #include "mozilla/dom/CharacterData.h"   // for CharacterData
 #include "mozilla/dom/DataTransfer.h"    // for DataTransfer
-#include "mozilla/dom/Element.h"         // for Element, nsINode::AsElement
-#include "mozilla/dom/EventTarget.h"     // for EventTarget
+#include "mozilla/InternalMutationEvent.h"  // for NS_EVENT_BITS_MUTATION_CHARACTERDATAMODIFIED
+#include "mozilla/dom/Element.h"      // for Element, nsINode::AsElement
+#include "mozilla/dom/EventTarget.h"  // for EventTarget
 #include "mozilla/dom/HTMLBodyElement.h"
 #include "mozilla/dom/HTMLBRElement.h"
 #include "mozilla/dom/Selection.h"  // for Selection, etc.
@@ -926,7 +927,7 @@ void EditorBase::EndPlaceholderTransaction() {
 
   if (mPlaceholderBatch == 1) {
     // By making the assumption that no reflow happens during the calls
-    // to EndUpdateViewBatch and ScrollSelectionIntoView, we are able to
+    // to EndUpdateViewBatch and ScrollSelectionFocusIntoView, we are able to
     // allow the selection to cache a frame offset which is used by the
     // caret drawing code. We only enable this cache here; at other times,
     // we have no way to know whether reflow invalidates it
@@ -937,9 +938,13 @@ void EditorBase::EndPlaceholderTransaction() {
     EndUpdateViewBatch();
     // make sure selection is in view
 
-    // After ScrollSelectionIntoView(), the pending notifications might be
+    // After ScrollSelectionFocusIntoView(), the pending notifications might be
     // flushed and PresShell/PresContext/Frames may be dead. See bug 418470.
-    ScrollSelectionIntoView(false);
+    // XXX Even if we're destroyed, we need to keep handling below because
+    //     this method changes a lot of status.  We should rewrite this safer.
+    DebugOnly<nsresult> rvIgnored = ScrollSelectionFocusIntoView();
+    NS_WARNING_ASSERTION(NS_SUCCEEDED(rvIgnored),
+                         "ScrollSelectionFocusIntoView() failed, but Ignored");
 
     // cached for frame offset are Not available now
     SelectionRefPtr()->SetCanCacheFrameOffset(false);
@@ -2158,8 +2163,23 @@ void EditorBase::NotifyEditorObservers(
       mIsInEditSubAction = false;
 
       if (mTextInputListener) {
+        // TODO: TextInputListener::OnEditActionHandled() may return
+        //       NS_ERROR_OUT_OF_MEMORY.  If so and if
+        //       TextControlState::SetValue() setting value with us, we should
+        //       return the result to TextEditor::ReplaceTextAsAction(),
+        //       TextEditor::DeleteSelectionAsAction() and
+        //       TextEditor::InsertTextAsAction().  However, it requires a lot
+        //       of changes in editor classes, but it's not so important since
+        //       editor does not use fallible allocation.  Therefore, normally,
+        //       the process must be crashed anyway.
         RefPtr<TextInputListener> listener = mTextInputListener;
-        listener->OnEditActionHandled();
+        nsresult rv =
+            listener->OnEditActionHandled(MOZ_KnownLive(*AsTextEditor()));
+        MOZ_RELEASE_ASSERT(rv != NS_ERROR_OUT_OF_MEMORY,
+                           "Setting value failed due to out of memory");
+        NS_WARNING_ASSERTION(
+            NS_SUCCEEDED(rv),
+            "TextInputListener::OnEditActionHandled() failed but ignored");
       }
 
       if (mIMEContentObserver) {
@@ -2376,18 +2396,20 @@ nsresult EditorBase::GetPreferredIMEState(IMEState* aState) {
   NS_ENSURE_TRUE(frame, NS_ERROR_FAILURE);
 
   switch (frame->StyleUIReset()->mIMEMode) {
-    case NS_STYLE_IME_MODE_AUTO:
+    case StyleImeMode::Auto:
       if (IsPasswordEditor()) aState->mEnabled = IMEState::PASSWORD;
       break;
-    case NS_STYLE_IME_MODE_DISABLED:
+    case StyleImeMode::Disabled:
       // we should use password state for |ime-mode: disabled;|.
       aState->mEnabled = IMEState::PASSWORD;
       break;
-    case NS_STYLE_IME_MODE_ACTIVE:
+    case StyleImeMode::Active:
       aState->mOpen = IMEState::OPEN;
       break;
-    case NS_STYLE_IME_MODE_INACTIVE:
+    case StyleImeMode::Inactive:
       aState->mOpen = IMEState::CLOSED;
+      break;
+    case StyleImeMode::Normal:
       break;
   }
 
@@ -2602,20 +2624,20 @@ void EditorBase::CloneAttributesWithTransaction(Element& aDestElement,
   }
 }
 
-nsresult EditorBase::ScrollSelectionIntoView(bool aScrollToAnchor) {
+nsresult EditorBase::ScrollSelectionFocusIntoView() {
   nsISelectionController* selectionController = GetSelectionController();
   if (!selectionController) {
     return NS_OK;
   }
 
-  int16_t region = nsISelectionController::SELECTION_FOCUS_REGION;
-  if (aScrollToAnchor) {
-    region = nsISelectionController::SELECTION_ANCHOR_REGION;
-  }
-  selectionController->ScrollSelectionIntoView(
-      nsISelectionController::SELECTION_NORMAL, region,
+  DebugOnly<nsresult> rvIgnored = selectionController->ScrollSelectionIntoView(
+      nsISelectionController::SELECTION_NORMAL,
+      nsISelectionController::SELECTION_FOCUS_REGION,
       nsISelectionController::SCROLL_OVERFLOW_HIDDEN);
-  return NS_OK;
+  NS_WARNING_ASSERTION(
+      NS_SUCCEEDED(rvIgnored),
+      "nsISelectionController::ScrollSelectionIntoView() failed, but ignored");
+  return NS_WARN_IF(Destroyed()) ? NS_ERROR_EDITOR_DESTROYED : NS_OK;
 }
 
 EditorRawDOMPoint EditorBase::FindBetterInsertionPoint(
@@ -2813,6 +2835,46 @@ nsresult EditorBase::InsertTextWithTransaction(
   return NS_OK;
 }
 
+static bool TextFragmentBeginsWithStringAtOffset(
+    const nsTextFragment& aTextFragment, const int32_t aOffset,
+    const nsAString& aString) {
+  const uint32_t stringLength = aString.Length();
+
+  if (aOffset + stringLength > aTextFragment.GetLength()) {
+    return false;
+  }
+
+  if (aTextFragment.Is2b()) {
+    return aString.Equals(aTextFragment.Get2b() + aOffset);
+  }
+
+  return aString.EqualsLatin1(aTextFragment.Get1b() + aOffset, stringLength);
+}
+
+namespace {
+struct AdjustedInsertionRange {
+  EditorRawDOMPoint mBegin;
+  EditorRawDOMPoint mEnd;
+};
+}  // anonymous namespace
+
+static AdjustedInsertionRange AdjustTextInsertionRange(
+    Text& aTextNode, const int32_t aInsertionOffset,
+    const nsAString& aInsertedString) {
+  if (TextFragmentBeginsWithStringAtOffset(aTextNode.TextFragment(),
+                                           aInsertionOffset, aInsertedString)) {
+    EditorRawDOMPoint begin{&aTextNode, aInsertionOffset};
+    EditorRawDOMPoint end{
+        &aTextNode,
+        static_cast<int32_t>(aInsertionOffset + aInsertedString.Length())};
+    return {begin, end};
+  }
+
+  const EditorRawDOMPoint begin{&aTextNode, 0};
+  const EditorRawDOMPoint end{&aTextNode,
+                              static_cast<int32_t>(aTextNode.TextLength())};
+  return {begin, end};
+}
 nsresult EditorBase::InsertTextIntoTextNodeWithTransaction(
     const nsAString& aStringToInsert, Text& aTextNode, int32_t aOffset,
     bool aSuppressIME) {
@@ -2848,15 +2910,30 @@ nsresult EditorBase::InsertTextIntoTextNodeWithTransaction(
   EndUpdateViewBatch();
 
   if (AsHTMLEditor() && insertedTextNode) {
-    TopLevelEditSubActionDataRef().DidInsertText(
-        *this, EditorRawDOMPoint(insertedTextNode, insertedOffset),
-        aStringToInsert);
+    // The DOM was potentially modified during the transaction. This is possible
+    // through mutation event listeners. That is, the node could've been removed
+    // from the doc or otherwise modified.
+    if (!MaybeHasMutationEventListeners(
+            NS_EVENT_BITS_MUTATION_CHARACTERDATAMODIFIED)) {
+      const EditorRawDOMPoint begin{insertedTextNode, insertedOffset};
+      const EditorRawDOMPoint end{
+          insertedTextNode,
+          static_cast<int32_t>(insertedOffset + aStringToInsert.Length())};
+      TopLevelEditSubActionDataRef().DidInsertText(*this, begin, end);
+    } else if (insertedTextNode->IsInComposedDoc()) {
+      AdjustedInsertionRange adjustedRange = AdjustTextInsertionRange(
+          *insertedTextNode, insertedOffset, aStringToInsert);
+      TopLevelEditSubActionDataRef().DidInsertText(*this, adjustedRange.mBegin,
+                                                   adjustedRange.mEnd);
+    }
   }
 
   // let listeners know what happened
   if (!mActionListeners.IsEmpty()) {
     AutoActionListenerArray listeners(mActionListeners);
     for (auto& listener : listeners) {
+      // TODO: might need adaptation because of mutation event listeners called
+      // during `DoTransactionInternal`.
       listener->DidInsertText(insertedTextNode, insertedOffset, aStringToInsert,
                               rv);
     }
@@ -5416,6 +5493,7 @@ EditorBase::AutoEditActionDataSetter::AutoEditActionDataSetter(
               ->GetSelectedRangeItemForTopLevelEditSubAction();
       mTopLevelEditSubActionData.mChangedRange =
           mEditorBase.AsHTMLEditor()->GetChangedRangeForTopLevelEditSubAction();
+      mTopLevelEditSubActionData.mCachedInlineStyles.emplace();
     }
   }
   mEditorBase.mEditActionData = this;
@@ -5710,8 +5788,8 @@ void EditorBase::TopLevelEditSubActionData::DidJoinContents(
 }
 
 void EditorBase::TopLevelEditSubActionData::DidInsertText(
-    EditorBase& aEditorBase, const EditorRawDOMPoint& aInsertionPoint,
-    const nsAString& aString) {
+    EditorBase& aEditorBase, const EditorRawDOMPoint& aInsertionBegin,
+    const EditorRawDOMPoint& aInsertionEnd) {
   MOZ_ASSERT(aEditorBase.AsHTMLEditor());
 
   if (!aEditorBase.mInitSucceeded || aEditorBase.Destroyed()) {
@@ -5723,9 +5801,7 @@ void EditorBase::TopLevelEditSubActionData::DidInsertText(
   }
 
   DebugOnly<nsresult> rvIgnored = AddRangeToChangedRange(
-      *aEditorBase.AsHTMLEditor(), aInsertionPoint,
-      EditorRawDOMPoint(aInsertionPoint.GetContainer(),
-                        aInsertionPoint.Offset() + aString.Length()));
+      *aEditorBase.AsHTMLEditor(), aInsertionBegin, aInsertionEnd);
   NS_WARNING_ASSERTION(NS_SUCCEEDED(rvIgnored),
                        "TopLevelEditSubActionData::AddRangeToChangedRange() "
                        "failed, but ignored");

@@ -23,6 +23,7 @@ use api::CaptureBits;
 #[cfg(feature = "replay")]
 use api::CapturedDocument;
 use crate::clip_scroll_tree::SpatialNodeIndex;
+use crate::composite::CompositorKind;
 #[cfg(feature = "debugger")]
 use crate::debug_server;
 use crate::frame_builder::{FrameBuilder, FrameBuilderConfig};
@@ -508,12 +509,12 @@ impl Document {
                     self.frame_is_valid = false;
                 }
             }
-            FrameMsg::SetIsTransformPinchZooming(is_zooming, animation_id) => {
+            FrameMsg::SetIsTransformAsyncZooming(is_zooming, animation_id) => {
                 let node = self.scene.clip_scroll_tree.spatial_nodes.iter_mut()
                     .find(|node| node.is_transform_bound_to_property(animation_id));
                 if let Some(node) = node {
-                    if node.is_pinch_zooming != is_zooming {
-                        node.is_pinch_zooming = is_zooming;
+                    if node.is_async_zooming != is_zooming {
+                        node.is_async_zooming = is_zooming;
                         self.frame_is_valid = false;
                     }
                 }
@@ -549,8 +550,7 @@ impl Document {
                 self.view.layer,
                 self.view.device_rect.origin,
                 pan,
-                &mut resource_profile.texture_cache,
-                &mut resource_profile.gpu_cache,
+                resource_profile,
                 &self.dynamic_properties,
                 &mut self.data_stores,
                 &mut self.scratch,
@@ -885,6 +885,13 @@ impl RenderBackend {
 
                         for mut txn in txns.drain(..) {
                             let has_built_scene = txn.built_scene.is_some();
+
+                            if has_built_scene {
+                                let scene_build_time =
+                                    txn.scene_build_end_time - txn.scene_build_start_time;
+                                profile_counters.scene_build_time.set(scene_build_time);
+                            }
+
                             if let Some(doc) = self.documents.get_mut(&txn.document_id) {
 
                                 doc.removed_pipelines.append(&mut txn.removed_pipelines);
@@ -1495,6 +1502,13 @@ impl RenderBackend {
         // external image with NativeTexture or when platform requested to composite frame.
         if invalidate_rendered_frame {
             doc.rendered_frame_is_valid = false;
+            if let CompositorKind::Draw { max_partial_present_rects } = self.frame_config.compositor_kind {
+              // When partial present is enabled, we need to force redraw.
+              if max_partial_present_rects > 0 {
+                  let msg = ResultMsg::ForceRedraw;
+                  self.result_tx.send(msg).unwrap();
+              }
+            }
         }
 
         let mut frame_build_time = None;

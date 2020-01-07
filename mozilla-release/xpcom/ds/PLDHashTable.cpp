@@ -21,7 +21,7 @@
 
 using namespace mozilla;
 
-#ifdef DEBUG
+#ifdef MOZ_HASH_TABLE_CHECKS_ENABLED
 
 class AutoReadOp {
   Checker& mChk;
@@ -186,12 +186,7 @@ PLDHashTable::PLDHashTable(const PLDHashTableOps* aOps, uint32_t aEntrySize,
       mHashShift(HashShift(aEntrySize, aLength)),
       mEntrySize(aEntrySize),
       mEntryCount(0),
-      mRemovedCount(0)
-#ifdef DEBUG
-      ,
-      mChecker()
-#endif
-{
+      mRemovedCount(0) {
   // An entry size greater than 0xff is unlikely, but let's check anyway. If
   // you hit this, your hashtable would waste lots of space for unused entries
   // and you should change your hash table's entries to pointers.
@@ -226,7 +221,7 @@ PLDHashTable& PLDHashTable::operator=(PLDHashTable&& aOther) {
   mEntryCount = std::move(aOther.mEntryCount);
   mRemovedCount = std::move(aOther.mRemovedCount);
   mEntryStore.Set(aOther.mEntryStore.Get(), &mGeneration);
-#ifdef DEBUG
+#ifdef MOZ_HASH_TABLE_CHECKS_ENABLED
   mChecker = std::move(aOther.mChecker);
 #endif
 
@@ -235,7 +230,7 @@ PLDHashTable& PLDHashTable::operator=(PLDHashTable&& aOther) {
   // Clear up |aOther| so its destruction will be a no-op and it reports being
   // empty.
   {
-#ifdef DEBUG
+#ifdef MOZ_HASH_TABLE_CHECKS_ENABLED
     AutoDestructorOp op(mChecker);
 #endif
     aOther.mEntryCount = 0;
@@ -289,7 +284,7 @@ auto PLDHashTable::SlotForIndex(uint32_t aIndex) const -> Slot {
 }
 
 PLDHashTable::~PLDHashTable() {
-#ifdef DEBUG
+#ifdef MOZ_HASH_TABLE_CHECKS_ENABLED
   AutoDestructorOp op(mChecker);
 #endif
 
@@ -499,7 +494,7 @@ PLDHashTable::ComputeKeyHash(const void* aKey) const {
 }
 
 PLDHashEntryHdr* PLDHashTable::Search(const void* aKey) const {
-#ifdef DEBUG
+#ifdef MOZ_HASH_TABLE_CHECKS_ENABLED
   AutoReadOp op(mChecker);
 #endif
 
@@ -515,7 +510,7 @@ PLDHashEntryHdr* PLDHashTable::Search(const void* aKey) const {
 
 PLDHashEntryHdr* PLDHashTable::Add(const void* aKey,
                                    const mozilla::fallible_t&) {
-#ifdef DEBUG
+#ifdef MOZ_HASH_TABLE_CHECKS_ENABLED
   AutoWriteOp op(mChecker);
 #endif
 
@@ -597,7 +592,7 @@ PLDHashEntryHdr* PLDHashTable::Add(const void* aKey) {
 }
 
 void PLDHashTable::Remove(const void* aKey) {
-#ifdef DEBUG
+#ifdef MOZ_HASH_TABLE_CHECKS_ENABLED
   AutoWriteOp op(mChecker);
 #endif
 
@@ -618,7 +613,7 @@ void PLDHashTable::Remove(const void* aKey) {
 }
 
 void PLDHashTable::RemoveEntry(PLDHashEntryHdr* aEntry) {
-#ifdef DEBUG
+#ifdef MOZ_HASH_TABLE_CHECKS_ENABLED
   AutoWriteOp op(mChecker);
 #endif
 
@@ -673,7 +668,7 @@ void PLDHashTable::ShrinkIfAppropriate() {
 
 size_t PLDHashTable::ShallowSizeOfExcludingThis(
     MallocSizeOf aMallocSizeOf) const {
-#ifdef DEBUG
+#ifdef MOZ_HASH_TABLE_CHECKS_ENABLED
   AutoReadOp op(mChecker);
 #endif
 
@@ -709,7 +704,7 @@ PLDHashTable::Iterator::Iterator(PLDHashTable* aTable)
       mNextsLimit(mTable->EntryCount()),
       mHaveRemoved(false),
       mEntrySize(aTable->mEntrySize) {
-#ifdef DEBUG
+#ifdef MOZ_HASH_TABLE_CHECKS_ENABLED
   mTable->mChecker.StartReadOp();
 #endif
 
@@ -737,7 +732,7 @@ PLDHashTable::Iterator::Iterator(PLDHashTable* aTable, EndIteratorTag aTag)
       mNextsLimit(mTable->EntryCount()),
       mHaveRemoved(false),
       mEntrySize(aTable->mEntrySize) {
-#ifdef DEBUG
+#ifdef MOZ_HASH_TABLE_CHECKS_ENABLED
   mTable->mChecker.StartReadOp();
 #endif
 
@@ -754,7 +749,7 @@ PLDHashTable::Iterator::Iterator(const Iterator& aOther)
   // TODO: Is this necessary?
   MOZ_ASSERT(!mHaveRemoved);
 
-#ifdef DEBUG
+#ifdef MOZ_HASH_TABLE_CHECKS_ENABLED
   mTable->mChecker.StartReadOp();
 #endif
 }
@@ -764,7 +759,7 @@ PLDHashTable::Iterator::~Iterator() {
     if (mHaveRemoved) {
       mTable->ShrinkIfAppropriate();
     }
-#ifdef DEBUG
+#ifdef MOZ_HASH_TABLE_CHECKS_ENABLED
     mTable->mChecker.EndReadOp();
 #endif
   }
@@ -824,7 +819,3 @@ void PLDHashTable::Iterator::Remove() {
   mTable->RawRemove(mCurrent);
   mHaveRemoved = true;
 }
-
-#ifdef DEBUG
-void PLDHashTable::MarkImmutable() { mChecker.SetNonWritable(); }
-#endif

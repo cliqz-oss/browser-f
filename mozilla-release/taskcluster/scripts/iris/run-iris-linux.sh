@@ -2,6 +2,9 @@
 # Debian10 linux bootstrap
 set -x +e -v
 
+# Set Iris code root, required by moziris
+export IRIS_CODE_ROOT=$MOZ_FETCHES_DIR/iris_firefox
+
 # Set up a virtual display since we don't have an xdisplay
 . $HOME/scripts/xvfb.sh
 start_xvfb '1920x1080x24+32' 0
@@ -12,10 +15,10 @@ set +e
 # Install iris's pipenv
 cd $MOZ_FETCHES_DIR/iris_firefox
 PIPENV_MAX_RETRIES="5" pipenv install
-status=$?
+pip_status=$?
 
 # If pipenv installation fails for any reason, make another attempt.
-if [ $status -eq 0 ]
+if [ $pip_status -eq 0 ]
 then
     echo "Pipenv installed correctly, proceeding to Iris test run:"
 else

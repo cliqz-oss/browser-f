@@ -36,12 +36,10 @@
 #include "mozilla/MouseEvents.h"
 #include "mozilla/PresShell.h"
 #include "mozilla/UniquePtr.h"
-#ifdef MOZ_XBL
-#  include "nsBindingManager.h"
-#endif
 
 using namespace mozilla;
 
+using mozilla::dom::Element;
 using mozilla::dom::Event;
 
 class nsSplitterInfo {

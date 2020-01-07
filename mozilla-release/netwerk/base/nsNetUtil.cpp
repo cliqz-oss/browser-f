@@ -2051,7 +2051,7 @@ bool NS_IsSameSiteForeign(nsIChannel* aChannel, nsIURI* aHostURI) {
   if (loadInfo->GetExternalContentPolicyType() ==
       nsIContentPolicy::TYPE_DOCUMENT) {
     // for loads of TYPE_DOCUMENT we query the hostURI from the
-    // triggeringPricnipal which returns the URI of the document that caused the
+    // triggeringPrincipal which returns the URI of the document that caused the
     // navigation.
     loadInfo->TriggeringPrincipal()->GetURI(getter_AddRefs(uri));
   } else {
@@ -2726,11 +2726,19 @@ void NS_SniffContent(const char* aSnifferType, nsIRequest* aRequest,
        * The JSON-Viewer relies on its own sniffer to determine, if it can
        * render the page, so we need to make an exception if the Server provides
        * a application/ mime, as it might be json.
+
+       * Bug 1594766
+       * We also dont't skip sniffing if the currentContentType is empty
+       * because of legacy page compatibility issues.
        */
       nsAutoCString currentContentType;
       channel->GetContentType(currentContentType);
-      if (!StringBeginsWith(currentContentType,
+      if (!currentContentType.IsEmpty() &&
+          !StringBeginsWith(currentContentType,
                             NS_LITERAL_CSTRING("application/"))) {
+        Telemetry::AccumulateCategorical(
+            mozilla::Telemetry::LABELS_XCTO_NOSNIFF_TOPLEVEL_NAV_EXCEPTIONS::
+                NoException);
         return;
       }
     }
@@ -3114,15 +3122,12 @@ bool NS_ShouldClassifyChannel(nsIChannel* aChannel) {
   }
 
   nsCOMPtr<nsILoadInfo> loadInfo = aChannel->LoadInfo();
-  if (loadInfo) {
-    nsContentPolicyType type = loadInfo->GetExternalContentPolicyType();
-
-    // Skip classifying channel triggered by system unless it is a top-level
-    // load.
-    if (nsContentUtils::IsSystemPrincipal(loadInfo->TriggeringPrincipal()) &&
-        nsIContentPolicy::TYPE_DOCUMENT != type) {
-      return false;
-    }
+  nsContentPolicyType type = loadInfo->GetExternalContentPolicyType();
+  // Skip classifying channel triggered by system unless it is a top-level
+  // load.
+  if (nsContentUtils::IsSystemPrincipal(loadInfo->TriggeringPrincipal()) &&
+      nsIContentPolicy::TYPE_DOCUMENT != type) {
+    return false;
   }
 
   return true;
@@ -3141,6 +3146,15 @@ nsresult GetParameterHTTP(const nsACString& aHeaderVal, const char* aParamName,
                           nsAString& aResult) {
   return nsMIMEHeaderParamImpl::GetParameterHTTP(aHeaderVal, aParamName,
                                                  aResult);
+}
+
+bool ChannelIsPost(nsIChannel* aChannel) {
+  if (nsCOMPtr<nsIHttpChannel> httpChannel = do_QueryInterface(aChannel)) {
+    nsAutoCString method;
+    Unused << httpChannel->GetRequestMethod(method);
+    return method.EqualsLiteral("POST");
+  }
+  return false;
 }
 
 bool SchemeIsHTTP(nsIURI* aURI) {

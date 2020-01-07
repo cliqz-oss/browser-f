@@ -3,21 +3,36 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 // @ts-check
 /* exported gInit, gDestroy, loader */
-"use strict";
 
 /**
  * @typedef {import("./@types/perf").PerfFront} PerfFront
  * @typedef {import("./@types/perf").PreferenceFront} PreferenceFront
  * @typedef {import("./@types/perf").RecordingStateFromPreferences} RecordingStateFromPreferences
  */
+"use strict";
 
-const { BrowserLoader } = ChromeUtils.import(
-  "resource://devtools/client/shared/browser-loader.js"
-);
-const { require, loader } = BrowserLoader({
-  baseURI: "resource://devtools/client/performance-new/",
-  window,
-});
+{
+  // Create the browser loader, but take care not to conflict with
+  // TypeScript. See devtools/client/performance-new/typescript.md and
+  // the section on "Do not overload require" for more information.
+
+  const { BrowserLoader } = ChromeUtils.import(
+    "resource://devtools/client/shared/browser-loader.js"
+  );
+  const browserLoader = BrowserLoader({
+    baseURI: "resource://devtools/client/performance-new/",
+    window,
+  });
+
+  /**
+   * @type {any} - Coerce the current scope into an `any`, and assign the
+   *     loaders to the scope. They can then be used freely below.
+   */
+  const scope = this;
+  scope.require = browserLoader.require;
+  scope.loader = browserLoader.loader;
+}
+
 const Perf = require("devtools/client/performance-new/components/Perf");
 const ReactDOM = require("devtools/client/shared/vendor/react-dom");
 const React = require("devtools/client/shared/vendor/react");
@@ -33,7 +48,7 @@ const {
   createMultiModalGetSymbolTableFn,
 } = require("devtools/client/performance-new/browser");
 
-const { getDefaultRecordingPreferences } = ChromeUtils.import(
+const { getDefaultRecordingPreferencesForOlderFirefox } = ChromeUtils.import(
   "resource://devtools/client/performance-new/popup/background.jsm.js"
 );
 
@@ -52,30 +67,43 @@ const { getDefaultRecordingPreferences } = ChromeUtils.import(
 async function gInit(perfFront, preferenceFront) {
   const store = createStore(reducers);
 
+  // Send the initial requests in parallel.
+  const [recordingPreferences, supportedFeatures] = await Promise.all([
+    // Pull the default recording settings from the background.jsm module. Update them
+    // according to what's in the target's preferences. This way the preferences are
+    // stored on the target. This could be useful for something like Android where you
+    // might want to tweak the settings.
+    getRecordingPreferencesFromDebuggee(
+      preferenceFront,
+      getDefaultRecordingPreferencesForOlderFirefox()
+    ),
+    // Get the supported features from the debuggee. If the debuggee is before
+    // Firefox 72, then return null, as the actor does not support that feature.
+    // We can't use `target.actorHasMethod`, because the target is not provided
+    // when remote debugging. Unfortunately, this approach means that if this
+    // function throws a real error, it will get swallowed here.
+    Promise.resolve(perfFront.getSupportedFeatures()).catch(() => null),
+  ]);
+
   // Do some initialization, especially with privileged things that are part of the
   // the browser.
   store.dispatch(
     actions.initializeStore({
       perfFront,
       receiveProfile,
-      // Pull the default recording settings from the background.jsm module. Update them
-      // according to what's in the target's preferences. This way the preferences are
-      // stored on the target. This could be useful for something like Android where you
-      // might want to tweak the settings.
-      recordingPreferences: await getRecordingPreferencesFromDebuggee(
-        preferenceFront,
-        getDefaultRecordingPreferences()
-      ),
+      recordingPreferences,
+      supportedFeatures,
+      isPopup: false,
 
       // Go ahead and hide the implementation details for the component on how the
       // preference information is stored
       /**
-       * @param {RecordingStateFromPreferences} recordingPreferences
+       * @param {RecordingStateFromPreferences} newRecordingPreferences
        */
-      setRecordingPreferences: recordingPreferences =>
+      setRecordingPreferences: newRecordingPreferences =>
         setRecordingPreferencesOnDebuggee(
           preferenceFront,
-          recordingPreferences
+          newRecordingPreferences
         ),
 
       // Configure the getSymbolTable function for the DevTools workflow.

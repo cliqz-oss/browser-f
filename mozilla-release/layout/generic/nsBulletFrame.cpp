@@ -756,8 +756,7 @@ Maybe<BulletRenderer> nsBulletFrame::CreateBulletRenderer(
         builder->LineTo(NSPointToPoint(
             (rect.BottomLeft() + rect.BottomRight()) / 2, appUnitsPerDevPixel));
       } else {
-        bool isLR = isVertical ? wm.IsVerticalLR() : wm.IsBidiLTR();
-        if (isLR) {
+        if (wm.IsPhysicalLTR()) {
           // to right
           builder->MoveTo(NSPointToPoint(rect.TopLeft(), appUnitsPerDevPixel));
           builder->LineTo(NSPointToPoint(
@@ -843,7 +842,7 @@ void nsBulletFrame::GetListItemText(CounterStyle* aStyle,
 
   aResult.Truncate();
   aResult.Append(prefix);
-  if (aWritingMode.IsBidiLTR() != isRTL) {
+  if (aWritingMode.IsBidiRTL() == isRTL) {
     aResult.Append(counter);
   } else {
     // RLM = 0x200f, LRM = 0x200e

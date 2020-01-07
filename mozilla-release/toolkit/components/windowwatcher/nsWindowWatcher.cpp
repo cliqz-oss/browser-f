@@ -26,6 +26,8 @@
 #include "nsIDocShellTreeItem.h"
 #include "nsIDocShellTreeOwner.h"
 #include "nsIDocumentLoader.h"
+#include "mozilla/dom/BrowsingContext.h"
+#include "mozilla/dom/BrowsingContextGroup.h"
 #include "mozilla/dom/Document.h"
 #include "mozilla/dom/DocumentInlines.h"
 #include "nsIDOMChromeWindow.h"
@@ -69,7 +71,7 @@
 #include "mozilla/dom/BrowserHost.h"
 #include "mozilla/dom/DocGroup.h"
 #include "mozilla/dom/TabGroup.h"
-#include "nsIXULWindow.h"
+#include "nsIAppWindow.h"
 #include "nsIXULBrowserWindow.h"
 #include "nsGlobalWindow.h"
 #include "ReferrerInfo.h"
@@ -909,17 +911,17 @@ nsresult nsWindowWatcher::OpenWindowInternal(
       }
 
       if (newChrome) {
-        nsCOMPtr<nsIXULWindow> xulWin = do_GetInterface(newChrome);
-        if (xulWin) {
+        nsCOMPtr<nsIAppWindow> appWin = do_GetInterface(newChrome);
+        if (appWin) {
           nsCOMPtr<nsIXULBrowserWindow> xulBrowserWin;
-          xulWin->GetXULBrowserWindow(getter_AddRefs(xulBrowserWin));
+          appWin->GetXULBrowserWindow(getter_AddRefs(xulBrowserWin));
           if (xulBrowserWin) {
             nsPIDOMWindowOuter* openerWindow =
                 aForceNoOpener ? nullptr : parentWindow.get();
             xulBrowserWin->ForceInitialBrowserNonRemote(openerWindow);
           }
         }
-        /* It might be a chrome nsXULWindow, in which case it won't have
+        /* It might be a chrome AppWindow, in which case it won't have
             an nsIDOMWindow (primary content shell). But in that case, it'll
             be able to hand over an nsIDocShellTreeItem directly. */
         nsCOMPtr<nsPIDOMWindowOuter> newWindow(do_GetInterface(newChrome));
@@ -964,7 +966,7 @@ nsresult nsWindowWatcher::OpenWindowInternal(
   if (activeDocsSandboxFlags &
       SANDBOX_PROPAGATES_TO_AUXILIARY_BROWSING_CONTEXTS) {
     MOZ_ASSERT(windowIsNew, "Should only get here for new windows");
-    newDocShell->SetSandboxFlags(activeDocsSandboxFlags);
+    newBC->SetSandboxFlags(activeDocsSandboxFlags);
   }
 
   RefPtr<nsGlobalWindowOuter> win(
@@ -1597,34 +1599,17 @@ nsWindowWatcher::GetWindowByName(const nsAString& aTargetName,
 
   *aResult = nullptr;
 
-  nsPIDOMWindowOuter* currentWindow =
-      aCurrentWindow ? nsPIDOMWindowOuter::From(aCurrentWindow) : nullptr;
+  BrowsingContext* currentContext =
+      aCurrentWindow
+          ? nsPIDOMWindowOuter::From(aCurrentWindow)->GetBrowsingContext()
+          : nullptr;
 
-  nsCOMPtr<nsIDocShellTreeItem> treeItem;
+  RefPtr<BrowsingContext> context =
+      GetBrowsingContextByName(aTargetName, false, currentContext);
 
-  nsCOMPtr<nsIDocShellTreeItem> startItem;
-  GetWindowTreeItem(currentWindow, getter_AddRefs(startItem));
-  if (startItem) {
-    // Note: original requestor is null here, per idl comments
-    startItem->FindItemWithName(aTargetName, nullptr, nullptr,
-                                /* aSkipTabGroup = */ false,
-                                getter_AddRefs(treeItem));
-  } else {
-    if (aTargetName.LowerCaseEqualsLiteral("_blank") ||
-        aTargetName.LowerCaseEqualsLiteral("_top") ||
-        aTargetName.LowerCaseEqualsLiteral("_parent") ||
-        aTargetName.LowerCaseEqualsLiteral("_self")) {
-      return NS_OK;
-    }
-
-    // Note: original requestor is null here, per idl comments
-    Unused << TabGroup::GetChromeTabGroup()->FindItemWithName(
-        aTargetName, nullptr, nullptr, getter_AddRefs(treeItem));
-  }
-
-  if (treeItem) {
-    nsCOMPtr<nsPIDOMWindowOuter> domWindow = treeItem->GetWindow();
-    domWindow.forget(aResult);
+  if (context) {
+    *aResult = do_AddRef(context->GetDOMWindow()).take();
+    MOZ_ASSERT(*aResult);
   }
 
   return NS_OK;
@@ -2015,25 +2000,6 @@ int32_t nsWindowWatcher::WinHasOption(const nsACString& aOptions,
   return found;
 }
 
-already_AddRefed<nsIDocShellTreeItem> nsWindowWatcher::GetCallerTreeItem(
-    nsIDocShellTreeItem* aParentItem) {
-  nsCOMPtr<nsIWebNavigation> callerWebNav = do_GetInterface(GetEntryGlobal());
-  nsCOMPtr<nsIDocShellTreeItem> callerItem = do_QueryInterface(callerWebNav);
-  if (!callerItem) {
-    callerItem = aParentItem;
-  }
-
-  return callerItem.forget();
-}
-
-BrowsingContext* nsWindowWatcher::GetCallerBrowsingContext(
-    BrowsingContext* aParentItem) {
-  if (nsCOMPtr<nsIDocShell> caller = do_GetInterface(GetEntryGlobal())) {
-    return caller->GetBrowsingContext();
-  }
-  return aParentItem;
-}
-
 already_AddRefed<BrowsingContext> nsWindowWatcher::GetBrowsingContextByName(
     const nsAString& aName, bool aForceNoOpener,
     BrowsingContext* aCurrentContext) {
@@ -2041,36 +2007,23 @@ already_AddRefed<BrowsingContext> nsWindowWatcher::GetBrowsingContextByName(
     return nullptr;
   }
 
-  if (aForceNoOpener) {
-    if (!aName.LowerCaseEqualsLiteral("_self") &&
-        !aName.LowerCaseEqualsLiteral("_top") &&
-        !aName.LowerCaseEqualsLiteral("_parent")) {
-      // Ignore all other names in the noopener case.
-      return nullptr;
-    }
+  if (aForceNoOpener && !nsContentUtils::IsSpecialName(aName)) {
+    // Ignore all other names in the noopener case.
+    return nullptr;
   }
-
-  RefPtr<BrowsingContext> caller = GetCallerBrowsingContext(aCurrentContext);
 
   RefPtr<BrowsingContext> foundContext;
   if (aCurrentContext) {
-    foundContext = aCurrentContext->FindWithName(aName, *caller);
-  } else {
-    if (aName.LowerCaseEqualsLiteral("_blank") ||
-        aName.LowerCaseEqualsLiteral("_top") ||
-        aName.LowerCaseEqualsLiteral("_parent") ||
-        aName.LowerCaseEqualsLiteral("_self")) {
-      return nullptr;
-    }
-
+    foundContext = aCurrentContext->FindWithName(aName);
+  } else if (!nsContentUtils::IsSpecialName(aName)) {
     // If we are looking for an item and we don't have a docshell we are
-    // checking on, let's just look in the chrome tab group!
-    nsCOMPtr<nsIDocShellTreeItem> foundItem;
-    Unused << TabGroup::GetChromeTabGroup()->FindItemWithName(
-        aName, nullptr, caller ? caller->GetDocShell() : nullptr,
-        getter_AddRefs(foundItem));
-    if (foundItem) {
-      foundContext = foundItem->GetBrowsingContext();
+    // checking on, let's just look in the chrome browsing context group!
+    for (RefPtr<BrowsingContext> toplevel :
+         BrowsingContextGroup::GetChromeGroup()->Toplevels()) {
+      foundContext = toplevel->FindWithNameInSubtree(aName, *toplevel);
+      if (foundContext) {
+        break;
+      }
     }
   }
 
@@ -2419,9 +2372,9 @@ void nsWindowWatcher::SizeOpenedWindow(nsIDocShellTreeOwner* aTreeOwner,
   }
 
   if (aIsCallerChrome) {
-    nsCOMPtr<nsIXULWindow> xulWin = do_GetInterface(treeOwnerAsWin);
-    if (xulWin && aSizeSpec.mLockAspectRatio) {
-      xulWin->LockAspectRatio(true);
+    nsCOMPtr<nsIAppWindow> appWin = do_GetInterface(treeOwnerAsWin);
+    if (appWin && aSizeSpec.mLockAspectRatio) {
+      appWin->LockAspectRatio(true);
     }
   }
 

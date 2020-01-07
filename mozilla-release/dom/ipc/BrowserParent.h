@@ -192,6 +192,9 @@ class BrowserParent final : public PBrowserParent,
 
   ShowInfo GetShowInfo();
 
+  // Get the content principal from the owner element.
+  already_AddRefed<nsIPrincipal> GetContentPrincipal() const;
+
   /**
    * Let managees query if Destroy() is already called so they don't send out
    * messages when the PBrowser actor is being destroyed.
@@ -250,8 +253,6 @@ class BrowserParent final : public PBrowserParent,
   void SetBrowserDOMWindow(nsIBrowserDOMWindow* aBrowserDOMWindow) {
     mBrowserDOMWindow = aBrowserDOMWindow;
   }
-
-  void SetHasContentOpener(bool aHasContentOpener);
 
   void SwapFrameScriptsFrom(nsTArray<FrameScriptInfo>& aFrameScripts) {
     aFrameScripts.SwapElements(mDelayedFrameScripts);
@@ -504,6 +505,10 @@ class BrowserParent final : public PBrowserParent,
       const uint64_t& aOuterWindowID,
       IsWindowSupportingProtectedMediaResolver&& aResolve);
 
+  mozilla::ipc::IPCResult RecvIsWindowSupportingWebVR(
+      const uint64_t& aOuterWindowID,
+      IsWindowSupportingWebVRResolver&& aResolve);
+
   void LoadURL(nsIURI* aURI);
 
   void ResumeLoad(uint64_t aPendingSwitchID);
@@ -526,6 +531,11 @@ class BrowserParent final : public PBrowserParent,
 
   void HandleAccessKey(const WidgetKeyboardEvent& aEvent,
                        nsTArray<uint32_t>& aCharCodes);
+
+#if defined(MOZ_WIDGET_ANDROID)
+  void DynamicToolbarMaxHeightChanged(ScreenIntCoord aHeight);
+  void DynamicToolbarOffsetChanged(ScreenIntCoord aOffset);
+#endif
 
   void Activate();
 
@@ -734,8 +744,6 @@ class BrowserParent final : public PBrowserParent,
 
   void Deprioritize();
 
-  bool GetHasContentOpener();
-
   bool StartApzAutoscroll(float aAnchorX, float aAnchorY, nsViewID aScrollId,
                           uint32_t aPresShellId);
   void StopApzAutoscroll(nsViewID aScrollId, uint32_t aPresShellId);
@@ -940,8 +948,6 @@ class BrowserParent final : public PBrowserParent,
   // True if the cursor changes from the BrowserChild should change the widget
   // cursor.  This happens whenever the cursor is in the tab's region.
   bool mTabSetsCursor;
-
-  bool mHasContentOpener;
 
   // If this flag is set, then the tab's layers will be preserved even when
   // the tab's docshell is inactive.

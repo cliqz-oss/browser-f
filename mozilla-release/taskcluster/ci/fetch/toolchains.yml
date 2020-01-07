@@ -119,7 +119,7 @@ iris-2.0:
     fetch:
         type: git
         repo: https://github.com/mozilla/iris_firefox
-        revision: 614bf07e14769552a533798fb3ccf8a7c1e7f23d
+        revision: 34f6e7add8fb66eb40eb94900fea0311ad87b734
 
 isl-0.15:
     description: ISL 0.15 source code
@@ -215,15 +215,16 @@ nasm-2.13.02:
         sha256: 8ac3235f49a6838ff7a8d7ef7c19a4430d0deecc0c2d3e3e237b5e9f53291757
         size: 805744
 
-wix-3.1.1:
-    description: wix 3.1.1 binary release
+wix-3.14.0:
+    description: wix 3.14.0.2812 binary release
     # WIX doesn't use a wrapping toplevel DIR, so we should really repackage it when
     # Bug 1479533 and related code is ready.
     fetch:
         type: static-url
-        url: https://github.com/wixtoolset/wix3/releases/download/wix3111rtm/wix311-binaries.zip
-        sha256: 37f0a533b0978a454efb5dc3bd3598becf9660aaf4287e55bf68ca6b527d051d
-        size: 34358269
+        # This is a dev version of the toolset, upstream will purge over time...
+        url: http://wixtoolset.org/downloads/v3.14.0.2812/wix314-binaries.zip
+        sha256: 923892298f37514622c58cbbd9c2cadf2822d9bb53df8ee83aaeb05280777611
+        size: 34664320
 
 grcov-osx-x86_64:
     description: grcov binary release
@@ -340,8 +341,8 @@ sccache:
     fetch:
         type: git
         repo: https://github.com/mozilla/sccache
-        # 0.2.12 release
-        revision: 5f2cf631feaf24332dd59c76736f12f26b3c44ea
+        # 0.2.12 release + a handful of fixes
+        revision: 2a89cd6922469416d297f3fd9029d4d0a2686e3c
 
 openssl-1.1.0g:
     description: openssl 1.1.0g source code
@@ -386,12 +387,12 @@ android-rs-glue:
         repo: https://github.com/rust-windowing/android-rs-glue
         revision: e3ac6edea5814e1faca0c31ea8fac6877cb929ea
 
-clang-4.0:
-    description: clang 4.0 source code
+clang-5.0:
+    description: clang 5.0.2 source code
     fetch:
         type: git
         repo: https://github.com/llvm/llvm-project
-        revision: 449c3ef93afc7a668eb35e67a83717453e28b25a
+        revision: 6a075b6de4cafebec9ca1ff9eec7229a617c93f6
 
 clang-7:
     description: clang 7 source code
@@ -414,6 +415,13 @@ clang-9:
         repo: https://github.com/llvm/llvm-project
         revision: 0399d5a9682b3cef71c653373e38890c63c4c365
 
+wasi-sdk:
+    description: wasi-sdk source code
+    fetch:
+        type: git
+        repo: https://github.com/CraneStation/wasi-sdk
+        revision: 5225b05436ce57f01fe649f411f3ff701246628b
+
 ninja:
     description: ninja 1.9.0
     fetch:
@@ -434,3 +442,10 @@ cmake:
         artifact-name: cmake.tar.zst
         strip-components: 1
         add-prefix: cmake/
+
+lucetc-source:
+    description: lucetc source code
+    fetch:
+        type: git
+        repo: https://github.com/PLSysSec/lucet_sandbox_compiler/
+        revision: 5c22392b5b1aaa60e915c75e92b57391e1e61e6d

@@ -138,7 +138,18 @@ class LocaleService final : public mozILocaleService,
   void WebExposedLocalesChanged();
 
   /**
+   * Returns whether the locale is RTL.
+   *
+   * This method respects the `intl.uidirection` pref override.
+   */
+  static bool IsLocaleRTL(const nsACString& aLocale);
+
+  /**
    * Returns whether the current app locale is RTL.
+   *
+   * This method respects two overrides:
+   *  - `intl.l10n.pseudo`
+   *  - `intl.uidirection`
    */
   bool IsAppLocaleRTL();
 
@@ -148,10 +159,6 @@ class LocaleService final : public mozILocaleService,
   bool IsServer();
 
  private:
-  void FilterMatches(const nsTArray<nsCString>& aRequested,
-                     const nsTArray<nsCString>& aAvailable, int32_t aStrategy,
-                     nsTArray<nsCString>& aRetVal);
-
   void NegotiateAppLocales(nsTArray<nsCString>& aRetVal);
 
   void InitPackagedLocales();

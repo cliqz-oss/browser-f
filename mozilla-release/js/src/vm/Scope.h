@@ -13,13 +13,12 @@
 
 #include <stddef.h>
 
-#include "jsutil.h"
-
 #include "gc/DeletePolicy.h"
 #include "gc/Heap.h"
 #include "gc/Policy.h"
 #include "js/UbiNode.h"
 #include "js/UniquePtr.h"
+#include "util/Poison.h"
 #include "vm/BytecodeUtil.h"
 #include "vm/JSObject.h"
 #include "vm/Xdr.h"
@@ -279,14 +278,14 @@ class Scope : public js::gc::TenuredCell {
   friend class GCMarker;
 
   // The enclosing scope or nullptr.
-  GCPtrScope enclosing_;
+  const GCPtrScope enclosing_;
 
   // The kind determines data_.
-  ScopeKind kind_;
+  const ScopeKind kind_;
 
   // If there are any aliased bindings, the shape for the
   // EnvironmentObject. Otherwise nullptr.
-  GCPtrShape environmentShape_;
+  const GCPtrShape environmentShape_;
 
  protected:
   BaseScopeData* data_;

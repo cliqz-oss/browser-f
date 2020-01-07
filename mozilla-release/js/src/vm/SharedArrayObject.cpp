@@ -16,6 +16,7 @@
 #include "js/PropertySpec.h"
 #include "js/SharedArrayBuffer.h"
 #include "js/Wrapper.h"
+#include "util/Memory.h"
 #include "vm/SharedMem.h"
 #include "wasm/WasmSignalHandlers.h"
 #include "wasm/WasmTypes.h"
@@ -115,13 +116,13 @@ bool SharedArrayRawBuffer::wasmGrowToSizeInPlace(const Lock&,
   uint8_t* dataEnd = dataPointerShared().unwrap(/* for resize */) + length_;
   MOZ_ASSERT(uintptr_t(dataEnd) % gc::SystemPageSize() == 0);
 
-  // The ordering of committing memory and changing length does not matter
-  // since all clients take the lock.
-
   if (!CommitBufferMemory(dataEnd, delta)) {
     return false;
   }
 
+  // We rely on CommitBufferMemory (and therefore memmap/VirtualAlloc) to only
+  // return once it has committed memory for all threads. We only update with a
+  // new length once this has occurred.
   length_ = newLength;
 
   return true;

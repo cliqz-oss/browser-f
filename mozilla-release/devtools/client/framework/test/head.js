@@ -52,27 +52,6 @@ function getSourceActor(aSources, aURL) {
 }
 
 /**
- * Open a Scratchpad window.
- *
- * @return nsIDOMWindow
- *         The new window object that holds Scratchpad.
- */
-async function openScratchpadWindow() {
-  const win = ScratchpadManager.openScratchpad();
-
-  await once(win, "load");
-
-  return new Promise(resolve => {
-    win.Scratchpad.addObserver({
-      onReady: function() {
-        win.Scratchpad.removeObserver(this);
-        resolve(win);
-      },
-    });
-  });
-}
-
-/**
  * Wait for a content -> chrome message on the message manager (the window
  * messagemanager is used).
  * @param {String} name The message name
@@ -458,28 +437,6 @@ async function openAboutToolbox(params) {
     tab,
     document: browser.contentDocument,
   };
-}
-
-/**
- * Enable temporary preferences useful to run browser toolbox process tests.
- * Returns a promise that will resolve when the preferences are set.
- */
-function setupPreferencesForBrowserToolbox() {
-  const options = {
-    set: [
-      ["devtools.debugger.prompt-connection", false],
-      ["devtools.debugger.remote-enabled", true],
-      ["devtools.chrome.enabled", true],
-      // Test-only pref to allow passing `testScript` argument to the browser
-      // toolbox
-      ["devtools.browser-toolbox.allow-unsafe-script", true],
-      // On debug test runner, it takes more than the default time (20s)
-      // to get a initialized console
-      ["devtools.debugger.remote-timeout", 120000],
-    ],
-  };
-
-  return SpecialPowers.pushPrefEnv(options);
 }
 
 /**

@@ -42,7 +42,6 @@ class nsIURI;
 class nsPIDOMWindowInner;
 class nsPIDOMWindowOuter;
 class nsPIWindowRoot;
-class nsXBLPrototypeHandler;
 
 typedef uint32_t SuspendTypes;
 
@@ -70,7 +69,6 @@ class TimeoutManager;
 class WindowGlobalChild;
 class CustomElementRegistry;
 enum class CallerType : uint32_t;
-enum class MediaControlActions : uint32_t;
 }  // namespace dom
 }  // namespace mozilla
 
@@ -177,16 +175,6 @@ class nsPIDOMWindowInner : public mozIDOMWindow {
 
   // Note: not related to IsLoading.  Set to false if there's an error, etc.
   virtual void SetActiveLoadingState(bool aIsActiveLoading) = 0;
-
-  nsPIDOMWindowInner* GetWindowForDeprioritizedLoadRunner();
-
-  /**
-   * The runnable will be called once there is idle time, or the top level
-   * page has been loaded or if a timeout has fired.
-   * Must be called only on the top level window, the one
-   * GetWindowForDeprioritizedLoadRunner returns.
-   */
-  virtual void AddDeprioritizedLoadRunner(nsIRunnable* aRunner) = 0;
 
   bool AddAudioContext(mozilla::dom::AudioContext* aAudioContext);
   void RemoveAudioContext(mozilla::dom::AudioContext* aAudioContext);
@@ -441,11 +429,6 @@ class nsPIDOMWindowInner : public mozIDOMWindow {
   bool HasSelectionChangeEventListeners() {
     return mMayHaveSelectionChangeEventListener;
   }
-
-  virtual JSObject* GetCachedXBLPrototypeHandler(
-      nsXBLPrototypeHandler* aKey) = 0;
-  virtual void CacheXBLPrototypeHandler(nsXBLPrototypeHandler* aKey,
-                                        JS::Handle<JSObject*> aHandler) = 0;
 
   /*
    * Get and set the currently focused element within the document. If
@@ -758,8 +741,6 @@ class nsPIDOMWindowOuter : public mozIDOMWindowProxy {
   void MaybeActiveMediaComponents();
 
   void RefreshMediaElementsVolume();
-
-  void UpdateMediaAction(const mozilla::dom::MediaControlActions aAction);
 
   void SetServiceWorkersTestingEnabled(bool aEnabled);
   bool GetServiceWorkersTestingEnabled();

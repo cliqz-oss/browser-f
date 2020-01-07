@@ -18,11 +18,11 @@
 #include "nsIContent.h"  // for GetContent
 #include "nsStubMutationObserver.h"
 #include "nsSVGContainerFrame.h"
+#include "nsTextFrame.h"
 
 class gfxContext;
 class nsDisplaySVGText;
 class SVGTextFrame;
-class nsTextFrame;
 
 namespace mozilla {
 
@@ -213,8 +213,6 @@ class SVGTextFrame final : public nsSVGDisplayContainerFrame {
     return MakeFrameName(NS_LITERAL_STRING("SVGText"), aResult);
   }
 #endif
-
-  virtual void DidSetComputedStyle(ComputedStyle* aOldComputedStyle) override;
 
   /**
    * Finds the nsTextFrame for the closest rendered run to the specified point.

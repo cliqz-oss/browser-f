@@ -441,7 +441,8 @@ void WebrtcVideoConduit::ReceiveStreamStatistics::Update(
  * Factory Method for VideoConduit
  */
 RefPtr<VideoSessionConduit> VideoSessionConduit::Create(
-    RefPtr<WebRtcCallWrapper> aCall, nsCOMPtr<nsIEventTarget> aStsThread) {
+    RefPtr<WebRtcCallWrapper> aCall,
+    nsCOMPtr<nsISerialEventTarget> aStsThread) {
   MOZ_ASSERT(NS_IsMainThread());
   MOZ_ASSERT(aCall, "missing required parameter: aCall");
   CSFLogVerbose(LOGTAG, "%s", __FUNCTION__);
@@ -459,8 +460,8 @@ RefPtr<VideoSessionConduit> VideoSessionConduit::Create(
   return obj.forget();
 }
 
-WebrtcVideoConduit::WebrtcVideoConduit(RefPtr<WebRtcCallWrapper> aCall,
-                                       nsCOMPtr<nsIEventTarget> aStsThread)
+WebrtcVideoConduit::WebrtcVideoConduit(
+    RefPtr<WebRtcCallWrapper> aCall, nsCOMPtr<nsISerialEventTarget> aStsThread)
     : mTransportMonitor("WebrtcVideoConduit"),
       mStsThread(aStsThread),
       mMutex("WebrtcVideoConduit::mMutex"),
@@ -2043,7 +2044,17 @@ MediaConduitErrorCode WebrtcVideoConduit::ReceivedRTCPPacket(const void* data,
     return kMediaConduitRTPProcessingFailed;
   }
 
+  // TODO(bug 1496533): We will need to keep separate timestamps for each SSRC,
+  // and for each SSRC we will need to keep a timestamp for SR and RR.
+  mLastRtcpReceived = Some(GetNow());
   return kMediaConduitNoError;
+}
+
+// TODO(bug 1496533): We will need to add a type (ie; SR or RR) param here, or
+// perhaps break this function into two functions, one for each type.
+Maybe<DOMHighResTimeStamp> WebrtcVideoConduit::LastRtcpReceived() const {
+  ASSERT_ON_THREAD(mStsThread);
+  return mLastRtcpReceived;
 }
 
 MediaConduitErrorCode WebrtcVideoConduit::StopTransmitting() {

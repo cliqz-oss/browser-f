@@ -27,7 +27,9 @@
 #include "vm/Interpreter.h"
 #include "vm/JSFunction.h"
 #include "vm/TraceLogging.h"
-#include "vtune/VTuneWrapper.h"
+#ifdef MOZ_VTUNE
+#  include "vtune/VTuneWrapper.h"
+#endif
 
 #include "debugger/DebugAPI-inl.h"
 #include "jit/BaselineFrameInfo-inl.h"
@@ -168,6 +170,15 @@ bool BaselineInterpreterHandler::recordCallRetAddr(JSContext* cx,
       break;
   }
 
+  return true;
+}
+
+bool BaselineInterpreterHandler::addDebugInstrumentationOffset(
+    JSContext* cx, CodeOffset offset) {
+  if (!debugInstrumentationOffsets_.append(offset.offset())) {
+    ReportOutOfMemory(cx);
+    return false;
+  }
   return true;
 }
 
@@ -767,7 +778,7 @@ bool BaselineInterpreterCodeGen::emitIsDebuggeeCheck() {
     restoreInterpreterPCReg();
   }
   masm.bind(&skipCheck);
-  return handler.addDebugInstrumentationOffset(toggleOffset);
+  return handler.addDebugInstrumentationOffset(cx, toggleOffset);
 }
 
 static void MaybeIncrementCodeCoverageCounter(MacroAssembler& masm,
@@ -1725,11 +1736,6 @@ bool BaselineCodeGen<Handler>::emit_JSOP_TRY_DESTRUCTURING() {
 }
 
 template <typename Handler>
-bool BaselineCodeGen<Handler>::emit_JSOP_LABEL() {
-  return true;
-}
-
-template <typename Handler>
 bool BaselineCodeGen<Handler>::emit_JSOP_POP() {
   frame.pop();
   return true;
@@ -2149,6 +2155,24 @@ bool BaselineCodeGen<Handler>::emit_JSOP_AND() {
 template <typename Handler>
 bool BaselineCodeGen<Handler>::emit_JSOP_OR() {
   return emitAndOr(true);
+}
+
+template <typename Handler>
+bool BaselineCodeGen<Handler>::emit_JSOP_COALESCE() {
+  // COALESCE leaves the original value on the stack.
+  frame.syncStack(0);
+
+  masm.loadValue(frame.addressOfStackValue(-1), R0);
+
+  Label undefinedOrNull;
+
+  masm.branchTestUndefined(Assembler::Equal, R0, &undefinedOrNull);
+  masm.branchTestNull(Assembler::Equal, R0, &undefinedOrNull);
+  emitJump();
+
+  masm.bind(&undefinedOrNull);
+  // fall through
+  return true;
 }
 
 template <typename Handler>
@@ -2928,11 +2952,6 @@ bool BaselineCodeGen<Handler>::emit_JSOP_STRICTNE() {
 }
 
 template <typename Handler>
-bool BaselineCodeGen<Handler>::emit_JSOP_CONDSWITCH() {
-  return true;
-}
-
-template <typename Handler>
 bool BaselineCodeGen<Handler>::emit_JSOP_CASE() {
   frame.popRegsAndSync(1);
 
@@ -3039,18 +3058,21 @@ bool BaselineCodeGen<Handler>::emit_JSOP_INITELEM_ARRAY() {
 
 template <typename Handler>
 bool BaselineCodeGen<Handler>::emit_JSOP_NEWOBJECT() {
-  frame.syncStack(0);
+  return emitNewObject();
+}
 
-  if (!emitNextIC()) {
-    return false;
-  }
-
-  frame.push(R0);
-  return true;
+template <typename Handler>
+bool BaselineCodeGen<Handler>::emit_JSOP_NEWOBJECT_WITHGROUP() {
+  return emitNewObject();
 }
 
 template <typename Handler>
 bool BaselineCodeGen<Handler>::emit_JSOP_NEWINIT() {
+  return emitNewObject();
+}
+
+template <typename Handler>
+bool BaselineCodeGen<Handler>::emitNewObject() {
   frame.syncStack(0);
 
   if (!emitNextIC()) {
@@ -4739,7 +4761,6 @@ bool BaselineCodeGen<Handler>::emit_JSOP_GIMPLICITTHIS() {
     return true;
   };
   auto emitImplicitThis = [this]() { return emit_JSOP_IMPLICITTHIS(); };
-
   return emitTestScriptFlag(JSScript::ImmutableFlags::HasNonSyntacticScope,
                             emitImplicitThis, pushUndefined, R2.scratchReg());
 }
@@ -4932,7 +4953,7 @@ MOZ_MUST_USE bool BaselineInterpreterCodeGen::emitDebugInstrumentation(
   Label isNotDebuggee, done;
 
   CodeOffset toggleOffset = masm.toggledJump(&isNotDebuggee);
-  if (!handler.addDebugInstrumentationOffset(toggleOffset)) {
+  if (!handler.addDebugInstrumentationOffset(cx, toggleOffset)) {
     return false;
   }
 
@@ -5613,8 +5634,7 @@ bool BaselineCodeGen<Handler>::emit_JSOP_SETRVAL() {
 
 template <typename Handler>
 bool BaselineCodeGen<Handler>::emit_JSOP_CALLEE() {
-  MOZ_ASSERT_IF(handler.maybeScript(),
-                handler.maybeScript()->functionNonDelazifying());
+  MOZ_ASSERT_IF(handler.maybeScript(), handler.maybeScript()->function());
   frame.syncStack(0);
   masm.loadFunctionFromCalleeToken(frame.addressOfCalleeToken(),
                                    R0.scratchReg());
@@ -5936,7 +5956,7 @@ bool BaselineInterpreterCodeGen::emitAfterYieldDebugInstrumentation(
   // If the current Realm is not a debuggee we're done.
   Label done;
   CodeOffset toggleOffset = masm.toggledJump(&done);
-  if (!handler.addDebugInstrumentationOffset(toggleOffset)) {
+  if (!handler.addDebugInstrumentationOffset(cx, toggleOffset)) {
     return false;
   }
   masm.loadPtr(AbsoluteAddress(cx->addressOfRealm()), scratch);
@@ -6010,7 +6030,25 @@ bool BaselineInterpreterCodeGen::emitGeneratorThrowOrReturnCallVM() {
 
   using Fn = bool (*)(JSContext*, BaselineFrame*,
                       Handle<AbstractGeneratorObject*>, HandleValue, uint32_t);
-  return callVM<Fn, jit::GeneratorThrowOrReturn>();
+  if (!callVM<Fn, jit::GeneratorThrowOrReturn>()) {
+    return false;
+  }
+
+  // Control only flows out of GeneratorThrowOrReturn if the debugger
+  // overrode the function resumption with an explicit return value, so here
+  // we want to do all of the cleanup on the baseline frame that _would_ have
+  // happened inside the epilogue of the baseline frame execution.
+
+  // Save the frame's return value to return from resume.
+  masm.loadValue(frame.addressOfReturnValue(), JSReturnOperand);
+
+  // Remove the baseline frame from the stack.
+  masm.moveToStackPtr(BaselineFrameReg);
+  masm.pop(BaselineFrameReg);
+
+  masm.ret();
+
+  return true;
 }
 
 template <>
@@ -6896,6 +6934,8 @@ MethodStatus BaselineCompiler::emitBody() {
       case JSOP_FORCEINTERPRETER:
         // Caller must have checked script->hasForceInterpreterOp().
       case JSOP_UNUSED71:
+      case JSOP_UNUSED106:
+      case JSOP_UNUSED120:
       case JSOP_UNUSED149:
       case JSOP_LIMIT:
         MOZ_CRASH("Unexpected op");

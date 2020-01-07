@@ -21,6 +21,7 @@
 #include "mozilla/dom/ProfileTimelineMarkerBinding.h"
 #include "mozilla/gfx/Matrix.h"
 #include "mozilla/dom/ChildSHistory.h"
+#include "mozilla/dom/WindowProxyHolder.h"
 
 #include "nsIAuthPromptProvider.h"
 #include "nsIBaseWindow.h"
@@ -73,6 +74,7 @@ class EventTarget;
 }  // namespace dom
 namespace net {
 class LoadInfo;
+class DocumentChannelRedirect;
 }  // namespace net
 }  // namespace mozilla
 
@@ -448,9 +450,9 @@ class nsDocShell final : public nsDocLoader,
   // shift while triggering reload)
   bool IsForceReloading();
 
-  mozilla::dom::BrowsingContext* GetWindowProxy() {
+  mozilla::dom::WindowProxyHolder GetWindowProxy() {
     EnsureScriptEnvironment();
-    return mBrowsingContext;
+    return mozilla::dom::WindowProxyHolder(mBrowsingContext);
   }
 
   /**
@@ -479,16 +481,38 @@ class nsDocShell final : public nsDocLoader,
       nsIInterfaceRequestor* aCallbacks, nsDocShell* aDocShell,
       const nsString* aInitiatorType, nsLoadFlags aLoadFlags,
       uint32_t aLoadType, uint32_t aCacheKey, bool aIsActive,
-      bool aIsTopLevelDoc, nsresult& rv, nsIChannel** aChannel);
+      bool aIsTopLevelDoc, bool aHasNonEmptySandboxingFlags, nsresult& rv,
+      nsIChannel** aChannel);
 
   static nsresult ConfigureChannel(nsIChannel* aChannel,
                                    nsDocShellLoadState* aLoadState,
                                    const nsString* aInitiatorType,
-                                   uint32_t aLoadType, uint32_t aCacheKey);
+                                   uint32_t aLoadType, uint32_t aCacheKey,
+                                   bool aHasNonEmptySandboxingFlags);
 
   // Notify consumers of a search being loaded through the observer service:
   static void MaybeNotifyKeywordSearchLoading(const nsString& aProvider,
                                               const nsString& aKeyword);
+
+  nsDocShell* GetInProcessChildAt(int32_t aIndex);
+
+  /**
+   * Helper function that finds the last URI and its transition flags for a
+   * channel.
+   *
+   * This method first checks the channel's property bag to see if previous
+   * info has been saved. If not, it gives back the referrer of the channel.
+   *
+   * @param aChannel
+   *        The channel we are transitioning to
+   * @param aURI
+   *        Output parameter with the previous URI, not addref'd
+   * @param aChannelRedirectFlags
+   *        If a redirect, output parameter with the previous redirect flags
+   *        from nsIChannelEventSink
+   */
+  static void ExtractLastVisit(nsIChannel* aChannel, nsIURI** aURI,
+                               uint32_t* aChannelRedirectFlags);
 
  private:  // member functions
   friend class nsDSURIContentListener;
@@ -730,34 +754,6 @@ class nsDocShell final : public nsDocLoader,
                                       bool aConsiderStoragePrincipal = false);
 
   /**
-   * Helper function that determines if channel is an HTTP POST.
-   *
-   * @param aChannel
-   *        The channel to test
-   *
-   * @return True iff channel is an HTTP post.
-   */
-  bool ChannelIsPost(nsIChannel* aChannel);
-
-  /**
-   * Helper function that finds the last URI and its transition flags for a
-   * channel.
-   *
-   * This method first checks the channel's property bag to see if previous
-   * info has been saved. If not, it gives back the referrer of the channel.
-   *
-   * @param aChannel
-   *        The channel we are transitioning to
-   * @param aURI
-   *        Output parameter with the previous URI, not addref'd
-   * @param aChannelRedirectFlags
-   *        If a redirect, output parameter with the previous redirect flags
-   *        from nsIChannelEventSink
-   */
-  void ExtractLastVisit(nsIChannel* aChannel, nsIURI** aURI,
-                        uint32_t* aChannelRedirectFlags);
-
-  /**
    * Helper function that caches a URI and a transition for saving later.
    *
    * @param aChannel
@@ -796,6 +792,24 @@ class nsDocShell final : public nsDocLoader,
   void AddURIVisit(nsIURI* aURI, nsIURI* aPreviousURI,
                    uint32_t aChannelRedirectFlags,
                    uint32_t aResponseStatus = 0);
+
+  /**
+   * Helper function that will add the redirect chain found in aRedirects using
+   * IHistory (see AddURI and SaveLastVisit above for details)
+   *
+   * @param aChannel
+   *        Channel that will have these properties saved
+   * @param aURI
+   *        The URI that was just visited
+   * @param aChannelRedirectFlags
+   *        For redirects, the redirect flags from nsIChannelEventSink
+   *        (0 otherwise)
+   * @param aRedirects
+   *        The redirect chain collected by the DocumentChannelParent
+   */
+  void SavePreviousRedirectsAndLastVisit(
+      nsIChannel* aChannel, nsIURI* aURI, uint32_t aChannelRedirectFlags,
+      const nsTArray<mozilla::net::DocumentChannelRedirect>& aRedirects);
 
   // Sets the current document's current state object to the given SHEntry's
   // state object. The current state object is eventually given to the page
@@ -944,14 +958,6 @@ class nsDocShell final : public nsDocLoader,
    */
   MOZ_MUST_USE bool MaybeInitTiming();
   void MaybeResetInitTiming(bool aReset);
-
-  // Separate function to do the actual name (i.e. not _top, _self etc.)
-  // searching for FindItemWithName.
-  nsresult DoFindItemWithName(const nsAString& aName,
-                              nsIDocShellTreeItem* aRequestor,
-                              nsIDocShellTreeItem* aOriginalRequestor,
-                              bool aSkipTabGroup,
-                              nsIDocShellTreeItem** aResult);
 
   // Convenience method for getting our parent docshell. Can return null
   already_AddRefed<nsDocShell> GetInProcessParentDocshell();
@@ -1205,7 +1211,6 @@ class nsDocShell final : public nsDocLoader,
   // -1 if the docshell is added dynamically to the parent shell.
   int32_t mChildOffset;
 
-  uint32_t mSandboxFlags;
   BusyFlags mBusyFlags;
   AppType mAppType;
   uint32_t mLoadType;
@@ -1282,7 +1287,6 @@ class nsDocShell final : public nsDocLoader,
   bool mAllowAuth : 1;
   bool mAllowKeywordFixup : 1;
   bool mIsOffScreenBrowser : 1;
-  bool mIsActive : 1;
   bool mDisableMetaRefreshWhenInactive : 1;
   bool mIsAppTab : 1;
   bool mUseGlobalHistory : 1;

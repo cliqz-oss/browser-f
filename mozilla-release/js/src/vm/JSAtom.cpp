@@ -192,8 +192,7 @@ UniqueChars js::AtomToPrintableString(JSContext* cx, JSAtom* atom) {
   return QuoteString(cx, atom);
 }
 
-#define DEFINE_PROTO_STRING(name, init, clasp) \
-  const char js_##name##_str[] = #name;
+#define DEFINE_PROTO_STRING(name, clasp) const char js_##name##_str[] = #name;
 JS_FOR_EACH_PROTOTYPE(DEFINE_PROTO_STRING)
 #undef DEFINE_PROTO_STRING
 
@@ -251,8 +250,7 @@ bool JSRuntime::initializeAtoms(JSContext* cx) {
   {js_##idpart##_str, sizeof(text) - 1},
       FOR_EACH_COMMON_PROPERTYNAME(COMMON_NAME_INFO)
 #undef COMMON_NAME_INFO
-#define COMMON_NAME_INFO(name, init, clasp) \
-  {js_##name##_str, sizeof(#name) - 1},
+#define COMMON_NAME_INFO(name, clasp) {js_##name##_str, sizeof(#name) - 1},
           JS_FOR_EACH_PROTOTYPE(COMMON_NAME_INFO)
 #undef COMMON_NAME_INFO
 #define COMMON_NAME_INFO(name) {#name, sizeof(#name) - 1},
@@ -875,25 +873,24 @@ struct AtomizeUTF8OrWTF8CharsWrapper {
       : utf8(chars), encoding(minEncode) {}
 };
 
-// MakeFlatStringForAtomization has 4 variants.
+// MakeLinearStringForAtomization has 4 variants.
 // This is used by Latin1Char and char16_t.
 template <typename CharT>
-static MOZ_ALWAYS_INLINE JSFlatString* MakeFlatStringForAtomization(
+static MOZ_ALWAYS_INLINE JSLinearString* MakeLinearStringForAtomization(
     JSContext* cx, const CharT* chars, size_t length) {
   return NewStringCopyN<NoGC>(cx, chars, length);
 }
 
-// MakeFlatStringForAtomization has one further variant -- a non-template
+// MakeLinearStringForAtomization has one further variant -- a non-template
 // overload accepting LittleEndianChars.
-static MOZ_ALWAYS_INLINE JSFlatString* MakeFlatStringForAtomization(
+static MOZ_ALWAYS_INLINE JSLinearString* MakeLinearStringForAtomization(
     JSContext* cx, LittleEndianChars chars, size_t length) {
   return NewStringFromLittleEndianNoGC(cx, chars, length);
 }
 
 template <typename CharT, typename WrapperT>
-static MOZ_ALWAYS_INLINE JSFlatString* MakeUTF8AtomHelper(JSContext* cx,
-                                                          const WrapperT* chars,
-                                                          size_t length) {
+static MOZ_ALWAYS_INLINE JSLinearString* MakeUTF8AtomHelper(
+    JSContext* cx, const WrapperT* chars, size_t length) {
   if (JSInlineString::lengthFits<CharT>(length)) {
     CharT* storage;
     JSInlineString* str = AllocateInlineString<NoGC>(cx, length, &storage);
@@ -919,13 +916,13 @@ static MOZ_ALWAYS_INLINE JSFlatString* MakeUTF8AtomHelper(JSContext* cx,
   InflateUTF8CharsToBufferAndTerminate(chars->utf8, newStr.get(), length,
                                        chars->encoding);
 
-  return JSFlatString::new_<NoGC>(cx, std::move(newStr), length);
+  return JSLinearString::new_<NoGC>(cx, std::move(newStr), length);
 }
 
-// Another 2 variants of MakeFlatStringForAtomization.
+// Another 2 variants of MakeLinearStringForAtomization.
 // This is used by AtomizeUTF8OrWTF8CharsWrapper with UTF8Chars or WTF8Chars.
 template <typename InputCharsT>
-/* static */ MOZ_ALWAYS_INLINE JSFlatString* MakeFlatStringForAtomization(
+/* static */ MOZ_ALWAYS_INLINE JSLinearString* MakeLinearStringForAtomization(
     JSContext* cx, const AtomizeUTF8OrWTF8CharsWrapper<InputCharsT>* chars,
     size_t length) {
   if (length == 0) {
@@ -944,15 +941,15 @@ static MOZ_ALWAYS_INLINE JSAtom* AllocateNewAtom(
     const Maybe<uint32_t>& indexValue, const AtomHasher::Lookup& lookup) {
   AutoAllocInAtomsZone ac(cx);
 
-  JSFlatString* flat = MakeFlatStringForAtomization(cx, chars, length);
-  if (!flat) {
+  JSLinearString* linear = MakeLinearStringForAtomization(cx, chars, length);
+  if (!linear) {
     // Grudgingly forgo last-ditch GC. The alternative would be to release
     // the lock, manually GC here, and retry from the top.
     ReportOutOfMemory(cx);
     return nullptr;
   }
 
-  JSAtom* atom = flat->morphAtomizedStringIntoAtom(lookup.hash);
+  JSAtom* atom = linear->morphAtomizedStringIntoAtom(lookup.hash);
   MOZ_ASSERT(atom->hash() == lookup.hash);
 
   if (pin) {
@@ -1221,27 +1218,74 @@ static JSAtom* AtomizeLittleEndianTwoByteChars(JSContext* cx,
 }
 
 template <XDRMode mode>
+static XDRResult XDRAtomIndex(XDRState<mode>* xdr, uint32_t* index) {
+  return xdr->codeUint32(index);
+}
+
+template <XDRMode mode>
 XDRResult js::XDRAtom(XDRState<mode>* xdr, MutableHandleAtom atomp) {
+  if (!xdr->hasAtomMap() && !xdr->hasAtomTable()) {
+    return XDRAtomData(xdr, atomp);
+  }
+
+  if (mode == XDR_ENCODE) {
+    MOZ_ASSERT(xdr->hasAtomMap());
+
+    // Atom contents are encoded in a separate buffer, which is joined to the
+    // final result in XDRIncrementalEncoder::linearize. References to atoms
+    // are encoded as indices into the atom stream.
+    uint32_t atomIndex;
+    XDRAtomMap::AddPtr p = xdr->atomMap().lookupForAdd(atomp.get());
+    if (p) {
+      atomIndex = p->value();
+    } else {
+      xdr->switchToAtomBuf();
+      MOZ_TRY(XDRAtomData(xdr, atomp));
+      xdr->switchToMainBuf();
+
+      atomIndex = xdr->natoms();
+      xdr->natoms() += 1;
+      if (!xdr->atomMap().add(p, atomp.get(), atomIndex)) {
+        return xdr->fail(JS::TranscodeResult_Throw);
+      }
+    }
+    MOZ_TRY(XDRAtomIndex(xdr, &atomIndex));
+    return Ok();
+  }
+
+  MOZ_ASSERT(mode == XDR_DECODE && xdr->hasAtomTable());
+
+  uint32_t atomIndex;
+  MOZ_TRY(XDRAtomIndex(xdr, &atomIndex));
+  if (atomIndex >= xdr->atomTable().length()) {
+    return xdr->fail(JS::TranscodeResult_Failure_BadDecode);
+  }
+  JSAtom* atom = xdr->atomTable()[atomIndex];
+
+  atomp.set(atom);
+  return Ok();
+}
+
+template XDRResult js::XDRAtom(XDRState<XDR_DECODE>* xdr,
+                               MutableHandleAtom atomp);
+
+template XDRResult js::XDRAtom(XDRState<XDR_ENCODE>* xdr,
+                               MutableHandleAtom atomp);
+
+template <XDRMode mode>
+XDRResult js::XDRAtomData(XDRState<mode>* xdr, MutableHandleAtom atomp) {
   bool latin1 = false;
   uint32_t length = 0;
   uint32_t lengthAndEncoding = 0;
+
   if (mode == XDR_ENCODE) {
+    JS::AutoCheckCannotGC nogc;
     static_assert(JSString::MAX_LENGTH <= INT32_MAX,
                   "String length must fit in 31 bits");
     latin1 = atomp->hasLatin1Chars();
     length = atomp->length();
     lengthAndEncoding = (length << 1) | uint32_t(latin1);
-  }
-
-  MOZ_TRY(xdr->codeUint32(&lengthAndEncoding));
-
-  if (mode == XDR_DECODE) {
-    length = lengthAndEncoding >> 1;
-    latin1 = lengthAndEncoding & 0x1;
-  }
-
-  if (mode == XDR_ENCODE) {
-    JS::AutoCheckCannotGC nogc;
+    MOZ_TRY(xdr->codeUint32(&lengthAndEncoding));
     if (latin1) {
       return xdr->codeChars(
           const_cast<JS::Latin1Char*>(atomp->latin1Chars(nogc)), length);
@@ -1253,7 +1297,11 @@ XDRResult js::XDRAtom(XDRState<mode>* xdr, MutableHandleAtom atomp) {
   MOZ_ASSERT(mode == XDR_DECODE);
   /* Avoid JSString allocation for already existing atoms. See bug 321985. */
   JSContext* cx = xdr->cx();
-  JSAtom* atom;
+  JSAtom* atom = nullptr;
+  MOZ_TRY(xdr->codeUint32(&lengthAndEncoding));
+  length = lengthAndEncoding >> 1;
+  latin1 = lengthAndEncoding & 0x1;
+
   if (latin1) {
     const Latin1Char* chars = nullptr;
     if (length) {
@@ -1269,7 +1317,6 @@ XDRResult js::XDRAtom(XDRState<mode>* xdr, MutableHandleAtom atomp) {
       size_t nbyte = length * sizeof(char16_t);
       MOZ_TRY(xdr->peekData(&twoByteCharsLE, nbyte));
     }
-
     atom = AtomizeLittleEndianTwoByteChars(cx, twoByteCharsLE, length);
   }
 
@@ -1280,11 +1327,11 @@ XDRResult js::XDRAtom(XDRState<mode>* xdr, MutableHandleAtom atomp) {
   return Ok();
 }
 
-template XDRResult js::XDRAtom(XDRState<XDR_ENCODE>* xdr,
-                               MutableHandleAtom atomp);
+template XDRResult js::XDRAtomData(XDRState<XDR_ENCODE>* xdr,
+                                   MutableHandleAtom atomp);
 
-template XDRResult js::XDRAtom(XDRState<XDR_DECODE>* xdr,
-                               MutableHandleAtom atomp);
+template XDRResult js::XDRAtomData(XDRState<XDR_DECODE>* xdr,
+                                   MutableHandleAtom atomp);
 
 Handle<PropertyName*> js::ClassName(JSProtoKey key, JSContext* cx) {
   return ClassName(key, cx->names());

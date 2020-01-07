@@ -20,7 +20,6 @@
 #include <new>
 
 #include "jstypes.h"
-#include "jsutil.h"
 
 #include "builtin/Array.h"
 #include "builtin/SelfHostingDefines.h"
@@ -29,6 +28,7 @@
 #include "gc/Marking.h"
 #include "js/PropertySpec.h"
 #include "js/Proxy.h"
+#include "util/Poison.h"
 #include "vm/BytecodeUtil.h"
 #include "vm/GlobalObject.h"
 #include "vm/Interpreter.h"
@@ -273,7 +273,7 @@ static bool EnumerateNativeProperties(JSContext* cx, HandleNativeObject pobj,
         return false;
       }
     }
-    ::Reverse(props.begin() + initialLength, props.end());
+    std::reverse(props.begin() + initialLength, props.end());
 
     enumerateSymbols = symbolsFound && (flags & JSITER_SYMBOLS);
   }
@@ -293,7 +293,7 @@ static bool EnumerateNativeProperties(JSContext* cx, HandleNativeObject pobj,
         }
       }
     }
-    ::Reverse(props.begin() + initialLength, props.end());
+    std::reverse(props.begin() + initialLength, props.end());
   }
 
   return true;

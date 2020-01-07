@@ -17,8 +17,16 @@
   background-repeat: no-repeat;
   background-size: 288px auto;
   /* padding-top creates room for the wordmark */
+<<<<<<< HEAD
   margin-top: 20px;
   margin-bottom: 38px;
+||||||| merged common ancestors
+  padding-top: 38px;
+  margin-top:20px;
+=======
+  padding-top: 38px;
+  margin-top: 20px;
+>>>>>>> e86e1fad9bb754a69bba83334ae55a625468dd48
 }
 
 #rightBox:-moz-locale-dir(rtl) {
@@ -38,17 +46,10 @@
 
 #version {
   margin-top: 10px;
-  margin-left: 0;
+  margin-inline-start: 0;
   -moz-user-select: text;
   -moz-user-focus: normal;
   cursor: text;
-}
-
-#version:-moz-locale-dir(rtl) {
-  direction: ltr;
-  text-align: right;
-  margin-left: 5px;
-  margin-right: 0;
 }
 
 #releasenotes {
@@ -59,8 +60,7 @@
 #distributionId {
   font-weight: bold;
   display: none;
-  margin-top: 0;
-  margin-bottom: 0;
+  margin-block: 0;
 }
 
 .text-blurb {
@@ -97,8 +97,8 @@ image.update-throbber {
 
 description > .text-link,
 description > .text-link:focus {
-  margin: 0px;
-  padding: 0px;
+  margin: 0;
+  padding: 0;
 }
 
 .bottom-link,

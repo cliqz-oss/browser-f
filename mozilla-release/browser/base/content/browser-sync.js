@@ -707,7 +707,7 @@ var gSync = {
   },
 
   async openFxAEmailFirstPage(entryPoint) {
-    const url = await FxAccounts.config.promiseEmailFirstURI(entryPoint);
+    const url = await FxAccounts.config.promiseConnectAccountURI(entryPoint);
     switchToTabHavingURI(url, true, { replaceQueryString: true });
   },
 
@@ -1212,6 +1212,12 @@ var gSync = {
     if (confirm && !(await this._confirmDisconnect(disconnectAccount))) {
       return false;
     }
+    // Record telemetry.
+    await fxAccounts.telemetry.recordDisconnection(
+      disconnectAccount ? null : "sync",
+      "ui"
+    );
+
     await Weave.Service.promiseInitialized;
     await Weave.Service.startOver();
     if (disconnectAccount) {

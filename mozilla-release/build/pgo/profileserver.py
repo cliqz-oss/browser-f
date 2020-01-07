@@ -10,6 +10,7 @@ import sys
 import glob
 import subprocess
 
+import mozcrash
 from mozbuild.base import MozbuildObject
 from mozfile import TemporaryDirectory
 from mozhttpd import MozHttpd
@@ -21,8 +22,36 @@ from six import string_types
 PORT = 8888
 
 PATH_MAPPINGS = {
-    '/js-input/webkit/PerformanceTests': 'third_party/webkit/PerformanceTests',
+    '/webkit/PerformanceTests': 'third_party/webkit/PerformanceTests',
+    # It is tempting to map to `testing/talos/talos/tests` instead, to avoid
+    # writing `tests/` in every path, but we can't do that because some files
+    # refer to scripts located in `../..`.
+    '/talos': 'testing/talos/talos',
 }
+
+
+def get_crashreports(directory, name=None):
+    rc = 0
+    upload_path = os.environ.get('UPLOAD_PATH')
+    if upload_path:
+        # For automation, log the minidumps with stackwalk and get them moved to
+        # the artifacts directory.
+        fetches_dir = os.environ.get('MOZ_FETCHES_DIR')
+        if not fetches_dir:
+            raise Exception("Unable to process minidump in automation because "
+                            "$MOZ_FETCHES_DIR is not set in the environment")
+        stackwalk_binary = os.path.join(fetches_dir, 'minidump_stackwalk', 'minidump_stackwalk')
+        if sys.platform == 'win32':
+            stackwalk_binary += '.exe'
+        minidump_path = os.path.join(directory, "minidumps")
+        rc = mozcrash.check_for_crashes(
+            minidump_path,
+            symbols_path=fetches_dir,
+            stackwalk_binary=stackwalk_binary,
+            dump_save_path=upload_path,
+            test_name=name,
+        )
+    return rc
 
 
 if __name__ == '__main__':
@@ -115,6 +144,7 @@ if __name__ == '__main__':
                 with open(logfile) as f:
                     print(f.read())
             httpd.stop()
+            get_crashreports(profilePath, name='Profile initialization')
             sys.exit(ret)
 
         jarlog = os.getenv("JARLOG_FILE")
@@ -140,7 +170,15 @@ if __name__ == '__main__':
                 print("Firefox output (%s):" % logfile)
                 with open(logfile) as f:
                     print(f.read())
+            get_crashreports(profilePath, name='Profiling run')
             sys.exit(ret)
+
+        # Try to move the crash reports to the artifacts even if Firefox appears
+        # to exit successfully, in case there's a crash that doesn't set the
+        # return code to non-zero for some reason.
+        if get_crashreports(profilePath, name='Firefox exited successfully?') != 0:
+            print("Firefox exited successfully, but produced a crashreport")
+            sys.exit(1)
 
         llvm_profdata = env.get('LLVM_PROFDATA')
         if llvm_profdata:

@@ -23,8 +23,6 @@ const SCROLL_BEHAVIOR_SMOOTH = 0;
 const SCROLL_BEHAVIOR_AUTO = 1;
 
 XPCOMUtils.defineLazyModuleGetters(this, {
-  FormLikeFactory: "resource://gre/modules/FormLikeFactory.jsm",
-  GeckoViewAutofill: "resource://gre/modules/GeckoViewAutofill.jsm",
   ManifestObtainer: "resource://gre/modules/ManifestObtainer.jsm",
   PrivacyFilter: "resource://gre/modules/sessionstore/PrivacyFilter.jsm",
   SessionHistory: "resource://gre/modules/sessionstore/SessionHistory.jsm",
@@ -39,6 +37,8 @@ class GeckoViewContentChild extends GeckoViewChildModule {
     XPCOMUtils.defineLazyModuleGetters(this, {
       Utils: "resource://gre/modules/sessionstore/Utils.jsm",
     });
+
+    this.timeoutsSuspended = false;
 
     this.messageManager.addMessageListener(
       "GeckoView:DOMFullscreenEntered",
@@ -59,19 +59,7 @@ class GeckoViewContentChild extends GeckoViewChildModule {
       mozSystemGroup: true,
       capture: false,
     };
-    addEventListener("DOMFormHasPassword", this, options);
-    addEventListener("DOMInputPasswordAdded", this, options);
-    addEventListener("pagehide", this, options);
-    addEventListener("pageshow", this, options);
-    addEventListener("focusin", this, options);
-    addEventListener("focusout", this, options);
     addEventListener("mozcaretstatechanged", this, options);
-
-    XPCOMUtils.defineLazyGetter(
-      this,
-      "_autoFill",
-      () => new GeckoViewAutofill(this.eventDispatcher)
-    );
 
     // Notify WebExtension process script that this tab is ready for extension content to load.
     Services.obs.notifyObservers(
@@ -273,6 +261,17 @@ class GeckoViewContentChild extends GeckoViewChildModule {
         break;
 
       case "GeckoView:SetActive":
+        if (content) {
+          if (!aMsg.data.active) {
+            docShell.contentViewer.pausePainting();
+            content.windowUtils.suspendTimeouts();
+            this.timeoutsSuspended = true;
+          } else if (this.timeoutsSuspended) {
+            docShell.contentViewer.resumePainting();
+            content.windowUtils.resumeTimeouts();
+            this.timeoutsSuspended = false;
+          }
+        }
         if (content && aMsg.data.suspendMedia) {
           content.windowUtils.mediaSuspend = aMsg.data.active
             ? Ci.nsISuspendedTypes.NONE_SUSPENDED
@@ -366,18 +365,6 @@ class GeckoViewContentChild extends GeckoViewChildModule {
           aEvent.preventDefault();
         }
         break;
-      case "DOMFormHasPassword":
-        this._autoFill.addElement(
-          FormLikeFactory.createFromForm(aEvent.composedTarget)
-        );
-        break;
-      case "DOMInputPasswordAdded": {
-        const input = aEvent.composedTarget;
-        if (!input.form) {
-          this._autoFill.addElement(FormLikeFactory.createFromField(input));
-        }
-        break;
-      }
       case "MozDOMFullscreen:Request":
         sendAsyncMessage("GeckoView:DOMFullscreenRequest");
         break;
@@ -408,26 +395,6 @@ class GeckoViewContentChild extends GeckoViewChildModule {
         this.eventDispatcher.sendRequest({
           type: "GeckoView:DOMWindowClose",
         });
-        break;
-      case "focusin":
-        if (aEvent.composedTarget instanceof content.HTMLInputElement) {
-          this._autoFill.onFocus(aEvent.composedTarget);
-        }
-        break;
-      case "focusout":
-        if (aEvent.composedTarget instanceof content.HTMLInputElement) {
-          this._autoFill.onFocus(null);
-        }
-        break;
-      case "pagehide":
-        if (aEvent.target === content.document) {
-          this._autoFill.clearElements();
-        }
-        break;
-      case "pageshow":
-        if (aEvent.target === content.document && aEvent.persisted) {
-          this._autoFill.scanDocument(aEvent.target);
-        }
         break;
       case "mozcaretstatechanged":
         if (

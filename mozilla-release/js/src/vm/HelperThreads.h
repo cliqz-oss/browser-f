@@ -25,6 +25,7 @@
 
 #include "ds/Fifo.h"
 #include "jit/Ion.h"
+#include "js/BinASTFormat.h"  // JS::BinASTFormat
 #include "js/CompileOptions.h"
 #include "js/SourceText.h"
 #include "js/TypeDecls.h"
@@ -97,7 +98,7 @@ class GlobalHelperThreadState {
   typedef mozilla::LinkedList<ParseTask> ParseTaskList;
   typedef Vector<UniquePtr<SourceCompressionTask>, 0, SystemAllocPolicy>
       SourceCompressionTaskVector;
-  typedef Vector<GCParallelTask*, 0, SystemAllocPolicy> GCParallelTaskVector;
+  typedef mozilla::LinkedList<GCParallelTask> GCParallelTaskList;
   typedef Vector<PromiseHelperTask*, 0, SystemAllocPolicy>
       PromiseHelperTaskVector;
   typedef Vector<JSContext*, 0, SystemAllocPolicy> ContextVector;
@@ -145,7 +146,7 @@ class GlobalHelperThreadState {
   SourceCompressionTaskVector compressionFinishedList_;
 
   // GC tasks needing to be done in parallel.
-  GCParallelTaskVector gcParallelWorklist_;
+  GCParallelTaskList gcParallelWorklist_;
 
   // Global list of JSContext for GlobalHelperThreadState to use.
   ContextVector helperContexts_;
@@ -274,7 +275,7 @@ class GlobalHelperThreadState {
     return compressionFinishedList_;
   }
 
-  GCParallelTaskVector& gcParallelWorklist(const AutoLockHelperThreadState&) {
+  GCParallelTaskList& gcParallelWorklist(const AutoLockHelperThreadState&) {
     return gcParallelWorklist_;
   }
 
@@ -635,6 +636,7 @@ bool StartOffThreadDecodeScript(JSContext* cx,
 bool StartOffThreadDecodeBinAST(JSContext* cx,
                                 const JS::ReadOnlyCompileOptions& options,
                                 const uint8_t* buf, size_t length,
+                                JS::BinASTFormat format,
                                 JS::OffThreadCompileCallback callback,
                                 void* callbackData);
 
@@ -777,8 +779,10 @@ struct ScriptDecodeTask : public ParseTask {
 
 struct BinASTDecodeTask : public ParseTask {
   mozilla::Range<const uint8_t> data;
+  JS::BinASTFormat format;
 
   BinASTDecodeTask(JSContext* cx, const uint8_t* buf, size_t length,
+                   JS::BinASTFormat format,
                    JS::OffThreadCompileCallback callback, void* callbackData);
   void parse(JSContext* cx) override;
 };

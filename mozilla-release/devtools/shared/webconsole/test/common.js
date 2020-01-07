@@ -4,14 +4,14 @@
 
 "use strict";
 
-/* exported ObjectClient, attachConsole, attachConsoleToTab, attachConsoleToWorker,
+/* exported ObjectFront, attachConsole, attachConsoleToTab, attachConsoleToWorker,
    closeDebugger, checkConsoleAPICalls, checkRawHeaders, runTests, nextTest, Ci, Cc,
    withActiveServiceWorker, Services, consoleAPICall */
 
 const { require } = ChromeUtils.import("resource://devtools/shared/Loader.jsm");
 const { DebuggerServer } = require("devtools/server/debugger-server");
 const { DebuggerClient } = require("devtools/shared/client/debugger-client");
-const ObjectClient = require("devtools/shared/client/object-client");
+const ObjectFront = require("devtools/shared/fronts/object");
 const Services = require("Services");
 
 function initCommon() {
@@ -37,15 +37,24 @@ async function connectToDebugger() {
 
 async function attachConsole(listeners, callback) {
   const { state, response } = await _attachConsole(listeners);
-  callback(state, response);
+  if (callback) {
+    return callback(state, response);
+  }
+  return { state, response };
 }
 async function attachConsoleToTab(listeners, callback) {
   const { state, response } = await _attachConsole(listeners, true);
-  callback(state, response);
+  if (callback) {
+    return callback(state, response);
+  }
+  return { state, response };
 }
 async function attachConsoleToWorker(listeners, callback) {
   const { state, response } = await _attachConsole(listeners, true, true);
-  callback(state, response);
+  if (callback) {
+    return callback(state, response);
+  }
+  return { state, response };
 }
 
 var _attachConsole = async function(listeners, attachToTab, attachToWorker) {
@@ -146,6 +155,10 @@ function checkConsoleAPICall(call, expected) {
 }
 
 function checkObject(object, expected) {
+  if (object && object.getGrip) {
+    object = object.getGrip();
+  }
+
   for (const name of Object.keys(expected)) {
     const expectedValue = expected[name];
     const value = object[name];

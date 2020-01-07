@@ -160,11 +160,6 @@ class HostLayerManager : public LayerManager {
     }
   }
 
-  // Indicate that we need to composite even if nothing in our layers has
-  // changed, so that the widget can draw something different in its window
-  // overlay.
-  void SetWindowOverlayChanged() { mWindowOverlayChanged = true; }
-
   void SetPaintTime(const TimeDuration& aPaintTime) {
     mLastPaintTime = aPaintTime;
   }
@@ -211,6 +206,8 @@ class HostLayerManager : public LayerManager {
    */
   void WriteCollectedFrames();
 
+  Maybe<CollectedFrames> GetCollectedFrames();
+
  protected:
   bool mDebugOverlayWantsNextFrame;
   nsTArray<ImageCompositeNotificationInfo> mImageCompositeNotifications;
@@ -221,7 +218,6 @@ class HostLayerManager : public LayerManager {
   UniquePtr<Diagnostics> mDiagnostics;
   uint64_t mCompositorBridgeID;
 
-  bool mWindowOverlayChanged;
   TimeDuration mLastPaintTime;
   TimeStamp mRenderStartTime;
   UniquePtr<CompositionRecorder> mCompositionRecorder = nullptr;

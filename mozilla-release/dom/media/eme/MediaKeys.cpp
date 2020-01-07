@@ -569,16 +569,6 @@ void MediaKeys::OnSessionLoaded(PromiseId aId, bool aSuccess) {
   ResolvePromiseWithResult(aId, aSuccess);
 }
 
-template <typename T>
-void MediaKeys::ResolvePromiseWithResult(PromiseId aId, const T& aResult) {
-  RefPtr<DetailedPromise> promise(RetrievePromise(aId));
-  if (!promise) {
-    return;
-  }
-
-  promise->MaybeResolve(aResult);
-}
-
 void MediaKeys::OnSessionClosed(MediaKeySession* aSession) {
   nsAutoString id;
   aSession->GetSessionId(id);
@@ -635,12 +625,9 @@ void MediaKeys::GetSessionsInfo(nsString& sessionsInfo) {
       nsString keyID = keyStatusMap->GetKeyIDAsHexString(i);
       sessionsInfo.AppendLiteral("(kid=");
       sessionsInfo.Append(keyID);
-      using IntegerType = typename std::underlying_type<MediaKeyStatus>::type;
-      auto idx = static_cast<IntegerType>(keyStatusMap->GetValueAtIndex(i));
-      const char* keyStatus = MediaKeyStatusValues::strings[idx].value;
       sessionsInfo.AppendLiteral(" status=");
-      sessionsInfo.Append(
-          NS_ConvertUTF8toUTF16((nsDependentCString(keyStatus))));
+      sessionsInfo.AppendASCII(
+          MediaKeyStatusValues::GetString(keyStatusMap->GetValueAtIndex(i)));
       sessionsInfo.AppendLiteral(")");
     }
     sessionsInfo.AppendLiteral(")");

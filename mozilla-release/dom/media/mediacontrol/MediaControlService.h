@@ -2,14 +2,15 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-#ifndef mozilla_dom_mediacontrolservice_h__
-#define mozilla_dom_mediacontrolservice_h__
+#ifndef DOM_MEDIA_MEDIACONTROL_MEDIACONTROLSERVICE_H_
+#define DOM_MEDIA_MEDIACONTROL_MEDIACONTROLSERVICE_H_
 
 #include "mozilla/AlreadyAddRefed.h"
 
 #include "AudioFocusManager.h"
 #include "MediaController.h"
-#include "MediaHardwareKeysManager.h"
+#include "MediaControlKeysManager.h"
+#include "MediaEventSource.h"
 #include "nsDataHashtable.h"
 #include "nsIObserver.h"
 #include "nsTArray.h"
@@ -38,6 +39,9 @@ class MediaControlService final : public nsIObserver {
   RefPtr<MediaController> GetOrCreateControllerById(const uint64_t aId) const;
   RefPtr<MediaController> GetControllerById(const uint64_t aId) const;
   AudioFocusManager& GetAudioFocusManager() { return mAudioFocusManager; }
+  MediaControlKeysEventSource* GetMediaControlKeysEventSource() {
+    return mMediaControlKeysManager;
+  }
 
   void AddMediaController(const RefPtr<MediaController>& aController);
   void RemoveMediaController(const RefPtr<MediaController>& aController);
@@ -45,10 +49,17 @@ class MediaControlService final : public nsIObserver {
 
   already_AddRefed<MediaController> GetLastAddedController();
 
+  // This event is used to generate a media event indicating media controller
+  // amount changed.
+  MediaEventSource<uint64_t>& MediaControllerAmountChangedEvent() {
+    return mMediaControllerAmountChangedEvent;
+  }
+
  private:
   MediaControlService();
   ~MediaControlService();
 
+  void Init();
   void Shutdown();
 
   void PlayAllControllers() const;
@@ -59,7 +70,9 @@ class MediaControlService final : public nsIObserver {
   nsDataHashtable<nsUint64HashKey, RefPtr<MediaController>> mControllers;
   nsTArray<uint64_t> mControllerHistory;
   AudioFocusManager mAudioFocusManager;
-  MediaHardwareKeysManager mHardwareKeysManager;
+  RefPtr<MediaControlKeysManager> mMediaControlKeysManager;
+  RefPtr<MediaControlKeysEventListener> mMediaKeysHandlder;
+  MediaEventProducer<uint64_t> mMediaControllerAmountChangedEvent;
 };
 
 }  // namespace dom

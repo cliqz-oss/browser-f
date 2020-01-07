@@ -556,6 +556,12 @@ already_AddRefed<GLContextEGL> GLContextEGL::CreateGLContext(
     required_attribs.push_back(2);
   }
 
+  if ((flags & CreateContextFlags::PREFER_EXACT_VERSION) && egl->IsANGLE()) {
+    required_attribs.push_back(
+        LOCAL_EGL_CONTEXT_OPENGL_BACKWARDS_COMPATIBLE_ANGLE);
+    required_attribs.push_back(LOCAL_EGL_FALSE);
+  }
+
   const auto debugFlags = GLContext::ChooseDebugFlags(flags);
   if (!debugFlags && flags & CreateContextFlags::NO_VALIDATION &&
       egl->IsExtensionSupported(GLLibraryEGL::KHR_create_context_no_error)) {
@@ -896,13 +902,6 @@ already_AddRefed<GLContext> GLContextProviderEGL::CreateForCompositorWidget(
     window = GET_NATIVE_WINDOW_FROM_COMPOSITOR_WIDGET(aCompositorWidget);
   }
   return GLContextEGLFactory::Create(window, aWebRender);
-}
-
-already_AddRefed<GLContext> GLContextProviderEGL::CreateForWindow(
-    nsIWidget* aWidget, bool aWebRender, bool aForceAccelerated) {
-  MOZ_ASSERT(aWidget);
-  return GLContextEGLFactory::Create(
-      GET_NATIVE_WINDOW_FROM_REAL_WIDGET(aWidget), aWebRender);
 }
 
 #if defined(MOZ_WIDGET_ANDROID)

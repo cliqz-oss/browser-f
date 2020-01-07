@@ -132,6 +132,9 @@ EXPORTS += [
     'FileBlockCache.h',
     'ForwardedInputTrack.h',
     'FrameStatistics.h',
+    'GVAutoplayPermissionRequest.h',
+    'GVAutoplayRequestStatusIPC.h',
+    'GVAutoplayRequestUtils.h',
     'ImageToI420.h',
     'Intervals.h',
     'MediaCache.h',
@@ -199,10 +202,6 @@ if not CONFIG['MOZ_WEBRTC']:
       '../../media/mtransport/runnable_utils.h',
   ]
 
-IPDL_SOURCES += [
-    'webrtc/PWebrtcGlobal.ipdl',
-]
-
 EXPORTS.mozilla.dom += [
     'AudioDeviceInfo.h',
     'AudioStreamTrack.h',
@@ -258,6 +257,7 @@ UNIFIED_SOURCES += [
     'GetUserMediaRequest.cpp',
     'GraphDriver.cpp',
     'GraphRunner.cpp',
+    'GVAutoplayPermissionRequest.cpp',
     'ImageToI420.cpp',
     'MediaCache.cpp',
     'MediaContainerType.cpp',
@@ -343,7 +343,6 @@ if CONFIG['MOZ_WEBRTC']:
 EXTRA_JS_MODULES.media += [
     'IdpSandbox.jsm',
     'PeerConnectionIdp.jsm',
-    'RTCStatsReport.jsm',
 ]
 
 LOCAL_INCLUDES += [

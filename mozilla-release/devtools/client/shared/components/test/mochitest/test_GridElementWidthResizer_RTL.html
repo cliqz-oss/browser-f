@@ -76,6 +76,9 @@
     <pre id="test">
 <script src="head.js" type="application/javascript"></script>
 <script type="application/javascript">
+
+'use strict'
+
 const FUDGE_FACTOR = .5;
 function aboutEq(a, b) {
   dumpn(`Checking ${a} ~= ${b}`);
@@ -88,13 +91,13 @@ window.onload = async function () {
     const ReactDOM = browserRequire("devtools/client/shared/vendor/react-dom");
     const dom = require("devtools/client/shared/vendor/react-dom-factories");
 
-    let GridElementWidthResizer = React.createFactory(browserRequire("devtools/client/shared/components/splitter/GridElementWidthResizer"));
+    const GridElementWidthResizer = React.createFactory(browserRequire("devtools/client/shared/components/splitter/GridElementWidthResizer"));
     ok(GridElementWidthResizer, "Should get GridElementWidthResizer");
 
     const resizedA = [];
     const resizedD = [];
 
-    const scene = ReactDOM.render([
+    ReactDOM.render([
       dom.header({}, "header"),
       dom.aside({className: "a"}, "A"),
       GridElementWidthResizer({
@@ -140,7 +143,7 @@ window.onload = async function () {
       && resizerD.classList.contains("start"), "resizerD has expected classes");
 
     const aBoundingRect = a.getBoundingClientRect();
-    let aOriginalWidth = aBoundingRect.width;
+    const aOriginalWidth = aBoundingRect.width;
 
     info("Resize element A");
     await resize(resizerA, aBoundingRect.left - 20);
@@ -159,7 +162,7 @@ window.onload = async function () {
 
     info("Resize element D below its min width");
     const dBoundingRect = d.getBoundingClientRect();
-    let dOriginalWidth = dBoundingRect.width;
+    const dOriginalWidth = dBoundingRect.width;
 
     await resize(resizerD, dBoundingRect.right - 100);
     is(resizedD.length, 1, "onResizeEnd was called once for d");

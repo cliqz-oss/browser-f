@@ -142,6 +142,13 @@
 #define XRE_ADDON_APP_DIR "XREAddonAppDir"
 
 /**
+ * A directory service key which specifies the distribution specific files for
+ * the application unique for each user.
+ * It's located at /run/user/$UID/<product name>/
+ */
+#define XRE_USER_RUNTIME_DIR "XREUserRunTimeDir"
+
+/**
  * A directory service key which provides the update directory. Callers should
  * fall back to appDir.
  * Windows:    If vendor name exists:
@@ -373,7 +380,7 @@ static const char* const kGeckoProcessTypeString[] = {
 static_assert(MOZ_ARRAY_LENGTH(kGeckoProcessTypeString) == GeckoProcessType_End,
               "Array length mismatch");
 
-XRE_API(const char*, XRE_ChildProcessTypeToString,
+XRE_API(const char*, XRE_GeckoProcessTypeToString,
         (GeckoProcessType aProcessType))
 XRE_API(const char*, XRE_ChildProcessTypeToAnnotation,
         (GeckoProcessType aProcessType))

@@ -438,14 +438,12 @@ var PlacesUtils = {
   TOPIC_INIT_COMPLETE: "places-init-complete",
   TOPIC_DATABASE_LOCKED: "places-database-locked",
   TOPIC_EXPIRATION_FINISHED: "places-expiration-finished",
-  TOPIC_FEEDBACK_UPDATED: "places-autocomplete-feedback-updated",
   TOPIC_FAVICONS_EXPIRED: "places-favicons-expired",
   TOPIC_VACUUM_STARTING: "places-vacuum-starting",
   TOPIC_BOOKMARKS_RESTORE_BEGIN: "bookmarks-restore-begin",
   TOPIC_BOOKMARKS_RESTORE_SUCCESS: "bookmarks-restore-success",
   TOPIC_BOOKMARKS_RESTORE_FAILED: "bookmarks-restore-failed",
 
-  ACTION_SCHEME: "moz-action:",
   observers: PlacesObservers,
 
   /**
@@ -577,28 +575,6 @@ var PlacesUtils = {
   },
 
   /**
-   * Makes a moz-action URI for the given action and set of parameters.
-   *
-   * @param   type
-   *          The action type.
-   * @param   params
-   *          A JS object of action params.
-   * @returns A moz-action URI as a string.
-   */
-  mozActionURI(type, params) {
-    let encodedParams = {};
-    for (let key in params) {
-      // Strip null or undefined.
-      // Regardless, don't encode them or they would be converted to a string.
-      if (params[key] === null || params[key] === undefined) {
-        continue;
-      }
-      encodedParams[key] = encodeURIComponent(params[key]);
-    }
-    return this.ACTION_SCHEME + type + "," + JSON.stringify(encodedParams);
-  },
-
-  /**
    * Parses a moz-action URL and returns its parts.
    *
    * @param url A moz-action URI.
@@ -611,7 +587,7 @@ var PlacesUtils = {
       url = url.href;
     }
     // Faster bailout.
-    if (!url.startsWith(this.ACTION_SCHEME)) {
+    if (!url.startsWith("moz-action:")) {
       return null;
     }
 

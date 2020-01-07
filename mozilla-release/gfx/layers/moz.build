@@ -215,6 +215,7 @@ EXPORTS.mozilla.layers += [
     'ipc/UiCompositorControllerParent.h',
     'ipc/VideoBridgeChild.h',
     'ipc/VideoBridgeParent.h',
+    'ipc/VideoBridgeUtils.h',
     'LayerAttributes.h',
     'LayerMetricsWrapper.h',
     'LayersHelpers.h',
@@ -305,7 +306,6 @@ if CONFIG['MOZ_WAYLAND']:
 if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'cocoa':
     EXPORTS.mozilla.layers += [
         'NativeLayerCA.h',
-        'opengl/GLManager.h',
         'TextureSync.h',
     ]
     EXPORTS += [
@@ -314,7 +314,6 @@ if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'cocoa':
     ]
     UNIFIED_SOURCES += [
         'NativeLayerCA.mm',
-        'opengl/GLManager.cpp',
         'TextureSync.cpp',
     ]
     SOURCES += [
@@ -567,6 +566,7 @@ IPDL_SOURCES += [
     'ipc/PAPZInputBridge.ipdl',
     'ipc/PCanvas.ipdl',
     'ipc/PCompositorBridge.ipdl',
+    'ipc/PCompositorBridgeTypes.ipdlh',
     'ipc/PCompositorManager.ipdl',
     'ipc/PImageBridge.ipdl',
     'ipc/PLayerTransaction.ipdl',

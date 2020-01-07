@@ -437,10 +437,8 @@ var SiteDataManager = {
   // we consider part of "site data and cookies".
   _getDeletablePermissions() {
     let perms = [];
-    let enumerator = Services.perms.enumerator;
 
-    while (enumerator.hasMoreElements()) {
-      let permission = enumerator.getNext().QueryInterface(Ci.nsIPermission);
+    for (let permission of Services.perms.all) {
       if (
         permission.type == "persistent-storage" ||
         permission.type == "storage-access"
@@ -515,7 +513,7 @@ var SiteDataManager = {
       };
       let features = "centerscreen,chrome,modal,resizable=no";
       win.docShell.rootTreeItem.domWindow.openDialog(
-        "chrome://browser/content/preferences/siteDataRemoveSelected.xul",
+        "chrome://browser/content/preferences/siteDataRemoveSelected.xhtml",
         "",
         features,
         args

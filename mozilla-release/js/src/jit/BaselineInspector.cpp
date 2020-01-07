@@ -250,7 +250,8 @@ static void SkipBinaryGuards(CacheIRReader& reader) {
     // One skip
     if (reader.matchOp(CacheOp::GuardIsNumber) ||
         reader.matchOp(CacheOp::GuardToString) ||
-        reader.matchOp(CacheOp::GuardToObject)) {
+        reader.matchOp(CacheOp::GuardToObject) ||
+        reader.matchOp(CacheOp::GuardToBigInt)) {
       reader.skip();  // Skip over operandId
       continue;
     }
@@ -304,6 +305,22 @@ static MIRType ParseCacheIRStub(ICStub* stub) {
       reader.skip();  // Skip over lhs
       reader.skip();  // Skip over rhs
       return reader.readByte() == 0 ? MIRType::Int32 : MIRType::Double;
+    case CacheOp::BigIntAddResult:
+    case CacheOp::BigIntSubResult:
+    case CacheOp::BigIntMulResult:
+    case CacheOp::BigIntDivResult:
+    case CacheOp::BigIntModResult:
+    case CacheOp::BigIntPowResult:
+    case CacheOp::BigIntBitOrResult:
+    case CacheOp::BigIntBitXorResult:
+    case CacheOp::BigIntBitAndResult:
+    case CacheOp::BigIntLeftShiftResult:
+    case CacheOp::BigIntRightShiftResult:
+    case CacheOp::BigIntNotResult:
+    case CacheOp::BigIntNegationResult:
+    case CacheOp::BigIntIncResult:
+    case CacheOp::BigIntDecResult:
+      return MIRType::BigInt;
     case CacheOp::LoadValueResult:
       return MIRType::Value;
     default:

@@ -179,12 +179,12 @@ a {
 }
 
 .message.paused:not(.paused-before) {
-  border-bottom-color: var(--purple-50);
+  border-top-color: var(--purple-50);
   /* always show the border, even for the last child */
-  border-bottom-width: 1px;
+  border-top-width: 1px;
 }
 
-.message.paused ~ .message:not(.command):not(.result) .message-body-wrapper,
+.message.paused ~ .message .message-body-wrapper,
 .message.paused.paused-before .message-body-wrapper {
   opacity: 0.5;
 }
@@ -834,13 +834,14 @@ a.learn-more-link.webconsole-learn-more-link {
   padding: 5px 4px;
   font-weight: inherit;
   z-index: 1;
+  text-overflow: ellipsis;
 }
 
 .new-consoletable > [role="gridcell"] {
   background-color: var(--theme-body-background);
-  padding: 3px 4px;
-  min-width: 100px;
   color: var(--theme-body-color);
+  padding: 3px 4px;
+  text-overflow: ellipsis;
 }
 
 .new-consoletable > [role="gridcell"].even {

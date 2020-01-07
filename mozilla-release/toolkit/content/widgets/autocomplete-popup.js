@@ -110,7 +110,7 @@
 
     get _markup() {
       return `
-      <richlistbox class="autocomplete-richlistbox" flex="1"></richlistbox>
+      <richlistbox class="autocomplete-richlistbox" flex="1"/>
     `;
     }
 
@@ -425,7 +425,7 @@
               options = { is: "autocomplete-creditcard-insecure-field" };
               break;
             case "generatedPassword":
-              options = { is: "autocomplete-two-line-richlistitem" };
+              options = { is: "autocomplete-generated-password-richlistitem" };
               break;
             case "insecureWarning":
               options = { is: "autocomplete-richlistitem-insecure-warning" };
@@ -463,11 +463,9 @@
             this.mousedOverIndex === this._currentIndex)
         ) {
           // try to re-use the existing item
-          let reused = item._reuseAcItem();
-          if (reused) {
-            this._currentIndex++;
-            continue;
-          }
+          item._reuseAcItem();
+          this._currentIndex++;
+          continue;
         } else {
           if (typeof item._cleanup == "function") {
             item._cleanup();
@@ -557,13 +555,12 @@
           this.mInput.ownerDocument.documentURIObject.schemeIs("chrome")
         ) {
           inputID = this.mInput.id;
-          // Take care of elements with no id that are inside xbl bindings
+          // Take care of elements with no id that are inside shadow DOM
+          // FIXME: Do we really need this?
           if (!inputID) {
-            let bindingParent = this.mInput.ownerDocument.getBindingParent(
-              this.mInput
-            );
-            if (bindingParent) {
-              inputID = bindingParent.id;
+            let shadow = this.mInput.containingShadowRoot;
+            if (shadow) {
+              inputID = shadow.host.id;
             }
           }
         }

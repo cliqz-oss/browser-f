@@ -159,6 +159,10 @@ class ChannelWrapper final : public DOMEventTargetHelper,
 
   uint32_t StatusCode() const;
 
+  uint64_t ResponseSize() const;
+
+  uint64_t RequestSize() const;
+
   void GetStatusLine(nsCString& aRetVal) const;
 
   void GetErrorString(nsString& aRetVal) const;
@@ -229,6 +233,8 @@ class ChannelWrapper final : public DOMEventTargetHelper,
 
   void GetUrlClassification(dom::Nullable<dom::MozUrlClassification>& aRetVal,
                             ErrorResult& aRv) const;
+
+  bool ThirdParty() const;
 
   using EventTarget::EventListenerAdded;
   using EventTarget::EventListenerRemoved;

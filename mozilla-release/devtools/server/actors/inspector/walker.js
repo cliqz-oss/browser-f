@@ -8,7 +8,7 @@ const { Cc, Ci, Cu } = require("chrome");
 
 const Services = require("Services");
 const protocol = require("devtools/shared/protocol");
-const { walkerSpec } = require("devtools/shared/specs/inspector");
+const { walkerSpec } = require("devtools/shared/specs/walker");
 const { LongStringActor } = require("devtools/server/actors/string");
 const InspectorUtils = require("InspectorUtils");
 const ReplayInspector = require("devtools/server/actors/replay/inspector");
@@ -919,7 +919,7 @@ var WalkerActor = protocol.ActorClassWithSpec(walkerSpec, {
    *    hasLast: true if the last child of the node is included in the list.
    *    nodes: Array of DOMNodes.
    */
-  /* eslint-disable complexity */
+  // eslint-disable-next-line complexity
   _getChildren: function(node, options = {}) {
     if (isNodeDead(node)) {
       return { hasFirst: true, hasLast: true, nodes: [] };
@@ -1109,7 +1109,6 @@ var WalkerActor = protocol.ActorClassWithSpec(walkerSpec, {
 
     return { hasFirst, hasLast, nodes };
   },
-  /* eslint-enable complexity */
 
   getNativeAnonymousChildren: function(rawNode) {
     // Get an anonymous walker and start on the first child.
@@ -1302,7 +1301,7 @@ var WalkerActor = protocol.ActorClassWithSpec(walkerSpec, {
    * @param string selectorState
    *        One of "pseudo", "id", "tag", "class", "null"
    */
-  /* eslint-disable complexity */
+  // eslint-disable-next-line complexity
   getSuggestionsForQuery: function(query, completing, selectorState) {
     const sugs = {
       classes: new Map(),
@@ -1444,7 +1443,6 @@ var WalkerActor = protocol.ActorClassWithSpec(walkerSpec, {
       suggestions: result,
     };
   },
-  /* eslint-enable complexity */
 
   /**
    * Add a pseudo-class lock to a node.
@@ -1627,8 +1625,11 @@ var WalkerActor = protocol.ActorClassWithSpec(walkerSpec, {
     }
 
     const rawNode = node.rawNode;
-    if (rawNode.nodeType !== rawNode.ownerDocument.ELEMENT_NODE) {
-      throw new Error("Can only change innerHTML to element nodes");
+    if (
+      rawNode.nodeType !== rawNode.ownerDocument.ELEMENT_NODE &&
+      rawNode.nodeType !== rawNode.ownerDocument.DOCUMENT_FRAGMENT_NODE
+    ) {
+      throw new Error("Can only change innerHTML to element or fragment nodes");
     }
     // eslint-disable-next-line no-unsanitized/property
     rawNode.innerHTML = value;

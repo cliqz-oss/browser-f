@@ -189,10 +189,10 @@ nsNPAPIPlugin::~nsNPAPIPlugin() {
   mLibrary = nullptr;
 }
 
-void nsNPAPIPlugin::PluginCrashed(const nsAString& pluginDumpID,
-                                  const nsAString& browserDumpID) {
+void nsNPAPIPlugin::PluginCrashed(const nsAString& aPluginDumpID,
+                                  const nsACString& aAdditionalMinidumps) {
   RefPtr<nsPluginHost> host = nsPluginHost::GetInst();
-  host->PluginCrashed(this, pluginDumpID, browserDumpID);
+  host->PluginCrashed(this, aPluginDumpID, aAdditionalMinidumps);
 }
 
 inline PluginLibrary* GetNewPluginLibrary(nsPluginTag* aPluginTag) {

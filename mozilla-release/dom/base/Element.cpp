@@ -16,12 +16,14 @@
 #include "mozilla/DebugOnly.h"
 #include "mozilla/StaticPrefs_dom.h"
 #include "mozilla/StaticPrefs_layout.h"
+#include "mozilla/StaticPrefs_full_screen_api.h"
 #include "mozilla/dom/Animation.h"
 #include "mozilla/dom/Attr.h"
 #include "mozilla/dom/BindContext.h"
 #include "mozilla/dom/Flex.h"
 #include "mozilla/dom/Grid.h"
 #include "mozilla/dom/Link.h"
+#include "mozilla/dom/MutationObservers.h"
 #include "mozilla/dom/ScriptLoader.h"
 #include "mozilla/dom/Text.h"
 #include "mozilla/gfx/Matrix.h"
@@ -53,7 +55,10 @@
 #include "mozilla/dom/AnimatableBinding.h"
 #include "mozilla/dom/FeaturePolicyUtils.h"
 #include "mozilla/dom/HTMLDivElement.h"
+#include "mozilla/dom/HTMLParagraphElement.h"
+#include "mozilla/dom/HTMLPreElement.h"
 #include "mozilla/dom/HTMLSpanElement.h"
+#include "mozilla/dom/HTMLTableCellElement.h"
 #include "mozilla/dom/KeyframeAnimationOptionsBinding.h"
 #include "mozilla/dom/MutationEventBinding.h"
 #include "mozilla/AnimationComparator.h"
@@ -72,9 +77,9 @@
 #include "mozilla/RestyleManager.h"
 #include "mozilla/ScrollTypes.h"
 #include "mozilla/SizeOfState.h"
+#include "mozilla/TextControlElement.h"
 #include "mozilla/TextEditor.h"
 #include "mozilla/TextEvents.h"
-#include "nsNodeUtils.h"
 #include "mozilla/dom/DirectionalityUtils.h"
 #include "mozilla/dom/Document.h"
 #include "mozilla/dom/DocumentInlines.h"
@@ -91,12 +96,6 @@
 #  include "nsRange.h"
 #endif
 
-#ifdef MOZ_XBL
-#  include "nsXBLPrototypeBinding.h"
-#  include "nsBindingManager.h"
-#  include "nsXBLBinding.h"
-#  include "nsXBLService.h"
-#endif
 #include "nsPIDOMWindow.h"
 #include "mozilla/dom/DOMRect.h"
 #include "nsSVGUtils.h"
@@ -135,7 +134,6 @@
 #include "mozilla/dom/NodeListBinding.h"
 
 #include "nsStyledElement.h"
-#include "nsITextControlElement.h"
 #include "nsITextControlFrame.h"
 #include "nsISupportsImpl.h"
 #include "mozilla/dom/CSSPseudoElement.h"
@@ -209,7 +207,10 @@ namespace dom {
 // bucket sizes.
 ASSERT_NODE_SIZE(Element, 128, 80);
 ASSERT_NODE_SIZE(HTMLDivElement, 128, 80);
+ASSERT_NODE_SIZE(HTMLParagraphElement, 128, 80);
+ASSERT_NODE_SIZE(HTMLPreElement, 128, 80);
 ASSERT_NODE_SIZE(HTMLSpanElement, 128, 80);
+ASSERT_NODE_SIZE(HTMLTableCellElement, 128, 80);
 ASSERT_NODE_SIZE(Text, 120, 64);
 
 #undef ASSERT_NODE_SIZE
@@ -261,13 +262,7 @@ Element::QueryInterface(REFNSIID aIID, void** aInstancePtr) {
     return NS_OK;
   }
 
-#if MOZ_XBL
-  // Give the binding manager a chance to get an interface for this element.
-  return OwnerDoc()->BindingManager()->GetBindingImplementation(this, aIID,
-                                                                aInstancePtr);
-#else
   return NS_NOINTERFACE;
-#endif
 }
 
 EventStates Element::IntrinsicState() const {
@@ -375,48 +370,6 @@ void Element::SetTabIndex(int32_t aTabIndex, mozilla::ErrorResult& aError) {
 
   SetAttr(nsGkAtoms::tabindex, value, aError);
 }
-
-#ifdef MOZ_XBL
-void Element::SetXBLBinding(nsXBLBinding* aBinding,
-                            nsBindingManager* aOldBindingManager) {
-  nsBindingManager* bindingManager;
-  if (aOldBindingManager) {
-    MOZ_ASSERT(!aBinding,
-               "aOldBindingManager should only be provided "
-               "when removing a binding.");
-    bindingManager = aOldBindingManager;
-  } else {
-    bindingManager = OwnerDoc()->BindingManager();
-  }
-
-  // After this point, aBinding will be the most-derived binding for aContent.
-  // If we already have a binding for aContent, make sure to
-  // remove it from the attached stack.  Otherwise we might end up firing its
-  // constructor twice (if aBinding inherits from it) or firing its constructor
-  // after aContent has been deleted (if aBinding is null and the content node
-  // dies before we process mAttachedStack).
-  RefPtr<nsXBLBinding> oldBinding = GetXBLBinding();
-  if (oldBinding) {
-    bindingManager->RemoveFromAttachedQueue(oldBinding);
-  }
-
-  if (aBinding) {
-    SetFlags(NODE_MAY_BE_IN_BINDING_MNGR);
-    nsExtendedDOMSlots* slots = ExtendedDOMSlots();
-    slots->mXBLBinding = aBinding;
-    bindingManager->AddBoundContent(this);
-  } else {
-    nsExtendedDOMSlots* slots = GetExistingExtendedDOMSlots();
-    if (slots) {
-      slots->mXBLBinding = nullptr;
-    }
-    bindingManager->RemoveBoundContent(this);
-    if (oldBinding) {
-      oldBinding->SetBoundElement(nullptr);
-    }
-  }
-}
-#endif
 
 void Element::SetShadowRoot(ShadowRoot* aShadowRoot) {
   nsExtendedDOMSlots* slots = ExtendedDOMSlots();
@@ -1024,8 +977,8 @@ bool Element::CanAttachShadowDOM() const {
    *  return false.
    */
   nsAtom* nameAtom = NodeInfo()->NameAtom();
-  if (!(nsContentUtils::IsCustomElementName(nameAtom,
-                                            NodeInfo()->NamespaceID()) ||
+  uint32_t namespaceID = NodeInfo()->NamespaceID();
+  if (!(nsContentUtils::IsCustomElementName(nameAtom, namespaceID) ||
         nameAtom == nsGkAtoms::article || nameAtom == nsGkAtoms::aside ||
         nameAtom == nsGkAtoms::blockquote || nameAtom == nsGkAtoms::body ||
         nameAtom == nsGkAtoms::div || nameAtom == nsGkAtoms::footer ||
@@ -1036,6 +989,30 @@ bool Element::CanAttachShadowDOM() const {
         nameAtom == nsGkAtoms::nav || nameAtom == nsGkAtoms::p ||
         nameAtom == nsGkAtoms::section || nameAtom == nsGkAtoms::span)) {
     return false;
+  }
+
+  /**
+   * 3. If context object’s local name is a valid custom element name, or
+   *    context object’s is value is not null, then:
+   *    If definition is not null and definition’s disable shadow is true, then
+   *    return false.
+   */
+  // It will always have CustomElementData when the element is a valid custom
+  // element or has is value.
+  CustomElementData* ceData = GetCustomElementData();
+  if (StaticPrefs::dom_webcomponents_elementInternals_enabled() && ceData) {
+    CustomElementDefinition* definition = ceData->GetCustomElementDefinition();
+    // If the definition is null, the element possible hasn't yet upgraded.
+    // Fallback to use LookupCustomElementDefinition to find its definition.
+    if (!definition) {
+      definition = nsContentUtils::LookupCustomElementDefinition(
+          NodeInfo()->GetDocument(), nameAtom, namespaceID,
+          ceData->GetCustomElementType());
+    }
+
+    if (definition && definition->mDisableShadow) {
+      return false;
+    }
   }
 
   return true;
@@ -1056,15 +1033,11 @@ already_AddRefed<ShadowRoot> Element::AttachShadow(const ShadowRootInit& aInit,
   }
 
   /**
-   * 3. If context object is a shadow host, then throw
-   *    an "InvalidStateError" DOMException.
+   * 4. If context object is a shadow host, then throw
+   *    an "NotSupportedError" DOMException.
    */
-  if (GetShadowRoot()
-#ifdef MOZ_XBL
-      || GetXBLBinding()
-#endif
-  ) {
-    aError.Throw(NS_ERROR_DOM_INVALID_STATE_ERR);
+  if (GetShadowRoot()) {
+    aError.Throw(NS_ERROR_DOM_NOT_SUPPORTED_ERR);
     return nullptr;
   }
 
@@ -1379,6 +1352,44 @@ void Element::SetAttributeNS(const nsAString& aNamespaceURI,
                    aValue, aTriggeringPrincipal, true);
 }
 
+static already_AddRefed<BasePrincipal> CreateDevtoolsPrincipal(
+    nsIPrincipal* aPrincipal, nsIContentSecurityPolicy* aCsp) {
+  // Return an ExpandedPrincipal that subsumes aPrincipal, and expands aCSP
+  // to allow the actions that devtools needs to perform.
+  AutoTArray<nsCOMPtr<nsIPrincipal>, 1> allowList = {aPrincipal};
+  RefPtr<ExpandedPrincipal> dtPrincipal =
+      ExpandedPrincipal::Create(allowList, aPrincipal->OriginAttributesRef());
+
+  if (aCsp) {
+    RefPtr<nsCSPContext> dtCsp = new nsCSPContext();
+    dtCsp->InitFromOther(static_cast<nsCSPContext*>(aCsp));
+    dtCsp->SetSkipAllowInlineStyleCheck(true);
+
+    dtPrincipal->SetCsp(dtCsp);
+  }
+
+  return dtPrincipal.forget();
+}
+
+void Element::SetAttributeDevtools(const nsAString& aName,
+                                   const nsAString& aValue,
+                                   ErrorResult& aError) {
+  // Run this through SetAttribute with a devtools-ready principal.
+  RefPtr<BasePrincipal> dtPrincipal =
+      CreateDevtoolsPrincipal(NodePrincipal(), GetCsp());
+  SetAttribute(aName, aValue, dtPrincipal, aError);
+}
+
+void Element::SetAttributeDevtoolsNS(const nsAString& aNamespaceURI,
+                                     const nsAString& aLocalName,
+                                     const nsAString& aValue,
+                                     ErrorResult& aError) {
+  // Run this through SetAttributeNS with a devtools-ready principal.
+  RefPtr<BasePrincipal> dtPrincipal =
+      CreateDevtoolsPrincipal(NodePrincipal(), GetCsp());
+  SetAttributeNS(aNamespaceURI, aLocalName, aValue, dtPrincipal, aError);
+}
+
 void Element::RemoveAttributeNS(const nsAString& aNamespaceURI,
                                 const nsAString& aLocalName,
                                 ErrorResult& aError) {
@@ -1487,50 +1498,16 @@ nsresult Element::BindToTree(BindContext& aContext, nsINode& aParent) {
   // only assert if our parent is _changing_ while we have a parent.
   MOZ_ASSERT(!GetParentNode() || &aParent == GetParentNode(),
              "Already have a parent.  Unbind first!");
-  MOZ_ASSERT(
-      !GetBindingParent() ||
-          aContext.GetBindingParent() == GetBindingParent() ||
-          (!aContext.GetBindingParent() && aParent.IsContent() &&
-           aParent.AsContent()->GetBindingParent() == GetBindingParent()),
-      "Already have a binding parent.  Unbind first!");
-  MOZ_ASSERT(aContext.GetBindingParent() != this,
-             "Content must not be its own binding parent");
-  MOZ_ASSERT(!IsRootOfNativeAnonymousSubtree() ||
-                 aContext.GetBindingParent() == &aParent,
-             "Native anonymous content must have its parent as its "
-             "own binding parent");
-  MOZ_ASSERT(aContext.GetBindingParent() || !aParent.IsContent() ||
-                 aContext.GetBindingParent() ==
-                     aParent.AsContent()->GetBindingParent(),
-             "We should be passed the right binding parent");
-
-#ifdef MOZ_XUL
-  // First set the binding parent
-  if (nsXULElement* xulElem = nsXULElement::FromNode(this)) {
-    xulElem->SetXULBindingParent(aContext.GetBindingParent());
-  } else
-#endif
-  {
-    if (Element* bindingParent = aContext.GetBindingParent()) {
-      ExtendedDOMSlots()->mBindingParent = bindingParent;
-    }
-  }
 
   const bool hadParent = !!GetParentNode();
 
-  NS_ASSERTION(!aContext.GetBindingParent() ||
-                   IsRootOfNativeAnonymousSubtree() ||
-                   !HasFlag(NODE_IS_IN_NATIVE_ANONYMOUS_SUBTREE) ||
-                   aParent.IsInNativeAnonymousSubtree(),
-               "Trying to re-bind content from native anonymous subtree to "
-               "non-native anonymous parent!");
   if (aParent.IsInNativeAnonymousSubtree()) {
     SetFlags(NODE_IS_IN_NATIVE_ANONYMOUS_SUBTREE);
   }
   if (aParent.HasFlag(NODE_HAS_BEEN_IN_UA_WIDGET)) {
     SetFlags(NODE_HAS_BEEN_IN_UA_WIDGET);
   }
-  if (HasFlag(NODE_IS_ANONYMOUS_ROOT)) {
+  if (IsRootOfNativeAnonymousSubtree()) {
     aParent.SetMayHaveAnonymousChildren();
   }
 
@@ -1590,19 +1567,6 @@ nsresult Element::BindToTree(BindContext& aContext, nsINode& aParent) {
 
   UpdateEditableState(false);
 
-#ifdef MOZ_XBL
-  // If we had a pre-existing XBL binding, we might have anonymous children that
-  // also need to be told that they are moving.
-  if (HasFlag(NODE_MAY_BE_IN_BINDING_MNGR)) {
-    nsXBLBinding* binding =
-        aContext.OwnerDoc().BindingManager()->GetBindingWithContent(this);
-
-    if (binding) {
-      binding->BindAnonymousContent(binding->GetAnonymousContent(), this);
-    }
-  }
-#endif
-
   // Call BindToTree on shadow root children.
   nsresult rv;
   if (ShadowRoot* shadowRoot = GetShadowRoot()) {
@@ -1621,9 +1585,9 @@ nsresult Element::BindToTree(BindContext& aContext, nsINode& aParent) {
     }
   }
 
-  nsNodeUtils::ParentChainChanged(this);
+  MutationObservers::NotifyParentChainChanged(this);
   if (!hadParent && IsRootOfNativeAnonymousSubtree()) {
-    nsNodeUtils::NativeAnonymousChildListChange(this, false);
+    MutationObservers::NotifyNativeAnonymousChildListChange(this, false);
   }
 
   // Ensure we only run this once, in the case we move the ShadowRoot around.
@@ -1674,42 +1638,12 @@ nsresult Element::BindToTree(BindContext& aContext, nsINode& aParent) {
   MOZ_ASSERT(IsInComposedDoc() == aContext.InComposedDoc());
   MOZ_ASSERT(IsInUncomposedDoc() == aContext.InUncomposedDoc());
   MOZ_ASSERT(&aParent == GetParentNode(), "Bound to wrong parent node");
-  MOZ_ASSERT(aContext.GetBindingParent() == GetBindingParent(),
-             "Bound to wrong binding parent");
   MOZ_ASSERT(aParent.IsInUncomposedDoc() == IsInUncomposedDoc());
   MOZ_ASSERT(aParent.IsInComposedDoc() == IsInComposedDoc());
   MOZ_ASSERT(aParent.IsInShadowTree() == IsInShadowTree());
   MOZ_ASSERT(aParent.SubtreeRoot() == SubtreeRoot());
   return NS_OK;
 }
-
-#ifdef MOZ_XBL
-RemoveFromBindingManagerRunnable::RemoveFromBindingManagerRunnable(
-    nsBindingManager* aManager, nsIContent* aContent, Document* aDoc)
-    : mozilla::Runnable("dom::RemoveFromBindingManagerRunnable"),
-      mManager(aManager),
-      mContent(aContent),
-      mDoc(aDoc) {}
-
-RemoveFromBindingManagerRunnable::~RemoveFromBindingManagerRunnable() {}
-
-NS_IMETHODIMP
-RemoveFromBindingManagerRunnable::Run() {
-  // It may be the case that the element was removed from the
-  // DOM, causing this runnable to be created, then inserted back
-  // into the document before the this runnable had a chance to
-  // tear down the binding. Only tear down the binding if the element
-  // is still no longer in the DOM. nsXBLService::LoadBinding tears
-  // down the old binding if the element is inserted back into the
-  // DOM and loads a different binding.
-  if (!mContent->IsInComposedDoc()) {
-    mManager->RemovedFromDocumentInternal(mContent, mDoc,
-                                          nsBindingManager::eRunDtor);
-  }
-
-  return NS_OK;
-}
-#endif
 
 bool WillDetachFromShadowOnUnbind(const Element& aElement, bool aNullParent) {
   // If our parent still is in a shadow tree by now, and we're not removing
@@ -1763,7 +1697,7 @@ void Element::UnbindFromTree(bool aNullParent) {
 
   if (aNullParent) {
     if (IsRootOfNativeAnonymousSubtree()) {
-      nsNodeUtils::NativeAnonymousChildListChange(this, true);
+      MutationObservers::NotifyNativeAnonymousChildListChange(this, true);
     }
 
     if (GetParent()) {
@@ -1839,41 +1773,13 @@ void Element::UnbindFromTree(bool aNullParent) {
     SetSubtreeRootPointer(aNullParent ? this : mParent->SubtreeRoot());
   }
 
-  bool clearBindingParent = true;
-
-#ifdef MOZ_XUL
-  if (nsXULElement* xulElem = nsXULElement::FromNode(this)) {
-    xulElem->SetXULBindingParent(nullptr);
-    clearBindingParent = false;
-  }
-#endif
-
   if (nsExtendedDOMSlots* slots = GetExistingExtendedDOMSlots()) {
-    if (clearBindingParent) {
-      slots->mBindingParent = nullptr;
-    }
     if (aNullParent || !mParent->IsInShadowTree()) {
       slots->mContainingShadow = nullptr;
     }
   }
 
   if (document) {
-#ifdef MOZ_XBL
-    if (HasFlag(NODE_MAY_BE_IN_BINDING_MNGR)) {
-      // Notify XBL- & nsIAnonymousContentCreator-generated anonymous content
-      // that the document is changing.
-      nsContentUtils::AddScriptRunner(new RemoveFromBindingManagerRunnable(
-          document->BindingManager(), this, document));
-      nsXBLBinding* binding =
-          document->BindingManager()->GetBindingWithContent(this);
-      if (binding) {
-        nsXBLBinding::UnbindAnonymousContent(document,
-                                             binding->GetAnonymousContent(),
-                                             /* aNullParent */ false);
-      }
-    }
-#endif
-
     // Disconnected must be enqueued whenever a connected custom element becomes
     // disconnected.
     CustomElementData* data = GetCustomElementData();
@@ -1903,7 +1809,7 @@ void Element::UnbindFromTree(bool aNullParent) {
     child->UnbindFromTree(false);
   }
 
-  nsNodeUtils::ParentChainChanged(this);
+  MutationObservers::NotifyParentChainChanged(this);
 
   // Unbind children of shadow root.
   if (ShadowRoot* shadowRoot = GetShadowRoot()) {
@@ -1929,11 +1835,8 @@ DeclarationBlock* Element::GetSMILOverrideStyleDeclaration() {
   return slots ? slots->mSMILOverrideStyleDeclaration.get() : nullptr;
 }
 
-nsresult Element::SetSMILOverrideStyleDeclaration(
-    DeclarationBlock* aDeclaration) {
-  Element::nsExtendedDOMSlots* slots = ExtendedDOMSlots();
-
-  slots->mSMILOverrideStyleDeclaration = aDeclaration;
+void Element::SetSMILOverrideStyleDeclaration(DeclarationBlock& aDeclaration) {
+  ExtendedDOMSlots()->mSMILOverrideStyleDeclaration = &aDeclaration;
 
   // Only need to request a restyle if we're in a document.  (We might not
   // be in a document, if we're clearing animation effects on a target node
@@ -1943,8 +1846,6 @@ nsresult Element::SetSMILOverrideStyleDeclaration(
       presShell->RestyleForAnimation(this, StyleRestyleHint_RESTYLE_SMIL);
     }
   }
-
-  return NS_OK;
 }
 
 bool Element::IsLabelable() const { return false; }
@@ -2120,13 +2021,13 @@ nsresult Element::LeaveLink(nsPresContext* aPresContext) {
   return nsDocShell::Cast(shell)->OnLeaveLink();
 }
 
-nsresult Element::SetEventHandler(nsAtom* aEventName, const nsAString& aValue,
-                                  bool aDefer) {
+void Element::SetEventHandler(nsAtom* aEventName, const nsAString& aValue,
+                              bool aDefer) {
   Document* ownerDoc = OwnerDoc();
   if (ownerDoc->IsLoadedAsData()) {
     // Make this a no-op rather than throwing an error to avoid
     // the error causing problems setting the attribute.
-    return NS_OK;
+    return;
   }
 
   MOZ_ASSERT(aEventName, "Must have event name!");
@@ -2134,13 +2035,12 @@ nsresult Element::SetEventHandler(nsAtom* aEventName, const nsAString& aValue,
   EventListenerManager* manager =
       GetEventListenerManagerForAttr(aEventName, &defer);
   if (!manager) {
-    return NS_OK;
+    return;
   }
 
   defer = defer && aDefer;  // only defer if everyone agrees...
   manager->SetEventHandler(aEventName, aValue, defer,
                            !nsContentUtils::IsChromeDoc(ownerDoc), this);
-  return NS_OK;
 }
 
 //----------------------------------------------------------------------
@@ -2230,7 +2130,8 @@ bool Element::OnlyNotifySameValueSet(int32_t aNamespaceID, nsAtom* aName,
   }
 
   nsAutoScriptBlocker scriptBlocker;
-  nsNodeUtils::AttributeSetToCurrentValue(this, aNamespaceID, aName);
+  MutationObservers::NotifyAttributeSetToCurrentValue(this, aNamespaceID,
+                                                      aName);
   return true;
 }
 
@@ -2279,7 +2180,8 @@ nsresult Element::SetAttr(int32_t aNamespaceID, nsAtom* aName, nsAtom* aPrefix,
   }
 
   if (aNotify) {
-    nsNodeUtils::AttributeWillChange(this, aNamespaceID, aName, modType);
+    MutationObservers::NotifyAttributeWillChange(this, aNamespaceID, aName,
+                                                 modType);
   }
 
   // Hold a script blocker while calling ParseAttribute since that can call
@@ -2325,7 +2227,8 @@ nsresult Element::SetParsedAttr(int32_t aNamespaceID, nsAtom* aName,
   }
 
   if (aNotify) {
-    nsNodeUtils::AttributeWillChange(this, aNamespaceID, aName, modType);
+    MutationObservers::NotifyAttributeWillChange(this, aNamespaceID, aName,
+                                                 modType);
   }
 
   nsresult rv = BeforeSetAttr(aNamespaceID, aName, &value, aNotify);
@@ -2399,15 +2302,6 @@ nsresult Element::SetAttrAndNotify(
     oldValue = aOldValue;
   }
 
-#ifdef MOZ_XBL
-  if (aComposedDocument) {
-    RefPtr<nsXBLBinding> binding = GetXBLBinding();
-    if (binding) {
-      binding->AttributeChanged(aName, aNamespaceID, false, aNotify);
-    }
-  }
-#endif
-
   if (HasElementCreatedFromPrototypeAndHasUnmodifiedL10n() &&
       aNamespaceID == kNameSpaceID_None &&
       (aName == nsGkAtoms::datal10nid || aName == nsGkAtoms::datal10nargs)) {
@@ -2461,7 +2355,7 @@ nsresult Element::SetAttrAndNotify(
     // Don't pass aOldValue to AttributeChanged since it may not be reliable.
     // Callers only compute aOldValue under certain conditions which may not
     // be triggered by all nsIMutationObservers.
-    nsNodeUtils::AttributeChanged(
+    MutationObservers::NotifyAttributeChanged(
         this, aNamespaceID, aName, aModType,
         aParsedValue.StoresOwnData() ? &aParsedValue : nullptr);
   }
@@ -2505,6 +2399,12 @@ bool Element::ParseAttribute(int32_t aNamespaceID, nsAtom* aAttribute,
   if (aNamespaceID == kNameSpaceID_None) {
     if (aAttribute == nsGkAtoms::_class || aAttribute == nsGkAtoms::part) {
       aResult.ParseAtomArray(aValue);
+      return true;
+    }
+
+    if (aAttribute == nsGkAtoms::exportparts &&
+        StaticPrefs::layout_css_shadow_parts_enabled()) {
+      aResult.ParsePartMapping(aValue);
       return true;
     }
 
@@ -2666,8 +2566,8 @@ nsresult Element::UnsetAttr(int32_t aNameSpaceID, nsAtom* aName, bool aNotify) {
   mozAutoDocUpdate updateBatch(document, aNotify);
 
   if (aNotify) {
-    nsNodeUtils::AttributeWillChange(this, aNameSpaceID, aName,
-                                     MutationEvent_Binding::REMOVAL);
+    MutationObservers::NotifyAttributeWillChange(
+        this, aNameSpaceID, aName, MutationEvent_Binding::REMOVAL);
   }
 
   nsresult rv = BeforeSetAttr(aNameSpaceID, aName, nullptr, aNotify);
@@ -2711,15 +2611,6 @@ nsresult Element::UnsetAttr(int32_t aNameSpaceID, nsAtom* aName, bool aNotify) {
 
   PostIdMaybeChange(aNameSpaceID, aName, nullptr);
 
-#ifdef MOZ_XBL
-  if (document) {
-    RefPtr<nsXBLBinding> binding = GetXBLBinding();
-    if (binding) {
-      binding->AttributeChanged(aName, aNameSpaceID, true, aNotify);
-    }
-  }
-#endif
-
   CustomElementDefinition* definition = GetCustomElementDefinition();
   // Only custom element which is in `custom` state could get the
   // CustomElementDefinition.
@@ -2744,8 +2635,8 @@ nsresult Element::UnsetAttr(int32_t aNameSpaceID, nsAtom* aName, bool aNotify) {
   if (aNotify) {
     // We can always pass oldValue here since there is no new value which could
     // have corrupted it.
-    nsNodeUtils::AttributeChanged(this, aNameSpaceID, aName,
-                                  MutationEvent_Binding::REMOVAL, &oldValue);
+    MutationObservers::NotifyAttributeChanged(
+        this, aNameSpaceID, aName, MutationEvent_Binding::REMOVAL, &oldValue);
   }
 
   if (aNameSpaceID == kNameSpaceID_None && aName == nsGkAtoms::dir) {
@@ -2839,53 +2730,6 @@ void Element::List(FILE* out, int32_t aIndent, const nsCString& aPrefix) const {
   }
 
   fputs(">\n", out);
-
-#  ifdef MOZ_XBL
-  Element* nonConstThis = const_cast<Element*>(this);
-
-  // XXX sXBL/XBL2 issue! Owner or current document?
-  Document* document = OwnerDoc();
-
-  // Note: not listing nsIAnonymousContentCreator-created content...
-
-  nsBindingManager* bindingManager = document->BindingManager();
-  nsINodeList* anonymousChildren =
-      bindingManager->GetAnonymousNodesFor(nonConstThis);
-
-  if (anonymousChildren) {
-    uint32_t length = anonymousChildren->Length();
-
-    for (indent = aIndent; --indent >= 0;) fputs("  ", out);
-    fputs("anonymous-children<\n", out);
-
-    for (uint32_t i = 0; i < length; ++i) {
-      nsIContent* child = anonymousChildren->Item(i);
-      child->List(out, aIndent + 1);
-    }
-
-    for (indent = aIndent; --indent >= 0;) fputs("  ", out);
-    fputs(">\n", out);
-
-    bool outHeader = false;
-    ExplicitChildIterator iter(nonConstThis);
-    for (nsIContent* child = iter.GetNextChild(); child;
-         child = iter.GetNextChild()) {
-      if (!outHeader) {
-        outHeader = true;
-
-        for (indent = aIndent; --indent >= 0;) fputs("  ", out);
-        fputs("content-list<\n", out);
-      }
-
-      child->List(out, aIndent + 1);
-    }
-
-    if (outHeader) {
-      for (indent = aIndent; --indent >= 0;) fputs("  ", out);
-      fputs(">\n", out);
-    }
-  }
-#  endif
 }
 
 void Element::DumpContent(FILE* out, int32_t aIndent, bool aDumpAll) const {
@@ -3071,6 +2915,15 @@ nsresult Element::PostHandleEventForLinks(EventChainPostVisitor& aVisitor) {
                                        nullptr, &status);
         if (NS_SUCCEEDED(rv)) {
           aVisitor.mEventStatus = nsEventStatus_eConsumeNoDefault;
+          if (!actEvent.DefaultPreventedByContent() &&
+              mouseEvent->IsTrusted() &&
+              mouseEvent->mInputSource !=
+                  MouseEvent_Binding::MOZ_SOURCE_KEYBOARD &&
+              mouseEvent->mInputSource !=
+                  MouseEvent_Binding::MOZ_SOURCE_UNKNOWN) {
+            Telemetry::AccumulateCategorical(
+                Telemetry::LABELS_TYPES_OF_USER_CLICKS::Link);
+          }
         }
       }
       break;
@@ -3419,15 +3272,21 @@ already_AddRefed<Animation> Element::Animate(
 }
 
 void Element::GetAnimations(const GetAnimationsOptions& aOptions,
-                            nsTArray<RefPtr<Animation>>& aAnimations) {
-  Document* doc = GetComposedDoc();
-  if (doc) {
-    // We don't need to explicitly flush throttled animations here, since
-    // updating the animation style of elements will never affect the set of
-    // running animations and it's only the set of running animations that is
-    // important here.
-    doc->FlushPendingNotifications(
-        ChangesToFlush(FlushType::Style, false /* flush animations */));
+                            nsTArray<RefPtr<Animation>>& aAnimations,
+                            Flush aFlush) {
+  if (aFlush == Flush::Yes) {
+    if (Document* doc = GetComposedDoc()) {
+      // We don't need to explicitly flush throttled animations here, since
+      // updating the animation style of elements will never affect the set of
+      // running animations and it's only the set of running animations that is
+      // important here.
+      //
+      // NOTE: Any changes to the flags passed to the following call should
+      // be reflected in the flags passed in DocumentOrShadowRoot::GetAnimations
+      // too.
+      doc->FlushPendingNotifications(
+          ChangesToFlush(FlushType::Style, false /* flush animations */));
+    }
   }
 
   Element* elem = this;
@@ -3703,8 +3562,9 @@ void Element::InsertAdjacentText(const nsAString& aWhere,
 }
 
 TextEditor* Element::GetTextEditorInternal() {
-  nsCOMPtr<nsITextControlElement> textCtrl = do_QueryInterface(this);
-  return textCtrl ? textCtrl->GetTextEditor() : nullptr;
+  TextControlElement* textControlElement = TextControlElement::FromNode(this);
+  return textControlElement ? MOZ_KnownLive(textControlElement)->GetTextEditor()
+                            : nullptr;
 }
 
 nsresult Element::SetBoolAttr(nsAtom* aAttr, bool aValue) {
@@ -3877,7 +3737,7 @@ void Element::UnlinkIntersectionObservers() {
 
 bool Element::UpdateIntersectionObservation(DOMIntersectionObserver* aObserver,
                                             int32_t aThreshold) {
-  IntersectionObserverList* observers = static_cast<IntersectionObserverList*>(
+  auto* observers = static_cast<IntersectionObserverList*>(
       GetProperty(nsGkAtoms::intersectionobserverlist));
   if (!observers) {
     return false;
@@ -3899,13 +3759,6 @@ void Element::GetCustomInterface(nsGetterAddRefs<T> aResult) {
       return;
     }
   }
-
-#ifdef MOZ_XBL
-  // Otherwise, check the binding manager to see if it implements the interface
-  // for this element.
-  OwnerDoc()->BindingManager()->GetBindingImplementation(
-      this, NS_GET_TEMPLATE_IID(T), aResult);
-#endif
 }
 
 void Element::ClearServoData(Document* aDoc) {

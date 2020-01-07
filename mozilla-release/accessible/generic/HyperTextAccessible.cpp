@@ -28,7 +28,6 @@
 #include "nsPersistentProperties.h"
 #include "nsIScrollableFrame.h"
 #include "nsIServiceManager.h"
-#include "nsITextControlElement.h"
 #include "nsIMathMLFrame.h"
 #include "nsRange.h"
 #include "nsTextFragment.h"
@@ -329,7 +328,7 @@ uint32_t HyperTextAccessible::TransformOffset(Accessible* aDescendant,
  *     ancestors too.
  */
 static nsIContent* GetElementAsContentOf(nsINode* aNode) {
-  if (Element* element = Element::FromNode(aNode)) {
+  if (auto* element = dom::Element::FromNode(aNode)) {
     return element;
   }
   return aNode->GetParentElement();

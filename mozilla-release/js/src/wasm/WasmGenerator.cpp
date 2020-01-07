@@ -26,6 +26,7 @@
 #include <algorithm>
 #include <thread>
 
+#include "util/Memory.h"
 #include "util/Text.h"
 #include "wasm/WasmBaselineCompile.h"
 #include "wasm/WasmCompile.h"
@@ -219,7 +220,7 @@ bool ModuleGenerator::init(Metadata* maybeAsmJSMetadata) {
 
   size_t estimatedCodeSize =
       1.2 * EstimateCompiledCodeSize(tier(), codeSectionSize);
-  Unused << masm_.reserve(Min(estimatedCodeSize, MaxCodeBytesPerProcess));
+  Unused << masm_.reserve(std::min(estimatedCodeSize, MaxCodeBytesPerProcess));
 
   Unused << metadataTier_->codeRanges.reserve(2 * env_->numFuncDefs());
 
@@ -470,7 +471,7 @@ static bool InRange(uint32_t caller, uint32_t callee) {
   // slight difference between 'caller' (which is really the return address
   // offset) and the actual base of the relative displacement computation
   // isn't significant.
-  uint32_t range = Min(JitOptions.jumpThreshold, JumpImmediateRange);
+  uint32_t range = std::min(JitOptions.jumpThreshold, JumpImmediateRange);
   if (caller < callee) {
     return callee - caller < range;
   }

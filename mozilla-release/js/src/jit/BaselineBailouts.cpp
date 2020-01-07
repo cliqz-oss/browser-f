@@ -6,8 +6,6 @@
 
 #include "mozilla/ScopeExit.h"
 
-#include "jsutil.h"
-
 #include "debugger/DebugAPI.h"
 #include "jit/arm/Simulator-arm.h"
 #include "jit/BaselineFrame.h"
@@ -21,6 +19,7 @@
 #include "jit/Recover.h"
 #include "jit/RematerializedFrame.h"
 #include "js/Utility.h"
+#include "util/Memory.h"
 #include "vm/ArgumentsObject.h"
 #include "vm/BytecodeUtil.h"
 #include "vm/TraceLogging.h"

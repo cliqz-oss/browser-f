@@ -489,7 +489,7 @@ function waitForBreakpointRemoved(dbg, url, line) {
  * @static
  */
 async function waitForPaused(dbg, url) {
-  const { getSelectedScope, getCurrentThread } = dbg.selectors;
+  const { getSelectedScope, getCurrentThread, getCurrentThreadFrames } = dbg.selectors;
 
   await waitForState(
     dbg,
@@ -497,12 +497,13 @@ async function waitForPaused(dbg, url) {
     "paused"
   );
 
+  await waitForState(dbg, getCurrentThreadFrames, 'fetched frames');
   await waitForLoadedScopes(dbg);
   await waitForSelectedSource(dbg, url);
 }
 
 function waitForInlinePreviews(dbg) {
-  return waitForState(dbg, () => dbg.selectors.getSelectedInlinePreviews())
+  return waitForState(dbg, () => dbg.selectors.getSelectedInlinePreviews());
 }
 
 function waitForCondition(dbg, condition) {
@@ -1319,6 +1320,7 @@ const selectors = {
   replayNext: ".replay-next.active",
   toggleBreakpoints: ".breakpoints-toggle",
   prettyPrintButton: ".source-footer .prettyPrint",
+  prettyPrintLoader: ".source-footer .spin",
   sourceMapLink: ".source-footer .mapped-source",
   sourcesFooter: ".sources-panel .source-footer",
   editorFooter: ".editor-pane .source-footer",
@@ -1331,6 +1333,8 @@ const selectors = {
     `${selectors.threadSourceTree(i)} .tree-node:nth-child(${j}) .node`,
   sourceDirectoryLabel: i => `.sources-list .tree-node:nth-child(${i}) .label`,
   resultItems: ".result-list .result-item",
+  resultItemName: (name, i) =>
+    `${selectors.resultItems}:nth-child(${i})[title$="${name}"]`,
   fileMatch: ".project-text-search .line-value",
   popup: ".popover",
   tooltip: ".tooltip",
@@ -1866,8 +1870,8 @@ async function evaluateInTopFrame(dbg, text) {
   const consoleFront = await dbg.toolbox.target.getFront("console");
   const { frames } = await threadFront.getFrames(0, 1);
   ok(frames.length == 1, "Got one frame");
-  const options = { thread: threadFront.actor, frameActor: frames[0].actor };
-  const response = await consoleFront.evaluateJS(text, options);
+  const options = { thread: threadFront.actor, frameActor: frames[0].actorID };
+  const response = await consoleFront.evaluateJSAsync(text, options);
   return response.result.type == "undefined" ? undefined : response.result;
 }
 

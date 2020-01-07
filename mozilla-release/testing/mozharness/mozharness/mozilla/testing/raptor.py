@@ -20,8 +20,9 @@ import mozharness
 
 from mozharness.base.errors import PythonErrorList
 from mozharness.base.log import OutputParser, DEBUG, ERROR, CRITICAL, INFO
+from mozharness.mozilla.automation import TBPL_SUCCESS, TBPL_RETRY, TBPL_WORST_LEVEL_TUPLE
 from mozharness.mozilla.testing.android import AndroidMixin
-from mozharness.mozilla.testing.errors import HarnessErrorList
+from mozharness.mozilla.testing.errors import HarnessErrorList, TinderBoxPrintRe
 from mozharness.mozilla.testing.testbase import TestingMixin, testing_config_options
 from mozharness.base.vcs.vcsbase import MercurialScript
 from mozharness.mozilla.testing.codecoverage import (
@@ -78,6 +79,12 @@ class Raptor(TestingMixin, MercurialScript, CodeCoverageMixin, AndroidMixin):
             "default": None,
             "help": argparse.SUPPRESS
         }],
+        [["--browsertime-video"], {
+            "dest": "browsertime_video",
+            "action": "store_true",
+            "default": False,
+            "help": argparse.SUPPRESS
+        }],
         [["--browsertime"], {
             "dest": "browsertime",
             "action": "store_true",
@@ -125,6 +132,12 @@ class Raptor(TestingMixin, MercurialScript, CodeCoverageMixin, AndroidMixin):
             "dest": "enable_webrender",
             "default": False,
             "help": "Enable the WebRender compositor in Gecko.",
+        }],
+        [["--with-conditioned-profile"], {
+            "action": "store_true",
+            "dest": "with_conditioned_profile",
+            "default": False,
+            "help": "Run using the conditioned profile.",
         }],
         [["--geckoProfile"], {
             "dest": "gecko_profile",
@@ -423,6 +436,11 @@ class Raptor(TestingMixin, MercurialScript, CodeCoverageMixin, AndroidMixin):
         options = []
         kw_options = {}
 
+        # Get the APK location to be able to get the browser version
+        # through mozversion
+        if self.app in self.firefox_android_browsers and not self.run_local:
+            kw_options['installerpath'] = self.installer_path
+
         # If testing on Firefox, the binary path already came from mozharness/pro;
         # otherwise the binary path is forwarded from command-line arg (raptor_cmd_line_args).
         kw_options['app'] = self.app
@@ -478,6 +496,8 @@ class Raptor(TestingMixin, MercurialScript, CodeCoverageMixin, AndroidMixin):
             options.extend(['--cpu-test'])
         if self.config.get('enable_webrender', False):
             options.extend(['--enable-webrender'])
+        if self.config.get('with_conditioned_profile', False):
+            options.extend(['--with-conditioned-profile'])
 
         for (arg,), details in Raptor.browsertime_options:
             # Allow overriding defaults on the `./mach raptor-test ...` command-line
@@ -744,6 +764,9 @@ class RaptorOutputParser(OutputParser):
         super(RaptorOutputParser, self).__init__(**kwargs)
         self.minidump_output = None
         self.found_perf_data = []
+        self.tbpl_status = TBPL_SUCCESS
+        self.worst_log_level = INFO
+        self.harness_retry_re = TinderBoxPrintRe['harness_error']['retry_regex']
 
     def parse_single_line(self, line):
         m = self.minidump_regex.search(line)
@@ -753,4 +776,11 @@ class RaptorOutputParser(OutputParser):
         m = self.RE_PERF_DATA.match(line)
         if m:
             self.found_perf_data.append(m.group(1))
+
+        if self.harness_retry_re.search(line):
+            self.critical(' %s' % line)
+            self.worst_log_level = self.worst_level(CRITICAL, self.worst_log_level)
+            self.tbpl_status = self.worst_level(TBPL_RETRY, self.tbpl_status,
+                                                levels=TBPL_WORST_LEVEL_TUPLE)
+            return  # skip base parse_single_line
         super(RaptorOutputParser, self).parse_single_line(line)
