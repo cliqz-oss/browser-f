@@ -29,7 +29,7 @@ from marionette_driver.marionette import Marionette
 from moztest.adapters.unit import StructuredTestResult, StructuredTestRunner
 from moztest.results import TestResult, TestResultCollection, relevant_line
 
-from six import reraise
+from six import reraise, MAXSIZE
 
 from . import serve
 
@@ -329,7 +329,7 @@ class BaseMarionetteArguments(ArgumentParser):
                           help='run tests in a random order')
         self.add_argument('--shuffle-seed',
                           type=int,
-                          default=random.randint(0, sys.maxint),
+                          default=random.randint(0, MAXSIZE),
                           help='Use given seed to shuffle tests')
         self.add_argument('--total-chunks',
                           type=int,
@@ -362,6 +362,11 @@ class BaseMarionetteArguments(ArgumentParser):
                           dest='e10s',
                           default=True,
                           help='Disable e10s when running marionette tests.')
+        self.add_argument('--enable-fission',
+                          action='store_true',
+                          dest='enable_fission',
+                          default=False,
+                          help='Enable Fission (site isolation) in Gecko.')
         self.add_argument('--enable-webrender',
                           action='store_true',
                           dest='enable_webrender',
@@ -519,7 +524,7 @@ class BaseMarionetteTestRunner(object):
                  run_until_failure=None,
                  testvars=None,
                  symbols_path=None,
-                 shuffle=False, shuffle_seed=random.randint(0, sys.maxint), this_chunk=1,
+                 shuffle=False, shuffle_seed=random.randint(0, MAXSIZE), this_chunk=1,
                  total_chunks=1,
                  server_root=None, gecko_log=None, result_callbacks=None,
                  prefs=None, test_tags=None,
@@ -527,7 +532,7 @@ class BaseMarionetteTestRunner(object):
                  startup_timeout=None,
                  addons=None, workspace=None,
                  verbose=0, e10s=True, emulator=False, headless=False,
-                 enable_webrender=False, **kwargs):
+                 enable_webrender=False, enable_fission=False, **kwargs):
         self._appName = None
         self._capabilities = None
         self._filename_pattern = None
@@ -570,6 +575,12 @@ class BaseMarionetteTestRunner(object):
         self.verbose = verbose
         self.headless = headless
         self.enable_webrender = enable_webrender
+
+        self.enable_fission = enable_fission
+        if self.enable_fission:
+            self.prefs.update({
+                'fission.autostart': True,
+            })
 
         # self.e10s stores the desired configuration, whereas
         # self._e10s_from_browser is the cached value from querying e10s

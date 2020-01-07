@@ -406,6 +406,10 @@
   height: 14px;
 }
 
+.tab-icon-sound[pictureinpicture]:-moz-locale-dir(rtl) {
+  transform: scaleX(-1);
+}
+
 :root[lwtheme-image] .tab-icon-sound:-moz-lwtheme-darktext[pictureinpicture],
 :root[lwtheme-image] .tab-icon-sound:-moz-lwtheme-darktext[soundplaying],
 :root[lwtheme-image] .tab-icon-sound:-moz-lwtheme-darktext[muted],
@@ -613,6 +617,19 @@
   font-weight: bold;
 }
 
+/* Tab drag and drop */
+
+.tab-drop-indicator-box {
+  -moz-box-align: center;
+}
+
+.tab-drop-indicator {
+  list-style-image: url(chrome://browser/skin/tabbrowser/tab-drag-indicator.svg);
+  /* The z-index needs to be big enough to trump other positioned UI pieces
+     that we want to overlay. The selected tab uses 2. */
+  z-index: 3;
+}
+
 /* Drag space */
 
 .titlebar-spacer[type="pre-tabs"],
@@ -688,7 +705,7 @@
 
 .tabbrowser-arrowscrollbox::part(scrollbutton-up),
 .tabbrowser-arrowscrollbox::part(scrollbutton-down) {
-  list-style-image: url(chrome://browser/skin/arrow-left.svg) !important;
+  list-style-image: url(chrome://global/skin/icons/arrow-left.svg) !important;
   -moz-context-properties: fill, fill-opacity;
   fill: var(--lwt-toolbarbutton-icon-fill, currentColor);
   fill-opacity: var(--toolbarbutton-icon-fill-opacity);

@@ -74,7 +74,6 @@
 #include "nsLayoutUtils.h"
 #include "mozAutoDocUpdate.h"
 #include "nsHtml5Module.h"
-#include "nsITextControlElement.h"
 #include "mozilla/dom/ElementInlines.h"
 #include "HTMLFieldSetElement.h"
 #include "nsTextNode.h"
@@ -102,6 +101,8 @@
 #include "nsComputedDOMStyle.h"
 #include "mozilla/dom/HTMLLabelElement.h"
 #include "mozilla/dom/HTMLInputElement.h"
+#include "mozilla/dom/CustomElementRegistry.h"
+#include "mozilla/dom/ElementInternals.h"
 
 using namespace mozilla;
 using namespace mozilla::dom;
@@ -428,13 +429,12 @@ HTMLFormElement* nsGenericHTMLElement::FindAncestorForm(
   NS_ASSERTION(!HasAttr(kNameSpaceID_None, nsGkAtoms::form) ||
                    IsHTMLElement(nsGkAtoms::img),
                "FindAncestorForm should not be called if @form is set!");
-
-  // Make sure we don't end up finding a form that's anonymous from
-  // our point of view. See also nsGenericHTMLFormElement::UpdateFieldSet.
-  nsIContent* bindingParent = GetBindingParent();
+  if (IsInNativeAnonymousSubtree()) {
+    return nullptr;
+  }
 
   nsIContent* content = this;
-  while (content != bindingParent && content) {
+  while (content) {
     // If the current ancestor is a form, return it as our form
     if (content->IsHTMLElement(nsGkAtoms::form)) {
 #ifdef DEBUG
@@ -566,8 +566,7 @@ nsresult nsGenericHTMLElement::AfterSetAttr(
     if (IsEventAttributeName(aName) && aValue) {
       MOZ_ASSERT(aValue->Type() == nsAttrValue::eString,
                  "Expected string value for script body");
-      nsresult rv = SetEventHandler(aName, aValue->GetStringValue());
-      NS_ENSURE_SUCCESS(rv, rv);
+      SetEventHandler(aName, aValue->GetStringValue());
     } else if (aNotify && aName == nsGkAtoms::spellcheck) {
       SyncEditorsOnSubtree(this);
     } else if (aName == nsGkAtoms::dir) {
@@ -2102,14 +2101,15 @@ void nsGenericHTMLFormElement::UpdateFormOwner(bool aBindToTree,
 }
 
 void nsGenericHTMLFormElement::UpdateFieldSet(bool aNotify) {
+  if (IsInNativeAnonymousSubtree()) {
+    MOZ_ASSERT(!mFieldSet);
+    return;
+  }
+
   nsIContent* parent = nullptr;
   nsIContent* prev = nullptr;
 
-  // Don't walk out of anonymous subtrees. Note the similar code in
-  // nsGenericHTMLElement::FindAncestorForm.
-  nsIContent* bindingParent = GetBindingParent();
-
-  for (parent = GetParent(); parent && parent != bindingParent;
+  for (parent = GetParent(); parent;
        prev = parent, parent = parent->GetParent()) {
     HTMLFieldSetElement* fieldset = HTMLFieldSetElement::FromNode(parent);
     if (fieldset && (!prev || fieldset->GetFirstLegend() != prev)) {
@@ -2795,4 +2795,78 @@ void nsGenericHTMLElement::SetInnerText(const nsAString& aValue) {
   }
 
   mb.NodesAdded();
+}
+
+// https://html.spec.whatwg.org/commit-snapshots/b48bb2238269d90ea4f455a52cdf29505aff3df0/#dom-attachinternals
+already_AddRefed<ElementInternals> nsGenericHTMLElement::AttachInternals(
+    ErrorResult& aRv) {
+  CustomElementData* ceData = GetCustomElementData();
+
+  // 1. If element's is value is not null, then throw a "NotSupportedError"
+  //    DOMException.
+  nsAtom* isAtom = ceData ? ceData->GetIs(this) : nullptr;
+  nsAtom* nameAtom = NodeInfo()->NameAtom();
+  if (isAtom) {
+    aRv.ThrowDOMException(
+        NS_ERROR_DOM_NOT_SUPPORTED_ERR,
+        nsPrintfCString(
+            "Cannot attach ElementInternals to a customized built-in element "
+            "'%s'",
+            NS_ConvertUTF16toUTF8(isAtom->GetUTF16String()).get()));
+    return nullptr;
+  }
+
+  // 2. Let definition be the result of looking up a custom element definition
+  //    given element's node document, its namespace, its local name, and null
+  //    as is value.
+  CustomElementDefinition* definition = nullptr;
+  if (ceData) {
+    definition = ceData->GetCustomElementDefinition();
+
+    // If the definition is null, the element possible hasn't yet upgraded.
+    // Fallback to use LookupCustomElementDefinition to find its definition.
+    if (!definition) {
+      definition = nsContentUtils::LookupCustomElementDefinition(
+          NodeInfo()->GetDocument(), nameAtom, NodeInfo()->NamespaceID(),
+          ceData->GetCustomElementType());
+    }
+  }
+
+  // 3. If definition is null, then throw an "NotSupportedError" DOMException.
+  if (!definition) {
+    aRv.ThrowDOMException(
+        NS_ERROR_DOM_NOT_SUPPORTED_ERR,
+        nsPrintfCString(
+            "Cannot attach ElementInternals to a non-custom element '%s'",
+            NS_ConvertUTF16toUTF8(nameAtom->GetUTF16String()).get()));
+    return nullptr;
+  }
+
+  // 4. If definition's disable internals is true, then throw a
+  //    "NotSupportedError" DOMException.
+  if (definition->mDisableInternals) {
+    aRv.ThrowDOMException(
+        NS_ERROR_DOM_NOT_SUPPORTED_ERR,
+        nsPrintfCString(
+            "AttachInternal() to '%s' is disabled by disabledFeatures",
+            NS_ConvertUTF16toUTF8(nameAtom->GetUTF16String()).get()));
+    return nullptr;
+  }
+
+  // 5. If element's attached internals is true, then throw an
+  //    "NotSupportedError" DOMException.
+  if (ceData->HasAttachedInternals()) {
+    aRv.ThrowDOMException(
+        NS_ERROR_DOM_NOT_SUPPORTED_ERR,
+        nsPrintfCString(
+            "AttachInternals() has already been called from '%s'",
+            NS_ConvertUTF16toUTF8(nameAtom->GetUTF16String()).get()));
+    return nullptr;
+  }
+
+  // 6. Set element's attached internals to true.
+  ceData->AttachedInternals();
+
+  // 7. Create a new ElementInternals instance targeting element, and return it.
+  return MakeAndAddRef<ElementInternals>(this);
 }

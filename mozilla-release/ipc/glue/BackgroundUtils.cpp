@@ -95,7 +95,11 @@ already_AddRefed<nsIPrincipal> PrincipalInfoToPrincipal(
       rv = principal->GetOriginNoSuffix(originNoSuffix);
       if (NS_WARN_IF(NS_FAILED(rv)) ||
           !info.originNoSuffix().Equals(originNoSuffix)) {
+#ifdef FUZZING
+        return nullptr;
+#else
         MOZ_CRASH("Origin must be available when deserialized");
+#endif /* FUZZING */
       }
 
       if (info.domain()) {
@@ -116,7 +120,11 @@ already_AddRefed<nsIPrincipal> PrincipalInfoToPrincipal(
         rv = principal->GetBaseDomain(baseDomain);
         if (NS_WARN_IF(NS_FAILED(rv)) ||
             !info.baseDomain().Equals(baseDomain)) {
+#ifdef FUZZING
+          return nullptr;
+#else
           MOZ_CRASH("Base domain must be available when deserialized");
+#endif /* FUZZING */
         }
       }
 
@@ -598,13 +606,15 @@ nsresult LoadInfoToLoadInfoArgs(nsILoadInfo* aLoadInfo,
 nsresult LoadInfoArgsToLoadInfo(
     const Maybe<LoadInfoArgs>& aOptionalLoadInfoArgs,
     nsILoadInfo** outLoadInfo) {
-  return LoadInfoArgsToLoadInfo(aOptionalLoadInfoArgs, nullptr, outLoadInfo);
+  return LoadInfoArgsToLoadInfo(aOptionalLoadInfoArgs, nullptr, nullptr,
+                                outLoadInfo);
 }
 nsresult LoadInfoArgsToLoadInfo(
     const Maybe<LoadInfoArgs>& aOptionalLoadInfoArgs, nsINode* aLoadingContext,
-    nsILoadInfo** outLoadInfo) {
+    nsINode* aCspToInheritLoadingContext, nsILoadInfo** outLoadInfo) {
   RefPtr<LoadInfo> loadInfo;
   nsresult rv = LoadInfoArgsToLoadInfo(aOptionalLoadInfoArgs, aLoadingContext,
+                                       aCspToInheritLoadingContext,
                                        getter_AddRefs(loadInfo));
   NS_ENSURE_SUCCESS(rv, rv);
 
@@ -614,11 +624,12 @@ nsresult LoadInfoArgsToLoadInfo(
 
 nsresult LoadInfoArgsToLoadInfo(
     const Maybe<LoadInfoArgs>& aOptionalLoadInfoArgs, LoadInfo** outLoadInfo) {
-  return LoadInfoArgsToLoadInfo(aOptionalLoadInfoArgs, nullptr, outLoadInfo);
+  return LoadInfoArgsToLoadInfo(aOptionalLoadInfoArgs, nullptr, nullptr,
+                                outLoadInfo);
 }
 nsresult LoadInfoArgsToLoadInfo(
     const Maybe<LoadInfoArgs>& aOptionalLoadInfoArgs, nsINode* aLoadingContext,
-    LoadInfo** outLoadInfo) {
+    nsINode* aCspToInheritLoadingContext, LoadInfo** outLoadInfo) {
   if (aOptionalLoadInfoArgs.isNothing()) {
     *outLoadInfo = nullptr;
     return NS_OK;
@@ -739,7 +750,7 @@ nsresult LoadInfoArgsToLoadInfo(
   Maybe<mozilla::ipc::CSPInfo> cspToInheritInfo =
       loadInfoArgs.cspToInheritInfo();
   if (cspToInheritInfo.isSome()) {
-    nsCOMPtr<Document> doc = do_QueryInterface(aLoadingContext);
+    nsCOMPtr<Document> doc = do_QueryInterface(aCspToInheritLoadingContext);
     cspToInherit = CSPInfoToCSP(cspToInheritInfo.ref(), doc);
   }
 

@@ -46,6 +46,12 @@ BASE_DOC_URL = ("https://firefox-source-docs.mozilla.org/toolkit/components/"
 HISTOGRAMS_DOC_URL = (BASE_DOC_URL + "collection/histograms.html")
 SCALARS_DOC_URL = (BASE_DOC_URL + "collection/scalars.html")
 
+GECKOVIEW_STREAMING_SUPPORTED_KINDS = [
+    'linear',
+    'exponential',
+    'categorical',
+]
+
 # parse_histograms.py is used by scripts from a mozilla-central build tree
 # and also by outside consumers, such as the telemetry server.  We need
 # to ensure that importing things works in both contexts.  Therefore,
@@ -417,6 +423,15 @@ the histogram."""
             if not utils.is_valid_product(product):
                 ParserError('Histogram "%s" has unknown product "%s" in %s.\n%s' %
                             (name, product, field, DOC_URL)).handle_later()
+            if utils.is_geckoview_streaming_product(product):
+                kind = definition.get('kind')
+                if kind not in GECKOVIEW_STREAMING_SUPPORTED_KINDS:
+                    ParserError(('Histogram "%s" is of kind "%s" which is unsupported for '
+                                 'product "%s".') % (name, kind, product)).handle_later()
+                keyed = definition.get('keyed')
+                if keyed:
+                    ParserError('Keyed histograms like "%s" are unsupported for product "%s"' %
+                                (name, product)).handle_later()
 
     def check_operating_systems(self, name, definition):
         if not self._strict_type_checks:
@@ -602,7 +617,10 @@ the histogram."""
         self._low = low
         self._high = high
         self._n_buckets = n_buckets
-        if allowlists is not None and self._n_buckets > 100 and type(self._n_buckets) is int:
+        max_n_buckets = 101 if self._kind in ['enumerated', 'categorical'] else 100
+        if (allowlists is not None
+            and self._n_buckets > max_n_buckets
+            and type(self._n_buckets) is int):
             if self._name not in allowlists['n_buckets']:
                 ParserError(
                     'New histogram "%s" is not permitted to have more than 100 buckets.\n'

@@ -10,6 +10,8 @@
 
 #ifdef ACCESSIBILITY
 #  include "mozilla/a11y/DocAccessibleParent.h"
+#  include "mozilla/a11y/Platform.h"
+#  include "mozilla/a11y/ProxyAccessibleBase.h"
 #  include "nsAccessibilityService.h"
 #endif
 #include "mozilla/BrowserElementParent.h"
@@ -72,7 +74,7 @@
 #include "nsIWebBrowserChrome.h"
 #include "nsIWebProtocolHandlerRegistrar.h"
 #include "nsIXULBrowserWindow.h"
-#include "nsIXULWindow.h"
+#include "nsIAppWindow.h"
 #include "nsViewManager.h"
 #include "nsVariant.h"
 #include "nsIWidget.h"
@@ -211,7 +213,6 @@ BrowserParent::BrowserParent(ContentParent* aManager, const TabId& aTabId,
       mMarkedDestroying(false),
       mIsDestroyed(false),
       mTabSetsCursor(false),
-      mHasContentOpener(false),
       mPreserveLayers(false),
       mRenderLayers(true),
       mActiveInPriorityManager(false),
@@ -410,7 +411,7 @@ nsIXULBrowserWindow* BrowserParent::GetXULBrowserWindow() {
     return nullptr;
   }
 
-  nsCOMPtr<nsIXULWindow> window = do_GetInterface(treeOwner);
+  nsCOMPtr<nsIAppWindow> window = do_GetInterface(treeOwner);
   if (!window) {
     return nullptr;
   }
@@ -490,6 +491,20 @@ ShowInfo BrowserParent::GetShowInfo() {
 
   return ShowInfo(EmptyString(), false, false, false, false, mDPI, mRounding,
                   mDefaultScale.scale);
+}
+
+already_AddRefed<nsIPrincipal> BrowserParent::GetContentPrincipal() const {
+  nsCOMPtr<nsIBrowser> browser =
+      mFrameElement ? mFrameElement->AsBrowser() : nullptr;
+  NS_ENSURE_TRUE(browser, nullptr);
+
+  RefPtr<nsIPrincipal> principal;
+
+  nsresult rv;
+  rv = browser->GetContentPrincipal(getter_AddRefs(principal));
+  NS_ENSURE_SUCCESS(rv, nullptr);
+
+  return principal.forget();
 }
 
 void BrowserParent::SetOwnerElement(Element* aElement) {
@@ -784,9 +799,9 @@ mozilla::ipc::IPCResult BrowserParent::RecvSizeShellTo(
     height = mDimensions.height;
   }
 
-  nsCOMPtr<nsIXULWindow> xulWin(do_GetInterface(treeOwner));
-  NS_ENSURE_TRUE(xulWin, IPC_OK());
-  xulWin->SizeShellToWithLimit(width, height, aShellItemWidth,
+  nsCOMPtr<nsIAppWindow> appWin(do_GetInterface(treeOwner));
+  NS_ENSURE_TRUE(appWin, IPC_OK());
+  appWin->SizeShellToWithLimit(width, height, aShellItemWidth,
                                aShellItemHeight);
 
   return IPC_OK();
@@ -893,6 +908,15 @@ void BrowserParent::InitRendering() {
   Unused << SendInitRendering(textureFactoryIdentifier, layersId,
                               mRemoteLayerTreeOwner.GetCompositorOptions(),
                               mRemoteLayerTreeOwner.IsLayersConnected());
+#if defined(MOZ_WIDGET_ANDROID)
+  if (XRE_IsParentProcess()) {
+    RefPtr<nsIWidget> widget = GetTopLevelWidget();
+    MOZ_ASSERT(widget);
+
+    Unused << SendDynamicToolbarMaxHeightChanged(
+        widget->GetDynamicToolbarMaxHeight());
+  }
+#endif
 }
 
 bool BrowserParent::AttachLayerManager() {
@@ -1067,6 +1091,20 @@ void BrowserParent::ThemeChanged() {
   }
 }
 
+#if defined(MOZ_WIDGET_ANDROID)
+void BrowserParent::DynamicToolbarMaxHeightChanged(ScreenIntCoord aHeight) {
+  if (!mIsDestroyed) {
+    Unused << SendDynamicToolbarMaxHeightChanged(aHeight);
+  }
+}
+
+void BrowserParent::DynamicToolbarOffsetChanged(ScreenIntCoord aOffset) {
+  if (!mIsDestroyed) {
+    Unused << SendDynamicToolbarOffsetChanged(aOffset);
+  }
+}
+#endif
+
 void BrowserParent::HandleAccessKey(const WidgetKeyboardEvent& aEvent,
                                     nsTArray<uint32_t>& aCharCodes) {
   if (!mIsDestroyed) {
@@ -1159,35 +1197,44 @@ mozilla::ipc::IPCResult BrowserParent::RecvPDocAccessibleConstructor(
     return IPC_OK();
   }
 
-  a11y::DocAccessibleParent* embedderDoc;
-  uint64_t embedderID;
-  Tie(embedderDoc, embedderID) = doc->GetRemoteEmbedder();
-  if (embedderDoc) {
+  if (GetBrowserBridgeParent()) {
     // Iframe document rendered in a different process to its embedder.
     // In this case, we don't get aParentDoc and aParentID.
     MOZ_ASSERT(!aParentDoc && !aParentID);
-    MOZ_ASSERT(embedderID);
     doc->SetTopLevelInContentProcess();
 #  ifdef XP_WIN
     MOZ_ASSERT(!aDocCOMProxy.IsNull());
     RefPtr<IAccessible> proxy(aDocCOMProxy.Get());
     doc->SetCOMInterface(proxy);
 #  endif
-    mozilla::ipc::IPCResult added = embedderDoc->AddChildDoc(doc, embedderID);
-    if (!added) {
-#  ifdef DEBUG
-      return added;
-#  else
-      return IPC_OK();
-#  endif
-    }
+    a11y::ProxyCreated(
+        doc, a11y::Interfaces::DOCUMENT | a11y::Interfaces::HYPERTEXT);
 #  ifdef XP_WIN
-    // This *must* be called after AddChildDoc because AddChildDoc
-    // calls ProxyCreated and WrapperFor will fail before that.
+    // This *must* be called after ProxyCreated because WrapperFor will fail
+    // before that.
     a11y::AccessibleWrap* wrapper = a11y::WrapperFor(doc);
     MOZ_ASSERT(wrapper);
     wrapper->SetID(aMsaaID);
 #  endif
+    a11y::DocAccessibleParent* embedderDoc;
+    uint64_t embedderID;
+    Tie(embedderDoc, embedderID) = doc->GetRemoteEmbedder();
+    // It's possible the embedder accessible hasn't been set yet; e.g.
+    // a hidden iframe. In that case, embedderDoc will be null and this will
+    // be handled when the embedder is set.
+    if (embedderDoc) {
+      MOZ_ASSERT(embedderID);
+      mozilla::ipc::IPCResult added =
+          embedderDoc->AddChildDoc(doc, embedderID,
+                                   /* aCreating */ false);
+      if (!added) {
+#  ifdef DEBUG
+        return added;
+#  else
+        return IPC_OK();
+#  endif
+      }
+    }
     return IPC_OK();
   } else {
     // null aParentDoc means this document is at the top level in the child
@@ -1586,8 +1633,9 @@ mozilla::ipc::IPCResult BrowserParent::RecvRequestNativeKeyBindings(
     return IPC_OK();
   }
 
-  localEvent.InitEditCommandsFor(keyBindingsType);
-  *aCommands = localEvent.EditCommandsConstRef(keyBindingsType);
+  if (localEvent.InitEditCommandsFor(keyBindingsType)) {
+    *aCommands = localEvent.EditCommandsConstRef(keyBindingsType);
+  }
 
   return IPC_OK();
 }
@@ -3338,12 +3386,6 @@ void BrowserParent::Deprioritize() {
   }
 }
 
-bool BrowserParent::GetHasContentOpener() { return mHasContentOpener; }
-
-void BrowserParent::SetHasContentOpener(bool aHasContentOpener) {
-  mHasContentOpener = aHasContentOpener;
-}
-
 bool BrowserParent::StartApzAutoscroll(float aAnchorX, float aAnchorY,
                                        nsViewID aScrollId,
                                        uint32_t aPresShellId) {
@@ -3977,6 +4019,20 @@ mozilla::ipc::IPCResult BrowserParent::RecvIsWindowSupportingProtectedMedia(
   aResolve(!isFxrWindow);
 #else
   MOZ_CRASH("Should only be called on Windows");
+#endif
+
+  return IPC_OK();
+}
+
+mozilla::ipc::IPCResult BrowserParent::RecvIsWindowSupportingWebVR(
+    const uint64_t& aOuterWindowID,
+    IsWindowSupportingWebVRResolver&& aResolve) {
+#ifdef XP_WIN
+  bool isFxrWindow =
+      FxRWindowManager::GetInstance()->IsFxRWindow(aOuterWindowID);
+  aResolve(!isFxrWindow);
+#else
+  aResolve(true);
 #endif
 
   return IPC_OK();

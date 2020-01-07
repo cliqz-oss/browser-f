@@ -1130,7 +1130,7 @@ panelview .toolbarbutton-1,
 
 .subviewbutton[shortcut]::after {
   content: attr(shortcut);
-  float: right;
+  float: inline-end;
 }
 
 .PanelUI-subView .subviewbutton-nav::after,
@@ -1175,7 +1175,7 @@ panelview .toolbarbutton-1,
   -moz-context-properties: fill, fill-opacity;
   fill: currentColor;
   fill-opacity: 0.4;
-  float: right;
+  float: inline-end;
   /* Centers the icon and resizes it to 12px square. */
   transform: translateY(2px) scaleX(.75);
 }
@@ -1192,7 +1192,7 @@ panelview .toolbarbutton-1,
   -moz-context-properties: fill, fill-opacity;
   fill: currentColor;
   fill-opacity: 0.6;
-  float: right;
+  float: inline-end;
   height: 12px;
   width: 12px;
 }
@@ -1513,7 +1513,7 @@ toolbaritem[overflowedItem=true],
   content: url(chrome://browser/skin/back-12.svg);
   fill: currentColor;
   fill-opacity: 0.6;
-  float: right;
+  float: inline-end;
 }
 
 toolbarpaletteitem[place="menu-panel"] > .subviewbutton-nav::after {
@@ -1745,7 +1745,7 @@ toolbarpaletteitem[place="menu-panel"] > .subviewbutton-nav::after {
 .panel-header > .subviewbutton-back {
   -moz-context-properties: fill;
   fill: var(--arrowpanel-color);
-  list-style-image: url(chrome://browser/skin/arrow-left.svg);
+  list-style-image: url(chrome://global/skin/icons/arrow-left.svg);
   padding: 8px;
 }
 
@@ -1825,32 +1825,37 @@ toolbarpaletteitem[place="menu-panel"] > .subviewbutton-nav::after {
 #protections-popup #messaging-system-message-container {
   height: 260px;
   overflow: hidden;
-  transition: height .25s;
+  transition: margin-bottom .25s;
   border-top: 1px solid var(--panel-separator-color);
 }
 
 #protections-popup #messaging-system-message-container[disabled] {
-  height: 0;
+   /* Offset the height when hidden. This makes the panel content
+   * cover the info message and reveal it as it slides down, rather
+   * than the info message growing in height. */
+  margin-bottom: -260px;
+  pointer-events: none;
 }
 
 #protections-popup #messaging-system-message-container[disabled] #protections-popup-message {
-  /* height + margins */
-  transform: translateY(calc(-100% - 10px));
+  opacity: 0;
 }
 
 #protections-popup-message {
   display: flex;
   align-items: flex-end;
-  transition: transform .25s;
-}
-
-#protections-popup-message.whatsNew-hero-message {
+  height: calc(100% - 20px);
+  margin: 10px;
+  transition: opacity .25s;
+  opacity: 1; 
   background-image: url(chrome://browser/skin/controlcenter/hero-message-background.svg);
   background-repeat: no-repeat;
   background-position: top right;
-  height: calc(100% - 20px);
-  margin: 10px;
   color: white;
+}
+
+#protections-popup-message > .whatsNew-message-body > .text-link {
+  text-decoration: underline;
 }
 
 panelview[mainview] #PanelUI-whatsNew-content {
@@ -1879,7 +1884,7 @@ panelview[mainview] #PanelUI-whatsNew-content {
 }
 
 #PanelUI-whatsNew .whatsNew-message-date {
-  font-size: 11px;
+  font-size: .85em;
   margin: 0 -12px;
   margin-top: -1px; /* Hide the border separator between messages */
   padding: 6px 16px;
@@ -1917,29 +1922,23 @@ panelview[mainview] #PanelUI-whatsNew-content {
 
 #PanelUI-whatsNew .whatsNew-message-title,
 #protections-popup-message .whatsNew-message-title {
-  font-size: 17px;
+  font-size: 1.3em;
   font-weight: 600;
-  line-height: 24px;
+  line-height: 1.4em;
   margin: 2px 0;
 }
 
 #PanelUI-whatsNew .whatsNew-message-title-large {
-  font-size: 28px;
+  font-size: 2.1em;
   margin: 2px 0;
   font-weight: 300;
 }
 
 #PanelUI-whatsNew .whatsNew-message-subtitle {
   margin: 2px 0;
-  font-size: 11px;
+  font-size: .8em;
   color: #949494;
   font-weight: normal;
-}
-
-#PanelUI-whatsNew .whatsNew-message-body p,
-#protections-popup-message .whatsNew-message-body p {
-  font-size: 13px;
-  line-height: 18px;
 }
 
 #PanelUI-whatsNew .text-link {
@@ -1947,8 +1946,8 @@ panelview[mainview] #PanelUI-whatsNew-content {
   border: 0;
   color: #45a1ff;
   cursor: pointer;
-  font-size: 12px;
-  margin-top: 16px;
+  font-size: .9em;
+  margin-top: 1.3em;
 }
 
 #protections-popup-message .text-link {

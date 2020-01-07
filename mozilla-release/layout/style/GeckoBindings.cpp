@@ -13,6 +13,7 @@
 #include "GeckoProfiler.h"
 #include "gfxFontFamilyList.h"
 #include "gfxFontFeatures.h"
+#include "gfxTextRun.h"
 #include "nsAnimationManager.h"
 #include "nsAttrValueInlines.h"
 #include "nsCSSFrameConstructor.h"
@@ -55,6 +56,7 @@
 #include "mozilla/Mutex.h"
 #include "mozilla/Preferences.h"
 #include "mozilla/ServoElementSnapshot.h"
+#include "mozilla/ShadowParts.h"
 #include "mozilla/StaticPrefs_layout.h"
 #include "mozilla/RestyleManager.h"
 #include "mozilla/SizeOfState.h"
@@ -151,10 +153,6 @@ const Element* Gecko_GetMarkerPseudo(const Element* aElement) {
   MOZ_ASSERT(aElement->HasProperties());
 
   return nsLayoutUtils::GetMarkerPseudo(aElement);
-}
-
-bool Gecko_IsInAnonymousSubtree(const Element* aElement) {
-  return aElement->IsInAnonymousSubtree();
 }
 
 nsTArray<nsIContent*>* Gecko_GetAnonymousContentForElement(
@@ -1576,10 +1574,6 @@ FontSizePrefs Gecko_GetBaseSize(nsAtom* aLanguage) {
   return sizes;
 }
 
-const Element* Gecko_GetBindingParent(const Element* aElement) {
-  return aElement->GetBindingParent();
-}
-
 static StaticRefPtr<UACacheReporter> gUACacheReporter;
 
 namespace mozilla {
@@ -1939,4 +1933,20 @@ void Gecko_LoadData_DeregisterLoad(const StyleLoadData* aData) {
 
 void Gecko_PrintfStderr(const nsCString* aStr) {
   printf_stderr("%s", aStr->get());
+}
+
+nsAtom* Gecko_Element_ImportedPart(const nsAttrValue* aValue,
+                                   nsAtom* aPartName) {
+  if (aValue->Type() != nsAttrValue::eShadowParts) {
+    return nullptr;
+  }
+  return aValue->GetShadowPartsValue().GetReverse(aPartName);
+}
+
+nsAtom* Gecko_Element_ExportedPart(const nsAttrValue* aValue,
+                                   nsAtom* aPartName) {
+  if (aValue->Type() != nsAttrValue::eShadowParts) {
+    return nullptr;
+  }
+  return aValue->GetShadowPartsValue().Get(aPartName);
 }

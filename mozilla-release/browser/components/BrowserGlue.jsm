@@ -20,6 +20,12 @@ ChromeUtils.defineModuleGetter(
   "resource://gre/modules/ActorManagerParent.jsm"
 );
 
+ChromeUtils.defineModuleGetter(
+  this,
+  "CustomizableUI",
+  "resource:///modules/CustomizableUI.jsm"
+);
+
 XPCOMUtils.defineLazyServiceGetter(
   this,
   "PushService",
@@ -29,7 +35,27 @@ XPCOMUtils.defineLazyServiceGetter(
 
 const PREF_PDFJS_ENABLED_CACHE_STATE = "pdfjs.enabledCache.state";
 
+/**
+ * Fission-compatible JSWindowActor implementations.
+ * Detailed documentation of these is in dom/docs/Fission.rst,
+ * available at https://firefox-source-docs.mozilla.org/dom/Fission.html#jswindowactor
+ */
 let ACTORS = {
+  BlockedSite: {
+    parent: {
+      moduleURI: "resource:///actors/BlockedSiteParent.jsm",
+    },
+    child: {
+      moduleURI: "resource:///actors/BlockedSiteChild.jsm",
+      events: {
+        AboutBlockedLoaded: { wantUntrusted: true },
+        click: {},
+      },
+    },
+    matches: ["about:blocked?*"],
+    allFrames: true,
+  },
+
   BrowserTab: {
     parent: {
       moduleURI: "resource:///actors/BrowserTabParent.jsm",
@@ -42,6 +68,35 @@ let ACTORS = {
         MozAfterPaint: {},
         "MozDOMPointerLock:Entered": {},
         "MozDOMPointerLock:Exited": {},
+      },
+    },
+  },
+
+  ClickHandler: {
+    parent: {
+      moduleURI: "resource:///actors/ClickHandlerParent.jsm",
+    },
+    child: {
+      moduleURI: "resource:///actors/ClickHandlerChild.jsm",
+      events: {
+        click: { capture: true, mozSystemGroup: true },
+        auxclick: { capture: true, mozSystemGroup: true },
+      },
+    },
+
+    allFrames: true,
+  },
+
+  // Collects description and icon information from meta tags.
+  ContentMeta: {
+    parent: {
+      moduleURI: "resource:///actors/ContentMetaParent.jsm",
+    },
+
+    child: {
+      moduleURI: "resource:///actors/ContentMetaChild.jsm",
+      events: {
+        DOMMetaAdded: {},
       },
     },
   },
@@ -96,11 +151,79 @@ let ACTORS = {
     allFrames: true,
   },
 
+  LightweightTheme: {
+    child: {
+      moduleURI: "resource:///actors/LightweightThemeChild.jsm",
+      events: {
+        pageshow: { mozSystemGroup: true },
+      },
+    },
+    includeChrome: true,
+    allFrames: true,
+    matches: [
+      "about:home",
+      "about:newtab",
+      "about:welcome",
+      "chrome://browser/content/syncedtabs/sidebar.xhtml",
+      "chrome://browser/content/places/historySidebar.xul",
+      "chrome://browser/content/places/bookmarksSidebar.xul",
+    ],
+  },
+
+  LinkHandler: {
+    parent: {
+      moduleURI: "resource:///actors/LinkHandlerParent.jsm",
+    },
+    child: {
+      moduleURI: "resource:///actors/LinkHandlerChild.jsm",
+      events: {
+        DOMHeadElementParsed: {},
+        DOMLinkAdded: {},
+        DOMLinkChanged: {},
+        pageshow: {},
+        pagehide: {},
+      },
+    },
+  },
+
+  NetError: {
+    parent: {
+      moduleURI: "resource:///actors/NetErrorParent.jsm",
+    },
+    child: {
+      moduleURI: "resource:///actors/NetErrorChild.jsm",
+      events: {
+        DOMWindowCreated: {},
+        click: {},
+      },
+    },
+
+    matches: ["about:certerror?*", "about:neterror?*"],
+    allFrames: true,
+  },
+
   PageInfo: {
     child: {
       moduleURI: "resource:///actors/PageInfoChild.jsm",
     },
 
+    allFrames: true,
+  },
+
+  PageStyle: {
+    parent: {
+      moduleURI: "resource:///actors/PageStyleParent.jsm",
+    },
+    child: {
+      moduleURI: "resource:///actors/PageStyleChild.jsm",
+      events: {
+        pageshow: {},
+      },
+    },
+
+    // Only matching web pages, as opposed to internal about:, chrome: or
+    // resource: pages. See https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/Match_patterns
+    matches: ["*://*/*"],
     allFrames: true,
   },
 
@@ -133,18 +256,19 @@ let ACTORS = {
     allFrames: true,
   },
 
-  RFPHelper: {
+  ShieldFrame: {
     parent: {
-      moduleURI: "resource:///actors/RFPHelperParent.jsm",
+      moduleURI: "resource://normandy-content/ShieldFrameParent.jsm",
     },
     child: {
-      moduleURI: "resource:///actors/RFPHelperChild.jsm",
+      moduleURI: "resource://normandy-content/ShieldFrameChild.jsm",
       events: {
-        resize: {},
+        pageshow: {},
+        pagehide: {},
+        ShieldPageEvent: { wantUntrusted: true },
       },
     },
-
-    allFrames: true,
+    matches: ["about:studies"],
   },
 
   SwitchDocumentDirection: {
@@ -153,6 +277,18 @@ let ACTORS = {
     },
 
     allFrames: true,
+  },
+
+  UITour: {
+    parent: {
+      moduleURI: "resource:///modules/UITourParent.jsm",
+    },
+    child: {
+      moduleURI: "resource:///modules/UITourChild.jsm",
+      events: {
+        mozUITour: { wantUntrusted: true },
+      },
+    },
   },
 };
 
@@ -211,29 +347,6 @@ let LEGACY_ACTORS = {
     },
   },
 
-  BlockedSite: {
-    child: {
-      module: "resource:///actors/BlockedSiteChild.jsm",
-      events: {
-        AboutBlockedLoaded: { wantUntrusted: true },
-        click: {},
-      },
-      matches: ["about:blocked?*"],
-      allFrames: true,
-      messages: ["DeceptiveBlockedDetails"],
-    },
-  },
-
-  ClickHandler: {
-    child: {
-      module: "resource:///actors/ClickHandlerChild.jsm",
-      events: {
-        click: { capture: true, mozSystemGroup: true },
-        auxclick: { capture: true, mozSystemGroup: true },
-      },
-    },
-  },
-
   ContentSearch: {
     child: {
       module: "resource:///actors/ContentSearchChild.jsm",
@@ -252,42 +365,6 @@ let LEGACY_ACTORS = {
     },
   },
 
-  LightweightTheme: {
-    child: {
-      module: "resource:///actors/LightweightThemeChild.jsm",
-      matches: ["about:home", "about:newtab", "about:welcome"],
-      events: {
-        pageshow: { mozSystemGroup: true },
-      },
-    },
-  },
-
-  LinkHandler: {
-    child: {
-      module: "resource:///actors/LinkHandlerChild.jsm",
-      events: {
-        DOMHeadElementParsed: {},
-        DOMLinkAdded: {},
-        DOMLinkChanged: {},
-        pageshow: {},
-        pagehide: {},
-      },
-    },
-  },
-
-  NetError: {
-    child: {
-      module: "resource:///actors/NetErrorChild.jsm",
-      events: {
-        AboutNetErrorSetAutomatic: { wantUntrusted: true },
-        AboutNetErrorResetPreferences: { wantUntrusted: true },
-        click: {},
-      },
-      matches: ["about:certerror?*", "about:neterror?*"],
-      allFrames: true,
-    },
-  },
-
   OfflineApps: {
     child: {
       module: "resource:///actors/OfflineAppsChild.jsm",
@@ -298,20 +375,6 @@ let LEGACY_ACTORS = {
     },
   },
 
-  PageStyle: {
-    child: {
-      module: "resource:///actors/PageStyleChild.jsm",
-      group: "browsers",
-      events: {
-        pageshow: {},
-      },
-      messages: ["PageStyle:Switch", "PageStyle:Disable"],
-      // Only matching web pages, as opposed to internal about:, chrome: or
-      // resource: pages. See https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/Match_patterns
-      matches: ["*://*/*"],
-    },
-  },
-
   SearchTelemetry: {
     child: {
       module: "resource:///actors/SearchTelemetryChild.jsm",
@@ -319,26 +382,6 @@ let LEGACY_ACTORS = {
         DOMContentLoaded: {},
         pageshow: { mozSystemGroup: true },
       },
-    },
-  },
-
-  ShieldFrame: {
-    child: {
-      module: "resource://normandy-content/ShieldFrameChild.jsm",
-      events: {
-        ShieldPageEvent: { wantUntrusted: true },
-      },
-      matches: ["about:studies"],
-    },
-  },
-
-  UITour: {
-    child: {
-      module: "resource:///modules/UITourChild.jsm",
-      events: {
-        mozUITour: { wantUntrusted: true },
-      },
-      permissions: ["uitour"],
     },
   },
 
@@ -426,11 +469,11 @@ let LEGACY_ACTORS = {
     // Set the size to use when the user leaves the maximized mode.
     // The persisted size is the outer size, but the height/width
     // attributes set the inner size.
-    let xulWin = win.docShell.treeOwner
+    let appWin = win.docShell.treeOwner
       .QueryInterface(Ci.nsIInterfaceRequestor)
-      .getInterface(Ci.nsIXULWindow);
-    height -= xulWin.outerToInnerHeightDifferenceInCSSPixels;
-    width -= xulWin.outerToInnerWidthDifferenceInCSSPixels;
+      .getInterface(Ci.nsIAppWindow);
+    height -= appWin.outerToInnerHeightDifferenceInCSSPixels;
+    width -= appWin.outerToInnerWidthDifferenceInCSSPixels;
     docElt.setAttribute("height", height);
     docElt.setAttribute("width", width);
   } else {
@@ -452,12 +495,6 @@ let LEGACY_ACTORS = {
   TelemetryTimestamps.add("blankWindowShown");
 })();
 
-XPCOMUtils.defineLazyServiceGetters(this, {
-  aboutNewTabService: [
-    "@mozilla.org/browser/aboutnewtab-service;1",
-    "nsIAboutNewTabService",
-  ],
-});
 XPCOMUtils.defineLazyGetter(
   this,
   "WeaveService",
@@ -467,8 +504,6 @@ XPCOMUtils.defineLazyGetter(
 // lazy module getters
 
 XPCOMUtils.defineLazyModuleGetters(this, {
-  AboutNetErrorHandler:
-    "resource:///modules/aboutpages/AboutNetErrorHandler.jsm",
   AboutPrivateBrowsingHandler:
     "resource:///modules/aboutpages/AboutPrivateBrowsingHandler.jsm",
   AboutProtectionsHandler:
@@ -489,7 +524,6 @@ XPCOMUtils.defineLazyModuleGetters(this, {
   FirefoxMonitor: "resource:///modules/FirefoxMonitor.jsm",
   FxAccounts: "resource://gre/modules/FxAccounts.jsm",
   HomePage: "resource:///modules/HomePage.jsm",
-  HybridContentTelemetry: "resource://gre/modules/HybridContentTelemetry.jsm",
   Integration: "resource://gre/modules/Integration.jsm",
   LoginBreaches: "resource:///modules/LoginBreaches.jsm",
   LiveBookmarkMigrator: "resource:///modules/LiveBookmarkMigrator.jsm",
@@ -501,7 +535,6 @@ XPCOMUtils.defineLazyModuleGetters(this, {
   PageThumbs: "resource://gre/modules/PageThumbs.jsm",
   PdfJs: "resource://pdf.js/PdfJs.jsm",
   PermissionUI: "resource:///modules/PermissionUI.jsm",
-  PingCentre: "resource:///modules/PingCentre.jsm",
   PlacesBackups: "resource://gre/modules/PlacesBackups.jsm",
   PlacesUtils: "resource://gre/modules/PlacesUtils.jsm",
   PluralForm: "resource://gre/modules/PluralForm.jsm",
@@ -522,7 +555,6 @@ XPCOMUtils.defineLazyModuleGetters(this, {
   TabCrashHandler: "resource:///modules/ContentCrashHandlers.jsm",
   TabUnloader: "resource:///modules/TabUnloader.jsm",
   UIState: "resource://services-sync/UIState.jsm",
-  UITour: "resource:///modules/UITour.jsm",
   WebChannel: "resource://gre/modules/WebChannel.jsm",
   WindowsRegistry: "resource://gre/modules/WindowsRegistry.jsm",
 });
@@ -531,10 +563,7 @@ XPCOMUtils.defineLazyModuleGetters(this, {
 XPCOMUtils.defineLazyModuleGetters(this, {
   AboutLoginsParent: "resource:///modules/AboutLoginsParent.jsm",
   AsyncPrefs: "resource://gre/modules/AsyncPrefs.jsm",
-  ContentClick: "resource:///modules/ContentClick.jsm",
-  LoginManagerParent: "resource://gre/modules/LoginManagerParent.jsm",
   PluginManager: "resource:///actors/PluginParent.jsm",
-  PictureInPicture: "resource://gre/modules/PictureInPicture.jsm",
   ReaderParent: "resource:///modules/ReaderParent.jsm",
 });
 
@@ -596,8 +625,6 @@ const listeners = {
     "update-error": ["UpdateListener"],
     "gmp-plugin-crash": ["PluginManager"],
     "plugin-crashed": ["PluginManager"],
-    "passwordmgr-storage-changed": ["LoginManagerParent"],
-    "passwordmgr-autosaved-login-merged": ["LoginManagerParent"],
   },
 
   ppmm: {
@@ -634,24 +661,9 @@ const listeners = {
     "AboutLogins:SyncEnable": ["AboutLoginsParent"],
     "AboutLogins:SyncOptions": ["AboutLoginsParent"],
     "AboutLogins:UpdateLogin": ["AboutLoginsParent"],
-    "Content:Click": ["ContentClick"],
     ContentSearch: ["ContentSearch"],
-    "PictureInPicture:Request": ["PictureInPicture"],
-    "PictureInPicture:Close": ["PictureInPicture"],
-    "PictureInPicture:Playing": ["PictureInPicture"],
-    "PictureInPicture:Paused": ["PictureInPicture"],
-    "PictureInPicture:OpenToggleContextMenu": ["PictureInPicture"],
     "Reader:FaviconRequest": ["ReaderParent"],
     "Reader:UpdateReaderButton": ["ReaderParent"],
-    // PLEASE KEEP THIS LIST IN SYNC WITH THE MOBILE LISTENERS IN BrowserCLH.js
-    "PasswordManager:findLogins": ["LoginManagerParent"],
-    "PasswordManager:findRecipes": ["LoginManagerParent"],
-    "PasswordManager:onFormSubmit": ["LoginManagerParent"],
-    "PasswordManager:onGeneratedPasswordFilledOrEdited": ["LoginManagerParent"],
-    "PasswordManager:autoCompleteLogins": ["LoginManagerParent"],
-    "PasswordManager:removeLogin": ["LoginManagerParent"],
-    "PasswordManager:OpenPreferences": ["LoginManagerParent"],
-    // PLEASE KEEP THIS LIST IN SYNC WITH THE MOBILE LISTENERS IN BrowserCLH.js
     "rtcpeer:CancelRequest": ["webrtcUI"],
     "rtcpeer:Request": ["webrtcUI"],
     "webrtc:CancelRequest": ["webrtcUI"],
@@ -747,6 +759,7 @@ BrowserGlue.prototype = {
   _saveSession: false,
   _migrationImportsDefaultBookmarks: false,
   _placesBrowserInitComplete: false,
+  _isNewProfile: undefined,
 
   _setPrefToSaveSession: function BG__setPrefToSaveSession(aForce) {
     if (!this._saveSession && !aForce) {
@@ -793,65 +806,6 @@ BrowserGlue.prototype = {
 
     const { Weave } = ChromeUtils.import("resource://services-sync/main.js");
     Weave.Service.scheduler.delayedAutoConnect(delay);
-  },
-
-  /**
-   * Lazily initialize PingCentre
-   */
-  get pingCentre() {
-    const MAIN_TOPIC_ID = "main";
-    Object.defineProperty(this, "pingCentre", {
-      value: new PingCentre({ topic: MAIN_TOPIC_ID }),
-    });
-    return this.pingCentre;
-  },
-
-  _sendMainPingCentrePing() {
-    let newTabSetting;
-    let homePageSetting;
-
-    // Check whether or not about:home and about:newtab have been overridden at this point.
-    // Different settings are encoded as follows:
-    //   * Value 0: default
-    //   * Value 1: about:blank
-    //   * Value 2: web extension
-    //   * Value 3: other custom URL(s)
-    // Settings for about:newtab and about:home are combined in a bitwise manner.
-
-    // Note that a user could use about:blank and web extension at the same time
-    // to overwrite the about:newtab, but the web extension takes priority, so the
-    // ordering matters in the following check.
-    if (
-      Services.prefs.getBoolPref("browser.newtabpage.enabled") &&
-      !aboutNewTabService.overridden
-    ) {
-      newTabSetting = 0;
-    } else if (aboutNewTabService.newTabURL.startsWith("moz-extension://")) {
-      newTabSetting = 2;
-    } else if (!Services.prefs.getBoolPref("browser.newtabpage.enabled")) {
-      newTabSetting = 1;
-    } else {
-      newTabSetting = 3;
-    }
-
-    const homePageURL = HomePage.get();
-    if (homePageURL === "about:home") {
-      homePageSetting = 0;
-    } else if (homePageURL === "about:blank") {
-      homePageSetting = 1;
-    } else if (homePageURL.startsWith("moz-extension://")) {
-      homePageSetting = 2;
-    } else {
-      homePageSetting = 3;
-    }
-
-    const payload = {
-      event: "AS_ENABLED",
-      value: newTabSetting | (homePageSetting << 2),
-    };
-    const ACTIVITY_STREAM_ID = "activity-stream";
-    const options = { filter: ACTIVITY_STREAM_ID };
-    this.pingCentre.sendPing(payload, options);
   },
 
   // nsIObserver implementation
@@ -1050,7 +1004,6 @@ BrowserGlue.prototype = {
         break;
       case "shield-init-complete":
         this._shieldInitComplete = true;
-        this._sendMainPingCentrePing();
         break;
     }
   },
@@ -1631,8 +1584,6 @@ BrowserGlue.prototype = {
 
     NewTabUtils.init();
 
-    AboutNetErrorHandler.init();
-
     AboutPrivateBrowsingHandler.init();
 
     AboutProtectionsHandler.init();
@@ -1752,7 +1703,7 @@ BrowserGlue.prototype = {
     Services.telemetry.getHistogramById("COOKIE_BEHAVIOR").add(cookieBehavior);
 
     let exceptions = 0;
-    for (let permission of Services.perms.enumerator) {
+    for (let permission of Services.perms.all) {
       if (permission.type == "trackingprotection") {
         exceptions++;
       }
@@ -1830,6 +1781,70 @@ BrowserGlue.prototype = {
     });
   },
 
+  _recordDataSanitizationPrefs() {
+    Services.telemetry.scalarSet(
+      "datasanitization.network_cookie_lifetimePolicy",
+      Services.prefs.getIntPref("network.cookie.lifetimePolicy")
+    );
+    Services.telemetry.scalarSet(
+      "datasanitization.privacy_sanitize_sanitizeOnShutdown",
+      Services.prefs.getBoolPref("privacy.sanitize.sanitizeOnShutdown")
+    );
+    Services.telemetry.scalarSet(
+      "datasanitization.privacy_clearOnShutdown_cookies",
+      Services.prefs.getBoolPref("privacy.clearOnShutdown.cookies")
+    );
+    Services.telemetry.scalarSet(
+      "datasanitization.privacy_clearOnShutdown_history",
+      Services.prefs.getBoolPref("privacy.clearOnShutdown.history")
+    );
+    Services.telemetry.scalarSet(
+      "datasanitization.privacy_clearOnShutdown_formdata",
+      Services.prefs.getBoolPref("privacy.clearOnShutdown.formdata")
+    );
+    Services.telemetry.scalarSet(
+      "datasanitization.privacy_clearOnShutdown_downloads",
+      Services.prefs.getBoolPref("privacy.clearOnShutdown.downloads")
+    );
+    Services.telemetry.scalarSet(
+      "datasanitization.privacy_clearOnShutdown_cache",
+      Services.prefs.getBoolPref("privacy.clearOnShutdown.cache")
+    );
+    Services.telemetry.scalarSet(
+      "datasanitization.privacy_clearOnShutdown_sessions",
+      Services.prefs.getBoolPref("privacy.clearOnShutdown.sessions")
+    );
+    Services.telemetry.scalarSet(
+      "datasanitization.privacy_clearOnShutdown_offlineApps",
+      Services.prefs.getBoolPref("privacy.clearOnShutdown.offlineApps")
+    );
+    Services.telemetry.scalarSet(
+      "datasanitization.privacy_clearOnShutdown_siteSettings",
+      Services.prefs.getBoolPref("privacy.clearOnShutdown.siteSettings")
+    );
+    Services.telemetry.scalarSet(
+      "datasanitization.privacy_clearOnShutdown_openWindows",
+      Services.prefs.getBoolPref("privacy.clearOnShutdown.openWindows")
+    );
+
+    let exceptions = 0;
+    for (let permission of Services.perms.all) {
+      let uri = permission.principal.URI;
+      // We consider just permissions set for http, https and file URLs.
+      if (
+        permission.type == "cookie" &&
+        permission.capability == Ci.nsICookiePermission.ACCESS_SESSION &&
+        (uri.scheme == "http" || uri.scheme == "https" || uri.scheme == "file")
+      ) {
+        exceptions++;
+      }
+    }
+    Services.telemetry.scalarSet(
+      "datasanitization.session_permission_exceptions",
+      exceptions
+    );
+  },
+
   _sendMediaTelemetry() {
     let win = Services.wm.getMostRecentWindow("navigator:browser");
     if (win) {
@@ -1872,14 +1887,8 @@ BrowserGlue.prototype = {
 
     BrowserUsageTelemetry.uninit();
     SearchTelemetry.uninit();
-    // Only uninit PingCentre if the getter has initialized it
-    if (Object.prototype.hasOwnProperty.call(this, "pingCentre")) {
-      this.pingCentre.uninit();
-    }
-
     PageThumbs.uninit();
     NewTabUtils.uninit();
-    AboutNetErrorHandler.uninit();
     AboutPrivateBrowsingHandler.uninit();
     AboutProtectionsHandler.uninit();
 
@@ -2045,7 +2054,15 @@ BrowserGlue.prototype = {
 
     // Begin listening for incoming push messages.
     Services.tm.idleDispatchToMainThread(() => {
-      PushService.wrappedJSObject.ensureReady();
+      try {
+        PushService.wrappedJSObject.ensureReady();
+      } catch (ex) {
+        // NS_ERROR_NOT_AVAILABLE will get thrown for the PushService getter
+        // if the PushService is disabled.
+        if (ex.result != Cr.NS_ERROR_NOT_AVAILABLE) {
+          throw ex;
+        }
+      }
     });
 
     Services.tm.idleDispatchToMainThread(() => {
@@ -2054,6 +2071,10 @@ BrowserGlue.prototype = {
 
     Services.tm.idleDispatchToMainThread(() => {
       this._recordContentBlockerTelemetry();
+    });
+
+    Services.tm.idleDispatchToMainThread(() => {
+      this._recordDataSanitizationPrefs();
     });
 
     // Load the Login Manager data from disk off the main thread, some time
@@ -2161,6 +2182,14 @@ BrowserGlue.prototype = {
         Corroborate.init().catch(Cu.reportError);
       }
     });
+
+    // request startup of Chromium remote debugging protocol
+    // (observer will only be notified when --remote-debugger is passed)
+    if (AppConstants.ENABLE_REMOTE_AGENT) {
+      Services.tm.idleDispatchToMainThread(() => {
+        Services.obs.notifyObservers(null, "remote-startup-requested");
+      });
+    }
 
     // Marionette needs to be initialized as very last step
     Services.tm.idleDispatchToMainThread(() => {
@@ -2597,6 +2626,17 @@ BrowserGlue.prototype = {
         }
         this._idleService.addIdleObserver(this, this._bookmarksBackupIdleTime);
       }
+
+      if (this._isNewProfile) {
+        try {
+          // New profiles may have existing bookmarks (imported from another browser or
+          // copied into the profile) and we want to show the bookmark toolbar for them
+          // in some cases.
+          this._maybeToggleBookmarkToolbarVisibility();
+        } catch (ex) {
+          Cu.reportError(ex);
+        }
+      }
     })()
       .catch(ex => {
         Cu.reportError(ex);
@@ -2733,11 +2773,9 @@ BrowserGlue.prototype = {
         toolbarIsCustomized ||
         getToolbarFolderCount() > NUM_TOOLBAR_BOOKMARKS_TO_UNHIDE
       ) {
-        xulStore.setValue(
-          BROWSER_DOCURL,
-          "PersonalToolbar",
-          "collapsed",
-          "false"
+        CustomizableUI.setToolbarVisibility(
+          CustomizableUI.AREA_BOOKMARKS,
+          true
         );
       }
     }
@@ -2758,27 +2796,20 @@ BrowserGlue.prototype = {
   _migrateUI: function BG__migrateUI() {
     // Use an increasing number to keep track of the current migration state.
     // Completely unrelated to the current Firefox release number.
-    const UI_VERSION = 87;
+    const UI_VERSION = 89;
     const BROWSER_DOCURL = AppConstants.BROWSER_CHROME_URL;
 
-    let currentUIVersion;
-    if (Services.prefs.prefHasUserValue("browser.migration.version")) {
-      currentUIVersion = Services.prefs.getIntPref("browser.migration.version");
-    } else {
+    if (!Services.prefs.prefHasUserValue("browser.migration.version")) {
       // This is a new profile, nothing to migrate.
       Services.prefs.setIntPref("browser.migration.version", UI_VERSION);
-
-      try {
-        // New profiles may have existing bookmarks (imported from another browser or
-        // copied into the profile) and we want to show the bookmark toolbar for them
-        // in some cases.
-        this._maybeToggleBookmarkToolbarVisibility();
-      } catch (ex) {
-        Cu.reportError(ex);
-      }
+      this._isNewProfile = true;
       return;
     }
 
+    this._isNewProfile = false;
+    let currentUIVersion = Services.prefs.getIntPref(
+      "browser.migration.version"
+    );
     if (currentUIVersion >= UI_VERSION) {
       return;
     }
@@ -3172,6 +3203,47 @@ BrowserGlue.prototype = {
       if (Services.prefs.prefHasUserValue(TRACKING_TABLE_PREF)) {
         Services.prefs.setBoolPref(CUSTOM_BLOCKING_PREF, true);
       }
+    }
+
+    if (currentUIVersion < 88) {
+      // If the user the has "browser.contentblocking.category = custom", but has
+      // the exact same settings as "standard", move them once to "standard". This is
+      // to reset users who we may have moved accidentally, or moved to get ETP early.
+      let category_prefs = [
+        "network.cookie.cookieBehavior",
+        "privacy.trackingprotection.pbmode.enabled",
+        "privacy.trackingprotection.enabled",
+        "privacy.trackingprotection.socialtracking.enabled",
+        "privacy.trackingprotection.fingerprinting.enabled",
+        "privacy.trackingprotection.cryptomining.enabled",
+      ];
+      if (
+        Services.prefs.getStringPref(
+          "browser.contentblocking.category",
+          "standard"
+        ) == "custom"
+      ) {
+        let shouldMigrate = true;
+        for (let pref of category_prefs) {
+          if (Services.prefs.prefHasUserValue(pref)) {
+            shouldMigrate = false;
+          }
+        }
+        if (shouldMigrate) {
+          Services.prefs.setStringPref(
+            "browser.contentblocking.category",
+            "standard"
+          );
+        }
+      }
+    }
+
+    if (currentUIVersion < 89) {
+      // This file was renamed in https://bugzilla.mozilla.org/show_bug.cgi?id=1595636.
+      this._migrateXULStoreForDocument(
+        "chrome://devtools/content/framework/toolbox-window.xul",
+        "chrome://devtools/content/framework/toolbox-window.xhtml"
+      );
     }
 
     // Update the migration version.
@@ -3971,6 +4043,14 @@ ContentPermissionPrompt.prototype = {
    *        The request that we're to show a prompt for.
    */
   prompt(request) {
+    if (request.element && request.element.fxrPermissionPrompt) {
+      // For Firefox Reality on Desktop, switch to a different mechanism to
+      // prompt the user since fewer permissions are available and since many
+      // UI dependencies are not availabe.
+      request.element.fxrPermissionPrompt(request);
+      return;
+    }
+
     let type;
     try {
       // Only allow exactly one permission request here.
@@ -4338,20 +4418,3 @@ var JawsScreenReaderVersionCheck = {
     );
   },
 };
-
-// Listen for UITour messages.
-// Do it here instead of the UITour module itself so that the UITour module is lazy loaded
-// when the first message is received.
-Services.mm.addMessageListener("UITour:onPageEvent", function(aMessage) {
-  UITour.onPageEvent(aMessage, aMessage.data);
-});
-
-// Listen for HybridContentTelemetry messages.
-// Do it here instead of HybridContentTelemetry.init() so that
-// the module can be lazily loaded on the first message.
-Services.mm.addMessageListener(
-  "HybridContentTelemetry:onTelemetryMessage",
-  aMessage => {
-    HybridContentTelemetry.onTelemetryMessage(aMessage, aMessage.data);
-  }
-);

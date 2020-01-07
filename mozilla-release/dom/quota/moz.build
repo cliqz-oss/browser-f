@@ -5,7 +5,7 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 with Files("**"):
-    BUG_COMPONENT = ("Core", "DOM: Quota Manager")
+    BUG_COMPONENT = ("Core", "Storage: Quota Manager")
 
 MOCHITEST_MANIFESTS += ['test/mochitest.ini']
 
@@ -39,6 +39,7 @@ EXPORTS.mozilla.dom.quota += [
     'CheckedUnsafePtr.h',
     'Client.h',
     'FileStreams.h',
+    'InitializationTypes.h',
     'MemoryOutputStream.h',
     'OriginScope.h',
     'PersistenceType.h',

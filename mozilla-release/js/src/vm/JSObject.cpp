@@ -16,6 +16,7 @@
 #include "mozilla/MemoryReporting.h"
 #include "mozilla/TemplateLib.h"
 
+#include <algorithm>
 #include <string.h>
 
 #include "jsapi.h"
@@ -23,7 +24,6 @@
 #include "jsfriendapi.h"
 #include "jsnum.h"
 #include "jstypes.h"
-#include "jsutil.h"
 
 #include "builtin/Array.h"
 #include "builtin/BigInt.h"
@@ -40,9 +40,11 @@
 #include "js/PropertyDescriptor.h"  // JS::FromPropertyDescriptor
 #include "js/PropertySpec.h"        // JSPropertySpec
 #include "js/Proxy.h"
+#include "js/Result.h"
 #include "js/UbiNode.h"
 #include "js/UniquePtr.h"
 #include "js/Wrapper.h"
+#include "util/Memory.h"
 #include "util/Text.h"
 #include "util/Windows.h"
 #include "vm/ArgumentsObject.h"
@@ -534,7 +536,7 @@ bool js::SetIntegrityLevel(JSContext* cx, HandleObject obj,
         return false;
       }
     }
-    Reverse(shapes.begin(), shapes.end());
+    std::reverse(shapes.begin(), shapes.end());
 
     for (Shape* shape : shapes) {
       Rooted<StackShape> child(cx, StackShape(shape));
@@ -1548,7 +1550,7 @@ static bool InitializePropertiesFromCompatibleNativeObject(
         return false;
       }
     }
-    Reverse(shapes.begin(), shapes.end());
+    std::reverse(shapes.begin(), shapes.end());
 
     for (Shape* shapeToClone : shapes) {
       Rooted<StackShape> child(cx, StackShape(shapeToClone));
@@ -1752,7 +1754,7 @@ void JSObject::fixDictionaryShapeAfterSwap() {
   // Dictionary shapes can point back to their containing objects, so after
   // swapping the guts of those objects fix the pointers up.
   if (isNative() && as<NativeObject>().inDictionaryMode()) {
-    as<NativeObject>().shape()->listp = as<NativeObject>().shapePtr();
+    shape()->dictNext.setObject(this);
   }
 }
 
@@ -2562,9 +2564,14 @@ bool js::LookupOwnPropertyPure(JSContext* cx, JSObject* obj, jsid id,
     }
 
     if (obj->is<TypedArrayObject>()) {
-      uint64_t index;
-      if (IsTypedArrayIndex(id, &index)) {
-        if (index < obj->as<TypedArrayObject>().length()) {
+      JS::Result<mozilla::Maybe<uint64_t>> index = IsTypedArrayIndex(cx, id);
+      if (index.isErr()) {
+        cx->recoverFromOutOfMemory();
+        return false;
+      }
+
+      if (index.inspect()) {
+        if (index.inspect().value() < obj->as<TypedArrayObject>().length()) {
           propp->setDenseOrTypedArrayElement();
         } else {
           propp->setNotFound();
@@ -3408,9 +3415,9 @@ void GetObjectSlotNameFunctor::operator()(JS::CallbackTracer* trc, char* buf,
         if (false) {
           ;
         }
-#define TEST_SLOT_MATCHES_PROTOTYPE(name, init, clasp) \
-  else if ((JSProto_##name) == slot) {                 \
-    slotname = js_##name##_str;                        \
+#define TEST_SLOT_MATCHES_PROTOTYPE(name, clasp) \
+  else if ((JSProto_##name) == slot) {           \
+    slotname = js_##name##_str;                  \
   }
         JS_FOR_EACH_PROTOTYPE(TEST_SLOT_MATCHES_PROTOTYPE)
 #undef TEST_SLOT_MATCHES_PROTOTYPE

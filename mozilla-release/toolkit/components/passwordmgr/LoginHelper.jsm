@@ -27,9 +27,11 @@ const { XPCOMUtils } = ChromeUtils.import(
 this.LoginHelper = {
   debug: null,
   enabled: null,
+  storageEnabled: null,
   formlessCaptureEnabled: null,
   generationAvailable: null,
   generationEnabled: null,
+  includeOtherSubdomainsInLookup: null,
   insecureAutofill: null,
   managementURI: null,
   privateBrowsingCaptureEnabled: null,
@@ -50,6 +52,7 @@ this.LoginHelper = {
     );
     this.debug = Services.prefs.getBoolPref("signon.debug");
     this.enabled = Services.prefs.getBoolPref("signon.rememberSignons");
+    this.storageEnabled = Services.prefs.getBoolPref("signon.storeSignons");
     this.formlessCaptureEnabled = Services.prefs.getBoolPref(
       "signon.formlessCapture.enabled"
     );
@@ -61,6 +64,9 @@ this.LoginHelper = {
     );
     this.insecureAutofill = Services.prefs.getBoolPref(
       "signon.autofillForms.http"
+    );
+    this.includeOtherSubdomainsInLookup = Services.prefs.getBoolPref(
+      "signon.includeOtherSubdomainsInLookup"
     );
     this.managementURI = Services.prefs.getStringPref(
       "signon.management.overrideURI",
@@ -203,6 +209,7 @@ this.LoginHelper = {
   /**
    * Helper to avoid the property bags when calling
    * Services.logins.searchLogins from JS.
+   * @deprecated Use Services.logins.searchLoginsAsync instead.
    *
    * @param {Object} aSearchOptions - A regular JS object to copy to a property bag before searching
    * @return {nsILoginInfo[]} - The result of calling searchLogins.
@@ -1027,10 +1034,9 @@ this.LoginHelper = {
     let formLogin = Cc["@mozilla.org/login-manager/loginInfo;1"].createInstance(
       Ci.nsILoginInfo
     );
-    // For compatibility for the Lockwise extension we fallback to hostname/formSubmitURL
     formLogin.init(
-      login.origin || login.hostname,
-      "formSubmitURL" in login ? login.formSubmitURL : login.formActionOrigin,
+      login.origin,
+      login.formActionOrigin,
       login.httpRealm,
       login.username,
       login.password,
@@ -1096,7 +1102,7 @@ this.LoginHelper = {
   },
 
   isUserFacingLogin(login) {
-    return !login.origin.startsWith("chrome://");
+    return login.origin != "chrome://FirefoxAccounts"; // FXA_PWDMGR_HOST
   },
 
   async getAllUserFacingLogins() {

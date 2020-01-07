@@ -35,6 +35,7 @@
 #include "mozilla/layers/ISurfaceAllocator.h"  // for ShmemAllocator
 #include "mozilla/layers/LayersMessages.h"     // for TargetConfig
 #include "mozilla/layers/MetricsSharingController.h"
+#include "mozilla/layers/PCompositorBridgeTypes.h"
 #include "mozilla/layers/PCompositorBridgeParent.h"
 #include "mozilla/layers/APZTestData.h"
 #include "mozilla/webrender/WebRenderTypes.h"
@@ -51,6 +52,11 @@ class nsIWidget;
 namespace mozilla {
 
 class CancelableRunnable;
+
+namespace webgpu {
+class PWebGPUParent;
+class WebGPUParent;
+}  // namespace webgpu
 
 namespace gfx {
 class DrawTarget;
@@ -231,6 +237,9 @@ class CompositorBridgeParentBase : public PCompositorBridgeParent,
   virtual bool DeallocPWebRenderBridgeParent(
       PWebRenderBridgeParent* aActor) = 0;
 
+  virtual webgpu::PWebGPUParent* AllocPWebGPUParent() = 0;
+  virtual bool DeallocPWebGPUParent(webgpu::PWebGPUParent* aActor) = 0;
+
   virtual PCompositorWidgetParent* AllocPCompositorWidgetParent(
       const CompositorWidgetInitData& aInitData) = 0;
   virtual bool DeallocPCompositorWidgetParent(
@@ -246,7 +255,10 @@ class CompositorBridgeParentBase : public PCompositorBridgeParent,
   virtual mozilla::ipc::IPCResult RecvAllPluginsCaptured() = 0;
   virtual mozilla::ipc::IPCResult RecvBeginRecording(
       const TimeStamp& aRecordingStart, BeginRecordingResolver&& aResolve) = 0;
-  virtual mozilla::ipc::IPCResult RecvEndRecording(bool* aOutSuccess) = 0;
+  virtual mozilla::ipc::IPCResult RecvEndRecordingToDisk(
+      EndRecordingToDiskResolver&& aResolve) = 0;
+  virtual mozilla::ipc::IPCResult RecvEndRecordingToMemory(
+      EndRecordingToMemoryResolver&& aResolve) = 0;
   virtual mozilla::ipc::IPCResult RecvInitialize(
       const LayersId& rootLayerTreeId) = 0;
   virtual mozilla::ipc::IPCResult RecvGetFrameUniformity(
@@ -362,7 +374,10 @@ class CompositorBridgeParent final : public CompositorBridgeParentBase,
   mozilla::ipc::IPCResult RecvBeginRecording(
       const TimeStamp& aRecordingStart,
       BeginRecordingResolver&& aResolve) override;
-  mozilla::ipc::IPCResult RecvEndRecording(bool* aOutSuccess) override;
+  mozilla::ipc::IPCResult RecvEndRecordingToDisk(
+      EndRecordingToDiskResolver&& aResolve) override;
+  mozilla::ipc::IPCResult RecvEndRecordingToMemory(
+      EndRecordingToMemoryResolver&& aResolve) override;
 
   void NotifyMemoryPressure() override;
   void AccumulateMemoryReport(wr::MemoryReport*) override;
@@ -639,6 +654,9 @@ class CompositorBridgeParent final : public CompositorBridgeParentBase,
   RefPtr<WebRenderBridgeParent> GetWebRenderBridgeParent() const;
   Maybe<TimeStamp> GetTestingTimeStamp() const;
 
+  webgpu::PWebGPUParent* AllocPWebGPUParent() override;
+  bool DeallocPWebGPUParent(webgpu::PWebGPUParent* aActor) override;
+
   static CompositorBridgeParent* GetCompositorBridgeParentFromLayersId(
       const LayersId& aLayersId);
   static RefPtr<CompositorBridgeParent> GetCompositorBridgeParentFromWindowId(
@@ -658,6 +676,8 @@ class CompositorBridgeParent final : public CompositorBridgeParentBase,
 
   WebRenderBridgeParent* GetWrBridge() { return mWrBridge; }
 
+  webgpu::WebGPUParent* GetWebGPUBridge() { return mWebGPUBridge; }
+
  private:
   void Initialize();
 
@@ -673,6 +693,11 @@ class CompositorBridgeParent final : public CompositorBridgeParentBase,
    * Must run on the content main thread.
    */
   static void DeallocateLayerTreeId(LayersId aId);
+
+  /**
+   * Wrap the data structure to be sent over IPC.
+   */
+  Maybe<CollectedFramesParams> WrapCollectedFrames(CollectedFrames&& aFrames);
 
  protected:
   // Protected destructor, to discourage deletion outside of Release():
@@ -754,6 +779,7 @@ class CompositorBridgeParent final : public CompositorBridgeParentBase,
   RefPtr<AsyncCompositionManager> mCompositionManager;
   RefPtr<AsyncImagePipelineManager> mAsyncImageManager;
   RefPtr<WebRenderBridgeParent> mWrBridge;
+  RefPtr<webgpu::WebGPUParent> mWebGPUBridge;
   widget::CompositorWidget* mWidget;
   Maybe<TimeStamp> mTestTime;
   CSSToLayoutDeviceScale mScale;

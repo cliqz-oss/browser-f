@@ -86,17 +86,10 @@ AccessibilityPanel.prototype = {
     );
 
     this.shouldRefresh = true;
-    this.panelWin.gToolbox = this._toolbox;
 
     await this.startup.initAccessibility();
-    if (this.supports.enableDisable) {
-      this.picker = new Picker(this);
-    }
-
-    if (this.supports.simulation) {
-      this.simulator = await this.front.getSimulator();
-    }
-
+    this.picker = new Picker(this);
+    this.simulator = await this.front.getSimulator();
     this.fluentBundles = await this.createFluentBundles();
 
     this.updateA11YServiceDurationTimer();
@@ -177,6 +170,7 @@ AccessibilityPanel.prototype = {
       supports: this.supports,
       fluentBundles: this.fluentBundles,
       simulator: this.simulator,
+      toolbox: this._toolbox,
     });
   },
 
@@ -201,12 +195,7 @@ AccessibilityPanel.prototype = {
       );
     }
 
-    this.postContentMessage(
-      "selectNodeAccessible",
-      this.walker,
-      nodeFront,
-      this.supports
-    );
+    this.postContentMessage("selectNodeAccessible", this.walker, nodeFront);
   },
 
   highlightAccessible(accessibleFront) {
@@ -310,7 +299,6 @@ AccessibilityPanel.prototype = {
     }
 
     this._telemetry = null;
-    this.panelWin.gToolbox = null;
     this.panelWin.gTelemetry = null;
 
     this.emit("destroyed");

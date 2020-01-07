@@ -171,7 +171,7 @@ class nsHttpConnectionMgr final : public nsIObserver, public AltSvcCache {
   // @param aTrans: a transaction that contains a sticky connection. We'll
   //                take the transport of this connection.
   MOZ_MUST_USE nsresult CompleteUpgrade(
-      nsHttpTransaction* aTrans, nsIHttpUpgradeListener* aUpgradeListener);
+      HttpTransactionShell* aTrans, nsIHttpUpgradeListener* aUpgradeListener);
 
   // called to update a parameter after the connection manager has already
   // been initialized.
@@ -516,6 +516,8 @@ class nsHttpConnectionMgr final : public nsIObserver, public AltSvcCache {
     nsCOMPtr<nsISocketTransport> mBackupTransport;
     nsCOMPtr<nsIAsyncOutputStream> mBackupStreamOut;
     nsCOMPtr<nsIAsyncInputStream> mBackupStreamIn;
+
+    bool mIsHttp3;
   };
   friend class nsHalfOpenSocket;
 
@@ -654,7 +656,7 @@ class nsHttpConnectionMgr final : public nsIObserver, public AltSvcCache {
                                                        bool justKidding);
   void UpdateCoalescingForNewConn(nsHttpConnection* conn,
                                   nsConnectionEntry* ent);
-  nsHttpConnection* GetSpdyActiveConn(nsConnectionEntry* ent);
+  nsHttpConnection* GetH2orH3ActiveConn(nsConnectionEntry* ent);
 
   void ProcessSpdyPendingQ(nsConnectionEntry* ent);
   void DispatchSpdyPendingQ(nsTArray<RefPtr<PendingTransactionInfo>>& pendingQ,

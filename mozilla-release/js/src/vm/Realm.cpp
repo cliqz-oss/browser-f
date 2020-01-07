@@ -116,14 +116,9 @@ bool JSRuntime::createJitRuntime(JSContext* cx) {
   MOZ_ASSERT(!jitRuntime_);
 
   if (!CanLikelyAllocateMoreExecutableMemory()) {
-    // Report OOM instead of potentially hitting the MOZ_CRASH below, but first
-    // try to release memory.
+    // Try to release memory first instead of potentially reporting OOM below.
     if (OnLargeAllocationFailure) {
       OnLargeAllocationFailure();
-    }
-    if (!CanLikelyAllocateMoreExecutableMemory()) {
-      ReportOutOfMemory(cx);
-      return false;
     }
   }
 
@@ -136,12 +131,10 @@ bool JSRuntime::createJitRuntime(JSContext* cx) {
   // we can't just wait to assign jitRuntime_.
   jitRuntime_ = jrt;
 
-  AutoEnterOOMUnsafeRegion noOOM;
   if (!jitRuntime_->initialize(cx)) {
-    // Handling OOM here is complicated: if we delete jitRuntime_ now, we
-    // will destroy the ExecutableAllocator, even though there may still be
-    // JitCode instances holding references to ExecutablePools.
-    noOOM.crash("OOM in createJitRuntime");
+    js_delete(jitRuntime_.ref());
+    jitRuntime_ = nullptr;
+    return false;
   }
 
   return true;
@@ -283,10 +276,6 @@ void Realm::traceGlobal(JSTracer* trc) {
 }
 
 void ObjectRealm::trace(JSTracer* trc) {
-  if (lazyArrayBuffers) {
-    lazyArrayBuffers->trace(trc);
-  }
-
   if (objectMetadataTable) {
     objectMetadataTable->trace(trc);
   }
@@ -331,10 +320,6 @@ void Realm::traceRoots(JSTracer* trc,
 }
 
 void ObjectRealm::finishRoots() {
-  if (lazyArrayBuffers) {
-    lazyArrayBuffers->clear();
-  }
-
   if (objectMetadataTable) {
     objectMetadataTable->clear();
   }
@@ -350,9 +335,6 @@ void Realm::finishRoots() {
   }
 
   objects_.finishRoots();
-
-  clearScriptCounts();
-  clearScriptLCov();
 }
 
 void ObjectRealm::sweepAfterMinorGC() {
@@ -746,13 +728,9 @@ void Realm::collectCodeCoverageInfo(JSScript* script, const char* name) {
 
 void ObjectRealm::addSizeOfExcludingThis(
     mozilla::MallocSizeOf mallocSizeOf, size_t* innerViewsArg,
-    size_t* lazyArrayBuffersArg, size_t* objectMetadataTablesArg,
+    size_t* objectMetadataTablesArg,
     size_t* nonSyntacticLexicalEnvironmentsArg) {
   *innerViewsArg += innerViews.sizeOfExcludingThis(mallocSizeOf);
-
-  if (lazyArrayBuffers) {
-    *lazyArrayBuffersArg += lazyArrayBuffers->sizeOfIncludingThis(mallocSizeOf);
-  }
 
   if (objectMetadataTable) {
     *objectMetadataTablesArg +=
@@ -768,10 +746,9 @@ void ObjectRealm::addSizeOfExcludingThis(
 void Realm::addSizeOfIncludingThis(
     mozilla::MallocSizeOf mallocSizeOf, size_t* tiAllocationSiteTables,
     size_t* tiArrayTypeTables, size_t* tiObjectTypeTables, size_t* realmObject,
-    size_t* realmTables, size_t* innerViewsArg, size_t* lazyArrayBuffersArg,
-    size_t* objectMetadataTablesArg, size_t* savedStacksSet,
-    size_t* varNamesSet, size_t* nonSyntacticLexicalEnvironmentsArg,
-    size_t* jitRealm) {
+    size_t* realmTables, size_t* innerViewsArg, size_t* objectMetadataTablesArg,
+    size_t* savedStacksSet, size_t* varNamesSet,
+    size_t* nonSyntacticLexicalEnvironmentsArg, size_t* jitRealm) {
   *realmObject += mallocSizeOf(this);
   objectGroups_.addSizeOfExcludingThis(mallocSizeOf, tiAllocationSiteTables,
                                        tiArrayTypeTables, tiObjectTypeTables,
@@ -779,7 +756,7 @@ void Realm::addSizeOfIncludingThis(
   wasm.addSizeOfExcludingThis(mallocSizeOf, realmTables);
 
   objects_.addSizeOfExcludingThis(mallocSizeOf, innerViewsArg,
-                                  lazyArrayBuffersArg, objectMetadataTablesArg,
+                                  objectMetadataTablesArg,
                                   nonSyntacticLexicalEnvironmentsArg);
 
   *savedStacksSet += savedStacks_.sizeOfExcludingThis(mallocSizeOf);

@@ -47,7 +47,7 @@ dnl Set the version number of the libs included with mozilla
 dnl ========================================================
 MOZPNG=10635
 NSPR_VERSION=4
-NSPR_MINVER=4.23
+NSPR_MINVER=4.24
 NSS_VERSION=3
 
 dnl Set the minimum version of toolkit libs used by mozilla
@@ -63,7 +63,7 @@ GDK_VERSION_MAX_ALLOWED=GDK_VERSION_3_4
 W32API_VERSION=3.14
 STARTUP_NOTIFICATION_VERSION=0.8
 DBUS_VERSION=0.60
-SQLITE_VERSION=3.29.0
+SQLITE_VERSION=3.30.1
 
 dnl Set various checks
 dnl ========================================================
@@ -306,15 +306,6 @@ fi
 if test -n "$COMPILE_ENVIRONMENT"; then
    MOZ_CONFIG_SANITIZE
 fi
-
-dnl ========================================================
-dnl Add optional and non-optional hardening flags
-dnl ========================================================
-
-CFLAGS="$CFLAGS $MOZ_HARDENING_CFLAGS"
-CPPFLAGS="$CPPFLAGS $MOZ_HARDENING_CFLAGS"
-CXXFLAGS="$CXXFLAGS $MOZ_HARDENING_CFLAGS"
-LDFLAGS="$LDFLAGS $MOZ_HARDENING_LDFLAGS"
 
 dnl ========================================================
 dnl GNU specific defaults
@@ -590,7 +581,7 @@ case "$target" in
     ;;
 
 *-android*|*-linuxandroid*)
-    if test "$COMPILE_ENVIRONMENT"; then
+    if test "$COMPILE_ENVIRONMENT" -a -n "$MOZ_MEMORY"; then
         MOZ_LINKER=1
     fi
 
@@ -771,6 +762,10 @@ case "$target" in
             # declare |delete| differently.  Therefore, suppress this
             # warning.
             CXXFLAGS="$CXXFLAGS -Wno-implicit-exception-spec-mismatch"
+            # Macros like STDMETHOD() and IFACEMETHOD() can declare
+            # __attribute__((nothrow)) on their respective method declarations,
+            # while the definitions are left without the matching attribute.
+            CXXFLAGS="$CXXFLAGS -Wno-microsoft-exception-spec"
             # At least one MSVC header and several headers in-tree have
             # unused typedefs, so turn this on.
             CXXFLAGS="$CXXFLAGS -Wno-unused-local-typedef"
@@ -1512,7 +1507,7 @@ MOZ_ARG_WITH_BOOL(system-nss,
     _USE_SYSTEM_NSS=1 )
 
 if test -n "$_USE_SYSTEM_NSS"; then
-    AM_PATH_NSS(3.47.1, [MOZ_SYSTEM_NSS=1], [AC_MSG_ERROR([you don't have NSS installed or your version is too old])])
+    AM_PATH_NSS(3.48, [MOZ_SYSTEM_NSS=1], [AC_MSG_ERROR([you don't have NSS installed or your version is too old])])
 fi
 
 NSS_CFLAGS="$NSS_CFLAGS -I${DIST}/include/nss"
@@ -1665,6 +1660,12 @@ elif test "$EARLY_BETA_OR_EARLIER"; then
   AC_DEFINE(EARLY_BETA_OR_EARLIER)
 fi
 AC_SUBST(EARLY_BETA_OR_EARLIER)
+
+if test "$EARLY_BETA_OR_EARLIER"; then
+    MOZ_NEW_CERT_STORAGE=1
+    AC_DEFINE(MOZ_NEW_CERT_STORAGE)
+fi
+AC_SUBST(MOZ_NEW_CERT_STORAGE)
 
 # Allow someone to change MOZ_APP_NAME and MOZ_APP_BASENAME in mozconfig
 MOZ_ARG_WITH_STRING(app-name,
@@ -2555,7 +2556,7 @@ dnl ========================================================
 MOZ_ARG_HEADER(Static build options)
 
 if test -z "$MOZ_SYSTEM_ZLIB"; then
-if test -n "$JS_SHARED_LIBRARY" -o -n "$MOZ_LINKER"; then
+if test -n "$JS_SHARED_LIBRARY" -o -n "$MOZ_LINKER" -o "$MOZ_WIDGET_TOOLKIT" = android; then
   ZLIB_IN_MOZGLUE=1
   AC_DEFINE(ZLIB_IN_MOZGLUE)
 fi

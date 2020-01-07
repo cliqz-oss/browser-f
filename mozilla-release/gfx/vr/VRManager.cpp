@@ -78,6 +78,7 @@ static StaticRefPtr<VRManager> sVRManagerSingleton;
 /* static */
 VRManager* VRManager::Get() {
   MOZ_ASSERT(sVRManagerSingleton != nullptr);
+  MOZ_ASSERT(XRE_IsParentProcess() || XRE_IsGPUProcess());
 
   return sVRManagerSingleton;
 }
@@ -307,6 +308,7 @@ void VRManager::TaskTimerCallback(nsITimer* aTimer, void* aClosure) {
     // When the apps goes the background (e.g. Android) we should stop the
     // tasks.
     self->StopTasks();
+    self->mState = VRManagerState::Idle;
   }
 }
 
@@ -569,6 +571,9 @@ void VRManager::EnumerateVRDisplays() {
       // In Android, we need to make sure calling
       // GeckoVRManager::SetExternalContext() from an external VR service
       // before doing enumeration.
+      if (!mShmem->GetExternalShmem()) {
+        mShmem->CreateShMemForAndroid();
+      }
       if (mShmem->GetExternalShmem()) {
         mState = VRManagerState::Enumeration;
       }

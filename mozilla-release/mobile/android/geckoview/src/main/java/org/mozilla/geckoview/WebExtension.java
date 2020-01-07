@@ -1,5 +1,8 @@
 package org.mozilla.geckoview;
 
+import android.graphics.Bitmap;
+import android.graphics.Color;
+import android.support.annotation.AnyThread;
 import android.support.annotation.IntDef;
 import android.support.annotation.LongDef;
 import android.support.annotation.NonNull;
@@ -10,12 +13,17 @@ import android.util.Log;
 import org.json.JSONException;
 import org.json.JSONObject;
 import org.mozilla.gecko.EventDispatcher;
+import org.mozilla.gecko.util.BundleEventListener;
+import org.mozilla.gecko.util.EventCallback;
 import org.mozilla.gecko.util.GeckoBundle;
 
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.ref.WeakReference;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
@@ -45,10 +53,22 @@ public class WebExtension {
      * {@link Flags} for this WebExtension.
      */
     public final @WebExtensionFlags long flags;
+
+    // TODO: make public
+    final MetaData metaData;
+
+    // TODO: make public
+    final boolean isBuiltIn;
+
+    // TODO: make public
+    final boolean isEnabled;
+
     /**
      * Delegates that handle messaging between this WebExtension and the app.
      */
     /* package */ final @NonNull Map<String, MessageDelegate> messageDelegates;
+
+    /* package */ @NonNull ActionDelegate actionDelegate;
 
     @Override
     public String toString() {
@@ -81,29 +101,19 @@ public class WebExtension {
             value = { Flags.NONE, Flags.ALLOW_CONTENT_MESSAGING })
     /* package */ @interface WebExtensionFlags {}
 
-    /**
-     * Builds a WebExtension instance that can be loaded in GeckoView using
-     * {@link GeckoRuntime#registerWebExtension}
-     *
-     * @param location The WebExtension install location. It must be either a
-     *                 <code>resource:</code> URI to a folder inside the APK or
-     *                 a <code>file:</code> URL to a <code>.xpi</code> file.
-     * @param id Unique identifier for this WebExtension. This identifier must
-     *           either be a GUID or a string formatted like an email address.
-     *           E.g. <pre><code>
-     *              "extensionname@example.org"
-     *              "{daf44bf7-a45e-4450-979c-91cf07434c3d}"
-     *           </code></pre>
-     *
-     *           See also: <ul>
-     *           <li><a href="https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/manifest.json/browser_specific_settings">
-     *                  WebExtensions/manifest.json/browser_specific_settings
-     *               </a>
-     *           <li><a href="https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/WebExtensions_and_the_Add-on_ID#When_do_you_need_an_add-on_ID">
-     *                  WebExtensions/WebExtensions_and_the_Add-on_ID
-     *               </a>
-     *           </ul>
-     */
+    /* package */ WebExtension(final GeckoBundle bundle) {
+        location = bundle.getString("locationURI");
+        id = bundle.getString("webExtensionId");
+        flags = bundle.getInt("webExtensionFlags", 0);
+        isBuiltIn = bundle.getBoolean("isBuiltIn", false);
+        isEnabled = bundle.getBoolean("isEnabled", false);
+        messageDelegates = new HashMap<>();
+        if (bundle.containsKey("metaData")) {
+            metaData = new MetaData(bundle.getBundle("metaData"));
+        } else {
+            metaData = null;
+        }
+    }
 
     /**
      * Builds a WebExtension instance that can be loaded in GeckoView using
@@ -135,6 +145,11 @@ public class WebExtension {
         this.id = id;
         this.flags = flags;
         this.messageDelegates = new HashMap<>();
+
+        // TODO:
+        this.isEnabled = false;
+        this.isBuiltIn = false;
+        this.metaData = null;
     }
 
     /**
@@ -392,6 +407,104 @@ public class WebExtension {
         }
     };
 
+    private static class Sender {
+        public String webExtensionId;
+        public String nativeApp;
+
+        public Sender(final String webExtensionId, final String nativeApp) {
+            this.webExtensionId = webExtensionId;
+            this.nativeApp = nativeApp;
+        }
+
+        @Override
+        public boolean equals(final Object other) {
+            if (!(other instanceof Sender)) {
+                return false;
+            }
+
+            Sender o = (Sender) other;
+            return webExtensionId.equals(o.webExtensionId) &&
+                    nativeApp.equals(o.nativeApp);
+        }
+
+        @Override
+        public int hashCode() {
+            int result = 17;
+            result = 31 * result + (webExtensionId != null ? webExtensionId.hashCode() : 0);
+            result = 31 * result + (nativeApp != null ? nativeApp.hashCode() : 0);
+            return result;
+        }
+    }
+
+    /* package */ final static class Listener implements BundleEventListener {
+        final private HashMap<Sender, WebExtension.MessageDelegate> mMessageDelegates;
+        final private HashMap<String, WebExtension.ActionDelegate> mActionDelegates;
+        final private GeckoSession mSession;
+        public GeckoRuntime runtime;
+
+        public Listener(final GeckoSession session) {
+            mMessageDelegates = new HashMap<>();
+            mActionDelegates = new HashMap<>();
+            mSession = session;
+        }
+
+        /* package */ void registerListeners() {
+            mSession.getEventDispatcher().registerUiThreadListener(this,
+                    "GeckoView:WebExtension:Message",
+                    "GeckoView:WebExtension:PortMessage",
+                    "GeckoView:WebExtension:Connect",
+                    "GeckoView:WebExtension:CloseTab",
+
+                    // Browser and Page Actions
+                    "GeckoView:BrowserAction:Update",
+                    "GeckoView:BrowserAction:OpenPopup",
+                    "GeckoView:PageAction:Update",
+                    "GeckoView:PageAction:OpenPopup");
+        }
+
+        public void setActionDelegate(final WebExtension webExtension,
+                                      final WebExtension.ActionDelegate delegate) {
+            mActionDelegates.put(webExtension.id, delegate);
+        }
+
+        public WebExtension.ActionDelegate getActionDelegate(final WebExtension webExtension) {
+            return mActionDelegates.get(webExtension.id);
+        }
+
+        public void setMessageDelegate(final WebExtension webExtension,
+                                       final WebExtension.MessageDelegate delegate,
+                                       final String nativeApp) {
+            mMessageDelegates.put(new Sender(webExtension.id, nativeApp), delegate);
+        }
+
+        public WebExtension.MessageDelegate getMessageDelegate(final WebExtension webExtension,
+                                                               final String nativeApp) {
+            return mMessageDelegates.get(new Sender(webExtension.id, nativeApp));
+        }
+
+        @Override
+        public void handleMessage(final String event, final GeckoBundle message,
+                                  final EventCallback callback) {
+            if (runtime == null) {
+                return;
+            }
+
+            if ("GeckoView:WebExtension:Message".equals(event)
+                    || "GeckoView:WebExtension:PortMessage".equals(event)
+                    || "GeckoView:WebExtension:Connect".equals(event)
+                    || "GeckoView:PageAction:Update".equals(event)
+                    || "GeckoView:PageAction:OpenPopup".equals(event)
+                    || "GeckoView:BrowserAction:Update".equals(event)
+                    || "GeckoView:BrowserAction:OpenPopup".equals(event)) {
+                runtime.getWebExtensionController()
+                        .handleMessage(event, message, callback, mSession);
+                return;
+            } else if ("GeckoView:WebExtension:CloseTab".equals(event)) {
+                runtime.getWebExtensionController().closeTab(message, callback, mSession);
+                return;
+            }
+        }
+    }
 
     /**
      * Describes the sender of a message from a WebExtension.
@@ -474,20 +587,555 @@ public class WebExtension {
         }
     }
 
-    private static final MessageDelegate NULL_MESSAGE_DELEGATE = new MessageDelegate() {
-        @Override
-        public GeckoResult<Object> onMessage(final @NonNull String nativeApp,
-                                             final @NonNull Object message,
-                                             final @NonNull MessageSender sender) {
-            Log.d(LOGTAG, "Unhandled message from " + nativeApp + " id=" +
-                    sender.webExtension.id + ": " + message.toString());
-            return null;
+    /**
+     * Represents an icon, e.g. the browser action icon or the extension icon.
+     */
+    public static class Icon {
+        private Map<Integer, String> mIconUris;
+
+        /**
+         * Get the best version of this icon for size <code>pixelSize</code>.
+         *
+         * Embedders are encouraged to cache the result of this method keyed with this instance.
+         *
+         * @param pixelSize pixel size at which this icon will be displayed at.
+         *
+         * @return A {@link GeckoResult} that resolves to the bitmap when ready.
+         */
+        @AnyThread
+        @NonNull
+        public GeckoResult<Bitmap> get(final int pixelSize) {
+            int size;
+
+            if (mIconUris.containsKey(pixelSize)) {
+                // If this size matches exactly, return it
+                size = pixelSize;
+            } else {
+                // Otherwise, find the smallest larger image (or the largest image if they are all
+                // smaller)
+                List<Integer> sizes = new ArrayList<>();
+                sizes.addAll(mIconUris.keySet());
+                Collections.sort(sizes, (a, b) -> Integer.compare(b - pixelSize, a - pixelSize));
+                size = sizes.get(0);
+            }
+
+            final String uri = mIconUris.get(size);
+            return ImageDecoder.instance().decode(uri, pixelSize);
+        }
+
+        /* package */ Icon(final GeckoBundle bundle) {
+            mIconUris = new HashMap<>();
+
+            for (final String key: bundle.keys()) {
+                final Integer intKey = Integer.valueOf(key);
+                if (intKey == null) {
+                    Log.e(LOGTAG, "Non-integer icon key: " + intKey);
+                    if (BuildConfig.DEBUG) {
+                        throw new RuntimeException("Non-integer icon key: " + key);
+                    }
+                    continue;
+                }
+                mIconUris.put(intKey, bundle.getString(key));
+            }
+        }
+
+        /** Override for tests. */
+        protected Icon() {
+            mIconUris = null;
         }
 
         @Override
-        public void onConnect(final @NonNull Port port) {
-            Log.d(LOGTAG, "Unhandled connect request from " +
-                    port.sender.webExtension.id);
+        public boolean equals(final Object o) {
+            if (o == this) {
+                return true;
+            }
+
+            if (!(o instanceof Icon)) {
+                return false;
+            }
+
+            return mIconUris.equals(((Icon) o).mIconUris);
         }
-    };
+
+        @Override
+        public int hashCode() {
+            return mIconUris.hashCode();
+        }
+    }
+
+    /**
+     * Represents either a Browser Action or a Page Action from the
+     * WebExtension API.
+     *
+     * Instances of this class may represent the default <code>Action</code>
+     * which applies to all WebExtension tabs or a tab-specific override. To
+     * reconstruct the full <code>Action</code> object, you can use
+     * {@link Action#withDefault}.
+     *
+     * Tab specific overrides can be obtained by registering a delegate using
+     * {@link GeckoSession#setWebExtensionActionDelegate}, while default values
+     * can be obtained by registering a delegate using
+     * {@link #setActionDelegate}.
+     *
+     * <br>
+     * See also
+     * <ul>
+     *     <li><a target=_blank href="https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/API/browserAction">
+     *         WebExtensions/API/browserAction
+     *     </a></li>
+     *     <li><a target=_blank href="https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/API/pageAction">
+     *         WebExtensions/API/pageAction
+     *     </a></li>
+     * </ul>
+     */
+    @AnyThread
+    public static class Action {
+        /**
+         * Title of this Action.
+         *
+         * See also:
+         * <a target=_blank href="https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/API/pageAction/getTitle">
+         *     pageAction/getTitle</a>,
+         * <a target=_blank href="https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/API/browserAction/getTitle">
+         *     browserAction/getTitle</a>
+         */
+        final public @Nullable String title;
+        /**
+         * Icon for this Action.
+         *
+         * See also:
+         * <a target=_blank href="https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/API/pageAction/setIcon">
+         *     pageAction/setIcon</a>,
+         * <a target=_blank href="https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/API/browserAction/setIcon">
+         *     browserAction/setIcon</a>
+         */
+        final public @Nullable Icon icon;
+        /**
+         * URI of the Popup to display when the user taps on the icon for this
+         * Action.
+         *
+         * See also:
+         * <a target=_blank href="https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/API/pageAction/getPopup">
+         *     pageAction/getPopup</a>,
+         * <a target=_blank href="https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/API/browserAction/getPopup">
+         *     browserAction/getPopup</a>
+         */
+        final private @Nullable String mPopupUri;
+        /**
+         * Whether this action is enabled and should be visible.
+         *
+         * Note: for page action, this is <code>true</code> when the extension calls
+         * <code>pageAction.show</code> and <code>false</code> when the extension
+         * calls <code>pageAction.hide</code>.
+         *
+         * See also:
+         * <a target=_blank href="https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/API/pageAction/show">
+         *     pageAction/show</a>,
+         * <a target=_blank href="https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/API/browserAction/enabled">
+         *     browserAction/enabled</a>
+         */
+        final public @Nullable Boolean enabled;
+        /**
+         * Badge text for this action.
+         *
+         * See also:
+         * <a target=_blank href="https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/API/browserAction/getBadgeText">
+         *     browserAction/getBadgeText</a>
+         */
+        final public @Nullable String badgeText;
+        /**
+         * Background color for the badge for this Action.
+         *
+         * This method will return an Android color int that can be used in
+         * {@link android.widget.TextView#setBackgroundColor(int)} and similar
+         * methods.
+         *
+         * See also:
+         * <a target=_blank href="https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/API/browserAction/getBadgeBackgroundColor">
+         *     browserAction/getBadgeBackgroundColor</a>
+         */
+        final public @Nullable Integer badgeBackgroundColor;
+        /**
+         * Text color for the badge for this Action.
+         *
+         * This method will return an Android color int that can be used in
+         * {@link android.widget.TextView#setTextColor(int)} and similar
+         * methods.
+         *
+         * See also:
+         * <a target=_blank href="https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/API/browserAction/getBadgeTextColor">
+         *     browserAction/getBadgeTextColor</a>
+         */
+        final public @Nullable Integer badgeTextColor;
+
+        final private WebExtension mExtension;
+
+        /* package */ final static int TYPE_BROWSER_ACTION = 1;
+        /* package */ final static int TYPE_PAGE_ACTION = 2;
+        @Retention(RetentionPolicy.SOURCE)
+        @IntDef({TYPE_BROWSER_ACTION, TYPE_PAGE_ACTION})
+        /* package */ @interface ActionType {}
+
+        /* package */ final @ActionType int type;
+
+        /* package */ Action(final @ActionType int type,
+                             final GeckoBundle bundle, final WebExtension extension) {
+            mExtension = extension;
+            mPopupUri = bundle.getString("popup");
+
+            this.type = type;
+
+            title = bundle.getString("title");
+            badgeText = bundle.getString("badgeText");
+            badgeBackgroundColor = colorFromRgbaArray(
+                    bundle.getDoubleArray("badgeBackgroundColor"));
+            badgeTextColor = colorFromRgbaArray(
+                    bundle.getDoubleArray("badgeTextColor"));
+
+            if (bundle.containsKey("icon")) {
+                icon = new Icon(bundle.getBundle("icon"));
+            } else {
+                icon = null;
+            }
+
+            if (bundle.getBoolean("patternMatching", false)) {
+                // This action was enabled by pattern matching
+                enabled = true;
+            } else if (bundle.containsKey("enabled")) {
+                enabled = bundle.getBoolean("enabled");
+            } else {
+                enabled = null;
+            }
+        }
+
+        private Integer colorFromRgbaArray(final double[] c) {
+            if (c == null) {
+                return null;
+            }
+
+            return Color.argb((int) c[3], (int) c[0], (int) c[1], (int) c[2]);
+        }
+
+        @Override
+        public String toString() {
+            return "Action {\n"
+                    + "\ttitle: " + this.title + ",\n"
+                    + "\ticon: " + this.icon + ",\n"
+                    + "\tpopupUri: " + this.mPopupUri + ",\n"
+                    + "\tenabled: " + this.enabled + ",\n"
+                    + "\tbadgeText: " + this.badgeText + ",\n"
+                    + "\tbadgeTextColor: " + this.badgeTextColor + ",\n"
+                    + "\tbadgeBackgroundColor: " + this.badgeBackgroundColor + ",\n"
+                    + "}";
+        }
+
+        // For testing
+        protected Action() {
+            type = TYPE_BROWSER_ACTION;
+            mExtension = null;
+            mPopupUri = null;
+            title = null;
+            icon = null;
+            enabled = null;
+            badgeText = null;
+            badgeTextColor = null;
+            badgeBackgroundColor = null;
+        }
+
+        /**
+         * Merges values from this Action with the default Action.
+         *
+         * @param defaultValue the default Action as received from
+         *                     {@link ActionDelegate#onBrowserAction}
+         *                     or {@link ActionDelegate#onPageAction}.
+         *
+         * @return an {@link Action} where all <code>null</code> values from
+         *         this instance are replaced with values from
+         *         <code>defaultValue</code>.
+         * @throws IllegalArgumentException if defaultValue is not of the same
+         *         type, e.g. if this Action is a Page Action and default
+         *         value is a Browser Action.
+         */
+        @NonNull
+        public Action withDefault(final @NonNull Action defaultValue) {
+            return new Action(this, defaultValue);
+        }
+
+        /** @see Action#withDefault */
+        private Action(final Action source, final Action defaultValue) {
+            if (source.type != defaultValue.type) {
+                throw new IllegalArgumentException(
+                        "defaultValue must be of the same type.");
+            }
+
+            type = source.type;
+            mExtension = source.mExtension;
+
+            title = source.title != null ? source.title : defaultValue.title;
+            icon = source.icon != null ? source.icon : defaultValue.icon;
+            mPopupUri = source.mPopupUri != null ? source.mPopupUri : defaultValue.mPopupUri;
+            enabled = source.enabled != null  ? source.enabled : defaultValue.enabled;
+            badgeText = source.badgeText != null ? source.badgeText : defaultValue.badgeText;
+            badgeTextColor = source.badgeTextColor != null
+                    ? source.badgeTextColor : defaultValue.badgeTextColor;
+            badgeBackgroundColor = source.badgeBackgroundColor != null
+                    ? source.badgeBackgroundColor : defaultValue.badgeBackgroundColor;
+        }
+
+        @UiThread
+        public void click() {
+            if (mPopupUri != null && !mPopupUri.isEmpty()) {
+                if (mExtension.actionDelegate == null) {
+                    return;
+                }
+
+                GeckoResult<GeckoSession> popup =
+                        mExtension.actionDelegate.onTogglePopup(mExtension, this);
+                openPopup(popup);
+
+                // When popupUri is specified, the extension doesn't get a callback
+                return;
+            }
+
+            final GeckoBundle bundle = new GeckoBundle(1);
+            bundle.putString("extensionId", mExtension.id);
+
+            if (type == TYPE_BROWSER_ACTION) {
+                EventDispatcher.getInstance().dispatch(
+                        "GeckoView:BrowserAction:Click", bundle);
+            } else if (type == TYPE_PAGE_ACTION) {
+                EventDispatcher.getInstance().dispatch(
+                        "GeckoView:PageAction:Click", bundle);
+            } else {
+                throw new IllegalStateException("Unknown Action type");
+            }
+        }
+
+        /* package */ void openPopup(final GeckoResult<GeckoSession> popup) {
+            if (popup == null) {
+                return;
+            }
+
+            popup.accept(session -> {
+                if (session == null) {
+                    return;
+                }
+
+                session.getSettings().setIsPopup(true);
+                session.loadUri(mPopupUri);
+            });
+        }
+    }
+
+    /**
+     * Receives updates whenever a Browser action or a Page action has been
+     * defined by an extension.
+     *
+     * This delegate will receive the default action when registered with
+     * {@link WebExtension#setActionDelegate}. To receive
+     * {@link GeckoSession}-specific overrides you can use
+     * {@link GeckoSession#setWebExtensionActionDelegate}.
+     */
+    public interface ActionDelegate {
+        /**
+         * Called whenever a browser action is defined or updated.
+         *
+         * This method will be called whenever an extension that defines a
+         * browser action is registered or the properties of the Action are
+         * updated.
+         *
+         * See also <a target=_blank href="https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/API/browserAction">
+         *  WebExtensions/API/browserAction
+         * </a>,
+         * <a target=_blank href="https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/manifest.json/browser_action">
+         *    WebExtensions/manifest.json/browser_action
+         * </a>.
+         *
+         * @param extension The extension that defined this browser action.
+         * @param session Either the {@link GeckoSession} corresponding to the
+         *                tab to which this Action override applies.
+         *                <code>null</code> if <code>action</code> is the new
+         *                default value.
+         * @param action {@link Action} containing the override values for this
+         *               {@link GeckoSession} or the default value if
+         *               <code>session</code> is <code>null</code>.
+         */
+        @UiThread
+        default void onBrowserAction(final @NonNull WebExtension extension,
+                                     final @Nullable GeckoSession session,
+                                     final @NonNull Action action) {}
+        /**
+         * Called whenever a page action is defined or updated.
+         *
+         * This method will be called whenever an extension that defines a page
+         * action is registered or the properties of the Action are updated.
+         *
+         * See also <a target=_blank href="https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/API/pageAction">
+         *  WebExtensions/API/pageAction
+         * </a>,
+         * <a target=_blank href="https://developer.mozilla.org/en-US/docs/Mozilla/Add-ons/WebExtensions/manifest.json/page_action">
+         *    WebExtensions/manifest.json/page_action
+         * </a>.
+         *
+         * @param extension The extension that defined this page action.
+         * @param session Either the {@link GeckoSession} corresponding to the
+         *                tab to which this Action override applies.
+         *                <code>null</code> if <code>action</code> is the new
+         *                default value.
+         * @param action {@link Action} containing the override values for this
+         *               {@link GeckoSession} or the default value if
+         *               <code>session</code> is <code>null</code>.
+         */
+        @UiThread
+        default void onPageAction(final @NonNull WebExtension extension,
+                                  final @Nullable GeckoSession session,
+                                  final @NonNull Action action) {}
+
+        /**
+         * Called whenever the action wants to toggle a popup view.
+         *
+         * @param extension The extension that wants to display a popup
+         * @param action The action where the popup is defined
+         * @return A GeckoSession that will be used to display the pop-up,
+         *         null if no popup will be displayed.
+         */
+        @UiThread
+        @Nullable
+        default GeckoResult<GeckoSession> onTogglePopup(final @NonNull WebExtension extension,
+                                                        final @NonNull Action action) {
+            return null;
+        }
+
+        /**
+         * Called whenever the action wants to open a popup view.
+         *
+         * @param extension The extension that wants to display a popup
+         * @param action The action where the popup is defined
+         * @return A GeckoSession that will be used to display the pop-up,
+         *         null if no popup will be displayed.
+         */
+        @UiThread
+        @Nullable
+        default GeckoResult<GeckoSession> onOpenPopup(final @NonNull WebExtension extension,
+                                                      final @NonNull Action action) {
+            return null;
+        }
+    }
+
+    /**
+     * Set the Action delegate for this WebExtension.
+     *
+     * This delegate will receive updates every time the default Action value
+     * changes.
+     *
+     * To listen for {@link GeckoSession}-specific updates, use
+     * {@link GeckoSession#setWebExtensionActionDelegate}
+     *
+     * @param delegate {@link ActionDelegate} that will receive updates.
+     */
+    @AnyThread
+    public void setActionDelegate(final @Nullable ActionDelegate delegate) {
+        actionDelegate = delegate;
+    }
+
+    // TODO: make public
+    // Keep in sync with AddonManager.jsm
+    static class SignedStateFlags {
+        final static int UNKNOWN = -1;
+        final static int MISSING = 0;
+        final static int PRELIMINARY = 1;
+        final static int SIGNED = 2;
+        final static int SYSTEM = 3;
+        final static int PRIVILEGED = 4;
+
+        /* package */ final static int LAST = PRIVILEGED;
+    }
+
+    @Retention(RetentionPolicy.SOURCE)
+    @IntDef({ SignedStateFlags.UNKNOWN, SignedStateFlags.MISSING, SignedStateFlags.PRELIMINARY,
+        SignedStateFlags.SIGNED, SignedStateFlags.SYSTEM, SignedStateFlags.PRIVILEGED})
+    @interface SignedState {}
+
+    // TODO: make public
+    // Keep in sync with nsIBlocklistService.idl
+    static class BlockedReasonFlags {
+        final static int NOT_BLOCKED = 0;
+        final static int SOFTBLOCKED = 1;
+        final static int BLOCKED = 2;
+        final static int OUTDATED = 3;
+        final static int VULNERABLE_UPDATE_AVAILABLE = 4;
+        final static int VULNERABLE_NO_UPDATE = 5;
+    }
+
+    @Retention(RetentionPolicy.SOURCE)
+    @IntDef({ BlockedReasonFlags.NOT_BLOCKED, BlockedReasonFlags.SOFTBLOCKED,
+            BlockedReasonFlags.BLOCKED, BlockedReasonFlags.OUTDATED,
+            BlockedReasonFlags.VULNERABLE_UPDATE_AVAILABLE,
+            BlockedReasonFlags.VULNERABLE_NO_UPDATE})
+    @interface BlockedReason {}
+
+    // TODO: make public
+    class MetaData {
+        final Icon icon;
+        final String[] permissions;
+        final String[] origins;
+        final String name;
+        final String description;
+        final String version;
+        final String creatorName;
+        final String creatorUrl;
+        final String homepageUrl;
+        final String optionsPageUrl;
+        final boolean openOptionsPageInTab;
+        final boolean isRecommended;
+        final @BlockedReason int blockedReason;
+        final @SignedState int signedState;
+
+        /** Override for testing. */
+        protected MetaData() {
+            icon = null;
+            permissions = null;
+            origins = null;
+            name = null;
+            description = null;
+            version = null;
+            creatorName = null;
+            creatorUrl = null;
+            homepageUrl = null;
+            optionsPageUrl = null;
+            openOptionsPageInTab = false;
+            isRecommended = false;
+            blockedReason = BlockedReasonFlags.NOT_BLOCKED;
+            signedState = SignedStateFlags.UNKNOWN;
+        }
+
+        /* package */ MetaData(final GeckoBundle bundle) {
+            permissions = bundle.getStringArray("permissions");
+            origins = bundle.getStringArray("origins");
+            description = bundle.getString("description");
+            version = bundle.getString("version");
+            creatorName = bundle.getString("creatorName");
+            creatorUrl = bundle.getString("creatorURL");
+            homepageUrl = bundle.getString("homepageURL");
+            name = bundle.getString("name");
+            optionsPageUrl = bundle.getString("optionsPageUrl");
+            openOptionsPageInTab = bundle.getBoolean("openOptionsPageInTab");
+            isRecommended = bundle.getBoolean("isRecommended");
+            blockedReason = bundle.getInt("blockedReason", BlockedReasonFlags.NOT_BLOCKED);
+
+            int signedState = bundle.getInt("signedState", SignedStateFlags.UNKNOWN);
+            if (signedState <= SignedStateFlags.LAST) {
+                this.signedState = signedState;
+            } else {
+                Log.e(LOGTAG, "Unrecognized signed state: " + signedState);
+                this.signedState = SignedStateFlags.UNKNOWN;
+            }
+
+            if (bundle.containsKey("icons")) {
+                icon = new Icon(bundle.getBundle("icons"));
+            } else {
+                icon = null;
+            }
+        }
+    }
 }

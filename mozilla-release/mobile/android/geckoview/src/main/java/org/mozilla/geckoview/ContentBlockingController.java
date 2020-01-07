@@ -212,9 +212,14 @@ public class ContentBlockingController {
         public static final int BLOCKED_TRACKING_CONTENT        = 0x00001000;
 
         /**
-         * Tracking content has been loaded.
+         * Level 1 tracking content has been loaded.
          */
-        public static final int LOADED_TRACKING_CONTENT         = 0x00002000;
+        public static final int LOADED_LEVEL_1_TRACKING_CONTENT = 0x00002000;
+
+        /**
+         * Level 2 tracking content has been loaded.
+         */
+        public static final int LOADED_LEVEL_2_TRACKING_CONTENT = 0x00100000;
 
         /**
          * Fingerprinting content has been blocked from loading.
@@ -276,6 +281,12 @@ public class ContentBlockingController {
         public static final int COOKIES_BLOCKED_TRACKER         = 0x20000000;
 
         /**
+         * Rejected because the resource is a tracker from a social origin and
+         * cookie policy doesn't allow its loading.
+         */
+        public static final int COOKIES_BLOCKED_SOCIALTRACKER   = 0x01000000;
+
+        /**
          * Rejected because cookie policy blocks all cookies.
          */
         public static final int COOKIES_BLOCKED_ALL             = 0x40000000;
@@ -314,12 +325,13 @@ public class ContentBlockingController {
          */
         public static class BlockingData {
             @Retention(RetentionPolicy.SOURCE)
-            @IntDef({ Event.BLOCKED_TRACKING_CONTENT, Event.LOADED_TRACKING_CONTENT,
-                      Event.BLOCKED_FINGERPRINTING_CONTENT, Event.LOADED_FINGERPRINTING_CONTENT,
-                      Event.BLOCKED_CRYPTOMINING_CONTENT, Event.LOADED_CRYPTOMINING_CONTENT,
-                      Event.BLOCKED_UNSAFE_CONTENT, Event.COOKIES_LOADED,
-                      Event.COOKIES_LOADED_TRACKER, Event.COOKIES_LOADED_SOCIALTRACKER,
-                      Event.COOKIES_BLOCKED_BY_PERMISSION, Event.COOKIES_BLOCKED_TRACKER,
+            @IntDef({ Event.BLOCKED_TRACKING_CONTENT, Event.LOADED_LEVEL_1_TRACKING_CONTENT,
+                      Event.LOADED_LEVEL_2_TRACKING_CONTENT, Event.BLOCKED_FINGERPRINTING_CONTENT,
+                      Event.LOADED_FINGERPRINTING_CONTENT, Event.BLOCKED_CRYPTOMINING_CONTENT,
+                      Event.LOADED_CRYPTOMINING_CONTENT, Event.BLOCKED_UNSAFE_CONTENT,
+                      Event.COOKIES_LOADED, Event.COOKIES_LOADED_TRACKER,
+                      Event.COOKIES_LOADED_SOCIALTRACKER, Event.COOKIES_BLOCKED_BY_PERMISSION,
+                      Event.COOKIES_BLOCKED_TRACKER, Event.COOKIES_BLOCKED_SOCIALTRACKER,
                       Event.COOKIES_BLOCKED_ALL, Event.COOKIES_PARTITIONED_FOREIGN,
                       Event.COOKIES_BLOCKED_FOREIGN, Event.BLOCKED_SOCIALTRACKING_CONTENT,
                       Event.LOADED_SOCIALTRACKING_CONTENT })

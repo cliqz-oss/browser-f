@@ -48,6 +48,58 @@ struct Chunk;
 class StoreBuffer;
 class TenuredCell;
 
+#ifdef DEBUG
+extern bool CurrentThreadIsGCMarking();
+#endif
+
+// Like gc::MarkColor but allows the possibility of the cell being unmarked.
+//
+// This class mimics an enum class, but supports operator overloading.
+class CellColor {
+ public:
+  enum Color { White = 0, Gray = 1, Black = 2 };
+
+  CellColor() : color(White) {}
+
+  MOZ_IMPLICIT CellColor(MarkColor markColor)
+      : color(markColor == MarkColor::Black ? Black : Gray) {}
+
+  MOZ_IMPLICIT constexpr CellColor(Color c) : color(c) {}
+
+  MarkColor asMarkColor() const {
+    MOZ_ASSERT(color != White);
+    return color == Black ? MarkColor::Black : MarkColor::Gray;
+  }
+
+  // Implement a total ordering for CellColor, with white being 'least marked'
+  // and black being 'most marked'.
+  bool operator<(const CellColor other) const { return color < other.color; }
+  bool operator>(const CellColor other) const { return color > other.color; }
+  bool operator<=(const CellColor other) const { return color <= other.color; }
+  bool operator>=(const CellColor other) const { return color >= other.color; }
+  bool operator!=(const CellColor other) const { return color != other.color; }
+  bool operator==(const CellColor other) const { return color == other.color; }
+  explicit operator bool() const { return color != White; }
+
+#if defined(JS_GC_ZEAL) || defined(DEBUG)
+  const char* name() const {
+    switch (color) {
+      case CellColor::White:
+        return "white";
+      case CellColor::Black:
+        return "black";
+      case CellColor::Gray:
+        return "gray";
+      default:
+        MOZ_CRASH("Unexpected cell color");
+    }
+  }
+#endif
+
+ private:
+  Color color;
+};
+
 // [SMDOC] GC Cell
 //
 // A GC cell is the base class for all GC things. All types allocated on the GC
@@ -65,16 +117,16 @@ struct alignas(gc::CellAlignBytes) Cell {
  public:
   // The low bits of the first word of each Cell are reserved for GC flags.
   static constexpr int ReservedBits = 2;
-  static constexpr uintptr_t RESERVED_MASK = JS_BITMASK(ReservedBits);
+  static constexpr uintptr_t RESERVED_MASK = BitMask(ReservedBits);
 
   // Indicates if the cell is currently a RelocationOverlay
-  static constexpr uintptr_t FORWARD_BIT = JS_BIT(0);
+  static constexpr uintptr_t FORWARD_BIT = Bit(0);
 
   // When a Cell is in the nursery, this will indicate if it is a JSString (1)
   // or JSObject (0). When not in nursery, this bit is still reserved for
   // JSString to use as JSString::NON_ATOM bit. This may be removed by Bug
   // 1376646.
-  static constexpr uintptr_t JSSTRING_BIT = JS_BIT(1);
+  static constexpr uintptr_t JSSTRING_BIT = Bit(1);
 
   MOZ_ALWAYS_INLINE bool isTenured() const { return !IsInsideNursery(this); }
   MOZ_ALWAYS_INLINE const TenuredCell& asTenured() const;
@@ -85,6 +137,12 @@ struct alignas(gc::CellAlignBytes) Cell {
   MOZ_ALWAYS_INLINE bool isMarkedGray() const;
   MOZ_ALWAYS_INLINE bool isMarked(gc::MarkColor color) const;
   MOZ_ALWAYS_INLINE bool isMarkedAtLeast(gc::MarkColor color) const;
+
+  MOZ_ALWAYS_INLINE CellColor color() const {
+    return isMarkedBlack()
+               ? CellColor::Black
+               : isMarkedGray() ? CellColor::Gray : CellColor::White;
+  }
 
   inline JSRuntime* runtimeFromMainThread() const;
 
@@ -164,6 +222,13 @@ class TenuredCell : public Cell {
   MOZ_ALWAYS_INLINE bool isMarkedAny() const;
   MOZ_ALWAYS_INLINE bool isMarkedBlack() const;
   MOZ_ALWAYS_INLINE bool isMarkedGray() const;
+
+  // Same as Cell::color, but skips nursery checks.
+  MOZ_ALWAYS_INLINE CellColor color() const {
+    return isMarkedBlack()
+               ? CellColor::Black
+               : isMarkedGray() ? CellColor::Gray : CellColor::White;
+  }
 
   // The return value indicates if the cell went from unmarked to marked.
   MOZ_ALWAYS_INLINE bool markIfUnmarked(
@@ -351,7 +416,7 @@ JS::TraceKind TenuredCell::getTraceKind() const {
 
 JS::Zone* TenuredCell::zone() const {
   JS::Zone* zone = arena()->zone;
-  MOZ_ASSERT(CurrentThreadCanAccessZone(zone));
+  MOZ_ASSERT(CurrentThreadIsGCMarking() || CurrentThreadCanAccessZone(zone));
   return zone;
 }
 

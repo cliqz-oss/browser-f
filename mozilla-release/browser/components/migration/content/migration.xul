@@ -7,7 +7,7 @@
 
 <!DOCTYPE dialog SYSTEM "chrome://browser/locale/migration/migration.dtd" >
 
-<wizard id="migrationWizard"
+<window id="migrationWizard"
         xmlns="http://www.mozilla.org/keymaster/gatekeeper/there.is.only.xul"
         windowtype="Browser:MigrationWizard"
         title="&migrationWizard.title;"
@@ -17,9 +17,10 @@
         buttons="accept,cancel"
         branded="true">
 
-  <script src="chrome://global/content/customElements.js"/>
-  <script src="chrome://browser/content/migration/migration.js"/>
+<script src="chrome://global/content/customElements.js"/>
+<script src="chrome://browser/content/migration/migration.js"/>
 
+<wizard>
   <wizardpage id="importSource" pageid="importSource" next="selectProfile"
               label="&importSource.title;">
 #ifdef XP_WIN
@@ -61,7 +62,7 @@
               next="importItems">
     <description control="profiles">&selectProfile.label;</description>
 
-    <radiogroup id="profiles" align="left"/>
+    <radiogroup id="profiles" align="start"/>
   </wizardpage>
 
   <wizardpage id="importItems" pageid="importItems" label="&importItems.title;"
@@ -69,20 +70,21 @@
               oncommand="MigrationWizard.onImportItemCommand();">
     <description control="dataSources">&importItems.label;</description>
 
-    <vbox id="dataSources" style="overflow: auto; -moz-appearance: listbox" align="left" flex="1" role="group"/>
+    <vbox id="dataSources" style="overflow: auto; -moz-appearance: listbox" align="start" flex="1" role="group"/>
   </wizardpage>
 
   <wizardpage id="migrating" pageid="migrating" label="&migrating.title;"
               next="done">
     <description control="migratingItems">&migrating.label;</description>
 
-    <vbox id="migratingItems" style="overflow: auto;" align="left" role="group"/>
+    <vbox id="migratingItems" style="overflow: auto;" align="start" role="group"/>
   </wizardpage>
 
   <wizardpage id="done" pageid="done" label="&done.title;">
     <description control="doneItems">&done.label;</description>
 
-    <vbox id="doneItems" style="overflow: auto;" align="left" role="group"/>
+    <vbox id="doneItems" style="overflow: auto;" align="start" role="group"/>
   </wizardpage>
 
 </wizard>
+</window>

@@ -47,10 +47,6 @@ const SWAPPED_BROWSER_STATE = [
 const PROPERTIES_FROM_BROWSER_WINDOW = [
   // This is used by PermissionUI.jsm for permission doorhangers.
   "PopupNotifications",
-  // These are used by ContentClick.jsm when opening links in ways other than just
-  // navigating the viewport, such as a new tab by pressing Cmd-Click.
-  "whereToOpenLink",
-  "openLinkIn",
   // This is used by various event handlers, typically to call `getTabForBrowser` to map
   // a browser back to a tab.
   "gBrowser",
@@ -111,8 +107,8 @@ function tunnelToInnerBrowser(outer, inner) {
         inner._imageDocument = outer._imageDocument;
         inner._isSyntheticDocument = outer._isSyntheticDocument;
         inner._innerWindowID = outer._innerWindowID;
-        inner._remoteWebNavigationImpl._currentURI =
-          outer._remoteWebNavigationImpl._currentURI;
+        inner._remoteWebNavigation._currentURI =
+          outer._remoteWebNavigation._currentURI;
       }
     },
 
@@ -138,7 +134,6 @@ function tunnelToInnerBrowser(outer, inner) {
       // Various browser methods access the `frameLoader` property, including:
       //   * `saveBrowser` from contentAreaUtils.js
       //   * `docShellIsActive` from browser.js
-      //   * `hasContentOpener` from browser.js
       //   * `preserveLayers` from browser.js
       //   * `receiveMessage` from SessionStore.jsm
       // In general, these methods are interested in the `frameLoader` for the content,
@@ -230,9 +225,8 @@ function tunnelToInnerBrowser(outer, inner) {
       // because stop() will remove the browser binding and these will no longer bee
       // used.
       const webNavigation = new BrowserElementWebNavigation(inner);
-      webNavigation.copyStateFrom(inner._remoteWebNavigationImpl);
+      webNavigation.copyStateFrom(inner._remoteWebNavigation);
       outer._remoteWebNavigation = webNavigation;
-      outer._remoteWebNavigationImpl = webNavigation;
 
       // Now that we've flipped to the remote browser mode, add `progressListener`
       // onto the remote version of `webProgress`.  Normally tabbrowser.xml does this step
@@ -462,10 +456,6 @@ MessageManagerTunnel.prototype = {
   INNER_TO_OUTER_MESSAGES: [
     // Messages sent to browser.js
     "Browser:LoadURI",
-    "Link:SetIcon",
-    "Link:SetFailedIcon",
-    "Link:AddFeed",
-    "Link:AddSearch",
     "PageStyle:StyleSheets",
     // Messages sent to browser.js
     "DOMTitleChanged",

@@ -299,38 +299,122 @@ function sanitizeName(name) {
 }
 
 /**
- * Retrieve a pref from the search param branch. Returns null if the
- * preference is not found.
- *
- * @param {string} prefName
- *   The name of the pref.
- * @returns {string|null}
- *   The value of the preference.
- **/
-function getMozParamPref(prefName) {
-  let branch = Services.prefs.getDefaultBranch(
-    SearchUtils.BROWSER_SEARCH_PREF + "param."
-  );
-  let prefValue = branch.getCharPref(prefName, null);
-  return prefValue ? encodeURIComponent(prefValue) : null;
+ * A simple class to handle caching of preferences that may be read from
+ * parameters.
+ */
+const ParamPreferenceCache = {
+  QueryInterface: ChromeUtils.generateQI([
+    Ci.nsIObserver,
+    Ci.nsISupportsWeakReference,
+  ]),
+
+  initCache() {
+    this.branch = Services.prefs.getDefaultBranch(
+      SearchUtils.BROWSER_SEARCH_PREF + "param."
+    );
+    this.cache = new Map();
+    for (let prefName of this.branch.getChildList("")) {
+      this.cache.set(prefName, this.branch.getCharPref(prefName, null));
+    }
+    this.branch.addObserver("", this, true);
+  },
+
+  observe(subject, topic, data) {
+    this.cache.set(data, this.branch.getCharPref(data, null));
+  },
+
+  getPref(prefName) {
+    if (!this.cache) {
+      this.initCache();
+    }
+    return this.cache.get(prefName);
+  },
+};
+
+/**
+ * Represents a name/value pair for a parameter
+ * @see nsISearchEngine::addParam
+ */
+class QueryParameter {
+  /**
+   * @see nsISearchEngine::addParam
+   * @param {string} name
+   * @param {string} value
+   *  The value of the parameter. May be an empty string, must not be null or
+   *  undefined.
+   * @param {string} purpose
+   *   The search purpose for which matches when this parameter should be
+   *   applied, e.g. "searchbar", "contextmenu".
+   */
+  constructor(name, value, purpose) {
+    if (!name || value == null) {
+      SearchUtils.fail("missing name or value for QueryParameter!");
+    }
+
+    this.name = name;
+    this._value = value;
+    this.purpose = purpose;
+  }
+
+  get value() {
+    return this._value;
+  }
+
+  toJSON() {
+    const result = {
+      name: this.name,
+      value: this.value,
+    };
+    if (this.purpose) {
+      result.purpose = this.purpose;
+    }
+    return result;
+  }
 }
 
 /**
- * Simple object representing a name/value pair.
- * @see nsISearchEngine::addParam
- *
- * @param {string} name
- * @param {string} value
- * @param {string} purpose
+ * Represents a special paramater that can be set by preferences. The
+ * value is read from the 'browser.search.param.*' default preference
+ * branch.
  */
-function QueryParameter(name, value, purpose) {
-  if (!name || value == null) {
-    SearchUtils.fail("missing name or value for QueryParameter!");
+class QueryPreferenceParameter extends QueryParameter {
+  /**
+   * @param {string} name
+   *   The name of the parameter as injected into the query string.
+   * @param {string} prefName
+   *   The name of the preference to read from the branch.
+   * @param {string} purpose
+   *   The search purpose for which matches when this parameter should be
+   *   applied, e.g. `searchbar`, `contextmenu`.
+   */
+  constructor(name, prefName, purpose) {
+    super(name, prefName, purpose);
   }
 
-  this.name = name;
-  this.value = value;
-  this.purpose = purpose;
+  get value() {
+    const prefValue = ParamPreferenceCache.getPref(this._value);
+    return prefValue ? encodeURIComponent(prefValue) : null;
+  }
+
+  /**
+   * Converts the object to json. This object is converted with a mozparam flag
+   * as it gets written to the cache and hence we then know what type it is
+   * when reading it back.
+   *
+   * @returns {object}
+   */
+  toJSON() {
+    const result = {
+      condition: "pref",
+      mozparam: true,
+      name: this.name,
+      pref: this._value,
+    };
+    if (this.purpose) {
+      result.purpose = this.purpose;
+    }
+    return result;
+  }
 }
 
 /**
@@ -476,8 +560,6 @@ function EngineURL(mimeType, requestMethod, template, resultDomain) {
   this.method = method;
   this.params = [];
   this.rels = [];
-  // Don't serialize expanded mozparams
-  this.mozparams = {};
 
   var templateURI = SearchUtils.makeURI(template);
   if (!templateURI) {
@@ -512,11 +594,36 @@ EngineURL.prototype = {
     this.params.push(new QueryParameter(name, value, purpose));
   },
 
-  // Note: This method requires that aObj has a unique name or the previous MozParams entry with
-  // that name will be overwritten.
-  _addMozParam(obj) {
-    obj.mozparam = true;
-    this.mozparams[obj.name] = obj;
+  /**
+   * Adds a MozParam to the parameters list for this URL. For purpose based params
+   * these are saved as standard parameters, for preference based we save them
+   * as a special type.
+   *
+   * @param {object} param
+   * @param {string} param.name
+   *   The name of the parameter to add to the url.
+   * @param {string} [param.condition]
+   *   The type of parameter this is, e.g. "pref" for a preference parameter,
+   *   or "purpose" for a value-based parameter with a specific purpose. The
+   *   default is "purpose".
+   * @param {string} [param.value]
+   *   The value if it is a "purpose" parameter.
+   * @param {string} [param.purpose]
+   *   The purpose of the parameter for when it is applied, e.g. for `searchbar`
+   *   searches.
+   * @param {string} [param.pref]
+   *   The preference name of the parameter, that gets appended to
+   *   `browser.search.param.`.
+   */
+  _addMozParam(param) {
+    const purpose = param.purpose || undefined;
+    if (param.condition && param.condition == "pref") {
+      this.params.push(
+        new QueryPreferenceParameter(param.name, param.pref, purpose)
+      );
+    } else {
+      this.addParam(param.name, param.value || undefined, purpose);
+    }
   },
 
   getSubmission(searchTerms, engine, purpose) {
@@ -526,9 +633,8 @@ EngineURL.prototype = {
 
     // If a particular purpose isn't defined in the plugin, fallback to 'searchbar'.
     if (
-      !this.params.some(
-        p => p.purpose !== undefined && p.purpose == requestPurpose
-      )
+      requestPurpose != "searchbar" &&
+      !this.params.some(p => p.purpose && p.purpose == requestPurpose)
     ) {
       requestPurpose = "searchbar";
     }
@@ -540,13 +646,17 @@ EngineURL.prototype = {
       var param = this.params[i];
 
       // If this parameter has a purpose, only add it if the purpose matches
-      if (param.purpose !== undefined && param.purpose != requestPurpose) {
+      if (param.purpose && param.purpose != requestPurpose) {
         continue;
       }
 
-      var value = ParamSubstitution(param.value, searchTerms, engine);
+      const paramValue = param.value;
+      // Preference MozParams might not have a preferenced saved, or a valid value.
+      if (paramValue != null) {
+        var value = ParamSubstitution(paramValue, searchTerms, engine);
 
-      dataArray.push(param.name + "=" + value);
+        dataArray.push(param.name + "=" + value);
+      }
     }
     let dataString = dataArray.join("&");
 
@@ -598,12 +708,6 @@ EngineURL.prototype = {
     for (let i = 0; i < json.params.length; ++i) {
       let param = json.params[i];
       if (param.mozparam) {
-        if (param.condition == "pref") {
-          let value = getMozParamPref(param.pref);
-          if (value) {
-            this.addParam(param.name, value);
-          }
-        }
         this._addMozParam(param);
       } else {
         this.addParam(param.name, param.value, param.purpose || undefined);
@@ -619,9 +723,10 @@ EngineURL.prototype = {
    */
   toJSON() {
     var json = {
-      template: this.template,
+      params: this.params,
       rels: this.rels,
       resultDomain: this.resultDomain,
+      template: this.template,
     };
 
     if (this.type != SearchUtils.URL_TYPE.SEARCH) {
@@ -630,11 +735,6 @@ EngineURL.prototype = {
     if (this.method != "GET") {
       json.method = this.method;
     }
-
-    function collapseMozParams(param) {
-      return this.mozparams[param.name] || param;
-    }
-    json.params = this.params.map(collapseMozParams, this);
 
     return json;
   },
@@ -812,8 +912,10 @@ SearchEngine.prototype = {
   _updateURL: null,
   // The url to check for a new icon
   _iconUpdateURL: null,
-  /* The extension ID if added by an extension. */
+  // The extension ID if added by an extension.
   _extensionID: null,
+  // The locale, or "DEFAULT", if required.
+  _locale: null,
   // Built in search engine extensions.
   _isBuiltin: false,
 
@@ -1362,15 +1464,7 @@ SearchEngine.prototype = {
         if ((p.condition || p.purpose) && !this._isDefault) {
           continue;
         }
-        if (p.condition == "pref") {
-          let value = getMozParamPref(p.pref);
-          if (value) {
-            url.addParam(p.name, value);
-          }
-          url._addMozParam(p);
-        } else {
-          url.addParam(p.name, p.value, p.purpose || undefined);
-        }
+        url._addMozParam(p);
       }
     }
 
@@ -1397,6 +1491,7 @@ SearchEngine.prototype = {
    */
   _initFromMetadata(engineName, params) {
     this._extensionID = params.extensionID;
+    this._locale = params.locale;
     this._isBuiltin = !!params.isBuiltin;
 
     this._initEngineURLFromMetaData(SearchUtils.URL_TYPE.SEARCH, {
@@ -1503,7 +1598,6 @@ SearchEngine.prototype = {
         // We only support MozParams for default search engines
         this._isDefault
       ) {
-        var value;
         let condition = param.getAttribute("condition");
 
         // MozParams must have a condition to be valid
@@ -1519,6 +1613,10 @@ SearchEngine.prototype = {
           continue;
         }
 
+        // We can't make these both use _addMozParam due to the fallback
+        // handling - WebExtension parameters get treated as MozParams even
+        // if they are not, and hence don't have the condition parameter, so
+        // we can't warn for them.
         switch (condition) {
           case "purpose":
             url.addParam(
@@ -1526,14 +1624,8 @@ SearchEngine.prototype = {
               param.getAttribute("value"),
               param.getAttribute("purpose")
             );
-            // _addMozParam is not needed here since it can be serialized fine without. _addMozParam
-            // also requires a unique "name" which is not normally the case when @purpose is used.
             break;
           case "pref":
-            value = getMozParamPref(param.getAttribute("pref"), value);
-            if (value) {
-              url.addParam(param.getAttribute("name"), value);
-            }
             url._addMozParam({
               pref: param.getAttribute("pref"),
               name: param.getAttribute("name"),
@@ -1678,6 +1770,9 @@ SearchEngine.prototype = {
     if (json.extensionID) {
       this._extensionID = json.extensionID;
     }
+    if (json.extensionLocale) {
+      this._locale = json.extensionLocale;
+    }
     for (let i = 0; i < json._urls.length; ++i) {
       let url = json._urls[i];
       let engineURL = new EngineURL(
@@ -1735,6 +1830,9 @@ SearchEngine.prototype = {
     }
     if (this._extensionID) {
       json.extensionID = this._extensionID;
+    }
+    if (this._locale) {
+      json.extensionLocale = this._locale;
     }
 
     return json;
@@ -1975,14 +2073,14 @@ SearchEngine.prototype = {
     return this.__internalAliases;
   },
 
-  _getSearchFormWithPurpose(aPurpose = "") {
+  _getSearchFormWithPurpose(purpose) {
     // First look for a <Url rel="searchform">
     var searchFormURL = this._getURLOfType(
       SearchUtils.URL_TYPE.SEARCH,
       "searchform"
     );
     if (searchFormURL) {
-      let submission = searchFormURL.getSubmission("", this, aPurpose);
+      let submission = searchFormURL.getSubmission("", this, purpose);
 
       // If the rel=searchform URL is not type="get" (i.e. has postData),
       // ignore it, since we can only return a URL.

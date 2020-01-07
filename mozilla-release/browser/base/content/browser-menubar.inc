@@ -25,6 +25,14 @@
                 <menuitem id="menu_newPrivateWindow"
                           command="Tools:PrivateBrowsing"
                           key="key_privatebrowsing" data-l10n-id="menu-file-new-private-window"/>
+#ifdef NIGHTLY_BUILD
+                <menuitem id="menu_newFissionWindow"
+                          command="Tools:FissionWindow"
+                          accesskey="s" label="New Fission Window"/>
+                <menuitem id="menu_newNonFissionWindow"
+                          command="Tools:NonFissionWindow"
+                          accesskey="s" label="New Non-Fission Window"/>
+#endif
                 <menuitem id="menu_openLocation"
                           hidden="true"
                           command="Browser:OpenLocation"
@@ -407,7 +415,7 @@
               <menuitem id="menu_layout_debugger"
                         data-l10n-id="menu-tools-layout-debugger"
                         oncommand="toOpenWindowByType('mozapp:layoutdebug',
-                                          'chrome://layoutdebug/content/');"/>
+                                          'chrome://layoutdebug/content/layoutdebug.xhtml');"/>
 #endif
 #ifdef XP_MACOSX
 <!-- nsMenuBarX hides these and uses them to build the Application menu. -->
@@ -473,6 +481,7 @@
                           disabled="true"
                           oncommand="ReportFalseDeceptiveSite();"
                           onclick="checkForMiddleClick(this, event);"
+                          data-l10n-id="menu-help-not-deceptive"
                           hidden="true"/>
                 <menuseparator id="helpPolicySeparator"
                           hidden="true"/>

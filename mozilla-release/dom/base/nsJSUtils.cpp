@@ -14,6 +14,7 @@
 #include "nsJSUtils.h"
 #include "jsapi.h"
 #include "jsfriendapi.h"
+#include "js/BinASTFormat.h"  // JS::BinASTFormat
 #include "js/CompilationAndEvaluation.h"
 #include "js/Modules.h"  // JS::CompileModule{,DontInflate}, JS::GetModuleScript, JS::Module{Instantiate,Evaluate}
 #include "js/OffThreadScriptCompilation.h"
@@ -30,9 +31,6 @@
 #include "xpcpublic.h"
 #include "nsContentUtils.h"
 #include "nsGlobalWindow.h"
-#ifdef MOZ_XBL
-#  include "nsXBLPrototypeBinding.h"
-#endif
 #include "mozilla/CycleCollectedJSContext.h"
 #include "mozilla/StaticPrefs_browser.h"
 #include "mozilla/dom/BindingUtils.h"
@@ -374,7 +372,8 @@ nsresult nsJSUtils::ExecutionContext::DecodeBinAST(
   mWantsReturnValue = !aCompileOptions.noScriptRval;
 #  endif
 
-  mScript.set(JS::DecodeBinAST(mCx, aCompileOptions, aBuf, aLength));
+  mScript.set(JS::DecodeBinAST(mCx, aCompileOptions, aBuf, aLength,
+                               JS::BinASTFormat::Multipart));
 
   if (!mScript) {
     mSkip = true;
@@ -619,31 +618,6 @@ bool nsJSUtils::GetScopeChainForElement(
 
   return true;
 }
-
-#ifdef MOZ_XBL
-/* static */
-bool nsJSUtils::GetScopeChainForXBL(
-    JSContext* aCx, Element* aElement,
-    const nsXBLPrototypeBinding& aProtoBinding,
-    JS::MutableHandleVector<JSObject*> aScopeChain) {
-  if (!aElement) {
-    return true;
-  }
-
-  if (!aProtoBinding.SimpleScopeChain()) {
-    return GetScopeChainForElement(aCx, aElement, aScopeChain);
-  }
-
-  if (!AddScopeChainItem(aCx, aElement, aScopeChain)) {
-    return false;
-  }
-
-  if (!AddScopeChainItem(aCx, aElement->OwnerDoc(), aScopeChain)) {
-    return false;
-  }
-  return true;
-}
-#endif
 
 /* static */
 void nsJSUtils::ResetTimeZone() { JS::ResetTimeZone(); }

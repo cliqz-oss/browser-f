@@ -7,14 +7,19 @@
 const EventEmitter = require("devtools/shared/event-emitter");
 const promise = require("promise");
 const Services = require("Services");
-const {
-  DOMHelpers,
-} = require("resource://devtools/client/shared/DOMHelpers.jsm");
+const { DOMHelpers } = require("devtools/shared/dom-helpers");
 
 loader.lazyRequireGetter(
   this,
   "gDevToolsBrowser",
   "devtools/client/framework/devtools-browser",
+  true
+);
+
+loader.lazyRequireGetter(
+  this,
+  "PrivateBrowsingUtils",
+  "resource://gre/modules/PrivateBrowsingUtils.jsm",
   true
 );
 
@@ -80,12 +85,11 @@ BottomHost.prototype = {
     this.frame.setAttribute("src", "about:blank");
 
     const frame = await new Promise(resolve => {
-      const domHelper = new DOMHelpers(this.frame.contentWindow);
       const frameLoad = () => {
         this.emit("ready", this.frame);
         resolve(this.frame);
       };
-      domHelper.onceDOMReady(frameLoad);
+      DOMHelpers.onceDOMReady(this.frame.contentWindow, frameLoad);
       focusTab(this.hostTab);
     });
 
@@ -176,12 +180,11 @@ class SidebarHost {
     this.frame.setAttribute("src", "about:blank");
 
     const frame = await new Promise(resolve => {
-      const domHelper = new DOMHelpers(this.frame.contentWindow);
       const frameLoad = () => {
         this.emit("ready", this.frame);
         resolve(this.frame);
       };
-      domHelper.onceDOMReady(frameLoad);
+      DOMHelpers.onceDOMReady(this.frame.contentWindow, frameLoad);
       focusTab(this.hostTab);
     });
 
@@ -238,23 +241,35 @@ class RightHost extends SidebarHost {
 /**
  * Host object for the toolbox in a separate window
  */
-function WindowHost() {
+function WindowHost(hostTab) {
   this._boundUnload = this._boundUnload.bind(this);
-
+  this.hostTab = hostTab;
   EventEmitter.decorate(this);
 }
 
 WindowHost.prototype = {
   type: "window",
 
-  WINDOW_URL: "chrome://devtools/content/framework/toolbox-window.xul",
+  WINDOW_URL: "chrome://devtools/content/framework/toolbox-window.xhtml",
 
   /**
    * Create a new xul window to contain the toolbox.
    */
   create: function() {
     return new Promise(resolve => {
-      const flags = "chrome,centerscreen,resizable,dialog=no";
+      let flags = "chrome,centerscreen,resizable,dialog=no";
+
+      // If we are debugging a tab which is in a Private window, we must also
+      // set the private flag on the DevTools host window. Otherwise switching
+      // hosts between docked and window modes can fail due to incompatible
+      // docshell origin attributes. See 1581093.
+      if (
+        this.hostTab &&
+        PrivateBrowsingUtils.isWindowPrivate(this.hostTab.ownerGlobal)
+      ) {
+        flags += ",private";
+      }
+
       const win = Services.ww.openWindow(
         null,
         this.WINDOW_URL,

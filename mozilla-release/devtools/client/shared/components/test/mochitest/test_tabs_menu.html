@@ -21,6 +21,9 @@ Test all-tabs menu.
 <pre id="test">
 <script src="head.js" type="application/javascript"></script>
 <script type="application/javascript">
+
+'use strict'
+
 window.onload = async function () {
   try {
     const ReactDOM = browserRequire("devtools/client/shared/vendor/react-dom");
@@ -51,7 +54,7 @@ window.onload = async function () {
     }
 
     // Test panel.
-    let TabPanel = createFactory(TabPanelClass);
+    const TabPanel = createFactory(TabPanelClass);
 
     // Create a few panels.
     await addTabWithPanel(1);

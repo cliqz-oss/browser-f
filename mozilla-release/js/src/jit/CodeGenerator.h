@@ -62,6 +62,8 @@ class OutOfLineRegExpPrototypeOptimizable;
 class OutOfLineRegExpInstanceOptimizable;
 class OutOfLineLambdaArrow;
 class OutOfLineNaNToZero;
+class OutOfLineZeroIfNaN;
+class OutOfLineTypedArrayIndexToInt32;
 
 class CodeGenerator final : public CodeGeneratorSpecific {
   void generateArgumentsChecks(bool assert = false);
@@ -129,6 +131,7 @@ class CodeGenerator final : public CodeGeneratorSpecific {
   void visitOutOfLineIsConstructor(OutOfLineIsConstructor* ool);
 
   void visitOutOfLineNaNToZero(OutOfLineNaNToZero* ool);
+  void visitOutOfLineZeroIfNaN(OutOfLineZeroIfNaN* ool);
 
   void visitCheckOverRecursedFailure(CheckOverRecursedFailure* ool);
 
@@ -143,6 +146,9 @@ class CodeGenerator final : public CodeGeneratorSpecific {
 
   void visitOutOfLineNewArray(OutOfLineNewArray* ool);
   void visitOutOfLineNewObject(OutOfLineNewObject* ool);
+
+  void visitOutOfLineTypedArrayIndexToInt32(
+      OutOfLineTypedArrayIndexToInt32* ool);
 
  private:
   void emitPostWriteBarrier(const LAllocation* obj);

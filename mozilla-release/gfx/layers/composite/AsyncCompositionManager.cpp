@@ -396,7 +396,8 @@ void AsyncCompositionManager::AlignFixedAndStickyLayers(
     ScrollableLayerGuid::ViewID aTransformScrollId,
     const LayerToParentLayerMatrix4x4& aPreviousTransformForRoot,
     const LayerToParentLayerMatrix4x4& aCurrentTransformForRoot,
-    const ScreenMargin& aFixedLayerMargins, ClipPartsCache& aClipPartsCache) {
+    const ScreenMargin& aFixedLayerMargins, ClipPartsCache& aClipPartsCache,
+    const ScreenMargin& aGeckoFixedLayerMargins) {
   Layer* layer = aStartTraversalAt;
   bool needsAsyncTransformUnapplied = false;
   if (Maybe<ScrollableLayerGuid::ViewID> fixedTo = IsFixedOrSticky(layer)) {
@@ -414,14 +415,15 @@ void AsyncCompositionManager::AlignFixedAndStickyLayers(
       AlignFixedAndStickyLayers(aTransformedSubtreeRoot, child,
                                 aTransformScrollId, aPreviousTransformForRoot,
                                 aCurrentTransformForRoot, aFixedLayerMargins,
-                                aClipPartsCache);
+                                aClipPartsCache, aGeckoFixedLayerMargins);
     }
     return;
   }
 
   AdjustFixedOrStickyLayer(aTransformedSubtreeRoot, layer, aTransformScrollId,
                            aPreviousTransformForRoot, aCurrentTransformForRoot,
-                           aFixedLayerMargins, aClipPartsCache);
+                           aFixedLayerMargins, aClipPartsCache,
+                           aGeckoFixedLayerMargins);
 }
 
 void AsyncCompositionManager::AdjustFixedOrStickyLayer(
@@ -429,7 +431,8 @@ void AsyncCompositionManager::AdjustFixedOrStickyLayer(
     ScrollableLayerGuid::ViewID aTransformScrollId,
     const LayerToParentLayerMatrix4x4& aPreviousTransformForRoot,
     const LayerToParentLayerMatrix4x4& aCurrentTransformForRoot,
-    const ScreenMargin& aFixedLayerMargins, ClipPartsCache& aClipPartsCache) {
+    const ScreenMargin& aFixedLayerMargins, ClipPartsCache& aClipPartsCache,
+    const ScreenMargin& aGeckoFixedLayerMargins) {
   Layer* layer = aFixedOrSticky;
 
   // Insert a translation so that the position of the anchor point is the same
@@ -485,8 +488,10 @@ void AsyncCompositionManager::AdjustFixedOrStickyLayer(
 
   // Offset the layer's anchor point to make sure fixed position content
   // respects content document fixed position margins.
-  ScreenPoint offset = ComputeFixedMarginsOffset(
-      aFixedLayerMargins, layer->GetFixedPositionSides());
+  ScreenPoint offset = ComputeFixedMarginsOffset(aFixedLayerMargins,
+                                                 layer->GetFixedPositionSides(),
+                                                 aGeckoFixedLayerMargins);
+
   // Fixed margins only apply to layers fixed to the root, so we can view
   // the offset in layer space.
   LayerPoint offsetAnchor =
@@ -567,7 +572,7 @@ void AsyncCompositionManager::AdjustFixedOrStickyLayer(
       AlignFixedAndStickyLayers(aTransformedSubtreeRoot, child,
                                 aTransformScrollId, aPreviousTransformForRoot,
                                 newTransform, aFixedLayerMargins,
-                                aClipPartsCache);
+                                aClipPartsCache, aGeckoFixedLayerMargins);
     }
   }
 }
@@ -630,12 +635,16 @@ static void ApplyAnimatedValue(
     case eCSSProperty_rotate:
     case eCSSProperty_scale:
     case eCSSProperty_translate:
-    case eCSSProperty_transform: {
+    case eCSSProperty_transform:
+    case eCSSProperty_offset_path:
+    case eCSSProperty_offset_distance:
+    case eCSSProperty_offset_rotate:
+    case eCSSProperty_offset_anchor: {
       const TransformData& transformData = aAnimationData.ref();
 
       Matrix4x4 frameTransform =
-          AnimationHelper::ServoAnimationValueToMatrix4x4(aValues,
-                                                          transformData);
+          AnimationHelper::ServoAnimationValueToMatrix4x4(
+              aValues, transformData, aLayer->CachedMotionPath());
 
       Matrix4x4 transform = FrameTransformToTransformInDevice(
           frameTransform, aLayer, transformData);
@@ -715,7 +724,11 @@ static bool SampleAnimations(Layer* aLayer,
           case eCSSProperty_rotate:
           case eCSSProperty_scale:
           case eCSSProperty_translate:
-          case eCSSProperty_transform: {
+          case eCSSProperty_transform:
+          case eCSSProperty_offset_path:
+          case eCSSProperty_offset_distance:
+          case eCSSProperty_offset_rotate:
+          case eCSSProperty_offset_anchor: {
             MOZ_ASSERT(
                 layer->AsHostLayer()->GetShadowTransformSetByAnimation());
             MOZ_ASSERT(previousValue);
@@ -723,8 +736,8 @@ static bool SampleAnimations(Layer* aLayer,
             const TransformData& transformData =
                 lastPropertyAnimationGroup.mAnimationData.ref();
             Matrix4x4 frameTransform =
-                AnimationHelper::ServoAnimationValueToMatrix4x4(animationValues,
-                                                                transformData);
+                AnimationHelper::ServoAnimationValueToMatrix4x4(
+                    animationValues, transformData, layer->CachedMotionPath());
             Matrix4x4 transformInDevice = FrameTransformToTransformInDevice(
                 frameTransform, layer, transformData);
             MOZ_ASSERT(previousValue->Transform()
@@ -1123,10 +1136,10 @@ bool AsyncCompositionManager::ApplyAsyncContentTransformToTree(
             LayerToParentLayerMatrix4x4 transformWithoutOverscrollOrOmta =
                 layer->GetTransformTyped() *
                 CompleteAsyncTransform(AdjustForClip(asyncTransform, layer));
-            AlignFixedAndStickyLayers(layer, layer, metrics.GetScrollId(),
-                                      oldTransform,
-                                      transformWithoutOverscrollOrOmta,
-                                      fixedLayerMargins, clipPartsCache);
+            AlignFixedAndStickyLayers(
+                layer, layer, metrics.GetScrollId(), oldTransform,
+                transformWithoutOverscrollOrOmta, fixedLayerMargins,
+                clipPartsCache, sampler->GetGeckoFixedLayerMargins());
 
             // Combine the local clip with the ancestor scrollframe clip. This
             // is not included in the async transform above, since the ancestor
@@ -1208,7 +1221,8 @@ bool AsyncCompositionManager::ApplyAsyncContentTransformToTree(
             AdjustFixedOrStickyLayer(zoomContainer, layer,
                                      sampler->GetGuid(*zoomedMetrics).mScrollId,
                                      emptyTransform, emptyTransform,
-                                     marginsForFixedLayer, clipPartsCache);
+                                     marginsForFixedLayer, clipPartsCache,
+                                     sampler->GetGeckoFixedLayerMargins());
           }
         }
 
@@ -1464,24 +1478,27 @@ ScreenMargin AsyncCompositionManager::GetFixedLayerMargins() const {
 
 /*static*/
 ScreenPoint AsyncCompositionManager::ComputeFixedMarginsOffset(
-    const ScreenMargin& aFixedMargins, SideBits aFixedSides) {
+    const ScreenMargin& aCompositorFixedLayerMargins, SideBits aFixedSides,
+    const ScreenMargin& aGeckoFixedLayerMargins) {
   // Work out the necessary translation, in screen space.
   ScreenPoint translation;
 
-  if ((aFixedSides & eSideBitsLeftRight) == eSideBitsLeftRight) {
-    translation.x += (aFixedMargins.left - aFixedMargins.right) / 2;
-  } else if (aFixedSides & eSideBitsRight) {
-    translation.x -= aFixedMargins.right;
-  } else if (aFixedSides & eSideBitsLeft) {
-    translation.x += aFixedMargins.left;
+  ScreenMargin effectiveMargin =
+      aCompositorFixedLayerMargins - aGeckoFixedLayerMargins;
+  if ((aFixedSides & SideBits::eLeftRight) == SideBits::eLeftRight) {
+    translation.x += (effectiveMargin.left - effectiveMargin.right) / 2;
+  } else if (aFixedSides & SideBits::eRight) {
+    translation.x -= effectiveMargin.right;
+  } else if (aFixedSides & SideBits::eLeft) {
+    translation.x += effectiveMargin.left;
   }
 
-  if ((aFixedSides & eSideBitsTopBottom) == eSideBitsTopBottom) {
-    translation.y += (aFixedMargins.top - aFixedMargins.bottom) / 2;
-  } else if (aFixedSides & eSideBitsBottom) {
-    translation.y -= aFixedMargins.bottom;
-  } else if (aFixedSides & eSideBitsTop) {
-    translation.y += aFixedMargins.top;
+  if ((aFixedSides & SideBits::eTopBottom) == SideBits::eTopBottom) {
+    translation.y += (effectiveMargin.top - effectiveMargin.bottom) / 2;
+  } else if (aFixedSides & SideBits::eBottom) {
+    translation.y -= effectiveMargin.bottom;
+  } else if (aFixedSides & SideBits::eTop) {
+    translation.y += effectiveMargin.top;
   }
 
   return translation;

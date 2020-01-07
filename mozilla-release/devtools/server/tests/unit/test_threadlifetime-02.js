@@ -12,26 +12,17 @@ var gDebuggee;
 var gClient;
 var gThreadFront;
 
-function run_test() {
-  Services.prefs.setBoolPref("security.allow_eval_with_system_principal", true);
-  registerCleanupFunction(() => {
-    Services.prefs.clearUserPref("security.allow_eval_with_system_principal");
-  });
-  initTestDebuggerServer();
-  gDebuggee = addTestGlobal("test-grips");
-  gClient = new DebuggerClient(DebuggerServer.connectPipe());
-  gClient.connect().then(function() {
-    attachTestTabAndResume(gClient, "test-grips", function(
-      response,
-      targetFront,
-      threadFront
-    ) {
+add_task(
+  threadFrontTest(
+    async ({ threadFront, debuggee, client }) => {
       gThreadFront = threadFront;
+      gClient = client;
+      gDebuggee = debuggee;
       test_thread_lifetime();
-    });
-  });
-  do_test_pending();
-}
+    },
+    { waitForFinish: true }
+  )
+);
 
 function test_thread_lifetime() {
   gThreadFront.once("paused", async function(packet) {
@@ -48,9 +39,9 @@ function test_thread_lifetime() {
       // Verify that the promoted actor is returned again.
       Assert.equal(pauseGrip.actor, packet.frame.arguments[0].actor);
       // Now that we've resumed, release the thread-lifetime grip.
-      const objFront = new ObjectClient(gClient, pauseGrip);
+      const objFront = new ObjectFront(gClient, pauseGrip);
       await objFront.release();
-      const objFront2 = new ObjectClient(gClient, pauseGrip);
+      const objFront2 = new ObjectFront(gClient, pauseGrip);
 
       try {
         await objFront2
@@ -58,7 +49,7 @@ function test_thread_lifetime() {
           .catch(function(response) {
             Assert.ok(!!response.match(/noSuchActor/));
             gThreadFront.resume().then(function() {
-              finishClient(gClient);
+              threadFrontTestFinished();
             });
             throw new Error();
           });

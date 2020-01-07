@@ -21,7 +21,7 @@
 
 #include "builtin/Array.h"
 #include "builtin/BigInt.h"
-#ifdef ENABLE_INTL_API
+#ifdef JS_HAS_INTL_API
 #  include "builtin/intl/Collator.h"
 #  include "builtin/intl/DateTimeFormat.h"
 #  include "builtin/intl/IntlObject.h"
@@ -60,8 +60,11 @@
 #include "vm/AsyncFunction.h"
 #include "vm/AsyncIteration.h"
 #include "vm/BigIntType.h"
+#include "vm/BytecodeIterator.h"
+#include "vm/BytecodeLocation.h"
 #include "vm/Compression.h"
 #include "vm/DateObject.h"
+#include "vm/FrameIter.h"  // js::ScriptFrameIter
 #include "vm/GeneratorObject.h"
 #include "vm/Interpreter.h"
 #include "vm/Iteration.h"
@@ -78,6 +81,8 @@
 
 #include "gc/PrivateIterators-inl.h"
 #include "vm/BooleanObject-inl.h"
+#include "vm/BytecodeIterator-inl.h"
+#include "vm/BytecodeLocation-inl.h"
 #include "vm/Compartment-inl.h"
 #include "vm/JSAtom-inl.h"
 #include "vm/JSFunction-inl.h"
@@ -149,13 +154,15 @@ static bool intrinsic_IsCrossRealmArrayConstructor(JSContext* cx, unsigned argc,
   return true;
 }
 
-static bool intrinsic_ToInteger(JSContext* cx, unsigned argc, Value* vp) {
+static bool intrinsic_ToIntegerPositiveZero(JSContext* cx, unsigned argc,
+                                            Value* vp) {
   CallArgs args = CallArgsFromVp(argc, vp);
   double result;
   if (!ToInteger(cx, args[0], &result)) {
     return false;
   }
-  args.rval().setNumber(result);
+  // Add zero to convert -0 to +0.
+  args.rval().setNumber(result + 0.0);
   return true;
 }
 
@@ -384,6 +391,15 @@ static bool intrinsic_ThrowSyntaxError(JSContext* cx, unsigned argc,
   return false;
 }
 
+static bool intrinsic_ThrowAggregateError(JSContext* cx, unsigned argc,
+                                          Value* vp) {
+  CallArgs args = CallArgsFromVp(argc, vp);
+  MOZ_ASSERT(args.length() >= 1);
+
+  ThrowErrorWithType(cx, JSEXN_AGGREGATEERR, args);
+  return false;
+}
+
 static bool intrinsic_ThrowInternalError(JSContext* cx, unsigned argc,
                                          Value* vp) {
   CallArgs args = CallArgsFromVp(argc, vp);
@@ -517,7 +533,7 @@ static bool intrinsic_MakeDefaultConstructor(JSContext* cx, unsigned argc,
 
   RootedFunction ctor(cx, &args[0].toObject().as<JSFunction>());
 
-  ctor->nonLazyScript()->setIsDefaultClassConstructor();
+  ctor->baseScript()->setIsDefaultClassConstructor();
 
   // Because self-hosting code does not allow top-level lexicals,
   // class constructors are class expressions in top-level vars.
@@ -1563,6 +1579,24 @@ static bool intrinsic_StringReplaceString(JSContext* cx, unsigned argc,
   return true;
 }
 
+static bool intrinsic_StringReplaceAllString(JSContext* cx, unsigned argc,
+                                             Value* vp) {
+  CallArgs args = CallArgsFromVp(argc, vp);
+  MOZ_ASSERT(args.length() == 3);
+
+  RootedString string(cx, args[0].toString());
+  RootedString pattern(cx, args[1].toString());
+  RootedString replacement(cx, args[2].toString());
+  JSString* result =
+      str_replaceAll_string_raw(cx, string, pattern, replacement);
+  if (!result) {
+    return false;
+  }
+
+  args.rval().setString(result);
+  return true;
+}
+
 bool js::intrinsic_StringSplitString(JSContext* cx, unsigned argc, Value* vp) {
   CallArgs args = CallArgsFromVp(argc, vp);
   MOZ_ASSERT(args.length() == 2);
@@ -1727,7 +1761,7 @@ bool js::ReportIncompatibleSelfHostedMethod(JSContext* cx,
   return false;
 }
 
-#ifdef ENABLE_INTL_API
+#ifdef JS_HAS_INTL_API
 /**
  * Returns the default locale as a well-formed, but not necessarily
  * canonicalized, BCP-47 language tag.
@@ -1778,23 +1812,11 @@ static bool intrinsic_IsRuntimeDefaultLocale(JSContext* cx, unsigned argc,
     return false;
   }
 
-  bool equals;
-  if (str->length() == strlen(locale)) {
-    JS::AutoCheckCannotGC nogc;
-    const Latin1Char* latin1Locale =
-        reinterpret_cast<const Latin1Char*>(locale);
-    equals =
-        str->hasLatin1Chars()
-            ? EqualChars(str->latin1Chars(nogc), latin1Locale, str->length())
-            : EqualChars(str->twoByteChars(nogc), latin1Locale, str->length());
-  } else {
-    equals = false;
-  }
-
+  bool equals = StringEqualsAscii(str, locale);
   args.rval().setBoolean(equals);
   return true;
 }
-#endif  // ENABLE_INTL_API
+#endif  // JS_HAS_INTL_API
 
 static bool intrinsic_ThrowArgTypeNotObject(JSContext* cx, unsigned argc,
                                             Value* vp) {
@@ -2141,7 +2163,8 @@ static const JSFunctionSpec intrinsic_functions[] = {
     JS_INLINABLE_FN("IsCrossRealmArrayConstructor",
                     intrinsic_IsCrossRealmArrayConstructor, 1, 0,
                     IntrinsicIsCrossRealmArrayConstructor),
-    JS_INLINABLE_FN("ToInteger", intrinsic_ToInteger, 1, 0, IntrinsicToInteger),
+    JS_INLINABLE_FN("ToIntegerPositiveZero", intrinsic_ToIntegerPositiveZero, 1,
+                    0, IntrinsicToIntegerPositiveZero),
     JS_INLINABLE_FN("ToString", intrinsic_ToString, 1, 0, IntrinsicToString),
     JS_FN("ToSource", intrinsic_ToSource, 1, 0),
     JS_FN("ToPropertyKey", intrinsic_ToPropertyKey, 1, 0),
@@ -2155,6 +2178,7 @@ static const JSFunctionSpec intrinsic_functions[] = {
     JS_FN("ThrowRangeError", intrinsic_ThrowRangeError, 4, 0),
     JS_FN("ThrowTypeError", intrinsic_ThrowTypeError, 4, 0),
     JS_FN("ThrowSyntaxError", intrinsic_ThrowSyntaxError, 4, 0),
+    JS_FN("ThrowAggregateError", intrinsic_ThrowAggregateError, 4, 0),
     JS_FN("ThrowInternalError", intrinsic_ThrowInternalError, 4, 0),
     JS_FN("GetErrorMessage", intrinsic_GetErrorMessage, 1, 0),
     JS_FN("CreateModuleSyntaxError", intrinsic_CreateModuleSyntaxError, 4, 0),
@@ -2350,11 +2374,8 @@ static const JSFunctionSpec intrinsic_functions[] = {
           CallNonGenericSelfhostedMethod<Is<SetObject>>, 2, 0),
 
     // See builtin/TypedObject.h for descriptors of the typedobj functions.
-    JS_FN("NewOpaqueTypedObject", js::NewOpaqueTypedObject, 1, 0),
+    JS_FN("NewOpaqueTypedObject", js::NewOpaqueTypedObject, 3, 0),
     JS_FN("NewDerivedTypedObject", js::NewDerivedTypedObject, 3, 0),
-    JS_FN("TypedObjectByteOffset", TypedObject::GetByteOffset, 1, 0),
-    JS_FN("AttachTypedObject", js::AttachTypedObject, 3, 0),
-    JS_FN("TypedObjectIsAttached", js::TypedObjectIsAttached, 1, 0),
     JS_FN("TypedObjectTypeDescr", js::TypedObjectTypeDescr, 1, 0),
     JS_FN("ClampToUint8", js::ClampToUint8, 1, 0),
     JS_FN("GetTypedObjectModule", js::GetTypedObjectModule, 0, 0),
@@ -2363,17 +2384,10 @@ static const JSFunctionSpec intrinsic_functions[] = {
                     IntrinsicObjectIsTypeDescr),
     JS_INLINABLE_FN("ObjectIsTypedObject", js::ObjectIsTypedObject, 1, 0,
                     IntrinsicObjectIsTypedObject),
-    JS_INLINABLE_FN("ObjectIsOpaqueTypedObject", js::ObjectIsOpaqueTypedObject,
-                    1, 0, IntrinsicObjectIsOpaqueTypedObject),
-    JS_INLINABLE_FN("ObjectIsTransparentTypedObject",
-                    js::ObjectIsTransparentTypedObject, 1, 0,
-                    IntrinsicObjectIsTransparentTypedObject),
     JS_INLINABLE_FN("TypeDescrIsArrayType", js::TypeDescrIsArrayType, 1, 0,
                     IntrinsicTypeDescrIsArrayType),
     JS_INLINABLE_FN("TypeDescrIsSimpleType", js::TypeDescrIsSimpleType, 1, 0,
                     IntrinsicTypeDescrIsSimpleType),
-    JS_INLINABLE_FN("SetTypedObjectOffset", js::SetTypedObjectOffset, 2, 0,
-                    IntrinsicSetTypedObjectOffset),
     JS_FN("IsBoxedWasmAnyRef", js::IsBoxedWasmAnyRef, 1, 0),
     JS_FN("IsBoxableWasmAnyRef", js::IsBoxableWasmAnyRef, 1, 0),
     JS_FN("BoxWasmAnyRef", js::BoxWasmAnyRef, 1, 0),
@@ -2396,7 +2410,7 @@ static const JSFunctionSpec intrinsic_functions[] = {
 // clang-format on
 #undef LOAD_AND_STORE_REFERENCE_FN_DECLS
 
-#ifdef ENABLE_INTL_API
+#ifdef JS_HAS_INTL_API
     // See builtin/intl/*.h for descriptions of the intl_* functions.
     JS_FN("intl_availableCalendars", intl_availableCalendars, 1, 0),
     JS_FN("intl_availableCollations", intl_availableCollations, 1, 0),
@@ -2436,6 +2450,8 @@ static const JSFunctionSpec intrinsic_functions[] = {
           intl_ValidateAndCanonicalizeLanguageTag, 2, 0),
     JS_FN("intl_TryValidateAndCanonicalizeLanguageTag",
           intl_TryValidateAndCanonicalizeLanguageTag, 1, 0),
+    JS_FN("intl_ValidateAndCanonicalizeUnicodeExtensionType",
+          intl_ValidateAndCanonicalizeUnicodeExtensionType, 2, 0),
 
     JS_INLINABLE_FN("GuardToCollator", intrinsic_GuardToBuiltin<CollatorObject>,
                     1, 0, IntlGuardToCollator),
@@ -2475,7 +2491,7 @@ static const JSFunctionSpec intrinsic_functions[] = {
 
     JS_FN("RuntimeDefaultLocale", intrinsic_RuntimeDefaultLocale, 0, 0),
     JS_FN("IsRuntimeDefaultLocale", intrinsic_IsRuntimeDefaultLocale, 1, 0),
-#endif  // ENABLE_INTL_API
+#endif  // JS_HAS_INTL_API
 
     JS_FN("GetOwnPropertyDescriptorToArray", GetOwnPropertyDescriptorToArray, 2,
           0),
@@ -2483,6 +2499,9 @@ static const JSFunctionSpec intrinsic_functions[] = {
     JS_INLINABLE_FN("IsRegExpObject",
                     intrinsic_IsInstanceOfBuiltin<RegExpObject>, 1, 0,
                     IsRegExpObject),
+    JS_INLINABLE_FN("IsPossiblyWrappedRegExpObject",
+                    intrinsic_IsPossiblyWrappedInstanceOfBuiltin<RegExpObject>,
+                    1, 0, IsPossiblyWrappedRegExpObject),
     JS_FN("CallRegExpMethodIfWrapped",
           CallNonGenericSelfhostedMethod<Is<RegExpObject>>, 2, 0),
     JS_INLINABLE_FN("RegExpMatcher", RegExpMatcher, 3, 0, RegExpMatcher),
@@ -2503,6 +2522,7 @@ static const JSFunctionSpec intrinsic_functions[] = {
     JS_FN("FlatStringSearch", FlatStringSearch, 2, 0),
     JS_INLINABLE_FN("StringReplaceString", intrinsic_StringReplaceString, 3, 0,
                     IntrinsicStringReplaceString),
+    JS_FN("StringReplaceAllString", intrinsic_StringReplaceAllString, 3, 0),
     JS_INLINABLE_FN("StringSplitString", intrinsic_StringSplitString, 2, 0,
                     IntrinsicStringSplitString),
     JS_FN("StringSplitStringLimit", intrinsic_StringSplitStringLimit, 3, 0),
@@ -2658,14 +2678,12 @@ static bool VerifyGlobalNames(JSContext* cx, Handle<GlobalObject*> shg) {
   for (auto iter = cx->zone()->cellIter<JSScript>();
        !iter.done() && !nameMissing; iter.next()) {
     JSScript* script = iter;
-    jsbytecode* end = script->codeEnd();
-    jsbytecode* nextpc;
-    for (jsbytecode* pc = script->code(); pc < end; pc = nextpc) {
-      JSOp op = JSOp(*pc);
-      nextpc = pc + GetBytecodeLength(pc);
+
+    for (BytecodeLocation loc : AllBytecodesIterable(script)) {
+      JSOp op = loc.getOp();
 
       if (op == JSOP_GETINTRINSIC) {
-        PropertyName* name = script->getName(pc);
+        PropertyName* name = loc.getPropertyName(script);
         id = NameToId(name);
 
         if (!shg->lookupPure(id)) {
@@ -2817,7 +2835,7 @@ static bool CloneProperties(JSContext* cx, HandleNativeObject selfHostedObject,
   }
 
   // Now our shapes are in last-to-first order, so....
-  Reverse(shapes.begin(), shapes.end());
+  std::reverse(shapes.begin(), shapes.end());
   for (size_t i = 0; i < shapes.length(); ++i) {
     MOZ_ASSERT(!shapes[i]->isAccessorShape(),
                "Can't handle cloning accessors here yet.");
@@ -3062,7 +3080,7 @@ bool JSRuntime::createLazySelfHostedFunctionClone(
     return false;
   }
   fun->setIsSelfHostedBuiltin();
-  fun->initSelfHostLazyScript(&cx->runtime()->selfHostedLazyScript.ref());
+  fun->initSelfHostedLazyScript(&cx->runtime()->selfHostedLazyScript.ref());
   SetClonedSelfHostedFunctionName(fun, selfHostedName);
   return true;
 }
@@ -3107,7 +3125,7 @@ bool JSRuntime::cloneSelfHostedFunctionScript(JSContext* cx,
   MOZ_ASSERT(!targetFun->isInterpretedLazy());
 
   MOZ_ASSERT(sourceFun->nargs() == targetFun->nargs());
-  MOZ_ASSERT(sourceScript->hasRest() == targetFun->nonLazyScript()->hasRest());
+  MOZ_ASSERT(sourceScript->hasRest() == targetFun->baseScript()->hasRest());
   MOZ_ASSERT(targetFun->strict(), "Self-hosted builtins must be strict");
 
   // The target function might have been relazified after its flags changed.

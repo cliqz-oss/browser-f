@@ -25,7 +25,8 @@ const SEARCH_AD_CLICKS_SCALAR = "browser.search.ad_clicks";
  * - {<string>} name
  *     Details for a particular provider with the string name.
  * - {regexp} <string>.regexp
- *     The regular expression used to match the url for the search providers main page.
+ *     The regular expression used to match the url for the search providers
+ *     main page.
  * - {string} <string>.queryParam
  *     The query parameter name that indicates a search has been made.
  * - {string} [<string>.codeParam]
@@ -33,11 +34,29 @@ const SEARCH_AD_CLICKS_SCALAR = "browser.search.ad_clicks";
  * - {array} [<string>.codePrefixes]
  *     An array of the possible string prefixes for a codeParam, indicating a
  *     partner search.
- * - {array} [<string>.followOnParams]
+ * - {array} [<string>.followonParams]
  *     An array of parameters name that indicates this is a follow-on search.
  * - {array} [<string>.extraAdServersRegexps]
  *     An array of regular expressions used to determine if a link on a search
- *     page mightbe an advert.
+ *     page might be an advert.
+ * - {array} [<object>.followonCookies]
+ *     An array of cookie details, which should look like:
+ *     - {string} [extraCodeParam]
+ *         The query parameter name that indicates an extra search provider's
+ *         code.
+ *     - {array} [<string>.extraCodePrefixes]
+ *         An array of the possible string prefixes for a codeParam, indicating
+ *         a partner search.
+ *     - {string} host
+ *         Host name to which the cookie is linked to.
+ *     - {string} name
+ *         Name of the cookie to look for that should contain the search
+ *         provider's code.
+ *     - {string} codeParam
+ *         The cookie parameter name that indicates a search provider's code.
+ *     - {array} <string>.codePrefixes
+ *         An array of the possible string prefixes for a codeParam, indicating
+ *         a partner search.
  */
 const SEARCH_PROVIDER_INFO = {
   google: {
@@ -47,7 +66,7 @@ const SEARCH_PROVIDER_INFO = {
     codePrefixes: ["firefox"],
     followonParams: ["oq", "ved", "ei"],
     extraAdServersRegexps: [
-      /^https:\/\/www\.googleadservices\.com\/(?:pagead\/)?aclk/,
+      /^https:\/\/www\.google(?:adservices)?\.com\/(?:pagead\/)?aclk/,
     ],
   },
   duckduckgo: {
@@ -55,6 +74,10 @@ const SEARCH_PROVIDER_INFO = {
     queryParam: "q",
     codeParam: "t",
     codePrefixes: ["ff"],
+    extraAdServersRegexps: [
+      /^https:\/\/duckduckgo.com\/y\.js/,
+      /^https:\/\/www\.amazon\.(?:[a-z.]{2,24}).*(?:tag=duckduckgo-)/,
+    ],
   },
   yahoo: {
     regexp: /^https:\/\/(?:.*)search\.yahoo\.com\/search/,
@@ -72,6 +95,20 @@ const SEARCH_PROVIDER_INFO = {
     queryParam: "q",
     codeParam: "pc",
     codePrefixes: ["MOZ", "MZ"],
+    followonCookies: [
+      {
+        extraCodeParam: "form",
+        extraCodePrefixes: ["QBRE"],
+        host: "www.bing.com",
+        name: "SRCHS",
+        codeParam: "PC",
+        codePrefixes: ["MOZ", "MZ"],
+      },
+    ],
+    extraAdServersRegexps: [
+      /^https:\/\/www\.bing\.com\/acli?c?k/,
+      /^https:\/\/www\.bing\.com\/fd\/ls\/GLinkPingPost\.aspx.*acli?c?k/,
+    ],
   },
 };
 
@@ -92,7 +129,7 @@ XPCOMUtils.defineLazyPreferenceGetter(
  */
 class TelemetryHandler {
   constructor() {
-    // _browserInfoByUrl is a map of tracked search urls to objects containing:
+    // _browserInfoByURL is a map of tracked search urls to objects containing:
     // * {object} info
     //   the search provider information associated with the url.
     // * {WeakSet} browsers
@@ -105,12 +142,13 @@ class TelemetryHandler {
     // The manual count is because WeakSet doesn't give us size/length
     // information, but we want to know when we can clean up our associated
     // entry.
-    this._browserInfoByUrl = new Map();
+    this._browserInfoByURL = new Map();
     this._initialized = false;
     this.__searchProviderInfo = null;
     this._contentHandler = new ContentHandler({
-      browserInfoByUrl: this._browserInfoByUrl,
-      getProviderInfoForUrl: this._getProviderInfoForUrl.bind(this),
+      browserInfoByURL: this._browserInfoByURL,
+      findBrowserItemForURL: (...args) => this._findBrowserItemForURL(...args),
+      getProviderInfoForURL: (...args) => this._getProviderInfoForURL(...args),
     });
   }
 
@@ -205,12 +243,12 @@ class TelemetryHandler {
 
     // If we have a code, then we also track this for potential ad clicks.
     if (info.code) {
-      let item = this._browserInfoByUrl.get(url);
+      let item = this._browserInfoByURL.get(url);
       if (item) {
         item.browsers.add(browser);
         item.count++;
       } else {
-        this._browserInfoByUrl.set(url, {
+        this._browserInfoByURL.set(url, {
           browsers: new WeakSet([browser]),
           info,
           count: 1,
@@ -226,16 +264,97 @@ class TelemetryHandler {
    *                         tracked.
    */
   stopTrackingBrowser(browser) {
-    for (let [url, item] of this._browserInfoByUrl) {
+    for (let [url, item] of this._browserInfoByURL) {
       if (item.browsers.has(browser)) {
         item.browsers.delete(browser);
         item.count--;
       }
 
       if (!item.count) {
-        this._browserInfoByUrl.delete(url);
+        this._browserInfoByURL.delete(url);
       }
     }
+  }
+
+  /**
+   * Parts of the URL, like search params and hashes, may be mutated by scripts
+   * on a page we're tracking. Since we don't want to keep track of that
+   * ourselves in order to keep the list of browser objects a weak-referenced
+   * set, we do optional fuzzy matching of URLs to fetch the most relevant item
+   * that contains tracking information.
+   *
+   * @param {string} url URL to fetch the tracking data for.
+   * @returns {object} Map containing the following members:
+   *   - {WeakSet} browsers
+   *     Set of browser elements that belong to `url`.
+   *   - {object} info
+   *     Info dictionary as returned by `_checkURLForSerpMatch`.
+   *   - {number} count
+   *     The number of browser element we can most accurately tell we're
+   *     tracking, since they're inside a WeakSet.
+   */
+  _findBrowserItemForURL(url) {
+    try {
+      url = new URL(url);
+    } catch (ex) {
+      return null;
+    }
+
+    const compareURLs = (url1, url2) => {
+      // In case of an exact match, well, that's an obvious winner.
+      if (url1.href == url2.href) {
+        return Infinity;
+      }
+
+      // Each step we get closer to the two URLs being the same, we increase the
+      // score. The consumer of this method will use these scores to see which
+      // of the URLs is the best match.
+      let score = 0;
+      if (url1.hostname == url2.hostname) {
+        ++score;
+        if (url1.pathname == url2.pathname) {
+          ++score;
+          for (let [key1, value1] of url1.searchParams) {
+            // Let's not fuss about the ordering of search params, since the
+            // score effect will solve that.
+            if (url2.searchParams.has(key1)) {
+              ++score;
+              if (url2.searchParams.get(key1) == value1) {
+                ++score;
+              }
+            }
+          }
+          if (url1.hash == url2.hash) {
+            ++score;
+          }
+        }
+      }
+      return score;
+    };
+
+    let item;
+    let currentBestMatch = 0;
+    for (let [trackingURL, candidateItem] of this._browserInfoByURL) {
+      if (currentBestMatch === Infinity) {
+        break;
+      }
+      try {
+        // Make sure to cache the parsed URL object, since there's no reason to
+        // do it twice.
+        trackingURL =
+          candidateItem._trackingURL ||
+          (candidateItem._trackingURL = new URL(trackingURL));
+      } catch (ex) {
+        continue;
+      }
+      let score = compareURLs(url, trackingURL);
+      if (score > currentBestMatch) {
+        item = candidateItem;
+        currentBestMatch = score;
+      }
+    }
+
+    return item;
   }
 
   // nsIWindowMediatorListener
@@ -244,10 +363,10 @@ class TelemetryHandler {
    * This is called when a new window is opened, and handles registration of
    * that window if it is a browser window.
    *
-   * @param {nsIXULWindow} xulWin The xul window that was opened.
+   * @param {nsIAppWindow} appWin The xul window that was opened.
    */
-  onOpenWindow(xulWin) {
-    let win = xulWin.docShell.domWindow;
+  onOpenWindow(appWin) {
+    let win = appWin.docShell.domWindow;
     win.addEventListener(
       "load",
       () => {
@@ -268,10 +387,10 @@ class TelemetryHandler {
    * Listener that is called when a window is closed, and handles deregistration of
    * that window if it is a browser window.
    *
-   * @param {nsIXULWindow} xulWin The xul window that was closed.
+   * @param {nsIAppWindow} appWin The xul window that was closed.
    */
-  onCloseWindow(xulWin) {
-    let win = xulWin.docShell.domWindow;
+  onCloseWindow(appWin) {
+    let win = appWin.docShell.domWindow;
 
     if (
       win.document.documentElement.getAttribute("windowtype") !=
@@ -316,7 +435,7 @@ class TelemetryHandler {
    *   ad server regexp to match instead of the main regexp.
    * @returns {array|null} Returns an array of provider name and the provider information.
    */
-  _getProviderInfoForUrl(url, useOnlyExtraAdServers = false) {
+  _getProviderInfoForURL(url, useOnlyExtraAdServers = false) {
     if (useOnlyExtraAdServers) {
       return Object.entries(this._searchProviderInfo).find(([_, info]) => {
         if (info.extraAdServersRegexps) {
@@ -344,7 +463,7 @@ class TelemetryHandler {
    *   returns an object of strings for provider, code and type.
    */
   _checkURLForSerpMatch(url) {
-    let info = this._getProviderInfoForUrl(url);
+    let info = this._getProviderInfoForURL(url);
     if (!info) {
       return null;
     }
@@ -371,28 +490,40 @@ class TelemetryHandler {
         } else {
           type = "sap";
         }
-      } else if (provider == "bing") {
-        // Bing requires lots of extra work related to cookies.
-        let secondaryCode = queries.get("form");
-        // This code is used for all Bing follow-on searches.
-        if (secondaryCode == "QBRE") {
+      } else if (searchProviderInfo.followonCookies) {
+        // Especially Bing requires lots of extra work related to cookies.
+        for (let followonCookie of searchProviderInfo.followonCookies) {
+          if (followonCookie.extraCodeParam) {
+            let eCode = queries.get(followonCookie.extraCodeParam);
+            if (
+              !eCode ||
+              !followonCookie.extraCodePrefixes.some(p => eCode.startsWith(p))
+            ) {
+              continue;
+            }
+          }
+
+          // If this cookie is present, it's probably an SAP follow-on.
+          // This might be an organic follow-on in the same session, but there
+          // is no way to tell the difference.
           for (let cookie of Services.cookies.getCookiesFromHost(
-            "www.bing.com",
+            followonCookie.host,
             {}
           )) {
-            if (cookie.name == "SRCHS") {
-              // If this cookie is present, it's probably an SAP follow-on.
-              // This might be an organic follow-on in the same session,
-              // but there is no way to tell the difference.
-              if (
-                searchProviderInfo.codePrefixes.some(p =>
-                  cookie.value.startsWith("PC=" + p)
-                )
-              ) {
-                type = "sap-follow-on";
-                code = cookie.value.split("=")[1];
-                break;
-              }
+            if (cookie.name != followonCookie.name) {
+              continue;
+            }
+
+            let [cookieParam, cookieValue] = cookie.value
+              .split("=")
+              .map(p => p.trim());
+            if (
+              cookieParam == followonCookie.codeParam &&
+              followonCookie.codePrefixes.some(p => cookieValue.startsWith(p))
+            ) {
+              type = "sap-follow-on";
+              code = cookieValue;
+              break;
             }
           }
         }
@@ -417,7 +548,7 @@ class TelemetryHandler {
       SEARCH_COUNTS_HISTOGRAM_KEY
     );
     histogram.add(payload);
-    LOG(`SearchTelemetry: ${payload} for ${url}`);
+    LOG(`${payload} for ${url}`);
   }
 
   /**
@@ -444,13 +575,14 @@ class ContentHandler {
    * Constructor.
    *
    * @param {object} options
-   * @param {Map} options.browserInfoByUrl The  map of urls from TelemetryHandler.
-   * @param {function} options.getProviderInfoForUrl A function that obtains
+   * @param {Map} options.browserInfoByURL The  map of urls from TelemetryHandler.
+   * @param {function} options.getProviderInfoForURL A function that obtains
    *   the provider information for a url.
    */
   constructor(options) {
-    this._browserInfoByUrl = options.browserInfoByUrl;
-    this._getProviderInfoForUrl = options.getProviderInfoForUrl;
+    this._browserInfoByURL = options.browserInfoByURL;
+    this._findBrowserItemForURL = options.findBrowserItemForURL;
+    this._getProviderInfoForURL = options.getProviderInfoForURL;
   }
 
   /**
@@ -484,7 +616,7 @@ class ContentHandler {
    */
   receiveMessage(msg) {
     if (msg.name != "SearchTelemetry:PageInfo") {
-      LOG(`"Received unexpected message: ${msg.name}`);
+      LOG("Received unexpected message: " + msg.name);
       return;
     }
 
@@ -506,24 +638,21 @@ class ContentHandler {
    * from a search provider page was followed, and if then if that link was an
    * ad click or not.
    *
-   * @param {nsISupports} httpChannel The channel that generated the activity.
-   * @param {number} activityType The type of activity.
-   * @param {number} activitySubtype The subtype for the activity.
-   * @param {PRTime} timestamp The time of the activity.
-   * @param {number} [extraSizeData] Any size data available for the activity.
-   * @param {string} [extraStringData] Any extra string data available for the
-   *   activity.
+   * @param {nsIChannel} nativeChannel   The channel that generated the activity.
+   * @param {number}     activityType    The type of activity.
+   * @param {number}     activitySubtype The subtype for the activity.
    */
   observeActivity(
-    httpChannel,
+    nativeChannel,
     activityType,
-    activitySubtype,
+    activitySubtype /*,
     timestamp,
     extraSizeData,
-    extraStringData
+    extraStringData*/
   ) {
+    // NOTE: the channel handling code here is inspired by WebRequest.jsm.
     if (
-      !this._browserInfoByUrl.size ||
+      !this._browserInfoByURL.size ||
       activityType !=
         Ci.nsIHttpActivityObserver.ACTIVITY_TYPE_HTTP_TRANSACTION ||
       activitySubtype !=
@@ -532,37 +661,49 @@ class ContentHandler {
       return;
     }
 
-    let channel = httpChannel.QueryInterface(Ci.nsIHttpChannel);
-    let loadInfo;
-    try {
-      loadInfo = channel.loadInfo;
-    } catch (e) {
-      // Channels without a loadInfo are not pertinent.
+    // Sometimes we get a NullHttpChannel, which implements nsIHttpChannel but
+    // not nsIChannel.
+    if (!(nativeChannel instanceof Ci.nsIChannel)) {
+      return;
+    }
+    let channel = ChannelWrapper.get(nativeChannel);
+    // The wrapper is consistent across redirects, so we can use it to track state.
+    if (channel._adClickRecorded) {
+      LOG("Ad click already recorded");
       return;
     }
 
-    try {
-      let uri = channel.URI;
-      let triggerURI = loadInfo.triggeringPrincipal.URI;
-
-      if (!triggerURI || !this._browserInfoByUrl.has(triggerURI.spec)) {
+    // Make a trip through the event loop to make sure statuses have a chance to
+    // be processed before we get all the info.
+    Services.tm.dispatchToMainThread(() => {
+      // We suspect that No Content (204) responses are used to transfer or
+      // update beacons. They lead to use double-counting ad-clicks, so let's
+      // ignore them.
+      if (channel.statusCode == 204) {
+        LOG("Ignoring activity from ambiguous responses");
         return;
       }
 
-      let info = this._getProviderInfoForUrl(uri.spec, true);
+      let originURL = channel.originURI && channel.originURI.spec;
+      let info = this._findBrowserItemForURL(originURL);
+      if (!originURL || !info) {
+        return;
+      }
+
+      let URL = channel.finalURL;
+      info = this._getProviderInfoForURL(URL, true);
       if (!info) {
         return;
       }
 
-      Services.telemetry.keyedScalarAdd(SEARCH_AD_CLICKS_SCALAR, info[0], 1);
-      LOG(
-        `SearchTelemetry: Counting ad click in page for ${info[0]} ${
-          triggerURI.spec
-        }`
-      );
-    } catch (e) {
-      Cu.reportError(e);
-    }
+      try {
+        Services.telemetry.keyedScalarAdd(SEARCH_AD_CLICKS_SCALAR, info[0], 1);
+        channel._adClickRecorded = true;
+        LOG(`Counting ad click in page for ${info[0]} ${originURL} ${URL}`);
+      } catch (e) {
+        Cu.reportError(e);
+      }
+    });
   }
 
   /**
@@ -593,9 +734,13 @@ class ContentHandler {
    * @param {string} info.url The url of the page.
    */
   _reportPageWithAds(info) {
-    let item = this._browserInfoByUrl.get(info.url);
+    let item = this._findBrowserItemForURL(info.url);
     if (!item) {
-      LOG(`Expected to report URI with ads but couldn't find the information`);
+      LOG(
+        `Expected to report URI for ${
+          info.url
+        } with ads but couldn't find the information`
+      );
       return;
     }
 
@@ -604,11 +749,7 @@ class ContentHandler {
       item.info.provider,
       1
     );
-    LOG(
-      `SearchTelemetry: Counting ads in page for ${item.info.provider} ${
-        info.url
-      }`
-    );
+    LOG(`Counting ads in page for ${item.info.provider} ${info.url}`);
   }
 }
 

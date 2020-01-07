@@ -92,6 +92,14 @@
     <command id="Tools:Sanitize" oncommand="Sanitizer.showUI(window);"/>
     <command id="Tools:PrivateBrowsing"
       oncommand="OpenBrowserWindow({private: true});"/>
+#ifdef NIGHTLY_BUILD
+    <command id="Tools:FissionWindow"
+      oncommand="OpenBrowserWindow({fission: true});"
+      hidden="true"/>
+    <command id="Tools:NonFissionWindow"
+      oncommand="OpenBrowserWindow({fission: false});"
+      hidden="true"/>
+#endif
     <command id="History:UndoCloseTab" oncommand="undoCloseTab();"/>
     <command id="History:UndoCloseWindow" oncommand="undoCloseWindow();"/>
 
@@ -110,7 +118,7 @@
 #endif
   </commandset>
 
-#include ../../components/places/content/placesCommands.inc.xul
+#include ../../components/places/content/placesCommands.inc.xhtml
 
   <keyset id="mainKeyset">
     <key id="key_newNavigator"
@@ -213,7 +221,7 @@
     <key id="key_toggleReaderMode" keycode="&toggleReaderMode.win.keycode;" command="View:ReaderView" disabled="true"/>
 #endif
 
-#ifdef XP_WIN
+#ifndef XP_MACOSX
     <key id="key_togglePictureInPicture" key="&togglePictureInPicture.key;" command="View:PictureInPicture" modifiers="accel,shift"/>
     <key                                 key="&togglePictureInPicture.key2;" command="View:PictureInPicture" modifiers="accel,shift"/>
 #endif

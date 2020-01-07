@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
 @import url("./components/variables.css");
 @import url("resource://devtools/client/shared/components/reps/reps.css");
 
@@ -40,6 +44,7 @@
 @import url("./components/SecondaryPanes/EventListeners.css");
 @import url("./components/SecondaryPanes/DOMMutationBreakpoints.css");
 @import url("./components/SecondaryPanes/Expressions.css");
+@import url("./components/SecondaryPanes/FrameTimeline.css");
 @import url("./components/SecondaryPanes/Frames/Frames.css");
 @import url("./components/SecondaryPanes/Frames/Group.css");
 @import url("./components/SecondaryPanes/Scopes.css");

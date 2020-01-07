@@ -3226,7 +3226,8 @@ class CGCreateInterfaceObjectsMethod(CGAbstractMethod):
                     """,
                     failureCode=failureCode)),
                 CGGeneric("JS::Rooted<JS::Value> aliasedVal(aCx);\n\n")
-            ] + [defineAliasesFor(m) for m in sorted(aliasedMembers)])
+            ] + [defineAliasesFor(m)
+                 for m in sorted(aliasedMembers, key=lambda m: m.identifier.name)])
         else:
             defineAliases = None
 
@@ -3485,7 +3486,7 @@ class CGConstructorEnabled(CGAbstractMethod):
 
         iface = self.descriptor.interface
 
-        if not iface.isExposedOnMainThread():
+        if not iface.isExposedInWindow():
             exposedInWindowCheck = dedent(
                 """
                 MOZ_ASSERT(!NS_IsMainThread(), "Why did we even get called?");
@@ -3504,7 +3505,7 @@ class CGConstructorEnabled(CGAbstractMethod):
                 }
                 """, workerCondition=workerCondition.define())
             exposedInWorkerCheck = CGGeneric(exposedInWorkerCheck)
-            if iface.isExposedOnMainThread():
+            if iface.isExposedInWindow():
                 exposedInWorkerCheck = CGIfWrapper(exposedInWorkerCheck,
                                                    "!NS_IsMainThread()")
             body.append(exposedInWorkerCheck)
@@ -4586,19 +4587,26 @@ def handleDefaultStringValue(defaultValue, method):
     """
     Returns a string which ends up calling 'method' with a (char_t*, length)
     pair that sets this string default value.  This string is suitable for
-    passing as the second argument of handleDefault; in particular it does not
-    end with a ';'
+    passing as the second argument of handleDefault.
     """
     assert (defaultValue.type.isDOMString() or
             defaultValue.type.isUSVString() or
             defaultValue.type.isByteString())
-    return ("static const %(char_t)s data[] = { %(data)s };\n"
-            "%(method)s(data, ArrayLength(data) - 1)") % {
-                'char_t': "char" if defaultValue.type.isByteString() else "char16_t",
-                'method': method,
-                'data': ", ".join(["'" + char + "'" for char in
-                                   defaultValue.value] + ["0"])
-            }
+    # There shouldn't be any non-ASCII or embedded nulls in here; if
+    # it ever sneaks in we will need to think about how to properly
+    # represent that in the C++.
+    assert(all(ord(c) < 128 and ord(c) > 0 for c in defaultValue.value))
+    if defaultValue.type.isByteString():
+        prefix = ""
+    else:
+        prefix = "u"
+    return fill(
+        """
+        ${method}(${prefix}"${value}");
+        """,
+        method=method,
+        prefix=prefix,
+        value=defaultValue.value)
 
 
 def recordKeyType(recordType):
@@ -4639,6 +4647,7 @@ def getJSToNativeConversionInfo(type, descriptorProvider, failureCode=None,
                                 invalidEnumValueFatal=True,
                                 defaultValue=None,
                                 isNullOrUndefined=False,
+                                isKnownMissing=False,
                                 exceptionCode=None,
                                 lenientFloatCode=None,
                                 allowTreatNonCallableAsNull=False,
@@ -4658,8 +4667,14 @@ def getJSToNativeConversionInfo(type, descriptorProvider, failureCode=None,
     exceptionCode must end up doing a return, and every return from this
     function must happen via exceptionCode if exceptionCode is not None.
 
-    If isDefinitelyObject is True, that means we know the value
-    isObject() and we have no need to recheck that.
+    If isDefinitelyObject is True, that means we have a value and the value
+    tests true for isObject(), so we have no need to recheck that.
+
+    If isNullOrUndefined is True, that means we have a value and the value
+    tests true for isNullOrUndefined(), so we have no need to recheck that.
+
+    If isKnownMissing is True, that means that we are known-missing, and for
+    cases when we have a default value we only need to output the default value.
 
     if isMember is not False, we're being converted from a property of some JS
     object, not from an actual method argument, so we can't rely on our jsval
@@ -4756,12 +4771,25 @@ def getJSToNativeConversionInfo(type, descriptorProvider, failureCode=None,
     def handleDefault(template, setDefault):
         if defaultValue is None:
             return template
-        return (
-            "if (${haveValue}) {\n" +
-            indent(template) +
-            "} else {\n" +
-            indent(setDefault) +
-            "}\n")
+        if isKnownMissing:
+            return fill(
+                """
+                {
+                  // scope for any temporaries our default value setting needs.
+                  $*{setDefault}
+                }
+                """,
+                setDefault=setDefault)
+        return fill(
+            """
+            if ($${haveValue}) {
+              $*{templateBody}
+            } else {
+              $*{setDefault}
+            }
+            """,
+            templateBody=template,
+            setDefault=setDefault)
 
     # A helper function for wrapping up the template body for
     # possibly-nullable objecty stuff
@@ -4985,7 +5013,7 @@ def getJSToNativeConversionInfo(type, descriptorProvider, failureCode=None,
             if type.nullable():
                 codeToSetEmpty = "${declName}.SetValue();\n"
             else:
-                codeToSetEmpty = "/* Array is already empty; nothing to do */\n"
+                codeToSetEmpty = "/* ${declName} array is already empty; nothing to do */\n"
             templateBody = handleDefault(templateBody, codeToSetEmpty)
 
         # Sequence arguments that might contain traceable things need
@@ -5471,8 +5499,7 @@ def getJSToNativeConversionInfo(type, descriptorProvider, failureCode=None,
             else:
                 default = CGGeneric(
                     handleDefaultStringValue(
-                        defaultValue, "%s.SetStringData" % unionArgumentObj) +
-                    ";\n")
+                        defaultValue, "%s.SetStringLiteral" % unionArgumentObj))
 
             templateBody = CGIfElseWrapper("!(${haveValue})", default, templateBody)
 
@@ -5917,7 +5944,15 @@ def getJSToNativeConversionInfo(type, descriptorProvider, failureCode=None,
         def getConversionCode(varName):
             normalizeCode = ""
             if type.isUSVString():
-                normalizeCode = "NormalizeUSVString(%s);\n" % varName
+                normalizeCode = fill(
+                    """
+                    if (!NormalizeUSVString(${var})) {
+                      JS_ReportOutOfMemory(cx);
+                      $*{exceptionCode}
+                    }
+                    """,
+                    var=varName,
+                    exceptionCode=exceptionCode)
 
             conversionCode = fill("""
                 if (!ConvertJSValueToString(cx, $${val}, ${nullBehavior}, ${undefinedBehavior}, ${varName})) {
@@ -5937,11 +5972,11 @@ def getJSToNativeConversionInfo(type, descriptorProvider, failureCode=None,
 
             if isinstance(defaultValue, IDLNullValue):
                 assert(type.nullable())
-                defaultCode = "%s.SetIsVoid(true)" % varName
+                defaultCode = "%s.SetIsVoid(true);\n" % varName
             else:
-                defaultCode = handleDefaultStringValue(defaultValue,
-                                                       "%s.Rebind" % varName)
-            return handleDefault(conversionCode, defaultCode + ";\n")
+                defaultCode = handleDefaultStringValue(
+                    defaultValue, "%s.AssignLiteral" % varName)
+            return handleDefault(conversionCode, defaultCode)
 
         if isMember:
             # Convert directly into the nsString member we have.
@@ -5984,11 +6019,11 @@ def getJSToNativeConversionInfo(type, descriptorProvider, failureCode=None,
         if defaultValue is not None:
             if isinstance(defaultValue, IDLNullValue):
                 assert(type.nullable())
-                defaultCode = "${declName}.SetIsVoid(true)"
+                defaultCode = "${declName}.SetIsVoid(true);\n"
             else:
-                defaultCode = handleDefaultStringValue(defaultValue,
-                                                       "${declName}.Rebind")
-            conversionCode = handleDefault(conversionCode, defaultCode + ";\n")
+                defaultCode = handleDefaultStringValue(
+                    defaultValue, "${declName}.AssignLiteral")
+            conversionCode = handleDefault(conversionCode, defaultCode)
 
         return JSToNativeConversionInfo(
             conversionCode,
@@ -6209,13 +6244,20 @@ def getJSToNativeConversionInfo(type, descriptorProvider, failureCode=None,
         if type.nullable():
             dictLoc += ".SetValue()"
 
+        if type.unroll().inner.needsConversionFromJS:
+            args = "cx, %s, " % val
+        else:
+            # We can end up in this case if a dictionary that does not need
+            # conversion from JS has a dictionary-typed member with a default
+            # value of {}.
+            args = ""
         conversionCode = fill("""
-            if (!${dictLoc}.Init(cx, ${val},  "${desc}", $${passedToJSImpl})) {
+            if (!${dictLoc}.Init(${args}"${desc}", $${passedToJSImpl})) {
               $*{exceptionCode}
             }
             """,
             dictLoc=dictLoc,
-            val=val,
+            args=args,
             desc=firstCap(sourceDescription),
             exceptionCode=exceptionCode)
 
@@ -6324,6 +6366,7 @@ def getJSToNativeConversionInfo(type, descriptorProvider, failureCode=None,
         assert type.isInteger()
         conversionBehavior = "eClamp"
 
+    alwaysNull = False
     if type.nullable():
         declType = CGGeneric("Nullable<" + typeName + ">")
         writeLoc = "${declName}.SetValue()"
@@ -6331,18 +6374,26 @@ def getJSToNativeConversionInfo(type, descriptorProvider, failureCode=None,
         nullCondition = "${val}.isNullOrUndefined()"
         if defaultValue is not None and isinstance(defaultValue, IDLNullValue):
             nullCondition = "!(${haveValue}) || " + nullCondition
-        template = fill("""
-            if (${nullCondition}) {
-              $${declName}.SetNull();
-            } else if (!ValueToPrimitive<${typeName}, ${conversionBehavior}>(cx, $${val}, &${writeLoc})) {
-              $*{exceptionCode}
-            }
-            """,
-            nullCondition=nullCondition,
-            typeName=typeName,
-            conversionBehavior=conversionBehavior,
-            writeLoc=writeLoc,
-            exceptionCode=exceptionCode)
+            if isKnownMissing:
+                alwaysNull = True
+                template = dedent(
+                    """
+                    ${declName}.SetNull();
+                    """)
+        if not alwaysNull:
+            template = fill(
+                """
+                if (${nullCondition}) {
+                  $${declName}.SetNull();
+                } else if (!ValueToPrimitive<${typeName}, ${conversionBehavior}>(cx, $${val}, &${writeLoc})) {
+                  $*{exceptionCode}
+                }
+                """,
+                nullCondition=nullCondition,
+                typeName=typeName,
+                conversionBehavior=conversionBehavior,
+                writeLoc=writeLoc,
+                exceptionCode=exceptionCode)
     else:
         assert(defaultValue is None or
                not isinstance(defaultValue, IDLNullValue))
@@ -6359,7 +6410,7 @@ def getJSToNativeConversionInfo(type, descriptorProvider, failureCode=None,
             exceptionCode=exceptionCode)
         declType = CGGeneric(typeName)
 
-    if type.isFloat() and not type.isUnrestricted():
+    if type.isFloat() and not type.isUnrestricted() and not alwaysNull:
         if lenientFloatCode is not None:
             nonFiniteCode = lenientFloatCode
         else:
@@ -6382,10 +6433,9 @@ def getJSToNativeConversionInfo(type, descriptorProvider, failureCode=None,
         not isinstance(defaultValue, IDLNullValue)):
         tag = defaultValue.type.tag()
         defaultStr = getHandleDefault(defaultValue)
-        template = CGIfElseWrapper(
-            "${haveValue}",
-            CGGeneric(template),
-            CGGeneric("%s = %s;\n" % (writeLoc, defaultStr))).define()
+        template = handleDefault(
+            template,
+            "%s = %s;\n" % (writeLoc, defaultStr))
 
     return JSToNativeConversionInfo(template, declType=declType,
                                     dealWithOptional=isOptional)
@@ -7615,10 +7665,6 @@ def getUnionMemberName(type):
     return type.name
 
 
-class MethodNotNewObjectError(Exception):
-    def __init__(self, typename):
-        self.typename = typename
-
 # A counter for making sure that when we're wrapping up things in
 # nested sequences we don't use the same variable name to iterate over
 # different sequences.
@@ -8092,14 +8138,9 @@ class CGPerSignatureCall(CGThing):
             # Otherwise, just use "obj" for lack of anything better.
             'obj': "conversionScope" if self.setSlot else "obj"
         }
-        try:
-            wrapCode += wrapForType(self.returnType, self.descriptor, resultTemplateValues)
-        except MethodNotNewObjectError as err:
-            assert not returnsNewObject
-            raise TypeError("%s being returned from non-NewObject method or property %s.%s" %
-                            (err.typename,
-                             self.descriptor.interface.identifier.name,
-                             self.idlNode.identifier.name))
+
+        wrapCode += wrapForType(self.returnType, self.descriptor, resultTemplateValues)
+
         if self.setSlot:
             if self.idlNode.isStatic():
                 raise TypeError(
@@ -8937,6 +8978,8 @@ class CGSpecializedMethod(CGAbstractStaticMethod):
 
     @staticmethod
     def makeNativeName(descriptor, method):
+        if method.underlyingAttr:
+            return CGSpecializedGetter.makeNativeName(descriptor, method.underlyingAttr)
         name = method.identifier.name
         return MakeNativeName(descriptor.binaryNameFor(name))
 
@@ -10094,10 +10137,34 @@ class CGEnum(CGThing):
     def __init__(self, enum):
         CGThing.__init__(self)
         self.enum = enum
+        entryDecl = fill(
+            """
+            extern const EnumEntry ${entry_array}[${entry_count}];
+
+            static constexpr size_t Count = ${real_entry_count};
+
+            // Our "${entry_array}" contains an extra entry with a null string.
+            static_assert(mozilla::ArrayLength(${entry_array}) - 1 == Count,
+                          "Mismatch between enum strings and enum count");
+
+            static_assert(static_cast<size_t>(${name}::EndGuard_) == Count,
+                          "Mismatch between enum value and enum count");
+
+            inline Span<const char> GetString(${name} stringId) {
+              MOZ_ASSERT(static_cast<${type}>(stringId) < Count);
+              const EnumEntry& entry = ${entry_array}[static_cast<${type}>(stringId)];
+              return MakeSpan(entry.value, entry.length);
+            }
+            """,
+            entry_array=ENUM_ENTRY_VARIABLE_NAME,
+            entry_count=self.nEnumStrings(),
+            # -1 because nEnumStrings() includes a string for EndGuard_
+            real_entry_count=self.nEnumStrings() - 1,
+            name=self.enum.identifier.name,
+            type=self.underlyingType())
         strings = CGNamespace(
             self.stringsNamespace(),
-            CGGeneric(declare=("extern const EnumEntry %s[%d];\n" %
-                               (ENUM_ENTRY_VARIABLE_NAME, self.nEnumStrings())),
+            CGGeneric(declare=entryDecl,
                       define=fill(
                           """
                           extern const EnumEntry ${name}[${count}] = {
@@ -10138,9 +10205,7 @@ class CGEnum(CGThing):
             name=self.enum.identifier.name,
             ty=self.underlyingType(),
             enums=",\n".join(map(getEnumValueName, self.enum.values())) + ",\n")
-        strings = CGNamespace(self.stringsNamespace(),
-                              CGGeneric(declare="extern const EnumEntry %s[%d];\n"
-                                        % (ENUM_ENTRY_VARIABLE_NAME, self.nEnumStrings())))
+
         return decl + "\n" + self.cgThings.declare()
 
     def define(self):
@@ -10297,7 +10362,9 @@ def getUnionTypeTemplateVars(unionType, type, descriptorProvider,
                               Argument("bool", "passedToJSImpl", default="false")],
                              inline=True, bodyInHeader=True,
                              body=body)
-
+    elif type.isDictionary() and not type.inner.needsConversionFromJS:
+        # In this case we are never initialized from JS to start with
+        setter = None
     else:
         # Important: we need to not have our declName involve
         # maybe-GCing operations.
@@ -10408,6 +10475,7 @@ class CGUnionStruct(CGThing):
                                                           "return true;\n")))
 
         hasObjectType = any(t.isObject() for t in self.type.flatMemberTypes)
+        skipToJSVal = False
         for t in self.type.flatMemberTypes:
             vars = getUnionTypeTemplateVars(self.type,
                                             t, self.descriptorProvider,
@@ -10443,22 +10511,24 @@ class CGUnionStruct(CGThing):
                     bodyInHeader=not self.ownsMembers,
                     body=body % uninit))
                 if self.ownsMembers:
-                    methods.append(vars["setter"])
-                    # Provide a SetStringData() method to support string defaults.
+                    if vars["setter"]:
+                        methods.append(vars["setter"])
+                    # Provide a SetStringLiteral() method to support string defaults.
                     if t.isByteString():
-                        methods.append(
-                            ClassMethod("SetStringData", "void",
-                                        [Argument("const nsCString::char_type*", "aData"),
-                                         Argument("nsCString::size_type", "aLength")],
-                                        inline=True, bodyInHeader=True,
-                                        body="RawSetAs%s().Assign(aData, aLength);\n" % t.name))
+                        charType = "const nsCString::char_type"
                     elif t.isString():
+                        charType = "const nsString::char_type"
+                    else:
+                        charType = None
+
+                    if charType:
                         methods.append(
-                            ClassMethod("SetStringData", "void",
-                                        [Argument("const nsString::char_type*", "aData"),
-                                         Argument("nsString::size_type", "aLength")],
+                            ClassMethod("SetStringLiteral", "void",
+                                        # Hack, but it works...
+                                        [Argument(charType, "(&aData)[N]")],
                                         inline=True, bodyInHeader=True,
-                                        body="RawSetAs%s().Assign(aData, aLength);\n" % t.name))
+                                        templateArgs=["int N"],
+                                        body="RawSetAs%s().AssignLiteral(aData);\n" % t.name))
 
             body = fill(
                 """
@@ -10513,16 +10583,14 @@ class CGUnionStruct(CGThing):
                 fill("UnionMember<${structType} > m${name}", **vars))
             enumValues.append("e" + vars["name"])
 
-            skipToJSVal = False
-            try:
+            conversionToJS = self.getConversionToJS(vars, t)
+            if conversionToJS:
                 toJSValCases.append(
                     CGCase("e" + vars["name"],
-                           self.getConversionToJS(vars, t)))
-            except MethodNotNewObjectError:
-                # If we can't have a ToJSVal() because one of our members can
-                # only be returned from [NewObject] methods, then just skip
-                # generating ToJSVal.
+                           conversionToJS))
+            else:
                 skipToJSVal = True
+
             destructorCases.append(
                 CGCase("e" + vars["name"],
                        CGGeneric("Destroy%s();\n" % vars["name"])))
@@ -10632,6 +10700,11 @@ class CGUnionStruct(CGThing):
                        unions=[ClassUnion("Value", unionValues, visibility="private")])
 
     def getConversionToJS(self, templateVars, type):
+        if type.isDictionary() and not type.inner.needsConversionToJS:
+            # We won't be able to convert this dictionary to a JS value, nor
+            # will we need to, since we don't need a ToJSVal method at all.
+            return None
+
         assert not type.nullable()  # flatMemberTypes never has nullable types
         val = "mValue.m%(name)s.Value()" % templateVars
         wrapCode = wrapForType(
@@ -10700,7 +10773,8 @@ class CGUnionConversionStruct(CGThing):
         for t in self.type.flatMemberTypes:
             vars = getUnionTypeTemplateVars(self.type,
                                             t, self.descriptorProvider)
-            methods.append(vars["setter"])
+            if vars["setter"]:
+                methods.append(vars["setter"])
             if vars["name"] != "Object":
                 body = fill(
                     """
@@ -10715,21 +10789,22 @@ class CGUnionConversionStruct(CGThing):
                                            bodyInHeader=True,
                                            body=body,
                                            visibility="private"))
-                # Provide a SetStringData() method to support string defaults.
+                # Provide a SetStringLiteral() method to support string defaults.
                 if t.isByteString():
-                    methods.append(
-                        ClassMethod("SetStringData", "void",
-                                    [Argument("const nsDependentCString::char_type*", "aData"),
-                                     Argument("nsDependentCString::size_type", "aLength")],
-                                    inline=True, bodyInHeader=True,
-                                    body="RawSetAs%s().Rebind(aData, aLength);\n" % t.name))
+                    charType = "const nsCString::char_type"
                 elif t.isString():
+                    charType = "const nsString::char_type"
+                else:
+                    charType = None
+
+                if charType:
                     methods.append(
-                        ClassMethod("SetStringData", "void",
-                                    [Argument("const nsDependentString::char_type*", "aData"),
-                                     Argument("nsDependentString::size_type", "aLength")],
+                        ClassMethod("SetStringLiteral", "void",
+                                    # Hack, but it works...
+                                    [Argument(charType, "(&aData)[N]")],
                                     inline=True, bodyInHeader=True,
-                                    body="RawSetAs%s().Rebind(aData, aLength);\n" % t.name))
+                                    templateArgs=["int N"],
+                                    body="RawSetAs%s().AssignLiteral(aData);\n" % t.name))
 
             if vars["holderType"] is not None:
                 holderType = CGTemplatedType("Maybe",
@@ -11753,11 +11828,43 @@ class CGProxyUnwrap(CGAbstractMethod):
 MISSING_PROP_PREF = "dom.missing_prop_counters.enabled"
 
 def missingPropUseCountersForDescriptor(desc):
-    instrumentedProps = desc.instrumentedProps
-    if not instrumentedProps:
+    if not desc.needsMissingPropUseCounters:
         return ""
 
-    def gen_switch(switchDecriptor):
+    return fill(
+        """
+        if (StaticPrefs::${pref}() && JSID_IS_ATOM(id)) {
+          CountMaybeMissingProperty(proxy, id);
+        }
+
+        """,
+        pref=prefIdentifier(MISSING_PROP_PREF))
+
+
+def findAncestorWithInstrumentedProps(desc):
+    """
+    Find an ancestor of desc.interface (not including desc.interface
+    itself) that has instrumented properties on it.  May return None
+    if there is no such ancestor.
+    """
+    ancestor = desc.interface.parent
+    while ancestor:
+        if ancestor.getExtendedAttribute("InstrumentedProps"):
+            return ancestor
+        ancestor = ancestor.parent
+    return None
+
+class CGCountMaybeMissingProperty(CGAbstractMethod):
+    def __init__(self, descriptor):
+        """
+        Returns whether we counted the property involved.
+        """
+        CGAbstractMethod.__init__(self, descriptor, "CountMaybeMissingProperty",
+                                  "bool",
+                                  [Argument("JS::Handle<JSObject*>", "proxy"),
+                                   Argument("JS::Handle<jsid>", "id")])
+
+    def gen_switch(self, switchDecriptor):
         """
         Generate a switch from the switch descriptor.  The descriptor
         dictionary must have the following properties:
@@ -11773,7 +11880,7 @@ def missingPropUseCountersForDescriptor(desc):
         cases = []
         for label, body in sorted(switchDecriptor['cases'].iteritems()):
             if isinstance(body, dict):
-                body = gen_switch(body)
+                body = self.gen_switch(body)
             cases.append(fill(
                 """
                 case ${label}: {
@@ -11794,7 +11901,7 @@ def missingPropUseCountersForDescriptor(desc):
             condition=switchDecriptor['condition'],
             cases="".join(cases))
 
-    def charSwitch(props, charIndex):
+    def charSwitch(self, props, charIndex):
         """
         Create a switch for the given props, based on the first char where
         they start to differ at index charIndex or more.  Each prop is a tuple
@@ -11810,8 +11917,8 @@ def missingPropUseCountersForDescriptor(desc):
                   counter.emplace(eUseCounter_${iface}_${name});
                 }
                 """,
-                iface=props[0][0],
-                name=props[0][1])
+                iface=self.descriptor.name,
+                name=props[0])
 
         switch = dict()
         if charIndex == 0:
@@ -11821,7 +11928,7 @@ def missingPropUseCountersForDescriptor(desc):
             switch['precondition'] = ""
 
         # Find the first place where we might actually have a difference.
-        while all(prop[1][charIndex] == props[0][1][charIndex]
+        while all(prop[charIndex] == props[0][charIndex]
                   for prop in props):
             charIndex += 1
 
@@ -11831,47 +11938,70 @@ def missingPropUseCountersForDescriptor(desc):
         curChar = None
         idx = 0
         while idx < len(props):
-            nextChar = "'%s'" % props[idx][1][charIndex]
+            nextChar = "'%s'" % props[idx][charIndex]
             if nextChar != curChar:
                 if curChar:
-                    switch['cases'][curChar] = charSwitch(current_props,
-                                                          charIndex + 1)
+                    switch['cases'][curChar] = self.charSwitch(current_props,
+                                                               charIndex + 1)
                 current_props = []
                 curChar = nextChar
             current_props.append(props[idx])
             idx += 1
-        switch['cases'][curChar] = charSwitch(current_props, charIndex + 1)
+        switch['cases'][curChar] = self.charSwitch(current_props, charIndex + 1)
         return switch
 
-    lengths = set(len(prop[1]) for prop in instrumentedProps)
-    switchDesc = { 'condition': 'js::GetLinearStringLength(str)',
-                   'precondition': '' }
-    switchDesc['cases'] = dict()
-    for length in sorted(lengths):
-        switchDesc['cases'][str(length)] = charSwitch(
-            list(sorted(prop for prop in instrumentedProps
-                        if len(prop[1]) == length)),
-            0)
+    def definition_body(self):
+        ancestor = findAncestorWithInstrumentedProps(self.descriptor)
 
-    return fill(
-        """
-        if (StaticPrefs::${pref}() && JSID_IS_ATOM(id)) {
-          Maybe<UseCounter> counter;
-          {
-            // Scope for our no-GC section, so we don't need to rely on SetUseCounter not GCing.
-            JS::AutoCheckCannotGC nogc;
-            JSLinearString* str = js::AtomToLinearString(JSID_TO_ATOM(id));
-            // Don't waste time fetching the chars until we've done the length switch.
-            $*{switch}
-          }
-          if (counter) {
-            SetUseCounter(proxy, *counter);
-          }
-        }
+        if ancestor:
+            body = fill(
+                """
+                if (${ancestor}_Binding::CountMaybeMissingProperty(proxy, id)) {
+                  return true;
+                }
 
-        """,
-        pref=prefIdentifier(MISSING_PROP_PREF),
-        switch=gen_switch(switchDesc))
+                """,
+                ancestor=ancestor.identifier.name)
+        else:
+            body = ""
+
+        instrumentedProps = self.descriptor.instrumentedProps
+        if not instrumentedProps:
+            return body + dedent(
+                """
+                return false;
+                """)
+
+        lengths = set(len(prop) for prop in instrumentedProps)
+        switchDesc = { 'condition': 'js::GetLinearStringLength(str)',
+                       'precondition': '' }
+        switchDesc['cases'] = dict()
+        for length in sorted(lengths):
+            switchDesc['cases'][str(length)] = self.charSwitch(
+                list(sorted(prop for prop in instrumentedProps
+                            if len(prop) == length)),
+                0)
+
+        return body + fill(
+            """
+            MOZ_ASSERT(StaticPrefs::${pref}() && JSID_IS_ATOM(id));
+            Maybe<UseCounter> counter;
+            {
+              // Scope for our no-GC section, so we don't need to rely on SetUseCounter not GCing.
+              JS::AutoCheckCannotGC nogc;
+              JSLinearString* str = js::AtomToLinearString(JSID_TO_ATOM(id));
+              // Don't waste time fetching the chars until we've done the length switch.
+              $*{switch}
+            }
+            if (counter) {
+              SetUseCounter(proxy, *counter);
+              return true;
+            }
+
+            return false;
+            """,
+            pref=prefIdentifier(MISSING_PROP_PREF),
+            switch=self.gen_switch(switchDesc))
 
 
 class CGDOMJSProxyHandler_getOwnPropDescriptor(ClassMethod):
@@ -12501,8 +12631,8 @@ class CGDOMJSProxyHandler_hasOwn(ClassMethod):
                       "Should not have a XrayWrapper here");
             $*{maybeCrossOrigin}
             $*{indexed}
-            $*{missingPropUseCounters}
 
+            $*{missingPropUseCounters}
             JS::Rooted<JSObject*> expando(cx, GetExpandoObject(proxy));
             if (expando) {
               bool b = true;
@@ -13304,10 +13434,6 @@ class CGDescriptor(CGThing):
             elif m.isMaplikeOrSetlike():
                 cgThings.append(CGMaplikeOrSetlikeHelperGenerator(descriptor, m))
             elif m.isAttr():
-                if m.stringifier:
-                    raise TypeError("Stringifier attributes not supported yet. "
-                                    "See bug 824857.\n"
-                                    "%s" % m.location)
                 if m.getExtendedAttribute("Unscopable"):
                     assert not m.isStatic()
                     unscopableNames.append(m.identifier.name)
@@ -13395,6 +13521,9 @@ class CGDescriptor(CGThing):
             raise TypeError("We don't support members in slots on "
                             "non-leaf interfaces like %s" %
                             descriptor.interface.identifier.name)
+
+        if descriptor.needsMissingPropUseCounters:
+            cgThings.append(CGCountMaybeMissingProperty(descriptor))
 
         if descriptor.concrete:
             if descriptor.interface.isSerializable():
@@ -13597,6 +13726,7 @@ class CGDictionary(CGThing):
                  descriptorProvider,
                  isMember="Dictionary",
                  isOptional=member.canHaveMissingValue(),
+                 isKnownMissing=not dictionary.needsConversionFromJS,
                  defaultValue=member.defaultValue,
                  sourceDescription=self.getMemberSourceDescription(member)))
             for member in dictionary.members]
@@ -13708,6 +13838,68 @@ class CGDictionary(CGThing):
         return ClassMethod("Init", "bool", [
             Argument('JSContext*', 'cx'),
             Argument('JS::Handle<JS::Value>', 'val'),
+            Argument('const char*', 'sourceDescription', default='"Value"'),
+            Argument('bool', 'passedToJSImpl', default='false')
+        ], body=body)
+
+    def simpleInitMethod(self):
+        """
+        This function outputs the body of the Init() method for the dictionary,
+        for cases when we are just default-initializing it.
+
+        """
+        relevantMembers = [m for m in self.memberInfo
+                           # We only need to init the things that can have
+                           # default values.
+                           if m[0].optional and m[0].defaultValue]
+
+        # We mostly avoid outputting code that uses cx in our native-to-JS
+        # conversions, but there is one exception: we may have a
+        # dictionary-typed member that _does_ generally support conversion from
+        # JS.  If we have such a thing, we can pass it a null JSContext and
+        # JS::NullHandleValue to default-initialize it, but since the
+        # native-to-JS templates hardcode `cx` as the JSContext value, we're
+        # going to need to provide that.
+        haveMemberThatNeedsCx = any(
+            m[0].type.isDictionary() and
+            m[0].type.unroll().inner.needsConversionFromJS for
+            m in relevantMembers)
+        if haveMemberThatNeedsCx:
+            body = dedent(
+                """
+                JSContext* cx = nullptr;
+                """)
+        else:
+            body = ""
+
+        if self.dictionary.parent:
+            if self.dictionary.parent.needsConversionFromJS:
+                args = "nullptr, JS::NullHandleValue"
+            else:
+                args = ""
+            body += fill(
+                """
+                // We init the parent's members first
+                if (!${dictName}::Init(${args})) {
+                  return false;
+                }
+
+                """,
+                dictName=self.makeClassName(self.dictionary.parent),
+                args=args)
+
+        memberInits = [self.getMemberConversion(m, isKnownMissing=True).define()
+                       for m in relevantMembers]
+        if memberInits:
+            body += fill(
+                """
+                $*{memberInits}
+                """,
+                memberInits="\n".join(memberInits))
+
+        body += "return true;\n"
+
+        return ClassMethod("Init", "bool", [
             Argument('const char*', 'sourceDescription', default='"Value"'),
             Argument('bool', 'passedToJSImpl', default='false')
         ], body=body)
@@ -13940,6 +14132,11 @@ class CGDictionary(CGThing):
             ]
         else:
             baseConstructors = None
+
+        if d.needsConversionFromJS:
+            initArgs = "nullptr, JS::NullHandleValue",
+        else:
+            initArgs =""
         ctors = [
             ClassConstructor(
                 [],
@@ -13947,7 +14144,7 @@ class CGDictionary(CGThing):
                 baseConstructors=baseConstructors,
                 body=(
                     "// Safe to pass a null context if we pass a null value\n"
-                    "Init(nullptr, JS::NullHandleValue);\n")),
+                    "Init(%s);\n" % initArgs)),
             ClassConstructor(
                 [Argument("const FastDictionaryInitializer&", "")],
                 visibility="public",
@@ -13961,20 +14158,23 @@ class CGDictionary(CGThing):
         if self.needToInitIds:
             methods.append(self.initIdsMethod())
 
-        methods.append(self.initMethod())
-        canBeRepresentedAsJSON = self.dictionarySafeToJSONify(self.dictionary)
-        if canBeRepresentedAsJSON:
+        if d.needsConversionFromJS:
+            methods.append(self.initMethod())
+        else:
+            methods.append(self.simpleInitMethod())
+
+        canBeRepresentedAsJSON = self.dictionarySafeToJSONify(d)
+        if (canBeRepresentedAsJSON and
+            d.getExtendedAttribute("GenerateInitFromJSON")):
             methods.append(self.initFromJSONMethod())
-        try:
+
+        if d.needsConversionToJS:
             methods.append(self.toObjectInternalMethod())
-            if canBeRepresentedAsJSON:
-                methods.append(self.toJSONMethod())
-        except MethodNotNewObjectError:
-            # If we can't have a ToObjectInternal() because one of our members
-            # can only be returned from [NewObject] methods, then just skip
-            # generating ToObjectInternal() and ToJSON (since the latter depens
-            # on the former).
-            pass
+
+        if (canBeRepresentedAsJSON and
+            d.getExtendedAttribute("GenerateToJSON")):
+            methods.append(self.toJSONMethod())
+
         methods.append(self.traceDictionaryMethod())
 
         try:
@@ -14055,7 +14255,7 @@ class CGDictionary(CGThing):
             declType = CGTemplatedType("Optional", declType)
         return declType.define()
 
-    def getMemberConversion(self, memberInfo):
+    def getMemberConversion(self, memberInfo, isKnownMissing=False):
         """
         A function that outputs the initialization of a single dictionary
         member from the given dictionary value.
@@ -14076,9 +14276,12 @@ class CGDictionary(CGThing):
         conversionReplacements dictionary.
         """
         member, conversionInfo = memberInfo
+
+        # We should only be initializing things with default values if
+        # we're always-missing.
+        assert not isKnownMissing or (member.optional and member.defaultValue)
+
         replacements = {
-            "val": "temp.ref()",
-            "maybeMutableVal": "temp.ptr()",
             "declName": self.makeMemberName(member.identifier.name),
             # We need a holder name for external interfaces, but
             # it's scoped down to the conversion so we can just use
@@ -14086,12 +14289,22 @@ class CGDictionary(CGThing):
             "holderName": "holder",
             "passedToJSImpl": "passedToJSImpl"
         }
+
+        if isKnownMissing:
+            replacements["val"] = "(JS::NullHandleValue)"
+        else:
+            replacements["val"] = "temp.ref()"
+            replacements["maybeMutableVal"] = "temp.ptr()"
+
         # We can't handle having a holderType here
         assert conversionInfo.holderType is None
         if conversionInfo.dealWithOptional:
             replacements["declName"] = "(" + replacements["declName"] + ".Value())"
         if member.defaultValue:
-            replacements["haveValue"] = "!isNull && !temp->isUndefined()"
+            if isKnownMissing:
+                replacements["haveValue"] = "false"
+            else:
+                replacements["haveValue"] = "!isNull && !temp->isUndefined()"
 
         propId = self.makeIdName(member.identifier.name)
         propGet = ("JS_GetPropertyById(cx, *object, atomsCache->%s, temp.ptr())" %
@@ -14106,19 +14319,23 @@ class CGDictionary(CGThing):
         # by the author needs to get converted, so we can remember if we have any
         # members present here.
         conversionReplacements["convert"] += "mIsAnyMemberPresent = true;\n"
-        setTempValue = CGGeneric(dedent(
-            """
-            if (!${propGet}) {
-              return false;
-            }
-            """))
-        conditions = getConditionList(member, "cx", "*object")
-        if len(conditions) != 0:
-            setTempValue = CGIfElseWrapper(conditions.define(),
-                                           setTempValue,
-                                           CGGeneric("temp->setUndefined();\n"))
-        setTempValue = CGIfWrapper(setTempValue, "!isNull")
-        conversion = setTempValue.define()
+        if isKnownMissing:
+            conversion = ""
+        else:
+            setTempValue = CGGeneric(dedent(
+                """
+                if (!${propGet}) {
+                  return false;
+                }
+                """))
+            conditions = getConditionList(member, "cx", "*object")
+            if len(conditions) != 0:
+                setTempValue = CGIfElseWrapper(conditions.define(),
+                                               setTempValue,
+                                               CGGeneric("temp->setUndefined();\n"))
+            setTempValue = CGIfWrapper(setTempValue, "!isNull")
+            conversion = setTempValue.define()
+
         if member.defaultValue:
             if (member.type.isUnion() and
                 (not member.type.nullable() or
@@ -14916,6 +15133,9 @@ class CGBindingRoot(CGThing):
         enums = config.getEnums(webIDLFile)
         cgthings.extend(CGEnum(e) for e in enums)
 
+        bindingDeclareHeaders["mozilla/Span.h"] = enums
+        bindingDeclareHeaders["mozilla/ArrayUtils.h"] = enums
+
         hasCode = (descriptors or callbackDescriptors or dictionaries or
                    callbacks)
         bindingHeaders["mozilla/dom/BindingUtils.h"] = hasCode
@@ -14955,6 +15175,11 @@ class CGBindingRoot(CGThing):
             d.wantsXrays for d in descriptors)
         bindingHeaders["mozilla/dom/StructuredCloneTags.h"] = any(
             d.interface.isSerializable() for d in descriptors)
+
+        for ancestor in (findAncestorWithInstrumentedProps(d) for d in descriptors):
+            if not ancestor:
+                continue
+            bindingHeaders[CGHeaders.getDeclarationFilename(ancestor)] = True
 
         cgthings.extend(traverseMethods)
         cgthings.extend(unlinkMethods)
@@ -16863,24 +17088,19 @@ class CallbackMember(CGNativeMember):
             result = argval
             prepend = ""
 
-        try:
-            conversion = prepend + wrapForType(
-                arg.type, self.descriptorProvider,
-                {
-                    'result': result,
-                    'successCode': "continue;\n" if arg.variadic else "break;\n",
-                    'jsvalRef': "argv[%s]" % jsvalIndex,
-                    'jsvalHandle': "argv[%s]" % jsvalIndex,
-                    'obj': self.wrapScope,
-                    'returnsNewObject': False,
-                    'exceptionCode': self.exceptionCode,
-                    'spiderMonkeyInterfacesAreStructs': self.spiderMonkeyInterfacesAreStructs
-                })
-        except MethodNotNewObjectError as err:
-            raise TypeError("%s being passed as an argument to %s but is not "
-                            "wrapper cached, so can't be reliably converted to "
-                            "a JS object." %
-                            (err.typename, self.getPrettyName()))
+        conversion = prepend + wrapForType(
+            arg.type, self.descriptorProvider,
+            {
+                'result': result,
+                'successCode': "continue;\n" if arg.variadic else "break;\n",
+                'jsvalRef': "argv[%s]" % jsvalIndex,
+                'jsvalHandle': "argv[%s]" % jsvalIndex,
+                'obj': self.wrapScope,
+                'returnsNewObject': False,
+                'exceptionCode': self.exceptionCode,
+                'spiderMonkeyInterfacesAreStructs': self.spiderMonkeyInterfacesAreStructs
+            })
+
         if arg.variadic:
             conversion = fill(
                 """

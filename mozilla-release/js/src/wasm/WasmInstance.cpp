@@ -18,6 +18,8 @@
 
 #include "wasm/WasmInstance.h"
 
+#include <algorithm>
+
 #include "jit/AtomicOperations.h"
 #include "jit/Disassemble.h"
 #include "jit/InlinableNatives.h"
@@ -133,10 +135,11 @@ bool Instance::callImport(JSContext* cx, uint32_t funcImportIndex,
         args[i].set(JS::CanonicalizedDoubleValue(*(double*)&argv[i]));
         break;
       case ValType::FuncRef:
-      case ValType::AnyRef: {
+        args[i].set(UnboxFuncRef(FuncRef::fromCompiledCode(*(void**)&argv[i])));
+        break;
+      case ValType::AnyRef:
         args[i].set(UnboxAnyRef(AnyRef::fromCompiledCode(*(void**)&argv[i])));
         break;
-      }
       case ValType::Ref:
         MOZ_CRASH("temporarily unsupported Ref type in callImport");
       case ValType::I64:
@@ -192,39 +195,53 @@ bool Instance::callImport(JSContext* cx, uint32_t funcImportIndex,
     return true;
   }
 
-  // Functions with anyref in signature don't have a jit exit at the moment.
-  if (fi.funcType().temporarilyUnsupportedAnyRef()) {
+  // Functions with unsupported reference types in signature don't have a jit
+  // exit at the moment.
+  if (fi.funcType().temporarilyUnsupportedReftypeForExit()) {
     return true;
   }
 
   const ValTypeVector& importArgs = fi.funcType().args();
 
-  size_t numKnownArgs = Min(importArgs.length(), importFun->nargs());
+  size_t numKnownArgs = std::min(importArgs.length(), importFun->nargs());
   for (uint32_t i = 0; i < numKnownArgs; i++) {
-    TypeSet::Type type = TypeSet::UnknownType();
+    StackTypeSet* argTypes = jitScript->argTypes(sweep, script, i);
     switch (importArgs[i].code()) {
       case ValType::I32:
-        type = TypeSet::Int32Type();
+        if (!argTypes->hasType(TypeSet::Int32Type())) {
+          return true;
+        }
         break;
       case ValType::F32:
-        type = TypeSet::DoubleType();
+        if (!argTypes->hasType(TypeSet::DoubleType())) {
+          return true;
+        }
         break;
       case ValType::F64:
-        type = TypeSet::DoubleType();
+        if (!argTypes->hasType(TypeSet::DoubleType())) {
+          return true;
+        }
+        break;
+      case ValType::AnyRef:
+        // We don't know what type the value will be, so we can't really check
+        // whether the callee will accept it.  It doesn't make much sense to see
+        // if the callee accepts all of the types an AnyRef might represent
+        // because most callees will not have been exposed to all those types
+        // and so we'll never pass the test.  Instead, we must use the callee's
+        // arg-type-checking entry point, and not check anything here.  See
+        // FuncType::jitExitRequiresArgCheck().
+        break;
+      case ValType::FuncRef:
+        // We handle FuncRef as we do AnyRef: by checking the type dynamically
+        // in the callee.  Code in the stubs layer must box up the FuncRef as a
+        // Value.
         break;
       case ValType::Ref:
-      case ValType::FuncRef:
-      case ValType::AnyRef:
         MOZ_CRASH("case guarded above");
       case ValType::I64:
         MOZ_CRASH("NYI");
       case ValType::NullRef:
         MOZ_CRASH("NullRef not expressible");
-    }
-
-    StackTypeSet* argTypes = jitScript->argTypes(sweep, script, i);
-    if (!argTypes->hasType(type)) {
-      return true;
     }
   }
 
@@ -437,70 +454,53 @@ static int32_t PerformWait(Instance* instance, uint32_t byteOffset, T value,
   return int32_t(woken);
 }
 
+template <typename T, typename F>
+inline int32_t WasmMemoryCopy(T memBase, uint32_t memLen,
+                              uint32_t dstByteOffset, uint32_t srcByteOffset,
+                              uint32_t len, F memMove) {
+  // Bounds check and deal with arithmetic overflow.
+  uint64_t dstOffsetLimit = uint64_t(dstByteOffset) + uint64_t(len);
+  uint64_t srcOffsetLimit = uint64_t(srcByteOffset) + uint64_t(len);
+
+  if (dstOffsetLimit > memLen || srcOffsetLimit > memLen) {
+    JSContext* cx = TlsContext.get();
+    JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr,
+                              JSMSG_WASM_OUT_OF_BOUNDS);
+    return -1;
+  }
+
+  memMove(memBase + dstByteOffset, memBase + srcByteOffset, size_t(len));
+  return 0;
+}
+
 /* static */ int32_t Instance::memCopy(Instance* instance,
                                        uint32_t dstByteOffset,
-                                       uint32_t srcByteOffset, uint32_t len) {
+                                       uint32_t srcByteOffset, uint32_t len,
+                                       uint8_t* memBase) {
   MOZ_ASSERT(SASigMemCopy.failureMode == FailureMode::FailOnNegI32);
 
-  WasmMemoryObject* mem = instance->memory();
-  uint32_t memLen = mem->volatileMemoryLength();
+  const WasmArrayRawBuffer* rawBuf = WasmArrayRawBuffer::fromDataPtr(memBase);
+  uint32_t memLen = rawBuf->byteLength();
 
-  if (len == 0) {
-    // Zero length copies that are out-of-bounds do not trap.
-    return 0;
-  }
+  return WasmMemoryCopy(memBase, memLen, dstByteOffset, srcByteOffset, len,
+                        memmove);
+}
 
-  // Here, we know that |len - 1| cannot underflow.
-  bool mustTrap = false;
+/* static */ int32_t Instance::memCopyShared(Instance* instance,
+                                             uint32_t dstByteOffset,
+                                             uint32_t srcByteOffset,
+                                             uint32_t len, uint8_t* memBase) {
+  MOZ_ASSERT(SASigMemCopy.failureMode == FailureMode::FailOnNegI32);
 
-  // As we're supposed to write data until we trap we have to deal with
-  // arithmetic overflow in the limit calculation.
-  uint64_t highestDstOffset = uint64_t(dstByteOffset) + uint64_t(len - 1);
-  uint64_t highestSrcOffset = uint64_t(srcByteOffset) + uint64_t(len - 1);
+  typedef void (*RacyMemMove)(SharedMem<uint8_t*>, SharedMem<uint8_t*>, size_t);
 
-  bool copyDown = srcByteOffset < dstByteOffset;
+  const SharedArrayRawBuffer* rawBuf =
+      SharedArrayRawBuffer::fromDataPtr(memBase);
+  uint32_t memLen = rawBuf->volatileByteLength();
 
-  if (highestDstOffset >= memLen || highestSrcOffset >= memLen) {
-    // We would read past the end of the source or write past the end of the
-    // target.
-    if (copyDown) {
-      // We would trap on the first read or write, so don't read or write
-      // anything.
-      len = 0;
-    } else {
-      // Compute what we have space for in target and what's available in the
-      // source and pick the lowest value as the new len.
-      uint64_t srcAvail = memLen < srcByteOffset ? 0 : memLen - srcByteOffset;
-      uint64_t dstAvail = memLen < dstByteOffset ? 0 : memLen - dstByteOffset;
-      MOZ_ASSERT(len > Min(srcAvail, dstAvail));
-      len = uint32_t(Min(srcAvail, dstAvail));
-    }
-    mustTrap = true;
-  }
-
-  if (len > 0) {
-    // The required write direction is indicated by `copyDown`, but apart from
-    // the trap that may happen without writing anything, the direction is not
-    // currently observable as there are no fences nor any read/write protect
-    // operation.  So memmove is good enough to handle overlaps.
-    SharedMem<uint8_t*> dataPtr = mem->buffer().dataPointerEither();
-    if (mem->isShared()) {
-      AtomicOperations::memmoveSafeWhenRacy(
-          dataPtr + dstByteOffset, dataPtr + srcByteOffset, size_t(len));
-    } else {
-      uint8_t* rawBuf = dataPtr.unwrap(/*Unshared*/);
-      memmove(rawBuf + dstByteOffset, rawBuf + srcByteOffset, size_t(len));
-    }
-  }
-
-  if (!mustTrap) {
-    return 0;
-  }
-
-  JSContext* cx = TlsContext.get();
-  JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr,
-                            JSMSG_WASM_OUT_OF_BOUNDS);
-  return -1;
+  return WasmMemoryCopy<SharedMem<uint8_t*>, RacyMemMove>(
+      SharedMem<uint8_t*>::shared(memBase), memLen, dstByteOffset,
+      srcByteOffset, len, AtomicOperations::memmoveSafeWhenRacy);
 }
 
 /* static */ int32_t Instance::dataDrop(Instance* instance, uint32_t segIndex) {
@@ -510,9 +510,7 @@ static int32_t PerformWait(Instance* instance, uint32_t byteOffset, T value,
                      "ensured by validation");
 
   if (!instance->passiveDataSegments_[segIndex]) {
-    JS_ReportErrorNumberASCII(TlsContext.get(), GetErrorMessage, nullptr,
-                              JSMSG_WASM_DROPPED_DATA_SEG);
-    return -1;
+    return 0;
   }
 
   SharedDataSegment& segRefPtr = instance->passiveDataSegments_[segIndex];
@@ -523,55 +521,49 @@ static int32_t PerformWait(Instance* instance, uint32_t byteOffset, T value,
   return 0;
 }
 
+template <typename T, typename F>
+inline int32_t WasmMemoryFill(T memBase, uint32_t memLen, uint32_t byteOffset,
+                              uint32_t value, uint32_t len, F memSet) {
+  // Bounds check and deal with arithmetic overflow.
+  uint64_t offsetLimit = uint64_t(byteOffset) + uint64_t(len);
+
+  if (offsetLimit > memLen) {
+    JSContext* cx = TlsContext.get();
+    JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr,
+                              JSMSG_WASM_OUT_OF_BOUNDS);
+    return -1;
+  }
+
+  // The required write direction is upward, but that is not currently
+  // observable as there are no fences nor any read/write protect operation.
+  memSet(memBase + byteOffset, int(value), size_t(len));
+  return 0;
+}
+
 /* static */ int32_t Instance::memFill(Instance* instance, uint32_t byteOffset,
-                                       uint32_t value, uint32_t len) {
+                                       uint32_t value, uint32_t len,
+                                       uint8_t* memBase) {
   MOZ_ASSERT(SASigMemFill.failureMode == FailureMode::FailOnNegI32);
 
-  WasmMemoryObject* mem = instance->memory();
-  uint32_t memLen = mem->volatileMemoryLength();
+  const WasmArrayRawBuffer* rawBuf = WasmArrayRawBuffer::fromDataPtr(memBase);
+  uint32_t memLen = rawBuf->byteLength();
 
-  if (len == 0) {
-    // Zero length fills that are out-of-bounds do not trap.
-    return 0;
-  }
+  return WasmMemoryFill(memBase, memLen, byteOffset, value, len, memset);
+}
 
-  // Here, we know that |len - 1| cannot underflow.
+/* static */ int32_t Instance::memFillShared(Instance* instance,
+                                             uint32_t byteOffset,
+                                             uint32_t value, uint32_t len,
+                                             uint8_t* memBase) {
+  MOZ_ASSERT(SASigMemFill.failureMode == FailureMode::FailOnNegI32);
 
-  bool mustTrap = false;
+  const SharedArrayRawBuffer* rawBuf =
+      SharedArrayRawBuffer::fromDataPtr(memBase);
+  uint32_t memLen = rawBuf->volatileByteLength();
 
-  // We must write data until we trap, so we have to deal with arithmetic
-  // overflow in the limit calculation.
-  uint64_t highestOffset = uint64_t(byteOffset) + uint64_t(len - 1);
-  if (highestOffset >= memLen) {
-    // We would write past the end.  Compute what we have space for in the
-    // target and make that the new len.
-    uint64_t avail = memLen < byteOffset ? 0 : memLen - byteOffset;
-    MOZ_ASSERT(len > avail);
-    len = uint32_t(avail);
-    mustTrap = true;
-  }
-
-  if (len > 0) {
-    // The required write direction is upward, but that is not currently
-    // observable as there are no fences nor any read/write protect operation.
-    SharedMem<uint8_t*> dataPtr = mem->buffer().dataPointerEither();
-    if (mem->isShared()) {
-      AtomicOperations::memsetSafeWhenRacy(dataPtr + byteOffset, int(value),
-                                           size_t(len));
-    } else {
-      uint8_t* rawBuf = dataPtr.unwrap(/*Unshared*/);
-      memset(rawBuf + byteOffset, int(value), size_t(len));
-    }
-  }
-
-  if (!mustTrap) {
-    return 0;
-  }
-
-  JSContext* cx = TlsContext.get();
-  JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr,
-                            JSMSG_WASM_OUT_OF_BOUNDS);
-  return -1;
+  return WasmMemoryFill(SharedMem<uint8_t*>::shared(memBase), memLen,
+                        byteOffset, value, len,
+                        AtomicOperations::memsetSafeWhenRacy);
 }
 
 /* static */ int32_t Instance::memInit(Instance* instance, uint32_t dstOffset,
@@ -583,8 +575,12 @@ static int32_t PerformWait(Instance* instance, uint32_t byteOffset, T value,
                      "ensured by validation");
 
   if (!instance->passiveDataSegments_[segIndex]) {
+    if (len == 0 && srcOffset == 0) {
+      return 0;
+    }
+
     JS_ReportErrorNumberASCII(TlsContext.get(), GetErrorMessage, nullptr,
-                              JSMSG_WASM_DROPPED_DATA_SEG);
+                              JSMSG_WASM_OUT_OF_BOUNDS);
     return -1;
   }
 
@@ -602,52 +598,27 @@ static int32_t PerformWait(Instance* instance, uint32_t byteOffset, T value,
   // to
   //   memoryBase[ dstOffset .. dstOffset + len - 1 ]
 
-  if (len == 0) {
-    // Zero length inits that are out-of-bounds do not trap.
-    return 0;
+  // Bounds check and deal with arithmetic overflow.
+  uint64_t dstOffsetLimit = uint64_t(dstOffset) + uint64_t(len);
+  uint64_t srcOffsetLimit = uint64_t(srcOffset) + uint64_t(len);
+
+  if (dstOffsetLimit > memLen || srcOffsetLimit > segLen) {
+    JS_ReportErrorNumberASCII(TlsContext.get(), GetErrorMessage, nullptr,
+                              JSMSG_WASM_OUT_OF_BOUNDS);
+    return -1;
   }
 
-  // Here, we know that |len - 1| cannot underflow.
-
-  bool mustTrap = false;
-
-  // As we're supposed to write data until we trap we have to deal with
-  // arithmetic overflow in the limit calculation.
-  uint64_t highestDstOffset = uint64_t(dstOffset) + uint64_t(len - 1);
-  uint64_t highestSrcOffset = uint64_t(srcOffset) + uint64_t(len - 1);
-
-  if (highestDstOffset >= memLen || highestSrcOffset >= segLen) {
-    // We would read past the end of the source or write past the end of the
-    // target.  Compute what we have space for in target and what's available
-    // in the source and pick the lowest value as the new len.
-    uint64_t srcAvail = segLen < srcOffset ? 0 : segLen - srcOffset;
-    uint64_t dstAvail = memLen < dstOffset ? 0 : memLen - dstOffset;
-    MOZ_ASSERT(len > Min(srcAvail, dstAvail));
-    len = uint32_t(Min(srcAvail, dstAvail));
-    mustTrap = true;
+  // The required read/write direction is upward, but that is not currently
+  // observable as there are no fences nor any read/write protect operation.
+  SharedMem<uint8_t*> dataPtr = mem->buffer().dataPointerEither();
+  if (mem->isShared()) {
+    AtomicOperations::memcpySafeWhenRacy(
+        dataPtr + dstOffset, (uint8_t*)seg.bytes.begin() + srcOffset, len);
+  } else {
+    uint8_t* rawBuf = dataPtr.unwrap(/*Unshared*/);
+    memcpy(rawBuf + dstOffset, (const char*)seg.bytes.begin() + srcOffset, len);
   }
-
-  if (len > 0) {
-    // The required read/write direction is upward, but that is not currently
-    // observable as there are no fences nor any read/write protect operation.
-    SharedMem<uint8_t*> dataPtr = mem->buffer().dataPointerEither();
-    if (mem->isShared()) {
-      AtomicOperations::memcpySafeWhenRacy(
-          dataPtr + dstOffset, (uint8_t*)seg.bytes.begin() + srcOffset, len);
-    } else {
-      uint8_t* rawBuf = dataPtr.unwrap(/*Unshared*/);
-      memcpy(rawBuf + dstOffset, (const char*)seg.bytes.begin() + srcOffset,
-             len);
-    }
-  }
-
-  if (!mustTrap) {
-    return 0;
-  }
-
-  JS_ReportErrorNumberASCII(TlsContext.get(), GetErrorMessage, nullptr,
-                            JSMSG_WASM_OUT_OF_BOUNDS);
-  return -1;
+  return 0;
 }
 
 /* static */ int32_t Instance::tableCopy(Instance* instance, uint32_t dstOffset,
@@ -662,75 +633,41 @@ static int32_t PerformWait(Instance* instance, uint32_t byteOffset, T value,
   const SharedTable& dstTable = instance->tables()[dstTableIndex];
   uint32_t dstTableLen = dstTable->length();
 
-  if (len == 0) {
-    // Zero length copies that are out-of-bounds do not trap.
-    return 0;
-  }
+  // Bounds check and deal with arithmetic overflow.
+  uint64_t dstOffsetLimit = uint64_t(dstOffset) + len;
+  uint64_t srcOffsetLimit = uint64_t(srcOffset) + len;
 
-  // Here, we know that |len - 1| cannot underflow.
-  bool isOOB = false;
-
-  // As we're supposed to write data until we trap we have to deal with
-  // arithmetic overflow in the limit calculation.
-  uint64_t highestDstOffset = uint64_t(dstOffset) + (len - 1);
-  uint64_t highestSrcOffset = uint64_t(srcOffset) + (len - 1);
-
-  bool copyDown = srcOffset < dstOffset;
-
-  if (highestDstOffset >= dstTableLen || highestSrcOffset >= srcTableLen) {
-    // We would read past the end of the source or write past the end of the
-    // target.
-    if (copyDown) {
-      // We would trap on the first read or write, so don't read or write
-      // anything.
-      len = 0;
-    } else {
-      // Compute what we have space for in target and what's available in the
-      // source and pick the lowest value as the new len.
-      uint64_t srcAvail = srcTableLen < srcOffset ? 0 : srcTableLen - srcOffset;
-      uint64_t dstAvail = dstTableLen < dstOffset ? 0 : dstTableLen - dstOffset;
-      MOZ_ASSERT(len > Min(srcAvail, dstAvail));
-      len = uint32_t(Min(srcAvail, dstAvail));
-    }
-    isOOB = true;
+  if (dstOffsetLimit > dstTableLen || srcOffsetLimit > srcTableLen) {
+    JS_ReportErrorNumberASCII(TlsContext.get(), GetErrorMessage, nullptr,
+                              JSMSG_WASM_OUT_OF_BOUNDS);
+    return -1;
   }
 
   bool isOOM = false;
 
-  if (len > 0) {
-    // The required write direction is indicated by `copyDown`, but apart from
-    // the trap that may happen without writing anything, the direction is not
-    // currently observable as there are no fences nor any read/write protect
-    // operation.  So Table::copy is good enough, so long as we handle
-    // overlaps.
-    if (&srcTable == &dstTable && dstOffset > srcOffset) {
-      for (uint32_t i = len; i > 0; i--) {
-        if (!dstTable->copy(*srcTable, dstOffset + (i - 1),
-                            srcOffset + (i - 1))) {
-          isOOM = true;
-          break;
-        }
+  if (&srcTable == &dstTable && dstOffset > srcOffset) {
+    for (uint32_t i = len; i > 0; i--) {
+      if (!dstTable->copy(*srcTable, dstOffset + (i - 1),
+                          srcOffset + (i - 1))) {
+        isOOM = true;
+        break;
       }
-    } else if (&srcTable == &dstTable && dstOffset == srcOffset) {
-      // No-op
-    } else {
-      for (uint32_t i = 0; i < len; i++) {
-        if (!dstTable->copy(*srcTable, dstOffset + i, srcOffset + i)) {
-          isOOM = true;
-          break;
-        }
+    }
+  } else if (&srcTable == &dstTable && dstOffset == srcOffset) {
+    // No-op
+  } else {
+    for (uint32_t i = 0; i < len; i++) {
+      if (!dstTable->copy(*srcTable, dstOffset + i, srcOffset + i)) {
+        isOOM = true;
+        break;
       }
     }
   }
 
-  if (!isOOB && !isOOM) {
-    return 0;
+  if (isOOM) {
+    return -1;
   }
-  if (isOOB && !isOOM) {
-    JS_ReportErrorNumberASCII(TlsContext.get(), GetErrorMessage, nullptr,
-                              JSMSG_WASM_OUT_OF_BOUNDS);
-  }
-  return -1;
+  return 0;
 }
 
 /* static */ int32_t Instance::elemDrop(Instance* instance, uint32_t segIndex) {
@@ -740,9 +677,7 @@ static int32_t PerformWait(Instance* instance, uint32_t byteOffset, T value,
                      "ensured by validation");
 
   if (!instance->passiveElemSegments_[segIndex]) {
-    JS_ReportErrorNumberASCII(TlsContext.get(), GetErrorMessage, nullptr,
-                              JSMSG_WASM_DROPPED_ELEM_SEG);
-    return -1;
+    return 0;
   }
 
   SharedElemSegment& segRefPtr = instance->passiveElemSegments_[segIndex];
@@ -821,8 +756,12 @@ bool Instance::initElems(uint32_t tableIndex, const ElemSegment& seg,
                      "ensured by validation");
 
   if (!instance->passiveElemSegments_[segIndex]) {
+    if (len == 0 && srcOffset == 0) {
+      return 0;
+    }
+
     JS_ReportErrorNumberASCII(TlsContext.get(), GetErrorMessage, nullptr,
-                              JSMSG_WASM_DROPPED_ELEM_SEG);
+                              JSMSG_WASM_OUT_OF_BOUNDS);
     return -1;
   }
 
@@ -839,43 +778,21 @@ bool Instance::initElems(uint32_t tableIndex, const ElemSegment& seg,
   // to
   //   tableBase[ dstOffset .. dstOffset + len - 1 ]
 
-  if (len == 0) {
-    // Zero length inits that are out-of-bounds do not trap.
-    return 0;
+  // Bounds check and deal with arithmetic overflow.
+  uint64_t dstOffsetLimit = uint64_t(dstOffset) + uint64_t(len);
+  uint64_t srcOffsetLimit = uint64_t(srcOffset) + uint64_t(len);
+
+  if (dstOffsetLimit > tableLen || srcOffsetLimit > segLen) {
+    JS_ReportErrorNumberASCII(TlsContext.get(), GetErrorMessage, nullptr,
+                              JSMSG_WASM_OUT_OF_BOUNDS);
+    return -1;
   }
 
-  // Here, we know that |len - 1| cannot underflow.
-  bool mustTrap = false;
-
-  // As we're supposed to write data until we trap we have to deal with
-  // arithmetic overflow in the limit calculation.
-  uint64_t highestDstOffset = uint64_t(dstOffset) + uint64_t(len - 1);
-  uint64_t highestSrcOffset = uint64_t(srcOffset) + uint64_t(len - 1);
-
-  if (highestDstOffset >= tableLen || highestSrcOffset >= segLen) {
-    // We would read past the end of the source or write past the end of the
-    // target.  Compute what we have space for in target and what's available
-    // in the source and pick the lowest value as the new len.
-    uint64_t srcAvail = segLen < srcOffset ? 0 : segLen - srcOffset;
-    uint64_t dstAvail = tableLen < dstOffset ? 0 : tableLen - dstOffset;
-    MOZ_ASSERT(len > Min(srcAvail, dstAvail));
-    len = uint32_t(Min(srcAvail, dstAvail));
-    mustTrap = true;
+  if (!instance->initElems(tableIndex, seg, dstOffset, srcOffset, len)) {
+    return -1;  // OOM, which has already been reported.
   }
 
-  if (len > 0) {
-    if (!instance->initElems(tableIndex, seg, dstOffset, srcOffset, len)) {
-      return -1;  // OOM, which has already been reported.
-    }
-  }
-
-  if (!mustTrap) {
-    return 0;
-  }
-
-  JS_ReportErrorNumberASCII(TlsContext.get(), GetErrorMessage, nullptr,
-                            JSMSG_WASM_OUT_OF_BOUNDS);
-  return -1;
+  return 0;
 }
 
 /* static */ int32_t Instance::tableFill(Instance* instance, uint32_t start,
@@ -886,47 +803,27 @@ bool Instance::initElems(uint32_t tableIndex, const ElemSegment& seg,
   JSContext* cx = TlsContext.get();
   Table& table = *instance->tables()[tableIndex];
 
-  if (len == 0) {
-    // Zero length fills that are out-of-bounds do not trap.
-    return 0;
+  // Bounds check and deal with arithmetic overflow.
+  uint64_t offsetLimit = uint64_t(start) + uint64_t(len);
+
+  if (offsetLimit > table.length()) {
+    JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr,
+                              JSMSG_WASM_OUT_OF_BOUNDS);
+    return -1;
   }
-
-  // Here, we know that |len - 1| cannot underflow.
-
-  bool mustTrap = false;
-
-  // We must write the table until we trap, so we have to deal with
-  // arithmetic overflow in the limit calculation.
-  uint64_t highestOffset = uint64_t(start) + uint64_t(len - 1);
-  if (highestOffset >= table.length()) {
-    // We would write past the end.  Compute what we have space for in the
-    // target and make that the new len.
-    uint64_t avail = table.length() < start ? 0 : table.length() - start;
-    MOZ_ASSERT(len > avail);
-    len = uint32_t(avail);
-    mustTrap = true;
-  }
-
-  AnyRef ref = AnyRef::fromCompiledCode(value);
 
   switch (table.kind()) {
     case TableKind::AnyRef:
-      table.fillAnyRef(start, len, ref);
+      table.fillAnyRef(start, len, AnyRef::fromCompiledCode(value));
       break;
     case TableKind::FuncRef:
-      table.fillFuncRef(start, len, ref, cx);
+      table.fillFuncRef(start, len, FuncRef::fromCompiledCode(value), cx);
       break;
     case TableKind::AsmJS:
       MOZ_CRASH("not asm.js");
   }
 
-  if (!mustTrap) {
-    return 0;
-  }
-
-  JS_ReportErrorNumberASCII(cx, GetErrorMessage, nullptr,
-                            JSMSG_WASM_TABLE_OUT_OF_BOUNDS);
-  return -1;
+  return 0;
 }
 
 /* static */ void* Instance::tableGet(Instance* instance, uint32_t index,
@@ -952,7 +849,7 @@ bool Instance::initElems(uint32_t tableIndex, const ElemSegment& seg,
     return AnyRef::invalid().forCompiledCode();
   }
 
-  return AnyRef::fromJSObject(fun).forCompiledCode();
+  return FuncRef::fromJSFunction(fun).forCompiledCode();
 }
 
 /* static */ uint32_t Instance::tableGrow(Instance* instance, void* initValue,
@@ -970,7 +867,8 @@ bool Instance::initElems(uint32_t tableIndex, const ElemSegment& seg,
         table.fillAnyRef(oldSize, delta, ref);
         break;
       case TableKind::FuncRef:
-        table.fillFuncRef(oldSize, delta, ref, TlsContext.get());
+        table.fillFuncRef(oldSize, delta, FuncRef::fromAnyRefUnchecked(ref),
+                          TlsContext.get());
         break;
       case TableKind::AsmJS:
         MOZ_CRASH("not asm.js");
@@ -991,14 +889,13 @@ bool Instance::initElems(uint32_t tableIndex, const ElemSegment& seg,
     return -1;
   }
 
-  AnyRef ref = AnyRef::fromCompiledCode(value);
-
   switch (table.kind()) {
     case TableKind::AnyRef:
-      table.fillAnyRef(index, 1, ref);
+      table.fillAnyRef(index, 1, AnyRef::fromCompiledCode(value));
       break;
     case TableKind::FuncRef:
-      table.fillFuncRef(index, 1, ref, TlsContext.get());
+      table.fillFuncRef(index, 1, FuncRef::fromCompiledCode(value),
+                        TlsContext.get());
       break;
     case TableKind::AsmJS:
       MOZ_CRASH("not asm.js");
@@ -1022,13 +919,18 @@ bool Instance::initElems(uint32_t tableIndex, const ElemSegment& seg,
   const MetadataTier& metadataTier = instance->metadata(tier);
   const FuncImportVector& funcImports = metadataTier.funcImports;
 
-  // If this is an import, we need to recover the original wrapper function to
-  // maintain referential equality between a re-exported function and
-  // 'ref.func'. The imported function object is stable across tiers, which is
+  // If this is an import, we need to recover the original function to maintain
+  // reference equality between a re-exported function and 'ref.func'. The
+  // identity of the imported function object is stable across tiers, which is
   // what we want.
+  //
+  // Use the imported function only if it is an exported function, otherwise
+  // fall through to get a (possibly new) exported function.
   if (funcIndex < funcImports.length()) {
     FuncImportTls& import = instance->funcImportTls(funcImports[funcIndex]);
-    return AnyRef::fromJSObject(import.fun).forCompiledCode();
+    if (IsWasmExportedFunction(import.fun)) {
+      return FuncRef::fromJSFunction(import.fun).forCompiledCode();
+    }
   }
 
   RootedFunction fun(cx);
@@ -1041,7 +943,7 @@ bool Instance::initElems(uint32_t tableIndex, const ElemSegment& seg,
     return AnyRef::invalid().forCompiledCode();
   }
 
-  return AnyRef::fromJSObject(fun).forCompiledCode();
+  return FuncRef::fromJSFunction(fun).forCompiledCode();
 }
 
 /* static */ void Instance::postBarrier(Instance* instance,
@@ -1243,6 +1145,7 @@ Instance::Instance(JSContext* cx, Handle<WasmInstanceObject*> object,
   tlsData()->instance = this;
   tlsData()->realm = realm_;
   tlsData()->cx = cx;
+  tlsData()->valueBoxClass = &WasmValueBox::class_;
   tlsData()->resetInterrupt(cx);
   tlsData()->jumpTable = code_->tieringJumpTable();
   tlsData()->addressOfNeedsIncrementalBarrier =
@@ -1496,6 +1399,10 @@ void Instance::tracePrivate(JSTracer* trc) {
 
   TraceNullableEdge(trc, &memory_, "wasm buffer");
   structTypeDescrs_.trace(trc);
+
+  if (maybeDebug_) {
+    maybeDebug_->trace(trc);
+  }
 }
 
 void Instance::trace(JSTracer* trc) {
@@ -1734,7 +1641,7 @@ bool Instance::callExport(JSContext* cx, uint32_t funcIndex, CallArgs args) {
   // stored in the first element of the array (which, therefore, must have
   // length >= 1).
   Vector<ExportArg, 8> exportArgs(cx);
-  if (!exportArgs.resize(Max<size_t>(1, funcType->args().length()))) {
+  if (!exportArgs.resize(std::max<size_t>(1, funcType->args().length()))) {
     return false;
   }
 
@@ -1846,7 +1753,7 @@ bool Instance::callExport(JSContext* cx, uint32_t funcIndex, CallArgs args) {
     return true;
   }
 
-  // Note that we're not rooting the return value; we depend on UnboxAnyRef()
+  // Note that we're not rooting the return value; we depend on Unbox*Ref()
   // not allocating for this to be safe.  The constraint has been noted in
   // that function.
   void* retAddr = &exportArgs[0];
@@ -1877,6 +1784,10 @@ bool Instance::callExport(JSContext* cx, uint32_t funcIndex, CallArgs args) {
       case ValType::Ref:
         MOZ_CRASH("temporarily unsupported Ref type in callExport");
       case ValType::FuncRef:
+        args.rval().set(
+            UnboxFuncRef(FuncRef::fromCompiledCode(*(void**)retAddr)));
+        DebugCodegen(DebugChannel::Function, "funcptr(%p)", *(void**)retAddr);
+        break;
       case ValType::AnyRef:
         args.rval().set(
             UnboxAnyRef(AnyRef::fromCompiledCode(*(void**)retAddr)));

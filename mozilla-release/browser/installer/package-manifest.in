@@ -326,6 +326,9 @@
 @RESPATH@/res/dtd/*
 @RESPATH@/res/language.properties
 @RESPATH@/res/locale/layout/HtmlForm.properties
+@RESPATH@/res/locale/layout/MediaDocument.properties
+@RESPATH@/res/locale/layout/xmlparser.properties
+@RESPATH@/res/locale/dom/dom.properties
 #ifdef XP_MACOSX
 @RESPATH@/res/MainMenu.nib/
 #endif
@@ -371,6 +374,10 @@ bin/libfreebl_64int_3.so
 @RESPATH@/chrome/pippki@JAREXT@
 @RESPATH@/chrome/pippki.manifest
 
+#if defined(XP_WIN) && !defined(_ARM64_)
+@BINPATH@/@DLL_PREFIX@osclientcerts@DLL_SUFFIX@
+#endif
+
 ; For process sandboxing
 #if defined(MOZ_SANDBOX)
 #if defined(XP_LINUX)
@@ -403,7 +410,6 @@ bin/libfreebl_64int_3.so
 #else
 @BINPATH@/crashreporter@BIN_SUFFIX@
 @RESPATH@/crashreporter.ini
-@BINPATH@/minidump-analyzer@BIN_SUFFIX@
 #ifdef XP_UNIX
 @RESPATH@/Throbber-small.gif
 #endif
@@ -412,6 +418,12 @@ bin/libfreebl_64int_3.so
 #ifdef MOZ_CRASHREPORTER_INJECTOR
 @BINPATH@/breakpadinjector.dll
 #endif
+#endif
+
+; [ minidump-analyzer ]
+;
+#ifdef MOZ_CRASHREPORTER
+@BINPATH@/minidump-analyzer@BIN_SUFFIX@
 #endif
 
 ; [ Ping Sender ]

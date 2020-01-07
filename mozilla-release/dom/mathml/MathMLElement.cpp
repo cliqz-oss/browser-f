@@ -15,7 +15,6 @@
 #include "nsGkAtoms.h"
 #include "nsIContentInlines.h"
 #include "nsITableCellLayout.h"  // for MAX_COLSPAN / MAX_ROWSPAN
-#include "nsLayoutStylesheetCache.h"
 #include "nsCSSValue.h"
 #include "nsMappedAttributes.h"
 #include "nsStyleConsts.h"
@@ -1052,8 +1051,7 @@ nsresult MathMLElement::AfterSetAttr(int32_t aNameSpaceID, nsAtom* aName,
     if (IsEventAttributeName(aName) && aValue) {
       MOZ_ASSERT(aValue->Type() == nsAttrValue::eString,
                  "Expected string value for script body");
-      nsresult rv = SetEventHandler(aName, aValue->GetStringValue());
-      NS_ENSURE_SUCCESS(rv, rv);
+      SetEventHandler(aName, aValue->GetStringValue());
     }
   }
 

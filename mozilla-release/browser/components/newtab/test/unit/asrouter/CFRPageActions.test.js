@@ -12,6 +12,8 @@ describe("CFRPageActions", () => {
   let globals;
   let containerElem;
   let elements;
+  let announceStub;
+  let remoteL10n;
 
   const elementIDs = [
     "urlbar",
@@ -41,6 +43,8 @@ describe("CFRPageActions", () => {
     sandbox = sinon.createSandbox();
     clock = sandbox.useFakeTimers();
 
+    announceStub = sandbox.stub();
+    const A11yUtils = { announce: announceStub };
     fakeRecommendation = { ...FAKE_RECOMMENDATION };
     fakeHost = "mozilla.org";
     fakeBrowser = {
@@ -52,9 +56,14 @@ describe("CFRPageActions", () => {
     };
     dispatchStub = sandbox.stub();
 
+    remoteL10n = {
+      l10n: {},
+      reloadL10n: sandbox.stub(),
+    };
+
     globals = new GlobalOverrider();
     globals.set({
-      DOMLocalization: class {},
+      RemoteL10n: remoteL10n,
       promiseDocumentFlushed: sandbox
         .stub()
         .callsFake(fn => Promise.resolve(fn())),
@@ -64,6 +73,7 @@ describe("CFRPageActions", () => {
       },
       PrivateBrowsingUtils: { isWindowPrivate: sandbox.stub().returns(false) },
       gBrowser: { selectedBrowser: fakeBrowser },
+      A11yUtils,
     });
     document.createXULElement = document.createElement;
 
@@ -94,22 +104,56 @@ describe("CFRPageActions", () => {
 
   describe("PageAction", () => {
     let pageAction;
-    let getStringsStub;
 
     beforeEach(() => {
       pageAction = new PageAction(window, dispatchStub);
-      getStringsStub = sandbox.stub(pageAction, "getStrings").resolves("");
+    });
+
+    describe("#addImpression", () => {
+      it("should call _sendTelemetry with the impression payload", () => {
+        const recommendation = {
+          id: "foo",
+          content: { bucket_id: "bar" },
+        };
+        sandbox.spy(pageAction, "_sendTelemetry");
+
+        pageAction.addImpression(recommendation);
+
+        assert.calledWith(pageAction._sendTelemetry, {
+          message_id: "foo",
+          bucket_id: "bar",
+          event: "IMPRESSION",
+        });
+      });
+      it("should include modelVersion if presented in the message", () => {
+        const recommendation = {
+          id: "foo",
+          content: { bucket_id: "bar" },
+          personalizedModelVersion: "model_version_1",
+        };
+        sandbox.spy(pageAction, "_sendTelemetry");
+
+        pageAction.addImpression(recommendation);
+
+        assert.calledWith(pageAction._sendTelemetry, {
+          message_id: "foo",
+          bucket_id: "bar",
+          event: "IMPRESSION",
+          event_context: {
+            modelVersion: "model_version_1",
+          },
+        });
+      });
     });
 
     describe("#showAddressBarNotifier", () => {
       it("should un-hideAddressBarNotifier the element and set the right label value", async () => {
-        const FAKE_NOTIFICATION_TEXT = "FAKE_NOTIFICATION_TEXT";
-        getStringsStub
-          .withArgs(fakeRecommendation.content.notification_text)
-          .resolves(FAKE_NOTIFICATION_TEXT);
         await pageAction.showAddressBarNotifier(fakeRecommendation);
         assert.isFalse(pageAction.container.hidden);
-        assert.equal(pageAction.label.value, FAKE_NOTIFICATION_TEXT);
+        assert.equal(
+          pageAction.label.value,
+          fakeRecommendation.content.notification_text
+        );
       });
       it("should wait for the document layout to flush", async () => {
         sandbox.spy(pageAction.label, "getClientRects");
@@ -356,12 +400,11 @@ describe("CFRPageActions", () => {
       ];
 
       beforeEach(() => {
-        getStringsStub.restore();
         formatMessagesStub = sandbox
           .stub()
           .withArgs({ id: "hello_world" })
           .resolves(localeStrings);
-        global.DOMLocalization.prototype.formatMessages = formatMessagesStub;
+        global.RemoteL10n.l10n.formatMessages = formatMessagesStub;
       });
 
       it("should return the argument if a string_id is not defined", async () => {
@@ -433,6 +476,7 @@ describe("CFRPageActions", () => {
     describe("#_showPopupOnClick", () => {
       let translateElementsStub;
       let setAttributesStub;
+      let getStringsStub;
       beforeEach(async () => {
         CFRPageActions.PageActionMap.set(fakeBrowser.ownerGlobal, pageAction);
         await CFRPageActions.addRecommendation(
@@ -441,6 +485,7 @@ describe("CFRPageActions", () => {
           fakeRecommendation,
           dispatchStub
         );
+        getStringsStub = sandbox.stub(pageAction, "getStrings").resolves("");
         getStringsStub
           .callsFake(async a => a) // eslint-disable-line max-nested-callbacks
           .withArgs({ string_id: "primary_button_id" })
@@ -473,8 +518,8 @@ describe("CFRPageActions", () => {
 
         translateElementsStub = sandbox.stub().resolves();
         setAttributesStub = sandbox.stub();
-        global.DOMLocalization.prototype.setAttributes = setAttributesStub;
-        global.DOMLocalization.prototype.translateElements = translateElementsStub;
+        global.RemoteL10n.l10n.setAttributes = setAttributesStub;
+        global.RemoteL10n.l10n.translateElements = translateElementsStub;
       });
 
       it("should call `.hideAddressBarNotifier` and do nothing if there is no recommendation for the selected browser", async () => {
@@ -552,6 +597,32 @@ describe("CFRPageActions", () => {
             message_id: fakeRecommendation.id,
             bucket_id: fakeRecommendation.content.bucket_id,
             event: "CLICK_DOORHANGER",
+          },
+        });
+      });
+      it("should send modelVersion if presented in the message", async () => {
+        const recommendationWithModelVersion = {
+          ...fakeRecommendation,
+          personalizedModelVersion: "model_version_1",
+        };
+        CFRPageActions.clearRecommendations();
+        await CFRPageActions.addRecommendation(
+          fakeBrowser,
+          fakeHost,
+          recommendationWithModelVersion,
+          dispatchStub
+        );
+        await pageAction._showPopupOnClick();
+
+        assert.calledWith(dispatchStub, {
+          type: "DOORHANGER_TELEMETRY",
+          data: {
+            action: "cfr_user_event",
+            source: "CFR",
+            message_id: fakeRecommendation.id,
+            bucket_id: fakeRecommendation.content.bucket_id,
+            event: "CLICK_DOORHANGER",
+            event_context: { modelVersion: "model_version_1" },
           },
         });
       });
@@ -746,46 +817,6 @@ describe("CFRPageActions", () => {
           "event",
           "PIN"
         );
-      });
-    });
-
-    describe("#_createDOML10n", () => {
-      let domL10nStub;
-      beforeEach(() => {
-        domL10nStub = sandbox.stub();
-
-        globals.set("DOMLocalization", domL10nStub);
-      });
-      it("should load the remote Fluent file if USE_REMOTE_L10N_PREF is true", () => {
-        sandbox.stub(global.Services.prefs, "getBoolPref").returns(true);
-        pageAction._createDOML10n();
-
-        assert.calledOnce(domL10nStub);
-        const { args } = domL10nStub.firstCall;
-        // The first arg is the resource array, and the second one is the bundle generator.
-        assert.equal(args.length, 2);
-        assert.deepEqual(args[0], [
-          "browser/newtab/asrouter.ftl",
-          "browser/branding/brandings.ftl",
-          "browser/branding/sync-brand.ftl",
-          "branding/brand.ftl",
-        ]);
-        assert.isFunction(args[1]);
-      });
-      it("should load the local Fluent file if USE_REMOTE_L10N_PREF is false", () => {
-        sandbox.stub(global.Services.prefs, "getBoolPref").returns(false);
-        pageAction._createDOML10n();
-
-        const { args } = domL10nStub.firstCall;
-        // The first arg is the resource array, and the second one should be null.
-        assert.equal(args.length, 2);
-        assert.deepEqual(args[0], [
-          "browser/newtab/asrouter.ftl",
-          "browser/branding/brandings.ftl",
-          "browser/branding/sync-brand.ftl",
-          "branding/brand.ftl",
-        ]);
-        assert.isUndefined(args[1]);
       });
     });
   });

@@ -43,21 +43,22 @@ web-platform-tests:
             android.*: 18
             linux64-asan/opt: 18
             linux64-ccov/debug: 24
+            linux64-ccov/opt: 24
             linux.*/debug: 18
             macosx*/opt: 8
             macosx.*/debug: 16
-            windows10.*/debug: 18
-            windows10-aarch64/opt: 12
+            windows.*/debug: 18
+            windows10-aarch64/opt: 16
             default: 12
     max-run-time:
         by-test-platform:
-            .*-ccov/debug: 10800
+            .*-ccov/.*: 10800
             linux64-qr/debug: 9000
             default: 7200
     e10s: true
     run-on-projects:
         by-test-platform:
-            windows10-aarch64/opt: ['try', 'mozilla-central']
+            windows10-aarch64/opt: ['try']
             .*-qr/.*: ['release', 'try']  # skip on integration branches due to high load
             default: built-projects
     tier:
@@ -65,6 +66,7 @@ web-platform-tests:
             linux64-asan/opt: 2
             windows10-aarch64.*: 2
             .*-qr/.*: 2  # can't be tier-1 if it's not running on integration branches
+            linux64-ccov/opt: 3
             default: default
     mozharness:
         chunked: true
@@ -83,7 +85,7 @@ web-platform-tests-reftests:
             default: virtual
     chunks:
         by-test-platform:
-            .*-ccov/debug: 8
+            .*-ccov/.*: 8
             linux64(-qr|-asan)/.*: 6
             linux64(-shippable|-devedition)?/opt: 3
             macosx10.*-64/debug: 6
@@ -93,7 +95,7 @@ web-platform-tests-reftests:
     e10s: true
     run-on-projects:
         by-test-platform:
-            windows10-aarch64/opt: ['try', 'mozilla-central']
+            windows10-aarch64/opt: ['try']
             default: built-projects
     tier:
         by-test-platform:
@@ -112,14 +114,14 @@ web-platform-tests-wdspec:
     treeherder-symbol: W(Wd)
     chunks:
         by-test-platform:
-            .*-ccov/debug: 4
+            .*-ccov/.*: 4
             default: 2
     mozharness:
         extra-options:
             - --test-type=wdspec
     run-on-projects:
         by-test-platform:
-            windows10-aarch64/opt: ['try', 'mozilla-central']
+            windows10-aarch64/opt: ['try']
             .*-qr/.*: ['release', 'try']
             default: built-projects
     tier:
@@ -127,6 +129,7 @@ web-platform-tests-wdspec:
             android.*: 3
             linux64-asan/opt: 2
             .*-qr/.*: 2  # can't be tier-1 if it's not running on integration branches
+            linux64-ccov/opt: 3
             default: default
 
 web-platform-tests-wdspec-headless:

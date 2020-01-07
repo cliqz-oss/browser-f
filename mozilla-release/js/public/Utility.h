@@ -18,11 +18,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#ifdef JS_OOM_DO_BACKTRACES
-#  include <execinfo.h>
-#  include <stdio.h>
-#endif
-
 #include "jstypes.h"
 
 #include "mozmemory.h"
@@ -95,7 +90,7 @@ namespace oom {
  * off-thread script parsing without causing an OOM in the active thread first.
  *
  * Getter/Setter functions to encapsulate mozilla::ThreadLocal, implementation
- * is in jsutil.cpp.
+ * is in util/Utility.cpp.
  */
 #  if defined(DEBUG) || defined(JS_OOM_BREAKPOINT)
 
@@ -380,9 +375,8 @@ extern JS_PUBLIC_DATA arena_id_t StringBufferArena;
 extern void InitMallocAllocator();
 extern void ShutDownMallocAllocator();
 
-#  ifdef MOZ_DEBUG
+// This is a no-op if built without MOZ_MEMORY and MOZ_DEBUG.
 extern void AssertJSStringBufferInCorrectArena(const void* ptr);
-#  endif
 
 } /* namespace js */
 

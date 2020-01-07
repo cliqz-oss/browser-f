@@ -110,6 +110,7 @@ class ScalarType:
         OPTIONAL_FIELDS = {
             'release_channel_collection': basestring,
             'keyed': bool,
+            'keys': list,
             'operating_systems': list,
             'record_into_store': list,
         }
@@ -120,6 +121,7 @@ class ScalarType:
             'notification_emails': basestring,
             'record_in_processes': basestring,
             'products': basestring,
+            'keys': basestring,
             'operating_systems': basestring,
             'record_into_store': basestring,
         }
@@ -174,6 +176,26 @@ class ScalarType:
                             .format(field, self._name, LIST_FIELDS_CONTENT[field].__name__,
                                     BASE_DOC_URL)).handle_later()
 
+        # Check that keys are only added to keyed scalars and that their values are valid
+        MAX_KEY_COUNT = 100
+        MAX_KEY_LENGTH = 72
+        keys = definition.get('keys')
+        if keys is not None:
+            if not definition.get('keyed', False):
+                ParserError(self._name + '- invalid field: ' +
+                            '\n`keys` field only valid for keyed histograms').handle_later()
+
+            if len(keys) > MAX_KEY_COUNT:
+                ParserError(self._name + ' - exceeding key count: ' +
+                            '\n`keys` values count  must not exceed {}'.format(MAX_KEY_COUNT))\
+                            .handle_later()
+
+            invalid = filter(lambda k: len(k) > MAX_KEY_LENGTH, keys)
+            if len(invalid) > 0:
+                ParserError(self._name + ' - invalid key value' +
+                            '\n `keys` values are exceeding length {}:'.format(MAX_LENGTH_COUNT) +
+                            ', '.join(invalid)).handle_later()
+
     def validate_values(self, definition):
         """This function checks that the fields have the correct values.
 
@@ -217,6 +239,11 @@ class ScalarType:
             if not utils.is_valid_product(product):
                 ParserError(self._name + ' - unknown value in products: ' + product +
                             '.\nSee: {}'.format(BASE_DOC_URL)).handle_later()
+            if utils.is_geckoview_streaming_product(product):
+                keyed = definition.get('keyed')
+                if keyed:
+                    ParserError('%s - keyed Scalars not supported for product %s' %
+                                (self._name, product)).handle_later()
 
         # Validate the expiration version.
         # Historical versions of Scalars.json may contain expiration versions
@@ -271,6 +298,11 @@ class ScalarType:
     def kind(self):
         """Get the scalar kind"""
         return self._definition['kind']
+
+    @property
+    def keys(self):
+        """Get the allowed keys for this scalar or [] if there aren't any'"""
+        return self._definition.get('keys', [])
 
     @property
     def keyed(self):

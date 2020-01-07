@@ -403,6 +403,17 @@ already_AddRefed<DrawTarget> Factory::CreateDrawTarget(BackendType aBackend,
   return retVal.forget();
 }
 
+already_AddRefed<PathBuilder> Factory::CreateSimplePathBuilder() {
+  RefPtr<PathBuilder> pathBuilder;
+#ifdef USE_SKIA
+  pathBuilder = MakeAndAddRef<PathBuilderSkia>(FillRule::FILL_WINDING);
+#endif
+  if (!pathBuilder) {
+    NS_WARNING("Failed to create a path builder because we don't use Skia");
+  }
+  return pathBuilder.forget();
+}
+
 already_AddRefed<DrawTarget> Factory::CreateWrapAndRecordDrawTarget(
     DrawEventRecorder* aRecorder, DrawTarget* aDT) {
   return MakeAndAddRef<DrawTargetWrapAndRecord>(aRecorder, aDT);
@@ -975,11 +986,12 @@ already_AddRefed<ScaledFont> Factory::CreateScaledFontForDWriteFont(
     IDWriteFontFace* aFontFace, const gfxFontStyle* aStyle,
     const RefPtr<UnscaledFont>& aUnscaledFont, float aSize,
     bool aUseEmbeddedBitmap, int aRenderingMode,
-    IDWriteRenderingParams* aParams, Float aGamma, Float aContrast) {
-  return MakeAndAddRef<ScaledFontDWrite>(aFontFace, aUnscaledFont, aSize,
-                                         aUseEmbeddedBitmap,
-                                         (DWRITE_RENDERING_MODE)aRenderingMode,
-                                         aParams, aGamma, aContrast, aStyle);
+    IDWriteRenderingParams* aParams, Float aGamma, Float aContrast,
+    Float aClearTypeLevel) {
+  return MakeAndAddRef<ScaledFontDWrite>(
+      aFontFace, aUnscaledFont, aSize, aUseEmbeddedBitmap,
+      (DWRITE_RENDERING_MODE)aRenderingMode, aParams, aGamma, aContrast,
+      aClearTypeLevel, aStyle);
 }
 
 already_AddRefed<ScaledFont> Factory::CreateScaledFontForGDIFont(

@@ -34,11 +34,19 @@ nsresult BrowserBridgeParent::InitWithProcess(
       aWindowInit.browsingContext()->Canonical();
 
   // We can inherit most TabContext fields for the new BrowserParent actor from
-  // our Manager BrowserParent.
+  // our Manager BrowserParent. We also need to sync the first party domain if
+  // the content principal exists.
   MutableTabContext tabContext;
+  OriginAttributes attrs;
+  attrs = Manager()->OriginAttributesRef();
+  RefPtr<nsIPrincipal> principal = Manager()->GetContentPrincipal();
+  if (principal) {
+    attrs.SetFirstPartyDomain(
+        true, principal->OriginAttributesRef().mFirstPartyDomain);
+  }
+
   tabContext.SetTabContext(false, Manager()->ChromeOuterWindowID(),
-                           Manager()->ShowFocusRings(),
-                           Manager()->OriginAttributesRef(), aPresentationURL,
+                           Manager()->ShowFocusRings(), attrs, aPresentationURL,
                            Manager()->GetMaxTouchPoints());
 
   // Ensure that our content process is subscribed to our newly created
@@ -132,9 +140,7 @@ void BrowserBridgeParent::Destroy() {
 IPCResult BrowserBridgeParent::RecvShow(const ScreenIntSize& aSize,
                                         const bool& aParentIsActive,
                                         const nsSizeMode& aSizeMode) {
-  if (!mBrowserParent->AttachLayerManager()) {
-    MOZ_CRASH();
-  }
+  mBrowserParent->AttachLayerManager();
   Unused << mBrowserParent->SendShow(aSize, mBrowserParent->GetShowInfo(),
                                      aParentIsActive, aSizeMode);
   return IPC_OK();
@@ -224,6 +230,17 @@ IPCResult BrowserBridgeParent::RecvSetEmbedderAccessible(
 #ifdef ACCESSIBILITY
   mEmbedderAccessibleDoc = static_cast<a11y::DocAccessibleParent*>(aDoc);
   mEmbedderAccessibleID = aID;
+  if (auto embeddedBrowser = GetBrowserParent()) {
+    a11y::DocAccessibleParent* childDocAcc =
+        embeddedBrowser->GetTopLevelDocAccessible();
+    if (childDocAcc && !childDocAcc->IsShutdown()) {
+      // The embedded DocAccessibleParent has already been created. This can
+      // happen if, for example, an iframe is hidden and then shown or
+      // an iframe is reflowed by layout.
+      mEmbedderAccessibleDoc->AddChildDoc(childDocAcc, aID,
+                                          /* aCreating */ false);
+    }
+  }
 #endif
   return IPC_OK();
 }

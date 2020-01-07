@@ -78,11 +78,10 @@ function RequireObjectCoercible(v) {
 /* Spec: ECMAScript Draft, 6 edition May 22, 2014, 7.1.15 */
 function ToLength(v) {
     // Step 1.
-    v = ToInteger(v);
+    v = ToIntegerPositiveZero(v);
 
     // Step 2.
     // Use max(v, 0) here, because it's easier to optimize in Ion.
-    // This is correct even for -0.
     v = std_Math_max(v, 0);
 
     // Step 3.
@@ -172,6 +171,15 @@ function SpeciesConstructor(obj, defaultConstructor) {
 function GetTypeError(msg) {
     try {
         FUN_APPLY(ThrowTypeError, undefined, arguments);
+    } catch (e) {
+        return e;
+    }
+    assert(false, "the catch block should've returned from this function.");
+}
+
+function GetAggregateError(msg) {
+    try {
+        FUN_APPLY(ThrowAggregateError, undefined, arguments);
     } catch (e) {
         return e;
     }

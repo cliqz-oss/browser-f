@@ -102,6 +102,7 @@ enum BinaryOperator {
   BINOP_IN,
   BINOP_INSTANCEOF,
   BINOP_PIPELINE,
+  BINOP_COALESCE,
 
   BINOP_LIMIT
 };
@@ -178,6 +179,7 @@ static const char* const binopNames[] = {
     "in",         /* BINOP_IN */
     "instanceof", /* BINOP_INSTANCEOF */
     "|>",         /* BINOP_PIPELINE */
+    "??",         /* BINOP_COALESCE */
 };
 
 static const char* const unopNames[] = {
@@ -634,7 +636,7 @@ class NodeBuilder {
   MOZ_MUST_USE bool updateExpression(HandleValue expr, bool incr, bool prefix,
                                      TokenPos* pos, MutableHandleValue dst);
 
-  MOZ_MUST_USE bool logicalExpression(bool lor, HandleValue left,
+  MOZ_MUST_USE bool logicalExpression(ParseNodeKind pnk, HandleValue left,
                                       HandleValue right, TokenPos* pos,
                                       MutableHandleValue dst);
 
@@ -1103,12 +1105,28 @@ bool NodeBuilder::updateExpression(HandleValue expr, bool incr, bool prefix,
                  "prefix", prefixVal, dst);
 }
 
-bool NodeBuilder::logicalExpression(bool lor, HandleValue left,
+bool NodeBuilder::logicalExpression(ParseNodeKind pnk, HandleValue left,
                                     HandleValue right, TokenPos* pos,
                                     MutableHandleValue dst) {
   RootedValue opName(cx);
-  if (!atomValue(lor ? "||" : "&&", &opName)) {
-    return false;
+  switch (pnk) {
+    case ParseNodeKind::OrExpr:
+      if (!atomValue("||", &opName)) {
+        return false;
+      }
+      break;
+    case ParseNodeKind::CoalesceExpr:
+      if (!atomValue("??", &opName)) {
+        return false;
+      }
+      break;
+    case ParseNodeKind::AndExpr:
+      if (!atomValue("&&", &opName)) {
+        return false;
+      }
+      break;
+    default:
+      MOZ_CRASH("Unexpected ParseNodeKind: Must be `Or`, `And`, or `Coalesce`");
   }
 
   RootedValue cb(cx, callbacks[AST_LOGICAL_EXPR]);
@@ -1827,6 +1845,8 @@ BinaryOperator ASTSerializer::binop(ParseNodeKind kind) {
       return BINOP_INSTANCEOF;
     case ParseNodeKind::PipelineExpr:
       return BINOP_PIPELINE;
+    case ParseNodeKind::CoalesceExpr:
+      return BINOP_COALESCE;
     default:
       return BINOP_ERR;
   }
@@ -2564,9 +2584,10 @@ bool ASTSerializer::classField(ClassField* classField, MutableHandleValue dst) {
 bool ASTSerializer::leftAssociate(ListNode* node, MutableHandleValue dst) {
   MOZ_ASSERT(!node->empty());
 
-  ParseNodeKind kind = node->getKind();
-  bool lor = kind == ParseNodeKind::OrExpr;
-  bool logop = lor || (kind == ParseNodeKind::AndExpr);
+  ParseNodeKind pnk = node->getKind();
+  bool lor = pnk == ParseNodeKind::OrExpr;
+  bool coalesce = pnk == ParseNodeKind::CoalesceExpr;
+  bool logop = lor || coalesce || pnk == ParseNodeKind::AndExpr;
 
   ParseNode* head = node->head();
   RootedValue left(cx);
@@ -2582,7 +2603,7 @@ bool ASTSerializer::leftAssociate(ListNode* node, MutableHandleValue dst) {
     TokenPos subpos(node->pn_pos.begin, next->pn_pos.end);
 
     if (logop) {
-      if (!builder.logicalExpression(lor, left, right, &subpos, &left)) {
+      if (!builder.logicalExpression(pnk, left, right, &subpos, &left)) {
         return false;
       }
     } else {
@@ -2679,6 +2700,7 @@ bool ASTSerializer::expression(ParseNode* pn, MutableHandleValue dst) {
                                            dst);
     }
 
+    case ParseNodeKind::CoalesceExpr:
     case ParseNodeKind::OrExpr:
     case ParseNodeKind::AndExpr:
       return leftAssociate(&pn->as<ListNode>(), dst);
@@ -3162,7 +3184,7 @@ bool ASTSerializer::literal(ParseNode* pn, MutableHandleValue dst) {
       break;
 
     case ParseNodeKind::RegExpExpr: {
-      RootedObject re1(cx, pn->as<RegExpLiteral>().objbox()->object());
+      RootedObject re1(cx, pn->as<RegExpLiteral>().getOrCreate(cx));
       LOCAL_ASSERT(re1 && re1->is<RegExpObject>());
 
       RootedObject re2(cx, CloneRegExpObject(cx, re1.as<RegExpObject>()));

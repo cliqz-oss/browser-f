@@ -56,9 +56,9 @@
   }
 
   create_test("https://{{host}}:{{ports[https][0]}}", {
-    "dest": "empty",
     "site": "same-origin",
     "user": "",
-    "mode": "no-cors"
+    "mode": "no-cors",
+    "dest": "empty"
   });
 </script>

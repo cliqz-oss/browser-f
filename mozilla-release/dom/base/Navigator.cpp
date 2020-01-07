@@ -16,7 +16,7 @@
 #include "mozilla/dom/BodyExtractor.h"
 #include "mozilla/dom/FetchBinding.h"
 #include "mozilla/dom/File.h"
-#include "nsGeolocation.h"
+#include "Geolocation.h"
 #include "nsIClassOfService.h"
 #include "nsIHttpProtocolHandler.h"
 #include "nsIContentPolicy.h"
@@ -77,6 +77,7 @@
 #include "nsIPresentationService.h"
 #include "nsIScriptError.h"
 #include "ReferrerInfo.h"
+#include "PermissionDelegateHandler.h"
 
 #include "nsIExternalProtocolHandler.h"
 #include "BrowserChild.h"
@@ -771,15 +772,23 @@ bool Navigator::Vibrate(const nsTArray<uint32_t>& aPattern) {
   }
 
   mRequestedVibrationPattern.SwapElements(pattern);
-  nsCOMPtr<nsIPermissionManager> permMgr = services::GetPermissionManager();
-  if (!permMgr) {
+
+  PermissionDelegateHandler* permissionHandler =
+      doc->GetPermissionDelegateHandler();
+  if (NS_WARN_IF(!permissionHandler)) {
     return false;
   }
 
   uint32_t permission = nsIPermissionManager::UNKNOWN_ACTION;
 
-  permMgr->TestPermissionFromPrincipal(doc->NodePrincipal(),
-                                       kVibrationPermissionType, &permission);
+  permissionHandler->GetPermission(kVibrationPermissionType, &permission,
+                                   false);
+
+  if (permission == nsIPermissionManager::DENY_ACTION) {
+    // Abort without observer service or on denied session permission.
+    SetVibrationPermission(false /* permitted */, false /* persistent */);
+    return false;
+  }
 
   if (permission == nsIPermissionManager::ALLOW_ACTION ||
       mRequestedVibrationPattern.IsEmpty() ||
@@ -790,14 +799,12 @@ bool Navigator::Vibrate(const nsTArray<uint32_t>& aPattern) {
     return true;
   }
 
+  // Request user permission.
   nsCOMPtr<nsIObserverService> obs = services::GetObserverService();
-  if (!obs || permission == nsIPermissionManager::DENY_ACTION) {
-    // Abort without observer service or on denied session permission.
-    SetVibrationPermission(false /* permitted */, false /* persistent */);
+  if (!obs) {
     return true;
   }
 
-  // Request user permission.
   obs->NotifyObservers(ToSupports(this), "Vibration:Request", nullptr);
 
   return true;
@@ -1402,7 +1409,8 @@ Promise* Navigator::Share(const ShareData& aData, ErrorResult& aRv) {
   // The spec does the "triggered by user activation" after the data checks.
   // Unfortunately, both Chrome and Safari behave this way, so interop wins.
   // https://github.com/w3c/web-share/pull/118
-  if (!UserActivation::IsHandlingUserInput()) {
+  if (StaticPrefs::dom_webshare_requireinteraction() &&
+      !UserActivation::IsHandlingUserInput()) {
     NS_WARNING("Attempt to share not triggered by user activation");
     aRv.Throw(NS_ERROR_DOM_NOT_ALLOWED_ERR);
     return nullptr;
@@ -1488,15 +1496,61 @@ already_AddRefed<Promise> Navigator::GetVRDisplays(ErrorResult& aRv) {
     return nullptr;
   }
 
-  // We pass mWindow's id to RefreshVRDisplays, so NotifyVRDisplaysUpdated will
-  // be called asynchronously, resolving the promises in mVRGetDisplaysPromises.
-  if (!VRDisplay::RefreshVRDisplays(win->WindowID())) {
-    p->MaybeReject(NS_ERROR_FAILURE);
-    return p.forget();
+  RefPtr<BrowserChild> browser(BrowserChild::GetFrom(mWindow));
+  if (!browser) {
+    MOZ_ASSERT(XRE_IsParentProcess());
+    FinishGetVRDisplays(true, p);
+  } else {
+    RefPtr<Navigator> self(this);
+    int browserID = browser->ChromeOuterWindowID();
+
+    browser->SendIsWindowSupportingWebVR(browserID)->Then(
+        GetCurrentThreadSerialEventTarget(), __func__,
+        [self, p](bool isSupported) {
+          self->FinishGetVRDisplays(isSupported, p);
+        },
+        [](const mozilla::ipc::ResponseRejectReason) {
+          MOZ_CRASH("Failed to make IPC call to IsWindowSupportingWebVR");
+        });
   }
 
-  mVRGetDisplaysPromises.AppendElement(p);
   return p.forget();
+}
+
+void Navigator::FinishGetVRDisplays(bool isWebVRSupportedInwindow, Promise* p) {
+  if (isWebVRSupportedInwindow) {
+    nsGlobalWindowInner* win = nsGlobalWindowInner::Cast(mWindow);
+
+    // Since FinishGetVRDisplays can be called asynchronously after an IPC
+    // response, it's possible that the Window can be torn down before this
+    // call. In that case, the Window's cyclic references to VR objects are
+    // also torn down and should not be recreated via
+    // NotifyVREventListenerAdded.
+    if (!win->IsDying()) {
+      win->NotifyVREventListenerAdded();
+      // We pass mWindow's id to RefreshVRDisplays, so
+      // NotifyVRDisplaysUpdated will be called asynchronously, resolving
+      // the promises in mVRGetDisplaysPromises.
+      if (!VRDisplay::RefreshVRDisplays(win->WindowID())) {
+        // Failed to refresh, reject the promise now
+        p->MaybeRejectWithTypeError(u"Failed to find attached VR displays.");
+      } else {
+        // Succeeded, so cache the promise to resolve later
+        mVRGetDisplaysPromises.AppendElement(p);
+      }
+    } else {
+      // The Window has been torn down, so there is no further work that can
+      // be done.
+      p->MaybeRejectWithTypeError(
+          u"Unable to return VRDisplays for a closed window.");
+    }
+  } else {
+    // WebVR in this window is not supported, so resolve the promise
+    // with no displays available
+    nsTArray<RefPtr<VRDisplay>> vrDisplaysEmpty;
+    p->MaybeResolve(vrDisplaysEmpty);
+  }
+  mVRGetDisplaysPromises.AppendElement(p);
 }
 
 void Navigator::GetActiveVRDisplays(

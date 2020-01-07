@@ -120,7 +120,7 @@
   "network.tcp.tcp_fastopen_http_stalls_timeout"
 
 #define ACCEPT_HEADER_NAVIGATION \
-  "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+  "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8"
 #define ACCEPT_HEADER_IMAGE "image/png,image/svg+xml,image/*;q=0.8,*/*;q=0.5"
 #define ACCEPT_HEADER_STYLE "text/css,*/*;q=0.1"
 #define ACCEPT_HEADER_ALL "*/*"
@@ -281,6 +281,9 @@ nsHttpHandler::nsHttpHandler()
       mBug1563538(true),
       mBug1563695(true),
       mBug1556491(true),
+      mHttp3Enabled(true),
+      mQpackTableSize(4096),
+      mHttp3MaxBlockedStreams(10),
       mMaxHttpResponseHeaderSize(393216),
       mFocusedWindowTransactionRatio(0.9f),
       mSpeculativeConnectEnabled(false),
@@ -441,9 +444,6 @@ nsresult nsHttpHandler::Init() {
   mIOService = new nsMainThreadPtrHolder<nsIIOService>(
       "nsHttpHandler::mIOService", service);
 
-  mBackgroundThread = new mozilla::LazyIdleThread(
-      10000, NS_LITERAL_CSTRING("HTTP Handler Background"));
-
   if (IsNeckoChild()) NeckoChild::InitNeckoChild();
 
   InitUserAgentComponents();
@@ -455,8 +455,8 @@ nsresult nsHttpHandler::Init() {
   }
 
   // monitor some preference changes
-  Preferences::RegisterPrefixCallbacks(
-      PREF_CHANGE_METHOD(nsHttpHandler::PrefsChanged), gCallbackPrefs, this);
+  Preferences::RegisterPrefixCallbacks(nsHttpHandler::PrefsChanged,
+                                       gCallbackPrefs, this);
   PrefsChanged(nullptr);
 
   mMisc.AssignLiteral("rv:" MOZILLA_UAVERSION);
@@ -807,14 +807,6 @@ void nsHttpHandler::NotifyObservers(nsIChannel* chan, const char* event) {
   if (obsService) obsService->NotifyObservers(chan, event, nullptr);
 }
 
-void nsHttpHandler::NotifyObservers(nsIProcessSwitchRequestor* request,
-                                    const char* event) {
-  LOG(("nsHttpHandler::NotifyObservers [request=%p event=\"%s\"]\n", request,
-       event));
-  nsCOMPtr<nsIObserverService> obsService = services::GetObserverService();
-  if (obsService) obsService->NotifyObservers(request, event, nullptr);
-}
-
 nsresult nsHttpHandler::AsyncOnChannelRedirect(
     nsIChannel* oldChan, nsIChannel* newChan, uint32_t flags,
     nsIEventTarget* mainThreadEventTarget) {
@@ -1084,6 +1076,11 @@ uint32_t nsHttpHandler::MaxSocketCount() {
     maxCount -= 8;
 
   return maxCount;
+}
+
+// static
+void nsHttpHandler::PrefsChanged(const char* pref, void* self) {
+  static_cast<nsHttpHandler*>(self)->PrefsChanged(pref);
 }
 
 void nsHttpHandler::PrefsChanged(const char* pref) {
@@ -1916,6 +1913,28 @@ void nsHttpHandler::PrefsChanged(const char* pref) {
     }
   }
 
+  if (PREF_CHANGED(HTTP_PREF("http3.enabled"))) {
+    rv = Preferences::GetBool(HTTP_PREF("http3.enabled"), &cVar);
+    if (NS_SUCCEEDED(rv)) {
+      mHttp3Enabled = cVar;
+    }
+  }
+
+  if (PREF_CHANGED(HTTP_PREF("http3.default-qpack-table-size"))) {
+    rv = Preferences::GetInt(HTTP_PREF("http3.default-qpack-table-size"), &val);
+    if (NS_SUCCEEDED(rv)) {
+      mQpackTableSize = val;
+    }
+  }
+
+  if (PREF_CHANGED(HTTP_PREF("http3.default-max-stream-blocked"))) {
+    rv = Preferences::GetInt(HTTP_PREF("http3.default-max-stream-blocked"),
+                             &val);
+    if (NS_SUCCEEDED(rv)) {
+      mHttp3MaxBlockedStreams = clamped(val, 0, 0xffff);
+    }
+  }
+
   // Enable HTTP response timeout if TCP Keepalives are disabled.
   mResponseTimeoutEnabled =
       !mTCPKeepaliveShortLivedEnabled && !mTCPKeepaliveLongLivedEnabled;
@@ -2337,15 +2356,9 @@ void nsHttpHandler::MaybeEnableSpeculativeConnect() {
     return;
   }
 
-  if (!mBackgroundThread) {
-    NS_WARNING(
-        "nsHttpHandler::MaybeEnableSpeculativeConnect() no background thread");
-    return;
-  }
-
   net_EnsurePSMInit();
 
-  mBackgroundThread->Dispatch(
+  NS_DispatchBackgroundTask(
       NS_NewRunnableFunction("CanEnableSpeculativeConnect", [] {
         gHttpHandler->mSpeculativeConnectEnabled =
             CanEnableSpeculativeConnect();
@@ -2676,6 +2689,38 @@ HttpTrafficAnalyzer* nsHttpHandler::GetHttpTrafficAnalyzer() {
   }
 
   return &mHttpTrafficAnalyzer;
+}
+
+bool nsHttpHandler::IsHttp3VersionSupportedHex(const nsACString& version) {
+  return version.LowerCaseEqualsLiteral(kHttp3VersionHEX);
+}
+
+nsresult nsHttpHandler::InitiateTransaction(HttpTransactionShell* aTrans,
+                                            int32_t aPriority) {
+  return mConnMgr->AddTransaction(aTrans->AsHttpTransaction(), aPriority);
+}
+nsresult nsHttpHandler::InitiateTransactionWithStickyConn(
+    HttpTransactionShell* aTrans, int32_t aPriority,
+    HttpTransactionShell* aTransWithStickyConn) {
+  return mConnMgr->AddTransactionWithStickyConn(
+      aTrans->AsHttpTransaction(), aPriority,
+      aTransWithStickyConn->AsHttpTransaction());
+}
+
+nsresult nsHttpHandler::RescheduleTransaction(HttpTransactionShell* trans,
+                                              int32_t priority) {
+  return mConnMgr->RescheduleTransaction(trans->AsHttpTransaction(), priority);
+}
+
+void nsHttpHandler::UpdateClassOfServiceOnTransaction(
+    HttpTransactionShell* trans, uint32_t classOfService) {
+  mConnMgr->UpdateClassOfServiceOnTransaction(trans->AsHttpTransaction(),
+                                              classOfService);
+}
+
+nsresult nsHttpHandler::CancelTransaction(HttpTransactionShell* trans,
+                                          nsresult reason) {
+  return mConnMgr->CancelTransaction(trans->AsHttpTransaction(), reason);
 }
 
 }  // namespace net

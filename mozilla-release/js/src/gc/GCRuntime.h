@@ -30,6 +30,7 @@ class AutoAccessAtomsZone;
 class AutoLockGC;
 class AutoLockGCBgAlloc;
 class AutoLockHelperThreadState;
+class FinalizationGroupObject;
 class VerifyPreTracer;
 class ZoneAllocator;
 
@@ -159,6 +160,17 @@ class BackgroundDecommitTask
   MainThreadOrGCTaskData<ChunkVector> toDecommit;
 };
 
+class SweepMarkTask : public GCParallelTaskHelper<SweepMarkTask> {
+ public:
+  explicit SweepMarkTask(GCRuntime* gc)
+      : GCParallelTaskHelper(gc), budget(SliceBudget::unlimited()) {}
+  void setBudget(const SliceBudget& budget) { this->budget = budget; }
+  void run();
+
+ private:
+  SliceBudget budget;
+};
+
 template <typename F>
 struct Callback {
   MainThreadOrGCTaskData<F> op;
@@ -235,6 +247,8 @@ class ZoneList {
   ZoneList(const ZoneList& other) = delete;
   ZoneList& operator=(const ZoneList& other) = delete;
 };
+
+void SweepFinalizationGroups(GCParallelTask* task);
 
 class GCRuntime {
   friend GCMarker::MarkQueueProgress GCMarker::processMarkQueue();
@@ -336,7 +350,7 @@ class GCRuntime {
   State state() const { return incrementalState; }
   bool isHeapCompacting() const { return state() == State::Compact; }
   bool isForegroundSweeping() const { return state() == State::Sweep; }
-  bool isBackgroundSweeping() const { return sweepTask.isRunning(); }
+  bool isBackgroundSweeping() const { return sweepTask.wasStarted(); }
   void waitBackgroundSweepEnd();
   void waitBackgroundAllocEnd() { allocTask.cancelAndWait(); }
   void waitBackgroundFreeEnd();
@@ -384,6 +398,9 @@ class GCRuntime {
   MOZ_MUST_USE bool addFinalizeCallback(JSFinalizeCallback callback,
                                         void* data);
   void removeFinalizeCallback(JSFinalizeCallback func);
+  void setHostCleanupFinalizationGroupCallback(
+      JSHostCleanupFinalizationGroupCallback callback, void* data);
+  void callHostCleanupFinalizationGroupCallback(FinalizationGroupObject* group);
   MOZ_MUST_USE bool addWeakPointerZonesCallback(
       JSWeakPointerZonesCallback callback, void* data);
   void removeWeakPointerZonesCallback(JSWeakPointerZonesCallback callback);
@@ -396,6 +413,11 @@ class GCRuntime {
       JS::GCNurseryCollectionCallback callback);
   JS::DoCycleCollectionCallback setDoCycleCollectionCallback(
       JS::DoCycleCollectionCallback callback);
+
+  bool registerWithFinalizationGroup(JSContext* cx, HandleObject target,
+                                     HandleObject record);
+  bool cleanupQueuedFinalizationGroup(JSContext* cx,
+                                      Handle<FinalizationGroupObject*> group);
 
   void setFullCompartmentChecks(bool enable);
 
@@ -525,6 +547,7 @@ class GCRuntime {
                  AutoLockHelperThreadState& locked);
   void joinTask(GCParallelTask& task, gcstats::PhaseKind phase,
                 AutoLockHelperThreadState& locked);
+  void joinTask(GCParallelTask& task, gcstats::PhaseKind phase);
 
   void mergeRealms(JS::Realm* source, JS::Realm* target);
 
@@ -568,7 +591,7 @@ class GCRuntime {
 
   friend class BackgroundAllocTask;
   bool wantBackgroundAllocation(const AutoLockGC& lock) const;
-  bool startBackgroundAllocTaskIfIdle();
+  void startBackgroundAllocTaskIfIdle();
 
   void requestMajorGC(JS::GCReason reason);
   SliceBudget defaultBudget(JS::GCReason reason, int64_t millis);
@@ -635,11 +658,15 @@ class GCRuntime {
   void traceRuntimeCommon(JSTracer* trc, TraceOrMarkRuntime traceOrMark);
   void traceEmbeddingBlackRoots(JSTracer* trc);
   void traceEmbeddingGrayRoots(JSTracer* trc);
+  void markFinalizationGroupData(JSTracer* trc);
   void checkNoRuntimeRoots(AutoGCSession& session);
   void maybeDoCycleCollection();
   void findDeadCompartments();
+
+  friend class SweepMarkTask;
   IncrementalProgress markUntilBudgetExhausted(SliceBudget& sliceBudget,
                                                gcstats::PhaseKind phase);
+  IncrementalProgress markUntilBudgetExhausted(SliceBudget& sliceBudget);
   void drainMarkStack();
   template <class ZoneIterT>
   void markWeakReferences(gcstats::PhaseKind phase);
@@ -664,6 +691,9 @@ class GCRuntime {
   void updateAtomsBitmap();
   void sweepDebuggerOnMainThread(JSFreeOp* fop);
   void sweepJitDataOnMainThread(JSFreeOp* fop);
+  void sweepFinalizationGroups(Zone* zone);
+  friend void SweepFinalizationGroups(GCParallelTask* task);
+  void queueFinalizationGroupForCleanup(FinalizationGroupObject* group);
   IncrementalProgress endSweepingSweepGroup(JSFreeOp* fop, SliceBudget& budget);
   IncrementalProgress performSweepActions(SliceBudget& sliceBudget);
   IncrementalProgress sweepTypeInformation(JSFreeOp* fop, SliceBudget& budget);
@@ -871,7 +901,7 @@ class GCRuntime {
   MainThreadData<uint64_t> sliceNumber;
 
   /* Whether the currently running GC can finish in multiple slices. */
-  MainThreadData<bool> isIncremental;
+  MainThreadOrGCTaskData<bool> isIncremental;
 
   /* Whether all zones are being collected in first GC slice. */
   MainThreadData<bool> isFull;
@@ -892,7 +922,7 @@ class GCRuntime {
   MainThreadOrGCTaskData<State> incrementalState;
 
   /* The incremental state at the start of this slice. */
-  MainThreadData<State> initialState;
+  MainThreadOrGCTaskData<State> initialState;
 
 #ifdef JS_GC_ZEAL
   /* Whether to pay attention the zeal settings in this incremental slice. */
@@ -935,6 +965,8 @@ class GCRuntime {
   MainThreadOrGCTaskData<JS::detail::WeakCacheBase*> sweepCache;
   MainThreadData<bool> hasMarkedGrayRoots;
   MainThreadData<bool> abortSweepAfterCurrentGroup;
+  MainThreadData<bool> sweepMarkTaskStarted;
+  MainThreadOrGCTaskData<IncrementalProgress> sweepMarkResult;
 
 #ifdef DEBUG
   // During gray marking, delay AssertCellIsNotGray checks by
@@ -1029,6 +1061,8 @@ class GCRuntime {
   Callback<JS::DoCycleCollectionCallback> gcDoCycleCollectionCallback;
   Callback<JSObjectsTenuredCallback> tenuredCallback;
   CallbackVector<JSFinalizeCallback> finalizeCallbacks;
+  Callback<JSHostCleanupFinalizationGroupCallback>
+      hostCleanupFinalizationGroupCallback;
   CallbackVector<JSWeakPointerZonesCallback> updateWeakPointerZonesCallbacks;
   CallbackVector<JSWeakPointerCompartmentCallback>
       updateWeakPointerCompartmentCallbacks;
@@ -1059,6 +1093,7 @@ class GCRuntime {
   BackgroundSweepTask sweepTask;
   BackgroundFreeTask freeTask;
   BackgroundDecommitTask decommitTask;
+  SweepMarkTask sweepMarkTask;
 
   /*
    * During incremental sweeping, this field temporarily holds the arenas of

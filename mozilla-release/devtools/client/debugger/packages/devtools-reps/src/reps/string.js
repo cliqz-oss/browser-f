@@ -3,7 +3,11 @@
  * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 
 // Dependencies
-const PropTypes = require("prop-types");
+const {
+  a,
+  span,
+} = require("devtools/client/shared/vendor/react-dom-factories");
+const PropTypes = require("devtools/client/shared/vendor/react-prop-types");
 
 const {
   containsURL,
@@ -17,9 +21,6 @@ const {
   uneatLastUrlCharsRegex,
   urlRegex,
 } = require("./rep-utils");
-
-const dom = require("react-dom-factories");
-const { a, span } = dom;
 
 /**
  * Renders a string. String value is enclosed within quotes.
@@ -51,9 +52,23 @@ function StringRep(props) {
     openLink,
     title,
     isInContentPage,
+    transformEmptyString = false,
   } = props;
 
   let text = object;
+  const config = getElementConfig({
+    className,
+    style,
+    actor: object.actor,
+    title,
+  });
+
+  if (text == "" && transformEmptyString && !useQuotes) {
+    return span(
+      { ...config, className: `${config.className} objectBox-empty-string` },
+      "<empty string>"
+    );
+  }
 
   const isLong = isLongString(object);
   const isOpen = member && member.open;
@@ -81,13 +96,6 @@ function StringRep(props) {
     },
     text
   );
-
-  const config = getElementConfig({
-    className,
-    style,
-    actor: object.actor,
-    title,
-  });
 
   if (!isLong) {
     if (containsURL(text)) {

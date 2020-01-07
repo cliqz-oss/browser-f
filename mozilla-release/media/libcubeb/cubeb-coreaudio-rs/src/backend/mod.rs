@@ -1758,8 +1758,19 @@ fn audiounit_get_devices_of_type(devtype: DeviceType) -> Vec<AudioObjectID> {
 
     let mut devices_in_scope = Vec::new();
     for device in devices {
-        if get_channel_count(device, devtype).unwrap() > 0 {
-            devices_in_scope.push(device);
+        let label = match get_device_label(device, DeviceType::OUTPUT | DeviceType::INPUT) {
+            Ok(label) => label.into_string(),
+            Err(e) => format!("Unknown(error: {})", e),
+        };
+        let info = format!("{} ({})", device, label);
+
+        if let Ok(channels) = get_channel_count(device, devtype) {
+            cubeb_log!("device {} has {} {:?}-channels", info, channels, devtype);
+            if channels > 0 {
+                devices_in_scope.push(device);
+            }
+        } else {
+            cubeb_log!("Cannot get the channel count for device {}. Ignored.", info);
         }
     }
 
@@ -3459,13 +3470,20 @@ impl<'ctx> StreamOps for AudioUnitStream<'ctx> {
     }
     #[cfg(not(target_os = "ios"))]
     fn current_device(&mut self) -> Result<&DeviceRef> {
+        let input_name = audiounit_get_default_datasource_string(DeviceType::INPUT);
+        let output_name = audiounit_get_default_datasource_string(DeviceType::OUTPUT);
+        if input_name.is_err() && output_name.is_err() {
+            return Err(Error::error());
+        }
+
         let mut device: Box<ffi::cubeb_device> = Box::new(ffi::cubeb_device::default());
-        if let Ok(source) = audiounit_get_default_datasource_string(DeviceType::INPUT) {
-            device.input_name = source.into_raw();
-        }
-        if let Ok(source) = audiounit_get_default_datasource_string(DeviceType::OUTPUT) {
-            device.output_name = source.into_raw();
-        }
+
+        let input_name = input_name.unwrap_or(CString::default());
+        device.input_name = input_name.into_raw();
+
+        let output_name = output_name.unwrap_or(CString::default());
+        device.output_name = output_name.into_raw();
+
         Ok(unsafe { DeviceRef::from_ptr(Box::into_raw(device)) })
     }
     #[cfg(target_os = "ios")]

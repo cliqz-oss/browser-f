@@ -53,13 +53,8 @@ loader.lazyRequireGetter(
 
 loader.lazyImporter(
   this,
-  "BrowserToolboxProcess",
-  "resource://devtools/client/framework/ToolboxProcess.jsm"
-);
-loader.lazyImporter(
-  this,
-  "ScratchpadManager",
-  "resource://devtools/client/scratchpad/scratchpad-manager.jsm"
+  "BrowserToolboxLauncher",
+  "resource://devtools/client/framework/browser-toolbox/Launcher.jsm"
 );
 loader.lazyImporter(
   this,
@@ -100,7 +95,7 @@ exports.menuitems = [
     id: "menu_browserToolbox",
     l10nKey: "browserToolboxMenu",
     oncommand() {
-      BrowserToolboxProcess.init();
+      BrowserToolboxLauncher.init();
     },
     keyId: "browserToolbox",
   },
@@ -173,14 +168,6 @@ exports.menuitems = [
       inspectorFront.pickColorFromPage({ copyOnSelect: true, fromMenu: true });
     },
     checkbox: true,
-  },
-  {
-    id: "menu_scratchpad",
-    l10nKey: "scratchpad",
-    oncommand() {
-      ScratchpadManager.openScratchpad();
-    },
-    keyId: "scratchpad",
   },
   { separator: true, id: "devToolsEndSeparator" },
   {

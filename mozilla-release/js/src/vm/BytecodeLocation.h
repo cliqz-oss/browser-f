@@ -9,6 +9,7 @@
 
 #include "js/TypeDecls.h"
 #include "vm/BytecodeUtil.h"
+#include "vm/StringType.h"
 
 namespace js {
 
@@ -35,6 +36,7 @@ class BytecodeLocation {
 #ifdef DEBUG
   const JSScript* debugOnlyScript_;
 #endif
+
   // Construct a new BytecodeLocation, while borrowing scriptIdentity
   // from some other BytecodeLocation.
   BytecodeLocation(const BytecodeLocation& loc, RawBytecode pc)
@@ -65,13 +67,26 @@ class BytecodeLocation {
 
   // Return true if this bytecode location is valid for the given script.
   // This includes the location 1-past the end of the bytecode.
-  bool isValid(const JSScript* script) const;
+  JS_PUBLIC_API bool isValid(const JSScript* script) const;
 
   // Return true if this bytecode location is within the bounds of the
   // bytecode for a given script.
   bool isInBounds(const JSScript* script) const;
 
   uint32_t bytecodeToOffset(const JSScript* script) const;
+
+  uint32_t tableSwitchCaseOffset(const JSScript* script,
+                                 uint32_t caseIndex) const;
+
+  uint32_t getJumpTargetOffset(const JSScript* script) const;
+
+  uint32_t getTableSwitchDefaultOffset(const JSScript* script) const;
+
+  uint32_t useCount() const;
+
+  uint32_t defCount() const;
+
+  int32_t jumpOffset() const { return GET_JUMP_OFFSET(rawBytecode_); }
 
   PropertyName* getPropertyName(const JSScript* script) const;
 
@@ -80,6 +95,8 @@ class BytecodeLocation {
     return debugOnlyScript_ == other.debugOnlyScript_;
   }
 #endif
+
+  // Overloaded operators
 
   bool operator==(const BytecodeLocation& other) const {
     MOZ_ASSERT(this->debugOnlyScript_ == other.debugOnlyScript_);
@@ -124,6 +141,10 @@ class BytecodeLocation {
     return getOp() == op;
   }
 
+  // Accessors:
+
+  uint32_t length() const { return GetBytecodeLength(rawBytecode_); }
+
   bool isJumpTarget() const { return BytecodeIsJumpTarget(getOp()); }
 
   bool isJump() const { return IsJumpOpcode(getOp()); }
@@ -140,9 +161,7 @@ class BytecodeLocation {
 
   bool isEqualityOp() const { return IsEqualityOp(getOp()); }
 
-  bool isStrictEqualityOp() const {
-    return is(JSOP_STRICTEQ) || is(JSOP_STRICTNE);
-  }
+  bool isStrictEqualityOp() const { return IsStrictEqualityOp(getOp()); }
 
   bool isDetectingOp() const { return IsDetecting(getOp()); }
 

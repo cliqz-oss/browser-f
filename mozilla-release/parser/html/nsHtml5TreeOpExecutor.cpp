@@ -450,6 +450,16 @@ void nsHtml5TreeOpExecutor::RunFlushLoop() {
       // Now parse content left in the document.write() buffer queue if any.
       // This may generate tree ops on its own or dequeue a speculation.
       nsresult rv = GetParser()->ParseUntilBlocked();
+
+      // ParseUntilBlocked flushes operations from the stage to the OpQueue.
+      // Those operations may have accompanying speculative operations.
+      // If so, we have to flush those speculative loads so that we maintain
+      // the invariant that no speculative load starts after the corresponding
+      // normal load for the same URL. See
+      // https://bugzilla.mozilla.org/show_bug.cgi?id=1513292#c80
+      // for a more detailed explanation of why this is necessary.
+      FlushSpeculativeLoads();
+
       if (NS_FAILED(rv)) {
         MarkAsBroken(rv);
         return;
@@ -968,29 +978,31 @@ void nsHtml5TreeOpExecutor::PreloadScript(
     const nsAString& aURL, const nsAString& aCharset, const nsAString& aType,
     const nsAString& aCrossOrigin, const nsAString& aIntegrity,
     dom::ReferrerPolicy aReferrerPolicy, bool aScriptFromHead, bool aAsync,
-    bool aDefer, bool aNoModule) {
+    bool aDefer, bool aNoModule, bool aLinkPreload) {
   nsCOMPtr<nsIURI> uri = ConvertIfNotPreloadedYet(aURL);
   if (!uri) {
     return;
   }
   mDocument->ScriptLoader()->PreloadURI(
       uri, aCharset, aType, aCrossOrigin, aIntegrity, aScriptFromHead, aAsync,
-      aDefer, aNoModule, GetPreloadReferrerPolicy(aReferrerPolicy));
+      aDefer, aNoModule, aLinkPreload,
+      GetPreloadReferrerPolicy(aReferrerPolicy));
 }
 
 void nsHtml5TreeOpExecutor::PreloadStyle(const nsAString& aURL,
                                          const nsAString& aCharset,
                                          const nsAString& aCrossOrigin,
                                          const nsAString& aReferrerPolicy,
-                                         const nsAString& aIntegrity) {
+                                         const nsAString& aIntegrity,
+                                         bool aLinkPreload) {
   nsCOMPtr<nsIURI> uri = ConvertIfNotPreloadedYet(aURL);
   if (!uri) {
     return;
   }
 
   mDocument->PreloadStyle(uri, Encoding::ForLabel(aCharset), aCrossOrigin,
-                          GetPreloadReferrerPolicy(aReferrerPolicy),
-                          aIntegrity);
+                          GetPreloadReferrerPolicy(aReferrerPolicy), aIntegrity,
+                          aLinkPreload);
 }
 
 void nsHtml5TreeOpExecutor::PreloadImage(

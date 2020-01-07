@@ -43,12 +43,12 @@ class MediaMemoryInfo;
 class AbstractThread;
 class DOMMediaStream;
 class DecoderBenchmark;
+class ProcessedMediaTrack;
 class FrameStatistics;
 class VideoFrameContainer;
 class MediaFormatReader;
 class MediaDecoderStateMachine;
 struct MediaPlaybackEvent;
-struct SharedDummyTrack;
 
 enum class Visibility : uint8_t;
 
@@ -155,7 +155,7 @@ class MediaDecoder : public DecoderDoctorLifeLogger<MediaDecoder> {
   void SetLooping(bool aLooping);
 
   // Set the given device as the output device.
-  RefPtr<GenericPromise> SetSink(AudioDeviceInfo* aSink);
+  RefPtr<GenericPromise> SetSink(AudioDeviceInfo* aSinkDevice);
 
   bool GetMinimizePreroll() const { return mMinimizePreroll; }
 
@@ -166,15 +166,23 @@ class MediaDecoder : public DecoderDoctorLifeLogger<MediaDecoder> {
   // replaying after the input as ended. In the latter case, the new source is
   // not connected to streams created by captureStreamUntilEnded.
 
-  // Add an output stream. All decoder output will be sent to the stream.
-  // The stream is initially blocked. The decoder is responsible for unblocking
-  // it while it is playing back.
-  void AddOutputStream(DOMMediaStream* aStream, SharedDummyTrack* aDummyStream);
-  // Remove an output stream added with AddOutputStream.
-  void RemoveOutputStream(DOMMediaStream* aStream);
-
-  // Update the principal for any output streams and their tracks.
-  void SetOutputStreamPrincipal(nsIPrincipal* aPrincipal);
+  // Turn output capturing of this decoder on or off. If it is on, the
+  // MediaDecoderStateMachine's media sink will only play after output tracks
+  // have been set. This is to ensure that it doesn't skip over any data
+  // while the owner has intended to capture the full output, thus missing to
+  // capture some of it. The owner of the MediaDecoder is responsible for adding
+  // output tracks in a timely fashion while the output is captured.
+  void SetOutputCaptured(bool aCaptured);
+  // Add an output track. All decoder output for the track's media type will be
+  // sent to the track.
+  // Note that only one audio track and one video track is supported by
+  // MediaDecoder at this time. Passing in more of one type, or passing in a
+  // type that metadata says we are not decoding, is an error.
+  void AddOutputTrack(RefPtr<ProcessedMediaTrack> aTrack);
+  // Remove an output track added with AddOutputTrack.
+  void RemoveOutputTrack(const RefPtr<ProcessedMediaTrack>& aTrack);
+  // Update the principal for any output tracks.
+  void SetOutputTracksPrincipal(const RefPtr<nsIPrincipal>& aPrincipal);
 
   // Return the duration of the video in seconds.
   virtual double GetDuration();
@@ -300,9 +308,10 @@ class MediaDecoder : public DecoderDoctorLifeLogger<MediaDecoder> {
   // Returns true if the decoder can't participate in suspend-video-decoder.
   bool HasSuspendTaint() const;
 
-  void SetCloningVisually(bool aIsCloningVisually);
-
   void UpdateVideoDecodeMode();
+
+  void SetSecondaryVideoContainer(
+      RefPtr<VideoFrameContainer> aSecondaryVideoContainer);
 
   void SetIsBackgroundVideoDecodingAllowed(bool aAllowed);
 
@@ -395,6 +404,11 @@ class MediaDecoder : public DecoderDoctorLifeLogger<MediaDecoder> {
 
   void SetStateMachineParameters();
 
+  // Called when MediaDecoder shutdown is finished. Subclasses use this to clean
+  // up internal structures, and unregister potential shutdown blockers when
+  // they're done.
+  virtual void ShutdownInternal();
+
   bool IsShutdown() const;
 
   // Called to notify the decoder that the duration has changed.
@@ -468,6 +482,9 @@ class MediaDecoder : public DecoderDoctorLifeLogger<MediaDecoder> {
   void OnMediaNotSeekable() { mMediaSeekable = false; }
 
   void OnNextFrameStatus(MediaDecoderOwner::NextFrameStatus);
+
+  void OnSecondaryVideoContainerInstalled(
+      const RefPtr<VideoFrameContainer>& aSecondaryContainer);
 
   void OnStoreDecoderBenchmark(const VideoInfo& aInfo);
 
@@ -554,10 +571,6 @@ class MediaDecoder : public DecoderDoctorLifeLogger<MediaDecoder> {
   // disabled.
   bool mHasSuspendTaint;
 
-  // True if the decoder is sending video to a secondary container, and should
-  // not suspend the decoder.
-  bool mIsCloningVisually;
-
   MediaDecoderOwner::NextFrameStatus mNextFrameStatus =
       MediaDecoderOwner::NEXT_FRAME_UNAVAILABLE;
 
@@ -575,6 +588,7 @@ class MediaDecoder : public DecoderDoctorLifeLogger<MediaDecoder> {
   MediaEventListener mOnWaitingForKey;
   MediaEventListener mOnDecodeWarning;
   MediaEventListener mOnNextFrameStatus;
+  MediaEventListener mOnSecondaryVideoContainerInstalled;
   MediaEventListener mOnStoreDecoderBenchmark;
 
   // True if we have suspended video decoding.
@@ -605,6 +619,24 @@ class MediaDecoder : public DecoderDoctorLifeLogger<MediaDecoder> {
   Canonical<bool> mPreservesPitch;
 
   Canonical<bool> mLooping;
+
+  // The device used with SetSink, or nullptr if no explicit device has been
+  // set.
+  Canonical<RefPtr<AudioDeviceInfo>> mSinkDevice;
+
+  // Set if the decoder is sending video to a secondary container. While set we
+  // should not suspend the decoder.
+  Canonical<RefPtr<VideoFrameContainer>> mSecondaryVideoContainer;
+
+  // Whether this MediaDecoder's output is captured. When captured, all decoded
+  // data must be played out through mOutputTracks.
+  Canonical<bool> mOutputCaptured;
+
+  // Tracks that, if set, will get data routed through them.
+  Canonical<nsTArray<RefPtr<ProcessedMediaTrack>>> mOutputTracks;
+
+  // PrincipalHandle to be used when feeding data into mOutputTracks.
+  Canonical<PrincipalHandle> mOutputPrincipal;
 
   // Media duration set explicitly by JS. At present, this is only ever present
   // for MSE.
@@ -638,6 +670,23 @@ class MediaDecoder : public DecoderDoctorLifeLogger<MediaDecoder> {
     return &mPreservesPitch;
   }
   AbstractCanonical<bool>* CanonicalLooping() { return &mLooping; }
+  AbstractCanonical<RefPtr<AudioDeviceInfo>>* CanonicalSinkDevice() {
+    return &mSinkDevice;
+  }
+  AbstractCanonical<RefPtr<VideoFrameContainer>>*
+  CanonicalSecondaryVideoContainer() {
+    return &mSecondaryVideoContainer;
+  }
+  AbstractCanonical<bool>* CanonicalOutputCaptured() {
+    return &mOutputCaptured;
+  }
+  AbstractCanonical<nsTArray<RefPtr<ProcessedMediaTrack>>>*
+  CanonicalOutputTracks() {
+    return &mOutputTracks;
+  }
+  AbstractCanonical<PrincipalHandle>* CanonicalOutputPrincipal() {
+    return &mOutputPrincipal;
+  }
   AbstractCanonical<PlayState>* CanonicalPlayState() { return &mPlayState; }
 
  private:

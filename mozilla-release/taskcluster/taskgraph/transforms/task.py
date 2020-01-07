@@ -38,7 +38,6 @@ from taskgraph.util.partners import get_partners_to_be_published
 from taskgraph.util.scriptworker import (
     BALROG_ACTIONS,
     get_release_config,
-    add_scope_prefix,
 )
 from taskgraph.util.signed_artifacts import get_signed_artifacts
 from taskgraph.util.workertypes import worker_type_implementation
@@ -1221,6 +1220,24 @@ def build_ship_it_shipped_payload(config, task, task_def):
     }
 
 
+@payload_builder('shipit-maybe-release', schema={
+    Required('phase'): basestring,
+})
+def build_ship_it_maybe_release_payload(config, task, task_def):
+    # expect branch name, including path
+    branch = config.params['head_repository'][len('https://hg.mozilla.org/'):]
+    # 'version' is e.g. '71.0b13' (app_version doesn't have beta number)
+    version = config.params['version']
+
+    task_def['payload'] = {
+        'product': task['shipping-product'],
+        'branch': branch,
+        'phase': task['worker']['phase'],
+        'version': version,
+        'cron_revision': config.params['head_rev'],
+    }
+
+
 @payload_builder('push-addons', schema={
     Required('channel'): Any('listed', 'unlisted'),
     Required('upstream-artifacts'): [{
@@ -1244,15 +1261,29 @@ def build_push_addons_payload(config, task, task_def):
     Optional('bump-files'): [basestring],
     Optional('repo-param-prefix'): basestring,
     Optional('dontbuild'): bool,
+    Optional('ignore-closed-tree'): bool,
     Required('force-dry-run', default=True): bool,
-    Required('push', default=False): bool
+    Required('push', default=False): bool,
+    Optional('source-repo'): basestring,
+    Optional('l10n-bump-info'): {
+        Required('name'): basestring,
+        Required('path'): basestring,
+        Required('version-path'): basestring,
+        Optional('revision-url'): basestring,
+        Optional('ignore-config'): object,
+        Required('platform-configs'): [{
+            Required('platforms'): [basestring],
+            Required('path'): basestring,
+            Optional('format'): basestring,
+        }],
+    },
 })
 def build_treescript_payload(config, task, task_def):
     worker = task['worker']
     release_config = get_release_config(config)
 
-    task_def['payload'] = {}
-    task_def.setdefault('scopes', [])
+    task_def['payload'] = {'actions': []}
+    actions = task_def['payload']['actions']
     if worker['tags']:
         tag_names = []
         product = task['shipping-product'].upper()
@@ -1271,7 +1302,7 @@ def build_treescript_payload(config, task, task_def):
             'revision': config.params['{}head_rev'.format(worker.get('repo-param-prefix', ''))],
         }
         task_def['payload']['tag_info'] = tag_info
-        task_def['scopes'].append(add_scope_prefix(config, 'treescript:action:tagging'))
+        actions.append('tag')
 
     if worker['bump']:
         if not worker['bump-files']:
@@ -1281,16 +1312,29 @@ def build_treescript_payload(config, task, task_def):
         bump_info['next_version'] = release_config['next_version']
         bump_info['files'] = worker['bump-files']
         task_def['payload']['version_bump_info'] = bump_info
-        task_def['scopes'].append(add_scope_prefix(config, 'treescript:action:version_bump'))
+        actions.append('version_bump')
+
+    if worker.get('l10n-bump-info'):
+        l10n_bump_info = {}
+        for k, v in worker['l10n-bump-info'].items():
+            l10n_bump_info[k.replace('-', '_')] = worker['l10n-bump-info'][k]
+        task_def['payload']['l10n_bump_info'] = [l10n_bump_info]
+        actions.append('l10n_bump')
 
     if worker['push']:
-        task_def['scopes'].append(add_scope_prefix(config, 'treescript:action:push'))
+        actions.append('push')
 
     if worker.get('force-dry-run'):
         task_def['payload']['dry_run'] = True
 
     if worker.get('dontbuild'):
         task_def['payload']['dontbuild'] = True
+
+    if worker.get('ignore-closed-tree') is not None:
+        task_def['payload']['ignore_closed_tree'] = worker['ignore-closed-tree']
+
+    if worker.get('source-repo'):
+        task_def['payload']['source_repo'] = worker['source-repo']
 
 
 @payload_builder('invalid', schema={
@@ -1746,6 +1790,29 @@ def add_index_routes(config, tasks):
         task = index_builders[index_type](config, task)
 
         del task['index']
+        yield task
+
+
+@transforms.add
+def try_task_config_env(config, tasks):
+    """Set environment variables in the task."""
+    env = config.params['try_task_config'].get('env')
+    # Find all implementations that have an 'env' key.
+    implementations = {name for name, builder in payload_builders.items()
+                       if 'env' in builder.schema.schema}
+    for task in tasks:
+        if env and task['worker']['implementation'] in implementations:
+            task['worker']['env'].update(env)
+        yield task
+
+
+@transforms.add
+def try_task_config_chemspill_prio(config, tasks):
+    """Increase the priority from lowest and very-low -> low, but leave others unchanged."""
+    chemspill_prio = config.params['try_task_config'].get('chemspill-prio')
+    for task in tasks:
+        if chemspill_prio and task['priority'] in ('lowest', 'very-low'):
+            task['priority'] = 'low'
         yield task
 
 

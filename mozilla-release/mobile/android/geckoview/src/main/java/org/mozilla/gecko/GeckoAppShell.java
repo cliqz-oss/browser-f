@@ -52,6 +52,7 @@ import android.content.res.TypedArray;
 import android.graphics.Bitmap;
 import android.graphics.ImageFormat;
 import android.graphics.PixelFormat;
+import android.graphics.Point;
 import android.graphics.Rect;
 import android.graphics.drawable.Drawable;
 import android.hardware.Camera;
@@ -65,6 +66,8 @@ import android.location.LocationListener;
 import android.location.LocationManager;
 import android.media.AudioManager;
 import android.net.ConnectivityManager;
+import android.net.LinkProperties;
+import android.net.Network;
 import android.net.NetworkInfo;
 import android.os.Build;
 import android.os.Bundle;
@@ -251,9 +254,6 @@ public class GeckoAppShell {
     // helper methods
     @WrapForJNI
     /* package */ static native void reportJavaCrash(Throwable exc, String stackTrace);
-
-    @WrapForJNI(dispatchTo = "gecko")
-    public static native void notifyUriVisited(String uri);
 
     private static Rect sScreenSizeOverride;
 
@@ -1234,6 +1234,27 @@ public class GeckoAppShell {
     }
 
     @WrapForJNI(calledFrom = "gecko")
+    private static String getDNSDomains() {
+        if (Build.VERSION.SDK_INT < 23) {
+            return "";
+        }
+
+        ConnectivityManager cm = (ConnectivityManager)
+            getApplicationContext().getSystemService(Context.CONNECTIVITY_SERVICE);
+        Network net = cm.getActiveNetwork();
+        if (net == null) {
+            return "";
+        }
+
+        LinkProperties lp = cm.getLinkProperties(net);
+        if (lp == null) {
+            return "";
+        }
+
+        return lp.getDomains();
+    }
+
+    @WrapForJNI(calledFrom = "gecko")
     private static int[] getSystemColors() {
         // attrsAppearance[] must correspond to AndroidSystemColors structure in android/AndroidBridge.h
         final int[] attrsAppearance = {
@@ -1957,7 +1978,12 @@ public class GeckoAppShell {
         final WindowManager wm = (WindowManager)
                 getApplicationContext().getSystemService(Context.WINDOW_SERVICE);
         final Display disp = wm.getDefaultDisplay();
-        return new Rect(0, 0, disp.getWidth(), disp.getHeight());
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.JELLY_BEAN_MR1) {
+            return new Rect(0, 0, disp.getWidth(), disp.getHeight());
+        }
+        Point size = new Point();
+        disp.getRealSize(size);
+        return new Rect(0, 0, size.x, size.y);
     }
 
     @WrapForJNI(calledFrom = "any")

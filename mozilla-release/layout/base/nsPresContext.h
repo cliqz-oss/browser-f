@@ -38,6 +38,7 @@
 #include "mozilla/TimeStamp.h"
 #include "mozilla/AppUnits.h"
 #include "mozilla/MediaEmulationData.h"
+#include "mozilla/PresShellForwards.h"
 #include "prclist.h"
 #include "nsThreadUtils.h"
 #include "nsIMessageManager.h"
@@ -192,7 +193,7 @@ class nsPresContext : public nsISupports,
   nsPresContext* GetToplevelContentDocumentPresContext();
 
   /**
-   * Returns the nearest widget for the root frame of this.
+   * Returns the nearest widget for the root frame or view of this.
    *
    * @param aOffset     If non-null the offset from the origin of the root
    *                    frame's view to the widget's origin (usually positive)
@@ -369,16 +370,42 @@ class nsPresContext : public nsISupports,
    * Set the currently visible area. The units for r are standard
    * nscoord units (as scaled by the device context).
    */
-  void SetVisibleArea(const nsRect& r) {
-    if (!r.IsEqualEdges(mVisibleArea)) {
-      mVisibleArea = r;
-      // Visible area does not affect media queries when paginated.
-      if (!IsPaginated()) {
-        MediaFeatureValuesChanged(
-            {mozilla::MediaFeatureChangeReason::ViewportChange});
-      }
-    }
+  void SetVisibleArea(const nsRect& r);
+
+  nsSize GetSizeForViewportUnits() const { return mSizeForViewportUnits; }
+
+  /**
+   * Set the maximum height of the dynamic toolbar in nscoord units.
+   */
+  MOZ_CAN_RUN_SCRIPT
+  void SetDynamicToolbarMaxHeight(mozilla::ScreenIntCoord aHeight);
+
+  mozilla::ScreenIntCoord GetDynamicToolbarMaxHeight() const {
+    MOZ_ASSERT(IsRootContentDocumentCrossProcess());
+    return mDynamicToolbarMaxHeight;
   }
+
+  /**
+   * Returns true if we are using the dynamic toolbar.
+   */
+  bool HasDynamicToolbar() const {
+    MOZ_ASSERT(IsRootContentDocumentCrossProcess());
+    return mDynamicToolbarMaxHeight > 0;
+  }
+
+  /*
+   * |aOffset| must be offset from the bottom edge of the ICB and it's negative.
+   */
+  void UpdateDynamicToolbarOffset(mozilla::ScreenIntCoord aOffset);
+  mozilla::ScreenIntCoord GetDynamicToolbarHeight() const {
+    MOZ_ASSERT(IsRootContentDocumentCrossProcess());
+    return mDynamicToolbarHeight;
+  }
+
+  /**
+   * Returns the state of the dynamic toolbar.
+   */
+  mozilla::DynamicToolbarState GetDynamicToolbarState() const;
 
   /**
    * Return true if this presentation context is a paginated
@@ -1034,13 +1061,14 @@ class nsPresContext : public nsISupports,
   // aData here is a pointer to a double that holds the CSS to device-pixel
   // scale factor from the parent, which will be applied to the subdocument's
   // device context instead of retrieving a scale from the widget.
-  static bool UIResolutionChangedSubdocumentCallback(
-      mozilla::dom::Document* aDocument, void* aData);
+  static bool UIResolutionChangedSubdocumentCallback(mozilla::dom::Document&,
+                                                     void* aData);
 
   void SetImgAnimations(nsIContent* aParent, uint16_t aMode);
   void SetSMILAnimations(mozilla::dom::Document* aDoc, uint16_t aNewMode,
                          uint16_t aOldMode);
 
+  static void PreferenceChanged(const char* aPrefName, void* aSelf);
   void PreferenceChanged(const char* aPrefName);
 
   void UpdateAfterPreferencesChanged();
@@ -1050,10 +1078,10 @@ class nsPresContext : public nsISupports,
 
   void UpdateCharSet(NotNull<const Encoding*> aCharSet);
 
-  static bool NotifyDidPaintSubdocumentCallback(
-      mozilla::dom::Document* aDocument, void* aData);
-  static bool NotifyRevokingDidPaintSubdocumentCallback(
-      mozilla::dom::Document* aDocument, void* aData);
+  static bool NotifyDidPaintSubdocumentCallback(mozilla::dom::Document&,
+                                                void* aData);
+  static bool NotifyRevokingDidPaintSubdocumentCallback(mozilla::dom::Document&,
+                                                        void* aData);
 
  public:
   // Used by the PresShell to force a reflow when some aspect of font info
@@ -1107,6 +1135,10 @@ class nsPresContext : public nsISupports,
     bool mIsWaitingForPreviousTransaction = false;
   };
   TransactionInvalidations* GetInvalidations(TransactionId aTransactionId);
+
+  // This should be called only when we update mVisibleArea or
+  // mDynamicToolbarMaxHeight or `app units per device pixels` changes.
+  void AdjustSizeForViewportUnits();
 
   // IMPORTANT: The ownership implicit in the following member variables
   // has been explicitly checked.  If you add any members to this class,
@@ -1167,6 +1199,13 @@ class nsPresContext : public nsISupports,
   mozilla::UniquePtr<gfxMissingFontRecorder> mMissingFonts;
 
   nsRect mVisibleArea;
+  // This value is used to resolve viewport units.
+  // On mobile this size is including the dynamic toolbar maximum height below.
+  // On desktops this size is pretty much the same as |mVisibleArea|.
+  nsSize mSizeForViewportUnits;
+  // The maximum height of the dynamic toolbar on mobile.
+  mozilla::ScreenIntCoord mDynamicToolbarMaxHeight;
+  mozilla::ScreenIntCoord mDynamicToolbarHeight;
   nsSize mPageSize;
   float mPageScale;
   float mPPScale;

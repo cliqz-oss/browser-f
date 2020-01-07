@@ -81,7 +81,7 @@ static sslOptions ssl_defaults = {
     .reuseServerECDHEKey = PR_TRUE,
     .enableFallbackSCSV = PR_FALSE,
     .enableServerDhe = PR_TRUE,
-    .enableExtendedMS = PR_FALSE,
+    .enableExtendedMS = PR_TRUE,
     .enableSignedCertTimestamps = PR_FALSE,
     .requireDHENamedGroups = PR_FALSE,
     .enable0RttData = PR_FALSE,
@@ -97,7 +97,7 @@ static sslOptions ssl_defaults = {
  */
 static SSLVersionRange versions_defaults_stream = {
     SSL_LIBRARY_VERSION_TLS_1_0,
-    SSL_LIBRARY_VERSION_TLS_1_2
+    SSL_LIBRARY_VERSION_TLS_1_3
 };
 
 static SSLVersionRange versions_defaults_datagram = {

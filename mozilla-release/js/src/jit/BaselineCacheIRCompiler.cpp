@@ -664,29 +664,6 @@ bool BaselineCacheIRCompiler::emitLoadFrameNumActualArgsResult() {
   return true;
 }
 
-bool BaselineCacheIRCompiler::emitLoadTypedObjectResult() {
-  JitSpew(JitSpew_Codegen, __FUNCTION__);
-  AutoOutputRegister output(*this);
-  Register obj = allocator.useRegister(masm, reader.objOperandId());
-  AutoScratchRegister scratch1(allocator, masm);
-  AutoScratchRegister scratch2(allocator, masm);
-
-  TypedThingLayout layout = reader.typedThingLayout();
-  uint32_t typeDescr = reader.typeDescrKey();
-  Address fieldOffset(stubAddress(reader.stubOffset()));
-
-  // Get the object's data pointer.
-  LoadTypedThingData(masm, layout, obj, scratch1);
-
-  // Get the address being written to.
-  masm.load32(fieldOffset, scratch2);
-  masm.addPtr(scratch2, scratch1);
-
-  Address fieldAddr(scratch1, 0);
-  emitLoadTypedObjectResultShared(fieldAddr, scratch2, typeDescr, output);
-  return true;
-}
-
 bool BaselineCacheIRCompiler::emitLoadFrameArgumentResult() {
   JitSpew(JitSpew_Codegen, __FUNCTION__);
   AutoOutputRegister output(*this);
@@ -1898,8 +1875,6 @@ bool BaselineCacheIRCompiler::init(CacheKind kind) {
   return true;
 }
 
-static const size_t MaxOptimizedCacheIRStubs = 16;
-
 static void ResetEnteredCounts(ICFallbackStub* stub) {
   for (ICStubIterator iter = stub->beginChain(); !iter.atEnd(); iter++) {
     switch (iter->kind()) {
@@ -1935,7 +1910,10 @@ ICStub* js::jit::AttachBaselineCacheIRStub(
 
   // Just a sanity check: the caller should ensure we don't attach an
   // unlimited number of stubs.
+#ifdef DEBUG
+  static const size_t MaxOptimizedCacheIRStubs = 16;
   MOZ_ASSERT(stub->numOptimizedStubs() < MaxOptimizedCacheIRStubs);
+#endif
 
   uint32_t stubDataOffset = 0;
   switch (stubKind) {
@@ -2122,30 +2100,6 @@ uint8_t* ICCacheIR_Monitored::stubDataStart() {
 
 uint8_t* ICCacheIR_Updated::stubDataStart() {
   return reinterpret_cast<uint8_t*>(this) + stubInfo_->stubDataOffset();
-}
-
-bool BaselineCacheIRCompiler::emitCallStringConcatResult() {
-  JitSpew(JitSpew_Codegen, __FUNCTION__);
-  AutoOutputRegister output(*this);
-  Register lhs = allocator.useRegister(masm, reader.stringOperandId());
-  Register rhs = allocator.useRegister(masm, reader.stringOperandId());
-  AutoScratchRegisterMaybeOutput scratch(allocator, masm, output);
-
-  allocator.discardStack(masm);
-
-  AutoStubFrame stubFrame(*this);
-  stubFrame.enter(masm, scratch);
-
-  masm.push(rhs);
-  masm.push(lhs);
-
-  using Fn = JSString* (*)(JSContext*, HandleString, HandleString);
-  callVM<Fn, ConcatStrings<CanGC>>(masm);
-
-  masm.tagValue(JSVAL_TYPE_STRING, ReturnReg, output.valueReg());
-
-  stubFrame.leave(masm);
-  return true;
 }
 
 bool BaselineCacheIRCompiler::emitCallStringObjectConcatResult() {

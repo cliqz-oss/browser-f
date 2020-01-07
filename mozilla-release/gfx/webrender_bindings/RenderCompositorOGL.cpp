@@ -9,7 +9,12 @@
 #include "GLContext.h"
 #include "GLContextProvider.h"
 #include "mozilla/StaticPrefs_gfx.h"
+#include "mozilla/webrender/RenderThread.h"
 #include "mozilla/widget/CompositorWidget.h"
+
+#ifdef MOZ_GECKO_PROFILER
+#  include "ProfilerMarkerPayload.h"
+#endif
 
 namespace mozilla {
 namespace wr {
@@ -17,9 +22,11 @@ namespace wr {
 /* static */
 UniquePtr<RenderCompositor> RenderCompositorOGL::Create(
     RefPtr<widget::CompositorWidget>&& aWidget) {
-  RefPtr<gl::GLContext> gl;
-  gl = gl::GLContextProvider::CreateForCompositorWidget(
-      aWidget, /* aWebRender */ true, /* aForceAccelerated */ true);
+  RefPtr<gl::GLContext> gl = RenderThread::Get()->SharedGL();
+  if (!gl) {
+    gl = gl::GLContextProvider::CreateForCompositorWidget(
+        aWidget, /* aWebRender */ true, /* aForceAccelerated */ true);
+  }
   if (!gl || !gl->MakeCurrent()) {
     gfxCriticalNote << "Failed GL context creation for WebRender: "
                     << gfx::hexa(gl.get());
@@ -32,12 +39,19 @@ RenderCompositorOGL::RenderCompositorOGL(
     RefPtr<gl::GLContext>&& aGL, RefPtr<widget::CompositorWidget>&& aWidget)
     : RenderCompositor(std::move(aWidget)),
       mGL(aGL),
+      mNativeLayerRoot(GetWidget()->GetNativeLayerRoot()),
       mPreviousFrameDoneSync(nullptr),
       mThisFrameDoneSync(nullptr) {
   MOZ_ASSERT(mGL);
 }
 
 RenderCompositorOGL::~RenderCompositorOGL() {
+  if (mNativeLayerRoot) {
+    mNativeLayerRoot->SetLayers({});
+    mNativeLayerForEntireWindow = nullptr;
+    mNativeLayerRoot = nullptr;
+  }
+
   if (!mGL->MakeCurrent()) {
     gfxCriticalNote
         << "Failed to make render context current during destroying.";
@@ -55,21 +69,35 @@ RenderCompositorOGL::~RenderCompositorOGL() {
   }
 }
 
-bool RenderCompositorOGL::BeginFrame(layers::NativeLayer* aNativeLayer) {
+bool RenderCompositorOGL::BeginFrame() {
   if (!mGL->MakeCurrent()) {
     gfxCriticalNote << "Failed to make render context current, can't draw.";
     return false;
   }
 
-  if (aNativeLayer) {
-    aNativeLayer->SetSurfaceIsFlipped(true);
-    aNativeLayer->SetGLContext(mGL);
-    Maybe<GLuint> fbo = aNativeLayer->NextSurfaceAsFramebuffer(true);
+  gfx::IntSize bufferSize = GetBufferSize().ToUnknownSize();
+  if (mNativeLayerRoot && !ShouldUseNativeCompositor()) {
+    if (mNativeLayerForEntireWindow &&
+        mNativeLayerForEntireWindow->GetSize() != bufferSize) {
+      mNativeLayerRoot->RemoveLayer(mNativeLayerForEntireWindow);
+      mNativeLayerForEntireWindow = nullptr;
+    }
+    if (!mNativeLayerForEntireWindow) {
+      mNativeLayerForEntireWindow =
+          mNativeLayerRoot->CreateLayer(bufferSize, false);
+      mNativeLayerForEntireWindow->SetSurfaceIsFlipped(true);
+      mNativeLayerForEntireWindow->SetGLContext(mGL);
+      mNativeLayerRoot->AppendLayer(mNativeLayerForEntireWindow);
+    }
+  }
+  if (mNativeLayerForEntireWindow) {
+    gfx::IntRect bounds({}, bufferSize);
+    Maybe<GLuint> fbo =
+        mNativeLayerForEntireWindow->NextSurfaceAsFramebuffer(bounds, true);
     if (!fbo) {
       return false;
     }
     mGL->fBindFramebuffer(LOCAL_GL_FRAMEBUFFER, *fbo);
-    mCurrentNativeLayer = aNativeLayer;
   } else {
     mGL->fBindFramebuffer(LOCAL_GL_FRAMEBUFFER, mGL->GetDefaultFramebuffer());
   }
@@ -77,27 +105,27 @@ bool RenderCompositorOGL::BeginFrame(layers::NativeLayer* aNativeLayer) {
   return true;
 }
 
-void RenderCompositorOGL::EndFrame() {
+RenderedFrameId RenderCompositorOGL::EndFrame(
+    const FfiVec<DeviceIntRect>& aDirtyRects) {
+  RenderedFrameId frameId = GetNextRenderFrameId();
   InsertFrameDoneSync();
   mGL->SwapBuffers();
 
-  if (mCurrentNativeLayer) {
-    mCurrentNativeLayer->NotifySurfaceReady();
-    mCurrentNativeLayer = nullptr;
+  if (mNativeLayerForEntireWindow) {
+    mNativeLayerForEntireWindow->NotifySurfaceReady();
   }
+
+  return frameId;
 }
 
 void RenderCompositorOGL::InsertFrameDoneSync() {
 #ifdef XP_MACOSX
   // Only do this on macOS.
   // On other platforms, SwapBuffers automatically applies back-pressure.
-  if (StaticPrefs::gfx_core_animation_enabled_AtStartup()) {
-    if (mThisFrameDoneSync) {
-      mGL->fDeleteSync(mThisFrameDoneSync);
-    }
-    mThisFrameDoneSync =
-        mGL->fFenceSync(LOCAL_GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
+  if (mThisFrameDoneSync) {
+    mGL->fDeleteSync(mThisFrameDoneSync);
   }
+  mThisFrameDoneSync = mGL->fFenceSync(LOCAL_GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
 #endif
 }
 
@@ -121,6 +149,123 @@ bool RenderCompositorOGL::Resume() { return true; }
 
 LayoutDeviceIntSize RenderCompositorOGL::GetBufferSize() {
   return mWidget->GetClientSize();
+}
+
+bool RenderCompositorOGL::ShouldUseNativeCompositor() {
+  return mNativeLayerRoot && StaticPrefs::gfx_webrender_compositor_AtStartup();
+}
+
+uint32_t RenderCompositorOGL::GetMaxUpdateRects() {
+  if (ShouldUseNativeCompositor() &&
+      StaticPrefs::gfx_webrender_compositor_max_update_rects_AtStartup() > 0) {
+    return 1;
+  }
+  return 0;
+}
+
+void RenderCompositorOGL::CompositorBeginFrame() {
+  mAddedLayers.Clear();
+  mAddedPixelCount = 0;
+  mAddedClippedPixelCount = 0;
+  mBeginFrameTimeStamp = TimeStamp::NowUnfuzzed();
+}
+
+void RenderCompositorOGL::CompositorEndFrame() {
+#ifdef MOZ_GECKO_PROFILER
+  if (profiler_thread_is_being_profiled()) {
+    auto bufferSize = GetBufferSize();
+    uint64_t windowPixelCount = uint64_t(bufferSize.width) * bufferSize.height;
+    profiler_add_text_marker(
+        "WR OS Compositor frame",
+        nsPrintfCString("%d%% painting, %d%% overdraw, %d used "
+                        "layers (%d%% memory) + %d unused layers (%d%% memory)",
+                        int(mDrawnPixelCount * 100 / windowPixelCount),
+                        int(mAddedClippedPixelCount * 100 / windowPixelCount),
+                        int(mAddedLayers.Length()),
+                        int(mAddedPixelCount * 100 / windowPixelCount),
+                        int(mNativeLayers.size() - mAddedLayers.Length()),
+                        int((mTotalPixelCount - mAddedPixelCount) * 100 /
+                            windowPixelCount)),
+        JS::ProfilingCategoryPair::GRAPHICS, mBeginFrameTimeStamp,
+        TimeStamp::NowUnfuzzed());
+  }
+#endif
+  mDrawnPixelCount = 0;
+
+  mNativeLayerRoot->SetLayers(mAddedLayers);
+}
+
+void RenderCompositorOGL::Bind(wr::NativeSurfaceId aId,
+                               wr::DeviceIntPoint* aOffset, uint32_t* aFboId,
+                               wr::DeviceIntRect aDirtyRect) {
+  MOZ_RELEASE_ASSERT(!mCurrentlyBoundNativeLayer);
+
+  auto layerCursor = mNativeLayers.find(wr::AsUint64(aId));
+  MOZ_RELEASE_ASSERT(layerCursor != mNativeLayers.end());
+  RefPtr<layers::NativeLayer> layer = layerCursor->second;
+
+  gfx::IntRect dirtyRect(aDirtyRect.origin.x, aDirtyRect.origin.y,
+                         aDirtyRect.size.width, aDirtyRect.size.height);
+
+  Maybe<GLuint> fbo = layer->NextSurfaceAsFramebuffer(dirtyRect, true);
+  MOZ_RELEASE_ASSERT(fbo);  // TODO: make fallible
+  mCurrentlyBoundNativeLayer = layer;
+
+  *aFboId = *fbo;
+  *aOffset = wr::DeviceIntPoint{0, 0};
+
+  mDrawnPixelCount += dirtyRect.Area();
+}
+
+void RenderCompositorOGL::Unbind() {
+  MOZ_RELEASE_ASSERT(mCurrentlyBoundNativeLayer);
+
+  mGL->fBindFramebuffer(LOCAL_GL_FRAMEBUFFER, 0);
+  mCurrentlyBoundNativeLayer->NotifySurfaceReady();
+  mCurrentlyBoundNativeLayer = nullptr;
+}
+
+void RenderCompositorOGL::CreateSurface(wr::NativeSurfaceId aId,
+                                        wr::DeviceIntSize aSize,
+                                        bool aIsOpaque) {
+  RefPtr<layers::NativeLayer> layer = mNativeLayerRoot->CreateLayer(
+      IntSize(aSize.width, aSize.height), aIsOpaque);
+  layer->SetGLContext(mGL);
+  mNativeLayers.insert({wr::AsUint64(aId), layer});
+  mTotalPixelCount += gfx::IntRect({}, layer->GetSize()).Area();
+}
+
+void RenderCompositorOGL::DestroySurface(NativeSurfaceId aId) {
+  auto layerCursor = mNativeLayers.find(wr::AsUint64(aId));
+  MOZ_RELEASE_ASSERT(layerCursor != mNativeLayers.end());
+  RefPtr<layers::NativeLayer> layer = std::move(layerCursor->second);
+  mNativeLayers.erase(layerCursor);
+  mTotalPixelCount -= gfx::IntRect({}, layer->GetSize()).Area();
+  // If the layer is currently present in mNativeLayerRoot, it will be destroyed
+  // once CompositorEndFrame() replaces mNativeLayerRoot's layers and drops that
+  // reference.
+}
+
+void RenderCompositorOGL::AddSurface(wr::NativeSurfaceId aId,
+                                     wr::DeviceIntPoint aPosition,
+                                     wr::DeviceIntRect aClipRect) {
+  MOZ_RELEASE_ASSERT(!mCurrentlyBoundNativeLayer);
+
+  auto layerCursor = mNativeLayers.find(wr::AsUint64(aId));
+  MOZ_RELEASE_ASSERT(layerCursor != mNativeLayers.end());
+  RefPtr<layers::NativeLayer> layer = layerCursor->second;
+
+  gfx::IntSize layerSize = layer->GetSize();
+  gfx::IntRect layerRect(aPosition.x, aPosition.y, layerSize.width,
+                         layerSize.height);
+  gfx::IntRect clipRect(aClipRect.origin.x, aClipRect.origin.y,
+                        aClipRect.size.width, aClipRect.size.height);
+  layer->SetPosition(layerRect.TopLeft());
+  layer->SetClipRect(Some(clipRect));
+  mAddedLayers.AppendElement(layer);
+
+  mAddedPixelCount += layerRect.Area();
+  mAddedClippedPixelCount += clipRect.Intersect(layerRect).Area();
 }
 
 }  // namespace wr

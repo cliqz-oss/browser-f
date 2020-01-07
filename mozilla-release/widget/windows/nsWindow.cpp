@@ -1684,6 +1684,25 @@ void nsWindow::LockAspectRatio(bool aShouldLock) {
 
 /**************************************************************
  *
+ * SECTION: nsIWidget::SetWindowMouseTransparent
+ *
+ * Sets whether the window should ignore mouse events.
+ *
+ **************************************************************/
+void nsWindow::SetWindowMouseTransparent(bool aIsTransparent) {
+  if (!mWnd) {
+    return;
+  }
+
+  LONG_PTR oldStyle = ::GetWindowLongPtrW(mWnd, GWL_EXSTYLE);
+  LONG_PTR newStyle = aIsTransparent ? (oldStyle | WS_EX_TRANSPARENT)
+                                     : (oldStyle & ~WS_EX_TRANSPARENT);
+  ::SetWindowLongPtrW(mWnd, GWL_EXSTYLE, newStyle);
+  mMouseTransparent = aIsTransparent;
+}
+
+/**************************************************************
+ *
  * SECTION: nsIWidget::Move, nsIWidget::Resize,
  * nsIWidget::Size, nsIWidget::BeginResizeDrag
  *
@@ -7272,8 +7291,8 @@ bool nsWindow::HasBogusPopupsDropShadowOnMultiMonitor() {
                                                                : TRI_FALSE;
     if (!sHasBogusPopupsDropShadowOnMultiMonitor) {
       // Otherwise check if Direct3D 9 may be used.
-      if (gfxConfig::IsEnabled(Feature::HW_COMPOSITING) &&
-          !gfxConfig::IsEnabled(Feature::OPENGL_COMPOSITING)) {
+      if (gfxConfig::IsEnabled(gfx::Feature::HW_COMPOSITING) &&
+          !gfxConfig::IsEnabled(gfx::Feature::OPENGL_COMPOSITING)) {
         nsCOMPtr<nsIGfxInfo> gfxInfo = services::GetGfxInfo();
         if (gfxInfo) {
           int32_t status;
@@ -7282,7 +7301,7 @@ bool nsWindow::HasBogusPopupsDropShadowOnMultiMonitor() {
                   nsIGfxInfo::FEATURE_DIRECT3D_9_LAYERS, discardFailureId,
                   &status))) {
             if (status == nsIGfxInfo::FEATURE_STATUS_OK ||
-                gfxConfig::IsForcedOnByUser(Feature::HW_COMPOSITING)) {
+                gfxConfig::IsForcedOnByUser(gfx::Feature::HW_COMPOSITING)) {
               sHasBogusPopupsDropShadowOnMultiMonitor = TRI_TRUE;
             }
           }

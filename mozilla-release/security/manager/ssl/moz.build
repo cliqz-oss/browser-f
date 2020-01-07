@@ -4,13 +4,18 @@
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
+# osclientcerts is currently only implemented for Windows
+# osclientcerts transitively depends on winapi 0.2.8, which doesn't work with
+# AArch64
+if CONFIG['OS_ARCH'] == 'WINNT' and CONFIG['CPU_ARCH'] != 'aarch64':
+    DIRS += [ 'osclientcerts' ]
+
 TEST_DIRS += [ 'tests' ]
 
 XPIDL_SOURCES += [
     'nsIASN1Object.idl',
     'nsIASN1PrintableItem.idl',
     'nsIASN1Sequence.idl',
-    'nsIBadCertListener2.idl',
     'nsICertificateDialogs.idl',
     'nsICertOverrideService.idl',
     'nsIClientAuthDialogs.idl',
@@ -37,7 +42,6 @@ XPIDL_SOURCES += [
     'nsITokenPasswordDialogs.idl',
     'nsIX509Cert.idl',
     'nsIX509CertDB.idl',
-    'nsIX509CertList.idl',
     'nsIX509CertValidity.idl',
 ]
 
@@ -75,6 +79,7 @@ EXPORTS += [
     'RootCertificateTelemetryUtils.h',
     'ScopedNSSTypes.h',
     'SharedCertVerifier.h',
+    'SSLServerCertVerification.h',
     'TransportSecurityInfo.h',
 ]
 

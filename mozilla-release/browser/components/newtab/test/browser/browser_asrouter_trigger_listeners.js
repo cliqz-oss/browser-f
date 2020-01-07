@@ -20,6 +20,30 @@ async function openURLInWindow(window, url) {
   await BrowserTestUtils.browserLoaded(selectedBrowser, false, url);
 }
 
+add_task(async function check_matchPatternFailureCase() {
+  const articleTrigger = ASRouterTriggerListeners.get("openArticleURL");
+
+  articleTrigger.uninit();
+
+  articleTrigger.init(() => {}, [], ["example.com"]);
+
+  is(
+    articleTrigger._matchPatternSet.matches("http://example.com"),
+    false,
+    "Should fail, bad pattern"
+  );
+
+  articleTrigger.init(() => {}, [], ["*://*.example.com"]);
+
+  is(
+    articleTrigger._matchPatternSet.matches("http://www.example.com"),
+    true,
+    "Should work, updated pattern"
+  );
+
+  articleTrigger.uninit();
+});
+
 add_task(async function check_openArticleURL() {
   const TEST_URL =
     "https://example.com/browser/browser/components/newtab/test/browser/red_page.html";
@@ -327,10 +351,10 @@ add_task(async function check_trackingProtectionMilestone_listener() {
   const triggerHandler = (target, trigger) => {
     const {
       id,
-      param: { type },
+      param: { host },
     } = trigger;
     is(id, "trackingProtection", "should match event name");
-    is(type, "ContentBlockingMilestone", "Should be the correct event type");
+    is(host, "ContentBlockingMilestone", "Should be the correct event type");
     observerEvent += 1;
   };
   const trackingProtectionListener = ASRouterTriggerListeners.get(

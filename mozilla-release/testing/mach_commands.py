@@ -431,8 +431,8 @@ class MachCommands(MachCommandBase):
         utility_path = self.bindir
 
         if conditions.is_android(self):
-            from mozrunner.devices.android_device import verify_android_device
-            verify_android_device(self, install=False)
+            from mozrunner.devices.android_device import (verify_android_device, InstallIntent)
+            verify_android_device(self, install=InstallIntent.NO)
             return self.run_android_test(tests, symbols_path, manifest_path, log)
 
         return self.run_desktop_test(tests, symbols_path, manifest_path,
@@ -497,9 +497,9 @@ def executable_name(name):
 
 
 @CommandProvider
-class CheckSpiderMonkeyCommand(MachCommandBase):
+class SpiderMonkeyTests(MachCommandBase):
     @Command('jstests', category='testing',
-             description='Run SpiderMonkey JS tests in the JavaScript shell.')
+             description='Run SpiderMonkey JS tests in the JS shell.')
     @CommandArgument('--shell', help='The shell to be used')
     @CommandArgument('params', nargs=argparse.REMAINDER,
                      help="Extra arguments to pass down to the test harness.")
@@ -516,92 +516,82 @@ class CheckSpiderMonkeyCommand(MachCommandBase):
             js,
             '--jitflags=jstests',
         ] + params
+
         return subprocess.call(jstest_cmd)
 
-    @Command('check-spidermonkey', category='testing',
-             description='Run SpiderMonkey tests (JavaScript engine).')
-    @CommandArgument('--valgrind', action='store_true',
-                     help='Run jit-test suite with valgrind flag')
-    def run_checkspidermonkey(self, **params):
+    @Command('jit-test', category='testing',
+             description='Run SpiderMonkey jit-tests in the JS shell.')
+    @CommandArgument('--shell', help='The shell to be used')
+    @CommandArgument('params', nargs=argparse.REMAINDER,
+                     help="Extra arguments to pass down to the test harness.")
+    def run_jittests(self, shell, params):
         import subprocess
 
         self.virtualenv_manager.ensure()
         python = self.virtualenv_manager.python_path
 
-        js = os.path.join(self.bindir, executable_name('js'))
-
-        print('Running jit-tests')
+        js = shell or os.path.join(self.bindir, executable_name('js'))
         jittest_cmd = [
             python,
-            os.path.join(self.topsrcdir, 'js', 'src',
-                         'jit-test', 'jit_test.py'),
+            os.path.join(self.topsrcdir, 'js', 'src', 'jit-test', 'jit_test.py'),
             js,
+        ] + params
+
+        return subprocess.call(jittest_cmd)
+
+    @Command('jsapi-tests', category='testing',
+             description='Run SpiderMonkey JSAPI tests.')
+    @CommandArgument('test_name', nargs='?', metavar='N',
+                     help='Test to run. Can be a prefix or omitted. If '
+                     'omitted, the entire test suite is executed.')
+    def run_jsapitests(self, test_name=None):
+        import subprocess
+
+        jsapi_tests_cmd = [
+            os.path.join(self.bindir, executable_name('jsapi-tests'))
+        ]
+        if test_name:
+            jsapi_tests_cmd.append(test_name)
+
+        return subprocess.call(jsapi_tests_cmd)
+
+    def run_check_js_msg(self):
+        import subprocess
+
+        self.virtualenv_manager.ensure()
+        python = self.virtualenv_manager.python_path
+
+        check_cmd = [
+            python,
+            os.path.join(self.topsrcdir, 'config', 'check_js_msg_encoding.py')
+        ]
+
+        return subprocess.call(check_cmd)
+
+    @Command('check-spidermonkey', category='testing',
+             description='Run SpiderMonkey tests (JavaScript engine).')
+    @CommandArgument('--valgrind', action='store_true',
+                     help='Run jit-test suite with valgrind flag')
+    def run_checkspidermonkey(self, valgrind=False):
+        print('Running jit-tests')
+        jittest_args = [
             '--no-slow',
             '--jitflags=all',
         ]
-        if params['valgrind']:
-            jittest_cmd.append('--valgrind')
-
-        jittest_result = subprocess.call(jittest_cmd)
+        if valgrind:
+            jittest_args.append('--valgrind')
+        jittest_result = self.run_jittests(shell=None, params=jittest_args)
 
         print('running jstests')
-        jstest_result = self.run_jstests(js, [])
+        jstest_result = self.run_jstests(shell=None, params=[])
 
         print('running jsapi-tests')
-        jsapi_tests_cmd = [os.path.join(
-            self.bindir, executable_name('jsapi-tests'))]
-        jsapi_tests_result = subprocess.call(jsapi_tests_cmd)
+        jsapi_tests_result = self.run_jsapitests(test_name=None)
 
         print('running check-js-msg-encoding')
-        check_js_msg_cmd = [python, os.path.join(
-            self.topsrcdir, 'config', 'check_js_msg_encoding.py')]
-        check_js_msg_result = subprocess.call(
-            check_js_msg_cmd, cwd=self.topsrcdir)
+        check_js_msg_result = self.run_check_js_msg()
 
-        all_passed = jittest_result and jstest_result and jsapi_tests_result and \
-            check_js_msg_result
-
-        return all_passed
-
-
-def has_js_binary(binary):
-    def has_binary(cls):
-        try:
-            name = binary + cls.substs['BIN_SUFFIX']
-        except BuildEnvironmentNotFoundException:
-            return False
-
-        path = os.path.join(cls.topobjdir, 'dist', 'bin', name)
-
-        has_binary.__doc__ = """
-`{}` not found in <objdir>/dist/bin. Make sure you aren't using an artifact build
-and try rebuilding with `ac_add_options --enable-js-shell`.
-""".format(name).lstrip()
-
-        return os.path.isfile(path)
-    return has_binary
-
-
-@CommandProvider
-class JsapiTestsCommand(MachCommandBase):
-    @Command('jsapi-tests', category='testing',
-             conditions=[has_js_binary('jsapi-tests')],
-             description='Run jsapi tests (JavaScript engine).')
-    @CommandArgument('test_name', nargs='?', metavar='N',
-                     help='Test to run. Can be a prefix or omitted. If omitted, the entire '
-                     'test suite is executed.')
-    def run_jsapitests(self, **params):
-        import subprocess
-
-        print('running jsapi-tests')
-        jsapi_tests_cmd = [os.path.join(
-            self.bindir, executable_name('jsapi-tests'))]
-        if params['test_name']:
-            jsapi_tests_cmd.append(params['test_name'])
-
-        jsapi_tests_result = subprocess.call(jsapi_tests_cmd)
-
-        return jsapi_tests_result
+        return jittest_result and jstest_result and jsapi_tests_result and check_js_msg_result
 
 
 def get_jsshell_parser():
@@ -745,14 +735,15 @@ class TestInfoCommand(MachCommandBase):
                 print("'%s' is too short for a test name!" % self.test_name)
                 continue
             self.set_test_name()
+            if self.show_bugs:
+                self.report_bugs()
+            self.set_activedata_test_name()
             if self.show_results:
                 self.report_test_results()
             if self.show_durations:
                 self.report_test_durations()
             if self.show_tasks:
                 self.report_test_tasks()
-            if self.show_bugs:
-                self.report_bugs()
 
     def find_in_hg_or_git(self, test_name):
         if self._hg:
@@ -782,7 +773,6 @@ class TestInfoCommand(MachCommandBase):
         # queries based on the specified test name.
 
         import posixpath
-        import re
 
         # full_test_name is full path to file in hg (or git)
         self.full_test_name = None
@@ -809,8 +799,9 @@ class TestInfoCommand(MachCommandBase):
             self.full_test_name = self.test_name
 
         # search for full_test_name in test manifests
-        from moztest.resolve import TestResolver
-        resolver = self._spawn(TestResolver)
+        from moztest.resolve import TestResolver, TestManifestLoader
+        here = os.path.abspath(os.path.dirname(__file__))
+        resolver = TestResolver.from_environment(cwd=here, loader_cls=TestManifestLoader)
         relpath = self._wrap_path_argument(self.full_test_name).relpath()
         tests = list(resolver.resolve_tests(paths=[relpath]))
         if len(tests) == 1:
@@ -832,27 +823,22 @@ class TestInfoCommand(MachCommandBase):
         name_idx = self.full_test_name.rfind('/')
         if name_idx > 0:
             self.short_name = self.full_test_name[name_idx + 1:]
-
-        # robo_name is short_name without ".java" - for robocop
-        self.robo_name = None
-        if self.short_name:
-            robo_idx = self.short_name.rfind('.java')
-            if robo_idx > 0:
-                self.robo_name = self.short_name[:robo_idx]
-            if self.short_name == self.test_name:
-                self.short_name = None
+        if self.short_name and self.short_name == self.test_name:
+            self.short_name = None
 
         if not (self.show_results or self.show_durations or self.show_tasks):
             # no need to determine ActiveData name if not querying
             return
+
+    def set_activedata_test_name(self):
+        import re
 
         # activedata_test_name is name in ActiveData
         self.activedata_test_name = None
         simple_names = [
             self.full_test_name,
             self.test_name,
-            self.short_name,
-            self.robo_name
+            self.short_name
         ]
         simple_names = [x for x in simple_names if x]
         searches = [
@@ -1083,8 +1069,6 @@ class TestInfoCommand(MachCommandBase):
             search = '%s,%s' % (search, self.test_name)
         if self.short_name:
             search = '%s,%s' % (search, self.short_name)
-        if self.robo_name:
-            search = '%s,%s' % (search, self.robo_name)
         payload = {'quicksearch': search,
                    'include_fields': 'id,summary'}
         response = requests.get('https://bugzilla.mozilla.org/rest/bug',
@@ -1213,6 +1197,8 @@ class TestInfoCommand(MachCommandBase):
                      help='Include individual tests in report.')
     @CommandArgument('--show-summary', action='store_true',
                      help='Include summary in report.')
+    @CommandArgument('--show-annotations', action='store_true',
+                     help='Include list of manifest annotation conditions in report.')
     @CommandArgument('--filter-values',
                      help='Comma-separated list of value regular expressions to filter on; '
                           'displayed tests contain all specified values.')
@@ -1226,12 +1212,12 @@ class TestInfoCommand(MachCommandBase):
     @CommandArgument('--output-file',
                      help='Path to report file.')
     def test_report(self, components, flavor, subsuite, paths,
-                    show_manifests, show_tests, show_summary,
+                    show_manifests, show_tests, show_summary, show_annotations,
                     filter_values, filter_keys, show_components, output_file):
         import mozpack.path as mozpath
         import re
         from mozbuild.build_commands import Build
-        from moztest.resolve import TestResolver
+        from moztest.resolve import TestResolver, TestManifestLoader
 
         def matches_filters(test):
             '''
@@ -1250,7 +1236,7 @@ class TestInfoCommand(MachCommandBase):
             return True
 
         # Ensure useful report by default
-        if not show_manifests and not show_tests and not show_summary:
+        if not show_manifests and not show_tests and not show_summary and not show_annotations:
             show_manifests = True
             show_summary = True
 
@@ -1263,6 +1249,8 @@ class TestInfoCommand(MachCommandBase):
             filter_values = filter_values.split(',')
         else:
             filter_values = []
+        display_keys = (filter_keys or []) + ['skip-if', 'fail-if', 'fails-if']
+        display_keys = set(display_keys)
 
         try:
             self.config_environment
@@ -1272,13 +1260,15 @@ class TestInfoCommand(MachCommandBase):
             builder.configure()
 
         print("Finding tests...")
-        resolver = self._spawn(TestResolver)
+        here = os.path.abspath(os.path.dirname(__file__))
+        resolver = TestResolver.from_environment(cwd=here, loader_cls=TestManifestLoader)
         tests = list(resolver.resolve_tests(paths=paths, flavor=flavor,
                                             subsuite=subsuite))
 
         manifest_paths = set()
         for t in tests:
-            manifest_paths.add(t['manifest'])
+            if 'manifest' in t and t['manifest'] is not None:
+                manifest_paths.add(t['manifest'])
         manifest_count = len(manifest_paths)
         print("Resolver found {} tests, {} manifests".format(len(tests), manifest_count))
 
@@ -1298,7 +1288,6 @@ class TestInfoCommand(MachCommandBase):
                 relpath = mozpath.relpath(manifest_path, self.topsrcdir)
                 if mozpath.commonprefix((manifest_path, self.topsrcdir)) != self.topsrcdir:
                     continue
-                print("  {}".format(relpath))
                 manifest_info = None
                 if relpath in files_info:
                     bug_component = files_info[relpath].get('BUG_COMPONENT')
@@ -1326,12 +1315,18 @@ class TestInfoCommand(MachCommandBase):
         if show_tests:
             by_component['tests'] = {}
 
-        if show_tests or show_summary:
+        if show_tests or show_summary or show_annotations:
             test_count = 0
             failed_count = 0
             skipped_count = 0
+            annotation_count = 0
+            condition_count = 0
             component_set = set()
             relpaths = []
+            conditions = {}
+            known_unconditional_annotations = ['skip', 'fail', 'asserts', 'random']
+            known_conditional_annotations = ['skip-if', 'fail-if', 'run-if',
+                                             'fails-if', 'fuzzy-if', 'random-if', 'asserts-if']
             for t in tests:
                 relpath = t.get('srcdir_relpath')
                 relpaths.append(relpath)
@@ -1340,6 +1335,33 @@ class TestInfoCommand(MachCommandBase):
             for t in tests:
                 if not matches_filters(t):
                     continue
+                if 'referenced-test' in t:
+                    # Avoid double-counting reftests: disregard reference file entries
+                    continue
+                if show_annotations:
+                    for key in t:
+                        if key in known_unconditional_annotations:
+                            annotation_count += 1
+                        if key in known_conditional_annotations:
+                            annotation_count += 1
+                            # Here 'key' is a manifest annotation type like 'skip-if' and t[key]
+                            # is the associated condition. For example, the manifestparser
+                            # manifest annotation, "skip-if = os == 'win'", is expected to be
+                            # encoded as t['skip-if'] = "os == 'win'".
+                            # To allow for reftest manifests, t[key] may have multiple entries
+                            # separated by ';', each corresponding to a condition for that test
+                            # and annotation type. For example,
+                            # "skip-if(Android&&webrender) skip-if(OSX)", would be
+                            # encoded as t['skip-if'] = "Android&&webrender;OSX".
+                            annotation_conditions = t[key].split(';')
+                            for condition in annotation_conditions:
+                                condition_count += 1
+                                # Trim reftest fuzzy-if ranges: everything after the first comma
+                                # eg. "Android,0-2,1-3" -> "Android"
+                                condition = condition.split(',')[0]
+                                if condition not in conditions:
+                                    conditions[condition] = 0
+                                conditions[condition] += 1
                 test_count += 1
                 relpath = t.get('srcdir_relpath')
                 if relpath in files_info:
@@ -1348,11 +1370,13 @@ class TestInfoCommand(MachCommandBase):
                     if (not components) or (key in components):
                         component_set.add(key)
                         test_info = {'test': relpath}
-                        for test_key in ['skip-if', 'fail-if']:
+                        for test_key in display_keys:
                             value = t.get(test_key)
                             if value:
                                 test_info[test_key] = value
                         if t.get('fail-if'):
+                            failed_count += 1
+                        if t.get('fails-if'):
                             failed_count += 1
                         if t.get('skip-if'):
                             skipped_count += 1
@@ -1373,6 +1397,13 @@ class TestInfoCommand(MachCommandBase):
             by_component['summary']['tests'] = test_count
             by_component['summary']['failed tests'] = failed_count
             by_component['summary']['skipped tests'] = skipped_count
+
+        if show_annotations:
+            by_component['annotations'] = {}
+            by_component['annotations']['total annotations'] = annotation_count
+            by_component['annotations']['total conditions'] = condition_count
+            by_component['annotations']['unique conditions'] = len(conditions)
+            by_component['annotations']['conditions'] = conditions
 
         json_report = json.dumps(by_component, indent=2, sort_keys=True)
         if output_file:

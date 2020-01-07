@@ -131,28 +131,68 @@ var closeRDM = async function(tab, options) {
 /**
  * Adds a new test task that adds a tab with the given URL, opens responsive
  * design mode, runs the given generator, closes responsive design mode, and
- * removes the tab.
+ * removes the tab. If includeBrowserEmbeddedUI is truthy, the task will be
+ * run a second time with the devtools.responsive.browserUI.enabled pref set.
  *
  * Example usage:
  *
- *   addRDMTask(TEST_URL, async function ({ ui, manager }) {
- *     // Your tests go here...
- *   });
+ *   addRDMTask(
+ *     TEST_URL,
+ *     async function ({ ui, manager, browser, usingBrowserUI }) {
+ *       // Your tests go here...
+ *     },
+ *     true
+ *   );
  */
-function addRDMTask(url, task) {
-  add_task(async function() {
-    const tab = await addTab(url);
-    const results = await openRDM(tab);
+function addRDMTask(rdmUrl, rdmTask, includeBrowserEmbeddedUI) {
+  // Define a task setup function that can work with our without the
+  // browser embedded UI.
+  function taskSetup(url, task) {
+    add_task(async function() {
+      const tab = await addTab(url);
+      const { ui, manager } = await openRDM(tab);
+      const usingBrowserUI = Services.prefs.getBoolPref(
+        "devtools.responsive.browserUI.enabled"
+      );
+      const browser = usingBrowserUI
+        ? tab.linkedBrowser
+        : ui.getViewportBrowser();
+      try {
+        await task({ ui, manager, browser, usingBrowserUI });
+      } catch (err) {
+        ok(
+          false,
+          "Got an error with usingBrowserUI " +
+            usingBrowserUI +
+            ": " +
+            DevToolsUtils.safeErrorString(err)
+        );
+      }
 
-    try {
-      await task(results);
-    } catch (err) {
-      ok(false, "Got an error: " + DevToolsUtils.safeErrorString(err));
-    }
+      await closeRDM(tab);
+      await removeTab(tab);
+    });
+  }
 
-    await closeRDM(tab);
-    await removeTab(tab);
-  });
+  // Call the task setup function without using the browser UI pref.
+  const oldPrefValue = Services.prefs.getBoolPref(
+    "devtools.responsive.browserUI.enabled"
+  );
+  Services.prefs.setBoolPref("devtools.responsive.browserUI.enabled", false);
+
+  taskSetup(rdmUrl, rdmTask);
+
+  if (includeBrowserEmbeddedUI) {
+    // Set the pref and then call the task setup function again.
+    Services.prefs.setBoolPref("devtools.responsive.browserUI.enabled", true);
+
+    taskSetup(rdmUrl, rdmTask);
+  }
+
+  Services.prefs.setBoolPref(
+    "devtools.responsive.browserUI.enabled",
+    oldPrefValue
+  );
 }
 
 function spawnViewportTask(ui, args, task) {
@@ -634,7 +674,7 @@ function addDeviceInModal(ui, device) {
   return saved;
 }
 
-function editDeviceInModal(ui, device, newDevice) {
+async function editDeviceInModal(ui, device, newDevice) {
   const { Simulate } = ui.toolWindow.require(
     "devtools/client/shared/vendor/react-dom-test-utils"
   );
@@ -677,7 +717,15 @@ function editDeviceInModal(ui, device, newDevice) {
       state.devices.custom.find(({ name }) => name == newDevice.name) &&
       !state.devices.custom.find(({ name }) => name == device.name)
   );
+
+  // Editing a custom device triggers a "device-change" message.
+  // Wait for the `device-changed` event to avoid unfinished requests during the
+  // tests.
+  const onDeviceChanged = ui.once("device-changed");
+
   Simulate.click(formSave);
+
+  await onDeviceChanged;
   return saved;
 }
 
@@ -748,4 +796,35 @@ async function testViewportZoomWidthAndHeight(
       );
     }
   }
+}
+
+function promiseContentReflow(ui) {
+  return ContentTask.spawn(ui.getViewportBrowser(), {}, async function() {
+    return new Promise(resolve => {
+      content.window.requestAnimationFrame(resolve);
+    });
+  });
+}
+
+// This function returns a promise that will be resolved when the
+// RDM zoom has been set and the content has finished rescaling
+// to the new size.
+function promiseRDMZoom(ui, browser, zoom) {
+  return new Promise(resolve => {
+    const currentZoom = ZoomManager.getZoomForBrowser(browser);
+    if (currentZoom == zoom) {
+      resolve();
+      return;
+    }
+
+    ZoomManager.setZoomForBrowser(browser, zoom);
+
+    // Await the zoom complete event, then reflow.
+    BrowserTestUtils.waitForContentEvent(
+      ui.getViewportBrowser(),
+      "ZoomComplete"
+    )
+      .then(promiseContentReflow(ui))
+      .then(resolve);
+  });
 }

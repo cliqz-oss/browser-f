@@ -455,10 +455,11 @@ TrackAndPromiseForOperation::TrackAndPromiseForOperation(
       mFlags(aFlags) {}
 
 AudioCallbackDriver::AudioCallbackDriver(MediaTrackGraphImpl* aGraphImpl,
+                                         uint32_t aOutputChannelCount,
                                          uint32_t aInputChannelCount,
                                          AudioInputType aAudioInputType)
     : GraphDriver(aGraphImpl),
-      mOutputChannels(0),
+      mOutputChannels(aOutputChannelCount),
       mSampleRate(0),
       mInputChannelCount(aInputChannelCount),
       mIterationDurationMS(MEDIA_GRAPH_TARGET_PERIOD_MS),
@@ -555,8 +556,6 @@ bool AudioCallbackDriver::Init() {
     output.format = CUBEB_SAMPLE_FLOAT32NE;
   }
 
-  // Query and set the number of channels this AudioCallbackDriver will use.
-  mOutputChannels = GraphImpl()->AudioOutputChannelCount();
   if (!mOutputChannels) {
     LOG(LogLevel::Warning, ("Output number of channels is 0."));
     MonitorAutoLock lock(GraphImpl()->GetMonitor());
@@ -581,7 +580,10 @@ bool AudioCallbackDriver::Init() {
       SpillBuffer<AudioDataValue, WEBAUDIO_BLOCK_SIZE * 2>(mOutputChannels);
 
   output.channels = mOutputChannels;
-  output.layout = CUBEB_LAYOUT_UNDEFINED;
+  AudioConfig::ChannelLayout::ChannelMap channelMap =
+      AudioConfig::ChannelLayout(mOutputChannels).Map();
+
+  output.layout = static_cast<uint32_t>(channelMap);
   output.prefs = CubebUtils::GetDefaultStreamPrefs();
 #if !defined(XP_WIN)
   if (mInputDevicePreference == CUBEB_DEVICE_PREF_VOICE) {
@@ -727,7 +729,7 @@ void AudioCallbackDriver::AddMixerCallback() {
   MOZ_ASSERT(OnGraphThread());
 
   if (!mAddedMixer) {
-    mGraphImpl->mMixer.AddCallback(this);
+    mGraphImpl->mMixer.AddCallback(WrapNotNull(this));
     mAddedMixer = true;
   }
 }
@@ -801,7 +803,7 @@ long AudioCallbackDriver::DataCallback(const AudioDataValue* aInputBuffer,
 
   // Don't add the callback until we're inited and ready
   if (!mAddedMixer) {
-    GraphImpl()->mMixer.AddCallback(this);
+    GraphImpl()->mMixer.AddCallback(WrapNotNull(this));
     mAddedMixer = true;
   }
 
@@ -1010,7 +1012,7 @@ void AudioCallbackDriver::MixerCallback(AudioDataValue* aMixedBuffer,
 
 void AudioCallbackDriver::PanOutputIfNeeded(bool aMicrophoneActive) {
 #ifdef XP_MACOSX
-  cubeb_device* out;
+  cubeb_device* out = nullptr;
   int rv;
   char name[128];
   size_t length = sizeof(name);
@@ -1022,8 +1024,9 @@ void AudioCallbackDriver::PanOutputIfNeeded(bool aMicrophoneActive) {
 
   if (!strncmp(name, "MacBookPro", 10)) {
     if (cubeb_stream_get_current_device(mAudioStream, &out) == CUBEB_OK) {
+      MOZ_ASSERT(out);
       // Check if we are currently outputing sound on external speakers.
-      if (!strcmp(out->output_name, "ispk")) {
+      if (out->output_name && !strcmp(out->output_name, "ispk")) {
         // Pan everything to the right speaker.
         LOG(LogLevel::Debug, ("Using the built-in speakers, with%s audio input",
                               aMicrophoneActive ? "" : "out"));
@@ -1047,7 +1050,7 @@ void AudioCallbackDriver::DeviceChangedCallback() {
 #ifdef XP_MACOSX
   RefPtr<AudioCallbackDriver> self(this);
   bool hasInput = mInputChannelCount;
-  NS_DispatchToBackgroundThread(NS_NewRunnableFunction(
+  NS_DispatchBackgroundTask(NS_NewRunnableFunction(
       "PanOutputIfNeeded", [self{std::move(self)}, hasInput]() {
         self->PanOutputIfNeeded(hasInput);
       }));

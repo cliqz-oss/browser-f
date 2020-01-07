@@ -33,6 +33,9 @@ namespace indexedDB {
 class BackgroundCursorChild;
 }
 
+// TODO: Consider defining different subclasses for the different cursor types,
+// possibly using the CRTP, which would remove the need for various case
+// distinctions.
 class IDBCursor final : public nsISupports, public nsWrapperCache {
  public:
   typedef indexedDB::Key Key;
@@ -48,7 +51,6 @@ class IDBCursor final : public nsISupports, public nsWrapperCache {
     DIRECTION_INVALID
   };
 
- private:
   enum Type {
     Type_ObjectStore,
     Type_ObjectStoreKey,
@@ -56,6 +58,7 @@ class IDBCursor final : public nsISupports, public nsWrapperCache {
     Type_IndexKey,
   };
 
+ private:
   indexedDB::BackgroundCursorChild* mBackgroundActor;
 
   // TODO: mRequest, mSourceObjectStore and mSourceIndex could be made const if
@@ -74,8 +77,8 @@ class IDBCursor final : public nsISupports, public nsWrapperCache {
   JS::Heap<JS::Value> mCachedValue;
 
   Key mKey;
-  Key mSortKey;
-  Key mPrimaryKey;
+  Key mSortKey;     ///< AKA locale aware key/position elsewhere
+  Key mPrimaryKey;  ///< AKA object store key/position elsewhere
   StructuredCloneReadInfo mCloneInfo;
 
   const Type mType;
@@ -120,6 +123,8 @@ class IDBCursor final : public nsISupports, public nsWrapperCache {
 
   IDBCursorDirection GetDirection() const;
 
+  Type GetType() const;
+
   void GetKey(JSContext* aCx, JS::MutableHandle<JS::Value> aResult,
               ErrorResult& aRv);
 
@@ -159,6 +164,11 @@ class IDBCursor final : public nsISupports, public nsWrapperCache {
     mBackgroundActor = nullptr;
   }
 
+  void InvalidateCachedResponses();
+
+  // Checks if this is a locale aware cursor (ie. the index's sortKey is unset)
+  bool IsLocaleAware() const;
+
   NS_DECL_CYCLE_COLLECTING_ISUPPORTS
   NS_DECL_CYCLE_COLLECTION_SCRIPT_HOLDER_CLASS(IDBCursor)
 
@@ -171,9 +181,6 @@ class IDBCursor final : public nsISupports, public nsWrapperCache {
             Key aKey);
 
   ~IDBCursor();
-
-  // Checks if this is a locale aware cursor (ie. the index's sortKey is unset)
-  bool IsLocaleAware() const;
 
   void DropJSObjects();
 

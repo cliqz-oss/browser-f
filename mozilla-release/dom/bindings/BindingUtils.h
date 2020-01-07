@@ -54,6 +54,7 @@ enum UseCounter : int16_t;
 namespace dom {
 class CustomElementReactionsStack;
 class MessageManagerGlobal;
+class DedicatedWorkerGlobalScope;
 template <typename KeyType, typename ValueType>
 class Record;
 class WindowProxyHolder;
@@ -1528,8 +1529,8 @@ static inline JSObject* WrapNativeISupports(JSContext* cx, T* p,
     JS::Rooted<JSObject*> scope(cx, JS::CurrentGlobalOrNull(cx));
     JS::Rooted<JS::Value> v(cx);
     retval = XPCOMObjectToJsval(cx, scope, helper, nullptr, false, &v)
-      ? v.toObjectOrNull()
-      : nullptr;
+                 ? v.toObjectOrNull()
+                 : nullptr;
   }
   return retval;
 }
@@ -1849,9 +1850,9 @@ static inline bool ConvertJSValueToString(JSContext* cx,
   return ConvertJSValueToString(cx, v, eStringify, eStringify, result);
 }
 
-void NormalizeUSVString(nsAString& aString);
+MOZ_MUST_USE bool NormalizeUSVString(nsAString& aString);
 
-void NormalizeUSVString(binding_detail::FakeString& aString);
+MOZ_MUST_USE bool NormalizeUSVString(binding_detail::FakeString& aString);
 
 template <typename T>
 static inline bool ConvertJSValueToUSVString(JSContext* cx,
@@ -1861,7 +1862,11 @@ static inline bool ConvertJSValueToUSVString(JSContext* cx,
     return false;
   }
 
-  NormalizeUSVString(result);
+  if (!NormalizeUSVString(result)) {
+    JS_ReportOutOfMemory(cx);
+    return false;
+  }
+
   return true;
 }
 
@@ -2808,6 +2813,10 @@ struct CreateGlobalOptions<nsGlobalWindowInner>
       ProtoAndIfaceCache::WindowLike;
 };
 
+uint64_t GetWindowID(void* aGlobal);
+uint64_t GetWindowID(nsGlobalWindowInner* aGlobal);
+uint64_t GetWindowID(DedicatedWorkerGlobalScope* aGlobal);
+
 // The return value is true if we created and successfully performed our part of
 // the setup for the global, false otherwise.
 //
@@ -2820,7 +2829,9 @@ bool CreateGlobal(JSContext* aCx, T* aNative, nsWrapperCache* aCache,
                   const JSClass* aClass, JS::RealmOptions& aOptions,
                   JSPrincipals* aPrincipal, bool aInitStandardClasses,
                   JS::MutableHandle<JSObject*> aGlobal) {
-  aOptions.creationOptions().setTrace(CreateGlobalOptions<T>::TraceGlobal);
+  aOptions.creationOptions()
+      .setTrace(CreateGlobalOptions<T>::TraceGlobal)
+      .setProfilerRealmID(GetWindowID(aNative));
   xpc::SetPrefableRealmOptions(aOptions);
 
   aGlobal.set(JS_NewGlobalObject(aCx, aClass, aPrincipal,
@@ -3006,6 +3017,11 @@ MOZ_ALWAYS_INLINE bool CallerSubsumes(JS::Handle<JS::Value> aValue) {
 
 template <class T, class S>
 inline RefPtr<T> StrongOrRawPtr(already_AddRefed<S>&& aPtr) {
+  return std::move(aPtr);
+}
+
+template <class T, class S>
+inline RefPtr<T> StrongOrRawPtr(RefPtr<S>&& aPtr) {
   return std::move(aPtr);
 }
 

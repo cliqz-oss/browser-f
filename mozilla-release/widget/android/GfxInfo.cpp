@@ -226,14 +226,14 @@ GfxInfo::GetAdapterDescription2(nsAString& aAdapterDescription) {
 }
 
 NS_IMETHODIMP
-GfxInfo::GetAdapterRAM(nsAString& aAdapterRAM) {
+GfxInfo::GetAdapterRAM(uint32_t* aAdapterRAM) {
   EnsureInitialized();
-  aAdapterRAM.Truncate();
+  *aAdapterRAM = 0;
   return NS_OK;
 }
 
 NS_IMETHODIMP
-GfxInfo::GetAdapterRAM2(nsAString& aAdapterRAM) {
+GfxInfo::GetAdapterRAM2(uint32_t* aAdapterRAM) {
   EnsureInitialized();
   return NS_ERROR_FAILURE;
 }
@@ -342,6 +342,18 @@ GfxInfo::GetDisplayInfo(nsTArray<nsString>& aDisplayInfo) {
                            (int32_t)mScreenInfo.mScreenDimensions.width,
                            (int32_t)mScreenInfo.mScreenDimensions.height);
   aDisplayInfo.AppendElement(displayInfo);
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+GfxInfo::GetDisplayWidth(nsTArray<uint32_t>& aDisplayWidth) {
+  aDisplayWidth.AppendElement((uint32_t)mScreenInfo.mScreenDimensions.width);
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+GfxInfo::GetDisplayHeight(nsTArray<uint32_t>& aDisplayHeight) {
+  aDisplayHeight.AppendElement((uint32_t)mScreenInfo.mScreenDimensions.height);
   return NS_OK;
 }
 
@@ -550,9 +562,10 @@ nsresult GfxInfo::GetFeatureStatusImpl(
 
     if (aFeature == FEATURE_WEBRENDER) {
       NS_LossyConvertUTF16toASCII model(mModel);
-      bool isBlocked =
-          !model.Equals("Pixel 2", nsCaseInsensitiveCStringComparator()) &&
-          !model.Equals("Pixel 2 XL", nsCaseInsensitiveCStringComparator());
+      bool isBlocked = model.Find("Pixel 2", /*ignoreCase*/ true) <
+                           0 &&  // Find substring to include all Pixel 2 models
+                       model.Find("Pixel 3", /*ignoreCase*/ true) <
+                           0;  // Find substring to include all Pixel 3 models
 
       if (isBlocked) {
         *aStatus = nsIGfxInfo::FEATURE_BLOCKED_DEVICE;

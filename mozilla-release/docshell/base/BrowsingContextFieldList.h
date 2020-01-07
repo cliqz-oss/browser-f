@@ -12,6 +12,7 @@
 // `BrowsingContext`.
 MOZ_BC_FIELD(Name, nsString)
 MOZ_BC_FIELD(Closed, bool)
+MOZ_BC_FIELD(IsActive, bool)
 MOZ_BC_FIELD(EmbedderPolicy, nsILoadInfo::CrossOriginEmbedderPolicy)
 MOZ_BC_FIELD(OpenerPolicy, nsILoadInfo::CrossOriginOpenerPolicy)
 
@@ -35,5 +36,22 @@ MOZ_BC_FIELD(UserActivationState, UserActivation::State)
 // Hold the audio muted state and should be used
 // on top level browsing contexts only.
 MOZ_BC_FIELD(Muted, bool)
+
+MOZ_BC_FIELD(FeaturePolicy, RefPtr<mozilla::dom::FeaturePolicy>)
+
+// See nsSandboxFlags.h for the possible flags.
+MOZ_BC_FIELD(SandboxFlags, uint32_t)
+
+MOZ_BC_FIELD(HistoryID, nsID)
+
+MOZ_BC_FIELD(InRDMPane, bool)
+
+MOZ_BC_FIELD(Loading, bool)
+
+// These field are used to store the states of autoplay media request on
+// GeckoView only, and it would only be modified on the top level browsing
+// context.
+MOZ_BC_FIELD(GVAudibleAutoplayRequestStatus, GVAutoplayRequestStatus)
+MOZ_BC_FIELD(GVInaudibleAutoplayRequestStatus, GVAutoplayRequestStatus)
 
 #undef MOZ_BC_FIELD

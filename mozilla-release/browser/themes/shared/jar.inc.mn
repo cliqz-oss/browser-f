@@ -105,8 +105,6 @@
   skin/classic/browser/tracking-protection-disabled.svg        (../shared/identity-block/tracking-protection-disabled.svg)
   skin/classic/browser/tracking-protection-animation.svg        (../shared/identity-block/tracking-protection-animation.svg)
   skin/classic/browser/tracking-protection-animation-brighttext.svg (../shared/identity-block/tracking-protection-animation-brighttext.svg)
-  skin/classic/browser/panel-icon-arrow-left.svg               (../shared/panel-icon-arrow-left.svg)
-  skin/classic/browser/panel-icon-arrow-right.svg              (../shared/panel-icon-arrow-right.svg)
   skin/classic/browser/panel-icon-cancel.svg                   (../shared/panel-icon-cancel.svg)
 #ifndef XP_MACOSX
   skin/classic/browser/panel-icon-folder.svg                   (../shared/panel-icon-folder.svg)
@@ -114,6 +112,8 @@
   skin/classic/browser/panel-icon-magnifier.svg                (../shared/panel-icon-magnifier.svg)
 #endif
   skin/classic/browser/panel-icon-retry.svg                    (../shared/panel-icon-retry.svg)
+  skin/classic/browser/toolbar-drag-indicator.svg              (../shared/toolbar-drag-indicator.svg)
+
   skin/classic/browser/preferences/in-content/bookmark.svg     (../shared/incontentprefs/bookmark.svg)
   skin/classic/browser/preferences/in-content/critters-postcard.jpg       (../shared/incontentprefs/critters-postcard.jpg)
   skin/classic/browser/preferences/in-content/extensions.svg   (../shared/incontentprefs/extensions.svg)
@@ -158,10 +158,10 @@
   skin/classic/browser/accessibility.svg              (../shared/icons/accessibility.svg)
   skin/classic/browser/accessibility-active.svg       (../shared/icons/accessibility-active.svg)
   skin/classic/browser/add.svg                        (../shared/icons/add.svg)
-  skin/classic/browser/arrow-left.svg                 (../shared/icons/arrow-left.svg)
   skin/classic/browser/back.svg                       (../shared/icons/back.svg)
   skin/classic/browser/back-12.svg                    (../shared/icons/back-12.svg)
   skin/classic/browser/bookmark.svg                   (../shared/icons/bookmark.svg)
+  skin/classic/browser/bookmark-12.svg                (../shared/icons/bookmark-12.svg)
   skin/classic/browser/bookmark-animation.svg         (../shared/icons/bookmark-animation.svg)
   skin/classic/browser/bookmark-hollow.svg            (../shared/icons/bookmark-hollow.svg)
   skin/classic/browser/bookmark-star-on-tray.svg      (../shared/icons/bookmark-star-on-tray.svg)
@@ -228,6 +228,7 @@
   skin/classic/browser/stop-to-reload.svg             (../shared/icons/stop-to-reload.svg)
   skin/classic/browser/sync.svg                       (../shared/icons/sync.svg)
   skin/classic/browser/tab.svg                        (../shared/icons/tab.svg)
+  skin/classic/browser/tab-12.svg                     (../shared/icons/tab-12.svg)
   skin/classic/browser/tip.svg                        (../shared/icons/tip.svg)
   skin/classic/browser/toggle.svg                     (../shared/icons/toggle.svg)
   skin/classic/browser/undo.svg                       (../shared/icons/undo.svg)
@@ -244,6 +245,7 @@
 
   skin/classic/browser/tabbrowser/tab-connecting.png           (../shared/tabbrowser/tab-connecting.png)
   skin/classic/browser/tabbrowser/tab-connecting@2x.png        (../shared/tabbrowser/tab-connecting@2x.png)
+  skin/classic/browser/tabbrowser/tab-drag-indicator.svg       (../shared/tabbrowser/tab-drag-indicator.svg)
   skin/classic/browser/tabbrowser/tab-loading.png              (../shared/tabbrowser/tab-loading.png)
   skin/classic/browser/tabbrowser/tab-loading@2x.png           (../shared/tabbrowser/tab-loading@2x.png)
   skin/classic/browser/tabbrowser/tab-loading-inverted.png     (../shared/tabbrowser/tab-loading-inverted.png)

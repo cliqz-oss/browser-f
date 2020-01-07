@@ -37,6 +37,8 @@
 
 class AttrArray;
 class nsAttrChildContentList;
+template <typename T>
+class nsCOMArray;
 class nsDOMAttributeMap;
 class nsIAnimationObserver;
 class nsIContent;
@@ -83,11 +85,13 @@ class DOMQuad;
 class DOMRectReadOnly;
 class Element;
 class EventHandlerNonNull;
+class MutationObservers;
 template <typename T>
 class Optional;
 class OwningNodeOrString;
 template <typename>
 class Sequence;
+class ShadowRoot;
 class SVGUseElement;
 class Text;
 class TextOrElementOrDocument;
@@ -107,47 +111,35 @@ enum {
   // Whether this node has had any properties set on it
   NODE_HAS_PROPERTIES = NODE_FLAG_BIT(1),
 
-  // Whether this node is the root of an anonymous subtree.  Note that this
-  // need not be a native anonymous subtree.  Any anonymous subtree, including
-  // XBL-generated ones, will do.  This flag is set-once: once a node has it,
-  // it must not be removed.
-  // NOTE: Should only be used on nsIContent nodes
-  NODE_IS_ANONYMOUS_ROOT = NODE_FLAG_BIT(2),
-
   // Whether the node has some ancestor, possibly itself, that is native
   // anonymous.  This includes ancestors crossing XBL scopes, in cases when an
   // XBL binding is attached to an element which has a native anonymous
   // ancestor.  This flag is set-once: once a node has it, it must not be
   // removed.
   // NOTE: Should only be used on nsIContent nodes
-  NODE_IS_IN_NATIVE_ANONYMOUS_SUBTREE = NODE_FLAG_BIT(3),
+  NODE_IS_IN_NATIVE_ANONYMOUS_SUBTREE = NODE_FLAG_BIT(2),
 
   // Whether this node is the root of a native anonymous (from the perspective
   // of its parent) subtree.  This flag is set-once: once a node has it, it
   // must not be removed.
   // NOTE: Should only be used on nsIContent nodes
-  NODE_IS_NATIVE_ANONYMOUS_ROOT = NODE_FLAG_BIT(4),
+  NODE_IS_NATIVE_ANONYMOUS_ROOT = NODE_FLAG_BIT(3),
 
-  // Whether a binding manager may have a pointer to this
-  NODE_MAY_BE_IN_BINDING_MNGR = NODE_FLAG_BIT(5),
-
-  NODE_IS_EDITABLE = NODE_FLAG_BIT(6),
-
-  // Free bit here.
+  NODE_IS_EDITABLE = NODE_FLAG_BIT(4),
 
   // Whether the node participates in a shadow tree.
-  NODE_IS_IN_SHADOW_TREE = NODE_FLAG_BIT(8),
+  NODE_IS_IN_SHADOW_TREE = NODE_FLAG_BIT(5),
 
   // Node has an :empty or :-moz-only-whitespace selector
-  NODE_HAS_EMPTY_SELECTOR = NODE_FLAG_BIT(9),
+  NODE_HAS_EMPTY_SELECTOR = NODE_FLAG_BIT(6),
 
   // A child of the node has a selector such that any insertion,
   // removal, or appending of children requires restyling the parent.
-  NODE_HAS_SLOW_SELECTOR = NODE_FLAG_BIT(10),
+  NODE_HAS_SLOW_SELECTOR = NODE_FLAG_BIT(7),
 
   // A child of the node has a :first-child, :-moz-first-node,
   // :only-child, :last-child or :-moz-last-node selector.
-  NODE_HAS_EDGE_CHILD_SELECTOR = NODE_FLAG_BIT(11),
+  NODE_HAS_EDGE_CHILD_SELECTOR = NODE_FLAG_BIT(8),
 
   // A child of the node has a selector such that any insertion or
   // removal of children requires restyling later siblings of that
@@ -156,7 +148,7 @@ enum {
   // other content tree changes (e.g., the child changes to or from
   // matching :empty due to a grandchild insertion or removal), the
   // child's later siblings must also be restyled.
-  NODE_HAS_SLOW_SELECTOR_LATER_SIBLINGS = NODE_FLAG_BIT(12),
+  NODE_HAS_SLOW_SELECTOR_LATER_SIBLINGS = NODE_FLAG_BIT(9),
 
   NODE_ALL_SELECTOR_FLAGS = NODE_HAS_EMPTY_SELECTOR | NODE_HAS_SLOW_SELECTOR |
                             NODE_HAS_EDGE_CHILD_SELECTOR |
@@ -164,28 +156,28 @@ enum {
 
   // This node needs to go through frame construction to get a frame (or
   // undisplayed entry).
-  NODE_NEEDS_FRAME = NODE_FLAG_BIT(13),
+  NODE_NEEDS_FRAME = NODE_FLAG_BIT(10),
 
   // At least one descendant in the flattened tree has NODE_NEEDS_FRAME set.
   // This should be set on every node on the flattened tree path between the
   // node(s) with NODE_NEEDS_FRAME and the root content.
-  NODE_DESCENDANTS_NEED_FRAMES = NODE_FLAG_BIT(14),
+  NODE_DESCENDANTS_NEED_FRAMES = NODE_FLAG_BIT(11),
 
   // Set if the node has the accesskey attribute set.
-  NODE_HAS_ACCESSKEY = NODE_FLAG_BIT(15),
+  NODE_HAS_ACCESSKEY = NODE_FLAG_BIT(12),
 
   // Set if the node has right-to-left directionality
-  NODE_HAS_DIRECTION_RTL = NODE_FLAG_BIT(16),
+  NODE_HAS_DIRECTION_RTL = NODE_FLAG_BIT(13),
 
   // Set if the node has left-to-right directionality
-  NODE_HAS_DIRECTION_LTR = NODE_FLAG_BIT(17),
+  NODE_HAS_DIRECTION_LTR = NODE_FLAG_BIT(14),
 
   NODE_ALL_DIRECTION_FLAGS = NODE_HAS_DIRECTION_LTR | NODE_HAS_DIRECTION_RTL,
 
-  NODE_HAS_BEEN_IN_UA_WIDGET = NODE_FLAG_BIT(18),
+  NODE_HAS_BEEN_IN_UA_WIDGET = NODE_FLAG_BIT(15),
 
   // Remaining bits are node type specific.
-  NODE_TYPE_SPECIFIC_BITS_OFFSET = 19
+  NODE_TYPE_SPECIFIC_BITS_OFFSET = 16
 };
 
 // Make sure we have space for our bits
@@ -353,7 +345,7 @@ class nsINode : public mozilla::dom::EventTarget {
   // always safe to call no matter which object it was invoked on.
   void AddSizeOfIncludingThis(nsWindowSizes& aSizes, size_t* aNodeSize) const;
 
-  friend class nsNodeUtils;
+  friend class mozilla::dom::MutationObservers;
   friend class nsNodeWeakReference;
   friend class nsNodeSupportsWeakRefTearoff;
   friend class AttrArray;
@@ -391,6 +383,11 @@ class nsINode : public mozilla::dom::EventTarget {
   bool IsContainerNode() const {
     return IsElement() || IsDocument() || IsDocumentFragment();
   }
+
+  /**
+   * Returns true if the node is a HTMLTemplate element.
+   */
+  bool IsTemplateElement() const { return IsHTMLElement(nsGkAtoms::_template); }
 
   bool IsSlotable() const { return IsElement() || IsText(); }
 
@@ -471,6 +468,13 @@ class nsINode : public mozilla::dom::EventTarget {
       const;  // Implemented in Document.h
 
   /**
+   * Returns the first child of a node or the first child of
+   * a template element's content if the provided node is a
+   * template element.
+   */
+  nsIContent* GetFirstChildOfTemplateOrNode();
+
+  /**
    * Return the scope chain parent for this node, for use in things
    * like event handler compilation.  Returning null means to use the
    * global object as the scope chain parent.
@@ -484,6 +488,8 @@ class nsINode : public mozilla::dom::EventTarget {
    */
   bool IsElement() const { return GetBoolFlag(NodeIsElement); }
 
+  virtual bool IsTextControlElement() const { return false; }
+
   /**
    * Return this node as an Element.  Should only be used for nodes
    * for which IsElement() is true.  This is defined inline in Element.h.
@@ -493,10 +499,18 @@ class nsINode : public mozilla::dom::EventTarget {
 
   /**
    * Return this node as nsIContent.  Should only be used for nodes for which
-   * IsContent() is true.  This is defined inline in nsIContent.h.
+   * IsContent() is true.
+   *
+   * The assertion in nsIContent's constructor makes this safe.
    */
-  inline nsIContent* AsContent();
-  inline const nsIContent* AsContent() const;
+  nsIContent* AsContent() {
+    MOZ_ASSERT(IsContent());
+    return reinterpret_cast<nsIContent*>(this);
+  }
+  const nsIContent* AsContent() const {
+    MOZ_ASSERT(IsContent());
+    return reinterpret_cast<const nsIContent*>(this);
+  }
 
   /*
    * Return whether the node is a Text node (which might be an actual
@@ -647,6 +661,11 @@ class nsINode : public mozilla::dom::EventTarget {
    */
   mozilla::dom::DocumentOrShadowRoot* GetUncomposedDocOrConnectedShadowRoot()
       const;
+
+  /**
+   * To be called when reference count of the node drops to zero.
+   */
+  void LastRelease();
 
   /**
    * The values returned by this function are the ones defined for
@@ -888,9 +907,8 @@ class nsINode : public mozilla::dom::EventTarget {
    * @return the parent, or null if no parent or the parent is not an nsIContent
    */
   nsIContent* GetParent() const {
-    return MOZ_LIKELY(GetBoolFlag(ParentIsContent))
-               ? reinterpret_cast<nsIContent*>(mParent)
-               : nullptr;
+    return MOZ_LIKELY(GetBoolFlag(ParentIsContent)) ? mParent->AsContent()
+                                                    : nullptr;
   }
 
   /**
@@ -1038,6 +1056,95 @@ class nsINode : public mozilla::dom::EventTarget {
     }
   }
 
+ private:
+  /**
+   * Walks aNode, its attributes and, if aDeep is true, its descendant nodes.
+   * If aClone is true the nodes will be cloned. If aNewNodeInfoManager is
+   * not null, it is used to create new nodeinfos for the nodes. Also reparents
+   * the XPConnect wrappers for the nodes into aReparentScope if non-null.
+   * aNodesWithProperties will be filled with all the nodes that have
+   * properties.
+   *
+   * @param aNode Node to adopt/clone.
+   * @param aClone If true the node will be cloned and the cloned node will
+   *               be returned.
+   * @param aDeep If true the function will be called recursively on
+   *              descendants of the node
+   * @param aNewNodeInfoManager The nodeinfo manager to use to create new
+   *                            nodeinfos for aNode and its attributes and
+   *                            descendants. May be null if the nodeinfos
+   *                            shouldn't be changed.
+   * @param aReparentScope Scope into which wrappers should be reparented, or
+   *                             null if no reparenting should be done.
+   * @param aNodesWithProperties All nodes (from amongst aNode and its
+   *                             descendants) with properties. If aClone is
+   *                             true every node will be followed by its
+   *                             clone. Null can be passed to prevent this from
+   *                             being populated.
+   * @param aParent If aClone is true the cloned node will be appended to
+   *                aParent's children. May be null. If not null then aNode
+   *                must be an nsIContent.
+   * @param aError The error, if any.
+   *
+   * @return If aClone is true then the cloned node will be returned,
+   *          unless an error occurred.  In error conditions, null
+   *          will be returned.
+   */
+  static already_AddRefed<nsINode> CloneAndAdopt(
+      nsINode* aNode, bool aClone, bool aDeep,
+      nsNodeInfoManager* aNewNodeInfoManager,
+      JS::Handle<JSObject*> aReparentScope,
+      nsCOMArray<nsINode>* aNodesWithProperties, nsINode* aParent,
+      mozilla::ErrorResult& aError);
+
+ public:
+  /**
+   * Walks the node, its attributes and descendant nodes. If aNewNodeInfoManager
+   * is not null, it is used to create new nodeinfos for the nodes. Also
+   * reparents the XPConnect wrappers for the nodes into aReparentScope if
+   * non-null. aNodesWithProperties will be filled with all the nodes that have
+   * properties.
+   *
+   * @param aNewNodeInfoManager The nodeinfo manager to use to create new
+   *                            nodeinfos for the node and its attributes and
+   *                            descendants. May be null if the nodeinfos
+   *                            shouldn't be changed.
+   * @param aReparentScope New scope for the wrappers, or null if no reparenting
+   *                       should be done.
+   * @param aNodesWithProperties All nodes (from amongst the node and its
+   *                             descendants) with properties.
+   * @param aError The error, if any.
+   */
+  void Adopt(nsNodeInfoManager* aNewNodeInfoManager,
+             JS::Handle<JSObject*> aReparentScope,
+             nsCOMArray<nsINode>& aNodesWithProperties,
+             mozilla::ErrorResult& aError);
+
+  /**
+   * Clones the node, its attributes and, if aDeep is true, its descendant nodes
+   * If aNewNodeInfoManager is not null, it is used to create new nodeinfos for
+   * the clones. aNodesWithProperties will be filled with all the nodes that
+   * have properties, and every node in it will be followed by its clone.
+   *
+   * @param aDeep If true the function will be called recursively on
+   *              descendants of the node
+   * @param aNewNodeInfoManager The nodeinfo manager to use to create new
+   *                            nodeinfos for the node and its attributes and
+   *                            descendants. May be null if the nodeinfos
+   *                            shouldn't be changed.
+   * @param aNodesWithProperties All nodes (from amongst the node and its
+   *                             descendants) with properties. Every node will
+   *                             be followed by its clone. Null can be passed to
+   *                             prevent this from being used.
+   * @param aError The error, if any.
+   *
+   * @return The newly created node.  Null in error conditions.
+   */
+  already_AddRefed<nsINode> Clone(bool aDeep,
+                                  nsNodeInfoManager* aNewNodeInfoManager,
+                                  nsCOMArray<nsINode>* aNodesWithProperties,
+                                  mozilla::ErrorResult& aError);
+
   /**
    * Clones this node. This needs to be overriden by all node classes. aNodeInfo
    * should be identical to this node's nodeInfo, except for the document which
@@ -1099,19 +1206,18 @@ class nsINode : public mozilla::dom::EventTarget {
   void SetFlags(FlagsType aFlagsToSet) {
     NS_ASSERTION(
         !(aFlagsToSet &
-          (NODE_IS_ANONYMOUS_ROOT | NODE_IS_NATIVE_ANONYMOUS_ROOT |
-           NODE_IS_IN_NATIVE_ANONYMOUS_SUBTREE | NODE_DESCENDANTS_NEED_FRAMES |
-           NODE_NEEDS_FRAME | NODE_HAS_BEEN_IN_UA_WIDGET)) ||
+          (NODE_IS_NATIVE_ANONYMOUS_ROOT | NODE_IS_IN_NATIVE_ANONYMOUS_SUBTREE |
+           NODE_DESCENDANTS_NEED_FRAMES | NODE_NEEDS_FRAME |
+           NODE_HAS_BEEN_IN_UA_WIDGET)) ||
             IsContent(),
         "Flag only permitted on nsIContent nodes");
     nsWrapperCache::SetFlags(aFlagsToSet);
   }
 
   void UnsetFlags(FlagsType aFlagsToUnset) {
-    NS_ASSERTION(
-        !(aFlagsToUnset & (NODE_IS_ANONYMOUS_ROOT | NODE_HAS_BEEN_IN_UA_WIDGET |
-                           NODE_IS_NATIVE_ANONYMOUS_ROOT)),
-        "Trying to unset write-only flags");
+    NS_ASSERTION(!(aFlagsToUnset & (NODE_HAS_BEEN_IN_UA_WIDGET |
+                                    NODE_IS_NATIVE_ANONYMOUS_ROOT)),
+                 "Trying to unset write-only flags");
     nsWrapperCache::UnsetFlags(aFlagsToUnset);
   }
 
@@ -1129,18 +1235,68 @@ class nsINode : public mozilla::dom::EventTarget {
    * Returns true if |this| or any of its ancestors is native anonymous.
    */
   bool IsInNativeAnonymousSubtree() const {
-#ifdef DEBUG
-    if (HasFlag(NODE_IS_IN_NATIVE_ANONYMOUS_SUBTREE)) {
-      return true;
-    }
-    CheckNotNativeAnonymous();
-    return false;
-#else
     return HasFlag(NODE_IS_IN_NATIVE_ANONYMOUS_SUBTREE);
-#endif
   }
 
-  bool IsInAnonymousSubtree() const;
+  /**
+   * Returns true if there is NOT a path through child lists
+   * from the top of this node's parent chain back to this node or
+   * if the node is in native anonymous subtree without a parent.
+   *
+   * TODO(emilio):: Remove this function, and use just
+   * IsInNativeAnonymousSubtree, or something?
+   */
+  bool IsInAnonymousSubtree() const { return IsInNativeAnonymousSubtree(); }
+
+  /**
+   * If |this| or any ancestor is native anonymous, return the root of the
+   * native anonymous subtree. Note that in case of nested native anonymous
+   * content, this returns the innermost root, not the outermost.
+   */
+  nsIContent* GetClosestNativeAnonymousSubtreeRoot() const {
+    if (!IsInNativeAnonymousSubtree()) {
+      return nullptr;
+    }
+    MOZ_ASSERT(IsContent(), "How did non-content end up in NAC?");
+    for (const nsINode* node = this; node; node = node->GetParentNode()) {
+      if (node->IsRootOfNativeAnonymousSubtree()) {
+        return const_cast<nsINode*>(node)->AsContent();
+      }
+    }
+    // FIXME(emilio): This should not happen, usually, but editor removes nodes
+    // in native anonymous subtrees, and we don't clean nodes from the current
+    // event content stack from ContentRemoved, so it can actually happen, see
+    // bug 1510208.
+    NS_WARNING("GetClosestNativeAnonymousSubtreeRoot on disconnected NAC!");
+    return nullptr;
+  }
+
+  /**
+   * If |this| or any ancestor is native anonymous, return the parent of the
+   * native anonymous subtree. Note that in case of nested native anonymous
+   * content, this returns the parent of the innermost root, not the outermost.
+   */
+  nsIContent* GetClosestNativeAnonymousSubtreeRootParent() const {
+    const nsIContent* root = GetClosestNativeAnonymousSubtreeRoot();
+    if (!root) {
+      return nullptr;
+    }
+    // We could put this in nsIContentInlines.h or such to avoid this
+    // reinterpret_cast, but it doesn't seem worth it.
+    return reinterpret_cast<const nsINode*>(root)->GetParent();
+  }
+
+  /**
+   * Gets the root of the node tree for this content if it is in a shadow tree.
+   */
+  mozilla::dom::ShadowRoot* GetContainingShadow() const;
+  /**
+   * Gets the shadow host if this content is in a shadow tree. That is, the host
+   * of |GetContainingShadow|, if its not null.
+   *
+   * @return The shadow host, if this is in shadow tree, or null.
+   */
+  nsIContent* GetContainingShadowHost() const;
 
   bool IsInSVGUseShadowTree() const {
     return !!GetContainingSVGUseShadowHost();
@@ -1162,6 +1318,17 @@ class nsINode : public mozilla::dom::EventTarget {
                    NODE_HAS_BEEN_IN_UA_WIDGET);
   }
 
+  const nsIContent* GetChromeOnlyAccessSubtreeRootParent() const {
+    if (!ChromeOnlyAccess()) {
+      return nullptr;
+    }
+    // We can have NAC in UA widgets, but not the other way around.
+    if (IsInNativeAnonymousSubtree()) {
+      return GetClosestNativeAnonymousSubtreeRootParent();
+    }
+    return GetContainingShadowHost();
+  }
+
   bool IsInShadowTree() const { return HasFlag(NODE_IS_IN_SHADOW_TREE); }
 
   /**
@@ -1170,10 +1337,9 @@ class nsINode : public mozilla::dom::EventTarget {
    * @return whether this content is anonymous
    */
   bool IsRootOfNativeAnonymousSubtree() const {
-    NS_ASSERTION(!HasFlag(NODE_IS_NATIVE_ANONYMOUS_ROOT) ||
-                     (HasFlag(NODE_IS_ANONYMOUS_ROOT) &&
-                      HasFlag(NODE_IS_IN_NATIVE_ANONYMOUS_SUBTREE)),
-                 "Some flags seem to be missing!");
+    NS_ASSERTION(
+        !HasFlag(NODE_IS_NATIVE_ANONYMOUS_ROOT) || IsInNativeAnonymousSubtree(),
+        "Some flags seem to be missing!");
     return HasFlag(NODE_IS_NATIVE_ANONYMOUS_ROOT);
   }
 
@@ -1858,12 +2024,6 @@ class nsINode : public mozilla::dom::EventTarget {
   virtual void SetTextContentInternal(const nsAString& aTextContent,
                                       nsIPrincipal* aSubjectPrincipal,
                                       mozilla::ErrorResult& aError) {}
-
-#ifdef DEBUG
-  // Note: virtual so that IsInNativeAnonymousSubtree can be called accross
-  // module boundaries.
-  virtual void CheckNotNativeAnonymous() const;
-#endif
 
   void EnsurePreInsertionValidity1(mozilla::ErrorResult& aError);
   void EnsurePreInsertionValidity2(bool aReplace, nsINode& aNewChild,

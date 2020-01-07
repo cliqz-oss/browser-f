@@ -206,64 +206,6 @@ void TabGroup::MaybeDestroy() {
   }
 }
 
-nsresult TabGroup::FindItemWithName(const nsAString& aName,
-                                    nsIDocShellTreeItem* aRequestor,
-                                    nsIDocShellTreeItem* aOriginalRequestor,
-                                    nsIDocShellTreeItem** aFoundItem) {
-  MOZ_ASSERT(NS_IsMainThread());
-  NS_ENSURE_ARG_POINTER(aFoundItem);
-  *aFoundItem = nullptr;
-
-  MOZ_ASSERT(!aName.LowerCaseEqualsLiteral("_blank") &&
-             !aName.LowerCaseEqualsLiteral("_top") &&
-             !aName.LowerCaseEqualsLiteral("_parent") &&
-             !aName.LowerCaseEqualsLiteral("_self"));
-
-  for (nsPIDOMWindowOuter* outerWindow : mWindows) {
-    // Ignore non-toplevel windows
-    if (outerWindow->GetInProcessScriptableParentOrNull()) {
-      continue;
-    }
-
-    nsCOMPtr<nsIDocShellTreeItem> docshell = outerWindow->GetDocShell();
-    if (!docshell) {
-      continue;
-    }
-
-    BrowsingContext* bc = outerWindow->GetBrowsingContext();
-    if (!bc || !bc->IsTargetable()) {
-      continue;
-    }
-
-    nsCOMPtr<nsIDocShellTreeItem> root;
-    docshell->GetInProcessSameTypeRootTreeItem(getter_AddRefs(root));
-    MOZ_RELEASE_ASSERT(docshell == root);
-    if (root && aRequestor != root) {
-      root->FindItemWithName(aName, aRequestor, aOriginalRequestor,
-                             /* aSkipTabGroup = */ true, aFoundItem);
-      if (*aFoundItem) {
-        break;
-      }
-    }
-  }
-
-  return NS_OK;
-}
-
-nsTArray<nsPIDOMWindowOuter*> TabGroup::GetTopLevelWindows() const {
-  MOZ_ASSERT(NS_IsMainThread());
-  nsTArray<nsPIDOMWindowOuter*> array;
-
-  for (nsPIDOMWindowOuter* outerWindow : mWindows) {
-    if (outerWindow->GetDocShell() &&
-        !outerWindow->GetInProcessScriptableParentOrNull()) {
-      array.AppendElement(outerWindow);
-    }
-  }
-
-  return array;
-}
-
 TabGroup::HashEntry::HashEntry(const nsACString* aKey)
     : nsCStringHashKey(aKey), mDocGroup(nullptr) {}
 
@@ -311,46 +253,6 @@ bool TabGroup::IsBackground() const {
 #endif
 
   return mForegroundCount == 0;
-}
-
-nsresult TabGroup::QueuePostMessageEvent(
-    already_AddRefed<nsIRunnable>&& aRunnable) {
-  if (StaticPrefs::dom_separate_event_queue_for_post_message_enabled()) {
-    if (!mPostMessageEventQueue) {
-      nsCOMPtr<nsISerialEventTarget> target = GetMainThreadSerialEventTarget();
-      mPostMessageEventQueue = ThrottledEventQueue::Create(
-          target, "PostMessage Queue",
-          nsIRunnablePriority::PRIORITY_DEFERRED_TIMERS);
-      nsresult rv = mPostMessageEventQueue->SetIsPaused(false);
-      MOZ_ALWAYS_SUCCEEDS(rv);
-    }
-
-    // Ensure the queue is enabled
-    if (mPostMessageEventQueue->IsPaused()) {
-      nsresult rv = mPostMessageEventQueue->SetIsPaused(false);
-      MOZ_ALWAYS_SUCCEEDS(rv);
-    }
-
-    if (mPostMessageEventQueue) {
-      mPostMessageEventQueue->Dispatch(std::move(aRunnable),
-                                       NS_DISPATCH_NORMAL);
-      return NS_OK;
-    }
-  }
-  return NS_ERROR_FAILURE;
-}
-
-void TabGroup::FlushPostMessageEvents() {
-  if (StaticPrefs::dom_separate_event_queue_for_post_message_enabled()) {
-    if (mPostMessageEventQueue) {
-      nsresult rv = mPostMessageEventQueue->SetIsPaused(true);
-      MOZ_ALWAYS_SUCCEEDS(rv);
-      nsCOMPtr<nsIRunnable> event;
-      while ((event = mPostMessageEventQueue->GetEvent())) {
-        Dispatch(TaskCategory::Other, event.forget());
-      }
-    }
-  }
 }
 
 uint32_t TabGroup::Count(bool aActiveOnly) const {

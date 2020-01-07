@@ -48,7 +48,7 @@ class AudioWorkletGlobalScope final : public WorkletGlobalScope {
   // compartment for the realm of this global.  Returns false on failure.
   MOZ_CAN_RUN_SCRIPT
   bool ConstructProcessor(const nsAString& aName,
-                          NotNull<StructuredCloneHolder*> aOptionsSerialization,
+                          NotNull<StructuredCloneHolder*> aSerializedOptions,
                           JS::MutableHandle<JSObject*> aRetProcessor);
 
  private:
@@ -62,10 +62,6 @@ class AudioWorkletGlobalScope final : public WorkletGlobalScope {
       ErrorResult& aRv);
 
   const RefPtr<AudioWorkletImpl> mImpl;
-
-  uint64_t mCurrentFrame;
-  double mCurrentTime;
-  float mSampleRate;
 
   typedef nsRefPtrHashtable<nsStringHashKey, AudioWorkletProcessorConstructor>
       NodeNameToProcessorDefinitionMap;

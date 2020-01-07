@@ -9,9 +9,7 @@
 #include "mozilla/MemoryReporting.h"
 #include "mozilla/PodOperations.h"
 
-#ifdef DEBUG
-#  include "jsutil.h"
-#endif
+#include <algorithm>
 
 #include "builtin/RegExp.h"
 #include "builtin/SelfHostingDefines.h"  // REGEXP_*_FLAG
@@ -249,6 +247,26 @@ RegExpObject* RegExpObject::create(JSContext* cx, HandleAtom source,
     return nullptr;
   }
 
+  return createSyntaxChecked(cx, source, flags, newKind);
+}
+
+RegExpObject* RegExpObject::createSyntaxChecked(JSContext* cx,
+                                                const char16_t* chars,
+                                                size_t length,
+                                                RegExpFlags flags,
+                                                NewObjectKind newKind) {
+  RootedAtom source(cx, AtomizeChars(cx, chars, length));
+  if (!source) {
+    return nullptr;
+  }
+
+  return createSyntaxChecked(cx, source, flags, newKind);
+}
+
+RegExpObject* RegExpObject::createSyntaxChecked(JSContext* cx,
+                                                HandleAtom source,
+                                                RegExpFlags flags,
+                                                NewObjectKind newKind) {
   Rooted<RegExpObject*> regexp(cx, RegExpAlloc(cx, newKind));
   if (!regexp) {
     return nullptr;
@@ -568,21 +586,21 @@ bool RegExpShared::dumpBytecode(JSContext* cx, MutableHandleRegExpShared re,
 #  define ADVANCE(NAME)                 \
     fprintf(stderr, "\n");              \
     pc += irregexp::BC_##NAME##_LENGTH; \
-    maxPc = js::Max(maxPc, pc);         \
+    maxPc = std::max(maxPc, pc);        \
     break;
 #  define STOP(NAME)                    \
     fprintf(stderr, "\n");              \
     pc += irregexp::BC_##NAME##_LENGTH; \
     break;
-#  define JUMP(NAME, OFFSET)                   \
-    fprintf(stderr, "\n");                     \
-    maxPc = js::Max(maxPc, byteCode + OFFSET); \
-    pc += irregexp::BC_##NAME##_LENGTH;        \
+#  define JUMP(NAME, OFFSET)                    \
+    fprintf(stderr, "\n");                      \
+    maxPc = std::max(maxPc, byteCode + OFFSET); \
+    pc += irregexp::BC_##NAME##_LENGTH;         \
     break;
-#  define BRANCH(NAME, OFFSET)                              \
-    fprintf(stderr, "\n");                                  \
-    pc += irregexp::BC_##NAME##_LENGTH;                     \
-    maxPc = js::Max(maxPc, js::Max(pc, byteCode + OFFSET)); \
+#  define BRANCH(NAME, OFFSET)                                \
+    fprintf(stderr, "\n");                                    \
+    pc += irregexp::BC_##NAME##_LENGTH;                       \
+    maxPc = std::max(maxPc, std::max(pc, byteCode + OFFSET)); \
     break;
 
   // Bytecode has no end marker, we need to calculate the bytecode length by

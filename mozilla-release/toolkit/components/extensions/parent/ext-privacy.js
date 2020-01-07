@@ -15,8 +15,8 @@ ChromeUtils.defineModuleGetter(
 var { ExtensionPreferencesManager } = ChromeUtils.import(
   "resource://gre/modules/ExtensionPreferencesManager.jsm"
 );
-
 var { ExtensionError } = ExtensionUtils;
+var { getSettingsAPI } = ExtensionPreferencesManager;
 
 const cookieSvc = Ci.nsICookieService;
 
@@ -28,41 +28,12 @@ const cookieBehaviorValues = new Map([
   ["reject_trackers", cookieSvc.BEHAVIOR_REJECT_TRACKER],
 ]);
 
-const checkScope = scope => {
-  if (scope && scope !== "regular") {
-    throw new ExtensionError(
-      `Firefox does not support the ${scope} settings scope.`
-    );
-  }
-};
-
-const getPrivacyAPI = (extension, name, callback) => {
-  return {
-    async get(details) {
-      return {
-        levelOfControl: details.incognito
-          ? "not_controllable"
-          : await ExtensionPreferencesManager.getLevelOfControl(
-              extension.id,
-              name
-            ),
-        value: await callback(),
-      };
-    },
-    set(details) {
-      checkScope(details.scope);
-      return ExtensionPreferencesManager.setSetting(
-        extension.id,
-        name,
-        details.value
-      );
-    },
-    clear(details) {
-      checkScope(details.scope);
-      return ExtensionPreferencesManager.removeSetting(extension.id, name);
-    },
-  };
-};
+const TLS_VERSIONS = [
+  [1, "TLSv1"],
+  [2, "TLSv1.1"],
+  [3, "TLSv1.2"],
+  [4, "TLSv1.3"],
+];
 
 // Add settings objects for supported APIs to the preferences manager.
 ExtensionPreferencesManager.addSetting("network.networkPredictionEnabled", {
@@ -215,16 +186,43 @@ ExtensionPreferencesManager.addSetting("websites.trackingProtectionMode", {
   },
 });
 
+ExtensionPreferencesManager.addSetting("network.tlsVersionRestriction", {
+  prefNames: ["security.tls.version.min", "security.tls.version.max"],
+
+  setCallback(value) {
+    function tlsStringToVersion(string) {
+      const version = TLS_VERSIONS.find(a => a[1] === string);
+      if (version) {
+        return version[0];
+      }
+      return 0;
+    }
+
+    const prefs = [];
+
+    const minimum = tlsStringToVersion(value.minimum);
+    if (minimum) {
+      prefs["security.tls.version.min"] = minimum;
+    }
+
+    const maximum = tlsStringToVersion(value.maximum);
+    if (maximum) {
+      prefs["security.tls.version.max"] = maximum;
+    }
+
+    return prefs;
+  },
+});
+
 this.privacy = class extends ExtensionAPI {
   getAPI(context) {
-    let { extension } = context;
     return {
       privacy: {
         network: {
-          networkPredictionEnabled: getPrivacyAPI(
-            extension,
-            "network.networkPredictionEnabled",
-            () => {
+          networkPredictionEnabled: getSettingsAPI({
+            context,
+            name: "network.networkPredictionEnabled",
+            callback() {
               return (
                 Preferences.get("network.predictor.enabled") &&
                 Preferences.get("network.prefetch-next") &&
@@ -232,19 +230,19 @@ this.privacy = class extends ExtensionAPI {
                   0 &&
                 !Preferences.get("network.dns.disablePrefetch")
               );
-            }
-          ),
-          peerConnectionEnabled: getPrivacyAPI(
-            extension,
-            "network.peerConnectionEnabled",
-            () => {
+            },
+          }),
+          peerConnectionEnabled: getSettingsAPI({
+            context,
+            name: "network.peerConnectionEnabled",
+            callback() {
               return Preferences.get("media.peerconnection.enabled");
-            }
-          ),
-          webRTCIPHandlingPolicy: getPrivacyAPI(
-            extension,
-            "network.webRTCIPHandlingPolicy",
-            () => {
+            },
+          }),
+          webRTCIPHandlingPolicy: getSettingsAPI({
+            context,
+            name: "network.webRTCIPHandlingPolicy",
+            callback() {
               if (Preferences.get("media.peerconnection.ice.proxy_only")) {
                 return "proxy_only";
               }
@@ -270,25 +268,51 @@ this.privacy = class extends ExtensionAPI {
               }
 
               return "default";
-            }
-          ),
+            },
+          }),
+          tlsVersionRestriction: getSettingsAPI({
+            context,
+            name: "network.tlsVersionRestriction",
+            callback() {
+              function tlsVersionToString(pref) {
+                const value = Services.prefs.getIntPref(pref);
+                const version = TLS_VERSIONS.find(a => a[0] === value);
+                if (version) {
+                  return version[1];
+                }
+                return "unknown";
+              }
+
+              return {
+                minimum: tlsVersionToString("security.tls.version.min"),
+                maximum: tlsVersionToString("security.tls.version.max"),
+              };
+            },
+            validate() {
+              if (!context.extension.isPrivileged) {
+                throw new ExtensionError(
+                  "tlsVersionRestriction can be set by privileged extensions only."
+                );
+              }
+            },
+          }),
         },
 
         services: {
-          passwordSavingEnabled: getPrivacyAPI(
-            extension,
-            "services.passwordSavingEnabled",
-            () => {
+          passwordSavingEnabled: getSettingsAPI({
+            context,
+            name: "services.passwordSavingEnabled",
+            callback() {
               return Preferences.get("signon.rememberSignons");
-            }
-          ),
+            },
+          }),
         },
 
         websites: {
-          cookieConfig: getPrivacyAPI(
-            extension,
-            "websites.cookieConfig",
-            () => {
+          cookieConfig: getSettingsAPI({
+            context,
+            name: "websites.cookieConfig",
+            callback() {
               let prefValue = Preferences.get("network.cookie.cookieBehavior");
               return {
                 behavior: Array.from(cookieBehaviorValues.entries()).find(
@@ -298,40 +322,40 @@ this.privacy = class extends ExtensionAPI {
                   Preferences.get("network.cookie.lifetimePolicy") ===
                   cookieSvc.ACCEPT_SESSION,
               };
-            }
-          ),
-          firstPartyIsolate: getPrivacyAPI(
-            extension,
-            "websites.firstPartyIsolate",
-            () => {
+            },
+          }),
+          firstPartyIsolate: getSettingsAPI({
+            context,
+            name: "websites.firstPartyIsolate",
+            callback() {
               return Preferences.get("privacy.firstparty.isolate");
-            }
-          ),
-          hyperlinkAuditingEnabled: getPrivacyAPI(
-            extension,
-            "websites.hyperlinkAuditingEnabled",
-            () => {
+            },
+          }),
+          hyperlinkAuditingEnabled: getSettingsAPI({
+            context,
+            name: "websites.hyperlinkAuditingEnabled",
+            callback() {
               return Preferences.get("browser.send_pings");
-            }
-          ),
-          referrersEnabled: getPrivacyAPI(
-            extension,
-            "websites.referrersEnabled",
-            () => {
+            },
+          }),
+          referrersEnabled: getSettingsAPI({
+            context,
+            name: "websites.referrersEnabled",
+            callback() {
               return Preferences.get("network.http.sendRefererHeader") !== 0;
-            }
-          ),
-          resistFingerprinting: getPrivacyAPI(
-            extension,
-            "websites.resistFingerprinting",
-            () => {
+            },
+          }),
+          resistFingerprinting: getSettingsAPI({
+            context,
+            name: "websites.resistFingerprinting",
+            callback() {
               return Preferences.get("privacy.resistFingerprinting");
-            }
-          ),
-          trackingProtectionMode: getPrivacyAPI(
-            extension,
-            "websites.trackingProtectionMode",
-            () => {
+            },
+          }),
+          trackingProtectionMode: getSettingsAPI({
+            context,
+            name: "websites.trackingProtectionMode",
+            callback() {
               if (Preferences.get("privacy.trackingprotection.enabled")) {
                 return "always";
               } else if (
@@ -340,8 +364,8 @@ this.privacy = class extends ExtensionAPI {
                 return "private_browsing";
               }
               return "never";
-            }
-          ),
+            },
+          }),
         },
       },
     };

@@ -9,6 +9,7 @@
 #include "mozilla/dom/BrowsingContextGroup.h"
 #include "mozilla/dom/WindowGlobalParent.h"
 #include "mozilla/dom/ContentProcessManager.h"
+#include "mozilla/dom/PlaybackController.h"
 #include "mozilla/ipc/ProtocolUtils.h"
 #include "mozilla/NullPrincipal.h"
 
@@ -146,6 +147,22 @@ CanonicalBrowsingContext::GetEmbedderWindowGlobal() const {
   return WindowGlobalParent::GetByInnerWindowId(windowId);
 }
 
+nsISHistory* CanonicalBrowsingContext::GetSessionHistory() {
+  if (mSessionHistory) {
+    return mSessionHistory;
+  }
+
+  nsCOMPtr<nsIWebNavigation> webNav = do_QueryInterface(GetDocShell());
+  if (webNav) {
+    RefPtr<ChildSHistory> shistory = webNav->GetSessionHistory();
+    if (shistory) {
+      return shistory->LegacySHistory();
+    }
+  }
+
+  return nullptr;
+}
+
 JSObject* CanonicalBrowsingContext::WrapObject(
     JSContext* aCx, JS::Handle<JSObject*> aGivenProto) {
   return CanonicalBrowsingContext_Binding::Wrap(aCx, this, aGivenProto);
@@ -154,12 +171,14 @@ JSObject* CanonicalBrowsingContext::WrapObject(
 void CanonicalBrowsingContext::Traverse(
     nsCycleCollectionTraversalCallback& cb) {
   CanonicalBrowsingContext* tmp = this;
-  NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mWindowGlobals, mCurrentWindowGlobal);
+  NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mWindowGlobals, mCurrentWindowGlobal,
+                                    mSessionHistory);
 }
 
 void CanonicalBrowsingContext::Unlink() {
   CanonicalBrowsingContext* tmp = this;
-  NS_IMPL_CYCLE_COLLECTION_UNLINK(mWindowGlobals, mCurrentWindowGlobal);
+  NS_IMPL_CYCLE_COLLECTION_UNLINK(mWindowGlobals, mCurrentWindowGlobal,
+                                  mSessionHistory);
 }
 
 void CanonicalBrowsingContext::NotifyStartDelayedAutoplayMedia() {
@@ -189,13 +208,43 @@ void CanonicalBrowsingContext::NotifyMediaMutedChanged(bool aMuted) {
 }
 
 void CanonicalBrowsingContext::UpdateMediaAction(MediaControlActions aAction) {
-  nsPIDOMWindowOuter* window = GetDOMWindow();
-  if (window) {
-    window->UpdateMediaAction(aAction);
-  }
+  MediaActionHandler::UpdateMediaAction(this, aAction);
   Group()->EachParent([&](ContentParent* aParent) {
     Unused << aParent->SendUpdateMediaAction(this, aAction);
   });
+}
+
+void CanonicalBrowsingContext::LoadURI(const nsAString& aURI,
+                                       const LoadURIOptions& aOptions,
+                                       ErrorResult& aError) {
+  nsCOMPtr<nsIURIFixup> uriFixup = components::URIFixup::Service();
+
+  nsCOMPtr<nsISupports> consumer = GetDocShell();
+  if (!consumer) {
+    consumer = GetEmbedderElement();
+  }
+  if (!consumer) {
+    aError.Throw(NS_ERROR_UNEXPECTED);
+    return;
+  }
+
+  RefPtr<nsDocShellLoadState> loadState;
+  nsresult rv = nsDocShellLoadState::CreateFromLoadURIOptions(
+      consumer, uriFixup, aURI, aOptions, getter_AddRefs(loadState));
+
+  if (rv == NS_ERROR_MALFORMED_URI) {
+    DisplayLoadError(aURI);
+    return;
+  }
+
+  if (NS_FAILED(rv)) {
+    aError.Throw(rv);
+    return;
+  }
+
+  // NOTE: It's safe to call `LoadURI` without an accessor from the parent
+  // process. The load will be performed with ambient "chrome" authority.
+  LoadURI(nullptr, loadState, true);
 }
 
 namespace {
@@ -225,6 +274,11 @@ void CanonicalBrowsingContext::PendingRemotenessChange::Complete(
   }
 
   RefPtr<CanonicalBrowsingContext> target(mTarget);
+  if (target->IsDiscarded()) {
+    Cancel(NS_ERROR_FAILURE);
+    return;
+  }
+
   RefPtr<WindowGlobalParent> embedderWindow = target->GetEmbedderWindowGlobal();
   if (NS_WARN_IF(!embedderWindow) || NS_WARN_IF(!embedderWindow->CanSend())) {
     Cancel(NS_ERROR_FAILURE);
@@ -309,10 +363,16 @@ void CanonicalBrowsingContext::PendingRemotenessChange::Complete(
 
   // FIXME: We should get the correct principal for the to-be-created window so
   // we can avoid creating unnecessary extra windows in the new process.
+  OriginAttributes attrs = embedderBrowser->OriginAttributesRef();
+  RefPtr<nsIPrincipal> principal = embedderBrowser->GetContentPrincipal();
+  if (principal) {
+    attrs.SetFirstPartyDomain(
+        true, principal->OriginAttributesRef().mFirstPartyDomain);
+  }
+
   nsCOMPtr<nsIPrincipal> initialPrincipal =
-      NullPrincipal::CreateWithInheritedAttributes(
-          embedderBrowser->OriginAttributesRef(),
-          /* isFirstParty */ false);
+      NullPrincipal::CreateWithInheritedAttributes(attrs,
+                                                   /* isFirstParty */ false);
   WindowGlobalInit windowInit =
       WindowGlobalActor::AboutBlankInitializer(target, initialPrincipal);
 

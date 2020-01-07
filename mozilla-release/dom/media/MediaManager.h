@@ -7,10 +7,9 @@
 
 #include "MediaEngine.h"
 #include "MediaEnginePrefs.h"
-#include "mozilla/media/DeviceChangeCallback.h"
+#include "MediaEventSource.h"
 #include "mozilla/dom/GetUserMediaRequest.h"
 #include "mozilla/Unused.h"
-#include "nsAutoPtr.h"
 #include "nsIMediaManager.h"
 
 #include "nsHashKeys.h"
@@ -24,6 +23,7 @@
 #include "nsXULAppAPI.h"
 #include "mozilla/Attributes.h"
 #include "mozilla/Preferences.h"
+#include "mozilla/StaticMutex.h"
 #include "mozilla/StaticPtr.h"
 #include "mozilla/dom/MediaStreamBinding.h"
 #include "mozilla/dom/MediaStreamTrackBinding.h"
@@ -130,10 +130,7 @@ typedef nsRefPtrHashtable<nsUint64HashKey, GetUserMediaWindowListener>
     WindowTable;
 typedef MozPromise<RefPtr<AudioDeviceInfo>, nsresult, true> SinkInfoPromise;
 
-class MediaManager final : public nsIMediaManagerService,
-                           public nsIObserver,
-                           public DeviceChangeNotifier,
-                           public DeviceChangeCallback {
+class MediaManager final : public nsIMediaManagerService, public nsIObserver {
   friend SourceListener;
 
  public:
@@ -162,7 +159,7 @@ class MediaManager final : public nsIMediaManagerService,
   static bool IsInMediaThread();
 #endif
 
-  static bool Exists() { return !!sSingleton; }
+  static bool Exists() { return !!GetIfExists(); }
 
   static nsresult NotifyRecordingStatusChange(nsPIDOMWindowInner* aWindow);
 
@@ -256,10 +253,11 @@ class MediaManager final : public nsIMediaManagerService,
   void OnNavigation(uint64_t aWindowID);
   bool IsActivelyCapturingOrHasAPermission(uint64_t aWindowId);
 
-  MediaEnginePrefs mPrefs;
+  MediaEventSource<void>& DeviceListChangeEvent() {
+    return mDeviceListChangeEvent;
+  }
 
-  virtual int AddDeviceChangeCallback(DeviceChangeCallback* aCallback) override;
-  virtual void OnDeviceChange() override;
+  MediaEnginePrefs mPrefs;
 
  private:
   static nsresult GenerateUUID(nsAString& aResult);
@@ -317,7 +315,7 @@ class MediaManager final : public nsIMediaManagerService,
   void GetPrefs(nsIPrefBranch* aBranch, const char* aData);
 
   // Make private because we want only one instance of this class
-  MediaManager();
+  explicit MediaManager(UniquePtr<base::Thread> aMediaThread);
 
   ~MediaManager() {}
   void Shutdown();
@@ -334,6 +332,7 @@ class MediaManager final : public nsIMediaManagerService,
 
   void StopMediaStreams();
   void RemoveMediaDevicesCallback(uint64_t aWindowID);
+  void DeviceListChanged();
 
   // ONLY access from MainThread so we don't need to lock
   WindowTable mActiveWindows;
@@ -342,15 +341,21 @@ class MediaManager final : public nsIMediaManagerService,
   nsTArray<RefPtr<dom::GetUserMediaRequest>> mPendingGUMRequest;
 
   // Always exists
-  nsAutoPtr<base::Thread> mMediaThread;
+  const UniquePtr<base::Thread> mMediaThread;
   nsCOMPtr<nsIAsyncShutdownBlocker> mShutdownBlocker;
 
   // ONLY accessed from MediaManagerThread
   RefPtr<MediaEngine> mBackend;
 
   static StaticRefPtr<MediaManager> sSingleton;
+  static StaticMutex sSingletonMutex;
 
   nsTArray<nsString> mDeviceIDs;
+
+  // Connect/Disconnect on media thread only
+  MediaEventListener mDeviceListChangeListener;
+
+  MediaEventProducer<void> mDeviceListChangeEvent;
 
  public:
   RefPtr<media::Parent<media::NonE10s>> mNonE10sParent;

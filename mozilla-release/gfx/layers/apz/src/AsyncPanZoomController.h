@@ -1229,11 +1229,25 @@ class AsyncPanZoomController {
   // held whenever this is updated. In practice though... see bug 897017.
   PanZoomState mState;
 
+  static bool IsPanningState(PanZoomState aState);
+
   /**
    * Returns whether the specified PanZoomState does not need to be reset when
    * a scroll offset update is processed.
    */
   static bool CanHandleScrollOffsetUpdate(PanZoomState aState);
+
+  /**
+   * Determine whether a main-thread scroll offset update should result in
+   * a call to CancelAnimation() (which interrupts in-progress animations and
+   * gestures).
+   *
+   * If the update is a relative update, |aRelativeDelta| contains its amount.
+   * If the update is not a relative update, GetMetrics() should already reflect
+   * the new offset at the time of the call.
+   */
+  bool ShouldCancelAnimationForScrollUpdate(
+      const Maybe<CSSPoint>& aRelativeDelta);
 
  private:
   friend class StateChangeNotificationBlocker;
@@ -1599,7 +1613,9 @@ class AsyncPanZoomController {
 
   wr::RenderRoot GetRenderRoot() const { return mRenderRoot; }
 
-  bool IsPinchZooming() const { return mState == PINCHING; }
+  bool IsAsyncZooming() const {
+    return mState == PINCHING || mState == ANIMATING_ZOOM;
+  }
 
  private:
   // Extra offset to add to the async scroll position for testing

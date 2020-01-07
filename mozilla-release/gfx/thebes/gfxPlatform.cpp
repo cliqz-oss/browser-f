@@ -601,6 +601,7 @@ static void WebRenderDebugPrefChangeCallback(const char* aPrefName, void*) {
   GFX_WEBRENDER_DEBUG(".disable-gradient-prims",
                       wr::DebugFlags_DISABLE_GRADIENT_PRIMS)
   GFX_WEBRENDER_DEBUG(".obscure-images", wr::DebugFlags_OBSCURE_IMAGES)
+  GFX_WEBRENDER_DEBUG(".glyph-flashing", wr::DebugFlags_GLYPH_FLASHING)
 #undef GFX_WEBRENDER_DEBUG
 
   gfx::gfxVars::SetWebRenderDebugFlags(flags.bits);
@@ -985,6 +986,8 @@ void gfxPlatform::Init() {
   gPlatform->InitAcceleration();
   gPlatform->InitWebRenderConfig();
 
+  gPlatform->InitWebGPUConfig();
+
   // When using WebRender, we defer initialization of the D3D11 devices until
   // the (rare) cases where they're used. Note that the GPU process where
   // WebRender runs doesn't initialize gfxPlatform and performs explicit
@@ -1103,10 +1106,84 @@ void gfxPlatform::Init() {
     }
   }
 
+  if (XRE_IsParentProcess()) {
+    ReportTelemetry();
+  }
+
   nsCOMPtr<nsIObserverService> obs = services::GetObserverService();
   if (obs) {
     obs->NotifyObservers(nullptr, "gfx-features-ready", nullptr);
   }
+}
+
+void gfxPlatform::ReportTelemetry() {
+  MOZ_RELEASE_ASSERT(XRE_IsParentProcess(),
+                     "GFX: Only allowed to be called from parent process.");
+
+  nsCOMPtr<nsIGfxInfo> gfxInfo = services::GetGfxInfo();
+  nsTArray<uint32_t> displayWidths;
+  nsTArray<uint32_t> displayHeights;
+  gfxInfo->GetDisplayWidth(displayWidths);
+  gfxInfo->GetDisplayHeight(displayHeights);
+
+  uint32_t displayCount = displayWidths.Length();
+  uint32_t displayWidth = displayWidths.Length() > 0 ? displayWidths[0] : 0;
+  uint32_t displayHeight = displayHeights.Length() > 0 ? displayHeights[0] : 0;
+  Telemetry::ScalarSet(Telemetry::ScalarID::GFX_DISPLAY_COUNT, displayCount);
+  Telemetry::ScalarSet(Telemetry::ScalarID::GFX_DISPLAY_PRIMARY_HEIGHT,
+                       displayHeight);
+  Telemetry::ScalarSet(Telemetry::ScalarID::GFX_DISPLAY_PRIMARY_WIDTH,
+                       displayWidth);
+
+  nsString adapterDesc;
+  gfxInfo->GetAdapterDescription(adapterDesc);
+  Telemetry::ScalarSet(Telemetry::ScalarID::GFX_ADAPTER_DESCRIPTION,
+                       adapterDesc);
+
+  nsString adapterVendorId;
+  gfxInfo->GetAdapterVendorID(adapterVendorId);
+  Telemetry::ScalarSet(Telemetry::ScalarID::GFX_ADAPTER_VENDOR_ID,
+                       adapterVendorId);
+
+  nsString adapterDeviceId;
+  gfxInfo->GetAdapterDeviceID(adapterDeviceId);
+  Telemetry::ScalarSet(Telemetry::ScalarID::GFX_ADAPTER_DEVICE_ID,
+                       adapterDeviceId);
+  // Temporary workaround for bug 1601091, should be removed once telemetry
+  // issue is fixed.
+  Telemetry::ScalarSet(Telemetry::ScalarID::GFX_ADAPTER_DEVICE_ID_LAST_SEEN,
+                       adapterDeviceId);
+
+  nsString adapterSubsystemId;
+  gfxInfo->GetAdapterSubsysID(adapterSubsystemId);
+  Telemetry::ScalarSet(Telemetry::ScalarID::GFX_ADAPTER_SUBSYSTEM_ID,
+                       adapterSubsystemId);
+
+  uint32_t adapterRam = 0;
+  gfxInfo->GetAdapterRAM(&adapterRam);
+  Telemetry::ScalarSet(Telemetry::ScalarID::GFX_ADAPTER_RAM, adapterRam);
+
+  nsString adapterDriver;
+  gfxInfo->GetAdapterDriver(adapterDriver);
+  Telemetry::ScalarSet(Telemetry::ScalarID::GFX_ADAPTER_DRIVER_FILES,
+                       adapterDriver);
+
+  nsString adapterDriverVendor;
+  gfxInfo->GetAdapterDriverVendor(adapterDriverVendor);
+  Telemetry::ScalarSet(Telemetry::ScalarID::GFX_ADAPTER_DRIVER_VENDOR,
+                       adapterDriverVendor);
+
+  nsString adapterDriverVersion;
+  gfxInfo->GetAdapterDriverVersion(adapterDriverVersion);
+  Telemetry::ScalarSet(Telemetry::ScalarID::GFX_ADAPTER_DRIVER_VERSION,
+                       adapterDriverVersion);
+
+  nsString adapterDriverDate;
+  gfxInfo->GetAdapterDriverDate(adapterDriverDate);
+  Telemetry::ScalarSet(Telemetry::ScalarID::GFX_ADAPTER_DRIVER_DATE,
+                       adapterDriverDate);
+
+  Telemetry::ScalarSet(Telemetry::ScalarID::GFX_HEADLESS, IsHeadless());
 }
 
 static bool IsFeatureSupported(long aFeature, bool aDefault) {
@@ -1184,6 +1261,20 @@ bool gfxPlatform::IsHeadless() {
 
 /* static */
 bool gfxPlatform::UseWebRender() { return gfx::gfxVars::UseWebRender(); }
+
+/* static */
+bool gfxPlatform::CanMigrateMacGPUs() {
+  int32_t pMigration = StaticPrefs::gfx_compositor_gpu_migration();
+
+  bool forceDisable = pMigration == 0;
+  bool forceEnable = pMigration == 2;
+
+  // Don't use migration with webrender (too buggy for nightly) - Bug 1600178
+  bool blocked = UseWebRender();
+
+  return forceEnable || (!forceDisable && !blocked);
+}
+
 
 static bool sLayersIPCIsUp = false;
 
@@ -1938,6 +2029,9 @@ void gfxPlatform::InitBackendPrefs(BackendPrefsData&& aPrefsData) {
   swBackendBits |= BackendTypeBit(BackendType::CAIRO);
 #endif
   mSoftwareBackend = GetContentBackendPref(swBackendBits);
+  if (mSoftwareBackend == BackendType::NONE) {
+    mSoftwareBackend = BackendType::SKIA;
+  }
 
   if (XRE_IsParentProcess()) {
     gfxVars::SetContentBackend(mContentBackend);
@@ -2192,6 +2286,30 @@ qcms_transform* gfxPlatform::GetCMSBGRATransform() {
   }
 
   return gCMSBGRATransform;
+}
+
+qcms_transform* gfxPlatform::GetCMSOSRGBATransform() {
+  switch (SurfaceFormat::OS_RGBA) {
+    case SurfaceFormat::B8G8R8A8:
+      return GetCMSBGRATransform();
+    case SurfaceFormat::R8G8B8A8:
+      return GetCMSRGBATransform();
+    default:
+      // We do not support color management with big endian.
+      return nullptr;
+  }
+}
+
+qcms_data_type gfxPlatform::GetCMSOSRGBAType() {
+  switch (SurfaceFormat::OS_RGBA) {
+    case SurfaceFormat::B8G8R8A8:
+      return QCMS_DATA_BGRA_8;
+    case SurfaceFormat::R8G8B8A8:
+      return QCMS_DATA_RGBA_8;
+    default:
+      // We do not support color management with big endian.
+      return QCMS_DATA_RGBA_8;
+  }
 }
 
 /* Shuts down various transforms and profiles for CMS. */
@@ -2777,6 +2895,18 @@ static void UpdateWRQualificationForIntel(FeatureState& aFeature,
       0x163b,
       0x163d,
       0x163e,
+
+      // HD Graphics 4600
+      0x0412,
+      0x0416,
+      0x041a,
+      0x041b,
+      0x041e,
+      0x0a12,
+      0x0a16,
+      0x0a1a,
+      0x0a1b,
+      0x0a1e,
   };
   bool supported = false;
   for (uint16_t id : supportedDevices) {
@@ -2932,13 +3062,6 @@ static FeatureState& WebRenderHardwareQualificationStatus(
           NS_LITERAL_CSTRING("FEATURE_FAILURE_WR_HAS_BATTERY"));
     }
   }
-#else  // !MOZ_WIDGET_ANDROID
-#  ifndef NIGHTLY_BUILD
-  featureWebRenderQualified.Disable(
-      FeatureStatus::BlockedReleaseChannelAndroid,
-      "Release channel and Android",
-      NS_LITERAL_CSTRING("FEATURE_FAILURE_RELEASE_CHANNEL_ANDROID"));
-#  endif
 #endif
   return featureWebRenderQualified;
 }
@@ -3118,7 +3241,7 @@ void gfxPlatform::InitWebRenderConfig() {
 
 void gfxPlatform::InitWebGPUConfig() {
   FeatureState& feature = gfxConfig::GetFeature(Feature::WEBGPU);
-  feature.SetDefaultFromPref("dom.webgpu.enable", true, false);
+  feature.SetDefaultFromPref("dom.webgpu.enabled", true, false);
 }
 
 void gfxPlatform::InitOMTPConfig() {
@@ -3553,6 +3676,18 @@ void gfxPlatform::NotifyCompositorCreated(LayersBackend aBackend) {
 
   // Set the backend before we notify so it's available immediately.
   mCompositorBackend = aBackend;
+
+  if (XRE_IsParentProcess()) {
+    Telemetry::ScalarSet(
+        Telemetry::ScalarID::GFX_COMPOSITOR,
+        NS_ConvertUTF8toUTF16(GetLayersBackendName(mCompositorBackend)));
+
+    // Temporary workaround for bug 1601091, should be removed once telemetry
+    // issue is fixed.
+    Telemetry::ScalarSet(
+        Telemetry::ScalarID::GFX_COMPOSITOR_LAST_SEEN,
+        NS_ConvertUTF8toUTF16(GetLayersBackendName(mCompositorBackend)));
+  }
 
   // Notify that we created a compositor, so telemetry can update.
   NS_DispatchToMainThread(

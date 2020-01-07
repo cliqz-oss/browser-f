@@ -701,7 +701,7 @@ static const uintptr_t JSCLASS_RESERVED_SLOTS_SHIFT = 8;
 static const uint32_t JSCLASS_RESERVED_SLOTS_WIDTH = 8;
 
 static const uint32_t JSCLASS_RESERVED_SLOTS_MASK =
-    JS_BITMASK(JSCLASS_RESERVED_SLOTS_WIDTH);
+    js::BitMask(JSCLASS_RESERVED_SLOTS_WIDTH);
 
 static constexpr uint32_t JSCLASS_HAS_RESERVED_SLOTS(uint32_t n) {
   return (n & JSCLASS_RESERVED_SLOTS_MASK) << JSCLASS_RESERVED_SLOTS_SHIFT;
@@ -746,7 +746,7 @@ static const uint32_t JSCLASS_FOREGROUND_FINALIZE =
 // application.
 static const uint32_t JSCLASS_GLOBAL_APPLICATION_SLOTS = 5;
 static const uint32_t JSCLASS_GLOBAL_SLOT_COUNT =
-    JSCLASS_GLOBAL_APPLICATION_SLOTS + JSProto_LIMIT * 2 + 25;
+    JSCLASS_GLOBAL_APPLICATION_SLOTS + JSProto_LIMIT * 2 + 26;
 
 static constexpr uint32_t JSCLASS_GLOBAL_FLAGS_WITH_SLOTS(uint32_t n) {
   return JSCLASS_IS_GLOBAL |
@@ -759,7 +759,7 @@ static constexpr uint32_t JSCLASS_GLOBAL_FLAGS =
 // Fast access to the original value of each standard class's prototype.
 static const uint32_t JSCLASS_CACHED_PROTO_SHIFT = JSCLASS_HIGH_FLAGS_SHIFT + 9;
 static const uint32_t JSCLASS_CACHED_PROTO_MASK =
-    JS_BITMASK(js::JSCLASS_CACHED_PROTO_WIDTH);
+    js::BitMask(js::JSCLASS_CACHED_PROTO_WIDTH);
 
 static_assert(JSProto_LIMIT <= (JSCLASS_CACHED_PROTO_MASK + 1),
               "JSProtoKey must not exceed the maximum cacheable proto-mask");

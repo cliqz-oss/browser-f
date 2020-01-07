@@ -27,6 +27,7 @@
 #include "mozilla/RemoteDecoderManagerChild.h"
 #include "mozilla/Unused.h"
 #include "mozilla/StaticPrefs_dom.h"
+#include "mozilla/StaticPrefs_media.h"
 #include "mozilla/TelemetryIPC.h"
 #include "mozilla/RemoteDecoderManagerChild.h"
 #include "mozilla/devtools/HeapSnapshotTempFileHelperChild.h"
@@ -36,6 +37,7 @@
 #include "mozilla/dom/BrowserBridgeHost.h"
 #include "mozilla/dom/ClientManager.h"
 #include "mozilla/dom/ClientOpenWindowOpActors.h"
+#include "mozilla/dom/ChildProcessChannelListener.h"
 #include "mozilla/dom/ChildProcessMessageManager.h"
 #include "mozilla/dom/ContentProcessMessageManager.h"
 #include "mozilla/dom/ContentParent.h"
@@ -50,10 +52,13 @@
 #include "mozilla/dom/MemoryReportRequest.h"
 #include "mozilla/dom/PLoginReputationChild.h"
 #include "mozilla/dom/PSessionStorageObserverChild.h"
+#include "mozilla/dom/PlaybackController.h"
 #include "mozilla/dom/PostMessageEvent.h"
 #include "mozilla/dom/PushNotifier.h"
 #include "mozilla/dom/RemoteWorkerService.h"
 #include "mozilla/dom/ServiceWorkerManager.h"
+#include "mozilla/dom/SHEntryChild.h"
+#include "mozilla/dom/SHistoryChild.h"
 #include "mozilla/dom/TabGroup.h"
 #include "mozilla/dom/URLClassifierChild.h"
 #include "mozilla/dom/WindowGlobalChild.h"
@@ -98,7 +103,6 @@
 #include "mozilla/HangDetails.h"
 #include "mozilla/LoadInfo.h"
 #include "mozilla/UnderrunHandler.h"
-#include "nsIChildProcessChannelListener.h"
 #include "mozilla/net/HttpChannelChild.h"
 #include "nsQueryObject.h"
 #include "imgLoader.h"
@@ -106,7 +110,7 @@
 #include "nsISimpleEnumerator.h"
 #include "nsIStringBundle.h"
 #include "nsIWorkerDebuggerManager.h"
-#include "nsGeolocation.h"
+#include "Geolocation.h"
 #include "audio_thread_priority.h"
 #include "nsIConsoleService.h"
 #include "audio_thread_priority.h"
@@ -131,6 +135,11 @@
 #    include "mozilla/Sandbox.h"
 #  elif defined(__OpenBSD__)
 #    include <unistd.h>
+#    include <sys/stat.h>
+#    include <err.h>
+#    include <fstream>
+#    include "nsILineInputStream.h"
+#    include "SpecialSystemDirectory.h"
 #  endif
 #  if defined(MOZ_DEBUG) && defined(ENABLE_TESTS)
 #    include "mozilla/SandboxTestingChild.h"
@@ -165,7 +174,7 @@
 #include "SandboxHal.h"
 #include "nsDebugImpl.h"
 #include "nsHashPropertyBag.h"
-#include "nsLayoutStylesheetCache.h"
+#include "mozilla/GlobalStyleSheetCache.h"
 #include "nsThreadManager.h"
 #include "nsAnonymousTemporaryFile.h"
 #include "nsClipboardProxy.h"
@@ -709,6 +718,10 @@ bool ContentChild::Init(MessageLoop* aIOLoop, base::ProcessId aParentPid,
     // This can occur when an update occurred in the background.
     ProcessChild::QuickExit();
   }
+
+#if defined(__OpenBSD__) && defined(MOZ_SANDBOX)
+  StartOpenBSDSandbox(GeckoProcessType_Content);
+#endif
 
 #ifdef MOZ_X11
 #  ifdef MOZ_WIDGET_GTK
@@ -1317,7 +1330,7 @@ void ContentChild::InitSharedUASheets(const Maybe<SharedMemoryHandle>& aHandle,
   // Map the shared memory storing the user agent style sheets.  Do this as
   // early as possible to maximize the chance of being able to map at the
   // address we want.
-  nsLayoutStylesheetCache::SetSharedMemory(*aHandle, aAddress);
+  GlobalStyleSheetCache::SetSharedMemory(*aHandle, aAddress);
 }
 
 void ContentChild::InitXPCOM(
@@ -1404,7 +1417,7 @@ void ContentChild::InitXPCOM(
 
   // The stylesheet cache is not ready yet. Store this URL for future use.
   nsCOMPtr<nsIURI> ucsURL = DeserializeURI(aXPCOMInit.userContentSheetURL());
-  nsLayoutStylesheetCache::SetUserContentCSSURL(ucsURL);
+  GlobalStyleSheetCache::SetUserContentCSSURL(ucsURL);
 
   GfxInfoBase::SetFeatureStatus(aXPCOMInit.gfxFeatureStatus());
 
@@ -1701,7 +1714,7 @@ static bool StartMacOSContentSandbox() {
   info.shouldLog = Preferences::GetBool("security.sandbox.logging.enabled") ||
                    PR_GetEnv("MOZ_SANDBOX_LOGGING");
   info.appPath.assign(appPath.get());
-  info.hasAudio = !Preferences::GetBool("media.cubeb.sandbox");
+  info.hasAudio = !StaticPrefs::media_cubeb_sandbox();
   info.hasWindowServer = !Preferences::GetBool(
       "security.sandbox.content.mac.disconnect-windowserver");
 
@@ -1781,7 +1794,7 @@ mozilla::ipc::IPCResult ContentChild::RecvSetProcessSandbox(
     sandboxEnabled = false;
   } else {
     // Pre-start audio before sandboxing; see bug 1443612.
-    if (Preferences::GetBool("media.cubeb.sandbox")) {
+    if (StaticPrefs::media_cubeb_sandbox()) {
       if (atp_set_real_time_limit(0, 48000)) {
         NS_WARNING("could not set real-time limit at process startup");
       }
@@ -1799,15 +1812,6 @@ mozilla::ipc::IPCResult ContentChild::RecvSetProcessSandbox(
   mozilla::SandboxTarget::Instance()->StartSandbox();
 #  elif defined(XP_MACOSX)
   sandboxEnabled = StartMacOSContentSandbox();
-#  elif defined(__OpenBSD__)
-  sandboxEnabled = StartOpenBSDSandbox(GeckoProcessType_Content);
-  /* dont overwrite an existing session dbus address, but ensure it is set */
-  if (!PR_GetEnv("DBUS_SESSION_BUS_ADDRESS")) {
-    static LazyLogModule sPledgeLog("SandboxPledge");
-    MOZ_LOG(sPledgeLog, LogLevel::Debug,
-            ("no session dbus found, faking one\n"));
-    PR_SetEnv("DBUS_SESSION_BUS_ADDRESS=");
-  }
 #  endif
 
   CrashReporter::AnnotateCrashReport(
@@ -2127,13 +2131,13 @@ already_AddRefed<RemoteBrowser> ContentChild::CreateBrowser(
 
   TabId tabId(nsContentUtils::GenerateTabId());
   RefPtr<BrowserBridgeChild> browserBridge =
-      new BrowserBridgeChild(aFrameLoader, aBrowsingContext, tabId);
+      new BrowserBridgeChild(aBrowsingContext, tabId);
 
   browserChild->SendPBrowserBridgeConstructor(
       browserBridge, PromiseFlatString(aContext.PresentationURL()), aRemoteType,
       aBrowsingContext, chromeFlags, tabId);
 
-  return browserBridge->FinishInit();
+  return browserBridge->FinishInit(aFrameLoader);
 }
 
 PScriptCacheChild* ContentChild::AllocPScriptCacheChild(
@@ -2250,22 +2254,16 @@ bool ContentChild::DeallocPBenchmarkStorageChild(
   return true;
 }
 
-PSpeechSynthesisChild* ContentChild::AllocPSpeechSynthesisChild() {
 #ifdef MOZ_WEBSPEECH
+PSpeechSynthesisChild* ContentChild::AllocPSpeechSynthesisChild() {
   MOZ_CRASH("No one should be allocating PSpeechSynthesisChild actors");
-#else
-  return nullptr;
-#endif
 }
 
 bool ContentChild::DeallocPSpeechSynthesisChild(PSpeechSynthesisChild* aActor) {
-#ifdef MOZ_WEBSPEECH
   delete aActor;
   return true;
-#else
-  return false;
-#endif
 }
+#endif
 
 PWebrtcGlobalChild* ContentChild::AllocPWebrtcGlobalChild() {
 #ifdef MOZ_WEBRTC
@@ -2521,16 +2519,19 @@ mozilla::ipc::IPCResult ContentChild::RecvNotifyAlertsObserver(
 // NOTE: This method is being run in the SystemGroup, and thus cannot directly
 // touch pages. See GetSpecificMessageEventTarget.
 mozilla::ipc::IPCResult ContentChild::RecvNotifyVisited(
-    nsTArray<URIParams>&& aURIs) {
-  for (const URIParams& uri : aURIs) {
-    nsCOMPtr<nsIURI> newURI = DeserializeURI(uri);
+    nsTArray<VisitedQueryResult>&& aURIs) {
+  nsCOMPtr<IHistory> history = services::GetHistoryService();
+  if (!history) {
+    return IPC_OK();
+  }
+  for (const VisitedQueryResult& result : aURIs) {
+    nsCOMPtr<nsIURI> newURI = DeserializeURI(result.uri());
     if (!newURI) {
       return IPC_FAIL_NO_REASON(this);
     }
-    nsCOMPtr<IHistory> history = services::GetHistoryService();
-    if (history) {
-      history->NotifyVisited(newURI);
-    }
+    auto status = result.visited() ? IHistory::VisitedStatus::Visited
+                                   : IHistory::VisitedStatus::Unvisited;
+    history->NotifyVisited(newURI, status);
   }
   return IPC_OK();
 }
@@ -3472,6 +3473,41 @@ bool ContentChild::DeallocPSessionStorageObserverChild(
   return true;
 }
 
+PSHEntryChild* ContentChild::AllocPSHEntryChild(
+    PSHistoryChild* aSHistory, const PSHEntryOrSharedID& aEntryOrSharedID) {
+  // We take a strong reference for the IPC layer. The Release implementation
+  // for SHEntryChild will ask the IPC layer to release it (through
+  // DeallocPSHEntryChild) if that is the only remaining reference.
+  RefPtr<SHEntryChild> child;
+  if (aEntryOrSharedID.type() == PSHEntryOrSharedID::Tuint64_t) {
+    child = new SHEntryChild(static_cast<SHistoryChild*>(aSHistory),
+                             aEntryOrSharedID.get_uint64_t());
+  } else {
+    child = new SHEntryChild(
+        static_cast<const SHEntryChild*>(aEntryOrSharedID.get_PSHEntryChild()));
+  }
+  return child.forget().take();
+}
+
+void ContentChild::DeallocPSHEntryChild(PSHEntryChild* aActor) {
+  // Release the strong reference we took in AllocPSHEntryChild for the IPC
+  // layer.
+  RefPtr<SHEntryChild> child(dont_AddRef(static_cast<SHEntryChild*>(aActor)));
+}
+
+PSHistoryChild* ContentChild::AllocPSHistoryChild(BrowsingContext* aContext) {
+  // We take a strong reference for the IPC layer. The Release implementation
+  // for SHistoryChild will ask the IPC layer to release it (through
+  // DeallocPSHistoryChild) if that is the only remaining reference.
+  return do_AddRef(new SHistoryChild(aContext)).take();
+}
+
+void ContentChild::DeallocPSHistoryChild(PSHistoryChild* aActor) {
+  // Release the strong reference we took in AllocPSHistoryChild for the IPC
+  // layer.
+  RefPtr<SHistoryChild> child(dont_AddRef(static_cast<SHistoryChild*>(aActor)));
+}
+
 mozilla::ipc::IPCResult ContentChild::RecvActivate(PBrowserChild* aTab) {
   BrowserChild* tab = static_cast<BrowserChild*>(aTab);
   return tab->RecvActivate();
@@ -3518,9 +3554,11 @@ nsresult ContentChild::AsyncOpenAnonymousTemporaryFile(
 
 mozilla::ipc::IPCResult ContentChild::RecvSetPermissionsWithKey(
     const nsCString& aPermissionKey, nsTArray<IPC::Permission>&& aPerms) {
-  nsCOMPtr<nsIPermissionManager> permissionManager =
-      services::GetPermissionManager();
-  permissionManager->SetPermissionsWithKey(aPermissionKey, aPerms);
+  RefPtr<nsPermissionManager> permManager = nsPermissionManager::GetInstance();
+  if (permManager) {
+    permManager->SetPermissionsWithKey(aPermissionKey, aPerms);
+  }
+
   return IPC_OK();
 }
 
@@ -3620,34 +3658,36 @@ mozilla::ipc::IPCResult ContentChild::RecvSaveRecording(
 }
 
 mozilla::ipc::IPCResult ContentChild::RecvCrossProcessRedirect(
-    const uint32_t& aRegistrarId, nsIURI* aURI,
-    const ReplacementChannelConfigInit& aConfig,
-    const Maybe<LoadInfoArgs>& aLoadInfo, const uint64_t& aChannelId,
-    nsIURI* aOriginalURI, const uint64_t& aIdentifier,
-    const uint32_t& aRedirectMode, CrossProcessRedirectResolver&& aResolve) {
+    RedirectToRealChannelArgs&& aArgs,
+    CrossProcessRedirectResolver&& aResolve) {
   nsCOMPtr<nsILoadInfo> loadInfo;
-  nsresult rv =
-      mozilla::ipc::LoadInfoArgsToLoadInfo(aLoadInfo, getter_AddRefs(loadInfo));
+  nsresult rv = mozilla::ipc::LoadInfoArgsToLoadInfo(aArgs.loadInfo(),
+                                                     getter_AddRefs(loadInfo));
   if (NS_FAILED(rv)) {
     MOZ_DIAGNOSTIC_ASSERT(false, "LoadInfoArgsToLoadInfo failed");
     return IPC_OK();
   }
 
   nsCOMPtr<nsIChannel> newChannel;
-  rv = NS_NewChannelInternal(getter_AddRefs(newChannel), aURI, loadInfo);
+  rv = NS_NewChannelInternal(getter_AddRefs(newChannel), aArgs.uri(), loadInfo,
+                             nullptr,  // PerformanceStorage
+                             nullptr,  // aLoadGroup
+                             nullptr,  // aCallbacks
+                             aArgs.newLoadFlags());
 
-  // We are sure this is a HttpChannelChild because the parent
-  // is always a HTTP channel.
-  RefPtr<HttpChannelChild> httpChild = do_QueryObject(newChannel);
-  if (NS_FAILED(rv) || !httpChild) {
+  RefPtr<nsIChildChannel> childChannel = do_QueryObject(newChannel);
+  if (NS_FAILED(rv) || !childChannel) {
     MOZ_DIAGNOSTIC_ASSERT(false, "NS_NewChannelInternal failed");
     return IPC_OK();
   }
 
   // This is used to report any errors back to the parent by calling
   // CrossProcessRedirectFinished.
+  RefPtr<HttpChannelChild> httpChild = do_QueryObject(newChannel);
   auto scopeExit = MakeScopeExit([&]() {
-    rv = httpChild->CrossProcessRedirectFinished(rv);
+    if (httpChild) {
+      rv = httpChild->CrossProcessRedirectFinished(rv);
+    }
     nsCOMPtr<nsILoadInfo> loadInfo;
     MOZ_ALWAYS_SUCCEEDS(newChannel->GetLoadInfo(getter_AddRefs(loadInfo)));
     Maybe<LoadInfoArgs> loadInfoArgs;
@@ -3657,39 +3697,48 @@ mozilla::ipc::IPCResult ContentChild::RecvCrossProcessRedirect(
         Tuple<const nsresult&, const Maybe<LoadInfoArgs>&>(rv, loadInfoArgs));
   });
 
-  rv = httpChild->SetChannelId(aChannelId);
-  if (NS_FAILED(rv)) {
-    return IPC_OK();
+  if (httpChild) {
+    rv = httpChild->SetChannelId(aArgs.channelId());
+    if (NS_FAILED(rv)) {
+      return IPC_OK();
+    }
+
+    rv = httpChild->SetOriginalURI(aArgs.originalURI());
+    if (NS_FAILED(rv)) {
+      return IPC_OK();
+    }
+
+    rv = httpChild->SetRedirectMode(aArgs.redirectMode());
+    if (NS_FAILED(rv)) {
+      return IPC_OK();
+    }
   }
 
-  rv = httpChild->SetOriginalURI(aOriginalURI);
-  if (NS_FAILED(rv)) {
-    return IPC_OK();
+  if (aArgs.init()) {
+    HttpBaseChannel::ReplacementChannelConfig config(std::move(*aArgs.init()));
+    HttpBaseChannel::ConfigureReplacementChannel(
+        newChannel, config,
+        HttpBaseChannel::ConfigureReason::DocumentChannelReplacement);
   }
-
-  rv = httpChild->SetRedirectMode(aRedirectMode);
-  if (NS_FAILED(rv)) {
-    return IPC_OK();
-  }
-
-  HttpBaseChannel::ReplacementChannelConfig config(aConfig);
-  HttpBaseChannel::ConfigureReplacementChannel(
-      newChannel, config,
-      HttpBaseChannel::ConfigureReason::DocumentChannelReplacement);
 
   // connect parent.
-  rv = httpChild->ConnectParent(aRegistrarId);  // creates parent channel
+  rv = childChannel->ConnectParent(
+      aArgs.registrarId());  // creates parent channel
   if (NS_FAILED(rv)) {
     return IPC_OK();
   }
 
-  nsCOMPtr<nsIChildProcessChannelListener> processListener =
-      do_GetService("@mozilla.org/network/childProcessChannelListener;1");
-  // The listener will call completeRedirectSetup on the channel.
-  rv = processListener->OnChannelReady(httpChild, aIdentifier);
-  if (NS_FAILED(rv)) {
-    return IPC_OK();
+  // We need to copy the property bag before signaling that the channel
+  // is ready so that the nsDocShell can retrieve the history data when called.
+  if (nsCOMPtr<nsIWritablePropertyBag> bag = do_QueryInterface(newChannel)) {
+    nsHashPropertyBag::CopyFrom(bag, aArgs.properties());
   }
+
+  RefPtr<ChildProcessChannelListener> processListener =
+      ChildProcessChannelListener::GetSingleton();
+  // The listener will call completeRedirectSetup on the channel.
+  processListener->OnChannelReady(childChannel, aArgs.redirectIdentifier(),
+                                  std::move(aArgs.redirects()));
 
   // scopeExit will call CrossProcessRedirectFinished(rv) here
   return IPC_OK();
@@ -3705,10 +3754,19 @@ mozilla::ipc::IPCResult ContentChild::RecvStartDelayedAutoplayMediaComponents(
 mozilla::ipc::IPCResult ContentChild::RecvUpdateMediaAction(
     BrowsingContext* aContext, MediaControlActions aAction) {
   MOZ_ASSERT(aContext);
-  nsCOMPtr<nsPIDOMWindowOuter> window = aContext->GetDOMWindow();
-  if (window) {
-    window->UpdateMediaAction(aAction);
-  }
+  MediaActionHandler::UpdateMediaAction(aContext, aAction);
+  return IPC_OK();
+}
+
+mozilla::ipc::IPCResult ContentChild::RecvDestroySHEntrySharedState(
+    const uint64_t& aID) {
+  SHEntryChildShared::Remove(aID);
+  return IPC_OK();
+}
+
+mozilla::ipc::IPCResult ContentChild::RecvEvictContentViewers(
+    nsTArray<uint64_t>&& aToEvictSharedStateIDs) {
+  SHEntryChildShared::EvictContentViewers(std::move(aToEvictSharedStateIDs));
   return IPC_OK();
 }
 
@@ -4006,7 +4064,7 @@ mozilla::ipc::IPCResult ContentChild::RecvWindowPostMessage(
       aData.callerDocumentURI(), aData.isFromPrivateWindow());
   event->UnpackFrom(aMessage);
 
-  window->Dispatch(TaskCategory::Other, event.forget());
+  event->DispatchToTargetThread(IgnoredErrorResult());
   return IPC_OK();
 }
 
@@ -4074,48 +4132,246 @@ mozilla::ipc::IPCResult ContentChild::RecvInitSandboxTesting(
 }  // namespace dom
 
 #if defined(__OpenBSD__) && defined(MOZ_SANDBOX)
-#  include <unistd.h>
 
-static LazyLogModule sPledgeLog("SandboxPledge");
+static LazyLogModule sPledgeLog("OpenBSDSandbox");
+
+NS_IMETHODIMP
+OpenBSDFindPledgeUnveilFilePath(const char* file, nsACString& result) {
+  struct stat st;
+
+  // Allow overriding files in /etc/$MOZ_APP_NAME
+  result.Assign(nsPrintfCString("/etc/%s/%s", MOZ_APP_NAME, file));
+  if (stat(PromiseFlatCString(result).get(), &st) == 0) {
+    return NS_OK;
+  }
+
+  // Or look in the system default directory
+  result.Assign(nsPrintfCString(
+      "/usr/local/lib/%s/browser/defaults/preferences/%s", MOZ_APP_NAME, file));
+  if (stat(PromiseFlatCString(result).get(), &st) == 0) {
+    return NS_OK;
+  }
+
+  errx(1, "can't locate %s", file);
+}
+
+NS_IMETHODIMP
+OpenBSDPledgePromises(const nsACString& aPath) {
+  // Using NS_LOCAL_FILE_CONTRACTID/NS_LOCALFILEINPUTSTREAM_CONTRACTID requires
+  // a lot of setup before they are supported and we want to pledge early on
+  // before all of that, so read the file directly
+  std::ifstream input(PromiseFlatCString(aPath).get());
+
+  // Build up one line of pledge promises without comments
+  nsAutoCString promises;
+  bool disabled = false;
+  int linenum = 0;
+  for (std::string tLine; std::getline(input, tLine);) {
+    nsAutoCString line(tLine.c_str());
+    linenum++;
+
+    // Cut off any comments at the end of the line, also catches lines
+    // that are entirely a comment
+    int32_t hash = line.FindChar('#');
+    if (hash >= 0) {
+      line = Substring(line, 0, hash);
+    }
+    line.CompressWhitespace(true, true);
+    if (line.IsEmpty()) {
+      continue;
+    }
+
+    if (linenum == 1 && line.EqualsLiteral("disable")) {
+      disabled = true;
+      break;
+    }
+
+    if (!promises.IsEmpty()) {
+      promises.Append(" ");
+    }
+    promises.Append(line);
+  }
+  input.close();
+
+  if (disabled) {
+    warnx("%s: disabled", PromiseFlatCString(aPath).get());
+  } else {
+    MOZ_LOG(
+        sPledgeLog, LogLevel::Debug,
+        ("%s: pledge(%s)\n", PromiseFlatCString(aPath).get(), promises.get()));
+    if (pledge(promises.get(), nullptr) != 0) {
+      err(1, "%s: pledge(%s) failed", PromiseFlatCString(aPath).get(),
+          promises.get());
+    }
+  }
+
+  return NS_OK;
+}
+
+void ExpandUnveilPath(nsAutoCString& path) {
+  // Expand $XDG_CONFIG_HOME to the environment variable, or ~/.config
+  nsCString xdgConfigHome(PR_GetEnv("XDG_CONFIG_HOME"));
+  if (xdgConfigHome.IsEmpty()) {
+    xdgConfigHome = "~/.config";
+  }
+  path.ReplaceSubstring("$XDG_CONFIG_HOME", xdgConfigHome.get());
+
+  // Expand $XDG_CACHE_HOME to the environment variable, or ~/.cache
+  nsCString xdgCacheHome(PR_GetEnv("XDG_CACHE_HOME"));
+  if (xdgCacheHome.IsEmpty()) {
+    xdgCacheHome = "~/.cache";
+  }
+  path.ReplaceSubstring("$XDG_CACHE_HOME", xdgCacheHome.get());
+
+  // Expand $XDG_DATA_HOME to the environment variable, or ~/.local/share
+  nsCString xdgDataHome(PR_GetEnv("XDG_DATA_HOME"));
+  if (xdgDataHome.IsEmpty()) {
+    xdgDataHome = "~/.local/share";
+  }
+  path.ReplaceSubstring("$XDG_DATA_HOME", xdgDataHome.get());
+
+  // Expand leading ~ to the user's home directory
+  nsCOMPtr<nsIFile> homeDir;
+  nsresult rv =
+      GetSpecialSystemDirectory(Unix_HomeDirectory, getter_AddRefs(homeDir));
+  if (NS_FAILED(rv)) {
+    errx(1, "failed getting home directory");
+  }
+  if (path.FindChar('~') == 0) {
+    nsCString tHome(homeDir->NativePath());
+    tHome.Append(Substring(path, 1, path.Length() - 1));
+    path = tHome.get();
+  }
+}
+
+void MkdirP(nsAutoCString& path) {
+  // nsLocalFile::CreateAllAncestors would be nice to use
+
+  nsAutoCString tPath("");
+  for (const nsACString& dir : path.Split('/')) {
+    struct stat st;
+
+    if (dir.IsEmpty()) {
+      continue;
+    }
+
+    tPath.Append("/");
+    tPath.Append(dir);
+
+    if (stat(tPath.get(), &st) == -1) {
+      if (mkdir(tPath.get(), 0700) == -1) {
+        err(1, "failed mkdir(%s) while MkdirP(%s)",
+            PromiseFlatCString(tPath).get(), PromiseFlatCString(path).get());
+      }
+    }
+  }
+}
+
+NS_IMETHODIMP
+OpenBSDUnveilPaths(const nsACString& uPath, const nsACString& pledgePath) {
+  // Using NS_LOCAL_FILE_CONTRACTID/NS_LOCALFILEINPUTSTREAM_CONTRACTID requires
+  // a lot of setup before they are allowed/supported and we want to pledge and
+  // unveil early on before all of that is setup
+  std::ifstream input(PromiseFlatCString(uPath).get());
+
+  bool disabled = false;
+  int linenum = 0;
+  for (std::string tLine; std::getline(input, tLine);) {
+    nsAutoCString line(tLine.c_str());
+    linenum++;
+
+    // Cut off any comments at the end of the line, also catches lines
+    // that are entirely a comment
+    int32_t hash = line.FindChar('#');
+    if (hash >= 0) {
+      line = Substring(line, 0, hash);
+    }
+    line.CompressWhitespace(true, true);
+    if (line.IsEmpty()) {
+      continue;
+    }
+
+    if (linenum == 1 && line.EqualsLiteral("disable")) {
+      disabled = true;
+      break;
+    }
+
+    int32_t space = line.FindChar(' ');
+    if (space <= 0) {
+      errx(1, "%s: line %d: invalid format", PromiseFlatCString(uPath).get(),
+           linenum);
+    }
+
+    nsAutoCString uPath(Substring(line, 0, space));
+    ExpandUnveilPath(uPath);
+
+    nsAutoCString perms(Substring(line, space + 1, line.Length() - space - 1));
+
+    MOZ_LOG(sPledgeLog, LogLevel::Debug,
+            ("%s: unveil(%s, %s)\n", PromiseFlatCString(uPath).get(),
+             uPath.get(), perms.get()));
+    if (unveil(uPath.get(), perms.get()) == -1 && errno != ENOENT) {
+      err(1, "%s: unveil(%s, %s) failed", PromiseFlatCString(uPath).get(),
+          uPath.get(), perms.get());
+    }
+  }
+  input.close();
+
+  if (disabled) {
+    warnx("%s: disabled", PromiseFlatCString(uPath).get());
+  } else {
+    if (unveil(PromiseFlatCString(pledgePath).get(), "r") == -1) {
+      err(1, "unveil(%s, r) failed", PromiseFlatCString(pledgePath).get());
+    }
+  }
+
+  return NS_OK;
+}
 
 bool StartOpenBSDSandbox(GeckoProcessType type) {
-  nsAutoCString promisesString;
-  nsAutoCString processTypeString;
+  nsAutoCString pledgeFile;
+  nsAutoCString unveilFile;
 
   switch (type) {
-    case GeckoProcessType_Default:
-      processTypeString = "main";
-      Preferences::GetCString("security.sandbox.pledge.main", promisesString);
+    case GeckoProcessType_Default: {
+      OpenBSDFindPledgeUnveilFilePath("pledge.main", pledgeFile);
+      OpenBSDFindPledgeUnveilFilePath("unveil.main", unveilFile);
+
+      // Ensure dconf dir exists before we veil the filesystem
+      nsAutoCString dConf("$XDG_CACHE_HOME/dconf");
+      ExpandUnveilPath(dConf);
+      MkdirP(dConf);
       break;
+    }
 
     case GeckoProcessType_Content:
-      processTypeString = "content";
-      Preferences::GetCString("security.sandbox.pledge.content",
-                              promisesString);
+      OpenBSDFindPledgeUnveilFilePath("pledge.content", pledgeFile);
+      OpenBSDFindPledgeUnveilFilePath("unveil.content", unveilFile);
+      break;
+
+    case GeckoProcessType_GPU:
+      OpenBSDFindPledgeUnveilFilePath("pledge.gpu", pledgeFile);
+      OpenBSDFindPledgeUnveilFilePath("unveil.gpu", unveilFile);
       break;
 
     default:
       MOZ_ASSERT(false, "unknown process type");
       return false;
-  };
-
-  if (pledge(promisesString.get(), NULL) == -1) {
-    if (errno == EINVAL) {
-      MOZ_LOG(sPledgeLog, LogLevel::Error,
-              ("pledge promises for %s process is a malformed string: '%s'\n",
-               processTypeString.get(), promisesString.get()));
-    } else if (errno == EPERM) {
-      MOZ_LOG(
-          sPledgeLog, LogLevel::Error,
-          ("pledge promises for %s process can't elevate privileges: '%s'\n",
-           processTypeString.get(), promisesString.get()));
-    }
-    return false;
-  } else {
-    MOZ_LOG(sPledgeLog, LogLevel::Debug,
-            ("pledged %s process with promises: '%s'\n",
-             processTypeString.get(), promisesString.get()));
   }
+
+  if (NS_WARN_IF(NS_FAILED(OpenBSDUnveilPaths(unveilFile, pledgeFile)))) {
+    errx(1, "failed reading/parsing %s", unveilFile.get());
+  }
+
+  if (NS_WARN_IF(NS_FAILED(OpenBSDPledgePromises(pledgeFile)))) {
+    errx(1, "failed reading/parsing %s", pledgeFile.get());
+  }
+
+  // Don't overwrite an existing session dbus address, but ensure it is set
+  if (!PR_GetEnv("DBUS_SESSION_BUS_ADDRESS")) {
+    PR_SetEnv("DBUS_SESSION_BUS_ADDRESS=");
+  }
+
   return true;
 }
 #endif

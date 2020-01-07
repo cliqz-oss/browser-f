@@ -203,17 +203,14 @@ FunctionBox::FunctionBox(JSContext* cx, TraceListNode* traceListHead,
 }
 
 void FunctionBox::initFromLazyFunction(JSFunction* fun) {
-  if (fun->lazyScript()->isDerivedClassConstructor()) {
+  LazyScript* lazy = fun->lazyScript();
+  if (lazy->isDerivedClassConstructor()) {
     setDerivedClassConstructor();
   }
-  if (fun->lazyScript()->needsHomeObject()) {
+  if (lazy->needsHomeObject()) {
     setNeedsHomeObject();
   }
-  if (fun->lazyScript()->hasEnclosingScope()) {
-    enclosingScope_ = fun->lazyScript()->enclosingScope();
-  } else {
-    enclosingScope_ = nullptr;
-  }
+  enclosingScope_ = fun->enclosingScope();
   initWithEnclosingScope(enclosingScope_, fun);
 }
 
@@ -319,7 +316,7 @@ void FunctionBox::finish() {
     return;
   }
   MOZ_ASSERT(enclosingScope_);
-  function()->lazyScript()->setEnclosingScope(enclosingScope_);
+  function()->setEnclosingScope(enclosingScope_);
 }
 
 ModuleSharedContext::ModuleSharedContext(JSContext* cx, ModuleObject* module,

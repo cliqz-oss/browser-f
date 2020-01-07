@@ -35,6 +35,8 @@ XPCOMUtils.defineLazyServiceGetter(
   "nsIClipboardHelper"
 );
 
+const SEARCH_BUTTON_ID = "urlbar-search-button";
+
 let getBoundsWithoutFlushing = element =>
   element.ownerGlobal.windowUtils.getBoundsWithoutFlushing(element);
 let px = number => number.toFixed(2) + "px";
@@ -53,6 +55,7 @@ class UrlbarInput {
     this.textbox = options.textbox;
 
     this.window = this.textbox.ownerGlobal;
+    this.isPrivate = PrivateBrowsingUtils.isWindowPrivate(this.window);
     this.document = this.window.document;
     this.window.addEventListener("unload", this);
 
@@ -62,8 +65,7 @@ class UrlbarInput {
         <vbox class="urlbarView"
               role="group"
               tooltip="aHTMLTooltip"
-              context=""
-              hidden="true">
+              context="">
           <html:div class="urlbarView-body-outer">
             <html:div class="urlbarView-body-inner">
               <html:div id="urlbar-results"
@@ -80,20 +82,23 @@ class UrlbarInput {
     );
     this.panel = this.textbox.querySelector(".urlbarView");
 
-    this.megabar = UrlbarPrefs.get("megabar");
+    // "Megabar" is the internal codename for the update1 design refresh.
+    this.megabar = UrlbarPrefs.get("update1");
     if (this.megabar) {
       this.textbox.classList.add("megabar");
       this.textbox.parentNode.classList.add("megabar");
+      this.searchButton = UrlbarPrefs.get("update2.searchButton");
+      if (this.searchButton) {
+        this.textbox.classList.add("searchButton");
+      }
     }
 
     this.controller = new UrlbarController({
-      browserWindow: this.window,
+      input: this,
       eventTelemetryCategory: options.eventTelemetryCategory,
     });
-    this.controller.setInput(this);
     this.view = new UrlbarView(this);
     this.valueIsTyped = false;
-    this.isPrivate = PrivateBrowsingUtils.isWindowPrivate(this.window);
     this.lastQueryContextPromise = Promise.resolve();
     this._actionOverrideKeyCount = 0;
     this._autofillPlaceholder = "";
@@ -157,6 +162,7 @@ class UrlbarInput {
     this.dropmarker = this.querySelector(".urlbar-history-dropmarker");
     this._inputContainer = this.querySelector("#urlbar-input-container");
     this._identityBox = this.querySelector("#identity-box");
+    this._toolbar = this.textbox.closest("toolbar");
 
     XPCOMUtils.defineLazyGetter(this, "valueFormatter", () => {
       return new UrlbarValueFormatter(this);
@@ -853,13 +859,19 @@ class UrlbarInput {
    * @param {string} value
    *   The input's value will be set to this value, and the search will
    *   use it as its query.
+   * @param {boolean} [options.focus]
+   *   If true, the urlbar will be focused.  If false, the focus will remain
+   *   unchanged.
    */
-  search(value) {
-    this.window.focusAndSelectUrlBar();
+  search(value, { focus = true } = {}) {
+    if (focus) {
+      this.window.focusAndSelectUrlBar();
+    }
 
     // If the value is a restricted token, append a space.
     if (Object.values(UrlbarTokenizer.RESTRICT).includes(value)) {
       this.inputField.value = value + " ";
+      this._revertOnBlurValue = this.value;
     } else {
       this.inputField.value = value;
     }
@@ -965,15 +977,6 @@ class UrlbarInput {
     ) {
       return;
     }
-    // The user is copying less than the entire string, provided the view is
-    // not open, otherwise it may be the autofill selection
-    if (
-      this.selectionStart != this.selectionEnd &&
-      !(this.selectionStart == 0 && this.selectionEnd == this.value.length) &&
-      !this.view.isOpen
-    ) {
-      return;
-    }
     // The Urlbar is unfocused and the view is closed
     if (this.getAttribute("focused") != "true" && !this.view.isOpen) {
       return;
@@ -985,6 +988,9 @@ class UrlbarInput {
     }
     this.removeAttribute("breakout-extend-disabled");
 
+    if (this._toolbar) {
+      this._toolbar.setAttribute("urlbar-exceeds-toolbar-bounds", "true");
+    }
     this.setAttribute("breakout-extend", "true");
     this.view.reOpen();
 
@@ -999,14 +1005,18 @@ class UrlbarInput {
     }
   }
 
-  endLayoutExtend(force) {
+  endLayoutExtend() {
     if (
       !this.hasAttribute("breakout-extend") ||
-      (!force && (this.view.isOpen || this.getAttribute("focused") == "true"))
+      this.view.isOpen ||
+      this.getAttribute("focused") == "true"
     ) {
       return;
     }
     this.removeAttribute("breakout-extend");
+    if (this._toolbar) {
+      this._toolbar.removeAttribute("urlbar-exceeds-toolbar-bounds");
+    }
   }
 
   setPageProxyState(state) {
@@ -1421,9 +1431,9 @@ class UrlbarInput {
    * @param {nsIInputStream} [params.postData]
    *   The POST data associated with a search submission.
    * @param {boolean} [params.allowInheritPrincipal]
-   *   If the principal may be inherited
-   * @param {object} [result]
-   *   Details of the selected result, if any
+   *   Whether the principal can be inherited.
+   * @param {object} [resultDetails]
+   *   Details of the selected result, if any.
    * @param {UrlbarUtils.RESULT_TYPE} [result.type]
    *   Details of the result type, if any.
    * @param {UrlbarUtils.RESULT_SOURCE} [result.source]
@@ -1434,7 +1444,7 @@ class UrlbarInput {
     url,
     openUILinkWhere,
     params,
-    result = {},
+    resultDetails = null,
     browser = this.window.gBrowser.selectedBrowser
   ) {
     // No point in setting these because we'll handleRevert() a few rows below.
@@ -1490,7 +1500,7 @@ class UrlbarInput {
     }
 
     // Notify about the start of navigation.
-    this._notifyStartNavigation(result);
+    this._notifyStartNavigation(resultDetails);
 
     try {
       this.window.openTrustedLinkIn(url, openUILinkWhere, params);
@@ -1618,7 +1628,7 @@ class UrlbarInput {
    * if they aren't being used, e.g. WebNavigation.
    *
    * @param {UrlbarResult} result
-   *   The result that was selected, if any.
+   *   Details of the result that was selected, if any.
    */
   _notifyStartNavigation(result) {
     Services.obs.notifyObservers({ result }, "urlbar-user-start-navigation");
@@ -1689,6 +1699,11 @@ class UrlbarInput {
       this.view.close();
     }
 
+    if (this._revertOnBlurValue == this.value) {
+      this.handleRevert();
+    }
+    this._revertOnBlurValue = null;
+
     // We may have hidden popup notifications, show them again if necessary.
     if (this.getAttribute("pageproxystate") != "valid") {
       this.window.UpdatePopupNotificationsVisibility();
@@ -1700,7 +1715,8 @@ class UrlbarInput {
   _on_click(event) {
     if (
       event.target == this.inputField ||
-      event.target == this._inputContainer
+      event.target == this._inputContainer ||
+      event.target.id == SEARCH_BUTTON_ID
     ) {
       this.startLayoutExtend();
       this._maybeSelectAll();
@@ -1726,10 +1742,11 @@ class UrlbarInput {
     // We handle mouse-based expansion events separately in _on_click.
     if (this._focusedViaMousedown) {
       this._focusedViaMousedown = false;
-    } else if (this.inputField.hasAttribute("refocused-by-panel")) {
-      this._maybeSelectAll(true);
     } else {
       this.startLayoutExtend();
+      if (this.inputField.hasAttribute("refocused-by-panel")) {
+        this._maybeSelectAll(true);
+      }
     }
 
     this._updateUrlTooltip();
@@ -1754,7 +1771,8 @@ class UrlbarInput {
 
         if (
           event.target != this.inputField &&
-          event.target != this._inputContainer
+          event.target != this._inputContainer &&
+          event.target.id != SEARCH_BUTTON_ID
         ) {
           break;
         }
@@ -1762,7 +1780,7 @@ class UrlbarInput {
         this._focusedViaMousedown = !this.focused;
         this._preventClickSelectsAll = this.focused;
 
-        if (event.target == this._inputContainer) {
+        if (event.target != this.inputField) {
           this.focus();
         }
 
@@ -1774,6 +1792,9 @@ class UrlbarInput {
         if (event.detail == 2 && UrlbarPrefs.get("doubleClickSelectsAll")) {
           this.editor.selectAll();
           event.preventDefault();
+        } else if (event.target.id == SEARCH_BUTTON_ID) {
+          this._preventClickSelectsAll = true;
+          this.search(UrlbarTokenizer.RESTRICT.SEARCH);
         } else if (this.openViewOnFocusForCurrentTab && !this.view.isOpen) {
           this.startQuery({
             allowAutofill: false,
@@ -1810,17 +1831,7 @@ class UrlbarInput {
         if (!UrlbarPrefs.get("ui.popup.disable_autohide")) {
           this.view.close();
         }
-
-        if (
-          event.target.id == "tabs-newtab-button" ||
-          event.target.id == "new-tab-button" ||
-          event.target.classList.contains("tab-close-button")
-        ) {
-          break;
-        }
-
-        // We collapse the urlbar for any clicks outside of it.
-        this.endLayoutExtend(true);
+        break;
     }
   }
 
@@ -2051,8 +2062,8 @@ class UrlbarInput {
       return;
     }
 
-    // Make sure we don't cover the tab bar or other potential drop targets.
-    this.endLayoutExtend(true);
+    // Don't cover potential drop targets on the toolbars or in content.
+    this.view.close();
 
     // Only customize the drag data if the entire value is selected and it's a
     // loaded URI. Use default behavior otherwise.

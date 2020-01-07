@@ -66,12 +66,11 @@ loader.lazyRequireGetter(
   "saveScreenshot",
   "devtools/shared/screenshot/save"
 );
-loader.lazyRequireGetter(
-  this,
-  "ObjectClient",
-  "devtools/shared/client/object-client"
-);
+loader.lazyRequireGetter(this, "ObjectFront", "devtools/shared/fronts/object");
 
+// This import to chrome code is forbidden according to the inspector specific
+// eslintrc. TODO: Fix in Bug 1591091.
+// eslint-disable-next-line mozilla/reject-some-requires
 loader.lazyImporter(
   this,
   "DeferredTask",
@@ -151,8 +150,8 @@ function Inspector(toolbox) {
   this.panelWin.inspector = this;
   this.telemetry = toolbox.telemetry;
   this.store = Store({
-    createObjectClient: object => {
-      return new ObjectClient(toolbox.target.client, object);
+    createObjectFront: object => {
+      return new ObjectFront(toolbox.target.client, object);
     },
     releaseActor: actor => {
       if (!actor) {
@@ -177,6 +176,8 @@ function Inspector(toolbox) {
   this._handleRejectionIfNotDestroyed = this._handleRejectionIfNotDestroyed.bind(
     this
   );
+  this._onTargetAvailable = this._onTargetAvailable.bind(this);
+  this._onTargetDestroyed = this._onTargetDestroyed.bind(this);
   this._onBeforeNavigate = this._onBeforeNavigate.bind(this);
   this._onMarkupFrameLoad = this._onMarkupFrameLoad.bind(this);
   this._updateSearchResultsLabel = this._updateSearchResultsLabel.bind(this);
@@ -221,17 +222,11 @@ Inspector.prototype = {
       this.currentTarget.threadFront.on("resumed", this.handleThreadResumed);
     }
 
-    await this.initInspectorFront();
-
-    this.currentTarget.on("will-navigate", this._onBeforeNavigate);
-
-    await Promise.all([
-      this._getCssProperties(),
-      this._getPageStyle(),
-      this._getDefaultSelection(),
-      this._getAccessibilityFront(),
-      this._getChangesFront(),
-    ]);
+    await this.toolbox.targetList.watchTargets(
+      [this.toolbox.targetList.TYPES.FRAME],
+      this._onTargetAvailable,
+      this._onTargetDestroyed
+    );
 
     // Store the URL of the target page prior to navigation in order to ensure
     // telemetry counts in the Grid Inspector are not double counted on reload.
@@ -244,14 +239,76 @@ Inspector.prototype = {
     return this._deferredOpen();
   },
 
-  async initInspectorFront() {
-    this.inspectorFront = await this.currentTarget.getFront("inspector");
+  async _onTargetAvailable(type, targetFront, isTopLevel) {
+    // Ignore all targets but the top level one
+    if (!isTopLevel) {
+      return;
+    }
+
+    await this.initInspectorFront(targetFront);
+
+    targetFront.on("will-navigate", this._onBeforeNavigate);
+
+    await Promise.all([
+      this._getCssProperties(),
+      this._getPageStyle(),
+      this._getDefaultSelection(),
+      this._getAccessibilityFront(),
+      this._getChangesFront(),
+    ]);
+    this.reflowTracker = new ReflowTracker(this.currentTarget);
+
+    // When we navigate to another process and switch to a new
+    // target and the inspector is already ready, we want to
+    // update the markup view accordingly. So force a new-root event.
+    // For the initial panel startup, the initial top level target
+    // update the markup view from _deferredOpen.
+    // We might want to followup here in order to share the same
+    // codepath between the initial top level target and the next
+    // one we switch to. i.e. extract from deferredOpen code
+    // which has to be called only once on inspector startup.
+    // Then move the rest to onNewRoot and always call onNewRoot from here.
+    if (this.isReady) {
+      this.onNewRoot();
+    }
+  },
+
+  _onTargetDestroyed(type, targetFront, isTopLevel) {
+    // Ignore all targets but the top level one
+    if (!isTopLevel) {
+      return;
+    }
+    targetFront.off("will-navigate", this._onBeforeNavigate);
+
+    this._defaultNode = null;
+    this.selection.setNodeFront(null);
+
+    this.reflowTracker.destroy();
+    this.reflowTracker = null;
+  },
+
+  async initInspectorFront(targetFront) {
+    this.inspectorFront = await targetFront.getFront("inspector");
     this.highlighter = this.inspectorFront.highlighter;
     this.walker = this.inspectorFront.walker;
   },
 
   get toolbox() {
     return this._toolbox;
+  },
+
+  /**
+   * Get the list of InspectorFront instances that correspond to all of the inspectable
+   * targets in remote frames nested within the document inspected here, as well as the
+   * current InspectorFront instance.
+   *
+   * @return {Array} The list of InspectorFront instances.
+   */
+  async getAllInspectorFronts() {
+    return this.toolbox.targetList.getAllFronts(
+      this.toolbox.targetList.TYPES.FRAME,
+      "inspector"
+    );
   },
 
   get highlighters() {
@@ -463,8 +520,8 @@ Inspector.prototype = {
         }
 
         rootNode = node;
-        if (this.selectionCssSelector) {
-          return walker.querySelector(rootNode, this.selectionCssSelector);
+        if (this.selectionCssSelectors.length) {
+          return walker.findNodeFront(this.selectionCssSelectors);
         }
         return null;
       })
@@ -504,10 +561,10 @@ Inspector.prototype = {
   },
 
   /**
-   * Target getter.
+   * Top level target front getter.
    */
   get currentTarget() {
-    return this._target;
+    return this.toolbox.targetList.targetFront;
   },
 
   /**
@@ -1404,46 +1461,63 @@ Inspector.prototype = {
     }
   },
 
-  _selectionCssSelector: null,
+  _selectionCssSelectors: null,
 
   /**
-   * Set the currently selected node unique css selector.
+   * Set the array of CSS selectors for the currently selected node.
+   * We use an array of selectors in case the element is in iframes.
    * Will store the current target url along with it to allow pre-selection at
    * reload
    */
-  set selectionCssSelector(cssSelector = null) {
+  set selectionCssSelectors(cssSelectors = []) {
     if (this._destroyed) {
       return;
     }
 
-    this._selectionCssSelector = {
-      selector: cssSelector,
-      url: this._target.url,
+    this._selectionCssSelectors = {
+      selectors: cssSelectors,
+      url: this.currentTarget.url,
     };
   },
 
   /**
-   * Get the current selection unique css selector if any, that is, if a node
+   * Get the CSS selectors for the current selection if any, that is, if a node
    * is actually selected and that node has been selected while on the same url
    */
-  get selectionCssSelector() {
+  get selectionCssSelectors() {
     if (
-      this._selectionCssSelector &&
-      this._selectionCssSelector.url === this._target.url
+      this._selectionCssSelectors &&
+      this._selectionCssSelectors.url === this.currentTarget.url
     ) {
-      return this._selectionCssSelector.selector;
+      return this._selectionCssSelectors.selectors;
     }
+    return [];
+  },
+
+  /**
+   * Some inspector ruleview helpers rely on the selectionCssSelector to get the
+   * unique CSS selector of the selected element only within its host document,
+   * disregarding ancestor iframes.
+   * They should not care about the complete array of CSS selectors, only
+   * relevant in order to reselect the proper node when reloading pages with
+   * frames.
+   */
+  get selectionCssSelector() {
+    if (this.selectionCssSelectors.length) {
+      return this.selectionCssSelectors[this.selectionCssSelectors.length - 1];
+    }
+
     return null;
   },
 
   /**
-   * On any new selection made by the user, store the unique css selector
+   * On any new selection made by the user, store the array of css selectors
    * of the selected node so it can be restored after reload of the same page
    */
-  updateSelectionCssSelector() {
+  updateSelectionCssSelectors() {
     if (this.selection.isElementNode()) {
-      this.selection.nodeFront.getUniqueSelector().then(selector => {
-        this.selectionCssSelector = selector;
+      this.selection.nodeFront.getAllSelectors().then(selectors => {
+        this.selectionCssSelectors = selectors;
       }, this._handleRejectionIfNotDestroyed);
     }
   },
@@ -1513,7 +1587,7 @@ Inspector.prototype = {
     }
 
     this.updateAddElementButton();
-    this.updateSelectionCssSelector();
+    this.updateSelectionCssSelectors();
 
     const selfUpdate = this.updating("inspector-panel");
     executeSoon(() => {
@@ -1655,9 +1729,14 @@ Inspector.prototype = {
     this.teardownToolbar();
 
     this.breadcrumbs.destroy();
-    this.reflowTracker.destroy();
     this.styleChangeTracker.destroy();
     this.searchboxShortcuts.destroy();
+
+    this.toolbox.targetList.unwatchTargets(
+      [this.toolbox.targetList.TYPES.FRAME],
+      this._onTargetAvailable,
+      this._onTargetDestroyed
+    );
 
     this._is3PaneModeChromeEnabled = null;
     this._is3PaneModeEnabled = null;
@@ -1885,8 +1964,9 @@ Inspector.prototype = {
   },
 
   async inspectNodeActor(nodeActor, inspectFromAnnotation) {
-    // TODO: Bug1574506 - Use the contextual WalkerFront for gripToNodeFront.
-    const nodeFront = await this.walker.gripToNodeFront({ actor: nodeActor });
+    const nodeFront = await this.inspectorFront.getNodeFrontFromNodeGrip({
+      actor: nodeActor,
+    });
     if (!nodeFront) {
       console.error(
         "The object cannot be linked to the inspector, the " +

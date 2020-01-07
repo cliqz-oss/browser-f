@@ -22,7 +22,7 @@
 #include <setjmp.h>
 
 #include "builtin/AtomicsObject.h"
-#ifdef ENABLE_INTL_API
+#ifdef JS_HAS_INTL_API
 #  include "builtin/intl/SharedIntlData.h"
 #endif
 #include "builtin/Promise.h"
@@ -134,7 +134,7 @@ struct JSAtomState {
 #define PROPERTYNAME_FIELD(idpart, id, text) js::ImmutablePropertyNamePtr id;
   FOR_EACH_COMMON_PROPERTYNAME(PROPERTYNAME_FIELD)
 #undef PROPERTYNAME_FIELD
-#define PROPERTYNAME_FIELD(name, init, clasp) js::ImmutablePropertyNamePtr name;
+#define PROPERTYNAME_FIELD(name, clasp) js::ImmutablePropertyNamePtr name;
   JS_FOR_EACH_PROTOTYPE(PROPERTYNAME_FIELD)
 #undef PROPERTYNAME_FIELD
 #define PROPERTYNAME_FIELD(name) js::ImmutablePropertyNamePtr name;
@@ -383,10 +383,6 @@ struct JSRuntime {
 
   /* Call this to get the name of a realm. */
   js::MainThreadData<JS::RealmNameCallback> realmNameCallback;
-
-  /* Callback for doing memory reporting on external strings. */
-  js::MainThreadData<JSExternalStringSizeofCallback>
-      externalStringSizeofCallback;
 
   js::MainThreadData<mozilla::UniquePtr<js::SourceHook>> sourceHook;
 
@@ -680,7 +676,7 @@ struct JSRuntime {
   js::WriteOnceData<js::PropertyName*> emptyString;
 
  private:
-  js::MainThreadData<JSFreeOp*> defaultFreeOp_;
+  js::MainThreadOrGCTaskData<JSFreeOp*> defaultFreeOp_;
 
  public:
   JSFreeOp* defaultFreeOp() {
@@ -688,7 +684,7 @@ struct JSRuntime {
     return defaultFreeOp_;
   }
 
-#if !ENABLE_INTL_API
+#if !JS_HAS_INTL_API
   /* Number localization, used by jsnum.cpp. */
   js::WriteOnceData<const char*> thousandsSeparator;
   js::WriteOnceData<const char*> decimalSeparator;
@@ -808,7 +804,7 @@ struct JSRuntime {
   // these are shared with the parentRuntime, if any.
   js::WriteOnceData<js::WellKnownSymbols*> wellKnownSymbols;
 
-#ifdef ENABLE_INTL_API
+#ifdef JS_HAS_INTL_API
   /* Shared Intl data for this runtime. */
   js::MainThreadData<js::intl::SharedIntlData> sharedIntlData;
 

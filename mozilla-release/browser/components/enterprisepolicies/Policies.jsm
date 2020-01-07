@@ -251,9 +251,13 @@ var Policies = {
                 return;
               }
               let certFile = reader.result;
+              let certFileArray = [];
+              for (let i = 0; i < certFile.length; i++) {
+                certFileArray.push(certFile.charCodeAt(i));
+              }
               let cert;
               try {
-                cert = gCertDB.constructX509(certFile);
+                cert = gCertDB.constructX509(certFileArray);
               } catch (e) {
                 try {
                   // It might be PEM instead of DER.
@@ -584,18 +588,53 @@ var Policies = {
 
   DisplayMenuBar: {
     onBeforeUIStartup(manager, param) {
-      let value = (!param).toString();
-      // This policy is meant to change the default behavior, not to force it.
-      // If this policy was alreay applied and the user chose to re-hide the
-      // menu bar, do not show it again.
-      runOncePerModification("displayMenuBar", value, () => {
+      let value;
+      if (
+        typeof param === "boolean" ||
+        param == "default-on" ||
+        param == "default-off"
+      ) {
+        switch (param) {
+          case "default-on":
+            value = "false";
+            break;
+          case "default-off":
+            value = "true";
+            break;
+          default:
+            value = (!param).toString();
+            break;
+        }
+        // This policy is meant to change the default behavior, not to force it.
+        // If this policy was already applied and the user chose to re-hide the
+        // menu bar, do not show it again.
+        runOncePerModification("displayMenuBar", value, () => {
+          gXulStore.setValue(
+            BROWSER_DOCUMENT_URL,
+            "toolbar-menubar",
+            "autohide",
+            value
+          );
+        });
+      } else {
+        switch (param) {
+          case "always":
+            value = "false";
+            break;
+          case "never":
+            // Make sure Alt key doesn't show the menubar
+            setAndLockPref("ui.key.menuAccessKeyFocuses", false);
+            value = "true";
+            break;
+        }
         gXulStore.setValue(
           BROWSER_DOCUMENT_URL,
           "toolbar-menubar",
           "autohide",
           value
         );
-      });
+        manager.disallowFeature("hideShowMenuBar");
+      }
     },
   },
 
@@ -739,11 +778,16 @@ var Policies = {
           blockAllExtensions = true;
           // Turn off discovery pane in about:addons
           setAndLockPref("extensions.getAddons.showPane", false);
+          // Turn off recommendations
+          setAndLockPref(
+            "extensions.htmlaboutaddons.recommendations.enable",
+            false
+          );
           // Block about:debugging
           blockAboutPage(manager, "about:debugging");
         }
       }
-      let { addons } = await AddonManager.getActiveAddons();
+      let addons = await AddonManager.getAllAddons();
       let allowedExtensions = [];
       for (let extensionID in extensionSettings) {
         if (extensionID == "*") {

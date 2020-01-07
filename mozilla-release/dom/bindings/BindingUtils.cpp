@@ -41,7 +41,6 @@
 #include "XrayWrapper.h"
 #include "nsPrintfCString.h"
 #include "mozilla/Sprintf.h"
-#include "nsGlobalWindow.h"
 #include "nsReadableUtils.h"
 
 #include "mozilla/dom/ScriptSettings.h"
@@ -1560,39 +1559,6 @@ static bool ResolvePrototypeOrConstructor(
   return JS_WrapPropertyDescriptor(cx, desc);
 }
 
-#ifdef DEBUG
-
-static void DEBUG_CheckXBLCallable(JSContext* cx, JSObject* obj) {
-  // In general, we shouldn't have cross-compartment wrappers here, because
-  // we should be running in an XBL scope, and the content prototype should
-  // contain wrappers to functions defined in the XBL scope. But if the node
-  // has been adopted into another compartment, those prototypes will now point
-  // to a different XBL scope (which is ok).
-  MOZ_ASSERT_IF(js::IsCrossCompartmentWrapper(obj),
-                xpc::IsInContentXBLScope(js::UncheckedUnwrap(obj)));
-  MOZ_ASSERT(JS::IsCallable(obj));
-}
-
-static void DEBUG_CheckXBLLookup(JSContext* cx, JS::PropertyDescriptor* desc) {
-  if (!desc->obj) return;
-  if (!desc->value.isUndefined()) {
-    MOZ_ASSERT(desc->value.isObject());
-    DEBUG_CheckXBLCallable(cx, &desc->value.toObject());
-  }
-  if (desc->getter) {
-    MOZ_ASSERT(desc->attrs & JSPROP_GETTER);
-    DEBUG_CheckXBLCallable(cx, JS_FUNC_TO_DATA_PTR(JSObject*, desc->getter));
-  }
-  if (desc->setter) {
-    MOZ_ASSERT(desc->attrs & JSPROP_SETTER);
-    DEBUG_CheckXBLCallable(cx, JS_FUNC_TO_DATA_PTR(JSObject*, desc->setter));
-  }
-}
-#else
-#  define DEBUG_CheckXBLLookup(a, b) \
-    {}
-#endif
-
 /* static */ bool XrayResolveOwnProperty(
     JSContext* cx, JS::Handle<JSObject*> wrapper, JS::Handle<JSObject*> obj,
     JS::Handle<jsid> id, JS::MutableHandle<JS::PropertyDescriptor> desc,
@@ -1646,37 +1612,6 @@ static void DEBUG_CheckXBLLookup(JSContext* cx, JS::PropertyDescriptor* desc) {
 
       if (desc.object()) {
         // None of these should be cached on the holder, since they're dynamic.
-        return true;
-      }
-    }
-
-    // If we're a special scope for in-content XBL, our script expects to see
-    // the bound XBL methods and attributes when accessing content. However,
-    // these members are implemented in content via custom-spliced prototypes,
-    // and thus aren't visible through Xray wrappers unless we handle them
-    // explicitly. So we check if we're running in such a scope, and if so,
-    // whether the wrappee is a bound element. If it is, we do a lookup via
-    // specialized XBL machinery.
-    //
-    // While we have to do some sketchy walking through content land, we should
-    // be protected by read-only/non-configurable properties, and any functions
-    // we end up with should _always_ be living in our own scope (the XBL
-    // scope). Make sure to assert that.
-    JS::Rooted<JSObject*> maybeElement(cx, obj);
-    Element* element;
-    if (xpc::IsInContentXBLScope(wrapper) &&
-        NS_SUCCEEDED(UNWRAP_OBJECT(Element, &maybeElement, element))) {
-      if (!nsContentUtils::LookupBindingMember(cx, element, id, desc)) {
-        return false;
-      }
-
-      DEBUG_CheckXBLLookup(cx, desc.address());
-
-      if (desc.object()) {
-        // XBL properties shouldn't be cached on the holder, as they might be
-        // shadowed by own properties returned from mResolveOwnProperty.
-        desc.object().set(wrapper);
-
         return true;
       }
     }
@@ -2604,10 +2539,30 @@ bool NonVoidByteStringToJsval(JSContext* cx, const nsACString& str,
   return true;
 }
 
-void NormalizeUSVString(nsAString& aString) { EnsureUTF16Validity(aString); }
+bool NormalizeUSVString(nsAString& aString) {
+  return EnsureUTF16Validity(aString);
+}
 
-void NormalizeUSVString(binding_detail::FakeString& aString) {
-  EnsureUtf16ValiditySpan(aString);
+bool NormalizeUSVString(binding_detail::FakeString& aString) {
+  uint32_t upTo = Utf16ValidUpTo(aString);
+  uint32_t len = aString.Length();
+  if (upTo == len) {
+    return true;
+  }
+  // This is the part that's different from EnsureUTF16Validity with an
+  // nsAString& argument, because we don't want to ensure mutability in our
+  // BeginWriting() in the common case and nsAString's EnsureMutable is not
+  // public.  This is a little annoying; I wish we could just share the more or
+  // less identical code!
+  if (!aString.EnsureMutable()) {
+    return false;
+  }
+
+  char16_t* ptr = aString.BeginWriting();
+  auto span = MakeSpan(ptr, len);
+  span[upTo] = 0xFFFD;
+  EnsureUtf16ValiditySpan(span.From(upTo + 1));
+  return true;
 }
 
 bool ConvertJSValueToByteString(JSContext* cx, JS::Handle<JS::Value> v,
@@ -3284,6 +3239,16 @@ bool CreateGlobalOptionsWithXPConnect::PostCreateGlobal(
 
   xpc::RealmPrivate::Init(aGlobal, site);
   return true;
+}
+
+uint64_t GetWindowID(void* aGlobal) { return 0; }
+
+uint64_t GetWindowID(nsGlobalWindowInner* aGlobal) {
+  return aGlobal->WindowID();
+}
+
+uint64_t GetWindowID(DedicatedWorkerGlobalScope* aGlobal) {
+  return aGlobal->WindowID();
 }
 
 #ifdef DEBUG

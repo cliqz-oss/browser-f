@@ -21,7 +21,7 @@
 #include "nsPrintfCString.h"
 
 #if defined(XP_WIN)
-#include "npapi.h"
+#  include "npapi.h"
 #endif
 
 namespace mozilla {
@@ -402,13 +402,12 @@ bool WidgetEvent::CanBeSentToRemoteProcess() const {
     case eDrop:
       return true;
 #if defined(XP_WIN)
-    case ePluginInputEvent:
-      {
-        auto evt = static_cast<const NPEvent*>(AsPluginEvent()->mPluginEvent);
-        return evt && evt->event == WM_SETTINGCHANGE &&
-            (evt->wParam == SPI_SETWHEELSCROLLLINES ||
-             evt->wParam == SPI_SETWHEELSCROLLCHARS);
-      }
+    case ePluginInputEvent: {
+      auto evt = static_cast<const NPEvent*>(AsPluginEvent()->mPluginEvent);
+      return evt && evt->event == WM_SETTINGCHANGE &&
+             (evt->wParam == SPI_SETWHEELSCROLLLINES ||
+              evt->wParam == SPI_SETWHEELSCROLLCHARS);
+    }
 #endif
     default:
       return false;
@@ -750,24 +749,39 @@ void WidgetKeyboardEvent::InitAllEditCommands() {
   MOZ_ASSERT(!AreAllEditCommandsInitialized(),
              "Shouldn't be called two or more times");
 
-  InitEditCommandsFor(nsIWidget::NativeKeyBindingsForSingleLineEditor);
-  InitEditCommandsFor(nsIWidget::NativeKeyBindingsForMultiLineEditor);
-  InitEditCommandsFor(nsIWidget::NativeKeyBindingsForRichTextEditor);
+  DebugOnly<bool> okIgnored =
+      InitEditCommandsFor(nsIWidget::NativeKeyBindingsForSingleLineEditor);
+  NS_WARNING_ASSERTION(
+      okIgnored,
+      "InitEditCommandsFor(nsIWidget::NativeKeyBindingsForSingleLineEditor) "
+      "failed, but ignored");
+  okIgnored =
+      InitEditCommandsFor(nsIWidget::NativeKeyBindingsForMultiLineEditor);
+  NS_WARNING_ASSERTION(
+      okIgnored,
+      "InitEditCommandsFor(nsIWidget::NativeKeyBindingsForMultiLineEditor) "
+      "failed, but ignored");
+  okIgnored =
+      InitEditCommandsFor(nsIWidget::NativeKeyBindingsForRichTextEditor);
+  NS_WARNING_ASSERTION(
+      okIgnored,
+      "InitEditCommandsFor(nsIWidget::NativeKeyBindingsForRichTextEditor) "
+      "failed, but ignored");
 }
 
-void WidgetKeyboardEvent::InitEditCommandsFor(
+bool WidgetKeyboardEvent::InitEditCommandsFor(
     nsIWidget::NativeKeyBindingsType aType) {
   if (NS_WARN_IF(!mWidget) || NS_WARN_IF(!IsTrusted())) {
-    return;
+    return false;
   }
 
   bool& initialized = IsEditCommandsInitializedRef(aType);
   if (initialized) {
-    return;
+    return true;
   }
   nsTArray<CommandInt>& commands = EditCommandsRef(aType);
-  mWidget->GetEditCommands(aType, *this, commands);
-  initialized = true;
+  initialized = mWidget->GetEditCommands(aType, *this, commands);
+  return initialized;
 }
 
 bool WidgetKeyboardEvent::ExecuteEditCommands(
@@ -785,7 +799,9 @@ bool WidgetKeyboardEvent::ExecuteEditCommands(
     return false;
   }
 
-  InitEditCommandsFor(aType);
+  if (NS_WARN_IF(!InitEditCommandsFor(aType))) {
+    return false;
+  }
 
   const nsTArray<CommandInt>& commands = EditCommandsRef(aType);
   if (commands.IsEmpty()) {

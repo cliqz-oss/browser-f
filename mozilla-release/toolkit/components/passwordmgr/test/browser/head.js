@@ -1,7 +1,7 @@
 const DIRECTORY_PATH = "/browser/toolkit/components/passwordmgr/test/browser/";
 
 ChromeUtils.import("resource://gre/modules/LoginHelper.jsm", this);
-const { LoginManagerParent: LMP } = ChromeUtils.import(
+const { LoginManagerParent } = ChromeUtils.import(
   "resource://gre/modules/LoginManagerParent.jsm"
 );
 ChromeUtils.import("resource://testing-common/LoginTestUtils.jsm", this);
@@ -38,7 +38,8 @@ registerCleanupFunction(
     while ((notif = PopupNotifications.getNotification("password"))) {
       notif.remove();
     }
-    await Promise.resolve();
+    await closePopup(document.getElementById("contentAreaContextMenu"));
+    await closePopup(document.getElementById("PopupAutoComplete"));
   }
 );
 
@@ -87,6 +88,9 @@ function verifyLogins(expectedLogins = []) {
           "Check timePasswordChanged"
         );
       }
+      if (typeof expected.timeCreated !== "undefined") {
+        is(login.timeCreated, expected.timeCreated, "Check timeCreated");
+      }
     }
   }
   return allLogins;
@@ -107,7 +111,11 @@ async function submitFormAndGetResults(
   selectorValues,
   responseSelectors
 ) {
-  function contentSubmitForm([contentFormAction, contentSelectorValues]) {
+  async function contentSubmitForm([contentFormAction, contentSelectorValues]) {
+    const { WrapPrivileged } = ChromeUtils.import(
+      "resource://specialpowers/WrapPrivileged.jsm",
+      this
+    );
     let doc = content.document;
     let form = doc.querySelector("form");
     if (contentFormAction) {
@@ -115,9 +123,20 @@ async function submitFormAndGetResults(
     }
     for (let [sel, value] of Object.entries(contentSelectorValues)) {
       try {
-        doc.querySelector(sel).setUserInput(value);
+        let field = doc.querySelector(sel);
+        let gotInput = ContentTaskUtils.waitForEvent(
+          field,
+          "input",
+          "Got input event on " + sel
+        );
+        // we don't get an input event if the new value == the old
+        field.value = "###";
+        WrapPrivileged.wrap(field).setUserInput(value);
+        await gotInput;
       } catch (ex) {
-        throw new Error(`submitForm: Couldn't set value of field at: ${sel}`);
+        throw new Error(
+          `submitForm: Couldn't set value of field at: ${sel}: ${ex.message}`
+        );
       }
     }
     form.submit();
@@ -304,6 +323,25 @@ async function getCaptureDoorhangerThatMayOpen(
   return notif;
 }
 
+async function waitForDoorhanger(browser, type) {
+  await TestUtils.waitForCondition(() => {
+    let notif = PopupNotifications.getNotification("password", browser);
+    return notif && notif.options.passwordNotificationType == type;
+  }, `Waiting for a ${type} notification`);
+}
+
+async function hideDoorhangerPopup() {
+  info("hideDoorhangerPopup");
+  if (!PopupNotifications.isPanelOpen) {
+    return;
+  }
+  let { panel } = PopupNotifications;
+  let promiseHidden = BrowserTestUtils.waitForEvent(panel, "popuphidden");
+  panel.hidePopup();
+  await promiseHidden;
+  info("got popuphidden from notification panel");
+}
+
 function getDoorhangerButton(aPopup, aButtonIndex) {
   let notifications = aPopup.owner.panel.children;
   ok(!!notifications.length, "at least one notification displayed");
@@ -385,9 +423,16 @@ async function checkDoorhangerUsernamePassword(username, password) {
  *        An optional string value to replace whatever is in the password field
  * @param {string} [newValues.username = undefined]
  *        An optional string value to replace whatever is in the username field
+ * @param {Object} [popupNotifications = PopupNotifications]
  */
-async function updateDoorhangerInputValues(newValues) {
-  let { panel } = PopupNotifications;
+async function updateDoorhangerInputValues(
+  newValues,
+  popupNotifications = PopupNotifications
+) {
+  let { panel } = popupNotifications;
+  if (popupNotifications.panel.state !== "open") {
+    await BrowserTestUtils.waitForEvent(popupNotifications.panel, "popupshown");
+  }
   is(panel.state, "open", "Check the doorhanger is already open");
 
   let notifElem = panel.childNodes[0];
@@ -499,6 +544,52 @@ async function openACPopup(popup, browser, inputSelector) {
   return shown;
 }
 
+async function closePopup(popup) {
+  if (popup.state == "closed") {
+    await Promise.resolve();
+  } else {
+    let promiseHidden = BrowserTestUtils.waitForEvent(popup, "popuphidden");
+    popup.hidePopup();
+    await promiseHidden;
+  }
+}
+
+async function fillGeneratedPasswordFromOpenACPopup(
+  browser,
+  passwordInputSelector
+) {
+  let popup = browser.ownerDocument.getElementById("PopupAutoComplete");
+  let item;
+
+  await TestUtils.waitForCondition(() => {
+    item = popup.querySelector(`[originaltype="generatedPassword"]`);
+    return item && !EventUtils.isHidden(item);
+  }, "Waiting for item to become visible");
+
+  let inputEventPromise = ContentTask.spawn(
+    browser,
+    [passwordInputSelector],
+    async function waitForInput(inputSelector) {
+      let passwordInput = content.document.querySelector(inputSelector);
+      await ContentTaskUtils.waitForEvent(
+        passwordInput,
+        "input",
+        "Password input value changed"
+      );
+    }
+  );
+
+  let passwordGeneratedPromise = listenForTestNotification(
+    "PasswordFilledOrEdited"
+  );
+
+  info("Clicking the generated password AC item");
+  EventUtils.synthesizeMouseAtCenter(item, {});
+  info("Waiting for the content input value to change");
+  await inputEventPromise;
+  await passwordGeneratedPromise;
+}
+
 // Contextmenu functions //
 
 /**
@@ -562,6 +653,30 @@ async function openPasswordContextMenu(
 }
 
 /**
+ * Listen for the login manager test notification specified by
+ * expectedMessage. Possible messages:
+ *   FormProcessed - a form was processed after page load.
+ *   FormSubmit - a form was just submitted.
+ *   PasswordFilledOrEdited - a password was filled in or modified.
+ *
+ * The count is the number of that messages to wait for. This should
+ * typically be used when waiting for the FormProcessed message for a page
+ * that has subframes to ensure all have been handled.
+ *
+ * Returns a promise that will passed additional data specific to the message.
+ */
+function listenForTestNotification(expectedMessage, count = 1) {
+  return new Promise(resolve => {
+    LoginManagerParent.setListenerForTests((msg, data) => {
+      if (msg == expectedMessage && --count == 0) {
+        LoginManagerParent.setListenerForTests(null);
+        resolve(data);
+      }
+    });
+  });
+}
+
+/**
  * Use the contextmenu to fill a field with a generated password
  */
 async function doFillGeneratedPasswordContextMenuItem(browser, passwordInput) {
@@ -587,35 +702,16 @@ async function doFillGeneratedPasswordContextMenuItem(browser, passwordInput) {
     "separator is visible"
   );
 
-  let passwordChangedPromise = ContentTask.spawn(
-    browser,
-    [passwordInput],
-    async function(passwordInput) {
-      let input = content.document.querySelector(passwordInput);
-      await ContentTaskUtils.waitForEvent(input, "input");
-    }
-  );
-  let messagePromise = new Promise(resolve => {
-    const eventName = "PasswordManager:onGeneratedPasswordFilledOrEdited";
-    browser.messageManager.addMessageListener(eventName, function mgsHandler(
-      msg
-    ) {
-      if (msg.target != browser) {
-        return;
-      }
-      browser.messageManager.removeMessageListener(eventName, mgsHandler);
-      info(
-        "doFillGeneratedPasswordContextMenuItem: Got onGeneratedPasswordFilledOrEdited, resolving"
-      );
-      // allow LMP to handle the message, then resolve
-      SimpleTest.executeSoon(resolve);
-    });
+  let popup = document.getElementById("PopupAutoComplete");
+  ok(popup, "Got popup");
+  let promiseShown = BrowserTestUtils.waitForEvent(popup, "popupshown");
+
+  await new Promise(resolve => {
+    SimpleTest.executeSoon(resolve);
   });
 
   EventUtils.synthesizeMouseAtCenter(generatedPasswordItem, {});
-  info(
-    "doFillGeneratedPasswordContextMenuItem: Waiting for content input event"
-  );
-  await passwordChangedPromise;
-  await messagePromise;
+
+  await promiseShown;
+  await fillGeneratedPasswordFromOpenACPopup(browser, passwordInput);
 }

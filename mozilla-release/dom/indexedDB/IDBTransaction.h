@@ -25,6 +25,7 @@ namespace dom {
 
 class DOMException;
 class DOMStringList;
+class IDBCursor;
 class IDBDatabase;
 class IDBObjectStore;
 class IDBOpenDBRequest;
@@ -47,29 +48,31 @@ class IDBTransaction final : public DOMEventTargetHelper, public nsIRunnable {
   friend class indexedDB::BackgroundRequestChild;
 
  public:
-  enum Mode {
-    READ_ONLY = 0,
-    READ_WRITE,
-    READ_WRITE_FLUSH,
-    CLEANUP,
-    VERSION_CHANGE,
+  enum struct Mode {
+    ReadOnly = 0,
+    ReadWrite,
+    ReadWriteFlush,
+    Cleanup,
+    VersionChange,
 
     // Only needed for IPC serialization helper, should never be used in code.
-    MODE_INVALID
+    Invalid
   };
 
-  enum ReadyState { INITIAL = 0, LOADING, COMMITTING, DONE };
+  enum struct ReadyState { Active, Inactive, Committing, Finished };
 
  private:
+  // TODO: Only non-const because of Bug 1575173.
   RefPtr<IDBDatabase> mDatabase;
   RefPtr<DOMException> mError;
-  nsTArray<nsString> mObjectStoreNames;
+  const nsTArray<nsString> mObjectStoreNames;
   nsTArray<RefPtr<IDBObjectStore>> mObjectStores;
   nsTArray<RefPtr<IDBObjectStore>> mDeletedObjectStores;
   RefPtr<StrongWorkerRef> mWorkerRef;
+  nsTArray<IDBCursor*> mCursors;
 
-  // Tagged with mMode. If mMode is VERSION_CHANGE then mBackgroundActor will be
-  // a BackgroundVersionChangeTransactionChild. Otherwise it will be a
+  // Tagged with mMode. If mMode is Mode::VersionChange then mBackgroundActor
+  // will be a BackgroundVersionChangeTransactionChild. Otherwise it will be a
   // BackgroundTransactionChild.
   union {
     indexedDB::BackgroundTransactionChild* mNormalBackgroundActor;
@@ -79,22 +82,34 @@ class IDBTransaction final : public DOMEventTargetHelper, public nsIRunnable {
 
   const int64_t mLoggingSerialNumber;
 
-  // Only used for VERSION_CHANGE transactions.
+  // Only used for Mode::VersionChange transactions.
   int64_t mNextObjectStoreId;
   int64_t mNextIndexId;
 
-  nsresult mAbortCode;
-  uint32_t mPendingRequestCount;
+  nsresult mAbortCode;  ///< The result that caused the transaction to be
+                        ///< aborted, or NS_OK if not aborted.
+                        ///< NS_ERROR_DOM_INDEXEDDB_ABORT_ERR indicates that the
+                        ///< user explicitly requested aborting. Should be
+                        ///< renamed to mResult or so, because it is actually
+                        ///< used to check if the transaction has been aborted.
+  uint32_t mPendingRequestCount;  ///< Counted via OnNewRequest and
+                                  ///< OnRequestFinished, so that the
+                                  ///< transaction can auto-commit when the last
+                                  ///< pending request finished.
 
-  nsString mFilename;
-  uint32_t mLineNo;
-  uint32_t mColumn;
+  const nsString mFilename;
+  const uint32_t mLineNo;
+  const uint32_t mColumn;
 
-  ReadyState mReadyState;
-  Mode mMode;
+  ReadyState mReadyState = ReadyState::Active;
+  bool mStarted = false;
+  const Mode mMode;
 
-  bool mCreating;
-  bool mRegistered;
+  bool mCreating;    ///< Set between successful creation until the transaction
+                     ///< has run on the event-loop.
+  bool mRegistered;  ///< Whether mDatabase->RegisterTransaction() has been
+                     ///< called (which may not be the case if construction was
+                     ///< incomplete).
   bool mAbortedByScript;
   bool mNotedActiveTransaction;
 
@@ -104,13 +119,13 @@ class IDBTransaction final : public DOMEventTargetHelper, public nsIRunnable {
 #endif
 
  public:
-  static already_AddRefed<IDBTransaction> CreateVersionChange(
+  static MOZ_MUST_USE RefPtr<IDBTransaction> CreateVersionChange(
       IDBDatabase* aDatabase,
       indexedDB::BackgroundVersionChangeTransactionChild* aActor,
       IDBOpenDBRequest* aOpenRequest, int64_t aNextObjectStoreId,
       int64_t aNextIndexId);
 
-  static already_AddRefed<IDBTransaction> Create(
+  static MOZ_MUST_USE RefPtr<IDBTransaction> Create(
       JSContext* aCx, IDBDatabase* aDatabase,
       const nsTArray<nsString>& aObjectStoreNames, Mode aMode);
 
@@ -130,7 +145,7 @@ class IDBTransaction final : public DOMEventTargetHelper, public nsIRunnable {
   void ClearBackgroundActor() {
     AssertIsOnOwningThread();
 
-    if (mMode == VERSION_CHANGE) {
+    if (mMode == Mode::VersionChange) {
       mBackgroundActor.mVersionChangeBackgroundActor = nullptr;
     } else {
       mBackgroundActor.mNormalBackgroundActor = nullptr;
@@ -149,29 +164,58 @@ class IDBTransaction final : public DOMEventTargetHelper, public nsIRunnable {
 
   void RefreshSpec(bool aMayDelete);
 
-  bool IsOpen() const;
+  bool CanAcceptRequests() const;
 
-  bool IsCommittingOrDone() const {
+  bool IsCommittingOrFinished() const {
     AssertIsOnOwningThread();
 
-    return mReadyState == COMMITTING || mReadyState == DONE;
+    return mReadyState == ReadyState::Committing ||
+           mReadyState == ReadyState::Finished;
   }
 
-  bool IsDone() const {
+  bool IsFinished() const {
     AssertIsOnOwningThread();
 
-    return mReadyState == DONE;
+    return mReadyState == ReadyState::Finished;
   }
 
   bool IsWriteAllowed() const {
     AssertIsOnOwningThread();
-    return mMode == READ_WRITE || mMode == READ_WRITE_FLUSH ||
-           mMode == CLEANUP || mMode == VERSION_CHANGE;
+    return mMode == Mode::ReadWrite || mMode == Mode::ReadWriteFlush ||
+           mMode == Mode::Cleanup || mMode == Mode::VersionChange;
   }
 
   bool IsAborted() const {
     AssertIsOnOwningThread();
     return NS_FAILED(mAbortCode);
+  }
+
+  auto TemporarilyProceedToInactive() {
+    AssertIsOnOwningThread();
+    MOZ_ASSERT(mReadyState == ReadyState::Active);
+    mReadyState = ReadyState::Inactive;
+
+    struct AutoRestoreState {
+      IDBTransaction& mOwner;
+#ifdef DEBUG
+      uint32_t mSavedPendingRequestCount;
+#endif
+
+      ~AutoRestoreState() {
+        mOwner.AssertIsOnOwningThread();
+        MOZ_ASSERT(mOwner.mReadyState == ReadyState::Inactive);
+        MOZ_ASSERT(mOwner.mPendingRequestCount == mSavedPendingRequestCount);
+
+        mOwner.mReadyState = ReadyState::Active;
+      }
+    };
+
+    return AutoRestoreState{*this
+#ifdef DEBUG
+                            ,
+                            mPendingRequestCount
+#endif
+    };
   }
 
   nsresult AbortCode() const {
@@ -193,14 +237,13 @@ class IDBTransaction final : public DOMEventTargetHelper, public nsIRunnable {
     return mDatabase;
   }
 
-  IDBDatabase* Db() const { return Database(); }
-
+  // Only for use by ProfilerHelpers.h
   const nsTArray<nsString>& ObjectStoreNamesInternal() const {
     AssertIsOnOwningThread();
     return mObjectStoreNames;
   }
 
-  already_AddRefed<IDBObjectStore> CreateObjectStore(
+  MOZ_MUST_USE RefPtr<IDBObjectStore> CreateObjectStore(
       const indexedDB::ObjectStoreSpec& aSpec);
 
   void DeleteObjectStore(int64_t aObjectStoreId);
@@ -217,7 +260,7 @@ class IDBTransaction final : public DOMEventTargetHelper, public nsIRunnable {
 
   void Abort(IDBRequest* aRequest);
 
-  void Abort(nsresult aAbortCode);
+  void Abort(nsresult aErrorCode);
 
   int64_t LoggingSerialNumber() const {
     AssertIsOnOwningThread();
@@ -227,12 +270,35 @@ class IDBTransaction final : public DOMEventTargetHelper, public nsIRunnable {
 
   nsIGlobalObject* GetParentObject() const;
 
+  void FireCompleteOrAbortEvents(nsresult aResult);
+
+  // Only for Mode::VersionChange transactions.
+  int64_t NextObjectStoreId();
+
+  // Only for Mode::VersionChange transactions.
+  int64_t NextIndexId();
+
+  void InvalidateCursorCaches();
+  void RegisterCursor(IDBCursor* aCursor);
+  void UnregisterCursor(IDBCursor* aCursor);
+
+  NS_DECL_ISUPPORTS_INHERITED
+  NS_DECL_NSIRUNNABLE
+  NS_DECL_CYCLE_COLLECTION_CLASS_INHERITED(IDBTransaction, DOMEventTargetHelper)
+
+  // nsWrapperCache
+  JSObject* WrapObject(JSContext* aCx,
+                       JS::Handle<JSObject*> aGivenProto) override;
+
+  // Methods bound via WebIDL.
+  IDBDatabase* Db() const { return Database(); }
+
   IDBTransactionMode GetMode(ErrorResult& aRv) const;
 
   DOMException* GetError() const;
 
-  already_AddRefed<IDBObjectStore> ObjectStore(const nsAString& aName,
-                                               ErrorResult& aRv);
+  MOZ_MUST_USE RefPtr<IDBObjectStore> ObjectStore(const nsAString& aName,
+                                                  ErrorResult& aRv);
 
   void Abort(ErrorResult& aRv);
 
@@ -240,34 +306,24 @@ class IDBTransaction final : public DOMEventTargetHelper, public nsIRunnable {
   IMPL_EVENT_HANDLER(complete)
   IMPL_EVENT_HANDLER(error)
 
-  already_AddRefed<DOMStringList> ObjectStoreNames() const;
-
-  void FireCompleteOrAbortEvents(nsresult aResult);
-
-  // Only for VERSION_CHANGE transactions.
-  int64_t NextObjectStoreId();
-
-  // Only for VERSION_CHANGE transactions.
-  int64_t NextIndexId();
-
-  NS_DECL_ISUPPORTS_INHERITED
-  NS_DECL_NSIRUNNABLE
-  NS_DECL_CYCLE_COLLECTION_CLASS_INHERITED(IDBTransaction, DOMEventTargetHelper)
-
-  // nsWrapperCache
-  virtual JSObject* WrapObject(JSContext* aCx,
-                               JS::Handle<JSObject*> aGivenProto) override;
+  MOZ_MUST_USE RefPtr<DOMStringList> ObjectStoreNames() const;
 
   // EventTarget
   void GetEventTargetParent(EventChainPreVisitor& aVisitor) override;
 
  private:
+  struct CreatedFromFactoryFunction {};
+
+ public:
   IDBTransaction(IDBDatabase* aDatabase,
-                 const nsTArray<nsString>& aObjectStoreNames, Mode aMode);
+                 const nsTArray<nsString>& aObjectStoreNames, Mode aMode,
+                 nsString aFilename, uint32_t aLineNo, uint32_t aColumn,
+                 CreatedFromFactoryFunction aDummy);
+
+ private:
   ~IDBTransaction();
 
-  void AbortInternal(nsresult aAbortCode,
-                     already_AddRefed<DOMException> aError);
+  void AbortInternal(nsresult aAbortCode, RefPtr<DOMException> aError);
 
   void SendCommit();
 
@@ -279,7 +335,12 @@ class IDBTransaction final : public DOMEventTargetHelper, public nsIRunnable {
 
   void OnNewRequest();
 
-  void OnRequestFinished(bool aActorDestroyedNormally);
+  void OnRequestFinished(bool aRequestCompletedSuccessfully);
+
+  template <typename Func>
+  auto DoWithTransactionChild(const Func& aFunc) const;
+
+  bool HasTransactionChild() const;
 };
 
 }  // namespace dom

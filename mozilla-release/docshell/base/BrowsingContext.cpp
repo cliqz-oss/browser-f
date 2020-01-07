@@ -13,10 +13,12 @@
 #include "mozilla/dom/BrowsingContextBinding.h"
 #include "mozilla/dom/ContentChild.h"
 #include "mozilla/dom/ContentParent.h"
+#include "mozilla/dom/Document.h"
 #include "mozilla/dom/Element.h"
 #include "mozilla/dom/Location.h"
 #include "mozilla/dom/LocationBinding.h"
 #include "mozilla/dom/PopupBlocker.h"
+#include "mozilla/dom/ScriptSettings.h"
 #include "mozilla/dom/StructuredCloneTags.h"
 #include "mozilla/dom/UserActivationIPCUtils.h"
 #include "mozilla/dom/WindowBinding.h"
@@ -28,17 +30,22 @@
 #include "mozilla/Components.h"
 #include "mozilla/HashTable.h"
 #include "mozilla/Logging.h"
+#include "mozilla/Services.h"
+#include "mozilla/StaticPrefs_page_load.h"
 #include "mozilla/StaticPtr.h"
 #include "nsIURIFixup.h"
 
 #include "nsDocShell.h"
+#include "nsFocusManager.h"
 #include "nsGlobalWindowOuter.h"
+#include "nsIObserverService.h"
 #include "nsContentUtils.h"
 #include "nsScriptError.h"
 #include "nsThreadUtils.h"
 #include "xpcprivate.h"
 
 #include "AutoplayPolicy.h"
+#include "GVAutoplayRequestStatusIPC.h"
 
 extern mozilla::LazyLogModule gAutoplayPermissionLog;
 
@@ -115,7 +122,9 @@ already_AddRefed<BrowsingContext> BrowsingContext::Create(
 
   // Determine which BrowsingContextGroup this context should be created in.
   RefPtr<BrowsingContextGroup> group =
-      BrowsingContextGroup::Select(aParent, aOpener);
+      (aType == Type::Chrome)
+          ? do_AddRef(BrowsingContextGroup::GetChromeGroup())
+          : BrowsingContextGroup::Select(aParent, aOpener);
 
   RefPtr<BrowsingContext> context;
   if (XRE_IsParentProcess()) {
@@ -142,6 +151,8 @@ already_AddRefed<BrowsingContext> BrowsingContext::Create(
     // CORPP 3.1.3 https://mikewest.github.io/corpp/#integration-html
     context->mEmbedderPolicy = inherit->mEmbedderPolicy;
   }
+
+  nsContentUtils::GenerateUUIDInPlace(context->mHistoryID);
 
   Register(context);
 
@@ -203,6 +214,8 @@ BrowsingContext::BrowsingContext(BrowsingContext* aParent,
   MOZ_RELEASE_ASSERT(!mParent || mParent->Group() == mGroup);
   MOZ_RELEASE_ASSERT(mBrowsingContextId != 0);
   MOZ_RELEASE_ASSERT(mGroup);
+
+  mIsActive = true;
 }
 
 void BrowsingContext::SetDocShell(nsIDocShell* aDocShell) {
@@ -359,6 +372,12 @@ void BrowsingContext::Detach(bool aFromIPC) {
   mGroup->Unregister(this);
   mIsDiscarded = true;
 
+  nsCOMPtr<nsIObserverService> obs = services::GetObserverService();
+  if (obs) {
+    obs->NotifyObservers(ToSupports(this), "browsing-context-discarded",
+                         nullptr);
+  }
+
   // NOTE: Doesn't use SetClosed, as it will be set in all processes
   // automatically by calls to Detach()
   mClosed = true;
@@ -474,7 +493,16 @@ void BrowsingContext::GetChildren(Children& aChildren) {
 // See
 // https://html.spec.whatwg.org/multipage/browsers.html#the-rules-for-choosing-a-browsing-context-given-a-browsing-context-name
 BrowsingContext* BrowsingContext::FindWithName(
-    const nsAString& aName, BrowsingContext& aRequestingContext) {
+    const nsAString& aName, bool aUseEntryGlobalForAccessCheck) {
+  RefPtr<BrowsingContext> requestingContext = this;
+  if (aUseEntryGlobalForAccessCheck) {
+    if (nsCOMPtr<nsIDocShell> caller = do_GetInterface(GetEntryGlobal())) {
+      if (caller->GetBrowsingContext()) {
+        requestingContext = caller->GetBrowsingContext();
+      }
+    }
+  }
+
   BrowsingContext* found = nullptr;
   if (aName.IsEmpty()) {
     // You can't find a browsing context with an empty name.
@@ -483,10 +511,10 @@ BrowsingContext* BrowsingContext::FindWithName(
     // Just return null. Caller must handle creating a new window with
     // a blank name.
     found = nullptr;
-  } else if (IsSpecialName(aName)) {
-    found = FindWithSpecialName(aName, aRequestingContext);
+  } else if (nsContentUtils::IsSpecialName(aName)) {
+    found = FindWithSpecialName(aName, *requestingContext);
   } else if (BrowsingContext* child =
-                 FindWithNameInSubtree(aName, aRequestingContext)) {
+                 FindWithNameInSubtree(aName, *requestingContext)) {
     found = child;
   } else {
     BrowsingContext* current = this;
@@ -500,7 +528,7 @@ BrowsingContext* BrowsingContext::FindWithName(
         // contexts in the same browsing context group.
         siblings = &mGroup->Toplevels();
       } else if (parent->NameEquals(aName) &&
-                 aRequestingContext.CanAccess(parent) &&
+                 requestingContext->CanAccess(parent) &&
                  parent->IsTargetable()) {
         found = parent;
         break;
@@ -514,7 +542,7 @@ BrowsingContext* BrowsingContext::FindWithName(
         }
 
         if (BrowsingContext* relative =
-                sibling->FindWithNameInSubtree(aName, aRequestingContext)) {
+                sibling->FindWithNameInSubtree(aName, *requestingContext)) {
           found = relative;
           // Breaks the outer loop
           parent = nullptr;
@@ -528,7 +556,7 @@ BrowsingContext* BrowsingContext::FindWithName(
 
   // Helpers should perform access control checks, which means that we
   // only need to assert that we can access found.
-  MOZ_DIAGNOSTIC_ASSERT(!found || aRequestingContext.CanAccess(found));
+  MOZ_DIAGNOSTIC_ASSERT(!found || requestingContext->CanAccess(found));
 
   return found;
 }
@@ -548,14 +576,6 @@ BrowsingContext* BrowsingContext::FindChildWithName(
   }
 
   return nullptr;
-}
-
-/* static */
-bool BrowsingContext::IsSpecialName(const nsAString& aName) {
-  return (aName.LowerCaseEqualsLiteral("_self") ||
-          aName.LowerCaseEqualsLiteral("_parent") ||
-          aName.LowerCaseEqualsLiteral("_top") ||
-          aName.LowerCaseEqualsLiteral("_blank"));
 }
 
 BrowsingContext* BrowsingContext::FindWithSpecialName(
@@ -648,6 +668,8 @@ BrowsingContext::~BrowsingContext() {
   MOZ_DIAGNOSTIC_ASSERT(!mParent || !mParent->mChildren.Contains(this));
   MOZ_DIAGNOSTIC_ASSERT(!mGroup || !mGroup->Toplevels().Contains(this));
   MOZ_DIAGNOSTIC_ASSERT(!mGroup || !mGroup->IsContextCached(this));
+
+  mDeprioritizedLoadRunner.clear();
 
   if (sBrowsingContexts) {
     sBrowsingContexts->Remove(Id());
@@ -833,37 +855,6 @@ void BrowsingContext::Location(JSContext* aCx,
   }
 }
 
-void BrowsingContext::LoadURI(const nsAString& aURI,
-                              const LoadURIOptions& aOptions,
-                              ErrorResult& aError) {
-  nsCOMPtr<nsIURIFixup> uriFixup = components::URIFixup::Service();
-
-  nsCOMPtr<nsISupports> consumer = mDocShell.get();
-  if (!consumer) {
-    consumer = mEmbedderElement;
-  }
-  if (!consumer) {
-    aError.Throw(NS_ERROR_UNEXPECTED);
-    return;
-  }
-
-  RefPtr<nsDocShellLoadState> loadState;
-  nsresult rv = nsDocShellLoadState::CreateFromLoadURIOptions(
-      consumer, uriFixup, aURI, aOptions, getter_AddRefs(loadState));
-
-  if (rv == NS_ERROR_MALFORMED_URI) {
-    DisplayLoadError(aURI);
-    return;
-  }
-
-  if (NS_FAILED(rv)) {
-    aError.Throw(rv);
-    return;
-  }
-
-  LoadURI(nullptr, loadState, true);
-}
-
 nsresult BrowsingContext::LoadURI(BrowsingContext* aAccessor,
                                   nsDocShellLoadState* aLoadState,
                                   bool aSetNavigating) {
@@ -900,6 +891,57 @@ nsresult BrowsingContext::LoadURI(BrowsingContext* aAccessor,
   return NS_OK;
 }
 
+nsresult BrowsingContext::InternalLoad(BrowsingContext* aAccessor,
+                                       nsDocShellLoadState* aLoadState,
+                                       nsIDocShell** aDocShell,
+                                       nsIRequest** aRequest) {
+  if (IsDiscarded() || (aAccessor && aAccessor->IsDiscarded())) {
+    return NS_OK;
+  }
+
+  bool isActive =
+      aAccessor->GetIsActive() && !mIsActive &&
+      !Preferences::GetBool("browser.tabs.loadDivertedInBackground", false);
+  if (mDocShell) {
+    nsresult rv = nsDocShell::Cast(mDocShell)->InternalLoad(
+        aLoadState, aDocShell, aRequest);
+    NS_ENSURE_SUCCESS(rv, rv);
+
+    // Switch to target tab if we're currently focused window.
+    // Take loadDivertedInBackground into account so the behavior would be
+    // the same as how the tab first opened.
+    nsCOMPtr<nsPIDOMWindowOuter> domWin = GetDOMWindow();
+    if (isActive && domWin) {
+      nsFocusManager::FocusWindow(domWin);
+    }
+
+    // Else we ran out of memory, or were a popup and got blocked,
+    // or something.
+
+    return rv;
+  }
+
+  if (!aAccessor && XRE_IsParentProcess()) {
+    Unused << Canonical()->GetCurrentWindowGlobal()->SendInternalLoadInChild(
+        aLoadState, isActive);
+  } else {
+    MOZ_DIAGNOSTIC_ASSERT(aAccessor);
+    MOZ_DIAGNOSTIC_ASSERT(aAccessor->Group() == Group());
+
+    if (!aAccessor->CanAccess(this)) {
+      return NS_ERROR_DOM_PROP_ACCESS_DENIED;
+    }
+
+    nsCOMPtr<nsPIDOMWindowOuter> win(aAccessor->GetDOMWindow());
+    MOZ_DIAGNOSTIC_ASSERT(win);
+    if (WindowGlobalChild* wgc =
+            win->GetCurrentInnerWindow()->GetWindowGlobalChild()) {
+      wgc->SendInternalLoad(this, aLoadState);
+    }
+  }
+  return NS_OK;
+}
+
 void BrowsingContext::DisplayLoadError(const nsAString& aURI) {
   MOZ_LOG(GetLog(), LogLevel::Debug, ("DisplayLoadError"));
   MOZ_DIAGNOSTIC_ASSERT(!IsDiscarded());
@@ -925,11 +967,17 @@ WindowProxyHolder BrowsingContext::GetFrames(ErrorResult& aError) {
 }
 
 void BrowsingContext::Close(CallerType aCallerType, ErrorResult& aError) {
+  if (mIsDiscarded) {
+    return;
+  }
   // FIXME We need to set mClosed, but only once we're sending the
   //       DOMWindowClose event (which happens in the process where the
   //       document for this browsing context is loaded).
   //       See https://bugzilla.mozilla.org/show_bug.cgi?id=1516343.
-  if (ContentChild* cc = ContentChild::GetSingleton()) {
+  if (GetDOMWindow()) {
+    nsGlobalWindowOuter::Cast(GetDOMWindow())
+        ->CloseOuter(aCallerType == CallerType::System);
+  } else if (ContentChild* cc = ContentChild::GetSingleton()) {
     cc->SendWindowClose(this, aCallerType == CallerType::System);
   } else if (ContentParent* cp = Canonical()->GetContentParent()) {
     Unused << cp->SendWindowClose(this, aCallerType == CallerType::System);
@@ -1011,12 +1059,16 @@ void BrowsingContext::PostMessageMoz(JSContext* aCx,
   data.targetOrigin() = aTargetOrigin;
   data.subjectPrincipal() = &aSubjectPrincipal;
   RefPtr<nsGlobalWindowInner> callerInnerWindow;
+  // We don't need to get the caller's agentClusterId since that is used for
+  // checking whehter it's okay to sharing memory (and it's not allowed to share
+  // memory cross processes)
   if (!nsGlobalWindowOuter::GatherPostMessageData(
           aCx, aTargetOrigin, getter_AddRefs(sourceBc), data.origin(),
           getter_AddRefs(data.targetOriginURI()),
           getter_AddRefs(data.callerPrincipal()),
           getter_AddRefs(callerInnerWindow),
-          getter_AddRefs(data.callerDocumentURI()), aError)) {
+          getter_AddRefs(data.callerDocumentURI()),
+          /* aCallerAgentClusterId */ nullptr, aError)) {
     return;
   }
   data.source() = sourceBc;
@@ -1185,6 +1237,26 @@ void BrowsingContext::StartDelayedAutoplayMediaComponents() {
   mDocShell->StartDelayedAutoplayMediaComponents();
 }
 
+void BrowsingContext::ResetGVAutoplayRequestStatus() {
+  MOZ_ASSERT(!GetParent(),
+             "Should only set GVAudibleAutoplayRequestStatus in the top-level "
+             "browsing context");
+  SetGVAudibleAutoplayRequestStatus(GVAutoplayRequestStatus::eUNKNOWN);
+  SetGVInaudibleAutoplayRequestStatus(GVAutoplayRequestStatus::eUNKNOWN);
+}
+
+void BrowsingContext::DidSetGVAudibleAutoplayRequestStatus() {
+  MOZ_ASSERT(!GetParent(),
+             "Should only set GVAudibleAutoplayRequestStatus in the top-level "
+             "browsing context");
+}
+
+void BrowsingContext::DidSetGVInaudibleAutoplayRequestStatus() {
+  MOZ_ASSERT(!GetParent(),
+             "Should only set GVAudibleAutoplayRequestStatus in the top-level "
+             "browsing context");
+}
+
 void BrowsingContext::DidSetUserActivationState() {
   MOZ_ASSERT_IF(!mIsInProcess, mUserGestureStart.IsNull());
   USER_ACTIVATION_LOG("Set user gesture activation %" PRIu8
@@ -1279,6 +1351,49 @@ void BrowsingContext::DidSetIsPopupSpam() {
   if (mIsPopupSpam) {
     PopupBlocker::RegisterOpenPopupSpam();
   }
+}
+
+bool BrowsingContext::IsLoading() {
+  if (GetLoading()) {
+    return true;
+  }
+
+  // If we're in the same process as the page, we're possibly just
+  // updating the flag.
+  nsIDocShell* shell = GetDocShell();
+  if (shell) {
+    Document* doc = shell->GetDocument();
+    return doc && doc->GetReadyStateEnum() < Document::READYSTATE_COMPLETE;
+  }
+
+  return false;
+}
+
+void BrowsingContext::DidSetLoading() {
+  if (mLoading) {
+    return;
+  }
+
+  while (!mDeprioritizedLoadRunner.isEmpty()) {
+    nsCOMPtr<nsIRunnable> runner = mDeprioritizedLoadRunner.popFirst();
+    NS_DispatchToCurrentThread(runner.forget());
+  }
+
+  if (StaticPrefs::dom_separate_event_queue_for_post_message_enabled() &&
+      Top() == this) {
+    Group()->FlushPostMessageEvents();
+  }
+}
+
+void BrowsingContext::AddDeprioritizedLoadRunner(nsIRunnable* aRunner) {
+  MOZ_ASSERT(IsLoading());
+  MOZ_ASSERT(Top() == this);
+
+  RefPtr<DeprioritizedLoadRunner> runner = new DeprioritizedLoadRunner(aRunner);
+  mDeprioritizedLoadRunner.insertBack(runner);
+  NS_DispatchToCurrentThreadQueue(
+      runner.forget(), StaticPrefs::page_load_deprioritization_period(),
+      EventQueuePriority::Idle);
 }
 
 }  // namespace dom

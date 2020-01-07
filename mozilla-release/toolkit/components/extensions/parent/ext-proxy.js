@@ -52,6 +52,7 @@ ExtensionPreferencesManager.addSetting("proxy.settings", {
     "network.proxy.no_proxies_on",
     "network.proxy.autoconfig_url",
     "signon.autologin.proxy",
+    "network.http.proxy.respect-be-conservative",
   ],
 
   setCallback(value) {
@@ -63,6 +64,7 @@ ExtensionPreferencesManager.addSetting("proxy.settings", {
       "network.proxy.share_proxy_settings": value.httpProxyAll,
       "network.proxy.socks_version": value.socksVersion,
       "network.proxy.no_proxies_on": value.passthrough,
+      "network.http.proxy.respect-be-conservative": value.respectBeConservative,
     };
 
     for (let prop of ["http", "ftp", "ssl", "socks"]) {
@@ -171,10 +173,10 @@ this.proxy = class extends ExtensionAPI {
         }).api(),
 
         settings: Object.assign(
-          getSettingsAPI(
-            extension.id,
-            "proxy.settings",
-            () => {
+          getSettingsAPI({
+            context,
+            name: "proxy.settings",
+            callback() {
               let prefValue = Services.prefs.getIntPref("network.proxy.type");
               let proxyConfig = {
                 proxyType: Array.from(PROXY_TYPES_MAP.entries()).find(
@@ -196,6 +198,9 @@ this.proxy = class extends ExtensionAPI {
                 passthrough: Services.prefs.getCharPref(
                   "network.proxy.no_proxies_on"
                 ),
+                respectBeConservative: Services.prefs.getBoolPref(
+                  "network.http.proxy.respect-be-conservative"
+                ),
               };
 
               for (let prop of ["http", "ftp", "ssl", "socks"]) {
@@ -209,16 +214,14 @@ this.proxy = class extends ExtensionAPI {
               return proxyConfig;
             },
             // proxy.settings is unsupported on android.
-            undefined,
-            false,
-            () => {
+            validate() {
               if (AppConstants.platform == "android") {
                 throw new ExtensionError(
                   `proxy.settings is not supported on android.`
                 );
               }
-            }
-          ),
+            },
+          }),
           {
             set: details => {
               if (AppConstants.platform === "android") {
@@ -304,6 +307,15 @@ this.proxy = class extends ExtensionAPI {
                     } is not a valid value for socksVersion.`
                   );
                 }
+              }
+
+              if (
+                value.respectBeConservative !== undefined &&
+                !extension.isPrivileged
+              ) {
+                throw new ExtensionError(
+                  `respectBeConservative can be set by privileged extensions only.`
+                );
               }
 
               return ExtensionPreferencesManager.setSetting(

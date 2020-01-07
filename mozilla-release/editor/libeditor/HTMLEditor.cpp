@@ -668,9 +668,14 @@ nsresult HTMLEditor::HandleKeyPressEvent(WidgetKeyboardEvent* aKeyboardEvent) {
         return TextEditor::HandleKeyPressEvent(aKeyboardEvent);
       }
 
+      // If we're a `contenteditable` element or in `designMode`, "Tab" key
+      // be used only for focus navigation.
       if (IsTabbable()) {
-        return NS_OK;  // let it be used for focus switching
+        return NS_OK;
       }
+
+      // Otherwise, e.g., we're an embedding editor in chrome, we can handle
+      // "Tab" key as an input.
 
       if (aKeyboardEvent->IsControl() || aKeyboardEvent->IsAlt() ||
           aKeyboardEvent->IsMeta() || aKeyboardEvent->IsOS()) {
@@ -691,33 +696,42 @@ nsresult HTMLEditor::HandleKeyPressEvent(WidgetKeyboardEvent* aKeyboardEvent) {
         break;
       }
 
-      bool handled = false;
-      nsresult rv = NS_OK;
+      // If selection is in a table element, we need special handling.
       if (HTMLEditUtils::IsTableElement(blockParent)) {
-        rv = TabInTable(aKeyboardEvent->IsShift(), &handled);
-        // TabInTable might cause reframe
-        if (Destroyed()) {
+        EditActionResult result = HandleTabKeyPressInTable(aKeyboardEvent);
+        if (NS_WARN_IF(result.Failed())) {
+          return EditorBase::ToGenericNSResult(result.Rv());
+        }
+        if (!result.Handled()) {
           return NS_OK;
         }
-        if (handled) {
-          ScrollSelectionIntoView(false);
+        nsresult rv = ScrollSelectionFocusIntoView();
+        NS_WARNING_ASSERTION(NS_SUCCEEDED(rv),
+                             "ScrollSelectionFocusIntoView() failed");
+        return EditorBase::ToGenericNSResult(rv);
+      }
+
+      // If selection is in an list item element, treat it as indent or outdent.
+      if (HTMLEditUtils::IsListItem(blockParent)) {
+        nsresult rv =
+            !aKeyboardEvent->IsShift() ? IndentAsAction() : OutdentAsAction();
+        if (NS_WARN_IF(NS_FAILED(rv))) {
+          return EditorBase::ToGenericNSResult(rv);
         }
-      } else if (HTMLEditUtils::IsListItem(blockParent)) {
-        rv = !aKeyboardEvent->IsShift() ? IndentAsAction() : OutdentAsAction();
-        handled = true;
-      }
-      if (NS_WARN_IF(NS_FAILED(rv))) {
-        return rv;
-      }
-      if (handled) {
-        aKeyboardEvent->PreventDefault();  // consumed
+        aKeyboardEvent->PreventDefault();
         return NS_OK;
       }
+
+      // If only "Tab" key is pressed in normal context, just treat it as
+      // horizontal tab character input.
       if (aKeyboardEvent->IsShift()) {
-        return NS_OK;  // don't type text for shift tabs
+        return NS_OK;
       }
       aKeyboardEvent->PreventDefault();
-      return OnInputText(NS_LITERAL_STRING("\t"));
+      nsresult rv = OnInputText(NS_LITERAL_STRING("\t"));
+      NS_WARNING_ASSERTION(NS_SUCCEEDED(rv),
+                           "OnInputText() with tab character failed");
+      return EditorBase::ToGenericNSResult(rv);
     }
     case NS_VK_RETURN:
       if (!aKeyboardEvent->IsInputtingLineBreak()) {
@@ -752,6 +766,9 @@ nsresult HTMLEditor::HandleKeyPressEvent(WidgetKeyboardEvent* aKeyboardEvent) {
  * Can be used to determine if a new paragraph should be started.
  */
 bool HTMLEditor::NodeIsBlockStatic(const nsINode& aElement) {
+  if (!aElement.IsElement()) {
+    return false;
+  }
   // We want to treat these as block nodes even though nsHTMLElement says
   // they're not.
   if (aElement.IsAnyOfHTMLElements(
@@ -1000,27 +1017,27 @@ nsresult HTMLEditor::InsertParagraphSeparatorAsAction(
   return EditorBase::ToGenericNSResult(result.Rv());
 }
 
-nsresult HTMLEditor::TabInTable(bool inIsShift, bool* outHandled) {
-  NS_ENSURE_TRUE(outHandled, NS_ERROR_NULL_POINTER);
-  *outHandled = false;
+EditActionResult HTMLEditor::HandleTabKeyPressInTable(
+    WidgetKeyboardEvent* aKeyboardEvent) {
+  MOZ_ASSERT(aKeyboardEvent);
 
-  AutoEditActionDataSetter editActionData(*this, EditAction::eNotEditing);
-  if (NS_WARN_IF(!editActionData.CanHandle())) {
+  AutoEditActionDataSetter dummyEditActionData(*this, EditAction::eNotEditing);
+  if (NS_WARN_IF(!dummyEditActionData.CanHandle())) {
     // Do nothing if we didn't find a table cell.
-    return NS_OK;
+    return EditActionIgnored();
   }
 
   // Find enclosing table cell from selection (cell may be selected element)
   Element* cellElement = GetElementOrParentByTagNameAtSelection(*nsGkAtoms::td);
   if (NS_WARN_IF(!cellElement)) {
     // Do nothing if we didn't find a table cell.
-    return NS_OK;
+    return EditActionIgnored();
   }
 
   // find enclosing table
   RefPtr<Element> table = GetEnclosingTable(cellElement);
   if (NS_WARN_IF(!table)) {
-    return NS_OK;
+    return EditActionIgnored();
   }
 
   // advance to next cell
@@ -1028,70 +1045,74 @@ nsresult HTMLEditor::TabInTable(bool inIsShift, bool* outHandled) {
   PostContentIterator postOrderIter;
   nsresult rv = postOrderIter.Init(table);
   if (NS_WARN_IF(NS_FAILED(rv))) {
-    return rv;
+    return EditActionResult(rv);
   }
   // position postOrderIter at block
   rv = postOrderIter.PositionAt(cellElement);
   if (NS_WARN_IF(NS_FAILED(rv))) {
-    return rv;
+    return EditActionResult(rv);
   }
 
-  nsCOMPtr<nsINode> node;
   do {
-    if (inIsShift) {
+    if (aKeyboardEvent->IsShift()) {
       postOrderIter.Prev();
     } else {
       postOrderIter.Next();
     }
 
-    node = postOrderIter.GetCurrentNode();
-
+    nsCOMPtr<nsINode> node = postOrderIter.GetCurrentNode();
     if (node && HTMLEditUtils::IsTableCell(node) &&
         GetEnclosingTable(node) == table) {
+      aKeyboardEvent->PreventDefault();
       CollapseSelectionToDeepestNonTableFirstChild(node);
-      *outHandled = true;
-      return NS_OK;
+      return EditActionHandled(
+          NS_WARN_IF(Destroyed()) ? NS_ERROR_EDITOR_DESTROYED : NS_OK);
     }
   } while (!postOrderIter.IsDone());
 
-  if (!(*outHandled) && !inIsShift) {
-    // If we haven't handled it yet, then we must have run off the end of the
-    // table.  Insert a new row.
-    // XXX We should investigate whether this behavior is supported by other
-    //     browsers later.
-    AutoEditActionDataSetter editActionData(*this,
-                                            EditAction::eInsertTableRowElement);
-    if (NS_WARN_IF(!editActionData.CanHandle())) {
-      return NS_ERROR_FAILURE;
-    }
-    rv = InsertTableRowsWithTransaction(1, InsertPosition::eAfterSelectedCell);
-    if (NS_WARN_IF(NS_FAILED(rv))) {
-      return rv;
-    }
-    *outHandled = true;
-    // Put selection in right place.  Use table code to get selection and index
-    // to new row...
-    RefPtr<Element> tblElement, cell;
-    int32_t row;
-    rv = GetCellContext(getter_AddRefs(tblElement), getter_AddRefs(cell),
-                        nullptr, nullptr, &row, nullptr);
-    if (NS_WARN_IF(NS_FAILED(rv))) {
-      return rv;
-    }
-    if (NS_WARN_IF(!tblElement)) {
-      return NS_ERROR_FAILURE;
-    }
-    // ...so that we can ask for first cell in that row...
-    cell = GetTableCellElementAt(*tblElement, row, 0);
-    // ...and then set selection there.  (Note that normally you should use
-    // CollapseSelectionToDeepestNonTableFirstChild(), but we know cell is an
-    // empty new cell, so this works fine)
-    if (cell) {
-      SelectionRefPtr()->Collapse(cell, 0);
-    }
+  if (aKeyboardEvent->IsShift()) {
+    return EditActionIgnored();
   }
 
-  return NS_OK;
+  // If we haven't handled it yet, then we must have run off the end of the
+  // table.  Insert a new row.
+  // XXX We should investigate whether this behavior is supported by other
+  //     browsers later.
+  AutoEditActionDataSetter editActionData(*this,
+                                          EditAction::eInsertTableRowElement);
+  if (NS_WARN_IF(!editActionData.CanHandle())) {
+    return EditActionResult(NS_ERROR_FAILURE);
+  }
+  rv = InsertTableRowsWithTransaction(1, InsertPosition::eAfterSelectedCell);
+  if (NS_WARN_IF(Destroyed())) {
+    return EditActionHandled(NS_ERROR_EDITOR_DESTROYED);
+  }
+  if (NS_WARN_IF(NS_FAILED(rv))) {
+    return EditActionHandled(rv);
+  }
+  aKeyboardEvent->PreventDefault();
+  // Put selection in right place.  Use table code to get selection and index
+  // to new row...
+  RefPtr<Element> tblElement, cell;
+  int32_t row;
+  rv = GetCellContext(getter_AddRefs(tblElement), getter_AddRefs(cell), nullptr,
+                      nullptr, &row, nullptr);
+  if (NS_WARN_IF(NS_FAILED(rv))) {
+    return EditActionHandled(rv);
+  }
+  if (NS_WARN_IF(!tblElement)) {
+    return EditActionHandled(NS_ERROR_FAILURE);
+  }
+  // ...so that we can ask for first cell in that row...
+  cell = GetTableCellElementAt(*tblElement, row, 0);
+  // ...and then set selection there.  (Note that normally you should use
+  // CollapseSelectionToDeepestNonTableFirstChild(), but we know cell is an
+  // empty new cell, so this works fine)
+  if (cell) {
+    SelectionRefPtr()->Collapse(cell, 0);
+  }
+  return EditActionHandled(NS_WARN_IF(Destroyed()) ? NS_ERROR_EDITOR_DESTROYED
+                                                   : NS_OK);
 }
 
 nsresult HTMLEditor::InsertBrElementAtSelectionWithTransaction() {
@@ -3217,9 +3238,10 @@ nsresult HTMLEditor::DeleteParentBlocksWithTransactionIfEmpty(
 
   // If we have mutation event listeners, the next point is now outside of
   // editing host or editing hos has been changed.
-  if (HasMutationEventListeners(NS_EVENT_BITS_MUTATION_NODEREMOVED |
-                                NS_EVENT_BITS_MUTATION_NODEREMOVEDFROMDOCUMENT |
-                                NS_EVENT_BITS_MUTATION_SUBTREEMODIFIED)) {
+  if (MaybeHasMutationEventListeners(
+          NS_EVENT_BITS_MUTATION_NODEREMOVED |
+          NS_EVENT_BITS_MUTATION_NODEREMOVEDFROMDOCUMENT |
+          NS_EVENT_BITS_MUTATION_SUBTREEMODIFIED)) {
     Element* editingHost = GetActiveEditingHost();
     if (NS_WARN_IF(!editingHost) ||
         NS_WARN_IF(editingHost != wsObj.GetEditingHost())) {
@@ -3360,15 +3382,22 @@ bool HTMLEditor::IsInObservedSubtree(nsIContent* aChild) {
     return false;
   }
 
-  Element* root = GetRoot();
-  // To be super safe here, check both ChromeOnlyAccess and GetBindingParent.
-  // That catches (also unbound) native anonymous content, XBL and ShadowDOM.
-  if (root && (root->ChromeOnlyAccess() != aChild->ChromeOnlyAccess() ||
-               root->GetBindingParent() != aChild->GetBindingParent())) {
-    return false;
+  // FIXME(emilio, bug 1596856): This should probably work if the root is in the
+  // same shadow tree as the child, probably? I don't know what the
+  // contenteditable-in-shadow-dom situation is.
+  if (Element* root = GetRoot()) {
+    // To be super safe here, check both ChromeOnlyAccess and NAC / Shadow DOM.
+    // That catches (also unbound) native anonymous content and ShadowDOM.
+    if (root->ChromeOnlyAccess() != aChild->ChromeOnlyAccess() ||
+        root->IsInNativeAnonymousSubtree() !=
+            aChild->IsInNativeAnonymousSubtree() ||
+        root->IsInShadowTree() != aChild->IsInShadowTree()) {
+      return false;
+    }
   }
 
-  return !aChild->ChromeOnlyAccess() && !aChild->GetBindingParent();
+  return !aChild->ChromeOnlyAccess() && !aChild->IsInShadowTree() &&
+         !aChild->IsInNativeAnonymousSubtree();
 }
 
 void HTMLEditor::DoContentInserted(nsIContent* aChild,
@@ -3789,7 +3818,8 @@ nsresult HTMLEditor::RemoveBlockContainerWithTransaction(Element& aElement) {
   return NS_OK;
 }
 
-nsIContent* HTMLEditor::GetPriorHTMLSibling(nsINode* aNode, SkipWhitespace aSkipWS) {
+nsIContent* HTMLEditor::GetPriorHTMLSibling(nsINode* aNode,
+                                            SkipWhitespace aSkipWS) {
   MOZ_ASSERT(aNode);
 
   nsIContent* node = aNode->GetPreviousSibling();
@@ -3800,7 +3830,8 @@ nsIContent* HTMLEditor::GetPriorHTMLSibling(nsINode* aNode, SkipWhitespace aSkip
   return node;
 }
 
-nsIContent* HTMLEditor::GetNextHTMLSibling(nsINode* aNode, SkipWhitespace aSkipWS) {
+nsIContent* HTMLEditor::GetNextHTMLSibling(nsINode* aNode,
+                                           SkipWhitespace aSkipWS) {
   MOZ_ASSERT(aNode);
 
   nsIContent* node = aNode->GetNextSibling();

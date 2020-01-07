@@ -7,6 +7,8 @@
 %define fieldBorderColor hsla(240,5%,5%,.25)
 %define fieldHoverBorderColor hsla(240,5%,5%,.35)
 %define urlbarMarginInline 5px
+%define urlbarBreakoutExtend 2px
+%define urlbarSearchButtonWidth calc(16px + 2 * @identityBoxPaddingInline@)
 
 :root {
   --toolbar-field-focus-border-color: Highlight;
@@ -109,13 +111,13 @@
 
 #urlbar[focused="true"]:-moz-lwtheme,
 #navigator-toolbox #searchbar:focus-within:-moz-lwtheme {
-  color: var(--lwt-toolbar-field-focus-color, var(--lwt-toolbar-field-color, black));
+  color: var(--lwt-toolbar-field-focus-color);
 }
 
 #urlbar:not(.megabar)[focused="true"]:-moz-lwtheme,
 #urlbar.megabar[focused="true"]:-moz-lwtheme > #urlbar-background,
 #navigator-toolbox #searchbar:focus-within:-moz-lwtheme {
-  background-color: var(--lwt-toolbar-field-focus, var(--lwt-toolbar-field-background-color, white));
+  background-color: var(--lwt-toolbar-field-focus);
 }
 
 :root[lwt-selection] #urlbar-input:-moz-lwtheme::selection,
@@ -126,6 +128,20 @@
 
 #urlbar:not([focused="true"]) {
   caret-color: transparent;
+}
+
+#urlbar.searchButton > #urlbar-input-container > #urlbar-search-button {
+  width: @urlbarSearchButtonWidth@;
+  background-image: url(chrome://browser/skin/search-glass.svg);
+  background-repeat: no-repeat;
+  background-position: center;
+  -moz-context-properties: fill, fill-opacity;
+  fill: var(--lwt-toolbarbutton-icon-fill, var(--toolbar-color));
+  fill-opacity: var(--toolbarbutton-icon-fill-opacity);
+}
+
+#urlbar.searchButton > #urlbar-input-container[pageproxystate="invalid"] > #urlbar-search-button {
+  margin-inline-end: 6px;
 }
 
 /**
@@ -143,10 +159,12 @@
 #urlbar.megabar > #urlbar-background {
   display: block;
   position: absolute;
-  top: 0;
-  bottom: 0;
-  left: 0;
-  right: 0;
+  inset: 0;
+}
+
+:root:not([chromehidden~="toolbar"]) #urlbar.searchButton:not([breakout]) > #urlbar-background,
+:root:not([chromehidden~="toolbar"]) #urlbar.searchButton:not([breakout-extend]) > #urlbar-background {
+  inset-inline-start: @urlbarSearchButtonWidth@;
 }
 
 #urlbar.megabar > #urlbar-input-container {
@@ -173,6 +191,11 @@
   height: 100%;
 }
 
+#urlbar:not([open]) > .urlbarView,
+#urlbar.megabar:not([breakout]) > .urlbarView {
+  display: none;
+}
+
 #urlbar[breakout][breakout-extend],
 #urlbar[breakout][breakout-extend-disabled][open] {
   /* The z-index needs to be big enough to trump other positioned UI pieces
@@ -182,9 +205,9 @@
 }
 
 #urlbar[breakout][breakout-extend] {
-  top: 0;
-  left: -@urlbarMarginInline@;
-  width: calc(100% + 2 * @urlbarMarginInline@);
+  top: -@urlbarBreakoutExtend@;
+  left: calc(-@urlbarMarginInline@ - @urlbarBreakoutExtend@);
+  width: calc(100% + 2 * @urlbarMarginInline@ + 2 * @urlbarBreakoutExtend@);
 }
 
 #urlbar[breakout][breakout-extend] > #urlbar-background {
@@ -192,9 +215,14 @@
 }
 
 #urlbar[breakout][breakout-extend] > #urlbar-input-container {
-  height: var(--urlbar-toolbar-height);
-  padding-block: calc((var(--urlbar-toolbar-height) - var(--urlbar-height)) / 2);
-  padding-inline: @urlbarMarginInline@;
+  height: calc(var(--urlbar-toolbar-height) + 2 * @urlbarBreakoutExtend@);
+  padding-block: calc(@urlbarBreakoutExtend@ + (var(--urlbar-toolbar-height) - var(--urlbar-height)) / 2);
+  padding-inline: calc(@urlbarMarginInline@ + @urlbarBreakoutExtend@);
+}
+
+#urlbar.searchButton[breakout][breakout-extend] > #urlbar-input-container > #urlbar-search-button {
+  fill: currentColor;
+  fill-opacity: .6;
 }
 
 @keyframes urlbar-grow {
@@ -206,16 +234,14 @@
   }
 }
 
-#urlbar[breakout][breakout-extend] > #urlbar-background,
-#urlbar[breakout][breakout-extend] > .urlbarView {
+#urlbar[breakout][breakout-extend] > #urlbar-background {
   animation-name: urlbar-grow;
   animation-duration: 0s;
   animation-timing-function: var(--animation-easing-function);
 }
 
 @media (prefers-reduced-motion: no-preference) {
-  #urlbar[breakout][breakout-extend][breakout-extend-animate] > #urlbar-background,
-  #urlbar[breakout][breakout-extend][breakout-extend-animate] > .urlbarView {
+  #urlbar[breakout][breakout-extend][breakout-extend-animate] > #urlbar-background {
     animation-duration: 150ms;
   }
 }

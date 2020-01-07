@@ -65,8 +65,8 @@ ServiceWorkerPrivateImpl::RAIIActorPtrHolder::~RAIIActorPtrHolder() {
   mActor->MaybeSendDelete();
 }
 
-RemoteWorkerControllerChild* ServiceWorkerPrivateImpl::RAIIActorPtrHolder::
-operator->() const {
+RemoteWorkerControllerChild*
+    ServiceWorkerPrivateImpl::RAIIActorPtrHolder::operator->() const {
   AssertIsOnMainThread();
 
   return get();
@@ -230,6 +230,7 @@ nsresult ServiceWorkerPrivateImpl::SpawnWorkerIfNeeded() {
   MOZ_ASSERT(mOuter->mInfo);
 
   if (mControllerChild) {
+    mOuter->RenewKeepAliveToken(ServiceWorkerPrivate::WakeUpReason::Unknown);
     return NS_OK;
   }
 

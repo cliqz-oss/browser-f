@@ -58,6 +58,7 @@ EXPORTS.mozilla.dom += [
     'JSWindowActorService.h',
     'MemoryReportRequest.h',
     'PermissionMessageUtils.h',
+    'PropertyBagUtils.h',
     'ReferrerInfoUtils.h',
     'RemoteBrowser.h',
     'RemoteWebProgress.h',
@@ -109,6 +110,7 @@ UNIFIED_SOURCES += [
     'PermissionMessageUtils.cpp',
     'PreallocatedProcessManager.cpp',
     'ProcessPriorityManager.cpp',
+    'PropertyBagUtils.cpp',
     'ReferrerInfoUtils.cpp',
     'RemoteBrowser.cpp',
     'RemoteWebProgress.cpp',
@@ -209,6 +211,8 @@ if CONFIG['OS_ARCH'] != 'WINNT':
     ]
 
 DEFINES['BIN_SUFFIX'] = '"%s"' % CONFIG['BIN_SUFFIX']
+
+DEFINES['MOZ_APP_NAME'] = '"%s"' % CONFIG['MOZ_APP_NAME']
 
 if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'android':
     DEFINES['MOZ_ENABLE_FREETYPE'] = True

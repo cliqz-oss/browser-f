@@ -566,7 +566,7 @@ class APZCTreeManager : public IAPZCTreeManager, public APZInputBridge {
     HitTestingTreeNodeAutoLock mScrollbarNode;
     // If content that is fixed to the root-content APZC was hit,
     // the sides of the viewport to which the content is fixed.
-    SideBits mFixedPosSides = eSideBitsNone;
+    SideBits mFixedPosSides = SideBits::eNone;
 
     HitTestResult() = default;
     // Make it move-only.
@@ -617,6 +617,8 @@ class APZCTreeManager : public IAPZCTreeManager, public APZInputBridge {
    */
   already_AddRefed<AsyncPanZoomController> FindZoomableApzc(
       AsyncPanZoomController* aStart) const;
+
+  ScreenMargin GetGeckoFixedLayerMargins() const;
 
  private:
   typedef bool (*GuidComparator)(const ScrollableLayerGuid&,
@@ -789,7 +791,8 @@ class APZCTreeManager : public IAPZCTreeManager, public APZInputBridge {
    */
   bool mUsingAsyncZoomContainer;
 
-  /** A lock that protects mApzcMap and mScrollThumbInfo. */
+  /** A lock that protects mApzcMap, mScrollThumbInfo, and mFixedPositionInfo.
+   */
   mutable mozilla::Mutex mMapLock;
   /**
    * A map for quick access to get APZC instances by guid, without having to
@@ -840,6 +843,32 @@ class APZCTreeManager : public IAPZCTreeManager, public APZInputBridge {
    */
   std::vector<ScrollThumbInfo> mScrollThumbInfo;
 
+  /**
+   * A helper structure to store all the information needed to compute the
+   * async transform for a fixed position element on the sampler thread.
+   */
+  struct FixedPositionInfo {
+    uint64_t mFixedPositionAnimationId;
+    SideBits mFixedPosSides;
+
+    FixedPositionInfo(const uint64_t& aFixedPositionAnimationId,
+                      const SideBits aFixedPosSides)
+        : mFixedPositionAnimationId(aFixedPositionAnimationId),
+          mFixedPosSides(aFixedPosSides) {}
+  };
+  /**
+   * If this APZCTreeManager is being used with WebRender, this vector gets
+   * populated during a layers update. It holds a package of information needed
+   * to compute and set the async transforms on fixed position content. This
+   * information is extracted from the HitTestingTreeNodes for the WebRender
+   * case because accessing the HitTestingTreeNodes requires holding the tree
+   * lock which we cannot do on the WR sampler thread. mFixedPositionInfo,
+   * however, can be accessed while just holding the mMapLock which is safe to
+   * do on the sampler thread. mMapLock must be acquired while accessing or
+   * modifying mFixedPositionInfo.
+   */
+  std::vector<FixedPositionInfo> mFixedPositionInfo;
+
   /* Holds the zoom constraints for scrollable layers, as determined by the
    * the main-thread gecko code. This can only be accessed on the updater
    * thread. */
@@ -872,7 +901,7 @@ class APZCTreeManager : public IAPZCTreeManager, public APZInputBridge {
    * used to offset event coordinates accordingly.
    * This should be in sync with mApzcForInputBlock.
    */
-  SideBits mFixedPosSidesForInputBlock = eSideBitsNone;
+  SideBits mFixedPosSidesForInputBlock = SideBits::eNone;
   /* Sometimes we want to ignore all touches except one. In such cases, this
    * is set to the identifier of the touch we are not ignoring; in other cases,
    * this is set to -1.
@@ -893,9 +922,15 @@ class APZCTreeManager : public IAPZCTreeManager, public APZInputBridge {
   ScreenPoint mCurrentMousePosition;
   /* Extra margins that should be applied to content that fixed wrt. the
    * RCD-RSF, to account for the dynamic toolbar.
-   * Acquire mTreeLock before accessing this.
+   * Acquire mMapLock before accessing this.
    */
-  ScreenMargin mFixedLayerMargins;
+  ScreenMargin mCompositorFixedLayerMargins;
+  /* Similar to above |mCompositorFixedLayerMargins|. But this value is the
+   * margins on the main-thread at the last time position:fixed elements were
+   * updated during the dynamic toolbar transitions.
+   * Acquire mMapLock before accessing this.
+   */
+  ScreenMargin mGeckoFixedLayerMargins;
   /* For logging the APZC tree for debugging (enabled by the apz.printtree
    * pref). */
   gfx::TreeLog<gfx::LOG_DEFAULT> mApzcTreeLog;

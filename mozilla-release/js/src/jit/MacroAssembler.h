@@ -36,6 +36,7 @@
 #include "jit/JitRealm.h"
 #include "jit/TemplateObject.h"
 #include "jit/VMFunctions.h"
+#include "util/Memory.h"
 #include "vm/ProxyObject.h"
 #include "vm/Shape.h"
 #include "vm/TypedArrayObject.h"
@@ -975,7 +976,7 @@ class MacroAssembler : public MacroAssemblerSpecific {
   inline void inc64(AbsoluteAddress dest) PER_ARCH;
 
   inline void neg32(Register reg) PER_SHARED_ARCH;
-  inline void neg64(Register64 reg) DEFINED_ON(x86, x64, arm, mips32, mips64);
+  inline void neg64(Register64 reg) PER_ARCH;
   inline void negPtr(Register reg) PER_ARCH;
 
   inline void negateFloat(FloatRegister reg) PER_SHARED_ARCH;
@@ -1307,12 +1308,12 @@ class MacroAssembler : public MacroAssemblerSpecific {
   inline void branchIfTrueBool(Register reg, Label* label);
 
   inline void branchIfRope(Register str, Label* label);
-  inline void branchIfRopeOrExternal(Register str, Register temp, Label* label);
-
   inline void branchIfNotRope(Register str, Label* label);
 
   inline void branchLatin1String(Register string, Label* label);
   inline void branchTwoByteString(Register string, Label* label);
+
+  inline void branchIfNegativeBigInt(Register bigInt, Label* label);
 
   inline void branchTestFunctionFlags(Register fun, uint32_t flags,
                                       Condition cond, Label* label);
@@ -1664,6 +1665,10 @@ class MacroAssembler : public MacroAssemblerSpecific {
   inline void cmp32Load32(Condition cond, Register lhs, Register rhs,
                           const Address& src, Register dest)
       DEFINED_ON(arm, arm64, mips_shared, x86_shared);
+
+  inline void cmp32LoadPtr(Condition cond, const Address& lhs, Imm32 rhs,
+                           const Address& src, Register dest)
+      DEFINED_ON(arm, arm64, mips_shared, x86, x64);
 
   inline void cmp32MovePtr(Condition cond, Register lhs, Imm32 rhs,
                            Register src, Register dest)
@@ -2544,6 +2549,28 @@ class MacroAssembler : public MacroAssemblerSpecific {
    */
   void addToCharPtr(Register chars, Register index, CharEncoding encoding);
 
+ private:
+  void loadBigIntDigits(Register bigInt, Register digits);
+
+ public:
+  /**
+   * Load the first [u]int64 value from |bigInt| into |dest|.
+   */
+  void loadBigInt64(Register bigInt, Register64 dest);
+
+  /**
+   * Load the first digit from |bigInt| into |dest|. Handles the case when the
+   * BigInt digits length is zero.
+   *
+   * Note: A BigInt digit is a pointer-sized value.
+   */
+  void loadFirstBigIntDigitOrZero(Register bigInt, Register dest);
+
+  /**
+   * Initialize a BigInt from |dest|. Clobbers |val|!
+   */
+  void initializeBigInt64(Scalar::Type type, Register bigInt, Register64 val);
+
   void loadJSContext(Register dest);
 
   void switchToRealm(Register realm);
@@ -2719,6 +2746,10 @@ class MacroAssembler : public MacroAssemblerSpecific {
                           const ValueOperand& dest, bool allowDouble,
                           Register temp, Label* fail);
 
+  template <typename T>
+  void loadFromTypedBigIntArray(Scalar::Type arrayType, const T& src,
+                                Register bigInt, Register64 temp);
+
   template <typename S, typename T>
   void storeToTypedIntArray(Scalar::Type arrayType, const S& value,
                             const T& dest) {
@@ -2745,6 +2776,11 @@ class MacroAssembler : public MacroAssemblerSpecific {
                               const BaseIndex& dest);
   void storeToTypedFloatArray(Scalar::Type arrayType, FloatRegister value,
                               const Address& dest);
+
+  void storeToTypedBigIntArray(Scalar::Type arrayType, Register64 value,
+                               const BaseIndex& dest);
+  void storeToTypedBigIntArray(Scalar::Type arrayType, Register64 value,
+                               const Address& dest);
 
   void memoryBarrierBefore(const Synchronization& sync);
   void memoryBarrierAfter(const Synchronization& sync);
@@ -2856,6 +2892,8 @@ class MacroAssembler : public MacroAssemblerSpecific {
                    bool attemptNursery);
   void newGCFatInlineString(Register result, Register temp, Label* fail,
                             bool attemptNursery);
+
+  void newGCBigInt(Register result, Register temp, Label* fail);
 
   // Compares two strings for equality based on the JSOP.
   // This checks for identical pointers, atoms and length and fails for
@@ -3120,6 +3158,16 @@ class MacroAssembler : public MacroAssemblerSpecific {
                          temp, output, fail);
   }
 
+  // Truncates, i.e. removes any fractional parts, but doesn't wrap around to
+  // the int32 range.
+  void truncateNoWrapValueToInt32(ValueOperand value, MDefinition* input,
+                                  FloatRegister temp, Register output,
+                                  Label* truncateDoubleSlow, Label* fail) {
+    convertValueToInt(value, input, nullptr, nullptr, truncateDoubleSlow,
+                      InvalidReg, temp, output, fail,
+                      IntConversionBehavior::TruncateNoWrap);
+  }
+
   // Convenience functions for clamping values to uint8.
   void clampValueToUint8(ValueOperand value, MDefinition* input,
                          Label* handleStringEntry, Label* handleStringRejoin,
@@ -3285,11 +3333,13 @@ static inline MIRType ToMIRType(MIRType t) { return t; }
 static inline MIRType ToMIRType(ABIArgType argType) {
   switch (argType) {
     case ArgType_General:
-      return MIRType::Int32;
-    case ArgType_Double:
+      return MIRType::Pointer;
+    case ArgType_Float64:
       return MIRType::Double;
     case ArgType_Float32:
       return MIRType::Float32;
+    case ArgType_Int32:
+      return MIRType::Int32;
     case ArgType_Int64:
       return MIRType::Int64;
     default:

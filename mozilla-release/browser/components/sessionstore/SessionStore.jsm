@@ -54,7 +54,7 @@ const OBSERVING = [
   "browser:purge-session-history-for-domain",
   "idle-daily",
   "clear-origin-attributes-data",
-  "http-on-may-change-process",
+  "channel-on-may-change-process",
 ];
 
 // XUL Window properties to (re)store
@@ -902,7 +902,7 @@ var SessionStoreInternal = {
           this._forgetTabsWithUserContextId(userContextId);
         }
         break;
-      case "http-on-may-change-process":
+      case "channel-on-may-change-process":
         this.onMayChangeProcess(aSubject);
         break;
     }
@@ -2607,13 +2607,6 @@ var SessionStoreInternal = {
   // Examine the channel response to see if we should change the process
   // performing the given load. aRequestor implements nsIProcessSwitchRequestor
   onMayChangeProcess(aRequestor) {
-    if (
-      !E10SUtils.useHttpResponseProcessSelection() &&
-      !E10SUtils.useCrossOriginOpenerPolicy()
-    ) {
-      return;
-    }
-
     let switchRequestor;
     try {
       switchRequestor = aRequestor.QueryInterface(Ci.nsIProcessSwitchRequestor);
@@ -2649,11 +2642,22 @@ var SessionStoreInternal = {
     }
 
     let topDocShell = topBC.embedderElement.ownerGlobal.docShell;
-    let useRemoteSubframes = topDocShell.QueryInterface(Ci.nsILoadContext)
-      .useRemoteSubframes;
-    if (!useRemoteSubframes && cp != Ci.nsIContentPolicy.TYPE_DOCUMENT) {
-      debug(`[process-switch]: remote subframes disabled - ignoring`);
-      return;
+    let { useRemoteSubframes } = topDocShell.QueryInterface(Ci.nsILoadContext);
+    if (!useRemoteSubframes) {
+      if (
+        !E10SUtils.useHttpResponseProcessSelection() &&
+        !E10SUtils.useCrossOriginOpenerPolicy()
+      ) {
+        debug(
+          `[process-switch]: response process selection disabled - ignoring`
+        );
+        return;
+      }
+
+      if (cp != Ci.nsIContentPolicy.TYPE_DOCUMENT) {
+        debug(`[process-switch]: remote subframes disabled - ignoring`);
+        return;
+      }
     }
 
     // Get principal for a document already loaded in the BrowsingContext.
@@ -2699,18 +2703,44 @@ var SessionStoreInternal = {
     let resultPrincipal = Services.scriptSecurityManager.getChannelResultPrincipal(
       channel
     );
+
+    const isCOOPSwitch =
+      E10SUtils.useCrossOriginOpenerPolicy() &&
+      switchRequestor.hasCrossOriginOpenerPolicyMismatch();
+
+    let preferredRemoteType = currentRemoteType;
+    if (
+      E10SUtils.useCrossOriginOpenerPolicy() &&
+      switchRequestor.crossOriginOpenerPolicy ==
+        Ci.nsILoadInfo.OPENER_POLICY_SAME_ORIGIN_EMBEDDER_POLICY_REQUIRE_CORP
+    ) {
+      // We want documents with a SAME_ORIGIN_EMBEDDER_POLICY_REQUIRE_CORP
+      // COOP policy to be loaded in a separate process for which we can enable
+      // high resolution timers.
+      preferredRemoteType =
+        E10SUtils.WEB_REMOTE_COOP_COEP_TYPE_PREFIX + resultPrincipal.siteOrigin;
+    } else if (isCOOPSwitch) {
+      // If it is a coop switch, but doesn't have this flag, we want to switch
+      // to a default remoteType
+      preferredRemoteType = E10SUtils.DEFAULT_REMOTE_TYPE;
+    }
+    debug(
+      `[process-switch]: currentRemoteType (${currentRemoteType}) preferredRemoteType: ${preferredRemoteType}`
+    );
+
     let remoteType = E10SUtils.getRemoteTypeForPrincipal(
       resultPrincipal,
       true,
       useRemoteSubframes,
-      currentRemoteType,
+      preferredRemoteType,
       currentPrincipal
     );
-    if (
-      currentRemoteType == remoteType &&
-      (!E10SUtils.useCrossOriginOpenerPolicy() ||
-        !switchRequestor.hasCrossOriginOpenerPolicyMismatch())
-    ) {
+
+    debug(
+      `[process-switch]: ${currentRemoteType}, ${remoteType}, ${isCOOPSwitch}`
+    );
+
+    if (currentRemoteType == remoteType && !isCOOPSwitch) {
       debug(`[process-switch]: type (${remoteType}) is compatible - ignoring`);
       return;
     }
@@ -2722,10 +2752,6 @@ var SessionStoreInternal = {
       debug(`[process-switch]: non-remote source/target - ignoring`);
       return;
     }
-
-    const isCOOPSwitch =
-      E10SUtils.useCrossOriginOpenerPolicy() &&
-      switchRequestor.hasCrossOriginOpenerPolicyMismatch();
 
     // ------------------------------------------------------------------------
     // DANGER ZONE: Perform a process switch into the new process. This is
@@ -5237,7 +5263,7 @@ var SessionStoreInternal = {
   },
 
   /**
-   * on popup windows, the XULWindow's attributes seem not to be set correctly
+   * on popup windows, the AppWindow's attributes seem not to be set correctly
    * we use thus JSDOMWindow attributes for sizemode and normal window attributes
    * (and hope for reasonable values when maximized/minimized - since then
    * outerWidth/outerHeight aren't the dimensions of the restored window)
@@ -5276,13 +5302,13 @@ var SessionStoreInternal = {
         }
         // Width and height attribute report the inner size, but we want
         // to store the outer size, so add the difference.
-        let xulWin = aWindow.docShell.treeOwner
+        let appWin = aWindow.docShell.treeOwner
           .QueryInterface(Ci.nsIInterfaceRequestor)
-          .getInterface(Ci.nsIXULWindow);
+          .getInterface(Ci.nsIAppWindow);
         let diff =
           aAttribute == "width"
-            ? xulWin.outerToInnerWidthDifferenceInCSSPixels
-            : xulWin.outerToInnerHeightDifferenceInCSSPixels;
+            ? appWin.outerToInnerWidthDifferenceInCSSPixels
+            : appWin.outerToInnerHeightDifferenceInCSSPixels;
         return attr + diff;
       }
     }

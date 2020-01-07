@@ -31,7 +31,9 @@ include protocol PPrinting;
 include protocol PChildToParentStream;
 include protocol PParentToChildStream;
 include protocol POfflineCacheUpdate;
+#ifdef MOZ_WEBSPEECH
 include protocol PSpeechSynthesis;
+#endif
 include protocol PTestShell;
 include protocol PJavaScript;
 include protocol PRemoteSpellcheckEngine;
@@ -46,6 +48,8 @@ include protocol PRemoteDecoderManager;
 include protocol PProfiler;
 include protocol PScriptCache;
 include protocol PSessionStorageObserver;
+include protocol PSHEntry;
+include protocol PSHistory;
 include protocol PBenchmarkStorage;
 include DOMTypes;
 include JavaScriptTypes;
@@ -279,6 +283,12 @@ struct XPCOMInitData
     DynamicScalarDefinition[] dynamicScalarDefs;
 };
 
+struct VisitedQueryResult
+{
+    URIParams uri;
+    bool visited;
+};
+
 struct StringBundleDescriptor
 {
     nsCString bundleURL;
@@ -323,6 +333,12 @@ struct PostMessageData
     bool isFromPrivateWindow;
 };
 
+union PSHEntryOrSharedID
+{
+  PSHEntry;
+  uint64_t;
+};
+
 /**
  * The PContent protocol is a top-level protocol between the UI process
  * and a content process. There is exactly one PContentParent/PContentChild pair
@@ -347,7 +363,9 @@ nested(upto inside_cpow) sync protocol PContent
     manages PPrinting;
     manages PChildToParentStream;
     manages PParentToChildStream;
+#ifdef MOZ_WEBSPEECH
     manages PSpeechSynthesis;
+#endif
     manages PTestShell;
     manages PJavaScript;
     manages PRemoteSpellcheckEngine;
@@ -359,6 +377,8 @@ nested(upto inside_cpow) sync protocol PContent
     manages PScriptCache;
     manages PLoginReputation;
     manages PSessionStorageObserver;
+    manages PSHEntry;
+    manages PSHistory;
     manages PBenchmarkStorage;
 
     // Depending on exactly how the new browser is being created, it might be
@@ -485,7 +505,7 @@ child:
     async SetConnectivity(bool connectivity);
     async SetCaptivePortalState(int32_t aState);
 
-    async NotifyVisited(URIParams[] uri);
+    async NotifyVisited(VisitedQueryResult[] uri);
 
     async PreferenceUpdate(Pref pref);
     async VarUpdate(GfxVarUpdate var);
@@ -798,14 +818,7 @@ child:
     // The returned loadInfo needs to be set on the channel - since the channel
     // moved to a new process it now has different properties.
 
-    async CrossProcessRedirect(uint32_t aRegistrarId,
-                               nsIURI aURI,
-                               ReplacementChannelConfigInit config,
-                               LoadInfoArgs? aLoadInfo,
-                               uint64_t aChannelId,
-                               nsIURI aOriginalURI,
-                               uint64_t aIdentifier,
-                               uint32_t aRedirectMode)
+    async CrossProcessRedirect(RedirectToRealChannelArgs args)
         returns (nsresult rv, LoadInfoArgs? arg);
 
     /**
@@ -828,6 +841,10 @@ child:
     // Initialize top-level actor for testing content process sandbox.
     async InitSandboxTesting(Endpoint<PSandboxTestingChild> aEndpoint);
 #endif
+
+    async DestroySHEntrySharedState(uint64_t aID);
+
+    async EvictContentViewers(uint64_t[] aToEvictSharedStateIDs);
 
 parent:
     async InitBackground(Endpoint<PBackgroundParent> aEndpoint);
@@ -886,7 +903,9 @@ parent:
 
     async PChildToParentStream();
 
+#ifdef MOZ_WEBSPEECH
     async PSpeechSynthesis();
+#endif
 
     async PMedia();
 
@@ -905,11 +924,16 @@ parent:
 
     async PSessionStorageObserver();
 
+    async PSHistory(BrowsingContext aContext);
+
+    // Clone from entry or use shared id.
+    sync PSHEntry(nullable PSHistory shistory, PSHEntryOrSharedID entryOrSharedID);
+
     async PBenchmarkStorage();
 
     // Services remoting
 
-    async StartVisitedQuery(URIParams uri);
+    async StartVisitedQueries(URIParams[] uri);
     async SetURITitle(URIParams uri, nsString title);
 
     async LoadURIExternal(URIParams uri, PBrowser windowContext);
@@ -954,6 +978,24 @@ parent:
 
     async PPSMContentDownloader(uint32_t aCertType);
 
+    // Creates a helper for forwarding data from an nsExternalAppHandler
+    // running in the content process, to one running in the parent
+    // process.
+    // Bug 1574372 aims to run nsExternalAppHandler entirely in the
+    // parent so that we can remove this.
+    //
+    // Serializes the uri, loadInfo, contentType, referrer, contentDisposition
+    // headers and contentLength of the channel so that we can make them
+    // available to the parent instance via a nsIChannel helper. Also
+    // passes whether the original channel was an instance of nsIFileChannel.
+    //
+    // aContext is the BrowsingContext that initiated the load, and created the
+    // channel.
+    //
+    // Pass true for aForceSave to always save this content to disk, regardless of
+    // nsIMIMEInfo and other such influences.
+    // Pass true for aShouldCloseWindow to specify that aContext was opened specifically
+    // for this load, and should be closed once we've handled it.
     async PExternalHelperApp(URIParams? uri,
                              LoadInfoArgs? loadInfoArgs,
                              nsCString aMimeContentType,
@@ -964,7 +1006,8 @@ parent:
                              int64_t aContentLength,
                              bool aWasFileChannel,
                              URIParams? aReferrer,
-                             nullable PBrowser aBrowser);
+                             BrowsingContext aContext,
+                             bool aShouldCloseWindow);
 
     async PHandlerService();
 
@@ -1279,6 +1322,29 @@ parent:
      * they depend on lazily-loaded font names.
      */
     sync InitOtherFamilyNames(uint32_t aGeneration, bool aDefer) returns (bool aLoaded);
+
+    /**
+     * Ask the parent for a specific hyphenation resource (identified by URI)
+     * as a shared memory block.
+     *
+     * This is a sync method because at the point where a content process finds
+     * that it requires a particular hyphenation dictionary, this is blocking
+     * reflow; making it async would require scheduling another reflow after
+     * the resource is available, and a possible layout "jump" as line-breaks
+     * change. Note that the content process retains a reference to each such
+     * resource it requests, so it will only make this call once per locale for
+     * which hyphenation data exists.
+     *
+     * @param aURI
+     *   The URI (which currently must always point to an omnijar resource)
+     *   for the required hyphenation dictionary.
+     * @param aHandle
+     *   Returns the shmem handle to the resource (or an invalid shmem handle
+     *   in case of failure).
+     * @param aLoaded
+     *   Returns the size in bytes of the resource.
+     */
+    sync GetHyphDict(URIParams aURI) returns (Handle aHandle, uint32_t aSize);
 
     async CreateWindow(nullable PBrowser aThisTab,
                        PBrowser aNewTab,

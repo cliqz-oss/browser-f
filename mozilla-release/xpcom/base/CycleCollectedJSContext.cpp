@@ -13,7 +13,6 @@
 #include "mozilla/Move.h"
 #include "mozilla/MemoryReporting.h"
 #include "mozilla/Sprintf.h"
-#include "mozilla/StaticPrefs_dom.h"
 #include "mozilla/Telemetry.h"
 #include "mozilla/TimelineConsumers.h"
 #include "mozilla/TimelineMarker.h"
@@ -53,8 +52,7 @@ using namespace mozilla::dom;
 namespace mozilla {
 
 CycleCollectedJSContext::CycleCollectedJSContext()
-    : mIsPrimaryContext(true),
-      mRuntime(nullptr),
+    : mRuntime(nullptr),
       mJSContext(nullptr),
       mDoingStableStates(false),
       mTargetedMicroTaskRecursionDepth(0),
@@ -82,10 +80,7 @@ CycleCollectedJSContext::~CycleCollectedJSContext() {
   JS_SetContextPrivate(mJSContext, nullptr);
 
   mRuntime->RemoveContext(this);
-
-  if (mIsPrimaryContext) {
-    mRuntime->Shutdown(mJSContext);
-  }
+  mRuntime->Shutdown(mJSContext);
 
   // Last chance to process any events.
   CleanupIDBTransactions(mBaseRecursionDepth);
@@ -109,24 +104,31 @@ CycleCollectedJSContext::~CycleCollectedJSContext() {
   JS_DestroyContext(mJSContext);
   mJSContext = nullptr;
 
-  if (mIsPrimaryContext) {
-    nsCycleCollector_forgetJSContext();
-  } else {
-    nsCycleCollector_forgetNonPrimaryContext();
-  }
+  nsCycleCollector_forgetJSContext();
 
   mozilla::dom::DestroyScriptSettings();
 
   mOwningThread->SetScriptObserver(nullptr);
   NS_RELEASE(mOwningThread);
 
-  if (mIsPrimaryContext) {
-    delete mRuntime;
-  }
+  delete mRuntime;
   mRuntime = nullptr;
 }
 
-void CycleCollectedJSContext::InitializeCommon() {
+nsresult CycleCollectedJSContext::Initialize(JSRuntime* aParentRuntime,
+                                             uint32_t aMaxBytes,
+                                             uint32_t aMaxNurseryBytes) {
+  MOZ_ASSERT(!mJSContext);
+
+  mozilla::dom::InitScriptSettings();
+  mJSContext = JS_NewContext(aMaxBytes, aParentRuntime);
+  if (!mJSContext) {
+    return NS_ERROR_OUT_OF_MEMORY;
+  }
+
+  JS_SetGCParameter(mJSContext, JSGC_MAX_NURSERY_BYTES, aMaxNurseryBytes);
+
+  mRuntime = CreateRuntime(mJSContext);
   mRuntime->AddContext(this);
 
   mOwningThread->SetScriptObserver(this);
@@ -147,47 +149,8 @@ void CycleCollectedJSContext::InitializeCommon() {
 
   // Cast to PerThreadAtomCache for dom::GetAtomCache(JSContext*).
   JS_SetContextPrivate(mJSContext, static_cast<PerThreadAtomCache*>(this));
-}
-
-nsresult CycleCollectedJSContext::Initialize(JSRuntime* aParentRuntime,
-                                             uint32_t aMaxBytes,
-                                             uint32_t aMaxNurseryBytes) {
-  MOZ_ASSERT(!mJSContext);
-
-  mozilla::dom::InitScriptSettings();
-  mJSContext = JS_NewContext(aMaxBytes, aParentRuntime);
-  if (!mJSContext) {
-    return NS_ERROR_OUT_OF_MEMORY;
-  }
-
-  JS_SetGCParameter(mJSContext, JSGC_MAX_NURSERY_BYTES, aMaxNurseryBytes);
-
-  mRuntime = CreateRuntime(mJSContext);
-
-  InitializeCommon();
 
   nsCycleCollector_registerJSContext(this);
-
-  return NS_OK;
-}
-
-nsresult CycleCollectedJSContext::InitializeNonPrimary(
-    CycleCollectedJSContext* aPrimaryContext) {
-  MOZ_ASSERT(!mJSContext);
-
-  mIsPrimaryContext = false;
-
-  mozilla::dom::InitScriptSettings();
-  mJSContext = JS_NewCooperativeContext(aPrimaryContext->mJSContext);
-  if (!mJSContext) {
-    return NS_ERROR_OUT_OF_MEMORY;
-  }
-
-  mRuntime = aPrimaryContext->mRuntime;
-
-  InitializeCommon();
-
-  nsCycleCollector_registerNonPrimaryContext(this);
 
   return NS_OK;
 }
@@ -358,8 +321,7 @@ void CycleCollectedJSContext::PromiseRejectionTrackerCallback(
 
   if (state == JS::PromiseRejectionHandlingState::Unhandled) {
     PromiseDebugging::AddUncaughtRejection(aPromise);
-    if (mozilla::StaticPrefs::dom_promise_rejection_events_enabled() &&
-        !aMutedErrors) {
+    if (!aMutedErrors) {
       RefPtr<Promise> promise =
           Promise::CreateFromExisting(xpc::NativeGlobal(aPromise), aPromise);
       aboutToBeNotified.AppendElement(promise);
@@ -367,36 +329,34 @@ void CycleCollectedJSContext::PromiseRejectionTrackerCallback(
     }
   } else {
     PromiseDebugging::AddConsumedRejection(aPromise);
-    if (mozilla::StaticPrefs::dom_promise_rejection_events_enabled()) {
-      for (size_t i = 0; i < aboutToBeNotified.Length(); i++) {
-        if (aboutToBeNotified[i] &&
-            aboutToBeNotified[i]->PromiseObj() == aPromise) {
-          // To avoid large amounts of memmoves, we don't shrink the vector
-          // here. Instead, we filter out nullptrs when iterating over the
-          // vector later.
-          aboutToBeNotified[i] = nullptr;
-          DebugOnly<bool> isFound = unhandled.Remove(promiseID);
-          MOZ_ASSERT(isFound);
-          return;
-        }
+    for (size_t i = 0; i < aboutToBeNotified.Length(); i++) {
+      if (aboutToBeNotified[i] &&
+          aboutToBeNotified[i]->PromiseObj() == aPromise) {
+        // To avoid large amounts of memmoves, we don't shrink the vector
+        // here. Instead, we filter out nullptrs when iterating over the
+        // vector later.
+        aboutToBeNotified[i] = nullptr;
+        DebugOnly<bool> isFound = unhandled.Remove(promiseID);
+        MOZ_ASSERT(isFound);
+        return;
       }
-      RefPtr<Promise> promise;
-      unhandled.Remove(promiseID, getter_AddRefs(promise));
-      if (!promise && !aMutedErrors) {
-        nsIGlobalObject* global = xpc::NativeGlobal(aPromise);
-        if (nsCOMPtr<EventTarget> owner = do_QueryInterface(global)) {
-          RootedDictionary<PromiseRejectionEventInit> init(aCx);
-          init.mPromise = Promise::CreateFromExisting(global, aPromise);
-          init.mReason = JS::GetPromiseResult(aPromise);
+    }
+    RefPtr<Promise> promise;
+    unhandled.Remove(promiseID, getter_AddRefs(promise));
+    if (!promise && !aMutedErrors) {
+      nsIGlobalObject* global = xpc::NativeGlobal(aPromise);
+      if (nsCOMPtr<EventTarget> owner = do_QueryInterface(global)) {
+        RootedDictionary<PromiseRejectionEventInit> init(aCx);
+        init.mPromise = Promise::CreateFromExisting(global, aPromise);
+        init.mReason = JS::GetPromiseResult(aPromise);
 
-          RefPtr<PromiseRejectionEvent> event =
-              PromiseRejectionEvent::Constructor(
-                  owner, NS_LITERAL_STRING("rejectionhandled"), init);
+        RefPtr<PromiseRejectionEvent> event =
+            PromiseRejectionEvent::Constructor(
+                owner, NS_LITERAL_STRING("rejectionhandled"), init);
 
-          RefPtr<AsyncEventDispatcher> asyncDispatcher =
-              new AsyncEventDispatcher(owner, event);
-          asyncDispatcher->PostDOMEvent();
-        }
+        RefPtr<AsyncEventDispatcher> asyncDispatcher =
+            new AsyncEventDispatcher(owner, event);
+        asyncDispatcher->PostDOMEvent();
       }
     }
   }
@@ -709,8 +669,6 @@ void CycleCollectedJSContext::PerformDebuggerMicroTaskCheckpoint() {
 }
 
 NS_IMETHODIMP CycleCollectedJSContext::NotifyUnhandledRejections::Run() {
-  MOZ_ASSERT(mozilla::StaticPrefs::dom_promise_rejection_events_enabled());
-
   for (size_t i = 0; i < mUnhandledRejections.Length(); ++i) {
     RefPtr<Promise>& promise = mUnhandledRejections[i];
     if (!promise) {
@@ -755,8 +713,6 @@ NS_IMETHODIMP CycleCollectedJSContext::NotifyUnhandledRejections::Run() {
 }
 
 nsresult CycleCollectedJSContext::NotifyUnhandledRejections::Cancel() {
-  MOZ_ASSERT(mozilla::StaticPrefs::dom_promise_rejection_events_enabled());
-
   for (size_t i = 0; i < mUnhandledRejections.Length(); ++i) {
     RefPtr<Promise>& promise = mUnhandledRejections[i];
     if (!promise) {

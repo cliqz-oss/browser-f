@@ -78,7 +78,7 @@ this.LoginTestUtils = {
     let { LoginManagerParent } = ChromeUtils.import(
       "resource://gre/modules/LoginManagerParent.jsm"
     );
-    LoginManagerParent._generatedPasswordsByPrincipalOrigin.clear();
+    LoginManagerParent.getGeneratedPasswordsByPrincipalOrigin().clear();
   },
 
   /**
@@ -147,6 +147,9 @@ this.LoginTestUtils.testData = {
     loginInfo.QueryInterface(Ci.nsILoginMetaInfo);
     if (modifications) {
       for (let [name, value] of Object.entries(modifications)) {
+        if (name == "httpRealm" && value !== null) {
+          throw new Error("httpRealm not supported for form logins");
+        }
         loginInfo[name] = value;
       }
     }
@@ -171,6 +174,11 @@ this.LoginTestUtils.testData = {
     loginInfo.QueryInterface(Ci.nsILoginMetaInfo);
     if (modifications) {
       for (let [name, value] of Object.entries(modifications)) {
+        if (name == "formActionOrigin" && value !== null) {
+          throw new Error(
+            "formActionOrigin not supported for HTTP auth. logins"
+          );
+        }
         loginInfo[name] = value;
       }
     }
@@ -207,7 +215,7 @@ this.LoginTestUtils.testData = {
         "form_field_password"
       ),
 
-      // Subdomains are treated as completely different sites.
+      // Subdomains can be treated as completely different sites depending on the UI invoked.
       new LoginInfo(
         "https://example.com",
         "https://example.com",

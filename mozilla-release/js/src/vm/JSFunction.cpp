@@ -16,6 +16,7 @@
 #include "mozilla/Range.h"
 #include "mozilla/Utf8.h"
 
+#include <algorithm>
 #include <string.h>
 
 #include "jsapi.h"
@@ -57,6 +58,7 @@
 #include "wasm/AsmJS.h"
 
 #include "debugger/DebugAPI-inl.h"
+#include "vm/FrameIter-inl.h"  // js::FrameIter::unaliasedForEachActual
 #include "vm/Interpreter-inl.h"
 #include "vm/JSScript-inl.h"
 #include "vm/Stack-inl.h"
@@ -763,10 +765,16 @@ inline void JSFunction::trace(JSTracer* trc) {
     // Functions can be be marked as interpreted despite having no script
     // yet at some points when parsing, and can be lazy with no lazy script
     // for self-hosted code.
-    if (hasScript() && !hasUncompletedScript()) {
-      TraceManuallyBarrieredEdge(trc, &u.scripted.s.script_, "script");
+    if (isIncomplete()) {
+      MOZ_ASSERT(u.scripted.s.script_ == nullptr);
+    } else if (hasScript()) {
+      JSScript* script = static_cast<JSScript*>(u.scripted.s.script_);
+      TraceManuallyBarrieredEdge(trc, &script, "script");
+      u.scripted.s.script_ = script;
     } else if (hasLazyScript()) {
-      TraceManuallyBarrieredEdge(trc, &u.scripted.s.lazy_, "lazyScript");
+      LazyScript* lazy = static_cast<LazyScript*>(u.scripted.s.script_);
+      TraceManuallyBarrieredEdge(trc, &lazy, "lazy");
+      u.scripted.s.script_ = lazy;
     }
     // NOTE: The u.scripted.s.selfHostedLazy_ does not point to GC things.
 
@@ -1215,23 +1223,19 @@ const JSClass JSFunction::class_ = {js_Function_str,
 const JSClass* const js::FunctionClassPtr = &JSFunction::class_;
 
 bool JSFunction::isDerivedClassConstructor() {
-  bool derived;
-  if (isInterpretedLazy()) {
+  bool derived = false;
+  if (hasSelfHostedLazyScript()) {
     // There is only one plausible lazy self-hosted derived
     // constructor.
-    if (isSelfHostedBuiltin()) {
-      JSAtom* name = GetClonedSelfHostedFunctionName(this);
+    JSAtom* name = GetClonedSelfHostedFunctionName(this);
 
-      // This function is called from places without access to a
-      // JSContext. Trace some plumbing to get what we want.
-      derived = name == compartment()
-                            ->runtimeFromAnyThread()
-                            ->commonNames->DefaultDerivedClassConstructor;
-    } else {
-      derived = lazyScript()->isDerivedClassConstructor();
-    }
-  } else {
-    derived = nonLazyScript()->isDerivedClassConstructor();
+    // This function is called from places without access to a
+    // JSContext. Trace some plumbing to get what we want.
+    derived = name == compartment()
+                          ->runtimeFromAnyThread()
+                          ->commonNames->DefaultDerivedClassConstructor;
+  } else if (hasBaseScript()) {
+    derived = baseScript()->isDerivedClassConstructor();
   }
   MOZ_ASSERT_IF(derived, isClassConstructor());
   return derived;
@@ -1445,7 +1449,7 @@ bool JSFunction::finishBoundFunctionInit(JSContext* cx, HandleFunction bound,
       return false;
     }
 
-    length = Max(0.0, targetLength.toNumber() - argCount);
+    length = std::max(0.0, targetLength.toNumber() - argCount);
   } else {
     // 19.2.3.2 Function.prototype.bind, step 5.
     bool hasLength;
@@ -1462,7 +1466,8 @@ bool JSFunction::finishBoundFunctionInit(JSContext* cx, HandleFunction bound,
       }
 
       if (targetLength.isNumber()) {
-        length = Max(0.0, JS::ToInteger(targetLength.toNumber()) - argCount);
+        length =
+            std::max(0.0, JS::ToInteger(targetLength.toNumber()) - argCount);
       }
     }
 
@@ -1538,7 +1543,7 @@ static bool DelazifyCanonicalScriptedFunction(JSContext* cx,
   Rooted<LazyScript*> lazy(cx, fun->lazyScript());
 
   MOZ_ASSERT(!lazy->maybeScript(), "Script is already compiled!");
-  MOZ_ASSERT(lazy->functionNonDelazifying() == fun);
+  MOZ_ASSERT(lazy->function() == fun);
 
   ScriptSource* ss = lazy->scriptSource();
   size_t sourceStart = lazy->sourceStart();
@@ -1600,12 +1605,7 @@ static bool DelazifyCanonicalScriptedFunction(JSContext* cx,
   }
 
   RootedScript script(cx, fun->nonLazyScript());
-
-  // Remember the compiled script on the lazy script itself, in case
-  // there are clones of the function still pointing to the lazy script.
-  if (!lazy->maybeScript()) {
-    lazy->initScript(script);
-  }
+  MOZ_ASSERT(lazy->maybeScript() == script);
 
   if (lazy->canRelazify()) {
     // Remember the lazy script on the compiled script, so it can be
@@ -1635,50 +1635,51 @@ static bool DelazifyCanonicalScriptedFunction(JSContext* cx,
 }
 
 /* static */
-bool JSFunction::createScriptForLazilyInterpretedFunction(JSContext* cx,
-                                                          HandleFunction fun) {
-  MOZ_ASSERT(fun->isInterpretedLazy());
+bool JSFunction::delazifyLazilyInterpretedFunction(JSContext* cx,
+                                                   HandleFunction fun) {
+  MOZ_ASSERT(fun->hasLazyScript());
   MOZ_ASSERT(cx->compartment() == fun->compartment());
 
   // The function must be same-compartment but might be cross-realm. Make sure
   // the script is created in the function's realm.
   AutoRealm ar(cx, fun);
 
-  if (fun->hasLazyScript()) {
-    Rooted<LazyScript*> lazy(cx, fun->lazyScript());
-    RootedScript script(cx, lazy->maybeScript());
+  Rooted<LazyScript*> lazy(cx, fun->lazyScript());
+  RootedFunction canonicalFun(cx, lazy->function());
 
-    if (script) {
-      // This function is a non-canonical function, and the canonical function
-      // is already delazified.
-      fun->setUnlazifiedScript(script);
-      // Remember the lazy script on the compiled script, so it can be
-      // stored on the function again in case of re-lazification.
-      if (lazy->canRelazify()) {
-        MOZ_RELEASE_ASSERT(script->maybeLazyScript() == lazy);
-        script->setLazyScript(lazy);
-      }
-      return true;
+  // If this function is non-canonical, then use the canonical function first
+  // to get the delazified script. This may result in calling this method
+  // again on the canonical function. This ensures the canonical function is
+  // always non-lazy if any of the clones are non-lazy.
+  if (fun != canonicalFun) {
+    JSScript* script = JSFunction::getOrCreateScript(cx, canonicalFun);
+    if (!script) {
+      return false;
     }
 
-    if (fun != lazy->functionNonDelazifying()) {
-      // This function is a non-canonical function, and the canonical function
-      // is lazy. Delazify the canonical function, which will result in calling
-      // this function again with the canonical function.
-      if (!LazyScript::functionDelazifying(cx, lazy)) {
-        return false;
-      }
-      script = lazy->functionNonDelazifying()->nonLazyScript();
-      if (!script) {
-        return false;
-      }
-
-      fun->setUnlazifiedScript(script);
-      return true;
-    }
-
-    return DelazifyCanonicalScriptedFunction(cx, fun);
+    fun->setUnlazifiedScript(script);
+    return true;
   }
+
+  // Even if we relazified the canonical function, the GC may not have swept
+  // the non-lazy script yet. In this case, we can reuse it.
+  if (lazy->hasScript()) {
+    fun->setUnlazifiedScript(lazy->maybeScript());
+    return true;
+  }
+
+  // Finally, compile the script if it really doesn't exist.
+  return DelazifyCanonicalScriptedFunction(cx, fun);
+}
+
+/* static */
+bool JSFunction::delazifySelfHostedLazyFunction(JSContext* cx,
+                                                js::HandleFunction fun) {
+  MOZ_ASSERT(cx->compartment() == fun->compartment());
+
+  // The function must be same-compartment but might be cross-realm. Make sure
+  // the script is created in the function's realm.
+  AutoRealm ar(cx, fun);
 
   /* Lazily cloned self-hosted script. */
   MOZ_ASSERT(fun->isSelfHostedBuiltin());
@@ -1694,7 +1695,7 @@ void JSFunction::maybeRelazify(JSRuntime* rt) {
   // Try to relazify functions with a non-lazy script. Note: functions can be
   // marked as interpreted despite having no script yet at some points when
   // parsing.
-  if (!hasScript() || !u.scripted.s.script_) {
+  if (isIncomplete()) {
     return;
   }
 
@@ -1724,7 +1725,8 @@ void JSFunction::maybeRelazify(JSRuntime* rt) {
   }
 
   // Don't relazify functions with JIT code.
-  if (!u.scripted.s.script_->isRelazifiable()) {
+  JSScript* script = nonLazyScript();
+  if (!script->isRelazifiable()) {
     return;
   }
 
@@ -1735,8 +1737,6 @@ void JSFunction::maybeRelazify(JSRuntime* rt) {
     return;
   }
 
-  JSScript* script = nonLazyScript();
-
   flags_.clearInterpreted();
   flags_.setInterpretedLazy();
 
@@ -1745,8 +1745,8 @@ void JSFunction::maybeRelazify(JSRuntime* rt) {
 
   LazyScript* lazy = script->maybeLazyScript();
   if (lazy) {
-    u.scripted.s.lazy_ = lazy;
-    MOZ_ASSERT(!isSelfHostedBuiltin());
+    u.scripted.s.script_ = lazy;
+    MOZ_ASSERT(hasLazyScript());
   } else {
     // Lazy self-hosted builtins point to a SelfHostedLazyScript that may be
     // called from JIT scripted calls.
@@ -2262,7 +2262,7 @@ JSFunction* js::CloneFunctionReuseScript(
     MOZ_ASSERT(fun->hasSelfHostedLazyScript());
     MOZ_ASSERT(fun->compartment() == clone->compartment());
     SelfHostedLazyScript* lazy = fun->selfHostedLazyScript();
-    clone->initSelfHostLazyScript(lazy);
+    clone->initSelfHostedLazyScript(lazy);
     clone->initEnvironment(enclosingEnv);
   }
 

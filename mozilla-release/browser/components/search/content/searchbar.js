@@ -227,10 +227,9 @@
       let uri = this.currentEngine.iconURI;
       this.setIcon(this, uri ? uri.spec : "");
 
-      let name = this.currentEngine.name;
-      let text = this._stringBundle.getFormattedString("searchtip", [name]);
-      this._textbox.label = text;
-      this._textbox.tooltipText = text;
+      this._textbox.title = this._stringBundle.getFormattedString("searchtip", [
+        this.currentEngine.name,
+      ]);
     }
 
     updateGoButtonVisibility() {
@@ -303,7 +302,9 @@
       } else {
         let newTabPref = Services.prefs.getBoolPref("browser.search.openintab");
         if (
-          (aEvent instanceof KeyboardEvent && aEvent.altKey) ^ newTabPref &&
+          (aEvent instanceof KeyboardEvent &&
+            (aEvent.altKey || aEvent.getModifierState("AltGraph"))) ^
+            newTabPref &&
           !gBrowser.selectedTab.isEmpty
         ) {
           where = "tab";
@@ -773,13 +774,17 @@
 
           document.popupNode = null;
 
-          let { width } = this.getBoundingClientRect();
-          // Ensure the panel is wide enough to fit at least 3 engines.
-          if (this.oneOffButtons) {
-            width = Math.max(width, this.oneOffButtons.buttonWidth * 3);
-          }
-
-          popup.style.minWidth = width + "px";
+          // Ensure the panel has a meaningful initial size and doesn't grow
+          // unconditionally.
+          requestAnimationFrame(() => {
+            let { width } = window.windowUtils.getBoundsWithoutFlushing(this);
+            if (popup.oneOffButtons) {
+              // We have a min-width rule on search-panel-one-offs to show at
+              // least 3 buttons, so take that into account here.
+              width = Math.max(width, popup.oneOffButtons.buttonWidth * 3);
+            }
+            popup.style.width = width + "px";
+          });
 
           popup._invalidate();
 

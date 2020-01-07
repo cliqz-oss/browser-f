@@ -15,11 +15,6 @@ login-app-promo-apple =
 login-filter =
     .placeholder = Zugangsdaten durchsuchen
 create-login-button = Zugangsdaten hinzufügen
-# This string is used as alternative text for favicon images.
-# Variables:
-#   $title (String) - The title of the website associated with the favicon.
-login-favicon =
-    .alt = Favicon für { $title }
 fxaccounts-sign-in-text = Nutzen Sie Ihre Passwörter auf anderen Geräten
 fxaccounts-sign-in-button = Bei { -sync-brand-short-name } anmelden
 fxaccounts-avatar-button =
@@ -61,9 +56,6 @@ about-logins-login-list-empty-search-description = Keine mit der Suche übereins
 login-list-item-title-new-login = Neue Zugangsdaten
 login-list-item-subtitle-new-login = Zugangsdaten eingeben
 login-list-item-subtitle-missing-username = (kein Benutzername)
-about-logins-list-item-warning-icon =
-    .alt = Warnsymbol
-    .title = Website mit Datenleck
 about-logins-list-item-breach-icon =
     .title = Website mit Datenleck
 
@@ -82,6 +74,7 @@ about-logins-intro-import = Wenn Ihre Zugangsdaten in einem anderen Browser gesp
 login-item-new-login-title = Neue Zugangsdaten hinzufügen
 login-item-edit-button = Bearbeiten
 login-item-delete-button = Entfernen
+about-logins-login-item-remove-button = Entfernen
 login-item-origin-label = Adresse der Website
 login-item-origin =
     .placeholder = https://www.example.com
@@ -135,8 +128,10 @@ about-logins-enable-password-sync-dont-ask-again-button =
 confirmation-dialog-cancel-button = Abbrechen
 confirmation-dialog-dismiss-button =
     .title = Abbrechen
+about-logins-confirm-remove-dialog-title = Diese Zugangsdaten entfernen?
 confirm-delete-dialog-message = Diese Aktion kann nicht rückgängig gemacht werden.
 confirm-delete-dialog-confirm-button = Entfernen
+about-logins-confirm-remove-dialog-confirm-button = Entfernen
 confirm-discard-changes-dialog-title = Nicht gespeicherte Änderungen verwerfen?
 confirm-discard-changes-dialog-message = Alle nicht gespeicherten Änderungen gehen verloren.
 confirm-discard-changes-dialog-confirm-button = Verwerfen
@@ -150,11 +145,6 @@ breach-alert-dismiss =
 
 ## Error Messages
 
-# This is an error message that appears when a user attempts to save
-# a new login that is identical to an existing saved login.
-# Variables:
-#   $loginTitle (String) - The title of the website associated with the login.
-about-logins-error-message-duplicate-login = Es existiert bereits ein Eintrag für { $loginTitle } mit diesem Benutzernamen.
 # This is an error message that appears when a user attempts to save
 # a new login that is identical to an existing saved login.
 # Variables:

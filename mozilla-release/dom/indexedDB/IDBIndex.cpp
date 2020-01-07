@@ -88,24 +88,16 @@ void IDBIndex::RefreshMetadata(bool aMayDelete) {
   AssertIsOnOwningThread();
   MOZ_ASSERT_IF(mDeletedMetadata, mMetadata == mDeletedMetadata);
 
-  const nsTArray<IndexMetadata>& indexes = mObjectStore->Spec().indexes();
-
-  bool found = false;
-
-  for (uint32_t count = indexes.Length(), index = 0; index < count; index++) {
-    const IndexMetadata& metadata = indexes[index];
-
-    if (metadata.id() == Id()) {
-      mMetadata = &metadata;
-
-      found = true;
-      break;
-    }
-  }
+  const auto& indexes = mObjectStore->Spec().indexes();
+  const auto foundIt = std::find_if(
+      indexes.cbegin(), indexes.cend(),
+      [id = Id()](const auto& metadata) { return metadata.id() == id; });
+  const bool found = foundIt != indexes.cend();
 
   MOZ_ASSERT_IF(!aMayDelete && !mDeletedMetadata, found);
 
   if (found) {
+    mMetadata = &*foundIt;
     MOZ_ASSERT(mMetadata != mDeletedMetadata);
     mDeletedMetadata = nullptr;
   } else {
@@ -140,13 +132,13 @@ void IDBIndex::SetName(const nsAString& aName, ErrorResult& aRv) {
 
   IDBTransaction* const transaction = mObjectStore->Transaction();
 
-  if (transaction->GetMode() != IDBTransaction::VERSION_CHANGE ||
+  if (transaction->GetMode() != IDBTransaction::Mode::VersionChange ||
       mDeletedMetadata) {
     aRv.Throw(NS_ERROR_DOM_INVALID_STATE_ERR);
     return;
   }
 
-  if (!transaction->IsOpen()) {
+  if (!transaction->CanAcceptRequests()) {
     aRv.Throw(NS_ERROR_DOM_INDEXEDDB_TRANSACTION_INACTIVE_ERR);
     return;
   }
@@ -279,7 +271,7 @@ already_AddRefed<IDBRequest> IDBIndex::GetInternal(bool aKeyOnly,
   }
 
   IDBTransaction* transaction = mObjectStore->Transaction();
-  if (!transaction->IsOpen()) {
+  if (!transaction->CanAcceptRequests()) {
     aRv.Throw(NS_ERROR_DOM_INDEXEDDB_TRANSACTION_INACTIVE_ERR);
     return nullptr;
   }
@@ -333,6 +325,11 @@ already_AddRefed<IDBRequest> IDBIndex::GetInternal(bool aKeyOnly,
         IDB_LOG_STRINGIFY(this), IDB_LOG_STRINGIFY(keyRange));
   }
 
+  // TODO: This is necessary to preserve request ordering only. Proper
+  // sequencing of requests should be done in a more sophisticated manner that
+  // doesn't require invalidating cursor caches (Bug 1580499).
+  transaction->InvalidateCursorCaches();
+
   transaction->StartRequest(request, params);
 
   return request.forget();
@@ -349,7 +346,7 @@ already_AddRefed<IDBRequest> IDBIndex::GetAllInternal(
   }
 
   IDBTransaction* transaction = mObjectStore->Transaction();
-  if (!transaction->IsOpen()) {
+  if (!transaction->CanAcceptRequests()) {
     aRv.Throw(NS_ERROR_DOM_INDEXEDDB_TRANSACTION_INACTIVE_ERR);
     return nullptr;
   }
@@ -403,6 +400,11 @@ already_AddRefed<IDBRequest> IDBIndex::GetAllInternal(
         IDB_LOG_STRINGIFY(aLimit));
   }
 
+  // TODO: This is necessary to preserve request ordering only. Proper
+  // sequencing of requests should be done in a more sophisticated manner that
+  // doesn't require invalidating cursor caches (Bug 1580499).
+  transaction->InvalidateCursorCaches();
+
   transaction->StartRequest(request, params);
 
   return request.forget();
@@ -419,7 +421,7 @@ already_AddRefed<IDBRequest> IDBIndex::OpenCursorInternal(
   }
 
   IDBTransaction* transaction = mObjectStore->Transaction();
-  if (!transaction->IsOpen()) {
+  if (!transaction->CanAcceptRequests()) {
     aRv.Throw(NS_ERROR_DOM_INDEXEDDB_TRANSACTION_INACTIVE_ERR);
     return nullptr;
   }
@@ -469,7 +471,7 @@ already_AddRefed<IDBRequest> IDBIndex::OpenCursorInternal(
     IDB_LOG_MARK_CHILD_TRANSACTION_REQUEST(
         "database(%s).transaction(%s).objectStore(%s).index(%s)."
         "openCursor(%s, %s)",
-        "IDBObjectStore.openCursor()", transaction->LoggingSerialNumber(),
+        "IDBIndex.openCursor()", transaction->LoggingSerialNumber(),
         request->LoggingSerialNumber(),
         IDB_LOG_STRINGIFY(transaction->Database()),
         IDB_LOG_STRINGIFY(transaction), IDB_LOG_STRINGIFY(mObjectStore),
@@ -479,6 +481,11 @@ already_AddRefed<IDBRequest> IDBIndex::OpenCursorInternal(
 
   BackgroundCursorChild* const actor =
       new BackgroundCursorChild(request, this, direction);
+
+  // TODO: This is necessary to preserve request ordering only. Proper
+  // sequencing of requests should be done in a more sophisticated manner that
+  // doesn't require invalidating cursor caches (Bug 1580499).
+  transaction->InvalidateCursorCaches();
 
   mObjectStore->Transaction()->OpenCursor(actor, params);
 
@@ -496,7 +503,7 @@ already_AddRefed<IDBRequest> IDBIndex::Count(JSContext* aCx,
   }
 
   IDBTransaction* const transaction = mObjectStore->Transaction();
-  if (!transaction->IsOpen()) {
+  if (!transaction->CanAcceptRequests()) {
     aRv.Throw(NS_ERROR_DOM_INDEXEDDB_TRANSACTION_INACTIVE_ERR);
     return nullptr;
   }
@@ -523,11 +530,16 @@ already_AddRefed<IDBRequest> IDBIndex::Count(JSContext* aCx,
   IDB_LOG_MARK_CHILD_TRANSACTION_REQUEST(
       "database(%s).transaction(%s).objectStore(%s).index(%s)."
       "count(%s)",
-      "IDBObjectStore.count()", transaction->LoggingSerialNumber(),
+      "IDBIndex.count()", transaction->LoggingSerialNumber(),
       request->LoggingSerialNumber(),
       IDB_LOG_STRINGIFY(transaction->Database()),
       IDB_LOG_STRINGIFY(transaction), IDB_LOG_STRINGIFY(mObjectStore),
       IDB_LOG_STRINGIFY(this), IDB_LOG_STRINGIFY(keyRange));
+
+  // TODO: This is necessary to preserve request ordering only. Proper
+  // sequencing of requests should be done in a more sophisticated manner that
+  // doesn't require invalidating cursor caches (Bug 1580499).
+  transaction->InvalidateCursorCaches();
 
   transaction->StartRequest(request, params);
 

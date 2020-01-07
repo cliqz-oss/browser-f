@@ -263,6 +263,7 @@ impl MDNSService {
         let socket = socket.into_udp_socket();
         socket.set_multicast_loop_v4(true)?;
         socket.set_read_timeout(Some(time::Duration::from_millis(10)))?;
+        socket.set_write_timeout(Some(time::Duration::from_millis(10)))?;
         for addr in addrs {
             if let Err(err) = socket.join_multicast_v4(&mdns_addr, &addr) {
                 warn!(
@@ -280,7 +281,7 @@ impl MDNSService {
             let mut unsent_queries = LinkedList::new();
             let mut pending_queries = HashMap::new();
             loop {
-                match receiver.recv_timeout(time::Duration::from_millis(10)) {
+                match receiver.try_recv() {
                     Ok(msg) => match msg {
                         ServiceControl::Register { hostname, address } => {
                             if !validate_hostname(&hostname) {
@@ -324,10 +325,10 @@ impl MDNSService {
                             break;
                         }
                     },
-                    Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+                    Err(std::sync::mpsc::TryRecvError::Disconnected) => {
                         break;
                     }
-                    _ => {}
+                    Err(std::sync::mpsc::TryRecvError::Empty) => {}
                 }
                 if pending_queries.len() < 50 {
                     let mut queries: Vec<Query> = Vec::new();
@@ -369,7 +370,7 @@ impl MDNSService {
                 for hostname in expired {
                     if let Some(mut query) = pending_queries.remove(&hostname) {
                         query.attempts += 1;
-                        if query.attempts < 2 {
+                        if query.attempts < 3 {
                             query.timestamp = now;
                             unsent_queries.push_back(query);
                         } else {
@@ -476,8 +477,9 @@ impl MDNSService {
                         }
                     }
                     Err(err) => {
-                        if err.kind() != io::ErrorKind::WouldBlock
+                        if err.kind() != io::ErrorKind::Interrupted
                             && err.kind() != io::ErrorKind::TimedOut
+                            && err.kind() != io::ErrorKind::WouldBlock
                         {
                             error!("Socket error: {}", err);
                             break;
@@ -652,6 +654,9 @@ mod tests {
         socket.set_multicast_loop_v4(true).unwrap();
         socket
             .set_read_timeout(Some(time::Duration::from_millis(10)))
+            .unwrap();
+        socket
+            .set_write_timeout(Some(time::Duration::from_millis(10)))
             .unwrap();
         socket
             .join_multicast_v4(&std::net::Ipv4Addr::new(224, 0, 0, 251), &addr)

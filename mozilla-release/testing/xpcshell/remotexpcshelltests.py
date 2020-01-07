@@ -360,8 +360,18 @@ class XPCShellRemote(xpcshell.XPCShellTests, object):
         self.env["HOME"] = self.profileDir
         self.env["XPCSHELL_TEST_TEMP_DIR"] = self.remoteTmpDir
         self.env["XPCSHELL_MINIDUMP_DIR"] = self.remoteMinidumpDir
-        self.env["MOZ_ANDROID_CPU_ABI"] = self.device.get_prop("ro.product.cpu.abi")
         self.env["MOZ_ANDROID_DATA_DIR"] = self.remoteBinDir
+
+        # Guard against intermittent failures to retrieve abi property;
+        # without an abi, xpcshell cannot find greprefs.js and crashes.
+        abi = None
+        retries = 0
+        while ((not abi) or len(abi) == 0) and retries < 3:
+            abi = self.device.get_prop("ro.product.cpu.abi")
+            retries += 1
+        if ((not abi) or len(abi) == 0):
+            raise Exception("failed to get ro.product.cpu.abi from device")
+        self.env["MOZ_ANDROID_CPU_ABI"] = abi
 
         if self.options['setup']:
             self.pushWrapper()
@@ -473,7 +483,7 @@ class XPCShellRemote(xpcshell.XPCShellTests, object):
         # The tests directory can be quite large: 5000 files and growing!
         # Sometimes - like on a low-end aws instance running an emulator - the push
         # may exceed the default 5 minute timeout, so we increase it here to 10 minutes.
-        self.initDir(self.remoteScriptsDir)
+        self.device.rm(self.remoteScriptsDir, recursive=True, force=True, timeout=None, root=True)
         self.device.push(self.xpcDir, self.remoteScriptsDir, timeout=600)
         self.device.chmod(self.remoteScriptsDir, recursive=True, root=True)
 

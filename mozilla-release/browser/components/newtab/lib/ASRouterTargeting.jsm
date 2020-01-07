@@ -114,6 +114,7 @@ const MOZ_JEXL_FILEPATH = "mozjexl";
 
 const { activityStreamProvider: asProvider } = NewTabUtils;
 
+const FXA_ATTACHED_CLIENTS_UPDATE_INTERVAL = 2 * 60 * 60 * 1000; // Two hours
 const FRECENT_SITES_UPDATE_INTERVAL = 6 * 60 * 60 * 1000; // Six hours
 const FRECENT_SITES_IGNORE_BLOCKED = false;
 const FRECENT_SITES_NUM_ITEMS = 25;
@@ -145,6 +146,32 @@ function CachedTargetingGetter(
       const now = Date.now();
       if (now - this._lastUpdated >= updateInterval) {
         this._value = await asProvider[property](options);
+        this._lastUpdated = now;
+      }
+      return this._value;
+    },
+  };
+}
+
+function CacheListAttachedOAuthClients() {
+  return {
+    _lastUpdated: 0,
+    _value: null,
+    expire() {
+      this._lastUpdated = 0;
+      this._value = null;
+    },
+    get() {
+      const now = Date.now();
+      if (now - this._lastUpdated >= FXA_ATTACHED_CLIENTS_UPDATE_INTERVAL) {
+        this._value = new Promise(resolve => {
+          fxAccounts
+            .listAttachedOAuthClients()
+            .then(clients => {
+              resolve(clients);
+            })
+            .catch(() => resolve([]));
+        });
         this._lastUpdated = now;
       }
       return this._value;
@@ -216,6 +243,7 @@ const QueryCache = {
     TotalBookmarksCount: new CachedTargetingGetter("getTotalBookmarksCount"),
     CheckBrowserNeedsUpdate: new CheckBrowserNeedsUpdate(),
     RecentBookmarks: new CachedTargetingGetter("getRecentBookmarks"),
+    ListAttachedOAuthClients: new CacheListAttachedOAuthClients(),
   },
 };
 
@@ -249,12 +277,46 @@ function sortMessagesByWeightedRank(messages) {
 }
 
 /**
- * Messages with targeting should get evaluated first, this way we can have
- * fallback messages (no targeting at all) that will show up if nothing else
- * matched
+ * getSortedMessages - Given an array of Messages, applies sorting and filtering rules
+ *                     in expected order.
+ *
+ * @param {Array<Message>} messages
+ * @param {{}} options
+ * @param {boolean} options.ordered - Should .order be used instead of random weighted sorting?
+ * @returns {Array<Message>}
  */
-function sortMessagesByTargeting(messages) {
-  return messages.sort((a, b) => {
+function getSortedMessages(messages, options = {}) {
+  let { ordered } = { ordered: false, ...options };
+  let result = messages;
+  let hasScores;
+
+  if (!ordered) {
+    result = sortMessagesByWeightedRank(result);
+  }
+
+  result.sort((a, b) => {
+    // If we find at least one score, we need to apply filtering by threshold at the end.
+    if (!isNaN(a.score) || !isNaN(b.score)) {
+      hasScores = true;
+    }
+
+    // First sort by score if we're doing personalization:
+    if (a.score > b.score || (!isNaN(a.score) && isNaN(b.score))) {
+      return -1;
+    }
+    if (a.score < b.score || (isNaN(a.score) && !isNaN(b.score))) {
+      return 1;
+    }
+
+    // Next, sort by priority
+    if (a.priority > b.priority || (!isNaN(a.priority) && isNaN(b.priority))) {
+      return -1;
+    }
+    if (a.priority < b.priority || (isNaN(a.priority) && !isNaN(b.priority))) {
+      return 1;
+    }
+
+    // Sort messages with targeting expressions higher than those with none
     if (a.targeting && !b.targeting) {
       return -1;
     }
@@ -262,37 +324,28 @@ function sortMessagesByTargeting(messages) {
       return 1;
     }
 
-    return 0;
-  });
-}
-
-/**
- * Sort messages in descending order based on the value of `priority`
- * Messages with no `priority` are ranked lowest (even after a message with
- * priority 0).
- */
-function sortMessagesByPriority(messages) {
-  return messages.sort((a, b) => {
-    if (isNaN(a.priority) && isNaN(b.priority)) {
-      return 0;
-    }
-    if (!isNaN(a.priority) && isNaN(b.priority)) {
-      return -1;
-    }
-    if (isNaN(a.priority) && !isNaN(b.priority)) {
-      return 1;
-    }
-
-    // Descending order; higher priority comes first
-    if (a.priority > b.priority) {
-      return -1;
-    }
-    if (a.priority < b.priority) {
-      return 1;
+    // Next, sort by order *ascending* if ordered = true
+    if (ordered) {
+      if (a.order > b.order || (!isNaN(a.order) && isNaN(b.order))) {
+        return 1;
+      }
+      if (a.order < b.order || (isNaN(a.order) && !isNaN(b.order))) {
+        return -1;
+      }
     }
 
     return 0;
   });
+
+  if (hasScores && !isNaN(ASRouterPreferences.personalizedCfrThreshold)) {
+    return result.filter(
+      message =>
+        isNaN(message.score) ||
+        message.score >= ASRouterPreferences.personalizedCfrThreshold
+    );
+  }
+
+  return result;
 }
 
 const TargetingGetters = {
@@ -331,6 +384,12 @@ const TargetingGetters = {
   },
   get isFxAEnabled() {
     return isFxAEnabled;
+  },
+  get trailheadInterrupt() {
+    return ASRouterPreferences.trailhead.trailheadInterrupt;
+  },
+  get trailheadTriplet() {
+    return ASRouterPreferences.trailhead.trailheadTriplet;
   },
   get sync() {
     return {
@@ -464,11 +523,46 @@ const TargetingGetters = {
   get totalBlockedCount() {
     return TrackingDBService.sumAllEvents();
   },
+  get blockedCountByType() {
+    const idToTextMap = new Map([
+      [Ci.nsITrackingDBService.TRACKERS_ID, "trackerCount"],
+      [Ci.nsITrackingDBService.TRACKING_COOKIES_ID, "cookieCount"],
+      [Ci.nsITrackingDBService.CRYPTOMINERS_ID, "cryptominerCount"],
+      [Ci.nsITrackingDBService.FINGERPRINTERS_ID, "fingerprinterCount"],
+      [Ci.nsITrackingDBService.SOCIAL_ID, "socialCount"],
+    ]);
+
+    const dateTo = new Date();
+    const dateFrom = new Date(dateTo.getTime() - 42 * 24 * 60 * 60 * 1000);
+    return TrackingDBService.getEventsByDateRange(dateFrom, dateTo).then(
+      eventsByDate => {
+        let totalEvents = {};
+        for (let blockedType of idToTextMap.values()) {
+          totalEvents[blockedType] = 0;
+        }
+
+        return eventsByDate.reduce((acc, day) => {
+          const type = day.getResultByName("type");
+          const count = day.getResultByName("count");
+          acc[idToTextMap.get(type)] = acc[idToTextMap.get(type)] + count;
+          return acc;
+        }, totalEvents);
+      }
+    );
+  },
   get attachedFxAOAuthClients() {
-    return this.usesFirefoxSync ? fxAccounts.listAttachedOAuthClients() : [];
+    return this.usesFirefoxSync
+      ? QueryCache.queries.ListAttachedOAuthClients.get()
+      : [];
   },
   get platformName() {
     return AppConstants.platform;
+  },
+  get scores() {
+    return ASRouterPreferences.personalizedCfrScores;
+  },
+  get scoreThreshold() {
+    return ASRouterPreferences.personalizedCfrThreshold;
   },
 };
 
@@ -531,7 +625,9 @@ this.ASRouterTargeting = {
         candidateMessageTrigger.params.includes(trigger.param.host)) ||
       (candidateMessageTrigger.params &&
         trigger.param.type &&
-        candidateMessageTrigger.params.includes(trigger.param.type)) ||
+        candidateMessageTrigger.params.filter(
+          t => (t & trigger.param.type) === t
+        ).length) ||
       (candidateMessageTrigger.patterns &&
         trigger.param.url &&
         new MatchPatternSet(candidateMessageTrigger.patterns).matches(
@@ -600,12 +696,6 @@ this.ASRouterTargeting = {
     return result;
   },
 
-  _getSortedMessages(messages) {
-    const weightSortedMessages = sortMessagesByWeightedRank([...messages]);
-    const sortedMessages = sortMessagesByTargeting(weightSortedMessages);
-    return sortMessagesByPriority(sortedMessages);
-  },
-
   _getCombinedContext(trigger, context) {
     const triggerContext = trigger ? trigger.context : {};
     return this.combineContexts(context, triggerContext);
@@ -631,6 +721,7 @@ this.ASRouterTargeting = {
    * @param {trigger} string A trigger expression if a message for that trigger is desired
    * @param {obj|null} context A FilterExpression context. Defaults to TargetingGetters above.
    * @param {func} onError A function to handle errors (takes two params; error, message)
+   * @param {func} ordered An optional param when true sort message by order specified in message
    * @param {boolean} shouldCache Should the JEXL evaluations be cached and reused.
    * @returns {obj} an AS router message
    */
@@ -639,9 +730,10 @@ this.ASRouterTargeting = {
     trigger,
     context,
     onError,
+    ordered = false,
     shouldCache = false,
   }) {
-    const sortedMessages = this._getSortedMessages(messages);
+    const sortedMessages = getSortedMessages(messages, { ordered });
     const combinedContext = this._getCombinedContext(trigger, context);
 
     for (const candidate of sortedMessages) {
@@ -668,10 +760,17 @@ this.ASRouterTargeting = {
    * @param {trigger} string A trigger expression if a message for that trigger is desired.
    * @param {obj|null} context A FilterExpression context. Defaults to TargetingGetters above.
    * @param {func} onError A function to handle errors (takes two params; error, message)
+   * @param {func} ordered An optional param when true sort message by order specified in message
    * @returns {Array} An array of AS router messages that match.
    */
-  async findAllMatchingMessages({ messages, trigger, context, onError }) {
-    const sortedMessages = this._getSortedMessages(messages);
+  async findAllMatchingMessages({
+    messages,
+    trigger,
+    context,
+    onError,
+    ordered = false,
+  }) {
+    const sortedMessages = getSortedMessages(messages, { ordered });
     const combinedContext = this._getCombinedContext(trigger, context);
     const matchingMessages = [];
 
@@ -687,10 +786,12 @@ this.ASRouterTargeting = {
 };
 
 // Export for testing
+this.getSortedMessages = getSortedMessages;
 this.QueryCache = QueryCache;
 this.CachedTargetingGetter = CachedTargetingGetter;
 this.EXPORTED_SYMBOLS = [
   "ASRouterTargeting",
   "QueryCache",
   "CachedTargetingGetter",
+  "getSortedMessages",
 ];

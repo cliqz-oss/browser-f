@@ -8,35 +8,23 @@
  */
 
 var gDebuggee;
-var gClient;
 var gThreadFront;
 
-Services.prefs.setBoolPref("security.allow_eval_with_system_principal", true);
-
-registerCleanupFunction(() => {
-  Services.prefs.clearUserPref("security.allow_eval_with_system_principal");
-});
-
-function run_test() {
-  initTestDebuggerServer();
-  gDebuggee = addTestGlobal("test-stack");
-  gClient = new DebuggerClient(DebuggerServer.connectPipe());
-  gClient.connect().then(function() {
-    attachTestTabAndResume(gClient, "test-stack", function(
-      response,
-      targetFront,
-      threadFront
-    ) {
+add_task(
+  threadFrontTest(
+    async ({ threadFront, debuggee }) => {
       gThreadFront = threadFront;
+      gDebuggee = debuggee;
       test_pause_frame();
-    });
-  });
-  do_test_pending();
-}
+    },
+    { waitForFinish: true }
+  )
+);
 
 function test_pause_frame() {
   gThreadFront.once("paused", async function(packet) {
-    let parentEnv = packet.frame.environment.parent;
+    const environment = await packet.frame.getEnvironment();
+    let parentEnv = environment.parent;
     const bindings = parentEnv.bindings;
     const args = bindings.arguments;
     const vars = bindings.variables;
@@ -56,7 +44,7 @@ function test_pause_frame() {
     Assert.ok(!!response.ownProperties.Object.value.actor);
 
     await gThreadFront.resume();
-    finishClient(gClient);
+    threadFrontTestFinished();
   });
 
   /* eslint-disable */

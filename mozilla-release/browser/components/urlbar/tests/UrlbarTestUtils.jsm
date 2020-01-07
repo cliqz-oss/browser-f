@@ -10,7 +10,9 @@ const { XPCOMUtils } = ChromeUtils.import(
 );
 
 XPCOMUtils.defineLazyModuleGetters(this, {
+  AppConstants: "resource://gre/modules/AppConstants.jsm",
   BrowserTestUtils: "resource://testing-common/BrowserTestUtils.jsm",
+  UrlbarController: "resource:///modules/UrlbarController.jsm",
   UrlbarUtils: "resource:///modules/UrlbarUtils.jsm",
 });
 
@@ -33,7 +35,7 @@ var UrlbarTestUtils = {
    * @param {function} options.waitForFocus The SimpleTest function
    * @param {boolean} [options.fireInputEvent] whether an input event should be
    *        used when starting the query (simulates the user's typing, sets
-   *        userTypedValued, etc.)
+   *        userTypedValued, triggers engagement event telemetry, etc.)
    * @param {number} [options.selectionStart] The input's selectionStart
    * @param {number} [options.selectionEnd] The input's selectionEnd
    */
@@ -349,5 +351,29 @@ var UrlbarTestUtils = {
       data: win.gURLBar.value[win.gURLBar.value.length - 1] || null,
     });
     win.gURLBar.inputField.dispatchEvent(event);
+  },
+
+  /**
+   * Returns a new mock controller.  This is useful for xpcshell tests.
+   * @param {object} options Additional options to pass to the UrlbarController
+   *        constructor.
+   * @returns {UrlbarController} A new controller.
+   */
+  newMockController(options = {}) {
+    return new UrlbarController(
+      Object.assign(
+        {
+          input: {
+            isPrivate: false,
+            window: {
+              location: {
+                href: AppConstants.BROWSER_CHROME_URL,
+              },
+            },
+          },
+        },
+        options
+      )
+    );
   },
 };

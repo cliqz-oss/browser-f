@@ -159,11 +159,11 @@ inline void AutoGCRooter::trace(JSTracer* trc) {
       frontend::TraceParser(trc, this);
       return;
 
-#if defined(JS_BUILD_BINAST)
     case Tag::BinASTParser:
+#if defined(JS_BUILD_BINAST)
       frontend::TraceBinASTParser(trc, this);
-      return;
 #endif  // defined(JS_BUILD_BINAST)
+      return;
 
     case Tag::ValueArray: {
       /*
@@ -285,6 +285,8 @@ void js::gc::GCRuntime::traceRuntimeForMajorGC(JSTracer* trc,
         trc, Compartment::NonGrayEdges);
   }
 
+  markFinalizationGroupData(trc);
+
   traceRuntimeCommon(trc, MarkRuntime);
 }
 
@@ -310,8 +312,7 @@ void js::TraceRuntime(JSTracer* trc) {
   MOZ_ASSERT(!trc->isMarkingTracer());
 
   JSRuntime* rt = trc->runtime();
-  rt->gc.evictNursery();
-  AutoPrepareForTracing prep(rt->mainContextFromOwnThread());
+  AutoEmptyNurseryAndPrepareForTracing prep(rt->mainContextFromOwnThread());
   gcstats::AutoPhase ap(rt->gc.stats(), gcstats::PhaseKind::TRACE_HEAP);
   rt->gc.traceRuntime(trc, prep);
 }
@@ -383,7 +384,7 @@ void js::gc::GCRuntime::traceRuntimeCommon(JSTracer* trc,
   // Trace the self-hosting global compartment.
   rt->traceSelfHostingGlobal(trc);
 
-#ifdef ENABLE_INTL_API
+#ifdef JS_HAS_INTL_API
   // Trace the shared Intl data.
   rt->traceSharedIntlData(trc);
 #endif
@@ -409,6 +410,10 @@ void js::gc::GCRuntime::traceRuntimeCommon(JSTracer* trc,
 
   // Trace helper thread roots.
   HelperThreadState().trace(trc);
+
+  // Trace Debugger.Frames that have live hooks, since dropping them would be
+  // observable. In effect, they are rooted by the stack frames.
+  DebugAPI::traceFramesWithLiveHooks(trc);
 
   // Trace the embedding's black and gray roots.
   if (!JS::RuntimeHeapIsMinorCollecting()) {
@@ -473,8 +478,8 @@ void js::gc::GCRuntime::finishRoots() {
 
   rt->finishSelfHosting();
 
-  for (RealmsIter r(rt); !r.done(); r.next()) {
-    r->finishRoots();
+  for (ZonesIter zone(rt, WithAtoms); !zone.done(); zone.next()) {
+    zone->finishRoots();
   }
 
 #ifdef JS_GC_ZEAL

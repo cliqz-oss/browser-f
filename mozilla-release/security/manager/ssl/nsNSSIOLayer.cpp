@@ -205,6 +205,17 @@ void nsNSSSocketInfo::NoteTimeUntilReady() {
           ("[%p] nsNSSSocketInfo::NoteTimeUntilReady\n", mFd));
 }
 
+void nsNSSSocketInfo::NoteSessionResumptionTime(bool aUsingExternalCache) {
+  // This will include TCP and proxy tunnel wait time
+  Telemetry::AccumulateTimeDelta(
+      aUsingExternalCache
+          ? Telemetry::
+                SESSION_RESUMPTION_WITH_EXTERNAL_CACHE_TIME_UNTIL_READY_MS
+          : Telemetry::
+                SESSION_RESUMPTION_WITH_INTERNAL_CACHE_TIME_UNTIL_READY_MS,
+      mSocketCreationTimestamp, TimeStamp::Now());
+}
+
 void nsNSSSocketInfo::SetHandshakeCompleted() {
   if (!mHandshakeCompleted) {
     enum HandshakeType {
@@ -1829,7 +1840,7 @@ void ClientAuthDataRunnable::RunOnTargetThread() {
     return;
   }
 
-  UniqueCERTCertList certList(FindNonCACertificatesWithPrivateKeys());
+  UniqueCERTCertList certList(FindClientCertificatesWithPrivateKeys());
   if (!certList) {
     return;
   }
@@ -1839,10 +1850,6 @@ void ClientAuthDataRunnable::RunOnTargetThread() {
   mRV = CERT_FilterCertListByCANames(
       certList.get(), caNamesStringPointers.Length(),
       caNamesStringPointers.Elements(), certUsageSSLClient);
-  if (mRV != SECSuccess) {
-    return;
-  }
-  mRV = CERT_FilterCertListByUsage(certList.get(), certUsageSSLClient, false);
   if (mRV != SECSuccess) {
     return;
   }

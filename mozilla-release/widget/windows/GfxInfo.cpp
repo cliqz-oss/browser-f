@@ -132,7 +132,8 @@ GfxInfo::GetWindowProtocol(nsAString& aWindowProtocol) {
 }
 
 static nsresult GetKeyValue(const WCHAR* keyLocation, const WCHAR* keyName,
-                            nsAString& destString, int type) {
+                            uint32_t& destValue, int type) {
+  MOZ_ASSERT(type == REG_DWORD || type == REG_QWORD);
   HKEY key;
   DWORD dwcbData;
   DWORD dValue;
@@ -153,8 +154,7 @@ static nsresult GetKeyValue(const WCHAR* keyLocation, const WCHAR* keyName,
       result = RegQueryValueExW(key, keyName, nullptr, &resultType,
                                 (LPBYTE)&dValue, &dwcbData);
       if (result == ERROR_SUCCESS && resultType == REG_DWORD) {
-        dValue = dValue / 1024 / 1024;
-        destString.AppendInt(int32_t(dValue));
+        destValue = (uint32_t)(dValue / 1024 / 1024);
       } else {
         retval = NS_ERROR_FAILURE;
       }
@@ -167,48 +167,65 @@ static nsresult GetKeyValue(const WCHAR* keyLocation, const WCHAR* keyName,
       result = RegQueryValueExW(key, keyName, nullptr, &resultType,
                                 (LPBYTE)&qValue, &dwcbData);
       if (result == ERROR_SUCCESS && resultType == REG_QWORD) {
-        qValue = qValue / 1024 / 1024;
-        destString.AppendInt(int32_t(qValue));
+        destValue = (uint32_t)(qValue / 1024 / 1024);
       } else {
         retval = NS_ERROR_FAILURE;
       }
-      break;
-    }
-    case REG_MULTI_SZ: {
-      // A chain of null-separated strings; we convert the nulls to spaces
-      WCHAR wCharValue[1024];
-      dwcbData = sizeof(wCharValue);
-
-      result = RegQueryValueExW(key, keyName, nullptr, &resultType,
-                                (LPBYTE)wCharValue, &dwcbData);
-      if (result == ERROR_SUCCESS && resultType == REG_MULTI_SZ) {
-        // This bit here could probably be cleaner.
-        bool isValid = false;
-
-        DWORD strLen = dwcbData / sizeof(wCharValue[0]);
-        for (DWORD i = 0; i < strLen; i++) {
-          if (wCharValue[i] == '\0') {
-            if (i < strLen - 1 && wCharValue[i + 1] == '\0') {
-              isValid = true;
-              break;
-            } else {
-              wCharValue[i] = ' ';
-            }
-          }
-        }
-
-        // ensure wCharValue is null terminated
-        wCharValue[strLen - 1] = '\0';
-
-        if (isValid) destString = wCharValue;
-
-      } else {
-        retval = NS_ERROR_FAILURE;
-      }
-
       break;
     }
   }
+  RegCloseKey(key);
+
+  return retval;
+}
+
+static nsresult GetKeyValue(const WCHAR* keyLocation, const WCHAR* keyName,
+                            nsAString& destString, int type) {
+  MOZ_ASSERT(type == REG_MULTI_SZ);
+
+  HKEY key;
+  DWORD dwcbData;
+  DWORD resultType;
+  LONG result;
+  nsresult retval = NS_OK;
+
+  result =
+      RegOpenKeyExW(HKEY_LOCAL_MACHINE, keyLocation, 0, KEY_QUERY_VALUE, &key);
+  if (result != ERROR_SUCCESS) {
+    return NS_ERROR_FAILURE;
+  }
+
+  // A chain of null-separated strings; we convert the nulls to spaces
+  WCHAR wCharValue[1024];
+  dwcbData = sizeof(wCharValue);
+
+  result = RegQueryValueExW(key, keyName, nullptr, &resultType,
+                            (LPBYTE)wCharValue, &dwcbData);
+  if (result == ERROR_SUCCESS && resultType == REG_MULTI_SZ) {
+    // This bit here could probably be cleaner.
+    bool isValid = false;
+
+    DWORD strLen = dwcbData / sizeof(wCharValue[0]);
+    for (DWORD i = 0; i < strLen; i++) {
+      if (wCharValue[i] == '\0') {
+        if (i < strLen - 1 && wCharValue[i + 1] == '\0') {
+          isValid = true;
+          break;
+        } else {
+          wCharValue[i] = ' ';
+        }
+      }
+    }
+
+    // ensure wCharValue is null terminated
+    wCharValue[strLen - 1] = '\0';
+
+    if (isValid) destString = wCharValue;
+
+  } else {
+    retval = NS_ERROR_FAILURE;
+  }
+
   RegCloseKey(key);
 
   return retval;
@@ -769,34 +786,38 @@ GfxInfo::GetAdapterDescription2(nsAString& aAdapterDescription) {
 }
 
 NS_IMETHODIMP
-GfxInfo::GetAdapterRAM(nsAString& aAdapterRAM) {
+GfxInfo::GetAdapterRAM(uint32_t* aAdapterRAM) {
+  uint32_t result = 0;
   if (NS_FAILED(GetKeyValue(mDeviceKey[mActiveGPUIndex].get(),
-                            L"HardwareInformation.qwMemorySize", aAdapterRAM,
+                            L"HardwareInformation.qwMemorySize", result,
                             REG_QWORD)) ||
-      aAdapterRAM.Length() == 0) {
+      result == 0) {
     if (NS_FAILED(GetKeyValue(mDeviceKey[mActiveGPUIndex].get(),
-                              L"HardwareInformation.MemorySize", aAdapterRAM,
+                              L"HardwareInformation.MemorySize", result,
                               REG_DWORD))) {
-      aAdapterRAM = L"Unknown";
+      result = 0;
     }
   }
+  *aAdapterRAM = result;
   return NS_OK;
 }
 
 NS_IMETHODIMP
-GfxInfo::GetAdapterRAM2(nsAString& aAdapterRAM) {
-  if (!mHasDualGPU) {
-    aAdapterRAM.Truncate();
-  } else if (NS_FAILED(GetKeyValue(mDeviceKey[1 - mActiveGPUIndex].get(),
-                                   L"HardwareInformation.qwMemorySize",
-                                   aAdapterRAM, REG_QWORD)) ||
-             aAdapterRAM.Length() == 0) {
+GfxInfo::GetAdapterRAM2(uint32_t* aAdapterRAM) {
+  uint32_t result = 0;
+  if (mHasDualGPU) {
     if (NS_FAILED(GetKeyValue(mDeviceKey[1 - mActiveGPUIndex].get(),
-                              L"HardwareInformation.MemorySize", aAdapterRAM,
-                              REG_DWORD))) {
-      aAdapterRAM = L"Unknown";
+                              L"HardwareInformation.qwMemorySize", result,
+                              REG_QWORD)) ||
+        result == 0) {
+      if (NS_FAILED(GetKeyValue(mDeviceKey[1 - mActiveGPUIndex].get(),
+                                L"HardwareInformation.MemorySize", result,
+                                REG_DWORD))) {
+        result = 0;
+      }
     }
   }
+  *aAdapterRAM = result;
   return NS_OK;
 }
 
@@ -905,15 +926,29 @@ NS_IMETHODIMP
 GfxInfo::GetDisplayInfo(nsTArray<nsString>& aDisplayInfo) {
   for (auto displayInfo : mDisplayInfo) {
     nsString value;
-    value.AppendPrintf(
-      "%dx%d@%dHz %s",
-      displayInfo.mScreenWidth, displayInfo.mScreenHeight,
-      displayInfo.mRefreshRate, displayInfo.mIsPseudoDisplay ? "Pseudo Display" : ""
-    );
+    value.AppendPrintf("%dx%d@%dHz %s", displayInfo.mScreenWidth,
+                       displayInfo.mScreenHeight, displayInfo.mRefreshRate,
+                       displayInfo.mIsPseudoDisplay ? "Pseudo Display" : "");
 
     aDisplayInfo.AppendElement(value);
   }
 
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+GfxInfo::GetDisplayWidth(nsTArray<uint32_t>& aDisplayWidth) {
+  for (auto displayInfo : mDisplayInfo) {
+    aDisplayWidth.AppendElement((uint32_t)displayInfo.mScreenWidth);
+  }
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+GfxInfo::GetDisplayHeight(nsTArray<uint32_t>& aDisplayHeight) {
+  for (auto displayInfo : mDisplayInfo) {
+    aDisplayHeight.AppendElement((uint32_t)displayInfo.mScreenHeight);
+  }
   return NS_OK;
 }
 
@@ -1453,13 +1488,14 @@ const nsTArray<GfxDriverInfo>& GfxInfo::GetGfxDriverInfo() {
     // Bug 1548410. Disable hardware accelerated video decoding on
     // Qualcomm drivers used on Windows on ARM64 which are known to
     // cause BSOD's and output suprious green frames while decoding video.
+    // Bug 1592826 expands the blacklist.
     APPEND_TO_DRIVER_BLOCKLIST2(
         OperatingSystem::Windows10,
         (nsAString&)GfxDriverInfo::GetDeviceVendor(VendorQualcomm),
         (nsAString&)GfxDriverInfo::GetDriverVendor(DriverVendorAll),
         GfxDriverInfo::allDevices, nsIGfxInfo::FEATURE_HARDWARE_VIDEO_DECODING,
         nsIGfxInfo::FEATURE_BLOCKED_DRIVER_VERSION, DRIVER_LESS_THAN_OR_EQUAL,
-        V(23, 18, 9310, 0), "FEATURE_FAILURE_BUG_1548410");
+        V(25, 18, 10440, 0), "FEATURE_FAILURE_BUG_1592826");
 
     /* Disable D2D on AMD Catalyst 14.4 until 14.6
      * See bug 984488
@@ -1800,33 +1836,36 @@ const nsTArray<GfxDriverInfo>& GfxInfo::GetGfxDriverInfo() {
         (nsAString&)GfxDriverInfo::GetDeviceVendor(VendorIntel),
         (nsAString&)GfxDriverInfo::GetDriverVendor(DriverVendorAll),
         GfxDriverInfo::allDevices, nsIGfxInfo::FEATURE_WEBRENDER,
-        nsIGfxInfo::FEATURE_BLOCKED_DRIVER_VERSION,
-        DRIVER_BETWEEN_INCLUSIVE, V(10, 18, 15, 4256), V(10, 18, 15, 4281),
-        "FEATURE_FAILURE_WEBRENDER_INTEL_BAD_DRIVER", "Intel driver >= 21.20.16.4590");
+        nsIGfxInfo::FEATURE_BLOCKED_DRIVER_VERSION, DRIVER_BETWEEN_INCLUSIVE,
+        V(10, 18, 15, 4256), V(10, 18, 15, 4281),
+        "FEATURE_FAILURE_WEBRENDER_INTEL_BAD_DRIVER",
+        "Intel driver >= 21.20.16.4590");
     APPEND_TO_DRIVER_BLOCKLIST_RANGE(
         OperatingSystem::Windows,
         (nsAString&)GfxDriverInfo::GetDeviceVendor(VendorIntel),
         (nsAString&)GfxDriverInfo::GetDriverVendor(DriverVendorAll),
         GfxDriverInfo::allDevices, nsIGfxInfo::FEATURE_WEBRENDER,
-        nsIGfxInfo::FEATURE_BLOCKED_DRIVER_VERSION,
-        DRIVER_BETWEEN_INCLUSIVE, V(20, 19, 15, 4285), V(20, 19, 15, 4835),
-        "FEATURE_FAILURE_WEBRENDER_INTEL_BAD_DRIVER", "Intel driver >= 21.20.16.4590");
+        nsIGfxInfo::FEATURE_BLOCKED_DRIVER_VERSION, DRIVER_BETWEEN_INCLUSIVE,
+        V(20, 19, 15, 4285), V(20, 19, 15, 4835),
+        "FEATURE_FAILURE_WEBRENDER_INTEL_BAD_DRIVER",
+        "Intel driver >= 21.20.16.4590");
     APPEND_TO_DRIVER_BLOCKLIST_RANGE(
         OperatingSystem::Windows,
         (nsAString&)GfxDriverInfo::GetDeviceVendor(VendorIntel),
         (nsAString&)GfxDriverInfo::GetDriverVendor(DriverVendorAll),
         GfxDriverInfo::allDevices, nsIGfxInfo::FEATURE_WEBRENDER,
-        nsIGfxInfo::FEATURE_BLOCKED_DRIVER_VERSION,
-        DRIVER_BETWEEN_INCLUSIVE, V(21, 20, 16, 4471), V(21, 20, 16, 4565),
-        "FEATURE_FAILURE_WEBRENDER_INTEL_BAD_DRIVER", "Intel driver >= 21.20.16.4590");
+        nsIGfxInfo::FEATURE_BLOCKED_DRIVER_VERSION, DRIVER_BETWEEN_INCLUSIVE,
+        V(21, 20, 16, 4471), V(21, 20, 16, 4565),
+        "FEATURE_FAILURE_WEBRENDER_INTEL_BAD_DRIVER",
+        "Intel driver >= 21.20.16.4590");
 #else
     APPEND_TO_DRIVER_BLOCKLIST2(
         OperatingSystem::Windows,
         (nsAString&)GfxDriverInfo::GetDeviceVendor(VendorIntel),
         (nsAString&)GfxDriverInfo::GetDriverVendor(DriverVendorAll),
         GfxDriverInfo::allDevices, nsIGfxInfo::FEATURE_WEBRENDER,
-        nsIGfxInfo::FEATURE_BLOCKED_DRIVER_VERSION,
-        DRIVER_LESS_THAN, V(21, 20, 16, 4590), "Intel driver >= 21.20.16.4590");
+        nsIGfxInfo::FEATURE_BLOCKED_DRIVER_VERSION, DRIVER_LESS_THAN,
+        V(21, 20, 16, 4590), "Intel driver >= 21.20.16.4590");
 #endif
   }
   return *sDriverInfo;
@@ -1908,16 +1947,20 @@ nsresult GfxInfo::FindMonitors(JSContext* aCx, JS::HandleObject aOutArray) {
   for (auto displayInfo : mDisplayInfo) {
     JS::Rooted<JSObject*> obj(aCx, JS_NewPlainObject(aCx));
 
-    JS::Rooted<JS::Value> screenWidth(aCx, JS::Int32Value(displayInfo.mScreenWidth));
+    JS::Rooted<JS::Value> screenWidth(aCx,
+                                      JS::Int32Value(displayInfo.mScreenWidth));
     JS_SetProperty(aCx, obj, "screenWidth", screenWidth);
 
-    JS::Rooted<JS::Value> screenHeight(aCx, JS::Int32Value(displayInfo.mScreenHeight));
+    JS::Rooted<JS::Value> screenHeight(
+        aCx, JS::Int32Value(displayInfo.mScreenHeight));
     JS_SetProperty(aCx, obj, "screenHeight", screenHeight);
 
-    JS::Rooted<JS::Value> refreshRate(aCx, JS::Int32Value(displayInfo.mRefreshRate));
+    JS::Rooted<JS::Value> refreshRate(aCx,
+                                      JS::Int32Value(displayInfo.mRefreshRate));
     JS_SetProperty(aCx, obj, "refreshRate", refreshRate);
 
-    JS::Rooted<JS::Value> pseudoDisplay(aCx, JS::BooleanValue(displayInfo.mIsPseudoDisplay));
+    JS::Rooted<JS::Value> pseudoDisplay(
+        aCx, JS::BooleanValue(displayInfo.mIsPseudoDisplay));
     JS_SetProperty(aCx, obj, "pseudoDisplay", pseudoDisplay);
 
     JS::Rooted<JS::Value> element(aCx, JS::ObjectValue(*obj));

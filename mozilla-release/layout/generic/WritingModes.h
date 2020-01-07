@@ -7,6 +7,8 @@
 #ifndef WritingModes_h_
 #define WritingModes_h_
 
+#include <ostream>
+
 #include "mozilla/ComputedStyle.h"
 #include "mozilla/ComputedStyleInlines.h"
 
@@ -211,6 +213,25 @@ class WritingMode {
    * Return true if bidi direction is LTR. (Convenience method)
    */
   bool IsBidiLTR() const { return eBidiLTR == GetBidiDir(); }
+
+  /**
+   * Return true if bidi direction is RTL. (Convenience method)
+   */
+  bool IsBidiRTL() const { return eBidiRTL == GetBidiDir(); }
+
+  /**
+   * True if it is vertical and vertical-lr, or is horizontal and bidi LTR.
+   */
+  bool IsPhysicalLTR() const {
+    return IsVertical() ? IsVerticalLR() : IsBidiLTR();
+  }
+
+  /**
+   * True if it is vertical and vertical-rl, or is horizontal and bidi RTL.
+   */
+  bool IsPhysicalRTL() const {
+    return IsVertical() ? IsVerticalRL() : IsBidiRTL();
+  }
 
   /**
    * True if vertical-mode block direction is LR (convenience method).
@@ -518,7 +539,8 @@ class WritingMode {
    */
   void SetDirectionFromBidiLevel(uint8_t level) {
     if (IS_LEVEL_RTL(level) == IsBidiLTR()) {
-      mWritingMode ^= StyleWritingMode_RTL | StyleWritingMode_INLINE_REVERSED;
+      mWritingMode.bits ^= static_cast<uint8_t>(
+          (StyleWritingMode_RTL | StyleWritingMode_INLINE_REVERSED).bits);
     }
   }
 
@@ -569,16 +591,6 @@ class WritingMode {
 
   uint8_t GetBits() const { return mWritingMode.bits; }
 
-  const char* DebugString() const {
-    return IsVertical()
-               ? IsVerticalLR()
-                     ? IsBidiLTR() ? IsSideways() ? "sw-lr-ltr" : "v-lr-ltr"
-                                   : IsSideways() ? "sw-lr-rtl" : "v-lr-rtl"
-                     : IsBidiLTR() ? IsSideways() ? "sw-rl-ltr" : "v-rl-ltr"
-                                   : IsSideways() ? "sw-rl-rtl" : "v-rl-rtl"
-               : IsBidiLTR() ? "h-ltr" : "h-rtl";
-  }
-
  private:
   friend class LogicalPoint;
   friend class LogicalSize;
@@ -612,6 +624,19 @@ class WritingMode {
     eBlockMask = 0x05,   // VERTICAL | VERTICAL_LR
   };
 };
+
+inline std::ostream& operator<<(std::ostream& aStream, const WritingMode& aWM) {
+  return aStream
+         << (aWM.IsVertical()
+                 ? aWM.IsVerticalLR()
+                       ? aWM.IsBidiLTR()
+                             ? aWM.IsSideways() ? "sw-lr-ltr" : "v-lr-ltr"
+                             : aWM.IsSideways() ? "sw-lr-rtl" : "v-lr-rtl"
+                       : aWM.IsBidiLTR()
+                             ? aWM.IsSideways() ? "sw-rl-ltr" : "v-rl-ltr"
+                             : aWM.IsSideways() ? "sw-rl-rtl" : "v-rl-rtl"
+                 : aWM.IsBidiLTR() ? "h-ltr" : "h-rtl");
+}
 
 /**
  * Logical-coordinate classes:
@@ -804,6 +829,11 @@ class LogicalPoint {
     I() -= aOther.I();
     B() -= aOther.B();
     return *this;
+  }
+
+  friend std::ostream& operator<<(std::ostream& aStream,
+                                  const LogicalPoint& aPoint) {
+    return aStream << aPoint.mPoint;
   }
 
  private:
@@ -1015,6 +1045,11 @@ class LogicalSize {
     ISize() -= aOther.ISize();
     BSize() -= aOther.BSize();
     return *this;
+  }
+
+  friend std::ostream& operator<<(std::ostream& aStream,
+                                  const LogicalSize& aSize) {
+    return aStream << aSize.mSize;
   }
 
  private:
@@ -1318,6 +1353,11 @@ class LogicalMargin {
     return LogicalMargin(GetWritingMode(), BStart() - aMargin.BStart(),
                          IEnd() - aMargin.IEnd(), BEnd() - aMargin.BEnd(),
                          IStart() - aMargin.IStart());
+  }
+
+  friend std::ostream& operator<<(std::ostream& aStream,
+                                  const LogicalMargin& aMargin) {
+    return aStream << aMargin.mMargin;
   }
 
  private:
@@ -1799,6 +1839,12 @@ class LogicalRect {
         (rectDebug.IsEmpty() && (mISize == 0 || mBSize == 0)) ||
         rectDebug.IsEqualEdges(nsRect(mIStart, mBStart, mISize, mBSize)));
     return mISize > 0 && mBSize > 0;
+  }
+
+  friend std::ostream& operator<<(std::ostream& aStream,
+                                  const LogicalRect& aRect) {
+    return aStream << '(' << aRect.IStart() << ',' << aRect.BStart() << ','
+                   << aRect.ISize() << ',' << aRect.BSize() << ')';
   }
 
  private:

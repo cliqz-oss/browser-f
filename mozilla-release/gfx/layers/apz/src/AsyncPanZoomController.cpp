@@ -4662,10 +4662,7 @@ void AsyncPanZoomController::NotifyLayersUpdated(
       // If an animation is underway, tell it about the scroll offset update.
       // Some animations can handle some scroll offset updates and continue
       // running. Those that can't will return false, and we cancel them.
-      if (relativeDelta != Some(CSSPoint()) &&
-          ((!mAnimation && !CanHandleScrollOffsetUpdate(mState)) ||
-           (mAnimation &&
-            !mAnimation->HandleScrollOffsetUpdate(relativeDelta)))) {
+      if (ShouldCancelAnimationForScrollUpdate(relativeDelta)) {
         // Cancel the animation (which might also trigger a repaint request)
         // after we update the scroll offset above. Otherwise we can be left
         // in a state where things are out of sync.
@@ -4716,6 +4713,9 @@ void AsyncPanZoomController::NotifyLayersUpdated(
   }
 
   if (visualScrollOffsetUpdated) {
+    APZC_LOG("%p updating visual scroll offset from %s to %s\n", this,
+             ToString(Metrics().GetScrollOffset()).c_str(),
+             ToString(aLayerMetrics.GetVisualViewportOffset()).c_str());
     Metrics().ClampAndSetScrollOffset(aLayerMetrics.GetVisualViewportOffset());
 
     // The rest of this branch largely follows the code in the
@@ -4724,7 +4724,7 @@ void AsyncPanZoomController::NotifyLayersUpdated(
     mCompositedLayoutViewport = Metrics().GetLayoutViewport();
     mCompositedScrollOffset = Metrics().GetScrollOffset();
     mExpectedGeckoMetrics = aLayerMetrics;
-    if (!mAnimation || !mAnimation->HandleScrollOffsetUpdate(Nothing())) {
+    if (ShouldCancelAnimationForScrollUpdate(Nothing())) {
       CancelAnimation();
     }
     // The main thread did not actually paint a displayport at the target
@@ -4992,7 +4992,21 @@ bool AsyncPanZoomController::HasReadyTouchBlock() const {
 }
 
 bool AsyncPanZoomController::CanHandleScrollOffsetUpdate(PanZoomState aState) {
-  return aState == PAN_MOMENTUM;
+  return aState == PAN_MOMENTUM || aState == TOUCHING || IsPanningState(aState);
+}
+
+bool AsyncPanZoomController::ShouldCancelAnimationForScrollUpdate(
+    const Maybe<CSSPoint>& aRelativeDelta) {
+  // Never call CancelAnimation() for a no-op relative update.
+  if (aRelativeDelta == Some(CSSPoint())) {
+    return false;
+  }
+
+  if (mAnimation) {
+    return !mAnimation->HandleScrollOffsetUpdate(aRelativeDelta);
+  }
+
+  return !CanHandleScrollOffsetUpdate(mState);
 }
 
 void AsyncPanZoomController::SetState(PanZoomState aNewState) {
@@ -5061,9 +5075,13 @@ bool AsyncPanZoomController::IsTransformingState(PanZoomState aState) {
   return !(aState == NOTHING || aState == TOUCHING);
 }
 
+bool AsyncPanZoomController::IsPanningState(PanZoomState aState) {
+  return (aState == PANNING || aState == PANNING_LOCKED_X ||
+          aState == PANNING_LOCKED_Y);
+}
+
 bool AsyncPanZoomController::IsInPanningState() const {
-  return (mState == PANNING || mState == PANNING_LOCKED_X ||
-          mState == PANNING_LOCKED_Y);
+  return IsPanningState(mState);
 }
 
 void AsyncPanZoomController::UpdateZoomConstraints(

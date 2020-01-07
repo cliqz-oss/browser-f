@@ -148,6 +148,29 @@ A user event ping includes some basic metadata (tab id, addon version, etc.) as 
 }
 ```
 
+#### Clicking a top story item
+
+```js
+{
+  "event": "CLICK",
+  "source": "CARDGRID",
+  "action_position": 2,
+  "value": {
+    // "spoc" for sponsored stories, "organic" for regular stories.
+    "card_type": ["organic" | "spoc"],
+  }
+
+  // Basic metadata
+  "action": "activity_stream_event",
+  "page": ["about:newtab" | "about:home" | "about:welcome" | "unknown"],
+  "client_id": "26288a14-5cc4-d14f-ae0a-bb01ef45be9c",
+  "session_id": "005deed0-e3e4-4c02-a041-17405fd703f6",
+  "addon_version": "20180710100040",
+  "locale": "en-US",
+  "user_prefs": 7
+}
+```
+
 #### Adding a search shortcut
 ```js
 {
@@ -1049,7 +1072,10 @@ This reports the user's interaction with Activity Stream Router.
   "source": "CFR",
   // message_id could be the ID of the recommendation, such as "wikipedia_addon"
   "message_id": "wikipedia_addon",
-  "event": "[IMPRESSION | INSTALL | PIN | BLOCK | DISMISS | RATIONALE | LEARN_MORE | CLICK | CLICK_DOORHANGER | MANAGE]"
+  "event": "[IMPRESSION | INSTALL | PIN | BLOCK | DISMISS | RATIONALE | LEARN_MORE | CLICK | CLICK_DOORHANGER | MANAGE]",
+  // "modelVersion" records the model identifier for the CFR machine learning experiment, see more detail in Bug 1594422.
+  // Non-experiment users will not report this field.
+  "event_context": "{ \"modelVersion\": \"some_model_version_id\" }"
 }
 ```
 
@@ -1082,7 +1108,7 @@ This reports when an error has occurred when parsing/evaluating a JEXL targeting
   "locale": "en-US",
   "message_id": "some_message_id",
   "event": "TARGETING_EXPRESSION_ERROR",
-  "value": ["MALFORMED_EXPRESSION" | "OTHER_ERROR"]
+  "event_context": ["MALFORMED_EXPRESSION" | "OTHER_ERROR"]
 }
 ```
 
@@ -1099,7 +1125,7 @@ This reports a failure in the Remote Settings loader to load messages for Activi
   "user_prefs": 7,
   "event": ["ASR_RS_NO_MESSAGES" | "ASR_RS_ERROR"],
   // The value is set to the ID of the message provider. For example: remote-cfr, remote-onboarding, etc.
-  "value": "REMOTE_PROVIDER_ID"
+  "event_context": "REMOTE_PROVIDER_ID"
 }
 ```
 

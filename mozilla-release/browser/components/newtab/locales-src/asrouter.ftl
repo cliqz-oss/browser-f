@@ -36,6 +36,15 @@ cfr-doorhanger-extension-author = by { $name }
 # This is a notification displayed in the address bar.
 # When clicked it opens a panel with a message for the user.
 cfr-doorhanger-extension-notification = Recommendation
+cfr-doorhanger-extension-notification2 = Recommendation
+  .tooltiptext = Extension recommendation
+  .a11y-announcement = Extension recommendation available
+
+# This is a notification displayed in the address bar.
+# When clicked it opens a panel with a message for the user.
+cfr-doorhanger-feature-notification = Recommendation
+  .tooltiptext = Feature recommendation
+  .a11y-announcement = Feature recommendation available
 
 ## Add-on statistics
 ## These strings are used to display the total number of
@@ -167,6 +176,8 @@ cfr-doorhanger-socialtracking-ok-button = See Protections
   .accesskey = P
 cfr-doorhanger-socialtracking-close-button = Close
   .accesskey = C
+cfr-doorhanger-socialtracking-dont-show-again = Don’t show me messages like this again
+  .accesskey = D
 cfr-doorhanger-socialtracking-heading = { -brand-short-name } stopped a social network from tracking you here
 cfr-doorhanger-socialtracking-description = Your privacy matters. { -brand-short-name } now blocks common social media trackers, limiting how much data they can collect about what you do online.
 cfr-doorhanger-fingerprinters-heading = { -brand-short-name } blocked a fingerprinter on this page

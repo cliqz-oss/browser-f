@@ -3,22 +3,55 @@
 
 "use strict";
 
-const { RemoteAgent } = ChromeUtils.import(
-  "chrome://remote/content/RemoteAgent.jsm"
-);
 const { RemoteAgentError } = ChromeUtils.import(
   "chrome://remote/content/Error.jsm"
+);
+const { RemoteAgent } = ChromeUtils.import(
+  "chrome://remote/content/RemoteAgent.jsm"
 );
 
 /**
  * Override `add_task` in order to translate chrome-remote-interface exceptions
  * into something that logs better errors on stdout
  */
-const original_add_task = add_task.bind(this);
-this.add_task = function(test) {
-  original_add_task(async function() {
+const add_plain_task = add_task.bind(this);
+this.add_task = function(taskFn, opts = {}) {
+  const { createTab = true } = opts;
+
+  add_plain_task(async function() {
+    let client;
+
+    await RemoteAgent.listen(Services.io.newURI("http://localhost:9222"));
+    info("CDP server started");
+
     try {
-      await test();
+      const CDP = await getCDP();
+
+      // By default run each test in its own tab
+      if (createTab) {
+        const tab = await BrowserTestUtils.openNewForegroundTab(gBrowser);
+        const browsingContextId = tab.linkedBrowser.browsingContext.id;
+
+        client = await CDP({
+          target(list) {
+            return list.find(target => target.id === browsingContextId);
+          },
+        });
+        info("CDP client instantiated");
+
+        await taskFn(client, CDP, tab);
+
+        // taskFn may resolve within a tick after opening a new tab.
+        // We shouldn't remove the newly opened tab in the same tick.
+        // Wait for the next tick here.
+        await TestUtils.waitForTick();
+        BrowserTestUtils.removeTab(tab);
+      } else {
+        client = await CDP({});
+        info("CDP client instantiated");
+
+        await taskFn(client, CDP);
+      }
     } catch (e) {
       // Display better error message with the server side stacktrace
       // if an error happened on the server side:
@@ -27,12 +60,22 @@ this.add_task = function(test) {
       } else {
         throw e;
       }
+    } finally {
+      if (client) {
+        await client.close();
+        info("CDP client closed");
+      }
+
+      await RemoteAgent.close();
+      info("CDP server stopped");
+
+      // Close any additional tabs, so that only a single tab remains open
+      while (gBrowser.tabs.length > 1) {
+        gBrowser.removeCurrentTab();
+      }
     }
   });
 };
-
-const CRI_URI =
-  "http://example.com/browser/remote/test/browser/chrome-remote-interface.js";
 
 /**
  * Create a test document in an invisible window.
@@ -40,14 +83,15 @@ const CRI_URI =
  */
 function createTestDocument() {
   const browser = Services.appShell.createWindowlessBrowser(true);
-  const webNavigation = browser.docShell.QueryInterface(Ci.nsIWebNavigation);
+  registerCleanupFunction(() => browser.close());
+
   // Create a system principal content viewer to ensure there is a valid
   // empty document using system principal and avoid any wrapper issues
   // when using document's JS Objects.
+  const webNavigation = browser.docShell.QueryInterface(Ci.nsIWebNavigation);
   const system = Services.scriptSecurityManager.getSystemPrincipal();
   webNavigation.createAboutBlankContentViewer(system, system);
 
-  registerCleanupFunction(() => browser.close());
   return webNavigation.document;
 }
 
@@ -59,17 +103,13 @@ async function getCDP() {
   // as in a web page
   const document = createTestDocument();
 
-  // Load chrome-remote-interface.js into this background test document
-  const script = document.createElement("script");
-  script.setAttribute("src", CRI_URI);
-  document.documentElement.appendChild(script);
-  await new Promise(resolve => {
-    script.addEventListener("load", resolve, { once: true });
-  });
-
   const window = document.defaultView.wrappedJSObject;
+  Services.scriptloader.loadSubScript(
+    "chrome://mochitests/content/browser/remote/test/browser/chrome-remote-interface.js",
+    window
+  );
 
-  // Implements `criRequest` to be called by chrome-remeote-interface
+  // Implements `criRequest` to be called by chrome-remote-interface
   // library in order to do the cross-domain http request, which,
   // in a regular Web page, is impossible.
   window.criRequest = (options, callback) => {
@@ -101,37 +141,6 @@ function getTargets(CDP) {
   });
 }
 
-/**
- * Set up test environment in same fashion as setupForURL(),
- * except using an empty document.
- */
-async function setup() {
-  return setupForURL(toDataURL(""));
-}
-
-/**
- * Set up test environment by starting the remote agent, connecting
- * the CDP client over loopback, and creating a fresh tab to avoid
- * state bleedover from previous test.
- */
-async function setupForURL(url) {
-  const tab = await BrowserTestUtils.openNewForegroundTab(gBrowser, url);
-  is(gBrowser.selectedTab, tab, "Selected tab is the target tab");
-
-  await RemoteAgent.listen(Services.io.newURI("http://localhost:9222"));
-  const CDP = await getCDP();
-
-  const client = await CDP({
-    target(list) {
-      // ensure we are debugging the right target, i.e. the requested URL
-      return list.find(target => target.url == url);
-    },
-  });
-  info("CDP client instantiated");
-
-  return { client, tab };
-}
-
 /** Creates a data URL for the given source document. */
 function toDataURL(src, doctype = "html") {
   let doc, mime;
@@ -148,6 +157,17 @@ function toDataURL(src, doctype = "html") {
 }
 
 /**
+ * Load a given URL in the currently selected tab
+ */
+async function loadURL(url) {
+  const browser = gBrowser.selectedTab.linkedBrowser;
+  const loaded = BrowserTestUtils.browserLoaded(browser, false, url);
+
+  BrowserTestUtils.loadURI(browser, url);
+  await loaded;
+}
+
+/**
  * Retrieve the value of a property on the content window.
  */
 function getContentProperty(prop) {
@@ -160,13 +180,10 @@ function getContentProperty(prop) {
 }
 
 /**
- * Close tabs, client, remote agent.
+ * Return a new promise, which resolves after ms have been elapsed
  */
-async function teardown(client) {
-  await client.close();
-  ok(true, "The client is closed");
-  while (gBrowser.tabs.length > 1) {
-    gBrowser.removeCurrentTab();
-  }
-  await RemoteAgent.close();
+function timeoutPromise(ms) {
+  return new Promise(resolve => {
+    window.setTimeout(resolve, ms);
+  });
 }

@@ -9,12 +9,11 @@ do-not-track-option-default-content-blocking-known =
 do-not-track-option-always =
     .label = Always
 
-pref-page =
-    .title =
-        { PLATFORM() ->
-            [windows] Options
-           *[other] Preferences
-        }
+pref-page-title =
+    { PLATFORM() ->
+        [windows] Options
+       *[other] Preferences
+    }
 
 # This is used to determine the width of the search field in about:preferences,
 # in order to make the entire placeholder string visible
@@ -711,13 +710,9 @@ containers-remove-button =
 sync-signedout-caption = Take Your Web With You
 sync-signedout-description = Synchronize your bookmarks, history, tabs, passwords, add-ons, and preferences across all your devices.
 
-sync-signedout-account-title = Connect with a { -fxaccount-brand-name }
-sync-signedout-account-create = Don’t have an account? Get started
-    .accesskey = c
-
-sync-signedout-account-signin =
-    .label = Sign In…
-    .accesskey = I
+sync-signedout-account-signin2 =
+    .label = Sign in to { -sync-brand-short-name }…
+    .accesskey = i
 
 # This message contains two links and two icon images.
 #   `<img data-l10n-name="android-icon"/>` - Android logo icon
@@ -868,9 +863,11 @@ sync-connect-another-device = Connect another device
 
 privacy-header = Browser Privacy
 
-## Privacy Section - Forms
+## Privacy Section - Logins and Passwords
 
 logins-header = Logins and Passwords
+
+# Checkbox to control whether UI is shown to users to save or fill logins/passwords.
 forms-ask-to-save-logins =
     .label = Ask to save logins and passwords for websites
     .accesskey = r
@@ -884,6 +881,8 @@ forms-breach-alerts =
     .label = Show alerts about passwords for breached websites
     .accesskey = b
 forms-breach-alerts-learn-more-link = Learn more
+
+# Checkbox which controls filling saved logins into fields automatically when they appear, in some cases without user interaction.
 forms-fill-logins-and-passwords =
     .label = Autofill logins and passwords
     .accesskey = i

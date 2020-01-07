@@ -568,8 +568,7 @@ void gfxShapedText::SetupClusterBoundaries(uint32_t aOffset,
   // _begins_ with a cluster-extender, so we handle that here
   if (aLength) {
     uint32_t ch = *aString;
-    if (aLength > 1 && NS_IS_HIGH_SURROGATE(ch) &&
-        NS_IS_LOW_SURROGATE(aString[1])) {
+    if (aLength > 1 && NS_IS_SURROGATE_PAIR(ch, aString[1])) {
       ch = SURROGATE_TO_UCS4(ch, aString[1]);
     }
     if (IsClusterExtender(ch)) {
@@ -1399,8 +1398,7 @@ bool gfxFont::SupportsSubSuperscript(uint32_t aSubSuperscript,
   for (uint32_t i = 0; i < aLength; i++) {
     uint32_t ch = aString[i];
 
-    if ((i + 1 < aLength) && NS_IS_HIGH_SURROGATE(ch) &&
-        NS_IS_LOW_SURROGATE(aString[i + 1])) {
+    if (i + 1 < aLength && NS_IS_SURROGATE_PAIR(ch, aString[i + 1])) {
       i++;
       ch = SURROGATE_TO_UCS4(ch, aString[i]);
     }
@@ -2539,9 +2537,14 @@ gfxFont::RunMetrics gfxFont::Measure(const gfxTextRun* aTextRun,
                                 metrics.mAscent + metrics.mDescent);
           }
           if (isRTL) {
+            // Swap left/right sidebearings of the glyph, because we're doing
+            // mirrored measurement.
             glyphRect.MoveToX(advance - glyphRect.XMost());
+            // Move to current x position, mirroring any x-offset amount.
+            glyphRect.MoveByX(x - details->mOffset.x);
+          } else {
+            glyphRect.MoveByX(x + details->mOffset.x);
           }
-          glyphRect.MoveByX(x + details->mOffset.x);
           glyphRect.MoveByY(details->mOffset.y);
           metrics.mBoundingBox = metrics.mBoundingBox.Union(glyphRect);
           x += advance;
@@ -2861,8 +2864,7 @@ bool gfxFont::ShapeFragmentWithoutWordCache(DrawTarget* aDrawTarget,
           // if we didn't find any cluster start while backtracking,
           // just check that we're not in the middle of a surrogate
           // pair; back up by one code unit if we are.
-          if (NS_IS_LOW_SURROGATE(aText[fragLen]) &&
-              NS_IS_HIGH_SURROGATE(aText[fragLen - 1])) {
+          if (NS_IS_SURROGATE_PAIR(aText[fragLen - 1], aText[fragLen])) {
             --fragLen;
           }
         }
@@ -3190,8 +3192,7 @@ bool gfxFont::InitFakeSmallCapsRun(DrawTarget* aDrawTarget,
     // character will need.
     if (i < aLength) {
       uint32_t ch = aText[i];
-      if (NS_IS_HIGH_SURROGATE(ch) && i < aLength - 1 &&
-          NS_IS_LOW_SURROGATE(aText[i + 1])) {
+      if (i < aLength - 1 && NS_IS_SURROGATE_PAIR(ch, aText[i + 1])) {
         ch = SURROGATE_TO_UCS4(ch, aText[i + 1]);
         extraCodeUnits = 1;
       }
@@ -3918,11 +3919,11 @@ gfxFontStyle::gfxFontStyle(FontSlantStyle aStyle, FontWeight aWeight,
   MOZ_ASSERT(!mozilla::IsNaN(size));
   MOZ_ASSERT(!mozilla::IsNaN(sizeAdjust));
 
-  if (weight > FontWeight(900)) {
-    weight = FontWeight(900);
+  if (weight > FontWeight(1000)) {
+    weight = FontWeight(1000);
   }
-  if (weight < FontWeight(100)) {
-    weight = FontWeight(100);
+  if (weight < FontWeight(1)) {
+    weight = FontWeight(1);
   }
 
   if (size >= FONT_MAX_SIZE) {

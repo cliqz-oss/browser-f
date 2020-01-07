@@ -14,10 +14,12 @@
 #include <stddef.h>  // ptrdiff_t, size_t
 #include <stdint.h>  // uint16_t, int32_t, uint32_t
 
+#include "jstypes.h"                   // JS_PUBLIC_API
 #include "NamespaceImports.h"          // ValueVector
 #include "frontend/BytecodeOffset.h"   // BytecodeOffset
 #include "frontend/JumpList.h"         // JumpTarget
 #include "frontend/NameCollections.h"  // AtomIndexMap, PooledMapPtr
+#include "frontend/ObjLiteral.h"       // ObjLiteralCreationData
 #include "frontend/ParseNode.h"        // BigIntLiteral
 #include "frontend/SourceNotes.h"      // jssrcnote
 #include "gc/Barrier.h"                // GCPtrObject, GCPtrScope, GCPtrValue
@@ -42,7 +44,8 @@ class BigIntLiteral;
 class ObjectBox;
 
 struct MOZ_STACK_CLASS GCThingList {
-  using ListType = mozilla::Variant<StackGCCellPtr, BigIntCreationData>;
+  using ListType = mozilla::Variant<StackGCCellPtr, BigIntCreationData,
+                                    ObjLiteralCreationData, RegExpCreationData>;
   JS::RootedVector<ListType> vector;
 
   // Last emitted object.
@@ -71,6 +74,19 @@ struct MOZ_STACK_CLASS GCThingList {
     }
     return vector.append(
         mozilla::AsVariant(StackGCCellPtr(JS::GCCellPtr(literal->value()))));
+  }
+  MOZ_MUST_USE bool append(RegExpLiteral* literal, uint32_t* index) {
+    *index = vector.length();
+    if (literal->isDeferred()) {
+      return vector.append(
+          mozilla::AsVariant(std::move(literal->creationData())));
+    }
+    return vector.append(mozilla::AsVariant(
+        StackGCCellPtr(JS::GCCellPtr(literal->objbox()->object()))));
+  }
+  MOZ_MUST_USE bool append(ObjLiteralCreationData&& objlit, uint32_t* index) {
+    *index = vector.length();
+    return vector.append(mozilla::AsVariant(std::move(objlit)));
   }
   MOZ_MUST_USE bool append(ObjectBox* obj, uint32_t* index);
 
@@ -379,6 +395,10 @@ namespace JS {
 template <>
 struct GCPolicy<js::frontend::BigIntCreationData>
     : JS::IgnoreGCPolicy<js::frontend::BigIntCreationData> {};
+
+template <>
+struct GCPolicy<js::frontend::RegExpCreationData>
+    : JS::IgnoreGCPolicy<js::frontend::RegExpCreationData> {};
 }  // namespace JS
 
 #endif /* frontend_BytecodeSection_h */

@@ -132,6 +132,9 @@ skip-if(!xulRuntime.shell) script test262/language/eval-code/indirect/var-env-va
 skip-if(!xulRuntime.shell) script test262/language/global-code/decl-func.js
 skip-if(!xulRuntime.shell) script test262/language/global-code/decl-var.js
 
+# Atomics tests (Atomics/notify, Atomics/wait) are disabled because our $.agent implementation needs getSharedArrayBuffer, setSharedArrayBuffer and evalInWorker: https://bugzilla.mozilla.org/show_bug.cgi?id=1598612
+skip-if(!xulRuntime.shell) include test262/built-ins/Atomics/notify/jstests.list
+skip-if(!xulRuntime.shell) include test262/built-ins/Atomics/wait/jstests.list
 
 ##################################################
 # Test262 tests skipped due to SpiderMonkey bugs #
@@ -186,28 +189,6 @@ skip script test262/built-ins/TypedArrayConstructors/internals/Set/BigInt/tonumb
 skip script test262/built-ins/TypedArrayConstructors/internals/Set/detached-buffer-realm.js
 skip script test262/built-ins/TypedArrayConstructors/internals/Set/detached-buffer.js
 skip script test262/built-ins/TypedArrayConstructors/internals/Set/tonumber-value-detached-buffer.js
-
-# https://bugzilla.mozilla.org/show_bug.cgi?id=1129202
-skip script test262/built-ins/TypedArrayConstructors/internals/DefineOwnProperty/BigInt/key-is-not-canonical-index.js
-skip script test262/built-ins/TypedArrayConstructors/internals/DefineOwnProperty/BigInt/key-is-not-integer.js
-skip script test262/built-ins/TypedArrayConstructors/internals/DefineOwnProperty/key-is-not-canonical-index.js
-skip script test262/built-ins/TypedArrayConstructors/internals/DefineOwnProperty/key-is-not-integer.js
-skip script test262/built-ins/TypedArrayConstructors/internals/Get/BigInt/key-is-not-canonical-index.js
-skip script test262/built-ins/TypedArrayConstructors/internals/Get/BigInt/key-is-not-integer.js
-skip script test262/built-ins/TypedArrayConstructors/internals/Get/key-is-not-canonical-index.js
-skip script test262/built-ins/TypedArrayConstructors/internals/Get/key-is-not-integer.js
-skip script test262/built-ins/TypedArrayConstructors/internals/GetOwnProperty/BigInt/key-is-not-canonical-index.js
-skip script test262/built-ins/TypedArrayConstructors/internals/GetOwnProperty/key-is-not-canonical-index.js
-skip script test262/built-ins/TypedArrayConstructors/internals/HasProperty/BigInt/key-is-not-canonical-index.js
-skip script test262/built-ins/TypedArrayConstructors/internals/HasProperty/BigInt/key-is-not-integer.js
-skip script test262/built-ins/TypedArrayConstructors/internals/HasProperty/key-is-not-canonical-index.js
-skip script test262/built-ins/TypedArrayConstructors/internals/HasProperty/key-is-not-integer.js
-skip script test262/built-ins/TypedArrayConstructors/internals/Set/BigInt/key-is-not-canonical-index.js
-skip script test262/built-ins/TypedArrayConstructors/internals/Set/BigInt/key-is-not-integer.js
-skip script test262/built-ins/TypedArrayConstructors/internals/Set/BigInt/tonumber-value-throws.js
-skip script test262/built-ins/TypedArrayConstructors/internals/Set/key-is-not-canonical-index.js
-skip script test262/built-ins/TypedArrayConstructors/internals/Set/key-is-not-integer.js
-skip script test262/built-ins/TypedArrayConstructors/internals/Set/tonumber-value-throws.js
 
 # https://bugzilla.mozilla.org/show_bug.cgi?id=1317405
 skip script test262/language/computed-property-names/class/static/method-number.js
@@ -303,9 +284,6 @@ ignore-flag(--more-compartments) script test262/built-ins/Proxy/setPrototypeOf/t
 ignore-flag(--more-compartments) script test262/built-ins/Array/length/define-own-prop-length-overflow-realm.js
 skip script test262/built-ins/Function/internals/Construct/derived-return-val-realm.js
 skip script test262/built-ins/Function/internals/Construct/derived-this-uninitialized-realm.js
-
-# https://bugzilla.mozilla.org/show_bug.cgi?id=1317416
-skip script test262/built-ins/GeneratorFunction/proto-from-ctor-realm.js
 
 # https://bugzilla.mozilla.org/show_bug.cgi?id=1317395
 skip script test262/built-ins/ArrayBuffer/prototype/byteLength/detached-buffer.js
@@ -434,12 +412,17 @@ ignore-flag(--more-compartments) script test262/built-ins/Proxy/construct/return
 ignore-flag(--more-compartments) script test262/built-ins/Proxy/construct/return-not-object-throws-boolean-realm.js
 
 # https://bugzilla.mozilla.org/show_bug.cgi?id=1560355
-skip script test262/intl402/DateTimeFormat/numbering-system-calendar-options.js
-skip script test262/intl402/NumberFormat/numbering-system-options.js
+skip-if(release_or_beta) skip script test262/intl402/DateTimeFormat/numbering-system-calendar-options.js
+skip-if(release_or_beta) skip script test262/intl402/DateTimeFormat/constructor-calendar-numberingSystem-order.js
+skip-if(release_or_beta) skip script test262/intl402/NumberFormat/numbering-system-options.js
+skip-if(release_or_beta) skip script test262/intl402/NumberFormat/constructor-numberingSystem-order.js
+skip-if(release_or_beta) skip script test262/intl402/NumberFormat/constructor-options-throwing-getters.js
 
-# https://bugzilla.mozilla.org/show_bug.cgi?id=1570245
-skip script test262/intl402/RelativeTimeFormat/prototype/format/en-us-numeric-auto.js
-skip script test262/intl402/RelativeTimeFormat/prototype/formatToParts/en-us-numeric-auto.js
+# The relatedYear field type required by these tests is only supported in
+# nightly because the change hasn't been merged into the main spec yet.
+# https://bugzilla.mozilla.org/show_bug.cgi?id=1591664
+skip-if(release_or_beta) script test262/intl402/DateTimeFormat/prototype/formatToParts/related-year.js
+skip-if(release_or_beta) script test262/intl402/DateTimeFormat/prototype/formatToParts/pattern-on-calendar.js
 
 # https://bugzilla.mozilla.org/show_bug.cgi?id=1277801
 skip script test262/built-ins/Object/prototype/toString/symbol-tag-non-str-builtin.js
@@ -466,6 +449,14 @@ skip script test262/intl402/ListFormat/constructor/constructor/options-style-val
 skip script test262/intl402/ListFormat/constructor/constructor/options-toobject-prototype.js
 skip script test262/intl402/ListFormat/constructor/constructor/options-order.js
 skip script test262/intl402/ListFormat/constructor/constructor/options-type-valid.js
+
+# https://bugzilla.mozilla.org/show_bug.cgi?id=1590543
+skip script test262/built-ins/String/prototype/matchAll/flags-nonglobal-throws.js
+skip script test262/built-ins/String/prototype/matchAll/flags-undefined-throws.js
+
+# https://bugzilla.mozilla.org/show_bug.cgi?id=1591099
+skip script test262/intl402/ListFormat/constructor/constructor/proto-from-ctor-realm.js
+skip script test262/intl402/Locale/proto-from-ctor-realm.js
 
 
 ###########################################################

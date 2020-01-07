@@ -27,13 +27,14 @@ NS_IMPL_CYCLE_COLLECTING_RELEASE(JSWindowActor)
 NS_IMPL_CYCLE_COLLECTION_CLASS(JSWindowActor)
 
 NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN(JSWindowActor)
-  tmp->RejectPendingQueries();  // Clear out & reject mPendingQueries
+  NS_IMPL_CYCLE_COLLECTION_UNLINK(mWrappedJS)
+  NS_IMPL_CYCLE_COLLECTION_UNLINK(mPendingQueries)
   NS_IMPL_CYCLE_COLLECTION_UNLINK_PRESERVED_WRAPPER
 NS_IMPL_CYCLE_COLLECTION_UNLINK_END
 
 NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN(JSWindowActor)
-  NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mPendingQueries)
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mWrappedJS)
+  NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mPendingQueries)
 NS_IMPL_CYCLE_COLLECTION_TRAVERSE_END
 
 NS_IMPL_CYCLE_COLLECTION_TRACE_WRAPPERCACHE(JSWindowActor)
@@ -46,6 +47,8 @@ void JSWindowActor::StartDestroy() {
 
 void JSWindowActor::AfterDestroy() {
   InvokeCallback(CallbackFunction::DidDestroy);
+  // Clear out & reject mPendingQueries
+  RejectPendingQueries();
 }
 
 void JSWindowActor::InvokeCallback(CallbackFunction callback) {
@@ -102,6 +105,21 @@ void JSWindowActor::RejectPendingQueries() {
   for (auto iter = pendingQueries.Iter(); !iter.Done(); iter.Next()) {
     iter.Data()->MaybeReject(NS_ERROR_NOT_AVAILABLE);
   }
+}
+
+/* static */
+bool JSWindowActor::AllowMessage(const JSWindowActorMessageMeta& aMetadata,
+                                 size_t aDataLength) {
+  // A message includes more than structured clone data, so subtract
+  // 20KB to make it more likely that a message within this bound won't
+  // result in an overly large IPC message.
+  static const size_t kMaxMessageSize =
+      IPC::Channel::kMaximumMessageSize - 20 * 1024;
+  if (aDataLength < kMaxMessageSize) {
+    return true;
+  }
+
+  return false;
 }
 
 void JSWindowActor::SetName(const nsAString& aName) {

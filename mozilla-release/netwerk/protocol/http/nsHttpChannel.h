@@ -332,6 +332,11 @@ class nsHttpChannel final : public HttpBaseChannel,
   void AsyncContinueProcessResponse();
   MOZ_MUST_USE nsresult ContinueProcessResponse1();
   MOZ_MUST_USE nsresult ContinueProcessResponse2(nsresult);
+
+ private:
+  void AssertNotDocumentChannel();
+
+ public:
   void UpdateCacheDisposition(bool aSuccessfulReval, bool aPartialContentUsed);
   MOZ_MUST_USE nsresult ContinueProcessResponse3(nsresult);
   MOZ_MUST_USE nsresult ContinueProcessResponse4(nsresult);
@@ -373,7 +378,6 @@ class nsHttpChannel final : public HttpBaseChannel,
   virtual MOZ_MUST_USE nsresult
   SetupReplacementChannel(nsIURI*, nsIChannel*, bool preserveMethod,
                           uint32_t redirectFlags) override;
-  nsresult StartCrossProcessRedirect();
 
   // proxy specific methods
   MOZ_MUST_USE nsresult ProxyFailover();
@@ -424,18 +428,18 @@ class nsHttpChannel final : public HttpBaseChannel,
   MOZ_MUST_USE nsresult OnDoneReadingPartialCacheEntry(bool* streamDone);
 
   MOZ_MUST_USE nsresult
-  DoAuthRetry(nsHttpTransaction* aTransWithStickyConn,
+  DoAuthRetry(HttpTransactionShell* aTransWithStickyConn,
               const std::function<nsresult(nsHttpChannel*, nsresult)>&
                   aContinueOnStopRequestFunc);
   MOZ_MUST_USE nsresult
-  ContinueDoAuthRetry(nsHttpTransaction* aTransWithStickyConn,
+  ContinueDoAuthRetry(HttpTransactionShell* aTransWithStickyConn,
                       const std::function<nsresult(nsHttpChannel*, nsresult)>&
                           aContinueOnStopRequestFunc);
   MOZ_MUST_USE nsresult
-  DoConnect(nsHttpTransaction* aTransWithStickyConn = nullptr);
+  DoConnect(HttpTransactionShell* aTransWithStickyConn = nullptr);
   MOZ_MUST_USE nsresult ContinueOnStopRequestAfterAuthRetry(
       nsresult aStatus, bool aAuthRetry, bool aIsFromNet, bool aContentComplete,
-      nsHttpTransaction* aTransWithStickyConn);
+      HttpTransactionShell* aTransWithStickyConn);
   MOZ_MUST_USE nsresult ContinueOnStopRequest(nsresult status, bool aIsFromNet,
                                               bool aContentComplete);
 
@@ -600,7 +604,7 @@ class nsHttpChannel final : public HttpBaseChannel,
   nsCOMPtr<nsICancelable> mProxyRequest;
 
   RefPtr<nsInputStreamPump> mTransactionPump;
-  RefPtr<nsHttpTransaction> mTransaction;
+  RefPtr<HttpTransactionShell> mTransaction;
 
   uint64_t mLogicalOffset;
 
@@ -647,6 +651,10 @@ class nsHttpChannel final : public HttpBaseChannel,
 
   static const uint32_t WAIT_FOR_CACHE_ENTRY = 1;
   static const uint32_t WAIT_FOR_OFFLINE_CACHE_ENTRY = 2;
+
+  // Gets computed during ComputeCrossOriginOpenerPolicyMismatch so we have
+  // the channel's policy even if we don't know policy initiator.
+  Maybe<nsILoadInfo::CrossOriginOpenerPolicy> mComputedCrossOriginOpenerPolicy;
 
   bool mCacheOpenWithPriority;
   uint32_t mCacheQueueSizeWhenOpen;
@@ -818,6 +826,10 @@ class nsHttpChannel final : public HttpBaseChannel,
   mozilla::Mutex mRCWNLock;
 
   TimeStamp mNavigationStartTimeStamp;
+
+  // We update the value of mProxyConnectResponseCode when OnStartRequest is
+  // called and reset the value when we switch to another failover proxy.
+  int32_t mProxyConnectResponseCode;
 
  protected:
   virtual void DoNotifyListenerCleanup() override;

@@ -65,6 +65,7 @@
 #include "mozilla/Preferences.h"
 #include "mozilla/Services.h"
 #include "mozilla/StaticPrefs_browser.h"
+#include "mozilla/StaticPrefs_fission.h"
 #include "mozilla/StaticPrefs_network.h"
 #include "mozilla/StaticPrefs_privacy.h"
 #include "mozilla/StaticPrefs_security.h"
@@ -356,6 +357,7 @@ nsHttpChannel::nsHttpChannel()
       mRaceDelay(0),
       mIgnoreCacheEntry(false),
       mRCWNLock("nsHttpChannel.mRCWNLock"),
+      mProxyConnectResponseCode(0),
       mDidReval(false) {
   LOG(("Creating nsHttpChannel [this=%p]\n", this));
   mChannelCreationTime = PR_Now();
@@ -839,7 +841,7 @@ nsresult nsHttpChannel::ContinueConnect() {
   return DoConnect();
 }
 
-nsresult nsHttpChannel::DoConnect(nsHttpTransaction* aTransWithStickyConn) {
+nsresult nsHttpChannel::DoConnect(HttpTransactionShell* aTransWithStickyConn) {
   LOG(("nsHttpChannel::DoConnect [this=%p, aTransWithStickyConn=%p]\n", this,
        aTransWithStickyConn));
 
@@ -1923,6 +1925,18 @@ nsresult nsHttpChannel::CallOnStartRequest() {
   return NS_OK;
 }
 
+NS_IMETHODIMP nsHttpChannel::GetHttpProxyConnectResponseCode(
+    int32_t* aResponseCode) {
+  NS_ENSURE_ARG_POINTER(aResponseCode);
+
+  if (mConnectionInfo && mConnectionInfo->UsingConnect()) {
+    *aResponseCode = mProxyConnectResponseCode;
+  } else {
+    *aResponseCode = -1;
+  }
+  return NS_OK;
+}
+
 nsresult nsHttpChannel::ProcessFailedProxyConnect(uint32_t httpStatus) {
   // Failure to set up a proxy tunnel via CONNECT means one of the following:
   // 1) Proxy wants authorization, or forbids.
@@ -1937,67 +1951,7 @@ nsresult nsHttpChannel::ProcessFailedProxyConnect(uint32_t httpStatus) {
 
   MOZ_ASSERT(mConnectionInfo->UsingConnect(),
              "proxy connect failed but not using CONNECT?");
-  nsresult rv;
-  switch (httpStatus) {
-    case 300:
-    case 301:
-    case 302:
-    case 303:
-    case 307:
-    case 308:
-      // Bad redirect: not top-level, or it's a POST, bad/missing Location,
-      // or ProcessRedirect() failed for some other reason.  Legal
-      // redirects that fail because site not available, etc., are handled
-      // elsewhere, in the regular codepath.
-      rv = NS_ERROR_CONNECTION_REFUSED;
-      break;
-    case 403:  // HTTP/1.1: "Forbidden"
-    case 501:  // HTTP/1.1: "Not Implemented"
-      // user sees boilerplate Mozilla "Proxy Refused Connection" page.
-      rv = NS_ERROR_PROXY_CONNECTION_REFUSED;
-      break;
-    case 407:  // ProcessAuthentication() failed (e.g. no header)
-      rv = NS_ERROR_PROXY_AUTHENTICATION_FAILED;
-      break;
-    case 429:
-      rv = NS_ERROR_TOO_MANY_REQUESTS;
-      break;
-      // Squid sends 404 if DNS fails (regular 404 from target is tunneled)
-    case 404:  // HTTP/1.1: "Not Found"
-               // RFC 2616: "some deployed proxies are known to return 400 or
-               // 500 when DNS lookups time out."  (Squid uses 500 if it runs
-               // out of sockets: so we have a conflict here).
-    case 400:  // HTTP/1.1 "Bad Request"
-    case 500:  // HTTP/1.1: "Internal Server Error"
-      /* User sees: "Address Not Found: Firefox can't find the server at
-       * www.foo.com."
-       */
-      rv = NS_ERROR_UNKNOWN_HOST;
-      break;
-    case 502:  // HTTP/1.1: "Bad Gateway" (invalid resp from target server)
-      rv = NS_ERROR_PROXY_BAD_GATEWAY;
-      break;
-    case 503:  // HTTP/1.1: "Service Unavailable"
-      // Squid returns 503 if target request fails for anything but DNS.
-      /* User sees: "Failed to Connect:
-       *  Firefox can't establish a connection to the server at
-       *  www.foo.com.  Though the site seems valid, the browser
-       *  was unable to establish a connection."
-       */
-      rv = NS_ERROR_CONNECTION_REFUSED;
-      break;
-    // RFC 2616 uses 504 for both DNS and target timeout, so not clear what to
-    // do here: picking target timeout, as DNS covered by 400/404/500
-    case 504:  // HTTP/1.1: "Gateway Timeout"
-      // user sees: "Network Timeout: The server at www.foo.com
-      //              is taking too long to respond."
-      rv = NS_ERROR_PROXY_GATEWAY_TIMEOUT;
-      break;
-    // Confused proxy server or malicious response
-    default:
-      rv = NS_ERROR_PROXY_CONNECTION_REFUSED;
-      break;
-  }
+  nsresult rv = HttpProxyResponseToErrorCode(httpStatus);
   LOG(("Cancelling failed proxy CONNECT [this=%p httpStatus=%u]\n", this,
        httpStatus));
 
@@ -2581,31 +2535,65 @@ nsresult nsHttpChannel::ContinueProcessResponse1() {
       return NS_OK;
     }
 
-    nsCOMPtr<nsIParentChannel> parentChannel;
-    NS_QueryNotificationCallbacks(this, parentChannel);
-
-    RefPtr<DocumentChannelParent> documentChannelParent =
-        do_QueryObject(parentChannel);
-
-    if (!documentChannelParent) {
-      // notify "http-on-may-change-process" observers
-      gHttpHandler->OnMayChangeProcess(this);
-
-      if (mRedirectContentProcessIdPromise) {
-        MOZ_ASSERT(!mOnStartRequestCalled);
-
-        PushRedirectAsyncFunc(&nsHttpChannel::ContinueProcessResponse2);
-        rv = StartCrossProcessRedirect();
-        if (NS_SUCCEEDED(rv)) {
-          return NS_OK;
-        }
-        PopRedirectAsyncFunc(&nsHttpChannel::ContinueProcessResponse2);
-      }
-    }
+    AssertNotDocumentChannel();
   }
 
   // No process switch needed, continue as normal.
   return ContinueProcessResponse2(rv);
+}
+
+void nsHttpChannel::AssertNotDocumentChannel() {
+  if (!mLoadInfo || !IsDocument()) {
+    return;
+  }
+
+#ifndef DEBUG
+  if (!StaticPrefs::fission_autostart()) {
+    // This assertion is firing in the wild (Bug 1593545) and its not clear
+    // why. Disable the assertion in non-fission non-debug configurations to
+    // avoid crashing user's browsers until we're done dogfooding fission.
+    return;
+  }
+#endif
+
+  nsCOMPtr<nsIParentChannel> parentChannel;
+  NS_QueryNotificationCallbacks(this, parentChannel);
+  RefPtr<DocumentLoadListener> documentChannelParent =
+      do_QueryObject(parentChannel);
+  if (documentChannelParent) {
+    // The load is using document channel.
+    return;
+  }
+
+  RefPtr<HttpChannelParent> httpParent = do_QueryObject(parentChannel);
+  if (!httpParent) {
+    // The load was initiated in the parent and doesn't need document
+    // channel.
+    return;
+  }
+
+  nsContentPolicyType contentPolicy;
+  MOZ_ALWAYS_SUCCEEDS(mLoadInfo->GetExternalContentPolicyType(&contentPolicy));
+  RefPtr<BrowsingContext> bc;
+  if (contentPolicy == CSPService::TYPE_DOCUMENT) {
+    MOZ_ALWAYS_SUCCEEDS(mLoadInfo->GetBrowsingContext(getter_AddRefs(bc)));
+  } else {
+    MOZ_ALWAYS_SUCCEEDS(mLoadInfo->GetFrameBrowsingContext(getter_AddRefs(bc)));
+  }
+  if (!bc) {
+    return;
+  }
+
+  if (mLoadInfo->LoadingPrincipal() &&
+      mLoadInfo->LoadingPrincipal()->IsSystemPrincipal()) {
+    // Loads with the system principal can skip document channel
+    return;
+  }
+
+  // The load was supposed to use document channel but didn't.
+  MOZ_DIAGNOSTIC_ASSERT(
+      !StaticPrefs::browser_tabs_documentchannel(),
+      "DocumentChannel is enabled but this load was done without it");
 }
 
 nsresult nsHttpChannel::ContinueProcessResponse2(nsresult rv) {
@@ -5078,12 +5066,11 @@ nsresult nsHttpChannel::OpenCacheInputStream(nsICacheEntry* cacheEntry,
   }
 
   nsCOMPtr<nsIInputStream> altData;
-  int64_t altDataSize;
+  int64_t altDataSize = -1;
   if (foundAltData) {
     rv = cacheEntry->OpenAlternativeInputStream(altDataType,
                                                 getter_AddRefs(altData));
     if (NS_SUCCEEDED(rv)) {
-      LOG(("Opened alt-data input stream type=%s", altDataType.get()));
       // We have succeeded.
       mAvailableCachedAltDataType = altDataType;
       mDeliveringAltData = deliverAltData;
@@ -5091,6 +5078,10 @@ nsresult nsHttpChannel::OpenCacheInputStream(nsICacheEntry* cacheEntry,
       // Set the correct data size on the channel.
       Unused << cacheEntry->GetAltDataSize(&altDataSize);
       mAltDataLength = altDataSize;
+
+      LOG(("Opened alt-data input stream [type=%s, size=%" PRId64
+           ", deliverAltData=%d]",
+           altDataType.get(), mAltDataLength, deliverAltData));
 
       if (deliverAltData) {
         stream = altData;
@@ -6085,7 +6076,7 @@ NS_IMETHODIMP nsHttpChannel::CloseStickyConnection() {
   }
 
   if (!(mCaps & NS_HTTP_STICKY_CONNECTION ||
-        mTransaction->Caps() & NS_HTTP_STICKY_CONNECTION)) {
+        mTransaction->HasStickyConnection())) {
     LOG(("  not sticky"));
     return NS_OK;
   }
@@ -6864,9 +6855,11 @@ nsHttpChannel::SetChannelIsForDownload(bool aChannelIsForDownload) {
 base::ProcessId nsHttpChannel::ProcessId() {
   nsCOMPtr<nsIParentChannel> parentChannel;
   NS_QueryNotificationCallbacks(this, parentChannel);
-  RefPtr<HttpChannelParent> httpParent = do_QueryObject(parentChannel);
-  if (httpParent) {
+  if (RefPtr<HttpChannelParent> httpParent = do_QueryObject(parentChannel)) {
     return httpParent->OtherPid();
+  }
+  if (RefPtr<DocumentLoadListener> docParent = do_QueryObject(parentChannel)) {
+    return docParent->OtherPid();
   }
   return base::GetCurrentProcId();
 }
@@ -6877,9 +6870,11 @@ bool nsHttpChannel::AttachStreamFilter(
 {
   nsCOMPtr<nsIParentChannel> parentChannel;
   NS_QueryNotificationCallbacks(this, parentChannel);
-  RefPtr<HttpChannelParent> httpParent = do_QueryObject(parentChannel);
-  if (httpParent) {
+  if (RefPtr<HttpChannelParent> httpParent = do_QueryObject(parentChannel)) {
     return httpParent->SendAttachStreamFilter(std::move(aEndpoint));
+  }
+  if (RefPtr<DocumentLoadListener> docParent = do_QueryObject(parentChannel)) {
+    return docParent->AttachStreamFilter(std::move(aEndpoint));
   }
 
   extensions::StreamFilterParent::Attach(this, std::move(aEndpoint));
@@ -7261,7 +7256,7 @@ NS_IMETHODIMP nsHttpChannel::SwitchProcessTo(
 
   nsCOMPtr<nsIParentChannel> parentChannel;
   NS_QueryNotificationCallbacks(this, parentChannel);
-  RefPtr<DocumentChannelParent> documentChannelParent =
+  RefPtr<DocumentLoadListener> documentChannelParent =
       do_QueryObject(parentChannel);
   // This is a temporary change as the DocumentChannelParent currently must go
   // through the nsHttpChannel to perform a process switch via SessionStore.
@@ -7289,26 +7284,21 @@ nsHttpChannel::HasCrossOriginOpenerPolicyMismatch(bool* aMismatch) {
   return NS_OK;
 }
 
-nsresult nsHttpChannel::StartCrossProcessRedirect() {
-  nsresult rv;
-
-  LOG(("nsHttpChannel::StartCrossProcessRedirect [this=%p]", this));
-
-  rv = CheckRedirectLimit(nsIChannelEventSink::REDIRECT_INTERNAL);
-  NS_ENSURE_SUCCESS(rv, rv);
-
-  nsCOMPtr<nsIParentChannel> parentChannel;
-  NS_QueryNotificationCallbacks(this, parentChannel);
-  RefPtr<HttpChannelParent> httpParent = do_QueryObject(parentChannel);
-  MOZ_ASSERT(httpParent);
-  NS_ENSURE_TRUE(httpParent, NS_ERROR_UNEXPECTED);
-
-  httpParent->TriggerCrossProcessSwitch(this, mCrossProcessRedirectIdentifier);
-
-  // This will suspend the channel
-  rv = WaitForRedirectCallback();
-
-  return rv;
+NS_IMETHODIMP
+nsHttpChannel::GetCrossOriginOpenerPolicy(
+    nsILoadInfo::CrossOriginOpenerPolicy* aPolicy) {
+  MOZ_ASSERT(aPolicy);
+  if (!aPolicy) {
+    return NS_ERROR_INVALID_ARG;
+  }
+  // If this method is called before OnStartRequest (ie. before we call
+  // ComputeCrossOriginOpenerPolicy) or if we were unable to compute the
+  // policy we'll throw an error.
+  if (!mComputedCrossOriginOpenerPolicy.isSome()) {
+    return NS_ERROR_NOT_AVAILABLE;
+  }
+  *aPolicy = mComputedCrossOriginOpenerPolicy.value();
+  return NS_OK;
 }
 
 // See https://gist.github.com/annevk/6f2dd8c79c77123f39797f6bdac43f3e
@@ -7369,17 +7359,25 @@ nsresult nsHttpChannel::ComputeCrossOriginOpenerPolicyMismatch() {
   nsHttpResponseHead* head =
       mResponseHead ? mResponseHead : mCachedResponseHead;
   if (!head) {
-    return NS_ERROR_NOT_AVAILABLE;
+    // Not having a response head is not a hard failure at the point where
+    // this method is called.
+    return NS_OK;
   }
 
   RefPtr<mozilla::dom::BrowsingContext> ctx;
   mLoadInfo->GetBrowsingContext(getter_AddRefs(ctx));
 
+  // In xpcshell-tests we don't always have a browsingContext
+  if (!ctx) {
+    return NS_OK;
+  }
+
   // Get the policy of the active document, and the policy for the result.
   nsILoadInfo::CrossOriginOpenerPolicy documentPolicy = ctx->GetOpenerPolicy();
   nsILoadInfo::CrossOriginOpenerPolicy resultPolicy =
       nsILoadInfo::OPENER_POLICY_NULL;
-  Unused << GetCrossOriginOpenerPolicy(documentPolicy, &resultPolicy);
+  Unused << ComputeCrossOriginOpenerPolicy(documentPolicy, &resultPolicy);
+  mComputedCrossOriginOpenerPolicy = Some(resultPolicy);
 
   // If bc's popup sandboxing flag set is not empty and potentialCOOP is
   // non-null, then navigate bc to a network error and abort these steps.
@@ -7670,10 +7668,14 @@ nsHttpChannel::OnStartRequest(nsIRequest* request) {
   Telemetry::Accumulate(Telemetry::HTTP_ONSTART_SUSPEND_TOTAL_TIME,
                         mSuspendTotalTime);
 
-  if (!mSecurityInfo && !mCachePump && mTransaction) {
-    // grab the security info from the connection object; the transaction
-    // is guaranteed to own a reference to the connection.
-    mSecurityInfo = mTransaction->SecurityInfo();
+  if (mTransaction) {
+    mProxyConnectResponseCode = mTransaction->GetProxyConnectResponseCode();
+
+    if (!mSecurityInfo && !mCachePump) {
+      // grab the security info from the connection object; the transaction
+      // is guaranteed to own a reference to the connection.
+      mSecurityInfo = mTransaction->SecurityInfo();
+    }
   }
 
   // don't enter this block if we're reading from the cache...
@@ -7716,7 +7718,6 @@ nsHttpChannel::OnStartRequest(nsIRequest* request) {
   // new process.
   rv = NS_OK;
   if (!mCanceled) {
-    // notify "http-on-may-change-process" observers
     rv = ComputeCrossOriginOpenerPolicyMismatch();
 
     if (rv == NS_ERROR_BLOCKED_BY_POLICY) {
@@ -7726,22 +7727,7 @@ nsHttpChannel::OnStartRequest(nsIRequest* request) {
       return NS_OK;
     }
 
-    nsCOMPtr<nsIParentChannel> parentChannel;
-    NS_QueryNotificationCallbacks(this, parentChannel);
-    RefPtr<DocumentChannelParent> documentChannelParent =
-        do_QueryObject(parentChannel);
-    if (!documentChannelParent) {
-      gHttpHandler->OnMayChangeProcess(this);
-
-      if (mRedirectContentProcessIdPromise) {
-        PushRedirectAsyncFunc(&nsHttpChannel::ContinueOnStartRequest1);
-        rv = StartCrossProcessRedirect();
-        if (NS_SUCCEEDED(rv)) {
-          return NS_OK;
-        }
-        PopRedirectAsyncFunc(&nsHttpChannel::ContinueOnStartRequest1);
-      }
-    }
+    AssertNotDocumentChannel();
   }
 
   // No process change is needed, so continue on to ContinueOnStartRequest1.
@@ -7798,7 +7784,10 @@ nsresult nsHttpChannel::ContinueOnStartRequest2(nsresult result) {
        mStatus == NS_ERROR_UNKNOWN_PROXY_HOST ||
        mStatus == NS_ERROR_NET_TIMEOUT)) {
     PushRedirectAsyncFunc(&nsHttpChannel::ContinueOnStartRequest3);
-    if (NS_SUCCEEDED(ProxyFailover())) return NS_OK;
+    if (NS_SUCCEEDED(ProxyFailover())) {
+      mProxyConnectResponseCode = 0;
+      return NS_OK;
+    }
     PopRedirectAsyncFunc(&nsHttpChannel::ContinueOnStartRequest3);
   }
 
@@ -7919,9 +7908,9 @@ nsHttpChannel::OnStopRequest(nsIRequest* request, nsresult status) {
     // when it has a sticky connection.
     // In the case we need to retry an authentication request, we need to
     // reuse the connection of |transactionWithStickyConn|.
-    RefPtr<nsHttpTransaction> transactionWithStickyConn;
+    RefPtr<HttpTransactionShell> transactionWithStickyConn;
     if (mCaps & NS_HTTP_STICKY_CONNECTION ||
-        mTransaction->Caps() & NS_HTTP_STICKY_CONNECTION) {
+        mTransaction->HasStickyConnection()) {
       transactionWithStickyConn = mTransaction;
       LOG(("  transaction %p has sticky connection",
            transactionWithStickyConn.get()));
@@ -7957,6 +7946,7 @@ nsHttpChannel::OnStopRequest(nsIRequest* request, nsresult status) {
     }
 
     mTransferSize = mTransaction->GetTransferSize();
+    mRequestSize = mTransaction->GetRequestSize();
 
     // If we are using the transaction to serve content, we also save the
     // time since async open in the cache entry so we can compare telemetry
@@ -8017,7 +8007,7 @@ nsHttpChannel::OnStopRequest(nsIRequest* request, nsresult status) {
 
 nsresult nsHttpChannel::ContinueOnStopRequestAfterAuthRetry(
     nsresult aStatus, bool aAuthRetry, bool aIsFromNet, bool aContentComplete,
-    nsHttpTransaction* aTransWithStickyConn) {
+    HttpTransactionShell* aTransWithStickyConn) {
   LOG(
       ("nsHttpChannel::ContinueOnStopRequestAfterAuthRetry "
        "[this=%p, aStatus=%" PRIx32
@@ -8635,11 +8625,24 @@ nsHttpChannel::OnTransportStatus(nsITransport* trans, nsresult status,
          (mLoadFlags & LOAD_BACKGROUND) ? "" : " and status", this,
          static_cast<uint32_t>(status), progress, progressMax));
 
+    nsAutoCString host;
+    mURI->GetHost(host);
     if (!(mLoadFlags & LOAD_BACKGROUND)) {
-      nsAutoCString host;
-      mURI->GetHost(host);
       mProgressSink->OnStatus(this, nullptr, status,
                               NS_ConvertUTF8toUTF16(host).get());
+    } else {
+      nsCOMPtr<nsIParentChannel> parentChannel;
+      NS_QueryNotificationCallbacks(this, parentChannel);
+      // If the event sink is |HttpChannelParent|, we have to send status events
+      // to it even if LOAD_BACKGROUND is set. |HttpChannelParent| needs to be
+      // aware of whether the status is |NS_NET_STATUS_RECEIVING_FROM| or
+      // |NS_NET_STATUS_READING|.
+      // LOAD_BACKGROUND is checked again in |HttpChannelChild|, so the final
+      // consumer won't get this event.
+      if (SameCOMIdentity(parentChannel, mProgressSink)) {
+        mProgressSink->OnStatus(this, nullptr, status,
+                                NS_ConvertUTF8toUTF16(host).get());
+      }
     }
 
     if (progress > 0) {
@@ -8976,7 +8979,7 @@ nsHttpChannel::ResumeAt(uint64_t aStartPos, const nsACString& aEntityID) {
 }
 
 nsresult nsHttpChannel::DoAuthRetry(
-    nsHttpTransaction* aTransWithStickyConn,
+    HttpTransactionShell* aTransWithStickyConn,
     const std::function<nsresult(nsHttpChannel*, nsresult)>&
         aContinueOnStopRequestFunc) {
   LOG(("nsHttpChannel::DoAuthRetry [this=%p, aTransWithStickyConn=%p]\n", this,
@@ -9003,7 +9006,7 @@ nsresult nsHttpChannel::DoAuthRetry(
   // notify "http-on-modify-request" observers
   CallOnModifyRequestObservers();
 
-  RefPtr<nsHttpTransaction> trans(aTransWithStickyConn);
+  RefPtr<HttpTransactionShell> trans(aTransWithStickyConn);
   return CallOrWaitForResume(
       [trans{std::move(trans)}, aContinueOnStopRequestFunc](auto* self) {
         return self->ContinueDoAuthRetry(trans, aContinueOnStopRequestFunc);
@@ -9011,7 +9014,7 @@ nsresult nsHttpChannel::DoAuthRetry(
 }
 
 nsresult nsHttpChannel::ContinueDoAuthRetry(
-    nsHttpTransaction* aTransWithStickyConn,
+    HttpTransactionShell* aTransWithStickyConn,
     const std::function<nsresult(nsHttpChannel*, nsresult)>&
         aContinueOnStopRequestFunc) {
   LOG(("nsHttpChannel::ContinueDoAuthRetry [this=%p]\n", this));
@@ -9044,7 +9047,7 @@ nsresult nsHttpChannel::ContinueDoAuthRetry(
   // notify "http-on-before-connect" observers
   gHttpHandler->OnBeforeConnect(this);
 
-  RefPtr<nsHttpTransaction> trans(aTransWithStickyConn);
+  RefPtr<HttpTransactionShell> trans(aTransWithStickyConn);
   return CallOrWaitForResume(
       [trans{std::move(trans)}, aContinueOnStopRequestFunc](auto* self) {
         nsresult rv = self->DoConnect(trans);
@@ -9773,25 +9776,13 @@ void nsHttpChannel::SetOriginHeader() {
   nsAutoCString origin("null");
   nsContentUtils::GetASCIIOrigin(referrer, origin);
 
-  // Restrict Origin to same-origin loads if requested by user or leaving from
-  // .onion
+  // Restrict Origin to same-origin loads if requested by user
   if (sSendOriginHeader == 1) {
     nsAutoCString currentOrigin;
     nsContentUtils::GetASCIIOrigin(mURI, currentOrigin);
     if (!origin.EqualsIgnoreCase(currentOrigin.get())) {
       // Origin header suppressed by user setting
       return;
-    }
-  } else if (dom::ReferrerInfo::HideOnionReferrerSource()) {
-    nsAutoCString host;
-    if (referrer && NS_SUCCEEDED(referrer->GetAsciiHost(host)) &&
-        StringEndsWith(host, NS_LITERAL_CSTRING(".onion"))) {
-      nsAutoCString currentOrigin;
-      nsContentUtils::GetASCIIOrigin(mURI, currentOrigin);
-      if (!origin.EqualsIgnoreCase(currentOrigin.get())) {
-        // Origin header is suppressed by .onion
-        return;
-      }
     }
   }
 

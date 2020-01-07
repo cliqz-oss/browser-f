@@ -125,6 +125,8 @@ static void GetAscentAndDescentInAppUnits(nsTextFrame* aFrame,
   gfxTextRun::Range range = ConvertOriginalToSkipped(
       it, aFrame->GetContentOffset(), aFrame->GetContentLength());
 
+  // We pass in null for the PropertyProvider since letter-spacing and
+  // word-spacing should not affect the ascent and descent values we get.
   gfxTextRun::Metrics metrics =
       textRun->MeasureText(range, gfxFont::LOOSE_INK_EXTENTS, nullptr, nullptr);
 
@@ -276,6 +278,8 @@ static nscoord GetBaselinePosition(nsTextFrame* aFrame, gfxTextRun* aTextRun,
                                    uint8_t aDominantBaseline,
                                    float aFontSizeScaleFactor) {
   WritingMode writingMode = aFrame->GetWritingMode();
+  // We pass in null for the PropertyProvider since letter-spacing and
+  // word-spacing should not affect the ascent and descent values we get.
   gfxTextRun::Metrics metrics =
       aTextRun->MeasureText(gfxFont::LOOSE_INK_EXTENTS, nullptr);
 
@@ -834,6 +838,7 @@ SVGBBox TextRenderedRun::GetRunUserSpaceRect(nsPresContext* aContext,
       vertical ? self.XMost() - rect.width : self.YMost() - rect.height;
 
   gfxSkipCharsIterator it = mFrame->EnsureTextRun(nsTextFrame::eInflated);
+  gfxSkipCharsIterator start = it;
   gfxTextRun* textRun = mFrame->GetTextRun(nsTextFrame::eInflated);
 
   // Get the content range for this rendered run.
@@ -843,9 +848,17 @@ SVGBBox TextRenderedRun::GetRunUserSpaceRect(nsPresContext* aContext,
     return r;
   }
 
+  // FIXME(heycam): We could create a single PropertyProvider for all
+  // TextRenderedRuns that correspond to the text frame, rather than recreate
+  // it each time here.
+  Maybe<nsTextFrame::PropertyProvider> provider;
+  if (StaticPrefs::svg_text_spacing_enabled()) {
+    provider.emplace(mFrame, start);
+  }
+
   // Measure that range.
-  gfxTextRun::Metrics metrics =
-      textRun->MeasureText(range, gfxFont::LOOSE_INK_EXTENTS, nullptr, nullptr);
+  gfxTextRun::Metrics metrics = textRun->MeasureText(
+      range, gfxFont::LOOSE_INK_EXTENTS, nullptr, provider.ptrOr(nullptr));
   // Make sure it includes the font-box.
   gfxRect fontBox(0, -metrics.mAscent, metrics.mAdvanceWidth,
                   metrics.mAscent + metrics.mDescent);
@@ -858,7 +871,7 @@ SVGBBox TextRenderedRun::GetRunUserSpaceRect(nsPresContext* aContext,
   gfxFloat x, width;
   if (aFlags & eNoHorizontalOverflow) {
     x = 0.0;
-    width = textRun->GetAdvanceWidth(range, nullptr);
+    width = textRun->GetAdvanceWidth(range, provider.ptrOr(nullptr));
   } else {
     x = metrics.mBoundingBox.x;
     width = metrics.mBoundingBox.width;
@@ -939,6 +952,10 @@ void TextRenderedRun::GetClipEdges(nscoord& aVisIStartEdge,
 
   gfxSkipCharsIterator it = mFrame->EnsureTextRun(nsTextFrame::eInflated);
   gfxTextRun* textRun = mFrame->GetTextRun(nsTextFrame::eInflated);
+  Maybe<nsTextFrame::PropertyProvider> provider;
+  if (StaticPrefs::svg_text_spacing_enabled()) {
+    provider.emplace(mFrame, it);
+  }
 
   // Get the covered content offset/length for this rendered run in skipped
   // characters, since that is what GetAdvanceWidth expects.
@@ -963,12 +980,12 @@ void TextRenderedRun::GetClipEdges(nscoord& aVisIStartEdge,
   // Measure the advance width in the text run between the start of
   // frame's content and the start of the rendered run's content,
   nscoord startEdge = textRun->GetAdvanceWidth(
-      Range(frameRange.start, runRange.start), nullptr);
+      Range(frameRange.start, runRange.start), provider.ptrOr(nullptr));
 
   // and between the end of the rendered run's content and the end
   // of the frame's content.
-  nscoord endEdge =
-      textRun->GetAdvanceWidth(Range(runRange.end, frameRange.end), nullptr);
+  nscoord endEdge = textRun->GetAdvanceWidth(
+      Range(runRange.end, frameRange.end), provider.ptrOr(nullptr));
 
   if (textRun->IsRightToLeft()) {
     aVisIStartEdge = endEdge;
@@ -982,11 +999,15 @@ void TextRenderedRun::GetClipEdges(nscoord& aVisIStartEdge,
 nscoord TextRenderedRun::GetAdvanceWidth() const {
   gfxSkipCharsIterator it = mFrame->EnsureTextRun(nsTextFrame::eInflated);
   gfxTextRun* textRun = mFrame->GetTextRun(nsTextFrame::eInflated);
+  Maybe<nsTextFrame::PropertyProvider> provider;
+  if (StaticPrefs::svg_text_spacing_enabled()) {
+    provider.emplace(mFrame, it);
+  }
 
   Range range = ConvertOriginalToSkipped(it, mTextFrameContentOffset,
                                          mTextFrameContentLength);
 
-  return textRun->GetAdvanceWidth(range, nullptr);
+  return textRun->GetAdvanceWidth(range, provider.ptrOr(nullptr));
 }
 
 int32_t TextRenderedRun::GetCharNumAtPosition(nsPresContext* aContext,
@@ -1031,13 +1052,17 @@ int32_t TextRenderedRun::GetCharNumAtPosition(nsPresContext* aContext,
 
   gfxSkipCharsIterator it = mFrame->EnsureTextRun(nsTextFrame::eInflated);
   gfxTextRun* textRun = mFrame->GetTextRun(nsTextFrame::eInflated);
+  Maybe<nsTextFrame::PropertyProvider> provider;
+  if (StaticPrefs::svg_text_spacing_enabled()) {
+    provider.emplace(mFrame, it);
+  }
 
   // Next check that the point lies horizontally within the left and right
   // edges of the text.
   Range range = ConvertOriginalToSkipped(it, mTextFrameContentOffset,
                                          mTextFrameContentLength);
-  gfxFloat runAdvance =
-      aContext->AppUnitsToGfxUnits(textRun->GetAdvanceWidth(range, nullptr));
+  gfxFloat runAdvance = aContext->AppUnitsToGfxUnits(
+      textRun->GetAdvanceWidth(range, provider.ptrOr(nullptr)));
 
   gfxFloat pos = writingMode.IsVertical() ? p.y : p.x;
   if (pos < 0 || pos >= runAdvance) {
@@ -1050,8 +1075,8 @@ int32_t TextRenderedRun::GetCharNumAtPosition(nsPresContext* aContext,
   bool rtl = textRun->IsRightToLeft();
   for (int32_t i = mTextFrameContentLength - 1; i >= 0; i--) {
     range = ConvertOriginalToSkipped(it, mTextFrameContentOffset, i);
-    gfxFloat advance =
-        aContext->AppUnitsToGfxUnits(textRun->GetAdvanceWidth(range, nullptr));
+    gfxFloat advance = aContext->AppUnitsToGfxUnits(
+        textRun->GetAdvanceWidth(range, provider.ptrOr(nullptr)));
     if ((rtl && pos < runAdvance - advance) || (!rtl && pos >= advance)) {
       return i;
     }
@@ -2386,12 +2411,21 @@ gfxFloat CharIterator::GetGlyphAdvance(nsPresContext* aContext) const {
   GetOriginalGlyphOffsets(offset, length);
 
   gfxSkipCharsIterator it = TextFrame()->EnsureTextRun(nsTextFrame::eInflated);
+  gfxSkipCharsIterator start = it;
   Range range = ConvertOriginalToSkipped(it, offset, length);
+  if (range.Length() == 0) {
+    return 0.0;
+  }
+
+  Maybe<nsTextFrame::PropertyProvider> provider;
+  if (StaticPrefs::svg_text_spacing_enabled()) {
+    provider.emplace(TextFrame(), start);
+  }
 
   float cssPxPerDevPx =
       nsPresContext::AppUnitsToFloatCSSPixels(aContext->AppUnitsPerDevPixel());
 
-  gfxFloat advance = mTextRun->GetAdvanceWidth(range, nullptr);
+  gfxFloat advance = mTextRun->GetAdvanceWidth(range, provider.ptrOr(nullptr));
   return aContext->AppUnitsToGfxUnits(advance) * mLengthAdjustScaleFactor *
          cssPxPerDevPx;
 }
@@ -2400,9 +2434,16 @@ gfxFloat CharIterator::GetAdvance(nsPresContext* aContext) const {
   float cssPxPerDevPx =
       nsPresContext::AppUnitsToFloatCSSPixels(aContext->AppUnitsPerDevPixel());
 
+  gfxSkipCharsIterator start =
+      TextFrame()->EnsureTextRun(nsTextFrame::eInflated);
+  Maybe<nsTextFrame::PropertyProvider> provider;
+  if (StaticPrefs::svg_text_spacing_enabled()) {
+    provider.emplace(TextFrame(), start);
+  }
+
   uint32_t offset = mSkipCharsIterator.GetSkippedOffset();
-  gfxFloat advance =
-      mTextRun->GetAdvanceWidth(Range(offset, offset + 1), nullptr);
+  gfxFloat advance = mTextRun->GetAdvanceWidth(Range(offset, offset + 1),
+                                               provider.ptrOr(nullptr));
   return aContext->AppUnitsToGfxUnits(advance) * mLengthAdjustScaleFactor *
          cssPxPerDevPx;
 }
@@ -2416,12 +2457,22 @@ gfxFloat CharIterator::GetGlyphPartialAdvance(uint32_t aPartLength,
   length = aPartLength;
 
   gfxSkipCharsIterator it = TextFrame()->EnsureTextRun(nsTextFrame::eInflated);
+  gfxSkipCharsIterator start = it;
+
   Range range = ConvertOriginalToSkipped(it, offset, length);
+  if (range.Length() == 0) {
+    return 0.0;
+  }
+
+  Maybe<nsTextFrame::PropertyProvider> provider;
+  if (StaticPrefs::svg_text_spacing_enabled()) {
+    provider.emplace(TextFrame(), start);
+  }
 
   float cssPxPerDevPx =
       nsPresContext::AppUnitsToFloatCSSPixels(aContext->AppUnitsPerDevPixel());
 
-  gfxFloat advance = mTextRun->GetAdvanceWidth(range, nullptr);
+  gfxFloat advance = mTextRun->GetAdvanceWidth(range, provider.ptrOr(nullptr));
   return aContext->AppUnitsToGfxUnits(advance) * mLengthAdjustScaleFactor *
          cssPxPerDevPx;
 }
@@ -2922,32 +2973,6 @@ nsresult SVGTextFrame::AttributeChanged(int32_t aNameSpaceID,
   }
 
   return NS_OK;
-}
-
-void SVGTextFrame::DidSetComputedStyle(ComputedStyle* aOldComputedStyle) {
-  if (mState & NS_FRAME_IS_NONDISPLAY) {
-    // We need this DidSetComputedStyle override to handle cases like this:
-    //
-    //   <defs>
-    //     <g>
-    //       <mask>
-    //         <text>...</text>
-    //       </mask>
-    //     </g>
-    //   </defs>
-    //
-    // where the <text> is non-display, and a style change occurs on the <defs>,
-    // the <g>, the <mask>, or the <text> itself.  If the style change happened
-    // on the parent of the <defs>, then in
-    // nsSVGDisplayContainerFrame::ReflowSVG, we would find the non-display
-    // <defs> container and then call ReflowSVGNonDisplayText on it.  If we do
-    // not actually reflow the parent of the <defs>, then without this
-    // DidSetComputedStyle we would (a) not cause the <text>'s anonymous block
-    // child to be reflowed when it is next painted, and (b) not cause the
-    // <text> to be repainted anyway since the user of the <mask> would not
-    // know it needs to be repainted.
-    ScheduleReflowSVGNonDisplayText(IntrinsicDirty::StyleChange);
-  }
 }
 
 void SVGTextFrame::ReflowSVGNonDisplayText() {
@@ -3796,14 +3821,17 @@ nsresult SVGTextFrame::GetSubStringLength(nsIContent* aContent,
       // Convert offset into an index into the frame.
       offset += trimmedOffset - textElementCharIndex;
 
-      gfxSkipCharsIterator skipCharsIter =
-          frame->EnsureTextRun(nsTextFrame::eInflated);
+      gfxSkipCharsIterator it = frame->EnsureTextRun(nsTextFrame::eInflated);
       gfxTextRun* textRun = frame->GetTextRun(nsTextFrame::eInflated);
-      Range range =
-          ConvertOriginalToSkipped(skipCharsIter, offset, trimmedLength);
+      Maybe<nsTextFrame::PropertyProvider> provider;
+      if (StaticPrefs::svg_text_spacing_enabled()) {
+        provider.emplace(frame, it);
+      }
+
+      Range range = ConvertOriginalToSkipped(it, offset, trimmedLength);
 
       // Accumulate the advance.
-      textLength += textRun->GetAdvanceWidth(range, nullptr);
+      textLength += textRun->GetAdvanceWidth(range, provider.ptrOr(nullptr));
     }
 
     // Advance, ready for next call:
@@ -3873,13 +3901,18 @@ nsresult SVGTextFrame::GetSubStringLengthSlowFallback(nsIContent* aContent,
       // Convert offset into an index into the frame.
       offset += run.mTextFrameContentOffset - run.mTextElementCharIndex;
 
-      gfxSkipCharsIterator skipCharsIter =
+      gfxSkipCharsIterator it =
           run.mFrame->EnsureTextRun(nsTextFrame::eInflated);
       gfxTextRun* textRun = run.mFrame->GetTextRun(nsTextFrame::eInflated);
-      Range range = ConvertOriginalToSkipped(skipCharsIter, offset, length);
+      Maybe<nsTextFrame::PropertyProvider> provider;
+      if (StaticPrefs::svg_text_spacing_enabled()) {
+        provider.emplace(run.mFrame, it);
+      }
+
+      Range range = ConvertOriginalToSkipped(it, offset, length);
 
       // Accumulate the advance.
-      textLength += textRun->GetAdvanceWidth(range, nullptr);
+      textLength += textRun->GetAdvanceWidth(range, provider.ptrOr(nullptr));
     }
 
     run = runIter.Next();
@@ -4362,6 +4395,10 @@ void SVGTextFrame::DetermineCharPositions(nsTArray<nsPoint>& aPositions) {
   for (nsTextFrame* frame = frit.Current(); frame; frame = frit.Next()) {
     gfxSkipCharsIterator it = frame->EnsureTextRun(nsTextFrame::eInflated);
     gfxTextRun* textRun = frame->GetTextRun(nsTextFrame::eInflated);
+    Maybe<nsTextFrame::PropertyProvider> provider;
+    if (StaticPrefs::svg_text_spacing_enabled()) {
+      provider.emplace(frame, it);
+    }
 
     // Reset the position to the new frame's position.
     position = frit.Position();
@@ -4399,8 +4436,8 @@ void SVGTextFrame::DetermineCharPositions(nsTArray<nsPoint>& aPositions) {
            (!textRun->IsLigatureGroupStart(it.GetSkippedOffset()) ||
             !textRun->IsClusterStart(it.GetSkippedOffset()))) {
       uint32_t offset = it.GetSkippedOffset();
-      nscoord advance =
-          textRun->GetAdvanceWidth(Range(offset, offset + 1), nullptr);
+      nscoord advance = textRun->GetAdvanceWidth(Range(offset, offset + 1),
+                                                 provider.ptrOr(nullptr));
       (textRun->IsVertical() ? position.y : position.x) +=
           textRun->IsRightToLeft() ? -advance : advance;
       aPositions.AppendElement(lastPosition);
@@ -4414,8 +4451,8 @@ void SVGTextFrame::DetermineCharPositions(nsTArray<nsPoint>& aPositions) {
           textRun->IsLigatureGroupStart(it.GetSkippedOffset()) &&
           textRun->IsClusterStart(it.GetSkippedOffset())) {
         // A real visible character.
-        nscoord advance =
-            textRun->GetAdvanceWidth(ClusterRange(textRun, it), nullptr);
+        nscoord advance = textRun->GetAdvanceWidth(ClusterRange(textRun, it),
+                                                   provider.ptrOr(nullptr));
         (textRun->IsVertical() ? position.y : position.x) +=
             textRun->IsRightToLeft() ? -advance : advance;
         lastPosition = position;
@@ -4439,13 +4476,13 @@ enum TextAnchorSide { eAnchorLeft, eAnchorMiddle, eAnchorRight };
  * Converts a logical text-anchor value to its physical value, based on whether
  * it is for an RTL frame.
  */
-static TextAnchorSide ConvertLogicalTextAnchorToPhysical(uint8_t aTextAnchor,
-                                                         bool aIsRightToLeft) {
-  NS_ASSERTION(aTextAnchor <= 3, "unexpected value for aTextAnchor");
+static TextAnchorSide ConvertLogicalTextAnchorToPhysical(
+    StyleTextAnchor aTextAnchor, bool aIsRightToLeft) {
+  NS_ASSERTION(uint8_t(aTextAnchor) <= 3, "unexpected value for aTextAnchor");
   if (!aIsRightToLeft) {
-    return TextAnchorSide(aTextAnchor);
+    return TextAnchorSide(uint8_t(aTextAnchor));
   }
-  return TextAnchorSide(2 - aTextAnchor);
+  return TextAnchorSide(2 - uint8_t(aTextAnchor));
 }
 
 /**

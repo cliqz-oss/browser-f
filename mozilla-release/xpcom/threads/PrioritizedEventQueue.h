@@ -49,10 +49,18 @@ class PrioritizedEventQueue final : public AbstractEventQueue {
   virtual ~PrioritizedEventQueue();
 
   void PutEvent(already_AddRefed<nsIRunnable>&& aEvent,
-                EventQueuePriority aPriority,
-                const MutexAutoLock& aProofOfLock) final;
+                EventQueuePriority aPriority, const MutexAutoLock& aProofOfLock,
+                mozilla::TimeDuration* aDelay = nullptr) final;
+  // See PrioritizedEventQueue.cpp for explanation of
+  // aHypotheticalInputEventDelay
   already_AddRefed<nsIRunnable> GetEvent(
-      EventQueuePriority* aPriority, const MutexAutoLock& aProofOfLock) final;
+      EventQueuePriority* aPriority, const MutexAutoLock& aProofOfLock,
+      TimeDuration* aHypotheticalInputEventDelay = nullptr) final;
+  // *aIsIdleEvent will be set to true when we are returning a non-null runnable
+  // which came from one of our idle queues, and will be false otherwise.
+  already_AddRefed<nsIRunnable> GetEvent(
+      EventQueuePriority* aPriority, const MutexAutoLock& aProofOfLock,
+      TimeDuration* aHypotheticalInputEventDelay, bool* aIsIdleEvent);
   void DidRunEvent(const MutexAutoLock& aProofOfLock);
 
   bool IsEmpty(const MutexAutoLock& aProofOfLock) final;
@@ -66,19 +74,14 @@ class PrioritizedEventQueue final : public AbstractEventQueue {
   // least as long as the queue.
   void SetMutexRef(Mutex& aMutex) { mMutex = &aMutex; }
 
-#ifndef RELEASE_OR_BETA
-  // nsThread.cpp sends telemetry containing the most recently computed idle
-  // deadline. We store a reference to a field in nsThread where this deadline
-  // will be stored so that it can be fetched quickly for telemetry.
-  void SetNextIdleDeadlineRef(TimeStamp& aDeadline) {
-    mNextIdleDeadline = &aDeadline;
-  }
-#endif
-
   void EnableInputEventPrioritization(const MutexAutoLock& aProofOfLock) final;
   void FlushInputEventPrioritization(const MutexAutoLock& aProofOfLock) final;
   void SuspendInputEventPrioritization(const MutexAutoLock& aProofOfLock) final;
   void ResumeInputEventPrioritization(const MutexAutoLock& aProofOfLock) final;
+
+  IdlePeriodState* GetIdlePeriodState() { return &mIdlePeriodState; }
+
+  bool HasIdleRunnables(const MutexAutoLock& aProofOfLock) const;
 
   size_t SizeOfExcludingThis(
       mozilla::MallocSizeOf aMallocSizeOf) const override {
@@ -101,9 +104,9 @@ class PrioritizedEventQueue final : public AbstractEventQueue {
                                  const MutexAutoLock& aProofOfLock);
 
   UniquePtr<EventQueue> mHighQueue;
-  UniquePtr<EventQueue> mInputQueue;
+  UniquePtr<EventQueueSized<32>> mInputQueue;
   UniquePtr<EventQueue> mMediumHighQueue;
-  UniquePtr<EventQueue> mNormalQueue;
+  UniquePtr<EventQueueSized<64>> mNormalQueue;
   UniquePtr<EventQueue> mDeferredTimersQueue;
   UniquePtr<EventQueue> mIdleQueue;
 
@@ -111,11 +114,8 @@ class PrioritizedEventQueue final : public AbstractEventQueue {
   // a pointer to it here.
   Mutex* mMutex = nullptr;
 
-#ifndef RELEASE_OR_BETA
-  // Pointer to a place where the most recently computed idle deadline is
-  // stored.
-  TimeStamp* mNextIdleDeadline = nullptr;
-#endif
+  TimeDuration mLastEventDelay;
+  TimeStamp mLastEventStart;
 
   // Try to process one high priority runnable after each normal
   // priority runnable. This gives the processing model HTML spec has for

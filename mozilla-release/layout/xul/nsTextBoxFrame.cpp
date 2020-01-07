@@ -191,7 +191,7 @@ void nsTextBoxFrame::UpdateAttributes(nsAtom* aAttribute, bool& aResize,
   aRedraw = false;
 
   if (aAttribute == nullptr || aAttribute == nsGkAtoms::crop) {
-    static Element::AttrValuesArray strings[] = {
+    static dom::Element::AttrValuesArray strings[] = {
         nsGkAtoms::left,  nsGkAtoms::start, nsGkAtoms::center,
         nsGkAtoms::right, nsGkAtoms::end,   nsGkAtoms::none,
         nullptr};
@@ -1037,7 +1037,7 @@ void nsTextBoxFrame::CalcDrawRect(gfxContext& aRenderingContext) {
     textRect.IStart(wm) += (outerISize - textRect.ISize(wm)) / 2;
   } else if (textStyle->mTextAlign == NS_STYLE_TEXT_ALIGN_END ||
              (textStyle->mTextAlign == NS_STYLE_TEXT_ALIGN_LEFT &&
-              !wm.IsBidiLTR()) ||
+              wm.IsBidiRTL()) ||
              (textStyle->mTextAlign == NS_STYLE_TEXT_ALIGN_RIGHT &&
               wm.IsBidiLTR())) {
     textRect.IStart(wm) += (outerISize - textRect.ISize(wm));

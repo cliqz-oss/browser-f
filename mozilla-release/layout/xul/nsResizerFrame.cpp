@@ -483,7 +483,7 @@ void nsResizerFrame::RestoreOriginalSize(nsIContent* aContent) {
 /* returns a Direction struct containing the horizontal and vertical direction
  */
 nsResizerFrame::Direction nsResizerFrame::GetDirection() {
-  static const Element::AttrValuesArray strings[] = {
+  static const mozilla::dom::Element::AttrValuesArray strings[] = {
       // clang-format off
      nsGkAtoms::topleft,    nsGkAtoms::top,    nsGkAtoms::topright,
      nsGkAtoms::left,                          nsGkAtoms::right,
@@ -516,7 +516,7 @@ nsResizerFrame::Direction nsResizerFrame::GetDirection() {
     // Directions 8 and higher are RTL-aware directions and should reverse the
     // horizontal component if RTL.
     WritingMode wm = GetWritingMode();
-    if (!(wm.IsVertical() ? wm.IsVerticalLR() : wm.IsBidiLTR())) {
+    if (wm.IsPhysicalRTL()) {
       Direction direction = directions[index];
       direction.mHorizontal *= -1;
       return direction;

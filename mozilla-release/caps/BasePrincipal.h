@@ -101,6 +101,7 @@ class BasePrincipal : public nsJSPrincipals {
                 DocumentDomainConsideration aConsideration);
 
   NS_IMETHOD GetOrigin(nsACString& aOrigin) final;
+  NS_IMETHOD GetAsciiOrigin(nsACString& aOrigin) override;
   NS_IMETHOD GetOriginNoSuffix(nsACString& aOrigin) final;
   NS_IMETHOD Equals(nsIPrincipal* other, bool* _retval) final;
   NS_IMETHOD EqualsConsideringDomain(nsIPrincipal* other, bool* _retval) final;
@@ -117,11 +118,14 @@ class BasePrincipal : public nsJSPrincipals {
   NS_IMETHOD GetIsExpandedPrincipal(bool* aResult) override;
   NS_IMETHOD GetIsSystemPrincipal(bool* aResult) override;
   NS_IMETHOD SchemeIs(const char* aScheme, bool* aResult) override;
+  NS_IMETHOD IsURIInPrefList(const char* aPref, bool* aResult) override;
   NS_IMETHOD GetAboutModuleFlags(uint32_t* flags) override;
   NS_IMETHOD GetIsAddonOrExpandedAddonPrincipal(bool* aResult) override;
   NS_IMETHOD GetOriginAttributes(JSContext* aCx,
                                  JS::MutableHandle<JS::Value> aVal) final;
+  NS_IMETHOD GetAsciiSpec(nsACString& aSpec) override;
   NS_IMETHOD GetOriginSuffix(nsACString& aOriginSuffix) final;
+  NS_IMETHOD GetIsOnion(bool* aIsOnion) override;
   NS_IMETHOD GetIsInIsolatedMozBrowserElement(
       bool* aIsInIsolatedMozBrowserElement) final;
   NS_IMETHOD GetUserContextId(uint32_t* aUserContextId) final;

@@ -1235,7 +1235,11 @@ exports.default = _default;
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 // ReactJS
-const PropTypes = __webpack_require__(0); // Dependencies
+const PropTypes = __webpack_require__(0);
+
+const {
+  span
+} = __webpack_require__(1); // Dependencies
 
 
 const {
@@ -1249,17 +1253,12 @@ const PropRep = __webpack_require__(39);
 const {
   MODE
 } = __webpack_require__(4);
-
-const dom = __webpack_require__(1);
-
-const {
-  span
-} = dom;
 /**
  * Renders generic grip. Grip is client representation
  * of remote JS object and is used as an input object
  * for this rep component.
  */
+
 
 GripRep.propTypes = {
   object: PropTypes.object.isRequired,
@@ -2359,7 +2358,7 @@ function getChildren(options) {
 
 function getPathExpression(item) {
   if (item && item.parent) {
-    let parent = nodeIsBucket(item.parent) ? item.parent.parent : item.parent;
+    const parent = nodeIsBucket(item.parent) ? item.parent.parent : item.parent;
     return `${getPathExpression(parent)}.${item.name}`;
   }
 
@@ -2738,7 +2737,7 @@ const {
 } = __webpack_require__(24);
 
 function shouldRenderRootsInReps(roots) {
-  if (roots.length > 1) {
+  if (roots.length !== 1) {
     return false;
   }
 
@@ -2773,21 +2772,20 @@ module.exports = {
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 // Dependencies
+const {
+  span
+} = __webpack_require__(1);
+
 const PropTypes = __webpack_require__(0);
 
 const {
   getGripType,
   wrapRender
 } = __webpack_require__(2);
-
-const dom = __webpack_require__(1);
-
-const {
-  span
-} = dom;
 /**
  * Renders a number
  */
+
 
 BigInt.propTypes = {
   object: PropTypes.oneOfType([PropTypes.object, PropTypes.number, PropTypes.bool]).isRequired
@@ -2821,7 +2819,12 @@ module.exports = {
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 // ReactJS
-const PropTypes = __webpack_require__(0); // Reps
+const PropTypes = __webpack_require__(0);
+
+const {
+  button,
+  span
+} = __webpack_require__(1); // Reps
 
 
 const {
@@ -2835,11 +2838,6 @@ const {
   MODE
 } = __webpack_require__(4);
 
-const dom = __webpack_require__(1);
-
-const {
-  span
-} = dom;
 const IGNORED_SOURCE_URLS = ["debugger eval code"];
 /**
  * This component represents a template for Function objects.
@@ -2862,7 +2860,7 @@ function FunctionRep(props) {
   let jumpToDefinitionButton;
 
   if (onViewSourceInDebugger && grip.location && grip.location.url && !IGNORED_SOURCE_URLS.includes(grip.location.url)) {
-    jumpToDefinitionButton = dom.button({
+    jumpToDefinitionButton = button({
       className: "jump-definition",
       draggable: false,
       title: "Jump to definition",
@@ -3069,7 +3067,11 @@ module.exports = {
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 // ReactJS
-const PropTypes = __webpack_require__(0); // Utils
+const PropTypes = __webpack_require__(0);
+
+const {
+  span
+} = __webpack_require__(1); // Utils
 
 
 const {
@@ -3090,11 +3092,6 @@ const {
   MODE
 } = __webpack_require__(4);
 
-const dom = __webpack_require__(1);
-
-const {
-  span
-} = dom;
 const IGNORED_SOURCE_URLS = ["debugger eval code"];
 /**
  * Renders Error objects.
@@ -3320,6 +3317,10 @@ module.exports = {
 const PropTypes = __webpack_require__(0);
 
 const {
+  span
+} = __webpack_require__(1);
+
+const {
   lengthBubble
 } = __webpack_require__(193);
 
@@ -3334,12 +3335,6 @@ const {
 const {
   MODE
 } = __webpack_require__(4);
-
-const dom = __webpack_require__(1);
-
-const {
-  span
-} = dom;
 
 const {
   ModePropType
@@ -3630,11 +3625,15 @@ module.exports = {
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 // Dependencies
+const PropTypes = __webpack_require__(0);
+
+const {
+  span
+} = __webpack_require__(1);
+
 const {
   lengthBubble
 } = __webpack_require__(193);
-
-const PropTypes = __webpack_require__(0);
 
 const {
   interleave,
@@ -3652,10 +3651,6 @@ const {
 const {
   ModePropType
 } = __webpack_require__(38);
-
-const {
-  span
-} = __webpack_require__(1);
 /**
  * Renders an map. A map is represented by a list of its
  * entries enclosed in curly brackets.
@@ -3840,14 +3835,12 @@ module.exports = {
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 // Dependencies
-const PropTypes = __webpack_require__(0); // Shortcuts
-
-
-const dom = __webpack_require__(1);
+const PropTypes = __webpack_require__(0);
 
 const {
   span
-} = dom;
+} = __webpack_require__(1); // Utils
+
 
 const {
   wrapRender
@@ -3955,51 +3948,50 @@ const {
 function loadItemProperties(item, client, loadedProperties) {
   const gripItem = getClosestGripNode(item);
   const value = getValue(gripItem);
-
   const [start, end] = item.meta ? [item.meta.startIndex, item.meta.endIndex] : [];
   const promises = [];
-  let objectClient;
-  
+  let objectFront;
+
   if (value && client && client.getFrontByID) {
-    objectClient = client.getFrontByID(value.actor);
+    objectFront = client.getFrontByID(value.actor);
   }
 
-  const getObjectClient = function() {
-    if (!objectClient) {
-      objectClient = client.createObjectClient(value);
+  const getObjectFront = function () {
+    if (!objectFront) {
+      objectFront = client.createObjectFront(value);
     }
 
-    return objectClient;
-  }
+    return objectFront;
+  };
 
   if (shouldLoadItemIndexedProperties(item, loadedProperties)) {
-    promises.push(enumIndexedProperties(getObjectClient(), start, end));
+    promises.push(enumIndexedProperties(getObjectFront(), start, end));
   }
-  
+
   if (shouldLoadItemNonIndexedProperties(item, loadedProperties)) {
-    promises.push(enumNonIndexedProperties(getObjectClient(), start, end));
+    promises.push(enumNonIndexedProperties(getObjectFront(), start, end));
   }
-  
+
   if (shouldLoadItemEntries(item, loadedProperties)) {
-    promises.push(enumEntries(getObjectClient(), start, end));
+    promises.push(enumEntries(getObjectFront(), start, end));
   }
-  
+
   if (shouldLoadItemPrototype(item, loadedProperties)) {
-    promises.push(getPrototype(getObjectClient()));
+    promises.push(getPrototype(getObjectFront()));
   }
-  
+
   if (shouldLoadItemSymbols(item, loadedProperties)) {
-    promises.push(enumSymbols(getObjectClient(), start, end));
+    promises.push(enumSymbols(getObjectFront(), start, end));
   }
-  
+
   if (shouldLoadItemFullText(item, loadedProperties)) {
-    promises.push(getFullText(client.createLongStringClient(value), item));
+    promises.push(getFullText(client.createLongStringFront(value), item));
   }
-  
+
   if (shouldLoadItemProxySlots(item, loadedProperties)) {
-    promises.push(getProxySlots(getObjectClient()));
+    promises.push(getProxySlots(getObjectFront()));
   }
-  
+
   return Promise.all(promises).then(mergeResponses);
 }
 
@@ -4097,9 +4089,9 @@ const {
   nodeHasFullText
 } = __webpack_require__(114);
 
-async function enumIndexedProperties(objectClient, start, end) {
+async function enumIndexedProperties(objectFront, start, end) {
   try {
-    const iterator = await objectClient.enumProperties({
+    const iterator = await objectFront.enumProperties({
       ignoreNonIndexedProperties: true
     });
     const response = await iteratorSlice(iterator, start, end);
@@ -4110,9 +4102,9 @@ async function enumIndexedProperties(objectClient, start, end) {
   }
 }
 
-async function enumNonIndexedProperties(objectClient, start, end) {
+async function enumNonIndexedProperties(objectFront, start, end) {
   try {
-    const iterator = await objectClient.enumProperties({
+    const iterator = await objectFront.enumProperties({
       ignoreIndexedProperties: true
     });
     const response = await iteratorSlice(iterator, start, end);
@@ -4123,9 +4115,9 @@ async function enumNonIndexedProperties(objectClient, start, end) {
   }
 }
 
-async function enumEntries(objectClient, start, end) {
+async function enumEntries(objectFront, start, end) {
   try {
-    const iterator = await objectClient.enumEntries();
+    const iterator = await objectFront.enumEntries();
     const response = await iteratorSlice(iterator, start, end);
     return response;
   } catch (e) {
@@ -4134,9 +4126,9 @@ async function enumEntries(objectClient, start, end) {
   }
 }
 
-async function enumSymbols(objectClient, start, end) {
+async function enumSymbols(objectFront, start, end) {
   try {
-    const iterator = await objectClient.enumSymbols();
+    const iterator = await objectFront.enumSymbols();
     const response = await iteratorSlice(iterator, start, end);
     return response;
   } catch (e) {
@@ -4145,16 +4137,16 @@ async function enumSymbols(objectClient, start, end) {
   }
 }
 
-async function getPrototype(objectClient) {
-  if (typeof objectClient.getPrototype !== "function") {
-    console.error("objectClient.getPrototype is not a function");
+async function getPrototype(objectFront) {
+  if (typeof objectFront.getPrototype !== "function") {
+    console.error("objectFront.getPrototype is not a function");
     return Promise.resolve({});
   }
 
-  return objectClient.getPrototype();
+  return objectFront.getPrototype();
 }
 
-async function getFullText(longStringClient, item) {
+async function getFullText(longStringFront, item) {
   const {
     initial,
     fullText,
@@ -4163,28 +4155,24 @@ async function getFullText(longStringClient, item) {
   // loadedProperties map.
 
   if (nodeHasFullText(item)) {
-    return Promise.resolve({
+    return {
       fullText
-    });
+    };
   }
 
-  return new Promise((resolve, reject) => {
-    longStringClient.substring(initial.length, length, response => {
-      if (response.error) {
-        console.error("LongStringClient.substring", `${response.error}: ${response.message}`);
-        reject({});
-        return;
-      }
-
-      resolve({
-        fullText: initial + response.substring
-      });
-    });
-  });
+  try {
+    const substring = await longStringFront.substring(initial.length, length);
+    return {
+      fullText: initial + substring
+    };
+  } catch (e) {
+    console.error("LongStringFront.substring", e);
+    throw e;
+  }
 }
 
-async function getProxySlots(objectClient) {
-  return objectClient.getProxySlots();
+async function getProxySlots(objectFront) {
+  return objectFront.getProxySlots();
 }
 
 function iteratorSlice(iterator, start, end) {
@@ -4883,6 +4871,11 @@ module.exports = {
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 // Dependencies
+const {
+  a,
+  span
+} = __webpack_require__(1);
+
 const PropTypes = __webpack_require__(0);
 
 const {
@@ -4897,16 +4890,10 @@ const {
   uneatLastUrlCharsRegex,
   urlRegex
 } = __webpack_require__(2);
-
-const dom = __webpack_require__(1);
-
-const {
-  a,
-  span
-} = dom;
 /**
  * Renders a string. String value is enclosed within quotes.
  */
+
 
 StringRep.propTypes = {
   useQuotes: PropTypes.bool,
@@ -4934,9 +4921,23 @@ function StringRep(props) {
     member,
     openLink,
     title,
-    isInContentPage
+    isInContentPage,
+    transformEmptyString = false
   } = props;
   let text = object;
+  const config = getElementConfig({
+    className,
+    style,
+    actor: object.actor,
+    title
+  });
+
+  if (text == "" && transformEmptyString && !useQuotes) {
+    return span({ ...config,
+      className: `${config.className} objectBox-empty-string`
+    }, "<empty string>");
+  }
+
   const isLong = isLongString(object);
   const isOpen = member && member.open;
   const shouldCrop = !isOpen && cropLimit && text.length > cropLimit;
@@ -4959,12 +4960,6 @@ function StringRep(props) {
     useQuotes,
     escapeWhitespace
   }, text);
-  const config = getElementConfig({
-    className,
-    style,
-    actor: object.actor,
-    title
-  });
 
   if (!isLong) {
     if (containsURL(text)) {
@@ -5232,7 +5227,9 @@ module.exports = __WEBPACK_EXTERNAL_MODULE_37__;
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 // Dependencies
-const dom = __webpack_require__(1);
+const {
+  span
+} = __webpack_require__(1);
 
 const PropTypes = __webpack_require__(0);
 
@@ -5244,9 +5241,6 @@ const {
   MODE
 } = __webpack_require__(4);
 
-const {
-  span
-} = dom;
 const ModePropType = PropTypes.oneOf( // @TODO Change this to Object.values when supported in Node's version of V8
 Object.keys(MODE).map(key => MODE[key]));
 /**
@@ -5397,6 +5391,10 @@ module.exports = {
 const PropTypes = __webpack_require__(0);
 
 const {
+  span
+} = __webpack_require__(1);
+
+const {
   maybeEscapePropertyName,
   wrapRender
 } = __webpack_require__(2);
@@ -5404,10 +5402,6 @@ const {
 const {
   MODE
 } = __webpack_require__(4);
-
-const {
-  span
-} = __webpack_require__(1);
 /**
  * Property for Obj (local JS objects), Grip (remote JS objects)
  * and GripMap (remote JS maps and weakmaps) reps.
@@ -5558,18 +5552,17 @@ module.exports = {
  * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 // Dependencies
 const {
+  span
+} = __webpack_require__(1);
+
+const {
   getGripType,
   wrapRender
 } = __webpack_require__(2);
-
-const dom = __webpack_require__(1);
-
-const {
-  span
-} = dom;
 /**
  * Renders undefined value
  */
+
 
 const Undefined = function () {
   return span({
@@ -5601,17 +5594,16 @@ module.exports = {
  * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 // Dependencies
 const {
-  wrapRender
-} = __webpack_require__(2);
-
-const dom = __webpack_require__(1);
+  span
+} = __webpack_require__(1);
 
 const {
-  span
-} = dom;
+  wrapRender
+} = __webpack_require__(2);
 /**
  * Renders null value
  */
+
 
 function Null(props) {
   return span({
@@ -5649,18 +5641,17 @@ module.exports = {
 const PropTypes = __webpack_require__(0);
 
 const {
+  span
+} = __webpack_require__(1);
+
+const {
   getGripType,
   wrapRender
 } = __webpack_require__(2);
-
-const dom = __webpack_require__(1);
-
-const {
-  span
-} = dom;
 /**
  * Renders a number
  */
+
 
 Number.propTypes = {
   object: PropTypes.oneOfType([PropTypes.object, PropTypes.number, PropTypes.bool]).isRequired
@@ -5700,6 +5691,10 @@ module.exports = {
 const PropTypes = __webpack_require__(0);
 
 const {
+  span
+} = __webpack_require__(1);
+
+const {
   wrapRender,
   ellipsisElement
 } = __webpack_require__(2);
@@ -5710,11 +5705,6 @@ const {
   MODE
 } = __webpack_require__(4);
 
-const dom = __webpack_require__(1);
-
-const {
-  span
-} = dom;
 const DEFAULT_TITLE = "Object";
 /**
  * Renders an object. An object is represented by a list of its
@@ -5887,19 +5877,18 @@ module.exports = {
 const PropTypes = __webpack_require__(0);
 
 const {
+  span
+} = __webpack_require__(1);
+
+const {
   getGripType,
   wrapRender
 } = __webpack_require__(2);
-
-const dom = __webpack_require__(1);
 
 const {
   rep: StringRep
 } = __webpack_require__(25);
 
-const {
-  span
-} = dom;
 const MAX_STRING_LENGTH = 50;
 /**
  * Renders a symbol.
@@ -5956,18 +5945,17 @@ module.exports = {
 const PropTypes = __webpack_require__(0);
 
 const {
+  span
+} = __webpack_require__(1);
+
+const {
   getGripType,
   wrapRender
 } = __webpack_require__(2);
-
-const dom = __webpack_require__(1);
-
-const {
-  span
-} = dom;
 /**
  * Renders a Infinity object
  */
+
 
 InfinityRep.propTypes = {
   object: PropTypes.object.isRequired
@@ -6003,18 +5991,17 @@ module.exports = {
  * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 // Dependencies
 const {
+  span
+} = __webpack_require__(1);
+
+const {
   getGripType,
   wrapRender
 } = __webpack_require__(2);
-
-const dom = __webpack_require__(1);
-
-const {
-  span
-} = dom;
 /**
  * Renders a NaN object
  */
+
 
 function NaNRep(props) {
   return span({
@@ -6041,7 +6028,10 @@ module.exports = {
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 // Dependencies
-const dom = __webpack_require__(1);
+const {
+  button,
+  span
+} = __webpack_require__(1);
 
 const PropTypes = __webpack_require__(0);
 
@@ -6052,14 +6042,11 @@ const {
 const {
   MODE
 } = __webpack_require__(4);
-
-const {
-  span
-} = dom;
 /**
  * Renders an object. An object is represented by a list of its
  * properties enclosed in curly brackets.
  */
+
 
 Accessor.propTypes = {
   object: PropTypes.object.isRequired,
@@ -6089,7 +6076,7 @@ function Accessor(props) {
   }
 
   if (hasGetter(object) && onInvokeGetterButtonClick) {
-    return dom.button({
+    return button({
       className: "invoke-getter",
       title: "Invoke getter",
       onClick: event => {
@@ -6285,11 +6272,10 @@ module.exports = {
 // ReactJS
 const PropTypes = __webpack_require__(0);
 
-const dom = __webpack_require__(1);
-
 const {
   span
-} = dom; // Reps
+} = __webpack_require__(1); // Reps
+
 
 const {
   getGripType,
@@ -6355,7 +6341,11 @@ module.exports = {
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 // ReactJS
-const PropTypes = __webpack_require__(0); // Reps
+const PropTypes = __webpack_require__(0);
+
+const {
+  span
+} = __webpack_require__(1); // Reps
 
 
 const {
@@ -6363,15 +6353,10 @@ const {
   isGrip,
   wrapRender
 } = __webpack_require__(2);
-
-const dom = __webpack_require__(1);
-
-const {
-  span
-} = dom;
 /**
  * Used to render JS built-in Date() object.
  */
+
 
 DateTime.propTypes = {
   object: PropTypes.object.isRequired
@@ -6431,7 +6416,11 @@ module.exports = {
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 // ReactJS
-const PropTypes = __webpack_require__(0); // Reps
+const PropTypes = __webpack_require__(0);
+
+const {
+  span
+} = __webpack_require__(1); // Reps
 
 
 const {
@@ -6440,15 +6429,10 @@ const {
   getURLDisplayString,
   wrapRender
 } = __webpack_require__(2);
-
-const dom = __webpack_require__(1);
-
-const {
-  span
-} = dom;
 /**
  * Renders DOM document object.
  */
+
 
 Document.propTypes = {
   object: PropTypes.object.isRequired
@@ -6501,7 +6485,11 @@ module.exports = {
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 // ReactJS
-const PropTypes = __webpack_require__(0); // Reps
+const PropTypes = __webpack_require__(0);
+
+const {
+  span
+} = __webpack_require__(1); // Reps
 
 
 const {
@@ -6509,15 +6497,10 @@ const {
   isGrip,
   wrapRender
 } = __webpack_require__(2);
-
-const dom = __webpack_require__(1);
-
-const {
-  span
-} = dom;
 /**
  * Renders DOM documentType object.
  */
+
 
 DocumentType.propTypes = {
   object: PropTypes.object.isRequired
@@ -6676,7 +6659,11 @@ module.exports = {
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 // ReactJS
-const PropTypes = __webpack_require__(0); // Dependencies
+const PropTypes = __webpack_require__(0);
+
+const {
+  span
+} = __webpack_require__(1); // Dependencies
 
 
 const {
@@ -6690,15 +6677,10 @@ const PropRep = __webpack_require__(39);
 const {
   MODE
 } = __webpack_require__(4);
-
-const dom = __webpack_require__(1);
-
-const {
-  span
-} = dom;
 /**
  * Renders a DOM Promise object.
  */
+
 
 PromiseRep.propTypes = {
   object: PropTypes.object.isRequired,
@@ -6796,7 +6778,11 @@ module.exports = {
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 // ReactJS
-const PropTypes = __webpack_require__(0); // Reps
+const PropTypes = __webpack_require__(0);
+
+const {
+  span
+} = __webpack_require__(1); // Reps
 
 
 const {
@@ -6804,15 +6790,10 @@ const {
   isGrip,
   wrapRender
 } = __webpack_require__(2);
-
-const dom = __webpack_require__(1);
-
-const {
-  span
-} = dom;
 /**
  * Renders a grip object with regular expression.
  */
+
 
 RegExp.propTypes = {
   object: PropTypes.object.isRequired
@@ -6856,7 +6837,11 @@ module.exports = {
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 // ReactJS
-const PropTypes = __webpack_require__(0); // Reps
+const PropTypes = __webpack_require__(0);
+
+const {
+  span
+} = __webpack_require__(1); // Reps
 
 
 const {
@@ -6865,15 +6850,10 @@ const {
   getURLDisplayString,
   wrapRender
 } = __webpack_require__(2);
-
-const dom = __webpack_require__(1);
-
-const {
-  span
-} = dom;
 /**
  * Renders a grip representing CSSStyleSheet
  */
+
 
 StyleSheet.propTypes = {
   object: PropTypes.object.isRequired
@@ -6929,6 +6909,10 @@ module.exports = {
 const PropTypes = __webpack_require__(0);
 
 const {
+  span
+} = __webpack_require__(1);
+
+const {
   isGrip,
   cropString,
   cropMultipleLines,
@@ -6940,15 +6924,10 @@ const {
 } = __webpack_require__(4);
 
 const nodeConstants = __webpack_require__(190);
-
-const dom = __webpack_require__(1);
-
-const {
-  span
-} = dom;
 /**
  * Renders DOM comment node.
  */
+
 
 CommentNode.propTypes = {
   object: PropTypes.object.isRequired,
@@ -7001,6 +6980,11 @@ module.exports = {
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 // ReactJS
+const {
+  button,
+  span
+} = __webpack_require__(1);
+
 const PropTypes = __webpack_require__(0); // Utils
 
 
@@ -7018,13 +7002,8 @@ const {
   MODE
 } = __webpack_require__(4);
 
-const nodeConstants = __webpack_require__(190);
+const nodeConstants = __webpack_require__(522);
 
-const dom = __webpack_require__(1);
-
-const {
-  span
-} = dom;
 const MAX_ATTRIBUTE_LENGTH = 50;
 /**
  * Renders DOM element node.
@@ -7080,7 +7059,7 @@ function ElementNode(props) {
     }
 
     if (onInspectIconClick) {
-      inspectIcon = dom.button({
+      inspectIcon = button({
         className: "open-inspector",
         // TODO: Localize this with "openNodeInInspector" when Bug 1317038 lands
         title: inspectIconTitle || "Click to select the node in the inspector",
@@ -7207,6 +7186,11 @@ module.exports = {
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 // ReactJS
+const {
+  button,
+  span
+} = __webpack_require__(1);
+
 const PropTypes = __webpack_require__(0); // Reps
 
 
@@ -7219,15 +7203,10 @@ const {
 const {
   MODE
 } = __webpack_require__(4);
-
-const dom = __webpack_require__(1);
-
-const {
-  span
-} = dom;
 /**
  * Renders DOM #text node.
  */
+
 
 TextNode.propTypes = {
   object: PropTypes.object.isRequired,
@@ -7267,7 +7246,7 @@ function TextNode(props) {
     }
 
     if (onInspectIconClick) {
-      inspectIcon = dom.button({
+      inspectIcon = button({
         className: "open-inspector",
         draggable: false,
         // TODO: Localize this with "openNodeInInspector" when Bug 1317038 lands
@@ -7319,7 +7298,11 @@ module.exports = {
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 // ReactJS
-const PropTypes = __webpack_require__(0); // Reps
+const PropTypes = __webpack_require__(0);
+
+const {
+  span
+} = __webpack_require__(1); // Reps
 
 
 const {
@@ -7332,15 +7315,10 @@ const {
 const {
   MODE
 } = __webpack_require__(4);
-
-const dom = __webpack_require__(1);
-
-const {
-  span
-} = dom;
 /**
  * Renders a grip representing a window.
  */
+
 
 WindowRep.propTypes = {
   // @TODO Change this to Object.values when supported in Node's version of V8
@@ -7407,7 +7385,11 @@ module.exports = {
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 // ReactJS
-const PropTypes = __webpack_require__(0); // Reps
+const PropTypes = __webpack_require__(0);
+
+const {
+  span
+} = __webpack_require__(1); // Reps
 
 
 const {
@@ -7416,15 +7398,10 @@ const {
 } = __webpack_require__(2);
 
 const String = __webpack_require__(25).rep;
-
-const dom = __webpack_require__(1);
-
-const {
-  span
-} = dom;
 /**
  * Renders a grip object with textual data.
  */
+
 
 ObjectWithText.propTypes = {
   object: PropTypes.object.isRequired
@@ -7472,7 +7449,11 @@ module.exports = {
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at <http://mozilla.org/MPL/2.0/>. */
 // ReactJS
-const PropTypes = __webpack_require__(0); // Reps
+const PropTypes = __webpack_require__(0);
+
+const {
+  span
+} = __webpack_require__(1); // Reps
 
 
 const {
@@ -7480,15 +7461,10 @@ const {
   getURLDisplayString,
   wrapRender
 } = __webpack_require__(2);
-
-const dom = __webpack_require__(1);
-
-const {
-  span
-} = dom;
 /**
  * Renders a grip object with URL data.
  */
+
 
 ObjectWithURL.propTypes = {
   object: PropTypes.object.isRequired
@@ -7881,6 +7857,10 @@ module.exports = props => {
     roots
   } = props;
 
+  if (roots.length == 0) {
+    return null;
+  }
+
   if (shouldRenderRootsInReps(roots)) {
     return renderRep(roots[0], props);
   }
@@ -7948,7 +7928,7 @@ function nodeCollapse(node) {
 }
 /*
  * This action checks if we need to fetch properties, entries, prototype and
- * symbols for a given node. If we do, it will call the appropriate ObjectClient
+ * symbols for a given node. If we do, it will call the appropriate ObjectFront
  * functions.
  */
 
@@ -8127,8 +8107,8 @@ function invokeGetter(node, targetGrip, receiverId, getterName) {
     getState
   }) => {
     try {
-      const objectClient = client.createObjectClient(targetGrip);
-      const result = await objectClient.getPropertyValue(getterName, receiverId);
+      const objectFront = client.createObjectFront(targetGrip);
+      const result = await objectFront.getPropertyValue(getterName, receiverId);
       dispatch({
         type: "GETTER_INVOKED",
         data: {
@@ -8223,7 +8203,8 @@ const {
 class ObjectInspectorItem extends Component {
   static get defaultProps() {
     return {
-      onContextMenu: () => {}
+      onContextMenu: () => {},
+      renderItemActions: () => null,
     };
   } // eslint-disable-next-line complexity
 
@@ -8421,37 +8402,14 @@ class ObjectInspectorItem extends Component {
     }, label);
   }
 
-  renderWatchpointButton() {
-    const {
-      item,
-      removeWatchpoint
-    } = this.props;
-
-    if (!item || !item.contents || !item.contents.watchpoint) {
-      return;
-    }
-
-    const watchpoint = item.contents.watchpoint;
-    return dom.button({
-      className: `remove-${watchpoint}-watchpoint`,
-      title: L10N.getStr("watchpoints.removeWatchpointTooltip"),
-      onClick: () => removeWatchpoint(item)
-    });
-  }
-
   render() {
-    const {
-      arrow
-    } = this.props;
-    const {
-      label,
-      value
-    } = this.getLabelAndValue();
+    const { arrow, renderItemActions, item } = this.props;
+    const { label, value } = this.getLabelAndValue();
     const labelElement = this.renderLabel(label);
     const delimiter = value && labelElement ? dom.span({
       className: "object-delimiter"
     }, ": ") : null;
-    return dom.div(this.getTreeItemProps(), arrow, labelElement, delimiter, value, this.renderWatchpointButton());
+    return dom.div(this.getTreeItemProps(), arrow, labelElement, delimiter, value, renderItemActions(item));
   }
 
 }
@@ -8478,6 +8436,39 @@ function documentHasSelection(doc = document) {
 
 module.exports = {
   documentHasSelection
+};
+
+/***/ }),
+
+/***/ 522:
+/***/ (function(module, exports, __webpack_require__) {
+
+"use strict";
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
+
+module.exports = {
+  ELEMENT_NODE: 1,
+  ATTRIBUTE_NODE: 2,
+  TEXT_NODE: 3,
+  CDATA_SECTION_NODE: 4,
+  ENTITY_REFERENCE_NODE: 5,
+  ENTITY_NODE: 6,
+  PROCESSING_INSTRUCTION_NODE: 7,
+  COMMENT_NODE: 8,
+  DOCUMENT_NODE: 9,
+  DOCUMENT_TYPE_NODE: 10,
+  DOCUMENT_FRAGMENT_NODE: 11,
+  NOTATION_NODE: 12,
+  // DocumentPosition
+  DOCUMENT_POSITION_DISCONNECTED: 0x01,
+  DOCUMENT_POSITION_PRECEDING: 0x02,
+  DOCUMENT_POSITION_FOLLOWING: 0x04,
+  DOCUMENT_POSITION_CONTAINS: 0x08,
+  DOCUMENT_POSITION_CONTAINED_BY: 0x10,
+  DOCUMENT_POSITION_IMPLEMENTATION_SPECIFIC: 0x20
 };
 
 /***/ }),

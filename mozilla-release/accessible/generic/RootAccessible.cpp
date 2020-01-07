@@ -45,7 +45,7 @@
 #include "nsGlobalWindow.h"
 
 #ifdef MOZ_XUL
-#  include "nsIXULWindow.h"
+#  include "nsIAppWindow.h"
 #endif
 
 using namespace mozilla;
@@ -83,11 +83,11 @@ ENameValueFlag RootAccessible::Name(nsString& aName) const {
 }
 
 role RootAccessible::NativeRole() const {
-  // If it's a <dialog> or <wizard>, use roles::DIALOG instead
+  // If it's a <dialog>, use roles::DIALOG instead
   dom::Element* rootElm = mDocumentNode->GetRootElement();
-  if (rootElm &&
-      rootElm->IsAnyOfXULElements(nsGkAtoms::dialog, nsGkAtoms::wizard))
+  if (rootElm && rootElm->IsXULElement(nsGkAtoms::dialog)) {
     return roles::DIALOG;
+  }
 
   return DocAccessibleWrap::NativeRole();
 }
@@ -97,18 +97,18 @@ role RootAccessible::NativeRole() const {
 uint32_t RootAccessible::GetChromeFlags() const {
   // Return the flag set for the top level window as defined
   // by nsIWebBrowserChrome::CHROME_WINDOW_[FLAGNAME]
-  // Not simple: nsIXULWindow is not just a QI from nsIDOMWindow
+  // Not simple: nsIAppWindow is not just a QI from nsIDOMWindow
   nsCOMPtr<nsIDocShell> docShell = nsCoreUtils::GetDocShellFor(mDocumentNode);
   NS_ENSURE_TRUE(docShell, 0);
   nsCOMPtr<nsIDocShellTreeOwner> treeOwner;
   docShell->GetTreeOwner(getter_AddRefs(treeOwner));
   NS_ENSURE_TRUE(treeOwner, 0);
-  nsCOMPtr<nsIXULWindow> xulWin(do_GetInterface(treeOwner));
-  if (!xulWin) {
+  nsCOMPtr<nsIAppWindow> appWin(do_GetInterface(treeOwner));
+  if (!appWin) {
     return 0;
   }
   uint32_t chromeFlags;
-  xulWin->GetChromeFlags(&chromeFlags);
+  appWin->GetChromeFlags(&chromeFlags);
   return chromeFlags;
 }
 #endif

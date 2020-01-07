@@ -151,8 +151,8 @@ this.AppConstants = Object.freeze({
   false,
 #endif
 
-# NOTE! XP_LINUX has to go after MOZ_WIDGET_ANDROID otherwise Android
-# builds will be misidentified as linux.
+// NOTE! XP_LINUX has to go after MOZ_WIDGET_ANDROID otherwise Android
+// builds will be misidentified as linux.
   platform:
 #ifdef MOZ_WIDGET_GTK
   "linux",
@@ -166,6 +166,23 @@ this.AppConstants = Object.freeze({
   "linux",
 #else
   "other",
+#endif
+
+// Most of our frontend code assumes that any desktop Unix platform
+// is "linux". Add the distinction for code that needs it.
+  unixstyle:
+#ifdef XP_LINUX
+    "linux",
+#elif XP_OPENBSD
+    "openbsd",
+#elif XP_NETBSD
+    "netbsd",
+#elif XP_FREEBSD
+    "freebsd",
+#elif XP_SOLARIS
+    "solaris",
+#else
+    "other",
 #endif
 
   isPlatformAndVersionAtLeast(platform, version) {
@@ -231,13 +248,6 @@ this.AppConstants = Object.freeze({
 
   MOZ_GRAPHENE:
 #ifdef MOZ_GRAPHENE
-  true,
-#else
-  false,
-#endif
-
-  MOZ_XBL:
-#ifdef MOZ_XBL
   true,
 #else
   false,
@@ -374,6 +384,13 @@ this.AppConstants = Object.freeze({
 
   MOZ_NEW_CERT_STORAGE:
 #ifdef MOZ_NEW_CERT_STORAGE
+    true,
+#else
+    false,
+#endif
+
+  ENABLE_REMOTE_AGENT:
+#ifdef ENABLE_REMOTE_AGENT
     true,
 #else
     false,

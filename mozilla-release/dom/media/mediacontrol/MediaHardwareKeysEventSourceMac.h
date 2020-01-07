@@ -2,20 +2,20 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
-#ifndef mozilla_dom_mediahardwarekeyseventmac_h__
-#define mozilla_dom_mediahardwarekeyseventmac_h__
+#ifndef DOM_MEDIA_MEDIACONTROL_MEDIAHARDWAREKEYSEVENTSOURCEMAC_H_
+#define DOM_MEDIA_MEDIACONTROL_MEDIAHARDWAREKEYSEVENTSOURCEMAC_H_
 
 #import <ApplicationServices/ApplicationServices.h>
 #import <CoreFoundation/CoreFoundation.h>
 
-#include "MediaHardwareKeysEvent.h"
+#include "MediaControlKeysEvent.h"
 #include "nsISupportsImpl.h"
 
 namespace mozilla {
 namespace dom {
 
 class MediaHardwareKeysEventSourceMac final
-    : public MediaHardwareKeysEventSource {
+    : public MediaControlKeysEventSource {
  public:
   MediaHardwareKeysEventSourceMac();
   ~MediaHardwareKeysEventSourceMac();

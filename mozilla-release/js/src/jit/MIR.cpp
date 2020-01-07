@@ -1732,7 +1732,6 @@ MTableSwitch* MTableSwitch::New(TempAllocator& alloc, MDefinition* ins,
 }
 
 MGoto* MGoto::New(TempAllocator& alloc, MBasicBlock* target) {
-  MOZ_ASSERT(target);
   return new (alloc) MGoto(target);
 }
 
@@ -3911,6 +3910,45 @@ MDefinition* MToNumberInt32::foldsTo(TempAllocator& alloc) {
   return this;
 }
 
+MDefinition* MToIntegerInt32::foldsTo(TempAllocator& alloc) {
+  MDefinition* input = getOperand(0);
+
+  // Fold this operation if the input operand is constant.
+  if (input->isConstant()) {
+    switch (input->type()) {
+      case MIRType::Undefined:
+      case MIRType::Null:
+        return MConstant::New(alloc, Int32Value(0));
+      case MIRType::Boolean:
+        return MConstant::New(alloc,
+                              Int32Value(input->toConstant()->toBoolean()));
+      case MIRType::Int32:
+        return MConstant::New(alloc,
+                              Int32Value(input->toConstant()->toInt32()));
+      case MIRType::Float32:
+      case MIRType::Double: {
+        double result = JS::ToInteger(input->toConstant()->numberToDouble());
+        int32_t ival;
+        // Only the value within the range of Int32 can be substituted as
+        // constant.
+        if (mozilla::NumberEqualsInt32(result, &ival)) {
+          return MConstant::New(alloc, Int32Value(ival));
+        }
+        break;
+      }
+      default:
+        break;
+    }
+  }
+
+  // See the comment in |MToNumberInt32::foldsTo|.
+  if (input->type() == MIRType::Int32 && !IsUint32Type(input)) {
+    return input;
+  }
+
+  return this;
+}
+
 void MToNumberInt32::analyzeEdgeCasesBackward() {
   if (!NeedNegativeZeroCheck(this)) {
     setCanBeNegativeZero(false);
@@ -5633,6 +5671,41 @@ MDefinition* MGetFirstDollarIndex::foldsTo(TempAllocator& alloc) {
   return MConstant::New(alloc, Int32Value(index));
 }
 
+MDefinition* MTypedArrayIndexToInt32::foldsTo(TempAllocator& alloc) {
+  MDefinition* input = getOperand(0);
+  if (!input->isConstant() || input->type() != MIRType::Double) {
+    return this;
+  }
+
+  // Fold constant double representable as int32 to int32.
+  int32_t ival;
+  if (!mozilla::NumberEqualsInt32(input->toConstant()->numberToDouble(),
+                                  &ival)) {
+    // If not representable as an int32, this access is equal to an OOB access.
+    // So replace it with a known int32 value which also produces an OOB access.
+    ival = -1;
+  }
+  return MConstant::New(alloc, Int32Value(ival));
+}
+
+MDefinition* MIsNullOrUndefined::foldsTo(TempAllocator& alloc) {
+  MDefinition* input = value();
+  if (input->isBox()) {
+    input = input->getOperand(0);
+  }
+
+  if (input->type() == MIRType::Null || input->type() == MIRType::Undefined) {
+    return MConstant::New(alloc, BooleanValue(true));
+  }
+
+  if (!input->mightBeType(MIRType::Null) &&
+      !input->mightBeType(MIRType::Undefined)) {
+    return MConstant::New(alloc, BooleanValue(false));
+  }
+
+  return this;
+}
+
 bool jit::ElementAccessIsDenseNative(CompilerConstraintList* constraints,
                                      MDefinition* obj, MDefinition* id) {
   if (obj->mightBeType(MIRType::String)) {
@@ -6290,7 +6363,12 @@ MIonToWasmCall* MIonToWasmCall::New(TempAllocator& alloc,
                                     WasmInstanceObject* instanceObj,
                                     const wasm::FuncExport& funcExport) {
   Maybe<wasm::ValType> retType = funcExport.funcType().ret();
-  MIRType resultType = retType ? ToMIRType(retType.ref()) : MIRType::Value;
+  MIRType resultType = MIRType::Value;
+  // At the JS boundary some wasm types must be represented as a Value, and in
+  // addition a void return requires an Undefined value.
+  if (retType && !retType->isEncodedAsJSValueOnEscape()) {
+    resultType = ToMIRType(retType.ref());
+  }
 
   auto* ins = new (alloc) MIonToWasmCall(instanceObj, resultType, funcExport);
   if (!ins->init(alloc, funcExport.funcType().args().length())) {

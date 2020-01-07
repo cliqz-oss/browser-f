@@ -1,6 +1,7 @@
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
 :root {
   --card-padding: 24px;
   --social-color: #9059FF;
@@ -27,8 +28,7 @@
 }
 
 body {
-  margin-top: 40px;
-  margin-bottom: 80px;
+  margin-block: 40px 80px;
   box-sizing: border-box;
 }
 
@@ -63,7 +63,7 @@ h2 {
 #report-title {
   font-size: 20px;
   font-weight: 300;
-  margin-bottom: 22px;
+  margin-block-end: 22px;
 }
 
 #report-content {
@@ -77,6 +77,7 @@ h2 {
   align-items: center;
 }
 
+#manage-protections,
 .card-header > button,
 #get-proxy-extension-link,
 #open-about-logins-button,
@@ -153,7 +154,7 @@ a.hidden,
   grid-template-columns: 100%;
   grid-template-rows: 20% auto;
   padding: 0;
-  margin-bottom: 25px;
+  margin-block-end: 25px;
   line-height: 1.6em;
 }
 
@@ -173,24 +174,30 @@ a.hidden,
 }
 
 .card .content {
-  margin-bottom: 0px;
-  margin-top: 5px;
+  margin-block: 5px 0;
   font-size: .93em;
   cursor: default;
   color: var(--in-content-deemphasized-text);
 }
 
+.custom-not-blocking .content {
+  margin-block-end: 5px;
+}
+
+.etp-card.custom-not-blocking .card-body,
+.etp-card.custom-not-blocking #protection-details {
+  display: none;
+}
+
 #protection-details {
-  padding-inline-start: 24px;
-  padding-inline-end: 3px;
+  padding-inline: 24px 3px;
   -moz-context-properties: fill;
   fill: currentColor;
   background: url("chrome://browser/skin/settings.svg") no-repeat 3px 3px;
   font-size: 0.75em;
   cursor: default;
   width: max-content;
-  margin-top: 24px;
-  margin-bottom: 0;
+  margin-block: 24px 0;
 }
 
 #protection-details:dir(rtl) {
@@ -215,7 +222,7 @@ a.hidden,
 }
 
 .card .card-body {
-  border-top: 1px solid var(--in-content-border-color);
+  border-block-start: 1px solid var(--in-content-border-color);
   grid-column: span 2;
   grid-row: 2;
 }
@@ -235,15 +242,14 @@ a.hidden,
 
 #graph-wrapper {
   width: 100%;
-  margin-top: 33px;
-  margin-bottom: 25px;
+  margin-block: 33px 25px;
 }
 
 #graph {
   display: grid;
   grid: repeat(10, 1fr) max-content / repeat(7, 1fr);
   height: 130px;
-  margin-bottom: 10px;
+  margin-block-end: 10px;
 }
 
 /* Graph Bars */
@@ -316,7 +322,7 @@ a.hidden,
 }
 
 .column-label {
-  margin-top: 5px;
+  margin-block-start: 5px;
   font-size: 0.9em;
   width: var(--column-width);
 }
@@ -342,11 +348,7 @@ a.hidden,
 
 input[type="radio"] {
   position: absolute;
-  left: -100px;
-}
-
-[dir="rtl"] input[type="radio"] {
-  right: -100px;
+  inset-inline-start: -100px;
 }
 
 #legend input:focus + label {
@@ -383,8 +385,8 @@ input[type="radio"] {
 }
 
 #legend label {
-  margin-bottom: -1px;
-  padding: 15px 0px;
+  margin-block-end: -1px;
+  padding: 15px 0;
   padding-inline-end: 5px;
   border: 3px solid transparent;
   -moz-context-properties: fill;
@@ -442,7 +444,7 @@ label:hover {
 .tab-content {
   display: none;
   padding: 22px 20px 20px;
-  border-top: 1px solid var(--tab-highlight);
+  border-block-start: 1px solid var(--tab-highlight);
   background-color: var(--in-content-box-background-odd);
   font-size: 0.8em;
   line-height: 1.75;
@@ -562,10 +564,10 @@ label[for="tab-cryptominer"]:hover ~ #highlight-hover {
   display: grid;
   align-items: center;
   font-size: 0.85em;
-  border-top: 1px solid var(--in-content-border-color);
-  padding-top: 20px;
+  border-block-start: 1px solid var(--in-content-border-color);
+  padding-block-start: 20px;
   line-height: 18px;
-  margin-bottom: 20px;
+  margin-block-end: 20px;
 }
 
 .monitor-info-wrapper {
@@ -576,7 +578,7 @@ label[for="tab-cryptominer"]:hover ~ #highlight-hover {
 }
 
 .monitor-scanned-wrapper {
-  margin-top: 24px;
+  margin-block-start: 24px;
   font-size: 0.85em;
   display: block;
 }
@@ -670,6 +672,7 @@ label[for="tab-cryptominer"]:hover ~ #highlight-hover {
   grid-column: 2 / -1;
 }
 
+#manage-protections,
 #sign-up-for-monitor-link,
 #get-proxy-extension-link {
   -moz-appearance: button;
@@ -680,16 +683,19 @@ label[for="tab-cryptominer"]:hover ~ #highlight-hover {
   color: #fff;
 }
 
+#manage-protections:active,
 #sign-up-for-monitor-link:active,
 #get-proxy-extension-link:active {
   background-color: var(--blue-80) !important;
 }
 
+#manage-protections:hover,
 #sign-up-for-monitor-link:hover,
 #get-proxy-extension-link:hover {
   background-color: var(--blue-70);
 }
 
+#manage-protections:focus,
 #sign-up-for-monitor-link:focus,
 #get-proxy-extension-link:focus {
   box-shadow: 0 0 0 1px #0a84ff inset, 0 0 0 1px #0a84ff, 0 0 0 4px rgba(10, 132, 255, 0.3);
@@ -712,6 +718,12 @@ label[for="tab-cryptominer"]:hover ~ #highlight-hover {
   opacity: var(--protection-report-loader-gradient-opacity);
 }
 
+.monitor-card.loading:dir(rtl)::after,
+.lockwise-card.loading:dir(rtl)::after {
+  background-image: linear-gradient(to left, var(--in-content-box-background) 0%, var(--protection-report-loader-color-stop) 30%, var(--in-content-box-background) 40%, var(--in-content-box-background) 100%);
+  animation-name: loading-rtl;
+}
+
 @keyframes loading {
   0% {
     background-position-x: -300px;
@@ -719,6 +731,17 @@ label[for="tab-cryptominer"]:hover ~ #highlight-hover {
 
   100% {
     background-position-x: 700px;
+    opacity: 0.02;
+  }
+}
+
+@keyframes loading-rtl {
+  0% {
+    background-position-x: right -300px;
+  }
+
+  100% {
+    background-position-x: right 700px;
     opacity: 0.02;
   }
 }

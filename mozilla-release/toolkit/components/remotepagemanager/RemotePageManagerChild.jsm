@@ -13,10 +13,10 @@ const { MessagePort } = ChromeUtils.import(
 
 // The content side of a message port
 class ChildMessagePort extends MessagePort {
-  constructor(contentFrame, window) {
+  constructor(actor, window) {
     let portID =
       Services.appinfo.processID + ":" + ChildMessagePort.nextPortID++;
-    super(contentFrame, portID);
+    super(actor, portID);
 
     this.window = window;
 
@@ -62,6 +62,15 @@ class ChildMessagePort extends MessagePort {
     Cu.exportFunction(this.recordTelemetryEvent.bind(this), window, {
       defineAs: "RPMRecordTelemetryEvent",
     });
+    Cu.exportFunction(this.addToHistogram.bind(this), window, {
+      defineAs: "RPMAddToHistogram",
+    });
+
+    // The actor form only needs the functions set up above. The actor
+    // will send and receive messages directly.
+    if (!(this.messageManager instanceof Ci.nsIMessageSender)) {
+      return;
+    }
 
     // Send a message for load events
     let loadListener = () => {
@@ -93,7 +102,7 @@ class ChildMessagePort extends MessagePort {
     throw new Error(`Unknown request ${name}.`);
   }
 
-  // Called when a message is received from the message manager.
+  // Called when a message is received from the message manager or actor.
   handleMessage(messagedata) {
     let message = {
       name: messagedata.name,

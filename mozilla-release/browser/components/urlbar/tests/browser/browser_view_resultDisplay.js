@@ -87,19 +87,49 @@ add_task(async function test_url_result() {
     {
       query: "\u6e2C\u8a66",
       title: "The \u6e2C\u8a66 URL",
-      url: "http://example.com/\u6e2C\u8a66test",
+      url: "https://example.com/\u6e2C\u8a66test",
     },
     {
-      displayedUrl: "example.com/\u6e2C\u8a66test",
+      displayedUrl:
+        (UrlbarPrefs.get("update1.view.stripHttps") ? "" : "https://") +
+        "example.com/\u6e2C\u8a66test",
       highlightedTitle: [
         ["The ", false],
         ["\u6e2C\u8a66", true],
         [" URL", false],
       ],
       highlightedUrl: [
-        ["example.com/", false],
+        [
+          (UrlbarPrefs.get("update1.view.stripHttps") ? "" : "https://") +
+            "example.com/",
+          false,
+        ],
         ["\u6e2C\u8a66", true],
         ["test", false],
+      ],
+    }
+  );
+});
+
+add_task(async function test_url_result_no_path() {
+  await testResult(
+    {
+      query: "ample",
+      title: "The Title",
+      url: "https://example.com/",
+    },
+    {
+      displayedUrl:
+        (UrlbarPrefs.get("update1.view.stripHttps") ? "" : "https://") +
+        "example.com",
+      highlightedTitle: [["The Title", false]],
+      highlightedUrl: [
+        [
+          (UrlbarPrefs.get("update1.view.stripHttps") ? "" : "https://") + "ex",
+          false,
+        ],
+        ["ample", true],
+        [".com", false],
       ],
     }
   );
@@ -137,7 +167,9 @@ add_task(async function test_case_insensitive_highlights_1() {
     {
       query: "exam",
       title: "The examPLE URL EXAMple",
-      url: "http://example.com/ExAm",
+      url:
+        (UrlbarPrefs.get("update1.view.stripHttps") ? "https" : "http") +
+        "://example.com/ExAm",
     },
     {
       displayedUrl: "example.com/ExAm",
@@ -158,7 +190,9 @@ add_task(async function test_case_insensitive_highlights_2() {
     {
       query: "EXAM",
       title: "The examPLE URL EXAMple",
-      url: "http://example.com/ExAm",
+      url:
+        (UrlbarPrefs.get("update1.view.stripHttps") ? "https" : "http") +
+        "://example.com/ExAm",
     },
     {
       displayedUrl: "example.com/ExAm",
@@ -179,7 +213,9 @@ add_task(async function test_case_insensitive_highlights_3() {
     {
       query: "eXaM",
       title: "The examPLE URL EXAMple",
-      url: "http://example.com/ExAm",
+      url:
+        (UrlbarPrefs.get("update1.view.stripHttps") ? "https" : "http") +
+        "://example.com/ExAm",
     },
     {
       displayedUrl: "example.com/ExAm",
@@ -200,7 +236,9 @@ add_task(async function test_case_insensitive_highlights_4() {
     {
       query: "ExAm",
       title: "The examPLE URL EXAMple",
-      url: "http://example.com/ExAm",
+      url:
+        (UrlbarPrefs.get("update1.view.stripHttps") ? "https" : "http") +
+        "://example.com/ExAm",
     },
     {
       displayedUrl: "example.com/ExAm",
@@ -221,7 +259,9 @@ add_task(async function test_case_insensitive_highlights_5() {
     {
       query: "exam foo",
       title: "The examPLE URL foo EXAMple FOO",
-      url: "http://example.com/ExAm/fOo",
+      url:
+        (UrlbarPrefs.get("update1.view.stripHttps") ? "https" : "http") +
+        "://example.com/ExAm/fOo",
     },
     {
       displayedUrl: "example.com/ExAm/fOo",
@@ -251,7 +291,9 @@ add_task(async function test_case_insensitive_highlights_6() {
     {
       query: "EXAM FOO",
       title: "The examPLE URL foo EXAMple FOO",
-      url: "http://example.com/ExAm/fOo",
+      url:
+        (UrlbarPrefs.get("update1.view.stripHttps") ? "https" : "http") +
+        "://example.com/ExAm/fOo",
     },
     {
       displayedUrl: "example.com/ExAm/fOo",

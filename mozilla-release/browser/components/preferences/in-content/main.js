@@ -857,7 +857,9 @@ var gMainPane = {
       win.openTrustedLinkIn("about:preferences#sync", "current");
       return;
     }
-    let url = await FxAccounts.config.promiseSignInURI("dev-edition-setup");
+    let url = await FxAccounts.config.promiseConnectAccountURI(
+      "dev-edition-setup"
+    );
     let accountsTab = win.gBrowser.addWebTab(url);
     win.gBrowser.selectedTab = accountsTab;
   },
@@ -1231,7 +1233,7 @@ var gMainPane = {
    * Shows a dialog in which the preferred language for web content may be set.
    */
   showLanguages() {
-    gSubDialog.open("chrome://browser/content/preferences/languages.xul");
+    gSubDialog.open("chrome://browser/content/preferences/languages.xhtml");
   },
 
   recordBrowserLanguagesTelemetry(method, value = null) {
@@ -1254,7 +1256,7 @@ var gMainPane = {
 
     let opts = { selected: gMainPane.selectedLocales, search, telemetryId };
     gSubDialog.open(
-      "chrome://browser/content/preferences/browserLanguages.xul",
+      "chrome://browser/content/preferences/browserLanguages.xhtml",
       null,
       opts,
       this.browserLanguagesClosed
@@ -1287,7 +1289,7 @@ var gMainPane = {
    * translation preferences can be set.
    */
   showTranslationExceptions() {
-    gSubDialog.open("chrome://browser/content/preferences/translation.xul");
+    gSubDialog.open("chrome://browser/content/preferences/translation.xhtml");
   },
 
   openTranslationProviderAttribution() {
@@ -1303,7 +1305,7 @@ var gMainPane = {
    */
   configureFonts() {
     gSubDialog.open(
-      "chrome://browser/content/preferences/fonts.xul",
+      "chrome://browser/content/preferences/fonts.xhtml",
       "resizable=no"
     );
   },
@@ -1314,7 +1316,7 @@ var gMainPane = {
    */
   configureColors() {
     gSubDialog.open(
-      "chrome://browser/content/preferences/colors.xul",
+      "chrome://browser/content/preferences/colors.xhtml",
       "resizable=no"
     );
   },
@@ -1325,7 +1327,7 @@ var gMainPane = {
    */
   showConnections() {
     gSubDialog.open(
-      "chrome://browser/content/preferences/connection.xul",
+      "chrome://browser/content/preferences/connection.xhtml",
       null,
       null,
       this.updateProxySettingsUI.bind(this)
@@ -1768,7 +1770,7 @@ var gMainPane = {
    * Displays the history of installed updates.
    */
   showUpdates() {
-    gSubDialog.open("chrome://mozapps/content/update/history.xul");
+    gSubDialog.open("chrome://mozapps/content/update/history.xhtml");
   },
 
   destroy() {
@@ -2516,7 +2518,7 @@ var gMainPane = {
     };
 
     gSubDialog.open(
-      "chrome://browser/content/preferences/applicationManager.xul",
+      "chrome://browser/content/preferences/applicationManager.xhtml",
       "resizable=no",
       handlerInfo,
       onComplete

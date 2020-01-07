@@ -93,18 +93,13 @@ class gfxPlatformGtk : public gfxPlatform {
 #endif  // MOZ_X11
 
 #ifdef MOZ_WAYLAND
-  void SetWaylandLastVsync(uint32_t aVsyncTimestamp) {
-    mWaylandLastVsyncTimestamp = aVsyncTimestamp;
-  }
-  int64_t GetWaylandLastVsync() { return mWaylandLastVsyncTimestamp; }
-  void SetWaylandFrameDelay(int64_t aFrameDelay) {
-    mWaylandFrameDelay = aFrameDelay;
-  }
-  int64_t GetWaylandFrameDelay() { return mWaylandFrameDelay; }
   bool UseWaylandDMABufSurfaces();
 #endif
 
   bool IsX11Display() { return mIsX11Display; }
+  bool IsWaylandDisplay() {
+    return !mIsX11Display && !gfxPlatform::IsHeadless();
+  }
 
  protected:
   void InitPlatformGPUProcessPrefs() override;
@@ -118,10 +113,6 @@ class gfxPlatformGtk : public gfxPlatform {
   bool mIsX11Display;
 #ifdef MOZ_X11
   Display* mCompositorDisplay;
-#endif
-#ifdef MOZ_WAYLAND
-  int64_t mWaylandLastVsyncTimestamp;
-  int64_t mWaylandFrameDelay;
 #endif
 };
 

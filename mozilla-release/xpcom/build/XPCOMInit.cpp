@@ -101,7 +101,6 @@
 
 #include "gfxPlatform.h"
 
-using namespace mozilla;
 using base::AtExitManager;
 using mozilla::ipc::BrowserProcessSubThread;
 
@@ -115,7 +114,7 @@ static AtExitManager* sExitManager;
 static MessageLoop* sMessageLoop;
 static bool sCommandLineWasInitialized;
 static BrowserProcessSubThread* sIOThread;
-static BackgroundHangMonitor* sMainHangMonitor;
+static mozilla::BackgroundHangMonitor* sMainHangMonitor;
 
 } /* anonymous namespace */
 
@@ -173,7 +172,7 @@ const mozilla::Module kXPCOMModule = {
     nullptr,
     nullptr,
     nullptr,
-    Module::ALLOW_IN_GPU_RDD_VR_AND_SOCKET_PROCESS};
+    mozilla::Module::ALLOW_IN_GPU_RDD_VR_AND_SOCKET_PROCESS};
 
 // gDebug will be freed during shutdown.
 static nsIDebug2* gDebug = nullptr;
@@ -184,7 +183,7 @@ NS_GetDebug(nsIDebug2** aResult) {
 }
 
 class ICUReporter final : public nsIMemoryReporter,
-                          public CountingAllocatorBase<ICUReporter> {
+                          public mozilla::CountingAllocatorBase<ICUReporter> {
  public:
   NS_DECL_ISUPPORTS
 
@@ -215,11 +214,11 @@ class ICUReporter final : public nsIMemoryReporter,
 NS_IMPL_ISUPPORTS(ICUReporter, nsIMemoryReporter)
 
 /* static */ template <>
-CountingAllocatorBase<ICUReporter>::AmountType
-    CountingAllocatorBase<ICUReporter>::sAmount(0);
+mozilla::CountingAllocatorBase<ICUReporter>::AmountType
+    mozilla::CountingAllocatorBase<ICUReporter>::sAmount(0);
 
 class OggReporter final : public nsIMemoryReporter,
-                          public CountingAllocatorBase<OggReporter> {
+                          public mozilla::CountingAllocatorBase<OggReporter> {
  public:
   NS_DECL_ISUPPORTS
 
@@ -241,15 +240,16 @@ class OggReporter final : public nsIMemoryReporter,
 NS_IMPL_ISUPPORTS(OggReporter, nsIMemoryReporter)
 
 /* static */ template <>
-CountingAllocatorBase<OggReporter>::AmountType
-    CountingAllocatorBase<OggReporter>::sAmount(0);
+mozilla::CountingAllocatorBase<OggReporter>::AmountType
+    mozilla::CountingAllocatorBase<OggReporter>::sAmount(0);
 
 static bool sInitializedJS = false;
 
 // Note that on OSX, aBinDirectory will point to .app/Contents/Resources/browser
 EXPORT_XPCOM_API(nsresult)
 NS_InitXPCOM(nsIServiceManager** aResult, nsIFile* aBinDirectory,
-             nsIDirectoryServiceProvider* aAppFileLocationProvider) {
+             nsIDirectoryServiceProvider* aAppFileLocationProvider,
+             bool aInitJSContext) {
   static bool sInitialized = false;
   if (sInitialized) {
     return NS_ERROR_FAILURE;
@@ -307,8 +307,9 @@ NS_InitXPCOM(nsIServiceManager** aResult, nsIFile* aBinDirectory,
 
   if (XRE_IsParentProcess() &&
       !BrowserProcessSubThread::GetMessageLoop(BrowserProcessSubThread::IO)) {
-    UniquePtr<BrowserProcessSubThread> ioThread =
-        MakeUnique<BrowserProcessSubThread>(BrowserProcessSubThread::IO);
+    mozilla::UniquePtr<BrowserProcessSubThread> ioThread =
+        mozilla::MakeUnique<BrowserProcessSubThread>(
+            BrowserProcessSubThread::IO);
 
     base::Thread::Options options;
     options.message_loop_type = MessageLoop::TYPE_IO;
@@ -324,9 +325,10 @@ NS_InitXPCOM(nsIServiceManager** aResult, nsIFile* aBinDirectory,
   if (NS_WARN_IF(NS_FAILED(rv))) {
     return rv;
   }
+  AUTO_PROFILER_INIT2;
 
-  // Init the SystemGroup for dispatching main thread runnables.
-  SystemGroup::InitStatic();
+  // Init the mozilla::SystemGroup for dispatching main thread runnables.
+  mozilla::SystemGroup::InitStatic();
 
   // Set up the timer globals/timer thread
   rv = nsTimerImpl::Startup();
@@ -457,10 +459,9 @@ NS_InitXPCOM(nsIServiceManager** aResult, nsIFile* aBinDirectory,
   // to the directory service.
   nsDirectoryService::gService->RegisterCategoryProviders();
 
-  // Init SharedThreadPool (which needs the service manager).
-  SharedThreadPool::InitStatics();
+  // Init mozilla::SharedThreadPool (which needs the service manager).
+  mozilla::SharedThreadPool::InitStatics();
 
-  mozilla::ScriptPreloader::GetSingleton();
   mozilla::scache::StartupCache::GetSingleton();
   mozilla::AvailableMemoryTracker::Init();
 
@@ -483,6 +484,10 @@ NS_InitXPCOM(nsIServiceManager** aResult, nsIFile* aBinDirectory,
   sMainHangMonitor = new mozilla::BackgroundHangMonitor(
       loop->thread_name().c_str(), loop->transient_hang_timeout(),
       loop->permanent_hang_timeout());
+
+  if (aInitJSContext) {
+    xpc::InitializeJSContext();
+  }
 
   return NS_OK;
 }
@@ -507,8 +512,8 @@ NS_InitMinimalXPCOM() {
     return rv;
   }
 
-  // Init the SystemGroup for dispatching main thread runnables.
-  SystemGroup::InitStatic();
+  // Init the mozilla::SystemGroup for dispatching main thread runnables.
+  mozilla::SystemGroup::InitStatic();
 
   // Set up the timer globals/timer thread.
   rv = nsTimerImpl::Startup();
@@ -531,7 +536,7 @@ NS_InitMinimalXPCOM() {
     return NS_ERROR_UNEXPECTED;
   }
 
-  SharedThreadPool::InitStatics();
+  mozilla::SharedThreadPool::InitStatics();
   mozilla::Telemetry::Init();
   mozilla::BackgroundHangMonitor::Startup();
 
@@ -742,15 +747,22 @@ nsresult ShutdownXPCOM(nsIServiceManager* aServMgr) {
       // If you're seeing this crash and/or warning, some NSS resources are
       // still in use (see bugs 1417680 and 1230312). Set the environment
       // variable 'MOZ_IGNORE_NSS_SHUTDOWN_LEAKS' to some value to ignore this.
+      // Also, if leak checking is enabled, report this as a fake leak instead
+      // of crashing.
 #if defined(DEBUG) && !defined(ANDROID)
-      if (!getenv("MOZ_IGNORE_NSS_SHUTDOWN_LEAKS")) {
+      if (!getenv("MOZ_IGNORE_NSS_SHUTDOWN_LEAKS") &&
+          !getenv("XPCOM_MEM_BLOAT_LOG")) {
         MOZ_CRASH("NSS_Shutdown failed");
       } else {
+#  ifdef NS_BUILD_REFCNT_LOGGING
+        // Create a fake leak.
+        NS_LogCtor((void*)0x100, "NSSShutdownFailed", 100);
+#  endif  // NS_BUILD_REFCNT_LOGGING
         NS_WARNING("NSS_Shutdown failed");
       }
 #else
       NS_WARNING("NSS_Shutdown failed");
-#endif
+#endif  // defined(DEBUG) && !defined(ANDROID)
     }
   }
 

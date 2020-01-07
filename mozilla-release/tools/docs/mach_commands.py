@@ -6,6 +6,7 @@ from __future__ import absolute_import, print_function, unicode_literals
 
 import yaml
 import os
+import subprocess
 import sys
 import multiprocessing
 from functools import partial
@@ -19,6 +20,15 @@ from mach.decorators import (
 )
 
 here = os.path.abspath(os.path.dirname(__file__))
+JSDOC_NOT_FOUND = """\
+JSDoc==3.5.5 is required to build the docs but was not found on your system.
+Please install it globally by running:
+
+    $ npm install -g jsdoc@3.5.5
+
+Bug 1498604 tracks bootstrapping jsdoc properly.
+Bug 1556460 tracks supporting newer versions of jsdoc.
+"""
 
 
 @CommandProvider
@@ -56,11 +66,8 @@ class Documentation(MachCommandBase):
                      help='Distribute the build over N processes in parallel.')
     def build_docs(self, path=None, fmt='html', outdir=None, auto_open=True,
                    serve=True, http=None, archive=False, upload=False, jobs=None):
-
-        from mozfile import which
-
-        if not which('jsdoc'):
-            return die('jsdoc not found - please install from npm.')
+        if self.check_jsdoc():
+            return die(JSDOC_NOT_FOUND)
 
         self.activate_pipenv(os.path.join(here, 'Pipfile'))
 
@@ -118,10 +125,9 @@ class Documentation(MachCommandBase):
                      open_url_delay=0.1 if auto_open else None)
 
     def _run_sphinx(self, docdir, savedir, config=None, fmt='html', jobs=None):
-        import sphinx
+        import sphinx.cmd.build
         config = config or self.manager.conf_py_path
         args = [
-            'sphinx',
             '-b', fmt,
             '-c', os.path.dirname(config),
             docdir,
@@ -129,7 +135,7 @@ class Documentation(MachCommandBase):
         ]
         if jobs:
             args.extend(['-j', jobs])
-        return sphinx.build_main(args)
+        return sphinx.cmd.build.build_main(args)
 
     @property
     def manager(self):
@@ -201,7 +207,7 @@ class Documentation(MachCommandBase):
         if project == 'main':
             key_prefixes.append('')
 
-        with open(os.path.join(here, 'redirects.yml'), 'r') as fh:
+        with open(os.path.join(here, 'config.yml'), 'r') as fh:
             redirects = yaml.safe_load(fh)['redirects']
 
         redirects = {k.strip("/"): v.strip("/") for k, v in redirects.items()}
@@ -218,6 +224,16 @@ class Documentation(MachCommandBase):
         pprint(all_redirects, indent=1)
 
         s3_set_redirects(all_redirects)
+
+    def check_jsdoc(self):
+        try:
+            out = subprocess.check_output(['jsdoc', '--version'])
+            version = out.split()[1]
+        except subprocess.CalledProcessError:
+            version = None
+
+        if not version or not version.startswith('3.5'):
+            return 1
 
 
 def die(msg, exit_code=1):

@@ -33,7 +33,6 @@
 #include "nsISelectionListener.h"
 #include "mozilla/dom/Selection.h"
 #include "nsContentUtils.h"
-#include "nsLayoutStylesheetCache.h"
 #ifdef ACCESSIBILITY
 #  include "mozilla/a11y/DocAccessible.h"
 #endif
@@ -516,7 +515,9 @@ class AutoPrintEventDispatcher {
  private:
   void DispatchEventToWindowTree(const nsAString& aEvent) {
     nsTArray<nsCOMPtr<Document>> targets;
-    CollectDocuments(mTop, &targets);
+    if (mTop) {
+      CollectDocuments(*mTop, &targets);
+    }
     for (nsCOMPtr<Document>& doc : targets) {
       nsContentUtils::DispatchTrustedEvent(doc, doc->GetWindow(), aEvent,
                                            CanBubble::eNo, Cancelable::eNo,
@@ -524,12 +525,10 @@ class AutoPrintEventDispatcher {
     }
   }
 
-  static bool CollectDocuments(Document* aDocument, void* aData) {
-    if (aDocument) {
-      static_cast<nsTArray<nsCOMPtr<Document>>*>(aData)->AppendElement(
-          aDocument);
-      aDocument->EnumerateSubDocuments(CollectDocuments, aData);
-    }
+  static bool CollectDocuments(Document& aDocument, void* aData) {
+    static_cast<nsTArray<nsCOMPtr<Document>>*>(aData)->AppendElement(
+        &aDocument);
+    aDocument.EnumerateSubDocuments(CollectDocuments, aData);
     return true;
   }
 
@@ -875,12 +874,6 @@ nsresult nsDocumentViewer::InitInternal(
     nsIWidget* aParentWidget, nsISupports* aState, WindowGlobalChild* aActor,
     const nsIntRect& aBounds, bool aDoCreation, bool aNeedMakeCX /*= true*/,
     bool aForceSetNewDocument /* = true*/) {
-  if (mIsPageMode) {
-    // XXXbz should the InitInternal in SetPageModeForTesting just pass false
-    // here itself?
-    aForceSetNewDocument = false;
-  }
-
   // We don't want any scripts to run here. That can cause flushing,
   // which can cause reentry into initialization of this document viewer,
   // which would be disastrous.
@@ -2703,9 +2696,9 @@ void nsDocumentViewer::PropagateToPresContextsHelper(CallChildFunc aChildFunc,
 
     if (mDocument) {
       mDocument->EnumerateExternalResources(
-          [](Document* aDoc, void* aClosure) -> bool {
+          [](Document& aDoc, void* aClosure) -> bool {
             auto* closure = static_cast<ResourceDocClosure*>(aClosure);
-            if (nsPresContext* pc = aDoc->GetPresContext()) {
+            if (nsPresContext* pc = aDoc.GetPresContext()) {
               closure->mFunc(pc, closure->mParentClosure);
             }
             return true;
@@ -2826,6 +2819,14 @@ nsDocumentViewer::SetFullZoom(float aFullZoom) {
   }
 
   bool fullZoomChange = (mPageZoom != aFullZoom);
+
+  // Dispatch PreFullZoomChange event only if fullzoom value really has changed.
+  if (fullZoomChange) {
+    nsContentUtils::DispatchChromeEvent(mDocument, ToSupports(mDocument),
+                                        NS_LITERAL_STRING("PreFullZoomChange"),
+                                        CanBubble::eYes, Cancelable::eYes);
+  }
+
   mPageZoom = aFullZoom;
 
   PropagateToPresContextsHelper(
@@ -3774,16 +3775,12 @@ static void ResetFocusState(nsIDocShell* aDocShell) {
     return;
   }
 
-  nsCOMPtr<nsISimpleEnumerator> docShellEnumerator;
-  aDocShell->GetDocShellEnumerator(nsIDocShellTreeItem::typeContent,
-                                   nsIDocShell::ENUMERATE_FORWARDS,
-                                   getter_AddRefs(docShellEnumerator));
+  nsTArray<RefPtr<nsIDocShell>> docShells;
+  aDocShell->GetAllDocShellsInSubtree(nsIDocShellTreeItem::typeContent,
+                                      nsIDocShell::ENUMERATE_FORWARDS,
+                                      docShells);
 
-  nsCOMPtr<nsISupports> currentContainer;
-  bool hasMoreDocShells;
-  while (NS_SUCCEEDED(docShellEnumerator->HasMoreElements(&hasMoreDocShells)) &&
-         hasMoreDocShells) {
-    docShellEnumerator->GetNext(getter_AddRefs(currentContainer));
+  for (const auto& currentContainer : docShells) {
     nsCOMPtr<nsPIDOMWindowOuter> win = do_GetInterface(currentContainer);
     if (win) {
       fm->ClearFocus(win);
@@ -4111,9 +4108,9 @@ NS_IMETHODIMP nsDocumentViewer::SetPageModeForTesting(
     nsresult rv = mPresContext->Init(mDeviceContext);
     NS_ENSURE_SUCCESS(rv, rv);
   }
-  NS_ENSURE_SUCCESS(
-      InitInternal(mParentWidget, nullptr, nullptr, mBounds, true, false),
-      NS_ERROR_FAILURE);
+  NS_ENSURE_SUCCESS(InitInternal(mParentWidget, nullptr, nullptr, mBounds, true,
+                                 false, false),
+                    NS_ERROR_FAILURE);
 
   Show();
   return NS_OK;

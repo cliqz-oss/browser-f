@@ -22,9 +22,10 @@
 // IMPORTANT: Do not change this list without review from
 //            a JavaScript Engine peer!
 var ecmaGlobals = [
+  { name: "AggregateError", nightly: true },
   "Array",
   "ArrayBuffer",
-  { name: "Atomics", disabled: true },
+  { name: "Atomics", nightly: true },
   "Boolean",
   "BigInt",
   "BigInt64Array",
@@ -58,7 +59,7 @@ var ecmaGlobals = [
   "Reflect",
   "RegExp",
   "Set",
-  { name: "SharedArrayBuffer", disabled: true },
+  { name: "SharedArrayBuffer", nightly: true },
   "String",
   "Symbol",
   "SyntaxError",

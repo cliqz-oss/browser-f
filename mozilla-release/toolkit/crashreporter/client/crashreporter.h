@@ -19,7 +19,7 @@
 #include <iostream>
 #include <fstream>
 
-#define MAX_COMMENT_LENGTH 500
+#define MAX_COMMENT_LENGTH 10000
 
 #if defined(XP_WIN)
 
@@ -39,11 +39,7 @@ std::string WideToUTF8(const std::wstring& wide, bool* success = 0);
 
 #define UI_CRASH_REPORTER_FILENAME "crashreporter"
 #define UI_MINIDUMP_ANALYZER_FILENAME "minidump-analyzer"
-#ifndef XP_MACOSX
-#  define UI_PING_SENDER_FILENAME "pingsender"
-#else
-#  define UI_PING_SENDER_FILENAME "../../../pingsender"
-#endif
+#define UI_PING_SENDER_FILENAME "pingsender"
 
 typedef std::map<std::string, std::string> StringTable;
 

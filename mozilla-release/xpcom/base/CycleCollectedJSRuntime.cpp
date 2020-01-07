@@ -518,7 +518,6 @@ CycleCollectedJSRuntime::CycleCollectedJSRuntime(JSContext* aCx)
 
   JS_SetObjectsTenuredCallback(aCx, JSObjectsTenuredCb, this);
   JS::SetOutOfMemoryCallback(aCx, OutOfMemoryCallback, this);
-  JS_SetExternalStringSizeofCallback(aCx, SizeofExternalStringCallback);
   JS::SetWarningReporter(aCx, MozCrashWarningReporter);
 
   js::AutoEnterOOMUnsafeRegion::setAnnotateOOMAllocationSizeCallback(
@@ -953,25 +952,6 @@ void CycleCollectedJSRuntime::OutOfMemoryCallback(JSContext* aContext,
   self->OnOutOfMemory();
 }
 
-/* static */
-size_t CycleCollectedJSRuntime::SizeofExternalStringCallback(
-    JSString* aStr, MallocSizeOf aMallocSizeOf) {
-  // We promised the JS engine we would not GC.  Enforce that:
-  JS::AutoCheckCannotGC autoCannotGC;
-
-  if (!XPCStringConvert::IsDOMString(aStr)) {
-    // Might be a literal or something we don't understand.  Just claim 0.
-    return 0;
-  }
-
-  const char16_t* chars = JS_GetTwoByteExternalStringChars(aStr);
-  const nsStringBuffer* buf = nsStringBuffer::FromData((void*)chars);
-  // We want sizeof including this, because the entire string buffer is owned by
-  // the external string.  But only report here if we're unshared; if we're
-  // shared then we don't know who really owns this data.
-  return buf->SizeOfIncludingThisIfUnshared(aMallocSizeOf);
-}
-
 struct JsGcTracer : public TraceCallbacks {
   virtual void Trace(JS::Heap<JS::Value>* aPtr, const char* aName,
                      void* aClosure) const override {
@@ -1178,14 +1158,14 @@ void CycleCollectedJSRuntime::GarbageCollect(JS::GCReason aReason) const {
 }
 
 void CycleCollectedJSRuntime::JSObjectsTenured() {
+  JSContext* cx = CycleCollectedJSContext::Get()->Context();
   for (auto iter = mNurseryObjects.Iter(); !iter.Done(); iter.Next()) {
     nsWrapperCache* cache = iter.Get();
     JSObject* wrapper = cache->GetWrapperMaybeDead();
     MOZ_DIAGNOSTIC_ASSERT(wrapper || recordreplay::IsReplaying());
     if (!JS::ObjectIsTenured(wrapper)) {
       MOZ_ASSERT(!cache->PreservingWrapper());
-      const JSClass* jsClass = js::GetObjectClass(wrapper);
-      jsClass->doFinalize(nullptr, wrapper);
+      js::gc::FinalizeDeadNurseryObject(cx, wrapper);
     }
   }
 
@@ -1411,7 +1391,7 @@ void CycleCollectedJSRuntime::OnGC(JSContext* aContext, JSGCStatus aStatus) {
   switch (aStatus) {
     case JSGC_BEGIN:
       nsCycleCollector_prepareForGarbageCollection();
-      mZonesWaitingForGC.Clear();
+      PrepareWaitingZonesForGC();
       break;
     case JSGC_END: {
       if (mOutOfMemoryState == OOMState::Reported) {

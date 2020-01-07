@@ -20,7 +20,6 @@
 #include "jit/CompileInfo.h"
 #include "jit/ICStubSpace.h"
 #include "jit/IonCode.h"
-#include "jit/IonControlFlow.h"
 #include "jit/JitFrames.h"
 #include "jit/shared/Assembler-shared.h"
 #include "js/GCHashTable.h"
@@ -131,9 +130,6 @@ class JitcodeGlobalTable;
 class JitRuntime {
  private:
   friend class JitRealm;
-
-  // Executable allocator for all code except wasm code.
-  MainThreadData<ExecutableAllocator> execAlloc_;
 
   MainThreadData<uint64_t> nextCompilationId_;
 
@@ -305,8 +301,6 @@ class JitRuntime {
   static void TraceJitcodeGlobalTableForMinorGC(JSTracer* trc);
   static MOZ_MUST_USE bool MarkJitcodeGlobalTableIteratively(GCMarker* marker);
   static void TraceWeakJitcodeGlobalTable(JSRuntime* rt, JSTracer* trc);
-
-  ExecutableAllocator& execAlloc() { return execAlloc_.ref(); }
 
   const BaselineICFallbackCode& baselineICFallbackCode() const {
     return baselineICFallbackCode_.ref();
@@ -486,8 +480,6 @@ struct IcStubCodeMapGCPolicy {
 class JitZone {
   // Allocated space for optimized baseline stubs.
   OptimizedICStubSpace optimizedStubSpace_;
-  // Allocated space for cached cfg.
-  CFGSpace cfgSpace_;
 
   // Set of CacheIRStubInfo instances used by Ion stubs in this Zone.
   using IonCacheIRStubInfoSet =
@@ -500,15 +492,17 @@ class JitZone {
                 SystemAllocPolicy, IcStubCodeMapGCPolicy<CacheIRStubKey>>;
   BaselineCacheIRStubCodeMap baselineCacheIRStubCodes_;
 
+  // Executable allocator for all code except wasm code.
+  MainThreadData<ExecutableAllocator> execAlloc_;
+
  public:
   void traceWeak(JSTracer* trc);
 
   void addSizeOfIncludingThis(mozilla::MallocSizeOf mallocSizeOf,
-                              size_t* jitZone, size_t* baselineStubsOptimized,
-                              size_t* cachedCFG) const;
+                              JS::CodeSizes* code, size_t* jitZone,
+                              size_t* baselineStubsOptimized) const;
 
   OptimizedICStubSpace* optimizedStubSpace() { return &optimizedStubSpace_; }
-  CFGSpace* cfgSpace() { return &cfgSpace_; }
 
   JitCode* getBaselineCacheIRStubCode(const CacheIRStubKey::Lookup& key,
                                       CacheIRStubInfo** stubInfo) {
@@ -540,6 +534,9 @@ class JitZone {
     return ionCacheIRStubInfoSet_.add(p, std::move(key));
   }
   void purgeIonCacheIRStubInfo() { ionCacheIRStubInfoSet_.clearAndCompact(); }
+
+  ExecutableAllocator& execAlloc() { return execAlloc_.ref(); }
+  const ExecutableAllocator& execAlloc() const { return execAlloc_.ref(); }
 };
 
 class JitRealm {

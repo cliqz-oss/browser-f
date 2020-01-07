@@ -140,6 +140,9 @@ def create_parser(mach_interface=False):
             help="Run without multiple processes (e10s).")
     add_arg('--enable-webrender', dest="enable_webrender", action="store_true", default=False,
             help="Enable the WebRender compositor in Gecko.")
+    add_arg('--with-conditioned-profile', dest="with_conditioned_profile", action="store_true",
+            default=False,
+            help="Run Raptor tests with a conditioned profile.")
     if not mach_interface:
         add_arg('--run-local', dest="run_local", default=False, action="store_true",
                 help="Flag which indicates if Raptor is running locally or in production")
@@ -147,6 +150,8 @@ def create_parser(mach_interface=False):
                 help="Browser-build obj_path (received when running in production)")
     add_arg('--noinstall', dest="noinstall", default=False, action="store_true",
             help="Flag which indicates if Raptor should not offer to install Android APK.")
+    add_arg('--installerpath', dest="installerpath", default=None, type=str,
+            help="Location where Android browser APK was extracted to before installation.")
 
     # Arguments for invoking browsertime.
     add_arg('--browsertime', dest='browsertime', default=False, action="store_true",
@@ -157,6 +162,8 @@ def create_parser(mach_interface=False):
             help="path to browsertime.js script")
     add_arg('--browsertime-chromedriver', dest='browsertime_chromedriver',
             help="path to chromedriver executable")
+    add_arg('--browsertime-video', dest='browsertime_video',
+            help="records the viewport", default=False, action="store_true")
     add_arg('--browsertime-ffmpeg', dest='browsertime_ffmpeg',
             help="path to ffmpeg executable (for `--video=true`)")
     add_arg('--browsertime-geckodriver', dest='browsertime_geckodriver',

@@ -21,9 +21,6 @@
 #include "nsString.h"
 #include "mozilla/dom/NodeInfo.h"
 #include "mozilla/ClearOnShutdown.h"
-#ifdef MOZ_XBL
-#  include "mozilla/dom/XBLChildrenElement.h"
-#endif
 #include "mozilla/dom/Element.h"
 #include "mozilla/Preferences.h"
 
@@ -61,9 +58,8 @@ bool nsNameSpaceManager::Init() {
   rv = AddDisabledNameSpace(dont_AddRef(uri), id); \
   NS_ENSURE_SUCCESS(rv, false)
 
-  mozilla::Preferences::RegisterCallbacks(
-      PREF_CHANGE_METHOD(nsNameSpaceManager::PrefChanged), kObservedNSPrefs,
-      this);
+  mozilla::Preferences::RegisterCallbacks(nsNameSpaceManager::PrefChanged,
+                                          kObservedNSPrefs, this);
 
   PrefChanged(nullptr);
 
@@ -206,12 +202,6 @@ nsresult NS_NewElement(Element** aResult,
                                            ni->NodeType(), ni->GetExtraName());
     return NS_NewXMLElement(aResult, genericXMLNI.forget());
   }
-#ifdef MOZ_XBL
-  if (ns == kNameSpaceID_XBL && ni->Equals(nsGkAtoms::children)) {
-    NS_ADDREF(*aResult = new XBLChildrenElement(ni.forget()));
-    return NS_OK;
-  }
-#endif
 
   return NS_NewXMLElement(aResult, ni.forget());
 }
@@ -253,6 +243,11 @@ nsresult nsNameSpaceManager::AddDisabledNameSpace(already_AddRefed<nsAtom> aURI,
   mDisabledURIToIDTable.Put(mURIArray.LastElement(), aNameSpaceID);
 
   return NS_OK;
+}
+
+// static
+void nsNameSpaceManager::PrefChanged(const char* aPref, void* aSelf) {
+  static_cast<nsNameSpaceManager*>(aSelf)->PrefChanged(aPref);
 }
 
 void nsNameSpaceManager::PrefChanged(const char* aPref) {

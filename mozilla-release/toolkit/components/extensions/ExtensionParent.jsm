@@ -24,6 +24,7 @@ XPCOMUtils.defineLazyModuleGetters(this, {
   AddonManager: "resource://gre/modules/AddonManager.jsm",
   AppConstants: "resource://gre/modules/AppConstants.jsm",
   AsyncShutdown: "resource://gre/modules/AsyncShutdown.jsm",
+  BroadcastConduit: "resource://gre/modules/ConduitsParent.jsm",
   DeferredTask: "resource://gre/modules/DeferredTask.jsm",
   E10SUtils: "resource://gre/modules/E10SUtils.jsm",
   ExtensionData: "resource://gre/modules/Extension.jsm",
@@ -239,6 +240,9 @@ let apiManager = new (class extends SchemaAPIManager {
       .flat();
     if (event === "disable") {
       promises.push(...ids.map(id => this.emit("disable", id)));
+    }
+    if (event === "enabling") {
+      promises.push(...ids.map(id => this.emit("enabling", id)));
     }
 
     AsyncShutdown.profileBeforeChange.addBlocker(
@@ -808,14 +812,14 @@ class ExtensionPageContextParent extends ProxyContextParent {
   }
 
   // The window that contains this context. This may change due to moving tabs.
-  get xulWindow() {
+  get appWindow() {
     let win = this.xulBrowser.ownerGlobal;
     return win.docShell.rootTreeItem.domWindow;
   }
 
   get currentWindow() {
     if (this.viewType !== "background") {
-      return this.xulWindow;
+      return this.appWindow;
     }
   }
 
@@ -901,13 +905,15 @@ ParentAPIManager = {
   proxyContexts: new Map(),
 
   init() {
+    // TODO: Bug 1595186 - remove/replace all usage of MessageManager below.
     Services.obs.addObserver(this, "message-manager-close");
 
-    Services.mm.addMessageListener("API:CreateProxyContext", this);
-    Services.mm.addMessageListener("API:CloseProxyContext", this, true);
-    Services.mm.addMessageListener("API:Call", this);
-    Services.mm.addMessageListener("API:AddListener", this);
-    Services.mm.addMessageListener("API:RemoveListener", this);
+    this.conduit = new BroadcastConduit(this, {
+      id: "ParentAPIManager",
+      recv: ["CreateProxyContext", "APICall", "AddListener", "RemoveListener"],
+      send: ["CallResult"],
+      query: ["RunListener"],
+    });
   },
 
   attachMessageManager(extension, processMessageManager) {
@@ -945,32 +951,9 @@ ParentAPIManager = {
     }
   },
 
-  receiveMessage({ name, data, target }) {
-    try {
-      switch (name) {
-        case "API:CreateProxyContext":
-          this.createProxyContext(data, target);
-          break;
-
-        case "API:CloseProxyContext":
-          this.closeProxyContext(data.childId);
-          break;
-
-        case "API:Call":
-          this.call(data, target);
-          break;
-
-        case "API:AddListener":
-          this.addListener(data, target);
-          break;
-
-        case "API:RemoveListener":
-          this.removeListener(data);
-          break;
-      }
-    } catch (e) {
-      Cu.reportError(e);
-    }
+  recvCreateProxyContext(data, { actor, sender }) {
+    this.conduit.reportOnClosed(sender.id);
+    this.createProxyContext(data, actor.browsingContext.top.embedderElement);
   },
 
   createProxyContext(data, target) {
@@ -1036,6 +1019,10 @@ ParentAPIManager = {
     this.proxyContexts.set(childId, context);
   },
 
+  recvConduitClosed(sender) {
+    this.closeProxyContext(sender.id);
+  },
+
   closeProxyContext(childId) {
     let context = this.proxyContexts.get(childId);
     if (context) {
@@ -1079,8 +1066,9 @@ ParentAPIManager = {
     }
   },
 
-  async call(data, target) {
+  async recvAPICall(data, { actor }) {
     let context = this.getContextById(data.childId);
+    let target = actor.browsingContext.top.embedderElement;
     if (context.parentMessageManager !== target.messageManager) {
       throw new Error("Got message on unexpected message manager");
     }
@@ -1094,16 +1082,12 @@ ParentAPIManager = {
         return;
       }
 
-      context.parentMessageManager.sendAsyncMessage(
-        "API:CallResult",
-        Object.assign(
-          {
-            childId: data.childId,
-            callId: data.callId,
-          },
-          result
-        )
-      );
+      this.conduit.sendCallResult(data.childId, {
+        childId: data.childId,
+        callId: data.callId,
+        path: data.path,
+        ...result,
+      });
     };
 
     try {
@@ -1143,47 +1127,36 @@ ParentAPIManager = {
     }
   },
 
-  async addListener(data, target) {
+  async recvAddListener(data, { actor }) {
     let context = this.getContextById(data.childId);
+    let target = actor.browsingContext.top.embedderElement;
     if (context.parentMessageManager !== target.messageManager) {
       throw new Error("Got message on unexpected message manager");
     }
 
     let { childId } = data;
     let handlingUserInput = false;
-    let lowPriority = data.path.startsWith("webRequest.");
 
-    function listener(...listenerArgs) {
-      return context
-        .sendMessage(
-          context.parentMessageManager,
-          "API:RunListener",
-          {
-            childId,
-            handlingUserInput,
-            listenerId: data.listenerId,
-            path: data.path,
-            get args() {
-              return new StructuredCloneHolder(listenerArgs);
-            },
-          },
-          {
-            lowPriority,
-            recipient: { childId },
-          }
-        )
-        .then(result => {
-          let rv = result && result.deserialize(global);
-          ExtensionActivityLog.log(
-            context.extension.id,
-            context.viewType,
-            "api_event",
-            data.path,
-            { args: listenerArgs, result: rv }
-          );
-          return rv;
-        });
-    }
+    let listener = async (...listenerArgs) => {
+      let result = await this.conduit.queryRunListener(childId, {
+        childId,
+        handlingUserInput,
+        listenerId: data.listenerId,
+        path: data.path,
+        get args() {
+          return new StructuredCloneHolder(listenerArgs);
+        },
+      });
+      let rv = result && result.deserialize(global);
+      ExtensionActivityLog.log(
+        context.extension.id,
+        context.viewType,
+        "api_event",
+        data.path,
+        { args: listenerArgs, result: rv }
+      );
+      return rv;
+    };
 
     context.listenerProxies.set(data.listenerId, listener);
 
@@ -1215,7 +1188,7 @@ ParentAPIManager = {
     );
   },
 
-  async removeListener(data) {
+  async recvRemoveListener(data) {
     let context = this.getContextById(data.childId);
     let listener = context.listenerProxies.get(data.listenerId);
 
@@ -2106,15 +2079,19 @@ var ExtensionParent = {
 
 // browserPaintedPromise and browserStartupPromise are promises that
 // resolve after the first browser window is painted and after browser
-// windows have been restored, respectively.
+// windows have been restored, respectively. Alternatively,
+// browserStartupPromise also resolves from the extensions-late-startup
+// notification sent by Firefox Reality on desktop platforms, because it
+// doesn't support SessionStore.
 // _resetStartupPromises should only be called from outside this file in tests.
 ExtensionParent._resetStartupPromises = () => {
   ExtensionParent.browserPaintedPromise = promiseObserved(
     "browser-delayed-startup-finished"
   ).then(() => {});
-  ExtensionParent.browserStartupPromise = promiseObserved(
-    "sessionstore-windows-restored"
-  ).then(() => {});
+  ExtensionParent.browserStartupPromise = Promise.race([
+    promiseObserved("sessionstore-windows-restored"),
+    promiseObserved("extensions-late-startup"),
+  ]).then(() => {});
 };
 ExtensionParent._resetStartupPromises();
 

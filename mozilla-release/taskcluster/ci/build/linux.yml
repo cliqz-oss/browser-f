@@ -36,6 +36,7 @@ linux64/opt:
             - linux64-sccache
             - linux64-nasm
             - linux64-node
+            - lucetc
 
 linux64-plain/opt:
     description: "Linux64 Opt Plain"
@@ -72,6 +73,7 @@ linux64-plain/opt:
             - linux64-nasm
             - linux64-node
             - linux64-cbindgen
+            - lucetc
 
 linux64-fuzzing/debug:
     description: "Linux64 Fuzzing Debug"
@@ -109,6 +111,7 @@ linux64-fuzzing/debug:
             - linux64-rust-size
             - linux64-nasm
             - linux64-node
+            - lucetc
 
 linux64/debug:
     description: "Linux64 Debug"
@@ -145,6 +148,7 @@ linux64/debug:
             - linux64-rust-size
             - linux64-nasm
             - linux64-node
+            - lucetc
 
 linux64-plain/debug:
     description: "Linux64 Debug Plain"
@@ -181,6 +185,7 @@ linux64-plain/debug:
             - linux64-nasm
             - linux64-node
             - linux64-cbindgen
+            - lucetc
 
 linux64-devedition-nightly/opt:
     description: "Linux64 devedition Nightly"
@@ -224,6 +229,7 @@ linux64-devedition-nightly/opt:
             - linux64-cbindgen
             - linux64-nasm
             - linux64-node
+            - lucetc
 
 linux64-base-toolchains/opt:
     description: "Linux64 base toolchains Opt"
@@ -252,13 +258,14 @@ linux64-base-toolchains/opt:
         need-xvfb: true
     fetches:
         toolchain:
-            - linux64-clang-4.0
-            - linux64-gcc-6
+            - linux64-clang-5.0
+            - linux64-gcc-7
             - linux64-rust-1.37
             - linux64-cbindgen
             - linux64-sccache
             - linux64-nasm-2.13.02
             - linux64-node
+            - lucetc
 
 linux64-base-toolchains/debug:
     description: "Linux64 base toolchains Debug"
@@ -289,13 +296,14 @@ linux64-base-toolchains/debug:
         need-xvfb: true
     fetches:
         toolchain:
-            - linux64-clang-4.0
-            - linux64-gcc-6
+            - linux64-clang-5.0
+            - linux64-gcc-7
             - linux64-rust-1.37
             - linux64-cbindgen
             - linux64-sccache
             - linux64-nasm-2.13.02
             - linux64-node
+            - lucetc
 
 linux64-base-toolchains-clang/opt:
     description: "Linux64 base toolchains clang Opt"
@@ -311,6 +319,7 @@ linux64-base-toolchains-clang/opt:
         max-run-time: 7200
         env:
             PERFHERDER_EXTRA_OPTIONS: base-toolchains-clang
+            DISABLE_CLANG_PLUGIN: '1'
     run:
         using: mozharness
         actions: [get-secrets, build]
@@ -324,11 +333,12 @@ linux64-base-toolchains-clang/opt:
     fetches:
         toolchain:
             - linux64-binutils
-            - linux64-clang-4.0
+            - linux64-clang-5.0
             - linux64-rust-1.37
             - linux64-cbindgen
             - linux64-nasm-2.13.02
             - linux64-node
+            - lucetc
 
 linux64-base-toolchains-clang/debug:
     description: "Linux64 base toolchains clang Debug"
@@ -344,6 +354,7 @@ linux64-base-toolchains-clang/debug:
         max-run-time: 5400
         env:
             PERFHERDER_EXTRA_OPTIONS: base-toolchains-clang
+            DISABLE_CLANG_PLUGIN: '1'
     run:
         using: mozharness
         actions: [get-secrets, build]
@@ -359,11 +370,12 @@ linux64-base-toolchains-clang/debug:
     fetches:
         toolchain:
             - linux64-binutils
-            - linux64-clang-4.0
+            - linux64-clang-5.0
             - linux64-rust-1.37
             - linux64-cbindgen
             - linux64-nasm-2.13.02
             - linux64-node
+            - lucetc
 
 linux/opt:
     description: "Linux32 Opt"
@@ -400,6 +412,7 @@ linux/opt:
             - linux64-sccache
             - linux64-nasm
             - linux64-node
+            - lucetc
 
 linux/debug:
     description: "Linux32 Debug"
@@ -437,6 +450,7 @@ linux/debug:
             - linux64-sccache
             - linux64-nasm
             - linux64-node
+            - lucetc
 
 linux-rusttests/opt:
     description: "Linux32 Rust Tests Opt"
@@ -476,6 +490,7 @@ linux-rusttests/opt:
             - linux64-sccache
             - linux64-nasm
             - linux64-node
+            - lucetc
 
 linux-rusttests/debug:
     description: "Linux32 Rust Tests Debug"
@@ -515,6 +530,7 @@ linux-rusttests/debug:
             - linux64-sccache
             - linux64-nasm
             - linux64-node
+            - lucetc
 
 linux-devedition-nightly/opt:
     description: "Linux32 devedition Nightly"
@@ -559,6 +575,7 @@ linux-devedition-nightly/opt:
             - linux64-cbindgen
             - linux64-nasm
             - linux64-node
+            - lucetc
 
 linux-shippable/opt:
     description: "Linux32 Shippable"
@@ -599,6 +616,48 @@ linux-shippable/opt:
             - linux64-cbindgen
             - linux64-nasm
             - linux64-node
+            - lucetc
+
+linux-reproduced/opt:
+    description: "Linux32 Reproduced"
+    use-pgo: linux-shippable/opt
+    shipping-phase: build
+    shipping-product: firefox
+    index:
+        product: firefox
+        job-name: linux-reproduced-opt
+    treeherder:
+        platform: linux32-shippable/opt
+        symbol: Bpgo(repr)
+    # Limited to trunk until bug 1596350 is fixed.
+    run-on-projects: ['trunk', 'try']
+    worker-type: b-linux
+    worker:
+        docker-image: {in-tree: debian7-i386-build}
+        max-run-time: 9000
+        env:
+            PERFHERDER_EXTRA_OPTIONS: repr
+    run:
+        using: mozharness
+        actions: [get-secrets, build]
+        config:
+            - builds/releng_base_firefox.py
+            - builds/releng_base_linux_32_builds.py
+            - taskcluster_nightly.py
+        script: "mozharness/scripts/fx_desktop_build.py"
+        secrets: true
+        tooltool-downloads: public
+        need-xvfb: true
+    fetches:
+        toolchain:
+            - linux64-binutils
+            - linux64-clang
+            - linux64-rust
+            - linux64-rust-size
+            - linux64-cbindgen
+            - linux64-nasm
+            - linux64-node
+            - lucetc
 
 linux64-asan/opt:
     description: "Linux64 Opt ASAN"
@@ -636,6 +695,81 @@ linux64-asan/opt:
             - linux64-sccache
             - linux64-nasm
             - linux64-node
+            - lucetc
+
+linux64-tsan/opt:
+    description: "Linux64 Opt TSAN"
+    index:
+        product: firefox
+        job-name: linux64-tsan-opt
+    treeherder:
+        platform: linux64/tsan
+        symbol: Bo
+    worker-type: b-linux
+    worker:
+        env:
+            PERFHERDER_EXTRA_OPTIONS: "opt tsan"
+        max-run-time: 5400
+    run:
+        using: mozharness
+        actions: [get-secrets, build]
+        config:
+            - builds/releng_base_firefox.py
+            - builds/releng_base_linux_64_builds.py
+        script: "mozharness/scripts/fx_desktop_build.py"
+        secrets: true
+        custom-build-variant-cfg: tsan-tc
+        mozconfig-variant: tsan
+        tooltool-downloads: public
+        need-xvfb: true
+    fetches:
+        toolchain:
+            - linux64-binutils
+            - linux64-clang
+            - linux64-rust-nightly
+            - linux64-rust-size
+            - linux64-cbindgen
+            - linux64-sccache
+            - linux64-nasm
+            - linux64-node
+            - lucetc
+
+linux64-tsan-fuzzing/opt:
+    description: "Linux64 Fuzzing Opt TSAN"
+    index:
+        product: firefox
+        job-name: linux64-fuzzing-tsan-opt
+    treeherder:
+        platform: linux64/tsan
+        symbol: Bof
+    worker-type: b-linux
+    worker:
+        env:
+            PERFHERDER_EXTRA_OPTIONS: tsan-fuzzing
+        max-run-time: 5400
+    run:
+        using: mozharness
+        actions: [get-secrets, build]
+        config:
+            - builds/releng_base_firefox.py
+            - builds/releng_base_linux_64_builds.py
+        script: "mozharness/scripts/fx_desktop_build.py"
+        secrets: true
+        custom-build-variant-cfg: fuzzing-tsan-tc
+        mozconfig-variant: tsan-fuzzing
+        tooltool-downloads: public
+        need-xvfb: true
+    fetches:
+        toolchain:
+            - linux64-binutils
+            - linux64-clang
+            - linux64-rust-nightly
+            - linux64-rust-size
+            - linux64-cbindgen
+            - linux64-sccache
+            - linux64-nasm
+            - linux64-node
+            - lucetc
 
 linux64-asan-fuzzing/opt:
     description: "Linux64 Fuzzing Opt ASAN"
@@ -673,6 +807,7 @@ linux64-asan-fuzzing/opt:
             - linux64-sccache
             - linux64-nasm
             - linux64-node
+            - lucetc
 
 linux64-asan-fuzzing-ccov/opt:
     description: "Linux64 Fuzzing Opt ASAN w/ Coverage"
@@ -710,6 +845,7 @@ linux64-asan-fuzzing-ccov/opt:
             - linux64-sccache
             - linux64-nasm
             - linux64-node
+            - lucetc
 
 linux64-fuzzing-ccov/opt:
     description: "Linux64 Fuzzing Opt w/ Coverage"
@@ -742,13 +878,14 @@ linux64-fuzzing-ccov/opt:
     fetches:
         toolchain:
             - linux64-clang
-            - linux64-gcc
+            - linux64-gcc-7
             - linux64-cbindgen
             - linux64-rust
             - linux64-rust-size
             - linux64-sccache
             - linux64-nasm
             - linux64-node
+            - lucetc
 
 linux64-asan-reporter-nightly/opt:
     description: "Linux64 Opt ASAN Reporter Nightly"
@@ -796,6 +933,7 @@ linux64-asan-reporter-nightly/opt:
             - linux64-cbindgen
             - linux64-nasm
             - linux64-node
+            - lucetc
 
 linux64-asan/debug:
     description: "Linux64 Debug ASAN"
@@ -833,6 +971,7 @@ linux64-asan/debug:
             - linux64-sccache
             - linux64-nasm
             - linux64-node
+            - lucetc
 
 linux64-shippable/opt:
     description: "Linux64 Shippable"
@@ -872,6 +1011,7 @@ linux64-shippable/opt:
             - linux64-cbindgen
             - linux64-nasm
             - linux64-node
+            - lucetc
 
 linux64-noopt/debug:
     description: "Linux64 No-optimize Debug"
@@ -911,6 +1051,7 @@ linux64-noopt/debug:
             - linux64-sccache
             - linux64-nasm
             - linux64-node
+            - lucetc
 
 linux64-rusttests/opt:
     description: "Linux64 Rust Tests Opt"
@@ -949,6 +1090,7 @@ linux64-rusttests/opt:
             - linux64-sccache
             - linux64-nasm
             - linux64-node
+            - lucetc
 
 linux64-rusttests/debug:
     description: "Linux64 Rust Tests Debug"
@@ -987,6 +1129,7 @@ linux64-rusttests/debug:
             - linux64-sccache
             - linux64-nasm
             - linux64-node
+            - lucetc
 
 linux64-tup/opt:
     description: "Linux64 Tup"
@@ -1026,49 +1169,7 @@ linux64-tup/opt:
             - linux64-tup
             - linux64-nasm
             - linux64-node
-
-linux64-ccov/debug:
-    description: "Linux64-CCov Debug"
-    index:
-        product: firefox
-        job-name: linux64-ccov-debug
-    treeherder:
-        platform: linux64-ccov/debug
-        symbol: B
-        tier: 2
-    run-on-projects: ['mozilla-central', 'try']
-    worker-type: b-linux
-    worker:
-        artifacts:
-            - name: public/code-coverage-grcov.zip
-              path: /builds/worker/workspace/build/src/obj-firefox/code-coverage-grcov.zip
-              type: file
-        max-run-time: 7200
-        env:
-            FORCE_GCC: '1'
-            RUSTC_BOOTSTRAP: '1'
-    run:
-        using: mozharness
-        actions: [get-secrets, build]
-        config:
-            - builds/releng_base_firefox.py
-            - builds/releng_base_linux_64_builds.py
-        script: "mozharness/scripts/fx_desktop_build.py"
-        secrets: true
-        custom-build-variant-cfg: code-coverage-debug
-        mozconfig-variant: code-coverage-debug
-        tooltool-downloads: public
-        need-xvfb: true
-    fetches:
-        toolchain:
-            - linux64-clang-9
-            - linux64-rust
-            - linux64-gcc
-            - linux64-grcov
-            - linux64-cbindgen
-            - linux64-sccache
-            - linux64-nasm
-            - linux64-node
+            - lucetc
 
 linux64-ccov/opt:
     description: "Linux64-CCov Opt"
@@ -1102,11 +1203,13 @@ linux64-ccov/opt:
         toolchain:
             - linux64-clang-9
             - linux64-rust
-            - linux64-gcc
+            - linux64-gcc-7
             - linux64-cbindgen
             - linux64-sccache
             - linux64-nasm
             - linux64-node
+            - linux64-grcov
+            - lucetc
 
 linux64-add-on-devel/opt:
     description: "Linux64 add-on-devel"
@@ -1143,6 +1246,7 @@ linux64-add-on-devel/opt:
             - linux64-sccache
             - linux64-nasm
             - linux64-node
+            - lucetc
 
 linux64-aarch64/opt:
     description: "Linux64 aarch64 Opt"
@@ -1181,6 +1285,7 @@ linux64-aarch64/opt:
             - linux64-cbindgen
             - linux64-sccache
             - linux64-node
+            - lucetc
 
 linux-gcp/debug:
     description: "Linux32 Debug - built on GCP"
@@ -1193,7 +1298,7 @@ linux-gcp/debug:
         platform: linux32/debug
         symbol: Bg
         tier: 3
-    worker-type: gce/gecko-{level}-b-linux
+    worker-type: b-linux-gcp
     worker:
         docker-image: {in-tree: debian7-i386-build}
         max-run-time: 5400
@@ -1221,6 +1326,7 @@ linux-gcp/debug:
             - linux64-sccache
             - linux64-nasm
             - linux64-node
+            - lucetc
 
 linux-gcp/opt:
     description: "Linux32 Opt - built on GCP"
@@ -1233,7 +1339,7 @@ linux-gcp/opt:
         platform: linux32/opt
         symbol: Bg
         tier: 3
-    worker-type: gce/gecko-{level}-b-linux
+    worker-type: b-linux-gcp
     worker:
         docker-image: {in-tree: debian7-i386-build}
         max-run-time: 7200
@@ -1260,6 +1366,7 @@ linux-gcp/opt:
             - linux64-sccache
             - linux64-nasm
             - linux64-node
+            - lucetc
 
 linux64-gcp/debug:
     description: "Linux64 Debug - built on GCP"
@@ -1272,7 +1379,7 @@ linux64-gcp/debug:
         platform: linux64/debug
         symbol: Bg
         tier: 3
-    worker-type: gce/gecko-{level}-b-linux
+    worker-type: b-linux-gcp
     worker:
         max-run-time: 5400
         env:
@@ -1299,6 +1406,7 @@ linux64-gcp/debug:
             - linux64-rust-size
             - linux64-nasm
             - linux64-node
+            - lucetc
 
 linux64-gcp/opt:
     description: "Linux64 Opt - built on GCP"
@@ -1311,7 +1419,7 @@ linux64-gcp/opt:
         platform: linux64/opt
         symbol: Bg
         tier: 3
-    worker-type: gce/gecko-{level}-b-linux
+    worker-type: b-linux-gcp
     worker:
         max-run-time: 7200
         env:
@@ -1337,3 +1445,4 @@ linux64-gcp/opt:
             - linux64-sccache
             - linux64-nasm
             - linux64-node
+            - lucetc

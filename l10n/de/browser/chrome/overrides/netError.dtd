@@ -189,6 +189,8 @@ was trying to connect. -->
 <!ENTITY cspBlocked.title "Blockiert von der Inhaltsicherheitsrichtlinie (CSP)">
 <!ENTITY cspBlocked.longDesc "<p>&brandShortName; hat diese Webseite daran gehindert, auf diese Weise geladen zu werden, weil die Webseite eine Inhaltsicherheitsrichtlinie (Content Security Policy) hat, die dies nicht erlaubt.</p>">
 
+<!ENTITY xfoBlocked.title "Blockiert durch X-Frame-Options-Richtlinie">
+<!ENTITY xfoBlocked.longDesc "<p>&brandShortName;  hat das Laden dieser Seite in diesem Kontext verhindert, da die Seite über eine X-Frame-Options-Richtlinie verfügt, die dies verbietet.</p>">
 
 <!ENTITY corruptedContentErrorv2.title "Fehler: Beschädigte Inhalte">
 <!ENTITY corruptedContentErrorv2.longDesc "<p>Die Seite, die Sie anzusehen versuchen, kann nicht angezeigt werden, da ein Fehler in der Datenübertragung festgestellt wurde.</p><ul><li>Bitte kontaktieren Sie die Website-Betreiber, um sie über dieses Problem zu verständigen.</li></ul>">

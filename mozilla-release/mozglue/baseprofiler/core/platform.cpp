@@ -173,7 +173,6 @@ static uint32_t AvailableFeatures() {
   // Now remove features not supported on this platform/configuration.
   ProfilerFeature::ClearJava(features);
   ProfilerFeature::ClearJS(features);
-  ProfilerFeature::ClearResponsiveness(features);
   ProfilerFeature::ClearScreenshots(features);
 #  if !defined(HAVE_NATIVE_UNWIND)
   ProfilerFeature::ClearStackWalk(features);
@@ -188,8 +187,7 @@ static uint32_t AvailableFeatures() {
 // Default features common to all contexts (even if not available).
 static uint32_t DefaultFeatures() {
   return ProfilerFeature::Java | ProfilerFeature::JS | ProfilerFeature::Leaf |
-         ProfilerFeature::StackWalk | ProfilerFeature::Threads |
-         ProfilerFeature::Responsiveness;
+         ProfilerFeature::StackWalk | ProfilerFeature::Threads;
 }
 
 // Extra default features when MOZ_BASE_PROFILER_STARTUP is set (even if not
@@ -1049,7 +1047,7 @@ ProfilingStack* AutoProfilerLabel::GetProfilingStack() {
 MOZ_THREAD_LOCAL(ProfilingStack*) AutoProfilerLabel::sProfilingStack;
 
 // The name of the main thread.
-static const char* const kMainThreadName = "Main Thread (Base Profiler)";
+static const char* const kMainThreadName = "GeckoMain";
 
 ////////////////////////////////////////////////////////////////////////
 // BEGIN sampling/unwinding code
@@ -1622,7 +1620,7 @@ static void StreamMetaJSCustomObject(PSLockRef aLock,
                                      bool aIsShuttingDown) {
   MOZ_RELEASE_ASSERT(CorePS::Exists() && ActivePS::Exists(aLock));
 
-  aWriter.IntProperty("version", 17);
+  aWriter.IntProperty("version", 19);
 
   // The "startTime" field holds the number of milliseconds since midnight
   // January 1, 1970 GMT. This grotty code computes (Now - (Now -
@@ -1936,7 +1934,7 @@ class Sampler {
   template <typename Func>
   void SuspendAndSampleAndResumeThread(
       PSLockRef aLock, const RegisteredThread& aRegisteredThread,
-      const Func& aProcessRegs);
+      const TimeStamp& aNow, const Func& aProcessRegs);
 
  private:
 #  if defined(GP_OS_linux) || defined(GP_OS_android)
@@ -2136,7 +2134,8 @@ void SamplerThread::Run() {
             buffer.AddEntry(ProfileBufferEntry::Time(delta.ToMilliseconds()));
 
             mSampler.SuspendAndSampleAndResumeThread(
-                lock, *registeredThread, [&](const Registers& aRegs) {
+                lock, *registeredThread, now,
+                [&](const Registers& aRegs, const TimeStamp& aNow) {
                   DoPeriodicSample(lock, *registeredThread, *profiledThreadData,
                                    aRegs, samplePos, localProfileBuffer);
                 });
@@ -3436,10 +3435,12 @@ void profiler_suspend_and_sample_thread(int aThreadId, uint32_t aFeatures,
 
       // Suspend, sample, and then resume the target thread.
       Sampler sampler(lock);
+      TimeStamp now = TimeStamp::NowUnfuzzed();
       sampler.SuspendAndSampleAndResumeThread(
-          lock, registeredThread, [&](const Registers& aRegs) {
-            // The target thread is now suspended. Collect a native backtrace,
-            // and call the callback.
+          lock, registeredThread, now,
+          [&](const Registers& aRegs, const TimeStamp& aNow) {
+            // The target thread is now suspended. Collect a native
+            // backtrace, and call the callback.
             bool isSynchronous = false;
 #  if defined(HAVE_FASTINIT_NATIVE_UNWIND)
             if (aSampleNative) {
@@ -3450,7 +3451,8 @@ void profiler_suspend_and_sample_thread(int aThreadId, uint32_t aFeatures,
               DoFramePointerBacktrace(lock, registeredThread, aRegs,
                                       nativeStack);
 #    elif defined(USE_MOZ_STACK_WALK)
-          DoMozStackWalkBacktrace(lock, registeredThread, aRegs, nativeStack);
+              DoMozStackWalkBacktrace(lock, registeredThread, aRegs,
+                                      nativeStack);
 #    else
 #      error "Invalid configuration"
 #    endif

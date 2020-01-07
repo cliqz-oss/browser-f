@@ -7,7 +7,7 @@
 #include <string>
 #include "mozilla/RefPtr.h"
 #include "nsCOMPtr.h"
-#include "nsIEventTarget.h"
+#include "nsISerialEventTarget.h"
 #include "nsTArray.h"
 #include "mozilla/dom/MediaStreamTrack.h"
 #include "ErrorList.h"
@@ -50,13 +50,12 @@ class TransceiverImpl : public nsISupports {
    * negotiated one for this transceiver. |aSendTrack| might or might not be
    * set.
    */
-  TransceiverImpl(const std::string& aPCHandle,
-                  MediaTransportHandler* aTransportHandler,
-                  JsepTransceiver* aJsepTransceiver,
-                  nsIEventTarget* aMainThread, nsIEventTarget* aStsThread,
-                  dom::MediaStreamTrack* aReceiveTrack,
-                  dom::MediaStreamTrack* aSendTrack,
-                  WebRtcCallWrapper* aCallWrapper);
+  TransceiverImpl(
+      const std::string& aPCHandle, MediaTransportHandler* aTransportHandler,
+      JsepTransceiver* aJsepTransceiver, nsISerialEventTarget* aMainThread,
+      nsISerialEventTarget* aStsThread, dom::MediaStreamTrack* aReceiveTrack,
+      dom::MediaStreamTrack* aSendTrack, WebRtcCallWrapper* aCallWrapper,
+      const PrincipalHandle& aPrincipalHandle);
 
   bool IsValid() const { return !!mConduit; }
 
@@ -69,8 +68,6 @@ class TransceiverImpl : public nsISupports {
   nsresult UpdateTransport();
 
   nsresult UpdateConduit();
-
-  nsresult UpdatePrincipal(nsIPrincipal* aPrincipal);
 
   void ResetSync();
 
@@ -100,9 +97,9 @@ class TransceiverImpl : public nsISupports {
   bool HasReceiveTrack(const dom::MediaStreamTrack* aReceiveTrack) const;
 
   // TODO: These are for stats; try to find a cleaner way.
-  RefPtr<MediaPipeline> GetSendPipeline();
+  RefPtr<MediaPipelineTransmit> GetSendPipeline();
 
-  RefPtr<MediaPipeline> GetReceivePipeline();
+  RefPtr<MediaPipelineReceive> GetReceivePipeline();
 
   std::string GetTransportId() const {
     return mJsepTransceiver->mTransport.mTransportId;
@@ -123,16 +120,18 @@ class TransceiverImpl : public nsISupports {
                      nsTArray<dom::RTCRtpSourceEntry>& outSources) const;
 
   // test-only: insert fake CSRCs and audio levels for testing
-  void InsertAudioLevelForContributingSource(uint32_t aSource,
-                                             int64_t aTimestamp, bool aHasLevel,
-                                             uint8_t aLevel);
+  void InsertAudioLevelForContributingSource(const uint32_t aSource,
+                                             const int64_t aTimestamp,
+                                             const uint32_t aRtpTimestamp,
+                                             const bool aHasLevel,
+                                             const uint8_t aLevel);
 
   NS_DECL_THREADSAFE_ISUPPORTS
 
  private:
   virtual ~TransceiverImpl();
-  void InitAudio();
-  void InitVideo();
+  void InitAudio(const PrincipalHandle& aPrincipalHandle);
+  void InitVideo(const PrincipalHandle& aPrincipalHandle);
   nsresult UpdateAudioConduit();
   nsresult UpdateVideoConduit();
   nsresult ConfigureVideoCodecMode(VideoSessionConduit& aConduit);
@@ -146,8 +145,8 @@ class TransceiverImpl : public nsISupports {
   std::string mMid;
   bool mHaveStartedReceiving;
   bool mHaveSetupTransport;
-  nsCOMPtr<nsIEventTarget> mMainThread;
-  nsCOMPtr<nsIEventTarget> mStsThread;
+  nsCOMPtr<nsISerialEventTarget> mMainThread;
+  nsCOMPtr<nsISerialEventTarget> mStsThread;
   RefPtr<dom::MediaStreamTrack> mReceiveTrack;
   RefPtr<dom::MediaStreamTrack> mSendTrack;
   // state for webrtc.org that is shared between all transceivers

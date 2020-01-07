@@ -125,6 +125,24 @@ global.makeWidgetId = id => {
   return id.replace(/[^a-z0-9_-]/g, "_");
 };
 
+global.clickModifiersFromEvent = event => {
+  const map = {
+    shiftKey: "Shift",
+    altKey: "Alt",
+    metaKey: "Command",
+    ctrlKey: "Ctrl",
+  };
+  let modifiers = Object.keys(map)
+    .filter(key => event[key])
+    .map(key => map[key]);
+
+  if (event.ctrlKey && AppConstants.platform === "macosx") {
+    modifiers.push("MacCtrl");
+  }
+
+  return modifiers;
+};
+
 global.waitForTabLoaded = (tab, url) => {
   return new Promise(resolve => {
     windowTracker.addListener("progress", {
@@ -699,13 +717,20 @@ class TabTracker extends TabTrackerBase {
   }
 
   getBrowserData(browser) {
-    let { gBrowser } = browser.ownerGlobal;
+    let window = browser.ownerGlobal;
+    if (!window) {
+      return {
+        tabId: -1,
+        windowId: -1,
+      };
+    }
+    let { gBrowser } = window;
     // Some non-browser windows have gBrowser but not getTabForBrowser!
     if (!gBrowser || !gBrowser.getTabForBrowser) {
-      if (browser.ownerGlobal.top.document.documentURI === "about:addons") {
+      if (window.top.document.documentURI === "about:addons") {
         // When we're loaded into a <browser> inside about:addons, we need to go up
         // one more level.
-        browser = browser.ownerGlobal.docShell.chromeEventHandler;
+        browser = window.docShell.chromeEventHandler;
 
         ({ gBrowser } = browser.ownerGlobal);
       } else {
@@ -984,7 +1009,7 @@ class Window extends WindowBase {
   }
 
   get alwaysOnTop() {
-    return this.xulWindow.zLevel >= Ci.nsIXULWindow.raisedZ;
+    return this.appWindow.zLevel >= Ci.nsIAppWindow.raisedZ;
   }
 
   get isLastFocused() {

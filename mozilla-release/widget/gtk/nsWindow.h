@@ -16,6 +16,8 @@
 #endif /* MOZ_X11 */
 #ifdef MOZ_WAYLAND
 #  include <gdk/gdkwayland.h>
+#  include "base/thread.h"
+#  include "WaylandVsyncSource.h"
 #endif
 #include "mozcontainer.h"
 #include "mozilla/RefPtr.h"
@@ -83,6 +85,7 @@ class gfxPattern;
 namespace mozilla {
 class TimeStamp;
 class CurrentX11TimeGetter;
+
 }  // namespace mozilla
 
 class nsWindow final : public nsBaseWidget {
@@ -230,6 +233,8 @@ class nsWindow final : public nsBaseWidget {
   void SetEGLNativeWindowSize(const LayoutDeviceIntSize& aEGLWindowSize);
 #endif
 
+  RefPtr<mozilla::gfx::VsyncSource> GetVsyncSource() override;
+
  private:
   void UpdateAlpha(mozilla::gfx::SourceSurface* aSourceSurface,
                    nsIntRect aBoundsRect);
@@ -251,8 +256,11 @@ class nsWindow final : public nsBaseWidget {
   void DispatchContextMenuEventFromMouseEvent(uint16_t domButton,
                                               GdkEventButton* aEvent);
 #ifdef MOZ_WAYLAND
-  void WaylandEGLSurfaceForceRedraw();
+  void MaybeResumeCompositor();
 #endif
+
+  void WaylandStartVsync();
+  void WaylandStopVsync();
 
  public:
   void ThemeChanged(void);
@@ -300,7 +308,7 @@ class nsWindow final : public nsBaseWidget {
                                const mozilla::WidgetKeyboardEvent& aEvent,
                                nsTArray<mozilla::CommandInt>& aCommands,
                                uint32_t aGeckoKeyCode, uint32_t aNativeKeyCode);
-  virtual void GetEditCommands(
+  virtual bool GetEditCommands(
       NativeKeyBindingsType aType, const mozilla::WidgetKeyboardEvent& aEvent,
       nsTArray<mozilla::CommandInt>& aCommands) override;
 
@@ -311,6 +319,7 @@ class nsWindow final : public nsBaseWidget {
 
   virtual void SetTransparencyMode(nsTransparencyMode aMode) override;
   virtual nsTransparencyMode GetTransparencyMode() override;
+  virtual void SetWindowMouseTransparent(bool aIsTransparent) override;
   virtual void UpdateOpaqueRegion(
       const LayoutDeviceIntRegion& aOpaqueRegion) override;
   virtual nsresult ConfigureChildren(
@@ -353,6 +362,7 @@ class nsWindow final : public nsBaseWidget {
   wl_display* GetWaylandDisplay();
   wl_surface* GetWaylandSurface();
   bool WaylandSurfaceNeedsClear();
+  virtual void CreateCompositorVsyncDispatcher() override;
 #endif
   virtual void GetCompositorWidgetInitData(
       mozilla::widget::CompositorWidgetInitData* aInitData) override;
@@ -401,6 +411,8 @@ class nsWindow final : public nsBaseWidget {
 #ifdef MOZ_WAYLAND
   virtual nsresult GetScreenRect(LayoutDeviceIntRect* aRect) override;
 #endif
+  bool IsRemoteContent() { return HasRemoteContent(); }
+  static void HideWaylandOpenedPopups();
 
  protected:
   virtual ~nsWindow();
@@ -445,9 +457,11 @@ class nsWindow final : public nsBaseWidget {
   // Can we access X?
   bool mIsX11Display;
 #ifdef MOZ_WAYLAND
-  bool mNeedsUpdatingEGLSurface;
+  bool mNeedsCompositorResume;
   bool mCompositorInitiallyPaused;
 #endif
+  bool mWindowScaleFactorChanged;
+  int mWindowScaleFactor;
 
  private:
   void DestroyChildWindows();
@@ -515,6 +529,9 @@ class nsWindow final : public nsBaseWidget {
   Visual* mXVisual;
   int mXDepth;
   mozilla::widget::WindowSurfaceProvider mSurfaceProvider;
+#endif
+#ifdef MOZ_WAYLAND
+  RefPtr<mozilla::gfx::VsyncSource> mWaylandVsyncSource;
 #endif
 
   // Upper bound on pending ConfigureNotify events to be dispatched to the
@@ -622,6 +639,8 @@ class nsWindow final : public nsBaseWidget {
   void CleanLayerManagerRecursive();
 
   virtual int32_t RoundsWidgetCoordinatesTo() override;
+
+  void UpdateMozWindowActive();
 
   void ForceTitlebarRedraw();
 

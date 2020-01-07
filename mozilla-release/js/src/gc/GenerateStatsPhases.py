@@ -117,8 +117,12 @@ PhaseKindGraphRoots = [
                 UnmarkGrayPhaseKind,
             ]),
             PhaseKind("SWEEP_MARK_INCOMING_GRAY", "Mark Incoming Gray Pointers", 14),
-            PhaseKind("SWEEP_MARK_GRAY", "Mark Gray", 15),
-            PhaseKind("SWEEP_MARK_GRAY_WEAK", "Mark Gray and Weak", 16)
+            PhaseKind("SWEEP_MARK_GRAY", "Mark Gray", 15, [
+                UnmarkGrayPhaseKind,
+            ]),
+            PhaseKind("SWEEP_MARK_GRAY_WEAK", "Mark Gray and Weak", 16, [
+                UnmarkGrayPhaseKind,
+            ]),
         ]),
         PhaseKind("FINALIZE_START", "Finalize Start Callbacks", 17, [
             PhaseKind("WEAK_ZONES_CALLBACK", "Per-Slice Weak Callback", 57),
@@ -133,12 +137,12 @@ PhaseKindGraphRoots = [
             PhaseKind("SWEEP_BASE_SHAPE", "Sweep Base Shapes", 24),
             PhaseKind("SWEEP_INITIAL_SHAPE", "Sweep Initial Shapes", 25),
             PhaseKind("SWEEP_TYPE_OBJECT", "Sweep Type Objects", 26),
-            PhaseKind("SWEEP_BREAKPOINT", "Sweep Breakpoints", 27),
             PhaseKind("SWEEP_REGEXP", "Sweep Regexps", 28),
             PhaseKind("SWEEP_COMPRESSION", "Sweep Compression Tasks", 62),
             PhaseKind("SWEEP_LAZYSCRIPTS", "Sweep LazyScripts", 71),
             PhaseKind("SWEEP_WEAKMAPS", "Sweep WeakMaps", 63),
             PhaseKind("SWEEP_UNIQUEIDS", "Sweep Unique IDs", 64),
+            PhaseKind("SWEEP_FINALIZATION_GROUPS", "Sweep FinalizationGroups", 74),
             PhaseKind("SWEEP_JIT_DATA", "Sweep JIT Data", 65),
             PhaseKind("SWEEP_WEAK_CACHES", "Sweep Weak Caches", 66),
             PhaseKind("SWEEP_MISC", "Sweep Miscellaneous", 29),

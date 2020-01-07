@@ -11,6 +11,7 @@
 #include <schnlsp.h>
 #include <winternl.h>
 
+#include "AssemblyPayloads.h"
 #include "mozilla/DynamicallyLinkedFunctionPtr.h"
 #include "mozilla/TypeTraits.h"
 #include "mozilla/UniquePtr.h"
@@ -691,6 +692,79 @@ bool TestShortDetour() {
 #endif
 }
 
+template <typename InterceptorType>
+bool TestAssemblyFunctions() {
+  constexpr uintptr_t NoStubAddressCheck = 0;
+  struct TestCase {
+    const char* functionName;
+    uintptr_t expectedStub;
+    explicit TestCase(const char* aFunctionName, uintptr_t aExpectedStub)
+        : functionName(aFunctionName), expectedStub(aExpectedStub) {}
+  } testCases[] = {
+#if defined(__clang__)
+// We disable these testcases because the code coverage instrumentation injects
+// code in a way that WindowsDllInterceptor doesn't understand.
+#  ifndef MOZ_CODE_COVERAGE
+#    if defined(_M_X64)
+    // Since we have PatchIfTargetIsRecognizedTrampoline for x64, we expect the
+    // original jump destination is returned as a stub.
+    TestCase("MovPushRet", JumpDestination),
+    TestCase("MovRaxJump", JumpDestination),
+#    elif defined(_M_IX86)
+    // Skip the stub address check as we always generate a trampoline for x86.
+    TestCase("PushRet", NoStubAddressCheck),
+    TestCase("MovEaxJump", NoStubAddressCheck),
+#    endif
+#  endif  // MOZ_CODE_COVERAGE
+#endif    // defined(__clang__)
+  };
+
+  static const auto patchedFunction = []() { patched_func_called = true; };
+
+  InterceptorType interceptor;
+  interceptor.Init("TestDllInterceptor.exe");
+
+  for (const auto& testCase : testCases) {
+    typename InterceptorType::template FuncHookType<void (*)()> hook;
+    bool result = hook.Set(interceptor, testCase.functionName, patchedFunction);
+    if (!result) {
+      printf(
+          "TEST-FAILED | WindowsDllInterceptor | "
+          "Failed to detour %s.\n",
+          testCase.functionName);
+      return false;
+    }
+
+    const auto actualStub = reinterpret_cast<uintptr_t>(hook.GetStub());
+    if (testCase.expectedStub != NoStubAddressCheck &&
+        actualStub != testCase.expectedStub) {
+      printf(
+          "TEST-FAILED | WindowsDllInterceptor | "
+          "Wrong stub was backed up for %s: %zx\n",
+          testCase.functionName, actualStub);
+      return false;
+    }
+
+    patched_func_called = false;
+
+    auto originalFunction = reinterpret_cast<void (*)()>(
+        GetProcAddress(GetModuleHandle(nullptr), testCase.functionName));
+    originalFunction();
+
+    if (!patched_func_called) {
+      printf(
+          "TEST-FAILED | WindowsDllInterceptor | "
+          "Hook from %s was not called\n",
+          testCase.functionName);
+      return false;
+    }
+
+    printf("TEST-PASS | WindowsDllInterceptor | %s\n", testCase.functionName);
+  }
+
+  return true;
+}
+
 extern "C" int wmain(int argc, wchar_t* argv[]) {
   LARGE_INTEGER start;
   QueryPerformanceCounter(&start);
@@ -782,10 +856,17 @@ extern "C" int wmain(int argc, wchar_t* argv[]) {
 
   CredHandle credHandle;
   memset(&credHandle, 0, sizeof(CredHandle));
+  OBJECT_ATTRIBUTES attributes = {};
 
   // NB: These tests should be ordered such that lower-level APIs are tested
   // before higher-level APIs.
   if (TestShortDetour() &&
+  // Run <ShortInterceptor> first because <WindowsDllInterceptor>
+  // does not clean up hooks.
+#if defined(_M_X64)
+      TestAssemblyFunctions<ShortInterceptor>() &&
+#endif
+      TestAssemblyFunctions<WindowsDllInterceptor>() &&
 #ifdef _M_IX86
       // We keep this test to hook complex code on x86. (Bug 850957)
       TEST_HOOK("ntdll.dll", NtFlushBuffersFile, NotEquals, 0) &&
@@ -795,7 +876,8 @@ extern "C" int wmain(int argc, wchar_t* argv[]) {
       TEST_HOOK("ntdll.dll", NtReadFileScatter, NotEquals, 0) &&
       TEST_HOOK("ntdll.dll", NtWriteFile, NotEquals, 0) &&
       TEST_HOOK("ntdll.dll", NtWriteFileGather, NotEquals, 0) &&
-      TEST_HOOK("ntdll.dll", NtQueryFullAttributesFile, NotEquals, 0) &&
+      TEST_HOOK_PARAMS("ntdll.dll", NtQueryFullAttributesFile, NotEquals, 0,
+                       &attributes, nullptr) &&
       TEST_DETOUR_SKIP_EXEC("ntdll.dll", LdrLoadDll) &&
       TEST_HOOK("ntdll.dll", LdrUnloadDll, NotEquals, 0) &&
       MAYBE_TEST_HOOK_SKIP_EXEC(IsWin8OrLater(), "ntdll.dll",

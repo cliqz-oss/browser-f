@@ -27,12 +27,11 @@ XPCOMUtils.defineLazyModuleGetters(this, {
     "resource://activity-stream/lib/ASRouterPreferences.jsm",
   ASRouterTriggerListeners:
     "resource://activity-stream/lib/ASRouterTriggerListeners.jsm",
-  TelemetryEnvironment: "resource://gre/modules/TelemetryEnvironment.jsm",
-  ClientEnvironment: "resource://normandy/lib/ClientEnvironment.jsm",
-  Sampling: "resource://gre/modules/components-utils/Sampling.jsm",
   CFRMessageProvider: "resource://activity-stream/lib/CFRMessageProvider.jsm",
   KintoHttpClient: "resource://services-common/kinto-http-client.js",
   Downloader: "resource://services-settings/Attachments.jsm",
+  RemoteL10n: "resource://activity-stream/lib/RemoteL10n.jsm",
+  MigrationUtils: "resource:///modules/MigrationUtils.jsm",
 });
 const {
   ASRouterActions: ra,
@@ -57,28 +56,8 @@ const { AttributionCode } = ChromeUtils.import(
 );
 
 const TRAILHEAD_CONFIG = {
-  OVERRIDE_PREF: "trailhead.firstrun.branches",
   DID_SEE_ABOUT_WELCOME_PREF: "trailhead.firstrun.didSeeAboutWelcome",
-  INTERRUPTS_EXPERIMENT_PREF: "trailhead.firstrun.interruptsExperiment",
-  TRIPLETS_ENROLLED_PREF: "trailhead.firstrun.tripletsEnrolled",
-  DEFAULT_TRIPLET: "supercharge",
-  BRANCHES: {
-    interrupts: [
-      ["modal_control"],
-      ["modal_variant_a"],
-      ["modal_variant_b"],
-      ["modal_variant_c"],
-      ["modal_variant_f"],
-      ["full_page_d"],
-      ["full_page_e"],
-    ],
-    triplets: [["supercharge"], ["payoff"], ["multidevice"], ["privacy"]],
-  },
-  EXPERIMENT_RATIOS: [["", 0], ["interrupts", 1], ["triplets", 0]],
-  // Per bug 1589146, for those who meet the targeting criteria of extended
-  // triplets, 100% users (control group) will see the extended triplets
-  EXPERIMENT_RATIOS_FOR_EXTENDED_TRIPLETS: [["control", 100], ["holdback", 0]],
-  EXTENDED_TRIPLETS_EXPERIMENT_PREF: "trailhead.extendedTriplets.experiment",
+  DYNAMIC_TRIPLET_BUNDLE_LENGTH: 3,
 };
 
 const INCOMING_MESSAGE_NAME = "ASRouter:child-to-parent";
@@ -105,7 +84,7 @@ const STARTPAGE_VERSION = "6";
 const RS_SERVER_PREF = "services.settings.server";
 const RS_MAIN_BUCKET = "main";
 const RS_COLLECTION_L10N = "ms-language-packs"; // "ms" stands for Messaging System
-const RS_PROVIDERS_WITH_L10N = ["cfr", "cfr-fxa"];
+const RS_PROVIDERS_WITH_L10N = ["cfr", "cfr-fxa", "whats-new-panel"];
 const RS_FLUENT_VERSION = "v1";
 const RS_FLUENT_RECORD_PREFIX = `cfr-${RS_FLUENT_VERSION}`;
 const RS_DOWNLOAD_MAX_RETRIES = 2;
@@ -119,19 +98,6 @@ const TOPIC_INTL_LOCALE_CHANGED = "intl:app-locales-changed";
 // To observe the pref that controls if ASRouter should use the remote Fluent files for l10n.
 const USE_REMOTE_L10N_PREF =
   "browser.newtabpage.activity-stream.asrouter.useRemoteL10n";
-
-/**
- * chooseBranch<T> -  Choose an item from a list of "branches" pseudorandomly using a seed / ratio configuration
- * @param seed {string} A unique seed for the randomizer
- * @param branches {Array<[T, number?]>} A list of branches, where branch[0] is any item and branch[1] is the ratio
- * @returns {T} An randomly chosen item in a branch
- */
-async function chooseBranch(seed, branches) {
-  const ratios = branches.map(([item, ratio]) =>
-    typeof ratio !== "undefined" ? ratio : 1
-  );
-  return branches[await Sampling.ratioSample(seed, ratios)][0];
-}
 
 const MessageLoaderUtils = {
   STARTPAGE_VERSION,
@@ -323,6 +289,7 @@ const MessageLoaderUtils = {
             await downloader.download(record.data, {
               retries: RS_DOWNLOAD_MAX_RETRIES,
             });
+            RemoteL10n.reloadL10n();
           } else {
             MessageLoaderUtils._handleRemoteSettingsUndesiredEvent(
               "ASR_RS_NO_MESSAGES",
@@ -354,7 +321,7 @@ const MessageLoaderUtils = {
           action: "asrouter_undesired_event",
           event,
           message_id: "n/a",
-          value: providerId,
+          event_context: providerId,
         })
       );
     }
@@ -426,7 +393,25 @@ const MessageLoaderUtils = {
     const lastUpdated = Date.now();
     return {
       messages: messages
-        .map(msg => ({ weight: 100, ...msg, provider: provider.id }))
+        .map(messageData => {
+          const message = {
+            weight: 100,
+            ...messageData,
+            provider: provider.id,
+          };
+
+          // This is to support a personalization experiment
+          if (provider.personalized) {
+            const score = ASRouterPreferences.personalizedCfrScores[message.id];
+            if (score) {
+              message.score = score;
+            }
+            message.personalizedModelVersion =
+              provider.personalizedModelVersion;
+          }
+
+          return message;
+        })
         .filter(message => message.weight > 0),
       lastUpdated,
       errors: MessageLoaderUtils.errors,
@@ -527,12 +512,8 @@ class _ASRouter {
       messageImpressions: {},
       providerImpressions: {},
       trailheadInitialized: false,
-      trailheadInterrupt: "",
-      trailheadTriplet: "",
       messages: [],
       errors: [],
-      extendedTripletsInitialized: false,
-      showExtendedTriplets: true,
       localeInUse: Services.locale.appLocaleAsLangTag,
     };
     this._triggerHandler = this._triggerHandler.bind(this);
@@ -822,9 +803,6 @@ class _ASRouter {
 
     this._loadLocalProviders();
 
-    // Instead of setupTrailhead, which adds experiments, just load override pref values
-    await this.setFirstRunStateFromPref();
-
     const messageBlockList =
       (await this._storage.get("messageBlockList")) || [];
     const providerBlockList =
@@ -954,6 +932,7 @@ class _ASRouter {
           ASRouterTargeting.Environment,
           this._getMessagesContext()
         ),
+        trailhead: ASRouterPreferences.trailhead,
         errors: this.errors,
       },
     });
@@ -967,229 +946,27 @@ class _ASRouter {
           message_id: message.id,
           action: "asrouter_undesired_event",
           event: "TARGETING_EXPRESSION_ERROR",
-          value: type,
+          event_context: type,
         })
       );
     }
   }
 
-  async _hasAddonAttributionData() {
-    try {
-      const data = (await AttributionCode.getAttrDataAsync()) || {};
-      return data.source === "addons.mozilla.org";
-    } catch (e) {
-      return false;
-    }
-  }
-
-  async setFirstRunStateFromPref() {
-    let interrupt;
-    let triplet;
-
-    const overrideValue = Services.prefs.getStringPref(
-      TRAILHEAD_CONFIG.OVERRIDE_PREF,
-      ""
-    );
-
-    if (overrideValue) {
-      [interrupt, triplet] = overrideValue.split("-");
-    } else {
-      triplet = TRAILHEAD_CONFIG.DEFAULT_TRIPLET;
-    }
-
-    await this.setState({
-      trailheadInterrupt: interrupt,
-      trailheadTriplet: triplet,
-    });
-  }
-
-  /**
-   * _generateTrailheadBranches - Generates and returns Trailhead configuration and chooses an experiment
-   *                             based on clientID and locale.
-   * @returns {{experiment: string, interrupt: string, triplet: string}}
-   */
-  async _generateTrailheadBranches() {
-    let experiment = "";
-    let interrupt;
-    let triplet;
-
-    const overrideValue = Services.prefs.getStringPref(
-      TRAILHEAD_CONFIG.OVERRIDE_PREF,
-      ""
-    );
-    if (overrideValue) {
-      [interrupt, triplet] = overrideValue.split("-");
-    }
-
-    // Use join Trailhead Branch (for cards) if we are showing RTAMO.
-    if (await this._hasAddonAttributionData()) {
-      return {
-        experiment,
-        interrupt: "join",
-        triplet: triplet || "privacy",
-      };
-    }
-
-    // If a value is set in TRAILHEAD_OVERRIDE_PREF, it will be returned and no experiment will be set.
-    if (overrideValue) {
-      return { experiment, interrupt, triplet: triplet || "" };
-    }
-
-    const { userId } = ClientEnvironment;
-    experiment = await chooseBranch(
-      `${userId}-trailhead-experiments`,
-      TRAILHEAD_CONFIG.EXPERIMENT_RATIOS
-    );
-
-    // For the interrupts experiment,
-    // we randomly assign an interrupt and always use the "supercharge" triplet.
-    if (experiment === "interrupts") {
-      interrupt = await chooseBranch(
-        `${userId}-interrupts-branch`,
-        TRAILHEAD_CONFIG.BRANCHES.interrupts
-      );
-      triplet = TRAILHEAD_CONFIG.DEFAULT_TRIPLET;
-      // For the triplets experiment or non-experiment experience,
-      // we randomly assign a triplet and always use the "join" interrupt.
-    } else if (experiment === "triplets") {
-      interrupt = "join";
-      triplet = await chooseBranch(
-        `${userId}-triplets-branch`,
-        TRAILHEAD_CONFIG.BRANCHES.triplets
-      );
-    } else {
-      // If the user is not in a trailhead-compabtible locale, return the join + supercharge (default) experience and no experiment.
-      interrupt = "join";
-      triplet = TRAILHEAD_CONFIG.DEFAULT_TRIPLET;
-    }
-
-    return { experiment, interrupt, triplet };
-  }
-
-  // Dispatch a TRAILHEAD_ENROLL_EVENT action
-  _sendTrailheadEnrollEvent(data) {
-    this.dispatchToAS({
-      type: at.TRAILHEAD_ENROLL_EVENT,
-      data,
-    });
-  }
-
-  async setupExtendedTriplets() {
-    // Don't re-initialize
-    if (this.state.extendedTripletsInitialized) {
-      return;
-    }
-
-    let branch = Services.prefs.getStringPref(
-      TRAILHEAD_CONFIG.EXTENDED_TRIPLETS_EXPERIMENT_PREF,
-      ""
-    );
-    if (!branch) {
-      const { userId } = ClientEnvironment;
-      branch = await chooseBranch(
-        `${userId}-extended-triplets-experiment`,
-        TRAILHEAD_CONFIG.EXPERIMENT_RATIOS_FOR_EXTENDED_TRIPLETS
-      );
-      Services.prefs.setStringPref(
-        TRAILHEAD_CONFIG.EXTENDED_TRIPLETS_EXPERIMENT_PREF,
-        branch
-      );
-    }
-
-    // In order for ping centre to pick this up, it MUST contain a substring activity-stream
-    const experimentName = `activity-stream-extended-triplets-v2-1581912`;
-    TelemetryEnvironment.setExperimentActive(experimentName, branch);
-
-    const state = { extendedTripletsInitialized: true };
-    // Disable the extended triplets for the "holdback" group.
-    if (branch === "holdback") {
-      state.showExtendedTriplets = false;
-    }
-    await this.setState(state);
-  }
-
-  async setupTrailhead() {
-    // Don't initialize
-    if (
-      this.state.trailheadInitialized ||
-      !Services.prefs.getBoolPref(
+  async setTrailHeadMessageSeen() {
+    if (!this.state.trailheadInitialized) {
+      Services.prefs.setBoolPref(
         TRAILHEAD_CONFIG.DID_SEE_ABOUT_WELCOME_PREF,
-        false
-      )
-    ) {
-      return;
-    }
-
-    const {
-      experiment,
-      interrupt,
-      triplet,
-    } = await this._generateTrailheadBranches();
-
-    await this.setState({
-      trailheadInitialized: true,
-      trailheadInterrupt: interrupt,
-      trailheadTriplet: triplet,
-    });
-
-    if (experiment) {
-      // In order for ping centre to pick this up, it MUST contain a substring activity-stream
-      const experimentName = `activity-stream-firstrun-trailhead-${experiment}`;
-
-      TelemetryEnvironment.setExperimentActive(
-        experimentName,
-        experiment === "interrupts" ? interrupt : triplet,
-        { type: "as-firstrun" }
+        true
       );
-
-      // On the first time setting the interrupts experiment, expose the branch
-      // for normandy to target for survey study, and send out the enrollment ping.
-      if (
-        experiment === "interrupts" &&
-        !Services.prefs.prefHasUserValue(
-          TRAILHEAD_CONFIG.INTERRUPTS_EXPERIMENT_PREF
-        )
-      ) {
-        Services.prefs.setStringPref(
-          TRAILHEAD_CONFIG.INTERRUPTS_EXPERIMENT_PREF,
-          interrupt
-        );
-        this._sendTrailheadEnrollEvent({
-          experiment: experimentName,
-          type: "as-firstrun",
-          branch: interrupt,
-        });
-      }
-
-      // On the first time setting the triplets experiment, send out the enrollment ping.
-      if (
-        experiment === "triplets" &&
-        !Services.prefs.getBoolPref(
-          TRAILHEAD_CONFIG.TRIPLETS_ENROLLED_PREF,
-          false
-        )
-      ) {
-        Services.prefs.setBoolPref(
-          TRAILHEAD_CONFIG.TRIPLETS_ENROLLED_PREF,
-          true
-        );
-        this._sendTrailheadEnrollEvent({
-          experiment: experimentName,
-          type: "as-firstrun",
-          branch: triplet,
-        });
-      }
+      await this.setState({
+        trailheadInitialized: true,
+      });
     }
   }
 
   // Return an object containing targeting parameters used to select messages
   _getMessagesContext() {
-    const {
-      messageImpressions,
-      previousSessionEnd,
-      trailheadInterrupt,
-      trailheadTriplet,
-    } = this.state;
+    const { messageImpressions, previousSessionEnd } = this.state;
 
     return {
       get messageImpressions() {
@@ -1198,16 +975,14 @@ class _ASRouter {
       get previousSessionEnd() {
         return previousSessionEnd;
       },
-      get trailheadInterrupt() {
-        return trailheadInterrupt;
-      },
-      get trailheadTriplet() {
-        return trailheadTriplet;
-      },
     };
   }
 
-  _findAllMessages(candidateMessages, trigger, { shouldCache = false } = {}) {
+  _findAllMessages(
+    candidateMessages,
+    trigger,
+    { ordered = false, shouldCache = false } = {}
+  ) {
     const messages = candidateMessages.filter(m =>
       this.isBelowFrequencyCaps(m)
     );
@@ -1218,11 +993,16 @@ class _ASRouter {
       trigger,
       context,
       onError: this._handleTargetingError,
+      ordered,
       shouldCache,
     });
   }
 
-  _findMessage(candidateMessages, trigger, { shouldCache = false } = {}) {
+  _findMessage(
+    candidateMessages,
+    trigger,
+    { ordered = false, shouldCache = false } = {}
+  ) {
     const messages = candidateMessages.filter(m =>
       this.isBelowFrequencyCaps(m)
     );
@@ -1235,6 +1015,7 @@ class _ASRouter {
       trigger,
       context,
       onError: this._handleTargetingError,
+      ordered,
       shouldCache,
     });
   }
@@ -1253,7 +1034,10 @@ class _ASRouter {
 
     channel.sendAsyncMessage(OUTGOING_MESSAGE_NAME, {
       type: "ADMIN_SET_STATE",
-      data: { ...this.state, evaluationStatus },
+      data: {
+        ...this.state,
+        evaluationStatus,
+      },
     });
   }
 
@@ -1341,31 +1125,31 @@ class _ASRouter {
         }
       }
     } else {
-      while (bundledMessagesOfSameTemplate.length) {
-        // Find a message that matches the targeting context - or break if there are no matching messages
-        const message = await this._findMessage(
-          bundledMessagesOfSameTemplate,
-          trigger
-        );
-        if (!message) {
-          /* istanbul ignore next */ // Code coverage in mochitests
-          break;
-        }
+      // Find all messages that matches the targeting context
+      const allMessages = await this._findAllMessages(
+        bundledMessagesOfSameTemplate,
+        trigger,
+        { ordered: true }
+      );
+
+      if (allMessages && allMessages.length) {
+        // Retrieve enough messages needed to fill a bundle
         // Only copy the content of the message (that's what the UI cares about)
-        // Also delete the message we picked so we don't pick it again
-        result.push({
-          content: message.content,
-          id: message.id,
-          order: message.order || 0,
-        });
-        bundledMessagesOfSameTemplate.splice(
-          bundledMessagesOfSameTemplate.findIndex(msg => msg.id === message.id),
-          1
+        result = result.concat(
+          allMessages.slice(0, bundleLength).map(message => ({
+            content: message.content,
+            id: message.id,
+            order: message.order || 0,
+            // This is used to determine whether to block when action is triggered
+            // Only block for dynamic triplets experiment and when there are more messages available
+            blockOnClick:
+              ASRouterPreferences.trailhead.trailheadTriplet.startsWith(
+                "dynamic"
+              ) &&
+              allMessages.length >
+                TRAILHEAD_CONFIG.DYNAMIC_TRIPLET_BUNDLE_LENGTH,
+          }))
         );
-        // Stop once we have enough messages to fill a bundle
-        if (result.length === bundleLength) {
-          break;
-        }
       }
     }
 
@@ -1495,6 +1279,8 @@ class _ASRouter {
           type: "SET_MESSAGE",
           data: {
             ...message,
+            trailheadTriplet:
+              ASRouterPreferences.trailhead.trailheadTriplet || "",
             bundle: bundledMessages && bundledMessages.bundle,
           },
         });
@@ -1882,6 +1668,11 @@ class _ASRouter {
 
   async handleUserAction({ data: action, target }) {
     switch (action.type) {
+      case ra.SHOW_MIGRATION_WIZARD:
+        MigrationUtils.showMigrationWizard(target.browser.ownerGlobal, [
+          MigrationUtils.MIGRATION_ENTRYPOINT_NEWTAB,
+        ]);
+        break;
       case ra.OPEN_PRIVATE_BROWSER_WINDOW:
         // Forcefully open about:privatebrowsing
         target.browser.ownerGlobal.OpenBrowserWindow({ private: true });
@@ -1941,7 +1732,9 @@ class _ASRouter {
         });
         break;
       case ra.SHOW_FIREFOX_ACCOUNTS:
-        const url = await FxAccounts.config.promiseSignUpURI("snippets");
+        const url = await FxAccounts.config.promiseConnectAccountURI(
+          "snippets"
+        );
         // We want to replace the current tab.
         target.browser.ownerGlobal.openLinkIn(url, "current", {
           private: false,
@@ -1958,7 +1751,60 @@ class _ASRouter {
       case ra.OPEN_PROTECTION_REPORT:
         target.browser.ownerGlobal.gProtectionsHandler.openProtections();
         break;
+      case ra.DISABLE_STP_DOORHANGERS:
+        await this.blockMessageById([
+          "SOCIAL_TRACKING_PROTECTION",
+          "FINGERPRINTERS_PROTECTION",
+          "CRYPTOMINERS_PROTECTION",
+        ]);
+        break;
     }
+  }
+
+  /**
+   * sendAsyncMessageToPreloaded - Sends an action to each preloaded browser, if any
+   *
+   * @param  {obj} action An action to be sent to content
+   */
+  sendAsyncMessageToPreloaded(action) {
+    const preloadedBrowsers = this.getPreloadedBrowser();
+    if (preloadedBrowsers) {
+      for (let preloadedBrowser of preloadedBrowsers) {
+        try {
+          preloadedBrowser.sendAsyncMessage(OUTGOING_MESSAGE_NAME, action);
+        } catch (e) {
+          // The preloaded page is no longer available, so just ignore.
+        }
+      }
+    }
+  }
+
+  /**
+   * getPreloadedBrowser - Retrieve the port of any preloaded browsers
+   *
+   * @return {Array|null} An array of ports belonging to the preloaded browsers, or null
+   *                      if there aren't any preloaded browsers
+   */
+  getPreloadedBrowser() {
+    let preloadedPorts = [];
+    for (let port of this.messageChannel.messagePorts) {
+      if (this.isPreloadedBrowser(port.browser)) {
+        preloadedPorts.push(port);
+      }
+    }
+    return preloadedPorts.length ? preloadedPorts : null;
+  }
+
+  /**
+   * isPreloadedBrowser - Returns true if the passed browser has been preloaded
+   *                      for faster rendering of new tabs.
+   *
+   * @param {<browser>} A <browser> to check.
+   * @return {boolean} True if the browser is preloaded.
+   *                   False if there aren't any preloaded browsers
+   */
+  isPreloadedBrowser(browser) {
+    return browser.getAttribute("preloadedState") === "preloaded";
   }
 
   dispatch(action, target) {
@@ -1992,16 +1838,8 @@ class _ASRouter {
         template: "extended_triplets",
       });
 
-      // Set up the experiment for extended triplets. It's done here because we
-      // only want to enroll users (for both control and holdback) if they meet
-      // the targeting criteria.
-      if (message) {
-        await this.setupExtendedTriplets();
-      }
-
-      // If no extended triplets message was returned, or the holdback experiment
-      // is active, show snippets instead
-      if (!message || !this.state.showExtendedTriplets) {
+      // If no extended triplets message was returned, show snippets instead
+      if (!message) {
         message = await this.handleMessageRequest({ provider: "snippets" });
       }
 
@@ -2015,14 +1853,8 @@ class _ASRouter {
     await this.loadMessagesFromAllProviders();
 
     if (trigger.id === "firstRun") {
-      // On about welcome, set up trailhead experiments
-      if (!this.state.trailheadInitialized) {
-        Services.prefs.setBoolPref(
-          TRAILHEAD_CONFIG.DID_SEE_ABOUT_WELCOME_PREF,
-          true
-        );
-        await this.setupTrailhead();
-      }
+      // On about welcome, set trailhead message seen on receiving firstrun trigger
+      await this.setTrailHeadMessageSeen();
     }
 
     const message = await this.handleMessageRequest({
@@ -2061,10 +1893,19 @@ class _ASRouter {
         if (action.data.preventDismiss) {
           break;
         }
-        this.messageChannel.sendAsyncMessage(OUTGOING_MESSAGE_NAME, {
+
+        const outgoingMessage = {
           type: "CLEAR_MESSAGE",
           data: { id: action.data.id },
-        });
+        };
+        if (action.data.preloadedOnly) {
+          this.sendAsyncMessageToPreloaded(outgoingMessage);
+        } else {
+          this.messageChannel.sendAsyncMessage(
+            OUTGOING_MESSAGE_NAME,
+            outgoingMessage
+          );
+        }
         break;
       case "DISMISS_MESSAGE_BY_ID":
         this.messageChannel.sendAsyncMessage(OUTGOING_MESSAGE_NAME, {
@@ -2161,7 +2002,6 @@ class _ASRouter {
   }
 }
 this._ASRouter = _ASRouter;
-this.chooseBranch = chooseBranch;
 this.TRAILHEAD_CONFIG = TRAILHEAD_CONFIG;
 
 /**
@@ -2174,6 +2014,5 @@ const EXPORTED_SYMBOLS = [
   "_ASRouter",
   "ASRouter",
   "MessageLoaderUtils",
-  "chooseBranch",
   "TRAILHEAD_CONFIG",
 ];

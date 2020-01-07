@@ -796,6 +796,10 @@ function DoneTests()
         }
 
         function onStopped() {
+            if (g.logFile) {
+                g.logFile.close();
+                g.logFile = null;
+            }
             let appStartup = Cc["@mozilla.org/toolkit/app-startup;1"].getService(Ci.nsIAppStartup);
             appStartup.quit(Ci.nsIAppStartup.eForceQuit);
         }
@@ -1507,6 +1511,17 @@ function RegisterMessageListenersAndLoadContentScript()
     );
 
     g.browserMessageManager.loadFrameScript("resource://reftest/reftest-content.js", true, true);
+
+    ChromeUtils.registerWindowActor("ReftestFission", {
+        parent: {
+          moduleURI: "resource://reftest/ReftestFissionParent.jsm",
+        },
+        child: {
+          moduleURI: "resource://reftest/ReftestFissionChild.jsm",
+        },
+        allFrames: true,
+        includeChrome: true,
+    });
 }
 
 function RecvAssertionCount(count)
@@ -1570,6 +1585,9 @@ function RecvLog(type, msg)
         TestBuffer(msg);
     } else if (type == "warning") {
         logger.warning(msg);
+    } else if (type == "error") {
+        logger.error("REFTEST TEST-UNEXPECTED-FAIL | " + g.currentURL + " | " + msg + "\n");
+        ++g.testResults.Exception;
     } else {
         logger.error("REFTEST TEST-UNEXPECTED-FAIL | " + g.currentURL + " | unknown log type " + type + "\n");
         ++g.testResults.Exception;
@@ -1607,16 +1625,26 @@ function RecvUpdateWholeCanvasForInvalidation()
 
 function OnProcessCrashed(subject, topic, data)
 {
-    var id;
-    subject = subject.QueryInterface(Ci.nsIPropertyBag2);
+    let id;
+    let additionalDumps;
+    let propbag = subject.QueryInterface(Ci.nsIPropertyBag2);
+
     if (topic == "plugin-crashed") {
-        id = subject.get("pluginDumpID");
+        id = propbag.get("pluginDumpID");
+        additionalDumps = propbag.getPropertyAsACString("additionalMinidumps");
     } else if (topic == "ipc:content-shutdown") {
-        id = subject.get("dumpID");
+        id = propbag.get("dumpID");
     }
+
     if (id) {
         g.expectedCrashDumpFiles.push(id + ".dmp");
         g.expectedCrashDumpFiles.push(id + ".extra");
+    }
+
+    if (additionalDumps && additionalDumps.length != 0) {
+      for (const name of additionalDumps.split(',')) {
+        g.expectedCrashDumpFiles.push(id + "-" + name + ".dmp");
+      }
     }
 }
 

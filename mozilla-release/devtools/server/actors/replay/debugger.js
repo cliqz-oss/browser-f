@@ -249,6 +249,14 @@ ReplayDebugger.prototype = {
     return this._control.findFrameSteps(point);
   },
 
+  async replayAncestorFramePositions(point, index) {
+    const ancestor = await this._control.findAncestorFrameEntryPoint(
+      point,
+      index
+    );
+    return this._control.findFrameSteps(ancestor);
+  },
+
   replayRecordingEndpoint() {
     return this._control.recordingEndpoint();
   },
@@ -567,9 +575,10 @@ ReplayDebugger.prototype = {
     this._pool.addPauseData(pauseData);
   },
 
-  _virtualConsoleLog(position, text, condition, callback) {
+  _virtualConsoleLog(logpoint) {
+    const { position, text, condition } = logpoint;
     dumpv(`AddLogpoint ${JSON.stringify(position)} ${text} ${condition}`);
-    this._control.addLogpoint({ position, text, condition, callback });
+    this._control.addLogpoint(logpoint);
   },
 
   /////////////////////////////////////////////////////////
@@ -904,17 +913,24 @@ ReplayDebuggerScript.prototype = {
     });
   },
 
-  replayVirtualConsoleLog(offset, text, condition, callback) {
-    this._dbg._virtualConsoleLog(
-      { kind: "Break", script: this._data.id, offset },
+  replayVirtualConsoleLog({
+    offset,
+    text,
+    condition,
+    messageCallback,
+    validCallback,
+  }) {
+    this._dbg._virtualConsoleLog({
+      position: { kind: "Break", script: this._data.id, offset },
       text,
       condition,
-      (point, result, resultData) => {
+      messageCallback: (point, result, resultData) => {
         const pool = new ReplayPool(this._dbg, resultData);
         const converted = result.map(v => pool.convertValue(v));
-        callback(point, converted);
-      }
-    );
+        return messageCallback(point, converted);
+      },
+      validCallback,
+    });
   },
 
   get isGeneratorFunction() {

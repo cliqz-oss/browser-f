@@ -43,14 +43,13 @@ window.onload = function() {
       stacktrace,
       initialRenderDelay: 2000,
       onViewSourceInDebugger: () => {},
-      onViewSourceInScratchpad: () => {},
       onReady: () => {
         onReadyCount++;
       },
       // A mock source map service.
       sourceMapService: {
 	      subscribe: function (url, line, column, callback) {
-	        let newLine = Number(line.toString().repeat(2));
+	        const newLine = Number(line.toString().repeat(2));
 	        // Resolve immediately.
 	        callback(true, "https://bugzilla.mozilla.org/original.js", newLine, column);
 	      },
@@ -110,7 +109,6 @@ window.onload = function() {
       stacktrace,
       initialRenderDelay,
       onViewSourceInDebugger: () => {},
-      onViewSourceInScratchpad: () => {},
       onReady: () => {
         onReadyCount++;
       },
@@ -119,7 +117,7 @@ window.onload = function() {
 	      subscribe: function (url, line, column, callback) {
 	        // Resolve after a while.
           setTimeout(() => {
-	          let newLine = Number(line.toString().repeat(2));
+	          const newLine = Number(line.toString().repeat(2));
 	          callback(true, "http://myfile.com/react.js", newLine, column);
           }, sourcemapTimeout)
 	      },
@@ -205,7 +203,6 @@ window.onload = function() {
       initialRenderDelay,
       onSourceMapResultDebounceDelay,
       onViewSourceInDebugger: () => {},
-      onViewSourceInScratchpad: () => {},
       onReady: () => {
         onReadyCount++;
       },
@@ -218,7 +215,7 @@ window.onload = function() {
             return;
           }
 
-          let newLine = Number(line.toString().repeat(2));
+          const newLine = Number(line.toString().repeat(2));
           callback(true, `http://myfile.com/file-${line}.js`, newLine, column);
 	      },
         unsubscribe: function (url, line, column, callback) {},
@@ -241,7 +238,7 @@ window.onload = function() {
     traceEl = ReactDOM.findDOMNode(trace);
     ok(traceEl, "The trace was rendered");
 
-    let frameEls = Array.from(traceEl.querySelectorAll(".frame"));
+    const frameEls = Array.from(traceEl.querySelectorAll(".frame"));
     ok(frameEls, "Rendered SmartTrace has frames");
     is(frameEls.length, 3, "SmartTrace has 3 frames");
 

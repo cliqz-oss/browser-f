@@ -75,7 +75,9 @@ impl ToComputedValue for specified::Length {
 ///
 /// https://drafts.csswg.org/css-values-4/#typedef-length-percentage
 #[allow(missing_docs)]
-#[derive(Clone, Copy, Debug, MallocSizeOf, ToAnimatedZero, ToResolvedValue)]
+#[derive(
+    Clone, Copy, Debug, Deserialize, MallocSizeOf, Serialize, ToAnimatedZero, ToResolvedValue,
+)]
 #[repr(C)]
 pub struct LengthPercentage {
     length: Length,
@@ -605,16 +607,16 @@ impl Size {
 }
 
 /// The computed `<length>` value.
-#[cfg_attr(feature = "servo", derive(Deserialize, Serialize))]
 #[derive(
     Animate,
     Clone,
     ComputeSquaredDistance,
     Copy,
-    Debug,
+    Deserialize,
     MallocSizeOf,
     PartialEq,
     PartialOrd,
+    Serialize,
     ToAnimatedValue,
     ToAnimatedZero,
     ToResolvedValue,
@@ -622,6 +624,13 @@ impl Size {
 )]
 #[repr(C)]
 pub struct CSSPixelLength(CSSFloat);
+
+impl fmt::Debug for CSSPixelLength {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        self.0.fmt(f)?;
+        f.write_str(" px")
+    }
+}
 
 impl CSSPixelLength {
     /// Return a new CSSPixelLength.

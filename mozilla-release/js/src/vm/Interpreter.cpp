@@ -405,8 +405,6 @@ bool js::RunScript(JSContext* cx, RunState& state) {
 
   GeckoProfilerEntryMarker marker(cx, state.script());
 
-  state.script()->ensureNonLazyCanonicalFunction();
-
   jit::EnterJitStatus status = jit::MaybeEnterJit(cx, state);
   switch (status) {
     case jit::EnterJitStatus::Error:
@@ -822,7 +820,7 @@ bool js::Execute(JSContext* cx, HandleScript script, JSObject& envChainArg,
   RootedObject envChain(cx, &envChainArg);
   MOZ_ASSERT(!IsWindowProxy(envChain));
 
-  if (script->module()) {
+  if (script->isModule()) {
     MOZ_RELEASE_ASSERT(
         envChain == script->module()->environment(),
         "Module scripts can only be executed in the module's environment");
@@ -1979,9 +1977,10 @@ static MOZ_NEVER_INLINE JS_HAZ_JSNATIVE_CALLER bool Interpret(JSContext* cx,
     CASE(JSOP_NOP_DESTRUCTURING)
     CASE(JSOP_TRY_DESTRUCTURING)
     CASE(JSOP_UNUSED71)
+    CASE(JSOP_UNUSED106)
+    CASE(JSOP_UNUSED120)
     CASE(JSOP_UNUSED149)
-    CASE(JSOP_TRY)
-    CASE(JSOP_CONDSWITCH) {
+    CASE(JSOP_TRY) {
       MOZ_ASSERT(CodeSpec[*REGS.pc].length == 1);
       ADVANCE_AND_DISPATCH(1);
     }
@@ -1992,9 +1991,6 @@ static MOZ_NEVER_INLINE JS_HAZ_JSNATIVE_CALLER bool Interpret(JSContext* cx,
       COUNT_COVERAGE();
       ADVANCE_AND_DISPATCH(JSOP_JUMPTARGET_LENGTH);
     }
-
-    CASE(JSOP_LABEL)
-    END_CASE(JSOP_LABEL)
 
     CASE(JSOP_LOOPENTRY) {
       COUNT_COVERAGE();
@@ -2195,6 +2191,15 @@ static MOZ_NEVER_INLINE JS_HAZ_JSNATIVE_CALLER bool Interpret(JSContext* cx,
       }
     }
     END_CASE(JSOP_OR)
+
+    CASE(JSOP_COALESCE) {
+      MutableHandleValue res = REGS.stackHandleAt(-1);
+      bool cond = !res.isNullOrUndefined();
+      if (cond) {
+        ADVANCE_AND_DISPATCH(GET_JUMP_OFFSET(REGS.pc));
+      }
+    }
+    END_CASE(JSOP_COALESCE)
 
     CASE(JSOP_AND) {
       bool cond = ToBoolean(REGS.stackHandleAt(-1));
@@ -3790,7 +3795,8 @@ static MOZ_NEVER_INLINE JS_HAZ_JSNATIVE_CALLER bool Interpret(JSContext* cx,
     }
     END_CASE(JSOP_NEWARRAY_COPYONWRITE)
 
-    CASE(JSOP_NEWOBJECT) {
+    CASE(JSOP_NEWOBJECT)
+    CASE(JSOP_NEWOBJECT_WITHGROUP) {
       JSObject* obj = NewObjectOperation(cx, script, REGS.pc);
       if (!obj) {
         goto error;
@@ -4243,7 +4249,7 @@ static MOZ_NEVER_INLINE JS_HAZ_JSNATIVE_CALLER bool Interpret(JSContext* cx,
     CASE(JSOP_SUPERBASE) {
       JSFunction& superEnvFunc = REGS.sp[-1].toObject().as<JSFunction>();
       MOZ_ASSERT(superEnvFunc.allowSuperProperty());
-      MOZ_ASSERT(superEnvFunc.nonLazyScript()->needsHomeObject());
+      MOZ_ASSERT(superEnvFunc.baseScript()->needsHomeObject());
       const Value& homeObjVal = superEnvFunc.getExtendedSlot(
           FunctionExtended::METHOD_HOMEOBJECT_SLOT);
 
@@ -5190,9 +5196,29 @@ JSObject* js::NewObjectOperation(JSContext* cx, HandleScript script,
                                  jsbytecode* pc,
                                  NewObjectKind newKind /* = GenericObject */) {
   MOZ_ASSERT(newKind != SingletonObject);
+  bool withTemplate =
+      (*pc == JSOP_NEWOBJECT || *pc == JSOP_NEWOBJECT_WITHGROUP);
+  bool withTemplateGroup = (*pc == JSOP_NEWOBJECT_WITHGROUP);
 
   RootedObjectGroup group(cx);
-  if (ObjectGroup::useSingletonForAllocationSite(script, pc, JSProto_Object)) {
+  RootedPlainObject baseObject(cx);
+
+  // Extract the template object, if one exists.
+  if (withTemplate) {
+    baseObject = &script->getObject(pc)->as<PlainObject>();
+  }
+
+  // Choose the group. Three cases:
+  // - JSOP_NEWOBJECT_WITHGROUP explicitly indicates that we should use the
+  //   same group as the template object's group.
+  // - otherwise, if some heuristics indicate that we should use a singleton,
+  //   we set the allocation-kind to ensure this.
+  // - otherwise, we look up a group based on the allocation site, i.e., the
+  //   (script, pc) tuple.
+  if (withTemplateGroup) {
+    group = baseObject->getGroup(cx, baseObject);
+  } else if (ObjectGroup::useSingletonForAllocationSite(script, pc,
+                                                        JSProto_Object)) {
     newKind = SingletonObject;
   } else {
     group = ObjectGroup::allocationSiteGroup(cx, script, pc, JSProto_Object);
@@ -5215,8 +5241,8 @@ JSObject* js::NewObjectOperation(JSContext* cx, HandleScript script,
 
   RootedPlainObject obj(cx);
 
-  if (*pc == JSOP_NEWOBJECT) {
-    RootedPlainObject baseObject(cx, &script->getObject(pc)->as<PlainObject>());
+  // Actually allocate the object.
+  if (withTemplate) {
     obj = CopyInitializerObject(cx, baseObject, newKind);
   } else {
     MOZ_ASSERT(*pc == JSOP_NEWINIT);
@@ -5232,10 +5258,12 @@ JSObject* js::NewObjectOperation(JSContext* cx, HandleScript script,
   } else {
     obj->setGroup(group);
 
-    AutoSweepObjectGroup sweep(group);
-    if (PreliminaryObjectArray* preliminaryObjects =
-            group->maybePreliminaryObjects(sweep)) {
-      preliminaryObjects->registerNewObject(obj);
+    if (!withTemplateGroup) {
+      AutoSweepObjectGroup sweep(group);
+      if (PreliminaryObjectArray* preliminaryObjects =
+              group->maybePreliminaryObjects(sweep)) {
+        preliminaryObjects->registerNewObject(obj);
+      }
     }
   }
 
@@ -5377,7 +5405,7 @@ void js::ReportRuntimeLexicalError(JSContext* cx, unsigned errorNumber,
   RootedPropertyName name(cx);
 
   if (op == JSOP_THROWSETCALLEE) {
-    name = script->functionNonDelazifying()->explicitName()->asPropertyName();
+    name = script->function()->explicitName()->asPropertyName();
   } else if (IsLocalOp(op)) {
     name = FrameSlotName(script, pc)->asPropertyName();
   } else if (IsAtomOp(op)) {
@@ -5464,7 +5492,7 @@ JSObject* js::HomeObjectSuperBase(JSContext* cx, HandleObject homeObj) {
 JSObject* js::SuperFunOperation(JSContext* cx, HandleObject callee) {
   MOZ_ASSERT(callee->as<JSFunction>().isClassConstructor());
   MOZ_ASSERT(
-      callee->as<JSFunction>().nonLazyScript()->isDerivedClassConstructor());
+      callee->as<JSFunction>().baseScript()->isDerivedClassConstructor());
 
   RootedObject superFun(cx);
 

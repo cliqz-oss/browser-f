@@ -589,15 +589,9 @@ void CompositorOGL::PrepareViewport(CompositingRenderTargetOGL* aRenderTarget) {
     // Matrix to transform (0, 0, aWidth, aHeight) to viewport space (-1.0, 1.0,
     // 2, 2) and flip the contents.
     Matrix viewMatrix;
-    if (mGLContext->IsOffscreen() && !gIsGtest) {
-      // In case of rendering via GL Offscreen context, disable Y-Flipping
-      viewMatrix.PreTranslate(-1.0, -1.0);
-      viewMatrix.PreScale(2.0f / float(size.width), 2.0f / float(size.height));
-    } else {
-      viewMatrix.PreTranslate(-1.0, 1.0);
-      viewMatrix.PreScale(2.0f / float(size.width), 2.0f / float(size.height));
-      viewMatrix.PreScale(1.0f, -1.0f);
-    }
+    viewMatrix.PreTranslate(-1.0, 1.0);
+    viewMatrix.PreScale(2.0f / float(size.width), 2.0f / float(size.height));
+    viewMatrix.PreScale(1.0f, -1.0f);
 
     MOZ_ASSERT(mCurrentRenderTarget, "No destination");
     // If we're drawing directly to the window then we want to offset
@@ -758,7 +752,7 @@ void CompositorOGL::ClearRect(const gfx::Rect& aRect) {
 
 already_AddRefed<CompositingRenderTargetOGL>
 CompositorOGL::RenderTargetForNativeLayer(NativeLayer* aNativeLayer,
-                                          IntRegion& aInvalidRegion) {
+                                          const IntRegion& aInvalidRegion) {
   if (aInvalidRegion.IsEmpty()) {
     return nullptr;
   }
@@ -769,14 +763,11 @@ CompositorOGL::RenderTargetForNativeLayer(NativeLayer* aNativeLayer,
   IntRect layerRect = aNativeLayer->GetRect();
   IntRegion invalidRelativeToLayer =
       aInvalidRegion.MovedBy(-layerRect.TopLeft());
-  aNativeLayer->InvalidateRegionThroughoutSwapchain(invalidRelativeToLayer);
-  Maybe<GLuint> fbo = aNativeLayer->NextSurfaceAsFramebuffer(false);
+  Maybe<GLuint> fbo =
+      aNativeLayer->NextSurfaceAsFramebuffer(invalidRelativeToLayer, false);
   if (!fbo) {
     return nullptr;
   }
-
-  invalidRelativeToLayer = aNativeLayer->CurrentSurfaceInvalidRegion();
-  aInvalidRegion = invalidRelativeToLayer.MovedBy(layerRect.TopLeft());
 
   RefPtr<CompositingRenderTargetOGL> rt =
       CompositingRenderTargetOGL::CreateForExternallyOwnedFBO(
@@ -2057,13 +2048,11 @@ void CompositorOGL::InsertFrameDoneSync() {
 #ifdef XP_MACOSX
   // Only do this on macOS.
   // On other platforms, SwapBuffers automatically applies back-pressure.
-  if (StaticPrefs::gfx_core_animation_enabled_AtStartup()) {
-    if (mThisFrameDoneSync) {
-      mGLContext->fDeleteSync(mThisFrameDoneSync);
-    }
-    mThisFrameDoneSync =
-        mGLContext->fFenceSync(LOCAL_GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
+  if (mThisFrameDoneSync) {
+    mGLContext->fDeleteSync(mThisFrameDoneSync);
   }
+  mThisFrameDoneSync =
+      mGLContext->fFenceSync(LOCAL_GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
 #endif
 }
 

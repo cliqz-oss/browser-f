@@ -7,6 +7,8 @@
 #ifndef mozilla_dom_BrowsingContext_h
 #define mozilla_dom_BrowsingContext_h
 
+#include "GVAutoplayRequestUtils.h"
+#include "mozilla/LinkedList.h"
 #include "mozilla/Maybe.h"
 #include "mozilla/RefPtr.h"
 #include "mozilla/Tuple.h"
@@ -14,9 +16,11 @@
 #include "mozilla/dom/BindingDeclarations.h"
 #include "mozilla/dom/LoadURIOptionsBinding.h"
 #include "mozilla/dom/LocationBase.h"
+#include "mozilla/dom/FeaturePolicyUtils.h"
 #include "mozilla/dom/UserActivation.h"
 #include "nsCOMPtr.h"
 #include "nsCycleCollectionParticipant.h"
+#include "nsID.h"
 #include "nsIDocShell.h"
 #include "nsString.h"
 #include "nsTArray.h"
@@ -191,8 +195,9 @@ class BrowsingContext : public nsISupports,
   nsresult LoadURI(BrowsingContext* aAccessor, nsDocShellLoadState* aLoadState,
                    bool aSetNavigating = false);
 
-  void LoadURI(const nsAString& aURI, const LoadURIOptions& aOptions,
-               ErrorResult& aError);
+  nsresult InternalLoad(BrowsingContext* aAccessor,
+                        nsDocShellLoadState* aLoadState,
+                        nsIDocShell** aDocShell, nsIRequest** aRequest);
 
   void DisplayLoadError(const nsAString& aURI);
 
@@ -217,7 +222,10 @@ class BrowsingContext : public nsISupports,
 
   uint64_t Id() const { return mBrowsingContextId; }
 
-  BrowsingContext* GetParent() const { return mParent; }
+  BrowsingContext* GetParent() const {
+    MOZ_ASSERT_IF(mParent, mParent->mType == mType);
+    return mParent;
+  }
 
   BrowsingContext* Top();
 
@@ -260,10 +268,16 @@ class BrowsingContext : public nsISupports,
 
   BrowsingContextGroup* Group() { return mGroup; }
 
+  uint32_t SandboxFlags() { return mSandboxFlags; }
+
+  bool InRDMPane() { return mInRDMPane; }
+
+  bool IsLoading();
+
   // Using the rules for choosing a browsing context we try to find
   // the browsing context with the given name in the set of
   // transitively reachable browsing contexts. Performs access control
-  // with regards to this.
+  // checks with regard to this.
   // See
   // https://html.spec.whatwg.org/multipage/browsers.html#the-rules-for-choosing-a-browsing-context-given-a-browsing-context-name.
   //
@@ -271,14 +285,21 @@ class BrowsingContext : public nsISupports,
   // calling nsIDocShellTreeItem::FindItemWithName(aName, nullptr,
   // nullptr, false, <return value>).
   BrowsingContext* FindWithName(const nsAString& aName,
-                                BrowsingContext& aRequestingContext);
+                                bool aUseEntryGlobalForAccessCheck = true);
 
   // Find a browsing context in this context's list of
   // children. Doesn't consider the special names, '_self', '_parent',
-  // '_top', or '_blank'. Performs access control with regard to
+  // '_top', or '_blank'. Performs access control checks with regard to
   // 'this'.
   BrowsingContext* FindChildWithName(const nsAString& aName,
                                      BrowsingContext& aRequestingContext);
+
+  // Find a browsing context in the subtree rooted at 'this' Doesn't
+  // consider the special names, '_self', '_parent', '_top', or
+  // '_blank'. Performs access control checks with regard to
+  // 'aRequestingContext'.
+  BrowsingContext* FindWithNameInSubtree(const nsAString& aName,
+                                         BrowsingContext& aRequestingContext);
 
   nsISupports* GetParentObject() const;
   JSObject* WrapObject(JSContext* aCx,
@@ -377,6 +398,8 @@ class BrowsingContext : public nsISupports,
 
   void StartDelayedAutoplayMediaComponents();
 
+  void ResetGVAutoplayRequestStatus();
+
   /**
    * Transaction object. This object is used to specify and then commit
    * modifications to synchronized fields in BrowsingContexts.
@@ -464,27 +487,21 @@ class BrowsingContext : public nsISupports,
   // Performs access control to check that 'this' can access 'aTarget'.
   bool CanAccess(BrowsingContext* aTarget, bool aConsiderOpener = true);
 
+  // The runnable will be called once there is idle time, or the top level
+  // page has been loaded or if a timeout has fired.
+  // Must be called only on the top level BrowsingContext.
+  void AddDeprioritizedLoadRunner(nsIRunnable* aRunner);
+
  protected:
   virtual ~BrowsingContext();
   BrowsingContext(BrowsingContext* aParent, BrowsingContextGroup* aGroup,
                   uint64_t aBrowsingContextId, Type aType);
 
  private:
-  // Returns true if the given name is one of the "special" names, currently:
-  // "_self", "_parent", "_top", or "_blank".
-  static bool IsSpecialName(const nsAString& aName);
-
   // Find the special browsing context if aName is '_self', '_parent',
   // '_top', but not '_blank'. The latter is handled in FindWithName
   BrowsingContext* FindWithSpecialName(const nsAString& aName,
                                        BrowsingContext& aRequestingContext);
-
-  // Find a browsing context in the subtree rooted at 'this' Doesn't
-  // consider the special names, '_self', '_parent', '_top', or
-  // '_blank'. Performs access control with regard to
-  // 'aRequestingContext'.
-  BrowsingContext* FindWithNameInSubtree(const nsAString& aName,
-                                         BrowsingContext& aRequestingContext);
 
   friend class ::nsOuterWindowProxy;
   friend class ::nsGlobalWindowOuter;
@@ -550,6 +567,11 @@ class BrowsingContext : public nsISupports,
 
   void DidSetIsPopupSpam();
 
+  void DidSetGVAudibleAutoplayRequestStatus();
+  void DidSetGVInaudibleAutoplayRequestStatus();
+
+  void DidSetLoading();
+
   // Type of BrowsingContent
   const Type mType;
 
@@ -598,6 +620,28 @@ class BrowsingContext : public nsISupports,
   // The start time of user gesture, this is only available if the browsing
   // context is in process.
   TimeStamp mUserGestureStart;
+
+  class DeprioritizedLoadRunner
+      : public mozilla::Runnable,
+        public mozilla::LinkedListElement<DeprioritizedLoadRunner> {
+   public:
+    explicit DeprioritizedLoadRunner(nsIRunnable* aInner)
+        : Runnable("DeprioritizedLoadRunner"), mInner(aInner) {}
+
+    NS_IMETHOD Run() override {
+      if (mInner) {
+        RefPtr<nsIRunnable> inner = std::move(mInner);
+        inner->Run();
+      }
+
+      return NS_OK;
+    }
+
+   private:
+    RefPtr<nsIRunnable> mInner;
+  };
+
+  mozilla::LinkedList<DeprioritizedLoadRunner> mDeprioritizedLoadRunner;
 };
 
 /**

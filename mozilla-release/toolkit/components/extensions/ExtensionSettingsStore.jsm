@@ -295,6 +295,8 @@ var ExtensionSettingsStore = {
    * @param {any} callbackArgument
    *        The value to be passed into the initialValueCallback. It defaults to
    *        the value of the key argument.
+   * @param {function} settingDataUpdate
+   *        A function to be called to modify the initial value if necessary.
    *
    * @returns {object | null} Either an object with properties for key and
    *                          value, which corresponds to the item that was
@@ -308,7 +310,8 @@ var ExtensionSettingsStore = {
     key,
     value,
     initialValueCallback = () => undefined,
-    callbackArgument = key
+    callbackArgument = key,
+    settingDataUpdate = val => val
   ) {
     if (typeof initialValueCallback != "function") {
       throw new Error("initialValueCallback must be a function.");
@@ -325,6 +328,10 @@ var ExtensionSettingsStore = {
       };
     }
     let keyInfo = _store.data[type][key];
+
+    // Allow settings to upgrade the initial value if necessary.
+    keyInfo.initialValue = settingDataUpdate(keyInfo.initialValue);
+
     // Check for this item in the precedenceList.
     let foundIndex = keyInfo.precedenceList.findIndex(item => item.id == id);
     if (foundIndex === -1) {
@@ -566,6 +573,10 @@ ExtensionParent.apiManager.on("uninstall-complete", async (type, { id }) => {
   // Catch any settings that were not properly removed during "uninstall".
   await ExtensionSettingsStore.initialize();
   for (let type in _store.data) {
+    // prefs settings must be handled by ExtensionPreferencesManager.
+    if (type === "prefs") {
+      continue;
+    }
     let items = ExtensionSettingsStore.getAllForExtension(id, type);
     for (let key of items) {
       ExtensionSettingsStore.removeSetting(id, type, key);

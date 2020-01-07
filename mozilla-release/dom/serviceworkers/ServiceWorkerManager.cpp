@@ -63,6 +63,7 @@
 
 #include "nsContentUtils.h"
 #include "nsNetUtil.h"
+#include "nsPermissionManager.h"
 #include "nsProxyRelease.h"
 #include "nsQueryObject.h"
 #include "nsTArray.h"
@@ -127,7 +128,7 @@ static_assert(
         static_cast<uint32_t>(RequestRedirect::Manual),
     "RequestRedirect enumeration value should make Necko Redirect mode value.");
 static_assert(
-    3 == static_cast<uint32_t>(RequestRedirect::EndGuard_),
+    3 == RequestRedirectValues::Count,
     "RequestRedirect enumeration value should make Necko Redirect mode value.");
 
 static_assert(
@@ -155,7 +156,7 @@ static_assert(
         static_cast<uint32_t>(RequestCache::Only_if_cached),
     "RequestCache enumeration value should match Necko Cache mode value.");
 static_assert(
-    6 == static_cast<uint32_t>(RequestCache::EndGuard_),
+    6 == RequestCacheValues::Count,
     "RequestCache enumeration value should match Necko Cache mode value.");
 
 static_assert(static_cast<uint16_t>(ServiceWorkerUpdateViaCache::Imports) ==
@@ -315,6 +316,16 @@ ServiceWorkerManager::~ServiceWorkerManager() {
 
   if (!ServiceWorkersAreCrossProcess()) {
     MOZ_ASSERT(!mActor);
+  }
+
+  // This can happen if the browser is started up in ProfileManager mode, in
+  // which case XPCOM will startup and shutdown, but there won't be any
+  // profile-* topic notifications. The shutdown blocker expects to be in a
+  // NotAcceptingPromises state when it's destroyed, and this transition
+  // normally happens in the "profile-change-teardown" notification callback
+  // (which won't be called in ProfileManager mode).
+  if (!mShuttingDown && mShutdownBlocker) {
+    mShutdownBlocker->StopAcceptingPromises();
   }
 }
 
@@ -507,6 +518,10 @@ void ServiceWorkerManager::MaybeStartShutdown() {
 
   for (auto& entry : mControlledClients) {
     entry.GetData()->mRegistrationInfo->ShutdownWorkers();
+  }
+
+  for (auto iter = mOrphanedRegistrations.iter(); !iter.done(); iter.next()) {
+    iter.get()->ShutdownWorkers();
   }
 
   if (mShutdownBlocker) {
@@ -2127,7 +2142,7 @@ void ServiceWorkerManager::DispatchFetchEvent(nsIInterceptedChannel* aChannel,
 
   MOZ_DIAGNOSTIC_ASSERT(serviceWorker);
 
-  nsCOMPtr<nsIRunnable> continueRunnable =
+  RefPtr<ContinueDispatchFetchEventRunnable> continueRunnable =
       new ContinueDispatchFetchEventRunnable(serviceWorker->WorkerPrivate(),
                                              aChannel, loadGroup,
                                              loadInfo->GetIsDocshellReload());
@@ -2137,10 +2152,14 @@ void ServiceWorkerManager::DispatchFetchEvent(nsIInterceptedChannel* aChannel,
   // wait for them if they have not.
   nsCOMPtr<nsIRunnable> permissionsRunnable = NS_NewRunnableFunction(
       "dom::ServiceWorkerManager::DispatchFetchEvent", [=]() {
-        nsCOMPtr<nsIPermissionManager> permMgr =
-            services::GetPermissionManager();
-        MOZ_ALWAYS_SUCCEEDS(permMgr->WhenPermissionsAvailable(
-            serviceWorker->Principal(), continueRunnable));
+        RefPtr<nsPermissionManager> permMgr =
+            nsPermissionManager::GetInstance();
+        if (permMgr) {
+          permMgr->WhenPermissionsAvailable(serviceWorker->Principal(),
+                                            continueRunnable);
+        } else {
+          continueRunnable->HandleError();
+        }
       });
 
   nsCOMPtr<nsIUploadChannel2> uploadChannel =
@@ -3065,6 +3084,30 @@ ServiceWorkerManager::IsParentInterceptEnabled(bool* aIsEnabled) {
   MOZ_ASSERT(NS_IsMainThread());
   *aIsEnabled = ServiceWorkerParentInterceptEnabled();
   return NS_OK;
+}
+
+void ServiceWorkerManager::AddOrphanedRegistration(
+    ServiceWorkerRegistrationInfo* aRegistration) {
+  MOZ_ASSERT(NS_IsMainThread());
+  MOZ_ASSERT(aRegistration);
+  MOZ_ASSERT(aRegistration->IsUnregistered());
+  MOZ_ASSERT(!aRegistration->IsControllingClients());
+  MOZ_ASSERT(!aRegistration->IsIdle());
+  MOZ_ASSERT(!mOrphanedRegistrations.has(aRegistration));
+
+  MOZ_ALWAYS_TRUE(mOrphanedRegistrations.putNew(aRegistration));
+}
+
+void ServiceWorkerManager::RemoveOrphanedRegistration(
+    ServiceWorkerRegistrationInfo* aRegistration) {
+  MOZ_ASSERT(NS_IsMainThread());
+  MOZ_ASSERT(aRegistration);
+  MOZ_ASSERT(aRegistration->IsUnregistered());
+  MOZ_ASSERT(!aRegistration->IsControllingClients());
+  MOZ_ASSERT(aRegistration->IsIdle());
+  MOZ_ASSERT(mOrphanedRegistrations.has(aRegistration));
+
+  mOrphanedRegistrations.remove(aRegistration);
 }
 
 }  // namespace dom

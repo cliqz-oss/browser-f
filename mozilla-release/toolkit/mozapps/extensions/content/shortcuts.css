@@ -1,3 +1,7 @@
+/* This Source Code Form is subject to the terms of the Mozilla Public
+ * License, v. 2.0. If a copy of the MPL was not distributed with this
+ * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
+
 .shortcut.card {
   margin-bottom: 16px;
 }
@@ -55,8 +59,9 @@
 }
 
 .shortcut-input {
-  font-size: 12px;
-  padding: 4px 8px;
+  /* Shortcuts should always be left-to-right. */
+  direction: ltr;
+  text-align: match-parent;
 }
 
 .extension-heading {
@@ -75,7 +80,7 @@
 }
 
 .error-message-icon {
-  margin-left: 10px;
+  margin-inline-start: 10px;
   width: 14px;
   height: 8px;
   fill: var(--error-background);

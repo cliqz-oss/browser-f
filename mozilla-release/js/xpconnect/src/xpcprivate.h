@@ -246,6 +246,8 @@ class nsXPConnect final : public nsIXPConnect {
   // Called by module code on dll shutdown.
   static void ReleaseXPConnectSingleton();
 
+  static void InitJSContext();
+
   void RecordTraversal(void* p, nsISupports* s);
 
  protected:
@@ -258,7 +260,7 @@ class nsXPConnect final : public nsIXPConnect {
   static nsXPConnect* gSelf;
   static bool gOnceAliveNowDead;
 
-  XPCJSRuntime* mRuntime;
+  XPCJSRuntime* mRuntime = nullptr;
   bool mShuttingDown;
 
   friend class nsIXPConnect;
@@ -313,7 +315,7 @@ class XPCJSContext final : public mozilla::CycleCollectedJSContext,
                            public mozilla::LinkedListElement<XPCJSContext> {
  public:
   static void InitTLS();
-  static XPCJSContext* NewXPCJSContext(XPCJSContext* aPrimaryContext);
+  static XPCJSContext* NewXPCJSContext();
   static XPCJSContext* Get();
 
   XPCJSRuntime* Runtime() const;
@@ -425,7 +427,7 @@ class XPCJSContext final : public mozilla::CycleCollectedJSContext,
   XPCJSContext();
 
   MOZ_IS_CLASS_INIT
-  nsresult Initialize(XPCJSContext* aPrimaryContext);
+  nsresult Initialize();
 
   XPCCallContext* mCallContext;
   AutoMarkingPtr* mAutoRoots;
@@ -879,12 +881,6 @@ class XPCWrappedNativeScope final
 
   void AddSizeOfIncludingThis(JSContext* cx, ScopeSizeInfo* scopeSizeInfo);
 
-  // Gets the appropriate scope object for XBL in this compartment. This method
-  // relies on compartment-per-global still (and release-asserts this). The
-  // context must be same-realm with this compartment's single global upon
-  // entering, and the scope object is wrapped into this compartment.
-  JSObject* EnsureContentXBLScope(JSContext* cx);
-
   // Check whether our mAllowContentXBLScope state matches the given
   // principal.  This is used to avoid sharing compartments on
   // mismatch.
@@ -905,9 +901,6 @@ class XPCWrappedNativeScope final
     return js::GetFirstGlobalInCompartment(Compartment());
   }
 
-  bool IsContentXBLScope() {
-    return xpc::IsContentXBLCompartment(Compartment());
-  }
   bool AllowContentXBLScope(JS::Realm* aRealm);
 
   // ID Object prototype caches.
@@ -1553,7 +1546,7 @@ class XPCWrappedNative final : public nsIXPConnectWrappedNative {
  private:
   enum {
     // Flags bits for mFlatJSObject:
-    FLAT_JS_OBJECT_VALID = JS_BIT(0)
+    FLAT_JS_OBJECT_VALID = js::Bit(0)
   };
 
   bool Init(JSContext* cx, nsIXPCScriptable* scriptable);
@@ -2352,7 +2345,6 @@ class MOZ_STACK_CLASS SandboxOptions : public OptionsBase {
         sameZoneAs(cx),
         freshCompartment(false),
         freshZone(false),
-        isContentXBLScope(false),
         isUAWidgetScope(false),
         invisibleToDebugger(false),
         discardSource(false),
@@ -2372,7 +2364,6 @@ class MOZ_STACK_CLASS SandboxOptions : public OptionsBase {
   JS::RootedObject sameZoneAs;
   bool freshCompartment;
   bool freshZone;
-  bool isContentXBLScope;
   bool isUAWidgetScope;
   bool invisibleToDebugger;
   bool discardSource;
@@ -2650,8 +2641,7 @@ class CompartmentPrivate {
 
     // Don't share if we have any weird state set.
     return !wantXrays && !isWebExtensionContentScript &&
-           !isContentXBLCompartment && !isUAWidgetCompartment &&
-           !universalXPConnectEnabled &&
+           !isUAWidgetCompartment && !universalXPConnectEnabled &&
            mScope->XBLScopeStateMatches(principal);
   }
 
@@ -2678,10 +2668,6 @@ class CompartmentPrivate {
   // to opt into CPOWs. It's necessary for the implementation of
   // RemoteAddonsParent.jsm.
   bool allowCPOWs;
-
-  // True if this compartment is a content XBL compartment. Every global in
-  // such a compartment is a content XBL scope.
-  bool isContentXBLCompartment;
 
   // True if this compartment is a UA widget compartment.
   bool isUAWidgetCompartment;

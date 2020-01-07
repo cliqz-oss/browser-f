@@ -160,6 +160,9 @@ intl-regional-prefs = Region-Einstellungen
 ##
 ## See also https://firefox-source-docs.mozilla.org/remote/
 
+remote-debugging-title = Externes Debugging (Chromium-Protokoll)
+remote-debugging-accepting-connections = Verbindungen werden akzeptiert
+remote-debugging-url = Adresse
 
 
 

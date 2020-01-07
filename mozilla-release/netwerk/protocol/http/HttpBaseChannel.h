@@ -222,6 +222,7 @@ class HttpBaseChannel : public nsHashPropertyBag,
   NS_IMETHOD UpgradeToSecure() override;
   NS_IMETHOD GetRequestContextID(uint64_t* aRCID) override;
   NS_IMETHOD GetTransferSize(uint64_t* aTransferSize) override;
+  NS_IMETHOD GetRequestSize(uint64_t* aRequestSize) override;
   NS_IMETHOD GetDecodedBodySize(uint64_t* aDecodedBodySize) override;
   NS_IMETHOD GetEncodedBodySize(uint64_t* aEncodedBodySize) override;
   NS_IMETHOD SetRequestContextID(uint64_t aRCID) override;
@@ -313,7 +314,7 @@ class HttpBaseChannel : public nsHashPropertyBag,
   NS_IMETHOD CancelByURLClassifier(nsresult aErrorCode) override;
   virtual void SetIPv4Disabled(void) override;
   virtual void SetIPv6Disabled(void) override;
-  NS_IMETHOD GetCrossOriginOpenerPolicy(
+  NS_IMETHOD ComputeCrossOriginOpenerPolicy(
       nsILoadInfo::CrossOriginOpenerPolicy aInitiatorPolicy,
       nsILoadInfo::CrossOriginOpenerPolicy* aOutPolicy) override;
   virtual bool GetHasNonEmptySandboxingFlag() override {
@@ -593,10 +594,6 @@ class HttpBaseChannel : public nsHashPropertyBag,
   nsresult GetResponseEmbedderPolicy(
       nsILoadInfo::CrossOriginEmbedderPolicy* aResponseEmbedderPolicy);
 
-  nsresult GetCrossOriginOpenerPolicyWithInitiator(
-      nsILoadInfo::CrossOriginOpenerPolicy aInitiatorPolicy,
-      nsILoadInfo::CrossOriginOpenerPolicy* aOutPolicy);
-
   friend class PrivateBrowsingChannel<HttpBaseChannel>;
   friend class InterceptFailedOnStop;
 
@@ -706,6 +703,7 @@ class HttpBaseChannel : public nsHashPropertyBag,
 
   uint64_t mStartPos;
   uint64_t mTransferSize;
+  uint64_t mRequestSize;
   uint64_t mDecodedBodySize;
   uint64_t mEncodedBodySize;
   uint64_t mRequestContextID;

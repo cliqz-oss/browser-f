@@ -26,6 +26,7 @@
 #include "mozilla/dom/DOMException.h"
 #include "mozilla/dom/Exceptions.h"
 #include "mozilla/dom/Promise.h"
+#include "mozilla/ScriptPreloader.h"
 
 #include "nsDOMMutationObserver.h"
 #include "nsICycleCollectorListener.h"
@@ -61,8 +62,8 @@ const char XPC_SCRIPT_ERROR_CONTRACTID[] = "@mozilla.org/scripterror;1";
 /***************************************************************************/
 
 // This global should be used very sparingly: only to create and destroy
-// nsXPConnect and when creating a new cooperative (non-primary) XPCJSContext.
-static XPCJSContext* gPrimaryContext;
+// nsXPConnect.
+static XPCJSContext* gContext;
 
 nsXPConnect::nsXPConnect() : mShuttingDown(false) {
   XPCJSContext::InitTLS();
@@ -71,17 +72,35 @@ nsXPConnect::nsXPConnect() : mShuttingDown(false) {
   JS::SetProfilingThreadCallbacks(profiler_register_thread,
                                   profiler_unregister_thread);
 #endif
+}
 
-  XPCJSContext* xpccx = XPCJSContext::NewXPCJSContext(nullptr);
+// static
+void nsXPConnect::InitJSContext() {
+  MOZ_ASSERT(!gContext);
+
+  XPCJSContext* xpccx = XPCJSContext::NewXPCJSContext();
   if (!xpccx) {
     MOZ_CRASH("Couldn't create XPCJSContext.");
   }
-  gPrimaryContext = xpccx;
-  mRuntime = xpccx->Runtime();
+  gContext = xpccx;
+  gSelf->mRuntime = xpccx->Runtime();
+
+  // Initialize our singleton scopes.
+  gSelf->mRuntime->InitSingletonScopes();
+
+  mozJSComponentLoader::InitStatics();
+
+  // Initialize the script preloader cache.
+  Unused << mozilla::ScriptPreloader::GetSingleton();
+
+  nsJSContext::EnsureStatics();
 }
 
+void xpc::InitializeJSContext() { nsXPConnect::InitJSContext(); }
+
 nsXPConnect::~nsXPConnect() {
-  MOZ_ASSERT(XPCJSContext::Get() == gPrimaryContext);
+  MOZ_ASSERT(XPCJSContext::Get() == gContext);
+  MOZ_ASSERT(mRuntime);
 
   mRuntime->DeleteSingletonScopes();
 
@@ -109,7 +128,7 @@ nsXPConnect::~nsXPConnect() {
   // shutdown the logging system
   XPC_LOG_FINISH();
 
-  delete gPrimaryContext;
+  delete gContext;
 
   MOZ_ASSERT(gSelf == this);
   gSelf = nullptr;
@@ -136,19 +155,6 @@ void nsXPConnect::InitStatics() {
   gScriptSecurityManager = nsScriptSecurityManager::GetScriptSecurityManager();
   gScriptSecurityManager->GetSystemPrincipal(&gSystemPrincipal);
   MOZ_RELEASE_ASSERT(gSystemPrincipal);
-
-  JSContext* cx = XPCJSContext::Get()->Context();
-  if (!JS::InitSelfHostedCode(cx)) {
-    MOZ_CRASH("InitSelfHostedCode failed");
-  }
-  if (!gSelf->mRuntime->InitializeStrings(cx)) {
-    MOZ_CRASH("InitializeStrings failed");
-  }
-
-  // Initialize our singleton scopes.
-  gSelf->mRuntime->InitSingletonScopes();
-
-  mozJSComponentLoader::InitStatics();
 }
 
 // static
@@ -1158,8 +1164,7 @@ bool IsChromeOrXBL(JSContext* cx, JSObject* /* unused */) {
   // Note that, for performance, we don't check AllowXULXBLForPrincipal here,
   // and instead rely on the fact that AllowContentXBLScope() only returns false
   // in remote XUL situations.
-  return AccessCheck::isChrome(c) || IsContentXBLCompartment(c) ||
-         !AllowContentXBLScope(realm);
+  return AccessCheck::isChrome(c) || !AllowContentXBLScope(realm);
 }
 
 bool IsNotUAWidget(JSContext* cx, JSObject* /* unused */) {
@@ -1195,24 +1200,6 @@ bool ThreadSafeIsChromeOrXBLOrUAWidget(JSContext* cx, JSObject* obj) {
 
 }  // namespace dom
 }  // namespace mozilla
-
-void xpc::CreateCooperativeContext() {
-  MOZ_ASSERT(gPrimaryContext);
-  XPCJSContext::NewXPCJSContext(gPrimaryContext);
-}
-
-void xpc::DestroyCooperativeContext() {
-  MOZ_ASSERT(XPCJSContext::Get() != gPrimaryContext);
-  delete XPCJSContext::Get();
-}
-
-void xpc::YieldCooperativeContext() {
-  JS_YieldCooperativeContext(XPCJSContext::Get()->Context());
-}
-
-void xpc::ResumeCooperativeContext() {
-  JS_ResumeCooperativeContext(XPCJSContext::Get()->Context());
-}
 
 void xpc::CacheAutomationPref(bool* aMirror) {
   // The obvious thing is to make this pref a static pref. But then it would

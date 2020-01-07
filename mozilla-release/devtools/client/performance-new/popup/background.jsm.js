@@ -74,13 +74,13 @@ const lazyProfilerGetSymbols = requireLazy(() =>
   (ChromeUtils.import("resource://gre/modules/ProfilerGetSymbols.jsm"))
 );
 
-const lazyReceiveProfile = requireLazy(() => {
+const lazyBrowserModule = requireLazy(() => {
   const { require } = ChromeUtils.import(
     "resource://devtools/shared/Loader.jsm"
   );
   /** @type {import("devtools/client/performance-new/browser")} */
   const browserModule = require("devtools/client/performance-new/browser");
-  return browserModule.receiveProfile;
+  return browserModule;
 });
 
 const lazyPreferenceManagement = requireLazy(() => {
@@ -93,11 +93,26 @@ const lazyPreferenceManagement = requireLazy(() => {
   return preferenceManagementModule;
 });
 
+const lazyRecordingUtils = requireLazy(() => {
+  const { require } = ChromeUtils.import(
+    "resource://devtools/shared/Loader.jsm"
+  );
+
+  /** @type {import("devtools/shared/performance-new/recording-utils")} */
+  const recordingUtils = require("devtools/shared/performance-new/recording-utils");
+  return recordingUtils;
+});
+
 /**
  * This Map caches the symbols from the shared libraries.
  * @type {Map<string, { path: string, debugPath: string }>}
  */
 const symbolCache = new Map();
+
+/**
+ * @param {string} debugName
+ * @param {string} breakpadId
+ */
 async function getSymbolsFromThisBrowser(debugName, breakpadId) {
   if (symbolCache.size === 0) {
     // Prime the symbols cache.
@@ -159,7 +174,7 @@ async function captureProfile() {
       }
     );
 
-  const receiveProfile = lazyReceiveProfile();
+  const receiveProfile = lazyBrowserModule().receiveProfile;
   receiveProfile(profile, getSymbolsFromThisBrowser);
 
   Services.profiler.StopProfiler();
@@ -179,11 +194,16 @@ function startProfiler() {
     duration,
   } = translatePreferencesToState(getRecordingPreferencesFromBrowser());
 
+  // Get the active BrowsingContext ID from browser.
+  const { getActiveBrowsingContextID } = lazyRecordingUtils();
+  const activeBrowsingContextID = getActiveBrowsingContextID();
+
   Services.profiler.StartProfiler(
     entries,
     interval,
     features,
     threads,
+    activeBrowsingContextID,
     duration
   );
 }
@@ -220,108 +240,34 @@ function restartProfiler() {
 
 /**
  * @param {string} prefName
- * @param {string[]} defaultValue
  * @return {string[]}
  */
-function _getArrayOfStringsPref(prefName, defaultValue) {
-  let array;
-  try {
-    const text = Services.prefs.getCharPref(prefName);
-    array = JSON.parse(text);
-  } catch (error) {
-    return defaultValue;
-  }
-
-  if (
-    Array.isArray(array) &&
-    array.every(feature => typeof feature === "string")
-  ) {
-    return array;
-  }
-
-  return defaultValue;
+function _getArrayOfStringsPref(prefName) {
+  const text = Services.prefs.getCharPref(prefName);
+  return JSON.parse(text);
 }
 
 /**
  * @param {string} prefName
- * @param {string[]} defaultValue
  * @return {string[]}
  */
-function _getArrayOfStringsHostPref(prefName, defaultValue) {
-  let array;
-  try {
-    const text = Services.prefs.getStringPref(
-      prefName,
-      JSON.stringify(defaultValue)
-    );
-    array = JSON.parse(text);
-  } catch (error) {
-    return defaultValue;
-  }
-
-  if (
-    Array.isArray(array) &&
-    array.every(feature => typeof feature === "string")
-  ) {
-    return array;
-  }
-
-  return defaultValue;
-}
-
-/**
- * A simple cache for the default recording preferences.
- * @type {RecordingStateFromPreferences}
- */
-let _defaultPrefs;
-
-/**
- * This function contains the canonical defaults for the data store in the
- * preferences in the user profile. They represent the default values for both
- * the popup and panel's recording settings.
- */
-function getDefaultRecordingPreferences() {
-  if (!_defaultPrefs) {
-    _defaultPrefs = {
-      entries: 10000000, // ~80mb,
-      // Do not expire markers, let them roll off naturally from the circular buffer.
-      duration: 0,
-      interval: 1000, // 1000µs = 1ms
-      features: ["js", "leaf", "responsiveness", "stackwalk"],
-      threads: ["GeckoMain", "Compositor"],
-      objdirs: [],
-    };
-
-    if (AppConstants.platform === "android") {
-      // Java profiling is only meaningful on android.
-      _defaultPrefs.features.push("java");
-    }
-  }
-
-  return _defaultPrefs;
+function _getArrayOfStringsHostPref(prefName) {
+  const text = Services.prefs.getStringPref(prefName);
+  return JSON.parse(text);
 }
 
 /**
  * @returns {RecordingStateFromPreferences}
  */
 function getRecordingPreferencesFromBrowser() {
-  const defaultPrefs = getDefaultRecordingPreferences();
-
-  const entries = Services.prefs.getIntPref(ENTRIES_PREF, defaultPrefs.entries);
-  const interval = Services.prefs.getIntPref(
-    INTERVAL_PREF,
-    defaultPrefs.interval
-  );
-  const features = _getArrayOfStringsPref(FEATURES_PREF, defaultPrefs.features);
-  const threads = _getArrayOfStringsPref(THREADS_PREF, defaultPrefs.threads);
-  const objdirs = _getArrayOfStringsHostPref(
-    OBJDIRS_PREF,
-    defaultPrefs.objdirs
-  );
-  const duration = Services.prefs.getIntPref(
-    DURATION_PREF,
-    defaultPrefs.duration
-  );
+  // If you add a new preference here, please do not forget to update
+  // `revertRecordingPreferences` as well.
+  const entries = Services.prefs.getIntPref(ENTRIES_PREF);
+  const interval = Services.prefs.getIntPref(INTERVAL_PREF);
+  const features = _getArrayOfStringsPref(FEATURES_PREF);
+  const threads = _getArrayOfStringsPref(THREADS_PREF);
+  const objdirs = _getArrayOfStringsHostPref(OBJDIRS_PREF);
+  const duration = Services.prefs.getIntPref(DURATION_PREF);
 
   const supportedFeatures = new Set(Services.profiler.GetFeatures());
 
@@ -354,7 +300,48 @@ const platform = AppConstants.platform;
  * @type {() => void}
  */
 function revertRecordingPreferences() {
-  setRecordingPreferencesOnBrowser(getDefaultRecordingPreferences());
+  Services.prefs.clearUserPref(ENTRIES_PREF);
+  Services.prefs.clearUserPref(INTERVAL_PREF);
+  Services.prefs.clearUserPref(FEATURES_PREF);
+  Services.prefs.clearUserPref(THREADS_PREF);
+  Services.prefs.clearUserPref(OBJDIRS_PREF);
+  Services.prefs.clearUserPref(DURATION_PREF);
+}
+
+/**
+ * A simple cache for the default recording preferences.
+ * @type {RecordingStateFromPreferences}
+ */
+let _defaultPrefsForOlderFirefox;
+
+/**
+ * This function contains the canonical defaults for the data store in the
+ * preferences in the user profile. They represent the default values for both
+ * the popup and panel's recording settings.
+ *
+ * NOTE: We don't need that function anymore, because have recording default
+ * values in the all.js file since Firefox 72. But we still keep this to support
+ * older Firefox versions. See Bug 1603415.
+ */
+function getDefaultRecordingPreferencesForOlderFirefox() {
+  if (!_defaultPrefsForOlderFirefox) {
+    _defaultPrefsForOlderFirefox = {
+      entries: 10000000, // ~80mb,
+      // Do not expire markers, let them roll off naturally from the circular buffer.
+      duration: 0,
+      interval: 1000, // 1000µs = 1ms
+      features: ["js", "leaf", "stackwalk"],
+      threads: ["GeckoMain", "Compositor"],
+      objdirs: [],
+    };
+
+    if (AppConstants.platform === "android") {
+      // Java profiling is only meaningful on android.
+      _defaultPrefsForOlderFirefox.features.push("java");
+    }
+  }
+
+  return _defaultPrefsForOlderFirefox;
 }
 
 var EXPORTED_SYMBOLS = [
@@ -365,8 +352,8 @@ var EXPORTED_SYMBOLS = [
   "toggleProfiler",
   "platform",
   "getSymbolsFromThisBrowser",
-  "getDefaultRecordingPreferences",
   "getRecordingPreferencesFromBrowser",
   "setRecordingPreferencesOnBrowser",
   "revertRecordingPreferences",
+  "getDefaultRecordingPreferencesForOlderFirefox",
 ];

@@ -69,6 +69,7 @@
 #include "util/Text.h"
 #include "vm/AsyncFunction.h"
 #include "vm/AsyncIteration.h"
+#include "vm/ErrorObject.h"
 #include "vm/GlobalObject.h"
 #include "vm/Interpreter.h"
 #include "vm/Iteration.h"
@@ -164,6 +165,10 @@ static bool GetBuildConfiguration(JSContext* cx, unsigned argc, Value* vp) {
     return false;
   }
 
+  if (!JS_SetProperty(cx, info, "oom-backtraces", FalseHandleValue)) {
+    return false;
+  }
+
   RootedValue value(cx);
 #ifdef DEBUG
   value = BooleanValue(true);
@@ -243,6 +248,15 @@ static bool GetBuildConfiguration(JSContext* cx, unsigned argc, Value* vp) {
   value = BooleanValue(false);
 #endif
   if (!JS_SetProperty(cx, info, "android", value)) {
+    return false;
+  }
+
+#ifdef XP_WIN
+  value = BooleanValue(true);
+#else
+  value = BooleanValue(false);
+#endif
+  if (!JS_SetProperty(cx, info, "windows", value)) {
     return false;
   }
 
@@ -372,16 +386,7 @@ static bool GetBuildConfiguration(JSContext* cx, unsigned argc, Value* vp) {
     return false;
   }
 
-#ifdef JS_OOM_DO_BACKTRACES
-  value = BooleanValue(true);
-#else
-  value = BooleanValue(false);
-#endif
-  if (!JS_SetProperty(cx, info, "oom-backtraces", value)) {
-    return false;
-  }
-
-#ifdef ENABLE_TYPED_OBJECTS
+#ifdef JS_HAS_TYPED_OBJECTS
   value = BooleanValue(true);
 #else
   value = BooleanValue(false);
@@ -390,7 +395,7 @@ static bool GetBuildConfiguration(JSContext* cx, unsigned argc, Value* vp) {
     return false;
   }
 
-#ifdef ENABLE_INTL_API
+#ifdef JS_HAS_INTL_API
   value = BooleanValue(true);
 #else
   value = BooleanValue(false);
@@ -1841,17 +1846,15 @@ static bool SetTestFilenameValidationCallback(JSContext* cx, unsigned argc,
   return true;
 }
 
-static void FinalizeExternalString(const JSStringFinalizer* fin,
-                                   char16_t* chars);
+struct TestExternalString : public JSExternalStringCallbacks {
+  void finalize(char16_t* chars) const override { js_free(chars); }
+  size_t sizeOfBuffer(const char16_t* chars,
+                      mozilla::MallocSizeOf mallocSizeOf) const override {
+    return mallocSizeOf(chars);
+  }
+};
 
-static const JSStringFinalizer ExternalStringFinalizer = {
-    FinalizeExternalString};
-
-static void FinalizeExternalString(const JSStringFinalizer* fin,
-                                   char16_t* chars) {
-  MOZ_ASSERT(fin == &ExternalStringFinalizer);
-  js_free(chars);
-}
+static constexpr TestExternalString TestExternalStringCallbacks;
 
 static bool NewExternalString(JSContext* cx, unsigned argc, Value* vp) {
   CallArgs args = CallArgsFromVp(argc, vp);
@@ -1875,7 +1878,7 @@ static bool NewExternalString(JSContext* cx, unsigned argc, Value* vp) {
   }
 
   JSString* res =
-      JS_NewExternalString(cx, buf.get(), len, &ExternalStringFinalizer);
+      JS_NewExternalString(cx, buf.get(), len, &TestExternalStringCallbacks);
   if (!res) {
     return false;
   }
@@ -1908,7 +1911,7 @@ static bool NewMaybeExternalString(JSContext* cx, unsigned argc, Value* vp) {
 
   bool allocatedExternal;
   JSString* res = JS_NewMaybeExternalString(
-      cx, buf.get(), len, &ExternalStringFinalizer, &allocatedExternal);
+      cx, buf.get(), len, &TestExternalStringCallbacks, &allocatedExternal);
   if (!res) {
     return false;
   }
@@ -1976,21 +1979,21 @@ static bool IsRope(JSContext* cx, unsigned argc, Value* vp) {
   return true;
 }
 
-static bool EnsureFlatString(JSContext* cx, unsigned argc, Value* vp) {
+static bool EnsureLinearString(JSContext* cx, unsigned argc, Value* vp) {
   CallArgs args = CallArgsFromVp(argc, vp);
 
   if (args.length() != 1 || !args[0].isString()) {
-    JS_ReportErrorASCII(cx,
-                        "ensureFlatString takes exactly one string argument.");
+    JS_ReportErrorASCII(
+        cx, "ensureLinearString takes exactly one string argument.");
     return false;
   }
 
-  JSFlatString* flat = args[0].toString()->ensureFlat(cx);
-  if (!flat) {
+  JSLinearString* linear = args[0].toString()->ensureLinear(cx);
+  if (!linear) {
     return false;
   }
 
-  args.rval().setString(flat);
+  args.rval().setString(linear);
   return true;
 }
 
@@ -2158,6 +2161,12 @@ bool RunIterativeFailureTest(JSContext* cx,
 #  ifdef JS_GC_ZEAL
   JS_SetGCZeal(cx, 0, JS_DEFAULT_ZEAL_FREQ);
 #  endif
+
+  // Delazify the function here if necessary so we don't end up testing that.
+  if (params.testFunction->isInterpreted() &&
+      !JSFunction::getOrCreateScript(cx, params.testFunction)) {
+    return false;
+  }
 
   size_t compartmentCount = CountCompartments(cx);
 
@@ -3447,6 +3456,7 @@ static bool Deserialize(JSContext* cx, unsigned argc, Value* vp) {
   Rooted<CloneBufferObject*> obj(cx,
                                  &args[0].toObject().as<CloneBufferObject>());
 
+  JS::CloneDataPolicy policy;
   JS::StructuredCloneScope scope =
       obj->isSynthetic() ? JS::StructuredCloneScope::DifferentProcess
                          : JS::StructuredCloneScope::SameProcessSameThread;
@@ -3457,6 +3467,30 @@ static bool Deserialize(JSContext* cx, unsigned argc, Value* vp) {
     }
 
     RootedValue v(cx);
+    if (!JS_GetProperty(cx, opts, "SharedArrayBuffer", &v)) {
+      return false;
+    }
+
+    if (!v.isUndefined()) {
+      JSString* str = JS::ToString(cx, v);
+      if (!str) {
+        return false;
+      }
+      JSLinearString* poli = str->ensureLinear(cx);
+      if (!poli) {
+        return false;
+      }
+
+      if (StringEqualsLiteral(poli, "allow")) {
+        policy.allowSharedMemory();
+      } else if (StringEqualsLiteral(poli, "deny")) {
+        // default
+      } else {
+        JS_ReportErrorASCII(cx, "Invalid policy value for 'SharedArrayBuffer'");
+        return false;
+      }
+    }
+
     if (!JS_GetProperty(cx, opts, "scope", &v)) {
       return false;
     }
@@ -3498,7 +3532,7 @@ static bool Deserialize(JSContext* cx, unsigned argc, Value* vp) {
 
   RootedValue deserialized(cx);
   if (!JS_ReadStructuredClone(cx, *obj->data(), JS_STRUCTURED_CLONE_VERSION,
-                              scope, &deserialized, nullptr, nullptr)) {
+                              scope, &deserialized, policy, nullptr, nullptr)) {
     return false;
   }
   args.rval().set(deserialized);
@@ -4327,7 +4361,6 @@ static bool ShellCloneAndExecuteScript(JSContext* cx, unsigned argc,
 
   JS::CompileOptions options(cx);
   options.setFileAndLine(filename.get(), lineno);
-  options.setNoScriptRval(true);
 
   JS::SourceText<char16_t> srcBuf;
   if (!srcBuf.init(cx, src, srclen, SourceOwnership::Borrowed)) {
@@ -4349,14 +4382,19 @@ static bool ShellCloneAndExecuteScript(JSContext* cx, unsigned argc,
     return false;
   }
 
-  AutoRealm ar(cx, global);
-
   JS::RootedValue rval(cx);
-  if (!JS::CloneAndExecuteScript(cx, script, &rval)) {
+  {
+    AutoRealm ar(cx, global);
+    if (!JS::CloneAndExecuteScript(cx, script, &rval)) {
+      return false;
+    }
+  }
+
+  if (!cx->compartment()->wrap(cx, &rval)) {
     return false;
   }
 
-  args.rval().setUndefined();
+  args.rval().set(rval);
   return true;
 }
 
@@ -6263,9 +6301,9 @@ static const JSFunctionSpecWithHelp TestingFunctions[] = {
 "newMaybeExternalString(str)",
 "  Like newExternalString but uses the JS_NewMaybeExternalString API."),
 
-    JS_FN_HELP("ensureFlatString", EnsureFlatString, 1, 0,
-"ensureFlatString(str)",
-"  Ensures str is a flat (null-terminated) string and returns it."),
+    JS_FN_HELP("ensureLinearString", EnsureLinearString, 1, 0,
+"ensureLinearString(str)",
+"  Ensures str is a linear (non-rope) string and returns it."),
 
     JS_FN_HELP("representativeStringArray", RepresentativeStringArray, 0, 0,
 "representativeStringArray()",
@@ -6672,8 +6710,11 @@ gc::ZealModeHelpText),
 
     JS_FN_HELP("deserialize", Deserialize, 1, 0,
 "deserialize(clonebuffer[, opts])",
-"  Deserialize data generated by serialize. 'opts' is an options hash with one\n"
-"  recognized key 'scope', which limits the clone buffers that are considered\n"
+"  Deserialize data generated by serialize. 'opts' may be an options hash.\n"
+"  Valid keys:\n"
+"    'SharedArrayBuffer' - either 'allow' or 'deny' (the default)\n"
+"      to specify whether SharedArrayBuffers may be serialized.\n"
+"    'scope', which limits the clone buffers that are considered\n"
 "  valid. Allowed values: 'SameProcessSameThread', 'SameProcessDifferentThread',\n"
 "  'DifferentProcess', and 'DifferentProcessForIndexedDB'. So for example, a\n"
 "  DifferentProcessForIndexedDB clone buffer may be deserialized in any scope, but\n"

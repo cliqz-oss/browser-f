@@ -1149,20 +1149,34 @@ struct nsGridContainerFrame::TrackSizingFunctions {
   const StyleTrackSize& SizingFor(uint32_t aTrackIndex) const {
     static const StyleTrackSize kAutoTrackSize =
         StyleTrackSize::Breadth(StyleTrackBreadth::Auto());
-    auto getImplicitSize = [this](size_t aIndex) -> const StyleTrackSize& {
+    // |aIndex| is the relative index to mAutoSizing. A negative value means it
+    // is the last Nth element.
+    auto getImplicitSize = [this](int32_t aIndex) -> const StyleTrackSize& {
       MOZ_ASSERT(!(mAutoSizing.Length() == 1 &&
                    mAutoSizing.AsSpan()[0] == kAutoTrackSize),
                  "It's impossible to have one track with auto value because we "
                  "filter out this case during parsing");
+
+      if (mAutoSizing.IsEmpty()) {
+        return kAutoTrackSize;
+      }
+
       // If multiple track sizes are given, the pattern is repeated as necessary
       // to find the size of the implicit tracks.
-      return mAutoSizing.IsEmpty()
-                 ? kAutoTrackSize
-                 : mAutoSizing.AsSpan()[aIndex % mAutoSizing.Length()];
+      int32_t i = aIndex % int32_t(mAutoSizing.Length());
+      if (i < 0) {
+        i += mAutoSizing.Length();
+      }
+      return mAutoSizing.AsSpan()[i];
     };
 
     if (MOZ_UNLIKELY(aTrackIndex < mExplicitGridOffset)) {
-      return getImplicitSize(aTrackIndex);
+      // The last implicit grid track before the explicit grid receives the
+      // last specified size, and so on backwards. Therefore we pass the
+      // negative relative index to imply that we should get the implicit size
+      // from the last Nth specified grid auto size.
+      return getImplicitSize(int32_t(aTrackIndex) -
+                             int32_t(mExplicitGridOffset));
     }
     uint32_t index = aTrackIndex - mExplicitGridOffset;
     if (index >= mRepeatAutoStart) {
@@ -1173,7 +1187,7 @@ struct nsGridContainerFrame::TrackSizingFunctions {
       }
     }
     if (index >= mExpandedTracks.Length()) {
-      return getImplicitSize(index);
+      return getImplicitSize(index - mExpandedTracks.Length());
     }
     auto& indices = mExpandedTracks[index];
     const TrackListValue& value = mTrackListValues[indices.first()];
@@ -8404,39 +8418,40 @@ nsGridContainerFrame* nsGridContainerFrame::GetGridContainerFrame(
 nsGridContainerFrame* nsGridContainerFrame::GetGridFrameWithComputedInfo(
     nsIFrame* aFrame) {
   nsGridContainerFrame* gridFrame = GetGridContainerFrame(aFrame);
-  if (gridFrame) {
-    // if any of our properties are missing, generate them
-    bool reflowNeeded = (!gridFrame->HasProperty(GridColTrackInfo()) ||
-                         !gridFrame->HasProperty(GridRowTrackInfo()) ||
-                         !gridFrame->HasProperty(GridColumnLineInfo()) ||
-                         !gridFrame->HasProperty(GridRowLineInfo()));
+  if (!gridFrame) {
+    return nullptr;
+  }
 
-    if (reflowNeeded) {
-      // Trigger a reflow that generates additional grid property data.
-      // Hold onto aFrame while we do this, in case reflow destroys it.
-      AutoWeakFrame weakFrameRef(aFrame);
+  auto HasComputedInfo = [](const nsGridContainerFrame& aFrame) -> bool {
+    return aFrame.HasProperty(GridColTrackInfo()) &&
+           aFrame.HasProperty(GridRowTrackInfo()) &&
+           aFrame.HasProperty(GridColumnLineInfo()) &&
+           aFrame.HasProperty(GridRowLineInfo());
+  };
 
-      RefPtr<mozilla::PresShell> presShell = gridFrame->PresShell();
-      gridFrame->AddStateBits(NS_STATE_GRID_GENERATE_COMPUTED_VALUES);
-      presShell->FrameNeedsReflow(gridFrame, IntrinsicDirty::Resize,
-                                  NS_FRAME_IS_DIRTY);
-      presShell->FlushPendingNotifications(FlushType::Layout);
+  if (HasComputedInfo(*gridFrame)) {
+    return gridFrame;
+  }
 
-      // Since the reflow may have side effects, get the grid frame
-      // again. But if the weakFrameRef is no longer valid, then we
-      // must bail out.
-      if (!weakFrameRef.IsAlive()) {
-        return nullptr;
-      }
+  // Trigger a reflow that generates additional grid property data.
+  // Hold onto aFrame while we do this, in case reflow destroys it.
+  AutoWeakFrame weakFrameRef(gridFrame);
 
-      gridFrame = GetGridContainerFrame(weakFrameRef.GetFrame());
+  RefPtr<mozilla::PresShell> presShell = gridFrame->PresShell();
+  gridFrame->AddStateBits(NS_STATE_GRID_GENERATE_COMPUTED_VALUES);
+  presShell->FrameNeedsReflow(gridFrame, IntrinsicDirty::Resize,
+                              NS_FRAME_IS_DIRTY);
+  presShell->FlushPendingNotifications(FlushType::Layout);
 
-      // Assert the grid properties are present
-      MOZ_ASSERT(!gridFrame || gridFrame->HasProperty(GridColTrackInfo()));
-      MOZ_ASSERT(!gridFrame || gridFrame->HasProperty(GridRowTrackInfo()));
-      MOZ_ASSERT(!gridFrame || gridFrame->HasProperty(GridColumnLineInfo()));
-      MOZ_ASSERT(!gridFrame || gridFrame->HasProperty(GridRowLineInfo()));
-    }
+  // If the weakFrameRef is no longer valid, then we must bail out.
+  if (!weakFrameRef.IsAlive()) {
+    return nullptr;
+  }
+
+  // This can happen if for some reason we ended up not reflowing, like in print
+  // preview under some circumstances.
+  if (MOZ_UNLIKELY(!HasComputedInfo(*gridFrame))) {
+    return nullptr;
   }
 
   return gridFrame;

@@ -200,6 +200,11 @@ void CanvasChild::EndTransaction() {
 }
 
 bool CanvasChild::ShouldBeCleanedUp() const {
+  // We can only be cleaned up if nothing else references our recorder.
+  if (!mRecorder->hasOneRef()) {
+    return false;
+  }
+
   static const TimeDuration kCleanUpCanvasThreshold =
       TimeDuration::FromSeconds(10);
   return TimeStamp::NowLoRes() - mLastNonEmptyTransaction >

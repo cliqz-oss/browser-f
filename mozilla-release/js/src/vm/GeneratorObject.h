@@ -16,7 +16,7 @@
 
 namespace js {
 
-class GlobalObject;
+extern const JSClass GeneratorFunctionClass;
 
 enum class GeneratorResumeKind { Next, Throw, Return };
 
@@ -178,6 +178,8 @@ class AbstractGeneratorObject : public NativeObject {
   bool isAfterYieldOrAwait(JSOp op);
 
  public:
+  void trace(JSTracer* trc);
+
   static size_t offsetOfCalleeSlot() { return getFixedSlotOffset(CALLEE_SLOT); }
   static size_t offsetOfEnvironmentChainSlot() {
     return getFixedSlotOffset(ENV_CHAIN_SLOT);
@@ -198,6 +200,7 @@ class GeneratorObject : public AbstractGeneratorObject {
   enum { RESERVED_SLOTS = AbstractGeneratorObject::RESERVED_SLOTS };
 
   static const JSClass class_;
+  static const JSClassOps classOps_;
 
   static GeneratorObject* create(JSContext* cx, HandleFunction fun);
 };
@@ -224,9 +227,6 @@ AbstractGeneratorObject* GetGeneratorObjectForFrame(JSContext* cx,
                                                     AbstractFramePtr frame);
 
 void SetGeneratorClosed(JSContext* cx, AbstractFramePtr frame);
-
-extern JSObject* InitGeneratorFunction(JSContext* cx,
-                                       js::Handle<GlobalObject*> global);
 
 }  // namespace js
 

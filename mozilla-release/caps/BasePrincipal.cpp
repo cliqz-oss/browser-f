@@ -50,6 +50,17 @@ BasePrincipal::GetOrigin(nsACString& aOrigin) {
 }
 
 NS_IMETHODIMP
+BasePrincipal::GetAsciiOrigin(nsACString& aOrigin) {
+  aOrigin.Truncate();
+  nsCOMPtr<nsIURI> prinURI;
+  nsresult rv = GetURI(getter_AddRefs(prinURI));
+  if (NS_FAILED(rv) || !prinURI) {
+    return NS_OK;
+  }
+  return nsContentUtils::GetASCIIOrigin(prinURI, aOrigin);
+}
+
+NS_IMETHODIMP
 BasePrincipal::GetOriginNoSuffix(nsACString& aOrigin) {
   MOZ_ASSERT(mInitialized);
   mOriginNoSuffix->ToUTF8String(aOrigin);
@@ -424,6 +435,17 @@ BasePrincipal::GetIsExpandedPrincipal(bool* aResult) {
 }
 
 NS_IMETHODIMP
+BasePrincipal::GetAsciiSpec(nsACString& aSpec) {
+  aSpec.Truncate();
+  nsCOMPtr<nsIURI> prinURI;
+  nsresult rv = GetURI(getter_AddRefs(prinURI));
+  if (NS_FAILED(rv) || !prinURI) {
+    return NS_OK;
+  }
+  return prinURI->GetAsciiSpec(aSpec);
+}
+
+NS_IMETHODIMP
 BasePrincipal::GetIsSystemPrincipal(bool* aResult) {
   *aResult = IsSystemPrincipal();
   return NS_OK;
@@ -432,6 +454,23 @@ BasePrincipal::GetIsSystemPrincipal(bool* aResult) {
 NS_IMETHODIMP
 BasePrincipal::GetIsAddonOrExpandedAddonPrincipal(bool* aResult) {
   *aResult = AddonPolicy() || ContentScriptAddonPolicy();
+  return NS_OK;
+}
+
+NS_IMETHODIMP BasePrincipal::GetIsOnion(bool* aIsOnion) {
+  *aIsOnion = false;
+  nsCOMPtr<nsIURI> prinURI;
+  nsresult rv = GetURI(getter_AddRefs(prinURI));
+  if (NS_FAILED(rv) || !prinURI) {
+    return NS_OK;
+  }
+
+  nsAutoCString host;
+  rv = prinURI->GetHost(host);
+  if (NS_FAILED(rv)) {
+    return NS_OK;
+  }
+  *aIsOnion = StringEndsWith(host, NS_LITERAL_CSTRING(".onion"));
   return NS_OK;
 }
 
@@ -444,6 +483,18 @@ BasePrincipal::SchemeIs(const char* aScheme, bool* aResult) {
     return NS_OK;
   }
   *aResult = prinURI->SchemeIs(aScheme);
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+BasePrincipal::IsURIInPrefList(const char* aPref, bool* aResult) {
+  *aResult = false;
+  nsCOMPtr<nsIURI> prinURI;
+  nsresult rv = GetURI(getter_AddRefs(prinURI));
+  if (NS_FAILED(rv) || !prinURI) {
+    return NS_OK;
+  }
+  *aResult = nsContentUtils::IsURIInPrefList(prinURI, aPref);
   return NS_OK;
 }
 
