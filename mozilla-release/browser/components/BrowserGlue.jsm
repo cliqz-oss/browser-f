@@ -38,7 +38,6 @@ XPCOMUtils.defineLazyServiceGetter(
 
 const PREF_PDFJS_ENABLED_CACHE_STATE = "pdfjs.enabledCache.state";
 
-<<<<<<< HEAD
 // CLIQZ-SPECIAL: DB-2352
 // Temporarily deactivate BEHAVIOR_REJECT_TRACKER falling back to BEHAVIOR_LIMIT_FOREIGN in case of
 // the former was initially set.
@@ -51,14 +50,11 @@ const cliqz_cookieBehaviorDidUpdate = function() {
   }
 }
 
-||||||| merged common ancestors
-=======
 /**
  * Fission-compatible JSWindowActor implementations.
  * Detailed documentation of these is in dom/docs/Fission.rst,
  * available at https://firefox-source-docs.mozilla.org/dom/Fission.html#jswindowactor
  */
->>>>>>> e86e1fad9bb754a69bba83334ae55a625468dd48
 let ACTORS = {
   BlockedSite: {
     parent: {
@@ -514,23 +510,7 @@ let LEGACY_ACTORS = {
   TelemetryTimestamps.add("blankWindowShown");
 })();
 
-<<<<<<< HEAD
-XPCOMUtils.defineLazyServiceGetters(this, {
-  aboutNewTabService: [
-    "@mozilla.org/browser/aboutnewtab-service;1",
-    "nsIAboutNewTabService",
-  ],
-});
 #ifdef MOZ_SERVICES_SYNC
-||||||| merged common ancestors
-XPCOMUtils.defineLazyServiceGetters(this, {
-  aboutNewTabService: [
-    "@mozilla.org/browser/aboutnewtab-service;1",
-    "nsIAboutNewTabService",
-  ],
-});
-=======
->>>>>>> e86e1fad9bb754a69bba83334ae55a625468dd48
 XPCOMUtils.defineLazyGetter(
   this,
   "WeaveService",
@@ -1051,14 +1031,6 @@ BrowserGlue.prototype = {
         break;
       case "shield-init-complete":
         this._shieldInitComplete = true;
-<<<<<<< HEAD
-#if 0
-        this._sendMainPingCentrePing();
-#endif
-||||||| merged common ancestors
-        this._sendMainPingCentrePing();
-=======
->>>>>>> e86e1fad9bb754a69bba83334ae55a625468dd48
         break;
     }
   },
@@ -2257,11 +2229,6 @@ BrowserGlue.prototype = {
         Corroborate.init().catch(Cu.reportError);
       }
     });
-<<<<<<< HEAD
-#if 0
-||||||| merged common ancestors
-
-=======
 
     // request startup of Chromium remote debugging protocol
     // (observer will only be notified when --remote-debugger is passed)
@@ -2271,7 +2238,7 @@ BrowserGlue.prototype = {
       });
     }
 
->>>>>>> e86e1fad9bb754a69bba83334ae55a625468dd48
+#if 0
     // Marionette needs to be initialized as very last step
     Services.tm.idleDispatchToMainThread(() => {
       Services.obs.notifyObservers(null, "marionette-startup-requested");
@@ -2881,20 +2848,8 @@ BrowserGlue.prototype = {
     const UI_VERSION = 89;
     const BROWSER_DOCURL = AppConstants.BROWSER_CHROME_URL;
 
-<<<<<<< HEAD
-    let currentUIVersion;
     PermissionsUtils.importFromPrefs("blockautoplay.", "autoplay-media");
-    if (Services.prefs.prefHasUserValue("browser.migration.version")) {
-      currentUIVersion = Services.prefs.getIntPref("browser.migration.version");
-    } else {
-||||||| merged common ancestors
-    let currentUIVersion;
-    if (Services.prefs.prefHasUserValue("browser.migration.version")) {
-      currentUIVersion = Services.prefs.getIntPref("browser.migration.version");
-    } else {
-=======
     if (!Services.prefs.prefHasUserValue("browser.migration.version")) {
->>>>>>> e86e1fad9bb754a69bba83334ae55a625468dd48
       // This is a new profile, nothing to migrate.
       Services.prefs.setIntPref("browser.migration.version", UI_VERSION);
       this._isNewProfile = true;

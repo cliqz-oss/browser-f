@@ -675,14 +675,9 @@ function Search(
   this._disablePrivateActions = params.has("disable-private-actions");
   this._inPrivateWindow = params.has("private-window");
   this._prohibitAutoFill = params.has("prohibit-autofill");
-<<<<<<< HEAD
-  this._disableTelemetry = params.has("disable-telemetry");
+  // CLIQZ-SPECIAL: open page imporvements via extensions
   this._disableAdaptive = params.has("disable-adaptive");
   this._enableAtSearch = params.has("enable-at-search");
-||||||| merged common ancestors
-  this._disableTelemetry = params.has("disable-telemetry");
-=======
->>>>>>> e86e1fad9bb754a69bba83334ae55a625468dd48
 
   // Extract the max-results param.
   let maxResults = searchParam.match(REGEXP_MAX_RESULTS);

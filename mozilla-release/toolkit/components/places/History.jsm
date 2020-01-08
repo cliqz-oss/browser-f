@@ -1274,7 +1274,6 @@ var removeVisitsByFilter = async function(db, filter, onResult = null) {
     }
   );
 
-<<<<<<< HEAD
   // CLIQZ-SPECIAL:
   // 1.5 Also remove visits to cliqz-search related to the visits we are going to delete
   await db.executeCached(
@@ -1294,23 +1293,10 @@ var removeVisitsByFilter = async function(db, filter, onResult = null) {
     }
   )
 
-  try {
-    if (!visitsToRemove.length) {
-      // Nothing to do
-      return false;
-    }
-||||||| merged common ancestors
-  try {
-    if (!visitsToRemove.length) {
-      // Nothing to do
-      return false;
-    }
-=======
   if (!visitsToRemove.length) {
     // Nothing to do
     return false;
   }
->>>>>>> e86e1fad9bb754a69bba83334ae55a625468dd48
 
   let pages = [];
   await db.executeTransaction(async function() {
@@ -1454,7 +1440,6 @@ var removeByFilter = async function(db, filter, onResult = null) {
     return false;
   }
 
-<<<<<<< HEAD
   // CLIQZ-SPECIAL
   // 3.5 Also remove cliqz-search pages related to the pages we are going to delete
   await db.executeCached(
@@ -1471,36 +1456,6 @@ var removeByFilter = async function(db, filter, onResult = null) {
     onTableRow
   );
 
-  try {
-    await db.executeTransaction(async function() {
-      // 4. Actually remove visits
-      let pageIds = pages.map(p => p.id);
-      for (let chunk of PlacesUtils.chunkArray(pageIds, db.variableLimit)) {
-        await db.execute(
-          `DELETE FROM moz_historyvisits
-           WHERE place_id IN(${sqlBindPlaceholders(chunk)})`,
-          chunk
-        );
-      }
-      // 5. Clean up and notify
-      await cleanupPages(db, pages);
-    });
-||||||| merged common ancestors
-  try {
-    await db.executeTransaction(async function() {
-      // 4. Actually remove visits
-      let pageIds = pages.map(p => p.id);
-      for (let chunk of PlacesUtils.chunkArray(pageIds, db.variableLimit)) {
-        await db.execute(
-          `DELETE FROM moz_historyvisits
-           WHERE place_id IN(${sqlBindPlaceholders(chunk)})`,
-          chunk
-        );
-      }
-      // 5. Clean up and notify
-      await cleanupPages(db, pages);
-    });
-=======
   await db.executeTransaction(async function() {
     // 4. Actually remove visits
     let pageIds = pages.map(p => p.id);
@@ -1514,7 +1469,6 @@ var removeByFilter = async function(db, filter, onResult = null) {
     // 5. Clean up and notify
     await cleanupPages(db, pages);
   });
->>>>>>> e86e1fad9bb754a69bba83334ae55a625468dd48
 
   notifyCleanup(db, pages);
   notifyOnResult(onResultData, onResult);

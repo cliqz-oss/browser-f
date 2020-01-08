@@ -15,15 +15,7 @@ browser.jar:
    content/browser/preferences/in-content/sync.js
    content/browser/preferences/in-content/syncChooseWhatToSync.xhtml
    content/browser/preferences/in-content/syncChooseWhatToSync.js
-<<<<<<< HEAD
-#   content/browser/preferences/in-content/fxaPairDevice.xul
-#   content/browser/preferences/in-content/fxaPairDevice.js
-||||||| merged common ancestors
-   content/browser/preferences/in-content/fxaPairDevice.xul
-   content/browser/preferences/in-content/fxaPairDevice.js
-=======
-   content/browser/preferences/in-content/fxaPairDevice.xhtml
-   content/browser/preferences/in-content/fxaPairDevice.js
->>>>>>> e86e1fad9bb754a69bba83334ae55a625468dd48
+#  content/browser/preferences/in-content/fxaPairDevice.xhtml
+#  content/browser/preferences/in-content/fxaPairDevice.js
    content/browser/preferences/in-content/findInPage.js
    content/browser/preferences/in-content/cliqz.home.js

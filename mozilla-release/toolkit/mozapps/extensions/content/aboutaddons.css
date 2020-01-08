@@ -533,7 +533,6 @@ addon-permissions-list > .addon-detail-row:first-of-type {
   /* Pull the buttons flush with the side of the card */
   margin-inline: calc(var(--card-padding) * -1);
 }
-<<<<<<< HEAD
 
 #recommendations {
   display: grid;
@@ -562,10 +561,7 @@ addon-permissions-list > .addon-detail-row:first-of-type {
   font-weight: 500;
   margin-block-end: 2px;
 }
-||||||| merged common ancestors
-=======
 
 panel-list {
   font-size: 13px;
 }
->>>>>>> e86e1fad9bb754a69bba83334ae55a625468dd48

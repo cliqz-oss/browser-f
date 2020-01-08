@@ -447,7 +447,6 @@
     WriteRegStr SHCTX "$0\.xhtml" "" "CliqzHTML$5"
   ${EndIf}
 
-<<<<<<< HEAD
   ${AddAssociationIfNoneExist} ".pdf" "CliqzHTML$5"
   ${AddAssociationIfNoneExist} ".oga" "CliqzHTML$5"
   ${AddAssociationIfNoneExist} ".ogg" "CliqzHTML$5"
@@ -455,25 +454,7 @@
   ${AddAssociationIfNoneExist} ".pdf" "CliqzHTML$5"
   ${AddAssociationIfNoneExist} ".webm" "CliqzHTML$5"
   ${AddAssociationIfNoneExist} ".svg" "CliqzHTML$5"
-||||||| merged common ancestors
-  ${AddAssociationIfNoneExist} ".pdf" "FirefoxHTML$5"
-  ${AddAssociationIfNoneExist} ".oga" "FirefoxHTML$5"
-  ${AddAssociationIfNoneExist} ".ogg" "FirefoxHTML$5"
-  ${AddAssociationIfNoneExist} ".ogv" "FirefoxHTML$5"
-  ${AddAssociationIfNoneExist} ".pdf" "FirefoxHTML$5"
-  ${AddAssociationIfNoneExist} ".webm" "FirefoxHTML$5"
-  ${AddAssociationIfNoneExist} ".svg" "FirefoxHTML$5"
-=======
-
-  ${AddAssociationIfNoneExist} ".pdf" "FirefoxHTML$5"
-  ${AddAssociationIfNoneExist} ".oga" "FirefoxHTML$5"
-  ${AddAssociationIfNoneExist} ".ogg" "FirefoxHTML$5"
-  ${AddAssociationIfNoneExist} ".ogv" "FirefoxHTML$5"
-  ${AddAssociationIfNoneExist} ".pdf" "FirefoxHTML$5"
-  ${AddAssociationIfNoneExist} ".webm" "FirefoxHTML$5"
-  ${AddAssociationIfNoneExist} ".svg" "FirefoxHTML$5"
-  ${AddAssociationIfNoneExist} ".webp"  "FirefoxHTML$5"
->>>>>>> e86e1fad9bb754a69bba83334ae55a625468dd48
+  ${AddAssociationIfNoneExist} ".webp"  "CliqzHTML$5"
 
   ; An empty string is used for the 5th param because CliqzHTML is not a
   ; protocol handler
@@ -552,29 +533,13 @@
   WriteRegStr ${RegKey} "$0\Capabilities" "ApplicationIcon" "$8,0"
   WriteRegStr ${RegKey} "$0\Capabilities" "ApplicationName" "${BrandShortName}"
 
-<<<<<<< HEAD
   WriteRegStr ${RegKey} "$0\Capabilities\FileAssociations" ".htm"   "CliqzHTML$2"
   WriteRegStr ${RegKey} "$0\Capabilities\FileAssociations" ".html"  "CliqzHTML$2"
   WriteRegStr ${RegKey} "$0\Capabilities\FileAssociations" ".shtml" "CliqzHTML$2"
   WriteRegStr ${RegKey} "$0\Capabilities\FileAssociations" ".xht"   "CliqzHTML$2"
   WriteRegStr ${RegKey} "$0\Capabilities\FileAssociations" ".xhtml" "CliqzHTML$2"
   WriteRegStr ${RegKey} "$0\Capabilities\FileAssociations" ".svg"   "CliqzHTML$2"
-||||||| merged common ancestors
-  WriteRegStr ${RegKey} "$0\Capabilities\FileAssociations" ".htm"   "FirefoxHTML$2"
-  WriteRegStr ${RegKey} "$0\Capabilities\FileAssociations" ".html"  "FirefoxHTML$2"
-  WriteRegStr ${RegKey} "$0\Capabilities\FileAssociations" ".shtml" "FirefoxHTML$2"
-  WriteRegStr ${RegKey} "$0\Capabilities\FileAssociations" ".xht"   "FirefoxHTML$2"
-  WriteRegStr ${RegKey} "$0\Capabilities\FileAssociations" ".xhtml" "FirefoxHTML$2"
-  WriteRegStr ${RegKey} "$0\Capabilities\FileAssociations" ".svg" "FirefoxHTML$2"
-=======
-  WriteRegStr ${RegKey} "$0\Capabilities\FileAssociations" ".htm"   "FirefoxHTML$2"
-  WriteRegStr ${RegKey} "$0\Capabilities\FileAssociations" ".html"  "FirefoxHTML$2"
-  WriteRegStr ${RegKey} "$0\Capabilities\FileAssociations" ".shtml" "FirefoxHTML$2"
-  WriteRegStr ${RegKey} "$0\Capabilities\FileAssociations" ".xht"   "FirefoxHTML$2"
-  WriteRegStr ${RegKey} "$0\Capabilities\FileAssociations" ".xhtml" "FirefoxHTML$2"
-  WriteRegStr ${RegKey} "$0\Capabilities\FileAssociations" ".svg"   "FirefoxHTML$2"
-  WriteRegStr ${RegKey} "$0\Capabilities\FileAssociations" ".webp"  "FirefoxHTML$2"
->>>>>>> e86e1fad9bb754a69bba83334ae55a625468dd48
+  WriteRegStr ${RegKey} "$0\Capabilities\FileAssociations" ".webp"  "CliqzHTML$2"
 
   WriteRegStr ${RegKey} "$0\Capabilities\StartMenu" "StartMenuInternet" "$1"
 

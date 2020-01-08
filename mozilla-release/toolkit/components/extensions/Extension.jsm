@@ -260,25 +260,15 @@ var UUIDMap = {
   },
 };
 
-<<<<<<< HEAD
 var getExtensionUUID = function(id) {
   return UUIDMap.get(id, false);
 };
 
-// For extensions that have called setUninstallURL(), send an event
-// so the browser can display the URL.
-var UninstallObserver = {
-||||||| merged common ancestors
-// For extensions that have called setUninstallURL(), send an event
-// so the browser can display the URL.
-var UninstallObserver = {
-=======
 /**
  * Observer AddonManager events and translate them into extension events,
  * as well as handle any last cleanup after uninstalling an extension.
  */
 var ExtensionAddonObserver = {
->>>>>>> e86e1fad9bb754a69bba83334ae55a625468dd48
   initialized: false,
 
   init() {

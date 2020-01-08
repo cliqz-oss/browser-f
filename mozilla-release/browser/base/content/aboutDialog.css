@@ -17,16 +17,10 @@
   background-repeat: no-repeat;
   background-size: 288px auto;
   /* padding-top creates room for the wordmark */
-<<<<<<< HEAD
+  padding-top: 38px;
   margin-top: 20px;
+  /*CLIQZ-MERGE: check if we need margin bottom*/
   margin-bottom: 38px;
-||||||| merged common ancestors
-  padding-top: 38px;
-  margin-top:20px;
-=======
-  padding-top: 38px;
-  margin-top: 20px;
->>>>>>> e86e1fad9bb754a69bba83334ae55a625468dd48
 }
 
 #rightBox:-moz-locale-dir(rtl) {

@@ -72,30 +72,12 @@ td.integer {
   width: 30%;
 }
 
-<<<<<<< HEAD
-#action-box:dir(rtl) {
-  float: left;
-}
-
-||||||| merged common ancestors
 #action-box,
 #reset-box,
 #safe-mode-box {
   display: none;
 }
 
-#action-box:dir(rtl) {
-  float: left;
-}
-
-=======
-#action-box,
-#reset-box,
-#safe-mode-box {
-  display: none;
-}
-
->>>>>>> e86e1fad9bb754a69bba83334ae55a625468dd48
 #reset-box > h3 {
   margin-top: 0;
 }

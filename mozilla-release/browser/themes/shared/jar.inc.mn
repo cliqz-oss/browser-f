@@ -112,13 +112,9 @@
   skin/classic/browser/panel-icon-magnifier.svg                (../shared/panel-icon-magnifier.svg)
 #endif
   skin/classic/browser/panel-icon-retry.svg                    (../shared/panel-icon-retry.svg)
-<<<<<<< HEAD
-  skin/classic/browser/preferences/in-content/connect.svg      (../shared/incontentprefs/connect.svg)
-||||||| merged common ancestors
-=======
   skin/classic/browser/toolbar-drag-indicator.svg              (../shared/toolbar-drag-indicator.svg)
 
->>>>>>> e86e1fad9bb754a69bba83334ae55a625468dd48
+  skin/classic/browser/preferences/in-content/connect.svg      (../shared/incontentprefs/connect.svg)
   skin/classic/browser/preferences/in-content/bookmark.svg     (../shared/incontentprefs/bookmark.svg)
 #if 0
   skin/classic/browser/preferences/in-content/critters-postcard.jpg       (../shared/incontentprefs/critters-postcard.jpg)

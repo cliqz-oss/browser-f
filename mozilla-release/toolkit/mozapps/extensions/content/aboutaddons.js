@@ -131,8 +131,6 @@ const RECOMMENDED_ADDONS = {
   }
 };
 
-const defaultIcon = "chrome://mozapps/skin/extensions/extensionGeneric.svg";
-
 const PREF_DISCOVERY_API_URL = "extensions.getAddons.discovery.api_url";
 const PREF_THEME_RECOMMENDATION_URL =
   "extensions.recommendations.themeRecommendationUrl";
@@ -1524,7 +1522,7 @@ class AddonPageOptions extends HTMLElement {
     if ("switchToTabHavingURI" in mainWindow) {
       let principal = Services.scriptSecurityManager.getSystemPrincipal();
       mainWindow.switchToTabHavingURI(
-        `about:debugging#/runtime/this-firefox`,
+        `about:debugging#/runtime/this-cliqz`,
         true,
         {
           ignoreFragment: "whenComparing",
@@ -2720,36 +2718,8 @@ class AddonCard extends HTMLElement {
 
     card.setAttribute("active", addon.isActive);
 
-<<<<<<< HEAD
-    // Update the icon.
-    let icon;
-    if (addon.type == "plugin") {
-      icon = PLUGIN_ICON_URL;
-    } else {
-      icon =
-        AddonManager.getPreferredIconURL(addon, 32, window) ||
-        EXTENSION_ICON_URL;
-    }
-    card.querySelector(".addon-icon").src = icon || defaultIcon;
-
-    // Update the theme preview.
-||||||| merged common ancestors
-    // Update the icon.
-    let icon;
-    if (addon.type == "plugin") {
-      icon = PLUGIN_ICON_URL;
-    } else {
-      icon =
-        AddonManager.getPreferredIconURL(addon, 32, window) ||
-        EXTENSION_ICON_URL;
-    }
-    card.querySelector(".addon-icon").src = icon;
-
-    // Update the theme preview.
-=======
     // Set the icon or theme preview.
     let iconEl = card.querySelector(".addon-icon");
->>>>>>> e86e1fad9bb754a69bba83334ae55a625468dd48
     let preview = card.querySelector(".card-heading-image");
     if (addon.type == "theme") {
       iconEl.hidden = true;

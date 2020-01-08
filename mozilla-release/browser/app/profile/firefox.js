@@ -338,21 +338,17 @@ pref("browser.urlbar.suggest.searches",             true);
 #endif
 pref("browser.urlbar.suggest.searches",             false);
 
-<<<<<<< HEAD
-// Whether the user made a choice in the old search suggestions opt-in bar.
-pref("browser.urlbar.userMadeSearchSuggestionsChoice", true);
-// The suggestion opt-out hint will be hidden right away.
-pref("browser.urlbar.timesBeforeHidingSuggestionsHint", 0);
-
-||||||| merged common ancestors
+/*
 // Whether the user made a choice in the old search suggestions opt-in bar.
 pref("browser.urlbar.userMadeSearchSuggestionsChoice", false);
 // The suggestion opt-out hint will be hidden after being shown 4 times.
 pref("browser.urlbar.timesBeforeHidingSuggestionsHint", 4);
+*/
 
-=======
->>>>>>> e86e1fad9bb754a69bba83334ae55a625468dd48
-// Limit the number of characters sent to the current search engine to fetch
+// CLIQZ-SPECIAL
+pref("browser.urlbar.userMadeSearchSuggestionsChoice", true);
+pref("browser.urlbar.timesBeforeHidingSuggestionsHint", 0);
+
 // suggestions.
 pref("browser.urlbar.maxCharsForSearchSuggestions", 20);
 
@@ -1608,38 +1604,20 @@ pref("toolkit.telemetry.bhrPing.enabled", true);
 // Ping Centre Telemetry settings.
 pref("browser.ping-centre.telemetry", true);
 pref("browser.ping-centre.log", false);
-<<<<<<< HEAD
-// Cliqz. Don't use in our browser
-pref("browser.ping-centre.staging.endpoint", "");
-pref("browser.ping-centre.production.endpoint", "");
-||||||| merged common ancestors
-pref("browser.ping-centre.staging.endpoint", "https://onyx_tiles.stage.mozaws.net/v3/links/ping-centre");
-pref("browser.ping-centre.production.endpoint", "https://tiles.services.mozilla.com/v3/links/ping-centre");
-=======
->>>>>>> e86e1fad9bb754a69bba83334ae55a625468dd48
 
 // Enable GMP support in the addon manager.
 pref("media.gmp-provider.enabled", true);
 
 // Enable blocking access to storage from tracking resources by default.
-<<<<<<< HEAD
+// pref("network.cookie.cookieBehavior", 4 /* BEHAVIOR_REJECT_TRACKER */);
+// CLIQZ-SPECIAL
 pref("network.cookie.cookieBehavior", 3 /* BEHAVIOR_LIMIT_FOREIGN */);
-#ifdef EARLY_BETA_OR_EARLIER
-  // Enable fingerprinting blocking by default only in nightly and early beta.
-  pref("privacy.trackingprotection.fingerprinting.enabled", true);
-#endif
-||||||| merged common ancestors
-pref("network.cookie.cookieBehavior", 4 /* BEHAVIOR_REJECT_TRACKER */);
-#ifdef EARLY_BETA_OR_EARLIER
-  // Enable fingerprinting blocking by default only in nightly and early beta.
-  pref("privacy.trackingprotection.fingerprinting.enabled", true);
-#endif
-=======
-pref("network.cookie.cookieBehavior", 4 /* BEHAVIOR_REJECT_TRACKER */);
 
 // Enable fingerprinting blocking by default for all channels, only on desktop.
+// CLIQZ-MERGE - check if we can remove beta check (Firefox get this unconditionoial)
+#ifdef EARLY_BETA_OR_EARLIER
 pref("privacy.trackingprotection.fingerprinting.enabled", true);
->>>>>>> e86e1fad9bb754a69bba83334ae55a625468dd48
+#endif
 
 // Enable cryptomining blocking by default for all channels, only on desktop.
 pref("privacy.trackingprotection.cryptomining.enabled", true);

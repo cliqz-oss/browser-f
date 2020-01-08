@@ -180,37 +180,10 @@ appUpdater.prototype = {
    * Check for updates
    */
   checkForUpdates() {
-<<<<<<< HEAD
-    // Clear prefs that could prevent a user from discovering available updates.
-    if (Services.prefs.prefHasUserValue(PREF_APP_UPDATE_CANCELATIONS_OSX)) {
-      Services.prefs.clearUserPref(PREF_APP_UPDATE_CANCELATIONS_OSX);
-    }
-    if (Services.prefs.prefHasUserValue(PREF_APP_UPDATE_ELEVATE_NEVER)) {
-      Services.prefs.clearUserPref(PREF_APP_UPDATE_ELEVATE_NEVER);
-    }
-    this.selectPanel("checkingForUpdates");
-    this.isChecking = true;
-    this.checker.checkForUpdates(this.updateCheckListener, true);
-    // after checking, onCheckComplete() is called
-
-    // Cliqz. Start checking updates for System Addons also.
+    this._appUpdater.checkForUpdates();
+    // CLIQZ-SPECIAL Start checking updates for System Addons also.
     let { XPIProvider } = Components.utils.import("resource://gre/modules/addons/XPIProvider.jsm", {});
     XPIProvider.updateSystemAddons();
-||||||| merged common ancestors
-    // Clear prefs that could prevent a user from discovering available updates.
-    if (Services.prefs.prefHasUserValue(PREF_APP_UPDATE_CANCELATIONS_OSX)) {
-      Services.prefs.clearUserPref(PREF_APP_UPDATE_CANCELATIONS_OSX);
-    }
-    if (Services.prefs.prefHasUserValue(PREF_APP_UPDATE_ELEVATE_NEVER)) {
-      Services.prefs.clearUserPref(PREF_APP_UPDATE_ELEVATE_NEVER);
-    }
-    this.selectPanel("checkingForUpdates");
-    this.isChecking = true;
-    this.checker.checkForUpdates(this.updateCheckListener, true);
-    // after checking, onCheckComplete() is called
-=======
-    this._appUpdater.checkForUpdates();
->>>>>>> e86e1fad9bb754a69bba83334ae55a625468dd48
   },
 
   /**

@@ -217,14 +217,7 @@ var PageThumbs = {
    *
    * @param aBrowser The target browser
    */
-<<<<<<< HEAD
-  shouldStoreThumbnail(aBrowser, aCallback) {
-    let aTab = aBrowser.ownerGlobal.gBrowser.getTabForBrowser(aBrowser);
-||||||| merged common ancestors
-  shouldStoreThumbnail(aBrowser, aCallback) {
-=======
   async shouldStoreThumbnail(aBrowser) {
->>>>>>> e86e1fad9bb754a69bba83334ae55a625468dd48
     // Don't capture in private browsing mode.
     if (PrivateBrowsingUtils.isBrowserPrivate(aBrowser)) {
       return false;

@@ -91,19 +91,21 @@ XPCOMUtils.defineLazyGetter(this, "homepagePopup", () => {
 // startup case we need to check if the preferences are set to load the homepage
 // and check if the homepage is active, then show the doorhanger in that case.
 async function handleInitialHomepagePopup(extensionId, homepageUrl) {
-<<<<<<< HEAD
-  // browser.startup.addFreshTab == true means we would like to show a home page
-  if (Services.prefs.getBoolPref("browser.startup.addFreshTab")) {
-||||||| merged common ancestors
   // browser.startup.page == 1 is show homepage.
-  if (Services.prefs.getIntPref("browser.startup.page") == 1) {
-=======
-  // browser.startup.page == 1 is show homepage.
+  /*
   if (
+    
     Services.prefs.getIntPref("browser.startup.page") == 1 &&
     windowTracker.topWindow
   ) {
->>>>>>> e86e1fad9bb754a69bba83334ae55a625468dd48
+    */
+
+  /* CLIQZ-SPECIAL: cliqz tab setting*/
+  /* CLIQZ-MERGE check if we need windowtracker part*/
+  if (
+    Services.prefs.getBoolPref("browser.startup.addFreshTab") &&
+    windowTracker.topWindow
+  ) {
     let { gBrowser } = windowTracker.topWindow;
     let tab = gBrowser.selectedTab;
     let currentUrl = gBrowser.currentURI.spec;

@@ -31,7 +31,6 @@ list-empty-find-updates =
 list-empty-button =
     .label = Learn more about add-ons
 
-<<<<<<< HEAD
 install-addon-from-file =
     .label = Install Add-on From File…
     .accesskey = I
@@ -41,13 +40,6 @@ recommended-addon =
 
 install-addon-disclaimer = Proceed with caution when installing add-ons. <label data-l10n-name="addon-risks">Learn more about the risks.</label>
 
-||||||| merged common ancestors
-install-addon-from-file =
-    .label = Install Add-on From File…
-    .accesskey = I
-
-=======
->>>>>>> e86e1fad9bb754a69bba83334ae55a625468dd48
 help-button = Add-ons Support
 
 preferences =

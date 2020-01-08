@@ -720,20 +720,13 @@ class TelemetryEvent {
   }
 
   _internalRecord(event, details) {
-<<<<<<< HEAD
-    // CLIQZ-SPECIAL: extension do not send event
     if (!this._category || !this._startEventInfo || !event) {
-||||||| merged common ancestors
-    if (!this._category || !this._startEventInfo) {
-=======
-    if (!this._category || !this._startEventInfo) {
       if (this._discarded && this._category) {
         this._controller.manager.notifyEngagementChange(
           this._isPrivate,
           "discard"
         );
       }
->>>>>>> e86e1fad9bb754a69bba83334ae55a625468dd48
       return;
     }
     if (

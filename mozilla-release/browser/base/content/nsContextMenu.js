@@ -327,14 +327,8 @@ class nsContextMenu {
     this.initPasswordManagerItems();
 #ifdef MOZ_SERVICES_SYNC
     this.initSyncItems();
-<<<<<<< HEAD
 #endif
-  },
-||||||| merged common ancestors
-  },
-=======
   }
->>>>>>> e86e1fad9bb754a69bba83334ae55a625468dd48
 
   initPageMenuSeparator() {
     this.showItem("page-menu-separator", this.hasPageMenu);
@@ -1911,11 +1905,14 @@ class nsContextMenu {
     // DB-2138
     // We should not show an option to search for with another engine if
     // a context menu is initiated over our extension dropdown.
+    /*
+    CLIQZ-MERGE: need to check what this was used for
     if (gContextMenuContentData != null && gContextMenuContentData.browser != null) {
       showSearchSelect =
         showSearchSelect &&
         gContextMenuContentData.browser.id !== 'cliqz-popup';
     }
+    */
 
     // Don't show the private search item when we're already in a private
     // browsing window.
