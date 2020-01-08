@@ -1,5 +1,6 @@
 VERBOSE=false
 CLOBBER=false
+BUILD_DE=false
 CQZ_BUILD_TESTS=false
 CQZ_BUILD_SYMBOLS=false
 
@@ -23,6 +24,10 @@ do
 
     --clobber)
     CLOBBER=true
+    ;;
+
+    --de)
+    BUILD_DE=true
     ;;
 
     --tests)
