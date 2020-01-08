@@ -587,9 +587,8 @@ static const char* gCallbackPrefs[] = {
 };
 
 /* static */
-void nsSocketTransportService::PrefCallback(const char* aPref,
-                                            nsSocketTransportService* aSelf) {
-  aSelf->UpdatePrefs();
+void nsSocketTransportService::UpdatePrefs(const char* aPref, void* aSelf) {
+  static_cast<nsSocketTransportService*>(aSelf)->UpdatePrefs();
 }
 
 // called from main thread only
@@ -615,7 +614,7 @@ nsSocketTransportService::Init() {
     thread.swap(mThread);
   }
 
-  Preferences::RegisterCallbacks(PrefCallback, gCallbackPrefs, this);
+  Preferences::RegisterCallbacks(UpdatePrefs, gCallbackPrefs, this);
   UpdatePrefs();
 
   nsCOMPtr<nsIObserverService> obsSvc = services::GetObserverService();
@@ -677,7 +676,7 @@ nsresult nsSocketTransportService::ShutdownThread() {
     mThread = nullptr;
   }
 
-  Preferences::UnregisterCallbacks(PrefCallback, gCallbackPrefs, this);
+  Preferences::UnregisterCallbacks(UpdatePrefs, gCallbackPrefs, this);
 
   nsCOMPtr<nsIObserverService> obsSvc = services::GetObserverService();
   if (obsSvc) {
@@ -962,6 +961,11 @@ nsSocketTransportService::Run() {
       startOfNextIteration = TimeStamp::NowLoRes();
     }
     pollDuration = nullptr;
+    // We pop out to this loop when there are no pending events.
+    // If we don't reset these, we may not re-enter ProcessNextEvent()
+    // until we have events to process, and it may seem like we have
+    // an event running for a very long time.
+    mRawThread->SetRunningEventDelay(TimeDuration(), TimeStamp());
 
     do {
       if (Telemetry::CanRecordPrereleaseData()) {

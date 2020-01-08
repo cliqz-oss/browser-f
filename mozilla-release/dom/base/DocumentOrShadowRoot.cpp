@@ -5,8 +5,10 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "DocumentOrShadowRoot.h"
+#include "mozilla/AnimationComparator.h"
 #include "mozilla/EventStateManager.h"
 #include "mozilla/PresShell.h"
+#include "mozilla/dom/AnimatableBinding.h"
 #include "mozilla/dom/Document.h"
 #include "mozilla/dom/HTMLInputElement.h"
 #include "mozilla/dom/ShadowRoot.h"
@@ -21,12 +23,15 @@
 namespace mozilla {
 namespace dom {
 
-DocumentOrShadowRoot::DocumentOrShadowRoot(
-    mozilla::dom::ShadowRoot& aShadowRoot)
-    : mAsNode(aShadowRoot), mKind(Kind::ShadowRoot) {}
+DocumentOrShadowRoot::DocumentOrShadowRoot(ShadowRoot* aShadowRoot)
+    : mAsNode(aShadowRoot), mKind(Kind::ShadowRoot) {
+  MOZ_ASSERT(mAsNode);
+}
 
-DocumentOrShadowRoot::DocumentOrShadowRoot(Document& aDoc)
-    : mAsNode(aDoc), mKind(Kind::Document) {}
+DocumentOrShadowRoot::DocumentOrShadowRoot(Document* aDoc)
+    : mAsNode(aDoc), mKind(Kind::Document) {
+  MOZ_ASSERT(mAsNode);
+}
 
 void DocumentOrShadowRoot::AddSizeOfOwnedSheetArrayExcludingThis(
     nsWindowSizes& aSizes, const nsTArray<RefPtr<StyleSheet>>& aSheets) const {
@@ -112,7 +117,7 @@ already_AddRefed<nsContentList> DocumentOrShadowRoot::GetElementsByTagNameNS(
 
 already_AddRefed<nsContentList> DocumentOrShadowRoot::GetElementsByTagNameNS(
     const nsAString& aNamespaceURI, const nsAString& aLocalName,
-    mozilla::ErrorResult& aResult) {
+    ErrorResult& aResult) {
   int32_t nameSpaceId = kNameSpaceID_Wildcard;
 
   if (!aNamespaceURI.EqualsLiteral("*")) {
@@ -450,6 +455,31 @@ struct nsRadioGroupStruct {
   uint32_t mRequiredRadioCount;
   bool mGroupSuffersFromValueMissing;
 };
+
+void DocumentOrShadowRoot::GetAnimations(
+    nsTArray<RefPtr<Animation>>& aAnimations) {
+  // As with Element::GetAnimations we initially flush style here.
+  // This should ensure that there are no subsequent changes to the tree
+  // structure while iterating over the children below.
+  if (Document* doc = AsNode().GetComposedDoc()) {
+    doc->FlushPendingNotifications(
+        ChangesToFlush(FlushType::Style, false /* flush animations */));
+  }
+
+  GetAnimationsOptions options;
+  options.mSubtree = true;
+
+  for (RefPtr<nsIContent> child = AsNode().GetFirstChild(); child;
+       child = child->GetNextSibling()) {
+    if (RefPtr<Element> element = Element::FromNode(child)) {
+      nsTArray<RefPtr<Animation>> result;
+      element->GetAnimations(options, result, Element::Flush::No);
+      aAnimations.AppendElements(std::move(result));
+    }
+  }
+
+  aAnimations.Sort(AnimationPtrComparator<RefPtr<Animation>>());
+}
 
 nsresult DocumentOrShadowRoot::WalkRadioGroup(const nsAString& aName,
                                               nsIRadioVisitor* aVisitor,

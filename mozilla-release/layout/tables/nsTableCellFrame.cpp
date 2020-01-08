@@ -571,11 +571,15 @@ void nsTableCellFrame::BlockDirAlignChild(WritingMode aWM, nscoord aMaxAscent) {
   nscoord kidBStart = 0;
   switch (GetVerticalAlign()) {
     case StyleVerticalAlignKeyword::Baseline:
-      // Align the baselines of the child frame with the baselines of
-      // other children in the same row which have 'vertical-align: baseline'
-      kidBStart = bStartInset + aMaxAscent - GetCellBaseline();
-      break;
-
+      if (!GetContentEmpty()) {
+        // Align the baselines of the child frame with the baselines of
+        // other children in the same row which have 'vertical-align: baseline'
+        kidBStart = bStartInset + aMaxAscent - GetCellBaseline();
+        break;
+      }
+      // Empty cells don't participate in baseline alignment -
+      // fallback to start alignment.
+      MOZ_FALLTHROUGH;
     case StyleVerticalAlignKeyword::Top:
       // Align the top of the child frame with the top of the content area,
       kidBStart = bStartInset;
@@ -742,15 +746,15 @@ nscoord nsTableCellFrame::GetPrefISize(gfxContext* aRenderingContext) {
   return result;
 }
 
-/* virtual */ nsIFrame::IntrinsicISizeOffsetData
+/* virtual */ nsIFrame::IntrinsicSizeOffsetData
 nsTableCellFrame::IntrinsicISizeOffsets(nscoord aPercentageBasis) {
-  IntrinsicISizeOffsetData result =
+  IntrinsicSizeOffsetData result =
       nsContainerFrame::IntrinsicISizeOffsets(aPercentageBasis);
 
-  result.hMargin = 0;
+  result.margin = 0;
 
   WritingMode wm = GetWritingMode();
-  result.hBorder = GetBorderWidth(wm).IStartEnd(wm);
+  result.border = GetBorderWidth(wm).IStartEnd(wm);
 
   return result;
 }

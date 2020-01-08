@@ -16,6 +16,7 @@
 #include "mozilla/MemoryReporting.h"
 #include "mozilla/RefPtr.h"
 #include "mozilla/Span.h"
+#include "mozilla/Tuple.h"
 #include "mozilla/UniquePtr.h"
 #include "mozilla/Utf8.h"
 #include "mozilla/Variant.h"
@@ -261,7 +262,10 @@ using UniqueScriptCounts = js::UniquePtr<ScriptCounts>;
 using ScriptCountsMap = HashMap<JSScript*, UniqueScriptCounts,
                                 DefaultHasher<JSScript*>, SystemAllocPolicy>;
 
-using ScriptLCovMap = HashMap<JSScript*, coverage::LCovSource*,
+// The 'const char*' for the function name is a pointer within the LCovSource's
+// LifoAlloc and will be discarded at the same time.
+using ScriptLCovEntry = mozilla::Tuple<coverage::LCovSource*, const char*>;
+using ScriptLCovMap = HashMap<JSScript*, ScriptLCovEntry,
                               DefaultHasher<JSScript*>, SystemAllocPolicy>;
 
 #ifdef MOZ_VTUNE
@@ -652,6 +656,8 @@ class ScriptSource {
   // The bytecode cache encoder is used to encode only the content of function
   // which are delazified.  If this value is not nullptr, then each delazified
   // function should be recorded before their first execution.
+  // This value is logically owned by the canonical ScriptSourceObject, and
+  // will be released in the canonical SSO's finalizer.
   UniquePtr<XDRIncrementalEncoder> xdrEncoder_ = nullptr;
 
   // Instant at which the first parse of this source started, or null
@@ -729,7 +735,8 @@ class ScriptSource {
 
   explicit ScriptSource() : id_(++idCount_) {}
 
-  ~ScriptSource() { MOZ_ASSERT(refs == 0); }
+  void finalizeGCData();
+  ~ScriptSource();
 
   void incref() { refs++; }
   void decref() {
@@ -1404,7 +1411,7 @@ class BaseScript : public gc::TenuredCell {
   // Object that determines what Realm this script is compiled for. In general
   // this refers to the realm's GlobalObject, but for a lazy-script we instead
   // refer to the associated function.
-  GCPtrObject functionOrGlobal_;
+  const GCPtrObject functionOrGlobal_;
 
   // The ScriptSourceObject for this script.
   GCPtr<ScriptSourceObject*> sourceObject_ = {};
@@ -1547,7 +1554,8 @@ class BaseScript : public gc::TenuredCell {
     // Whether the Parser declared 'arguments'.
     ShouldDeclareArguments = 1 << 25,
 
-    // (1 << 26) is unused.
+    // Script is for function.
+    IsFunction = 1 << 26,
 
     // Whether this script contains a direct eval statement.
     HasDirectEval = 1 << 27,
@@ -1633,6 +1641,15 @@ class BaseScript : public gc::TenuredCell {
 
   uint8_t* jitCodeRaw() const { return jitCodeRaw_; }
 
+  // Canonical function for the script, if it has a function. For global and
+  // eval scripts this is nullptr.
+  JSFunction* function() const {
+    if (functionOrGlobal_->is<JSFunction>()) {
+      return &functionOrGlobal_->as<JSFunction>();
+    }
+    return nullptr;
+  }
+
   JS::Realm* realm() const { return functionOrGlobal_->nonCCWRealm(); }
   JS::Compartment* compartment() const {
     return functionOrGlobal_->compartment();
@@ -1655,6 +1672,35 @@ class BaseScript : public gc::TenuredCell {
   uint32_t sourceLength() const { return sourceEnd_ - sourceStart_; }
   uint32_t toStringStart() const { return toStringStart_; }
   uint32_t toStringEnd() const { return toStringEnd_; }
+
+#if defined(JS_BUILD_BINAST)
+  // Set the position of the function in the source code.
+  //
+  // BinAST file format can put lazy functions after the entire tree,
+  // and in that case LazyScript::Create will be called with
+  // dummy values for those positions, and then once it reaches to the lazy
+  // function part, this function is called to set those positions to
+  // correct value.
+  void setPositions(uint32_t sourceStart, uint32_t sourceEnd,
+                    uint32_t toStringStart, uint32_t toStringEnd) {
+    MOZ_ASSERT(toStringStart <= sourceStart);
+    MOZ_ASSERT(sourceStart <= sourceEnd);
+    MOZ_ASSERT(sourceEnd <= toStringEnd);
+
+    sourceStart_ = sourceStart;
+    sourceEnd_ = sourceEnd;
+    toStringStart_ = toStringStart;
+    toStringEnd_ = toStringEnd;
+  }
+
+  void setColumn(uint32_t column) { column_ = column; }
+#endif
+
+  void setToStringEnd(uint32_t toStringEnd) {
+    MOZ_ASSERT(toStringStart_ <= toStringEnd);
+    MOZ_ASSERT(toStringEnd_ >= sourceEnd_);
+    toStringEnd_ = toStringEnd;
+  }
 
   uint32_t lineno() const { return lineno_; }
   uint32_t column() const { return column_; }
@@ -1734,7 +1780,7 @@ setterLevel:                                                                  \
   IMMUTABLE_FLAG_GETTER_SETTER_CUSTOM_PUBLIC(FunctionHasThisBinding,
                                              hasThisBinding, HasThisBinding)
   // FunctionHasExtraBodyVarScope: custom logic below.
-  IMMUTABLE_FLAG_GETTER_SETTER(hasMappedArgsObj, HasMappedArgsObj)
+  IMMUTABLE_FLAG_GETTER(hasMappedArgsObj, HasMappedArgsObj)
   IMMUTABLE_FLAG_GETTER_SETTER(hasInnerFunctions, HasInnerFunctions)
   IMMUTABLE_FLAG_GETTER_SETTER_PUBLIC(needsHomeObject, NeedsHomeObject)
   IMMUTABLE_FLAG_GETTER_SETTER_PUBLIC(isDerivedClassConstructor,
@@ -1760,6 +1806,7 @@ setterLevel:                                                                  \
                                NeedsFunctionEnvironmentObjects)
   IMMUTABLE_FLAG_GETTER_SETTER_PUBLIC(shouldDeclareArguments,
                                       ShouldDeclareArguments)
+  IMMUTABLE_FLAG_GETTER(isFunction, IsFunction)
   IMMUTABLE_FLAG_GETTER_SETTER_PUBLIC(hasDirectEval, HasDirectEval)
 
   MUTABLE_FLAG_GETTER_SETTER(warnedAboutUndefinedProp, WarnedAboutUndefinedProp)
@@ -2729,43 +2776,18 @@ class JSScript : public js::BaseScript {
   void setLazyScript(js::LazyScript* lazy) { lazyScript = lazy; }
   js::LazyScript* maybeLazyScript() { return lazyScript; }
 
-  /*
-   * Original compiled function for the script, if it has a function.
-   * nullptr for global and eval scripts.
-   * The delazifying variant ensures that the function isn't lazy. The
-   * non-delazifying variant must only be used after earlier code has
-   * called ensureNonLazyCanonicalFunction and while the function can't
-   * have been relazified.
-   */
-  inline JSFunction* functionDelazifying() const;
-  JSFunction* functionNonDelazifying() const {
-    if (bodyScope()->is<js::FunctionScope>()) {
-      return bodyScope()->as<js::FunctionScope>().canonicalFunction();
-    }
-    return nullptr;
-  }
-  /*
-   * De-lazifies the canonical function. Must be called before entering code
-   * that expects the function to be non-lazy.
-   */
-  inline void ensureNonLazyCanonicalFunction();
-
   bool isModule() const {
     MOZ_ASSERT(hasFlag(ImmutableFlags::IsModule) ==
                bodyScope()->is<js::ModuleScope>());
     return hasFlag(ImmutableFlags::IsModule);
   }
   js::ModuleObject* module() const {
-    if (isModule()) {
+    if (bodyScope()->is<js::ModuleScope>()) {
       return bodyScope()->as<js::ModuleScope>().module();
     }
     return nullptr;
   }
 
-  bool isGlobalOrEvalCode() const {
-    return bodyScope()->is<js::GlobalScope>() ||
-           bodyScope()->is<js::EvalScope>();
-  }
   bool isGlobalCode() const { return bodyScope()->is<js::GlobalScope>(); }
 
   // Returns true if the script may read formal arguments on the stack
@@ -2790,9 +2812,9 @@ class JSScript : public js::BaseScript {
  public:
   /* Return whether this script was compiled for 'eval' */
   bool isForEval() const {
-    bool forEval = hasFlag(ImmutableFlags::IsForEval);
-    MOZ_ASSERT_IF(forEval, bodyScope()->is<js::EvalScope>());
-    return forEval;
+    MOZ_ASSERT(hasFlag(ImmutableFlags::IsForEval) ==
+               bodyScope()->is<js::EvalScope>());
+    return hasFlag(ImmutableFlags::IsForEval);
   }
 
   /* Return whether this is a 'direct eval' script in a function scope. */
@@ -2813,7 +2835,7 @@ class JSScript : public js::BaseScript {
    * If this script has a function associated to it, then it is not the
    * top-level of a file.
    */
-  bool isTopLevel() { return code() && !functionNonDelazifying(); }
+  bool isTopLevel() { return code() && !isFunction(); }
 
   /* Ensure the script has a JitScript. */
   inline bool ensureHasJitScript(JSContext* cx, js::jit::AutoKeepJitScripts&);
@@ -2958,6 +2980,10 @@ class JSScript : public js::BaseScript {
     return js::BytecodeLocation(this, codeEnd());
   }
 
+  js::BytecodeLocation offsetToLocation(uint32_t offset) const {
+    return js::BytecodeLocation(this, offsetToPC(offset));
+  }
+
   /*
    * computedSizeOfData() is the in-use size of all the data sections.
    * sizeOfData() is the size of the block allocated to hold all the data
@@ -3061,13 +3087,6 @@ class JSScript : public js::BaseScript {
 
   inline JSFunction* getFunction(size_t index);
   inline JSFunction* getFunction(jsbytecode* pc);
-
-  JSFunction* function() const {
-    if (functionNonDelazifying()) {
-      return functionNonDelazifying();
-    }
-    return nullptr;
-  }
 
   inline js::RegExpObject* getRegExp(size_t index);
   inline js::RegExpObject* getRegExp(jsbytecode* pc);
@@ -3342,12 +3361,6 @@ class LazyScript : public BaseScript {
       uint32_t sourceStart, uint32_t sourceEnd, uint32_t toStringStart,
       uint32_t toStringEnd, uint32_t lineno, uint32_t column);
 
-  static inline JSFunction* functionDelazifying(JSContext* cx,
-                                                Handle<LazyScript*>);
-  JSFunction* functionNonDelazifying() const {
-    return &functionOrGlobal_->as<JSFunction>();
-  }
-
   bool canRelazify() const {
     // Only functions without inner functions or direct eval are re-lazified.
     // Functions with either of those are on the static scope chain of their
@@ -3428,12 +3441,6 @@ class LazyScript : public BaseScript {
   const FieldInitializers& getFieldInitializers() const {
     MOZ_ASSERT(lazyData_);
     return lazyData_->fieldInitializers_;
-  }
-
-  void setToStringEnd(uint32_t toStringEnd) {
-    MOZ_ASSERT(toStringStart_ <= toStringEnd);
-    MOZ_ASSERT(toStringEnd_ >= sourceEnd_);
-    toStringEnd_ = toStringEnd;
   }
 
   // Returns true if the enclosing script has ever been compiled.

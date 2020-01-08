@@ -208,7 +208,8 @@ ExtensionManager = {
         allowedOrigins: extension.whiteListedHosts,
         webAccessibleResources: extension.webAccessibleResources,
 
-        contentSecurityPolicy: extension.contentSecurityPolicy,
+        extensionPageCSP: extension.extensionPageCSP,
+        contentScriptCSP: extension.contentScriptCSP,
 
         localizeCallback,
 

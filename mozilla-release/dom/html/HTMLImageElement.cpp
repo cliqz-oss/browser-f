@@ -75,7 +75,7 @@ namespace dom {
 // Calls LoadSelectedImage on host element unless it has been superseded or
 // canceled -- this is the synchronous section of "update the image data".
 // https://html.spec.whatwg.org/multipage/embedded-content.html#update-the-image-data
-class ImageLoadTask : public MicroTaskRunnable {
+class ImageLoadTask final : public MicroTaskRunnable {
  public:
   ImageLoadTask(HTMLImageElement* aElement, bool aAlwaysLoad,
                 bool aUseUrgentStartForChannel)
@@ -87,7 +87,7 @@ class ImageLoadTask : public MicroTaskRunnable {
     mDocument->BlockOnload();
   }
 
-  virtual void Run(AutoSlowOperation& aAso) override {
+  void Run(AutoSlowOperation& aAso) override {
     if (mElement->mPendingImageLoadTask == this) {
       mElement->mPendingImageLoadTask = nullptr;
       mElement->mUseUrgentStartForChannel = mUseUrgentStartForChannel;
@@ -96,7 +96,7 @@ class ImageLoadTask : public MicroTaskRunnable {
     mDocument->UnblockOnload(false);
   }
 
-  virtual bool Suppressed() override {
+  bool Suppressed() override {
     nsIGlobalObject* global = mElement->GetOwnerGlobal();
     return global && global->IsInSyncOperation();
   }
@@ -167,11 +167,8 @@ bool HTMLImageElement::Complete() {
   // It is still not clear what value should img.complete return in various
   // cases, see https://github.com/whatwg/html/issues/4884
 
-  if (!HasAttr(kNameSpaceID_None, nsGkAtoms::srcset)) {
-    nsAutoString src;
-    if (!GetAttr(kNameSpaceID_None, nsGkAtoms::src, src) || src.IsEmpty()) {
-      return true;
-    }
+  if (!HasAttr(nsGkAtoms::srcset) && !HasNonEmptyAttr(nsGkAtoms::src)) {
+    return true;
   }
 
   if (!mCurrentRequest || mPendingRequest) {
@@ -785,7 +782,7 @@ void HTMLImageElement::ClearForm(bool aRemoveFromForm) {
 void HTMLImageElement::QueueImageLoadTask(bool aAlwaysLoad) {
   // If loading is temporarily disabled, we don't want to queue tasks
   // that may then run when loading is re-enabled.
-  if (!LoadingEnabled() || !this->OwnerDoc()->ShouldLoadImages()) {
+  if (!LoadingEnabled() || !OwnerDoc()->ShouldLoadImages()) {
     return;
   }
 

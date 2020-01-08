@@ -64,7 +64,7 @@ td.integer {
 }
 
 #action-box {
-  float: right;
+  float: inline-end;
   margin-top: 2em;
   margin-bottom: 20px;
   margin-inline-start: 20px;
@@ -72,8 +72,10 @@ td.integer {
   width: 30%;
 }
 
-#action-box:dir(rtl) {
-  float: left;
+#action-box,
+#reset-box,
+#safe-mode-box {
+  display: none;
 }
 
 #reset-box > h3 {

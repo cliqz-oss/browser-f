@@ -166,6 +166,14 @@ class GeckoChildProcessHost : public ChildProcessHost,
   static MacSandboxType GetDefaultMacSandboxType() {
     return MacSandboxType_Utility;
   };
+
+  // Must be called before the process is launched. Determines if
+  // child processes will be launched with OS_ACTIVITY_MODE set to
+  // "disabled" or not. When |mDisableOSActivityMode| is set to true,
+  // child processes will be launched with OS_ACTIVITY_MODE
+  // disabled to avoid connection attempts to diagnosticd(8) which are
+  // blocked in child processes due to sandboxing.
+  void DisableOSActivityMode();
 #endif
   typedef std::function<void(GeckoChildProcessHost*)> GeckoProcessCallback;
 
@@ -226,6 +234,10 @@ class GeckoChildProcessHost : public ChildProcessHost,
 #endif
   RefPtr<ProcessHandlePromise> mHandlePromise;
 
+#if defined(XP_MACOSX) && defined(MOZ_SANDBOX)
+  bool mDisableOSActivityMode;
+#endif
+
   bool OpenPrivilegedHandle(base::ProcessId aPid);
 
 #if defined(XP_MACOSX) && defined(MOZ_SANDBOX)
@@ -270,6 +282,8 @@ class GeckoChildProcessHost : public ChildProcessHost,
       sGeckoChildProcessHosts;
   static StaticMutex sMutex;
 };
+
+nsCOMPtr<nsIEventTarget> GetIPCLauncher();
 
 } /* namespace ipc */
 } /* namespace mozilla */

@@ -1,8 +1,8 @@
 #!/usr/bin/env python
 
-"""Wrapper script for running jobs in TaskCluster
+"""Wrapper script for running jobs in Taskcluster
 
-This is intended for running test jobs in TaskCluster. The script
+This is intended for running test jobs in Taskcluster. The script
 takes a two positional arguments which are the name of the test job
 and the script to actually run.
 
@@ -41,14 +41,14 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
+from socket import error as SocketError  # NOQA: N812
+import errno
 try:
     from urllib2 import urlopen
 except ImportError:
     # Python 3 case
     from urllib.request import urlopen
-
-
-QUEUE_BASE = "https://queue.taskcluster.net/v1/task"
 
 
 root = os.path.abspath(
@@ -124,12 +124,8 @@ def checkout_revision(rev):
 
 
 def install_chrome(channel):
-    deb_prefix = "https://dl.google.com/linux/direct/"
     if channel in ("experimental", "dev", "nightly"):
-        # Pinned to 78 as 79 consistently fails reftests. TODO(foolip).
-        # See https://github.com/web-platform-tests/wpt/issues/19297.
-        deb_archive = "google-chrome-unstable_78.0.3904.17-1_amd64.deb"
-        deb_prefix = "https://dl.google.com/linux/chrome/deb/pool/main/g/google-chrome-unstable/"
+        deb_archive = "google-chrome-unstable_current_amd64.deb"
     elif channel == "beta":
         deb_archive = "google-chrome-beta_current_amd64.deb"
     elif channel == "stable":
@@ -138,7 +134,7 @@ def install_chrome(channel):
         raise ValueError("Unrecognized release channel: %s" % channel)
 
     dest = os.path.join("/tmp", deb_archive)
-    resp = urlopen(deb_prefix + deb_archive)
+    resp = urlopen("https://dl.google.com/linux/direct/%s" % deb_archive)
     with open(dest, "w") as f:
         f.write(resp.read())
 
@@ -149,20 +145,61 @@ def install_webkitgtk_from_apt_repository(channel):
     # Configure webkitgtk.org/debian repository for $channel and pin it with maximum priority
     run(["sudo", "apt-key", "adv", "--fetch-keys", "https://webkitgtk.org/debian/apt.key"])
     with open("/tmp/webkitgtk.list", "w") as f:
-        f.write("deb [arch=amd64] https://webkitgtk.org/debian buster-wpt-webkit-updates %s\n" % channel)
+        f.write("deb [arch=amd64] https://webkitgtk.org/apt bionic-wpt-webkit-updates %s\n" % channel)
     run(["sudo", "mv", "/tmp/webkitgtk.list", "/etc/apt/sources.list.d/"])
     with open("/tmp/99webkitgtk", "w") as f:
         f.write("Package: *\nPin: origin webkitgtk.org\nPin-Priority: 1999\n")
     run(["sudo", "mv", "/tmp/99webkitgtk", "/etc/apt/preferences.d/"])
-    # Install webkit2gtk from the webkitgtk.org/debian repository for $channel
+    # Install webkit2gtk from the webkitgtk.org/apt repository for $channel
     run(["sudo", "apt-get", "-qqy", "update"])
     run(["sudo", "apt-get", "-qqy", "upgrade"])
-    run(["sudo", "apt-get", "-qqy", "-t", "buster-wpt-webkit-updates", "install", "webkit2gtk-driver"])
+    run(["sudo", "apt-get", "-qqy", "-t", "bionic-wpt-webkit-updates", "install", "webkit2gtk-driver"])
+
+
+# Download an URL in chunks and saves it to a file descriptor (truncating it)
+# It doesn't close the descriptor, but flushes it on success.
+# It retries the download in case of ECONNRESET up to max_retries.
+def download_url_to_descriptor(fd, url, max_retries=3):
+    download_succeed = False
+    if max_retries < 0:
+        max_retries = 0
+    for current_retry in range(max_retries+1):
+        try:
+            resp = urlopen(url)
+            # We may come here in a retry, ensure to truncate fd before start writing.
+            fd.seek(0)
+            fd.truncate(0)
+            while True:
+                chunk = resp.read(16*1024)
+                if not chunk:
+                    break  # Download finished
+                fd.write(chunk)
+            fd.flush()
+            download_succeed = True
+            break  # Sucess
+        except SocketError as e:
+            if e.errno != errno.ECONNRESET:
+                raise  # Unknown error
+            if current_retry < max_retries:
+                print("ERROR: Connection reset by peer. Retrying ...")
+                continue  # Retry
+    return download_succeed
+
+
+def install_webkitgtk_from_tarball_bundle(channel):
+    with tempfile.NamedTemporaryFile(suffix=".tar.xz") as temp_tarball:
+        download_url = "https://webkitgtk.org/built-products/nightly/webkitgtk-nightly-build-last.tar.xz"
+        if not download_url_to_descriptor(temp_tarball, download_url):
+            raise RuntimeError("Can't download %s. Aborting" % download_url)
+        run(["sudo", "tar", "xfa", temp_tarball.name, "-C", "/"])
+    # Install dependencies
+    run(["sudo", "apt-get", "-qqy", "update"])
+    run(["sudo", "/opt/webkitgtk/nightly/install-dependencies"])
 
 
 def install_webkitgtk(channel):
     if channel in ("experimental", "dev", "nightly"):
-        raise NotImplementedError("Still can't install from release channel: %s" % channel)
+        install_webkitgtk_from_tarball_bundle(channel)
     elif channel in ("beta", "stable"):
         install_webkitgtk_from_apt_repository(channel)
     else:
@@ -285,7 +322,14 @@ def fetch_event_data():
         # For example under local testing
         return None
 
-    resp = urlopen("%s/%s" % (QUEUE_BASE, task_id))
+    root_url = os.environ['TASKCLUSTER_ROOT_URL']
+    if root_url == 'https://taskcluster.net':
+        queue_base = "https://queue.taskcluster.net/v1/task"
+    else:
+        queue_base = root_url + "/api/queue/v1/task"
+
+
+    resp = urlopen("%s/%s" % (queue_base, task_id))
 
     task_data = json.load(resp)
     event_data = task_data.get("extra", {}).get("github_event")

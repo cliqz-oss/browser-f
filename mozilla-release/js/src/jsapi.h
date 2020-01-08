@@ -27,6 +27,7 @@
 #include "jspubtd.h"
 
 #include "js/AllocPolicy.h"
+#include "js/BinASTFormat.h"  // JS::BinASTFormat
 #include "js/CallArgs.h"
 #include "js/CharacterEncoding.h"
 #include "js/Class.h"
@@ -211,17 +212,6 @@ typedef size_t (*JSSizeOfIncludingThisCompartmentCallback)(
     mozilla::MallocSizeOf mallocSizeOf, JS::Compartment* compartment);
 
 /**
- * Callback used by memory reporting to ask the embedder how much memory an
- * external string is keeping alive.  The embedder is expected to return a value
- * that corresponds to the size of the allocation that will be released by the
- * JSStringFinalizer passed to JS_NewExternalString for this string.
- *
- * Implementations of this callback MUST NOT do anything that can cause GC.
- */
-using JSExternalStringSizeofCallback =
-    size_t (*)(JSString* str, mozilla::MallocSizeOf mallocSizeOf);
-
-/**
  * Callback used to intercept JavaScript errors.
  */
 struct JSErrorInterceptor {
@@ -340,28 +330,8 @@ extern JS_PUBLIC_API bool JS_IsBuiltinFunctionConstructor(JSFunction* fun);
 extern JS_PUBLIC_API JSContext* JS_NewContext(
     uint32_t maxbytes, JSRuntime* parentRuntime = nullptr);
 
-// The methods below for controlling the active context in a cooperatively
-// multithreaded runtime are not threadsafe, and the caller must ensure they
-// are called serially if there is a chance for contention between threads.
-
-// Called from the active context for a runtime, yield execution so that
-// this context is no longer active and can no longer use the API.
-extern JS_PUBLIC_API void JS_YieldCooperativeContext(JSContext* cx);
-
-// Called from a context whose runtime has no active context, this thread
-// becomes the active context for that runtime and may use the API.
-extern JS_PUBLIC_API void JS_ResumeCooperativeContext(JSContext* cx);
-
-// Create a new context on this thread for cooperative multithreading in the
-// same runtime as siblingContext. Called on a runtime (as indicated by
-// siblingContet) which has no active context, on success the new context will
-// become the runtime's active context.
-extern JS_PUBLIC_API JSContext* JS_NewCooperativeContext(
-    JSContext* siblingContext);
-
-// Destroy a context allocated with JS_NewContext or JS_NewCooperativeContext.
-// The context must be the current active context in the runtime, and after
-// this call the runtime will have no active context.
+// Destroy a context allocated with JS_NewContext. Must be called on the thread
+// that called JS_NewContext.
 extern JS_PUBLIC_API void JS_DestroyContext(JSContext* cx);
 
 JS_PUBLIC_API void* JS_GetContextPrivate(JSContext* cx);
@@ -428,11 +398,6 @@ extern JS_PUBLIC_API void JS_SetSizeOfIncludingThisCompartmentCallback(
 extern JS_PUBLIC_API void JS_SetWrapObjectCallbacks(
     JSContext* cx, const JSWrapObjectCallbacks* callbacks);
 
-extern JS_PUBLIC_API void JS_SetExternalStringSizeofCallback(
-    JSContext* cx, JSExternalStringSizeofCallback callback);
-
-#if defined(NIGHTLY_BUILD)
-
 // Set a callback that will be called whenever an error
 // is thrown in this runtime. This is designed as a mechanism
 // for logging errors. Note that the VM makes no attempt to sanitize
@@ -445,9 +410,11 @@ extern JS_PUBLIC_API void JS_SetExternalStringSizeofCallback(
 // will replace the original error.
 //
 // May be `nullptr`.
+// This is a no-op if built without NIGHTLY_BUILD.
 extern JS_PUBLIC_API void JS_SetErrorInterceptorCallback(
     JSRuntime*, JSErrorInterceptor* callback);
 
+// This returns nullptr if built without NIGHTLY_BUILD.
 extern JS_PUBLIC_API JSErrorInterceptor* JS_GetErrorInterceptorCallback(
     JSRuntime*);
 
@@ -455,8 +422,6 @@ extern JS_PUBLIC_API JSErrorInterceptor* JS_GetErrorInterceptorCallback(
 // If so, return the error type.
 extern JS_PUBLIC_API mozilla::Maybe<JSExnType> JS_GetErrorType(
     const JS::Value& val);
-
-#endif  // defined(NIGHTLY_BUILD)
 
 extern JS_PUBLIC_API void JS_SetCompartmentPrivate(JS::Compartment* compartment,
                                                    void* data);
@@ -1907,25 +1872,6 @@ extern JS_PUBLIC_API bool JS_IsFunctionBound(JSFunction* fun);
 
 extern JS_PUBLIC_API JSObject* JS_GetBoundFunctionTarget(JSFunction* fun);
 
-namespace JS {
-
-/**
- * Clone a top-level function into cx's global. This function will dynamically
- * fail if funobj was lexically nested inside some other function.
- */
-extern JS_PUBLIC_API JSObject* CloneFunctionObject(JSContext* cx,
-                                                   HandleObject funobj);
-
-/**
- * As above, but providing an explicit scope chain.  scopeChain must not include
- * the global object on it; that's implicit.  It needs to contain the other
- * objects that should end up on the clone's scope chain.
- */
-extern JS_PUBLIC_API JSObject* CloneFunctionObject(
-    JSContext* cx, HandleObject funobj, HandleObjectVector scopeChain);
-
-}  // namespace JS
-
 extern JS_PUBLIC_API JSObject* JS_GetGlobalFromScript(JSScript* script);
 
 extern JS_PUBLIC_API const char* JS_GetScriptFilename(JSScript* script);
@@ -1979,20 +1925,19 @@ extern JS_PUBLIC_API void SetScriptPrivateReferenceHooks(
 
 } /* namespace JS */
 
-#if defined(JS_BUILD_BINAST)
-
 namespace JS {
 
+// This throws an exception if built without JS_BUILD_BINAST.
 extern JS_PUBLIC_API JSScript* DecodeBinAST(
-    JSContext* cx, const ReadOnlyCompileOptions& options, FILE* file);
+    JSContext* cx, const ReadOnlyCompileOptions& options, FILE* file,
+    JS::BinASTFormat format);
 
+// This throws an exception if built without JS_BUILD_BINAST.
 extern JS_PUBLIC_API JSScript* DecodeBinAST(
     JSContext* cx, const ReadOnlyCompileOptions& options, const uint8_t* buf,
-    size_t length);
+    size_t length, JS::BinASTFormat format);
 
 } /* namespace JS */
-
-#endif /* JS_BUILD_BINAST */
 
 extern JS_PUBLIC_API bool JS_CheckForInterrupt(JSContext* cx);
 
@@ -3279,6 +3224,13 @@ extern JS_PUBLIC_API bool IsMaybeWrappedSavedFrame(JSObject* obj);
  * SavedFrame.prototype object.
  */
 extern JS_PUBLIC_API bool IsUnwrappedSavedFrame(JSObject* obj);
+
+/**
+ * Clean up a finalization group in response to the engine calling the
+ * HostCleanupFinalizationGroup callback.
+ */
+extern JS_PUBLIC_API bool CleanupQueuedFinalizationGroup(JSContext* cx,
+                                                         HandleObject group);
 
 } /* namespace JS */
 

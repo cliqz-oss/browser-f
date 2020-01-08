@@ -205,6 +205,8 @@ class gfxPlatform : public mozilla::layers::MemoryPressureListener {
 
   static bool UseWebRender();
 
+  static bool CanMigrateMacGPUs();
+
   /**
    * Create an offscreen surface of the given dimensions
    * and image format.
@@ -546,9 +548,19 @@ class gfxPlatform : public mozilla::layers::MemoryPressureListener {
   static qcms_transform* GetCMSRGBATransform();
 
   /**
-   * Return sRGBA -> output device transform.
+   * Return sBGRA -> output device transform.
    */
   static qcms_transform* GetCMSBGRATransform();
+
+  /**
+   * Return OS RGBA -> output device transform.
+   */
+  static qcms_transform* GetCMSOSRGBATransform();
+
+  /**
+   * Return OS RGBA QCMS type.
+   */
+  static qcms_data_type GetCMSOSRGBAType();
 
   virtual void FontsPrefsChanged(const char* aPref);
 
@@ -887,6 +899,9 @@ class gfxPlatform : public mozilla::layers::MemoryPressureListener {
   void InitGPUProcessPrefs();
   virtual void InitPlatformGPUProcessPrefs() {}
   void InitOMTPConfig();
+
+  // Gather telemetry data about the Gfx Platform and send it
+  static void ReportTelemetry();
 
   static bool IsDXInterop2Blocked();
   static bool IsDXNV12Blocked();

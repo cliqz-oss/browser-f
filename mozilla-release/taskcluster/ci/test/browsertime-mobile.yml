@@ -3,13 +3,13 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 ---
 job-defaults:
-    max-run-time: 1800
+    max-run-time: 3600
     suite: raptor
     workdir: /builds/worker
     run-on-projects:
         by-app:
             fenix: []
-            geckoview: ["integration", "try"]
+            geckoview: ["mozilla-central", "try"]
             refbrow: []
     tier: 3
     target:
@@ -52,7 +52,7 @@ job-defaults:
 
 browsertime-tp6m-1:
     description: "Raptor (browsertime) tp6m-1"
-    apps: ["fenix", "geckoview", "refbrow"]
-    cold: true
+    apps: ["geckoview"]
+    pageload: cold
     treeherder-symbol: Btime(tp6m-1)
     raptor-test: raptor-tp6m-1

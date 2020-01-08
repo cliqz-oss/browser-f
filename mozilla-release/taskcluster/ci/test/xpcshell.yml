@@ -21,7 +21,7 @@ job-defaults:
             by-test-platform:
                 android-em-7.*:
                     - android/android_common.py
-                    - android/androidx86_7_0-old.py
+                    - android/androidx86_7_0.py
                 linux.*:
                     - unittests/linux_unittest.py
                     - remove_executables.py
@@ -45,11 +45,11 @@ xpcshell:
     run-on-projects:
         by-test-platform:
             windows10-64-asan/opt: []  # No XPCShell on ASAN yet
-            windows10-aarch64/opt: ['try', 'mozilla-central']
+            windows10-aarch64/opt: ['try']
             default: built-projects
     chunks:
         by-test-platform:
-            .*-ccov/debug: 6
+            .*-ccov/.*: 6
             android-em-7.*: 3
             macosx.*(?!-ccov)...../.*: 2
             linux64(-qr)?/debug: 6
@@ -58,16 +58,17 @@ xpcshell:
             default: 5
     max-run-time:
         by-test-platform:
-            macosx.*(?!-ccov)...../.*: 3600
+            macosx.*(?!-ccov)...../.*: 5400
             windows10-aarch64/.*: 3600
-            windows7-32(-shippable)?/opt: 5400
-            .*-ccov/debug: 5400
+            windows(7-32|10-64)(-shippable)?/opt: 5400
+            .*-ccov/.*: 5400
             default: 2700
     allow-software-gl-layers: false
     tier:
         by-test-platform:
             windows10-64-asan.*: 3
             windows10-aarch64.*: 2
+            linux64-ccov/opt: 3
             default: default
     fetches:
         toolchain:

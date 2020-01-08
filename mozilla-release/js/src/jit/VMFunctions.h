@@ -130,7 +130,7 @@ enum MaybeTailCall : bool { TailCall, NonTailCall };
 
 // Data for a VM function. All VMFunctionDatas are stored in a constexpr array.
 struct VMFunctionData {
-#if defined(JS_JITSPEW) || defined(JS_TRACE_LOGGING)
+#if defined(DEBUG) || defined(JS_JITSPEW) || defined(JS_TRACE_LOGGING)
   // Informative name of the wrapped function. The name should not be present
   // in release builds in order to save memory.
   const char* name_;
@@ -144,7 +144,8 @@ struct VMFunctionData {
     RootId,
     RootFunction,
     RootValue,
-    RootCell
+    RootCell,
+    RootBigInt
   };
 
   // Contains an combination of enumerated types used by the gc for marking
@@ -225,7 +226,7 @@ struct VMFunctionData {
     return ((argumentPassedInFloatRegs >> explicitArg) & 1) == 1;
   }
 
-#if defined(JS_JITSPEW) || defined(JS_TRACE_LOGGING)
+#if defined(DEBUG) || defined(JS_JITSPEW) || defined(JS_TRACE_LOGGING)
   const char* name() const { return name_; }
 #endif
 
@@ -300,7 +301,7 @@ struct VMFunctionData {
                            uint8_t extraValuesToPop = 0,
                            MaybeTailCall expectTailCall = NonTailCall)
       :
-#if defined(JS_JITSPEW) || defined(JS_TRACE_LOGGING)
+#if defined(DEBUG) || defined(JS_JITSPEW) || defined(JS_TRACE_LOGGING)
         name_(name),
 #endif
         argumentRootTypes(argRootTypes),
@@ -395,6 +396,10 @@ struct TypeToDataType<JSLinearString*> {
 };
 
 template <>
+struct TypeToDataType<BigInt*> {
+  static const DataType result = Type_Object;
+};
+template <>
 struct TypeToDataType<HandleObject> {
   static const DataType result = Type_Handle;
 };
@@ -460,6 +465,10 @@ struct TypeToDataType<MutableHandleValue> {
 };
 template <>
 struct TypeToDataType<HandleId> {
+  static const DataType result = Type_Handle;
+};
+template <>
+struct TypeToDataType<HandleBigInt> {
   static const DataType result = Type_Handle;
 };
 
@@ -577,6 +586,11 @@ struct TypeToArgProperties<HandleObjectGroup> {
   static const uint32_t result =
       TypeToArgProperties<ObjectGroup*>::result | VMFunctionData::ByRef;
 };
+template <>
+struct TypeToArgProperties<HandleBigInt> {
+  static const uint32_t result =
+      TypeToArgProperties<BigInt*>::result | VMFunctionData::ByRef;
+};
 
 // Convert argument type to whether or not it should be passed in a float
 // register on platforms that have them, like x64.
@@ -674,6 +688,10 @@ template <>
 struct TypeToRootType<Handle<Scope*> > {
   static const uint32_t result = VMFunctionData::RootCell;
 };
+template <>
+struct TypeToRootType<HandleBigInt> {
+  static const uint32_t result = VMFunctionData::RootBigInt;
+};
 template <class T>
 struct TypeToRootType<Handle<T> > {
   // Fail for Handle types that aren't specialized above.
@@ -723,6 +741,10 @@ template <>
 struct OutParamToDataType<MutableHandleString> {
   static const DataType result = Type_Handle;
 };
+template <>
+struct OutParamToDataType<MutableHandleBigInt> {
+  static const DataType result = Type_Handle;
+};
 
 template <class>
 struct OutParamToRootType {
@@ -739,6 +761,10 @@ struct OutParamToRootType<MutableHandleObject> {
 template <>
 struct OutParamToRootType<MutableHandleString> {
   static const VMFunctionData::RootType result = VMFunctionData::RootString;
+};
+template <>
+struct OutParamToRootType<MutableHandleBigInt> {
+  static const VMFunctionData::RootType result = VMFunctionData::RootBigInt;
 };
 
 // Extract the last element of a list of types.
@@ -1116,6 +1142,52 @@ bool IsPossiblyWrappedTypedArray(JSContext* cx, JSObject* obj, bool* result);
 
 bool DoToNumber(JSContext* cx, HandleValue arg, MutableHandleValue ret);
 bool DoToNumeric(JSContext* cx, HandleValue arg, MutableHandleValue ret);
+
+void* AllocateBigIntNoGC(JSContext* cx);
+
+BigInt* BigIntAdd(JSContext* cx, HandleBigInt x, HandleBigInt y);
+BigInt* BigIntSub(JSContext* cx, HandleBigInt x, HandleBigInt y);
+BigInt* BigIntMul(JSContext* cx, HandleBigInt x, HandleBigInt y);
+BigInt* BigIntDiv(JSContext* cx, HandleBigInt x, HandleBigInt y);
+BigInt* BigIntMod(JSContext* cx, HandleBigInt x, HandleBigInt y);
+BigInt* BigIntPow(JSContext* cx, HandleBigInt x, HandleBigInt y);
+BigInt* BigIntBitAnd(JSContext* cx, HandleBigInt x, HandleBigInt y);
+BigInt* BigIntBitOr(JSContext* cx, HandleBigInt x, HandleBigInt y);
+BigInt* BigIntBitXor(JSContext* cx, HandleBigInt x, HandleBigInt y);
+BigInt* BigIntLeftShift(JSContext* cx, HandleBigInt x, HandleBigInt y);
+BigInt* BigIntRightShift(JSContext* cx, HandleBigInt x, HandleBigInt y);
+
+BigInt* BigIntBitNot(JSContext* cx, HandleBigInt x);
+BigInt* BigIntNeg(JSContext* cx, HandleBigInt x);
+BigInt* BigIntInc(JSContext* cx, HandleBigInt x);
+BigInt* BigIntDec(JSContext* cx, HandleBigInt x);
+
+template <EqualityKind Kind>
+bool BigIntEqual(BigInt* x, BigInt* y);
+
+template <ComparisonKind Kind>
+bool BigIntCompare(BigInt* x, BigInt* y);
+
+template <EqualityKind Kind>
+bool BigIntNumberEqual(BigInt* x, double y);
+
+template <ComparisonKind Kind>
+bool BigIntNumberCompare(BigInt* x, double y);
+
+template <ComparisonKind Kind>
+bool NumberBigIntCompare(double x, BigInt* y);
+
+template <EqualityKind Kind>
+bool BigIntStringEqual(JSContext* cx, HandleBigInt x, HandleString y,
+                       bool* res);
+
+template <ComparisonKind Kind>
+bool BigIntStringCompare(JSContext* cx, HandleBigInt x, HandleString y,
+                         bool* res);
+
+template <ComparisonKind Kind>
+bool StringBigIntCompare(JSContext* cx, HandleString x, HandleBigInt y,
+                         bool* res);
 
 enum class TailCallVMFunctionId;
 enum class VMFunctionId;

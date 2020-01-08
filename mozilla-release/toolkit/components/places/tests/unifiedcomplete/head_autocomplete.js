@@ -448,7 +448,7 @@ function makeActionURI(action, params) {
     encodedParams[key] = encodeURIComponent(params[key]);
   }
   let url = "moz-action:" + action + "," + JSON.stringify(encodedParams);
-  return NetUtil.newURI(url);
+  return Services.io.newURI(url);
 }
 
 // Creates a full "match" entry for a search result, suitable for passing as
@@ -609,34 +609,3 @@ add_task(async function ensure_search_engine() {
   let engine = Services.search.getEngineByName("MozSearch");
   await Services.search.setDefault(engine);
 });
-
-/**
- * Add a adaptive result for a given (url, string) tuple.
- * @param {string} aUrl
- *        The url to add an adaptive result for.
- * @param {string} aSearch
- *        The string to add an adaptive result for.
- * @resolves When the operation is complete.
- */
-function addAdaptiveFeedback(aUrl, aSearch) {
-  let promise = TestUtils.topicObserved("places-autocomplete-feedback-updated");
-  let thing = {
-    QueryInterface: ChromeUtils.generateQI([
-      Ci.nsIAutoCompleteInput,
-      Ci.nsIAutoCompletePopup,
-      Ci.nsIAutoCompleteController,
-    ]),
-    get popup() {
-      return thing;
-    },
-    get controller() {
-      return thing;
-    },
-    popupOpen: true,
-    selectedIndex: 0,
-    getValueAt: () => aUrl,
-    searchString: aSearch,
-  };
-  Services.obs.notifyObservers(thing, "autocomplete-will-enter-text");
-  return promise;
-}

@@ -1486,19 +1486,19 @@ nscoord nsTableFrame::GetPrefISize(gfxContext* aRenderingContext) {
   return LayoutStrategy()->GetPrefISize(aRenderingContext, false);
 }
 
-/* virtual */ nsIFrame::IntrinsicISizeOffsetData
+/* virtual */ nsIFrame::IntrinsicSizeOffsetData
 nsTableFrame::IntrinsicISizeOffsets(nscoord aPercentageBasis) {
-  IntrinsicISizeOffsetData result =
+  IntrinsicSizeOffsetData result =
       nsContainerFrame::IntrinsicISizeOffsets(aPercentageBasis);
 
-  result.hMargin = 0;
+  result.margin = 0;
 
   if (IsBorderCollapse()) {
-    result.hPadding = 0;
+    result.padding = 0;
 
     WritingMode wm = GetWritingMode();
     LogicalMargin outerBC = GetIncludedOuterBCBorder(wm);
-    result.hBorder = outerBC.IStartEnd(wm);
+    result.border = outerBC.IStartEnd(wm);
   }
 
   return result;
@@ -4619,9 +4619,9 @@ static const BCCellBorder& CompareBorders(
   bool firstDominates = true;
 
   if (StyleBorderStyle::Hidden == aBorder1.style) {
-    firstDominates = (aIsCorner) ? false : true;
+    firstDominates = !aIsCorner;
   } else if (StyleBorderStyle::Hidden == aBorder2.style) {
-    firstDominates = (aIsCorner) ? true : false;
+    firstDominates = aIsCorner;
   } else if (aBorder1.width < aBorder2.width) {
     firstDominates = false;
   } else if (aBorder1.width == aBorder2.width) {
@@ -7181,7 +7181,7 @@ Maybe<BCBorderParameters> BCInlineDirSeg::BuildBorderParameters(
   // right or bottom end. If the writing mode is inline-RTL, our "start" and
   // "end" will be reversed from this physical-coord view, so we have to swap
   // them here.
-  if (!aIter.mTableWM.IsBidiLTR()) {
+  if (aIter.mTableWM.IsBidiRTL()) {
     Swap(result.mStartBevelSide, result.mEndBevelSide);
     Swap(result.mStartBevelOffset, result.mEndBevelOffset);
   }

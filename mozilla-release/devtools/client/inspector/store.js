@@ -14,8 +14,8 @@ module.exports = services =>
     thunkOptions: {
       // Needed for the ObjectInspector
       client: {
-        createObjectClient: services && services.createObjectClient,
-        createLongStringClient: services && services.createLongStringClient,
+        createObjectFront: services && services.createObjectFront,
+        createLongStringFront: services && services.createLongStringFront,
         releaseActor: services && services.releaseActor,
       },
     },

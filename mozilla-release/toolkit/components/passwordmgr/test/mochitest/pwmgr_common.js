@@ -108,6 +108,62 @@ function checkAutoCompleteResults(actualValues, expectedValues, hostname, msg) {
   checkArrayValues(actualValues.slice(0, -1), expectedValues, msg);
 }
 
+function getIframeBrowsingContext(window, iframeNumber = 0) {
+  let bc = SpecialPowers.wrap(window).getWindowGlobalChild().browsingContext;
+  return SpecialPowers.unwrap(bc.getChildren()[iframeNumber]);
+}
+
+/**
+ * Set input values via setUserInput to emulate user input
+ * and distinguish them from declarative or script-assigned values
+ */
+function setUserInputValues(parentNode, selectorValues) {
+  for (let [selector, newValue] of Object.entries(selectorValues)) {
+    info(`setUserInputValues, selector: ${selector}`);
+    try {
+      let field = SpecialPowers.wrap(parentNode.querySelector(selector));
+      if (field.value == newValue) {
+        // we don't get an input event if the new value == the old
+        field.value += "#";
+      }
+      field.setUserInput(newValue);
+    } catch (ex) {
+      info(ex.message);
+      info(ex.stack);
+      ok(
+        false,
+        `setUserInputValues: Couldn't set value of field: ${ex.message}`
+      );
+    }
+  }
+}
+
+/**
+ * @param {Function} [aFilterFn = undefined] Function to filter out irrelevant submissions.
+ * @return {Promise} resolving when a relevant form submission was processed.
+ */
+function getSubmitMessage(aFilterFn = undefined) {
+  info("getSubmitMessage");
+  return new Promise((resolve, reject) => {
+    PWMGR_COMMON_PARENT.addMessageListener(
+      "formSubmissionProcessed",
+      function processed(...args) {
+        if (aFilterFn && !aFilterFn(...args)) {
+          // This submission isn't the one we're waiting for.
+          return;
+        }
+
+        info("got formSubmissionProcessed");
+        PWMGR_COMMON_PARENT.removeMessageListener(
+          "formSubmissionProcessed",
+          processed
+        );
+        resolve(...args);
+      }
+    );
+  });
+}
+
 /**
  * Check for expected username/password in form.
  * @see `checkForm` below for a similar function.
@@ -128,6 +184,44 @@ function checkLoginForm(
     passwordField.value,
     expectedPassword,
     "Checking " + formID + " password is: " + expectedPassword
+  );
+}
+
+function checkLoginFormInChildFrame(
+  iframeBC,
+  usernameFieldId,
+  expectedUsername,
+  passwordFieldId,
+  expectedPassword
+) {
+  return SpecialPowers.spawn(
+    iframeBC,
+    [usernameFieldId, expectedUsername, passwordFieldId, expectedPassword],
+    (
+      usernameFieldIdF,
+      expectedUsernameF,
+      passwordFieldIdF,
+      expectedPasswordF
+    ) => {
+      let usernameField = this.content.document.getElementById(
+        usernameFieldIdF
+      );
+      let passwordField = this.content.document.getElementById(
+        passwordFieldIdF
+      );
+
+      let formID = usernameField.parentNode.id;
+      Assert.equal(
+        usernameField.value,
+        expectedUsernameF,
+        "Checking " + formID + " username is: " + expectedUsernameF
+      );
+      Assert.equal(
+        passwordField.value,
+        expectedPasswordF,
+        "Checking " + formID + " password is: " + expectedPasswordF
+      );
+    }
   );
 }
 
@@ -228,12 +322,12 @@ function registerRunTests() {
       form.appendChild(password);
 
       var observer = SpecialPowers.wrapCallback(function(subject, topic, data) {
-        var formLikeRoot = subject;
-        if (formLikeRoot.id !== "observerforcer") {
+        if (data !== "observerforcer") {
           return;
         }
+
         SpecialPowers.removeObserver(observer, "passwordmgr-processed-form");
-        formLikeRoot.remove();
+        form.remove();
         SimpleTest.executeSoon(() => {
           var runTestEvent = new Event("runTests");
           window.dispatchEvent(runTestEvent);

@@ -19,14 +19,14 @@
 
 #include "js/Class.h"  // JSTraceOp
 
-struct JSContext;
-class JSObject;
+struct JS_PUBLIC_API JSContext;
+class JS_PUBLIC_API JSObject;
 
 namespace JS {
 
-class Compartment;
-class Realm;
-class Zone;
+class JS_PUBLIC_API Compartment;
+class JS_PUBLIC_API Realm;
+class JS_PUBLIC_API Zone;
 
 }  // namespace JS
 
@@ -128,6 +128,15 @@ class JS_PUBLIC_API RealmCreationOptions {
   bool getSharedMemoryAndAtomicsEnabled() const;
   RealmCreationOptions& setSharedMemoryAndAtomicsEnabled(bool flag);
 
+  // When these prefs (COOP and COEP) are not enabled, shared memory objects
+  // (e.g. SAB) are not allowed to be postMessage()'ed. And we want to provide
+  // a clear warning message to users/developer so that they would have an idea
+  // if the implementations of the COOP and COEP headers are finished or not. So
+  // that they would know if they can fix the SAB by deploying the COOP and
+  // COEP headers or not.
+  bool getCoopAndCoepEnabled() const;
+  RealmCreationOptions& setCoopAndCoepEnabled(bool flag);
+
   bool getStreamsEnabled() const { return streams_; }
   RealmCreationOptions& setStreamsEnabled(bool flag) {
     streams_ = flag;
@@ -164,6 +173,12 @@ class JS_PUBLIC_API RealmCreationOptions {
     return *this;
   }
 
+  bool getWeakRefsEnabled() const { return weakRefs_; }
+  RealmCreationOptions& setWeakRefsEnabled(bool flag) {
+    weakRefs_ = flag;
+    return *this;
+  }
+
   // This flag doesn't affect JS engine behavior.  It is used by Gecko to
   // mark whether content windows and workers are "Secure Context"s. See
   // https://w3c.github.io/webappsec-secure-contexts/
@@ -174,6 +189,12 @@ class JS_PUBLIC_API RealmCreationOptions {
     return *this;
   }
 
+  uint64_t profilerRealmID() const { return profilerRealmID_; }
+  RealmCreationOptions& setProfilerRealmID(uint64_t id) {
+    profilerRealmID_ = id;
+    return *this;
+  }
+
  private:
   JSTraceOp traceGlobal_ = nullptr;
   CompartmentSpecifier compSpec_ = CompartmentSpecifier::NewCompartmentAndZone;
@@ -181,17 +202,20 @@ class JS_PUBLIC_API RealmCreationOptions {
     Compartment* comp_;
     Zone* zone_;
   };
+  uint64_t profilerRealmID_ = 0;
   bool invisibleToDebugger_ = false;
   bool mergeable_ = false;
   bool preserveJitCode_ = false;
   bool cloneSingletons_ = false;
   bool sharedMemoryAndAtomics_ = false;
+  bool coopAndCoep_ = false;
   bool streams_ = false;
   bool readableByteStreams_ = false;
   bool byobStreamReaders_ = false;
   bool writableStreams_ = false;
   bool fields_ = false;
   bool awaitFix_ = false;
+  bool weakRefs_ = false;
   bool secureContext_ = false;
 };
 

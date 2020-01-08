@@ -10,6 +10,7 @@
 #include "mozilla/MemoryReporting.h"
 
 #include "gc/Barrier.h"
+#include "util/BitArray.h"
 #include "vm/NativeObject.h"
 
 namespace js {
@@ -58,7 +59,7 @@ class RareArgumentsData {
 // modification.
 struct ArgumentsData {
   /*
-   * numArgs = Max(numFormalArgs, numActualArgs)
+   * numArgs = std::max(numFormalArgs, numActualArgs)
    * The array 'args' has numArgs elements.
    */
   uint32_t numArgs;

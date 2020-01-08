@@ -218,7 +218,7 @@ nsresult nsLookAndFeel::InitCellHighlightColors() {
   // on top of another background
   int32_t minLuminosityDifference = NS_SUFFICIENT_LUMINOSITY_DIFFERENCE / 5;
   int32_t backLuminosityDifference =
-      NS_LUMINOSITY_DIFFERENCE(mMozWindowBackground, mMozFieldBackground);
+      NS_LUMINOSITY_DIFFERENCE(mMozWindowBackground, mFieldBackground);
   if (backLuminosityDifference >= minLuminosityDifference) {
     mMozCellHighlightBackground = mMozWindowBackground;
     mMozCellHighlightText = mMozWindowText;
@@ -227,8 +227,8 @@ nsresult nsLookAndFeel::InitCellHighlightColors() {
 
   uint16_t hue, sat, luminance;
   uint8_t alpha;
-  mMozCellHighlightBackground = mMozFieldBackground;
-  mMozCellHighlightText = mMozFieldText;
+  mMozCellHighlightBackground = mFieldBackground;
+  mMozCellHighlightText = mFieldText;
 
   NS_RGB2HSV(mMozCellHighlightBackground, hue, sat, luminance, alpha);
 
@@ -272,6 +272,29 @@ void nsLookAndFeel::RefreshImpl() {
   mMenuFontCached = false;
 
   mInitialized = false;
+}
+
+nsTArray<LookAndFeelInt> nsLookAndFeel::GetIntCacheImpl() {
+  nsTArray<LookAndFeelInt> lookAndFeelIntCache =
+      nsXPLookAndFeel::GetIntCacheImpl();
+
+  LookAndFeelInt lafInt;
+  lafInt.id = eIntID_SystemUsesDarkTheme;
+  lafInt.value = GetInt(eIntID_SystemUsesDarkTheme);
+  lookAndFeelIntCache.AppendElement(lafInt);
+
+  return lookAndFeelIntCache;
+}
+
+void nsLookAndFeel::SetIntCacheImpl(
+    const nsTArray<LookAndFeelInt>& aLookAndFeelIntCache) {
+  for (auto entry : aLookAndFeelIntCache) {
+    switch (entry.id) {
+      case eIntID_SystemUsesDarkTheme:
+        mSystemUsesDarkTheme = entry.value;
+        break;
+    }
+  }
 }
 
 nsresult nsLookAndFeel::NativeGetColor(ColorID aID, nscolor& aColor) {
@@ -425,11 +448,11 @@ nsresult nsLookAndFeel::NativeGetColor(ColorID aID, nscolor& aColor) {
       break;
 
     case ColorID::MozEventreerow:
-    case ColorID::MozField:
-      aColor = mMozFieldBackground;
+    case ColorID::Field:
+      aColor = mFieldBackground;
       break;
-    case ColorID::MozFieldtext:
-      aColor = mMozFieldText;
+    case ColorID::Fieldtext:
+      aColor = mFieldText;
       break;
     case ColorID::MozButtondefault:
       // default button border color
@@ -944,19 +967,7 @@ void nsLookAndFeel::EnsureInit() {
   // gtk does non threadsafe refcounting
   MOZ_ASSERT(NS_IsMainThread());
 
-  GdkRGBA color;
   GtkStyleContext* style;
-
-  // It seems GTK doesn't have an API to query if the current theme is
-  // "light" or "dark", so we synthesize it from the CSS2 Window/WindowText
-  // colors instead, by comparing their luminosity.
-  GdkRGBA bg, fg;
-  style = GetStyleContext(MOZ_GTK_WINDOW);
-  gtk_style_context_get_background_color(style, GTK_STATE_FLAG_NORMAL, &bg);
-  gtk_style_context_get_color(style, GTK_STATE_FLAG_NORMAL, &fg);
-  mSystemUsesDarkTheme =
-      (RelativeLuminanceUtils::Compute(GDK_RGBA_TO_NS_RGBA(bg)) <
-       RelativeLuminanceUtils::Compute(GDK_RGBA_TO_NS_RGBA(fg)));
 
   if (XRE_IsContentProcess()) {
     LOG(("nsLookAndFeel::EnsureInit() [%p] Content process\n", (void*)this));
@@ -965,7 +976,21 @@ void nsLookAndFeel::EnsureInit() {
     // but allow user to overide it by prefs.
     ConfigureContentGtkTheme();
   } else {
-    LOG(("nsLookAndFeel::EnsureInit() [%p] Crome process\n", (void*)this));
+    // It seems GTK doesn't have an API to query if the current theme is
+    // "light" or "dark", so we synthesize it from the CSS2 Window/WindowText
+    // colors instead, by comparing their luminosity.
+    GdkRGBA bg, fg;
+    style = GetStyleContext(MOZ_GTK_WINDOW);
+    gtk_style_context_get_background_color(style, GTK_STATE_FLAG_NORMAL, &bg);
+    gtk_style_context_get_color(style, GTK_STATE_FLAG_NORMAL, &fg);
+    LOG(("nsLookAndFeel::EnsureInit() [%p] Chrome process\n", (void*)this));
+    // Update mSystemUsesDarkTheme only in the parent process since in the child
+    // processes we forcibly set gtk-theme-name so that we can't get correct
+    // results.  Instead mSystemUsesDarkTheme in the child processes is updated
+    // via our caching machinery.
+    mSystemUsesDarkTheme =
+        (RelativeLuminanceUtils::Compute(GDK_RGBA_TO_NS_RGBA(bg)) <
+         RelativeLuminanceUtils::Compute(GDK_RGBA_TO_NS_RGBA(fg)));
   }
 
   // The label is not added to a parent widget, but shared for constructing
@@ -975,6 +1000,7 @@ void nsLookAndFeel::EnsureInit() {
   g_object_ref_sink(labelWidget);
 
   // Scrollbar colors
+  GdkRGBA color;
   style = GetStyleContext(MOZ_GTK_SCROLLBAR_TROUGH_VERTICAL);
   gtk_style_context_get_background_color(style, GTK_STATE_FLAG_NORMAL, &color);
   mMozScrollbar = GDK_RGBA_TO_NS_RGBA(color);
@@ -1062,9 +1088,9 @@ void nsLookAndFeel::EnsureInit() {
   style = GetStyleContext(MOZ_GTK_TEXT_VIEW_TEXT);
   gtk_style_context_get_background_color(style, GTK_STATE_FLAG_NORMAL, &color);
   ApplyColorOver(color, &bgColor);
-  mMozFieldBackground = GDK_RGBA_TO_NS_RGBA(bgColor);
+  mFieldBackground = GDK_RGBA_TO_NS_RGBA(bgColor);
   gtk_style_context_get_color(style, GTK_STATE_FLAG_NORMAL, &color);
-  mMozFieldText = GDK_RGBA_TO_NS_RGBA(color);
+  mFieldText = GDK_RGBA_TO_NS_RGBA(color);
 
   // Selected text and background
   gtk_style_context_get_background_color(

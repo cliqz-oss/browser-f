@@ -36,14 +36,9 @@
 #include "nsMediaFeatures.h"
 #include "nsPrintfCString.h"
 #include "gfxUserFontSet.h"
-#ifdef MOZ_XBL
-#  include "nsXBLPrototypeBinding.h"
-#  include "nsBindingManager.h"
-#endif
 #include "nsWindowSizes.h"
 #include "GeckoProfiler.h"
 
-using namespace mozilla;
 using namespace mozilla::dom;
 
 #ifdef DEBUG
@@ -316,7 +311,7 @@ void ServoStyleSet::PreTraverseSync() {
   // Get the Document's root element to ensure that the cache is valid before
   // calling into the (potentially-parallel) Servo traversal, where a cache hit
   // is necessary to avoid a data race when updating the cache.
-  mozilla::Unused << mDocument->GetRootElement();
+  Unused << mDocument->GetRootElement();
 
   // FIXME(emilio): This shouldn't be needed in theory, the call to the same
   // function in PresShell should do the work, but as it turns out we
@@ -848,9 +843,29 @@ static OriginFlags ToOriginFlags(StyleOrigin aOrigin) {
   }
 }
 
+void ServoStyleSet::ImportRuleLoaded(dom::CSSImportRule&, StyleSheet& aSheet) {
+  if (mStyleRuleMap) {
+    mStyleRuleMap->SheetAdded(aSheet);
+  }
+
+  // TODO: Should probably consider ancestor sheets too.
+  if (!aSheet.IsApplicable()) {
+    return;
+  }
+
+  // TODO(emilio): Could handle it better given we know it is an insertion, and
+  // use the style invalidation machinery stuff that we do for regular sheet
+  // insertions.
+  MarkOriginsDirty(ToOriginFlags(aSheet.GetOrigin()));
+}
+
 void ServoStyleSet::RuleAdded(StyleSheet& aSheet, css::Rule& aRule) {
   if (mStyleRuleMap) {
     mStyleRuleMap->RuleAdded(aSheet, aRule);
+  }
+
+  if (!aSheet.IsApplicable() || aRule.IsIncompleteImportRule()) {
+    return;
   }
 
   // FIXME(emilio): Could be more granular based on aRule.
@@ -862,17 +877,21 @@ void ServoStyleSet::RuleRemoved(StyleSheet& aSheet, css::Rule& aRule) {
     mStyleRuleMap->RuleRemoved(aSheet, aRule);
   }
 
+  if (!aSheet.IsApplicable()) {
+    return;
+  }
+
   // FIXME(emilio): Could be more granular based on aRule.
   MarkOriginsDirty(ToOriginFlags(aSheet.GetOrigin()));
 }
 
 void ServoStyleSet::RuleChanged(StyleSheet& aSheet, css::Rule* aRule) {
+  if (!aSheet.IsApplicable()) {
+    return;
+  }
+
   // FIXME(emilio): Could be more granular based on aRule.
   MarkOriginsDirty(ToOriginFlags(aSheet.GetOrigin()));
-}
-
-void ServoStyleSet::StyleSheetCloned(StyleSheet& aSheet) {
-  mNeedsRestyleAfterEnsureUniqueInner = true;
 }
 
 #ifdef DEBUG
@@ -896,7 +915,7 @@ bool ServoStyleSet::GetKeyframesForName(const Element& aElement,
 
 nsTArray<ComputedKeyframeValues> ServoStyleSet::GetComputedKeyframeValuesFor(
     const nsTArray<Keyframe>& aKeyframes, Element* aElement,
-    const mozilla::ComputedStyle* aStyle) {
+    const ComputedStyle* aStyle) {
   nsTArray<ComputedKeyframeValues> result(aKeyframes.Length());
 
   // Construct each nsTArray<PropertyStyleAnimationValuePair> here.
@@ -936,7 +955,7 @@ ServoStyleSet::ResolveServoStyleByAddingAnimation(
 
 already_AddRefed<RawServoAnimationValue> ServoStyleSet::ComputeAnimationValue(
     Element* aElement, RawServoDeclarationBlock* aDeclarations,
-    const mozilla::ComputedStyle* aStyle) {
+    const ComputedStyle* aStyle) {
   return Servo_AnimationValue_Compute(aElement, aDeclarations, aStyle,
                                       mRawSet.get())
       .Consume();

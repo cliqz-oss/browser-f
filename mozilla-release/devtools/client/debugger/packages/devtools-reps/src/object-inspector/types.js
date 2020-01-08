@@ -69,7 +69,7 @@ export type PropertiesIterator = {
   slice: (start: number, count: number) => Promise<GripProperties>,
 };
 
-export type ObjectClient = {
+export type ObjectFront = {
   enumEntries: () => Promise<PropertiesIterator>,
   enumProperties: (options: Object) => Promise<PropertiesIterator>,
   enumSymbols: () => Promise<PropertiesIterator>,
@@ -77,7 +77,7 @@ export type ObjectClient = {
   getProxySlots: () => Promise<{ proxyTarget: Object, proxyHandler: Object }>,
 };
 
-export type LongStringClient = {
+export type LongStringFront = {
   substring: (
     start: number,
     end: number,
@@ -89,9 +89,9 @@ export type LongStringClient = {
   ) => void,
 };
 
-export type CreateObjectClient = RdpGrip => ObjectClient;
+export type CreateObjectFront = RdpGrip => ObjectFront;
 
-export type CreateLongStringClient = RdpGrip => LongStringClient;
+export type CreateLongStringFront = RdpGrip => LongStringFront;
 
 export type CachedNodes = Map<Path, Array<Node>>;
 
@@ -117,8 +117,8 @@ export type Props = {
   disableWrap: boolean,
   dimTopLevelWindow: boolean,
   releaseActor: string => void,
-  createObjectClient: CreateObjectClient,
-  createLongStringClient: CreateLongStringClient,
+  createObjectFront: CreateObjectFront,
+  createLongStringFront: CreateLongStringFront,
   onFocus: ?(Node) => any,
   onActivate: ?(Node) => any,
   onDoubleClick: ?(

@@ -18,7 +18,7 @@ use crate::prim_store::{PrimitiveInstanceKind, PrimitiveOpacity, PrimitiveSceneD
 use crate::prim_store::{PrimKeyCommonData, PrimTemplateCommonData, PrimitiveStore};
 use crate::prim_store::{NinePatchDescriptor, PointKey, SizeKey, InternablePrimitive};
 use crate::render_task_cache::RenderTaskCacheEntryHandle;
-use std::{hash, ops::{Deref, DerefMut}, mem};
+use std::{hash, ops::{Deref, DerefMut}};
 use crate::util::pack_as_float;
 
 /// The maximum number of stops a gradient may have to use the fast path.
@@ -166,25 +166,22 @@ impl From<LinearGradientKey> for LinearGradientTemplate {
             // Fast path not supported on segmented (border-image) gradients.
             item.nine_patch.is_none();
 
+        let mut prev_offset = None;
         // Convert the stops to more convenient representation
         // for the current gradient builder.
-        let mut prev_color = None;
-
         let stops: Vec<GradientStop> = item.stops.iter().map(|stop| {
             let color: ColorF = stop.color.into();
             min_alpha = min_alpha.min(color.a);
 
-            if let Some(prev_color) = prev_color {
-                // The fast path doesn't support hard color stops, yet.
-                // Since the length of the gradient is a fixed size (512 device pixels), if there
-                // is a hard stop you will see bilinear interpolation with this method, instead
-                // of an abrupt color change.
-                if prev_color == color {
-                    supports_caching = false;
-                }
+            // The fast path doesn't support hard color stops, yet.
+            // Since the length of the gradient is a fixed size (512 device pixels), if there
+            // is a hard stop you will see bilinear interpolation with this method, instead
+            // of an abrupt color change.
+            if prev_offset == Some(stop.offset) {
+                supports_caching = false;
             }
 
-            prev_color = Some(color);
+            prev_offset = Some(stop.offset);
 
             GradientStop {
                 offset: stop.offset,
@@ -580,12 +577,22 @@ pub const GRADIENT_DATA_TABLE_SIZE: usize = 128;
 // The number of entries in a gradient data: GRADIENT_DATA_TABLE_SIZE + first stop entry + last stop entry
 pub const GRADIENT_DATA_SIZE: usize = GRADIENT_DATA_TABLE_SIZE + 2;
 
-#[derive(Debug)]
+/// An entry in a gradient data table representing a segment of the gradient
+/// color space.
+#[derive(Debug, Copy, Clone)]
 #[repr(C)]
-// An entry in a gradient data table representing a segment of the gradient color space.
-pub struct GradientDataEntry {
-    pub start_color: PremultipliedColorF,
-    pub end_color: PremultipliedColorF,
+struct GradientDataEntry {
+    start_color: PremultipliedColorF,
+    end_color: PremultipliedColorF,
+}
+
+impl GradientDataEntry {
+    fn white() -> Self {
+        Self {
+            start_color: PremultipliedColorF::WHITE,
+            end_color: PremultipliedColorF::WHITE,
+        }
+    }
 }
 
 // TODO(gw): Tidy this up to be a free function / module?
@@ -662,7 +669,7 @@ impl GradientGpuBlockBuilder {
         // format for texture upload. This table requires the gradient color stops to be normalized to the
         // range [0, 1]. The first and last entries hold the first and last color stop colors respectively,
         // while the entries in between hold the interpolated color stop values for the range [0, 1].
-        let mut entries: [GradientDataEntry; GRADIENT_DATA_SIZE] = unsafe { mem::uninitialized() };
+        let mut entries = [GradientDataEntry::white(); GRADIENT_DATA_SIZE];
 
         if reverse_stops {
             // Fill in the first entry (for reversed stops) with the first color stop
@@ -697,13 +704,6 @@ impl GradientGpuBlockBuilder {
             }
             if cur_idx != GRADIENT_DATA_TABLE_BEGIN {
                 error!("Gradient stops abruptly at {}, auto-completing to white", cur_idx);
-                GradientGpuBlockBuilder::fill_colors(
-                    GRADIENT_DATA_TABLE_BEGIN,
-                    cur_idx,
-                    &PremultipliedColorF::WHITE,
-                    &cur_color,
-                    &mut entries,
-                );
             }
 
             // Fill in the last entry (for reversed stops) with the last color stop
@@ -747,13 +747,6 @@ impl GradientGpuBlockBuilder {
             }
             if cur_idx != GRADIENT_DATA_TABLE_END {
                 error!("Gradient stops abruptly at {}, auto-completing to white", cur_idx);
-                GradientGpuBlockBuilder::fill_colors(
-                    cur_idx,
-                    GRADIENT_DATA_TABLE_END,
-                    &PremultipliedColorF::WHITE,
-                    &cur_color,
-                    &mut entries,
-                );
             }
 
             // Fill in the last entry with the last color stop

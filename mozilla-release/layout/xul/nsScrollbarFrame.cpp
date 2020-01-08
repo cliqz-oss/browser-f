@@ -25,6 +25,7 @@
 #include "mozilla/dom/MutationEventBinding.h"
 
 using namespace mozilla;
+using mozilla::dom::Element;
 
 //
 // NS_NewScrollbarFrame
@@ -381,10 +382,6 @@ nsresult nsScrollbarFrame::CreateAnonymousContent(
         nodeInfoManager->GetNodeInfo(nsGkAtoms::thumb, nullptr,
                                      kNameSpaceID_XUL, nsINode::ELEMENT_NODE));
     mThumb->SetAttr(kNameSpaceID_None, nsGkAtoms::orient, orient, false);
-    mThumb->SetAttr(kNameSpaceID_None, nsGkAtoms::align,
-                    NS_LITERAL_STRING("center"), false);
-    mThumb->SetAttr(kNameSpaceID_None, nsGkAtoms::pack,
-                    NS_LITERAL_STRING("center"), false);
     mSlider->AppendChildTo(mThumb, false);
   }
 

@@ -38,6 +38,7 @@
 #include "mozilla/dom/RemoteBrowser.h"
 #include "mozilla/EffectCompositor.h"
 #include "mozilla/EnumeratedArray.h"
+#include "mozilla/MotionPathUtils.h"
 #include "mozilla/UniquePtr.h"
 #include "mozilla/TimeStamp.h"
 #include "mozilla/gfx/UserData.h"
@@ -73,7 +74,6 @@ struct WrFiltersHolder;
 namespace mozilla {
 class FrameLayerBuilder;
 class PresShell;
-struct MotionPathData;
 namespace layers {
 struct FrameMetrics;
 class RenderRootStateManager;
@@ -847,31 +847,31 @@ class nsDisplayListBuilder {
    * Return true if we're currently building a display list for a
    * nested presshell.
    */
-  bool IsInSubdocument() { return mPresShellStates.Length() > 1; }
+  bool IsInSubdocument() const { return mPresShellStates.Length() > 1; }
 
   void SetDisablePartialUpdates(bool aDisable) {
     mDisablePartialUpdates = aDisable;
   }
-  bool DisablePartialUpdates() { return mDisablePartialUpdates; }
+  bool DisablePartialUpdates() const { return mDisablePartialUpdates; }
 
   void SetPartialBuildFailed(bool aFailed) { mPartialBuildFailed = aFailed; }
-  bool PartialBuildFailed() { return mPartialBuildFailed; }
+  bool PartialBuildFailed() const { return mPartialBuildFailed; }
 
-  bool IsInActiveDocShell() { return mIsInActiveDocShell; }
+  bool IsInActiveDocShell() const { return mIsInActiveDocShell; }
   void SetInActiveDocShell(bool aActive) { mIsInActiveDocShell = aActive; }
 
   /**
    * Return true if we're currently building a display list for the presshell
    * of a chrome document, or if we're building the display list for a popup.
    */
-  bool IsInChromeDocumentOrPopup() {
+  bool IsInChromeDocumentOrPopup() const {
     return mIsInChromePresContext || mIsBuildingForPopup;
   }
 
   /**
    * @return true if images have been set to decode synchronously.
    */
-  bool ShouldSyncDecodeImages() { return mSyncDecodeImages; }
+  bool ShouldSyncDecodeImages() const { return mSyncDecodeImages; }
 
   /**
    * Indicates whether we should synchronously decode images. If true, we decode
@@ -1673,9 +1673,21 @@ class nsDisplayListBuilder {
    */
   bool IsInWillChangeBudget(nsIFrame* aFrame, const nsSize& aSize);
 
-  void RemoveFromWillChangeBudget(nsIFrame* aFrame);
+  /**
+   * Clears the will-change budget status for the given |aFrame|.
+   * This will also remove the frame from will-change budgets.
+   */
+  void ClearWillChangeBudgetStatus(nsIFrame* aFrame);
 
-  void ClearWillChangeBudget();
+  /**
+   * Removes the given |aFrame| from will-change budgets.
+   */
+  void RemoveFromWillChangeBudgets(const nsIFrame* aFrame);
+
+  /**
+   * Clears the will-change budgets.
+   */
+  void ClearWillChangeBudgets();
 
   void EnterSVGEffectsContents(nsIFrame* aEffectsFrame,
                                nsDisplayList* aHoistedItemsStorage);
@@ -1868,19 +1880,13 @@ class nsDisplayListBuilder {
 
   void AddSizeOfExcludingThis(nsWindowSizes&) const;
 
-  struct DocumentWillChangeBudget {
-    DocumentWillChangeBudget() : mBudget(0) {}
-
-    uint32_t mBudget;
-  };
-
   struct FrameWillChangeBudget {
     FrameWillChangeBudget() : mPresContext(nullptr), mUsage(0) {}
 
-    FrameWillChangeBudget(nsPresContext* aPresContext, uint32_t aUsage)
+    FrameWillChangeBudget(const nsPresContext* aPresContext, uint32_t aUsage)
         : mPresContext(aPresContext), mUsage(aUsage) {}
 
-    nsPresContext* mPresContext;
+    const nsPresContext* mPresContext;
     uint32_t mUsage;
   };
 
@@ -1915,13 +1921,14 @@ class nsDisplayListBuilder {
   RefPtr<AnimatedGeometryRoot> mCurrentAGR;
 
   // will-change budget tracker
-  nsDataHashtable<nsPtrHashKey<nsPresContext>, DocumentWillChangeBudget>
-      mWillChangeBudget;
+  typedef uint32_t DocumentWillChangeBudget;
+  nsDataHashtable<nsPtrHashKey<const nsPresContext>, DocumentWillChangeBudget>
+      mDocumentWillChangeBudgets;
 
   // Any frame listed in this set is already counted in the budget
   // and thus is in-budget.
-  nsDataHashtable<nsPtrHashKey<nsIFrame>, FrameWillChangeBudget>
-      mWillChangeBudgetSet;
+  nsDataHashtable<nsPtrHashKey<const nsIFrame>, FrameWillChangeBudget>
+      mFrameWillChangeBudgets;
 
   uint8_t mBuildingExtraPagesForPageNum;
 
@@ -6113,6 +6120,7 @@ class nsDisplayOwnLayer : public nsDisplayWrapList {
   bool IsScrollThumbLayer() const;
   bool IsScrollbarContainer() const;
   bool IsZoomingLayer() const;
+  bool IsFixedPositionLayer() const;
 
  protected:
   nsDisplayOwnLayerFlags mFlags;
@@ -7122,19 +7130,18 @@ class nsDisplayTransform : public nsDisplayHitTestInfoItem {
   struct MOZ_STACK_CLASS FrameTransformProperties {
     FrameTransformProperties(const nsIFrame* aFrame, float aAppUnitsPerPixel,
                              const nsRect* aBoundsOverride);
-    // This constructor is used on the compositor (for animations).
-    // FIXME: Bug 1186329: if we want to support compositor animations for
-    // motion path, we need to update this. For now, let mMotion be Nothing().
     FrameTransformProperties(const mozilla::StyleTranslate& aTranslate,
                              const mozilla::StyleRotate& aRotate,
                              const mozilla::StyleScale& aScale,
                              const mozilla::StyleTransform& aTransform,
+                             const Maybe<mozilla::MotionPathData>& aMotion,
                              const Point3D& aToTransformOrigin)
         : mFrame(nullptr),
           mTranslate(aTranslate),
           mRotate(aRotate),
           mScale(aScale),
           mTransform(aTransform),
+          mMotion(aMotion),
           mToTransformOrigin(aToTransformOrigin) {}
 
     bool HasTransform() const {

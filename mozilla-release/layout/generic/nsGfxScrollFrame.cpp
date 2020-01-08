@@ -21,6 +21,7 @@
 #include "nsGkAtoms.h"
 #include "nsNameSpaceManager.h"
 #include "mozilla/dom/DocumentInlines.h"
+#include "mozilla/gfx/gfxVars.h"
 #include "nsFontMetrics.h"
 #include "nsBoxLayoutState.h"
 #include "mozilla/dom/NodeInfo.h"
@@ -625,8 +626,12 @@ void nsHTMLScrollFrame::ReflowScrolledFrame(ScrollReflowInput* aState,
   kidReflowInput.SetComputedBSize(computedBSize);
   kidReflowInput.ComputedMinBSize() = computedMinBSize;
   kidReflowInput.ComputedMaxBSize() = computedMaxBSize;
-  if (aState->mReflowInput.IsBResizeForWM(kidReflowInput.GetWritingMode())) {
+  const WritingMode kidWM = kidReflowInput.GetWritingMode();
+  if (aState->mReflowInput.IsBResizeForWM(kidWM)) {
     kidReflowInput.SetBResize(true);
+  }
+  if (aState->mReflowInput.IsBResizeForPercentagesForWM(kidWM)) {
+    kidReflowInput.mFlags.mIsBResizeForPercentages = true;
   }
 
   // Temporarily set mHasHorizontalScrollbar/mHasVerticalScrollbar to
@@ -924,22 +929,6 @@ bool nsHTMLScrollFrame::IsXULCollapsed() {
   return false;
 }
 
-// Return the <browser> if the scrollframe is for the root frame directly
-// inside a <browser>.
-static Element* GetBrowserRoot(nsIContent* aContent) {
-  if (aContent) {
-    Document* doc = aContent->GetUncomposedDoc();
-    if (nsPIDOMWindowOuter* win = doc->GetWindow()) {
-      Element* frameElement = win->GetFrameElementInternal();
-      if (frameElement && frameElement->NodeInfo()->Equals(nsGkAtoms::browser,
-                                                           kNameSpaceID_XUL))
-        return frameElement;
-    }
-  }
-
-  return nullptr;
-}
-
 // When we have perspective set on the outer scroll frame, and transformed
 // children (possibly with preserve-3d) then the effective transform on the
 // child depends on the offset to the scroll frame, which changes as we scroll.
@@ -1128,14 +1117,7 @@ void nsHTMLScrollFrame::Reflow(nsPresContext* aPresContext,
 
   if (mHelper.mIsRoot) {
     mHelper.mCollapsedResizer = true;
-
-    Element* browserRoot = GetBrowserRoot(mContent);
-    if (browserRoot) {
-      bool showResizer =
-          browserRoot->HasAttr(kNameSpaceID_None, nsGkAtoms::showresizer);
-      reflowScrollCorner = showResizer == mHelper.mCollapsedResizer;
-      mHelper.mCollapsedResizer = !showResizer;
-    }
+    reflowScrollCorner = false;
 
     // Hide the scrollbar when the scrollbar-width is set to none.
     // This is only needed for root element because scrollbars of non-
@@ -1708,7 +1690,7 @@ NS_QUERYFRAME_HEAD(nsXULScrollFrame)
   NS_QUERYFRAME_ENTRY(nsIScrollbarMediator)
 NS_QUERYFRAME_TAIL_INHERITING(nsBoxFrame)
 
-  //-------------------- Helper ----------------------
+//-------------------- Helper ----------------------
 
 // AsyncSmoothMSDScroll has ref counting.
 class ScrollFrameHelper::AsyncSmoothMSDScroll final
@@ -3493,7 +3475,8 @@ void ScrollFrameHelper::BuildDisplayList(nsDisplayListBuilder* aBuilder,
   AppendScrollPartsTo(aBuilder, aLists, createLayersForScrollbars, false);
 
   const nsStyleDisplay* disp = mOuter->StyleDisplay();
-  if (disp->mWillChange.bits & StyleWillChangeBits_SCROLL) {
+  if (aBuilder->IsForPainting() &&
+      disp->mWillChange.bits & StyleWillChangeBits_SCROLL) {
     aBuilder->AddToWillChangeBudget(mOuter, GetVisualViewportSize());
   }
 
@@ -3561,6 +3544,17 @@ void ScrollFrameHelper::BuildDisplayList(nsDisplayListBuilder* aBuilder,
       aBuilder->ShouldBuildAsyncZoomContainer() && isRootContent;
 
   nsRect scrollPortClip = mScrollPort + aBuilder->ToReferenceFrame(mOuter);
+  // Expand the clip rect to the size including the area covered by dynamic
+  // toolbar in the case where the dynamic toolbar is being used since
+  // position:fixed elements attached to this root scroller might be taller than
+  // its scroll port (e.g 100vh). Even if the dynamic toolbar covers the taller
+  // area, it doesn't mean the area is clipped by the toolbar because the
+  // dynamic toolbar is laid out outside of our topmost window and it
+  // transitions without changing our topmost window size.
+  if (isRootContent && mOuter->PresContext()->HasDynamicToolbar()) {
+    scrollPortClip.SizeTo(nsLayoutUtils::ExpandHeightForViewportUnits(
+        mOuter->PresContext(), scrollPortClip.Size()));
+  }
   nsRect clipRect = scrollPortClip;
   // Our override of GetBorderRadii ensures we never have a radius at
   // the corners where we have a scrollbar.
@@ -3778,11 +3772,9 @@ void ScrollFrameHelper::BuildDisplayList(nsDisplayListBuilder* aBuilder,
         // confirmation does not arrive within the timeout period). Otherwise,
         // APZ's fallback behaviour of scrolling the enclosing scroll frame
         // would violate the specified overscroll-behavior.
-        ScrollStyles scrollStyles = GetScrollStylesFromFrame();
-        if (scrollStyles.mOverscrollBehaviorX !=
-                StyleOverscrollBehavior::Auto ||
-            scrollStyles.mOverscrollBehaviorY !=
-                StyleOverscrollBehavior::Auto) {
+        auto overscroll = GetOverscrollBehaviorInfo();
+        if (overscroll.mBehaviorX != OverscrollBehavior::Auto ||
+            overscroll.mBehaviorY != OverscrollBehavior::Auto) {
           info += CompositorHitTestFlags::eRequiresTargetConfirmation;
         }
         nsDisplayCompositorHitTestInfo* hitInfo =
@@ -4097,6 +4089,17 @@ static void HandleScrollPref(nsIScrollable* aScrollable, int32_t aOrientation,
   }
 }
 
+OverscrollBehaviorInfo ScrollFrameHelper::GetOverscrollBehaviorInfo() const {
+  nsIFrame* frame = GetFrameForStyle();
+  if (!frame) {
+    return {};
+  }
+
+  auto& disp = *frame->StyleDisplay();
+  return OverscrollBehaviorInfo::FromStyleConstants(disp.mOverscrollBehaviorX,
+                                                    disp.mOverscrollBehaviorY);
+}
+
 ScrollStyles ScrollFrameHelper::GetScrollStylesFromFrame() const {
   nsPresContext* presContext = mOuter->PresContext();
   if (!presContext->IsDynamic() &&
@@ -4105,8 +4108,7 @@ ScrollStyles ScrollFrameHelper::GetScrollStylesFromFrame() const {
   }
 
   if (!mIsRoot) {
-    const nsStyleDisplay* disp = mOuter->StyleDisplay();
-    return ScrollStyles(mOuter->GetWritingMode(), disp);
+    return ScrollStyles(*mOuter->StyleDisplay());
   }
 
   ScrollStyles result = presContext->GetViewportScrollStylesOverride();
@@ -4963,10 +4965,7 @@ nsresult ScrollFrameHelper::CreateAnonymousContent(
       mResizerContent->SetProperty(nsGkAtoms::docLevelNativeAnonymousContent,
                                    reinterpret_cast<void*>(true));
 
-      Element* browserRoot = GetBrowserRoot(mOuter->GetContent());
-      mCollapsedResizer =
-          !(browserRoot &&
-            browserRoot->HasAttr(kNameSpaceID_None, nsGkAtoms::showresizer));
+      mCollapsedResizer = true;
     } else {
       mResizerContent->SetAttr(kNameSpaceID_None, nsGkAtoms::element,
                                NS_LITERAL_STRING("_parent"), false);
@@ -5436,35 +5435,6 @@ void ScrollFrameHelper::PostOverflowEvent() {
 
   mAsyncScrollPortEvent = new AsyncScrollPortEvent(this);
   rpc->AddWillPaintObserver(mAsyncScrollPortEvent.get());
-}
-
-nsIFrame* ScrollFrameHelper::GetFrameForDir() const {
-  nsIFrame* frame = mOuter;
-  // XXX This is a bit on the slow side.
-  if (mIsRoot) {
-    // https://drafts.csswg.org/css-writing-modes-4/#principal-flow
-    // If we're the root scrollframe, we need the root element's style data.
-    nsPresContext* presContext = mOuter->PresContext();
-    Document* document = presContext->Document();
-    Element* root = document->GetRootElement();
-
-    // But for HTML and XHTML we want the body element.
-    if (document->IsHTMLOrXHTML()) {
-      Element* bodyElement = document->GetBodyElement();
-      if (bodyElement) {
-        root = bodyElement;  // we can trust the document to hold on to it
-      }
-    }
-
-    if (root) {
-      nsIFrame* rootsFrame = root->GetPrimaryFrame();
-      if (rootsFrame) {
-        frame = rootsFrame;
-      }
-    }
-  }
-
-  return frame;
 }
 
 nsIFrame* ScrollFrameHelper::GetFrameForStyle() const {
@@ -6943,7 +6913,7 @@ layers::ScrollSnapInfo ScrollFrameHelper::ComputeScrollSnapInfo(
     return result;
   }
 
-  WritingMode writingMode = GetFrameForDir()->GetWritingMode();
+  WritingMode writingMode = mOuter->GetWritingMode();
   result.InitializeScrollSnapStrictness(writingMode, disp);
 
   nsRect snapport = GetScrollPortRect();

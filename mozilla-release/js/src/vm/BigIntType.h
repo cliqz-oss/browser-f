@@ -10,6 +10,7 @@
 #include "mozilla/Range.h"
 #include "mozilla/Span.h"
 
+#include "jstypes.h"
 #include "gc/Barrier.h"
 #include "gc/GC.h"
 #include "gc/Heap.h"
@@ -24,7 +25,7 @@
 
 namespace JS {
 
-class BigInt;
+class JS_PUBLIC_API BigInt;
 
 }  // namespace JS
 
@@ -46,7 +47,7 @@ class BigInt final
 
  private:
   // The low NumFlagBitsReservedForGC flag bits are reserved.
-  static constexpr uintptr_t SignBit = JS_BIT(Base::NumFlagBitsReservedForGC);
+  static constexpr uintptr_t SignBit = js::Bit(Base::NumFlagBitsReservedForGC);
   static constexpr size_t InlineDigitsLength =
       (js::gc::MinCellSize - sizeof(Base)) / sizeof(Digit);
 
@@ -190,6 +191,9 @@ class BigInt final
 
   static int8_t compare(BigInt* lhs, BigInt* rhs);
   static bool equal(BigInt* lhs, BigInt* rhs);
+  static bool equal(BigInt* lhs, double rhs);
+  static JS::Result<bool> equal(JSContext* cx, Handle<BigInt*> lhs,
+                                HandleString rhs);
   static JS::Result<bool> looselyEqual(JSContext* cx, Handle<BigInt*> lhs,
                                        HandleValue rhs);
 
@@ -349,8 +353,6 @@ class BigInt final
 
   static int8_t compare(BigInt* lhs, double rhs);
 
-  static bool equal(BigInt* lhs, double rhs);
-
   template <js::AllowGC allowGC>
   static JSLinearString* toStringBasePowerOfTwo(JSContext* cx, Handle<BigInt*>,
                                                 unsigned radix);
@@ -373,6 +375,25 @@ class BigInt final
   BigInt() = delete;
   BigInt(const BigInt& other) = delete;
   void operator=(const BigInt& other) = delete;
+
+ private:
+  // To help avoid writing Spectre-unsafe code, we only allow MacroAssembler to
+  // call the methods below.
+  friend class js::jit::MacroAssembler;
+
+  // Make offset accessors accessible to the MacroAssembler.
+  using Base::offsetOfFlags;
+  using Base::offsetOfLength;
+
+  static size_t offsetOfInlineDigits() {
+    return offsetof(BigInt, inlineDigits_);
+  }
+
+  static size_t offsetOfHeapDigits() { return offsetof(BigInt, heapDigits_); }
+
+  static constexpr size_t inlineDigitsLength() { return InlineDigitsLength; }
+
+  static constexpr size_t signBitMask() { return SignBit; }
 };
 
 static_assert(

@@ -26,6 +26,7 @@
 #include "mozilla/DebugOnly.h"
 #include "mozilla/Logging.h"
 #include "mozilla/Preferences.h"
+#include "mozilla/StaticPrefs_network.h"
 #include "mozilla/Telemetry.h"
 #include "mozilla/TimeStamp.h"
 #include "mozilla/Tokenizer.h"
@@ -304,6 +305,14 @@ nsresult TRR::SendHTTPRequest() {
     NS_ENSURE_SUCCESS(rv, rv);
   }
 
+  // Sanitize the request by removing the Accept-Language header so we minimize
+  // the amount of fingerprintable information we send to the server.
+  if (!StaticPrefs::network_trr_send_accept_language_headers()) {
+    rv = httpChannel->SetRequestHeader(NS_LITERAL_CSTRING("Accept-Language"),
+                                       EmptyCString(), false);
+    NS_ENSURE_SUCCESS(rv, rv);
+  }
+
   // set the *default* response content type
   if (NS_FAILED(httpChannel->SetContentType(
           NS_LITERAL_CSTRING("application/dns-message")))) {
@@ -432,6 +441,10 @@ nsresult TRR::ReceivePush(nsIHttpChannel* pushed, nsHostRecord* pushedRec) {
       (mType != TRRTYPE_TXT)) {
     LOG(("TRR::ReceivePush unknown type %d\n", mType));
     return NS_ERROR_UNEXPECTED;
+  }
+
+  if (gTRRService->IsExcludedFromTRR(mHost)) {
+    return NS_ERROR_FAILURE;
   }
 
   RefPtr<nsHostRecord> hostRecord;

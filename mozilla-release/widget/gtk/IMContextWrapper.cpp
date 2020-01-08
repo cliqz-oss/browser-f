@@ -1701,6 +1701,10 @@ gboolean IMContextWrapper::OnRetrieveSurroundingNative(GtkIMContext* aContext) {
     return FALSE;
   }
 
+  // Despite taking a pointer and a length, IBus wants the string to be
+  // zero-terminated and doesn't like U+0000 within the string.
+  uniStr.ReplaceChar(char16_t(0), char16_t(0xFFFD));
+
   NS_ConvertUTF16toUTF8 utf8Str(nsDependentSubstring(uniStr, 0, cursorPos));
   uint32_t cursorPosInUTF8 = utf8Str.Length();
   AppendUTF16toUTF8(nsDependentSubstring(uniStr, cursorPos), utf8Str);
@@ -2141,7 +2145,7 @@ bool IMContextWrapper::DispatchCompositionStart(GtkIMContext* aContext) {
     NS_ConvertUTF8toUTF16 im(GetIMName());
     // 72 is kMaximumKeyStringLength in TelemetryScalar.cpp
     if (im.Length() > 72) {
-      if (NS_IS_LOW_SURROGATE(im[72 - 1]) && NS_IS_HIGH_SURROGATE(im[72 - 2])) {
+      if (NS_IS_SURROGATE_PAIR(im[72 - 2], im[72 - 1])) {
         im.Truncate(72 - 2);
       } else {
         im.Truncate(72 - 1);
@@ -3131,7 +3135,7 @@ void IMContextWrapper::Selection::Assign(
     const WidgetQueryContentEvent& aEvent) {
   MOZ_ASSERT(aEvent.mMessage == eQuerySelectedText);
   MOZ_ASSERT(aEvent.mSucceeded);
-  mString = aEvent.mReply.mString.Length();
+  mString = aEvent.mReply.mString;
   mOffset = aEvent.mReply.mOffset;
   mWritingMode = aEvent.GetWritingMode();
 }

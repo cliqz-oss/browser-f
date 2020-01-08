@@ -242,6 +242,7 @@ void ExtensionPolicyService::RegisterObservers() {
   mObs->AddObserver(this, "tab-content-frameloader-created", false);
   if (XRE_IsContentProcess()) {
     mObs->AddObserver(this, "http-on-opening-request", false);
+    mObs->AddObserver(this, "document-on-opening-request", false);
   }
 }
 
@@ -250,6 +251,7 @@ void ExtensionPolicyService::UnregisterObservers() {
   mObs->RemoveObserver(this, "tab-content-frameloader-created");
   if (XRE_IsContentProcess()) {
     mObs->RemoveObserver(this, "http-on-opening-request");
+    mObs->RemoveObserver(this, "document-on-opening-request");
   }
 }
 
@@ -261,7 +263,8 @@ nsresult ExtensionPolicyService::Observe(nsISupports* aSubject,
     if (doc) {
       CheckDocument(doc);
     }
-  } else if (!strcmp(aTopic, "http-on-opening-request")) {
+  } else if (!strcmp(aTopic, "http-on-opening-request") ||
+             !strcmp(aTopic, "document-on-opening-request")) {
     nsCOMPtr<nsIChannel> chan = do_QueryInterface(aSubject);
     if (chan) {
       CheckRequest(chan);
@@ -289,12 +292,11 @@ nsresult ExtensionPolicyService::HandleEvent(dom::Event* aEvent) {
 nsresult ForEachDocShell(
     nsIDocShell* aDocShell,
     const std::function<nsresult(nsIDocShell*)>& aCallback) {
-  nsCOMPtr<nsISimpleEnumerator> iter;
-  MOZ_TRY(aDocShell->GetDocShellEnumerator(nsIDocShell::typeContent,
-                                           nsIDocShell::ENUMERATE_FORWARDS,
-                                           getter_AddRefs(iter)));
+  nsTArray<RefPtr<nsIDocShell>> docShells;
+  MOZ_TRY(aDocShell->GetAllDocShellsInSubtree(
+      nsIDocShell::typeContent, nsIDocShell::ENUMERATE_FORWARDS, docShells));
 
-  for (auto& docShell : SimpleEnumerator<nsIDocShell>(iter)) {
+  for (auto& docShell : docShells) {
     MOZ_TRY(aCallback(docShell));
   }
   return NS_OK;
@@ -347,12 +349,13 @@ nsresult ExtensionPolicyService::InjectContentScripts(
           DocInfo docInfo(win);
 
           using RunAt = dom::ContentScriptRunAt;
+          namespace RunAtValues = dom::ContentScriptRunAtValues;
           using Scripts = AutoTArray<RefPtr<WebExtensionContentScript>, 8>;
 
-          constexpr uint8_t n = uint8_t(RunAt::EndGuard_);
-          Scripts scripts[n];
+          Scripts scripts[RunAtValues::Count];
 
           auto GetScripts = [&](RunAt aRunAt) -> Scripts&& {
+            static_assert(sizeof(aRunAt) == 1, "Our cast is wrong");
             return std::move(scripts[uint8_t(aRunAt)]);
           };
 
@@ -532,10 +535,19 @@ nsresult ExtensionPolicyService::GetDefaultCSP(nsAString& aDefaultCSP) {
   return NS_OK;
 }
 
-nsresult ExtensionPolicyService::GetAddonCSP(const nsAString& aAddonId,
-                                             nsAString& aResult) {
+nsresult ExtensionPolicyService::GetExtensionPageCSP(const nsAString& aAddonId,
+                                                     nsAString& aResult) {
   if (WebExtensionPolicy* policy = GetByID(aAddonId)) {
-    policy->GetContentSecurityPolicy(aResult);
+    policy->GetExtensionPageCSP(aResult);
+    return NS_OK;
+  }
+  return NS_ERROR_INVALID_ARG;
+}
+
+nsresult ExtensionPolicyService::GetContentScriptCSP(const nsAString& aAddonId,
+                                                     nsAString& aResult) {
+  if (WebExtensionPolicy* policy = GetByID(aAddonId)) {
+    policy->GetContentScriptCSP(aResult);
     return NS_OK;
   }
   return NS_ERROR_INVALID_ARG;

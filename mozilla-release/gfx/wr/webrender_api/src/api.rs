@@ -274,8 +274,8 @@ impl Transaction {
         self.frame_ops.push(FrameMsg::SetPinchZoom(pinch_zoom));
     }
 
-    pub fn set_is_transform_pinch_zooming(&mut self, is_zooming: bool, animation_id: PropertyBindingId) {
-        self.frame_ops.push(FrameMsg::SetIsTransformPinchZooming(is_zooming, animation_id));
+    pub fn set_is_transform_async_zooming(&mut self, is_zooming: bool, animation_id: PropertyBindingId) {
+        self.frame_ops.push(FrameMsg::SetIsTransformAsyncZooming(is_zooming, animation_id));
     }
 
     pub fn set_pan(&mut self, pan: DeviceIntPoint) {
@@ -680,7 +680,7 @@ pub enum FrameMsg {
     UpdateDynamicProperties(DynamicProperties),
     AppendDynamicProperties(DynamicProperties),
     SetPinchZoom(ZoomFactor),
-    SetIsTransformPinchZooming(bool, PropertyBindingId),
+    SetIsTransformAsyncZooming(bool, PropertyBindingId),
 }
 
 impl fmt::Debug for SceneMsg {
@@ -709,7 +709,7 @@ impl fmt::Debug for FrameMsg {
             FrameMsg::UpdateDynamicProperties(..) => "FrameMsg::UpdateDynamicProperties",
             FrameMsg::AppendDynamicProperties(..) => "FrameMsg::AppendDynamicProperties",
             FrameMsg::SetPinchZoom(..) => "FrameMsg::SetPinchZoom",
-            FrameMsg::SetIsTransformPinchZooming(..) => "FrameMsg::SetIsTransformPinchZooming",
+            FrameMsg::SetIsTransformAsyncZooming(..) => "FrameMsg::SetIsTransformAsyncZooming",
         })
     }
 }
@@ -1142,8 +1142,13 @@ bitflags! {
         const DISABLE_TEXT_PRIMS = 1 << 22;
         const DISABLE_GRADIENT_PRIMS = 1 << 23;
         const OBSCURE_IMAGES = 1 << 24;
+        const GLYPH_FLASHING = 1 << 25;
         /// The profiler only displays information that is out of the ordinary.
         const SMART_PROFILER        = 1 << 26;
+        /// Dynamically control whether picture caching is enabled.
+        const DISABLE_PICTURE_CACHING = 1 << 27;
+        /// If set, dump picture cache invalidation debug to console.
+        const INVALIDATION_DBG = 1 << 28;
     }
 }
 

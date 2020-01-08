@@ -346,6 +346,12 @@ class EventTargetChainItem {
     if (mManager) {
       NS_ASSERTION(aVisitor.mEvent->mCurrentTarget == nullptr,
                    "CurrentTarget should be null!");
+
+      if (aVisitor.mEvent->mMessage == eMouseClick) {
+        aVisitor.mEvent->mFlags.mHadNonPrivilegedClickListeners =
+            aVisitor.mEvent->mFlags.mHadNonPrivilegedClickListeners ||
+            mManager->HasNonPrivilegedClickListeners();
+      }
       mManager->HandleEvent(aVisitor.mPresContext, aVisitor.mEvent,
                             &aVisitor.mDOMEvent, CurrentTarget(),
                             &aVisitor.mEventStatus, IsItemInShadowTree());
@@ -1126,6 +1132,11 @@ nsresult EventDispatcher::DispatchDOMEvent(nsISupports* aTarget,
   if (aDOMEvent) {
     WidgetEvent* innerEvent = aDOMEvent->WidgetEventPtr();
     NS_ENSURE_TRUE(innerEvent, NS_ERROR_ILLEGAL_VALUE);
+
+    // Don't modify the event if it's being dispatched right now.
+    if (innerEvent->mFlags.mIsBeingDispatched) {
+      return NS_ERROR_DOM_INVALID_STATE_ERR;
+    }
 
     bool dontResetTrusted = false;
     if (innerEvent->mFlags.mDispatchedAtLeastOnce) {

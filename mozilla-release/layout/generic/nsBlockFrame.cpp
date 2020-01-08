@@ -17,6 +17,7 @@
 #include "mozilla/DebugOnly.h"
 #include "mozilla/Maybe.h"
 #include "mozilla/PresShell.h"
+#include "mozilla/StaticPrefs_layout.h"
 #include "mozilla/ToString.h"
 #include "mozilla/UniquePtr.h"
 
@@ -2521,7 +2522,7 @@ void nsBlockFrame::ReflowDirtyLines(BlockReflowInput& aState) {
       uint8_t align =
           isLastLine ? StyleText()->mTextAlign : StyleText()->mTextAlignLast;
 
-      if (line->mWritingMode.IsVertical() || !line->mWritingMode.IsBidiLTR() ||
+      if (line->mWritingMode.IsVertical() || line->mWritingMode.IsBidiRTL() ||
           !IsAlignedLeft(align,
                          aState.mReflowInput.mStyleVisibility->mDirection,
                          StyleTextReset()->mUnicodeBidi, this)) {
@@ -3306,6 +3307,12 @@ bool nsBlockFrame::IsEmpty() {
 
 bool nsBlockFrame::ShouldApplyBStartMargin(BlockReflowInput& aState,
                                            nsLineBox* aLine) {
+  if (aLine->mFirstChild->IsPageBreakFrame()) {
+    // A page break frame consumes margins adjacent to it.
+    // https://drafts.csswg.org/css-break/#break-margins
+    return false;
+  }
+
   if (aState.mFlags.mShouldApplyBStartMargin) {
     // Apply short-circuit check to avoid searching the line list
     return true;
@@ -6841,18 +6848,11 @@ void nsBlockFrame::BuildDisplayList(nsDisplayListBuilder* aBuilder,
   // (to ensure it's readable over any possible background-images),
   // if all of the following hold:
   //    (A) the backplate feature is preffed on
-  //    (B) we are in high-contrast mode [by browser setting or
-  //        windows setting]
-  //    (C) this is web content (not chrome) -- mUseAccessibilityTheme
-  //        already checks this, so we check IsChrome() explicitly
-  //        in the browser_display_document_color_use == 2 case.
+  //    (B) we are not honoring the document colors
   const bool shouldDrawBackplate =
       StaticPrefs::browser_display_permit_backplate() &&
-      (((PresContext()->PrefSheetPrefs().mUseAccessibilityTheme &&
-         StaticPrefs::browser_display_document_color_use() == 0) ||
-        (StaticPrefs::browser_display_document_color_use() == 2 &&
-         !PresContext()->IsChrome())) &&
-       !IsComboboxControlFrame());
+      !PresContext()->PrefSheetPrefs().mUseDocumentColors &&
+      !IsComboboxControlFrame();
 
   // Don't use the line cursor if we might have a descendant placeholder ...
   // it might skip lines that contain placeholders but don't themselves

@@ -12,6 +12,7 @@
 #include "mozilla/dom/Element.h"
 #include "nsCOMPtr.h"
 #include "nsIDOMEventListener.h"
+#include "nsIFrame.h"
 #include "nsISupportsBase.h"
 #include "nsISupportsImpl.h"
 #include "nsLiteralString.h"
@@ -134,6 +135,8 @@ class AccessibleCaret {
   // doesn't scroll the page when the user is trying to drag the caret.
   void EnsureApzAware();
 
+  bool IsInPositionFixedSubtree() const;
+
  protected:
   // Argument aRect should be relative to CustomContentContainerFrame().
   void SetCaretElementStyle(const nsRect& aRect, float aZoomLevel);
@@ -168,6 +171,9 @@ class AccessibleCaret {
   // Remove caret element from custom content container.
   void RemoveCaretElement(dom::Document*);
 
+  // Clear the cached rects and zoom level.
+  void ClearCachedData();
+
   // The top-center of the imaginary caret to which this AccessibleCaret is
   // attached.
   static nsPoint CaretElementPosition(const nsRect& aRect) {
@@ -198,6 +204,14 @@ class AccessibleCaret {
 
   // mImaginaryCaretRect is relative to root frame.
   nsRect mImaginaryCaretRect;
+
+  // Cached mImaginaryCaretRect relative to the custom content container. This
+  // is used in SetPosition() to check whether the caret position has changed.
+  nsRect mImaginaryCaretRectInContainerFrame;
+
+  // The reference frame we used to calculate mImaginaryCaretRect and
+  // mImaginaryCaretRectInContainerFrame.
+  WeakFrame mImaginaryCaretReferenceFrame;
 
   // Cache current zoom level to determine whether position is changed.
   float mZoomLevel = 0.0f;

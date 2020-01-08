@@ -261,7 +261,7 @@ AlternativeDataStreamListener::OnDataAvailable(nsIRequest* aRequest,
                                                uint32_t aCount) {
   if (mStatus == AlternativeDataStreamListener::LOADING) {
     MOZ_ASSERT(mPipeAlternativeOutputStream);
-    uint32_t read;
+    uint32_t read = 0;
     return aInputStream->ReadSegments(
         NS_CopySegmentToStream, mPipeAlternativeOutputStream, aCount, &read);
   }
@@ -311,7 +311,8 @@ AlternativeDataStreamListener::OnStopRequest(nsIRequest* aRequest,
   // continue the final step for the case FetchDriver::OnStopRequest is called
   // earlier than AlternativeDataStreamListener::OnStopRequest
   MOZ_ASSERT(fetchDriver);
-  return fetchDriver->FinishOnStopRequest(this);
+  fetchDriver->FinishOnStopRequest(this);
+  return NS_OK;
 }
 
 NS_IMETHODIMP
@@ -368,9 +369,6 @@ nsresult FetchDriver::Fetch(AbortSignalImpl* aSignalImpl,
 #endif
 
   mObserver = aObserver;
-
-  Telemetry::Accumulate(Telemetry::SERVICE_WORKER_REQUEST_PASSTHROUGH,
-                        mRequest->WasCreatedByFetchEvent());
 
   // FIXME(nsm): Deal with HSTS.
 
@@ -1265,16 +1263,17 @@ FetchDriver::OnStopRequest(nsIRequest* aRequest, nsresult aStatusCode) {
     }
   }
 
-  return FinishOnStopRequest(altDataListener);
+  FinishOnStopRequest(altDataListener);
+  return NS_OK;
 }
 
-nsresult FetchDriver::FinishOnStopRequest(
+void FetchDriver::FinishOnStopRequest(
     AlternativeDataStreamListener* aAltDataListener) {
   AssertIsOnMainThread();
   // OnStopRequest is not called from channel, that means the main data loading
   // does not finish yet. Reaching here since alternative data loading finishes.
   if (!mOnStopRequestCalled) {
-    return NS_OK;
+    return;
   }
 
   MOZ_DIAGNOSTIC_ASSERT(!mAltDataListener);
@@ -1283,7 +1282,7 @@ nsresult FetchDriver::FinishOnStopRequest(
       aAltDataListener->Status() == AlternativeDataStreamListener::LOADING) {
     // For LOADING case, channel holds the reference of altDataListener, no need
     // to restore it to mAltDataListener.
-    return NS_OK;
+    return;
   }
 
   if (mObserver) {
@@ -1301,7 +1300,6 @@ nsresult FetchDriver::FinishOnStopRequest(
   }
 
   mChannel = nullptr;
-  return NS_OK;
 }
 
 NS_IMETHODIMP

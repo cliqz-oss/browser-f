@@ -35,9 +35,11 @@ class NetlinkMsg;
 class NetlinkServiceListener : public nsISupports {
  public:
   virtual void OnNetworkChanged() = 0;
+  virtual void OnNetworkIDChanged() = 0;
   virtual void OnLinkUp() = 0;
   virtual void OnLinkDown() = 0;
   virtual void OnLinkStatusKnown() = 0;
+  virtual void OnDnsSuffixListUpdated() = 0;
 
  protected:
   virtual ~NetlinkServiceListener() = default;
@@ -55,6 +57,7 @@ class NetlinkService : public nsIRunnable {
   nsresult Shutdown();
   void GetNetworkID(nsACString& aNetworkID);
   void GetIsLinkUp(bool* aIsUp);
+  nsresult GetDnsSuffixList(nsTArray<nsCString>& aDnsSuffixList);
 
  private:
   void EnqueueGenMsg(uint16_t aMsgType, uint8_t aFamily);
@@ -76,6 +79,7 @@ class NetlinkService : public nsIRunnable {
   int GetPollWait();
   bool CalculateIDForFamily(uint8_t aFamily, mozilla::SHA1Sum* aSHA1);
   void CalculateNetworkID();
+  void ComputeDNSSuffixList();
 
   nsCOMPtr<nsIThread> mThread;
 
@@ -84,14 +88,8 @@ class NetlinkService : public nsIRunnable {
   // A pipe to signal shutdown with.
   int mShutdownPipe[2];
 
-  // Is true if preference network.netlink.route.check.IPv4 was successfully
-  // parsed and stored to mRouteCheckIPv4
-  bool mDoRouteCheckIPv4;
+  // IP addresses that are used to check the route for public traffic.
   struct in_addr mRouteCheckIPv4;
-
-  // Is true if preference network.netlink.route.check.IPv6 was successfully
-  // parsed and stored to mRouteCheckIPv6
-  bool mDoRouteCheckIPv6;
   struct in6_addr mRouteCheckIPv6;
 
   pid_t mPid;
@@ -104,10 +102,15 @@ class NetlinkService : public nsIRunnable {
   // messages.
   bool mRecalculateNetworkId;
 
+  // Flag indicating that network change event needs to be sent even if
+  // network ID hasn't changed.
+  bool mSendNetworkChangeEvent;
+
   // Time stamp of setting mRecalculateNetworkId to true
   mozilla::TimeStamp mTriggerTime;
 
   nsCString mNetworkId;
+  nsTArray<nsCString> mDNSSuffixList;
 
   class LinkInfo {
    public:
@@ -116,7 +119,7 @@ class NetlinkService : public nsIRunnable {
 
     // Updates mIsUp according to current mLink and mAddresses. Returns true if
     // the value has changed.
-    bool UpdateLinkStatus();
+    bool UpdateStatus();
 
     // NetlinkLink structure for this link
     nsAutoPtr<NetlinkLink> mLink;

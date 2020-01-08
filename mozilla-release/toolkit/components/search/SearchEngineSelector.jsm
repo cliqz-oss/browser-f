@@ -49,12 +49,14 @@ class SearchEngineSelector {
   /**
    * @param {string} locale - Users locale.
    * @param {string} region - Users region.
-   * @returns {object} result - An object with "engines" field, a sorted
-   *   list of engines and optionally "privateDefault" indicating the
-   *   name of the engine which should be the default in private.
+   * @param {string} channel - The update channel the application is running on.
+   * @returns {object}
+   *   An object with "engines" field, a sorted list of engines and
+   *   optionally "privateDefault" which is an object containing the engine
+   *   details for the engine which should be the default in Private Browsing mode.
    */
-  fetchEngineConfiguration(locale, region = "default") {
-    log(`fetchEngineConfiguration ${region}:${locale}`);
+  fetchEngineConfiguration(locale, region, channel) {
+    log(`fetchEngineConfiguration ${region}:${locale}:${channel}`);
     let cohort = Services.prefs.getCharPref("browser.search.cohort", null);
     let engines = [];
     const lcLocale = locale.toLowerCase();
@@ -62,15 +64,22 @@ class SearchEngineSelector {
     for (let config of this.configuration) {
       const appliesTo = config.appliesTo || [];
       const applies = appliesTo.filter(section => {
+        if ("cohort" in section && cohort != section.cohort) {
+          return false;
+        }
+        if (
+          "application" in section &&
+          "channel" in section.application &&
+          !section.application.channel.includes(channel)
+        ) {
+          return false;
+        }
         let included =
           "included" in section &&
           this._isInSection(lcRegion, lcLocale, section.included);
         let excluded =
           "excluded" in section &&
           this._isInSection(lcRegion, lcLocale, section.excluded);
-        if ("cohort" in section && cohort != section.cohort) {
-          return false;
-        }
         return included && !excluded;
       });
 
@@ -83,13 +92,24 @@ class SearchEngineSelector {
           this._copyObject(baseConfig, section);
         }
 
-        if ("webExtensionLocales" in baseConfig) {
-          baseConfig.webExtensionLocales = baseConfig.webExtensionLocales.map(
-            val => (val == USER_LOCALE ? locale : val)
-          );
+        if (
+          "webExtension" in baseConfig &&
+          "locales" in baseConfig.webExtension
+        ) {
+          for (const webExtensionLocale of baseConfig.webExtension.locales) {
+            const engine = { ...baseConfig };
+            engine.webExtension.locales = [
+              webExtensionLocale == USER_LOCALE ? locale : webExtensionLocale,
+            ];
+            engines.push(engine);
+          }
+        } else {
+          const engine = { ...baseConfig };
+          (engine.webExtension = engine.webExtension || {}).locales = [
+            SearchUtils.DEFAULT_TAG,
+          ];
+          engines.push(engine);
         }
-
-        engines.push(baseConfig);
       }
     }
 
@@ -136,7 +156,7 @@ class SearchEngineSelector {
     let result = { engines };
 
     if (privateEngine) {
-      result.privateDefault = privateEngine.engineName;
+      result.privateDefault = privateEngine;
     }
 
     if (SearchUtils.loggingEnabled) {
@@ -192,7 +212,7 @@ class SearchEngineSelector {
         .getCharPref("ignoredJAREngines")
         .split(",");
       let filteredEngines = engines.filter(engine => {
-        let name = engine.webExtensionId.split("@")[0];
+        let name = engine.webExtension.id.split("@")[0];
         return !ignoredJAREngines.includes(name);
       });
       // Don't allow all engines to be hidden
@@ -223,7 +243,15 @@ class SearchEngineSelector {
       if (["included", "excluded", "appliesTo"].includes(key)) {
         continue;
       }
-      target[key] = source[key];
+      if (key == "webExtension") {
+        if (key in target) {
+          this._copyObject(target[key], source[key]);
+        } else {
+          target[key] = { ...source[key] };
+        }
+      } else {
+        target[key] = source[key];
+      }
     }
     return target;
   }

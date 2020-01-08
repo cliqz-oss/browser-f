@@ -278,8 +278,8 @@ class WatchdogManager {
   }
 
  private:
-  static void PrefsChanged(const char* aPref, WatchdogManager* aSelf) {
-    aSelf->RefreshWatchdog();
+  static void PrefsChanged(const char* aPref, void* aSelf) {
+    static_cast<WatchdogManager*>(aSelf)->RefreshWatchdog();
   }
 
  public:
@@ -771,7 +771,12 @@ static mozilla::Atomic<bool> sAwaitFixEnabled(false);
 void xpc::SetPrefableRealmOptions(JS::RealmOptions& options) {
   options.creationOptions()
       .setSharedMemoryAndAtomicsEnabled(sSharedMemoryEnabled)
+      .setCoopAndCoepEnabled(
+          StaticPrefs::browser_tabs_remote_useCrossOriginOpenerPolicy() &&
+          StaticPrefs::browser_tabs_remote_useCrossOriginEmbedderPolicy())
       .setStreamsEnabled(sStreamsEnabled)
+      .setWritableStreamsEnabled(
+          StaticPrefs::javascript_options_writable_streams())
       .setFieldsEnabled(sFieldsEnabled)
       .setAwaitFixEnabled(sAwaitFixEnabled);
 }
@@ -889,9 +894,10 @@ static void LoadStartupJSPrefs(XPCJSContext* xpccx) {
   }
 }
 
-static void ReloadPrefsCallback(const char* pref, XPCJSContext* xpccx) {
+static void ReloadPrefsCallback(const char* pref, void* aXpccx) {
   // Note: Prefs that require a restart are handled in LoadStartupJSPrefs above.
 
+  auto xpccx = static_cast<XPCJSContext*>(aXpccx);
   JSContext* cx = xpccx->Context();
 
   bool useAsmJS = Preferences::GetBool(JS_OPTIONS_DOT_STR "asmjs");
@@ -1097,14 +1103,9 @@ CycleCollectedJSRuntime* XPCJSContext::CreateRuntime(JSContext* aCx) {
   return new XPCJSRuntime(aCx);
 }
 
-nsresult XPCJSContext::Initialize(XPCJSContext* aPrimaryContext) {
-  nsresult rv;
-  if (aPrimaryContext) {
-    rv = CycleCollectedJSContext::InitializeNonPrimary(aPrimaryContext);
-  } else {
-    rv = CycleCollectedJSContext::Initialize(nullptr, JS::DefaultHeapMaxBytes,
-                                             JS::DefaultNurseryMaxBytes);
-  }
+nsresult XPCJSContext::Initialize() {
+  nsresult rv = CycleCollectedJSContext::Initialize(
+      nullptr, JS::DefaultHeapMaxBytes, JS::DefaultNurseryMaxBytes);
   if (NS_WARN_IF(NS_FAILED(rv))) {
     return rv;
   }
@@ -1251,9 +1252,7 @@ nsresult XPCJSContext::Initialize(XPCJSContext* aPrimaryContext) {
 
   JS_AddInterruptCallback(cx, InterruptCallback);
 
-  if (!aPrimaryContext) {
-    Runtime()->Initialize(cx);
-  }
+  Runtime()->Initialize(cx);
 
   LoadStartupJSPrefs(this);
 
@@ -1265,6 +1264,10 @@ nsresult XPCJSContext::Initialize(XPCJSContext* aPrimaryContext) {
 #ifdef FUZZING
   Preferences::RegisterCallback(ReloadPrefsCallback, "fuzzing.enabled", this);
 #endif
+
+  MOZ_RELEASE_ASSERT(JS::InitSelfHostedCode(cx), "InitSelfHostedCode failed");
+  MOZ_RELEASE_ASSERT(Runtime()->InitializeStrings(cx),
+                     "InitializeStrings failed");
 
   return NS_OK;
 }
@@ -1290,9 +1293,9 @@ WatchdogManager* XPCJSContext::GetWatchdogManager() {
 void XPCJSContext::InitTLS() { MOZ_RELEASE_ASSERT(gTlsContext.init()); }
 
 // static
-XPCJSContext* XPCJSContext::NewXPCJSContext(XPCJSContext* aPrimaryContext) {
+XPCJSContext* XPCJSContext::NewXPCJSContext() {
   XPCJSContext* self = new XPCJSContext();
-  nsresult rv = self->Initialize(aPrimaryContext);
+  nsresult rv = self->Initialize();
   if (NS_FAILED(rv)) {
     MOZ_CRASH("new XPCJSContext failed to initialize.");
   }

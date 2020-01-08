@@ -5,7 +5,7 @@
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
 
 with Files('*Selection*'):
-    BUG_COMPONENT = ('Core', 'Selection')
+    BUG_COMPONENT = ('Core', 'DOM: Selection')
 
 with Files("**"):
     BUG_COMPONENT = ("Core", "DOM: Core & HTML")
@@ -91,7 +91,6 @@ EXPORTS += [
     'nsMappedAttributeElement.h',
     'nsNameSpaceManager.h',
     'nsNodeInfoManager.h',
-    'nsNodeUtils.h',
     'nsPIDOMWindow.h',
     'nsPIDOMWindowInlines.h',
     'nsPIWindowRoot.h',
@@ -201,6 +200,7 @@ EXPORTS.mozilla.dom += [
     'MessageSender.h',
     'MimeType.h',
     'MozQueryInterface.h',
+    'MutationObservers.h',
     'NameSpaceConstants.h',
     'Navigator.h',
     'NodeInfo.h',
@@ -318,6 +318,7 @@ UNIFIED_SOURCES += [
     'MessageSender.cpp',
     'MimeType.cpp',
     'MozQueryInterface.cpp',
+    'MutationObservers.cpp',
     'Navigator.cpp',
     'NodeInfo.cpp',
     'NodeIterator.cpp',
@@ -357,7 +358,6 @@ UNIFIED_SOURCES += [
     'nsNameSpaceManager.cpp',
     'nsNoDataProtocolContentPolicy.cpp',
     'nsNodeInfoManager.cpp',
-    'nsNodeUtils.cpp',
     'nsOpenURIInFrameParams.cpp',
     'nsPlainTextSerializer.cpp',
     'nsPropertyTable.cpp',
@@ -524,9 +524,6 @@ LOCAL_INCLUDES += [
     '/widget',
     '/xpcom/ds',
 ]
-
-if CONFIG['MOZ_XBL']:
-    LOCAL_INCLUDES += ['/dom/xbl']
 
 if CONFIG['MOZ_WEBRTC']:
     LOCAL_INCLUDES += [

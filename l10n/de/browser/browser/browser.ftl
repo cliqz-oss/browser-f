@@ -141,3 +141,16 @@ search-one-offs-context-set-as-default =
 search-one-offs-context-set-as-default-private =
     .label = Als Standardsuchmaschine für private Fenster festlegen
     .accesskey = p
+
+## Bookmark Panel
+
+bookmark-panel-show-editor-checkbox =
+    .label = Eigenschaften beim Speichern bearbeiten
+    .accesskey = g
+bookmark-panel-done-button =
+    .label = Fertig
+# Width of the bookmark panel.
+# Should be large enough to fully display the Done and
+# Cancel/Remove Bookmark buttons.
+bookmark-panel =
+    .style = min-width: 23em

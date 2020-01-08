@@ -17,11 +17,14 @@ depth.
 <pre id="test">
 <script src="head.js" type="application/javascript"></script>
 <script type="application/javascript">
+
+'use strict'
+
 window.onload = async function () {
   try {
-    let ReactDOM = browserRequire("devtools/client/shared/vendor/react-dom");
-    let React = browserRequire("devtools/client/shared/vendor/react");
-    let Tree = React.createFactory(browserRequire("devtools/client/shared/components/VirtualizedTree"));
+    const ReactDOM = browserRequire("devtools/client/shared/vendor/react-dom");
+    const React = browserRequire("devtools/client/shared/vendor/react");
+    const Tree = React.createFactory(browserRequire("devtools/client/shared/components/VirtualizedTree"));
 
     ok(React, "Should get React");
     ok(Tree, "Should get Tree");

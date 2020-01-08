@@ -14,6 +14,7 @@
 
 class nsDNSService;
 class nsIPrefBranch;
+class nsINetworkLinkService;
 
 namespace mozilla {
 namespace net {
@@ -71,6 +72,14 @@ class TRRService : public nsIObserver,
   friend class ::nsDNSService;
   void GetParentalControlEnabledInternal();
 
+  bool IsDomainBlacklisted(const nsACString& aHost,
+                           const nsACString& aOriginSuffix,
+                           bool aPrivateBrowsing);
+  bool IsExcludedFromTRR_unlocked(const nsACString& aHost);
+
+  void RebuildSuffixList(nsINetworkLinkService* aLinkService);
+  void CheckPlatformDNSStatus(nsINetworkLinkService* aLinkService);
+
   bool mInitialized;
   Atomic<uint32_t, Relaxed> mMode;
   Atomic<uint32_t, Relaxed> mTRRBlacklistExpireTime;
@@ -96,6 +105,7 @@ class TRRService : public nsIObserver,
   Atomic<bool, Relaxed> mDisableECS;  // disable EDNS Client Subnet in requests
   Atomic<uint32_t, Relaxed>
       mDisableAfterFails;  // this many fails in a row means failed TRR service
+  Atomic<bool, Relaxed> mPlatformDisabledTRR;
 
   // TRR Blacklist storage
   // mTRRBLStorage is only modified on the main thread, but we query whether it
@@ -106,6 +116,7 @@ class TRRService : public nsIObserver,
 
   // A set of domains that we should not use TRR for.
   nsTHashtable<nsCStringHashKey> mExcludedDomains;
+  nsTHashtable<nsCStringHashKey> mDNSSuffixDomains;
 
   enum ConfirmationState {
     CONFIRM_INIT = 0,

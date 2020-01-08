@@ -10,14 +10,16 @@
 #include "mozilla/DebugOnly.h"
 #include "mozilla/MemoryReporting.h"
 
+#include <algorithm>
+
 #include "debugger/DebugAPI.h"
 #include "gc/FreeOp.h"
 #include "jit/BaselineCodeGen.h"
 #include "jit/BaselineIC.h"
 #include "jit/CompileInfo.h"
-#include "jit/IonControlFlow.h"
 #include "jit/JitCommon.h"
 #include "jit/JitSpewer.h"
+#include "util/Memory.h"
 #include "util/StructuredSpewer.h"
 #include "vm/Interpreter.h"
 #include "vm/TraceLogging.h"
@@ -156,7 +158,7 @@ JitExecStatus jit::EnterBaselineInterpreterAtBranch(JSContext* cx,
   if (fp->isFunctionFrame()) {
     data.constructing = fp->isConstructing();
     data.numActualArgs = fp->numActualArgs();
-    data.maxArgc = Max(fp->numActualArgs(), fp->numFormalArgs()) +
+    data.maxArgc = std::max(fp->numActualArgs(), fp->numFormalArgs()) +
                    1;               // +1 = include |this|
     data.maxArgv = fp->argv() - 1;  // -1 = include |this|
     data.envChain = nullptr;
@@ -199,8 +201,6 @@ MethodStatus jit::BaselineCompile(JSContext* cx, JSScript* script,
   AutoGeckoProfilerEntry pseudoFrame(
       cx, "Baseline script compilation",
       JS::ProfilingCategoryPair::JS_BaselineCompilation);
-
-  script->ensureNonLazyCanonicalFunction();
 
   TempAllocator temp(&cx->tempLifoAlloc());
   JitContext jctx(cx, nullptr);

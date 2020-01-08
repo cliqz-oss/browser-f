@@ -552,7 +552,7 @@ static const char kPrefSkipTRRParentalControl[] =
 static bool sGetTtlEnabled = false;
 mozilla::Atomic<bool, mozilla::Relaxed> gNativeIsLocalhost;
 
-static void DnsPrefChanged(const char* aPref, nsHostResolver* aSelf) {
+static void DnsPrefChanged(const char* aPref, void* aSelf) {
   MOZ_ASSERT(NS_IsMainThread(),
              "Should be getting pref changed notification on main thread!");
 
@@ -865,6 +865,10 @@ nsresult nsHostResolver::ResolveHost(const nsACString& aHost, uint16_t type,
       // callback, and proceed to do the lookup.
       nsAutoCString originSuffix;
       aOriginAttributes.CreateSuffix(originSuffix);
+
+      if (gTRRService && gTRRService->IsExcludedFromTRR(host)) {
+        flags |= RES_DISABLE_TRR;
+      }
 
       nsHostKey key(host, type, flags, af,
                     (aOriginAttributes.mPrivateBrowsingId > 0), originSuffix);

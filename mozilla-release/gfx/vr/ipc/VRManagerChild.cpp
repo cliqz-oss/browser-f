@@ -72,6 +72,22 @@ VRManagerChild* VRManagerChild::Get() {
 bool VRManagerChild::IsCreated() { return !!sVRManagerChildSingleton; }
 
 /* static */
+bool VRManagerChild::IsPresenting() {
+  if (!VRManagerChild::IsCreated()) {
+    return false;
+  }
+
+  nsTArray<RefPtr<VRDisplayClient>> displays;
+  sVRManagerChildSingleton->GetVRDisplays(displays);
+
+  bool result = false;
+  for (auto& display : displays) {
+    result |= display->IsPresenting();
+  }
+  return result;
+}
+
+/* static */
 bool VRManagerChild::InitForContent(Endpoint<PVRManagerChild>&& aEndpoint) {
   MOZ_ASSERT(NS_IsMainThread());
   MOZ_ASSERT(!sVRManagerChildSingleton);
@@ -168,6 +184,17 @@ void VRManagerChild::UpdateDisplayInfo(
       }
     }
     if (!found) {
+      // In order to make the current VRDisplay can continue to apply for the
+      // newest VRDisplayInfo, we need to exit presentionation before
+      // disconnecting.
+      if (display->IsPresentationGenerationCurrent()) {
+        NotifyPresentationGenerationChangedInternal(
+            display->GetDisplayInfo().GetDisplayID());
+
+        RefPtr<VRManagerChild> vm = VRManagerChild::Get();
+        vm->FireDOMVRDisplayPresentChangeEvent(
+            display->GetDisplayInfo().GetDisplayID());
+      }
       display->NotifyDisconnected();
       disconnectedDisplays.AppendElement(
           display->GetDisplayInfo().GetDisplayID());

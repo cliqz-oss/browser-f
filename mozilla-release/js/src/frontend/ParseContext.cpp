@@ -245,7 +245,7 @@ ParseContext::ParseContext(JSContext* cx, ParseContext*& parent,
     // FunctionBoxes that get added to the tree in an AsmJS compilation
     // don't have a long enough lifespan, as AsmJS marks the lifo allocator
     // inside the ModuleValidator, and frees it again when that dies.
-    if (parseInfo.treeHolder.isDeferred() &&
+    if (parseInfo.isDeferred() &&
         !this->functionBox()->useAsmOrInsideUseAsm()) {
       tree.emplace(parseInfo.treeHolder);
     }
@@ -516,7 +516,7 @@ bool ParseContext::declareFunctionThis(const UsedNameTracker& usedNames,
 
   bool declareThis;
   if (canSkipLazyClosedOverBindings) {
-    declareThis = funbox->function()->lazyScript()->hasThisBinding();
+    declareThis = funbox->function()->baseScript()->hasThisBinding();
   } else {
     declareThis =
         hasUsedFunctionSpecialName(usedNames, dotThis) ||
@@ -551,7 +551,7 @@ bool ParseContext::declareFunctionArgumentsObject(
   bool tryDeclareArguments;
   if (canSkipLazyClosedOverBindings) {
     tryDeclareArguments =
-        funbox->function()->lazyScript()->shouldDeclareArguments();
+        funbox->function()->baseScript()->shouldDeclareArguments();
   } else {
     tryDeclareArguments = hasUsedFunctionSpecialName(usedNames, argumentsName);
   }

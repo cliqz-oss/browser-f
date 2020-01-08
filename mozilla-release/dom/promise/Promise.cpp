@@ -46,11 +46,6 @@
 namespace mozilla {
 namespace dom {
 
-namespace {
-// Generator used by Promise::GetID.
-Atomic<uintptr_t> gIDGenerator(0);
-}  // namespace
-
 // Promise
 
 NS_IMPL_CYCLE_COLLECTION_CLASS(Promise)
@@ -94,7 +89,7 @@ already_AddRefed<Promise> Promise::Create(
     return nullptr;
   }
   RefPtr<Promise> p = new Promise(aGlobal);
-  p->CreateWrapper(nullptr, aRv, aPropagateUserInteraction);
+  p->CreateWrapper(aRv, aPropagateUserInteraction);
   if (aRv.Failed()) {
     return nullptr;
   }
@@ -273,15 +268,14 @@ Result<RefPtr<Promise>, nsresult> Promise::ThenWithoutCycleCollection(
 }
 
 void Promise::CreateWrapper(
-    JS::Handle<JSObject*> aDesiredProto, ErrorResult& aRv,
-    PropagateUserInteraction aPropagateUserInteraction) {
+    ErrorResult& aRv, PropagateUserInteraction aPropagateUserInteraction) {
   AutoJSAPI jsapi;
   if (!jsapi.Init(mGlobal)) {
     aRv.Throw(NS_ERROR_UNEXPECTED);
     return;
   }
   JSContext* cx = jsapi.cx();
-  mPromiseObj = JS::NewPromiseObject(cx, nullptr, aDesiredProto);
+  mPromiseObj = JS::NewPromiseObject(cx, nullptr);
   if (!mPromiseObj) {
     JS_ClearPendingException(cx);
     aRv.Throw(NS_ERROR_OUT_OF_MEMORY);

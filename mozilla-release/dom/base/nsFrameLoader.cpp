@@ -39,7 +39,7 @@
 #include "nsSubDocumentFrame.h"
 #include "nsError.h"
 #include "nsISHistory.h"
-#include "nsIXULWindow.h"
+#include "nsIAppWindow.h"
 #include "nsIMozBrowserFrame.h"
 #include "nsISHistory.h"
 #include "nsIScriptError.h"
@@ -102,7 +102,6 @@
 #include "mozilla/WebBrowserPersistLocalDocument.h"
 #include "mozilla/dom/Promise.h"
 #include "mozilla/dom/PromiseNativeHandler.h"
-#include "mozilla/dom/ParentSHistory.h"
 #include "mozilla/dom/ChildSHistory.h"
 #include "mozilla/dom/CanonicalBrowsingContext.h"
 #include "mozilla/dom/ContentChild.h"
@@ -155,8 +154,7 @@ typedef ScrollableLayerGuid::ViewID ViewID;
 
 NS_IMPL_CYCLE_COLLECTION_WRAPPERCACHE(nsFrameLoader, mBrowsingContext,
                                       mMessageManager, mChildMessageManager,
-                                      mParentSHistory, mRemoteBrowser,
-                                      mStaticCloneOf)
+                                      mRemoteBrowser, mStaticCloneOf)
 NS_IMPL_CYCLE_COLLECTING_ADDREF(nsFrameLoader)
 NS_IMPL_CYCLE_COLLECTING_RELEASE(nsFrameLoader)
 
@@ -1905,6 +1903,7 @@ void nsFrameLoader::DestroyDocShell() {
   }
 
   mBrowsingContext = nullptr;
+  mDocShell = nullptr;
 
   if (mChildMessageManager) {
     // Stop handling events in the in-process frame script.
@@ -2014,6 +2013,7 @@ nsresult nsFrameLoader::MaybeCreateDocShell() {
   // context inside of nsDocShell::Create
   RefPtr<nsDocShell> docShell = nsDocShell::Create(mBrowsingContext);
   NS_ENSURE_TRUE(docShell, NS_ERROR_FAILURE);
+  mDocShell = docShell;
 
   mBrowsingContext->SetEmbedderElement(mOwnerContent);
 
@@ -2086,15 +2086,12 @@ nsresult nsFrameLoader::MaybeCreateDocShell() {
     return NS_ERROR_FAILURE;
   }
 
-  // If we are an in-process browser, we want to set up our session history. We
-  // do this by creating both the child SHistory (which is in the nsDocShell),
-  // and creating the corresponding in-process ParentSHistory.
+  // If we are an in-process browser, we want to set up our session history.
   if (mIsTopLevelContent && mOwnerContent->IsXULElement(nsGkAtoms::browser) &&
       !mOwnerContent->HasAttr(kNameSpaceID_None, nsGkAtoms::disablehistory)) {
     // XXX(nika): Set this up more explicitly?
     nsresult rv = docShell->InitSessionHistory();
     NS_ENSURE_SUCCESS(rv, rv);
-    mParentSHistory = new ParentSHistory(this);
   }
 
   OriginAttributes attrs;
@@ -2522,9 +2519,14 @@ bool nsFrameLoader::TryRemoteBrowserInternal() {
   }
 
   RefPtr<ContentParent> openerContentParent;
+  RefPtr<nsIPrincipal> openerContentPrincipal;
   RefPtr<BrowserParent> sameTabGroupAs;
   if (auto* host = BrowserHost::GetFrom(parentDocShell->GetOpener())) {
     openerContentParent = host->GetContentParent();
+    BrowserParent* openerBrowserParent = host->GetActor();
+    if (openerBrowserParent) {
+      openerContentPrincipal = openerBrowserParent->GetContentPrincipal();
+    }
   }
 
   // <iframe mozbrowser> gets to skip these checks.
@@ -2591,7 +2593,7 @@ bool nsFrameLoader::TryRemoteBrowserInternal() {
       !parentOwner) {
     return false;
   }
-  nsCOMPtr<nsIXULWindow> window(do_GetInterface(parentOwner));
+  nsCOMPtr<nsIAppWindow> window(do_GetInterface(parentOwner));
   if (window && NS_FAILED(window->GetChromeFlags(&chromeFlags))) {
     return false;
   }
@@ -2601,6 +2603,12 @@ bool nsFrameLoader::TryRemoteBrowserInternal() {
   MutableTabContext context;
   nsresult rv = GetNewTabContext(&context);
   NS_ENSURE_SUCCESS(rv, false);
+
+  // We need to propagate the first party domain if the opener is presented.
+  if (openerContentPrincipal) {
+    context.SetFirstPartyDomainAttributes(
+        openerContentPrincipal->OriginAttributesRef().mFirstPartyDomain);
+  }
 
   uint64_t nextRemoteTabId = 0;
   if (mOwnerContent) {
@@ -2658,14 +2666,6 @@ bool nsFrameLoader::TryRemoteBrowserInternal() {
     nsCOMPtr<nsIBrowserDOMWindow> browserDOMWin;
     rootChromeWin->GetBrowserDOMWindow(getter_AddRefs(browserDOMWin));
     browserParent->SetBrowserDOMWindow(browserDOMWin);
-  }
-
-  // Set up a parent SHistory
-  if (XRE_IsParentProcess()) {
-    // XXX(nika): Once we get out of process iframes we won't want to
-    // unconditionally set this up. What do we do for iframes in a chrome loaded
-    // document for example?
-    mParentSHistory = new ParentSHistory(this);
   }
 
   // For xul:browsers, update some settings based on attributes:
@@ -3031,12 +3031,13 @@ nsIFrame* nsFrameLoader::GetDetachedSubdocFrame(
 }
 
 void nsFrameLoader::ApplySandboxFlags(uint32_t sandboxFlags) {
+  uint32_t parentSandboxFlags = mOwnerContent->OwnerDoc()->GetSandboxFlags();
+
+  // The child can only add restrictions, never remove them.
+  sandboxFlags |= parentSandboxFlags;
+
+  // XXX this probably isn't fission compatible.
   if (GetDocShell()) {
-    uint32_t parentSandboxFlags = mOwnerContent->OwnerDoc()->GetSandboxFlags();
-
-    // The child can only add restrictions, never remove them.
-    sandboxFlags |= parentSandboxFlags;
-
     // If this frame is a receiving browsing context, we should add
     // sandboxed auxiliary navigation flag to sandboxFlags. See
     // https://w3c.github.io/presentation-api/#creating-a-receiving-browsing-context
@@ -3045,8 +3046,8 @@ void nsFrameLoader::ApplySandboxFlags(uint32_t sandboxFlags) {
     if (!presentationURL.IsEmpty()) {
       sandboxFlags |= SANDBOXED_AUXILIARY_NAVIGATION;
     }
-    GetDocShell()->SetSandboxFlags(sandboxFlags);
   }
+  mBrowsingContext->SetSandboxFlags(sandboxFlags);
 }
 
 /* virtual */

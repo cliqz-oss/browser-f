@@ -49,6 +49,12 @@ loader.lazyRequireGetter(
 );
 loader.lazyRequireGetter(
   this,
+  "getDescriptorValue",
+  "devtools/client/webconsole/utils/messages",
+  true
+);
+loader.lazyRequireGetter(
+  this,
   "getParentWarningGroupMessageId",
   "devtools/client/webconsole/utils/messages",
   true
@@ -144,7 +150,7 @@ function cloneState(state) {
  * @param {UiState} uiState: The ui state.
  * @returns {MessageState} a new messages state.
  */
-/* eslint-disable complexity */
+// eslint-disable-next-line complexity
 function addMessage(newMessage, state, filtersState, prefsState, uiState) {
   const { messagesById, groupsById, currentGroup, repeatById } = state;
 
@@ -354,9 +360,8 @@ function addMessage(newMessage, state, filtersState, prefsState, uiState) {
 
   return removeMessagesFromState(state, removedIds);
 }
-/* eslint-enable complexity */
 
-/* eslint-disable complexity */
+// eslint-disable-next-line complexity
 function messages(
   state = MessageState(),
   action,
@@ -467,10 +472,6 @@ function messages(
         if (message.logpointId == action.logpointId) {
           removedIds.push(id);
         }
-      }
-
-      if (removedIds.length === 0) {
-        return state;
       }
 
       return removeMessagesFromState(
@@ -696,7 +697,6 @@ function messages(
 
   return state;
 }
-/* eslint-enable complexity */
 
 function setVisibleMessages({
   messagesState,
@@ -990,7 +990,7 @@ function getToplevelMessageCount(state) {
  *         - visible {Boolean}: true if the message should be visible
  *         - cause {String}: if visible is false, what causes the message to be hidden.
  */
-/* eslint-disable complexity */
+// eslint-disable-next-line complexity
 function getMessageVisibility(
   message,
   {
@@ -1181,7 +1181,6 @@ function getMessageVisibility(
     visible: true,
   };
 }
-/* eslint-enable complexity */
 
 function isUnfilterable(message) {
   return [
@@ -1340,10 +1339,50 @@ function isTextInParameters(text, regex, parameters) {
     return false;
   }
 
-  return getAllProps(parameters).some(prop => {
-    const str = prop + "";
-    return regex ? regex.test(str) : str.toLocaleLowerCase().includes(text);
-  });
+  return parameters.some(parameter =>
+    isTextInParameter(text, regex, parameter)
+  );
+}
+
+/**
+ * Returns true if given text is included in provided parameter.
+ */
+function isTextInParameter(text, regex, parameter) {
+  const matchStr = str =>
+    regex ? regex.test(str) : str.toLocaleLowerCase().includes(text);
+
+  if (parameter && parameter.class && matchStr(parameter.class)) {
+    return true;
+  }
+
+  const parameterType = typeof parameter;
+  if (parameterType !== "object" && parameterType !== "undefined") {
+    const str = parameter + "";
+    if (matchStr(str)) {
+      return true;
+    }
+  }
+
+  const previewItems = getGripPreviewItems(parameter);
+  for (const item of previewItems) {
+    if (isTextInParameter(text, regex, item)) {
+      return true;
+    }
+  }
+
+  if (parameter && parameter.ownProperties) {
+    for (const [key, desc] of Object.entries(parameter.ownProperties)) {
+      if (matchStr(key)) {
+        return true;
+      }
+
+      if (isTextInParameter(text, regex, getDescriptorValue(desc))) {
+        return true;
+      }
+    }
+  }
+
+  return false;
 }
 
 /**
@@ -1437,28 +1476,6 @@ function isTextInPrefix(text, regex, prefix) {
   const str = `${prefix}: `;
 
   return regex ? regex.test(str) : str.toLocaleLowerCase().includes(text);
-}
-
-/**
- * Get a flat array of all the grips and their properties.
- *
- * @param {Array} Grips
- * @return {Array} Flat array of the grips and their properties.
- */
-function getAllProps(grips) {
-  let result = grips.reduce((res, grip) => {
-    const previewItems = getGripPreviewItems(grip);
-    const allProps = previewItems.length > 0 ? getAllProps(previewItems) : [];
-    return [...res, grip, grip.class, ...allProps];
-  }, []);
-
-  // We are interested only in primitive props (to search for)
-  // not in objects and undefined previews.
-  result = result.filter(
-    grip => typeof grip != "object" && typeof grip != "undefined"
-  );
-
-  return [...new Set(result)];
 }
 
 function getDefaultFiltersCounter() {

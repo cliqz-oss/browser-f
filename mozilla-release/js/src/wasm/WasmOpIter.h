@@ -24,6 +24,7 @@
 
 #include "jit/AtomicOp.h"
 #include "js/Printf.h"
+#include "wasm/WasmUtility.h"
 #include "wasm/WasmValidate.h"
 
 namespace js {
@@ -595,7 +596,7 @@ class MOZ_STACK_CLASS OpIter : private Policy {
   const ModuleEnvironment& env_;
 
   TypeAndValueStack valueStack_;
-  TypeAndValueStack thenParamStack_;
+  TypeAndValueStack elseParamStack_;
   ControlStack controlStack_;
 
 #ifdef DEBUG
@@ -720,12 +721,14 @@ class MOZ_STACK_CLASS OpIter : private Policy {
   MOZ_MUST_USE bool readFunctionStart(uint32_t funcIndex);
   MOZ_MUST_USE bool readFunctionEnd(const uint8_t* bodyEnd);
   MOZ_MUST_USE bool readReturn(ValueVector* values);
-  MOZ_MUST_USE bool readBlock();
-  MOZ_MUST_USE bool readLoop();
-  MOZ_MUST_USE bool readIf(Value* condition);
-  MOZ_MUST_USE bool readElse(ResultType* thenType, ValueVector* thenValues);
+  MOZ_MUST_USE bool readBlock(ResultType* paramType);
+  MOZ_MUST_USE bool readLoop(ResultType* paramType);
+  MOZ_MUST_USE bool readIf(ResultType* paramType, Value* condition);
+  MOZ_MUST_USE bool readElse(ResultType* paramType, ResultType* resultType,
+                             ValueVector* thenResults);
   MOZ_MUST_USE bool readEnd(LabelKind* kind, ResultType* type,
-                            ValueVector* values);
+                            ValueVector* results,
+                            ValueVector* resultsForEmptyElse);
   void popEnd();
   MOZ_MUST_USE bool readBr(uint32_t* relativeDepth, ResultType* type,
                            ValueVector* values);
@@ -833,6 +836,18 @@ class MOZ_STACK_CLASS OpIter : private Policy {
     for (size_t i = 0; i < count; i++) {
       valueStack_[base + i].setValue(values[i]);
     }
+  }
+
+  bool getResults(size_t count, ValueVector* values) {
+    MOZ_ASSERT(valueStack_.length() >= count);
+    if (!values->resize(count)) {
+      return false;
+    }
+    size_t base = valueStack_.length() - count;
+    for (size_t i = 0; i < count; i++) {
+      (*values)[i] = valueStack_[base + i].value();
+    }
+    return true;
   }
 
   // Set the result value of the current top-of-value-stack expression.
@@ -1165,6 +1180,10 @@ inline bool OpIter<Policy>::readBlockType(BlockType* type) {
   }
 
 #ifdef ENABLE_WASM_MULTI_VALUE
+  if (!env_.multiValuesEnabled()) {
+    return fail("invalid block type reference");
+  }
+
   int32_t x;
   if (!d_.readVarS32(&x) || x < 0 || uint32_t(x) >= env_.types.length()) {
     return fail("invalid block type type index");
@@ -1175,10 +1194,6 @@ inline bool OpIter<Policy>::readBlockType(BlockType* type) {
   }
 
   *type = BlockType::Func(env_.types[x].funcType());
-
-  if (!type->params().empty() || type->results().length() > 1) {
-    return fail("multi-value block codegen not yet implemented");
-  }
 
   return true;
 #else
@@ -1216,7 +1231,7 @@ inline void OpIter<Policy>::peekOp(OpBytes* op) {
 
 template <typename Policy>
 inline bool OpIter<Policy>::readFunctionStart(uint32_t funcIndex) {
-  MOZ_ASSERT(thenParamStack_.empty());
+  MOZ_ASSERT(elseParamStack_.empty());
   MOZ_ASSERT(valueStack_.empty());
   MOZ_ASSERT(controlStack_.empty());
   MOZ_ASSERT(op_.b0 == uint16_t(Op::Limit));
@@ -1233,7 +1248,7 @@ inline bool OpIter<Policy>::readFunctionEnd(const uint8_t* bodyEnd) {
   if (!controlStack_.empty()) {
     return fail("unbalanced function body control flow");
   }
-  MOZ_ASSERT(thenParamStack_.empty());
+  MOZ_ASSERT(elseParamStack_.empty());
 
 #ifdef DEBUG
   op_ = OpBytes(Op::Limit);
@@ -1258,7 +1273,7 @@ inline bool OpIter<Policy>::readReturn(ValueVector* values) {
 }
 
 template <typename Policy>
-inline bool OpIter<Policy>::readBlock() {
+inline bool OpIter<Policy>::readBlock(ResultType* paramType) {
   MOZ_ASSERT(Classify(op_) == OpKind::Block);
 
   BlockType type;
@@ -1266,11 +1281,12 @@ inline bool OpIter<Policy>::readBlock() {
     return false;
   }
 
+  *paramType = type.params();
   return pushControl(LabelKind::Block, type);
 }
 
 template <typename Policy>
-inline bool OpIter<Policy>::readLoop() {
+inline bool OpIter<Policy>::readLoop(ResultType* paramType) {
   MOZ_ASSERT(Classify(op_) == OpKind::Loop);
 
   BlockType type;
@@ -1278,11 +1294,12 @@ inline bool OpIter<Policy>::readLoop() {
     return false;
   }
 
+  *paramType = type.params();
   return pushControl(LabelKind::Loop, type);
 }
 
 template <typename Policy>
-inline bool OpIter<Policy>::readIf(Value* condition) {
+inline bool OpIter<Policy>::readIf(ResultType* paramType, Value* condition) {
   MOZ_ASSERT(Classify(op_) == OpKind::If);
 
   BlockType type;
@@ -1298,13 +1315,15 @@ inline bool OpIter<Policy>::readIf(Value* condition) {
     return false;
   }
 
+  *paramType = type.params();
   size_t paramsLength = type.params().length();
-  return thenParamStack_.append(valueStack_.end() - paramsLength, paramsLength);
+  return elseParamStack_.append(valueStack_.end() - paramsLength, paramsLength);
 }
 
 template <typename Policy>
-inline bool OpIter<Policy>::readElse(ResultType* thenType,
-                                     ValueVector* values) {
+inline bool OpIter<Policy>::readElse(ResultType* paramType,
+                                     ResultType* resultType,
+                                     ValueVector* thenResults) {
   MOZ_ASSERT(Classify(op_) == OpKind::Else);
 
   Control& block = controlStack_.back();
@@ -1312,19 +1331,17 @@ inline bool OpIter<Policy>::readElse(ResultType* thenType,
     return fail("else can only be used within an if");
   }
 
-  if (!checkStackAtEndOfBlock(thenType, values)) {
+  *paramType = block.type().params();
+  if (!checkStackAtEndOfBlock(resultType, thenResults)) {
     return false;
   }
 
-  // Restore to the entry state of the then block. Since the then block may
-  // clobbered any value in the block's params, we must restore from a
-  // snapshot.
   valueStack_.shrinkTo(block.valueStackBase());
-  size_t thenParamsLength = block.type().params().length();
-  MOZ_ASSERT(thenParamStack_.length() >= thenParamsLength);
-  valueStack_.infallibleAppend(thenParamStack_.end() - thenParamsLength,
-                               thenParamsLength);
-  thenParamStack_.shrinkBy(thenParamsLength);
+
+  size_t nparams = block.type().params().length();
+  MOZ_ASSERT(elseParamStack_.length() >= nparams);
+  valueStack_.infallibleAppend(elseParamStack_.end() - nparams, nparams);
+  elseParamStack_.shrinkBy(nparams);
 
   block.switchToElse();
   return true;
@@ -1332,19 +1349,35 @@ inline bool OpIter<Policy>::readElse(ResultType* thenType,
 
 template <typename Policy>
 inline bool OpIter<Policy>::readEnd(LabelKind* kind, ResultType* type,
-                                    ValueVector* values) {
+                                    ValueVector* results,
+                                    ValueVector* resultsForEmptyElse) {
   MOZ_ASSERT(Classify(op_) == OpKind::End);
 
-  if (!checkStackAtEndOfBlock(type, values)) {
+  if (!checkStackAtEndOfBlock(type, results)) {
     return false;
   }
 
   Control& block = controlStack_.back();
 
-  // If an `if` block ends with `end` instead of `else`, then we must
-  // additionally validate that the then-block doesn't push anything.
-  if (block.kind() == LabelKind::Then && !block.resultType().empty()) {
-    return fail("if without else with a result value");
+  if (block.kind() == LabelKind::Then) {
+    ResultType params = block.type().params();
+    // If an `if` block ends with `end` instead of `else`, then the `else` block
+    // implicitly passes the `if` parameters as the `else` results.  In that
+    // case, assert that the `if`'s param type matches the result type.
+    if (params != block.type().results()) {
+      return fail("if without else with a result value");
+    }
+
+    size_t nparams = params.length();
+    MOZ_ASSERT(elseParamStack_.length() >= nparams);
+    if (!resultsForEmptyElse->resize(nparams)) {
+      return false;
+    }
+    const TypeAndValue* elseParams = elseParamStack_.end() - nparams;
+    for (size_t i = 0; i < nparams; i++) {
+      (*resultsForEmptyElse)[i] = elseParams[i].value();
+    }
+    elseParamStack_.shrinkBy(nparams);
   }
 
   *kind = block.kind();
@@ -2058,6 +2091,12 @@ inline bool OpIter<Policy>::readCallIndirect(uint32_t* funcTypeIndex,
 
   const FuncType& funcType = env_.types[*funcTypeIndex].funcType();
 
+  // FIXME: Remove this check when full multi-value function returns land.
+  // Bug 1585909.
+  if (funcType.results().length() > MaxFuncResults) {
+    return fail("too many returns in signature");
+  }
+
 #ifdef WASM_PRIVATE_REFTYPES
   if (env_.tables[*tableIndex].importedOrExported && funcType.exposesRef()) {
     return fail("cannot expose reference type");
@@ -2120,6 +2159,12 @@ inline bool OpIter<Policy>::readOldCallIndirect(uint32_t* funcTypeIndex,
   }
 
   const FuncType& funcType = env_.types[*funcTypeIndex].funcType();
+
+  // FIXME: Remove this check when full multi-value function returns land.
+  // Bug 1585909.
+  if (funcType.results().length() > MaxFuncResults) {
+    return fail("too many returns in signature");
+  }
 
   if (!popCallArgs(funcType.args(), argValues)) {
     return false;

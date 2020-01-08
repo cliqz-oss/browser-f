@@ -11,6 +11,8 @@
 #include "mozilla/Unused.h"
 #include "mozilla/Utf8.h"  // mozilla::Utf8Unit
 
+#include <algorithm>
+
 #include "builtin/Promise.h"
 #include "frontend/BytecodeCompilation.h"
 #include "jit/IonBuilder.h"
@@ -99,14 +101,14 @@ static size_t ClampDefaultCPUCount(size_t cpuCount) {
   // (and SpiderMonkey's lack of NUMA-awareness), contention, and general lack
   // of optimization for high core counts. So to avoid wasting thread stack
   // resources (and cluttering gdb and core dumps), clamp to 8 cores for now.
-  return Min<size_t>(cpuCount, 8);
+  return std::min<size_t>(cpuCount, 8);
 }
 
 static size_t ThreadCountForCPUCount(size_t cpuCount) {
   // We need at least two threads for tier-2 wasm compilations, because
   // there's a master task that holds a thread while other threads do the
   // compilation.
-  return Max<size_t>(cpuCount, 2);
+  return std::max<size_t>(cpuCount, 2);
 }
 
 bool js::SetFakeCPUCount(size_t count) {
@@ -594,7 +596,9 @@ void ScriptParseTask<Unit>::parse(JSContext* cx) {
   {
     ScopeKind scopeKind =
         options.nonSyntacticScope ? ScopeKind::NonSyntactic : ScopeKind::Global;
-    frontend::GlobalScriptInfo info(cx, options, scopeKind);
+    LifoAllocScope allocScope(&cx->tempLifoAlloc());
+    frontend::ParseInfo parseInfo(cx, allocScope);
+    frontend::GlobalScriptInfo info(cx, parseInfo, options, scopeKind);
     script = frontend::CompileGlobalScript(
         info, data,
         /* sourceObjectOut = */ &sourceObject.get());
@@ -659,9 +663,15 @@ void ScriptDecodeTask::parse(JSContext* cx) {
   RootedScript resultScript(cx);
   Rooted<ScriptSourceObject*> sourceObject(cx);
 
-  XDROffThreadDecoder decoder(
-      cx, &options, /* sourceObjectOut = */ &sourceObject.get(), range);
-  XDRResult res = decoder.codeScript(&resultScript);
+  Rooted<UniquePtr<XDROffThreadDecoder>> decoder(
+      cx,
+      js::MakeUnique<XDROffThreadDecoder>(
+          cx, &options, /* sourceObjectOut = */ &sourceObject.get(), range));
+  if (!decoder) {
+    ReportOutOfMemory(cx);
+    return;
+  }
+  XDRResult res = decoder->codeScript(&resultScript);
   MOZ_ASSERT(bool(resultScript) == res.isOk());
   if (res.isOk()) {
     scripts.infallibleAppend(resultScript);
@@ -674,11 +684,12 @@ void ScriptDecodeTask::parse(JSContext* cx) {
 #if defined(JS_BUILD_BINAST)
 
 BinASTDecodeTask::BinASTDecodeTask(JSContext* cx, const uint8_t* buf,
-                                   size_t length,
+                                   size_t length, JS::BinASTFormat format,
                                    JS::OffThreadCompileCallback callback,
                                    void* callbackData)
     : ParseTask(ParseTaskKind::BinAST, cx, callback, callbackData),
-      data(buf, length) {}
+      data(buf, length),
+      format(format) {}
 
 void BinASTDecodeTask::parse(JSContext* cx) {
   MOZ_ASSERT(cx->isHelperThreadContext());
@@ -686,7 +697,8 @@ void BinASTDecodeTask::parse(JSContext* cx) {
   RootedScriptSourceObject sourceObject(cx);
 
   JSScript* script = frontend::CompileGlobalBinASTScript(
-      cx, options, data.begin().get(), data.length(), &sourceObject.get());
+      cx, options, data.begin().get(), data.length(), format,
+      &sourceObject.get());
   if (script) {
     scripts.infallibleAppend(script);
     if (sourceObject) {
@@ -719,8 +731,14 @@ void MultiScriptsDecodeTask::parse(JSContext* cx) {
     RootedScript resultScript(cx);
     Rooted<ScriptSourceObject*> sourceObject(cx);
 
-    XDROffThreadDecoder decoder(cx, &opts, &sourceObject.get(), source.range);
-    XDRResult res = decoder.codeScript(&resultScript);
+    Rooted<UniquePtr<XDROffThreadDecoder>> decoder(
+        cx, js::MakeUnique<XDROffThreadDecoder>(cx, &opts, &sourceObject.get(),
+                                                source.range));
+    if (!decoder) {
+      ReportOutOfMemory(cx);
+      return;
+    }
+    XDRResult res = decoder->codeScript(&resultScript);
     MOZ_ASSERT(bool(resultScript) == res.isOk());
 
     if (res.isErr()) {
@@ -1054,14 +1072,15 @@ bool js::StartOffThreadDecodeMultiScripts(JSContext* cx,
 bool js::StartOffThreadDecodeBinAST(JSContext* cx,
                                     const ReadOnlyCompileOptions& options,
                                     const uint8_t* buf, size_t length,
+                                    JS::BinASTFormat format,
                                     JS::OffThreadCompileCallback callback,
                                     void* callbackData) {
   if (!cx->runtime()->binast().ensureBinTablesInitialized(cx)) {
     return false;
   }
 
-  auto task = cx->make_unique<BinASTDecodeTask>(cx, buf, length, callback,
-                                                callbackData);
+  auto task = cx->make_unique<BinASTDecodeTask>(cx, buf, length, format,
+                                                callback, callbackData);
   if (!task) {
     return false;
   }
@@ -1687,7 +1706,7 @@ void GlobalHelperThreadState::scheduleCompressionTasks(
 
 bool GlobalHelperThreadState::canStartGCParallelTask(
     const AutoLockHelperThreadState& lock) {
-  return !gcParallelWorklist(lock).empty() &&
+  return !gcParallelWorklist(lock).isEmpty() &&
          checkTaskThreadLimit<GCParallelTask*>(maxGCParallelThreads());
 }
 
@@ -1696,37 +1715,27 @@ js::GCParallelTask::~GCParallelTask() {
   // destructors run after those for derived classes' members, so a join in a
   // base class can't ensure that the task is done using the members. All we
   // can do now is check that someone has previously stopped the task.
-  assertNotStarted();
+  assertIdle();
 }
 
-bool js::GCParallelTask::startWithLockHeld(AutoLockHelperThreadState& lock) {
+void js::GCParallelTask::startWithLockHeld(AutoLockHelperThreadState& lock) {
   MOZ_ASSERT(CanUseExtraThreads());
-  assertNotStarted();
+  MOZ_ASSERT(HelperThreadState().threads);
+  assertIdle();
 
-  // If we do the shutdown GC before running anything, we may never
-  // have initialized the helper threads. Just use the serial path
-  // since we cannot safely intialize them at this point.
-  if (!HelperThreadState().threads) {
-    return false;
-  }
-
-  if (!HelperThreadState().gcParallelWorklist(lock).append(this)) {
-    return false;
-  }
+  HelperThreadState().gcParallelWorklist(lock).insertBack(this);
   setDispatched(lock);
 
   HelperThreadState().notifyOne(GlobalHelperThreadState::PRODUCER, lock);
-
-  return true;
 }
 
-bool js::GCParallelTask::start() {
-  AutoLockHelperThreadState helperLock;
-  return startWithLockHeld(helperLock);
+void js::GCParallelTask::start() {
+  AutoLockHelperThreadState lock;
+  startWithLockHeld(lock);
 }
 
 void js::GCParallelTask::startOrRunIfIdle(AutoLockHelperThreadState& lock) {
-  if (isRunningWithLockHeld(lock)) {
+  if (wasStarted(lock)) {
     return;
   }
 
@@ -1734,28 +1743,57 @@ void js::GCParallelTask::startOrRunIfIdle(AutoLockHelperThreadState& lock) {
   // if the thread has never been started.
   joinWithLockHeld(lock);
 
-  if (!(CanUseExtraThreads() && startWithLockHeld(lock))) {
+  if (!CanUseExtraThreads()) {
     AutoUnlockHelperThreadState unlock(lock);
     runFromMainThread();
-  }
-}
-
-void js::GCParallelTask::joinWithLockHeld(AutoLockHelperThreadState& lock) {
-  if (isNotStarted(lock)) {
     return;
   }
 
+  startWithLockHeld(lock);
+}
+
+void js::GCParallelTask::join() {
+  AutoLockHelperThreadState lock;
+  joinWithLockHeld(lock);
+}
+
+void js::GCParallelTask::joinWithLockHeld(AutoLockHelperThreadState& lock) {
+  // Task has not been started; there's nothing to do.
+  if (isIdle(lock)) {
+    return;
+  }
+
+  // If the task was dispatched but has not yet started then cancel the task and
+  // run it from the main thread. This stops us from blocking here when the
+  // helper threads are busy with other tasks.
+  if (isDispatched(lock)) {
+    cancelDispatchedTask(lock);
+    AutoUnlockHelperThreadState unlock(lock);
+    runFromMainThread();
+    return;
+  }
+
+  joinRunningOrFinishedTask(lock);
+}
+
+void js::GCParallelTask::joinRunningOrFinishedTask(
+    AutoLockHelperThreadState& lock) {
+  MOZ_ASSERT(isRunning(lock) || isFinishing(lock) || isFinished(lock));
+
+  // Wait for the task to run to completion.
   while (!isFinished(lock)) {
     HelperThreadState().wait(lock, GlobalHelperThreadState::CONSUMER);
   }
 
-  setNotStarted(lock);
+  setIdle(lock);
   cancel_ = false;
 }
 
-void js::GCParallelTask::join() {
-  AutoLockHelperThreadState helperLock;
-  joinWithLockHeld(helperLock);
+void js::GCParallelTask::cancelDispatchedTask(AutoLockHelperThreadState& lock) {
+  MOZ_ASSERT(isDispatched(lock));
+  MOZ_ASSERT(isInList());
+  remove();
+  setIdle(lock);
 }
 
 static inline TimeDuration TimeSince(TimeStamp prev) {
@@ -1768,44 +1806,47 @@ static inline TimeDuration TimeSince(TimeStamp prev) {
   return now - prev;
 }
 
-void GCParallelTask::joinAndRunFromMainThread() {
-  {
-    AutoLockHelperThreadState lock;
-    MOZ_ASSERT(!isRunningWithLockHeld(lock));
-    joinWithLockHeld(lock);
-  }
-
-  runFromMainThread();
-}
-
 void js::GCParallelTask::runFromMainThread() {
-  assertNotStarted();
+  assertIdle();
   MOZ_ASSERT(js::CurrentThreadCanAccessRuntime(gc->rt));
-  TimeStamp timeStart = ReallyNow();
   runTask();
-  duration_ = TimeSince(timeStart);
 }
 
 void js::GCParallelTask::runFromHelperThread(AutoLockHelperThreadState& lock) {
-  MOZ_ASSERT(isDispatched(lock));
+  setRunning(lock);
 
   {
     AutoUnlockHelperThreadState parallelSection(lock);
     AutoSetHelperThreadContext usesContext;
     AutoSetContextRuntime ascr(gc->rt);
     gc::AutoSetThreadIsPerformingGC performingGC;
-    TimeStamp timeStart = ReallyNow();
     runTask();
-    duration_ = TimeSince(timeStart);
   }
 
   setFinished(lock);
   HelperThreadState().notifyAll(GlobalHelperThreadState::CONSUMER, lock);
 }
 
-bool js::GCParallelTask::isRunning() const {
+void GCParallelTask::runTask() {
+  // Run the task from either the main thread or a helper thread.
+
+  // The hazard analysis can't tell what the call to func_ will do but it's not
+  // allowed to GC.
+  JS::AutoSuppressGCAnalysis nogc;
+
+  TimeStamp timeStart = ReallyNow();
+  func_(this);
+  duration_ = TimeSince(timeStart);
+}
+
+bool js::GCParallelTask::isIdle() const {
   AutoLockHelperThreadState lock;
-  return isRunningWithLockHeld(lock);
+  return isIdle(lock);
+}
+
+bool js::GCParallelTask::wasStarted() const {
+  AutoLockHelperThreadState lock;
+  return wasStarted(lock);
 }
 
 void HelperThread::handleGCParallelWorkload(AutoLockHelperThreadState& lock) {
@@ -1815,7 +1856,7 @@ void HelperThread::handleGCParallelWorkload(AutoLockHelperThreadState& lock) {
   TraceLoggerThread* logger = TraceLoggerForCurrentThread();
   AutoTraceLog logCompile(logger, TraceLogger_GC);
 
-  currentTask.emplace(HelperThreadState().gcParallelWorklist(lock).popCopy());
+  currentTask.emplace(HelperThreadState().gcParallelWorklist(lock).popFirst());
   gcParallelTask()->runFromHelperThread(lock);
   currentTask.reset();
 }
@@ -2053,7 +2094,7 @@ JSObject* GlobalHelperThreadState::finishModuleParseTask(
     return nullptr;
   }
 
-  MOZ_ASSERT(script->module());
+  MOZ_ASSERT(script->isModule());
 
   RootedModuleObject module(cx, script->module());
   module->fixEnvironmentsAfterRealmMerge();

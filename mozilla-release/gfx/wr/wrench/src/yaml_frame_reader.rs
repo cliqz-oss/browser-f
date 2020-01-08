@@ -56,7 +56,7 @@ impl FontDescriptor {
             }
         } else {
             FontDescriptor::Family {
-                name: PLATFORM_DEFAULT_FACE_NAME.clone(),
+                name: PLATFORM_DEFAULT_FACE_NAME.to_string(),
             }
         }
     }
@@ -138,17 +138,17 @@ impl LocalExternalImageHandler {
     }
 }
 
-impl webrender::ExternalImageHandler for LocalExternalImageHandler {
+impl ExternalImageHandler for LocalExternalImageHandler {
     fn lock(
         &mut self,
         key: ExternalImageId,
         _channel_index: u8,
         _rendering: ImageRendering,
-    ) -> webrender::ExternalImage {
+    ) -> ExternalImage {
         let (id, desc) = self.texture_ids[key.0 as usize];
-        webrender::ExternalImage {
+        ExternalImage {
             uv: TexelRect::new(0.0, 0.0, desc.size.width as f32, desc.size.height as f32),
-            source: webrender::ExternalImageSource::NativeTexture(id),
+            source: ExternalImageSource::NativeTexture(id),
         }
     }
     fn unlock(&mut self, _key: ExternalImageId, _channel_index: u8) {}
@@ -441,7 +441,11 @@ impl YamlFrameReader {
         let root_pipeline_id = wrench.root_pipeline_id;
         self.build_pipeline(wrench, root_pipeline_id, &yaml["root"]);
 
-        wrench.renderer.set_external_image_handler(self.external_image_handler.take().unwrap());
+        // If replaying the same frame during interactive use, the frame gets rebuilt,
+        // but the external image handler has already been consumed by the renderer.
+        if let Some(external_image_handler) = self.external_image_handler.take() {
+            wrench.renderer.set_external_image_handler(external_image_handler);
+        }
     }
 
     fn build_pipeline(

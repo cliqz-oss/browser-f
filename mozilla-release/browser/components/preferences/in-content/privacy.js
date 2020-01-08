@@ -573,6 +573,11 @@ var gPrivacyPane = {
       "command",
       gPrivacyPane.showSecurityDevices
     );
+    setEventListener(
+      "telemetryDataDeletionLearnMore",
+      "command",
+      gPrivacyPane.showDataDeletion
+    );
 
     this._pane = document.getElementById("panePrivacy");
 
@@ -1445,7 +1450,7 @@ var gPrivacyPane = {
    */
   showClearPrivateDataSettings() {
     gSubDialog.open(
-      "chrome://browser/content/preferences/sanitize.xul",
+      "chrome://browser/content/preferences/sanitize.xhtml",
       "resizable=no"
     );
   },
@@ -1572,7 +1577,7 @@ var gPrivacyPane = {
       hideStatusColumn: true,
     };
     gSubDialog.open(
-      "chrome://browser/content/preferences/permissions.xul",
+      "chrome://browser/content/preferences/permissions.xhtml",
       null,
       params
     );
@@ -1583,7 +1588,7 @@ var gPrivacyPane = {
    */
   showBlockLists() {
     gSubDialog.open(
-      "chrome://browser/content/preferences/blocklists.xul",
+      "chrome://browser/content/preferences/blocklists.xhtml",
       null
     );
   },
@@ -1815,7 +1820,7 @@ var gPrivacyPane = {
       permissionType: "cookie",
     };
     gSubDialog.open(
-      "chrome://browser/content/preferences/permissions.xul",
+      "chrome://browser/content/preferences/permissions.xhtml",
       null,
       params
     );
@@ -1823,7 +1828,7 @@ var gPrivacyPane = {
 
   showSiteDataSettings() {
     gSubDialog.open(
-      "chrome://browser/content/preferences/siteDataSettings.xul"
+      "chrome://browser/content/preferences/siteDataSettings.xhtml"
     );
   },
 
@@ -1859,7 +1864,7 @@ var gPrivacyPane = {
   },
 
   clearSiteData() {
-    gSubDialog.open("chrome://browser/content/preferences/clearSiteData.xul");
+    gSubDialog.open("chrome://browser/content/preferences/clearSiteData.xhtml");
   },
 
   // GEOLOCATION
@@ -1872,7 +1877,7 @@ var gPrivacyPane = {
     let params = { permissionType: "geo" };
 
     gSubDialog.open(
-      "chrome://browser/content/preferences/sitePermissions.xul",
+      "chrome://browser/content/preferences/sitePermissions.xhtml",
       "resizable=yes",
       params
     );
@@ -1888,7 +1893,7 @@ var gPrivacyPane = {
     let params = { permissionType: "camera" };
 
     gSubDialog.open(
-      "chrome://browser/content/preferences/sitePermissions.xul",
+      "chrome://browser/content/preferences/sitePermissions.xhtml",
       "resizable=yes",
       params
     );
@@ -1904,7 +1909,7 @@ var gPrivacyPane = {
     let params = { permissionType: "microphone" };
 
     gSubDialog.open(
-      "chrome://browser/content/preferences/sitePermissions.xul",
+      "chrome://browser/content/preferences/sitePermissions.xhtml",
       "resizable=yes",
       params
     );
@@ -1920,7 +1925,7 @@ var gPrivacyPane = {
     let params = { permissionType: "desktop-notification" };
 
     gSubDialog.open(
-      "chrome://browser/content/preferences/sitePermissions.xul",
+      "chrome://browser/content/preferences/sitePermissions.xhtml",
       "resizable=yes",
       params
     );
@@ -1932,7 +1937,7 @@ var gPrivacyPane = {
     var params = { permissionType: "autoplay-media" };
 
     gSubDialog.open(
-      "chrome://browser/content/preferences/sitePermissions.xul",
+      "chrome://browser/content/preferences/sitePermissions.xhtml",
       "resizable=yes",
       params
     );
@@ -1954,7 +1959,7 @@ var gPrivacyPane = {
     };
 
     gSubDialog.open(
-      "chrome://browser/content/preferences/permissions.xul",
+      "chrome://browser/content/preferences/permissions.xhtml",
       "resizable=yes",
       params
     );
@@ -1999,7 +2004,7 @@ var gPrivacyPane = {
     };
 
     gSubDialog.open(
-      "chrome://browser/content/preferences/permissions.xul",
+      "chrome://browser/content/preferences/permissions.xhtml",
       null,
       params
     );
@@ -2063,7 +2068,7 @@ var gPrivacyPane = {
       this._initMasterPasswordUI();
     } else {
       gSubDialog.open(
-        "chrome://mozapps/content/preferences/removemp.xul",
+        "chrome://mozapps/content/preferences/removemp.xhtml",
         null,
         null,
         this._initMasterPasswordUI.bind(this)
@@ -2076,7 +2081,7 @@ var gPrivacyPane = {
    */
   changeMasterPassword() {
     gSubDialog.open(
-      "chrome://mozapps/content/preferences/changemp.xul",
+      "chrome://mozapps/content/preferences/changemp.xhtml",
       "resizable=no",
       null,
       this._initMasterPasswordUI.bind(this)
@@ -2104,12 +2109,10 @@ var gPrivacyPane = {
   showPasswords() {
     /* CLIQZ-SPECIAL: Force use old password manage not lockwise
     if (LoginHelper.managementURI) {
-      window.docShell.messageManager.sendAsyncMessage(
-        "PasswordManager:OpenPreferences",
-        {
-          entryPoint: "preferences",
-        }
-      );
+      let loginManager = window.getWindowGlobalChild().getActor("LoginManager");
+      loginManager.sendAsyncMessage("PasswordManager:OpenPreferences", {
+        entryPoint: "preferences",
+      });
       return;
     }
     */
@@ -2287,7 +2290,7 @@ var gPrivacyPane = {
     var params = this._addonParams;
 
     gSubDialog.open(
-      "chrome://browser/content/preferences/permissions.xul",
+      "chrome://browser/content/preferences/permissions.xhtml",
       null,
       params
     );
@@ -2351,14 +2354,24 @@ var gPrivacyPane = {
    * Displays the user's certificates and associated options.
    */
   showCertificates() {
-    gSubDialog.open("chrome://pippki/content/certManager.xul");
+    gSubDialog.open("chrome://pippki/content/certManager.xhtml");
   },
 
   /**
    * Displays a dialog from which the user can manage his security devices.
    */
   showSecurityDevices() {
-    gSubDialog.open("chrome://pippki/content/device_manager.xul");
+    gSubDialog.open("chrome://pippki/content/device_manager.xhtml");
+  },
+
+  /**
+   * Displays the learn more health report page when a user opts out of data collection.
+   */
+  showDataDeletion() {
+    let url =
+      Services.urlFormatter.formatURLPref("app.support.baseURL") +
+      "telemetry-clientid";
+    window.open(url, "_blank");
   },
 
   initDataCollection() {
@@ -2428,7 +2441,13 @@ var gPrivacyPane = {
    */
   updateSubmitHealthReport() {
     let checkbox = document.getElementById("submitHealthReportBox");
+    let telemetryContainer = document.getElementById("telemetry-container");
+
     Services.prefs.setBoolPref(PREF_UPLOAD_ENABLED, checkbox.checked);
+
+    if (Services.locale.requestedLocale == "en-US") {
+      telemetryContainer.hidden = checkbox.checked;
+    }
   },
 
 #if 0

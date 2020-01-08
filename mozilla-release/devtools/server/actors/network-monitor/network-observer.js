@@ -635,6 +635,14 @@ NetworkObserver.prototype = {
       };
     }
 
+    const trackingProtectionLevel2Enabled = Services.prefs
+      .getStringPref("urlclassifier.trackingTable")
+      .includes("content-track-digest256");
+    const tpFlagsMask = trackingProtectionLevel2Enabled
+      ? ~Ci.nsIClassifiedChannel.CLASSIFIED_ANY_BASIC_TRACKING &
+        ~Ci.nsIClassifiedChannel.CLASSIFIED_ANY_STRICT_TRACKING
+      : ~Ci.nsIClassifiedChannel.CLASSIFIED_ANY_BASIC_TRACKING &
+        Ci.nsIClassifiedChannel.CLASSIFIED_ANY_STRICT_TRACKING;
     const event = {};
     event.method = channel.requestMethod;
     event.channelId = channel.channelId;
@@ -647,7 +655,13 @@ NetworkObserver.prototype = {
     ).toISOString();
     event.fromCache = fromCache;
     event.fromServiceWorker = fromServiceWorker;
-    event.isThirdPartyTrackingResource = channel.isThirdPartyTrackingResource();
+    // Only consider channels classified as level-1 to be trackers if our preferences
+    // would not cause such channels to be blocked in strict content blocking mode.
+    // Make sure the value produced here is a boolean.
+    event.isThirdPartyTrackingResource = !!(
+      channel.isThirdPartyTrackingResource() &&
+      (channel.thirdPartyClassificationFlags & tpFlagsMask) == 0
+    );
     const referrerInfo = channel.referrerInfo;
     event.referrerPolicy = referrerInfo
       ? referrerInfo.getReferrerPolicyString()
@@ -1002,12 +1016,15 @@ NetworkObserver.prototype = {
    *        The HTTP activity object we work with.
    */
   _onTransactionClose: function(httpActivity) {
-    const result = this._setupHarTimings(httpActivity);
     if (httpActivity.owner) {
+      const result = this._setupHarTimings(httpActivity);
+      const serverTimings = this._extractServerTimings(httpActivity.channel);
+
       httpActivity.owner.addEventTimings(
         result.total,
         result.timings,
-        result.offsets
+        result.offsets,
+        serverTimings
       );
     }
     this.openRequests.delete(httpActivity.channel);
@@ -1029,7 +1046,7 @@ NetworkObserver.prototype = {
    *         - total - the total time for all of the request and response.
    *         - timings - the HAR timings object.
    */
-  /* eslint-disable complexity */
+  // eslint-disable-next-line complexity
   _setupHarTimings: function(httpActivity, fromCache) {
     if (fromCache) {
       // If it came from the browser cache, we have no timing
@@ -1270,7 +1287,6 @@ NetworkObserver.prototype = {
       offsets: ot.offsets,
     };
   },
-  /* eslint-enable complexity */
 
   _extractServerTimings: function(channel) {
     if (!channel || !channel.serverTiming) {

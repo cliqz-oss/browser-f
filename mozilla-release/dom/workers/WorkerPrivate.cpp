@@ -2323,7 +2323,7 @@ already_AddRefed<WorkerPrivate> WorkerPrivate::Constructor(
     MOZ_ASSERT(aWorkerType == WorkerType::WorkerTypeDedicated);
 
     agentClusterId = parent->AgentClusterId();
-    agentClusterCoop = parent->AgentClusterOpenerPolicy();
+    agentClusterCoop = parent->mAgentClusterOpenerPolicy;
   } else {
     AssertIsOnMainThread();
 
@@ -2770,6 +2770,12 @@ void WorkerPrivate::DoRunLoop(JSContext* aCx) {
              !(debuggerRunnablesPending = !mDebuggerQueue.IsEmpty()) &&
              !(normalRunnablesPending = NS_HasPendingEvents(mThread)) &&
              !(mStatus != Running && !HasActiveWorkerRefs())) {
+        // We pop out to this loop when there are no pending events.
+        // If we don't reset these, we may not re-enter ProcessNextEvent()
+        // until we have events to process, and it may seem like we have
+        // an event running for a very long time.
+        mThread->SetRunningEventDelay(TimeDuration(), TimeStamp());
+
         WaitForWorkerEvents();
       }
 
@@ -3923,6 +3929,7 @@ void WorkerPrivate::PostMessageToParent(
     JSContext* aCx, JS::Handle<JS::Value> aMessage,
     const Sequence<JSObject*>& aTransferable, ErrorResult& aRv) {
   AssertIsOnWorkerThread();
+  MOZ_DIAGNOSTIC_ASSERT(IsDedicatedWorker());
 
   JS::Rooted<JS::Value> transferable(aCx, JS::UndefinedValue());
 
@@ -3949,7 +3956,7 @@ void WorkerPrivate::PostMessageToParent(
   }
 
   JS::CloneDataPolicy clonePolicy;
-  if (CanShareMemory(AgentClusterId())) {
+  if (IsSharedMemoryAllowed()) {
     clonePolicy.allowSharedMemory();
   }
   runnable->Write(aCx, aMessage, transferable, clonePolicy, aRv);
@@ -4973,23 +4980,25 @@ const nsAString& WorkerPrivate::Id() {
   return mId;
 }
 
-bool WorkerPrivate::CanShareMemory(const nsID& aAgentClusterId) {
+bool WorkerPrivate::IsSharedMemoryAllowed() const {
+  AssertIsOnWorkerThread();
+
+  if (StaticPrefs::
+          dom_postMessage_sharedArrayBuffer_bypassCOOP_COEP_insecure_enabled()) {
+    return true;
+  }
+
+  return CrossOriginIsolated();
+}
+
+bool WorkerPrivate::CrossOriginIsolated() const {
   AssertIsOnWorkerThread();
 
   if (!StaticPrefs::dom_postMessage_sharedArrayBuffer_withCOOP_COEP()) {
     return false;
   }
 
-  Maybe<ClientInfo> clientInfo = GetClientInfo();
-  MOZ_DIAGNOSTIC_ASSERT(clientInfo.isSome());
-
-  // Ensure they are on the same agent cluster
-  if (clientInfo->AgentClusterId().isNothing() ||
-      !clientInfo->AgentClusterId()->Equals(aAgentClusterId)) {
-    return false;
-  }
-
-  return AgentClusterOpenerPolicy() ==
+  return mAgentClusterOpenerPolicy ==
          nsILoadInfo::OPENER_POLICY_SAME_ORIGIN_EMBEDDER_POLICY_REQUIRE_CORP;
 }
 

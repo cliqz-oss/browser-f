@@ -196,6 +196,7 @@ class DesktopUnittest(TestingMixin, MercurialScript, MozbaseMixin,
                 'clobber',
                 'download-and-extract',
                 'create-virtualenv',
+                'start-pulseaudio',
                 'install',
                 'stage-files',
                 'run-tests',
@@ -330,7 +331,6 @@ class DesktopUnittest(TestingMixin, MercurialScript, MozbaseMixin,
     def _pre_create_virtualenv(self, action):
         dirs = self.query_abs_dirs()
 
-        self.register_virtualenv_module('psutil==5.4.3')
         self.register_virtualenv_module(name='mock')
         self.register_virtualenv_module(name='simplejson')
 
@@ -372,9 +372,6 @@ class DesktopUnittest(TestingMixin, MercurialScript, MozbaseMixin,
 
     def _get_mozharness_test_paths(self, suite_category, suite):
         test_paths = json.loads(os.environ.get('MOZHARNESS_TEST_PATHS', '""'))
-
-        if '-chunked' in suite:
-            suite = suite[:suite.index('-chunked')]
 
         if '-coverage' in suite:
             suite = suite[:suite.index('-coverage')]
@@ -467,7 +464,7 @@ class DesktopUnittest(TestingMixin, MercurialScript, MozbaseMixin,
                 self.fatal("'%s' not defined in the config!")
 
             if suite in ('browser-chrome-coverage', 'xpcshell-coverage',
-                         'mochitest-devtools-chrome-coverage', 'plain-chunked-coverage'):
+                         'mochitest-devtools-chrome-coverage', 'plain-coverage'):
                 base_cmd.append('--jscov-dir-prefix=%s' %
                                 dirs['abs_blob_upload_dir'])
 
@@ -571,6 +568,9 @@ class DesktopUnittest(TestingMixin, MercurialScript, MozbaseMixin,
     @PreScriptAction('download-and-extract')
     def _pre_download_and_extract(self, action):
         """Abort if --artifact try syntax is used with compiled-code tests"""
+        dir = self.query_abs_dirs()['abs_blob_upload_dir']
+        self.mkdir_p(dir)
+
         if not self.try_message_has_flag('artifact'):
             return
         self.info('Artifact build requested in try syntax.')
@@ -608,6 +608,30 @@ class DesktopUnittest(TestingMixin, MercurialScript, MozbaseMixin,
                                  if self._query_specified_suites(cat) is not None]
         super(DesktopUnittest, self).download_and_extract(extract_dirs=extract_dirs,
                                                           suite_categories=target_categories)
+
+    def start_pulseaudio(self):
+        command = []
+        # Implies that underlying system is Linux.
+        if (os.environ.get('NEED_PULSEAUDIO') == 'true'):
+            command.extend([
+                'pulseaudio',
+                '--daemonize',
+                '--log-level=4',
+                '--log-time=1',
+                '-vvvvv',
+                '--exit-idle-time=-1'
+            ])
+
+            # Only run the initialization for Debian.
+            # Ubuntu appears to have an alternate method of starting pulseaudio.
+            if self._is_debian():
+                self._kill_named_proc('pulseaudio')
+                self.run_command(command)
+
+            # All Linux systems need module-null-sink to be loaded, otherwise
+            # media tests fail.
+            self.run_command('pactl load-module module-null-sink')
+            self.run_command('pactl list modules short')
 
     def stage_files(self):
         for category in SUITE_CATEGORIES:
@@ -756,8 +780,6 @@ class DesktopUnittest(TestingMixin, MercurialScript, MozbaseMixin,
         """
         try:
             import psutil
-            dir = self.query_abs_dirs()['abs_blob_upload_dir']
-            self.mkdir_p(dir)
             path = os.path.join(dir, "system-info.log")
             with open(path, "w") as f:
                 f.write("System info collected at %s\n\n" % datetime.now())

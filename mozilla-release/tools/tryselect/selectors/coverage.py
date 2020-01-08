@@ -56,7 +56,7 @@ class CoverageParser(BaseTryParser):
     name = 'coverage'
     arguments = []
     common_groups = ['push', 'task']
-    templates = ['artifact', 'env', 'rebuild', 'chemspill-prio', 'disable-pgo']
+    task_configs = ['artifact', 'env', 'rebuild', 'chemspill-prio', 'disable-pgo']
 
 
 def read_test_manifests():
@@ -373,7 +373,7 @@ def run(try_config={}, full=False, parameters=None, push=True, message='{msg}', 
 
     # Set the test paths to be run by setting MOZHARNESS_TEST_PATHS.
     path_env = {'MOZHARNESS_TEST_PATHS': json.dumps(resolve_tests_by_suite(test_files))}
-    try_config.setdefault('templates', {}).setdefault('env', {}).update(path_env)
+    try_config.setdefault('env', {}).update(path_env)
 
     # Build commit message.
     msg = 'try coverage - ' + test_count_message

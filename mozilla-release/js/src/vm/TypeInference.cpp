@@ -14,6 +14,7 @@
 #include "mozilla/ScopeExit.h"
 #include "mozilla/Sprintf.h"
 
+#include <algorithm>
 #include <new>
 
 #include "jsapi.h"
@@ -28,6 +29,9 @@
 #include "jit/OptimizationTracking.h"
 #include "js/MemoryMetrics.h"
 #include "js/UniquePtr.h"
+#include "util/DiagnosticAssertions.h"
+#include "util/Poison.h"
+#include "vm/FrameIter.h"  // js::AllScriptFramesIter
 #include "vm/HelperThreads.h"
 #include "vm/JSContext.h"
 #include "vm/JSObject.h"
@@ -1212,8 +1216,7 @@ bool JitScript::FreezeTypeSets(CompilerConstraintList* constraints,
   size_t thisTypesIndex = jitScript->thisTypes(sweep, script) - existing;
   *pThisTypes = types + thisTypesIndex;
 
-  if (script->functionNonDelazifying() &&
-      script->functionNonDelazifying()->nargs() > 0) {
+  if (script->function() && script->function()->nargs() > 0) {
     size_t firstArgIndex = jitScript->argTypes(sweep, script, 0) - existing;
     *pArgTypes = types + firstArgIndex;
   } else {
@@ -1529,9 +1532,8 @@ bool js::FinishCompilation(JSContext* cx, HandleScript script,
                             jitScript->thisTypes(sweep, entry.script))) {
       succeeded = false;
     }
-    unsigned nargs = entry.script->functionNonDelazifying()
-                         ? entry.script->functionNonDelazifying()->nargs()
-                         : 0;
+    unsigned nargs =
+        entry.script->function() ? entry.script->function()->nargs() : 0;
     for (size_t i = 0; i < nargs; i++) {
       if (!CheckFrozenTypeSet(sweep, cx, &entry.argTypes[i],
                               jitScript->argTypes(sweep, entry.script, i))) {
@@ -1620,9 +1622,8 @@ void js::FinishDefinitePropertiesAnalysis(JSContext* cx,
     AutoSweepJitScript sweep(script);
     MOZ_ASSERT(jitScript->thisTypes(sweep, script)->isSubset(entry.thisTypes));
 
-    unsigned nargs = entry.script->functionNonDelazifying()
-                         ? entry.script->functionNonDelazifying()->nargs()
-                         : 0;
+    unsigned nargs =
+        entry.script->function() ? entry.script->function()->nargs() : 0;
     for (size_t j = 0; j < nargs; j++) {
       StackTypeSet* argTypes = jitScript->argTypes(sweep, script, j);
       MOZ_ASSERT(argTypes->isSubset(&entry.argTypes[j]));
@@ -1645,9 +1646,7 @@ void js::FinishDefinitePropertiesAnalysis(JSContext* cx,
     CheckDefinitePropertiesTypeSet(sweep, cx, entry.thisTypes,
                                    jitScript->thisTypes(sweep, script));
 
-    unsigned nargs = script->functionNonDelazifying()
-                         ? script->functionNonDelazifying()->nargs()
-                         : 0;
+    unsigned nargs = script->function() ? script->function()->nargs() : 0;
     for (size_t j = 0; j < nargs; j++) {
       StackTypeSet* argTypes = jitScript->argTypes(sweep, script, j);
       CheckDefinitePropertiesTypeSet(sweep, cx, &entry.argTypes[j], argTypes);
@@ -3336,7 +3335,7 @@ bool js::AddClearDefiniteFunctionUsesInScript(JSContext* cx, ObjectGroup* group,
   // during the definite properties analysis.
 
   TypeSet::ObjectKey* calleeKey =
-      TypeSet::ObjectType(calleeScript->functionNonDelazifying()).objectKey();
+      TypeSet::ObjectType(calleeScript->function()).objectKey();
 
   AutoSweepJitScript sweep(script);
   JitScript* jitScript = script->jitScript();
@@ -3823,7 +3822,7 @@ bool TypeNewScript::maybeAnalyze(JSContext* cx, ObjectGroup* group,
       return true;
     }
 
-    maxSlotSpan = Max<size_t>(maxSlotSpan, obj->slotSpan());
+    maxSlotSpan = std::max<size_t>(maxSlotSpan, obj->slotSpan());
 
     if (prefixShape) {
       MOZ_ASSERT(shape->numFixedSlots() == prefixShape->numFixedSlots());

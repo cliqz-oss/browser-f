@@ -24,7 +24,7 @@ import logging
 import os
 
 from taskgraph.transforms.base import TransformSequence
-from taskgraph.util.attributes import match_run_on_projects
+from taskgraph.util.attributes import match_run_on_projects, keymatch
 from taskgraph.util.keyed_by import evaluate_keyed_by
 from taskgraph.util.schema import resolve_keyed_by, OptimizationSchema
 from taskgraph.util.templates import merge
@@ -163,9 +163,9 @@ TEST_VARIANTS = {
         'merge': {
             'tier': 2,
             'mozharness': {
-                'extra-options': ['--setpref="fission.autostart=true"',
-                                  '--setpref="dom.serviceWorkers.parent_intercept=true"',
-                                  '--setpref="browser.tabs.documentchannel=true"'],
+                'extra-options': ['--setpref=fission.autostart=true',
+                                  '--setpref=dom.serviceWorkers.parent_intercept=true',
+                                  '--setpref=browser.tabs.documentchannel=true'],
             },
         },
     },
@@ -439,6 +439,13 @@ test_description_schema = Schema({
     # the platform on which the tests will run
     'test-platform': basestring,
 
+    # limit the test-platforms (as defined in test-platforms.yml)
+    # that the test will run on
+    Optional('limit-platforms'): optionally_keyed_by(
+        'app',
+        [basestring]
+    ),
+
     # the name of the test (the key in tests.yml)
     'test-name': basestring,
 
@@ -544,8 +551,11 @@ def set_defaults(config, tests):
         test.setdefault('virtualization', 'virtual')
         test.setdefault('loopback-audio', False)
         test.setdefault('loopback-video', False)
+        test.setdefault('limit-platforms', [])
         if config.params['try_task_config'].get('debian-tests'):
             test.setdefault('docker-image', {'in-tree': 'debian10-test'})
+        elif config.params['try_task_config'].get('ubuntu-bionic'):
+            test.setdefault('docker-image', {'in-tree': 'ubuntu1804-test'})
         else:
             test.setdefault('docker-image', {'in-tree': 'desktop1604-test'})
         test.setdefault('checkout', False)
@@ -585,6 +595,18 @@ def setup_raptor(config, tests):
 
         for t in raptor_transforms(config, [test]):
             yield t
+
+
+@transforms.add
+def limit_platforms(config, tests):
+    for test in tests:
+        if not test['limit-platforms']:
+            yield test
+            continue
+
+        limited_platforms = {key: key for key in test['limit-platforms']}
+        if keymatch(limited_platforms, test['test-platform']):
+            yield test
 
 
 transforms.add_validate(test_description_schema)
@@ -733,6 +755,9 @@ def set_treeherder_machine_platform(config, tests):
         if 'android' in test['test-platform'] and 'pgo/opt' in test['test-platform']:
             platform_new = test['test-platform'].replace('-pgo/opt', '/pgo')
             test['treeherder-machine-platform'] = platform_new
+        elif 'android-em-7.0-x86_64-qr' in test['test-platform']:
+            opt = test['test-platform'].split('/')[1]
+            test['treeherder-machine-platform'] = 'android-em-7-0-x86_64-qr/'+opt
         elif '-qr' in test['test-platform']:
             test['treeherder-machine-platform'] = test['test-platform']
         elif 'android-hw' in test['test-platform']:
@@ -803,7 +828,9 @@ def set_tier(config, tests):
                                          'macosx1014-64-qr/debug',
                                          'android-em-7.0-x86_64/opt',
                                          'android-em-7.0-x86_64/debug',
-                                         'android-em-7.0-x86/opt']:
+                                         'android-em-7.0-x86/opt',
+                                         'android-em-7.0-x86_64-qr/opt',
+                                         'android-em-7.0-x86_64-qr/debug']:
                 test['tier'] = 1
             else:
                 test['tier'] = 2
@@ -908,13 +935,56 @@ def setup_browsertime(config, tests):
         fs = {
             'by-test-platform': {
                 'android.*': ['linux64-chromedriver', 'linux64-ffmpeg-4.1.4'],
-                'linux.*': ['linux64-chromedriver', 'linux64-ffmpeg-4.1.4'],
-                'macosx.*': ['mac64-chromedriver', 'mac64-ffmpeg-4.1.1'],
-                'windows.*aarch64.*': ['win32-chromedriver', 'win64-ffmpeg-4.1.1'],
-                'windows.*-32.*': ['win32-chromedriver', 'win64-ffmpeg-4.1.1'],
-                'windows.*-64.*': ['win32-chromedriver', 'win64-ffmpeg-4.1.1'],
+                'linux.*': [
+                    'linux64-ffmpeg-4.1.4'
+                ],
+                'macosx.*': [
+                    'mac64-ffmpeg-4.1.1'
+                ],
+                'windows.*aarch64.*': [
+                    'win64-ffmpeg-4.1.1'
+                ],
+                'windows.*-32.*': [
+                    'win64-ffmpeg-4.1.1'
+                ],
+                'windows.*-64.*': [
+                    'win64-ffmpeg-4.1.1'
+                ],
             },
         }
+
+        cd_fetches = {
+            'linux.*': [
+                'linux64-chromedriver-76',
+                'linux64-chromedriver-77',
+                'linux64-chromedriver-78'
+            ],
+            'macosx.*': [
+                'mac64-chromedriver-76',
+                'mac64-chromedriver-77',
+                'mac64-chromedriver-78'
+            ],
+            'windows.*aarch64.*': [
+                'win32-chromedriver-76',
+                'win32-chromedriver-77',
+                'win32-chromedriver-78'
+            ],
+            'windows.*-32.*': [
+                'win32-chromedriver-76',
+                'win32-chromedriver-77',
+                'win32-chromedriver-78'
+            ],
+            'windows.*-64.*': [
+                'win32-chromedriver-76',
+                'win32-chromedriver-77',
+                'win32-chromedriver-78'
+            ],
+        }
+
+        if '--app=chrome' in extra_options or '--app=chromium' in extra_options:
+            # Only add the chromedriver fetches when chrome/chromium is running
+            for platform in cd_fetches:
+                fs['by-test-platform'][platform].extend(cd_fetches[platform])
 
         test.setdefault('fetches', {}).setdefault('fetch', []).extend(
             evaluate_keyed_by(fs, 'fetches.fetch', test))
@@ -930,7 +1000,7 @@ def setup_browsertime(config, tests):
                  '--browsertime-geckodriver',
                  '$MOZ_FETCHES_DIR/geckodriver.exe',
                  '--browsertime-chromedriver',
-                 '$MOZ_FETCHES_DIR/chromedriver.exe',
+                 '$MOZ_FETCHES_DIR/{}chromedriver.exe',
                  '--browsertime-ffmpeg',
                  '$MOZ_FETCHES_DIR/ffmpeg-4.1.1-win64-static/bin/ffmpeg.exe',
                  ],
@@ -940,7 +1010,7 @@ def setup_browsertime(config, tests):
                  '--browsertime-geckodriver',
                  '$MOZ_FETCHES_DIR/geckodriver',
                  '--browsertime-chromedriver',
-                 '$MOZ_FETCHES_DIR/chromedriver',
+                 '$MOZ_FETCHES_DIR/{}chromedriver',
                  '--browsertime-ffmpeg',
                  '$MOZ_FETCHES_DIR/ffmpeg-4.1.1-macos64-static/bin/ffmpeg',
                  ],
@@ -950,7 +1020,7 @@ def setup_browsertime(config, tests):
                  '--browsertime-geckodriver',
                  '$MOZ_FETCHES_DIR/geckodriver',
                  '--browsertime-chromedriver',
-                 '$MOZ_FETCHES_DIR/chromedriver',
+                 '$MOZ_FETCHES_DIR/{}chromedriver',
                  '--browsertime-ffmpeg',
                  '$MOZ_FETCHES_DIR/ffmpeg-4.1.4-i686-static/ffmpeg',
                  ],
@@ -1005,10 +1075,11 @@ def enable_code_coverage(config, tests):
     """Enable code coverage for the ccov build-platforms"""
     for test in tests:
         if 'ccov' in test['build-platform']:
-            # Do not run tests on fuzzing or opt build
-            if 'opt' in test['build-platform'] or 'fuzzing' in test['build-platform']:
+            # Do not run tests on fuzzing builds
+            if 'fuzzing' in test['build-platform']:
                 test['run-on-projects'] = []
                 continue
+
             # Skip this transform for android code coverage builds.
             if 'android' in test['build-platform']:
                 test.setdefault('fetches', {}).setdefault('toolchain', []).append('linux64-grcov')
@@ -1114,10 +1185,10 @@ def enable_fission_on_central(config, tests):
             yield test
             continue
 
-        # Mochitest/wpt only (with exceptions)
+        # Mochitest/wpt/awsy only (with exceptions)
         exceptions = ('gpu', 'remote', 'screenshots')
         if (test['attributes']['unittest_category'] not in
-                ('mochitest', 'web-platform-tests') or
+                ('mochitest', 'web-platform-tests', 'awsy') or
                 any(s in test['attributes']['unittest_suite'] for s in exceptions)):
             yield test
             continue
@@ -1142,6 +1213,8 @@ def enable_fission_on_central(config, tests):
             test['tier'] = 3
             if platform == 'linux64' and btype == 'debug' and test['webrender']:
                 test['run-on-projects'] = ['ash', 'try', 'trunk']
+        elif test['attributes']['unittest_category'] == 'awsy':
+            test['tier'] = 3
         yield test
 
 

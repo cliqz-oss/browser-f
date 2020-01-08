@@ -30,10 +30,13 @@
         <div class="card-header">
           <img class="icon light" src="chrome://browser/content/logos/tracking-protection.svg"/>
           <img class="icon dark" src="chrome://browser/content/logos/tracking-protection-dark-theme.svg"/>
-          <div>
-            <h2 class="card-title" data-l10n-id="etp-card-title"></h2>
-            <p class="content" data-l10n-id="etp-card-content"></p>
-            <p id="protection-details" role="link" tabindex="0"></p>
+          <div class="wrapper">
+            <div>
+              <h2 class="card-title" data-l10n-id="etp-card-title"></h2>
+              <p id="etp-card-content" class="content" data-l10n-id="etp-card-content"></p>
+              <p id="protection-details" role="link" tabindex="0"></p>
+            </div>
+            <a target="_blank" id="manage-protections" data-l10n-id="protection-report-manage-protections"></a>
           </div>
         </div>
         <div class="card-body">
@@ -224,7 +227,7 @@
                   <!-- Display message for status of synced devices here. -->
                 </span>
                 <a id="turn-on-sync" tabindex="0" class="hidden" href="" data-l10n-id="turn-on-sync"></a>
-                <a id="manage-devices" target="_blank" class="hidden" href="" data-l10n-id="manage-devices"></a>
+                <a id="manage-devices" target="_blank" class="hidden" href="" data-l10n-id="manage-connected-devices"></a>
               </span>
             </div>
           </div>

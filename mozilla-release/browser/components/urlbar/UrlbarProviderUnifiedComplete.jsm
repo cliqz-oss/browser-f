@@ -109,9 +109,6 @@ class ProviderUnifiedComplete extends UrlbarProvider {
     // This is necessary because we insert matches one by one, thus we don't
     // want UnifiedComplete to reuse results.
     params.push(`insert-method:${UrlbarUtils.INSERTMETHOD.APPEND}`);
-    // The Quantum Bar has its own telemetry measurement, thus disable old
-    // telemetry logged by UnifiedComplete.
-    params.push("disable-telemetry");
     if (queryContext.isPrivate) {
       params.push("private-window");
       if (!PrivateBrowsingUtils.permanentPrivateBrowsing) {
@@ -221,28 +218,24 @@ function convertResultToMatches(context, result, urls) {
     if (!match) {
       continue;
     }
-    // Manage autofill and preselected properties for the first match.
-    if (isHeuristic) {
-      if (style.includes("autofill") && result.defaultIndex == 0) {
-        let autofillValue = result.getValueAt(i);
-        if (
-          autofillValue
-            .toLocaleLowerCase()
-            .startsWith(context.searchString.toLocaleLowerCase())
-        ) {
-          match.autofill = {
-            value:
-              context.searchString +
-              autofillValue.substring(context.searchString.length),
-            selectionStart: context.searchString.length,
-            selectionEnd: autofillValue.length,
-          };
-        }
+    // Manage autofill for the first match.
+    if (isHeuristic && style.includes("autofill") && result.defaultIndex == 0) {
+      let autofillValue = result.getValueAt(i);
+      if (
+        autofillValue
+          .toLocaleLowerCase()
+          .startsWith(context.searchString.toLocaleLowerCase())
+      ) {
+        match.autofill = {
+          value:
+            context.searchString +
+            autofillValue.substring(context.searchString.length),
+          selectionStart: context.searchString.length,
+          selectionEnd: autofillValue.length,
+        };
       }
-
-      context.preselected = true;
-      match.heuristic = true;
     }
+    match.heuristic = isHeuristic;
     matches.push(match);
   }
   return { matches, done };

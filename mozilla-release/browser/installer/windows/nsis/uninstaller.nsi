@@ -339,6 +339,7 @@ Section "Uninstall"
   ${un.RegCleanFileHandler}  ".pdf"  "CliqzHTML-$AppUserModelID"
   ${un.RegCleanFileHandler}  ".webm"  "CliqzHTML-$AppUserModelID"
   ${un.RegCleanFileHandler}  ".svg"  "CliqzHTML-$AppUserModelID"
+  ${un.RegCleanFileHandler}  ".webp"  "CliqzHTML-$AppUserModelID"
 
   SetShellVarContext all  ; Set SHCTX to HKLM
   ${un.GetSecondInstallPath} "Software\CLIQZ" $R9

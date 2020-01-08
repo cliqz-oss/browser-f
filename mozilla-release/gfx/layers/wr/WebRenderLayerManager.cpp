@@ -36,7 +36,6 @@ namespace layers {
 WebRenderLayerManager::WebRenderLayerManager(nsIWidget* aWidget)
     : mWidget(aWidget),
       mLatestTransactionId{0},
-      mWindowOverlayChanged(false),
       mNeedsComposite(false),
       mIsFirstPaint(false),
       mTarget(nullptr),
@@ -191,16 +190,6 @@ bool WebRenderLayerManager::BeginTransaction(const nsCString& aURL) {
 }
 
 bool WebRenderLayerManager::EndEmptyTransaction(EndTransactionFlags aFlags) {
-  if (mWindowOverlayChanged) {
-    // If the window overlay changed then we can't do an empty transaction
-    // because we need to repaint the window overlay which we only currently
-    // support in a full transaction.
-    // XXX If we end up hitting this branch a lot we can probably optimize it
-    // by just sending an updated window overlay image instead of rebuilding
-    // the entire WR display list.
-    return false;
-  }
-
   // Since we don't do repeat transactions right now, just set the time
   mAnimationReadyTime = TimeStamp::Now();
 
@@ -236,15 +225,6 @@ bool WebRenderLayerManager::EndEmptyTransaction(EndTransactionFlags aFlags) {
   TimeStamp refreshStart = mTransactionIdAllocator->GetTransactionStart();
   if (!refreshStart) {
     refreshStart = mTransactionStart;
-  }
-
-  // Skip the synchronization for buffer since we also skip the painting during
-  // device-reset status.
-  if (!gfxPlatform::GetPlatform()->DidRenderingDeviceReset()) {
-    if (WrBridge()->GetSyncObject() &&
-        WrBridge()->GetSyncObject()->IsSyncObjectValid()) {
-      WrBridge()->GetSyncObject()->Synchronize();
-    }
   }
 
   GetCompositorBridgeChild()->EndCanvasTransaction();
@@ -362,7 +342,6 @@ void WebRenderLayerManager::EndTransactionWithoutLayer(
 
   mWidget->AddWindowOverlayWebRenderCommands(WrBridge(), builder,
                                              resourceUpdates);
-  mWindowOverlayChanged = false;
   if (dumpEnabled) {
     printf_stderr("(window overlay)\n");
     Unused << builder.Dump(/*indent*/ 1, Some(builderDumpIndex), Nothing());
@@ -422,15 +401,6 @@ void WebRenderLayerManager::EndTransactionWithoutLayer(
   for (auto renderRoot : wr::kRenderRoots) {
     if (resourceUpdates.HasSubQueue(renderRoot)) {
       WrBridge()->RemoveExpiredFontKeys(resourceUpdates.SubQueue(renderRoot));
-    }
-  }
-
-  // Skip the synchronization for buffer since we also skip the painting during
-  // device-reset status.
-  if (!gfxPlatform::GetPlatform()->DidRenderingDeviceReset()) {
-    if (WrBridge()->GetSyncObject() &&
-        WrBridge()->GetSyncObject()->IsSyncObjectValid()) {
-      WrBridge()->GetSyncObject()->Synchronize();
     }
   }
 
@@ -542,9 +512,17 @@ void WebRenderLayerManager::MakeSnapshotIfRequired(LayoutDeviceIntSize aSize) {
 
   // The data we get from webrender is upside down. So flip and translate up so
   // the image is rightside up. Webrender always does a full screen readback.
-  SurfacePattern pattern(
-      snapshot, ExtendMode::CLAMP,
-      Matrix::Scaling(1.0, -1.0).PostTranslate(0.0, aSize.height));
+#ifdef XP_WIN
+  // ANGLE with WR does not need y flip
+  const bool needsYFlip = !WrBridge()->GetCompositorUseANGLE();
+#else
+  const bool needsYFlip = true;
+#endif
+  Matrix m;
+  if (needsYFlip) {
+    m = Matrix::Scaling(1.0, -1.0).PostTranslate(0.0, aSize.height);
+  }
+  SurfacePattern pattern(snapshot, ExtendMode::CLAMP, m);
   DrawTarget* dt = mTarget->GetDrawTarget();
   MOZ_RELEASE_ASSERT(dt);
   dt->FillRect(dst, pattern);

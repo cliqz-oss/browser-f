@@ -287,7 +287,6 @@ class FontInspector {
     // Round pixel values.
     return Math.round(out);
   }
-  /* eslint-enable complexity */
 
   /**
    * Destruction function called when the inspector is destroyed. Removes event listeners
@@ -373,7 +372,7 @@ class FontInspector {
       return [];
     }
 
-    const inspectorFronts = await this.inspector.inspectorFront.getAllInspectorFronts();
+    const inspectorFronts = await this.inspector.getAllInspectorFronts();
 
     let allFonts = [];
     for (const { pageStyle } of inspectorFronts) {

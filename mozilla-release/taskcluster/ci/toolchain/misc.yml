@@ -35,7 +35,7 @@ linux64-llvm-dsymutil:
         fetch:
             - llvm-for-dsymutil
         toolchain:
-            - linux64-gcc-6
+            - linux64-gcc-7
 
 linux64-binutils:
     description: "Binutils toolchain build"
@@ -116,7 +116,7 @@ linux64-tup:
         fetch:
             - tup
         toolchain:
-            - linux64-gcc-6
+            - linux64-gcc-7
 
 linux64-upx:
     description: "UPX build"
@@ -153,10 +153,25 @@ browsertime:
         resources:
             - 'tools/browsertime/package.json'
             - 'tools/browsertime/mach_commands.py'
-        toolchain-artifact: public/build/browsertime.zip
+        toolchain-artifact: public/build/browsertime.tar.bz2
     fetches:
         toolchain:
             - linux64-node
+
+wasi-sysroot:
+    description: "wasi sysroot build process"
+    treeherder:
+        symbol: TL(wasi-sysroot)
+    run:
+        script: build-wasi-sysroot.sh
+        sparse-profile: null
+        toolchain-artifact: public/build/wasi-sysroot.tar.xz
+    fetches:
+        fetch:
+            - wasi-sdk
+        toolchain:
+            - linux64-binutils
+            - linux64-gcc-7
 
 wrench-deps:
     description: "Downloads all the crates needed for building wrench"
@@ -175,3 +190,19 @@ wrench-deps:
             - android-rs-glue
         toolchain:
             - linux64-rust-1.37  # whatever m-c is built with
+
+lucetc:
+    description: "lucetc build process"
+    treeherder:
+        symbol: TL(lucetc)
+    run:
+        script: build-lucetc.sh
+        toolchain-artifact: public/build/lucetc.tar.xz
+    fetches:
+        fetch:
+            - cmake
+            - lucetc-source
+        toolchain:
+            - linux64-binutils
+            - linux64-clang
+            - linux64-rust

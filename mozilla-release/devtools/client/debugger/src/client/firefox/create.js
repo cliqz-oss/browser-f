@@ -8,8 +8,7 @@
 import type { Frame, ThreadId, GeneratedSourceData, Thread } from "../../types";
 import type {
   PausedPacket,
-  FramesResponse,
-  FramePacket,
+  FrameFront,
   SourcePayload,
   ThreadFront,
   Target,
@@ -30,7 +29,11 @@ export function prepareSourcePayload(
   return { thread: client.actor, source };
 }
 
-export function createFrame(thread: ThreadId, frame: FramePacket): ?Frame {
+export function createFrame(
+  thread: ThreadId,
+  frame: FrameFront,
+  index: number = 0
+): ?Frame {
   if (!frame) {
     return null;
   }
@@ -42,14 +45,14 @@ export function createFrame(thread: ThreadId, frame: FramePacket): ?Frame {
   };
 
   return {
-    id: frame.actor,
+    id: frame.actorID,
     thread,
     displayName: frame.displayName,
     location,
     generatedLocation: location,
     this: frame.this,
     source: null,
-    scope: frame.environment,
+    index,
   };
 }
 
@@ -57,19 +60,11 @@ export function makeSourceId(source: SourcePayload) {
   return source.url ? `sourceURL-${source.url}` : `source-${source.actor}`;
 }
 
-export function createPause(
-  thread: string,
-  packet: PausedPacket,
-  response: FramesResponse
-): any {
-  // NOTE: useful when the debugger is already paused
-  const frame = packet.frame || response.frames[0];
-
+export function createPause(thread: string, packet: PausedPacket): any {
   return {
     ...packet,
     thread,
-    frame: createFrame(thread, frame),
-    frames: response.frames.map(createFrame.bind(null, thread)),
+    frame: createFrame(thread, packet.frame),
   };
 }
 

@@ -8,12 +8,12 @@
 
 #include "mozilla/DebugOnly.h"
 
-#include "jsutil.h"
 #include "NamespaceImports.h"
 
 #include "gc/GCInternals.h"
 #include "gc/PublicIterators.h"
 #include "gc/Zone.h"
+#include "util/Memory.h"
 #include "util/Text.h"
 #include "vm/BigIntType.h"
 #include "vm/JSFunction.h"
@@ -196,28 +196,25 @@ static const char* StringKindHeader(JSString* str) {
     return "atom: ";
   }
 
-  if (str->isFlat()) {
-    if (str->isExtensible()) {
-      return "extensible: ";
+  if (str->isExtensible()) {
+    return "extensible: ";
+  }
+
+  if (str->isInline()) {
+    if (str->isFatInline()) {
+      return "fat inline: ";
     }
-    if (str->isUndepended()) {
-      return "undepended: ";
-    }
-    if (str->isInline()) {
-      if (str->isFatInline()) {
-        return "fat inline: ";
-      }
-      return "inline: ";
-    }
-    return "flat: ";
+    return "inline: ";
   }
 
   if (str->isDependent()) {
     return "dependent: ";
   }
+
   if (str->isExternal()) {
     return "external: ";
   }
+
   return "linear: ";
 }
 

@@ -3,18 +3,18 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 
 #include "gtest/gtest.h"
-#include "MediaHardwareKeysEvent.h"
+#include "MediaControlKeysEvent.h"
 
 using namespace mozilla::dom;
 
-TEST(MediaHardwareKeysEvent, TestAddOrRemoveListener)
+TEST(MediaControlKeysEvent, TestAddOrRemoveListener)
 {
-  RefPtr<MediaHardwareKeysEventSource> source =
-      new MediaHardwareKeysEventSource();
+  RefPtr<MediaControlKeysEventSource> source =
+      new MediaControlKeysEventSource();
   ASSERT_TRUE(source->GetListenersNum() == 0);
 
-  RefPtr<MediaHardwareKeysEventListener> listener =
-      new MediaHardwareKeysEventListener();
+  RefPtr<MediaControlKeysEventListener> listener =
+      new MediaControlKeysHandler();
 
   source->AddListener(listener);
   ASSERT_TRUE(source->GetListenersNum() == 1);

@@ -40,6 +40,9 @@ const gIsMac = AppConstants.platform == "macosx";
 const gIsAndroid = AppConstants.platform == "android";
 const gIsLinux = AppConstants.platform == "linux";
 
+// Desktop Firefox, ie. not mobile Firefox or Thunderbird.
+const gIsFirefox = AppConstants.MOZ_APP_NAME == "firefox";
+
 const Telemetry = Services.telemetry;
 
 const MILLISECONDS_PER_MINUTE = 60 * 1000;
@@ -206,7 +209,7 @@ function decodeRequestPayload(request) {
   Assert.notEqual(
     TelemetryUtils.knownClientID,
     payload.clientId,
-    "Known clientId should never appear in a ping on the server"
+    `Known clientId shouldn't appear in a "${payload.type}" ping on the server.`
   );
 
   return payload;

@@ -14,7 +14,6 @@
 #define mozilla_dom_Element_h__
 
 #include "AttrArray.h"
-#include "DOMIntersectionObserver.h"
 #include "nsAttrValue.h"
 #include "nsAttrValueInlines.h"
 #include "nsChangeHint.h"
@@ -22,7 +21,6 @@
 #include "nsDOMAttributeMap.h"
 #include "nsINodeList.h"
 #include "nsIScrollableFrame.h"
-#include "nsNodeUtils.h"
 #include "nsPresContext.h"
 #include "Units.h"
 #include "mozilla/Attributes.h"
@@ -225,24 +223,6 @@ class Element : public FragmentOrElement {
    */
   void SetTabIndex(int32_t aTabIndex, mozilla::ErrorResult& aError);
 
-#ifdef MOZ_XBL
-  /**
-   * Sets or unsets an XBL binding for this element. Setting a
-   * binding on an element that already has a binding will remove the
-   * old binding.
-   *
-   * @param aBinding The binding to bind to this content. If nullptr is
-   *        provided as the argument, then existing binding will be
-   *        removed.
-   *
-   * @param aOldBindingManager The old binding manager that contains
-   *                           this content if this content was adopted
-   *                           to another document.
-   */
-  void SetXBLBinding(nsXBLBinding* aBinding,
-                     nsBindingManager* aOldBindingManager = nullptr);
-#endif
-
   /**
    * Sets the ShadowRoot binding for this element. The contents of the
    * binding is rendered in place of this node's children.
@@ -355,7 +335,7 @@ class Element : public FragmentOrElement {
    * notify the document's pres context, so that the style changes will be
    * noticed.
    */
-  nsresult SetSMILOverrideStyleDeclaration(DeclarationBlock* aDeclaration);
+  void SetSMILOverrideStyleDeclaration(DeclarationBlock&);
 
   /**
    * Returns a new SMILAttr that allows the caller to animate the given
@@ -765,6 +745,20 @@ class Element : public FragmentOrElement {
   }
 
   /**
+   * Determine if an attribute has been set to a non-empty string value. If the
+   * attribute is not set at all, this will return false.
+   *
+   * @param aNameSpaceId the namespace id of the attribute (defaults to
+   *                     kNameSpaceID_None in the overload that omits this arg)
+   * @param aAttr the attribute name
+   */
+  inline bool HasNonEmptyAttr(int32_t aNameSpaceID, const nsAtom* aName) const;
+
+  bool HasNonEmptyAttr(const nsAtom* aAttr) const {
+    return HasNonEmptyAttr(kNameSpaceID_None, aAttr);
+  }
+
+  /**
    * Test whether this Element's given attribute has the given value.  If the
    * attribute is not set at all, this will return false.
    *
@@ -1063,6 +1057,11 @@ class Element : public FragmentOrElement {
                     ErrorResult& aError) {
     SetAttribute(aName, aValue, nullptr, aError);
   }
+  void SetAttributeDevtools(const nsAString& aName, const nsAString& aValue,
+                            ErrorResult& aError);
+  void SetAttributeDevtoolsNS(const nsAString& aNamespaceURI,
+                              const nsAString& aLocalName,
+                              const nsAString& aValue, ErrorResult& aError);
 
   void RemoveAttribute(const nsAString& aName, ErrorResult& aError);
   void RemoveAttributeNS(const nsAString& aNamespaceURI,
@@ -1336,11 +1335,13 @@ class Element : public FragmentOrElement {
       const UnrestrictedDoubleOrKeyframeAnimationOptions& aOptions,
       ErrorResult& aError);
 
-  // Note: GetAnimations will flush style while GetAnimationsUnsorted won't.
-  // Callers must keep this element alive because flushing style may destroy
-  // this element.
+  enum class Flush { Yes, No };
+
+  MOZ_CAN_RUN_SCRIPT
   void GetAnimations(const GetAnimationsOptions& aOptions,
-                     nsTArray<RefPtr<Animation>>& aAnimations);
+                     nsTArray<RefPtr<Animation>>& aAnimations,
+                     Flush aFlush = Flush::Yes);
+
   static void GetAnimationsUnsorted(Element* aElement,
                                     PseudoStyleType aPseudoType,
                                     nsTArray<RefPtr<Animation>>& aAnimations);
@@ -1363,8 +1364,8 @@ class Element : public FragmentOrElement {
    * @param aValue the JS to attach
    * @param aDefer indicates if deferred execution is allowed
    */
-  nsresult SetEventHandler(nsAtom* aEventName, const nsAString& aValue,
-                           bool aDefer = true);
+  void SetEventHandler(nsAtom* aEventName, const nsAString& aValue,
+                       bool aDefer = true);
 
   /**
    * Do whatever needs to be done when the mouse leaves a link
@@ -1499,7 +1500,7 @@ class Element : public FragmentOrElement {
   /**
    * Locate a TextEditor rooted at this content node, if there is one.
    */
-  mozilla::TextEditor* GetTextEditorInternal();
+  MOZ_CAN_RUN_SCRIPT_BOUNDARY mozilla::TextEditor* GetTextEditorInternal();
 
   /**
    * Gets value of boolean attribute. Only works for attributes in null
@@ -1960,22 +1961,6 @@ class Element : public FragmentOrElement {
   AttrArray mAttrs;
 };
 
-#ifdef MOZ_XBL
-class RemoveFromBindingManagerRunnable : public mozilla::Runnable {
- public:
-  RemoveFromBindingManagerRunnable(nsBindingManager* aManager,
-                                   nsIContent* aContent, Document* aDoc);
-
-  NS_IMETHOD Run() override;
-
- private:
-  virtual ~RemoveFromBindingManagerRunnable();
-  RefPtr<nsBindingManager> mManager;
-  RefPtr<nsIContent> mContent;
-  RefPtr<Document> mDoc;
-};
-#endif
-
 NS_DEFINE_STATIC_IID_ACCESSOR(Element, NS_ELEMENT_IID)
 
 inline bool Element::HasAttr(int32_t aNameSpaceID, const nsAtom* aName) const {
@@ -1984,6 +1969,15 @@ inline bool Element::HasAttr(int32_t aNameSpaceID, const nsAtom* aName) const {
                "must have a real namespace ID!");
 
   return mAttrs.IndexOfAttr(aName, aNameSpaceID) >= 0;
+}
+
+inline bool Element::HasNonEmptyAttr(int32_t aNameSpaceID,
+                                     const nsAtom* aName) const {
+  MOZ_ASSERT(aNameSpaceID > kNameSpaceID_Unknown, "Must have namespace");
+  MOZ_ASSERT(aName, "Must have attribute name");
+
+  const nsAttrValue* val = mAttrs.GetAttr(aName, aNameSpaceID);
+  return val && !val->IsEmptyString();
 }
 
 inline bool Element::AttrValueIs(int32_t aNameSpaceID, const nsAtom* aName,

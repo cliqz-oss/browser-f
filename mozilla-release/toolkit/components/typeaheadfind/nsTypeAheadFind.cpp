@@ -54,9 +54,6 @@
 #include "mozilla/dom/RangeBinding.h"
 #include "mozilla/dom/Selection.h"
 #include "nsRange.h"
-#ifdef MOZ_XBL
-#  include "nsXBLBinding.h"
-#endif
 
 #include "nsTypeAheadFind.h"
 
@@ -374,9 +371,11 @@ nsresult nsTypeAheadFind::FindItNow(uint32_t aMode, bool aIsLinksOnly,
 
   nsCOMPtr<nsIDocShell> currentDocShell;
   nsCOMPtr<nsISupports> currentContainer;
-  nsCOMPtr<nsISimpleEnumerator> docShellEnumerator;
   nsCOMPtr<nsIDocShellTreeItem> rootContentTreeItem;
   nsCOMPtr<nsIDocShell> rootContentDocShell;
+  typedef nsTArray<RefPtr<nsIDocShell>> DocShells;
+  DocShells docShells;
+  DocShells::const_iterator it, it_end;
   if (!aDontIterateFrames) {
     // The use of GetInProcessSameTypeRootTreeItem (and later in this method) is
     // OK here as out-of-process frames are handled externally by
@@ -388,22 +387,17 @@ nsresult nsTypeAheadFind::FindItNow(uint32_t aMode, bool aIsLinksOnly,
 
     if (!rootContentDocShell) return NS_ERROR_FAILURE;
 
-    rootContentDocShell->GetDocShellEnumerator(
+    rootContentDocShell->GetAllDocShellsInSubtree(
         nsIDocShellTreeItem::typeContent, nsIDocShell::ENUMERATE_FORWARDS,
-        getter_AddRefs(docShellEnumerator));
+        docShells);
 
     // Default: can start at the current document
     currentContainer = do_QueryInterface(rootContentDocShell);
 
     // Iterate up to current shell, if there's more than 1 that we're
     // dealing with
-    bool hasMoreDocShells;
-
-    while (
-        NS_SUCCEEDED(docShellEnumerator->HasMoreElements(&hasMoreDocShells)) &&
-        hasMoreDocShells) {
-      docShellEnumerator->GetNext(getter_AddRefs(currentContainer));
-      currentDocShell = do_QueryInterface(currentContainer);
+    for (it = docShells.begin(), it_end = docShells.end(); it != it_end; ++it) {
+      currentDocShell = *it;
       if (!currentDocShell || currentDocShell == startingDocShell ||
           aIsFirstVisiblePreferred)
         break;
@@ -653,12 +647,10 @@ nsresult nsTypeAheadFind::FindItNow(uint32_t aMode, bool aIsLinksOnly,
     bool hasTriedFirstDoc = false;
     do {
       // ==== Second inner loop - get another while  ====
-      bool hasMoreDocShells;
-      if (NS_SUCCEEDED(
-              docShellEnumerator->HasMoreElements(&hasMoreDocShells)) &&
-          hasMoreDocShells) {
-        docShellEnumerator->GetNext(getter_AddRefs(currentContainer));
-        NS_ASSERTION(currentContainer, "HasMoreElements lied to us!");
+      if (it != it_end) {
+        currentContainer = *it;
+        ++it;
+        NS_ASSERTION(currentContainer, "We're not at the end yet!");
         currentDocShell = do_QueryInterface(currentContainer);
 
         if (currentDocShell) break;
@@ -666,11 +658,13 @@ nsresult nsTypeAheadFind::FindItNow(uint32_t aMode, bool aIsLinksOnly,
         return NS_ERROR_FAILURE;    // No content doc shells
 
       // Reached last doc shell, loop around back to first doc shell
-      rootContentDocShell->GetDocShellEnumerator(
+      rootContentDocShell->GetAllDocShellsInSubtree(
           nsIDocShellTreeItem::typeContent, nsIDocShell::ENUMERATE_FORWARDS,
-          getter_AddRefs(docShellEnumerator));
+          docShells);
+      it = docShells.begin();
+      it_end = docShells.end();
       hasTriedFirstDoc = true;
-    } while (docShellEnumerator);  // ==== end second inner while  ===
+    } while (it != it_end);  // ==== end second inner while  ===
 
     bool continueLoop = false;
     if (currentDocShell != startingDocShell)
@@ -785,20 +779,6 @@ nsresult nsTypeAheadFind::GetSearchContainers(
   }
   nsCOMPtr<nsINode> searchRootNode(rootContent);
 
-#ifdef MOZ_XBL
-  // Hack for XMLPrettyPrinter. nsFind can't handle complex anonymous content.
-  // If the root node has an XBL binding then there's not much we can do in
-  // in general, but we can try searching the binding's first child, which
-  // in the case of XMLPrettyPrinter contains the visible pretty-printed
-  // content.
-  nsXBLBinding* binding = rootContent->GetXBLBinding();
-  if (binding) {
-    nsIContent* anonContent = binding->GetAnonymousContent();
-    if (anonContent) {
-      searchRootNode = anonContent->GetFirstChild();
-    }
-  }
-#endif
   mSearchRange->SelectNodeContents(*searchRootNode, IgnoreErrors());
 
   if (!mStartPointRange) {

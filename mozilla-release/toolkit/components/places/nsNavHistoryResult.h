@@ -189,8 +189,7 @@ class nsNavHistoryResult final
 
   void OnMobilePrefChanged();
 
-  static void OnMobilePrefChangedCallback(const char* prefName,
-                                          nsNavHistoryResult* self);
+  static void OnMobilePrefChangedCallback(const char* prefName, void* self);
 
  protected:
   virtual ~nsNavHistoryResult();
@@ -539,8 +538,7 @@ class nsNavHistoryContainerResultNode
   nsresult ReverseUpdateStats(int32_t aAccessCountChange);
 
   // Sorting methods.
-  typedef nsCOMArray<nsNavHistoryResultNode>::nsCOMArrayComparatorFunc
-      SortComparator;
+  typedef nsCOMArray<nsNavHistoryResultNode>::TComparatorFunc SortComparator;
   virtual uint16_t GetSortType();
 
   static SortComparator GetSortingComparator(uint16_t aSortType);

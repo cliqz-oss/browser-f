@@ -16,6 +16,7 @@
 #include "mozilla/UniquePtr.h"
 #include "mozilla/Preferences.h"
 #include "mozilla/UniquePtrExtensions.h"
+#include "mozilla/ipc/ProtocolUtils.h"
 #include "mozilla/net/TimingStruct.h"
 
 #include "nsString.h"
@@ -687,20 +688,68 @@ class JsAllocationMarkerPayload : public ProfilerMarkerPayload {
 class NativeAllocationMarkerPayload : public ProfilerMarkerPayload {
  public:
   NativeAllocationMarkerPayload(const mozilla::TimeStamp& aStartTime,
-                                const int64_t aSize,
-                                UniqueProfilerBacktrace aStack)
+                                int64_t aSize, uintptr_t aMemoryAddress,
+                                int aThreadId, UniqueProfilerBacktrace aStack)
       : ProfilerMarkerPayload(aStartTime, aStartTime, mozilla::Nothing(),
                               std::move(aStack)),
-        mSize(aSize) {}
+        mSize(aSize),
+        mMemoryAddress(aMemoryAddress),
+        mThreadId(aThreadId) {}
 
   DECL_STREAM_PAYLOAD
 
  private:
-  NativeAllocationMarkerPayload(CommonProps&& aCommonProps, int64_t aSize)
-      : ProfilerMarkerPayload(std::move(aCommonProps)), mSize(aSize) {}
+  NativeAllocationMarkerPayload(CommonProps&& aCommonProps, int64_t aSize,
+                                uintptr_t aMemoryAddress, int aThreadId)
+      : ProfilerMarkerPayload(std::move(aCommonProps)),
+        mSize(aSize),
+        mMemoryAddress(aMemoryAddress),
+        mThreadId(aThreadId) {}
 
-  // The size in bytes of the allocation or de-allocation.
+  // The size in bytes of the allocation. If the number is negative then it
+  // represents a de-allocation.
   int64_t mSize;
+  // The memory address of the allocation or de-allocation.
+  uintptr_t mMemoryAddress;
+
+  int mThreadId;
+};
+
+class IPCMarkerPayload : public ProfilerMarkerPayload {
+ public:
+  IPCMarkerPayload(int32_t aOtherPid, int32_t aMessageSeqno,
+                   IPC::Message::msgid_t aMessageType, mozilla::ipc::Side aSide,
+                   mozilla::ipc::MessageDirection aDirection, bool aSync,
+                   const mozilla::TimeStamp& aStartTime)
+      : ProfilerMarkerPayload(aStartTime, aStartTime),
+        mOtherPid(aOtherPid),
+        mMessageSeqno(aMessageSeqno),
+        mMessageType(aMessageType),
+        mSide(aSide),
+        mDirection(aDirection),
+        mSync(aSync) {}
+
+  DECL_STREAM_PAYLOAD
+
+ private:
+  IPCMarkerPayload(CommonProps&& aCommonProps, int32_t aOtherPid,
+                   int32_t aMessageSeqno, IPC::Message::msgid_t aMessageType,
+                   mozilla::ipc::Side aSide,
+                   mozilla::ipc::MessageDirection aDirection, bool aSync)
+      : ProfilerMarkerPayload(std::move(aCommonProps)),
+        mOtherPid(aOtherPid),
+        mMessageSeqno(aMessageSeqno),
+        mMessageType(aMessageType),
+        mSide(aSide),
+        mDirection(aDirection),
+        mSync(aSync) {}
+
+  int32_t mOtherPid;
+  int32_t mMessageSeqno;
+  IPC::Message::msgid_t mMessageType;
+  mozilla::ipc::Side mSide;
+  mozilla::ipc::MessageDirection mDirection;
+  bool mSync;
 };
 
 namespace mozilla {

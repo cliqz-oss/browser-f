@@ -24,11 +24,6 @@ ChromeUtils.defineModuleGetter(
 );
 ChromeUtils.defineModuleGetter(
   this,
-  "LoginManagerContent",
-  "resource://gre/modules/LoginManagerContent.jsm"
-);
-ChromeUtils.defineModuleGetter(
-  this,
   "InsecurePasswordUtils",
   "resource://gre/modules/InsecurePasswordUtils.jsm"
 );
@@ -427,7 +422,7 @@ LoginManager.prototype = {
     log.debug("Getting a list of all disabled origins");
 
     let disabledHosts = [];
-    for (let perm of Services.perms.enumerator) {
+    for (let perm of Services.perms.all) {
       if (
         perm.type == PERMISSION_SAVE_LOGINS &&
         perm.capability == Services.perms.DENY_ACTION
@@ -460,10 +455,12 @@ LoginManager.prototype = {
     return this._storage.findLogins(origin, formActionOrigin, httpRealm);
   },
 
+  async searchLoginsAsync(matchData) {
+    log.debug("searchLoginsAsync:", matchData);
+    return this._storage.searchLoginsAsync(matchData);
+  },
+
   /**
-   * Public wrapper around _searchLogins to convert the nsIPropertyBag to a
-   * JavaScript object and decrypt the results.
-   *
    * @return {nsILoginInfo[]} which are decrypted.
    */
   searchLogins(matchData) {
@@ -473,15 +470,6 @@ LoginManager.prototype = {
     if (!matchData.hasKey("guid")) {
       if (!matchData.hasKey("origin")) {
         log.warn("searchLogins: An `origin` is recommended");
-      }
-
-      if (
-        !matchData.hasKey("formActionOrigin") &&
-        !matchData.hasKey("httpRealm")
-      ) {
-        log.warn(
-          "searchLogins: `formActionOrigin` or `httpRealm` is recommended"
-        );
       }
     }
 

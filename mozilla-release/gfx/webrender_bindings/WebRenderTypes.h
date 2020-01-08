@@ -45,6 +45,9 @@ typedef wr::WrFontKey FontKey;
 typedef wr::WrFontInstanceKey FontInstanceKey;
 typedef wr::WrEpoch Epoch;
 
+class RenderedFrameIdType {};
+typedef layers::BaseTransactionId<RenderedFrameIdType> RenderedFrameId;
+
 typedef mozilla::Maybe<mozilla::wr::IdNamespace> MaybeIdNamespace;
 typedef mozilla::Maybe<mozilla::wr::ImageMask> MaybeImageMask;
 typedef Maybe<ExternalImageId> MaybeExternalImageId;
@@ -224,6 +227,10 @@ struct ImageDescriptor : public wr::WrImageDescriptor {
     opacity = aOpacity;
   }
 };
+
+inline uint64_t AsUint64(const NativeSurfaceId& aId) {
+  return static_cast<uint64_t>(aId._0);
+}
 
 // Whenever possible, use wr::WindowId instead of manipulating uint64_t.
 inline uint64_t AsUint64(const WindowId& aId) {
@@ -597,8 +604,8 @@ static inline wr::BorderRadius ToBorderRadius(
 static inline wr::ComplexClipRegion ToComplexClipRegion(
     const nsRect& aRect, const nscoord* aRadii, int32_t aAppUnitsPerDevPixel) {
   wr::ComplexClipRegion ret;
-  ret.rect = ToRoundedLayoutRect(
-      LayoutDeviceRect::FromAppUnits(aRect, aAppUnitsPerDevPixel));
+  ret.rect =
+      ToLayoutRect(LayoutDeviceRect::FromAppUnits(aRect, aAppUnitsPerDevPixel));
   ret.radii = ToBorderRadius(
       LayoutDeviceSize::FromAppUnits(
           nsSize(aRadii[eCornerTopLeftX], aRadii[eCornerTopLeftY]),

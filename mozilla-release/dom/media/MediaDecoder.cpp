@@ -6,6 +6,7 @@
 
 #include "MediaDecoder.h"
 
+#include "AudioDeviceInfo.h"
 #include "DOMMediaStream.h"
 #include "DecoderBenchmark.h"
 #include "ImageContainer.h"
@@ -225,36 +226,46 @@ void MediaDecoder::SetVolume(double aVolume) {
   mVolume = aVolume;
 }
 
-RefPtr<GenericPromise> MediaDecoder::SetSink(AudioDeviceInfo* aSink) {
+RefPtr<GenericPromise> MediaDecoder::SetSink(AudioDeviceInfo* aSinkDevice) {
   MOZ_ASSERT(NS_IsMainThread());
   AbstractThread::AutoEnter context(AbstractMainThread());
-  return GetStateMachine()->InvokeSetSink(aSink);
+  mSinkDevice = aSinkDevice;
+  return GetStateMachine()->InvokeSetSink(aSinkDevice);
 }
 
-void MediaDecoder::AddOutputStream(DOMMediaStream* aStream,
-                                   SharedDummyTrack* aDummyStream) {
+void MediaDecoder::SetOutputCaptured(bool aCaptured) {
   MOZ_ASSERT(NS_IsMainThread());
   MOZ_ASSERT(mDecoderStateMachine, "Must be called after Load().");
   AbstractThread::AutoEnter context(AbstractMainThread());
-  mDecoderStateMachine->EnsureOutputStreamManager(aDummyStream);
-  if (mInfo) {
-    mDecoderStateMachine->EnsureOutputStreamManagerHasTracks(*mInfo);
+  mOutputCaptured = aCaptured;
+}
+
+void MediaDecoder::AddOutputTrack(RefPtr<ProcessedMediaTrack> aTrack) {
+  MOZ_ASSERT(NS_IsMainThread());
+  MOZ_ASSERT(mDecoderStateMachine, "Must be called after Load().");
+  AbstractThread::AutoEnter context(AbstractMainThread());
+  nsTArray<RefPtr<ProcessedMediaTrack>> tracks = mOutputTracks;
+  tracks.AppendElement(std::move(aTrack));
+  mOutputTracks = tracks;
+}
+
+void MediaDecoder::RemoveOutputTrack(
+    const RefPtr<ProcessedMediaTrack>& aTrack) {
+  MOZ_ASSERT(NS_IsMainThread());
+  MOZ_ASSERT(mDecoderStateMachine, "Must be called after Load().");
+  AbstractThread::AutoEnter context(AbstractMainThread());
+  nsTArray<RefPtr<ProcessedMediaTrack>> tracks = mOutputTracks;
+  if (tracks.RemoveElement(aTrack)) {
+    mOutputTracks = tracks;
   }
-  mDecoderStateMachine->AddOutputStream(aStream);
 }
 
-void MediaDecoder::RemoveOutputStream(DOMMediaStream* aStream) {
+void MediaDecoder::SetOutputTracksPrincipal(
+    const RefPtr<nsIPrincipal>& aPrincipal) {
   MOZ_ASSERT(NS_IsMainThread());
   MOZ_ASSERT(mDecoderStateMachine, "Must be called after Load().");
   AbstractThread::AutoEnter context(AbstractMainThread());
-  mDecoderStateMachine->RemoveOutputStream(aStream);
-}
-
-void MediaDecoder::SetOutputStreamPrincipal(nsIPrincipal* aPrincipal) {
-  MOZ_ASSERT(NS_IsMainThread());
-  MOZ_ASSERT(mDecoderStateMachine, "Must be called after Load().");
-  AbstractThread::AutoEnter context(AbstractMainThread());
-  mDecoderStateMachine->SetOutputStreamPrincipal(aPrincipal);
+  mOutputPrincipal = MakePrincipalHandle(aPrincipal);
 }
 
 double MediaDecoder::GetDuration() {
@@ -290,7 +301,6 @@ MediaDecoder::MediaDecoder(MediaDecoderInit& aInit)
       mIsElementInTree(false),
       mForcedHidden(false),
       mHasSuspendTaint(aInit.mHasSuspendTaint),
-      mIsCloningVisually(false),
       mPlaybackRate(aInit.mPlaybackRate),
       mLogicallySeeking(false, "MediaDecoder::mLogicallySeeking"),
       INIT_MIRROR(mBuffered, TimeIntervals()),
@@ -300,6 +310,11 @@ MediaDecoder::MediaDecoder(MediaDecoderInit& aInit)
       INIT_CANONICAL(mVolume, aInit.mVolume),
       INIT_CANONICAL(mPreservesPitch, aInit.mPreservesPitch),
       INIT_CANONICAL(mLooping, aInit.mLooping),
+      INIT_CANONICAL(mSinkDevice, nullptr),
+      INIT_CANONICAL(mSecondaryVideoContainer, nullptr),
+      INIT_CANONICAL(mOutputCaptured, false),
+      INIT_CANONICAL(mOutputTracks, nsTArray<RefPtr<ProcessedMediaTrack>>()),
+      INIT_CANONICAL(mOutputPrincipal, PRINCIPAL_HANDLE_NONE),
       INIT_CANONICAL(mPlayState, PLAY_STATE_LOADING),
       mSameOriginMedia(false),
       mVideoDecodingOberver(
@@ -363,6 +378,7 @@ void MediaDecoder::Shutdown() {
     mOnWaitingForKey.Disconnect();
     mOnDecodeWarning.Disconnect();
     mOnNextFrameStatus.Disconnect();
+    mOnSecondaryVideoContainerInstalled.Disconnect();
     mOnStoreDecoderBenchmark.Disconnect();
 
     mDecoderStateMachine->BeginShutdown()->Then(
@@ -372,16 +388,10 @@ void MediaDecoder::Shutdown() {
     // Ensure we always unregister asynchronously in order not to disrupt
     // the hashtable iterating in MediaShutdownManager::Shutdown().
     RefPtr<MediaDecoder> self = this;
-    nsCOMPtr<nsIRunnable> r =
-        NS_NewRunnableFunction("MediaDecoder::Shutdown", [self]() {
-          self->mVideoFrameContainer = nullptr;
-          MediaShutdownManager::Instance().Unregister(self);
-        });
+    nsCOMPtr<nsIRunnable> r = NS_NewRunnableFunction(
+        "MediaDecoder::Shutdown", [self]() { self->ShutdownInternal(); });
     mAbstractMainThread->Dispatch(r.forget());
   }
-
-  // Ask the owner to remove its audio/video tracks.
-  GetOwner()->RemoveMediaTracks();
 
   ChangeState(PLAY_STATE_SHUTDOWN);
   mVideoDecodingOberver->UnregisterEvent();
@@ -496,6 +506,12 @@ void MediaDecoder::OnNextFrameStatus(
   }
 }
 
+void MediaDecoder::OnSecondaryVideoContainerInstalled(
+    const RefPtr<VideoFrameContainer>& aSecondaryVideoContainer) {
+  MOZ_ASSERT(NS_IsMainThread());
+  GetOwner()->OnSecondaryVideoContainerInstalled(aSecondaryVideoContainer);
+}
+
 void MediaDecoder::OnStoreDecoderBenchmark(const VideoInfo& aInfo) {
   MOZ_ASSERT(NS_IsMainThread());
 
@@ -519,11 +535,17 @@ void MediaDecoder::OnStoreDecoderBenchmark(const VideoInfo& aInfo) {
   }
 }
 
+void MediaDecoder::ShutdownInternal() {
+  MOZ_ASSERT(NS_IsMainThread());
+  mVideoFrameContainer = nullptr;
+  mSecondaryVideoContainer = nullptr;
+  MediaShutdownManager::Instance().Unregister(this);
+}
+
 void MediaDecoder::FinishShutdown() {
   MOZ_ASSERT(NS_IsMainThread());
   SetStateMachine(nullptr);
-  mVideoFrameContainer = nullptr;
-  MediaShutdownManager::Instance().Unregister(this);
+  ShutdownInternal();
 }
 
 nsresult MediaDecoder::InitializeStateMachine() {
@@ -564,6 +586,10 @@ void MediaDecoder::SetStateMachineParameters() {
       mAbstractMainThread, this, &MediaDecoder::OnMediaNotSeekable);
   mOnNextFrameStatus = mDecoderStateMachine->OnNextFrameStatus().Connect(
       mAbstractMainThread, this, &MediaDecoder::OnNextFrameStatus);
+  mOnSecondaryVideoContainerInstalled =
+      mDecoderStateMachine->OnSecondaryVideoContainerInstalled().Connect(
+          mAbstractMainThread, this,
+          &MediaDecoder::OnSecondaryVideoContainerInstalled);
   mOnStoreDecoderBenchmark = mReader->OnStoreDecoderBenchmark().Connect(
       mAbstractMainThread, this, &MediaDecoder::OnStoreDecoderBenchmark);
 
@@ -642,7 +668,6 @@ double MediaDecoder::GetCurrentTime() {
 void MediaDecoder::OnMetadataUpdate(TimedMetadata&& aMetadata) {
   MOZ_ASSERT(NS_IsMainThread());
   AbstractThread::AutoEnter context(AbstractMainThread());
-  GetOwner()->RemoveMediaTracks();
   MetadataLoaded(MakeUnique<MediaInfo>(*aMetadata.mInfo),
                  UniquePtr<MetadataTags>(std::move(aMetadata.mTags)),
                  MediaDecoderEventVisibility::Observable);
@@ -665,8 +690,6 @@ void MediaDecoder::MetadataLoaded(
   mMediaSeekableOnlyInBufferedRanges =
       aInfo->mMediaSeekableOnlyInBufferedRanges;
   mInfo = aInfo.release();
-  GetOwner()->ConstructMediaTracks(mInfo);
-  mDecoderStateMachine->EnsureOutputStreamManagerHasTracks(*mInfo);
 
   // Make sure the element and the frame (if any) are told about
   // our new size.
@@ -857,12 +880,6 @@ void MediaDecoder::ChangeState(PlayState aState) {
     DDLOG(DDLogCategory::Property, "play_state", ToPlayStateStr(aState));
   }
   mPlayState = aState;
-
-  if (mPlayState == PLAY_STATE_PLAYING) {
-    GetOwner()->ConstructMediaTracks(mInfo);
-  } else if (IsEnded()) {
-    GetOwner()->RemoveMediaTracks();
-  }
 }
 
 bool MediaDecoder::IsLoopingBack(double aPrevPos, double aCurPos) const {
@@ -998,8 +1015,8 @@ void MediaDecoder::UpdateVideoDecodeMode() {
     return;
   }
 
-  // If mIsCloningVisually is set, never suspend the video decoder.
-  if (mIsCloningVisually) {
+  // If mSecondaryVideoContainer is set, never suspend the video decoder.
+  if (mSecondaryVideoContainer.Ref()) {
     LOG("UpdateVideoDecodeMode(), set Normal because the element is cloning "
         "itself visually to another video container.");
     mDecoderStateMachine->SetVideoDecodeMode(VideoDecodeMode::Normal);
@@ -1064,11 +1081,15 @@ bool MediaDecoder::HasSuspendTaint() const {
   return mHasSuspendTaint;
 }
 
-void MediaDecoder::SetCloningVisually(bool aIsCloningVisually) {
-  if (mIsCloningVisually != aIsCloningVisually) {
-    mIsCloningVisually = aIsCloningVisually;
-    UpdateVideoDecodeMode();
+void MediaDecoder::SetSecondaryVideoContainer(
+    RefPtr<VideoFrameContainer> aSecondaryVideoContainer) {
+  MOZ_ASSERT(NS_IsMainThread());
+  AbstractThread::AutoEnter context(AbstractMainThread());
+  if (mSecondaryVideoContainer.Ref() == aSecondaryVideoContainer) {
+    return;
   }
+  mSecondaryVideoContainer = std::move(aSecondaryVideoContainer);
+  UpdateVideoDecodeMode();
 }
 
 bool MediaDecoder::IsMediaSeekable() {

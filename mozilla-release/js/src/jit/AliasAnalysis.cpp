@@ -129,7 +129,6 @@ static inline const MDefinition* GetObject(const MDefinition* ins) {
     case MDefinition::Opcode::MaybeToDoubleElement:
     case MDefinition::Opcode::TypedArrayLength:
     case MDefinition::Opcode::TypedArrayByteOffset:
-    case MDefinition::Opcode::SetTypedObjectOffset:
     case MDefinition::Opcode::ArrayPopShift:
     case MDefinition::Opcode::ArrayPush:
     case MDefinition::Opcode::LoadTypedArrayElementHole:
@@ -168,6 +167,7 @@ static inline const MDefinition* GetObject(const MDefinition* ins) {
     case MDefinition::Opcode::AtomicTypedArrayElementBinop:
     case MDefinition::Opcode::AsmJSLoadHeap:
     case MDefinition::Opcode::AsmJSStoreHeap:
+    case MDefinition::Opcode::WasmHeapBase:
     case MDefinition::Opcode::WasmLoadTls:
     case MDefinition::Opcode::WasmLoad:
     case MDefinition::Opcode::WasmStore:

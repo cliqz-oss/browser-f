@@ -129,7 +129,9 @@ const CFR_MESSAGES = [
       layout: "addon_recommendation",
       category: "cfrAddons",
       bucket_id: "CFR_M1",
-      notification_text: { string_id: "cfr-doorhanger-extension-notification" },
+      notification_text: {
+        string_id: "cfr-doorhanger-extension-notification2",
+      },
       heading_text: { string_id: "cfr-doorhanger-extension-heading" },
       info_icon: {
         label: { string_id: "cfr-doorhanger-extension-sumo-link" },
@@ -198,7 +200,9 @@ const CFR_MESSAGES = [
       layout: "addon_recommendation",
       category: "cfrAddons",
       bucket_id: "CFR_M1",
-      notification_text: { string_id: "cfr-doorhanger-extension-notification" },
+      notification_text: {
+        string_id: "cfr-doorhanger-extension-notification2",
+      },
       heading_text: { string_id: "cfr-doorhanger-extension-heading" },
       info_icon: {
         label: { string_id: "cfr-doorhanger-extension-sumo-link" },
@@ -268,7 +272,9 @@ const CFR_MESSAGES = [
       layout: "addon_recommendation",
       category: "cfrAddons",
       bucket_id: "CFR_M1",
-      notification_text: { string_id: "cfr-doorhanger-extension-notification" },
+      notification_text: {
+        string_id: "cfr-doorhanger-extension-notification2",
+      },
       heading_text: { string_id: "cfr-doorhanger-extension-heading" },
       info_icon: {
         label: { string_id: "cfr-doorhanger-extension-sumo-link" },
@@ -339,7 +345,9 @@ const CFR_MESSAGES = [
       layout: "addon_recommendation",
       category: "cfrAddons",
       bucket_id: "CFR_M1",
-      notification_text: { string_id: "cfr-doorhanger-extension-notification" },
+      notification_text: {
+        string_id: "cfr-doorhanger-extension-notification2",
+      },
       heading_text: { string_id: "cfr-doorhanger-extension-heading" },
       info_icon: {
         label: { string_id: "cfr-doorhanger-extension-sumo-link" },
@@ -413,7 +421,9 @@ const CFR_MESSAGES = [
       layout: "addon_recommendation",
       category: "cfrAddons",
       bucket_id: "CFR_M1",
-      notification_text: { string_id: "cfr-doorhanger-extension-notification" },
+      notification_text: {
+        string_id: "cfr-doorhanger-extension-notification2",
+      },
       heading_text: { string_id: "cfr-doorhanger-extension-heading" },
       info_icon: {
         label: { string_id: "cfr-doorhanger-extension-sumo-link" },
@@ -483,7 +493,7 @@ const CFR_MESSAGES = [
       layout: "message_and_animation",
       category: "cfrFeatures",
       bucket_id: "CFR_PIN_TAB",
-      notification_text: { string_id: "cfr-doorhanger-extension-notification" },
+      notification_text: { string_id: "cfr-doorhanger-feature-notification" },
       heading_text: { string_id: "cfr-doorhanger-pintab-heading" },
       info_icon: {
         label: { string_id: "cfr-doorhanger-extension-sumo-link" },
@@ -597,7 +607,7 @@ const CFR_MESSAGES = [
         sumo_path: "extensionrecommendations",
       },
       notification_text: {
-        string_id: "cfr-doorhanger-extension-notification",
+        string_id: "cfr-doorhanger-feature-notification",
       },
       category: "cfrFeatures",
     },
@@ -608,6 +618,7 @@ const CFR_MESSAGES = [
   {
     id: "SOCIAL_TRACKING_PROTECTION",
     template: "cfr_doorhanger",
+    priority: 1,
     content: {
       layout: "icon_and_message",
       category: "cfrFeatures",
@@ -638,6 +649,13 @@ const CFR_MESSAGES = [
             label: { string_id: "cfr-doorhanger-socialtracking-close-button" },
             event: "BLOCK",
           },
+          {
+            label: {
+              string_id: "cfr-doorhanger-socialtracking-dont-show-again",
+            },
+            action: { type: "DISABLE_STP_DOORHANGERS" },
+            event: "BLOCK",
+          },
         ],
       },
     },
@@ -658,6 +676,7 @@ const CFR_MESSAGES = [
   {
     id: "FINGERPRINTERS_PROTECTION",
     template: "cfr_doorhanger",
+    priority: 2,
     content: {
       layout: "icon_and_message",
       category: "cfrFeatures",
@@ -688,6 +707,13 @@ const CFR_MESSAGES = [
             label: { string_id: "cfr-doorhanger-socialtracking-close-button" },
             event: "BLOCK",
           },
+          {
+            label: {
+              string_id: "cfr-doorhanger-socialtracking-dont-show-again",
+            },
+            action: { type: "DISABLE_STP_DOORHANGERS" },
+            event: "BLOCK",
+          },
         ],
       },
     },
@@ -704,6 +730,7 @@ const CFR_MESSAGES = [
   {
     id: "CRYPTOMINERS_PROTECTION",
     template: "cfr_doorhanger",
+    priority: 3,
     content: {
       layout: "icon_and_message",
       category: "cfrFeatures",
@@ -734,10 +761,17 @@ const CFR_MESSAGES = [
             label: { string_id: "cfr-doorhanger-socialtracking-close-button" },
             event: "BLOCK",
           },
+          {
+            label: {
+              string_id: "cfr-doorhanger-socialtracking-dont-show-again",
+            },
+            action: { type: "DISABLE_STP_DOORHANGERS" },
+            event: "BLOCK",
+          },
         ],
       },
     },
-    targeting: "pageLoad >= 4 && && firefoxVersion >= 71",
+    targeting: "pageLoad >= 4 && firefoxVersion >= 71",
     frequency: {
       lifetime: 2,
       custom: [{ period: 2 * 86400 * 1000, cap: 1 }],

@@ -15,6 +15,7 @@
 #include <stddef.h>  // size_t
 #include <stdint.h>  // uint32_t
 
+#include "jstypes.h"                // JS_PUBLIC_API
 #include "frontend/ParseContext.h"  // js::frontend::UsedNameTracker
 #include "frontend/ParseInfo.h"
 #include "frontend/SharedContext.h"  // js::frontend::Directives, js::frontend::{,Eval,Global}SharedContext
@@ -25,8 +26,8 @@
 #include "vm/JSScript.h"  // js::{FunctionAsync,Generator}Kind, js::LazyScript, JSScript, js::ScriptSource, js::ScriptSourceObject
 #include "vm/Scope.h"     // js::ScopeKind
 
-class JSFunction;
-class JSObject;
+class JS_PUBLIC_API JSFunction;
+class JS_PUBLIC_API JSObject;
 
 namespace js {
 
@@ -55,14 +56,15 @@ class MOZ_STACK_CLASS BytecodeCompiler {
   JS::Rooted<ScriptSourceObject*> sourceObject;
   ScriptSource* scriptSource = nullptr;
 
-  mozilla::Maybe<ParseInfo> parseInfo;
+  ParseInfo& parseInfo;
 
   Directives directives;
 
   JS::Rooted<JSScript*> script;
 
  protected:
-  BytecodeCompiler(JSContext* cx, const JS::ReadOnlyCompileOptions& options);
+  BytecodeCompiler(JSContext* cx, ParseInfo& parseInfo,
+                   const JS::ReadOnlyCompileOptions& options);
 
   template <typename Unit>
   friend class SourceAwareCompiler;
@@ -86,10 +88,6 @@ class MOZ_STACK_CLASS BytecodeCompiler {
 
   MOZ_MUST_USE bool createScriptSource(
       const mozilla::Maybe<uint32_t>& parameterListEnd);
-
-  void createParseInfo(LifoAllocScope& allocScope) {
-    parseInfo.emplace(cx, allocScope);
-  }
 
   // Create a script for source of the given length, using the explicitly-
   // provided toString offsets as the created script's offsets in the source.
@@ -116,9 +114,10 @@ class MOZ_STACK_CLASS GlobalScriptInfo final : public BytecodeCompiler {
   GlobalSharedContext globalsc_;
 
  public:
-  GlobalScriptInfo(JSContext* cx, const JS::ReadOnlyCompileOptions& options,
+  GlobalScriptInfo(JSContext* cx, ParseInfo& parseInfo,
+                   const JS::ReadOnlyCompileOptions& options,
                    ScopeKind scopeKind)
-      : BytecodeCompiler(cx, options),
+      : BytecodeCompiler(cx, parseInfo, options),
         globalsc_(cx, scopeKind, directives, options.extraWarningsOption) {
     MOZ_ASSERT(scopeKind == ScopeKind::Global ||
                scopeKind == ScopeKind::NonSyntactic);
@@ -140,10 +139,11 @@ class MOZ_STACK_CLASS EvalScriptInfo final : public BytecodeCompiler {
   EvalSharedContext evalsc_;
 
  public:
-  EvalScriptInfo(JSContext* cx, const JS::ReadOnlyCompileOptions& options,
+  EvalScriptInfo(JSContext* cx, ParseInfo& parseInfo,
+                 const JS::ReadOnlyCompileOptions& options,
                  JS::Handle<JSObject*> environment,
                  JS::Handle<Scope*> enclosingScope)
-      : BytecodeCompiler(cx, options),
+      : BytecodeCompiler(cx, parseInfo, options),
         environment_(environment),
         evalsc_(cx, environment_, enclosingScope, directives,
                 options.extraWarningsOption) {}
@@ -158,15 +158,16 @@ extern JSScript* CompileEvalScript(EvalScriptInfo& info,
 
 class MOZ_STACK_CLASS ModuleInfo final : public BytecodeCompiler {
  public:
-  ModuleInfo(JSContext* cx, const JS::ReadOnlyCompileOptions& options)
-      : BytecodeCompiler(cx, options) {}
+  ModuleInfo(JSContext* cx, ParseInfo& parseInfo,
+             const JS::ReadOnlyCompileOptions& options)
+      : BytecodeCompiler(cx, parseInfo, options) {}
 };
 
 class MOZ_STACK_CLASS StandaloneFunctionInfo final : public BytecodeCompiler {
  public:
-  StandaloneFunctionInfo(JSContext* cx,
+  StandaloneFunctionInfo(JSContext* cx, ParseInfo& parseInfo,
                          const JS::ReadOnlyCompileOptions& options)
-      : BytecodeCompiler(cx, options) {}
+      : BytecodeCompiler(cx, parseInfo, options) {}
 };
 
 extern MOZ_MUST_USE bool CompileLazyFunction(JSContext* cx,

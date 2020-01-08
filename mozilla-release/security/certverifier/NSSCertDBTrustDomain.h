@@ -68,7 +68,22 @@ void DisableMD5();
  */
 bool LoadLoadableRoots(const nsCString& dir);
 
-void UnloadLoadableRoots();
+/**
+ * Loads the OS client certs module.
+ *
+ * @param dir
+ *        The path to the directory containing the module. This should be the
+ *        same as where all of the other gecko libraries live.
+ * @return true if the module was successfully loaded, false otherwise.
+ */
+bool LoadOSClientCertsModule(const nsCString& dir);
+
+extern const char* kOSClientCertsModuleName;
+
+/**
+ * Unloads the loadable roots module and os client certs module, if loaded.
+ */
+void UnloadUserModules();
 
 nsresult DefaultServerNicknameForCert(const CERTCertificate* cert,
                                       /*out*/ nsCString& nickname);
@@ -154,6 +169,7 @@ class NSSCertDBTrustDomain : public mozilla::pkix::TrustDomain {
       const OriginAttributes& originAttributes,
       const Vector<mozilla::pkix::Input>& thirdPartyRootInputs,
       const Vector<mozilla::pkix::Input>& thirdPartyIntermediateInputs,
+      const Maybe<nsTArray<nsTArray<uint8_t>>>& extraCertificates,
       /*out*/ UniqueCERTCertList& builtChain,
       /*optional*/ PinningTelemetryInfo* pinningTelemetryInfo = nullptr,
       /*optional*/ const char* hostname = nullptr);
@@ -206,6 +222,7 @@ class NSSCertDBTrustDomain : public mozilla::pkix::TrustDomain {
   virtual Result CheckRevocation(
       mozilla::pkix::EndEntityOrCA endEntityOrCA,
       const mozilla::pkix::CertID& certID, mozilla::pkix::Time time,
+      mozilla::pkix::Time validityPeriodBeginning,
       mozilla::pkix::Duration validityDuration,
       /*optional*/ const mozilla::pkix::Input* stapledOCSPResponse,
       /*optional*/ const mozilla::pkix::Input* aiaExtension) override;
@@ -273,8 +290,9 @@ class NSSCertDBTrustDomain : public mozilla::pkix::TrustDomain {
   const OriginAttributes& mOriginAttributes;
   const Vector<mozilla::pkix::Input>& mThirdPartyRootInputs;  // non-owning
   const Vector<mozilla::pkix::Input>&
-      mThirdPartyIntermediateInputs;  // non-owning
-  UniqueCERTCertList& mBuiltChain;    // non-owning
+      mThirdPartyIntermediateInputs;                             // non-owning
+  const Maybe<nsTArray<nsTArray<uint8_t>>>& mExtraCertificates;  // non-owning
+  UniqueCERTCertList& mBuiltChain;                               // non-owning
   PinningTelemetryInfo* mPinningTelemetryInfo;
   const char* mHostname;  // non-owning - only used for pinning checks
 #ifdef MOZ_NEW_CERT_STORAGE

@@ -19,6 +19,7 @@
 #include "js/CharacterEncoding.h"
 #include "js/UniquePtr.h"
 #include "vm/ArrayObject.h"
+#include "vm/ErrorObject.h"
 #include "vm/GlobalObject.h"
 #include "vm/JSObject.h"
 #include "vm/RegExpObject.h"
@@ -173,20 +174,11 @@ bool ObjectGroup::useSingletonForClone(JSFunction* fun) {
    * instance a singleton type and clone the underlying script.
    */
 
-  uint32_t begin, end;
-  if (fun->hasScript()) {
-    if (!fun->nonLazyScript()->isLikelyConstructorWrapper()) {
-      return false;
-    }
-    begin = fun->nonLazyScript()->sourceStart();
-    end = fun->nonLazyScript()->sourceEnd();
-  } else {
-    if (!fun->lazyScript()->isLikelyConstructorWrapper()) {
-      return false;
-    }
-    begin = fun->lazyScript()->sourceStart();
-    end = fun->lazyScript()->sourceEnd();
+  if (!fun->baseScript()->isLikelyConstructorWrapper()) {
+    return false;
   }
+  uint32_t begin = fun->baseScript()->sourceStart();
+  uint32_t end = fun->baseScript()->sourceEnd();
 
   return end - begin <= 100;
 }
@@ -236,7 +228,7 @@ bool ObjectGroup::useSingletonForAllocationSite(JSScript* script,
    * typed arrays or normal arrays.
    */
 
-  if (script->functionNonDelazifying() && !script->treatAsRunOnce()) {
+  if (script->function() && !script->treatAsRunOnce()) {
     return false;
   }
 

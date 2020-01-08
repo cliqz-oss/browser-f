@@ -9,6 +9,8 @@
 
 #include "debugger/DebugAPI.h"
 
+#include "vm/GeneratorObject.h"
+
 #include "vm/Stack-inl.h"
 
 namespace js {
@@ -180,9 +182,10 @@ void DebugAPI::onPromiseSettled(JSContext* cx, Handle<PromiseObject*> promise) {
 }
 
 /* static */
-void DebugAPI::sweepBreakpoints(JSFreeOp* fop, JSScript* script) {
-  if (script->hasDebugScript()) {
-    sweepBreakpointsSlow(fop, script);
+void DebugAPI::traceGeneratorFrame(JSTracer* tracer,
+                                   AbstractGeneratorObject* generator) {
+  if (MOZ_UNLIKELY(generator->realm()->isDebuggee())) {
+    slowPathTraceGeneratorFrame(tracer, generator);
   }
 }
 

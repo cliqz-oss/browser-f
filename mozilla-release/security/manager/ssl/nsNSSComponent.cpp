@@ -199,12 +199,12 @@ static void GetRevocationBehaviorFromPrefs(
 }
 
 nsNSSComponent::nsNSSComponent()
-    : mLoadableRootsLoadedMonitor("nsNSSComponent.mLoadableRootsLoadedMonitor"),
-      mLoadableRootsLoaded(false),
-      mLoadableRootsLoadedResult(NS_ERROR_FAILURE),
+    : mLoadableCertsLoadedMonitor("nsNSSComponent.mLoadableCertsLoadedMonitor"),
+      mLoadableCertsLoaded(false),
+      mLoadableCertsLoadedResult(NS_ERROR_FAILURE),
       mMutex("nsNSSComponent.mMutex"),
       mMitmDetecionEnabled(false),
-      mLoadLoadableRootsTaskDispatched(false) {
+      mLoadLoadableCertsTaskDispatched(false) {
   MOZ_LOG(gPIPNSSLog, LogLevel::Debug, ("nsNSSComponent::ctor\n"));
   MOZ_RELEASE_ASSERT(NS_IsMainThread());
 
@@ -489,6 +489,7 @@ void nsNSSComponent::UnloadEnterpriseRoots() {
 
 static const char* kEnterpriseRootModePref =
     "security.enterprise_roots.enabled";
+static const char* kOSClientCertsModulePref = "security.osclientcerts.autoload";
 
 class BackgroundImportEnterpriseCertsTask final : public CryptoTask {
  public:
@@ -553,7 +554,7 @@ void nsNSSComponent::ImportEnterpriseRoots() {
 
 nsresult nsNSSComponent::CommonGetEnterpriseCerts(
     nsTArray<nsTArray<uint8_t>>& enterpriseCerts, bool getRoots) {
-  nsresult rv = BlockUntilLoadableRootsLoaded();
+  nsresult rv = BlockUntilLoadableCertsLoaded();
   if (NS_FAILED(rv)) {
     return rv;
   }
@@ -588,21 +589,23 @@ nsNSSComponent::GetEnterpriseIntermediates(
   return CommonGetEnterpriseCerts(enterpriseIntermediates, false);
 }
 
-class LoadLoadableRootsTask final : public Runnable {
+class LoadLoadableCertsTask final : public Runnable {
  public:
-  LoadLoadableRootsTask(nsNSSComponent* nssComponent,
+  LoadLoadableCertsTask(nsNSSComponent* nssComponent,
                         bool importEnterpriseRoots, uint32_t familySafetyMode,
-                        Vector<nsCString>&& possibleLoadableRootsLocations)
-      : Runnable("LoadLoadableRootsTask"),
+                        Vector<nsCString>&& possibleLoadableRootsLocations,
+                        Maybe<nsCString>&& osClientCertsModuleLocation)
+      : Runnable("LoadLoadableCertsTask"),
         mNSSComponent(nssComponent),
         mImportEnterpriseRoots(importEnterpriseRoots),
         mFamilySafetyMode(familySafetyMode),
         mPossibleLoadableRootsLocations(
-            std::move(possibleLoadableRootsLocations)) {
+            std::move(possibleLoadableRootsLocations)),
+        mOSClientCertsModuleLocation(std::move(osClientCertsModuleLocation)) {
     MOZ_ASSERT(nssComponent);
   }
 
-  ~LoadLoadableRootsTask() = default;
+  ~LoadLoadableCertsTask() = default;
 
   nsresult Dispatch();
 
@@ -613,9 +616,10 @@ class LoadLoadableRootsTask final : public Runnable {
   bool mImportEnterpriseRoots;
   uint32_t mFamilySafetyMode;
   Vector<nsCString> mPossibleLoadableRootsLocations;
+  Maybe<nsCString> mOSClientCertsModuleLocation;
 };
 
-nsresult LoadLoadableRootsTask::Dispatch() {
+nsresult LoadLoadableCertsTask::Dispatch() {
   // The stream transport service (note: not the socket transport service) can
   // be used to perform background tasks or I/O that would otherwise block the
   // main thread.
@@ -628,12 +632,12 @@ nsresult LoadLoadableRootsTask::Dispatch() {
 }
 
 NS_IMETHODIMP
-LoadLoadableRootsTask::Run() {
+LoadLoadableCertsTask::Run() {
   nsresult loadLoadableRootsResult = LoadLoadableRoots();
   if (NS_WARN_IF(NS_FAILED(loadLoadableRootsResult))) {
     MOZ_LOG(gPIPNSSLog, LogLevel::Error, ("LoadLoadableRoots failed"));
     // We don't return loadLoadableRootsResult here because then
-    // BlockUntilLoadableRootsLoaded will just wait forever. Instead we'll save
+    // BlockUntilLoadableCertsLoaded will just wait forever. Instead we'll save
     // its value (below) so we can inform code that relies on the roots module
     // being present that loading it failed.
   }
@@ -658,26 +662,109 @@ LoadLoadableRootsTask::Run() {
     mNSSComponent->ImportEnterpriseRoots();
     mNSSComponent->UpdateCertVerifierWithEnterpriseRoots();
   }
+  if (mOSClientCertsModuleLocation.isSome()) {
+    bool success = LoadOSClientCertsModule(*mOSClientCertsModuleLocation);
+    MOZ_LOG(gPIPNSSLog, LogLevel::Debug,
+            ("loading OS client certs module %s",
+             success ? "succeeded" : "failed"));
+  }
   {
-    MonitorAutoLock rootsLoadedLock(mNSSComponent->mLoadableRootsLoadedMonitor);
-    mNSSComponent->mLoadableRootsLoaded = true;
-    // Cache the result of LoadLoadableRoots so BlockUntilLoadableRootsLoaded
-    // can return it to all callers later.
-    mNSSComponent->mLoadableRootsLoadedResult = loadLoadableRootsResult;
-    nsresult rv = mNSSComponent->mLoadableRootsLoadedMonitor.NotifyAll();
-    if (NS_WARN_IF(NS_FAILED(rv))) {
-      MOZ_LOG(gPIPNSSLog, LogLevel::Error,
-              ("failed to notify loadable roots loaded monitor"));
-    }
+    MonitorAutoLock rootsLoadedLock(mNSSComponent->mLoadableCertsLoadedMonitor);
+    mNSSComponent->mLoadableCertsLoaded = true;
+    // Cache the result of LoadLoadableRoots so BlockUntilLoadableCertsLoaded
+    // can return it to all callers later (we use that particular result because
+    // if that operation fails, it's unlikely that any TLS connection will
+    // succeed whereas the browser may still be able to operate if the other
+    // tasks fail).
+    mNSSComponent->mLoadableCertsLoadedResult = loadLoadableRootsResult;
+    mNSSComponent->mLoadableCertsLoadedMonitor.NotifyAll();
   }
   return NS_OK;
+}
+
+// Returns by reference the path to the desired directory, based on the current
+// settings in the directory service.
+static nsresult GetDirectoryPath(const char* directoryKey, nsCString& result) {
+  MOZ_ASSERT(NS_IsMainThread());
+
+  nsCOMPtr<nsIProperties> directoryService(
+      do_GetService(NS_DIRECTORY_SERVICE_CONTRACTID));
+  if (!directoryService) {
+    MOZ_LOG(gPIPNSSLog, LogLevel::Debug, ("could not get directory service"));
+    return NS_ERROR_FAILURE;
+  }
+  nsCOMPtr<nsIFile> directory;
+  nsresult rv = directoryService->Get(directoryKey, NS_GET_IID(nsIFile),
+                                      getter_AddRefs(directory));
+  if (NS_FAILED(rv)) {
+    MOZ_LOG(gPIPNSSLog, LogLevel::Debug,
+            ("could not get '%s' from directory service", directoryKey));
+    return rv;
+  }
+#ifdef XP_WIN
+  // Native path will drop Unicode characters that cannot be mapped to system's
+  // codepage, using short (canonical) path as workaround.
+  nsCOMPtr<nsILocalFileWin> directoryWin = do_QueryInterface(directory);
+  if (!directoryWin) {
+    MOZ_LOG(gPIPNSSLog, LogLevel::Debug, ("couldn't get nsILocalFileWin"));
+    return NS_ERROR_FAILURE;
+  }
+  return directoryWin->GetNativeCanonicalPath(result);
+#else
+  return directory->GetNativePath(result);
+#endif
+}
+
+class BackgroundLoadOSClientCertsModuleTask final : public CryptoTask {
+ public:
+  explicit BackgroundLoadOSClientCertsModuleTask(const nsCString&& libraryDir)
+      : mLibraryDir(std::move(libraryDir)) {}
+
+ private:
+  virtual nsresult CalculateResult() override {
+    bool success = LoadOSClientCertsModule(mLibraryDir);
+    return success ? NS_OK : NS_ERROR_FAILURE;
+  }
+
+  virtual void CallCallback(nsresult rv) override {
+    MOZ_LOG(gPIPNSSLog, LogLevel::Debug,
+            ("loading OS client certs module %s",
+             NS_SUCCEEDED(rv) ? "succeeded" : "failed"));
+    nsCOMPtr<nsIObserverService> observerService =
+        mozilla::services::GetObserverService();
+    if (observerService) {
+      observerService->NotifyObservers(
+          nullptr, "psm:load-os-client-certs-module-task-ran", nullptr);
+    }
+  }
+
+  nsCString mLibraryDir;
+};
+
+void AsyncLoadOrUnloadOSClientCertsModule(bool load) {
+  if (load) {
+    nsCString libraryDir;
+    nsresult rv = GetDirectoryPath(NS_GRE_BIN_DIR, libraryDir);
+    if (NS_FAILED(rv)) {
+      return;
+    }
+    RefPtr<BackgroundLoadOSClientCertsModuleTask> task =
+        new BackgroundLoadOSClientCertsModuleTask(std::move(libraryDir));
+    Unused << task->Dispatch();
+  } else {
+    UniqueSECMODModule osClientCertsModule(
+        SECMOD_FindModule(kOSClientCertsModuleName));
+    if (osClientCertsModule) {
+      SECMOD_UnloadUserModule(osClientCertsModule.get());
+    }
+  }
 }
 
 NS_IMETHODIMP
 nsNSSComponent::HasActiveSmartCards(bool* result) {
   NS_ENSURE_ARG_POINTER(result);
 
-  BlockUntilLoadableRootsLoaded();
+  BlockUntilLoadableCertsLoaded();
 
 #ifndef MOZ_NO_SMART_CARDS
   AutoSECMODListReadLock secmodLock;
@@ -705,24 +792,24 @@ NS_IMETHODIMP
 nsNSSComponent::HasUserCertsInstalled(bool* result) {
   NS_ENSURE_ARG_POINTER(result);
 
-  BlockUntilLoadableRootsLoaded();
+  BlockUntilLoadableCertsLoaded();
 
-  // FindNonCACertificatesWithPrivateKeys won't ever return an empty list, so
+  // FindClientCertificatesWithPrivateKeys won't ever return an empty list, so
   // all we need to do is check if this is null or not.
-  UniqueCERTCertList certList(FindNonCACertificatesWithPrivateKeys());
+  UniqueCERTCertList certList(FindClientCertificatesWithPrivateKeys());
   *result = !!certList;
 
   return NS_OK;
 }
 
-nsresult nsNSSComponent::BlockUntilLoadableRootsLoaded() {
-  MonitorAutoLock rootsLoadedLock(mLoadableRootsLoadedMonitor);
-  while (!mLoadableRootsLoaded) {
+nsresult nsNSSComponent::BlockUntilLoadableCertsLoaded() {
+  MonitorAutoLock rootsLoadedLock(mLoadableCertsLoadedMonitor);
+  while (!mLoadableCertsLoaded) {
     rootsLoadedLock.Wait();
   }
-  MOZ_ASSERT(mLoadableRootsLoaded);
+  MOZ_ASSERT(mLoadableCertsLoaded);
 
-  return mLoadableRootsLoadedResult;
+  return mLoadableCertsLoadedResult;
 }
 
 nsresult nsNSSComponent::CheckForSmartCardChanges() {
@@ -793,46 +880,13 @@ static nsresult GetNSS3Directory(nsCString& result) {
   // Native path will drop Unicode characters that cannot be mapped to system's
   // codepage, using short (canonical) path as workaround.
   nsCOMPtr<nsILocalFileWin> nss3DirectoryWin = do_QueryInterface(nss3Directory);
-  if (NS_FAILED(rv)) {
+  if (!nss3DirectoryWin) {
     MOZ_LOG(gPIPNSSLog, LogLevel::Debug, ("couldn't get nsILocalFileWin"));
-    return rv;
+    return NS_ERROR_FAILURE;
   }
   return nss3DirectoryWin->GetNativeCanonicalPath(result);
 #else
   return nss3Directory->GetNativePath(result);
-#endif
-}
-
-// Returns by reference the path to the desired directory, based on the current
-// settings in the directory service.
-static nsresult GetDirectoryPath(const char* directoryKey, nsCString& result) {
-  MOZ_ASSERT(NS_IsMainThread());
-
-  nsCOMPtr<nsIProperties> directoryService(
-      do_GetService(NS_DIRECTORY_SERVICE_CONTRACTID));
-  if (!directoryService) {
-    MOZ_LOG(gPIPNSSLog, LogLevel::Debug, ("could not get directory service"));
-    return NS_ERROR_FAILURE;
-  }
-  nsCOMPtr<nsIFile> directory;
-  nsresult rv = directoryService->Get(directoryKey, NS_GET_IID(nsIFile),
-                                      getter_AddRefs(directory));
-  if (NS_FAILED(rv)) {
-    MOZ_LOG(gPIPNSSLog, LogLevel::Debug,
-            ("could not get '%s' from directory service", directoryKey));
-    return rv;
-  }
-#ifdef XP_WIN
-  // Native path will drop Unicode characters that cannot be mapped to system's
-  // codepage, using short (canonical) path as workaround.
-  nsCOMPtr<nsILocalFileWin> directoryWin = do_QueryInterface(directory);
-  if (NS_FAILED(rv)) {
-    MOZ_LOG(gPIPNSSLog, LogLevel::Debug, ("couldn't get nsILocalFileWin"));
-    return rv;
-  }
-  return directoryWin->GetNativeCanonicalPath(result);
-#else
-  return directory->GetNativePath(result);
 #endif
 }
 
@@ -889,7 +943,7 @@ static nsresult ListPossibleLoadableRootsLocations(
   return NS_OK;
 }
 
-nsresult LoadLoadableRootsTask::LoadLoadableRoots() {
+nsresult LoadLoadableCertsTask::LoadLoadableRoots() {
   for (const auto& possibleLocation : mPossibleLoadableRootsLocations) {
     if (mozilla::psm::LoadLoadableRoots(possibleLocation)) {
       MOZ_LOG(gPIPNSSLog, LogLevel::Debug,
@@ -1000,7 +1054,7 @@ static const bool REQUIRE_SAFE_NEGOTIATION_DEFAULT = false;
 static const bool FALSE_START_ENABLED_DEFAULT = true;
 static const bool ALPN_ENABLED_DEFAULT = false;
 static const bool ENABLED_0RTT_DATA_DEFAULT = false;
-static const bool HELLO_DOWNGRADE_CHECK_DEFAULT = false;
+static const bool HELLO_DOWNGRADE_CHECK_DEFAULT = true;
 static const bool ENABLED_POST_HANDSHAKE_AUTH_DEFAULT = false;
 static const bool DELEGATED_CREDENTIALS_ENABLED_DEFAULT = false;
 
@@ -1823,16 +1877,27 @@ nsresult nsNSSComponent::InitializeNSS() {
     if (NS_FAILED(rv)) {
       return rv;
     }
-    RefPtr<LoadLoadableRootsTask> loadLoadableRootsTask(
-        new LoadLoadableRootsTask(this, importEnterpriseRoots, familySafetyMode,
-                                  std::move(possibleLoadableRootsLocations)));
-    rv = loadLoadableRootsTask->Dispatch();
+
+    bool loadOSClientCertsModule =
+        Preferences::GetBool(kOSClientCertsModulePref, false);
+    Maybe<nsCString> maybeOSClientCertsModuleLocation;
+    if (loadOSClientCertsModule) {
+      nsAutoCString libraryDir;
+      if (NS_SUCCEEDED(GetDirectoryPath(NS_GRE_BIN_DIR, libraryDir))) {
+        maybeOSClientCertsModuleLocation.emplace(libraryDir);
+      }
+    }
+    RefPtr<LoadLoadableCertsTask> loadLoadableCertsTask(
+        new LoadLoadableCertsTask(this, importEnterpriseRoots, familySafetyMode,
+                                  std::move(possibleLoadableRootsLocations),
+                                  std::move(maybeOSClientCertsModuleLocation)));
+    rv = loadLoadableCertsTask->Dispatch();
     MOZ_DIAGNOSTIC_ASSERT(NS_SUCCEEDED(rv));
     if (NS_FAILED(rv)) {
       return rv;
     }
 
-    mLoadLoadableRootsTaskDispatched = true;
+    mLoadLoadableCertsTaskDispatched = true;
     return NS_OK;
   }
 }
@@ -1841,22 +1906,22 @@ void nsNSSComponent::ShutdownNSS() {
   MOZ_LOG(gPIPNSSLog, LogLevel::Debug, ("nsNSSComponent::ShutdownNSS\n"));
   MOZ_RELEASE_ASSERT(NS_IsMainThread());
 
-  bool loadLoadableRootsTaskDispatched;
+  bool loadLoadableCertsTaskDispatched;
   {
     MutexAutoLock lock(mMutex);
-    loadLoadableRootsTaskDispatched = mLoadLoadableRootsTaskDispatched;
+    loadLoadableCertsTaskDispatched = mLoadLoadableCertsTaskDispatched;
   }
-  // We have to block until the load loadable roots task has completed, because
-  // otherwise we might try to unload the loadable roots while the loadable
-  // roots loading thread is setting up EV information, which can cause
+  // We have to block until the load loadable certs task has completed, because
+  // otherwise we might try to unload the loaded modules while the loadable
+  // certs loading thread is setting up EV information, which can cause
   // it to fail to find the roots it is expecting. However, if initialization
-  // failed, we won't have dispatched the load loadable roots background task.
+  // failed, we won't have dispatched the load loadable certs background task.
   // In that case, we don't want to block on an event that will never happen.
-  if (loadLoadableRootsTaskDispatched) {
-    Unused << BlockUntilLoadableRootsLoaded();
+  if (loadLoadableCertsTaskDispatched) {
+    Unused << BlockUntilLoadableCertsLoaded();
   }
 
-  ::mozilla::psm::UnloadLoadableRoots();
+  ::mozilla::psm::UnloadUserModules();
 
   PK11_SetPasswordFunc((PK11PasswordFunc) nullptr);
 
@@ -1997,6 +2062,10 @@ nsNSSComponent::Observe(nsISupports* aSubject, const char* aTopic,
                prefName.Equals(kFamilySafetyModePref)) {
       UnloadEnterpriseRoots();
       MaybeImportEnterpriseRoots();
+    } else if (prefName.Equals(kOSClientCertsModulePref)) {
+      bool loadOSClientCertsModule =
+          Preferences::GetBool(kOSClientCertsModulePref, false);
+      AsyncLoadOrUnloadOSClientCertsModule(loadOSClientCertsModule);
     } else if (prefName.EqualsLiteral("security.pki.mitm_canary_issuer")) {
       MutexAutoLock lock(mMutex);
       mMitmCanaryIssuer.Truncate();
@@ -2164,7 +2233,7 @@ already_AddRefed<SharedCertVerifier> GetDefaultCertVerifier() {
   if (!nssComponent) {
     return nullptr;
   }
-  nsresult rv = nssComponent->BlockUntilLoadableRootsLoaded();
+  nsresult rv = nssComponent->BlockUntilLoadableCertsLoaded();
   if (NS_FAILED(rv)) {
     return nullptr;
   }
@@ -2177,12 +2246,13 @@ already_AddRefed<SharedCertVerifier> GetDefaultCertVerifier() {
 }
 
 // Lists all private keys on all modules and returns a list of any corresponding
-// certificates. Returns null if no such certificates can be found. Also returns
-// null if an error is encountered, because this is called as part of the client
-// auth data callback, and NSS ignores any errors returned by the callback.
-UniqueCERTCertList FindNonCACertificatesWithPrivateKeys() {
+// client certificates. Returns null if no such certificates can be found. Also
+// returns null if an error is encountered, because this is called as part of
+// the client auth data callback, and NSS ignores any errors returned by the
+// callback.
+UniqueCERTCertList FindClientCertificatesWithPrivateKeys() {
   MOZ_LOG(gPIPNSSLog, LogLevel::Debug,
-          ("FindNonCACertificatesWithPrivateKeys"));
+          ("FindClientCertificatesWithPrivateKeys"));
   UniqueCERTCertList certsWithPrivateKeys(CERT_NewCertList());
   if (!certsWithPrivateKeys) {
     return nullptr;
@@ -2224,23 +2294,38 @@ UniqueCERTCertList FindNonCACertificatesWithPrivateKeys() {
         }
         for (CERTCertListNode* n = CERT_LIST_HEAD(certs);
              !CERT_LIST_END(n, certs); n = CERT_LIST_NEXT(n)) {
-          if (!CERT_IsCACert(n->cert, nullptr)) {
-            MOZ_LOG(gPIPNSSLog, LogLevel::Debug,
-                    ("      found '%s'", n->cert->subjectName));
-            UniqueCERTCertificate cert(CERT_DupCertificate(n->cert));
-            if (CERT_AddCertToListTail(certsWithPrivateKeys.get(),
-                                       cert.get()) == SECSuccess) {
-              Unused << cert.release();
-            }
+          UniqueCERTCertificate cert(CERT_DupCertificate(n->cert));
+          MOZ_LOG(gPIPNSSLog, LogLevel::Debug,
+                  ("      provisionally adding '%s'", n->cert->subjectName));
+          if (CERT_AddCertToListTail(certsWithPrivateKeys.get(), cert.get()) ==
+              SECSuccess) {
+            Unused << cert.release();
           }
         }
       }
     }
     list = list->next;
   }
+
+  if (CERT_FilterCertListByUsage(certsWithPrivateKeys.get(), certUsageSSLClient,
+                                 false) != SECSuccess) {
+    MOZ_LOG(gPIPNSSLog, LogLevel::Debug,
+            ("  CERT_FilterCertListByUsage encountered an error - returning"));
+    return nullptr;
+  }
+
+  if (MOZ_UNLIKELY(MOZ_LOG_TEST(gPIPNSSLog, LogLevel::Debug))) {
+    MOZ_LOG(gPIPNSSLog, LogLevel::Debug, ("  returning:"));
+    for (CERTCertListNode* n = CERT_LIST_HEAD(certsWithPrivateKeys);
+         !CERT_LIST_END(n, certsWithPrivateKeys); n = CERT_LIST_NEXT(n)) {
+      MOZ_LOG(gPIPNSSLog, LogLevel::Debug, ("    %s", n->cert->subjectName));
+    }
+  }
+
   if (CERT_LIST_EMPTY(certsWithPrivateKeys)) {
     return nullptr;
   }
+
   return certsWithPrivateKeys;
 }
 

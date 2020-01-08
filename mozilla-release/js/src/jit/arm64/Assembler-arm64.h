@@ -289,6 +289,7 @@ class Assembler : public vixl::Assembler {
 
   static bool SupportsFloatingPoint() { return true; }
   static bool SupportsUnalignedAccesses() { return true; }
+  static bool SupportsFastUnalignedAccesses() { return true; }
   static bool SupportsSimd() { return js::jit::SupportsSimd; }
 
   static bool HasRoundInstruction(RoundingMode mode) { return false; }
@@ -469,6 +470,11 @@ static constexpr Register WasmTableCallScratchReg0 = ABINonArgReg0;
 static constexpr Register WasmTableCallScratchReg1 = ABINonArgReg1;
 static constexpr Register WasmTableCallSigReg = ABINonArgReg2;
 static constexpr Register WasmTableCallIndexReg = ABINonArgReg3;
+
+// Register used as a scratch along the return path in the fast js -> wasm stub
+// code.  This must not overlap ReturnReg, JSReturnOperand, or WasmTlsReg.  It
+// must be a volatile register.
+static constexpr Register WasmJitEntryReturnScratch = r9;
 
 static inline bool GetIntArgReg(uint32_t usedIntArgs, uint32_t usedFloatArgs,
                                 Register* out) {

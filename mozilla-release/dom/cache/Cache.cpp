@@ -79,9 +79,8 @@ static bool IsValidPutResponseStatus(Response& aResponse,
                                      ErrorResult& aRv) {
   if ((aPolicy == PutStatusPolicy::RequireOK && !aResponse.Ok()) ||
       aResponse.Status() == 206) {
-    uint32_t t = static_cast<uint32_t>(aResponse.Type());
-    NS_ConvertASCIItoUTF16 type(ResponseTypeValues::strings[t].value,
-                                ResponseTypeValues::strings[t].length);
+    NS_ConvertASCIItoUTF16 type(
+        ResponseTypeValues::GetString(aResponse.Type()));
     nsAutoString status;
     status.AppendInt(aResponse.Status());
     nsAutoString url;
@@ -364,9 +363,8 @@ already_AddRefed<Promise> Cache::AddAll(
         return nullptr;
       }
     } else {
-      requestOrString.SetAsUSVString().Rebind(
-          aRequestList[i].GetAsUSVString().Data(),
-          aRequestList[i].GetAsUSVString().Length());
+      requestOrString.SetAsUSVString().ShareOrDependUpon(
+          aRequestList[i].GetAsUSVString());
     }
 
     RefPtr<Request> request =

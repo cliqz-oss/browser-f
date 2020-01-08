@@ -1336,9 +1336,11 @@ void EnvironmentIter::settle() {
       if (scope->is<LexicalScope>()) {
         MOZ_ASSERT(scope == &env_->as<LexicalEnvironmentObject>().scope());
       } else if (scope->is<FunctionScope>()) {
-        MOZ_ASSERT(
-            scope->as<FunctionScope>().script() ==
-            env_->as<CallObject>().callee().existingScriptNonDelazifying());
+        MOZ_ASSERT(scope->as<FunctionScope>().script() ==
+                   env_->as<CallObject>()
+                       .callee()
+                       .maybeCanonicalFunction()
+                       ->nonLazyScript());
       } else if (scope->is<VarScope>()) {
         MOZ_ASSERT(scope == &env_->as<VarEnvironmentObject>().scope());
       } else if (scope->is<WithScope>()) {
@@ -1818,7 +1820,7 @@ class DebugEnvironmentProxyHandler : public BaseProxyHandler {
   static bool isMissingArgumentsBinding(EnvironmentObject& env) {
     return isFunctionEnvironment(env) && !env.as<CallObject>()
                                               .callee()
-                                              .nonLazyScript()
+                                              .baseScript()
                                               ->argumentsHasVarBinding();
   }
 
@@ -1890,7 +1892,7 @@ class DebugEnvironmentProxyHandler : public BaseProxyHandler {
           }
         }
       }
-      MOZ_ASSERT(callee && callee->nonLazyScript()->argumentsHasVarBinding());
+      MOZ_ASSERT(callee && callee->baseScript()->argumentsHasVarBinding());
     }
 #endif
 
@@ -3874,7 +3876,7 @@ static bool AnalyzeEntrainedVariablesInScript(JSContext* cx,
 
     buf.printf("Script ");
 
-    if (JSAtom* name = script->functionNonDelazifying()->displayAtom()) {
+    if (JSAtom* name = script->function()->displayAtom()) {
       buf.putString(name);
       buf.printf(" ");
     }
@@ -3882,7 +3884,7 @@ static bool AnalyzeEntrainedVariablesInScript(JSContext* cx,
     buf.printf("(%s:%u) has variables entrained by ", script->filename(),
                script->lineno());
 
-    if (JSAtom* name = innerScript->functionNonDelazifying()->displayAtom()) {
+    if (JSAtom* name = innerScript->function()->displayAtom()) {
       buf.putString(name);
       buf.printf(" ");
     }
@@ -3939,23 +3941,28 @@ bool js::AnalyzeEntrainedVariables(JSContext* cx, HandleScript script) {
     }
 
     JSObject* obj = &gcThing.as<JSObject>();
-    if (obj->is<JSFunction>() && obj->as<JSFunction>().isInterpreted()) {
-      fun = &obj->as<JSFunction>();
-      innerScript = JSFunction::getOrCreateScript(cx, fun);
-      if (!innerScript) {
+    if (!obj->is<JSFunction>()) {
+      continue;
+    }
+
+    fun = &obj->as<JSFunction>();
+    if (!fun->isInterpreted()) {
+      continue;
+    }
+
+    innerScript = JSFunction::getOrCreateScript(cx, fun);
+    if (!innerScript) {
+      return false;
+    }
+
+    if (fun->needsCallObject()) {
+      if (!AnalyzeEntrainedVariablesInScript(cx, script, innerScript)) {
         return false;
       }
+    }
 
-      if (script->functionDelazifying() &&
-          script->functionDelazifying()->needsCallObject()) {
-        if (!AnalyzeEntrainedVariablesInScript(cx, script, innerScript)) {
-          return false;
-        }
-      }
-
-      if (!AnalyzeEntrainedVariables(cx, innerScript)) {
-        return false;
-      }
+    if (!AnalyzeEntrainedVariables(cx, innerScript)) {
+      return false;
     }
   }
 

@@ -53,7 +53,7 @@ function setupServiceContainer({
   };
 
   if (toolbox) {
-    const { highlight, unhighlight } = toolbox.getHighlighter(true);
+    const { highlight, unhighlight } = toolbox.getHighlighter();
 
     Object.assign(serviceContainer, {
       sourceMapService: toolbox.sourceMapURLService,
@@ -63,7 +63,6 @@ function setupServiceContainer({
         toolbox.threadFront.timeWarp(executionPoint),
       onViewSourceInDebugger: frame => hud.onViewSourceInDebugger(frame),
       onViewSourceInStyleEditor: frame => hud.onViewSourceInStyleEditor(frame),
-      onViewSourceInScratchpad: frame => hud.onViewSourceInScratchpad(frame),
     });
   }
 

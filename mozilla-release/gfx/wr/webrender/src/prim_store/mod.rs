@@ -16,7 +16,7 @@ use crate::clip::{ClipDataStore, ClipNodeFlags, ClipChainId, ClipChainInstance, 
 use crate::debug_colors;
 use crate::debug_render::DebugItem;
 use crate::scene_building::{CreateShadow, IsVisible};
-use euclid::{SideOffsets2D, Transform3D, Rect, Scale, Size2D, Point2D};
+use euclid::{SideOffsets2D, Transform3D, Rect, Scale, Size2D, Point2D, Vector2D};
 use euclid::approxeq::ApproxEq;
 use crate::frame_builder::{FrameBuildingContext, FrameBuildingState, PictureContext, PictureState};
 use crate::frame_builder::{FrameVisibilityContext, FrameVisibilityState};
@@ -52,7 +52,7 @@ use std::{cmp, fmt, hash, ops, u32, usize, mem};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use crate::storage;
 use crate::texture_cache::TEXTURE_REGION_DIMENSIONS;
-use crate::util::{MatrixHelpers, MaxRect, Recycler, ScaleOffset, RectHelpers};
+use crate::util::{MatrixHelpers, MaxRect, Recycler, ScaleOffset, RectHelpers, VectorHelpers};
 use crate::util::{clamp_to_scale_factor, pack_as_float, project_rect, raster_rect_to_device_pixels};
 use crate::internal_types::{LayoutPrimitiveInfo, Filter};
 use smallvec::SmallVec;
@@ -202,6 +202,17 @@ impl SpaceSnapper {
                 scale_offset.unmap_rect(&snapped_device_rect)
             }
             None => *rect,
+        }
+    }
+
+    pub fn snap_vector<F>(&self, vector: &Vector2D<f32, F>) -> Vector2D<f32, F> where F: fmt::Debug {
+        debug_assert!(self.current_target_spatial_node_index != SpatialNodeIndex::INVALID);
+        match self.snapping_transform {
+            Some(ref scale_offset) => {
+                let snapped_device_vector : DeviceVector2D = scale_offset.map_vector(&vector).snap();
+                scale_offset.unmap_vector(&snapped_device_vector)
+            }
+            None => *vector,
         }
     }
 
@@ -1931,6 +1942,21 @@ impl PrimitiveStore {
         for cluster in &mut prim_list.clusters {
             // Get the cluster and see if is visible
             if !cluster.flags.contains(ClusterFlags::IS_VISIBLE) {
+                // Each prim instance must have reset called each frame, to clear
+                // indices into various scratch buffers. If this doesn't occur,
+                // the primitive may incorrectly be considered visible, which can
+                // cause unexpected conditions to occur later during the frame.
+                // Primitive instances are normally reset in the main loop below,
+                // but we must also reset them in the rare case that the cluster
+                // visibility has changed (due to an invalid transform and/or
+                // backface visibility changing for this cluster).
+                // TODO(gw): This is difficult to test for in CI - as a follow up,
+                //           we should add a debug flag that validates the prim
+                //           instance is always reset every frame to catch similar
+                //           issues in future.
+                for prim_instance in &mut cluster.prim_instances {
+                    prim_instance.reset();
+                }
                 continue;
             }
 
@@ -2119,6 +2145,7 @@ impl PrimitiveStore {
                             &self.opacity_bindings,
                             &self.images,
                             surface_index,
+                            surface.surface_spatial_node_index,
                         ) {
                             prim_instance.visibility_info = PrimitiveVisibilityIndex::INVALID;
                             // Ensure the primitive clip is popped - perhaps we can use
@@ -2284,7 +2311,19 @@ impl PrimitiveStore {
             // Inflate the local bounding rect if required by the filter effect.
             // This inflaction factor is to be applied to the surface itself.
             if pic.options.inflate_if_required {
+                // The picture's local rect is calculated as the union of the
+                // snapped primitive rects, which should result in a snapped
+                // local rect, unless it was inflated. This is also done during
+                // surface configuration when calculating the picture's
+                // estimated local rect.
+                let snap_pic_to_raster = SpaceSnapper::new_with_target(
+                    surface.raster_spatial_node_index,
+                    pic.spatial_node_index,
+                    surface.device_pixel_scale,
+                    frame_context.clip_scroll_tree,
+                );
                 surface_rect = rc.composite_mode.inflate_picture_rect(surface_rect, surface.inflation_factor);
+                surface_rect = snap_pic_to_raster.snap_rect(&surface_rect);
             }
 
             // Layout space for the picture is picture space from the
@@ -2896,11 +2935,13 @@ impl PrimitiveStore {
                     &prim_data.glyphs,
                     &transform.to_transform().with_destination::<_>(),
                     surface,
+                    prim_spatial_node_index,
                     raster_space,
                     pic_context.subpixel_mode,
                     frame_state.resource_cache,
                     frame_state.gpu_cache,
                     frame_state.render_tasks,
+                    frame_context.clip_scroll_tree,
                     scratch,
                 );
 

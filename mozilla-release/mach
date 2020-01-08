@@ -35,7 +35,6 @@ py2commands="
     doc
     doctor
     empty-makefiles
-    environment
     file-info
     firefox-ui-functional
     fluent-migration-test
@@ -47,6 +46,7 @@ py2commands="
     ide
     import-pr
     install
+    jit-test
     jsapi-tests
     jsshell-bench
     jstestbrowser
@@ -63,7 +63,6 @@ py2commands="
     prettier-format
     puppeteer-test
     python
-    python-safety
     python-test
     raptor
     raptor-test
@@ -87,9 +86,7 @@ py2commands="
     test-info
     tps-build
     try
-    uuid
     valgrind-test
-    vendor
     visualmetrics
     warnings-list
     warnings-summary

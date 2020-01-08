@@ -16,6 +16,7 @@
 #include "mozilla/TemplateLib.h"
 #include "mozilla/TypeTraits.h"
 
+#include <algorithm>
 #include <new>
 #include <stddef.h>  // size_t
 
@@ -24,9 +25,9 @@
 // maintains a bunch of linked memory segments. In order to prevent malloc/free
 // thrashing, unused segments are deallocated when garbage collection occurs.
 
-#include "jsutil.h"
-
 #include "js/UniquePtr.h"
+#include "util/Memory.h"
+#include "util/Poison.h"
 
 namespace js {
 
@@ -1026,7 +1027,7 @@ class LifoAllocPolicy {
       return nullptr;
     }
     MOZ_ASSERT(!(oldSize & mozilla::tl::MulOverflowMask<sizeof(T)>::value));
-    memcpy(n, p, Min(oldSize * sizeof(T), newSize * sizeof(T)));
+    memcpy(n, p, std::min(oldSize * sizeof(T), newSize * sizeof(T)));
     return n;
   }
   template <typename T>

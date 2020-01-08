@@ -213,7 +213,7 @@ class MarionetteTestharnessProtocolPart(TestharnessProtocolPart):
                 handles = self.marionette.window_handles
                 if len(handles) == 2:
                     test_window = next(iter(set(handles) - {parent}))
-                elif handles[0] == parent and len(handles) > 2:
+                elif len(handles) > 2 and handles[0] == parent:
                     # Hope the first one here is the test window
                     test_window = handles[1]
 
@@ -841,7 +841,7 @@ class MarionetteRefTestExecutor(RefTestExecutor):
         return self.convert_result(test, result)
 
     def screenshot(self, test, viewport_size, dpi):
-        # https://github.com/w3c/wptrunner/issues/166
+        # https://github.com/web-platform-tests/wpt/issues/7135
         assert viewport_size is None
         assert dpi is None
 

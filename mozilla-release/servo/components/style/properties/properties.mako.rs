@@ -1260,12 +1260,12 @@ impl LonghandId {
             LonghandId::Stroke |
             LonghandId::CaretColor |
             % endif
-            % if engine in ["gecko", "servo-2013"]:
             LonghandId::BackgroundColor |
             LonghandId::BorderTopColor |
             LonghandId::BorderRightColor |
             LonghandId::BorderBottomColor |
             LonghandId::BorderLeftColor |
+            % if engine in ["gecko", "servo-2013"]:
             LonghandId::OutlineColor |
             % endif
             LonghandId::Color
@@ -1315,14 +1315,12 @@ impl LonghandId {
             LonghandId::MozScriptLevel |
             % endif
 
-            % if engine in ["gecko", "servo-2013"]:
             // Needed to compute the first available font, in order to
             // compute font-relative units correctly.
             LonghandId::FontSize |
             LonghandId::FontWeight |
             LonghandId::FontStretch |
             LonghandId::FontStyle |
-            % endif
             LonghandId::FontFamily |
 
             // Needed to properly compute the writing mode, to resolve logical
@@ -1815,8 +1813,8 @@ pub enum CountedUnknownProperty {
 }
 
 impl CountedUnknownProperty {
-    /// Parse the counted unknown property.
-    pub fn parse_for_test(property_name: &str) -> Option<Self> {
+    /// Parse the counted unknown property, for testing purposes only.
+    pub fn parse_for_testing(property_name: &str) -> Option<Self> {
         ascii_case_insensitive_phf_map! {
             unknown_id -> CountedUnknownProperty = {
                 % for property in data.counted_unknown_properties:
@@ -1828,6 +1826,7 @@ impl CountedUnknownProperty {
     }
 
     /// Returns the underlying index, used for use counter.
+    #[inline]
     pub fn bit(self) -> usize {
         self as usize
     }
@@ -1844,9 +1843,16 @@ impl PropertyId {
         })
     }
 
-    /// Returns a given property from the string `s`.
+    /// Returns a given property from the given name, _regardless of whether it
+    /// is enabled or not_, or Err(()) for unknown properties.
     ///
-    /// Returns Err(()) for unknown properties.
+    /// Do not use for non-testing purposes.
+    pub fn parse_unchecked_for_testing(name: &str) -> Result<Self, ()> {
+        Self::parse_unchecked(name, None)
+    }
+
+    /// Returns a given property from the given name, _regardless of whether it
+    /// is enabled or not_, or Err(()) for unknown properties.
     fn parse_unchecked(
         property_name: &str,
         use_counters: Option< &UseCounters>,
@@ -1888,7 +1894,19 @@ impl PropertyId {
         if let Some(id) = static_id(property_name) {
             return Ok(match *id {
                 StaticId::Longhand(id) => PropertyId::Longhand(id),
-                StaticId::Shorthand(id) => PropertyId::Shorthand(id),
+                StaticId::Shorthand(id) => {
+                    #[cfg(feature = "gecko")]
+                    {
+                        // We want to count `zoom` even if disabled.
+                        if matches!(id, ShorthandId::Zoom) {
+                            if let Some(counters) = use_counters {
+                                counters.non_custom_properties.record(id.into());
+                            }
+                        }
+                    }
+
+                    PropertyId::Shorthand(id)
+                },
                 StaticId::LonghandAlias(id, alias) => PropertyId::LonghandAlias(id, alias),
                 StaticId::ShorthandAlias(id, alias) => PropertyId::ShorthandAlias(id, alias),
                 StaticId::CountedUnknown(unknown_prop) => {
@@ -3074,10 +3092,6 @@ impl ComputedValuesInner {
     pub fn rules(&self) -> &StrongRuleNode {
         self.rules.as_ref().unwrap()
     }
-
-    /// Whether this style has a -moz-binding value. This is always false for
-    /// Servo for obvious reasons.
-    pub fn has_moz_binding(&self) -> bool { false }
 
     #[inline]
     /// Returns whether the "content" property for the given style is completely

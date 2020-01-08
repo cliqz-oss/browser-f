@@ -320,7 +320,13 @@ class MOZ_NON_MEMMOVABLE Heap : public js::HeapBase<T, Heap<T>> {
    * that will be used for both lvalue and rvalue copies, so we can simply
    * omit the rvalue variant.
    */
-  explicit Heap(const Heap<T>& p) { init(p.ptr); }
+  explicit Heap(const Heap<T>& other) { init(other.ptr); }
+
+  Heap& operator=(Heap<T>&& other) {
+    set(other.unbarrieredGet());
+    other.set(SafelyInitialized<T>());
+    return *this;
+  }
 
   ~Heap() { postWriteBarrier(ptr, SafelyInitialized<T>()); }
 
@@ -335,6 +341,12 @@ class MOZ_NON_MEMMOVABLE Heap : public js::HeapBase<T, Heap<T>> {
     return ptr;
   }
   const T& unbarrieredGet() const { return ptr; }
+
+  void set(const T& newPtr) {
+    T tmp = ptr;
+    ptr = newPtr;
+    postWriteBarrier(tmp, ptr);
+  }
 
   T* unsafeGet() { return &ptr; }
 
@@ -351,12 +363,6 @@ class MOZ_NON_MEMMOVABLE Heap : public js::HeapBase<T, Heap<T>> {
   void init(const T& newPtr) {
     ptr = newPtr;
     postWriteBarrier(SafelyInitialized<T>(), ptr);
-  }
-
-  void set(const T& newPtr) {
-    T tmp = ptr;
-    ptr = newPtr;
-    postWriteBarrier(tmp, ptr);
   }
 
   void postWriteBarrier(const T& prev, const T& next) {
@@ -916,12 +922,11 @@ class RootingContext {
 class JS_PUBLIC_API AutoGCRooter {
  protected:
   enum class Tag : uint8_t {
-    Array,      /* js::AutoArrayRooter */
-    ValueArray, /* js::AutoValueArray */
-    Parser,     /* js::frontend::Parser */
-#if defined(JS_BUILD_BINAST)
-    BinASTParser,  /* js::frontend::BinASTParser */
-#endif             // defined(JS_BUILD_BINAST)
+    Array,         /* js::AutoArrayRooter */
+    ValueArray,    /* js::AutoValueArray */
+    Parser,        /* js::frontend::Parser */
+    BinASTParser,  /* js::frontend::BinASTParser; only used if built with
+                    * JS_BUILD_BINAST support */
     WrapperVector, /* js::AutoWrapperVector */
     Wrapper,       /* js::AutoWrapperRooter */
     Custom         /* js::CustomAutoRooter */
@@ -1381,13 +1386,13 @@ class PersistentRooted
     return ptr;
   }
 
- private:
   template <typename U>
   void set(U&& value) {
     MOZ_ASSERT(initialized());
     ptr = std::forward<U>(value);
   }
 
+ private:
   detail::MaybeWrapped<T> ptr;
 } JS_HAZ_ROOTED;
 

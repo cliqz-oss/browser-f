@@ -241,7 +241,7 @@ nsresult HTMLEditor::InitEditorContentAndSelection() {
   }
 
   rv = InsertBRElementToEmptyListItemsAndTableCellsInRange(
-      RawRangeBoundary(bodyOrDocumentElement, 0),
+      RawRangeBoundary(bodyOrDocumentElement, 0u),
       RawRangeBoundary(bodyOrDocumentElement,
                        bodyOrDocumentElement->GetChildCount()));
   if (NS_WARN_IF(rv == NS_ERROR_EDITOR_DESTROYED)) {
@@ -641,7 +641,7 @@ nsresult HTMLEditor::OnEndHandlingTopLevelEditSubActionInternal() {
       if (NS_WARN_IF(NS_FAILED(rv))) {
         return rv;
       }
-      TopLevelEditSubActionDataRef().mCachedInlineStyles.Clear();
+      TopLevelEditSubActionDataRef().mCachedInlineStyles->Clear();
     }
   }
 
@@ -1292,7 +1292,7 @@ nsresult HTMLEditor::PrepareInlineStylesForCaret() {
   // For most actions we want to clear the cached styles, but there are
   // exceptions
   if (!IsStyleCachePreservingSubAction(GetTopLevelEditSubAction())) {
-    TopLevelEditSubActionDataRef().mCachedInlineStyles.Clear();
+    TopLevelEditSubActionDataRef().mCachedInlineStyles->Clear();
   }
   return NS_OK;
 }
@@ -3930,7 +3930,7 @@ MoveNodeResult HTMLEditor::MoveOneHardLineContents(
       NS_WARNING_ASSERTION(NS_SUCCEEDED(rvIgnored),
                            "DeleteNodeWithTransaction() failed, but ignored");
       result.MarkAsHandled();
-      if (HasMutationEventListeners()) {
+      if (MaybeHasMutationEventListeners()) {
         // Mutation event listener may make `offset` value invalid with
         // removing some previous children while we call
         // `DeleteNodeWithTransaction()` so that we should adjust it here.
@@ -3997,7 +3997,7 @@ MoveNodeResult HTMLEditor::MoveNodeOrChildren(
   if (NS_WARN_IF(NS_FAILED(rv))) {
     return MoveNodeResult(rv);
   }
-  if (HasMutationEventListeners()) {
+  if (MaybeHasMutationEventListeners()) {
     // Mutation event listener may make `offset` value invalid with
     // removing some previous children while we call
     // `DeleteNodeWithTransaction()` so that we should adjust it here.
@@ -5012,9 +5012,8 @@ nsresult HTMLEditor::IndentListChild(RefPtr<Element>* aCurList,
             previousEditableSibling->NodeInfo()->NameAtom() &&
         aCurPoint.GetContainer()->NodeInfo()->NamespaceID() ==
             previousEditableSibling->NodeInfo()->NamespaceID()) {
-      nsresult rv =
-          MoveNodeToEndWithTransaction(MOZ_KnownLive(*aCurNode->AsContent()),
-                                       *previousEditableSibling);
+      nsresult rv = MoveNodeToEndWithTransaction(
+          MOZ_KnownLive(*aCurNode->AsContent()), *previousEditableSibling);
       if (NS_WARN_IF(Destroyed())) {
         return NS_ERROR_EDITOR_DESTROYED;
       }
@@ -5030,8 +5029,7 @@ nsresult HTMLEditor::IndentListChild(RefPtr<Element>* aCurList,
       *aCurList ? GetPriorHTMLSibling(aCurNode, SkipWhitespace::Yes) : nullptr;
   if (!*aCurList ||
       (previousEditableSibling && previousEditableSibling != *aCurList)) {
-    nsAtom* containerName =
-        aCurPoint.GetContainer()->NodeInfo()->NameAtom();
+    nsAtom* containerName = aCurPoint.GetContainer()->NodeInfo()->NameAtom();
     // Create a new nested list of correct type.
     SplitNodeResult splitNodeResult =
         MaybeSplitAncestorsForInsertWithTransaction(
@@ -5053,9 +5051,8 @@ nsresult HTMLEditor::IndentListChild(RefPtr<Element>* aCurList,
   }
   // tuck the node into the end of the active list
   RefPtr<nsINode> container = *aCurList;
-  nsresult rv =
-      MoveNodeToEndWithTransaction(MOZ_KnownLive(*aCurNode->AsContent()),
-                                   *container);
+  nsresult rv = MoveNodeToEndWithTransaction(
+      MOZ_KnownLive(*aCurNode->AsContent()), *container);
   if (NS_WARN_IF(Destroyed())) {
     return NS_ERROR_EDITOR_DESTROYED;
   }
@@ -7464,9 +7461,8 @@ void HTMLEditor::SelectBRElementIfCollapsedInEmptyBlock(
   bool isEmptyNode = false;
   IsEmptyNode(block, &isEmptyNode, true, false);
   if (isEmptyNode) {
-    aStartRef = {block, 0};
-    const CheckedInt<int32_t> offset{block->Length()};
-    aEndRef = {block, offset.value()};
+    aStartRef = {block, 0u};
+    aEndRef = {block, block->Length()};
   }
 }
 
@@ -8154,7 +8150,7 @@ nsresult HTMLEditor::HandleInsertParagraphInHeadingElement(Element& aHeader,
       sibling = GetNextHTMLSibling(aHeader.GetNextSibling());
     }
     if (!sibling || !sibling->IsHTMLElement(nsGkAtoms::br)) {
-      TopLevelEditSubActionDataRef().mCachedInlineStyles.Clear();
+      TopLevelEditSubActionDataRef().mCachedInlineStyles->Clear();
       mTypeInState->ClearAllProps();
 
       // Create a paragraph
@@ -8213,7 +8209,7 @@ nsresult HTMLEditor::HandleInsertParagraphInHeadingElement(Element& aHeader,
 
   // Put selection at front of righthand heading
   ErrorResult error;
-  SelectionRefPtr()->Collapse(RawRangeBoundary(&aHeader, 0), error);
+  SelectionRefPtr()->Collapse(RawRangeBoundary(&aHeader, 0u), error);
   if (NS_WARN_IF(Destroyed())) {
     error.SuppressException();
     return NS_ERROR_EDITOR_DESTROYED;
@@ -8556,7 +8552,7 @@ nsresult HTMLEditor::HandleInsertParagraphInListItemElement(Element& aListItem,
         return rv;
       }
       ErrorResult error;
-      SelectionRefPtr()->Collapse(RawRangeBoundary(&aListItem, 0), error);
+      SelectionRefPtr()->Collapse(RawRangeBoundary(&aListItem, 0u), error);
       if (NS_WARN_IF(Destroyed())) {
         error.SuppressException();
         return NS_ERROR_EDITOR_DESTROYED;
@@ -9368,7 +9364,7 @@ nsresult HTMLEditor::CacheInlineStyles(nsINode& aNode) {
   MOZ_ASSERT(IsTopLevelEditSubActionDataAvailable());
 
   nsresult rv = GetInlineStyles(
-      aNode, TopLevelEditSubActionDataRef().mCachedInlineStyles);
+      aNode, *TopLevelEditSubActionDataRef().mCachedInlineStyles);
   NS_WARNING_ASSERTION(NS_SUCCEEDED(rv), "GetInlineStyles() failed");
   return rv;
 }
@@ -9447,7 +9443,7 @@ nsresult HTMLEditor::ReapplyCachedStyles() {
   for (size_t i = 0; i < styleCacheArrayAtInsertionPoint.Length(); ++i) {
     StyleCache& styleCacheAtInsertionPoint = styleCacheArrayAtInsertionPoint[i];
     StyleCache& styleCacheBeforeEdit =
-        TopLevelEditSubActionDataRef().mCachedInlineStyles[i];
+        TopLevelEditSubActionDataRef().mCachedInlineStyles->ElementAt(i);
     if (styleCacheBeforeEdit.mPresent) {
       bool bFirst, bAny, bAll;
       bFirst = bAny = bAll = false;
@@ -10268,7 +10264,7 @@ nsresult HTMLEditor::EnsureSelectionInBodyOrDocumentElement() {
   // If we aren't in the <body> element, force the issue.
   if (!temp) {
     IgnoredErrorResult ignoredError;
-    SelectionRefPtr()->Collapse(RawRangeBoundary(bodyOrDocumentElement, 0),
+    SelectionRefPtr()->Collapse(RawRangeBoundary(bodyOrDocumentElement, 0u),
                                 ignoredError);
     if (NS_WARN_IF(Destroyed())) {
       return NS_ERROR_EDITOR_DESTROYED;
@@ -10295,7 +10291,7 @@ nsresult HTMLEditor::EnsureSelectionInBodyOrDocumentElement() {
   // If we aren't in the <body> element, force the issue.
   if (!temp) {
     IgnoredErrorResult ignoredError;
-    SelectionRefPtr()->Collapse(RawRangeBoundary(bodyOrDocumentElement, 0),
+    SelectionRefPtr()->Collapse(RawRangeBoundary(bodyOrDocumentElement, 0u),
                                 ignoredError);
     if (NS_WARN_IF(Destroyed())) {
       return NS_ERROR_EDITOR_DESTROYED;
@@ -10808,7 +10804,7 @@ nsresult HTMLEditor::MoveSelectedContentsToDivElementToMakeItAbsolutePosition(
     // Don't restore the selection
     restoreSelectionLater.Abort();
     ErrorResult error;
-    SelectionRefPtr()->Collapse(RawRangeBoundary(newDivElement, 0), error);
+    SelectionRefPtr()->Collapse(RawRangeBoundary(newDivElement, 0u), error);
     if (NS_WARN_IF(Destroyed())) {
       error.SuppressException();
       return NS_ERROR_EDITOR_DESTROYED;

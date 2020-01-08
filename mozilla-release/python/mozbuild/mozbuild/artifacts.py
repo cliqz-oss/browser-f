@@ -102,7 +102,6 @@ class ArtifactJob(object):
     candidate_trees = [
         'mozilla-central',
         'integration/autoland',
-        'integration/mozilla-inbound',
         'releases/mozilla-beta',
         'releases/mozilla-release',
     ]
@@ -330,6 +329,20 @@ class ArtifactJob(object):
             destpath = mozpath.join('host/bin', orig_basename)
             writer.add(destpath.encode('utf-8'), open(filename, 'rb'))
 
+    @staticmethod
+    def transform_job(job, tree):
+        # PGO builds are now known as "shippable" for all platforms but Android.
+        # For macOS and linux32 shippable builds are equivalent to opt builds and
+        # replace them on some trees. Additionally, we no longer produce win64
+        # opt builds on integration branches.
+        if job.endswith('-pgo') or job in ('macosx64-opt', 'linux-opt',
+                                           'win64-opt'):
+            tree += '.shippable'
+        if job.endswith('-pgo'):
+            job = job.replace('-pgo', '-opt')
+
+        return job, tree
+
 
 class AndroidArtifactJob(ArtifactJob):
     package_re = r'public/build/geckoview_example\.apk'
@@ -389,6 +402,10 @@ class AndroidArtifactJob(ArtifactJob):
                          '{destpath} to processed archive')
                 writer.add(destpath.encode('utf-8'),
                            gzip.GzipFile(fileobj=reader[filename].uncompressed_data))
+
+    @staticmethod
+    def transform_job(job, tree):
+        return job, tree
 
 
 class LinuxArtifactJob(ArtifactJob):
@@ -460,6 +477,7 @@ class MacArtifactJob(ArtifactJob):
         'libmozavutil.dylib',
         'libmozavcodec.dylib',
         'libsoftokn3.dylib',
+        'minidump-analyzer',
         'pingsender',
         'plugin-container.app/Contents/MacOS/plugin-container',
         'updater.app/Contents/MacOS/org.mozilla.updater',
@@ -504,9 +522,6 @@ class MacArtifactJob(ArtifactJob):
 
             # These get copied into dist/bin with the path, so "root/a/b/c" -> "dist/bin/a/b/c".
             paths_keep_path = [
-                ('Contents/MacOS', [
-                    'crashreporter.app/Contents/MacOS/minidump-analyzer',
-                ]),
                 ('Contents/Resources', [
                     'browser/components/libbrowsercomps.dylib',
                     'dependentlibs.list',
@@ -615,6 +630,10 @@ class ThunderbirdMixin(object):
         'comm-central',
     ]
     try_tree = 'try-comm-central'
+
+    @staticmethod
+    def transform_job(job, tree):
+        return job, tree
 
 
 class LinuxThunderbirdArtifactJob(ThunderbirdMixin, LinuxArtifactJob):
@@ -794,20 +813,11 @@ class TaskCache(CacheManager):
     @cachedmethod(operator.attrgetter('_cache'))
     def artifacts(self, tree, job, artifact_job_class, rev):
         # Grab the second part of the repo name, which is generally how things
-        # are indexed. Eg: 'integration/mozilla-inbound' is indexed as
-        # 'mozilla-inbound'
+        # are indexed. Eg: 'integration/autoland' is indexed as
+        # 'autoland'
         tree = tree.split('/')[1] if '/' in tree else tree
 
-        # PGO builds are now known as "shippable" for all platforms but Android.
-        # For macOS and linux32 shippable builds are equivalent to opt builds and
-        # replace them on some trees. Additionally, we no longer produce win64
-        # opt builds on integration branches.
-        if not job.startswith('android-'):
-            if job.endswith('-pgo') or job in ('macosx64-opt', 'linux-opt',
-                                               'win64-opt'):
-                tree += '.shippable'
-            if job.endswith('-pgo'):
-                job = job.replace('-pgo', '-opt')
+        job, tree = artifact_job_class.transform_job(job, tree)
 
         namespace = '{trust_domain}.v2.{tree}.revision.{rev}.{product}.{job}'.format(
             trust_domain=artifact_job_class.trust_domain,

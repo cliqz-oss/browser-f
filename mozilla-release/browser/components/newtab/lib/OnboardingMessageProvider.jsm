@@ -14,6 +14,7 @@ ChromeUtils.defineModuleGetter(
   "resource://gre/modules/addons/AddonRepository.jsm"
 );
 const { Services } = ChromeUtils.import("resource://gre/modules/Services.jsm");
+const FX_MONITOR_CLIENT_ID = "802d56ef2a9af9fa";
 
 const L10N = new Localization([
   "branding/brand.ftl",
@@ -266,7 +267,8 @@ const ONBOARDING_MESSAGES = () => [
         },
       },
     },
-    targeting: "trailheadTriplet == 'supercharge'",
+    targeting:
+      "trailheadTriplet in ['supercharge', 'static'] || ( 'dynamic' in trailheadTriplet && usesFirefoxSync == false)",
     trigger: { id: "showOnboarding" },
   },
   {
@@ -286,14 +288,16 @@ const ONBOARDING_MESSAGES = () => [
         },
       },
     },
-    targeting: "trailheadTriplet in ['payoff', 'supercharge']",
+    // Use service oauth client_id to identify 'Firefox Monitor' service attached to Firefox Account
+    // https://docs.telemetry.mozilla.org/datasets/fxa_metrics/attribution.html#service-attribution
+    targeting: `trailheadTriplet in ['supercharge', 'static'] || ('dynamic' in trailheadTriplet && !("${FX_MONITOR_CLIENT_ID}" in attachedFxAOAuthClients|mapToProperty('id')))`,
     trigger: { id: "showOnboarding" },
   },
   {
     id: "TRAILHEAD_CARD_4",
     template: "onboarding",
     bundled: 3,
-    order: 1,
+    order: 3,
     content: {
       title: { string_id: "onboarding-browse-privately-title" },
       text: { string_id: "onboarding-browse-privately-text" },
@@ -303,7 +307,7 @@ const ONBOARDING_MESSAGES = () => [
         action: { type: "OPEN_PRIVATE_BROWSER_WINDOW" },
       },
     },
-    targeting: "trailheadTriplet == 'privacy'",
+    targeting: "'dynamic' in trailheadTriplet",
     trigger: { id: "showOnboarding" },
   },
   {
@@ -330,7 +334,7 @@ const ONBOARDING_MESSAGES = () => [
     id: "TRAILHEAD_CARD_6",
     template: "onboarding",
     bundled: 3,
-    order: 3,
+    order: 6,
     content: {
       title: { string_id: "onboarding-mobile-phone-title" },
       text: { string_id: "onboarding-mobile-phone-text" },
@@ -346,17 +350,18 @@ const ONBOARDING_MESSAGES = () => [
         },
       },
     },
-    targeting: "trailheadTriplet in ['supercharge', 'multidevice']",
+    targeting:
+      "trailheadTriplet in ['supercharge', 'static'] || ('dynamic' in trailheadTriplet && sync.mobileDevices < 1)",
     trigger: { id: "showOnboarding" },
   },
   {
     id: "TRAILHEAD_CARD_7",
     template: "onboarding",
     bundled: 3,
-    order: 3,
+    order: 4,
     content: {
       title: { string_id: "onboarding-send-tabs-title" },
-      text: { string_id: "onboarding-send-tabs-text" },
+      text: { string_id: "onboarding-send-tabs-text2" },
       icon: "sendtab",
       primary_button: {
         label: { string_id: "onboarding-send-tabs-button" },
@@ -370,7 +375,7 @@ const ONBOARDING_MESSAGES = () => [
         },
       },
     },
-    targeting: "trailheadTriplet == 'multidevice'",
+    targeting: "'dynamic' in trailheadTriplet",
     trigger: { id: "showOnboarding" },
   },
   {
@@ -400,20 +405,20 @@ const ONBOARDING_MESSAGES = () => [
     id: "TRAILHEAD_CARD_9",
     template: "onboarding",
     bundled: 3,
-    order: 3,
+    order: 7,
     content: {
-      title: { string_id: "onboarding-lockwise-passwords-title" },
-      text: { string_id: "onboarding-lockwise-passwords-text2" },
+      title: { string_id: "onboarding-lockwise-strong-passwords-title" },
+      text: { string_id: "onboarding-lockwise-strong-passwords-text" },
       icon: "lockwise",
       primary_button: {
-        label: { string_id: "onboarding-lockwise-passwords-button2" },
+        label: { string_id: "onboarding-lockwise-strong-passwords-button" },
         action: {
-          type: "OPEN_URL",
-          data: { args: "https://lockwise.firefox.com/", where: "tabshifted" },
+          type: "OPEN_ABOUT_PAGE",
+          data: { args: "logins", where: "tabshifted" },
         },
       },
     },
-    targeting: "trailheadTriplet == 'privacy'",
+    targeting: "'dynamic' in trailheadTriplet",
     trigger: { id: "showOnboarding" },
   },
   {
@@ -438,6 +443,23 @@ const ONBOARDING_MESSAGES = () => [
       },
     },
     targeting: "trailheadTriplet == 'payoff'",
+    trigger: { id: "showOnboarding" },
+  },
+  {
+    id: "TRAILHEAD_CARD_11",
+    template: "onboarding",
+    bundled: 3,
+    order: 0,
+    content: {
+      title: { string_id: "onboarding-import-browser-settings-title" },
+      text: { string_id: "onboarding-import-browser-settings-text" },
+      icon: "import",
+      primary_button: {
+        label: { string_id: "onboarding-import-browser-settings-button" },
+        action: { type: "SHOW_MIGRATION_WIZARD" },
+      },
+    },
+    targeting: "trailheadTriplet == 'dynamic_chrome'",
     trigger: { id: "showOnboarding" },
   },
   {

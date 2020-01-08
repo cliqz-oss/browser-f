@@ -27,7 +27,182 @@ typedef OfflineResourceList ApplicationCache;
 
 // http://www.whatwg.org/specs/web-apps/current-work/
 [Global, LegacyUnenumerableNamedProperties, NeedResolve,
- Exposed=Window]
+ Exposed=Window,
+ InstrumentedProps=(AbsoluteOrientationSensor,
+                    Accelerometer,
+                    ApplicationCache,
+                    ApplicationCacheErrorEvent,
+                    Atomics,
+                    AudioParamMap,
+                    AudioWorklet,
+                    AudioWorkletNode,
+                    BackgroundFetchManager,
+                    BackgroundFetchRecord,
+                    BackgroundFetchRegistration,
+                    BeforeInstallPromptEvent,
+                    Bluetooth,
+                    BluetoothCharacteristicProperties,
+                    BluetoothDevice,
+                    BluetoothRemoteGATTCharacteristic,
+                    BluetoothRemoteGATTDescriptor,
+                    BluetoothRemoteGATTServer,
+                    BluetoothRemoteGATTService,
+                    BluetoothUUID,
+                    CanvasCaptureMediaStreamTrack,
+                    chrome,
+                    clientInformation,
+                    ClipboardItem,
+                    CSSImageValue,
+                    CSSKeywordValue,
+                    CSSMathInvert,
+                    CSSMathMax,
+                    CSSMathMin,
+                    CSSMathNegate,
+                    CSSMathProduct,
+                    CSSMathSum,
+                    CSSMathValue,
+                    CSSMatrixComponent,
+                    CSSNumericArray,
+                    CSSNumericValue,
+                    CSSPerspective,
+                    CSSPositionValue,
+                    CSSRotate,
+                    CSSScale,
+                    CSSSkew,
+                    CSSSkewX,
+                    CSSSkewY,
+                    CSSStyleValue,
+                    CSSTransformComponent,
+                    CSSTransformValue,
+                    CSSTranslate,
+                    CSSUnitValue,
+                    CSSUnparsedValue,
+                    CSSVariableReferenceValue,
+                    defaultStatus,
+                    // Unfortunately, our telemetry histogram name generator
+                    // (the one that generates TelemetryHistogramEnums.h) can't
+                    // handle two DOM methods with names that only differ in
+                    // case, because it forces everything to uppercase.
+                    //defaultstatus,
+                    DeviceMotionEventAcceleration,
+                    DeviceMotionEventRotationRate,
+                    DOMError,
+                    EnterPictureInPictureEvent,
+                    External,
+                    FederatedCredential,
+                    Gyroscope,
+                    HTMLContentElement,
+                    HTMLDialogElement,
+                    HTMLShadowElement,
+                    ImageCapture,
+                    InputDeviceCapabilities,
+                    InputDeviceInfo,
+                    Keyboard,
+                    KeyboardLayoutMap,
+                    LinearAccelerationSensor,
+                    Lock,
+                    LockManager,
+                    MediaMetadata,
+                    MediaSession,
+                    MediaSettingsRange,
+                    MIDIAccess,
+                    MIDIConnectionEvent,
+                    MIDIInput,
+                    MIDIInputMap,
+                    MIDIMessageEvent,
+                    MIDIOutput,
+                    MIDIOutputMap,
+                    MIDIPort,
+                    NavigationPreloadManager,
+                    NetworkInformation,
+                    offscreenBuffering,
+                    OffscreenCanvas,
+                    OffscreenCanvasRenderingContext2D,
+                    onappinstalled,
+                    onbeforeinstallprompt,
+                    oncancel,
+                    ondeviceorientationabsolute,
+                    onmousewheel,
+                    onsearch,
+                    onselectionchange,
+                    openDatabase,
+                    OrientationSensor,
+                    OverconstrainedError,
+                    PasswordCredential,
+                    PaymentAddress,
+                    PaymentInstruments,
+                    PaymentManager,
+                    PaymentMethodChangeEvent,
+                    PaymentRequest,
+                    PaymentRequestUpdateEvent,
+                    PaymentResponse,
+                    PerformanceEventTiming,
+                    PerformanceLongTaskTiming,
+                    PerformancePaintTiming,
+                    PhotoCapabilities,
+                    PictureInPictureWindow,
+                    Presentation,
+                    PresentationAvailability,
+                    PresentationConnection,
+                    PresentationConnectionAvailableEvent,
+                    PresentationConnectionCloseEvent,
+                    PresentationConnectionList,
+                    PresentationReceiver,
+                    PresentationRequest,
+                    RelativeOrientationSensor,
+                    RemotePlayback,
+                    ReportingObserver,
+                    RTCDtlsTransport,
+                    RTCError,
+                    RTCErrorEvent,
+                    RTCIceTransport,
+                    RTCSctpTransport,
+                    Sensor,
+                    SensorErrorEvent,
+                    _SharedArrayBuffer,
+                    styleMedia,
+                    StylePropertyMap,
+                    StylePropertyMapReadOnly,
+                    SVGDiscardElement,
+                    SyncManager,
+                    TaskAttributionTiming,
+                    TextDecoderStream,
+                    TextEncoderStream,
+                    TextEvent,
+                    Touch,
+                    TouchEvent,
+                    TouchList,
+                    TransformStream,
+                    USB,
+                    USBAlternateInterface,
+                    USBConfiguration,
+                    USBConnectionEvent,
+                    USBDevice,
+                    USBEndpoint,
+                    USBInterface,
+                    USBInTransferResult,
+                    USBIsochronousInTransferPacket,
+                    USBIsochronousInTransferResult,
+                    USBIsochronousOutTransferPacket,
+                    USBIsochronousOutTransferResult,
+                    USBOutTransferResult,
+                    UserActivation,
+                    visualViewport,
+                    webkitCancelAnimationFrame,
+                    webkitMediaStream,
+                    WebKitMutationObserver,
+                    webkitRequestAnimationFrame,
+                    webkitRequestFileSystem,
+                    webkitResolveLocalFileSystemURL,
+                    webkitRTCPeerConnection,
+                    webkitSpeechGrammar,
+                    webkitSpeechGrammarList,
+                    webkitSpeechRecognition,
+                    webkitSpeechRecognitionError,
+                    webkitSpeechRecognitionEvent,
+                    webkitStorageInfo,
+                    Worklet,
+                    WritableStream)]
 /*sealed*/ interface Window : EventTarget {
   // the current browsing context
   [Unforgeable, Constant, StoreInSlot,
@@ -72,7 +247,7 @@ typedef OfflineResourceList ApplicationCache;
 #ifdef HAVE_SIDEBAR
   [Replaceable, Throws] readonly attribute External external;
 #endif
-  [Throws, Pref="browser.cache.offline.enable", Func="nsGlobalWindowInner::OfflineCacheAllowedForContext"] readonly attribute ApplicationCache applicationCache;
+  [Throws, SecureContext, Pref="browser.cache.offline.enable"] readonly attribute ApplicationCache applicationCache;
 
   // user prompts
   [Throws, NeedsSubjectPrincipal] void alert();
@@ -303,8 +478,10 @@ partial interface Window {
   /**
    * Returns the number of times this document for this window has
    * been painted to the screen.
+   *
+   * If you need this for tests use nsIDOMWindowUtils.paintCount instead.
    */
-  [Throws] readonly attribute unsigned long long mozPaintCount;
+  [Throws, Pref="dom.mozPaintCount.enabled"] readonly attribute unsigned long long mozPaintCount;
 
            attribute EventHandler ondevicemotion;
            attribute EventHandler ondeviceorientation;
@@ -323,7 +500,7 @@ partial interface Window {
 
   /**
    * This is the scriptable version of
-   * nsIDOMWindow::openDialog() that takes 3 optional
+   * nsPIDOMWindow::OpenDialog() that takes 3 optional
    * arguments, plus any additional arguments are passed on as
    * arguments on the dialog's window object (window.arguments).
    */
@@ -372,7 +549,7 @@ partial interface Window {
   readonly attribute boolean hasOpenerForInitialContentBrowser;
 
   [ChromeOnly]
-  WindowGlobalChild getWindowGlobalChild();
+  WindowGlobalChild? getWindowGlobalChild();
 };
 
 Window includes TouchEventHandlers;

@@ -18,7 +18,6 @@
 #include "mozilla/SMILValue.h"
 #include "mozAutoDocUpdate.h"
 #include "nsIURI.h"
-#include "nsNodeUtils.h"
 #include "nsWrapperCacheInlines.h"
 #include "nsIFrame.h"
 #include "ActiveLayerTracker.h"
@@ -80,9 +79,11 @@ nsresult nsDOMCSSAttributeDeclaration::SetCSSDeclaration(
   MOZ_ASSERT_IF(aClosureData, !aClosureData->mClosure);
 
   aDecl->SetDirty();
-  return mIsSMILOverride
-             ? mElement->SetSMILOverrideStyleDeclaration(aDecl)
-             : mElement->SetInlineStyleDeclaration(*aDecl, *aClosureData);
+  if (mIsSMILOverride) {
+    mElement->SetSMILOverrideStyleDeclaration(*aDecl);
+    return NS_OK;
+  }
+  return mElement->SetInlineStyleDeclaration(*aDecl, *aClosureData);
 }
 
 Document* nsDOMCSSAttributeDeclaration::DocToUpdate() {
@@ -189,7 +190,10 @@ nsresult nsDOMCSSAttributeDeclaration::SetPropertyValue(
   // the margin properties, see bug 1266287.
   if (aPropID == eCSSProperty_opacity || aPropID == eCSSProperty_transform ||
       aPropID == eCSSProperty_translate || aPropID == eCSSProperty_rotate ||
-      aPropID == eCSSProperty_scale || aPropID == eCSSProperty_left ||
+      aPropID == eCSSProperty_scale || aPropID == eCSSProperty_offset_path ||
+      aPropID == eCSSProperty_offset_distance ||
+      aPropID == eCSSProperty_offset_rotate ||
+      aPropID == eCSSProperty_offset_anchor || aPropID == eCSSProperty_left ||
       aPropID == eCSSProperty_top || aPropID == eCSSProperty_right ||
       aPropID == eCSSProperty_bottom ||
       aPropID == eCSSProperty_background_position_x ||

@@ -23,6 +23,7 @@ import { syncBreakpoint } from "../breakpoints";
 import { loadSourceText } from "./loadSourceText";
 import { togglePrettyPrint } from "./prettyPrint";
 import { selectLocation, setBreakableLines } from "../sources";
+
 import {
   getRawSourceURL,
   isPrettyURL,
@@ -47,6 +48,7 @@ import { validateNavigateContext, ContextError } from "../../utils/context";
 
 import type {
   Source,
+  SourceActorId,
   Context,
   OriginalSourceData,
   GeneratedSourceData,
@@ -380,8 +382,8 @@ export function newGeneratedSources(sourceInfo: Array<GeneratedSourceData>) {
       // We would like to sync breakpoints after we are done
       // loading source maps as sometimes generated and original
       // files share the same paths.
-      for (const source of newSources) {
-        dispatch(checkPendingBreakpoints(cx, source.id));
+      for (const { source } of newSourceActors) {
+        dispatch(checkPendingBreakpoints(cx, source));
       }
     })();
 
@@ -404,5 +406,17 @@ function checkNewSources(cx, sources: Source[]) {
     dispatch(restoreBlackBoxedSources(cx, sources));
 
     return sources;
+  };
+}
+
+export function ensureSourceActor(thread: string, sourceActor: SourceActorId) {
+  return async function({ getState, client }: ThunkArgs) {
+    await sourceQueue.flush();
+    if (hasSourceActor(getState(), sourceActor)) {
+      return Promise.resolve();
+    }
+
+    await client.waitForSourceActor(thread, sourceActor);
+    return sourceQueue.flush();
   };
 }

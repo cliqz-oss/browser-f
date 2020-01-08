@@ -82,11 +82,10 @@ const Types = (exports.__TypesForTests = [
     spec: "devtools/shared/specs/environment",
     front: "devtools/shared/fronts/environment",
   },
-  /* frame has old fashion client and no front */
   {
     types: ["frame"],
     spec: "devtools/shared/specs/frame",
-    front: null,
+    front: "devtools/shared/fronts/frame",
   },
   {
     types: ["framerate"],
@@ -105,7 +104,7 @@ const Types = (exports.__TypesForTests = [
     front: "devtools/shared/fronts/highlighters",
   },
   {
-    types: ["domnodelist", "domwalker", "inspector"],
+    types: ["inspector"],
     spec: "devtools/shared/specs/inspector",
     front: "devtools/shared/fronts/inspector",
   },
@@ -267,6 +266,11 @@ const Types = (exports.__TypesForTests = [
     types: ["thread"],
     spec: "devtools/shared/specs/thread",
     front: "devtools/shared/fronts/thread",
+  },
+  {
+    types: ["domwalker"],
+    spec: "devtools/shared/specs/walker",
+    front: "devtools/shared/fronts/walker",
   },
   {
     types: ["console"],

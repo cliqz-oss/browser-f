@@ -250,7 +250,7 @@ class EventStateManager : public nsSupportsWeakReference, public nsIObserver {
    * Called when we reconstruct the BrowserParent and need to
    * recompute state on the new object.
    */
-  void RecomputeMouseEnterStateForRemoteFrame(Element& aElement);
+  void RecomputeMouseEnterStateForRemoteFrame(dom::Element& aElement);
 
   nsPresContext* GetPresContext() { return mPresContext; }
 
@@ -1079,8 +1079,8 @@ class EventStateManager : public nsSupportsWeakReference, public nsIObserver {
   bool DoDefaultDragStart(nsPresContext* aPresContext,
                           WidgetDragEvent* aDragEvent,
                           dom::DataTransfer* aDataTransfer,
-                          bool aAllowEmptyDataTransfer,
-                          nsIContent* aDragTarget, dom::Selection* aSelection,
+                          bool aAllowEmptyDataTransfer, nsIContent* aDragTarget,
+                          dom::Selection* aSelection,
                           dom::RemoteDragStartData* aDragStartData,
                           nsIPrincipal* aPrincipal,
                           nsIContentSecurityPolicy* aCsp);

@@ -1,6 +1,8 @@
 "use strict";
 
 XPCOMUtils.defineLazyModuleGetters(this, {
+  PlacesUtils: "resource://gre/modules/PlacesUtils.jsm",
+  PlacesTestUtils: "resource://testing-common/PlacesTestUtils.jsm",
   UrlbarProviderExtension: "resource:///modules/UrlbarProviderExtension.jsm",
   UrlbarProvidersManager: "resource:///modules/UrlbarProvidersManager.jsm",
   UrlbarTestUtils: "resource://testing-common/UrlbarTestUtils.jsm",
@@ -82,7 +84,6 @@ add_task(async function tip_onResultPicked_mainButton_noURL_enter() {
     waitForFocus,
     value: "test",
   });
-  EventUtils.synthesizeKey("KEY_ArrowDown");
   EventUtils.synthesizeKey("KEY_Enter");
   await ext.awaitMessage("onResultPicked received");
   await ext.unload();
@@ -121,7 +122,6 @@ add_task(async function tip_onResultPicked_mainButton_url_enter() {
     ext.onMessage("onResultPicked received", () => {
       Assert.ok(false, "onResultPicked should not be called");
     });
-    EventUtils.synthesizeKey("KEY_ArrowDown");
     EventUtils.synthesizeKey("KEY_Enter");
     await loadedPromise;
     Assert.equal(gBrowser.currentURI.spec, "http://example.com/");
@@ -171,7 +171,7 @@ add_task(async function tip_onResultPicked_helpButton_url_enter() {
     ext.onMessage("onResultPicked received", () => {
       Assert.ok(false, "onResultPicked should not be called");
     });
-    EventUtils.synthesizeKey("KEY_ArrowDown", { repeat: 2 });
+    EventUtils.synthesizeKey("KEY_ArrowDown");
     EventUtils.synthesizeKey("KEY_Enter");
     await loadedPromise;
     Assert.equal(gBrowser.currentURI.spec, "http://example.com/");
@@ -280,4 +280,286 @@ add_task(async function searchEmpty() {
 
   await UrlbarTestUtils.promisePopupClose(window);
   await ext.unload();
+});
+
+// Tests the search function with `focus: false`.
+add_task(async function searchFocusFalse() {
+  await PlacesUtils.history.clear();
+  await PlacesUtils.bookmarks.eraseEverything();
+  await PlacesTestUtils.addVisits([
+    "http://example.com/test1",
+    "http://example.com/test2",
+  ]);
+
+  gURLBar.blur();
+
+  let ext = ExtensionTestUtils.loadExtension({
+    manifest: {
+      permissions: ["urlbar"],
+    },
+    isPrivileged: true,
+    background: () => {
+      browser.urlbar.search("test", { focus: false });
+    },
+  });
+  await ext.startup();
+
+  let context = await UrlbarTestUtils.promiseSearchComplete(window);
+  Assert.equal(gURLBar.value, "test");
+  Assert.equal(context.searchString, "test");
+  Assert.ok(!gURLBar.focused);
+  Assert.ok(!gURLBar.hasAttribute("focused"));
+
+  let resultCount = UrlbarTestUtils.getResultCount(window);
+  Assert.equal(resultCount, 3);
+
+  let result = await UrlbarTestUtils.getDetailsOfResultAt(window, 0);
+  Assert.equal(result.type, UrlbarUtils.RESULT_TYPE.SEARCH);
+  Assert.equal(result.title, "test");
+
+  result = await UrlbarTestUtils.getDetailsOfResultAt(window, 1);
+  Assert.equal(result.type, UrlbarUtils.RESULT_TYPE.URL);
+  Assert.equal(result.url, "http://example.com/test2");
+
+  result = await UrlbarTestUtils.getDetailsOfResultAt(window, 2);
+  Assert.equal(result.type, UrlbarUtils.RESULT_TYPE.URL);
+  Assert.equal(result.url, "http://example.com/test1");
+
+  await UrlbarTestUtils.promisePopupClose(window);
+  await ext.unload();
+});
+
+// Tests the search function with `focus: false` and an empty string.
+add_task(async function searchFocusFalseEmpty() {
+  await PlacesUtils.history.clear();
+  await PlacesUtils.bookmarks.eraseEverything();
+  await PlacesTestUtils.addVisits([
+    "http://example.com/test1",
+    "http://example.com/test2",
+  ]);
+
+  gURLBar.blur();
+
+  let ext = ExtensionTestUtils.loadExtension({
+    manifest: {
+      permissions: ["urlbar"],
+    },
+    isPrivileged: true,
+    background: () => {
+      browser.urlbar.search("", { focus: false });
+    },
+  });
+  await ext.startup();
+
+  let context = await UrlbarTestUtils.promiseSearchComplete(window);
+  Assert.equal(gURLBar.value, "");
+  Assert.equal(context.searchString, "");
+  Assert.ok(!gURLBar.focused);
+  Assert.ok(!gURLBar.hasAttribute("focused"));
+
+  let resultCount = UrlbarTestUtils.getResultCount(window);
+  Assert.equal(resultCount, 2);
+
+  let result = await UrlbarTestUtils.getDetailsOfResultAt(window, 0);
+  Assert.equal(result.type, UrlbarUtils.RESULT_TYPE.URL);
+  Assert.equal(result.url, "http://example.com/test2");
+
+  result = await UrlbarTestUtils.getDetailsOfResultAt(window, 1);
+  Assert.equal(result.type, UrlbarUtils.RESULT_TYPE.URL);
+  Assert.equal(result.url, "http://example.com/test1");
+
+  await UrlbarTestUtils.promisePopupClose(window);
+  await ext.unload();
+});
+
+// Tests the focus function with select = false.
+add_task(async function focusSelectFalse() {
+  gURLBar.blur();
+  gURLBar.value = "test";
+  Assert.ok(!gURLBar.focused);
+  Assert.ok(!gURLBar.hasAttribute("focused"));
+
+  let ext = ExtensionTestUtils.loadExtension({
+    manifest: {
+      permissions: ["urlbar"],
+    },
+    isPrivileged: true,
+    background: () => {
+      browser.urlbar.focus();
+    },
+  });
+  await ext.startup();
+
+  await TestUtils.waitForCondition(() => gURLBar.focused);
+  Assert.ok(gURLBar.focused);
+  Assert.ok(gURLBar.hasAttribute("focused"));
+  Assert.equal(gURLBar.selectionStart, gURLBar.selectionEnd);
+
+  await ext.unload();
+});
+
+// Tests the focus function with select = true.
+add_task(async function focusSelectTrue() {
+  gURLBar.blur();
+  gURLBar.value = "test";
+  Assert.ok(!gURLBar.focused);
+  Assert.ok(!gURLBar.hasAttribute("focused"));
+
+  let ext = ExtensionTestUtils.loadExtension({
+    manifest: {
+      permissions: ["urlbar"],
+    },
+    isPrivileged: true,
+    background: () => {
+      browser.urlbar.focus(true);
+    },
+  });
+  await ext.startup();
+
+  await TestUtils.waitForCondition(() => gURLBar.focused);
+  Assert.ok(gURLBar.focused);
+  Assert.ok(gURLBar.hasAttribute("focused"));
+  Assert.equal(gURLBar.selectionStart, 0);
+  Assert.equal(gURLBar.selectionEnd, "test".length);
+
+  await ext.unload();
+});
+
+// Tests the closeView function.
+add_task(async function closeView() {
+  await UrlbarTestUtils.promiseAutocompleteResultPopup({
+    window,
+    waitForFocus,
+    value: "test",
+  });
+
+  let ext = ExtensionTestUtils.loadExtension({
+    manifest: {
+      permissions: ["urlbar"],
+    },
+    isPrivileged: true,
+    background: () => {
+      browser.urlbar.closeView();
+    },
+  });
+  await UrlbarTestUtils.promisePopupClose(window, () => ext.startup());
+  await ext.unload();
+});
+
+// Tests the onEngagement events.
+add_task(async function onEngagement() {
+  // Enable engagement telemetry.
+  Services.prefs.setBoolPref("browser.urlbar.eventTelemetry.enabled", true);
+
+  let ext = ExtensionTestUtils.loadExtension({
+    manifest: {
+      permissions: ["urlbar"],
+    },
+    isPrivileged: true,
+    background() {
+      browser.urlbar.onEngagement.addListener(state => {
+        browser.test.sendMessage("onEngagement", state);
+      }, "test");
+      browser.urlbar.onBehaviorRequested.addListener(query => {
+        return "restricting";
+      }, "test");
+      browser.urlbar.onResultsRequested.addListener(query => {
+        return [
+          {
+            type: "tip",
+            source: "local",
+            heuristic: true,
+            payload: {
+              text: "Test",
+              buttonText: "OK",
+            },
+          },
+        ];
+      }, "test");
+      browser.urlbar.search("");
+    },
+  });
+  await ext.startup();
+
+  // Start an engagement.
+  let messagePromise = ext.awaitMessage("onEngagement");
+  await UrlbarTestUtils.promiseAutocompleteResultPopup({
+    window,
+    waitForFocus,
+    value: "test",
+    fireInputEvent: true,
+  });
+  let state = await messagePromise;
+  Assert.equal(state, "start");
+
+  // Abandon the engagement.
+  messagePromise = ext.awaitMessage("onEngagement");
+  gURLBar.blur();
+  state = await messagePromise;
+  Assert.equal(state, "abandonment");
+
+  // Start an engagement.
+  messagePromise = ext.awaitMessage("onEngagement");
+  await UrlbarTestUtils.promiseAutocompleteResultPopup({
+    window,
+    waitForFocus,
+    value: "test",
+    fireInputEvent: true,
+  });
+  state = await messagePromise;
+  Assert.equal(state, "start");
+
+  // End the engagement by pressing enter on the extension's tip result.
+  messagePromise = ext.awaitMessage("onEngagement");
+  EventUtils.synthesizeKey("KEY_Enter");
+  state = await messagePromise;
+  Assert.equal(state, "engagement");
+
+  // We'll open about:preferences next.  Since it won't open in a new tab if the
+  // current tab is blank, open a new tab now.
+  await BrowserTestUtils.withNewTab("about:blank", async () => {
+    // Start an engagement.
+    messagePromise = ext.awaitMessage("onEngagement");
+    await UrlbarTestUtils.promiseAutocompleteResultPopup({
+      window,
+      waitForFocus,
+      value: "test",
+      fireInputEvent: true,
+    });
+    state = await messagePromise;
+    Assert.equal(state, "start");
+
+    // Press up and enter to pick the search settings button.
+    messagePromise = ext.awaitMessage("onEngagement");
+    EventUtils.synthesizeKey("KEY_ArrowUp");
+    EventUtils.synthesizeKey("KEY_Enter");
+    await BrowserTestUtils.browserLoaded(
+      gBrowser.selectedBrowser,
+      false,
+      "about:preferences#search"
+    );
+    state = await messagePromise;
+    Assert.equal(state, "discard");
+  });
+
+  // Start a final engagement to make sure the previous discard didn't mess
+  // anything up.
+  messagePromise = ext.awaitMessage("onEngagement");
+  await UrlbarTestUtils.promiseAutocompleteResultPopup({
+    window,
+    waitForFocus,
+    value: "test",
+    fireInputEvent: true,
+  });
+  state = await messagePromise;
+  Assert.equal(state, "start");
+
+  // End the engagement by pressing enter on the extension's tip result.
+  messagePromise = ext.awaitMessage("onEngagement");
+  EventUtils.synthesizeKey("KEY_Enter");
+  state = await messagePromise;
+  Assert.equal(state, "engagement");
+
+  await ext.unload();
+  Services.prefs.clearUserPref("browser.urlbar.eventTelemetry.enabled");
 });

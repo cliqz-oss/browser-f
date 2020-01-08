@@ -5,12 +5,13 @@
 
 #include "AccessibleWrap.h"
 
+#include "JavaBuiltins.h"
 #include "Accessible-inl.h"
+#include "HyperTextAccessible-inl.h"
 #include "AccEvent.h"
 #include "AndroidInputType.h"
 #include "DocAccessibleWrap.h"
 #include "IDSet.h"
-#include "JavaBuiltins.h"
 #include "SessionAccessibility.h"
 #include "TraversalRule.h"
 #include "Pivot.h"
@@ -27,6 +28,13 @@
 #include "mozilla/jni/GeckoBundleUtils.h"
 
 #define ROLE_STRINGS_URL "chrome://global/locale/AccessFu.properties"
+
+// icu TRUE conflicting with java::sdk::Boolean::TRUE()
+// https://searchfox.org/mozilla-central/rev/ce02064d8afc8673cef83c92896ee873bd35e7ae/intl/icu/source/common/unicode/umachine.h#265
+// https://searchfox.org/mozilla-central/source/__GENERATED__/widget/android/bindings/JavaBuiltins.h#78
+#ifdef TRUE
+#  undef TRUE
+#endif
 
 using namespace mozilla::a11y;
 
@@ -648,6 +656,12 @@ mozilla::java::GeckoBundle::LocalRef AccessibleWrap::ToBundle(
       java::sdk::Integer::ValueOf(parent ? parent->VirtualViewID() : 0));
 
   role role = WrapperRole();
+  if (role == roles::LINK && !(aState & states::LINKED)) {
+    // A link without the linked state (<a> with no href) shouldn't be presented
+    // as a link.
+    role = roles::TEXT;
+  }
+
   uint32_t flags = GetFlags(role, aState, aActionCount);
   GECKOBUNDLE_PUT(nodeInfo, "flags", java::sdk::Integer::ValueOf(flags));
   GECKOBUNDLE_PUT(nodeInfo, "className",
@@ -848,7 +862,7 @@ bool AccessibleWrap::HandleLiveRegionEvent(AccEvent* aEvent) {
     Accessible* atomicAncestor = nullptr;
     for (Accessible* parent = announcementTarget; parent;
          parent = parent->Parent()) {
-      Element* element = parent->Elm();
+      dom::Element* element = parent->Elm();
       if (element &&
           element->AttrValueIs(kNameSpaceID_None, nsGkAtoms::aria_atomic,
                                nsGkAtoms::_true, eCaseMatters)) {

@@ -30,6 +30,7 @@ import type {
   ThreadContext,
   Previews,
   SourceLocation,
+  ExecutionPoint,
 } from "../types";
 
 export type Command =
@@ -46,6 +47,10 @@ type ThreadPauseState = {
   why: ?Why,
   isWaitingOnBreak: boolean,
   frames: ?(any[]),
+  framesLoading: boolean,
+  replayFramePositions: {
+    [FrameId]: Array<ExecutionPoint>,
+  },
   frameScopes: {
     generated: {
       [FrameId]: {
@@ -121,6 +126,7 @@ function createPauseState(thread: ThreadId = "UnknownThread") {
 
 const resumedPauseState = {
   frames: null,
+  framesLoading: false,
   frameScopes: {
     generated: {},
     original: {},
@@ -187,7 +193,7 @@ function update(
     }
 
     case "PAUSED": {
-      const { thread, selectedFrameId, frames, why } = action;
+      const { thread, frame, why } = action;
 
       state = {
         ...state,
@@ -201,11 +207,17 @@ function update(
       };
       return updateThreadState({
         isWaitingOnBreak: false,
-        selectedFrameId,
-        frames,
+        selectedFrameId: frame ? frame.id : undefined,
+        frames: frame ? [frame] : undefined,
+        framesLoading: true,
         frameScopes: { ...resumedPauseState.frameScopes },
         why,
       });
+    }
+
+    case "FETCHED_FRAMES": {
+      const { frames } = action;
+      return updateThreadState({ frames, framesLoading: false });
     }
 
     case "PREVIEW_PAUSED_LOCATION": {
@@ -266,6 +278,14 @@ function update(
         },
       });
     }
+
+    case "SET_FRAME_POSITIONS":
+      return updateThreadState({
+        replayFramePositions: {
+          ...threadState().replayFramePositions,
+          [action.frame]: action.positions,
+        },
+      });
 
     case "BREAK_ON_NEXT":
       return updateThreadState({ isWaitingOnBreak: true });
@@ -468,11 +488,16 @@ export function getShouldPauseOnCaughtExceptions(state: State) {
 }
 
 export function getFrames(state: State, thread: ThreadId) {
-  return getThreadPauseState(state.pause, thread).frames;
+  const { frames, framesLoading } = getThreadPauseState(state.pause, thread);
+  return framesLoading ? null : frames;
 }
 
 export function getCurrentThreadFrames(state: State) {
-  return getThreadPauseState(state.pause, getCurrentThread(state)).frames;
+  const { frames, framesLoading } = getThreadPauseState(
+    state.pause,
+    getCurrentThread(state)
+  );
+  return framesLoading ? null : frames;
 }
 
 function getGeneratedFrameId(frameId: string): string {

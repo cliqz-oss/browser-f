@@ -52,8 +52,6 @@ class FileManager final {
                                                        int64_t aId);
 
   static nsresult InitDirectory(nsIFile* aDirectory, nsIFile* aDatabaseFile,
-                                PersistenceType aPersistenceType,
-                                const nsACString& aGroup,
                                 const nsACString& aOrigin,
                                 uint32_t aTelemetryId);
 
@@ -89,7 +87,7 @@ class FileManager final {
 
   already_AddRefed<nsIFile> EnsureJournalDirectory();
 
-  already_AddRefed<FileInfo> GetFileInfo(int64_t aId);
+  already_AddRefed<FileInfo> GetFileInfo(int64_t aId) const;
 
   already_AddRefed<FileInfo> GetNewFileInfo();
 

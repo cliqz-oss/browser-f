@@ -131,7 +131,8 @@ WebExtensionPolicy::WebExtensionPolicy(GlobalObject& aGlobal,
     : mId(NS_AtomizeMainThread(aInit.mId)),
       mHostname(aInit.mMozExtensionHostname),
       mName(aInit.mName),
-      mContentSecurityPolicy(aInit.mContentSecurityPolicy),
+      mExtensionPageCSP(aInit.mExtensionPageCSP),
+      mContentScriptCSP(aInit.mContentScriptCSP),
       mLocalizeCallback(aInit.mLocalizeCallback),
       mIsPrivileged(aInit.mIsPrivileged),
       mPermissions(new AtomSet(aInit.mPermissions)) {
@@ -158,8 +159,12 @@ WebExtensionPolicy::WebExtensionPolicy(GlobalObject& aGlobal,
         aInit.mBackgroundScripts.Value());
   }
 
-  if (mContentSecurityPolicy.IsVoid()) {
-    EPS().DefaultCSP(mContentSecurityPolicy);
+  if (mExtensionPageCSP.IsVoid()) {
+    EPS().DefaultCSP(mExtensionPageCSP);
+  }
+
+  if (mContentScriptCSP.IsVoid()) {
+    EPS().DefaultCSP(mContentScriptCSP);
   }
 
   mContentScripts.SetCapacity(aInit.mContentScripts.Length());

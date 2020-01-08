@@ -37,6 +37,7 @@ using mozilla::gfx::MaybeMatrix4x4 from "mozilla/gfx/Matrix.h";
 using mozilla::gfx::SurfaceFormat from "mozilla/gfx/Types.h";
 using mozilla::LayoutDeviceIntPoint from "Units.h";
 using mozilla::LayoutDevicePoint from "Units.h";
+using mozilla::ScreenIntCoord from "Units.h";
 using mozilla::ScreenIntPoint from "Units.h";
 using ScreenIntSize from "Units.h";
 using ScreenRect from "Units.h";
@@ -735,6 +736,8 @@ child:
                         CompositorOptions compositorOptions,
                         bool layersConnected);
 
+    async CompositorOptionsChanged(CompositorOptions newOptions);
+
     async LoadURL(nsCString uri, ShowInfo info);
 
     async ResumeLoad(uint64_t pendingSwitchID, ShowInfo info);
@@ -747,6 +750,10 @@ child:
                               ScreenRect aRemoteDocumentRect);
 
     async SetIsUnderHiddenEmbedderElement(bool aIsUnderHiddenEmbedderElement);
+
+    async DynamicToolbarMaxHeightChanged(ScreenIntCoord height);
+
+    async DynamicToolbarOffsetChanged(ScreenIntCoord height);
 
     async ParentActivated(bool aActivated);
 
@@ -1034,6 +1041,11 @@ parent:
      * Fetches whether this window supports protected media, which is sent back in response.
      */
     async IsWindowSupportingProtectedMedia(uint64_t aOuterWindowID) returns(bool isSupported);
+
+    /**
+    * Fetches whether this window supports WebVR, which is sent back in response.
+    */
+    async IsWindowSupportingWebVR(uint64_t aOuterWindowID) returns(bool isSupported);
 
     /** Records a history visit. */
     async VisitURI(URIParams aURI, URIParams? aLastVisitedURI,

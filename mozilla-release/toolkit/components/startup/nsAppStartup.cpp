@@ -21,7 +21,7 @@
 #include "nsIWindowMediator.h"
 #include "nsIWindowWatcher.h"
 #include "nsIXULRuntime.h"
-#include "nsIXULWindow.h"
+#include "nsIAppWindow.h"
 #include "nsNativeCharsetUtils.h"
 #include "nsThreadUtils.h"
 #include "nsAutoPtr.h"
@@ -307,11 +307,7 @@ nsAppStartup::Quit(uint32_t aMode) {
 #ifdef XP_MACOSX
     nsCOMPtr<nsIAppShellService> appShell(
         do_GetService(NS_APPSHELLSERVICE_CONTRACTID));
-    bool hasHiddenPrivateWindow = false;
-    if (appShell) {
-      appShell->GetHasHiddenPrivateWindow(&hasHiddenPrivateWindow);
-    }
-    int32_t suspiciousCount = hasHiddenPrivateWindow ? 2 : 1;
+    int32_t suspiciousCount = 1;
 #endif
 
     if (mConsiderQuitStopper == 0) {
@@ -327,15 +323,10 @@ nsAppStartup::Quit(uint32_t aMode) {
 
       bool usefulHiddenWindow;
       appShell->GetApplicationProvidedHiddenWindow(&usefulHiddenWindow);
-      nsCOMPtr<nsIXULWindow> hiddenWindow;
+      nsCOMPtr<nsIAppWindow> hiddenWindow;
       appShell->GetHiddenWindow(getter_AddRefs(hiddenWindow));
       // If the remaining windows are useful, we won't quit:
-      nsCOMPtr<nsIXULWindow> hiddenPrivateWindow;
-      if (hasHiddenPrivateWindow) {
-        appShell->GetHiddenPrivateWindow(getter_AddRefs(hiddenPrivateWindow));
-        if ((!hiddenWindow && !hiddenPrivateWindow) || usefulHiddenWindow)
-          return NS_OK;
-      } else if (!hiddenWindow || usefulHiddenWindow) {
+      if (!hiddenWindow || usefulHiddenWindow) {
         return NS_OK;
       }
 
@@ -611,16 +602,16 @@ nsAppStartup::CreateChromeWindow(nsIWebBrowserChrome* aParent,
     return NS_ERROR_FAILURE;
   }
 
-  nsCOMPtr<nsIXULWindow> newWindow;
+  nsCOMPtr<nsIAppWindow> newWindow;
 
   if (aParent) {
-    nsCOMPtr<nsIXULWindow> xulParent(do_GetInterface(aParent));
-    NS_ASSERTION(xulParent,
-                 "window created using non-XUL parent. that's unexpected, but "
+    nsCOMPtr<nsIAppWindow> appParent(do_GetInterface(aParent));
+    NS_ASSERTION(appParent,
+                 "window created using non-app parent. that's unexpected, but "
                  "may work.");
 
-    if (xulParent)
-      xulParent->CreateNewWindow(aChromeFlags, aOpeningTab, aOpener,
+    if (appParent)
+      appParent->CreateNewWindow(aChromeFlags, aOpeningTab, aOpener,
                                  aNextRemoteTabId, getter_AddRefs(newWindow));
     // And if it fails, don't try again without a parent. It could fail
     // intentionally (bug 115969).

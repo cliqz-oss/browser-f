@@ -125,15 +125,14 @@ const proto = {
     }
 
     const obj = this.rawValue();
-    const desc =
-      Object.getOwnPropertyDescriptor(obj, property) ||
-      this.obj.getOwnPropertyDescriptor(property);
+    const dbgDesc = this.obj.getOwnPropertyDescriptor(property);
+    const desc = Object.getOwnPropertyDescriptor(obj, property) || dbgDesc;
 
     if (desc.set || desc.get || !desc.configurable) {
       return;
     }
 
-    this._originalDescriptors.set(property, { desc, watchpointType });
+    this._originalDescriptors.set(property, { desc, dbgDesc, watchpointType });
 
     const pauseAndRespond = type => {
       const frame = this.thread.dbg.getNewestFrame();
@@ -189,13 +188,15 @@ const proto = {
       return;
     }
 
-    const desc = this._originalDescriptors.get(property).desc;
+    const { dbgDesc } = this._originalDescriptors.get(property);
     this._originalDescriptors.delete(property);
-    this.obj.defineProperty(property, desc);
+    this.obj.defineProperty(property, dbgDesc);
+
+    this.thread.demoteObjectGrip(this);
   },
 
   removeWatchpoints() {
-    this._originalDescriptors.forEach(property =>
+    this._originalDescriptors.forEach((_, property) =>
       this.removeWatchpoint(property)
     );
   },
@@ -253,6 +254,10 @@ const proto = {
 
     if (g.class == "Promise") {
       g.promiseState = this._createPromiseState();
+    }
+
+    if (g.class == "Function") {
+      g.isClassConstructor = this.obj.isClassConstructor;
     }
 
     const raw = this.getRawObject();
@@ -492,7 +497,7 @@ const proto = {
    *         An object that maps property names to safe getter descriptors as
    *         defined by the remote debugging protocol.
    */
-  /* eslint-disable complexity */
+  // eslint-disable-next-line complexity
   _findSafeGetterValues: function(ownProperties, limit = 0) {
     const safeGetterValues = Object.create(null);
     let obj = this.obj;
@@ -596,7 +601,6 @@ const proto = {
 
     return safeGetterValues;
   },
-  /* eslint-enable complexity */
 
   /**
    * Find the safe getters for a given Debugger.Object. Safe getters are native

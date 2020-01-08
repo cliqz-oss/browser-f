@@ -6,6 +6,7 @@
 
 #include "jit/IonAnalysis.h"
 
+#include <algorithm>
 #include <utility>  // for ::std::pair
 
 #include "jit/AliasAnalysis.h"
@@ -1240,7 +1241,7 @@ bool jit::EliminateDeadResumePointOperands(MIRGenerator* mir, MIRGraph& graph) {
           maxDefinition = UINT32_MAX;
           break;
         }
-        maxDefinition = Max(maxDefinition, def->id());
+        maxDefinition = std::max(maxDefinition, def->id());
       }
       if (maxDefinition == UINT32_MAX) {
         continue;
@@ -1637,7 +1638,10 @@ static MIRType GuessPhiType(MPhi* phi, bool* hasInputsWithEmptyTypes) {
       }
       continue;
     }
-    if (type != in->type()) {
+
+    if (type == in->type()) {
+      convertibleToFloat32 = convertibleToFloat32 && in->canProduceFloat32();
+    } else {
       if (convertibleToFloat32 && in->type() == MIRType::Float32) {
         // If we only saw definitions that can be converted into Float32 before
         // and encounter a Float32 value, promote previous values to Float32
@@ -1646,7 +1650,7 @@ static MIRType GuessPhiType(MPhi* phi, bool* hasInputsWithEmptyTypes) {
                  IsTypeRepresentableAsDouble(in->type())) {
         // Specialize phis with int32 and double operands as double.
         type = MIRType::Double;
-        convertibleToFloat32 &= in->canProduceFloat32();
+        convertibleToFloat32 = convertibleToFloat32 && in->canProduceFloat32();
       } else {
         return MIRType::Value;
       }
@@ -1824,6 +1828,9 @@ bool TypeAnalyzer::adjustPhiInputs(MPhi* phi) {
           // Convert int32 operands to double.
           replacement = MToDouble::New(alloc(), in);
         } else if (phiType == MIRType::Float32) {
+          MOZ_ASSERT(in->canProduceFloat32() ||
+                     (in->resultTypeSet() && in->resultTypeSet()->empty()));
+
           if (in->type() == MIRType::Int32 || in->type() == MIRType::Double) {
             replacement = MToFloat32::New(alloc(), in);
           } else {
@@ -3659,8 +3666,8 @@ static bool TryEliminateBoundsCheck(BoundsCheckMap& checks, size_t blockIndex,
   // Update the dominating check to cover both ranges, denormalizing the
   // result per the constant offset in the index.
   int32_t newMinimum, newMaximum;
-  if (!SafeSub(Min(minimumA, minimumB), sumA.constant, &newMinimum) ||
-      !SafeSub(Max(maximumA, maximumB), sumA.constant, &newMaximum)) {
+  if (!SafeSub(std::min(minimumA, minimumB), sumA.constant, &newMinimum) ||
+      !SafeSub(std::max(maximumA, maximumB), sumA.constant, &newMaximum)) {
     return false;
   }
 
@@ -4831,7 +4838,7 @@ bool jit::AnalyzeArgumentsUsage(JSContext* cx, JSScript* scriptArg) {
   }
 
   CompileInfo info(CompileRuntime::get(cx->runtime()), script,
-                   script->functionNonDelazifying(),
+                   script->function(),
                    /* osrPc = */ nullptr, Analysis_ArgumentsUsage,
                    /* needsArgsObj = */ true, inlineScriptTree);
 
@@ -4885,6 +4892,10 @@ bool jit::AnalyzeArgumentsUsage(JSContext* cx, JSScript* scriptArg) {
   MDefinition* argumentsValue = graph.entryBlock()->getSlot(info.argsObjSlot());
 
   bool argumentsContentsObserved = false;
+
+  if (argumentsValue->isImplicitlyUsed()) {
+    return true;
+  }
 
   for (MUseDefIterator uses(argumentsValue); uses; uses++) {
     MDefinition* use = uses.def();

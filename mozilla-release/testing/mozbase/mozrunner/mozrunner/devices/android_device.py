@@ -15,6 +15,7 @@ import sys
 import telnetlib
 import time
 from distutils.spawn import find_executable
+from enum import Enum
 
 import psutil
 from mozdevice import ADBHost, ADBDevice
@@ -32,6 +33,12 @@ MANIFEST_PATH = 'testing/config/tooltool-manifests'
 
 verbose_logging = False
 devices = {}
+
+
+class InstallIntent(Enum):
+    YES = 1
+    NO = 2
+    PROMPT = 3
 
 
 class AvdInfo(object):
@@ -98,7 +105,7 @@ def _install_host_utils(build_obj):
         path = os.path.join(MANIFEST_PATH, host_platform, 'hostutils.manifest')
         _get_tooltool_manifest(build_obj.substs, path, EMULATOR_HOME_DIR,
                                'releng.manifest')
-        _tooltool_fetch()
+        _tooltool_fetch(build_obj.substs)
         xre_path = glob.glob(os.path.join(EMULATOR_HOME_DIR, 'host-utils*'))
         for path in xre_path:
             if os.path.isdir(path) and os.path.isfile(os.path.join(path, 'xpcshell')):
@@ -161,7 +168,7 @@ def _maybe_update_host_utils(build_obj):
                 _install_host_utils(build_obj)
 
 
-def verify_android_device(build_obj, install=False, xre=False, debugger=False,
+def verify_android_device(build_obj, install=InstallIntent.NO, xre=False, debugger=False,
                           network=False, verbose=False, app=None, device_serial=None):
     """
        Determine if any Android device is connected via adb.
@@ -208,7 +215,7 @@ def verify_android_device(build_obj, install=False, xre=False, debugger=False,
                 os.environ["DEVICE_SERIAL"] = d['device_serial']
                 break
 
-    if device_verified and install:
+    if device_verified and install != InstallIntent.NO:
         # Determine if test app is installed on the device; if not,
         # prompt to install. This feature allows a test command to
         # launch an emulator, install the test app, and proceed with testing
@@ -227,22 +234,26 @@ def verify_android_device(build_obj, install=False, xre=False, debugger=False,
         response = ''
         action = 'Re-install'
         installed = device.is_app_installed(app)
+
+        def should_install(appname):
+            if install == InstallIntent.YES:
+                return True
+            else:  # InstallIntent.PROMPT
+                response = input("%s %s? (Y/n) " % (action, appname)).strip()
+                return response.lower().startswith('y') or response == ''
+
         if not installed:
             _log_info("It looks like %s is not installed on this device." % app)
             action = 'Install'
         if 'fennec' in app or 'firefox' in app:
-            response = response = input(
-                "%s Firefox? (Y/n) " % action).strip()
-            if response.lower().startswith('y') or response == '':
+            if should_install("Firefox"):
                 if installed:
                     device.uninstall_app(app)
                 _log_info("Installing Firefox...")
                 build_obj._run_make(directory=".", target='install',
                                     ensure_exit_code=False)
         elif app == 'org.mozilla.geckoview.test':
-            response = response = input(
-                "%s geckoview AndroidTest? (Y/n) " % action).strip()
-            if response.lower().startswith('y') or response == '':
+            if should_install("geckoview AndroidTest"):
                 if installed:
                     device.uninstall_app(app)
                 _log_info("Installing geckoview AndroidTest...")
@@ -251,9 +262,7 @@ def verify_android_device(build_obj, install=False, xre=False, debugger=False,
                                                           args=[sub],
                                                           context=build_obj._mach_context)
         elif app == 'org.mozilla.geckoview_example':
-            response = response = input(
-                "%s geckoview_example? (Y/n) " % action).strip()
-            if response.lower().startswith('y') or response == '':
+            if should_install("geckoview_example"):
                 if installed:
                     device.uninstall_app(app)
                 _log_info("Installing geckoview_example...")
@@ -436,7 +445,7 @@ class AndroidEmulator(object):
                 os.remove(ini_file)
             path = self.avd_info.tooltool_manifest
             _get_tooltool_manifest(self.substs, path, EMULATOR_HOME_DIR, 'releng.manifest')
-            _tooltool_fetch()
+            _tooltool_fetch(self.substs)
             self._update_avd_paths()
 
     def start(self):
@@ -772,8 +781,8 @@ def _get_tooltool_manifest(substs, src_path, dst_path, filename):
         _download_file(url, filename, dst_path)
 
 
-def _tooltool_fetch():
-    tooltool_full_path = os.path.abspath(TOOLTOOL_PATH)
+def _tooltool_fetch(substs):
+    tooltool_full_path = os.path.join(substs['top_srcdir'], TOOLTOOL_PATH)
     command = [sys.executable, tooltool_full_path,
                'fetch', '-o', '-m', 'releng.manifest']
     try:

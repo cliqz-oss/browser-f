@@ -20,14 +20,16 @@
 #include "mozilla/dom/BindingDeclarations.h"
 #include "mozilla/dom/BlobBinding.h"
 #include "mozilla/dom/DocumentInlines.h"
+#include "mozilla/dom/DOMCollectedFramesBinding.h"
 #include "mozilla/dom/Event.h"
 #include "mozilla/dom/Touch.h"
 #include "mozilla/dom/UserActivation.h"
 #include "mozilla/PendingAnimationTracker.h"
 #include "nsIObjectLoadingContent.h"
 #include "nsFrame.h"
-#include "mozilla/layers/ShadowLayers.h"
 #include "mozilla/layers/APZCCallbackHelper.h"
+#include "mozilla/layers/PCompositorBridgeTypes.h"
+#include "mozilla/layers/ShadowLayers.h"
 #include "ClientLayerManager.h"
 #include "nsQueryObject.h"
 #include "CubebDeviceEnumerator.h"
@@ -43,9 +45,11 @@
 #include "nsJSUtils.h"
 
 #include "mozilla/ChaosMode.h"
+#include "mozilla/CheckedInt.h"
 #include "mozilla/MiscEvents.h"
 #include "mozilla/MouseEvents.h"
 #include "mozilla/PresShell.h"
+#include "mozilla/Span.h"
 #include "mozilla/StaticPrefs_layout.h"
 #include "mozilla/TextEvents.h"
 #include "mozilla/TextEventDispatcher.h"
@@ -1474,6 +1478,24 @@ nsDOMWindowUtils::GetVisualViewportOffset(int32_t* aOffsetX,
   nsPoint offset = presShell->GetVisualViewportOffset();
   *aOffsetX = nsPresContext::AppUnitsToIntCSSPixels(offset.x);
   *aOffsetY = nsPresContext::AppUnitsToIntCSSPixels(offset.y);
+
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+nsDOMWindowUtils::SetDynamicToolbarMaxHeight(uint32_t aHeightInScreen) {
+  if (aHeightInScreen > INT32_MAX) {
+    return NS_ERROR_INVALID_ARG;
+  }
+
+  RefPtr<nsPresContext> presContext = GetPresContext();
+  if (!presContext) {
+    return NS_OK;
+  }
+
+  MOZ_ASSERT(presContext->IsRootContentDocumentCrossProcess());
+
+  presContext->SetDynamicToolbarMaxHeight(ScreenIntCoord(aHeightInScreen));
 
   return NS_OK;
 }
@@ -3419,7 +3441,11 @@ nsDOMWindowUtils::GetOMTAStyle(Element* aElement, const nsAString& aProperty,
     } else if (aProperty.EqualsLiteral("transform") ||
                aProperty.EqualsLiteral("translate") ||
                aProperty.EqualsLiteral("rotate") ||
-               aProperty.EqualsLiteral("scale")) {
+               aProperty.EqualsLiteral("scale") ||
+               aProperty.EqualsLiteral("offset-path") ||
+               aProperty.EqualsLiteral("offset-distance") ||
+               aProperty.EqualsLiteral("offset-rotate") ||
+               aProperty.EqualsLiteral("offset-anchor")) {
       OMTAValue value = GetOMTAValue(frame, DisplayItemType::TYPE_TRANSFORM,
                                      GetWebRenderBridge());
       if (value.type() == OMTAValue::TMatrix4x4) {
@@ -4026,41 +4052,155 @@ nsDOMWindowUtils::WrCapture() {
 }
 
 NS_IMETHODIMP
-nsDOMWindowUtils::SetCompositionRecording(bool aValue) {
-  if (CompositorBridgeChild* cbc = GetCompositorBridge()) {
-    if (aValue) {
-      RefPtr<nsDOMWindowUtils> self = this;
-      cbc->SendBeginRecording(TimeStamp::Now())
-          ->Then(
-              GetCurrentThreadSerialEventTarget(), __func__,
-              [self](const bool& aSuccess) {
-                if (!aSuccess) {
-                  self->ReportErrorMessageForWindow(
-                      NS_LITERAL_STRING(
-                          "The composition recorder is already running."),
-                      "DOM", true);
-                }
-              },
-              [self](const mozilla::ipc::ResponseRejectReason&) {
-                self->ReportErrorMessageForWindow(
-                    NS_LITERAL_STRING(
-                        "Could not start the composition recorder."),
-                    "DOM", true);
-              });
-    } else {
-      bool success = false;
-      if (!cbc->SendEndRecording(&success)) {
-        ReportErrorMessageForWindow(
-            NS_LITERAL_STRING("Could not stop the composition recorder."),
-            "DOM", true);
-      } else if (!success) {
-        ReportErrorMessageForWindow(
-            NS_LITERAL_STRING("The composition recorder is not running."),
-            "DOM", true);
-      }
-    }
+nsDOMWindowUtils::SetCompositionRecording(bool aValue, Promise** aOutPromise) {
+  return aValue ? StartCompositionRecording(aOutPromise)
+                : StopCompositionRecording(true, aOutPromise);
+}
+
+NS_IMETHODIMP
+nsDOMWindowUtils::StartCompositionRecording(Promise** aOutPromise) {
+  NS_ENSURE_ARG(aOutPromise);
+  *aOutPromise = nullptr;
+
+  nsCOMPtr<nsPIDOMWindowOuter> outer = do_QueryReferent(mWindow);
+  NS_ENSURE_STATE(outer);
+  nsCOMPtr<nsPIDOMWindowInner> inner = outer->GetCurrentInnerWindow();
+  NS_ENSURE_STATE(inner);
+
+  ErrorResult err;
+  RefPtr<Promise> promise = Promise::Create(inner->AsGlobal(), err);
+  if (NS_WARN_IF(err.Failed())) {
+    return err.StealNSResult();
   }
 
+  CompositorBridgeChild* cbc = GetCompositorBridge();
+  if (NS_WARN_IF(!cbc)) {
+    promise->MaybeReject(NS_ERROR_UNEXPECTED);
+  } else {
+    cbc->SendBeginRecording(TimeStamp::Now())
+        ->Then(
+            GetCurrentThreadSerialEventTarget(), __func__,
+            [promise](const bool& aSuccess) {
+              if (aSuccess) {
+                promise->MaybeResolve(true);
+              } else {
+                promise->MaybeRejectWithDOMException(
+                    NS_ERROR_DOM_INVALID_STATE_ERR,
+                    "The composition recorder is already running.");
+              }
+            },
+            [promise](const mozilla::ipc::ResponseRejectReason&) {
+              promise->MaybeRejectWithDOMException(
+                  NS_ERROR_DOM_INVALID_STATE_ERR,
+                  "Could not start the composition recorder.");
+            });
+  }
+
+  promise.forget(aOutPromise);
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+nsDOMWindowUtils::StopCompositionRecording(bool aWriteToDisk,
+                                           Promise** aOutPromise) {
+  NS_ENSURE_ARG_POINTER(aOutPromise);
+  *aOutPromise = nullptr;
+
+  nsCOMPtr<nsPIDOMWindowOuter> outer = do_QueryReferent(mWindow);
+  NS_ENSURE_STATE(outer);
+  nsCOMPtr<nsPIDOMWindowInner> inner = outer->GetCurrentInnerWindow();
+  NS_ENSURE_STATE(inner);
+
+  ErrorResult err;
+  RefPtr<Promise> promise = Promise::Create(inner->AsGlobal(), err);
+  if (NS_WARN_IF(err.Failed())) {
+    return err.StealNSResult();
+  }
+
+  CompositorBridgeChild* cbc = GetCompositorBridge();
+  if (NS_WARN_IF(!cbc)) {
+    promise->MaybeReject(NS_ERROR_UNEXPECTED);
+  } else if (aWriteToDisk) {
+    cbc->SendEndRecordingToDisk()->Then(
+        GetCurrentThreadSerialEventTarget(), __func__,
+        [promise](const bool& aSuccess) {
+          if (aSuccess) {
+            promise->MaybeResolveWithUndefined();
+          } else {
+            promise->MaybeRejectWithDOMException(
+                NS_ERROR_DOM_INVALID_STATE_ERR,
+                "The composition recorder is not running.");
+          }
+        },
+        [promise](const mozilla::ipc::ResponseRejectReason&) {
+          promise->MaybeRejectWithDOMException(
+              NS_ERROR_DOM_UNKNOWN_ERR,
+              "Could not stop the composition recorder.");
+        });
+  } else {
+    cbc->SendEndRecordingToMemory()->Then(
+        GetCurrentThreadSerialEventTarget(), __func__,
+        [promise](Maybe<CollectedFramesParams>&& aFrames) {
+          if (!aFrames) {
+            promise->MaybeRejectWithDOMException(
+                NS_ERROR_DOM_UNKNOWN_ERR,
+                "Could not stop the composition recorder.");
+            return;
+          }
+
+          DOMCollectedFrames domFrames;
+          if (!domFrames.mFrames.SetCapacity(aFrames->frames().Length(),
+                                             fallible)) {
+            promise->MaybeReject(NS_ERROR_OUT_OF_MEMORY);
+            return;
+          }
+
+          domFrames.mRecordingStart = aFrames->recordingStart();
+
+          CheckedInt<size_t> totalSize(0);
+          for (const CollectedFrameParams& frame : aFrames->frames()) {
+            totalSize += frame.length();
+          }
+
+          if (totalSize.isValid() &&
+              totalSize.value() > aFrames->buffer().Size<char>()) {
+            promise->MaybeRejectWithDOMException(
+                NS_ERROR_DOM_UNKNOWN_ERR,
+                "Could not interpret returned frames.");
+            return;
+          }
+
+          Span<const char> buffer(aFrames->buffer().get<char>(),
+                                  aFrames->buffer().Size<char>());
+
+          for (const CollectedFrameParams& frame : aFrames->frames()) {
+            size_t length = frame.length();
+
+            Span<const char> dataUri = buffer.First(length);
+
+            // We have to do a fallible AppendElement() because WebIDL
+            // dictionaries use FallibleTArray. However, this cannot fail due to
+            // the pre-allocation earlier.
+            DOMCollectedFrame* domFrame =
+                domFrames.mFrames.AppendElement(fallible);
+            MOZ_ASSERT(domFrame);
+
+            domFrame->mTimeOffset = frame.timeOffset();
+            domFrame->mDataUri = nsCString(dataUri);
+
+            buffer = buffer.Subspan(length);
+          }
+
+          promise->MaybeResolve(domFrames);
+        },
+        [promise](const mozilla::ipc::ResponseRejectReason&) {
+          promise->MaybeRejectWithDOMException(
+              NS_ERROR_DOM_UNKNOWN_ERR,
+              "Could not stop the composition recorder.");
+        });
+  }
+
+  promise.forget(aOutPromise);
   return NS_OK;
 }
 
@@ -4070,25 +4210,6 @@ nsDOMWindowUtils::SetTransactionLogging(bool aValue) {
     wrbc->SetTransactionLogging(aValue);
   }
   return NS_OK;
-}
-
-void nsDOMWindowUtils::ReportErrorMessageForWindow(
-    const nsAString& aErrorMessage, const char* aClassification,
-    bool aFromChrome) {
-  bool isPrivateWindow = false;
-
-  if (nsCOMPtr<nsPIDOMWindowOuter> window = do_QueryReferent(mWindow)) {
-    if (nsIPrincipal* principal =
-            nsGlobalWindowOuter::Cast(window)->GetPrincipal()) {
-      uint32_t privateBrowsingId = 0;
-
-      if (NS_SUCCEEDED(principal->GetPrivateBrowsingId(&privateBrowsingId))) {
-        isPrivateWindow = !!privateBrowsingId;
-      }
-    }
-  }
-  nsContentUtils::LogSimpleConsoleError(aErrorMessage, aClassification,
-                                        isPrivateWindow, aFromChrome);
 }
 
 NS_IMETHODIMP
@@ -4148,5 +4269,12 @@ nsDOMWindowUtils::GetLayersId(uint64_t* aOutLayersId) {
 NS_IMETHODIMP
 nsDOMWindowUtils::GetUsesOverlayScrollbars(bool* aResult) {
   *aResult = Document::UseOverlayScrollbars(GetDocument());
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+nsDOMWindowUtils::GetPaintCount(uint64_t* aPaintCount) {
+  auto* presShell = GetPresShell();
+  *aPaintCount = presShell ? presShell->GetPaintCount() : 0;
   return NS_OK;
 }

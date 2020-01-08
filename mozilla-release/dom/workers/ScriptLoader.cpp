@@ -768,8 +768,7 @@ class ScriptLoaderRunnable final : public nsIRunnable, public nsINamed {
     mozilla::dom::RequestOrUSVString request;
 
     MOZ_ASSERT(!loadInfo.mFullURL.IsEmpty());
-    request.SetAsUSVString().Rebind(loadInfo.mFullURL.Data(),
-                                    loadInfo.mFullURL.Length());
+    request.SetAsUSVString().ShareOrDependUpon(loadInfo.mFullURL);
 
     // This JSContext will not end up executing JS code because here there are
     // no ReadableStreams involved.
@@ -1129,8 +1128,8 @@ class ScriptLoaderRunnable final : public nsIRunnable, public nsINamed {
     // same-origin checks on them so we should be able to see their errors.
     // Note that for data: url, where we allow it through the same-origin check
     // but then give it a different origin.
-    aLoadInfo.mMutedErrorFlag.emplace(
-        IsMainWorkerScript() ? false : !principal->Subsumes(channelPrincipal));
+    aLoadInfo.mMutedErrorFlag.emplace(!IsMainWorkerScript() &&
+                                      !principal->Subsumes(channelPrincipal));
 
     // Make sure we're not seeing the result of a 404 or something by checking
     // the 'requestSucceeded' attribute on the http channel.
@@ -1665,8 +1664,7 @@ void CacheScriptLoader::Load(Cache* aCache) {
   CopyUTF8toUTF16(spec, mLoadInfo.mFullURL);
 
   mozilla::dom::RequestOrUSVString request;
-  request.SetAsUSVString().Rebind(mLoadInfo.mFullURL.Data(),
-                                  mLoadInfo.mFullURL.Length());
+  request.SetAsUSVString().ShareOrDependUpon(mLoadInfo.mFullURL);
 
   mozilla::dom::CacheQueryOptions params;
 

@@ -57,6 +57,7 @@
 #include "mozilla/dom/UserActivation.h"
 #include "nsAnimationManager.h"
 #include "nsNameSpaceManager.h"  // for Pref-related rule management (bugs 22963,20760,31816)
+#include "nsFlexContainerFrame.h"
 #include "nsFrame.h"
 #include "FrameLayerBuilder.h"
 #include "nsViewManager.h"
@@ -182,7 +183,7 @@
 #include "mozilla/gfx/2D.h"
 #include "nsSubDocumentFrame.h"
 #include "nsQueryObject.h"
-#include "nsLayoutStylesheetCache.h"
+#include "mozilla/GlobalStyleSheetCache.h"
 #include "mozilla/layers/InputAPZContext.h"
 #include "mozilla/layers/FocusTarget.h"
 #include "mozilla/layers/WebRenderLayerManager.h"
@@ -194,9 +195,6 @@
 #include "mozilla/StyleSheetInlines.h"
 #include "mozilla/dom/ImageTracker.h"
 #include "nsIDocShellTreeOwner.h"
-#ifdef MOZ_XBL
-#  include "nsBindingManager.h"
-#endif
 #include "nsClassHashtable.h"
 #include "nsHashKeys.h"
 #include "VisualViewport.h"
@@ -851,8 +849,6 @@ PresShell::PresShell()
   mReflowCountMgr->SetPresShell(this);
 #endif
   mLastOSWake = mLoadBegin = TimeStamp::Now();
-  PodZero(&mReqsPerFlush);
-  PodZero(&mFlushesPerTick);
 
   PointerEventHandler::Initialize();
 }
@@ -1456,7 +1452,7 @@ void PresShell::UpdatePreferenceStyles() {
   }
 
   PreferenceSheet::EnsureInitialized();
-  auto cache = nsLayoutStylesheetCache::Singleton();
+  auto* cache = GlobalStyleSheetCache::Singleton();
 
   RefPtr<StyleSheet> newPrefSheet =
       PreferenceSheet::ShouldUseChromePrefs(*mDocument)
@@ -1672,22 +1668,6 @@ void PresShell::EndObservingDocument() {
 char* nsPresShell_ReflowStackPointerTop;
 #endif
 
-#ifdef MOZ_XBL
-class XBLConstructorRunner : public Runnable {
- public:
-  explicit XBLConstructorRunner(Document* aDocument)
-      : Runnable("XBLConstructorRunner"), mDocument(aDocument) {}
-
-  NS_IMETHOD Run() override {
-    mDocument->BindingManager()->ProcessAttachedQueue();
-    return NS_OK;
-  }
-
- private:
-  RefPtr<Document> mDocument;
-};
-#endif
-
 nsresult PresShell::Initialize() {
   if (mIsDestroying) {
     return NS_OK;
@@ -1764,13 +1744,6 @@ nsresult PresShell::Initialize() {
     // nsAutoCauseReflowNotifier (which sets up a script blocker) going out of
     // scope may have killed us too
     NS_ENSURE_STATE(!mHaveShutDown);
-
-#ifdef MOZ_XBL
-    // Run the XBL binding constructors for any new frames we've constructed.
-    // (Do this in a script runner, since our caller might have a script
-    // blocker on the stack.)
-    nsContentUtils::AddScriptRunner(new XBLConstructorRunner(mDocument));
-#endif
 
     // XBLConstructorRunner might destroy us.
     NS_ENSURE_STATE(!mHaveShutDown);
@@ -1895,10 +1868,6 @@ void PresShell::SimpleResizeReflow(nscoord aWidth, nscoord aHeight,
 nsresult PresShell::ResizeReflowIgnoreOverride(nscoord aWidth, nscoord aHeight,
                                                ResizeReflowOptions aOptions) {
   MOZ_ASSERT(!mIsReflowing, "Shouldn't be in reflow here!");
-  nsSize oldSize = mPresContext->GetVisibleArea().Size();
-  if (oldSize == nsSize(aWidth, aHeight)) {
-    return NS_OK;
-  }
 
   // Historically we never fired resize events if there was no root frame by the
   // time this function got called.
@@ -1915,6 +1884,11 @@ nsresult PresShell::ResizeReflowIgnoreOverride(nscoord aWidth, nscoord aHeight,
   };
 
   if (!(aOptions & ResizeReflowOptions::BSizeLimit)) {
+    nsSize oldSize = mPresContext->GetVisibleArea().Size();
+    if (oldSize == nsSize(aWidth, aHeight)) {
+      return NS_OK;
+    }
+
     SimpleResizeReflow(aWidth, aHeight, aOptions);
     postResizeEventIfNeeded();
     return NS_OK;
@@ -2035,18 +2009,10 @@ void PresShell::FireResizeEvent() {
 }
 
 static nsIContent* GetNativeAnonymousSubtreeRoot(nsIContent* aContent) {
-  if (!aContent || !aContent->IsInNativeAnonymousSubtree()) {
+  if (!aContent) {
     return nullptr;
   }
-  auto* current = aContent;
-  // FIXME(emilio): This should not need to worry about current being null, but
-  // editor removes nodes in native anonymous subtrees, and we don't clean nodes
-  // from the current event content stack from ContentRemoved, so it can
-  // actually happen, see bug 1510208.
-  while (current && !current->IsRootOfNativeAnonymousSubtree()) {
-    current = current->GetFlattenedTreeParent();
-  }
-  return current;
+  return aContent->GetClosestNativeAnonymousSubtreeRoot();
 }
 
 void PresShell::NativeAnonymousContentRemoved(nsIContent* aAnonContent) {
@@ -2264,15 +2230,12 @@ PresShell::PageMove(bool aForward, bool aExtend) {
       return NS_OK;
     }
   }
+  // We may scroll parent scrollable element of current selection limiter.
+  // In such case, we don't want to scroll selection into view unless
+  // selection is changed.
   RefPtr<nsFrameSelection> frameSelection = mSelection;
-  frameSelection->CommonPageMove(aForward, aExtend, frame);
-  // After ScrollSelectionIntoView(), the pending notifications might be
-  // flushed and PresShell/PresContext/Frames may be dead. See bug 418470.
-  return ScrollSelectionIntoView(
-      nsISelectionController::SELECTION_NORMAL,
-      nsISelectionController::SELECTION_FOCUS_REGION,
-      nsISelectionController::SCROLL_SYNCHRONOUS |
-          nsISelectionController::SCROLL_FOR_CARET_MOVE);
+  return frameSelection->PageMove(
+      aForward, aExtend, frame, nsFrameSelection::SelectionIntoView::IfChanged);
 }
 
 NS_IMETHODIMP
@@ -2887,23 +2850,6 @@ static void AssertNoFramesInSubtree(nsIContent* aContent) {
   for (nsINode* node : ShadowIncludingTreeIterator(*aContent)) {
     nsIContent* c = nsIContent::FromNode(node);
     MOZ_ASSERT(!c->GetPrimaryFrame());
-#  ifdef MOZ_XBL
-    if (auto* binding = c->GetXBLBinding()) {
-      if (auto* bindingWithContent = binding->GetBindingWithContent()) {
-        nsIContent* anonContent = bindingWithContent->GetAnonymousContent();
-        MOZ_ASSERT(!anonContent->GetPrimaryFrame());
-
-        // Need to do this instead of just AssertNoFramesInSubtree(anonContent),
-        // because the parent of the children of the <content> element isn't the
-        // <content> element, but the bound element, and that confuses
-        // GetNextNode a lot.
-        for (nsIContent* child = anonContent->GetFirstChild(); child;
-             child = child->GetNextSibling()) {
-          AssertNoFramesInSubtree(child);
-        }
-      }
-    }
-#  endif
   }
 }
 #endif
@@ -4003,8 +3949,9 @@ void PresShell::DoFlushPendingNotifications(mozilla::ChangesToFlush aFlush) {
     "Display"
   };
   // clang-format on
-  AUTO_PROFILER_LABEL_DYNAMIC_CSTR("PresShell::DoFlushPendingNotifications",
-                                   LAYOUT, flushTypeNames[flushType]);
+  AUTO_PROFILER_LABEL_DYNAMIC_CSTR_NONSENSITIVE(
+      "PresShell::DoFlushPendingNotifications", LAYOUT,
+      flushTypeNames[flushType]);
 #endif
 
 #ifdef ACCESSIBILITY
@@ -4117,18 +4064,10 @@ void PresShell::DoFlushPendingNotifications(mozilla::ChangesToFlush aFlush) {
                                                 innerWindowID);
 #endif
       PerfStats::AutoMetricRecording<PerfStats::Metric::Styling> autoRecording;
+      LAYOUT_TELEMETRY_RECORD_BASE(Restyle);
 
       mPresContext->RestyleManager()->ProcessPendingRestyles();
     }
-
-#ifdef MOZ_XBL
-    // Process whatever XBL constructors those restyles queued up.  This
-    // ensures that onload doesn't fire too early and that we won't do extra
-    // reflows after those constructors run.
-    if (MOZ_LIKELY(!mIsDestroying)) {
-      mDocument->BindingManager()->ProcessAttachedQueue();
-    }
-#endif
 
     // Now those constructors or events might have posted restyle
     // events.  At the same time, we still need up-to-date style data.
@@ -4148,6 +4087,7 @@ void PresShell::DoFlushPendingNotifications(mozilla::ChangesToFlush aFlush) {
                                                 innerWindowID);
 #endif
       PerfStats::AutoMetricRecording<PerfStats::Metric::Styling> autoRecording;
+      LAYOUT_TELEMETRY_RECORD_BASE(Restyle);
 
       mPresContext->RestyleManager()->ProcessPendingRestyles();
       // Clear mNeedStyleFlush here agagin to make this flag work properly for
@@ -4204,11 +4144,11 @@ void PresShell::DoFlushPendingNotifications(mozilla::ChangesToFlush aFlush) {
 
   // Update flush counters
   if (didStyleFlush) {
-    mFlushesPerTick[FlushKind::Style]++;
+    mLayoutTelemetry.IncReqsPerFlush(FlushType::Style);
   }
 
   if (didLayoutFlush) {
-    mFlushesPerTick[FlushKind::Layout]++;
+    mLayoutTelemetry.IncReqsPerFlush(FlushType::Layout);
   }
 
   // Record telemetry for the number of requests per each flush type.
@@ -4220,10 +4160,10 @@ void PresShell::DoFlushPendingNotifications(mozilla::ChangesToFlush aFlush) {
   // by `isSafeToFlush == true`.)
   if (flushType >= FlushType::InterruptibleLayout && didLayoutFlush) {
     MOZ_ASSERT(didLayoutFlush == didStyleFlush);
-    PingReqsPerFlushTelemetry(FlushKind::Layout);
+    mLayoutTelemetry.PingReqsPerFlushTelemetry(FlushType::Layout);
   } else if (flushType >= FlushType::Style && didStyleFlush) {
     MOZ_ASSERT(!didLayoutFlush);
-    PingReqsPerFlushTelemetry(FlushKind::Style);
+    mLayoutTelemetry.PingReqsPerFlushTelemetry(FlushType::Style);
   }
 }
 
@@ -5929,6 +5869,10 @@ void PresShell::Paint(nsView* aViewToPaint, const nsRegion& aDirtyRegion,
   AUTO_PROFILER_LABEL_DYNAMIC_NSCSTRING("PresShell::Paint", GRAPHICS, url);
 #endif
 
+  // When recording/replaying, create a checkpoint after every paint. This can
+  // cause content JS to run, so must live outside |nojs|.
+  auto createCheckpoint = MakeScopeExit(recordreplay::child::CreateCheckpoint);
+
   Maybe<js::AutoAssertNoContentJS> nojs;
 
   // On Android, Flash can call into content JS during painting, so we can't
@@ -6086,14 +6030,6 @@ void PresShell::Paint(nsView* aViewToPaint, const nsRegion& aDirtyRegion,
     // We can paint directly into the widget using its layer manager.
     nsLayoutUtils::PaintFrame(nullptr, frame, aDirtyRegion, bgcolor,
                               nsDisplayListBuilderMode::Painting, flags);
-
-    // When recording/replaying, create a checkpoint after every paint. This
-    // can cause content JS to run, so reset |nojs|.
-    if (recordreplay::IsRecordingOrReplaying()) {
-      nojs.reset();
-      recordreplay::child::CreateCheckpoint();
-    }
-
     return;
   }
 
@@ -6383,16 +6319,15 @@ nsIFrame* PresShell::EventHandler::GetNearestFrameContainingPresShell(
   return frame;
 }
 
-static bool FlushThrottledStyles(Document* aDocument, void* aData) {
-  PresShell* presShell = aDocument->GetPresShell();
+static bool FlushThrottledStyles(Document& aDocument, void* aData) {
+  PresShell* presShell = aDocument.GetPresShell();
   if (presShell && presShell->IsVisible()) {
-    nsPresContext* presContext = presShell->GetPresContext();
-    if (presContext) {
+    if (nsPresContext* presContext = presShell->GetPresContext()) {
       presContext->RestyleManager()->UpdateOnlyAnimationStyles();
     }
   }
 
-  aDocument->EnumerateSubDocuments(FlushThrottledStyles, nullptr);
+  aDocument.EnumerateSubDocuments(FlushThrottledStyles, nullptr);
   return true;
 }
 
@@ -7263,7 +7198,7 @@ nsIFrame* PresShell::EventHandler::MaybeFlushThrottledStyles(
   AutoWeakFrame weakFrameForPresShell(aFrameForPresShell);
   {  // scope for scriptBlocker.
     nsAutoScriptBlocker scriptBlocker;
-    FlushThrottledStyles(rootDocument, nullptr);
+    FlushThrottledStyles(*rootDocument, nullptr);
   }
 
   if (weakFrameForPresShell.IsAlive()) {
@@ -8895,9 +8830,8 @@ static void FreezeElement(nsISupports* aSupports, void* /* unused */) {
   }
 }
 
-static bool FreezeSubDocument(Document* aDocument, void* aData) {
-  PresShell* presShell = aDocument->GetPresShell();
-  if (presShell) {
+static bool FreezeSubDocument(Document& aDocument, void*) {
+  if (PresShell* presShell = aDocument.GetPresShell()) {
     presShell->Freeze();
   }
   return true;
@@ -8966,9 +8900,8 @@ static void ThawElement(nsISupports* aSupports, void* aShell) {
   }
 }
 
-static bool ThawSubDocument(Document* aDocument, void* aData) {
-  PresShell* presShell = aDocument->GetPresShell();
-  if (presShell) {
+static bool ThawSubDocument(Document& aDocument, void* aData) {
+  if (PresShell* presShell = aDocument.GetPresShell()) {
     presShell->Thaw();
   }
   return true;
@@ -8983,7 +8916,9 @@ void PresShell::Thaw() {
 
   mDocument->EnumerateActivityObservers(ThawElement, this);
 
-  if (mDocument) mDocument->EnumerateSubDocuments(ThawSubDocument, nullptr);
+  if (mDocument) {
+    mDocument->EnumerateSubDocuments(ThawSubDocument, nullptr);
+  }
 
   // Get the activeness of our presshell, as this might have changed
   // while we were in the bfcache
@@ -9104,6 +9039,9 @@ bool PresShell::DoReflow(nsIFrame* target, bool aInterruptible,
       "Reflow", LAYOUT_Reflow,
       uri ? uri->GetSpecOrDefault() : NS_LITERAL_CSTRING("N/A"));
 #endif
+
+  LAYOUT_TELEMETRY_RECORD_BASE(Reflow);
+
   PerfStats::AutoMetricRecording<PerfStats::Metric::Reflowing> autoRecording;
 
   gfxTextPerfMetrics* tp = mPresContext->GetTextPerfMetrics();
@@ -9294,6 +9232,9 @@ bool PresShell::DoReflow(nsIFrame* target, bool aInterruptible,
       for (nsIFrame* f = p->GetKey(); f && !NS_SUBTREE_DIRTY(f);
            f = f->GetParent()) {
         f->AddStateBits(NS_FRAME_HAS_DIRTY_CHILDREN);
+        if (f->IsFlexItem()) {
+          nsFlexContainerFrame::MarkCachedFlexMeasurementsDirty(f);
+        }
 
         if (f == target) {
           break;
@@ -9897,9 +9838,6 @@ bool PresShell::VerifyIncrementalReflow() {
     nsAutoCauseReflowNotifier crNotifier(this);
     presShell->Initialize();
   }
-#  ifdef MOZ_XBL
-  mDocument->BindingManager()->ProcessAttachedQueue();
-#  endif
   presShell->FlushPendingNotifications(FlushType::Layout);
   presShell->SetVerifyReflowEnable(
       true);  // turn on verify reflow again now that
@@ -10451,9 +10389,8 @@ void PresShell::QueryIsActive() {
 }
 
 // Helper for propagating mIsActive changes to external resources
-static bool SetExternalResourceIsActive(Document* aDocument, void* aClosure) {
-  PresShell* presShell = aDocument->GetPresShell();
-  if (presShell) {
+static bool SetExternalResourceIsActive(Document& aDocument, void* aClosure) {
+  if (PresShell* presShell = aDocument.GetPresShell()) {
     presShell->SetIsActive(*static_cast<bool*>(aClosure));
   }
   return true;
@@ -10474,6 +10411,10 @@ static void SetPluginIsActive(nsISupports* aSupports, void* aClosure) {
 
 nsresult PresShell::SetIsActive(bool aIsActive) {
   MOZ_ASSERT(mDocument, "should only be called with a document");
+
+#if defined(MOZ_WIDGET_ANDROID)
+  const bool changed = mIsActive != aIsActive;
+#endif
 
   mIsActive = aIsActive;
 
@@ -10496,6 +10437,17 @@ nsresult PresShell::SetIsActive(bool aIsActive) {
     }
   }
 #endif  // #ifdef ACCESSIBILITY
+
+#if defined(MOZ_WIDGET_ANDROID)
+  if (changed && !aIsActive && presContext &&
+      presContext->IsRootContentDocumentCrossProcess()) {
+    if (BrowserChild* browserChild = BrowserChild::GetFrom(this)) {
+      // Reset the dynamic toolbar offset state.
+      presContext->UpdateDynamicToolbarOffset(0);
+    }
+  }
+#endif
+
   return rv;
 }
 
@@ -10503,12 +10455,25 @@ RefPtr<MobileViewportManager> PresShell::GetMobileViewportManager() const {
   return mMobileViewportManager;
 }
 
+bool UseMobileViewportManager(PresShell* aPresShell, Document* aDocument) {
+  // If we're not using APZ, we won't be able to zoom, so there is no
+  // point in having an MVM.
+  if (nsPresContext* presContext = aPresShell->GetPresContext()) {
+    if (nsIWidget* widget = presContext->GetNearestWidget()) {
+      if (!widget->AsyncPanZoomEnabled()) {
+        return false;
+      }
+    }
+  }
+  return nsLayoutUtils::ShouldHandleMetaViewport(aDocument) ||
+         nsLayoutUtils::AllowZoomingForDocument(aDocument);
+}
+
 void PresShell::UpdateViewportOverridden(bool aAfterInitialization) {
   // Determine if we require a MobileViewportManager. We need one any
   // time we allow resolution zooming for a document, and any time we
   // want to obey <meta name="viewport"> tags for it.
-  bool needMVM = nsLayoutUtils::ShouldHandleMetaViewport(mDocument) ||
-                 nsLayoutUtils::AllowZoomingForDocument(mDocument);
+  bool needMVM = UseMobileViewportManager(this, mDocument);
 
   if (needMVM == !!mMobileViewportManager) {
     // Either we've need one and we've already got it, or we don't need one
@@ -10765,6 +10730,19 @@ nsSize PresShell::GetLayoutViewportSize() const {
     result = sf->GetScrollPortRect().Size();
   }
   return result;
+}
+
+nsSize PresShell::GetVisualViewportSizeUpdatedByDynamicToolbar() const {
+  NS_ASSERTION(mVisualViewportSizeSet,
+               "asking for visual viewport size when its not set?");
+  if (!mMobileViewportManager) {
+    return mVisualViewportSize;
+  }
+
+  MOZ_ASSERT(GetDynamicToolbarState() == DynamicToolbarState::InTransition ||
+             GetDynamicToolbarState() == DynamicToolbarState::Collapsed);
+
+  return mMobileViewportManager->GetVisualViewportSizeUpdatedByDynamicToolbar();
 }
 
 void PresShell::RecomputeFontSizeInflationEnabled() {
@@ -11197,8 +11175,8 @@ PresShell::EventHandler::HandlingTimeAccumulator::~HandlingTimeAccumulator() {
   }
 }
 
-static bool EndPaintHelper(Document* aDocument, void* aData) {
-  if (PresShell* presShell = aDocument->GetPresShell()) {
+static bool EndPaintHelper(Document& aDocument, void* aData) {
+  if (PresShell* presShell = aDocument.GetPresShell()) {
     presShell->EndPaint();
   }
   return true;
@@ -11212,37 +11190,6 @@ void PresShell::EndPaint() {
   }
 }
 
-void PresShell::PingReqsPerFlushTelemetry(FlushKind aFlushKind) {
-  if (aFlushKind == FlushKind::Layout) {
-    auto styleFlushReqs = mReqsPerFlush[FlushKind::Style].value();
-    auto layoutFlushReqs = mReqsPerFlush[FlushKind::Layout].value();
-    Telemetry::Accumulate(Telemetry::PRESSHELL_REQS_PER_LAYOUT_FLUSH,
-                          NS_LITERAL_CSTRING("Style"), styleFlushReqs);
-    Telemetry::Accumulate(Telemetry::PRESSHELL_REQS_PER_LAYOUT_FLUSH,
-                          NS_LITERAL_CSTRING("Layout"), layoutFlushReqs);
-    mReqsPerFlush[FlushKind::Style] = SaturateUint8(0);
-    mReqsPerFlush[FlushKind::Layout] = SaturateUint8(0);
-  } else {
-    auto styleFlushReqs = mReqsPerFlush[FlushKind::Style].value();
-    Telemetry::Accumulate(Telemetry::PRESSHELL_REQS_PER_STYLE_FLUSH,
-                          styleFlushReqs);
-    mReqsPerFlush[FlushKind::Style] = SaturateUint8(0);
-  }
-}
-
-void PresShell::PingFlushPerTickTelemetry(FlushType aFlushType) {
-  MOZ_ASSERT(aFlushType == FlushType::Style || aFlushType == FlushType::Layout);
-  auto styleFlushes = mFlushesPerTick[FlushKind::Style].value();
-  if (styleFlushes > 0) {
-    Telemetry::Accumulate(Telemetry::PRESSHELL_FLUSHES_PER_TICK,
-                          NS_LITERAL_CSTRING("Style"), styleFlushes);
-    mFlushesPerTick[FlushKind::Style] = SaturateUint8(0);
-  }
-
-  auto layoutFlushes = mFlushesPerTick[FlushKind::Layout].value();
-  if (aFlushType == FlushType::Layout && layoutFlushes > 0) {
-    Telemetry::Accumulate(Telemetry::PRESSHELL_FLUSHES_PER_TICK,
-                          NS_LITERAL_CSTRING("Layout"), layoutFlushes);
-    mFlushesPerTick[FlushKind::Layout] = SaturateUint8(0);
-  }
+void PresShell::PingPerTickTelemetry(FlushType aFlushType) {
+  mLayoutTelemetry.PingPerTickTelemetry(aFlushType);
 }

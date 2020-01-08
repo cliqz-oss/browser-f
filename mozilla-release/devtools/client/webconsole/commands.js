@@ -4,8 +4,7 @@
 
 "use strict";
 
-const ObjectClient = require("devtools/shared/client/object-client");
-const LongStringClient = require("devtools/shared/client/long-string-client");
+const ObjectFront = require("devtools/shared/fronts/object");
 
 class ConsoleCommands {
   constructor({ debuggerClient, proxy, threadFront, currentTarget }) {
@@ -15,16 +14,30 @@ class ConsoleCommands {
     this.currentTarget = currentTarget;
   }
 
-  evaluateJSAsync(expression, options) {
-    return this.proxy.webConsoleFront.evaluateJSAsync(expression, options);
+  evaluateJSAsync(expression, options = {}) {
+    const { selectedNodeFront, webConsoleFront } = options;
+    let front = this.proxy.webConsoleFront;
+
+    // Defer to the selected paused thread front
+    if (webConsoleFront) {
+      front = webConsoleFront;
+    }
+
+    // Defer to the selected node's thread console front
+    if (selectedNodeFront) {
+      front = selectedNodeFront.targetFront.activeConsole;
+      options.selectedNodeActor = selectedNodeFront.actorID;
+    }
+
+    return front.evaluateJSAsync(expression, options);
   }
 
-  createObjectClient(object) {
-    return new ObjectClient(this.debuggerClient, object);
+  createObjectFront(object) {
+    return new ObjectFront(this.debuggerClient, object);
   }
 
-  createLongStringClient(object) {
-    return new LongStringClient(this.debuggerClient, object);
+  createLongStringFront(object) {
+    return this.proxy.webConsoleFront.longString(object);
   }
 
   releaseActor(actor) {
@@ -42,7 +55,7 @@ class ConsoleCommands {
   }
 
   async fetchObjectProperties(grip, ignoreNonIndexedProperties) {
-    const client = new ObjectClient(this.currentTarget.client, grip);
+    const client = new ObjectFront(this.currentTarget.client, grip);
     const iterator = await client.enumProperties({
       ignoreNonIndexedProperties,
     });
@@ -51,7 +64,7 @@ class ConsoleCommands {
   }
 
   async fetchObjectEntries(grip) {
-    const client = new ObjectClient(this.currentTarget.client, grip);
+    const client = new ObjectFront(this.currentTarget.client, grip);
     const iterator = await client.enumEntries();
     const { ownProperties } = await iterator.slice(0, iterator.count);
     return ownProperties;

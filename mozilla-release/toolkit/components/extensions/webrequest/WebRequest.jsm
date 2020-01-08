@@ -228,6 +228,8 @@ const OPTIONAL_PROPERTIES = [
   "ip",
   "frameAncestors",
   "urlClassification",
+  "requestSize",
+  "responseSize",
 ];
 
 function serializeRequestData(eventName) {
@@ -241,6 +243,7 @@ function serializeRequestData(eventName) {
     timeStamp: Date.now(),
     frameId: this.windowId,
     parentFrameId: this.parentWindowId,
+    thirdParty: this.thirdParty,
   };
 
   if (MAYBE_CACHED_EVENTS.has(eventName)) {
@@ -937,6 +940,7 @@ HttpObserverManager = {
       type: channel.type,
       fromCache: channel.fromCache,
       originAttributes,
+      thirdParty: channel.thirdParty,
 
       originUrl: channel.originURL || undefined,
       documentUrl: channel.documentURL || undefined,
@@ -951,6 +955,8 @@ HttpObserverManager = {
       proxyInfo: channel.proxyInfo,
 
       serialize: serializeRequestData,
+      requestSize: channel.requestSize,
+      responseSize: channel.responseSize,
     };
 
     return Object.assign(data, extraData);

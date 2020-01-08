@@ -36,24 +36,20 @@ bool IsValidKeyPathString(const nsAString& aKeyPath) {
   KeyPathTokenizer tokenizer(aKeyPath, '.');
 
   while (tokenizer.hasMoreTokens()) {
-    nsString token(tokenizer.nextToken());
+    const auto& token = tokenizer.nextToken();
 
     if (!token.Length()) {
       return false;
     }
 
-    if (!JS_IsIdentifier(token.get(), token.Length())) {
+    if (!JS_IsIdentifier(token.Data(), token.Length())) {
       return false;
     }
   }
 
   // If the very last character was a '.', the tokenizer won't give us an empty
   // token, but the keyPath is still invalid.
-  if (!aKeyPath.IsEmpty() && aKeyPath.CharAt(aKeyPath.Length() - 1) == '.') {
-    return false;
-  }
-
-  return true;
+  return aKeyPath.IsEmpty() || aKeyPath.CharAt(aKeyPath.Length() - 1) != '.';
 }
 
 enum KeyExtractionOptions { DoNotCreateProperties, CreateProperties };
@@ -80,7 +76,7 @@ nsresult GetJSValFromKeyPathString(
   JS::Rooted<JSObject*> obj(aCx);
 
   while (tokenizer.hasMoreTokens()) {
-    const nsDependentSubstring& token = tokenizer.nextToken();
+    const auto& token = tokenizer.nextToken();
 
     NS_ASSERTION(!token.IsEmpty(), "Should be a valid keypath");
 
@@ -476,7 +472,7 @@ KeyPath KeyPath::DeserializeFromString(const nsAString& aString) {
       // There is a trailing comma, indicating the original KeyPath has
       // a trailing empty string, i.e. [..., '']. We should append this
       // empty string.
-      keyPath.mStrings.AppendElement(nsString{});
+      keyPath.mStrings.EmplaceBack();
     }
 
     return keyPath;

@@ -10,12 +10,17 @@
 #include "mozilla/Casting.h"
 #include "mozilla/CheckedInt.h"
 #include "mozilla/DebugOnly.h"
+#include "mozilla/Maybe.h"
+
+#include <algorithm>
 
 #include "debugger/DebugAPI.h"
 #include "gc/Marking.h"
 #include "jit/BaselineIC.h"
 #include "js/CharacterEncoding.h"
+#include "js/Result.h"
 #include "js/Value.h"
+#include "util/Memory.h"
 #include "vm/EqualityOperations.h"  // js::SameValue
 #include "vm/TypedArrayObject.h"
 
@@ -203,9 +208,9 @@ void js::NativeObject::checkShapeConsistency() {
                     shape->slot() < slotSpan());
       if (!prev) {
         MOZ_ASSERT(lastProperty() == shape);
-        MOZ_ASSERT(shape->listp == &shape_);
+        MOZ_ASSERT(shape->dictNext.toObject() == this);
       } else {
-        MOZ_ASSERT(shape->listp == &prev->parent);
+        MOZ_ASSERT(shape->dictNext.toShape() == prev);
       }
       prev = shape;
       shape = shape->parent;
@@ -223,7 +228,7 @@ void js::NativeObject::checkShapeConsistency() {
       if (prev) {
         MOZ_ASSERT_IF(shape->isDataProperty(),
                       prev->maybeSlot() >= shape->maybeSlot());
-        shape->kids.checkConsistency(prev);
+        shape->children.checkHasChild(prev);
       }
       prev = shape;
       shape = shape->parent;
@@ -532,7 +537,7 @@ DenseElementResult NativeObject::maybeDensifySparseElements(
       if (shape->attributes() == JSPROP_ENUMERATE &&
           shape->hasDefaultGetter() && shape->hasDefaultSetter()) {
         numDenseElements++;
-        newInitializedLength = Max(newInitializedLength, index + 1);
+        newInitializedLength = std::max(newInitializedLength, index + 1);
       } else {
         /*
          * For simplicity, only densify the object if all indexed
@@ -698,7 +703,7 @@ bool NativeObject::tryUnshiftDenseElements(uint32_t count) {
 
     // Move more elements than we need, so that other unshift calls will be
     // fast. We just have to make sure we don't exceed unusedCapacity.
-    toShift = Min(toShift + unusedCapacity / 2, unusedCapacity);
+    toShift = std::min(toShift + unusedCapacity / 2, unusedCapacity);
 
     // Ensure |numShifted + toShift| does not exceed MaxShiftedElements.
     if (numShifted + toShift > ObjectElements::MaxShiftedElements) {
@@ -1701,10 +1706,12 @@ bool js::NativeDefineProperty(JSContext* cx, HandleNativeObject obj,
     }
   } else if (obj->is<TypedArrayObject>()) {
     // 9.4.5.3 step 3. Indexed properties of typed arrays are special.
-    uint64_t index;
-    if (IsTypedArrayIndex(id, &index)) {
+    mozilla::Maybe<uint64_t> index;
+    JS_TRY_VAR_OR_RETURN_FALSE(cx, index, IsTypedArrayIndex(cx, id));
+
+    if (index) {
       MOZ_ASSERT(!cx->isHelperThreadContext());
-      return DefineTypedArrayElement(cx, obj, index, desc_, result);
+      return DefineTypedArrayElement(cx, obj, index.value(), desc_, result);
     }
   } else if (obj->is<ArgumentsObject>()) {
     Rooted<ArgumentsObject*> argsobj(cx, &obj->as<ArgumentsObject>());
@@ -1740,7 +1747,9 @@ bool js::NativeDefineProperty(JSContext* cx, HandleNativeObject obj,
     // We are being called from a resolve or enumerate hook to reify a
     // lazily-resolved property. To avoid reentering the resolve hook and
     // recursing forever, skip the resolve hook when doing this lookup.
-    NativeLookupOwnPropertyNoResolve(cx, obj, id, &prop);
+    if (!NativeLookupOwnPropertyNoResolve(cx, obj, id, &prop)) {
+      return false;
+    }
   } else {
     if (!NativeLookupOwnProperty<CanGC>(cx, obj, id, &prop)) {
       return false;
@@ -2022,11 +2031,13 @@ static bool DefineNonexistentProperty(JSContext* cx, HandleNativeObject obj,
     }
   } else if (obj->is<TypedArrayObject>()) {
     // 9.4.5.5 step 2. Indexed properties of typed arrays are special.
-    uint64_t index;
-    if (IsTypedArrayIndex(id, &index)) {
+    mozilla::Maybe<uint64_t> index;
+    JS_TRY_VAR_OR_RETURN_FALSE(cx, index, IsTypedArrayIndex(cx, id));
+
+    if (index) {
       // This method is only called for non-existent properties, which
       // means any absent indexed property must be out of range.
-      MOZ_ASSERT(index >= obj->as<TypedArrayObject>().length());
+      MOZ_ASSERT(index.value() >= obj->as<TypedArrayObject>().length());
 
       // Steps 1-2 are enforced by the caller.
 
@@ -2065,7 +2076,9 @@ static bool DefineNonexistentProperty(JSContext* cx, HandleNativeObject obj,
 
 #ifdef DEBUG
   Rooted<PropertyResult> prop(cx);
-  NativeLookupOwnPropertyNoResolve(cx, obj, id, &prop);
+  if (!NativeLookupOwnPropertyNoResolve(cx, obj, id, &prop)) {
+    return false;
+  }
   MOZ_ASSERT(!prop, "didn't expect to find an existing property");
 #endif
 

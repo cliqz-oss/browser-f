@@ -9,26 +9,13 @@
 
 const URL = "foo.js";
 
-function run_test() {
-  initTestDebuggerServer();
-  const debuggee = addTestGlobal("test-symbols");
-  const client = new DebuggerClient(DebuggerServer.connectPipe());
+add_task(
+  threadFrontTest(async ({ threadFront, debuggee }) => {
+    await testSymbols(threadFront, debuggee);
+  })
+);
 
-  client.connect().then(function() {
-    attachTestTabAndResume(client, "test-symbols", function(
-      response,
-      targetFront,
-      threadFront
-    ) {
-      add_task(testSymbols.bind(null, client, threadFront, debuggee));
-      run_next_test();
-    });
-  });
-
-  do_test_pending();
-}
-
-async function testSymbols(client, threadFront, debuggee) {
+async function testSymbols(threadFront, debuggee) {
   const evalCode = () => {
     /* eslint-disable */
     Cu.evalInSandbox(
@@ -48,10 +35,9 @@ async function testSymbols(client, threadFront, debuggee) {
   };
 
   const packet = await executeOnNextTickAndWaitForPause(evalCode, threadFront);
-  const { sym } = packet.frame.environment.bindings.variables;
+  const environment = await packet.frame.getEnvironment();
+  const { sym } = environment.bindings.variables;
 
   equal(sym.value.type, "symbol");
   equal(sym.value.name, "le troll");
-
-  finishClient(client);
 }

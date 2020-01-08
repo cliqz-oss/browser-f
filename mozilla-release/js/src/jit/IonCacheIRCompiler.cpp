@@ -8,6 +8,8 @@
 #include "mozilla/DebugOnly.h"
 #include "mozilla/Maybe.h"
 
+#include <algorithm>
+
 #include "jit/BaselineIC.h"
 #include "jit/CacheIRCompiler.h"
 #include "jit/IonIC.h"
@@ -17,6 +19,7 @@
 #include "jit/VMFunctions.h"
 #include "proxy/DeadObjectProxy.h"
 #include "proxy/Proxy.h"
+#include "util/Memory.h"
 
 #include "jit/JSJitFrameIter-inl.h"
 #include "jit/MacroAssembler-inl.h"
@@ -1880,7 +1883,7 @@ bool IonCacheIRCompiler::emitCallScriptedSetter() {
   // The JitFrameLayout pushed below will be aligned to JitStackAlignment,
   // so we just have to make sure the stack is aligned after we push the
   // |this| + argument Values.
-  size_t numArgs = Max<size_t>(1, target->nargs());
+  size_t numArgs = std::max<size_t>(1, target->nargs());
   uint32_t argSize = (numArgs + 1) * sizeof(Value);
   uint32_t padding =
       ComputeByteAlignment(masm.framePushed() + argSize, JitStackAlignment);
@@ -2044,25 +2047,6 @@ bool IonCacheIRCompiler::emitMegamorphicSetElement() {
   return true;
 }
 
-bool IonCacheIRCompiler::emitLoadTypedObjectResult() {
-  JitSpew(JitSpew_Codegen, __FUNCTION__);
-  AutoOutputRegister output(*this);
-  Register obj = allocator.useRegister(masm, reader.objOperandId());
-  AutoScratchRegister scratch1(allocator, masm);
-  AutoScratchRegister scratch2(allocator, masm);
-
-  TypedThingLayout layout = reader.typedThingLayout();
-  uint32_t typeDescr = reader.typeDescrKey();
-  uint32_t fieldOffset = int32StubField(reader.stubOffset());
-
-  // Get the object's data pointer.
-  LoadTypedThingData(masm, layout, obj, scratch1);
-
-  Address fieldAddr(scratch1, fieldOffset);
-  emitLoadTypedObjectResultShared(fieldAddr, scratch2, typeDescr, output);
-  return true;
-}
-
 bool IonCacheIRCompiler::emitTypeMonitorResult() {
   JitSpew(JitSpew_Codegen, __FUNCTION__);
   return emitReturnFromIC();
@@ -2174,7 +2158,7 @@ bool IonCacheIRCompiler::emitLoadDOMExpandoValueGuardGeneration() {
 
   masm.loadPtr(Address(obj, ProxyObject::offsetOfReservedSlots()), scratch1);
   Address expandoAddr(scratch1,
-                      detail::ProxyReservedSlots::offsetOfPrivateSlot());
+                      js::detail::ProxyReservedSlots::offsetOfPrivateSlot());
 
   // Guard the ExpandoAndGeneration* matches the proxy's ExpandoAndGeneration.
   masm.loadValue(expandoAddr, output);
@@ -2296,28 +2280,6 @@ void IonIC::attachCacheIRStub(JSContext* cx, const CacheIRWriter& writer,
 
   attachStub(newStub, code);
   *attached = true;
-}
-
-bool IonCacheIRCompiler::emitCallStringConcatResult() {
-  JitSpew(JitSpew_Codegen, __FUNCTION__);
-  AutoSaveLiveRegisters save(*this);
-  AutoOutputRegister output(*this);
-
-  Register lhs = allocator.useRegister(masm, reader.stringOperandId());
-  Register rhs = allocator.useRegister(masm, reader.stringOperandId());
-
-  allocator.discardStack(masm);
-
-  prepareVMCall(masm, save);
-
-  masm.Push(rhs);
-  masm.Push(lhs);
-
-  using Fn = JSString* (*)(JSContext*, HandleString, HandleString);
-  callVM<Fn, ConcatStrings<CanGC>>(masm);
-
-  masm.tagValue(JSVAL_TYPE_STRING, ReturnReg, output.valueReg());
-  return true;
 }
 
 bool IonCacheIRCompiler::emitCallStringObjectConcatResult() {

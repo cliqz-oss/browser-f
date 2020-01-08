@@ -422,6 +422,7 @@ var BrowserPageActions = {
       action && this.urlbarButtonNodeIDForActionID(action.id),
       this.mainButtonNode.id,
       "identity-icon",
+      "urlbar-search-button",
     ];
     for (let id of potentialAnchorNodeIDs) {
       if (id) {

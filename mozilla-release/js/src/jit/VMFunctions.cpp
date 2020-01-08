@@ -21,6 +21,7 @@
 #include "vm/Interpreter.h"
 #include "vm/SelfHosting.h"
 #include "vm/TraceLogging.h"
+#include "vm/TypedArrayObject.h"
 
 #include "debugger/DebugAPI-inl.h"
 #include "jit/BaselineFrame-inl.h"
@@ -1024,7 +1025,10 @@ bool GeneratorThrowOrReturn(JSContext* cx, BaselineFrame* frame,
 
   GeneratorResumeKind resumeKind = GeneratorResumeKind(resumeKindArg);
   if (mustReturn) {
-    resumeKind = GeneratorResumeKind::Return;
+    // This function always returns false for the traditional JS control
+    // flow for throw, return and terminate, so we can use the true case to
+    // indicate an explicit return via the debugger.
+    return true;
   }
 
   MOZ_ALWAYS_FALSE(
@@ -1422,10 +1426,9 @@ void AssertValidStringPtr(JSContext* cx, JSString* str) {
     MOZ_ASSERT(kind == gc::AllocKind::EXTERNAL_STRING);
   } else if (str->isAtom()) {
     MOZ_ASSERT(kind == gc::AllocKind::ATOM);
-  } else if (str->isFlat()) {
+  } else if (str->isLinear()) {
     MOZ_ASSERT(kind == gc::AllocKind::STRING ||
-               kind == gc::AllocKind::FAT_INLINE_STRING ||
-               kind == gc::AllocKind::EXTERNAL_STRING);
+               kind == gc::AllocKind::FAT_INLINE_STRING);
   } else {
     MOZ_ASSERT(kind == gc::AllocKind::STRING);
   }
@@ -1621,6 +1624,20 @@ bool CheckIsCallable(JSContext* cx, HandleValue v, CheckIsCallableKind kind) {
   return true;
 }
 
+static bool MaybeTypedArrayIndexString(jsid id) {
+  MOZ_ASSERT(JSID_IS_ATOM(id) || JSID_IS_SYMBOL(id));
+
+  if (MOZ_LIKELY(JSID_IS_ATOM(id))) {
+    JSAtom* str = JSID_TO_ATOM(id);
+    if (str->length() > 0) {
+      // Only check the first character because we want this function to be
+      // fast.
+      return CanStartTypedArrayIndex(str->latin1OrTwoByteChar(0));
+    }
+  }
+  return false;
+}
+
 template <bool HandleMissing>
 static MOZ_ALWAYS_INLINE bool GetNativeDataPropertyPure(JSContext* cx,
                                                         NativeObject* obj,
@@ -1643,10 +1660,17 @@ static MOZ_ALWAYS_INLINE bool GetNativeDataPropertyPure(JSContext* cx,
       return true;
     }
 
-    // Property not found. Watch out for Class hooks.
+    // Property not found. Watch out for Class hooks and TypedArrays.
     if (MOZ_UNLIKELY(!obj->is<PlainObject>())) {
       if (ClassMayResolveId(cx->names(), obj->getClass(), id, obj)) {
         return false;
+      }
+
+      // Don't skip past TypedArrayObjects if the id can be a TypedArray index.
+      if (obj->is<TypedArrayObject>()) {
+        if (MaybeTypedArrayIndexString(id)) {
+          return false;
+        }
       }
     }
 
@@ -1832,11 +1856,21 @@ bool HasNativeDataPropertyPure(JSContext* cx, JSObject* obj, Value* vp) {
         return true;
       }
 
-      // Fail if there's a resolve hook, unless the mayResolve hook tells
-      // us the resolve hook won't define a property with this id.
-      if (MOZ_UNLIKELY(
-              ClassMayResolveId(cx->names(), obj->getClass(), id, obj))) {
-        return false;
+      // Property not found. Watch out for Class hooks and TypedArrays.
+      if (MOZ_UNLIKELY(!obj->is<PlainObject>())) {
+        // Fail if there's a resolve hook, unless the mayResolve hook tells us
+        // the resolve hook won't define a property with this id.
+        if (ClassMayResolveId(cx->names(), obj->getClass(), id, obj)) {
+          return false;
+        }
+
+        // Don't skip past TypedArrayObjects if the id can be a TypedArray
+        // index.
+        if (obj->is<TypedArrayObject>()) {
+          if (MaybeTypedArrayIndexString(id)) {
+            return false;
+          }
+        }
       }
     } else if (obj->is<TypedObject>()) {
       if (obj->as<TypedObject>().typeDescr().hasProperty(cx->names(), id)) {
@@ -2048,6 +2082,197 @@ bool DoToNumeric(JSContext* cx, HandleValue arg, MutableHandleValue ret) {
   ret.set(arg);
   return ToNumeric(cx, ret);
 }
+
+void* AllocateBigIntNoGC(JSContext* cx) {
+  AutoUnsafeCallWithABI unsafe;
+  return js::Allocate<BigInt, NoGC>(cx);
+}
+
+BigInt* BigIntAdd(JSContext* cx, HandleBigInt x, HandleBigInt y) {
+  return BigInt::add(cx, x, y);
+}
+
+BigInt* BigIntSub(JSContext* cx, HandleBigInt x, HandleBigInt y) {
+  return BigInt::sub(cx, x, y);
+}
+
+BigInt* BigIntMul(JSContext* cx, HandleBigInt x, HandleBigInt y) {
+  return BigInt::mul(cx, x, y);
+}
+
+BigInt* BigIntDiv(JSContext* cx, HandleBigInt x, HandleBigInt y) {
+  return BigInt::div(cx, x, y);
+}
+
+BigInt* BigIntMod(JSContext* cx, HandleBigInt x, HandleBigInt y) {
+  return BigInt::mod(cx, x, y);
+}
+
+BigInt* BigIntPow(JSContext* cx, HandleBigInt x, HandleBigInt y) {
+  return BigInt::pow(cx, x, y);
+}
+
+BigInt* BigIntBitAnd(JSContext* cx, HandleBigInt x, HandleBigInt y) {
+  return BigInt::bitAnd(cx, x, y);
+}
+
+BigInt* BigIntBitOr(JSContext* cx, HandleBigInt x, HandleBigInt y) {
+  return BigInt::bitOr(cx, x, y);
+}
+
+BigInt* BigIntBitXor(JSContext* cx, HandleBigInt x, HandleBigInt y) {
+  return BigInt::bitXor(cx, x, y);
+}
+
+BigInt* BigIntLeftShift(JSContext* cx, HandleBigInt x, HandleBigInt y) {
+  return BigInt::lsh(cx, x, y);
+}
+
+BigInt* BigIntRightShift(JSContext* cx, HandleBigInt x, HandleBigInt y) {
+  return BigInt::rsh(cx, x, y);
+}
+
+BigInt* BigIntBitNot(JSContext* cx, HandleBigInt x) {
+  return BigInt::bitNot(cx, x);
+}
+
+BigInt* BigIntNeg(JSContext* cx, HandleBigInt x) { return BigInt::neg(cx, x); }
+
+BigInt* BigIntInc(JSContext* cx, HandleBigInt x) { return BigInt::inc(cx, x); }
+
+BigInt* BigIntDec(JSContext* cx, HandleBigInt x) { return BigInt::dec(cx, x); }
+
+template <EqualityKind Kind>
+bool BigIntEqual(BigInt* x, BigInt* y) {
+  AutoUnsafeCallWithABI unsafe;
+  bool res = BigInt::equal(x, y);
+  if (Kind != EqualityKind::Equal) {
+    res = !res;
+  }
+  return res;
+}
+
+template bool BigIntEqual<EqualityKind::Equal>(BigInt* x, BigInt* y);
+template bool BigIntEqual<EqualityKind::NotEqual>(BigInt* x, BigInt* y);
+
+template <ComparisonKind Kind>
+bool BigIntCompare(BigInt* x, BigInt* y) {
+  AutoUnsafeCallWithABI unsafe;
+  bool res = BigInt::lessThan(x, y);
+  if (Kind != ComparisonKind::LessThan) {
+    res = !res;
+  }
+  return res;
+}
+
+template bool BigIntCompare<ComparisonKind::LessThan>(BigInt* x, BigInt* y);
+template bool BigIntCompare<ComparisonKind::GreaterThanOrEqual>(BigInt* x,
+                                                                BigInt* y);
+
+template <EqualityKind Kind>
+bool BigIntNumberEqual(BigInt* x, double y) {
+  AutoUnsafeCallWithABI unsafe;
+  bool res = BigInt::equal(x, y);
+  if (Kind != EqualityKind::Equal) {
+    res = !res;
+  }
+  return res;
+}
+
+template bool BigIntNumberEqual<EqualityKind::Equal>(BigInt* x, double y);
+template bool BigIntNumberEqual<EqualityKind::NotEqual>(BigInt* x, double y);
+
+template <ComparisonKind Kind>
+bool BigIntNumberCompare(BigInt* x, double y) {
+  AutoUnsafeCallWithABI unsafe;
+  mozilla::Maybe<bool> res = BigInt::lessThan(x, y);
+  if (Kind == ComparisonKind::LessThan) {
+    return res.valueOr(false);
+  }
+  return !res.valueOr(true);
+}
+
+template bool BigIntNumberCompare<ComparisonKind::LessThan>(BigInt* x,
+                                                            double y);
+template bool BigIntNumberCompare<ComparisonKind::GreaterThanOrEqual>(BigInt* x,
+                                                                      double y);
+
+template <ComparisonKind Kind>
+bool NumberBigIntCompare(double x, BigInt* y) {
+  AutoUnsafeCallWithABI unsafe;
+  mozilla::Maybe<bool> res = BigInt::lessThan(x, y);
+  if (Kind == ComparisonKind::LessThan) {
+    return res.valueOr(false);
+  }
+  return !res.valueOr(true);
+}
+
+template bool NumberBigIntCompare<ComparisonKind::LessThan>(double x,
+                                                            BigInt* y);
+template bool NumberBigIntCompare<ComparisonKind::GreaterThanOrEqual>(
+    double x, BigInt* y);
+
+template <EqualityKind Kind>
+bool BigIntStringEqual(JSContext* cx, HandleBigInt x, HandleString y,
+                       bool* res) {
+  JS_TRY_VAR_OR_RETURN_FALSE(cx, *res, BigInt::equal(cx, x, y));
+  if (Kind != EqualityKind::Equal) {
+    *res = !*res;
+  }
+  return true;
+}
+
+template bool BigIntStringEqual<EqualityKind::Equal>(JSContext* cx,
+                                                     HandleBigInt x,
+                                                     HandleString y, bool* res);
+template bool BigIntStringEqual<EqualityKind::NotEqual>(JSContext* cx,
+                                                        HandleBigInt x,
+                                                        HandleString y,
+                                                        bool* res);
+
+template <ComparisonKind Kind>
+bool BigIntStringCompare(JSContext* cx, HandleBigInt x, HandleString y,
+                         bool* res) {
+  mozilla::Maybe<bool> result;
+  if (!BigInt::lessThan(cx, x, y, result)) {
+    return false;
+  }
+  if (Kind == ComparisonKind::LessThan) {
+    *res = result.valueOr(false);
+  } else {
+    *res = !result.valueOr(true);
+  }
+  return true;
+}
+
+template bool BigIntStringCompare<ComparisonKind::LessThan>(JSContext* cx,
+                                                            HandleBigInt x,
+                                                            HandleString y,
+                                                            bool* res);
+template bool BigIntStringCompare<ComparisonKind::GreaterThanOrEqual>(
+    JSContext* cx, HandleBigInt x, HandleString y, bool* res);
+
+template <ComparisonKind Kind>
+bool StringBigIntCompare(JSContext* cx, HandleString x, HandleBigInt y,
+                         bool* res) {
+  mozilla::Maybe<bool> result;
+  if (!BigInt::lessThan(cx, x, y, result)) {
+    return false;
+  }
+  if (Kind == ComparisonKind::LessThan) {
+    *res = result.valueOr(false);
+  } else {
+    *res = !result.valueOr(true);
+  }
+  return true;
+}
+
+template bool StringBigIntCompare<ComparisonKind::LessThan>(JSContext* cx,
+                                                            HandleString x,
+                                                            HandleBigInt y,
+                                                            bool* res);
+template bool StringBigIntCompare<ComparisonKind::GreaterThanOrEqual>(
+    JSContext* cx, HandleString x, HandleBigInt y, bool* res);
 
 }  // namespace jit
 }  // namespace js

@@ -46,7 +46,6 @@
 #include "nsJSPrincipals.h"
 #include "nsIScriptSecurityManager.h"
 #include "nsAttrName.h"
-#include "nsNodeUtils.h"
 
 #include "nsNetCID.h"
 #include "nsIServiceManager.h"
@@ -106,7 +105,6 @@
 #include "nsIFrame.h"
 #include "nsIContent.h"
 #include "nsIStructuredCloneContainer.h"
-#include "nsLayoutStylesheetCache.h"
 #include "mozilla/StyleSheet.h"
 #include "mozilla/StyleSheetInlines.h"
 #include "mozilla/Unused.h"

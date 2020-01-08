@@ -15,6 +15,12 @@ const { Domain } = ChromeUtils.import(
 const { UnsupportedError } = ChromeUtils.import(
   "chrome://remote/content/Error.jsm"
 );
+const { TabManager } = ChromeUtils.import(
+  "chrome://remote/content/TabManager.jsm"
+);
+const { WindowManager } = ChromeUtils.import(
+  "chrome://remote/content/WindowManager.jsm"
+);
 
 class Page extends Domain {
   constructor(session) {
@@ -41,26 +47,22 @@ class Page extends Domain {
    * @param {Object} options
    * @param {Viewport=} options.clip (not supported)
    *     Capture the screenshot of a given region only.
-   * @param {string=} options.format (not supported)
+   * @param {string=} options.format
    *     Image compression format. Defaults to "png".
-   * @param {number=} options.quality (not supported)
-   *     Compression quality from range [0..100] (jpeg only). Defaults to 100.
+   * @param {number=} options.quality
+   *     Compression quality from range [0..100] (jpeg only). Defaults to 80.
    *
    * @return {string}
    *     Base64-encoded image data.
    */
   async captureScreenshot(options = {}) {
+    const { format = "png", quality = 80 } = options;
+
     if (options.clip) {
       throw new UnsupportedError("clip not supported");
     }
-    if (options.format) {
-      throw new UnsupportedError("format not supported");
-    }
     if (options.fromSurface) {
       throw new UnsupportedError("fromSurface not supported");
-    }
-    if (options.quality) {
-      throw new UnsupportedError("quality not supported");
     }
 
     const MAX_CANVAS_DIMENSION = 32767;
@@ -114,7 +116,15 @@ class Page extends Domain {
     // because it is no longer needed.
     snapshot.close();
 
-    return canvas.toDataURL();
+    const url = canvas.toDataURL(`image/${format}`, quality / 100);
+    if (!url.startsWith(`data:image/${format}`)) {
+      throw new UnsupportedError(`Unsupported MIME type: image/${format}`);
+    }
+
+    // only return the base64 encoded data without the data URL prefix
+    const data = url.substring(url.indexOf(",") + 1);
+
+    return { data };
   }
 
   async enable() {
@@ -147,16 +157,12 @@ class Page extends Domain {
     }
   }
 
-  bringToFront() {
-    const { browser } = this.session.target;
-    const navigator = browser.ownerGlobal;
-    const { gBrowser } = navigator;
+  async bringToFront() {
+    const { tab, window } = this.session.target;
 
-    // Focus the window responsible for this page.
-    navigator.focus();
-
-    // Select the corresponding tab
-    gBrowser.selectedTab = gBrowser.getTabForBrowser(browser);
+    // Focus the window, and select the corresponding tab
+    await WindowManager.focus(window);
+    TabManager.selectTab(tab);
   }
 
   /**

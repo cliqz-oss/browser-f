@@ -36,13 +36,11 @@ window.onload = async function() {
     const { FILTERS } = browserRequire("devtools/client/accessibility/constants");
 
     async function withMockEnv(func) {
-      const { gToolbox: originalToolbox, gTelemetry: originalTelemetry } = window;
-      window.gToolbox = { doc: document };
+      const { gTelemetry: originalTelemetry } = window;
       window.gTelemetry = null;
 
       await func();
 
-      window.gToolbox = originalToolbox;
       window.gTelemetry = originalTelemetry;
     }
 
@@ -88,27 +86,19 @@ window.onload = async function() {
         getValue: (object, id) => object[id],
       },
       hasContextMenu: true,
-    };
-
-    const mockProps = {
-      ...defaultProps,
-      hasContextMenu: null,
+      toolboxDoc: document,
     };
 
     const auditState = { audit: { filters: { [FILTERS.CONTRAST]: false }}};
 
     const defaultState = {
-      ui: { supports: { snapshot: true }},
-      ...auditState,
-    };
-    const mockState = {
-      ui: { supports: {}},
+      ui: { supports: {} },
       ...auditState,
     };
 
     info("Check contextmenu default behaviour.");
     renderAccessibilityRow(defaultProps, defaultState);
-    let row = document.getElementById(ROW_ID);
+    const row = document.getElementById(ROW_ID);
 
     info("Get topmost document where the context meny will be rendered");
     const menuDoc = document.defaultView.windowRoot.ownerGlobal.document;
@@ -144,23 +134,6 @@ window.onload = async function() {
       browserWindow.openWebLinkIn = defaultOpenWebLinkIn;
       menu.remove();
     });
-
-    info("Check accessibility row when context menu is not supported.");
-    renderAccessibilityRow(defaultProps, mockState);
-    row = document.getElementById(ROW_ID);
-
-    info("Check contextmenu listener is not called when context menu is not supported.");
-    Simulate.contextMenu(row);
-    let menu = menuDoc.getElementById("accessibility-row-contextmenu");
-    ok(!menu, "contextmenu event handler was never called.");
-
-    info("Check accessibility row when no context menu is available.");
-    renderAccessibilityRow(mockProps, defaultState);
-    row = document.getElementById(ROW_ID);
-
-    Simulate.contextMenu(row);
-    menu = menuDoc.getElementById("accessibility-row-contextmenu");
-    ok(!menu, "contextmenu event handler was never called.");
   } catch (e) {
     ok(false, "Got an error: " + DevToolsUtils.safeErrorString(e));
   } finally {

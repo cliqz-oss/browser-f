@@ -37,6 +37,8 @@ var gExceptionPaths = [
 
   // https://github.com/mozilla/activity-stream/issues/3053
   "resource://activity-stream/data/content/tippytop/images/",
+  // These resources are referenced by messages delivered through Remote Settings
+  "resource://activity-stream/data/content/assets/remote/",
 
   // browser/extensions/pdfjs/content/build/pdf.js#1999
   "resource://pdf.js/web/images/",
@@ -70,7 +72,7 @@ var whitelist = [
   { file: "chrome://pdf.js/locale/viewer.properties" },
 
   // security/manager/pki/resources/content/device_manager.js
-  { file: "chrome://pippki/content/load_device.xul" },
+  { file: "chrome://pippki/content/load_device.xhtml" },
 
   // The l10n build system can't package string files only for some platforms.
   // See bug 1339424 for why this is hard to fix.
@@ -172,7 +174,7 @@ var whitelist = [
   // Bug 1356031 (only used by devtools)
   { file: "chrome://global/skin/icons/error-16.png" },
   // Bug 1344267
-  { file: "chrome://marionette/content/test_anonymous_content.xul" },
+  { file: "chrome://marionette/content/test.xul" },
   { file: "chrome://marionette/content/test_dialog.properties" },
   { file: "chrome://marionette/content/test_dialog.xul" },
   // Bug 1348533
@@ -185,11 +187,11 @@ var whitelist = [
     platforms: ["linux", "win"],
   },
   // Bug 1348559
-  { file: "chrome://pippki/content/resetpassword.xul" },
+  { file: "chrome://pippki/content/resetpassword.xhtml" },
   // Bug 1337345
   { file: "resource://gre/modules/Manifest.jsm" },
   // Bug 1356045
-  { file: "chrome://global/content/test-ipc.xul" },
+  { file: "chrome://global/content/test-ipc.xhtml" },
   // Bug 1378173 (warning: still used by devtools)
   { file: "resource://gre/modules/Promise.jsm" },
   // Bug 1494170
@@ -219,6 +221,14 @@ var whitelist = [
   // Bug 1559554
   { file: "chrome://browser/content/aboutlogins/aboutLoginsUtils.js" },
 ];
+
+if (AppConstants.NIGHTLY_BUILD && AppConstants.platform != "win") {
+  // This path is refereneced in nsFxrCommandLineHandler.cpp, which is only
+  // compiled in Windows. Whitelisted this path so that non-Windows builds
+  // can access the FxR UI via --chrome rather than --fxr (which includes VR-
+  // specific functionality)
+  whitelist.push({ file: "chrome://fxr/content/fxrui.html" });
+}
 
 whitelist = new Set(
   whitelist

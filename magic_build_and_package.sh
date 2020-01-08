@@ -15,6 +15,10 @@ if $CLOBBER; then
   ./mach clobber
 fi
 
+if $BUILD_DE; then
+  CQZ_BUILD_DE_LOCALIZATION=1
+fi
+
 if [ -z "$LANG" ]; then
   LANG='en-US'
 fi

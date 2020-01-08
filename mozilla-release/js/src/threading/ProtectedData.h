@@ -7,13 +7,15 @@
 #ifndef threading_ProtectedData_h
 #define threading_ProtectedData_h
 
-#include "jsutil.h"
+#include "jstypes.h"
 #include "threading/LockGuard.h"
 #include "threading/Mutex.h"
 #include "threading/ThreadId.h"
 
+struct JS_PUBLIC_API JSContext;
+
 namespace JS {
-class Zone;
+class JS_PUBLIC_API Zone;
 }
 
 namespace js {

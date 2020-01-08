@@ -322,9 +322,15 @@ class nsWindow final : public nsBaseWidget {
                               const CSSToScreenScale& aZoom) override;
   void RecvScreenPixels(mozilla::ipc::Shmem&& aMem,
                         const ScreenIntSize& aSize) override;
+  void UpdateDynamicToolbarMaxHeight(mozilla::ScreenIntCoord aHeight) override;
+  mozilla::ScreenIntCoord GetDynamicToolbarMaxHeight() const override {
+    return mDynamicToolbarMaxHeight;
+  }
 
   nsresult SetPrefersReducedMotionOverrideForTest(bool aValue) override;
   nsresult ResetPrefersReducedMotionOverrideForTest() override;
+
+  void UpdateDynamicToolbarOffset(mozilla::ScreenIntCoord aOffset);
 
  protected:
   void BringToFront();
@@ -341,10 +347,8 @@ class nsWindow final : public nsBaseWidget {
   nsTArray<nsWindow*> mChildren;
   nsWindow* mParent;
 
-  double mStartDist;
-  double mLastDist;
-
   nsCOMPtr<nsIIdleServiceInternal> mIdleService;
+  mozilla::ScreenIntCoord mDynamicToolbarMaxHeight;
 
   bool mIsFullScreen;
   bool mIsDisablingWebRender;

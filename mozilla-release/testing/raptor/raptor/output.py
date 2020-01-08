@@ -1,4 +1,3 @@
-
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this
 # file, You can obtain one at http://mozilla.org/MPL/2.0/.
@@ -34,10 +33,17 @@ class PerftestOutput(object):
         self.summarized_supporting_data = []
         self.summarized_screenshots = []
         self.subtest_alert_on = subtest_alert_on
+        self.browser_name = None
+        self.browser_version = None
 
     @abstractmethod
     def summarize(self, test_names):
         raise NotImplementedError()
+
+    def set_browser_meta(self, browser_name, browser_version):
+        # sets the browser metadata for the perfherder data
+        self.browser_name = browser_name
+        self.browser_version = browser_version
 
     def summarize_supporting_data(self):
         '''
@@ -124,7 +130,14 @@ class PerftestOutput(object):
         # split the supporting data by type, there will be one
         # perfherder output per type
         for data_type in support_data_by_type:
-            self.summarized_supporting_data.append(support_data_by_type[data_type])
+            data = support_data_by_type[data_type]
+            if self.browser_name:
+                data['application'] = {
+                    'name': self.browser_name
+                }
+                if self.browser_version:
+                    data['application']['version'] = self.browser_version
+            self.summarized_supporting_data.append(data)
 
         return
 
@@ -190,6 +203,13 @@ class PerftestOutput(object):
             # will still be output from output_supporting_data
             LOG.info("scenario test type was run %s" % not_posting)
             output_perf_data = False
+
+        if self.browser_name:
+            self.summarized_results['application'] = {
+                'name': self.browser_name
+            }
+            if self.browser_version:
+                self.summarized_results['application']['version'] = self.browser_version
 
         total_perfdata = 0
         if output_perf_data:
@@ -313,7 +333,7 @@ class PerftestOutput(object):
             results = results[75::76]
             return 60 * 1000 / filters.geometric_mean(results) / correctionFactor
 
-        if testname.startswith(('raptor-kraken', 'raptor-sunspider', 'supporting_data')):
+        if testname.startswith(('raptor-kraken', 'raptor-sunspider')):
             return sum(_filter(vals))
 
         if testname.startswith(('raptor-unity-webgl', 'raptor-webaudio')):
@@ -335,10 +355,19 @@ class PerftestOutput(object):
             return round(filters.mean(_filter(vals)), 2)
 
         if testname.startswith('supporting_data'):
-            if unit and unit in ('%',):
-                return filters.mean(_filter(vals))
-            else:
-                return sum(_filter(vals))
+            if unit:
+                if unit in ('%',):
+                    return filters.mean(_filter(vals))
+                elif unit in ('W', 'MHz'):
+                    # For power in Watts and clock frequencies,
+                    # summarize with the sum of the averages
+                    allavgs = []
+                    for (val, subtest) in vals:
+                        if 'avg' in subtest:
+                            allavgs.append(val)
+                    if allavgs:
+                        return sum(allavgs)
+            return sum(_filter(vals))
 
         if len(vals) > 1:
             return round(filters.geometric_mean(_filter(vals)), 2)
@@ -1199,6 +1228,49 @@ class RaptorOutput(PerftestOutput):
 class BrowsertimeOutput(PerftestOutput):
     """class for browsertime output"""
 
+    def parseSpeedometerOutput(self, test):
+        # each benchmark 'index' becomes a subtest; each pagecycle / iteration
+        # of the test has multiple values per index/subtest
+
+        # this is the format we receive the results in from the benchmark
+        # i.e. this is ONE pagecycle of speedometer:
+
+        # {u'name': u'raptor-speedometer', u'type': u'benchmark', u'measurements':
+        # {u'speedometer': [[{u'AngularJS-TodoMVC/DeletingAllItems': [147.3000000000011,
+        # 149.95999999999913, 143.29999999999927, 150.34000000000378, 257.6999999999971],
+        # u'Inferno-TodoMVC/CompletingAllItems/Sync': [88.03999999999996,#
+        # 85.60000000000036, 94.18000000000029, 95.19999999999709, 86.47999999999593],
+        # u'AngularJS-TodoMVC': [518.2400000000016, 525.8199999999997, 610.5199999999968,
+        # 532.8200000000215, 640.1800000000003], ...(repeated for each index/subtest)}]]},
+        # u'browser': u'Firefox 62.0a1 20180528123052', u'lower_is_better': False, u'page':
+        # u'http://localhost:55019/Speedometer/index.html?raptor', u'unit': u'score',
+        # u'alert_threshold': 2}
+
+        _subtests = {}
+        data = test['measurements']['speedometer']
+        for page_cycle in data:
+            for sub, replicates in page_cycle.iteritems():
+                # for each pagecycle, build a list of subtests and append all related replicates
+                if sub not in _subtests.keys():
+                    # subtest not added yet, first pagecycle, so add new one
+                    _subtests[sub] = {'unit': test['subtest_unit'],
+                                      'alertThreshold': float(test['alert_threshold']),
+                                      'lowerIsBetter': test['subtest_lower_is_better'],
+                                      'name': sub,
+                                      'replicates': []}
+                _subtests[sub]['replicates'].extend([round(x, 3) for x in replicates])
+
+        vals = []
+        subtests = []
+        names = _subtests.keys()
+        names.sort(reverse=True)
+        for name in names:
+            _subtests[name]['value'] = filters.median(_subtests[name]['replicates'])
+            subtests.append(_subtests[name])
+            vals.append([_subtests[name]['value'], name])
+
+        return subtests, vals
+
     def summarize(self, test_names):
         """
         Summarize the parsed browsertime test output, and format accordingly so the output can
@@ -1232,6 +1304,30 @@ class BrowsertimeOutput(PerftestOutput):
         the Browsertime-provided statistics, instead of calcuating our own geomeans from the
         replicates.
         """
+
+        # converting suites and subtests into lists, and sorting them
+        def _process(subtest):
+            subtest['value'] = filters.median(filters.ignore_first(subtest['replicates'], 1))
+            return subtest
+
+        def _process_suite(suite):
+            suite['subtests'] = [
+                _process(subtest) for subtest in suite['subtests'].values()
+                if subtest['replicates']
+            ]
+            suite['subtests'].sort(key=lambda subtest: subtest['name'])
+
+            # for pageload tests, if there are > 1 subtests here, that means there
+            # were multiple measurement types captured in each single pageload; we want
+            # to get the mean of those values and report 1 overall 'suite' value
+            # for the page; all replicates will still be available in the JSON artifact
+            # summarize results to get top overall suite result
+            if len(suite['subtests']) > 1:
+                vals = [[subtest['value'], subtest['name']] for subtest in suite['subtests']]
+                suite['value'] = self.construct_summary(vals,
+                                                        testname=test['name'])
+            return suite
+
         LOG.info("preparing browsertime results for output")
 
         # check if we actually have any results
@@ -1250,12 +1346,6 @@ class BrowsertimeOutput(PerftestOutput):
         suites = {}
 
         for test in self.results:
-            # process results for pageloader type of tests
-            if test["type"] != "browsertime-pageload":
-                LOG.error("output.summarize received unsupported test results type for %s" %
-                          test['name'])
-                continue
-
             if test['name'] not in suites:
                 suite = {
                     'name': test['name'],
@@ -1276,49 +1366,43 @@ class BrowsertimeOutput(PerftestOutput):
             else:
                 suite = suites[test['name']]
 
-            for measurement_name, replicates in test['measurements'].iteritems():
-                if measurement_name not in suite['subtests']:
-                    subtest = {}
-                    subtest['name'] = measurement_name
-                    subtest['lowerIsBetter'] = test['subtest_lower_is_better']
-                    subtest['alertThreshold'] = float(test['alert_threshold'])
-                    subtest['unit'] = test['subtest_unit']
+            if ("pageload" or "scenario") in test['type']:
+                for measurement_name, replicates in test['measurements'].iteritems():
+                    if measurement_name not in suite['subtests']:
+                        subtest = {}
+                        subtest['name'] = measurement_name
+                        subtest['lowerIsBetter'] = test['subtest_lower_is_better']
+                        subtest['alertThreshold'] = float(test['alert_threshold'])
+                        subtest['unit'] = test['subtest_unit']
 
-                    # if 'alert_on' is set for this particular measurement, then we want to set the
-                    # flag in the perfherder output to turn on alerting for this subtest
-                    if self.subtest_alert_on is not None:
-                        if measurement_name in self.subtest_alert_on:
-                            LOG.info("turning on subtest alerting for measurement type: %s"
-                                     % measurement_name)
-                            subtest['shouldAlert'] = True
-                    subtest['replicates'] = []
-                    suite['subtests'][measurement_name] = subtest
-                else:
-                    subtest = suite['subtests'][measurement_name]
+                        # if 'alert_on' is set for this particular measurement, then we want to set
+                        # the flag in the perfherder output to turn on alerting for this subtest
+                        if self.subtest_alert_on is not None:
+                            if measurement_name in self.subtest_alert_on:
+                                LOG.info("turning on subtest alerting for measurement type: %s"
+                                         % measurement_name)
+                                subtest['shouldAlert'] = True
+                        subtest['replicates'] = []
+                        suite['subtests'][measurement_name] = subtest
+                    else:
+                        subtest = suite['subtests'][measurement_name]
 
-                subtest['replicates'].extend(replicates)
+                    subtest['replicates'].extend(replicates)
 
-        # converting suites and subtests into lists, and sorting them
-        def _process(subtest):
-            subtest['value'] = filters.median(filters.ignore_first(subtest['replicates'], 1))
-            return subtest
+            elif "benchmark" in test['type']:
+                if 'speedometer' in test['name']:
+                    subtests, vals = self.parseSpeedometerOutput(test)
 
-        def _process_suite(suite):
-            suite['subtests'] = [_process(subtest) for subtest in suite['subtests'].values()]
-            suite['subtests'].sort(key=lambda subtest: subtest['name'])
+                suite['subtests'] = subtests
+                # summarize results for both benchmark type tests
+                if len(subtests) > 1:
+                    suite['value'] = self.construct_summary(vals, testname=test['name'])
+                subtests.sort(key=lambda subtest: subtest['name'])
 
-            # for pageload tests, if there are > 1 subtests here, that means there
-            # were multiple measurement types captured in each single pageload; we want
-            # to get the mean of those values and report 1 overall 'suite' value
-            # for the page; all replicates will still be available in the JSON artifact
-            # summarize results to get top overall suite result
-            if len(suite['subtests']) > 1:
-                vals = [[subtest['value'], subtest['name']] for subtest in suite['subtests']]
-                suite['value'] = self.construct_summary(vals,
-                                                        testname=test['name'])
-            return suite
+        # convert suites to list
+        suites = [s if "benchmark" in test['type'] else _process_suite(s)
+                  for s in suites.values()]
 
-        suites = [_process_suite(s) for s in suites.values()]
         suites.sort(key=lambda suite: suite['name'])
 
         test_results['suites'] = suites

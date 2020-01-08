@@ -129,13 +129,6 @@ class HttpChannelParent final : public nsIInterfaceRequestor,
 
   base::ProcessId OtherPid() const;
 
-  // Called by nsHttpChannel when a process switch is about to start.
-  // aChannel: nsIHttpChannel caller.
-  // aIdentifier: identifier from SessionStore to be passed to the childChannel
-  //              in order to identify it.
-  nsresult TriggerCrossProcessSwitch(nsIHttpChannel* aChannel,
-                                     uint64_t aIdentifier);
-
   // Inform the child actor that our referrer info was modified late during
   // BeginConnect.
   void OverrideReferrerInfoDuringBeginConnect(nsIReferrerInfo* aReferrerInfo);
@@ -255,11 +248,6 @@ class HttpChannelParent final : public nsIInterfaceRequestor,
   void MaybeFlushPendingDiversion();
   void ResponseSynthesized();
 
-  void CrossProcessRedirectDone(
-      const nsresult& aResult,
-      const mozilla::Maybe<LoadInfoArgs>& aLoadInfoArgs);
-  void FinishCrossProcessSwitch(nsHttpChannel* aChannel, nsresult aStatus);
-
   // final step for Redirect2Verify procedure, will be invoked while both
   // redirecting and redirected channel are ready or any error happened.
   // OnRedirectVerifyCallback will be invoked for finishing the async
@@ -360,10 +348,6 @@ class HttpChannelParent final : public nsIInterfaceRequestor,
   uint8_t mCacheNeedFlowControlInitialized : 1;
   uint8_t mNeedFlowControl : 1;
   uint8_t mSuspendedForFlowControl : 1;
-
-  // The child channel was cancelled, as the consumer was relocated to another
-  // process.
-  uint8_t mDoingCrossProcessRedirect : 1;
 
   // Number of events to wait before actually invoking AsyncOpen on the main
   // channel. For each asynchronous step required before InvokeAsyncOpen, should

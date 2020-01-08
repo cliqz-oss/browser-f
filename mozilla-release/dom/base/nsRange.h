@@ -306,6 +306,21 @@ class nsRange final : public mozilla::dom::AbstractRange,
    */
   bool CanAccess(const nsINode&) const;
 
+  void AdjustNextRefsOnCharacterDataSplit(const nsIContent& aContent,
+                                          const CharacterDataChangeInfo& aInfo);
+
+  struct RangeBoundariesAndRoot {
+    RawRangeBoundary mStart;
+    RawRangeBoundary mEnd;
+    nsINode* mRoot = nullptr;
+  };
+
+  /**
+   * @param aContent Must be non-nullptr.
+   */
+  RangeBoundariesAndRoot DetermineNewRangeBoundariesAndRootOnCharacterDataMerge(
+      nsIContent* aContent, const CharacterDataChangeInfo& aInfo) const;
+
  public:
   /**
    * Return true if any part of (aNode, aStartOffset) .. (aNode, aEndOffset)
@@ -425,7 +440,7 @@ class nsRange final : public mozilla::dom::AbstractRange,
 
   nsCOMPtr<nsINode> mRoot;
   // mRegisteredCommonAncestor is only non-null when the range
-  // IsInSelection().  It's kept alive via mStartContainer/mEndContainer,
+  // IsInSelection().  It's kept alive via mStart/mEnd,
   // because we update it any time those could become disconnected from it.
   nsINode* MOZ_NON_OWNING_REF mRegisteredCommonAncestor;
   mozilla::WeakPtr<mozilla::dom::Selection> mSelection;

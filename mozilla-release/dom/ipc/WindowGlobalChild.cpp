@@ -20,6 +20,7 @@
 #include "mozilla/ipc/InProcessParent.h"
 #include "nsContentUtils.h"
 #include "nsDocShell.h"
+#include "nsFocusManager.h"
 #include "nsFrameLoaderOwner.h"
 #include "nsGlobalWindowInner.h"
 #include "nsFrameLoaderOwner.h"
@@ -80,7 +81,7 @@ already_AddRefed<WindowGlobalChild> WindowGlobalChild::Create(
   if (httpChan &&
       loadInfo->GetExternalContentPolicyType() ==
           nsIContentPolicy::TYPE_DOCUMENT &&
-      NS_SUCCEEDED(httpChan->GetCrossOriginOpenerPolicy(
+      NS_SUCCEEDED(httpChan->ComputeCrossOriginOpenerPolicy(
           nsILoadInfo::OPENER_POLICY_NULL, &policy))) {
     bc->SetOpenerPolicy(policy);
   }
@@ -262,6 +263,39 @@ mozilla::ipc::IPCResult WindowGlobalChild::RecvLoadURIInChild(
   return IPC_OK();
 }
 
+mozilla::ipc::IPCResult WindowGlobalChild::RecvInternalLoadInChild(
+    nsDocShellLoadState* aLoadState, bool aTakeFocus) {
+  nsDocShell::Cast(mWindowGlobal->GetDocShell())
+      ->InternalLoad(aLoadState, nullptr, nullptr);
+
+  if (aTakeFocus) {
+    if (nsCOMPtr<nsPIDOMWindowOuter> domWin =
+            mBrowsingContext->GetDOMWindow()) {
+      nsFocusManager::FocusWindow(domWin);
+    }
+  }
+
+#ifdef MOZ_CRASHREPORTER
+  if (CrashReporter::GetEnabled()) {
+    nsCOMPtr<nsIURI> annotationURI;
+
+    nsresult rv = NS_MutateURI(aLoadState->URI())
+                      .SetUserPass(EmptyCString())
+                      .Finalize(annotationURI);
+
+    if (NS_FAILED(rv)) {
+      // Ignore failures on about: URIs.
+      annotationURI = aLoadState->URI();
+    }
+
+    CrashReporter::AnnotateCrashReport(CrashReporter::Annotation::URL,
+                                       annotationURI->GetSpecOrDefault());
+  }
+#endif
+
+  return IPC_OK();
+}
+
 mozilla::ipc::IPCResult WindowGlobalChild::RecvDisplayLoadError(
     const nsAString& aURI) {
   bool didDisplayLoadError = false;
@@ -281,11 +315,11 @@ mozilla::ipc::IPCResult WindowGlobalChild::RecvMakeFrameLocal(
 
   RefPtr<Element> embedderElt = aFrameContext->GetEmbedderElement();
   if (NS_WARN_IF(!embedderElt)) {
-    return IPC_FAIL(this, "No embedder element in this process");
+    return IPC_OK();
   }
 
   if (NS_WARN_IF(embedderElt->GetOwnerGlobal() != WindowGlobal())) {
-    return IPC_FAIL(this, "Wrong actor");
+    return IPC_OK();
   }
 
   RefPtr<nsFrameLoaderOwner> flo = do_QueryObject(embedderElt);
@@ -311,20 +345,38 @@ mozilla::ipc::IPCResult WindowGlobalChild::RecvMakeFrameRemote(
   // Immediately resolve the promise, acknowledging the request.
   aResolve(true);
 
+  // Immediately construct the BrowserBridgeChild so we can destroy it cleanly
+  // if the process switch fails.
+  RefPtr<BrowserBridgeChild> bridge =
+      new BrowserBridgeChild(aFrameContext, aTabId);
+  RefPtr<BrowserChild> manager = GetBrowserChild();
+  if (NS_WARN_IF(
+          !manager->BindPBrowserBridgeEndpoint(std::move(aEndpoint), bridge))) {
+    return IPC_OK();
+  }
+
   RefPtr<Element> embedderElt = aFrameContext->GetEmbedderElement();
   if (NS_WARN_IF(!embedderElt)) {
-    return IPC_FAIL(this, "No embedder element in this process");
+    BrowserBridgeChild::Send__delete__(bridge);
+    return IPC_OK();
   }
 
   if (NS_WARN_IF(embedderElt->GetOwnerGlobal() != WindowGlobal())) {
-    return IPC_FAIL(this, "Wrong actor");
+    BrowserBridgeChild::Send__delete__(bridge);
+    return IPC_OK();
   }
 
   RefPtr<nsFrameLoaderOwner> flo = do_QueryObject(embedderElt);
   MOZ_DIAGNOSTIC_ASSERT(flo, "Embedder must be a nsFrameLoaderOwner");
 
   // Trgger a process switch into the specified process.
-  flo->ChangeRemotenessWithBridge(std::move(aEndpoint), aTabId, IgnoreErrors());
+  IgnoredErrorResult rv;
+  flo->ChangeRemotenessWithBridge(bridge, rv);
+  if (NS_WARN_IF(rv.Failed())) {
+    BrowserBridgeChild::Send__delete__(bridge);
+    return IPC_OK();
+  }
+
   return IPC_OK();
 }
 

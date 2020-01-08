@@ -28,6 +28,12 @@ interface MozQueryInterface {
 [ChromeOnly, Exposed=(Window,Worker)]
 namespace ChromeUtils {
   /**
+   * Get the |NodeId| for the given JS Object.
+   * |NodeId| is the identifier of |JS::ubi::Node|.
+   */
+  NodeId getObjectNodeId(object obj);
+
+  /**
    * Serialize a snapshot of the heap graph, as seen by |JS::ubi::Node| and
    * restricted by |boundaries|, and write it to the provided file path.
    *
@@ -559,6 +565,7 @@ dictionary IOActivityDataDictionary {
  *     serialization, deserialization, and inheritance.
  * (3) Update the methods on mozilla::OriginAttributesPattern, including matching.
  */
+[GenerateInitFromJSON]
 dictionary OriginAttributesDictionary {
   unsigned long userContextId = 0;
   boolean inIsolatedMozBrowser = false;
@@ -566,6 +573,8 @@ dictionary OriginAttributesDictionary {
   DOMString firstPartyDomain = "";
   DOMString geckoViewSessionContextId = "";
 };
+
+[GenerateInitFromJSON, GenerateToJSON]
 dictionary OriginAttributesPatternDictionary {
   unsigned long userContextId;
   boolean inIsolatedMozBrowser;

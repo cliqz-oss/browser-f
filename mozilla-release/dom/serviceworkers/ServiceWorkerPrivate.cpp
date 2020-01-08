@@ -124,7 +124,7 @@ ServiceWorkerPrivate::~ServiceWorkerPrivate() {
 
 namespace {
 
-class CheckScriptEvaluationWithCallback final : public WorkerRunnable {
+class CheckScriptEvaluationWithCallback final : public WorkerDebuggeeRunnable {
   nsMainThreadPtrHandle<ServiceWorkerPrivate> mServiceWorkerPrivate;
   nsMainThreadPtrHandle<KeepAliveToken> mKeepAliveToken;
 
@@ -142,7 +142,7 @@ class CheckScriptEvaluationWithCallback final : public WorkerRunnable {
       ServiceWorkerPrivate* aServiceWorkerPrivate,
       KeepAliveToken* aKeepAliveToken,
       LifeCycleEventCallback* aScriptEvaluationCallback)
-      : WorkerRunnable(aWorkerPrivate),
+      : WorkerDebuggeeRunnable(aWorkerPrivate, WorkerThreadModifyBusyCount),
         mServiceWorkerPrivate(new nsMainThreadPtrHolder<ServiceWorkerPrivate>(
             "CheckScriptEvaluationWithCallback::mServiceWorkerPrivate",
             aServiceWorkerPrivate)),
@@ -1429,9 +1429,6 @@ class FetchEventRunnable : public ExtendableFunctionalEventWorkerRunnable,
         mRequestMode, mRequestRedirect, mRequestCredentials, mReferrer,
         mReferrerPolicy, mContentPolicyType, mIntegrity);
     internalReq->SetBody(mUploadStream, mUploadStreamContentLength);
-    // For Telemetry, note that this Request object was created by a Fetch
-    // event.
-    internalReq->SetCreatedByFetchEvent();
 
     nsCOMPtr<nsIChannel> channel;
     nsresult rv = mInterceptedChannel->GetChannel(getter_AddRefs(channel));

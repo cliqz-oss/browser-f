@@ -163,6 +163,7 @@ HttpBaseChannel::HttpBaseChannel()
       mChannelCreationTime(0),
       mStartPos(UINT64_MAX),
       mTransferSize(0),
+      mRequestSize(0),
       mDecodedBodySize(0),
       mEncodedBodySize(0),
       mRequestContextID(0),
@@ -1496,6 +1497,18 @@ HttpBaseChannel::IsThirdPartyTrackingResource(bool* aIsTrackingResource) {
 }
 
 NS_IMETHODIMP
+HttpBaseChannel::IsSocialTrackingResource(bool* aIsSocialTrackingResource) {
+  MOZ_ASSERT(!mFirstPartyClassificationFlags ||
+             !mThirdPartyClassificationFlags);
+  *aIsSocialTrackingResource =
+      UrlClassifierCommon::IsSocialTrackingClassificationFlag(
+          mThirdPartyClassificationFlags) ||
+      UrlClassifierCommon::IsSocialTrackingClassificationFlag(
+          mFirstPartyClassificationFlags);
+  return NS_OK;
+}
+
+NS_IMETHODIMP
 HttpBaseChannel::GetClassificationFlags(uint32_t* aFlags) {
   if (mThirdPartyClassificationFlags) {
     *aFlags = mThirdPartyClassificationFlags;
@@ -1527,6 +1540,12 @@ HttpBaseChannel::GetFlashPluginState(nsIHttpChannel::FlashPluginState* aState) {
 NS_IMETHODIMP
 HttpBaseChannel::GetTransferSize(uint64_t* aTransferSize) {
   *aTransferSize = mTransferSize;
+  return NS_OK;
+}
+
+NS_IMETHODIMP
+HttpBaseChannel::GetRequestSize(uint64_t* aRequestSize) {
+  *aRequestSize = mRequestSize;
   return NS_OK;
 }
 
@@ -3550,7 +3569,12 @@ nsresult HttpBaseChannel::SetupReplacementChannel(nsIURI* newURI,
     rv = httpInternal->SetTlsFlags(mTlsFlags);
     MOZ_ASSERT(NS_SUCCEEDED(rv));
 
-    RefPtr<nsHttpChannel> realChannel;
+    // Ensure the type of realChannel involves all types it may redirect to.
+    // Such as nsHttpChannel and InterceptedChannel.
+    // Even thought InterceptedChannel itself doesn't require these information,
+    // it may still be necessary for the following redirections.
+    // E.g. nsHttpChannel -> InterceptedChannel -> nsHttpChannel
+    RefPtr<HttpBaseChannel> realChannel;
     CallQueryInterface(newChannel, realChannel.StartAssignment());
     if (realChannel) {
       realChannel->SetContentBlockingAllowListPrincipal(
@@ -4461,7 +4485,7 @@ nsILoadInfo::CrossOriginOpenerPolicy CreateCrossOriginOpenerPolicy(
 // Obtain a cross-origin opener-policy from a response response and a
 // cross-origin opener policy initiator.
 // https://gist.github.com/annevk/6f2dd8c79c77123f39797f6bdac43f3e
-NS_IMETHODIMP HttpBaseChannel::GetCrossOriginOpenerPolicy(
+NS_IMETHODIMP HttpBaseChannel::ComputeCrossOriginOpenerPolicy(
     nsILoadInfo::CrossOriginOpenerPolicy aInitiatorPolicy,
     nsILoadInfo::CrossOriginOpenerPolicy* aOutPolicy) {
   MOZ_ASSERT(aOutPolicy);

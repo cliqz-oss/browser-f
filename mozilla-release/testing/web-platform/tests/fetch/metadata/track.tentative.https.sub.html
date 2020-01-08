@@ -34,14 +34,12 @@
       el.src = "https://{{host}}:{{ports[https][0]}}/fetch/metadata/resources/record-header.py?file=" + key;
       el.onload = t.step_func(_ => {
         expected = {
-          "dest": "track",
           "site": "same-origin",
           "user": "",
-          "mode": "cors" // Because the `video` element has `crossorigin`
+          "mode": "cors", // Because the `video` element has `crossorigin`
+          "dest": "track"
         };
-        fetch("/fetch/metadata/resources/record-header.py?retrieve=true&file=" + key)
-            .then(response => response.text())
-            .then(text => assert_header_equals(text, expected))
+        validate_expectations(key, expected, "Same-Origin track")
             .then(_ => resolve());
       });
       video.appendChild(el);
@@ -57,14 +55,12 @@
       el.src = "https://{{hosts[][www]}}:{{ports[https][0]}}/fetch/metadata/resources/record-header.py?file=" + key;
       el.onload = t.step_func(_ => {
         expected = {
-          "dest": "track",
           "site": "same-site",
           "user": "",
-          "mode": "cors" // Because the `video` element has `crossorigin`
+          "mode": "cors", // Because the `video` element has `crossorigin`
+          "dest": "track"
         };
-        fetch("/fetch/metadata/resources/record-header.py?retrieve=true&file=" + key)
-            .then(response => response.text())
-            .then(text => assert_header_equals(text, expected))
+        validate_expectations(key, expected, "Same-Site track")
             .then(resolve)
             .catch(reject);
 
@@ -82,14 +78,12 @@
       el.src = "https://{{hosts[alt][www]}}:{{ports[https][0]}}/fetch/metadata/resources/record-header.py?file=" + key;
       el.onload = t.step_func(_ => {
         expected = {
-          "dest": "track",
           "site": "cross-site",
           "user": "",
-          "mode": "cors" // Because the `video` element has `crossorigin`
+          "mode": "cors", // Because the `video` element has `crossorigin`
+          "dest": "track"
         };
-        fetch("/fetch/metadata/resources/record-header.py?retrieve=true&file=" + key)
-            .then(response => response.text())
-            .then(text => assert_header_equals(text, expected))
+        validate_expectations(key, expected,"Cross-Site track")
             .then(resolve)
             .catch(reject);
       });
@@ -110,14 +104,12 @@
       el.src = "https://{{host}}:{{ports[https][0]}}/fetch/metadata/resources/record-header.py?file=" + key;
       el.onload = t.step_func(_ => {
         expected = {
-          "dest":"track",
           "site":"same-origin",
           "user":"",
-          "mode": "same-origin"
+          "mode": "same-origin",
+          "dest": "track"
         };
-        fetch("/fetch/metadata/resources/record-header.py?retrieve=true&file=" + key)
-            .then(response => response.text())
-            .then(text => assert_header_equals(text, expected))
+        validate_expectations(key, expected, "Same-Origin, CORS track")
             .then(_ => resolve());
       });
       video.appendChild(el);

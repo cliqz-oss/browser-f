@@ -22,7 +22,7 @@
 #include "mozilla/Variant.h"           // for AsVariant, AsVariantTemporary
 #include "mozilla/Vector.h"            // for Vector, Vector<>::ConstRange
 
-#include <algorithm>   // for std::max
+#include <algorithm>   // for std::find, std::max
 #include <functional>  // for function
 #include <stddef.h>    // for size_t
 #include <stdint.h>    // for uint32_t, uint64_t, int32_t
@@ -31,7 +31,6 @@
 #include "jsapi.h"        // for CallArgs, CallArgsFromVp
 #include "jsfriendapi.h"  // for GetErrorMessage
 #include "jstypes.h"      // for JS_PUBLIC_API
-#include "jsutil.h"       // for Find
 
 #include "builtin/Array.h"               // for NewDenseFullyAllocatedArray
 #include "builtin/Promise.h"             // for PromiseObject
@@ -306,24 +305,19 @@ bool js::ParseEvalOptions(JSContext* cx, HandleValue value,
 
 /*** Breakpoints ************************************************************/
 
-BreakpointSite::BreakpointSite(Type type) : type_(type), enabledCount(0) {}
-
-void BreakpointSite::inc(JSFreeOp* fop) {
-  enabledCount++;
-  if (enabledCount == 1) {
-    recompile(fop);
-  }
-}
-
-void BreakpointSite::dec(JSFreeOp* fop) {
-  MOZ_ASSERT(enabledCount > 0);
-  enabledCount--;
-  if (enabledCount == 0) {
-    recompile(fop);
-  }
-}
-
 bool BreakpointSite::isEmpty() const { return breakpoints.isEmpty(); }
+
+void BreakpointSite::trace(JSTracer* trc) {
+  for (auto p = breakpoints.begin(); p; p++) {
+    p->trace(trc);
+  }
+}
+
+void BreakpointSite::finalize(JSFreeOp* fop) {
+  while (!breakpoints.isEmpty()) {
+    breakpoints.begin()->delete_(fop);
+  }
+}
 
 Breakpoint* BreakpointSite::firstBreakpoint() const {
   if (isEmpty()) {
@@ -342,41 +336,36 @@ bool BreakpointSite::hasBreakpoint(Breakpoint* toFind) {
   return false;
 }
 
-inline gc::Cell* BreakpointSite::owningCellUnbarriered() {
-  if (type() == Type::JS) {
-    return asJS()->script;
-  }
+Breakpoint::Breakpoint(Debugger* debugger, HandleObject wrappedDebugger,
+                       BreakpointSite* site, HandleObject handler)
+    : debugger(debugger),
+      wrappedDebugger(wrappedDebugger),
+      site(site),
+      handler(handler) {
+  MOZ_ASSERT(UncheckedUnwrap(wrappedDebugger) == debugger->object);
+  MOZ_ASSERT(handler->compartment() == wrappedDebugger->compartment());
 
-  return asWasm()->instance->objectUnbarriered();
-}
-
-inline size_t BreakpointSite::allocSize() {
-  if (type() == Type::JS) {
-    return sizeof(Breakpoint);
-  }
-
-  return sizeof(WasmBreakpoint);
-}
-
-Breakpoint::Breakpoint(Debugger* debugger, BreakpointSite* site,
-                       JSObject* handler)
-    : debugger(debugger), site(site), handler(handler) {
-  MOZ_ASSERT(handler->compartment() == debugger->object->compartment());
   debugger->breakpoints.pushBack(this);
   site->breakpoints.pushBack(this);
 }
 
-void Breakpoint::destroy(JSFreeOp* fop,
-                         MayDestroySite mayDestroySite /* true */) {
-  site->dec(fop);
+void Breakpoint::trace(JSTracer* trc) {
+  TraceEdge(trc, &wrappedDebugger, "breakpoint owner");
+  TraceEdge(trc, &handler, "breakpoint handler");
+}
+
+void Breakpoint::delete_(JSFreeOp* fop) {
   debugger->breakpoints.remove(this);
   site->breakpoints.remove(this);
-  gc::Cell* cell = site->owningCellUnbarriered();
-  size_t size = site->allocSize();
-  if (mayDestroySite == MayDestroySite::True) {
-    site->destroyIfEmpty(fop);
-  }
-  fop->delete_(cell, this, size, MemoryUse::Breakpoint);
+  gc::Cell* cell = site->owningCell();
+  fop->delete_(cell, this, MemoryUse::Breakpoint);
+}
+
+void Breakpoint::remove(JSFreeOp* fop) {
+  BreakpointSite* savedSite = site;
+  delete_(fop);
+
+  savedSite->destroyIfEmpty(fop);
 }
 
 Breakpoint* Breakpoint::nextInDebugger() { return debuggerLink.mNext; }
@@ -384,38 +373,54 @@ Breakpoint* Breakpoint::nextInDebugger() { return debuggerLink.mNext; }
 Breakpoint* Breakpoint::nextInSite() { return siteLink.mNext; }
 
 JSBreakpointSite::JSBreakpointSite(JSScript* script, jsbytecode* pc)
-    : BreakpointSite(Type::JS), script(script), pc(pc) {
+    : script(script), pc(pc) {
   MOZ_ASSERT(!DebugAPI::hasBreakpointsAt(script, pc));
 }
 
-void JSBreakpointSite::recompile(JSFreeOp* fop) {
-  if (script->hasBaselineScript()) {
-    script->baselineScript()->toggleDebugTraps(script, pc);
-  }
+void JSBreakpointSite::remove(JSFreeOp* fop) {
+  DebugScript::destroyBreakpointSite(fop, script, pc);
 }
 
-void JSBreakpointSite::destroyIfEmpty(JSFreeOp* fop) {
-  if (isEmpty()) {
-    DebugScript::destroyBreakpointSite(fop, script, pc);
-  }
+void JSBreakpointSite::trace(JSTracer* trc) {
+  BreakpointSite::trace(trc);
+  TraceEdge(trc, &script, "breakpoint script");
 }
 
-WasmBreakpointSite::WasmBreakpointSite(wasm::Instance* instance_,
+void JSBreakpointSite::delete_(JSFreeOp* fop) {
+  BreakpointSite::finalize(fop);
+
+  fop->delete_(script, this, MemoryUse::BreakpointSite);
+}
+
+gc::Cell* JSBreakpointSite::owningCell() { return script; }
+
+Realm* JSBreakpointSite::realm() const { return script->realm(); }
+
+WasmBreakpointSite::WasmBreakpointSite(WasmInstanceObject* instanceObject_,
                                        uint32_t offset_)
-    : BreakpointSite(Type::Wasm), instance(instance_), offset(offset_) {
-  MOZ_ASSERT(instance);
-  MOZ_ASSERT(instance->debugEnabled());
+    : instanceObject(instanceObject_), offset(offset_) {
+  MOZ_ASSERT(instanceObject_);
+  MOZ_ASSERT(instanceObject_->instance().debugEnabled());
 }
 
-void WasmBreakpointSite::recompile(JSFreeOp* fop) {
-  instance->debug().toggleBreakpointTrap(fop->runtime(), offset, isEnabled());
+void WasmBreakpointSite::trace(JSTracer* trc) {
+  BreakpointSite::trace(trc);
+  TraceEdge(trc, &instanceObject, "breakpoint Wasm instance");
 }
 
-void WasmBreakpointSite::destroyIfEmpty(JSFreeOp* fop) {
-  if (isEmpty()) {
-    instance->destroyBreakpointSite(fop, offset);
-  }
+void WasmBreakpointSite::remove(JSFreeOp* fop) {
+  instanceObject->instance().destroyBreakpointSite(fop, offset);
 }
+
+void WasmBreakpointSite::delete_(JSFreeOp* fop) {
+  BreakpointSite::finalize(fop);
+
+  fop->delete_(instanceObject, this, MemoryUse::BreakpointSite);
+}
+
+gc::Cell* WasmBreakpointSite::owningCell() { return instanceObject; }
+
+Realm* WasmBreakpointSite::realm() const { return instanceObject->realm(); }
 
 /*** Debugger hook dispatch *************************************************/
 
@@ -466,6 +471,11 @@ Debugger::Debugger(JSContext* cx, NativeObject* dbg)
 Debugger::~Debugger() {
   MOZ_ASSERT(debuggees.empty());
   allocationsLog.clear();
+
+  // Breakpoints should hold us alive, so any breakpoints remaining must be set
+  // in dying JSScripts. We should clean them up, but this never asserts. I'm
+  // not sure why.
+  MOZ_ASSERT(breakpoints.isEmpty());
 
   // We don't have to worry about locking here since Debugger is not
   // background finalized.
@@ -676,40 +686,6 @@ bool Debugger::hasAnyLiveHooks(JSRuntime* rt) const {
   if (getHook(OnDebuggerStatement) || getHook(OnExceptionUnwind) ||
       getHook(OnNewScript) || getHook(OnEnterFrame)) {
     return true;
-  }
-
-  // If any breakpoints are in live scripts, return true.
-  for (Breakpoint* bp = firstBreakpoint(); bp; bp = bp->nextInDebugger()) {
-    switch (bp->site->type()) {
-      case BreakpointSite::Type::JS:
-        if (IsMarkedUnbarriered(rt, &bp->site->asJS()->script)) {
-          return true;
-        }
-        break;
-      case BreakpointSite::Type::Wasm:
-        if (IsMarkedUnbarriered(rt, &bp->asWasm()->wasmInstance)) {
-          return true;
-        }
-        break;
-    }
-  }
-
-  // Check for hooks in live stack frames.
-  for (FrameMap::Range r = frames.all(); !r.empty(); r.popFront()) {
-    DebuggerFrame& frameObj = r.front().value()->as<DebuggerFrame>();
-    if (frameObj.hasAnyLiveHooks()) {
-      return true;
-    }
-  }
-
-  // Check for hooks set on suspended generator frames.
-  for (GeneratorWeakMap::Range r = generatorFrames.all(); !r.empty();
-       r.popFront()) {
-    JSObject* key = r.front().key();
-    DebuggerFrame& frameObj = r.front().value()->as<DebuggerFrame>();
-    if (IsMarkedUnbarriered(rt, &key) && frameObj.hasAnyLiveHooks()) {
-      return true;
-    }
   }
 
   return false;
@@ -2403,14 +2379,12 @@ ResumeMode DebugAPI::onTrap(JSContext* cx, MutableHandleValue vp) {
   }
 
   // Build list of breakpoint handlers.
+  //
+  // This does not need to be rooted: since the JSScript/WasmInstance is on the
+  // stack, the Breakpoints will not be GC'd. However, they may be deleted, and
+  // we check for that case below.
   Vector<Breakpoint*> triggered(cx);
   for (Breakpoint* bp = site->firstBreakpoint(); bp; bp = bp->nextInSite()) {
-    // Skip a breakpoint that is not set for the current wasm::Instance --
-    // single wasm::Code can handle breakpoints for mutiple instances.
-    if (!isJS &&
-        &bp->asWasm()->wasmInstance->instance() != iter.wasmInstance()) {
-      continue;
-    }
     if (!triggered.append(bp)) {
       return ResumeMode::Terminate;
     }
@@ -2450,8 +2424,17 @@ ResumeMode DebugAPI::onTrap(JSContext* cx, MutableHandleValue vp) {
         if (!dbg->getFrame(cx, iter, &scriptFrame)) {
           return dbg->reportUncaughtException(ar);
         }
-        RootedValue rv(cx);
+
+        // Re-wrap the breakpoint's handler for the Debugger's compartment. When
+        // the handler and the Debugger are in the same compartment (the usual
+        // case), this actually unwraps it, but there's no requirement that they
+        // be in the same compartment, so we can't be sure.
         Rooted<JSObject*> handler(cx, bp->handler);
+        if (!cx->compartment()->wrap(cx, &handler)) {
+          return dbg->reportUncaughtException(ar);
+        }
+
+        RootedValue rv(cx);
         bool ok = CallMethodIfPresent(cx, handler, "hit", 1,
                                       scriptFrame.address(), &rv);
         ResumeMode resumeMode = dbg->processHandlerResult(
@@ -3063,7 +3046,7 @@ bool Debugger::updateExecutionObservabilityOfFrames(
   }
 
   AbstractFramePtr oldestEnabledFrame;
-  for (FrameIter iter(cx); !iter.done(); ++iter) {
+  for (AllFramesIter iter(cx); !iter.done(); ++iter) {
     if (obs.shouldMarkAsDebuggee(iter)) {
       if (observing) {
         if (!iter.abstractFramePtr().isDebuggee()) {
@@ -3664,6 +3647,72 @@ bool DebugAPI::edgeIsInDebuggerWeakmap(JSRuntime* rt, JSObject* src,
 
 #endif
 
+/* See comments in DebugAPI.h. */
+void DebugAPI::traceFramesWithLiveHooks(JSTracer* tracer) {
+  JSRuntime* rt = tracer->runtime();
+
+  // Note that we must loop over all Debuggers here, not just those known to be
+  // reachable from JavaScript. The existence of hooks set on a Debugger.Frame
+  // for a live stack frame makes the Debuger.Frame (and hence its Debugger)
+  // reachable.
+  for (Debugger* dbg : rt->debuggerList()) {
+    // Callback tracers set their own traversal boundaries, but otherwise we're
+    // only interested in Debugger.Frames participating in the collection.
+    if (!dbg->zone()->isGCMarking() && !tracer->isCallbackTracer()) {
+      continue;
+    }
+
+    for (Debugger::FrameMap::Range r = dbg->frames.all(); !r.empty();
+         r.popFront()) {
+      HeapPtr<DebuggerFrame*>& frameobj = r.front().value();
+      MOZ_ASSERT(frameobj->isLiveMaybeForwarded());
+      if (frameobj->hasAnyHooks()) {
+        TraceEdge(tracer, &frameobj, "Debugger.Frame with live hooks");
+      }
+    }
+  }
+}
+
+void DebugAPI::slowPathTraceGeneratorFrame(JSTracer* tracer,
+                                           AbstractGeneratorObject* generator) {
+  MOZ_ASSERT(generator->realm()->isDebuggee());
+
+  // Ignore callback tracers.
+  //
+  // Generator objects are background finalized, and thus the compacting GC
+  // assumes it can update their pointers in the background as well. Compacting
+  // GC updates pointers by visiting objects with a callback tracer that checks
+  // for forwarding pointers, so helper threads trying to update generator
+  // objects will end up calling this function. However, it is verboten to do
+  // weak map lookups (e.g., in Debugger::generatorFrames) off the main thread,
+  // since MovableCellHasher must consult the Zone to find the key's unique id.
+  //
+  // We can't quite recognize MovingTracers exactly, but MovingTracers are
+  // callback tracers, so we just show them all the door. This means the
+  // generator -> Debugger.Frame edge is going to be invisible to some
+  // traversals. We'll cope with that when it's a problem.
+  if (tracer->isCallbackTracer()) {
+    return;
+  }
+
+  Realm::DebuggerVector& debuggers = generator->realm()->getDebuggers();
+  for (js::WeakHeapPtr<Debugger*>& dbgWeak : debuggers) {
+    Debugger* dbg = dbgWeak.unbarrieredGet();
+
+    if (Debugger::GeneratorWeakMap::Ptr entry =
+            dbg->generatorFrames.lookupUnbarriered(generator)) {
+      HeapPtr<DebuggerFrame*>& frameObj = entry->value();
+      if (frameObj->hasAnyHooks()) {
+        // The AbstractGeneratorObject -> Debugger.Frame edge is recognized by
+        // DebugAPI::edgeIsInDebuggerWeakmap, so reporting this edge from the
+        // debuggee to the debugger compartment is all right.
+        TraceCrossCompartmentEdge(tracer, generator, &frameObj,
+                                  "Debugger.Frame with hooks for generator");
+      }
+    }
+  }
+}
+
 /*
  * This method has two tasks:
  *   1. Mark Debugger objects that are unreachable except for debugger hooks
@@ -3707,40 +3756,9 @@ bool DebugAPI::markIteratively(GCMarker* marker) {
         if (!dbgMarked && dbg->hasAnyLiveHooks(rt)) {
           // obj could be reachable only via its live, enabled
           // debugger hooks, which may yet be called.
-          TraceEdge(marker, &dbgobj, "enabled Debugger");
+          TraceEdge(marker, &dbgobj, "Debugger with live hooks");
           markedAny = true;
           dbgMarked = true;
-        }
-
-        if (dbgMarked) {
-          // Search for breakpoints to mark.
-          for (Breakpoint* bp = dbg->firstBreakpoint(); bp;
-               bp = bp->nextInDebugger()) {
-            switch (bp->site->type()) {
-              case BreakpointSite::Type::JS:
-                if (IsMarkedUnbarriered(rt, &bp->site->asJS()->script)) {
-                  // The debugger and the script are both live.
-                  // Therefore the breakpoint handler is live.
-                  if (!IsMarked(rt, &bp->getHandlerRef())) {
-                    TraceEdge(marker, &bp->getHandlerRef(),
-                              "breakpoint handler");
-                    markedAny = true;
-                  }
-                }
-                break;
-              case BreakpointSite::Type::Wasm:
-                if (IsMarkedUnbarriered(rt, &bp->asWasm()->wasmInstance)) {
-                  // The debugger and the wasm instance are both live.
-                  // Therefore the breakpoint handler is live.
-                  if (!IsMarked(rt, &bp->getHandlerRef())) {
-                    TraceEdge(marker, &bp->getHandlerRef(),
-                              "wasm breakpoint handler");
-                    markedAny = true;
-                  }
-                }
-                break;
-            }
-          }
         }
       }
     }
@@ -3767,20 +3785,6 @@ void Debugger::traceForMovingGC(JSTracer* trc) {
   for (WeakGlobalObjectSet::Enum e(debuggees); !e.empty(); e.popFront()) {
     TraceEdge(trc, &e.mutableFront(), "Global Object");
   }
-
-  for (Breakpoint* bp = firstBreakpoint(); bp; bp = bp->nextInDebugger()) {
-    switch (bp->site->type()) {
-      case BreakpointSite::Type::JS:
-        TraceManuallyBarrieredEdge(trc, &bp->site->asJS()->script,
-                                   "breakpoint script");
-        break;
-      case BreakpointSite::Type::Wasm:
-        TraceManuallyBarrieredEdge(trc, &bp->asWasm()->wasmInstance,
-                                   "breakpoint wasm instance");
-        break;
-    }
-    TraceEdge(trc, &bp->getHandlerRef(), "breakpoint handler");
-  }
 }
 
 /* static */
@@ -3795,15 +3799,19 @@ void Debugger::trace(JSTracer* trc) {
 
   TraceNullableEdge(trc, &uncaughtExceptionHook, "hooks");
 
-  // Mark Debugger.Frame objects. These are all reachable from JS, because the
-  // corresponding JS frames are still on the stack.
+  // Mark Debugger.Frame objects. Since the Debugger is reachable, JS could call
+  // getNewestFrame and then walk the stack, so these are all reachable from JS.
+  //
+  // Note that if a Debugger.Frame has hooks set, it must be retained even if
+  // its Debugger is unreachable, since JS could observe that its hooks did not
+  // fire. That case is handled by DebugAPI::traceFrames.
   //
   // (We have weakly-referenced Debugger.Frame objects as well, for suspended
   // generator frames; these are traced via generatorFrames just below.)
   for (FrameMap::Range r = frames.all(); !r.empty(); r.popFront()) {
     HeapPtr<DebuggerFrame*>& frameobj = r.front().value();
     TraceEdge(trc, &frameobj, "live Debugger.Frame");
-    MOZ_ASSERT(frameobj->getPrivate(frameobj->numFixedSlotsMaybeForwarded()));
+    MOZ_ASSERT(frameobj->isLiveMaybeForwarded());
   }
 
   allocationsLog.trace(trc);
@@ -4562,8 +4570,10 @@ bool Debugger::addDebuggeeGlobal(JSContext* cx, Handle<GlobalObject*> global) {
       Realm::DebuggerVector& v = realm->getDebuggers();
       for (auto p = v.begin(); p != v.end(); p++) {
         Realm* next = (*p)->object->realm();
-        if (Find(visited, next) == visited.end() && !visited.append(next)) {
-          return false;
+        if (std::find(visited.begin(), visited.end(), next) == visited.end()) {
+          if (!visited.append(next)) {
+            return false;
+          }
         }
       }
     }
@@ -4663,21 +4673,6 @@ static T* findDebuggerInVector(Debugger* dbg, Vector<T, 0, AP>* vec) {
   return p;
 }
 
-// a WeakHeapPtr version for findDebuggerInVector
-// TODO: Bug 1515934 - findDebuggerInVector<T> triggers read barriers.
-template <typename AP>
-static WeakHeapPtr<Debugger*>* findDebuggerInVector(
-    Debugger* dbg, Vector<WeakHeapPtr<Debugger*>, 0, AP>& vec) {
-  WeakHeapPtr<Debugger*>* p;
-  for (p = vec.begin(); p != vec.end(); p++) {
-    if (p->unbarrieredGet() == dbg) {
-      break;
-    }
-  }
-  MOZ_ASSERT(p != vec.end());
-  return p;
-}
-
 void Debugger::removeDebuggeeGlobal(JSFreeOp* fop, GlobalObject* global,
                                     WeakGlobalObjectSet::Enum* debugEnum,
                                     FromSweep fromSweep) {
@@ -4700,7 +4695,7 @@ void Debugger::removeDebuggeeGlobal(JSFreeOp* fop, GlobalObject* global,
     DebuggerFrame* frameobj = e.front().value();
     if (frame.hasGlobal(global)) {
       frameobj->freeFrameIterData(fop);
-      frameobj->maybeDecrementFrameScriptStepperCount(fop, frame);
+      frameobj->maybeDecrementStepperCounter(fop, frame);
       e.removeFront();
     }
   }
@@ -4739,7 +4734,7 @@ void Debugger::removeDebuggeeGlobal(JSFreeOp* fop, GlobalObject* global,
   // zone is not in the set, then we must remove ourselves from the zone's
   // vector of observing debuggers.
   globalDebuggersVector.erase(
-      findDebuggerInVector(this, globalDebuggersVector));
+      findDebuggerInVector(this, &globalDebuggersVector));
 
   if (debugEnum) {
     debugEnum->removeFront();
@@ -4753,19 +4748,9 @@ void Debugger::removeDebuggeeGlobal(JSFreeOp* fop, GlobalObject* global,
   Breakpoint* nextbp;
   for (Breakpoint* bp = firstBreakpoint(); bp; bp = nextbp) {
     nextbp = bp->nextInDebugger();
-    switch (bp->site->type()) {
-      case BreakpointSite::Type::JS:
-        if (bp->site->asJS()->script->realm() == global->realm()) {
-          bp->destroy(fop);
-        }
-        break;
-      case BreakpointSite::Type::Wasm:
-        if (bp->asWasm()->wasmInstance->realm() == global->realm()) {
-          bp->destroy(fop);
-        }
-        break;
-      default:
-        MOZ_CRASH("unknown breakpoint type");
+
+    if (bp->site->realm() == global->realm()) {
+      bp->remove(fop);
     }
   }
   MOZ_ASSERT_IF(debuggees.empty(), !firstBreakpoint());
@@ -6364,7 +6349,7 @@ bool Debugger::replaceFrameGuts(JSContext* cx, AbstractFramePtr from,
       // lambda. Manually clean it up here.
       JSFreeOp* fop = cx->runtime()->defaultFreeOp();
       frameobj->freeFrameIterData(fop);
-      frameobj->maybeDecrementFrameScriptStepperCount(fop, to);
+      frameobj->maybeDecrementStepperCounter(fop, to);
 
       ReportOutOfMemory(cx);
       return false;
@@ -6411,7 +6396,7 @@ void Debugger::removeFromFrameMapsAndClearBreakpointsIn(JSContext* cx,
         frameobj->clearGenerator(fop, dbg);
       }
     } else {
-      frameobj->maybeDecrementFrameScriptStepperCount(fop, frame);
+      frameobj->maybeDecrementStepperCounter(fop, frame);
     }
   });
 

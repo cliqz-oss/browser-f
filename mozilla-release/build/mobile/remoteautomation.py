@@ -155,13 +155,7 @@ class RemoteAutomation(Automation):
             dumpDir = tempfile.mkdtemp()
             remoteCrashDir = posixpath.join(self.remoteProfile, 'minidumps')
             if not self.device.is_dir(remoteCrashDir):
-                # If crash reporting is enabled (MOZ_CRASHREPORTER=1), the
-                # minidumps directory is automatically created when Fennec
-                # (first) starts, so its lack of presence is a hint that
-                # something went wrong.
-                print("Automation Error: No crash directory (%s) found on remote device" %
-                      remoteCrashDir)
-                return True
+                return False
             self.device.pull(remoteCrashDir, dumpDir)
 
             logger = get_default_logger()
@@ -254,8 +248,6 @@ class RemoteAutomation(Automation):
         Fetch the full remote log file, log any new content and return True if new
         content processed.
         """
-        if not self.device.is_file(self.remoteLog):
-            return False
         try:
             newLogContent = self.device.get_file(self.remoteLog, offset=self.stdoutlen)
         except ADBTimeoutError:
@@ -339,6 +331,13 @@ class RemoteAutomation(Automation):
         top = self.procName
         slowLog = False
         endTime = datetime.datetime.now() + datetime.timedelta(seconds=timeout)
+        # wait for log creation on startup
+        retries = 0
+        while retries < 20 and not self.device.is_file(self.remoteLog):
+            retries += 1
+            time.sleep(1)
+        if not self.device.is_file(self.remoteLog):
+            print("Failed wait for remote log: %s missing?" % self.remoteLog)
         while top == self.procName:
             # Get log updates on each interval, but if it is taking
             # too long, only do it every 60 seconds

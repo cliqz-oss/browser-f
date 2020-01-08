@@ -454,6 +454,7 @@
   ${AddAssociationIfNoneExist} ".pdf" "CliqzHTML$5"
   ${AddAssociationIfNoneExist} ".webm" "CliqzHTML$5"
   ${AddAssociationIfNoneExist} ".svg" "CliqzHTML$5"
+  ${AddAssociationIfNoneExist} ".webp"  "CliqzHTML$5"
 
   ; An empty string is used for the 5th param because CliqzHTML is not a
   ; protocol handler
@@ -538,6 +539,7 @@
   WriteRegStr ${RegKey} "$0\Capabilities\FileAssociations" ".xht"   "CliqzHTML$2"
   WriteRegStr ${RegKey} "$0\Capabilities\FileAssociations" ".xhtml" "CliqzHTML$2"
   WriteRegStr ${RegKey} "$0\Capabilities\FileAssociations" ".svg"   "CliqzHTML$2"
+  WriteRegStr ${RegKey} "$0\Capabilities\FileAssociations" ".webp"  "CliqzHTML$2"
 
   WriteRegStr ${RegKey} "$0\Capabilities\StartMenu" "StartMenuInternet" "$1"
 
@@ -1103,7 +1105,9 @@
     ${If} ${Errors}
       ClearErrors
       WriteIniStr "$0" "TASKBAR" "Migrated" "true"
-      WriteINIStr "$0" "TASKBAR" "Pinned" "true"
+      WriteRegDWORD HKCU \
+        "Software\Mozilla\${AppName}\Installer\$AppUserModelID" \
+        "WasPinnedToTaskbar" 1
       ${If} ${AtLeastWin7}
         ; If we didn't run the stub installer, AddTaskbarSC will be empty.
         ; We determine whether to pin based on whether we're the default
@@ -1133,12 +1137,16 @@
         ; On Windows 10, we may have previously tried to make a taskbar pin
         ; and failed because the API we tried to use was blocked by the OS.
         ; We have an option that works in more cases now, so we're going to try
-        ; again, but also record that we've done so by writing "Pinned" into the
-        ; shortcuts log, so that we don't continue to do this repeatedly.
+        ; again, but also record that we've done so by writing a particular
+        ; registry value, so that we don't continue to do this repeatedly.
         ClearErrors
-        ReadINIStr $1 "$0" "TASKBAR" "Pinned"
+        ReadRegDWORD $2 HKCU \
+            "Software\Mozilla\${AppName}\Installer\$AppUserModelID" \
+            "WasPinnedToTaskbar"
         ${If} ${Errors}
-          WriteINIStr "$0" "TASKBAR" "Pinned" "true"
+          WriteRegDWORD HKCU \
+            "Software\Mozilla\${AppName}\Installer\$AppUserModelID" \
+            "WasPinnedToTaskbar" 1
           ${If} $AddTaskbarSC != "0"
             ${PinToTaskBar}
           ${EndIf}

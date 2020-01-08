@@ -16,6 +16,7 @@ const { XPCOMUtils } = ChromeUtils.import(
 XPCOMUtils.defineLazyModuleGetters(this, {
   AddonManager: "resource://gre/modules/AddonManager.jsm",
   AddonTestUtils: "resource://testing-common/AddonTestUtils.jsm",
+  AppConstants: "resource://gre/modules/AppConstants.jsm",
   ObjectUtils: "resource://gre/modules/ObjectUtils.jsm",
   OS: "resource://gre/modules/osfile.jsm",
   SearchEngine: "resource://gre/modules/SearchEngine.jsm",
@@ -168,7 +169,10 @@ class SearchConfigTest {
       let engines = [];
       let configs = await engineSelector.fetchEngineConfiguration(
         locale,
-        region
+        region,
+        AppConstants.MOZ_APP_VERSION_DISPLAY.endsWith("esr")
+          ? "esr"
+          : AppConstants.MOZ_UPDATE_CHANNEL
       );
       for (let config of configs.engines) {
         let engine = await Services.search.makeEnginesFromConfig(config);
@@ -233,7 +237,12 @@ class SearchConfigTest {
     });
     // "en-US" is not in all-locales as it is the default locale
     // add it manually to ensure it is tested.
-    return [...data.split("\n").filter(e => e != ""), "en-US"];
+    let locales = [...data.split("\n").filter(e => e != ""), "en-US"];
+    // BCP47 requires all variants are 5-8 characters long. Our
+    // build sytem uses the short `mac` variant, this is invalid, and inside
+    // the app we turn it into `ja-JP-macos`
+    locales = locales.map(l => (l == "ja-JP-mac" ? "ja-JP-macos" : l));
+    return locales;
   }
 
   /**

@@ -47,7 +47,6 @@
 #include "mozilla/LinkedList.h"
 #include "mozilla/OwningNonNull.h"
 #include "mozilla/TimeStamp.h"
-#include "mozilla/webgpu/InstanceProvider.h"
 #include "nsWrapperCacheInlines.h"
 #include "mozilla/dom/Document.h"
 #include "mozilla/dom/EventTarget.h"
@@ -181,8 +180,7 @@ class nsGlobalWindowInner final : public mozilla::dom::EventTarget,
                                   public nsSupportsWeakReference,
                                   public nsIInterfaceRequestor,
                                   public PRCListStr,
-                                  public nsAPostRefreshObserver,
-                                  public mozilla::webgpu::InstanceProvider {
+                                  public nsAPostRefreshObserver {
  public:
   typedef mozilla::dom::BrowsingContext RemoteProxy;
 
@@ -309,6 +307,8 @@ class nsGlobalWindowInner final : public mozilla::dom::EventTarget,
 
   nsresult PostHandleEvent(mozilla::EventChainPostVisitor& aVisitor) override;
 
+  void ClearActiveStoragePrincipal();
+
   void Suspend();
   void Resume();
   virtual bool IsSuspended() const override;
@@ -387,9 +387,6 @@ class nsGlobalWindowInner final : public mozilla::dom::EventTarget,
 
   static bool IsPrivilegedChromeWindow(JSContext* /* unused */, JSObject* aObj);
 
-  static bool OfflineCacheAllowedForContext(JSContext* /* unused */,
-                                            JSObject* aObj);
-
   static bool IsRequestIdleCallbackEnabled(JSContext* aCx,
                                            JSObject* /* unused */);
 
@@ -449,8 +446,6 @@ class nsGlobalWindowInner final : public mozilla::dom::EventTarget,
   static void ShutDown();
   static bool IsCallerChrome();
 
-  void CleanupCachedXBLHandlers();
-
   friend class WindowStateHolder;
 
   NS_DECL_CYCLE_COLLECTION_SKIPPABLE_SCRIPT_HOLDER_CLASS_AMBIGUOUS(
@@ -461,12 +456,6 @@ class nsGlobalWindowInner final : public mozilla::dom::EventTarget,
   // with caution.
   void RiskyUnlink();
 #endif
-
-  virtual JSObject* GetCachedXBLPrototypeHandler(
-      nsXBLPrototypeHandler* aKey) override;
-
-  virtual void CacheXBLPrototypeHandler(
-      nsXBLPrototypeHandler* aKey, JS::Handle<JSObject*> aHandler) override;
 
   virtual bool TakeFocus(bool aFocus, uint32_t aFocusMethod) override;
   virtual void SetReadyForFocus() override;
@@ -951,7 +940,10 @@ class nsGlobalWindowInner final : public mozilla::dom::EventTarget,
     return GetExtantDoc() && GetExtantDoc()->IsInSyncOperation();
   }
 
-  bool CanShareMemory(const nsID& aAgentClusterId);
+  bool IsSharedMemoryAllowed() const;
+
+  // https://whatpr.org/html/4734/structured-data.html#cross-origin-isolated
+  bool CrossOriginIsolated() const;
 
  protected:
   // Web IDL helpers
@@ -1250,7 +1242,6 @@ class nsGlobalWindowInner final : public mozilla::dom::EventTarget,
   void RemoveIdleCallback(mozilla::dom::IdleRequest* aRequest);
 
   void SetActiveLoadingState(bool aIsLoading) override;
-  void AddDeprioritizedLoadRunner(nsIRunnable* aRunner) override;
 
  protected:
   // Window offline status. Checked to see if we need to fire offline event
@@ -1366,10 +1357,6 @@ class nsGlobalWindowInner final : public mozilla::dom::EventTarget,
 
   RefPtr<nsDOMOfflineResourceList> mApplicationCache;
 
-  using XBLPrototypeHandlerTable =
-      nsJSThingHashtable<nsPtrHashKey<nsXBLPrototypeHandler>, JSObject*>;
-  mozilla::UniquePtr<XBLPrototypeHandlerTable> mCachedXBLPrototypeHandlers;
-
   RefPtr<mozilla::dom::IDBFactory> mIndexedDB;
 
   // This counts the number of windows that have been opened in rapid succession
@@ -1425,28 +1412,6 @@ class nsGlobalWindowInner final : public mozilla::dom::EventTarget,
 
   nsTArray<mozilla::UniquePtr<PromiseDocumentFlushedResolver>>
       mDocumentFlushedResolvers;
-
-  class DeprioritizedLoadRunner
-      : public mozilla::Runnable,
-        public mozilla::LinkedListElement<DeprioritizedLoadRunner> {
-   public:
-    explicit DeprioritizedLoadRunner(nsIRunnable* aInner)
-        : Runnable("DeprioritizedLoadRunner"), mInner(aInner) {}
-
-    NS_IMETHOD Run() override {
-      if (mInner) {
-        RefPtr<nsIRunnable> inner = std::move(mInner);
-        inner->Run();
-      }
-
-      return NS_OK;
-    }
-
-   private:
-    RefPtr<nsIRunnable> mInner;
-  };
-
-  mozilla::LinkedList<DeprioritizedLoadRunner> mDeprioritizedLoadRunner;
 
   static InnerWindowByIdTable* sInnerWindowsById;
 

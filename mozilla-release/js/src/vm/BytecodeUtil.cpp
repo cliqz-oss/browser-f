@@ -25,18 +25,19 @@
 #include "jsapi.h"
 #include "jsnum.h"
 #include "jstypes.h"
-#include "jsutil.h"
 
 #include "frontend/BytecodeCompiler.h"
 #include "frontend/SourceNotes.h"
 #include "js/CharacterEncoding.h"
 #include "js/Printf.h"
 #include "js/Symbol.h"
+#include "util/Memory.h"
 #include "util/StringBuffer.h"
 #include "util/Text.h"
 #include "vm/BytecodeLocation.h"
 #include "vm/CodeCoverage.h"
 #include "vm/EnvironmentObject.h"
+#include "vm/FrameIter.h"  // js::{,Script}FrameIter
 #include "vm/JSAtom.h"
 #include "vm/JSContext.h"
 #include "vm/JSFunction.h"
@@ -680,6 +681,7 @@ uint32_t BytecodeParser::simulateOp(JSOp op, uint32_t offset,
     case JSOP_INITGLEXICAL:
     case JSOP_INITLEXICAL:
     case JSOP_OR:
+    case JSOP_COALESCE:
     case JSOP_SETALIASEDVAR:
     case JSOP_SETARG:
     case JSOP_SETINTRINSIC:
@@ -1430,14 +1432,6 @@ static unsigned Disassemble1(JSContext* cx, HandleScript script, jsbytecode* pc,
       break;
     }
 
-    case JOF_CODE_OFFSET: {
-      ptrdiff_t off = GET_CODE_OFFSET(pc);
-      if (!sp->jsprintf(" %u (%+d)", unsigned(loc + int(off)), int(off))) {
-        return 0;
-      }
-      break;
-    }
-
     case JOF_SCOPE: {
       RootedScope scope(cx, script->getScope(GET_UINT32_INDEX(pc)));
       UniqueChars bytes;
@@ -2086,6 +2080,7 @@ bool ExpressionDecompiler::decompilePC(jsbytecode* pc, uint8_t defIndex) {
 
       case JSOP_NEWINIT:
       case JSOP_NEWOBJECT:
+      case JSOP_NEWOBJECT_WITHGROUP:
       case JSOP_OBJWITHPROTO:
         return write("OBJ");
 
@@ -2191,7 +2186,7 @@ JSAtom* ExpressionDecompiler::loadAtom(jsbytecode* pc) {
 }
 
 JSAtom* ExpressionDecompiler::getArg(unsigned slot) {
-  MOZ_ASSERT(script->functionNonDelazifying());
+  MOZ_ASSERT(script->isFunction());
   MOZ_ASSERT(slot < script->numArgs());
 
   for (PositionalFormalParameterIter fi(script); fi; fi++) {
@@ -2651,7 +2646,7 @@ JS_FRIEND_API JSString* js::GetPCCountScriptSummary(JSContext* cx,
   }
   json.property("line", script->lineno());
 
-  if (JSFunction* fun = script->functionNonDelazifying()) {
+  if (JSFunction* fun = script->function()) {
     if (JSAtom* atom = fun->displayAtom()) {
       if (!JSONStringProperty(sp, json, "name", atom)) {
         return nullptr;

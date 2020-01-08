@@ -19,6 +19,7 @@
 #include "mozilla/UniquePtr.h"
 #include "nsString.h"
 #include "mozpkix/pkixtypes.h"
+#include "sslt.h"
 
 #if defined(_MSC_VER)
 #  pragma warning(push)
@@ -119,6 +120,20 @@ class CertificateTransparencyInfo {
   void Reset();
 };
 
+class DelegatedCredentialInfo {
+ public:
+  DelegatedCredentialInfo() : scheme(ssl_sig_none), authKeyBits(0) {}
+  DelegatedCredentialInfo(SSLSignatureScheme scheme, uint32_t authKeyBits)
+      : scheme(scheme), authKeyBits(authKeyBits) {}
+
+  // The signature scheme to be used in CertVerify. This tells us
+  // whether to interpret |authKeyBits| in an RSA or ECDSA context.
+  SSLSignatureScheme scheme;
+
+  // The size of the key, in bits.
+  uint32_t authKeyBits;
+};
+
 class NSSCertDBTrustDomain;
 
 class CertVerifier {
@@ -146,10 +161,11 @@ class CertVerifier {
       CERTCertificate* cert, SECCertificateUsage usage,
       mozilla::pkix::Time time, void* pinArg, const char* hostname,
       /*out*/ UniqueCERTCertList& builtChain, Flags flags = 0,
+      /*optional in*/
+      const Maybe<nsTArray<nsTArray<uint8_t>>>& extraCertificates = Nothing(),
       /*optional in*/ const Maybe<nsTArray<uint8_t>>& stapledOCSPResponseArg =
-          Maybe<nsTArray<uint8_t>>(),
-      /*optional in*/ const Maybe<nsTArray<uint8_t>>& sctsFromTLS =
-          Maybe<nsTArray<uint8_t>>(),
+          Nothing(),
+      /*optional in*/ const Maybe<nsTArray<uint8_t>>& sctsFromTLS = Nothing(),
       /*optional in*/ const OriginAttributes& originAttributes =
           OriginAttributes(),
       /*optional out*/ SECOidTag* evOidPolicy = nullptr,
@@ -160,16 +176,19 @@ class CertVerifier {
       /*optional out*/ CertificateTransparencyInfo* ctInfo = nullptr);
 
   mozilla::pkix::Result VerifySSLServerCert(
-      const UniqueCERTCertificate& peerCert,
-      /*optional*/ const Maybe<nsTArray<uint8_t>>& stapledOCSPResponse,
-      /*optional*/ const Maybe<nsTArray<uint8_t>>& sctsFromTLS,
-      mozilla::pkix::Time time,
-      /*optional*/ void* pinarg, const nsACString& hostname,
+      const UniqueCERTCertificate& peerCert, mozilla::pkix::Time time,
+      void* pinarg, const nsACString& hostname,
       /*out*/ UniqueCERTCertList& builtChain,
-      /*optional*/ bool saveIntermediatesInPermanentDatabase = false,
       /*optional*/ Flags flags = 0,
+      /*optional*/ const Maybe<nsTArray<nsTArray<uint8_t>>>& extraCertificates =
+          Nothing(),
+      /*optional*/ const Maybe<nsTArray<uint8_t>>& stapledOCSPResponse =
+          Nothing(),
+      /*optional*/ const Maybe<nsTArray<uint8_t>>& sctsFromTLS = Nothing(),
+      /*optional*/ const Maybe<DelegatedCredentialInfo>& dcInfo = Nothing(),
       /*optional*/ const OriginAttributes& originAttributes =
           OriginAttributes(),
+      /*optional*/ bool saveIntermediatesInPermanentDatabase = false,
       /*optional out*/ SECOidTag* evOidPolicy = nullptr,
       /*optional out*/ OCSPStaplingStatus* ocspStaplingStatus = nullptr,
       /*optional out*/ KeySizeStatus* keySizeStatus = nullptr,

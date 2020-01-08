@@ -22,7 +22,6 @@
 #include "mozilla/Services.h"
 #include "mozilla/storage.h"
 #include "mozilla/dom/BindingDeclarations.h"
-#include "mozilla/dom/DOMStringList.h"
 #include "mozilla/dom/DOMStringListBinding.h"
 #include "mozilla/dom/Exceptions.h"
 #include "mozilla/dom/File.h"
@@ -79,7 +78,7 @@ class CancelableRunnableWrapper final : public CancelableRunnable {
   }
 
  private:
-  ~CancelableRunnableWrapper() {}
+  ~CancelableRunnableWrapper() = default;
 
   NS_DECL_NSIRUNNABLE
   nsresult Cancel() override;
@@ -336,20 +335,9 @@ already_AddRefed<DOMStringList> IDBDatabase::ObjectStoreNames() const {
   AssertIsOnOwningThread();
   MOZ_ASSERT(mSpec);
 
-  const nsTArray<ObjectStoreSpec>& objectStores = mSpec->objectStores();
-
-  RefPtr<DOMStringList> list = new DOMStringList();
-
-  if (!objectStores.IsEmpty()) {
-    nsTArray<nsString>& listNames = list->StringArray();
-    listNames.SetCapacity(objectStores.Length());
-
-    for (uint32_t index = 0; index < objectStores.Length(); index++) {
-      listNames.InsertElementSorted(objectStores[index].metadata().name());
-    }
-  }
-
-  return list.forget();
+  return CreateSortedDOMStringList(
+      mSpec->objectStores(),
+      [](const auto& objectStore) { return objectStore.metadata().name(); });
 }
 
 already_AddRefed<Document> IDBDatabase::GetOwnerDocument() const {
@@ -367,12 +355,12 @@ already_AddRefed<IDBObjectStore> IDBDatabase::CreateObjectStore(
 
   IDBTransaction* transaction = IDBTransaction::GetCurrent();
   if (!transaction || transaction->Database() != this ||
-      transaction->GetMode() != IDBTransaction::VERSION_CHANGE) {
+      transaction->GetMode() != IDBTransaction::Mode::VersionChange) {
     aRv.Throw(NS_ERROR_DOM_INDEXEDDB_NOT_ALLOWED_ERR);
     return nullptr;
   }
 
-  if (!transaction->IsOpen()) {
+  if (!transaction->CanAcceptRequests()) {
     aRv.Throw(NS_ERROR_DOM_INDEXEDDB_TRANSACTION_INACTIVE_ERR);
     return nullptr;
   }
@@ -383,17 +371,19 @@ already_AddRefed<IDBObjectStore> IDBDatabase::CreateObjectStore(
     return nullptr;
   }
 
-  nsTArray<ObjectStoreSpec>& objectStores = mSpec->objectStores();
-  for (uint32_t count = objectStores.Length(), index = 0; index < count;
-       index++) {
-    if (aName == objectStores[index].metadata().name()) {
-      aRv.ThrowDOMException(
-          NS_ERROR_DOM_INDEXEDDB_CONSTRAINT_ERR,
-          nsPrintfCString(
-              "Object store named '%s' already exists at index '%u'",
-              NS_ConvertUTF16toUTF8(aName).get(), index));
-      return nullptr;
-    }
+  auto& objectStores = mSpec->objectStores();
+  const auto end = objectStores.cend();
+  const auto foundIt = std::find_if(
+      objectStores.cbegin(), end, [&aName](const auto& objectStore) {
+        return aName == objectStore.metadata().name();
+      });
+  if (foundIt != end) {
+    aRv.ThrowDOMException(
+        NS_ERROR_DOM_INDEXEDDB_CONSTRAINT_ERR,
+        nsPrintfCString("Object store named '%s' already exists at index '%zu'",
+                        NS_ConvertUTF16toUTF8(aName).get(),
+                        foundIt.GetIndex()));
+    return nullptr;
   }
 
   if (!keyPath.IsAllowedForObjectStore(aOptionalParameters.mAutoIncrement)) {
@@ -438,42 +428,36 @@ void IDBDatabase::DeleteObjectStore(const nsAString& aName, ErrorResult& aRv) {
 
   IDBTransaction* transaction = IDBTransaction::GetCurrent();
   if (!transaction || transaction->Database() != this ||
-      transaction->GetMode() != IDBTransaction::VERSION_CHANGE) {
+      transaction->GetMode() != IDBTransaction::Mode::VersionChange) {
     aRv.Throw(NS_ERROR_DOM_INDEXEDDB_NOT_ALLOWED_ERR);
     return;
   }
 
-  if (!transaction->IsOpen()) {
+  if (!transaction->CanAcceptRequests()) {
     aRv.Throw(NS_ERROR_DOM_INDEXEDDB_TRANSACTION_INACTIVE_ERR);
     return;
   }
 
-  nsTArray<ObjectStoreSpec>& specArray = mSpec->objectStores();
+  auto& specArray = mSpec->objectStores();
+  const auto end = specArray.end();
+  const auto foundIt =
+      std::find_if(specArray.begin(), end, [&aName](const auto& objectStore) {
+        const ObjectStoreMetadata& metadata = objectStore.metadata();
+        MOZ_ASSERT(metadata.id());
 
-  int64_t objectStoreId = 0;
+        return aName == metadata.name();
+      });
 
-  for (uint32_t specCount = specArray.Length(), specIndex = 0;
-       specIndex < specCount; specIndex++) {
-    const ObjectStoreMetadata& metadata = specArray[specIndex].metadata();
-    MOZ_ASSERT(metadata.id());
-
-    if (aName == metadata.name()) {
-      objectStoreId = metadata.id();
-
-      // Must do this before altering the metadata array!
-      transaction->DeleteObjectStore(objectStoreId);
-
-      specArray.RemoveElementAt(specIndex);
-
-      RefreshSpec(/* aMayDelete */ false);
-      break;
-    }
-  }
-
-  if (!objectStoreId) {
+  if (foundIt == end) {
     aRv.Throw(NS_ERROR_DOM_INDEXEDDB_NOT_FOUND_ERR);
     return;
   }
+
+  // Must do this before altering the metadata array!
+  transaction->DeleteObjectStore(foundIt->metadata().id());
+
+  specArray.RemoveElementAt(foundIt);
+  RefreshSpec(/* aMayDelete */ false);
 
   // Don't do this in the macro because we always need to increment the serial
   // number to keep in sync with the parent.
@@ -558,52 +542,45 @@ nsresult IDBDatabase::Transaction(JSContext* aCx,
   nsTArray<nsString> sortedStoreNames;
   sortedStoreNames.SetCapacity(nameCount);
 
-  // Check to make sure the object store names we collected actually exist.
-  for (uint32_t nameIndex = 0; nameIndex < nameCount; nameIndex++) {
-    const nsString& name = storeNames[nameIndex];
-
-    bool found = false;
-
-    for (uint32_t objCount = objectStores.Length(), objIndex = 0;
-         objIndex < objCount; objIndex++) {
-      if (objectStores[objIndex].metadata().name() == name) {
-        found = true;
-        break;
-      }
-    }
-
-    if (!found) {
+  // While collecting object store names, check if the corresponding object
+  // stores actually exist.
+  const auto begin = objectStores.cbegin();
+  const auto end = objectStores.cend();
+  for (const auto& name : storeNames) {
+    const auto foundIt =
+        std::find_if(begin, end, [&name](const auto& objectStore) {
+          return objectStore.metadata().name() == name;
+        });
+    if (foundIt == end) {
       return NS_ERROR_DOM_INDEXEDDB_NOT_FOUND_ERR;
     }
 
-    sortedStoreNames.InsertElementSorted(name);
+    sortedStoreNames.EmplaceBack(name);
   }
+  sortedStoreNames.Sort();
 
   // Remove any duplicates.
-  for (uint32_t nameIndex = nameCount - 1; nameIndex > 0; nameIndex--) {
-    if (sortedStoreNames[nameIndex] == sortedStoreNames[nameIndex - 1]) {
-      sortedStoreNames.RemoveElementAt(nameIndex);
-    }
-  }
+  sortedStoreNames.SetLength(
+      std::unique(sortedStoreNames.begin(), sortedStoreNames.end()).GetIndex());
 
   IDBTransaction::Mode mode;
   switch (aMode) {
     case IDBTransactionMode::Readonly:
-      mode = IDBTransaction::READ_ONLY;
+      mode = IDBTransaction::Mode::ReadOnly;
       break;
     case IDBTransactionMode::Readwrite:
       if (mQuotaExceeded) {
-        mode = IDBTransaction::CLEANUP;
+        mode = IDBTransaction::Mode::Cleanup;
         mQuotaExceeded = false;
       } else {
-        mode = IDBTransaction::READ_WRITE;
+        mode = IDBTransaction::Mode::ReadWrite;
       }
       break;
     case IDBTransactionMode::Readwriteflush:
-      mode = IDBTransaction::READ_WRITE_FLUSH;
+      mode = IDBTransaction::Mode::ReadWriteFlush;
       break;
     case IDBTransactionMode::Cleanup:
-      mode = IDBTransaction::CLEANUP;
+      mode = IDBTransaction::Mode::Cleanup;
       mQuotaExceeded = false;
       break;
     case IDBTransactionMode::Versionchange:
@@ -635,7 +612,7 @@ nsresult IDBDatabase::Transaction(JSContext* aCx,
 
   transaction->SetBackgroundActor(actor);
 
-  if (mode == IDBTransaction::CLEANUP) {
+  if (mode == IDBTransaction::Mode::Cleanup) {
     ExpireFileActors(/* aExpireAll */ true);
   }
 
@@ -732,6 +709,8 @@ void IDBDatabase::AbortTransactions(bool aShouldWarn) {
           aDatabase->mTransactions;
 
       if (!transactionTable.Count()) {
+        // Return early as an optimization, the remainder is a no-op in this
+        // case.
         return;
       }
 
@@ -747,13 +726,15 @@ void IDBDatabase::AbortTransactions(bool aShouldWarn) {
         // Transactions that are already done can simply be ignored. Otherwise
         // there is a race here and it's possible that the transaction has not
         // been successfully committed yet so we will warn the user.
-        if (!transaction->IsDone()) {
+        if (!transaction->IsFinished()) {
           transactionsToAbort.AppendElement(transaction);
         }
       }
       MOZ_ASSERT(transactionsToAbort.Length() <= transactionTable.Count());
 
       if (transactionsToAbort.IsEmpty()) {
+        // Return early as an optimization, the remainder is a no-op in this
+        // case.
         return;
       }
 
@@ -766,25 +747,12 @@ void IDBDatabase::AbortTransactions(bool aShouldWarn) {
 
       for (RefPtr<IDBTransaction>& transaction : transactionsToAbort) {
         MOZ_ASSERT(transaction);
-        MOZ_ASSERT(!transaction->IsDone());
+        MOZ_ASSERT(!transaction->IsFinished());
 
-        if (aShouldWarn) {
-          switch (transaction->GetMode()) {
-            // We ignore transactions that could not have written any data.
-            case IDBTransaction::READ_ONLY:
-              break;
-
-            // We warn for any transactions that could have written data.
-            case IDBTransaction::READ_WRITE:
-            case IDBTransaction::READ_WRITE_FLUSH:
-            case IDBTransaction::CLEANUP:
-            case IDBTransaction::VERSION_CHANGE:
-              transactionsThatNeedWarning.AppendElement(transaction);
-              break;
-
-            default:
-              MOZ_CRASH("Unknown mode!");
-          }
+        // We warn for any transactions that could have written data, but
+        // ignore read-only transactions.
+        if (aShouldWarn && transaction->IsWriteAllowed()) {
+          transactionsThatNeedWarning.AppendElement(transaction);
         }
 
         transaction->Abort(NS_ERROR_DOM_INDEXEDDB_ABORT_ERR);
@@ -1172,19 +1140,23 @@ nsresult IDBDatabase::RenameObjectStore(int64_t aObjectStoreId,
   MOZ_ASSERT(mSpec);
 
   nsTArray<ObjectStoreSpec>& objectStores = mSpec->objectStores();
-
   ObjectStoreSpec* foundObjectStoreSpec = nullptr;
+
   // Find the matched object store spec and check if 'aName' is already used by
   // another object store.
-  for (uint32_t objCount = objectStores.Length(), objIndex = 0;
-       objIndex < objCount; objIndex++) {
-    const ObjectStoreSpec& objSpec = objectStores[objIndex];
-    if (objSpec.metadata().id() == aObjectStoreId) {
+
+  for (const auto& objSpec : objectStores) {
+    const bool idIsCurrent = objSpec.metadata().id() == aObjectStoreId;
+
+    if (idIsCurrent) {
       MOZ_ASSERT(!foundObjectStoreSpec);
-      foundObjectStoreSpec = &objectStores[objIndex];
-      continue;
+      foundObjectStoreSpec = const_cast<ObjectStoreSpec*>(&objSpec);
     }
-    if (aName == objSpec.metadata().name()) {
+
+    if (objSpec.metadata().name() == aName) {
+      if (idIsCurrent) {
+        return NS_OK;
+      }
       return NS_ERROR_DOM_INDEXEDDB_RENAME_OBJECT_STORE_ERR;
     }
   }
@@ -1192,7 +1164,7 @@ nsresult IDBDatabase::RenameObjectStore(int64_t aObjectStoreId,
   MOZ_ASSERT(foundObjectStoreSpec);
 
   // Update the name of the matched object store.
-  foundObjectStoreSpec->metadata().name() = nsString(aName);
+  foundObjectStoreSpec->metadata().name().Assign(aName);
 
   return NS_OK;
 }

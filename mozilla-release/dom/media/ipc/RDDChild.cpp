@@ -5,9 +5,11 @@
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
 #include "RDDChild.h"
 
+#include "mozilla/RDDProcessManager.h"
 #include "mozilla/dom/MemoryReportRequest.h"
 #include "mozilla/ipc/CrashReporterHost.h"
 #include "mozilla/gfx/gfxVars.h"
+#include "mozilla/gfx/GPUProcessManager.h"
 
 #if defined(XP_LINUX) && defined(MOZ_SANDBOX)
 #  include "mozilla/SandboxBroker.h"
@@ -24,7 +26,7 @@ namespace mozilla {
 using namespace layers;
 using namespace gfx;
 
-RDDChild::RDDChild(RDDProcessHost* aHost) : mHost(aHost), mRDDReady(false) {
+RDDChild::RDDChild(RDDProcessHost* aHost) : mHost(aHost) {
   MOZ_COUNT_CTOR(RDDChild);
 }
 
@@ -57,27 +59,12 @@ bool RDDChild::Init(bool aStartMacSandbox) {
 #endif
 
   gfxVars::AddReceiver(this);
-
-  return true;
-}
-
-bool RDDChild::EnsureRDDReady() {
-  if (mRDDReady) {
-    return true;
+  auto* gpm = gfx::GPUProcessManager::Get();
+  if (gpm) {
+    gpm->AddListener(this);
   }
 
-  mRDDReady = true;
   return true;
-}
-
-mozilla::ipc::IPCResult RDDChild::RecvInitComplete() {
-  // We synchronously requested RDD parameters before this arrived.
-  if (mRDDReady) {
-    return IPC_OK();
-  }
-
-  mRDDReady = true;
-  return IPC_OK();
 }
 
 bool RDDChild::SendRequestMemoryReport(const uint32_t& aGeneration,
@@ -88,6 +75,13 @@ bool RDDChild::SendRequestMemoryReport(const uint32_t& aGeneration,
   Unused << PRDDChild::SendRequestMemoryReport(aGeneration, aAnonymize,
                                                aMinimizeMemoryUsage, aDMDFile);
   return true;
+}
+
+void RDDChild::OnCompositorUnexpectedShutdown() {
+  auto* rddm = RDDProcessManager::Get();
+  if (rddm) {
+    rddm->CreateVideoBridge();
+  }
 }
 
 void RDDChild::OnVarChanged(const GfxVarUpdate& aVar) { SendUpdateVar(aVar); }
@@ -112,6 +106,12 @@ mozilla::ipc::IPCResult RDDChild::RecvFinishMemoryReport(
 void RDDChild::ActorDestroy(ActorDestroyReason aWhy) {
   if (aWhy == AbnormalShutdown) {
     GenerateCrashReport(OtherPid());
+  }
+
+  auto* gpm = gfx::GPUProcessManager::Get();
+  if (gpm) {
+    // Note: the manager could have shutdown already.
+    gpm->RemoveListener(this);
   }
 
   gfxVars::RemoveReceiver(this);

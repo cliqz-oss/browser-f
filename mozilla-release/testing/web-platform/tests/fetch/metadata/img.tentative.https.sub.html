@@ -13,19 +13,19 @@
     .then(result => {
         headers = result.headers;
         got = {
-          "dest": headers["sec-fetch-dest"],
           "mode": headers["sec-fetch-mode"],
           "site": headers["sec-fetch-site"],
-          "user": headers["sec-fetch-user"]
+          "user": headers["sec-fetch-user"],
+          "dest": headers["sec-fetch-dest"]
         };
         assert_header_equals(got, {
-          "dest": "image",
           "site": "same-origin",
           // Note that we're using `undefined` here, as opposed to "" elsewhere because of the way
           // that `image.py` encodes data.
           "user": undefined,
           "mode": "cors", // Because `loadImageInWindow` tacks on `crossorigin`
-        });
+          "dest": "image"
+        }, "Same-origin image");
       }),
     "Same-origin image");
 
@@ -35,19 +35,19 @@
     .then(result => {
         headers = result.headers;
         got = {
-          "dest": headers["sec-fetch-dest"],
           "mode": headers["sec-fetch-mode"],
           "site": headers["sec-fetch-site"],
-          "user": headers["sec-fetch-user"]
+          "user": headers["sec-fetch-user"],
+          "dest": headers["sec-fetch-dest"]
         };
         assert_header_equals(got, {
-          "dest": "image",
           "site": "same-site",
           // Note that we're using `undefined` here, as opposed to "" elsewhere because of the way
           // that `image.py` encodes data.
           "user": undefined,
           "mode": "cors", // Because `loadImageInWindow` tacks on `crossorigin`
-        });
+          "dest": "image"
+        }, "Same-site image");
       }),
     "Same-site image");
 
@@ -57,19 +57,19 @@
     .then(result => {
         headers = result.headers;
         got = {
-          "dest": headers["sec-fetch-dest"],
           "mode": headers["sec-fetch-mode"],
           "site": headers["sec-fetch-site"],
-          "user": headers["sec-fetch-user"]
+          "user": headers["sec-fetch-user"],
+          "dest": headers["sec-fetch-dest"]
         };
         assert_header_equals(got, {
-          "dest": "image",
           "site": "cross-site",
           // Note that we're using `undefined` here, as opposed to "" elsewhere because of the way
           // that `image.py` encodes data.
           "user": undefined,
           "mode": "cors", // Because `loadImageInWindow` tacks on `crossorigin`
-        });
+          "dest": "image"
+        }, "Cross-site image");
       }),
     "Cross-site image");
 </script>

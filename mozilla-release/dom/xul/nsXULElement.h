@@ -349,8 +349,6 @@ class nsXULElement : public nsStyledElement {
                                 bool aIsTrustedEvent) override;
   void ClickWithInputSource(uint16_t aInputSource, bool aIsTrustedEvent);
 
-  Element* GetBindingParent() const final { return mBindingParent; }
-
   virtual bool IsNodeOfType(uint32_t aFlags) const override;
   virtual bool IsFocusableInternal(int32_t* aTabIndex,
                                    bool aWithMouse) override;
@@ -363,13 +361,6 @@ class nsXULElement : public nsStyledElement {
                          nsINode** aResult) const override;
 
   virtual void RecompileScriptEventListeners() override;
-
-  // This function should ONLY be used by BindToTree implementations.
-  // The function exists solely because XUL elements store the binding
-  // parent as a member instead of in the slots, as Element does.
-  void SetXULBindingParent(Element* aBindingParent) {
-    mBindingParent = aBindingParent;
-  }
 
   virtual bool IsEventAttributeNameInternal(nsAtom* aName) override;
 
@@ -521,6 +512,8 @@ class nsXULElement : public nsStyledElement {
 
   bool IsInteractiveHTMLContent(bool aIgnoreTabindex) const override;
 
+  void MaybeUpdatePrivateLifetime();
+
  protected:
   ~nsXULElement();
 
@@ -531,12 +524,6 @@ class nsXULElement : public nsStyledElement {
   nsresult EnsureContentsGenerated(void) const;
 
   nsresult AddPopupListener(nsAtom* aName);
-
-  /**
-   * The nearest enclosing content node with a binding
-   * that created us.
-   */
-  RefPtr<Element> mBindingParent;
 
   /**
    * Abandon our prototype linkage, and copy all attributes locally
@@ -568,17 +555,6 @@ class nsXULElement : public nsStyledElement {
   void AddListenerForAttributeIfNeeded(const nsAttrName& aName);
   void AddListenerForAttributeIfNeeded(nsAtom* aLocalName);
 
-  nsIWidget* GetWindowWidget();
-
-  // attribute setters for widget
-  nsresult HideWindowChrome(bool aShouldHide);
-  void SetChromeMargins(const nsAttrValue* aValue);
-  void ResetChromeMargins();
-
-  void SetDrawsInTitlebar(bool aState);
-  void SetDrawsTitle(bool aState);
-  void UpdateBrightTitlebarForeground(Document* aDocument);
-
  protected:
   void AddTooltipSupport();
   void RemoveTooltipSupport();
@@ -609,8 +585,6 @@ class nsXULElement : public nsStyledElement {
 
   virtual JSObject* WrapNode(JSContext* aCx,
                              JS::Handle<JSObject*> aGivenProto) override;
-
-  void MaybeUpdatePrivateLifetime();
 
   bool IsEventStoppedFromAnonymousScrollbar(mozilla::EventMessage aMessage);
 

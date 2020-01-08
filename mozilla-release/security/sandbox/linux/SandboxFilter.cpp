@@ -424,6 +424,10 @@ class SandboxPolicyCommon : public SandboxPolicyBase {
           return Trap(LStatTrap, mBroker);
         CASES_FOR_fstatat:
           return Trap(StatAtTrap, mBroker);
+        // Used by new libc and Rust's stdlib, if available.
+        // We don't have broker support yet so claim it does not exist.
+        case __NR_statx:
+          return Error(ENOSYS);
         case __NR_chmod:
           return Trap(ChmodTrap, mBroker);
         case __NR_link:
@@ -447,7 +451,14 @@ class SandboxPolicyCommon : public SandboxPolicyBase {
 
     switch (sysno) {
         // Timekeeping
+      case __NR_clock_nanosleep:
+      case __NR_clock_getres:
       case __NR_clock_gettime: {
+        // clockid_t can encode a pid or tid to monitor another
+        // process or thread's CPU usage (see CPUCLOCK_PID and related
+        // definitions in include/linux/posix-timers.h in the kernel
+        // source).  Those values could be detected by bit masking,
+        // but it's simpler to just have a default-deny policy.
         Arg<clockid_t> clk_id(0);
         return If(clk_id == CLOCK_MONOTONIC, Allow())
 #ifdef CLOCK_MONOTONIC_COARSE
@@ -462,6 +473,7 @@ class SandboxPolicyCommon : public SandboxPolicyBase {
             .ElseIf(clk_id == CLOCK_THREAD_CPUTIME_ID, Allow())
             .Else(InvalidSyscall());
       }
+
       case __NR_gettimeofday:
 #ifdef __NR_time
       case __NR_time:
@@ -543,7 +555,11 @@ class SandboxPolicyCommon : public SandboxPolicyBase {
             .Else(InvalidSyscall());
       }
 
-      // Signal handling
+        // musl libc will set this up in pthreads support.
+      case __NR_membarrier:
+        return Allow();
+
+        // Signal handling
 #if defined(ANDROID) || defined(MOZ_ASAN)
       case __NR_sigaltstack:
 #endif
@@ -1160,7 +1176,6 @@ class ContentSandboxPolicy : public SandboxPolicyCommon {
         return Allow();
 
       CASES_FOR_getrlimit:
-      case __NR_clock_getres:
       CASES_FOR_getresuid:
       CASES_FOR_getresgid:
         return Allow();

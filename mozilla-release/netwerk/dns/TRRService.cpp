@@ -5,6 +5,7 @@
 
 #include "nsICaptivePortalService.h"
 #include "nsIParentalControlsService.h"
+#include "nsINetworkLinkService.h"
 #include "nsIObserverService.h"
 #include "nsIURIMutator.h"
 #include "nsNetUtil.h"
@@ -48,6 +49,7 @@ TRRService::TRRService()
       mUseGET(false),
       mDisableECS(true),
       mDisableAfterFails(5),
+      mPlatformDisabledTRR(false),
       mClearTRRBLStorage(false),
       mConfirmationState(CONFIRM_INIT),
       mRetryConfirmInterval(1000),
@@ -70,6 +72,8 @@ nsresult TRRService::Init() {
     observerService->AddObserver(this, kOpenCaptivePortalLoginEvent, true);
     observerService->AddObserver(this, kClearPrivateData, true);
     observerService->AddObserver(this, kPurge, true);
+    observerService->AddObserver(this, NS_NETWORK_LINK_TOPIC, true);
+    observerService->AddObserver(this, NS_DNS_SUFFIX_LIST_UPDATED_TOPIC, true);
   }
   nsCOMPtr<nsIPrefBranch> prefBranch;
   GetPrefBranch(getter_AddRefs(prefBranch));
@@ -98,6 +102,9 @@ nsresult TRRService::Init() {
 
   gTRRService = this;
 
+  nsCOMPtr<nsINetworkLinkService> nls =
+      do_GetService(NS_NETWORK_LINK_SERVICE_CONTRACTID);
+  RebuildSuffixList(nls);
   LOG(("Initialized TRRService\n"));
   return NS_OK;
 }
@@ -304,6 +311,7 @@ nsresult TRRService::ReadPrefs(const char* name) {
   if (!name || !strcmp(name, TRR_PREF("excluded-domains")) ||
       !strcmp(name, TRR_PREF("builtin-excluded-domains")) ||
       !strcmp(name, kCaptivedetectCanonicalURL)) {
+    MutexAutoLock lock(mLock);
     mExcludedDomains.Clear();
 
     auto parseExcludedDomains = [this](const char* aPrefName) {
@@ -448,8 +456,48 @@ TRRService::Observe(nsISupports* aSubject, const char* aTopic,
     if (mTRRBLStorage) {
       mTRRBLStorage->Clear();
     }
+  } else if (!strcmp(aTopic, NS_DNS_SUFFIX_LIST_UPDATED_TOPIC) ||
+             !strcmp(aTopic, NS_NETWORK_LINK_TOPIC)) {
+    nsCOMPtr<nsINetworkLinkService> link = do_QueryInterface(aSubject);
+    RebuildSuffixList(link);
+    CheckPlatformDNSStatus(link);
   }
   return NS_OK;
+}
+
+void TRRService::RebuildSuffixList(nsINetworkLinkService* aLinkService) {
+  // The network link service notification normally passes itself as the
+  // subject, but some unit tests will sometimes pass a null subject.
+  if (!aLinkService) {
+    return;
+  }
+
+  nsTArray<nsCString> suffixList;
+  aLinkService->GetDnsSuffixList(suffixList);
+
+  MutexAutoLock lock(mLock);
+  mDNSSuffixDomains.Clear();
+  for (const auto& item : suffixList) {
+    LOG(("TRRService adding %s to suffix list", item.get()));
+    mDNSSuffixDomains.PutEntry(item);
+  }
+}
+
+void TRRService::CheckPlatformDNSStatus(nsINetworkLinkService* aLinkService) {
+  if (!aLinkService) {
+    return;
+  }
+
+  uint32_t platformIndications = nsINetworkLinkService::NONE_DETECTED;
+  aLinkService->GetPlatformDNSIndications(&platformIndications);
+  LOG(("TRRService platformIndications=%u", platformIndications));
+  mPlatformDisabledTRR =
+      (!StaticPrefs::network_trr_enable_when_vpn_detected() &&
+       (platformIndications & nsINetworkLinkService::VPN_DETECTED)) ||
+      (!StaticPrefs::network_trr_enable_when_proxy_detected() &&
+       (platformIndications & nsINetworkLinkService::PROXY_DETECTED)) ||
+      (!StaticPrefs::network_trr_enable_when_nrpt_detected() &&
+       (platformIndications & nsINetworkLinkService::NRPT_DETECTED));
 }
 
 void TRRService::MaybeConfirm() {
@@ -511,56 +559,26 @@ bool TRRService::MaybeBootstrap(const nsACString& aPossible,
   return true;
 }
 
-// When running in TRR-only mode, the blacklist is not used and it will also
-// try resolving the localhost / .local names.
-bool TRRService::IsTRRBlacklisted(const nsACString& aHost,
-                                  const nsACString& aOriginSuffix,
-                                  bool aPrivateBrowsing,
-                                  bool aParentsToo)  // false if domain
-{
+bool TRRService::IsDomainBlacklisted(const nsACString& aHost,
+                                     const nsACString& aOriginSuffix,
+                                     bool aPrivateBrowsing) {
   // Only use the Storage API on the main thread
-  MOZ_ASSERT(NS_IsMainThread(), "wrong thread");
-
-  if (mMode == MODE_TRRONLY) {
-    return false;  // might as well try
-  }
-
-  LOG(("Checking if host [%s] is blacklisted", aHost.BeginReading()));
-  // hardcode these so as to not worry about expiration
-  if (StringEndsWith(aHost, NS_LITERAL_CSTRING(".local")) ||
-      aHost.Equals(NS_LITERAL_CSTRING("localhost"))) {
-    return true;
-  }
-
-  if (mExcludedDomains.GetEntry(aHost)) {
-    LOG(("Host [%s] is TRR blacklisted via pref\n", aHost.BeginReading()));
-    return true;
-  }
+  MOZ_DIAGNOSTIC_ASSERT(NS_IsMainThread(), "wrong thread");
 
   if (!Enabled()) {
     return true;
   }
 
-  int32_t dot = aHost.FindChar('.');
-  if ((dot == kNotFound) && aParentsToo) {
-    // Only if a full host name. Domains can be dotless to be able to
-    // blacklist entire TLDs
+  // It's OK to call this method here because it only happens on the main
+  // thread, and we only change the excluded domains/dns suffix list
+  // on the main thread in response to observer notifications.
+  // Calling the locking version of this method would cause us to grab
+  // the mutex for every label of the hostname, which would be very
+  // inefficient.
+  if (IsExcludedFromTRR_unlocked(aHost)) {
     return true;
-  } else if (dot != kNotFound) {
-    // there was a dot, check the parent first
-    dot++;
-    nsDependentCSubstring domain = Substring(aHost, dot, aHost.Length() - dot);
-    nsAutoCString check(domain);
-
-    // recursively check the domain part of this name
-    if (IsTRRBlacklisted(check, aOriginSuffix, aPrivateBrowsing, false)) {
-      // the domain name of this name is already TRR blacklisted
-      return true;
-    }
   }
 
-  // These checks need to happen after the recursive result, otherwise we
-  // might not check the pref for parent domains.
   if (!mTRRBLStorage) {
     return false;
   }
@@ -593,7 +611,65 @@ bool TRRService::IsTRRBlacklisted(const nsACString& aHost,
   return false;
 }
 
+// When running in TRR-only mode, the blacklist is not used and it will also
+// try resolving the localhost / .local names.
+bool TRRService::IsTRRBlacklisted(const nsACString& aHost,
+                                  const nsACString& aOriginSuffix,
+                                  bool aPrivateBrowsing,
+                                  bool aParentsToo)  // false if domain
+{
+  if (mMode == MODE_TRRONLY) {
+    return false;  // might as well try
+  }
+
+  LOG(("Checking if host [%s] is blacklisted", aHost.BeginReading()));
+
+  int32_t dot = aHost.FindChar('.');
+  if ((dot == kNotFound) && aParentsToo) {
+    // Only if a full host name. Domains can be dotless to be able to
+    // blacklist entire TLDs
+    return true;
+  }
+
+  if (IsDomainBlacklisted(aHost, aOriginSuffix, aPrivateBrowsing)) {
+    return true;
+  }
+
+  nsDependentCSubstring domain = Substring(aHost, 0);
+  while (dot != kNotFound) {
+    dot++;
+    domain.Rebind(domain, dot, domain.Length() - dot);
+
+    if (IsDomainBlacklisted(domain, aOriginSuffix, aPrivateBrowsing)) {
+      return true;
+    }
+
+    dot = domain.FindChar('.');
+  }
+
+  return false;
+}
+
 bool TRRService::IsExcludedFromTRR(const nsACString& aHost) {
+  // This method may be called off the main thread. We need to lock so
+  // mExcludedDomains and mDNSSuffixDomains don't change while this code
+  // is running.
+  MutexAutoLock lock(mLock);
+
+  return IsExcludedFromTRR_unlocked(aHost);
+}
+
+bool TRRService::IsExcludedFromTRR_unlocked(const nsACString& aHost) {
+  if (!NS_IsMainThread()) {
+    mLock.AssertCurrentThreadOwns();
+  }
+
+  if (mPlatformDisabledTRR) {
+    LOG(("%s is excluded from TRR because of platform indications",
+         aHost.BeginReading()));
+    return true;
+  }
+
   int32_t dot = 0;
   // iteratively check the sub-domain of |aHost|
   while (dot < static_cast<int32_t>(aHost.Length())) {
@@ -601,6 +677,11 @@ bool TRRService::IsExcludedFromTRR(const nsACString& aHost) {
         Substring(aHost, dot, aHost.Length() - dot);
 
     if (mExcludedDomains.GetEntry(subdomain)) {
+      LOG(("Subdomain [%s] of host [%s] Is Excluded From TRR via pref\n",
+           subdomain.BeginReading(), aHost.BeginReading()));
+      return true;
+    }
+    if (mDNSSuffixDomains.GetEntry(subdomain)) {
       LOG(("Subdomain [%s] of host [%s] Is Excluded From TRR via pref\n",
            subdomain.BeginReading(), aHost.BeginReading()));
       return true;

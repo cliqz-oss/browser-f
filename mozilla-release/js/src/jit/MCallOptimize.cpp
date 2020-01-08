@@ -9,7 +9,7 @@
 #include "jsmath.h"
 
 #include "builtin/AtomicsObject.h"
-#ifdef ENABLE_INTL_API
+#ifdef JS_HAS_INTL_API
 #  include "builtin/intl/Collator.h"
 #  include "builtin/intl/DateTimeFormat.h"
 #  include "builtin/intl/ListFormat.h"
@@ -116,6 +116,7 @@ static bool CanInlineCrossRealm(InlinableNative native) {
     case InlinableNative::IntlGuardToPluralRules:
     case InlinableNative::IntlGuardToRelativeTimeFormat:
     case InlinableNative::IsRegExpObject:
+    case InlinableNative::IsPossiblyWrappedRegExpObject:
     case InlinableNative::RegExpMatcher:
     case InlinableNative::RegExpSearcher:
     case InlinableNative::RegExpTester:
@@ -138,7 +139,7 @@ static bool CanInlineCrossRealm(InlinableNative native) {
     case InlinableNative::IntrinsicToObject:
     case InlinableNative::IntrinsicIsObject:
     case InlinableNative::IntrinsicIsCrossRealmArrayConstructor:
-    case InlinableNative::IntrinsicToInteger:
+    case InlinableNative::IntrinsicToIntegerPositiveZero:
     case InlinableNative::IntrinsicToString:
     case InlinableNative::IntrinsicIsConstructing:
     case InlinableNative::IntrinsicSubstringKernel:
@@ -166,12 +167,9 @@ static bool CanInlineCrossRealm(InlinableNative native) {
     case InlinableNative::IntrinsicTypedArrayByteOffset:
     case InlinableNative::IntrinsicTypedArrayElementShift:
     case InlinableNative::IntrinsicObjectIsTypedObject:
-    case InlinableNative::IntrinsicObjectIsTransparentTypedObject:
-    case InlinableNative::IntrinsicObjectIsOpaqueTypedObject:
     case InlinableNative::IntrinsicObjectIsTypeDescr:
     case InlinableNative::IntrinsicTypeDescrIsSimpleType:
     case InlinableNative::IntrinsicTypeDescrIsArrayType:
-    case InlinableNative::IntrinsicSetTypedObjectOffset:
     case InlinableNative::IntrinsicArrayIteratorPrototypeOptimizable:
       MOZ_CRASH("Unexpected cross-realm intrinsic call");
 
@@ -313,7 +311,7 @@ IonBuilder::InliningResult IonBuilder::inlineNativeCall(CallInfo& callInfo,
     case InlinableNative::Boolean:
       return inlineBoolean(callInfo);
 
-#ifdef ENABLE_INTL_API
+#ifdef JS_HAS_INTL_API
     // Intl natives.
     case InlinableNative::IntlGuardToCollator:
       return inlineGuardToClass(callInfo, &CollatorObject::class_);
@@ -422,6 +420,8 @@ IonBuilder::InliningResult IonBuilder::inlineNativeCall(CallInfo& callInfo,
       return inlineRegExpTester(callInfo);
     case InlinableNative::IsRegExpObject:
       return inlineIsRegExpObject(callInfo);
+    case InlinableNative::IsPossiblyWrappedRegExpObject:
+      return inlineIsPossiblyWrappedRegExpObject(callInfo);
     case InlinableNative::RegExpPrototypeOptimizable:
       return inlineRegExpPrototypeOptimizable(callInfo);
     case InlinableNative::RegExpInstanceOptimizable:
@@ -498,8 +498,8 @@ IonBuilder::InliningResult IonBuilder::inlineNativeCall(CallInfo& callInfo,
       return inlineIsObject(callInfo);
     case InlinableNative::IntrinsicIsCrossRealmArrayConstructor:
       return inlineIsCrossRealmArrayConstructor(callInfo);
-    case InlinableNative::IntrinsicToInteger:
-      return inlineToInteger(callInfo);
+    case InlinableNative::IntrinsicToIntegerPositiveZero:
+      return inlineToIntegerPositiveZero(callInfo);
     case InlinableNative::IntrinsicToString:
       return inlineToString(callInfo);
     case InlinableNative::IntrinsicIsConstructing:
@@ -573,12 +573,6 @@ IonBuilder::InliningResult IonBuilder::inlineNativeCall(CallInfo& callInfo,
                             &OutlineOpaqueTypedObject::class_,
                             &InlineTransparentTypedObject::class_,
                             &InlineOpaqueTypedObject::class_);
-    case InlinableNative::IntrinsicObjectIsTransparentTypedObject:
-      return inlineHasClass(callInfo, &OutlineTransparentTypedObject::class_,
-                            &InlineTransparentTypedObject::class_);
-    case InlinableNative::IntrinsicObjectIsOpaqueTypedObject:
-      return inlineHasClass(callInfo, &OutlineOpaqueTypedObject::class_,
-                            &InlineOpaqueTypedObject::class_);
     case InlinableNative::IntrinsicObjectIsTypeDescr:
       return inlineObjectIsTypeDescr(callInfo);
     case InlinableNative::IntrinsicTypeDescrIsSimpleType:
@@ -586,8 +580,6 @@ IonBuilder::InliningResult IonBuilder::inlineNativeCall(CallInfo& callInfo,
                             &ReferenceTypeDescr::class_);
     case InlinableNative::IntrinsicTypeDescrIsArrayType:
       return inlineHasClass(callInfo, &ArrayTypeDescr::class_);
-    case InlinableNative::IntrinsicSetTypedObjectOffset:
-      return inlineSetTypedObjectOffset(callInfo);
     case InlinableNative::Limit:
       break;
   }
@@ -2153,7 +2145,7 @@ IonBuilder::InliningResult IonBuilder::inlineStrCharCodeAt(CallInfo& callInfo) {
 
   callInfo.setImplicitlyUsedUnchecked();
 
-  MInstruction* index = MToNumberInt32::New(alloc(), callInfo.getArg(0));
+  MInstruction* index = MToIntegerInt32::New(alloc(), callInfo.getArg(0));
   current->add(index);
 
   MStringLength* length = MStringLength::New(alloc(), callInfo.thisArg());
@@ -2282,7 +2274,7 @@ IonBuilder::InliningResult IonBuilder::inlineStrCharAt(CallInfo& callInfo) {
 
   callInfo.setImplicitlyUsedUnchecked();
 
-  MInstruction* index = MToNumberInt32::New(alloc(), callInfo.getArg(0));
+  MInstruction* index = MToIntegerInt32::New(alloc(), callInfo.getArg(0));
   current->add(index);
 
   MStringLength* length = MStringLength::New(alloc(), callInfo.thisArg());
@@ -2500,6 +2492,43 @@ IonBuilder::InliningResult IonBuilder::inlineIsRegExpObject(
 
   if (isRegExpObjectKnown) {
     pushConstant(BooleanValue(isRegExpObjectConstant));
+  } else {
+    MHasClass* hasClass = MHasClass::New(alloc(), arg, &RegExpObject::class_);
+    current->add(hasClass);
+    current->push(hasClass);
+  }
+
+  callInfo.setImplicitlyUsedUnchecked();
+  return InliningStatus_Inlined;
+}
+
+IonBuilder::InliningResult IonBuilder::inlineIsPossiblyWrappedRegExpObject(
+    CallInfo& callInfo) {
+  MOZ_ASSERT(!callInfo.constructing());
+  MOZ_ASSERT(callInfo.argc() == 1);
+
+  if (getInlineReturnType() != MIRType::Boolean) {
+    return InliningStatus_NotInlined;
+  }
+
+  MDefinition* arg = callInfo.getArg(0);
+  if (arg->type() != MIRType::Object) {
+    return InliningStatus_NotInlined;
+  }
+
+  TemporaryTypeSet* types = arg->resultTypeSet();
+  if (!types) {
+    return InliningStatus_NotInlined;
+  }
+
+  // Don't inline if the argument might be a wrapper.
+  if (types->forAllClasses(constraints(), IsProxyClass) !=
+      TemporaryTypeSet::ForAllResult::ALL_FALSE) {
+    return InliningStatus_NotInlined;
+  }
+
+  if (const JSClass* clasp = types->getKnownClass(constraints())) {
+    pushConstant(BooleanValue(clasp == &RegExpObject::class_));
   } else {
     MHasClass* hasClass = MHasClass::New(alloc(), arg, &RegExpObject::class_);
     current->add(hasClass);
@@ -3381,50 +3410,6 @@ IonBuilder::InliningResult IonBuilder::inlineObjectIsTypeDescr(
   return InliningStatus_Inlined;
 }
 
-IonBuilder::InliningResult IonBuilder::inlineSetTypedObjectOffset(
-    CallInfo& callInfo) {
-  MOZ_ASSERT(!callInfo.constructing());
-  MOZ_ASSERT(callInfo.argc() == 2);
-
-  MDefinition* typedObj = callInfo.getArg(0);
-  MDefinition* offset = callInfo.getArg(1);
-
-  // Return type should be undefined or something wacky is going on.
-  if (getInlineReturnType() != MIRType::Undefined) {
-    return InliningStatus_NotInlined;
-  }
-
-  // Check typedObj is a, well, typed object. Go ahead and use TI
-  // data. If this check should fail, that is almost certainly a bug
-  // in self-hosted code -- either because it's not being careful
-  // with TI or because of something else -- but we'll just let it
-  // fall through to the SetTypedObjectOffset intrinsic in such
-  // cases.
-  TemporaryTypeSet* types = typedObj->resultTypeSet();
-  if (typedObj->type() != MIRType::Object || !types) {
-    return InliningStatus_NotInlined;
-  }
-  switch (types->forAllClasses(constraints(), IsTypedObjectClass)) {
-    case TemporaryTypeSet::ForAllResult::ALL_FALSE:
-    case TemporaryTypeSet::ForAllResult::EMPTY:
-    case TemporaryTypeSet::ForAllResult::MIXED:
-      return InliningStatus_NotInlined;
-    case TemporaryTypeSet::ForAllResult::ALL_TRUE:
-      break;
-  }
-
-  // Check type of offset argument is an integer.
-  if (offset->type() != MIRType::Int32) {
-    return InliningStatus_NotInlined;
-  }
-
-  callInfo.setImplicitlyUsedUnchecked();
-  MInstruction* ins = MSetTypedObjectOffset::New(alloc(), typedObj, offset);
-  current->add(ins);
-  current->push(ins);
-  return InliningStatus_Inlined;
-}
-
 IonBuilder::InliningResult IonBuilder::inlineUnsafeSetReservedSlot(
     CallInfo& callInfo) {
   MOZ_ASSERT(!callInfo.constructing());
@@ -3661,35 +3646,53 @@ IonBuilder::InliningResult IonBuilder::inlineIsCrossRealmArrayConstructor(
   return InliningStatus_Inlined;
 }
 
-IonBuilder::InliningResult IonBuilder::inlineToInteger(CallInfo& callInfo) {
+IonBuilder::InliningResult IonBuilder::inlineToIntegerPositiveZero(
+    CallInfo& callInfo) {
   MOZ_ASSERT(!callInfo.constructing());
   MOZ_ASSERT(callInfo.argc() == 1);
 
   MDefinition* input = callInfo.getArg(0);
 
-  // Only optimize cases where input contains only number, null or boolean
+  // Only optimize cases where |input| contains only number, null, undefined, or
+  // boolean.
   if (input->mightBeType(MIRType::Object) ||
       input->mightBeType(MIRType::String) ||
       input->mightBeType(MIRType::Symbol) ||
-      input->mightBeType(MIRType::BigInt) ||
-      input->mightBeType(MIRType::Undefined) || input->mightBeMagicType()) {
+      input->mightBeType(MIRType::BigInt) || input->mightBeMagicType()) {
     return InliningStatus_NotInlined;
   }
 
   MOZ_ASSERT(input->type() == MIRType::Value ||
              input->type() == MIRType::Null ||
+             input->type() == MIRType::Undefined ||
              input->type() == MIRType::Boolean || IsNumberType(input->type()));
 
-  // Only optimize cases where output is int32
-  if (getInlineReturnType() != MIRType::Int32) {
+  // Only optimize cases where the output is int32 or double.
+  MIRType returnType = getInlineReturnType();
+  if (returnType != MIRType::Int32 && returnType != MIRType::Double) {
     return InliningStatus_NotInlined;
   }
 
-  callInfo.setImplicitlyUsedUnchecked();
+  if (returnType == MIRType::Int32) {
+    auto* toInt32 = MToIntegerInt32::New(alloc(), input);
+    current->add(toInt32);
+    current->push(toInt32);
+  } else {
+    MInstruction* ins;
+    if (MNearbyInt::HasAssemblerSupport(RoundingMode::TowardsZero)) {
+      ins = MNearbyInt::New(alloc(), input, MIRType::Double,
+                            RoundingMode::TowardsZero);
+    } else {
+      ins = MMathFunction::New(alloc(), input, MMathFunction::Trunc);
+    }
+    current->add(ins);
 
-  auto* toInt32 = MToNumberInt32::New(alloc(), callInfo.getArg(0));
-  current->add(toInt32);
-  current->push(toInt32);
+    auto* nanToZero = MNaNToZero::New(alloc(), ins);
+    current->add(nanToZero);
+    current->push(nanToZero);
+  }
+
+  callInfo.setImplicitlyUsedUnchecked();
   return InliningStatus_Inlined;
 }
 
@@ -3702,9 +3705,13 @@ IonBuilder::InliningResult IonBuilder::inlineToString(CallInfo& callInfo) {
   }
 
   callInfo.setImplicitlyUsedUnchecked();
-  MToString* toString = MToString::New(alloc(), callInfo.getArg(0));
+  MToString* toString = MToString::New(
+      alloc(), callInfo.getArg(0), MToString::SideEffectHandling::Supported);
   current->add(toString);
   current->push(toString);
+  if (toString->isEffectful()) {
+    MOZ_TRY(resumeAfter(toString));
+  }
   return InliningStatus_Inlined;
 }
 
@@ -4110,7 +4117,7 @@ IonBuilder::InliningResult IonBuilder::inlineIsConstructing(
     CallInfo& callInfo) {
   MOZ_ASSERT(!callInfo.constructing());
   MOZ_ASSERT(callInfo.argc() == 0);
-  MOZ_ASSERT(script()->functionNonDelazifying(),
+  MOZ_ASSERT(script()->isFunction(),
              "isConstructing() should only be called in function scripts");
 
   if (getInlineReturnType() != MIRType::Boolean) {
@@ -4191,7 +4198,8 @@ IonBuilder::InliningResult IonBuilder::inlineWasmCall(CallInfo& callInfo,
   // Check that the function doesn't take or return non-compatible JS
   // argument types before adding nodes to the MIR graph, otherwise they'd be
   // dead code.
-  if (sig.hasI64ArgOrRet() || sig.temporarilyUnsupportedAnyRef() ||
+  if (sig.hasI64ArgOrRet() ||
+      sig.temporarilyUnsupportedReftypeForInlineEntry() ||
       !JitOptions.enableWasmIonFastCalls) {
     return InliningStatus_NotInlined;
   }
@@ -4210,6 +4218,10 @@ IonBuilder::InliningResult IonBuilder::inlineWasmCall(CallInfo& callInfo,
     return abort(AbortReason::Alloc);
   }
 
+  // An invariant in this loop is that any type conversion operation that has
+  // externally visible effects, such as invoking valueOf on an object argument,
+  // must bailout so that we don't have to worry about replaying effects during
+  // argument conversion.
   Maybe<MDefinition*> undefined;
   for (size_t i = 0; i < sig.args().length(); i++) {
     if (!alloc().ensureBallast()) {
@@ -4234,8 +4246,24 @@ IonBuilder::InliningResult IonBuilder::inlineWasmCall(CallInfo& callInfo,
       case wasm::ValType::F64:
         conversion = MToDouble::New(alloc(), arg);
         break;
-      case wasm::ValType::I64:
       case wasm::ValType::AnyRef:
+        // Transform the JS representation into an AnyRef representation.  The
+        // resulting type is MIRType::RefOrNull.  These cases are all
+        // effect-free.
+        switch (arg->type()) {
+          case MIRType::Object:
+          case MIRType::ObjectOrNull:
+            conversion = MWasmAnyRefFromJSObject::New(alloc(), arg);
+            break;
+          case MIRType::Null:
+            conversion = MWasmNullConstant::New(alloc());
+            break;
+          default:
+            conversion = MWasmBoxValue::New(alloc(), arg);
+            break;
+        }
+        break;
+      case wasm::ValType::I64:
       case wasm::ValType::FuncRef:
       case wasm::ValType::Ref:
         MOZ_CRASH("impossible per above check");

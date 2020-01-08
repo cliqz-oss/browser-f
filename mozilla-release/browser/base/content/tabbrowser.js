@@ -972,7 +972,7 @@
 
       var modifier = docElement.getAttribute("titlemodifier");
       if (docTitle) {
-        newTitle += docElement.getAttribute("titlepreface");
+        newTitle += docElement.getAttribute("titlepreface") || "";
         newTitle += docTitle;
         if (modifier) {
           newTitle += sep;
@@ -1358,10 +1358,7 @@
 
       // Don't focus the content area if something has been focused after the
       // tab switch was initiated.
-      if (
-        gMultiProcessBrowser &&
-        document.activeElement != document.documentElement
-      ) {
+      if (gMultiProcessBrowser && document.activeElement != document.body) {
         return;
       }
 
@@ -1908,9 +1905,8 @@
       aBrowser.destroy();
       // Only remove the node if we're not rebuilding the frameloader via nsFrameLoaderOwner.
       let rebuildFrameLoaders =
-        Services.prefs.getBoolPref(
-          "fission.rebuild_frameloaders_on_remoteness_change"
-        ) || window.docShell.nsILoadContext.useRemoteSubframes;
+        E10SUtils.rebuildFrameloadersOnRemotenessChange ||
+        window.docShell.nsILoadContext.useRemoteSubframes;
       if (!rebuildFrameLoaders) {
         aBrowser.remove();
       }
@@ -2741,6 +2737,9 @@
 
         let tabAfter = this.tabs[index] || null;
         this._invalidateCachedTabs();
+        // Prevent a flash of unstyled content by setting up the tab content
+        // and inherited attributes before appending it (see Bug 1592054):
+        t.initialize();
         this.tabContainer.insertBefore(t, tabAfter);
         if (tabAfter) {
           this._updateTabsAfterInsert();
@@ -5250,6 +5249,25 @@
           return;
         }
 
+        if (!browser.docShell) {
+          return;
+        }
+        // Ensure `docShell.document` (an nsIWebNavigation idl prop) is there:
+        browser.docShell.QueryInterface(Ci.nsIWebNavigation);
+        if (event.target != browser.docShell.document) {
+          return;
+        }
+
+        // Ignore empty title changes on internal pages. This prevents the title
+        // from changing while Fluent is populating the (initially-empty) title
+        // element.
+        if (
+          !browser.contentTitle &&
+          browser.contentPrincipal.isSystemPrincipal
+        ) {
+          return;
+        }
+
         var titleChanged = this.setTabTitle(tab);
         if (titleChanged && !tab.selected && !tab.hasAttribute("busy")) {
           tab.setAttribute("titlechanged", "true");
@@ -5623,37 +5641,28 @@
         location
       );
 
+      const {
+        STATE_START,
+        STATE_STOP,
+        STATE_IS_NETWORK,
+      } = Ci.nsIWebProgressListener;
+
       // If we were ignoring some messages about the initial about:blank, and we
       // got the STATE_STOP for it, we'll want to pay attention to those messages
       // from here forward. Similarly, if we conclude that this state change
       // is one that we shouldn't be ignoring, then stop ignoring.
       if (
         (ignoreBlank &&
-          aStateFlags & Ci.nsIWebProgressListener.STATE_STOP &&
-          aStateFlags & Ci.nsIWebProgressListener.STATE_IS_NETWORK) ||
+          aStateFlags & STATE_STOP &&
+          aStateFlags & STATE_IS_NETWORK) ||
         (!ignoreBlank && this.mBlank)
       ) {
         this.mBlank = false;
       }
 
-      if (aStateFlags & Ci.nsIWebProgressListener.STATE_START) {
+      if (aStateFlags & STATE_START && aStateFlags & STATE_IS_NETWORK) {
         this.mRequestCount++;
-      } else if (aStateFlags & Ci.nsIWebProgressListener.STATE_STOP) {
-        const NS_ERROR_UNKNOWN_HOST = 2152398878;
-        if (--this.mRequestCount > 0 && aStatus == NS_ERROR_UNKNOWN_HOST) {
-          // to prevent bug 235825: wait for the request handled
-          // by the automatic keyword resolver
-          return;
-        }
-        // since we (try to) only handle STATE_STOP of the last request,
-        // the count of open requests should now be 0
-        this.mRequestCount = 0;
-      }
 
-      if (
-        aStateFlags & Ci.nsIWebProgressListener.STATE_START &&
-        aStateFlags & Ci.nsIWebProgressListener.STATE_IS_NETWORK
-      ) {
         if (aWebProgress.isTopLevel) {
           // Need to use originalLocation rather than location because things
           // like about:home and about:privatebrowsing arrive with nsIRequest
@@ -5703,10 +5712,16 @@
             gBrowser._isBusy = true;
           }
         }
-      } else if (
-        aStateFlags & Ci.nsIWebProgressListener.STATE_STOP &&
-        aStateFlags & Ci.nsIWebProgressListener.STATE_IS_NETWORK
-      ) {
+      } else if (aStateFlags & STATE_STOP && aStateFlags & STATE_IS_NETWORK) {
+        if (--this.mRequestCount > 0 && aStatus == Cr.NS_ERROR_UNKNOWN_HOST) {
+          // to prevent bug 235825: wait for the request handled
+          // by the automatic keyword resolver
+          return;
+        }
+        // since we (try to) only handle STATE_STOP of the last request,
+        // the count of open requests should now be 0
+        this.mRequestCount = 0;
+
         let modifiedAttrs = [];
         if (this.mTab.hasAttribute("busy")) {
           this.mTab.removeAttribute("busy");
@@ -5803,11 +5818,7 @@
         false
       );
 
-      if (
-        aStateFlags &
-        (Ci.nsIWebProgressListener.STATE_START |
-          Ci.nsIWebProgressListener.STATE_STOP)
-      ) {
+      if (aStateFlags & (STATE_START | STATE_STOP)) {
         // reset cached temporary values at beginning and end
         this.mMessage = "";
         this.mTotalProgress = 0;
@@ -5862,45 +5873,50 @@
           gBrowser._tabAttrModified(this.mTab, ["busy"]);
         }
 
-        // If the browser was playing audio, we should remove the playing state.
-        if (this.mTab.hasAttribute("soundplaying") && !isSameDocument) {
-          clearTimeout(this.mTab._soundPlayingAttrRemovalTimer);
-          this.mTab._soundPlayingAttrRemovalTimer = 0;
-          this.mTab.removeAttribute("soundplaying");
-          gBrowser._tabAttrModified(this.mTab, ["soundplaying"]);
-        }
-
-        // If the browser was previously muted, we should restore the muted state.
-        if (this.mTab.hasAttribute("muted")) {
-          this.mTab.linkedBrowser.mute();
-        }
-
-        if (gBrowser.isFindBarInitialized(this.mTab)) {
-          let findBar = gBrowser.getCachedFindBar(this.mTab);
-
-          // Close the Find toolbar if we're in old-style TAF mode
-          if (findBar.findMode != findBar.FIND_NORMAL) {
-            findBar.close();
+        if (!isSameDocument) {
+          // If the browser was playing audio, we should remove the playing state.
+          if (this.mTab.hasAttribute("soundplaying")) {
+            clearTimeout(this.mTab._soundPlayingAttrRemovalTimer);
+            this.mTab._soundPlayingAttrRemovalTimer = 0;
+            this.mTab.removeAttribute("soundplaying");
+            gBrowser._tabAttrModified(this.mTab, ["soundplaying"]);
           }
-        }
 
-        if (!isReload) {
-          gBrowser.setTabTitle(this.mTab);
-        }
+          // If the browser was previously muted, we should restore the muted state.
+          if (this.mTab.hasAttribute("muted")) {
+            this.mTab.linkedBrowser.mute();
+          }
 
-        // Don't clear the favicon if this tab is in the pending
-        // state, as SessionStore will have set the icon for us even
-        // though we're pointed at an about:blank. Also don't clear it
-        // if onLocationChange was triggered by a pushState or a
-        // replaceState (bug 550565) or a hash change (bug 408415).
-        if (
-          !this.mTab.hasAttribute("pending") &&
-          aWebProgress.isLoadingDocument &&
-          !isSameDocument
-        ) {
-          // Removing the tab's image here causes flickering, wait until the load
-          // is complete.
-          this.mBrowser.mIconURL = null;
+          if (gBrowser.isFindBarInitialized(this.mTab)) {
+            let findBar = gBrowser.getCachedFindBar(this.mTab);
+
+            // Close the Find toolbar if we're in old-style TAF mode
+            if (findBar.findMode != findBar.FIND_NORMAL) {
+              findBar.close();
+            }
+          }
+
+          // Note that we're not updating for same-document loads, despite
+          // the `title` argument to `history.pushState/replaceState`. For
+          // context, see https://bugzilla.mozilla.org/show_bug.cgi?id=585653
+          // and https://github.com/whatwg/html/issues/2174
+          if (!isReload) {
+            gBrowser.setTabTitle(this.mTab);
+          }
+
+          // Don't clear the favicon if this tab is in the pending
+          // state, as SessionStore will have set the icon for us even
+          // though we're pointed at an about:blank. Also don't clear it
+          // if onLocationChange was triggered by a pushState or a
+          // replaceState (bug 550565) or a hash change (bug 408415).
+          if (
+            !this.mTab.hasAttribute("pending") &&
+            aWebProgress.isLoadingDocument
+          ) {
+            // Removing the tab's image here causes flickering, wait until the
+            // load is complete.
+            this.mBrowser.mIconURL = null;
+          }
         }
 
         let userContextId = this.mBrowser.getAttribute("usercontextid") || 0;

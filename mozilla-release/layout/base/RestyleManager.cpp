@@ -563,7 +563,6 @@ nsCString RestyleManager::ChangeHintToString(nsChangeHint aHint) {
                          "UpdateBackgroundPosition",
                          "AddOrRemoveTransform",
                          "ScrollbarChange",
-                         "UpdateWidgetProperties",
                          "UpdateTableCellSpans",
                          "VisibilityChange"};
   static_assert(nsChangeHint_AllHints ==
@@ -1398,12 +1397,7 @@ void RestyleManager::ProcessRestyledFrames(nsStyleChangeList& aChangeList) {
             // Under these conditions, we're OK to assume that this "overflow"
             // change only impacts the root viewport's scrollframe, which
             // already exists, so we can simply reflow instead of reframing.
-            // When requesting this reflow, we send the exact same change hints
-            // that "width" and "height" would send (since conceptually,
-            // adding/removing scrollbars is like changing the available
-            // space).
-            data.mHint |= (nsChangeHint_ReflowHintsForISizeChange |
-                           nsChangeHint_ReflowHintsForBSizeChange);
+            data.mHint |= nsChangeHint_ReflowHintsForScrollbarChange;
             doReconstruct = false;
           }
         }
@@ -1788,9 +1782,6 @@ void RestyleManager::ProcessRestyledFrames(nsStyleChangeList& aChangeList) {
         presContext->PresShell()->SynthesizeMouseMove(false);
         didUpdateCursor = true;
       }
-      if (hint & nsChangeHint_UpdateWidgetProperties) {
-        frame->UpdateWidgetProperties();
-      }
       if (hint & nsChangeHint_UpdateTableCellSpans) {
         frameConstructor->UpdateTableCellSpans(content);
       }
@@ -1801,6 +1792,7 @@ void RestyleManager::ProcessRestyledFrames(nsStyleChangeList& aChangeList) {
   }
 
   aChangeList.Clear();
+  FlushOverflowChangedTracker();
 }
 
 /* static */
@@ -2439,7 +2431,7 @@ struct RestyleManager::TextPostTraversalState {
 static void UpdateBackdropIfNeeded(nsIFrame* aFrame, ServoStyleSet& aStyleSet,
                                    nsStyleChangeList& aChangeList) {
   const nsStyleDisplay* display = aFrame->Style()->StyleDisplay();
-  if (display->mTopLayer != NS_STYLE_TOP_LAYER_TOP) {
+  if (display->mTopLayer != StyleTopLayer::Top) {
     return;
   }
 
@@ -3131,8 +3123,6 @@ void RestyleManager::DoProcessPendingRestyles(ServoTraversalFlags aFlags) {
 
   doc->ClearServoRestyleRoot();
 
-  FlushOverflowChangedTracker();
-
   ClearSnapshots();
   styleSet->AssertTreeIsClean();
   mHaveNonAnimationRestyles = false;
@@ -3156,7 +3146,6 @@ static void VerifyFlatTree(const nsIContent& aContent) {
   for (auto* content = iter.GetNextChild(); content;
        content = iter.GetNextChild()) {
     MOZ_ASSERT(content->GetFlattenedTreeParentNodeForStyle() == &aContent);
-    MOZ_ASSERT(!content->IsActiveChildrenElement());
     VerifyFlatTree(*content);
   }
 }
@@ -3210,13 +3199,25 @@ void RestyleManager::ContentStateChanged(nsIContent* aContent,
 
   const EventStates kVisitedAndUnvisited =
       NS_EVENT_STATE_VISITED | NS_EVENT_STATE_UNVISITED;
-  // NOTE: We want to return ASAP for visitedness changes, but we don't want to
-  // mess up the situation where the element became a link or stopped being one.
-  if (aChangedBits.HasAllStates(kVisitedAndUnvisited) &&
-      !Gecko_VisitedStylesEnabled(element.OwnerDoc())) {
-    aChangedBits &= ~kVisitedAndUnvisited;
-    if (aChangedBits.IsEmpty()) {
-      return;
+
+  // When visited links are disabled, they cannot influence style for obvious
+  // reasons.
+  //
+  // When layout.css.always-repaint-on-unvisited is true, we'll restyle when the
+  // relevant visited query finishes, regardless of the style (see
+  // Link::VisitedQueryFinished). So there's no need to do anything as a result
+  // of this state change just yet.
+  //
+  // Note that this check checks for _both_ bits: This is only true when visited
+  // changes to unvisited or vice-versa, but not when we start or stop being a
+  // link itself.
+  if (aChangedBits.HasAllStates(kVisitedAndUnvisited)) {
+    if (!Gecko_VisitedStylesEnabled(element.OwnerDoc()) ||
+        StaticPrefs::layout_css_always_repaint_on_unvisited()) {
+      aChangedBits &= ~kVisitedAndUnvisited;
+      if (aChangedBits.IsEmpty()) {
+        return;
+      }
     }
   }
 
@@ -3344,7 +3345,8 @@ void RestyleManager::TakeSnapshotForAttributeChange(Element& aElement,
 // * lwtheme and lwthemetextcolor on root element of XUL document
 //   affects all descendants due to :-moz-lwtheme* pseudo-classes
 // * lang="" and xml:lang="" can affect all descendants due to :lang()
-//
+// * exportparts can affect all descendant parts. We could certainly integrate
+//   it better in the invalidation machinery if it was necessary.
 static inline bool AttributeChangeRequiresSubtreeRestyle(
     const Element& aElement, nsAtom* aAttr) {
   if (aAttr == nsGkAtoms::cellpadding) {
@@ -3354,7 +3356,11 @@ static inline bool AttributeChangeRequiresSubtreeRestyle(
     Document* doc = aElement.OwnerDoc();
     return doc->IsInChromeDocShell() && &aElement == doc->GetRootElement();
   }
-
+  // TODO(emilio, bug 1598094): Maybe finer-grained invalidation for exportparts
+  // attribute changes?
+  if (aAttr == nsGkAtoms::exportparts) {
+    return !!aElement.GetShadowRoot();
+  }
   return aAttr == nsGkAtoms::lang;
 }
 
@@ -3376,8 +3382,8 @@ void RestyleManager::AttributeChanged(Element* aElement, int32_t aNameSpaceID,
     // FIXME(emilio): Does this really need to re-selector-match?
     restyleHint |= StyleRestyleHint_RESTYLE_SELF;
   } else if (aElement->IsInShadowTree() && aAttribute == nsGkAtoms::part) {
-    // TODO(emilio): Maybe finer-grained invalidation for part attribute
-    // changes?
+    // TODO(emilio, bug 1598094): Maybe finer-grained invalidation for part
+    // attribute changes?
     restyleHint |= StyleRestyleHint_RESTYLE_SELF;
   }
 

@@ -8,6 +8,7 @@
 include LayersSurfaces;
 include LayersMessages;
 include PlatformWidgetTypes;
+include PCompositorBridgeTypes;
 include protocol PAPZ;
 include protocol PAPZCTreeManager;
 include protocol PBrowser;
@@ -17,6 +18,7 @@ include protocol PCompositorWidget;
 include protocol PLayerTransaction;
 include protocol PTexture;
 include protocol PWebRenderBridge;
+include protocol PWebGPU;
 include "mozilla/GfxMessageUtils.h";
 include "mozilla/layers/LayersMessageUtils.h";
 include "mozilla/layers/WebRenderMessageUtils.h";
@@ -64,7 +66,6 @@ struct FrameStats {
   nsCString url;
 };
 
-
 /**
  * The PCompositorBridge protocol is a top-level protocol for the compositor.
  * There is an instance of the protocol for each compositor, plus one for each
@@ -101,6 +102,7 @@ sync refcounted protocol PCompositorBridge
   manages PTexture;
   manages PCompositorWidget;
   manages PWebRenderBridge;
+  manages PWebGPU;
 
 child:
   // The child should invalidate retained layers. This is used for local
@@ -153,6 +155,8 @@ child:
 
   async ObserveLayersUpdate(LayersId aLayersId, LayersObserverEpoch aEpoch, bool aActive);
 
+  async CompositorOptionsChanged(LayersId id, CompositorOptions newOptions);
+
 parent:
   async __delete__();
 
@@ -165,6 +169,10 @@ parent:
   // Must be called after Initialize(), and only succeeds if AsyncPanZoomEnabled() is true.
   async PAPZ(LayersId layersId);
   async PAPZCTreeManager(LayersId layersId);
+
+  // Constructor for WebGPU IPDL
+  // Must be called before Initialize().
+  async PWebGPU();
 
   /**
    * Confirmation callback for UpdatePluginConfigurations and HideAllPlugins.
@@ -271,8 +279,11 @@ parent:
   async BeginRecording(TimeStamp aRecordingStart)
     returns (bool success);
 
-  sync EndRecording()
+  async EndRecordingToDisk()
     returns (bool success);
+
+  async EndRecordingToMemory()
+    returns (CollectedFramesParams? frames);
 
   // To set up sharing the composited output to Firefox Reality on Desktop
   async RequestFxrOutput();

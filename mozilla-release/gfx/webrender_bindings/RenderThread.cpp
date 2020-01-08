@@ -269,6 +269,34 @@ void RenderThread::WriteCollectedFramesForWindow(wr::WindowId aWindowId) {
   }
 }
 
+Maybe<layers::CollectedFrames> RenderThread::GetCollectedFramesForWindow(
+    wr::WindowId aWindowId) {
+  MOZ_ASSERT(IsInRenderThread());
+
+  RendererOGL* renderer = GetRenderer(aWindowId);
+  MOZ_ASSERT(renderer);
+
+  auto it = mCompositionRecorders.find(aWindowId);
+  MOZ_DIAGNOSTIC_ASSERT(
+      it != mCompositionRecorders.end(),
+      "Attempted to get frames from a window that was not recording.");
+
+  Maybe<layers::CollectedFrames> maybeFrames;
+
+  if (it != mCompositionRecorders.end()) {
+    maybeFrames.emplace(it->second->GetCollectedFrames());
+
+    if (renderer) {
+      wr_renderer_release_composition_recorder_structures(
+          renderer->GetRenderer());
+    }
+
+    mCompositionRecorders.erase(it);
+  }
+
+  return maybeFrames;
+}
+
 void RenderThread::HandleFrameOneDoc(wr::WindowId aWindowId, bool aRender) {
   if (mHasShutdown) {
     return;
@@ -314,6 +342,10 @@ void RenderThread::HandleFrameOneDoc(wr::WindowId aWindowId, bool aRender) {
     frame = frameInfo;
     hadSlowFrame = info->mHadSlowFrame;
   }
+
+  // It is for ensuring that PrepareForUse() is called before
+  // RenderTextureHost::Lock().
+  HandlePrepareForUse();
 
   UpdateAndRender(aWindowId, frame.mStartId, frame.mStartTime, render,
                   /* aReadbackSize */ Nothing(),
@@ -436,10 +468,10 @@ void RenderThread::UpdateAndRender(
       NewRunnableFunction("NotifyDidStartRenderRunnable", &NotifyDidStartRender,
                           renderer->GetCompositorBridge()));
 
-  bool rendered = false;
+  wr::RenderedFrameId latestFrameId;
   RendererStats stats = {0};
   if (aRender) {
-    rendered = renderer->UpdateAndRender(
+    latestFrameId = renderer->UpdateAndRender(
         aReadbackSize, aReadbackFormat, aReadbackBuffer, aHadSlowFrame, &stats);
   } else {
     renderer->Update();
@@ -455,14 +487,14 @@ void RenderThread::UpdateAndRender(
                           renderer->GetCompositorBridge(), info, aStartId,
                           aStartTime, start, end, aRender, stats));
 
-  if (rendered) {
+  if (latestFrameId.IsValid()) {
     auto recorderIt = mCompositionRecorders.find(aWindowId);
     if (recorderIt != mCompositionRecorders.end()) {
       recorderIt->second->MaybeRecordFrame(renderer->GetRenderer(), info.get());
     }
   }
 
-  if (rendered) {
+  if (latestFrameId.IsValid()) {
     // Wait for GPU after posting NotifyDidRender, since the wait is not
     // necessary for the NotifyDidRender.
     // The wait is necessary for Textures recycling of AsyncImagePipelineManager
@@ -470,6 +502,14 @@ void RenderThread::UpdateAndRender(
     // WaitForGPU's implementation is different for each platform.
     renderer->WaitForGPU();
   }
+
+  if (!aRender) {
+    // Update frame id for NotifyPipelinesUpdated() when rendering does not
+    // happen.
+    latestFrameId = renderer->UpdateFrameId();
+  }
+
+  RenderedFrameId lastCompletedFrameId = renderer->GetLastCompletedFrameId();
 
   RefPtr<layers::AsyncImagePipelineManager> pipelineMgr =
       renderer->GetCompositorBridge()->GetAsyncImagePipelineManager();
@@ -479,7 +519,8 @@ void RenderThread::UpdateAndRender(
   // removed the relevant renderer. And after that happens we should never reach
   // this code at all; it would bail out at the mRenderers.find check above.
   MOZ_ASSERT(pipelineMgr);
-  pipelineMgr->NotifyPipelinesUpdated(info, aRender);
+  pipelineMgr->NotifyPipelinesUpdated(info, latestFrameId,
+                                      lastCompletedFrameId);
 }
 
 void RenderThread::Pause(wr::WindowId aWindowId) {
@@ -626,12 +667,7 @@ void RenderThread::UnregisterExternalImage(uint64_t aExternalImageId) {
 }
 
 void RenderThread::PrepareForUse(uint64_t aExternalImageId) {
-  if (!IsInRenderThread()) {
-    Loop()->PostTask(NewRunnableMethod<uint64_t>(
-        "RenderThread::PrepareForUse", this, &RenderThread::PrepareForUse,
-        aExternalImageId));
-    return;
-  }
+  MOZ_ASSERT(!IsInRenderThread());
 
   MutexAutoLock lock(mRenderTextureMapLock);
   if (mHasShutdown) {
@@ -645,16 +681,13 @@ void RenderThread::PrepareForUse(uint64_t aExternalImageId) {
   }
 
   RefPtr<RenderTextureHost> texture = it->second;
-  texture->PrepareForUse();
+  mRenderTexturesPrepareForUse.emplace_back(std::move(texture));
+  Loop()->PostTask(NewRunnableMethod("RenderThread::HandlePrepareForUse", this,
+                                     &RenderThread::HandlePrepareForUse));
 }
 
 void RenderThread::NotifyNotUsed(uint64_t aExternalImageId) {
-  if (!IsInRenderThread()) {
-    Loop()->PostTask(NewRunnableMethod<uint64_t>(
-        "RenderThread::NotifyNotUsed", this, &RenderThread::NotifyNotUsed,
-        aExternalImageId));
-    return;
-  }
+  MOZ_ASSERT(!IsInRenderThread());
 
   MutexAutoLock lock(mRenderTextureMapLock);
   if (mHasShutdown) {
@@ -662,30 +695,17 @@ void RenderThread::NotifyNotUsed(uint64_t aExternalImageId) {
   }
 
   auto it = mRenderTextures.find(aExternalImageId);
-#ifndef MOZ_WIDGET_ANDROID
-  // This assert fails on GeckoView intermittently. Bug 1559958 tracks it.
   MOZ_ASSERT(it != mRenderTextures.end());
-#endif
   if (it == mRenderTextures.end()) {
     return;
   }
-
   RefPtr<RenderTextureHost> texture = it->second;
-  texture->NotifyNotUsed();
-}
-
-void RenderThread::NofityForUse(uint64_t aExternalImageId) {
-  MOZ_ASSERT(RenderThread::IsInRenderThread());
-
-  MutexAutoLock lock(mRenderTextureMapLock);
-  if (mHasShutdown) {
-    return;
-  }
-  auto it = mRenderTextures.find(aExternalImageId);
-  if (it == mRenderTextures.end()) {
-    return;
-  }
-  it->second->NofityForUse();
+  RefPtr<Runnable> task =
+      NS_NewRunnableFunction("RenderThread::DoNotifyNotUsed",
+                             [renderTexture = std::move(texture)]() -> void {
+                               renderTexture->NotifyNotUsed();
+                             });
+  Loop()->PostTask(task.forget());
 }
 
 void RenderThread::UnregisterExternalImageDuringShutdown(
@@ -695,6 +715,15 @@ void RenderThread::UnregisterExternalImageDuringShutdown(
   MOZ_ASSERT(mHasShutdown);
   MOZ_ASSERT(mRenderTextures.find(aExternalImageId) != mRenderTextures.end());
   mRenderTextures.erase(aExternalImageId);
+}
+
+void RenderThread::HandlePrepareForUse() {
+  MOZ_ASSERT(IsInRenderThread());
+  MutexAutoLock lock(mRenderTextureMapLock);
+  for (auto& texture : mRenderTexturesPrepareForUse) {
+    texture->PrepareForUse();
+  }
+  mRenderTexturesPrepareForUse.clear();
 }
 
 void RenderThread::DeferredRenderTextureHostDestroy() {
@@ -929,6 +958,16 @@ static already_AddRefed<gl::GLContext> CreateGLContextEGL() {
 }
 #endif
 
+#ifdef XP_MACOSX
+static already_AddRefed<gl::GLContext> CreateGLContextCGL() {
+  nsCString failureUnused;
+  return gl::GLContextProvider::CreateHeadless(
+      gl::CreateContextFlags::ALLOW_OFFLINE_RENDERER |
+          gl::CreateContextFlags::FORCE_ENABLE_HARDWARE,
+      &failureUnused);
+}
+#endif
+
 static already_AddRefed<gl::GLContext> CreateGLContext() {
 #ifdef XP_WIN
   if (gfx::gfxVars::UseWebRenderANGLE()) {
@@ -943,8 +982,11 @@ static already_AddRefed<gl::GLContext> CreateGLContext() {
     return CreateGLContextEGL();
   }
 #endif
-  // We currently only support a shared GLContext
-  // with ANGLE.
+
+#ifdef XP_MACOSX
+  return CreateGLContextCGL();
+#endif
+
   return nullptr;
 }
 

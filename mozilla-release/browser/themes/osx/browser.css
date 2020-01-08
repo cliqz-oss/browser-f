@@ -305,6 +305,16 @@
   font-size: 14px;
 }
 
+@supports -moz-bool-pref("browser.urlbar.update1.expandTextOnFocus") {
+  .urlbarView {
+    font-size: inherit;
+  }
+
+  #urlbar[breakout-extend] {
+    font-size: 1.36em;
+  }
+}
+
 #BMB_bookmarksPopup[side="top"],
 #BMB_bookmarksPopup[side="bottom"] {
   margin-left: -26px;
@@ -338,9 +348,9 @@
   box-shadow: var(--focus-ring-box-shadow);
 }
 
-/* The following elements come from editBookmarkPanel.inc.xul. Styling that's
+/* The following elements come from editBookmarkPanel.inc.xhtml. Styling that's
    specific to the editBookmarkPanel should be in browser.css. Styling that
-   should be shared by all editBookmarkPanel.inc.xul consumers should be in
+   should be shared by all editBookmarkPanel.inc.xhtml consumers should be in
    editBookmark.css. */
 
 #editBMPanel_newFolderBox {
@@ -599,32 +609,6 @@
   padding-right: 0;
   margin-bottom: 0;
   position: static;
-}
-
-/**
- * Tab Drag and Drop
- */
-
-.tab-drop-indicator-box {
-  -moz-box-align: center;
-}
-
-.tab-drop-indicator {
-  list-style-image: url(chrome://browser/skin/tabbrowser/tabDragIndicator.png);
-  margin-top: -2px;
-  z-index: 3;
-}
-
-@media (min-resolution: 2dppx) {
-  .tab-drop-indicator {
-    list-style-image: url(chrome://browser/skin/tabbrowser/tabDragIndicator@2x.png);
-    width: 12px;
-  }
-}
-
-/* Bookmarks toolbar */
-#PlacesToolbarDropIndicator {
-  list-style-image: url(chrome://browser/skin/places/toolbarDropMarker.png);
 }
 
 /* Bookmark drag and drop styles */

@@ -35,6 +35,8 @@ import mozpack.path as mozpath
 
 from mozversioncontrol import get_repository_object
 
+from mozbuild.controller.clobber import Clobberer
+
 
 # Function used to run clang-format on a batch of files. It is a helper function
 # in order to integrate into the futures ecosystem clang-format.
@@ -60,6 +62,19 @@ def map_file_to_source(abs_path, source):
     return None
 
 
+def prompt_bool(prompt, limit=5):
+    ''' Prompts the user with prompt and requires a boolean value. '''
+    from distutils.util import strtobool
+
+    for _ in range(limit):
+        try:
+            return strtobool(raw_input(prompt + "[Y/N]\n"))
+        except ValueError:
+            print("ERROR! Please enter a valid option! Please use any of the following:"
+                  " Y, N, True, False, 1, 0")
+    return False
+
+
 class StaticAnalysisSubCommand(SubCommand):
     def __call__(self, func):
         after = SubCommand.__call__(self, func)
@@ -73,11 +88,12 @@ class StaticAnalysisSubCommand(SubCommand):
 
 
 class StaticAnalysisMonitor(object):
-    def __init__(self, srcdir, objdir, clang_tidy_config, total):
+    def __init__(self, srcdir, objdir, clang_tidy_config, source, total):
         self._total = total
         self._processed = 0
         self._current = None
         self._srcdir = srcdir
+        self._source = source
 
         self._clang_tidy_config = clang_tidy_config['clang_checkers']
         # Transform the configuration to support Regex
@@ -97,7 +113,7 @@ class StaticAnalysisMonitor(object):
 
             # Output paths relative to repository root
             warning['filename'] = mozpath.relpath(
-                map_file_to_source(warning['filename']), self._srcdir)
+                map_file_to_source(warning['filename'], self._source), self._srcdir)
 
             self._warnings_database.insert(warning)
 
@@ -130,7 +146,8 @@ class StaticAnalysisMonitor(object):
         if line.find('clang-tidy') != -1:
             filename = line.split(' ')[-1]
             if os.path.isfile(filename):
-                self._current = mozpath.relpath(map_file_to_source(filename), self._srcdir)
+                self._current = mozpath.relpath(
+                    map_file_to_source(filename, self._source), self._srcdir)
             else:
                 self._current = None
             self._processed = self._processed + 1
@@ -269,7 +286,7 @@ class StaticAnalysis(MachCommandBase):
             checks=checks, header_filter=header_filter, sources=source, jobs=jobs, fix=fix)
 
         monitor = StaticAnalysisMonitor(
-            self.topsrcdir, self.topobjdir, self._clang_tidy_config, total)
+            self.topsrcdir, self.topobjdir, self._clang_tidy_config, source, total)
 
         footer = StaticAnalysisFooter(self.log_manager.terminal, monitor)
         with StaticAnalysisOutputManager(self.log_manager, monitor, footer) as output_manager:
@@ -349,7 +366,10 @@ class StaticAnalysis(MachCommandBase):
         # We need this in both cases, per patch analysis or full tree build
         cmd = [self.cov_run_desktop, '--setup']
         if self.run_cov_command(cmd, self.cov_path):
-            return 1
+            # Avoiding a bug in Coverity where snapshot is not identified
+            # as beeing built with the current analysis binary.
+            if not full_build:
+                return 1
 
         # Run cov-configure for clang, javascript and python
         langs = ["clang", "javascript", "python"]
@@ -447,8 +467,14 @@ class StaticAnalysis(MachCommandBase):
 
         # For each element in commands_list run `cov-translate`
         for element in commands_list:
+
+            def transform_cmd(cmd):
+                # Coverity Analysis has a problem translating definitions passed as:
+                # '-DSOME_DEF="ValueOfAString"', please see Bug 1588283.
+                return [re.sub(r'\'-D(.*)="(.*)"\'', r'-D\1="\2"', arg) for arg in cmd]
+
             cmd = [self.cov_translate, '--dir', self.cov_idir_path] + \
-                element['command'].split(' ')
+                transform_cmd(element['command'].split(' '))
 
             if self.run_cov_command(cmd, element['directory']):
                 return 1
@@ -585,7 +611,9 @@ class StaticAnalysis(MachCommandBase):
                  'Using symbol upload token from the secrets service: "{}"'.format(secrets_url))
 
         import requests
+        self.log_manager.enable_unstructured()
         res = requests.get(secrets_url)
+        self.log_manager.disable_unstructured()
         res.raise_for_status()
         secret = res.json()
         cov_config = secret['secret'] if 'secret' in secret else None
@@ -645,7 +673,9 @@ class StaticAnalysis(MachCommandBase):
 
         def download(artifact_url, target):
             import requests
+            self.log_manager.enable_unstructured()
             resp = requests.get(artifact_url, verify=False, stream=True)
+            self.log_manager.disable_unstructured()
             resp.raise_for_status()
 
             # Extract archive into destination
@@ -793,11 +823,8 @@ class StaticAnalysis(MachCommandBase):
             return rc
         # which checkers to use, and which folders to exclude
         all_checkers, third_party_path, generated_path = self._get_infer_config()
-        checkers, excludes = self._get_infer_args(
-            checks=checks or all_checkers,
-            third_party_path=third_party_path,
-            generated_path=generated_path
-        )
+        checkers, excludes = self._get_infer_args(checks or all_checkers, third_party_path,
+                                                  generated_path)
         rc = rc or self._gradle(['clean'])  # clean so that we can recompile
         # infer capture command
         capture_cmd = [self._infer_path, 'capture'] + excludes + ['--']
@@ -1722,7 +1749,22 @@ class StaticAnalysis(MachCommandBase):
         try:
             config = self.config_environment
         except Exception:
-            print('Looks like configure has not run yet, running it now...')
+            self.log(logging.WARNING, 'static-analysis', {},
+                     "Looks like configure has not run yet, running it now...")
+
+            clobber = Clobberer(self.topsrcdir, self.topobjdir)
+
+            if clobber.clobber_needed():
+                choice = prompt_bool(
+                    "Configuration has changed and Clobber is needed. "
+                    "Do you want to proceed?"
+                )
+                if not choice:
+                    self.log(logging.ERROR, 'static-analysis', {},
+                             "Without Clobber we cannot continue execution!")
+                    return (1, None, None)
+                os.environ["AUTOCLOBBER"] = "1"
+
             rc = builder.configure()
             if rc != 0:
                 return (rc, config, ran_configure)

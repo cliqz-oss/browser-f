@@ -124,6 +124,7 @@ EXPORTS.js += [
     '../public/AllocationRecording.h',
     '../public/AllocPolicy.h',
     '../public/ArrayBuffer.h',
+    '../public/BinASTFormat.h',
     '../public/BuildId.h',
     '../public/CallArgs.h',
     '../public/CallNonGenericMethod.h',
@@ -214,6 +215,7 @@ UNIFIED_SOURCES += [
     'builtin/Boolean.cpp',
     'builtin/DataViewObject.cpp',
     'builtin/Eval.cpp',
+    'builtin/FinalizationGroupObject.cpp',
     'builtin/JSON.cpp',
     'builtin/MapObject.cpp',
     'builtin/ModuleObject.cpp',
@@ -283,6 +285,7 @@ UNIFIED_SOURCES += [
     'util/StructuredSpewer.cpp',
     'util/Text.cpp',
     'util/Unicode.cpp',
+    'vm/Activation.cpp',
     'vm/ArgumentsObject.cpp',
     'vm/ArrayBufferObject.cpp',
     'vm/ArrayBufferViewObject.cpp',
@@ -304,6 +307,7 @@ UNIFIED_SOURCES += [
     'vm/ErrorObject.cpp',
     'vm/ErrorReporting.cpp',
     'vm/ForOfIterator.cpp',
+    'vm/FrameIter.cpp',
     'vm/GeckoProfiler.cpp',
     'vm/GeneratorObject.cpp',
     'vm/GlobalObject.cpp',
@@ -312,6 +316,7 @@ UNIFIED_SOURCES += [
     'vm/Initialization.cpp',
     'vm/Instrumentation.cpp',
     'vm/Iteration.cpp',
+    'vm/JitActivation.cpp',
     'vm/JSAtom.cpp',
     'vm/JSContext.cpp',
     'vm/JSFunction.cpp',
@@ -360,22 +365,22 @@ UNIFIED_SOURCES += [
 #   win32 test slowdowns
 # jsmath.cpp cannot be built in unified mode because it needs to re-#define the
 #   RtlGenRandom declaration's calling convention in <ntsecapi.h> on Windows.
-# jsutil.cpp cannot be built in unified mode because it is needed for
-#   check-vanilla-allocations.
 # util/DoubleToString.cpp cannot be built in unified mode because we want to
 #   suppress compiler warnings in third-party dtoa.c.
+# util/Utility.cpp cannot be built in unified mode because it is needed for
+#   check-vanilla-allocations.
 # vm/Interpreter.cpp is gigantic and destroys incremental build times for any
 #   files unlucky enough to be unified with it.
 SOURCES += [
     'builtin/RegExp.cpp',
     'jsmath.cpp',
-    'jsutil.cpp',
     'util/DoubleToString.cpp',
+    'util/Utility.cpp',
     'vm/Interpreter.cpp',
     'vm/ProfilingStack.cpp',
 ]
 
-if CONFIG['ENABLE_INTL_API']:
+if CONFIG['JS_HAS_INTL_API']:
     UNIFIED_SOURCES += [
         'builtin/intl/Collator.cpp',
         'builtin/intl/CommonFunctions.cpp',
@@ -440,8 +445,10 @@ DIRS += [
     'gc',
     'jit',
     'wasm',
-    'zydis',
 ]
+
+if CONFIG['JS_JITSPEW']:
+    DIRS += ['zydis']
 
 FINAL_LIBRARY = 'js'
 
@@ -486,7 +493,7 @@ selfhosted_inputs = [
     'builtin/intl/NumberFormat.js',
     'builtin/intl/PluralRules.js',
     'builtin/intl/RelativeTimeFormat.js',
-] if CONFIG['ENABLE_INTL_API'] else [])
+] if CONFIG['JS_HAS_INTL_API'] else [])
 
 # Prepare self-hosted JS code for embedding
 GeneratedFile('selfhosted.out.h', 'selfhosted.js',

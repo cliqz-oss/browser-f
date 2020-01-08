@@ -135,9 +135,23 @@ this.urlbar = class extends ExtensionAPI {
   getAPI(context) {
     return {
       urlbar: {
-        search(searchString) {
+        closeView() {
           let window = windowTracker.getTopNormalWindow(context);
-          window.gURLBar.search(searchString);
+          window.gURLBar.view.close();
+        },
+
+        focus(select = false) {
+          let window = windowTracker.getTopNormalWindow(context);
+          if (select) {
+            window.focusAndSelectUrlBar();
+          } else {
+            window.gURLBar.focus();
+          }
+        },
+
+        search(searchString, options = {}) {
+          let window = windowTracker.getTopNormalWindow(context);
+          window.gURLBar.search(searchString, options);
         },
 
         onBehaviorRequested: new EventManager({
@@ -157,6 +171,26 @@ this.urlbar = class extends ExtensionAPI {
               }
             );
             return () => provider.setEventListener("behaviorRequested", null);
+          },
+        }).api(),
+
+        onEngagement: new EventManager({
+          context,
+          name: "urlbar.onEngagement",
+          register: (fire, providerName) => {
+            let provider = UrlbarProviderExtension.getOrCreate(providerName);
+            provider.setEventListener(
+              "engagement",
+              async (isPrivate, state) => {
+                if (isPrivate && !context.privateBrowsingAllowed) {
+                  return;
+                }
+                return fire.async(state).catch(error => {
+                  throw context.normalizeError(error);
+                });
+              }
+            );
+            return () => provider.setEventListener("engagement", null);
           },
         }).api(),
 
@@ -200,6 +234,7 @@ this.urlbar = class extends ExtensionAPI {
         onResultPicked: new EventManager({
           context,
           name: "urlbar.onResultPicked",
+          inputHandling: true,
           register: (fire, providerName) => {
             let provider = UrlbarProviderExtension.getOrCreate(providerName);
             provider.setEventListener("resultPicked", async resultPayload => {
@@ -211,17 +246,17 @@ this.urlbar = class extends ExtensionAPI {
           },
         }).api(),
 
-        openViewOnFocus: getSettingsAPI(
-          context.extension.id,
-          "openViewOnFocus",
-          () => UrlbarPrefs.get("openViewOnFocus")
-        ),
+        openViewOnFocus: getSettingsAPI({
+          context,
+          name: "openViewOnFocus",
+          callback: () => UrlbarPrefs.get("openViewOnFocus"),
+        }),
 
-        engagementTelemetry: getSettingsAPI(
-          context.extension.id,
-          "engagementTelemetry",
-          () => UrlbarPrefs.get("eventTelemetry.enabled")
-        ),
+        engagementTelemetry: getSettingsAPI({
+          context,
+          name: "engagementTelemetry",
+          callback: () => UrlbarPrefs.get("eventTelemetry.enabled"),
+        }),
 
         contextualTip: {
           /**
