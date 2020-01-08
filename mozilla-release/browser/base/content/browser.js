@@ -5424,7 +5424,10 @@ var XULBrowserWindow = {
     const nsIWebProgressListener = Ci.nsIWebProgressListener;
 
     let browser = gBrowser.selectedBrowser;
+
+#if 0
     gProtectionsHandler.onStateChange(aWebProgress, aStateFlags);
+#endif
 
     if (
       aStateFlags & nsIWebProgressListener.STATE_START &&
