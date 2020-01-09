@@ -4014,7 +4014,7 @@ var XPIInstall = {
   async updateSystemAddons() {
     const PREF_SYS_ADDON_UPDATE_ENABLED = "extensions.systemAddon.update.enabled";
     if (!Services.prefs.getBoolPref(PREF_SYS_ADDON_UPDATE_ENABLED, true)) {
-      return false;
+      return;
     }
 
     let systemAddonLocation = XPIStates.getLocation(KEY_APP_SYSTEM_ADDONS);
