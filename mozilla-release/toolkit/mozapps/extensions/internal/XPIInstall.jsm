@@ -541,7 +541,7 @@ async function loadManifestFromWebManifest(aPackage) {
     addon.optionsBrowserStyle = manifest.options_ui.browser_style;
   }
 
-  // CLIQZ-SPECIAL: Do not install theme anf locale addons
+  // CLIQZ-SPECIAL: Do not install theme and locale addons
   if (['locale', 'theme'].includes(addon.type)) {
     addon.doNotInstall = true;
   }
