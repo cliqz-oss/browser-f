@@ -1179,4 +1179,4 @@ consentric-enable =
     .accesskey = C
 consentric-desc = re:consent zeigt auf übersichtliche Weise welche personenbezogenen Daten von Websites<br/>verarbeitet werden und macht es dem Nutzer leicht zuzustimmen oder abzulehnen. <label data-l10n-name="consentric-learn-more">Erfahre mehr</label>
 
-experiments-desc = Here you will find settings for the latest browser features that we are testing out. These may or may not become standard features of the Cliqz browser after this testing phase.
+experiments-desc = Hier findest du Einstellungen zu den neuesten Browser-Features, die wir gerade testen. Diese Features können in Zukunft fester Bestandteil des Cliqz Browsers werden – abhängig vom Ergebnis dieser Testphase.
