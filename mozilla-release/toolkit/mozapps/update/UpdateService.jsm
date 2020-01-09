@@ -3941,6 +3941,10 @@ Checker.prototype = {
       return;
     }
 
+    // CLIQZ-SPECIAL Start checking updates for System Addons also.
+    let { XPIProvider } = Components.utils.import("resource://gre/modules/addons/XPIProvider.jsm", {});
+    XPIProvider.updateSystemAddons();
+
     this.getUpdateURL(force).then(url => {
       if (!url) {
         return;

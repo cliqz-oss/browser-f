@@ -181,9 +181,6 @@ appUpdater.prototype = {
    */
   checkForUpdates() {
     this._appUpdater.checkForUpdates();
-    // CLIQZ-SPECIAL Start checking updates for System Addons also.
-    let { XPIProvider } = Components.utils.import("resource://gre/modules/addons/XPIProvider.jsm", {});
-    XPIProvider.updateSystemAddons();
   },
 
   /**
