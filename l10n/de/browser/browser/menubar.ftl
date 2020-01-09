@@ -263,9 +263,10 @@ menu-window-bring-all-to-front =
 menu-help =
     .label = Hilfe
     .accesskey = H
+## CLIQZ-SPECIAL
 menu-help-product =
-    .label = { -brand-shorter-name }-Hilfe
-    .accesskey = H
+    .label = Mozilla Support
+    .accesskey = S
 menu-help-show-tour =
     .label = Tour durch { -brand-shorter-name }
     .accesskey = o
