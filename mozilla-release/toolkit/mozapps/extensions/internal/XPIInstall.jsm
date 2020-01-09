@@ -541,9 +541,8 @@ async function loadManifestFromWebManifest(aPackage) {
     addon.optionsBrowserStyle = manifest.options_ui.browser_style;
   }
 
-  // CLIQZ: Do not install addons which have omnibox or themes or is language pack
-  if (manifest.permissions && manifest.permissions.includes('theme') ||
-    ['locale', 'theme'].includes(addon.type)) {
+  // CLIQZ-SPECIAL: Do not install theme and locale addons
+  if (['locale', 'theme'].includes(addon.type)) {
     addon.doNotInstall = true;
   }
 
