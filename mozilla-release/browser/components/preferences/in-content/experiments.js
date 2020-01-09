@@ -1,11 +1,8 @@
 var { Services } = ChromeUtils.import("resource://gre/modules/Services.jsm");
 
 var gExperimentsPane = {
-  _pane: null,
-
   init: function ()
   {
-    this._pane = document.getElementById("paneExperiments");
     document.getElementById('experimentsBox').parentNode.style.minWidth = '600px';
   },
   loadFrame: function() {
