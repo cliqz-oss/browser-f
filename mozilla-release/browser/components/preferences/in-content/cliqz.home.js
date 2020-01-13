@@ -144,7 +144,7 @@ let gHomePane = {
    */
   setHomePageToBookmark() {
     const rv = { urls: null, names: null };
-    gSubDialog.open("chrome://browser/content/preferences/selectBookmark.xul",
+    gSubDialog.open("chrome://browser/content/preferences/selectBookmark.xhtml",
       "resizable=yes, modal=yes", rv,
       this._setHomePageToBookmarkClosed.bind(this, rv));
     Services.telemetry.scalarAdd("preferences.use_bookmark", 1);
@@ -251,7 +251,7 @@ let gHomePane = {
   init() {
     document.getElementById('homeMode').addEventListener('command', this.onMenuChange.bind(this));
     document.getElementById('homePageUrl').addEventListener('change', this.onCustomHomePageChange.bind(this));
-    document.getElementById("homePageUrl").addEventListener("input", this.onCustomHomePageInput.bind(this));
+    document.getElementById("homePageUrl").addEventListener('input', this.onCustomHomePageInput.bind(this));
     document.getElementById('useCurrent').addEventListener('command', this.setHomePageToCurrent.bind(this));
     document.getElementById('useBookmark').addEventListener('command', this.setHomePageToBookmark.bind(this));
     document.getElementById("restoreDefaultHomePage").addEventListener("command", this.restoreDefaultHomePage.bind(this));
