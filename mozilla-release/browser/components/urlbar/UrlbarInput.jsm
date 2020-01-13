@@ -1090,7 +1090,19 @@ class UrlbarInput {
 
     this.valueIsTyped = false;
     this._resultForCurrentValue = null;
-    this.inputField.value = val;
+
+    // DB-2378 => CLIQZ-SPECIAL: do not set url if freshtabURL exists,
+    // do not check if custom URL is set by user
+    const homeUrl = Services.prefs.getCharPref("browser.startup.homepage", "");
+    if (
+      val.startsWith("moz-ext") &&
+      val === homeUrl
+    ) {
+      this.inputField.value = "";
+    } else {
+      this.inputField.value = val;
+    }
+
     this.formatValue();
     this.removeAttribute("actiontype");
     if (!this.view.isOpen) {
