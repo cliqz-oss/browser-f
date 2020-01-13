@@ -486,6 +486,12 @@ var gMainPane = {
     );
     gMainPane.updateBrowserStartupUI();
 
+    Preferences.get("browser.startup.homepage").on(
+      "change",
+      () => gHomePane.syncFromHomePref()
+    );
+    gHomePane.syncFromHomePref();
+
     if (AppConstants.HAVE_SHELL_SERVICE) {
       setEventListener(
         "setDefaultButton",
