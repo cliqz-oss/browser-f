@@ -1092,16 +1092,14 @@ class UrlbarInput {
     this._resultForCurrentValue = null;
 
     // DB-2378 => CLIQZ-SPECIAL: do not set url if freshtabURL exists,
-    // do not check if custom URL is set by user
-    const homeUrl = Services.prefs.getCharPref("browser.startup.homepage", "");
-    if (
-      val.startsWith("moz-ext") &&
-      val === homeUrl
-    ) {
-      this.inputField.value = "";
-    } else {
-      this.inputField.value = val;
+    let setVal = val;
+    if (val.startsWith("moz-ext")) {
+      const homeUrl = Services.prefs.getCharPref("browser.startup.homepage", "");
+      if (val === homeUrl) {
+        setVal = "";
+      }
     }
+    this.inputField.value = setVal;
 
     this.formatValue();
     this.removeAttribute("actiontype");
