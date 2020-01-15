@@ -633,6 +633,10 @@ try {
 
   function setThemeState(enabled) {
     var win = window.document.getElementById('main-window');
+    if (!win) {
+      // In case of sidebar, window dont have main-window element
+      return;
+    }
     if (enabled) {
       win.classList.add(THEME_CLASS);
     } else {
