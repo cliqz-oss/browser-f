@@ -4914,6 +4914,8 @@ pref("devtools.policy.disabled", false);
 // Enable deprecation warnings.
 pref("devtools.errorconsole.deprecation_warnings", true);
 
+// CLIQZ-SPECIAL: turn on toolbox only for beta
+#if 0
 #ifdef NIGHTLY_BUILD
   // Don't show the Browser Toolbox prompt on local builds / nightly.
   pref("devtools.debugger.prompt-connection", false, sticky);
@@ -4931,6 +4933,18 @@ pref("devtools.errorconsole.deprecation_warnings", true);
   pref("devtools.chrome.enabled", true, sticky);
   pref("devtools.debugger.remote-enabled", true, sticky);
 #endif
+#endif
+
+#if MOZ_UPDATE_CHANNEL == beta
+  pref("devtools.chrome.enabled", true, sticky);
+  pref("devtools.debugger.remote-enabled", true, sticky);
+  pref("devtools.debugger.prompt-connection", false, sticky);
+#else
+  pref("devtools.chrome.enabled", false, sticky);
+  pref("devtools.debugger.remote-enabled", false, sticky);
+  pref("devtools.debugger.prompt-connection", true, sticky);
+#endif
+// END CLIQZ-SPECIAL: turn on toolbox only for beta
 
 pref("devtools.debugger.features.watchpoints", true);
 
