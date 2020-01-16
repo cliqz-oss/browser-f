@@ -1592,6 +1592,10 @@ function _loadURI(browser, uri, params = {}) {
   let loadFlags =
     params.loadFlags || params.flags || Ci.nsIWebNavigation.LOAD_FLAGS_NONE;
 
+  if (CliqzResources.isCliqzPage(uri)) {
+    loadFlags = loadFlags | Ci.nsIWebNavigation.LOAD_FLAGS_BYPASS_HISTORY;
+  }
+
   if (!triggeringPrincipal) {
     throw new Error("Must load with a triggering Principal");
   }
