@@ -496,6 +496,7 @@ var Policies = {
         manager.disallowFeature("privatebrowsing");
         blockAboutPage(manager, "about:privatebrowsing", true);
         setAndLockPref("browser.privatebrowsing.autostart", false);
+        setAndLockPref("browser.privatebrowsing.apt", false);
       }
     },
   },
