@@ -1,5 +1,5 @@
-# Ubuntu:19.10 on 16-01-2020 at 3:15 am
-FROM ubuntu:19.10@sha256:9e9387cd5380eb96ace218a2f85ed25ac75563cd170f91852a73aefda6fa7834
+# Ubuntu:16.04 on 16-01-2020 at 3:14 am
+FROM ubuntu:16.04@sha256:e60a002052d1a073f3212f3732cff8abc7997939c731850e6960eb94a244c406
 
 ENV DEBIAN_FRONTEND=noninteractive
 
@@ -9,13 +9,13 @@ RUN apt-get update && apt-get install --yes \
   alien \
   apt-transport-https \
   apt-utils \
-  aptly \
   autoconf2.13 \
-  awscli \
+  autotools-dev \
   binutils-avr \
   build-essential \
   ccache \
-  clang \
+  cdbs \
+  debhelper \
   desktop-file-utils \
   fakeroot \
   hunspell-en-us \
@@ -23,27 +23,37 @@ RUN apt-get update && apt-get install --yes \
   libcurl4-openssl-dev \
   libdbus-1-dev \
   libdbus-glib-1-dev \
+  libffi-dev \
   libfontconfig1-dev \
   libfreetype6-dev \
   libgl1-mesa-dev \
+  libglib2.0-dev \
   libgstreamer-plugins-base1.0-dev \
   libgstreamer1.0-dev \
   libgtk-3-dev \
   libgtk2.0-dev \
+  libiw-dev \
   libnotify-dev \
+  libpango1.0-dev \
   libpulse-dev \
   libpython-dev \
+  libstartup-notification0-dev \
+  libx11-dev \
   libx11-xcb-dev \
+  libxext-dev \
+  libxrender-dev \
   libxt-dev \
+  lsb-release \
   make \
+  mesa-common-dev \
   nasm \
-  nodejs \
   pkg-config \
   python-dbus \
   python-dev \
   python-pip \
   python-setuptools \
   rpm \
+  software-properties-common \
   sudo \
   unzip \
   uuid \
@@ -52,6 +62,28 @@ RUN apt-get update && apt-get install --yes \
   yasm \
   zip
 
+# Install clang + llvm version 9
+RUN wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | apt-key add - \
+ && add-apt-repository "deb http://apt.llvm.org/xenial/ llvm-toolchain-xenial-9 main" \
+ && apt-get update \
+ && apt-get install --yes clang-9 lldb-9 lld-9 clangd-9 libclang-9-dev
+
+# Install awscli
+RUN pip install awscli==1.17.5
+
+# Install aptly for ppa management
+RUN echo "deb http://repo.aptly.info/ squeeze main" > /etc/apt/sources.list.d/aptly.list \
+ && apt-key adv --keyserver pool.sks-keyservers.net --recv-keys ED75B5A4483DA07C \
+ && apt-get update \
+ && apt-get install aptly --yes
+
+# Install Node.js (LTS = 12.x)
+RUN wget -qO- https://deb.nodesource.com/gpgkey/nodesource.gpg.key | apt-key add - \
+ && echo "deb https://deb.nodesource.com/node_12.x xenial main" > /etc/apt/sources.list.d/nodesource.list \
+ && apt-get update \
+ && apt-get install --yes nodejs
+
+# Install Rust toolchain version 1.39.0
 ENV RUSTUP_HOME=/usr/local/rustup \
   CARGO_HOME=/usr/local/cargo \
   PATH=/usr/local/cargo/bin:$PATH
@@ -66,24 +98,23 @@ RUN wget "https://static.rust-lang.org/rustup/archive/1.21.1/x86_64-unknown-linu
  && cargo --version \
  && rustc --version
 
+# Install cbindgen
 RUN cargo install --version 0.12.2 cbindgen
+
+# Install nasm 2.13 (see: https://www.nasm.us)
+RUN mkdir -p /home/$user/nasm \
+ && cd /home/$user/nasm \
+ && wget --output-document=nasm.tar.xz --quiet "https://www.nasm.us/pub/nasm/releasebuilds/2.13.03/nasm-2.13.03.tar.xz" \
+ && tar xf nasm.tar.xz \
+ && cd nasm-2.13.03 \
+ && sh configure \
+ && sudo make install
 
 ARG uid
 ARG gid
 ARG user
 ENV SHELL=/bin/bash
 
-# NOTE: This workaround is needed to run our build on Jenkins. The setup
-# currently maps the workspace to an internal volume in the container (usually
-# /cliqz). To make sure that the build system inside of the container can read
-# and write files to the outside workspace, we create a 'jenkins' user and
-# group in the container, with the same GID and UID then on the Jenkins
-# machine. The issue is that the current GID used (119) and UID (109) are
-# already used in the container (by 'pulse-access' group and 'avahi' user
-# respectively). Since these are not needed for the build process, we delete
-# them so that we can create our 'jenkins' user.
-RUN groupdel pulse-access || true
-RUN userdel avahi || true
 RUN groupadd $user -g $gid \
  && useradd -ms /bin/bash $user -u $uid -g $gid \
  && usermod -aG sudo $user
@@ -96,5 +127,8 @@ RUN sed -i.bkp -e \
 RUN mkdir /builds
 
 USER $user
+
+ENV CC="clang-9 --target=x86_64-unknown-linux-gnu"
+ENV CXX="clang++-9 --target=x86_64-unknown-linux-gnu"
 
 SHELL ["/bin/bash", "-l", "-c"]
