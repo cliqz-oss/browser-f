@@ -3,6 +3,7 @@ CLOBBER=false
 BUILD_DE=false
 CQZ_BUILD_TESTS=false
 CQZ_BUILD_SYMBOLS=false
+CQZ_INJECT_LOGGING=false
 
 if [ -z "$LANG" ]; then
   LANG='en-US'
@@ -141,3 +142,8 @@ export CQZ_ADULT_DOMAINS_BF=../adult-domains.bin
 
 export ROOT_PATH=$PWD
 export SHELL=$SHELL
+
+if [ "$CQZ_RELEASE_CHANNEL" == "beta" ]; then
+  CQZ_INJECT_LOGGING=true
+fi
+export CQZ_INJECT_LOGGING

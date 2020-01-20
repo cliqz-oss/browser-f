@@ -1,0 +1,15 @@
+{
+  "places": [
+    "mozilla-release/browser/components/BrowserGlue.jsm",
+    "mozilla-release/browser/components/BrowserContentHandler.jsm",
+    "mozilla-release/browser/base/content/browser.js",
+    "mozilla-release/browser/base/content/tabbrowser.js",
+    "mozilla-release/browser/components/sessionstore/SessionStartup.jsm",
+    "mozilla-release/browser/components/sessionstore/SessionStore.jsm",
+    "mozilla-release/toolkit/mozapps/update/UpdateService.jsm",
+    "mozilla-release/toolkit/mozapps/extensions/internal/XPIInstall.jsm"
+  ],
+  "importAs": "browser",
+  "loggerName": "CliqzLogger",
+  "loggerPath": "resource://gre/modules/CliqzLogger.jsm"
+}

@@ -4,6 +4,7 @@
 #  CQZ_BUILD_ID - specify special build timestamp or use latest one (depend on channel)
 #  CQZ_RELEASE_CHANNEL - specify special build channel (beta by default)
 #  CQZ_BUILD_DE_LOCALIZATION - for build DE localization
+#  CQZ_INJECT_LOGGING - whether we have to inject logging or not;
 
 set -e
 set -x
@@ -44,6 +45,19 @@ fi
 #  ./mach build chrome-$AB_CD
 #done
 
+NODE=node
+if [ -f "$TOOLCHAIN/node/bin/node" ]; then
+  NODE=$TOOLCHAIN/node/bin/node
+fi
+
+if [ "$CQZ_INJECT_LOGGING" == "true" ]; then
+  echo '***** Injecting Logs Before Build *****'
+  cd $OLDPWD
+  $NODE -v
+  $NODE cliqz-logger.js --config cliqz-logger-config.json
+  cd $SRC_BASE
+fi
+
 echo '***** Building *****'
 ./mach build
 
@@ -68,6 +82,13 @@ fi
 echo '***** Build DE language pack *****'
 if [ "$CQZ_BUILD_DE_LOCALIZATION" == "1" ]; then
   ./mach build installers-de
+fi
+
+if [ "$CQZ_INJECT_LOGGING" == "true" ]; then
+  echo '***** Clear Injecting Logs After Build *****'
+  cd $OLDPWD
+  $NODE cliqz-logger.js --clear --config cliqz-logger-config.json
+  cd $SRC_BASE
 fi
 
 echo '***** Build & package finished successfully. *****'
