@@ -73,6 +73,17 @@ ARG gid
 ARG user
 ENV SHELL=/bin/bash
 
+# NOTE: This workaround is needed to run our build on Jenkins. The setup
+# currently maps the workspace to an internal volume in the container (usually
+# /cliqz). To make sure that the build system inside of the container can read
+# and write files to the outside workspace, we create a 'jenkins' user and
+# group in the container, with the same GID and UID then on the Jenkins
+# machine. The issue is that the current GID used (119) and UID (109) are
+# already used in the container (by 'pulse-access' group and 'avahi' user
+# respectively). Since these are not needed for the build process, we delete
+# them so that we can create our 'jenkins' user.
+RUN groupdel pulse-access || true
+RUN userdel avahi || true
 RUN groupadd $user -g $gid \
  && useradd -ms /bin/bash $user -u $uid -g $gid \
  && usermod -aG sudo $user
