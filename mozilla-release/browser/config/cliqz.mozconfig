@@ -35,10 +35,9 @@ if test `uname -s` = "Linux"; then
   export CC='clang --target=x86_64-unknown-linux-gnu'
   export CXX='clang++ --target=x86_64-unknown-linux-gnu'
 
-  ac_add_options --enable-hardening
-  ac_add_options --enable-release
-  ac_add_options --enable-optimize
-  ac_add_options --enable-rust-simd
+  # NOTE: We will consider enabling this option as well in the future, but this
+  # should be tested on beta first.
+  # ac_add_options --enable-rust-simd
 
   # NOTE: Link time optimizations should be supported on Linux but are currently
   # disabled because it requires some exta care. See here for more details:
