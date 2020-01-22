@@ -9,35 +9,38 @@ usage() {
   echo "      - beta"
   echo "      - release"
   echo "    <os> must be one of:"
-  echo "      - 16.04"
-  echo "      - 18.04"
-  echo "      - 19.04"
-  echo "      - 19.10"
-  echo "      - debian10"
-  echo "      - buster"
-  echo "      - opensuse15"
-  echo "      - leap"
-  echo "      - opensuse16"
-  echo "      - tumbleweed"
+  echo "      - ubuntu"
+  echo "      - ubuntu:16.04"
+  echo "      - ubuntu:18.04"
+  echo "      - ubuntu:19.04"
+  echo "      - ubuntu:19.10"
+  echo "      - debian"
+  echo "      - debian:10"
+  echo "      - debian:buster"
+  echo "      - opensuse"
+  echo "      - opensuse:15"
+  echo "      - opensuse:leap"
+  echo "      - opensuse:16"
+  echo "      - opensuse:tumbleweed"
   echo "      - fedora"
-  echo "      - fedora28"
-  echo "      - fedora29"
-  echo "      - fedora30"
-  echo "      - fedora31"
+  echo "      - fedora:28"
+  echo "      - fedora:29"
+  echo "      - fedora:30"
+  echo "      - fedora:31"
   echo "      - centos"
-  echo "      - centos8"
+  echo "      - centos:8"
   echo "      - archlinux"
-  echo "    <flavor> myst be one of:"
+  echo "    <flavor> must be one of:"
   echo "      - ppa"
   echo "      - deb"
   echo "      - rpm"
   echo "      - aur"
   echo
   echo "Examples:"
-  echo "  ./run.sh release 16.04 ppa"
-  echo "  ./run.sh release buster deb"
-  echo "  ./run.sh beta 18.04 ppa"
-  echo "  ./run.sh beta tumbleweed rpm"
+  echo "  ./run.sh release ubuntu ppa"
+  echo "  ./run.sh release debian:buster deb"
+  echo "  ./run.sh beta ubuntu:18.04 ppa"
+  echo "  ./run.sh beta opensuse:tumbleweed rpm"
 }
 
 ###############################################################################
@@ -126,46 +129,59 @@ assert_flavor_is_aur() {
 # https://developer.mozilla.org/en-US/docs/Mozilla/Firefox/Linux_compatibility_matrix
 OS='ubuntu:18.04' # Default to latest LTS
 case $2 in
-16.04)
+ubuntu)
     assert_flavor_is_deb_or_ppa
-    OS="ubuntu:$2"
+    OS="ubuntu:latest"
     ;;
-18.04)
+ubuntu:16.04)
     assert_flavor_is_deb_or_ppa
-    OS="ubuntu:$2"
+    OS="ubuntu:16.04"
     ;;
-19.04)
+ubuntu:18.04)
     assert_flavor_is_deb_or_ppa
-    OS="ubuntu:$2"
+    OS="ubuntu:18.04"
     ;;
-19.10)
+ubuntu:19.04)
     assert_flavor_is_deb_or_ppa
-    OS="ubuntu:$2"
+    OS="ubuntu:19.04"
     ;;
-debian10)
+ubuntu:19.10)
+    assert_flavor_is_deb_or_ppa
+    OS="ubuntu:19.10"
+    ;;
+debian)
+    assert_flavor_is_deb_or_ppa
+    OS="debian:latest"
+    ;;
+debian:10)
     assert_flavor_is_deb_or_ppa
     OS="debian:10"
     ;;
-buster)
+debian:buster)
     assert_flavor_is_deb_or_ppa
     OS="debian:10"
     ;;
-opensuse15)
-    assert_flavor_is_rpm
-    OS="opensuse/leap"
-    FLAVOR="rpm_zypper"
-    ;;
-leap)
-    assert_flavor_is_rpm
-    OS="opensuse/leap"
-    FLAVOR="rpm_zypper"
-    ;;
-opensuse16)
+opensuse)
     assert_flavor_is_rpm
     OS="opensuse/tumbleweed"
     FLAVOR="rpm_zypper"
     ;;
-tumbleweed)
+opensuse:15)
+    assert_flavor_is_rpm
+    OS="opensuse/leap"
+    FLAVOR="rpm_zypper"
+    ;;
+opensuse:leap)
+    assert_flavor_is_rpm
+    OS="opensuse/leap"
+    FLAVOR="rpm_zypper"
+    ;;
+opensuse:16)
+    assert_flavor_is_rpm
+    OS="opensuse/tumbleweed"
+    FLAVOR="rpm_zypper"
+    ;;
+opensuse:tumbleweed)
     assert_flavor_is_rpm
     OS="opensuse/tumbleweed"
     FLAVOR="rpm_zypper"
@@ -175,22 +191,22 @@ fedora)
     OS="fedora:latest"
     FLAVOR="rpm_yum"
     ;;
-fedora28)
+fedora:28)
     assert_flavor_is_rpm
     OS="fedora:28"
     FLAVOR="rpm_yum"
     ;;
-fedora29)
+fedora:29)
     assert_flavor_is_rpm
     OS="fedora:29"
     FLAVOR="rpm_yum"
     ;;
-fedora30)
+fedora:30)
     assert_flavor_is_rpm
     OS="fedora:30"
     FLAVOR="rpm_yum"
     ;;
-fedora31)
+fedora:31)
     assert_flavor_is_rpm
     OS="fedora:31"
     FLAVOR="rpm_yum"
@@ -200,7 +216,7 @@ centos)
     OS="centos:latest"
     FLAVOR="rpm_yum"
     ;;
-centos8)
+centos:8)
     assert_flavor_is_rpm
     OS="centos:8"
     FLAVOR="rpm_yum"
@@ -388,26 +404,36 @@ EOF
 
 docker_aur_release() {
 cat << EOF >> Dockerfile.tmp
+# Update packages index and select fast mirrors.
 RUN pacman -Syu --noconfirm
 RUN pacman -S --noconfirm pacman-contrib
 RUN cp /etc/pacman.d/mirrorlist /etc/pacman.d/mirrorlist.OLD \
  && rankmirrors -n 3 /etc/pacman.d/mirrorlist.OLD > /etc/pacman.d/mirrorlist
 
+# Prepare buiding 'cliqz-bin' AUR package.
 RUN pacman -S --noconfirm fakeroot binutils sudo git
+RUN echo "cliqz ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
+USER cliqz
+WORKDIR /home/cliqz
 
-RUN useradd --create-home cliqz-bin
-RUN echo "cliqz-bin ALL=(ALL) NOPASSWD: ALL" >> /etc/sudoers
-USER cliqz-bin
-WORKDIR /home/cliqz-bin
-
-RUN git clone https://aur.archlinux.org/cliqz.git \
- && cd cliqz \
+# Build and install 'cliqz-bin'
+RUN git clone https://aur.archlinux.org/cliqz-bin.git \
+ && cd cliqz-bin \
  && makepkg --syncdeps --noconfirm
 EOF
 }
 
+# 0. Create temporary folder
+TMP_DIR=$(mktemp -d)
+cd "${TMP_DIR}"
+echo "Temporary working dir: ${TMP_DIR}"
+trap '/bin/rm -rf "${TMP_DIR}"' EXIT INT TERM
+
 # 1. Base image
-echo "FROM ${OS}" > Dockerfile.tmp
+cat << EOF >> Dockerfile.tmp
+FROM ${OS}
+RUN useradd --create-home cliqz
+EOF
 
 # 2. Install: ppa, deb, or rpm
 case "${FLAVOR}_${CHANNEL}" in
@@ -450,15 +476,12 @@ esac
 
 # 3. Create user
 cat << EOF >> Dockerfile.tmp
-RUN useradd --create-home cliqz
-
 USER cliqz
 WORKDIR /home/cliqz
 EOF
 
 # 4. Build image
 docker build -t browser-f-test -f Dockerfile.tmp .
-rm -frv Dockerfile.tmp
 
 # 5. Start Cliqz!
 docker run \
