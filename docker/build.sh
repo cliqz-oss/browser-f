@@ -402,7 +402,11 @@ EOF
 docker_deb_prerequisites() {
   cat << EOF >> Dockerfile.tmp
 ENV DEBIAN_FRONTEND=noninteractive
-RUN apt-get update && apt-get install --yes --no-install-recommends wget gdebi-core apt-utils
+RUN apt-get update && apt-get install --no-install-recommends --yes \
+  apt-utils \
+  ca-certificates \
+  gdebi-core \
+  wget
 EOF
 }
 
