@@ -30,14 +30,12 @@ if echo $OSTYPE | grep -q "msys"; then
   ac_add_options --enable-jemalloc
 fi
 
-# if test `uname -s` = "Linux"; then
-  # NOTE: We will consider enabling this option as well in the future, but this
-  # should be tested on beta first.
-  # ac_add_options --enable-rust-simd
+if test `uname -s` = "Linux"; then
+  ac_add_options --enable-rust-simd
 
   # NOTE: Link time optimizations should be supported on Linux but are currently
   # disabled because it requires some exta care. See here for more details:
   # https://git.archlinux.org/svntogit/packages.git/tree/trunk/PKGBUILD?h=packages/firefox#n107
   # In particular, some compilation flag needs to be disabled.
   # ac_add_options --enable-lto
-# fi
+fi
