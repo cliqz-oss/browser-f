@@ -36,19 +36,25 @@ withEnv(["depsVersion=$depsVersion"]){
     """
 }
 image = stage('Build docker image') {
-    //Build docker image. 
+    //Build docker image.
     docker.build(imageName, '--no-cache --build-arg user=`whoami` --build-arg UID=`id -u` --build-arg GID=`id -g` -f docker/Dockerfile.osxcross ./docker/')
 }
 image.inside("-v ${pwd}:/opt/browser-f -w /opt/browser-f"){
     withEnv([
         "CQZ_RELEASE_CHANNEL=$CQZ_RELEASE_CHANNEL",
         "CQZ_BUILD_DE_LOCALIZATION=$CQZ_BUILD_DE_LOCALIZATION"]){
-        stage('Biuld browser') {
-            sh """#!/bin/bash -l
-                set -e
-                set -x
-                ./magic_build_and_package.sh --clobber
-            """
+
+        withCredentials([
+            [$class: 'StringBinding', credentialsId: CQZ_MOZILLA_API_KEY_CREDENTIAL_ID, variable: 'MOZ_MOZILLA_API_KEY'],
+            [$class: 'StringBinding', credentialsId: CQZ_GOOGLE_API_KEY_CREDENTIAL_ID, variable: 'CQZ_GOOGLE_API_KEY']]) {
+
+            stage('Biuld browser') {
+                sh """#!/bin/bash -l
+                    set -e
+                    set -x
+                    ./magic_build_and_package.sh --clobber
+                """
+            }
         }
     }
     stage('Stash artifacts'){
@@ -62,11 +68,11 @@ image.inside("-v ${pwd}:/opt/browser-f -w /opt/browser-f"){
     }
 }
 node('gideon') {
-    
+
     writeFile file: 'Vagrantfile', text: '''
     # -*- mode: ruby -*-
     # vi: set ft=ruby :
-    
+
     Vagrant.configure("2") do |config|
         config.vm.box = "browser-ios-10.13.6"
         config.vm.synced_folder ".", "/vagrant", disabled: true
@@ -92,7 +98,7 @@ node('gideon') {
     end
     '''
     vagrant.inside(
-        'Vagrantfile', 
+        'Vagrantfile',
         '/jenkins',
         2, // CPU
         8000, // MEMORY
@@ -103,11 +109,11 @@ node('gideon') {
             try{
                 stage('Checkout'){
                     checkout([
-                        $class: 'GitSCM', 
-                        branches: [[name: '*/master']], 
-                        doGenerateSubmoduleConfigurations: false, 
-                        extensions: [], 
-                        submoduleCfg: [], 
+                        $class: 'GitSCM',
+                        branches: [[name: '*/master']],
+                        doGenerateSubmoduleConfigurations: false,
+                        extensions: [],
+                        submoduleCfg: [],
                         userRemoteConfigs: [[url: 'https://github.com/cliqz-oss/browser-f.git']]
                     ])
                 }
@@ -125,7 +131,7 @@ node('gideon') {
                 stage('sign') {
                     // remove old package - important if clobber was not done
                     sh 'rm -rf obj/pkg || true'
-            
+
                     withCredentials([
                         [$class: 'FileBinding', credentialsId: MAC_CERT_CREDENTIAL_ID, variable: 'MAC_CERT'],
                         [$class: 'StringBinding', credentialsId: MAC_CERT_PASS_CREDENTIAL_ID, variable: 'MAC_CERT_PASS']
@@ -138,7 +144,7 @@ node('gideon') {
                                 security default-keychain -s cliqz
                                 security unlock-keychain -p cliqz cliqz
                             '''
-            
+
                             sh '''#!/bin/bash -l +x
                                 security import $MAC_CERT -P $MAC_CERT_PASS -k cliqz -A
                                 security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k cliqz cliqz
@@ -202,7 +208,7 @@ image.inside("-w /opt/browser-f"){
                     passwordVariable: 'AWS_SECRET_ACCESS_KEY',
                     usernameVariable: 'AWS_ACCESS_KEY_ID']]) {
 
-                    sh """#!/bin/bash -l 
+                    sh """#!/bin/bash -l
                         set -x
                         ./magic_upload_files.sh
                     """
