@@ -1339,3 +1339,7 @@ consentric-enable =
 consentric-desc = re:consent displays the types of personal data that are collected by websites.<br/>It offers an easy way to give or withdraw consent to this data collection. <label data-l10n-name="consentric-learn-more">Learn more</label>
 
 experiments-desc = Here you will find settings for the latest browser features that we are testing out.
+
+dat-enable = 
+    .label = Enable dat:// protocol
+    .accessKey = D

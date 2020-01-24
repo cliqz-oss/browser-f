@@ -972,7 +972,7 @@ endif
 CLIQZ_EXT_URL = "http://repository.cliqz.com/dist/$(CQZ_RELEASE_CHANNEL)/$(CQZ_VERSION)/$(MOZ_BUILD_DATE)/cliqz@cliqz.com.xpi"
 HTTPSE_EXT_URL = "http://repository.cliqz.com/dist/$(CQZ_RELEASE_CHANNEL)/$(CQZ_VERSION)/$(MOZ_BUILD_DATE)/https-everywhere@cliqz.com.xpi"
 CONSENTRICK_EXT_URL = "http://repository.cliqz.com/dist/$(CQZ_RELEASE_CHANNEL)/$(CQZ_VERSION)/$(MOZ_BUILD_DATE)/gdprtool@cliqz.com.xpi"
-DAT_EXT_URL = "https://s3.amazonaws.com/cdncliqz/update/browser_pre/dat@cliqz.com/dat@cliqz.com-0.1.2-browser-signed.xpi"
+DAT_EXT_URL = "https://s3.amazonaws.com/cdncliqz/update/browser_pre/dat@cliqz.com/dat@cliqz.com-0.1.4-browser-signed.xpi"
 
 DIST_RESPATH = $(DIST)/bin
 EXTENSIONS_PATH = $(DIST_RESPATH)/browser/features

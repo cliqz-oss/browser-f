@@ -111,11 +111,7 @@ function init_all() {
   }
   if (typeof gExperimentsPane !== 'undefined') {
     register_module("paneExperiments", gExperimentsPane);
-    fetch(CliqzResources.getExtensionURL('/pages/settings.html', 'dat@cliqz.com')).then((res) => {
-      if (res.status === 200) {
-        document.getElementById('category-experiments').hidden = false;
-      }
-    }, (err) => {})
+    document.getElementById('category-experiments').hidden = false;
   }
 
   register_module("paneSearchResults", gSearchResultsPane);
