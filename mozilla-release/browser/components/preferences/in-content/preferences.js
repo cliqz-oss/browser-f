@@ -109,7 +109,7 @@ function init_all() {
   } catch (e) {
     Cu.reportError(e);
   }
-  if (typeof gExperimentsPane !== 'undefined') {
+  if (typeof gExperimentsPane !== 'undefined' && Services.prefs.getBoolPref("extensions.cliqz.labs.enabled", false)) {
     register_module("paneExperiments", gExperimentsPane);
     document.getElementById('category-experiments').hidden = false;
   }
