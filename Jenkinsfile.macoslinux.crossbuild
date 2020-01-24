@@ -48,7 +48,12 @@ image.inside("-v ${pwd}:/opt/browser-f -w /opt/browser-f"){
             [$class: 'StringBinding', credentialsId: CQZ_MOZILLA_API_KEY_CREDENTIAL_ID, variable: 'MOZ_MOZILLA_API_KEY'],
             [$class: 'StringBinding', credentialsId: CQZ_GOOGLE_API_KEY_CREDENTIAL_ID, variable: 'CQZ_GOOGLE_API_KEY']]) {
 
-            stage('Biuld browser') {
+            stage('fix keys') {
+                writeFile file: "mozilla-desktop-geoloc-api.key", text: "${MOZ_MOZILLA_API_KEY}"
+                writeFile file: "google-desktop-api.key", text: "${CQZ_GOOGLE_API_KEY}"
+            }
+
+            stage('Build browser') {
                 sh """#!/bin/bash -l
                     set -e
                     set -x
