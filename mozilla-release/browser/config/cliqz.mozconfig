@@ -10,6 +10,7 @@ ac_add_options --enable-crashreporter
 ac_add_options --enable-js-shell
 ac_add_options --enable-update-channel=${MOZ_UPDATE_CHANNEL}
 ac_add_options --enable-release
+ac_add_options --enable-rust-simd
 ac_add_options --with-mozilla-api-keyfile=$ROOT_PATH/mozilla-desktop-geoloc-api.key
 ac_add_options --with-google-safebrowsing-api-keyfile=$ROOT_PATH/google-desktop-api.key
 ac_add_options "MOZ_ALLOW_LEGACY_EXTENSIONS=1"
@@ -31,13 +32,9 @@ if echo $OSTYPE | grep -q "msys"; then
 fi
 
 # if test `uname -s` = "Linux"; then
-  # NOTE: We will consider enabling this option as well in the future, but this
-  # should be tested on beta first.
-  # ac_add_options --enable-rust-simd
-
-  # NOTE: Link time optimizations should be supported on Linux but are currently
-  # disabled because it requires some exta care. See here for more details:
-  # https://git.archlinux.org/svntogit/packages.git/tree/trunk/PKGBUILD?h=packages/firefox#n107
-  # In particular, some compilation flag needs to be disabled.
-  # ac_add_options --enable-lto
+#   # NOTE: Link time optimizations should be supported on Linux but are currently
+#   # disabled because it requires some exta care. See here for more details:
+#   # https://git.archlinux.org/svntogit/packages.git/tree/trunk/PKGBUILD?h=packages/firefox#n107
+#   # In particular, some compilation flag needs to be disabled.
+#   # ac_add_options --enable-lto
 # fi
