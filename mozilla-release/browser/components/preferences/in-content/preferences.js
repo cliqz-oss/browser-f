@@ -109,6 +109,11 @@ function init_all() {
   } catch (e) {
     Cu.reportError(e);
   }
+  if (typeof gExperimentsPane !== 'undefined' && Services.prefs.getBoolPref("extensions.cliqz.labs.enabled", false)) {
+    register_module("paneExperiments", gExperimentsPane);
+    document.getElementById('category-experiments').hidden = false;
+  }
+
   register_module("paneSearchResults", gSearchResultsPane);
   gSearchResultsPane.init();
   gMainPane.preInit();
@@ -219,6 +224,9 @@ async function gotoPref(aCategory) {
   // connect page gets rendered twice on every demand.
   if (category === "paneConnect" && gConnectPane && gConnectPane.loadFrame) {
     gConnectPane.loadFrame();
+  }
+  if (category === "paneExperiments" && gExperimentsPane && gExperimentsPane.loadFrame) {
+    gExperimentsPane.loadFrame();
   }
 
   let item;

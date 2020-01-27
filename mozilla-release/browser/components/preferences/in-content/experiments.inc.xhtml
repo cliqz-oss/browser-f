@@ -1,0 +1,27 @@
+<!-- Experiments Pane -->
+<script type="application/javascript"
+        src="chrome://browser/content/preferences/in-content/experiments.js"/>
+
+<preferences id="experimentsPreferences" hidden="true" data-category="paneExperiments">
+  <preference id="testing.experiments.enabled"
+              name="testing.experiments.enabled"
+              type="bool"/>
+</preferences>
+
+
+<hbox id="experimentsCategory"
+      class="subcategory"
+      hidden="true"
+      data-category="paneExperiments">
+  <html:h1 data-l10n-id="pane-experiments-title"/>
+</hbox>
+<groupbox id="experimentsBox"
+  data-category="paneExperiments"
+  hidden="true">
+  <description data-l10n-id="experiments-desc" />
+  <vbox id="dat-protocol-settings">
+    <checkbox id="datEnable" data-l10n-id="dat-enable" flex="1" />
+  </vbox>
+  
+  <iframe id="theExperimentsFrame" flex="1" height="850"/>
+</groupbox>

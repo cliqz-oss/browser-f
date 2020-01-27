@@ -2396,3 +2396,6 @@ pref("devtools.whatsnew.feature-enabled", true);
 
 // FirstStartup service time-out in ms
 pref("first-startup.timeout", 30000);
+
+// Cliqz labs preference pane
+pref("extensions.cliqz.labs.enabled", true);

@@ -60,6 +60,10 @@ pane-connect-title = Connect
 category-connect =
     .tooltiptext = { pane-connect-title }
 
+pane-experiments-title = Labs
+category-experiments =
+    .tooltiptext = { pane-experiments-title }
+
 help-button-label = { -brand-short-name } Support
 addons-button-label = Extensions
 
@@ -1333,3 +1337,9 @@ consentric-enable =
     .label = Enable re:consent
     .accesskey = C
 consentric-desc = re:consent displays the types of personal data that are collected by websites.<br/>It offers an easy way to give or withdraw consent to this data collection. <label data-l10n-name="consentric-learn-more">Learn more</label>
+
+experiments-desc = Here you will find settings for the latest browser features that we are testing out.
+
+dat-enable = 
+    .label = Enable dat:// protocol
+    .accessKey = D
