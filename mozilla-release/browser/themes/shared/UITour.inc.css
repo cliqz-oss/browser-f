@@ -139,6 +139,20 @@
   padding-right: 10px;
 }
 
+/* CLIQZ-SPECIAL: DB-2385: we need this fix
+ * because of this commit 21af820079efcebae4f2b9c2277500befe0c7618 in Extension repo.
+ * The commit provided a temporal fix for button-link in popups with white background;
+ * Once the extension gets rid of that hack we can remove those following 2 rules as well;
+ * */
+#UITourTooltip[targetName] #UITourTooltipButtons > button.button-link:not(:hover) {
+  color: #fff !important;
+}
+
+#UITourTooltip[targetName] #UITourTooltipButtons > button.button-link:hover {
+  color: #fff !important;
+  border: 1px solid #fff !important;
+}
+
 /* The primary button gets the same color as the customize button. */
 #UITourTooltipButtons > button.button-primary {
   background-color: rgb(116,191,67);
