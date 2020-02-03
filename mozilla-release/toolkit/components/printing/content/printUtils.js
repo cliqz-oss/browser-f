@@ -126,17 +126,38 @@ var PrintUtils = {
   /**
    * Starts the process of printing the contents of a window.
    *
-   * @param aWindowID
-   *        The outer window ID of the nsIDOMWindow to print.
-   * @param aBrowser
-   *        The <xul:browser> that the nsIDOMWindow for aWindowID belongs to.
+   * @param aBrowsingContext
+   *        The BrowsingContext of the window to print.
    */
-  printWindow(aWindowID, aBrowser) {
-    aBrowser.messageManager.sendAsyncMessage("Printing:Print", {
-      windowID: aWindowID,
+  printWindow(aBrowsingContext) {
+    let windowID = aBrowsingContext.currentWindowGlobal.outerWindowId;
+    let topBrowser = aBrowsingContext.top.embedderElement;
+
+    const printPreviewIsOpen = !!document.getElementById(
+      "print-preview-toolbar"
+    );
+
+    if (printPreviewIsOpen) {
+      this._logKeyedTelemetry("PRINT_DIALOG_OPENED_COUNT", "FROM_PREVIEW");
+    } else {
+      this._logKeyedTelemetry("PRINT_DIALOG_OPENED_COUNT", "FROM_PAGE");
+    }
+
+    topBrowser.messageManager.sendAsyncMessage("Printing:Print", {
+      windowID,
       simplifiedMode: this._shouldSimplify,
       defaultPrinterName: this._getDefaultPrinterName(),
     });
+
+    if (printPreviewIsOpen) {
+      if (this._shouldSimplify) {
+        this._logKeyedTelemetry("PRINT_COUNT", "SIMPLIFIED");
+      } else {
+        this._logKeyedTelemetry("PRINT_COUNT", "WITH_PREVIEW");
+      }
+    } else {
+      this._logKeyedTelemetry("PRINT_COUNT", "WITHOUT_PREVIEW");
+    }
   },
 
   /**
@@ -227,7 +248,6 @@ var PrintUtils = {
     try {
       PPROMPTSVC.showPrintProgressDialog(
         window,
-        null,
         printSettings,
         this._obsPP,
         false,
@@ -681,6 +701,11 @@ var PrintUtils = {
   logTelemetry(ID) {
     let histogram = Services.telemetry.getHistogramById(ID);
     histogram.add(true);
+  },
+
+  _logKeyedTelemetry(id, key) {
+    let histogram = Services.telemetry.getKeyedHistogramById(id);
+    histogram.add(key);
   },
 
   onKeyDownPP(aEvent) {

@@ -139,7 +139,7 @@ media-capabilities-title = Leistungsmerkmale für Medien (Media Capabilities)
 # List all the entries of the database.
 media-capabilities-enumerate = Datenbankeinträge auflisten
 
-
+##
 
 intl-title = Internationalisierung & Lokalisierung
 intl-app-title = Anwendungseinstellungen
@@ -164,7 +164,7 @@ remote-debugging-title = Externes Debugging (Chromium-Protokoll)
 remote-debugging-accepting-connections = Verbindungen werden akzeptiert
 remote-debugging-url = Adresse
 
-
+##
 
 # Variables
 # $days (Integer) - Number of days of crashes to log
@@ -264,6 +264,7 @@ d3d11video-crash-guard = D3D11-Videodekoder
 d3d9video-crash-buard = D3D9-Videodekoder
 d3d9video-crash-guard = D3D9-Videodekoder
 glcontext-crash-guard = OpenGL
+wmfvpxvideo-crash-guard = WMF-VPX-Videodekoder
 reset-on-next-restart = Bei nächstem Neustart zurücksetzen
 gpu-process-kill-button = GPU-Prozess beenden
 gpu-device-reset = Gerät zurücksetzen

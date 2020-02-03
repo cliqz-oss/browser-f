@@ -46,7 +46,7 @@ printpreview-page =
 ## $arrow (String) - UTF-8 arrow character for navigation buttons
 
 printpreview-percentage-value =
-    .label = { $percent }%
+    .label = { $percent } %
 printpreview-homearrow =
     .label = { $arrow }
     .tooltiptext = Erste Seite

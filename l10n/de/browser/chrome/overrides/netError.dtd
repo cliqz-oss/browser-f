@@ -168,7 +168,7 @@ was trying to connect. -->
 
 <!ENTITY certerror.expiredCert.whatCanYouDoAboutIt2 "
 <p>Datum und Uhrzeit Ihres Computers sind eingestellt auf <span id='wrongSystemTime_systemDate2'/>. Überprüfen Sie, ob Datum, Uhrzeit und Zeitzone in den Systemeinstellungen korrekt gesetzt sind und laden Sie <span class='hostname'/> neu.</p>
-<p>Falls Datum und Uhrzeit bereits korrekt sind, so ist die Website wahrscheinlich falsch eingerichtet und Sie können nichts machen, um das Problem zu beheben. Sie können den Website-Administrator über das Problem benachrichtigen.</p>
+<p>Falls Datum und Uhrzeit bereits korrekt sind, so ist die Website wahrscheinlich falsch eingerichtet und Sie können das Problem nicht selbst beheben. Sie können den Website-Administrator über das Problem benachrichtigen.</p>
 ">
 
 <!ENTITY certerror.badCertDomain.whatCanYouDoAboutIt "
@@ -238,4 +238,4 @@ was trying to connect. -->
 <!ENTITY enableTls10.label "TLS 1.0 und 1.1 aktivieren">
 
 <!ENTITY networkProtocolError.title "Netzwerkprotokoll-Fehler">
-<!ENTITY networkProtocolError.longDesc "<p>Die angeforderte Seite kann nicht angezeigt werden, da ein Fehler bei der Verwendung des Netzwerkprotokolls erkannt wurde.</p><ul><li>Kontaktieren Sie bitte den Inhaber der Website, um ihn über dieses Problem zu informieren.</li></ul>">
+<!ENTITY networkProtocolError.longDesc "<p>Die angeforderte Seite kann nicht angezeigt werden, da ein Fehler bei der Verwendung des Netzwerkprotokolls festgestellt wurde.</p><ul><li>Kontaktieren Sie bitte die Betreiber der Website, um sie über dieses Problem zu informieren.</li></ul>">

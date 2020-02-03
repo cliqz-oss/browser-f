@@ -273,10 +273,10 @@ addon-open-about-debugging = Add-ons debuggen
 ## Extension shortcut management
 
 manage-extensions-shortcuts =
-    .label = Tastenkombination für Erweiterungen verwalten
+    .label = Tastenkombinationen von Erweiterungen verwalten
     .accesskey = T
 # This is displayed in the page options menu
-addon-manage-extensions-shortcuts = Tastenkombination für Erweiterungen verwalten
+addon-manage-extensions-shortcuts = Tastenkombinationen von Erweiterungen verwalten
     .accesskey = T
 shortcuts-no-addons = Es sind keine Erweiterungen installiert.
 shortcuts-no-commands = Folgende Erweiterungen verfügen über keine Tastenkombinationen:
@@ -458,7 +458,7 @@ dictionary-heading = Wörterbücher verwalten
 locale-heading = Sprachen verwalten
 updates-heading = Updates verwalten
 discover-heading = { -brand-short-name } anpassen
-shortcuts-heading = Tastenkombination für Erweiterungen verwalten
+shortcuts-heading = Tastenkombinationen von Erweiterungen verwalten
 theme-heading-search-label = Weitere Themes suchen
 extension-heading-search-label = Weitere Erweiterungen suchen
 default-heading-search-label = Weitere Add-ons finden

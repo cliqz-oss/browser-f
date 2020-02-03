@@ -145,6 +145,9 @@ Preferences.addAll([
   // Fonts
   { id: "font.language.group", type: "wstring" },
 
+  // Zoom
+  { id: "browser.zoom.full", type: "bool", inverted: true },
+
   // Languages
   { id: "browser.translation.detectLanguage", type: "bool" },
 
@@ -368,6 +371,11 @@ var gMainPane = {
     if (Services.prefs.getBoolPref("intl.multilingual.enabled")) {
       gMainPane.initBrowserLocale();
     }
+
+    // We call `initDefaultZoomValues` to set and unhide the
+    // default zoom preferences menu, and to establish a
+    // listener for future menu changes.
+    gMainPane.initDefaultZoomValues();
 
     let cfrLearnMoreUrl =
       Services.urlFormatter.formatURLPref("app.support.baseURL") +
@@ -926,6 +934,41 @@ var gMainPane = {
       }
     }
   },
+  /**
+   * Fetch the existing default zoom value, initialise and unhide
+   * the preferences menu. This method also establishes a listener
+   * to ensure handleDefaultZoomChange is called on future menu
+   * changes.
+   */
+  async initDefaultZoomValues() {
+    let win = window.docShell.rootTreeItem.domWindow;
+    let selected = await win.ZoomUI.getGlobalValue();
+    let menulist = document.getElementById("defaultZoom");
+
+    new SelectionChangedMenulist(menulist, event => {
+      let parsedZoom = parseFloat((event.target.value / 100).toFixed(2));
+      gMainPane.handleDefaultZoomChange(parsedZoom);
+    });
+    let zoomValues = win.ZoomManager.zoomValues.map(a => {
+      return Math.round(a * 100);
+    });
+
+    let fragment = document.createDocumentFragment();
+    for (let zoomLevel of zoomValues) {
+      let menuitem = document.createXULElement("menuitem");
+      document.l10n.setAttributes(menuitem, "preferences-default-zoom-value", {
+        percentage: zoomLevel,
+      });
+      menuitem.setAttribute("value", zoomLevel);
+      fragment.appendChild(menuitem);
+    }
+
+    let menupopup = menulist.querySelector("menupopup");
+    menupopup.appendChild(fragment);
+    menulist.value = Math.round(selected * 100);
+
+    document.getElementById("zoomBox").hidden = false;
+  },
 
   initBrowserLocale() {
     // Enable telemetry.
@@ -1099,6 +1142,27 @@ var gMainPane = {
       new Set([locale, ...Services.locale.requestedLocales]).values()
     );
     this.showConfirmLanguageChangeMessageBar(locales);
+  },
+
+  /**
+   * Takes as newZoom a floating point value representing the
+   * new default zoom. This value should not be a string, and
+   * should not carry a percentage sign/other localisation
+   * characteristics.
+   */
+  handleDefaultZoomChange(newZoom) {
+    let cps2 = Cc["@mozilla.org/content-pref/service;1"].getService(
+      Ci.nsIContentPrefService2
+    );
+    let nonPrivateLoadContext = Cu.createLoadContext();
+    /* Because our setGlobal function takes in a browsing context, and
+     * because we want to keep this property consistent across both private
+     * and non-private contexts, we crate a non-private context and use that
+     * to set the property, regardless of our actual context.
+     */
+
+    let win = window.docShell.rootTreeItem.domWindow;
+    cps2.setGlobal(win.FullZoom.name, newZoom, nonPrivateLoadContext);
   },
 
   onBrowserRestoreSessionChange(event) {
@@ -2584,7 +2648,7 @@ var gMainPane = {
       };
 
       gSubDialog.open(
-        "chrome://global/content/appPicker.xul",
+        "chrome://global/content/appPicker.xhtml",
         null,
         params,
         onAppSelected

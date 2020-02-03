@@ -203,6 +203,15 @@ advanced-fonts =
 colors-settings =
     .label = Farben…
     .accesskey = F
+# Zoom is a noun, and the message is used as header for a group of options
+preferences-zoom-header = Zoom
+preferences-default-zoom = Standard-Zoom
+    .accesskey = Z
+preferences-default-zoom-value =
+    .label = { $percentage } %
+preferences-zoom-text-only =
+    .label = Nur Text zoomen
+    .accesskey = T
 language-header = Sprache
 choose-language-description = Bevorzugte Sprachen für die Darstellung von Websites wählen
 choose-button =
@@ -316,7 +325,7 @@ applications-use-app-default-label =
 applications-use-other-label =
     .value = { applications-use-other.label }
 
-
+##
 
 drm-content-header = Inhalte mit DRM-Kopierschutz
 play-drm-content =
@@ -561,10 +570,19 @@ search-keyword-warning-bookmark = Sie haben ein Schlüsselwort ausgewählt, das 
 ## Containers Section
 
 containers-back-link = « Zurück
+containers-back-button =
+    .aria-label =
+        { PLATFORM() ->
+            [windows] Zurück zu den Einstellungen
+           *[other] Zurück zu den Einstellungen
+        }
 containers-header = Tab-Umgebungen
 containers-add-button =
     .label = Neue Umgebung hinzufügen
     .accesskey = N
+containers-new-tab-check =
+    .label = Tab-Umgebung für jeden neuen Tab wählen
+    .accesskey = w
 containers-preferences-button =
     .label = Einstellungen
 containers-remove-button =
@@ -903,7 +921,7 @@ enhanced-tracking-protection-setting-custom =
     .label = Benutzerdefiniert
     .accesskey = B
 
-
+##
 
 content-blocking-etp-standard-desc = Ausgewogen zwischen Schutz und Leistung. Seiten laden normal.
 content-blocking-etp-strict-desc = Stärkerer Schutz, einige Websites oder mancher Inhalt funktioniert eventuell nicht.
@@ -968,6 +986,10 @@ permissions-location = Standort
 permissions-location-settings =
     .label = Einstellungen…
     .accesskey = E
+permissions-xr = Virtuelle Realität
+permissions-xr-settings =
+    .label = Einstellungen…
+    .accesskey = E
 permissions-camera = Kamera
 permissions-camera-settings =
     .label = Einstellungen…
@@ -1016,6 +1038,8 @@ permissions-a11y-privacy-link = Weitere Informationen
 collection-header = Datenerhebung durch { -brand-short-name } und deren Verwendung
 collection-description = Wir lassen Ihnen die Wahl, ob Sie uns Daten senden, und sammeln nur die Daten, welche erforderlich sind, um { -brand-short-name } für jeden anbieten und verbessern zu können. Wir fragen immer um Ihre Erlaubnis, bevor wir persönliche Daten senden.
 collection-privacy-notice = Datenschutzhinweis
+collection-health-report-telemetry-disabled = Sie gestatten { -vendor-short-name } nicht mehr, technische und Interaktionsdaten zu erfassen. Alle bisherigen Daten werden innerhalb von 30 Tagen gelöscht.
+collection-health-report-telemetry-disabled-link = Weitere Informationen
 collection-health-report =
     .label = { -brand-short-name } erlauben, Daten zu technischen Details und Interaktionen an { -vendor-short-name } zu senden
     .accesskey = t

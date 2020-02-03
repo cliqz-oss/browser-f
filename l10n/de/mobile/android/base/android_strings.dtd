@@ -22,23 +22,15 @@
 <!ENTITY firstrun_data_subtext2 "Sperren Sie das Laden von Grafiken, damit für jede besuchte Seite weniger Daten geladen werden müssen.">
 <!ENTITY firstrun_sync_title "Sync">
 <!ENTITY firstrun_sync_message3 "Synchronisieren Sie Ihre Lesezeichen, Chronik und Passwörter mit Ihrem Telefon.">
-<!ENTITY updatednewfirstrun_sync_title "Konto">
-<!ENTITY firstrun_sync_message2 "Machen Sie da weiter, wo Sie aufgehört haben.">
 <!ENTITY firstrun_sync_subtext2 "Mit Sync können Sie jederzeit auf alle Ihre Lesezeichen, Passwörter und anderen Dinge zugreifen, die Sie in &brandShortName; auf anderen Geräten speichern.">
 <!ENTITY newfirstrun_sync_subtext "Synchronisieren Sie die in Firefox für Android gespeicherten Einträge mit Firefox für Desktop (Windows, macOS oder Linux) - privat und sicher.">
 <!ENTITY firstrun_sendtab_title "Tab senden">
 <!ENTITY firstrun_sendtab_message "Teilen Sie Tabs von Mobilgeräten zum Desktop — sofort.">
-<!ENTITY updatednewfirstrun_sync_subtext "Melden Sie sich mit Ihrem Konto an und nutzen Sie &brandShortName; effektiver.">
 <!ENTITY firstrun_signin_message "Verbinden Sie und legen Sie los">
-<!ENTITY firstrun_signin_button "Bei Sync anmelden">
-<!ENTITY newfirstrun_signin_button "Sync aktivieren">
-<!ENTITY updatednewfirstrun_signin_button "In &brandShortName; anmelden">
-<!ENTITY  onboard_start_button_browser "Mit dem Surfen beginnen">
+<!ENTITY onboard_start_button_browser "Mit dem Surfen beginnen">
 <!ENTITY firstrun_button_notnow "Nicht sofort">
 <!ENTITY firstrun_button_next "Weiter">
 <!ENTITY firstrun_signup_button "Registrieren">
-
-<!ENTITY firstrun_signin_button2 "Anmelden">
 
 <!ENTITY firstrun_tabqueue_title "Links">
 
@@ -882,7 +874,8 @@ just addresses the organization to follow, e.g. "This site is run by " -->
 <!ENTITY helper_triple_readerview_open_message "Fügen Sie Seiten in der Leseansicht als Lesezeichen hinzu, um sie auch offline lesen zu können.">
 <!ENTITY helper_triple_readerview_open_button "Zu Lesezeichen hinzufügen">
 
-<!-- LOCALIZATION NOTE (activity_stream_signin_title, activity_stream_signin_description, activity_stream_signin_button):
+<!-- LOCALIZATION NOTE (activity_stream_signin_title, activity_stream_signin_description, activity_stream_signup_button,
+activity_stream_signin_prompt, activity_stream_signin_prompt_button):
 - These labels are shown in the Activity Stream recommending the user to sign in. -->
 <!ENTITY activity_stream_signin_title "Willkommen bei &brandShortName;">
 <!ENTITY activity_stream_signin_description "Beginnen Sie mit dem Synchronisieren von Lesezeichen, Passwörtern und mehr mittels Ihres Firefox-Kontos.">
@@ -891,7 +884,12 @@ just addresses the organization to follow, e.g. "This site is run by " -->
 <!-- LOCALIZATION NOTE (activity_stream_signin_prompt_button): To be used in continuation of activity_stream_signin_prompt. -->
 <!ENTITY activity_stream_signin_prompt_button "Anmelden.">
 
-<!ENTITY activity_stream_signin_button "Anmelden">
+<!-- LOCALIZATION NOTE (activity_stream_firefox_promo_title,
+     activity_stream_firefox_promo_description, activity_stream_firefox_promo_button):
+     These labels are shown in an Activity Stream banner. -->
+<!ENTITY activity_stream_firefox_promo_title "Ihr ganz neuer Firefox kommt 2020">
+<!ENTITY activity_stream_firefox_promo_description "In Kürze verfügbar: Verbesserte Leistung. Verbesserter Tracking-Schutz. Und hilfreiche Funktionen, damit Sie mehr von dem, was Sie lieben, finden, speichern und teilen können.">
+<!ENTITY activity_stream_firefox_promo_button "Probieren Sie es aus">
 
 <!ENTITY activity_stream_topsites "Wichtige Seiten">
 <!-- LOCALIZATION NOTE (activity_stream_topstories): &brandPocket is the brand of the company, Pocket, that is being used to provide suggestions for articles. -->
