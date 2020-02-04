@@ -323,12 +323,7 @@ const DEFAULT_ENVIRONMENT_PREFS = new Map([
   ["security.pki.mitm_detected", { what: RECORD_PREF_VALUE }],
   ["security.mixed_content.block_active_content", { what: RECORD_PREF_VALUE }],
   ["security.mixed_content.block_display_content", { what: RECORD_PREF_VALUE }],
-<<<<<<< HEAD
-  ["toolkit.cosmeticAnimations.enabled", {what: RECORD_PREF_VALUE}],
-||||||| merged common ancestors
-=======
   ["security.tls.version.enable-deprecated", { what: RECORD_PREF_VALUE }],
->>>>>>> origin/upstream-releases
   ["xpinstall.signatures.required", { what: RECORD_PREF_VALUE }],
 ]);
 

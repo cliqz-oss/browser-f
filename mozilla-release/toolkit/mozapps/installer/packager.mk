@@ -37,13 +37,7 @@ stage-package: multilocale.txt locale-manifest.in $(MOZ_PKG_MANIFEST) $(MOZ_PKG_
 		$(MOZ_PKG_MANIFEST) '$(DIST)' '$(DIST)'/$(MOZ_PKG_DIR)$(if $(MOZ_PKG_MANIFEST),,$(_BINPATH)) \
 		$(if $(filter omni,$(MOZ_PACKAGER_FORMAT)),$(if $(NON_OMNIJAR_FILES),--non-resource $(NON_OMNIJAR_FILES)))
 ifdef RUN_FIND_DUPES
-<<<<<<< HEAD
-	$(PYTHON) $(MOZILLA_DIR)/toolkit/mozapps/installer/find-dupes.py --warning $(DEFINES) $(ACDEFINES) $(MOZ_PKG_DUPEFLAGS) $(DIST)/$(MOZ_PKG_DIR)
-||||||| merged common ancestors
-	$(PYTHON) $(MOZILLA_DIR)/toolkit/mozapps/installer/find-dupes.py $(DEFINES) $(ACDEFINES) $(MOZ_PKG_DUPEFLAGS) $(DIST)/$(MOZ_PKG_DIR)
-=======
-	$(PYTHON3) $(MOZILLA_DIR)/toolkit/mozapps/installer/find-dupes.py $(DEFINES) $(ACDEFINES) $(MOZ_PKG_DUPEFLAGS) $(DIST)/$(MOZ_PKG_DIR)
->>>>>>> origin/upstream-releases
+	$(PYTHON3) $(MOZILLA_DIR)/toolkit/mozapps/installer/find-dupes.py --warning $(DEFINES) $(ACDEFINES) $(MOZ_PKG_DUPEFLAGS) $(DIST)/$(MOZ_PKG_DIR)
 endif # RUN_FIND_DUPES
 ifndef MOZ_IS_COMM_TOPDIR
 ifdef RUN_MOZHARNESS_ZIP
@@ -118,35 +112,13 @@ ifeq ($(MOZ_PKG_FORMAT),ZIP)
 endif
 endif
 	cp $(DEPTH)/mozinfo.json $(MOZ_MOZINFO_FILE)
-<<<<<<< HEAD
-	$(PYTHON) $(MOZILLA_DIR)/toolkit/mozapps/installer/informulate.py \
+	$(PYTHON3) $(MOZILLA_DIR)/toolkit/mozapps/installer/informulate.py \
 		$(MOZ_BUILDINFO_FILE) \
 		BUILDID=$(BUILDID) \
 		$(addprefix MOZ_SOURCE_REPO=,$(shell awk '$$2 == "MOZ_SOURCE_REPO" {print $$3}' $(DEPTH)/source-repo.h)) \
 		MOZ_SOURCE_STAMP=$(shell awk '$$2 == "MOZ_SOURCE_STAMP" {print $$3}' $(DEPTH)/source-repo.h) \
 		MOZ_PKG_PLATFORM=$(MOZ_PKG_PLATFORM)
 	echo "buildID=$(BUILDID)" > $(MOZ_BUILDID_INFO_TXT_FILE)
-||||||| merged common ancestors
-	$(PYTHON) $(MOZILLA_DIR)/toolkit/mozapps/installer/informulate.py \
-		$(MOZ_BUILDINFO_FILE) $(MOZ_BUILDHUB_JSON) $(MOZ_BUILDID_INFO_TXT_FILE) \
-		$(MOZ_PKG_PLATFORM) \
-		$(if $(or $(filter-out mobile/android,$(MOZ_BUILD_APP)),$(MOZ_ANDROID_WITH_FENNEC)), \
-		--package=$(DIST)/$(PACKAGE) --installer=$(INSTALLER_PACKAGE), \
-		--no-download \
-	  )
-endif
-	$(TOUCH) $@
-=======
-	$(PYTHON3) $(MOZILLA_DIR)/toolkit/mozapps/installer/informulate.py \
-		$(MOZ_BUILDINFO_FILE) $(MOZ_BUILDHUB_JSON) $(MOZ_BUILDID_INFO_TXT_FILE) \
-		$(MOZ_PKG_PLATFORM) \
-		$(if $(or $(filter-out mobile/android,$(MOZ_BUILD_APP)),$(MOZ_ANDROID_WITH_FENNEC)), \
-		--package=$(DIST)/$(PACKAGE) --installer=$(INSTALLER_PACKAGE), \
-		--no-download \
-	  )
-endif
-	$(TOUCH) $@
->>>>>>> origin/upstream-releases
 
 GARBAGE += make-package
 
@@ -173,34 +145,10 @@ endif
 	ln -s $(installdir)/$(MOZ_APP_NAME) $(DESTDIR)$(bindir)
 
 upload:
-<<<<<<< HEAD
-	$(PYTHON) -u $(MOZILLA_DIR)/build/upload.py --base-path $(DIST) \
+	$(PYTHON3) -u $(MOZILLA_DIR)/build/upload.py --base-path $(DIST) \
 		--package '$(PACKAGE)' \
 		--properties-file $(DIST)/mach_build_properties.json \
 		$(UPLOAD_FILES)
-||||||| merged common ancestors
-	$(PYTHON) -u $(MOZILLA_DIR)/build/upload.py --base-path $(DIST) $(UPLOAD_FILES)
-	mkdir -p `dirname $(CHECKSUM_FILE)`
-	@$(PYTHON) $(MOZILLA_DIR)/build/checksums.py \
-		-o $(CHECKSUM_FILE) \
-		$(CHECKSUM_ALGORITHM_PARAM) \
-		$(UPLOAD_PATH)
-	@echo 'CHECKSUM FILE START'
-	@cat $(CHECKSUM_FILE)
-	@echo 'CHECKSUM FILE END'
-	$(PYTHON) -u $(MOZILLA_DIR)/build/upload.py --base-path $(DIST) $(CHECKSUM_FILES)
-=======
-	$(PYTHON3) -u $(MOZILLA_DIR)/build/upload.py --base-path $(DIST) $(UPLOAD_FILES)
-	mkdir -p `dirname $(CHECKSUM_FILE)`
-	@$(PYTHON3) $(MOZILLA_DIR)/build/checksums.py \
-		-o $(CHECKSUM_FILE) \
-		$(CHECKSUM_ALGORITHM_PARAM) \
-		$(UPLOAD_PATH)
-	@echo 'CHECKSUM FILE START'
-	@cat $(CHECKSUM_FILE)
-	@echo 'CHECKSUM FILE END'
-	$(PYTHON3) -u $(MOZILLA_DIR)/build/upload.py --base-path $(DIST) $(CHECKSUM_FILES)
->>>>>>> origin/upstream-releases
 
 # source-package creates a source tarball from the files in MOZ_PKG_SRCDIR,
 # which is either set to a clean checkout or defaults to $topsrcdir

@@ -7574,15 +7574,7 @@ var ToolbarContextMenu = {
       element.hidden = !addon || isCliqzButton;
     }
 
-<<<<<<< HEAD
-    reportExtension.hidden =
-      !addon || !gAddonAbuseReportEnabled || isCliqzButton || !gHtmlAboutAddonsEnabled;
-||||||| merged common ancestors
-    reportExtension.hidden =
-      !addon || !gAddonAbuseReportEnabled || !gHtmlAboutAddonsEnabled;
-=======
-    reportExtension.hidden = !addon || !gAddonAbuseReportEnabled;
->>>>>>> origin/upstream-releases
+    reportExtension.hidden = !addon || !gAddonAbuseReportEnabled || isCliqzButton;
 
     if (addon) {
       removeExtension.disabled = !(

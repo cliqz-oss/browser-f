@@ -274,9 +274,6 @@ These should match what Safari and other Apple applications use on OS X Lion. --
 <!ENTITY urlbar.emeNotificationAnchor.tooltip             "Verwendung von DRM-geschützter Software verwalten">
 <!ENTITY urlbar.midiNotificationAnchor.tooltip            "MIDI-Ansicht öffnen">
 
-<<<<<<< HEAD
-<!ENTITY urlbar.permissionsGranted.tooltip       "Du hast dieser Website zusätzliche Berechtigungen erteilt.">
-
 <!ENTITY urlbar.cameraBlocked.tooltip            "Du hast den Zugriff auf deine Kamera durch diese Website blockiert.">
 <!ENTITY urlbar.microphoneBlocked.tooltip        "Du hast den Zugriff auf dein Mikrofon durch diese Website blockiert.">
 <!ENTITY urlbar.screenBlocked.tooltip            "Du hast den Zugriff auf deinen Bildschirm durch diese Website blockiert.">
@@ -287,39 +284,10 @@ These should match what Safari and other Apple applications use on OS X Lion. --
 <!ENTITY urlbar.autoplayMediaBlocked.tooltip     "Du hast die automatische Wiedergabe von Medien mit Ton für diese Website blockiert.">
 <!ENTITY urlbar.canvasBlocked.tooltip            "Du hast das Abfragen von Canvas-Daten durch diese Website blockiert.">
 <!ENTITY urlbar.flashPluginBlocked.tooltip       "Du hast den Zugriff auf das Adobe-Flash-Plugin für diese Website blockiert.">
-<!ENTITY urlbar.midiBlocked.tooltip              "Du hast den Zugriff auf MIDI für diese Website blockiert.">
+<!ENTITY urlbar.midiBlocked.tooltip              "Du hast den Zugriff auf MIDI durch diese Website blockiert.">
 <!ENTITY urlbar.installBlocked.tooltip           "Du hast die Installation von Erweiterungen von dieser Website blockiert.">
-||||||| merged common ancestors
-<!ENTITY urlbar.permissionsGranted.tooltip       "Sie haben dieser Website zusätzliche Berechtigungen erteilt.">
 
-<!ENTITY urlbar.cameraBlocked.tooltip            "Sie haben den Zugriff auf Ihre Kamera durch diese Website blockiert.">
-<!ENTITY urlbar.microphoneBlocked.tooltip        "Sie haben den Zugriff auf Ihr Mikrofon durch diese Website blockiert.">
-<!ENTITY urlbar.screenBlocked.tooltip            "Sie haben den Zugriff auf Ihren Bildschirm durch diese Website blockiert.">
-<!ENTITY urlbar.geolocationBlocked.tooltip       "Sie haben den Zugriff auf Ihren Standort durch diese Website blockiert.">
-<!ENTITY urlbar.webNotificationsBlocked.tooltip  "Sie haben das Anzeigen von Benachrichtungen durch diese Website blockiert.">
-<!ENTITY urlbar.persistentStorageBlocked.tooltip "Sie haben die Verwendung von dauerhaftem Speicher für diese Website blockiert.">
-<!ENTITY urlbar.popupBlocked.tooltip             "Sie haben das Anzeigen von Pop-ups für diese Website blockiert.">
-<!ENTITY urlbar.autoplayMediaBlocked.tooltip     "Sie haben die automatische Wiedergabe von Medien mit Ton für diese Website blockiert.">
-<!ENTITY urlbar.canvasBlocked.tooltip            "Sie haben das Abfragen von Canvas-Daten durch diese Website blockiert.">
-<!ENTITY urlbar.flashPluginBlocked.tooltip       "Sie haben den Zugriff auf das Adobe-Flash-Plugin für diese Website blockiert.">
-<!ENTITY urlbar.midiBlocked.tooltip              "Sie haben den Zugriff auf MIDI für diese Website blockiert.">
-<!ENTITY urlbar.installBlocked.tooltip           "Sie haben die Installation von Erweiterungen von dieser Website blockiert.">
-=======
-<!ENTITY urlbar.cameraBlocked.tooltip            "Sie haben den Zugriff auf Ihre Kamera durch diese Website blockiert.">
-<!ENTITY urlbar.microphoneBlocked.tooltip        "Sie haben den Zugriff auf Ihr Mikrofon durch diese Website blockiert.">
-<!ENTITY urlbar.screenBlocked.tooltip            "Sie haben den Zugriff auf Ihren Bildschirm durch diese Website blockiert.">
-<!ENTITY urlbar.geolocationBlocked.tooltip       "Sie haben den Zugriff auf Ihren Standort durch diese Website blockiert.">
-<!ENTITY urlbar.webNotificationsBlocked.tooltip  "Sie haben das Anzeigen von Benachrichtungen durch diese Website blockiert.">
-<!ENTITY urlbar.persistentStorageBlocked.tooltip "Sie haben die Verwendung von dauerhaftem Speicher für diese Website blockiert.">
-<!ENTITY urlbar.popupBlocked.tooltip             "Sie haben das Anzeigen von Pop-ups für diese Website blockiert.">
-<!ENTITY urlbar.autoplayMediaBlocked.tooltip     "Sie haben die automatische Wiedergabe von Medien mit Ton für diese Website blockiert.">
-<!ENTITY urlbar.canvasBlocked.tooltip            "Sie haben das Abfragen von Canvas-Daten durch diese Website blockiert.">
-<!ENTITY urlbar.flashPluginBlocked.tooltip       "Sie haben den Zugriff auf das Adobe-Flash-Plugin für diese Website blockiert.">
-<!ENTITY urlbar.midiBlocked.tooltip              "Sie haben den Zugriff auf MIDI durch diese Website blockiert.">
-<!ENTITY urlbar.installBlocked.tooltip           "Sie haben die Installation von Erweiterungen von dieser Website blockiert.">
->>>>>>> origin/upstream-releases
-
-<!ENTITY urlbar.permissionsGranted.tooltip       "Sie haben dieser Website zusätzliche Berechtigungen erteilt.">
+<!ENTITY urlbar.permissionsGranted.tooltip       "Du hast dieser Website zusätzliche Berechtigungen erteilt.">
 
 
 <!ENTITY urlbar.openHistoryPopup.tooltip                "Chronik anzeigen">
@@ -969,22 +937,6 @@ you can use these alternative items. Otherwise, their values should be empty.  -
      a tooltip explaining why these items were not blocked in the page. -->
 <!ENTITY protections.notBlocking.why.label "Warum?">
 <!ENTITY protections.notBlocking.why.etpOn.tooltip "Das Blockieren könnte Probleme mit Inhalten einiger Websites verursachen. Ohne Skripte zur Aktivitätenverfolgung funktionieren einige Schaltflächen, Formulare und Anmeldefelder vielleicht nicht.">
-<<<<<<< HEAD
-<!ENTITY protections.notBlocking.why.etpOff.tooltip "Das Deaktivieren der Schutzmaßnahmen erlaubt Skripten, deine Aktivitäten auf dieser Website zu verfolgen. Weiterhin könnten Probleme mit der Website behoben sein.">
-<!ENTITY protections.socialMediaTrackers.label "Skripte zur Aktivitätenverfolgung durch soziale Netzwerke">
-<!ENTITY protections.crossSiteTrackingCookies.label "Cookies zur seitenübergreifenden Aktivitätenverfolgung">
-<!ENTITY protections.trackingContent.label "Inhalte zur Aktivitätenverfolgung">
-<!ENTITY protections.fingerprinters.label "Identifizierer (Fingerprinter)">
-<!ENTITY protections.cryptominers.label "Heimliche Digitalwährungsberechner (Krypto-Miner)">
-||||||| merged common ancestors
-<!ENTITY protections.notBlocking.why.etpOff.tooltip "Das Deaktivieren der Schutzmaßnahmen erlaubt Skripten, Ihre Aktivitäten auf dieser Website zu verfolgen. Weiterhin könnten Probleme mit der Website behoben sein.">
-<!ENTITY protections.socialMediaTrackers.label "Skripte zur Aktivitätenverfolgung durch soziale Netzwerke">
-<!ENTITY protections.crossSiteTrackingCookies.label "Cookies zur seitenübergreifenden Aktivitätenverfolgung">
-<!ENTITY protections.trackingContent.label "Inhalte zur Aktivitätenverfolgung">
-<!ENTITY protections.fingerprinters.label "Identifizierer (Fingerprinter)">
-<!ENTITY protections.cryptominers.label "Heimliche Digitalwährungsberechner (Krypto-Miner)">
-=======
->>>>>>> origin/upstream-releases
 <!ENTITY protections.notBlocking.why.etpOff2.tooltip "Alle Elemente zur Aktivitätenverfolgung auf dieser Website wurden geladen, da der Schutz deaktiviert ist.">
 <!ENTITY protections.noTrackersFound.description "&brandShortName; erkannte keine Skripte zur Aktivitätenverfolgung auf dieser Seite.">
 

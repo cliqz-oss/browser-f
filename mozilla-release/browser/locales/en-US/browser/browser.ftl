@@ -9,12 +9,12 @@
 # Depending on the $mode, the string will look like this (in en-US):
 #
 # "default" - "Mozilla Firefox"
-# "private" - "Mozilla Firefox (Private Browsing)"
+# "private" - "Mozilla Firefox (Forget Mode)"
 #
 # Variables
-#   $mode (String) - "private" in case of a private browsing mode, "default" otherwise.
+#   $mode (String) - "private" in case of a forget mode, "default" otherwise.
 browser-main-window-title = { $mode ->
-        [private] { -brand-full-name } (Private Browsing)
+        [private] { -brand-full-name } (Forget Mode)
        *[default] { -brand-full-name }
     }
 
@@ -24,13 +24,13 @@ browser-main-window-title = { $mode ->
 # Depending on the $mode, the string will look like this (in en-US):
 #
 # "default" - "Example Title - Mozilla Firefox"
-# "private" - "Example Title - Mozilla Firefox (Private Browsing)"
+# "private" - "Example Title - Mozilla Firefox (Forget Mode)"
 #
 # Variables
-#   $mode (String) - "private" in case of a private browsing mode, "default" otherwise.
+#   $mode (String) - "private" in case of a forget mode, "default" otherwise.
 #   $title (String) - Content title string.
 browser-main-window-content-title = { $mode ->
-        [private] { $title } - { -brand-full-name } (Private Browsing)
+        [private] { $title } - { -brand-full-name } (Forget Mode)
        *[default] { $title } - { -brand-full-name }
     }
 

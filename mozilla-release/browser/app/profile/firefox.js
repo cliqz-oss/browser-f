@@ -70,16 +70,6 @@ pref("extensions.webextensions.default-content-security-policy", "script-src 'se
 pref("extensions.webextensions.remote", true);
 pref("extensions.webextensions.background-delayed-startup", true);
 
-<<<<<<< HEAD
-// Extensions that should not be flagged as legacy in about:addons
-pref("extensions.legacy.exceptions", "cliqz@cliqz.com,https-everywhere@cliqz.com,testpilot@cliqz.com,@testpilot-containers,jid1-NeEaf3sAHdKHPA@jetpack,@activity-streams,pulse@mozilla.com,@testpilot-addon,@min-vid,tabcentertest1@mozilla.com,snoozetabs@mozilla.com,speaktome@mozilla.com,hoverpad@mozilla.com");
-
-||||||| merged common ancestors
-// Extensions that should not be flagged as legacy in about:addons
-pref("extensions.legacy.exceptions", "testpilot@cliqz.com,@testpilot-containers,jid1-NeEaf3sAHdKHPA@jetpack,@activity-streams,pulse@mozilla.com,@testpilot-addon,@min-vid,tabcentertest1@mozilla.com,snoozetabs@mozilla.com,speaktome@mozilla.com,hoverpad@mozilla.com");
-
-=======
->>>>>>> origin/upstream-releases
 // Require signed add-ons by default
 pref("extensions.langpacks.signatures.required", true);
 pref("xpinstall.signatures.required", true);
@@ -1824,15 +1814,7 @@ pref("signon.management.page.breach-alerts.enabled", true);
 /* CLIQZ-SPECIAL: force use old password
 pref("signon.management.page.sort", "name");
 pref("signon.management.overrideURI", "about:logins?filter=%DOMAIN%");
-<<<<<<< HEAD
 */
-pref("signon.showAutoCompleteOrigins", true);
-pref("signon.includeOtherSubdomainsInLookup", true);
-||||||| merged common ancestors
-pref("signon.showAutoCompleteOrigins", true);
-pref("signon.includeOtherSubdomainsInLookup", true);
-=======
->>>>>>> origin/upstream-releases
 // The utm_creative value is appended within the code (specific to the location on
 // where it is clicked). Be sure that if these two prefs are updated, that
 // the utm_creative param be last.

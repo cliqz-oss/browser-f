@@ -275,12 +275,7 @@ addon-card:not([expanded]) .addon-description {
 
 /* Recommended add-ons on list views */
 .recommended-heading {
-<<<<<<< HEAD
   margin-bottom: 15px;
-||||||| merged common ancestors
-=======
-  margin-bottom: 24px;
->>>>>>> origin/upstream-releases
   margin-top: 48px;
 }
 

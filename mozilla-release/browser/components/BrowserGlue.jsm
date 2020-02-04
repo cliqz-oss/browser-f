@@ -2072,27 +2072,7 @@ BrowserGlue.prototype = {
       Discovery.update();
     });
 
-<<<<<<< HEAD
-    Services.tm.idleDispatchToMainThread(() => {
-      Services.prefs.addObserver(
-        "permissions.eventTelemetry.enabled",
-        this._togglePermissionPromptTelemetry
-      );
-      this._togglePermissionPromptTelemetry();
-    });
-
 #if 0
-||||||| merged common ancestors
-    Services.tm.idleDispatchToMainThread(() => {
-      Services.prefs.addObserver(
-        "permissions.eventTelemetry.enabled",
-        this._togglePermissionPromptTelemetry
-      );
-      this._togglePermissionPromptTelemetry();
-    });
-
-=======
->>>>>>> origin/upstream-releases
     // Begin listening for incoming push messages.
     Services.tm.idleDispatchToMainThread(() => {
       try {
@@ -2241,10 +2221,7 @@ BrowserGlue.prototype = {
       });
     }
 
-<<<<<<< HEAD
 #if 0
-||||||| merged common ancestors
-=======
     // Temporary for Delegated Credentials Study:
     // https://bugzilla.mozilla.org/show_bug.cgi?id=1582591
     // Disable in automation and non-nightly builds.
@@ -2273,7 +2250,6 @@ BrowserGlue.prototype = {
       }
     }
 
->>>>>>> origin/upstream-releases
     // Marionette needs to be initialized as very last step
     Services.tm.idleDispatchToMainThread(() => {
       Services.obs.notifyObservers(null, "marionette-startup-requested");

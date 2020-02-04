@@ -5,18 +5,9 @@
 
 <!ENTITY migrationWizard.title          "Import Wizard">
 
-<<<<<<< HEAD
-<!ENTITY importFrom.label               "Import options, bookmarks, history, passwords and other data from:">
-<!ENTITY importFromUnix.label           "Import preferences, bookmarks, history, passwords and other data from:">
-<!ENTITY importFromBookmarks.label      "Import bookmarks from:">
-||||||| merged common ancestors
 <!ENTITY importFrom.label               "Import Options, Bookmarks, History, Passwords and other data from:">
 <!ENTITY importFromUnix.label           "Import Preferences, Bookmarks, History, Passwords and other data from:">
 <!ENTITY importFromBookmarks.label      "Import Bookmarks from:">
-=======
-<!ENTITY importFrom.label               "Import Options, Bookmarks, History, Passwords and other data from:">
-<!ENTITY importFromUnix.label           "Import Preferences, Bookmarks, History, Passwords and other data from:">
->>>>>>> origin/upstream-releases
 
 <!ENTITY importFromIE.label             "Microsoft Internet Explorer">
 <!ENTITY importFromIE.accesskey         "M">

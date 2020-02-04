@@ -8,13 +8,13 @@
 # Depending on the $mode, the string will look like this (in en-US):
 #
 # "default" - "Mozilla Firefox"
-# "private" - "Mozilla Firefox (Private Browsing)"
+# "private" - "Mozilla Firefox (Forget Mode)"
 #
 # Variables
-#   $mode (String) - "private" in case of a private browsing mode, "default" otherwise.
+#   $mode (String) - "private" in case of a forget mode, "default" otherwise.
 browser-main-window-title =
     { $mode ->
-        [private] { -brand-full-name } (Privater Modus)
+        [private] { -brand-full-name } (Vergessen Modus)
        *[default] { -brand-full-name }
     }
 # This is the default window title in case there is a content
@@ -23,14 +23,14 @@ browser-main-window-title =
 # Depending on the $mode, the string will look like this (in en-US):
 #
 # "default" - "Example Title - Mozilla Firefox"
-# "private" - "Example Title - Mozilla Firefox (Private Browsing)"
+# "private" - "Example Title - Mozilla Firefox (Forget Mode)"
 #
 # Variables
-#   $mode (String) - "private" in case of a private browsing mode, "default" otherwise.
+#   $mode (String) - "private" in case of a forget mode, "default" otherwise.
 #   $title (String) - Content title string.
 browser-main-window-content-title =
     { $mode ->
-        [private] { $title } - { -brand-full-name } (Privater Modus)
+        [private] { $title } - { -brand-full-name } (Vergessen Modus)
        *[default] { $title } - { -brand-full-name }
     }
 urlbar-identity-button =

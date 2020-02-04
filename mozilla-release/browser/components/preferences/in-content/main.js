@@ -392,16 +392,12 @@ var gMainPane = {
       gMainPane.initBrowserLocale();
     }
 
-<<<<<<< HEAD
-#if 0
-||||||| merged common ancestors
-=======
     // We call `initDefaultZoomValues` to set and unhide the
     // default zoom preferences menu, and to establish a
     // listener for future menu changes.
     gMainPane.initDefaultZoomValues();
 
->>>>>>> origin/upstream-releases
+#if 0
     let cfrLearnMoreUrl =
       Services.urlFormatter.formatURLPref("app.support.baseURL") +
       "extensionrecommendations";

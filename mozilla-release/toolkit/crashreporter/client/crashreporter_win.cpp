@@ -82,19 +82,9 @@ static SendThreadData gSendData = {
     0,
 };
 static vector<string> gRestartArgs;
-<<<<<<< HEAD
-static map<wstring, wstring> gQueryParameters;
-static wstring gCrashReporterKey(L"Software\\Cliqz\\Crash Reporter");
-static wstring gURLParameter;
-||||||| merged common ancestors
-static map<wstring, wstring> gQueryParameters;
-static wstring gCrashReporterKey(L"Software\\Mozilla\\Crash Reporter");
-static wstring gURLParameter;
-=======
 static Json::Value gQueryParameters;
-static wstring gCrashReporterKey(L"Software\\Mozilla\\Crash Reporter");
+static wstring gCrashReporterKey(L"Software\\Cliqz\\Crash Reporter");
 static string gURLParameter;
->>>>>>> origin/upstream-releases
 static int gCheckboxPadding = 6;
 static bool gRTLlayout = false;
 

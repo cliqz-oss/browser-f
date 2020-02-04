@@ -682,46 +682,6 @@ function Search(
     ? UrlbarPrefs.get("defaultBehavior")
     : UrlbarPrefs.get("emptySearchDefaultBehavior");
 
-<<<<<<< HEAD
-  let params = new Set(searchParam.split(" "));
-  this._enableActions = params.has("enable-actions");
-  this._disablePrivateActions = params.has("disable-private-actions");
-  this._inPrivateWindow = params.has("private-window");
-  this._prohibitAutoFill = params.has("prohibit-autofill");
-  // CLIQZ-SPECIAL: open page imporvements via extensions
-  this._disableAdaptive = params.has("disable-adaptive");
-  this._enableAtSearch = params.has("enable-at-search");
-
-  // Extract the max-results param.
-  let maxResults = searchParam.match(REGEXP_MAX_RESULTS);
-  this._maxResults = maxResults
-    ? parseInt(maxResults[1])
-    : UrlbarPrefs.get("maxRichResults");
-
-  // Extract the user-context-id param.
-  let userContextId = searchParam.match(REGEXP_USER_CONTEXT_ID);
-  this._userContextId = userContextId
-    ? parseInt(userContextId[1], 10)
-    : Ci.nsIScriptSecurityManager.DEFAULT_USER_CONTEXT_ID;
-||||||| merged common ancestors
-  let params = new Set(searchParam.split(" "));
-  this._enableActions = params.has("enable-actions");
-  this._disablePrivateActions = params.has("disable-private-actions");
-  this._inPrivateWindow = params.has("private-window");
-  this._prohibitAutoFill = params.has("prohibit-autofill");
-
-  // Extract the max-results param.
-  let maxResults = searchParam.match(REGEXP_MAX_RESULTS);
-  this._maxResults = maxResults
-    ? parseInt(maxResults[1])
-    : UrlbarPrefs.get("maxRichResults");
-
-  // Extract the user-context-id param.
-  let userContextId = searchParam.match(REGEXP_USER_CONTEXT_ID);
-  this._userContextId = userContextId
-    ? parseInt(userContextId[1], 10)
-    : Ci.nsIScriptSecurityManager.DEFAULT_USER_CONTEXT_ID;
-=======
   if (queryContext) {
     this._enableActions = true;
     this._inPrivateWindow = queryContext.isPrivate;
@@ -736,6 +696,10 @@ function Search(
     this._disablePrivateActions = params.has("disable-private-actions");
     this._inPrivateWindow = params.has("private-window");
     this._prohibitAutoFill = params.has("prohibit-autofill");
+    // CLIQZ-SPECIAL: open page imporvements via extensions
+    this._disableAdaptive = params.has("disable-adaptive");
+    this._enableAtSearch = params.has("enable-at-search");
+
     // Extract the max-results param.
     let maxResults = searchParam.match(REGEXP_MAX_RESULTS);
     this._maxResults = maxResults
@@ -747,7 +711,6 @@ function Search(
       ? parseInt(userContextId[1], 10)
       : Ci.nsIScriptSecurityManager.DEFAULT_USER_CONTEXT_ID;
   }
->>>>>>> origin/upstream-releases
 
   // Use the original string here, not the stripped one, so the tokenizer can
   // properly recognize token types.
