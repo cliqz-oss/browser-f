@@ -13,7 +13,6 @@
 #include "mozilla/Move.h"
 #include "AnimationParams.h"
 #include "gfxDrawable.h"
-#include "imgIContainer.h"
 #include "MainThreadUtils.h"
 
 namespace mozilla {
@@ -184,13 +183,19 @@ class imgFrame {
 
   struct AddSizeOfCbData {
     AddSizeOfCbData()
-        : heap(0), nonHeap(0), handles(0), index(0), externalId(0) {}
+        : heap(0),
+          nonHeap(0),
+          handles(0),
+          index(0),
+          externalId(0),
+          finished(false) {}
 
     size_t heap;
     size_t nonHeap;
     size_t handles;
     size_t index;
     uint64_t externalId;
+    bool finished;
   };
 
   typedef std::function<void(AddSizeOfCbData& aMetadata)> AddSizeOfCb;

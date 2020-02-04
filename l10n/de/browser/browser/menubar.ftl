@@ -124,6 +124,9 @@ menu-view-full-zoom-reduce =
 menu-view-full-zoom-reset =
     .label = Normal
     .accesskey = N
+menu-view-full-zoom-actual-size =
+    .label = Tatsächliche Größe
+    .accesskey = T
 menu-view-full-zoom-toggle =
     .label = Nur Text zoomen
     .accesskey = T
@@ -153,7 +156,7 @@ menu-view-full-screen =
     .label = Vollbild
     .accesskey = V
 
-
+##
 
 menu-view-show-all-tabs =
     .label = Alle Tabs anzeigen
@@ -209,9 +212,6 @@ menu-tools-downloads =
 menu-tools-addons =
     .label = Add-ons
     .accesskey = d
-menu-tools-sync-sign-in =
-    .label = Bei { -sync-brand-short-name } anmelden…
-    .accesskey = Y
 menu-tools-fxa-sign-in =
     .label = Bei { -brand-product-name } anmelden…
     .accesskey = B
@@ -221,9 +221,6 @@ menu-tools-turn-on-sync =
 menu-tools-sync-now =
     .label = Jetzt synchronisieren
     .accesskey = J
-menu-tools-sync-re-auth =
-    .label = Wieder mit { -sync-brand-short-name } verbinden…
-    .accesskey = v
 menu-tools-fxa-re-auth =
     .label = Wieder mit { -brand-product-name } verbinden…
     .accesskey = v

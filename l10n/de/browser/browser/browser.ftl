@@ -56,6 +56,8 @@ urlbar-default-notification-anchor =
     .tooltiptext = Ansicht mit Benachrichtigung öffnen
 urlbar-geolocation-notification-anchor =
     .tooltiptext = Ansicht mit Standortanfrage öffnen
+urlbar-xr-notification-anchor =
+    .tooltiptext = Ansicht für VR-Zugriff (Virtuelle Realität) öffnen
 urlbar-storage-access-anchor =
     .tooltiptext = Ansicht für während des Surfens berechtigte Aktivitäten öffnen
 urlbar-translate-notification-anchor =
@@ -80,8 +82,22 @@ urlbar-addons-notification-anchor =
     .tooltiptext = Ansicht mit Anfrage zur Installation eines Add-ons öffnen
 urlbar-tip-help-icon =
     .title = Hilfe erhalten
+urlbar-search-tips-confirm = OK
+
+## Prompts users to use the Urlbar when they open a new tab or visit the
+## homepage of their default search engine.
+## Variables:
+##  $engineName (String): The name of the user's default search engine. e.g. "Google" or "DuckDuckGo".
+
+urlbar-search-tips-onboard = Weniger tippen, mehr finden: Direkt mit { $engineName } von der Adressleiste aus suchen.
+urlbar-search-tips-redirect = Starten Sie Ihre Suche hier, um Suchvorschläge von { $engineName } sowie Ihre Browser-Chronik angezeigt zu bekommen.
+
+##
+
 urlbar-geolocation-blocked =
     .tooltiptext = Sie haben den Zugriff auf Ihren Standort durch diese Website blockiert.
+urlbar-xr-blocked =
+    .tooltiptext = Sie haben den Zugriff auf VR-Geräte durch diese Website blockiert.
 urlbar-web-notifications-blocked =
     .tooltiptext = Sie haben das Anzeigen von Benachrichtungen durch diese Website blockiert.
 urlbar-camera-blocked =
@@ -99,7 +115,7 @@ urlbar-autoplay-media-blocked =
 urlbar-canvas-blocked =
     .tooltiptext = Sie haben das Abfragen von Canvas-Daten durch diese Website blockiert.
 urlbar-midi-blocked =
-    .tooltiptext = Sie haben den Zugriff auf MIDI für diese Website blockiert.
+    .tooltiptext = Sie haben den Zugriff auf MIDI durch diese Website blockiert.
 urlbar-install-blocked =
     .tooltiptext = Sie haben die Installation von Erweiterungen von dieser Website blockiert.
 
@@ -154,3 +170,50 @@ bookmark-panel-done-button =
 # Cancel/Remove Bookmark buttons.
 bookmark-panel =
     .style = min-width: 23em
+
+## Identity Panel
+
+identity-connection-not-secure = Verbindung nicht sicher
+identity-connection-secure = Verbindung sicher
+identity-connection-internal = Dies ist eine sichere { -brand-short-name }-Seite.
+identity-connection-file = Diese Seite ist auf Ihrem Computer gespeichert.
+identity-extension-page = Diese Seite wurde durch eine Erweiterung bereitgestellt.
+identity-active-blocked = { -brand-short-name } hat nicht sichere Inhalte dieser Seite blockiert.
+identity-custom-root = Die Verbindung wurde durch eine Zertifizierungsstelle bestätigt, welche standardmäßig nicht von Mozilla anerkannt wird.
+identity-passive-loaded = Teile dieser Seite sind nicht sicher (wie z.B. Grafiken).
+identity-active-loaded = Sie haben den Schutz für diese Seite deaktiviert.
+identity-weak-encryption = Diese Seite verwendet eine schwache Verschlüsselung.
+identity-insecure-login-forms = Ihre Zugangsdaten könnten auf dieser Seite in falsche Hände geraten.
+identity-permissions =
+    .value = Berechtigungen
+identity-permissions-reload-hint = Eventuell muss die Seite neu geladen werden, um die Änderungen zu übernehmen.
+identity-permissions-empty = Der Website wurden keine besonderen Berechtigungen erteilt.
+identity-clear-site-data =
+    .label = Cookies und Website-Daten löschen…
+identity-connection-not-secure-security-view = Sie kommunizieren mit dieser Seite über eine ungesicherte Verbindung.
+identity-connection-verified = Sie sind derzeit über eine gesicherte Verbindung mit dieser Website verbunden.
+identity-ev-owner-label = Zertifikat ausgestellt für:
+identity-description-custom-root = Mozilla erkennt diese Zertifizierungsstelle standardmäßig nicht an. Sie wurde eventuell vom Betriebssystem oder durch einen Administrator importiert. <label data-l10n-name="link">Weitere Informationen</label>
+identity-remove-cert-exception =
+    .label = Ausnahme entfernen
+    .accesskey = A
+identity-description-insecure = Ihre Verbindung zu dieser Website ist nicht vertraulich. Von Ihnen übermittelte Informationen (wie Passwörter, Nachrichten, Kreditkartendaten, usw.) können von Anderen eingesehen werden.
+identity-description-insecure-login-forms = Wenn Sie Ihre Zugangsdaten auf dieser Website eingeben, werden diese unverschlüsselt übertragen und können in falsche Hände geraten.
+identity-description-weak-cipher-intro = Ihre Verbindung zu dieser Website verwendet eine schwache Verschlüsselung.
+identity-description-weak-cipher-risk = Andere Personen können Ihre Informationen mitlesen oder das Verhalten der Website ändern.
+identity-description-active-blocked = { -brand-short-name } hat nicht sichere Inhalte dieser Seite blockiert. <label data-l10n-name="link">Weitere Informationen</label>
+identity-description-passive-loaded = Ihre Verbindung ist nicht sicher und mit dieser Website geteilte Informationen können von Anderen eingesehen werden.
+identity-description-passive-loaded-insecure = Diese Website enthält nicht sichere Inhalte (wie z.B. Grafiken). <label data-l10n-name="link">Weitere Informationen</label>
+identity-description-passive-loaded-mixed = Obwohl { -brand-short-name } Inhalte blockiert hat, enthält die Seite noch nicht sichere Inhalte (wie z.B. Grafiken). <label data-l10n-name="link">Weitere Informationen</label>
+identity-description-active-loaded = Diese Website enthält nicht sichere Inhalte (wie z.B. Skripte) und Ihre Verbindung ist nicht vertraulich.
+identity-description-active-loaded-insecure = Mit dieser Seite geteilte Informationen (wie Passwörter, Nachrichten, Kreditkartendaten, usw.) können von Anderen eingesehen werden.
+identity-learn-more =
+    .value = Weitere Informationen
+identity-disable-mixed-content-blocking =
+    .label = Schutz momentan deaktivieren
+    .accesskey = d
+identity-enable-mixed-content-blocking =
+    .label = Schutz aktivieren
+    .accesskey = a
+identity-more-info-link-text =
+    .label = Weitere Informationen

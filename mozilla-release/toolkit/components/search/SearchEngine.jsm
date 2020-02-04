@@ -1458,6 +1458,17 @@ SearchEngine.prototype = {
   _initEngineURLFromMetaData(type, params) {
     let url = new EngineURL(type, params.method || "GET", params.template);
 
+    // Do the MozParams first, so that we are more likely to get the query
+    // on the end of the URL, rather than the MozParams (xref bug 1484232).
+    if (params.mozParams) {
+      for (let p of params.mozParams) {
+        if ((p.condition || p.purpose) && !this._isDefault) {
+          continue;
+        }
+        url._addMozParam(p);
+      }
+    }
+
     if (params.postParams) {
       let queries = new URLSearchParams(params.postParams);
       for (let [name, value] of queries) {
@@ -1469,15 +1480,6 @@ SearchEngine.prototype = {
       let queries = new URLSearchParams(params.getParams);
       for (let [name, value] of queries) {
         url.addParam(name, value);
-      }
-    }
-
-    if (params.mozParams) {
-      for (let p of params.mozParams) {
-        if ((p.condition || p.purpose) && !this._isDefault) {
-          continue;
-        }
-        url._addMozParam(p);
       }
     }
 

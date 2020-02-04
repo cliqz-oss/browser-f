@@ -287,6 +287,26 @@
   </hbox>
 </groupbox>
 
+<!-- Zoom -->
+<groupbox id="zoomGroup" data-category="paneGeneral" hidden="true">
+  <label><html:h2 data-l10n-id="preferences-zoom-header"/></label>
+
+  <hbox id="zoomBox" align="center" hidden="true">
+    <label control="defaultZoom" data-l10n-id="preferences-default-zoom"/>
+    <!-- Please don't remove the wrapping hbox/vbox/box for these elements. It's used to properly compute the search tooltip position. -->
+    <hbox flex="1">
+      <menulist id="defaultZoom">
+        <menupopup/>
+      </menulist>
+    </hbox>
+  </hbox>
+
+  <checkbox id="zoomText"
+    data-l10n-id="preferences-zoom-text-only"
+    preference="browser.zoom.full"/>
+
+</groupbox>
+
 <!-- Languages -->
 <groupbox id="languagesGroup" data-category="paneGeneral" hidden="true">
   <label><html:h2 data-l10n-id="language-header"/></label>
@@ -588,11 +608,18 @@
   </hbox>
 #endif
 #endif
+<<<<<<< HEAD
   <hbox>
   <checkbox id="enableSearchUpdate"
             data-l10n-id="update-enable-search-update"
             preference="browser.search.update"/>
   </hbox>
+||||||| merged common ancestors
+  <checkbox id="enableSearchUpdate"
+            data-l10n-id="update-enable-search-update"
+            preference="browser.search.update"/>
+=======
+>>>>>>> origin/upstream-releases
 </groupbox>
 
 <hbox id="performanceCategory"
@@ -732,7 +759,7 @@
                 connection-proxy-option-system.label,
                 connection-proxy-option-manual.label,
                 connection-proxy-http,
-                connection-proxy-ssl,
+                connection-proxy-https,
                 connection-proxy-ftp,
                 connection-proxy-http-port,
                 connection-proxy-socks,
@@ -740,7 +767,7 @@
                 connection-proxy-socks5,
                 connection-proxy-noproxy,
                 connection-proxy-noproxy-desc,
-                connection-proxy-http-share.label,
+                connection-proxy-http-sharing.label,
                 connection-proxy-autotype.label,
                 connection-proxy-reload.label,
                 connection-proxy-autologin.label,

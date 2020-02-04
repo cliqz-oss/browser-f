@@ -24,7 +24,6 @@
 #include "nsIFile.h"
 #include "nsIFileURL.h"
 #include "nsIChannel.h"
-#include "nsIDirectoryService.h"
 #include "nsAppDirectoryServiceDefs.h"
 #include "nsICategoryManager.h"
 #include "nsDependentSubstring.h"
@@ -73,7 +72,6 @@
 #  include "nsILocalFileMac.h"
 #endif
 
-#include "nsIPluginHost.h"  // XXX needed for ext->type mapping (bug 233289)
 #include "nsPluginHost.h"
 #include "nsEscape.h"
 
@@ -81,9 +79,6 @@
 #include "nsIPrompt.h"
 
 #include "nsITextToSubURI.h"  // to unescape the filename
-#include "nsIMIMEHeaderParam.h"
-
-#include "nsIWindowWatcher.h"
 
 #include "nsDocShellCID.h"
 
@@ -95,8 +90,6 @@
 #include "ContentChild.h"
 #include "nsXULAppAPI.h"
 #include "nsPIDOMWindow.h"
-#include "nsIDocShellTreeOwner.h"
-#include "nsIDocShellTreeItem.h"
 #include "ExternalHelperAppChild.h"
 
 #ifdef XP_WIN
@@ -412,7 +405,6 @@ static const nsDefaultMimeTypeEntry defaultMimeEntries[] = {
     {IMAGE_GIF, "gif"},
     {TEXT_XML, "xml"},
     {APPLICATION_RDF, "rdf"},
-    {TEXT_XUL, "xul"},
     {IMAGE_PNG, "png"},
     // -- end extensions used during startup
     {TEXT_CSS, "css"},
@@ -512,7 +504,6 @@ static const nsExtraMimeTypeEntry extraMimeEntries[] = {
      "Extensible HyperText Markup Language"},
     {APPLICATION_MATHML_XML, "mml", "Mathematical Markup Language"},
     {APPLICATION_RDF, "rdf", "Resource Description Framework"},
-    {TEXT_XUL, "xul", "XML-Based User Interface Language"},
     {TEXT_XML, "xml,xsl,xbl", "Extensible Markup Language"},
     {TEXT_CSS, "css", "Style Sheet"},
     {TEXT_VCARD, "vcf,vcard", "Contact Information"},
@@ -1780,7 +1771,7 @@ void nsExternalAppHandler::SendStatusChange(ErrorType type, nsresult rv,
         break;
       }
 #endif
-      MOZ_FALLTHROUGH;
+      [[fallthrough]];
 
     default:
       // Generic read/write/launch error message.

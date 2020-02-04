@@ -8,11 +8,9 @@
 // requests and other instructions from the middleman via the exported symbols
 // defined at the end of this file.
 //
-// Like all other JavaScript in the recording/replaying process, this code's
-// state is included in memory snapshots and reset when checkpoints are
-// restored. In the process of handling the middleman's requests, however, its
-// state may vary between recording and replaying, or between different
-// replays. As a result, we have to be very careful about performing operations
+// In the process of handling the middleman's requests, state in this file may
+// vary between recording and replaying, or between different replays.
+// As a result, we have to be very careful about performing operations
 // that might interact with the recording --- any time we enter the debuggee
 // and evaluate code or perform other operations.
 // The divergeFromRecording function should be used at any point where such
@@ -45,7 +43,6 @@ const {
   CSSRule,
   pointPrecedes,
   pointEquals,
-  pointArrayIncludes,
   findClosestPoint,
 } = sandbox;
 
@@ -173,36 +170,16 @@ function isNonNullObject(obj) {
   return obj && (typeof obj == "object" || typeof obj == "function");
 }
 
-function getMemoryUsage() {
-  const memoryKinds = {
-    Generic: [1],
-    Snapshots: [2, 3, 4, 5, 6, 7],
-    ScriptHits: [8],
-  };
-
-  const rv = {};
-  for (const [name, kinds] of Object.entries(memoryKinds)) {
-    let total = 0;
-    kinds.forEach(kind => {
-      total += RecordReplayControl.memoryUsage(kind);
-    });
-    rv[name] = total;
-  }
-  return rv;
-}
-
 ///////////////////////////////////////////////////////////////////////////////
 // Persistent Script State
 ///////////////////////////////////////////////////////////////////////////////
 
 // Association between Debugger.Scripts and their IDs. The indices that this
-// table assigns to scripts are stable across the entire recording, even though
-// this table (like all JS state) is included in snapshots, rolled back when
-// rewinding, and so forth.  In debuggee time, this table only grows (there is
-// no way to remove entries). Scripts created for debugger activity (e.g. eval)
-// are ignored, and off thread compilation is disabled, so this table acquires
-// the same scripts in the same order as we roll back and run forward in the
-// recording.
+// table assigns to scripts are stable across the entire recording. In debuggee
+// time, this table only grows (there is no way to remove entries).
+// Scripts created for debugger activity (e.g. eval) are ignored, and off thread
+// compilation is disabled, so this table acquires the same scripts in the same
+// order as we roll back and run forward in the recording.
 const gScripts = new IdMap();
 
 // Any scripts added since the last checkpoint.
@@ -378,6 +355,7 @@ Services.obs.addObserver(
         contents.arguments.forEach(v =>
           contents.argumentsData.addValue(v, PropertyLevels.FULL)
         );
+        resetPauseState();
       }
 
       newConsoleMessage(contents);
@@ -816,8 +794,17 @@ function ensurePositionHandler(position) {
 // Paused State
 ///////////////////////////////////////////////////////////////////////////////
 
-let gPausedObjects = new IdMap();
-let gDereferencedObjects = new Map();
+let gPausedObjects;
+let gDereferencedObjects;
+let gPreviewedObjects;
+
+function resetPauseState() {
+  gPausedObjects = new IdMap();
+  gDereferencedObjects = new Map();
+  gPreviewedObjects = new Map();
+}
+
+resetPauseState();
 
 function getObjectId(obj) {
   const id = gPausedObjects.getId(obj);
@@ -957,16 +944,11 @@ const gNewDebuggerStatements = [];
 // Whether to pause on debugger statements when running forward.
 let gPauseOnDebuggerStatement = false;
 
-function ensureRunToPointPositionHandlers({ endpoint, snapshotPoints }) {
+function ensureRunToPointPositionHandlers({ endpoint }) {
   if (gLastCheckpoint == endpoint.checkpoint) {
     assert(endpoint.position);
     ensurePositionHandler(endpoint.position);
   }
-  snapshotPoints.forEach(snapshot => {
-    if (gLastCheckpoint == snapshot.checkpoint && snapshot.position) {
-      ensurePositionHandler(snapshot.position);
-    }
-  });
 }
 
 // Handlers that run when a manifest is first received. This must be specified
@@ -980,9 +962,10 @@ const gManifestStartHandlers = {
     dbg.onDebuggerStatement = debuggerStatementHit;
   },
 
-  restoreSnapshot({ numSnapshots }) {
-    RecordReplayControl.restoreSnapshot(numSnapshots);
-    throwError("Unreachable!");
+  fork({ id }) {
+    const point = currentScriptedExecutionPoint() || currentExecutionPoint();
+    RecordReplayControl.fork(id);
+    RecordReplayControl.manifestFinished({ point });
   },
 
   runToPoint(manifest) {
@@ -1117,7 +1100,7 @@ function currentExecutionPoint(position) {
 function currentScriptedExecutionPoint() {
   const numFrames = countScriptFrames();
   if (!numFrames) {
-    return null;
+    return undefined;
   }
 
   const index = numFrames - 1;
@@ -1152,9 +1135,6 @@ const gManifestFinishedAfterCheckpointHandlers = {
     // The primordial manifest runs forward to the first checkpoint, saves it,
     // and then finishes.
     assert(point.checkpoint == FirstCheckpointId);
-    if (!newSnapshot(point)) {
-      return;
-    }
     RecordReplayControl.manifestFinished({ point });
   },
 
@@ -1163,29 +1143,22 @@ const gManifestFinishedAfterCheckpointHandlers = {
     finishResume(point);
   },
 
-  runToPoint({ endpoint, snapshotPoints }, point) {
+  runToPoint({ endpoint, flushExternalCalls }, point) {
     assert(endpoint.checkpoint >= point.checkpoint);
-    if (pointArrayIncludes(snapshotPoints, point) && !newSnapshot(point)) {
-      return;
-    }
     if (!endpoint.position && point.checkpoint == endpoint.checkpoint) {
+      if (flushExternalCalls) {
+        RecordReplayControl.flushExternalCalls();
+      }
       RecordReplayControl.manifestFinished({ point });
     }
   },
 
-  scanRecording({ endpoint, snapshotPoints }, point) {
+  scanRecording({ endpoint }, point) {
     stopScanningAllScripts();
-    if (pointArrayIncludes(snapshotPoints, point) && !newSnapshot(point)) {
-      return;
-    }
     if (point.checkpoint == endpoint.checkpoint) {
       const duration =
         RecordReplayControl.currentExecutionTime() - gManifestStartTime;
-      RecordReplayControl.manifestFinished({
-        point,
-        duration,
-        memoryUsage: getMemoryUsage(),
-      });
+      RecordReplayControl.manifestFinished({ point, duration });
     }
   },
 };
@@ -1205,7 +1178,7 @@ const gManifestPrepareAfterCheckpointHandlers = {
   },
 };
 
-function processManifestAfterCheckpoint(point, restoredSnapshot) {
+function processManifestAfterCheckpoint(point) {
   if (gManifestFinishedAfterCheckpointHandlers[gManifest.kind]) {
     gManifestFinishedAfterCheckpointHandlers[gManifest.kind](gManifest, point);
   }
@@ -1219,12 +1192,6 @@ function processManifestAfterCheckpoint(point, restoredSnapshot) {
 function HitCheckpoint(id) {
   gLastCheckpoint = id;
   const point = currentExecutionPoint();
-
-  // Reset paused state at each checkpoint. In order to reach the checkpoint we
-  // must have unpaused, and resetting the state allows these objects to be
-  // collected by the GC.
-  gPausedObjects = new IdMap();
-  gDereferencedObjects = new Map();
 
   try {
     processManifestAfterCheckpoint(point);
@@ -1244,15 +1211,10 @@ const gManifestPositionHandlers = {
     finishResume(point);
   },
 
-  runToPoint({ endpoint, snapshotPoints }, point) {
-    if (pointArrayIncludes(snapshotPoints, point)) {
-      clearPositionHandlers();
-      if (newSnapshot(point)) {
-        ensureRunToPointPositionHandlers({ endpoint, snapshotPoints });
-      }
-    }
+  runToPoint({ endpoint, flushExternalCalls }, point) {
     if (pointEquals(point, endpoint)) {
       clearPositionHandlers();
+      assert(!flushExternalCalls);
       RecordReplayControl.manifestFinished({ point });
     }
   },
@@ -1279,18 +1241,6 @@ function debuggerStatementHit() {
   }
 }
 
-function newSnapshot(point) {
-  if (RecordReplayControl.newSnapshot()) {
-    return true;
-  }
-
-  // After rewinding gManifest won't be correct, so we always mark the current
-  // manifest as finished and rely on the middleman to give us a new one.
-  RecordReplayControl.manifestFinished({ restoredSnapshot: true, point });
-
-  return false;
-}
-
 ///////////////////////////////////////////////////////////////////////////////
 // Handler Helpers
 ///////////////////////////////////////////////////////////////////////////////
@@ -1308,6 +1258,7 @@ function getScriptData(id) {
     url: script.url,
     format: script.format,
     mainOffset: script.mainOffset,
+    childScripts: script.getChildScripts().map(s => gScripts.getId(s)),
   };
 }
 
@@ -1350,25 +1301,12 @@ function getFrameData(index) {
     type: frame.type,
     callee: getObjectId(frame.callee),
     environment: getObjectId(frame.environment),
-    generator: frame.generator,
     constructing: frame.constructing,
     this: convertValue(frame.this),
     script,
     offset: frame.offset,
     arguments: _arguments,
   };
-}
-
-function unknownObjectProperties(why) {
-  return [
-    {
-      name: "Unknown properties",
-      desc: {
-        value: why,
-        enumerable: true,
-      },
-    },
-  ];
 }
 
 function getObjectData(id) {
@@ -1449,6 +1387,15 @@ function isBlacklisted(object) {
   return object.class == "Storage";
 }
 
+function getOwnPropertyNames(object) {
+  if (!isBlacklisted(object)) {
+    try {
+      return object.getOwnPropertyNames();
+    } catch (e) {}
+  }
+  return [];
+}
+
 function getObjectProperties(object) {
   const rv = Object.create(null);
 
@@ -1456,14 +1403,7 @@ function getObjectProperties(object) {
     return rv;
   }
 
-  let names;
-  try {
-    names = object.getOwnPropertyNames();
-  } catch (e) {
-    return unknownObjectProperties(e.toString());
-  }
-
-  names.forEach(name => {
+  getOwnPropertyNames(object).forEach(name => {
     // Workaround this test-only getter not reporting exceptions properly.
     if (name == "SpecialPowers_wrappedObject") {
       return;
@@ -1553,6 +1493,24 @@ function getWindow() {
   return null;
 }
 
+function isObjectPropertyBlacklisted(object, name) {
+  switch (object.class) {
+    case "Window":
+      return ["localStorage", "sysinfo"].includes(name);
+    case "Navigator":
+      return name == "hardwareConcurrency";
+    case "XPCWrappedNative_NoHelper":
+      return ["isParentWindowMainWidgetVisible", "systemFont"].includes(name);
+    case "Storage":
+      return true;
+  }
+  return false;
+}
+
+function isSafeGetter(getter) {
+  return getter.class == "Function" && !getter.script;
+}
+
 // Maximum number of properties the server is interested in when previewing an
 // object.
 const OBJECT_PREVIEW_MAX_ITEMS = 10;
@@ -1587,31 +1545,26 @@ PreviewedObjects.prototype = {
     const object = gPausedObjects.getObject(id);
     assert(object instanceof Debugger.Object);
 
-    if (!this.objects[id]) {
-      let ownPropertyNamesCount = 0;
-      try {
-        ownPropertyNamesCount = object.getOwnPropertyNames().length;
-      } catch (e) {}
-
-      this.objects[id] = {
-        data: getObjectData(id),
-        preview: { ownPropertyNamesCount, level },
-      };
-    } else {
-      const preview = this.objects[id].preview;
-      if ((preview.level | 0) >= (level | 0)) {
+    if (gPreviewedObjects.has(id)) {
+      const existingLevel = gPreviewedObjects.get(id);
+      if (existingLevel >= (level | 0)) {
         return;
       }
-      preview.level = level;
     }
+    gPreviewedObjects.set(id, level | 0);
 
-    const { data, preview } = this.objects[id];
+    const data = getObjectData(id);
+    const ownPropertyNamesCount = getOwnPropertyNames(object).length;
 
     // If this is a DOM object identified with isInstance, the previewer might
     // need additional properties.
     if (level == PropertyLevels.BASIC && data.isInstance) {
-      preview.level = level = PropertyLevels.FULL;
+      level = PropertyLevels.FULL;
     }
+
+    const preview = { ownPropertyNamesCount, level };
+
+    this.objects[id] = { data, preview };
 
     // Add intrinsic properties that are always included.
     switch (object.class) {
@@ -1625,7 +1578,12 @@ PreviewedObjects.prototype = {
       case "Int32Array":
       case "Float32Array":
       case "Float64Array":
+      case "Storage":
         this.addObjectPropertyValue(object, "length");
+        break;
+      case "Set":
+      case "Map":
+        this.addObjectPropertyValue(object, "size");
         break;
       case "Function":
         this.addObjectPropertyValue(object, "displayName");
@@ -1635,6 +1593,9 @@ PreviewedObjects.prototype = {
     if (!level) {
       return;
     }
+
+    const sublevel =
+      level == PropertyLevels.FULL ? PropertyLevels.BASIC : undefined;
 
     const properties = Object.entries(getObjectProperties(object));
 
@@ -1646,7 +1607,7 @@ PreviewedObjects.prototype = {
     let enumerablePropertyCount = 0;
     for (const [name, desc] of properties) {
       if (level == PropertyLevels.FULL || desc.enumerable) {
-        this.addObjectProperty(object, name, desc);
+        this.addObjectProperty(object, name, desc, sublevel);
         if (level == PropertyLevels.BASIC) {
           if (++enumerablePropertyCount == OBJECT_PREVIEW_MAX_ITEMS) {
             break;
@@ -1676,10 +1637,6 @@ PreviewedObjects.prototype = {
       case "Date":
         this.addObjectCall(object, "getTime");
         break;
-      case "Set":
-      case "Map":
-        this.addObjectPropertyValue(object, "size");
-        break;
       case "Error":
       case "EvalError":
       case "RangeError":
@@ -1694,26 +1651,30 @@ PreviewedObjects.prototype = {
         this.addObjectPropertyValue(object, "lineNumber");
         this.addObjectPropertyValue(object, "columnNumber");
         break;
+      case "HTMLDocument":
+        this.addObjectPropertyValue(object, "nodePrincipal");
+        break;
     }
 
-    // Search the prototype chain for getter properties and fill in their values
-    // if we are getting all properties of the object.
+    // If we are getting all properties of the object, get properties of the
+    // prototype as well, and fill in the values of getter properties.
     if (level == PropertyLevels.FULL) {
       let { proto } = object;
       while (proto) {
-        let names = [];
-        try {
-          names = proto.getOwnPropertyNames();
-        } catch (e) {}
+        this.addObject(gPausedObjects.getId(proto), PropertyLevels.FULL);
 
-        for (const name of names) {
+        for (const name of getOwnPropertyNames(proto)) {
+          if (name == "__proto__") {
+            continue;
+          }
+
           let desc = null;
           try {
             desc = proto.getOwnPropertyDescriptor(name);
           } catch (e) {}
 
-          if (desc && desc.get) {
-            this.addObjectPropertyValue(object, name);
+          if (desc && desc.get && isSafeGetter(desc.get)) {
+            this.addObjectPropertyValue(object, name, sublevel);
           }
         }
 
@@ -1722,28 +1683,38 @@ PreviewedObjects.prototype = {
     }
   },
 
-  addObjectPropertyValue(object, name) {
-    try {
-      const value = makeConvertedDebuggeeValue(
-        object.unsafeDereference()[name]
-      );
+  addObjectPropertyValue(object, name, level) {
+    let value;
+    if (!isObjectPropertyBlacklisted(object, name)) {
+      try {
+        value = object.unsafeDereference()[name];
+      } catch (e) {}
+    }
 
-      this.addObjectProperty(object, name, { value, enumerable: true });
-    } catch (e) {}
+    value = makeConvertedDebuggeeValue(value);
+    this.addObjectProperty(object, name, { value, enumerable: true }, level);
   },
 
-  addObjectProperty(object, name, desc) {
+  addObjectProperty(object, name, desc, level) {
     const id = gPausedObjects.getId(object);
     const preview = this.objects[id].preview;
 
     if (!preview.properties) {
       preview.properties = Object.create(null);
     }
-    if (name in preview.properties) {
+    if (name in preview.properties && !("value" in desc)) {
       return;
     }
 
-    this.addPropertyDescriptor(desc);
+    // Convert getters to their values when we are able to safely call them.
+    if (desc.get && isSafeGetter(gPausedObjects.getObject(desc.get))) {
+      this.addObjectPropertyValue(object, name, level);
+      if (name in preview.properties) {
+        return;
+      }
+    }
+
+    this.addPropertyDescriptor(desc, level);
     preview.properties[name] = desc;
   },
 
@@ -1813,9 +1784,9 @@ PreviewedObjects.prototype = {
 
   addCompletionValue(v) {
     if (v.return) {
-      this.addValue(v.return);
+      this.addValue(v.return, PropertyLevels.FULL);
     } else if (v.throw) {
-      this.addValue(v.throw);
+      this.addValue(v.throw, PropertyLevels.FULL);
     }
   },
 };
@@ -1966,8 +1937,9 @@ const gRequestHandlers = {
 
   getObjectProperties(request) {
     divergeFromRecording();
-    const object = gPausedObjects.getObject(request.id);
-    return { properties: getObjectProperties(object) };
+    const preview = new PreviewedObjects();
+    preview.addObject(request.id, PropertyLevels.FULL);
+    return { preview };
   },
 
   getObjectContainerContents(request) {
@@ -1985,8 +1957,10 @@ const gRequestHandlers = {
     }
 
     const args = request.args.map(v => convertValueFromParent(v));
-    const rv = obj.apply(thisv, args);
-    return convertCompletionValue(rv);
+    const rv = convertCompletionValue(obj.apply(thisv, args));
+    const preview = new PreviewedObjects();
+    preview.addCompletionValue(rv);
+    return { rv, preview };
   },
 
   getEnvironmentNames(request) {
@@ -2033,8 +2007,12 @@ const gRequestHandlers = {
   frameEvaluate(request) {
     divergeFromRecording();
     const frame = scriptFrameForIndex(request.index);
-    const rv = frame.eval(request.text, request.options);
-    return convertCompletionValue(rv);
+    const rv = convertCompletionValue(
+      frame.eval(request.text, request.options)
+    );
+    const preview = new PreviewedObjects();
+    preview.addCompletionValue(rv);
+    return { rv, preview };
   },
 
   findConsoleMessages(request) {
@@ -2048,12 +2026,26 @@ const gRequestHandlers = {
   getFixedObjects(request) {
     divergeFromRecording();
     const window = getWindow();
-    return {
+    const objects = {
       window: getObjectId(makeDebuggeeValue(window)),
       document: getObjectId(makeDebuggeeValue(window.document)),
       Services: getObjectId(makeDebuggeeValue(Services)),
       InspectorUtils: getObjectId(makeDebuggeeValue(InspectorUtils)),
     };
+    const preview = new PreviewedObjects();
+    Object.values(objects).forEach(obj => preview.addObject(obj));
+
+    // Add some preview data which is needed to populate style sheets.
+    preview.addObject(objects.window, PropertyLevels.FULL);
+    preview.addObject(objects.document, PropertyLevels.FULL);
+    preview.addObject(objects.InspectorUtils, PropertyLevels.FULL);
+
+    const nodePrincipal = getObjectId(
+      makeDebuggeeValue(window.document.nodePrincipal)
+    );
+    preview.addObject(nodePrincipal, PropertyLevels.FULL);
+
+    return { objects, preview };
   },
 
   newDeepTreeWalker(request) {

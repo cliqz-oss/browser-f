@@ -2621,6 +2621,10 @@ var SessionStoreInternal = {
   // whilst FF 67.x set it to true intentionally.
   // performing the given load. aRequestor implements nsIProcessSwitchRequestor
   onMayChangeProcess(aRequestor) {
+    if (!E10SUtils.documentChannel()) {
+      throw new Error("This code is only used by document channel");
+    }
+
     let switchRequestor;
     try {
       switchRequestor = aRequestor.QueryInterface(Ci.nsIProcessSwitchRequestor);
@@ -2636,11 +2640,13 @@ var SessionStoreInternal = {
 
     // Check that the document has a corresponding BrowsingContext.
     let browsingContext;
+    let isSubframe = false;
     let cp = channel.loadInfo.externalContentPolicyType;
     if (cp == Ci.nsIContentPolicy.TYPE_DOCUMENT) {
       browsingContext = channel.loadInfo.browsingContext;
     } else {
       browsingContext = channel.loadInfo.frameBrowsingContext;
+      isSubframe = true;
     }
 
     if (!browsingContext) {
@@ -2657,21 +2663,9 @@ var SessionStoreInternal = {
 
     let topDocShell = topBC.embedderElement.ownerGlobal.docShell;
     let { useRemoteSubframes } = topDocShell.QueryInterface(Ci.nsILoadContext);
-    if (!useRemoteSubframes) {
-      if (
-        !E10SUtils.useHttpResponseProcessSelection() &&
-        !E10SUtils.useCrossOriginOpenerPolicy()
-      ) {
-        debug(
-          `[process-switch]: response process selection disabled - ignoring`
-        );
-        return;
-      }
-
-      if (cp != Ci.nsIContentPolicy.TYPE_DOCUMENT) {
-        debug(`[process-switch]: remote subframes disabled - ignoring`);
-        return;
-      }
+    if (!useRemoteSubframes && cp != Ci.nsIContentPolicy.TYPE_DOCUMENT) {
+      debug(`[process-switch]: remote subframes disabled - ignoring`);
+      return;
     }
 
     // Get principal for a document already loaded in the BrowsingContext.
@@ -2747,7 +2741,8 @@ var SessionStoreInternal = {
       true,
       useRemoteSubframes,
       preferredRemoteType,
-      currentPrincipal
+      currentPrincipal,
+      isSubframe
     );
 
     debug(
@@ -2992,7 +2987,7 @@ var SessionStoreInternal = {
     // waiting for data from the frame script. This throbber is disabled
     // if the URI is a local about: URI.
     let uriObj = aTab.linkedBrowser.currentURI;
-    if (!uriObj || (uriObj && !aWindow.gBrowser.isLocalAboutURI(uriObj))) {
+    if (!uriObj || (uriObj && !uriObj.schemeIs("about"))) {
       newTab.setAttribute("busy", "true");
     }
 
@@ -3676,7 +3671,7 @@ var SessionStoreInternal = {
     // Start the throbber to pretend we're doing something while actually
     // waiting for data from the frame script. This throbber is disabled
     // if the URI is a local about: URI.
-    if (!uriObj || (uriObj && !window.gBrowser.isLocalAboutURI(uriObj))) {
+    if (!uriObj || (uriObj && !uriObj.schemeIs("about"))) {
       tab.setAttribute("busy", "true");
     }
 

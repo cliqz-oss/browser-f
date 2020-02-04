@@ -612,6 +612,11 @@ var gPrivacyPane = {
       gPrivacyPane.showLocationExceptions
     );
     setEventListener(
+      "xrSettingsButton",
+      "command",
+      gPrivacyPane.showXRExceptions
+    );
+    setEventListener(
       "cameraSettingsButton",
       "command",
       gPrivacyPane.showCameraExceptions
@@ -1468,7 +1473,7 @@ var gPrivacyPane = {
     }
 
     gSubDialog.open(
-      "chrome://browser/content/sanitize.xul",
+      "chrome://browser/content/sanitize.xhtml",
       "resizable=no",
       null,
       () => {
@@ -1883,6 +1888,22 @@ var gPrivacyPane = {
     );
   },
 
+  // XR
+
+  /**
+   * Displays the XR exceptions dialog where specific site XR
+   * preferences can be set.
+   */
+  showXRExceptions() {
+    let params = { permissionType: "xr" };
+
+    gSubDialog.open(
+      "chrome://browser/content/preferences/sitePermissions.xhtml",
+      "resizable=yes",
+      params
+    );
+  },
+
   // CAMERA
 
   /**
@@ -2117,7 +2138,7 @@ var gPrivacyPane = {
     }
     */
     Services.telemetry.recordEvent("pwmgr", "open_management", "preferences");
-    gSubDialog.open("chrome://passwordmgr/content/passwordManager.xul");
+    gSubDialog.open("chrome://passwordmgr/content/passwordManager.xhtml");
   },
 
   /**
@@ -2200,32 +2221,24 @@ var gPrivacyPane = {
       safeBrowsingMalwarePref.value = enableSafeBrowsing.checked;
 
       if (enableSafeBrowsing.checked) {
-        if (blockDownloads) {
-          blockDownloads.removeAttribute("disabled");
-          if (blockDownloads.checked) {
-            blockUncommonUnwanted.removeAttribute("disabled");
-          }
-        } else {
+        blockDownloads.removeAttribute("disabled");
+        if (blockDownloads.checked) {
           blockUncommonUnwanted.removeAttribute("disabled");
         }
       } else {
-        if (blockDownloads) {
-          blockDownloads.setAttribute("disabled", "true");
-        }
+        blockDownloads.setAttribute("disabled", "true");
         blockUncommonUnwanted.setAttribute("disabled", "true");
       }
     });
 
-    if (blockDownloads) {
-      blockDownloads.addEventListener("command", function() {
-        blockDownloadsPref.value = blockDownloads.checked;
-        if (blockDownloads.checked) {
-          blockUncommonUnwanted.removeAttribute("disabled");
-        } else {
-          blockUncommonUnwanted.setAttribute("disabled", "true");
-        }
-      });
-    }
+    blockDownloads.addEventListener("command", function() {
+      blockDownloadsPref.value = blockDownloads.checked;
+      if (blockDownloads.checked) {
+        blockUncommonUnwanted.removeAttribute("disabled");
+      } else {
+        blockUncommonUnwanted.setAttribute("disabled", "true");
+      }
+    });
 
     blockUncommonUnwanted.addEventListener("command", function() {
       blockUnwantedPref.value = blockUncommonUnwanted.checked;
@@ -2237,7 +2250,7 @@ var gPrivacyPane = {
           x =>
             x !== "goog-unwanted-proto" &&
             x !== "goog-unwanted-shavar" &&
-            x !== "test-unwanted-simple"
+            x !== "moztest-unwanted-simple"
         );
 
       if (blockUncommonUnwanted.checked) {
@@ -2247,7 +2260,7 @@ var gPrivacyPane = {
           malware.push("goog-unwanted-proto");
         }
 
-        malware.push("test-unwanted-simple");
+        malware.push("moztest-unwanted-simple");
       }
 
       // sort alphabetically to keep the pref consistent
@@ -2264,20 +2277,14 @@ var gPrivacyPane = {
     enableSafeBrowsing.checked =
       safeBrowsingPhishingPref.value && safeBrowsingMalwarePref.value;
     if (!enableSafeBrowsing.checked) {
-      if (blockDownloads) {
-        blockDownloads.setAttribute("disabled", "true");
-      }
-
+      blockDownloads.setAttribute("disabled", "true");
       blockUncommonUnwanted.setAttribute("disabled", "true");
     }
 
-    if (blockDownloads) {
-      blockDownloads.checked = blockDownloadsPref.value;
-      if (!blockDownloadsPref.value) {
-        blockUncommonUnwanted.setAttribute("disabled", "true");
-      }
+    blockDownloads.checked = blockDownloadsPref.value;
+    if (!blockDownloadsPref.value) {
+      blockUncommonUnwanted.setAttribute("disabled", "true");
     }
-
     blockUncommonUnwanted.checked =
       blockUnwantedPref.value && blockUncommonPref.value;
   },
@@ -2445,7 +2452,9 @@ var gPrivacyPane = {
 
     Services.prefs.setBoolPref(PREF_UPLOAD_ENABLED, checkbox.checked);
 
-    if (Services.locale.requestedLocale == "en-US") {
+    if (!checkbox.checked) {
+      telemetryContainer.hidden = checkbox.checked;
+    } else {
       telemetryContainer.hidden = checkbox.checked;
     }
   },
