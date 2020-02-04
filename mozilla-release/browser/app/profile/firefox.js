@@ -1776,8 +1776,6 @@ pref("view_source.tab", true);
 
 pref("dom.serviceWorkers.enabled", true);
 
-pref("dom.security.featurePolicy.enabled", true);
-
 // Enable Push API.
 // CLIQZ. Not used until further investigation
 pref("dom.push.enabled", false);
