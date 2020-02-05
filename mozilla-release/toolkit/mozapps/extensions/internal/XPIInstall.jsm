@@ -3953,13 +3953,13 @@ var XPIInstall = {
     let latestCliqz;
 
     try {
-      if (cliqzFromProfile.version > cliqzFromFeatures.version) {
+      if (this.compareCliqzVersions(cliqzFromProfile.version, cliqzFromFeatures.version) == 1) {
         latestCliqz = cliqzFromProfile;
       } else {
         latestCliqz = cliqzFromFeatures;
       }
 
-      if (latestCliqz.version > cliqzFromSystem.version) {
+      if (this.compareCliqzVersions(latestCliqz.version, cliqzFromSystem.version) == 1) {
         let systemAddonLocation = XPIStates.getLocation(KEY_APP_SYSTEM_ADDONS);
         await systemAddonLocation.installer.installAddonSet(
           [latestCliqz]
@@ -3969,6 +3969,23 @@ var XPIInstall = {
       // :(
         logger.warn('System addon update failed', e)
     }
+  },
+
+  compareCliqzVersions(version1 = "", version2 = "") {
+    const newVersion = version1.split('.');
+    const oldVersion = version2.split('.');
+
+    for (let i=0; i < newVersion.length; i++) {
+      const v1 = newVersion[i] * 1;
+      const v2 = oldVersion[i] * 1;
+      if (v1 == v2) {
+        continue;
+      } else {
+        return v1 < v2 ? -1 : 1;
+      }
+    }
+
+    return 0;
   },
 
   // CLIQZ-SPECIAL: disallow downgrade of any system addon
@@ -3982,20 +3999,9 @@ var XPIInstall = {
 
       if (wantedInfo.spec.version == addon.version) continue;
 
-      const newVersion = wantedInfo.spec.version.split('.');
-      const oldVersion = addon.version.split('.');
-      let shouldUpdate = false;
-      for (let i=0; i < newVersion.length; i++) {
-        if (~~newVersion[i] == ~~oldVersion[i]) {
-          continue;
-        } else if (~~newVersion[i] < ~~oldVersion[i]) {
-          shouldUpdate = false;
-          break;
-        } else {
-          shouldUpdate = true;
-          break;
-        }
-      }
+      const newVersion = wantedInfo.spec.version;
+      const oldVersion = addon.version;
+      let shouldUpdate = this.compareCliqzVersions(newVersion, oldVersion) == 1;
 
       if (!shouldUpdate) {
         console.error('Rejecting add-on set: downgrade not allowed.')
