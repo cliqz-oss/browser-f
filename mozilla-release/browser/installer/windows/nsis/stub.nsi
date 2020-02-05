@@ -44,12 +44,10 @@ Var Bitmap1
 Var Bitmap2
 Var Bitmap3
 Var Bitmap4
-Var Bitmap5
 Var HwndBitmap1
 Var HwndBitmap2
 Var HwndBitmap3
 Var HwndBitmap4
-Var HwndBitmap5
 
 Var FontInstalling
 Var FontBlurb1
@@ -486,7 +484,6 @@ Function .onInit
   File /oname=$PLUGINSDIR\artboard1.bmp "artboard1.bmp"
   File /oname=$PLUGINSDIR\artboard2.bmp "artboard2.bmp"
   File /oname=$PLUGINSDIR\artboard3.bmp "artboard3.bmp"
-  File /oname=$PLUGINSDIR\artboard4.bmp "artboard4.bmp"
   File /oname=$PLUGINSDIR\artboard5.bmp "artboard5.bmp"
 
   SetShellVarContext all ; Set SHCTX to All Users
@@ -854,13 +851,8 @@ Function createInstall
 
   ${NSD_CreateBitmap} 29u 52u 210u 141u ""
   Pop $Bitmap4
-  ${NSD_SetImage} $Bitmap4 $PLUGINSDIR\artboard4.bmp $HwndBitmap4
+  ${NSD_SetImage} $Bitmap4 $PLUGINSDIR\artboard5.bmp $HwndBitmap4
   ShowWindow $Bitmap4 ${SW_HIDE}
-
-  ${NSD_CreateBitmap} 29u 52u 210u 141u ""
-  Pop $Bitmap5
-  ${NSD_SetImage} $Bitmap5 $PLUGINSDIR\artboard5.bmp $HwndBitmap5
-  ShowWindow $Bitmap5 ${SW_HIDE}
 
 ;  ${GetTextWidthHeight} "$(STUB_BLURB_FOOTER2)" $FontFooter \
 ;    ${INSTALL_FOOTER_WIDTH_DU} $R1 $R2
@@ -968,7 +960,6 @@ Function createInstall
   ${NSD_FreeImage} $HwndBitmap2
   ${NSD_FreeImage} $HwndBitmap3
   ${NSD_FreeImage} $HwndBitmap4
-  ${NSD_FreeImage} $HwndBitmap5
 FunctionEnd
 
 Function StartDownload
@@ -998,7 +989,7 @@ Function NextBlurb
   ${NSD_KillTimer} NextBlurb
 
   IntOp $CurrentBlurbIdx $CurrentBlurbIdx + 1
-  IntOp $CurrentBlurbIdx $CurrentBlurbIdx % 5
+  IntOp $CurrentBlurbIdx $CurrentBlurbIdx % 4
 
   ${If} $CurrentBlurbIdx == "0"
     StrCpy $0 "$(STUB_BLURB1_FIRST1)"
@@ -1013,13 +1004,9 @@ Function NextBlurb
     StrCpy $1 "$(STUB_BLURB2_THIRD1)"
     ShowWindow $Bitmap3 ${SW_SHOW}
   ${ElseIf} $CurrentBlurbIdx == "3"
-    StrCpy $0 "$(STUB_BLURB1_FOURTH1)"
-    StrCpy $1 "$(STUB_BLURB2_FOURTH1)"
-    ShowWindow $Bitmap4 ${SW_SHOW}
-  ${ElseIf} $CurrentBlurbIdx == "4"
     StrCpy $0 "$(STUB_BLURB1_FIFTH1)"
     StrCpy $1 "$(STUB_BLURB2_FIRST1)"
-    ShowWindow $Bitmap5 ${SW_SHOW}
+    ShowWindow $Bitmap4 ${SW_SHOW}
     ShowWindow $LabelBlurb3 ${SW_SHOW}
   ${EndIf}
 
@@ -1043,8 +1030,6 @@ Function ClearBlurb
     ShowWindow $Bitmap3 ${SW_HIDE}
   ${ElseIf} $CurrentBlurbIdx == "3"
     ShowWindow $Bitmap4 ${SW_HIDE}
-  ${ElseIf} $CurrentBlurbIdx == "4"
-    ShowWindow $Bitmap5 ${SW_HIDE}
     ShowWindow $LabelBlurb3 ${SW_HIDE}
   ${EndIf}
 
