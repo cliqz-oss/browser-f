@@ -1256,7 +1256,7 @@ BrowserGlue.prototype = {
     SaveToPocket.init();
 #endif
     Services.obs.notifyObservers(null, "browser-ui-startup-complete");
-    if (AppConstants.platform != "macosx") {
+    if (AppConstants.platform == "win") {
       cliqz_shouldMakeEnterpriseRootsEnabled();
     }
   },
