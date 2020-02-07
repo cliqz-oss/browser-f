@@ -18,6 +18,10 @@ graph-total-tracker-summary =
         [one] <b>{ $count }</b> Skript zur Aktivitätenverfolgung blockiert seit { DATETIME($earliestDate, day: "numeric", month: "long", year: "numeric") }.
        *[other] <b>{ $count }</b> Skripte zur Aktivitätenverfolgung blockiert seit  { DATETIME($earliestDate, day: "numeric", month: "long", year: "numeric") }.
     }
+# Text displayed instead of the graph when in Private Mode
+graph-private-window = { -brand-short-name } wird weiterhin Elemente zur Aktivitätenverfolgung in privaten Fenstern blockieren, aber nicht aufzeichnen, was blockiert wurde.
+# Weekly summary of the graph when the graph is empty in Private Mode
+graph-week-summary-private-window = Elemente zur Aktivitätenverfolgung, die { -brand-short-name } diese Woche blockiert hat
 # The terminology used to refer to categories of Content Blocking is also used in chrome/browser/browser.properties and should be translated consistently.
 # "Standard" in this case is an adjective, meaning "default" or "normal".
 # The category name in the <b> tag will be bold.
@@ -65,15 +69,6 @@ lockwise-passwords-stored =
     }
 turn-on-sync = { -sync-brand-short-name } aktivieren…
     .title = Sync-Einstellungen öffnen
-manage-devices = Geräte verwalten
-# Variables:
-#   $count (Number) - Number of devices connected with sync.
-lockwise-sync-status =
-    { $count ->
-        [one] Synchronisiert mit { $count } anderen Gerät
-       *[other] Synchronisiert mit { $count } anderen Geräten
-    }
-lockwise-sync-not-syncing-devices = Synchronisiert nicht mit anderen Geräten
 manage-connected-devices = Geräte verwalten…
 # Variables:
 #   $count (Number) - Number of devices connected with sync.
@@ -133,34 +128,34 @@ bar-tooltip-social =
     .title = Skripte zur Aktivitätenverfolgung durch soziale Netzwerke
     .aria-label =
         { $count ->
-            [one] { $count } Skript zur Aktivitätenverfolgung durch soziale Netzwerke ({ $percentage }%)
-           *[other] { $count } Skripte zur Aktivitätenverfolgung durch soziale Netzwerke ({ $percentage }%)
+            [one] { $count } Skript zur Aktivitätenverfolgung durch soziale Netzwerke ({ $percentage } %)
+           *[other] { $count } Skripte zur Aktivitätenverfolgung durch soziale Netzwerke ({ $percentage } %)
         }
 bar-tooltip-cookie =
     .title = Cookies zur seitenübergreifenden Aktivitätenverfolgung
     .aria-label =
         { $count ->
-            [one] { $count } Cookie zur seitenübergreifenden Aktivitätenverfolgung ({ $percentage }%)
-           *[other] { $count } Cookies zur seitenübergreifenden Aktivitätenverfolgung ({ $percentage }%)
+            [one] { $count } Cookie zur seitenübergreifenden Aktivitätenverfolgung ({ $percentage } %)
+           *[other] { $count } Cookies zur seitenübergreifenden Aktivitätenverfolgung ({ $percentage } %)
         }
 bar-tooltip-tracker =
     .title = Inhalte zur Aktivitätenverfolgung
     .aria-label =
         { $count ->
-            [one] { $count } Inhalt zur Aktivitätenverfolgung ({ $percentage }%)
-           *[other] { $count } Inhalte zur Aktivitätenverfolgung ({ $percentage }%)
+            [one] { $count } Inhalt zur Aktivitätenverfolgung ({ $percentage } %)
+           *[other] { $count } Inhalte zur Aktivitätenverfolgung ({ $percentage } %)
         }
 bar-tooltip-fingerprinter =
     .title = Identifizierer (Fingerprinter)
     .aria-label =
         { $count ->
-            [one] { $count } Identifizierer (Fingerprinter) ({ $percentage }%)
-           *[other] { $count } Identifizierer (Fingerprinter) ({ $percentage }%)
+            [one] { $count } Identifizierer (Fingerprinter) ({ $percentage } %)
+           *[other] { $count } Identifizierer (Fingerprinter) ({ $percentage } %)
         }
 bar-tooltip-cryptominer =
     .title = Heimliche Digitalwährungsberechner (Krypto-Miner)
     .aria-label =
         { $count ->
-            [one] { $count } Heimlicher Digitalwährungsberechner (Krypto-Miner) ({ $percentage }%)
-           *[other] { $count } Heimliche Digitalwährungsberechner (Krypto-Miner) ({ $percentage }%)
+            [one] { $count } Heimlicher Digitalwährungsberechner (Krypto-Miner) ({ $percentage } %)
+           *[other] { $count } Heimliche Digitalwährungsberechner (Krypto-Miner) ({ $percentage } %)
         }

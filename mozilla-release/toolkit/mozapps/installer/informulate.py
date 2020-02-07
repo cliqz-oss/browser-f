@@ -15,7 +15,7 @@ def parse_cmdline(args):
     for arg in args:
         key, s, value = arg.partition("=")
         if s == '':
-            print "ERROR: Malformed command line key value pairing (%s)" % arg
+            print("ERROR: Malformed command line key value pairing (%s)" % arg)
             exit(1)
         contents[key.lower()] = value
     return contents
@@ -23,7 +23,7 @@ def parse_cmdline(args):
 
 def main():
     if len(sys.argv) < 2:
-        print "ERROR: You must specify an output file"
+        print("ERROR: You must specify an output file")
         exit(1)
 
     all_key_value_pairs = {}

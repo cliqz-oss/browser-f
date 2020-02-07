@@ -81,9 +81,6 @@ with Files("OpenInTabsUtils.jsm"):
 with Files("PermissionUI.jsm"):
    BUG_COMPONENT = ("Firefox", "Site Permissions")
 
-with Files("PermissionUITelemetry.jsm"):
-   BUG_COMPONENT = ("Firefox", "Site Permissions")
-
 with Files("ProcessHangMonitor.jsm"):
     BUG_COMPONENT = ("Core", "DOM: Content Processes")
 
@@ -151,7 +148,6 @@ EXTRA_JS_MODULES += [
     'NewTabPagePreloading.jsm',
     'OpenInTabsUtils.jsm',
     'PermissionUI.jsm',
-    'PermissionUITelemetry.jsm',
     'PingCentre.jsm',
     'ProcessHangMonitor.jsm',
     'ReaderParent.jsm',
@@ -180,6 +176,11 @@ if CONFIG['MOZ_ACTIVITY_STREAM']:
 if CONFIG['MOZ_ASAN_REPORTER']:
     EXTRA_JS_MODULES += [
         'AsanReporter.jsm',
+    ]
+
+if CONFIG['NIGHTLY_BUILD']:
+    EXTRA_JS_MODULES += [
+        'DelegatedCredsExperiment.jsm',
     ]
 
 if CONFIG['MOZ_WIDGET_TOOLKIT'] == 'windows':

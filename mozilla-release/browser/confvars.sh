@@ -7,7 +7,6 @@ MOZ_APP_BASENAME=Cliqz
 MOZ_APP_VENDOR="Cliqz GmbH"
 MOZ_APP_UA_NAME=Firefox
 MOZ_UPDATER=1
-MOZ_PHOENIX=1
 
 if test "$OS_ARCH" = "WINNT"; then
   if ! test "$HAVE_64BIT_BUILD"; then

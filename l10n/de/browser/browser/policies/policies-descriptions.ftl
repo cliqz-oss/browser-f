@@ -76,6 +76,7 @@ policy-OverridePostUpdatePage = Cliqz-Neuigkeiten-Seite - angezeigt nach Program
 
 policy-PasswordManagerEnabled = Speichern von Passwörtern in der Passwortverwaltung aktivieren
 policy-Permissions = Berechtigungen für Kamera, Mikrofon, Standort und Benachrichtigungen festlegen
+policy-Permissions2 = Berechtigungen für Kamera, Mikrofon, Standort, Benachrichtigungen und automatische Wiedergabe festlegen
 policy-PopupBlocking = Popups für festgelegte Websites standardmäßig anzeigen
 policy-Preferences = Werte von bestimmten Einstellungen festlegen und Änderungen daran verhindern
 policy-PromptForDownloadLocation = Für gestartete Downloads nach Speicherort fragen

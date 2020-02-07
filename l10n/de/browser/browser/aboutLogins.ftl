@@ -46,6 +46,7 @@ login-list-count =
     }
 login-list-sort-label-text = Sortieren nach:
 login-list-name-option = Name (A-Z)
+login-list-name-reverse-option = Name (Z-A)
 login-list-breached-option = Websites mit Datenlecks
 login-list-last-changed-option = Zuletzt geändert
 login-list-last-used-option = Zuletzt verwendet
@@ -73,7 +74,6 @@ about-logins-intro-import = Wenn Ihre Zugangsdaten in einem anderen Browser gesp
 
 login-item-new-login-title = Neue Zugangsdaten hinzufügen
 login-item-edit-button = Bearbeiten
-login-item-delete-button = Entfernen
 about-logins-login-item-remove-button = Entfernen
 login-item-origin-label = Adresse der Website
 login-item-origin =
@@ -88,6 +88,8 @@ login-item-password-reveal-checkbox-show =
     .title = Passwort anzeigen
 login-item-password-reveal-checkbox-hide =
     .title = Passwort verbergen
+login-item-password-reveal-checkbox =
+    .aria-label = Passwort anzeigen
 login-item-copy-password-button-text = Kopieren
 login-item-copied-password-button-text = Kopiert
 login-item-save-changes-button = Änderungen speichern
@@ -118,7 +120,6 @@ enable-password-sync-preferences-button =
            *[other] Einstellungen für { -sync-brand-short-name } öffnen
         }
     .accesskey = E
-confirm-delete-dialog-title = Diese Zugangsdaten entfernen
 about-logins-enable-password-sync-dont-ask-again-button =
     .label = Nicht mehr nachfragen
     .accesskey = N
@@ -130,7 +131,6 @@ confirmation-dialog-dismiss-button =
     .title = Abbrechen
 about-logins-confirm-remove-dialog-title = Diese Zugangsdaten entfernen?
 confirm-delete-dialog-message = Diese Aktion kann nicht rückgängig gemacht werden.
-confirm-delete-dialog-confirm-button = Entfernen
 about-logins-confirm-remove-dialog-confirm-button = Entfernen
 confirm-discard-changes-dialog-title = Nicht gespeicherte Änderungen verwerfen?
 confirm-discard-changes-dialog-message = Alle nicht gespeicherten Änderungen gehen verloren.
