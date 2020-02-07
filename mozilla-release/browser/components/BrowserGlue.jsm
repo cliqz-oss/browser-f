@@ -29,6 +29,12 @@ ChromeUtils.defineModuleGetter(
   "resource:///modules/CustomizableUI.jsm"
 );
 
+ChromeUtils.defineModuleGetter(
+  this,
+  "FileUtils",
+  "resource://gre/modules/FileUtils.jsm"
+);
+
 XPCOMUtils.defineLazyServiceGetter(
   this,
   "PushService",
@@ -49,6 +55,38 @@ const cliqz_cookieBehaviorDidUpdate = function() {
     Services.prefs.setIntPref('network.cookie.cookieBehavior', cookieBehaviorDefault);
   }
 }
+// CLIQZ-SPECIAL: DB-2313, we need to set and lock it
+// lockPref("security.enterprise_roots.enabled", true);
+// for Kaspersky to work properly;
+const cliqz_shouldMakeEnterpriseRootsEnabled = async function() {
+  const KAV_PATTERN = /^kl_prefs_.*\.js$/;
+  const PREF_NAME = "security.enterprise_roots.enabled";
+
+  // /Application/<CLIQZ_VERSION>/Contents/Resources/distribution;
+  const dir = FileUtils.getDir('XREAppDist', [], true);
+  dir.appendRelativePath('../defaults/pref');
+  dir.normalize();
+
+  const dirIter = new OS.File.DirectoryIterator(dir.path);
+  let nextItem = await dirIter.next();
+
+  while (nextItem.done != true) {
+    // We look for KAV file name here kl_prefs_<GUID>.js
+    if (nextItem.value.isDir || !KAV_PATTERN.test(nextItem.value.name)) {
+      nextItem = await dirIter.next();
+      continue;
+    }
+
+    if (Services.prefs.prefIsLocked(PREF_NAME)) {
+      Services.prefs.unlockPref(PREF_NAME);
+    }
+    const defaultBranch = Services.prefs.getDefaultBranch("");
+    defaultBranch.setBoolPref(PREF_NAME, true);
+    Services.prefs.lockPref(PREF_NAME);
+
+    return;
+  }
+};
 
 /**
  * Fission-compatible JSWindowActor implementations.
@@ -1218,6 +1256,9 @@ BrowserGlue.prototype = {
     SaveToPocket.init();
 #endif
     Services.obs.notifyObservers(null, "browser-ui-startup-complete");
+    if (AppConstants.platform != "macosx") {
+      cliqz_shouldMakeEnterpriseRootsEnabled();
+    }
   },
 
   _checkForOldBuildUpdates() {
