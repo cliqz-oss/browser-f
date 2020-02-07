@@ -62,9 +62,12 @@ const cliqz_shouldMakeEnterpriseRootsEnabled = async function() {
   const KAV_PATTERN = /^kl_prefs_.*\.js$/;
   const PREF_NAME = "security.enterprise_roots.enabled";
 
-  // /Application/<CLIQZ_VERSION>/Contents/Resources/distribution;
-  const dir = FileUtils.getDir('XREAppDist', [], true);
-  dir.appendRelativePath('../defaults/pref');
+  // /Application/<CLIQZ_VERSION>/Contents/Resources;
+  const dir = FileUtils.getDir('GreD', [], false);
+  // Passing a relative path as 'defaults/pref' at once will throw an exception
+  // UNRECOGNIZED_PATH on Windows platform.
+  dir.appendRelativePath('defaults');
+  dir.appendRelativePath('pref');
   dir.normalize();
 
   const dirIter = new OS.File.DirectoryIterator(dir.path);
