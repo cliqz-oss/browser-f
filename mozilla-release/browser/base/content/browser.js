@@ -664,7 +664,6 @@ var gInitialPages = [
   "about:newinstall",
 #endif
   CliqzResources.getFreshTabUrl(),
-  CliqzResources.getWelcomeUrl(),
 #if 0
 ];
 
@@ -1564,6 +1563,7 @@ function _loadURI(browser, uri, params = {}) {
   let loadFlags =
     params.loadFlags || params.flags || Ci.nsIWebNavigation.LOAD_FLAGS_NONE;
 
+  uri = CliqzResources.matchUrlByString(uri);
   if (CliqzResources.isCliqzPage(uri)) {
     loadFlags = loadFlags | Ci.nsIWebNavigation.LOAD_FLAGS_BYPASS_HISTORY;
   }

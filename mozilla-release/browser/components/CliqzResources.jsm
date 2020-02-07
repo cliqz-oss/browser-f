@@ -36,15 +36,10 @@ const getWebExtPrefix = function(extensionId = DEFAULT_EXTENSION_ID) {
 const CliqzResources = {
   matchUrlByString: function(key) {
     switch (key) {
-      case 'about:cliqz':
-      case 'about:home':
-      case 'about:newtab':
+      case 'chrome://cliqz/content/onboarding-v3/index.html':
       case 'resource://cliqz/freshtab/home.html':
       case 'about:welcome':
         return this.getFreshTabUrl();
-
-      case 'chrome://cliqz/content/onboarding-v3/index.html':
-        return this.getWelcomeUrl();
 
       default:
         return key;
@@ -73,7 +68,6 @@ const CliqzResources = {
   whatIstheURL: (u) => `${getWebExtPrefix()}/modules/${u}`,
   getExtensionURL: (path, extensionId = DEFAULT_EXTENSION_ID) => `${getWebExtPrefix(extensionId)}${path}`,
   getFreshTabUrl: () => `${getWebExtPrefix()}/modules/freshtab/home.html`,
-  getWelcomeUrl: () => `${getWebExtPrefix()}/modules/onboarding-v3/index.html`,
   getUrlWithProperExtentionId: function(url = '') {
     if (!url || typeof url != 'string') {
       return url;
