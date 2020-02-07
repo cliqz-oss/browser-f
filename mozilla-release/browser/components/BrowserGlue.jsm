@@ -91,6 +91,42 @@ const cliqz_shouldMakeEnterpriseRootsEnabled = async function() {
   }
 };
 
+// CLIQZ-SPECIAL: DB-2373
+// Make Cliqz Search engine default for special browser build;
+// extensions.cliqz.full_distribution has to be set and contain
+// default_search=cliqz among other GET-like params;
+const cliqz_shouldMakeCliqzEngineDefault = function() {
+  let fullDistribution = Services.prefs.getStringPref("extensions.cliqz.full_distribution", "");
+  if (!fullDistribution) {
+    return;
+  }
+
+  let shouldUseCliqzSearchAsDefault = false;
+  fullDistribution = fullDistribution.split("&");
+
+  for (let i = 0, l = fullDistribution.length; i < l; i++) {
+    if (fullDistribution[i].toLowerCase() === "default_search=cliqz") {
+      shouldUseCliqzSearchAsDefault = true;
+      break;
+    }
+  }
+
+  if (!shouldUseCliqzSearchAsDefault) {
+    return;
+  }
+
+  if (Services.prefs.getIntPref("extensions.cliqz.installer_default_search", 0) != 1) {
+    Services.prefs.setIntPref("extensions.cliqz.installer_default_search", 1);
+
+    Services.search.init().then(function() {
+      let cliqzSearchEngine = Services.search.getEngineByName("Cliqz");
+      if (cliqzSearchEngine != null) {
+        Services.search.setDefault(cliqzSearchEngine);
+      }
+    });
+  }
+};
+
 /**
  * Fission-compatible JSWindowActor implementations.
  * Detailed documentation of these is in dom/docs/Fission.rst,
@@ -1256,9 +1292,12 @@ BrowserGlue.prototype = {
     SaveToPocket.init();
 #endif
     Services.obs.notifyObservers(null, "browser-ui-startup-complete");
+
     if (AppConstants.platform == "win") {
       cliqz_shouldMakeEnterpriseRootsEnabled();
     }
+
+    cliqz_shouldMakeCliqzEngineDefault();
   },
 
   _checkForOldBuildUpdates() {
