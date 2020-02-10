@@ -8,6 +8,7 @@ var gExperimentsPane = {
     document.getElementById('datEnable').addEventListener('click', () => {
       AddonManager.getAddonByID(this.DAT_ADDON_ID).then((addon) => {
         if (addon.isActive) {
+          Services.prefs.setBoolPref("extension.cliqz.dat.enabled", false);
           addon.disable();
           // reset dat settings iframe (as extension is now disabled)
           const iframeEl = document.getElementById('theExperimentsFrame');
@@ -15,6 +16,7 @@ var gExperimentsPane = {
             iframeEl.setAttribute('src', 'about:blank');
           }
         } else {
+          Services.prefs.setBoolPref("extension.cliqz.dat.enabled", true);
           addon.enable().then(() => {
             this.loadDatSettings();
           });

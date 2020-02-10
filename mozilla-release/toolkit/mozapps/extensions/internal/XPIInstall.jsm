@@ -740,6 +740,15 @@ var loadManifest = async function(aPackage, aLocation, aOldAddon) {
   }
   */
 
+  // CLIQZ-SPECIAL: enable/disable DAT extension.
+  if (addon.id === 'dat@cliqz.com') {
+    const isDatEnabled = Services.prefs.getBoolPref("extension.cliqz.dat.enabled", false);
+    if (!isDatEnabled && !addon.userDisabled) {
+      addon.userDisabled = true;
+      addon.softDisabled = true;
+    }
+  }
+
   addon.propagateDisabledState(aOldAddon);
   await addon.updateBlocklistState();
   addon.appDisabled = !XPIDatabase.isUsableAddon(addon);

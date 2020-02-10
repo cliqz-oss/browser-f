@@ -2389,3 +2389,8 @@ pref("first-startup.timeout", 30000);
 
 // Cliqz labs preference pane
 pref("extensions.cliqz.labs.enabled", true);
+#if MOZ_UPDATE_CHANNEL == beta
+  pref("extension.cliqz.dat.enabled", true);
+#else
+  pref("extension.cliqz.dat.enabled", false);
+#endif
