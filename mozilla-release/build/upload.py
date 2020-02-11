@@ -253,7 +253,7 @@ def UploadFilesToS3(s3_bucket, s3_path, files, package, verbose=False):
         bucket_key = boto.s3.key.Key(bucket)
         bucket_key.key = full_key_name
         if verbose:
-            print "Uploading " + source_file
+            print("Uploading " + source_file)
 
         bucket_key.set_contents_from_filename(source_file)
 
@@ -266,7 +266,7 @@ def UploadFilesToS3(s3_bucket, s3_path, files, package, verbose=False):
 
 
     if verbose:
-        print "Upload complete"
+        print("Upload complete")
 
     return properties
 
@@ -293,12 +293,12 @@ def UploadServiceFilesToS3(s3_bucket, s3_path, files, verbose=False):
         bucket_key.key = full_key_name
 
         if verbose:
-            print "Uploading service file " + source_file
+            print("Uploading service file " + source_file)
 
         bucket_key.set_contents_from_filename(source_file)
 
     if verbose:
-        print "Upload service files complete"
+        print("Upload service files complete")
 
 def UploadFiles(user, host, path, files, verbose=False, port=None, ssh_key=None, base_path=None,
                 upload_to_temp_dir=False, post_upload_command=None, package=None):
