@@ -69,7 +69,7 @@ ECHO INFO: Build configuration - %CHANNEL_INFO% channel, %PLATFORM_INFO% (%LOCAL
 :::::::::::::::::::::::::::::::::::
 ECHO INFO: Setting up cert db
 
-RM /S /Q %CQZ_CERT_DB_PATH%
+RMDIR /S /Q %CQZ_CERT_DB_PATH%
 MD %CQZ_CERT_DB_PATH%
 CD /D C:\nss
 certutil -N -d %CQZ_CERT_DB_PATH% -f emptypw.txt
