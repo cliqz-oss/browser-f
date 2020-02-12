@@ -724,6 +724,7 @@ HttpObserverManager = {
       }
 
       const isSecondaryTab = tabs.find(t => {
+        // This checks if the tab is opened in new tab by context menu or target_blank.
         if (t.owner == selectedTab) {
           return t;
         } else if (t.hasOwnProperty('openerTab') && finalURL.includes(t._fullLabel)) {
@@ -734,26 +735,8 @@ HttpObserverManager = {
         }
       });
 
-      let isSecondaryWindow = false;
-      try {
-        const { BrowserWindowTracker } = ChromeUtils.import("resource:///modules/BrowserWindowTracker.jsm");
-        BrowserWindowTracker.orderedWindows.forEach(w => {
-          if (w.gBrowser.tabs[0]._fullLabel === originURL) {
-            w.gBrowser.removeTab(tabs[0]);
-            isSecondaryWindow = true;
-          }
-        });
-      } catch(e){
-        // Hopefully it never enters here.
-      }
-
       if (isSecondaryTab) {
         gBrowser.removeTab(isSecondaryTab);
-      } else if (!isSecondaryWindow){
-        if (tabs.length === 1) {
-          openTrustedLinkIn(freshTabURL, "tab");
-        }
-        gBrowser.removeTab(selectedTab);
       }
 
       try {
