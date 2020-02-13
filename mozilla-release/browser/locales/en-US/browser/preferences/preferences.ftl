@@ -56,10 +56,6 @@ pane-sync-title2 = { -sync-brand-short-name }
 category-sync2 =
     .tooltiptext = { pane-sync-title2 }
 
-pane-connect-title = Connect
-category-connect =
-    .tooltiptext = { pane-connect-title }
-
 pane-experiments-title = Labs
 category-experiments =
     .tooltiptext = { pane-experiments-title }

@@ -219,10 +219,6 @@ button > hbox > label {
   list-style-image: url("chrome://browser/skin/preferences/in-content/sync.svg");
 }
 
-#category-connect > .category-icon {
-  list-style-image: url("chrome://browser/skin/preferences/in-content/connect.svg");
-}
-
 #category-experiments > .category-icon {
   list-style-image: url("chrome://browser/skin/preferences/in-content/experiments.svg");
 }
