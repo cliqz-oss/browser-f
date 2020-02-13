@@ -9,6 +9,7 @@ cd $SRC_BASE
 cd $OBJ_DIR
 
 echo '***** Generate DEBIAN repository *****'
+export GPG_TTY=$(tty) # Fix https://github.com/keybase/keybase-issues/issues/2798
 gpg --allow-secret-key-import --import $DEBIAN_GPG_KEY
 # get key name from the key, example:
 #   :user ID packet: "Debian PR <debian-pr@cliqz.com>"
