@@ -62,11 +62,11 @@ RUN apt-get update && apt-get install --yes \
   yasm \
   zip
 
-# Install clang + llvm version 10
+# Install clang + llvm version 9
 RUN wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key | apt-key add - \
- && add-apt-repository "deb http://apt.llvm.org/bionic/ llvm-toolchain-bionic-10 main" \
+ && add-apt-repository "deb http://apt.llvm.org/bionic/ llvm-toolchain-bionic-9 main" \
  && apt-get update \
- && apt-get install --yes clang-10 lldb-10 lld-10 clangd-10 libclang-10-dev
+ && apt-get install --yes clang-9 lldb-9 lld-9 clangd-9 libclang-9-dev
 
 # Install awscli
 RUN pip install awscli==1.17.5
@@ -83,7 +83,7 @@ RUN wget -qO- https://deb.nodesource.com/gpgkey/nodesource.gpg.key | apt-key add
  && apt-get update \
  && apt-get install --yes nodejs
 
-# Install Rust toolchain version 1.41.0
+# Install Rust toolchain version 1.39.0
 ENV RUSTUP_HOME=/usr/local/rustup \
   CARGO_HOME=/usr/local/cargo \
   PATH=/usr/local/cargo/bin:$PATH
@@ -91,7 +91,7 @@ ENV RUSTUP_HOME=/usr/local/rustup \
 RUN wget "https://static.rust-lang.org/rustup/archive/1.21.1/x86_64-unknown-linux-gnu/rustup-init" \
  && echo "ad1f8b5199b3b9e231472ed7aa08d2e5d1d539198a15c5b1e53c746aad81d27b *rustup-init" | sha256sum -c - \
  && chmod +x rustup-init \
- && ./rustup-init -y --no-modify-path --default-toolchain 1.41.0 \
+ && ./rustup-init -y --no-modify-path --default-toolchain 1.39.0 \
  && rm rustup-init \
  && chmod -R a+w $RUSTUP_HOME $CARGO_HOME \
  && rustup --version \
@@ -128,7 +128,7 @@ RUN mkdir /builds
 
 USER $user
 
-ENV CC="clang-10 --target=x86_64-unknown-linux-gnu"
-ENV CXX="clang++-10 --target=x86_64-unknown-linux-gnu"
+ENV CC="clang-9 --target=x86_64-unknown-linux-gnu"
+ENV CXX="clang++-9 --target=x86_64-unknown-linux-gnu"
 
 SHELL ["/bin/bash", "-l", "-c"]

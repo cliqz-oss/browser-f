@@ -122,6 +122,9 @@ fi
 # set our own BUILD_ID in new build system, must be specified in format %Y%m%d%H%M%S
 export MOZ_BUILD_DATE=$CQZ_BUILD_ID
 
+export MOZ_SOURCE_REPO=https://github.com/cliqz-oss/browser-f
+export MOZ_SOURCE_CHANGESET=$CQZ_BUILD_ID
+
 # set path on S3 with BUILD_ID. From this path we take *.xpi and upload
 # build artifacts back (to locale folder, same as FF)
 export S3_UPLOAD_PATH=`echo dist/$CQZ_RELEASE_CHANNEL/$CQZ_VERSION/$MOZ_BUILD_DATE`
@@ -141,4 +144,3 @@ export CQZ_ADULT_DOMAINS_BF=../adult-domains.bin
 
 export ROOT_PATH=$PWD
 export SHELL=$SHELL
-
