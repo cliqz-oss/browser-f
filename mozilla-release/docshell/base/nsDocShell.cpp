@@ -8988,15 +8988,10 @@ nsresult nsDocShell::InternalLoad(nsDocShellLoadState* aLoadState,
     nsCOMPtr<nsIURI> uri = aLoadState->URI();
     do {
 
-      // CLIQZ-SPECIAL: DB-2259 - In e10s, FF allows only moz-extension urls
+      // CLIQZ-SPECIAL: In e10s, FF allows only moz-extension urls
       // which are run in the parent process.
-      // That is why we can not load connect page via iframe directly without
+      // That is why we can not load extension page via iframe directly without
       // following hack.
-      nsCString connectURLString;
-      Preferences::GetCString("extensions.webextensions.connectUrl", connectURLString);
-      if (uri->SchemeIs("moz-extension") && uri->GetSpecOrDefault().Equals(connectURLString)) {
-        break;
-      }
       nsCString datURLString;
       Preferences::GetCString("extensions.webextensions.datUrl", datURLString);
       if (uri->SchemeIs("moz-extension") && uri->GetSpecOrDefault().Equals(datURLString)) {

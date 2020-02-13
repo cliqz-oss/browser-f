@@ -116,7 +116,6 @@
   skin/classic/browser/panel-icon-retry.svg                    (../shared/panel-icon-retry.svg)
   skin/classic/browser/toolbar-drag-indicator.svg              (../shared/toolbar-drag-indicator.svg)
 
-  skin/classic/browser/preferences/in-content/connect.svg      (../shared/incontentprefs/connect.svg)
   skin/classic/browser/preferences/in-content/bookmark.svg     (../shared/incontentprefs/bookmark.svg)
 #if 0
   skin/classic/browser/preferences/in-content/critters-postcard.jpg       (../shared/incontentprefs/critters-postcard.jpg)
@@ -175,7 +174,6 @@
   skin/classic/browser/chevron.svg                    (../shared/icons/chevron.svg)
   skin/classic/browser/chevron-animation.svg          (../shared/icons/chevron-animation.svg)
   skin/classic/browser/check-animation.svg            (../shared/icons/check-animation.svg)
-  skin/classic/browser/connect.svg                    (../shared/icons/connect.svg)
   skin/classic/browser/customize.svg                  (../shared/icons/customize.svg)
   skin/classic/browser/developer.svg                  (../shared/icons/developer.svg)
   skin/classic/browser/device-phone.svg               (../shared/icons/device-phone.svg)

@@ -172,7 +172,3 @@ toolbarpaletteitem[place="palette"] > #bookmarks-menu-button,
 #appMenu-library-downloads-show-button {
   list-style-image: url("chrome://browser/skin/folder.svg");
 }
-
-#appMenu-cliqz-connect-button {
-  list-style-image: url(chrome://browser/skin/connect.svg);
-}
