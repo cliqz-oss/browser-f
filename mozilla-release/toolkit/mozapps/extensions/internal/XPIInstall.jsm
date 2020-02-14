@@ -1511,6 +1511,13 @@ class AddonInstall {
    * Removes the temporary file owned by this AddonInstall if there is one.
    */
   removeTemporaryFile() {
+    // CLIQZ-SPECIAL: do not delete files if its system addon location
+    // we need to do this because of updateCliqzToLatest.
+    const loc = (this.location && this.location.name) || "";
+    if ([KEY_APP_SYSTEM_ADDONS, KEY_APP_SYSTEM_DEFAULTS].includes(loc)) {
+      return;
+    }
+
     // Only proceed if this AddonInstall owns its XPI file
     if (!this.ownsTempFile) {
       this.logger.debug(
@@ -3960,19 +3967,21 @@ var XPIInstall = {
     let cliqzFromSystem = await this.getCliqzAddonFromLocation(KEY_APP_SYSTEM_ADDONS) || {};
     let cliqzFromFeatures = await this.getCliqzAddonFromLocation(KEY_APP_SYSTEM_DEFAULTS) || {};
     let latestCliqz;
+    let loc;
 
     try {
       if (this.compareCliqzVersions(cliqzFromProfile.version, cliqzFromFeatures.version) == 1) {
         latestCliqz = cliqzFromProfile;
+        loc = KEY_APP_PROFILE;
       } else {
         latestCliqz = cliqzFromFeatures;
+        loc = KEY_APP_SYSTEM_DEFAULTS;
       }
 
       if (this.compareCliqzVersions(latestCliqz.version, cliqzFromSystem.version) == 1) {
         let systemAddonLocation = XPIStates.getLocation(KEY_APP_SYSTEM_ADDONS);
-        await systemAddonLocation.installer.installAddonSet(
-          [latestCliqz]
-        );
+        const addonsFromLocation = await XPIDatabase.getAddonsInLocation(loc);
+        await systemAddonLocation.installer.installAddonSet(addonsFromLocation);
       }
     } catch(e) {
       // :(
