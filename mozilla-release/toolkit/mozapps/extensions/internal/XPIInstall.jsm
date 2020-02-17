@@ -1511,13 +1511,6 @@ class AddonInstall {
    * Removes the temporary file owned by this AddonInstall if there is one.
    */
   removeTemporaryFile() {
-    // CLIQZ-SPECIAL: do not delete files if its system addon location
-    // we need to do this because of updateCliqzToLatest.
-    const loc = (this.location && this.location.name) || "";
-    if ([KEY_APP_SYSTEM_ADDONS, KEY_APP_SYSTEM_DEFAULTS].includes(loc)) {
-      return;
-    }
-
     // Only proceed if this AddonInstall owns its XPI file
     if (!this.ownsTempFile) {
       this.logger.debug(
@@ -3954,41 +3947,6 @@ var XPIInstall = {
     return addon;
   },
 
-  async getCliqzAddonFromLocation(loc) {
-    const addons = addonMap(
-      await XPIDatabase.getAddonsInLocation(loc)
-    );
-    return addons.get("cliqz@cliqz.com");
-  },
-
-  // CLIQZ-SPECIAL: install latest version from browser package
-  async updateCliqzToLatest() {
-    let cliqzFromProfile = await this.getCliqzAddonFromLocation(KEY_APP_PROFILE) || {};
-    let cliqzFromSystem = await this.getCliqzAddonFromLocation(KEY_APP_SYSTEM_ADDONS) || {};
-    let cliqzFromFeatures = await this.getCliqzAddonFromLocation(KEY_APP_SYSTEM_DEFAULTS) || {};
-    let latestCliqz;
-    let loc;
-
-    try {
-      if (this.compareCliqzVersions(cliqzFromProfile.version, cliqzFromFeatures.version) == 1) {
-        latestCliqz = cliqzFromProfile;
-        loc = KEY_APP_PROFILE;
-      } else {
-        latestCliqz = cliqzFromFeatures;
-        loc = KEY_APP_SYSTEM_DEFAULTS;
-      }
-
-      if (this.compareCliqzVersions(latestCliqz.version, cliqzFromSystem.version) == 1) {
-        let systemAddonLocation = XPIStates.getLocation(KEY_APP_SYSTEM_ADDONS);
-        const addonsFromLocation = await XPIDatabase.getAddonsInLocation(loc);
-        await systemAddonLocation.installer.installAddonSet(addonsFromLocation);
-      }
-    } catch(e) {
-      // :(
-        logger.warn('System addon update failed', e)
-    }
-  },
-
   compareCliqzVersions(version1 = "", version2 = "") {
     const newVersion = version1.split('.');
     const oldVersion = version2.split('.');
@@ -4046,9 +4004,6 @@ var XPIInstall = {
     if (Services.appinfo.inSafeMode) {
       return;
     }
-
-    // CLIQZ-SPECIAL: make sure that the latest version of system addon available is installed.
-    await this.updateCliqzToLatest();
 
     // Download the list of system add-ons
     let url = Services.prefs.getStringPref(PREF_SYSTEM_ADDON_UPDATE_URL, null);
