@@ -3112,7 +3112,6 @@ for (let meth of [
   "installBuiltinAddon",
   "isInstallAllowed",
   "isInstallEnabled",
-  "updateCliqzToLatest",
   "updateSystemAddons",
 ]) {
   XPIProvider[meth] = function() {
