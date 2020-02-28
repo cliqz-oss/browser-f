@@ -37,6 +37,17 @@
   margin-bottom: 10px;
 }
 
+/* CLIQZ-SPECIAL: DB-2422, fix for CloseButton right alignment */
+#UITourTooltip[targetName="onboarding-v4"] #UITourTooltipTitleContainer {
+  -moz-box-pack: end;
+}
+/* DB-2422: no uppercase letters on the buttons */
+#UITourTooltip[targetName="onboarding-v4"] #UITourTooltipButtons .button-primary .button-text,
+#UITourTooltip[targetName="onboarding-v4"] #UITourTooltipButtons .button-link .button-text {
+  text-transform: initial;
+}
+/***************************************************************/
+
 #UITourTooltipIcon {
   width: 48px;
   height: 48px;
