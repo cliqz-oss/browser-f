@@ -64,6 +64,14 @@ static bool gMainChild;
 // Whether we are replaying on a cloud machine.
 static bool gReplayingInCloud;
 
+// Firefox installation directory.
+static char* gInstallDirectory;
+
+// Location within the installation directory where the current executable
+// should be running.
+static const char gExecutableSuffix[] =
+    "Contents/MacOS/plugin-container.app/Contents/MacOS/plugin-container";
+
 static void InitializeCrashDetector();
 
 extern "C" {
@@ -129,6 +137,20 @@ MOZ_EXPORT void RecordReplayInterface_Initialize(int aArgc, char* aArgv[]) {
   if (!IsRecordingOrReplaying()) {
     InitializeExternalCalls();
     return;
+  }
+
+  // Try to determine the install directory from the current executable path.
+  const char* executable = aArgv[0];
+  size_t executableLength = strlen(executable);
+  size_t suffixLength = strlen(gExecutableSuffix);
+  if (executableLength >= suffixLength) {
+    const char* suffixStart = executable + executableLength - suffixLength;
+    if (!strcmp(suffixStart, gExecutableSuffix)) {
+      size_t directoryLength = suffixStart - executable;
+      gInstallDirectory = new char[directoryLength + 1];
+      memcpy(gInstallDirectory, executable, directoryLength);
+      gInstallDirectory[directoryLength] = 0;
+    }
   }
 
   InitializeCurrentTime();
@@ -209,18 +231,21 @@ MOZ_EXPORT void RecordReplayInterface_InternalInvalidateRecording(
   Unreachable();
 }
 
-MOZ_EXPORT void RecordReplayInterface_InternalBeginPassThroughThreadEventsWithLocalReplay() {
+MOZ_EXPORT void
+RecordReplayInterface_InternalBeginPassThroughThreadEventsWithLocalReplay() {
   if (IsReplaying() && !gReplayingInCloud) {
     BeginPassThroughThreadEvents();
   }
 }
 
-MOZ_EXPORT void RecordReplayInterface_InternalEndPassThroughThreadEventsWithLocalReplay() {
+MOZ_EXPORT void
+RecordReplayInterface_InternalEndPassThroughThreadEventsWithLocalReplay() {
   // If we are replaying locally we will be skipping over a section of the
   // recording while events are passed through. Include the current stream
   // position in the recording so that we will know how much to skip over.
   MOZ_RELEASE_ASSERT(Thread::CurrentIsMainThread());
-  Stream* localReplayStream = gRecording->OpenStream(StreamName::LocalReplaySkip, 0);
+  Stream* localReplayStream =
+      gRecording->OpenStream(StreamName::LocalReplaySkip, 0);
   Stream& events = Thread::Current()->Events();
 
   size_t position = IsRecording() ? events.StreamPosition() : 0;
@@ -257,9 +282,10 @@ void FlushRecording() {
   gRecording->AllowStreamWrites();
 
   if (gRecording->Size() > gRecordingDataSentToMiddleman) {
-    child::SendRecordingData(gRecordingDataSentToMiddleman,
-                             gRecording->Data() + gRecordingDataSentToMiddleman,
-                             gRecording->Size() - gRecordingDataSentToMiddleman);
+    child::SendRecordingData(
+        gRecordingDataSentToMiddleman,
+        gRecording->Data() + gRecordingDataSentToMiddleman,
+        gRecording->Size() - gRecordingDataSentToMiddleman);
     gRecordingDataSentToMiddleman = gRecording->Size();
   }
 }
@@ -323,6 +349,7 @@ void ResetPid() { gPid = getpid(); }
 bool IsMainChild() { return gMainChild; }
 void SetMainChild() { gMainChild = true; }
 bool ReplayingInCloud() { return gReplayingInCloud; }
+const char* InstallDirectory() { return gInstallDirectory; }
 
 ///////////////////////////////////////////////////////////////////////////////
 // Record/Replay Assertions
@@ -461,13 +488,13 @@ static void CrashDetectorThread(void*) {
         request.body.exception == EXC_BAD_ACCESS && request.body.codeCnt == 2) {
       uint8_t* faultingAddress = (uint8_t*)request.body.code[1];
       child::MinidumpInfo info(request.body.exception, request.body.code[0],
-                               request.body.code[1],
-                               request.body.thread.name,
+                               request.body.code[1], request.body.thread.name,
                                request.body.task.name);
       child::ReportCrash(info, faultingAddress);
     } else {
-      child::ReportFatalError("CrashDetectorThread mach_msg "
-                              "returned unexpected data");
+      child::ReportFatalError(
+          "CrashDetectorThread mach_msg "
+          "returned unexpected data");
     }
 
     __Reply__exception_raise_t reply;

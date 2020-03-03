@@ -161,8 +161,8 @@ static void ChannelMessageHandler(Message::UniquePtr aMsg) {
     case MessageType::RecordingData: {
       MonitorAutoLock lock(*gMonitor);
       const RecordingDataMessage& nmsg = (const RecordingDataMessage&)*aMsg;
-      MOZ_RELEASE_ASSERT(
-          nmsg.mTag == gRecording->Size() + gPendingRecordingData.length());
+      MOZ_RELEASE_ASSERT(nmsg.mTag ==
+                         gRecording->Size() + gPendingRecordingData.length());
       gPendingRecordingData.append(nmsg.BinaryData(), nmsg.BinaryDataSize());
       gMonitor->NotifyAll();
       break;
@@ -351,9 +351,9 @@ static void ForkListenerThread(void*) {
     int nbytes = read(gForkReadFd, &process, sizeof(process));
     MOZ_RELEASE_ASSERT(nbytes == sizeof(process));
 
-    process.mChannel = new Channel(0, Channel::Kind::ReplayRoot,
-                                   HandleMessageFromForkedProcess,
-                                   process.mPid);
+    process.mChannel =
+        new Channel(0, Channel::Kind::ReplayRoot,
+                    HandleMessageFromForkedProcess, process.mPid);
 
     // Send any messages destined for this fork.
     size_t i = 0;
@@ -377,8 +377,9 @@ static void InitializeForkListener() {
   Thread::SpawnNonRecordedThread(ForkListenerThread, nullptr);
 
   if (!ReplayingInCloud()) {
-    gFatalErrorMemory = (char*) mmap(nullptr, FatalErrorMemorySize,
-                                     PROT_READ | PROT_WRITE, MAP_ANON | MAP_SHARED, -1, 0);
+    gFatalErrorMemory =
+        (char*)mmap(nullptr, FatalErrorMemorySize, PROT_READ | PROT_WRITE,
+                    MAP_ANON | MAP_SHARED, -1, 0);
     MOZ_RELEASE_ASSERT(gFatalErrorMemory != MAP_FAILED);
   }
 }
@@ -386,9 +387,8 @@ static void InitializeForkListener() {
 static void SendMessageToForkedProcess(Message::UniquePtr aMsg) {
   for (ForkedProcess& process : gForkedProcesses) {
     if (process.mForkId == aMsg->mForkId) {
-      bool remove =
-          aMsg->mType == MessageType::Terminate ||
-          aMsg->mType == MessageType::Crash;
+      bool remove = aMsg->mType == MessageType::Terminate ||
+                    aMsg->mType == MessageType::Crash;
       process.mChannel->SendMessage(std::move(*aMsg));
       if (remove) {
         gForkedProcesses.erase(&process);
@@ -462,6 +462,23 @@ void RegisterFork(size_t aForkId) {
   gChannel->ExitIfNotInitializedBefore(deadline);
 }
 
+static void SendFatalErrorMessage(size_t aForkId, const char* aMessage) {
+  // Construct a FatalErrorMessage on the stack, to avoid touching the heap.
+  char msgBuf[4096];
+  size_t header = sizeof(FatalErrorMessage);
+  size_t len = std::min(strlen(aMessage) + 1, sizeof(msgBuf) - header);
+  FatalErrorMessage* msg =
+      new (msgBuf) FatalErrorMessage(header + len, aForkId);
+  memcpy(&msgBuf[header], aMessage, len);
+  msgBuf[sizeof(msgBuf) - 1] = 0;
+
+  // Don't take the message lock when sending this, to avoid touching the heap.
+  gChannel->SendMessage(std::move(*msg));
+
+  Print("***** Fatal Record/Replay Error #%lu:%lu *****\n%s\n", GetId(),
+        aForkId, aMessage);
+}
+
 void ReportCrash(const MinidumpInfo& aInfo, void* aFaultingAddress) {
   int pid;
   pid_for_task(aInfo.mTask, &pid);
@@ -494,19 +511,7 @@ void ReportCrash(const MinidumpInfo& aInfo, void* aFaultingAddress) {
     SprintfLiteral(buf, "Fault %p", aFaultingAddress);
   }
 
-  // Construct a FatalErrorMessage on the stack, to avoid touching the heap.
-  char msgBuf[4096];
-  size_t header = sizeof(FatalErrorMessage);
-  size_t len = std::min(strlen(buf) + 1, sizeof(msgBuf) - header);
-  FatalErrorMessage* msg = new (msgBuf) FatalErrorMessage(header + len, forkId);
-  memcpy(&msgBuf[header], buf, len);
-  msgBuf[sizeof(msgBuf) - 1] = 0;
-
-  // Don't take the message lock when sending this, to avoid touching the heap.
-  gChannel->SendMessage(std::move(*msg));
-
-  Print("***** Fatal Record/Replay Error #%lu:%lu *****\n%s\n", GetId(), forkId,
-        buf);
+  SendFatalErrorMessage(forkId, buf);
 }
 
 void ReportFatalError(const char* aFormat, ...) {
@@ -523,6 +528,17 @@ void ReportFatalError(const char* aFormat, ...) {
 
   MOZ_CRASH("ReportFatalError");
 }
+
+extern "C" {
+
+// When running in the cloud the translation layer detects crashes that have
+// occurred in the current process, and uses this interface to report those
+// crashes to the middleman.
+MOZ_EXPORT void RecordReplayInterface_ReportCrash(const char* aMessage) {
+  SendFatalErrorMessage(gForkId, aMessage);
+}
+
+}  // extern "C"
 
 void ReportUnhandledDivergence() {
   gChannel->SendMessage(UnhandledDivergenceMessage(gForkId));
@@ -771,6 +787,8 @@ bool Repaint(nsACString& aData) {
   MOZ_RELEASE_ASSERT(NS_IsMainThread());
   MOZ_RELEASE_ASSERT(HasDivergedFromRecording());
 
+  EnsureNonMainThreadsAreSpawned();
+
   // Don't try to repaint if the first normal paint hasn't occurred yet.
   if (!gCompositorThreadId) {
     return false;
@@ -823,8 +841,8 @@ void ManifestFinished(const js::CharBuffer& aBuffer) {
   });
 }
 
-void SendExternalCallRequest(ExternalCallId aId,
-                             const char* aInputData, size_t aInputSize,
+void SendExternalCallRequest(ExternalCallId aId, const char* aInputData,
+                             size_t aInputSize,
                              InfallibleVector<char>* aOutputData) {
   AutoPassThroughThreadEvents pt;
   MonitorAutoLock lock(*gMonitor);
@@ -834,8 +852,8 @@ void SendExternalCallRequest(ExternalCallId aId,
   }
   gWaitingForCallResponse = true;
 
-  UniquePtr<ExternalCallRequestMessage> msg(ExternalCallRequestMessage::New(
-      gForkId, aId, aInputData, aInputSize));
+  UniquePtr<ExternalCallRequestMessage> msg(
+      ExternalCallRequestMessage::New(gForkId, aId, aInputData, aInputSize));
   gChannel->SendMessage(std::move(*msg));
 
   while (!gCallResponseMessage) {
@@ -851,10 +869,10 @@ void SendExternalCallRequest(ExternalCallId aId,
   gMonitor->Notify();
 }
 
-void SendExternalCallOutput(ExternalCallId aId,
-                            const char* aOutputData, size_t aOutputSize) {
-  Message::UniquePtr msg(ExternalCallResponseMessage::New(
-      gForkId, aId, aOutputData, aOutputSize));
+void SendExternalCallOutput(ExternalCallId aId, const char* aOutputData,
+                            size_t aOutputSize) {
+  Message::UniquePtr msg(
+      ExternalCallResponseMessage::New(gForkId, aId, aOutputData, aOutputSize));
   gChannel->SendMessage(std::move(*msg));
 }
 

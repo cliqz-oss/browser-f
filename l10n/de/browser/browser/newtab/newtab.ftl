@@ -190,6 +190,7 @@ newtab-discovery-empty-section-topstories-timed-out = Leider ist ein Fehler beim
 newtab-pocket-read-more = Beliebte Themen:
 newtab-pocket-more-recommendations = Mehr Empfehlungen
 newtab-pocket-whats-pocket = Was ist { -pocket-brand-name }?
+newtab-pocket-learn-more = Weitere Informationen
 newtab-pocket-cta-button = { -pocket-brand-name } holen
 newtab-pocket-cta-text = Speichern Sie Ihre Lieblingstexte in { -pocket-brand-name } und gewinnen Sie gedankenreiche Einblicke durch faszinierende Texte.
 

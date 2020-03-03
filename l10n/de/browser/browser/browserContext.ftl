@@ -65,6 +65,26 @@ toolbar-button-page-save =
 main-context-menu-bookmark-page =
     .aria-label = Lesezeichen für diese Seite hinzufügen
     .accesskey = L
+main-context-menu-bookmark-add =
+    .aria-label = Lesezeichen für diese Seite hinzufügen
+    .accesskey = L
+    .tooltiptext = Lesezeichen für diese Seite setzen
+# Variables
+#   $shortcut (String) - A keyboard shortcut for the add bookmark command.
+main-context-menu-bookmark-add-with-shortcut =
+    .aria-label = Lesezeichen für diese Seite hinzufügen
+    .accesskey = L
+    .tooltiptext = Lesezeichen für diese Seite setzen ({ $shortcut })
+main-context-menu-bookmark-change =
+    .aria-label = Lesezeichen bearbeiten
+    .accesskey = L
+    .tooltiptext = Dieses Lesezeichen bearbeiten
+# Variables
+#   $shortcut (String) - A keyboard shortcut for the edit bookmark command.
+main-context-menu-bookmark-change-with-shortcut =
+    .aria-label = Lesezeichen bearbeiten
+    .accesskey = L
+    .tooltiptext = Dieses Lesezeichen bearbeiten ({ $shortcut })
 main-context-menu-open-link =
     .label = Link öffnen
     .accesskey = k

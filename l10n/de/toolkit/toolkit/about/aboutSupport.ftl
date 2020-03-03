@@ -92,6 +92,8 @@ graphics-crash-guards-title = Absturzverhinderer hat Funktionen deaktiviert
 graphics-workarounds-title = Lösungen
 # Windowing system in use on Linux (e.g. X11, Wayland).
 graphics-window-protocol = Window-Protokoll
+# Desktop environment in use on Linux (e.g. GNOME, KDE, XFCE, etc).
+graphics-desktop-environment = Desktop-Umgebung
 place-database-title = Chronik- und Lesezeichendatenbank
 place-database-integrity = Integrität
 place-database-verify-integrity = Integrität überprüfen
