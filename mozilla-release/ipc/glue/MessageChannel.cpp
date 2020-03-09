@@ -7,20 +7,23 @@
 
 #include "mozilla/ipc/MessageChannel.h"
 
+#include <math.h>
+
+#include <utility>
+
 #include "mozilla/Assertions.h"
 #include "mozilla/CycleCollectedJSContext.h"
 #include "mozilla/DebugOnly.h"
-#include "mozilla/dom/ScriptSettings.h"
-#include "mozilla/ipc/ProcessChild.h"
-#include "mozilla/ipc/ProtocolUtils.h"
 #include "mozilla/Logging.h"
-#include "mozilla/Move.h"
 #include "mozilla/Mutex.h"
 #include "mozilla/ScopeExit.h"
 #include "mozilla/Sprintf.h"
 #include "mozilla/Telemetry.h"
 #include "mozilla/TimeStamp.h"
 #include "mozilla/UniquePtr.h"
+#include "mozilla/dom/ScriptSettings.h"
+#include "mozilla/ipc/ProcessChild.h"
+#include "mozilla/ipc/ProtocolUtils.h"
 #include "nsAppRunner.h"
 #include "nsAutoPtr.h"
 #include "nsContentUtils.h"
@@ -29,7 +32,6 @@
 #include "nsIMemoryReporter.h"
 #include "nsISupportsImpl.h"
 #include "nsPrintfCString.h"
-#include <math.h>
 
 #ifdef MOZ_TASK_TRACER
 #  include "GeckoTaskTracer.h"
@@ -828,8 +830,8 @@ void MessageChannel::Clear() {
   }
 }
 
-bool MessageChannel::Open(Transport* aTransport, MessageLoop* aIOLoop,
-                          Side aSide) {
+bool MessageChannel::Open(mozilla::UniquePtr<Transport> aTransport,
+                          MessageLoop* aIOLoop, Side aSide) {
   MOZ_ASSERT(!mLink, "Open() called > once");
 
   mMonitor = new RefCountedMonitor();
@@ -839,7 +841,8 @@ bool MessageChannel::Open(Transport* aTransport, MessageLoop* aIOLoop,
   mListener->OnIPCChannelOpened();
 
   ProcessLink* link = new ProcessLink(this);
-  link->Open(aTransport, aIOLoop, aSide);  // :TODO: n.b.: sets mChild
+  link->Open(std::move(aTransport), aIOLoop,
+             aSide);  // :TODO: n.b.: sets mChild
   mLink = link;
   mIsCrossProcess = true;
   ChannelCountReporter::Increment(mName);

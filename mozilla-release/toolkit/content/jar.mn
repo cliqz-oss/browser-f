@@ -13,7 +13,7 @@ toolkit.jar:
    content/global/aboutRights.xhtml
 #endif
    content/global/aboutNetworking.js
-   content/global/aboutNetworking.xhtml
+   content/global/aboutNetworking.html
 #ifndef ANDROID
    content/global/aboutProfiles.js
    content/global/aboutProfiles.xhtml

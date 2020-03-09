@@ -248,7 +248,7 @@ static void EX_ObjCInput(ExternalCallContext& aCx, id* aThingPtr) {
         MOZ_RELEASE_ASSERT(cstring.get()[len - 1] == 0);
         void* ptr = dlsym(RTLD_DEFAULT, cstring.get() + strlen(cloudPrefix));
         MOZ_RELEASE_ASSERT(ptr);
-        *aThingPtr = (id)*(CFStringRef*)ptr;
+        *aThingPtr = (id) * (CFStringRef*)ptr;
         break;
       }
 
@@ -303,7 +303,7 @@ static void EX_CFTypeOutputArg(ExternalCallContext& aCx) {
   auto& arg = aCx.mArguments->Arg<Argument, const void**>();
 
   if (aCx.mPhase == ExternalCallPhase::RestoreInput) {
-    arg = (const void**) aCx.AllocateBytes(sizeof(const void*));
+    arg = (const void**)aCx.AllocateBytes(sizeof(const void*));
   }
 
   EX_CFTypeOutput(aCx, arg, /* aOwnsReference = */ false);
@@ -324,9 +324,8 @@ static void EX_AutoreleaseCFTypeRval(ExternalCallContext& aCx) {
 
   if (rval && aCx.mPhase == ExternalCallPhase::SaveOutput && !IsReplaying()) {
     SendMessageToObject(rval, "retain");
-    aCx.mReleaseCallbacks->append([=]() {
-        SendMessageToObject(rval, "autorelease");
-      });
+    aCx.mReleaseCallbacks->append(
+        [=]() { SendMessageToObject(rval, "autorelease"); });
   }
 }
 
@@ -348,29 +347,30 @@ static PreambleResult Preamble_SetError(CallArguments* aArguments) {
   return PreambleResult::Veto;
 }
 
-#define ForEachFixedInputAddress(Macro)                 \
-  Macro(kCFTypeArrayCallBacks)                          \
-  Macro(kCFTypeDictionaryKeyCallBacks)                  \
-  Macro(kCFTypeDictionaryValueCallBacks)
+#define ForEachFixedInputAddress(Macro)                             \
+  Macro(kCFTypeArrayCallBacks) Macro(kCFTypeDictionaryKeyCallBacks) \
+      Macro(kCFTypeDictionaryValueCallBacks)
 
-#define ForEachFixedInput(Macro)                \
-  Macro(kCFAllocatorDefault)                    \
-  Macro(kCFAllocatorNull)
+#define ForEachFixedInput(Macro) \
+  Macro(kCFAllocatorDefault) Macro(kCFAllocatorNull)
 
 enum class FixedInput {
 #define DefineEnum(Name) Name,
-  ForEachFixedInputAddress(DefineEnum)
-  ForEachFixedInput(DefineEnum)
+  ForEachFixedInputAddress(DefineEnum) ForEachFixedInput(DefineEnum)
 #undef DefineEnum
 };
 
 static const void* GetFixedInput(FixedInput aWhich) {
   switch (aWhich) {
-#define FetchEnumAddress(Name) case FixedInput::Name: return &Name;
+#define FetchEnumAddress(Name) \
+  case FixedInput::Name:       \
+    return &Name;
     ForEachFixedInputAddress(FetchEnumAddress)
 #undef FetchEnumAddress
-#define FetchEnum(Name) case FixedInput::Name: return Name;
-    ForEachFixedInput(FetchEnum)
+#define FetchEnum(Name)  \
+  case FixedInput::Name: \
+    return Name;
+        ForEachFixedInput(FetchEnum)
 #undef FetchEnum
   }
   MOZ_CRASH("Unknown fixed input");
@@ -384,9 +384,9 @@ static void EX_RequireFixed(ExternalCallContext& aCx) {
   if (aCx.AccessInput()) {
     const void* value = GetFixedInput(Which);
     if (aCx.mPhase == ExternalCallPhase::SaveInput) {
-      MOZ_RELEASE_ASSERT(arg == value ||
-                         (Which == FixedInput::kCFAllocatorDefault &&
-                          arg == nullptr));
+      MOZ_RELEASE_ASSERT(
+          arg == value ||
+          (Which == FixedInput::kCFAllocatorDefault && arg == nullptr));
     } else {
       arg = value;
     }
@@ -436,6 +436,58 @@ static PreambleResult MiddlemanPreamble_sendmsg(CallArguments* aArguments) {
   return PreambleResult::Veto;
 }
 
+// When recording, this tracks open file descriptors referring to files within
+// the installation directory.
+struct InstallDirectoryFd {
+  size_t mFd;
+  UniquePtr<char[]> mSuffix;
+
+  InstallDirectoryFd(size_t aFd, UniquePtr<char[]> aSuffix)
+      : mFd(aFd), mSuffix(std::move(aSuffix)) {}
+};
+static StaticInfallibleVector<InstallDirectoryFd> gInstallDirectoryFds;
+static SpinLock gInstallDirectoryFdsLock;
+
+static void RR_open(Stream& aEvents, CallArguments* aArguments,
+                    ErrorType* aError) {
+  RR_SaveRvalHadErrorNegative(aEvents, aArguments, aError);
+  auto fd = aArguments->Rval<ssize_t>();
+
+  // Keep track of which fds refer to a file within the install directory,
+  // in case they are mmap'ed later.
+  if (IsRecording() && fd >= 0) {
+    auto path = aArguments->Arg<0, const char*>();
+    const char* installDirectory = InstallDirectory();
+    if (installDirectory) {
+      size_t installLength = strlen(installDirectory);
+      if (!strncmp(installDirectory, path, installLength)) {
+        size_t pathLength = strlen(path);
+        UniquePtr<char[]> suffix(new char[pathLength - installLength + 1]);
+        strcpy(suffix.get(), path + installLength);
+
+        AutoSpinLock lock(gInstallDirectoryFdsLock);
+        gInstallDirectoryFds.emplaceBack(fd, std::move(suffix));
+      }
+    }
+  }
+}
+
+static void RR_close(Stream& aEvents, CallArguments* aArguments,
+                     ErrorType* aError) {
+  RR_SaveRvalHadErrorNegative(aEvents, aArguments, aError);
+
+  if (IsRecording()) {
+    auto fd = aArguments->Arg<0, size_t>();
+    AutoSpinLock lock(gInstallDirectoryFdsLock);
+    for (auto& info : gInstallDirectoryFds) {
+      if (info.mFd == fd) {
+        gInstallDirectoryFds.erase(&info);
+        break;
+      }
+    }
+  }
+}
+
 static PreambleResult Preamble_mmap(CallArguments* aArguments) {
   auto& address = aArguments->Arg<0, void*>();
   auto& size = aArguments->Arg<1, size_t>();
@@ -463,9 +515,56 @@ static PreambleResult Preamble_mmap(CallArguments* aArguments) {
                                      fd, offset);
 
   if (mappingFile) {
-    // Include the data just mapped in the recording.
-    MOZ_RELEASE_ASSERT(memory && memory != (void*)-1);
-    RecordReplayBytes(memory, size);
+    // When replaying, we need to be able to recover the file contents.
+    // If the file descriptor is associated with a file in the install
+    // directory, we only need to include its suffix and a hash.
+    // Otherwise include all contents of the mapped file.
+    MOZ_RELEASE_ASSERT(memory != MAP_FAILED);
+
+    if (IsRecording()) {
+      AutoSpinLock lock(gInstallDirectoryFdsLock);
+      bool found = false;
+      for (const auto& info : gInstallDirectoryFds) {
+        if (info.mFd == fd) {
+          size_t len = strlen(info.mSuffix.get()) + 1;
+          RecordReplayValue(len);
+          RecordReplayBytes(info.mSuffix.get(), len);
+          RecordReplayValue(HashBytes(memory, size));
+          found = true;
+          break;
+        }
+      }
+      if (!found) {
+        RecordReplayValue(0);
+        RecordReplayBytes(memory, size);
+      }
+    } else {
+      size_t len = RecordReplayValue(0);
+      if (len) {
+        const char* installDirectory = InstallDirectory();
+        MOZ_RELEASE_ASSERT(installDirectory);
+
+        size_t installLength = strlen(installDirectory);
+
+        UniquePtr<char[]> path(new char[installLength + len]);
+        strcpy(path.get(), installDirectory);
+        RecordReplayBytes(path.get() + installLength, len);
+        size_t hash = RecordReplayValue(0);
+
+        int fd = DirectOpenFile(path.get(), /* aWriting */ false);
+        void* fileContents = CallFunction<void*>(
+            gOriginal_mmap, nullptr, size, PROT_READ, MAP_PRIVATE, fd, offset);
+        MOZ_RELEASE_ASSERT(fileContents != MAP_FAILED);
+
+        memcpy(memory, fileContents, size);
+        MOZ_RELEASE_ASSERT(hash == HashBytes(memory, size));
+
+        munmap(fileContents, size);
+        DirectCloseFile(fd);
+      } else {
+        RecordReplayBytes(memory, size);
+      }
+    }
   }
 
   aArguments->Rval<void*>() = memory;
@@ -630,8 +729,7 @@ static ssize_t WaitForCvar(pthread_mutex_t* aMutex, pthread_cond_t* aCond,
   if (!lock) {
     if (IsReplaying() && !AreThreadEventsPassedThrough()) {
       Thread* thread = Thread::Current();
-      if (thread->MaybeWaitForFork(
-              [=]() { pthread_mutex_unlock(aMutex); })) {
+      if (thread->MaybeWaitForFork([=]() { pthread_mutex_unlock(aMutex); })) {
         // We unlocked the mutex while the thread idled, so don't wait on the
         // condvar: the state the thread is waiting on may have changed and it
         // might not want to continue waiting. Returning immediately means this
@@ -878,34 +976,30 @@ static PreambleResult Preamble_pthread_self(CallArguments* aArguments) {
   return PreambleResult::PassThrough;
 }
 
-static void*
-GetTLVTemplate(void* aPtr, size_t* aTemplateSize, size_t* aTotalSize) {
-  void* tlvTemplate;
-  *aTemplateSize = 0;
-  *aTotalSize = 0;
+static void* GetTLVTemplate(void* aPtr, size_t* aSize) {
+  uint8_t* tlvTemplate = nullptr;
+  *aSize = 0;
 
   Dl_info info;
   dladdr(aPtr, &info);
-  mach_header_64* header = (mach_header_64*) info.dli_fbase;
+  mach_header_64* header = (mach_header_64*)info.dli_fbase;
   MOZ_RELEASE_ASSERT(header->magic == MH_MAGIC_64);
 
   uint32_t offset = sizeof(mach_header_64);
   for (size_t i = 0; i < header->ncmds; i++) {
-    load_command* cmd = (load_command*) ((uint8_t*)header + offset);
+    load_command* cmd = (load_command*)((uint8_t*)header + offset);
     if (LC_SEGMENT_64 == (cmd->cmd & ~LC_REQ_DYLD)) {
-      segment_command_64* ncmd = (segment_command_64*) cmd;
-      section_64* sect = (section_64*) (ncmd + 1);
+      segment_command_64* ncmd = (segment_command_64*)cmd;
+      section_64* sect = (section_64*)(ncmd + 1);
       for (size_t i = 0; i < ncmd->nsects; i++, sect++) {
         switch (sect->flags & SECTION_TYPE) {
-        case S_THREAD_LOCAL_REGULAR:
-          MOZ_RELEASE_ASSERT(!*aTotalSize);
-          tlvTemplate = (uint8_t*)header + sect->addr;
-          *aTemplateSize += sect->size;
-          *aTotalSize += sect->size;
-          break;
-        case S_THREAD_LOCAL_ZEROFILL:
-          *aTotalSize += sect->size;
-          break;
+          case S_THREAD_LOCAL_REGULAR:
+          case S_THREAD_LOCAL_ZEROFILL:
+            if (!tlvTemplate) {
+              tlvTemplate = (uint8_t*)header + sect->addr;
+            }
+            *aSize = (uint8_t*)header + sect->addr + sect->size - tlvTemplate;
+            break;
         }
       }
     }
@@ -922,10 +1016,10 @@ static PreambleResult Preamble__tlv_bootstrap(CallArguments* aArguments) {
       auto desc = aArguments->Arg<0, tlv_descriptor*>();
       void** ptr = thread->GetOrCreateStorage(desc->key);
       if (!(*ptr)) {
-        size_t templateSize, totalSize;
-        void* tlvTemplate = GetTLVTemplate(desc, &templateSize, &totalSize);
-        MOZ_RELEASE_ASSERT(desc->offset < totalSize);
-        void* memory = DirectAllocateMemory(totalSize);
+        size_t templateSize;
+        void* tlvTemplate = GetTLVTemplate(desc, &templateSize);
+        MOZ_RELEASE_ASSERT(desc->offset < templateSize);
+        void* memory = DirectAllocateMemory(templateSize);
         memcpy(memory, tlvTemplate, templateSize);
         *ptr = memory;
       }
@@ -1217,7 +1311,7 @@ static void EX_PerformSelector(ExternalCallContext& aCx) {
   }
 
   if (aCx.mPhase == ExternalCallPhase::RestoreInput) {
-    selector = (const char*) sel_registerName(selector);
+    selector = (const char*)sel_registerName(selector);
   }
 
   EX_AutoreleaseCFTypeRval(aCx);
@@ -1323,8 +1417,8 @@ static ObjCMessageInfo gObjCExternalCallMessages[] = {
     // NSBezierPath
     {"addClip", EX_NoOp, true},
     {"bezierPathWithRoundedRect:xRadius:yRadius:",
-     EX_Compose<EX_StackArgumentData<sizeof(CGRect)>,
-                EX_FloatArg<0>, EX_FloatArg<1>, EX_AutoreleaseCFTypeRval>},
+     EX_Compose<EX_StackArgumentData<sizeof(CGRect)>, EX_FloatArg<0>,
+                EX_FloatArg<1>, EX_AutoreleaseCFTypeRval>},
 
     // NSCell
     {"drawFocusRingMaskWithFrame:inView:",
@@ -1386,12 +1480,10 @@ static ObjCMessageInfo gObjCExternalCallMessages[] = {
      EX_Compose<EX_FloatArg<0>, EX_AutoreleaseCFTypeRval>},
     {"pointSize"},
     {"smallSystemFontSize"},
-    {"systemFontOfSize:",
-     EX_Compose<EX_FloatArg<0>, EX_AutoreleaseCFTypeRval>},
+    {"systemFontOfSize:", EX_Compose<EX_FloatArg<0>, EX_AutoreleaseCFTypeRval>},
     {"toolTipsFontOfSize:",
      EX_Compose<EX_FloatArg<0>, EX_AutoreleaseCFTypeRval>},
-    {"userFontOfSize:",
-     EX_Compose<EX_FloatArg<0>, EX_AutoreleaseCFTypeRval>},
+    {"userFontOfSize:", EX_Compose<EX_FloatArg<0>, EX_AutoreleaseCFTypeRval>},
 
     // NSFontManager
     {"availableMembersOfFontFamily:",
@@ -1432,7 +1524,7 @@ static void EX_objc_msgSend(ExternalCallContext& aCx) {
   auto& message = aCx.mArguments->Arg<1, const char*>();
 
   if (aCx.mPhase == ExternalCallPhase::RestoreInput) {
-    message = (const char*) sel_registerName(message);
+    message = (const char*)sel_registerName(message);
   }
 
   for (const ObjCMessageInfo& info : gObjCExternalCallMessages) {
@@ -2059,7 +2151,7 @@ static SystemRedirection gSystemRedirections[] = {
     {"write", RR_SaveRvalHadErrorNegative, nullptr, nullptr,
      MiddlemanPreamble_write},
     {"__write_nocancel", RR_SaveRvalHadErrorNegative},
-    {"open", RR_SaveRvalHadErrorNegative},
+    {"open", RR_open},
     {"__open_nocancel", RR_SaveRvalHadErrorNegative},
     {"recv", RR_SaveRvalHadErrorNegative<RR_WriteBufferViaRval<1, 2>>},
     {"recvmsg", RR_SaveRvalHadErrorNegative<RR_recvmsg>, nullptr, nullptr,
@@ -2072,7 +2164,7 @@ static SystemRedirection gSystemRedirections[] = {
     {"pipe",
      RR_SaveRvalHadErrorNegative<RR_WriteBufferFixedSize<0, 2 * sizeof(int)>>,
      nullptr, nullptr, Preamble_SetError},
-    {"close", RR_SaveRvalHadErrorNegative, nullptr, nullptr, Preamble_Veto<0>},
+    {"close", RR_close, nullptr, nullptr, Preamble_Veto<0>},
     {"__close_nocancel", RR_SaveRvalHadErrorNegative},
     {"mkdir", RR_SaveRvalHadErrorNegative},
     {"dup", RR_SaveRvalHadErrorNegative},
@@ -2080,19 +2172,17 @@ static SystemRedirection gSystemRedirections[] = {
      Preamble_SetError<EACCES>},
     {"lseek", RR_SaveRvalHadErrorNegative},
     {"select$DARWIN_EXTSN",
-     RR_SaveRvalHadErrorNegative<RR_Compose<RR_OutParam<1, fd_set>,
-                                            RR_OutParam<2, fd_set>,
-                                            RR_OutParam<3, fd_set>>>,
+     RR_SaveRvalHadErrorNegative<
+         RR_Compose<RR_OutParam<1, fd_set>, RR_OutParam<2, fd_set>,
+                    RR_OutParam<3, fd_set>>>,
      nullptr, nullptr, Preamble_WaitForever},
     {"socketpair",
      RR_SaveRvalHadErrorNegative<RR_WriteBufferFixedSize<3, 2 * sizeof(int)>>},
-    {"fileport_makeport",
-     RR_SaveRvalHadErrorNegative<RR_WriteBufferFixedSize<1, sizeof(size_t)>>},
+    {"fileport_makeport", RR_SaveRvalHadErrorNegative<RR_OutParam<1, size_t>>},
     {"getsockopt", RR_SaveRvalHadErrorNegative<RR_getsockopt>},
     {"gettimeofday",
-     RR_SaveRvalHadErrorNegative<RR_Compose<
-         RR_WriteOptionalBufferFixedSize<0, sizeof(struct timeval)>,
-         RR_WriteOptionalBufferFixedSize<1, sizeof(struct timezone)>>>,
+     RR_SaveRvalHadErrorNegative<RR_Compose<RR_OutParam<0, struct timeval>,
+                                            RR_OutParam<1, struct timezone>>>,
      nullptr, nullptr, Preamble_PassThrough},
     {"getuid", RR_ScalarRval},
     {"geteuid", RR_ScalarRval},
@@ -2104,56 +2194,39 @@ static SystemRedirection gSystemRedirections[] = {
     {"fcntl", RR_SaveRvalHadErrorNegative, Preamble_fcntl, nullptr,
      MiddlemanPreamble_fcntl},
     {"getattrlist", RR_SaveRvalHadErrorNegative<RR_WriteBuffer<2, 3>>},
-    {"fstat$INODE64",
-     RR_SaveRvalHadErrorNegative<
-         RR_WriteBufferFixedSize<1, sizeof(struct stat)>>,
+    {"fstat$INODE64", RR_SaveRvalHadErrorNegative<RR_OutParam<1, struct stat>>,
      nullptr, nullptr, Preamble_SetError},
-    {"lstat$INODE64",
-     RR_SaveRvalHadErrorNegative<
-         RR_WriteBufferFixedSize<1, sizeof(struct stat)>>,
+    {"lstat$INODE64", RR_SaveRvalHadErrorNegative<RR_OutParam<1, struct stat>>,
      nullptr, nullptr, Preamble_SetError},
-    {"stat$INODE64",
-     RR_SaveRvalHadErrorNegative<
-         RR_WriteBufferFixedSize<1, sizeof(struct stat)>>,
+    {"stat$INODE64", RR_SaveRvalHadErrorNegative<RR_OutParam<1, struct stat>>,
      nullptr, nullptr, Preamble_SetError},
     {"statfs$INODE64",
-     RR_SaveRvalHadErrorNegative<
-         RR_WriteBufferFixedSize<1, sizeof(struct statfs)>>,
-     nullptr, nullptr, Preamble_SetError},
+     RR_SaveRvalHadErrorNegative<RR_OutParam<1, struct statfs>>, nullptr,
+     nullptr, Preamble_SetError},
     {"fstatfs$INODE64",
-     RR_SaveRvalHadErrorNegative<
-         RR_WriteBufferFixedSize<1, sizeof(struct statfs)>>,
-     nullptr, nullptr, Preamble_SetError},
+     RR_SaveRvalHadErrorNegative<RR_OutParam<1, struct statfs>>, nullptr,
+     nullptr, Preamble_SetError},
     {"readlink", RR_SaveRvalHadErrorNegative<RR_WriteBuffer<1, 2>>},
     {"__getdirentries64",
-     RR_SaveRvalHadErrorNegative<RR_Compose<
-         RR_WriteBuffer<1, 2>, RR_WriteBufferFixedSize<3, sizeof(size_t)>>>},
+     RR_SaveRvalHadErrorNegative<
+         RR_Compose<RR_WriteBuffer<1, 2>, RR_OutParam<3, size_t>>>},
     {"getdirentriesattr",
-     RR_SaveRvalHadErrorNegative<RR_Compose<
-         RR_WriteBufferFixedSize<1, sizeof(struct attrlist)>,
-         RR_WriteBuffer<2, 3>, RR_WriteBufferFixedSize<4, sizeof(size_t)>,
-         RR_WriteBufferFixedSize<5, sizeof(size_t)>,
-         RR_WriteBufferFixedSize<6, sizeof(size_t)>>>},
-    {"getrusage",
      RR_SaveRvalHadErrorNegative<
-         RR_WriteBufferFixedSize<1, sizeof(struct rusage)>>,
+         RR_Compose<RR_WriteBufferFixedSize<1, sizeof(struct attrlist)>,
+                    RR_WriteBuffer<2, 3>, RR_OutParam<4, size_t>,
+                    RR_OutParam<5, size_t>, RR_OutParam<6, size_t>>>},
+    {"getrusage", RR_SaveRvalHadErrorNegative<RR_OutParam<1, struct rusage>>,
      nullptr, nullptr, Preamble_SetError},
-    {"getrlimit", RR_SaveRvalHadErrorNegative<
-                      RR_WriteBufferFixedSize<1, sizeof(struct rlimit)>>},
+    {"getrlimit", RR_SaveRvalHadErrorNegative<RR_OutParam<1, struct rlimit>>},
     {"setrlimit", RR_SaveRvalHadErrorNegative},
-    {"sigprocmask",
-     RR_SaveRvalHadErrorNegative<
-         RR_WriteOptionalBufferFixedSize<2, sizeof(sigset_t)>>,
+    {"sigprocmask", RR_SaveRvalHadErrorNegative<RR_OutParam<2, sigset_t>>,
      nullptr, nullptr, Preamble_PassThrough},
-    {"sigaltstack", RR_SaveRvalHadErrorNegative<
-                        RR_WriteOptionalBufferFixedSize<2, sizeof(stack_t)>>},
+    {"sigaltstack", RR_SaveRvalHadErrorNegative<RR_OutParam<2, stack_t>>},
     {"sigaction",
-     RR_SaveRvalHadErrorNegative<
-         RR_WriteOptionalBufferFixedSize<2, sizeof(struct sigaction)>>},
+     RR_SaveRvalHadErrorNegative<RR_OutParam<2, struct sigaction>>},
     {"signal", RR_ScalarRval},
     {"__pthread_sigmask",
-     RR_SaveRvalHadErrorNegative<
-         RR_WriteOptionalBufferFixedSize<2, sizeof(sigset_t)>>},
+     RR_SaveRvalHadErrorNegative<RR_OutParam<2, sigset_t>>},
     {"__fsgetpath", RR_SaveRvalHadErrorNegative<RR_WriteBuffer<0, 1>>},
     {"sysconf", RR_ScalarRval},
     {"__sysctl", RR_SaveRvalHadErrorNegative<RR_sysctl<2>>},
@@ -2163,20 +2236,16 @@ static SystemRedirection gSystemRedirections[] = {
     {"__mac_syscall", RR_SaveRvalHadErrorNegative},
     {"syscall", RR_SaveRvalHadErrorNegative},
     {"getaudit_addr",
-     RR_SaveRvalHadErrorNegative<
-         RR_WriteBufferFixedSize<0, sizeof(auditinfo_addr_t)>>},
+     RR_SaveRvalHadErrorNegative<RR_OutParam<0, auditinfo_addr_t>>},
     {"umask", RR_ScalarRval},
     {"__select",
      RR_SaveRvalHadErrorNegative<
-         RR_Compose<RR_WriteBufferFixedSize<1, sizeof(fd_set)>,
-                    RR_WriteBufferFixedSize<2, sizeof(fd_set)>,
-                    RR_WriteBufferFixedSize<3, sizeof(fd_set)>,
-                    RR_WriteOptionalBufferFixedSize<4, sizeof(timeval)>>>,
+         RR_Compose<RR_OutParam<1, fd_set>, RR_OutParam<2, fd_set>,
+                    RR_OutParam<3, fd_set>, RR_OutParam<4, timeval>>>,
      nullptr, nullptr, Preamble_WaitForever},
     {"__process_policy", RR_SaveRvalHadErrorNegative},
     {"__kdebug_trace", RR_SaveRvalHadErrorNegative},
-    {"guarded_kqueue_np",
-     RR_SaveRvalHadErrorNegative<RR_WriteBufferFixedSize<0, sizeof(size_t)>>},
+    {"guarded_kqueue_np", RR_SaveRvalHadErrorNegative<RR_OutParam<0, size_t>>},
     {"csops", RR_SaveRvalHadErrorNegative<RR_WriteBuffer<2, 3>>},
     {"__getlogin", RR_SaveRvalHadErrorNegative<RR_WriteBuffer<0, 1>>},
     {"__workq_kernreturn", nullptr, Preamble___workq_kernreturn},
@@ -2223,22 +2292,21 @@ static SystemRedirection gSystemRedirections[] = {
     {"fwrite", RR_ScalarRval},
     {"getenv", RR_CStringRval, Preamble_getenv, nullptr, Preamble_Veto<0>},
     {"localtime_r",
-     RR_SaveRvalHadErrorZero<RR_Compose<
-         RR_WriteBufferFixedSize<1, sizeof(struct tm)>, RR_RvalIsArgument<1>>>,
+     RR_SaveRvalHadErrorZero<
+         RR_Compose<RR_OutParam<1, struct tm>, RR_RvalIsArgument<1>>>,
      nullptr, nullptr, Preamble_PassThrough},
     {"gmtime_r",
-     RR_SaveRvalHadErrorZero<RR_Compose<
-         RR_WriteBufferFixedSize<1, sizeof(struct tm)>, RR_RvalIsArgument<1>>>,
+     RR_SaveRvalHadErrorZero<
+         RR_Compose<RR_OutParam<1, struct tm>, RR_RvalIsArgument<1>>>,
      nullptr, nullptr, Preamble_PassThrough},
     {"localtime", nullptr, Preamble_localtime, nullptr, Preamble_PassThrough},
     {"gmtime", nullptr, Preamble_gmtime, nullptr, Preamble_PassThrough},
-    {"mktime",
-     RR_Compose<RR_ScalarRval, RR_WriteBufferFixedSize<0, sizeof(struct tm)>>},
+    {"mktime", RR_Compose<RR_ScalarRval, RR_OutParam<0, struct tm>>},
     {"setlocale", RR_CStringRval},
     {"strftime", RR_Compose<RR_ScalarRval, RR_WriteBufferViaRval<0, 1, 1>>},
     {"arc4random", RR_ScalarRval, nullptr, nullptr, Preamble_PassThrough},
     {"arc4random_buf", RR_WriteBuffer<0, 1>},
-    {"bootstrap_look_up", RR_WriteBufferFixedSize<2, sizeof(mach_port_t)>},
+    {"bootstrap_look_up", RR_OutParam<2, mach_port_t>},
     {"clock_gettime", RR_Compose<RR_ScalarRval, RR_OutParam<1, timespec>>},
     {"clock_get_time",
      RR_Compose<RR_ScalarRval, RR_OutParam<1, mach_timespec_t>>},
@@ -2276,11 +2344,11 @@ static SystemRedirection gSystemRedirections[] = {
     {"task_get_special_port",
      RR_Compose<RR_ScalarRval, RR_OutParam<2, mach_port_t>>},
     {"task_set_special_port", RR_ScalarRval},
-    {"task_swap_exception_ports", RR_ScalarRval}, // Ignore out parameters
-    {"time", RR_Compose<RR_ScalarRval, RR_OutParam<0, time_t>>,
-     nullptr, nullptr, Preamble_PassThrough},
-    {"uname", RR_SaveRvalHadErrorNegative<RR_OutParam<0, utsname>>,
-     nullptr, nullptr, Preamble_SetError},
+    {"task_swap_exception_ports", RR_ScalarRval},  // Ignore out parameters
+    {"time", RR_Compose<RR_ScalarRval, RR_OutParam<0, time_t>>, nullptr,
+     nullptr, Preamble_PassThrough},
+    {"uname", RR_SaveRvalHadErrorNegative<RR_OutParam<0, utsname>>, nullptr,
+     nullptr, Preamble_SetError},
     {"vm_allocate", nullptr, Preamble_VetoIfNotPassedThrough<KERN_FAILURE>},
     {"vm_copy", nullptr, Preamble_PassThrough},
     {"tzset"},
@@ -2328,8 +2396,8 @@ static SystemRedirection gSystemRedirections[] = {
      EX_CFArrayGetValueAtIndex},
     {"CFArrayRemoveValueAtIndex"},
     {"CFAttributedStringCreate", RR_ScalarRval, nullptr,
-     EX_Compose<EX_RequireDefaultAllocator<0>,
-                EX_CFTypeArg<1>, EX_CFTypeArg<2>, EX_CreateCFTypeRval>},
+     EX_Compose<EX_RequireDefaultAllocator<0>, EX_CFTypeArg<1>, EX_CFTypeArg<2>,
+                EX_CreateCFTypeRval>},
     {"CFBundleCopyExecutableURL", RR_ScalarRval},
     {"CFBundleCopyInfoDictionaryForURL", RR_ScalarRval},
     {"CFBundleCreate", RR_ScalarRval},
@@ -2352,22 +2420,18 @@ static SystemRedirection gSystemRedirections[] = {
      EX_Compose<EX_UpdateCFTypeArg<0>, EX_CFTypeArg<1>, EX_CFTypeArg<2>>},
     {"CFDictionaryCreate", RR_ScalarRval, nullptr, EX_CFDictionaryCreate},
     {"CFDictionaryCreateMutable", RR_ScalarRval, nullptr,
-     EX_Compose<EX_RequireDefaultAllocator<0>,
-                EX_ScalarArg<1>,
-                EX_RequireFixed<2,
-                    FixedInput::kCFTypeDictionaryKeyCallBacks>,
-                EX_RequireFixed<3,
-                    FixedInput::kCFTypeDictionaryValueCallBacks>,
+     EX_Compose<EX_RequireDefaultAllocator<0>, EX_ScalarArg<1>,
+                EX_RequireFixed<2, FixedInput::kCFTypeDictionaryKeyCallBacks>,
+                EX_RequireFixed<3, FixedInput::kCFTypeDictionaryValueCallBacks>,
                 EX_CreateCFTypeRval>},
     {"CFDictionaryCreateMutableCopy", RR_ScalarRval, nullptr,
-     EX_Compose<EX_RequireDefaultAllocator<0>,
-                EX_ScalarArg<1>, EX_CFTypeArg<2>, EX_CreateCFTypeRval>},
+     EX_Compose<EX_RequireDefaultAllocator<0>, EX_ScalarArg<1>, EX_CFTypeArg<2>,
+                EX_CreateCFTypeRval>},
     {"CFDictionaryGetTypeID", RR_ScalarRval, nullptr, EX_NoOp},
     {"CFDictionaryGetValue", RR_ScalarRval, nullptr,
      EX_Compose<EX_CFTypeArg<0>, EX_CFTypeArg<1>, EX_CFTypeRval>},
     {"CFDictionaryGetValueIfPresent",
-     RR_Compose<RR_ScalarRval, RR_WriteBufferFixedSize<2, sizeof(const void*)>>,
-     nullptr,
+     RR_Compose<RR_ScalarRval, RR_OutParam<2, const void*>>, nullptr,
      EX_Compose<EX_CFTypeArg<0>, EX_CFTypeArg<1>, EX_CFTypeOutputArg<2>>},
     {"CFDictionaryReplaceValue", nullptr, nullptr,
      EX_Compose<EX_UpdateCFTypeArg<0>, EX_CFTypeArg<1>, EX_CFTypeArg<2>>},
@@ -2421,13 +2485,11 @@ static SystemRedirection gSystemRedirections[] = {
     {"CFStringCreateArrayBySeparatingStrings", RR_ScalarRval},
     {"CFStringCreateMutable", RR_ScalarRval},
     {"CFStringCreateWithBytes", RR_ScalarRval, nullptr,
-     EX_Compose<EX_RequireDefaultAllocator<0>,
-                EX_Buffer<1, 2>, EX_ScalarArg<3>, EX_ScalarArg<4>,
-                EX_CreateCFTypeRval>},
+     EX_Compose<EX_RequireDefaultAllocator<0>, EX_Buffer<1, 2>, EX_ScalarArg<3>,
+                EX_ScalarArg<4>, EX_CreateCFTypeRval>},
     {"CFStringCreateWithBytesNoCopy", RR_ScalarRval},
     {"CFStringCreateWithCharactersNoCopy", RR_ScalarRval, nullptr,
-     EX_Compose<EX_RequireDefaultAllocator<0>,
-                EX_Buffer<1, 2, UniChar>,
+     EX_Compose<EX_RequireDefaultAllocator<0>, EX_Buffer<1, 2, UniChar>,
                 EX_RequireFixed<3, FixedInput::kCFAllocatorNull>,
                 EX_CreateCFTypeRval>},
     {"CFStringCreateWithCString", RR_ScalarRval},
@@ -2436,15 +2498,14 @@ static SystemRedirection gSystemRedirections[] = {
      // Argument indexes are off by one here as the CFRange argument uses two
      // slots.
      RR_Compose<RR_ScalarRval, RR_WriteOptionalBuffer<6, 7>,
-                RR_WriteOptionalBufferFixedSize<8, sizeof(CFIndex)>>},
+                RR_OutParam<8, CFIndex>>},
     {"CFStringGetCharacters",
      // Argument indexes are off by one here as the CFRange argument uses two
      // slots.
      // We also need to specify the argument register with the range's length
      // here.
      RR_WriteBuffer<3, 2, UniChar>, nullptr,
-     EX_Compose<EX_CFTypeArg<0>,
-                EX_ScalarArg<1>,
+     EX_Compose<EX_CFTypeArg<0>, EX_ScalarArg<1>,
                 EX_WriteBuffer<3, 2, UniChar>>},
     {"CFStringGetCString", RR_Compose<RR_ScalarRval, RR_WriteBuffer<1, 2>>},
     {"CFStringGetCStringPtr", nullptr, Preamble_VetoIfNotPassedThrough<0>},
@@ -2462,24 +2523,22 @@ static SystemRedirection gSystemRedirections[] = {
     {"CFURLCreateWithString", RR_ScalarRval},
     {"CFURLGetFileSystemRepresentation",
      RR_Compose<RR_ScalarRval, RR_WriteBuffer<2, 3>>},
-    {"CFURLGetFSRef",
-     RR_Compose<RR_ScalarRval, RR_WriteBufferFixedSize<1, sizeof(FSRef)>>},
+    {"CFURLGetFSRef", RR_Compose<RR_ScalarRval, RR_OutParam<1, FSRef>>},
     {"CFUUIDCreate", RR_ScalarRval, nullptr,
      EX_Compose<EX_RequireDefaultAllocator<0>, EX_CreateCFTypeRval>},
     {"CFUUIDCreateString", RR_ScalarRval},
     {"CFUUIDGetUUIDBytes", RR_ComplexScalarRval, nullptr, EX_CFTypeArg<0>},
-    {"CGAffineTransformConcat",
-     RR_OversizeRval<sizeof(CGAffineTransform)>, nullptr,
+    {"CGAffineTransformConcat", RR_OversizeRval<sizeof(CGAffineTransform)>,
+     nullptr,
      EX_Compose<EX_StackArgumentData<2 * sizeof(CGAffineTransform)>,
                 EX_OversizeRval<CGAffineTransform>>},
-    {"CGAffineTransformInvert",
-     RR_OversizeRval<sizeof(CGAffineTransform)>, nullptr,
+    {"CGAffineTransformInvert", RR_OversizeRval<sizeof(CGAffineTransform)>,
+     nullptr,
      EX_Compose<EX_StackArgumentData<sizeof(CGAffineTransform)>,
                 EX_OversizeRval<CGAffineTransform>>},
-    {"CGAffineTransformMakeScale",
-     RR_OversizeRval<sizeof(CGAffineTransform)>, nullptr,
-     EX_Compose<EX_FloatArg<0>,
-                EX_FloatArg<1>,
+    {"CGAffineTransformMakeScale", RR_OversizeRval<sizeof(CGAffineTransform)>,
+     nullptr,
+     EX_Compose<EX_FloatArg<0>, EX_FloatArg<1>,
                 EX_OversizeRval<CGAffineTransform>>},
     {"CGBitmapContextCreateImage", RR_ScalarRval, nullptr,
      EX_Compose<EX_CFTypeArg<0>, EX_CreateCFTypeRval>},
@@ -2517,8 +2576,7 @@ static SystemRedirection gSystemRedirections[] = {
                 EX_CFTypeArg<1>, EX_FlushCGContext<0>>},
     {"CGContextDrawLinearGradient", RR_FlushCGContext<0>, nullptr,
      EX_Compose<EX_CFTypeArg<0>, EX_CFTypeArg<1>,
-                EX_StackArgumentData<2 * sizeof(CGPoint)>,
-                EX_ScalarArg<2>,
+                EX_StackArgumentData<2 * sizeof(CGPoint)>, EX_ScalarArg<2>,
                 EX_FlushCGContext<0>>},
     {"CGContextEndTransparencyLayer", nullptr, nullptr, EX_UpdateCFTypeArg<0>},
     {"CGContextFillPath", RR_FlushCGContext<0>, nullptr,
@@ -2552,13 +2610,11 @@ static SystemRedirection gSystemRedirections[] = {
     {"CGContextSetGrayFillColor", nullptr, nullptr,
      EX_Compose<EX_FloatArg<0>, EX_FloatArg<1>, EX_UpdateCFTypeArg<0>>},
     {"CGContextSetRGBFillColor", nullptr, nullptr,
-     EX_Compose<EX_UpdateCFTypeArg<0>,
-                EX_FloatArg<0>, EX_FloatArg<1>, EX_FloatArg<2>,
-                EX_StackArgumentData<sizeof(CGFloat)>>},
+     EX_Compose<EX_UpdateCFTypeArg<0>, EX_FloatArg<0>, EX_FloatArg<1>,
+                EX_FloatArg<2>, EX_StackArgumentData<sizeof(CGFloat)>>},
     {"CGContextSetRGBStrokeColor", nullptr, nullptr,
-     EX_Compose<EX_UpdateCFTypeArg<0>,
-                EX_FloatArg<0>, EX_FloatArg<1>, EX_FloatArg<2>,
-                EX_StackArgumentData<sizeof(CGFloat)>>},
+     EX_Compose<EX_UpdateCFTypeArg<0>, EX_FloatArg<0>, EX_FloatArg<1>,
+                EX_FloatArg<2>, EX_StackArgumentData<sizeof(CGFloat)>>},
     {"CGContextSetShouldAntialias", nullptr, nullptr,
      EX_Compose<EX_UpdateCFTypeArg<0>, EX_ScalarArg<1>>},
     {"CGContextSetShouldSmoothFonts", nullptr, nullptr,
@@ -2628,17 +2684,16 @@ static SystemRedirection gSystemRedirections[] = {
     {"CGPathContainsPoint", RR_ScalarRval},
     {"CGPathCreateMutable", RR_ScalarRval},
     {"CGPathCreateWithRoundedRect", RR_ScalarRval, nullptr,
-     EX_Compose<EX_StackArgumentData<sizeof(CGRect)>,
-                EX_FloatArg<0>, EX_FloatArg<1>,
-                EX_InParam<0, CGAffineTransform>,
+     EX_Compose<EX_StackArgumentData<sizeof(CGRect)>, EX_FloatArg<0>,
+                EX_FloatArg<1>, EX_InParam<0, CGAffineTransform>,
                 EX_CreateCFTypeRval>},
     {"CGPathGetBoundingBox", RR_OversizeRval<sizeof(CGRect)>},
     {"CGPathGetCurrentPoint", RR_ComplexFloatRval},
     {"CGPathIsEmpty", RR_ScalarRval},
     {"CGRectApplyAffineTransform", RR_OversizeRval<sizeof(CGRect)>, nullptr,
-     EX_Compose<EX_StackArgumentData<sizeof(CGRect) +
-                                     sizeof(CGAffineTransform)>,
-                EX_OversizeRval<CGRect>>},
+     EX_Compose<
+         EX_StackArgumentData<sizeof(CGRect) + sizeof(CGAffineTransform)>,
+         EX_OversizeRval<CGRect>>},
     {"CGSSetDebugOptions", RR_ScalarRval},
     {"CGSShutdownServerConnections"},
     {"CTFontCopyFamilyName", RR_ScalarRval, nullptr,
@@ -2655,29 +2710,21 @@ static SystemRedirection gSystemRedirections[] = {
     {"CTFontCopyVariationAxes", RR_ScalarRval, nullptr,
      EX_Compose<EX_CFTypeArg<0>, EX_CreateCFTypeRval>},
     {"CTFontCreateForString", RR_ScalarRval, nullptr,
-     EX_Compose<EX_CFTypeArg<0>, EX_CFTypeArg<1>,
-                EX_ScalarArg<2>, EX_ScalarArg<3>, EX_CreateCFTypeRval>},
+     EX_Compose<EX_CFTypeArg<0>, EX_CFTypeArg<1>, EX_ScalarArg<2>,
+                EX_ScalarArg<3>, EX_CreateCFTypeRval>},
     {"CTFontCreatePathForGlyph", RR_ScalarRval, nullptr,
-     EX_Compose<EX_CFTypeArg<0>,
-                EX_ScalarArg<1>,
-                EX_InParam<2, CGAffineTransform>,
-                EX_CreateCFTypeRval>},
+     EX_Compose<EX_CFTypeArg<0>, EX_ScalarArg<1>,
+                EX_InParam<2, CGAffineTransform>, EX_CreateCFTypeRval>},
     {"CTFontCreateWithFontDescriptor", RR_ScalarRval, nullptr,
-     EX_Compose<EX_CFTypeArg<0>,
-                EX_FloatArg<0>,
-                EX_InParam<1, CGAffineTransform>,
-                EX_CreateCFTypeRval>},
+     EX_Compose<EX_CFTypeArg<0>, EX_FloatArg<0>,
+                EX_InParam<1, CGAffineTransform>, EX_CreateCFTypeRval>},
     {"CTFontCreateWithGraphicsFont", RR_ScalarRval, nullptr,
-     EX_Compose<EX_CFTypeArg<0>,
-                EX_FloatArg<0>,
-                EX_InParam<1, CGAffineTransform>,
-                EX_CFTypeArg<2>,
+     EX_Compose<EX_CFTypeArg<0>, EX_FloatArg<0>,
+                EX_InParam<1, CGAffineTransform>, EX_CFTypeArg<2>,
                 EX_CreateCFTypeRval>},
     {"CTFontCreateWithName", RR_ScalarRval, nullptr,
-     EX_Compose<EX_CFTypeArg<0>,
-                EX_FloatArg<0>,
-                EX_InParam<1, CGAffineTransform>,
-                EX_CreateCFTypeRval>},
+     EX_Compose<EX_CFTypeArg<0>, EX_FloatArg<0>,
+                EX_InParam<1, CGAffineTransform>, EX_CreateCFTypeRval>},
     {"CTFontDescriptorCopyAttribute", RR_ScalarRval, nullptr,
      EX_Compose<EX_CFTypeArg<0>, EX_CFTypeArg<1>, EX_CreateCFTypeRval>},
     {"CTFontDescriptorCreateCopyWithAttributes", RR_ScalarRval, nullptr,
@@ -2691,8 +2738,7 @@ static SystemRedirection gSystemRedirections[] = {
                 EX_Buffer<2, 3, CGPoint>, EX_FlushCGContext<4>>},
     {"CTFontGetAdvancesForGlyphs",
      RR_Compose<RR_FloatRval, RR_WriteOptionalBuffer<3, 4, CGSize>>, nullptr,
-     EX_Compose<EX_CFTypeArg<0>, EX_ScalarArg<1>,
-                EX_Buffer<2, 4, CGGlyph>,
+     EX_Compose<EX_CFTypeArg<0>, EX_ScalarArg<1>, EX_Buffer<2, 4, CGGlyph>,
                 EX_WriteBuffer<3, 4, CGSize>>},
     {"CTFontGetAscent", RR_FloatRval, nullptr, EX_CFTypeArg<0>},
     {"CTFontGetBoundingBox", RR_OversizeRval<sizeof(CGRect)>, nullptr,
@@ -2702,8 +2748,7 @@ static SystemRedirection gSystemRedirections[] = {
      RR_Compose<RR_OversizeRval<sizeof(CGRect)>,
                 RR_WriteOptionalBuffer<4, 5, CGRect>>,
      nullptr,
-     EX_Compose<EX_CFTypeArg<1>, EX_ScalarArg<2>,
-                EX_Buffer<3, 5, CGGlyph>,
+     EX_Compose<EX_CFTypeArg<1>, EX_ScalarArg<2>, EX_Buffer<3, 5, CGGlyph>,
                 EX_OversizeRval<CGRect>, EX_WriteBuffer<4, 5, CGRect>>},
     {"CTFontGetCapHeight", RR_FloatRval, nullptr, EX_CFTypeArg<0>},
     {"CTFontGetDescent", RR_FloatRval, nullptr, EX_CFTypeArg<0>},
@@ -2740,10 +2785,8 @@ static SystemRedirection gSystemRedirections[] = {
     {"CTRunGetTypographicBounds",
      // Argument indexes are off by one here as the CFRange argument uses two
      // slots.
-     RR_Compose<RR_FloatRval,
-                RR_WriteOptionalBufferFixedSize<3, sizeof(CGFloat)>,
-                RR_WriteOptionalBufferFixedSize<4, sizeof(CGFloat)>,
-                RR_WriteOptionalBufferFixedSize<5, sizeof(CGFloat)>>,
+     RR_Compose<RR_FloatRval, RR_OutParam<3, CGFloat>, RR_OutParam<4, CGFloat>,
+                RR_OutParam<5, CGFloat>>,
      nullptr,
      EX_Compose<EX_CFTypeArg<0>, EX_ScalarArg<1>, EX_ScalarArg<2>,
                 EX_OutParam<3, CGFloat>, EX_OutParam<4, CGFloat>,
@@ -2752,111 +2795,74 @@ static SystemRedirection gSystemRedirections[] = {
      EX_Compose<EX_CFTypeArg<0>, EX_CFTypeArg<1>, EX_CFTypeArg<2>,
                 EX_StackArgumentData<sizeof(CGRect)>>},
     {"FSCompareFSRefs", RR_ScalarRval},
-    {"FSGetVolumeInfo",
-     RR_Compose<RR_ScalarRval, RR_WriteBufferFixedSize<5, sizeof(HFSUniStr255)>,
-                RR_WriteBufferFixedSize<6, sizeof(FSRef)>>},
-    {"FSFindFolder",
-     RR_Compose<RR_ScalarRval, RR_WriteBufferFixedSize<3, sizeof(FSRef)>>},
-    {"Gestalt",
-     RR_Compose<RR_ScalarRval, RR_WriteBufferFixedSize<1, sizeof(SInt32)>>},
+    {"FSGetVolumeInfo", RR_Compose<RR_ScalarRval, RR_OutParam<5, HFSUniStr255>,
+                                   RR_OutParam<6, FSRef>>},
+    {"FSFindFolder", RR_Compose<RR_ScalarRval, RR_OutParam<3, FSRef>>},
+    {"Gestalt", RR_Compose<RR_ScalarRval, RR_OutParam<1, SInt32>>},
     {"GetEventClass", RR_ScalarRval},
     {"GetCurrentEventQueue", RR_ScalarRval},
     {"GetCurrentProcess",
-     RR_Compose<RR_ScalarRval,
-                RR_WriteBufferFixedSize<0, sizeof(ProcessSerialNumber)>>},
+     RR_Compose<RR_ScalarRval, RR_OutParam<0, ProcessSerialNumber>>},
     {"GetEventAttributes", RR_ScalarRval},
     {"GetEventDispatcherTarget", RR_ScalarRval},
     {"GetEventKind", RR_ScalarRval},
-    {"HIThemeDrawButton",
-     RR_Compose<RR_WriteOptionalBufferFixedSize<4, sizeof(HIRect)>,
-                RR_ScalarRval>,
+    {"GetThemeMetric", RR_Compose<RR_ScalarRval, RR_OutParam<1, SInt32>>,
+     nullptr, EX_Compose<EX_ScalarArg<0>, EX_OutParam<1, SInt32>>},
+    {"HIThemeDrawButton", RR_Compose<RR_OutParam<4, HIRect>, RR_ScalarRval>,
      nullptr,
-     EX_Compose<EX_InParam<0, HIRect>,
-                EX_InParam<1, HIThemeButtonDrawInfo>,
-                EX_UpdateCFTypeArg<2>,
-                EX_ScalarArg<3>,
+     EX_Compose<EX_InParam<0, HIRect>, EX_InParam<1, HIThemeButtonDrawInfo>,
+                EX_UpdateCFTypeArg<2>, EX_ScalarArg<3>,
                 EX_OutParam<4, HIRect>>},
     {"HIThemeDrawFrame", RR_ScalarRval, nullptr,
-     EX_Compose<EX_InParam<0, HIRect>,
-                EX_InParam<1, HIThemeFrameDrawInfo>,
-                EX_UpdateCFTypeArg<2>,
-                EX_ScalarArg<3>>},
+     EX_Compose<EX_InParam<0, HIRect>, EX_InParam<1, HIThemeFrameDrawInfo>,
+                EX_UpdateCFTypeArg<2>, EX_ScalarArg<3>>},
     {"HIThemeDrawGroupBox", RR_ScalarRval, nullptr,
-     EX_Compose<EX_InParam<0, HIRect>,
-                EX_InParam<1, HIThemeGroupBoxDrawInfo>,
-                EX_UpdateCFTypeArg<2>,
-                EX_ScalarArg<3>>},
+     EX_Compose<EX_InParam<0, HIRect>, EX_InParam<1, HIThemeGroupBoxDrawInfo>,
+                EX_UpdateCFTypeArg<2>, EX_ScalarArg<3>>},
     {"HIThemeDrawGrowBox", RR_ScalarRval, nullptr,
-     EX_Compose<EX_InParam<0, HIPoint>,
-                EX_InParam<1, HIThemeGrowBoxDrawInfo>,
-                EX_UpdateCFTypeArg<2>,
-                EX_ScalarArg<3>>},
+     EX_Compose<EX_InParam<0, HIPoint>, EX_InParam<1, HIThemeGrowBoxDrawInfo>,
+                EX_UpdateCFTypeArg<2>, EX_ScalarArg<3>>},
     {"HIThemeDrawMenuBackground", RR_ScalarRval, nullptr,
-     EX_Compose<EX_InParam<0, HIRect>,
-                EX_InParam<1, HIThemeMenuDrawInfo>,
-                EX_UpdateCFTypeArg<2>,
-                EX_ScalarArg<3>>},
-    {"HIThemeDrawMenuItem",
-     RR_Compose<RR_WriteOptionalBufferFixedSize<5, sizeof(HIRect)>,
-                RR_ScalarRval>,
+     EX_Compose<EX_InParam<0, HIRect>, EX_InParam<1, HIThemeMenuDrawInfo>,
+                EX_UpdateCFTypeArg<2>, EX_ScalarArg<3>>},
+    {"HIThemeDrawMenuItem", RR_Compose<RR_OutParam<5, HIRect>, RR_ScalarRval>,
      nullptr,
-     EX_Compose<EX_InParam<0, HIRect>,
-                EX_InParam<1, HIRect>,
-                EX_InParam<2, HIThemeMenuItemDrawInfo>,
-                EX_UpdateCFTypeArg<3>,
-                EX_ScalarArg<4>,
-                EX_OutParam<5, HIRect>>},
+     EX_Compose<EX_InParam<0, HIRect>, EX_InParam<1, HIRect>,
+                EX_InParam<2, HIThemeMenuItemDrawInfo>, EX_UpdateCFTypeArg<3>,
+                EX_ScalarArg<4>, EX_OutParam<5, HIRect>>},
     {"HIThemeDrawMenuSeparator", RR_ScalarRval, nullptr,
-     EX_Compose<EX_InParam<0, HIRect>,
-                EX_InParam<1, HIRect>,
-                EX_InParam<2, HIThemeMenuItemDrawInfo>,
-                EX_UpdateCFTypeArg<3>,
+     EX_Compose<EX_InParam<0, HIRect>, EX_InParam<1, HIRect>,
+                EX_InParam<2, HIThemeMenuItemDrawInfo>, EX_UpdateCFTypeArg<3>,
                 EX_ScalarArg<4>>},
     {"HIThemeDrawSeparator", RR_ScalarRval, nullptr,
-     EX_Compose<EX_InParam<0, HIRect>,
-                EX_InParam<1, HIThemeSeparatorDrawInfo>,
-                EX_UpdateCFTypeArg<2>,
-                EX_ScalarArg<3>>},
+     EX_Compose<EX_InParam<0, HIRect>, EX_InParam<1, HIThemeSeparatorDrawInfo>,
+                EX_UpdateCFTypeArg<2>, EX_ScalarArg<3>>},
     {"HIThemeDrawTabPane", RR_ScalarRval, nullptr,
-     EX_Compose<EX_InParam<0, HIRect>,
-                EX_InParam<1, HIThemeTabPaneDrawInfo>,
-                EX_UpdateCFTypeArg<2>,
-                EX_ScalarArg<3>>},
+     EX_Compose<EX_InParam<0, HIRect>, EX_InParam<1, HIThemeTabPaneDrawInfo>,
+                EX_UpdateCFTypeArg<2>, EX_ScalarArg<3>>},
     {"HIThemeDrawTrack", RR_ScalarRval, nullptr,
-     EX_Compose<EX_InParam<0, HIThemeTrackDrawInfo>,
-                EX_InParam<1, HIRect>,
-                EX_UpdateCFTypeArg<2>,
-                EX_ScalarArg<3>>},
+     EX_Compose<EX_InParam<0, HIThemeTrackDrawInfo>, EX_InParam<1, HIRect>,
+                EX_UpdateCFTypeArg<2>, EX_ScalarArg<3>>},
     {"HIThemeGetGrowBoxBounds",
-     RR_Compose<RR_ScalarRval, RR_WriteBufferFixedSize<2, sizeof(HIRect)>>,
-     nullptr,
-     EX_Compose<EX_InParam<0, HIPoint>,
-                EX_InParam<1, HIThemeGrowBoxDrawInfo>,
+     RR_Compose<RR_ScalarRval, RR_OutParam<2, HIRect>>, nullptr,
+     EX_Compose<EX_InParam<0, HIPoint>, EX_InParam<1, HIThemeGrowBoxDrawInfo>,
                 EX_OutParam<2, HIRect>>},
     {"HIThemeSetFill", RR_ScalarRval, nullptr,
      EX_Compose<EX_ScalarArg<0>, EX_UpdateCFTypeArg<2>, EX_ScalarArg<3>>},
     {"IORegistryEntrySearchCFProperty", RR_ScalarRval},
     {"LSCopyAllHandlersForURLScheme", RR_ScalarRval},
     {"LSCopyApplicationForMIMEType",
-     RR_Compose<RR_ScalarRval,
-                RR_WriteOptionalBufferFixedSize<2, sizeof(CFURLRef)>>},
+     RR_Compose<RR_ScalarRval, RR_OutParam<2, CFURLRef>>},
     {"LSCopyItemAttribute",
-     RR_Compose<RR_ScalarRval,
-                RR_WriteOptionalBufferFixedSize<3, sizeof(CFTypeRef)>>},
+     RR_Compose<RR_ScalarRval, RR_OutParam<3, CFTypeRef>>},
     {"LSCopyKindStringForMIMEType",
-     RR_Compose<RR_ScalarRval,
-                RR_WriteOptionalBufferFixedSize<1, sizeof(CFStringRef)>>},
-    {"LSGetApplicationForInfo",
-     RR_Compose<RR_ScalarRval,
-                RR_WriteOptionalBufferFixedSize<4, sizeof(FSRef)>,
-                RR_WriteOptionalBufferFixedSize<5, sizeof(CFURLRef)>>},
-    {"LSGetApplicationForURL",
-     RR_Compose<RR_ScalarRval,
-                RR_WriteOptionalBufferFixedSize<2, sizeof(FSRef)>,
-                RR_WriteOptionalBufferFixedSize<3, sizeof(CFURLRef)>>},
+     RR_Compose<RR_ScalarRval, RR_OutParam<1, CFStringRef>>},
+    {"LSGetApplicationForInfo", RR_Compose<RR_ScalarRval, RR_OutParam<4, FSRef>,
+                                           RR_OutParam<5, CFURLRef>>},
+    {"LSGetApplicationForURL", RR_Compose<RR_ScalarRval, RR_OutParam<2, FSRef>,
+                                          RR_OutParam<3, CFURLRef>>},
     {"LSCopyDefaultApplicationURLForURL",
-     RR_Compose<RR_ScalarRval,
-                RR_WriteOptionalBufferFixedSize<2, sizeof(CFErrorRef)>>},
+     RR_Compose<RR_ScalarRval, RR_OutParam<2, CFErrorRef>>},
     {"NSClassFromString", RR_ScalarRval, nullptr,
      EX_Compose<EX_CFTypeArg<0>, EX_CFTypeRval>},
     {"NSRectFill", nullptr, nullptr, EX_NoOp},
@@ -2866,17 +2872,15 @@ static SystemRedirection gSystemRedirections[] = {
     {"OSSpinLockLock", nullptr, Preamble_OSSpinLockLock},
     {"PMCopyPageFormat", RR_ScalarRval},
     {"PMGetAdjustedPaperRect",
-     RR_Compose<RR_ScalarRval, RR_WriteBufferFixedSize<1, sizeof(PMRect)>>},
+     RR_Compose<RR_ScalarRval, RR_OutParam<1, PMRect>>},
     {"PMGetPageFormatPaper",
-     RR_Compose<RR_ScalarRval, RR_WriteBufferFixedSize<1, sizeof(PMPaper)>>},
+     RR_Compose<RR_ScalarRval, RR_OutParam<1, PMPaper>>},
     {"PMPageFormatCreateDataRepresentation",
-     RR_Compose<RR_ScalarRval, RR_WriteBufferFixedSize<1, sizeof(CFDataRef)>>},
+     RR_Compose<RR_ScalarRval, RR_OutParam<1, CFDataRef>>},
     {"PMPageFormatCreateWithDataRepresentation",
-     RR_Compose<RR_ScalarRval,
-                RR_WriteBufferFixedSize<1, sizeof(PMPageFormat)>>},
+     RR_Compose<RR_ScalarRval, RR_OutParam<1, PMPageFormat>>},
     {"PMPaperGetMargins",
-     RR_Compose<RR_ScalarRval,
-                RR_WriteBufferFixedSize<1, sizeof(PMPaperMargins)>>},
+     RR_Compose<RR_ScalarRval, RR_OutParam<1, PMPaperMargins>>},
     {"ReleaseEvent", RR_ScalarRval},
     {"RemoveEventFromQueue", RR_ScalarRval},
     {"RetainEvent", RR_ScalarRval},
@@ -2903,9 +2907,7 @@ static SystemRedirection gSystemRedirections[] = {
 // Redirection Generation
 ///////////////////////////////////////////////////////////////////////////////
 
-size_t NumRedirections() {
-  return ArrayLength(gSystemRedirections);
-}
+size_t NumRedirections() { return ArrayLength(gSystemRedirections); }
 
 static Redirection* gRedirections;
 
@@ -2968,9 +2970,8 @@ void InitializeRedirections() {
     redirection.mOriginalFunction = FunctionStartAddress(redirection);
 
     if (IsRecordingOrReplaying()) {
-      redirection.mRedirectedFunction =
-          GenerateRedirectStub(assembler.ref(), i,
-                               PreserveCallerSaveRegisters(redirection.mName));
+      redirection.mRedirectedFunction = GenerateRedirectStub(
+          assembler.ref(), i, PreserveCallerSaveRegisters(redirection.mName));
       gRedirectionAddresses->insert(RedirectionAddressMap::value_type(
           std::string(redirection.mName), redirection.mRedirectedFunction));
     }
@@ -3017,8 +3018,7 @@ static void ApplyBinding(const char* aName, void** aPtr) {
   void* binding = FindRedirectionBinding(aName);
   if (binding) {
     if (!strcmp(aName, "_tlv_bootstrap")) {
-      MOZ_RELEASE_ASSERT(gTLVGetAddress == nullptr ||
-                         gTLVGetAddress == *aPtr);
+      MOZ_RELEASE_ASSERT(gTLVGetAddress == nullptr || gTLVGetAddress == *aPtr);
       gTLVGetAddress = *aPtr;
     }
     *aPtr = binding;
@@ -3063,8 +3063,8 @@ struct MachOLibrary {
     MOZ_RELEASE_ASSERT(rv >= 0);
 
     mFileSize = info.st_size;
-    mFileAddress = (uint8_t*)mmap(nullptr, mFileSize, PROT_READ,
-                                  MAP_PRIVATE, mFile, 0);
+    mFileAddress =
+        (uint8_t*)mmap(nullptr, mFileSize, PROT_READ, MAP_PRIVATE, mFile, 0);
     MOZ_RELEASE_ASSERT(mFileAddress != MAP_FAILED);
 
     mach_header_64* header = (mach_header_64*)mFileAddress;
@@ -3078,50 +3078,50 @@ struct MachOLibrary {
 
   void ApplyRedirections() {
     ForEachCommand([=](load_command* aCmd) {
-        switch (aCmd->cmd & ~LC_REQ_DYLD) {
-          case LC_SYMTAB:
-            AddSymbolTable((symtab_command*)aCmd);
-            break;
-          case LC_DYSYMTAB:
-            AddDynamicSymbolTable((dysymtab_command*)aCmd);
-            break;
-        }
-      });
+      switch (aCmd->cmd & ~LC_REQ_DYLD) {
+        case LC_SYMTAB:
+          AddSymbolTable((symtab_command*)aCmd);
+          break;
+        case LC_DYSYMTAB:
+          AddDynamicSymbolTable((dysymtab_command*)aCmd);
+          break;
+      }
+    });
 
     ForEachCommand([=](load_command* aCmd) {
-        switch (aCmd->cmd & ~LC_REQ_DYLD) {
-          case LC_DYLD_INFO:
-            BindLoadInfo((dyld_info_command*)aCmd);
-            break;
-          case LC_SEGMENT_64:  {
-            auto ncmd = (segment_command_64*)aCmd;
-            mSegments.append(ncmd);
-            BindSegment(ncmd);
-            break;
-          }
+      switch (aCmd->cmd & ~LC_REQ_DYLD) {
+        case LC_DYLD_INFO:
+          BindLoadInfo((dyld_info_command*)aCmd);
+          break;
+        case LC_SEGMENT_64: {
+          auto ncmd = (segment_command_64*)aCmd;
+          mSegments.append(ncmd);
+          BindSegment(ncmd);
+          break;
         }
-      });
+      }
+    });
   }
 
   void ForEachCommand(const std::function<void(load_command*)>& aCallback) {
     mach_header_64* header = (mach_header_64*)mFileAddress;
     uint32_t offset = sizeof(mach_header_64);
     for (size_t i = 0; i < header->ncmds; i++) {
-      load_command* cmd = (load_command*) (mFileAddress + offset);
+      load_command* cmd = (load_command*)(mFileAddress + offset);
       aCallback(cmd);
       offset += cmd->cmdsize;
     }
   }
 
   void AddSymbolTable(symtab_command* aCmd) {
-    mSymbolTable = (nlist_64*) (mFileAddress + aCmd->symoff);
+    mSymbolTable = (nlist_64*)(mFileAddress + aCmd->symoff);
     mSymbolCount = aCmd->nsyms;
 
-    mStringTable = (char*) (mFileAddress + aCmd->stroff);
+    mStringTable = (char*)(mFileAddress + aCmd->stroff);
   }
 
   void AddDynamicSymbolTable(dysymtab_command* aCmd) {
-    mIndirectSymbols = (uint32_t*) (mFileAddress + aCmd->indirectsymoff);
+    mIndirectSymbols = (uint32_t*)(mFileAddress + aCmd->indirectsymoff);
     mIndirectSymbolCount = aCmd->nindirectsyms;
   }
 
@@ -3169,29 +3169,29 @@ struct MachOLibrary {
         case BIND_OPCODE_SET_ADDEND_SLEB:
           break;
         case BIND_OPCODE_DO_BIND:
-          DoBinding(segmentIndex, segmentOffset,
-                    symbolName, symbolFlags, symbolType);
+          DoBinding(segmentIndex, segmentOffset, symbolName, symbolFlags,
+                    symbolType);
           segmentOffset += sizeof(uintptr_t);
           break;
         case BIND_OPCODE_ADD_ADDR_ULEB:
           segmentOffset += ReadLEB128(cursor, end);
           break;
         case BIND_OPCODE_DO_BIND_ADD_ADDR_ULEB:
-          DoBinding(segmentIndex, segmentOffset,
-                    symbolName, symbolFlags, symbolType);
+          DoBinding(segmentIndex, segmentOffset, symbolName, symbolFlags,
+                    symbolType);
           segmentOffset += ReadLEB128(cursor, end) + sizeof(uintptr_t);
           break;
         case BIND_OPCODE_DO_BIND_ADD_ADDR_IMM_SCALED:
-          DoBinding(segmentIndex, segmentOffset,
-                    symbolName, symbolFlags, symbolType);
+          DoBinding(segmentIndex, segmentOffset, symbolName, symbolFlags,
+                    symbolType);
           segmentOffset += immediate * sizeof(uintptr_t) + sizeof(uintptr_t);
           break;
         case BIND_OPCODE_DO_BIND_ULEB_TIMES_SKIPPING_ULEB: {
           size_t count = ReadLEB128(cursor, end);
           size_t skip = ReadLEB128(cursor, end);
           for (size_t i = 0; i < count; i++) {
-            DoBinding(segmentIndex, segmentOffset,
-                      symbolName, symbolFlags, symbolType);
+            DoBinding(segmentIndex, segmentOffset, symbolName, symbolFlags,
+                      symbolType);
             segmentOffset += skip + sizeof(uintptr_t);
           }
           break;
@@ -3211,12 +3211,12 @@ struct MachOLibrary {
     uint8_t* address = mAddress + seg->vmaddr + aSegmentOffset;
 
     MOZ_RELEASE_ASSERT(aSymbolType == BIND_TYPE_POINTER);
-    void** ptr = (void**) address;
+    void** ptr = (void**)address;
     ApplyBinding(aSymbolName, ptr);
   }
 
   void BindSegment(segment_command_64* aCmd) {
-    section_64* sect = (section_64*) (aCmd + 1);
+    section_64* sect = (section_64*)(aCmd + 1);
     for (size_t i = 0; i < aCmd->nsects; i++, sect++) {
       switch (sect->flags & SECTION_TYPE) {
         case S_NON_LAZY_SYMBOL_POINTERS:
@@ -3248,11 +3248,11 @@ struct MachOLibrary {
 // so we check again after each new library is loaded, and clear out these
 // entries once we have fixed their external references.
 static const char* gInitialLibrarySymbols[] = {
-  "RecordReplayInterface_Initialize", // XUL
-  "_ZN7mozilla12recordreplay10InitializeEiPPc", // libmozglue
-  "PR_Initialize", // libnss3
-  "FREEBL_GetVector", // libfreebl
-  "NSC_GetFunctionList", // libsoftokn3
+    "RecordReplayInterface_Initialize",            // XUL
+    "_ZN7mozilla12recordreplay10InitializeEiPPc",  // libmozglue
+    "PR_Initialize",                               // libnss3
+    "FREEBL_GetVector",                            // libfreebl
+    "NSC_GetFunctionList",                         // libsoftokn3
 };
 
 void ApplyLibraryRedirections(void* aLibrary) {
@@ -3303,35 +3303,36 @@ struct PlatformSymbol {
   uint32_t mValue;
 };
 
-#define NewPlatformSymbol(Name) { #Name, Name }
+#define NewPlatformSymbol(Name) \
+  { #Name, Name }
 
 extern "C" {
 
 MOZ_EXPORT PlatformSymbol RecordReplayInterface_PlatformSymbols[] = {
-  NewPlatformSymbol(PROT_READ),
-  NewPlatformSymbol(PROT_WRITE),
-  NewPlatformSymbol(PROT_EXEC),
-  NewPlatformSymbol(MAP_FIXED),
-  NewPlatformSymbol(MAP_PRIVATE),
-  NewPlatformSymbol(MAP_ANON),
-  NewPlatformSymbol(MAP_NORESERVE),
-  NewPlatformSymbol(PTHREAD_MUTEX_NORMAL),
-  NewPlatformSymbol(PTHREAD_MUTEX_RECURSIVE),
-  NewPlatformSymbol(PTHREAD_CREATE_JOINABLE),
-  NewPlatformSymbol(PTHREAD_CREATE_DETACHED),
-  NewPlatformSymbol(SYS_thread_selfid),
-  NewPlatformSymbol(_SC_PAGESIZE),
-  NewPlatformSymbol(_SC_NPROCESSORS_CONF),
-  NewPlatformSymbol(RLIMIT_AS),
-  NewPlatformSymbol(ETIMEDOUT),
-  NewPlatformSymbol(EINTR),
-  NewPlatformSymbol(EPIPE),
-  NewPlatformSymbol(EAGAIN),
-  NewPlatformSymbol(ECONNRESET),
-  { nullptr, 0 },
+    NewPlatformSymbol(PROT_READ),
+    NewPlatformSymbol(PROT_WRITE),
+    NewPlatformSymbol(PROT_EXEC),
+    NewPlatformSymbol(MAP_FIXED),
+    NewPlatformSymbol(MAP_PRIVATE),
+    NewPlatformSymbol(MAP_ANON),
+    NewPlatformSymbol(MAP_NORESERVE),
+    NewPlatformSymbol(PTHREAD_MUTEX_NORMAL),
+    NewPlatformSymbol(PTHREAD_MUTEX_RECURSIVE),
+    NewPlatformSymbol(PTHREAD_CREATE_JOINABLE),
+    NewPlatformSymbol(PTHREAD_CREATE_DETACHED),
+    NewPlatformSymbol(SYS_thread_selfid),
+    NewPlatformSymbol(_SC_PAGESIZE),
+    NewPlatformSymbol(_SC_NPROCESSORS_CONF),
+    NewPlatformSymbol(RLIMIT_AS),
+    NewPlatformSymbol(ETIMEDOUT),
+    NewPlatformSymbol(EINTR),
+    NewPlatformSymbol(EPIPE),
+    NewPlatformSymbol(EAGAIN),
+    NewPlatformSymbol(ECONNRESET),
+    {nullptr, 0},
 };
 
-} // extern "C"
+}  // extern "C"
 
 ///////////////////////////////////////////////////////////////////////////////
 // Direct system call API
@@ -3420,8 +3421,8 @@ void InitializeCurrentTime() {
 }
 
 double CurrentTime() {
-  return CallFunction<int64_t>(gOriginal_mach_absolute_time) *
-         gNsPerTick / 1000.0;
+  return CallFunction<int64_t>(gOriginal_mach_absolute_time) * gNsPerTick /
+         1000.0;
 }
 
 NativeThreadId DirectSpawnThread(void (*aFunction)(void*), void* aArgument,

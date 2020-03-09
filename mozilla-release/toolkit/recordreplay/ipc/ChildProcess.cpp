@@ -27,11 +27,11 @@ ChildProcessInfo::ChildProcessInfo(
     : mRecording(aRecordingProcessData.isSome()) {
   MOZ_RELEASE_ASSERT(NS_IsMainThread());
 
-  Channel::Kind kind =
-    IsRecording() ? Channel::Kind::MiddlemanRecord : Channel::Kind::MiddlemanReplay;
+  Channel::Kind kind = IsRecording() ? Channel::Kind::MiddlemanRecord
+                                     : Channel::Kind::MiddlemanReplay;
   mChannel = new Channel(aId, kind, [=](Message::UniquePtr aMsg) {
-        ReceiveChildMessageOnMainThread(aId, std::move(aMsg));
-      });
+    ReceiveChildMessageOnMainThread(aId, std::move(aMsg));
+  });
 
   LaunchSubprocess(aId, aRecordingProcessData);
 }
@@ -188,9 +188,11 @@ void ChildProcessInfo::OnCrash(size_t aForkId, const char* aWhy) {
       CrashReporter::Annotation::RecordReplayError, nsAutoCString(aWhy));
 
   if (!IsRecording()) {
-    // Notify the parent when a replaying process crashes so that a report can
-    // be generated.
-    dom::ContentChild::GetSingleton()->SendGenerateReplayCrashReport(GetId());
+    if (!UseCloudForReplayingProcesses()) {
+      // Notify the parent when a replaying process crashes so that a report can
+      // be generated.
+      dom::ContentChild::GetSingleton()->SendGenerateReplayCrashReport(GetId());
+    }
 
     // Continue execution if we were able to recover from the crash.
     if (js::RecoverFromCrash(GetId(), aForkId)) {
@@ -295,7 +297,7 @@ void ChildProcessInfo::MaybeProcessPendingMessageRunnable() {
 // Execute a task that processes a message received from the child. This is
 // called on a channel thread, and the function executes asynchronously on
 // the main thread.
-  /* static */ void ChildProcessInfo::ReceiveChildMessageOnMainThread(
+/* static */ void ChildProcessInfo::ReceiveChildMessageOnMainThread(
     size_t aChildId, Message::UniquePtr aMsg) {
   MOZ_RELEASE_ASSERT(!NS_IsMainThread());
 

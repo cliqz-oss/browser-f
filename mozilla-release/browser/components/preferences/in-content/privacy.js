@@ -2130,7 +2130,7 @@ var gPrivacyPane = {
   showPasswords() {
     /* CLIQZ-SPECIAL: Force use old password manage not lockwise
     if (LoginHelper.managementURI) {
-      let loginManager = window.getWindowGlobalChild().getActor("LoginManager");
+      let loginManager = window.windowGlobalChild.getActor("LoginManager");
       loginManager.sendAsyncMessage("PasswordManager:OpenPreferences", {
         entryPoint: "preferences",
       });
