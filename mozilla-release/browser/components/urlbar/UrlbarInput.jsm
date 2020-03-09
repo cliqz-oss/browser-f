@@ -2071,7 +2071,6 @@ class UrlbarInput {
   }
 
   _on_TabSelect(event) {
-<<<<<<< HEAD
     this._resetSearchState();
 
     // CLIQZ-SPECIAL: DB-2272
@@ -2091,12 +2090,8 @@ class UrlbarInput {
       this._overflowing = false;
       this._updateTextOverflow();
     }
-||||||| merged common ancestors
-    this._resetSearchState();
-=======
     this._gotTabSelect = true;
     this._afterTabSelectAndFocusChange();
->>>>>>> origin/upstream-releases
   }
 
   _on_keydown(event) {

@@ -242,7 +242,7 @@ bool WinTaskbar::GetAppUserModelID(nsAString& aDefaultGroupId) {
   nsCString appName;
   if (appInfo && NS_SUCCEEDED(appInfo->GetName(appName))) {
     nsAutoString regKey;
-    regKey.AssignLiteral("Software\\Mozilla\\");
+    regKey.AssignLiteral("Software\\");
     AppendASCIItoUTF16(appName, regKey);
     regKey.AppendLiteral("\\TaskBarIDs");
 
@@ -265,57 +265,11 @@ bool WinTaskbar::GetAppUserModelID(nsAString& aDefaultGroupId) {
     }
   }
 
-<<<<<<< HEAD
-  nsAutoString regKey;
-  regKey.AssignLiteral("Software\\");
-  AppendASCIItoUTF16(appName, regKey);
-  regKey.AppendLiteral("\\TaskBarIDs");
-
-  WCHAR path[MAX_PATH];
-  if (GetModuleFileNameW(nullptr, path, MAX_PATH)) {
-    wchar_t* slash = wcsrchr(path, '\\');
-    if (!slash) return false;
-    *slash = '\0';  // no trailing slash
-
-    // The hash is short, but users may customize this, so use a respectable
-    // string buffer.
-    wchar_t buf[256];
-    if (WinUtils::GetRegistryKey(HKEY_LOCAL_MACHINE, regKey.get(), path, buf,
-                                 sizeof buf)) {
-      aDefaultGroupId.Assign(buf);
-    } else if (WinUtils::GetRegistryKey(HKEY_CURRENT_USER, regKey.get(), path,
-                                        buf, sizeof buf)) {
-      aDefaultGroupId.Assign(buf);
-    }
-||||||| merged common ancestors
-  nsAutoString regKey;
-  regKey.AssignLiteral("Software\\Mozilla\\");
-  AppendASCIItoUTF16(appName, regKey);
-  regKey.AppendLiteral("\\TaskBarIDs");
-
-  WCHAR path[MAX_PATH];
-  if (GetModuleFileNameW(nullptr, path, MAX_PATH)) {
-    wchar_t* slash = wcsrchr(path, '\\');
-    if (!slash) return false;
-    *slash = '\0';  // no trailing slash
-
-    // The hash is short, but users may customize this, so use a respectable
-    // string buffer.
-    wchar_t buf[256];
-    if (WinUtils::GetRegistryKey(HKEY_LOCAL_MACHINE, regKey.get(), path, buf,
-                                 sizeof buf)) {
-      aDefaultGroupId.Assign(buf);
-    } else if (WinUtils::GetRegistryKey(HKEY_CURRENT_USER, regKey.get(), path,
-                                        buf, sizeof buf)) {
-      aDefaultGroupId.Assign(buf);
-    }
-=======
   // If we haven't found an ID yet then use the install hash. In xpcshell tests
   // the directory provider may not have been initialized so bypass in this
   // case.
   if (aDefaultGroupId.IsEmpty() && gDirServiceProvider) {
     gDirServiceProvider->GetInstallHash(aDefaultGroupId);
->>>>>>> origin/upstream-releases
   }
 
   return !aDefaultGroupId.IsEmpty();

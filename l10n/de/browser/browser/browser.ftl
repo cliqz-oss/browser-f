@@ -17,22 +17,6 @@ browser-main-window-title =
         [private] { -brand-full-name } (Vergessen Modus)
        *[default] { -brand-full-name }
     }
-# This is the default window title in case there is a content
-# title to be displayed.
-#
-# Depending on the $mode, the string will look like this (in en-US):
-#
-# "default" - "Example Title - Mozilla Firefox"
-# "private" - "Example Title - Mozilla Firefox (Forget Mode)"
-#
-# Variables
-#   $mode (String) - "private" in case of a forget mode, "default" otherwise.
-#   $title (String) - Content title string.
-browser-main-window-content-title =
-    { $mode ->
-        [private] { $title } - { -brand-full-name } (Vergessen Modus)
-       *[default] { $title } - { -brand-full-name }
-    }
 
 ## This is the default window title in case there is content
 ## title to be displayed.
@@ -56,8 +40,8 @@ browser-main-window-content-title-default =
     }
 browser-main-window-content-title-private =
     { PLATFORM() ->
-        [macos] { $title } - (Privater Modus)
-       *[other] { $title } - { -brand-full-name } (Privater Modus)
+        [macos] { $title } - (Vergessen Modus)
+       *[other] { $title } - { -brand-full-name } (Vergessen Modus)
     }
 
 ##
@@ -197,7 +181,7 @@ search-one-offs-context-set-as-default =
     .label = Als Standardsuchmaschine festlegen
     .accesskey = S
 search-one-offs-context-set-as-default-private =
-    .label = Als Standardsuchmaschine für private Fenster festlegen
+    .label = Als Standardsuchmaschine für Vergessen Fenster festlegen
     .accesskey = p
 
 ## Bookmark Panel

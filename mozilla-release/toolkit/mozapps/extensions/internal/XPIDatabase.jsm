@@ -164,23 +164,9 @@ const PROP_JSON_FIELDS = [
   "rootURI",
 ];
 
-<<<<<<< HEAD
-const LEGACY_TYPES = new Set(["extension"]);
-
-const SIGNED_TYPES = new Set([
-  "extension",
-  "experiment",
-  "multipackage",
-  "locale",
-  "theme",
-]);
-||||||| merged common ancestors
-const LEGACY_TYPES = new Set(["extension"]);
-
-const SIGNED_TYPES = new Set(["extension", "locale", "theme"]);
-=======
-const SIGNED_TYPES = new Set(["extension", "locale", "theme"]);
->>>>>>> origin/upstream-releases
+// CLIQZ-SPECIAL: for experiment and multipackage see
+// this commit 1b7e95a2062c06307b388836b9331c793e95d1ad (Merge with Firefox 69.x)
+const SIGNED_TYPES = new Set(["extension", "experiment", "multipackage", "locale", "theme"]);
 
 // Time to wait before async save of XPI JSON database, in milliseconds
 const ASYNC_SAVE_DELAY_MS = 20;
@@ -639,14 +625,8 @@ class AddonInternal {
       if (this.location.isSystem && !allowSystemAddons) {
         throw new Error(`Cannot disable system add-on ${this.id}`);
       }
-<<<<<<< HEAD
       */
-      await XPIDatabase.updateAddonDisabledState(this, val);
-||||||| merged common ancestors
-      await XPIDatabase.updateAddonDisabledState(this, val);
-=======
       await XPIDatabase.updateAddonDisabledState(this, { userDisabled: val });
->>>>>>> origin/upstream-releases
     } else {
       this.userDisabled = val;
       // When enabling remove the softDisabled flag

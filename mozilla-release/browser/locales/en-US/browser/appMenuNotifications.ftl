@@ -39,23 +39,3 @@ appmenu-addon-post-install-message = Manage your add-ons by clicking <image data
 appmenu-addon-post-install-incognito-checkbox =
     .label = Allow this extension to run in Forget Windows
     .accesskey = A
-<<<<<<< HEAD
-appmenu-addon-private-browsing =
-    .label = Change to extensions in Forget Windows
-    .buttonlabel = Manage Extensions
-    .buttonaccesskey = M
-    .secondarybuttonlabel = Okay, Got It
-    .secondarybuttonaccesskey = O
-appmenu-addon-private-browsing-message = Any new extensions you add to { -brand-shorter-name } won’t work in Forget Windows unless you allow this in the settings.
-appmenu-addon-private-browsing-learn-more = Learn how to manage extension settings
-||||||| merged common ancestors
-appmenu-addon-private-browsing =
-    .label = Change to extensions in Private Windows
-    .buttonlabel = Manage Extensions
-    .buttonaccesskey = M
-    .secondarybuttonlabel = Okay, Got It
-    .secondarybuttonaccesskey = O
-appmenu-addon-private-browsing-message = Any new extensions you add to { -brand-shorter-name } won’t work in Private Windows unless you allow this in the settings.
-appmenu-addon-private-browsing-learn-more = Learn how to manage extension settings
-=======
->>>>>>> origin/upstream-releases

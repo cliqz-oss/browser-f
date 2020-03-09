@@ -2114,52 +2114,14 @@ BrowserGlue.prototype = {
         timeout: 5000,
       },
 
-<<<<<<< HEAD
-#if 0
-    // Begin listening for incoming push messages.
-    Services.tm.idleDispatchToMainThread(() => {
-      try {
-        PushService.wrappedJSObject.ensureReady();
-      } catch (ex) {
-        // NS_ERROR_NOT_AVAILABLE will get thrown for the PushService getter
-        // if the PushService is disabled.
-        if (ex.result != Cr.NS_ERROR_NOT_AVAILABLE) {
-          throw ex;
-        }
-      }
-    });
-||||||| merged common ancestors
-    // Begin listening for incoming push messages.
-    Services.tm.idleDispatchToMainThread(() => {
-      try {
-        PushService.wrappedJSObject.ensureReady();
-      } catch (ex) {
-        // NS_ERROR_NOT_AVAILABLE will get thrown for the PushService getter
-        // if the PushService is disabled.
-        if (ex.result != Cr.NS_ERROR_NOT_AVAILABLE) {
-          throw ex;
-        }
-      }
-    });
-=======
       {
         task: async () => {
           await ContextualIdentityService.load();
           Discovery.update();
         },
       },
->>>>>>> origin/upstream-releases
 
-<<<<<<< HEAD
-    Services.tm.idleDispatchToMainThread(() => {
-      this._recordContentBlockingTelemetry();
-    });
-#endif
-||||||| merged common ancestors
-    Services.tm.idleDispatchToMainThread(() => {
-      this._recordContentBlockingTelemetry();
-    });
-=======
+#if 0
       // Begin listening for incoming push messages.
       {
         task: () => {
@@ -2174,13 +2136,13 @@ BrowserGlue.prototype = {
           }
         },
       },
->>>>>>> origin/upstream-releases
 
       {
         task: () => {
           this._recordContentBlockingTelemetry();
         },
       },
+#endif
 
       {
         task: () => {
@@ -2319,12 +2281,14 @@ BrowserGlue.prototype = {
         },
       },
 
+#if 0
       // Marionette needs to be initialized as very last step
       {
         task: () => {
           Services.obs.notifyObservers(null, "marionette-startup-requested");
         },
       },
+#endif
 
       // Run TRR performance measurements for DoH.
       {
@@ -2372,22 +2336,6 @@ BrowserGlue.prototype = {
         continue;
       }
 
-<<<<<<< HEAD
-#if 0
-    // Temporary for Delegated Credentials Study:
-    // https://bugzilla.mozilla.org/show_bug.cgi?id=1582591
-    // Disable in automation and non-nightly builds.
-    if (!Cu.isInAutomation && AppConstants.NIGHTLY_BUILD) {
-      let env = Cc["@mozilla.org/process/environment;1"].getService(
-        Ci.nsIEnvironment
-||||||| merged common ancestors
-    // Temporary for Delegated Credentials Study:
-    // https://bugzilla.mozilla.org/show_bug.cgi?id=1582591
-    // Disable in automation and non-nightly builds.
-    if (!Cu.isInAutomation && AppConstants.NIGHTLY_BUILD) {
-      let env = Cc["@mozilla.org/process/environment;1"].getService(
-        Ci.nsIEnvironment
-=======
       ChromeUtils.idleDispatch(
         () => {
           if (!Services.startup.shuttingDown) {
@@ -2400,24 +2348,8 @@ BrowserGlue.prototype = {
           }
         },
         task.timeout ? { timeout: task.timeout } : undefined
->>>>>>> origin/upstream-releases
       );
     }
-<<<<<<< HEAD
-
-    // Marionette needs to be initialized as very last step
-    Services.tm.idleDispatchToMainThread(() => {
-      Services.obs.notifyObservers(null, "marionette-startup-requested");
-    });
-#endif
-||||||| merged common ancestors
-
-    // Marionette needs to be initialized as very last step
-    Services.tm.idleDispatchToMainThread(() => {
-      Services.obs.notifyObservers(null, "marionette-startup-requested");
-    });
-=======
->>>>>>> origin/upstream-releases
   },
 
   /**

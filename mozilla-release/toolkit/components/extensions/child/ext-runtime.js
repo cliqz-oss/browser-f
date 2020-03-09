@@ -133,15 +133,9 @@ this.runtime = class extends ExtensionAPI {
 
         id: extension.id,
 
-<<<<<<< HEAD
         isCliqz: true,
 
-        getURL: function(url) {
-||||||| merged common ancestors
-        getURL: function(url) {
-=======
         getURL(url) {
->>>>>>> origin/upstream-releases
           return extension.baseURI.resolve(url);
         },
       },

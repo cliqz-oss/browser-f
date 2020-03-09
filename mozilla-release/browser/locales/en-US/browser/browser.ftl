@@ -18,39 +18,6 @@ browser-main-window-title = { $mode ->
        *[default] { -brand-full-name }
     }
 
-<<<<<<< HEAD
-# This is the default window title in case there is a content
-# title to be displayed.
-#
-# Depending on the $mode, the string will look like this (in en-US):
-#
-# "default" - "Example Title - Mozilla Firefox"
-# "private" - "Example Title - Mozilla Firefox (Forget Mode)"
-#
-# Variables
-#   $mode (String) - "private" in case of a forget mode, "default" otherwise.
-#   $title (String) - Content title string.
-browser-main-window-content-title = { $mode ->
-        [private] { $title } - { -brand-full-name } (Forget Mode)
-       *[default] { $title } - { -brand-full-name }
-    }
-||||||| merged common ancestors
-# This is the default window title in case there is a content
-# title to be displayed.
-#
-# Depending on the $mode, the string will look like this (in en-US):
-#
-# "default" - "Example Title - Mozilla Firefox"
-# "private" - "Example Title - Mozilla Firefox (Private Browsing)"
-#
-# Variables
-#   $mode (String) - "private" in case of a private browsing mode, "default" otherwise.
-#   $title (String) - Content title string.
-browser-main-window-content-title = { $mode ->
-        [private] { $title } - { -brand-full-name } (Private Browsing)
-       *[default] { $title } - { -brand-full-name }
-    }
-=======
 ## This is the default window title in case there is content
 ## title to be displayed.
 ##
@@ -72,12 +39,11 @@ browser-main-window-content-title-default = { PLATFORM() ->
 }
 
 browser-main-window-content-title-private = { PLATFORM() ->
-    [macos] { $title } - (Private Browsing)
-   *[other] { $title } - { -brand-full-name } (Private Browsing)
+    [macos] { $title } - (Forget Mode)
+   *[other] { $title } - { -brand-full-name } (Forget Mode)
 }
 
 ##
->>>>>>> origin/upstream-releases
 
 urlbar-identity-button =
     .aria-label = View site information
@@ -217,7 +183,7 @@ search-one-offs-context-set-as-default =
     .label = Set as Default Search Engine
     .accesskey = D
 search-one-offs-context-set-as-default-private =
-    .label = Set as Default Search Engine for Private Windows
+    .label = Set as Default Search Engine for Forget Windows
     .accesskey = P
 
 ## Bookmark Panel

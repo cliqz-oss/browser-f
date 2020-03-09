@@ -1439,55 +1439,6 @@ pref("security.cert_pinning.enforcement_level", 1);
 // before content.
 pref("dom.debug.propagate_gesture_events_through_content", false);
 
-<<<<<<< HEAD
-// CLIQZ-SPECIAL - force mozilla location service only
-// All the Geolocation preferences are here.
-//
-// #ifndef EARLY_BETA_OR_EARLIER
-//   pref("geo.wifi.uri", "https://www.googleapis.com/geolocation/v1/geolocate?key=%GOOGLE_LOCATION_SERVICE_API_KEY%");
-// #else
-  // Use MLS on Nightly and early Beta.
-  pref("geo.wifi.uri", "https://location.services.mozilla.com/v1/geolocate?key=%MOZILLA_API_KEY%");
-// #endif
-
-#ifdef XP_MACOSX
-  pref("geo.provider.use_corelocation", false);
-#endif
-
-// Set to false if things are really broken.
-#ifdef XP_WIN
-  pref("geo.provider.ms-windows-location", false);
-#endif
-
-#if defined(MOZ_WIDGET_GTK) && defined(MOZ_GPSD)
-  pref("geo.provider.use_gpsd", false);
-#endif
-
-||||||| merged common ancestors
-// All the Geolocation preferences are here.
-//
-#ifndef EARLY_BETA_OR_EARLIER
-  pref("geo.wifi.uri", "https://www.googleapis.com/geolocation/v1/geolocate?key=%GOOGLE_LOCATION_SERVICE_API_KEY%");
-#else
-  // Use MLS on Nightly and early Beta.
-  pref("geo.wifi.uri", "https://location.services.mozilla.com/v1/geolocate?key=%MOZILLA_API_KEY%");
-#endif
-
-#ifdef XP_MACOSX
-  pref("geo.provider.use_corelocation", true);
-#endif
-
-// Set to false if things are really broken.
-#ifdef XP_WIN
-  pref("geo.provider.ms-windows-location", true);
-#endif
-
-#if defined(MOZ_WIDGET_GTK) && defined(MOZ_GPSD)
-  pref("geo.provider.use_gpsd", true);
-#endif
-
-=======
->>>>>>> origin/upstream-releases
 // CustomizableUI debug logging.
 pref("browser.uiCustomization.debug", false);
 
@@ -1789,15 +1740,10 @@ pref("browser.tabs.crashReporting.requestEmail", false);
 pref("browser.tabs.crashReporting.emailMe", false);
 pref("browser.tabs.crashReporting.email", "");
 
-<<<<<<< HEAD
 pref("extensions.legacy.enabled", true);
-||||||| merged common ancestors
-pref("extensions.legacy.enabled", false);
-=======
 // If true, unprivileged extensions may use experimental APIs on
 // nightly and developer edition.
 pref("extensions.experiments.enabled", false);
->>>>>>> origin/upstream-releases
 
 // Causes access on unsafe CPOWs from browser code to throw by default.
 pref("dom.ipc.cpows.forbid-unsafe-from-browser", true);

@@ -243,32 +243,11 @@ XPCOMUtils.defineLazyScriptGetter(
   "SearchOneOffs",
   "chrome://browser/content/search/search-one-offs.js"
 );
-<<<<<<< HEAD
-
-if (AppConstants.NIGHTLY_BUILD) {
-  XPCOMUtils.defineLazyScriptGetter(
-    this,
-    "gGfxUtils",
-    "chrome://browser/content/browser-graphics-utils.js"
-  );
-}
-
-||||||| merged common ancestors
-if (AppConstants.NIGHTLY_BUILD) {
-  XPCOMUtils.defineLazyScriptGetter(
-    this,
-    "gGfxUtils",
-    "chrome://browser/content/browser-graphics-utils.js"
-  );
-}
-
-=======
 XPCOMUtils.defineLazyScriptGetter(
   this,
   "gGfxUtils",
   "chrome://browser/content/browser-graphics-utils.js"
 );
->>>>>>> origin/upstream-releases
 XPCOMUtils.defineLazyScriptGetter(
   this,
   "pktUI",
@@ -5763,30 +5742,16 @@ var XULBrowserWindow = {
       );
     }
 
-#if 0
     gProtectionsHandler.onContentBlockingEvent(
       aEvent,
       aWebProgress,
       aIsSimulated,
       this._event // previous content blocking event
     );
-<<<<<<< HEAD
-#endif
-    // Because this function will only receive content blocking event updates
-    // for the currently selected tab, we handle updates to background tabs in
-    // TabsProgressListener.onContentBlockingEvent.
-    gBrowser.selectedBrowser.updateSecurityUIForContentBlockingEvent(aEvent);
-||||||| merged common ancestors
-    // Because this function will only receive content blocking event updates
-    // for the currently selected tab, we handle updates to background tabs in
-    // TabsProgressListener.onContentBlockingEvent.
-    gBrowser.selectedBrowser.updateSecurityUIForContentBlockingEvent(aEvent);
-=======
 
     // We need the state of the previous content blocking event, so update
     // event after onContentBlockingEvent is called.
     this._event = aEvent;
->>>>>>> origin/upstream-releases
   },
 #endif
 

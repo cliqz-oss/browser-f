@@ -141,13 +141,6 @@ this container is a toolbar. This avoids double-speaking. -->
   -  downloads.label, but used in the Library panel. -->
 <!ENTITY libraryDownloads.label       "Downloads">
 <!ENTITY addons.label                 "Add-ons">
-<<<<<<< HEAD
-<!ENTITY addons.commandkey            "A">
-<!ENTITY plugins.label                "Plugins">
-||||||| merged common ancestors
-<!ENTITY addons.commandkey            "A">
-=======
->>>>>>> origin/upstream-releases
 
 <!ENTITY webDeveloperMenu.label       "Web Developer">
 
@@ -155,17 +148,7 @@ this container is a toolbar. This avoids double-speaking. -->
 <!ENTITY manageUserContext.label          "Manage Containers">
 <!ENTITY manageUserContext.accesskey      "O">
 <!ENTITY newNavigatorCmd.label        "New Window">
-<<<<<<< HEAD
-<!ENTITY newNavigatorCmd.key        "N">
-<!ENTITY newNavigatorCmd.accesskey      "N">
 <!ENTITY newPrivateWindow.label     "New Forget Window">
-<!ENTITY newPrivateWindow.accesskey "W">
-||||||| merged common ancestors
-<!ENTITY newNavigatorCmd.key        "N">
-<!ENTITY newPrivateWindow.label     "New Private Window">
-=======
-<!ENTITY newPrivateWindow.label     "New Private Window">
->>>>>>> origin/upstream-releases
 
 <!ENTITY editMenu.label         "Edit">
 <!ENTITY preferencesCmd2.label       "Options">
@@ -257,17 +240,7 @@ this container is a toolbar. This avoids double-speaking. -->
     secondary commands. -->
 <!ENTITY moreMenu.label "More">
 
-<<<<<<< HEAD
-<!ENTITY openCmd.commandkey           "l">
 <!ENTITY urlbar.placeholder2          "Search Cliqz or enter URL">
-<!ENTITY urlbar.accesskey             "d">
-||||||| merged common ancestors
-<!ENTITY openCmd.commandkey           "l">
-<!ENTITY urlbar.placeholder2          "Search or enter address">
-<!ENTITY urlbar.accesskey             "d">
-=======
-<!ENTITY urlbar.placeholder2          "Search or enter address">
->>>>>>> origin/upstream-releases
 <!-- LOCALIZATION NOTE (urlbar.extension.label): Used to indicate that a selected autocomplete entry is provided by an extension. -->
 <!ENTITY urlbar.extension.label       "Extension:">
 <!ENTITY urlbar.switchToTab.label     "Switch to tab:">
