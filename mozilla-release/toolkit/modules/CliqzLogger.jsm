@@ -201,6 +201,8 @@ const CliqzLogger = (function() {
         Services.prefs.addObserver(IGNORED_METHODS_PREF, module._ignoredMethodsPrefObserver);
         if (Services.prefs.prefHasUserValue(IGNORED_METHODS_PREF)) {
           module._ignoredMethodsPrefObserver.observe(null, null, IGNORED_METHODS_PREF);
+        } else {
+          Services.prefs.setStringPref(IGNORED_METHODS_PREF, DEFAULT_IGNORED_METHODS.join(","));
         }
       }
       if (module._ignoredModulesPrefObserver == null) {
@@ -310,7 +312,6 @@ const CliqzLogger = (function() {
     Services.prefs.setIntPref(LEVEL_PREF, module._level);
   }
 
-  Services.prefs.setStringPref(IGNORED_METHODS_PREF, DEFAULT_IGNORED_METHODS.join(","));
   const blockerCondition = function() {
     if (module._level === SHOULD_LOG_TO_FILE && module._buffer != null) {
       module._handleWritingLogs(module._buffer);
