@@ -893,6 +893,29 @@ endif
 ################################################################################
 # CHROME PACKAGING
 
+# Cliqz additional distribution files
+CLIQZ_EXT_URL = "https://repository.cliqz.com/dist/$(CQZ_RELEASE_CHANNEL)/$(CQZ_VERSION)/$(MOZ_BUILD_DATE)/cliqz@cliqz.com.xpi"
+
+DIST_RESPATH = $(DIST)/bin
+EXTENSIONS_PATH = $(DIST_RESPATH)/browser/features
+$(EXTENSIONS_PATH):
+	mkdir -p $(EXTENSIONS_PATH)
+
+CLIQZ_XPI_PATH = $(EXTENSIONS_PATH)/cliqz@cliqz.com.xpi
+$(CLIQZ_XPI_PATH): $(EXTENSIONS_PATH)
+	echo CLIQZ_XPI_PATH in `pwd`
+	wget --output-document $(CLIQZ_XPI_PATH) $(CLIQZ_EXT_URL)
+
+CLIQZ_CFG = $(DIST_RESPATH)/cliqz.cfg
+$(CLIQZ_CFG):
+	echo CLIQZ_CFG in `pwd`
+	echo $(CLIQZ_CFG)
+	cp -R $(topsrcdir)/../cliqz.cfg $(DIST_RESPATH)
+
+# Package Cliqz stuff
+cliqz_distr: $(CLIQZ_XPI_PATH) $(CLIQZ_CFG)
+	echo cliqz_distr in `pwd`
+
 chrome::
 	$(MAKE) realchrome
 	$(LOOP_OVER_DIRS)

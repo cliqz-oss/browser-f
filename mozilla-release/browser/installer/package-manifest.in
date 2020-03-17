@@ -126,7 +126,7 @@
 ; [Base Browser Files]
 #ifndef XP_UNIX
 @BINPATH@/@MOZ_APP_NAME@.exe
-@BINPATH@/firefox.VisualElementsManifest.xml
+@BINPATH@/cliqz.VisualElementsManifest.xml
 @BINPATH@/browser/VisualElements/VisualElements_150.png
 @BINPATH@/browser/VisualElements/VisualElements_70.png
 #else
@@ -480,3 +480,6 @@ i686/gmp-clearkey/0.1/clearkey.dll
 ; build, which, practically speaking, is the case.
 @BINPATH@/gmp-clearkey/0.1/manifest.json
 #endif
+
+; Extra distrubution files
+@RESPATH@/cliqz.cfg

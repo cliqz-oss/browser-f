@@ -11,7 +11,7 @@ ABS_CONFIG_DIR := $(abspath $(CONFIG_DIR))
 SFX_MODULE ?= $(error SFX_MODULE is not defined)
 
 ifeq ($(CPU_ARCH), aarch64)
-USE_UPX := 
+USE_UPX :=
 else
 USE_UPX := --use-upx
 endif
@@ -33,6 +33,7 @@ CUSTOM_NSIS_PLUGINS = \
 	BitsUtils.dll \
 	CertCheck.dll \
 	CityHash.dll \
+	CliqzHelper.dll \
 	ExecInExplorer.dll \
 	InetBgDL.dll \
 	InvokeShellVerb.dll \

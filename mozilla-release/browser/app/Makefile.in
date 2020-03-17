@@ -54,9 +54,10 @@ endif
 # channel-prefs.js is handled separate from other prefs due to bug 756325
 # DO NOT change the content of channel-prefs.js without taking the appropriate
 # steps. See bug 1431342.
-libs:: $(srcdir)/profile/channel-prefs.js
+CH_PREFS_JS = $(srcdir)/profile/channel-prefs.js
+libs:: $(CH_PREFS_JS) cliqz_distr
 	$(NSINSTALL) -D $(DIST)/bin/defaults/pref
-	$(call py_action,preprocessor,-Fsubstitution $(PREF_PPFLAGS) $(ACDEFINES) $^ -o $(DIST)/bin/defaults/pref/channel-prefs.js)
+	$(call py_action,preprocessor,-Fsubstitution $(PREF_PPFLAGS) $(ACDEFINES) $(CH_PREFS_JS) -o $(DIST)/bin/defaults/pref/channel-prefs.js)
 
 ifeq (cocoa,$(MOZ_WIDGET_TOOLKIT))
 
