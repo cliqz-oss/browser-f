@@ -387,7 +387,7 @@ function getPerInstallationMutexName(aGlobal = true) {
 
   hasher.update(data, data.length);
   return (
-    (aGlobal ? "Global\\" : "") + "MozillaUpdateMutex-" + hasher.finish(true)
+    (aGlobal ? "Global\\" : "") + "CliqzUpdateMutex-" + hasher.finish(true)
   );
 }
 
@@ -992,7 +992,7 @@ function isServiceInstalled() {
     );
     wrk.open(
       wrk.ROOT_KEY_LOCAL_MACHINE,
-      "SOFTWARE\\Mozilla\\MaintenanceService",
+      "SOFTWARE\\CLIQZ\\MaintenanceService",
       wrk.ACCESS_READ | wrk.WOW64_64
     );
     installed = wrk.readIntValue("Installed");
@@ -1822,6 +1822,7 @@ function Update(update) {
     this.displayVersion = this.appVersion;
   }
 
+#if 0
   if (!this.name) {
     // When the update doesn't provide a name fallback to using
     // "<App Name> <Update App Version>"
@@ -1832,6 +1833,11 @@ function Update(update) {
       this.displayVersion,
     ]);
   }
+  this.name = name;
+#endif
+  // In Cliqz we always use just the current product name.
+  var brandBundle = Services.strings.createBundle(URI_BRAND_PROPERTIES);
+  this.name = brandBundle.GetStringFromName("brandShortName");
 }
 Update.prototype = {
   // nsIUpdate attribute names used to prevent nsIWritablePropertyBag from over
@@ -3840,7 +3846,7 @@ Checker.prototype = {
     );
 
     let regPath =
-      "SOFTWARE\\Mozilla\\" + Services.appinfo.name + "\\32to64DidMigrate";
+      "SOFTWARE\\" + Services.appinfo.name + "\\32to64DidMigrate";
     let regValHKCU = WindowsRegistry.readRegKey(
       wrk.ROOT_KEY_CURRENT_USER,
       regPath,
@@ -3943,6 +3949,10 @@ Checker.prototype = {
     if (!UpdateServiceInstance.canCheckForUpdates && !force) {
       return;
     }
+
+    // CLIQZ-SPECIAL Start checking updates for System Addons also.
+    let { XPIProvider } = Components.utils.import("resource://gre/modules/addons/XPIProvider.jsm", {});
+    XPIProvider.updateSystemAddons();
 
     this.getUpdateURL(force).then(url => {
       if (!url) {
@@ -4607,7 +4617,7 @@ Downloader.prototype = {
       }
 
       let updateRootDir = FileUtils.getDir(KEY_UPDROOT, [], true);
-      let jobName = "MozillaUpdate " + updateRootDir.leafName;
+      let jobName = "CliqzUpdate " + updateRootDir.leafName;
       let updatePath = updateDir.path;
       if (!Bits.initialized) {
         Bits.init(jobName, updatePath, monitorTimeout);

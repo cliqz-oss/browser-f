@@ -3400,6 +3400,12 @@ int XREMain::XRE_mainInit(bool* aExitFlag) {
     return 0;
   }
 
+  if (CheckArg("migratepwdff")) {
+    ServiceMigratePasswordsFromFF(gArgc, gArgv);
+    *aExitFlag = true;
+    return 0;
+  }
+
   rv = XRE_InitCommandLine(gArgc, gArgv);
   NS_ENSURE_SUCCESS(rv, 1);
 

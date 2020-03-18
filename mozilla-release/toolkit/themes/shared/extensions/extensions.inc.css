@@ -442,6 +442,10 @@ button.warning {
   font-size: 1rem;
 }
 
+.name {
+  margin-inline-start: 0;
+}
+
 .description {
   margin: 0;
 }
@@ -577,9 +581,14 @@ button.warning {
   background-color: var(--in-content-box-background);
 }
 
-.list:focus > .addon[selected] {
+/* CLIQZ-SPECIAL  mods for suppressing blue shadow in recommended addons*/
+.list:focus > .addon[selected]:not(.cliqz-recommended-addons) {
   box-shadow: var(--card-shadow-focus);
   color: var(--in-content-text-color);
+}
+
+.cliqz-recommended-addons {
+  color: var(--in-content-text-color) !important;
 }
 
 #addon-list .addon[active="false"] > .content-container > .content-inner-container {
@@ -588,6 +597,30 @@ button.warning {
 
 #addon-list .addon[active="false"][selected] > .content-container > .content-inner-container {
   color: #777;
+}
+
+#addon-list .user-permissions {
+  color: #A5645F;
+  font-weight: 500;
+  margin-block-end: 2px;
+}
+
+#detail-view #detail-permissions-box {
+  border: 1px solid #F3E9E8;
+  border-radius: 4px;
+  margin-block-start: 15px;
+  padding-block-start: 15px;
+  padding-inline-start: 48px;
+}
+
+#detail-view #detail-permissions-heading {
+  color: #A5645F;
+  font-weight: 500;
+}
+
+#detail-view #detail-permissions-list ul {
+  margin-block-start: 10px;
+  padding-inline-start: 15px;
 }
 
 

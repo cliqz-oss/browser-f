@@ -233,7 +233,7 @@ bool WinTaskbar::GetAppUserModelID(nsAString& aDefaultGroupId) {
   }
 
   // The default value is set by the installer and is stored in the registry
-  // under (HKLM||HKCU)/Software/Mozilla/Firefox/TaskBarIDs. If for any reason
+  // under (HKLM||HKCU)/Software/Cliqz/TaskBarIDs. If for any reason
   // hash generation operation fails, the installer will not store a value in
   // the registry or set ids on shortcuts. A lack of an id can also occur for
   // zipped builds.
@@ -242,7 +242,7 @@ bool WinTaskbar::GetAppUserModelID(nsAString& aDefaultGroupId) {
   nsCString appName;
   if (appInfo && NS_SUCCEEDED(appInfo->GetName(appName))) {
     nsAutoString regKey;
-    regKey.AssignLiteral("Software\\Mozilla\\");
+    regKey.AssignLiteral("Software\\");
     AppendASCIItoUTF16(appName, regKey);
     regKey.AppendLiteral("\\TaskBarIDs");
 

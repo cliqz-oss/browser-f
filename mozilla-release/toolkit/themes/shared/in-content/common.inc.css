@@ -29,7 +29,8 @@
   --in-content-border-invalid-shadow: var(--red-50-a30);
   --in-content-border-color: #d7d7db;
   --in-content-category-outline-focus: 1px dotted #0a84ff;
-  --in-content-category-text-selected: #0a84ff;
+  --in-content-category-text-active: #0c0c0d;
+  --in-content-category-text-selected: #0078ca;
   --in-content-category-text-selected-active: #0060df;
   --in-content-category-background-hover: rgba(12,12,13,0.1);
   --in-content-category-background-active: rgba(12,12,13,0.15);
@@ -79,7 +80,12 @@
   --green-80: #006504;
   --green-90: #003706;
   --orange-50: #ff9400;
+  /* CLIQZ-SPECIAL This is on purpose to overwrite forget mode color everywhere
   --purple-70: #6200a4;
+  --purple-70-a40: rgba(98, 0, 164, 0.4);
+  */
+  --purple-70: #BBC6D4;
+  --purple-70-a40: rgba(187, 198, 212, 0.4);
   --red-50: #ff0039;
   --red-50-a30: rgba(255, 0, 57, 0.3);
   --red-60: #d70022;

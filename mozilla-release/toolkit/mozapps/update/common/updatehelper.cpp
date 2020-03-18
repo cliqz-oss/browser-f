@@ -56,7 +56,7 @@ BOOL PathGetSiblingFilePath(LPWSTR destinationBuffer, LPCWSTR siblingFilePath,
  *
  * Example
  * Destination buffer value:
- *   C:\Program Files (x86)\Mozilla Maintenance Service\UpdateLogs
+ *   C:\Program Files (x86)\Cliqz Maintenance Service\UpdateLogs
  *
  * @param  outBuf
  *         A buffer of size MAX_PATH + 1 to store the result.
@@ -75,7 +75,7 @@ BOOL GetSecureOutputDirectoryPath(LPWSTR outBuf) {
   wcsncpy(outBuf, progFilesX86, MAX_PATH + 1);
   CoTaskMemFree(progFilesX86);
 
-  if (!PathAppendSafe(outBuf, L"Mozilla Maintenance Service")) {
+  if (!PathAppendSafe(outBuf, L"Cliqz Maintenance Service")) {
     return FALSE;
   }
 
@@ -425,11 +425,11 @@ LaunchServiceSoftwareUpdateCommand(int argc, LPCWSTR* argv) {
   // The service command is the same as the updater.exe command line except
   // it has 4 extra args:
   // 0) The name of the service, automatically added by Windows
-  // 1) "MozillaMaintenance" (I think this is redundant with 0)
+  // 1) "CliqzMaintenance" (I think this is redundant with 0)
   // 2) The command being executed, which is "software-update"
   // 3) The path to updater.exe (from argv[0])
   LPCWSTR* updaterServiceArgv = new LPCWSTR[argc + 2];
-  updaterServiceArgv[0] = L"MozillaMaintenance";
+  updaterServiceArgv[0] = L"CliqzMaintenance";
   updaterServiceArgv[1] = L"software-update";
 
   for (int i = 0; i < argc; ++i) {

@@ -149,6 +149,9 @@
 @BINPATH@/@DLL_PREFIX@mozavcodec@DLL_SUFFIX@
 #endif
 @RESPATH@/browser/blocklist.xml
+#if CQZ_ADULT_DOMAINS_BF
+@RESPATH@/browser/adult-domains.bin
+#endif  ; CQZ_ADULT_DOMAINS_BF
 #ifdef XP_WIN
 #ifdef _AMD64_
 @BINPATH@/@DLL_PREFIX@qipcap64@DLL_SUFFIX@

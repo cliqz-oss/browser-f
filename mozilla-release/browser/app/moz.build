@@ -10,7 +10,7 @@ with Files("**"):
 with Files("blocklist.xml"):
     BUG_COMPONENT = ("Toolkit", "Blocklist Implementation")
 
-with Files("firefox.exe.manifest"):
+with Files("cliqz.exe.manifest"):
     BUG_COMPONENT = ("Core", "Widget: Win32")
 with Files("module.ver"):
     BUG_COMPONENT = ("Core", "Widget: Win32")
@@ -43,7 +43,7 @@ SOURCES += [
     'nsBrowserApp.cpp',
 ]
 
-# Neither channel-prefs.js nor firefox.exe want to end up in dist/bin/browser.
+# Neither channel-prefs.js nor cliqz.exe want to end up in dist/bin/browser.
 DIST_SUBDIR = ""
 
 LOCAL_INCLUDES += [
