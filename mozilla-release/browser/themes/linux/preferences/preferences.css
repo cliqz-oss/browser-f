@@ -27,6 +27,7 @@
   margin: 0 3px 6px;
 }
 
+%ifdef MOZ_SERVICES_SYNC
 /* Sync Pane */
 
 #noFxaAccount {
@@ -36,3 +37,4 @@
 #noFxaAccount > label:first-child {
   margin-bottom: 0.6em;
 }
+%endif

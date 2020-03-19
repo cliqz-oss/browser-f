@@ -1153,6 +1153,7 @@ pref("dom.ipc.shims.enabledWarnings", false);
   pref("browser.taskbar.lists.refreshInSeconds", 120);
 #endif
 
+#ifdef MOZ_SERVICES_SYNC
 // Preferences to be synced by default
 pref("services.sync.prefs.sync.accessibility.blockautorefresh", true);
 pref("services.sync.prefs.sync.accessibility.browsewithcaret", true);
@@ -1255,6 +1256,7 @@ pref("services.sync.prefs.dangerously_allow_arbitrary", false);
 // fetching these icons to show remote tabs may leak information about that
 // user's tabs and bookmarks. Note this pref is also synced.
 pref("services.sync.syncedTabs.showRemoteIcons", true);
+#endif  // MOZ_SERVICES_SYNC
 
 // Whether the character encoding menu is under the main Firefox button. This
 // preference is a string so that localizers can alter it.

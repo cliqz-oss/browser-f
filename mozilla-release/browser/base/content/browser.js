@@ -84,7 +84,9 @@ XPCOMUtils.defineLazyModuleGetters(this, {
   UrlbarTokenizer: "resource:///modules/UrlbarTokenizer.jsm",
   UrlbarUtils: "resource:///modules/UrlbarUtils.jsm",
   UrlbarValueFormatter: "resource:///modules/UrlbarValueFormatter.jsm",
+#ifdef MOZ_SERVICES_SYNC
   Weave: "resource://services-sync/main.js",
+#endif
   WebNavigationFrames: "resource://gre/modules/WebNavigationFrames.jsm",
   fxAccounts: "resource://gre/modules/FxAccounts.jsm",
   webrtcUI: "resource:///modules/webrtcUI.jsm",
@@ -179,11 +181,13 @@ XPCOMUtils.defineLazyScriptGetter(
   "gSafeBrowsing",
   "chrome://browser/content/browser-safebrowsing.js"
 );
+#ifdef MOZ_SERVICES_SYNC
 XPCOMUtils.defineLazyScriptGetter(
   this,
   "gSync",
   "chrome://browser/content/browser-sync.js"
 );
+#endif
 XPCOMUtils.defineLazyScriptGetter(
   this,
   "gBrowserThumbnails",
@@ -444,6 +448,7 @@ XPCOMUtils.defineLazyPreferenceGetter(
   }
 );
 
+#ifdef MOZ_SERVICES_SYNC
 XPCOMUtils.defineLazyPreferenceGetter(
   this,
   "gFxaToolbarEnabled",
@@ -493,6 +498,7 @@ XPCOMUtils.defineLazyPreferenceGetter(
     updateFxaToolbarMenu(gFxaToolbarEnabled);
   }
 );
+#endif
 
 XPCOMUtils.defineLazyPreferenceGetter(
   this,
@@ -602,6 +608,7 @@ var gNavigatorBundle = {
   },
 };
 
+#ifdef MOZ_SERVICES_SYNC
 function updateFxaToolbarMenu(enable, isInitialUpdate = false) {
   // We only show the Firefox Account toolbar menu if the feature is enabled and
   // if sync is enabled.
@@ -646,6 +653,7 @@ function updateFxaToolbarMenu(enable, isInitialUpdate = false) {
     mainWindowEl.removeAttribute("fxatoolbarmenu");
   }
 }
+#endif
 
 function UpdateBackForwardCommands(aWebNavigation) {
   var backCommand = document.getElementById("Browser:Back");
@@ -1779,8 +1787,9 @@ var gBrowserInit = {
     });
 
     this._setInitialFocus();
-
+#ifdef MOZ_SERVICES_SYNC
     updateFxaToolbarMenu(gFxaToolbarEnabled, true);
+#endif
   },
 
   onLoad() {
@@ -2024,9 +2033,11 @@ var gBrowserInit = {
       gDataNotificationInfoBar.init();
     }
 
+#if 0
     if (!AppConstants.MOZILLA_OFFICIAL) {
       DevelopmentHelpers.init();
     }
+#endif
 
     gExtensionsNotifications.init();
 
@@ -2243,7 +2254,9 @@ var gBrowserInit = {
 
     scheduleIdleTask(() => {
       // Initialize the Sync UI
+#ifdef MOZ_SERVICES_SYNC
       gSync.init();
+#endif
     });
 
     scheduleIdleTask(() => {
@@ -2403,9 +2416,9 @@ var gBrowserInit = {
     gHistorySwipeAnimation.uninit();
 
     FullScreen.uninit();
-
+#ifdef MOZ_SERVICES_SYNC
     gSync.uninit();
-
+#endif
     gExtensionsNotifications.uninit();
 
     try {

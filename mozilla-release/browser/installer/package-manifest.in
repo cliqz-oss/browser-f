@@ -187,7 +187,9 @@
 @RESPATH@/browser/components/MacTouchBar.manifest
 @RESPATH@/browser/components/MacTouchBar.js
 #endif
+#ifdef MOZ_SERVICES_SYNC
 @RESPATH@/components/SyncComponents.manifest
+#endif
 @RESPATH@/components/servicesComponents.manifest
 @RESPATH@/components/servicesSettings.manifest
 @RESPATH@/components/cryptoComponents.manifest

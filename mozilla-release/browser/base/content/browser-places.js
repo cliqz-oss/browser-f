@@ -745,6 +745,7 @@ HistoryMenu.prototype = {
   },
 
   toggleTabsFromOtherComputers: function PHM_toggleTabsFromOtherComputers() {
+#ifdef MOZ_SERVICES_SYNC
     // Enable/disable the Tabs From Other Computers menu. Some of the menus handled
     // by HistoryMenu do not have this menuitem.
     if (!this.syncTabsMenuitem) {
@@ -757,6 +758,7 @@ HistoryMenu.prototype = {
     }
 
     this.syncTabsMenuitem.setAttribute("hidden", false);
+#endif
   },
 
   _onPopupShowing: function HM__onPopupShowing(aEvent) {

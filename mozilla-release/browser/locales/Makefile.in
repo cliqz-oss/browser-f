@@ -56,7 +56,9 @@ libs-%:
 	$(if $(filter en-US,$(AB_CD)),, @$(MAKE) merge-$*)
 	$(NSINSTALL) -D $(DIST)/install
 	@$(MAKE) -C ../../toolkit/locales libs-$* XPI_ROOT_APPID='$(XPI_ROOT_APPID)'
+ifdef MOZ_SERVICES_SYNC
 	@$(MAKE) -C ../../services/sync/locales AB_CD=$* XPI_NAME=locale-$*
+endif
 	@$(MAKE) -C ../../extensions/spellcheck/locales AB_CD=$* XPI_NAME=locale-$*
 ifneq (,$(wildcard ../extensions/formautofill/locales))
 	@$(MAKE) -C ../extensions/formautofill/locales AB_CD=$* XPI_NAME=locale-$*
@@ -73,7 +75,9 @@ chrome-%: IS_LANGUAGE_REPACK=1
 chrome-%:
 	$(if $(filter en-US,$(AB_CD)),, @$(MAKE) merge-$*)
 	@$(MAKE) -C ../../toolkit/locales chrome-$*
+ifdef MOZ_SERVICES_SYNC
 	@$(MAKE) -C ../../services/sync/locales chrome AB_CD=$*
+endif
 	@$(MAKE) -C ../../extensions/spellcheck/locales chrome AB_CD=$*
 ifneq (,$(wildcard ../extensions/formautofill/locales))
 	@$(MAKE) -C ../extensions/formautofill/locales chrome AB_CD=$*

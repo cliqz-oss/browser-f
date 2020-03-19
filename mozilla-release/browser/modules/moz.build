@@ -146,7 +146,6 @@ EXTRA_JS_MODULES += [
     'LiveBookmarkMigrator.jsm',
     'NewTabPagePreloading.jsm',
     'OpenInTabsUtils.jsm',
-    'PageActions.jsm',
     'PermissionUI.jsm',
     'PingCentre.jsm',
     'ProcessHangMonitor.jsm',
@@ -161,6 +160,10 @@ EXTRA_JS_MODULES += [
     'TransientPrefs.jsm',
     'webrtcUI.jsm',
     'ZoomUI.jsm',
+]
+
+EXTRA_PP_JS_MODULES += [
+    'PageActions.jsm',
 ]
 
 if CONFIG['MOZ_ASAN_REPORTER']:

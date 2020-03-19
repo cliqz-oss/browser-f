@@ -1144,6 +1144,7 @@ BrowserPageActions.emailLink = {
   },
 };
 
+#ifdef MOZ_SERVICES_SYNC
 // send to device
 BrowserPageActions.sendToDevice = {
   onBeforePlacedInWindow(browserWindow) {
@@ -1193,6 +1194,7 @@ BrowserPageActions.sendToDevice = {
     gSync.populateSendTabToDevicesView(panelViewNode);
   },
 };
+#endif  // MOZ_SERVICES_SYNC
 
 // add search engine
 BrowserPageActions.addSearchEngine = {

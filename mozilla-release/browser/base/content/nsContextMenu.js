@@ -320,7 +320,9 @@ class nsContextMenu {
     this.initLeaveDOMFullScreenItems();
     this.initClickToPlayItems();
     this.initPasswordManagerItems();
+#ifdef MOZ_SERVICES_SYNC
     this.initSyncItems();
+#endif
   }
 
   initPageMenuSeparator() {

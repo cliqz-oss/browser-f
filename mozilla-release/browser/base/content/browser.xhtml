@@ -85,7 +85,9 @@
     Services.scriptloader.loadSubScript("chrome://browser/content/browser-data-submission-info-bar.js", this);
   }
   if (!AppConstants.MOZILLA_OFFICIAL) {
+#if 0
     Services.scriptloader.loadSubScript("chrome://browser/content/browser-development-helpers.js", this);
+#endif
   }
   Services.scriptloader.loadSubScript("chrome://browser/content/browser-media.js", this);
   Services.scriptloader.loadSubScript("chrome://browser/content/browser-pageActions.js", this);
@@ -172,11 +174,13 @@
                     oncommand="gBrowser.replaceTabsWithWindow(TabContextMenu.contextTab);"/>
         </menupopup>
       </menu>
+#ifdef MOZ_SERVICES_SYNC
       <menu id="context_sendTabToDevice"
             class="sync-ui-item">
         <menupopup id="context_sendTabToDevicePopupMenu"
                    onpopupshowing="gSync.populateSendTabToDevicesMenu(event.target, TabContextMenu.contextTab.linkedBrowser.currentURI.spec, TabContextMenu.contextTab.linkedBrowser.contentTitle, TabContextMenu.contextTab.multiselected);"/>
       </menu>
+#endif
       <menuseparator/>
       <menuitem id="context_closeTabsToTheEnd" data-lazy-l10n-id="close-tabs-to-the-end"
                 oncommand="gBrowser.removeTabsToTheEndFrom(TabContextMenu.contextTab, {animate: true});"/>
@@ -365,11 +369,13 @@
                      class="subviewbutton subviewbutton-iconic"
                      key="key_gotoHistory"
                      oncommand="SidebarUI.show('viewHistorySidebar');"/>
+#ifdef MOZ_SERVICES_SYNC
       <toolbarbutton id="sidebar-switcher-tabs"
                      type="checkbox"
                      label="&syncedTabs.sidebar.label;"
                      class="subviewbutton subviewbutton-iconic sync-ui-item"
                      oncommand="SidebarUI.show('viewTabsSidebar');"/>
+#endif
       <toolbarseparator/>
       <!-- Extension toolbarbuttons go here. -->
       <toolbarseparator id="sidebar-extensions-separator"/>
@@ -609,6 +615,7 @@
     <tooltip id="dynamic-shortcut-tooltip"
              onpopupshowing="UpdateDynamicShortcutTooltipText(this);"/>
 
+#ifdef MOZ_SERVICES_SYNC
     <menupopup id="SyncedTabsSidebarContext">
       <menuitem data-lazy-l10n-id="synced-tabs-context-open"
                 id="syncedTabsOpenSelected" where="current"/>
@@ -652,6 +659,7 @@
       <menuitem data-lazy-l10n-id="synced-tabs-context-sync-now"
                 id="syncedTabsRefreshFilter"/>
     </menupopup>
+#endif
 
     <hbox id="statuspanel" inactive="true" renderroot="content">
       <hbox id="statuspanel-inner">
@@ -1095,7 +1103,7 @@
                        cui-areatype="toolbar"
                        tooltiptext="&libraryButton.tooltip;"
                        label="&places.library.title;"/>
-
+#ifdef MOZ_SERVICES_SYNC
         <toolbarbutton id="fxa-toolbar-menu-button" class="toolbarbutton-1 chromeclass-toolbar-additional subviewbutton-nav"
                        badged="true"
                        onmousedown="gSync.toggleAccountPanel('PanelUI-fxa', this, event)"
@@ -1110,6 +1118,7 @@
                         <image id="fxa-avatar-image"/>
                        </vbox>
         </toolbarbutton>
+#endif
       </hbox>
 
       <toolbarbutton id="nav-bar-overflow-button"

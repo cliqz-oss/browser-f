@@ -406,7 +406,9 @@ var CustomizableUIInternal = {
         "find-button",
         "preferences-button",
         "add-ons-button",
+#ifdef MOZ_SERVICES_SYNC
         "sync-button",
+#endif
       ];
 
       if (!AppConstants.MOZ_DEV_EDITION) {

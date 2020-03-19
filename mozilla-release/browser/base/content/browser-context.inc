@@ -219,6 +219,7 @@
       <menuitem id="context-pocket"
                 data-l10n-id="main-context-menu-save-to-pocket"
                 oncommand="Pocket.savePage(gContextMenu.browser, gContextMenu.browser.currentURI.spec, gContextMenu.browser.contentTitle);"/>
+#ifdef MOZ_SERVICES_SYNC
       <menuseparator id="context-sep-sendpagetodevice" class="sync-ui-item"
                      hidden="true"/>
       <menu id="context-sendpagetodevice"
@@ -228,6 +229,7 @@
         <menupopup id="context-sendpagetodevice-popup"
                    onpopupshowing="(() => { gSync.populateSendTabToDevicesMenu(event.target, gBrowser.currentURI.spec, gBrowser.contentTitle); })()"/>
       </menu>
+#endif
       <menuseparator id="context-sep-viewbgimage"/>
       <menuitem id="context-viewbgimage"
                 data-l10n-id="main-context-menu-view-background-image"
@@ -287,6 +289,7 @@
                 oncommand="BrowserSearch.loadSearchFromContext(this.searchTerms, this.usePrivate, this.principal, this.csp);"/>
       <menuitem id="context-searchselect-private"
                 oncommand="BrowserSearch.loadSearchFromContext(this.searchTerms, true, this.principal, this.csp);"/>
+#ifdef MOZ_SERVICES_SYNC
       <menuseparator id="context-sep-sendlinktodevice" class="sync-ui-item"
                      hidden="true"/>
       <menu id="context-sendlinktodevice"
@@ -296,6 +299,7 @@
         <menupopup id="context-sendlinktodevice-popup"
                    onpopupshowing="gSync.populateSendTabToDevicesMenu(event.target, gContextMenu.linkURL, gContextMenu.linkTextStr);"/>
       </menu>
+#endif
       <menuseparator id="frame-sep"/>
       <menu id="frame" data-l10n-id="main-context-menu-frame">
         <menupopup>

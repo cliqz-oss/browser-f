@@ -84,6 +84,7 @@ function init_all() {
   register_module("paneSearch", gSearchPane);
   register_module("panePrivacy", gPrivacyPane);
   register_module("paneContainers", gContainersPane);
+#if MOZ_SERVICES_SYNC
   if (Services.prefs.getBoolPref("identity.fxaccounts.enabled")) {
     document.getElementById("category-sync").hidden = false;
     register_module("paneSync", gSyncPane);
@@ -91,6 +92,7 @@ function init_all() {
     // Remove the pane from the DOM so it doesn't get incorrectly included in search results.
     document.getElementById("template-paneSync").remove();
   }
+#endif
   register_module("paneSearchResults", gSearchResultsPane);
   gSearchResultsPane.init();
   gMainPane.preInit();

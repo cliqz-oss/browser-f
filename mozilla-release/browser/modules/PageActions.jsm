@@ -1235,6 +1235,7 @@ var gBuiltInActions = [
   },
 ];
 
+#ifdef MOZ_SERVICES_SYNC
 // send to device
 if (Services.prefs.getBoolPref("identity.fxaccounts.enabled")) {
   gBuiltInActions.push({
@@ -1263,6 +1264,7 @@ if (Services.prefs.getBoolPref("identity.fxaccounts.enabled")) {
     },
   });
 }
+#endif
 
 if (SiteSpecificBrowserService.isEnabled) {
   gBuiltInActions.push({

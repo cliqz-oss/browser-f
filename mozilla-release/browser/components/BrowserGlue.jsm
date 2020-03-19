@@ -493,11 +493,13 @@ let LEGACY_ACTORS = {
   TelemetryTimestamps.add("blankWindowShown");
 })();
 
+#ifdef MOZ_SERVICES_SYNC
 XPCOMUtils.defineLazyGetter(
   this,
   "WeaveService",
   () => Cc["@mozilla.org/weave/service;1"].getService().wrappedJSObject
 );
+#endif
 
 // lazy module getters
 
@@ -769,6 +771,7 @@ BrowserGlue.prototype = {
     Services.prefs.savePrefFile(null);
   },
 
+#ifdef MOZ_SERVICES_SYNC
   _setSyncAutoconnectDelay: function BG__setSyncAutoconnectDelay() {
     // Assume that a non-zero value for services.sync.autoconnectDelay should override
     if (Services.prefs.prefHasUserValue("services.sync.autoconnectDelay")) {
@@ -797,6 +800,7 @@ BrowserGlue.prototype = {
     const { Weave } = ChromeUtils.import("resource://services-sync/main.js");
     Weave.Service.scheduler.delayedAutoConnect(delay);
   },
+#endif
 
   // nsIObserver implementation
   observe: async function BG_observe(subject, topic, data) {
@@ -840,6 +844,7 @@ BrowserGlue.prototype = {
           this._setPrefToSaveSession();
         }
         break;
+#ifdef MOZ_SERVICES_SYNC
       case "weave:service:ready":
         this._setSyncAutoconnectDelay();
         break;
@@ -862,6 +867,7 @@ BrowserGlue.prototype = {
       case "weave:engine:clients:display-uris":
         this._onDisplaySyncURIs(subject);
         break;
+#endif
       case "session-save":
         this._setPrefToSaveSession(true);
         subject.QueryInterface(Ci.nsISupportsPRBool);
@@ -1012,6 +1018,7 @@ BrowserGlue.prototype = {
       os.addObserver(this, "browser-lastwindow-close-requested");
       os.addObserver(this, "browser-lastwindow-close-granted");
     }
+#ifdef MOZ_SERVICES_SYNC
     os.addObserver(this, "weave:service:ready");
     os.addObserver(this, "fxaccounts:onverified");
     os.addObserver(this, "fxaccounts:device_connected");
@@ -1019,6 +1026,7 @@ BrowserGlue.prototype = {
     os.addObserver(this, "fxaccounts:device_disconnected");
     os.addObserver(this, "fxaccounts:commands:open-uri");
     os.addObserver(this, "weave:engine:clients:display-uris");
+#endif
     os.addObserver(this, "session-save");
     os.addObserver(this, "places-init-complete");
     os.addObserver(this, "distribution-customization-complete");
@@ -1060,6 +1068,7 @@ BrowserGlue.prototype = {
       os.removeObserver(this, "browser-lastwindow-close-requested");
       os.removeObserver(this, "browser-lastwindow-close-granted");
     }
+#ifdef MOZ_SERVICES_SYNC
     os.removeObserver(this, "weave:service:ready");
     os.removeObserver(this, "fxaccounts:onverified");
     os.removeObserver(this, "fxaccounts:device_connected");
@@ -1067,6 +1076,7 @@ BrowserGlue.prototype = {
     os.removeObserver(this, "fxaccounts:device_disconnected");
     os.removeObserver(this, "fxaccounts:commands:open-uri");
     os.removeObserver(this, "weave:engine:clients:display-uris");
+#endif
     os.removeObserver(this, "session-save");
     if (this._bookmarksBackupIdleTime) {
       this._idleService.removeIdleObserver(this, this._bookmarksBackupIdleTime);
@@ -1563,7 +1573,9 @@ BrowserGlue.prototype = {
 
     // Check if Sync is configured
     if (Services.prefs.prefHasUserValue("services.sync.username")) {
+#ifdef MOZ_SERVICES_SYNC
       WeaveService.init();
+#endif
     }
 
     PageThumbs.init();
@@ -1942,6 +1954,7 @@ BrowserGlue.prototype = {
       LATE_TASKS_IDLE_TIME_SEC
     );
 
+#if 0
     this._monitorScreenshotsPref();
     this._monitorWebcompatReporterPref();
 
@@ -1953,6 +1966,7 @@ BrowserGlue.prototype = {
     }
 
     FirefoxMonitor.init();
+#endif
   },
 
   /**
@@ -3552,6 +3566,7 @@ BrowserGlue.prototype = {
     });
   },
 
+#ifdef MOZ_SERVICES_SYNC
   /**
    * Called as an observer when Sync's "display URIs" notification is fired.
    *
@@ -3658,6 +3673,7 @@ BrowserGlue.prototype = {
       Cu.reportError("Error displaying tab(s) received by Sync: " + ex);
     }
   },
+#endif  // MOZ_SERVICES_SYNC
 
   async _onVerifyLoginNotification({ body, title, url }) {
     let tab;
