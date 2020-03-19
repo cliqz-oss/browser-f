@@ -422,6 +422,17 @@ let ACTORS = {
       },
     },
   },
+
+  WebRTC: {
+    parent: {
+      moduleURI: "resource:///actors/WebRTCParent.jsm",
+    },
+    child: {
+      moduleURI: "resource:///actors/WebRTCChild.jsm",
+    },
+
+    allFrames: true,
+  },
 };
 
 let LEGACY_ACTORS = {
@@ -482,19 +493,6 @@ let LEGACY_ACTORS = {
       module: "resource:///actors/URIFixupChild.jsm",
       group: "browsers",
       observers: ["keyword-uri-fixup"],
-    },
-  },
-
-  WebRTC: {
-    child: {
-      module: "resource:///actors/WebRTCChild.jsm",
-      messages: [
-        "rtcpeer:Allow",
-        "rtcpeer:Deny",
-        "webrtc:Allow",
-        "webrtc:Deny",
-        "webrtc:StopSharing",
-      ],
     },
   },
 };
@@ -655,6 +653,7 @@ XPCOMUtils.defineLazyModuleGetters(this, {
   ShellService: "resource:///modules/ShellService.jsm",
   TabCrashHandler: "resource:///modules/ContentCrashHandlers.jsm",
   TabUnloader: "resource:///modules/TabUnloader.jsm",
+  TRRRacer: "resource:///modules/TRRPerformance.jsm",
   UIState: "resource://services-sync/UIState.jsm",
   WebChannel: "resource://gre/modules/WebChannel.jsm",
   WindowsRegistry: "resource://gre/modules/WindowsRegistry.jsm",
@@ -683,7 +682,6 @@ let initializedModules = {};
   ],
   ["ContentSearch", "resource:///modules/ContentSearch.jsm", "init"],
   ["UpdateListener", "resource://gre/modules/UpdateListener.jsm", "init"],
-  ["webrtcUI", "resource:///modules/webrtcUI.jsm", "init"],
 ].forEach(([name, resource, init]) => {
   XPCOMUtils.defineLazyGetter(this, name, () => {
     ChromeUtils.import(resource, initializedModules);
@@ -739,9 +737,6 @@ const listeners = {
     "AsyncPrefs:SetPref": ["AsyncPrefs"],
     "AsyncPrefs:ResetPref": ["AsyncPrefs"],
     // PLEASE KEEP THIS LIST IN SYNC WITH THE LISTENERS ADDED IN AsyncPrefs.init
-
-    "webrtc:UpdateGlobalIndicators": ["webrtcUI"],
-    "webrtc:UpdatingIndicators": ["webrtcUI"],
   },
 
   mm: {
@@ -765,12 +760,6 @@ const listeners = {
     ContentSearch: ["ContentSearch"],
     "Reader:FaviconRequest": ["ReaderParent"],
     "Reader:UpdateReaderButton": ["ReaderParent"],
-    "rtcpeer:CancelRequest": ["webrtcUI"],
-    "rtcpeer:Request": ["webrtcUI"],
-    "webrtc:CancelRequest": ["webrtcUI"],
-    "webrtc:Request": ["webrtcUI"],
-    "webrtc:StopRecording": ["webrtcUI"],
-    "webrtc:UpdateBrowserIndicators": ["webrtcUI"],
   },
 
   observe(subject, topic, data) {
@@ -1809,14 +1798,6 @@ BrowserGlue.prototype = {
     );
     Services.telemetry.getHistogramById("COOKIE_BEHAVIOR").add(cookieBehavior);
 
-    let exceptions = 0;
-    for (let permission of Services.perms.all) {
-      if (permission.type == "trackingprotection") {
-        exceptions++;
-      }
-    }
-    Services.telemetry.scalarSet("contentblocking.exceptions", exceptions);
-
     let fpEnabled = Services.prefs.getBoolPref(
       "privacy.trackingprotection.fingerprinting.enabled"
     );
@@ -1851,41 +1832,6 @@ BrowserGlue.prototype = {
       cmEnabled
     );
     Services.telemetry.scalarSet("contentblocking.category", categoryPref);
-  },
-
-  _recordContentBlockerTelemetry() {
-    [
-      "other",
-      "script",
-      "image",
-      "stylesheet",
-      "object",
-      "document",
-      "subdocument",
-      "refresh",
-      "xbl",
-      "ping",
-      "xmlhttprequest",
-      "objectsubrequest",
-      "dtd",
-      "font",
-      "media",
-      "websocket",
-      "csp_report",
-      "xslt",
-      "beacon",
-      "fetch",
-      "image",
-      "manifest",
-      "saveas_download",
-      "speculative",
-    ].forEach(type => {
-      Services.telemetry.keyedScalarSet(
-        "security.contentblocker_permissions",
-        type,
-        Services.perms.getAllWithTypePrefix(type).length
-      );
-    });
   },
 
   _recordDataSanitizationPrefs() {
@@ -2095,6 +2041,14 @@ BrowserGlue.prototype = {
 
     if (AppConstants.MOZ_CRASHREPORTER) {
       UnsubmittedCrashHandler.init();
+      UnsubmittedCrashHandler.scheduleCheckForUnsubmittedCrashReports();
+    }
+
+    if (AppConstants.ASAN_REPORTER) {
+      var { AsanReporter } = ChromeUtils.import(
+        "resource:///modules/AsanReporter.jsm"
+      );
+      AsanReporter.init();
     }
 
     Sanitizer.onStartup();
@@ -2150,194 +2104,252 @@ BrowserGlue.prototype = {
    * to the other ones scheduled together.
    */
   _scheduleStartupIdleTasks() {
-    Services.tm.idleDispatchToMainThread(async () => {
-      await ContextualIdentityService.load();
-      Discovery.update();
-    });
+    const idleTasks = [
+      // It's important that SafeBrowsing is initialized reasonably
+      // early, so we use a maximum timeout for it.
+      {
+        task: () => {
+          SafeBrowsing.init();
+        },
+        timeout: 5000,
+      },
+
+      {
+        task: async () => {
+          await ContextualIdentityService.load();
+          Discovery.update();
+        },
+      },
 
 #if 0
-    // Begin listening for incoming push messages.
-    Services.tm.idleDispatchToMainThread(() => {
-      try {
-        PushService.wrappedJSObject.ensureReady();
-      } catch (ex) {
-        // NS_ERROR_NOT_AVAILABLE will get thrown for the PushService getter
-        // if the PushService is disabled.
-        if (ex.result != Cr.NS_ERROR_NOT_AVAILABLE) {
-          throw ex;
-        }
-      }
-    });
+      // Begin listening for incoming push messages.
+      {
+        task: () => {
+          try {
+            PushService.wrappedJSObject.ensureReady();
+          } catch (ex) {
+            // NS_ERROR_NOT_AVAILABLE will get thrown for the PushService
+            // getter if the PushService is disabled.
+            if (ex.result != Cr.NS_ERROR_NOT_AVAILABLE) {
+              throw ex;
+            }
+          }
+        },
+      },
 
-    Services.tm.idleDispatchToMainThread(() => {
-      this._recordContentBlockingTelemetry();
-    });
+      {
+        task: () => {
+          this._recordContentBlockingTelemetry();
+        },
+      },
 #endif
 
-    Services.tm.idleDispatchToMainThread(() => {
-      this._recordContentBlockerTelemetry();
-    });
+      {
+        task: () => {
+          this._recordDataSanitizationPrefs();
+        },
+      },
 
-    Services.tm.idleDispatchToMainThread(() => {
-      this._recordDataSanitizationPrefs();
-    });
+      {
+        task: () => {
+          let siteSpecific = Services.prefs.getBoolPref(
+            "browser.zoom.siteSpecific",
+            false
+          );
+          Services.telemetry.scalarSet("a11y.sitezoom", siteSpecific);
+        },
+      },
 
-    Services.tm.idleDispatchToMainThread(() => {
-      let siteSpecific = Services.prefs.getBoolPref(
-        "browser.zoom.siteSpecific",
-        false
-      );
-      Services.telemetry.scalarSet("a11y.sitezoom", siteSpecific);
-    });
+      // Load the Login Manager data from disk off the main thread, some time
+      // after startup.  If the data is required before this runs, for example
+      // because a restored page contains a password field, it will be loaded on
+      // the main thread, and this initialization request will be ignored.
+      {
+        task: () => {
+          try {
+            Services.logins;
+          } catch (ex) {
+            Cu.reportError(ex);
+          }
+        },
+        timeout: 3000,
+      },
 
-    // Load the Login Manager data from disk off the main thread, some time
-    // after startup.  If the data is required before this runs, for example
-    // because a restored page contains a password field, it will be loaded on
-    // the main thread, and this initialization request will be ignored.
-    Services.tm.idleDispatchToMainThread(() => {
-      try {
-        Services.logins;
-      } catch (ex) {
-        Cu.reportError(ex);
-      }
-    }, 3000);
+      // Add breach alerts pref observer reasonably early so the pref flip works
+      {
+        task: () => {
+          this._addBreachAlertsPrefObserver();
+        },
+      },
 
-    // Add breach alerts pref observer reasonably early so the pref flip works
-    Services.tm.idleDispatchToMainThread(() => {
-      this._addBreachAlertsPrefObserver();
-    });
+      {
+        condition: AppConstants.platform == "win",
+        task: () => {
+          // For Windows 7, initialize the jump list module.
+          const WINTASKBAR_CONTRACTID = "@mozilla.org/windows-taskbar;1";
+          if (
+            WINTASKBAR_CONTRACTID in Cc &&
+            Cc[WINTASKBAR_CONTRACTID].getService(Ci.nsIWinTaskbar).available
+          ) {
+            let temp = {};
+            ChromeUtils.import(
+              "resource:///modules/WindowsJumpLists.jsm",
+              temp
+            );
+            temp.WinTaskbarJumpList.startup();
+          }
+        },
+      },
 
-    // It's important that SafeBrowsing is initialized reasonably
-    // early, so we use a maximum timeout for it.
-    Services.tm.idleDispatchToMainThread(() => {
-      SafeBrowsing.init();
-    }, 5000);
+      {
+        task: () => {
+          this._checkForDefaultBrowser();
+        },
+      },
 
-    if (AppConstants.MOZ_CRASHREPORTER) {
-      UnsubmittedCrashHandler.scheduleCheckForUnsubmittedCrashReports();
-    }
+      {
+        task: () => {
+          let { setTimeout } = ChromeUtils.import(
+            "resource://gre/modules/Timer.jsm"
+          );
+          setTimeout(function() {
+            Services.tm.idleDispatchToMainThread(
+              Services.startup.trackStartupCrashEnd
+            );
+          }, STARTUP_CRASHES_END_DELAY_MS);
+        },
+      },
 
-    if (AppConstants.ASAN_REPORTER) {
-      var { AsanReporter } = ChromeUtils.import(
-        "resource:///modules/AsanReporter.jsm"
-      );
-      AsanReporter.init();
-    }
+      {
+        task: () => {
+          let handlerService = Cc[
+            "@mozilla.org/uriloader/handler-service;1"
+          ].getService(Ci.nsIHandlerService);
+          handlerService.asyncInit();
+        },
+      },
 
-    if (AppConstants.platform == "win") {
-      Services.tm.idleDispatchToMainThread(() => {
-        // For Windows 7, initialize the jump list module.
-        const WINTASKBAR_CONTRACTID = "@mozilla.org/windows-taskbar;1";
-        if (
-          WINTASKBAR_CONTRACTID in Cc &&
-          Cc[WINTASKBAR_CONTRACTID].getService(Ci.nsIWinTaskbar).available
-        ) {
-          let temp = {};
-          ChromeUtils.import("resource:///modules/WindowsJumpLists.jsm", temp);
-          temp.WinTaskbarJumpList.startup();
-        }
-      });
-    }
+      {
+        condition: AppConstants.platform == "win",
+        task: () => {
+          JawsScreenReaderVersionCheck.onWindowsRestored();
+        },
+      },
 
-    Services.tm.idleDispatchToMainThread(() => {
-      this._checkForDefaultBrowser();
-    });
+      {
+        task: () => {
+          RFPHelper.init();
+        },
+      },
 
-    Services.tm.idleDispatchToMainThread(() => {
-      let { setTimeout } = ChromeUtils.import(
-        "resource://gre/modules/Timer.jsm"
-      );
-      setTimeout(function() {
-        Services.tm.idleDispatchToMainThread(
-          Services.startup.trackStartupCrashEnd
-        );
-      }, STARTUP_CRASHES_END_DELAY_MS);
-    });
+      {
+        task: () => {
+          Blocklist.loadBlocklistAsync();
+        },
+      },
 
-    Services.tm.idleDispatchToMainThread(() => {
-      let handlerService = Cc[
-        "@mozilla.org/uriloader/handler-service;1"
-      ].getService(Ci.nsIHandlerService);
-      handlerService.asyncInit();
-    });
+      {
+        condition:
+          Services.prefs.getIntPref(
+            "browser.livebookmarks.migrationAttemptsLeft",
+            0
+          ) > 0,
+        task: () => {
+          LiveBookmarkMigrator.migrate().catch(Cu.reportError);
+        },
+      },
 
-    if (AppConstants.platform == "win") {
-      Services.tm.idleDispatchToMainThread(() => {
-        JawsScreenReaderVersionCheck.onWindowsRestored();
-      });
-    }
+      {
+        task: () => {
+          TabUnloader.init();
+        },
+      },
 
-    Services.tm.idleDispatchToMainThread(() => {
-      RFPHelper.init();
-    });
+      {
+        condition: Services.prefs.getBoolPref("corroborator.enabled", false),
+        task: () => {
+          Corroborate.init().catch(Cu.reportError);
+        },
+      },
 
-    ChromeUtils.idleDispatch(() => {
-      Blocklist.loadBlocklistAsync();
-    });
-
-    if (
-      Services.prefs.getIntPref(
-        "browser.livebookmarks.migrationAttemptsLeft",
-        0
-      ) > 0
-    ) {
-      Services.tm.idleDispatchToMainThread(() => {
-        LiveBookmarkMigrator.migrate().catch(Cu.reportError);
-      });
-    }
-
-    Services.tm.idleDispatchToMainThread(() => {
-      TabUnloader.init();
-    });
-
-    Services.tm.idleDispatchToMainThread(() => {
-      if (Services.prefs.getBoolPref("corroborator.enabled", false)) {
-        Corroborate.init().catch(Cu.reportError);
-      }
-    });
-
-    // request startup of Chromium remote debugging protocol
-    // (observer will only be notified when --remote-debugger is passed)
-    if (AppConstants.ENABLE_REMOTE_AGENT) {
-      Services.tm.idleDispatchToMainThread(() => {
-        Services.obs.notifyObservers(null, "remote-startup-requested");
-      });
-    }
+      // request startup of Chromium remote debugging protocol
+      // (observer will only be notified when --remote-debugger is passed)
+      {
+        condition: AppConstants.ENABLE_REMOTE_AGENT,
+        task: () => {
+          Services.obs.notifyObservers(null, "remote-startup-requested");
+        },
+      },
 
 #if 0
-    // Temporary for Delegated Credentials Study:
-    // https://bugzilla.mozilla.org/show_bug.cgi?id=1582591
-    // Disable in automation and non-nightly builds.
-    if (!Cu.isInAutomation && AppConstants.NIGHTLY_BUILD) {
-      let env = Cc["@mozilla.org/process/environment;1"].getService(
-        Ci.nsIEnvironment
-      );
-
-      // Disable under xpcshell-test.
-      if (!env.exists("XPCSHELL_TEST_PROFILE_DIR")) {
-        let { DelegatedCredsExperiment } = ChromeUtils.import(
-          "resource:///modules/DelegatedCredsExperiment.jsm"
-        );
-
-        let currentDate = new Date();
-        let expiryDate = new Date("2020-01-10 0:00:00");
-        if (currentDate < expiryDate) {
-          Services.tm.idleDispatchToMainThread(() => {
-            DelegatedCredsExperiment.runTest();
-          });
-        } else {
-          Services.tm.idleDispatchToMainThread(() => {
-            DelegatedCredsExperiment.uninstall();
-          });
-        }
-      }
-    }
-
-    // Marionette needs to be initialized as very last step
-    Services.tm.idleDispatchToMainThread(() => {
-      Services.obs.notifyObservers(null, "marionette-startup-requested");
-    });
+      // Marionette needs to be initialized as very last step
+      {
+        task: () => {
+          Services.obs.notifyObservers(null, "marionette-startup-requested");
+        },
+      },
 #endif
+
+      // Run TRR performance measurements for DoH.
+      {
+        task: () => {
+          if (
+            Services.prefs.getBoolPref("doh-rollout.trrRace.enabled", false)
+          ) {
+            if (
+              !Services.prefs.getBoolPref("doh-rollout.trrRace.complete", false)
+            ) {
+              new TRRRacer().run();
+            }
+          } else {
+            Services.prefs.addObserver(
+              "doh-rollout.trrRace.enabled",
+              function observer() {
+                if (
+                  Services.prefs.getBoolPref(
+                    "doh-rollout.trrRace.enabled",
+                    false
+                  )
+                ) {
+                  Services.prefs.removeObserver(
+                    "doh-rollout.trrRace.enabled",
+                    observer
+                  );
+                  if (
+                    !Services.prefs.getBoolPref(
+                      "doh-rollout.trrRace.complete",
+                      false
+                    )
+                  ) {
+                    new TRRRacer().run();
+                  }
+                }
+              }
+            );
+          }
+        },
+      },
+    ];
+
+    for (let task of idleTasks) {
+      if ("condition" in task && !task.condition) {
+        continue;
+      }
+
+      ChromeUtils.idleDispatch(
+        () => {
+          if (!Services.startup.shuttingDown) {
+            Services.profiler.AddMarker("startupIdleTask");
+            try {
+              task.task();
+            } catch (ex) {
+              Cu.reportError(ex);
+            }
+          }
+        },
+        task.timeout ? { timeout: task.timeout } : undefined
+      );
+    }
   },
 
   /**
@@ -2352,46 +2364,61 @@ BrowserGlue.prototype = {
    * value, this is unlikely.
    */
   _scheduleArbitrarilyLateIdleTasks() {
-    Services.tm.idleDispatchToMainThread(() => {
-      this._sendMediaTelemetry();
-    });
+    const idleTasks = [
+      () => {
+        this._sendMediaTelemetry();
+      },
 
-    Services.tm.idleDispatchToMainThread(() => {
-      // Telemetry for master-password - we do this after a delay as it
-      // can cause IO if NSS/PSM has not already initialized.
-      let tokenDB = Cc["@mozilla.org/security/pk11tokendb;1"].getService(
-        Ci.nsIPK11TokenDB
-      );
-      let token = tokenDB.getInternalKeyToken();
-      let mpEnabled = token.hasPassword;
-      if (mpEnabled) {
-        Services.telemetry
-          .getHistogramById("MASTER_PASSWORD_ENABLED")
-          .add(mpEnabled);
-      }
-    });
+      () => {
+        // Telemetry for master-password - we do this after a delay as it
+        // can cause IO if NSS/PSM has not already initialized.
+        let tokenDB = Cc["@mozilla.org/security/pk11tokendb;1"].getService(
+          Ci.nsIPK11TokenDB
+        );
+        let token = tokenDB.getInternalKeyToken();
+        let mpEnabled = token.hasPassword;
+        if (mpEnabled) {
+          Services.telemetry
+            .getHistogramById("MASTER_PASSWORD_ENABLED")
+            .add(mpEnabled);
+        }
+      },
 
-    Services.tm.idleDispatchToMainThread(() => {
-      let obj = {};
-      ChromeUtils.import("resource://gre/modules/GMPInstallManager.jsm", obj);
-      this._gmpInstallManager = new obj.GMPInstallManager();
-      // We don't really care about the results, if someone is interested they
-      // can check the log.
-      this._gmpInstallManager.simpleCheckAndInstall().catch(() => {});
-    });
+      () => {
+        let obj = {};
+        ChromeUtils.import("resource://gre/modules/GMPInstallManager.jsm", obj);
+        this._gmpInstallManager = new obj.GMPInstallManager();
+        // We don't really care about the results, if someone is interested they
+        // can check the log.
+        this._gmpInstallManager.simpleCheckAndInstall().catch(() => {});
+      },
 
-    Services.tm.idleDispatchToMainThread(() => {
-      RemoteSettings.init();
-      this._addBreachesSyncHandler();
-    });
+      () => {
+        RemoteSettings.init();
+        this._addBreachesSyncHandler();
+      },
 
-    Services.tm.idleDispatchToMainThread(() => {
-      PublicSuffixList.init();
-    });
+      () => {
+        PublicSuffixList.init();
+      },
 
-    Services.tm.idleDispatchToMainThread(() => {
-      RemoteSecuritySettings.init();
-    });
+      () => {
+        RemoteSecuritySettings.init();
+      },
+    ];
+
+    for (let task of idleTasks) {
+      ChromeUtils.idleDispatch(() => {
+        if (!Services.startup.shuttingDown) {
+          Services.profiler.AddMarker("startupLateIdleTask");
+          try {
+            task();
+          } catch (ex) {
+            Cu.reportError(ex);
+          }
+        }
+      });
+    }
   },
 
   _addBreachesSyncHandler() {
@@ -2939,7 +2966,7 @@ BrowserGlue.prototype = {
   _migrateUI: function BG__migrateUI() {
     // Use an increasing number to keep track of the current migration state.
     // Completely unrelated to the current Firefox release number.
-    const UI_VERSION = 91;
+    const UI_VERSION = 92;
     const BROWSER_DOCURL = AppConstants.BROWSER_CHROME_URL;
 
     PermissionsUtils.importFromPrefs("blockautoplay.", "autoplay-media");
@@ -3431,6 +3458,20 @@ BrowserGlue.prototype = {
         Services.prefs.setIntPref(
           "network.proxy.socks_port",
           Services.prefs.getIntPref("network.proxy.backup.socks_port", 0)
+        );
+      }
+    }
+
+    if (currentUIVersion < 92) {
+      // privacy.userContext.longPressBehavior pref was renamed and changed to a boolean
+      let longpress = Services.prefs.getIntPref(
+        "privacy.userContext.longPressBehavior",
+        0
+      );
+      if (longpress == 1) {
+        Services.prefs.setBoolPref(
+          "privacy.userContext.newTabContainerOnLeftClick.enabled",
+          true
         );
       }
     }

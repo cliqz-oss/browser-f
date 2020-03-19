@@ -29,6 +29,8 @@ if echo $OSTYPE | grep -q "msys"; then
   # Windows specific flags
   ac_add_options --enable-warnings-as-errors
   ac_add_options --enable-jemalloc
+  export MAKECAB=$TOOLTOOL_DIR/makecab.exe
+  export DUMP_SYMS="$TOOLTOOL_DIR/dump_syms/dump_syms.exe"
 fi
 
 # if test `uname -s` = "Linux"; then

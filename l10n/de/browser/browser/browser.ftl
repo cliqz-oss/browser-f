@@ -17,22 +17,35 @@ browser-main-window-title =
         [private] { -brand-full-name } (Vergessen Modus)
        *[default] { -brand-full-name }
     }
-# This is the default window title in case there is a content
-# title to be displayed.
-#
-# Depending on the $mode, the string will look like this (in en-US):
-#
-# "default" - "Example Title - Mozilla Firefox"
-# "private" - "Example Title - Mozilla Firefox (Forget Mode)"
-#
-# Variables
-#   $mode (String) - "private" in case of a forget mode, "default" otherwise.
-#   $title (String) - Content title string.
-browser-main-window-content-title =
-    { $mode ->
-        [private] { $title } - { -brand-full-name } (Vergessen Modus)
-       *[default] { $title } - { -brand-full-name }
+
+## This is the default window title in case there is content
+## title to be displayed.
+##
+## On macOS the title doesn't include the brand name, on all other
+## platforms it does.
+##
+## For example, in private mode on Windows, the title will be:
+## "Example Title - Mozilla Firefox (Private Browsing)"
+##
+## while on macOS in default mode it will be:
+## "Example Title"
+##
+## Variables
+##   $title (String) - Content title string.
+
+browser-main-window-content-title-default =
+    { PLATFORM() ->
+        [macos] { $title }
+       *[other] { $title } - { -brand-full-name }
     }
+browser-main-window-content-title-private =
+    { PLATFORM() ->
+        [macos] { $title } - (Vergessen Modus)
+       *[other] { $title } - { -brand-full-name } (Vergessen Modus)
+    }
+
+##
+
 urlbar-identity-button =
     .aria-label = Seiteninformationen anzeigen
 
@@ -83,6 +96,11 @@ urlbar-addons-notification-anchor =
 urlbar-tip-help-icon =
     .title = Hilfe erhalten
 urlbar-search-tips-confirm = OK
+# Read out before Urlbar Tip text content so screenreader users know the
+# subsequent text is a tip offered by the browser. It should end in a colon or
+# localized equivalent.
+urlbar-tip-icon-description =
+    .alt = Tipp:
 
 ## Prompts users to use the Urlbar when they open a new tab or visit the
 ## homepage of their default search engine.
@@ -118,6 +136,14 @@ urlbar-midi-blocked =
     .tooltiptext = Sie haben den Zugriff auf MIDI durch diese Website blockiert.
 urlbar-install-blocked =
     .tooltiptext = Sie haben die Installation von Erweiterungen von dieser Website blockiert.
+# Variables
+#   $shortcut (String) - A keyboard shortcut for the edit bookmark command.
+urlbar-star-edit-bookmark =
+    .tooltiptext = Dieses Lesezeichen bearbeiten ({ $shortcut })
+# Variables
+#   $shortcut (String) - A keyboard shortcut for the add bookmark command.
+urlbar-star-add-bookmark =
+    .tooltiptext = Lesezeichen für diese Seite setzen ({ $shortcut })
 
 ## Page Action Context Menu
 
@@ -155,7 +181,7 @@ search-one-offs-context-set-as-default =
     .label = Als Standardsuchmaschine festlegen
     .accesskey = S
 search-one-offs-context-set-as-default-private =
-    .label = Als Standardsuchmaschine für private Fenster festlegen
+    .label = Als Standardsuchmaschine für Vergessen Fenster festlegen
     .accesskey = p
 
 ## Bookmark Panel

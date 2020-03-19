@@ -21,6 +21,7 @@ const CliqzLogger = (function() {
   // 1 - display it on a screen;
   // 2 - write down to the file;
   const LEVEL_PREF = "app.log.enabled.level";
+  const IGNORED_MODULES_PREF = "app.log.enabled.ignored_modules";
   const IGNORED_METHODS_PREF = "app.log.enabled.ignored_methods";
   const EXEC_TOKENS_PREF = "app.log.enabled.exec_tokens";
   const KEY_PROFILE_DIR = "ProfD";
@@ -43,7 +44,6 @@ const CliqzLogger = (function() {
     "selectedTab",
     "getIcon"
   ];
-
   // execTokens is a hashTable which has a function arguments at runtime.
   // Use the following example.
   // Let's suppose there is a function foo(numberArgName, stringArgName, objArgName) {...}
@@ -102,6 +102,7 @@ const CliqzLogger = (function() {
 
   const module = {
     _levelPrefObserver: null,
+    _ignoredModulesPrefObserver: null,
     _ignoredMethodsPrefObserver: null,
     _execTokensObserver: null,
     _level: null,
@@ -110,6 +111,7 @@ const CliqzLogger = (function() {
     _buffer: null,
     _timerId: null,
     _logFileNames: null,
+    _ignoredModules: null,
     _ignoredMethods: null,
     _execTokens: null,
 
@@ -181,6 +183,7 @@ const CliqzLogger = (function() {
         "cliqz_logging_messages_prev.log",
         "cliqz_logging_messages_next.log"
       ] : module._logFileNames;
+      module._ignoredModules = module._ignoredModules == null ? [] : module._ignoredModules;
       module._ignoredMethods = module._ignoredMethods == null ? {} : module._ignoredMethods;
       module._execTokens = module._execTokens == null ? {} : module._execTokens;
 
@@ -198,6 +201,19 @@ const CliqzLogger = (function() {
         Services.prefs.addObserver(IGNORED_METHODS_PREF, module._ignoredMethodsPrefObserver);
         if (Services.prefs.prefHasUserValue(IGNORED_METHODS_PREF)) {
           module._ignoredMethodsPrefObserver.observe(null, null, IGNORED_METHODS_PREF);
+        } else {
+          Services.prefs.setStringPref(IGNORED_METHODS_PREF, DEFAULT_IGNORED_METHODS.join(","));
+        }
+      }
+      if (module._ignoredModulesPrefObserver == null) {
+        module._ignoredModulesPrefObserver = {
+          observe: function(subject, topic, prefName) {
+            module._ignoredModules = Services.prefs.getStringPref(prefName, "").split(",");
+          }
+        };
+        Services.prefs.addObserver(IGNORED_MODULES_PREF, module._ignoredModulesPrefObserver);
+        if (Services.prefs.prefHasUserValue(IGNORED_MODULES_PREF)) {
+          module._ignoredModulesPrefObserver.observe(null, null, IGNORED_MODULES_PREF);
         }
       }
       if (module._levelPrefObserver == null) {
@@ -235,13 +251,18 @@ const CliqzLogger = (function() {
           return;
         }
 
+        for (let i = 0, l = module._ignoredModules.length; i < l; i++) {
+          if (modulePath.indexOf(module._ignoredModules[i]) !== -1) {
+            return;
+          }
+        }
+
         const messages = [modulePath, params.lN, params.tT];
 
         if (params.fN) {
           if (module._ignoredMethods[params.fN] != null) {
             return;
           }
-
           messages.push(params.fN);
           messages.push(Object.keys(params.eT));
 
@@ -267,14 +288,17 @@ const CliqzLogger = (function() {
     },
     destroy: function() {
       Services.prefs.removeObserver(LEVEL_PREF, module._levelPrefObserver);
+      Services.prefs.removeObserver(IGNORED_MODULES_PREF, module._ignoredModulesPrefObserver);
       Services.prefs.removeObserver(IGNORED_METHODS_PREF, module._ignoredMethodsPrefObserver);
       Services.prefs.removeObserver(EXEC_TOKENS_PREF, module._execTokensObserver);
       module._levelPrefObserver = null;
+      module._ignoredModulesPrefObserver = null;
       module._ignoredMethodsPrefObserver = null;
       module._execTokensObserver = null;
       module._level = null;
       module._buffer = null;
       module._logFileNames = null;
+      module._ignoredModules = null;
       module._ignoredMethods = null;
       module._execTokens = null;
 
@@ -288,8 +312,6 @@ const CliqzLogger = (function() {
     Services.prefs.setIntPref(LEVEL_PREF, module._level);
   }
 
-  Services.prefs.setStringPref(IGNORED_METHODS_PREF, DEFAULT_IGNORED_METHODS.join(","));
-
   const blockerCondition = function() {
     if (module._level === SHOULD_LOG_TO_FILE && module._buffer != null) {
       module._handleWritingLogs(module._buffer);
@@ -298,7 +320,7 @@ const CliqzLogger = (function() {
 
     AsyncShutdown.profileBeforeChange.removeBlocker(blockerCondition);
   };
-  AsyncShutdown.profileBeforeChange.addBlocker(
+  AsyncShutdown.profileBeforeChange != null && AsyncShutdown.profileBeforeChange.addBlocker(
     "CliqzLogger: write to cliqz_logging_messages",
     blockerCondition
   );

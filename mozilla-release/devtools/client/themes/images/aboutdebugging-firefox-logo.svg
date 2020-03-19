@@ -1,8 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <svg width="141px" height="141px" viewBox="0 0 141 141" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
-    <!-- Generator: Sketch 57.1 (83088) - https://sketch.com -->
-    <title>cliqz_icon_small-size</title>
-    <desc>Created with Sketch.</desc>
     <defs>
         <polygon id="path-1" points="107.477351 100.350587 131 92.4789163 66 66 92.4789881 131 100.350952 107.477458 122.343393 129.47016 129.469018 122.346772"></polygon>
         <filter x="-10.8%" y="-7.7%" width="121.5%" height="121.5%" filterUnits="objectBoundingBox" id="filter-2">
@@ -17,17 +14,15 @@
             <feColorMatrix values="0 0 0 0 0   0 0 0 0 0   0 0 0 0 0  0 0 0 0.0514368444 0" type="matrix" in="shadowBlurOuter1"></feColorMatrix>
         </filter>
     </defs>
-    <g id="Page-1" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
-        <g id="iPhone-8-Copy-2" transform="translate(-117.000000, -265.000000)" fill-rule="nonzero">
-            <g id="cliqz_icon_small-size" transform="translate(121.000000, 267.000000)">
-                <g id="Fill-4">
-                    <use fill="black" fill-opacity="1" filter="url(#filter-2)" xlink:href="#path-1"></use>
-                    <use fill="context-fill" xlink:href="#path-1"></use>
-                </g>
-                <g id="Fill-6">
-                    <use fill="black" fill-opacity="1" filter="url(#filter-4)" xlink:href="#path-3"></use>
-                    <use fill="context-fill" xlink:href="#path-3"></use>
-                </g>
+    <g stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <g transform="translate(4, 2)" fill-rule="nonzero">
+            <g>
+                <use fill="black" fill-opacity="1" filter="url(#filter-2)" xlink:href="#path-1"></use>
+                <use fill="context-fill" xlink:href="#path-1"></use>
+            </g>
+            <g>
+                <use fill="black" fill-opacity="1" filter="url(#filter-4)" xlink:href="#path-3"></use>
+                <use fill="context-fill" xlink:href="#path-3"></use>
             </g>
         </g>
     </g>

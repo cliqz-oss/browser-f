@@ -45,9 +45,12 @@ fi
 #  ./mach build chrome-$AB_CD
 #done
 
-NODE=node
-if [ -f "$TOOLCHAIN/node/bin/node" ]; then
-  NODE=$TOOLCHAIN/node/bin/node
+if [ "$IS_WIN" == "true" ]; then
+  NODE=$MOZ_FETCHES_DIR/node/node.exe
+elif [ -f "$MOZ_FETCHES_DIR/node/bin/node" ]; then
+  NODE=$MOZ_FETCHES_DIR/node/bin/node
+else
+  NODE=node
 fi
 
 if [ "$CQZ_INJECT_LOGGING" == "true" ]; then

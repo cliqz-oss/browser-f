@@ -11,3 +11,5 @@ pictureinpicture-mute =
     .aria-label = Ton aus
 pictureinpicture-unmute =
     .aria-label = Ton an
+pictureinpicture-close =
+    .aria-label = Schließen

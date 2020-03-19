@@ -45,7 +45,7 @@ main() {
     fi
     mkdir -p $ARTIFACT_PATH
 
-    packages=("rustc.tar.bz2" "clang.tar.bz2" "nasm.tar.bz2" "cbindgen.tar.bz2" "node.tar.bz2" "wix311-binaries.tar.bz2")
+    packages=("rustc.tar.bz2" "clang.tar.bz2" "nasm.tar.bz2" "cbindgen.tar.bz2" "node.tar.bz2" "wix311-binaries.tar.bz2" "dump_syms.tar.bz2" "wincab.tar.bz2")
     for package in ${packages[@]}; do
         if [ ! -s "$ARTIFACT_PATH/$package" ]; then
             retry "download $package"

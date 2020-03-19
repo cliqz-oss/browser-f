@@ -150,13 +150,16 @@ function ChildProcess(rootId, forkId, recording, recordingLength, startPoint) {
   // run forward to the first checkpoint.
   this.manifests = [
     {
-      manifest: { kind: "initial" },
-      onFinished: ({ point }) => {
+      manifest: { kind: "primordial" },
+      onFinished: ({ point, maxRunningProcesses }) => {
         if (this == gMainChild) {
           getCheckpointInfo(FirstCheckpointId).point = point;
           Services.tm.dispatchToMainThread(
             recording ? maybeResumeRecording : setMainChild
           );
+        }
+        if (maxRunningProcesses) {
+          gMaxRunningLeafChildren = maxRunningProcesses;
         }
       },
     },
@@ -359,6 +362,7 @@ ChildProcess.prototype = {
       const id = gNextPingId++;
       RecordReplayControl.ping(this.rootId, this.forkId, id);
       this.pings.push({ id });
+      this.lastPingTime = now;
     }
   },
 
@@ -477,7 +481,7 @@ function newLeafChild(endpoint, onFinished = () => {}) {
 }
 
 // How many leaf children we can have running simultaneously.
-const MaxRunningLeafChildren = 4;
+let gMaxRunningLeafChildren = 4;
 
 // How many leaf children are currently running.
 let gNumRunningLeafChildren = 0;
@@ -489,7 +493,7 @@ const gChildWaiters = [[], [], []];
 // the limits on the maximum number of running leaves and returning the new
 // child when it reaches the endpoint.
 async function ensureLeafChild(endpoint, priority = Priority.HIGH) {
-  if (gNumRunningLeafChildren < MaxRunningLeafChildren) {
+  if (gNumRunningLeafChildren < gMaxRunningLeafChildren) {
     gNumRunningLeafChildren++;
   } else {
     await new Promise(resolve => gChildWaiters[priority].push(resolve));
@@ -505,7 +509,7 @@ async function ensureLeafChild(endpoint, priority = Priority.HIGH) {
 function stopRunningLeafChild() {
   gNumRunningLeafChildren--;
 
-  if (gNumRunningLeafChildren < MaxRunningLeafChildren) {
+  if (gNumRunningLeafChildren < gMaxRunningLeafChildren) {
     for (const waiters of gChildWaiters) {
       if (waiters.length) {
         const resolve = waiters.shift();
@@ -552,7 +556,7 @@ function spawnTrunkChild() {
   assert(gLastSavedCheckpoint == InvalidCheckpointId);
 }
 
-function forkBranchChild(lastSavedCheckpoint, nextSavedCheckpoint) {
+async function forkBranchChild(lastSavedCheckpoint, nextSavedCheckpoint) {
   if (!RecordReplayControl.canRewind()) {
     return;
   }
@@ -570,7 +574,7 @@ function forkBranchChild(lastSavedCheckpoint, nextSavedCheckpoint) {
   gBranchChildren.push({ child, point });
 
   const endpoint = checkpointExecutionPoint(nextSavedCheckpoint);
-  gTrunkChild.sendManifest({
+  await gTrunkChild.sendManifest({
     kind: "runToPoint",
     endpoint,
 
@@ -578,6 +582,8 @@ function forkBranchChild(lastSavedCheckpoint, nextSavedCheckpoint) {
     // from throughout the recording will be cached in the root child.
     flushExternalCalls: true,
   });
+
+  updateStatus();
 }
 
 function respawnCrashedChild(child) {
@@ -617,14 +623,14 @@ function respawnCrashedChild(child) {
   }
 
   for (const manifest of processedManifests) {
-    if (manifest.kind != "initial" && manifest.kind != "fork") {
+    if (manifest.kind != "primordial" && manifest.kind != "fork") {
       child.sendManifest(manifest);
     }
   }
 
   for (const { manifest, onFinished } of manifests) {
     if (
-      manifest.kind != "initial" &&
+      manifest.kind != "primordial" &&
       (manifest.kind != "fork" || manifest != manifests[0].manifest)
     ) {
       child.sendManifest(manifest, onFinished);
@@ -857,9 +863,7 @@ async function scanRecording(checkpoint) {
   gScannedSavedCheckpoints.add(checkpoint);
 
   // Update the unscanned regions in the UI.
-  if (gDebugger) {
-    gDebugger._callOnPositionChange();
-  }
+  updateStatus();
 
   resolve(child);
   return child;
@@ -868,14 +872,24 @@ async function scanRecording(checkpoint) {
 function unscannedRegions() {
   const result = [];
 
+  const traversedCheckpoint =
+    gTrunkChild && gTrunkChild.lastPausePoint
+      ? gTrunkChild.lastPausePoint.checkpoint
+      : FirstCheckpointId;
+
   function addRegion(startCheckpoint, endCheckpoint) {
     const start = checkpointExecutionPoint(startCheckpoint).progress;
     const end = checkpointExecutionPoint(endCheckpoint).progress;
+    const traversed = endCheckpoint <= traversedCheckpoint;
 
-    if (result.length && result[result.length - 1].end == start) {
+    if (
+      result.length &&
+      result[result.length - 1].end == start &&
+      result[result.length - 1].traversed == traversed
+    ) {
       result[result.length - 1].end = end;
     } else {
-      result.push({ start, end });
+      result.push({ start, end, traversed });
     }
   }
 
@@ -1056,9 +1070,7 @@ function addPauseData(point, data, trackCached) {
 
   if (trackCached) {
     gCachedPoints.set(pointToString(point), point);
-    if (gDebugger) {
-      gDebugger._callOnPositionChange();
-    }
+    updateStatus();
   }
 }
 
@@ -1130,6 +1142,7 @@ function setReplayingPauseTarget(point) {
 
   const child = newLeafChild(point);
   setPauseState(PauseModes.PAUSED, point, child);
+  updateStatus();
 
   gDebugger._onPause();
   findFrameSteps(point);
@@ -1226,7 +1239,7 @@ async function finishResume() {
     assert(forward);
     RecordReplayControl.restoreMainGraphics();
     setPauseState(PauseModes.RUNNING, gMainChild.pausePoint(), gMainChild);
-    gDebugger._callOnPositionChange();
+    updateStatus();
     maybeResumeRecording();
   } else {
     // We searched backward to the beginning of the recording, so restore the
@@ -1716,6 +1729,7 @@ function maybeResumeRecording() {
 
       gPausePoint = gMainChild.pausePoint();
       if (gDebugger) {
+        updateStatus();
         gDebugger._onPause();
       } else {
         Services.tm.dispatchToMainThread(maybeResumeRecording);
@@ -1872,11 +1886,6 @@ const gControl = {
     return point;
   },
 
-  // Return whether the active child is currently recording.
-  childIsRecording() {
-    return gActiveChild && gActiveChild.recording;
-  },
-
   // Ensure the active child is paused.
   waitUntilPaused() {
     // The debugger should not use this method while we are actively resuming.
@@ -2003,9 +2012,6 @@ const gControl = {
 
   setActiveEventBreakpoints,
 
-  unscannedRegions,
-  cachedPoints,
-
   debuggerRequests() {
     return gDebuggerRequests;
   },
@@ -2033,16 +2039,14 @@ const gControl = {
       RecordReplayControl.clearGraphics();
     } else {
       addPauseData(gPausePoint, data, /* trackCached */ true);
-      if (data.paintData) {
-        RecordReplayControl.hadRepaint(data.paintData);
-      }
+      RecordReplayControl.hadRepaint(data.paintData);
     }
     return data;
   },
 
   paint(point) {
     const data = maybeGetPauseData(point);
-    if (data && data.paintData) {
+    if (data) {
       RecordReplayControl.hadRepaint(data.paintData);
     }
   },
@@ -2057,6 +2061,17 @@ const gControl = {
     return false;
   },
 };
+
+function updateStatus() {
+  if (gDebugger && gDebugger.replayingOnStatusUpdate) {
+    gDebugger.replayingOnStatusUpdate({
+      recording: gActiveChild && gActiveChild.recording,
+      executionPoint: gPausePoint,
+      cachedPoints: cachedPoints(),
+      unscannedRegions: unscannedRegions(),
+    });
+  }
+}
 
 ///////////////////////////////////////////////////////////////////////////////
 // Utilities
