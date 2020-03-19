@@ -1740,7 +1740,6 @@ pref("browser.tabs.crashReporting.requestEmail", false);
 pref("browser.tabs.crashReporting.emailMe", false);
 pref("browser.tabs.crashReporting.email", "");
 
-pref("extensions.legacy.enabled", true);
 // If true, unprivileged extensions may use experimental APIs on
 // nightly and developer edition.
 pref("extensions.experiments.enabled", false);

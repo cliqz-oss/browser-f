@@ -614,7 +614,9 @@ XPCOMUtils.defineLazyModuleGetters(this, {
   ContextualIdentityService:
     "resource://gre/modules/ContextualIdentityService.jsm",
   Corroborate: "resource://gre/modules/Corroborate.jsm",
+#if 0
   Discovery: "resource:///modules/Discovery.jsm",
+#endif
   ExtensionsUI: "resource:///modules/ExtensionsUI.jsm",
   #if 0
   FirefoxMonitor: "resource:///modules/FirefoxMonitor.jsm",
@@ -2117,7 +2119,9 @@ BrowserGlue.prototype = {
       {
         task: async () => {
           await ContextualIdentityService.load();
+#if 0
           Discovery.update();
+#endif
         },
       },
 
