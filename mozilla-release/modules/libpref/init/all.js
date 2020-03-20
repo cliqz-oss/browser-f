@@ -4034,6 +4034,7 @@ pref("network.psl.onUpdate_notify", false);
   pref("widget.wayland_vsync.enabled", false);
 #endif
 
+// CLIQZ-SPECIAL - force mozilla location service only
 // All the Geolocation preferences are here.
 //
 #ifndef EARLY_BETA_OR_EARLIER
@@ -4047,16 +4048,16 @@ pref("network.psl.onUpdate_notify", false);
 pref("geo.provider.network.timeout", 60000);
 
 #ifdef XP_MACOSX
-  pref("geo.provider.use_corelocation", true);
+  pref("geo.provider.use_corelocation", false);
 #endif
 
 // Set to false if things are really broken.
 #ifdef XP_WIN
-  pref("geo.provider.ms-windows-location", true);
+  pref("geo.provider.ms-windows-location", false);
 #endif
 
 #if defined(MOZ_WIDGET_GTK) && defined(MOZ_GPSD)
-  pref("geo.provider.use_gpsd", true);
+  pref("geo.provider.use_gpsd", false);
 #endif
 
 // Enable/Disable the device storage API for content
