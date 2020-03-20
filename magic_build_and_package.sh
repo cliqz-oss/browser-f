@@ -49,6 +49,8 @@ if [ "$IS_WIN" == "true" ]; then
   NODE=$MOZ_FETCHES_DIR/node/node.exe
 elif [ -f "$MOZ_FETCHES_DIR/node/bin/node" ]; then
   NODE=$MOZ_FETCHES_DIR/node/bin/node
+elif [ -f "$TOOLCHAIN/node/bin/node" ]; then
+  NODE=$TOOLCHAIN/node/bin/node
 else
   NODE=node
 fi
