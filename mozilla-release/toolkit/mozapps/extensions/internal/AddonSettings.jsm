@@ -85,6 +85,7 @@ if (Cu.isInAutomation) {
  *
  * Official releases ignore this preference.
  */
+#if 0
 if (
   !AppConstants.MOZ_REQUIRE_SIGNING ||
   AppConstants.NIGHTLY_BUILD ||
@@ -96,6 +97,23 @@ if (
     "EXPERIMENTS_ENABLED",
     PREF_ALLOW_EXPERIMENTS,
     true
+  );
+} else {
+  makeConstant("EXPERIMENTS_ENABLED", false);
+}
+#endif
+
+// CLIQZ-SPECIAL: We always have MOZ_REQUIRE_SIGNING defined
+// so there will be no unsigned addon installation allowed
+// Unsigned addons can only be installed as temporary addon.
+// We need to allow experiments in temporary addons
+// so that our extension test pipelines work.
+if (AppConstants.MOZ_REQUIRE_SIGNING) {
+  XPCOMUtils.defineLazyPreferenceGetter(
+    AddonSettings,
+    "EXPERIMENTS_ENABLED",
+    PREF_ALLOW_EXPERIMENTS,
+    false
   );
 } else {
   makeConstant("EXPERIMENTS_ENABLED", false);
