@@ -2071,8 +2071,6 @@ class UrlbarInput {
   }
 
   _on_TabSelect(event) {
-    this._resetSearchState();
-
     // CLIQZ-SPECIAL: DB-2272
     // There might be a case when opening and selecting a new tab
     // results in displaying the gradient mask-image on url bar.
