@@ -738,27 +738,22 @@ HttpObserverManager = {
             w.gBrowser.removeTab(tabs[0]);
           }
         });
-      } catch(e){
-         console.error('maybeAFW: error thrown | ', e);
-        // Hopefully it never enters here.
-      }
 
-      const isSecondaryTab = tabs.find(t => {
-        // This checks if the tab is opened in new tab by context menu or target_blank.
-        if (t.owner == selectedTab) {
-          return t;
-        } else if (t.hasOwnProperty('openerTab') && finalURL.includes(t._fullLabel)) {
-          // This deals with Ctrl + enter opener
-          // Need to use includes as the label can be just domain name or with protocol
-          // but final url is a complete URI
-          return t;
-        }
-      });
+        const isSecondaryTab = tabs.find(t => {
+          // This checks if the tab is opened in new tab by context menu or target_blank.
+          if (t.owner == selectedTab) {
+            return t;
+          } else if (t.hasOwnProperty('openerTab') && finalURL.includes(t._fullLabel)) {
+            // This deals with Ctrl + enter opener
+            // Need to use includes as the label can be just domain name or with protocol
+            // but final url is a complete URI
+            return t;
+          }
+        });
 
-      if (isSecondaryTab) {
-        gBrowser.removeTab(isSecondaryTab);
-      } else {
-        try {
+        if (isSecondaryTab) {
+          gBrowser.removeTab(isSecondaryTab);
+        } else {
           // Deletes the tab if there is no history path
           if (!gBrowser.webNavigation.canGoBack) {
             if (tabs.length === 1) {
@@ -766,22 +761,17 @@ HttpObserverManager = {
             }
             gBrowser.removeTab(selectedTab);
           }
-        } catch(e){
-          console.error('maybeAFW: error thrown | ', e);
-          // Hopefully it never enters here.
         }
-      }
 
-      // Delete the interim URL from history
-      try {
+        // Delete the interim URL from history
         if (originURL && originURL !== "" && originURL !== finalURL) {
           const { History } = ChromeUtils.import("resource://gre/modules/History.jsm");
           History.remove(originURL);
         }
       } catch(e){
+        console.error('maybeAFW: error thrown | ', e);
         // Hopefully it never enters here.
       }
-
       return true;
     }
     return false;
