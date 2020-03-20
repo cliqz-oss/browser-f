@@ -13,12 +13,12 @@ ac_add_options --enable-release
 ac_add_options --enable-rust-simd
 ac_add_options --with-mozilla-api-keyfile=$ROOT_PATH/mozilla-desktop-geoloc-api.key
 ac_add_options --with-google-safebrowsing-api-keyfile=$ROOT_PATH/google-desktop-api.key
-ac_add_options "MOZ_ALLOW_LEGACY_EXTENSIONS=1"
 
 export MOZ_APP_PROFILE=CLIQZ
 export MOZ_AUTOMATION_UPLOAD=1
 export MOZ_TELEMETRY_REPORTING=1
-export MOZ_ADDON_SIGNING=1
+# MOZ_REQUIRE_SIGNING flag is added to make sure no persistent addon is installed without signature
+# this flag overrides xpinstall.signatures.required, look AddonSettings.jsm
 export MOZ_REQUIRE_SIGNING=1
 export MOZ_PACKAGE_JSSHELL=1
 # safeguard against someone forgetting to re-set EARLY_BETA_OR_EARLIER in
