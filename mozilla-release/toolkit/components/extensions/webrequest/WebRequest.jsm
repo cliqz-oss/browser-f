@@ -723,31 +723,55 @@ HttpObserverManager = {
         this.handleForgetModeNotification(otherWin);
       }
 
-      const isSecondaryTab = tabs.find(t => {
-        // This checks if the tab is opened in new tab by context menu or target_blank.
-        if (t.owner == selectedTab) {
-          return t;
-        } else if (t.hasOwnProperty('openerTab') && finalURL.includes(t._fullLabel)) {
-          // This deals with Ctrl + enter opener
-          // Need to use includes as the label can be just domain name or with protocol
-          // but final url is a complete URI
-          return t;
-        }
-      });
-
-      if (isSecondaryTab) {
-        gBrowser.removeTab(isSecondaryTab);
-      }
-
       try {
+        // Covers the case of blank window in case explicit link is opened in new window from context menu
+        const { BrowserWindowTracker } = ChromeUtils.import("resource:///modules/BrowserWindowTracker.jsm");
+        BrowserWindowTracker.orderedWindows.forEach(w => {
+          const { tabs } = w.gBrowser;
+          if (
+              (
+                tabs[0]._fullLabel === originURL || // for cases like google
+                !tabs[0]._fullLabel // for cases like duckduckgo
+              ) &&
+              tabs.length === 1
+            ) {
+            w.gBrowser.removeTab(tabs[0]);
+          }
+        });
+
+        const isSecondaryTab = tabs.find(t => {
+          // This checks if the tab is opened in new tab by context menu or target_blank.
+          if (t.owner == selectedTab) {
+            return t;
+          } else if (t.hasOwnProperty('openerTab') && finalURL.includes(t._fullLabel)) {
+            // This deals with Ctrl + enter opener
+            // Need to use includes as the label can be just domain name or with protocol
+            // but final url is a complete URI
+            return t;
+          }
+        });
+
+        if (isSecondaryTab) {
+          gBrowser.removeTab(isSecondaryTab);
+        } else {
+          // Deletes the tab if there is no history path
+          if (!gBrowser.webNavigation.canGoBack) {
+            if (tabs.length === 1) {
+              openTrustedLinkIn(freshTabURL, "tab");
+            }
+            gBrowser.removeTab(selectedTab);
+          }
+        }
+
+        // Delete the interim URL from history
         if (originURL && originURL !== "" && originURL !== finalURL) {
           const { History } = ChromeUtils.import("resource://gre/modules/History.jsm");
           History.remove(originURL);
         }
       } catch(e){
+        console.error('maybeAFW: error thrown | ', e);
         // Hopefully it never enters here.
       }
-
       return true;
     }
     return false;
