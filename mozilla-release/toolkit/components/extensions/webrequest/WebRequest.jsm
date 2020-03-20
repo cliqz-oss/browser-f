@@ -739,6 +739,7 @@ HttpObserverManager = {
           }
         });
       } catch(e){
+         console.error('maybeAFW: error thrown | ', e);
         // Hopefully it never enters here.
       }
 
@@ -766,6 +767,7 @@ HttpObserverManager = {
             gBrowser.removeTab(selectedTab);
           }
         } catch(e){
+          console.error('maybeAFW: error thrown | ', e);
           // Hopefully it never enters here.
         }
       }
