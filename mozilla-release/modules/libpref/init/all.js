@@ -4037,12 +4037,12 @@ pref("network.psl.onUpdate_notify", false);
 // CLIQZ-SPECIAL - force mozilla location service only
 // All the Geolocation preferences are here.
 //
-#ifndef EARLY_BETA_OR_EARLIER
-  pref("geo.provider.network.url", "https://www.googleapis.com/geolocation/v1/geolocate?key=%GOOGLE_LOCATION_SERVICE_API_KEY%");
-#else
+//#ifndef EARLY_BETA_OR_EARLIER
+//  pref("geo.provider.network.url", "https://www.googleapis.com/geolocation/v1/geolocate?key=%GOOGLE_LOCATION_SERVICE_API_KEY%");
+//#else
   // Use MLS on Nightly and early Beta.
   pref("geo.provider.network.url", "https://location.services.mozilla.com/v1/geolocate?key=%MOZILLA_API_KEY%");
-#endif
+//#endif
 
 // Timeout for outbound network geolocation provider.
 pref("geo.provider.network.timeout", 60000);
