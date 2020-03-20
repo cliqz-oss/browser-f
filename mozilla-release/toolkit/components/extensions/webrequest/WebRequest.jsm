@@ -723,6 +723,25 @@ HttpObserverManager = {
         this.handleForgetModeNotification(otherWin);
       }
 
+      try {
+        // Covers the case of balnk window in case explicit link is opened in new tab from context menu
+        const { BrowserWindowTracker } = ChromeUtils.import("resource:///modules/BrowserWindowTracker.jsm");
+        BrowserWindowTracker.orderedWindows.forEach(w => {
+          const { tabs } = w.gBrowser;
+          if (
+              (
+                tabs[0]._fullLabel === originURL || // for cases like google
+                !tabs[0]._fullLabel // for cases like duckduckgo
+              ) &&
+              tabs.length === 1
+            ) {
+            w.gBrowser.removeTab(tabs[0]);
+          }
+        });
+      } catch(e){
+        // Hopefully it never enters here.
+      }
+
       const isSecondaryTab = tabs.find(t => {
         // This checks if the tab is opened in new tab by context menu or target_blank.
         if (t.owner == selectedTab) {
@@ -737,8 +756,21 @@ HttpObserverManager = {
 
       if (isSecondaryTab) {
         gBrowser.removeTab(isSecondaryTab);
+      } else {
+        try {
+          // Deletes the tab if there is no history path
+          if (!gBrowser.webNavigation.canGoBack) {
+            if (tabs.length === 1) {
+              openTrustedLinkIn(freshTabURL, "tab");
+            }
+            gBrowser.removeTab(selectedTab);
+          }
+        } catch(e){
+          // Hopefully it never enters here.
+        }
       }
 
+      // Delete the interim URL from history
       try {
         if (originURL && originURL !== "" && originURL !== finalURL) {
           const { History } = ChromeUtils.import("resource://gre/modules/History.jsm");
