@@ -724,7 +724,7 @@ HttpObserverManager = {
       }
 
       try {
-        // Covers the case of balnk window in case explicit link is opened in new tab from context menu
+        // Covers the case of blank window in case explicit link is opened in new window from context menu
         const { BrowserWindowTracker } = ChromeUtils.import("resource:///modules/BrowserWindowTracker.jsm");
         BrowserWindowTracker.orderedWindows.forEach(w => {
           const { tabs } = w.gBrowser;
