@@ -99,7 +99,7 @@ RUN wget "https://static.rust-lang.org/rustup/archive/1.21.1/x86_64-unknown-linu
  && rustc --version
 
 # Install cbindgen
-RUN cargo install --version 0.12.2 cbindgen
+RUN cargo install --version 0.13.0 cbindgen
 
 # Install nasm 2.13 (see: https://www.nasm.us)
 RUN mkdir -p /home/$user/nasm \
