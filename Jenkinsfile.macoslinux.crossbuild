@@ -115,7 +115,7 @@ node('gideon') {
                 stage('Checkout'){
                     checkout([
                         $class: 'GitSCM',
-                        branches: [[name: '*/master']],
+                        branches: [[name: COMMIT_ID]],
                         doGenerateSubmoduleConfigurations: false,
                         extensions: [],
                         submoduleCfg: [],
