@@ -1590,7 +1590,7 @@ pref("media.gmp-provider.enabled", true);
 // Enable blocking access to storage from tracking resources by default.
 // pref("network.cookie.cookieBehavior", 4 /* BEHAVIOR_REJECT_TRACKER */);
 // CLIQZ-SPECIAL
-pref("network.cookie.cookieBehavior", 3 /* BEHAVIOR_LIMIT_FOREIGN */);
+pref("network.cookie.cookieBehavior", 4 /* BEHAVIOR_REJECT_TRACKER */);
 
 // Enable fingerprinting blocking by default for all channels, only on desktop.
 // CLIQZ-MERGE - check if we can remove beta check (Firefox get this unconditionoial)
