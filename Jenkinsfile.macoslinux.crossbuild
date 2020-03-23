@@ -170,6 +170,8 @@ node('gideon') {
                 stage('Stash signed artifacts'){
                     stash includes: 'obj/dist/*de.mac.dmg', name: 'signeddedmg'
                     stash includes: 'obj/dist/*en-US.mac.dmg', name: 'signedusdmg'
+                    stash includes: 'obj/dist/l10n-stage/cliqz/Cliqz.app', name: 'signeddeapp'
+                    stash includes: 'obj/dist/cliqz/Cliqz.app', name: 'signedusapp'
                      sh """#!/bin/bash -l
                     set -e
                     set -x
@@ -189,6 +191,8 @@ image.inside("-w /opt/browser-f"){
     stage('Unstash signed artifacts'){
         unstash 'signeddedmg'
         unstash 'signedusdmg'
+        unstash 'signeddeapp'
+        unstash 'signedusapp'
     }
     stage('upload') {
         withEnv(['CQZ_CERT_DB_PATH=/home/jenkins/certs', "CQZ_BUILD_DE_LOCALIZATION=$CQZ_BUILD_DE_LOCALIZATION"]) {
