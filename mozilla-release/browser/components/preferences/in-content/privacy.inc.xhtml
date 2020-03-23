@@ -417,10 +417,7 @@
                 onsyncfrompreference="return gPrivacyPane.readBlockCookiesMenu();"
                 onsynctopreference="return gPrivacyPane.writeBlockCookiesMenu(this.selectedItem.value);">
         <menupopup>
-          <!-- CLIQZ-SPECIAL: DB-2352, temprorarily hide this option from users
-            Once selected it should be replaced for "unvisited" as soon as the first window load happens
-          -->
-          <!--<menuitem id="blockCookiesFromTrackers" data-l10n-id="sitedata-option-block-trackers" value="trackers"/>-->
+          <menuitem id="blockCookiesFromTrackers" data-l10n-id="sitedata-option-block-trackers" value="trackers"/>
           <menuitem data-l10n-id="sitedata-option-block-unvisited" value="unvisited"/>
           <menuitem data-l10n-id="sitedata-option-block-all-third-party" value="all-third-parties"/>
           <menuitem data-l10n-id="sitedata-option-block-all" value="always"/>
