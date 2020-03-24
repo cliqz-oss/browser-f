@@ -183,7 +183,6 @@ node('gideon') {
                         tar -jcvf cliqz.app.en-US.tar.bz2 Cliqz.app
                         cd ../l10n-stage/cliqz
                         tar -jcvf cliqz.app.de.tar.bz2 Cliqz.app
-                        cd ../../../../
                     """
                     stash includes: 'obj/dist/*de.mac.dmg', name: 'signeddedmg'
                     stash includes: 'obj/dist/*en-US.mac.dmg', name: 'signedusdmg'
@@ -221,7 +220,6 @@ image.inside("-w /opt/browser-f"){
             tar -jxvf cliqz.app.en-US.tar.bz2
             cd ../l10n-stage/cliqz
             tar -jxvf cliqz.app.de.tar.bz2
-            cd ../../../../
         """
     }
     stage('upload') {
