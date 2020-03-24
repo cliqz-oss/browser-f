@@ -19,7 +19,8 @@
 // improves readability, particular for conditional blocks that exceed a single
 // screen.
 
-pref("security.tls.version.min", 3);
+// CLIQZ-SPECIAL: temporary use version 1
+pref("security.tls.version.min", 1);
 pref("security.tls.version.max", 4);
 pref("security.tls.version.enable-deprecated", false);
 pref("security.tls.version.fallback-limit", 4);
