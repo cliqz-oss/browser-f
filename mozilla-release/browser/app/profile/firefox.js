@@ -1954,7 +1954,8 @@ pref("identity.fxaccounts.service.sendLoginUrl", "https://send.firefox.com/login
 pref("identity.fxaccounts.service.monitorLoginUrl", "https://monitor.firefox.com/");
 
 // Check bundled omni JARs for corruption.
-pref("corroborator.enabled", true);
+// CLIQZ-SPECIAL: don't use yet, must be carefully checked first
+pref("corroborator.enabled", false);
 
 // Toolbox preferences
 pref("devtools.toolbox.footer.height", 250);
