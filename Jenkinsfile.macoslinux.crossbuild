@@ -69,6 +69,10 @@ image.inside("-v ${pwd}:/opt/browser-f -w /opt/browser-f"){
             set -e
             set -x
             rm -rf obj/dist/*.mac.dmg
+            rm -rf obj/dist/cliqz/*.app
+            rm -rf obj/dist/cliqz/*.tar.bz2
+            rm -rf obj/dist/l10n-stage/cliqz/*.app
+            rm -rf obj/dist/l10n-stage/cliqz/*.tar.bz2
         """
     }
 }
@@ -115,7 +119,7 @@ node('gideon') {
                 stage('Checkout'){
                     checkout([
                         $class: 'GitSCM',
-                        branches: [[name: '*/master']],
+                        branches: [[name: COMMIT_ID]],
                         doGenerateSubmoduleConfigurations: false,
                         extensions: [],
                         submoduleCfg: [],
@@ -127,6 +131,10 @@ node('gideon') {
                         set -e
                         set -x
                         rm -rf obj/dist/*.dmg
+                        rm -rf obj/dist/cliqz/*.app
+                        rm -rf obj/dist/l10n-stage/cliqz/*.app
+                        rm -rf obj/dist/cliqz/*.tar.bz2
+                        rm -rf obj/dist/l10n-stage/cliqz/*.tar.bz2
                         mkdir -p obj/dist/cliqz
                         mkdir -p obj/dist/l10n-stage/cliqz
                     """
@@ -168,13 +176,27 @@ node('gideon') {
                     }
                 }
                 stage('Stash signed artifacts'){
+                     sh """#!/bin/bash -l
+                        set -e
+                        set -x
+                        cd obj/dist/cliqz
+                        tar -jcvf cliqz.app.en-US.tar.bz2 Cliqz.app
+                        cd ../l10n-stage/cliqz
+                        tar -jcvf cliqz.app.de.tar.bz2 Cliqz.app
+                    """
                     stash includes: 'obj/dist/*de.mac.dmg', name: 'signeddedmg'
                     stash includes: 'obj/dist/*en-US.mac.dmg', name: 'signedusdmg'
+                    stash includes: 'obj/dist/l10n-stage/cliqz/cliqz.app.de.tar.bz2', name: 'signeddeapp'
+                    stash includes: 'obj/dist/cliqz/cliqz.app.en-US.tar.bz2', name: 'signedusapp'
                      sh """#!/bin/bash -l
-                    set -e
-                    set -x
-                    rm -rf obj/dist/*mac.dmg
-                """
+                        set -e
+                        set -x
+                        rm -rf obj/dist/*mac.dmg
+                        rm -rf obj/dist/cliqz/*.app
+                        rm -rf obj/dist/l10n-stage/cliqz/*.app
+                        rm -rf obj/dist/cliqz/*.tar.bz2
+                        rm -rf obj/dist/l10n-stage/cliqz/*.tar.bz2
+                    """
                 }
             }
             catch(all) {
@@ -189,6 +211,16 @@ image.inside("-w /opt/browser-f"){
     stage('Unstash signed artifacts'){
         unstash 'signeddedmg'
         unstash 'signedusdmg'
+        unstash 'signeddeapp'
+        unstash 'signedusapp'
+         sh """#!/bin/bash -l
+            set -e
+            set -x
+            cd obj/dist/cliqz
+            tar -jxvf cliqz.app.en-US.tar.bz2
+            cd ../l10n-stage/cliqz
+            tar -jxvf cliqz.app.de.tar.bz2
+        """
     }
     stage('upload') {
         withEnv(['CQZ_CERT_DB_PATH=/home/jenkins/certs', "CQZ_BUILD_DE_LOCALIZATION=$CQZ_BUILD_DE_LOCALIZATION"]) {
