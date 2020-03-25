@@ -4154,23 +4154,29 @@ var SessionStoreInternal = {
       winData.tabs = [];
     }
 
-    // Remove tab entries duplicating already open tabs.
-    // This is intended to work when both tab restore and fresh tab features
-    // are enabled.
+    // CLIQZ-SPECIAL: this piece of code remove all the
+    // homepage entries from the session restore object
+    // except one, we need atleast one tab for restore.
     if (!overwriteTabs) {
-      let homePages = HomePage.get().split("|")
-        // Use final URLs that get into session after redirection (see DB-1219).
-        .map(url => {
-          return CliqzResources.matchUrlByString(url);
-        });
-      winData.tabs = winData.tabs.filter(function (tabData) {
-        if (!tabData.entries || !tabData.entries.length) {
+      let homePages = HomePage.get().split("|");
+      let hasHome = false;
+      winData.tabs = winData.tabs.filter(function ({ entries = [] }) {
+        // Entries is array of history address URL, which allows back navigation
+        // even after restore.
+        // 0: moz-extension:asdasdasdasdassd
+        // 1: https://google.com
+        // 2: https://cliqz.com
+        // we are only interested in last entry
+        const lastEntry = entries[entries.length - 1] || {};
+        if (!lastEntry.url) {
           return true;
         }
-        let entryIndex = (tabData.index || 1) - 1;  // It's 1-based.
-        let entry = tabData.entries[entryIndex] ||
-          tabData.entries[tabData.entries.length - 1];
-        return homePages.indexOf(entry.url) == -1;
+        const isHome = homePages.includes(lastEntry.url);
+        if (isHome && hasHome) {
+          return false;
+        }
+        hasHome = true;
+        return true;
       });
     }
 
