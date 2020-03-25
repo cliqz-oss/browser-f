@@ -39,7 +39,7 @@ const CliqzResources = {
       case 'chrome://cliqz/content/onboarding-v3/index.html':
       case 'resource://cliqz/freshtab/home.html':
       case 'about:welcome':
-        return this.getFreshTabUrl();
+        return 'about:home';
 
       default:
         return key;
@@ -67,7 +67,6 @@ const CliqzResources = {
   },
   whatIstheURL: (u) => `${getWebExtPrefix()}/modules/${u}`,
   getExtensionURL: (path, extensionId = DEFAULT_EXTENSION_ID) => `${getWebExtPrefix(extensionId)}${path}`,
-  getFreshTabUrl: () => `${getWebExtPrefix()}/modules/freshtab/home.html`,
   getUrlWithProperExtentionId: function(url = '') {
     if (!url || typeof url != 'string') {
       return url;

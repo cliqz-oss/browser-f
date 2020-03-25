@@ -265,7 +265,7 @@ AboutNewTabService.prototype = {
       const results = Services.cpmm.sendSyncMessage("AboutNewTabService:Parent:getStartupFreshtabUrl");
       return results[0];
     } else {
-      this.newTabURL;
+      return this.newTabURL;
     }
 #if 0
     return [

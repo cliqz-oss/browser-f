@@ -23,10 +23,6 @@ const { PrivateBrowsingUtils } = ChromeUtils.import(
 const autoForgetTabs= Cc["@cliqz.com/browser/auto_forget_tabs_service;1"].
     getService(Ci.nsISupports).wrappedJSObject;
 
-const { CliqzResources } = ChromeUtils.import(
-  "resource:///modules/CliqzResources.jsm"
-);
-
 XPCOMUtils.defineLazyModuleGetters(this, {
   ExtensionUtils: "resource://gre/modules/ExtensionUtils.jsm",
   WebRequestUpload: "resource://gre/modules/WebRequestUpload.jsm",
@@ -708,7 +704,6 @@ HttpObserverManager = {
       const { finalURL, originURL } = channel;
       const { gBrowser, openLinkIn, openTrustedLinkIn } = channel.browserElement.ownerGlobal;
       const { selectedTab, tabs = [] } = gBrowser;
-      const freshTabURL = CliqzResources.getFreshTabUrl();
       const otherWin = openLinkIn(
         finalURL,
         "window",
@@ -757,7 +752,7 @@ HttpObserverManager = {
           // Deletes the tab if there is no history path
           if (!gBrowser.webNavigation.canGoBack) {
             if (tabs.length === 1) {
-              openTrustedLinkIn(freshTabURL, "tab");
+              openTrustedLinkIn("about:home", "tab");
             }
             gBrowser.removeTab(selectedTab);
           }
