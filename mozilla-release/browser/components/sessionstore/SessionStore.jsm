@@ -487,6 +487,66 @@ var SessionStore = {
 // Freeze the SessionStore object. We don't want anyone to modify it.
 Object.freeze(SessionStore);
 
+const cliqz_removeDuplicatedEntries = function(tabs, overwriteTabs) {
+  // CLIQZ-SPECIAL: DB-2447
+  // overwriteTabs is always true if "Show Home Page" option is
+  // not selected on Preferences page.
+  // Otherwise overwriteTabs equals false.
+  //
+  // To handle deduplication problem we need to loop through
+  // every single tab and remove any of its' entries which
+  // should not be restored.
+  // What is left afterwards (if any) will be restored later on.
+  // If overwriteTabs is true then we need to make sure there is
+  // at least one entry left after squashing duplicates.
+  // To detect that we need to find the last entry that not be
+  // restored and then get an index of the tab it belongs to.
+  const homePages = HomePage.get().split("|");
+  const shouldNotRestoreEntry = function(entry) {
+    if (homePages.includes(entry.url)) {
+      return true;
+    }
+
+    return homePages.includes(HomePage.getOriginalDefault()) ?
+      entry.isCliqzPage === 1 :
+      false;
+  };
+
+  let lastTabIndex = tabs.length - 1;
+  if (overwriteTabs) {
+    lastTabIndex = (function() {
+      let i = lastTabIndex;
+      while (i >= 0) {
+        let entries = tabs[i].entries || [];
+
+        for (let j = 0, l = entries.length; j < l; j++) {
+          if (shouldNotRestoreEntry(entries[j])) {
+            return i;
+          }
+        }
+
+        i -= 1;
+      }
+      return i;
+    })();
+  }
+
+  // Now we filter out any entry starting from lastTabIndex-1 to 0
+  // which should not be restored;
+  return tabs.filter(function(item, index) {
+    // If "Show Home Page" is not selected
+    if (overwriteTabs && index >= lastTabIndex) {
+      return true;
+    }
+
+    item.entries = item.entries.filter(function(entry) {
+      return !shouldNotRestoreEntry(entry);
+    });
+
+    return item.entries.length > 0;
+  });
+};
+
 var SessionStoreInternal = {
   QueryInterface: ChromeUtils.generateQI([
     Ci.nsIObserver,
@@ -4154,31 +4214,8 @@ var SessionStoreInternal = {
       winData.tabs = [];
     }
 
-    // CLIQZ-SPECIAL: this piece of code remove all the
-    // homepage entries from the session restore object
-    // except one, we need atleast one tab for restore.
-    if (!overwriteTabs) {
-      let homePages = HomePage.get().split("|");
-      let hasHome = false;
-      winData.tabs = winData.tabs.filter(function ({ entries = [] }) {
-        // Entries is array of history address URL, which allows back navigation
-        // even after restore.
-        // 0: moz-extension:asdasdasdasdassd
-        // 1: https://google.com
-        // 2: https://cliqz.com
-        // we are only interested in last entry
-        const lastEntry = entries[entries.length - 1] || {};
-        if (!lastEntry.url) {
-          return true;
-        }
-        const isHome = homePages.includes(lastEntry.url);
-        if (isHome && hasHome) {
-          return false;
-        }
-        hasHome = true;
-        return true;
-      });
-    }
+    // CLIQZ-SPECIAL: DB-2447
+    winData.tabs = cliqz_removeDuplicatedEntries(winData.tabs, overwriteTabs);
 
     // See SessionStoreInternal.restoreTabs for a description of what
     // selectTab represents.
@@ -4216,11 +4253,11 @@ var SessionStoreInternal = {
       this._prefBranch.getBoolPref("sessionstore.restore_tabs_lazily") &&
       this._restore_on_demand;
 
-    var tabs = tabbrowser.addMultipleTabs(
+    var tabs = winData.tabs.length ? tabbrowser.addMultipleTabs(
       restoreTabsLazily,
       selectTab,
       winData.tabs
-    );
+    ) : [];
 
     // Move the originally open tabs to the end.
     if (initialTabs) {
