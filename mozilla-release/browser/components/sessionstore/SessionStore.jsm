@@ -508,7 +508,7 @@ const cliqz_removeDuplicatedEntries = function(tabs, overwriteTabs) {
     }
 
     return homePages.includes(HomePage.getOriginalDefault()) ?
-      entry.isCliqzPage === 1 :
+      CliqzResources.isCliqzPage(entry.url) :
       false;
   };
 
@@ -518,9 +518,8 @@ const cliqz_removeDuplicatedEntries = function(tabs, overwriteTabs) {
       let i = lastTabIndex;
       while (i >= 0) {
         let entries = tabs[i].entries || [];
-
-        for (let j = 0, l = entries.length; j < l; j++) {
-          if (shouldNotRestoreEntry(entries[j])) {
+        if (entries.length > 0) {
+          if (shouldNotRestoreEntry[entries.length - 1]) {
             return i;
           }
         }
