@@ -519,7 +519,8 @@ const cliqz_removeDuplicatedEntries = function(tabs, overwriteTabs) {
       while (i >= 0) {
         let entries = tabs[i].entries || [];
         if (entries.length > 0) {
-          if (shouldNotRestoreEntry[entries.length - 1]) {
+          let lastEntry = entries[entries.length - 1];
+          if (shouldNotRestoreEntry(lastEntry)) {
             return i;
           }
         }
