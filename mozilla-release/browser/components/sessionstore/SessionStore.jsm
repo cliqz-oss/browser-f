@@ -539,9 +539,12 @@ const cliqz_removeDuplicatedEntries = function(tabs, overwriteTabs) {
       return true;
     }
 
-    item.entries = item.entries.filter(function(entry) {
-      return !shouldNotRestoreEntry(entry);
-    });
+    if (item.entries.length > 0) {
+      let lastEntry = item.entries[item.entries.length - 1];
+      if (!shouldNotRestoreEntry(lastEntry)) {
+        item.entries.pop();
+      }
+    }
 
     return item.entries.length > 0;
   });
