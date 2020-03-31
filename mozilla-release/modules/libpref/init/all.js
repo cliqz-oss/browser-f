@@ -18,15 +18,8 @@
 // Please indent all prefs defined within #ifdef/#ifndef conditions. This
 // improves readability, particular for conditional blocks that exceed a single
 // screen.
-
-<<<<<<< HEAD
-// CLIQZ-SPECIAL: temporary use version 1
+// CLIQZ-SPECIAL: temporary use version 1 (FF also uses 1 now instead of 3)
 pref("security.tls.version.min", 1);
-||||||| 1d7bf73e98e
-pref("security.tls.version.min", 3);
-=======
-pref("security.tls.version.min", 1);
->>>>>>> 376897a8d067742aa31f96eb1d6005447bcffd25
 pref("security.tls.version.max", 4);
 pref("security.tls.version.enable-deprecated", false);
 pref("security.tls.version.fallback-limit", 4);

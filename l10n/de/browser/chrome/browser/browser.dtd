@@ -831,26 +831,9 @@ you can use these alternative items. Otherwise, their values should be empty.  -
 <!ENTITY identity.connection "Verbindung">
 <!ENTITY identity.connectionSecure "Sichere Verbindung">
 <!ENTITY identity.connectionNotSecure "Verbindung ist nicht sicher">
-<<<<<<< HEAD
 
-<!ENTITY identity.connectionSecure3 "Verbindung gesichert">
-<!ENTITY identity.connectionNotSecure2 "Verbindung nicht sicher">
-<!ENTITY identity.connectionNotSecureSecurityView "Du kommunizierst mit dieser Seite über eine ungesicherte Verbindung.">
 <!ENTITY identity.connectionFile "Diese Seite ist auf deinem Computer gespeichert.">
 <!ENTITY identity.connectionVerified2 "Du bist derzeit über eine gesicherte Verbindung mit dieser Website verbunden, welche betrieben wird von:">
-<!ENTITY identity.connectionVerified3 "Du bist derzeit über eine gesicherte Verbindung mit dieser Website verbunden.">
-||||||| 1d7bf73e98e
-
-<!ENTITY identity.connectionSecure3 "Verbindung gesichert">
-<!ENTITY identity.connectionNotSecure2 "Verbindung nicht sicher">
-<!ENTITY identity.connectionNotSecureSecurityView "Sie kommunizieren mit dieser Seite über eine ungesicherte Verbindung.">
-<!ENTITY identity.connectionFile "Diese Seite ist auf Ihrem Computer gespeichert.">
-<!ENTITY identity.connectionVerified2 "Sie sind derzeit über eine gesicherte Verbindung mit dieser Website verbunden, welche betrieben wird von:">
-<!ENTITY identity.connectionVerified3 "Sie sind derzeit über eine gesicherte Verbindung mit dieser Website verbunden.">
-=======
-<!ENTITY identity.connectionFile "Diese Seite ist auf Ihrem Computer gespeichert.">
-<!ENTITY identity.connectionVerified2 "Sie sind derzeit über eine gesicherte Verbindung mit dieser Website verbunden, welche betrieben wird von:">
->>>>>>> 376897a8d067742aa31f96eb1d6005447bcffd25
 <!ENTITY identity.connectionInternal "Dies ist eine sichere &brandShortName;-Seite.">
 <!ENTITY identity.extensionPage "Diese Seite wurde durch eine Erweiterung bereitgestellt.">
 <!ENTITY identity.insecureLoginForms2 "Deine Zugangsdaten könnten auf dieser Seite in falsche Hände geraten.">

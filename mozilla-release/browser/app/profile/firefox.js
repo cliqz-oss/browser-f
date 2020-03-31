@@ -274,45 +274,6 @@ pref("browser.warnOnQuit", true);
 pref("browser.fullscreen.autohide", true);
 pref("browser.overlink-delay", 80);
 
-<<<<<<< HEAD
-// CLIQZ-SPECIAL: unify behavior on all platforms. Comment special case for
-// Linux systems and replace with two prefs below. Reason: This default behavior
-// was initially changed to prevent a 16-years old bug in SeaMonkey, which was
-// already fixed in Firefox since 2007. See following issues for more
-// details:stick to older fomrat of URLbar
-//
-// * https://bugzilla.mozilla.org/show_bug.cgi?id=190615
-// * https://bugzilla.mozilla.org/show_bug.cgi?id=611162
-#if 0
-#ifdef UNIX_BUT_NOT_MAC
-  pref("browser.urlbar.clickSelectsAll", false);
-#else
-  pref("browser.urlbar.clickSelectsAll", true);
-#endif
-#ifdef UNIX_BUT_NOT_MAC
-  pref("browser.urlbar.doubleClickSelectsAll", true);
-#else
-  pref("browser.urlbar.doubleClickSelectsAll", false);
-#endif
-#endif
-
-pref("browser.urlbar.clickSelectsAll", true);
-pref("browser.urlbar.doubleClickSelectsAll", false);
-
-||||||| 1d7bf73e98e
-#ifdef UNIX_BUT_NOT_MAC
-  pref("browser.urlbar.clickSelectsAll", false);
-#else
-  pref("browser.urlbar.clickSelectsAll", true);
-#endif
-#ifdef UNIX_BUT_NOT_MAC
-  pref("browser.urlbar.doubleClickSelectsAll", true);
-#else
-  pref("browser.urlbar.doubleClickSelectsAll", false);
-#endif
-
-=======
->>>>>>> 376897a8d067742aa31f96eb1d6005447bcffd25
 // Whether using `ctrl` when hitting return/enter in the URL bar
 // (or clicking 'go') should prefix 'www.' and suffix
 // browser.fixup.alternate.suffix to the URL bar value prior to
@@ -1635,20 +1596,13 @@ pref("browser.contentblocking.allowlist.storage.enabled", false);
 
 pref("dom.storage_access.enabled", true);
 
-<<<<<<< HEAD
-pref("browser.contentblocking.control-center.ui.showBlockedLabels", false);
-pref("browser.contentblocking.control-center.ui.showAllowedLabels", false);
+#if 0
+pref("browser.contentblocking.cryptomining.preferences.ui.enabled", true);
+pref("browser.contentblocking.fingerprinting.preferences.ui.enabled", true);
+#endif
 
 pref("browser.contentblocking.cryptomining.preferences.ui.enabled", false);
-||||||| 1d7bf73e98e
-pref("browser.contentblocking.control-center.ui.showBlockedLabels", true);
-pref("browser.contentblocking.control-center.ui.showAllowedLabels", false);
-
-pref("browser.contentblocking.cryptomining.preferences.ui.enabled", true);
-=======
-pref("browser.contentblocking.cryptomining.preferences.ui.enabled", true);
->>>>>>> 376897a8d067742aa31f96eb1d6005447bcffd25
-pref("browser.contentblocking.fingerprinting.preferences.ui.enabled", true);
+pref("browser.contentblocking.fingerprinting.preferences.ui.enabled", false);
 
 // Possible values for browser.contentblocking.features.strict pref:
 //   Tracking Protection:
@@ -2396,17 +2350,6 @@ pref("devtools.whatsnew.feature-enabled", true);
 
 // FirstStartup service time-out in ms
 pref("first-startup.timeout", 30000);
-<<<<<<< HEAD
-
-// Cliqz labs preference pane
-pref("extensions.cliqz.labs.enabled", true);
-#if MOZ_UPDATE_CHANNEL == beta
-  pref("extension.cliqz.dat.enabled", true);
-#else
-  pref("extension.cliqz.dat.enabled", false);
-#endif
-||||||| 1d7bf73e98e
-=======
 
 // Enable the default browser agent.
 // The agent still runs as scheduled if this pref is disabled,
@@ -2414,4 +2357,11 @@ pref("extensions.cliqz.labs.enabled", true);
 #ifdef XP_WIN
   pref("default-browser-agent.enabled", true);
 #endif
->>>>>>> 376897a8d067742aa31f96eb1d6005447bcffd25
+
+pref("extensions.cliqz.labs.enabled", true);
+#if MOZ_UPDATE_CHANNEL == beta
+  pref("extension.cliqz.dat.enabled", true);
+#else
+  pref("extension.cliqz.dat.enabled", false);
+#endif
+

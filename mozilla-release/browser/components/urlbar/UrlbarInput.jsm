@@ -13,6 +13,7 @@ const { XPCOMUtils } = ChromeUtils.import(
 XPCOMUtils.defineLazyModuleGetters(this, {
   AppConstants: "resource://gre/modules/AppConstants.jsm",
   BrowserUtils: "resource://gre/modules/BrowserUtils.jsm",
+  CliqzResources: "resource:///modules/CliqzResources.jsm",
   ExtensionSearchHandler: "resource://gre/modules/ExtensionSearchHandler.jsm",
   PrivateBrowsingUtils: "resource://gre/modules/PrivateBrowsingUtils.jsm",
   ReaderMode: "resource://gre/modules/ReaderMode.jsm",
@@ -281,7 +282,7 @@ class UrlbarInput {
       // Replace initial page URIs with an empty string
       // only if there's no opener (bug 370555).
       if (
-        this.window.isInitialPage(uri) &&
+        CliqzResources.isInitialPage(uri) &&
         this.window.checkEmptyPageOrigin(
           this.window.gBrowser.selectedBrowser,
           uri
@@ -299,8 +300,15 @@ class UrlbarInput {
 
       valid =
         !this.window.isBlankPageURL(uri.spec) || uri.schemeIs("moz-extension");
+
+      // CLIQZ-SPECIAL: Invalidate page proxy state for inital pages opened in private tabs
+      // and Cliqz pages.
+      if (this.isPrivate && CliqzResources.isInitialPage(uri.spec)) {
+        valid = false;
+      }
+
     } else if (
-      this.window.isInitialPage(value) &&
+      CliqzResources.isInitialPage(value) &&
       this.window.checkEmptyPageOrigin(this.window.gBrowser.selectedBrowser)
     ) {
       value = "";

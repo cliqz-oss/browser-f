@@ -66,19 +66,8 @@ var gSanitizePromptDialog = {
       this.warningBox.hidden = true;
     }
 
-    // CLIQZ-SPECIAL:
-    // On MacOS platform window.opener might be null if
-    // the dialog got opened on history page to delete history items.
-    // See browser/modules/Sanitizer.jsm, showUI method
-
     // Only apply the following if the dialog is opened outside of the Preferences.
-<<<<<<< HEAD
-    if (window.opener != null && !("gSubDialog" in window.opener)) {
-||||||| 1d7bf73e98e
-    if (!("gSubDialog" in window.opener)) {
-=======
     if (!window.opener || !("gSubDialog" in window.opener)) {
->>>>>>> 376897a8d067742aa31f96eb1d6005447bcffd25
       // The style attribute on the dialog may get set after the dialog has been sized.
       // Force the dialog to size again after the style attribute has been applied.
       document.l10n.translateElements([document.documentElement]).then(() => {

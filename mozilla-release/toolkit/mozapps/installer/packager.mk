@@ -116,30 +116,13 @@ endif
 endif
 	cp $(DEPTH)/mozinfo.json $(MOZ_MOZINFO_FILE)
 	$(PYTHON3) $(MOZILLA_DIR)/toolkit/mozapps/installer/informulate.py \
-<<<<<<< HEAD
 		$(MOZ_BUILDINFO_FILE) \
 		BUILDID=$(BUILDID) \
 		$(addprefix MOZ_SOURCE_REPO=,$(shell awk '$$2 == "MOZ_SOURCE_REPO" {print $$3}' $(DEPTH)/source-repo.h)) \
 		MOZ_SOURCE_STAMP=$(shell awk '$$2 == "MOZ_SOURCE_STAMP" {print $$3}' $(DEPTH)/source-repo.h) \
 		MOZ_PKG_PLATFORM=$(MOZ_PKG_PLATFORM)
 	echo "buildID=$(BUILDID)" > $(MOZ_BUILDID_INFO_TXT_FILE)
-||||||| 1d7bf73e98e
-		$(MOZ_BUILDINFO_FILE) $(MOZ_BUILDHUB_JSON) $(MOZ_BUILDID_INFO_TXT_FILE) \
-		$(MOZ_PKG_PLATFORM) \
-		$(if $(or $(filter-out mobile/android,$(MOZ_BUILD_APP)),$(MOZ_ANDROID_WITH_FENNEC)), \
-		--package=$(DIST)/$(PACKAGE) --installer=$(INSTALLER_PACKAGE), \
-		--no-download \
-	  )
-endif
-	$(TOUCH) $@
-=======
-		$(MOZ_BUILDINFO_FILE) $(MOZ_BUILDHUB_JSON) $(MOZ_BUILDID_INFO_TXT_FILE) \
-		$(MOZ_PKG_PLATFORM) \
-		$(if $(or $(filter-out mobile/android,$(MOZ_BUILD_APP)),$(MOZ_ANDROID_WITH_FENNEC)), \
-		--package=$(DIST)/$(PACKAGE) --installer=$(INSTALLER_PACKAGE), \
-		--no-download \
-	  )
-endif
+
 ifdef MOZ_NORMANDY
 ifndef CROSS_COMPILE
 	# Generate a file that describes the local Normandy client.
@@ -149,7 +132,6 @@ ifndef CROSS_COMPILE
 endif
 endif
 	$(TOUCH) $@
->>>>>>> 376897a8d067742aa31f96eb1d6005447bcffd25
 
 GARBAGE += make-package
 

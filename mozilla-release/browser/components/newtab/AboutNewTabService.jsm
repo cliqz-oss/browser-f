@@ -68,13 +68,6 @@ function AboutNewTabService() {
   // More initialization happens here
   this.toggleActivityStream(true);
   this.initialized = true;
-<<<<<<< HEAD
-  // CLIQZ: don't do this in Cliqz browser
-  this.alreadyRecordedTopsitesPainted = true;
-||||||| 1d7bf73e98e
-  this.alreadyRecordedTopsitesPainted = false;
-=======
->>>>>>> 376897a8d067742aa31f96eb1d6005447bcffd25
 
   if (IS_MAIN_PROCESS) {
 #ifdef MOZ_ACTIVITY_STREAM
@@ -384,7 +377,9 @@ AboutNewTabService.prototype = {
  * data.
  */
 const AboutNewTabStartupRecorder = {
-  _alreadyRecordedTopsitesPainted: false,
+  //_alreadyRecordedTopsitesPainted: false,
+  // CLIQZ-SPECIAL: don't do this in Cliqz browser
+  _alreadyRecordedTopsitesPainted: true,
   _nonDefaultStartup: false,
 
   noteNonDefaultStartup() {
