@@ -658,9 +658,16 @@ void DrawTargetRecording::EnsurePatternDependenciesStored(
     }
     case PatternType::RADIAL_GRADIENT: {
       MOZ_ASSERT_IF(
-          static_cast<const LinearGradientPattern*>(&aPattern)->mStops,
+          static_cast<const RadialGradientPattern*>(&aPattern)->mStops,
           mRecorder->HasStoredObject(
               static_cast<const RadialGradientPattern*>(&aPattern)->mStops));
+      return;
+    }
+    case PatternType::CONIC_GRADIENT: {
+      MOZ_ASSERT_IF(
+          static_cast<const ConicGradientPattern*>(&aPattern)->mStops,
+          mRecorder->HasStoredObject(
+              static_cast<const ConicGradientPattern*>(&aPattern)->mStops));
       return;
     }
     case PatternType::SURFACE: {

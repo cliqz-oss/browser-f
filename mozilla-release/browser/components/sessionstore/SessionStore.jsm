@@ -1096,7 +1096,9 @@ var SessionStoreInternal = {
             !browser.userTypedValue
           ) {
             browser.userTypedValue = tabData.userTypedValue;
-            win.URLBarSetURI();
+            if (tab.selected) {
+              win.gURLBar.setURI();
+            }
           }
 
           // Remove state we don't need any longer.
@@ -2532,9 +2534,7 @@ var SessionStoreInternal = {
     aReplaceBrowsingContext
   ) {
     debug(
-      `[process-switch]: performing switch from ${
-        aBrowser.remoteType
-      } to ${aRemoteType}`
+      `[process-switch]: performing switch from ${aBrowser.remoteType} to ${aRemoteType}`
     );
 
     // Don't try to switch tabs before delayed startup is completed.
@@ -2624,15 +2624,10 @@ var SessionStoreInternal = {
     }
 
     // Check that the document has a corresponding BrowsingContext.
-    let browsingContext;
-    let isSubframe = false;
-    let cp = channel.loadInfo.externalContentPolicyType;
-    if (cp == Ci.nsIContentPolicy.TYPE_DOCUMENT) {
-      browsingContext = channel.loadInfo.browsingContext;
-    } else {
-      browsingContext = channel.loadInfo.frameBrowsingContext;
-      isSubframe = true;
-    }
+    let browsingContext = channel.loadInfo.targetBrowsingContext;
+    let isSubframe =
+      channel.loadInfo.externalContentPolicyType !=
+      Ci.nsIContentPolicy.TYPE_DOCUMENT;
 
     if (!browsingContext) {
       debug(`[process-switch]: no BrowsingContext - ignoring`);
@@ -2648,7 +2643,7 @@ var SessionStoreInternal = {
 
     let topDocShell = topBC.embedderElement.ownerGlobal.docShell;
     let { useRemoteSubframes } = topDocShell.QueryInterface(Ci.nsILoadContext);
-    if (!useRemoteSubframes && cp != Ci.nsIContentPolicy.TYPE_DOCUMENT) {
+    if (!useRemoteSubframes && isSubframe) {
       debug(`[process-switch]: remote subframes disabled - ignoring`);
       return;
     }
@@ -3864,6 +3859,10 @@ var SessionStoreInternal = {
     } else if (winData.sidebar) {
       delete winData.sidebar;
     }
+    let workspaceID = aWindow.getWorkspaceID();
+    if (workspaceID) {
+      winData.workspaceID = workspaceID;
+    }
   },
 
   /**
@@ -4105,6 +4104,10 @@ var SessionStoreInternal = {
     // We're not returning from this before we end up calling restoreTabs
     // for this window, so make sure we send the SSWindowStateBusy event.
     this._setWindowStateBusy(aWindow);
+
+    if (winData.workspaceID) {
+      aWindow.moveToWorkspace(winData.workspaceID);
+    }
 
     if (!winData.tabs) {
       winData.tabs = [];

@@ -782,6 +782,12 @@ forms-master-pw-change =
 forms-master-pw-fips-title = Sie sind derzeit im FIPS-Modus. FIPS benötigt ein nicht leeres Master-Passwort.
 forms-master-pw-fips-desc = Ändern des Passworts fehlgeschlagen
 
+## OS Authentication dialog
+
+# This message can be seen by trying to add a Master Password.
+master-password-os-auth-dialog-message = Bestätigen Sie Ihre Identität, um ein Master-Passwort zu erstellen.
+master-password-os-auth-dialog-caption = { -brand-full-name }
+
 ## Privacy Section - History
 
 history-header = Chronik

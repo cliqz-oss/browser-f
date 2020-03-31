@@ -26,6 +26,8 @@ menu =
     .title = Menü öffnen
 # This menuitem is only visible on Windows
 menu-menuitem-import = Passwörter importieren…
+# This menuitem is only visible on Windows and macOS
+about-logins-menu-menuitem-import-from-another-browser = Daten aus anderem Browser importieren…
 menu-menuitem-preferences =
     { PLATFORM() ->
         [windows] Einstellungen
@@ -84,10 +86,6 @@ about-logins-login-item-username =
 login-item-copy-username-button-text = Kopieren
 login-item-copied-username-button-text = Kopiert
 login-item-password-label = Passwort
-login-item-password-reveal-checkbox-show =
-    .title = Passwort anzeigen
-login-item-password-reveal-checkbox-hide =
-    .title = Passwort verbergen
 login-item-password-reveal-checkbox =
     .aria-label = Passwort anzeigen
 login-item-copy-password-button-text = Kopieren
@@ -98,6 +96,21 @@ login-item-cancel-button = Abbrechen
 login-item-time-changed = Zuletzt geändert: { DATETIME($timeChanged, day: "numeric", month: "long", year: "numeric") }
 login-item-time-created = Erstellt: { DATETIME($timeCreated, day: "numeric", month: "long", year: "numeric") }
 login-item-time-used = Zuletzt verwendet: { DATETIME($timeUsed, day: "numeric", month: "long", year: "numeric") }
+
+## OS Authentication dialog
+
+about-logins-os-auth-dialog-caption = { -brand-full-name }
+
+## The macOS strings are preceded by the operating system with "Firefox is trying to "
+## and includes subtitle of "Enter password for the user "xxx" to allow this." These
+## notes are only valid for English. Please test in your respected locale.
+
+# This message can be seen by attempting to edit a login in about:logins
+about-logins-edit-login-os-auth-dialog-message = Bestätigen Sie Ihre Identität, um die gespeicherten Zugangsdaten zu bearbeiten.
+# This message can be seen by attempting to reveal a password in about:logins
+about-logins-reveal-password-os-auth-dialog-message = Bestätigen Sie Ihre Identität, um das gespeicherte Passwort anzuzeigen.
+# This message can be seen by attempting to copy a password in about:logins
+about-logins-copy-password-os-auth-dialog-message = Bestätigen Sie Ihre Identität, um das gespeicherte Passwort zu kopieren.
 
 ## Master Password notification
 

@@ -97,7 +97,7 @@ cfr-whatsnew-release-notes-link-text = Release Notes lesen
 cfr-whatsnew-fx70-title = { -brand-short-name } kämpft noch stärker für deine Privatsphäre
 cfr-whatsnew-fx70-body =
     Das neueste Update verbessert den Tracking-Schutz und macht es
-    dir einfacher denn je, sichere Kennwörter für jede Webseite zu erstellen.
+    dir einfacher denn je, sichere Passwörter für jede Webseite zu erstellen.
 cfr-whatsnew-tracking-protect-title = Schütze dich vor Online-Tracking
 cfr-whatsnew-tracking-protect-body =
     { -brand-short-name } blockt gängige Online-Tracker sozialer Plattformen und anderer Webseiten,

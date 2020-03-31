@@ -46,6 +46,13 @@ treechildren::-moz-tree-row(selected, focus) {
   background-color: Highlight;
 }
 
+treechildren::-moz-tree-row(current, focus) {
+  border: 1px dotted Highlight;
+}
+
+treechildren::-moz-tree-row(selected, current, focus) {
+  border: 1px dotted #F3D982;
+}
 
 /* ::::: tree cells ::::: */
 
@@ -161,7 +168,7 @@ treechildren::-moz-tree-twisty {
   padding-inline-end: 4px;
   padding-inline-start: 4px;
   padding-top: 1px;
-  width: 8px; /* The image's width is 8 pixels */
+  width: 12px; /* The image's width is 12 pixels */
   list-style-image: url("chrome://global/skin/icons/twisty-collapsed.svg");
   -moz-context-properties: fill;
   fill: currentColor;
