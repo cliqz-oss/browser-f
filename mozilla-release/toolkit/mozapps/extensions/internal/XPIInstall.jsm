@@ -556,7 +556,7 @@ async function loadManifestFromWebManifest(aPackage) {
   addon.iconURL = null;
   addon.icons = manifest.icons || {};
   addon.userPermissions = extension.manifestPermissions;
-
+  addon.optionalPermissions = extension.manifestOptionalPermissions;
   addon.applyBackgroundUpdates = AddonManager.AUTOUPDATE_DEFAULT;
 
   function getLocale(aLocale) {
@@ -1588,9 +1588,7 @@ class AddonInstall {
         if (this.addon.id != this.existingAddon.id) {
           return Promise.reject([
             AddonManager.ERROR_INCORRECT_ID,
-            `Refusing to upgrade addon ${
-              this.existingAddon.id
-            } to different ID ${this.addon.id}`,
+            `Refusing to upgrade addon ${this.existingAddon.id} to different ID ${this.addon.id}`,
           ]);
         }
 
@@ -1730,9 +1728,7 @@ class AddonInstall {
     // over the upgrade to the add-on.
     if (AddonManagerPrivate.hasUpgradeListener(this.addon.id)) {
       logger.info(
-        `add-on ${
-          this.addon.id
-        } has an upgrade listener, postponing upgrade until restart`
+        `add-on ${this.addon.id} has an upgrade listener, postponing upgrade until restart`
       );
       let resumeFn = () => {
         logger.info(
@@ -1907,9 +1903,7 @@ class AddonInstall {
       await this._startupPromise;
     } catch (e) {
       logger.warn(
-        `Failed to install ${this.file.path} from ${this.sourceURI.spec} to ${
-          stagedAddon.path
-        }`,
+        `Failed to install ${this.file.path} from ${this.sourceURI.spec} to ${stagedAddon.path}`,
         e
       );
 
@@ -1955,9 +1949,7 @@ class AddonInstall {
       this.location.stageAddon(this.addon.id, this.addon.toJSON());
 
       logger.debug(
-        `Staged install of ${this.addon.id} from ${
-          this.sourceURI.spec
-        } ready; waiting for restart.`
+        `Staged install of ${this.addon.id} from ${this.sourceURI.spec} ready; waiting for restart.`
       );
       if (isUpgrade) {
         delete this.existingAddon.pendingUpgrade;
@@ -2015,9 +2007,7 @@ class AddonInstall {
               break;
             default:
               logger.warn(
-                `${this.addon.id} cannot resume postponed upgrade from state (${
-                  this.state
-                })`
+                `${this.addon.id} cannot resume postponed upgrade from state (${this.state})`
               );
               break;
           }
@@ -3456,9 +3446,7 @@ class SystemAddonInstaller extends DirectoryInstaller {
       let addon = aAddons.get(id);
       if (addon.version != this._addonSet.addons[id].version) {
         logger.warn(
-          `Expected system add-on ${id} to be version ${
-            this._addonSet.addons[id].version
-          } but was ${addon.version}.`
+          `Expected system add-on ${id} to be version ${this._addonSet.addons[id].version} but was ${addon.version}.`
         );
         return false;
       }
@@ -3615,9 +3603,7 @@ class SystemAddonInstaller extends DirectoryInstaller {
       let resumeFn;
       if (AddonManagerPrivate.hasUpgradeListener(install.addon.id)) {
         logger.info(
-          `system add-on ${
-            install.addon.id
-          } has an upgrade listener, postponing upgrade set until restart`
+          `system add-on ${install.addon.id} has an upgrade listener, postponing upgrade set until restart`
         );
         resumeFn = () => {
           logger.info(
@@ -3782,6 +3768,7 @@ var XPIInstall = {
   newVersionReason,
   recursiveRemove,
   syncLoadManifest,
+  loadManifestFromFile,
 
   // Keep track of in-progress operations that support cancel()
   _inProgress: [],
@@ -3908,9 +3895,7 @@ var XPIInstall = {
       addon.signedState <= AddonManager.SIGNEDSTATE_MISSING
     ) {
       throw new Error(
-        `Refusing to install staged add-on ${id} with signed state ${
-          addon.signedState
-        }`
+        `Refusing to install staged add-on ${id} with signed state ${addon.signedState}`
       );
     }
 
@@ -4100,9 +4085,7 @@ var XPIInstall = {
             item.path = unique.path;
           } catch (e) {
             logger.warn(
-              `Failed make temporary copy of ${
-                sourceAddon._sourceBundle.path
-              }.`,
+              `Failed make temporary copy of ${sourceAddon._sourceBundle.path}.`,
               e
             );
           }
@@ -4125,18 +4108,14 @@ var XPIInstall = {
     let validateAddon = item => {
       if (item.spec.id != item.addon.id) {
         logger.warn(
-          `Downloaded system add-on expected to be ${item.spec.id} but was ${
-            item.addon.id
-          }.`
+          `Downloaded system add-on expected to be ${item.spec.id} but was ${item.addon.id}.`
         );
         return false;
       }
 
       if (item.spec.version != item.addon.version) {
         logger.warn(
-          `Expected system add-on ${item.spec.id} to be version ${
-            item.spec.version
-          } but was ${item.addon.version}.`
+          `Expected system add-on ${item.spec.id} to be version ${item.spec.version} but was ${item.addon.version}.`
         );
         return false;
       }
@@ -4433,9 +4412,7 @@ var XPIInstall = {
    */
   async _activateAddon(addon, extraParams = {}) {
     if (addon.appDisabled) {
-      let message = `Add-on ${
-        addon.id
-      } is not compatible with application version.`;
+      let message = `Add-on ${addon.id} is not compatible with application version.`;
 
       let app = addon.matchingTargetApplication;
       if (app) {

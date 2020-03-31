@@ -6,7 +6,13 @@ browser.jar:
 # Disabled in favor of Cliqz own design
 #if 0
     content/browser/aboutPrivateBrowsing.css              (content/aboutPrivateBrowsing.css)
+<<<<<<< HEAD
 *   content/browser/aboutPrivateBrowsing.xhtml            (content/aboutPrivateBrowsing.xhtml)
+||||||| 1d7bf73e98e
+    content/browser/aboutPrivateBrowsing.xhtml            (content/aboutPrivateBrowsing.xhtml)
+=======
+    content/browser/aboutPrivateBrowsing.html            (content/aboutPrivateBrowsing.html)
+>>>>>>> 376897a8d067742aa31f96eb1d6005447bcffd25
     content/browser/aboutPrivateBrowsing.js               (content/aboutPrivateBrowsing.js)
 #endif
     content/browser/aboutPrivateBrowsing.css              (content-cliqz/aboutPrivateBrowsing.css)

@@ -366,6 +366,20 @@ let ACTORS = {
     allFrames: true,
   },
 
+  SearchTelemetry: {
+    parent: {
+      moduleURI: "resource:///actors/SearchTelemetryParent.jsm",
+    },
+    child: {
+      moduleURI: "resource:///actors/SearchTelemetryChild.jsm",
+      events: {
+        DOMContentLoaded: {},
+        pageshow: { mozSystemGroup: true },
+        unload: {},
+      },
+    },
+  },
+
   ShieldFrame: {
     parent: {
       moduleURI: "resource://normandy-content/ShieldFrameParent.jsm",
@@ -457,26 +471,6 @@ let LEGACY_ACTORS = {
     },
   },
 
-  OfflineApps: {
-    child: {
-      module: "resource:///actors/OfflineAppsChild.jsm",
-      events: {
-        MozApplicationManifest: {},
-      },
-      messages: ["OfflineApps:StartFetching"],
-    },
-  },
-
-  SearchTelemetry: {
-    child: {
-      module: "resource:///actors/SearchTelemetryChild.jsm",
-      events: {
-        DOMContentLoaded: {},
-        pageshow: { mozSystemGroup: true },
-      },
-    },
-  },
-
   URIFixup: {
     child: {
       module: "resource:///actors/URIFixupChild.jsm",
@@ -485,6 +479,51 @@ let LEGACY_ACTORS = {
     },
   },
 };
+
+// See Bug 1618306
+// This should be moved to BrowserGlue.jsm and this file should be deleted
+// when we turn on separate about:welcome for all users.
+const ACTOR_CONFIG = {
+  parent: {
+    moduleURI: "resource:///actors/AboutWelcomeParent.jsm",
+  },
+  child: {
+    moduleURI: "resource:///actors/AboutWelcomeChild.jsm",
+    events: {
+      // This is added so the actor instantiates immediately and makes
+      // methods available to the page js on load.
+      DOMWindowCreated: {},
+    },
+  },
+  matches: ["about:welcome"],
+};
+
+const AboutWelcomeActorHelper = {
+  register() {
+    ChromeUtils.registerWindowActor("AboutWelcome", ACTOR_CONFIG);
+  },
+  unregister() {
+    ChromeUtils.unregisterWindowActor("AboutWelcome");
+  },
+};
+
+XPCOMUtils.defineLazyPreferenceGetter(
+  this,
+  "isSeparateAboutWelcome",
+  "browser.aboutwelcome.enabled",
+  false,
+  (prefName, prevValue, isEnabled) => {
+    if (isEnabled) {
+      AboutWelcomeActorHelper.register();
+    } else {
+      AboutWelcomeActorHelper.unregister();
+    }
+  }
+);
+
+if (isSeparateAboutWelcome) {
+  AboutWelcomeActorHelper.register();
+}
 
 (function earlyBlankFirstPaint() {
   if (
@@ -1085,7 +1124,7 @@ BrowserGlue.prototype = {
         // parent only: configure default prefs, set up pref observers, register
         // pdf content handler, and initializes parent side message manager
         // shim for privileged api access.
-        PdfJs.init();
+        PdfJs.init(this._isNewProfile);
         break;
       case "shield-init-complete":
         this._shieldInitComplete = true;
@@ -1223,15 +1262,6 @@ BrowserGlue.prototype = {
   _beforeUIStartup: function BG__beforeUIStartup() {
     SessionStartup.init();
 
-    if (Services.prefs.prefHasUserValue(PREF_PDFJS_ENABLED_CACHE_STATE)) {
-      Services.ppmm.sharedData.set(
-        "pdfjs.enabled",
-        Services.prefs.getBoolPref(PREF_PDFJS_ENABLED_CACHE_STATE)
-      );
-    } else {
-      PdfJs.earlyInit();
-    }
-
     // check if we're in safe mode
     if (Services.appinfo.inSafeMode) {
       Services.ww.openWindow(
@@ -1248,6 +1278,15 @@ BrowserGlue.prototype = {
 
     // handle any UI migration
     this._migrateUI();
+
+    if (Services.prefs.prefHasUserValue(PREF_PDFJS_ENABLED_CACHE_STATE)) {
+      Services.ppmm.sharedData.set(
+        "pdfjs.enabled",
+        Services.prefs.getBoolPref(PREF_PDFJS_ENABLED_CACHE_STATE)
+      );
+    } else {
+      PdfJs.earlyInit(this._isNewProfile);
+    }
 
     listeners.init();
 
@@ -1356,14 +1395,23 @@ BrowserGlue.prototype = {
   },
 
   _trackSlowStartup() {
-    if (
-      Services.startup.interrupted ||
-      Services.prefs.getBoolPref("browser.slowStartup.notificationDisabled")
-    ) {
+    let disabled = Services.prefs.getBoolPref(
+      "browser.slowStartup.notificationDisabled"
+    );
+
+    Services.telemetry.scalarSet(
+      "browser.startup.slow_startup_notification_disabled",
+      disabled
+    );
+
+    if (Services.startup.interrupted || disabled) {
       return;
     }
 
-    let currentTime = Date.now() - Services.startup.getStartupInfo().process;
+    let currentTime = Math.round(Cu.now());
+
+    Services.telemetry.scalarSet("browser.startup.recorded_time", currentTime);
+
     let averageTime = 0;
     let samples = 0;
     try {
@@ -1376,6 +1424,8 @@ BrowserGlue.prototype = {
     let totalTime = averageTime * samples + currentTime;
     samples++;
     averageTime = totalTime / samples;
+
+    Services.telemetry.scalarSet("browser.startup.average_time", averageTime);
 
     if (
       samples >= Services.prefs.getIntPref("browser.slowStartup.maxSamples")
@@ -1418,6 +1468,10 @@ BrowserGlue.prototype = {
   _showSlowStartupNotification(profileAge) {
     if (profileAge < 90) {
       // 3 months
+      Services.telemetry.scalarSet(
+        "browser.startup.too_new_for_notification",
+        true
+      );
       return;
     }
 
@@ -1425,6 +1479,15 @@ BrowserGlue.prototype = {
     if (!win) {
       return;
     }
+
+    Services.telemetry.scalarSet("browser.startup.slow_startup_notified", true);
+
+    const NO_ACTION = 0;
+    const OPENED_SUMO = 1;
+    const NEVER_SHOW_AGAIN = 2;
+    const DISMISS_NOTIFICATION = 3;
+
+    Services.telemetry.scalarSet("browser.startup.action", NO_ACTION);
 
     let productName = gBrandBundle.GetStringFromName("brandFullName");
     let message = win.gNavigatorBundle.getFormattedString(
@@ -1439,6 +1502,7 @@ BrowserGlue.prototype = {
           "slowStartup.helpButton.accesskey"
         ),
         callback() {
+          Services.telemetry.scalarSet("browser.startup.action", OPENED_SUMO);
           win.openTrustedLinkIn(
             "https://support.mozilla.org/kb/reset-firefox-easily-fix-most-problems",
             "tab"
@@ -1453,6 +1517,10 @@ BrowserGlue.prototype = {
           "slowStartup.disableNotificationButton.accesskey"
         ),
         callback() {
+          Services.telemetry.scalarSet(
+            "browser.startup.action",
+            NEVER_SHOW_AGAIN
+          );
           Services.prefs.setBoolPref(
             "browser.slowStartup.notificationDisabled",
             true
@@ -1461,12 +1529,22 @@ BrowserGlue.prototype = {
       },
     ];
 
+    let closeCallback = closeType => {
+      if (closeType == "dismissed") {
+        Services.telemetry.scalarSet(
+          "browser.startup.action",
+          DISMISS_NOTIFICATION
+        );
+      }
+    };
+
     win.gNotificationBox.appendNotification(
       message,
       "slow-startup",
       "chrome://browser/skin/slowStartup-16.png",
       win.gNotificationBox.PRIORITY_INFO_LOW,
-      buttons
+      buttons,
+      closeCallback
     );
   },
 

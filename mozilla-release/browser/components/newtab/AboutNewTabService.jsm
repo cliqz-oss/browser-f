@@ -7,6 +7,10 @@
 "use strict";
 
 const { Services } = ChromeUtils.import("resource://gre/modules/Services.jsm");
+const { XPCOMUtils } = ChromeUtils.import(
+  "resource://gre/modules/XPCOMUtils.jsm"
+);
+
 const { AppConstants } = ChromeUtils.import(
   "resource://gre/modules/AppConstants.jsm"
 );
@@ -21,6 +25,17 @@ ChromeUtils.defineModuleGetter(
   "resource:///modules/AboutNewTab.jsm"
 );
 #endif
+
+const PREF_SEPARATE_ABOUT_WELCOME = "browser.aboutwelcome.enabled";
+const SEPARATE_ABOUT_WELCOME_URL =
+  "resource://activity-stream/aboutwelcome/aboutwelcome.html";
+
+XPCOMUtils.defineLazyPreferenceGetter(
+  this,
+  "isSeparateAboutWelcome",
+  PREF_SEPARATE_ABOUT_WELCOME,
+  false
+);
 
 const TOPIC_APP_QUIT = "quit-application-granted";
 const TOPIC_CONTENT_DOCUMENT_INTERACTIVE = "content-document-interactive";
@@ -53,8 +68,13 @@ function AboutNewTabService() {
   // More initialization happens here
   this.toggleActivityStream(true);
   this.initialized = true;
+<<<<<<< HEAD
   // CLIQZ: don't do this in Cliqz browser
   this.alreadyRecordedTopsitesPainted = true;
+||||||| 1d7bf73e98e
+  this.alreadyRecordedTopsitesPainted = false;
+=======
+>>>>>>> 376897a8d067742aa31f96eb1d6005447bcffd25
 
   if (IS_MAIN_PROCESS) {
 #ifdef MOZ_ACTIVITY_STREAM
@@ -146,6 +166,14 @@ AboutNewTabService.prototype = {
         // by the view-source:// scheme, so we should probably just bail out
         // and do nothing.
         if (!ACTIVITY_STREAM_PAGES.has(win.location.pathname)) {
+          break;
+        }
+
+        // Bail out early for separate about:welcome URL
+        if (
+          isSeparateAboutWelcome &&
+          win.location.pathname.includes("welcome")
+        ) {
           break;
         }
 
@@ -287,6 +315,9 @@ AboutNewTabService.prototype = {
    * This is calculated in the same way the default URL is.
    */
   get welcomeURL() {
+    if (isSeparateAboutWelcome) {
+      return SEPARATE_ABOUT_WELCOME_URL;
+    }
     return this.defaultURL;
   },
 
@@ -329,20 +360,6 @@ AboutNewTabService.prototype = {
     this.notifyChange();
   },
 
-  maybeRecordTopsitesPainted(timestamp) {
-    if (this.alreadyRecordedTopsitesPainted) {
-      return;
-    }
-
-    const SCALAR_KEY = "timestamps.about_home_topsites_first_paint";
-
-    let startupInfo = Services.startup.getStartupInfo();
-    let processStartTs = startupInfo.process.getTime();
-    let delta = Math.round(timestamp - processStartTs);
-    Services.telemetry.scalarSet(SCALAR_KEY, delta);
-    this.alreadyRecordedTopsitesPainted = true;
-  },
-
   uninit() {
     if (!this.initialized) {
       return;
@@ -360,4 +377,33 @@ AboutNewTabService.prototype = {
   },
 };
 
-const EXPORTED_SYMBOLS = ["AboutNewTabService"];
+/**
+ * We split out the definition of AboutNewTabStartupRecorder from
+ * AboutNewTabService to avoid initializing the AboutNewTabService
+ * unnecessarily early when we just want to record some startup
+ * data.
+ */
+const AboutNewTabStartupRecorder = {
+  _alreadyRecordedTopsitesPainted: false,
+  _nonDefaultStartup: false,
+
+  noteNonDefaultStartup() {
+    this._nonDefaultStartup = true;
+  },
+
+  maybeRecordTopsitesPainted(timestamp) {
+    if (this._alreadyRecordedTopsitesPainted || this._nonDefaultStartup) {
+      return;
+    }
+
+    const SCALAR_KEY = "timestamps.about_home_topsites_first_paint";
+
+    let startupInfo = Services.startup.getStartupInfo();
+    let processStartTs = startupInfo.process.getTime();
+    let delta = Math.round(timestamp - processStartTs);
+    Services.telemetry.scalarSet(SCALAR_KEY, delta);
+    this._alreadyRecordedTopsitesPainted = true;
+  },
+};
+
+const EXPORTED_SYMBOLS = ["AboutNewTabService", "AboutNewTabStartupRecorder"];

@@ -1298,9 +1298,7 @@ var ActivityStreamProvider = {
     if (
       didSuccessfulImport &&
       Services.prefs.getBoolPref(
-        `browser.newtabpage.activity-stream.${
-          searchShortcuts.SEARCH_SHORTCUTS_EXPERIMENT
-        }`
+        `browser.newtabpage.activity-stream.${searchShortcuts.SEARCH_SHORTCUTS_EXPERIMENT}`
       )
     ) {
       links.forEach(link => {
