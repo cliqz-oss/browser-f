@@ -1,6 +1,3 @@
-
-/*LS-633499*/var { CliqzLogger } = ChromeUtils.import('resource://gre/modules/CliqzLogger.jsm');
-var __L_V__4 = CliqzLogger.init('mozilla-release/browser/components/sessionstore/SessionStartup.jsm','SessionStartup');/*LE-633499*/
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -76,9 +73,6 @@ const TYPE_DEFER_SESSION = 3;
 const BROWSER_STARTUP_RESUME_SESSION = 3;
 
 function warning(msg, exception) {
-__L_V__4({
-    lN: 78,tT:'func',pr:'',eT:{'msg':msg,'exception':exception},fN:'warning'
-  });'__L_V__4';
   let consoleMsg = Cc["@mozilla.org/scripterror;1"].createInstance(
     Ci.nsIScriptError
   );
@@ -129,17 +123,11 @@ var SessionStartup = {
    * Initialize the component
    */
   init() {
-__L_V__4({
-    lN: 128,tT:'func',pr:'',eT:{},fN:'init'
-  });'__L_V__4';
     Services.obs.notifyObservers(null, "sessionstore-init-started");
     StartupPerformance.init();
 
     // do not need to initialize anything in auto-started private browsing sessions
     if (PrivateBrowsingUtils.permanentPrivateBrowsing) {
-__L_V__4({
-    lN: 133,tT:'if',pr:'PrivateBrowsingUtils.permanentPrivateBrowsing',eT:{},fN:''
-  });'__L_V__4';
       this._initialized = true;
       gOnceInitializedDeferred.resolve();
       return;
@@ -150,13 +138,7 @@ __L_V__4({
         "browser.sessionstore.resuming_after_os_restart"
       )
     ) {
-__L_V__4({
-    lN: 143,tT:'if',pr:' Services.prefs.getBoolPref( browser.sessionstore.resuming_after_os_restart ) ',eT:{},fN:''
-  });'__L_V__4';
       if (!Services.appinfo.restartedByOS) {
-__L_V__4({
-    lN: 144,tT:'if',pr:'!Services.appinfo.restartedByOS',eT:{},fN:''
-  });'__L_V__4';
         // We had set resume_session_once in order to resume after an OS restart,
         // but we aren't automatically started by the OS (or else appinfo.restartedByOS
         // would have been set). Therefore we should clear resume_session_once
@@ -181,9 +163,6 @@ __L_V__4({
 
   // Wrap a string as a nsISupports.
   _createSupportsString(data) {
-__L_V__4({
-    lN: 168,tT:'func',pr:'',eT:{'data':data},fN:'_createSupportsString'
-  });'__L_V__4';
     let string = Cc["@mozilla.org/supports-string;1"].createInstance(
       Ci.nsISupportsString
     );
@@ -198,9 +177,6 @@ __L_V__4({
    * @param parsed The object obtained by parsing |source| as JSON.
    */
   _onSessionFileRead({ source, parsed, noFilesFound }) {
-__L_V__4({
-    lN: 182,tT:'func',pr:'',eT:{'source':source,'parsed':parsed,'noFilesFound':noFilesFound},fN:'_onSessionFileRead'
-  });'__L_V__4';
     this._initialized = true;
 
     // Let observers modify the state before it is used
@@ -212,9 +188,6 @@ __L_V__4({
     let stateString = supportsStateString.data;
 
     if (stateString != source) {
-__L_V__4({
-    lN: 193,tT:'if',pr:'stateString != source',eT:{},fN:''
-  });'__L_V__4';
       // The session has been modified by an add-on, reparse.
       try {
         this._initialState = JSON.parse(stateString);
@@ -229,9 +202,6 @@ __L_V__4({
     }
 
     if (this._initialState == null) {
-__L_V__4({
-    lN: 207,tT:'if',pr:'this._initialState == null',eT:{},fN:''
-  });'__L_V__4';
       // No valid session found.
       this._sessionType = this.NO_SESSION;
       Services.obs.notifyObservers(null, "sessionstore-state-finalized");
@@ -257,26 +227,17 @@ __L_V__4({
 
     // If this is a normal restore then throw away any previous session.
     if (!this.isAutomaticRestoreEnabled() && this._initialState) {
-__L_V__4({
-    lN: 232,tT:'if',pr:'!this.isAutomaticRestoreEnabled() && this._initialState',eT:{},fN:''
-  });'__L_V__4';
       delete this._initialState.lastSessionState;
     }
 
     CrashMonitor.previousCheckpoints.then(checkpoints => {
       if (checkpoints) {
-__L_V__4({
-    lN: 237,tT:'if',pr:'checkpoints',eT:{},fN:''
-  });'__L_V__4';
         // If the previous session finished writing the final state, we'll
         // assume there was no crash.
         this._previousSessionCrashed = !checkpoints[
           "sessionstore-final-state-write-complete"
         ];
       } else if (noFilesFound) {
-__L_V__4({
-    lN: 243,tT:'if',pr:'noFilesFound',eT:{},fN:''
-  });'__L_V__4';
         // If the Crash Monitor could not load a checkpoints file it will
         // provide null. This could occur on the first run after updating to
         // a version including the Crash Monitor, or if the checkpoints file
@@ -313,9 +274,6 @@ __L_V__4({
       Services.obs.addObserver(this, "sessionstore-windows-restored", true);
 
       if (this.sessionType == this.NO_SESSION) {
-__L_V__4({
-    lN: 279,tT:'if',pr:'this.sessionType == this.NO_SESSION',eT:{},fN:''
-  });'__L_V__4';
         this._initialState = null; // Reset the state.
       } else {
         Services.obs.addObserver(this, "browser:purge-session-history", true);
@@ -332,12 +290,6 @@ __L_V__4({
    * Handle notifications
    */
   observe(subject, topic, data) {
-__L_V__4({
-    lN: 295,tT:'func',pr:'',eT:{'subject':subject,'topic':topic,'data':data},fN:'observe'
-  });'__L_V__4';
-__L_V__4({
-    lN: 296,tT:'switch',pr:'',eT:{},fN:''
-  });'__L_V__4';
     switch (topic) {
       case "sessionstore-windows-restored":
         Services.obs.removeObserver(this, "sessionstore-windows-restored");
@@ -356,9 +308,6 @@ __L_V__4({
   /* ........ Public API ................*/
 
   get onceInitialized() {
-__L_V__4({
-    lN: 313,tT:'func',pr:'',eT:{},fN:'onceInitialized'
-  });'__L_V__4';
     return gOnceInitializedDeferred.promise;
   },
 
@@ -366,9 +315,6 @@ __L_V__4({
    * Get the session state as a jsval
    */
   get state() {
-__L_V__4({
-    lN: 320,tT:'func',pr:'',eT:{},fN:'state'
-  });'__L_V__4';
     return this._initialState;
   },
 
@@ -380,13 +326,7 @@ __L_V__4({
    * @returns bool
    */
   isAutomaticRestoreEnabled() {
-__L_V__4({
-    lN: 331,tT:'func',pr:'',eT:{},fN:'isAutomaticRestoreEnabled'
-  });'__L_V__4';
     if (this._resumeSessionEnabled === null) {
-__L_V__4({
-    lN: 332,tT:'if',pr:'this._resumeSessionEnabled === null',eT:{},fN:''
-  });'__L_V__4';
       this._resumeSessionEnabled =
         !PrivateBrowsingUtils.permanentPrivateBrowsing &&
         (Services.prefs.getBoolPref(
@@ -405,9 +345,6 @@ __L_V__4({
    * @returns bool
    */
   willRestore() {
-__L_V__4({
-    lN: 350,tT:'func',pr:'',eT:{},fN:'willRestore'
-  });'__L_V__4';
     return (
       this.sessionType == this.RECOVER_SESSION ||
       this.sessionType == this.RESUME_SESSION
@@ -420,18 +357,12 @@ __L_V__4({
    * @returns bool
    */
   willRestoreAsCrashed() {
-__L_V__4({
-    lN: 362,tT:'func',pr:'',eT:{},fN:'willRestoreAsCrashed'
-  });'__L_V__4';
     return this.sessionType == this.RECOVER_SESSION;
   },
 
   // CLIQZ-SPECIAL
   // This method is called to determine whether to restore previously opened pages.
   willRestoreCliqz() {
-__L_V__4({
-    lN: 368,tT:'func',pr:'',eT:{},fN:'willRestoreCliqz'
-  });'__L_V__4';
     //     Either we'll show a recovery page
     return this._sessionType == this.RECOVER_SESSION ||
     //        Or just previously open tabs (without start pages)
@@ -448,25 +379,16 @@ __L_V__4({
    * restoring a session.
    */
   get willOverrideHomepage() {
-__L_V__4({
-    lN: 384,tT:'func',pr:'',eT:{},fN:'willOverrideHomepage'
-  });'__L_V__4';
     // If the session file hasn't been read yet and resuming the session isn't
     // enabled via prefs, go ahead and load the homepage. We may still replace
     // it when recovering from a crash, which we'll only know after reading the
     // session file, but waiting for that would delay loading the homepage in
     // the non-crash case.
     if (!this._initialState && !this.isAutomaticRestoreEnabled()) {
-__L_V__4({
-    lN: 390,tT:'if',pr:'!this._initialState && !this.isAutomaticRestoreEnabled()',eT:{},fN:''
-  });'__L_V__4';
       return false;
     }
     // If we've already restored the session, we won't override again.
     if (this._didRestore) {
-__L_V__4({
-    lN: 394,tT:'if',pr:'this._didRestore',eT:{},fN:''
-  });'__L_V__4';
       return false;
     }
 
@@ -488,31 +410,16 @@ __L_V__4({
    * Get the type of pending session store, if any.
    */
   get sessionType() {
-__L_V__4({
-    lN: 415,tT:'func',pr:'',eT:{},fN:'sessionType'
-  });'__L_V__4';
     if (this._sessionType === null) {
-__L_V__4({
-    lN: 416,tT:'if',pr:'this._sessionType === null',eT:{},fN:''
-  });'__L_V__4';
       let resumeFromCrash = Services.prefs.getBoolPref(
         "browser.sessionstore.resume_from_crash"
       );
       // Set the startup type.
       if (this.isAutomaticRestoreEnabled()) {
-__L_V__4({
-    lN: 421,tT:'if',pr:'this.isAutomaticRestoreEnabled()',eT:{},fN:''
-  });'__L_V__4';
         this._sessionType = this.RESUME_SESSION;
       } else if (this._previousSessionCrashed && resumeFromCrash) {
-__L_V__4({
-    lN: 423,tT:'if',pr:'this._previousSessionCrashed && resumeFromCrash',eT:{},fN:''
-  });'__L_V__4';
         this._sessionType = this.RECOVER_SESSION;
       } else if (this._initialState) {
-__L_V__4({
-    lN: 425,tT:'if',pr:'this._initialState',eT:{},fN:''
-  });'__L_V__4';
         this._sessionType = this.DEFER_SESSION;
       } else {
         this._sessionType = this.NO_SESSION;
@@ -526,16 +433,10 @@ __L_V__4({
    * Get whether the previous session crashed.
    */
   get previousSessionCrashed() {
-__L_V__4({
-    lN: 438,tT:'func',pr:'',eT:{},fN:'previousSessionCrashed'
-  });'__L_V__4';
     return this._previousSessionCrashed;
   },
 
   resetForTest() {
-__L_V__4({
-    lN: 442,tT:'func',pr:'',eT:{},fN:'resetForTest'
-  });'__L_V__4';
     this._resumeSessionEnabled = null;
     this._sessionType = null;
   },

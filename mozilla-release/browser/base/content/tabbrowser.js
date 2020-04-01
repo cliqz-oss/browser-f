@@ -1,6 +1,3 @@
-
-/*LS-199671*/var { CliqzLogger } = ChromeUtils.import('resource://gre/modules/CliqzLogger.jsm');
-var __L_V__3 = CliqzLogger.init('mozilla-release/browser/base/content/tabbrowser.js','tabbrowser');/*LE-199671*/
 /* -*- indent-tabs-mode: nil; js-indent-level: 2 -*-
  * This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
@@ -22,9 +19,6 @@ var __L_V__3 = CliqzLogger.init('mozilla-release/browser/base/content/tabbrowser
 
   window._gBrowser = {
     init() {
-__L_V__3({
-    lN: 24,tT:'func',pr:'',eT:{},fN:'init'
-  });'__L_V__3';
       ChromeUtils.defineModuleGetter(
         this,
         "AsyncTabSwitcher",
@@ -40,9 +34,6 @@ __L_V__3({
 
       Services.els.addSystemEventListener(document, "keydown", this, false);
       if (AppConstants.platform == "macosx") {
-__L_V__3({
-    lN: 39,tT:'if',pr:'AppConstants.platform == macosx',eT:{},fN:''
-  });'__L_V__3';
         Services.els.addSystemEventListener(document, "keypress", this, false);
       }
       window.addEventListener("sizemodechange", this);
@@ -53,16 +44,10 @@ __L_V__3({
       this._setupInitialBrowserAndTab();
 
       if (Services.prefs.getBoolPref("browser.display.use_system_colors")) {
-__L_V__3({
-    lN: 49,tT:'if',pr:'Services.prefs.getBoolPref(browser.display.use_system_colors)',eT:{},fN:''
-  });'__L_V__3';
         this.tabpanels.style.backgroundColor = "-moz-default-background-color";
       } else if (
         Services.prefs.getIntPref("browser.display.document_color_use") == 2
       ) {
-__L_V__3({
-    lN: 53,tT:'if',pr:' Services.prefs.getIntPref(browser.display.document_color_use) == 2 ',eT:{},fN:''
-  });'__L_V__3';
         this.tabpanels.style.backgroundColor = Services.prefs.getCharPref(
           "browser.display.background_color"
         );
@@ -72,9 +57,6 @@ __L_V__3({
       window.messageManager.addMessageListener("contextmenu", this);
 
       if (gMultiProcessBrowser) {
-__L_V__3({
-    lN: 62,tT:'if',pr:'gMultiProcessBrowser',eT:{},fN:''
-  });'__L_V__3';
         messageManager.addMessageListener("DOMTitleChanged", this);
         messageManager.addMessageListener("DOMWindowClose", this);
         messageManager.addMessageListener("Browser:Init", this);
@@ -242,28 +224,16 @@ __L_V__3({
     browsers: new Proxy([], {
       has: (target, name) => {
         if (typeof name == "string" && Number.isInteger(parseInt(name))) {
-__L_V__3({
-    lN: 229,tT:'if',pr:'typeof name == string && Number.isInteger(parseInt(name))',eT:{},fN:''
-  });'__L_V__3';
           return name in gBrowser.tabs;
         }
         return false;
       },
       get: (target, name) => {
         if (name == "length") {
-__L_V__3({
-    lN: 235,tT:'if',pr:'name == length',eT:{},fN:''
-  });'__L_V__3';
           return gBrowser.tabs.length;
         }
         if (typeof name == "string" && Number.isInteger(parseInt(name))) {
-__L_V__3({
-    lN: 238,tT:'if',pr:'typeof name == string && Number.isInteger(parseInt(name))',eT:{},fN:''
-  });'__L_V__3';
           if (!(name in gBrowser.tabs)) {
-__L_V__3({
-    lN: 239,tT:'if',pr:'!(name in gBrowser.tabs)',eT:{},fN:''
-  });'__L_V__3';
             return undefined;
           }
           return gBrowser.tabs[name].linkedBrowser;
@@ -285,71 +255,41 @@ __L_V__3({
     _hoverTabTimer: null,
 
     get tabContainer() {
-__L_V__3({
-    lN: 260,tT:'func',pr:'',eT:{},fN:'tabContainer'
-  });'__L_V__3';
       delete this.tabContainer;
       return (this.tabContainer = document.getElementById("tabbrowser-tabs"));
     },
 
     get tabs() {
-__L_V__3({
-    lN: 265,tT:'func',pr:'',eT:{},fN:'tabs'
-  });'__L_V__3';
       if (!this._tabs) {
-__L_V__3({
-    lN: 266,tT:'if',pr:'!this._tabs',eT:{},fN:''
-  });'__L_V__3';
         this._tabs = this.tabContainer.allTabs;
       }
       return this._tabs;
     },
 
     get tabbox() {
-__L_V__3({
-    lN: 272,tT:'func',pr:'',eT:{},fN:'tabbox'
-  });'__L_V__3';
       delete this.tabbox;
       return (this.tabbox = document.getElementById("tabbrowser-tabbox"));
     },
 
     get tabpanels() {
-__L_V__3({
-    lN: 277,tT:'func',pr:'',eT:{},fN:'tabpanels'
-  });'__L_V__3';
       delete this.tabpanels;
       return (this.tabpanels = document.getElementById("tabbrowser-tabpanels"));
     },
 
     addEventListener(...args) {
-__L_V__3({
-    lN: 282,tT:'func',pr:'',eT:{'args':args},fN:'addEventListener'
-  });'__L_V__3';
       this.tabpanels.addEventListener(...args);
     },
 
     removeEventListener(...args) {
-__L_V__3({
-    lN: 286,tT:'func',pr:'',eT:{'args':args},fN:'removeEventListener'
-  });'__L_V__3';
       this.tabpanels.removeEventListener(...args);
     },
 
     dispatchEvent(...args) {
-__L_V__3({
-    lN: 290,tT:'func',pr:'',eT:{'args':args},fN:'dispatchEvent'
-  });'__L_V__3';
       return this.tabpanels.dispatchEvent(...args);
     },
 
     get visibleTabs() {
-__L_V__3({
-    lN: 294,tT:'func',pr:'',eT:{},fN:'visibleTabs'
-  });'__L_V__3';
       if (!this._visibleTabs) {
-__L_V__3({
-    lN: 295,tT:'if',pr:'!this._visibleTabs',eT:{},fN:''
-  });'__L_V__3';
         this._visibleTabs = Array.prototype.filter.call(
           this.tabs,
           tab => !tab.hidden && !tab.closing
@@ -359,14 +299,8 @@ __L_V__3({
     },
 
     get _numPinnedTabs() {
-__L_V__3({
-    lN: 304,tT:'func',pr:'',eT:{},fN:'_numPinnedTabs'
-  });'__L_V__3';
       for (var i = 0; i < this.tabs.length; i++) {
         if (!this.tabs[i].pinned) {
-__L_V__3({
-    lN: 306,tT:'if',pr:'!this.tabs[i].pinned',eT:{},fN:''
-  });'__L_V__3';
           break;
         }
       }
@@ -374,13 +308,7 @@ __L_V__3({
     },
 
     set selectedTab(val) {
-__L_V__3({
-    lN: 313,tT:'func',pr:'',eT:{'val':val},fN:'selectedTab'
-  });'__L_V__3';
       if (gNavToolbox.collapsed && !this._allowTabChange) {
-__L_V__3({
-    lN: 314,tT:'if',pr:'gNavToolbox.collapsed && !this._allowTabChange',eT:{},fN:''
-  });'__L_V__3';
         return this.tabbox.selectedTab;
       }
       // Update the tab
@@ -389,23 +317,14 @@ __L_V__3({
     },
 
     get selectedTab() {
-__L_V__3({
-    lN: 322,tT:'func',pr:'',eT:{},fN:'selectedTab'
-  });'__L_V__3';
       return this._selectedTab;
     },
 
     get selectedBrowser() {
-__L_V__3({
-    lN: 326,tT:'func',pr:'',eT:{},fN:'selectedBrowser'
-  });'__L_V__3';
       return this._selectedBrowser;
     },
 
     _setupInitialBrowserAndTab() {
-__L_V__3({
-    lN: 330,tT:'func',pr:'',eT:{},fN:'_setupInitialBrowserAndTab'
-  });'__L_V__3';
       // See browser.js for the meaning of window.arguments.
       // Bug 1485961 covers making this more sane.
       let userContextId = window.arguments && window.arguments[5];
@@ -421,32 +340,20 @@ __L_V__3({
       // what to do - if there isn't one, we default to the default remote type.
       let remoteType;
       if (tabArgument && tabArgument.linkedBrowser) {
-__L_V__3({
-    lN: 345,tT:'if',pr:'tabArgument && tabArgument.linkedBrowser',eT:{},fN:''
-  });'__L_V__3';
         remoteType = tabArgument.linkedBrowser.remoteType;
         sameProcessAsFrameLoader = tabArgument.linkedBrowser.frameLoader;
       } else if (
         !gMultiProcessBrowser ||
         window.hasOpenerForInitialContentBrowser
       ) {
-__L_V__3({
-    lN: 351,tT:'if',pr:' !gMultiProcessBrowser || window.hasOpenerForInitialContentBrowser ',eT:{},fN:''
-  });'__L_V__3';
         remoteType = E10SUtils.NOT_REMOTE;
       } else {
         let uriToLoad = gBrowserInit.uriToLoadPromise;
         if (uriToLoad && Array.isArray(uriToLoad)) {
-__L_V__3({
-    lN: 355,tT:'if',pr:'uriToLoad && Array.isArray(uriToLoad)',eT:{},fN:''
-  });'__L_V__3';
           uriToLoad = uriToLoad[0]; // we only care about the first item
         }
 
         if (uriToLoad && typeof uriToLoad == "string") {
-__L_V__3({
-    lN: 359,tT:'if',pr:'uriToLoad && typeof uriToLoad == string',eT:{},fN:''
-  });'__L_V__3';
           remoteType = E10SUtils.getRemoteTypeForURI(
             uriToLoad,
             gMultiProcessBrowser,
@@ -459,9 +366,6 @@ __L_V__3({
       }
 
       if (tabArgument && tabArgument.hasAttribute("usercontextid")) {
-__L_V__3({
-    lN: 371,tT:'if',pr:'tabArgument && tabArgument.hasAttribute(usercontextid)',eT:{},fN:''
-  });'__L_V__3';
         // The window's first argument is a tab if and only if we are swapping tabs.
         // We must set the browser's usercontextid so that the newly created remote
         // tab child has the correct usercontextid.
@@ -477,9 +381,6 @@ __L_V__3({
       let browser = this.createBrowser(createOptions);
       browser.setAttribute("primary", "true");
       if (gBrowserAllowScriptsToCloseInitialTabs) {
-__L_V__3({
-    lN: 386,tT:'if',pr:'gBrowserAllowScriptsToCloseInitialTabs',eT:{},fN:''
-  });'__L_V__3';
         browser.setAttribute("allowscriptstoclose", "true");
       }
       browser.droppedLinkHandler = handleDroppedLink;
@@ -500,9 +401,6 @@ __L_V__3({
       tab.linkedBrowser = browser;
 
       if (userContextId) {
-__L_V__3({
-    lN: 406,tT:'if',pr:'userContextId',eT:{},fN:''
-  });'__L_V__3';
         tab.setAttribute("usercontextid", userContextId);
         ContextualIdentityService.setTabStyle(tab);
       }
@@ -540,51 +438,30 @@ __L_V__3({
      * MAKE SURE TO ADD IT HERE AS WELL.
      */
     get canGoBack() {
-__L_V__3({
-    lN: 443,tT:'func',pr:'',eT:{},fN:'canGoBack'
-  });'__L_V__3';
       return this.selectedBrowser.canGoBack;
     },
 
     get canGoForward() {
-__L_V__3({
-    lN: 447,tT:'func',pr:'',eT:{},fN:'canGoForward'
-  });'__L_V__3';
       return this.selectedBrowser.canGoForward;
     },
 
     goBack() {
-__L_V__3({
-    lN: 451,tT:'func',pr:'',eT:{},fN:'goBack'
-  });'__L_V__3';
       return this.selectedBrowser.goBack();
     },
 
     goForward() {
-__L_V__3({
-    lN: 455,tT:'func',pr:'',eT:{},fN:'goForward'
-  });'__L_V__3';
       return this.selectedBrowser.goForward();
     },
 
     reload() {
-__L_V__3({
-    lN: 459,tT:'func',pr:'',eT:{},fN:'reload'
-  });'__L_V__3';
       return this.selectedBrowser.reload();
     },
 
     reloadWithFlags(aFlags) {
-__L_V__3({
-    lN: 463,tT:'func',pr:'',eT:{'aFlags':aFlags},fN:'reloadWithFlags'
-  });'__L_V__3';
       return this.selectedBrowser.reloadWithFlags(aFlags);
     },
 
     stop() {
-__L_V__3({
-    lN: 467,tT:'func',pr:'',eT:{},fN:'stop'
-  });'__L_V__3';
       return this.selectedBrowser.stop();
     },
 
@@ -592,170 +469,98 @@ __L_V__3({
      * throws exception for unknown schemes
      */
     loadURI(aURI, aParams) {
-__L_V__3({
-    lN: 474,tT:'func',pr:'',eT:{'aURI':aURI,'aParams':aParams},fN:'loadURI'
-  });'__L_V__3';
       return this.selectedBrowser.loadURI(aURI, aParams);
     },
 
     gotoIndex(aIndex) {
-__L_V__3({
-    lN: 478,tT:'func',pr:'',eT:{'aIndex':aIndex},fN:'gotoIndex'
-  });'__L_V__3';
       return this.selectedBrowser.gotoIndex(aIndex);
     },
 
     get currentURI() {
-__L_V__3({
-    lN: 482,tT:'func',pr:'',eT:{},fN:'currentURI'
-  });'__L_V__3';
       return this.selectedBrowser.currentURI;
     },
 
     get finder() {
-__L_V__3({
-    lN: 486,tT:'func',pr:'',eT:{},fN:'finder'
-  });'__L_V__3';
       return this.selectedBrowser.finder;
     },
 
     get docShell() {
-__L_V__3({
-    lN: 490,tT:'func',pr:'',eT:{},fN:'docShell'
-  });'__L_V__3';
       return this.selectedBrowser.docShell;
     },
 
     get webNavigation() {
-__L_V__3({
-    lN: 494,tT:'func',pr:'',eT:{},fN:'webNavigation'
-  });'__L_V__3';
       return this.selectedBrowser.webNavigation;
     },
 
     get webProgress() {
-__L_V__3({
-    lN: 498,tT:'func',pr:'',eT:{},fN:'webProgress'
-  });'__L_V__3';
       return this.selectedBrowser.webProgress;
     },
 
     get contentWindow() {
-__L_V__3({
-    lN: 502,tT:'func',pr:'',eT:{},fN:'contentWindow'
-  });'__L_V__3';
       return this.selectedBrowser.contentWindow;
     },
 
     get sessionHistory() {
-__L_V__3({
-    lN: 506,tT:'func',pr:'',eT:{},fN:'sessionHistory'
-  });'__L_V__3';
       return this.selectedBrowser.sessionHistory;
     },
 
     get markupDocumentViewer() {
-__L_V__3({
-    lN: 510,tT:'func',pr:'',eT:{},fN:'markupDocumentViewer'
-  });'__L_V__3';
       return this.selectedBrowser.markupDocumentViewer;
     },
 
     get contentDocument() {
-__L_V__3({
-    lN: 514,tT:'func',pr:'',eT:{},fN:'contentDocument'
-  });'__L_V__3';
       return this.selectedBrowser.contentDocument;
     },
 
     get contentTitle() {
-__L_V__3({
-    lN: 518,tT:'func',pr:'',eT:{},fN:'contentTitle'
-  });'__L_V__3';
       return this.selectedBrowser.contentTitle;
     },
 
     get contentPrincipal() {
-__L_V__3({
-    lN: 522,tT:'func',pr:'',eT:{},fN:'contentPrincipal'
-  });'__L_V__3';
       return this.selectedBrowser.contentPrincipal;
     },
 
     get securityUI() {
-__L_V__3({
-    lN: 526,tT:'func',pr:'',eT:{},fN:'securityUI'
-  });'__L_V__3';
       return this.selectedBrowser.securityUI;
     },
 
     set fullZoom(val) {
-__L_V__3({
-    lN: 530,tT:'func',pr:'',eT:{'val':val},fN:'fullZoom'
-  });'__L_V__3';
       this.selectedBrowser.fullZoom = val;
     },
 
     get fullZoom() {
-__L_V__3({
-    lN: 534,tT:'func',pr:'',eT:{},fN:'fullZoom'
-  });'__L_V__3';
       return this.selectedBrowser.fullZoom;
     },
 
     set textZoom(val) {
-__L_V__3({
-    lN: 538,tT:'func',pr:'',eT:{'val':val},fN:'textZoom'
-  });'__L_V__3';
       this.selectedBrowser.textZoom = val;
     },
 
     get textZoom() {
-__L_V__3({
-    lN: 542,tT:'func',pr:'',eT:{},fN:'textZoom'
-  });'__L_V__3';
       return this.selectedBrowser.textZoom;
     },
 
     get isSyntheticDocument() {
-__L_V__3({
-    lN: 546,tT:'func',pr:'',eT:{},fN:'isSyntheticDocument'
-  });'__L_V__3';
       return this.selectedBrowser.isSyntheticDocument;
     },
 
     set userTypedValue(val) {
-__L_V__3({
-    lN: 550,tT:'func',pr:'',eT:{'val':val},fN:'userTypedValue'
-  });'__L_V__3';
       this.selectedBrowser.userTypedValue = val;
     },
 
     get userTypedValue() {
-__L_V__3({
-    lN: 554,tT:'func',pr:'',eT:{},fN:'userTypedValue'
-  });'__L_V__3';
       return this.selectedBrowser.userTypedValue;
     },
 
     _invalidateCachedTabs() {
-__L_V__3({
-    lN: 558,tT:'func',pr:'',eT:{},fN:'_invalidateCachedTabs'
-  });'__L_V__3';
       this._tabs = null;
       this._visibleTabs = null;
     },
 
     _setFindbarData() {
-__L_V__3({
-    lN: 563,tT:'func',pr:'',eT:{},fN:'_setFindbarData'
-  });'__L_V__3';
       // Ensure we know what the find bar key is in the content process:
       let { sharedData } = Services.ppmm;
       if (!sharedData.has("Findbar:Shortcut")) {
-__L_V__3({
-    lN: 566,tT:'if',pr:'!sharedData.has(Findbar:Shortcut)',eT:{},fN:''
-  });'__L_V__3';
         let keyEl = document.getElementById("key_find");
         let mods = keyEl
           .getAttribute("modifiers")
@@ -774,9 +579,6 @@ __L_V__3({
     },
 
     isFindBarInitialized(aTab) {
-__L_V__3({
-    lN: 584,tT:'func',pr:'',eT:{'aTab':aTab},fN:'isFindBarInitialized'
-  });'__L_V__3';
       return (aTab || this.selectedTab)._findBar != undefined;
     },
 
@@ -784,9 +586,6 @@ __L_V__3({
      * Get the already constructed findbar
      */
     getCachedFindBar(aTab = this.selectedTab) {
-__L_V__3({
-    lN: 591,tT:'func',pr:'',eT:{'aTab':aTab},fN:'getCachedFindBar'
-  });'__L_V__3';
       return aTab._findBar;
     },
 
@@ -795,22 +594,13 @@ __L_V__3({
      * @return the find bar (or null if the window or tab is closed/closing in the interim).
      */
     async getFindBar(aTab = this.selectedTab) {
-__L_V__3({
-    lN: 599,tT:'func',pr:'',eT:{'aTab':aTab},fN:'getFindBar'
-  });'__L_V__3';
       let findBar = this.getCachedFindBar(aTab);
       if (findBar) {
-__L_V__3({
-    lN: 601,tT:'if',pr:'findBar',eT:{},fN:''
-  });'__L_V__3';
         return findBar;
       }
 
       // Avoid re-entrancy by caching the promise we're about to return.
       if (!aTab._pendingFindBar) {
-__L_V__3({
-    lN: 606,tT:'if',pr:'!aTab._pendingFindBar',eT:{},fN:''
-  });'__L_V__3';
         aTab._pendingFindBar = this._createFindBar(aTab);
       }
       return aTab._pendingFindBar;
@@ -822,9 +612,6 @@ __L_V__3({
      * @return the created findbar, or null if the window or tab is closed/closing.
      */
     async _createFindBar(aTab) {
-__L_V__3({
-    lN: 617,tT:'func',pr:'',eT:{'aTab':aTab},fN:'_createFindBar'
-  });'__L_V__3';
       let findBar = document.createXULElement("findbar");
       let browser = this.getBrowserForTab(aTab);
 
@@ -832,9 +619,6 @@ __L_V__3({
       // this tab, after the StatusPanel as well.
       let insertAfterElement = browser.parentNode;
       if (insertAfterElement.nextElementSibling == StatusPanel.panel) {
-__L_V__3({
-    lN: 624,tT:'if',pr:'insertAfterElement.nextElementSibling == StatusPanel.panel',eT:{},fN:''
-  });'__L_V__3';
         insertAfterElement = StatusPanel.panel;
       }
       insertAfterElement.insertAdjacentElement("afterend", findBar);
@@ -842,9 +626,6 @@ __L_V__3({
       await new Promise(r => requestAnimationFrame(r));
       delete aTab._pendingFindBar;
       if (window.closed || aTab.closing) {
-__L_V__3({
-    lN: 631,tT:'if',pr:'window.closed || aTab.closing',eT:{},fN:''
-  });'__L_V__3';
         return null;
       }
 
@@ -861,9 +642,6 @@ __L_V__3({
     },
 
     _appendStatusPanel() {
-__L_V__3({
-    lN: 647,tT:'func',pr:'',eT:{},fN:'_appendStatusPanel'
-  });'__L_V__3';
       this.selectedBrowser.parentNode.insertAdjacentElement(
         "afterend",
         StatusPanel.panel
@@ -871,18 +649,12 @@ __L_V__3({
     },
 
     _updateTabBarForPinnedTabs() {
-__L_V__3({
-    lN: 654,tT:'func',pr:'',eT:{},fN:'_updateTabBarForPinnedTabs'
-  });'__L_V__3';
       this.tabContainer._unlockTabSizing();
       this.tabContainer._positionPinnedTabs();
       this.tabContainer._updateCloseButtons();
     },
 
     _notifyPinnedStatus(aTab) {
-__L_V__3({
-    lN: 660,tT:'func',pr:'',eT:{'aTab':aTab},fN:'_notifyPinnedStatus'
-  });'__L_V__3';
       aTab.linkedBrowser.sendMessageToActor(
         "Browser:AppTab",
         { isAppTab: aTab.pinned },
@@ -895,20 +667,11 @@ __L_V__3({
     },
 
     pinTab(aTab) {
-__L_V__3({
-    lN: 672,tT:'func',pr:'',eT:{'aTab':aTab},fN:'pinTab'
-  });'__L_V__3';
       if (aTab.pinned) {
-__L_V__3({
-    lN: 673,tT:'if',pr:'aTab.pinned',eT:{},fN:''
-  });'__L_V__3';
         return;
       }
 
       if (aTab.hidden) {
-__L_V__3({
-    lN: 677,tT:'if',pr:'aTab.hidden',eT:{},fN:''
-  });'__L_V__3';
         this.showTab(aTab);
       }
 
@@ -919,13 +682,7 @@ __L_V__3({
     },
 
     unpinTab(aTab) {
-__L_V__3({
-    lN: 687,tT:'func',pr:'',eT:{'aTab':aTab},fN:'unpinTab'
-  });'__L_V__3';
       if (!aTab.pinned) {
-__L_V__3({
-    lN: 688,tT:'if',pr:'!aTab.pinned',eT:{},fN:''
-  });'__L_V__3';
         return;
       }
 
@@ -938,9 +695,6 @@ __L_V__3({
     },
 
     previewTab(aTab, aCallback) {
-__L_V__3({
-    lN: 700,tT:'func',pr:'',eT:{'aTab':aTab,'aCallback':aCallback},fN:'previewTab'
-  });'__L_V__3';
       let currentTab = this.selectedTab;
       try {
         // Suppress focus, ownership and selected tab changes
@@ -954,14 +708,8 @@ __L_V__3({
     },
 
     syncThrobberAnimations(aTab) {
-__L_V__3({
-    lN: 713,tT:'func',pr:'',eT:{'aTab':aTab},fN:'syncThrobberAnimations'
-  });'__L_V__3';
       aTab.ownerGlobal.promiseDocumentFlushed(() => {
         if (!aTab.container) {
-__L_V__3({
-    lN: 715,tT:'if',pr:'!aTab.container',eT:{},fN:''
-  });'__L_V__3';
           return;
         }
 
@@ -988,9 +736,6 @@ __L_V__3({
           )
         );
         if (firstStartTime === Infinity) {
-__L_V__3({
-    lN: 741,tT:'if',pr:'firstStartTime === Infinity',eT:{},fN:''
-  });'__L_V__3';
           return;
         }
         requestAnimationFrame(() => {
@@ -1002,9 +747,6 @@ __L_V__3({
             // the playState, since reading the playState of
             // a CSSAnimation object will flush style.
             if (animation.currentTime !== null) {
-__L_V__3({
-    lN: 752,tT:'if',pr:'animation.currentTime !== null',eT:{},fN:''
-  });'__L_V__3';
               animation.startTime = firstStartTime;
             }
           }
@@ -1013,49 +755,28 @@ __L_V__3({
     },
 
     getBrowserAtIndex(aIndex) {
-__L_V__3({
-    lN: 760,tT:'func',pr:'',eT:{'aIndex':aIndex},fN:'getBrowserAtIndex'
-  });'__L_V__3';
       return this.browsers[aIndex];
     },
 
     getBrowserForOuterWindowID(aID) {
-__L_V__3({
-    lN: 764,tT:'func',pr:'',eT:{'aID':aID},fN:'getBrowserForOuterWindowID'
-  });'__L_V__3';
       return this._outerWindowIDBrowserMap.get(aID);
     },
 
     getTabForBrowser(aBrowser) {
-__L_V__3({
-    lN: 768,tT:'func',pr:'',eT:{'aBrowser':aBrowser},fN:'getTabForBrowser'
-  });'__L_V__3';
       return this._tabForBrowser.get(aBrowser);
     },
 
     getPanel(aBrowser) {
-__L_V__3({
-    lN: 772,tT:'func',pr:'',eT:{'aBrowser':aBrowser},fN:'getPanel'
-  });'__L_V__3';
       return this.getBrowserContainer(aBrowser).parentNode;
     },
 
     getBrowserContainer(aBrowser) {
-__L_V__3({
-    lN: 776,tT:'func',pr:'',eT:{'aBrowser':aBrowser},fN:'getBrowserContainer'
-  });'__L_V__3';
       return (aBrowser || this.selectedBrowser).parentNode.parentNode;
     },
 
     getNotificationBox(aBrowser) {
-__L_V__3({
-    lN: 780,tT:'func',pr:'',eT:{'aBrowser':aBrowser},fN:'getNotificationBox'
-  });'__L_V__3';
       let browser = aBrowser || this.selectedBrowser;
       if (!browser._notificationBox) {
-__L_V__3({
-    lN: 782,tT:'if',pr:'!browser._notificationBox',eT:{},fN:''
-  });'__L_V__3';
         browser._notificationBox = new MozElements.NotificationBox(element => {
           element.setAttribute("notificationside", "top");
           this.getBrowserContainer(browser).prepend(element);
@@ -1065,30 +786,18 @@ __L_V__3({
     },
 
     getTabModalPromptBox(aBrowser) {
-__L_V__3({
-    lN: 791,tT:'func',pr:'',eT:{'aBrowser':aBrowser},fN:'getTabModalPromptBox'
-  });'__L_V__3';
       let browser = aBrowser || this.selectedBrowser;
       if (!browser.tabModalPromptBox) {
-__L_V__3({
-    lN: 793,tT:'if',pr:'!browser.tabModalPromptBox',eT:{},fN:''
-  });'__L_V__3';
         browser.tabModalPromptBox = new TabModalPromptBox(browser);
       }
       return browser.tabModalPromptBox;
     },
 
     getTabFromAudioEvent(aEvent) {
-__L_V__3({
-    lN: 799,tT:'func',pr:'',eT:{'aEvent':aEvent},fN:'getTabFromAudioEvent'
-  });'__L_V__3';
       if (
         !Services.prefs.getBoolPref("browser.tabs.showAudioPlayingIcon") ||
         !aEvent.isTrusted
       ) {
-__L_V__3({
-    lN: 803,tT:'if',pr:' !Services.prefs.getBoolPref(browser.tabs.showAudioPlayingIcon) || !aEvent.isTrusted ',eT:{},fN:''
-  });'__L_V__3';
         return null;
       }
 
@@ -1104,25 +813,13 @@ __L_V__3({
       aCallGlobalListeners = true,
       aCallTabsListeners = true
     ) {
-__L_V__3({
-    lN: 818,tT:'func',pr:'',eT:{'aBrowser':aBrowser,'aMethod':aMethod,'aArguments':aArguments,'aCallGlobalListeners':aCallGlobalListeners,'aCallTabsListeners':aCallTabsListeners},fN:'_callProgressListeners'
-  });'__L_V__3';
       var rv = true;
 
       function callListeners(listeners, args) {
-__L_V__3({
-    lN: 821,tT:'func',pr:'',eT:{'listeners':listeners,'args':args},fN:'callListeners'
-  });'__L_V__3';
         for (let p of listeners) {
           if (aMethod in p) {
-__L_V__3({
-    lN: 823,tT:'if',pr:'aMethod in p',eT:{},fN:''
-  });'__L_V__3';
             try {
               if (!p[aMethod].apply(p, args)) {
-__L_V__3({
-    lN: 825,tT:'if',pr:'!p[aMethod].apply(p, args)',eT:{},fN:''
-  });'__L_V__3';
                 rv = false;
               }
             } catch (e) {
@@ -1136,16 +833,10 @@ __L_V__3({
       aBrowser = aBrowser || this.selectedBrowser;
 
       if (aCallGlobalListeners && aBrowser == this.selectedBrowser) {
-__L_V__3({
-    lN: 838,tT:'if',pr:'aCallGlobalListeners && aBrowser == this.selectedBrowser',eT:{},fN:''
-  });'__L_V__3';
         callListeners(this.mProgressListeners, aArguments);
       }
 
       if (aCallTabsListeners) {
-__L_V__3({
-    lN: 842,tT:'if',pr:'aCallTabsListeners',eT:{},fN:''
-  });'__L_V__3';
         aArguments.unshift(aBrowser);
 
         callListeners(this.mTabsProgressListeners, aArguments);
@@ -1158,13 +849,7 @@ __L_V__3({
      * Sets an icon for the tab if the URI is defined in FAVICON_DEFAULTS.
      */
     setDefaultIcon(aTab, aURI) {
-__L_V__3({
-    lN: 854,tT:'func',pr:'',eT:{'aTab':aTab,'aURI':aURI},fN:'setDefaultIcon'
-  });'__L_V__3';
       if (aURI && aURI.spec in FAVICON_DEFAULTS) {
-__L_V__3({
-    lN: 855,tT:'if',pr:'aURI && aURI.spec in FAVICON_DEFAULTS',eT:{},fN:''
-  });'__L_V__3';
         this.setIcon(aTab, FAVICON_DEFAULTS[aURI.spec]);
       }
     },
@@ -1175,9 +860,6 @@ __L_V__3({
       aOriginalURL = aIconURL,
       aLoadingPrincipal = null
     ) {
-__L_V__3({
-    lN: 865,tT:'func',pr:'',eT:{'aTab':aTab,'aIconURL':aIconURL,'aOriginalURL':aOriginalURL,'aLoadingPrincipal':aLoadingPrincipal},fN:'setIcon'
-  });'__L_V__3';
       let makeString = url => (url instanceof Ci.nsIURI ? url.spec : url);
 
       aIconURL = makeString(aIconURL);
@@ -1190,9 +872,6 @@ __L_V__3({
         !aLoadingPrincipal &&
         !LOCAL_PROTOCOLS.some(protocol => aIconURL.startsWith(protocol))
       ) {
-__L_V__3({
-    lN: 877,tT:'if',pr:' aIconURL && !aLoadingPrincipal && !LOCAL_PROTOCOLS.some(protocol => aIconURL.startsWith(protocol)) ',eT:{},fN:''
-  });'__L_V__3';
         console.error(
           `Attempt to set a remote URL ${aIconURL} as a tab icon without a loading principal.`
         );
@@ -1203,17 +882,8 @@ __L_V__3({
       browser.mIconURL = aIconURL;
 
       if (aIconURL != aTab.getAttribute("image")) {
-__L_V__3({
-    lN: 887,tT:'if',pr:'aIconURL != aTab.getAttribute(image)',eT:{},fN:''
-  });'__L_V__3';
         if (aIconURL) {
-__L_V__3({
-    lN: 888,tT:'if',pr:'aIconURL',eT:{},fN:''
-  });'__L_V__3';
           if (aLoadingPrincipal) {
-__L_V__3({
-    lN: 889,tT:'if',pr:'aLoadingPrincipal',eT:{},fN:''
-  });'__L_V__3';
             aTab.setAttribute("iconloadingprincipal", aLoadingPrincipal);
           } else {
             aTab.removeAttribute("iconloadingprincipal");
@@ -1234,21 +904,12 @@ __L_V__3({
     },
 
     getIcon(aTab) {
-__L_V__3({
-    lN: 909,tT:'func',pr:'',eT:{'aTab':aTab},fN:'getIcon'
-  });'__L_V__3';
       let browser = aTab ? this.getBrowserForTab(aTab) : this.selectedBrowser;
       return browser.mIconURL;
     },
 
     setPageInfo(aURL, aDescription, aPreviewImage) {
-__L_V__3({
-    lN: 914,tT:'func',pr:'',eT:{'aURL':aURL,'aDescription':aDescription,'aPreviewImage':aPreviewImage},fN:'setPageInfo'
-  });'__L_V__3';
       if (aURL) {
-__L_V__3({
-    lN: 915,tT:'if',pr:'aURL',eT:{},fN:''
-  });'__L_V__3';
         let pageInfo = {
           url: aURL,
           description: aDescription,
@@ -1259,9 +920,6 @@ __L_V__3({
     },
 
     getWindowTitleForBrowser(aBrowser) {
-__L_V__3({
-    lN: 925,tT:'func',pr:'',eT:{'aBrowser':aBrowser},fN:'getWindowTitleForBrowser'
-  });'__L_V__3';
       let title = "";
 
       let docElement = document.documentElement;
@@ -1271,25 +929,13 @@ __L_V__3({
       // XXX https://bugzilla.mozilla.org/show_bug.cgi?id=22183#c239
       try {
         if (docElement.getAttribute("chromehidden").includes("location")) {
-__L_V__3({
-    lN: 934,tT:'if',pr:'docElement.getAttribute(chromehidden).includes(location)',eT:{},fN:''
-  });'__L_V__3';
           const uri = Services.uriFixup.createExposableURI(aBrowser.currentURI);
           let prefix = uri.prePath;
           if (uri.scheme == "about") {
-__L_V__3({
-    lN: 937,tT:'if',pr:'uri.scheme == about',eT:{},fN:''
-  });'__L_V__3';
             prefix = uri.spec;
           } else if (uri.scheme == "moz-extension") {
-__L_V__3({
-    lN: 939,tT:'if',pr:'uri.scheme == moz-extension',eT:{},fN:''
-  });'__L_V__3';
             const ext = WebExtensionPolicy.getByHostname(uri.host);
             if (ext && ext.name) {
-__L_V__3({
-    lN: 941,tT:'if',pr:'ext && ext.name',eT:{},fN:''
-  });'__L_V__3';
               let extensionLabel = document.getElementById(
                 "urlbar-label-extension"
               );
@@ -1303,18 +949,12 @@ __L_V__3({
       }
 
       if (docElement.hasAttribute("titlepreface")) {
-__L_V__3({
-    lN: 954,tT:'if',pr:'docElement.hasAttribute(titlepreface)',eT:{},fN:''
-  });'__L_V__3';
         title += docElement.getAttribute("titlepreface");
       }
 
       let tab = this.getTabForBrowser(aBrowser);
 
       if (tab._labelIsContentTitle) {
-__L_V__3({
-    lN: 960,tT:'if',pr:'tab._labelIsContentTitle',eT:{},fN:''
-  });'__L_V__3';
         // Strip out any null bytes in the content title, since the
         // underlying widget implementations of nsWindow::SetTitle pass
         // null-terminated strings to system APIs.
@@ -1327,9 +967,6 @@ __L_V__3({
           : "default";
 
       if (title) {
-__L_V__3({
-    lN: 972,tT:'if',pr:'title',eT:{},fN:''
-  });'__L_V__3';
         return {
           id:
             mode == "private"
@@ -1349,13 +986,7 @@ __L_V__3({
     },
 
     async updateTitlebar() {
-__L_V__3({
-    lN: 991,tT:'func',pr:'',eT:{},fN:'updateTitlebar'
-  });'__L_V__3';
       if (!this._titleElement) {
-__L_V__3({
-    lN: 992,tT:'if',pr:'!this._titleElement',eT:{},fN:''
-  });'__L_V__3';
         this._titleElement = document.documentElement.querySelector("title");
       }
 
@@ -1365,29 +996,17 @@ __L_V__3({
     },
 
     updateCurrentBrowser(aForceUpdate) {
-__L_V__3({
-    lN: 1001,tT:'func',pr:'',eT:{'aForceUpdate':aForceUpdate},fN:'updateCurrentBrowser'
-  });'__L_V__3';
       let newBrowser = this.getBrowserAtIndex(this.tabContainer.selectedIndex);
       if (this.selectedBrowser == newBrowser && !aForceUpdate) {
-__L_V__3({
-    lN: 1003,tT:'if',pr:'this.selectedBrowser == newBrowser && !aForceUpdate',eT:{},fN:''
-  });'__L_V__3';
         return;
       }
 
       let newTab = this.getTabForBrowser(newBrowser);
 
       if (!aForceUpdate) {
-__L_V__3({
-    lN: 1009,tT:'if',pr:'!aForceUpdate',eT:{},fN:''
-  });'__L_V__3';
         TelemetryStopwatch.start("FX_TAB_SWITCH_UPDATE_MS");
 
         if (gMultiProcessBrowser) {
-__L_V__3({
-    lN: 1012,tT:'if',pr:'gMultiProcessBrowser',eT:{},fN:''
-  });'__L_V__3';
           this._getSwitcher().requestTab(newTab);
         }
 
@@ -1398,21 +1017,12 @@ __L_V__3({
 
       // Preview mode should not reset the owner
       if (!this._previewMode && !oldTab.selected) {
-__L_V__3({
-    lN: 1022,tT:'if',pr:'!this._previewMode && !oldTab.selected',eT:{},fN:''
-  });'__L_V__3';
         oldTab.owner = null;
       }
 
       let lastRelatedTab = this._lastRelatedTabMap.get(oldTab);
       if (lastRelatedTab) {
-__L_V__3({
-    lN: 1027,tT:'if',pr:'lastRelatedTab',eT:{},fN:''
-  });'__L_V__3';
         if (!lastRelatedTab.selected) {
-__L_V__3({
-    lN: 1028,tT:'if',pr:'!lastRelatedTab.selected',eT:{},fN:''
-  });'__L_V__3';
           lastRelatedTab.owner = null;
         }
       }
@@ -1421,9 +1031,6 @@ __L_V__3({
       let oldBrowser = this.selectedBrowser;
 
       if (!gMultiProcessBrowser) {
-__L_V__3({
-    lN: 1036,tT:'if',pr:'!gMultiProcessBrowser',eT:{},fN:''
-  });'__L_V__3';
         oldBrowser.removeAttribute("primary");
         oldBrowser.docShellIsActive = false;
         newBrowser.setAttribute("primary", "true");
@@ -1440,9 +1047,6 @@ __L_V__3({
       window.addEventListener(
         "MozAfterPaint",
         function() {
-__L_V__3({
-    lN: 1052,tT:'func',pr:'',eT:{},fN:'function'
-  });'__L_V__3';
           gURLBar.removeAttribute("switchingtabs");
         },
         { once: true }
@@ -1453,9 +1057,6 @@ __L_V__3({
       let oldBrowserPopupsBlocked = oldBrowser.popupBlocker.getBlockedPopupCount();
       let newBrowserPopupsBlocked = newBrowser.popupBlocker.getBlockedPopupCount();
       if (oldBrowserPopupsBlocked != newBrowserPopupsBlocked) {
-__L_V__3({
-    lN: 1062,tT:'if',pr:'oldBrowserPopupsBlocked != newBrowserPopupsBlocked',eT:{},fN:''
-  });'__L_V__3';
         newBrowser.popupBlocker.updateBlockedPopupsUI();
       }
 
@@ -1471,9 +1072,6 @@ __L_V__3({
 
       let securityUI = newBrowser.securityUI;
       if (securityUI) {
-__L_V__3({
-    lN: 1077,tT:'if',pr:'securityUI',eT:{},fN:''
-  });'__L_V__3';
         this._callProgressListeners(
           null,
           "onSecurityChange",
@@ -1494,9 +1092,6 @@ __L_V__3({
 
       let listener = this._tabListeners.get(newTab);
       if (listener && listener.mStateFlags) {
-__L_V__3({
-    lN: 1097,tT:'if',pr:'listener && listener.mStateFlags',eT:{},fN:''
-  });'__L_V__3';
         this._callProgressListeners(
           null,
           "onUpdateCurrentBrowser",
@@ -1512,9 +1107,6 @@ __L_V__3({
       }
 
       if (!this._previewMode) {
-__L_V__3({
-    lN: 1112,tT:'if',pr:'!this._previewMode',eT:{},fN:''
-  });'__L_V__3';
         newTab.updateLastAccessed();
         oldTab.updateLastAccessed();
 
@@ -1524,9 +1116,6 @@ __L_V__3({
           oldFindBar.findMode == oldFindBar.FIND_NORMAL &&
           !oldFindBar.hidden
         ) {
-__L_V__3({
-    lN: 1121,tT:'if',pr:' oldFindBar && oldFindBar.findMode == oldFindBar.FIND_NORMAL && !oldFindBar.hidden ',eT:{},fN:''
-  });'__L_V__3';
           this._lastFindValue = oldFindBar._findField.value;
         }
 
@@ -1548,9 +1137,6 @@ __L_V__3({
       // If the new tab is busy, and our current state is not busy, then
       // we need to fire a start to all progress listeners.
       if (newTab.hasAttribute("busy") && !this._isBusy) {
-__L_V__3({
-    lN: 1142,tT:'if',pr:'newTab.hasAttribute(busy) && !this._isBusy',eT:{},fN:''
-  });'__L_V__3';
         this._isBusy = true;
         this._callProgressListeners(
           null,
@@ -1570,9 +1156,6 @@ __L_V__3({
       // If the new tab is not busy, and our current state is busy, then
       // we need to fire a stop to all progress listeners.
       if (!newTab.hasAttribute("busy") && this._isBusy) {
-__L_V__3({
-    lN: 1161,tT:'if',pr:'!newTab.hasAttribute(busy) && this._isBusy',eT:{},fN:''
-  });'__L_V__3';
         this._isBusy = false;
         this._callProgressListeners(
           null,
@@ -1593,9 +1176,6 @@ __L_V__3({
       // that might rely upon the other changes suppressed.
       // Focus is suppressed in the event that the main browser window is minimized - focusing a tab would restore the window
       if (!this._previewMode) {
-__L_V__3({
-    lN: 1181,tT:'if',pr:'!this._previewMode',eT:{},fN:''
-  });'__L_V__3';
         // We've selected the new tab, so go ahead and notify listeners.
         let event = new CustomEvent("TabSelect", {
           bubbles: true,
@@ -1614,14 +1194,8 @@ __L_V__3({
         this.clearMultiSelectedTabs({ isLastMultiSelectChange: true });
 
         if (oldBrowser != newBrowser && oldBrowser.getInPermitUnload) {
-__L_V__3({
-    lN: 1199,tT:'if',pr:'oldBrowser != newBrowser && oldBrowser.getInPermitUnload',eT:{},fN:''
-  });'__L_V__3';
           oldBrowser.getInPermitUnload(inPermitUnload => {
             if (!inPermitUnload) {
-__L_V__3({
-    lN: 1201,tT:'if',pr:'!inPermitUnload',eT:{},fN:''
-  });'__L_V__3';
               return;
             }
             // Since the user is switching away from a tab that has
@@ -1637,9 +1211,6 @@ __L_V__3({
             // destroyed aforementioned prompt already, so check there's
             // something to remove, first:
             if (prompts.length) {
-__L_V__3({
-    lN: 1216,tT:'if',pr:'prompts.length',eT:{},fN:''
-  });'__L_V__3';
               // NB: This code assumes that the beforeunload prompt
               //     is the top-most prompt on the tab.
               prompts[prompts.length - 1].abortPrompt();
@@ -1648,9 +1219,6 @@ __L_V__3({
         }
 
         if (!gMultiProcessBrowser) {
-__L_V__3({
-    lN: 1224,tT:'if',pr:'!gMultiProcessBrowser',eT:{},fN:''
-  });'__L_V__3';
           this._adjustFocusBeforeTabSwitch(oldTab, newTab);
           this._adjustFocusAfterTabSwitch(newTab);
           gURLBar.afterTabSwitchFocusChange();
@@ -1667,9 +1235,6 @@ __L_V__3({
       newTab.setAttribute("touchdownstartsdrag", "true");
 
       if (!gMultiProcessBrowser) {
-__L_V__3({
-    lN: 1240,tT:'if',pr:'!gMultiProcessBrowser',eT:{},fN:''
-  });'__L_V__3';
         this.tabContainer._setPositionalAttributes();
 
         document.commandDispatcher.unlock();
@@ -1682,21 +1247,12 @@ __L_V__3({
       }
 
       if (!aForceUpdate) {
-__L_V__3({
-    lN: 1252,tT:'if',pr:'!aForceUpdate',eT:{},fN:''
-  });'__L_V__3';
         TelemetryStopwatch.finish("FX_TAB_SWITCH_UPDATE_MS");
       }
     },
 
     _adjustFocusBeforeTabSwitch(oldTab, newTab) {
-__L_V__3({
-    lN: 1257,tT:'func',pr:'',eT:{'oldTab':oldTab,'newTab':newTab},fN:'_adjustFocusBeforeTabSwitch'
-  });'__L_V__3';
       if (this._previewMode) {
-__L_V__3({
-    lN: 1258,tT:'if',pr:'this._previewMode',eT:{},fN:''
-  });'__L_V__3';
         return;
       }
 
@@ -1706,9 +1262,6 @@ __L_V__3({
       oldBrowser._urlbarFocused = gURLBar && gURLBar.focused;
 
       if (this.isFindBarInitialized(oldTab)) {
-__L_V__3({
-    lN: 1267,tT:'if',pr:'this.isFindBarInitialized(oldTab)',eT:{},fN:''
-  });'__L_V__3';
         let findBar = this.getCachedFindBar(oldTab);
         oldTab._findBarFocused =
           !findBar.hidden &&
@@ -1718,27 +1271,18 @@ __L_V__3({
       let activeEl = document.activeElement;
       // If focus is on the old tab, move it to the new tab.
       if (activeEl == oldTab) {
-__L_V__3({
-    lN: 1276,tT:'if',pr:'activeEl == oldTab',eT:{},fN:''
-  });'__L_V__3';
         newTab.focus();
       } else if (
         gMultiProcessBrowser &&
         activeEl != newBrowser &&
         activeEl != newTab
       ) {
-__L_V__3({
-    lN: 1282,tT:'if',pr:' gMultiProcessBrowser && activeEl != newBrowser && activeEl != newTab ',eT:{},fN:''
-  });'__L_V__3';
         // In e10s, if focus isn't already in the tabstrip or on the new browser,
         // and the new browser's previous focus wasn't in the url bar but focus is
         // there now, we need to adjust focus further.
         let keepFocusOnUrlBar =
           newBrowser && newBrowser._urlbarFocused && gURLBar && gURLBar.focused;
         if (!keepFocusOnUrlBar) {
-__L_V__3({
-    lN: 1288,tT:'if',pr:'!keepFocusOnUrlBar',eT:{},fN:''
-  });'__L_V__3';
           // Clear focus so that _adjustFocusAfterTabSwitch can detect if
           // some element has been focused and respect that.
           document.activeElement.blur();
@@ -1747,14 +1291,8 @@ __L_V__3({
     },
 
     _adjustFocusAfterTabSwitch(newTab) {
-__L_V__3({
-    lN: 1296,tT:'func',pr:'',eT:{'newTab':newTab},fN:'_adjustFocusAfterTabSwitch'
-  });'__L_V__3';
       // Don't steal focus from the tab bar.
       if (document.activeElement == newTab) {
-__L_V__3({
-    lN: 1298,tT:'if',pr:'document.activeElement == newTab',eT:{},fN:''
-  });'__L_V__3';
         return;
       }
 
@@ -1762,18 +1300,12 @@ __L_V__3({
 
       // If there's a tabmodal prompt showing, focus it.
       if (newBrowser.hasAttribute("tabmodalPromptShowing")) {
-__L_V__3({
-    lN: 1305,tT:'if',pr:'newBrowser.hasAttribute(tabmodalPromptShowing)',eT:{},fN:''
-  });'__L_V__3';
         let prompts = newBrowser.tabModalPromptBox.listPrompts();
         let prompt = prompts[prompts.length - 1];
         // @tabmodalPromptShowing is also set for other tab modal prompts
         // (e.g. the Payment Request dialog) so there may not be a <tabmodalprompt>.
         // Bug 1492814 will implement this for the Payment Request dialog.
         if (prompt) {
-__L_V__3({
-    lN: 1311,tT:'if',pr:'prompt',eT:{},fN:''
-  });'__L_V__3';
           prompt.Dialog.setDefaultFocus();
           return;
         }
@@ -1783,24 +1315,15 @@ __L_V__3({
       // In full screen mode, only bother making the location bar visible
       // if the tab is a blank one.
       if (newBrowser._urlbarFocused && gURLBar) {
-__L_V__3({
-    lN: 1320,tT:'if',pr:'newBrowser._urlbarFocused && gURLBar',eT:{},fN:''
-  });'__L_V__3';
         // If the user happened to type into the URL bar for this browser
         // by the time we got here, focusing will cause the text to be
         // selected which could cause them to overwrite what they've
         // already typed in.
         if (gURLBar.focused && newBrowser.userTypedValue) {
-__L_V__3({
-    lN: 1325,tT:'if',pr:'gURLBar.focused && newBrowser.userTypedValue',eT:{},fN:''
-  });'__L_V__3';
           return;
         }
 
         if (!window.fullScreen || newTab.isEmpty) {
-__L_V__3({
-    lN: 1329,tT:'if',pr:'!window.fullScreen || newTab.isEmpty',eT:{},fN:''
-  });'__L_V__3';
           focusAndSelectUrlBar();
           return;
         }
@@ -1812,9 +1335,6 @@ __L_V__3({
         !gFindBar.hidden &&
         this.selectedTab._findBarFocused
       ) {
-__L_V__3({
-    lN: 1340,tT:'if',pr:' gFindBarInitialized && !gFindBar.hidden && this.selectedTab._findBarFocused ',eT:{},fN:''
-  });'__L_V__3';
         gFindBar._findField.focus();
         return;
       }
@@ -1822,9 +1342,6 @@ __L_V__3({
       // Don't focus the content area if something has been focused after the
       // tab switch was initiated.
       if (gMultiProcessBrowser && document.activeElement != document.body) {
-__L_V__3({
-    lN: 1347,tT:'if',pr:'gMultiProcessBrowser && document.activeElement != document.body',eT:{},fN:''
-  });'__L_V__3';
         return;
       }
 
@@ -1833,9 +1350,6 @@ __L_V__3({
       let focusFlags = fm.FLAG_NOSCROLL;
 
       if (!gMultiProcessBrowser) {
-__L_V__3({
-    lN: 1355,tT:'if',pr:'!gMultiProcessBrowser',eT:{},fN:''
-  });'__L_V__3';
         let newFocusedElement = fm.getFocusedElementForWindow(
           window.content,
           true,
@@ -1852,9 +1366,6 @@ __L_V__3({
               "type"
             ) == "simple")
         ) {
-__L_V__3({
-    lN: 1371,tT:'if',pr:' newFocusedElement && (newFocusedElement instanceof HTMLAnchorElement || newFocusedElement.getAttributeNS( http://www.w3.org/1999/xlink, type ) == simple) ',eT:{},fN:''
-  });'__L_V__3';
           focusFlags |= fm.FLAG_SHOWRING;
         }
       }
@@ -1863,13 +1374,7 @@ __L_V__3({
     },
 
     _tabAttrModified(aTab, aChanged) {
-__L_V__3({
-    lN: 1379,tT:'func',pr:'',eT:{'aTab':aTab,'aChanged':aChanged},fN:'_tabAttrModified'
-  });'__L_V__3';
       if (aTab.closing) {
-__L_V__3({
-    lN: 1380,tT:'if',pr:'aTab.closing',eT:{},fN:''
-  });'__L_V__3';
         return;
       }
 
@@ -1884,53 +1389,29 @@ __L_V__3({
     },
 
     resetBrowserSharing(aBrowser) {
-__L_V__3({
-    lN: 1394,tT:'func',pr:'',eT:{'aBrowser':aBrowser},fN:'resetBrowserSharing'
-  });'__L_V__3';
       let tab = this.getTabForBrowser(aBrowser);
       if (!tab) {
-__L_V__3({
-    lN: 1396,tT:'if',pr:'!tab',eT:{},fN:''
-  });'__L_V__3';
         return;
       }
       tab._sharingState = {};
       tab.removeAttribute("sharing");
       this._tabAttrModified(tab, ["sharing"]);
       if (aBrowser == this.selectedBrowser) {
-__L_V__3({
-    lN: 1402,tT:'if',pr:'aBrowser == this.selectedBrowser',eT:{},fN:''
-  });'__L_V__3';
         gIdentityHandler.updateSharingIndicator();
       }
     },
 
     updateBrowserSharing(aBrowser, aState) {
-__L_V__3({
-    lN: 1407,tT:'func',pr:'',eT:{'aBrowser':aBrowser,'aState':aState},fN:'updateBrowserSharing'
-  });'__L_V__3';
       let tab = this.getTabForBrowser(aBrowser);
       if (!tab) {
-__L_V__3({
-    lN: 1409,tT:'if',pr:'!tab',eT:{},fN:''
-  });'__L_V__3';
         return;
       }
       if (tab._sharingState == null) {
-__L_V__3({
-    lN: 1412,tT:'if',pr:'tab._sharingState == null',eT:{},fN:''
-  });'__L_V__3';
         tab._sharingState = {};
       }
       tab._sharingState = Object.assign(tab._sharingState, aState);
       if (aState.webRTC && aState.webRTC.sharing) {
-__L_V__3({
-    lN: 1416,tT:'if',pr:'aState.webRTC && aState.webRTC.sharing',eT:{},fN:''
-  });'__L_V__3';
         if (aState.webRTC.paused) {
-__L_V__3({
-    lN: 1417,tT:'if',pr:'aState.webRTC.paused',eT:{},fN:''
-  });'__L_V__3';
           tab.removeAttribute("sharing");
         } else {
           tab.setAttribute("sharing", aState.webRTC.sharing);
@@ -1942,17 +1423,11 @@ __L_V__3({
       this._tabAttrModified(tab, ["sharing"]);
 
       if (aBrowser == this.selectedBrowser) {
-__L_V__3({
-    lN: 1428,tT:'if',pr:'aBrowser == this.selectedBrowser',eT:{},fN:''
-  });'__L_V__3';
         gIdentityHandler.updateSharingIndicator();
       }
     },
 
     getTabSharingState(aTab) {
-__L_V__3({
-    lN: 1433,tT:'func',pr:'',eT:{'aTab':aTab},fN:'getTabSharingState'
-  });'__L_V__3';
       // Normalize the state object for consumers (ie.extensions).
       let state = Object.assign(
         {},
@@ -1966,25 +1441,13 @@ __L_V__3({
     },
 
     setInitialTabTitle(aTab, aTitle, aOptions = {}) {
-__L_V__3({
-    lN: 1446,tT:'func',pr:'',eT:{'aTab':aTab,'aTitle':aTitle,'aOptions':aOptions},fN:'setInitialTabTitle'
-  });'__L_V__3';
       // Convert some non-content title (actually a url) to human readable title
       if (!aOptions.isContentTitle && isBlankPageURL(aTitle)) {
-__L_V__3({
-    lN: 1448,tT:'if',pr:'!aOptions.isContentTitle && isBlankPageURL(aTitle)',eT:{},fN:''
-  });'__L_V__3';
         aTitle = this.tabContainer.emptyTabTitle;
       }
 
       if (aTitle) {
-__L_V__3({
-    lN: 1452,tT:'if',pr:'aTitle',eT:{},fN:''
-  });'__L_V__3';
         if (!aTab.getAttribute("label")) {
-__L_V__3({
-    lN: 1453,tT:'if',pr:'!aTab.getAttribute(label)',eT:{},fN:''
-  });'__L_V__3';
           aTab._labelIsInitialTitle = true;
         }
 
@@ -1993,22 +1456,13 @@ __L_V__3({
     },
 
     setTabTitle(aTab) {
-__L_V__3({
-    lN: 1461,tT:'func',pr:'',eT:{'aTab':aTab},fN:'setTabTitle'
-  });'__L_V__3';
       var browser = this.getBrowserForTab(aTab);
       var title = browser.contentTitle;
 
       // Don't replace an initially set label with the URL while the tab
       // is loading.
       if (aTab._labelIsInitialTitle) {
-__L_V__3({
-    lN: 1467,tT:'if',pr:'aTab._labelIsInitialTitle',eT:{},fN:''
-  });'__L_V__3';
         if (!title) {
-__L_V__3({
-    lN: 1468,tT:'if',pr:'!title',eT:{},fN:''
-  });'__L_V__3';
           return false;
         }
         delete aTab._labelIsInitialTitle;
@@ -2016,14 +1470,8 @@ __L_V__3({
 
       let isContentTitle = false;
       if (title) {
-__L_V__3({
-    lN: 1475,tT:'if',pr:'title',eT:{},fN:''
-  });'__L_V__3';
         isContentTitle = true;
       } else if (aTab.hasAttribute("customizemode")) {
-__L_V__3({
-    lN: 1477,tT:'if',pr:'aTab.hasAttribute(customizemode)',eT:{},fN:''
-  });'__L_V__3';
         let brandBundle = document.getElementById("bundle_brand");
         let brandShortName = brandBundle.getString("brandShortName");
         title = gNavigatorBundle.getFormattedString("customizeMode.tabTitle", [
@@ -2033,9 +1481,6 @@ __L_V__3({
       } else {
         // See if we can use the URI as the title.
         if (browser.currentURI.displaySpec) {
-__L_V__3({
-    lN: 1486,tT:'if',pr:'browser.currentURI.displaySpec',eT:{},fN:''
-  });'__L_V__3';
           try {
             title = Services.uriFixup.createExposableURI(browser.currentURI)
               .displaySpec;
@@ -2045,9 +1490,6 @@ __L_V__3({
         }
 
         if (title && !isBlankPageURL(title)) {
-__L_V__3({
-    lN: 1495,tT:'if',pr:'title && !isBlankPageURL(title)',eT:{},fN:''
-  });'__L_V__3';
           // If it's a long data: URI that uses base64 encoding, truncate to a
           // reasonable length rather than trying to display the entire thing,
           // which can be slow.
@@ -2056,9 +1498,6 @@ __L_V__3({
           // data-URI is plain ASCII, so this is OK for tab-title display.
           // (See bug 1408854.)
           if (title.length > 500 && title.match(/^data:[^,]+;base64,/)) {
-__L_V__3({
-    lN: 1503,tT:'if',pr:'title.length > 500 && title.match(/^data:[^,]+;base64,/)',eT:{},fN:''
-  });'__L_V__3';
             title = title.substring(0, 500) + "\u2026";
           } else {
             // Try to unescape not-ASCII URIs using the current character set.
@@ -2082,27 +1521,15 @@ __L_V__3({
     },
 
     _setTabLabel(aTab, aLabel, { beforeTabOpen, isContentTitle } = {}) {
-__L_V__3({
-    lN: 1526,tT:'func',pr:'',eT:{'aTab':aTab,'aLabel':aLabel,'beforeTabOpen':beforeTabOpen,'isContentTitle':isContentTitle},fN:'_setTabLabel'
-  });'__L_V__3';
       if (!aLabel) {
-__L_V__3({
-    lN: 1527,tT:'if',pr:'!aLabel',eT:{},fN:''
-  });'__L_V__3';
         return false;
       }
 
       aTab._fullLabel = aLabel;
 
       if (!isContentTitle) {
-__L_V__3({
-    lN: 1533,tT:'if',pr:'!isContentTitle',eT:{},fN:''
-  });'__L_V__3';
         // Remove protocol and "www."
         if (!("_regex_shortenURLForTabLabel" in this)) {
-__L_V__3({
-    lN: 1535,tT:'if',pr:'!(_regex_shortenURLForTabLabel in this)',eT:{},fN:''
-  });'__L_V__3';
           this._regex_shortenURLForTabLabel = /^[^:]+:\/\/(?:www\.)?/;
         }
         aLabel = aLabel.replace(this._regex_shortenURLForTabLabel, "");
@@ -2111,9 +1538,6 @@ __L_V__3({
       aTab._labelIsContentTitle = isContentTitle;
 
       if (aTab.getAttribute("label") == aLabel) {
-__L_V__3({
-    lN: 1543,tT:'if',pr:'aTab.getAttribute(label) == aLabel',eT:{},fN:''
-  });'__L_V__3';
         return false;
       }
 
@@ -2127,16 +1551,10 @@ __L_V__3({
       // Dispatch TabAttrModified event unless we're setting the label
       // before the TabOpen event was dispatched.
       if (!beforeTabOpen) {
-__L_V__3({
-    lN: 1556,tT:'if',pr:'!beforeTabOpen',eT:{},fN:''
-  });'__L_V__3';
         this._tabAttrModified(aTab, ["label"]);
       }
 
       if (aTab.selected) {
-__L_V__3({
-    lN: 1560,tT:'if',pr:'aTab.selected',eT:{},fN:''
-  });'__L_V__3';
         this.updateTitlebar();
       }
 
@@ -2151,9 +1569,6 @@ __L_V__3({
       aLoadInBackground,
       aAllowThirdPartyFixup
     ) {
-__L_V__3({
-    lN: 1574,tT:'func',pr:'',eT:{'aURI':aURI,'aReferrerInfoOrParams':aReferrerInfoOrParams,'aCharset':aCharset,'aPostData':aPostData,'aLoadInBackground':aLoadInBackground,'aAllowThirdPartyFixup':aAllowThirdPartyFixup},fN:'loadOneTab'
-  });'__L_V__3';
       var aTriggeringPrincipal;
       var aReferrerInfo;
       var aFromExternal;
@@ -2180,9 +1595,6 @@ __L_V__3({
         typeof arguments[1] == "object" &&
         !(arguments[1] instanceof Ci.nsIURI)
       ) {
-__L_V__3({
-    lN: 1600,tT:'if',pr:' arguments.length == 2 && typeof arguments[1] == object && !(arguments[1] instanceof Ci.nsIURI) ',eT:{},fN:''
-  });'__L_V__3';
         let params = arguments[1];
         aTriggeringPrincipal = params.triggeringPrincipal;
         aReferrerInfo = params.referrerInfo;
@@ -2213,9 +1625,6 @@ __L_V__3({
 
       // all callers of loadOneTab need to pass a valid triggeringPrincipal.
       if (!aTriggeringPrincipal) {
-__L_V__3({
-    lN: 1630,tT:'if',pr:'!aTriggeringPrincipal',eT:{},fN:''
-  });'__L_V__3';
         throw new Error(
           "Required argument triggeringPrincipal missing within loadOneTab"
         );
@@ -2255,9 +1664,6 @@ __L_V__3({
         skipLoad: aSkipLoad,
       });
       if (!bgLoad) {
-__L_V__3({
-    lN: 1669,tT:'if',pr:'!bgLoad',eT:{},fN:''
-  });'__L_V__3';
         this.selectedTab = tab;
       }
 
@@ -2280,13 +1686,7 @@ __L_V__3({
         fromExternal,
       } = {}
     ) {
-__L_V__3({
-    lN: 1691,tT:'func',pr:'',eT:{'aURIs':aURIs,'allowInheritPrincipal':allowInheritPrincipal,'allowThirdPartyFixup':allowThirdPartyFixup,'inBackground':inBackground,'newIndex':newIndex,'postDatas':postDatas,'replace':replace,'targetTab':targetTab,'triggeringPrincipal':triggeringPrincipal,'csp':csp,'userContextId':userContextId,'fromExternal':fromExternal},fN:'loadTabs'
-  });'__L_V__3';
       if (!aURIs.length) {
-__L_V__3({
-    lN: 1692,tT:'if',pr:'!aURIs.length',eT:{},fN:''
-  });'__L_V__3';
         return;
       }
 
@@ -2307,9 +1707,6 @@ __L_V__3({
       var targetTabIndex = -1;
 
       if (typeof newIndex != "number") {
-__L_V__3({
-    lN: 1712,tT:'if',pr:'typeof newIndex != number',eT:{},fN:''
-  });'__L_V__3';
         newIndex = -1;
       }
 
@@ -2321,21 +1718,12 @@ __L_V__3({
         newIndex < 0 &&
         Services.prefs.getBoolPref("browser.tabs.insertAfterCurrent")
       ) {
-__L_V__3({
-    lN: 1723,tT:'if',pr:' multiple && newIndex < 0 && Services.prefs.getBoolPref(browser.tabs.insertAfterCurrent) ',eT:{},fN:''
-  });'__L_V__3';
         newIndex = this.selectedTab._tPos + 1;
       }
 
       if (replace) {
-__L_V__3({
-    lN: 1727,tT:'if',pr:'replace',eT:{},fN:''
-  });'__L_V__3';
         let browser;
         if (targetTab) {
-__L_V__3({
-    lN: 1729,tT:'if',pr:'targetTab',eT:{},fN:''
-  });'__L_V__3';
           browser = this.getBrowserForTab(targetTab);
           targetTabIndex = targetTab._tPos;
         } else {
@@ -2344,23 +1732,14 @@ __L_V__3({
         }
         let flags = Ci.nsIWebNavigation.LOAD_FLAGS_NONE;
         if (allowThirdPartyFixup) {
-__L_V__3({
-    lN: 1737,tT:'if',pr:'allowThirdPartyFixup',eT:{},fN:''
-  });'__L_V__3';
           flags |=
             Ci.nsIWebNavigation.LOAD_FLAGS_ALLOW_THIRD_PARTY_FIXUP |
             Ci.nsIWebNavigation.LOAD_FLAGS_FIXUP_SCHEME_TYPOS;
         }
         if (!allowInheritPrincipal) {
-__L_V__3({
-    lN: 1742,tT:'if',pr:'!allowInheritPrincipal',eT:{},fN:''
-  });'__L_V__3';
           flags |= Ci.nsIWebNavigation.LOAD_FLAGS_DISALLOW_INHERIT_PRINCIPAL;
         }
         if (fromExternal) {
-__L_V__3({
-    lN: 1745,tT:'if',pr:'fromExternal',eT:{},fN:''
-  });'__L_V__3';
           flags |= Ci.nsIWebNavigation.LOAD_FLAGS_FROM_EXTERNAL;
         }
         try {
@@ -2388,16 +1767,10 @@ __L_V__3({
           fromExternal,
         };
         if (newIndex > -1) {
-__L_V__3({
-    lN: 1772,tT:'if',pr:'newIndex > -1',eT:{},fN:''
-  });'__L_V__3';
           params.index = newIndex;
         }
         firstTabAdded = this.addTab(aURIs[0], params);
         if (newIndex > -1) {
-__L_V__3({
-    lN: 1776,tT:'if',pr:'newIndex > -1',eT:{},fN:''
-  });'__L_V__3';
           targetTabIndex = firstTabAdded._tPos;
         }
       }
@@ -2416,18 +1789,12 @@ __L_V__3({
           fromExternal,
         };
         if (targetTabIndex > -1) {
-__L_V__3({
-    lN: 1794,tT:'if',pr:'targetTabIndex > -1',eT:{},fN:''
-  });'__L_V__3';
           params.index = ++tabNum;
         }
         this.addTab(aURIs[i], params);
       }
 
       if (firstTabAdded && !inBackground) {
-__L_V__3({
-    lN: 1800,tT:'if',pr:'firstTabAdded && !inBackground',eT:{},fN:''
-  });'__L_V__3';
         this.selectedTab = firstTabAdded;
       }
     },
@@ -2443,27 +1810,18 @@ __L_V__3({
         redirectLoadSwitchId,
       } = {}
     ) {
-__L_V__3({
-    lN: 1815,tT:'func',pr:'',eT:{'aBrowser':aBrowser,'newFrameloader':newFrameloader,'opener':opener,'remoteType':remoteType,'sameProcessAsFrameLoader':sameProcessAsFrameLoader,'replaceBrowsingContext':replaceBrowsingContext,'redirectLoadSwitchId':redirectLoadSwitchId},fN:'updateBrowserRemoteness'
-  });'__L_V__3';
       let isRemote = aBrowser.getAttribute("remote") == "true";
 
       // We have to be careful with this here, as the "no remote type" is null,
       // not a string. Make sure to check only for undefined, since null is
       // allowed.
       if (remoteType === undefined) {
-__L_V__3({
-    lN: 1821,tT:'if',pr:'remoteType === undefined',eT:{},fN:''
-  });'__L_V__3';
         throw new Error("Remote type must be set!");
       }
 
       let shouldBeRemote = remoteType !== E10SUtils.NOT_REMOTE;
 
       if (!gMultiProcessBrowser && shouldBeRemote) {
-__L_V__3({
-    lN: 1827,tT:'if',pr:'!gMultiProcessBrowser && shouldBeRemote',eT:{},fN:''
-  });'__L_V__3';
         throw new Error(
           "Cannot switch to remote browser in a window " +
             "without the remote tabs load context."
@@ -2474,21 +1832,12 @@ __L_V__3({
       // if the browser is _currently_ non-remote, we need the openers to match,
       // because it is already too late to change it.
       if (opener) {
-__L_V__3({
-    lN: 1837,tT:'if',pr:'opener',eT:{},fN:''
-  });'__L_V__3';
         if (shouldBeRemote) {
-__L_V__3({
-    lN: 1838,tT:'if',pr:'shouldBeRemote',eT:{},fN:''
-  });'__L_V__3';
           throw new Error(
             "Cannot set an opener on a browser which should be remote!"
           );
         }
         if (!isRemote && aBrowser.contentWindow.opener != opener) {
-__L_V__3({
-    lN: 1843,tT:'if',pr:'!isRemote && aBrowser.contentWindow.opener != opener',eT:{},fN:''
-  });'__L_V__3';
           throw new Error(
             "Cannot change opener on an already non-remote browser!"
           );
@@ -2502,9 +1851,6 @@ __L_V__3({
         !newFrameloader &&
         (!isRemote || oldRemoteType == remoteType)
       ) {
-__L_V__3({
-    lN: 1856,tT:'if',pr:' isRemote == shouldBeRemote && !newFrameloader && (!isRemote || oldRemoteType == remoteType) ',eT:{},fN:''
-  });'__L_V__3';
         return false;
       }
 
@@ -2545,33 +1891,21 @@ __L_V__3({
         E10SUtils.rebuildFrameloadersOnRemotenessChange ||
         window.docShell.nsILoadContext.useRemoteSubframes;
       if (!rebuildFrameLoaders) {
-__L_V__3({
-    lN: 1896,tT:'if',pr:'!rebuildFrameLoaders',eT:{},fN:''
-  });'__L_V__3';
         aBrowser.remove();
       }
 
       // NB: This works with the hack in the browser constructor that
       // turns this normal property into a field.
       if (sameProcessAsFrameLoader) {
-__L_V__3({
-    lN: 1902,tT:'if',pr:'sameProcessAsFrameLoader',eT:{},fN:''
-  });'__L_V__3';
         // Always set sameProcessAsFrameLoader when passed in explicitly.
         aBrowser.sameProcessAsFrameLoader = sameProcessAsFrameLoader;
       } else if (!shouldBeRemote || oldRemoteType == remoteType) {
-__L_V__3({
-    lN: 1905,tT:'if',pr:'!shouldBeRemote || oldRemoteType == remoteType',eT:{},fN:''
-  });'__L_V__3';
         // Only copy existing sameProcessAsFrameLoader when not switching
         // remote type otherwise it would stop the switch.
         aBrowser.sameProcessAsFrameLoader = oldSameProcessAsFrameLoader;
       }
 
       if (opener) {
-__L_V__3({
-    lN: 1911,tT:'if',pr:'opener',eT:{},fN:''
-  });'__L_V__3';
         // Set the opener window on the browser, such that when the frame
         // loader is created the opener is set correctly.
         aBrowser.presetOpenerWindow(opener);
@@ -2584,9 +1918,6 @@ __L_V__3({
       // then we update the attributes, we run the construct() call ourselves
       // after the new frameloader has been created.
       if (shouldBeRemote) {
-__L_V__3({
-    lN: 1923,tT:'if',pr:'shouldBeRemote',eT:{},fN:''
-  });'__L_V__3';
         aBrowser.setAttribute("remote", "true");
         aBrowser.setAttribute("remoteType", remoteType);
       } else {
@@ -2595,9 +1926,6 @@ __L_V__3({
       }
 
       if (!rebuildFrameLoaders) {
-__L_V__3({
-    lN: 1931,tT:'if',pr:'!rebuildFrameLoaders',eT:{},fN:''
-  });'__L_V__3';
         parent.appendChild(aBrowser);
       } else {
         // This call actually switches out our frameloaders. Do this as late as
@@ -2617,9 +1945,6 @@ __L_V__3({
 
       aBrowser.userTypedValue = oldUserTypedValue;
       if (hadStartedLoad) {
-__L_V__3({
-    lN: 1950,tT:'if',pr:'hadStartedLoad',eT:{},fN:''
-  });'__L_V__3';
         aBrowser.urlbarChangeTracker.startedLoad();
       }
 
@@ -2668,9 +1993,6 @@ __L_V__3({
       );
 
       if (shouldBeRemote) {
-__L_V__3({
-    lN: 1998,tT:'if',pr:'shouldBeRemote',eT:{},fN:''
-  });'__L_V__3';
         // Switching the browser to be remote will connect to a new child
         // process so the browser can no longer be considered to be
         // crashed.
@@ -2687,17 +2009,11 @@ __L_V__3({
       }
 
       if (wasActive) {
-__L_V__3({
-    lN: 2014,tT:'if',pr:'wasActive',eT:{},fN:''
-  });'__L_V__3';
         aBrowser.focus();
       }
 
       // If the findbar has been initialised, reset its browser reference.
       if (this.isFindBarInitialized(tab)) {
-__L_V__3({
-    lN: 2019,tT:'if',pr:'this.isFindBarInitialized(tab)',eT:{},fN:''
-  });'__L_V__3';
         this.getCachedFindBar(tab).browser = aBrowser;
       }
 
@@ -2715,13 +2031,7 @@ __L_V__3({
     },
 
     updateBrowserRemotenessByURL(aBrowser, aURL, aOptions = {}) {
-__L_V__3({
-    lN: 2036,tT:'func',pr:'',eT:{'aBrowser':aBrowser,'aURL':aURL,'aOptions':aOptions},fN:'updateBrowserRemotenessByURL'
-  });'__L_V__3';
       if (!gMultiProcessBrowser) {
-__L_V__3({
-    lN: 2037,tT:'if',pr:'!gMultiProcessBrowser',eT:{},fN:''
-  });'__L_V__3';
         return this.updateBrowserRemoteness(aBrowser, {
           remoteType: E10SUtils.NOT_REMOTE,
         });
@@ -2740,9 +2050,6 @@ __L_V__3({
       // If this URL can't load in the current browser then flip it to the
       // correct type.
       if (oldRemoteType != aOptions.remoteType || aOptions.newFrameloader) {
-__L_V__3({
-    lN: 2055,tT:'if',pr:'oldRemoteType != aOptions.remoteType || aOptions.newFrameloader',eT:{},fN:''
-  });'__L_V__3';
         return this.updateBrowserRemoteness(aBrowser, aOptions);
       }
 
@@ -2760,9 +2067,6 @@ __L_V__3({
       userContextId,
       skipLoad,
     } = {}) {
-__L_V__3({
-    lN: 2072,tT:'func',pr:'',eT:{'isPreloadBrowser':isPreloadBrowser,'name':name,'nextRemoteTabId':nextRemoteTabId,'openerWindow':openerWindow,'remoteType':remoteType,'sameProcessAsFrameLoader':sameProcessAsFrameLoader,'uriIsAboutBlank':uriIsAboutBlank,'userContextId':userContextId,'skipLoad':skipLoad},fN:'createBrowser'
-  });'__L_V__3';
       let b = document.createXULElement("browser");
       // Use the JSM global to create the permanentKey, so that if the
       // permanentKey is held by something after this window closes, it
@@ -2783,43 +2087,25 @@ __L_V__3({
       }
 
       if (userContextId) {
-__L_V__3({
-    lN: 2092,tT:'if',pr:'userContextId',eT:{},fN:''
-  });'__L_V__3';
         b.setAttribute("usercontextid", userContextId);
       }
 
       if (remoteType) {
-__L_V__3({
-    lN: 2096,tT:'if',pr:'remoteType',eT:{},fN:''
-  });'__L_V__3';
         b.setAttribute("remoteType", remoteType);
         b.setAttribute("remote", "true");
       }
 
       if (openerWindow) {
-__L_V__3({
-    lN: 2101,tT:'if',pr:'openerWindow',eT:{},fN:''
-  });'__L_V__3';
         if (remoteType) {
-__L_V__3({
-    lN: 2102,tT:'if',pr:'remoteType',eT:{},fN:''
-  });'__L_V__3';
           throw new Error("Cannot set opener window on a remote browser!");
         }
         b.presetOpenerWindow(openerWindow);
       }
 
       if (!isPreloadBrowser) {
-__L_V__3({
-    lN: 2108,tT:'if',pr:'!isPreloadBrowser',eT:{},fN:''
-  });'__L_V__3';
         b.setAttribute("autocompletepopup", "PopupAutoComplete");
       }
       if (this._autoScrollPopup) {
-__L_V__3({
-    lN: 2111,tT:'if',pr:'this._autoScrollPopup',eT:{},fN:''
-  });'__L_V__3';
         b.setAttribute("autoscrollpopup", this._autoScrollPopup.id);
       }
 
@@ -2839,20 +2125,11 @@ __L_V__3({
        * See more details on Bug 1420285.
        */
       if (isPreloadBrowser) {
-__L_V__3({
-    lN: 2130,tT:'if',pr:'isPreloadBrowser',eT:{},fN:''
-  });'__L_V__3';
         b.setAttribute("preloadedState", "preloaded");
       }
 
       if (nextRemoteTabId) {
-__L_V__3({
-    lN: 2134,tT:'if',pr:'nextRemoteTabId',eT:{},fN:''
-  });'__L_V__3';
         if (!remoteType) {
-__L_V__3({
-    lN: 2135,tT:'if',pr:'!remoteType',eT:{},fN:''
-  });'__L_V__3';
           throw new Error("Cannot have nextRemoteTabId without a remoteType");
         }
         // Gecko is going to read this attribute and use it.
@@ -2860,18 +2137,12 @@ __L_V__3({
       }
 
       if (sameProcessAsFrameLoader) {
-__L_V__3({
-    lN: 2142,tT:'if',pr:'sameProcessAsFrameLoader',eT:{},fN:''
-  });'__L_V__3';
         b.sameProcessAsFrameLoader = sameProcessAsFrameLoader;
       }
 
       // This will be used by gecko to control the name of the opened
       // window.
       if (name) {
-__L_V__3({
-    lN: 2148,tT:'if',pr:'name',eT:{},fN:''
-  });'__L_V__3';
         // XXX: The `name` property is special in HTML and XUL. Should
         // we use a different attribute name for this?
         b.setAttribute("name", name);
@@ -2904,9 +2175,6 @@ __L_V__3({
       // Prevent the superfluous initial load of a blank document
       // if we're going to load something other than about:blank.
       if (!uriIsAboutBlank || skipLoad) {
-__L_V__3({
-    lN: 2180,tT:'if',pr:'!uriIsAboutBlank || skipLoad',eT:{},fN:''
-  });'__L_V__3';
         b.setAttribute("nodefaultsrc", "true");
       }
 
@@ -2914,9 +2182,6 @@ __L_V__3({
     },
 
     _createLazyBrowser(aTab) {
-__L_V__3({
-    lN: 2187,tT:'func',pr:'',eT:{'aTab':aTab},fN:'_createLazyBrowser'
-  });'__L_V__3';
       let browser = aTab.linkedBrowser;
 
       let names = this._browserBindingProperties;
@@ -2925,9 +2190,6 @@ __L_V__3({
         let name = names[i];
         let getter;
         let setter;
-__L_V__3({
-    lN: 2196,tT:'switch',pr:'',eT:{},fN:''
-  });'__L_V__3';
         switch (name) {
           case "audioMuted":
             getter = () => aTab.hasAttribute("muted");
@@ -2940,9 +2202,6 @@ __L_V__3({
               let url = SessionStore.getLazyTabValue(aTab, "url");
               // Avoid recreating the same nsIURI object over and over again...
               if (browser._cachedCurrentURI) {
-__L_V__3({
-    lN: 2207,tT:'if',pr:'browser._cachedCurrentURI',eT:{},fN:''
-  });'__L_V__3';
                 return browser._cachedCurrentURI;
               }
               return (browser._cachedCurrentURI = Services.io.newURI(url));
@@ -2988,9 +2247,6 @@ __L_V__3({
               // Avoid recreating the same nsIURI object over and over again...
               let uri;
               if (browser._cachedCurrentURI) {
-__L_V__3({
-    lN: 2252,tT:'if',pr:'browser._cachedCurrentURI',eT:{},fN:''
-  });'__L_V__3';
                 uri = browser._cachedCurrentURI;
               } else {
                 uri = browser._cachedCurrentURI = Services.io.newURI(url);
@@ -3011,9 +2267,6 @@ __L_V__3({
           default:
             getter = () => {
               if (AppConstants.NIGHTLY_BUILD) {
-__L_V__3({
-    lN: 2272,tT:'if',pr:'AppConstants.NIGHTLY_BUILD',eT:{},fN:''
-  });'__L_V__3';
                 let message = `[bug 1345098] Lazy browser prematurely inserted via '${name}' property access:\n`;
                 console.log(message + new Error().stack);
               }
@@ -3022,9 +2275,6 @@ __L_V__3({
             };
             setter = value => {
               if (AppConstants.NIGHTLY_BUILD) {
-__L_V__3({
-    lN: 2280,tT:'if',pr:'AppConstants.NIGHTLY_BUILD',eT:{},fN:''
-  });'__L_V__3';
                 let message = `[bug 1345098] Lazy browser prematurely inserted via '${name}' property access:\n`;
                 console.log(message + new Error().stack);
               }
@@ -3042,16 +2292,10 @@ __L_V__3({
     },
 
     _insertBrowser(aTab, aInsertedOnTabCreation) {
-__L_V__3({
-    lN: 2297,tT:'func',pr:'',eT:{'aTab':aTab,'aInsertedOnTabCreation':aInsertedOnTabCreation},fN:'_insertBrowser'
-  });'__L_V__3';
       "use strict";
 
       // If browser is already inserted or window is closed don't do anything.
       if (aTab.linkedPanel || window.closed) {
-__L_V__3({
-    lN: 2301,tT:'if',pr:'aTab.linkedPanel || window.closed',eT:{},fN:''
-  });'__L_V__3';
         return;
       }
 
@@ -3059,9 +2303,6 @@ __L_V__3({
 
       // If browser is a lazy browser, delete the substitute properties.
       if (this._browserBindingProperties[0] in browser) {
-__L_V__3({
-    lN: 2308,tT:'if',pr:'this._browserBindingProperties[0] in browser',eT:{},fN:''
-  });'__L_V__3';
         for (let name of this._browserBindingProperties) {
           delete browser[name];
         }
@@ -3082,9 +2323,6 @@ __L_V__3({
 
       // Inject the <browser> into the DOM if necessary.
       if (!panel.parentNode) {
-__L_V__3({
-    lN: 2328,tT:'if',pr:'!panel.parentNode',eT:{},fN:''
-  });'__L_V__3';
         // NB: this appendChild call causes us to run constructors for the
         // browser element, which fires off a bunch of notifications. Some
         // of those notifications can cause code to run that inspects our
@@ -3125,9 +2363,6 @@ __L_V__3({
       // So for all browsers except for the preloaded case, we set the browser
       // docShell to inactive.
       if (!usingPreloadedContent) {
-__L_V__3({
-    lN: 2368,tT:'if',pr:'!usingPreloadedContent',eT:{},fN:''
-  });'__L_V__3';
         browser.docShellIsActive = false;
       }
 
@@ -3137,18 +2372,12 @@ __L_V__3({
       // into the DOM. We thus have to register the new outerWindowID
       // for non-remote browsers after we have called browser.loadURI().
       if (remoteType == E10SUtils.NOT_REMOTE) {
-__L_V__3({
-    lN: 2377,tT:'if',pr:'remoteType == E10SUtils.NOT_REMOTE',eT:{},fN:''
-  });'__L_V__3';
         this._outerWindowIDBrowserMap.set(browser.outerWindowID, browser);
       }
 
       // If we transitioned from one browser to two browsers, we need to set
       // hasSiblings=false on both the existing browser and the new browser.
       if (this.tabs.length == 2) {
-__L_V__3({
-    lN: 2383,tT:'if',pr:'this.tabs.length == 2',eT:{},fN:''
-  });'__L_V__3';
         this.tabs[0].linkedBrowser.sendMessageToActor(
           "Browser:HasSiblings",
           true,
@@ -3170,9 +2399,6 @@ __L_V__3({
       // Only fire this event if the tab is already in the DOM
       // and will be handled by a listener.
       if (aTab.isConnected) {
-__L_V__3({
-    lN: 2404,tT:'if',pr:'aTab.isConnected',eT:{},fN:''
-  });'__L_V__3';
         var evt = new CustomEvent("TabBrowserInserted", {
           bubbles: true,
           detail: { insertedOnTabCreation: aInsertedOnTabCreation },
@@ -3182,9 +2408,6 @@ __L_V__3({
     },
 
     _mayDiscardBrowser(aTab, aForceDiscard) {
-__L_V__3({
-    lN: 2413,tT:'func',pr:'',eT:{'aTab':aTab,'aForceDiscard':aForceDiscard},fN:'_mayDiscardBrowser'
-  });'__L_V__3';
       let browser = aTab.linkedBrowser;
       let permitUnloadFlags = aForceDiscard
         ? browser.dontPromptAndUnload
@@ -3199,9 +2422,6 @@ __L_V__3({
         !browser.isRemoteBrowser ||
         !browser.permitUnload(permitUnloadFlags).permitUnload
       ) {
-__L_V__3({
-    lN: 2427,tT:'if',pr:' !aTab || aTab.selected || aTab.closing || this._windowIsClosing || !browser.isConnected || !browser.isRemoteBrowser || !browser.permitUnload(permitUnloadFlags).permitUnload ',eT:{},fN:''
-  });'__L_V__3';
         return false;
       }
 
@@ -3209,24 +2429,15 @@ __L_V__3({
     },
 
     discardBrowser(aTab, aForceDiscard) {
-__L_V__3({
-    lN: 2434,tT:'func',pr:'',eT:{'aTab':aTab,'aForceDiscard':aForceDiscard},fN:'discardBrowser'
-  });'__L_V__3';
       "use strict";
       let browser = aTab.linkedBrowser;
 
       if (!this._mayDiscardBrowser(aTab, aForceDiscard)) {
-__L_V__3({
-    lN: 2438,tT:'if',pr:'!this._mayDiscardBrowser(aTab, aForceDiscard)',eT:{},fN:''
-  });'__L_V__3';
         return false;
       }
 
       // Reset sharing state.
       if (aTab._sharingState) {
-__L_V__3({
-    lN: 2443,tT:'if',pr:'aTab._sharingState',eT:{},fN:''
-  });'__L_V__3';
         this.resetBrowserSharing(browser);
       }
       webrtcUI.forgetStreamsFromBrowserContext(browser.browsingContext);
@@ -3256,9 +2467,6 @@ __L_V__3({
 
       // Reset the findbar and remove it if it is attached to the tab.
       if (aTab._findBar) {
-__L_V__3({
-    lN: 2472,tT:'if',pr:'aTab._findBar',eT:{},fN:''
-  });'__L_V__3';
         aTab._findBar.close(true);
         aTab._findBar.remove();
         delete aTab._findBar;
@@ -3279,13 +2487,7 @@ __L_V__3({
      * Loads a tab with a default null principal unless specified
      */
     addWebTab(aURI, params = {}) {
-__L_V__3({
-    lN: 2492,tT:'func',pr:'',eT:{'aURI':aURI,'params':params},fN:'addWebTab'
-  });'__L_V__3';
       if (!params.triggeringPrincipal) {
-__L_V__3({
-    lN: 2493,tT:'if',pr:'!params.triggeringPrincipal',eT:{},fN:''
-  });'__L_V__3';
         params.triggeringPrincipal = Services.scriptSecurityManager.createNullPrincipal(
           {
             userContextId: params.userContextId,
@@ -3293,9 +2495,6 @@ __L_V__3({
         );
       }
       if (params.triggeringPrincipal.isSystemPrincipal) {
-__L_V__3({
-    lN: 2500,tT:'if',pr:'params.triggeringPrincipal.isSystemPrincipal',eT:{},fN:''
-  });'__L_V__3';
         throw new Error(
           "System principal should never be passed into addWebTab()"
         );
@@ -3308,9 +2507,6 @@ __L_V__3({
      * If in doubt use addWebTab
      */
     addTrustedTab(aURI, params = {}) {
-__L_V__3({
-    lN: 2512,tT:'func',pr:'',eT:{'aURI':aURI,'params':params},fN:'addTrustedTab'
-  });'__L_V__3';
       params.triggeringPrincipal = Services.scriptSecurityManager.getSystemPrincipal();
       return this.addTab(aURI, params);
     },
@@ -3355,15 +2551,9 @@ __L_V__3({
         batchInsertingTabs,
       } = {}
     ) {
-__L_V__3({
-    lN: 2556,tT:'func',pr:'',eT:{'aURI':aURI,'allowInheritPrincipal':allowInheritPrincipal,'allowMixedContent':allowMixedContent,'allowThirdPartyFixup':allowThirdPartyFixup,'bulkOrderedOpen':bulkOrderedOpen,'charset':charset,'createLazyBrowser':createLazyBrowser,'disableTRR':disableTRR,'eventDetail':eventDetail,'focusUrlBar':focusUrlBar,'forceNotRemote':forceNotRemote,'fromExternal':fromExternal,'index':index,'lazyTabTitle':lazyTabTitle,'name':name,'nextRemoteTabId':nextRemoteTabId,'noInitialLabel':noInitialLabel,'opener':opener,'openerBrowser':openerBrowser,'originPrincipal':originPrincipal,'originStoragePrincipal':originStoragePrincipal,'ownerTab':ownerTab,'pinned':pinned,'postData':postData,'preferredRemoteType':preferredRemoteType,'referrerInfo':referrerInfo,'relatedToCurrent':relatedToCurrent,'sameProcessAsFrameLoader':sameProcessAsFrameLoader,'skipAnimation':skipAnimation,'skipBackgroundNotify':skipBackgroundNotify,'triggeringPrincipal':triggeringPrincipal,'userContextId':userContextId,'csp':csp,'skipLoad':skipLoad,'batchInsertingTabs':batchInsertingTabs},fN:'addTab'
-  });'__L_V__3';
       // all callers of addTab that pass a params object need to pass
       // a valid triggeringPrincipal.
       if (!triggeringPrincipal) {
-__L_V__3({
-    lN: 2559,tT:'if',pr:'!triggeringPrincipal',eT:{},fN:''
-  });'__L_V__3';
         throw new Error(
           "Required argument triggeringPrincipal missing within addTab"
         );
@@ -3371,9 +2561,6 @@ __L_V__3({
 
       // if we're adding tabs, we're past interrupt mode, ditch the owner
       if (this.selectedTab.owner) {
-__L_V__3({
-    lN: 2566,tT:'if',pr:'this.selectedTab.owner',eT:{},fN:''
-  });'__L_V__3';
         this.selectedTab.owner = null;
       }
 
@@ -3392,9 +2579,6 @@ __L_V__3({
       // undefined if the tab is opened from an external application or
       // bookmark (i.e. somewhere other than an existing tab).
       if (relatedToCurrent == null) {
-__L_V__3({
-    lN: 2584,tT:'if',pr:'relatedToCurrent == null',eT:{},fN:''
-  });'__L_V__3';
         relatedToCurrent = !!(referrerInfo && referrerInfo.originalReferrer);
       }
       let openerTab =
@@ -3417,9 +2601,6 @@ __L_V__3({
 
       let lazyBrowserURI;
       if (createLazyBrowser && aURI != "about:blank") {
-__L_V__3({
-    lN: 2606,tT:'if',pr:'createLazyBrowser && aURI != about:blank',eT:{},fN:''
-  });'__L_V__3';
         lazyBrowserURI = aURIObject;
         aURI = "about:blank";
       }
@@ -3438,20 +2619,11 @@ __L_V__3({
       // Related tab inherits current tab's user context unless a different
       // usercontextid is specified
       if (userContextId == null && openerTab) {
-__L_V__3({
-    lN: 2624,tT:'if',pr:'userContextId == null && openerTab',eT:{},fN:''
-  });'__L_V__3';
         userContextId = openerTab.getAttribute("usercontextid") || 0;
       }
 
       if (!noInitialLabel) {
-__L_V__3({
-    lN: 2628,tT:'if',pr:'!noInitialLabel',eT:{},fN:''
-  });'__L_V__3';
         if (isBlankPageURL(aURI)) {
-__L_V__3({
-    lN: 2629,tT:'if',pr:'isBlankPageURL(aURI)',eT:{},fN:''
-  });'__L_V__3';
           t.setAttribute("label", this.tabContainer.emptyTabTitle);
         } else {
           // Set URL as label so that the tab isn't empty initially.
@@ -3460,24 +2632,15 @@ __L_V__3({
       }
 
       if (userContextId) {
-__L_V__3({
-    lN: 2637,tT:'if',pr:'userContextId',eT:{},fN:''
-  });'__L_V__3';
         t.setAttribute("usercontextid", userContextId);
         ContextualIdentityService.setTabStyle(t);
       }
 
       if (skipBackgroundNotify) {
-__L_V__3({
-    lN: 2642,tT:'if',pr:'skipBackgroundNotify',eT:{},fN:''
-  });'__L_V__3';
         t.setAttribute("skipbackgroundnotify", true);
       }
 
       if (pinned) {
-__L_V__3({
-    lN: 2646,tT:'if',pr:'pinned',eT:{},fN:''
-  });'__L_V__3';
         t.setAttribute("pinned", "true");
       }
 
@@ -3486,18 +2649,12 @@ __L_V__3({
       this.tabContainer._unlockTabSizing();
 
       if (!animate) {
-__L_V__3({
-    lN: 2654,tT:'if',pr:'!animate',eT:{},fN:''
-  });'__L_V__3';
         t.setAttribute("fadein", "true");
 
         // Call _handleNewTab asynchronously as it needs to know if the
         // new tab is selected.
         setTimeout(
           function(tabContainer) {
-__L_V__3({
-    lN: 2660,tT:'func',pr:'',eT:{'tabContainer':tabContainer},fN:'function'
-  });'__L_V__3';
             tabContainer._handleNewTab(t);
           },
           0,
@@ -3510,9 +2667,6 @@ __L_V__3({
 
       try {
         if (!batchInsertingTabs) {
-__L_V__3({
-    lN: 2672,tT:'if',pr:'!batchInsertingTabs',eT:{},fN:''
-  });'__L_V__3';
           // When we are not restoring a session, we need to know
           // insert the tab into the tab container in the correct position
           this._insertTabAtIndex(t, {
@@ -3527,9 +2681,6 @@ __L_V__3({
         // If we don't have a preferred remote type, and we have a remote
         // opener, use the opener's remote type.
         if (!preferredRemoteType && openerBrowser) {
-__L_V__3({
-    lN: 2686,tT:'if',pr:'!preferredRemoteType && openerBrowser',eT:{},fN:''
-  });'__L_V__3';
           preferredRemoteType = openerBrowser.remoteType;
         }
 
@@ -3542,9 +2693,6 @@ __L_V__3({
           referrerInfo &&
           referrerInfo.originalReferrer
         ) {
-__L_V__3({
-    lN: 2698,tT:'if',pr:' uriIsAboutBlank && !preferredRemoteType && referrerInfo && referrerInfo.originalReferrer ',eT:{},fN:''
-  });'__L_V__3';
           preferredRemoteType = E10SUtils.getRemoteTypeForURI(
             referrerInfo.originalReferrer.spec,
             gMultiProcessBrowser,
@@ -3564,22 +2712,13 @@ __L_V__3({
         // If we open a new tab with the newtab URL in the default
         // userContext, check if there is a preloaded browser ready.
         if (aURI == BROWSER_NEW_TAB_URL && !userContextId) {
-__L_V__3({
-    lN: 2717,tT:'if',pr:'aURI == BROWSER_NEW_TAB_URL && !userContextId',eT:{},fN:''
-  });'__L_V__3';
           b = NewTabPagePreloading.getPreloadedBrowser(window);
           if (b) {
-__L_V__3({
-    lN: 2719,tT:'if',pr:'b',eT:{},fN:''
-  });'__L_V__3';
             usingPreloadedContent = true;
           }
         }
 
         if (!b) {
-__L_V__3({
-    lN: 2724,tT:'if',pr:'!b',eT:{},fN:''
-  });'__L_V__3';
           // No preloaded browser found, create one.
           b = this.createBrowser({
             remoteType,
@@ -3596,9 +2735,6 @@ __L_V__3({
         t.linkedBrowser = b;
 
         if (focusUrlBar) {
-__L_V__3({
-    lN: 2740,tT:'if',pr:'focusUrlBar',eT:{},fN:''
-  });'__L_V__3';
           b._urlbarFocused = true;
         }
 
@@ -3612,15 +2748,9 @@ __L_V__3({
 
         // If the caller opts in, create a lazy browser.
         if (createLazyBrowser) {
-__L_V__3({
-    lN: 2753,tT:'if',pr:'createLazyBrowser',eT:{},fN:''
-  });'__L_V__3';
           this._createLazyBrowser(t);
 
           if (lazyBrowserURI) {
-__L_V__3({
-    lN: 2756,tT:'if',pr:'lazyBrowserURI',eT:{},fN:''
-  });'__L_V__3';
             // Lazy browser must be explicitly registered so tab will appear as
             // a switch-to-tab candidate in autocomplete.
             this.UrlbarProviderOpenTabs.registerOpenTab(
@@ -3648,9 +2778,6 @@ __L_V__3({
         Cu.reportError(e);
         t.remove();
         if (t.linkedBrowser) {
-__L_V__3({
-    lN: 2783,tT:'if',pr:'t.linkedBrowser',eT:{},fN:''
-  });'__L_V__3';
           this._tabFilters.delete(t);
           this._tabListeners.delete(t);
           this.getPanel(t.linkedBrowser).remove();
@@ -3663,9 +2790,6 @@ __L_V__3({
       this.setDefaultIcon(t, aURIObject);
 
       if (!batchInsertingTabs) {
-__L_V__3({
-    lN: 2795,tT:'if',pr:'!batchInsertingTabs',eT:{},fN:''
-  });'__L_V__3';
         // Fire a TabOpen event
         this._fireTabOpen(t, eventDetail);
 
@@ -3675,9 +2799,6 @@ __L_V__3({
           originStoragePrincipal &&
           aURI
         ) {
-__L_V__3({
-    lN: 2804,tT:'if',pr:' !usingPreloadedContent && originPrincipal && originStoragePrincipal && aURI ',eT:{},fN:''
-  });'__L_V__3';
           let { URI_INHERITS_SECURITY_CONTEXT } = Ci.nsIProtocolHandler;
           // Unless we know for sure we're not inheriting principals,
           // force the about:blank viewer to have the right principal:
@@ -3685,9 +2806,6 @@ __L_V__3({
             !aURIObject ||
             doGetProtocolFlags(aURIObject) & URI_INHERITS_SECURITY_CONTEXT
           ) {
-__L_V__3({
-    lN: 2811,tT:'if',pr:' !aURIObject || doGetProtocolFlags(aURIObject) & URI_INHERITS_SECURITY_CONTEXT ',eT:{},fN:''
-  });'__L_V__3';
             b.createAboutBlankContentViewer(
               originPrincipal,
               originStoragePrincipal
@@ -3702,48 +2820,27 @@ __L_V__3({
           (!uriIsAboutBlank || !allowInheritPrincipal) &&
           !skipLoad
         ) {
-__L_V__3({
-    lN: 2825,tT:'if',pr:' !usingPreloadedContent && (!uriIsAboutBlank || !allowInheritPrincipal) && !skipLoad ',eT:{},fN:''
-  });'__L_V__3';
           // pretend the user typed this so it'll be available till
           // the document successfully loads
           if (aURI && !gInitialPages.includes(aURI)) {
-__L_V__3({
-    lN: 2828,tT:'if',pr:'aURI && !gInitialPages.includes(aURI)',eT:{},fN:''
-  });'__L_V__3';
             b.userTypedValue = aURI;
           }
 
           let flags = Ci.nsIWebNavigation.LOAD_FLAGS_NONE;
           if (allowThirdPartyFixup) {
-__L_V__3({
-    lN: 2833,tT:'if',pr:'allowThirdPartyFixup',eT:{},fN:''
-  });'__L_V__3';
             flags |= Ci.nsIWebNavigation.LOAD_FLAGS_ALLOW_THIRD_PARTY_FIXUP;
             flags |= Ci.nsIWebNavigation.LOAD_FLAGS_FIXUP_SCHEME_TYPOS;
           }
           if (fromExternal) {
-__L_V__3({
-    lN: 2837,tT:'if',pr:'fromExternal',eT:{},fN:''
-  });'__L_V__3';
             flags |= Ci.nsIWebNavigation.LOAD_FLAGS_FROM_EXTERNAL;
           }
           if (allowMixedContent) {
-__L_V__3({
-    lN: 2840,tT:'if',pr:'allowMixedContent',eT:{},fN:''
-  });'__L_V__3';
             flags |= Ci.nsIWebNavigation.LOAD_FLAGS_ALLOW_MIXED_CONTENT;
           }
           if (!allowInheritPrincipal) {
-__L_V__3({
-    lN: 2843,tT:'if',pr:'!allowInheritPrincipal',eT:{},fN:''
-  });'__L_V__3';
             flags |= Ci.nsIWebNavigation.LOAD_FLAGS_DISALLOW_INHERIT_PRINCIPAL;
           }
           if (disableTRR) {
-__L_V__3({
-    lN: 2846,tT:'if',pr:'disableTRR',eT:{},fN:''
-  });'__L_V__3';
             flags |= Ci.nsIWebNavigation.LOAD_FLAGS_DISABLE_TRR;
           }
           try {
@@ -3766,9 +2863,6 @@ __L_V__3({
       this.tabAnimationsInProgress++;
 
       if (animate) {
-__L_V__3({
-    lN: 2868,tT:'if',pr:'animate',eT:{},fN:''
-  });'__L_V__3';
         requestAnimationFrame(function() {
           // kick the animation off
           t.setAttribute("fadein", "true");
@@ -3777,9 +2871,6 @@ __L_V__3({
 
       // Additionally send pinned tab events
       if (pinned) {
-__L_V__3({
-    lN: 2876,tT:'if',pr:'pinned',eT:{},fN:''
-  });'__L_V__3';
         this._notifyPinnedStatus(t);
       }
 
@@ -3787,9 +2878,6 @@ __L_V__3({
     },
 
     addMultipleTabs(restoreTabsLazily, selectTab, aPropertiesTabs) {
-__L_V__3({
-    lN: 2883,tT:'func',pr:'',eT:{'restoreTabsLazily':restoreTabsLazily,'selectTab':selectTab,'aPropertiesTabs':aPropertiesTabs},fN:'addMultipleTabs'
-  });'__L_V__3';
       let tabs = [];
       let tabsFragment = document.createDocumentFragment();
       let tabToSelect = null;
@@ -3811,23 +2899,14 @@ __L_V__3({
         // Re-use existing selected tab if possible to avoid the overhead of
         // selecting a new tab.
         if (select && this.selectedTab.userContextId == userContextId) {
-__L_V__3({
-    lN: 2904,tT:'if',pr:'select && this.selectedTab.userContextId == userContextId',eT:{},fN:''
-  });'__L_V__3';
           tabWasReused = true;
           tab = this.selectedTab;
           if (!tabData.pinned) {
-__L_V__3({
-    lN: 2907,tT:'if',pr:'!tabData.pinned',eT:{},fN:''
-  });'__L_V__3';
             this.unpinTab(tab);
           } else {
             this.pinTab(tab);
           }
           if (gMultiProcessBrowser && !tab.linkedBrowser.isRemoteBrowser) {
-__L_V__3({
-    lN: 2912,tT:'if',pr:'gMultiProcessBrowser && !tab.linkedBrowser.isRemoteBrowser',eT:{},fN:''
-  });'__L_V__3';
             this.updateBrowserRemoteness(tab.linkedBrowser, {
               remoteType: E10SUtils.DEFAULT_REMOTE_TYPE,
             });
@@ -3836,17 +2915,11 @@ __L_V__3({
 
         // Add a new tab if needed.
         if (!tab) {
-__L_V__3({
-    lN: 2920,tT:'if',pr:'!tab',eT:{},fN:''
-  });'__L_V__3';
           let createLazyBrowser =
             restoreTabsLazily && !select && !tabData.pinned;
 
           let url = "about:blank";
           if (createLazyBrowser && tabData.entries && tabData.entries.length) {
-__L_V__3({
-    lN: 2925,tT:'if',pr:'createLazyBrowser && tabData.entries && tabData.entries.length',eT:{},fN:''
-  });'__L_V__3';
             // Let tabbrowser know the future URI because progress listeners won't
             // get onLocationChange notification before the browser is inserted.
             let activeIndex = (tabData.index || tabData.entries.length) - 1;
@@ -3871,9 +2944,6 @@ __L_V__3({
           });
 
           if (select) {
-__L_V__3({
-    lN: 2949,tT:'if',pr:'select',eT:{},fN:''
-  });'__L_V__3';
             tabToSelect = tab;
           }
         }
@@ -3881,16 +2951,10 @@ __L_V__3({
         tabs.push(tab);
 
         if (tabData.pinned) {
-__L_V__3({
-    lN: 2956,tT:'if',pr:'tabData.pinned',eT:{},fN:''
-  });'__L_V__3';
           // Calling `pinTab` calls `moveTabTo`, which assumes the tab is
           // inserted in the DOM. If the tab is not yet in the DOM,
           // just insert it in the right place from the start.
           if (!tab.parentNode) {
-__L_V__3({
-    lN: 2960,tT:'if',pr:'!tab.parentNode',eT:{},fN:''
-  });'__L_V__3';
             tab._tPos = this._numPinnedTabs;
             this.tabContainer.insertBefore(tab, this.tabs[this._numPinnedTabs]);
             tab.setAttribute("pinned", "true");
@@ -3904,18 +2968,12 @@ __L_V__3({
           }
         } else {
           if (tab.hidden) {
-__L_V__3({
-    lN: 2973,tT:'if',pr:'tab.hidden',eT:{},fN:''
-  });'__L_V__3';
             tab.setAttribute("hidden", "true");
             hiddenTabs.set(tab, tabData.extData && tabData.extData.hiddenBy);
           }
 
           tabsFragment.appendChild(tab);
           if (tabWasReused) {
-__L_V__3({
-    lN: 2979,tT:'if',pr:'tabWasReused',eT:{},fN:''
-  });'__L_V__3';
             this._invalidateCachedTabs();
           }
         }
@@ -3931,36 +2989,24 @@ __L_V__3({
         event.initEvent("TabHide", true, false);
         tab.dispatchEvent(event);
         if (hiddenBy) {
-__L_V__3({
-    lN: 2994,tT:'if',pr:'hiddenBy',eT:{},fN:''
-  });'__L_V__3';
           SessionStore.setCustomTabValue(tab, "hiddenBy", hiddenBy);
         }
       }
 
       this._invalidateCachedTabs();
       if (shouldUpdateForPinnedTabs) {
-__L_V__3({
-    lN: 3000,tT:'if',pr:'shouldUpdateForPinnedTabs',eT:{},fN:''
-  });'__L_V__3';
         this._updateTabBarForPinnedTabs();
       }
 
       // We need to wait until after all tabs have been appended to the DOM
       // to remove the old selected tab.
       if (tabToSelect) {
-__L_V__3({
-    lN: 3006,tT:'if',pr:'tabToSelect',eT:{},fN:''
-  });'__L_V__3';
         let leftoverTab = this.selectedTab;
         this.selectedTab = tabToSelect;
         this.removeTab(leftoverTab);
       }
 
       if (tabs.length > 1 || !tabs[0].selected) {
-__L_V__3({
-    lN: 3012,tT:'if',pr:'tabs.length > 1 || !tabs[0].selected',eT:{},fN:''
-  });'__L_V__3';
         this._updateTabsAfterInsert();
         this.tabContainer._setPositionalAttributes();
         TabBarVisibility.update();
@@ -3968,24 +3014,15 @@ __L_V__3({
         for (let tab of tabs) {
           // If tabToSelect is a tab, we didn't reuse the selected tab.
           if (tabToSelect || !tab.selected) {
-__L_V__3({
-    lN: 3019,tT:'if',pr:'tabToSelect || !tab.selected',eT:{},fN:''
-  });'__L_V__3';
             // Fire a TabOpen event for all unpinned tabs, except reused selected
             // tabs.
             if (!tab.pinned) {
-__L_V__3({
-    lN: 3022,tT:'if',pr:'!tab.pinned',eT:{},fN:''
-  });'__L_V__3';
               this._fireTabOpen(tab, {});
             }
 
             // Fire a TabBrowserInserted event on all tabs that have a connected,
             // real browser, except for reused selected tabs.
             if (tab.linkedPanel) {
-__L_V__3({
-    lN: 3028,tT:'if',pr:'tab.linkedPanel',eT:{},fN:''
-  });'__L_V__3';
               var evt = new CustomEvent("TabBrowserInserted", {
                 bubbles: true,
                 detail: { insertedOnTabCreation: true },
@@ -4000,45 +3037,27 @@ __L_V__3({
     },
 
     moveTabsToStart(contextTab) {
-__L_V__3({
-    lN: 3042,tT:'func',pr:'',eT:{'contextTab':contextTab},fN:'moveTabsToStart'
-  });'__L_V__3';
       let tabs = contextTab.multiselected ? this.selectedTabs : [contextTab];
       // Walk the array in reverse order so the tabs are kept in order.
       for (let i = tabs.length - 1; i >= 0; i--) {
         let tab = tabs[i];
         if (tab._tPos > 0) {
-__L_V__3({
-    lN: 3047,tT:'if',pr:'tab._tPos > 0',eT:{},fN:''
-  });'__L_V__3';
           this.moveTabTo(tab, 0);
         }
       }
     },
 
     moveTabsToEnd(contextTab) {
-__L_V__3({
-    lN: 3053,tT:'func',pr:'',eT:{'contextTab':contextTab},fN:'moveTabsToEnd'
-  });'__L_V__3';
       let tabs = contextTab.multiselected ? this.selectedTabs : [contextTab];
       for (let tab of tabs) {
         if (tab._tPos < this.tabs.length - 1) {
-__L_V__3({
-    lN: 3056,tT:'if',pr:'tab._tPos < this.tabs.length - 1',eT:{},fN:''
-  });'__L_V__3';
           this.moveTabTo(tab, this.tabs.length - 1);
         }
       }
     },
 
     warnAboutClosingTabs(tabsToClose, aCloseTabs) {
-__L_V__3({
-    lN: 3062,tT:'func',pr:'',eT:{'tabsToClose':tabsToClose,'aCloseTabs':aCloseTabs},fN:'warnAboutClosingTabs'
-  });'__L_V__3';
       if (tabsToClose <= 1) {
-__L_V__3({
-    lN: 3063,tT:'if',pr:'tabsToClose <= 1',eT:{},fN:''
-  });'__L_V__3';
         return true;
       }
 
@@ -4048,9 +3067,6 @@ __L_V__3({
           : "browser.tabs.warnOnCloseOtherTabs";
       var shouldPrompt = Services.prefs.getBoolPref(pref);
       if (!shouldPrompt) {
-__L_V__3({
-    lN: 3072,tT:'if',pr:'!shouldPrompt',eT:{},fN:''
-  });'__L_V__3';
         return true;
       }
 
@@ -4061,9 +3077,6 @@ __L_V__3({
         aCloseTabs != this.closingTabsEnum.ALL &&
         tabsToClose <= maxTabsUndo
       ) {
-__L_V__3({
-    lN: 3082,tT:'if',pr:' aCloseTabs != this.closingTabsEnum.ALL && tabsToClose <= maxTabsUndo ',eT:{},fN:''
-  });'__L_V__3';
         return true;
       }
 
@@ -4111,9 +3124,6 @@ __L_V__3({
         reallyClose &&
         !warnOnClose.value
       ) {
-__L_V__3({
-    lN: 3129,tT:'if',pr:' aCloseTabs == this.closingTabsEnum.ALL && reallyClose && !warnOnClose.value ',eT:{},fN:''
-  });'__L_V__3';
         Services.prefs.setBoolPref(pref, false);
       }
 
@@ -4127,22 +3137,13 @@ __L_V__3({
       tab,
       { index, ownerTab, openerTab, pinned, bulkOrderedOpen } = {}
     ) {
-__L_V__3({
-    lN: 3142,tT:'func',pr:'',eT:{'tab':tab,'index':index,'ownerTab':ownerTab,'openerTab':openerTab,'pinned':pinned,'bulkOrderedOpen':bulkOrderedOpen},fN:'_insertTabAtIndex'
-  });'__L_V__3';
       // If this new tab is owned by another, assert that relationship
       if (ownerTab) {
-__L_V__3({
-    lN: 3144,tT:'if',pr:'ownerTab',eT:{},fN:''
-  });'__L_V__3';
         tab.owner = ownerTab;
       }
 
       // Ensure we have an index if one was not provided.
       if (typeof index != "number") {
-__L_V__3({
-    lN: 3149,tT:'if',pr:'typeof index != number',eT:{},fN:''
-  });'__L_V__3';
         // Move the new tab after another tab if needed.
         if (
           !bulkOrderedOpen &&
@@ -4152,37 +3153,22 @@ __L_V__3({
             )) ||
             Services.prefs.getBoolPref("browser.tabs.insertAfterCurrent"))
         ) {
-__L_V__3({
-    lN: 3158,tT:'if',pr:' !bulkOrderedOpen && ((openerTab && Services.prefs.getBoolPref( browser.tabs.insertRelatedAfterCurrent )) || Services.prefs.getBoolPref(browser.tabs.insertAfterCurrent)) ',eT:{},fN:''
-  });'__L_V__3';
           let lastRelatedTab =
             openerTab && this._lastRelatedTabMap.get(openerTab);
           let previousTab = lastRelatedTab || openerTab || this.selectedTab;
           if (previousTab.multiselected) {
-__L_V__3({
-    lN: 3162,tT:'if',pr:'previousTab.multiselected',eT:{},fN:''
-  });'__L_V__3';
             index = this.selectedTabs[this.selectedTabs.length - 1]._tPos + 1;
           } else {
             index = previousTab._tPos + 1;
           }
 
           if (lastRelatedTab) {
-__L_V__3({
-    lN: 3168,tT:'if',pr:'lastRelatedTab',eT:{},fN:''
-  });'__L_V__3';
             lastRelatedTab.owner = null;
           } else if (openerTab) {
-__L_V__3({
-    lN: 3170,tT:'if',pr:'openerTab',eT:{},fN:''
-  });'__L_V__3';
             tab.owner = openerTab;
           }
           // Always set related map if opener exists.
           if (openerTab) {
-__L_V__3({
-    lN: 3174,tT:'if',pr:'openerTab',eT:{},fN:''
-  });'__L_V__3';
             this._lastRelatedTabMap.set(openerTab, tab);
           }
         } else {
@@ -4191,9 +3177,6 @@ __L_V__3({
       }
       // Ensure index is within bounds.
       if (pinned) {
-__L_V__3({
-    lN: 3182,tT:'if',pr:'pinned',eT:{},fN:''
-  });'__L_V__3';
         index = Math.max(index, 0);
         index = Math.min(index, this._numPinnedTabs);
       } else {
@@ -4208,18 +3191,12 @@ __L_V__3({
       tab.initialize();
       this.tabContainer.insertBefore(tab, tabAfter);
       if (tabAfter) {
-__L_V__3({
-    lN: 3196,tT:'if',pr:'tabAfter',eT:{},fN:''
-  });'__L_V__3';
         this._updateTabsAfterInsert();
       } else {
         tab._tPos = index;
       }
 
       if (pinned) {
-__L_V__3({
-    lN: 3202,tT:'if',pr:'pinned',eT:{},fN:''
-  });'__L_V__3';
         this._updateTabBarForPinnedTabs();
       }
       this.tabContainer._setPositionalAttributes();
@@ -4233,9 +3210,6 @@ __L_V__3({
      * or close tabs.
      */
     _fireTabOpen(tab, eventDetail) {
-__L_V__3({
-    lN: 3215,tT:'func',pr:'',eT:{'tab':tab,'eventDetail':eventDetail},fN:'_fireTabOpen'
-  });'__L_V__3';
       delete tab.initializingTab;
       let evt = new CustomEvent("TabOpen", {
         bubbles: true,
@@ -4245,24 +3219,15 @@ __L_V__3({
     },
 
     getTabsToTheEndFrom(aTab) {
-__L_V__3({
-    lN: 3224,tT:'func',pr:'',eT:{'aTab':aTab},fN:'getTabsToTheEndFrom'
-  });'__L_V__3';
       let tabsToEnd = [];
       let tabs = this.visibleTabs;
       for (let i = tabs.length - 1; i >= 0; --i) {
         if (tabs[i] == aTab || tabs[i].pinned) {
-__L_V__3({
-    lN: 3228,tT:'if',pr:'tabs[i] == aTab || tabs[i].pinned',eT:{},fN:''
-  });'__L_V__3';
           break;
         }
         // In a multi-select context, select all unselected tabs
         // starting from the context tab.
         if (aTab.multiselected && tabs[i].multiselected) {
-__L_V__3({
-    lN: 3233,tT:'if',pr:'aTab.multiselected && tabs[i].multiselected',eT:{},fN:''
-  });'__L_V__3';
           continue;
         }
         tabsToEnd.push(tabs[i]);
@@ -4275,16 +3240,10 @@ __L_V__3({
      * right of the rightmost selected tab will be removed.
      */
     removeTabsToTheEndFrom(aTab) {
-__L_V__3({
-    lN: 3245,tT:'func',pr:'',eT:{'aTab':aTab},fN:'removeTabsToTheEndFrom'
-  });'__L_V__3';
       let tabs = this.getTabsToTheEndFrom(aTab);
       if (
         !this.warnAboutClosingTabs(tabs.length, this.closingTabsEnum.TO_END)
       ) {
-__L_V__3({
-    lN: 3249,tT:'if',pr:' !this.warnAboutClosingTabs(tabs.length, this.closingTabsEnum.TO_END) ',eT:{},fN:''
-  });'__L_V__3';
         return;
       }
 
@@ -4296,14 +3255,8 @@ __L_V__3({
      * Otherwise all unpinned tabs except aTab are removed.
      */
     removeAllTabsBut(aTab) {
-__L_V__3({
-    lN: 3260,tT:'func',pr:'',eT:{'aTab':aTab},fN:'removeAllTabsBut'
-  });'__L_V__3';
       let tabsToRemove = [];
       if (aTab && aTab.multiselected) {
-__L_V__3({
-    lN: 3262,tT:'if',pr:'aTab && aTab.multiselected',eT:{},fN:''
-  });'__L_V__3';
         tabsToRemove = this.visibleTabs.filter(
           tab => !tab.multiselected && !tab.pinned
         );
@@ -4319,9 +3272,6 @@ __L_V__3({
           this.closingTabsEnum.OTHER
         )
       ) {
-__L_V__3({
-    lN: 3277,tT:'if',pr:' !this.warnAboutClosingTabs( tabsToRemove.length, this.closingTabsEnum.OTHER ) ',eT:{},fN:''
-  });'__L_V__3';
         return;
       }
 
@@ -4329,9 +3279,6 @@ __L_V__3({
     },
 
     removeMultiSelectedTabs() {
-__L_V__3({
-    lN: 3284,tT:'func',pr:'',eT:{},fN:'removeMultiSelectedTabs'
-  });'__L_V__3';
       let selectedTabs = this.selectedTabs;
       if (
         !this.warnAboutClosingTabs(
@@ -4339,9 +3286,6 @@ __L_V__3({
           this.closingTabsEnum.MULTI_SELECTED
         )
       ) {
-__L_V__3({
-    lN: 3291,tT:'if',pr:' !this.warnAboutClosingTabs( selectedTabs.length, this.closingTabsEnum.MULTI_SELECTED ) ',eT:{},fN:''
-  });'__L_V__3';
         return;
       }
 
@@ -4349,18 +3293,12 @@ __L_V__3({
     },
 
     removeTabs(tabs) {
-__L_V__3({
-    lN: 3298,tT:'func',pr:'',eT:{'tabs':tabs},fN:'removeTabs'
-  });'__L_V__3';
       // When 'closeWindowWithLastTab' pref is enabled, closing all tabs
       // can be considered equivalent to closing the window.
       if (
         this.tabs.length == tabs.length &&
         Services.prefs.getBoolPref("browser.tabs.closeWindowWithLastTab")
       ) {
-__L_V__3({
-    lN: 3304,tT:'if',pr:' this.tabs.length == tabs.length && Services.prefs.getBoolPref(browser.tabs.closeWindowWithLastTab) ',eT:{},fN:''
-  });'__L_V__3';
         window.closeWindow(true, window.warnAboutClosingWindow);
         return;
       }
@@ -4374,21 +3312,12 @@ __L_V__3({
         let aParams = { animate: true, prewarmed: true };
         for (let tab of tabs) {
           if (tab.selected) {
-__L_V__3({
-    lN: 3317,tT:'if',pr:'tab.selected',eT:{},fN:''
-  });'__L_V__3';
             lastToClose = tab;
             let toBlurTo = this._findTabToBlurTo(lastToClose, tabs);
             if (toBlurTo) {
-__L_V__3({
-    lN: 3320,tT:'if',pr:'toBlurTo',eT:{},fN:''
-  });'__L_V__3';
               this._getSwitcher().warmupTab(toBlurTo);
             }
           } else if (this._hasBeforeUnload(tab)) {
-__L_V__3({
-    lN: 3323,tT:'if',pr:'this._hasBeforeUnload(tab)',eT:{},fN:''
-  });'__L_V__3';
             tabsWithBeforeUnload.push(tab);
           } else {
             this.removeTab(tab, aParams);
@@ -4401,9 +3330,6 @@ __L_V__3({
         // Avoid changing the selected browser several times by removing it,
         // if appropriate, lastly.
         if (lastToClose) {
-__L_V__3({
-    lN: 3335,tT:'if',pr:'lastToClose',eT:{},fN:''
-  });'__L_V__3';
           this.removeTab(lastToClose, aParams);
         }
       } catch (e) {
@@ -4415,9 +3341,6 @@ __L_V__3({
     },
 
     removeCurrentTab(aParams) {
-__L_V__3({
-    lN: 3346,tT:'func',pr:'',eT:{'aParams':aParams},fN:'removeCurrentTab'
-  });'__L_V__3';
       this.removeTab(this.selectedTab, aParams);
     },
 
@@ -4431,18 +3354,12 @@ __L_V__3({
         prewarmed,
       } = {}
     ) {
-__L_V__3({
-    lN: 3359,tT:'func',pr:'',eT:{'aTab':aTab,'animate':animate,'byMouse':byMouse,'skipPermitUnload':skipPermitUnload,'closeWindowWithLastTab':closeWindowWithLastTab,'prewarmed':prewarmed},fN:'removeTab'
-  });'__L_V__3';
       // Telemetry stopwatches may already be running if removeTab gets
       // called again for an already closing tab.
       if (
         !TelemetryStopwatch.running("FX_TAB_CLOSE_TIME_ANIM_MS", aTab) &&
         !TelemetryStopwatch.running("FX_TAB_CLOSE_TIME_NO_ANIM_MS", aTab)
       ) {
-__L_V__3({
-    lN: 3365,tT:'if',pr:' !TelemetryStopwatch.running(FX_TAB_CLOSE_TIME_ANIM_MS, aTab) && !TelemetryStopwatch.running(FX_TAB_CLOSE_TIME_NO_ANIM_MS, aTab) ',eT:{},fN:''
-  });'__L_V__3';
         // Speculatevely start both stopwatches now. We'll cancel one of
         // the two later depending on whether we're animating.
         TelemetryStopwatch.start("FX_TAB_CLOSE_TIME_ANIM_MS", aTab);
@@ -4452,9 +3369,6 @@ __L_V__3({
       // Handle requests for synchronously removing an already
       // asynchronously closing tab.
       if (!animate && aTab.closing) {
-__L_V__3({
-    lN: 3374,tT:'if',pr:'!animate && aTab.closing',eT:{},fN:''
-  });'__L_V__3';
         this._endRemoveTab(aTab);
         return;
       }
@@ -4475,18 +3389,12 @@ __L_V__3({
           prewarmed,
         })
       ) {
-__L_V__3({
-    lN: 3394,tT:'if',pr:' !this._beginRemoveTab(aTab, { closeWindowFastpath: true, skipPermitUnload, closeWindowWithLastTab, prewarmed, }) ',eT:{},fN:''
-  });'__L_V__3';
         TelemetryStopwatch.cancel("FX_TAB_CLOSE_TIME_ANIM_MS", aTab);
         TelemetryStopwatch.cancel("FX_TAB_CLOSE_TIME_NO_ANIM_MS", aTab);
         return;
       }
 
       if (!aTab.pinned && !aTab.hidden && aTab._fullyOpen && byMouse) {
-__L_V__3({
-    lN: 3400,tT:'if',pr:'!aTab.pinned && !aTab.hidden && aTab._fullyOpen && byMouse',eT:{},fN:''
-  });'__L_V__3';
         this.tabContainer._lockTabSizing(aTab, tabWidth);
       } else {
         this.tabContainer._unlockTabSizing();
@@ -4505,9 +3413,6 @@ __L_V__3({
           "0.1px" /* fade-in transition hasn't moved yet */ ||
         !this.animationsEnabled
       ) {
-__L_V__3({
-    lN: 3418,tT:'if',pr:' !animate /* the caller didnt opt in */ || isLastTab || aTab.pinned || aTab.hidden || this._removingTabs.length > 3 /* dont want lots of concurrent animations */ || aTab.getAttribute(fadein) != true /* fade-in transition hasnt been triggered yet */ || window.getComputedStyle(aTab).maxWidth == 0.1px /* fade-in transition hasnt moved yet */ || !this.animationsEnabled ',eT:{},fN:''
-  });'__L_V__3';
         // We're not animating, so we can cancel the animation stopwatch.
         TelemetryStopwatch.cancel("FX_TAB_CLOSE_TIME_ANIM_MS", aTab);
         this._endRemoveTab(aTab);
@@ -4523,16 +3428,10 @@ __L_V__3({
 
       setTimeout(
         function(tab, tabbrowser) {
-__L_V__3({
-    lN: 3433,tT:'func',pr:'',eT:{'tab':tab,'tabbrowser':tabbrowser},fN:'function'
-  });'__L_V__3';
           if (
             tab.container &&
             window.getComputedStyle(tab).maxWidth == "0.1px"
           ) {
-__L_V__3({
-    lN: 3437,tT:'if',pr:' tab.container && window.getComputedStyle(tab).maxWidth == 0.1px ',eT:{},fN:''
-  });'__L_V__3';
             console.assert(
               false,
               "Giving up waiting for the tab closing animation to finish (bug 608589)"
@@ -4547,14 +3446,8 @@ __L_V__3({
     },
 
     _hasBeforeUnload(aTab) {
-__L_V__3({
-    lN: 3451,tT:'func',pr:'',eT:{'aTab':aTab},fN:'_hasBeforeUnload'
-  });'__L_V__3';
       let browser = aTab.linkedBrowser;
       if (browser.isRemoteBrowser && browser.frameLoader) {
-__L_V__3({
-    lN: 3453,tT:'if',pr:'browser.isRemoteBrowser && browser.frameLoader',eT:{},fN:''
-  });'__L_V__3';
         return PermitUnloader.hasBeforeUnload(browser.frameLoader);
       }
       return false;
@@ -4570,13 +3463,7 @@ __L_V__3({
         prewarmed,
       } = {}
     ) {
-__L_V__3({
-    lN: 3468,tT:'func',pr:'',eT:{'aTab':aTab,'adoptedByTab':adoptedByTab,'closeWindowWithLastTab':closeWindowWithLastTab,'closeWindowFastpath':closeWindowFastpath,'skipPermitUnload':skipPermitUnload,'prewarmed':prewarmed},fN:'_beginRemoveTab'
-  });'__L_V__3';
       if (aTab.closing || this._windowIsClosing) {
-__L_V__3({
-    lN: 3469,tT:'if',pr:'aTab.closing || this._windowIsClosing',eT:{},fN:''
-  });'__L_V__3';
         return false;
       }
 
@@ -4588,18 +3475,9 @@ __L_V__3({
         !aTab._pendingPermitUnload &&
         (!browser.isRemoteBrowser || this._hasBeforeUnload(aTab))
       ) {
-__L_V__3({
-    lN: 3480,tT:'if',pr:' !skipPermitUnload && !adoptedByTab && aTab.linkedPanel && !aTab._pendingPermitUnload && (!browser.isRemoteBrowser || this._hasBeforeUnload(aTab)) ',eT:{},fN:''
-  });'__L_V__3';
         if (!prewarmed) {
-__L_V__3({
-    lN: 3481,tT:'if',pr:'!prewarmed',eT:{},fN:''
-  });'__L_V__3';
           let blurTab = this._findTabToBlurTo(aTab);
           if (blurTab) {
-__L_V__3({
-    lN: 3483,tT:'if',pr:'blurTab',eT:{},fN:''
-  });'__L_V__3';
             this.warmupTab(blurTab);
           }
         }
@@ -4619,9 +3497,6 @@ __L_V__3({
         // so we don't (try to) close the same tab again. Of course, we
         // also stop if the unload was cancelled by the user:
         if (aTab.closing || (!timedOut && !permitUnload)) {
-__L_V__3({
-    lN: 3502,tT:'if',pr:'aTab.closing || (!timedOut && !permitUnload)',eT:{},fN:''
-  });'__L_V__3';
           return false;
         }
       }
@@ -4630,9 +3505,6 @@ __L_V__3({
       // cache, but we may not have one at this time.
       let tabCacheIndex = this._tabLayerCache.indexOf(aTab);
       if (tabCacheIndex != -1) {
-__L_V__3({
-    lN: 3510,tT:'if',pr:'tabCacheIndex != -1',eT:{},fN:''
-  });'__L_V__3';
         this._tabLayerCache.splice(tabCacheIndex, 1);
       }
 
@@ -4641,9 +3513,6 @@ __L_V__3({
       var closeWindow = false;
       var newTab = false;
       if (this.tabs.length - this._removingTabs.length == 1) {
-__L_V__3({
-    lN: 3518,tT:'if',pr:'this.tabs.length - this._removingTabs.length == 1',eT:{},fN:''
-  });'__L_V__3';
         closeWindow =
           closeWindowWithLastTab != null
             ? closeWindowWithLastTab
@@ -4651,9 +3520,6 @@ __L_V__3({
               Services.prefs.getBoolPref("browser.tabs.closeWindowWithLastTab");
 
         if (closeWindow) {
-__L_V__3({
-    lN: 3525,tT:'if',pr:'closeWindow',eT:{},fN:''
-  });'__L_V__3';
           // We've already called beforeunload on all the relevant tabs if we get here,
           // so avoid calling it again:
           window.skipNextCanClose = true;
@@ -4663,9 +3529,6 @@ __L_V__3({
         // than closing the window right away. If the caller opts in, take
         // the fast path.
         if (closeWindow && closeWindowFastpath && !this._removingTabs.length) {
-__L_V__3({
-    lN: 3534,tT:'if',pr:'closeWindow && closeWindowFastpath && !this._removingTabs.length',eT:{},fN:''
-  });'__L_V__3';
           // This call actually closes the window, unless the user
           // cancels the operation.  We are finished here in both cases.
           this._windowIsClosing = window.closeWindow(
@@ -4681,14 +3544,8 @@ __L_V__3({
 
       // swapBrowsersAndCloseOther will take care of closing the window without animation.
       if (closeWindow && adoptedByTab) {
-__L_V__3({
-    lN: 3549,tT:'if',pr:'closeWindow && adoptedByTab',eT:{},fN:''
-  });'__L_V__3';
         // Remove the tab's filter and progress listener to avoid leaking.
         if (aTab.linkedPanel) {
-__L_V__3({
-    lN: 3551,tT:'if',pr:'aTab.linkedPanel',eT:{},fN:''
-  });'__L_V__3';
           const filter = this._tabFilters.get(aTab);
           browser.webProgress.removeProgressListener(filter);
           const listener = this._tabListeners.get(aTab);
@@ -4701,9 +3558,6 @@ __L_V__3({
       }
 
       if (!aTab._fullyOpen) {
-__L_V__3({
-    lN: 3563,tT:'if',pr:'!aTab._fullyOpen',eT:{},fN:''
-  });'__L_V__3';
         // If the opening tab animation hasn't finished before we start closing the
         // tab, decrement the animation count since _handleNewTab will not get called.
         this.tabAnimationsInProgress--;
@@ -4713,9 +3567,6 @@ __L_V__3({
 
       // Mute audio immediately to improve perceived speed of tab closure.
       if (!adoptedByTab && aTab.hasAttribute("soundplaying")) {
-__L_V__3({
-    lN: 3572,tT:'if',pr:'!adoptedByTab && aTab.hasAttribute(soundplaying)',eT:{},fN:''
-  });'__L_V__3';
         // Don't persist the muted state as this wasn't a user action.
         // This lets undo-close-tab return it to an unmuted state.
         aTab.linkedBrowser.mute(true);
@@ -4727,16 +3578,10 @@ __L_V__3({
 
       // Invalidate hovered tab state tracking for this closing tab.
       if (this.tabContainer._hoveredTab == aTab) {
-__L_V__3({
-    lN: 3583,tT:'if',pr:'this.tabContainer._hoveredTab == aTab',eT:{},fN:''
-  });'__L_V__3';
         aTab._mouseleave();
       }
 
       if (newTab) {
-__L_V__3({
-    lN: 3587,tT:'if',pr:'newTab',eT:{},fN:''
-  });'__L_V__3';
         this.addTrustedTab(BROWSER_NEW_TAB_URL, {
           skipAnimation: true,
         });
@@ -4760,9 +3605,6 @@ __L_V__3({
       aTab.dispatchEvent(evt);
 
       if (this.tabs.length == 2) {
-__L_V__3({
-    lN: 3610,tT:'if',pr:'this.tabs.length == 2',eT:{},fN:''
-  });'__L_V__3';
         // We're closing one of our two open tabs, inform the other tab that its
         // sibling is going away.
         this.tabs[0].linkedBrowser.sendMessageToActor(
@@ -4778,13 +3620,7 @@ __L_V__3({
       }
 
       if (aTab.linkedPanel) {
-__L_V__3({
-    lN: 3625,tT:'if',pr:'aTab.linkedPanel',eT:{},fN:''
-  });'__L_V__3';
         if (!adoptedByTab && !gMultiProcessBrowser) {
-__L_V__3({
-    lN: 3626,tT:'if',pr:'!adoptedByTab && !gMultiProcessBrowser',eT:{},fN:''
-  });'__L_V__3';
           // Prevent this tab from showing further dialogs, since we're closing it
           browser.contentWindow.windowUtils.disableDialogs();
         }
@@ -4800,9 +3636,6 @@ __L_V__3({
       }
 
       if (browser.registeredOpenURI && !adoptedByTab) {
-__L_V__3({
-    lN: 3641,tT:'if',pr:'browser.registeredOpenURI && !adoptedByTab',eT:{},fN:''
-  });'__L_V__3';
         let userContextId = browser.getAttribute("usercontextid") || 0;
         this.UrlbarProviderOpenTabs.unregisterOpenTab(
           browser.registeredOpenURI.spec,
@@ -4817,9 +3650,6 @@ __L_V__3({
       // Remove this tab as the owner of any other tabs, since it's going away.
       for (let tab of this.tabs) {
         if ("owner" in tab && tab.owner == aTab) {
-__L_V__3({
-    lN: 3655,tT:'if',pr:'owner in tab && tab.owner == aTab',eT:{},fN:''
-  });'__L_V__3';
           // |tab| is a child of the tab we're removing, make it an orphan
           tab.owner = null;
         }
@@ -4829,13 +3659,7 @@ __L_V__3({
     },
 
     _endRemoveTab(aTab) {
-__L_V__3({
-    lN: 3664,tT:'func',pr:'',eT:{'aTab':aTab},fN:'_endRemoveTab'
-  });'__L_V__3';
       if (!aTab || !aTab._endRemoveArgs) {
-__L_V__3({
-    lN: 3665,tT:'if',pr:'!aTab || !aTab._endRemoveArgs',eT:{},fN:''
-  });'__L_V__3';
         return;
       }
 
@@ -4843,9 +3667,6 @@ __L_V__3({
       aTab._endRemoveArgs = null;
 
       if (this._windowIsClosing) {
-__L_V__3({
-    lN: 3672,tT:'if',pr:'this._windowIsClosing',eT:{},fN:''
-  });'__L_V__3';
         aCloseWindow = false;
         aNewTab = false;
       }
@@ -4861,21 +3682,12 @@ __L_V__3({
       this._removingTabs.splice(this._removingTabs.indexOf(aTab), 1);
 
       if (aCloseWindow) {
-__L_V__3({
-    lN: 3687,tT:'if',pr:'aCloseWindow',eT:{},fN:''
-  });'__L_V__3';
         this._windowIsClosing = true;
         while (this._removingTabs.length) {
           this._endRemoveTab(this._removingTabs[0]);
         }
       } else if (!this._windowIsClosing) {
-__L_V__3({
-    lN: 3692,tT:'if',pr:'!this._windowIsClosing',eT:{},fN:''
-  });'__L_V__3';
         if (aNewTab) {
-__L_V__3({
-    lN: 3693,tT:'if',pr:'aNewTab',eT:{},fN:''
-  });'__L_V__3';
           focusAndSelectUrlBar();
         }
 
@@ -4890,9 +3702,6 @@ __L_V__3({
       var browser = this.getBrowserForTab(aTab);
 
       if (aTab.linkedPanel) {
-__L_V__3({
-    lN: 3707,tT:'if',pr:'aTab.linkedPanel',eT:{},fN:''
-  });'__L_V__3';
         this._outerWindowIDBrowserMap.delete(browser.outerWindowID);
 
         // Because of the fact that we are setting JS properties on
@@ -4914,9 +3723,6 @@ __L_V__3({
 
       // Update hashiddentabs if this tab was hidden.
       if (aTab.hidden) {
-__L_V__3({
-    lN: 3728,tT:'if',pr:'aTab.hidden',eT:{},fN:''
-  });'__L_V__3';
         this.tabContainer._updateHiddenTabsStatus();
       }
 
@@ -4926,13 +3732,7 @@ __L_V__3({
       }
 
       if (!this._windowIsClosing) {
-__L_V__3({
-    lN: 3737,tT:'if',pr:'!this._windowIsClosing',eT:{},fN:''
-  });'__L_V__3';
         if (wasPinned) {
-__L_V__3({
-    lN: 3738,tT:'if',pr:'wasPinned',eT:{},fN:''
-  });'__L_V__3';
           this.tabContainer._positionPinnedTabs();
         }
 
@@ -4941,9 +3741,6 @@ __L_V__3({
 
         setTimeout(
           function(tabs) {
-__L_V__3({
-    lN: 3746,tT:'func',pr:'',eT:{'tabs':tabs},fN:'function'
-  });'__L_V__3';
             tabs._lastTabClosedByMouse = false;
           },
           0,
@@ -4969,9 +3766,6 @@ __L_V__3({
       // deck if we remove the browser before the switch is complete, so
       // we alert the switcher in order to show a spinner instead.
       if (this._switcher) {
-__L_V__3({
-    lN: 3771,tT:'if',pr:'this._switcher',eT:{},fN:''
-  });'__L_V__3';
         this._switcher.onTabRemoved(aTab);
       }
 
@@ -5002,9 +3796,6 @@ __L_V__3({
       );
 
       if (aCloseWindow) {
-__L_V__3({
-    lN: 3801,tT:'if',pr:'aCloseWindow',eT:{},fN:''
-  });'__L_V__3';
         this._windowIsClosing = closeWindow(
           true,
           window.warnAboutClosingWindow
@@ -5021,13 +3812,7 @@ __L_V__3({
      *          closed along with aTab)
      */
     _findTabToBlurTo(aTab, aExcludeTabs = []) {
-__L_V__3({
-    lN: 3817,tT:'func',pr:'',eT:{'aTab':aTab,'aExcludeTabs':aExcludeTabs},fN:'_findTabToBlurTo'
-  });'__L_V__3';
       if (!aTab.selected) {
-__L_V__3({
-    lN: 3818,tT:'if',pr:'!aTab.selected',eT:{},fN:''
-  });'__L_V__3';
         return null;
       }
 
@@ -5036,9 +3821,6 @@ __L_V__3({
       // If this tab has a successor, it should be selectable, since
       // hiding or closing a tab removes that tab as a successor.
       if (aTab.successor && !excludeTabs.has(aTab.successor)) {
-__L_V__3({
-    lN: 3826,tT:'if',pr:'aTab.successor && !excludeTabs.has(aTab.successor)',eT:{},fN:''
-  });'__L_V__3';
         return aTab.successor;
       }
 
@@ -5049,9 +3831,6 @@ __L_V__3({
         !excludeTabs.has(aTab.owner) &&
         Services.prefs.getBoolPref("browser.tabs.selectOwnerOnClose")
       ) {
-__L_V__3({
-    lN: 3836,tT:'if',pr:' aTab.owner && !aTab.owner.hidden && !aTab.owner.closing && !excludeTabs.has(aTab.owner) && Services.prefs.getBoolPref(browser.tabs.selectOwnerOnClose) ',eT:{},fN:''
-  });'__L_V__3';
         return aTab.owner;
       }
 
@@ -5059,9 +3838,6 @@ __L_V__3({
       let remainingTabs = this.visibleTabs;
       let numTabs = remainingTabs.length;
       if (numTabs == 0 || (numTabs == 1 && remainingTabs[0] == aTab)) {
-__L_V__3({
-    lN: 3843,tT:'if',pr:'numTabs == 0 || (numTabs == 1 && remainingTabs[0] == aTab)',eT:{},fN:''
-  });'__L_V__3';
         remainingTabs = Array.prototype.filter.call(
           this.tabs,
           tab => !tab.closing && !excludeTabs.has(tab)
@@ -5075,9 +3851,6 @@ __L_V__3({
       });
 
       if (!tab) {
-__L_V__3({
-    lN: 3856,tT:'if',pr:'!tab',eT:{},fN:''
-  });'__L_V__3';
         tab = this.tabContainer.findNextTab(aTab, {
           direction: -1,
           filter: _tab => remainingTabs.includes(_tab),
@@ -5088,9 +3861,6 @@ __L_V__3({
     },
 
     _blurTab(aTab) {
-__L_V__3({
-    lN: 3866,tT:'func',pr:'',eT:{'aTab':aTab},fN:'_blurTab'
-  });'__L_V__3';
       this.selectedTab = this._findTabToBlurTo(aTab);
     },
 
@@ -5099,27 +3869,18 @@ __L_V__3({
      *   False if swapping isn't permitted, true otherwise.
      */
     swapBrowsersAndCloseOther(aOurTab, aOtherTab) {
-__L_V__3({
-    lN: 3874,tT:'func',pr:'',eT:{'aOurTab':aOurTab,'aOtherTab':aOtherTab},fN:'swapBrowsersAndCloseOther'
-  });'__L_V__3';
       // Do not allow transfering a private tab to a non-private window
       // and vice versa.
       if (
         PrivateBrowsingUtils.isWindowPrivate(window) !=
         PrivateBrowsingUtils.isWindowPrivate(aOtherTab.ownerGlobal)
       ) {
-__L_V__3({
-    lN: 3880,tT:'if',pr:' PrivateBrowsingUtils.isWindowPrivate(window) != PrivateBrowsingUtils.isWindowPrivate(aOtherTab.ownerGlobal) ',eT:{},fN:''
-  });'__L_V__3';
         return false;
       }
 
       // Do not allow transfering a useRemoteSubframes tab to a
       // non-useRemoteSubframes window and vice versa.
       if (gFissionBrowser != aOtherTab.ownerGlobal.gFissionBrowser) {
-__L_V__3({
-    lN: 3886,tT:'if',pr:'gFissionBrowser != aOtherTab.ownerGlobal.gFissionBrowser',eT:{},fN:''
-  });'__L_V__3';
         return false;
       }
 
@@ -5128,17 +3889,11 @@ __L_V__3({
 
       // Can't swap between chrome and content processes.
       if (ourBrowser.isRemoteBrowser != otherBrowser.isRemoteBrowser) {
-__L_V__3({
-    lN: 3894,tT:'if',pr:'ourBrowser.isRemoteBrowser != otherBrowser.isRemoteBrowser',eT:{},fN:''
-  });'__L_V__3';
         return false;
       }
 
       // Keep the userContextId if set on other browser
       if (otherBrowser.hasAttribute("usercontextid")) {
-__L_V__3({
-    lN: 3899,tT:'if',pr:'otherBrowser.hasAttribute(usercontextid)',eT:{},fN:''
-  });'__L_V__3';
         ourBrowser.setAttribute(
           "usercontextid",
           otherBrowser.getAttribute("usercontextid")
@@ -5152,17 +3907,11 @@ __L_V__3({
       let otherTabListener = remoteBrowser._tabListeners.get(aOtherTab);
       let stateFlags = 0;
       if (otherTabListener) {
-__L_V__3({
-    lN: 3912,tT:'if',pr:'otherTabListener',eT:{},fN:''
-  });'__L_V__3';
         stateFlags = otherTabListener.mStateFlags;
       }
 
       // Expedite the removal of the icon if it was already scheduled.
       if (aOtherTab._soundPlayingAttrRemovalTimer) {
-__L_V__3({
-    lN: 3917,tT:'if',pr:'aOtherTab._soundPlayingAttrRemovalTimer',eT:{},fN:''
-  });'__L_V__3';
         clearTimeout(aOtherTab._soundPlayingAttrRemovalTimer);
         aOtherTab._soundPlayingAttrRemovalTimer = 0;
         aOtherTab.removeAttribute("soundplaying");
@@ -5178,9 +3927,6 @@ __L_V__3({
           closeWindowWithLastTab: true,
         })
       ) {
-__L_V__3({
-    lN: 3932,tT:'if',pr:' !remoteBrowser._beginRemoveTab(aOtherTab, { adoptedByTab: aOurTab, closeWindowWithLastTab: true, }) ',eT:{},fN:''
-  });'__L_V__3';
         return false;
       }
 
@@ -5189,9 +3935,6 @@ __L_V__3({
       // about:blank being painted.
       let [closeWindow] = aOtherTab._endRemoveArgs;
       if (closeWindow) {
-__L_V__3({
-    lN: 3940,tT:'if',pr:'closeWindow',eT:{},fN:''
-  });'__L_V__3';
         let win = aOtherTab.ownerGlobal;
         win.windowUtils.suppressAnimation(true);
         // Only suppressing window animations isn't enough to avoid
@@ -5202,32 +3945,20 @@ __L_V__3({
 
       let modifiedAttrs = [];
       if (aOtherTab.hasAttribute("muted")) {
-__L_V__3({
-    lN: 3950,tT:'if',pr:'aOtherTab.hasAttribute(muted)',eT:{},fN:''
-  });'__L_V__3';
         aOurTab.setAttribute("muted", "true");
         aOurTab.muteReason = aOtherTab.muteReason;
         ourBrowser.mute();
         modifiedAttrs.push("muted");
       }
       if (aOtherTab.hasAttribute("soundplaying")) {
-__L_V__3({
-    lN: 3956,tT:'if',pr:'aOtherTab.hasAttribute(soundplaying)',eT:{},fN:''
-  });'__L_V__3';
         aOurTab.setAttribute("soundplaying", "true");
         modifiedAttrs.push("soundplaying");
       }
       if (aOtherTab.hasAttribute("usercontextid")) {
-__L_V__3({
-    lN: 3960,tT:'if',pr:'aOtherTab.hasAttribute(usercontextid)',eT:{},fN:''
-  });'__L_V__3';
         aOurTab.setUserContextId(aOtherTab.getAttribute("usercontextid"));
         modifiedAttrs.push("usercontextid");
       }
       if (aOtherTab.hasAttribute("sharing")) {
-__L_V__3({
-    lN: 3964,tT:'if',pr:'aOtherTab.hasAttribute(sharing)',eT:{},fN:''
-  });'__L_V__3';
         aOurTab.setAttribute("sharing", aOtherTab.getAttribute("sharing"));
         modifiedAttrs.push("sharing");
         aOurTab._sharingState = aOtherTab._sharingState;
@@ -5240,9 +3971,6 @@ __L_V__3({
       // then do not switch docShells but retrieve the other tab's state
       // and apply it to our tab.
       if (isPending) {
-__L_V__3({
-    lN: 3976,tT:'if',pr:'isPending',eT:{},fN:''
-  });'__L_V__3';
         SessionStore.setTabState(aOurTab, SessionStore.getTabState(aOtherTab));
 
         // Make sure to unregister any open URIs.
@@ -5251,22 +3979,13 @@ __L_V__3({
         // Workarounds for bug 458697
         // Icon might have been set on DOMLinkAdded, don't override that.
         if (!ourBrowser.mIconURL && otherBrowser.mIconURL) {
-__L_V__3({
-    lN: 3984,tT:'if',pr:'!ourBrowser.mIconURL && otherBrowser.mIconURL',eT:{},fN:''
-  });'__L_V__3';
           this.setIcon(aOurTab, otherBrowser.mIconURL);
         }
         var isBusy = aOtherTab.hasAttribute("busy");
         if (isBusy) {
-__L_V__3({
-    lN: 3988,tT:'if',pr:'isBusy',eT:{},fN:''
-  });'__L_V__3';
           aOurTab.setAttribute("busy", "true");
           modifiedAttrs.push("busy");
           if (aOurTab.selected) {
-__L_V__3({
-    lN: 3991,tT:'if',pr:'aOurTab.selected',eT:{},fN:''
-  });'__L_V__3';
             this._isBusy = true;
           }
         }
@@ -5276,9 +3995,6 @@ __L_V__3({
 
       // Unregister the previously opened URI
       if (otherBrowser.registeredOpenURI) {
-__L_V__3({
-    lN: 4000,tT:'if',pr:'otherBrowser.registeredOpenURI',eT:{},fN:''
-  });'__L_V__3';
         let userContextId = otherBrowser.getAttribute("usercontextid") || 0;
         this.UrlbarProviderOpenTabs.unregisterOpenTab(
           otherBrowser.registeredOpenURI.spec,
@@ -5290,24 +4006,15 @@ __L_V__3({
       // Handle findbar data (if any)
       let otherFindBar = aOtherTab._findBar;
       if (otherFindBar && otherFindBar.findMode == otherFindBar.FIND_NORMAL) {
-__L_V__3({
-    lN: 4011,tT:'if',pr:'otherFindBar && otherFindBar.findMode == otherFindBar.FIND_NORMAL',eT:{},fN:''
-  });'__L_V__3';
         let oldValue = otherFindBar._findField.value;
         let wasHidden = otherFindBar.hidden;
         let ourFindBarPromise = this.getFindBar(aOurTab);
         ourFindBarPromise.then(ourFindBar => {
           if (!ourFindBar) {
-__L_V__3({
-    lN: 4016,tT:'if',pr:'!ourFindBar',eT:{},fN:''
-  });'__L_V__3';
             return;
           }
           ourFindBar._findField.value = oldValue;
           if (!wasHidden) {
-__L_V__3({
-    lN: 4020,tT:'if',pr:'!wasHidden',eT:{},fN:''
-  });'__L_V__3';
             ourFindBar.onFindCommand();
           }
         });
@@ -5315,9 +4022,6 @@ __L_V__3({
 
       // Finish tearing down the tab that's going away.
       if (closeWindow) {
-__L_V__3({
-    lN: 4027,tT:'if',pr:'closeWindow',eT:{},fN:''
-  });'__L_V__3';
         aOtherTab.ownerGlobal.close();
       } else {
         remoteBrowser._endRemoveTab(aOtherTab);
@@ -5328,16 +4032,10 @@ __L_V__3({
       // If the tab was already selected (this happens in the scenario
       // of replaceTabWithWindow), notify onLocationChange, etc.
       if (aOurTab.selected) {
-__L_V__3({
-    lN: 4037,tT:'if',pr:'aOurTab.selected',eT:{},fN:''
-  });'__L_V__3';
         this.updateCurrentBrowser(true);
       }
 
       if (modifiedAttrs.length) {
-__L_V__3({
-    lN: 4041,tT:'if',pr:'modifiedAttrs.length',eT:{},fN:''
-  });'__L_V__3';
         this._tabAttrModified(aOurTab, modifiedAttrs);
       }
 
@@ -5345,9 +4043,6 @@ __L_V__3({
     },
 
     swapBrowsers(aOurTab, aOtherTab) {
-__L_V__3({
-    lN: 4048,tT:'func',pr:'',eT:{'aOurTab':aOurTab,'aOtherTab':aOtherTab},fN:'swapBrowsers'
-  });'__L_V__3';
       let otherBrowser = aOtherTab.linkedBrowser;
       let otherTabBrowser = otherBrowser.getTabBrowser();
 
@@ -5375,9 +4070,6 @@ __L_V__3({
     },
 
     _swapBrowserDocShells(aOurTab, aOtherBrowser, aStateFlags) {
-__L_V__3({
-    lN: 4075,tT:'func',pr:'',eT:{'aOurTab':aOurTab,'aOtherBrowser':aOtherBrowser,'aStateFlags':aStateFlags},fN:'_swapBrowserDocShells'
-  });'__L_V__3';
       // aOurTab's browser needs to be inserted now if it hasn't already.
       this._insertBrowser(aOurTab);
 
@@ -5395,9 +4087,6 @@ __L_V__3({
       this._outerWindowIDBrowserMap.delete(ourBrowser.outerWindowID);
       let remoteBrowser = aOtherBrowser.ownerGlobal.gBrowser;
       if (remoteBrowser) {
-__L_V__3({
-    lN: 4092,tT:'if',pr:'remoteBrowser',eT:{},fN:''
-  });'__L_V__3';
         remoteBrowser._outerWindowIDBrowserMap.delete(
           aOtherBrowser.outerWindowID
         );
@@ -5406,9 +4095,6 @@ __L_V__3({
       // If switcher is active, it will intercept swap events and
       // react as needed.
       if (!this._switcher) {
-__L_V__3({
-    lN: 4100,tT:'if',pr:'!this._switcher',eT:{},fN:''
-  });'__L_V__3';
         aOtherBrowser.docShellIsActive = this.shouldActivateDocShell(
           ourBrowser
         );
@@ -5418,9 +4104,6 @@ __L_V__3({
       ourBrowser.swapDocShells(aOtherBrowser);
 
       if (ourBrowser.isRemoteBrowser) {
-__L_V__3({
-    lN: 4109,tT:'if',pr:'ourBrowser.isRemoteBrowser',eT:{},fN:''
-  });'__L_V__3';
         // Switch outerWindowIDs for remote browsers.
         let ourOuterWindowID = ourBrowser._outerWindowID;
         ourBrowser._outerWindowID = aOtherBrowser._outerWindowID;
@@ -5430,9 +4113,6 @@ __L_V__3({
       // Register new outerWindowIDs.
       this._outerWindowIDBrowserMap.set(ourBrowser.outerWindowID, ourBrowser);
       if (remoteBrowser) {
-__L_V__3({
-    lN: 4118,tT:'if',pr:'remoteBrowser',eT:{},fN:''
-  });'__L_V__3';
         remoteBrowser._outerWindowIDBrowserMap.set(
           aOtherBrowser.outerWindowID,
           aOtherBrowser
@@ -5445,14 +4125,8 @@ __L_V__3({
       aOtherBrowser.permanentKey = ourPermanentKey;
       aOurTab.permanentKey = ourBrowser.permanentKey;
       if (remoteBrowser) {
-__L_V__3({
-    lN: 4130,tT:'if',pr:'remoteBrowser',eT:{},fN:''
-  });'__L_V__3';
         let otherTab = remoteBrowser.getTabForBrowser(aOtherBrowser);
         if (otherTab) {
-__L_V__3({
-    lN: 4132,tT:'if',pr:'otherTab',eT:{},fN:''
-  });'__L_V__3';
           otherTab.permanentKey = aOtherBrowser.permanentKey;
         }
       }
@@ -5473,36 +4147,21 @@ __L_V__3({
     },
 
     _swapRegisteredOpenURIs(aOurBrowser, aOtherBrowser) {
-__L_V__3({
-    lN: 4152,tT:'func',pr:'',eT:{'aOurBrowser':aOurBrowser,'aOtherBrowser':aOtherBrowser},fN:'_swapRegisteredOpenURIs'
-  });'__L_V__3';
       // Swap the registeredOpenURI properties of the two browsers
       let tmp = aOurBrowser.registeredOpenURI;
       delete aOurBrowser.registeredOpenURI;
       if (aOtherBrowser.registeredOpenURI) {
-__L_V__3({
-    lN: 4156,tT:'if',pr:'aOtherBrowser.registeredOpenURI',eT:{},fN:''
-  });'__L_V__3';
         aOurBrowser.registeredOpenURI = aOtherBrowser.registeredOpenURI;
         delete aOtherBrowser.registeredOpenURI;
       }
       if (tmp) {
-__L_V__3({
-    lN: 4160,tT:'if',pr:'tmp',eT:{},fN:''
-  });'__L_V__3';
         aOtherBrowser.registeredOpenURI = tmp;
       }
     },
 
     announceWindowCreated(browser, userContextId) {
-__L_V__3({
-    lN: 4165,tT:'func',pr:'',eT:{'browser':browser,'userContextId':userContextId},fN:'announceWindowCreated'
-  });'__L_V__3';
       let tab = this.getTabForBrowser(browser);
       if (tab && userContextId) {
-__L_V__3({
-    lN: 4167,tT:'if',pr:'tab && userContextId',eT:{},fN:''
-  });'__L_V__3';
         ContextualIdentityService.telemetry(userContextId);
         tab.setUserContextId(userContextId);
       }
@@ -5510,24 +4169,15 @@ __L_V__3({
       // We don't want to update the container icon and identifier if
       // this is not the selected browser.
       if (browser == gBrowser.selectedBrowser) {
-__L_V__3({
-    lN: 4174,tT:'if',pr:'browser == gBrowser.selectedBrowser',eT:{},fN:''
-  });'__L_V__3';
         updateUserContextUIIndicator();
       }
     },
 
     reloadMultiSelectedTabs() {
-__L_V__3({
-    lN: 4179,tT:'func',pr:'',eT:{},fN:'reloadMultiSelectedTabs'
-  });'__L_V__3';
       this.reloadTabs(this.selectedTabs);
     },
 
     reloadTabs(tabs) {
-__L_V__3({
-    lN: 4183,tT:'func',pr:'',eT:{'tabs':tabs},fN:'reloadTabs'
-  });'__L_V__3';
       for (let tab of tabs) {
         try {
           this.getBrowserForTab(tab).reload();
@@ -5538,9 +4188,6 @@ __L_V__3({
     },
 
     reloadTab(aTab) {
-__L_V__3({
-    lN: 4193,tT:'func',pr:'',eT:{'aTab':aTab},fN:'reloadTab'
-  });'__L_V__3';
       let browser = this.getBrowserForTab(aTab);
       // Reset temporary permissions on the current tab. This is done here
       // because we only want to reset permissions on user reload.
@@ -5552,13 +4199,7 @@ __L_V__3({
     },
 
     addProgressListener(aListener) {
-__L_V__3({
-    lN: 4204,tT:'func',pr:'',eT:{'aListener':aListener},fN:'addProgressListener'
-  });'__L_V__3';
       if (arguments.length != 1) {
-__L_V__3({
-    lN: 4205,tT:'if',pr:'arguments.length != 1',eT:{},fN:''
-  });'__L_V__3';
         Cu.reportError(
           "gBrowser.addProgressListener was " +
             "called with a second argument, " +
@@ -5572,46 +4213,28 @@ __L_V__3({
     },
 
     removeProgressListener(aListener) {
-__L_V__3({
-    lN: 4218,tT:'func',pr:'',eT:{'aListener':aListener},fN:'removeProgressListener'
-  });'__L_V__3';
       this.mProgressListeners = this.mProgressListeners.filter(
         l => l != aListener
       );
     },
 
     addTabsProgressListener(aListener) {
-__L_V__3({
-    lN: 4224,tT:'func',pr:'',eT:{'aListener':aListener},fN:'addTabsProgressListener'
-  });'__L_V__3';
       this.mTabsProgressListeners.push(aListener);
     },
 
     removeTabsProgressListener(aListener) {
-__L_V__3({
-    lN: 4228,tT:'func',pr:'',eT:{'aListener':aListener},fN:'removeTabsProgressListener'
-  });'__L_V__3';
       this.mTabsProgressListeners = this.mTabsProgressListeners.filter(
         l => l != aListener
       );
     },
 
     getBrowserForTab(aTab) {
-__L_V__3({
-    lN: 4234,tT:'func',pr:'',eT:{'aTab':aTab},fN:'getBrowserForTab'
-  });'__L_V__3';
       return aTab.linkedBrowser;
     },
 
     showOnlyTheseTabs(aTabs) {
-__L_V__3({
-    lN: 4238,tT:'func',pr:'',eT:{'aTabs':aTabs},fN:'showOnlyTheseTabs'
-  });'__L_V__3';
       for (let tab of this.tabs) {
         if (!aTabs.includes(tab)) {
-__L_V__3({
-    lN: 4240,tT:'if',pr:'!aTabs.includes(tab)',eT:{},fN:''
-  });'__L_V__3';
           this.hideTab(tab);
         } else {
           this.showTab(tab);
@@ -5623,13 +4246,7 @@ __L_V__3({
     },
 
     showTab(aTab) {
-__L_V__3({
-    lN: 4251,tT:'func',pr:'',eT:{'aTab':aTab},fN:'showTab'
-  });'__L_V__3';
       if (aTab.hidden) {
-__L_V__3({
-    lN: 4252,tT:'if',pr:'aTab.hidden',eT:{},fN:''
-  });'__L_V__3';
         aTab.removeAttribute("hidden");
         this._invalidateCachedTabs();
 
@@ -5646,9 +4263,6 @@ __L_V__3({
     },
 
     hideTab(aTab, aSource) {
-__L_V__3({
-    lN: 4268,tT:'func',pr:'',eT:{'aTab':aTab,'aSource':aSource},fN:'hideTab'
-  });'__L_V__3';
       if (
         aTab.hidden ||
         aTab.pinned ||
@@ -5657,9 +4271,6 @@ __L_V__3({
         // Tabs that are sharing the screen, microphone or camera cannot be hidden.
         (aTab._sharingState && aTab._sharingState.webRTC)
       ) {
-__L_V__3({
-    lN: 4276,tT:'if',pr:' aTab.hidden || aTab.pinned || aTab.selected || aTab.closing || // Tabs that are sharing the screen, microphone or camera cannot be hidden. (aTab._sharingState && aTab._sharingState.webRTC) ',eT:{},fN:''
-  });'__L_V__3';
         return;
       }
       aTab.setAttribute("hidden", "true");
@@ -5679,36 +4290,21 @@ __L_V__3({
       event.initEvent("TabHide", true, false);
       aTab.dispatchEvent(event);
       if (aSource) {
-__L_V__3({
-    lN: 4295,tT:'if',pr:'aSource',eT:{},fN:''
-  });'__L_V__3';
         SessionStore.setCustomTabValue(aTab, "hiddenBy", aSource);
       }
     },
 
     selectTabAtIndex(aIndex, aEvent) {
-__L_V__3({
-    lN: 4300,tT:'func',pr:'',eT:{'aIndex':aIndex,'aEvent':aEvent},fN:'selectTabAtIndex'
-  });'__L_V__3';
       let tabs = this.visibleTabs;
 
       // count backwards for aIndex < 0
       if (aIndex < 0) {
-__L_V__3({
-    lN: 4304,tT:'if',pr:'aIndex < 0',eT:{},fN:''
-  });'__L_V__3';
         aIndex += tabs.length;
         // clamp at index 0 if still negative.
         if (aIndex < 0) {
-__L_V__3({
-    lN: 4307,tT:'if',pr:'aIndex < 0',eT:{},fN:''
-  });'__L_V__3';
           aIndex = 0;
         }
       } else if (aIndex >= tabs.length) {
-__L_V__3({
-    lN: 4310,tT:'if',pr:'aIndex >= tabs.length',eT:{},fN:''
-  });'__L_V__3';
         // clamp at right-most tab if out of range.
         aIndex = tabs.length - 1;
       }
@@ -5716,9 +4312,6 @@ __L_V__3({
       this.selectedTab = tabs[aIndex];
 
       if (aEvent) {
-__L_V__3({
-    lN: 4317,tT:'if',pr:'aEvent',eT:{},fN:''
-  });'__L_V__3';
         aEvent.preventDefault();
         aEvent.stopPropagation();
       }
@@ -5729,13 +4322,7 @@ __L_V__3({
      * in the current window, in which case this will do nothing.
      */
     replaceTabWithWindow(aTab, aOptions) {
-__L_V__3({
-    lN: 4327,tT:'func',pr:'',eT:{'aTab':aTab,'aOptions':aOptions},fN:'replaceTabWithWindow'
-  });'__L_V__3';
       if (this.tabs.length == 1) {
-__L_V__3({
-    lN: 4328,tT:'if',pr:'this.tabs.length == 1',eT:{},fN:''
-  });'__L_V__3';
         return null;
       }
 
@@ -5748,9 +4335,6 @@ __L_V__3({
       // waiting for the new window to appear.
       // content area when the docshells are swapped.
       if (this.animationsEnabled) {
-__L_V__3({
-    lN: 4340,tT:'if',pr:'this.animationsEnabled',eT:{},fN:''
-  });'__L_V__3';
         aTab.style.maxWidth = ""; // ensure that fade-out transition happens
         aTab.removeAttribute("fadein");
       }
@@ -5770,39 +4354,24 @@ __L_V__3({
      * in the current window, in which case this will do nothing.
      */
     replaceTabsWithWindow(contextTab, aOptions) {
-__L_V__3({
-    lN: 4359,tT:'func',pr:'',eT:{'contextTab':contextTab,'aOptions':aOptions},fN:'replaceTabsWithWindow'
-  });'__L_V__3';
       let tabs;
       if (contextTab.multiselected) {
-__L_V__3({
-    lN: 4361,tT:'if',pr:'contextTab.multiselected',eT:{},fN:''
-  });'__L_V__3';
         tabs = this.selectedTabs;
       } else {
         tabs = [contextTab];
       }
 
       if (this.tabs.length == tabs.length) {
-__L_V__3({
-    lN: 4367,tT:'if',pr:'this.tabs.length == tabs.length',eT:{},fN:''
-  });'__L_V__3';
         return null;
       }
 
       if (tabs.length == 1) {
-__L_V__3({
-    lN: 4371,tT:'if',pr:'tabs.length == 1',eT:{},fN:''
-  });'__L_V__3';
         return this.replaceTabWithWindow(tabs[0], aOptions);
       }
 
       // Play the closing animation for all selected tabs to give
       // immediate feedback while waiting for the new window to appear.
       if (this.animationsEnabled) {
-__L_V__3({
-    lN: 4377,tT:'if',pr:'this.animationsEnabled',eT:{},fN:''
-  });'__L_V__3';
         for (let tab of tabs) {
           tab.style.maxWidth = ""; // ensure that fade-out transition happens
           tab.removeAttribute("fadein");
@@ -5823,9 +4392,6 @@ __L_V__3({
         () => {
           for (let i = 0; i < tabs.length; ++i) {
             if (i != selectedTabIndex) {
-__L_V__3({
-    lN: 4397,tT:'if',pr:'i != selectedTabIndex',eT:{},fN:''
-  });'__L_V__3';
               win.gBrowser.adoptTab(tabs[i], i);
             }
           }
@@ -5844,9 +4410,6 @@ __L_V__3({
     },
 
     _updateTabsAfterInsert() {
-__L_V__3({
-    lN: 4415,tT:'func',pr:'',eT:{},fN:'_updateTabsAfterInsert'
-  });'__L_V__3';
       for (let i = 0; i < this.tabs.length; i++) {
         this.tabs[i]._tPos = i;
         this.tabs[i]._selected = false;
@@ -5871,37 +4434,22 @@ __L_V__3({
     },
 
     moveTabTo(aTab, aIndex, aKeepRelatedTabs) {
-__L_V__3({
-    lN: 4439,tT:'func',pr:'',eT:{'aTab':aTab,'aIndex':aIndex,'aKeepRelatedTabs':aKeepRelatedTabs},fN:'moveTabTo'
-  });'__L_V__3';
       var oldPosition = aTab._tPos;
       if (oldPosition == aIndex) {
-__L_V__3({
-    lN: 4441,tT:'if',pr:'oldPosition == aIndex',eT:{},fN:''
-  });'__L_V__3';
         return;
       }
 
       // Don't allow mixing pinned and unpinned tabs.
       if (aTab.pinned) {
-__L_V__3({
-    lN: 4446,tT:'if',pr:'aTab.pinned',eT:{},fN:''
-  });'__L_V__3';
         aIndex = Math.min(aIndex, this._numPinnedTabs - 1);
       } else {
         aIndex = Math.max(aIndex, this._numPinnedTabs);
       }
       if (oldPosition == aIndex) {
-__L_V__3({
-    lN: 4451,tT:'if',pr:'oldPosition == aIndex',eT:{},fN:''
-  });'__L_V__3';
         return;
       }
 
       if (!aKeepRelatedTabs) {
-__L_V__3({
-    lN: 4455,tT:'if',pr:'!aKeepRelatedTabs',eT:{},fN:''
-  });'__L_V__3';
         this._lastRelatedTabMap = new WeakMap();
       }
 
@@ -5915,18 +4463,12 @@ __L_V__3({
       this._updateTabsAfterInsert();
 
       if (wasFocused) {
-__L_V__3({
-    lN: 4468,tT:'if',pr:'wasFocused',eT:{},fN:''
-  });'__L_V__3';
         this.selectedTab.focus();
       }
 
       this.tabContainer._handleTabSelect(true);
 
       if (aTab.pinned) {
-__L_V__3({
-    lN: 4474,tT:'if',pr:'aTab.pinned',eT:{},fN:''
-  });'__L_V__3';
         this.tabContainer._positionPinnedTabs();
       }
 
@@ -5938,23 +4480,14 @@ __L_V__3({
     },
 
     moveTabForward() {
-__L_V__3({
-    lN: 4485,tT:'func',pr:'',eT:{},fN:'moveTabForward'
-  });'__L_V__3';
       let nextTab = this.tabContainer.findNextTab(this.selectedTab, {
         direction: 1,
         filter: tab => !tab.hidden,
       });
 
       if (nextTab) {
-__L_V__3({
-    lN: 4491,tT:'if',pr:'nextTab',eT:{},fN:''
-  });'__L_V__3';
         this.moveTabTo(this.selectedTab, nextTab._tPos);
       } else if (this.arrowKeysShouldWrap) {
-__L_V__3({
-    lN: 4493,tT:'if',pr:'this.arrowKeysShouldWrap',eT:{},fN:''
-  });'__L_V__3';
         this.moveTabToStart();
       }
     },
@@ -5966,9 +4499,6 @@ __L_V__3({
      *    The new tab in the current window, null if the tab couldn't be adopted.
      */
     adoptTab(aTab, aIndex, aSelectTab) {
-__L_V__3({
-    lN: 4504,tT:'func',pr:'',eT:{'aTab':aTab,'aIndex':aIndex,'aSelectTab':aSelectTab},fN:'adoptTab'
-  });'__L_V__3';
       // Swap the dropped tab with a new one we create and then close
       // it in the other window (making it seem to have moved between
       // windows). We also ensure that the tab we create to swap into has
@@ -5988,16 +4518,10 @@ __L_V__3({
 
       let numPinned = this._numPinnedTabs;
       if (aIndex < numPinned || (aTab.pinned && aIndex == numPinned)) {
-__L_V__3({
-    lN: 4523,tT:'if',pr:'aIndex < numPinned || (aTab.pinned && aIndex == numPinned)',eT:{},fN:''
-  });'__L_V__3';
         params.pinned = true;
       }
 
       if (aTab.hasAttribute("usercontextid")) {
-__L_V__3({
-    lN: 4527,tT:'if',pr:'aTab.hasAttribute(usercontextid)',eT:{},fN:''
-  });'__L_V__3';
         // new tab must have the same usercontextid as the old one
         params.userContextId = aTab.getAttribute("usercontextid");
       }
@@ -6007,9 +4531,6 @@ __L_V__3({
       aTab.container._finishAnimateTabMove();
 
       if (!createLazyBrowser) {
-__L_V__3({
-    lN: 4536,tT:'if',pr:'!createLazyBrowser',eT:{},fN:''
-  });'__L_V__3';
         // Stop the about:blank load.
         newBrowser.stop();
         // Make sure it has a docshell.
@@ -6017,18 +4538,12 @@ __L_V__3({
       }
 
       if (!this.swapBrowsersAndCloseOther(newTab, aTab)) {
-__L_V__3({
-    lN: 4543,tT:'if',pr:'!this.swapBrowsersAndCloseOther(newTab, aTab)',eT:{},fN:''
-  });'__L_V__3';
         // Swapping wasn't permitted. Bail out.
         this.removeTab(newTab);
         return null;
       }
 
       if (aSelectTab) {
-__L_V__3({
-    lN: 4549,tT:'if',pr:'aSelectTab',eT:{},fN:''
-  });'__L_V__3';
         this.selectedTab = newTab;
       }
 
@@ -6036,64 +4551,37 @@ __L_V__3({
     },
 
     moveTabBackward() {
-__L_V__3({
-    lN: 4556,tT:'func',pr:'',eT:{},fN:'moveTabBackward'
-  });'__L_V__3';
       let previousTab = this.tabContainer.findNextTab(this.selectedTab, {
         direction: -1,
         filter: tab => !tab.hidden,
       });
 
       if (previousTab) {
-__L_V__3({
-    lN: 4562,tT:'if',pr:'previousTab',eT:{},fN:''
-  });'__L_V__3';
         this.moveTabTo(this.selectedTab, previousTab._tPos);
       } else if (this.arrowKeysShouldWrap) {
-__L_V__3({
-    lN: 4564,tT:'if',pr:'this.arrowKeysShouldWrap',eT:{},fN:''
-  });'__L_V__3';
         this.moveTabToEnd();
       }
     },
 
     moveTabToStart() {
-__L_V__3({
-    lN: 4569,tT:'func',pr:'',eT:{},fN:'moveTabToStart'
-  });'__L_V__3';
       let tabPos = this.selectedTab._tPos;
       if (tabPos > 0) {
-__L_V__3({
-    lN: 4571,tT:'if',pr:'tabPos > 0',eT:{},fN:''
-  });'__L_V__3';
         this.moveTabTo(this.selectedTab, 0);
       }
     },
 
     moveTabToEnd() {
-__L_V__3({
-    lN: 4576,tT:'func',pr:'',eT:{},fN:'moveTabToEnd'
-  });'__L_V__3';
       let tabPos = this.selectedTab._tPos;
       if (tabPos < this.browsers.length - 1) {
-__L_V__3({
-    lN: 4578,tT:'if',pr:'tabPos < this.browsers.length - 1',eT:{},fN:''
-  });'__L_V__3';
         this.moveTabTo(this.selectedTab, this.browsers.length - 1);
       }
     },
 
     moveTabOver(aEvent) {
-__L_V__3({
-    lN: 4583,tT:'func',pr:'',eT:{'aEvent':aEvent},fN:'moveTabOver'
-  });'__L_V__3';
       if (
         (!RTL_UI && aEvent.keyCode == KeyEvent.DOM_VK_RIGHT) ||
         (RTL_UI && aEvent.keyCode == KeyEvent.DOM_VK_LEFT)
       ) {
-__L_V__3({
-    lN: 4587,tT:'if',pr:' (!RTL_UI && aEvent.keyCode == KeyEvent.DOM_VK_RIGHT) || (RTL_UI && aEvent.keyCode == KeyEvent.DOM_VK_LEFT) ',eT:{},fN:''
-  });'__L_V__3';
         this.moveTabForward();
       } else {
         this.moveTabBackward();
@@ -6107,20 +4595,11 @@ __L_V__3({
      *          Can defer loading of the tab contents
      */
     duplicateTab(aTab, aRestoreTabImmediately) {
-__L_V__3({
-    lN: 4600,tT:'func',pr:'',eT:{'aTab':aTab,'aRestoreTabImmediately':aRestoreTabImmediately},fN:'duplicateTab'
-  });'__L_V__3';
       return SessionStore.duplicateTab(window, aTab, 0, aRestoreTabImmediately);
     },
 
     addToMultiSelectedTabs(aTab, { isLastMultiSelectChange = false } = {}) {
-__L_V__3({
-    lN: 4604,tT:'func',pr:'',eT:{'aTab':aTab,'isLastMultiSelectChange':isLastMultiSelectChange},fN:'addToMultiSelectedTabs'
-  });'__L_V__3';
       if (aTab.multiselected) {
-__L_V__3({
-    lN: 4605,tT:'if',pr:'aTab.multiselected',eT:{},fN:''
-  });'__L_V__3';
         return;
       }
 
@@ -6129,23 +4608,14 @@ __L_V__3({
       this._multiSelectedTabsSet.add(aTab);
       this._startMultiSelectChange();
       if (this._multiSelectChangeRemovals.has(aTab)) {
-__L_V__3({
-    lN: 4613,tT:'if',pr:'this._multiSelectChangeRemovals.has(aTab)',eT:{},fN:''
-  });'__L_V__3';
         this._multiSelectChangeRemovals.delete(aTab);
       } else {
         this._multiSelectChangeAdditions.add(aTab);
       }
 
       if (isLastMultiSelectChange) {
-__L_V__3({
-    lN: 4619,tT:'if',pr:'isLastMultiSelectChange',eT:{},fN:''
-  });'__L_V__3';
         let { selectedTab } = this;
         if (!selectedTab.multiselected) {
-__L_V__3({
-    lN: 4621,tT:'if',pr:'!selectedTab.multiselected',eT:{},fN:''
-  });'__L_V__3';
           this.addToMultiSelectedTabs(selectedTab, {
             isLastMultiSelectChange: false,
           });
@@ -6158,13 +4628,7 @@ __L_V__3({
      * Adds two given tabs and all tabs between them into the (multi) selected tabs collection
      */
     addRangeToMultiSelectedTabs(aTab1, aTab2) {
-__L_V__3({
-    lN: 4633,tT:'func',pr:'',eT:{'aTab1':aTab1,'aTab2':aTab2},fN:'addRangeToMultiSelectedTabs'
-  });'__L_V__3';
       if (aTab1 == aTab2) {
-__L_V__3({
-    lN: 4634,tT:'if',pr:'aTab1 == aTab2',eT:{},fN:''
-  });'__L_V__3';
         return;
       }
 
@@ -6189,13 +4653,7 @@ __L_V__3({
       aTab,
       { isLastMultiSelectChange = false } = {}
     ) {
-__L_V__3({
-    lN: 4658,tT:'func',pr:'',eT:{'aTab':aTab,'isLastMultiSelectChange':isLastMultiSelectChange},fN:'removeFromMultiSelectedTabs'
-  });'__L_V__3';
       if (!aTab.multiselected) {
-__L_V__3({
-    lN: 4659,tT:'if',pr:'!aTab.multiselected',eT:{},fN:''
-  });'__L_V__3';
         return;
       }
       aTab.removeAttribute("multiselected");
@@ -6203,21 +4661,12 @@ __L_V__3({
       this._multiSelectedTabsSet.delete(aTab);
       this._startMultiSelectChange();
       if (this._multiSelectChangeAdditions.has(aTab)) {
-__L_V__3({
-    lN: 4666,tT:'if',pr:'this._multiSelectChangeAdditions.has(aTab)',eT:{},fN:''
-  });'__L_V__3';
         this._multiSelectChangeAdditions.delete(aTab);
       } else {
         this._multiSelectChangeRemovals.add(aTab);
       }
       if (isLastMultiSelectChange) {
-__L_V__3({
-    lN: 4671,tT:'if',pr:'isLastMultiSelectChange',eT:{},fN:''
-  });'__L_V__3';
         if (aTab.selected) {
-__L_V__3({
-    lN: 4672,tT:'if',pr:'aTab.selected',eT:{},fN:''
-  });'__L_V__3';
           this.switchToNextMultiSelectedTab();
         }
         this.avoidSingleSelectedTab();
@@ -6226,17 +4675,8 @@ __L_V__3({
     },
 
     clearMultiSelectedTabs({ isLastMultiSelectChange = false } = {}) {
-__L_V__3({
-    lN: 4680,tT:'func',pr:'',eT:{'isLastMultiSelectChange':isLastMultiSelectChange},fN:'clearMultiSelectedTabs'
-  });'__L_V__3';
       if (this._clearMultiSelectionLocked) {
-__L_V__3({
-    lN: 4681,tT:'if',pr:'this._clearMultiSelectionLocked',eT:{},fN:''
-  });'__L_V__3';
         if (this._clearMultiSelectionLockedOnce) {
-__L_V__3({
-    lN: 4682,tT:'if',pr:'this._clearMultiSelectionLockedOnce',eT:{},fN:''
-  });'__L_V__3';
           this._clearMultiSelectionLockedOnce = false;
           this._clearMultiSelectionLocked = false;
         }
@@ -6244,9 +4684,6 @@ __L_V__3({
       }
 
       if (this.multiSelectedTabsCount < 1) {
-__L_V__3({
-    lN: 4689,tT:'if',pr:'this.multiSelectedTabsCount < 1',eT:{},fN:''
-  });'__L_V__3';
         return;
       }
 
@@ -6257,17 +4694,11 @@ __L_V__3({
       }
       this._lastMultiSelectedTabRef = null;
       if (isLastMultiSelectChange) {
-__L_V__3({
-    lN: 4699,tT:'if',pr:'isLastMultiSelectChange',eT:{},fN:''
-  });'__L_V__3';
         this.tabContainer._setPositionalAttributes();
       }
     },
 
     selectAllTabs() {
-__L_V__3({
-    lN: 4704,tT:'func',pr:'',eT:{},fN:'selectAllTabs'
-  });'__L_V__3';
       let visibleTabs = this.visibleTabs;
       gBrowser.addRangeToMultiSelectedTabs(
         visibleTabs[0],
@@ -6276,9 +4707,6 @@ __L_V__3({
     },
 
     allTabsSelected() {
-__L_V__3({
-    lN: 4712,tT:'func',pr:'',eT:{},fN:'allTabsSelected'
-  });'__L_V__3';
       return (
         this.visibleTabs.length == 1 ||
         this.visibleTabs.every(t => t.multiselected)
@@ -6286,17 +4714,11 @@ __L_V__3({
     },
 
     lockClearMultiSelectionOnce() {
-__L_V__3({
-    lN: 4719,tT:'func',pr:'',eT:{},fN:'lockClearMultiSelectionOnce'
-  });'__L_V__3';
       this._clearMultiSelectionLockedOnce = true;
       this._clearMultiSelectionLocked = true;
     },
 
     unlockClearMultiSelection() {
-__L_V__3({
-    lN: 4724,tT:'func',pr:'',eT:{},fN:'unlockClearMultiSelection'
-  });'__L_V__3';
       this._clearMultiSelectionLockedOnce = false;
       this._clearMultiSelectionLocked = false;
     },
@@ -6328,30 +4750,18 @@ __L_V__3({
      * A[pinned] being the only multi-selected tab, selection should be cleared.
      */
     avoidSingleSelectedTab() {
-__L_V__3({
-    lN: 4755,tT:'func',pr:'',eT:{},fN:'avoidSingleSelectedTab'
-  });'__L_V__3';
       if (this.multiSelectedTabsCount == 1) {
-__L_V__3({
-    lN: 4756,tT:'if',pr:'this.multiSelectedTabsCount == 1',eT:{},fN:''
-  });'__L_V__3';
         this.clearMultiSelectedTabs({ isLastMultiSelectChange: false });
       }
     },
 
     switchToNextMultiSelectedTab() {
-__L_V__3({
-    lN: 4761,tT:'func',pr:'',eT:{},fN:'switchToNextMultiSelectedTab'
-  });'__L_V__3';
       this._clearMultiSelectionLocked = true;
 
       // Guarantee that _clearMultiSelectionLocked lock gets released.
       try {
         let lastMultiSelectedTab = gBrowser.lastMultiSelectedTab;
         if (lastMultiSelectedTab != gBrowser.selectedTab) {
-__L_V__3({
-    lN: 4767,tT:'if',pr:'lastMultiSelectedTab != gBrowser.selectedTab',eT:{},fN:''
-  });'__L_V__3';
           gBrowser.selectedTab = lastMultiSelectedTab;
         } else {
           let selectedTabs = ChromeUtils.nondeterministicGetWeakSetKeys(
@@ -6368,15 +4778,9 @@ __L_V__3({
     },
 
     set selectedTabs(tabs) {
-__L_V__3({
-    lN: 4783,tT:'func',pr:'',eT:{'tabs':tabs},fN:'selectedTabs'
-  });'__L_V__3';
       this.clearMultiSelectedTabs({ isLastMultiSelectChange: false });
       this.selectedTab = tabs[0];
       if (tabs.length > 1) {
-__L_V__3({
-    lN: 4786,tT:'if',pr:'tabs.length > 1',eT:{},fN:''
-  });'__L_V__3';
         for (let tab of tabs) {
           this.addToMultiSelectedTabs(tab, {
             isLastMultiSelectChange: false,
@@ -6387,42 +4791,27 @@ __L_V__3({
     },
 
     get selectedTabs() {
-__L_V__3({
-    lN: 4796,tT:'func',pr:'',eT:{},fN:'selectedTabs'
-  });'__L_V__3';
       let { selectedTab, _multiSelectedTabsSet } = this;
       let tabs = ChromeUtils.nondeterministicGetWeakSetKeys(
         _multiSelectedTabsSet
       ).filter(tab => tab.isConnected && !tab.closing);
       if (!_multiSelectedTabsSet.has(selectedTab)) {
-__L_V__3({
-    lN: 4801,tT:'if',pr:'!_multiSelectedTabsSet.has(selectedTab)',eT:{},fN:''
-  });'__L_V__3';
         tabs.push(selectedTab);
       }
       return tabs.sort((a, b) => a._tPos > b._tPos);
     },
 
     get multiSelectedTabsCount() {
-__L_V__3({
-    lN: 4807,tT:'func',pr:'',eT:{},fN:'multiSelectedTabsCount'
-  });'__L_V__3';
       return ChromeUtils.nondeterministicGetWeakSetKeys(
         this._multiSelectedTabsSet
       ).filter(tab => tab.isConnected && !tab.closing).length;
     },
 
     get lastMultiSelectedTab() {
-__L_V__3({
-    lN: 4813,tT:'func',pr:'',eT:{},fN:'lastMultiSelectedTab'
-  });'__L_V__3';
       let tab = this._lastMultiSelectedTabRef
         ? this._lastMultiSelectedTabRef.get()
         : null;
       if (tab && tab.isConnected && this._multiSelectedTabsSet.has(tab)) {
-__L_V__3({
-    lN: 4817,tT:'if',pr:'tab && tab.isConnected && this._multiSelectedTabsSet.has(tab)',eT:{},fN:''
-  });'__L_V__3';
         return tab;
       }
       let selectedTab = gBrowser.selectedTab;
@@ -6431,38 +4820,23 @@ __L_V__3({
     },
 
     set lastMultiSelectedTab(aTab) {
-__L_V__3({
-    lN: 4825,tT:'func',pr:'',eT:{'aTab':aTab},fN:'lastMultiSelectedTab'
-  });'__L_V__3';
       this._lastMultiSelectedTabRef = Cu.getWeakReference(aTab);
     },
 
     _startMultiSelectChange() {
-__L_V__3({
-    lN: 4829,tT:'func',pr:'',eT:{},fN:'_startMultiSelectChange'
-  });'__L_V__3';
       if (!this._multiSelectChangeStarted) {
-__L_V__3({
-    lN: 4830,tT:'if',pr:'!this._multiSelectChangeStarted',eT:{},fN:''
-  });'__L_V__3';
         this._multiSelectChangeStarted = true;
         Promise.resolve().then(() => this._endMultiSelectChange());
       }
     },
 
     _endMultiSelectChange() {
-__L_V__3({
-    lN: 4836,tT:'func',pr:'',eT:{},fN:'_endMultiSelectChange'
-  });'__L_V__3';
       this._multiSelectChangeStarted = false;
       let noticeable =
         this._multiSelectChangeSelected ||
         this._multiSelectChangeAdditions.size ||
         this._multiSelectChangeRemovals.size;
       if (noticeable) {
-__L_V__3({
-    lN: 4842,tT:'if',pr:'noticeable',eT:{},fN:''
-  });'__L_V__3';
         this._multiSelectChangeSelected = false;
         this._multiSelectChangeAdditions.clear();
         this._multiSelectChangeRemovals.clear();
@@ -6473,14 +4847,8 @@ __L_V__3({
     },
 
     toggleMuteAudioOnMultiSelectedTabs(aTab) {
-__L_V__3({
-    lN: 4852,tT:'func',pr:'',eT:{'aTab':aTab},fN:'toggleMuteAudioOnMultiSelectedTabs'
-  });'__L_V__3';
       let tabsToToggle;
       if (aTab.activeMediaBlocked) {
-__L_V__3({
-    lN: 4854,tT:'if',pr:'aTab.activeMediaBlocked',eT:{},fN:''
-  });'__L_V__3';
         tabsToToggle = this.selectedTabs.filter(
           tab => tab.activeMediaBlocked || tab.linkedBrowser.audioMuted
         );
@@ -6502,18 +4870,12 @@ __L_V__3({
     },
 
     pinMultiSelectedTabs() {
-__L_V__3({
-    lN: 4875,tT:'func',pr:'',eT:{},fN:'pinMultiSelectedTabs'
-  });'__L_V__3';
       for (let tab of this.selectedTabs) {
         this.pinTab(tab);
       }
     },
 
     unpinMultiSelectedTabs() {
-__L_V__3({
-    lN: 4881,tT:'func',pr:'',eT:{},fN:'unpinMultiSelectedTabs'
-  });'__L_V__3';
       // The selectedTabs getter returns the tabs
       // in visual order. We need to unpin in reverse
       // order to maintain visual order.
@@ -6525,23 +4887,14 @@ __L_V__3({
     },
 
     activateBrowserForPrintPreview(aBrowser) {
-__L_V__3({
-    lN: 4892,tT:'func',pr:'',eT:{'aBrowser':aBrowser},fN:'activateBrowserForPrintPreview'
-  });'__L_V__3';
       this._printPreviewBrowsers.add(aBrowser);
       if (this._switcher) {
-__L_V__3({
-    lN: 4894,tT:'if',pr:'this._switcher',eT:{},fN:''
-  });'__L_V__3';
         this._switcher.activateBrowserForPrintPreview(aBrowser);
       }
       aBrowser.docShellIsActive = true;
     },
 
     deactivatePrintPreviewBrowsers() {
-__L_V__3({
-    lN: 4900,tT:'func',pr:'',eT:{},fN:'deactivatePrintPreviewBrowsers'
-  });'__L_V__3';
       let browsers = this._printPreviewBrowsers;
       this._printPreviewBrowsers = new Set();
       for (let browser of browsers) {
@@ -6553,13 +4906,7 @@ __L_V__3({
      * Returns true if a given browser's docshell should be active.
      */
     shouldActivateDocShell(aBrowser) {
-__L_V__3({
-    lN: 4911,tT:'func',pr:'',eT:{'aBrowser':aBrowser},fN:'shouldActivateDocShell'
-  });'__L_V__3';
       if (this._switcher) {
-__L_V__3({
-    lN: 4912,tT:'if',pr:'this._switcher',eT:{},fN:''
-  });'__L_V__3';
         return this._switcher.shouldActivateDocShell(aBrowser);
       }
       return (
@@ -6571,55 +4918,31 @@ __L_V__3({
     },
 
     _getSwitcher() {
-__L_V__3({
-    lN: 4923,tT:'func',pr:'',eT:{},fN:'_getSwitcher'
-  });'__L_V__3';
       if (!this._switcher) {
-__L_V__3({
-    lN: 4924,tT:'if',pr:'!this._switcher',eT:{},fN:''
-  });'__L_V__3';
         this._switcher = new this.AsyncTabSwitcher(this);
       }
       return this._switcher;
     },
 
     warmupTab(aTab) {
-__L_V__3({
-    lN: 4930,tT:'func',pr:'',eT:{'aTab':aTab},fN:'warmupTab'
-  });'__L_V__3';
       if (gMultiProcessBrowser) {
-__L_V__3({
-    lN: 4931,tT:'if',pr:'gMultiProcessBrowser',eT:{},fN:''
-  });'__L_V__3';
         this._getSwitcher().warmupTab(aTab);
       }
     },
 
     _handleKeyDownEvent(aEvent) {
-__L_V__3({
-    lN: 4936,tT:'func',pr:'',eT:{'aEvent':aEvent},fN:'_handleKeyDownEvent'
-  });'__L_V__3';
       if (!aEvent.isTrusted) {
-__L_V__3({
-    lN: 4937,tT:'if',pr:'!aEvent.isTrusted',eT:{},fN:''
-  });'__L_V__3';
         // Don't let untrusted events mess with tabs.
         return;
       }
 
       // Skip this only if something has explicitly cancelled it.
       if (aEvent.defaultCancelled) {
-__L_V__3({
-    lN: 4943,tT:'if',pr:'aEvent.defaultCancelled',eT:{},fN:''
-  });'__L_V__3';
         return;
       }
 
       // Don't check if the event was already consumed because tab
       // navigation should always work for better user experience.
-__L_V__3({
-    lN: 4949,tT:'switch',pr:'',eT:{},fN:''
-  });'__L_V__3';
 
       switch (ShortcutUtils.getSystemActionForEvent(aEvent)) {
         case ShortcutUtils.MOVE_TAB_BACKWARD:
@@ -6632,14 +4955,8 @@ __L_V__3({
           return;
         case ShortcutUtils.CLOSE_TAB:
           if (gBrowser.multiSelectedTabsCount) {
-__L_V__3({
-    lN: 4960,tT:'if',pr:'gBrowser.multiSelectedTabsCount',eT:{},fN:''
-  });'__L_V__3';
             gBrowser.removeMultiSelectedTabs();
           } else if (!this.selectedTab.pinned) {
-__L_V__3({
-    lN: 4962,tT:'if',pr:'!this.selectedTab.pinned',eT:{},fN:''
-  });'__L_V__3';
             this.removeCurrentTab({ animate: true });
           }
           aEvent.preventDefault();
@@ -6647,32 +4964,17 @@ __L_V__3({
     },
 
     _handleKeyPressEventMac(aEvent) {
-__L_V__3({
-    lN: 4969,tT:'func',pr:'',eT:{'aEvent':aEvent},fN:'_handleKeyPressEventMac'
-  });'__L_V__3';
       if (!aEvent.isTrusted) {
-__L_V__3({
-    lN: 4970,tT:'if',pr:'!aEvent.isTrusted',eT:{},fN:''
-  });'__L_V__3';
         // Don't let untrusted events mess with tabs.
         return;
       }
 
       // Skip this only if something has explicitly cancelled it.
       if (aEvent.defaultCancelled) {
-__L_V__3({
-    lN: 4976,tT:'if',pr:'aEvent.defaultCancelled',eT:{},fN:''
-  });'__L_V__3';
         return;
       }
 
       if (AppConstants.platform == "macosx") {
-__L_V__3({
-    lN: 4980,tT:'if',pr:'AppConstants.platform == macosx',eT:{},fN:''
-  });'__L_V__3';
-__L_V__3({
-    lN: 4981,tT:'switch',pr:'',eT:{},fN:''
-  });'__L_V__3';
         switch (
           ShortcutUtils.getSystemActionForEvent(aEvent, { rtl: RTL_UI })
         ) {
@@ -6689,24 +4991,12 @@ __L_V__3({
     },
 
     getTabTooltip(tab, includeLabel = true) {
-__L_V__3({
-    lN: 4996,tT:'func',pr:'',eT:{'tab':tab,'includeLabel':includeLabel},fN:'getTabTooltip'
-  });'__L_V__3';
       let label = "";
       if (includeLabel) {
-__L_V__3({
-    lN: 4998,tT:'if',pr:'includeLabel',eT:{},fN:''
-  });'__L_V__3';
         label = tab._fullLabel || tab.getAttribute("label");
       }
       if (AppConstants.NIGHTLY_BUILD) {
-__L_V__3({
-    lN: 5001,tT:'if',pr:'AppConstants.NIGHTLY_BUILD',eT:{},fN:''
-  });'__L_V__3';
         if (tab.linkedBrowser) {
-__L_V__3({
-    lN: 5002,tT:'if',pr:'tab.linkedBrowser',eT:{},fN:''
-  });'__L_V__3';
           // On Nightly builds, show the PID of the content process, and if
           // we're running with fission enabled, try to include PIDs for
           // every remote subframe.
@@ -6715,23 +5005,14 @@ __L_V__3({
             gFissionBrowser
           );
           if (contentPid) {
-__L_V__3({
-    lN: 5010,tT:'if',pr:'contentPid',eT:{},fN:''
-  });'__L_V__3';
             label += " (pid " + contentPid + ")";
             if (gFissionBrowser) {
-__L_V__3({
-    lN: 5012,tT:'if',pr:'gFissionBrowser',eT:{},fN:''
-  });'__L_V__3';
               label += " [F " + framePids.join(", ") + "]";
             }
           }
         }
       }
       if (tab.userContextId) {
-__L_V__3({
-    lN: 5018,tT:'if',pr:'tab.userContextId',eT:{},fN:''
-  });'__L_V__3';
         label = gTabBrowserBundle.formatStringFromName(
           "tabs.containers.tooltip",
           [
@@ -6744,17 +5025,11 @@ __L_V__3({
     },
 
     createTooltip(event) {
-__L_V__3({
-    lN: 5030,tT:'func',pr:'',eT:{'event':event},fN:'createTooltip'
-  });'__L_V__3';
       event.stopPropagation();
       let tab = document.tooltipNode
         ? document.tooltipNode.closest("tab")
         : null;
       if (!tab) {
-__L_V__3({
-    lN: 5035,tT:'if',pr:'!tab',eT:{},fN:''
-  });'__L_V__3';
         event.preventDefault();
         return;
       }
@@ -6777,9 +5052,6 @@ __L_V__3({
         ? selectedTabs.length
         : 1;
       if (tab.mOverCloseButton) {
-__L_V__3({
-    lN: 5057,tT:'if',pr:'tab.mOverCloseButton',eT:{},fN:''
-  });'__L_V__3';
         label = tab.selected
           ? stringWithShortcut(
               "tabs.closeTabs.tooltip",
@@ -6791,14 +5063,8 @@ __L_V__3({
               gTabBrowserBundle.GetStringFromName("tabs.closeTabs.tooltip")
             ).replace("#1", affectedTabsLength);
       } else if (tab._overPlayingIcon) {
-__L_V__3({
-    lN: 5068,tT:'if',pr:'tab._overPlayingIcon',eT:{},fN:''
-  });'__L_V__3';
         let stringID;
         if (tab.selected) {
-__L_V__3({
-    lN: 5070,tT:'if',pr:'tab.selected',eT:{},fN:''
-  });'__L_V__3';
           stringID = tab.linkedBrowser.audioMuted
             ? "tabs.unmuteAudio2.tooltip"
             : "tabs.muteAudio2.tooltip";
@@ -6809,9 +5075,6 @@ __L_V__3({
           );
         } else {
           if (tab.hasAttribute("activemedia-blocked")) {
-__L_V__3({
-    lN: 5080,tT:'if',pr:'tab.hasAttribute(activemedia-blocked)',eT:{},fN:''
-  });'__L_V__3';
             stringID = "tabs.unblockAudio2.tooltip";
           } else {
             stringID = tab.linkedBrowser.audioMuted
@@ -6832,12 +5095,6 @@ __L_V__3({
     },
 
     handleEvent(aEvent) {
-__L_V__3({
-    lN: 5100,tT:'func',pr:'',eT:{'aEvent':aEvent},fN:'handleEvent'
-  });'__L_V__3';
-__L_V__3({
-    lN: 5101,tT:'switch',pr:'',eT:{},fN:''
-  });'__L_V__3';
       switch (aEvent.type) {
         case "keydown":
           this._handleKeyDownEvent(aEvent);
@@ -6848,9 +5105,6 @@ __L_V__3({
         case "framefocusrequested": {
           let tab = this.getTabForBrowser(aEvent.target);
           if (!tab || tab == this.selectedTab) {
-__L_V__3({
-    lN: 5110,tT:'if',pr:'!tab || tab == this.selectedTab',eT:{},fN:''
-  });'__L_V__3';
             // Let the focus manager try to do its thing by not calling
             // preventDefault(). It will still raise the window if appropriate.
             break;
@@ -6863,9 +5117,6 @@ __L_V__3({
         case "sizemodechange":
         case "occlusionstatechange":
           if (aEvent.target == window && !this._switcher) {
-__L_V__3({
-    lN: 5122,tT:'if',pr:'aEvent.target == window && !this._switcher',eT:{},fN:''
-  });'__L_V__3';
             this.selectedBrowser.preserveLayers(
               window.windowState == window.STATE_MINIMIZED ||
                 window.isFullyOccluded
@@ -6879,29 +5130,17 @@ __L_V__3({
     },
 
     receiveMessage(aMessage) {
-__L_V__3({
-    lN: 5135,tT:'func',pr:'',eT:{'aMessage':aMessage},fN:'receiveMessage'
-  });'__L_V__3';
       let data = aMessage.data;
       let browser = aMessage.target;
-__L_V__3({
-    lN: 5138,tT:'switch',pr:'',eT:{},fN:''
-  });'__L_V__3';
 
       switch (aMessage.name) {
         case "DOMTitleChanged": {
           let tab = this.getTabForBrowser(browser);
           if (!tab || tab.hasAttribute("pending")) {
-__L_V__3({
-    lN: 5142,tT:'if',pr:'!tab || tab.hasAttribute(pending)',eT:{},fN:''
-  });'__L_V__3';
             return undefined;
           }
           let titleChanged = this.setTabTitle(tab);
           if (titleChanged && !tab.selected && !tab.hasAttribute("busy")) {
-__L_V__3({
-    lN: 5146,tT:'if',pr:'titleChanged && !tab.selected && !tab.hasAttribute(busy)',eT:{},fN:''
-  });'__L_V__3';
             tab.setAttribute("titlechanged", "true");
           }
           break;
@@ -6913,9 +5152,6 @@ __L_V__3({
         case "Browser:Init": {
           let tab = this.getTabForBrowser(browser);
           if (!tab) {
-__L_V__3({
-    lN: 5157,tT:'if',pr:'!tab',eT:{},fN:''
-  });'__L_V__3';
             return undefined;
           }
 
@@ -6954,9 +5190,6 @@ __L_V__3({
           );
 
           if (notification) {
-__L_V__3({
-    lN: 5195,tT:'if',pr:'notification',eT:{},fN:''
-  });'__L_V__3';
             notification.label = message;
           } else {
             let refreshButtonText = gNavigatorBundle.getString(
@@ -6971,13 +5204,7 @@ __L_V__3({
                 label: refreshButtonText,
                 accessKey: refreshButtonAccesskey,
                 callback() {
-__L_V__3({
-    lN: 5209,tT:'func',pr:'',eT:{},fN:'callback'
-  });'__L_V__3';
                   if (browser.messageManager) {
-__L_V__3({
-    lN: 5210,tT:'if',pr:'browser.messageManager',eT:{},fN:''
-  });'__L_V__3';
                     browser.messageManager.sendAsyncMessage(
                       "RefreshBlocker:Refresh",
                       data
@@ -7002,19 +5229,10 @@ __L_V__3({
     },
 
     observe(aSubject, aTopic, aData) {
-__L_V__3({
-    lN: 5234,tT:'func',pr:'',eT:{'aSubject':aSubject,'aTopic':aTopic,'aData':aData},fN:'observe'
-  });'__L_V__3';
-__L_V__3({
-    lN: 5235,tT:'switch',pr:'',eT:{},fN:''
-  });'__L_V__3';
       switch (aTopic) {
         case "contextual-identity-updated": {
           for (let tab of this.tabs) {
             if (tab.getAttribute("usercontextid") == aData) {
-__L_V__3({
-    lN: 5238,tT:'if',pr:'tab.getAttribute(usercontextid) == aData',eT:{},fN:''
-  });'__L_V__3';
               ContextualIdentityService.setTabStyle(tab);
             }
           }
@@ -7024,13 +5242,7 @@ __L_V__3({
     },
 
     _generateUniquePanelID() {
-__L_V__3({
-    lN: 5247,tT:'func',pr:'',eT:{},fN:'_generateUniquePanelID'
-  });'__L_V__3';
       if (!this._uniquePanelIDCounter) {
-__L_V__3({
-    lN: 5248,tT:'if',pr:'!this._uniquePanelIDCounter',eT:{},fN:''
-  });'__L_V__3';
         this._uniquePanelIDCounter = 0;
       }
 
@@ -7043,18 +5255,12 @@ __L_V__3({
     },
 
     destroy() {
-__L_V__3({
-    lN: 5260,tT:'func',pr:'',eT:{},fN:'destroy'
-  });'__L_V__3';
       this.tabContainer.destroy();
       Services.obs.removeObserver(this, "contextual-identity-updated");
 
       for (let tab of this.tabs) {
         let browser = tab.linkedBrowser;
         if (browser.registeredOpenURI) {
-__L_V__3({
-    lN: 5266,tT:'if',pr:'browser.registeredOpenURI',eT:{},fN:''
-  });'__L_V__3';
           let userContextId = browser.getAttribute("usercontextid") || 0;
           this.UrlbarProviderOpenTabs.unregisterOpenTab(
             browser.registeredOpenURI.spec,
@@ -7065,16 +5271,10 @@ __L_V__3({
 
         let filter = this._tabFilters.get(tab);
         if (filter) {
-__L_V__3({
-    lN: 5276,tT:'if',pr:'filter',eT:{},fN:''
-  });'__L_V__3';
           browser.webProgress.removeProgressListener(filter);
 
           let listener = this._tabListeners.get(tab);
           if (listener) {
-__L_V__3({
-    lN: 5280,tT:'if',pr:'listener',eT:{},fN:''
-  });'__L_V__3';
             filter.removeProgressListener(listener);
             listener.destroy();
           }
@@ -7086,9 +5286,6 @@ __L_V__3({
 
       Services.els.removeSystemEventListener(document, "keydown", this, false);
       if (AppConstants.platform == "macosx") {
-__L_V__3({
-    lN: 5291,tT:'if',pr:'AppConstants.platform == macosx',eT:{},fN:''
-  });'__L_V__3';
         Services.els.removeSystemEventListener(
           document,
           "keypress",
@@ -7101,31 +5298,19 @@ __L_V__3({
       window.removeEventListener("framefocusrequested", this);
 
       if (gMultiProcessBrowser) {
-__L_V__3({
-    lN: 5303,tT:'if',pr:'gMultiProcessBrowser',eT:{},fN:''
-  });'__L_V__3';
         let messageManager = window.getGroupMessageManager("browsers");
         messageManager.removeMessageListener("DOMTitleChanged", this);
         window.messageManager.removeMessageListener("contextmenu", this);
 
         if (this._switcher) {
-__L_V__3({
-    lN: 5308,tT:'if',pr:'this._switcher',eT:{},fN:''
-  });'__L_V__3';
           this._switcher.destroy();
         }
       }
     },
 
     _setupEventListeners() {
-__L_V__3({
-    lN: 5314,tT:'func',pr:'',eT:{},fN:'_setupEventListeners'
-  });'__L_V__3';
       this.tabpanels.addEventListener("select", event => {
         if (event.target == this.tabpanels) {
-__L_V__3({
-    lN: 5316,tT:'if',pr:'event.target == this.tabpanels',eT:{},fN:''
-  });'__L_V__3';
           this.updateCurrentBrowser();
         }
       });
@@ -7133,13 +5318,7 @@ __L_V__3({
       this.addEventListener("DOMWindowClose", event => {
         let browser = event.target;
         if (!browser.isRemoteBrowser) {
-__L_V__3({
-    lN: 5323,tT:'if',pr:'!browser.isRemoteBrowser',eT:{},fN:''
-  });'__L_V__3';
           if (!event.isTrusted) {
-__L_V__3({
-    lN: 5324,tT:'if',pr:'!event.isTrusted',eT:{},fN:''
-  });'__L_V__3';
             // If the browser is not remote, then we expect the event to be trusted.
             // In the remote case, the DOMWindowClose event is captured in content,
             // a message is sent to the parent, and another DOMWindowClose event
@@ -7155,9 +5334,6 @@ __L_V__3({
         }
 
         if (this.tabs.length == 1) {
-__L_V__3({
-    lN: 5339,tT:'if',pr:'this.tabs.length == 1',eT:{},fN:''
-  });'__L_V__3';
           // We already did PermitUnload in the content process
           // for this tab (the only one in the window). So we don't
           // need to do it again for any tabs.
@@ -7172,9 +5348,6 @@ __L_V__3({
 
         let tab = this.getTabForBrowser(browser);
         if (tab) {
-__L_V__3({
-    lN: 5353,tT:'if',pr:'tab',eT:{},fN:''
-  });'__L_V__3';
           // Skip running PermitUnload since it already happened in
           // the content process.
           this.removeTab(tab, { skipPermitUnload: true });
@@ -7190,9 +5363,6 @@ __L_V__3({
         "DOMWillOpenModalDialog",
         event => {
           if (!event.isTrusted) {
-__L_V__3({
-    lN: 5368,tT:'if',pr:'!event.isTrusted',eT:{},fN:''
-  });'__L_V__3';
             return;
           }
 
@@ -7215,9 +5385,6 @@ __L_V__3({
             event.detail.inPermitUnload &&
             Services.focus.activeWindow
           ) {
-__L_V__3({
-    lN: 5390,tT:'if',pr:' event.detail && event.detail.tabPrompt && event.detail.inPermitUnload && Services.focus.activeWindow ',eT:{},fN:''
-  });'__L_V__3';
             window.focus();
           }
 
@@ -7225,9 +5392,6 @@ __L_V__3({
           // a tab for the event (e.g. for the webextensions options_ui remote
           // browsers embedded in the "about:addons" page):
           if (!tabForEvent || tabForEvent.selected) {
-__L_V__3({
-    lN: 5397,tT:'if',pr:'!tabForEvent || tabForEvent.selected',eT:{},fN:''
-  });'__L_V__3';
             return;
           }
 
@@ -7237,9 +5401,6 @@ __L_V__3({
             event.detail.tabPrompt &&
             !event.detail.inPermitUnload
           ) {
-__L_V__3({
-    lN: 5406,tT:'if',pr:' event.detail && event.detail.tabPrompt && !event.detail.inPermitUnload ',eT:{},fN:''
-  });'__L_V__3';
             let docPrincipal = targetIsWindow
               ? event.target.document.nodePrincipal
               : null;
@@ -7251,9 +5412,6 @@ __L_V__3({
 
             // For null principals, we bail immediately and don't show the checkbox:
             if (!promptPrincipal || promptPrincipal.isNullPrincipal) {
-__L_V__3({
-    lN: 5417,tT:'if',pr:'!promptPrincipal || promptPrincipal.isNullPrincipal',eT:{},fN:''
-  });'__L_V__3';
               tabForEvent.setAttribute("attention", "true");
               this._tabAttrModified(tabForEvent, ["attention"]);
               return;
@@ -7261,17 +5419,11 @@ __L_V__3({
 
             // For non-system/expanded principals, we bail and show the checkbox
             if (promptPrincipal.URI && !promptPrincipal.isSystemPrincipal) {
-__L_V__3({
-    lN: 5424,tT:'if',pr:'promptPrincipal.URI && !promptPrincipal.isSystemPrincipal',eT:{},fN:''
-  });'__L_V__3';
               let permission = Services.perms.testPermissionFromPrincipal(
                 promptPrincipal,
                 "focus-tab-by-prompt"
               );
               if (permission != Services.perms.ALLOW_ACTION) {
-__L_V__3({
-    lN: 5429,tT:'if',pr:'permission != Services.perms.ALLOW_ACTION',eT:{},fN:''
-  });'__L_V__3';
                 // Tell the prompt box we want to show the user a checkbox:
                 let tabPrompt = this.getTabModalPromptBox(
                   tabForEvent.linkedBrowser
@@ -7296,41 +5448,26 @@ __L_V__3({
 
       this.addEventListener("DOMTitleChanged", event => {
         if (!event.isTrusted) {
-__L_V__3({
-    lN: 5453,tT:'if',pr:'!event.isTrusted',eT:{},fN:''
-  });'__L_V__3';
           return;
         }
 
         var contentWin = event.target.defaultView;
         if (contentWin != contentWin.top) {
-__L_V__3({
-    lN: 5458,tT:'if',pr:'contentWin != contentWin.top',eT:{},fN:''
-  });'__L_V__3';
           return;
         }
 
         let browser = contentWin.docShell.chromeEventHandler;
         var tab = this.getTabForBrowser(browser);
         if (!tab || tab.hasAttribute("pending")) {
-__L_V__3({
-    lN: 5464,tT:'if',pr:'!tab || tab.hasAttribute(pending)',eT:{},fN:''
-  });'__L_V__3';
           return;
         }
 
         if (!browser.docShell) {
-__L_V__3({
-    lN: 5468,tT:'if',pr:'!browser.docShell',eT:{},fN:''
-  });'__L_V__3';
           return;
         }
         // Ensure `docShell.document` (an nsIWebNavigation idl prop) is there:
         browser.docShell.QueryInterface(Ci.nsIWebNavigation);
         if (event.target != browser.docShell.document) {
-__L_V__3({
-    lN: 5473,tT:'if',pr:'event.target != browser.docShell.document',eT:{},fN:''
-  });'__L_V__3';
           return;
         }
 
@@ -7341,26 +5478,17 @@ __L_V__3({
           !browser.contentTitle &&
           browser.contentPrincipal.isSystemPrincipal
         ) {
-__L_V__3({
-    lN: 5483,tT:'if',pr:' !browser.contentTitle && browser.contentPrincipal.isSystemPrincipal ',eT:{},fN:''
-  });'__L_V__3';
           return;
         }
 
         var titleChanged = this.setTabTitle(tab);
         if (titleChanged && !tab.selected && !tab.hasAttribute("busy")) {
-__L_V__3({
-    lN: 5488,tT:'if',pr:'titleChanged && !tab.selected && !tab.hasAttribute(busy)',eT:{},fN:''
-  });'__L_V__3';
           tab.setAttribute("titlechanged", "true");
         }
       });
 
       let onTabCrashed = event => {
         if (!event.isTrusted || !event.isTopFrame) {
-__L_V__3({
-    lN: 5494,tT:'if',pr:'!event.isTrusted || !event.isTopFrame',eT:{},fN:''
-  });'__L_V__3';
           return;
         }
 
@@ -7369,9 +5497,6 @@ __L_V__3({
         // Preloaded browsers do not actually have any tabs. If one crashes,
         // it should be released and removed.
         if (browser === this.preloadedBrowser) {
-__L_V__3({
-    lN: 5502,tT:'if',pr:'browser === this.preloadedBrowser',eT:{},fN:''
-  });'__L_V__3';
           NewTabPagePreloading.removePreloadedBrowser(window);
           return;
         }
@@ -7383,9 +5508,6 @@ __L_V__3({
         let tab = this.getTabForBrowser(browser);
 
         if (this.selectedBrowser == browser) {
-__L_V__3({
-    lN: 5513,tT:'if',pr:'this.selectedBrowser == browser',eT:{},fN:''
-  });'__L_V__3';
           TabCrashHandler.onSelectedBrowserCrash(
             browser,
             isRestartRequiredCrash
@@ -7407,9 +5529,6 @@ __L_V__3({
       this.addEventListener("DOMAudioPlaybackStarted", event => {
         var tab = this.getTabFromAudioEvent(event);
         if (!tab) {
-__L_V__3({
-    lN: 5534,tT:'if',pr:'!tab',eT:{},fN:''
-  });'__L_V__3';
           return;
         }
 
@@ -7418,25 +5537,16 @@ __L_V__3({
 
         let modifiedAttrs = [];
         if (tab.hasAttribute("soundplaying-scheduledremoval")) {
-__L_V__3({
-    lN: 5542,tT:'if',pr:'tab.hasAttribute(soundplaying-scheduledremoval)',eT:{},fN:''
-  });'__L_V__3';
           tab.removeAttribute("soundplaying-scheduledremoval");
           modifiedAttrs.push("soundplaying-scheduledremoval");
         }
 
         if (!tab.hasAttribute("soundplaying")) {
-__L_V__3({
-    lN: 5547,tT:'if',pr:'!tab.hasAttribute(soundplaying)',eT:{},fN:''
-  });'__L_V__3';
           tab.setAttribute("soundplaying", true);
           modifiedAttrs.push("soundplaying");
         }
 
         if (modifiedAttrs.length) {
-__L_V__3({
-    lN: 5552,tT:'if',pr:'modifiedAttrs.length',eT:{},fN:''
-  });'__L_V__3';
           // Flush style so that the opacity takes effect immediately, in
           // case the media is stopped before the style flushes naturally.
           getComputedStyle(tab).opacity;
@@ -7448,16 +5558,10 @@ __L_V__3({
       this.addEventListener("DOMAudioPlaybackStopped", event => {
         var tab = this.getTabFromAudioEvent(event);
         if (!tab) {
-__L_V__3({
-    lN: 5563,tT:'if',pr:'!tab',eT:{},fN:''
-  });'__L_V__3';
           return;
         }
 
         if (tab.hasAttribute("soundplaying")) {
-__L_V__3({
-    lN: 5567,tT:'if',pr:'tab.hasAttribute(soundplaying)',eT:{},fN:''
-  });'__L_V__3';
           let removalDelay = Services.prefs.getIntPref(
             "browser.tabs.delayHidingAudioPlayingIconMS"
           );
@@ -7483,16 +5587,10 @@ __L_V__3({
       this.addEventListener("DOMAudioPlaybackBlockStarted", event => {
         var tab = this.getTabFromAudioEvent(event);
         if (!tab) {
-__L_V__3({
-    lN: 5592,tT:'if',pr:'!tab',eT:{},fN:''
-  });'__L_V__3';
           return;
         }
 
         if (!tab.hasAttribute("activemedia-blocked")) {
-__L_V__3({
-    lN: 5596,tT:'if',pr:'!tab.hasAttribute(activemedia-blocked)',eT:{},fN:''
-  });'__L_V__3';
           tab.setAttribute("activemedia-blocked", true);
           this._tabAttrModified(tab, ["activemedia-blocked"]);
         }
@@ -7501,16 +5599,10 @@ __L_V__3({
       this.addEventListener("DOMAudioPlaybackBlockStopped", event => {
         var tab = this.getTabFromAudioEvent(event);
         if (!tab) {
-__L_V__3({
-    lN: 5604,tT:'if',pr:'!tab',eT:{},fN:''
-  });'__L_V__3';
           return;
         }
 
         if (tab.hasAttribute("activemedia-blocked")) {
-__L_V__3({
-    lN: 5608,tT:'if',pr:'tab.hasAttribute(activemedia-blocked)',eT:{},fN:''
-  });'__L_V__3';
           tab.removeAttribute("activemedia-blocked");
           this._tabAttrModified(tab, ["activemedia-blocked"]);
           let hist = Services.telemetry.getHistogramById(
@@ -7524,9 +5616,6 @@ __L_V__3({
         let browser = event.originalTarget;
         let tab = this.getTabForBrowser(browser);
         if (!tab) {
-__L_V__3({
-    lN: 5621,tT:'if',pr:'!tab',eT:{},fN:''
-  });'__L_V__3';
           return;
         }
 
@@ -7577,42 +5666,21 @@ __L_V__3({
     },
 
     setSuccessor(aTab, successorTab) {
-__L_V__3({
-    lN: 5671,tT:'func',pr:'',eT:{'aTab':aTab,'successorTab':successorTab},fN:'setSuccessor'
-  });'__L_V__3';
       if (aTab.ownerGlobal != window) {
-__L_V__3({
-    lN: 5672,tT:'if',pr:'aTab.ownerGlobal != window',eT:{},fN:''
-  });'__L_V__3';
         throw new Error("Cannot set the successor of another window's tab");
       }
       if (successorTab == aTab) {
-__L_V__3({
-    lN: 5675,tT:'if',pr:'successorTab == aTab',eT:{},fN:''
-  });'__L_V__3';
         successorTab = null;
       }
       if (successorTab && successorTab.ownerGlobal != window) {
-__L_V__3({
-    lN: 5678,tT:'if',pr:'successorTab && successorTab.ownerGlobal != window',eT:{},fN:''
-  });'__L_V__3';
         throw new Error("Cannot set the successor to another window's tab");
       }
       if (aTab.successor) {
-__L_V__3({
-    lN: 5681,tT:'if',pr:'aTab.successor',eT:{},fN:''
-  });'__L_V__3';
         aTab.successor.predecessors.delete(aTab);
       }
       aTab.successor = successorTab;
       if (successorTab) {
-__L_V__3({
-    lN: 5685,tT:'if',pr:'successorTab',eT:{},fN:''
-  });'__L_V__3';
         if (!successorTab.predecessors) {
-__L_V__3({
-    lN: 5686,tT:'if',pr:'!successorTab.predecessors',eT:{},fN:''
-  });'__L_V__3';
           successorTab.predecessors = new Set();
         }
         successorTab.predecessors.add(aTab);
@@ -7624,13 +5692,7 @@ __L_V__3({
      * instead.
      */
     replaceInSuccession(aTab, aOtherTab) {
-__L_V__3({
-    lN: 5697,tT:'func',pr:'',eT:{'aTab':aTab,'aOtherTab':aOtherTab},fN:'replaceInSuccession'
-  });'__L_V__3';
       if (aTab.predecessors) {
-__L_V__3({
-    lN: 5698,tT:'if',pr:'aTab.predecessors',eT:{},fN:''
-  });'__L_V__3';
         for (const predecessor of Array.from(aTab.predecessors)) {
           this.setSuccessor(predecessor, aOtherTab);
         }
@@ -7649,9 +5711,6 @@ __L_V__3({
       aWasPreloadedBrowser,
       aOrigStateFlags
     ) {
-__L_V__3({
-    lN: 5716,tT:'func',pr:'',eT:{'aTab':aTab,'aBrowser':aBrowser,'aStartsBlank':aStartsBlank,'aWasPreloadedBrowser':aWasPreloadedBrowser,'aOrigStateFlags':aOrigStateFlags},fN:'constructor'
-  });'__L_V__3';
       let stateFlags = aOrigStateFlags || 0;
       // Initialize mStateFlags to non-zero e.g. when creating a progress
       // listener for preloaded browsers as there was no progress listener
@@ -7659,9 +5718,6 @@ __L_V__3({
       // quite finish loading yet, mStateFlags will very soon be overridden
       // with the correct value and end up at STATE_STOP again.
       if (aWasPreloadedBrowser) {
-__L_V__3({
-    lN: 5723,tT:'if',pr:'aWasPreloadedBrowser',eT:{},fN:''
-  });'__L_V__3';
         stateFlags =
           Ci.nsIWebProgressListener.STATE_STOP |
           Ci.nsIWebProgressListener.STATE_IS_REQUEST;
@@ -7682,29 +5738,17 @@ __L_V__3({
     }
 
     destroy() {
-__L_V__3({
-    lN: 5743,tT:'func',pr:'',eT:{},fN:'destroy'
-  });'__L_V__3';
       delete this.mTab;
       delete this.mBrowser;
     }
 
     _callProgressListeners(...args) {
-__L_V__3({
-    lN: 5748,tT:'func',pr:'',eT:{'args':args},fN:'_callProgressListeners'
-  });'__L_V__3';
       args.unshift(this.mBrowser);
       return gBrowser._callProgressListeners.apply(gBrowser, args);
     }
 
     _shouldShowProgress(aRequest) {
-__L_V__3({
-    lN: 5753,tT:'func',pr:'',eT:{'aRequest':aRequest},fN:'_shouldShowProgress'
-  });'__L_V__3';
       if (this.mBlank) {
-__L_V__3({
-    lN: 5754,tT:'if',pr:'this.mBlank',eT:{},fN:''
-  });'__L_V__3';
         return false;
       }
 
@@ -7714,9 +5758,6 @@ __L_V__3({
         aRequest instanceof Ci.nsIChannel &&
         aRequest.originalURI.schemeIs("about")
       ) {
-__L_V__3({
-    lN: 5763,tT:'if',pr:' aRequest instanceof Ci.nsIChannel && aRequest.originalURI.schemeIs(about) ',eT:{},fN:''
-  });'__L_V__3';
         return false;
       }
 
@@ -7724,13 +5765,7 @@ __L_V__3({
     }
 
     _isForInitialAboutBlank(aWebProgress, aStateFlags, aLocation) {
-__L_V__3({
-    lN: 5770,tT:'func',pr:'',eT:{'aWebProgress':aWebProgress,'aStateFlags':aStateFlags,'aLocation':aLocation},fN:'_isForInitialAboutBlank'
-  });'__L_V__3';
       if (!this.mBlank || !aWebProgress.isTopLevel) {
-__L_V__3({
-    lN: 5771,tT:'if',pr:'!this.mBlank || !aWebProgress.isTopLevel',eT:{},fN:''
-  });'__L_V__3';
         return false;
       }
 
@@ -7741,9 +5776,6 @@ __L_V__3({
         this.mRequestCount == 0 &&
         !aLocation
       ) {
-__L_V__3({
-    lN: 5781,tT:'if',pr:' aStateFlags & Ci.nsIWebProgressListener.STATE_STOP && this.mRequestCount == 0 && !aLocation ',eT:{},fN:''
-  });'__L_V__3';
         return true;
       }
 
@@ -7759,24 +5791,15 @@ __L_V__3({
       aCurTotalProgress,
       aMaxTotalProgress
     ) {
-__L_V__3({
-    lN: 5796,tT:'func',pr:'',eT:{'aWebProgress':aWebProgress,'aRequest':aRequest,'aCurSelfProgress':aCurSelfProgress,'aMaxSelfProgress':aMaxSelfProgress,'aCurTotalProgress':aCurTotalProgress,'aMaxTotalProgress':aMaxTotalProgress},fN:'onProgressChange'
-  });'__L_V__3';
       this.mTotalProgress = aMaxTotalProgress
         ? aCurTotalProgress / aMaxTotalProgress
         : 0;
 
       if (!this._shouldShowProgress(aRequest)) {
-__L_V__3({
-    lN: 5801,tT:'if',pr:'!this._shouldShowProgress(aRequest)',eT:{},fN:''
-  });'__L_V__3';
         return;
       }
 
       if (this.mTotalProgress && this.mTab.hasAttribute("busy")) {
-__L_V__3({
-    lN: 5805,tT:'if',pr:'this.mTotalProgress && this.mTab.hasAttribute(busy)',eT:{},fN:''
-  });'__L_V__3';
         this.mTab.setAttribute("progress", "true");
         gBrowser._tabAttrModified(this.mTab, ["progress"]);
       }
@@ -7799,9 +5822,6 @@ __L_V__3({
       aCurTotalProgress,
       aMaxTotalProgress
     ) {
-__L_V__3({
-    lN: 5827,tT:'func',pr:'',eT:{'aWebProgress':aWebProgress,'aRequest':aRequest,'aCurSelfProgress':aCurSelfProgress,'aMaxSelfProgress':aMaxSelfProgress,'aCurTotalProgress':aCurTotalProgress,'aMaxTotalProgress':aMaxTotalProgress},fN:'onProgressChange64'
-  });'__L_V__3';
       return this.onProgressChange(
         aWebProgress,
         aRequest,
@@ -7814,13 +5834,7 @@ __L_V__3({
 
     /* eslint-disable complexity */
     onStateChange(aWebProgress, aRequest, aStateFlags, aStatus) {
-__L_V__3({
-    lN: 5839,tT:'func',pr:'',eT:{'aWebProgress':aWebProgress,'aRequest':aRequest,'aStateFlags':aStateFlags,'aStatus':aStatus},fN:'onStateChange'
-  });'__L_V__3';
       if (!aRequest) {
-__L_V__3({
-    lN: 5840,tT:'if',pr:'!aRequest',eT:{},fN:''
-  });'__L_V__3';
         return;
       }
 
@@ -7853,22 +5867,13 @@ __L_V__3({
           aStateFlags & STATE_IS_NETWORK) ||
         (!ignoreBlank && this.mBlank)
       ) {
-__L_V__3({
-    lN: 5872,tT:'if',pr:' (ignoreBlank && aStateFlags & STATE_STOP && aStateFlags & STATE_IS_NETWORK) || (!ignoreBlank && this.mBlank) ',eT:{},fN:''
-  });'__L_V__3';
         this.mBlank = false;
       }
 
       if (aStateFlags & STATE_START && aStateFlags & STATE_IS_NETWORK) {
-__L_V__3({
-    lN: 5876,tT:'if',pr:'aStateFlags & STATE_START && aStateFlags & STATE_IS_NETWORK',eT:{},fN:''
-  });'__L_V__3';
         this.mRequestCount++;
 
         if (aWebProgress.isTopLevel) {
-__L_V__3({
-    lN: 5879,tT:'if',pr:'aWebProgress.isTopLevel',eT:{},fN:''
-  });'__L_V__3';
           // Need to use originalLocation rather than location because things
           // like about:home and about:privatebrowsing arrive with nsIRequest
           // pointing to their resolved jar: or file: URIs.
@@ -7883,9 +5888,6 @@ __L_V__3({
               this.mBrowser.currentURI.spec == "about:blank"
             )
           ) {
-__L_V__3({
-    lN: 5893,tT:'if',pr:' !( originalLocation && gInitialPages.includes(originalLocation.spec) && originalLocation != about:blank && this.mBrowser.initialPageLoadedFromUserAction != originalLocation.spec && this.mBrowser.currentURI && this.mBrowser.currentURI.spec == about:blank ) ',eT:{},fN:''
-  });'__L_V__3';
             // Indicating that we started a load will allow the location
             // bar to be cleared when the load finishes.
             // In order to not overwrite user-typed content, we avoid it
@@ -7905,17 +5907,11 @@ __L_V__3({
         }
 
         if (this._shouldShowProgress(aRequest)) {
-__L_V__3({
-    lN: 5912,tT:'if',pr:'this._shouldShowProgress(aRequest)',eT:{},fN:''
-  });'__L_V__3';
           if (
             !(aStateFlags & Ci.nsIWebProgressListener.STATE_RESTORING) &&
             aWebProgress &&
             aWebProgress.isTopLevel
           ) {
-__L_V__3({
-    lN: 5917,tT:'if',pr:' !(aStateFlags & Ci.nsIWebProgressListener.STATE_RESTORING) && aWebProgress && aWebProgress.isTopLevel ',eT:{},fN:''
-  });'__L_V__3';
             this.mTab.setAttribute("busy", "true");
             gBrowser._tabAttrModified(this.mTab, ["busy"]);
             this.mTab._notselectedsinceload = !this.mTab.selected;
@@ -7923,20 +5919,11 @@ __L_V__3({
           }
 
           if (this.mTab.selected) {
-__L_V__3({
-    lN: 5924,tT:'if',pr:'this.mTab.selected',eT:{},fN:''
-  });'__L_V__3';
             gBrowser._isBusy = true;
           }
         }
       } else if (aStateFlags & STATE_STOP && aStateFlags & STATE_IS_NETWORK) {
-__L_V__3({
-    lN: 5928,tT:'if',pr:'aStateFlags & STATE_STOP && aStateFlags & STATE_IS_NETWORK',eT:{},fN:''
-  });'__L_V__3';
         if (--this.mRequestCount > 0 && aStatus == Cr.NS_ERROR_UNKNOWN_HOST) {
-__L_V__3({
-    lN: 5929,tT:'if',pr:'--this.mRequestCount > 0 && aStatus == Cr.NS_ERROR_UNKNOWN_HOST',eT:{},fN:''
-  });'__L_V__3';
           // to prevent bug 235825: wait for the request handled
           // by the automatic keyword resolver
           return;
@@ -7947,9 +5934,6 @@ __L_V__3({
 
         let modifiedAttrs = [];
         if (this.mTab.hasAttribute("busy")) {
-__L_V__3({
-    lN: 5939,tT:'if',pr:'this.mTab.hasAttribute(busy)',eT:{},fN:''
-  });'__L_V__3';
           this.mTab.removeAttribute("busy");
           modifiedAttrs.push("busy");
 
@@ -7962,13 +5946,7 @@ __L_V__3({
             !gBrowser.tabAnimationsInProgress &&
             Services.prefs.getBoolPref("toolkit.cosmeticAnimations.enabled")
           ) {
-__L_V__3({
-    lN: 5951,tT:'if',pr:' aWebProgress.isTopLevel && !aWebProgress.isLoadingDocument && Components.isSuccessCode(aStatus) && !gBrowser.tabAnimationsInProgress && Services.prefs.getBoolPref(toolkit.cosmeticAnimations.enabled) ',eT:{},fN:''
-  });'__L_V__3';
             if (this.mTab._notselectedsinceload) {
-__L_V__3({
-    lN: 5952,tT:'if',pr:'this.mTab._notselectedsinceload',eT:{},fN:''
-  });'__L_V__3';
               this.mTab.setAttribute("notselectedsinceload", "true");
             } else {
               this.mTab.removeAttribute("notselectedsinceload");
@@ -7979,29 +5957,17 @@ __L_V__3({
         }
 
         if (this.mTab.hasAttribute("progress")) {
-__L_V__3({
-    lN: 5962,tT:'if',pr:'this.mTab.hasAttribute(progress)',eT:{},fN:''
-  });'__L_V__3';
           this.mTab.removeAttribute("progress");
           modifiedAttrs.push("progress");
         }
 
         if (modifiedAttrs.length) {
-__L_V__3({
-    lN: 5967,tT:'if',pr:'modifiedAttrs.length',eT:{},fN:''
-  });'__L_V__3';
           gBrowser._tabAttrModified(this.mTab, modifiedAttrs);
         }
 
         if (aWebProgress.isTopLevel) {
-__L_V__3({
-    lN: 5971,tT:'if',pr:'aWebProgress.isTopLevel',eT:{},fN:''
-  });'__L_V__3';
           let isSuccessful = Components.isSuccessCode(aStatus);
           if (!isSuccessful && !this.mTab.isEmpty) {
-__L_V__3({
-    lN: 5973,tT:'if',pr:'!isSuccessful && !this.mTab.isEmpty',eT:{},fN:''
-  });'__L_V__3';
             // Restore the current document's location in case the
             // request was stopped (possibly from a content script)
             // before the location changed.
@@ -8010,15 +5976,9 @@ __L_V__3({
 
             let isNavigating = this.mBrowser.isNavigating;
             if (this.mTab.selected && !isNavigating) {
-__L_V__3({
-    lN: 5981,tT:'if',pr:'this.mTab.selected && !isNavigating',eT:{},fN:''
-  });'__L_V__3';
               gURLBar.setURI();
             }
           } else if (isSuccessful) {
-__L_V__3({
-    lN: 5984,tT:'if',pr:'isSuccessful',eT:{},fN:''
-  });'__L_V__3';
             this.mBrowser.urlbarChangeTracker.finishedLoad();
           }
         }
@@ -8033,32 +5993,20 @@ __L_V__3({
           !ignoreBlank &&
           !(originalLocation.spec in FAVICON_DEFAULTS)
         ) {
-__L_V__3({
-    lN: 5998,tT:'if',pr:' !this.mBrowser.mIconURL && !ignoreBlank && !(originalLocation.spec in FAVICON_DEFAULTS) ',eT:{},fN:''
-  });'__L_V__3';
           this.mTab.removeAttribute("image");
         }
 
         // For keyword URIs clear the user typed value since they will be changed into real URIs
         if (location.scheme == "keyword") {
-__L_V__3({
-    lN: 6003,tT:'if',pr:'location.scheme == keyword',eT:{},fN:''
-  });'__L_V__3';
           this.mBrowser.userTypedValue = null;
         }
 
         if (this.mTab.selected) {
-__L_V__3({
-    lN: 6007,tT:'if',pr:'this.mTab.selected',eT:{},fN:''
-  });'__L_V__3';
           gBrowser._isBusy = false;
         }
       }
 
       if (ignoreBlank) {
-__L_V__3({
-    lN: 6012,tT:'if',pr:'ignoreBlank',eT:{},fN:''
-  });'__L_V__3';
         this._callProgressListeners(
           "onUpdateCurrentBrowser",
           [aStateFlags, aStatus, "", 0],
@@ -8081,9 +6029,6 @@ __L_V__3({
       );
 
       if (aStateFlags & (STATE_START | STATE_STOP)) {
-__L_V__3({
-    lN: 6034,tT:'if',pr:'aStateFlags & (STATE_START | STATE_STOP)',eT:{},fN:''
-  });'__L_V__3';
         // reset cached temporary values at beginning and end
         this.mMessage = "";
         this.mTotalProgress = 0;
@@ -8094,9 +6039,6 @@ __L_V__3({
     /* eslint-enable complexity */
 
     onLocationChange(aWebProgress, aRequest, aLocation, aFlags) {
-__L_V__3({
-    lN: 6044,tT:'func',pr:'',eT:{'aWebProgress':aWebProgress,'aRequest':aRequest,'aLocation':aLocation,'aFlags':aFlags},fN:'onLocationChange'
-  });'__L_V__3';
       // OnLocationChange is called for both the top-level content
       // and the subframes.
       let topLevel = aWebProgress.isTopLevel;
@@ -8105,9 +6047,6 @@ __L_V__3({
         aFlags & Ci.nsIWebProgressListener.LOCATION_CHANGE_SAME_DOCUMENT
       );
       if (topLevel) {
-__L_V__3({
-    lN: 6052,tT:'if',pr:'topLevel',eT:{},fN:''
-  });'__L_V__3';
         let isReload = !!(
           aFlags & Ci.nsIWebProgressListener.LOCATION_CHANGE_RELOAD
         );
@@ -8130,9 +6069,6 @@ __L_V__3({
           (isSameDocument && this.mBrowser.isNavigating) ||
           (isSameDocument && !this.mBrowser.userTypedValue)
         ) {
-__L_V__3({
-    lN: 6074,tT:'if',pr:' this.mBrowser.didStartLoadSinceLastUserTyping() || (isErrorPage && aLocation.spec != about:blank) || (isSameDocument && this.mBrowser.isNavigating) || (isSameDocument && !this.mBrowser.userTypedValue) ',eT:{},fN:''
-  });'__L_V__3';
           this.mBrowser.userTypedValue = null;
         }
 
@@ -8143,22 +6079,13 @@ __L_V__3({
         // attribute being removed. In this case we should remove the
         // attribute here.
         if (isErrorPage && this.mTab.hasAttribute("busy")) {
-__L_V__3({
-    lN: 6084,tT:'if',pr:'isErrorPage && this.mTab.hasAttribute(busy)',eT:{},fN:''
-  });'__L_V__3';
           this.mTab.removeAttribute("busy");
           gBrowser._tabAttrModified(this.mTab, ["busy"]);
         }
 
         if (!isSameDocument) {
-__L_V__3({
-    lN: 6089,tT:'if',pr:'!isSameDocument',eT:{},fN:''
-  });'__L_V__3';
           // If the browser was playing audio, we should remove the playing state.
           if (this.mTab.hasAttribute("soundplaying")) {
-__L_V__3({
-    lN: 6091,tT:'if',pr:'this.mTab.hasAttribute(soundplaying)',eT:{},fN:''
-  });'__L_V__3';
             clearTimeout(this.mTab._soundPlayingAttrRemovalTimer);
             this.mTab._soundPlayingAttrRemovalTimer = 0;
             this.mTab.removeAttribute("soundplaying");
@@ -8167,23 +6094,14 @@ __L_V__3({
 
           // If the browser was previously muted, we should restore the muted state.
           if (this.mTab.hasAttribute("muted")) {
-__L_V__3({
-    lN: 6099,tT:'if',pr:'this.mTab.hasAttribute(muted)',eT:{},fN:''
-  });'__L_V__3';
             this.mTab.linkedBrowser.mute();
           }
 
           if (gBrowser.isFindBarInitialized(this.mTab)) {
-__L_V__3({
-    lN: 6103,tT:'if',pr:'gBrowser.isFindBarInitialized(this.mTab)',eT:{},fN:''
-  });'__L_V__3';
             let findBar = gBrowser.getCachedFindBar(this.mTab);
 
             // Close the Find toolbar if we're in old-style TAF mode
             if (findBar.findMode != findBar.FIND_NORMAL) {
-__L_V__3({
-    lN: 6107,tT:'if',pr:'findBar.findMode != findBar.FIND_NORMAL',eT:{},fN:''
-  });'__L_V__3';
               findBar.close();
             }
           }
@@ -8193,9 +6111,6 @@ __L_V__3({
           // context, see https://bugzilla.mozilla.org/show_bug.cgi?id=585653
           // and https://github.com/whatwg/html/issues/2174
           if (!isReload) {
-__L_V__3({
-    lN: 6116,tT:'if',pr:'!isReload',eT:{},fN:''
-  });'__L_V__3';
             gBrowser.setTabTitle(this.mTab);
           }
 
@@ -8208,9 +6123,6 @@ __L_V__3({
             !this.mTab.hasAttribute("pending") &&
             aWebProgress.isLoadingDocument
           ) {
-__L_V__3({
-    lN: 6128,tT:'if',pr:' !this.mTab.hasAttribute(pending) && aWebProgress.isLoadingDocument ',eT:{},fN:''
-  });'__L_V__3';
             // Removing the tab's image here causes flickering, wait until the
             // load is complete.
             this.mBrowser.mIconURL = null;
@@ -8219,9 +6131,6 @@ __L_V__3({
 
         let userContextId = this.mBrowser.getAttribute("usercontextid") || 0;
         if (this.mBrowser.registeredOpenURI) {
-__L_V__3({
-    lN: 6136,tT:'if',pr:'this.mBrowser.registeredOpenURI',eT:{},fN:''
-  });'__L_V__3';
           let uri = this.mBrowser.registeredOpenURI;
           gBrowser.UrlbarProviderOpenTabs.unregisterOpenTab(
             uri.spec,
@@ -8236,9 +6145,6 @@ __L_V__3({
           (!PrivateBrowsingUtils.isWindowPrivate(window) ||
             PrivateBrowsingUtils.permanentPrivateBrowsing)
         ) {
-__L_V__3({
-    lN: 6150,tT:'if',pr:' !isBlankPageURL(aLocation.spec) && (!PrivateBrowsingUtils.isWindowPrivate(window) || PrivateBrowsingUtils.permanentPrivateBrowsing) ',eT:{},fN:''
-  });'__L_V__3';
           gBrowser.UrlbarProviderOpenTabs.registerOpenTab(
             aLocation.spec,
             userContextId
@@ -8247,14 +6153,8 @@ __L_V__3({
         }
 
         if (this.mTab != gBrowser.selectedTab) {
-__L_V__3({
-    lN: 6158,tT:'if',pr:'this.mTab != gBrowser.selectedTab',eT:{},fN:''
-  });'__L_V__3';
           let tabCacheIndex = gBrowser._tabLayerCache.indexOf(this.mTab);
           if (tabCacheIndex != -1) {
-__L_V__3({
-    lN: 6160,tT:'if',pr:'tabCacheIndex != -1',eT:{},fN:''
-  });'__L_V__3';
             gBrowser._tabLayerCache.splice(tabCacheIndex, 1);
             gBrowser._getSwitcher().cleanUpTabAfterEviction(this.mTab);
           }
@@ -8262,9 +6162,6 @@ __L_V__3({
       }
 
       if (!this.mBlank || this.mBrowser.hasContentOpener) {
-__L_V__3({
-    lN: 6167,tT:'if',pr:'!this.mBlank || this.mBrowser.hasContentOpener',eT:{},fN:''
-  });'__L_V__3';
         this._callProgressListeners("onLocationChange", [
           aWebProgress,
           aRequest,
@@ -8272,9 +6169,6 @@ __L_V__3({
           aFlags,
         ]);
         if (topLevel && !isSameDocument) {
-__L_V__3({
-    lN: 6174,tT:'if',pr:'topLevel && !isSameDocument',eT:{},fN:''
-  });'__L_V__3';
           // Include the true final argument to indicate that this event is
           // simulated (instead of being observed by the webProgressListener).
           this._callProgressListeners("onContentBlockingEvent", [
@@ -8287,22 +6181,13 @@ __L_V__3({
       }
 
       if (topLevel) {
-__L_V__3({
-    lN: 6186,tT:'if',pr:'topLevel',eT:{},fN:''
-  });'__L_V__3';
         this.mBrowser.lastURI = aLocation;
         this.mBrowser.lastLocationChange = Date.now();
       }
     }
 
     onStatusChange(aWebProgress, aRequest, aStatus, aMessage) {
-__L_V__3({
-    lN: 6192,tT:'func',pr:'',eT:{'aWebProgress':aWebProgress,'aRequest':aRequest,'aStatus':aStatus,'aMessage':aMessage},fN:'onStatusChange'
-  });'__L_V__3';
       if (this.mBlank) {
-__L_V__3({
-    lN: 6193,tT:'if',pr:'this.mBlank',eT:{},fN:''
-  });'__L_V__3';
         return;
       }
 
@@ -8317,9 +6202,6 @@ __L_V__3({
     }
 
     onSecurityChange(aWebProgress, aRequest, aState) {
-__L_V__3({
-    lN: 6207,tT:'func',pr:'',eT:{'aWebProgress':aWebProgress,'aRequest':aRequest,'aState':aState},fN:'onSecurityChange'
-  });'__L_V__3';
       this._callProgressListeners("onSecurityChange", [
         aWebProgress,
         aRequest,
@@ -8328,9 +6210,6 @@ __L_V__3({
     }
 
     onContentBlockingEvent(aWebProgress, aRequest, aEvent) {
-__L_V__3({
-    lN: 6215,tT:'func',pr:'',eT:{'aWebProgress':aWebProgress,'aRequest':aRequest,'aEvent':aEvent},fN:'onContentBlockingEvent'
-  });'__L_V__3';
       this._callProgressListeners("onContentBlockingEvent", [
         aWebProgress,
         aRequest,
@@ -8339,9 +6218,6 @@ __L_V__3({
     }
 
     onRefreshAttempted(aWebProgress, aURI, aDelay, aSameURI) {
-__L_V__3({
-    lN: 6223,tT:'func',pr:'',eT:{'aWebProgress':aWebProgress,'aURI':aURI,'aDelay':aDelay,'aSameURI':aSameURI},fN:'onRefreshAttempted'
-  });'__L_V__3';
       return this._callProgressListeners("onRefreshAttempted", [
         aWebProgress,
         aURI,
@@ -8359,45 +6235,27 @@ __L_V__3({
 
 var StatusPanel = {
   get panel() {
-__L_V__3({
-    lN: 6240,tT:'func',pr:'',eT:{},fN:'panel'
-  });'__L_V__3';
     delete this.panel;
     return (this.panel = document.getElementById("statuspanel"));
   },
 
   get isVisible() {
-__L_V__3({
-    lN: 6245,tT:'func',pr:'',eT:{},fN:'isVisible'
-  });'__L_V__3';
     return !this.panel.hasAttribute("inactive");
   },
 
   update() {
-__L_V__3({
-    lN: 6249,tT:'func',pr:'',eT:{},fN:'update'
-  });'__L_V__3';
     if (BrowserHandler.kiosk) {
-__L_V__3({
-    lN: 6250,tT:'if',pr:'BrowserHandler.kiosk',eT:{},fN:''
-  });'__L_V__3';
       return;
     }
     let text;
     let type;
     let types = ["overLink"];
     if (XULBrowserWindow.busyUI) {
-__L_V__3({
-    lN: 6256,tT:'if',pr:'XULBrowserWindow.busyUI',eT:{},fN:''
-  });'__L_V__3';
       types.push("status");
     }
     types.push("defaultStatus");
     for (type of types) {
       if ((text = XULBrowserWindow[type])) {
-__L_V__3({
-    lN: 6261,tT:'if',pr:'(text = XULBrowserWindow[type])',eT:{},fN:''
-  });'__L_V__3';
         break;
       }
     }
@@ -8410,17 +6268,11 @@ __L_V__3({
     // (See bug 1484071.)
     let textCropped = false;
     if (text.length > 500 && text.match(/^data:[^,]+;base64,/)) {
-__L_V__3({
-    lN: 6273,tT:'if',pr:'text.length > 500 && text.match(/^data:[^,]+;base64,/)',eT:{},fN:''
-  });'__L_V__3';
       text = text.substring(0, 500) + "\u2026";
       textCropped = true;
     }
 
     if (this._labelElement.value != text || (text && !this.isVisible)) {
-__L_V__3({
-    lN: 6278,tT:'if',pr:'this._labelElement.value != text || (text && !this.isVisible)',eT:{},fN:''
-  });'__L_V__3';
       this.panel.setAttribute("previoustype", this.panel.getAttribute("type"));
       this.panel.setAttribute("type", type);
       this._label = text;
@@ -8432,21 +6284,12 @@ __L_V__3({
   },
 
   get _labelElement() {
-__L_V__3({
-    lN: 6289,tT:'func',pr:'',eT:{},fN:'_labelElement'
-  });'__L_V__3';
     delete this._labelElement;
     return (this._labelElement = document.getElementById("statuspanel-label"));
   },
 
   set _label(val) {
-__L_V__3({
-    lN: 6294,tT:'func',pr:'',eT:{'val':val},fN:'_label'
-  });'__L_V__3';
     if (!this.isVisible) {
-__L_V__3({
-    lN: 6295,tT:'if',pr:'!this.isVisible',eT:{},fN:''
-  });'__L_V__3';
       this.panel.removeAttribute("mirror");
       this.panel.removeAttribute("sizelimit");
     }
@@ -8455,9 +6298,6 @@ __L_V__3({
       this.panel.getAttribute("type") == "status" &&
       this.panel.getAttribute("previoustype") == "status"
     ) {
-__L_V__3({
-    lN: 6303,tT:'if',pr:' this.panel.getAttribute(type) == status && this.panel.getAttribute(previoustype) == status ',eT:{},fN:''
-  });'__L_V__3';
       // Before updating the label, set the panel's current width as its
       // min-width to let the panel grow but not shrink and prevent
       // unnecessary flicker while loading pages. We only care about the
@@ -8470,9 +6310,6 @@ __L_V__3({
     }
 
     if (val) {
-__L_V__3({
-    lN: 6315,tT:'if',pr:'val',eT:{},fN:''
-  });'__L_V__3';
       this._labelElement.value = val;
       this.panel.removeAttribute("inactive");
       MousePosTracker.addListener(this);
@@ -8485,9 +6322,6 @@ __L_V__3({
   },
 
   getMouseTargetRect() {
-__L_V__3({
-    lN: 6327,tT:'func',pr:'',eT:{},fN:'getMouseTargetRect'
-  });'__L_V__3';
     let container = this.panel.parentNode;
     let panelRect = window.windowUtils.getBoundsWithoutFlushing(this.panel);
     let containerRect = window.windowUtils.getBoundsWithoutFlushing(container);
@@ -8503,36 +6337,21 @@ __L_V__3({
   },
 
   onMouseEnter() {
-__L_V__3({
-    lN: 6342,tT:'func',pr:'',eT:{},fN:'onMouseEnter'
-  });'__L_V__3';
     this._mirror();
   },
 
   onMouseLeave() {
-__L_V__3({
-    lN: 6346,tT:'func',pr:'',eT:{},fN:'onMouseLeave'
-  });'__L_V__3';
     this._mirror();
   },
 
   _mirror() {
-__L_V__3({
-    lN: 6350,tT:'func',pr:'',eT:{},fN:'_mirror'
-  });'__L_V__3';
     if (this.panel.hasAttribute("mirror")) {
-__L_V__3({
-    lN: 6351,tT:'if',pr:'this.panel.hasAttribute(mirror)',eT:{},fN:''
-  });'__L_V__3';
       this.panel.removeAttribute("mirror");
     } else {
       this.panel.setAttribute("mirror", "true");
     }
 
     if (!this.panel.hasAttribute("sizelimit")) {
-__L_V__3({
-    lN: 6357,tT:'if',pr:'!this.panel.hasAttribute(sizelimit)',eT:{},fN:''
-  });'__L_V__3';
       this.panel.setAttribute("sizelimit", "true");
     }
   },
@@ -8542,25 +6361,16 @@ var TabBarVisibility = {
   _initialUpdateDone: false,
 
   update() {
-__L_V__3({
-    lN: 6366,tT:'func',pr:'',eT:{},fN:'update'
-  });'__L_V__3';
     let toolbar = document.getElementById("TabsToolbar");
     let collapse = false;
     if (
       !gBrowser /* gBrowser isn't initialized yet */ ||
       gBrowser.tabs.length - gBrowser._removingTabs.length == 1
     ) {
-__L_V__3({
-    lN: 6372,tT:'if',pr:' !gBrowser /* gBrowser isnt initialized yet */ || gBrowser.tabs.length - gBrowser._removingTabs.length == 1 ',eT:{},fN:''
-  });'__L_V__3';
       collapse = !window.toolbar.visible;
     }
 
     if (collapse == toolbar.collapsed && this._initialUpdateDone) {
-__L_V__3({
-    lN: 6376,tT:'if',pr:'collapse == toolbar.collapsed && this._initialUpdateDone',eT:{},fN:''
-  });'__L_V__3';
       return;
     }
     this._initialUpdateDone = true;
@@ -8586,18 +6396,9 @@ __L_V__3({
 var TabContextMenu = {
   contextTab: null,
   _updateToggleMuteMenuItems(aTab, aConditionFn) {
-__L_V__3({
-    lN: 6401,tT:'func',pr:'',eT:{'aTab':aTab,'aConditionFn':aConditionFn},fN:'_updateToggleMuteMenuItems'
-  });'__L_V__3';
     ["muted", "soundplaying"].forEach(attr => {
       if (!aConditionFn || aConditionFn(attr)) {
-__L_V__3({
-    lN: 6403,tT:'if',pr:'!aConditionFn || aConditionFn(attr)',eT:{},fN:''
-  });'__L_V__3';
         if (aTab.hasAttribute(attr)) {
-__L_V__3({
-    lN: 6404,tT:'if',pr:'aTab.hasAttribute(attr)',eT:{},fN:''
-  });'__L_V__3';
           aTab.toggleMuteMenuItem.setAttribute(attr, "true");
           aTab.toggleMultiSelectMuteMenuItem.setAttribute(attr, "true");
         } else {
@@ -8608,9 +6409,6 @@ __L_V__3({
     });
   },
   updateContextMenu(aPopupMenu) {
-__L_V__3({
-    lN: 6414,tT:'func',pr:'',eT:{'aPopupMenu':aPopupMenu},fN:'updateContextMenu'
-  });'__L_V__3';
     let tab =
       aPopupMenu.triggerNode &&
       (aPopupMenu.triggerNode.tab || aPopupMenu.triggerNode.closest("tab"));
@@ -8629,9 +6427,6 @@ __L_V__3({
     }
 
     if (this.contextTab.hasAttribute("customizemode")) {
-__L_V__3({
-    lN: 6432,tT:'if',pr:'this.contextTab.hasAttribute(customizemode)',eT:{},fN:''
-  });'__L_V__3';
       document.getElementById("context_openTabInWindow").disabled = true;
     }
 
@@ -8696,9 +6491,6 @@ __L_V__3({
 
     let isLastPinnedTab = false;
     if (lastTabToMove.pinned) {
-__L_V__3({
-    lN: 6496,tT:'if',pr:'lastTabToMove.pinned',eT:{},fN:''
-  });'__L_V__3';
       let sibling = gBrowser.tabContainer.findNextTab(lastTabToMove);
       isLastPinnedTab = !sibling || !sibling.pinned;
     }
@@ -8762,15 +6554,9 @@ __L_V__3({
 
     // Adjust the state of the toggle mute menu item.
     if (this.contextTab.hasAttribute("activemedia-blocked")) {
-__L_V__3({
-    lN: 6559,tT:'if',pr:'this.contextTab.hasAttribute(activemedia-blocked)',eT:{},fN:''
-  });'__L_V__3';
       toggleMute.label = gNavigatorBundle.getString("playTab.label");
       toggleMute.accessKey = gNavigatorBundle.getString("playTab.accesskey");
     } else if (this.contextTab.hasAttribute("muted")) {
-__L_V__3({
-    lN: 6562,tT:'if',pr:'this.contextTab.hasAttribute(muted)',eT:{},fN:''
-  });'__L_V__3';
       toggleMute.label = gNavigatorBundle.getString("unmuteTab.label");
       toggleMute.accessKey = gNavigatorBundle.getString("unmuteTab.accesskey");
     } else {
@@ -8780,9 +6566,6 @@ __L_V__3({
 
     // Adjust the state of the toggle mute menu item for multi-selected tabs.
     if (this.contextTab.hasAttribute("activemedia-blocked")) {
-__L_V__3({
-    lN: 6571,tT:'if',pr:'this.contextTab.hasAttribute(activemedia-blocked)',eT:{},fN:''
-  });'__L_V__3';
       toggleMultiSelectMute.label = gNavigatorBundle.getString(
         "playTabs.label"
       );
@@ -8790,9 +6573,6 @@ __L_V__3({
         "playTabs.accesskey"
       );
     } else if (this.contextTab.hasAttribute("muted")) {
-__L_V__3({
-    lN: 6578,tT:'if',pr:'this.contextTab.hasAttribute(muted)',eT:{},fN:''
-  });'__L_V__3';
       toggleMultiSelectMute.label = gNavigatorBundle.getString(
         "unmuteSelectedTabs2.label"
       );
@@ -8820,9 +6600,6 @@ __L_V__3({
     // Enable automatic forget mode is on.
     whiteListToggle.hidden = !windowIsPrivate || !autoForgetTabs.isActive();
     if (!whiteListToggle.hidden) {
-__L_V__3({
-    lN: 6605,tT:'if',pr:'!whiteListToggle.hidden',eT:{},fN:''
-  });'__L_V__3';
       const { spec: currentUrl} = this.contextTab.linkedBrowser.currentURI;
       const isAdult = autoForgetTabs.blacklisted(currentUrl, true);
       whiteListToggle.label = gNavigatorBundle
@@ -8845,15 +6622,9 @@ __L_V__3({
   },
 
   togglePrivatePinUnpin: function() {
-__L_V__3({
-    lN: 6627,tT:'func',pr:'',eT:{},fN:'function'
-  });'__L_V__3';
     const { spec: currentUrl} = this.contextTab.linkedBrowser.currentURI;
     const isAdult = autoForgetTabs.blacklisted(currentUrl, true);
     if (isAdult) {
-__L_V__3({
-    lN: 6630,tT:'if',pr:'isAdult',eT:{},fN:''
-  });'__L_V__3';
       autoForgetTabs.whitelistDomain(currentUrl, true);
     } else {
       autoForgetTabs.blacklistDomain(currentUrl, true);
@@ -8861,12 +6632,6 @@ __L_V__3({
   },
 
   handleEvent(aEvent) {
-__L_V__3({
-    lN: 6637,tT:'func',pr:'',eT:{'aEvent':aEvent},fN:'handleEvent'
-  });'__L_V__3';
-__L_V__3({
-    lN: 6638,tT:'switch',pr:'',eT:{},fN:''
-  });'__L_V__3';
     switch (aEvent.type) {
       case "popuphiding":
         gBrowser.removeEventListener("TabAttrModified", this);
@@ -8881,18 +6646,12 @@ __L_V__3({
     }
   },
   createReopenInContainerMenu(event) {
-__L_V__3({
-    lN: 6651,tT:'func',pr:'',eT:{'event':event},fN:'createReopenInContainerMenu'
-  });'__L_V__3';
     createUserContextMenu(event, {
       isContextMenu: true,
       excludeUserContextId: this.contextTab.getAttribute("usercontextid"),
     });
   },
   duplicateSelectedTabs() {
-__L_V__3({
-    lN: 6657,tT:'func',pr:'',eT:{},fN:'duplicateSelectedTabs'
-  });'__L_V__3';
     let tabsToDuplicate = gBrowser.selectedTabs;
     let newIndex = tabsToDuplicate[tabsToDuplicate.length - 1]._tPos + 1;
     for (let tab of tabsToDuplicate) {
@@ -8901,9 +6660,6 @@ __L_V__3({
     }
   },
   reopenInContainer(event) {
-__L_V__3({
-    lN: 6665,tT:'func',pr:'',eT:{'event':event},fN:'reopenInContainer'
-  });'__L_V__3';
     let userContextId = parseInt(
       event.target.getAttribute("data-usercontextid")
     );
@@ -8913,9 +6669,6 @@ __L_V__3({
 
     for (let tab of reopenedTabs) {
       if (tab.getAttribute("usercontextid") == userContextId) {
-__L_V__3({
-    lN: 6674,tT:'if',pr:'tab.getAttribute(usercontextid) == userContextId',eT:{},fN:''
-  });'__L_V__3';
         continue;
       }
 
@@ -8926,9 +6679,6 @@ __L_V__3({
       let triggeringPrincipal;
 
       if (tab.linkedPanel) {
-__L_V__3({
-    lN: 6684,tT:'if',pr:'tab.linkedPanel',eT:{},fN:''
-  });'__L_V__3';
         triggeringPrincipal = tab.linkedBrowser.contentPrincipal;
       } else {
         // For lazy tab browsers, get the original principal
@@ -8944,9 +6694,6 @@ __L_V__3({
       }
 
       if (!triggeringPrincipal || triggeringPrincipal.isNullPrincipal) {
-__L_V__3({
-    lN: 6699,tT:'if',pr:'!triggeringPrincipal || triggeringPrincipal.isNullPrincipal',eT:{},fN:''
-  });'__L_V__3';
         // Ensure that we have a null principal if we couldn't
         // deserialize it (for lazy tab browsers) ...
         // This won't always work however is safe to use.
@@ -8954,9 +6701,6 @@ __L_V__3({
           { userContextId }
         );
       } else if (triggeringPrincipal.isContentPrincipal) {
-__L_V__3({
-    lN: 6706,tT:'if',pr:'triggeringPrincipal.isContentPrincipal',eT:{},fN:''
-  });'__L_V__3';
         triggeringPrincipal = Services.scriptSecurityManager.createContentPrincipal(
           triggeringPrincipal.URI,
           { userContextId }
@@ -8971,15 +6715,9 @@ __L_V__3({
       });
 
       if (gBrowser.selectedTab == tab) {
-__L_V__3({
-    lN: 6720,tT:'if',pr:'gBrowser.selectedTab == tab',eT:{},fN:''
-  });'__L_V__3';
         gBrowser.selectedTab = newTab;
       }
       if (tab.muted && !newTab.muted) {
-__L_V__3({
-    lN: 6723,tT:'if',pr:'tab.muted && !newTab.muted',eT:{},fN:''
-  });'__L_V__3';
         newTab.toggleMuteAudio(tab.muteReason);
       }
     }

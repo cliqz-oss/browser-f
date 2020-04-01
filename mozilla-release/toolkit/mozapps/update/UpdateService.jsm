@@ -1,6 +1,3 @@
-
-/*LS-201116*/var { CliqzLogger } = ChromeUtils.import('resource://gre/modules/CliqzLogger.jsm');
-var __L_V__6 = CliqzLogger.init('mozilla-release/toolkit/mozapps/update/UpdateService.jsm','UpdateService');/*LE-201116*/
 /* -*- Mode: javascript; tab-width: 8; indent-tabs-mode: nil; c-basic-offset: 2 -*- */
 /* vim: set ts=8 sts=2 et sw=2 tw=80: */
 /* This Source Code Form is subject to the terms of the Mozilla Public
@@ -257,9 +254,6 @@ var gLogfileWritePromise;
 var gBITSInUseByAnotherUser = false;
 
 XPCOMUtils.defineLazyGetter(this, "gLogEnabled", function aus_gLogEnabled() {
-__L_V__6({
-    lN: 259,tT:'func',pr:'',eT:{},fN:'aus_gLogEnabled'
-  });'__L_V__6';
   return (
     Services.prefs.getBoolPref(PREF_APP_UPDATE_LOG, false) ||
     Services.prefs.getBoolPref(PREF_APP_UPDATE_LOG_FILE, false)
@@ -270,9 +264,6 @@ XPCOMUtils.defineLazyGetter(
   this,
   "gLogfileEnabled",
   function aus_gLogfileEnabled() {
-__L_V__6({
-    lN: 269,tT:'func',pr:'',eT:{},fN:'aus_gLogfileEnabled'
-  });'__L_V__6';
     return Services.prefs.getBoolPref(PREF_APP_UPDATE_LOG_FILE, false);
   }
 );
@@ -281,9 +272,6 @@ XPCOMUtils.defineLazyGetter(
   this,
   "gUpdateBundle",
   function aus_gUpdateBundle() {
-__L_V__6({
-    lN: 277,tT:'func',pr:'',eT:{},fN:'aus_gUpdateBundle'
-  });'__L_V__6';
     return Services.strings.createBundle(URI_UPDATES_PROPERTIES);
   }
 );
@@ -296,15 +284,9 @@ __L_V__6({
  * @throws if we don't have right access to the directory.
  */
 function testWriteAccess(updateTestFile, createDirectory) {
-__L_V__6({
-    lN: 289,tT:'func',pr:'',eT:{'updateTestFile':updateTestFile,'createDirectory':createDirectory},fN:'testWriteAccess'
-  });'__L_V__6';
   const NORMAL_FILE_TYPE = Ci.nsIFile.NORMAL_FILE_TYPE;
   const DIRECTORY_TYPE = Ci.nsIFile.DIRECTORY_TYPE;
   if (updateTestFile.exists()) {
-__L_V__6({
-    lN: 292,tT:'if',pr:'updateTestFile.exists()',eT:{},fN:''
-  });'__L_V__6';
     updateTestFile.remove(false);
   }
   updateTestFile.create(
@@ -320,13 +302,7 @@ __L_V__6({
  * @param handle The handle to close
  */
 function closeHandle(handle) {
-__L_V__6({
-    lN: 307,tT:'func',pr:'',eT:{'handle':handle},fN:'closeHandle'
-  });'__L_V__6';
   if (handle) {
-__L_V__6({
-    lN: 308,tT:'if',pr:'handle',eT:{},fN:''
-  });'__L_V__6';
     let lib = ctypes.open("kernel32.dll");
     let CloseHandle = lib.declare(
       "CloseHandle",
@@ -349,13 +325,7 @@ __L_V__6({
  * @return The Win32 handle to the mutex.
  */
 function createMutex(aName, aAllowExisting = true) {
-__L_V__6({
-    lN: 330,tT:'func',pr:'',eT:{'aName':aName,'aAllowExisting':aAllowExisting},fN:'createMutex'
-  });'__L_V__6';
   if (AppConstants.platform != "win") {
-__L_V__6({
-    lN: 331,tT:'if',pr:'AppConstants.platform != win',eT:{},fN:''
-  });'__L_V__6';
     throw Cr.NS_ERROR_NOT_IMPLEMENTED;
   }
 
@@ -374,18 +344,12 @@ __L_V__6({
   let handle = CreateMutexW(null, INITIAL_OWN, aName);
   let alreadyExists = ctypes.winLastError == ERROR_ALREADY_EXISTS;
   if (handle && !handle.isNull() && !aAllowExisting && alreadyExists) {
-__L_V__6({
-    lN: 349,tT:'if',pr:'handle && !handle.isNull() && !aAllowExisting && alreadyExists',eT:{},fN:''
-  });'__L_V__6';
     closeHandle(handle);
     handle = null;
   }
   lib.close();
 
   if (handle && handle.isNull()) {
-__L_V__6({
-    lN: 355,tT:'if',pr:'handle && handle.isNull()',eT:{},fN:''
-  });'__L_V__6';
     handle = null;
   }
 
@@ -402,13 +366,7 @@ __L_V__6({
  * @return Global mutex path
  */
 function getPerInstallationMutexName(aGlobal = true) {
-__L_V__6({
-    lN: 371,tT:'func',pr:'',eT:{'aGlobal':aGlobal},fN:'getPerInstallationMutexName'
-  });'__L_V__6';
   if (AppConstants.platform != "win") {
-__L_V__6({
-    lN: 372,tT:'if',pr:'AppConstants.platform != win',eT:{},fN:''
-  });'__L_V__6';
     throw Cr.NS_ERROR_NOT_IMPLEMENTED;
   }
 
@@ -440,19 +398,10 @@ __L_V__6({
  * @return true if this instance holds the update mutex
  */
 function hasUpdateMutex() {
-__L_V__6({
-    lN: 403,tT:'func',pr:'',eT:{},fN:'hasUpdateMutex'
-  });'__L_V__6';
   if (AppConstants.platform != "win") {
-__L_V__6({
-    lN: 404,tT:'if',pr:'AppConstants.platform != win',eT:{},fN:''
-  });'__L_V__6';
     return true;
   }
   if (!gUpdateMutexHandle) {
-__L_V__6({
-    lN: 407,tT:'if',pr:'!gUpdateMutexHandle',eT:{},fN:''
-  });'__L_V__6';
     gUpdateMutexHandle = createMutex(getPerInstallationMutexName(true), false);
   }
   return !!gUpdateMutexHandle;
@@ -465,23 +414,14 @@ __L_V__6({
  * @return true if all descendants are writeable, false otherwise
  */
 function areDirectoryEntriesWriteable(aDir) {
-__L_V__6({
-    lN: 419,tT:'func',pr:'',eT:{'aDir':aDir},fN:'areDirectoryEntriesWriteable'
-  });'__L_V__6';
   let items = aDir.directoryEntries;
   while (items.hasMoreElements()) {
     let item = items.nextFile;
     if (!item.isWritable()) {
-__L_V__6({
-    lN: 423,tT:'if',pr:'!item.isWritable()',eT:{},fN:''
-  });'__L_V__6';
       LOG("areDirectoryEntriesWriteable - unable to write to " + item.path);
       return false;
     }
     if (item.isDirectory() && !areDirectoryEntriesWriteable(item)) {
-__L_V__6({
-    lN: 427,tT:'if',pr:'item.isDirectory() && !areDirectoryEntriesWriteable(item)',eT:{},fN:''
-  });'__L_V__6';
       return false;
     }
   }
@@ -495,13 +435,7 @@ __L_V__6({
  * @return true if elevation is required, false otherwise
  */
 function getElevationRequired() {
-__L_V__6({
-    lN: 440,tT:'func',pr:'',eT:{},fN:'getElevationRequired'
-  });'__L_V__6';
   if (AppConstants.platform != "macosx") {
-__L_V__6({
-    lN: 441,tT:'if',pr:'AppConstants.platform != macosx',eT:{},fN:''
-  });'__L_V__6';
     return false;
   }
 
@@ -516,9 +450,6 @@ __L_V__6({
       !getInstallDirRoot().isWritable() ||
       !areDirectoryEntriesWriteable(getInstallDirRoot())
     ) {
-__L_V__6({
-    lN: 455,tT:'if',pr:' !getInstallDirRoot().isWritable() || !areDirectoryEntriesWriteable(getInstallDirRoot()) ',eT:{},fN:''
-  });'__L_V__6';
       LOG(
         "getElevationRequired - unable to write to application bundle, " +
           "elevation required"
@@ -550,9 +481,6 @@ __L_V__6({
  * @return true if an update can be applied, false otherwise
  */
 function getCanApplyUpdates() {
-__L_V__6({
-    lN: 486,tT:'func',pr:'',eT:{},fN:'getCanApplyUpdates'
-  });'__L_V__6';
   try {
     // Check if it is possible to write to the update directory so clients won't
     // repeatedly try to apply an update without the ability to complete the
@@ -574,9 +502,6 @@ __L_V__6({
   }
 
   if (AppConstants.platform == "macosx") {
-__L_V__6({
-    lN: 507,tT:'if',pr:'AppConstants.platform == macosx',eT:{},fN:''
-  });'__L_V__6';
     LOG(
       "getCanApplyUpdates - bypass the write since elevation can be used " +
         "on Mac OS X"
@@ -585,9 +510,6 @@ __L_V__6({
   }
 
   if (shouldUseService()) {
-__L_V__6({
-    lN: 515,tT:'if',pr:'shouldUseService()',eT:{},fN:''
-  });'__L_V__6';
     LOG(
       "getCanApplyUpdates - bypass the write checks because the Windows " +
         "Maintenance Service can be used"
@@ -597,9 +519,6 @@ __L_V__6({
 
   try {
     if (AppConstants.platform == "win") {
-__L_V__6({
-    lN: 524,tT:'if',pr:'AppConstants.platform == win',eT:{},fN:''
-  });'__L_V__6';
       // On Windows when the maintenance service isn't used updates can still be
       // performed in a location requiring admin privileges by the client
       // accepting a UAC prompt from an elevation request made by the updater.
@@ -608,17 +527,11 @@ __L_V__6({
       let userCanElevate = Services.appinfo.QueryInterface(Ci.nsIWinAppHelper)
         .userCanElevate;
       if (!userCanElevate) {
-__L_V__6({
-    lN: 532,tT:'if',pr:'!userCanElevate',eT:{},fN:''
-  });'__L_V__6';
         // if we're unable to create the test file this will throw an exception.
         let appDirTestFile = getAppBaseDir();
         appDirTestFile.append(FILE_UPDATE_TEST);
         LOG("getCanApplyUpdates - testing write access " + appDirTestFile.path);
         if (appDirTestFile.exists()) {
-__L_V__6({
-    lN: 537,tT:'if',pr:'appDirTestFile.exists()',eT:{},fN:''
-  });'__L_V__6';
           appDirTestFile.remove(false);
         }
         appDirTestFile.create(
@@ -648,13 +561,7 @@ XPCOMUtils.defineLazyGetter(
   this,
   "gCanStageUpdatesSession",
   function aus_gCSUS() {
-__L_V__6({
-    lN: 566,tT:'func',pr:'',eT:{},fN:'aus_gCSUS'
-  });'__L_V__6';
     if (getElevationRequired()) {
-__L_V__6({
-    lN: 567,tT:'if',pr:'getElevationRequired()',eT:{},fN:''
-  });'__L_V__6';
       LOG(
         "gCanStageUpdatesSession - unable to stage updates because elevation " +
           "is required."
@@ -665,9 +572,6 @@ __L_V__6({
     try {
       let updateTestFile;
       if (AppConstants.platform == "macosx") {
-__L_V__6({
-    lN: 577,tT:'if',pr:'AppConstants.platform == macosx',eT:{},fN:''
-  });'__L_V__6';
         updateTestFile = getUpdateFile([FILE_UPDATE_TEST]);
       } else {
         updateTestFile = getInstallDirRoot();
@@ -678,9 +582,6 @@ __L_V__6({
       );
       testWriteAccess(updateTestFile, true);
       if (AppConstants.platform != "macosx") {
-__L_V__6({
-    lN: 587,tT:'if',pr:'AppConstants.platform != macosx',eT:{},fN:''
-  });'__L_V__6';
         // On all platforms except Mac, we need to test the parent directory as
         // well, as we need to be able to move files in that directory during the
         // replacing step.
@@ -713,14 +614,8 @@ __L_V__6({
  * @return true if updates can be staged.
  */
 function getCanStageUpdates() {
-__L_V__6({
-    lN: 619,tT:'func',pr:'',eT:{},fN:'getCanStageUpdates'
-  });'__L_V__6';
   // If staging updates are disabled, then just bail out!
   if (!Services.prefs.getBoolPref(PREF_APP_UPDATE_STAGING_ENABLED, false)) {
-__L_V__6({
-    lN: 621,tT:'if',pr:'!Services.prefs.getBoolPref(PREF_APP_UPDATE_STAGING_ENABLED, false)',eT:{},fN:''
-  });'__L_V__6';
     LOG(
       "getCanStageUpdates - staging updates is disabled by preference " +
         PREF_APP_UPDATE_STAGING_ENABLED
@@ -729,9 +624,6 @@ __L_V__6({
   }
 
   if (AppConstants.platform == "win" && shouldUseService()) {
-__L_V__6({
-    lN: 629,tT:'if',pr:'AppConstants.platform == win && shouldUseService()',eT:{},fN:''
-  });'__L_V__6';
     // No need to perform directory write checks, the maintenance service will
     // be able to write to all directories.
     LOG("getCanStageUpdates - able to stage updates using the service");
@@ -739,9 +631,6 @@ __L_V__6({
   }
 
   if (!hasUpdateMutex()) {
-__L_V__6({
-    lN: 636,tT:'if',pr:'!hasUpdateMutex()',eT:{},fN:''
-  });'__L_V__6';
     LOG(
       "getCanStageUpdates - unable to apply updates because another " +
         "instance of the application is already handling updates for this " +
@@ -769,35 +658,20 @@ __L_V__6({
  *         also be added to the labels lists for those probes in Histograms.json
  */
 function getCanUseBits() {
-__L_V__6({
-    lN: 663,tT:'func',pr:'',eT:{},fN:'getCanUseBits'
-  });'__L_V__6';
   if (AppConstants.platform != "win") {
-__L_V__6({
-    lN: 664,tT:'if',pr:'AppConstants.platform != win',eT:{},fN:''
-  });'__L_V__6';
     LOG("getCanUseBits - Not using BITS because this is not Windows");
     return "NoBits_NotWindows";
   }
   if (!AppConstants.MOZ_BITS_DOWNLOAD) {
-__L_V__6({
-    lN: 668,tT:'if',pr:'!AppConstants.MOZ_BITS_DOWNLOAD',eT:{},fN:''
-  });'__L_V__6';
     LOG("getCanUseBits - Not using BITS because the feature is disabled");
     return "NoBits_FeatureOff";
   }
 
   if (!Services.prefs.getBoolPref(PREF_APP_UPDATE_BITS_ENABLED, true)) {
-__L_V__6({
-    lN: 673,tT:'if',pr:'!Services.prefs.getBoolPref(PREF_APP_UPDATE_BITS_ENABLED, true)',eT:{},fN:''
-  });'__L_V__6';
     LOG("getCanUseBits - Not using BITS. Disabled by pref.");
     return "NoBits_Pref";
   }
   if (gBITSInUseByAnotherUser) {
-__L_V__6({
-    lN: 677,tT:'if',pr:'gBITSInUseByAnotherUser',eT:{},fN:''
-  });'__L_V__6';
     LOG("getCanUseBits - Not using BITS. Already in use by another user");
     return "NoBits_OtherUser";
   }
@@ -810,9 +684,6 @@ __L_V__6({
       defaultProxy &&
     !Cu.isInAutomation
   ) {
-__L_V__6({
-    lN: 689,tT:'if',pr:' Services.prefs.getIntPref(PREF_NETWORK_PROXY_TYPE, defaultProxy) != defaultProxy && !Cu.isInAutomation ',eT:{},fN:''
-  });'__L_V__6';
     LOG("getCanUseBits - Not using BITS because of proxy usage");
     return "NoBits_Proxy";
   }
@@ -827,29 +698,14 @@ __L_V__6({
  *          The string to write to the error console.
  */
 function LOG(string) {
-__L_V__6({
-    lN: 703,tT:'func',pr:'',eT:{'string':string},fN:'LOG'
-  });'__L_V__6';
   if (gLogEnabled) {
-__L_V__6({
-    lN: 704,tT:'if',pr:'gLogEnabled',eT:{},fN:''
-  });'__L_V__6';
     dump("*** AUS:SVC " + string + "\n");
     if (!Cu.isInAutomation) {
-__L_V__6({
-    lN: 706,tT:'if',pr:'!Cu.isInAutomation',eT:{},fN:''
-  });'__L_V__6';
       Services.console.logStringMessage("AUS:SVC " + string);
     }
 
     if (gLogfileEnabled) {
-__L_V__6({
-    lN: 710,tT:'if',pr:'gLogfileEnabled',eT:{},fN:''
-  });'__L_V__6';
       if (!gLogfileWritePromise) {
-__L_V__6({
-    lN: 711,tT:'if',pr:'!gLogfileWritePromise',eT:{},fN:''
-  });'__L_V__6';
         let logfile = Services.dirsvc.get(KEY_PROFILE_DIR, Ci.nsIFile);
         logfile.append(FILE_UPDATE_MESSAGES);
         gLogfileWritePromise = OS.File.open(logfile.path, {
@@ -895,13 +751,7 @@ __L_V__6({
  * @return  nsIFile object for the location specified.
  */
 function getUpdateDirCreate(pathArray) {
-__L_V__6({
-    lN: 756,tT:'func',pr:'',eT:{'pathArray':pathArray},fN:'getUpdateDirCreate'
-  });'__L_V__6';
   if (Cu.isInAutomation) {
-__L_V__6({
-    lN: 757,tT:'if',pr:'Cu.isInAutomation',eT:{},fN:''
-  });'__L_V__6';
     // This allows tests to use an alternate updates directory so they can test
     // startup behavior.
     const MAGIC_TEST_ROOT_PREFIX = "<test-root>";
@@ -911,15 +761,9 @@ __L_V__6({
       null
     );
     if (alternatePath && alternatePath.startsWith(MAGIC_TEST_ROOT_PREFIX)) {
-__L_V__6({
-    lN: 766,tT:'if',pr:'alternatePath && alternatePath.startsWith(MAGIC_TEST_ROOT_PREFIX)',eT:{},fN:''
-  });'__L_V__6';
       let testRoot = Services.prefs.getCharPref(PREF_TEST_ROOT);
       let relativePath = alternatePath.substring(MAGIC_TEST_ROOT_PREFIX.length);
       if (AppConstants.platform == "win") {
-__L_V__6({
-    lN: 769,tT:'if',pr:'AppConstants.platform == win',eT:{},fN:''
-  });'__L_V__6';
         relativePath = relativePath.replace(/\//g, "\\");
       }
       alternatePath = testRoot + relativePath;
@@ -943,9 +787,6 @@ __L_V__6({
  * @return  nsIFile object for the application base directory.
  */
 function getAppBaseDir() {
-__L_V__6({
-    lN: 792,tT:'func',pr:'',eT:{},fN:'getAppBaseDir'
-  });'__L_V__6';
   return Services.dirsvc.get(KEY_EXECUTABLE, Ci.nsIFile).parent;
 }
 
@@ -957,14 +798,8 @@ __L_V__6({
  * @return nsIFile object for the directory
  */
 function getInstallDirRoot() {
-__L_V__6({
-    lN: 803,tT:'func',pr:'',eT:{},fN:'getInstallDirRoot'
-  });'__L_V__6';
   let dir = getAppBaseDir();
   if (AppConstants.platform == "macosx") {
-__L_V__6({
-    lN: 805,tT:'if',pr:'AppConstants.platform == macosx',eT:{},fN:''
-  });'__L_V__6';
     // On Mac, we store the Updated.app directory inside the bundle directory.
     dir = dir.parent.parent;
   }
@@ -982,9 +817,6 @@ __L_V__6({
  *          the way are.
  */
 function getUpdateFile(pathArray) {
-__L_V__6({
-    lN: 822,tT:'func',pr:'',eT:{'pathArray':pathArray},fN:'getUpdateFile'
-  });'__L_V__6';
   let file = getUpdateDirCreate(pathArray.slice(0, -1));
   file.append(pathArray[pathArray.length - 1]);
   return file;
@@ -1001,9 +833,6 @@ __L_V__6({
  * @return  A human readable status text string
  */
 function getStatusTextFromCode(code, defaultCode) {
-__L_V__6({
-    lN: 838,tT:'func',pr:'',eT:{'code':code,'defaultCode':defaultCode},fN:'getStatusTextFromCode'
-  });'__L_V__6';
   let reason;
   try {
     reason = gUpdateBundle.GetStringFromName("check_error-" + code);
@@ -1028,9 +857,6 @@ __L_V__6({
  * @return The active updates directory, as a nsIFile object
  */
 function getUpdatesDir() {
-__L_V__6({
-    lN: 862,tT:'func',pr:'',eT:{},fN:'getUpdatesDir'
-  });'__L_V__6';
   // Right now, we only support downloading one patch at a time, so we always
   // use the same target directory.
   return getUpdateDirCreate([DIR_UPDATES, "0"]);
@@ -1044,9 +870,6 @@ __L_V__6({
  * @return  The status value of the update.
  */
 function readStatusFile(dir) {
-__L_V__6({
-    lN: 875,tT:'func',pr:'',eT:{'dir':dir},fN:'readStatusFile'
-  });'__L_V__6';
   let statusFile = dir.clone();
   statusFile.append(FILE_UPDATE_STATUS);
   let status = readStringFromFile(statusFile) || STATE_NONE;
@@ -1064,9 +887,6 @@ __L_V__6({
  *          if the file was not present (indicating there was no error).
  */
 function readBinaryTransparencyResult(dir) {
-__L_V__6({
-    lN: 892,tT:'func',pr:'',eT:{'dir':dir},fN:'readBinaryTransparencyResult'
-  });'__L_V__6';
   let binaryTransparencyResultFile = dir.clone();
   binaryTransparencyResultFile.append(FILE_BT_RESULT);
   let result = readStringFromFile(binaryTransparencyResultFile);
@@ -1079,9 +899,6 @@ __L_V__6({
   // If result is non-null, the file exists. We should remove it to avoid
   // double-reporting this result.
   if (result) {
-__L_V__6({
-    lN: 904,tT:'if',pr:'result',eT:{},fN:''
-  });'__L_V__6';
     binaryTransparencyResultFile.remove(false);
   }
   return result;
@@ -1098,16 +915,10 @@ __L_V__6({
  *          The state value to write.
  */
 function writeStatusFile(dir, state) {
-__L_V__6({
-    lN: 920,tT:'func',pr:'',eT:{'dir':dir,'state':state},fN:'writeStatusFile'
-  });'__L_V__6';
   let statusFile = dir.clone();
   statusFile.append(FILE_UPDATE_STATUS);
   let success = writeStringToFile(statusFile, state);
   if (!success) {
-__L_V__6({
-    lN: 924,tT:'if',pr:'!success',eT:{},fN:''
-  });'__L_V__6';
     handleCriticalWriteFailure(statusFile.path);
   }
 }
@@ -1128,16 +939,10 @@ __L_V__6({
  *          update doesn't provide the appVersion attribute in the update xml.
  */
 function writeVersionFile(dir, version) {
-__L_V__6({
-    lN: 944,tT:'func',pr:'',eT:{'dir':dir,'version':version},fN:'writeVersionFile'
-  });'__L_V__6';
   let versionFile = dir.clone();
   versionFile.append(FILE_UPDATE_VERSION);
   let success = writeStringToFile(versionFile, version);
   if (!success) {
-__L_V__6({
-    lN: 948,tT:'if',pr:'!success',eT:{},fN:''
-  });'__L_V__6';
     handleCriticalWriteFailure(versionFile.path);
   }
 }
@@ -1149,9 +954,6 @@ __L_V__6({
  * @return  true if the service should be used for updates.
  */
 function shouldUseService() {
-__L_V__6({
-    lN: 959,tT:'func',pr:'',eT:{},fN:'shouldUseService'
-  });'__L_V__6';
   // This function will return true if the mantenance service should be used if
   // all of the following conditions are met:
   // 1) This build was done with the maintenance service enabled
@@ -1162,9 +964,6 @@ __L_V__6({
     !isServiceInstalled() ||
     !Services.prefs.getBoolPref(PREF_APP_UPDATE_SERVICE_ENABLED, false)
   ) {
-__L_V__6({
-    lN: 969,tT:'if',pr:' !AppConstants.MOZ_MAINTENANCE_SERVICE || !isServiceInstalled() || !Services.prefs.getBoolPref(PREF_APP_UPDATE_SERVICE_ENABLED, false) ',eT:{},fN:''
-  });'__L_V__6';
     LOG("shouldUseService - returning false");
     return false;
   }
@@ -1179,13 +978,7 @@ __L_V__6({
  * @return  true if the service is installed.
  */
 function isServiceInstalled() {
-__L_V__6({
-    lN: 983,tT:'func',pr:'',eT:{},fN:'isServiceInstalled'
-  });'__L_V__6';
   if (!AppConstants.MOZ_MAINTENANCE_SERVICE || AppConstants.platform != "win") {
-__L_V__6({
-    lN: 984,tT:'if',pr:'!AppConstants.MOZ_MAINTENANCE_SERVICE || AppConstants.platform != win',eT:{},fN:''
-  });'__L_V__6';
     LOG("isServiceInstalled - returning false");
     return false;
   }
@@ -1219,9 +1012,6 @@ __L_V__6({
  *        When true the update's patch directory contents are removed.
  */
 function cleanUpUpdatesDir(aRemovePatchFiles = true) {
-__L_V__6({
-    lN: 1017,tT:'func',pr:'',eT:{'aRemovePatchFiles':aRemovePatchFiles},fN:'cleanUpUpdatesDir'
-  });'__L_V__6';
   let updateDir;
   try {
     updateDir = getUpdatesDir();
@@ -1238,16 +1028,10 @@ __L_V__6({
   let updateLogFile = updateDir.clone();
   updateLogFile.append(FILE_UPDATE_LOG);
   if (updateLogFile.exists()) {
-__L_V__6({
-    lN: 1033,tT:'if',pr:'updateLogFile.exists()',eT:{},fN:''
-  });'__L_V__6';
     let dir = updateDir.parent;
     let logFile = dir.clone();
     logFile.append(FILE_LAST_UPDATE_LOG);
     if (logFile.exists()) {
-__L_V__6({
-    lN: 1037,tT:'if',pr:'logFile.exists()',eT:{},fN:''
-  });'__L_V__6';
       try {
         logFile.moveTo(dir, FILE_BACKUP_UPDATE_LOG);
       } catch (e) {
@@ -1273,9 +1057,6 @@ __L_V__6({
   }
 
   if (aRemovePatchFiles) {
-__L_V__6({
-    lN: 1062,tT:'if',pr:'aRemovePatchFiles',eT:{},fN:''
-  });'__L_V__6';
     let dirEntries = updateDir.directoryEntries;
     while (dirEntries.hasMoreElements()) {
       let file = dirEntries.nextFile;
@@ -1296,9 +1077,6 @@ __L_V__6({
  * Clean up updates list and the updates directory.
  */
 function cleanupActiveUpdate() {
-__L_V__6({
-    lN: 1082,tT:'func',pr:'',eT:{},fN:'cleanupActiveUpdate'
-  });'__L_V__6';
   // Move the update from the Active Update list into the Past Updates list.
   var um = Cc["@mozilla.org/updates/update-manager;1"].getService(
     Ci.nsIUpdateManager
@@ -1320,9 +1098,6 @@ __L_V__6({
  * @return true on success, false on failure.
  */
 function writeStringToFile(file, text) {
-__L_V__6({
-    lN: 1103,tT:'func',pr:'',eT:{'file':file,'text':text},fN:'writeStringToFile'
-  });'__L_V__6';
   try {
     let fos = FileUtils.openSafeFileOutputStream(file);
     text += "\n";
@@ -1335,9 +1110,6 @@ __L_V__6({
 }
 
 function readStringFromInputStream(inputStream) {
-__L_V__6({
-    lN: 1115,tT:'func',pr:'',eT:{'inputStream':inputStream},fN:'readStringFromInputStream'
-  });'__L_V__6';
   var sis = Cc["@mozilla.org/scriptableinputstream;1"].createInstance(
     Ci.nsIScriptableInputStream
   );
@@ -1345,9 +1117,6 @@ __L_V__6({
   var text = sis.read(sis.available());
   sis.close();
   if (text && text[text.length - 1] == "\n") {
-__L_V__6({
-    lN: 1122,tT:'if',pr:'text && text[text.length - 1] == \n',eT:{},fN:''
-  });'__L_V__6';
     text = text.slice(0, -1);
   }
   return text;
@@ -1358,13 +1127,7 @@ __L_V__6({
  * before the result is returned.  This function only works with ASCII text.
  */
 function readStringFromFile(file) {
-__L_V__6({
-    lN: 1132,tT:'func',pr:'',eT:{'file':file},fN:'readStringFromFile'
-  });'__L_V__6';
   if (!file.exists()) {
-__L_V__6({
-    lN: 1133,tT:'if',pr:'!file.exists()',eT:{},fN:''
-  });'__L_V__6';
     LOG("readStringFromFile - file doesn't exist: " + file.path);
     return null;
   }
@@ -1376,22 +1139,13 @@ __L_V__6({
 }
 
 function handleUpdateFailure(update, errorCode) {
-__L_V__6({
-    lN: 1144,tT:'func',pr:'',eT:{'update':update,'errorCode':errorCode},fN:'handleUpdateFailure'
-  });'__L_V__6';
   update.errorCode = parseInt(errorCode);
   if (WRITE_ERRORS.includes(update.errorCode)) {
-__L_V__6({
-    lN: 1146,tT:'if',pr:'WRITE_ERRORS.includes(update.errorCode)',eT:{},fN:''
-  });'__L_V__6';
     writeStatusFile(getUpdatesDir(), (update.state = STATE_PENDING));
     return true;
   }
 
   if (update.errorCode == ELEVATION_CANCELED) {
-__L_V__6({
-    lN: 1151,tT:'if',pr:'update.errorCode == ELEVATION_CANCELED',eT:{},fN:''
-  });'__L_V__6';
     let elevationAttempts = Services.prefs.getIntPref(
       PREF_APP_UPDATE_ELEVATE_ATTEMPTS,
       0
@@ -1407,9 +1161,6 @@ __L_V__6({
     );
 
     if (elevationAttempts > maxAttempts) {
-__L_V__6({
-    lN: 1166,tT:'if',pr:'elevationAttempts > maxAttempts',eT:{},fN:''
-  });'__L_V__6';
       LOG(
         "handleUpdateFailure - notifying observers of error. " +
           "topic: update-error, status: elevation-attempts-exceeded"
@@ -1438,9 +1189,6 @@ __L_V__6({
     cancelations++;
     Services.prefs.setIntPref(PREF_APP_UPDATE_CANCELATIONS, cancelations);
     if (AppConstants.platform == "macosx") {
-__L_V__6({
-    lN: 1194,tT:'if',pr:'AppConstants.platform == macosx',eT:{},fN:''
-  });'__L_V__6';
       let osxCancelations = Services.prefs.getIntPref(
         PREF_APP_UPDATE_CANCELATIONS_OSX,
         0
@@ -1457,9 +1205,6 @@ __L_V__6({
       // Prevent the preference from setting a value greater than 5.
       maxCancels = Math.min(maxCancels, 5);
       if (osxCancelations >= maxCancels) {
-__L_V__6({
-    lN: 1210,tT:'if',pr:'osxCancelations >= maxCancels',eT:{},fN:''
-  });'__L_V__6';
         cleanupActiveUpdate();
       } else {
         writeStatusFile(
@@ -1475,22 +1220,13 @@ __L_V__6({
   }
 
   if (Services.prefs.prefHasUserValue(PREF_APP_UPDATE_CANCELATIONS)) {
-__L_V__6({
-    lN: 1225,tT:'if',pr:'Services.prefs.prefHasUserValue(PREF_APP_UPDATE_CANCELATIONS)',eT:{},fN:''
-  });'__L_V__6';
     Services.prefs.clearUserPref(PREF_APP_UPDATE_CANCELATIONS);
   }
   if (Services.prefs.prefHasUserValue(PREF_APP_UPDATE_CANCELATIONS_OSX)) {
-__L_V__6({
-    lN: 1228,tT:'if',pr:'Services.prefs.prefHasUserValue(PREF_APP_UPDATE_CANCELATIONS_OSX)',eT:{},fN:''
-  });'__L_V__6';
     Services.prefs.clearUserPref(PREF_APP_UPDATE_CANCELATIONS_OSX);
   }
 
   if (SERVICE_ERRORS.includes(update.errorCode)) {
-__L_V__6({
-    lN: 1232,tT:'if',pr:'SERVICE_ERRORS.includes(update.errorCode)',eT:{},fN:''
-  });'__L_V__6';
     var failCount = Services.prefs.getIntPref(
       PREF_APP_UPDATE_SERVICE_ERRORS,
       0
@@ -1505,9 +1241,6 @@ __L_V__6({
     // disable itself and fallback to using the normal update mechanism
     // without the service.
     if (failCount >= maxFail) {
-__L_V__6({
-    lN: 1246,tT:'if',pr:'failCount >= maxFail',eT:{},fN:''
-  });'__L_V__6';
       Services.prefs.setBoolPref(PREF_APP_UPDATE_SERVICE_ENABLED, false);
       Services.prefs.clearUserPref(PREF_APP_UPDATE_SERVICE_ERRORS);
     } else {
@@ -1520,9 +1253,6 @@ __L_V__6({
   }
 
   if (Services.prefs.prefHasUserValue(PREF_APP_UPDATE_SERVICE_ERRORS)) {
-__L_V__6({
-    lN: 1258,tT:'if',pr:'Services.prefs.prefHasUserValue(PREF_APP_UPDATE_SERVICE_ERRORS)',eT:{},fN:''
-  });'__L_V__6';
     Services.prefs.clearUserPref(PREF_APP_UPDATE_SERVICE_ERRORS);
   }
 
@@ -1536,17 +1266,11 @@ __L_V__6({
  * @param postStaging true if we have just attempted to stage an update.
  */
 function handleFallbackToCompleteUpdate(update, postStaging) {
-__L_V__6({
-    lN: 1271,tT:'func',pr:'',eT:{'update':update,'postStaging':postStaging},fN:'handleFallbackToCompleteUpdate'
-  });'__L_V__6';
   cleanupActiveUpdate();
 
   update.statusText = gUpdateBundle.GetStringFromName("patchApplyFailure");
   var oldType = update.selectedPatch ? update.selectedPatch.type : "complete";
   if (update.selectedPatch && oldType == "partial" && update.patchCount == 2) {
-__L_V__6({
-    lN: 1276,tT:'if',pr:'update.selectedPatch && oldType == partial && update.patchCount == 2',eT:{},fN:''
-  });'__L_V__6';
     // Partial patch application failed, try downloading the complete
     // update in the background instead.
     LOG(
@@ -1557,9 +1281,6 @@ __L_V__6({
       .getService(Ci.nsIApplicationUpdateService)
       .downloadUpdate(update, !postStaging);
     if (status == STATE_NONE) {
-__L_V__6({
-    lN: 1286,tT:'if',pr:'status == STATE_NONE',eT:{},fN:''
-  });'__L_V__6';
       cleanupActiveUpdate();
     }
   } else {
@@ -1578,23 +1299,11 @@ __L_V__6({
 }
 
 function pingStateAndStatusCodes(aUpdate, aStartup, aStatus) {
-__L_V__6({
-    lN: 1304,tT:'func',pr:'',eT:{'aUpdate':aUpdate,'aStartup':aStartup,'aStatus':aStatus},fN:'pingStateAndStatusCodes'
-  });'__L_V__6';
   let patchType = AUSTLMY.PATCH_UNKNOWN;
   if (aUpdate && aUpdate.selectedPatch && aUpdate.selectedPatch.type) {
-__L_V__6({
-    lN: 1306,tT:'if',pr:'aUpdate && aUpdate.selectedPatch && aUpdate.selectedPatch.type',eT:{},fN:''
-  });'__L_V__6';
     if (aUpdate.selectedPatch.type == "complete") {
-__L_V__6({
-    lN: 1307,tT:'if',pr:'aUpdate.selectedPatch.type == complete',eT:{},fN:''
-  });'__L_V__6';
       patchType = AUSTLMY.PATCH_COMPLETE;
     } else if (aUpdate.selectedPatch.type == "partial") {
-__L_V__6({
-    lN: 1309,tT:'if',pr:'aUpdate.selectedPatch.type == partial',eT:{},fN:''
-  });'__L_V__6';
       patchType = AUSTLMY.PATCH_PARTIAL;
     }
   }
@@ -1603,12 +1312,6 @@ __L_V__6({
   let stateCode = 0;
   let parts = aStatus.split(":");
   if (parts.length) {
-__L_V__6({
-    lN: 1317,tT:'if',pr:'parts.length',eT:{},fN:''
-  });'__L_V__6';
-__L_V__6({
-    lN: 1318,tT:'switch',pr:'',eT:{},fN:''
-  });'__L_V__6';
     switch (parts[0]) {
       case STATE_NONE:
         stateCode = 2;
@@ -1650,14 +1353,8 @@ __L_V__6({
     }
 
     if (parts.length > 1) {
-__L_V__6({
-    lN: 1358,tT:'if',pr:'parts.length > 1',eT:{},fN:''
-  });'__L_V__6';
       let statusErrorCode = INVALID_UPDATER_STATE_CODE;
       if (parts[0] == STATE_FAILED) {
-__L_V__6({
-    lN: 1360,tT:'if',pr:'parts[0] == STATE_FAILED',eT:{},fN:''
-  });'__L_V__6';
         statusErrorCode = parseInt(parts[1]) || INVALID_UPDATER_STATUS_CODE;
       }
       AUSTLMY.pingStatusErrorCode(suffix, statusErrorCode);
@@ -1665,9 +1362,6 @@ __L_V__6({
   }
   let binaryTransparencyResult = readBinaryTransparencyResult(getUpdatesDir());
   if (binaryTransparencyResult) {
-__L_V__6({
-    lN: 1367,tT:'if',pr:'binaryTransparencyResult',eT:{},fN:''
-  });'__L_V__6';
     AUSTLMY.pingBinaryTransparencyResult(
       suffix,
       parseInt(binaryTransparencyResult)
@@ -1685,13 +1379,7 @@ __L_V__6({
  *         supported.
  */
 function fixUpdateDirectoryPermissions() {
-__L_V__6({
-    lN: 1384,tT:'func',pr:'',eT:{},fN:'fixUpdateDirectoryPermissions'
-  });'__L_V__6';
   if (AppConstants.platform != "win") {
-__L_V__6({
-    lN: 1385,tT:'if',pr:'AppConstants.platform != win',eT:{},fN:''
-  });'__L_V__6';
     LOG(
       "There is currently no implementation for fixing update directory " +
         "permissions on this platform"
@@ -1700,9 +1388,6 @@ __L_V__6({
   }
 
   if (!gUpdateDirPermissionFixAttempted) {
-__L_V__6({
-    lN: 1393,tT:'if',pr:'!gUpdateDirPermissionFixAttempted',eT:{},fN:''
-  });'__L_V__6';
     // Never try to fix permissions more than one time during a session.
     gUpdateDirPermissionFixAttempted = true;
     AUSTLMY.pingFixUpdateDirectoryPermissionsAttempted();
@@ -1739,69 +1424,39 @@ __L_V__6({
  *             value will only be used for logging purposes.
  */
 function handleCriticalWriteFailure(path) {
-__L_V__6({
-    lN: 1429,tT:'func',pr:'',eT:{'path':path},fN:'handleCriticalWriteFailure'
-  });'__L_V__6';
   LOG(
     "handleCriticalWriteFailure - Unable to write to critical update file: " +
       path
   );
   if (!gUpdateFileWriteInfo.failure) {
-__L_V__6({
-    lN: 1434,tT:'if',pr:'!gUpdateFileWriteInfo.failure',eT:{},fN:''
-  });'__L_V__6';
     gUpdateFileWriteInfo.failure = true;
     let patchType = AUSTLMY.PATCH_UNKNOWN;
     let update = Cc["@mozilla.org/updates/update-manager;1"].getService(
       Ci.nsIUpdateManager
     ).activeUpdate;
     if (update) {
-__L_V__6({
-    lN: 1440,tT:'if',pr:'update',eT:{},fN:''
-  });'__L_V__6';
       let patch = update.selectedPatch;
       if (patch.type == "complete") {
-__L_V__6({
-    lN: 1442,tT:'if',pr:'patch.type == complete',eT:{},fN:''
-  });'__L_V__6';
         patchType = AUSTLMY.PATCH_COMPLETE;
       } else if (patch.type == "partial") {
-__L_V__6({
-    lN: 1444,tT:'if',pr:'patch.type == partial',eT:{},fN:''
-  });'__L_V__6';
         patchType = AUSTLMY.PATCH_PARTIAL;
       }
     }
 
     if (gUpdateFileWriteInfo.phase == "check") {
-__L_V__6({
-    lN: 1449,tT:'if',pr:'gUpdateFileWriteInfo.phase == check',eT:{},fN:''
-  });'__L_V__6';
       let updateServiceInstance = UpdateServiceFactory.createInstance();
       let pingSuffix = updateServiceInstance._pingSuffix;
       if (!pingSuffix) {
-__L_V__6({
-    lN: 1452,tT:'if',pr:'!pingSuffix',eT:{},fN:''
-  });'__L_V__6';
         // If pingSuffix isn't defined then this this is a manual check which
         // isn't recorded at this time.
         AUSTLMY.pingCheckCode(pingSuffix, AUSTLMY.CHK_ERR_WRITE_FAILURE);
       }
     } else if (gUpdateFileWriteInfo.phase == "download") {
-__L_V__6({
-    lN: 1457,tT:'if',pr:'gUpdateFileWriteInfo.phase == download',eT:{},fN:''
-  });'__L_V__6';
       AUSTLMY.pingDownloadCode(patchType, AUSTLMY.DWNLD_ERR_WRITE_FAILURE);
     } else if (gUpdateFileWriteInfo.phase == "stage") {
-__L_V__6({
-    lN: 1459,tT:'if',pr:'gUpdateFileWriteInfo.phase == stage',eT:{},fN:''
-  });'__L_V__6';
       let suffix = patchType + "_" + AUSTLMY.STAGE;
       AUSTLMY.pingStateCode(suffix, AUSTLMY.STATE_WRITE_FAILURE);
     } else if (gUpdateFileWriteInfo.phase == "startup") {
-__L_V__6({
-    lN: 1462,tT:'if',pr:'gUpdateFileWriteInfo.phase == startup',eT:{},fN:''
-  });'__L_V__6';
       let suffix = patchType + "_" + AUSTLMY.STARTUP;
       AUSTLMY.pingStateCode(suffix, AUSTLMY.STATE_WRITE_FAILURE);
     } else {
@@ -1829,13 +1484,7 @@ __L_V__6({
  *             purposes.
  */
 function handleCriticalWriteResult(wroteSuccessfully, path) {
-__L_V__6({
-    lN: 1489,tT:'func',pr:'',eT:{'wroteSuccessfully':wroteSuccessfully,'path':path},fN:'handleCriticalWriteResult'
-  });'__L_V__6';
   if (!wroteSuccessfully) {
-__L_V__6({
-    lN: 1490,tT:'if',pr:'!wroteSuccessfully',eT:{},fN:''
-  });'__L_V__6';
     handleCriticalWriteFailure(path);
   }
 }
@@ -1848,9 +1497,6 @@ __L_V__6({
  * @constructor
  */
 function UpdatePatch(patch) {
-__L_V__6({
-    lN: 1502,tT:'func',pr:'',eT:{'patch':patch},fN:'UpdatePatch'
-  });'__L_V__6';
   this._properties = {};
   this.errorCode = 0;
   this.finalURL = null;
@@ -1861,14 +1507,8 @@ __L_V__6({
     // If an undefined value is saved to the xml file it will be a string when
     // it is read from the xml file.
     if (attr.value == "undefined") {
-__L_V__6({
-    lN: 1512,tT:'if',pr:'attr.value == undefined',eT:{},fN:''
-  });'__L_V__6';
       continue;
     }
-__L_V__6({
-    lN: 1515,tT:'switch',pr:'',eT:{},fN:''
-  });'__L_V__6';
     switch (attr.name) {
       case "xmlns":
         // Don't save the XML namespace.
@@ -1878,9 +1518,6 @@ __L_V__6({
         break;
       case "size":
         if (0 == parseInt(attr.value)) {
-__L_V__6({
-    lN: 1523,tT:'if',pr:'0 == parseInt(attr.value)',eT:{},fN:''
-  });'__L_V__6';
           LOG("UpdatePatch:init - 0-sized patch!");
           throw Cr.NS_ERROR_ILLEGAL_VALUE;
         }
@@ -1888,16 +1525,10 @@ __L_V__6({
         break;
       case "errorCode":
         if (attr.value) {
-__L_V__6({
-    lN: 1530,tT:'if',pr:'attr.value',eT:{},fN:''
-  });'__L_V__6';
           let val = parseInt(attr.value);
           // This will evaluate to false if the value is 0 but that's ok since
           // this.errorCode is set to the default of 0 above.
           if (val) {
-__L_V__6({
-    lN: 1534,tT:'if',pr:'val',eT:{},fN:''
-  });'__L_V__6';
             this.errorCode = val;
           }
         }
@@ -1910,9 +1541,6 @@ __L_V__6({
         break;
       default:
         if (!this._attrNames.includes(attr.name)) {
-__L_V__6({
-    lN: 1546,tT:'if',pr:'!this._attrNames.includes(attr.name)',eT:{},fN:''
-  });'__L_V__6';
           // Set nsIPropertyBag properties that were read from the xml file.
           this.setProperty(attr.name, attr.value);
         }
@@ -1937,9 +1565,6 @@ UpdatePatch.prototype = {
    * See nsIUpdateService.idl
    */
   serialize: function UpdatePatch_serialize(updates) {
-__L_V__6({
-    lN: 1570,tT:'func',pr:'',eT:{'updates':updates},fN:'UpdatePatch_serialize'
-  });'__L_V__6';
     var patch = updates.createElementNS(URI_UPDATE_NS, "patch");
     patch.setAttribute("size", this.size);
     patch.setAttribute("type", this.type);
@@ -1947,37 +1572,22 @@ __L_V__6({
     // Don't write an errorCode if it evaluates to false since 0 is the same as
     // no error code.
     if (this.errorCode) {
-__L_V__6({
-    lN: 1577,tT:'if',pr:'this.errorCode',eT:{},fN:''
-  });'__L_V__6';
       patch.setAttribute("errorCode", this.errorCode);
     }
     // finalURL is not available until after the download has started
     if (this.finalURL) {
-__L_V__6({
-    lN: 1581,tT:'if',pr:'this.finalURL',eT:{},fN:''
-  });'__L_V__6';
       patch.setAttribute("finalURL", this.finalURL);
     }
     // The selected patch is the only patch that should have this attribute.
     if (this.selected) {
-__L_V__6({
-    lN: 1585,tT:'if',pr:'this.selected',eT:{},fN:''
-  });'__L_V__6';
       patch.setAttribute("selected", this.selected);
     }
     if (this.state != STATE_NONE) {
-__L_V__6({
-    lN: 1588,tT:'if',pr:'this.state != STATE_NONE',eT:{},fN:''
-  });'__L_V__6';
       patch.setAttribute("state", this.state);
     }
 
     for (let [name, value] of Object.entries(this._properties)) {
       if (value.present && !this._attrNames.includes(name)) {
-__L_V__6({
-    lN: 1593,tT:'if',pr:'value.present && !this._attrNames.includes(name)',eT:{},fN:''
-  });'__L_V__6';
         patch.setAttribute(name, value.data);
       }
     }
@@ -1988,13 +1598,7 @@ __L_V__6({
    * See nsIWritablePropertyBag.idl
    */
   setProperty: function UpdatePatch_setProperty(name, value) {
-__L_V__6({
-    lN: 1603,tT:'func',pr:'',eT:{'name':name,'value':value},fN:'UpdatePatch_setProperty'
-  });'__L_V__6';
     if (this._attrNames.includes(name)) {
-__L_V__6({
-    lN: 1604,tT:'if',pr:'this._attrNames.includes(name)',eT:{},fN:''
-  });'__L_V__6';
       throw Components.Exception(
         "Illegal value '" +
           name +
@@ -2010,13 +1614,7 @@ __L_V__6({
    * See nsIWritablePropertyBag.idl
    */
   deleteProperty: function UpdatePatch_deleteProperty(name) {
-__L_V__6({
-    lN: 1619,tT:'func',pr:'',eT:{'name':name},fN:'UpdatePatch_deleteProperty'
-  });'__L_V__6';
     if (this._attrNames.includes(name)) {
-__L_V__6({
-    lN: 1620,tT:'if',pr:'this._attrNames.includes(name)',eT:{},fN:''
-  });'__L_V__6';
       throw Components.Exception(
         "Illegal value '" +
           name +
@@ -2026,9 +1624,6 @@ __L_V__6({
       );
     }
     if (name in this._properties) {
-__L_V__6({
-    lN: 1629,tT:'if',pr:'name in this._properties',eT:{},fN:''
-  });'__L_V__6';
       this._properties[name].present = false;
     } else {
       throw Cr.NS_ERROR_FAILURE;
@@ -2042,9 +1637,6 @@ __L_V__6({
    *       nsIUpdatePatch name / value pairs.
    */
   get enumerator() {
-__L_V__6({
-    lN: 1642,tT:'func',pr:'',eT:{},fN:'enumerator'
-  });'__L_V__6';
     return this.enumerate();
   },
 
@@ -2057,9 +1649,6 @@ __L_V__6({
     let qi = ChromeUtils.generateQI([Ci.nsIProperty]);
     for (let [name, value] of Object.entries(this._properties)) {
       if (value.present && !this._attrNames.includes(name)) {
-__L_V__6({
-    lN: 1654,tT:'if',pr:'value.present && !this._attrNames.includes(name)',eT:{},fN:''
-  });'__L_V__6';
         // The nsIPropertyBag enumerator returns a nsISimpleEnumerator whose
         // elements are nsIProperty objects. Calling QueryInterface for
         // nsIProperty on the object doesn't return to the caller an object that
@@ -2078,13 +1667,7 @@ __L_V__6({
    *       simplify code and to silence warnings in debug builds.
    */
   getProperty: function UpdatePatch_getProperty(name) {
-__L_V__6({
-    lN: 1672,tT:'func',pr:'',eT:{'name':name},fN:'UpdatePatch_getProperty'
-  });'__L_V__6';
     if (this._attrNames.includes(name)) {
-__L_V__6({
-    lN: 1673,tT:'if',pr:'this._attrNames.includes(name)',eT:{},fN:''
-  });'__L_V__6';
       throw Components.Exception(
         "Illegal value '" +
           name +
@@ -2094,9 +1677,6 @@ __L_V__6({
       );
     }
     if (name in this._properties && this._properties[name].present) {
-__L_V__6({
-    lN: 1682,tT:'if',pr:'name in this._properties && this._properties[name].present',eT:{},fN:''
-  });'__L_V__6';
       return this._properties[name].data;
     }
     return null;
@@ -2118,9 +1698,6 @@ __L_V__6({
  * @constructor
  */
 function Update(update) {
-__L_V__6({
-    lN: 1703,tT:'func',pr:'',eT:{'update':update},fN:'Update'
-  });'__L_V__6';
   this._patches = [];
   this._properties = {};
   this.isCompleteUpdate = false;
@@ -2134,9 +1711,6 @@ __L_V__6({
   // Null <update>, assume this is a message container and do no
   // further initialization
   if (!update) {
-__L_V__6({
-    lN: 1716,tT:'if',pr:'!update',eT:{},fN:''
-  });'__L_V__6';
     return;
   }
 
@@ -2146,9 +1720,6 @@ __L_V__6({
       patchElement.nodeType != patchElement.ELEMENT_NODE ||
       patchElement.localName != "patch"
     ) {
-__L_V__6({
-    lN: 1725,tT:'if',pr:' patchElement.nodeType != patchElement.ELEMENT_NODE || patchElement.localName != patch ',eT:{},fN:''
-  });'__L_V__6';
       continue;
     }
 
@@ -2162,9 +1733,6 @@ __L_V__6({
   }
 
   if (!this._patches.length && !update.hasAttribute("unsupported")) {
-__L_V__6({
-    lN: 1738,tT:'if',pr:'!this._patches.length && !update.hasAttribute(unsupported)',eT:{},fN:''
-  });'__L_V__6';
     throw Cr.NS_ERROR_ILLEGAL_VALUE;
   }
 
@@ -2177,67 +1745,34 @@ __L_V__6({
   for (let i = 0; i < update.attributes.length; ++i) {
     let attr = update.attributes.item(i);
     if (attr.name == "xmlns" || attr.value == "undefined") {
-__L_V__6({
-    lN: 1750,tT:'if',pr:'attr.name == xmlns || attr.value == undefined',eT:{},fN:''
-  });'__L_V__6';
       // Don't save the XML namespace or undefined values.
       // If an undefined value is saved to the xml file it will be a string when
       // it is read from the xml file.
       continue;
     } else if (attr.name == "detailsURL") {
-__L_V__6({
-    lN: 1755,tT:'if',pr:'attr.name == detailsURL',eT:{},fN:''
-  });'__L_V__6';
       this.detailsURL = attr.value;
     } else if (attr.name == "installDate" && attr.value) {
-__L_V__6({
-    lN: 1757,tT:'if',pr:'attr.name == installDate && attr.value',eT:{},fN:''
-  });'__L_V__6';
       let val = parseInt(attr.value);
       if (val) {
-__L_V__6({
-    lN: 1759,tT:'if',pr:'val',eT:{},fN:''
-  });'__L_V__6';
         this.installDate = val;
       }
     } else if (attr.name == "errorCode" && attr.value) {
-__L_V__6({
-    lN: 1762,tT:'if',pr:'attr.name == errorCode && attr.value',eT:{},fN:''
-  });'__L_V__6';
       let val = parseInt(attr.value);
       if (val) {
-__L_V__6({
-    lN: 1764,tT:'if',pr:'val',eT:{},fN:''
-  });'__L_V__6';
         // Set the value of |_errorCode| instead of |errorCode| since
         // selectedPatch won't be available at this point and normally the
         // nsIUpdatePatch will provide the errorCode.
         this._errorCode = val;
       }
     } else if (attr.name == "isCompleteUpdate") {
-__L_V__6({
-    lN: 1770,tT:'if',pr:'attr.name == isCompleteUpdate',eT:{},fN:''
-  });'__L_V__6';
       this.isCompleteUpdate = attr.value == "true";
     } else if (attr.name == "promptWaitTime") {
-__L_V__6({
-    lN: 1772,tT:'if',pr:'attr.name == promptWaitTime',eT:{},fN:''
-  });'__L_V__6';
       if (!isNaN(attr.value)) {
-__L_V__6({
-    lN: 1773,tT:'if',pr:'!isNaN(attr.value)',eT:{},fN:''
-  });'__L_V__6';
         this.promptWaitTime = parseInt(attr.value);
       }
     } else if (attr.name == "unsupported") {
-__L_V__6({
-    lN: 1776,tT:'if',pr:'attr.name == unsupported',eT:{},fN:''
-  });'__L_V__6';
       this.unsupported = attr.value == "true";
     } else {
-__L_V__6({
-    lN: 1779,tT:'switch',pr:'',eT:{},fN:''
-  });'__L_V__6';
       switch (attr.name) {
         case "appVersion":
         case "buildID":
@@ -2253,9 +1788,6 @@ __L_V__6({
           break;
         default:
           if (!this._attrNames.includes(attr.name)) {
-__L_V__6({
-    lN: 1793,tT:'if',pr:'!this._attrNames.includes(attr.name)',eT:{},fN:''
-  });'__L_V__6';
             // Set nsIPropertyBag properties that were read from the xml file.
             this.setProperty(attr.name, attr.value);
           }
@@ -2265,23 +1797,14 @@ __L_V__6({
   }
 
   if (!this.previousAppVersion) {
-__L_V__6({
-    lN: 1802,tT:'if',pr:'!this.previousAppVersion',eT:{},fN:''
-  });'__L_V__6';
     this.previousAppVersion = Services.appinfo.version;
   }
 
   if (!this.elevationFailure) {
-__L_V__6({
-    lN: 1806,tT:'if',pr:'!this.elevationFailure',eT:{},fN:''
-  });'__L_V__6';
     this.elevationFailure = false;
   }
 
   if (!this.detailsURL) {
-__L_V__6({
-    lN: 1810,tT:'if',pr:'!this.detailsURL',eT:{},fN:''
-  });'__L_V__6';
     try {
       // Try using a default details URL supplied by the distribution
       // if the update XML does not supply one.
@@ -2294,17 +1817,11 @@ __L_V__6({
   }
 
   if (!this.displayVersion) {
-__L_V__6({
-    lN: 1822,tT:'if',pr:'!this.displayVersion',eT:{},fN:''
-  });'__L_V__6';
     this.displayVersion = this.appVersion;
   }
 
 #if 0
   if (!this.name) {
-__L_V__6({
-    lN: 1827,tT:'if',pr:'!this.name',eT:{},fN:''
-  });'__L_V__6';
     // When the update doesn't provide a name fallback to using
     // "<App Name> <Update App Version>"
     let brandBundle = Services.strings.createBundle(URI_BRAND_PROPERTIES);
@@ -2347,9 +1864,6 @@ Update.prototype = {
    * See nsIUpdateService.idl
    */
   getPatchAt: function Update_getPatchAt(index) {
-__L_V__6({
-    lN: 1869,tT:'func',pr:'',eT:{'index':index},fN:'Update_getPatchAt'
-  });'__L_V__6';
     return this._patches[index];
   },
 
@@ -2363,25 +1877,13 @@ __L_V__6({
    */
   _state: "",
   get state() {
-__L_V__6({
-    lN: 1882,tT:'func',pr:'',eT:{},fN:'state'
-  });'__L_V__6';
     if (this.selectedPatch) {
-__L_V__6({
-    lN: 1883,tT:'if',pr:'this.selectedPatch',eT:{},fN:''
-  });'__L_V__6';
       return this.selectedPatch.state;
     }
     return this._state;
   },
   set state(state) {
-__L_V__6({
-    lN: 1888,tT:'func',pr:'',eT:{'state':state},fN:'state'
-  });'__L_V__6';
     if (this.selectedPatch) {
-__L_V__6({
-    lN: 1889,tT:'if',pr:'this.selectedPatch',eT:{},fN:''
-  });'__L_V__6';
       this.selectedPatch.state = state;
     }
     this._state = state;
@@ -2397,25 +1899,13 @@ __L_V__6({
    */
   _errorCode: 0,
   get errorCode() {
-__L_V__6({
-    lN: 1904,tT:'func',pr:'',eT:{},fN:'errorCode'
-  });'__L_V__6';
     if (this.selectedPatch) {
-__L_V__6({
-    lN: 1905,tT:'if',pr:'this.selectedPatch',eT:{},fN:''
-  });'__L_V__6';
       return this.selectedPatch.errorCode;
     }
     return this._errorCode;
   },
   set errorCode(errorCode) {
-__L_V__6({
-    lN: 1910,tT:'func',pr:'',eT:{'errorCode':errorCode},fN:'errorCode'
-  });'__L_V__6';
     if (this.selectedPatch) {
-__L_V__6({
-    lN: 1911,tT:'if',pr:'this.selectedPatch',eT:{},fN:''
-  });'__L_V__6';
       this.selectedPatch.errorCode = errorCode;
     }
     this._errorCode = errorCode;
@@ -2425,14 +1915,8 @@ __L_V__6({
    * See nsIUpdateService.idl
    */
   get selectedPatch() {
-__L_V__6({
-    lN: 1920,tT:'func',pr:'',eT:{},fN:'selectedPatch'
-  });'__L_V__6';
     for (let i = 0; i < this.patchCount; ++i) {
       if (this._patches[i].selected) {
-__L_V__6({
-    lN: 1922,tT:'if',pr:'this._patches[i].selected',eT:{},fN:''
-  });'__L_V__6';
         return this._patches[i];
       }
     }
@@ -2443,15 +1927,9 @@ __L_V__6({
    * See nsIUpdateService.idl
    */
   serialize: function Update_serialize(updates) {
-__L_V__6({
-    lN: 1932,tT:'func',pr:'',eT:{'updates':updates},fN:'Update_serialize'
-  });'__L_V__6';
     // If appVersion isn't defined just return null. This happens when cleaning
     // up invalid updates (e.g. incorrect channel).
     if (!this.appVersion) {
-__L_V__6({
-    lN: 1935,tT:'if',pr:'!this.appVersion',eT:{},fN:''
-  });'__L_V__6';
       return null;
     }
     let update = updates.createElementNS(URI_UPDATE_NS, "update");
@@ -2469,29 +1947,17 @@ __L_V__6({
     update.setAttribute("type", this.type);
 
     if (this.statusText) {
-__L_V__6({
-    lN: 1952,tT:'if',pr:'this.statusText',eT:{},fN:''
-  });'__L_V__6';
       update.setAttribute("statusText", this.statusText);
     }
     if (this.unsupported) {
-__L_V__6({
-    lN: 1955,tT:'if',pr:'this.unsupported',eT:{},fN:''
-  });'__L_V__6';
       update.setAttribute("unsupported", this.unsupported);
     }
     if (this.elevationFailure) {
-__L_V__6({
-    lN: 1958,tT:'if',pr:'this.elevationFailure',eT:{},fN:''
-  });'__L_V__6';
       update.setAttribute("elevationFailure", this.elevationFailure);
     }
 
     for (let [name, value] of Object.entries(this._properties)) {
       if (value.present && !this._attrNames.includes(name)) {
-__L_V__6({
-    lN: 1963,tT:'if',pr:'value.present && !this._attrNames.includes(name)',eT:{},fN:''
-  });'__L_V__6';
         update.setAttribute(name, value.data);
       }
     }
@@ -2508,13 +1974,7 @@ __L_V__6({
    * See nsIWritablePropertyBag.idl
    */
   setProperty: function Update_setProperty(name, value) {
-__L_V__6({
-    lN: 1979,tT:'func',pr:'',eT:{'name':name,'value':value},fN:'Update_setProperty'
-  });'__L_V__6';
     if (this._attrNames.includes(name)) {
-__L_V__6({
-    lN: 1980,tT:'if',pr:'this._attrNames.includes(name)',eT:{},fN:''
-  });'__L_V__6';
       throw Components.Exception(
         "Illegal value '" +
           name +
@@ -2530,13 +1990,7 @@ __L_V__6({
    * See nsIWritablePropertyBag.idl
    */
   deleteProperty: function Update_deleteProperty(name) {
-__L_V__6({
-    lN: 1995,tT:'func',pr:'',eT:{'name':name},fN:'Update_deleteProperty'
-  });'__L_V__6';
     if (this._attrNames.includes(name)) {
-__L_V__6({
-    lN: 1996,tT:'if',pr:'this._attrNames.includes(name)',eT:{},fN:''
-  });'__L_V__6';
       throw Components.Exception(
         "Illegal value '" +
           name +
@@ -2546,9 +2000,6 @@ __L_V__6({
       );
     }
     if (name in this._properties) {
-__L_V__6({
-    lN: 2005,tT:'if',pr:'name in this._properties',eT:{},fN:''
-  });'__L_V__6';
       this._properties[name].present = false;
     } else {
       throw Cr.NS_ERROR_FAILURE;
@@ -2562,9 +2013,6 @@ __L_V__6({
    *       nsIUpdate name / value pairs.
    */
   get enumerator() {
-__L_V__6({
-    lN: 2018,tT:'func',pr:'',eT:{},fN:'enumerator'
-  });'__L_V__6';
     return this.enumerate();
   },
 
@@ -2577,9 +2025,6 @@ __L_V__6({
     let qi = ChromeUtils.generateQI([Ci.nsIProperty]);
     for (let [name, value] of Object.entries(this._properties)) {
       if (value.present && !this._attrNames.includes(name)) {
-__L_V__6({
-    lN: 2030,tT:'if',pr:'value.present && !this._attrNames.includes(name)',eT:{},fN:''
-  });'__L_V__6';
         // The nsIPropertyBag enumerator returns a nsISimpleEnumerator whose
         // elements are nsIProperty objects. Calling QueryInterface for
         // nsIProperty on the object doesn't return to the caller an object that
@@ -2597,13 +2042,7 @@ __L_V__6({
    *       simplify code and to silence warnings in debug builds.
    */
   getProperty: function Update_getProperty(name) {
-__L_V__6({
-    lN: 2047,tT:'func',pr:'',eT:{'name':name},fN:'Update_getProperty'
-  });'__L_V__6';
     if (this._attrNames.includes(name)) {
-__L_V__6({
-    lN: 2048,tT:'if',pr:'this._attrNames.includes(name)',eT:{},fN:''
-  });'__L_V__6';
       throw Components.Exception(
         "Illegal value '" +
           name +
@@ -2613,9 +2052,6 @@ __L_V__6({
       );
     }
     if (name in this._properties && this._properties[name].present) {
-__L_V__6({
-    lN: 2057,tT:'if',pr:'name in this._properties && this._properties[name].present',eT:{},fN:''
-  });'__L_V__6';
       return this._properties[name].data;
     }
     return null;
@@ -2631,13 +2067,7 @@ __L_V__6({
 const UpdateServiceFactory = {
   _instance: null,
   createInstance(outer, iid) {
-__L_V__6({
-    lN: 2072,tT:'func',pr:'',eT:{'outer':outer,'iid':iid},fN:'createInstance'
-  });'__L_V__6';
     if (outer != null) {
-__L_V__6({
-    lN: 2073,tT:'if',pr:'outer != null',eT:{},fN:''
-  });'__L_V__6';
       throw Cr.NS_ERROR_NO_AGGREGATION;
     }
     return this._instance == null
@@ -2652,9 +2082,6 @@ __L_V__6({
  * @constructor
  */
 function UpdateService() {
-__L_V__6({
-    lN: 2087,tT:'func',pr:'',eT:{},fN:'UpdateService'
-  });'__L_V__6';
   LOG("Creating UpdateService");
   // The observor notification to shut down the service must be before
   // profile-before-change since nsIUpdateManager uses profile-before-change
@@ -2704,12 +2131,6 @@ UpdateService.prototype = {
    *          Additional data
    */
   observe: async function AUS_observe(subject, topic, data) {
-__L_V__6({
-    lN: 2136,tT:'func',pr:'',eT:{'subject':subject,'topic':topic,'data':data},fN:'AUS_observe'
-  });'__L_V__6';
-__L_V__6({
-    lN: 2137,tT:'switch',pr:'',eT:{},fN:''
-  });'__L_V__6';
     switch (topic) {
       case "post-update-processing":
         // This pref was not cleared out of profiles after it stopped being used
@@ -2719,9 +2140,6 @@ __L_V__6({
         Services.prefs.clearUserPref("app.update.BITS.inTrialGroup");
 
         if (Services.appinfo.ID in APPID_TO_TOPIC) {
-__L_V__6({
-    lN: 2145,tT:'if',pr:'Services.appinfo.ID in APPID_TO_TOPIC',eT:{},fN:''
-  });'__L_V__6';
           // Delay post-update processing to ensure that possible update
           // dialogs are shown in front of the app window, if possible.
           // See bug 311614.
@@ -2732,9 +2150,6 @@ __L_V__6({
       case "sessionstore-windows-restored":
       case "mail-startup-done":
         if (Services.appinfo.ID in APPID_TO_TOPIC) {
-__L_V__6({
-    lN: 2155,tT:'if',pr:'Services.appinfo.ID in APPID_TO_TOPIC',eT:{},fN:''
-  });'__L_V__6';
           Services.obs.removeObserver(
             this,
             APPID_TO_TOPIC[Services.appinfo.ID]
@@ -2750,18 +2165,12 @@ __L_V__6({
         break;
       case "nsPref:changed":
         if (data == PREF_APP_UPDATE_LOG || data == PREF_APP_UPDATE_LOG_FILE) {
-__L_V__6({
-    lN: 2170,tT:'if',pr:'data == PREF_APP_UPDATE_LOG || data == PREF_APP_UPDATE_LOG_FILE',eT:{},fN:''
-  });'__L_V__6';
           gLogEnabled; // Assigning this before it is lazy-loaded is an error.
           gLogEnabled =
             Services.prefs.getBoolPref(PREF_APP_UPDATE_LOG, false) ||
             Services.prefs.getBoolPref(PREF_APP_UPDATE_LOG_FILE, false);
         }
         if (data == PREF_APP_UPDATE_LOG_FILE) {
-__L_V__6({
-    lN: 2176,tT:'if',pr:'data == PREF_APP_UPDATE_LOG_FILE',eT:{},fN:''
-  });'__L_V__6';
           gLogfileEnabled; // Assigning this before it is lazy-loaded is an
           // error.
           gLogfileEnabled = Services.prefs.getBoolPref(
@@ -2769,9 +2178,6 @@ __L_V__6({
             false
           );
           if (gLogfileEnabled) {
-__L_V__6({
-    lN: 2183,tT:'if',pr:'gLogfileEnabled',eT:{},fN:''
-  });'__L_V__6';
             this._logStatus();
           }
         }
@@ -2781,9 +2187,6 @@ __L_V__6({
         Services.prefs.removeObserver(PREF_APP_UPDATE_LOG, this);
 
         if (AppConstants.platform == "win" && gUpdateMutexHandle) {
-__L_V__6({
-    lN: 2192,tT:'if',pr:'AppConstants.platform == win && gUpdateMutexHandle',eT:{},fN:''
-  });'__L_V__6';
           // If we hold the update mutex, let it go!
           // The OS would clean this up sometime after shutdown,
           // but that would have no guarantee on timing.
@@ -2791,9 +2194,6 @@ __L_V__6({
           gUpdateMutexHandle = null;
         }
         if (this._retryTimer) {
-__L_V__6({
-    lN: 2199,tT:'if',pr:'this._retryTimer',eT:{},fN:''
-  });'__L_V__6';
           this._retryTimer.cancel();
         }
 
@@ -2804,9 +2204,6 @@ __L_V__6({
         // Windows BITS are not stopped since they don't require Firefox to be
         // running to perform the download.
         if (this._downloader && !this._downloader.usingBits) {
-__L_V__6({
-    lN: 2209,tT:'if',pr:'this._downloader && !this._downloader.usingBits',eT:{},fN:''
-  });'__L_V__6';
           this.stopDownload();
         }
         // Prevent leaking the downloader (bug 454964)
@@ -2817,9 +2214,6 @@ __L_V__6({
           .stopCurrentCheck();
 
         if (gLogfileWritePromise) {
-__L_V__6({
-    lN: 2219,tT:'if',pr:'gLogfileWritePromise',eT:{},fN:''
-  });'__L_V__6';
           // Intentionally passing a null function for the failure case, which
           // occurs when the file was not opened successfully.
           gLogfileWritePromise = gLogfileWritePromise.then(
@@ -2833,13 +2227,7 @@ __L_V__6({
         break;
       case "test-close-handle-update-mutex":
         if (Cu.isInAutomation) {
-__L_V__6({
-    lN: 2232,tT:'if',pr:'Cu.isInAutomation',eT:{},fN:''
-  });'__L_V__6';
           if (AppConstants.platform == "win" && gUpdateMutexHandle) {
-__L_V__6({
-    lN: 2233,tT:'if',pr:'AppConstants.platform == win && gUpdateMutexHandle',eT:{},fN:''
-  });'__L_V__6';
             LOG("UpdateService:observe - closing mutex handle for testing");
             closeHandle(gUpdateMutexHandle);
             gUpdateMutexHandle = null;
@@ -2865,14 +2253,8 @@ __L_V__6({
    * notify the user of install success.
    */
   _postUpdateProcessing: function AUS__postUpdateProcessing() {
-__L_V__6({
-    lN: 2258,tT:'func',pr:'',eT:{},fN:'AUS__postUpdateProcessing'
-  });'__L_V__6';
     gUpdateFileWriteInfo = { phase: "startup", failure: false };
     if (!this.canCheckForUpdates) {
-__L_V__6({
-    lN: 2260,tT:'if',pr:'!this.canCheckForUpdates',eT:{},fN:''
-  });'__L_V__6';
       LOG(
         "UpdateService:_postUpdateProcessing - unable to check for " +
           "updates... returning early"
@@ -2881,9 +2263,6 @@ __L_V__6({
     }
 
     if (!this.canApplyUpdates) {
-__L_V__6({
-    lN: 2268,tT:'if',pr:'!this.canApplyUpdates',eT:{},fN:''
-  });'__L_V__6';
       LOG(
         "UpdateService:_postUpdateProcessing - unable to apply " +
           "updates... returning early"
@@ -2900,17 +2279,11 @@ __L_V__6({
     var update = um.activeUpdate;
     var status = readStatusFile(getUpdatesDir());
     if (status == STATE_NONE) {
-__L_V__6({
-    lN: 2284,tT:'if',pr:'status == STATE_NONE',eT:{},fN:''
-  });'__L_V__6';
       // A status of STATE_NONE in _postUpdateProcessing means that the
       // update.status file is present but there isn't an update in progress so
       // cleanup the update.
       LOG("UpdateService:_postUpdateProcessing - status is none");
       if (!update) {
-__L_V__6({
-    lN: 2289,tT:'if',pr:'!update',eT:{},fN:''
-  });'__L_V__6';
         update = new Update(null);
       }
       update.state = STATE_FAILED;
@@ -2923,9 +2296,6 @@ __L_V__6({
     }
 
     if (update && update.channel != UpdateUtils.UpdateChannel) {
-__L_V__6({
-    lN: 2301,tT:'if',pr:'update && update.channel != UpdateUtils.UpdateChannel',eT:{},fN:''
-  });'__L_V__6';
       LOG(
         "UpdateService:_postUpdateProcessing - channel has changed, " +
           "reloading default preferences to workaround bug 802022"
@@ -2937,9 +2307,6 @@ __L_V__6({
       let prefSvc = Services.prefs.QueryInterface(Ci.nsIObserver);
       prefSvc.observe(null, "reload-default-prefs", null);
       if (update.channel != UpdateUtils.UpdateChannel) {
-__L_V__6({
-    lN: 2312,tT:'if',pr:'update.channel != UpdateUtils.UpdateChannel',eT:{},fN:''
-  });'__L_V__6';
         LOG(
           "UpdateService:_postUpdateProcessing - update channel is " +
             "different than application's channel, removing update. update " +
@@ -2974,18 +2341,12 @@ __L_V__6({
         status == STATE_PENDING_ELEVATE ||
         status == STATE_DOWNLOADING)
     ) {
-__L_V__6({
-    lN: 2346,tT:'if',pr:' update && update.appVersion && (status == STATE_PENDING || status == STATE_PENDING_SERVICE || status == STATE_APPLIED || status == STATE_APPLIED_SERVICE || status == STATE_PENDING_ELEVATE || status == STATE_DOWNLOADING) ',eT:{},fN:''
-  });'__L_V__6';
       if (
         Services.vc.compare(update.appVersion, Services.appinfo.version) < 0 ||
         (Services.vc.compare(update.appVersion, Services.appinfo.version) ==
           0 &&
           update.buildID == Services.appinfo.appBuildID)
       ) {
-__L_V__6({
-    lN: 2352,tT:'if',pr:' Services.vc.compare(update.appVersion, Services.appinfo.version) < 0 || (Services.vc.compare(update.appVersion, Services.appinfo.version) == 0 && update.buildID == Services.appinfo.appBuildID) ',eT:{},fN:''
-  });'__L_V__6';
         LOG(
           "UpdateService:_postUpdateProcessing - removing update for older " +
             "application version or same application version with same build " +
@@ -3013,9 +2374,6 @@ __L_V__6({
 
     pingStateAndStatusCodes(update, true, status);
     if (status == STATE_DOWNLOADING) {
-__L_V__6({
-    lN: 2379,tT:'if',pr:'status == STATE_DOWNLOADING',eT:{},fN:''
-  });'__L_V__6';
       LOG(
         "UpdateService:_postUpdateProcessing - patch found in downloading " +
           "state"
@@ -3023,18 +2381,12 @@ __L_V__6({
       // Resume download
       status = this.downloadUpdate(update, true);
       if (status == STATE_NONE) {
-__L_V__6({
-    lN: 2386,tT:'if',pr:'status == STATE_NONE',eT:{},fN:''
-  });'__L_V__6';
         cleanupActiveUpdate();
       }
       return;
     }
 
     if (status == STATE_APPLYING) {
-__L_V__6({
-    lN: 2392,tT:'if',pr:'status == STATE_APPLYING',eT:{},fN:''
-  });'__L_V__6';
       // This indicates that the background updater service is in either of the
       // following two states:
       // 1. It is in the process of applying an update in the background, and
@@ -3052,9 +2404,6 @@ __L_V__6({
         update &&
         (update.state == STATE_PENDING || update.state == STATE_PENDING_SERVICE)
       ) {
-__L_V__6({
-    lN: 2409,tT:'if',pr:' update && (update.state == STATE_PENDING || update.state == STATE_PENDING_SERVICE) ',eT:{},fN:''
-  });'__L_V__6';
         LOG(
           "UpdateService:_postUpdateProcessing - patch found in applying " +
             "state for the first time"
@@ -3073,13 +2422,7 @@ __L_V__6({
     }
 
     if (!update) {
-__L_V__6({
-    lN: 2427,tT:'if',pr:'!update',eT:{},fN:''
-  });'__L_V__6';
       if (status != STATE_SUCCEEDED) {
-__L_V__6({
-    lN: 2428,tT:'if',pr:'status != STATE_SUCCEEDED',eT:{},fN:''
-  });'__L_V__6';
         LOG(
           "UpdateService:_postUpdateProcessing - previous patch failed " +
             "and no patch available"
@@ -3093,29 +2436,17 @@ __L_V__6({
     let parts = status.split(":");
     update.state = parts[0];
     if (update.state == STATE_FAILED && parts[1]) {
-__L_V__6({
-    lN: 2441,tT:'if',pr:'update.state == STATE_FAILED && parts[1]',eT:{},fN:''
-  });'__L_V__6';
       update.errorCode = parseInt(parts[1]);
     }
 
     if (status != STATE_SUCCEEDED) {
-__L_V__6({
-    lN: 2445,tT:'if',pr:'status != STATE_SUCCEEDED',eT:{},fN:''
-  });'__L_V__6';
       // Rotate the update logs so the update log isn't removed. By passing
       // false the patch directory won't be removed.
       cleanUpUpdatesDir(false);
     }
 
     if (status == STATE_SUCCEEDED) {
-__L_V__6({
-    lN: 2451,tT:'if',pr:'status == STATE_SUCCEEDED',eT:{},fN:''
-  });'__L_V__6';
       if (Services.prefs.prefHasUserValue(PREF_APP_UPDATE_CANCELATIONS)) {
-__L_V__6({
-    lN: 2452,tT:'if',pr:'Services.prefs.prefHasUserValue(PREF_APP_UPDATE_CANCELATIONS)',eT:{},fN:''
-  });'__L_V__6';
         Services.prefs.clearUserPref(PREF_APP_UPDATE_CANCELATIONS);
       }
       update.statusText = gUpdateBundle.GetStringFromName("installSuccess");
@@ -3123,9 +2454,6 @@ __L_V__6({
       // The only time that update is not a reference to activeUpdate is when
       // activeUpdate is null.
       if (!um.activeUpdate) {
-__L_V__6({
-    lN: 2459,tT:'if',pr:'!um.activeUpdate',eT:{},fN:''
-  });'__L_V__6';
         um.activeUpdate = update;
       }
 
@@ -3134,14 +2462,8 @@ __L_V__6({
 
       Services.prefs.setIntPref(PREF_APP_UPDATE_ELEVATE_ATTEMPTS, 0);
     } else if (status == STATE_PENDING_ELEVATE) {
-__L_V__6({
-    lN: 2467,tT:'if',pr:'status == STATE_PENDING_ELEVATE',eT:{},fN:''
-  });'__L_V__6';
       // In case the active-update.xml file is deleted.
       if (!um.activeUpdate) {
-__L_V__6({
-    lN: 2469,tT:'if',pr:'!um.activeUpdate',eT:{},fN:''
-  });'__L_V__6';
         LOG(
           "UpdateService:_postUpdateProcessing - status is pending-elevate " +
             "but there isn't an active update, removing update"
@@ -3158,13 +2480,7 @@ __L_V__6({
       // and it is set to pending so an attempt to apply it again will happen
       // when the application is restarted.
       if (update.state == STATE_FAILED && update.errorCode) {
-__L_V__6({
-    lN: 2485,tT:'if',pr:'update.state == STATE_FAILED && update.errorCode',eT:{},fN:''
-  });'__L_V__6';
         if (handleUpdateFailure(update, update.errorCode)) {
-__L_V__6({
-    lN: 2486,tT:'if',pr:'handleUpdateFailure(update, update.errorCode)',eT:{},fN:''
-  });'__L_V__6';
           return;
         }
       }
@@ -3179,13 +2495,7 @@ __L_V__6({
    * the app.update.interval when there isn't connectivity
    */
   _registerOnlineObserver: function AUS__registerOnlineObserver() {
-__L_V__6({
-    lN: 2500,tT:'func',pr:'',eT:{},fN:'AUS__registerOnlineObserver'
-  });'__L_V__6';
     if (this._registeredOnlineObserver) {
-__L_V__6({
-    lN: 2501,tT:'if',pr:'this._registeredOnlineObserver',eT:{},fN:''
-  });'__L_V__6';
       LOG(
         "UpdateService:_registerOnlineObserver - observer already registered"
       );
@@ -3205,13 +2515,7 @@ __L_V__6({
    * Called from the network:offline-status-changed observer.
    */
   _offlineStatusChanged: function AUS__offlineStatusChanged(status) {
-__L_V__6({
-    lN: 2520,tT:'func',pr:'',eT:{'status':status},fN:'AUS__offlineStatusChanged'
-  });'__L_V__6';
     if (status !== "online") {
-__L_V__6({
-    lN: 2521,tT:'if',pr:'status !== online',eT:{},fN:''
-  });'__L_V__6';
       return;
     }
 
@@ -3228,16 +2532,10 @@ __L_V__6({
   },
 
   onCheckComplete: function AUS_onCheckComplete(request, updates) {
-__L_V__6({
-    lN: 2537,tT:'func',pr:'',eT:{'request':request,'updates':updates},fN:'AUS_onCheckComplete'
-  });'__L_V__6';
     this._selectAndInstallUpdate(updates);
   },
 
   onError: function AUS_onError(request, update) {
-__L_V__6({
-    lN: 2541,tT:'func',pr:'',eT:{'request':request,'update':update},fN:'AUS_onError'
-  });'__L_V__6';
     LOG(
       "UpdateService:onError - error during background update. error code: " +
         update.errorCode +
@@ -3246,15 +2544,9 @@ __L_V__6({
     );
 
     if (update.errorCode == NETWORK_ERROR_OFFLINE) {
-__L_V__6({
-    lN: 2549,tT:'if',pr:'update.errorCode == NETWORK_ERROR_OFFLINE',eT:{},fN:''
-  });'__L_V__6';
       // Register an online observer to try again
       this._registerOnlineObserver();
       if (this._pingSuffix) {
-__L_V__6({
-    lN: 2552,tT:'if',pr:'this._pingSuffix',eT:{},fN:''
-  });'__L_V__6';
         AUSTLMY.pingCheckCode(this._pingSuffix, AUSTLMY.CHK_OFFLINE);
       }
       return;
@@ -3276,9 +2568,6 @@ __L_V__6({
     );
 
     if (errCount >= maxErrors) {
-__L_V__6({
-    lN: 2573,tT:'if',pr:'errCount >= maxErrors',eT:{},fN:''
-  });'__L_V__6';
       LOG(
         "UpdateService:onError - notifying observers of error. " +
           "topic: update-error, status: check-attempts-exceeded"
@@ -3307,9 +2596,6 @@ __L_V__6({
    * Called when a connection should be resumed
    */
   _attemptResume: function AUS_attemptResume() {
-__L_V__6({
-    lN: 2601,tT:'func',pr:'',eT:{},fN:'AUS_attemptResume'
-  });'__L_V__6';
     LOG("UpdateService:_attemptResume");
     // If a download is in progress, then resume it.
     if (
@@ -3318,9 +2604,6 @@ __L_V__6({
       this._downloader._patch.state == STATE_DOWNLOADING &&
       this._downloader._update
     ) {
-__L_V__6({
-    lN: 2609,tT:'if',pr:' this._downloader && this._downloader._patch && this._downloader._patch.state == STATE_DOWNLOADING && this._downloader._update ',eT:{},fN:''
-  });'__L_V__6';
       LOG(
         "UpdateService:_attemptResume - _patch.state: " +
           this._downloader._patch.state
@@ -3333,9 +2616,6 @@ __L_V__6({
       );
       LOG("UpdateService:_attemptResume - downloadUpdate status: " + status);
       if (status == STATE_NONE) {
-__L_V__6({
-    lN: 2621,tT:'if',pr:'status == STATE_NONE',eT:{},fN:''
-  });'__L_V__6';
         cleanupActiveUpdate();
       }
       return;
@@ -3350,9 +2630,6 @@ __L_V__6({
    *          The timer that fired
    */
   notify: function AUS_notify(timer) {
-__L_V__6({
-    lN: 2635,tT:'func',pr:'',eT:{'timer':timer},fN:'AUS_notify'
-  });'__L_V__6';
     this._checkForBackgroundUpdates(true);
   },
 
@@ -3360,17 +2637,11 @@ __L_V__6({
    * See nsIUpdateService.idl
    */
   checkForBackgroundUpdates: function AUS_checkForBackgroundUpdates() {
-__L_V__6({
-    lN: 2642,tT:'func',pr:'',eT:{},fN:'AUS_checkForBackgroundUpdates'
-  });'__L_V__6';
     this._checkForBackgroundUpdates(false);
   },
 
   // The suffix used for background update check telemetry histogram ID's.
   get _pingSuffix() {
-__L_V__6({
-    lN: 2647,tT:'func',pr:'',eT:{},fN:'_pingSuffix'
-  });'__L_V__6';
     return this._isNotify ? AUSTLMY.NOTIFY : AUSTLMY.EXTERNAL;
   },
 
@@ -3383,9 +2654,6 @@ __L_V__6({
   _checkForBackgroundUpdates: function AUS__checkForBackgroundUpdates(
     isNotify
   ) {
-__L_V__6({
-    lN: 2659,tT:'func',pr:'',eT:{'isNotify':isNotify},fN:'AUS__checkForBackgroundUpdates'
-  });'__L_V__6';
     this._isNotify = isNotify;
 
     // Histogram IDs:
@@ -3410,9 +2678,6 @@ __L_V__6({
       true
     );
     if (AppConstants.platform == "win") {
-__L_V__6({
-    lN: 2683,tT:'if',pr:'AppConstants.platform == win',eT:{},fN:''
-  });'__L_V__6';
       // Histogram IDs:
       // UPDATE_CAN_USE_BITS_EXTERNAL
       // UPDATE_CAN_USE_BITS_NOTIFY
@@ -3447,9 +2712,6 @@ __L_V__6({
       true
     );
     if (AppConstants.platform == "win" || AppConstants.platform == "macosx") {
-__L_V__6({
-    lN: 2717,tT:'if',pr:'AppConstants.platform == win || AppConstants.platform == macosx',eT:{},fN:''
-  });'__L_V__6';
       // Histogram IDs:
       // UPDATE_PREF_UPDATE_CANCELATIONS_EXTERNAL
       // UPDATE_PREF_UPDATE_CANCELATIONS_NOTIFY
@@ -3461,9 +2723,6 @@ __L_V__6({
       );
     }
     if (AppConstants.platform == "macosx") {
-__L_V__6({
-    lN: 2728,tT:'if',pr:'AppConstants.platform == macosx',eT:{},fN:''
-  });'__L_V__6';
       // Histogram IDs:
       // UPDATE_PREF_UPDATE_CANCELATIONS_OSX_EXTERNAL
       // UPDATE_PREF_UPDATE_CANCELATIONS_OSX_NOTIFY
@@ -3475,9 +2734,6 @@ __L_V__6({
       );
     }
     if (AppConstants.MOZ_MAINTENANCE_SERVICE) {
-__L_V__6({
-    lN: 2739,tT:'if',pr:'AppConstants.MOZ_MAINTENANCE_SERVICE',eT:{},fN:''
-  });'__L_V__6';
       // Histogram IDs:
       // UPDATE_NOT_PREF_UPDATE_SERVICE_ENABLED_EXTERNAL
       // UPDATE_NOT_PREF_UPDATE_SERVICE_ENABLED_NOTIFY
@@ -3496,9 +2752,6 @@ __L_V__6({
         0
       );
       if (AppConstants.platform == "win") {
-__L_V__6({
-    lN: 2757,tT:'if',pr:'AppConstants.platform == win',eT:{},fN:''
-  });'__L_V__6';
         // Histogram IDs:
         // UPDATE_SERVICE_INSTALLED_EXTERNAL
         // UPDATE_SERVICE_INSTALLED_NOTIFY
@@ -3513,26 +2766,17 @@ __L_V__6({
 
     // If a download is in progress or the patch has been staged do nothing.
     if (this.isDownloading) {
-__L_V__6({
-    lN: 2771,tT:'if',pr:'this.isDownloading',eT:{},fN:''
-  });'__L_V__6';
       AUSTLMY.pingCheckCode(this._pingSuffix, AUSTLMY.CHK_IS_DOWNLOADING);
       return;
     }
 
     if (this._downloader && this._downloader.patchIsStaged) {
-__L_V__6({
-    lN: 2776,tT:'if',pr:'this._downloader && this._downloader.patchIsStaged',eT:{},fN:''
-  });'__L_V__6';
       let readState = readStatusFile(getUpdatesDir());
       if (
         readState == STATE_PENDING ||
         readState == STATE_PENDING_SERVICE ||
         readState == STATE_PENDING_ELEVATE
       ) {
-__L_V__6({
-    lN: 2782,tT:'if',pr:' readState == STATE_PENDING || readState == STATE_PENDING_SERVICE || readState == STATE_PENDING_ELEVATE ',eT:{},fN:''
-  });'__L_V__6';
         AUSTLMY.pingCheckCode(this._pingSuffix, AUSTLMY.CHK_IS_DOWNLOADED);
       } else {
         AUSTLMY.pingCheckCode(this._pingSuffix, AUSTLMY.CHK_IS_STAGED);
@@ -3550,40 +2794,22 @@ __L_V__6({
         // The following checks are done here so they can be differentiated from
         // foreground checks.
         if (!UpdateUtils.OSVersion) {
-__L_V__6({
-    lN: 2799,tT:'if',pr:'!UpdateUtils.OSVersion',eT:{},fN:''
-  });'__L_V__6';
           AUSTLMY.pingCheckCode(this._pingSuffix, AUSTLMY.CHK_NO_OS_VERSION);
         } else if (!UpdateUtils.ABI) {
-__L_V__6({
-    lN: 2801,tT:'if',pr:'!UpdateUtils.ABI',eT:{},fN:''
-  });'__L_V__6';
           AUSTLMY.pingCheckCode(this._pingSuffix, AUSTLMY.CHK_NO_OS_ABI);
         } else if (!validUpdateURL) {
-__L_V__6({
-    lN: 2803,tT:'if',pr:'!validUpdateURL',eT:{},fN:''
-  });'__L_V__6';
           AUSTLMY.pingCheckCode(
             this._pingSuffix,
             AUSTLMY.CHK_INVALID_DEFAULT_URL
           );
         } else if (this.disabledByPolicy) {
-__L_V__6({
-    lN: 2808,tT:'if',pr:'this.disabledByPolicy',eT:{},fN:''
-  });'__L_V__6';
           AUSTLMY.pingCheckCode(
             this._pingSuffix,
             AUSTLMY.CHK_DISABLED_BY_POLICY
           );
         } else if (!hasUpdateMutex()) {
-__L_V__6({
-    lN: 2813,tT:'if',pr:'!hasUpdateMutex()',eT:{},fN:''
-  });'__L_V__6';
           AUSTLMY.pingCheckCode(this._pingSuffix, AUSTLMY.CHK_NO_MUTEX);
         } else if (!this.canCheckForUpdates) {
-__L_V__6({
-    lN: 2815,tT:'if',pr:'!this.canCheckForUpdates',eT:{},fN:''
-  });'__L_V__6';
           AUSTLMY.pingCheckCode(this._pingSuffix, AUSTLMY.CHK_UNABLE_TO_CHECK);
         }
 
@@ -3600,22 +2826,13 @@ __L_V__6({
    * @return  The nsIUpdate to offer.
    */
   selectUpdate: function AUS_selectUpdate(updates) {
-__L_V__6({
-    lN: 2831,tT:'func',pr:'',eT:{'updates':updates},fN:'AUS_selectUpdate'
-  });'__L_V__6';
     if (!updates.length) {
-__L_V__6({
-    lN: 2832,tT:'if',pr:'!updates.length',eT:{},fN:''
-  });'__L_V__6';
       AUSTLMY.pingCheckCode(this._pingSuffix, AUSTLMY.CHK_NO_UPDATE_FOUND);
       return null;
     }
 
     // The ping for unsupported is sent after the call to showPrompt.
     if (updates.length == 1 && updates[0].unsupported) {
-__L_V__6({
-    lN: 2838,tT:'if',pr:'updates.length == 1 && updates[0].unsupported',eT:{},fN:''
-  });'__L_V__6';
       return updates[0];
     }
 
@@ -3633,9 +2850,6 @@ __L_V__6({
         (vc.compare(aUpdate.appVersion, Services.appinfo.version) == 0 &&
           aUpdate.buildID == Services.appinfo.appBuildID)
       ) {
-__L_V__6({
-    lN: 2855,tT:'if',pr:' vc.compare(aUpdate.appVersion, Services.appinfo.version) < 0 || (vc.compare(aUpdate.appVersion, Services.appinfo.version) == 0 && aUpdate.buildID == Services.appinfo.appBuildID) ',eT:{},fN:''
-  });'__L_V__6';
         LOG(
           "UpdateService:selectUpdate - skipping update because the " +
             "update's application version is less than the current " +
@@ -3644,38 +2858,23 @@ __L_V__6({
         lastCheckCode = AUSTLMY.CHK_UPDATE_PREVIOUS_VERSION;
         return;
       }
-__L_V__6({
-    lN: 2864,tT:'switch',pr:'',eT:{},fN:''
-  });'__L_V__6';
 
       switch (aUpdate.type) {
         case "major":
           if (!majorUpdate) {
-__L_V__6({
-    lN: 2867,tT:'if',pr:'!majorUpdate',eT:{},fN:''
-  });'__L_V__6';
             majorUpdate = aUpdate;
           } else if (
             vc.compare(majorUpdate.appVersion, aUpdate.appVersion) <= 0
           ) {
-__L_V__6({
-    lN: 2871,tT:'if',pr:' vc.compare(majorUpdate.appVersion, aUpdate.appVersion) <= 0 ',eT:{},fN:''
-  });'__L_V__6';
             majorUpdate = aUpdate;
           }
           break;
         case "minor":
           if (!minorUpdate) {
-__L_V__6({
-    lN: 2876,tT:'if',pr:'!minorUpdate',eT:{},fN:''
-  });'__L_V__6';
             minorUpdate = aUpdate;
           } else if (
             vc.compare(minorUpdate.appVersion, aUpdate.appVersion) <= 0
           ) {
-__L_V__6({
-    lN: 2880,tT:'if',pr:' vc.compare(minorUpdate.appVersion, aUpdate.appVersion) <= 0 ',eT:{},fN:''
-  });'__L_V__6';
             minorUpdate = aUpdate;
           }
           break;
@@ -3691,21 +2890,12 @@ __L_V__6({
 
     let update = minorUpdate || majorUpdate;
     if (AppConstants.platform == "macosx" && update) {
-__L_V__6({
-    lN: 2895,tT:'if',pr:'AppConstants.platform == macosx && update',eT:{},fN:''
-  });'__L_V__6';
       if (getElevationRequired()) {
-__L_V__6({
-    lN: 2896,tT:'if',pr:'getElevationRequired()',eT:{},fN:''
-  });'__L_V__6';
         let installAttemptVersion = Services.prefs.getCharPref(
           PREF_APP_UPDATE_ELEVATE_VERSION,
           null
         );
         if (vc.compare(installAttemptVersion, update.appVersion) != 0) {
-__L_V__6({
-    lN: 2901,tT:'if',pr:'vc.compare(installAttemptVersion, update.appVersion) != 0',eT:{},fN:''
-  });'__L_V__6';
           Services.prefs.setCharPref(
             PREF_APP_UPDATE_ELEVATE_VERSION,
             update.appVersion
@@ -3713,15 +2903,9 @@ __L_V__6({
           if (
             Services.prefs.prefHasUserValue(PREF_APP_UPDATE_CANCELATIONS_OSX)
           ) {
-__L_V__6({
-    lN: 2908,tT:'if',pr:' Services.prefs.prefHasUserValue(PREF_APP_UPDATE_CANCELATIONS_OSX) ',eT:{},fN:''
-  });'__L_V__6';
             Services.prefs.clearUserPref(PREF_APP_UPDATE_CANCELATIONS_OSX);
           }
           if (Services.prefs.prefHasUserValue(PREF_APP_UPDATE_ELEVATE_NEVER)) {
-__L_V__6({
-    lN: 2911,tT:'if',pr:'Services.prefs.prefHasUserValue(PREF_APP_UPDATE_ELEVATE_NEVER)',eT:{},fN:''
-  });'__L_V__6';
             Services.prefs.clearUserPref(PREF_APP_UPDATE_ELEVATE_NEVER);
           }
         } else {
@@ -3738,9 +2922,6 @@ __L_V__6({
             DEFAULT_CANCELATIONS_OSX_MAX
           );
           if (numCancels >= maxCancels) {
-__L_V__6({
-    lN: 2927,tT:'if',pr:'numCancels >= maxCancels',eT:{},fN:''
-  });'__L_V__6';
             LOG(
               "UpdateService:selectUpdate - the user requires elevation to " +
                 "install this update, but the user has exceeded the max " +
@@ -3752,9 +2933,6 @@ __L_V__6({
               AUSTLMY.CHK_ELEVATION_DISABLED_FOR_VERSION
             );
           } else if (vc.compare(rejectedVersion, update.appVersion) == 0) {
-__L_V__6({
-    lN: 2938,tT:'if',pr:'vc.compare(rejectedVersion, update.appVersion) == 0',eT:{},fN:''
-  });'__L_V__6';
             LOG(
               "UpdateService:selectUpdate - the user requires elevation to " +
                 "install this update, but elevation is disabled for this " +
@@ -3777,28 +2955,16 @@ __L_V__6({
         // may have gained write access to the Firefox directory or an update
         // was executed with a different profile).
         if (Services.prefs.prefHasUserValue(PREF_APP_UPDATE_ELEVATE_VERSION)) {
-__L_V__6({
-    lN: 2960,tT:'if',pr:'Services.prefs.prefHasUserValue(PREF_APP_UPDATE_ELEVATE_VERSION)',eT:{},fN:''
-  });'__L_V__6';
           Services.prefs.clearUserPref(PREF_APP_UPDATE_ELEVATE_VERSION);
         }
         if (Services.prefs.prefHasUserValue(PREF_APP_UPDATE_CANCELATIONS_OSX)) {
-__L_V__6({
-    lN: 2963,tT:'if',pr:'Services.prefs.prefHasUserValue(PREF_APP_UPDATE_CANCELATIONS_OSX)',eT:{},fN:''
-  });'__L_V__6';
           Services.prefs.clearUserPref(PREF_APP_UPDATE_CANCELATIONS_OSX);
         }
         if (Services.prefs.prefHasUserValue(PREF_APP_UPDATE_ELEVATE_NEVER)) {
-__L_V__6({
-    lN: 2966,tT:'if',pr:'Services.prefs.prefHasUserValue(PREF_APP_UPDATE_ELEVATE_NEVER)',eT:{},fN:''
-  });'__L_V__6';
           Services.prefs.clearUserPref(PREF_APP_UPDATE_ELEVATE_NEVER);
         }
       }
     } else if (!update) {
-__L_V__6({
-    lN: 2970,tT:'if',pr:'!update',eT:{},fN:''
-  });'__L_V__6';
       AUSTLMY.pingCheckCode(this._pingSuffix, lastCheckCode);
     }
 
@@ -3812,26 +2978,17 @@ __L_V__6({
    *          An array of available updates
    */
   _selectAndInstallUpdate: async function AUS__selectAndInstallUpdate(updates) {
-__L_V__6({
-    lN: 2983,tT:'func',pr:'',eT:{'updates':updates},fN:'AUS__selectAndInstallUpdate'
-  });'__L_V__6';
     // Return early if there's an active update. The user is already aware and
     // is downloading or performed some user action to prevent notification.
     var um = Cc["@mozilla.org/updates/update-manager;1"].getService(
       Ci.nsIUpdateManager
     );
     if (um.activeUpdate) {
-__L_V__6({
-    lN: 2989,tT:'if',pr:'um.activeUpdate',eT:{},fN:''
-  });'__L_V__6';
       AUSTLMY.pingCheckCode(this._pingSuffix, AUSTLMY.CHK_HAS_ACTIVEUPDATE);
       return;
     }
 
     if (this.disabledByPolicy) {
-__L_V__6({
-    lN: 2994,tT:'if',pr:'this.disabledByPolicy',eT:{},fN:''
-  });'__L_V__6';
       AUSTLMY.pingCheckCode(this._pingSuffix, AUSTLMY.CHK_PREF_DISABLED);
       LOG(
         "UpdateService:_selectAndInstallUpdate - not prompting because " +
@@ -3842,16 +2999,10 @@ __L_V__6({
 
     var update = this.selectUpdate(updates);
     if (!update || update.elevationFailure) {
-__L_V__6({
-    lN: 3004,tT:'if',pr:'!update || update.elevationFailure',eT:{},fN:''
-  });'__L_V__6';
       return;
     }
 
     if (update.unsupported) {
-__L_V__6({
-    lN: 3008,tT:'if',pr:'update.unsupported',eT:{},fN:''
-  });'__L_V__6';
       LOG(
         "UpdateService:_selectAndInstallUpdate - update not supported for " +
           "this system. Notifying observers. topic: update-available, " +
@@ -3863,9 +3014,6 @@ __L_V__6({
     }
 
     if (!getCanApplyUpdates()) {
-__L_V__6({
-    lN: 3019,tT:'if',pr:'!getCanApplyUpdates()',eT:{},fN:''
-  });'__L_V__6';
       LOG(
         "UpdateService:_selectAndInstallUpdate - the user is unable to " +
           "apply updates... prompting. Notifying observers. " +
@@ -3893,9 +3041,6 @@ __L_V__6({
      */
     let updateAuto = await UpdateUtils.getAppUpdateAutoEnabled();
     if (!updateAuto) {
-__L_V__6({
-    lN: 3046,tT:'if',pr:'!updateAuto',eT:{},fN:''
-  });'__L_V__6';
       LOG(
         "UpdateService:_selectAndInstallUpdate - prompting because silent " +
           "install is disabled. Notifying observers. topic: update-available, " +
@@ -3909,9 +3054,6 @@ __L_V__6({
     LOG("UpdateService:_selectAndInstallUpdate - download the update");
     let status = this.downloadUpdate(update, true);
     if (status == STATE_NONE) {
-__L_V__6({
-    lN: 3059,tT:'if',pr:'status == STATE_NONE',eT:{},fN:''
-  });'__L_V__6';
       cleanupActiveUpdate();
     }
     AUSTLMY.pingCheckCode(this._pingSuffix, AUSTLMY.CHK_DOWNLOAD_UPDATE);
@@ -3926,28 +3068,16 @@ __L_V__6({
    * See nsIUpdateService.idl
    */
   get backgroundChecker() {
-__L_V__6({
-    lN: 3073,tT:'func',pr:'',eT:{},fN:'backgroundChecker'
-  });'__L_V__6';
     if (!this._backgroundChecker) {
-__L_V__6({
-    lN: 3074,tT:'if',pr:'!this._backgroundChecker',eT:{},fN:''
-  });'__L_V__6';
       this._backgroundChecker = new Checker();
     }
     return this._backgroundChecker;
   },
 
   get disabledForTesting() {
-__L_V__6({
-    lN: 3080,tT:'func',pr:'',eT:{},fN:'disabledForTesting'
-  });'__L_V__6';
     let marionetteRunning = false;
 
     if ("nsIMarionette" in Ci) {
-__L_V__6({
-    lN: 3083,tT:'if',pr:'nsIMarionette in Ci',eT:{},fN:''
-  });'__L_V__6';
       marionetteRunning = Cc["@mozilla.org/remote/marionette;1"].createInstance(
         Ci.nsIMarionette
       ).running;
@@ -3960,9 +3090,6 @@ __L_V__6({
   },
 
   get disabledByPolicy() {
-__L_V__6({
-    lN: 3095,tT:'func',pr:'',eT:{},fN:'disabledByPolicy'
-  });'__L_V__6';
     return (
       (Services.policies && !Services.policies.isAllowed("appUpdate")) ||
       this.disabledForTesting
@@ -3973,13 +3100,7 @@ __L_V__6({
    * See nsIUpdateService.idl
    */
   get canCheckForUpdates() {
-__L_V__6({
-    lN: 3105,tT:'func',pr:'',eT:{},fN:'canCheckForUpdates'
-  });'__L_V__6';
     if (this.disabledByPolicy) {
-__L_V__6({
-    lN: 3106,tT:'if',pr:'this.disabledByPolicy',eT:{},fN:''
-  });'__L_V__6';
       LOG(
         "UpdateService.canCheckForUpdates - unable to automatically check " +
           "for updates, the option has been disabled by the administrator."
@@ -3989,9 +3110,6 @@ __L_V__6({
 
     // If we don't know the binary platform we're updating, we can't update.
     if (!UpdateUtils.ABI) {
-__L_V__6({
-    lN: 3115,tT:'if',pr:'!UpdateUtils.ABI',eT:{},fN:''
-  });'__L_V__6';
       LOG(
         "UpdateService.canCheckForUpdates - unable to check for updates, " +
           "unknown ABI"
@@ -4001,9 +3119,6 @@ __L_V__6({
 
     // If we don't know the OS version we're updating, we can't update.
     if (!UpdateUtils.OSVersion) {
-__L_V__6({
-    lN: 3124,tT:'if',pr:'!UpdateUtils.OSVersion',eT:{},fN:''
-  });'__L_V__6';
       LOG(
         "UpdateService.canCheckForUpdates - unable to check for updates, " +
           "unknown OS version"
@@ -4012,9 +3127,6 @@ __L_V__6({
     }
 
     if (!hasUpdateMutex()) {
-__L_V__6({
-    lN: 3132,tT:'if',pr:'!hasUpdateMutex()',eT:{},fN:''
-  });'__L_V__6';
       LOG(
         "UpdateService.canCheckForUpdates - unable to check for updates, " +
           "unable to acquire update mutex"
@@ -4030,9 +3142,6 @@ __L_V__6({
    * See nsIUpdateService.idl
    */
   get elevationRequired() {
-__L_V__6({
-    lN: 3147,tT:'func',pr:'',eT:{},fN:'elevationRequired'
-  });'__L_V__6';
     return getElevationRequired();
   },
 
@@ -4040,9 +3149,6 @@ __L_V__6({
    * See nsIUpdateService.idl
    */
   get canApplyUpdates() {
-__L_V__6({
-    lN: 3154,tT:'func',pr:'',eT:{},fN:'canApplyUpdates'
-  });'__L_V__6';
     return getCanApplyUpdates() && hasUpdateMutex();
   },
 
@@ -4050,9 +3156,6 @@ __L_V__6({
    * See nsIUpdateService.idl
    */
   get canStageUpdates() {
-__L_V__6({
-    lN: 3161,tT:'func',pr:'',eT:{},fN:'canStageUpdates'
-  });'__L_V__6';
     return getCanStageUpdates();
   },
 
@@ -4060,9 +3163,6 @@ __L_V__6({
    * See nsIUpdateService.idl
    */
   get isOtherInstanceHandlingUpdates() {
-__L_V__6({
-    lN: 3168,tT:'func',pr:'',eT:{},fN:'isOtherInstanceHandlingUpdates'
-  });'__L_V__6';
     return !hasUpdateMutex();
   },
 
@@ -4070,13 +3170,7 @@ __L_V__6({
    * See nsIUpdateService.idl
    */
   addDownloadListener: function AUS_addDownloadListener(listener) {
-__L_V__6({
-    lN: 3175,tT:'func',pr:'',eT:{'listener':listener},fN:'AUS_addDownloadListener'
-  });'__L_V__6';
     if (!this._downloader) {
-__L_V__6({
-    lN: 3176,tT:'if',pr:'!this._downloader',eT:{},fN:''
-  });'__L_V__6';
       LOG("UpdateService:addDownloadListener - no downloader!");
       return;
     }
@@ -4087,13 +3181,7 @@ __L_V__6({
    * See nsIUpdateService.idl
    */
   removeDownloadListener: function AUS_removeDownloadListener(listener) {
-__L_V__6({
-    lN: 3186,tT:'func',pr:'',eT:{'listener':listener},fN:'AUS_removeDownloadListener'
-  });'__L_V__6';
     if (!this._downloader) {
-__L_V__6({
-    lN: 3187,tT:'if',pr:'!this._downloader',eT:{},fN:''
-  });'__L_V__6';
       LOG("UpdateService:removeDownloadListener - no downloader!");
       return;
     }
@@ -4104,13 +3192,7 @@ __L_V__6({
    * See nsIUpdateService.idl
    */
   downloadUpdate: function AUS_downloadUpdate(update, background) {
-__L_V__6({
-    lN: 3197,tT:'func',pr:'',eT:{'update':update,'background':background},fN:'AUS_downloadUpdate'
-  });'__L_V__6';
     if (!update) {
-__L_V__6({
-    lN: 3198,tT:'if',pr:'!update',eT:{},fN:''
-  });'__L_V__6';
       throw Cr.NS_ERROR_NULL_POINTER;
     }
 
@@ -4125,9 +3207,6 @@ __L_V__6({
           update.buildID == Services.appinfo.appBuildID &&
           update.appVersion == Services.appinfo.version))
     ) {
-__L_V__6({
-    lN: 3212,tT:'if',pr:' update.appVersion && (Services.vc.compare(update.appVersion, Services.appinfo.version) < 0 || (update.buildID && update.buildID == Services.appinfo.appBuildID && update.appVersion == Services.appinfo.version)) ',eT:{},fN:''
-  });'__L_V__6';
       LOG(
         "UpdateService:downloadUpdate - canceling download of update since " +
           "it is for an earlier or same application version and build ID.\n" +
@@ -4149,13 +3228,7 @@ __L_V__6({
 
     // If a download request is in progress vs. a download ready to resume
     if (this.isDownloading) {
-__L_V__6({
-    lN: 3233,tT:'if',pr:'this.isDownloading',eT:{},fN:''
-  });'__L_V__6';
       if (update.isCompleteUpdate == this._downloader.isCompleteUpdate) {
-__L_V__6({
-    lN: 3234,tT:'if',pr:'update.isCompleteUpdate == this._downloader.isCompleteUpdate',eT:{},fN:''
-  });'__L_V__6';
         LOG(
           "UpdateService:downloadUpdate - no support for downloading more " +
             "than one update at a time"
@@ -4173,26 +3246,14 @@ __L_V__6({
    * See nsIUpdateService.idl
    */
   stopDownload: function AUS_stopDownload() {
-__L_V__6({
-    lN: 3251,tT:'func',pr:'',eT:{},fN:'AUS_stopDownload'
-  });'__L_V__6';
     if (this.isDownloading) {
-__L_V__6({
-    lN: 3252,tT:'if',pr:'this.isDownloading',eT:{},fN:''
-  });'__L_V__6';
       this._downloader.cancel();
     } else if (this._retryTimer) {
-__L_V__6({
-    lN: 3254,tT:'if',pr:'this._retryTimer',eT:{},fN:''
-  });'__L_V__6';
       // Download status is still considered as 'downloading' during retry.
       // We need to cancel both retry and download at this stage.
       this._retryTimer.cancel();
       this._retryTimer = null;
       if (this._downloader) {
-__L_V__6({
-    lN: 3259,tT:'if',pr:'this._downloader',eT:{},fN:''
-  });'__L_V__6';
         this._downloader.cancel();
       }
     }
@@ -4207,26 +3268,14 @@ __L_V__6({
    * See nsIUpdateService.idl
    */
   get isDownloading() {
-__L_V__6({
-    lN: 3273,tT:'func',pr:'',eT:{},fN:'isDownloading'
-  });'__L_V__6';
     return this._downloader && this._downloader.isBusy;
   },
 
   _logStatus: function AUS__logStatus() {
-__L_V__6({
-    lN: 3277,tT:'func',pr:'',eT:{},fN:'AUS__logStatus'
-  });'__L_V__6';
     if (!gLogEnabled) {
-__L_V__6({
-    lN: 3278,tT:'if',pr:'!gLogEnabled',eT:{},fN:''
-  });'__L_V__6';
       return;
     }
     if (this.disabledByPolicy) {
-__L_V__6({
-    lN: 3281,tT:'if',pr:'this.disabledByPolicy',eT:{},fN:''
-  });'__L_V__6';
       LOG("Current UpdateService status: disabledByPolicy");
       // Return early if UpdateService is disabled by policy. Otherwise some of
       // the getters we call to display status information may discover that the
@@ -4247,15 +3296,9 @@ __L_V__6({
     );
     LOG("Downloading: " + !!this.isDownloading);
     if (this._downloader && this._downloader.isBusy) {
-__L_V__6({
-    lN: 3301,tT:'if',pr:'this._downloader && this._downloader.isBusy',eT:{},fN:''
-  });'__L_V__6';
       LOG("Downloading complete update: " + this._downloader.isCompleteUpdate);
       LOG("Downloader using BITS: " + this._downloader.usingBits);
       if (this._downloader._patch) {
-__L_V__6({
-    lN: 3304,tT:'if',pr:'this._downloader._patch',eT:{},fN:''
-  });'__L_V__6';
         // This will print its own logging
         this._downloader._canUseBits(this._downloader._patch);
 
@@ -4264,18 +3307,12 @@ __L_V__6({
         // again here.
         let bitsResult = this._downloader._patch.getProperty("bitsResult");
         if (bitsResult != null) {
-__L_V__6({
-    lN: 3312,tT:'if',pr:'bitsResult != null',eT:{},fN:''
-  });'__L_V__6';
           LOG("Patch BITS result: " + bitsResult);
         }
         let internalResult = this._downloader._patch.getProperty(
           "internalResult"
         );
         if (internalResult != null) {
-__L_V__6({
-    lN: 3318,tT:'if',pr:'internalResult != null',eT:{},fN:''
-  });'__L_V__6';
           LOG("Patch nsIIncrementalDownload result: " + internalResult);
         }
       }
@@ -4299,23 +3336,14 @@ __L_V__6({
  * @constructor
  */
 function UpdateManager() {
-__L_V__6({
-    lN: 3341,tT:'func',pr:'',eT:{},fN:'UpdateManager'
-  });'__L_V__6';
   // Load the active-update.xml file to see if there is an active update.
   let activeUpdates = this._loadXMLFileIntoArray(FILE_ACTIVE_UPDATE_XML);
   if (activeUpdates.length) {
-__L_V__6({
-    lN: 3344,tT:'if',pr:'activeUpdates.length',eT:{},fN:''
-  });'__L_V__6';
     // Set the active update directly on the var used to cache the value.
     this._activeUpdate = activeUpdates[0];
     // This check is performed here since UpdateService:_postUpdateProcessing
     // won't be called when there isn't an update.status file.
     if (readStatusFile(getUpdatesDir()) == STATE_NONE) {
-__L_V__6({
-    lN: 3349,tT:'if',pr:'readStatusFile(getUpdatesDir()) == STATE_NONE',eT:{},fN:''
-  });'__L_V__6';
       // Under some edgecases such as Windows system restore the
       // active-update.xml will contain a pending update without the status
       // file. To recover from this situation clean the updates dir and move
@@ -4351,24 +3379,12 @@ UpdateManager.prototype = {
    * See nsIObserver.idl
    */
   observe: function UM_observe(subject, topic, data) {
-__L_V__6({
-    lN: 3384,tT:'func',pr:'',eT:{'subject':subject,'topic':topic,'data':data},fN:'UM_observe'
-  });'__L_V__6';
     // Hack to be able to run and cleanup tests by reloading the update data.
     if (topic == "um-reload-update-data") {
-__L_V__6({
-    lN: 3386,tT:'if',pr:'topic == um-reload-update-data',eT:{},fN:''
-  });'__L_V__6';
       if (!Cu.isInAutomation) {
-__L_V__6({
-    lN: 3387,tT:'if',pr:'!Cu.isInAutomation',eT:{},fN:''
-  });'__L_V__6';
         return;
       }
       if (this._updatesXMLSaver) {
-__L_V__6({
-    lN: 3390,tT:'if',pr:'this._updatesXMLSaver',eT:{},fN:''
-  });'__L_V__6';
         this._updatesXMLSaver.disarm();
       }
 
@@ -4376,14 +3392,8 @@ __L_V__6({
       this._updatesDirty = true;
       this._activeUpdate = null;
       if (data != "skip-files") {
-__L_V__6({
-    lN: 3397,tT:'if',pr:'data != skip-files',eT:{},fN:''
-  });'__L_V__6';
         let activeUpdates = this._loadXMLFileIntoArray(FILE_ACTIVE_UPDATE_XML);
         if (activeUpdates.length) {
-__L_V__6({
-    lN: 3399,tT:'if',pr:'activeUpdates.length',eT:{},fN:''
-  });'__L_V__6';
           this._activeUpdate = activeUpdates[0];
         }
         updates = this._loadXMLFileIntoArray(FILE_UPDATES_XML);
@@ -4405,15 +3415,9 @@ __L_V__6({
    * @return  The array of nsIUpdate items held in the file.
    */
   _loadXMLFileIntoArray: function UM__loadXMLFileIntoArray(fileName) {
-__L_V__6({
-    lN: 3420,tT:'func',pr:'',eT:{'fileName':fileName},fN:'UM__loadXMLFileIntoArray'
-  });'__L_V__6';
     let updates = [];
     let file = getUpdateFile([fileName]);
     if (!file.exists()) {
-__L_V__6({
-    lN: 3423,tT:'if',pr:'!file.exists()',eT:{},fN:''
-  });'__L_V__6';
       LOG(
         "UpdateManager:_loadXMLFileIntoArray - XML file does not exist. " +
           "path: " +
@@ -4461,9 +3465,6 @@ __L_V__6({
           updateElement.nodeType != updateElement.ELEMENT_NODE ||
           updateElement.localName != "update"
         ) {
-__L_V__6({
-    lN: 3470,tT:'if',pr:' updateElement.nodeType != updateElement.ELEMENT_NODE || updateElement.localName != update ',eT:{},fN:''
-  });'__L_V__6';
           continue;
         }
 
@@ -4485,9 +3486,6 @@ __L_V__6({
     }
     fileStream.close();
     if (!updates.length) {
-__L_V__6({
-    lN: 3491,tT:'if',pr:'!updates.length',eT:{},fN:''
-  });'__L_V__6';
       LOG(
         "UpdateManager:_loadXMLFileIntoArray - update xml file " +
           fileName +
@@ -4514,9 +3512,6 @@ __L_V__6({
    * once.
    */
   get _updates() {
-__L_V__6({
-    lN: 3517,tT:'func',pr:'',eT:{},fN:'_updates'
-  });'__L_V__6';
     delete this._updates;
     let updates = this._loadXMLFileIntoArray(FILE_UPDATES_XML);
     Object.defineProperty(this, "_updates", {
@@ -4532,9 +3527,6 @@ __L_V__6({
    * See nsIUpdateService.idl
    */
   getUpdateAt: function UM_getUpdateAt(aIndex) {
-__L_V__6({
-    lN: 3532,tT:'func',pr:'',eT:{'aIndex':aIndex},fN:'UM_getUpdateAt'
-  });'__L_V__6';
     return this._updates[aIndex];
   },
 
@@ -4542,9 +3534,6 @@ __L_V__6({
    * See nsIUpdateService.idl
    */
   get updateCount() {
-__L_V__6({
-    lN: 3539,tT:'func',pr:'',eT:{},fN:'updateCount'
-  });'__L_V__6';
     return this._updates.length;
   },
 
@@ -4552,19 +3541,10 @@ __L_V__6({
    * See nsIUpdateService.idl
    */
   get activeUpdate() {
-__L_V__6({
-    lN: 3546,tT:'func',pr:'',eT:{},fN:'activeUpdate'
-  });'__L_V__6';
     return this._activeUpdate;
   },
   set activeUpdate(aActiveUpdate) {
-__L_V__6({
-    lN: 3549,tT:'func',pr:'',eT:{'aActiveUpdate':aActiveUpdate},fN:'activeUpdate'
-  });'__L_V__6';
     if (!aActiveUpdate && this._activeUpdate) {
-__L_V__6({
-    lN: 3550,tT:'if',pr:'!aActiveUpdate && this._activeUpdate',eT:{},fN:''
-  });'__L_V__6';
       this._updatesDirty = true;
       // Add the current active update to the front of the update history.
       this._updates.unshift(this._activeUpdate);
@@ -4588,9 +3568,6 @@ __L_V__6({
     updates,
     fileName
   ) {
-__L_V__6({
-    lN: 3573,tT:'func',pr:'',eT:{'updates':updates,'fileName':fileName},fN:'UM__writeUpdatesToXMLFile'
-  });'__L_V__6';
     let file;
     try {
       file = getUpdateFile([fileName]);
@@ -4603,9 +3580,6 @@ __L_V__6({
       return false;
     }
     if (!updates.length) {
-__L_V__6({
-    lN: 3585,tT:'if',pr:'!updates.length',eT:{},fN:''
-  });'__L_V__6';
       LOG(
         "UpdateManager:_writeUpdatesToXMLFile - no updates to write. " +
           "removing file: " +
@@ -4663,13 +3637,7 @@ __L_V__6({
    * See nsIUpdateService.idl
    */
   saveUpdates: function UM_saveUpdates() {
-__L_V__6({
-    lN: 3642,tT:'func',pr:'',eT:{},fN:'UM_saveUpdates'
-  });'__L_V__6';
     if (!this._updatesXMLSaver) {
-__L_V__6({
-    lN: 3643,tT:'if',pr:'!this._updatesXMLSaver',eT:{},fN:''
-  });'__L_V__6';
       this._updatesXMLSaverCallback = () => this._updatesXMLSaver.finalize();
 
       this._updatesXMLSaver = new DeferredTask(
@@ -4692,9 +3660,6 @@ __L_V__6({
    * been modified files.
    */
   _saveUpdatesXML: function UM__saveUpdatesXML() {
-__L_V__6({
-    lN: 3665,tT:'func',pr:'',eT:{},fN:'UM__saveUpdatesXML'
-  });'__L_V__6';
     // The active update stored in the active-update.xml file will change during
     // the lifetime of an active update and the file should always be updated
     // when saveUpdates is called.
@@ -4710,9 +3675,6 @@ __L_V__6({
     // updated when an active update has been added to it in which case
     // |_updatesDirty| will be true.
     if (this._updatesDirty) {
-__L_V__6({
-    lN: 3680,tT:'if',pr:'this._updatesDirty',eT:{},fN:''
-  });'__L_V__6';
       this._updatesDirty = false;
       promises[1] = this._writeUpdatesToXMLFile(
         this._updates,
@@ -4728,14 +3690,8 @@ __L_V__6({
    * See nsIUpdateService.idl
    */
   refreshUpdateStatus: function UM_refreshUpdateStatus() {
-__L_V__6({
-    lN: 3695,tT:'func',pr:'',eT:{},fN:'UM_refreshUpdateStatus'
-  });'__L_V__6';
     var update = this._activeUpdate;
     if (!update) {
-__L_V__6({
-    lN: 3697,tT:'if',pr:'!update',eT:{},fN:''
-  });'__L_V__6';
       return;
     }
 
@@ -4744,9 +3700,6 @@ __L_V__6({
     var parts = status.split(":");
     update.state = parts[0];
     if (update.state == STATE_FAILED && parts[1]) {
-__L_V__6({
-    lN: 3705,tT:'if',pr:'update.state == STATE_FAILED && parts[1]',eT:{},fN:''
-  });'__L_V__6';
       update.errorCode = parseInt(parts[1]);
     }
 
@@ -4756,28 +3709,16 @@ __L_V__6({
     cleanUpUpdatesDir(false);
 
     if (update.state == STATE_FAILED && parts[1]) {
-__L_V__6({
-    lN: 3714,tT:'if',pr:'update.state == STATE_FAILED && parts[1]',eT:{},fN:''
-  });'__L_V__6';
       if (
         parts[1] == DELETE_ERROR_STAGING_LOCK_FILE ||
         parts[1] == UNEXPECTED_STAGING_ERROR
       ) {
-__L_V__6({
-    lN: 3718,tT:'if',pr:' parts[1] == DELETE_ERROR_STAGING_LOCK_FILE || parts[1] == UNEXPECTED_STAGING_ERROR ',eT:{},fN:''
-  });'__L_V__6';
         writeStatusFile(getUpdatesDir(), (update.state = STATE_PENDING));
       } else if (!handleUpdateFailure(update, parts[1])) {
-__L_V__6({
-    lN: 3720,tT:'if',pr:'!handleUpdateFailure(update, parts[1])',eT:{},fN:''
-  });'__L_V__6';
         handleFallbackToCompleteUpdate(update, true);
       }
     }
     if (update.state == STATE_APPLIED && shouldUseService()) {
-__L_V__6({
-    lN: 3724,tT:'if',pr:'update.state == STATE_APPLIED && shouldUseService()',eT:{},fN:''
-  });'__L_V__6';
       writeStatusFile(getUpdatesDir(), (update.state = STATE_APPLIED_SERVICE));
     }
 
@@ -4800,24 +3741,15 @@ __L_V__6({
    * See nsIUpdateService.idl
    */
   elevationOptedIn: function UM_elevationOptedIn() {
-__L_V__6({
-    lN: 3746,tT:'func',pr:'',eT:{},fN:'UM_elevationOptedIn'
-  });'__L_V__6';
     // The user has been been made aware that the update requires elevation.
     let update = this._activeUpdate;
     if (!update) {
-__L_V__6({
-    lN: 3749,tT:'if',pr:'!update',eT:{},fN:''
-  });'__L_V__6';
       return;
     }
     let status = readStatusFile(getUpdatesDir());
     let parts = status.split(":");
     update.state = parts[0];
     if (update.state == STATE_PENDING_ELEVATE) {
-__L_V__6({
-    lN: 3755,tT:'if',pr:'update.state == STATE_PENDING_ELEVATE',eT:{},fN:''
-  });'__L_V__6';
       // Proceed with the pending update.
       // Note: STATE_PENDING_ELEVATE stands for "pending user's approval to
       // proceed with an elevated update". As long as we see this state, we will
@@ -4835,9 +3767,6 @@ __L_V__6({
    * See nsIUpdateService.idl
    */
   cleanupActiveUpdate: function UM_cleanupActiveUpdate() {
-__L_V__6({
-    lN: 3772,tT:'func',pr:'',eT:{},fN:'UM_cleanupActiveUpdate'
-  });'__L_V__6';
     cleanupActiveUpdate();
   },
 
@@ -4850,10 +3779,7 @@ __L_V__6({
  * Checks for new Updates
  * @constructor
  */
-function Checker() {
-__L_V__6({
-    lN: 3785,tT:'func',pr:'',eT:{},fN:'Checker'
-  });'__L_V__6';}
+function Checker() {}
 Checker.prototype = {
   /**
    * The XMLHttpRequest object that performs the connection.
@@ -4866,13 +3792,7 @@ Checker.prototype = {
   _callback: null,
 
   _getCanMigrate: function UC__getCanMigrate() {
-__L_V__6({
-    lN: 3797,tT:'func',pr:'',eT:{},fN:'UC__getCanMigrate'
-  });'__L_V__6';
     if (AppConstants.platform != "win") {
-__L_V__6({
-    lN: 3798,tT:'if',pr:'AppConstants.platform != win',eT:{},fN:''
-  });'__L_V__6';
       return false;
     }
 
@@ -4881,9 +3801,6 @@ __L_V__6({
     // system processor is 32 or 64 bit.
     let aryABI = UpdateUtils.ABI.split("-");
     if (aryABI[0] != "x86" || aryABI[2] != "x64") {
-__L_V__6({
-    lN: 3806,tT:'if',pr:'aryABI[0] != x86 || aryABI[2] != x64',eT:{},fN:''
-  });'__L_V__6';
       return false;
     }
 
@@ -4908,9 +3825,6 @@ __L_V__6({
     // The Never registry key value allows configuring a system to never migrate
     // any of the installations.
     if (regValHKCU === 1 || regValHKLM === 1) {
-__L_V__6({
-    lN: 3830,tT:'if',pr:'regValHKCU === 1 || regValHKLM === 1',eT:{},fN:''
-  });'__L_V__6';
       LOG("Checker:_getCanMigrate - all installations should not be migrated");
       return false;
     }
@@ -4932,9 +3846,6 @@ __L_V__6({
     // name then the installation has already been migrated once or the system
     // was configured to not migrate that installation.
     if (regValHKCU === 1 || regValHKLM === 1) {
-__L_V__6({
-    lN: 3851,tT:'if',pr:'regValHKCU === 1 || regValHKLM === 1',eT:{},fN:''
-  });'__L_V__6';
       LOG("Checker:_getCanMigrate - this installation should not be migrated");
       return false;
     }
@@ -4942,9 +3853,6 @@ __L_V__6({
     // When the registry value is 0 for the installation directory path value
     // name then the installation has updated to Firefox 56 and can be migrated.
     if (regValHKCU === 0 || regValHKLM === 0) {
-__L_V__6({
-    lN: 3858,tT:'if',pr:'regValHKCU === 0 || regValHKLM === 0',eT:{},fN:''
-  });'__L_V__6';
       LOG("Checker:_getCanMigrate - this installation can be migrated");
       return true;
     }
@@ -4958,9 +3866,6 @@ __L_V__6({
    * about available updates.
    */
   getUpdateURL: async function UC_getUpdateURL(force) {
-__L_V__6({
-    lN: 3871,tT:'func',pr:'',eT:{'force':force},fN:'UC_getUpdateURL'
-  });'__L_V__6';
     this._forced = force;
 
     let url = Services.prefs
@@ -4968,9 +3873,6 @@ __L_V__6({
       .getCharPref(PREF_APP_UPDATE_URL, "");
 
     if (!url) {
-__L_V__6({
-    lN: 3878,tT:'if',pr:'!url',eT:{},fN:''
-  });'__L_V__6';
       LOG("Checker:getUpdateURL - update URL not defined");
       return null;
     }
@@ -4978,16 +3880,10 @@ __L_V__6({
     url = await UpdateUtils.formatUpdateURL(url);
 
     if (force) {
-__L_V__6({
-    lN: 3885,tT:'if',pr:'force',eT:{},fN:''
-  });'__L_V__6';
       url += (url.includes("?") ? "&" : "?") + "force=1";
     }
 
     if (this._getCanMigrate()) {
-__L_V__6({
-    lN: 3889,tT:'if',pr:'this._getCanMigrate()',eT:{},fN:''
-  });'__L_V__6';
       url += (url.includes("?") ? "&" : "?") + "mig64=1";
     }
 
@@ -4999,15 +3895,9 @@ __L_V__6({
    * See nsIUpdateService.idl
    */
   checkForUpdates: function UC_checkForUpdates(listener, force) {
-__L_V__6({
-    lN: 3900,tT:'func',pr:'',eT:{'listener':listener,'force':force},fN:'UC_checkForUpdates'
-  });'__L_V__6';
     LOG("Checker: checkForUpdates, force: " + force);
     gUpdateFileWriteInfo = { phase: "check", failure: false };
     if (!listener) {
-__L_V__6({
-    lN: 3903,tT:'if',pr:'!listener',eT:{},fN:''
-  });'__L_V__6';
       throw Cr.NS_ERROR_NULL_POINTER;
     }
 
@@ -5015,16 +3905,10 @@ __L_V__6({
     // |force| can override |canCheckForUpdates| since |force| indicates a
     // manual update check. But nothing should override enterprise policies.
     if (UpdateServiceInstance.disabledByPolicy) {
-__L_V__6({
-    lN: 3910,tT:'if',pr:'UpdateServiceInstance.disabledByPolicy',eT:{},fN:''
-  });'__L_V__6';
       LOG("Checker: checkForUpdates, disabled by policy");
       return;
     }
     if (!UpdateServiceInstance.canCheckForUpdates && !force) {
-__L_V__6({
-    lN: 3914,tT:'if',pr:'!UpdateServiceInstance.canCheckForUpdates && !force',eT:{},fN:''
-  });'__L_V__6';
       return;
     }
 
@@ -5034,9 +3918,6 @@ __L_V__6({
 
     this.getUpdateURL(force).then(url => {
       if (!url) {
-__L_V__6({
-    lN: 3923,tT:'if',pr:'!url',eT:{},fN:''
-  });'__L_V__6';
         return;
       }
 
@@ -5065,15 +3946,9 @@ __L_V__6({
 
       var self = this;
       this._request.addEventListener("error", function(event) {
-__L_V__6({
-    lN: 3951,tT:'func',pr:'',eT:{'event':event},fN:'function'
-  });'__L_V__6';
         self.onError(event);
       });
       this._request.addEventListener("load", function(event) {
-__L_V__6({
-    lN: 3954,tT:'func',pr:'',eT:{'event':event},fN:'function'
-  });'__L_V__6';
         self.onLoad(event);
       });
 
@@ -5089,22 +3964,13 @@ __L_V__6({
    * @throws if the XML document element node name is not updates.
    */
   get _updates() {
-__L_V__6({
-    lN: 3969,tT:'func',pr:'',eT:{},fN:'_updates'
-  });'__L_V__6';
     var updatesElement = this._request.responseXML.documentElement;
     if (!updatesElement) {
-__L_V__6({
-    lN: 3971,tT:'if',pr:'!updatesElement',eT:{},fN:''
-  });'__L_V__6';
       LOG("Checker:_updates get - empty updates document?!");
       return [];
     }
 
     if (updatesElement.nodeName != "updates") {
-__L_V__6({
-    lN: 3976,tT:'if',pr:'updatesElement.nodeName != updates',eT:{},fN:''
-  });'__L_V__6';
       LOG("Checker:_updates get - unexpected node name!");
       throw new Error(
         "Unexpected node name, expected: updates, got: " +
@@ -5119,9 +3985,6 @@ __L_V__6({
         updateElement.nodeType != updateElement.ELEMENT_NODE ||
         updateElement.localName != "update"
       ) {
-__L_V__6({
-    lN: 3990,tT:'if',pr:' updateElement.nodeType != updateElement.ELEMENT_NODE || updateElement.localName != update ',eT:{},fN:''
-  });'__L_V__6';
         continue;
       }
 
@@ -5144,27 +4007,18 @@ __L_V__6({
    * Returns the status code for the XMLHttpRequest
    */
   _getChannelStatus: function UC__getChannelStatus(request) {
-__L_V__6({
-    lN: 4012,tT:'func',pr:'',eT:{'request':request},fN:'UC__getChannelStatus'
-  });'__L_V__6';
     var status = 0;
     try {
       status = request.status;
     } catch (e) {}
 
     if (status == 0) {
-__L_V__6({
-    lN: 4018,tT:'if',pr:'status == 0',eT:{},fN:''
-  });'__L_V__6';
       status = request.channel.QueryInterface(Ci.nsIRequest).status;
     }
     return status;
   },
 
   _isHttpStatusCode: function UC__isHttpStatusCode(status) {
-__L_V__6({
-    lN: 4024,tT:'func',pr:'',eT:{'status':status},fN:'UC__isHttpStatusCode'
-  });'__L_V__6';
     return status >= 100 && status <= 599;
   },
 
@@ -5174,9 +4028,6 @@ __L_V__6({
    *          The Event for the load
    */
   onLoad: function UC_onLoad(event) {
-__L_V__6({
-    lN: 4033,tT:'func',pr:'',eT:{'event':event},fN:'UC_onLoad'
-  });'__L_V__6';
     LOG("Checker:onLoad - request completed downloading document");
     Services.prefs.clearUserPref("security.pki.mitm_canary_issuer");
     // Check whether there is a mitm, i.e. check whether the root cert is
@@ -5186,24 +4037,15 @@ __L_V__6({
         .QueryInterface(Ci.nsIRequest)
         .securityInfo.QueryInterface(Ci.nsITransportSecurityInfo);
       if (sslStatus && sslStatus.succeededCertChain) {
-__L_V__6({
-    lN: 4042,tT:'if',pr:'sslStatus && sslStatus.succeededCertChain',eT:{},fN:''
-  });'__L_V__6';
         let rootCert = null;
         // The root cert is the last cert in the chain.
         if (sslStatus.succeededCertChain.length) {
-__L_V__6({
-    lN: 4045,tT:'if',pr:'sslStatus.succeededCertChain.length',eT:{},fN:''
-  });'__L_V__6';
           rootCert =
             sslStatus.succeededCertChain[
               sslStatus.succeededCertChain.length - 1
             ];
         }
         if (rootCert) {
-__L_V__6({
-    lN: 4051,tT:'if',pr:'rootCert',eT:{},fN:''
-  });'__L_V__6';
           Services.prefs.setStringPref(
             "security.pki.mitm_detected",
             !rootCert.isBuiltInRoot
@@ -5220,9 +4062,6 @@ __L_V__6({
       LOG("Checker:onLoad - number of updates available: " + updates.length);
 
       if (Services.prefs.prefHasUserValue(PREF_APP_UPDATE_BACKGROUNDERRORS)) {
-__L_V__6({
-    lN: 4067,tT:'if',pr:'Services.prefs.prefHasUserValue(PREF_APP_UPDATE_BACKGROUNDERRORS)',eT:{},fN:''
-  });'__L_V__6';
         Services.prefs.clearUserPref(PREF_APP_UPDATE_BACKGROUNDERRORS);
       }
 
@@ -5242,9 +4081,6 @@ __L_V__6({
       update.statusText = getStatusTextFromCode(status, 404);
 
       if (this._isHttpStatusCode(status)) {
-__L_V__6({
-    lN: 4086,tT:'if',pr:'this._isHttpStatusCode(status)',eT:{},fN:''
-  });'__L_V__6';
         update.errorCode = HTTP_ERROR_OFFSET + status;
       }
 
@@ -5261,9 +4097,6 @@ __L_V__6({
    *          The Event for the error
    */
   onError: function UC_onError(event) {
-__L_V__6({
-    lN: 4102,tT:'func',pr:'',eT:{'event':event},fN:'UC_onError'
-  });'__L_V__6';
     var request = event.target;
     var status = this._getChannelStatus(request);
     LOG("Checker:onError - request.status: " + status);
@@ -5274,9 +4107,6 @@ __L_V__6({
         Ci.nsITransportSecurityInfo
       );
       if (secInfo.serverCert && secInfo.serverCert.issuerName) {
-__L_V__6({
-    lN: 4112,tT:'if',pr:'secInfo.serverCert && secInfo.serverCert.issuerName',eT:{},fN:''
-  });'__L_V__6';
         Services.prefs.setStringPref(
           "security.pki.mitm_canary_issuer",
           secInfo.serverCert.issuerName
@@ -5294,15 +4124,9 @@ __L_V__6({
     update.statusText = getStatusTextFromCode(status, 200);
 
     if (status == Cr.NS_ERROR_OFFLINE) {
-__L_V__6({
-    lN: 4129,tT:'if',pr:'status == Cr.NS_ERROR_OFFLINE',eT:{},fN:''
-  });'__L_V__6';
       // We use a separate constant here because nsIUpdate.errorCode is signed
       update.errorCode = NETWORK_ERROR_OFFLINE;
     } else if (this._isHttpStatusCode(status)) {
-__L_V__6({
-    lN: 4132,tT:'if',pr:'this._isHttpStatusCode(status)',eT:{},fN:''
-  });'__L_V__6';
       update.errorCode = HTTP_ERROR_OFFSET + status;
     }
 
@@ -5314,14 +4138,8 @@ __L_V__6({
    * See nsIUpdateService.idl
    */
   stopCurrentCheck: function UC_stopCurrentCheck() {
-__L_V__6({
-    lN: 4143,tT:'func',pr:'',eT:{},fN:'UC_stopCurrentCheck'
-  });'__L_V__6';
     // Always stop the current check
     if (this._request) {
-__L_V__6({
-    lN: 4145,tT:'if',pr:'this._request',eT:{},fN:''
-  });'__L_V__6';
       this._request.abort();
     }
     this._callback = null;
@@ -5341,9 +4159,6 @@ __L_V__6({
  * @constructor
  */
 function Downloader(background, updateService) {
-__L_V__6({
-    lN: 4164,tT:'func',pr:'',eT:{'background':background,'updateService':updateService},fN:'Downloader'
-  });'__L_V__6';
   LOG("Creating Downloader");
   this.background = background;
   this.updateService = updateService;
@@ -5410,40 +4225,22 @@ Downloader.prototype = {
    * data around to allow the transfer to be resumed later.
    */
   cancel: async function Downloader_cancel(cancelError) {
-__L_V__6({
-    lN: 4230,tT:'func',pr:'',eT:{'cancelError':cancelError},fN:'Downloader_cancel'
-  });'__L_V__6';
     LOG("Downloader: cancel");
     if (cancelError === undefined) {
-__L_V__6({
-    lN: 4232,tT:'if',pr:'cancelError === undefined',eT:{},fN:''
-  });'__L_V__6';
       cancelError = Cr.NS_BINDING_ABORTED;
     }
     if (this.usingBits) {
-__L_V__6({
-    lN: 4235,tT:'if',pr:'this.usingBits',eT:{},fN:''
-  });'__L_V__6';
       // If a cancel action is already in progress, just return when that
       // promise resolved. Trying to cancel the same request twice is an error.
       if (this._cancelPromise) {
-__L_V__6({
-    lN: 4238,tT:'if',pr:'this._cancelPromise',eT:{},fN:''
-  });'__L_V__6';
         await this._cancelPromise;
         return;
       }
 
       if (this._pendingRequest) {
-__L_V__6({
-    lN: 4243,tT:'if',pr:'this._pendingRequest',eT:{},fN:''
-  });'__L_V__6';
         await this._pendingRequest;
       }
       if (this._patch.getProperty("bitsId") != null) {
-__L_V__6({
-    lN: 4246,tT:'if',pr:'this._patch.getProperty(bitsId) != null',eT:{},fN:''
-  });'__L_V__6';
         // Make sure that we don't try to resume this download after it was
         // cancelled.
         this._patch.deleteProperty("bitsId");
@@ -5460,9 +4257,6 @@ __L_V__6({
         throw e;
       }
     } else if (this._request && this._request instanceof Ci.nsIRequest) {
-__L_V__6({
-    lN: 4262,tT:'if',pr:'this._request && this._request instanceof Ci.nsIRequest',eT:{},fN:''
-  });'__L_V__6';
       this._request.cancel(cancelError);
     }
   },
@@ -5471,9 +4265,6 @@ __L_V__6({
    * Whether or not a patch has been downloaded and staged for installation.
    */
   get patchIsStaged() {
-__L_V__6({
-    lN: 4270,tT:'func',pr:'',eT:{},fN:'patchIsStaged'
-  });'__L_V__6';
     var readState = readStatusFile(getUpdatesDir());
     // Note that if we decide to download and apply new updates after another
     // update has been successfully applied in the background, we need to stop
@@ -5492,14 +4283,8 @@ __L_V__6({
    * this point.
    */
   _verifyDownload: function Downloader__verifyDownload() {
-__L_V__6({
-    lN: 4288,tT:'func',pr:'',eT:{},fN:'Downloader__verifyDownload'
-  });'__L_V__6';
     LOG("Downloader:_verifyDownload called");
     if (!this._request) {
-__L_V__6({
-    lN: 4290,tT:'if',pr:'!this._request',eT:{},fN:''
-  });'__L_V__6';
       AUSTLMY.pingDownloadCode(
         this.isCompleteUpdate,
         AUSTLMY.DWNLD_ERR_VERIFY_NO_REQUEST
@@ -5512,9 +4297,6 @@ __L_V__6({
 
     // Ensure that the file size matches the expected file size.
     if (destination.fileSize != this._patch.size) {
-__L_V__6({
-    lN: 4302,tT:'if',pr:'destination.fileSize != this._patch.size',eT:{},fN:''
-  });'__L_V__6';
       LOG("Downloader:_verifyDownload downloaded size != expected size.");
       AUSTLMY.pingDownloadCode(
         this.isCompleteUpdate,
@@ -5537,9 +4319,6 @@ __L_V__6({
    * @return  A nsIUpdatePatch object to download
    */
   _selectPatch: function Downloader__selectPatch(update, updateDir) {
-__L_V__6({
-    lN: 4324,tT:'func',pr:'',eT:{'update':update,'updateDir':updateDir},fN:'Downloader__selectPatch'
-  });'__L_V__6';
     // Given an update to download, we will always try to download the patch
     // for a partial update over the patch for a full update.
 
@@ -5550,15 +4329,9 @@ __L_V__6({
      * @return  A nsIUpdatePatch object matching the type specified
      */
     function getPatchOfType(type) {
-__L_V__6({
-    lN: 4334,tT:'func',pr:'',eT:{'type':type},fN:'getPatchOfType'
-  });'__L_V__6';
       for (var i = 0; i < update.patchCount; ++i) {
         var patch = update.getPatchAt(i);
         if (patch && patch.type == type) {
-__L_V__6({
-    lN: 4337,tT:'if',pr:'patch && patch.type == type',eT:{},fN:''
-  });'__L_V__6';
           return patch;
         }
       }
@@ -5576,16 +4349,10 @@ __L_V__6({
     // that we do not know about, then remove it and use our default logic.
     var useComplete = false;
     if (selectedPatch) {
-__L_V__6({
-    lN: 4354,tT:'if',pr:'selectedPatch',eT:{},fN:''
-  });'__L_V__6';
       LOG(
         "Downloader:_selectPatch - found existing patch with state: " + state
       );
       if (state == STATE_DOWNLOADING) {
-__L_V__6({
-    lN: 4358,tT:'if',pr:'state == STATE_DOWNLOADING',eT:{},fN:''
-  });'__L_V__6';
         LOG("Downloader:_selectPatch - resuming download");
         return selectedPatch;
       }
@@ -5596,9 +4363,6 @@ __L_V__6({
         state == STATE_APPLIED ||
         state == STATE_APPLIED_SERVICE
       ) {
-__L_V__6({
-    lN: 4368,tT:'if',pr:' state == STATE_PENDING || state == STATE_PENDING_SERVICE || state == STATE_PENDING_ELEVATE || state == STATE_APPLIED || state == STATE_APPLIED_SERVICE ',eT:{},fN:''
-  });'__L_V__6';
         LOG("Downloader:_selectPatch - already downloaded");
         return null;
       }
@@ -5617,9 +4381,6 @@ __L_V__6({
         selectedPatch.getProperty("internalResult") == null &&
         !selectedPatch.errorCode
       ) {
-__L_V__6({
-    lN: 4386,tT:'if',pr:' selectedPatch.getProperty(bitsResult) != null && selectedPatch.getProperty(internalResult) == null && !selectedPatch.errorCode ',eT:{},fN:''
-  });'__L_V__6';
         LOG(
           "Downloader:_selectPatch - Falling back to non-BITS download " +
             "mechanism for the same patch due to existing BITS result: " +
@@ -5629,9 +4390,6 @@ __L_V__6({
       }
 
       if (update && selectedPatch.type == "complete") {
-__L_V__6({
-    lN: 4395,tT:'if',pr:'update && selectedPatch.type == complete',eT:{},fN:''
-  });'__L_V__6';
         // This is a pretty fatal error.  Just bail.
         LOG("Downloader:_selectPatch - failed to apply complete patch!");
         writeStatusFile(updateDir, STATE_NONE);
@@ -5649,19 +4407,10 @@ __L_V__6({
     // select the best patch from the given set.
     var partialPatch = getPatchOfType("partial");
     if (!useComplete) {
-__L_V__6({
-    lN: 4412,tT:'if',pr:'!useComplete',eT:{},fN:''
-  });'__L_V__6';
       selectedPatch = partialPatch;
     }
     if (!selectedPatch) {
-__L_V__6({
-    lN: 4415,tT:'if',pr:'!selectedPatch',eT:{},fN:''
-  });'__L_V__6';
       if (partialPatch) {
-__L_V__6({
-    lN: 4416,tT:'if',pr:'partialPatch',eT:{},fN:''
-  });'__L_V__6';
         partialPatch.selected = false;
       }
       selectedPatch = getPatchOfType("complete");
@@ -5674,9 +4423,6 @@ __L_V__6({
     // the partial patch has been attempted and fails and we're trying to get a
     // complete patch
     if (selectedPatch) {
-__L_V__6({
-    lN: 4428,tT:'if',pr:'selectedPatch',eT:{},fN:''
-  });'__L_V__6';
       selectedPatch.selected = true;
     }
 
@@ -5696,16 +4442,10 @@ __L_V__6({
    * Whether or not we are currently downloading something.
    */
   get isBusy() {
-__L_V__6({
-    lN: 4447,tT:'func',pr:'',eT:{},fN:'isBusy'
-  });'__L_V__6';
     return this._request != null || this._pendingRequest != null;
   },
 
   get usingBits() {
-__L_V__6({
-    lN: 4451,tT:'func',pr:'',eT:{},fN:'usingBits'
-  });'__L_V__6';
     return this._pendingRequest != null || this._request instanceof BitsRequest;
   },
 
@@ -5713,22 +4453,13 @@ __L_V__6({
    * Returns true if the specified patch can be downloaded with BITS.
    */
   _canUseBits: function Downloader__canUseBits(patch) {
-__L_V__6({
-    lN: 4458,tT:'func',pr:'',eT:{'patch':patch},fN:'Downloader__canUseBits'
-  });'__L_V__6';
     if (getCanUseBits() != "CanUseBits") {
-__L_V__6({
-    lN: 4459,tT:'if',pr:'getCanUseBits() != CanUseBits',eT:{},fN:''
-  });'__L_V__6';
       // This will have printed its own logging. No need to print more.
       return false;
     }
     // Regardless of success or failure, don't download the same patch with BITS
     // twice.
     if (patch.getProperty("bitsResult") != null) {
-__L_V__6({
-    lN: 4465,tT:'if',pr:'patch.getProperty(bitsResult) != null',eT:{},fN:''
-  });'__L_V__6';
       LOG(
         "Downloader:_canUseBits - Not using BITS because it was already tried"
       );
@@ -5744,15 +4475,9 @@ __L_V__6({
    *          A nsIUpdate object to download a patch for. Cannot be null.
    */
   downloadUpdate: function Downloader_downloadUpdate(update) {
-__L_V__6({
-    lN: 4480,tT:'func',pr:'',eT:{'update':update},fN:'Downloader_downloadUpdate'
-  });'__L_V__6';
     LOG("UpdateService:_downloadUpdate");
     gUpdateFileWriteInfo = { phase: "download", failure: false };
     if (!update) {
-__L_V__6({
-    lN: 4483,tT:'if',pr:'!update',eT:{},fN:''
-  });'__L_V__6';
       AUSTLMY.pingDownloadCode(undefined, AUSTLMY.DWNLD_ERR_NO_UPDATE);
       throw Cr.NS_ERROR_NULL_POINTER;
     }
@@ -5765,9 +4490,6 @@ __L_V__6({
     // to download.
     this._patch = this._selectPatch(update, updateDir);
     if (!this._patch) {
-__L_V__6({
-    lN: 4495,tT:'if',pr:'!this._patch',eT:{},fN:''
-  });'__L_V__6';
       LOG("Downloader:downloadUpdate - no patch to download");
       AUSTLMY.pingDownloadCode(undefined, AUSTLMY.DWNLD_ERR_NO_UPDATE_PATCH);
       return readStatusFile(updateDir);
@@ -5783,9 +4505,6 @@ __L_V__6({
     let canUseBits = false;
     // Allow the advertised update to disable BITS.
     if (this._update.getProperty("disableBITS") != null) {
-__L_V__6({
-    lN: 4510,tT:'if',pr:'this._update.getProperty(disableBITS) != null',eT:{},fN:''
-  });'__L_V__6';
       LOG(
         "Downloader:downloadUpdate - BITS downloads disabled by update " +
           "advertisement"
@@ -5795,9 +4514,6 @@ __L_V__6({
     }
 
     if (!canUseBits) {
-__L_V__6({
-    lN: 4519,tT:'if',pr:'!canUseBits',eT:{},fN:''
-  });'__L_V__6';
       let patchFile = getUpdatesDir().clone();
       patchFile.append(FILE_UPDATE_MAR);
 
@@ -5830,9 +4546,6 @@ __L_V__6({
       // unnecessary fallback to nsIIncrementalDownload.
       let monitorTimeout = Math.max(10 * monitorInterval, 10 * 60 * 1000);
       if (this.hasDownloadListeners) {
-__L_V__6({
-    lN: 4551,tT:'if',pr:'this.hasDownloadListeners',eT:{},fN:''
-  });'__L_V__6';
         noProgressTimeout = BITS_ACTIVE_NO_PROGRESS_TIMEOUT_SECS;
         monitorInterval = BITS_ACTIVE_POLL_RATE_MS;
         this._bitsActiveNotifications = true;
@@ -5842,9 +4555,6 @@ __L_V__6({
       let jobName = "CliqzUpdate " + updateRootDir.leafName;
       let updatePath = updateDir.path;
       if (!Bits.initialized) {
-__L_V__6({
-    lN: 4560,tT:'if',pr:'!Bits.initialized',eT:{},fN:''
-  });'__L_V__6';
         Bits.init(jobName, updatePath, monitorTimeout);
       }
 
@@ -5852,9 +4562,6 @@ __L_V__6({
 
       let bitsId = this._patch.getProperty("bitsId");
       if (bitsId) {
-__L_V__6({
-    lN: 4567,tT:'if',pr:'bitsId',eT:{},fN:''
-  });'__L_V__6';
         LOG(
           "Downloader:downloadUpdate - Connecting to in-progress download. " +
             "BITS ID: " +
@@ -5898,9 +4605,6 @@ __L_V__6({
           );
 
           if (this.hasDownloadListeners) {
-__L_V__6({
-    lN: 4610,tT:'if',pr:'this.hasDownloadListeners',eT:{},fN:''
-  });'__L_V__6';
             this._maybeStartActiveNotifications();
           } else {
             this._maybeStopActiveNotifications();
@@ -5920,9 +4624,6 @@ __L_V__6({
             error.codeType == Ci.nsIBits.ERROR_CODE_TYPE_HRESULT &&
             error.code == HRESULT_E_ACCESSDENIED
           ) {
-__L_V__6({
-    lN: 4629,tT:'if',pr:' (error.type == Ci.nsIBits.ERROR_TYPE_FAILED_TO_GET_BITS_JOB || error.type == Ci.nsIBits.ERROR_TYPE_FAILED_TO_CONNECT_TO_BCM) && error.action == Ci.nsIBits.ERROR_ACTION_MONITOR_DOWNLOAD && error.stage == Ci.nsIBits.ERROR_STAGE_BITS_CLIENT && error.codeType == Ci.nsIBits.ERROR_CODE_TYPE_HRESULT && error.code == HRESULT_E_ACCESSDENIED ',eT:{},fN:''
-  });'__L_V__6';
             LOG(
               "Downloader:downloadUpdate - Failed to connect to existing " +
                 "BITS job. It is likely owned by another user."
@@ -5973,9 +4674,6 @@ __L_V__6({
 
     writeStatusFile(updateDir, STATE_DOWNLOADING);
     if (this._patch.state != STATE_DOWNLOADING) {
-__L_V__6({
-    lN: 4679,tT:'if',pr:'this._patch.state != STATE_DOWNLOADING',eT:{},fN:''
-  });'__L_V__6';
       this._patch.state = STATE_DOWNLOADING;
       Cc["@mozilla.org/updates/update-manager;1"]
         .getService(Ci.nsIUpdateManager)
@@ -5997,14 +4695,8 @@ __L_V__6({
    *          nsIProgressEventSink
    */
   addDownloadListener: function Downloader_addDownloadListener(listener) {
-__L_V__6({
-    lN: 4700,tT:'func',pr:'',eT:{'listener':listener},fN:'Downloader_addDownloadListener'
-  });'__L_V__6';
     for (var i = 0; i < this._listeners.length; ++i) {
       if (this._listeners[i] == listener) {
-__L_V__6({
-    lN: 4702,tT:'if',pr:'this._listeners[i] == listener',eT:{},fN:''
-  });'__L_V__6';
         return;
       }
     }
@@ -6020,21 +4712,12 @@ __L_V__6({
    *          The listener to remove.
    */
   removeDownloadListener: function Downloader_removeDownloadListener(listener) {
-__L_V__6({
-    lN: 4717,tT:'func',pr:'',eT:{'listener':listener},fN:'Downloader_removeDownloadListener'
-  });'__L_V__6';
     for (let i = 0; i < this._listeners.length; ++i) {
       if (this._listeners[i] == listener) {
-__L_V__6({
-    lN: 4719,tT:'if',pr:'this._listeners[i] == listener',eT:{},fN:''
-  });'__L_V__6';
         this._listeners.splice(i, 1);
 
         // Decrease the status update frequency when no one is listening
         if (!this._listeners.length) {
-__L_V__6({
-    lN: 4723,tT:'if',pr:'!this._listeners.length',eT:{},fN:''
-  });'__L_V__6';
           this._maybeStopActiveNotifications();
         }
         return;
@@ -6046,9 +4729,6 @@ __L_V__6({
    * Returns a boolean indicating whether there are any download listeners
    */
   get hasDownloadListeners() {
-__L_V__6({
-    lN: 4734,tT:'func',pr:'',eT:{},fN:'hasDownloadListeners'
-  });'__L_V__6';
     return !!this._listeners.length;
   },
 
@@ -6057,18 +4737,12 @@ __L_V__6({
    * the notifications.
    */
   _maybeStartActiveNotifications: async function Downloader__maybeStartActiveNotifications() {
-__L_V__6({
-    lN: 4742,tT:'func',pr:'',eT:{},fN:'Downloader__maybeStartActiveNotifications'
-  });'__L_V__6';
     if (
       this.usingBits &&
       !this._bitsActiveNotifications &&
       this.hasDownloadListeners &&
       this._request
     ) {
-__L_V__6({
-    lN: 4748,tT:'if',pr:' this.usingBits && !this._bitsActiveNotifications && this.hasDownloadListeners && this._request ',eT:{},fN:''
-  });'__L_V__6';
       LOG(
         "Downloader:_maybeStartActiveNotifications - Starting active " +
           "notifications"
@@ -6102,18 +4776,12 @@ __L_V__6({
    * watching the notifications.
    */
   _maybeStopActiveNotifications: async function Downloader__maybeStopActiveNotifications() {
-__L_V__6({
-    lN: 4781,tT:'func',pr:'',eT:{},fN:'Downloader__maybeStopActiveNotifications'
-  });'__L_V__6';
     if (
       this.usingBits &&
       this._bitsActiveNotifications &&
       !this.hasDownloadListeners &&
       this._request
     ) {
-__L_V__6({
-    lN: 4787,tT:'if',pr:' this.usingBits && this._bitsActiveNotifications && !this.hasDownloadListeners && this._request ',eT:{},fN:''
-  });'__L_V__6';
       LOG(
         "Downloader:_maybeStopActiveNotifications - Stopping active " +
           "notifications"
@@ -6148,13 +4816,7 @@ __L_V__6({
    *          The nsIRequest object for the transfer
    */
   onStartRequest: function Downloader_onStartRequest(request) {
-__L_V__6({
-    lN: 4821,tT:'func',pr:'',eT:{'request':request},fN:'Downloader_onStartRequest'
-  });'__L_V__6';
     if (!this.usingBits) {
-__L_V__6({
-    lN: 4822,tT:'if',pr:'!this.usingBits',eT:{},fN:''
-  });'__L_V__6';
       LOG(
         "Downloader:onStartRequest - original URI spec: " +
           request.URI.spec +
@@ -6163,9 +4825,6 @@ __L_V__6({
       );
       // Set finalURL in onStartRequest if it is different.
       if (this._patch.finalURL != request.finalURI.spec) {
-__L_V__6({
-    lN: 4830,tT:'if',pr:'this._patch.finalURL != request.finalURI.spec',eT:{},fN:''
-  });'__L_V__6';
         this._patch.finalURL = request.finalURI.spec;
         Cc["@mozilla.org/updates/update-manager;1"]
           .getService(Ci.nsIUpdateManager)
@@ -6198,15 +4857,9 @@ __L_V__6({
     progress,
     maxProgress
   ) {
-__L_V__6({
-    lN: 4862,tT:'func',pr:'',eT:{'request':request,'context':context,'progress':progress,'maxProgress':maxProgress},fN:'Downloader_onProgress'
-  });'__L_V__6';
     LOG("Downloader:onProgress - progress: " + progress + "/" + maxProgress);
 
     if (progress > this._patch.size) {
-__L_V__6({
-    lN: 4865,tT:'if',pr:'progress > this._patch.size',eT:{},fN:''
-  });'__L_V__6';
       LOG(
         "Downloader:onProgress - progress: " +
           progress +
@@ -6225,9 +4878,6 @@ __L_V__6({
     // so that we don't check it before it is available (in which case, -1 would
     // have been passed).
     if (progress > 0 && maxProgress != this._patch.size) {
-__L_V__6({
-    lN: 4883,tT:'if',pr:'progress > 0 && maxProgress != this._patch.size',eT:{},fN:''
-  });'__L_V__6';
       LOG(
         "Downloader:onProgress - maxProgress: " +
           maxProgress +
@@ -6248,9 +4898,6 @@ __L_V__6({
     for (var i = 0; i < listenerCount; ++i) {
       var listener = listeners[i];
       if (listener instanceof Ci.nsIProgressEventSink) {
-__L_V__6({
-    lN: 4903,tT:'if',pr:'listener instanceof Ci.nsIProgressEventSink',eT:{},fN:''
-  });'__L_V__6';
         listener.onProgress(request, context, progress, maxProgress);
       }
     }
@@ -6269,9 +4916,6 @@ __L_V__6({
    *          Human readable version of |status|
    */
   onStatus: function Downloader_onStatus(request, context, status, statusText) {
-__L_V__6({
-    lN: 4921,tT:'func',pr:'',eT:{'request':request,'context':context,'status':status,'statusText':statusText},fN:'Downloader_onStatus'
-  });'__L_V__6';
     LOG(
       "Downloader:onStatus - status: " + status + ", statusText: " + statusText
     );
@@ -6282,9 +4926,6 @@ __L_V__6({
     for (var i = 0; i < listenerCount; ++i) {
       var listener = listeners[i];
       if (listener instanceof Ci.nsIProgressEventSink) {
-__L_V__6({
-    lN: 4931,tT:'if',pr:'listener instanceof Ci.nsIProgressEventSink',eT:{},fN:''
-  });'__L_V__6';
         listener.onStatus(request, context, status, statusText);
       }
     }
@@ -6299,13 +4940,7 @@ __L_V__6({
    */
   /* eslint-disable-next-line complexity */
   onStopRequest: async function Downloader_onStopRequest(request, status) {
-__L_V__6({
-    lN: 4945,tT:'func',pr:'',eT:{'request':request,'status':status},fN:'Downloader_onStopRequest'
-  });'__L_V__6';
     if (!this.usingBits) {
-__L_V__6({
-    lN: 4946,tT:'if',pr:'!this.usingBits',eT:{},fN:''
-  });'__L_V__6';
       LOG(
         "Downloader:onStopRequest - downloader: nsIIncrementalDownload, " +
           "original URI spec: " +
@@ -6321,13 +4956,7 @@ __L_V__6({
 
     let bitsCompletionError;
     if (this.usingBits) {
-__L_V__6({
-    lN: 4961,tT:'if',pr:'this.usingBits',eT:{},fN:''
-  });'__L_V__6';
       if (Components.isSuccessCode(status)) {
-__L_V__6({
-    lN: 4962,tT:'if',pr:'Components.isSuccessCode(status)',eT:{},fN:''
-  });'__L_V__6';
         try {
           await request.complete();
         } catch (e) {
@@ -6386,30 +5015,15 @@ __L_V__6({
         retryTimeout
     );
     if (Components.isSuccessCode(status)) {
-__L_V__6({
-    lN: 5020,tT:'if',pr:'Components.isSuccessCode(status)',eT:{},fN:''
-  });'__L_V__6';
       if (this._verifyDownload()) {
-__L_V__6({
-    lN: 5021,tT:'if',pr:'this._verifyDownload()',eT:{},fN:''
-  });'__L_V__6';
         if (shouldUseService()) {
-__L_V__6({
-    lN: 5022,tT:'if',pr:'shouldUseService()',eT:{},fN:''
-  });'__L_V__6';
           state = STATE_PENDING_SERVICE;
         } else if (getElevationRequired()) {
-__L_V__6({
-    lN: 5024,tT:'if',pr:'getElevationRequired()',eT:{},fN:''
-  });'__L_V__6';
           state = STATE_PENDING_ELEVATE;
         } else {
           state = STATE_PENDING;
         }
         if (this.background) {
-__L_V__6({
-    lN: 5029,tT:'if',pr:'this.background',eT:{},fN:''
-  });'__L_V__6';
           shouldShowPrompt = !getCanStageUpdates();
         }
         AUSTLMY.pingDownloadCode(this.isCompleteUpdate, AUSTLMY.DWNLD_SUCCESS);
@@ -6433,9 +5047,6 @@ __L_V__6({
         this._update.statusText = message;
 
         if (this._update.isCompleteUpdate || this._update.patchCount != 2) {
-__L_V__6({
-    lN: 5052,tT:'if',pr:'this._update.isCompleteUpdate || this._update.patchCount != 2',eT:{},fN:''
-  });'__L_V__6';
           deleteActiveUpdate = true;
         }
 
@@ -6443,9 +5054,6 @@ __L_V__6({
         cleanUpUpdatesDir();
       }
     } else if (status == Cr.NS_ERROR_OFFLINE) {
-__L_V__6({
-    lN: 5059,tT:'if',pr:'status == Cr.NS_ERROR_OFFLINE',eT:{},fN:''
-  });'__L_V__6';
       // Register an online observer to try again.
       // The online observer will continue the incremental download by
       // calling downloadUpdate on the active update which continues
@@ -6470,41 +5078,23 @@ __L_V__6({
         status == Cr.NS_ERROR_DOCUMENT_NOT_CACHED) &&
       this.updateService._consecutiveSocketErrors < maxFail
     ) {
-__L_V__6({
-    lN: 5083,tT:'if',pr:' (status == Cr.NS_ERROR_NET_TIMEOUT || status == Cr.NS_ERROR_CONNECTION_REFUSED || status == Cr.NS_ERROR_NET_RESET || status == Cr.NS_ERROR_DOCUMENT_NOT_CACHED) && this.updateService._consecutiveSocketErrors < maxFail ',eT:{},fN:''
-  });'__L_V__6';
       LOG("Downloader:onStopRequest - socket error, shouldRetrySoon: true");
       let dwnldCode = AUSTLMY.DWNLD_RETRY_CONNECTION_REFUSED;
       if (status == Cr.NS_ERROR_NET_TIMEOUT) {
-__L_V__6({
-    lN: 5086,tT:'if',pr:'status == Cr.NS_ERROR_NET_TIMEOUT',eT:{},fN:''
-  });'__L_V__6';
         dwnldCode = AUSTLMY.DWNLD_RETRY_NET_TIMEOUT;
       } else if (status == Cr.NS_ERROR_NET_RESET) {
-__L_V__6({
-    lN: 5088,tT:'if',pr:'status == Cr.NS_ERROR_NET_RESET',eT:{},fN:''
-  });'__L_V__6';
         dwnldCode = AUSTLMY.DWNLD_RETRY_NET_RESET;
       } else if (status == Cr.NS_ERROR_DOCUMENT_NOT_CACHED) {
-__L_V__6({
-    lN: 5090,tT:'if',pr:'status == Cr.NS_ERROR_DOCUMENT_NOT_CACHED',eT:{},fN:''
-  });'__L_V__6';
         dwnldCode = AUSTLMY.DWNLD_ERR_DOCUMENT_NOT_CACHED;
       }
       AUSTLMY.pingDownloadCode(this.isCompleteUpdate, dwnldCode);
       shouldRetrySoon = true;
       deleteActiveUpdate = false;
     } else if (status != Cr.NS_BINDING_ABORTED && status != Cr.NS_ERROR_ABORT) {
-__L_V__6({
-    lN: 5096,tT:'if',pr:'status != Cr.NS_BINDING_ABORTED && status != Cr.NS_ERROR_ABORT',eT:{},fN:''
-  });'__L_V__6';
       if (
         status == Cr.NS_ERROR_FILE_ACCESS_DENIED ||
         status == Cr.NS_ERROR_FILE_READ_ONLY
       ) {
-__L_V__6({
-    lN: 5100,tT:'if',pr:' status == Cr.NS_ERROR_FILE_ACCESS_DENIED || status == Cr.NS_ERROR_FILE_READ_ONLY ',eT:{},fN:''
-  });'__L_V__6';
         LOG("Downloader:onStopRequest - permission error");
         // This will either fix the permissions, or asynchronously show the
         // reinstall prompt if it cannot fix them.
@@ -6517,9 +5107,6 @@ __L_V__6({
 
       let dwnldCode = AUSTLMY.DWNLD_ERR_BINDING_ABORTED;
       if (status == Cr.NS_ERROR_ABORT) {
-__L_V__6({
-    lN: 5112,tT:'if',pr:'status == Cr.NS_ERROR_ABORT',eT:{},fN:''
-  });'__L_V__6';
         dwnldCode = AUSTLMY.DWNLD_ERR_ABORT;
       }
       AUSTLMY.pingDownloadCode(this.isCompleteUpdate, dwnldCode);
@@ -6541,9 +5128,6 @@ __L_V__6({
       deleteActiveUpdate = true;
     }
     if (!this.usingBits) {
-__L_V__6({
-    lN: 5133,tT:'if',pr:'!this.usingBits',eT:{},fN:''
-  });'__L_V__6';
       this._patch.setProperty("internalResult", status);
     } else {
       this._patch.setProperty("bitsResult", status);
@@ -6557,37 +5141,22 @@ __L_V__6({
         status != Cr.NS_BINDING_ABORTED &&
         status != Cr.NS_ERROR_ABORT
       ) {
-__L_V__6({
-    lN: 5146,tT:'if',pr:' !Components.isSuccessCode(status) && status != Cr.NS_BINDING_ABORTED && status != Cr.NS_ERROR_ABORT ',eT:{},fN:''
-  });'__L_V__6';
         deleteActiveUpdate = false;
         shouldRetrySoon = true;
       }
 
       // Send BITS Telemetry
       if (Components.isSuccessCode(status)) {
-__L_V__6({
-    lN: 5152,tT:'if',pr:'Components.isSuccessCode(status)',eT:{},fN:''
-  });'__L_V__6';
         AUSTLMY.pingBitsSuccess(this.isCompleteUpdate);
       } else {
         let error;
         if (bitsCompletionError) {
-__L_V__6({
-    lN: 5156,tT:'if',pr:'bitsCompletionError',eT:{},fN:''
-  });'__L_V__6';
           error = bitsCompletionError;
         } else if (status == Cr.NS_ERROR_CORRUPTED_CONTENT) {
-__L_V__6({
-    lN: 5158,tT:'if',pr:'status == Cr.NS_ERROR_CORRUPTED_CONTENT',eT:{},fN:''
-  });'__L_V__6';
           error = new BitsVerificationError();
         } else {
           error = request.transferError;
           if (!error) {
-__L_V__6({
-    lN: 5162,tT:'if',pr:'!error',eT:{},fN:''
-  });'__L_V__6';
             error = new BitsUnknownError();
           }
         }
@@ -6597,26 +5166,17 @@ __L_V__6({
 
     LOG("Downloader:onStopRequest - setting state to: " + state);
     if (this._patch.state != state) {
-__L_V__6({
-    lN: 5171,tT:'if',pr:'this._patch.state != state',eT:{},fN:''
-  });'__L_V__6';
       this._patch.state = state;
     }
     var um = Cc["@mozilla.org/updates/update-manager;1"].getService(
       Ci.nsIUpdateManager
     );
     if (deleteActiveUpdate) {
-__L_V__6({
-    lN: 5177,tT:'if',pr:'deleteActiveUpdate',eT:{},fN:''
-  });'__L_V__6';
       this._update.installDate = new Date().getTime();
       // Setting |activeUpdate| to null will move the active update to the
       // update history.
       um.activeUpdate = null;
     } else if (um.activeUpdate && um.activeUpdate.state != state) {
-__L_V__6({
-    lN: 5182,tT:'if',pr:'um.activeUpdate && um.activeUpdate.state != state',eT:{},fN:''
-  });'__L_V__6';
       um.activeUpdate.state = state;
     }
     um.saveUpdates();
@@ -6624,9 +5184,6 @@ __L_V__6({
     // Only notify listeners about the stopped state if we
     // aren't handling an internal retry.
     if (!shouldRetrySoon && !shouldRegisterOnlineObserver) {
-__L_V__6({
-    lN: 5189,tT:'if',pr:'!shouldRetrySoon && !shouldRegisterOnlineObserver',eT:{},fN:''
-  });'__L_V__6';
       // Make shallow copy in case listeners remove themselves when called.
       var listeners = this._listeners.concat();
       var listenerCount = listeners.length;
@@ -6638,24 +5195,15 @@ __L_V__6({
     this._request = null;
 
     if (state == STATE_DOWNLOAD_FAILED) {
-__L_V__6({
-    lN: 5200,tT:'if',pr:'state == STATE_DOWNLOAD_FAILED',eT:{},fN:''
-  });'__L_V__6';
       var allFailed = true;
       // If we haven't already, attempt to download without BITS
       if (request instanceof BitsRequest) {
-__L_V__6({
-    lN: 5203,tT:'if',pr:'request instanceof BitsRequest',eT:{},fN:''
-  });'__L_V__6';
         LOG(
           "Downloader:onStopRequest - BITS download failed. Falling back " +
             "to nsIIncrementalDownload"
         );
         let updateStatus = this.downloadUpdate(this._update);
         if (updateStatus == STATE_NONE) {
-__L_V__6({
-    lN: 5209,tT:'if',pr:'updateStatus == STATE_NONE',eT:{},fN:''
-  });'__L_V__6';
           cleanupActiveUpdate();
         } else {
           allFailed = false;
@@ -6668,9 +5216,6 @@ __L_V__6({
         !this._update.isCompleteUpdate &&
         this._update.patchCount == 2
       ) {
-__L_V__6({
-    lN: 5221,tT:'if',pr:' allFailed && !this._update.isCompleteUpdate && this._update.patchCount == 2 ',eT:{},fN:''
-  });'__L_V__6';
         LOG(
           "Downloader:onStopRequest - verification of patch failed, " +
             "downloading complete update patch"
@@ -6679,9 +5224,6 @@ __L_V__6({
         let updateStatus = this.downloadUpdate(this._update);
 
         if (updateStatus == STATE_NONE) {
-__L_V__6({
-    lN: 5229,tT:'if',pr:'updateStatus == STATE_NONE',eT:{},fN:''
-  });'__L_V__6';
           cleanupActiveUpdate();
         } else {
           allFailed = false;
@@ -6689,9 +5231,6 @@ __L_V__6({
       }
 
       if (allFailed && !permissionFixingInProgress) {
-__L_V__6({
-    lN: 5236,tT:'if',pr:'allFailed && !permissionFixingInProgress',eT:{},fN:''
-  });'__L_V__6';
         let downloadAttempts = Services.prefs.getIntPref(
           PREF_APP_UPDATE_DOWNLOAD_ATTEMPTS,
           0
@@ -6707,9 +5246,6 @@ __L_V__6({
         );
 
         if (downloadAttempts > maxAttempts) {
-__L_V__6({
-    lN: 5251,tT:'if',pr:'downloadAttempts > maxAttempts',eT:{},fN:''
-  });'__L_V__6';
           LOG(
             "Downloader:onStopRequest - notifying observers of error. " +
               "topic: update-error, status: download-attempts-exceeded, " +
@@ -6738,9 +5274,6 @@ __L_V__6({
         }
       }
       if (allFailed) {
-__L_V__6({
-    lN: 5279,tT:'if',pr:'allFailed',eT:{},fN:''
-  });'__L_V__6';
         // Prevent leaking the update object (bug 454964).
         this._update = null;
       }
@@ -6753,13 +5286,7 @@ __L_V__6({
       state == STATE_PENDING_SERVICE ||
       state == STATE_PENDING_ELEVATE
     ) {
-__L_V__6({
-    lN: 5291,tT:'if',pr:' state == STATE_PENDING || state == STATE_PENDING_SERVICE || state == STATE_PENDING_ELEVATE ',eT:{},fN:''
-  });'__L_V__6';
       if (getCanStageUpdates()) {
-__L_V__6({
-    lN: 5292,tT:'if',pr:'getCanStageUpdates()',eT:{},fN:''
-  });'__L_V__6';
         LOG(
           "Downloader:onStopRequest - attempting to stage update: " +
             this._update.name
@@ -6777,9 +5304,6 @@ __L_V__6({
             "Downloader:onStopRequest - failed to stage update. Exception: " + e
           );
           if (this.background) {
-__L_V__6({
-    lN: 5309,tT:'if',pr:'this.background',eT:{},fN:''
-  });'__L_V__6';
             shouldShowPrompt = true;
           }
         }
@@ -6789,9 +5313,6 @@ __L_V__6({
     // Do this after *everything* else, since it will likely cause the app
     // to shut down.
     if (shouldShowPrompt) {
-__L_V__6({
-    lN: 5318,tT:'if',pr:'shouldShowPrompt',eT:{},fN:''
-  });'__L_V__6';
       LOG(
         "UpdateManager:refreshUpdateStatus - Notifying observers that " +
           "an update was downloaded. topic: update-downloaded, status: " +
@@ -6805,21 +5326,12 @@ __L_V__6({
     }
 
     if (shouldRegisterOnlineObserver) {
-__L_V__6({
-    lN: 5331,tT:'if',pr:'shouldRegisterOnlineObserver',eT:{},fN:''
-  });'__L_V__6';
       LOG("Downloader:onStopRequest - Registering online observer");
       this.updateService._registerOnlineObserver();
     } else if (shouldRetrySoon) {
-__L_V__6({
-    lN: 5334,tT:'if',pr:'shouldRetrySoon',eT:{},fN:''
-  });'__L_V__6';
       LOG("Downloader:onStopRequest - Retrying soon");
       this.updateService._consecutiveSocketErrors++;
       if (this.updateService._retryTimer) {
-__L_V__6({
-    lN: 5337,tT:'if',pr:'this.updateService._retryTimer',eT:{},fN:''
-  });'__L_V__6';
         this.updateService._retryTimer.cancel();
       }
       this.updateService._retryTimer = Cc[
@@ -6827,9 +5339,6 @@ __L_V__6({
       ].createInstance(Ci.nsITimer);
       this.updateService._retryTimer.initWithCallback(
         function() {
-__L_V__6({
-    lN: 5344,tT:'func',pr:'',eT:{},fN:'function'
-  });'__L_V__6';
           this._attemptResume();
         }.bind(this.updateService),
         retryTimeout,
@@ -6846,17 +5355,8 @@ __L_V__6({
    * freed properly.
    */
   cleanup: function Downloader_cleanup() {
-__L_V__6({
-    lN: 5360,tT:'func',pr:'',eT:{},fN:'Downloader_cleanup'
-  });'__L_V__6';
     if (this.usingBits) {
-__L_V__6({
-    lN: 5361,tT:'if',pr:'this.usingBits',eT:{},fN:''
-  });'__L_V__6';
       if (this._pendingRequest) {
-__L_V__6({
-    lN: 5362,tT:'if',pr:'this._pendingRequest',eT:{},fN:''
-  });'__L_V__6';
         this._pendingRequest.then(() => this._request.shutdown());
       } else {
         this._request.shutdown();
@@ -6868,15 +5368,9 @@ __L_V__6({
    * See nsIInterfaceRequestor.idl
    */
   getInterface: function Downloader_getInterface(iid) {
-__L_V__6({
-    lN: 5373,tT:'func',pr:'',eT:{'iid':iid},fN:'Downloader_getInterface'
-  });'__L_V__6';
     // The network request may require proxy authentication, so provide the
     // default nsIAuthPrompt if requested.
     if (iid.equals(Ci.nsIAuthPrompt)) {
-__L_V__6({
-    lN: 5376,tT:'if',pr:'iid.equals(Ci.nsIAuthPrompt)',eT:{},fN:''
-  });'__L_V__6';
       var prompt = Cc[
         "@mozilla.org/network/default-auth-prompt;1"
       ].createInstance();
