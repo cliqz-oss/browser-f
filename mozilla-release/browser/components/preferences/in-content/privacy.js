@@ -564,11 +564,6 @@ var gPrivacyPane = {
       "command",
       gPrivacyPane.showSecurityDevices
     );
-    setEventListener(
-      "telemetryDataDeletionLearnMore",
-      "command",
-      gPrivacyPane.showDataDeletion
-    );
 
     this._pane = document.getElementById("panePrivacy");
 
@@ -719,7 +714,16 @@ var gPrivacyPane = {
         "command",
         gPrivacyPane.updateSubmitHealthReport
       );
+<<<<<<< HEAD
 #if 0
+||||||| 376897a8d06
+=======
+      setEventListener(
+        "telemetryDataDeletionLearnMore",
+        "command",
+        gPrivacyPane.showDataDeletion
+      );
+>>>>>>> 64b6512df3acbe22689648f5989ade2f1f6ad8bc
       if (AppConstants.MOZ_NORMANDY) {
         this.initOptOutStudyCheckbox();
       }
