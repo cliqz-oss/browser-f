@@ -345,15 +345,18 @@ pref("browser.urlbar.usepreloadedtopurls.enabled", false);
 pref("browser.urlbar.usepreloadedtopurls.expire_days", 14);
 
 // Whether the quantum bar displays design update 1.
-pref("browser.urlbar.update1", true);
+pref("browser.urlbar.update1", false);
+// CLIQZ-SPECIAL: do not use megabar
 
 // If true, we show actionable tips in the Urlbar when the user is searching
 // for those actions.
-pref("browser.urlbar.update1.interventions", true);
+pref("browser.urlbar.update1.interventions", false);
+// CLIQZ-SPECIAL: do not use interventions
 
 // If true, we show new users and those about to start an organic search a tip
 // encouraging them to use the Urlbar.
-pref("browser.urlbar.update1.searchTips", true);
+pref("browser.urlbar.update1.searchTips", false);
+// CLIQZ-SPECIAL: do not use searchTips
 
 // Whether the urlbar should strip https from urls in the view.
 pref("browser.urlbar.update1.view.stripHttps", true);
