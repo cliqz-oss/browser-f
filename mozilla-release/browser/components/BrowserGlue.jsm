@@ -4569,7 +4569,7 @@ var DefaultBrowserCheck = {
       return true;
     }
 
-    if (firstDefaultBrowserCheckTimestamp && willPrompt) {
+    if (firstDefaultBrowserCheckTimestamp) {
       let whatsNow = parseInt(Date.now() / 1000);
       let timeDiff = whatsNow - firstDefaultBrowserCheckTimestamp;
       let monthAge = 30 * 24 * 60 * 60;
