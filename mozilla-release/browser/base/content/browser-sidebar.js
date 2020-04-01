@@ -528,12 +528,6 @@ var SidebarUI = {
         // Now that the currentId is updated, fire a show event.
         this._fireShowEvent();
       }
-
-      let selBrowser = gBrowser.selectedBrowser;
-      selBrowser.messageManager.sendAsyncMessage("Sidebar:VisibilityChange", {
-        commandID,
-        isOpen: true,
-      });
     });
   },
 
@@ -550,7 +544,6 @@ var SidebarUI = {
 
     this.hideSwitcherPanel();
 
-    let commandID = this._box.getAttribute("sidebarcommand");
     this.selectMenuItem("");
 
     // Replace the document currently displayed in the sidebar with about:blank
@@ -566,10 +559,6 @@ var SidebarUI = {
 
     let selBrowser = gBrowser.selectedBrowser;
     selBrowser.focus();
-    selBrowser.messageManager.sendAsyncMessage("Sidebar:VisibilityChange", {
-      commandID,
-      isOpen: false,
-    });
     if (triggerNode) {
       updateToggleControlLabel(triggerNode);
     }

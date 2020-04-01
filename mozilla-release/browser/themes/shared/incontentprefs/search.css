@@ -46,6 +46,7 @@
    * */
   width: 16px;
   height: 16px;
+  width: 16px;
 }
 
 /* work around a display: none in Linux's menu.css, see bug 1112310 */

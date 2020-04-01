@@ -21,7 +21,7 @@ NS_INTERFACE_MAP_BEGIN_CYCLE_COLLECTION(BrowserHost)
   NS_INTERFACE_MAP_ENTRY_AMBIGUOUS(nsISupports, RemoteBrowser)
 NS_INTERFACE_MAP_END
 
-NS_IMPL_CYCLE_COLLECTION(BrowserHost, mRoot)
+NS_IMPL_CYCLE_COLLECTION_WEAK(BrowserHost, mRoot)
 
 NS_IMPL_CYCLE_COLLECTING_ADDREF(BrowserHost)
 NS_IMPL_CYCLE_COLLECTING_RELEASE(BrowserHost)
@@ -290,20 +290,6 @@ BrowserHost::StopApzAutoscroll(nsViewID aScrollId, uint32_t aPresShellId) {
   }
   mRoot->StopApzAutoscroll(aScrollId, aPresShellId);
   return NS_OK;
-}
-
-/* bool saveRecording (in AString aFileName); */
-NS_IMETHODIMP
-BrowserHost::SaveRecording(const nsAString& aFileName, bool* _retval) {
-  if (!mRoot) {
-    return NS_OK;
-  }
-  nsCOMPtr<nsIFile> file;
-  nsresult rv = NS_NewLocalFile(aFileName, false, getter_AddRefs(file));
-  if (NS_FAILED(rv)) {
-    return rv;
-  }
-  return GetContentParent()->SaveRecording(file, _retval);
 }
 
 NS_IMETHODIMP

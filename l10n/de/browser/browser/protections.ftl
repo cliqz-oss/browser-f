@@ -52,6 +52,9 @@ fingerprinter-tab-title = Identifizierer (Fingerprinter)
 fingerprinter-tab-content = Identifizierer (Fingerprinter) sammeln Eigenschaften Ihres Browsers und Computers und erstellen daraus ein Profil. Mit diesem digitalen Fingerabdruck können diese Sie über Websites hinweg verfolgen. <a data-l10n-name="learn-more-link">Weitere Informationen</a>
 cryptominer-tab-title = Heimliche Digitalwährungsberechner (Krypto-Miner)
 cryptominer-tab-content = Heimliche Digitalwährungsberechner (Krypto-Miner) verwenden die Rechenleistung Ihres Computers, um digitales Geld zu erzeugen. Dabei wird die Batterie schnell entladen, der Computer verlangsamt und die Energierechnung erhöht. <a data-l10n-name="learn-more-link">Weitere Informationen</a>
+mobile-app-title = Blockieren Sie Werbe-Tracker auf mehreren Geräten
+mobile-app-card-content = Verwenden Sie den mobilen Browser mit eingebautem Schutz vor Werbe-Tracking.
+mobile-app-links = { -brand-product-name }-Browser für <a data-l10n-name="android-mobile-inline-link">Android</a> und <a data-l10n-name="ios-mobile-inline-link">iOS</a>
 lockwise-title = Nie wieder ein Passwort vergessen
 lockwise-title-logged-in = { -lockwise-brand-name }
 lockwise-header-content = { -lockwise-brand-name } speichert Passwörter sicher in Ihrem Browser.
@@ -59,6 +62,8 @@ lockwise-header-content-logged-in = Speichern Sie Passwörter sicher und synchro
 protection-report-view-logins-button = Zugangsdaten anzeigen
     .title = Gespeicherte Zugangsdaten öffnen
 lockwise-no-logins-content = Holen Sie sich die <a data-l10n-name="lockwise-inline-link">{ -lockwise-brand-name }</a> App und nehmen Sie damit Ihre Passwörter überall mit hin.
+lockwise-mobile-app-title = Nehmen Sie Ihre Passwörter überall mit
+lockwise-no-logins-card-content = Verwenden Sie in { -brand-short-name } gespeicherte Passwörter auf jedem Gerät.
 lockwise-app-links = { -lockwise-brand-name } für <a data-l10n-name="lockwise-android-inline-link">Android</a> und <a data-l10n-name="lockwise-ios-inline-link">iOS</a>
 # This string is displayed after a large numeral that indicates the total number
 # of email addresses being monitored. Don’t add $count to

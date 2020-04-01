@@ -13,12 +13,12 @@
 # It's being used in mozilla-release/browser/components//urlbar/UrlbarProviderInterventions.js
   preview/interventions.ftl                        (../components/urlbar/content/interventions.ftl)
   browser                                          (%browser/**/*.ftl)
+# locale/browser/cliqzPrivateBrowsing.ftl          (%chrome/browser/cliqzPrivateBrowsing.ftl)
 
 @AB_CD@.jar:
 % locale browser @AB_CD@ %locale/browser/
 # bookmarks.html is produced by LOCALIZED_GENERATED_FILES.
     locale/browser/bookmarks.html                  (bookmarks.html)
-    locale/browser/cliqzPrivateBrowsing.dtd        (%chrome/browser/cliqzPrivateBrowsing.dtd)
     locale/browser/accounts.properties             (%chrome/browser/accounts.properties)
     locale/browser/app-extension-fields.properties (%chrome/browser/app-extension-fields.properties)
     locale/browser/browser.dtd                     (%chrome/browser/browser.dtd)
@@ -30,7 +30,6 @@
     locale/browser/search.properties               (%chrome/browser/search.properties)
     locale/browser/siteData.properties             (%chrome/browser/siteData.properties)
     locale/browser/sitePermissions.properties      (%chrome/browser/sitePermissions.properties)
-    locale/browser/setDesktopBackground.dtd        (%chrome/browser/setDesktopBackground.dtd)
     locale/browser/shellservice.properties         (%chrome/browser/shellservice.properties)
     locale/browser/tabbrowser.properties           (%chrome/browser/tabbrowser.properties)
     locale/browser/taskbar.properties              (%chrome/browser/taskbar.properties)

@@ -33,7 +33,7 @@ var gSanitizePromptDialog = {
   init() {
     // This is used by selectByTimespan() to determine if the window has loaded.
     this._inited = true;
-    this._dialog = document.getElementById("SanitizeDialog");
+    this._dialog = document.querySelector("dialog");
 
     let OKButton = this._dialog.getButton("accept");
     document.l10n.setAttributes(OKButton, "sanitize-button-ok");
@@ -66,13 +66,8 @@ var gSanitizePromptDialog = {
       this.warningBox.hidden = true;
     }
 
-    // CLIQZ-SPECIAL:
-    // On MacOS platform window.opener might be null if
-    // the dialog got opened on history page to delete history items.
-    // See browser/modules/Sanitizer.jsm, showUI method
-
     // Only apply the following if the dialog is opened outside of the Preferences.
-    if (window.opener != null && !("gSubDialog" in window.opener)) {
+    if (!window.opener || !("gSubDialog" in window.opener)) {
       // The style attribute on the dialog may get set after the dialog has been sized.
       // Force the dialog to size again after the style attribute has been applied.
       document.l10n.translateElements([document.documentElement]).then(() => {

@@ -164,13 +164,12 @@
       "characterSet",
       "fullZoom",
       "textZoom",
+      "tabHasCustomZoom",
       "webProgress",
       "addProgressListener",
       "removeProgressListener",
       "audioPlaybackStarted",
       "audioPlaybackStopped",
-      "pauseMedia",
-      "stopMedia",
       "resumeMedia",
       "mute",
       "unmute",
@@ -413,10 +412,6 @@
       // This is the initial browser, so it's usually active; the default is false
       // so we have to update it:
       browser.docShellIsActive = this.shouldActivateDocShell(browser);
-
-      // Only necessary because of pageloader talos tests which access this.
-      // Bug 1508171 covers removing this.
-      this.initialBrowser = browser;
 
       let autoScrollPopup = browser._createAutoScrollPopup();
       autoScrollPopup.id = "autoscroller";
@@ -1811,7 +1806,6 @@
         opener,
         remoteType,
         sameProcessAsFrameLoader,
-        recordExecution,
         replaceBrowsingContext,
         redirectLoadSwitchId,
       } = {}
@@ -1898,16 +1892,6 @@
         window.docShell.nsILoadContext.useRemoteSubframes;
       if (!rebuildFrameLoaders) {
         aBrowser.remove();
-      }
-
-      if (recordExecution) {
-        aBrowser.setAttribute("recordExecution", recordExecution);
-
-        // Web Replay middleman processes need the default URL to be loaded in
-        // order to set up their rendering state.
-        aBrowser.setAttribute("nodefaultsrc", "false");
-      } else if (aBrowser.hasAttribute("recordExecution")) {
-        aBrowser.removeAttribute("recordExecution");
       }
 
       // NB: This works with the hack in the browser constructor that
@@ -2077,9 +2061,7 @@
       name,
       nextRemoteTabId,
       openerWindow,
-      recordExecution,
       remoteType,
-      replayExecution,
       sameProcessAsFrameLoader,
       uriIsAboutBlank,
       userContextId,
@@ -2111,14 +2093,6 @@
       if (remoteType) {
         b.setAttribute("remoteType", remoteType);
         b.setAttribute("remote", "true");
-      }
-
-      if (recordExecution) {
-        b.setAttribute("recordExecution", recordExecution);
-      }
-
-      if (replayExecution) {
-        b.setAttribute("replayExecution", replayExecution);
       }
 
       if (openerWindow) {
@@ -2239,6 +2213,9 @@
           case "fullZoom":
           case "textZoom":
             getter = () => 1;
+            break;
+          case "tabHasCustomZoom":
+            getter = () => false;
             break;
           case "getTabBrowser":
             getter = () => () => this;
@@ -2419,11 +2396,15 @@
         );
       }
 
-      var evt = new CustomEvent("TabBrowserInserted", {
-        bubbles: true,
-        detail: { insertedOnTabCreation: aInsertedOnTabCreation },
-      });
-      aTab.dispatchEvent(evt);
+      // Only fire this event if the tab is already in the DOM
+      // and will be handled by a listener.
+      if (aTab.isConnected) {
+        var evt = new CustomEvent("TabBrowserInserted", {
+          bubbles: true,
+          detail: { insertedOnTabCreation: aInsertedOnTabCreation },
+        });
+        aTab.dispatchEvent(evt);
+      }
     },
 
     _mayDiscardBrowser(aTab, aForceDiscard) {
@@ -2565,8 +2546,6 @@
         skipBackgroundNotify,
         triggeringPrincipal,
         userContextId,
-        recordExecution,
-        replayExecution,
         csp,
         skipLoad,
         batchInsertingTabs,
@@ -2732,12 +2711,7 @@
 
         // If we open a new tab with the newtab URL in the default
         // userContext, check if there is a preloaded browser ready.
-        if (
-          aURI == BROWSER_NEW_TAB_URL &&
-          !userContextId &&
-          !recordExecution &&
-          !replayExecution
-        ) {
+        if (aURI == BROWSER_NEW_TAB_URL && !userContextId) {
           b = NewTabPagePreloading.getPreloadedBrowser(window);
           if (b) {
             usingPreloadedContent = true;
@@ -2754,8 +2728,6 @@
             openerWindow: opener,
             nextRemoteTabId,
             name,
-            recordExecution,
-            replayExecution,
             skipLoad,
           });
         }
@@ -3039,11 +3011,24 @@
         this.tabContainer._setPositionalAttributes();
         TabBarVisibility.update();
 
-        // Fire a TabOpen event for all unpinned tabs, except reused selected
-        // tabs. If tabToSelect is a tab, we didn't reuse the selected tab.
         for (let tab of tabs) {
-          if (!tab.pinned && (tabToSelect || !tab.selected)) {
-            this._fireTabOpen(tab, {});
+          // If tabToSelect is a tab, we didn't reuse the selected tab.
+          if (tabToSelect || !tab.selected) {
+            // Fire a TabOpen event for all unpinned tabs, except reused selected
+            // tabs.
+            if (!tab.pinned) {
+              this._fireTabOpen(tab, {});
+            }
+
+            // Fire a TabBrowserInserted event on all tabs that have a connected,
+            // real browser, except for reused selected tabs.
+            if (tab.linkedPanel) {
+              var evt = new CustomEvent("TabBrowserInserted", {
+                bubbles: true,
+                detail: { insertedOnTabCreation: true },
+              });
+              tab.dispatchEvent(evt);
+            }
           }
         }
       }
@@ -3890,6 +3875,12 @@
         PrivateBrowsingUtils.isWindowPrivate(window) !=
         PrivateBrowsingUtils.isWindowPrivate(aOtherTab.ownerGlobal)
       ) {
+        return false;
+      }
+
+      // Do not allow transfering a useRemoteSubframes tab to a
+      // non-useRemoteSubframes window and vice versa.
+      if (gFissionBrowser != aOtherTab.ownerGlobal.gFissionBrowser) {
         return false;
       }
 
@@ -5496,8 +5487,8 @@
         }
       });
 
-      this.addEventListener("oop-browser-crashed", event => {
-        if (!event.isTrusted) {
+      let onTabCrashed = event => {
+        if (!event.isTrusted || !event.isTopFrame) {
           return;
         }
 
@@ -5510,33 +5501,30 @@
           return;
         }
 
+        let isRestartRequiredCrash =
+          event.type == "oop-browser-buildid-mismatch";
+
         let icon = browser.mIconURL;
         let tab = this.getTabForBrowser(browser);
 
         if (this.selectedBrowser == browser) {
-          TabCrashHandler.onSelectedBrowserCrash(browser, false);
+          TabCrashHandler.onSelectedBrowserCrash(
+            browser,
+            isRestartRequiredCrash
+          );
         } else {
-          this.updateBrowserRemoteness(browser, {
-            remoteType: E10SUtils.NOT_REMOTE,
-          });
-          SessionStore.reviveCrashedTab(tab);
+          TabCrashHandler.onBackgroundBrowserCrash(
+            browser,
+            isRestartRequiredCrash
+          );
         }
 
         tab.removeAttribute("soundplaying");
         this.setIcon(tab, icon);
-      });
+      };
 
-      this.addEventListener("oop-browser-buildid-mismatch", event => {
-        if (!event.isTrusted) {
-          return;
-        }
-
-        let browser = event.originalTarget;
-
-        if (this.selectedBrowser == browser) {
-          TabCrashHandler.onSelectedBrowserCrash(browser, true);
-        }
-      });
+      this.addEventListener("oop-browser-crashed", onTabCrashed);
+      this.addEventListener("oop-browser-buildid-mismatch", onTabCrashed);
 
       this.addEventListener("DOMAudioPlaybackStarted", event => {
         var tab = this.getTabFromAudioEvent(event);
@@ -5987,8 +5975,8 @@
             this.mBrowser.userTypedValue = null;
 
             let isNavigating = this.mBrowser.isNavigating;
-            if (this.mTab.selected && gURLBar && !isNavigating) {
-              URLBarSetURI();
+            if (this.mTab.selected && !isNavigating) {
+              gURLBar.setURI();
             }
           } else if (isSuccessful) {
             this.mBrowser.urlbarChangeTracker.finishedLoad();
@@ -6421,7 +6409,10 @@ var TabContextMenu = {
     });
   },
   updateContextMenu(aPopupMenu) {
-    let tab = aPopupMenu.triggerNode && aPopupMenu.triggerNode.closest("tab");
+    let tab =
+      aPopupMenu.triggerNode &&
+      (aPopupMenu.triggerNode.tab || aPopupMenu.triggerNode.closest("tab"));
+
     this.contextTab = tab || gBrowser.selectedTab;
 
     let disabled = gBrowser.tabs.length == 1;
