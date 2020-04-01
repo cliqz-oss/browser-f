@@ -11,6 +11,7 @@
  */
 
 ChromeUtils.import("resource:///modules/HomePage.jsm");
+ChromeUtils.import("resource:///modules/CliqzResources.jsm");
 
 const STARTUP_PREF_BLANK = 0;
 const STARTUP_PREF_HOMEPAGE = 1;
@@ -236,7 +237,11 @@ let gHomePane = {
    * @returns {bool} Is the homepage set to the default pref value?
    */
   _isHomePageDefaultValue() {
-    return HomePage.getAsString() === HomePage.getAsString(true);
+    const homePref = HomePage.getAsString();
+    // CLIQZ-SPECIAL: DB-2454,
+    // moz-extension freshtab is considered a default value as well.
+    return homePref === HomePage.getAsString(true) ||
+      CliqzResources.isCliqzPage(homePref);
   },
 
   /**
