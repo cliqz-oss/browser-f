@@ -1,3 +1,6 @@
+
+/*LS-666865*/var { CliqzLogger } = ChromeUtils.import('resource://gre/modules/CliqzLogger.jsm');
+var __L_V__1 = CliqzLogger.init('mozilla-release/browser/components/BrowserContentHandler.jsm','BrowserContentHandler');/*LE-666865*/
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -59,7 +62,13 @@ const ONCE_DOMAINS = ["mozilla.org", "firefox.com"];
 const ONCE_PREF = "browser.startup.homepage_override.once";
 
 function shouldLoadURI(aURI) {
+__L_V__1({
+    lN: 64,tT:'func',pr:'',eT:{'aURI':aURI},fN:'shouldLoadURI'
+  });'__L_V__1';
   if (aURI && !aURI.schemeIs("chrome")) {
+__L_V__1({
+    lN: 65,tT:'if',pr:'aURI && !aURI.schemeIs(chrome)',eT:{},fN:''
+  });'__L_V__1';
     return true;
   }
 
@@ -69,10 +78,16 @@ function shouldLoadURI(aURI) {
 }
 
 function resolveURIInternal(aCmdLine, aArgument) {
+__L_V__1({
+    lN: 74,tT:'func',pr:'',eT:{'aCmdLine':aCmdLine,'aArgument':aArgument},fN:'resolveURIInternal'
+  });'__L_V__1';
   var uri = aCmdLine.resolveURI(aArgument);
   var uriFixup = Services.uriFixup;
 
   if (!(uri instanceof Ci.nsIFileURL)) {
+__L_V__1({
+    lN: 78,tT:'if',pr:'!(uri instanceof Ci.nsIFileURL)',eT:{},fN:''
+  });'__L_V__1';
     return uriFixup.createFixupURI(
       aArgument,
       uriFixup.FIXUP_FLAG_FIX_SCHEME_TYPOS
@@ -81,6 +96,9 @@ function resolveURIInternal(aCmdLine, aArgument) {
 
   try {
     if (uri.file.exists()) {
+__L_V__1({
+    lN: 86,tT:'if',pr:'uri.file.exists()',eT:{},fN:''
+  });'__L_V__1';
       return uri;
     }
   } catch (e) {
@@ -104,7 +122,13 @@ let gKiosk = false;
 let gRemoteInstallPage = null;
 
 function getNewInstallPage() {
+__L_V__1({
+    lN: 109,tT:'func',pr:'',eT:{},fN:'getNewInstallPage'
+  });'__L_V__1';
   if (!gRemoteInstallPage) {
+__L_V__1({
+    lN: 110,tT:'if',pr:'!gRemoteInstallPage',eT:{},fN:''
+  });'__L_V__1';
     gRemoteInstallPage = new RemotePages(NEWINSTALL_PAGE);
   }
 
@@ -131,11 +155,17 @@ const OVERRIDE_ALTERNATE_PROFILE = 4;
  *  OVERRIDE_NONE otherwise.
  */
 function needHomepageOverride(prefb) {
+__L_V__1({
+    lN: 136,tT:'func',pr:'',eT:{'prefb':prefb},fN:'needHomepageOverride'
+  });'__L_V__1';
 #if 0
   let pService = Cc["@mozilla.org/toolkit/profile-service;1"].getService(
     Ci.nsIToolkitProfileService
   );
   if (pService.createdAlternateProfile) {
+__L_V__1({
+    lN: 141,tT:'if',pr:'pService.createdAlternateProfile',eT:{},fN:''
+  });'__L_V__1';
     return OVERRIDE_ALTERNATE_PROFILE;
   }
 #endif
@@ -153,11 +183,17 @@ function needHomepageOverride(prefb) {
     false
   );
   if (shouldShowWhatsNew) {
+__L_V__1({
+    lN: 158,tT:'if',pr:'shouldShowWhatsNew',eT:{},fN:''
+  });'__L_V__1';
     // set the flag to false to not show next time
     Services.prefs.setBoolPref("browser.migration.showWhatsNew", false);
   }
 
   if (savedmstone == "ignore") {
+__L_V__1({
+    lN: 163,tT:'if',pr:'savedmstone == ignore',eT:{},fN:''
+  });'__L_V__1';
     return OVERRIDE_NONE;
   }
 
@@ -171,11 +207,17 @@ function needHomepageOverride(prefb) {
   var buildID = Services.appinfo.platformBuildID;
 
   if (mstone != savedmstone) {
+__L_V__1({
+    lN: 176,tT:'if',pr:'mstone != savedmstone',eT:{},fN:''
+  });'__L_V__1';
     // Bug 462254. Previous releases had a default pref to suppress the EULA
     // agreement if the platform's installer had already shown one. Now with
     // about:rights we've removed the EULA stuff and default pref, but we need
     // a way to make existing profiles retain the default that we removed.
     if (savedmstone) {
+__L_V__1({
+    lN: 181,tT:'if',pr:'savedmstone',eT:{},fN:''
+  });'__L_V__1';
       prefb.setBoolPref("browser.rights.3.shown", true);
     }
 
@@ -185,6 +227,9 @@ function needHomepageOverride(prefb) {
   }
 
   if (buildID != savedBuildID) {
+__L_V__1({
+    lN: 190,tT:'if',pr:'buildID != savedBuildID',eT:{},fN:''
+  });'__L_V__1';
     prefb.setCharPref("browser.startup.homepage_override.buildID", buildID);
     return OVERRIDE_NEW_BUILD_ID;
   }
@@ -202,17 +247,26 @@ function needHomepageOverride(prefb) {
  * @return The override page.
  */
 function getPostUpdateOverridePage(update, defaultOverridePage) {
+__L_V__1({
+    lN: 207,tT:'func',pr:'',eT:{'update':update,'defaultOverridePage':defaultOverridePage},fN:'getPostUpdateOverridePage'
+  });'__L_V__1';
   update = update.QueryInterface(Ci.nsIWritablePropertyBag);
   let actions = update.getProperty("actions");
   // When the update doesn't specify actions fallback to the original behavior
   // of displaying the default override page.
   if (!actions) {
+__L_V__1({
+    lN: 212,tT:'if',pr:'!actions',eT:{},fN:''
+  });'__L_V__1';
     return defaultOverridePage;
   }
 
   // The existence of silent or the non-existence of showURL in the actions both
   // mean that an override page should not be displayed.
   if (actions.includes("silent") || !actions.includes("showURL")) {
+__L_V__1({
+    lN: 218,tT:'if',pr:'actions.includes(silent) || !actions.includes(showURL)',eT:{},fN:''
+  });'__L_V__1';
     return "";
   }
 
@@ -220,6 +274,9 @@ function getPostUpdateOverridePage(update, defaultOverridePage) {
   // URL to be used, use the default fallback (which will also
   // be provided by the policy).
   if (!Services.policies.isAllowed("postUpdateCustomPage")) {
+__L_V__1({
+    lN: 225,tT:'if',pr:'!Services.policies.isAllowed(postUpdateCustomPage)',eT:{},fN:''
+  });'__L_V__1';
     return defaultOverridePage;
   }
 
@@ -227,6 +284,9 @@ function getPostUpdateOverridePage(update, defaultOverridePage) {
 }
 
 function isCommandLineInitialLaunch(cmdLine) {
+__L_V__1({
+    lN: 232,tT:'func',pr:'',eT:{'cmdLine':cmdLine},fN:'isCommandLineInitialLaunch'
+  });'__L_V__1';
   return cmdLine.state == Ci.nsICommandLine.STATE_INITIAL_LAUNCH;
 }
 /**
@@ -263,12 +323,18 @@ function openBrowserWindow(
   postData = null,
   forcePrivate = false
 ) {
+__L_V__1({
+    lN: 268,tT:'func',pr:'',eT:{'cmdLine':cmdLine,'triggeringPrincipal':triggeringPrincipal,'urlOrUrlList':urlOrUrlList,'postData':postData,'forcePrivate':forcePrivate},fN:'openBrowserWindow'
+  });'__L_V__1';
   let chromeURL = AppConstants.BROWSER_CHROME_URL;
   const isStartup =
     cmdLine && cmdLine.state == Ci.nsICommandLine.STATE_INITIAL_LAUNCH;
 
   let args;
   if (!urlOrUrlList) {
+__L_V__1({
+    lN: 274,tT:'if',pr:'!urlOrUrlList',eT:{},fN:''
+  });'__L_V__1';
     // Just pass in the defaultArgs directly. We'll use system principal on the other end.
     args = [gBrowserContentHandler.getDefaultArgs(isCommandLineInitialLaunch(cmdLine))];
   } else {
@@ -277,8 +343,14 @@ function openBrowserWindow(
       Ci.nsIToolkitProfileService
     );
     if (isStartup && pService.createdAlternateProfile) {
+__L_V__1({
+    lN: 282,tT:'if',pr:'isStartup && pService.createdAlternateProfile',eT:{},fN:''
+  });'__L_V__1';
       let url = getNewInstallPage();
       if (Array.isArray(urlOrUrlList)) {
+__L_V__1({
+    lN: 284,tT:'if',pr:'Array.isArray(urlOrUrlList)',eT:{},fN:''
+  });'__L_V__1';
         urlOrUrlList.unshift(url);
       } else {
         urlOrUrlList = [url, urlOrUrlList];
@@ -287,12 +359,18 @@ function openBrowserWindow(
 #endif
 
     if (Array.isArray(urlOrUrlList)) {
+__L_V__1({
+    lN: 292,tT:'if',pr:'Array.isArray(urlOrUrlList)',eT:{},fN:''
+  });'__L_V__1';
       // There isn't an explicit way to pass a principal here, so we load multiple URLs
       // with system principal when we get to actually loading them.
       if (
         !triggeringPrincipal ||
         !triggeringPrincipal.equals(gSystemPrincipal)
       ) {
+__L_V__1({
+    lN: 298,tT:'if',pr:' !triggeringPrincipal || !triggeringPrincipal.equals(gSystemPrincipal) ',eT:{},fN:''
+  });'__L_V__1';
         throw new Error(
           "Can't open multiple URLs with something other than system principal."
         );
@@ -329,13 +407,22 @@ function openBrowserWindow(
   }
 
   if (isStartup) {
+__L_V__1({
+    lN: 334,tT:'if',pr:'isStartup',eT:{},fN:''
+  });'__L_V__1';
     let win = Services.wm.getMostRecentWindow("navigator:blank");
     if (win) {
+__L_V__1({
+    lN: 336,tT:'if',pr:'win',eT:{},fN:''
+  });'__L_V__1';
       // Remove the windowtype of our blank window so that we don't close it
       // later on when seeing cmdLine.preventDefault is true.
       win.document.documentElement.removeAttribute("windowtype");
 
       if (forcePrivate) {
+__L_V__1({
+    lN: 341,tT:'if',pr:'forcePrivate',eT:{},fN:''
+  });'__L_V__1';
         win.docShell.QueryInterface(
           Ci.nsILoadContext
         ).usePrivateBrowsing = true;
@@ -350,6 +437,9 @@ function openBrowserWindow(
 
   // We can't provide arguments to openWindow as a JS array.
   if (!urlOrUrlList) {
+__L_V__1({
+    lN: 355,tT:'if',pr:'!urlOrUrlList',eT:{},fN:''
+  });'__L_V__1';
     // If we have a single string guaranteed to not contain '|' we can simply
     // wrap it in an nsISupportsString object.
     let [url] = args;
@@ -360,6 +450,9 @@ function openBrowserWindow(
   } else {
     // Otherwise, pass an nsIArray.
     if (args.length > 1) {
+__L_V__1({
+    lN: 365,tT:'if',pr:'args.length > 1',eT:{},fN:''
+  });'__L_V__1';
       let string = Cc["@mozilla.org/supports-string;1"].createInstance(
         Ci.nsISupportsString
       );
@@ -376,6 +469,9 @@ function openBrowserWindow(
   let features =
     "chrome,dialog=no,all" + gBrowserContentHandler.getFeatures(cmdLine);
   if (forcePrivate) {
+__L_V__1({
+    lN: 381,tT:'if',pr:'forcePrivate',eT:{},fN:''
+  });'__L_V__1';
     features += ",private";
   }
 
@@ -383,10 +479,16 @@ function openBrowserWindow(
 }
 
 function openPreferences(cmdLine, extraArgs) {
+__L_V__1({
+    lN: 388,tT:'func',pr:'',eT:{'cmdLine':cmdLine,'extraArgs':extraArgs},fN:'openPreferences'
+  });'__L_V__1';
   openBrowserWindow(cmdLine, gSystemPrincipal, "about:preferences");
 }
 
 async function doSearch(searchTerm, cmdLine) {
+__L_V__1({
+    lN: 392,tT:'func',pr:'',eT:{'searchTerm':searchTerm,'cmdLine':cmdLine},fN:'doSearch'
+  });'__L_V__1';
   // XXXbsmedberg: use handURIToExistingBrowser to obey tabbed-browsing
   // preferences, but need nsIBrowserDOMWindow extensions
   // Open the window immediately as BrowserContentHandler needs to
@@ -395,7 +497,13 @@ async function doSearch(searchTerm, cmdLine) {
   let win = openBrowserWindow(cmdLine, gSystemPrincipal, "about:blank");
   await new Promise(resolve => {
     Services.obs.addObserver(function observe(subject) {
+__L_V__1({
+    lN: 400,tT:'func',pr:'',eT:{'subject':subject},fN:'observe'
+  });'__L_V__1';
       if (subject == win) {
+__L_V__1({
+    lN: 401,tT:'if',pr:'subject == win',eT:{},fN:''
+  });'__L_V__1';
         Services.obs.removeObserver(
           observe,
           "browser-delayed-startup-finished"
@@ -415,7 +523,13 @@ async function doSearch(searchTerm, cmdLine) {
 }
 
 function nsBrowserContentHandler() {
+__L_V__1({
+    lN: 420,tT:'func',pr:'',eT:{},fN:'nsBrowserContentHandler'
+  });'__L_V__1';
   if (!gBrowserContentHandler) {
+__L_V__1({
+    lN: 421,tT:'if',pr:'!gBrowserContentHandler',eT:{},fN:''
+  });'__L_V__1';
     gBrowserContentHandler = this;
   }
   return gBrowserContentHandler;
@@ -431,10 +545,19 @@ nsBrowserContentHandler.prototype = {
 
   /* nsICommandLineHandler */
   handle: function bch_handle(cmdLine) {
+__L_V__1({
+    lN: 436,tT:'func',pr:'',eT:{'cmdLine':cmdLine},fN:'bch_handle'
+  });'__L_V__1';
     if (cmdLine.handleFlag("kiosk", false)) {
+__L_V__1({
+    lN: 437,tT:'if',pr:'cmdLine.handleFlag(kiosk, false)',eT:{},fN:''
+  });'__L_V__1';
       gKiosk = true;
     }
     if (cmdLine.handleFlag("browser", false)) {
+__L_V__1({
+    lN: 440,tT:'if',pr:'cmdLine.handleFlag(browser, false)',eT:{},fN:''
+  });'__L_V__1';
       openBrowserWindow(cmdLine, gSystemPrincipal);
       cmdLine.preventDefault = true;
     }
@@ -447,6 +570,9 @@ nsBrowserContentHandler.prototype = {
     // scripts or applications handle the situation as if Firefox was not
     // already running.
     if (cmdLine.handleFlag("remote", true)) {
+__L_V__1({
+    lN: 452,tT:'if',pr:'cmdLine.handleFlag(remote, true)',eT:{},fN:''
+  });'__L_V__1';
       throw Cr.NS_ERROR_ABORT;
     }
 
@@ -455,6 +581,9 @@ nsBrowserContentHandler.prototype = {
       while ((uriparam = cmdLine.handleFlagWithParam("new-window", false))) {
         let uri = resolveURIInternal(cmdLine, uriparam);
         if (!shouldLoadURI(uri)) {
+__L_V__1({
+    lN: 460,tT:'if',pr:'!shouldLoadURI(uri)',eT:{},fN:''
+  });'__L_V__1';
           continue;
         }
         openBrowserWindow(cmdLine, gSystemPrincipal, uri.spec);
@@ -482,11 +611,17 @@ nsBrowserContentHandler.prototype = {
 
     var chromeParam = cmdLine.handleFlagWithParam("chrome", false);
     if (chromeParam) {
+__L_V__1({
+    lN: 487,tT:'if',pr:'chromeParam',eT:{},fN:''
+  });'__L_V__1';
       // Handle old preference dialog URLs.
       if (
         chromeParam == "chrome://browser/content/pref/pref.xul" ||
         chromeParam == "chrome://browser/content/preferences/preferences.xul"
       ) {
+__L_V__1({
+    lN: 492,tT:'if',pr:' chromeParam == chrome://browser/content/pref/pref.xul || chromeParam == chrome://browser/content/preferences/preferences.xul ',eT:{},fN:''
+  });'__L_V__1';
         openPreferences(cmdLine);
         cmdLine.preventDefault = true;
       } else {
@@ -495,11 +630,17 @@ nsBrowserContentHandler.prototype = {
           let isLocal = uri => {
             let localSchemes = new Set(["chrome", "file", "resource"]);
             if (uri instanceof Ci.nsINestedURI) {
+__L_V__1({
+    lN: 500,tT:'if',pr:'uri instanceof Ci.nsINestedURI',eT:{},fN:''
+  });'__L_V__1';
               uri = uri.QueryInterface(Ci.nsINestedURI).innerMostURI;
             }
             return localSchemes.has(uri.scheme);
           };
           if (isLocal(resolvedURI)) {
+__L_V__1({
+    lN: 505,tT:'if',pr:'isLocal(resolvedURI)',eT:{},fN:''
+  });'__L_V__1';
             // If the URI is local, we are sure it won't wrongly inherit chrome privs
             let features = "chrome,dialog=no,all" + this.getFeatures(cmdLine);
             // Provide 1 null argument, as openWindow has a different behavior
@@ -528,10 +669,16 @@ nsBrowserContentHandler.prototype = {
       }
     }
     if (cmdLine.handleFlag("preferences", false)) {
+__L_V__1({
+    lN: 533,tT:'if',pr:'cmdLine.handleFlag(preferences, false)',eT:{},fN:''
+  });'__L_V__1';
       openPreferences(cmdLine);
       cmdLine.preventDefault = true;
     }
     if (cmdLine.handleFlag("silent", false)) {
+__L_V__1({
+    lN: 537,tT:'if',pr:'cmdLine.handleFlag(silent, false)',eT:{},fN:''
+  });'__L_V__1';
       cmdLine.preventDefault = true;
     }
 
@@ -541,12 +688,18 @@ nsBrowserContentHandler.prototype = {
         false
       );
       if (privateWindowParam) {
+__L_V__1({
+    lN: 546,tT:'if',pr:'privateWindowParam',eT:{},fN:''
+  });'__L_V__1';
         // Ensure we initialize the handler before trying to load
         // about:privatebrowsing.
         AboutPrivateBrowsingHandler.init();
         let forcePrivate = true;
         let resolvedURI;
         if (!PrivateBrowsingUtils.enabled) {
+__L_V__1({
+    lN: 552,tT:'if',pr:'!PrivateBrowsingUtils.enabled',eT:{},fN:''
+  });'__L_V__1';
           // Load about:privatebrowsing in a normal tab, which will display an error indicating
           // access to private browsing has been disabled.
           forcePrivate = false;
@@ -565,10 +718,16 @@ nsBrowserContentHandler.prototype = {
       }
     } catch (e) {
       if (e.result != Cr.NS_ERROR_INVALID_ARG) {
+__L_V__1({
+    lN: 570,tT:'if',pr:'e.result != Cr.NS_ERROR_INVALID_ARG',eT:{},fN:''
+  });'__L_V__1';
         throw e;
       }
       // NS_ERROR_INVALID_ARG is thrown when flag exists, but has no param.
       if (cmdLine.handleFlag("private-window", false)) {
+__L_V__1({
+    lN: 574,tT:'if',pr:'cmdLine.handleFlag(private-window, false)',eT:{},fN:''
+  });'__L_V__1';
         // Ensure we initialize the handler before trying to load
         // about:privatebrowsing.
         AboutPrivateBrowsingHandler.init();
@@ -585,6 +744,9 @@ nsBrowserContentHandler.prototype = {
 
     var searchParam = cmdLine.handleFlagWithParam("search", false);
     if (searchParam) {
+__L_V__1({
+    lN: 590,tT:'if',pr:'searchParam',eT:{},fN:''
+  });'__L_V__1';
       doSearch(searchParam, cmdLine);
       cmdLine.preventDefault = true;
     }
@@ -592,10 +754,19 @@ nsBrowserContentHandler.prototype = {
     // The global PB Service consumes this flag, so only eat it in per-window
     // PB builds.
     if (cmdLine.handleFlag("private", false) && PrivateBrowsingUtils.enabled) {
+__L_V__1({
+    lN: 597,tT:'if',pr:'cmdLine.handleFlag(private, false) && PrivateBrowsingUtils.enabled',eT:{},fN:''
+  });'__L_V__1';
       PrivateBrowsingUtils.enterTemporaryAutoStartMode();
       if (isCommandLineInitialLaunch(cmdLine)) {
+__L_V__1({
+    lN: 599,tT:'if',pr:'isCommandLineInitialLaunch(cmdLine)',eT:{},fN:''
+  });'__L_V__1';
         let win = Services.wm.getMostRecentWindow("navigator:blank");
         if (win) {
+__L_V__1({
+    lN: 601,tT:'if',pr:'win',eT:{},fN:''
+  });'__L_V__1';
           win.docShell.QueryInterface(
             Ci.nsILoadContext
           ).usePrivateBrowsing = true;
@@ -603,15 +774,24 @@ nsBrowserContentHandler.prototype = {
       }
     }
     if (cmdLine.handleFlag("setDefaultBrowser", false)) {
+__L_V__1({
+    lN: 608,tT:'if',pr:'cmdLine.handleFlag(setDefaultBrowser, false)',eT:{},fN:''
+  });'__L_V__1';
       ShellService.setDefaultBrowser(true, true);
     }
 
     if (cmdLine.handleFlag("first-startup", false)) {
+__L_V__1({
+    lN: 612,tT:'if',pr:'cmdLine.handleFlag(first-startup, false)',eT:{},fN:''
+  });'__L_V__1';
       FirstStartup.init();
     }
 
     var fileParam = cmdLine.handleFlagWithParam("file", false);
     if (fileParam) {
+__L_V__1({
+    lN: 617,tT:'if',pr:'fileParam',eT:{},fN:''
+  });'__L_V__1';
       var file = cmdLine.resolveFile(fileParam);
       var fileURI = Services.io.newFileURI(file);
       openBrowserWindow(cmdLine, gSystemPrincipal, fileURI.spec);
@@ -619,10 +799,16 @@ nsBrowserContentHandler.prototype = {
     }
 
     if (AppConstants.platform == "win") {
+__L_V__1({
+    lN: 624,tT:'if',pr:'AppConstants.platform == win',eT:{},fN:''
+  });'__L_V__1';
       // Handle "? searchterm" for Windows Vista start menu integration
       for (var i = cmdLine.length - 1; i >= 0; --i) {
         var param = cmdLine.getArgument(i);
         if (param.match(/^\? /)) {
+__L_V__1({
+    lN: 628,tT:'if',pr:'param.match(/^\? /)',eT:{},fN:''
+  });'__L_V__1';
           cmdLine.removeArguments(i, i);
           cmdLine.preventDefault = true;
 
@@ -634,12 +820,18 @@ nsBrowserContentHandler.prototype = {
   },
 
   get helpInfo() {
+__L_V__1({
+    lN: 639,tT:'func',pr:'',eT:{},fN:'helpInfo'
+  });'__L_V__1';
     let info =
       "  --browser          Open a browser window.\n" +
       "  --new-window <url> Open <url> in a new window.\n" +
       "  --new-tab <url>    Open <url> in a new tab.\n" +
       "  --private-window <url> Open <url> in a new private window.\n";
     if (AppConstants.platform == "win") {
+__L_V__1({
+    lN: 645,tT:'if',pr:'AppConstants.platform == win',eT:{},fN:''
+  });'__L_V__1';
       info += "  --preferences      Open Options dialog.\n";
     } else {
       info += "  --preferences      Open Preferences dialog.\n";
@@ -660,10 +852,16 @@ nsBrowserContentHandler.prototype = {
   /* nsIBrowserHandler */
 
   get defaultArgs() {
+__L_V__1({
+    lN: 665,tT:'func',pr:'',eT:{},fN:'defaultArgs'
+  });'__L_V__1';
     return this.getDefaultArgs();
   },
 
   getDefaultArgs: function bch_getDefaultArgs(initialLaunch) {
+__L_V__1({
+    lN: 669,tT:'func',pr:'',eT:{'initialLaunch':initialLaunch},fN:'bch_getDefaultArgs'
+  });'__L_V__1';
     // CLIQZ-SPECIAL:
     // DB-2064:
     // overridePage will be used in case of a user has restarted the browser after update.
@@ -688,6 +886,9 @@ nsBrowserContentHandler.prototype = {
       // upgrading from.
       let override = needHomepageOverride(Services.prefs);
       if (override === OVERRIDE_NEW_MSTONE) {
+__L_V__1({
+    lN: 693,tT:'if',pr:'override === OVERRIDE_NEW_MSTONE',eT:{},fN:''
+  });'__L_V__1';
         let old_cliqz_mstone = Services.prefs.getCharPref("distribution.previous_version", "");
         let new_cliqz_mstone = Services.prefs.getCharPref("distribution.version", "");
 
@@ -707,12 +908,21 @@ nsBrowserContentHandler.prototype = {
     } catch (ex) {}
 
     if (overridePage !== '') {
+__L_V__1({
+    lN: 712,tT:'if',pr:'overridePage !== ',eT:{},fN:''
+  });'__L_V__1';
       return overridePage;
     }
 
     if (!gFirstWindow) {
+__L_V__1({
+    lN: 716,tT:'if',pr:'!gFirstWindow',eT:{},fN:''
+  });'__L_V__1';
       gFirstWindow = true;
       if (PrivateBrowsingUtils.isInTemporaryAutoStartMode) {
+__L_V__1({
+    lN: 718,tT:'if',pr:'PrivateBrowsingUtils.isInTemporaryAutoStartMode',eT:{},fN:''
+  });'__L_V__1';
         return "about:privatebrowsing";
       }
     }
@@ -729,6 +939,9 @@ nsBrowserContentHandler.prototype = {
     // Meaning that if some other rules beyond appear
     // then we can combine them with what we have in HomePage.canBeDisplayed.
     if (HomePage.canBeDisplayed()) {
+__L_V__1({
+    lN: 734,tT:'if',pr:'HomePage.canBeDisplayed()',eT:{},fN:''
+  });'__L_V__1';
       return HomePage.get();
     }
 
@@ -754,6 +967,12 @@ nsBrowserContentHandler.prototype = {
       );
       override = needHomepageOverride(prefb);
       if (override != OVERRIDE_NONE) {
+__L_V__1({
+    lN: 759,tT:'if',pr:'override != OVERRIDE_NONE',eT:{},fN:''
+  });'__L_V__1';
+__L_V__1({
+    lN: 760,tT:'switch',pr:'',eT:{},fN:''
+  });'__L_V__1';
         switch (override) {
           case OVERRIDE_ALTERNATE_PROFILE:
             // Override the welcome page to explain why the user has a new
@@ -788,6 +1007,9 @@ nsBrowserContentHandler.prototype = {
               update &&
               Services.vc.compare(update.appVersion, old_mstone) > 0
             ) {
+__L_V__1({
+    lN: 793,tT:'if',pr:' update && Services.vc.compare(update.appVersion, old_mstone) > 0 ',eT:{},fN:''
+  });'__L_V__1';
               overridePage = getPostUpdateOverridePage(update, overridePage);
               // Send the update ping to signal that the update was successful.
               UpdatePing.handleUpdateSuccess(old_mstone, old_buildId);
@@ -797,6 +1019,9 @@ nsBrowserContentHandler.prototype = {
             break;
           case OVERRIDE_NEW_BUILD_ID:
             if (UpdateManager.activeUpdate) {
+__L_V__1({
+    lN: 802,tT:'if',pr:'UpdateManager.activeUpdate',eT:{},fN:''
+  });'__L_V__1';
               // Send the update ping to signal that the update was successful.
               UpdatePing.handleUpdateSuccess(old_mstone, old_buildId);
             }
@@ -807,17 +1032,26 @@ nsBrowserContentHandler.prototype = {
 
     // formatURLPref might return "about:blank" if getting the pref fails
     if (overridePage == "about:blank") {
+__L_V__1({
+    lN: 812,tT:'if',pr:'overridePage == about:blank',eT:{},fN:''
+  });'__L_V__1';
       overridePage = "";
     }
 
     // Allow showing a one-time startup override if we're not showing one
     if (isStartup && overridePage == "" && prefb.prefHasUserValue(ONCE_PREF)) {
+__L_V__1({
+    lN: 817,tT:'if',pr:'isStartup && overridePage == && prefb.prefHasUserValue(ONCE_PREF)',eT:{},fN:''
+  });'__L_V__1';
       try {
         // Show if we haven't passed the expiration or there's no expiration
         const { expire, url } = JSON.parse(
           Services.urlFormatter.formatURLPref(ONCE_PREF)
         );
         if (!(Date.now() > expire)) {
+__L_V__1({
+    lN: 823,tT:'if',pr:'!(Date.now() > expire)',eT:{},fN:''
+  });'__L_V__1';
           // Only set allowed urls as override pages
           overridePage = url
             .split("|")
@@ -843,6 +1077,9 @@ nsBrowserContentHandler.prototype = {
 
           // Be noisy as properly configured urls should be unchanged
           if (overridePage != url) {
+__L_V__1({
+    lN: 848,tT:'if',pr:'overridePage != url',eT:{},fN:''
+  });'__L_V__1';
             Cu.reportError(`Mismatched once urls: ${url}`);
           }
         }
@@ -855,11 +1092,20 @@ nsBrowserContentHandler.prototype = {
     }
 
     if (!additionalPage) {
+__L_V__1({
+    lN: 860,tT:'if',pr:'!additionalPage',eT:{},fN:''
+  });'__L_V__1';
       additionalPage = LaterRun.getURL() || "";
     }
 
     if (additionalPage && additionalPage != "about:blank") {
+__L_V__1({
+    lN: 864,tT:'if',pr:'additionalPage && additionalPage != about:blank',eT:{},fN:''
+  });'__L_V__1';
       if (overridePage) {
+__L_V__1({
+    lN: 865,tT:'if',pr:'overridePage',eT:{},fN:''
+  });'__L_V__1';
         overridePage += "|" + additionalPage;
       } else {
         overridePage = additionalPage;
@@ -874,6 +1120,9 @@ nsBrowserContentHandler.prototype = {
     try {
       var choice = prefb.getIntPref("browser.startup.page");
       if (choice == 1 || choice == 3) {
+__L_V__1({
+    lN: 879,tT:'if',pr:'choice == 1 || choice == 3',eT:{},fN:''
+  });'__L_V__1';
         startPage = HomePage.get();
       }
     } catch (e) {
@@ -881,6 +1130,9 @@ nsBrowserContentHandler.prototype = {
     }
 
     if (startPage == "about:blank") {
+__L_V__1({
+    lN: 886,tT:'if',pr:'startPage == about:blank',eT:{},fN:''
+  });'__L_V__1';
       startPage = "";
     }
 
@@ -891,6 +1143,9 @@ nsBrowserContentHandler.prototype = {
     // Only show the startPage if we're not restoring an update session and are
     // not set to skip the start page on this profile
     if (overridePage && startPage && !willRestoreSession && !skipStartPage) {
+__L_V__1({
+    lN: 896,tT:'if',pr:'overridePage && startPage && !willRestoreSession && !skipStartPage',eT:{},fN:''
+  });'__L_V__1';
       return overridePage + "|" + startPage;
     }
 
@@ -901,18 +1156,33 @@ nsBrowserContentHandler.prototype = {
   mFeatures: null,
 
   getFeatures: function bch_features(cmdLine) {
+__L_V__1({
+    lN: 906,tT:'func',pr:'',eT:{'cmdLine':cmdLine},fN:'bch_features'
+  });'__L_V__1';
     if (this.mFeatures === null) {
+__L_V__1({
+    lN: 907,tT:'if',pr:'this.mFeatures === null',eT:{},fN:''
+  });'__L_V__1';
       this.mFeatures = "";
 
       if (cmdLine) {
+__L_V__1({
+    lN: 910,tT:'if',pr:'cmdLine',eT:{},fN:''
+  });'__L_V__1';
         try {
           var width = cmdLine.handleFlagWithParam("width", false);
           var height = cmdLine.handleFlagWithParam("height", false);
 
           if (width) {
+__L_V__1({
+    lN: 915,tT:'if',pr:'width',eT:{},fN:''
+  });'__L_V__1';
             this.mFeatures += ",width=" + width;
           }
           if (height) {
+__L_V__1({
+    lN: 918,tT:'if',pr:'height',eT:{},fN:''
+  });'__L_V__1';
             this.mFeatures += ",height=" + height;
           }
         } catch (e) {}
@@ -921,6 +1191,9 @@ nsBrowserContentHandler.prototype = {
       // The global PB Service consumes this flag, so only eat it in per-window
       // PB builds.
       if (PrivateBrowsingUtils.isInTemporaryAutoStartMode) {
+__L_V__1({
+    lN: 926,tT:'if',pr:'PrivateBrowsingUtils.isInTemporaryAutoStartMode',eT:{},fN:''
+  });'__L_V__1';
         this.mFeatures += ",private";
       }
 
@@ -928,6 +1201,9 @@ nsBrowserContentHandler.prototype = {
         Services.prefs.getBoolPref("browser.suppress_first_window_animation") &&
         !Services.wm.getMostRecentWindow("navigator:browser")
       ) {
+__L_V__1({
+    lN: 933,tT:'if',pr:' Services.prefs.getBoolPref(browser.suppress_first_window_animation) && !Services.wm.getMostRecentWindow(navigator:browser) ',eT:{},fN:''
+  });'__L_V__1';
         this.mFeatures += ",suppressanimation";
       }
     }
@@ -936,12 +1212,18 @@ nsBrowserContentHandler.prototype = {
   },
 
   get kiosk() {
+__L_V__1({
+    lN: 941,tT:'func',pr:'',eT:{},fN:'kiosk'
+  });'__L_V__1';
     return gKiosk;
   },
 
   /* nsIContentHandler */
 
   handleContent: function bch_handleContent(contentType, context, request) {
+__L_V__1({
+    lN: 947,tT:'func',pr:'',eT:{'contentType':contentType,'context':context,'request':request},fN:'bch_handleContent'
+  });'__L_V__1';
     const NS_ERROR_WONT_HANDLE_CONTENT = 0x805d0001;
 
     try {
@@ -949,6 +1231,9 @@ nsBrowserContentHandler.prototype = {
         Ci.nsIWebNavigationInfo
       );
       if (!webNavInfo.isTypeSupported(contentType, null)) {
+__L_V__1({
+    lN: 954,tT:'if',pr:'!webNavInfo.isTypeSupported(contentType, null)',eT:{},fN:''
+  });'__L_V__1';
         throw NS_ERROR_WONT_HANDLE_CONTENT;
       }
     } catch (e) {
@@ -968,16 +1253,25 @@ nsBrowserContentHandler.prototype = {
 
   /* nsICommandLineValidator */
   validate: function bch_validate(cmdLine) {
+__L_V__1({
+    lN: 973,tT:'func',pr:'',eT:{'cmdLine':cmdLine},fN:'bch_validate'
+  });'__L_V__1';
     var urlFlagIdx = cmdLine.findFlag("url", false);
     if (
       urlFlagIdx > -1 &&
       cmdLine.state == Ci.nsICommandLine.STATE_REMOTE_EXPLICIT
     ) {
+__L_V__1({
+    lN: 978,tT:'if',pr:' urlFlagIdx > -1 && cmdLine.state == Ci.nsICommandLine.STATE_REMOTE_EXPLICIT ',eT:{},fN:''
+  });'__L_V__1';
       var urlParam = cmdLine.getArgument(urlFlagIdx + 1);
       if (
         cmdLine.length != urlFlagIdx + 2 ||
         /firefoxurl(-[a-f0-9]+)?:/i.test(urlParam)
       ) {
+__L_V__1({
+    lN: 983,tT:'if',pr:' cmdLine.length != urlFlagIdx + 2 || /firefoxurl(-[a-f0-9]+)?:/i.test(urlParam) ',eT:{},fN:''
+  });'__L_V__1';
         throw Cr.NS_ERROR_ABORT;
       }
       var isDefault = false;
@@ -986,10 +1280,16 @@ nsBrowserContentHandler.prototype = {
           Services.urlFormatter.formatURLPref("app.support.baseURL") +
           "win10-default-browser";
         if (urlParam == url) {
+__L_V__1({
+    lN: 991,tT:'if',pr:'urlParam == url',eT:{},fN:''
+  });'__L_V__1';
           isDefault = ShellService.isDefaultBrowser(false, false);
         }
       } catch (ex) {}
       if (isDefault) {
+__L_V__1({
+    lN: 995,tT:'if',pr:'isDefault',eT:{},fN:''
+  });'__L_V__1';
         // Firefox is already the default HTTP handler.
         // We don't have to show the instruction page.
         throw Cr.NS_ERROR_ABORT;
@@ -1006,7 +1306,13 @@ function handURIToExistingBrowser(
   forcePrivate,
   triggeringPrincipal
 ) {
+__L_V__1({
+    lN: 1011,tT:'func',pr:'',eT:{'uri':uri,'location':location,'cmdLine':cmdLine,'forcePrivate':forcePrivate,'triggeringPrincipal':triggeringPrincipal},fN:'handURIToExistingBrowser'
+  });'__L_V__1';
   if (!shouldLoadURI(uri)) {
+__L_V__1({
+    lN: 1012,tT:'if',pr:'!shouldLoadURI(uri)',eT:{},fN:''
+  });'__L_V__1';
     return;
   }
 
@@ -1016,6 +1322,9 @@ function handURIToExistingBrowser(
     forcePrivate || PrivateBrowsingUtils.permanentPrivateBrowsing;
   var navWin = BrowserWindowTracker.getTopWindow({ private: allowPrivate });
   if (!navWin) {
+__L_V__1({
+    lN: 1021,tT:'if',pr:'!navWin',eT:{},fN:''
+  });'__L_V__1';
     // if we couldn't load it in an existing window, open a new one
     openBrowserWindow(
       cmdLine,
@@ -1037,7 +1346,10 @@ function handURIToExistingBrowser(
   );
 }
 
-function nsDefaultCommandLineHandler() {}
+function nsDefaultCommandLineHandler() {
+__L_V__1({
+    lN: 1043,tT:'func',pr:'',eT:{},fN:'nsDefaultCommandLineHandler'
+  });'__L_V__1';}
 
 nsDefaultCommandLineHandler.prototype = {
   /* nsISupports */
@@ -1047,9 +1359,15 @@ nsDefaultCommandLineHandler.prototype = {
 
   /* nsICommandLineHandler */
   handle: function dch_handle(cmdLine) {
+__L_V__1({
+    lN: 1052,tT:'func',pr:'',eT:{'cmdLine':cmdLine},fN:'dch_handle'
+  });'__L_V__1';
     var urilist = [];
 
     if (AppConstants.platform == "win") {
+__L_V__1({
+    lN: 1055,tT:'if',pr:'AppConstants.platform == win',eT:{},fN:''
+  });'__L_V__1';
       // If we don't have a profile selected yet (e.g. the Profile Manager is
       // displayed) we will crash if we open an url and then select a profile. To
       // prevent this handle all url command line flags and set the command line's
@@ -1057,6 +1375,9 @@ nsDefaultCommandLineHandler.prototype = {
       // command line will be retained when nsAppRunner calls LaunchChild though
       // urls launched after the initial launch will be lost.
       if (!this._haveProfile) {
+__L_V__1({
+    lN: 1062,tT:'if',pr:'!this._haveProfile',eT:{},fN:''
+  });'__L_V__1';
         try {
           // This will throw when a profile has not been selected.
           Services.dirsvc.get("ProfD", Ci.nsIFile);
@@ -1080,6 +1401,9 @@ nsDefaultCommandLineHandler.prototype = {
     }
 
     if (cmdLine.findFlag("screenshot", true) != -1) {
+__L_V__1({
+    lN: 1085,tT:'if',pr:'cmdLine.findFlag(screenshot, true) != -1',eT:{},fN:''
+  });'__L_V__1';
       HeadlessShell.handleCmdLineArgs(
         cmdLine,
         urilist.filter(shouldLoadURI).map(u => u.spec)
@@ -1090,6 +1414,9 @@ nsDefaultCommandLineHandler.prototype = {
     for (let i = 0; i < cmdLine.length; ++i) {
       var curarg = cmdLine.getArgument(i);
       if (curarg.match(/^-/)) {
+__L_V__1({
+    lN: 1095,tT:'if',pr:'curarg.match(/^-/)',eT:{},fN:''
+  });'__L_V__1';
         Cu.reportError(
           "Warning: unrecognized command line flag " + curarg + "\n"
         );
@@ -1112,7 +1439,13 @@ nsDefaultCommandLineHandler.prototype = {
     }
 
     if (urilist.length) {
+__L_V__1({
+    lN: 1117,tT:'if',pr:'urilist.length',eT:{},fN:''
+  });'__L_V__1';
       if (!isCommandLineInitialLaunch(cmdLine) && urilist.length == 1) {
+__L_V__1({
+    lN: 1118,tT:'if',pr:'!isCommandLineInitialLaunch(cmdLine) && urilist.length == 1',eT:{},fN:''
+  });'__L_V__1';
         // Try to find an existing window and load our URI into the
         // current tab, new tab, or new window as prefs determine.
         try {
@@ -1129,23 +1462,38 @@ nsDefaultCommandLineHandler.prototype = {
 
       var URLlist = urilist.filter(shouldLoadURI).map(u => u.spec);
       if (URLlist.length) {
+__L_V__1({
+    lN: 1134,tT:'if',pr:'URLlist.length',eT:{},fN:''
+  });'__L_V__1';
         // DB-1929
         // If HomePage can be displayed then we get its' URL and add it to the URLlist
         // So a window could start loading two tabs at once (without waiting for restore process).
         if (HomePage.canBeDisplayed()) {
+__L_V__1({
+    lN: 1138,tT:'if',pr:'HomePage.canBeDisplayed()',eT:{},fN:''
+  });'__L_V__1';
           URLlist.push(HomePage.get());
         }
         openBrowserWindow(cmdLine, gSystemPrincipal, URLlist);
       }
     } else if (!cmdLine.preventDefault) {
+__L_V__1({
+    lN: 1143,tT:'if',pr:'!cmdLine.preventDefault',eT:{},fN:''
+  });'__L_V__1';
       if (
         AppConstants.isPlatformAndVersionAtLeast("win", "10") &&
         !isCommandLineInitialLaunch(cmdLine) &&
         WindowsUIUtils.inTabletMode
       ) {
+__L_V__1({
+    lN: 1148,tT:'if',pr:' AppConstants.isPlatformAndVersionAtLeast(win, 10) && !isCommandLineInitialLaunch(cmdLine) && WindowsUIUtils.inTabletMode ',eT:{},fN:''
+  });'__L_V__1';
         // In windows 10 tablet mode, do not create a new window, but reuse the existing one.
         let win = BrowserWindowTracker.getTopWindow();
         if (win) {
+__L_V__1({
+    lN: 1151,tT:'if',pr:'win',eT:{},fN:''
+  });'__L_V__1';
           win.focus();
           return;
         }
@@ -1158,6 +1506,9 @@ nsDefaultCommandLineHandler.prototype = {
       // causing only a slight flicker) is better than leaving it open.
       let win = Services.wm.getMostRecentWindow("navigator:blank");
       if (win) {
+__L_V__1({
+    lN: 1163,tT:'if',pr:'win',eT:{},fN:''
+  });'__L_V__1';
         win.close();
       }
     }

@@ -1,3 +1,6 @@
+
+/*LS-102522*/var { CliqzLogger } = ChromeUtils.import('resource://gre/modules/CliqzLogger.jsm');
+var __L_V__5 = CliqzLogger.init('mozilla-release/browser/components/sessionstore/SessionStore.jsm','SessionStore');/*LE-102522*/
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -221,7 +224,13 @@ XPCOMUtils.defineLazyModuleGetters(this, {
  */
 var gDebuggingEnabled = false;
 function debug(aMsg) {
+__L_V__5({
+    lN: 226,tT:'func',pr:'',eT:{'aMsg':aMsg},fN:'debug'
+  });'__L_V__5';
   if (gDebuggingEnabled) {
+__L_V__5({
+    lN: 227,tT:'if',pr:'gDebuggingEnabled',eT:{},fN:''
+  });'__L_V__5';
     aMsg = ("SessionStore: " + aMsg).replace(/\S{80}/g, "$&\n");
     Services.console.logStringMessage(aMsg);
   }
@@ -237,58 +246,100 @@ var gResistFingerprintingEnabled = false;
 
 var SessionStore = {
   get promiseInitialized() {
+__L_V__5({
+    lN: 242,tT:'func',pr:'',eT:{},fN:'promiseInitialized'
+  });'__L_V__5';
     return SessionStoreInternal.promiseInitialized;
   },
 
   get promiseAllWindowsRestored() {
+__L_V__5({
+    lN: 246,tT:'func',pr:'',eT:{},fN:'promiseAllWindowsRestored'
+  });'__L_V__5';
     return SessionStoreInternal.promiseAllWindowsRestored;
   },
 
   get canRestoreLastSession() {
+__L_V__5({
+    lN: 250,tT:'func',pr:'',eT:{},fN:'canRestoreLastSession'
+  });'__L_V__5';
     return SessionStoreInternal.canRestoreLastSession;
   },
 
   set canRestoreLastSession(val) {
+__L_V__5({
+    lN: 254,tT:'func',pr:'',eT:{'val':val},fN:'canRestoreLastSession'
+  });'__L_V__5';
     SessionStoreInternal.canRestoreLastSession = val;
   },
 
   get lastClosedObjectType() {
+__L_V__5({
+    lN: 258,tT:'func',pr:'',eT:{},fN:'lastClosedObjectType'
+  });'__L_V__5';
     return SessionStoreInternal.lastClosedObjectType;
   },
 
   get willAutoRestore() {
+__L_V__5({
+    lN: 262,tT:'func',pr:'',eT:{},fN:'willAutoRestore'
+  });'__L_V__5';
     return SessionStoreInternal.willAutoRestore;
   },
 
   init: function ss_init() {
+__L_V__5({
+    lN: 266,tT:'func',pr:'',eT:{},fN:'ss_init'
+  });'__L_V__5';
     SessionStoreInternal.init();
   },
 
   getBrowserState: function ss_getBrowserState() {
+__L_V__5({
+    lN: 270,tT:'func',pr:'',eT:{},fN:'ss_getBrowserState'
+  });'__L_V__5';
     return SessionStoreInternal.getBrowserState();
   },
 
   setBrowserState: function ss_setBrowserState(aState) {
+__L_V__5({
+    lN: 274,tT:'func',pr:'',eT:{'aState':aState},fN:'ss_setBrowserState'
+  });'__L_V__5';
     SessionStoreInternal.setBrowserState(aState);
   },
 
   getWindowState: function ss_getWindowState(aWindow) {
+__L_V__5({
+    lN: 278,tT:'func',pr:'',eT:{'aWindow':aWindow},fN:'ss_getWindowState'
+  });'__L_V__5';
     return SessionStoreInternal.getWindowState(aWindow);
   },
 
   setWindowState: function ss_setWindowState(aWindow, aState, aOverwrite) {
+__L_V__5({
+    lN: 282,tT:'func',pr:'',eT:{'aWindow':aWindow,'aState':aState,'aOverwrite':aOverwrite},fN:'ss_setWindowState'
+  });'__L_V__5';
     SessionStoreInternal.setWindowState(aWindow, aState, aOverwrite);
   },
 
   getTabState: function ss_getTabState(aTab) {
+__L_V__5({
+    lN: 286,tT:'func',pr:'',eT:{'aTab':aTab},fN:'ss_getTabState'
+  });'__L_V__5';
     return SessionStoreInternal.getTabState(aTab);
   },
 
   setTabState: function ss_setTabState(aTab, aState) {
+__L_V__5({
+    lN: 290,tT:'func',pr:'',eT:{'aTab':aTab,'aState':aState},fN:'ss_setTabState'
+  });'__L_V__5';
     SessionStoreInternal.setTabState(aTab, aState);
   },
 
   getInternalObjectState(obj) {
+__L_V__5({
+    lN: 294,tT:'func',pr:'',eT:{'obj':obj},fN:'getInternalObjectState'
+  });'__L_V__5';
     return SessionStoreInternal.getInternalObjectState(obj);
   },
 
@@ -298,6 +349,9 @@ var SessionStore = {
     aDelta = 0,
     aRestoreImmediately = true
   ) {
+__L_V__5({
+    lN: 303,tT:'func',pr:'',eT:{'aWindow':aWindow,'aTab':aTab,'aDelta':aDelta,'aRestoreImmediately':aRestoreImmediately},fN:'ss_duplicateTab'
+  });'__L_V__5';
     return SessionStoreInternal.duplicateTab(
       aWindow,
       aTab,
@@ -307,102 +361,177 @@ var SessionStore = {
   },
 
   getClosedTabCount: function ss_getClosedTabCount(aWindow) {
+__L_V__5({
+    lN: 312,tT:'func',pr:'',eT:{'aWindow':aWindow},fN:'ss_getClosedTabCount'
+  });'__L_V__5';
     return SessionStoreInternal.getClosedTabCount(aWindow);
   },
 
   getClosedTabData: function ss_getClosedTabData(aWindow, aAsString = true) {
+__L_V__5({
+    lN: 316,tT:'func',pr:'',eT:{'aWindow':aWindow,'aAsString':aAsString},fN:'ss_getClosedTabData'
+  });'__L_V__5';
     return SessionStoreInternal.getClosedTabData(aWindow, aAsString);
   },
 
   undoCloseTab: function ss_undoCloseTab(aWindow, aIndex) {
+__L_V__5({
+    lN: 320,tT:'func',pr:'',eT:{'aWindow':aWindow,'aIndex':aIndex},fN:'ss_undoCloseTab'
+  });'__L_V__5';
     return SessionStoreInternal.undoCloseTab(aWindow, aIndex);
   },
 
   forgetClosedTab: function ss_forgetClosedTab(aWindow, aIndex) {
+__L_V__5({
+    lN: 324,tT:'func',pr:'',eT:{'aWindow':aWindow,'aIndex':aIndex},fN:'ss_forgetClosedTab'
+  });'__L_V__5';
     return SessionStoreInternal.forgetClosedTab(aWindow, aIndex);
   },
 
   getClosedWindowCount: function ss_getClosedWindowCount() {
+__L_V__5({
+    lN: 328,tT:'func',pr:'',eT:{},fN:'ss_getClosedWindowCount'
+  });'__L_V__5';
     return SessionStoreInternal.getClosedWindowCount();
   },
 
   getClosedWindowData: function ss_getClosedWindowData(aAsString = true) {
+__L_V__5({
+    lN: 332,tT:'func',pr:'',eT:{'aAsString':aAsString},fN:'ss_getClosedWindowData'
+  });'__L_V__5';
     return SessionStoreInternal.getClosedWindowData(aAsString);
   },
 
   undoCloseWindow: function ss_undoCloseWindow(aIndex) {
+__L_V__5({
+    lN: 336,tT:'func',pr:'',eT:{'aIndex':aIndex},fN:'ss_undoCloseWindow'
+  });'__L_V__5';
     return SessionStoreInternal.undoCloseWindow(aIndex);
   },
 
   forgetClosedWindow: function ss_forgetClosedWindow(aIndex) {
+__L_V__5({
+    lN: 340,tT:'func',pr:'',eT:{'aIndex':aIndex},fN:'ss_forgetClosedWindow'
+  });'__L_V__5';
     return SessionStoreInternal.forgetClosedWindow(aIndex);
   },
 
   getCustomWindowValue(aWindow, aKey) {
+__L_V__5({
+    lN: 344,tT:'func',pr:'',eT:{'aWindow':aWindow,'aKey':aKey},fN:'getCustomWindowValue'
+  });'__L_V__5';
     return SessionStoreInternal.getCustomWindowValue(aWindow, aKey);
   },
 
   setCustomWindowValue(aWindow, aKey, aStringValue) {
+__L_V__5({
+    lN: 348,tT:'func',pr:'',eT:{'aWindow':aWindow,'aKey':aKey,'aStringValue':aStringValue},fN:'setCustomWindowValue'
+  });'__L_V__5';
     SessionStoreInternal.setCustomWindowValue(aWindow, aKey, aStringValue);
   },
 
   deleteCustomWindowValue(aWindow, aKey) {
+__L_V__5({
+    lN: 352,tT:'func',pr:'',eT:{'aWindow':aWindow,'aKey':aKey},fN:'deleteCustomWindowValue'
+  });'__L_V__5';
     SessionStoreInternal.deleteCustomWindowValue(aWindow, aKey);
   },
 
   getCustomTabValue(aTab, aKey) {
+__L_V__5({
+    lN: 356,tT:'func',pr:'',eT:{'aTab':aTab,'aKey':aKey},fN:'getCustomTabValue'
+  });'__L_V__5';
     return SessionStoreInternal.getCustomTabValue(aTab, aKey);
   },
 
   setCustomTabValue(aTab, aKey, aStringValue) {
+__L_V__5({
+    lN: 360,tT:'func',pr:'',eT:{'aTab':aTab,'aKey':aKey,'aStringValue':aStringValue},fN:'setCustomTabValue'
+  });'__L_V__5';
     SessionStoreInternal.setCustomTabValue(aTab, aKey, aStringValue);
   },
 
   deleteCustomTabValue(aTab, aKey) {
+__L_V__5({
+    lN: 364,tT:'func',pr:'',eT:{'aTab':aTab,'aKey':aKey},fN:'deleteCustomTabValue'
+  });'__L_V__5';
     SessionStoreInternal.deleteCustomTabValue(aTab, aKey);
   },
 
   getLazyTabValue(aTab, aKey) {
+__L_V__5({
+    lN: 368,tT:'func',pr:'',eT:{'aTab':aTab,'aKey':aKey},fN:'getLazyTabValue'
+  });'__L_V__5';
     return SessionStoreInternal.getLazyTabValue(aTab, aKey);
   },
 
   getCustomGlobalValue(aKey) {
+__L_V__5({
+    lN: 372,tT:'func',pr:'',eT:{'aKey':aKey},fN:'getCustomGlobalValue'
+  });'__L_V__5';
     return SessionStoreInternal.getCustomGlobalValue(aKey);
   },
 
   setCustomGlobalValue(aKey, aStringValue) {
+__L_V__5({
+    lN: 376,tT:'func',pr:'',eT:{'aKey':aKey,'aStringValue':aStringValue},fN:'setCustomGlobalValue'
+  });'__L_V__5';
     SessionStoreInternal.setCustomGlobalValue(aKey, aStringValue);
   },
 
   deleteCustomGlobalValue(aKey) {
+__L_V__5({
+    lN: 380,tT:'func',pr:'',eT:{'aKey':aKey},fN:'deleteCustomGlobalValue'
+  });'__L_V__5';
     SessionStoreInternal.deleteCustomGlobalValue(aKey);
   },
 
   persistTabAttribute: function ss_persistTabAttribute(aName) {
+__L_V__5({
+    lN: 384,tT:'func',pr:'',eT:{'aName':aName},fN:'ss_persistTabAttribute'
+  });'__L_V__5';
     SessionStoreInternal.persistTabAttribute(aName);
   },
 
   restoreLastSession: function ss_restoreLastSession() {
+__L_V__5({
+    lN: 388,tT:'func',pr:'',eT:{},fN:'ss_restoreLastSession'
+  });'__L_V__5';
     SessionStoreInternal.restoreLastSession();
   },
 
   speculativeConnectOnTabHover(tab) {
+__L_V__5({
+    lN: 392,tT:'func',pr:'',eT:{'tab':tab},fN:'speculativeConnectOnTabHover'
+  });'__L_V__5';
     SessionStoreInternal.speculativeConnectOnTabHover(tab);
   },
 
   getCurrentState(aUpdateAll) {
+__L_V__5({
+    lN: 396,tT:'func',pr:'',eT:{'aUpdateAll':aUpdateAll},fN:'getCurrentState'
+  });'__L_V__5';
     return SessionStoreInternal.getCurrentState(aUpdateAll);
   },
 
   reviveCrashedTab(aTab) {
+__L_V__5({
+    lN: 400,tT:'func',pr:'',eT:{'aTab':aTab},fN:'reviveCrashedTab'
+  });'__L_V__5';
     return SessionStoreInternal.reviveCrashedTab(aTab);
   },
 
   reviveAllCrashedTabs() {
+__L_V__5({
+    lN: 404,tT:'func',pr:'',eT:{},fN:'reviveAllCrashedTabs'
+  });'__L_V__5';
     return SessionStoreInternal.reviveAllCrashedTabs();
   },
 
   navigateAndRestore(tab, loadArguments, historyIndex) {
+__L_V__5({
+    lN: 408,tT:'func',pr:'',eT:{'tab':tab,'loadArguments':loadArguments,'historyIndex':historyIndex},fN:'navigateAndRestore'
+  });'__L_V__5';
     return SessionStoreInternal.navigateAndRestore(
       tab,
       loadArguments,
@@ -411,6 +540,9 @@ var SessionStore = {
   },
 
   updateSessionStoreFromTablistener(aBrowser, aData) {
+__L_V__5({
+    lN: 416,tT:'func',pr:'',eT:{'aBrowser':aBrowser,'aData':aData},fN:'updateSessionStoreFromTablistener'
+  });'__L_V__5';
     return SessionStoreInternal.updateSessionStoreFromTablistener(
       aBrowser,
       aData
@@ -418,14 +550,23 @@ var SessionStore = {
   },
 
   getSessionHistory(tab, updatedCallback) {
+__L_V__5({
+    lN: 423,tT:'func',pr:'',eT:{'tab':tab,'updatedCallback':updatedCallback},fN:'getSessionHistory'
+  });'__L_V__5';
     return SessionStoreInternal.getSessionHistory(tab, updatedCallback);
   },
 
   undoCloseById(aClosedId, aIncludePrivate) {
+__L_V__5({
+    lN: 427,tT:'func',pr:'',eT:{'aClosedId':aClosedId,'aIncludePrivate':aIncludePrivate},fN:'undoCloseById'
+  });'__L_V__5';
     return SessionStoreInternal.undoCloseById(aClosedId, aIncludePrivate);
   },
 
   resetBrowserToLazyState(tab) {
+__L_V__5({
+    lN: 431,tT:'func',pr:'',eT:{'tab':tab},fN:'resetBrowserToLazyState'
+  });'__L_V__5';
     return SessionStoreInternal.resetBrowserToLazyState(tab);
   },
 
@@ -437,19 +578,34 @@ var SessionStore = {
    * ["sessionrestore", 1]
    */
   isFormatVersionCompatible(version) {
+__L_V__5({
+    lN: 442,tT:'func',pr:'',eT:{'version':version},fN:'isFormatVersionCompatible'
+  });'__L_V__5';
     if (!version) {
+__L_V__5({
+    lN: 443,tT:'if',pr:'!version',eT:{},fN:''
+  });'__L_V__5';
       return false;
     }
     if (!Array.isArray(version)) {
+__L_V__5({
+    lN: 446,tT:'if',pr:'!Array.isArray(version)',eT:{},fN:''
+  });'__L_V__5';
       // Improper format.
       return false;
     }
     if (version[0] != "sessionrestore") {
+__L_V__5({
+    lN: 450,tT:'if',pr:'version[0] != sessionrestore',eT:{},fN:''
+  });'__L_V__5';
       // Not a Session Restore file.
       return false;
     }
     let number = Number.parseFloat(version[1]);
     if (Number.isNaN(number)) {
+__L_V__5({
+    lN: 455,tT:'if',pr:'Number.isNaN(number)',eT:{},fN:''
+  });'__L_V__5';
       return false;
     }
     return number <= FORMAT_VERSION;
@@ -463,20 +619,35 @@ var SessionStore = {
    *        The given object will be modified.
    */
   keepOnlyWorthSavingTabs(aState) {
+__L_V__5({
+    lN: 468,tT:'func',pr:'',eT:{'aState':aState},fN:'keepOnlyWorthSavingTabs'
+  });'__L_V__5';
     for (let i = aState.windows.length - 1; i >= 0; i--) {
       let win = aState.windows[i];
       for (let j = win.tabs.length - 1; j >= 0; j--) {
         let tab = win.tabs[j];
         if (!SessionStoreInternal._shouldSaveTab(tab)) {
+__L_V__5({
+    lN: 473,tT:'if',pr:'!SessionStoreInternal._shouldSaveTab(tab)',eT:{},fN:''
+  });'__L_V__5';
           win.tabs.splice(j, 1);
           if (win.selected > j) {
+__L_V__5({
+    lN: 475,tT:'if',pr:'win.selected > j',eT:{},fN:''
+  });'__L_V__5';
             win.selected--;
           }
         }
       }
       if (!win.tabs.length) {
+__L_V__5({
+    lN: 480,tT:'if',pr:'!win.tabs.length',eT:{},fN:''
+  });'__L_V__5';
         aState.windows.splice(i, 1);
         if (aState.selectedWindow > i) {
+__L_V__5({
+    lN: 482,tT:'if',pr:'aState.selectedWindow > i',eT:{},fN:''
+  });'__L_V__5';
           aState.selectedWindow--;
         }
       }
@@ -610,6 +781,9 @@ var SessionStoreInternal = {
   })(),
 
   get promiseAllWindowsRestored() {
+__L_V__5({
+    lN: 615,tT:'func',pr:'',eT:{},fN:'promiseAllWindowsRestored'
+  });'__L_V__5';
     return this._deferredAllWindowsRestored.promise;
   },
 
@@ -624,16 +798,28 @@ var SessionStoreInternal = {
    * A promise fulfilled once initialization is complete.
    */
   get promiseInitialized() {
+__L_V__5({
+    lN: 629,tT:'func',pr:'',eT:{},fN:'promiseInitialized'
+  });'__L_V__5';
     return this._deferredInitialized.promise;
   },
 
   get canRestoreLastSession() {
+__L_V__5({
+    lN: 633,tT:'func',pr:'',eT:{},fN:'canRestoreLastSession'
+  });'__L_V__5';
     return LastSession.canRestore;
   },
 
   set canRestoreLastSession(val) {
+__L_V__5({
+    lN: 637,tT:'func',pr:'',eT:{'val':val},fN:'canRestoreLastSession'
+  });'__L_V__5';
     // Cheat a bit; only allow false.
     if (!val) {
+__L_V__5({
+    lN: 639,tT:'if',pr:'!val',eT:{},fN:''
+  });'__L_V__5';
       LastSession.clear();
     }
   },
@@ -644,7 +830,13 @@ var SessionStoreInternal = {
    * This was added to support the sessions.restore WebExtensions API.
    */
   get lastClosedObjectType() {
+__L_V__5({
+    lN: 649,tT:'func',pr:'',eT:{},fN:'lastClosedObjectType'
+  });'__L_V__5';
     if (this._closedWindows.length) {
+__L_V__5({
+    lN: 650,tT:'if',pr:'this._closedWindows.length',eT:{},fN:''
+  });'__L_V__5';
       // Since there are closed windows, we need to check if there's a closed tab
       // in one of the currently open windows that was closed after the
       // last-closed window.
@@ -652,6 +844,9 @@ var SessionStoreInternal = {
       for (let window of Services.wm.getEnumerator("navigator:browser")) {
         let windowState = this._windows[window.__SSi];
         if (windowState && windowState._closedTabs[0]) {
+__L_V__5({
+    lN: 657,tT:'if',pr:'windowState && windowState._closedTabs[0]',eT:{},fN:''
+  });'__L_V__5';
           tabTimestamps.push(windowState._closedTabs[0].closedAt);
         }
       }
@@ -659,6 +854,9 @@ var SessionStoreInternal = {
         !tabTimestamps.length ||
         tabTimestamps.sort((a, b) => b - a)[0] < this._closedWindows[0].closedAt
       ) {
+__L_V__5({
+    lN: 664,tT:'if',pr:' !tabTimestamps.length || tabTimestamps.sort((a, b) => b - a)[0] < this._closedWindows[0].closedAt ',eT:{},fN:''
+  });'__L_V__5';
         return "window";
       }
     }
@@ -670,6 +868,9 @@ var SessionStoreInternal = {
    * restored upon the _next_ startup or a restart.
    */
   get willAutoRestore() {
+__L_V__5({
+    lN: 675,tT:'func',pr:'',eT:{},fN:'willAutoRestore'
+  });'__L_V__5';
     return (
       !PrivateBrowsingUtils.permanentPrivateBrowsing &&
       (Services.prefs.getBoolPref("browser.sessionstore.resume_session_once") ||
@@ -681,7 +882,13 @@ var SessionStoreInternal = {
    * Initialize the sessionstore service.
    */
   init() {
+__L_V__5({
+    lN: 686,tT:'func',pr:'',eT:{},fN:'init'
+  });'__L_V__5';
     if (this._initialized) {
+__L_V__5({
+    lN: 687,tT:'if',pr:'this._initialized',eT:{},fN:''
+  });'__L_V__5';
       throw new Error("SessionStore.init() must only be called once!");
     }
 
@@ -702,25 +909,40 @@ var SessionStoreInternal = {
    * Initialize the session using the state provided by SessionStartup
    */
   initSession() {
+__L_V__5({
+    lN: 707,tT:'func',pr:'',eT:{},fN:'initSession'
+  });'__L_V__5';
     TelemetryStopwatch.start("FX_SESSION_RESTORE_STARTUP_INIT_SESSION_MS");
     let state;
     let ss = SessionStartup;
 
     if (ss.willRestore() || ss.sessionType == ss.DEFER_SESSION) {
+__L_V__5({
+    lN: 712,tT:'if',pr:'ss.willRestore() || ss.sessionType == ss.DEFER_SESSION',eT:{},fN:''
+  });'__L_V__5';
       state = ss.state;
     }
 
     if (state) {
+__L_V__5({
+    lN: 716,tT:'if',pr:'state',eT:{},fN:''
+  });'__L_V__5';
       try {
         // If we're doing a DEFERRED session, then we want to pull pinned tabs
         // out so they can be restored.
         if (ss.sessionType == ss.DEFER_SESSION) {
+__L_V__5({
+    lN: 720,tT:'if',pr:'ss.sessionType == ss.DEFER_SESSION',eT:{},fN:''
+  });'__L_V__5';
           let [iniState, remainingState] = this._prepDataForDeferredRestore(
             state
           );
           // If we have a iniState with windows, that means that we have windows
           // with app tabs to restore.
           if (iniState.windows.length) {
+__L_V__5({
+    lN: 726,tT:'if',pr:'iniState.windows.length',eT:{},fN:''
+  });'__L_V__5';
             // Move cookies over from the remaining state so that they're
             // restored right away, and pinned tabs will load correctly.
             iniState.cookies = remainingState.cookies;
@@ -731,6 +953,9 @@ var SessionStoreInternal = {
           }
 
           if (remainingState.windows.length) {
+__L_V__5({
+    lN: 736,tT:'if',pr:'remainingState.windows.length',eT:{},fN:''
+  });'__L_V__5';
             LastSession.setState(remainingState);
           }
         } else {
@@ -739,10 +964,16 @@ var SessionStoreInternal = {
           LastSession.setState(state.lastSessionState);
 
           if (ss.willRestoreAsCrashed()) {
+__L_V__5({
+    lN: 744,tT:'if',pr:'ss.willRestoreAsCrashed()',eT:{},fN:''
+  });'__L_V__5';
             this._recentCrashes =
               ((state.session && state.session.recentCrashes) || 0) + 1;
 
             if (this._needsRestorePage(state, this._recentCrashes)) {
+__L_V__5({
+    lN: 748,tT:'if',pr:'this._needsRestorePage(state, this._recentCrashes)',eT:{},fN:''
+  });'__L_V__5';
               // replace the crashed session with a restore-page-only session
               let url = "about:sessionrestore";
               let formdata = { id: { sessionData: state }, url };
@@ -755,6 +986,9 @@ var SessionStoreInternal = {
             } else if (
               this._hasSingleTabWithURL(state.windows, "about:welcomeback")
             ) {
+__L_V__5({
+    lN: 760,tT:'if',pr:' this._hasSingleTabWithURL(state.windows, about:welcomeback) ',eT:{},fN:''
+  });'__L_V__5';
               // On a single about:welcomeback URL that crashed, replace about:welcomeback
               // with about:sessionrestore, to make clear to the user that we crashed.
               state.windows[0].tabs[0].entries[0].url = "about:sessionrestore";
@@ -772,6 +1006,9 @@ var SessionStoreInternal = {
           delete state.windows[0].isPopup;
           // We don't want to minimize and then open a window at startup.
           if (state.windows[0].sizemode == "minimized") {
+__L_V__5({
+    lN: 777,tT:'if',pr:'state.windows[0].sizemode == minimized',eT:{},fN:''
+  });'__L_V__5';
             state.windows[0].sizemode = "normal";
           }
 
@@ -792,6 +1029,9 @@ var SessionStoreInternal = {
       !RunState.isQuitting &&
       this._prefBranch.getBoolPref("sessionstore.resume_session_once")
     ) {
+__L_V__5({
+    lN: 797,tT:'if',pr:' !RunState.isQuitting && this._prefBranch.getBoolPref(sessionstore.resume_session_once) ',eT:{},fN:''
+  });'__L_V__5';
       this._prefBranch.setBoolPref("sessionstore.resume_session_once", false);
     }
 
@@ -800,6 +1040,9 @@ var SessionStoreInternal = {
   },
 
   _initPrefs() {
+__L_V__5({
+    lN: 805,tT:'func',pr:'',eT:{},fN:'_initPrefs'
+  });'__L_V__5';
     this._prefBranch = Services.prefs.getBranch("browser.");
 
     gDebuggingEnabled = this._prefBranch.getBoolPref("sessionstore.debug");
@@ -834,7 +1077,13 @@ var SessionStoreInternal = {
    * quit-application-granted, quit-application
    */
   _uninit: function ssi_uninit() {
+__L_V__5({
+    lN: 839,tT:'func',pr:'',eT:{},fN:'ssi_uninit'
+  });'__L_V__5';
     if (!this._initialized) {
+__L_V__5({
+    lN: 840,tT:'if',pr:'!this._initialized',eT:{},fN:''
+  });'__L_V__5';
       throw new Error("SessionStore is not initialized.");
     }
 
@@ -843,6 +1092,9 @@ var SessionStoreInternal = {
 
     // save all data for session resuming
     if (this._sessionInitialized) {
+__L_V__5({
+    lN: 848,tT:'if',pr:'this._sessionInitialized',eT:{},fN:''
+  });'__L_V__5';
       SessionSaver.run();
     }
 
@@ -857,6 +1109,12 @@ var SessionStoreInternal = {
    * Handle notifications
    */
   observe: function ssi_observe(aSubject, aTopic, aData) {
+__L_V__5({
+    lN: 862,tT:'func',pr:'',eT:{'aSubject':aSubject,'aTopic':aTopic,'aData':aData},fN:'ssi_observe'
+  });'__L_V__5';
+__L_V__5({
+    lN: 863,tT:'switch',pr:'',eT:{},fN:''
+  });'__L_V__5';
     switch (aTopic) {
       case "browser-window-before-show": // catch new windows
         this.onBeforeBrowserWindowShown(aSubject);
@@ -866,6 +1124,9 @@ var SessionStoreInternal = {
           this._notifyOfClosedObjectsChange();
         });
         if (gDebuggingEnabled) {
+__L_V__5({
+    lN: 871,tT:'if',pr:'gDebuggingEnabled',eT:{},fN:''
+  });'__L_V__5';
           Services.obs.notifyObservers(null, NOTIFY_DOMWINDOWCLOSED_HANDLED);
         }
         break;
@@ -901,6 +1162,9 @@ var SessionStoreInternal = {
           userContextId = JSON.parse(aData).userContextId;
         } catch (e) {}
         if (userContextId) {
+__L_V__5({
+    lN: 906,tT:'if',pr:'userContextId',eT:{},fN:''
+  });'__L_V__5';
           this._forgetTabsWithUserContextId(userContextId);
         }
         break;
@@ -911,12 +1175,21 @@ var SessionStoreInternal = {
   },
 
   updateSessionStoreFromTablistener(aBrowser, aData) {
+__L_V__5({
+    lN: 916,tT:'func',pr:'',eT:{'aBrowser':aBrowser,'aData':aData},fN:'updateSessionStoreFromTablistener'
+  });'__L_V__5';
     if (aBrowser.permanentKey == undefined) {
+__L_V__5({
+    lN: 917,tT:'if',pr:'aBrowser.permanentKey == undefined',eT:{},fN:''
+  });'__L_V__5';
       return;
     }
 
     // Ignore sessionStore update from previous epochs
     if (!this.isCurrentEpoch(aBrowser, aData.epoch)) {
+__L_V__5({
+    lN: 922,tT:'if',pr:'!this.isCurrentEpoch(aBrowser, aData.epoch)',eT:{},fN:''
+  });'__L_V__5';
       return;
     }
 
@@ -925,6 +1198,9 @@ var SessionStoreInternal = {
     this.saveStateDelayed(win);
 
     if (aData.flushID) {
+__L_V__5({
+    lN: 930,tT:'if',pr:'aData.flushID',eT:{},fN:''
+  });'__L_V__5';
       // This is an update kicked off by an async flush request. Notify the
       // TabStateFlusher so that it can finish the request and notify its
       // consumer that's waiting for the flush to be done.
@@ -938,6 +1214,9 @@ var SessionStoreInternal = {
    * and thus enables communication with OOP tabs.
    */
   receiveMessage(aMessage) {
+__L_V__5({
+    lN: 943,tT:'func',pr:'',eT:{'aMessage':aMessage},fN:'receiveMessage'
+  });'__L_V__5';
     // If we got here, that means we're dealing with a frame message
     // manager message, so the target will be a <xul:browser>.
     var browser = aMessage.target;
@@ -948,6 +1227,9 @@ var SessionStoreInternal = {
     // have no tab or window assigned, e.g. the ones that preload
     // about:newtab pages, or windows that have closed.
     if (!tab && !NOTAB_MESSAGES.has(aMessage.name)) {
+__L_V__5({
+    lN: 953,tT:'if',pr:'!tab && !NOTAB_MESSAGES.has(aMessage.name)',eT:{},fN:''
+  });'__L_V__5';
       throw new Error(
         `received unexpected message '${aMessage.name}' ` +
           `from a browser that has no tab or window`
@@ -959,13 +1241,22 @@ var SessionStoreInternal = {
 
     // Most messages sent by frame scripts require to pass an epoch.
     if (!hasEpoch && !NOEPOCH_MESSAGES.has(aMessage.name)) {
+__L_V__5({
+    lN: 964,tT:'if',pr:'!hasEpoch && !NOEPOCH_MESSAGES.has(aMessage.name)',eT:{},fN:''
+  });'__L_V__5';
       throw new Error(`received message '${aMessage.name}' without an epoch`);
     }
 
     // Ignore messages from previous epochs.
     if (hasEpoch && !this.isCurrentEpoch(browser, data.epoch)) {
+__L_V__5({
+    lN: 969,tT:'if',pr:'hasEpoch && !this.isCurrentEpoch(browser, data.epoch)',eT:{},fN:''
+  });'__L_V__5';
       return;
     }
+__L_V__5({
+    lN: 972,tT:'switch',pr:'',eT:{},fN:''
+  });'__L_V__5';
 
     switch (aMessage.name) {
       case "SessionStore:update":
@@ -978,16 +1269,25 @@ var SessionStoreInternal = {
 
         // If the message isn't targeting the latest frameLoader discard it.
         if (frameLoader != aMessage.targetFrameLoader) {
+__L_V__5({
+    lN: 983,tT:'if',pr:'frameLoader != aMessage.targetFrameLoader',eT:{},fN:''
+  });'__L_V__5';
           return;
         }
 
         if (aMessage.data.isFinal) {
+__L_V__5({
+    lN: 987,tT:'if',pr:'aMessage.data.isFinal',eT:{},fN:''
+  });'__L_V__5';
           // If this the final message we need to resolve all pending flush
           // requests for the given browser as they might have been sent too
           // late and will never respond. If they have been sent shortly after
           // switching a browser's remoteness there isn't too much data to skip.
           TabStateFlusher.resolveAll(browser);
         } else if (aMessage.data.flushID) {
+__L_V__5({
+    lN: 993,tT:'if',pr:'aMessage.data.flushID',eT:{},fN:''
+  });'__L_V__5';
           // This is an update kicked off by an async flush request. Notify the
           // TabStateFlusher so that it can finish the request and notify its
           // consumer that's waiting for the flush to be done.
@@ -997,6 +1297,9 @@ var SessionStoreInternal = {
         // Ignore messages from <browser> elements that have crashed
         // and not yet been revived.
         if (this._crashedBrowsers.has(browser.permanentKey)) {
+__L_V__5({
+    lN: 1002,tT:'if',pr:'this._crashedBrowsers.has(browser.permanentKey)',eT:{},fN:''
+  });'__L_V__5';
           return;
         }
 
@@ -1009,6 +1312,9 @@ var SessionStoreInternal = {
         // might be the final update as sent by the "unload" handler but also
         // any async update message that was sent before the child unloaded.
         if (this._closedTabs.has(browser.permanentKey)) {
+__L_V__5({
+    lN: 1014,tT:'if',pr:'this._closedTabs.has(browser.permanentKey)',eT:{},fN:''
+  });'__L_V__5';
           let { closedTabs, tabData } = this._closedTabs.get(
             browser.permanentKey
           );
@@ -1019,6 +1325,9 @@ var SessionStoreInternal = {
 
           // Is this the tab's final message?
           if (aMessage.data.isFinal) {
+__L_V__5({
+    lN: 1024,tT:'if',pr:'aMessage.data.isFinal',eT:{},fN:''
+  });'__L_V__5';
             // We expect no further updates.
             this._closedTabs.delete(browser.permanentKey);
             // The tab state no longer needs this reference.
@@ -1029,12 +1338,18 @@ var SessionStoreInternal = {
             let index = closedTabs.indexOf(tabData);
 
             if (shouldSave && index == -1) {
+__L_V__5({
+    lN: 1034,tT:'if',pr:'shouldSave && index == -1',eT:{},fN:''
+  });'__L_V__5';
               // If the tab state is worth saving and we didn't push it onto
               // the list of closed tabs when it was closed (because we deemed
               // the state not worth saving) then add it to the window's list
               // of closed tabs now.
               this.saveClosedTabData(closedTabs, tabData);
             } else if (!shouldSave && index > -1) {
+__L_V__5({
+    lN: 1040,tT:'if',pr:'!shouldSave && index > -1',eT:{},fN:''
+  });'__L_V__5';
               // Remove from the list of closed tabs. The update messages sent
               // after the tab was closed changed enough state so that we no
               // longer consider its data interesting enough to keep around.
@@ -1065,6 +1380,9 @@ var SessionStoreInternal = {
           !data.isRemotenessUpdate &&
           !win.gInitialPages.includes(uri)
         ) {
+__L_V__5({
+    lN: 1070,tT:'if',pr:' !browser.userTypedValue && uri && !data.isRemotenessUpdate && !win.gInitialPages.includes(uri) ',eT:{},fN:''
+  });'__L_V__5';
           browser.userTypedValue = uri;
         }
 
@@ -1078,12 +1396,18 @@ var SessionStoreInternal = {
       }
       case "SessionStore:restoreTabContentStarted":
         if (TAB_STATE_FOR_BROWSER.get(browser) == TAB_STATE_NEEDS_RESTORE) {
+__L_V__5({
+    lN: 1083,tT:'if',pr:'TAB_STATE_FOR_BROWSER.get(browser) == TAB_STATE_NEEDS_RESTORE',eT:{},fN:''
+  });'__L_V__5';
           // If a load not initiated by sessionstore was started in a
           // previously pending tab. Mark the tab as no longer pending.
           this.markTabAsRestoring(tab);
         } else if (
           data.reason != RESTORE_TAB_CONTENT_REASON.NAVIGATE_AND_RESTORE
         ) {
+__L_V__5({
+    lN: 1089,tT:'if',pr:' data.reason != RESTORE_TAB_CONTENT_REASON.NAVIGATE_AND_RESTORE ',eT:{},fN:''
+  });'__L_V__5';
           // If the user was typing into the URL bar when we crashed, but hadn't hit
           // enter yet, then we just need to write that value to the URL bar without
           // loading anything. This must happen after the load, as the load will clear
@@ -1098,8 +1422,14 @@ var SessionStoreInternal = {
             !tabData.userTypedClear &&
             !browser.userTypedValue
           ) {
+__L_V__5({
+    lN: 1103,tT:'if',pr:' tabData.userTypedValue && !tabData.userTypedClear && !browser.userTypedValue ',eT:{},fN:''
+  });'__L_V__5';
             browser.userTypedValue = tabData.userTypedValue;
             if (tab.selected) {
+__L_V__5({
+    lN: 1105,tT:'if',pr:'tab.selected',eT:{},fN:''
+  });'__L_V__5';
               win.gURLBar.setURI();
             }
           }
@@ -1115,6 +1445,9 @@ var SessionStoreInternal = {
         // This callback is used exclusively by tests that want to
         // monitor the progress of network loads.
         if (gDebuggingEnabled) {
+__L_V__5({
+    lN: 1120,tT:'if',pr:'gDebuggingEnabled',eT:{},fN:''
+  });'__L_V__5';
           Services.obs.notifyObservers(browser, NOTIFY_TAB_RESTORED);
         }
 
@@ -1151,8 +1484,14 @@ var SessionStoreInternal = {
    * Implement EventListener for handling various window and tab events
    */
   handleEvent: function ssi_handleEvent(aEvent) {
+__L_V__5({
+    lN: 1156,tT:'func',pr:'',eT:{'aEvent':aEvent},fN:'ssi_handleEvent'
+  });'__L_V__5';
     let win = aEvent.currentTarget.ownerGlobal;
     let target = aEvent.originalTarget;
+__L_V__5({
+    lN: 1159,tT:'switch',pr:'',eT:{},fN:''
+  });'__L_V__5';
     switch (aEvent.type) {
       case "TabOpen":
         this.onTabAdd(win);
@@ -1164,6 +1503,9 @@ var SessionStoreInternal = {
         // `adoptedBy` will be set if the tab was closed because it is being
         // moved to a new window.
         if (!aEvent.detail.adoptedBy) {
+__L_V__5({
+    lN: 1169,tT:'if',pr:'!aEvent.detail.adoptedBy',eT:{},fN:''
+  });'__L_V__5';
           this.onTabClose(win, target);
         }
         this.onTabRemove(win, target);
@@ -1186,6 +1528,9 @@ var SessionStoreInternal = {
       case "oop-browser-crashed":
       case "oop-browser-buildid-mismatch":
         if (aEvent.isTopFrame) {
+__L_V__5({
+    lN: 1191,tT:'if',pr:'aEvent.isTopFrame',eT:{},fN:''
+  });'__L_V__5';
           this.onBrowserCrashed(target);
         }
         break;
@@ -1196,6 +1541,9 @@ var SessionStoreInternal = {
           target.frameLoader &&
           target.permanentKey
         ) {
+__L_V__5({
+    lN: 1201,tT:'if',pr:' target.namespaceURI == NS_XUL && target.localName == browser && target.frameLoader && target.permanentKey ',eT:{},fN:''
+  });'__L_V__5';
           this._lastKnownFrameLoader.set(
             target.permanentKey,
             target.frameLoader
@@ -1230,6 +1578,9 @@ var SessionStoreInternal = {
    *         A unique string to identify a window
    */
   _generateWindowID: function ssi_generateWindowID() {
+__L_V__5({
+    lN: 1235,tT:'func',pr:'',eT:{},fN:'ssi_generateWindowID'
+  });'__L_V__5';
     return "window" + this._nextWindowID++;
   },
 
@@ -1240,13 +1591,22 @@ var SessionStoreInternal = {
    *        Window reference
    */
   onLoad(aWindow) {
+__L_V__5({
+    lN: 1245,tT:'func',pr:'',eT:{'aWindow':aWindow},fN:'onLoad'
+  });'__L_V__5';
     // return if window has already been initialized
     if (aWindow && aWindow.__SSi && this._windows[aWindow.__SSi]) {
+__L_V__5({
+    lN: 1247,tT:'if',pr:'aWindow && aWindow.__SSi && this._windows[aWindow.__SSi]',eT:{},fN:''
+  });'__L_V__5';
       return;
     }
 
     // ignore windows opened while shutting down
     if (RunState.isQuitting) {
+__L_V__5({
+    lN: 1252,tT:'if',pr:'RunState.isQuitting',eT:{},fN:''
+  });'__L_V__5';
       return;
     }
 
@@ -1276,12 +1636,21 @@ var SessionStoreInternal = {
     };
 
     if (PrivateBrowsingUtils.isWindowPrivate(aWindow)) {
+__L_V__5({
+    lN: 1281,tT:'if',pr:'PrivateBrowsingUtils.isWindowPrivate(aWindow)',eT:{},fN:''
+  });'__L_V__5';
       this._windows[aWindow.__SSi].isPrivate = true;
     }
     if (!this._isWindowLoaded(aWindow)) {
+__L_V__5({
+    lN: 1284,tT:'if',pr:'!this._isWindowLoaded(aWindow)',eT:{},fN:''
+  });'__L_V__5';
       this._windows[aWindow.__SSi]._restoring = true;
     }
     if (!aWindow.toolbar.visible) {
+__L_V__5({
+    lN: 1287,tT:'if',pr:'!aWindow.toolbar.visible',eT:{},fN:''
+  });'__L_V__5';
       this._windows[aWindow.__SSi].isPopup = true;
     }
 
@@ -1314,19 +1683,31 @@ var SessionStoreInternal = {
    *        The initial state to be loaded after startup (optional)
    */
   initializeWindow(aWindow, aInitialState = null) {
+__L_V__5({
+    lN: 1319,tT:'func',pr:'',eT:{'aWindow':aWindow,'aInitialState':aInitialState},fN:'initializeWindow'
+  });'__L_V__5';
     let isPrivateWindow = PrivateBrowsingUtils.isWindowPrivate(aWindow);
 
     // perform additional initialization when the first window is loading
     if (RunState.isStopped) {
+__L_V__5({
+    lN: 1323,tT:'if',pr:'RunState.isStopped',eT:{},fN:''
+  });'__L_V__5';
       RunState.setRunning();
 
       // restore a crashed session resp. resume the last session if requested
       if (aInitialState) {
+__L_V__5({
+    lN: 1327,tT:'if',pr:'aInitialState',eT:{},fN:''
+  });'__L_V__5';
         // Don't write to disk right after startup. Set the last time we wrote
         // to disk to NOW() to enforce a full interval before the next write.
         SessionSaver.updateLastSaveTime();
 
         if (isPrivateWindow) {
+__L_V__5({
+    lN: 1332,tT:'if',pr:'isPrivateWindow',eT:{},fN:''
+  });'__L_V__5';
           // We're starting with a single private window. Save the state we
           // actually wanted to restore so that we can do it later in case
           // the user opens another, non-private window.
@@ -1373,6 +1754,9 @@ var SessionStoreInternal = {
       }
       // this window was opened by _openWindowWithState
     } else if (!this._isWindowLoaded(aWindow)) {
+__L_V__5({
+    lN: 1378,tT:'if',pr:'!this._isWindowLoaded(aWindow)',eT:{},fN:''
+  });'__L_V__5';
       // We want to restore windows after all windows have opened (since bug
       // 1034036), so bail out here.
       return;
@@ -1384,6 +1768,9 @@ var SessionStoreInternal = {
       !isPrivateWindow &&
       aWindow.toolbar.visible
     ) {
+__L_V__5({
+    lN: 1389,tT:'if',pr:' this._deferredInitialState && !isPrivateWindow && aWindow.toolbar.visible ',eT:{},fN:''
+  });'__L_V__5';
       // global data must be restored before restoreWindow is called so that
       // it happens before observers are notified
       this._globalState.setFromState(this._deferredInitialState);
@@ -1401,6 +1788,9 @@ var SessionStoreInternal = {
       this._closedWindows.length &&
       !isPrivateWindow
     ) {
+__L_V__5({
+    lN: 1406,tT:'if',pr:' this._restoreLastWindow && aWindow.toolbar.visible && this._closedWindows.length && !isPrivateWindow ',eT:{},fN:''
+  });'__L_V__5';
       // default to the most-recently closed window
       // don't use popup windows
       let closedWindowState = null;
@@ -1408,6 +1798,9 @@ var SessionStoreInternal = {
       for (let i = 0; i < this._closedWindows.length; i++) {
         // Take the first non-popup, point our object at it, and break out.
         if (!this._closedWindows[i].isPopup) {
+__L_V__5({
+    lN: 1413,tT:'if',pr:'!this._closedWindows[i].isPopup',eT:{},fN:''
+  });'__L_V__5';
           closedWindowState = this._closedWindows[i];
           closedWindowIndex = i;
           break;
@@ -1415,11 +1808,17 @@ var SessionStoreInternal = {
       }
 
       if (closedWindowState) {
+__L_V__5({
+    lN: 1420,tT:'if',pr:'closedWindowState',eT:{},fN:''
+  });'__L_V__5';
         let newWindowState;
         if (
           AppConstants.platform == "macosx" ||
           !SessionStartup.willRestoreCliqz()
         ) {
+__L_V__5({
+    lN: 1425,tT:'if',pr:' AppConstants.platform == macosx || !SessionStartup.willRestoreCliqz() ',eT:{},fN:''
+  });'__L_V__5';
           // We want to split the window up into pinned tabs and unpinned tabs.
           // Pinned tabs should be restored. If there are any remaining tabs,
           // they should be added back to _closedWindows.
@@ -1434,12 +1833,18 @@ var SessionStoreInternal = {
 
           // These are our pinned tabs, which we should restore
           if (appTabsState.windows.length) {
+__L_V__5({
+    lN: 1439,tT:'if',pr:'appTabsState.windows.length',eT:{},fN:''
+  });'__L_V__5';
             newWindowState = appTabsState.windows[0];
             delete newWindowState.__lastSessionWindowID;
           }
 
           // In case there were no unpinned tabs, remove the window from _closedWindows
           if (!normalTabsState.windows.length) {
+__L_V__5({
+    lN: 1445,tT:'if',pr:'!normalTabsState.windows.length',eT:{},fN:''
+  });'__L_V__5';
             this._removeClosedWindow(closedWindowIndex);
             // Or update _closedWindows with the modified state
           } else {
@@ -1455,6 +1860,9 @@ var SessionStoreInternal = {
         }
 
         if (newWindowState) {
+__L_V__5({
+    lN: 1460,tT:'if',pr:'newWindowState',eT:{},fN:''
+  });'__L_V__5';
           // Ensure that the window state isn't hidden
           this._restoreCount = 1;
           let state = { windows: [newWindowState] };
@@ -1466,6 +1874,9 @@ var SessionStoreInternal = {
       this._prefBranch.setBoolPref("sessionstore.resume_session_once", false);
     }
     if (this._restoreLastWindow && aWindow.toolbar.visible) {
+__L_V__5({
+    lN: 1471,tT:'if',pr:'this._restoreLastWindow && aWindow.toolbar.visible',eT:{},fN:''
+  });'__L_V__5';
       // always reset (if not a popup window)
       // we don't want to restore a window directly after, for example,
       // undoCloseWindow was executed.
@@ -1479,6 +1890,9 @@ var SessionStoreInternal = {
    *        Window reference
    */
   onBeforeBrowserWindowShown(aWindow) {
+__L_V__5({
+    lN: 1484,tT:'func',pr:'',eT:{'aWindow':aWindow},fN:'onBeforeBrowserWindowShown'
+  });'__L_V__5';
     // Register the window.
     this.onLoad(aWindow);
 
@@ -1486,12 +1900,18 @@ var SessionStoreInternal = {
     // the deferred operation.
     let deferred = WINDOW_SHOWING_PROMISES.get(aWindow);
     if (deferred) {
+__L_V__5({
+    lN: 1491,tT:'if',pr:'deferred',eT:{},fN:''
+  });'__L_V__5';
       deferred.resolve(aWindow);
       WINDOW_SHOWING_PROMISES.delete(aWindow);
     }
 
     // Just call initializeWindow() directly if we're initialized already.
     if (this._sessionInitialized) {
+__L_V__5({
+    lN: 1497,tT:'if',pr:'this._sessionInitialized',eT:{},fN:''
+  });'__L_V__5';
       this.initializeWindow(aWindow);
       return;
     }
@@ -1500,10 +1920,19 @@ var SessionStoreInternal = {
     // re-used by all subsequent windows. The promise will be used to tell
     // when we're ready for initialization.
     if (!this._promiseReadyForInitialization) {
+__L_V__5({
+    lN: 1505,tT:'if',pr:'!this._promiseReadyForInitialization',eT:{},fN:''
+  });'__L_V__5';
       // Wait for the given window's delayed startup to be finished.
       let promise = new Promise(resolve => {
         Services.obs.addObserver(function obs(subject, topic) {
+__L_V__5({
+    lN: 1508,tT:'func',pr:'',eT:{'subject':subject,'topic':topic},fN:'obs'
+  });'__L_V__5';
           if (aWindow == subject) {
+__L_V__5({
+    lN: 1509,tT:'if',pr:'aWindow == subject',eT:{},fN:''
+  });'__L_V__5';
             Services.obs.removeObserver(obs, topic);
             resolve();
           }
@@ -1527,16 +1956,25 @@ var SessionStoreInternal = {
     this._promiseReadyForInitialization
       .then(() => {
         if (aWindow.closed) {
+__L_V__5({
+    lN: 1532,tT:'if',pr:'aWindow.closed',eT:{},fN:''
+  });'__L_V__5';
           return;
         }
 
         if (this._sessionInitialized) {
+__L_V__5({
+    lN: 1536,tT:'if',pr:'this._sessionInitialized',eT:{},fN:''
+  });'__L_V__5';
           this.initializeWindow(aWindow);
         } else {
           let initialState = this.initSession();
           this._sessionInitialized = true;
 
           if (initialState) {
+__L_V__5({
+    lN: 1542,tT:'if',pr:'initialState',eT:{},fN:''
+  });'__L_V__5';
             Services.obs.notifyObservers(null, NOTIFY_RESTORING_ON_STARTUP);
           }
           TelemetryStopwatch.start(
@@ -1564,11 +2002,20 @@ var SessionStoreInternal = {
    * @returns a Promise
    */
   onClose: function ssi_onClose(aWindow) {
+__L_V__5({
+    lN: 1569,tT:'func',pr:'',eT:{'aWindow':aWindow},fN:'ssi_onClose'
+  });'__L_V__5';
     let completionPromise = Promise.resolve();
     // this window was about to be restored - conserve its original data, if any
     let isFullyLoaded = this._isWindowLoaded(aWindow);
     if (!isFullyLoaded) {
+__L_V__5({
+    lN: 1573,tT:'if',pr:'!isFullyLoaded',eT:{},fN:''
+  });'__L_V__5';
       if (!aWindow.__SSi) {
+__L_V__5({
+    lN: 1574,tT:'if',pr:'!aWindow.__SSi',eT:{},fN:''
+  });'__L_V__5';
         aWindow.__SSi = this._generateWindowID();
       }
 
@@ -1582,6 +2029,9 @@ var SessionStoreInternal = {
 
     // ignore windows not tracked by SessionStore
     if (!aWindow.__SSi || !this._windows[aWindow.__SSi]) {
+__L_V__5({
+    lN: 1587,tT:'if',pr:'!aWindow.__SSi || !this._windows[aWindow.__SSi]',eT:{},fN:''
+  });'__L_V__5';
       return completionPromise;
     }
 
@@ -1593,6 +2043,9 @@ var SessionStoreInternal = {
     aWindow.dispatchEvent(event);
 
     if (this.windowToFocus && this.windowToFocus == aWindow) {
+__L_V__5({
+    lN: 1598,tT:'if',pr:'this.windowToFocus && this.windowToFocus == aWindow',eT:{},fN:''
+  });'__L_V__5';
       delete this.windowToFocus;
     }
 
@@ -1611,6 +2064,9 @@ var SessionStoreInternal = {
 
     // Collect window data only when *not* closed during shutdown.
     if (RunState.isRunning) {
+__L_V__5({
+    lN: 1616,tT:'if',pr:'RunState.isRunning',eT:{},fN:''
+  });'__L_V__5';
       // Grab the most recent window data. The tab data will be updated
       // once we finish flushing all of the messages from the tabs.
       let tabMap = this._collectWindowData(aWindow);
@@ -1621,12 +2077,18 @@ var SessionStoreInternal = {
       }
 
       if (isFullyLoaded) {
+__L_V__5({
+    lN: 1626,tT:'if',pr:'isFullyLoaded',eT:{},fN:''
+  });'__L_V__5';
         winData.title =
           tabbrowser.selectedBrowser.contentTitle ||
           tabbrowser.selectedTab.label;
       }
 
       if (AppConstants.platform != "macosx") {
+__L_V__5({
+    lN: 1632,tT:'if',pr:'AppConstants.platform != macosx',eT:{},fN:''
+  });'__L_V__5';
         // Until we decide otherwise elsewhere, this window is part of a series
         // of closing windows to quit.
         winData._shouldRestore = true;
@@ -1670,6 +2132,9 @@ var SessionStoreInternal = {
       // 3) When the flush is complete, revisit our decision to store the window
       //    in _closedWindows, and add/remove as necessary.
       if (!winData.isPrivate) {
+__L_V__5({
+    lN: 1675,tT:'if',pr:'!winData.isPrivate',eT:{},fN:''
+  });'__L_V__5';
         // Remove any open private tabs the window may contain.
         PrivacyFilter.filterPrivateTabs(winData);
         this.maybeSaveClosedWindow(winData, isLastWindow);
@@ -1682,6 +2147,9 @@ var SessionStoreInternal = {
 
         for (let browser of browsers) {
           if (this._closedWindowTabs.has(browser.permanentKey)) {
+__L_V__5({
+    lN: 1687,tT:'if',pr:'this._closedWindowTabs.has(browser.permanentKey)',eT:{},fN:''
+  });'__L_V__5';
             let tabData = this._closedWindowTabs.get(browser.permanentKey);
             TabState.copyFromCache(browser, tabData);
             this._closedWindowTabs.delete(browser.permanentKey);
@@ -1691,6 +2159,9 @@ var SessionStoreInternal = {
         // Save non-private windows if they have at
         // least one saveable tab or are the last window.
         if (!winData.isPrivate) {
+__L_V__5({
+    lN: 1696,tT:'if',pr:'!winData.isPrivate',eT:{},fN:''
+  });'__L_V__5';
           // It's possible that a tab switched its privacy state at some point
           // before our flush, so we need to filter again.
           PrivacyFilter.filterPrivateTabs(winData);
@@ -1728,6 +2199,9 @@ var SessionStoreInternal = {
    *        reference to it.
    */
   cleanUpWindow(aWindow, winData, browsers) {
+__L_V__5({
+    lN: 1733,tT:'func',pr:'',eT:{'aWindow':aWindow,'winData':winData,'browsers':browsers},fN:'cleanUpWindow'
+  });'__L_V__5';
     // Any leftover TabStateFlusher Promises need to be resolved now,
     // since we're about to remove the message listeners.
     for (let browser of browsers) {
@@ -1762,9 +2236,15 @@ var SessionStoreInternal = {
    *        a window flush).
    */
   maybeSaveClosedWindow(winData, isLastWindow) {
+__L_V__5({
+    lN: 1767,tT:'func',pr:'',eT:{'winData':winData,'isLastWindow':isLastWindow},fN:'maybeSaveClosedWindow'
+  });'__L_V__5';
     // Make sure SessionStore is still running, and make sure that we
     // haven't chosen to forget this window.
     if (RunState.isRunning && this._saveableClosedWindowData.has(winData)) {
+__L_V__5({
+    lN: 1770,tT:'if',pr:'RunState.isRunning && this._saveableClosedWindowData.has(winData)',eT:{},fN:''
+  });'__L_V__5';
       // Determine whether the window has any tabs worth saving.
       let hasSaveableTabs = winData.tabs.some(this._shouldSaveTabState);
 
@@ -1775,6 +2255,9 @@ var SessionStoreInternal = {
       let shouldStore = hasSaveableTabs || isLastWindow;
 
       if (shouldStore && !alreadyStored) {
+__L_V__5({
+    lN: 1780,tT:'if',pr:'shouldStore && !alreadyStored',eT:{},fN:''
+  });'__L_V__5';
         let index = this._closedWindows.findIndex(win => {
           return win.closedAt < winData.closedAt;
         });
@@ -1782,6 +2265,9 @@ var SessionStoreInternal = {
         // If we found no tab closed before our
         // tab then just append it to the list.
         if (index == -1) {
+__L_V__5({
+    lN: 1787,tT:'if',pr:'index == -1',eT:{},fN:''
+  });'__L_V__5';
           index = this._closedWindows.length;
         }
 
@@ -1793,6 +2279,9 @@ var SessionStoreInternal = {
         this._capClosedWindows();
         this._closedObjectsChanged = true;
       } else if (!shouldStore && alreadyStored) {
+__L_V__5({
+    lN: 1798,tT:'if',pr:'!shouldStore && alreadyStored',eT:{},fN:''
+  });'__L_V__5';
         this._removeClosedWindow(winIndex);
       }
     }
@@ -1804,6 +2293,9 @@ var SessionStoreInternal = {
   onQuitApplicationGranted: function ssi_onQuitApplicationGranted(
     syncShutdown = false
   ) {
+__L_V__5({
+    lN: 1809,tT:'func',pr:'',eT:{'syncShutdown':syncShutdown},fN:'ssi_onQuitApplicationGranted'
+  });'__L_V__5';
     // Collect an initial snapshot of window data before we do the flush.
     let index = 0;
     for (let window of this._orderedBrowserWindows) {
@@ -1824,6 +2316,9 @@ var SessionStoreInternal = {
     RunState.setQuitting();
 
     if (!syncShutdown) {
+__L_V__5({
+    lN: 1829,tT:'if',pr:'!syncShutdown',eT:{},fN:''
+  });'__L_V__5';
       // We've got some time to shut down, so let's do this properly that there
       // will be a complete session available upon next startup.
       // To prevent a blocker from taking longer than the DELAY_CRASH_MS limit
@@ -1857,6 +2352,9 @@ var SessionStoreInternal = {
               if (
                 !(topic == "ipc:content-shutdown" && !subject.get("abnormal"))
               ) {
+__L_V__5({
+    lN: 1862,tT:'if',pr:' !(topic == ipc:content-shutdown && !subject.get(abnormal)) ',eT:{},fN:''
+  });'__L_V__5';
                 deferred.resolve();
               }
             }, topic);
@@ -1909,6 +2407,9 @@ var SessionStoreInternal = {
    * @return Promise
    */
   async flushAllWindowsAsync(progress = {}) {
+__L_V__5({
+    lN: 1914,tT:'func',pr:'',eT:{'progress':progress},fN:'flushAllWindowsAsync'
+  });'__L_V__5';
     let windowPromises = new Map();
     // We collect flush promises and close each window immediately so that
     // the user can't start changing any window state while we're waiting
@@ -1938,6 +2439,9 @@ var SessionStoreInternal = {
     // return null by the time quit-application occurs.
     var activeWindow = this._getTopWindow();
     if (activeWindow) {
+__L_V__5({
+    lN: 1943,tT:'if',pr:'activeWindow',eT:{},fN:''
+  });'__L_V__5';
       this.activeWindowSSiCache = activeWindow.__SSi || "";
     }
     DirtyWindows.clear();
@@ -1947,6 +2451,9 @@ var SessionStoreInternal = {
    * On last browser window close
    */
   onLastWindowCloseGranted: function ssi_onLastWindowCloseGranted() {
+__L_V__5({
+    lN: 1952,tT:'func',pr:'',eT:{},fN:'ssi_onLastWindowCloseGranted'
+  });'__L_V__5';
     // last browser window is quitting.
     // remember to restore the last window when another browser window is opened
     // do not account for pref(resume_session_once) at this point, as it might be
@@ -1960,12 +2467,24 @@ var SessionStoreInternal = {
    *        String type of quitting
    */
   onQuitApplication: function ssi_onQuitApplication(aData) {
+__L_V__5({
+    lN: 1965,tT:'func',pr:'',eT:{'aData':aData},fN:'ssi_onQuitApplication'
+  });'__L_V__5';
     if (aData == "restart" || aData == "os-restart") {
+__L_V__5({
+    lN: 1966,tT:'if',pr:'aData == restart || aData == os-restart',eT:{},fN:''
+  });'__L_V__5';
       if (!PrivateBrowsingUtils.permanentPrivateBrowsing) {
+__L_V__5({
+    lN: 1967,tT:'if',pr:'!PrivateBrowsingUtils.permanentPrivateBrowsing',eT:{},fN:''
+  });'__L_V__5';
         if (
           aData == "os-restart" &&
           !this._prefBranch.getBoolPref("sessionstore.resume_session_once")
         ) {
+__L_V__5({
+    lN: 1971,tT:'if',pr:' aData == os-restart && !this._prefBranch.getBoolPref(sessionstore.resume_session_once) ',eT:{},fN:''
+  });'__L_V__5';
           this._prefBranch.setBoolPref(
             "sessionstore.resuming_after_os_restart",
             true
@@ -1984,6 +2503,9 @@ var SessionStoreInternal = {
     }
 
     if (aData != "restart") {
+__L_V__5({
+    lN: 1989,tT:'if',pr:'aData != restart',eT:{},fN:''
+  });'__L_V__5';
       // Throw away the previous session on shutdown without notification
       LastSession.clear(true);
     }
@@ -1995,11 +2517,17 @@ var SessionStoreInternal = {
    * On purge of session history
    */
   onPurgeSessionHistory: function ssi_onPurgeSessionHistory() {
+__L_V__5({
+    lN: 2000,tT:'func',pr:'',eT:{},fN:'ssi_onPurgeSessionHistory'
+  });'__L_V__5';
     SessionFile.wipe();
     // If the browser is shutting down, simply return after clearing the
     // session data on disk as this notification fires after the
     // quit-application notification so the browser is about to exit.
     if (RunState.isQuitting) {
+__L_V__5({
+    lN: 2005,tT:'if',pr:'RunState.isQuitting',eT:{},fN:''
+  });'__L_V__5';
       return;
     }
     LastSession.clear();
@@ -2013,7 +2541,13 @@ var SessionStoreInternal = {
     // also clear all data about closed tabs and windows
     for (let ix in this._windows) {
       if (ix in openWindows) {
+__L_V__5({
+    lN: 2018,tT:'if',pr:'ix in openWindows',eT:{},fN:''
+  });'__L_V__5';
         if (this._windows[ix]._closedTabs.length) {
+__L_V__5({
+    lN: 2019,tT:'if',pr:'this._windows[ix]._closedTabs.length',eT:{},fN:''
+  });'__L_V__5';
           this._windows[ix]._closedTabs = [];
           this._closedObjectsChanged = true;
         }
@@ -2023,14 +2557,23 @@ var SessionStoreInternal = {
     }
     // also clear all data about closed windows
     if (this._closedWindows.length) {
+__L_V__5({
+    lN: 2028,tT:'if',pr:'this._closedWindows.length',eT:{},fN:''
+  });'__L_V__5';
       this._closedWindows = [];
       this._closedObjectsChanged = true;
     }
     // give the tabbrowsers a chance to clear their histories first
     var win = this._getTopWindow();
     if (win) {
+__L_V__5({
+    lN: 2034,tT:'if',pr:'win',eT:{},fN:''
+  });'__L_V__5';
       win.setTimeout(() => SessionSaver.run(), 0);
     } else if (RunState.isRunning) {
+__L_V__5({
+    lN: 2036,tT:'if',pr:'RunState.isRunning',eT:{},fN:''
+  });'__L_V__5';
       SessionSaver.run();
     }
 
@@ -2044,9 +2587,18 @@ var SessionStoreInternal = {
    *        String domain data
    */
   onPurgeDomainData: function ssi_onPurgeDomainData(aData) {
+__L_V__5({
+    lN: 2049,tT:'func',pr:'',eT:{'aData':aData},fN:'ssi_onPurgeDomainData'
+  });'__L_V__5';
     // does a session history entry contain a url for the given domain?
     function containsDomain(aEntry) {
+__L_V__5({
+    lN: 2051,tT:'func',pr:'',eT:{'aEntry':aEntry},fN:'containsDomain'
+  });'__L_V__5';
       if (Utils.hasRootDomain(aEntry.url, aData)) {
+__L_V__5({
+    lN: 2052,tT:'if',pr:'Utils.hasRootDomain(aEntry.url, aData)',eT:{},fN:''
+  });'__L_V__5';
         return true;
       }
       return aEntry.children && aEntry.children.some(containsDomain, this);
@@ -2056,6 +2608,9 @@ var SessionStoreInternal = {
       let closedTabs = this._windows[ix]._closedTabs;
       for (let i = closedTabs.length - 1; i >= 0; i--) {
         if (closedTabs[i].state.entries.some(containsDomain, this)) {
+__L_V__5({
+    lN: 2061,tT:'if',pr:'closedTabs[i].state.entries.some(containsDomain, this)',eT:{},fN:''
+  });'__L_V__5';
           closedTabs.splice(i, 1);
           this._closedObjectsChanged = true;
         }
@@ -2069,25 +2624,43 @@ var SessionStoreInternal = {
       let openTabCount = openTabs.length;
       for (let i = closedTabs.length - 1; i >= 0; i--) {
         if (closedTabs[i].state.entries.some(containsDomain, this)) {
+__L_V__5({
+    lN: 2074,tT:'if',pr:'closedTabs[i].state.entries.some(containsDomain, this)',eT:{},fN:''
+  });'__L_V__5';
           closedTabs.splice(i, 1);
         }
       }
       for (let j = openTabs.length - 1; j >= 0; j--) {
         if (openTabs[j].entries.some(containsDomain, this)) {
+__L_V__5({
+    lN: 2079,tT:'if',pr:'openTabs[j].entries.some(containsDomain, this)',eT:{},fN:''
+  });'__L_V__5';
           openTabs.splice(j, 1);
           if (this._closedWindows[ix].selected > j) {
+__L_V__5({
+    lN: 2081,tT:'if',pr:'this._closedWindows[ix].selected > j',eT:{},fN:''
+  });'__L_V__5';
             this._closedWindows[ix].selected--;
           }
         }
       }
       if (!openTabs.length) {
+__L_V__5({
+    lN: 2086,tT:'if',pr:'!openTabs.length',eT:{},fN:''
+  });'__L_V__5';
         this._closedWindows.splice(ix, 1);
       } else if (openTabs.length != openTabCount) {
+__L_V__5({
+    lN: 2088,tT:'if',pr:'openTabs.length != openTabCount',eT:{},fN:''
+  });'__L_V__5';
         // Adjust the window's title if we removed an open tab
         let selectedTab = openTabs[this._closedWindows[ix].selected - 1];
         // some duplication from restoreHistory - make sure we get the correct title
         let activeIndex = (selectedTab.index || selectedTab.entries.length) - 1;
         if (activeIndex >= selectedTab.entries.length) {
+__L_V__5({
+    lN: 2093,tT:'if',pr:'activeIndex >= selectedTab.entries.length',eT:{},fN:''
+  });'__L_V__5';
           activeIndex = selectedTab.entries.length - 1;
         }
         this._closedWindows[ix].title = selectedTab.entries[activeIndex].title;
@@ -2095,6 +2668,9 @@ var SessionStoreInternal = {
     }
 
     if (RunState.isRunning) {
+__L_V__5({
+    lN: 2100,tT:'if',pr:'RunState.isRunning',eT:{},fN:''
+  });'__L_V__5';
       SessionSaver.run();
     }
 
@@ -2107,6 +2683,12 @@ var SessionStoreInternal = {
    *        String preference changed
    */
   onPrefChange: function ssi_onPrefChange(aData) {
+__L_V__5({
+    lN: 2112,tT:'func',pr:'',eT:{'aData':aData},fN:'ssi_onPrefChange'
+  });'__L_V__5';
+__L_V__5({
+    lN: 2113,tT:'switch',pr:'',eT:{},fN:''
+  });'__L_V__5';
     switch (aData) {
       // if the user decreases the max number of closed tabs they want
       // preserved update our internal states to match that max
@@ -2116,6 +2698,9 @@ var SessionStoreInternal = {
         );
         for (let ix in this._windows) {
           if (this._windows[ix]._closedTabs.length > this._max_tabs_undo) {
+__L_V__5({
+    lN: 2121,tT:'if',pr:'this._windows[ix]._closedTabs.length > this._max_tabs_undo',eT:{},fN:''
+  });'__L_V__5';
             this._windows[ix]._closedTabs.splice(
               this._max_tabs_undo,
               this._windows[ix]._closedTabs.length
@@ -2149,6 +2734,9 @@ var SessionStoreInternal = {
    *        Window reference
    */
   onTabAdd: function ssi_onTabAdd(aWindow) {
+__L_V__5({
+    lN: 2154,tT:'func',pr:'',eT:{'aWindow':aWindow},fN:'ssi_onTabAdd'
+  });'__L_V__5';
     this.saveStateDelayed(aWindow);
   },
 
@@ -2160,12 +2748,18 @@ var SessionStoreInternal = {
    *        Tab reference
    */
   onTabBrowserInserted: function ssi_onTabBrowserInserted(aWindow, aTab) {
+__L_V__5({
+    lN: 2165,tT:'func',pr:'',eT:{'aWindow':aWindow,'aTab':aTab},fN:'ssi_onTabBrowserInserted'
+  });'__L_V__5';
     let browser = aTab.linkedBrowser;
     browser.addEventListener("SwapDocShells", this);
     browser.addEventListener("oop-browser-crashed", this);
     browser.addEventListener("oop-browser-buildid-mismatch", this);
 
     if (browser.frameLoader) {
+__L_V__5({
+    lN: 2171,tT:'if',pr:'browser.frameLoader',eT:{},fN:''
+  });'__L_V__5';
       this._lastKnownFrameLoader.set(browser.permanentKey, browser.frameLoader);
     }
 
@@ -2175,6 +2769,9 @@ var SessionStoreInternal = {
       !TAB_STATE_FOR_BROWSER.has(browser) &&
       TabStateCache.get(browser)
     ) {
+__L_V__5({
+    lN: 2180,tT:'if',pr:' TAB_LAZY_STATES.has(aTab) && !TAB_STATE_FOR_BROWSER.has(browser) && TabStateCache.get(browser) ',eT:{},fN:''
+  });'__L_V__5';
       let tabState = TabState.clone(aTab, TAB_CUSTOM_VALUES.get(aTab));
       this.restoreTab(aTab, tabState);
     }
@@ -2193,9 +2790,15 @@ var SessionStoreInternal = {
    *        bool Do not save state if we're updating an existing tab
    */
   onTabRemove: function ssi_onTabRemove(aWindow, aTab, aNoNotification) {
+__L_V__5({
+    lN: 2198,tT:'func',pr:'',eT:{'aWindow':aWindow,'aTab':aTab,'aNoNotification':aNoNotification},fN:'ssi_onTabRemove'
+  });'__L_V__5';
     this.cleanUpRemovedBrowser(aTab);
 
     if (!aNoNotification) {
+__L_V__5({
+    lN: 2201,tT:'if',pr:'!aNoNotification',eT:{},fN:''
+  });'__L_V__5';
       this.saveStateDelayed(aWindow);
     }
   },
@@ -2208,6 +2811,9 @@ var SessionStoreInternal = {
    *        Tab reference
    */
   onTabClose: function ssi_onTabClose(aWindow, aTab) {
+__L_V__5({
+    lN: 2213,tT:'func',pr:'',eT:{'aWindow':aWindow,'aTab':aTab},fN:'ssi_onTabClose'
+  });'__L_V__5';
     // notify the tabbrowser that the tab state will be retrieved for the last time
     // (so that extension authors can easily set data on soon-to-be-closed tabs)
     var event = aWindow.document.createEvent("Events");
@@ -2216,6 +2822,9 @@ var SessionStoreInternal = {
 
     // don't update our internal state if we don't have to
     if (this._max_tabs_undo == 0) {
+__L_V__5({
+    lN: 2221,tT:'if',pr:'this._max_tabs_undo == 0',eT:{},fN:''
+  });'__L_V__5';
       return;
     }
 
@@ -2225,6 +2834,9 @@ var SessionStoreInternal = {
     // Don't save private tabs
     let isPrivateWindow = PrivateBrowsingUtils.isWindowPrivate(aWindow);
     if (!isPrivateWindow && tabState.isPrivate) {
+__L_V__5({
+    lN: 2230,tT:'if',pr:'!isPrivateWindow && tabState.isPrivate',eT:{},fN:''
+  });'__L_V__5';
       return;
     }
 
@@ -2249,6 +2861,9 @@ var SessionStoreInternal = {
     // didn't reach the parent yet. If a tab is emptied before closing then we
     // might still remove it from the list of closed tabs later.
     if (this._shouldSaveTabState(tabState)) {
+__L_V__5({
+    lN: 2254,tT:'if',pr:'this._shouldSaveTabState(tabState)',eT:{},fN:''
+  });'__L_V__5';
       // Save the tab state, for now. We might push a valid tab out
       // of the list but those cases should be extremely rare and
       // do probably never occur when using the browser normally.
@@ -2268,9 +2883,15 @@ var SessionStoreInternal = {
    *        Tab reference
    */
   resetBrowserToLazyState(aTab) {
+__L_V__5({
+    lN: 2273,tT:'func',pr:'',eT:{'aTab':aTab},fN:'resetBrowserToLazyState'
+  });'__L_V__5';
     let browser = aTab.linkedBrowser;
     // Browser is already lazy so don't do anything.
     if (!browser.isConnected) {
+__L_V__5({
+    lN: 2276,tT:'if',pr:'!browser.isConnected',eT:{},fN:''
+  });'__L_V__5';
       return;
     }
 
@@ -2286,6 +2907,9 @@ var SessionStoreInternal = {
 
     let cacheState = TabStateCache.get(browser);
     if (cacheState === undefined && userTypedValue) {
+__L_V__5({
+    lN: 2291,tT:'if',pr:'cacheState === undefined && userTypedValue',eT:{},fN:''
+  });'__L_V__5';
       // Discard was likely called before state can be cached.  Update
       // the persistent tab state cache with browser information so a
       // restore will be successful.  This information is necessary for
@@ -2310,6 +2934,9 @@ var SessionStoreInternal = {
    *        Browser reference
    */
   cleanUpRemovedBrowser(aTab) {
+__L_V__5({
+    lN: 2315,tT:'func',pr:'',eT:{'aTab':aTab},fN:'cleanUpRemovedBrowser'
+  });'__L_V__5';
     let browser = aTab.linkedBrowser;
 
     browser.removeEventListener("SwapDocShells", this);
@@ -2321,8 +2948,14 @@ var SessionStoreInternal = {
     // restore the next tab.
     let previousState = TAB_STATE_FOR_BROWSER.get(browser);
     if (previousState) {
+__L_V__5({
+    lN: 2326,tT:'if',pr:'previousState',eT:{},fN:''
+  });'__L_V__5';
       this._resetTabRestoringState(aTab);
       if (previousState == TAB_STATE_RESTORING) {
+__L_V__5({
+    lN: 2328,tT:'if',pr:'previousState == TAB_STATE_RESTORING',eT:{},fN:''
+  });'__L_V__5';
         this.restoreNextTab();
       }
     }
@@ -2340,6 +2973,9 @@ var SessionStoreInternal = {
    *        The tabData to be inserted.
    */
   saveClosedTabData(closedTabs, tabData) {
+__L_V__5({
+    lN: 2345,tT:'func',pr:'',eT:{'closedTabs':closedTabs,'tabData':tabData},fN:'saveClosedTabData'
+  });'__L_V__5';
     // Find the index of the first tab in the list
     // of closed tabs that was closed before our tab.
     let index = closedTabs.findIndex(tab => {
@@ -2349,6 +2985,9 @@ var SessionStoreInternal = {
     // If we found no tab closed before our
     // tab then just append it to the list.
     if (index == -1) {
+__L_V__5({
+    lN: 2354,tT:'if',pr:'index == -1',eT:{},fN:''
+  });'__L_V__5';
       index = closedTabs.length;
     }
 
@@ -2361,6 +3000,9 @@ var SessionStoreInternal = {
 
     // Truncate the list of closed tabs, if needed.
     if (closedTabs.length > this._max_tabs_undo) {
+__L_V__5({
+    lN: 2366,tT:'if',pr:'closedTabs.length > this._max_tabs_undo',eT:{},fN:''
+  });'__L_V__5';
       closedTabs.splice(this._max_tabs_undo, closedTabs.length);
     }
   },
@@ -2376,6 +3018,9 @@ var SessionStoreInternal = {
    *        The index of the tab to remove.
    */
   removeClosedTabData(closedTabs, index) {
+__L_V__5({
+    lN: 2381,tT:'func',pr:'',eT:{'closedTabs':closedTabs,'index':index},fN:'removeClosedTabData'
+  });'__L_V__5';
     // Remove the given index from the list.
     let [closedTab] = closedTabs.splice(index, 1);
     this._closedObjectsChanged = true;
@@ -2385,6 +3030,9 @@ var SessionStoreInternal = {
     // closed tabs so that we will simply discard its last messages and will
     // not add it back to the list of closed tabs again.
     if (closedTab.permanentKey) {
+__L_V__5({
+    lN: 2390,tT:'if',pr:'closedTab.permanentKey',eT:{},fN:''
+  });'__L_V__5';
       this._closedTabs.delete(closedTab.permanentKey);
       this._closedWindowTabs.delete(closedTab.permanentKey);
       delete closedTab.permanentKey;
@@ -2399,7 +3047,13 @@ var SessionStoreInternal = {
    *        Window reference
    */
   onTabSelect: function ssi_onTabSelect(aWindow) {
+__L_V__5({
+    lN: 2404,tT:'func',pr:'',eT:{'aWindow':aWindow},fN:'ssi_onTabSelect'
+  });'__L_V__5';
     if (RunState.isRunning) {
+__L_V__5({
+    lN: 2405,tT:'if',pr:'RunState.isRunning',eT:{},fN:''
+  });'__L_V__5';
       this._windows[aWindow.__SSi].selected =
         aWindow.gBrowser.tabContainer.selectedIndex;
 
@@ -2407,6 +3061,9 @@ var SessionStoreInternal = {
       let browser = tab.linkedBrowser;
 
       if (TAB_STATE_FOR_BROWSER.get(browser) == TAB_STATE_NEEDS_RESTORE) {
+__L_V__5({
+    lN: 2412,tT:'if',pr:'TAB_STATE_FOR_BROWSER.get(browser) == TAB_STATE_NEEDS_RESTORE',eT:{},fN:''
+  });'__L_V__5';
         // If BROWSER_STATE is still available for the browser and it is
         // If __SS_restoreState is still on the browser and it is
         // TAB_STATE_NEEDS_RESTORE, then then we haven't restored
@@ -2418,6 +3075,9 @@ var SessionStoreInternal = {
         // the crashed state, since we'll be showing the tab crashed
         // page.
         if (TabCrashHandler.willShowCrashedTab(browser)) {
+__L_V__5({
+    lN: 2423,tT:'if',pr:'TabCrashHandler.willShowCrashedTab(browser)',eT:{},fN:''
+  });'__L_V__5';
           this.enterCrashedState(browser);
         } else {
           this.restoreTabContent(tab);
@@ -2427,10 +3087,16 @@ var SessionStoreInternal = {
   },
 
   onTabShow: function ssi_onTabShow(aWindow, aTab) {
+__L_V__5({
+    lN: 2432,tT:'func',pr:'',eT:{'aWindow':aWindow,'aTab':aTab},fN:'ssi_onTabShow'
+  });'__L_V__5';
     // If the tab hasn't been restored yet, move it into the right bucket
     if (
       TAB_STATE_FOR_BROWSER.get(aTab.linkedBrowser) == TAB_STATE_NEEDS_RESTORE
     ) {
+__L_V__5({
+    lN: 2436,tT:'if',pr:' TAB_STATE_FOR_BROWSER.get(aTab.linkedBrowser) == TAB_STATE_NEEDS_RESTORE ',eT:{},fN:''
+  });'__L_V__5';
       TabRestoreQueue.hiddenToVisible(aTab);
 
       // let's kick off tab restoration again to ensure this tab gets restored
@@ -2445,10 +3111,16 @@ var SessionStoreInternal = {
   },
 
   onTabHide: function ssi_onTabHide(aWindow, aTab) {
+__L_V__5({
+    lN: 2450,tT:'func',pr:'',eT:{'aWindow':aWindow,'aTab':aTab},fN:'ssi_onTabHide'
+  });'__L_V__5';
     // If the tab hasn't been restored yet, move it into the right bucket
     if (
       TAB_STATE_FOR_BROWSER.get(aTab.linkedBrowser) == TAB_STATE_NEEDS_RESTORE
     ) {
+__L_V__5({
+    lN: 2454,tT:'if',pr:' TAB_STATE_FOR_BROWSER.get(aTab.linkedBrowser) == TAB_STATE_NEEDS_RESTORE ',eT:{},fN:''
+  });'__L_V__5';
       TabRestoreQueue.visibleToHidden(aTab);
     }
 
@@ -2467,6 +3139,9 @@ var SessionStoreInternal = {
    *        The <xul:browser> that is now in the crashed state.
    */
   onBrowserCrashed(aBrowser) {
+__L_V__5({
+    lN: 2472,tT:'func',pr:'',eT:{'aBrowser':aBrowser},fN:'onBrowserCrashed'
+  });'__L_V__5';
     this.enterCrashedState(aBrowser);
     // The browser crashed so we might never receive flush responses.
     // Resolve all pending flush requests for the crashed browser.
@@ -2482,6 +3157,9 @@ var SessionStoreInternal = {
    *        The <xul:browser> that is about to show the crashed page.
    */
   enterCrashedState(browser) {
+__L_V__5({
+    lN: 2487,tT:'func',pr:'',eT:{'browser':browser},fN:'enterCrashedState'
+  });'__L_V__5';
     this._crashedBrowsers.add(browser.permanentKey);
 
     let win = browser.ownerGlobal;
@@ -2491,6 +3169,9 @@ var SessionStoreInternal = {
     // to reset its state so that we can try to restore it again
     // when the user revives the tab from the crash.
     if (TAB_STATE_FOR_BROWSER.has(browser)) {
+__L_V__5({
+    lN: 2496,tT:'if',pr:'TAB_STATE_FOR_BROWSER.has(browser)',eT:{},fN:''
+  });'__L_V__5';
       let tab = win.gBrowser.getTabForBrowser(browser);
       this._resetLocalTabRestoringState(tab);
     }
@@ -2500,6 +3181,9 @@ var SessionStoreInternal = {
   // Do not reschedule a save. This will wait for the next regular
   // save.
   onIdleDaily() {
+__L_V__5({
+    lN: 2505,tT:'func',pr:'',eT:{},fN:'onIdleDaily'
+  });'__L_V__5';
     // Remove old closed windows
     this._cleanupOldData([this._closedWindows]);
 
@@ -2518,6 +3202,9 @@ var SessionStoreInternal = {
 
   // Remove "old" data from an array
   _cleanupOldData(targets) {
+__L_V__5({
+    lN: 2523,tT:'func',pr:'',eT:{'targets':targets},fN:'_cleanupOldData'
+  });'__L_V__5';
     const TIME_TO_LIVE = this._prefBranch.getIntPref(
       "sessionstore.cleanup.forget_closed_after"
     );
@@ -2531,6 +3218,9 @@ var SessionStoreInternal = {
         // safe timestamp: just now.
         data.closedAt = data.closedAt || now;
         if (now - data.closedAt > TIME_TO_LIVE) {
+__L_V__5({
+    lN: 2536,tT:'if',pr:'now - data.closedAt > TIME_TO_LIVE',eT:{},fN:''
+  });'__L_V__5';
           array.splice(i, 1);
           this._closedObjectsChanged = true;
         }
@@ -2545,6 +3235,9 @@ var SessionStoreInternal = {
     aSwitchId,
     aReplaceBrowsingContext
   ) {
+__L_V__5({
+    lN: 2550,tT:'func',pr:'',eT:{'aBrowser':aBrowser,'aRemoteType':aRemoteType,'aChannel':aChannel,'aSwitchId':aSwitchId,'aReplaceBrowsingContext':aReplaceBrowsingContext},fN:'_doTabProcessSwitch'
+  });'__L_V__5';
     debug(
       `[process-switch]: performing switch from ${aBrowser.remoteType} to ${aRemoteType}`
     );
@@ -2575,6 +3268,9 @@ var SessionStoreInternal = {
       !aBrowser.frameLoader ||
       !aBrowser.frameLoader.remoteTab
     ) {
+__L_V__5({
+    lN: 2580,tT:'if',pr:' aBrowser.remoteType != aRemoteType || !aBrowser.frameLoader || !aBrowser.frameLoader.remoteTab ',eT:{},fN:''
+  });'__L_V__5';
       throw Cr.NS_ERROR_FAILURE;
     }
 
@@ -2596,6 +3292,9 @@ var SessionStoreInternal = {
     aSwitchId,
     aReplaceBrowsingContext
   ) {
+__L_V__5({
+    lN: 2601,tT:'func',pr:'',eT:{'aBrowsingContext':aBrowsingContext,'aRemoteType':aRemoteType,'aChannel':aChannel,'aSwitchId':aSwitchId,'aReplaceBrowsingContext':aReplaceBrowsingContext},fN:'_doProcessSwitch'
+  });'__L_V__5';
     // There are two relevant cases when performing a process switch for a
     // browsing context: in-process and out-of-process embedders.
 
@@ -2603,6 +3302,9 @@ var SessionStoreInternal = {
     // within <tabbrowser>), then we can perform a process switch using the
     // traditional mechanism.
     if (aBrowsingContext.embedderElement) {
+__L_V__5({
+    lN: 2608,tT:'if',pr:'aBrowsingContext.embedderElement',eT:{},fN:''
+  });'__L_V__5';
       return this._doTabProcessSwitch(
         aBrowsingContext.embedderElement,
         aRemoteType,
@@ -2623,7 +3325,13 @@ var SessionStoreInternal = {
   // whilst FF 67.x set it to true intentionally.
   // performing the given load. aRequestor implements nsIProcessSwitchRequestor
   onMayChangeProcess(aRequestor) {
+__L_V__5({
+    lN: 2628,tT:'func',pr:'',eT:{'aRequestor':aRequestor},fN:'onMayChangeProcess'
+  });'__L_V__5';
     if (!E10SUtils.documentChannel()) {
+__L_V__5({
+    lN: 2629,tT:'if',pr:'!E10SUtils.documentChannel()',eT:{},fN:''
+  });'__L_V__5';
       throw new Error("This code is only used by document channel");
     }
 
@@ -2637,6 +3345,9 @@ var SessionStoreInternal = {
 
     const channel = switchRequestor.channel;
     if (!channel.isDocument || !channel.loadInfo) {
+__L_V__5({
+    lN: 2642,tT:'if',pr:'!channel.isDocument || !channel.loadInfo',eT:{},fN:''
+  });'__L_V__5';
       return; // Not a document load.
     }
 
@@ -2647,6 +3358,9 @@ var SessionStoreInternal = {
       Ci.nsIContentPolicy.TYPE_DOCUMENT;
 
     if (!browsingContext) {
+__L_V__5({
+    lN: 2652,tT:'if',pr:'!browsingContext',eT:{},fN:''
+  });'__L_V__5';
       debug(`[process-switch]: no BrowsingContext - ignoring`);
       return;
     }
@@ -2654,6 +3368,9 @@ var SessionStoreInternal = {
     // Determine if remote subframes should be used for this load.
     let topBC = browsingContext.top;
     if (!topBC.embedderElement) {
+__L_V__5({
+    lN: 2659,tT:'if',pr:'!topBC.embedderElement',eT:{},fN:''
+  });'__L_V__5';
       debug(`[process-switch]: no embedder for top - ignoring`);
       return;
     }
@@ -2661,6 +3378,9 @@ var SessionStoreInternal = {
     let topDocShell = topBC.embedderElement.ownerGlobal.docShell;
     let { useRemoteSubframes } = topDocShell.QueryInterface(Ci.nsILoadContext);
     if (!useRemoteSubframes && isSubframe) {
+__L_V__5({
+    lN: 2666,tT:'if',pr:'!useRemoteSubframes && isSubframe',eT:{},fN:''
+  });'__L_V__5';
       debug(`[process-switch]: remote subframes disabled - ignoring`);
       return;
     }
@@ -2668,6 +3388,9 @@ var SessionStoreInternal = {
     // Get principal for a document already loaded in the BrowsingContext.
     let currentPrincipal = null;
     if (browsingContext.currentWindowGlobal) {
+__L_V__5({
+    lN: 2673,tT:'if',pr:'browsingContext.currentWindowGlobal',eT:{},fN:''
+  });'__L_V__5';
       currentPrincipal = browsingContext.currentWindowGlobal.documentPrincipal;
     }
 
@@ -2675,8 +3398,14 @@ var SessionStoreInternal = {
     // embedded within a normal tab. We can't do one of these swaps for a
     // cross-origin frame.
     if (browsingContext.embedderElement) {
+__L_V__5({
+    lN: 2680,tT:'if',pr:'browsingContext.embedderElement',eT:{},fN:''
+  });'__L_V__5';
       let tabbrowser = browsingContext.embedderElement.getTabBrowser();
       if (!tabbrowser) {
+__L_V__5({
+    lN: 2682,tT:'if',pr:'!tabbrowser',eT:{},fN:''
+  });'__L_V__5';
         debug(
           `[process-switch]: cannot find tabbrowser for loading tab - ignoring`
         );
@@ -2685,12 +3414,18 @@ var SessionStoreInternal = {
 
       let tab = tabbrowser.getTabForBrowser(browsingContext.embedderElement);
       if (!tab) {
+__L_V__5({
+    lN: 2690,tT:'if',pr:'!tab',eT:{},fN:''
+  });'__L_V__5';
         debug(
           `[process-switch]: not a normal tab, so cannot swap processes - ignoring`
         );
         return;
       }
     } else if (!browsingContext.parent) {
+__L_V__5({
+    lN: 2696,tT:'if',pr:'!browsingContext.parent',eT:{},fN:''
+  });'__L_V__5';
       debug(
         `[process-switch] no parent or in-process embedder element - ignoring`
       );
@@ -2700,6 +3435,9 @@ var SessionStoreInternal = {
     // Get the current remote type for the BrowsingContext.
     let currentRemoteType = browsingContext.currentRemoteType;
     if (currentRemoteType == E10SUtils.NOT_REMOTE) {
+__L_V__5({
+    lN: 2705,tT:'if',pr:'currentRemoteType == E10SUtils.NOT_REMOTE',eT:{},fN:''
+  });'__L_V__5';
       debug(`[process-switch]: currently not remote - ignoring`);
       return;
     }
@@ -2719,12 +3457,18 @@ var SessionStoreInternal = {
       switchRequestor.crossOriginOpenerPolicy ==
         Ci.nsILoadInfo.OPENER_POLICY_SAME_ORIGIN_EMBEDDER_POLICY_REQUIRE_CORP
     ) {
+__L_V__5({
+    lN: 2724,tT:'if',pr:' E10SUtils.useCrossOriginOpenerPolicy() && switchRequestor.crossOriginOpenerPolicy == Ci.nsILoadInfo.OPENER_POLICY_SAME_ORIGIN_EMBEDDER_POLICY_REQUIRE_CORP ',eT:{},fN:''
+  });'__L_V__5';
       // We want documents with a SAME_ORIGIN_EMBEDDER_POLICY_REQUIRE_CORP
       // COOP policy to be loaded in a separate process for which we can enable
       // high resolution timers.
       preferredRemoteType =
         E10SUtils.WEB_REMOTE_COOP_COEP_TYPE_PREFIX + resultPrincipal.siteOrigin;
     } else if (isCOOPSwitch) {
+__L_V__5({
+    lN: 2730,tT:'if',pr:'isCOOPSwitch',eT:{},fN:''
+  });'__L_V__5';
       // If it is a coop switch, but doesn't have this flag, we want to switch
       // to a default remoteType
       preferredRemoteType = E10SUtils.DEFAULT_REMOTE_TYPE;
@@ -2747,6 +3491,9 @@ var SessionStoreInternal = {
     );
 
     if (currentRemoteType == remoteType && !isCOOPSwitch) {
+__L_V__5({
+    lN: 2752,tT:'if',pr:'currentRemoteType == remoteType && !isCOOPSwitch',eT:{},fN:''
+  });'__L_V__5';
       debug(`[process-switch]: type (${remoteType}) is compatible - ignoring`);
       return;
     }
@@ -2755,6 +3502,9 @@ var SessionStoreInternal = {
       remoteType == E10SUtils.NOT_REMOTE ||
       currentRemoteType == E10SUtils.NOT_REMOTE
     ) {
+__L_V__5({
+    lN: 2760,tT:'if',pr:' remoteType == E10SUtils.NOT_REMOTE || currentRemoteType == E10SUtils.NOT_REMOTE ',eT:{},fN:''
+  });'__L_V__5';
       debug(`[process-switch]: non-remote source/target - ignoring`);
       return;
     }
@@ -2777,6 +3527,9 @@ var SessionStoreInternal = {
   /* ........ nsISessionStore API .............. */
 
   getBrowserState: function ssi_getBrowserState() {
+__L_V__5({
+    lN: 2782,tT:'func',pr:'',eT:{},fN:'ssi_getBrowserState'
+  });'__L_V__5';
     let state = this.getCurrentState();
 
     // Don't include the last session state in getBrowserState().
@@ -2789,6 +3542,9 @@ var SessionStoreInternal = {
   },
 
   setBrowserState: function ssi_setBrowserState(aState) {
+__L_V__5({
+    lN: 2794,tT:'func',pr:'',eT:{'aState':aState},fN:'ssi_setBrowserState'
+  });'__L_V__5';
     this._handleClosedWindows();
 
     try {
@@ -2797,12 +3553,18 @@ var SessionStoreInternal = {
       /* invalid state object - don't restore anything */
     }
     if (!state) {
+__L_V__5({
+    lN: 2802,tT:'if',pr:'!state',eT:{},fN:''
+  });'__L_V__5';
       throw Components.Exception(
         "Invalid state string: not JSON",
         Cr.NS_ERROR_INVALID_ARG
       );
     }
     if (!state.windows) {
+__L_V__5({
+    lN: 2808,tT:'if',pr:'!state.windows',eT:{},fN:''
+  });'__L_V__5';
       throw Components.Exception("No windows", Cr.NS_ERROR_INVALID_ARG);
     }
 
@@ -2813,6 +3575,9 @@ var SessionStoreInternal = {
 
     var window = this._getTopWindow();
     if (!window) {
+__L_V__5({
+    lN: 2818,tT:'if',pr:'!window',eT:{},fN:''
+  });'__L_V__5';
       this._restoreCount = 1;
       this._openWindowWithState(state);
       return;
@@ -2821,6 +3586,9 @@ var SessionStoreInternal = {
     // close all other browser windows
     for (let otherWin of this._browserWindows) {
       if (otherWin != window) {
+__L_V__5({
+    lN: 2826,tT:'if',pr:'otherWin != window',eT:{},fN:''
+  });'__L_V__5';
         otherWin.close();
         this.onClose(otherWin);
       }
@@ -2828,6 +3596,9 @@ var SessionStoreInternal = {
 
     // make sure closed window data isn't kept
     if (this._closedWindows.length) {
+__L_V__5({
+    lN: 2833,tT:'if',pr:'this._closedWindows.length',eT:{},fN:''
+  });'__L_V__5';
       this._closedWindows = [];
       this._closedObjectsChanged = true;
     }
@@ -2850,11 +3621,20 @@ var SessionStoreInternal = {
   },
 
   getWindowState: function ssi_getWindowState(aWindow) {
+__L_V__5({
+    lN: 2855,tT:'func',pr:'',eT:{'aWindow':aWindow},fN:'ssi_getWindowState'
+  });'__L_V__5';
     if ("__SSi" in aWindow) {
+__L_V__5({
+    lN: 2856,tT:'if',pr:'__SSi in aWindow',eT:{},fN:''
+  });'__L_V__5';
       return JSON.stringify(this._getWindowState(aWindow));
     }
 
     if (DyingWindowCache.has(aWindow)) {
+__L_V__5({
+    lN: 2860,tT:'if',pr:'DyingWindowCache.has(aWindow)',eT:{},fN:''
+  });'__L_V__5';
       let data = DyingWindowCache.get(aWindow);
       return JSON.stringify({ windows: [data] });
     }
@@ -2866,7 +3646,13 @@ var SessionStoreInternal = {
   },
 
   setWindowState: function ssi_setWindowState(aWindow, aState, aOverwrite) {
+__L_V__5({
+    lN: 2871,tT:'func',pr:'',eT:{'aWindow':aWindow,'aState':aState,'aOverwrite':aOverwrite},fN:'ssi_setWindowState'
+  });'__L_V__5';
     if (!aWindow.__SSi) {
+__L_V__5({
+    lN: 2872,tT:'if',pr:'!aWindow.__SSi',eT:{},fN:''
+  });'__L_V__5';
       throw Components.Exception(
         "Window is not tracked",
         Cr.NS_ERROR_INVALID_ARG
@@ -2880,10 +3666,19 @@ var SessionStoreInternal = {
   },
 
   getTabState: function ssi_getTabState(aTab) {
+__L_V__5({
+    lN: 2885,tT:'func',pr:'',eT:{'aTab':aTab},fN:'ssi_getTabState'
+  });'__L_V__5';
     if (!aTab || !aTab.ownerGlobal) {
+__L_V__5({
+    lN: 2886,tT:'if',pr:'!aTab || !aTab.ownerGlobal',eT:{},fN:''
+  });'__L_V__5';
       throw Components.Exception("Need a valid tab", Cr.NS_ERROR_INVALID_ARG);
     }
     if (!aTab.ownerGlobal.__SSi) {
+__L_V__5({
+    lN: 2889,tT:'if',pr:'!aTab.ownerGlobal.__SSi',eT:{},fN:''
+  });'__L_V__5';
       throw Components.Exception(
         "Default view is not tracked",
         Cr.NS_ERROR_INVALID_ARG
@@ -2896,24 +3691,39 @@ var SessionStoreInternal = {
   },
 
   setTabState(aTab, aState) {
+__L_V__5({
+    lN: 2901,tT:'func',pr:'',eT:{'aTab':aTab,'aState':aState},fN:'setTabState'
+  });'__L_V__5';
     // Remove the tab state from the cache.
     // Note that we cannot simply replace the contents of the cache
     // as |aState| can be an incomplete state that will be completed
     // by |restoreTabs|.
     let tabState = aState;
     if (typeof tabState == "string") {
+__L_V__5({
+    lN: 2907,tT:'if',pr:'typeof tabState == string',eT:{},fN:''
+  });'__L_V__5';
       tabState = JSON.parse(aState);
     }
     if (!tabState) {
+__L_V__5({
+    lN: 2910,tT:'if',pr:'!tabState',eT:{},fN:''
+  });'__L_V__5';
       throw Components.Exception(
         "Invalid state string: not JSON",
         Cr.NS_ERROR_INVALID_ARG
       );
     }
     if (typeof tabState != "object") {
+__L_V__5({
+    lN: 2916,tT:'if',pr:'typeof tabState != object',eT:{},fN:''
+  });'__L_V__5';
       throw Components.Exception("Not an object", Cr.NS_ERROR_INVALID_ARG);
     }
     if (!("entries" in tabState)) {
+__L_V__5({
+    lN: 2919,tT:'if',pr:'!(entries in tabState)',eT:{},fN:''
+  });'__L_V__5';
       throw Components.Exception(
         "Invalid state object: no entries",
         Cr.NS_ERROR_INVALID_ARG
@@ -2922,6 +3732,9 @@ var SessionStoreInternal = {
 
     let window = aTab.ownerGlobal;
     if (!window || !("__SSi" in window)) {
+__L_V__5({
+    lN: 2927,tT:'if',pr:'!window || !(__SSi in window)',eT:{},fN:''
+  });'__L_V__5';
       throw Components.Exception(
         "Window is not tracked",
         Cr.NS_ERROR_INVALID_ARG
@@ -2929,6 +3742,9 @@ var SessionStoreInternal = {
     }
 
     if (TAB_STATE_FOR_BROWSER.has(aTab.linkedBrowser)) {
+__L_V__5({
+    lN: 2934,tT:'if',pr:'TAB_STATE_FOR_BROWSER.has(aTab.linkedBrowser)',eT:{},fN:''
+  });'__L_V__5';
       this._resetTabRestoringState(aTab);
     }
 
@@ -2939,7 +3755,13 @@ var SessionStoreInternal = {
   },
 
   getInternalObjectState(obj) {
+__L_V__5({
+    lN: 2944,tT:'func',pr:'',eT:{'obj':obj},fN:'getInternalObjectState'
+  });'__L_V__5';
     if (obj.__SSi) {
+__L_V__5({
+    lN: 2945,tT:'if',pr:'obj.__SSi',eT:{},fN:''
+  });'__L_V__5';
       return this._windows[obj.__SSi];
     }
     return obj.loadURI
@@ -2953,16 +3775,28 @@ var SessionStoreInternal = {
     aDelta = 0,
     aRestoreImmediately = true
   ) {
+__L_V__5({
+    lN: 2958,tT:'func',pr:'',eT:{'aWindow':aWindow,'aTab':aTab,'aDelta':aDelta,'aRestoreImmediately':aRestoreImmediately},fN:'ssi_duplicateTab'
+  });'__L_V__5';
     if (!aTab || !aTab.ownerGlobal) {
+__L_V__5({
+    lN: 2959,tT:'if',pr:'!aTab || !aTab.ownerGlobal',eT:{},fN:''
+  });'__L_V__5';
       throw Components.Exception("Need a valid tab", Cr.NS_ERROR_INVALID_ARG);
     }
     if (!aTab.ownerGlobal.__SSi) {
+__L_V__5({
+    lN: 2962,tT:'if',pr:'!aTab.ownerGlobal.__SSi',eT:{},fN:''
+  });'__L_V__5';
       throw Components.Exception(
         "Default view is not tracked",
         Cr.NS_ERROR_INVALID_ARG
       );
     }
     if (!aWindow.gBrowser) {
+__L_V__5({
+    lN: 2968,tT:'if',pr:'!aWindow.gBrowser',eT:{},fN:''
+  });'__L_V__5';
       throw Components.Exception(
         "Invalid window object: no gBrowser",
         Cr.NS_ERROR_INVALID_ARG
@@ -2985,6 +3819,9 @@ var SessionStoreInternal = {
     // if the URI is a local about: URI.
     let uriObj = aTab.linkedBrowser.currentURI;
     if (!uriObj || (uriObj && !uriObj.schemeIs("about"))) {
+__L_V__5({
+    lN: 2990,tT:'if',pr:'!uriObj || (uriObj && !uriObj.schemeIs(about))',eT:{},fN:''
+  });'__L_V__5';
       newTab.setAttribute("busy", "true");
     }
 
@@ -3001,6 +3838,9 @@ var SessionStoreInternal = {
     TabStateFlusher.flush(browser).then(() => {
       // The new tab might have been closed in the meantime.
       if (newTab.closing || !newTab.linkedBrowser) {
+__L_V__5({
+    lN: 3006,tT:'if',pr:'newTab.closing || !newTab.linkedBrowser',eT:{},fN:''
+  });'__L_V__5';
         return;
       }
 
@@ -3008,6 +3848,9 @@ var SessionStoreInternal = {
 
       // The tab or its window might be gone.
       if (!window || !window.__SSi) {
+__L_V__5({
+    lN: 3013,tT:'if',pr:'!window || !window.__SSi',eT:{},fN:''
+  });'__L_V__5';
         return;
       }
 
@@ -3034,11 +3877,20 @@ var SessionStoreInternal = {
   },
 
   getClosedTabCount: function ssi_getClosedTabCount(aWindow) {
+__L_V__5({
+    lN: 3039,tT:'func',pr:'',eT:{'aWindow':aWindow},fN:'ssi_getClosedTabCount'
+  });'__L_V__5';
     if ("__SSi" in aWindow) {
+__L_V__5({
+    lN: 3040,tT:'if',pr:'__SSi in aWindow',eT:{},fN:''
+  });'__L_V__5';
       return this._windows[aWindow.__SSi]._closedTabs.length;
     }
 
     if (!DyingWindowCache.has(aWindow)) {
+__L_V__5({
+    lN: 3044,tT:'if',pr:'!DyingWindowCache.has(aWindow)',eT:{},fN:''
+  });'__L_V__5';
       throw Components.Exception(
         "Window is not tracked",
         Cr.NS_ERROR_INVALID_ARG
@@ -3049,13 +3901,22 @@ var SessionStoreInternal = {
   },
 
   getClosedTabData: function ssi_getClosedTabData(aWindow, aAsString = true) {
+__L_V__5({
+    lN: 3054,tT:'func',pr:'',eT:{'aWindow':aWindow,'aAsString':aAsString},fN:'ssi_getClosedTabData'
+  });'__L_V__5';
     if ("__SSi" in aWindow) {
+__L_V__5({
+    lN: 3055,tT:'if',pr:'__SSi in aWindow',eT:{},fN:''
+  });'__L_V__5';
       return aAsString
         ? JSON.stringify(this._windows[aWindow.__SSi]._closedTabs)
         : Cu.cloneInto(this._windows[aWindow.__SSi]._closedTabs, {});
     }
 
     if (!DyingWindowCache.has(aWindow)) {
+__L_V__5({
+    lN: 3061,tT:'if',pr:'!DyingWindowCache.has(aWindow)',eT:{},fN:''
+  });'__L_V__5';
       throw Components.Exception(
         "Window is not tracked",
         Cr.NS_ERROR_INVALID_ARG
@@ -3069,7 +3930,13 @@ var SessionStoreInternal = {
   },
 
   undoCloseTab: function ssi_undoCloseTab(aWindow, aIndex) {
+__L_V__5({
+    lN: 3074,tT:'func',pr:'',eT:{'aWindow':aWindow,'aIndex':aIndex},fN:'ssi_undoCloseTab'
+  });'__L_V__5';
     if (!aWindow.__SSi) {
+__L_V__5({
+    lN: 3075,tT:'if',pr:'!aWindow.__SSi',eT:{},fN:''
+  });'__L_V__5';
       throw Components.Exception(
         "Window is not tracked",
         Cr.NS_ERROR_INVALID_ARG
@@ -3081,6 +3948,9 @@ var SessionStoreInternal = {
     // default to the most-recently closed tab
     aIndex = aIndex || 0;
     if (!(aIndex in closedTabs)) {
+__L_V__5({
+    lN: 3086,tT:'if',pr:'!(aIndex in closedTabs)',eT:{},fN:''
+  });'__L_V__5';
       throw Components.Exception(
         "Invalid index: not in the closed tabs",
         Cr.NS_ERROR_INVALID_ARG
@@ -3108,7 +3978,13 @@ var SessionStoreInternal = {
   },
 
   forgetClosedTab: function ssi_forgetClosedTab(aWindow, aIndex) {
+__L_V__5({
+    lN: 3113,tT:'func',pr:'',eT:{'aWindow':aWindow,'aIndex':aIndex},fN:'ssi_forgetClosedTab'
+  });'__L_V__5';
     if (!aWindow.__SSi) {
+__L_V__5({
+    lN: 3114,tT:'if',pr:'!aWindow.__SSi',eT:{},fN:''
+  });'__L_V__5';
       throw Components.Exception(
         "Window is not tracked",
         Cr.NS_ERROR_INVALID_ARG
@@ -3120,6 +3996,9 @@ var SessionStoreInternal = {
     // default to the most-recently closed tab
     aIndex = aIndex || 0;
     if (!(aIndex in closedTabs)) {
+__L_V__5({
+    lN: 3125,tT:'if',pr:'!(aIndex in closedTabs)',eT:{},fN:''
+  });'__L_V__5';
       throw Components.Exception(
         "Invalid index: not in the closed tabs",
         Cr.NS_ERROR_INVALID_ARG
@@ -3134,17 +4013,29 @@ var SessionStoreInternal = {
   },
 
   getClosedWindowCount: function ssi_getClosedWindowCount() {
+__L_V__5({
+    lN: 3139,tT:'func',pr:'',eT:{},fN:'ssi_getClosedWindowCount'
+  });'__L_V__5';
     return this._closedWindows.length;
   },
 
   getClosedWindowData: function ssi_getClosedWindowData(aAsString = true) {
+__L_V__5({
+    lN: 3143,tT:'func',pr:'',eT:{'aAsString':aAsString},fN:'ssi_getClosedWindowData'
+  });'__L_V__5';
     return aAsString
       ? JSON.stringify(this._closedWindows)
       : Cu.cloneInto(this._closedWindows, {});
   },
 
   undoCloseWindow: function ssi_undoCloseWindow(aIndex) {
+__L_V__5({
+    lN: 3149,tT:'func',pr:'',eT:{'aIndex':aIndex},fN:'ssi_undoCloseWindow'
+  });'__L_V__5';
     if (!(aIndex in this._closedWindows)) {
+__L_V__5({
+    lN: 3150,tT:'if',pr:'!(aIndex in this._closedWindows)',eT:{},fN:''
+  });'__L_V__5';
       throw Components.Exception(
         "Invalid index: not in the closed windows",
         Cr.NS_ERROR_INVALID_ARG
@@ -3167,9 +4058,15 @@ var SessionStoreInternal = {
   },
 
   forgetClosedWindow: function ssi_forgetClosedWindow(aIndex) {
+__L_V__5({
+    lN: 3172,tT:'func',pr:'',eT:{'aIndex':aIndex},fN:'ssi_forgetClosedWindow'
+  });'__L_V__5';
     // default to the most-recently closed window
     aIndex = aIndex || 0;
     if (!(aIndex in this._closedWindows)) {
+__L_V__5({
+    lN: 3175,tT:'if',pr:'!(aIndex in this._closedWindows)',eT:{},fN:''
+  });'__L_V__5';
       throw Components.Exception(
         "Invalid index: not in the closed windows",
         Cr.NS_ERROR_INVALID_ARG
@@ -3186,12 +4083,21 @@ var SessionStoreInternal = {
   },
 
   getCustomWindowValue(aWindow, aKey) {
+__L_V__5({
+    lN: 3191,tT:'func',pr:'',eT:{'aWindow':aWindow,'aKey':aKey},fN:'getCustomWindowValue'
+  });'__L_V__5';
     if ("__SSi" in aWindow) {
+__L_V__5({
+    lN: 3192,tT:'if',pr:'__SSi in aWindow',eT:{},fN:''
+  });'__L_V__5';
       let data = this._windows[aWindow.__SSi].extData || {};
       return data[aKey] || "";
     }
 
     if (DyingWindowCache.has(aWindow)) {
+__L_V__5({
+    lN: 3197,tT:'if',pr:'DyingWindowCache.has(aWindow)',eT:{},fN:''
+  });'__L_V__5';
       let data = DyingWindowCache.get(aWindow).extData || {};
       return data[aKey] || "";
     }
@@ -3203,17 +4109,29 @@ var SessionStoreInternal = {
   },
 
   setCustomWindowValue(aWindow, aKey, aStringValue) {
+__L_V__5({
+    lN: 3208,tT:'func',pr:'',eT:{'aWindow':aWindow,'aKey':aKey,'aStringValue':aStringValue},fN:'setCustomWindowValue'
+  });'__L_V__5';
     if (typeof aStringValue != "string") {
+__L_V__5({
+    lN: 3209,tT:'if',pr:'typeof aStringValue != string',eT:{},fN:''
+  });'__L_V__5';
       throw new TypeError("setCustomWindowValue only accepts string values");
     }
 
     if (!("__SSi" in aWindow)) {
+__L_V__5({
+    lN: 3213,tT:'if',pr:'!(__SSi in aWindow)',eT:{},fN:''
+  });'__L_V__5';
       throw Components.Exception(
         "Window is not tracked",
         Cr.NS_ERROR_INVALID_ARG
       );
     }
     if (!this._windows[aWindow.__SSi].extData) {
+__L_V__5({
+    lN: 3219,tT:'if',pr:'!this._windows[aWindow.__SSi].extData',eT:{},fN:''
+  });'__L_V__5';
       this._windows[aWindow.__SSi].extData = {};
     }
     this._windows[aWindow.__SSi].extData[aKey] = aStringValue;
@@ -3221,28 +4139,46 @@ var SessionStoreInternal = {
   },
 
   deleteCustomWindowValue(aWindow, aKey) {
+__L_V__5({
+    lN: 3226,tT:'func',pr:'',eT:{'aWindow':aWindow,'aKey':aKey},fN:'deleteCustomWindowValue'
+  });'__L_V__5';
     if (
       aWindow.__SSi &&
       this._windows[aWindow.__SSi].extData &&
       this._windows[aWindow.__SSi].extData[aKey]
     ) {
+__L_V__5({
+    lN: 3231,tT:'if',pr:' aWindow.__SSi && this._windows[aWindow.__SSi].extData && this._windows[aWindow.__SSi].extData[aKey] ',eT:{},fN:''
+  });'__L_V__5';
       delete this._windows[aWindow.__SSi].extData[aKey];
     }
     this.saveStateDelayed(aWindow);
   },
 
   getCustomTabValue(aTab, aKey) {
+__L_V__5({
+    lN: 3237,tT:'func',pr:'',eT:{'aTab':aTab,'aKey':aKey},fN:'getCustomTabValue'
+  });'__L_V__5';
     return (TAB_CUSTOM_VALUES.get(aTab) || {})[aKey] || "";
   },
 
   setCustomTabValue(aTab, aKey, aStringValue) {
+__L_V__5({
+    lN: 3241,tT:'func',pr:'',eT:{'aTab':aTab,'aKey':aKey,'aStringValue':aStringValue},fN:'setCustomTabValue'
+  });'__L_V__5';
     if (typeof aStringValue != "string") {
+__L_V__5({
+    lN: 3242,tT:'if',pr:'typeof aStringValue != string',eT:{},fN:''
+  });'__L_V__5';
       throw new TypeError("setCustomTabValue only accepts string values");
     }
 
     // If the tab hasn't been restored, then set the data there, otherwise we
     // could lose newly added data.
     if (!TAB_CUSTOM_VALUES.has(aTab)) {
+__L_V__5({
+    lN: 3248,tT:'if',pr:'!TAB_CUSTOM_VALUES.has(aTab)',eT:{},fN:''
+  });'__L_V__5';
       TAB_CUSTOM_VALUES.set(aTab, {});
     }
 
@@ -3251,8 +4187,14 @@ var SessionStoreInternal = {
   },
 
   deleteCustomTabValue(aTab, aKey) {
+__L_V__5({
+    lN: 3256,tT:'func',pr:'',eT:{'aTab':aTab,'aKey':aKey},fN:'deleteCustomTabValue'
+  });'__L_V__5';
     let state = TAB_CUSTOM_VALUES.get(aTab);
     if (state && aKey in state) {
+__L_V__5({
+    lN: 3258,tT:'if',pr:'state && aKey in state',eT:{},fN:''
+  });'__L_V__5';
       delete state[aKey];
       this.saveStateDelayed(aTab.ownerGlobal);
     }
@@ -3268,15 +4210,27 @@ var SessionStoreInternal = {
    *        The key which maps to the desired data.
    */
   getLazyTabValue(aTab, aKey) {
+__L_V__5({
+    lN: 3273,tT:'func',pr:'',eT:{'aTab':aTab,'aKey':aKey},fN:'getLazyTabValue'
+  });'__L_V__5';
     return (TAB_LAZY_STATES.get(aTab) || {})[aKey];
   },
 
   getCustomGlobalValue(aKey) {
+__L_V__5({
+    lN: 3277,tT:'func',pr:'',eT:{'aKey':aKey},fN:'getCustomGlobalValue'
+  });'__L_V__5';
     return this._globalState.get(aKey);
   },
 
   setCustomGlobalValue(aKey, aStringValue) {
+__L_V__5({
+    lN: 3281,tT:'func',pr:'',eT:{'aKey':aKey,'aStringValue':aStringValue},fN:'setCustomGlobalValue'
+  });'__L_V__5';
     if (typeof aStringValue != "string") {
+__L_V__5({
+    lN: 3282,tT:'if',pr:'typeof aStringValue != string',eT:{},fN:''
+  });'__L_V__5';
       throw new TypeError("setCustomGlobalValue only accepts string values");
     }
 
@@ -3285,12 +4239,21 @@ var SessionStoreInternal = {
   },
 
   deleteCustomGlobalValue(aKey) {
+__L_V__5({
+    lN: 3290,tT:'func',pr:'',eT:{'aKey':aKey},fN:'deleteCustomGlobalValue'
+  });'__L_V__5';
     this._globalState.delete(aKey);
     this.saveStateDelayed();
   },
 
   persistTabAttribute: function ssi_persistTabAttribute(aName) {
+__L_V__5({
+    lN: 3295,tT:'func',pr:'',eT:{'aName':aName},fN:'ssi_persistTabAttribute'
+  });'__L_V__5';
     if (TabAttributes.persist(aName)) {
+__L_V__5({
+    lN: 3296,tT:'if',pr:'TabAttributes.persist(aName)',eT:{},fN:''
+  });'__L_V__5';
       this.saveStateDelayed();
     }
   },
@@ -3307,9 +4270,15 @@ var SessionStoreInternal = {
    * @returns a tab or window object
    */
   undoCloseById(aClosedId, aIncludePrivate = true) {
+__L_V__5({
+    lN: 3312,tT:'func',pr:'',eT:{'aClosedId':aClosedId,'aIncludePrivate':aIncludePrivate},fN:'undoCloseById'
+  });'__L_V__5';
     // Check for a window first.
     for (let i = 0, l = this._closedWindows.length; i < l; i++) {
       if (this._closedWindows[i].closedId == aClosedId) {
+__L_V__5({
+    lN: 3315,tT:'if',pr:'this._closedWindows[i].closedId == aClosedId',eT:{},fN:''
+  });'__L_V__5';
         return this.undoCloseWindow(i);
       }
     }
@@ -3317,12 +4286,21 @@ var SessionStoreInternal = {
     // Check for a tab.
     for (let window of Services.wm.getEnumerator("navigator:browser")) {
       if (!aIncludePrivate && PrivateBrowsingUtils.isWindowPrivate(window)) {
+__L_V__5({
+    lN: 3322,tT:'if',pr:'!aIncludePrivate && PrivateBrowsingUtils.isWindowPrivate(window)',eT:{},fN:''
+  });'__L_V__5';
         continue;
       }
       let windowState = this._windows[window.__SSi];
       if (windowState) {
+__L_V__5({
+    lN: 3326,tT:'if',pr:'windowState',eT:{},fN:''
+  });'__L_V__5';
         for (let j = 0, l = windowState._closedTabs.length; j < l; j++) {
           if (windowState._closedTabs[j].closedId == aClosedId) {
+__L_V__5({
+    lN: 3328,tT:'if',pr:'windowState._closedTabs[j].closedId == aClosedId',eT:{},fN:''
+  });'__L_V__5';
             return this.undoCloseTab(window, j);
           }
         }
@@ -3344,7 +4322,13 @@ var SessionStoreInternal = {
    *        not supplied, the data will be retrieved from the cache.
    */
   updateTabLabelAndIcon(tab, tabData = null) {
+__L_V__5({
+    lN: 3349,tT:'func',pr:'',eT:{'tab':tab,'tabData':tabData},fN:'updateTabLabelAndIcon'
+  });'__L_V__5';
     if (tab.hasAttribute("customizemode")) {
+__L_V__5({
+    lN: 3350,tT:'if',pr:'tab.hasAttribute(customizemode)',eT:{},fN:''
+  });'__L_V__5';
       return;
     }
 
@@ -3352,8 +4336,14 @@ var SessionStoreInternal = {
     let win = browser.ownerGlobal;
 
     if (!tabData) {
+__L_V__5({
+    lN: 3357,tT:'if',pr:'!tabData',eT:{},fN:''
+  });'__L_V__5';
       tabData = TabState.collect(tab, TAB_CUSTOM_VALUES.get(tab));
       if (!tabData) {
+__L_V__5({
+    lN: 3359,tT:'if',pr:'!tabData',eT:{},fN:''
+  });'__L_V__5';
         throw new Error("tabData not found for given tab");
       }
     }
@@ -3362,7 +4352,13 @@ var SessionStoreInternal = {
 
     // If the page has a title, set it.
     if (activePageData) {
+__L_V__5({
+    lN: 3367,tT:'if',pr:'activePageData',eT:{},fN:''
+  });'__L_V__5';
       if (activePageData.title && activePageData.title != activePageData.url) {
+__L_V__5({
+    lN: 3368,tT:'if',pr:'activePageData.title && activePageData.title != activePageData.url',eT:{},fN:''
+  });'__L_V__5';
         win.gBrowser.setInitialTabTitle(tab, activePageData.title, {
           isContentTitle: true,
         });
@@ -3373,6 +4369,9 @@ var SessionStoreInternal = {
 
     // Restore the tab icon.
     if ("image" in tabData) {
+__L_V__5({
+    lN: 3378,tT:'if',pr:'image in tabData',eT:{},fN:''
+  });'__L_V__5';
       // We know that about:blank is safe to load in any remote type. Since
       // SessionStore is triggered with about:blank, there must be a process
       // flip. We will ignore the first about:blank load to prevent resetting the
@@ -3382,6 +4381,9 @@ var SessionStoreInternal = {
         !activePageData ||
         (activePageData && activePageData.url != "about:blank")
       ) {
+__L_V__5({
+    lN: 3387,tT:'if',pr:' !activePageData || (activePageData && activePageData.url != about:blank) ',eT:{},fN:''
+  });'__L_V__5';
         win.gBrowser.setIcon(
           tab,
           tabData.image,
@@ -3398,15 +4400,24 @@ var SessionStoreInternal = {
 
   // This method deletes all the closedTabs matching userContextId.
   _forgetTabsWithUserContextId(userContextId) {
+__L_V__5({
+    lN: 3403,tT:'func',pr:'',eT:{'userContextId':userContextId},fN:'_forgetTabsWithUserContextId'
+  });'__L_V__5';
     for (let window of Services.wm.getEnumerator("navigator:browser")) {
       let windowState = this._windows[window.__SSi];
       if (windowState) {
+__L_V__5({
+    lN: 3406,tT:'if',pr:'windowState',eT:{},fN:''
+  });'__L_V__5';
         // In order to remove the tabs in the correct order, we store the
         // indexes, into an array, then we revert the array and remove closed
         // data from the last one going backward.
         let indexes = [];
         windowState._closedTabs.forEach((closedTab, index) => {
           if (closedTab.state.userContextId == userContextId) {
+__L_V__5({
+    lN: 3412,tT:'if',pr:'closedTab.state.userContextId == userContextId',eT:{},fN:''
+  });'__L_V__5';
             indexes.push(index);
           }
         });
@@ -3429,8 +4440,14 @@ var SessionStoreInternal = {
    * be opened.
    */
   restoreLastSession: function ssi_restoreLastSession() {
+__L_V__5({
+    lN: 3434,tT:'func',pr:'',eT:{},fN:'ssi_restoreLastSession'
+  });'__L_V__5';
     // Use the public getter since it also checks PB mode
     if (!this.canRestoreLastSession) {
+__L_V__5({
+    lN: 3436,tT:'if',pr:'!this.canRestoreLastSession',eT:{},fN:''
+  });'__L_V__5';
       throw Components.Exception("Last session can not be restored");
     }
 
@@ -3440,6 +4457,9 @@ var SessionStoreInternal = {
     let windows = {};
     for (let window of this._browserWindows) {
       if (window.__SS_lastSessionWindowID) {
+__L_V__5({
+    lN: 3445,tT:'if',pr:'window.__SS_lastSessionWindowID',eT:{},fN:''
+  });'__L_V__5';
         windows[window.__SS_lastSessionWindowID] = window;
       }
     }
@@ -3448,6 +4468,9 @@ var SessionStoreInternal = {
 
     // This shouldn't ever be the case...
     if (!lastSessionState.windows.length) {
+__L_V__5({
+    lN: 3453,tT:'if',pr:'!lastSessionState.windows.length',eT:{},fN:''
+  });'__L_V__5';
       throw Components.Exception(
         "lastSessionState has no windows",
         Cr.NS_ERROR_UNEXPECTED
@@ -3488,6 +4511,9 @@ var SessionStoreInternal = {
       // window.
       let windowToUse = windows[lastSessionWindowID];
       if (!windowToUse && canUseLastWindow) {
+__L_V__5({
+    lN: 3493,tT:'if',pr:'!windowToUse && canUseLastWindow',eT:{},fN:''
+  });'__L_V__5';
         windowToUse = lastWindow;
         canUseLastWindow = false;
       }
@@ -3498,9 +4524,15 @@ var SessionStoreInternal = {
 
       // If there's a window already open that we can restore into, use that
       if (canUseWindow) {
+__L_V__5({
+    lN: 3503,tT:'if',pr:'canUseWindow',eT:{},fN:''
+  });'__L_V__5';
         // Since we're not overwriting existing tabs, we want to merge _closedTabs,
         // putting existing ones first. Then make sure we're respecting the max pref.
         if (winState._closedTabs && winState._closedTabs.length) {
+__L_V__5({
+    lN: 3506,tT:'if',pr:'winState._closedTabs && winState._closedTabs.length',eT:{},fN:''
+  });'__L_V__5';
           let curWinState = this._windows[windowToUse.__SSi];
           curWinState._closedTabs = curWinState._closedTabs.concat(
             winState._closedTabs
@@ -3532,6 +4564,9 @@ var SessionStoreInternal = {
 
     // Merge closed windows from this session with ones from last session
     if (lastSessionState._closedWindows) {
+__L_V__5({
+    lN: 3537,tT:'if',pr:'lastSessionState._closedWindows',eT:{},fN:''
+  });'__L_V__5';
       this._closedWindows = this._closedWindows.concat(
         lastSessionState._closedWindows
       );
@@ -3563,7 +4598,13 @@ var SessionStoreInternal = {
    *        This function will also throw if the browser happens to be remote.
    */
   reviveCrashedTab(aTab) {
+__L_V__5({
+    lN: 3568,tT:'func',pr:'',eT:{'aTab':aTab},fN:'reviveCrashedTab'
+  });'__L_V__5';
     if (!aTab) {
+__L_V__5({
+    lN: 3569,tT:'if',pr:'!aTab',eT:{},fN:''
+  });'__L_V__5';
       throw new Error(
         "SessionStore.reviveCrashedTab expected a tab, but got null."
       );
@@ -3571,12 +4612,18 @@ var SessionStoreInternal = {
 
     let browser = aTab.linkedBrowser;
     if (!this._crashedBrowsers.has(browser.permanentKey)) {
+__L_V__5({
+    lN: 3576,tT:'if',pr:'!this._crashedBrowsers.has(browser.permanentKey)',eT:{},fN:''
+  });'__L_V__5';
       return;
     }
 
     // Sanity check - the browser to be revived should not be remote
     // at this point.
     if (browser.isRemoteBrowser) {
+__L_V__5({
+    lN: 3582,tT:'if',pr:'browser.isRemoteBrowser',eT:{},fN:''
+  });'__L_V__5';
       throw new Error(
         "SessionStore.reviveCrashedTab: " +
           "Somehow a crashed browser is still remote."
@@ -3604,6 +4651,9 @@ var SessionStoreInternal = {
    * Revive all crashed tabs and reset the crashed tabs count to 0.
    */
   reviveAllCrashedTabs() {
+__L_V__5({
+    lN: 3609,tT:'func',pr:'',eT:{},fN:'reviveAllCrashedTabs'
+  });'__L_V__5';
     for (let window of Services.wm.getEnumerator("navigator:browser")) {
       for (let tab of window.gBrowser.tabs) {
         this.reviveCrashedTab(tab);
@@ -3628,9 +4678,15 @@ var SessionStoreInternal = {
    * been completed at this point.
    */
   navigateAndRestore(tab, loadArguments, historyIndex) {
+__L_V__5({
+    lN: 3633,tT:'func',pr:'',eT:{'tab':tab,'loadArguments':loadArguments,'historyIndex':historyIndex},fN:'navigateAndRestore'
+  });'__L_V__5';
     let window = tab.ownerGlobal;
 
     if (!window.__SSi) {
+__L_V__5({
+    lN: 3636,tT:'if',pr:'!window.__SSi',eT:{},fN:''
+  });'__L_V__5';
       Cu.reportError("Tab's window must be tracked.");
       return Promise.reject();
     }
@@ -3641,6 +4697,9 @@ var SessionStoreInternal = {
     // navigateAndRestore on this tab, update the loadArguments stored, and
     // asynchronously wait on the flush's promise.
     if (this._remotenessChangingBrowsers.has(browser.permanentKey)) {
+__L_V__5({
+    lN: 3646,tT:'if',pr:'this._remotenessChangingBrowsers.has(browser.permanentKey)',eT:{},fN:''
+  });'__L_V__5';
       let opts = this._remotenessChangingBrowsers.get(browser.permanentKey);
       // XXX(nika): In the existing logic, we always use the initial
       // historyIndex value, and don't update it if multiple navigateAndRestore
@@ -3669,6 +4728,9 @@ var SessionStoreInternal = {
     // waiting for data from the frame script. This throbber is disabled
     // if the URI is a local about: URI.
     if (!uriObj || (uriObj && !uriObj.schemeIs("about"))) {
+__L_V__5({
+    lN: 3674,tT:'if',pr:'!uriObj || (uriObj && !uriObj.schemeIs(about))',eT:{},fN:''
+  });'__L_V__5';
       tab.setAttribute("busy", "true");
     }
 
@@ -3695,6 +4757,9 @@ var SessionStoreInternal = {
    * @param tab to navigate and restore.
    */
   async _asyncNavigateAndRestore(tab) {
+__L_V__5({
+    lN: 3700,tT:'func',pr:'',eT:{'tab':tab},fN:'_asyncNavigateAndRestore'
+  });'__L_V__5';
     let permanentKey = tab.linkedBrowser.permanentKey;
 
     // NOTE: This is currently the only async operation used, but this is likely
@@ -3711,12 +4776,18 @@ var SessionStoreInternal = {
 
     // The tab might have been closed/gone in the meantime.
     if (tab.closing || !tab.linkedBrowser) {
+__L_V__5({
+    lN: 3716,tT:'if',pr:'tab.closing || !tab.linkedBrowser',eT:{},fN:''
+  });'__L_V__5';
       return;
     }
 
     // The tab or its window might be gone.
     let window = tab.ownerGlobal;
     if (!window || !window.__SSi || window.closed) {
+__L_V__5({
+    lN: 3722,tT:'if',pr:'!window || !window.__SSi || window.closed',eT:{},fN:''
+  });'__L_V__5';
       return;
     }
 
@@ -3736,6 +4807,9 @@ var SessionStoreInternal = {
     };
 
     if (historyIndex >= 0) {
+__L_V__5({
+    lN: 3741,tT:'if',pr:'historyIndex >= 0',eT:{},fN:''
+  });'__L_V__5';
       tabState.index = historyIndex + 1;
       tabState.index = Math.max(
         1,
@@ -3749,12 +4823,18 @@ var SessionStoreInternal = {
       // It has to be offset by 1 to get back to native history indices from
       // SessionStore history indicies.
       if (loadArguments.redirectLoadSwitchId) {
+__L_V__5({
+    lN: 3754,tT:'if',pr:'loadArguments.redirectLoadSwitchId',eT:{},fN:''
+  });'__L_V__5';
         loadArguments.redirectHistoryIndex = tabState.requestedIndex - 1;
       }
     }
 
     // Need to reset restoring tabs.
     if (TAB_STATE_FOR_BROWSER.has(tab.linkedBrowser)) {
+__L_V__5({
+    lN: 3760,tT:'if',pr:'TAB_STATE_FOR_BROWSER.has(tab.linkedBrowser)',eT:{},fN:''
+  });'__L_V__5';
       this._resetLocalTabRestoringState(tab);
     }
 
@@ -3774,10 +4854,19 @@ var SessionStoreInternal = {
    * array 'entries' containing an object for each history item.
    */
   getSessionHistory(tab, updatedCallback) {
+__L_V__5({
+    lN: 3779,tT:'func',pr:'',eT:{'tab':tab,'updatedCallback':updatedCallback},fN:'getSessionHistory'
+  });'__L_V__5';
     if (updatedCallback) {
+__L_V__5({
+    lN: 3780,tT:'if',pr:'updatedCallback',eT:{},fN:''
+  });'__L_V__5';
       TabStateFlusher.flush(tab.linkedBrowser).then(() => {
         let sessionHistory = this.getSessionHistory(tab);
         if (sessionHistory) {
+__L_V__5({
+    lN: 3783,tT:'if',pr:'sessionHistory',eT:{},fN:''
+  });'__L_V__5';
           updatedCallback(sessionHistory);
         }
       });
@@ -3785,6 +4874,9 @@ var SessionStoreInternal = {
 
     // Don't continue if the tab was closed before TabStateFlusher.flush resolves.
     if (tab.linkedBrowser) {
+__L_V__5({
+    lN: 3790,tT:'if',pr:'tab.linkedBrowser',eT:{},fN:''
+  });'__L_V__5';
       let tabState = TabState.collect(tab, TAB_CUSTOM_VALUES.get(tab));
       return { index: tabState.index - 1, entries: tabState.entries };
     }
@@ -3803,7 +4895,13 @@ var SessionStoreInternal = {
    *                            can overwrite them
    */
   _prepWindowToRestoreInto: function ssi_prepWindowToRestoreInto(aWindow) {
+__L_V__5({
+    lN: 3808,tT:'func',pr:'',eT:{'aWindow':aWindow},fN:'ssi_prepWindowToRestoreInto'
+  });'__L_V__5';
     if (!aWindow) {
+__L_V__5({
+    lN: 3809,tT:'if',pr:'!aWindow',eT:{},fN:''
+  });'__L_V__5';
       return [false, false];
     }
 
@@ -3820,17 +4918,26 @@ var SessionStoreInternal = {
     let tabbrowser = aWindow.gBrowser;
     let addFreshTab = this._prefBranch.getBoolPref("startup.addFreshTab");
     if (addFreshTab) {
+__L_V__5({
+    lN: 3825,tT:'if',pr:'addFreshTab',eT:{},fN:''
+  });'__L_V__5';
       homePages = homePages.concat(HomePage.get(aWindow).split("|"));
     }
 
     for (let i = tabbrowser._numPinnedTabs; i < tabbrowser.tabs.length; i++) {
       let tab = tabbrowser.tabs[i];
       if (homePages.includes(tab.linkedBrowser.currentURI.spec)) {
+__L_V__5({
+    lN: 3831,tT:'if',pr:'homePages.includes(tab.linkedBrowser.currentURI.spec)',eT:{},fN:''
+  });'__L_V__5';
         removableTabs.push(tab);
       }
     }
 
     if (tabbrowser.tabs.length == removableTabs.length) {
+__L_V__5({
+    lN: 3836,tT:'if',pr:'tabbrowser.tabs.length == removableTabs.length',eT:{},fN:''
+  });'__L_V__5';
       canOverwriteTabs = true;
     } else {
       // If we're not overwriting all of the tabs, then close the home tabs.
@@ -3850,6 +4957,9 @@ var SessionStoreInternal = {
    *        Window reference
    */
   _updateWindowFeatures: function ssi_updateWindowFeatures(aWindow) {
+__L_V__5({
+    lN: 3855,tT:'func',pr:'',eT:{'aWindow':aWindow},fN:'ssi_updateWindowFeatures'
+  });'__L_V__5';
     var winData = this._windows[aWindow.__SSi];
 
     WINDOW_ATTRIBUTES.forEach(function(aAttr) {
@@ -3857,6 +4967,9 @@ var SessionStoreInternal = {
     }, this);
 
     if (winData.sizemode != "minimized") {
+__L_V__5({
+    lN: 3862,tT:'if',pr:'winData.sizemode != minimized',eT:{},fN:''
+  });'__L_V__5';
       winData.sizemodeBeforeMinimized = winData.sizemode;
     }
 
@@ -3864,20 +4977,35 @@ var SessionStoreInternal = {
       return aWindow[aItem] && !aWindow[aItem].visible;
     });
     if (hidden.length) {
+__L_V__5({
+    lN: 3869,tT:'if',pr:'hidden.length',eT:{},fN:''
+  });'__L_V__5';
       winData.hidden = hidden.join(",");
     } else if (winData.hidden) {
+__L_V__5({
+    lN: 3871,tT:'if',pr:'winData.hidden',eT:{},fN:''
+  });'__L_V__5';
       delete winData.hidden;
     }
 
     let sidebarBox = aWindow.document.getElementById("sidebar-box");
     let sidebar = sidebarBox.getAttribute("sidebarcommand");
     if (sidebar && sidebarBox.getAttribute("checked") == "true") {
+__L_V__5({
+    lN: 3877,tT:'if',pr:'sidebar && sidebarBox.getAttribute(checked) == true',eT:{},fN:''
+  });'__L_V__5';
       winData.sidebar = sidebar;
     } else if (winData.sidebar) {
+__L_V__5({
+    lN: 3879,tT:'if',pr:'winData.sidebar',eT:{},fN:''
+  });'__L_V__5';
       delete winData.sidebar;
     }
     let workspaceID = aWindow.getWorkspaceID();
     if (workspaceID) {
+__L_V__5({
+    lN: 3883,tT:'if',pr:'workspaceID',eT:{},fN:''
+  });'__L_V__5';
       winData.workspaceID = workspaceID;
     }
   },
@@ -3889,6 +5017,9 @@ var SessionStoreInternal = {
    * @returns object
    */
   getCurrentState(aUpdateAll) {
+__L_V__5({
+    lN: 3894,tT:'func',pr:'',eT:{'aUpdateAll':aUpdateAll},fN:'getCurrentState'
+  });'__L_V__5';
     this._handleClosedWindows().then(() => {
       this._notifyOfClosedObjectsChange();
     });
@@ -3897,14 +5028,23 @@ var SessionStoreInternal = {
 
     TelemetryStopwatch.start("FX_SESSION_RESTORE_COLLECT_ALL_WINDOWS_DATA_MS");
     if (RunState.isRunning) {
+__L_V__5({
+    lN: 3902,tT:'if',pr:'RunState.isRunning',eT:{},fN:''
+  });'__L_V__5';
       // update the data for all windows with activities since the last save operation.
       let index = 0;
       for (let window of this._orderedBrowserWindows) {
         if (!this._isWindowLoaded(window)) {
+__L_V__5({
+    lN: 3906,tT:'if',pr:'!this._isWindowLoaded(window)',eT:{},fN:''
+  });'__L_V__5';
           // window data is still in _statesToRestore
           continue;
         }
         if (aUpdateAll || DirtyWindows.has(window) || window == activeWindow) {
+__L_V__5({
+    lN: 3910,tT:'if',pr:'aUpdateAll || DirtyWindows.has(window) || window == activeWindow',eT:{},fN:''
+  });'__L_V__5';
           this._collectWindowData(window);
         } else {
           // always update the window features (whose change alone never triggers a save operation)
@@ -3927,12 +5067,18 @@ var SessionStoreInternal = {
     // collect the data for all windows
     for (ix in this._windows) {
       if (this._windows[ix]._restoring) {
+__L_V__5({
+    lN: 3932,tT:'if',pr:'this._windows[ix]._restoring',eT:{},fN:''
+  });'__L_V__5';
         // window data is still in _statesToRestore
         continue;
       }
       total.push(this._windows[ix]);
       ids.push(ix);
       if (!this._windows[ix].isPopup) {
+__L_V__5({
+    lN: 3938,tT:'if',pr:'!this._windows[ix].isPopup',eT:{},fN:''
+  });'__L_V__5';
         nonPopupCount++;
       }
     }
@@ -3942,6 +5088,9 @@ var SessionStoreInternal = {
       for (let winData of this._statesToRestore[ix].windows) {
         total.push(winData);
         if (!winData.isPopup) {
+__L_V__5({
+    lN: 3947,tT:'if',pr:'!winData.isPopup',eT:{},fN:''
+  });'__L_V__5';
           nonPopupCount++;
         }
       }
@@ -3951,6 +5100,9 @@ var SessionStoreInternal = {
     let lastClosedWindowsCopy = this._closedWindows.slice();
 
     if (AppConstants.platform != "macosx") {
+__L_V__5({
+    lN: 3956,tT:'if',pr:'AppConstants.platform != macosx',eT:{},fN:''
+  });'__L_V__5';
       // If no non-popup browser window remains open, return the state of the last
       // closed window(s). We only want to do this when we're actually "ending"
       // the session.
@@ -3961,6 +5113,9 @@ var SessionStoreInternal = {
         !!lastClosedWindowsCopy.length &&
         RunState.isQuitting
       ) {
+__L_V__5({
+    lN: 3966,tT:'if',pr:' nonPopupCount == 0 && !!lastClosedWindowsCopy.length && RunState.isQuitting ',eT:{},fN:''
+  });'__L_V__5';
         // prepend the last non-popup browser window, so that if the user loads more tabs
         // at startup we don't accidentally add them to a popup window
         do {
@@ -3970,12 +5125,18 @@ var SessionStoreInternal = {
     }
 
     if (activeWindow) {
+__L_V__5({
+    lN: 3975,tT:'if',pr:'activeWindow',eT:{},fN:''
+  });'__L_V__5';
       this.activeWindowSSiCache = activeWindow.__SSi || "";
     }
     ix = ids.indexOf(this.activeWindowSSiCache);
     // We don't want to restore focus to a minimized window or a window which had all its
     // tabs stripped out (doesn't exist).
     if (ix != -1 && total[ix] && total[ix].sizemode == "minimized") {
+__L_V__5({
+    lN: 3981,tT:'if',pr:'ix != -1 && total[ix] && total[ix].sizemode == minimized',eT:{},fN:''
+  });'__L_V__5';
       ix = -1;
     }
 
@@ -4002,6 +5163,9 @@ var SessionStoreInternal = {
     }
     for (let entryData of totalEntries) {
       if (CliqzResources.isCliqzPage(entryData.url)) {
+__L_V__5({
+    lN: 4007,tT:'if',pr:'CliqzResources.isCliqzPage(entryData.url)',eT:{},fN:''
+  });'__L_V__5';
         entryData.isCliqzPage = 1;
       }
     }
@@ -4022,6 +5186,9 @@ var SessionStoreInternal = {
 
     // Persist the last session if we deferred restoring it
     if (LastSession.canRestore) {
+__L_V__5({
+    lN: 4027,tT:'if',pr:'LastSession.canRestore',eT:{},fN:''
+  });'__L_V__5';
       state.lastSessionState = LastSession.getState();
     }
 
@@ -4029,6 +5196,9 @@ var SessionStoreInternal = {
     // window we want to pass the deferred initial state to not lose the
     // previous session.
     if (this._deferredInitialState) {
+__L_V__5({
+    lN: 4034,tT:'if',pr:'this._deferredInitialState',eT:{},fN:''
+  });'__L_V__5';
       state.deferredInitialState = this._deferredInitialState;
     }
 
@@ -4042,11 +5212,20 @@ var SessionStoreInternal = {
    * @returns string
    */
   _getWindowState: function ssi_getWindowState(aWindow) {
+__L_V__5({
+    lN: 4047,tT:'func',pr:'',eT:{'aWindow':aWindow},fN:'ssi_getWindowState'
+  });'__L_V__5';
     if (!this._isWindowLoaded(aWindow)) {
+__L_V__5({
+    lN: 4048,tT:'if',pr:'!this._isWindowLoaded(aWindow)',eT:{},fN:''
+  });'__L_V__5';
       return this._statesToRestore[WINDOW_RESTORE_IDS.get(aWindow)];
     }
 
     if (RunState.isRunning) {
+__L_V__5({
+    lN: 4052,tT:'if',pr:'RunState.isRunning',eT:{},fN:''
+  });'__L_V__5';
       this._collectWindowData(aWindow);
     }
 
@@ -4063,9 +5242,15 @@ var SessionStoreInternal = {
    *          entry that was put into the window data in this._windows.
    */
   _collectWindowData: function ssi_collectWindowData(aWindow) {
+__L_V__5({
+    lN: 4068,tT:'func',pr:'',eT:{'aWindow':aWindow},fN:'ssi_collectWindowData'
+  });'__L_V__5';
     let tabMap = new Map();
 
     if (!this._isWindowLoaded(aWindow)) {
+__L_V__5({
+    lN: 4071,tT:'if',pr:'!this._isWindowLoaded(aWindow)',eT:{},fN:''
+  });'__L_V__5';
       return tabMap;
     }
 
@@ -4087,6 +5272,9 @@ var SessionStoreInternal = {
     // Make sure we keep __SS_lastSessionWindowID around for cases like entering
     // or leaving PB mode.
     if (aWindow.__SS_lastSessionWindowID) {
+__L_V__5({
+    lN: 4092,tT:'if',pr:'aWindow.__SS_lastSessionWindowID',eT:{},fN:''
+  });'__L_V__5';
       this._windows[aWindow.__SSi].__lastSessionWindowID =
         aWindow.__SS_lastSessionWindowID;
     }
@@ -4105,8 +5293,14 @@ var SessionStoreInternal = {
    * @returns a promise resolved when all windows have been opened
    */
   _openWindows(root) {
+__L_V__5({
+    lN: 4110,tT:'func',pr:'',eT:{'root':root},fN:'_openWindows'
+  });'__L_V__5';
     for (let winData of root.windows) {
       if (!winData || !winData.tabs || !winData.tabs[0]) {
+__L_V__5({
+    lN: 4112,tT:'if',pr:'!winData || !winData.tabs || !winData.tabs[0]',eT:{},fN:''
+  });'__L_V__5';
         continue;
       }
       this._openWindowWithState({ windows: [winData] });
@@ -4129,11 +5323,17 @@ var SessionStoreInternal = {
    *                            external link as well
    */
   restoreWindow: function ssi_restoreWindow(aWindow, winData, aOptions = {}) {
+__L_V__5({
+    lN: 4134,tT:'func',pr:'',eT:{'aWindow':aWindow,'winData':winData,'aOptions':aOptions},fN:'ssi_restoreWindow'
+  });'__L_V__5';
     let overwriteTabs = aOptions && aOptions.overwriteTabs;
     let firstWindow = aOptions && aOptions.firstWindow;
 
     // initialize window if necessary
     if (aWindow && (!aWindow.__SSi || !this._windows[aWindow.__SSi])) {
+__L_V__5({
+    lN: 4139,tT:'if',pr:'aWindow && (!aWindow.__SSi || !this._windows[aWindow.__SSi])',eT:{},fN:''
+  });'__L_V__5';
       this.onLoad(aWindow);
     }
 
@@ -4144,10 +5344,16 @@ var SessionStoreInternal = {
     this._setWindowStateBusy(aWindow);
 
     if (winData.workspaceID) {
+__L_V__5({
+    lN: 4149,tT:'if',pr:'winData.workspaceID',eT:{},fN:''
+  });'__L_V__5';
       aWindow.moveToWorkspace(winData.workspaceID);
     }
 
     if (!winData.tabs) {
+__L_V__5({
+    lN: 4153,tT:'if',pr:'!winData.tabs',eT:{},fN:''
+  });'__L_V__5';
       winData.tabs = [];
       // don't restore a single blank tab when we've had an external
       // URL passed in for loading at startup (cf. bug 357419)
@@ -4157,6 +5363,9 @@ var SessionStoreInternal = {
       winData.tabs.length == 1 &&
       (!winData.tabs[0].entries || !winData.tabs[0].entries.length)
     ) {
+__L_V__5({
+    lN: 4162,tT:'if',pr:' firstWindow && !overwriteTabs && winData.tabs.length == 1 && (!winData.tabs[0].entries || !winData.tabs[0].entries.length) ',eT:{},fN:''
+  });'__L_V__5';
       winData.tabs = [];
     }
 
@@ -4164,6 +5373,9 @@ var SessionStoreInternal = {
     // homepage entries from the session restore object
     // except one, we need atleast one tab for restore.
     if (!overwriteTabs) {
+__L_V__5({
+    lN: 4169,tT:'if',pr:'!overwriteTabs',eT:{},fN:''
+  });'__L_V__5';
       let homePages = HomePage.get().split("|");
       let hasHome = false;
       winData.tabs = winData.tabs.filter(function ({ entries = [] }) {
@@ -4175,10 +5387,16 @@ var SessionStoreInternal = {
         // we are only interested in last entry
         const lastEntry = entries[entries.length - 1] || {};
         if (!lastEntry.url) {
+__L_V__5({
+    lN: 4180,tT:'if',pr:'!lastEntry.url',eT:{},fN:''
+  });'__L_V__5';
           return true;
         }
         const isHome = homePages.includes(lastEntry.url);
         if (isHome && hasHome) {
+__L_V__5({
+    lN: 4184,tT:'if',pr:'isHome && hasHome',eT:{},fN:''
+  });'__L_V__5';
           return false;
         }
         hasHome = true;
@@ -4190,6 +5408,9 @@ var SessionStoreInternal = {
     // selectTab represents.
     let selectTab = 0;
     if (overwriteTabs) {
+__L_V__5({
+    lN: 4195,tT:'if',pr:'overwriteTabs',eT:{},fN:''
+  });'__L_V__5';
       selectTab = parseInt(winData.selected || 1, 10);
       selectTab = Math.max(selectTab, 1);
       selectTab = Math.min(selectTab, winData.tabs.length);
@@ -4206,13 +5427,22 @@ var SessionStoreInternal = {
     // can be moved to the end of the restored tabs.
     let initialTabs;
     if (!overwriteTabs && firstWindow) {
+__L_V__5({
+    lN: 4211,tT:'if',pr:'!overwriteTabs && firstWindow',eT:{},fN:''
+  });'__L_V__5';
       initialTabs = Array.from(tabbrowser.tabs);
     }
 
     // Get rid of tabs that aren't needed anymore.
     if (overwriteTabs) {
+__L_V__5({
+    lN: 4216,tT:'if',pr:'overwriteTabs',eT:{},fN:''
+  });'__L_V__5';
       for (let i = tabbrowser.browsers.length - 1; i >= 0; i--) {
         if (!tabbrowser.tabs[i].selected) {
+__L_V__5({
+    lN: 4218,tT:'if',pr:'!tabbrowser.tabs[i].selected',eT:{},fN:''
+  });'__L_V__5';
           tabbrowser.removeTab(tabbrowser.tabs[i]);
         }
       }
@@ -4230,6 +5460,9 @@ var SessionStoreInternal = {
 
     // Move the originally open tabs to the end.
     if (initialTabs) {
+__L_V__5({
+    lN: 4235,tT:'if',pr:'initialTabs',eT:{},fN:''
+  });'__L_V__5';
       let endPosition = tabbrowser.tabs.length - 1;
       for (let i = 0; i < initialTabs.length; i++) {
         tabbrowser.unpinTab(initialTabs[i]);
@@ -4242,10 +5475,16 @@ var SessionStoreInternal = {
     // anything with it.
     delete aWindow.__SS_lastSessionWindowID;
     if (winData.__lastSessionWindowID) {
+__L_V__5({
+    lN: 4247,tT:'if',pr:'winData.__lastSessionWindowID',eT:{},fN:''
+  });'__L_V__5';
       aWindow.__SS_lastSessionWindowID = winData.__lastSessionWindowID;
     }
 
     if (overwriteTabs) {
+__L_V__5({
+    lN: 4251,tT:'if',pr:'overwriteTabs',eT:{},fN:''
+  });'__L_V__5';
       delete this._windows[aWindow.__SSi].extData;
     }
 
@@ -4253,7 +5492,13 @@ var SessionStoreInternal = {
     SessionCookies.restore(winData.cookies || []);
 
     if (winData.extData) {
+__L_V__5({
+    lN: 4258,tT:'if',pr:'winData.extData',eT:{},fN:''
+  });'__L_V__5';
       if (!this._windows[aWindow.__SSi].extData) {
+__L_V__5({
+    lN: 4259,tT:'if',pr:'!this._windows[aWindow.__SSi].extData',eT:{},fN:''
+  });'__L_V__5';
         this._windows[aWindow.__SSi].extData = {};
       }
       for (var key in winData.extData) {
@@ -4264,10 +5509,16 @@ var SessionStoreInternal = {
     let newClosedTabsData = winData._closedTabs || [];
 
     if (overwriteTabs || firstWindow) {
+__L_V__5({
+    lN: 4269,tT:'if',pr:'overwriteTabs || firstWindow',eT:{},fN:''
+  });'__L_V__5';
       // Overwrite existing closed tabs data when overwriteTabs=true
       // or we're the first window to be restored.
       this._windows[aWindow.__SSi]._closedTabs = newClosedTabsData;
     } else if (this._max_tabs_undo > 0) {
+__L_V__5({
+    lN: 4273,tT:'if',pr:'this._max_tabs_undo > 0',eT:{},fN:''
+  });'__L_V__5';
       // If we merge tabs, we also want to merge closed tabs data. We'll assume
       // the restored tabs were closed more recently and append the current list
       // of closed tabs to the new one...
@@ -4285,6 +5536,9 @@ var SessionStoreInternal = {
 
     // Restore tabs, if any.
     if (winData.tabs.length) {
+__L_V__5({
+    lN: 4290,tT:'if',pr:'winData.tabs.length',eT:{},fN:''
+  });'__L_V__5';
       this.restoreTabs(aWindow, tabs, winData.tabs, selectTab);
     }
 
@@ -4312,7 +5566,13 @@ var SessionStoreInternal = {
    * @returns a flag indicates whether a connection has been made
    */
   prepareConnectionToHost(tab, url) {
+__L_V__5({
+    lN: 4317,tT:'func',pr:'',eT:{'tab':tab,'url':url},fN:'prepareConnectionToHost'
+  });'__L_V__5';
     if (!url.startsWith("about:")) {
+__L_V__5({
+    lN: 4318,tT:'if',pr:'!url.startsWith(about:)',eT:{},fN:''
+  });'__L_V__5';
       let principal = Services.scriptSecurityManager.createNullPrincipal({
         userContextId: tab.userContextId,
       });
@@ -4339,12 +5599,21 @@ var SessionStoreInternal = {
    *        a tab to speculatively connect on mouse hover.
    */
   speculativeConnectOnTabHover(tab) {
+__L_V__5({
+    lN: 4344,tT:'func',pr:'',eT:{'tab':tab},fN:'speculativeConnectOnTabHover'
+  });'__L_V__5';
     let tabState = TAB_LAZY_STATES.get(tab);
     if (tabState && !tabState.connectionPrepared) {
+__L_V__5({
+    lN: 4346,tT:'if',pr:'tabState && !tabState.connectionPrepared',eT:{},fN:''
+  });'__L_V__5';
       let url = this.getLazyTabValue(tab, "url");
       let prepared = this.prepareConnectionToHost(tab, url);
       // This is used to test if a connection has been made beforehand.
       if (gDebuggingEnabled) {
+__L_V__5({
+    lN: 4350,tT:'if',pr:'gDebuggingEnabled',eT:{},fN:''
+  });'__L_V__5';
         tab.__test_connection_prepared = prepared;
         tab.__test_connection_url = url;
       }
@@ -4361,6 +5630,9 @@ var SessionStoreInternal = {
    *        ordered array of windows to restore
    */
   _restoreWindowsFeaturesAndTabs(windows) {
+__L_V__5({
+    lN: 4366,tT:'func',pr:'',eT:{'windows':windows},fN:'_restoreWindowsFeaturesAndTabs'
+  });'__L_V__5';
     // First, we restore window features, so that when users start interacting
     // with a window, we don't steal the window focus.
     for (let window of windows) {
@@ -4388,6 +5660,9 @@ var SessionStoreInternal = {
    *        unordered array of windows to restore
    */
   _restoreWindowsInReversedZOrder(windows) {
+__L_V__5({
+    lN: 4393,tT:'func',pr:'',eT:{'windows':windows},fN:'_restoreWindowsInReversedZOrder'
+  });'__L_V__5';
     windows.sort(
       (a, b) =>
         (WINDOW_RESTORE_ZINDICES.get(a) || 0) -
@@ -4412,8 +5687,14 @@ var SessionStoreInternal = {
    *                            external link as well
    */
   restoreWindows: function ssi_restoreWindows(aWindow, aState, aOptions = {}) {
+__L_V__5({
+    lN: 4417,tT:'func',pr:'',eT:{'aWindow':aWindow,'aState':aState,'aOptions':aOptions},fN:'ssi_restoreWindows'
+  });'__L_V__5';
     // initialize window if necessary
     if (aWindow && (!aWindow.__SSi || !this._windows[aWindow.__SSi])) {
+__L_V__5({
+    lN: 4419,tT:'if',pr:'aWindow && (!aWindow.__SSi || !this._windows[aWindow.__SSi])',eT:{},fN:''
+  });'__L_V__5';
       this.onLoad(aWindow);
     }
 
@@ -4429,12 +5710,18 @@ var SessionStoreInternal = {
 
     // Restore closed windows if any.
     if (root._closedWindows) {
+__L_V__5({
+    lN: 4434,tT:'if',pr:'root._closedWindows',eT:{},fN:''
+  });'__L_V__5';
       this._closedWindows = root._closedWindows;
       this._closedObjectsChanged = true;
     }
 
     // We're done here if there are no windows.
     if (!root.windows || !root.windows.length) {
+__L_V__5({
+    lN: 4440,tT:'if',pr:'!root.windows || !root.windows.length',eT:{},fN:''
+  });'__L_V__5';
       this._sendRestoreCompletedNotifications();
       return;
     }
@@ -4452,6 +5739,9 @@ var SessionStoreInternal = {
     for (let i = 0, l = root.windows.length; i < l; i++) {
 
       if (root.windows[i].zIndex === 1) {
+__L_V__5({
+    lN: 4457,tT:'if',pr:'root.windows[i].zIndex === 1',eT:{},fN:''
+  });'__L_V__5';
         firstWindowData = root.windows.splice(i, 1);
         break;
       }
@@ -4460,6 +5750,9 @@ var SessionStoreInternal = {
     // If by any case (only FF guys know the details of who it works;))
     // a window with zIndex equaled to 1 has not been found we take the first one from a session.
     if (firstWindowData == null) {
+__L_V__5({
+    lN: 4465,tT:'if',pr:'firstWindowData == null',eT:{},fN:''
+  });'__L_V__5';
       firstWindowData = root.windows.splice(0, 1);
     }
 
@@ -4498,9 +5791,15 @@ var SessionStoreInternal = {
    *        the currently selected tab will not be changed.
    */
   restoreTabs(aWindow, aTabs, aTabData, aSelectTab) {
+__L_V__5({
+    lN: 4503,tT:'func',pr:'',eT:{'aWindow':aWindow,'aTabs':aTabs,'aTabData':aTabData,'aSelectTab':aSelectTab},fN:'restoreTabs'
+  });'__L_V__5';
     var tabbrowser = aWindow.gBrowser;
 
     if (!this._isWindowLoaded(aWindow)) {
+__L_V__5({
+    lN: 4506,tT:'if',pr:'!this._isWindowLoaded(aWindow)',eT:{},fN:''
+  });'__L_V__5';
       // from now on, the data will come from the actual window
       delete this._statesToRestore[WINDOW_RESTORE_IDS.get(aWindow)];
       WINDOW_RESTORE_IDS.delete(aWindow);
@@ -4514,6 +5813,9 @@ var SessionStoreInternal = {
     // Update the window state in case we shut down without being notified.
     // Individual tab states will be taken care of by restoreTab() below.
     if (numTabsInWindow == numTabsToRestore) {
+__L_V__5({
+    lN: 4519,tT:'if',pr:'numTabsInWindow == numTabsToRestore',eT:{},fN:''
+  });'__L_V__5';
       // Remove all previous tab data.
       tabsDataArray.length = 0;
     } else {
@@ -4525,6 +5827,9 @@ var SessionStoreInternal = {
     tabsDataArray.length = numTabsInWindow;
 
     if (aSelectTab > 0 && aSelectTab <= aTabs.length) {
+__L_V__5({
+    lN: 4530,tT:'if',pr:'aSelectTab > 0 && aSelectTab <= aTabs.length',eT:{},fN:''
+  });'__L_V__5';
       // Update the window state in case we shut down without being notified.
       this._windows[aWindow.__SSi].selected = aSelectTab;
     }
@@ -4532,12 +5837,18 @@ var SessionStoreInternal = {
     // If we restore the selected tab, make sure it goes first.
     let selectedIndex = aTabs.indexOf(tabbrowser.selectedTab);
     if (selectedIndex > -1) {
+__L_V__5({
+    lN: 4537,tT:'if',pr:'selectedIndex > -1',eT:{},fN:''
+  });'__L_V__5';
       this.restoreTab(tabbrowser.selectedTab, aTabData[selectedIndex]);
     }
 
     // Restore all tabs.
     for (let t = 0; t < aTabs.length; t++) {
       if (t != selectedIndex) {
+__L_V__5({
+    lN: 4543,tT:'if',pr:'t != selectedIndex',eT:{},fN:''
+  });'__L_V__5';
         this.restoreTab(aTabs[t], aTabData[t]);
       }
     }
@@ -4545,9 +5856,15 @@ var SessionStoreInternal = {
 
   // Restores the given tab state for a given tab.
   restoreTab(tab, tabData, options = {}) {
+__L_V__5({
+    lN: 4550,tT:'func',pr:'',eT:{'tab':tab,'tabData':tabData,'options':options},fN:'restoreTab'
+  });'__L_V__5';
     let browser = tab.linkedBrowser;
 
     if (TAB_STATE_FOR_BROWSER.has(browser)) {
+__L_V__5({
+    lN: 4553,tT:'if',pr:'TAB_STATE_FOR_BROWSER.has(browser)',eT:{},fN:''
+  });'__L_V__5';
       Cu.reportError("Must reset tab before calling restoreTab.");
       return;
     }
@@ -4588,34 +5905,55 @@ var SessionStoreInternal = {
     // and show/hide tabs as necessary. We'll also attach a copy of the tab's
     // data in case we close it before it's been restored.
     if (tabData.pinned) {
+__L_V__5({
+    lN: 4593,tT:'if',pr:'tabData.pinned',eT:{},fN:''
+  });'__L_V__5';
       tabbrowser.pinTab(tab);
     } else {
       tabbrowser.unpinTab(tab);
     }
 
     if (tabData.hidden) {
+__L_V__5({
+    lN: 4599,tT:'if',pr:'tabData.hidden',eT:{},fN:''
+  });'__L_V__5';
       tabbrowser.hideTab(tab);
     } else {
       tabbrowser.showTab(tab);
     }
 
     if (!!tabData.muted != browser.audioMuted) {
+__L_V__5({
+    lN: 4605,tT:'if',pr:'!!tabData.muted != browser.audioMuted',eT:{},fN:''
+  });'__L_V__5';
       tab.toggleMuteAudio(tabData.muteReason);
     }
 
     if (tabData.lastAccessed) {
+__L_V__5({
+    lN: 4609,tT:'if',pr:'tabData.lastAccessed',eT:{},fN:''
+  });'__L_V__5';
       tab.updateLastAccessed(tabData.lastAccessed);
     }
 
     if ("attributes" in tabData) {
+__L_V__5({
+    lN: 4613,tT:'if',pr:'attributes in tabData',eT:{},fN:''
+  });'__L_V__5';
       // Ensure that we persist tab attributes restored from previous sessions.
       Object.keys(tabData.attributes).forEach(a => TabAttributes.persist(a));
     }
 
     if (!tabData.entries) {
+__L_V__5({
+    lN: 4618,tT:'if',pr:'!tabData.entries',eT:{},fN:''
+  });'__L_V__5';
       tabData.entries = [];
     }
     if (tabData.extData) {
+__L_V__5({
+    lN: 4621,tT:'if',pr:'tabData.extData',eT:{},fN:''
+  });'__L_V__5';
       TAB_CUSTOM_VALUES.set(tab, Cu.cloneInto(tabData.extData, {}));
     } else {
       TAB_CUSTOM_VALUES.delete(tab);
@@ -4660,10 +5998,16 @@ var SessionStoreInternal = {
 
     // Restore tab attributes.
     if ("attributes" in tabData) {
+__L_V__5({
+    lN: 4665,tT:'if',pr:'attributes in tabData',eT:{},fN:''
+  });'__L_V__5';
       TabAttributes.set(tab, tabData.attributes);
     }
 
     if (isBrowserInserted) {
+__L_V__5({
+    lN: 4669,tT:'if',pr:'isBrowserInserted',eT:{},fN:''
+  });'__L_V__5';
       // Start a new epoch to discard all frame script messages relating to a
       // previous epoch. All async messages that are still on their way to chrome
       // will be ignored and don't override any tab data set when restoring.
@@ -4679,17 +6023,32 @@ var SessionStoreInternal = {
       // This could cause us to ignore MAX_CONCURRENT_TAB_RESTORES a bit, but
       // it ensures each window will have its selected tab loaded.
       if (willRestoreImmediately) {
+__L_V__5({
+    lN: 4684,tT:'if',pr:'willRestoreImmediately',eT:{},fN:''
+  });'__L_V__5';
         this.restoreTabContent(tab, options);
       } else if (!forceOnDemand) {
+__L_V__5({
+    lN: 4686,tT:'if',pr:'!forceOnDemand',eT:{},fN:''
+  });'__L_V__5';
         TabRestoreQueue.add(tab);
         // Check if a tab is in queue and will be restored
         // after the currently loading tabs. If so, prepare
         // a connection to host to speed up page loading.
         if (TabRestoreQueue.willRestoreSoon(tab)) {
+__L_V__5({
+    lN: 4691,tT:'if',pr:'TabRestoreQueue.willRestoreSoon(tab)',eT:{},fN:''
+  });'__L_V__5';
           if (activeIndex in tabData.entries) {
+__L_V__5({
+    lN: 4692,tT:'if',pr:'activeIndex in tabData.entries',eT:{},fN:''
+  });'__L_V__5';
             let url = tabData.entries[activeIndex].url;
             let prepared = this.prepareConnectionToHost(tab, url);
             if (gDebuggingEnabled) {
+__L_V__5({
+    lN: 4695,tT:'if',pr:'gDebuggingEnabled',eT:{},fN:''
+  });'__L_V__5';
               tab.__test_connection_prepared = prepared;
               tab.__test_connection_url = url;
             }
@@ -4706,6 +6065,9 @@ var SessionStoreInternal = {
       let title = "";
 
       if (activeIndex in tabData.entries) {
+__L_V__5({
+    lN: 4711,tT:'if',pr:'activeIndex in tabData.entries',eT:{},fN:''
+  });'__L_V__5';
         url = tabData.entries[activeIndex].url;
         title = tabData.entries[activeIndex].title || url;
       }
@@ -4718,6 +6080,9 @@ var SessionStoreInternal = {
     }
 
     if (tab.hasAttribute("customizemode")) {
+__L_V__5({
+    lN: 4723,tT:'if',pr:'tab.hasAttribute(customizemode)',eT:{},fN:''
+  });'__L_V__5';
       window.gCustomizeMode.setTab(tab);
     }
 
@@ -4738,8 +6103,14 @@ var SessionStoreInternal = {
    *        optional arguments used when performing process switch during load
    */
   restoreTabContent(aTab, aOptions = {}) {
+__L_V__5({
+    lN: 4743,tT:'func',pr:'',eT:{'aTab':aTab,'aOptions':aOptions},fN:'restoreTabContent'
+  });'__L_V__5';
     let loadArguments = aOptions.loadArguments;
     if (aTab.hasAttribute("customizemode") && !loadArguments) {
+__L_V__5({
+    lN: 4745,tT:'if',pr:'aTab.hasAttribute(customizemode) && !loadArguments',eT:{},fN:''
+  });'__L_V__5';
       return;
     }
 
@@ -4751,8 +6122,14 @@ var SessionStoreInternal = {
     let activePageData = tabData.entries[activeIndex] || null;
     let uri = activePageData ? activePageData.url || null : null;
     if (loadArguments) {
+__L_V__5({
+    lN: 4756,tT:'if',pr:'loadArguments',eT:{},fN:''
+  });'__L_V__5';
       uri = loadArguments.uri;
       if (loadArguments.userContextId) {
+__L_V__5({
+    lN: 4758,tT:'if',pr:'loadArguments.userContextId',eT:{},fN:''
+  });'__L_V__5';
         browser.setAttribute("usercontextid", loadArguments.userContextId);
       }
     }
@@ -4764,6 +6141,9 @@ var SessionStoreInternal = {
     let redirectLoadSwitchId = aOptions.redirectLoadSwitchId;
     let isRemotenessUpdate;
     if (aOptions.remoteType !== undefined) {
+__L_V__5({
+    lN: 4769,tT:'if',pr:'aOptions.remoteType !== undefined',eT:{},fN:''
+  });'__L_V__5';
       // We already have a selected remote type so we update to that.
       isRemotenessUpdate = tabbrowser.updateBrowserRemoteness(browser, {
         remoteType: aOptions.remoteType,
@@ -4784,6 +6164,9 @@ var SessionStoreInternal = {
     }
 
     if (isRemotenessUpdate) {
+__L_V__5({
+    lN: 4789,tT:'if',pr:'isRemotenessUpdate',eT:{},fN:''
+  });'__L_V__5';
       // We updated the remoteness, so we need to send the history down again.
       //
       // Start a new epoch to discard all frame script messages relating to a
@@ -4808,6 +6191,9 @@ var SessionStoreInternal = {
 
     // Focus the tab's content area.
     if (aTab.selected && !window.isBlankPageURL(uri) && !String(uri).startsWith("moz-extension")) {
+__L_V__5({
+    lN: 4813,tT:'if',pr:'aTab.selected && !window.isBlankPageURL(uri) && !String(uri).startsWith(moz-extension)',eT:{},fN:''
+  });'__L_V__5';
       browser.focus();
     }
   },
@@ -4819,8 +6205,14 @@ var SessionStoreInternal = {
    *        the pending tab to mark as restoring
    */
   markTabAsRestoring(aTab) {
+__L_V__5({
+    lN: 4824,tT:'func',pr:'',eT:{'aTab':aTab},fN:'markTabAsRestoring'
+  });'__L_V__5';
     let browser = aTab.linkedBrowser;
     if (TAB_STATE_FOR_BROWSER.get(browser) != TAB_STATE_NEEDS_RESTORE) {
+__L_V__5({
+    lN: 4826,tT:'if',pr:'TAB_STATE_FOR_BROWSER.get(browser) != TAB_STATE_NEEDS_RESTORE',eT:{},fN:''
+  });'__L_V__5';
       throw new Error("Given tab is not pending.");
     }
 
@@ -4844,18 +6236,30 @@ var SessionStoreInternal = {
    *   if we have already reached the limit for number of tabs to restore
    */
   restoreNextTab: function ssi_restoreNextTab() {
+__L_V__5({
+    lN: 4849,tT:'func',pr:'',eT:{},fN:'ssi_restoreNextTab'
+  });'__L_V__5';
     // If we call in here while quitting, we don't actually want to do anything
     if (RunState.isQuitting) {
+__L_V__5({
+    lN: 4851,tT:'if',pr:'RunState.isQuitting',eT:{},fN:''
+  });'__L_V__5';
       return;
     }
 
     // Don't exceed the maximum number of concurrent tab restores.
     if (this._tabsRestoringCount >= MAX_CONCURRENT_TAB_RESTORES) {
+__L_V__5({
+    lN: 4856,tT:'if',pr:'this._tabsRestoringCount >= MAX_CONCURRENT_TAB_RESTORES',eT:{},fN:''
+  });'__L_V__5';
       return;
     }
 
     let tab = TabRestoreQueue.shift();
     if (tab) {
+__L_V__5({
+    lN: 4861,tT:'if',pr:'tab',eT:{},fN:''
+  });'__L_V__5';
       this.restoreTabContent(tab);
     }
   },
@@ -4868,19 +6272,31 @@ var SessionStoreInternal = {
    *        Object containing session data for the window
    */
   restoreWindowFeatures: function ssi_restoreWindowFeatures(aWindow, aWinData) {
+__L_V__5({
+    lN: 4873,tT:'func',pr:'',eT:{'aWindow':aWindow,'aWinData':aWinData},fN:'ssi_restoreWindowFeatures'
+  });'__L_V__5';
     var hidden = aWinData.hidden ? aWinData.hidden.split(",") : [];
     WINDOW_HIDEABLE_FEATURES.forEach(function(aItem) {
       aWindow[aItem].visible = !hidden.includes(aItem);
     });
 
     if (aWinData.isPopup) {
+__L_V__5({
+    lN: 4879,tT:'if',pr:'aWinData.isPopup',eT:{},fN:''
+  });'__L_V__5';
       this._windows[aWindow.__SSi].isPopup = true;
       if (aWindow.gURLBar) {
+__L_V__5({
+    lN: 4881,tT:'if',pr:'aWindow.gURLBar',eT:{},fN:''
+  });'__L_V__5';
         aWindow.gURLBar.readOnly = true;
       }
     } else {
       delete this._windows[aWindow.__SSi].isPopup;
       if (aWindow.gURLBar) {
+__L_V__5({
+    lN: 4886,tT:'if',pr:'aWindow.gURLBar',eT:{},fN:''
+  });'__L_V__5';
         aWindow.gURLBar.readOnly = false;
       }
     }
@@ -4926,9 +6342,15 @@ var SessionStoreInternal = {
     aSizeModeBeforeMinimized,
     aSidebar
   ) {
+__L_V__5({
+    lN: 4931,tT:'func',pr:'',eT:{'aWindow':aWindow,'aWidth':aWidth,'aHeight':aHeight,'aLeft':aLeft,'aTop':aTop,'aSizeMode':aSizeMode,'aSizeModeBeforeMinimized':aSizeModeBeforeMinimized,'aSidebar':aSidebar},fN:'ssi_restoreDimensions'
+  });'__L_V__5';
     var win = aWindow;
     var _this = this;
     function win_(aName) {
+__L_V__5({
+    lN: 4934,tT:'func',pr:'',eT:{'aName':aName},fN:'win_'
+  });'__L_V__5';
       return _this._getWindowDimension(win, aName);
     }
 
@@ -4936,6 +6358,9 @@ var SessionStoreInternal = {
     // find available space on the screen where this window is being placed
     let screen = gScreenManager.screenForRect(aLeft, aTop, aWidth, aHeight);
     if (screen) {
+__L_V__5({
+    lN: 4941,tT:'if',pr:'screen',eT:{},fN:''
+  });'__L_V__5';
       let screenLeft = {},
         screenTop = {},
         screenWidth = {},
@@ -4960,14 +6385,23 @@ var SessionStoreInternal = {
       // as when Win10 "snaps" a window to the left/right edge -- bug 1276516).
       // First, ensure the left edge is large enough...
       if (aLeft < screenLeftCss - SCREEN_EDGE_SLOP) {
+__L_V__5({
+    lN: 4965,tT:'if',pr:'aLeft < screenLeftCss - SCREEN_EDGE_SLOP',eT:{},fN:''
+  });'__L_V__5';
         aLeft = screenLeftCss;
       }
       // Then check the resulting right edge, and reduce it if necessary.
       let right = aLeft + aWidth;
       if (right > screenRightCss + SCREEN_EDGE_SLOP) {
+__L_V__5({
+    lN: 4970,tT:'if',pr:'right > screenRightCss + SCREEN_EDGE_SLOP',eT:{},fN:''
+  });'__L_V__5';
         right = screenRightCss;
         // See if we can move the left edge leftwards to maintain width.
         if (aLeft > screenLeftCss) {
+__L_V__5({
+    lN: 4973,tT:'if',pr:'aLeft > screenLeftCss',eT:{},fN:''
+  });'__L_V__5';
           aLeft = Math.max(right - aWidth, screenLeftCss);
         }
       }
@@ -4976,12 +6410,21 @@ var SessionStoreInternal = {
 
       // And do the same in the vertical dimension.
       if (aTop < screenTopCss - SCREEN_EDGE_SLOP) {
+__L_V__5({
+    lN: 4981,tT:'if',pr:'aTop < screenTopCss - SCREEN_EDGE_SLOP',eT:{},fN:''
+  });'__L_V__5';
         aTop = screenTopCss;
       }
       let bottom = aTop + aHeight;
       if (bottom > screenBottomCss + SCREEN_EDGE_SLOP) {
+__L_V__5({
+    lN: 4985,tT:'if',pr:'bottom > screenBottomCss + SCREEN_EDGE_SLOP',eT:{},fN:''
+  });'__L_V__5';
         bottom = screenBottomCss;
         if (aTop > screenTopCss) {
+__L_V__5({
+    lN: 4987,tT:'if',pr:'aTop > screenTopCss',eT:{},fN:''
+  });'__L_V__5';
           aTop = Math.max(bottom - aHeight, screenTopCss);
         }
       }
@@ -4999,6 +6442,9 @@ var SessionStoreInternal = {
         !isNaN(aTop) &&
         (aLeft != win_("screenX") || aTop != win_("screenY"))
       ) {
+__L_V__5({
+    lN: 5004,tT:'if',pr:' !isNaN(aLeft) && !isNaN(aTop) && (aLeft != win_(screenX) || aTop != win_(screenY)) ',eT:{},fN:''
+  });'__L_V__5';
         aWindow.moveTo(aLeft, aTop);
       }
       if (
@@ -5007,9 +6453,15 @@ var SessionStoreInternal = {
         (aWidth != win_("width") || aHeight != win_("height")) &&
         !gResistFingerprintingEnabled
       ) {
+__L_V__5({
+    lN: 5012,tT:'if',pr:' aWidth && aHeight && (aWidth != win_(width) || aHeight != win_(height)) && !gResistFingerprintingEnabled ',eT:{},fN:''
+  });'__L_V__5';
         // Don't resize the window if it's currently maximized and we would
         // maximize it again shortly after.
         if (aSizeMode != "maximized" || win_("sizemode") != "maximized") {
+__L_V__5({
+    lN: 5015,tT:'if',pr:'aSizeMode != maximized || win_(sizemode) != maximized',eT:{},fN:''
+  });'__L_V__5';
           aWindow.resizeTo(aWidth, aHeight);
         }
       }
@@ -5021,12 +6473,21 @@ var SessionStoreInternal = {
         win_("sizemode") != aSizeMode &&
         !gResistFingerprintingEnabled
       ) {
+__L_V__5({
+    lN: 5026,tT:'if',pr:' aSizeMode && win_(sizemode) != aSizeMode && !gResistFingerprintingEnabled ',eT:{},fN:''
+  });'__L_V__5';
+__L_V__5({
+    lN: 5027,tT:'switch',pr:'',eT:{},fN:''
+  });'__L_V__5';
         switch (aSizeMode) {
           case "maximized":
             aWindow.maximize();
             break;
           case "minimized":
             if (aSizeModeBeforeMinimized == "maximized") {
+__L_V__5({
+    lN: 5032,tT:'if',pr:'aSizeModeBeforeMinimized == maximized',eT:{},fN:''
+  });'__L_V__5';
               aWindow.maximize();
             }
             aWindow.minimize();
@@ -5042,11 +6503,17 @@ var SessionStoreInternal = {
         (sidebarBox.getAttribute("sidebarcommand") != aSidebar ||
           !sidebarBox.getAttribute("checked"))
       ) {
+__L_V__5({
+    lN: 5047,tT:'if',pr:' aSidebar && (sidebarBox.getAttribute(sidebarcommand) != aSidebar || !sidebarBox.getAttribute(checked)) ',eT:{},fN:''
+  });'__L_V__5';
         aWindow.SidebarUI.showInitially(aSidebar);
       }
       // since resizing/moving a window brings it to the foreground,
       // we might want to re-focus the last focused window
       if (this.windowToFocus) {
+__L_V__5({
+    lN: 5052,tT:'if',pr:'this.windowToFocus',eT:{},fN:''
+  });'__L_V__5';
         this.windowToFocus.focus();
       }
     } finally {
@@ -5065,7 +6532,13 @@ var SessionStoreInternal = {
    *        data before we start writing.
    */
   saveStateDelayed(aWindow = null) {
+__L_V__5({
+    lN: 5070,tT:'func',pr:'',eT:{'aWindow':aWindow},fN:'saveStateDelayed'
+  });'__L_V__5';
     if (aWindow) {
+__L_V__5({
+    lN: 5071,tT:'if',pr:'aWindow',eT:{},fN:''
+  });'__L_V__5';
       DirtyWindows.add(aWindow);
     }
 
@@ -5084,6 +6557,9 @@ var SessionStoreInternal = {
    * @returns Array of closed windows.
    */
   _removeClosedWindow(index) {
+__L_V__5({
+    lN: 5089,tT:'func',pr:'',eT:{'index':index},fN:'_removeClosedWindow'
+  });'__L_V__5';
     let windows = this._closedWindows.splice(index, 1);
     this._closedObjectsChanged = true;
     return windows;
@@ -5094,7 +6570,13 @@ var SessionStoreInternal = {
    * Waits a tick to allow SessionStorage a chance to register the change.
    */
   _notifyOfClosedObjectsChange() {
+__L_V__5({
+    lN: 5099,tT:'func',pr:'',eT:{},fN:'_notifyOfClosedObjectsChange'
+  });'__L_V__5';
     if (!this._closedObjectsChanged) {
+__L_V__5({
+    lN: 5100,tT:'if',pr:'!this._closedObjectsChanged',eT:{},fN:''
+  });'__L_V__5';
       return;
     }
     this._closedObjectsChanged = false;
@@ -5111,8 +6593,14 @@ var SessionStoreInternal = {
    *        The session state.
    */
   _updateSessionStartTime: function ssi_updateSessionStartTime(state) {
+__L_V__5({
+    lN: 5116,tT:'func',pr:'',eT:{'state':state},fN:'ssi_updateSessionStartTime'
+  });'__L_V__5';
     // Attempt to load the session start time from the session state
     if (state.session && state.session.startTime) {
+__L_V__5({
+    lN: 5118,tT:'if',pr:'state.session && state.session.startTime',eT:{},fN:''
+  });'__L_V__5';
       this._sessionStartTime = state.session.startTime;
     }
   },
@@ -5127,6 +6615,9 @@ var SessionStoreInternal = {
     *[Symbol.iterator]() {
       for (let window of BrowserWindowTracker.orderedWindows) {
         if (window.__SSi && !window.closed) {
+__L_V__5({
+    lN: 5132,tT:'if',pr:'window.__SSi && !window.closed',eT:{},fN:''
+  });'__L_V__5';
           yield window;
         }
       }
@@ -5146,18 +6637,27 @@ var SessionStoreInternal = {
           a.windowState == a.STATE_MINIMIZED &&
           b.windowState != b.STATE_MINIMIZED
         ) {
+__L_V__5({
+    lN: 5151,tT:'if',pr:' a.windowState == a.STATE_MINIMIZED && b.windowState != b.STATE_MINIMIZED ',eT:{},fN:''
+  });'__L_V__5';
           return 1;
         }
         if (
           a.windowState != a.STATE_MINIMIZED &&
           b.windowState == b.STATE_MINIMIZED
         ) {
+__L_V__5({
+    lN: 5157,tT:'if',pr:' a.windowState != a.STATE_MINIMIZED && b.windowState == b.STATE_MINIMIZED ',eT:{},fN:''
+  });'__L_V__5';
           return -1;
         }
         return 0;
       });
       for (let window of windows) {
         if (window.__SSi && !window.closed) {
+__L_V__5({
+    lN: 5163,tT:'if',pr:'window.__SSi && !window.closed',eT:{},fN:''
+  });'__L_V__5';
           yield window;
         }
       }
@@ -5169,6 +6669,9 @@ var SessionStoreInternal = {
    * @returns Window reference
    */
   _getTopWindow: function ssi_getTopWindow() {
+__L_V__5({
+    lN: 5174,tT:'func',pr:'',eT:{},fN:'ssi_getTopWindow'
+  });'__L_V__5';
     return BrowserWindowTracker.getTopWindow({ allowPopups: true });
   },
 
@@ -5178,9 +6681,15 @@ var SessionStoreInternal = {
    * setBrowserState to treat them as open windows.
    */
   _handleClosedWindows: function ssi_handleClosedWindows() {
+__L_V__5({
+    lN: 5183,tT:'func',pr:'',eT:{},fN:'ssi_handleClosedWindows'
+  });'__L_V__5';
     let promises = [];
     for (let window of Services.wm.getEnumerator("navigator:browser")) {
       if (window.closed) {
+__L_V__5({
+    lN: 5186,tT:'if',pr:'window.closed',eT:{},fN:''
+  });'__L_V__5';
         promises.push(this.onClose(window));
       }
     }
@@ -5198,8 +6707,14 @@ var SessionStoreInternal = {
    *        an object containing session data
    */
   _updateWindowRestoreState(window, state) {
+__L_V__5({
+    lN: 5203,tT:'func',pr:'',eT:{'window':window,'state':state},fN:'_updateWindowRestoreState'
+  });'__L_V__5';
     // Store z-index, so that windows can be restored in reversed z-order.
     if ("zIndex" in state.windows[0]) {
+__L_V__5({
+    lN: 5205,tT:'if',pr:'zIndex in state.windows[0]',eT:{},fN:''
+  });'__L_V__5';
       WINDOW_RESTORE_ZINDICES.set(window, state.windows[0].zIndex);
     }
     do {
@@ -5224,6 +6739,9 @@ var SessionStoreInternal = {
     for (let tabItem of tabList) {
       // Surprise: formdata object might not be there (just in case).
       if (tabItem.formdata == null) {
+__L_V__5({
+    lN: 5229,tT:'if',pr:'tabItem.formdata == null',eT:{},fN:''
+  });'__L_V__5';
         continue;
       }
 
@@ -5237,6 +6755,9 @@ var SessionStoreInternal = {
       if (formDataItem.id == null ||
           formDataItem.id.sessionData == null ||
           formDataItem.id.sessionData.windows == null) {
+__L_V__5({
+    lN: 5242,tT:'if',pr:'formDataItem.id == null || formDataItem.id.sessionData == null || formDataItem.id.sessionData.windows == null',eT:{},fN:''
+  });'__L_V__5';
         continue;
       }
 
@@ -5253,6 +6774,9 @@ var SessionStoreInternal = {
     // that contains isCliqzPage = 1;
     for (let entryItem of entryList) {
       if (entryItem.isCliqzPage !== 1) {
+__L_V__5({
+    lN: 5258,tT:'if',pr:'entryItem.isCliqzPage !== 1',eT:{},fN:''
+  });'__L_V__5';
         continue;
       }
 
@@ -5269,6 +6793,9 @@ var SessionStoreInternal = {
    *        Object containing session data
    */
   _openWindowWithState: function ssi_openWindowWithState(aState) {
+__L_V__5({
+    lN: 5274,tT:'func',pr:'',eT:{'aState':aState},fN:'ssi_openWindowWithState'
+  });'__L_V__5';
     var argString = Cc["@mozilla.org/supports-string;1"].createInstance(
       Ci.nsISupportsString
     );
@@ -5280,11 +6807,17 @@ var SessionStoreInternal = {
     WINDOW_ATTRIBUTES.forEach(function(aFeature) {
       // Use !isNaN as an easy way to ignore sizemode and check for numbers
       if (aFeature in winState && !isNaN(winState[aFeature])) {
+__L_V__5({
+    lN: 5285,tT:'if',pr:'aFeature in winState && !isNaN(winState[aFeature])',eT:{},fN:''
+  });'__L_V__5';
         features += "," + aFeature + "=" + winState[aFeature];
       }
     });
 
     if (winState.isPrivate) {
+__L_V__5({
+    lN: 5290,tT:'if',pr:'winState.isPrivate',eT:{},fN:''
+  });'__L_V__5';
       features += ",private";
     }
 
@@ -5309,12 +6842,18 @@ var SessionStoreInternal = {
    * @returns bool
    */
   _isCmdLineEmpty: function ssi_isCmdLineEmpty(aWindow, aState) {
+__L_V__5({
+    lN: 5314,tT:'func',pr:'',eT:{'aWindow':aWindow,'aState':aState},fN:'ssi_isCmdLineEmpty'
+  });'__L_V__5';
     var pinnedOnly =
       aState.windows &&
       aState.windows.every(win => win.tabs.every(tab => tab.pinned));
 
     let hasFirstArgument = aWindow.arguments && aWindow.arguments[0];
     if (!pinnedOnly) {
+__L_V__5({
+    lN: 5320,tT:'if',pr:'!pinnedOnly',eT:{},fN:''
+  });'__L_V__5';
       let defaultArgs = Cc["@mozilla.org/browser/clh;1"].getService(
         Ci.nsIBrowserHandler
       ).defaultArgs;
@@ -5323,6 +6862,9 @@ var SessionStoreInternal = {
         aWindow.arguments[0] &&
         aWindow.arguments[0] == defaultArgs
       ) {
+__L_V__5({
+    lN: 5328,tT:'if',pr:' aWindow.arguments && aWindow.arguments[0] && aWindow.arguments[0] == defaultArgs ',eT:{},fN:''
+  });'__L_V__5';
         hasFirstArgument = false;
       }
     }
@@ -5342,7 +6884,16 @@ var SessionStoreInternal = {
    * @returns string
    */
   _getWindowDimension: function ssi_getWindowDimension(aWindow, aAttribute) {
+__L_V__5({
+    lN: 5347,tT:'func',pr:'',eT:{'aWindow':aWindow,'aAttribute':aAttribute},fN:'ssi_getWindowDimension'
+  });'__L_V__5';
     if (aAttribute == "sizemode") {
+__L_V__5({
+    lN: 5348,tT:'if',pr:'aAttribute == sizemode',eT:{},fN:''
+  });'__L_V__5';
+__L_V__5({
+    lN: 5349,tT:'switch',pr:'',eT:{},fN:''
+  });'__L_V__5';
       switch (aWindow.windowState) {
         case aWindow.STATE_FULLSCREEN:
         case aWindow.STATE_MAXIMIZED:
@@ -5362,10 +6913,19 @@ var SessionStoreInternal = {
     // to. In that case, try to read from the attributes of the root
     // element first instead.
     if (aWindow.windowState != aWindow.STATE_NORMAL) {
+__L_V__5({
+    lN: 5367,tT:'if',pr:'aWindow.windowState != aWindow.STATE_NORMAL',eT:{},fN:''
+  });'__L_V__5';
       let docElem = aWindow.document.documentElement;
       let attr = parseInt(docElem.getAttribute(aAttribute), 10);
       if (attr) {
+__L_V__5({
+    lN: 5370,tT:'if',pr:'attr',eT:{},fN:''
+  });'__L_V__5';
         if (aAttribute != "width" && aAttribute != "height") {
+__L_V__5({
+    lN: 5371,tT:'if',pr:'aAttribute != width && aAttribute != height',eT:{},fN:''
+  });'__L_V__5';
           return attr;
         }
         // Width and height attribute report the inner size, but we want
@@ -5380,6 +6940,9 @@ var SessionStoreInternal = {
         return attr + diff;
       }
     }
+__L_V__5({
+    lN: 5386,tT:'switch',pr:'',eT:{},fN:''
+  });'__L_V__5';
 
     switch (aAttribute) {
       case "width":
@@ -5397,11 +6960,17 @@ var SessionStoreInternal = {
    * @returns whether a restore page will be needed for the session state
    */
   _needsRestorePage: function ssi_needsRestorePage(aState, aRecentCrashes) {
+__L_V__5({
+    lN: 5402,tT:'func',pr:'',eT:{'aState':aState,'aRecentCrashes':aRecentCrashes},fN:'ssi_needsRestorePage'
+  });'__L_V__5';
     const SIX_HOURS_IN_MS = 6 * 60 * 60 * 1000;
 
     // don't display the page when there's nothing to restore
     let winData = aState.windows || null;
     if (!winData || !winData.length) {
+__L_V__5({
+    lN: 5407,tT:'if',pr:'!winData || !winData.length',eT:{},fN:''
+  });'__L_V__5';
       return false;
     }
 
@@ -5410,11 +6979,17 @@ var SessionStoreInternal = {
       this._hasSingleTabWithURL(winData, "about:sessionrestore") ||
       this._hasSingleTabWithURL(winData, "about:welcomeback")
     ) {
+__L_V__5({
+    lN: 5415,tT:'if',pr:' this._hasSingleTabWithURL(winData, about:sessionrestore) || this._hasSingleTabWithURL(winData, about:welcomeback) ',eT:{},fN:''
+  });'__L_V__5';
       return false;
     }
 
     // don't automatically restore in Safe Mode
     if (Services.appinfo.inSafeMode) {
+__L_V__5({
+    lN: 5420,tT:'if',pr:'Services.appinfo.inSafeMode',eT:{},fN:''
+  });'__L_V__5';
       return true;
     }
 
@@ -5439,6 +7014,9 @@ var SessionStoreInternal = {
    * @returns whether the window data contains only the single URL passed
    */
   _hasSingleTabWithURL(aWinData, aURL) {
+__L_V__5({
+    lN: 5444,tT:'func',pr:'',eT:{'aWinData':aWinData,'aURL':aURL},fN:'_hasSingleTabWithURL'
+  });'__L_V__5';
     if (
       aWinData &&
       aWinData.length == 1 &&
@@ -5447,6 +7025,9 @@ var SessionStoreInternal = {
       aWinData[0].tabs[0].entries &&
       aWinData[0].tabs[0].entries.length == 1
     ) {
+__L_V__5({
+    lN: 5452,tT:'if',pr:' aWinData && aWinData.length == 1 && aWinData[0].tabs && aWinData[0].tabs.length == 1 && aWinData[0].tabs[0].entries && aWinData[0].tabs[0].entries.length == 1 ',eT:{},fN:''
+  });'__L_V__5';
       return aURL == aWinData[0].tabs[0].entries[0].url;
     }
     return false;
@@ -5461,6 +7042,9 @@ var SessionStoreInternal = {
    * @returns boolean
    */
   _shouldSaveTabState: function ssi_shouldSaveTabState(aTabState) {
+__L_V__5({
+    lN: 5466,tT:'func',pr:'',eT:{'aTabState':aTabState},fN:'ssi_shouldSaveTabState'
+  });'__L_V__5';
     // If the tab has only a transient about: history entry, no other
     // session history, and no userTypedValue, then we don't actually want to
     // store this tab's data.
@@ -5488,6 +7072,9 @@ var SessionStoreInternal = {
    * @returns boolean
    */
   _shouldSaveTab: function ssi_shouldSaveTab(aTabState) {
+__L_V__5({
+    lN: 5493,tT:'func',pr:'',eT:{'aTabState':aTabState},fN:'ssi_shouldSaveTab'
+  });'__L_V__5';
     // If the tab has one of the following transient about: history entry, no
     // userTypedValue, and no customizemode attribute, then we don't actually
     // want to write this tab's data to disk.
@@ -5519,6 +7106,9 @@ var SessionStoreInternal = {
    * @returns [defaultState, state]
    */
   _prepDataForDeferredRestore: function ssi_prepDataForDeferredRestore(state) {
+__L_V__5({
+    lN: 5524,tT:'func',pr:'',eT:{'state':state},fN:'ssi_prepDataForDeferredRestore'
+  });'__L_V__5';
     // Make sure that we don't modify the global state as provided by
     // SessionStartup.state.
     state = Cu.cloneInto(state, {});
@@ -5536,10 +7126,19 @@ var SessionStoreInternal = {
       let pinnedWindowState = { tabs: [] };
       for (let tIndex = 0; tIndex < window.tabs.length; ) {
         if (window.tabs[tIndex].pinned) {
+__L_V__5({
+    lN: 5541,tT:'if',pr:'window.tabs[tIndex].pinned',eT:{},fN:''
+  });'__L_V__5';
           // Adjust window.selected
           if (tIndex + 1 < window.selected) {
+__L_V__5({
+    lN: 5543,tT:'if',pr:'tIndex + 1 < window.selected',eT:{},fN:''
+  });'__L_V__5';
             window.selected -= 1;
           } else if (tIndex + 1 == window.selected) {
+__L_V__5({
+    lN: 5545,tT:'if',pr:'tIndex + 1 == window.selected',eT:{},fN:''
+  });'__L_V__5';
             pinnedWindowState.selected = pinnedWindowState.tabs.length + 1;
           }
           // + 1 because the tab isn't actually in the array yet
@@ -5557,9 +7156,15 @@ var SessionStoreInternal = {
       // At this point the window in the state object has been modified (or not)
       // We want to build the rest of this new window object if we have pinnedTabs.
       if (pinnedWindowState.tabs.length) {
+__L_V__5({
+    lN: 5562,tT:'if',pr:'pinnedWindowState.tabs.length',eT:{},fN:''
+  });'__L_V__5';
         // First get the other attributes off the window
         WINDOW_ATTRIBUTES.forEach(function(attr) {
           if (attr in window) {
+__L_V__5({
+    lN: 5565,tT:'if',pr:'attr in window',eT:{},fN:''
+  });'__L_V__5';
             pinnedWindowState[attr] = window[attr];
             delete window[attr];
           }
@@ -5580,9 +7185,18 @@ var SessionStoreInternal = {
         defaultState.windows.push(pinnedWindowState);
         // Remove the window from the state if it doesn't have any tabs
         if (!window.tabs.length) {
+__L_V__5({
+    lN: 5585,tT:'if',pr:'!window.tabs.length',eT:{},fN:''
+  });'__L_V__5';
           if (wIndex + 1 <= state.selectedWindow) {
+__L_V__5({
+    lN: 5586,tT:'if',pr:'wIndex + 1 <= state.selectedWindow',eT:{},fN:''
+  });'__L_V__5';
             state.selectedWindow -= 1;
           } else if (wIndex + 1 == state.selectedWindow) {
+__L_V__5({
+    lN: 5588,tT:'if',pr:'wIndex + 1 == state.selectedWindow',eT:{},fN:''
+  });'__L_V__5';
             defaultState.selectedIndex = defaultState.windows.length + 1;
           }
 
@@ -5598,19 +7212,31 @@ var SessionStoreInternal = {
   },
 
   _sendRestoreCompletedNotifications: function ssi_sendRestoreCompletedNotifications() {
+__L_V__5({
+    lN: 5603,tT:'func',pr:'',eT:{},fN:'ssi_sendRestoreCompletedNotifications'
+  });'__L_V__5';
     // not all windows restored, yet
     if (this._restoreCount > 1) {
+__L_V__5({
+    lN: 5605,tT:'if',pr:'this._restoreCount > 1',eT:{},fN:''
+  });'__L_V__5';
       this._restoreCount--;
       return;
     }
 
     // observers were already notified
     if (this._restoreCount == -1) {
+__L_V__5({
+    lN: 5611,tT:'if',pr:'this._restoreCount == -1',eT:{},fN:''
+  });'__L_V__5';
       return;
     }
 
     // This was the last window restored at startup, notify observers.
     if (!this._browserSetState) {
+__L_V__5({
+    lN: 5616,tT:'if',pr:'!this._browserSetState',eT:{},fN:''
+  });'__L_V__5';
       Services.obs.notifyObservers(null, NOTIFY_WINDOWS_RESTORED);
       this._deferredAllWindowsRestored.resolve();
     } else {
@@ -5633,11 +7259,17 @@ var SessionStoreInternal = {
     aWindow,
     aValue
   ) {
+__L_V__5({
+    lN: 5638,tT:'func',pr:'',eT:{'aWindow':aWindow,'aValue':aValue},fN:'ssi_changeWindowStateBusyValue'
+  });'__L_V__5';
     this._windows[aWindow.__SSi].busy = aValue;
 
     // Keep the to-be-restored state in sync because that is returned by
     // getWindowState() as long as the window isn't loaded, yet.
     if (!this._isWindowLoaded(aWindow)) {
+__L_V__5({
+    lN: 5643,tT:'if',pr:'!this._isWindowLoaded(aWindow)',eT:{},fN:''
+  });'__L_V__5';
       let stateToRestore = this._statesToRestore[
         WINDOW_RESTORE_IDS.get(aWindow)
       ].windows[0];
@@ -5650,13 +7282,22 @@ var SessionStoreInternal = {
    * @param aWindow the window
    */
   _setWindowStateReady: function ssi_setWindowStateReady(aWindow) {
+__L_V__5({
+    lN: 5655,tT:'func',pr:'',eT:{'aWindow':aWindow},fN:'ssi_setWindowStateReady'
+  });'__L_V__5';
     let newCount = (this._windowBusyStates.get(aWindow) || 0) - 1;
     if (newCount < 0) {
+__L_V__5({
+    lN: 5657,tT:'if',pr:'newCount < 0',eT:{},fN:''
+  });'__L_V__5';
       throw new Error("Invalid window busy state (less than zero).");
     }
     this._windowBusyStates.set(aWindow, newCount);
 
     if (newCount == 0) {
+__L_V__5({
+    lN: 5662,tT:'if',pr:'newCount == 0',eT:{},fN:''
+  });'__L_V__5';
       this._setWindowStateBusyValue(aWindow, false);
       this._sendWindowStateEvent(aWindow, "Ready");
     }
@@ -5667,10 +7308,16 @@ var SessionStoreInternal = {
    * @param aWindow the window
    */
   _setWindowStateBusy: function ssi_setWindowStateBusy(aWindow) {
+__L_V__5({
+    lN: 5672,tT:'func',pr:'',eT:{'aWindow':aWindow},fN:'ssi_setWindowStateBusy'
+  });'__L_V__5';
     let newCount = (this._windowBusyStates.get(aWindow) || 0) + 1;
     this._windowBusyStates.set(aWindow, newCount);
 
     if (newCount == 1) {
+__L_V__5({
+    lN: 5676,tT:'if',pr:'newCount == 1',eT:{},fN:''
+  });'__L_V__5';
       this._setWindowStateBusyValue(aWindow, true);
       this._sendWindowStateEvent(aWindow, "Busy");
     }
@@ -5682,6 +7329,9 @@ var SessionStoreInternal = {
    * @param aType the type of event, SSWindowState will be prepended to this string
    */
   _sendWindowStateEvent: function ssi_sendWindowStateEvent(aWindow, aType) {
+__L_V__5({
+    lN: 5687,tT:'func',pr:'',eT:{'aWindow':aWindow,'aType':aType},fN:'ssi_sendWindowStateEvent'
+  });'__L_V__5';
     let event = aWindow.document.createEvent("Events");
     event.initEvent("SSWindowState" + aType, true, false);
     aWindow.dispatchEvent(event);
@@ -5693,6 +7343,9 @@ var SessionStoreInternal = {
    *        The window which has been restored
    */
   _sendWindowRestoredNotification(aWindow) {
+__L_V__5({
+    lN: 5698,tT:'func',pr:'',eT:{'aWindow':aWindow},fN:'_sendWindowRestoredNotification'
+  });'__L_V__5';
     let event = aWindow.document.createEvent("Events");
     event.initEvent("SSWindowRestored", true, false);
     aWindow.dispatchEvent(event);
@@ -5707,6 +7360,9 @@ var SessionStoreInternal = {
    *        out-of-main-process to in-main-process or vice-versa.
    */
   _sendTabRestoredNotification(aTab, aIsRemotenessUpdate) {
+__L_V__5({
+    lN: 5712,tT:'func',pr:'',eT:{'aTab':aTab,'aIsRemotenessUpdate':aIsRemotenessUpdate},fN:'_sendTabRestoredNotification'
+  });'__L_V__5';
     let event = aTab.ownerDocument.createEvent("CustomEvent");
     event.initCustomEvent("SSTabRestored", true, false, {
       isRemotenessUpdate: aIsRemotenessUpdate,
@@ -5721,6 +7377,9 @@ var SessionStoreInternal = {
    *          because it's not fully loaded yet
    */
   _isWindowLoaded: function ssi_isWindowLoaded(aWindow) {
+__L_V__5({
+    lN: 5726,tT:'func',pr:'',eT:{'aWindow':aWindow},fN:'ssi_isWindowLoaded'
+  });'__L_V__5';
     return !WINDOW_RESTORE_IDS.has(aWindow);
   },
 
@@ -5730,11 +7389,20 @@ var SessionStoreInternal = {
    * resize such that we have at least one non-popup window.
    */
   _capClosedWindows: function ssi_capClosedWindows() {
+__L_V__5({
+    lN: 5735,tT:'func',pr:'',eT:{},fN:'ssi_capClosedWindows'
+  });'__L_V__5';
     if (this._closedWindows.length <= this._max_windows_undo) {
+__L_V__5({
+    lN: 5736,tT:'if',pr:'this._closedWindows.length <= this._max_windows_undo',eT:{},fN:''
+  });'__L_V__5';
       return;
     }
     let spliceTo = this._max_windows_undo;
     if (AppConstants.platform != "macosx") {
+__L_V__5({
+    lN: 5740,tT:'if',pr:'AppConstants.platform != macosx',eT:{},fN:''
+  });'__L_V__5';
       let normalWindowIndex = 0;
       // try to find a non-popup window in this._closedWindows
       while (
@@ -5744,10 +7412,16 @@ var SessionStoreInternal = {
         normalWindowIndex++;
       }
       if (normalWindowIndex >= this._max_windows_undo) {
+__L_V__5({
+    lN: 5749,tT:'if',pr:'normalWindowIndex >= this._max_windows_undo',eT:{},fN:''
+  });'__L_V__5';
         spliceTo = normalWindowIndex + 1;
       }
     }
     if (spliceTo < this._closedWindows.length) {
+__L_V__5({
+    lN: 5753,tT:'if',pr:'spliceTo < this._closedWindows.length',eT:{},fN:''
+  });'__L_V__5';
       this._closedWindows.splice(spliceTo, this._closedWindows.length);
       this._closedObjectsChanged = true;
     }
@@ -5763,6 +7437,9 @@ var SessionStoreInternal = {
    * windows.
    */
   _clearRestoringWindows: function ssi_clearRestoringWindows() {
+__L_V__5({
+    lN: 5768,tT:'func',pr:'',eT:{},fN:'ssi_clearRestoringWindows'
+  });'__L_V__5';
     for (let i = 0; i < this._closedWindows.length; i++) {
       delete this._closedWindows[i]._shouldRestore;
     }
@@ -5772,6 +7449,9 @@ var SessionStoreInternal = {
    * Reset state to prepare for a new session state to be restored.
    */
   _resetRestoringState: function ssi_initRestoringState() {
+__L_V__5({
+    lN: 5777,tT:'func',pr:'',eT:{},fN:'ssi_initRestoringState'
+  });'__L_V__5';
     TabRestoreQueue.reset();
     this._tabsRestoringCount = 0;
   },
@@ -5784,12 +7464,18 @@ var SessionStoreInternal = {
    *        The tab that will be "reset"
    */
   _resetLocalTabRestoringState(aTab) {
+__L_V__5({
+    lN: 5789,tT:'func',pr:'',eT:{'aTab':aTab},fN:'_resetLocalTabRestoringState'
+  });'__L_V__5';
     let browser = aTab.linkedBrowser;
 
     // Keep the tab's previous state for later in this method
     let previousState = TAB_STATE_FOR_BROWSER.get(browser);
 
     if (!previousState) {
+__L_V__5({
+    lN: 5795,tT:'if',pr:'!previousState',eT:{},fN:''
+  });'__L_V__5';
       Cu.reportError("Given tab is not restoring.");
       return;
     }
@@ -5800,10 +7486,19 @@ var SessionStoreInternal = {
     aTab.removeAttribute("pending");
 
     if (previousState == TAB_STATE_RESTORING) {
+__L_V__5({
+    lN: 5805,tT:'if',pr:'previousState == TAB_STATE_RESTORING',eT:{},fN:''
+  });'__L_V__5';
       if (this._tabsRestoringCount) {
+__L_V__5({
+    lN: 5806,tT:'if',pr:'this._tabsRestoringCount',eT:{},fN:''
+  });'__L_V__5';
         this._tabsRestoringCount--;
       }
     } else if (previousState == TAB_STATE_NEEDS_RESTORE) {
+__L_V__5({
+    lN: 5809,tT:'if',pr:'previousState == TAB_STATE_NEEDS_RESTORE',eT:{},fN:''
+  });'__L_V__5';
       // Make sure that the tab is removed from the list of tabs to restore.
       // Again, this is normally done in restoreTabContent, but that isn't being called
       // for this tab.
@@ -5812,9 +7507,15 @@ var SessionStoreInternal = {
   },
 
   _resetTabRestoringState(tab) {
+__L_V__5({
+    lN: 5817,tT:'func',pr:'',eT:{'tab':tab},fN:'_resetTabRestoringState'
+  });'__L_V__5';
     let browser = tab.linkedBrowser;
 
     if (!TAB_STATE_FOR_BROWSER.has(browser)) {
+__L_V__5({
+    lN: 5820,tT:'if',pr:'!TAB_STATE_FOR_BROWSER.has(browser)',eT:{},fN:''
+  });'__L_V__5';
       Cu.reportError("Given tab is not restoring.");
       return;
     }
@@ -5830,6 +7531,9 @@ var SessionStoreInternal = {
    * the new epoch ID for the given |browser|.
    */
   startNextEpoch(browser) {
+__L_V__5({
+    lN: 5835,tT:'func',pr:'',eT:{'browser':browser},fN:'startNextEpoch'
+  });'__L_V__5';
     let next = this.getCurrentEpoch(browser) + 1;
     this._browserEpochs.set(browser.permanentKey, next);
     return next;
@@ -5839,6 +7543,9 @@ var SessionStoreInternal = {
    * Manually set the epoch to a given value.
    */
   setCurrentEpoch(aBrowser, aEpoch) {
+__L_V__5({
+    lN: 5844,tT:'func',pr:'',eT:{'aBrowser':aBrowser,'aEpoch':aEpoch},fN:'setCurrentEpoch'
+  });'__L_V__5';
     this._browserEpochs.set(aBrowser.permanentKey, aEpoch);
     return aEpoch;
   },
@@ -5848,6 +7555,9 @@ var SessionStoreInternal = {
    * a new epoch this will default to zero for new tabs.
    */
   getCurrentEpoch(browser) {
+__L_V__5({
+    lN: 5853,tT:'func',pr:'',eT:{'browser':browser},fN:'getCurrentEpoch'
+  });'__L_V__5';
     return this._browserEpochs.get(browser.permanentKey) || 0;
   },
 
@@ -5859,6 +7569,9 @@ var SessionStoreInternal = {
    * with respect to |browser|.
    */
   isCurrentEpoch(browser, epoch) {
+__L_V__5({
+    lN: 5864,tT:'func',pr:'',eT:{'browser':browser,'epoch':epoch},fN:'isCurrentEpoch'
+  });'__L_V__5';
     return this.getCurrentEpoch(browser) == epoch;
   },
 
@@ -5868,6 +7581,9 @@ var SessionStoreInternal = {
    * the frame script starts out with epoch=0.
    */
   resetEpoch(browser) {
+__L_V__5({
+    lN: 5873,tT:'func',pr:'',eT:{'browser':browser},fN:'resetEpoch'
+  });'__L_V__5';
     this._browserEpochs.delete(browser.permanentKey);
   },
 
@@ -5881,13 +7597,22 @@ var SessionStoreInternal = {
    * @return Promise
    */
   looseTimer(delay) {
+__L_V__5({
+    lN: 5886,tT:'func',pr:'',eT:{'delay':delay},fN:'looseTimer'
+  });'__L_V__5';
     let DELAY_BEAT = 1000;
     let timer = Cc["@mozilla.org/timer;1"].createInstance(Ci.nsITimer);
     let beats = Math.ceil(delay / DELAY_BEAT);
     let deferred = PromiseUtils.defer();
     timer.initWithCallback(
       function() {
+__L_V__5({
+    lN: 5892,tT:'func',pr:'',eT:{},fN:'function'
+  });'__L_V__5';
         if (beats <= 0) {
+__L_V__5({
+    lN: 5893,tT:'if',pr:'beats <= 0',eT:{},fN:''
+  });'__L_V__5';
           deferred.resolve();
         }
         --beats;
@@ -5912,14 +7637,23 @@ var SessionStoreInternal = {
    * @param options The options data to send to content.
    */
   _sendRestoreHistory(browser, options) {
+__L_V__5({
+    lN: 5917,tT:'func',pr:'',eT:{'browser':browser,'options':options},fN:'_sendRestoreHistory'
+  });'__L_V__5';
     // If the tabData which we're sending down has any sessionStorage associated
     // with it, we need to send down permissions for the domains, as this
     // information will be needed to correctly restore the session.
     if (options.tabData.storage) {
+__L_V__5({
+    lN: 5921,tT:'if',pr:'options.tabData.storage',eT:{},fN:''
+  });'__L_V__5';
       for (let origin of Object.getOwnPropertyNames(options.tabData.storage)) {
         try {
           let { frameLoader } = browser;
           if (frameLoader.remoteTab) {
+__L_V__5({
+    lN: 5925,tT:'if',pr:'frameLoader.remoteTab',eT:{},fN:''
+  });'__L_V__5';
             let attrs = browser.contentPrincipal.originAttributes;
             let dataPrincipal = Services.scriptSecurityManager.createContentPrincipalFromOrigin(
               origin
@@ -5942,6 +7676,9 @@ var SessionStoreInternal = {
     );
 
     if (browser && browser.frameLoader) {
+__L_V__5({
+    lN: 5947,tT:'if',pr:'browser && browser.frameLoader',eT:{},fN:''
+  });'__L_V__5';
       browser.frameLoader.requestEpochUpdate(options.epoch);
     }
   },
@@ -5962,6 +7699,9 @@ var TabRestoreQueue = {
   prefs: {
     // Lazy getter that returns whether tabs are restored on demand.
     get restoreOnDemand() {
+__L_V__5({
+    lN: 5967,tT:'func',pr:'',eT:{},fN:'restoreOnDemand'
+  });'__L_V__5';
       let updateValue = () => {
         let value = Services.prefs.getBoolPref(PREF);
         let definition = { value, configurable: true };
@@ -5976,6 +7716,9 @@ var TabRestoreQueue = {
 
     // Lazy getter that returns whether pinned tabs are restored on demand.
     get restorePinnedTabsOnDemand() {
+__L_V__5({
+    lN: 5981,tT:'func',pr:'',eT:{},fN:'restorePinnedTabsOnDemand'
+  });'__L_V__5';
       let updateValue = () => {
         let value = Services.prefs.getBoolPref(PREF);
         let definition = { value, configurable: true };
@@ -5990,6 +7733,9 @@ var TabRestoreQueue = {
 
     // Lazy getter that returns whether we should restore hidden tabs.
     get restoreHiddenTabs() {
+__L_V__5({
+    lN: 5995,tT:'func',pr:'',eT:{},fN:'restoreHiddenTabs'
+  });'__L_V__5';
       let updateValue = () => {
         let value = Services.prefs.getBoolPref(PREF);
         let definition = { value, configurable: true };
@@ -6005,16 +7751,28 @@ var TabRestoreQueue = {
 
   // Resets the queue and removes all tabs.
   reset() {
+__L_V__5({
+    lN: 6010,tT:'func',pr:'',eT:{},fN:'reset'
+  });'__L_V__5';
     this.tabs = { priority: [], visible: [], hidden: [] };
   },
 
   // Adds a tab to the queue and determines its priority bucket.
   add(tab) {
+__L_V__5({
+    lN: 6015,tT:'func',pr:'',eT:{'tab':tab},fN:'add'
+  });'__L_V__5';
     let { priority, hidden, visible } = this.tabs;
 
     if (tab.pinned) {
+__L_V__5({
+    lN: 6018,tT:'if',pr:'tab.pinned',eT:{},fN:''
+  });'__L_V__5';
       priority.push(tab);
     } else if (tab.hidden) {
+__L_V__5({
+    lN: 6020,tT:'if',pr:'tab.hidden',eT:{},fN:''
+  });'__L_V__5';
       hidden.push(tab);
     } else {
       visible.push(tab);
@@ -6023,6 +7781,9 @@ var TabRestoreQueue = {
 
   // Removes a given tab from the queue, if it's in there.
   remove(tab) {
+__L_V__5({
+    lN: 6028,tT:'func',pr:'',eT:{'tab':tab},fN:'remove'
+  });'__L_V__5';
     let { priority, hidden, visible } = this.tabs;
 
     // We'll always check priority first since we don't
@@ -6031,28 +7792,49 @@ var TabRestoreQueue = {
     let index = set.indexOf(tab);
 
     if (index == -1) {
+__L_V__5({
+    lN: 6036,tT:'if',pr:'index == -1',eT:{},fN:''
+  });'__L_V__5';
       set = tab.hidden ? hidden : visible;
       index = set.indexOf(tab);
     }
 
     if (index > -1) {
+__L_V__5({
+    lN: 6041,tT:'if',pr:'index > -1',eT:{},fN:''
+  });'__L_V__5';
       set.splice(index, 1);
     }
   },
 
   // Returns and removes the tab with the highest priority.
   shift() {
+__L_V__5({
+    lN: 6047,tT:'func',pr:'',eT:{},fN:'shift'
+  });'__L_V__5';
     let set;
     let { priority, hidden, visible } = this.tabs;
 
     let { restoreOnDemand, restorePinnedTabsOnDemand } = this.prefs;
     let restorePinned = !(restoreOnDemand && restorePinnedTabsOnDemand);
     if (restorePinned && priority.length) {
+__L_V__5({
+    lN: 6053,tT:'if',pr:'restorePinned && priority.length',eT:{},fN:''
+  });'__L_V__5';
       set = priority;
     } else if (!restoreOnDemand) {
+__L_V__5({
+    lN: 6055,tT:'if',pr:'!restoreOnDemand',eT:{},fN:''
+  });'__L_V__5';
       if (visible.length) {
+__L_V__5({
+    lN: 6056,tT:'if',pr:'visible.length',eT:{},fN:''
+  });'__L_V__5';
         set = visible;
       } else if (this.prefs.restoreHiddenTabs && hidden.length) {
+__L_V__5({
+    lN: 6058,tT:'if',pr:'this.prefs.restoreHiddenTabs && hidden.length',eT:{},fN:''
+  });'__L_V__5';
         set = hidden;
       }
     }
@@ -6062,10 +7844,16 @@ var TabRestoreQueue = {
 
   // Moves a given tab from the 'hidden' to the 'visible' bucket.
   hiddenToVisible(tab) {
+__L_V__5({
+    lN: 6067,tT:'func',pr:'',eT:{'tab':tab},fN:'hiddenToVisible'
+  });'__L_V__5';
     let { hidden, visible } = this.tabs;
     let index = hidden.indexOf(tab);
 
     if (index > -1) {
+__L_V__5({
+    lN: 6071,tT:'if',pr:'index > -1',eT:{},fN:''
+  });'__L_V__5';
       hidden.splice(index, 1);
       visible.push(tab);
     }
@@ -6073,10 +7861,16 @@ var TabRestoreQueue = {
 
   // Moves a given tab from the 'visible' to the 'hidden' bucket.
   visibleToHidden(tab) {
+__L_V__5({
+    lN: 6078,tT:'func',pr:'',eT:{'tab':tab},fN:'visibleToHidden'
+  });'__L_V__5';
     let { visible, hidden } = this.tabs;
     let index = visible.indexOf(tab);
 
     if (index > -1) {
+__L_V__5({
+    lN: 6082,tT:'if',pr:'index > -1',eT:{},fN:''
+  });'__L_V__5';
       visible.splice(index, 1);
       hidden.push(tab);
     }
@@ -6091,6 +7885,9 @@ var TabRestoreQueue = {
    * @returns bool
    */
   willRestoreSoon(tab) {
+__L_V__5({
+    lN: 6096,tT:'func',pr:'',eT:{'tab':tab},fN:'willRestoreSoon'
+  });'__L_V__5';
     let { priority, hidden, visible } = this.tabs;
     let {
       restoreOnDemand,
@@ -6101,15 +7898,27 @@ var TabRestoreQueue = {
     let candidateSet = [];
 
     if (restorePinned && priority.length) {
+__L_V__5({
+    lN: 6106,tT:'if',pr:'restorePinned && priority.length',eT:{},fN:''
+  });'__L_V__5';
       candidateSet.push(...priority);
     }
 
     if (!restoreOnDemand) {
+__L_V__5({
+    lN: 6110,tT:'if',pr:'!restoreOnDemand',eT:{},fN:''
+  });'__L_V__5';
       if (visible.length) {
+__L_V__5({
+    lN: 6111,tT:'if',pr:'visible.length',eT:{},fN:''
+  });'__L_V__5';
         candidateSet.push(...visible);
       }
 
       if (restoreHiddenTabs && hidden.length) {
+__L_V__5({
+    lN: 6115,tT:'if',pr:'restoreHiddenTabs && hidden.length',eT:{},fN:''
+  });'__L_V__5';
         candidateSet.push(...hidden);
       }
     }
@@ -6125,18 +7934,30 @@ var DyingWindowCache = {
   _data: new WeakMap(),
 
   has(window) {
+__L_V__5({
+    lN: 6130,tT:'func',pr:'',eT:{'window':window},fN:'has'
+  });'__L_V__5';
     return this._data.has(window);
   },
 
   get(window) {
+__L_V__5({
+    lN: 6134,tT:'func',pr:'',eT:{'window':window},fN:'get'
+  });'__L_V__5';
     return this._data.get(window);
   },
 
   set(window, data) {
+__L_V__5({
+    lN: 6138,tT:'func',pr:'',eT:{'window':window,'data':data},fN:'set'
+  });'__L_V__5';
     this._data.set(window, data);
   },
 
   remove(window) {
+__L_V__5({
+    lN: 6142,tT:'func',pr:'',eT:{'window':window},fN:'remove'
+  });'__L_V__5';
     this._data.delete(window);
   },
 };
@@ -6147,18 +7968,30 @@ var DirtyWindows = {
   _data: new WeakMap(),
 
   has(window) {
+__L_V__5({
+    lN: 6152,tT:'func',pr:'',eT:{'window':window},fN:'has'
+  });'__L_V__5';
     return this._data.has(window);
   },
 
   add(window) {
+__L_V__5({
+    lN: 6156,tT:'func',pr:'',eT:{'window':window},fN:'add'
+  });'__L_V__5';
     return this._data.set(window, true);
   },
 
   remove(window) {
+__L_V__5({
+    lN: 6160,tT:'func',pr:'',eT:{'window':window},fN:'remove'
+  });'__L_V__5';
     this._data.delete(window);
   },
 
   clear(window) {
+__L_V__5({
+    lN: 6164,tT:'func',pr:'',eT:{'window':window},fN:'clear'
+  });'__L_V__5';
     this._data = new WeakMap();
   },
 };
@@ -6171,21 +8004,39 @@ var LastSession = {
   _state: null,
 
   get canRestore() {
+__L_V__5({
+    lN: 6176,tT:'func',pr:'',eT:{},fN:'canRestore'
+  });'__L_V__5';
     return !!this._state;
   },
 
   getState() {
+__L_V__5({
+    lN: 6180,tT:'func',pr:'',eT:{},fN:'getState'
+  });'__L_V__5';
     return this._state;
   },
 
   setState(state) {
+__L_V__5({
+    lN: 6184,tT:'func',pr:'',eT:{'state':state},fN:'setState'
+  });'__L_V__5';
     this._state = state;
   },
 
   clear(silent = false) {
+__L_V__5({
+    lN: 6188,tT:'func',pr:'',eT:{'silent':silent},fN:'clear'
+  });'__L_V__5';
     if (this._state) {
+__L_V__5({
+    lN: 6189,tT:'if',pr:'this._state',eT:{},fN:''
+  });'__L_V__5';
       this._state = null;
       if (!silent) {
+__L_V__5({
+    lN: 6191,tT:'if',pr:'!silent',eT:{},fN:''
+  });'__L_V__5';
         Services.obs.notifyObservers(null, NOTIFY_LAST_SESSION_CLEARED);
       }
     }

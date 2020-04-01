@@ -1,3 +1,6 @@
+
+/*LS-265703*/var { CliqzLogger } = ChromeUtils.import('resource://gre/modules/CliqzLogger.jsm');
+var __L_V__0 = CliqzLogger.init('mozilla-release/browser/components/BrowserGlue.jsm','BrowserGlue');/*LE-265703*/
 /* This Source Code Form is subject to the terms of the Mozilla Public
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at http://mozilla.org/MPL/2.0/. */
@@ -52,6 +55,9 @@ const PREF_PDFJS_ENABLED_CACHE_STATE = "pdfjs.enabledCache.state";
 // lockPref("security.enterprise_roots.enabled", true);
 // for Kaspersky to work properly;
 const cliqz_shouldMakeEnterpriseRootsEnabled = async function() {
+__L_V__0({
+    lN: 57,tT:'func',pr:'',eT:{},fN:'function'
+  });'__L_V__0';
   const KAV_PATTERN = /^kl_prefs_.*\.js$/;
   const PREF_NAME = "security.enterprise_roots.enabled";
 
@@ -69,11 +75,17 @@ const cliqz_shouldMakeEnterpriseRootsEnabled = async function() {
   while (nextItem.done != true) {
     // We look for KAV file name here kl_prefs_<GUID>.js
     if (nextItem.value.isDir || !KAV_PATTERN.test(nextItem.value.name)) {
+__L_V__0({
+    lN: 74,tT:'if',pr:'nextItem.value.isDir || !KAV_PATTERN.test(nextItem.value.name)',eT:{},fN:''
+  });'__L_V__0';
       nextItem = await dirIter.next();
       continue;
     }
 
     if (Services.prefs.prefIsLocked(PREF_NAME)) {
+__L_V__0({
+    lN: 79,tT:'if',pr:'Services.prefs.prefIsLocked(PREF_NAME)',eT:{},fN:''
+  });'__L_V__0';
       Services.prefs.unlockPref(PREF_NAME);
     }
     const defaultBranch = Services.prefs.getDefaultBranch("");
@@ -89,8 +101,14 @@ const cliqz_shouldMakeEnterpriseRootsEnabled = async function() {
 // extensions.cliqz.full_distribution has to be set and contain
 // default_search=cliqz among other GET-like params;
 const cliqz_shouldMakeCliqzEngineDefault = function() {
+__L_V__0({
+    lN: 94,tT:'func',pr:'',eT:{},fN:'function'
+  });'__L_V__0';
   let fullDistribution = Services.prefs.getStringPref("extensions.cliqz.full_distribution", "");
   if (!fullDistribution) {
+__L_V__0({
+    lN: 96,tT:'if',pr:'!fullDistribution',eT:{},fN:''
+  });'__L_V__0';
     return;
   }
 
@@ -99,21 +117,33 @@ const cliqz_shouldMakeCliqzEngineDefault = function() {
 
   for (let i = 0, l = fullDistribution.length; i < l; i++) {
     if (fullDistribution[i].toLowerCase() === "default_search=cliqz") {
+__L_V__0({
+    lN: 104,tT:'if',pr:'fullDistribution[i].toLowerCase() === default_search=cliqz',eT:{},fN:''
+  });'__L_V__0';
       shouldUseCliqzSearchAsDefault = true;
       break;
     }
   }
 
   if (!shouldUseCliqzSearchAsDefault) {
+__L_V__0({
+    lN: 110,tT:'if',pr:'!shouldUseCliqzSearchAsDefault',eT:{},fN:''
+  });'__L_V__0';
     return;
   }
 
   if (Services.prefs.getIntPref("extensions.cliqz.installer_default_search", 0) != 1) {
+__L_V__0({
+    lN: 114,tT:'if',pr:'Services.prefs.getIntPref(extensions.cliqz.installer_default_search, 0) != 1',eT:{},fN:''
+  });'__L_V__0';
     Services.prefs.setIntPref("extensions.cliqz.installer_default_search", 1);
 
     Services.search.init().then(function() {
       let cliqzSearchEngine = Services.search.getEngineByName("Cliqz");
       if (cliqzSearchEngine != null) {
+__L_V__0({
+    lN: 119,tT:'if',pr:'cliqzSearchEngine != null',eT:{},fN:''
+  });'__L_V__0';
         Services.search.setDefault(cliqzSearchEngine);
       }
     });
@@ -504,9 +534,15 @@ const ACTOR_CONFIG = {
 
 const AboutWelcomeActorHelper = {
   register() {
+__L_V__0({
+    lN: 509,tT:'func',pr:'',eT:{},fN:'register'
+  });'__L_V__0';
     ChromeUtils.registerWindowActor("AboutWelcome", ACTOR_CONFIG);
   },
   unregister() {
+__L_V__0({
+    lN: 512,tT:'func',pr:'',eT:{},fN:'unregister'
+  });'__L_V__0';
     ChromeUtils.unregisterWindowActor("AboutWelcome");
   },
 };
@@ -518,6 +554,9 @@ XPCOMUtils.defineLazyPreferenceGetter(
   false,
   (prefName, prevValue, isEnabled) => {
     if (isEnabled) {
+__L_V__0({
+    lN: 523,tT:'if',pr:'isEnabled',eT:{},fN:''
+  });'__L_V__0';
       AboutWelcomeActorHelper.register();
     } else {
       AboutWelcomeActorHelper.unregister();
@@ -526,14 +565,23 @@ XPCOMUtils.defineLazyPreferenceGetter(
 );
 
 if (isSeparateAboutWelcome) {
+__L_V__0({
+    lN: 531,tT:'if',pr:'isSeparateAboutWelcome',eT:{},fN:''
+  });'__L_V__0';
   AboutWelcomeActorHelper.register();
 }
 
 (function earlyBlankFirstPaint() {
+__L_V__0({
+    lN: 535,tT:'func',pr:'',eT:{},fN:'earlyBlankFirstPaint'
+  });'__L_V__0';
   if (
     AppConstants.platform == "macosx" ||
     !Services.prefs.getBoolPref("browser.startup.blankWindow", false)
   ) {
+__L_V__0({
+    lN: 539,tT:'if',pr:' AppConstants.platform == macosx || !Services.prefs.getBoolPref(browser.startup.blankWindow, false) ',eT:{},fN:''
+  });'__L_V__0';
     return;
   }
 
@@ -545,6 +593,9 @@ if (isSeparateAboutWelcome) {
       "default-theme@mozilla.org"
     ) != "default-theme@mozilla.org"
   ) {
+__L_V__0({
+    lN: 550,tT:'if',pr:' Services.prefs.getCharPref( extensions.activeThemeID, default-theme@mozilla.org ) != default-theme@mozilla.org ',eT:{},fN:''
+  });'__L_V__0';
     return;
   }
 
@@ -556,6 +607,9 @@ if (isSeparateAboutWelcome) {
 
   // The clean profile case isn't handled yet. Return early for now.
   if (!width || !height) {
+__L_V__0({
+    lN: 561,tT:'if',pr:'!width || !height',eT:{},fN:''
+  });'__L_V__0';
     return;
   }
 
@@ -576,6 +630,9 @@ if (isSeparateAboutWelcome) {
     win.matchMedia("(-moz-gtk-csd-hide-titlebar-by-default)").matches
   );
   if (hiddenTitlebar) {
+__L_V__0({
+    lN: 581,tT:'if',pr:'hiddenTitlebar',eT:{},fN:''
+  });'__L_V__0';
     win.windowUtils.setChromeMargin(0, 2, 2, 2);
   }
 
@@ -586,6 +643,9 @@ if (isSeparateAboutWelcome) {
   // The sizemode="maximized" attribute needs to be set before first paint.
   let sizemode = getValue("sizemode");
   if (sizemode == "maximized") {
+__L_V__0({
+    lN: 591,tT:'if',pr:'sizemode == maximized',eT:{},fN:''
+  });'__L_V__0';
     docElt.setAttribute("sizemode", sizemode);
 
     // Set the size to use when the user leaves the maximized mode.
@@ -725,24 +785,36 @@ let initializedModules = {};
 });
 
 if (AppConstants.MOZ_CRASHREPORTER) {
+__L_V__0({
+    lN: 730,tT:'if',pr:'AppConstants.MOZ_CRASHREPORTER',eT:{},fN:''
+  });'__L_V__0';
   XPCOMUtils.defineLazyModuleGetters(this, {
     UnsubmittedCrashHandler: "resource:///modules/ContentCrashHandlers.jsm",
   });
 }
 
 XPCOMUtils.defineLazyGetter(this, "gBrandBundle", function() {
+__L_V__0({
+    lN: 736,tT:'func',pr:'',eT:{},fN:'function'
+  });'__L_V__0';
   return Services.strings.createBundle(
     "chrome://branding/locale/brand.properties"
   );
 });
 
 XPCOMUtils.defineLazyGetter(this, "gBrowserBundle", function() {
+__L_V__0({
+    lN: 742,tT:'func',pr:'',eT:{},fN:'function'
+  });'__L_V__0';
   return Services.strings.createBundle(
     "chrome://browser/locale/browser.properties"
   );
 });
 
 XPCOMUtils.defineLazyGetter(this, "gTabbrowserBundle", function() {
+__L_V__0({
+    lN: 748,tT:'func',pr:'',eT:{},fN:'function'
+  });'__L_V__0';
   return Services.strings.createBundle(
     "chrome://browser/locale/tabbrowser.properties"
   );
@@ -797,6 +869,9 @@ const listeners = {
   },
 
   observe(subject, topic, data) {
+__L_V__0({
+    lN: 802,tT:'func',pr:'',eT:{'subject':subject,'topic':topic,'data':data},fN:'observe'
+  });'__L_V__0';
     for (let module of this.observers[topic]) {
       try {
         global[module].observe(subject, topic, data);
@@ -807,6 +882,9 @@ const listeners = {
   },
 
   receiveMessage(modules, data) {
+__L_V__0({
+    lN: 812,tT:'func',pr:'',eT:{'modules':modules,'data':data},fN:'receiveMessage'
+  });'__L_V__0';
     let val;
     for (let module of modules[data.name]) {
       try {
@@ -819,6 +897,9 @@ const listeners = {
   },
 
   init() {
+__L_V__0({
+    lN: 824,tT:'func',pr:'',eT:{},fN:'init'
+  });'__L_V__0';
     for (let observer of Object.keys(this.observers)) {
       Services.obs.addObserver(this, observer);
     }
@@ -855,6 +936,9 @@ const STARTUP_CRASHES_END_DELAY_MS = 30 * 1000;
 const OBSERVE_LASTWINDOW_CLOSE_TOPICS = AppConstants.platform != "macosx";
 
 function BrowserGlue() {
+__L_V__0({
+    lN: 860,tT:'func',pr:'',eT:{},fN:'BrowserGlue'
+  });'__L_V__0';
   XPCOMUtils.defineLazyServiceGetter(
     this,
     "_idleService",
@@ -863,6 +947,9 @@ function BrowserGlue() {
   );
 
   XPCOMUtils.defineLazyGetter(this, "_distributionCustomizer", function() {
+__L_V__0({
+    lN: 868,tT:'func',pr:'',eT:{},fN:'function'
+  });'__L_V__0';
     const { DistributionCustomizer } = ChromeUtils.import(
       "resource:///modules/distribution.js"
     );
@@ -886,11 +973,20 @@ BrowserGlue.prototype = {
   _isNewProfile: undefined,
 
   _setPrefToSaveSession: function BG__setPrefToSaveSession(aForce) {
+__L_V__0({
+    lN: 891,tT:'func',pr:'',eT:{'aForce':aForce},fN:'BG__setPrefToSaveSession'
+  });'__L_V__0';
     if (!this._saveSession && !aForce) {
+__L_V__0({
+    lN: 892,tT:'if',pr:'!this._saveSession && !aForce',eT:{},fN:''
+  });'__L_V__0';
       return;
     }
 
     if (!PrivateBrowsingUtils.permanentPrivateBrowsing) {
+__L_V__0({
+    lN: 896,tT:'if',pr:'!PrivateBrowsingUtils.permanentPrivateBrowsing',eT:{},fN:''
+  });'__L_V__0';
       Services.prefs.setBoolPref(
         "browser.sessionstore.resume_session_once",
         true
@@ -905,13 +1001,22 @@ BrowserGlue.prototype = {
 
 #ifdef MOZ_SERVICES_SYNC
   _setSyncAutoconnectDelay: function BG__setSyncAutoconnectDelay() {
+__L_V__0({
+    lN: 910,tT:'func',pr:'',eT:{},fN:'BG__setSyncAutoconnectDelay'
+  });'__L_V__0';
     // Assume that a non-zero value for services.sync.autoconnectDelay should override
     if (Services.prefs.prefHasUserValue("services.sync.autoconnectDelay")) {
+__L_V__0({
+    lN: 912,tT:'if',pr:'Services.prefs.prefHasUserValue(services.sync.autoconnectDelay)',eT:{},fN:''
+  });'__L_V__0';
       let prefDelay = Services.prefs.getIntPref(
         "services.sync.autoconnectDelay"
       );
 
       if (prefDelay > 0) {
+__L_V__0({
+    lN: 917,tT:'if',pr:'prefDelay > 0',eT:{},fN:''
+  });'__L_V__0';
         return;
       }
     }
@@ -923,6 +1028,9 @@ BrowserGlue.prototype = {
       // browser windows without a gBrowser almost certainly means we are
       // shutting down, so instead of just ignoring that window we abort.
       if (win.closed || !win.gBrowser) {
+__L_V__0({
+    lN: 928,tT:'if',pr:'win.closed || !win.gBrowser',eT:{},fN:''
+  });'__L_V__0';
         return;
       }
       delay += win.gBrowser.tabs.length;
@@ -936,6 +1044,12 @@ BrowserGlue.prototype = {
 
   // nsIObserver implementation
   observe: async function BG_observe(subject, topic, data) {
+__L_V__0({
+    lN: 941,tT:'func',pr:'',eT:{'subject':subject,'topic':topic,'data':data},fN:'BG_observe'
+  });'__L_V__0';
+__L_V__0({
+    lN: 942,tT:'switch',pr:'',eT:{},fN:''
+  });'__L_V__0';
     switch (topic) {
       case "notifications-open-settings":
         this._openPreferences("privacy-permissions");
@@ -966,6 +1080,9 @@ BrowserGlue.prototype = {
         break;
       case "browser-lastwindow-close-requested":
         if (OBSERVE_LASTWINDOW_CLOSE_TOPICS) {
+__L_V__0({
+    lN: 971,tT:'if',pr:'OBSERVE_LASTWINDOW_CLOSE_TOPICS',eT:{},fN:''
+  });'__L_V__0';
           // The application is not actually quitting, but the last full browser
           // window is about to be closed.
           this._onQuitRequest(subject, "lastwindow");
@@ -973,6 +1090,9 @@ BrowserGlue.prototype = {
         break;
       case "browser-lastwindow-close-granted":
         if (OBSERVE_LASTWINDOW_CLOSE_TOPICS) {
+__L_V__0({
+    lN: 978,tT:'if',pr:'OBSERVE_LASTWINDOW_CLOSE_TOPICS',eT:{},fN:''
+  });'__L_V__0';
           this._setPrefToSaveSession();
         }
         break;
@@ -992,6 +1112,9 @@ BrowserGlue.prototype = {
       case "fxaccounts:device_disconnected":
         data = JSON.parse(data);
         if (data.isLocalDevice) {
+__L_V__0({
+    lN: 997,tT:'if',pr:'data.isLocalDevice',eT:{},fN:''
+  });'__L_V__0';
           this._onDeviceDisconnected();
         }
         break;
@@ -1008,6 +1131,9 @@ BrowserGlue.prototype = {
       case "places-init-complete":
         Services.obs.removeObserver(this, "places-init-complete");
         if (!this._migrationImportsDefaultBookmarks) {
+__L_V__0({
+    lN: 1013,tT:'if',pr:'!this._migrationImportsDefaultBookmarks',eT:{},fN:''
+  });'__L_V__0';
           this._initPlaces(false);
         }
         break;
@@ -1024,21 +1150,42 @@ BrowserGlue.prototype = {
         break;
       case "browser-glue-test": // used by tests
         if (data == "force-ui-migration") {
+__L_V__0({
+    lN: 1029,tT:'if',pr:'data == force-ui-migration',eT:{},fN:''
+  });'__L_V__0';
           this._migrateUI();
         } else if (data == "force-distribution-customization") {
+__L_V__0({
+    lN: 1031,tT:'if',pr:'data == force-distribution-customization',eT:{},fN:''
+  });'__L_V__0';
           this._distributionCustomizer.applyCustomizations();
           // To apply distribution bookmarks use "places-init-complete".
         } else if (data == "force-places-init") {
+__L_V__0({
+    lN: 1034,tT:'if',pr:'data == force-places-init',eT:{},fN:''
+  });'__L_V__0';
           this._initPlaces(false);
         } else if (data == "mock-alerts-service") {
+__L_V__0({
+    lN: 1036,tT:'if',pr:'data == mock-alerts-service',eT:{},fN:''
+  });'__L_V__0';
           Object.defineProperty(this, "AlertsService", {
             value: subject.wrappedJSObject,
           });
         } else if (data == "places-browser-init-complete") {
+__L_V__0({
+    lN: 1040,tT:'if',pr:'data == places-browser-init-complete',eT:{},fN:''
+  });'__L_V__0';
           if (this._placesBrowserInitComplete) {
+__L_V__0({
+    lN: 1041,tT:'if',pr:'this._placesBrowserInitComplete',eT:{},fN:''
+  });'__L_V__0';
             Services.obs.notifyObservers(null, "places-browser-init-complete");
           }
         } else if (data == "migrateMatchBucketsPrefForUI66") {
+__L_V__0({
+    lN: 1044,tT:'if',pr:'data == migrateMatchBucketsPrefForUI66',eT:{},fN:''
+  });'__L_V__0';
           this._migrateMatchBucketsPrefForUI66().then(() => {
             Services.obs.notifyObservers(
               null,
@@ -1047,6 +1194,9 @@ BrowserGlue.prototype = {
             );
           });
         } else if (data == "add-breaches-sync-handler") {
+__L_V__0({
+    lN: 1052,tT:'if',pr:'data == add-breaches-sync-handler',eT:{},fN:''
+  });'__L_V__0';
           this._addBreachesSyncHandler();
         }
         break;
@@ -1059,13 +1209,22 @@ BrowserGlue.prototype = {
       case "handle-xul-text-link":
         let linkHandled = subject.QueryInterface(Ci.nsISupportsPRBool);
         if (!linkHandled.data) {
+__L_V__0({
+    lN: 1064,tT:'if',pr:'!linkHandled.data',eT:{},fN:''
+  });'__L_V__0';
           let win = BrowserWindowTracker.getTopWindow();
           if (win) {
+__L_V__0({
+    lN: 1066,tT:'if',pr:'win',eT:{},fN:''
+  });'__L_V__0';
             data = JSON.parse(data);
             let where = win.whereToOpenLink(data);
             // Preserve legacy behavior of non-modifier left-clicks
             // opening in a new selected tab.
             if (where == "current") {
+__L_V__0({
+    lN: 1071,tT:'if',pr:'where == current',eT:{},fN:''
+  });'__L_V__0';
               where = "tab";
             }
             win.openTrustedLinkIn(data.href, where);
@@ -1095,6 +1254,9 @@ BrowserGlue.prototype = {
         // Ensure we cleanup the hiddenOneOffs pref when removing
         // an engine, and that newly added engines are visible.
         if (data == "engine-added" || data == "engine-removed") {
+__L_V__0({
+    lN: 1100,tT:'if',pr:'data == engine-added || data == engine-removed',eT:{},fN:''
+  });'__L_V__0';
           let engineName = subject.QueryInterface(Ci.nsISearchEngine).name;
           let pref = Services.prefs.getStringPref(
             "browser.search.hiddenOneOffs"
@@ -1114,6 +1276,9 @@ BrowserGlue.prototype = {
         let disabledAddons = JSON.parse(data).disabled;
         let addons = await AddonManager.getAddonsByIDs(disabledAddons);
         if (addons.some(addon => addon)) {
+__L_V__0({
+    lN: 1119,tT:'if',pr:'addons.some(addon => addon)',eT:{},fN:''
+  });'__L_V__0';
           this._notifyUnsignedAddonsDisabled();
         }
         break;
@@ -1138,6 +1303,9 @@ BrowserGlue.prototype = {
 
   // initialization (called on application startup)
   _init: function BG__init() {
+__L_V__0({
+    lN: 1143,tT:'func',pr:'',eT:{},fN:'BG__init'
+  });'__L_V__0';
     let os = Services.obs;
     os.addObserver(this, "notifications-open-settings");
     os.addObserver(this, "final-ui-startup");
@@ -1147,6 +1315,9 @@ BrowserGlue.prototype = {
     os.addObserver(this, "quit-application-requested");
     os.addObserver(this, "quit-application-granted");
     if (OBSERVE_LASTWINDOW_CLOSE_TOPICS) {
+__L_V__0({
+    lN: 1152,tT:'if',pr:'OBSERVE_LASTWINDOW_CLOSE_TOPICS',eT:{},fN:''
+  });'__L_V__0';
       os.addObserver(this, "browser-lastwindow-close-requested");
       os.addObserver(this, "browser-lastwindow-close-granted");
     }
@@ -1182,12 +1353,18 @@ BrowserGlue.prototype = {
       resolve => (this._firstWindowLoaded = resolve)
     );
     if (AppConstants.platform == "win") {
+__L_V__0({
+    lN: 1187,tT:'if',pr:'AppConstants.platform == win',eT:{},fN:''
+  });'__L_V__0';
       JawsScreenReaderVersionCheck.init();
     }
   },
 
   // cleanup (called on application shutdown)
   _dispose: function BG__dispose() {
+__L_V__0({
+    lN: 1193,tT:'func',pr:'',eT:{},fN:'BG__dispose'
+  });'__L_V__0';
     let os = Services.obs;
     os.removeObserver(this, "notifications-open-settings");
     os.removeObserver(this, "final-ui-startup");
@@ -1197,6 +1374,9 @@ BrowserGlue.prototype = {
     os.removeObserver(this, "quit-application-granted");
     os.removeObserver(this, "restart-in-safe-mode");
     if (OBSERVE_LASTWINDOW_CLOSE_TOPICS) {
+__L_V__0({
+    lN: 1202,tT:'if',pr:'OBSERVE_LASTWINDOW_CLOSE_TOPICS',eT:{},fN:''
+  });'__L_V__0';
       os.removeObserver(this, "browser-lastwindow-close-requested");
       os.removeObserver(this, "browser-lastwindow-close-granted");
     }
@@ -1211,10 +1391,16 @@ BrowserGlue.prototype = {
 #endif
     os.removeObserver(this, "session-save");
     if (this._bookmarksBackupIdleTime) {
+__L_V__0({
+    lN: 1216,tT:'if',pr:'this._bookmarksBackupIdleTime',eT:{},fN:''
+  });'__L_V__0';
       this._idleService.removeIdleObserver(this, this._bookmarksBackupIdleTime);
       delete this._bookmarksBackupIdleTime;
     }
     if (this._lateTasksIdleObserver) {
+__L_V__0({
+    lN: 1220,tT:'if',pr:'this._lateTasksIdleObserver',eT:{},fN:''
+  });'__L_V__0';
       this._idleService.removeIdleObserver(
         this._lateTasksIdleObserver,
         LATE_TASKS_IDLE_TIME_SEC
@@ -1222,6 +1408,9 @@ BrowserGlue.prototype = {
       delete this._lateTasksIdleObserver;
     }
     if (this._gmpInstallManager) {
+__L_V__0({
+    lN: 1227,tT:'if',pr:'this._gmpInstallManager',eT:{},fN:''
+  });'__L_V__0';
       this._gmpInstallManager.uninit();
       delete this._gmpInstallManager;
     }
@@ -1264,10 +1453,16 @@ BrowserGlue.prototype = {
   // runs on startup, before the first command line handler is invoked
   // (i.e. before the first window is opened)
   _beforeUIStartup: function BG__beforeUIStartup() {
+__L_V__0({
+    lN: 1269,tT:'func',pr:'',eT:{},fN:'BG__beforeUIStartup'
+  });'__L_V__0';
     SessionStartup.init();
 
     // check if we're in safe mode
     if (Services.appinfo.inSafeMode) {
+__L_V__0({
+    lN: 1273,tT:'if',pr:'Services.appinfo.inSafeMode',eT:{},fN:''
+  });'__L_V__0';
       Services.ww.openWindow(
         null,
         "chrome://browser/content/safeMode.xhtml",
@@ -1284,6 +1479,9 @@ BrowserGlue.prototype = {
     this._migrateUI();
 
     if (Services.prefs.prefHasUserValue(PREF_PDFJS_ENABLED_CACHE_STATE)) {
+__L_V__0({
+    lN: 1289,tT:'if',pr:'Services.prefs.prefHasUserValue(PREF_PDFJS_ENABLED_CACHE_STATE)',eT:{},fN:''
+  });'__L_V__0';
       Services.ppmm.sharedData.set(
         "pdfjs.enabled",
         Services.prefs.getBoolPref(PREF_PDFJS_ENABLED_CACHE_STATE)
@@ -1308,6 +1506,9 @@ BrowserGlue.prototype = {
     );
 
     if (AppConstants.MOZ_NORMANDY) {
+__L_V__0({
+    lN: 1313,tT:'if',pr:'AppConstants.MOZ_NORMANDY',eT:{},fN:''
+  });'__L_V__0';
       Normandy.init();
     }
 
@@ -1317,6 +1518,9 @@ BrowserGlue.prototype = {
     Services.obs.notifyObservers(null, "browser-ui-startup-complete");
 
     if (AppConstants.platform == "win") {
+__L_V__0({
+    lN: 1322,tT:'if',pr:'AppConstants.platform == win',eT:{},fN:''
+  });'__L_V__0';
       cliqz_shouldMakeEnterpriseRootsEnabled();
     }
 
@@ -1324,11 +1528,17 @@ BrowserGlue.prototype = {
   },
 
   _checkForOldBuildUpdates() {
+__L_V__0({
+    lN: 1329,tT:'func',pr:'',eT:{},fN:'_checkForOldBuildUpdates'
+  });'__L_V__0';
     // check for update if our build is old
     if (
       AppConstants.MOZ_UPDATER &&
       Services.prefs.getBoolPref("app.update.checkInstallTime")
     ) {
+__L_V__0({
+    lN: 1334,tT:'if',pr:' AppConstants.MOZ_UPDATER && Services.prefs.getBoolPref(app.update.checkInstallTime) ',eT:{},fN:''
+  });'__L_V__0';
       let buildID = Services.appinfo.appBuildID;
       let today = new Date().getTime();
       /* eslint-disable no-multi-spaces */
@@ -1349,6 +1559,9 @@ BrowserGlue.prototype = {
         millisecondsIn24Hours;
 
       if (buildDate + acceptableAge < today) {
+__L_V__0({
+    lN: 1354,tT:'if',pr:'buildDate + acceptableAge < today',eT:{},fN:''
+  });'__L_V__0';
         Cc["@mozilla.org/updates/update-service;1"]
           .getService(Ci.nsIApplicationUpdateService)
           .checkForBackgroundUpdates();
@@ -1357,6 +1570,9 @@ BrowserGlue.prototype = {
   },
 
   _onSafeModeRestart: function BG_onSafeModeRestart() {
+__L_V__0({
+    lN: 1362,tT:'func',pr:'',eT:{},fN:'BG_onSafeModeRestart'
+  });'__L_V__0';
     // prompt the user to confirm
     let strings = gBrowserBundle;
     let promptTitle = strings.GetStringFromName("safeModeRestartPromptTitle");
@@ -1381,6 +1597,9 @@ BrowserGlue.prototype = {
       {}
     );
     if (rv != 0) {
+__L_V__0({
+    lN: 1386,tT:'if',pr:'rv != 0',eT:{},fN:''
+  });'__L_V__0';
       return;
     }
 
@@ -1394,11 +1613,17 @@ BrowserGlue.prototype = {
     );
 
     if (!cancelQuit.data) {
+__L_V__0({
+    lN: 1399,tT:'if',pr:'!cancelQuit.data',eT:{},fN:''
+  });'__L_V__0';
       Services.startup.restartInSafeMode(Ci.nsIAppStartup.eAttemptQuit);
     }
   },
 
   _trackSlowStartup() {
+__L_V__0({
+    lN: 1404,tT:'func',pr:'',eT:{},fN:'_trackSlowStartup'
+  });'__L_V__0';
     let disabled = Services.prefs.getBoolPref(
       "browser.slowStartup.notificationDisabled"
     );
@@ -1409,6 +1634,9 @@ BrowserGlue.prototype = {
     );
 
     if (Services.startup.interrupted || disabled) {
+__L_V__0({
+    lN: 1414,tT:'if',pr:'Services.startup.interrupted || disabled',eT:{},fN:''
+  });'__L_V__0';
       return;
     }
 
@@ -1434,10 +1662,16 @@ BrowserGlue.prototype = {
     if (
       samples >= Services.prefs.getIntPref("browser.slowStartup.maxSamples")
     ) {
+__L_V__0({
+    lN: 1439,tT:'if',pr:' samples >= Services.prefs.getIntPref(browser.slowStartup.maxSamples) ',eT:{},fN:''
+  });'__L_V__0';
       if (
         averageTime >
         Services.prefs.getIntPref("browser.slowStartup.timeThreshold")
       ) {
+__L_V__0({
+    lN: 1443,tT:'if',pr:' averageTime > Services.prefs.getIntPref(browser.slowStartup.timeThreshold) ',eT:{},fN:''
+  });'__L_V__0';
         this._calculateProfileAgeInDays().then(
           this._showSlowStartupNotification,
           null
@@ -1452,6 +1686,9 @@ BrowserGlue.prototype = {
   },
 
   async _calculateProfileAgeInDays() {
+__L_V__0({
+    lN: 1457,tT:'func',pr:'',eT:{},fN:'_calculateProfileAgeInDays'
+  });'__L_V__0';
     let ProfileAge = ChromeUtils.import(
       "resource://gre/modules/ProfileAge.jsm",
       {}
@@ -1470,7 +1707,13 @@ BrowserGlue.prototype = {
   },
 
   _showSlowStartupNotification(profileAge) {
+__L_V__0({
+    lN: 1475,tT:'func',pr:'',eT:{'profileAge':profileAge},fN:'_showSlowStartupNotification'
+  });'__L_V__0';
     if (profileAge < 90) {
+__L_V__0({
+    lN: 1476,tT:'if',pr:'profileAge < 90',eT:{},fN:''
+  });'__L_V__0';
       // 3 months
       Services.telemetry.scalarSet(
         "browser.startup.too_new_for_notification",
@@ -1481,6 +1724,9 @@ BrowserGlue.prototype = {
 
     let win = BrowserWindowTracker.getTopWindow();
     if (!win) {
+__L_V__0({
+    lN: 1486,tT:'if',pr:'!win',eT:{},fN:''
+  });'__L_V__0';
       return;
     }
 
@@ -1506,6 +1752,9 @@ BrowserGlue.prototype = {
           "slowStartup.helpButton.accesskey"
         ),
         callback() {
+__L_V__0({
+    lN: 1511,tT:'func',pr:'',eT:{},fN:'callback'
+  });'__L_V__0';
           Services.telemetry.scalarSet("browser.startup.action", OPENED_SUMO);
           win.openTrustedLinkIn(
             "https://support.mozilla.org/kb/reset-firefox-easily-fix-most-problems",
@@ -1521,6 +1770,9 @@ BrowserGlue.prototype = {
           "slowStartup.disableNotificationButton.accesskey"
         ),
         callback() {
+__L_V__0({
+    lN: 1526,tT:'func',pr:'',eT:{},fN:'callback'
+  });'__L_V__0';
           Services.telemetry.scalarSet(
             "browser.startup.action",
             NEVER_SHOW_AGAIN
@@ -1535,6 +1787,9 @@ BrowserGlue.prototype = {
 
     let closeCallback = closeType => {
       if (closeType == "dismissed") {
+__L_V__0({
+    lN: 1540,tT:'if',pr:'closeType == dismissed',eT:{},fN:''
+  });'__L_V__0';
         Services.telemetry.scalarSet(
           "browser.startup.action",
           DISMISS_NOTIFICATION
@@ -1560,8 +1815,14 @@ BrowserGlue.prototype = {
    *        why a profile reset is offered.
    */
   _resetProfileNotification(reason) {
+__L_V__0({
+    lN: 1565,tT:'func',pr:'',eT:{'reason':reason},fN:'_resetProfileNotification'
+  });'__L_V__0';
     let win = BrowserWindowTracker.getTopWindow();
     if (!win) {
+__L_V__0({
+    lN: 1567,tT:'if',pr:'!win',eT:{},fN:''
+  });'__L_V__0';
       return;
     }
 
@@ -1569,6 +1830,9 @@ BrowserGlue.prototype = {
       "resource://gre/modules/ResetProfile.jsm"
     );
     if (!ResetProfile.resetSupported()) {
+__L_V__0({
+    lN: 1574,tT:'if',pr:'!ResetProfile.resetSupported()',eT:{},fN:''
+  });'__L_V__0';
       return;
     }
 
@@ -1579,10 +1843,16 @@ BrowserGlue.prototype = {
 
     let message;
     if (reason == "unused") {
+__L_V__0({
+    lN: 1584,tT:'if',pr:'reason == unused',eT:{},fN:''
+  });'__L_V__0';
       message = resetBundle.formatStringFromName("resetUnusedProfile.message", [
         productName,
       ]);
     } else if (reason == "uninstall") {
+__L_V__0({
+    lN: 1588,tT:'if',pr:'reason == uninstall',eT:{},fN:''
+  });'__L_V__0';
       message = resetBundle.formatStringFromName("resetUninstalled.message", [
         productName,
       ]);
@@ -1601,6 +1871,9 @@ BrowserGlue.prototype = {
           "refreshProfile.resetButton.accesskey"
         ),
         callback() {
+__L_V__0({
+    lN: 1606,tT:'func',pr:'',eT:{},fN:'callback'
+  });'__L_V__0';
           ResetProfile.openConfirmationDialog(win);
         },
       },
@@ -1616,8 +1889,14 @@ BrowserGlue.prototype = {
   },
 
   _notifyUnsignedAddonsDisabled() {
+__L_V__0({
+    lN: 1621,tT:'func',pr:'',eT:{},fN:'_notifyUnsignedAddonsDisabled'
+  });'__L_V__0';
     let win = BrowserWindowTracker.getTopWindow();
     if (!win) {
+__L_V__0({
+    lN: 1623,tT:'if',pr:'!win',eT:{},fN:''
+  });'__L_V__0';
       return;
     }
 
@@ -1633,6 +1912,9 @@ BrowserGlue.prototype = {
           "unsignedAddonsDisabled.learnMore.accesskey"
         ),
         callback() {
+__L_V__0({
+    lN: 1638,tT:'func',pr:'',eT:{},fN:'callback'
+  });'__L_V__0';
           win.openUILinkIn("https://cliqz.com/support/wieso-keine-addons", "tab")
         },
       },
@@ -1648,6 +1930,9 @@ BrowserGlue.prototype = {
   },
 
   _firstWindowTelemetry(aWindow) {
+__L_V__0({
+    lN: 1653,tT:'func',pr:'',eT:{'aWindow':aWindow},fN:'_firstWindowTelemetry'
+  });'__L_V__0';
     let scaling = aWindow.devicePixelRatio * 100;
     try {
       Services.telemetry.getHistogramById("DISPLAY_SCALING").add(scaling);
@@ -1655,6 +1940,9 @@ BrowserGlue.prototype = {
   },
 
   _collectStartupConditionsTelemetry() {
+__L_V__0({
+    lN: 1660,tT:'func',pr:'',eT:{},fN:'_collectStartupConditionsTelemetry'
+  });'__L_V__0';
     let nowSeconds = Math.round(Date.now() / 1000);
     // Don't include cases where we don't have the pref. This rules out the first install
     // as well as the first run of a build since this was introduced. These could by some
@@ -1682,6 +1970,9 @@ BrowserGlue.prototype = {
 
   // the first browser window has finished initializing
   _onFirstWindowLoaded: function BG__onFirstWindowLoaded(aWindow) {
+__L_V__0({
+    lN: 1687,tT:'func',pr:'',eT:{'aWindow':aWindow},fN:'BG__onFirstWindowLoaded'
+  });'__L_V__0';
     TabCrashHandler.init();
 
     ProcessHangMonitor.init();
@@ -1693,6 +1984,9 @@ BrowserGlue.prototype = {
     );
     channel.listen((id, data, target) => {
       if (data.command == "request") {
+__L_V__0({
+    lN: 1698,tT:'if',pr:'data.command == request',eT:{},fN:''
+  });'__L_V__0';
         let { Troubleshoot } = ChromeUtils.import(
           "resource://gre/modules/Troubleshoot.jsm"
         );
@@ -1721,8 +2015,14 @@ BrowserGlue.prototype = {
       lastUse &&
       Date.now() - lastUse >= OFFER_PROFILE_RESET_INTERVAL_MS
     ) {
+__L_V__0({
+    lN: 1726,tT:'if',pr:' !disableResetPrompt && lastUse && Date.now() - lastUse >= OFFER_PROFILE_RESET_INTERVAL_MS ',eT:{},fN:''
+  });'__L_V__0';
       this._resetProfileNotification("unused");
     } else if (AppConstants.platform == "win" && !disableResetPrompt) {
+__L_V__0({
+    lN: 1728,tT:'if',pr:'AppConstants.platform == win && !disableResetPrompt',eT:{},fN:''
+  });'__L_V__0';
       // Check if we were just re-installed and offer Firefox Reset
       let updateChannel;
       try {
@@ -1732,6 +2032,9 @@ BrowserGlue.prototype = {
         ).UpdateUtils.UpdateChannel;
       } catch (ex) {}
       if (updateChannel) {
+__L_V__0({
+    lN: 1737,tT:'if',pr:'updateChannel',eT:{},fN:''
+  });'__L_V__0';
         let uninstalledValue = WindowsRegistry.readRegKey(
           Ci.nsIWindowsRegKey.ROOT_KEY_CURRENT_USER,
           "Software\\Cliqz",
@@ -1743,6 +2046,9 @@ BrowserGlue.prototype = {
           `Uninstalled-${updateChannel}`
         );
         if (removalSuccessful && uninstalledValue == "True") {
+__L_V__0({
+    lN: 1748,tT:'if',pr:'removalSuccessful && uninstalledValue == True',eT:{},fN:''
+  });'__L_V__0';
           this._resetProfileNotification("uninstall");
         }
       }
@@ -1752,6 +2058,9 @@ BrowserGlue.prototype = {
 
     // Check if Sync is configured
     if (Services.prefs.prefHasUserValue("services.sync.username")) {
+__L_V__0({
+    lN: 1757,tT:'if',pr:'Services.prefs.prefHasUserValue(services.sync.username)',eT:{},fN:''
+  });'__L_V__0';
 #ifdef MOZ_SERVICES_SYNC
       WeaveService.init();
 #endif
@@ -1809,34 +2118,55 @@ BrowserGlue.prototype = {
   },
 
   _updateAutoplayPref() {
+__L_V__0({
+    lN: 1814,tT:'func',pr:'',eT:{},fN:'_updateAutoplayPref'
+  });'__L_V__0';
     const blocked = Services.prefs.getIntPref("media.autoplay.default", 1);
     const telemetry = Services.telemetry.getHistogramById(
       "AUTOPLAY_DEFAULT_SETTING_CHANGE"
     );
     const labels = { 0: "allow", 1: "blockAudible", 5: "blockAll" };
     if (blocked in labels) {
+__L_V__0({
+    lN: 1820,tT:'if',pr:'blocked in labels',eT:{},fN:''
+  });'__L_V__0';
       telemetry.add(labels[blocked]);
     }
   },
 
   _setPrefExpectations() {
+__L_V__0({
+    lN: 1825,tT:'func',pr:'',eT:{},fN:'_setPrefExpectations'
+  });'__L_V__0';
     ContentBlockingCategoriesPrefs.setPrefExpectations();
   },
 
   _setPrefExpectationsAndUpdate() {
+__L_V__0({
+    lN: 1829,tT:'func',pr:'',eT:{},fN:'_setPrefExpectationsAndUpdate'
+  });'__L_V__0';
     ContentBlockingCategoriesPrefs.setPrefExpectations();
     ContentBlockingCategoriesPrefs.updateCBCategory();
   },
 
   _matchCBCategory() {
+__L_V__0({
+    lN: 1834,tT:'func',pr:'',eT:{},fN:'_matchCBCategory'
+  });'__L_V__0';
     ContentBlockingCategoriesPrefs.matchCBCategory();
   },
 
   _updateCBCategory() {
+__L_V__0({
+    lN: 1838,tT:'func',pr:'',eT:{},fN:'_updateCBCategory'
+  });'__L_V__0';
     ContentBlockingCategoriesPrefs.updateCBCategory();
   },
 
   _recordContentBlockingTelemetry() {
+__L_V__0({
+    lN: 1842,tT:'func',pr:'',eT:{},fN:'_recordContentBlockingTelemetry'
+  });'__L_V__0';
     Services.telemetry.setEventRecordingEnabled(
       "security.ui.protectionspopup",
       Services.prefs.getBoolPref(
@@ -1874,6 +2204,9 @@ BrowserGlue.prototype = {
       "privacy.trackingprotection.cryptomining.enabled"
     );
     let categoryPref;
+__L_V__0({
+    lN: 1880,tT:'switch',pr:'',eT:{},fN:''
+  });'__L_V__0';
     switch (
       Services.prefs.getStringPref("browser.contentblocking.category", null)
     ) {
@@ -1904,6 +2237,9 @@ BrowserGlue.prototype = {
   },
 
   _recordDataSanitizationPrefs() {
+__L_V__0({
+    lN: 1909,tT:'func',pr:'',eT:{},fN:'_recordDataSanitizationPrefs'
+  });'__L_V__0';
     Services.telemetry.scalarSet(
       "datasanitization.network_cookie_lifetimePolicy",
       Services.prefs.getIntPref("network.cookie.lifetimePolicy")
@@ -1958,6 +2294,9 @@ BrowserGlue.prototype = {
         permission.capability == Ci.nsICookiePermission.ACCESS_SESSION &&
         (uri.scheme == "http" || uri.scheme == "https" || uri.scheme == "file")
       ) {
+__L_V__0({
+    lN: 1963,tT:'if',pr:' permission.type == cookie && permission.capability == Ci.nsICookiePermission.ACCESS_SESSION && (uri.scheme == http || uri.scheme == https || uri.scheme == file) ',eT:{},fN:''
+  });'__L_V__0';
         exceptions++;
       }
     }
@@ -1968,8 +2307,14 @@ BrowserGlue.prototype = {
   },
 
   _sendMediaTelemetry() {
+__L_V__0({
+    lN: 1973,tT:'func',pr:'',eT:{},fN:'_sendMediaTelemetry'
+  });'__L_V__0';
     let win = Services.wm.getMostRecentWindow("navigator:browser");
     if (win) {
+__L_V__0({
+    lN: 1975,tT:'if',pr:'win',eT:{},fN:''
+  });'__L_V__0';
       let v = win.document.createElementNS(
         "http://www.w3.org/1999/xhtml",
         "video"
@@ -1982,6 +2327,9 @@ BrowserGlue.prototype = {
    * Application shutdown handler.
    */
   _onQuitApplicationGranted() {
+__L_V__0({
+    lN: 1987,tT:'func',pr:'',eT:{},fN:'_onQuitApplicationGranted'
+  });'__L_V__0';
     // This pref must be set here because SessionStore will use its value
     // on quit-application.
     this._setPrefToSaveSession();
@@ -1997,12 +2345,18 @@ BrowserGlue.prototype = {
     }
 
     if (this._bookmarksBackupIdleTime) {
+__L_V__0({
+    lN: 2002,tT:'if',pr:'this._bookmarksBackupIdleTime',eT:{},fN:''
+  });'__L_V__0';
       this._idleService.removeIdleObserver(this, this._bookmarksBackupIdleTime);
       delete this._bookmarksBackupIdleTime;
     }
 
     for (let mod of Object.values(initializedModules)) {
       if (mod.uninit) {
+__L_V__0({
+    lN: 2008,tT:'if',pr:'mod.uninit',eT:{},fN:''
+  });'__L_V__0';
         mod.uninit();
       }
     }
@@ -2023,12 +2377,18 @@ BrowserGlue.prototype = {
   // Set up a listener to enable/disable the screenshots extension
   // based on its preference.
   _monitorScreenshotsPref() {
+__L_V__0({
+    lN: 2028,tT:'func',pr:'',eT:{},fN:'_monitorScreenshotsPref'
+  });'__L_V__0';
     const PREF = "extensions.screenshots.disabled";
     const ID = "screenshots@mozilla.org";
     const _checkScreenshotsPref = async () => {
       let addon = await AddonManager.getAddonByID(ID);
       let disabled = Services.prefs.getBoolPref(PREF, false);
       if (disabled) {
+__L_V__0({
+    lN: 2034,tT:'if',pr:'disabled',eT:{},fN:''
+  });'__L_V__0';
         await addon.disable({ allowSystemAddons: true });
       } else {
         await addon.enable({ allowSystemAddons: true });
@@ -2039,20 +2399,32 @@ BrowserGlue.prototype = {
   },
 
   _monitorWebcompatReporterPref() {
+__L_V__0({
+    lN: 2044,tT:'func',pr:'',eT:{},fN:'_monitorWebcompatReporterPref'
+  });'__L_V__0';
     const PREF = "extensions.webcompat-reporter.enabled";
     const ID = "webcompat-reporter@mozilla.org";
     Services.prefs.addObserver(PREF, async () => {
       let addon = await AddonManager.getAddonByID(ID);
       let enabled = Services.prefs.getBoolPref(PREF, false);
       if (enabled && !addon.isActive) {
+__L_V__0({
+    lN: 2050,tT:'if',pr:'enabled && !addon.isActive',eT:{},fN:''
+  });'__L_V__0';
         await addon.enable({ allowSystemAddons: true });
       } else if (!enabled && addon.isActive) {
+__L_V__0({
+    lN: 2052,tT:'if',pr:'!enabled && addon.isActive',eT:{},fN:''
+  });'__L_V__0';
         await addon.disable({ allowSystemAddons: true });
       }
     });
   },
 #if 0
   _showNewInstallModal() {
+__L_V__0({
+    lN: 2058,tT:'func',pr:'',eT:{},fN:'_showNewInstallModal'
+  });'__L_V__0';
     // Allow other observers of the same topic to run while we open the dialog.
     Services.tm.dispatchToMainThread(() => {
       let win = BrowserWindowTracker.getTopWindow();
@@ -2075,7 +2447,13 @@ BrowserGlue.prototype = {
 #endif
   // All initial windows have opened.
   _onWindowsRestored: function BG__onWindowsRestored() {
+__L_V__0({
+    lN: 2080,tT:'func',pr:'',eT:{},fN:'BG__onWindowsRestored'
+  });'__L_V__0';
     if (this._windowsWereRestored) {
+__L_V__0({
+    lN: 2081,tT:'if',pr:'this._windowsWereRestored',eT:{},fN:''
+  });'__L_V__0';
       return;
     }
     this._windowsWereRestored = true;
@@ -2087,6 +2465,9 @@ BrowserGlue.prototype = {
 
     let signingRequired;
     if (AppConstants.MOZ_REQUIRE_SIGNING) {
+__L_V__0({
+    lN: 2092,tT:'if',pr:'AppConstants.MOZ_REQUIRE_SIGNING',eT:{},fN:''
+  });'__L_V__0';
       signingRequired = true;
     } else {
       signingRequired = Services.prefs.getBoolPref(
@@ -2095,12 +2476,18 @@ BrowserGlue.prototype = {
     }
 
     if (signingRequired) {
+__L_V__0({
+    lN: 2100,tT:'if',pr:'signingRequired',eT:{},fN:''
+  });'__L_V__0';
       let disabledAddons = AddonManager.getStartupChanges(
         AddonManager.STARTUP_CHANGE_DISABLED
       );
       AddonManager.getAddonsByIDs(disabledAddons).then(addons => {
         for (let addon of addons) {
           if (addon.signedState <= AddonManager.SIGNEDSTATE_MISSING) {
+__L_V__0({
+    lN: 2106,tT:'if',pr:'addon.signedState <= AddonManager.SIGNEDSTATE_MISSING',eT:{},fN:''
+  });'__L_V__0';
             this._notifyUnsignedAddonsDisabled();
             break;
           }
@@ -2109,11 +2496,17 @@ BrowserGlue.prototype = {
     }
 
     if (AppConstants.MOZ_CRASHREPORTER) {
+__L_V__0({
+    lN: 2114,tT:'if',pr:'AppConstants.MOZ_CRASHREPORTER',eT:{},fN:''
+  });'__L_V__0';
       UnsubmittedCrashHandler.init();
       UnsubmittedCrashHandler.scheduleCheckForUnsubmittedCrashReports();
     }
 
     if (AppConstants.ASAN_REPORTER) {
+__L_V__0({
+    lN: 2119,tT:'if',pr:'AppConstants.ASAN_REPORTER',eT:{},fN:''
+  });'__L_V__0';
       var { AsanReporter } = ChromeUtils.import(
         "resource:///modules/AsanReporter.jsm"
       );
@@ -2124,6 +2517,9 @@ BrowserGlue.prototype = {
     this._scheduleStartupIdleTasks();
     this._lateTasksIdleObserver = (idleService, topic, data) => {
       if (topic == "idle") {
+__L_V__0({
+    lN: 2129,tT:'if',pr:'topic == idle',eT:{},fN:''
+  });'__L_V__0';
         idleService.removeIdleObserver(
           this._lateTasksIdleObserver,
           LATE_TASKS_IDLE_TIME_SEC
@@ -2145,6 +2541,9 @@ BrowserGlue.prototype = {
       Ci.nsIToolkitProfileService
     );
     if (pService.createdAlternateProfile) {
+__L_V__0({
+    lN: 2150,tT:'if',pr:'pService.createdAlternateProfile',eT:{},fN:''
+  });'__L_V__0';
       this._showNewInstallModal();
     }
 
@@ -2173,6 +2572,9 @@ BrowserGlue.prototype = {
    * to the other ones scheduled together.
    */
   _scheduleStartupIdleTasks() {
+__L_V__0({
+    lN: 2178,tT:'func',pr:'',eT:{},fN:'_scheduleStartupIdleTasks'
+  });'__L_V__0';
     const idleTasks = [
       // It's important that SafeBrowsing is initialized reasonably
       // early, so we use a maximum timeout for it.
@@ -2202,6 +2604,9 @@ BrowserGlue.prototype = {
             // NS_ERROR_NOT_AVAILABLE will get thrown for the PushService
             // getter if the PushService is disabled.
             if (ex.result != Cr.NS_ERROR_NOT_AVAILABLE) {
+__L_V__0({
+    lN: 2207,tT:'if',pr:'ex.result != Cr.NS_ERROR_NOT_AVAILABLE',eT:{},fN:''
+  });'__L_V__0';
               throw ex;
             }
           }
@@ -2262,6 +2667,9 @@ BrowserGlue.prototype = {
             WINTASKBAR_CONTRACTID in Cc &&
             Cc[WINTASKBAR_CONTRACTID].getService(Ci.nsIWinTaskbar).available
           ) {
+__L_V__0({
+    lN: 2267,tT:'if',pr:' WINTASKBAR_CONTRACTID in Cc && Cc[WINTASKBAR_CONTRACTID].getService(Ci.nsIWinTaskbar).available ',eT:{},fN:''
+  });'__L_V__0';
             let temp = {};
             ChromeUtils.import(
               "resource:///modules/WindowsJumpLists.jsm",
@@ -2367,21 +2775,33 @@ BrowserGlue.prototype = {
           if (
             Services.prefs.getBoolPref("doh-rollout.trrRace.enabled", false)
           ) {
+__L_V__0({
+    lN: 2372,tT:'if',pr:' Services.prefs.getBoolPref(doh-rollout.trrRace.enabled, false) ',eT:{},fN:''
+  });'__L_V__0';
             if (
               !Services.prefs.getBoolPref("doh-rollout.trrRace.complete", false)
             ) {
+__L_V__0({
+    lN: 2375,tT:'if',pr:' !Services.prefs.getBoolPref(doh-rollout.trrRace.complete, false) ',eT:{},fN:''
+  });'__L_V__0';
               new TRRRacer().run();
             }
           } else {
             Services.prefs.addObserver(
               "doh-rollout.trrRace.enabled",
               function observer() {
+__L_V__0({
+    lN: 2381,tT:'func',pr:'',eT:{},fN:'observer'
+  });'__L_V__0';
                 if (
                   Services.prefs.getBoolPref(
                     "doh-rollout.trrRace.enabled",
                     false
                   )
                 ) {
+__L_V__0({
+    lN: 2387,tT:'if',pr:' Services.prefs.getBoolPref( doh-rollout.trrRace.enabled, false ) ',eT:{},fN:''
+  });'__L_V__0';
                   Services.prefs.removeObserver(
                     "doh-rollout.trrRace.enabled",
                     observer
@@ -2392,6 +2812,9 @@ BrowserGlue.prototype = {
                       false
                     )
                   ) {
+__L_V__0({
+    lN: 2397,tT:'if',pr:' !Services.prefs.getBoolPref( doh-rollout.trrRace.complete, false ) ',eT:{},fN:''
+  });'__L_V__0';
                     new TRRRacer().run();
                   }
                 }
@@ -2404,12 +2827,18 @@ BrowserGlue.prototype = {
 
     for (let task of idleTasks) {
       if ("condition" in task && !task.condition) {
+__L_V__0({
+    lN: 2409,tT:'if',pr:'condition in task && !task.condition',eT:{},fN:''
+  });'__L_V__0';
         continue;
       }
 
       ChromeUtils.idleDispatch(
         () => {
           if (!Services.startup.shuttingDown) {
+__L_V__0({
+    lN: 2415,tT:'if',pr:'!Services.startup.shuttingDown',eT:{},fN:''
+  });'__L_V__0';
             Services.profiler.AddMarker("startupIdleTask");
             try {
               task.task();
@@ -2435,6 +2864,9 @@ BrowserGlue.prototype = {
    * value, this is unlikely.
    */
   _scheduleArbitrarilyLateIdleTasks() {
+__L_V__0({
+    lN: 2440,tT:'func',pr:'',eT:{},fN:'_scheduleArbitrarilyLateIdleTasks'
+  });'__L_V__0';
     const idleTasks = [
       () => {
         this._sendMediaTelemetry();
@@ -2449,6 +2881,9 @@ BrowserGlue.prototype = {
         let token = tokenDB.getInternalKeyToken();
         let mpEnabled = token.hasPassword;
         if (mpEnabled) {
+__L_V__0({
+    lN: 2454,tT:'if',pr:'mpEnabled',eT:{},fN:''
+  });'__L_V__0';
           Services.telemetry
             .getHistogramById("MASTER_PASSWORD_ENABLED")
             .add(mpEnabled);
@@ -2481,6 +2916,9 @@ BrowserGlue.prototype = {
     for (let task of idleTasks) {
       ChromeUtils.idleDispatch(() => {
         if (!Services.startup.shuttingDown) {
+__L_V__0({
+    lN: 2486,tT:'if',pr:'!Services.startup.shuttingDown',eT:{},fN:''
+  });'__L_V__0';
           Services.profiler.AddMarker("startupLateIdleTask");
           try {
             task();
@@ -2493,12 +2931,18 @@ BrowserGlue.prototype = {
   },
 
   _addBreachesSyncHandler() {
+__L_V__0({
+    lN: 2498,tT:'func',pr:'',eT:{},fN:'_addBreachesSyncHandler'
+  });'__L_V__0';
     if (
       Services.prefs.getBoolPref(
         "signon.management.page.breach-alerts.enabled",
         false
       )
     ) {
+__L_V__0({
+    lN: 2504,tT:'if',pr:' Services.prefs.getBoolPref( signon.management.page.breach-alerts.enabled, false ) ',eT:{},fN:''
+  });'__L_V__0';
       RemoteSettings(LoginBreaches.REMOTE_SETTINGS_COLLECTION).on(
         "sync",
         async event => {
@@ -2509,9 +2953,18 @@ BrowserGlue.prototype = {
   },
 
   _addBreachAlertsPrefObserver() {
+__L_V__0({
+    lN: 2514,tT:'func',pr:'',eT:{},fN:'_addBreachAlertsPrefObserver'
+  });'__L_V__0';
     const BREACH_ALERTS_PREF = "signon.management.page.breach-alerts.enabled";
     const clearVulnerablePasswordsIfBreachAlertsDisabled = async function() {
+__L_V__0({
+    lN: 2516,tT:'func',pr:'',eT:{},fN:'function'
+  });'__L_V__0';
       if (!Services.prefs.getBoolPref(BREACH_ALERTS_PREF)) {
+__L_V__0({
+    lN: 2517,tT:'if',pr:'!Services.prefs.getBoolPref(BREACH_ALERTS_PREF)',eT:{},fN:''
+  });'__L_V__0';
         await LoginBreaches.clearAllPotentiallyVulnerablePasswords();
       }
     };
@@ -2523,8 +2976,14 @@ BrowserGlue.prototype = {
   },
 
   _onQuitRequest: function BG__onQuitRequest(aCancelQuit, aQuitType) {
+__L_V__0({
+    lN: 2528,tT:'func',pr:'',eT:{'aCancelQuit':aCancelQuit,'aQuitType':aQuitType},fN:'BG__onQuitRequest'
+  });'__L_V__0';
     // If user has already dismissed quit request, then do nothing
     if (aCancelQuit instanceof Ci.nsISupportsPRBool && aCancelQuit.data) {
+__L_V__0({
+    lN: 2530,tT:'if',pr:'aCancelQuit instanceof Ci.nsISupportsPRBool && aCancelQuit.data',eT:{},fN:''
+  });'__L_V__0';
       return;
     }
 
@@ -2545,6 +3004,9 @@ BrowserGlue.prototype = {
     // and also "we're quitting by closing the last window".
 
     if (aQuitType == "restart" || aQuitType == "os-restart") {
+__L_V__0({
+    lN: 2550,tT:'if',pr:'aQuitType == restart || aQuitType == os-restart',eT:{},fN:''
+  });'__L_V__0';
       return;
     }
 
@@ -2552,11 +3014,17 @@ BrowserGlue.prototype = {
     var pagecount = 0;
     for (let win of BrowserWindowTracker.orderedWindows) {
       if (win.closed) {
+__L_V__0({
+    lN: 2557,tT:'if',pr:'win.closed',eT:{},fN:''
+  });'__L_V__0';
         continue;
       }
       windowcount++;
       let tabbrowser = win.gBrowser;
       if (tabbrowser) {
+__L_V__0({
+    lN: 2562,tT:'if',pr:'tabbrowser',eT:{},fN:''
+  });'__L_V__0';
         pagecount +=
           tabbrowser.browsers.length -
           tabbrowser._numPinnedTabs -
@@ -2565,15 +3033,24 @@ BrowserGlue.prototype = {
     }
 
     if (pagecount < 2) {
+__L_V__0({
+    lN: 2570,tT:'if',pr:'pagecount < 2',eT:{},fN:''
+  });'__L_V__0';
       return;
     }
 
     if (!aQuitType) {
+__L_V__0({
+    lN: 2574,tT:'if',pr:'!aQuitType',eT:{},fN:''
+  });'__L_V__0';
       aQuitType = "quit";
     }
 
     // browser.warnOnQuit is a hidden global boolean to override all quit prompts
     if (!Services.prefs.getBoolPref("browser.warnOnQuit")) {
+__L_V__0({
+    lN: 2579,tT:'if',pr:'!Services.prefs.getBoolPref(browser.warnOnQuit)',eT:{},fN:''
+  });'__L_V__0';
       return;
     }
 
@@ -2583,13 +3060,22 @@ BrowserGlue.prototype = {
       Services.prefs.getBoolPref("browser.sessionstore.resume_session_once");
     // In the sessionWillBeRestored case, we only check the sessionstore-specific pref:
     if (sessionWillBeRestored) {
+__L_V__0({
+    lN: 2588,tT:'if',pr:'sessionWillBeRestored',eT:{},fN:''
+  });'__L_V__0';
       if (
         !Services.prefs.getBoolPref("browser.sessionstore.warnOnQuit", false)
       ) {
+__L_V__0({
+    lN: 2591,tT:'if',pr:' !Services.prefs.getBoolPref(browser.sessionstore.warnOnQuit, false) ',eT:{},fN:''
+  });'__L_V__0';
         return;
       }
       // Otherwise, we check browser.tabs.warnOnClose
     } else if (!Services.prefs.getBoolPref("browser.tabs.warnOnClose")) {
+__L_V__0({
+    lN: 2595,tT:'if',pr:'!Services.prefs.getBoolPref(browser.tabs.warnOnClose)',eT:{},fN:''
+  });'__L_V__0';
       return;
     }
 
@@ -2598,6 +3084,9 @@ BrowserGlue.prototype = {
     let warningMessage;
     // More than 1 window. Compose our own message.
     if (windowcount > 1) {
+__L_V__0({
+    lN: 2603,tT:'if',pr:'windowcount > 1',eT:{},fN:''
+  });'__L_V__0';
       let tabSubstring = gTabbrowserBundle.GetStringFromName(
         "tabs.closeWarningMultipleWindowsTabSnippet"
       );
@@ -2654,6 +3143,9 @@ BrowserGlue.prototype = {
     // If the user has unticked the box, and has confirmed closing, stop showing
     // the warning.
     if (!sessionWillBeRestored && buttonPressed == 0 && !warnOnClose.value) {
+__L_V__0({
+    lN: 2659,tT:'if',pr:'!sessionWillBeRestored && buttonPressed == 0 && !warnOnClose.value',eT:{},fN:''
+  });'__L_V__0';
       Services.prefs.setBoolPref("browser.tabs.warnOnClose", false);
     }
     aCancelQuit.data = buttonPressed != 0;
@@ -2676,6 +3168,9 @@ BrowserGlue.prototype = {
    *   bookmarks.
    */
   _initPlaces: function BG__initPlaces(aInitialMigrationPerformed) {
+__L_V__0({
+    lN: 2681,tT:'func',pr:'',eT:{'aInitialMigrationPerformed':aInitialMigrationPerformed},fN:'BG__initPlaces'
+  });'__L_V__0';
     // We must instantiate the history service since it will tell us if we
     // need to import or restore bookmarks due to first-run, corruption or
     // forced migration (due to a major schema change).
@@ -2685,6 +3180,9 @@ BrowserGlue.prototype = {
 
     // Show a notification with a "more info" link for a locked places.sqlite.
     if (dbStatus == PlacesUtils.history.DATABASE_STATUS_LOCKED) {
+__L_V__0({
+    lN: 2690,tT:'if',pr:'dbStatus == PlacesUtils.history.DATABASE_STATUS_LOCKED',eT:{},fN:''
+  });'__L_V__0';
       // Note: initPlaces should always happen when the first window is ready,
       // in any case, better safe than sorry.
       this._firstWindowReady.then(() => {
@@ -2707,6 +3205,9 @@ BrowserGlue.prototype = {
         "browser.places.importBookmarksHTML"
       );
       if (importBookmarksHTML) {
+__L_V__0({
+    lN: 2712,tT:'if',pr:'importBookmarksHTML',eT:{},fN:''
+  });'__L_V__0';
         importBookmarks = true;
       }
     } catch (ex) {}
@@ -2717,6 +3218,9 @@ BrowserGlue.prototype = {
       false
     ); // Do not export.
     if (autoExportHTML) {
+__L_V__0({
+    lN: 2722,tT:'if',pr:'autoExportHTML',eT:{},fN:''
+  });'__L_V__0';
       // Sqlite.jsm and Places shutdown happen at profile-before-change, thus,
       // to be on the safe side, this should run earlier.
       AsyncShutdown.profileChangeTeardown.addBlocker(
@@ -2734,6 +3238,9 @@ BrowserGlue.prototype = {
           "browser.bookmarks.restore_default_bookmarks"
         );
         if (restoreDefaultBookmarks) {
+__L_V__0({
+    lN: 2739,tT:'if',pr:'restoreDefaultBookmarks',eT:{},fN:''
+  });'__L_V__0';
           // Ensure that we already have a bookmarks backup for today.
           await this._backupBookmarks();
           importBookmarks = true;
@@ -2747,9 +3254,15 @@ BrowserGlue.prototype = {
       // If the user did not require to restore default bookmarks, or import
       // from bookmarks.html, we will try to restore from JSON
       if (importBookmarks && !restoreDefaultBookmarks && !importBookmarksHTML) {
+__L_V__0({
+    lN: 2752,tT:'if',pr:'importBookmarks && !restoreDefaultBookmarks && !importBookmarksHTML',eT:{},fN:''
+  });'__L_V__0';
         // get latest JSON backup
         lastBackupFile = await PlacesBackups.getMostRecentBackup();
         if (lastBackupFile) {
+__L_V__0({
+    lN: 2755,tT:'if',pr:'lastBackupFile',eT:{},fN:''
+  });'__L_V__0';
           // restore from JSON backup
           await BookmarkJSONUtils.importFromFile(lastBackupFile, {
             replace: true,
@@ -2760,6 +3273,9 @@ BrowserGlue.prototype = {
           // We have created a new database but we don't have any backup available
           importBookmarks = true;
           if (await OS.File.exists(BookmarkHTMLUtils.defaultPath)) {
+__L_V__0({
+    lN: 2765,tT:'if',pr:'await OS.File.exists(BookmarkHTMLUtils.defaultPath)',eT:{},fN:''
+  });'__L_V__0';
             // If bookmarks.html is available in current profile import it...
             importBookmarksHTML = true;
           } else {
@@ -2774,6 +3290,9 @@ BrowserGlue.prototype = {
       // delayed till the import operations has finished.  Not doing so would
       // cause them to be overwritten by the newly imported bookmarks.
       if (!importBookmarks) {
+__L_V__0({
+    lN: 2779,tT:'if',pr:'!importBookmarks',eT:{},fN:''
+  });'__L_V__0';
         // Now apply distribution customized bookmarks.
         // This should always run after Places initialization.
         try {
@@ -2785,16 +3304,28 @@ BrowserGlue.prototype = {
         // An import operation is about to run.
         let bookmarksUrl = null;
         if (restoreDefaultBookmarks) {
+__L_V__0({
+    lN: 2790,tT:'if',pr:'restoreDefaultBookmarks',eT:{},fN:''
+  });'__L_V__0';
           // User wants to restore bookmarks.html file from default profile folder
           bookmarksUrl = "chrome://browser/locale/bookmarks.html";
         } else if (await OS.File.exists(BookmarkHTMLUtils.defaultPath)) {
+__L_V__0({
+    lN: 2793,tT:'if',pr:'await OS.File.exists(BookmarkHTMLUtils.defaultPath)',eT:{},fN:''
+  });'__L_V__0';
           bookmarksUrl = OS.Path.toFileURI(BookmarkHTMLUtils.defaultPath);
         }
 
         if (bookmarksUrl) {
+__L_V__0({
+    lN: 2797,tT:'if',pr:'bookmarksUrl',eT:{},fN:''
+  });'__L_V__0';
           // Import from bookmarks.html file.
           try {
             if (Services.policies.isAllowed("defaultBookmarks")) {
+__L_V__0({
+    lN: 2800,tT:'if',pr:'Services.policies.isAllowed(defaultBookmarks)',eT:{},fN:''
+  });'__L_V__0';
               await BookmarkHTMLUtils.importFromURL(bookmarksUrl, {
                 replace: true,
                 source: PlacesUtils.bookmarks.SOURCES.RESTORE_ON_STARTUP,
@@ -2816,12 +3347,18 @@ BrowserGlue.prototype = {
 
         // Reset preferences, so we won't try to import again at next run
         if (importBookmarksHTML) {
+__L_V__0({
+    lN: 2821,tT:'if',pr:'importBookmarksHTML',eT:{},fN:''
+  });'__L_V__0';
           Services.prefs.setBoolPref(
             "browser.places.importBookmarksHTML",
             false
           );
         }
         if (restoreDefaultBookmarks) {
+__L_V__0({
+    lN: 2827,tT:'if',pr:'restoreDefaultBookmarks',eT:{},fN:''
+  });'__L_V__0';
           Services.prefs.setBoolPref(
             "browser.bookmarks.restore_default_bookmarks",
             false
@@ -2831,14 +3368,23 @@ BrowserGlue.prototype = {
 
       // Initialize bookmark archiving on idle.
       if (!this._bookmarksBackupIdleTime) {
+__L_V__0({
+    lN: 2836,tT:'if',pr:'!this._bookmarksBackupIdleTime',eT:{},fN:''
+  });'__L_V__0';
         this._bookmarksBackupIdleTime = BOOKMARKS_BACKUP_IDLE_TIME_SEC;
 
         // If there is no backup, or the last bookmarks backup is too old, use
         // a more aggressive idle observer.
         if (lastBackupFile === undefined) {
+__L_V__0({
+    lN: 2841,tT:'if',pr:'lastBackupFile === undefined',eT:{},fN:''
+  });'__L_V__0';
           lastBackupFile = await PlacesBackups.getMostRecentBackup();
         }
         if (!lastBackupFile) {
+__L_V__0({
+    lN: 2844,tT:'if',pr:'!lastBackupFile',eT:{},fN:''
+  });'__L_V__0';
           this._bookmarksBackupIdleTime /= 2;
         } else {
           let lastBackupTime = PlacesBackups.getDateForFile(lastBackupFile);
@@ -2848,6 +3394,9 @@ BrowserGlue.prototype = {
           // regardless its age.  Otherwise check how old is the last
           // available backup compared to that session.
           if (profileLastUse > lastBackupTime) {
+__L_V__0({
+    lN: 2853,tT:'if',pr:'profileLastUse > lastBackupTime',eT:{},fN:''
+  });'__L_V__0';
             let backupAge = Math.round(
               (profileLastUse - lastBackupTime) / 86400000
             );
@@ -2861,6 +3410,9 @@ BrowserGlue.prototype = {
             }
 
             if (backupAge > BOOKMARKS_BACKUP_MAX_INTERVAL_DAYS) {
+__L_V__0({
+    lN: 2866,tT:'if',pr:'backupAge > BOOKMARKS_BACKUP_MAX_INTERVAL_DAYS',eT:{},fN:''
+  });'__L_V__0';
               this._bookmarksBackupIdleTime /= 2;
             }
           }
@@ -2869,6 +3421,9 @@ BrowserGlue.prototype = {
       }
 
       if (this._isNewProfile) {
+__L_V__0({
+    lN: 2874,tT:'if',pr:'this._isNewProfile',eT:{},fN:''
+  });'__L_V__0';
         try {
           // New profiles may have existing bookmarks (imported from another browser or
           // copied into the profile) and we want to show the bookmark toolbar for them
@@ -2894,7 +3449,13 @@ BrowserGlue.prototype = {
    * If a backup for today doesn't exist, this creates one.
    */
   _backupBookmarks: function BG__backupBookmarks() {
+__L_V__0({
+    lN: 2899,tT:'func',pr:'',eT:{},fN:'BG__backupBookmarks'
+  });'__L_V__0';
     return (async function() {
+__L_V__0({
+    lN: 2900,tT:'func',pr:'',eT:{},fN:'function'
+  });'__L_V__0';
       let lastBackupFile = await PlacesBackups.getMostRecentBackup();
       // Should backup bookmarks if there are no backups or the maximum
       // interval between backups elapsed.
@@ -2903,6 +3464,9 @@ BrowserGlue.prototype = {
         new Date() - PlacesBackups.getDateForFile(lastBackupFile) >
           BOOKMARKS_BACKUP_MIN_INTERVAL_DAYS * 86400000
       ) {
+__L_V__0({
+    lN: 2908,tT:'if',pr:' !lastBackupFile || new Date() - PlacesBackups.getDateForFile(lastBackupFile) > BOOKMARKS_BACKUP_MIN_INTERVAL_DAYS * 86400000 ',eT:{},fN:''
+  });'__L_V__0';
         let maxBackups = Services.prefs.getIntPref(
           "browser.bookmarks.max_backups"
         );
@@ -2915,6 +3479,9 @@ BrowserGlue.prototype = {
    * Show the notificationBox for a locked places database.
    */
   _showPlacesLockedNotificationBox: function BG__showPlacesLockedNotificationBox() {
+__L_V__0({
+    lN: 2920,tT:'func',pr:'',eT:{},fN:'BG__showPlacesLockedNotificationBox'
+  });'__L_V__0';
     var applicationName = gBrandBundle.GetStringFromName("brandShortName");
     var placesBundle = Services.strings.createBundle(
       "chrome://browser/locale/places/places.properties"
@@ -2942,6 +3509,9 @@ BrowserGlue.prototype = {
         accessKey,
         popup: null,
         callback(aNotificationBar, aButton) {
+__L_V__0({
+    lN: 2947,tT:'func',pr:'',eT:{'aNotificationBar':aNotificationBar,'aButton':aButton},fN:'callback'
+  });'__L_V__0';
           win.openTrustedLinkIn(url, "tab");
         },
       },
@@ -2959,6 +3529,9 @@ BrowserGlue.prototype = {
   },
 
   _onThisDeviceConnected() {
+__L_V__0({
+    lN: 2964,tT:'func',pr:'',eT:{},fN:'_onThisDeviceConnected'
+  });'__L_V__0';
     let bundle = Services.strings.createBundle(
       "chrome://browser/locale/accounts.properties"
     );
@@ -2967,6 +3540,9 @@ BrowserGlue.prototype = {
 
     let clickCallback = (subject, topic, data) => {
       if (topic != "alertclickcallback") {
+__L_V__0({
+    lN: 2972,tT:'if',pr:'topic != alertclickcallback',eT:{},fN:''
+  });'__L_V__0';
         return;
       }
       this._openPreferences("sync");
@@ -2989,11 +3565,17 @@ BrowserGlue.prototype = {
    * "collapsed" attribute, try to determine whether it's customized.
    */
   _maybeToggleBookmarkToolbarVisibility() {
+__L_V__0({
+    lN: 2994,tT:'func',pr:'',eT:{},fN:'_maybeToggleBookmarkToolbarVisibility'
+  });'__L_V__0';
     const BROWSER_DOCURL = AppConstants.BROWSER_CHROME_URL;
     const NUM_TOOLBAR_BOOKMARKS_TO_UNHIDE = 3;
     let xulStore = Services.xulStore;
 
     if (!xulStore.hasValue(BROWSER_DOCURL, "PersonalToolbar", "collapsed")) {
+__L_V__0({
+    lN: 2999,tT:'if',pr:'!xulStore.hasValue(BROWSER_DOCURL, PersonalToolbar, collapsed)',eT:{},fN:''
+  });'__L_V__0';
       // We consider the toolbar customized if it has more than NUM_TOOLBAR_BOOKMARKS_TO_UNHIDE
       // children, or if it has a persisted currentset value.
       let toolbarIsCustomized = xulStore.hasValue(
@@ -3014,6 +3596,9 @@ BrowserGlue.prototype = {
         toolbarIsCustomized ||
         getToolbarFolderCount() > NUM_TOOLBAR_BOOKMARKS_TO_UNHIDE
       ) {
+__L_V__0({
+    lN: 3019,tT:'if',pr:' toolbarIsCustomized || getToolbarFolderCount() > NUM_TOOLBAR_BOOKMARKS_TO_UNHIDE ',eT:{},fN:''
+  });'__L_V__0';
         CustomizableUI.setToolbarVisibility(
           CustomizableUI.AREA_BOOKMARKS,
           true
@@ -3023,6 +3608,9 @@ BrowserGlue.prototype = {
   },
 
   _migrateXULStoreForDocument(fromURL, toURL) {
+__L_V__0({
+    lN: 3028,tT:'func',pr:'',eT:{'fromURL':fromURL,'toURL':toURL},fN:'_migrateXULStoreForDocument'
+  });'__L_V__0';
     Array.from(Services.xulStore.getIDsEnumerator(fromURL)).forEach(id => {
       Array.from(Services.xulStore.getAttributeEnumerator(fromURL, id)).forEach(
         attr => {
@@ -3035,6 +3623,9 @@ BrowserGlue.prototype = {
 
   // eslint-disable-next-line complexity
   _migrateUI: function BG__migrateUI() {
+__L_V__0({
+    lN: 3040,tT:'func',pr:'',eT:{},fN:'BG__migrateUI'
+  });'__L_V__0';
     // Use an increasing number to keep track of the current migration state.
     // Completely unrelated to the current Firefox release number.
     const UI_VERSION = 92;
@@ -3042,6 +3633,9 @@ BrowserGlue.prototype = {
 
     PermissionsUtils.importFromPrefs("blockautoplay.", "autoplay-media");
     if (!Services.prefs.prefHasUserValue("browser.migration.version")) {
+__L_V__0({
+    lN: 3047,tT:'if',pr:'!Services.prefs.prefHasUserValue(browser.migration.version)',eT:{},fN:''
+  });'__L_V__0';
       // This is a new profile, nothing to migrate.
       Services.prefs.setIntPref("browser.migration.version", UI_VERSION);
       this._isNewProfile = true;
@@ -3053,6 +3647,9 @@ BrowserGlue.prototype = {
       "browser.migration.version"
     );
     if (currentUIVersion >= UI_VERSION) {
+__L_V__0({
+    lN: 3058,tT:'if',pr:'currentUIVersion >= UI_VERSION',eT:{},fN:''
+  });'__L_V__0';
       return;
     }
 
@@ -3064,9 +3661,15 @@ BrowserGlue.prototype = {
     let xulStore = Services.xulStore;
 
     if (currentUIVersion < 52) {
+__L_V__0({
+    lN: 3069,tT:'if',pr:'currentUIVersion < 52',eT:{},fN:''
+  });'__L_V__0';
       // Keep old devtools log persistence behavior after splitting netmonitor and
       // webconsole prefs (bug 1307881).
       if (Services.prefs.getBoolPref("devtools.webconsole.persistlog", false)) {
+__L_V__0({
+    lN: 3072,tT:'if',pr:'Services.prefs.getBoolPref(devtools.webconsole.persistlog, false)',eT:{},fN:''
+  });'__L_V__0';
         Services.prefs.setBoolPref("devtools.netmonitor.persistlog", true);
       }
     }
@@ -3074,10 +3677,19 @@ BrowserGlue.prototype = {
     // Update user customizations that will interfere with the Safe Browsing V2
     // to V4 migration (bug 1395419).
     if (currentUIVersion < 53) {
+__L_V__0({
+    lN: 3079,tT:'if',pr:'currentUIVersion < 53',eT:{},fN:''
+  });'__L_V__0';
       const MALWARE_PREF = "urlclassifier.malwareTable";
       if (Services.prefs.prefHasUserValue(MALWARE_PREF)) {
+__L_V__0({
+    lN: 3081,tT:'if',pr:'Services.prefs.prefHasUserValue(MALWARE_PREF)',eT:{},fN:''
+  });'__L_V__0';
         let malwareList = Services.prefs.getCharPref(MALWARE_PREF);
         if (malwareList.includes("goog-malware-shavar")) {
+__L_V__0({
+    lN: 3083,tT:'if',pr:'malwareList.includes(goog-malware-shavar)',eT:{},fN:''
+  });'__L_V__0';
           malwareList.replace("goog-malware-shavar", "goog-malware-proto");
           Services.prefs.setCharPref(MALWARE_PREF, malwareList);
         }
@@ -3085,21 +3697,33 @@ BrowserGlue.prototype = {
     }
 
     if (currentUIVersion < 55) {
+__L_V__0({
+    lN: 3090,tT:'if',pr:'currentUIVersion < 55',eT:{},fN:''
+  });'__L_V__0';
       Services.prefs.clearUserPref("browser.customizemode.tip0.shown");
     }
 
     if (currentUIVersion < 56) {
+__L_V__0({
+    lN: 3094,tT:'if',pr:'currentUIVersion < 56',eT:{},fN:''
+  });'__L_V__0';
       // Prior to the end of the Firefox 57 cycle, the sidebarcommand being present
       // or not was the only thing that distinguished whether the sidebar was open.
       // Now, the sidebarcommand always indicates the last opened sidebar, and we
       // correctly persist the checked attribute to indicate whether or not the
       // sidebar was open. We should set the checked attribute in case it wasn't:
       if (xulStore.getValue(BROWSER_DOCURL, "sidebar-box", "sidebarcommand")) {
+__L_V__0({
+    lN: 3100,tT:'if',pr:'xulStore.getValue(BROWSER_DOCURL, sidebar-box, sidebarcommand)',eT:{},fN:''
+  });'__L_V__0';
         xulStore.setValue(BROWSER_DOCURL, "sidebar-box", "checked", "true");
       }
     }
 
     if (currentUIVersion < 58) {
+__L_V__0({
+    lN: 3105,tT:'if',pr:'currentUIVersion < 58',eT:{},fN:''
+  });'__L_V__0';
       // With Firefox 57, we are doing a one time reset of the geo prefs due to bug 1413652
       Services.prefs.clearUserPref("browser.search.countryCode");
       Services.prefs.clearUserPref("browser.search.region");
@@ -3107,13 +3731,25 @@ BrowserGlue.prototype = {
     }
 
     if (currentUIVersion < 59) {
+__L_V__0({
+    lN: 3112,tT:'if',pr:'currentUIVersion < 59',eT:{},fN:''
+  });'__L_V__0';
       let searchInitializedPromise = new Promise(resolve => {
         if (Services.search.isInitialized) {
+__L_V__0({
+    lN: 3114,tT:'if',pr:'Services.search.isInitialized',eT:{},fN:''
+  });'__L_V__0';
           resolve();
         }
         const SEARCH_SERVICE_TOPIC = "browser-search-service";
         Services.obs.addObserver(function observer(subject, topic, data) {
+__L_V__0({
+    lN: 3118,tT:'func',pr:'',eT:{'subject':subject,'topic':topic,'data':data},fN:'observer'
+  });'__L_V__0';
           if (data != "init-complete") {
+__L_V__0({
+    lN: 3119,tT:'if',pr:'data != init-complete',eT:{},fN:''
+  });'__L_V__0';
             return;
           }
           Services.obs.removeObserver(observer, SEARCH_SERVICE_TOPIC);
@@ -3132,10 +3768,16 @@ BrowserGlue.prototype = {
           currentEngine._isDefault ||
           !Services.search.originalDefaultEngine.wrappedJSObject._isDefault
         ) {
+__L_V__0({
+    lN: 3137,tT:'if',pr:' currentEngine._extensionID || currentEngine._isDefault || !Services.search.originalDefaultEngine.wrappedJSObject._isDefault ',eT:{},fN:''
+  });'__L_V__0';
           return;
         }
 
         if (!currentEngine._loadPath.startsWith("[https]")) {
+__L_V__0({
+    lN: 3141,tT:'if',pr:'!currentEngine._loadPath.startsWith([https])',eT:{},fN:''
+  });'__L_V__0';
           Services.search.resetToOriginalDefaultEngine();
         }
       });
@@ -3148,7 +3790,13 @@ BrowserGlue.prototype = {
         Services.prefs.prefHasUserValue(MATCHOS_LOCALE_PREF) ||
         Services.prefs.prefHasUserValue(SELECTED_LOCALE_PREF)
       ) {
+__L_V__0({
+    lN: 3153,tT:'if',pr:' Services.prefs.prefHasUserValue(MATCHOS_LOCALE_PREF) || Services.prefs.prefHasUserValue(SELECTED_LOCALE_PREF) ',eT:{},fN:''
+  });'__L_V__0';
         if (Services.prefs.getBoolPref(MATCHOS_LOCALE_PREF, false)) {
+__L_V__0({
+    lN: 3154,tT:'if',pr:'Services.prefs.getBoolPref(MATCHOS_LOCALE_PREF, false)',eT:{},fN:''
+  });'__L_V__0';
           Services.locale.requestedLocales = [];
         } else {
           let locale = Services.prefs.getComplexValue(
@@ -3156,6 +3804,9 @@ BrowserGlue.prototype = {
             Ci.nsIPrefLocalizedString
           );
           if (locale) {
+__L_V__0({
+    lN: 3161,tT:'if',pr:'locale',eT:{},fN:''
+  });'__L_V__0';
             try {
               Services.locale.requestedLocales = [locale.data];
             } catch (e) {
@@ -3169,11 +3820,17 @@ BrowserGlue.prototype = {
     }
 
     if (currentUIVersion < 61) {
+__L_V__0({
+    lN: 3174,tT:'if',pr:'currentUIVersion < 61',eT:{},fN:''
+  });'__L_V__0';
       // Remove persisted toolbarset from navigator toolbox
       xulStore.removeValue(BROWSER_DOCURL, "navigator-toolbox", "toolbarset");
     }
 
     if (currentUIVersion < 62) {
+__L_V__0({
+    lN: 3179,tT:'if',pr:'currentUIVersion < 62',eT:{},fN:''
+  });'__L_V__0';
       // Remove iconsize and mode from all the toolbars
       let toolbars = [
         "navigator-toolbox",
@@ -3190,6 +3847,9 @@ BrowserGlue.prototype = {
     }
 
     if (currentUIVersion < 64) {
+__L_V__0({
+    lN: 3195,tT:'if',pr:'currentUIVersion < 64',eT:{},fN:''
+  });'__L_V__0';
       OS.File.remove(
         OS.Path.join(OS.Constants.Path.profileDir, "directoryLinks.json"),
         { ignoreAbsent: true }
@@ -3201,13 +3861,25 @@ BrowserGlue.prototype = {
       Services.prefs.getCharPref("general.config.filename", "") ==
         "dsengine.cfg"
     ) {
+__L_V__0({
+    lN: 3206,tT:'if',pr:' currentUIVersion < 65 && Services.prefs.getCharPref(general.config.filename, ) == dsengine.cfg ',eT:{},fN:''
+  });'__L_V__0';
       let searchInitializedPromise = new Promise(resolve => {
         if (Services.search.isInitialized) {
+__L_V__0({
+    lN: 3208,tT:'if',pr:'Services.search.isInitialized',eT:{},fN:''
+  });'__L_V__0';
           resolve();
         }
         const SEARCH_SERVICE_TOPIC = "browser-search-service";
         Services.obs.addObserver(function observer(subject, topic, data) {
+__L_V__0({
+    lN: 3212,tT:'func',pr:'',eT:{'subject':subject,'topic':topic,'data':data},fN:'observer'
+  });'__L_V__0';
           if (data != "init-complete") {
+__L_V__0({
+    lN: 3213,tT:'if',pr:'data != init-complete',eT:{},fN:''
+  });'__L_V__0';
             return;
           }
           Services.obs.removeObserver(observer, SEARCH_SERVICE_TOPIC);
@@ -3223,6 +3895,9 @@ BrowserGlue.prototype = {
         for (let engineName of engineNames) {
           let engine = Services.search.getEngineByName(engineName);
           if (engine) {
+__L_V__0({
+    lN: 3228,tT:'if',pr:'engine',eT:{},fN:''
+  });'__L_V__0';
             Services.search.removeEngine(engine);
           }
         }
@@ -3230,19 +3905,31 @@ BrowserGlue.prototype = {
     }
 
     if (currentUIVersion < 66) {
+__L_V__0({
+    lN: 3235,tT:'if',pr:'currentUIVersion < 66',eT:{},fN:''
+  });'__L_V__0';
       // Set whether search suggestions or history/bookmarks results come first
       // in the urlbar results, and uninstall a related Shield study.
       this._migrateMatchBucketsPrefForUI66();
     }
 
     if (currentUIVersion < 67) {
+__L_V__0({
+    lN: 3241,tT:'if',pr:'currentUIVersion < 67',eT:{},fN:''
+  });'__L_V__0';
       // Migrate devtools firebug theme users to light theme (bug 1378108):
       if (Services.prefs.getCharPref("devtools.theme") == "firebug") {
+__L_V__0({
+    lN: 3243,tT:'if',pr:'Services.prefs.getCharPref(devtools.theme) == firebug',eT:{},fN:''
+  });'__L_V__0';
         Services.prefs.setCharPref("devtools.theme", "light");
       }
     }
 
     if (currentUIVersion < 68) {
+__L_V__0({
+    lN: 3248,tT:'if',pr:'currentUIVersion < 68',eT:{},fN:''
+  });'__L_V__0';
       // Remove blocklists legacy storage, now relying on IndexedDB.
       OS.File.remove(
         OS.Path.join(OS.Constants.Path.profileDir, "kinto.sqlite"),
@@ -3251,9 +3938,15 @@ BrowserGlue.prototype = {
     }
 
     if (currentUIVersion < 69) {
+__L_V__0({
+    lN: 3256,tT:'if',pr:'currentUIVersion < 69',eT:{},fN:''
+  });'__L_V__0';
       // Clear old social prefs from profile (bug 1460675)
       let socialPrefs = Services.prefs.getBranch("social.");
       if (socialPrefs) {
+__L_V__0({
+    lN: 3259,tT:'if',pr:'socialPrefs',eT:{},fN:''
+  });'__L_V__0';
         let socialPrefsArray = socialPrefs.getChildList("");
         for (let item of socialPrefsArray) {
           Services.prefs.clearUserPref("social." + item);
@@ -3262,6 +3955,9 @@ BrowserGlue.prototype = {
     }
 
     if (currentUIVersion < 70) {
+__L_V__0({
+    lN: 3267,tT:'if',pr:'currentUIVersion < 70',eT:{},fN:''
+  });'__L_V__0';
       // Migrate old ctrl-tab pref to new one in existing profiles. (This code
       // doesn't run at all in new profiles.)
       Services.prefs.setBoolPref(
@@ -3275,6 +3971,9 @@ BrowserGlue.prototype = {
     }
 
     if (currentUIVersion < 71) {
+__L_V__0({
+    lN: 3280,tT:'if',pr:'currentUIVersion < 71',eT:{},fN:''
+  });'__L_V__0';
       // Clear legacy saved prefs for content handlers.
       let savedContentHandlers = Services.prefs.getChildList(
         "browser.contentHandlers.types"
@@ -3285,6 +3984,9 @@ BrowserGlue.prototype = {
     }
 
     if (currentUIVersion < 72) {
+__L_V__0({
+    lN: 3290,tT:'if',pr:'currentUIVersion < 72',eT:{},fN:''
+  });'__L_V__0';
       // Migrate performance tool's recording interval value from msec to usec.
       let pref = "devtools.performance.recording.interval";
       Services.prefs.setIntPref(
@@ -3294,6 +3996,9 @@ BrowserGlue.prototype = {
     }
 
     if (currentUIVersion < 73) {
+__L_V__0({
+    lN: 3299,tT:'if',pr:'currentUIVersion < 73',eT:{},fN:''
+  });'__L_V__0';
       // Remove blocklist JSON local dumps in profile.
       OS.File.removeDir(
         OS.Path.join(OS.Constants.Path.profileDir, "blocklists"),
@@ -3314,6 +4019,9 @@ BrowserGlue.prototype = {
     }
 
     if (currentUIVersion < 75) {
+__L_V__0({
+    lN: 3319,tT:'if',pr:'currentUIVersion < 75',eT:{},fN:''
+  });'__L_V__0';
       // Ensure we try to migrate any live bookmarks the user might have, trying up to
       // 5 times. We set this early, and here, to avoid running the migration on
       // new profile (or, indeed, ever creating the pref there).
@@ -3324,9 +4032,15 @@ BrowserGlue.prototype = {
     }
 
     if (currentUIVersion < 76) {
+__L_V__0({
+    lN: 3329,tT:'if',pr:'currentUIVersion < 76',eT:{},fN:''
+  });'__L_V__0';
       // Clear old onboarding prefs from profile (bug 1462415)
       let onboardingPrefs = Services.prefs.getBranch("browser.onboarding.");
       if (onboardingPrefs) {
+__L_V__0({
+    lN: 3332,tT:'if',pr:'onboardingPrefs',eT:{},fN:''
+  });'__L_V__0';
         let onboardingPrefsArray = onboardingPrefs.getChildList("");
         for (let item of onboardingPrefsArray) {
           Services.prefs.clearUserPref("browser.onboarding." + item);
@@ -3337,6 +4051,9 @@ BrowserGlue.prototype = {
     }
 
     if (currentUIVersion < 77) {
+__L_V__0({
+    lN: 3342,tT:'if',pr:'currentUIVersion < 77',eT:{},fN:''
+  });'__L_V__0';
       // Remove currentset from all the toolbars
       let toolbars = [
         "nav-bar",
@@ -3350,16 +4067,25 @@ BrowserGlue.prototype = {
     }
 
     if (currentUIVersion < 78) {
+__L_V__0({
+    lN: 3355,tT:'if',pr:'currentUIVersion < 78',eT:{},fN:''
+  });'__L_V__0';
       Services.prefs.clearUserPref("browser.search.region");
     }
 
     if (currentUIVersion < 79) {
+__L_V__0({
+    lN: 3359,tT:'if',pr:'currentUIVersion < 79',eT:{},fN:''
+  });'__L_V__0';
       // The handler app service will read this. We need to wait with migrating
       // until the handler service has started up, so just set a pref here.
       Services.prefs.setCharPref("browser.handlers.migrations", "30boxes");
     }
 
     if (currentUIVersion < 80) {
+__L_V__0({
+    lN: 3365,tT:'if',pr:'currentUIVersion < 80',eT:{},fN:''
+  });'__L_V__0';
       let hosts = Services.prefs.getCharPref("network.proxy.no_proxies_on");
       // remove "localhost" and "127.0.0.1" from the no_proxies_on list
       const kLocalHosts = new Set(["localhost", "127.0.0.1"]);
@@ -3371,9 +4097,15 @@ BrowserGlue.prototype = {
     }
 
     if (currentUIVersion < 81) {
+__L_V__0({
+    lN: 3376,tT:'if',pr:'currentUIVersion < 81',eT:{},fN:''
+  });'__L_V__0';
       // Reset homepage pref for users who have it set to a default from before Firefox 4:
       //   <locale>.(start|start2|start3).mozilla.(com|org)
       if (HomePage.overridden) {
+__L_V__0({
+    lN: 3379,tT:'if',pr:'HomePage.overridden',eT:{},fN:''
+  });'__L_V__0';
         const DEFAULT = HomePage.getDefault();
         let value = HomePage.get();
         let updated = value.replace(
@@ -3381,7 +4113,13 @@ BrowserGlue.prototype = {
           DEFAULT
         );
         if (updated != value) {
+__L_V__0({
+    lN: 3386,tT:'if',pr:'updated != value',eT:{},fN:''
+  });'__L_V__0';
           if (updated == DEFAULT) {
+__L_V__0({
+    lN: 3387,tT:'if',pr:'updated == DEFAULT',eT:{},fN:''
+  });'__L_V__0';
             HomePage.reset();
           } else {
             value = updated;
@@ -3392,6 +4130,9 @@ BrowserGlue.prototype = {
     }
 
     if (currentUIVersion < 82) {
+__L_V__0({
+    lN: 3397,tT:'if',pr:'currentUIVersion < 82',eT:{},fN:''
+  });'__L_V__0';
       this._migrateXULStoreForDocument(
         "chrome://browser/content/browser.xul",
         "chrome://browser/content/browser.xhtml"
@@ -3399,10 +4140,16 @@ BrowserGlue.prototype = {
     }
 
     if (currentUIVersion < 83) {
+__L_V__0({
+    lN: 3404,tT:'if',pr:'currentUIVersion < 83',eT:{},fN:''
+  });'__L_V__0';
       Services.prefs.clearUserPref("browser.search.reset.status");
     }
 
     if (currentUIVersion < 84) {
+__L_V__0({
+    lN: 3408,tT:'if',pr:'currentUIVersion < 84',eT:{},fN:''
+  });'__L_V__0';
       // Reset flash "always allow/block" permissions
       // We keep session and policy permissions, which could both be
       // the result of enterprise policy settings. "Never/Always allow"
@@ -3426,6 +4173,9 @@ BrowserGlue.prototype = {
     // code block that was at 85 has been moved/bumped to currentUIVersion 87.
 
     if (currentUIVersion < 86) {
+__L_V__0({
+    lN: 3431,tT:'if',pr:'currentUIVersion < 86',eT:{},fN:''
+  });'__L_V__0';
       // If the user has set "media.autoplay.allow-muted" to false
       // migrate that to media.autoplay.default=BLOCKED_ALL.
       if (
@@ -3435,6 +4185,9 @@ BrowserGlue.prototype = {
         Services.prefs.getIntPref("media.autoplay.default") ==
           Ci.nsIAutoplay.BLOCKED
       ) {
+__L_V__0({
+    lN: 3440,tT:'if',pr:' Services.prefs.prefHasUserValue(media.autoplay.allow-muted) && !Services.prefs.getBoolPref(media.autoplay.allow-muted) && !Services.prefs.prefHasUserValue(media.autoplay.default) && Services.prefs.getIntPref(media.autoplay.default) == Ci.nsIAutoplay.BLOCKED ',eT:{},fN:''
+  });'__L_V__0';
         Services.prefs.setIntPref(
           "media.autoplay.default",
           Ci.nsIAutoplay.BLOCKED_ALL
@@ -3444,17 +4197,26 @@ BrowserGlue.prototype = {
     }
 
     if (currentUIVersion < 87) {
+__L_V__0({
+    lN: 3449,tT:'if',pr:'currentUIVersion < 87',eT:{},fN:''
+  });'__L_V__0';
       const TRACKING_TABLE_PREF = "urlclassifier.trackingTable";
       const CUSTOM_BLOCKING_PREF =
         "browser.contentblocking.customBlockList.preferences.ui.enabled";
       // Check if user has set custom tables pref, and show custom block list UI
       // in the about:preferences#privacy custom panel.
       if (Services.prefs.prefHasUserValue(TRACKING_TABLE_PREF)) {
+__L_V__0({
+    lN: 3455,tT:'if',pr:'Services.prefs.prefHasUserValue(TRACKING_TABLE_PREF)',eT:{},fN:''
+  });'__L_V__0';
         Services.prefs.setBoolPref(CUSTOM_BLOCKING_PREF, true);
       }
     }
 
     if (currentUIVersion < 88) {
+__L_V__0({
+    lN: 3460,tT:'if',pr:'currentUIVersion < 88',eT:{},fN:''
+  });'__L_V__0';
       // If the user the has "browser.contentblocking.category = custom", but has
       // the exact same settings as "standard", move them once to "standard". This is
       // to reset users who we may have moved accidentally, or moved to get ETP early.
@@ -3472,13 +4234,22 @@ BrowserGlue.prototype = {
           "standard"
         ) == "custom"
       ) {
+__L_V__0({
+    lN: 3477,tT:'if',pr:' Services.prefs.getStringPref( browser.contentblocking.category, standard ) == custom ',eT:{},fN:''
+  });'__L_V__0';
         let shouldMigrate = true;
         for (let pref of category_prefs) {
           if (Services.prefs.prefHasUserValue(pref)) {
+__L_V__0({
+    lN: 3480,tT:'if',pr:'Services.prefs.prefHasUserValue(pref)',eT:{},fN:''
+  });'__L_V__0';
             shouldMigrate = false;
           }
         }
         if (shouldMigrate) {
+__L_V__0({
+    lN: 3484,tT:'if',pr:'shouldMigrate',eT:{},fN:''
+  });'__L_V__0';
           Services.prefs.setStringPref(
             "browser.contentblocking.category",
             "standard"
@@ -3488,6 +4259,9 @@ BrowserGlue.prototype = {
     }
 
     if (currentUIVersion < 89) {
+__L_V__0({
+    lN: 3493,tT:'if',pr:'currentUIVersion < 89',eT:{},fN:''
+  });'__L_V__0';
       // This file was renamed in https://bugzilla.mozilla.org/show_bug.cgi?id=1595636.
       this._migrateXULStoreForDocument(
         "chrome://devtools/content/framework/toolbox-window.xul",
@@ -3496,6 +4270,9 @@ BrowserGlue.prototype = {
     }
 
     if (currentUIVersion < 90) {
+__L_V__0({
+    lN: 3501,tT:'if',pr:'currentUIVersion < 90',eT:{},fN:''
+  });'__L_V__0';
       this._migrateXULStoreForDocument(
         "chrome://browser/content/places/historySidebar.xul",
         "chrome://browser/content/places/historySidebar.xhtml"
@@ -3517,11 +4294,17 @@ BrowserGlue.prototype = {
       Services.prefs.getBoolPref("network.proxy.share_proxy_settings", false) &&
       Services.prefs.getIntPref("network.proxy.type", 0) == 1
     ) {
+__L_V__0({
+    lN: 3522,tT:'if',pr:' currentUIVersion < 91 && Services.prefs.getBoolPref(network.proxy.share_proxy_settings, false) && Services.prefs.getIntPref(network.proxy.type, 0) == 1 ',eT:{},fN:''
+  });'__L_V__0';
       let httpProxy = Services.prefs.getCharPref("network.proxy.http", "");
       let httpPort = Services.prefs.getIntPref("network.proxy.http_port", 0);
       let socksProxy = Services.prefs.getCharPref("network.proxy.socks", "");
       let socksPort = Services.prefs.getIntPref("network.proxy.socks_port", 0);
       if (httpProxy && httpProxy == socksProxy && httpPort == socksPort) {
+__L_V__0({
+    lN: 3527,tT:'if',pr:'httpProxy && httpProxy == socksProxy && httpPort == socksPort',eT:{},fN:''
+  });'__L_V__0';
         Services.prefs.setCharPref(
           "network.proxy.socks",
           Services.prefs.getCharPref("network.proxy.backup.socks", "")
@@ -3534,12 +4317,18 @@ BrowserGlue.prototype = {
     }
 
     if (currentUIVersion < 92) {
+__L_V__0({
+    lN: 3539,tT:'if',pr:'currentUIVersion < 92',eT:{},fN:''
+  });'__L_V__0';
       // privacy.userContext.longPressBehavior pref was renamed and changed to a boolean
       let longpress = Services.prefs.getIntPref(
         "privacy.userContext.longPressBehavior",
         0
       );
       if (longpress == 1) {
+__L_V__0({
+    lN: 3545,tT:'if',pr:'longpress == 1',eT:{},fN:''
+  });'__L_V__0';
         Services.prefs.setBoolPref(
           "privacy.userContext.newTabContainerOnLeftClick.enabled",
           true
@@ -3551,260 +4340,27 @@ BrowserGlue.prototype = {
     Services.prefs.setIntPref("browser.migration.version", UI_VERSION);
   },
 
-<<<<<<< HEAD
-  _checkForDefaultBrowser() {
-    // Perform default browser checking.
-    if (!ShellService) {
-      return;
-    }
-
-    let shouldCheck =
-      !AppConstants.DEBUG && ShellService.shouldCheckDefaultBrowser;
-
-    const skipDefaultBrowserCheck =
-      Services.prefs.getBoolPref(
-        "browser.shell.skipDefaultBrowserCheckOnFirstRun"
-      ) &&
-      !Services.prefs.getBoolPref(
-        "browser.shell.didSkipDefaultBrowserCheckOnFirstRun"
-      );
-
-    const usePromptLimit = !AppConstants.RELEASE_OR_BETA;
-    let promptCount = usePromptLimit
-      ? Services.prefs.getIntPref("browser.shell.defaultBrowserCheckCount")
-      : 0;
-    let popupCount = Services.prefs.getIntPref("browser.shell.defaultBrowserCheckCount");
-
-    let willRecoverSession =
-      SessionStartup.sessionType == SessionStartup.RECOVER_SESSION;
-
-    // startup check, check all assoc
-    let isDefault = false;
-    let isDefaultError = false;
-    try {
-      isDefault = ShellService.isDefaultBrowser(true, false);
-    } catch (ex) {
-      isDefaultError = true;
-    }
-
-    if (isDefault) {
-      let now = Math.floor(Date.now() / 1000).toString();
-      Services.prefs.setCharPref(
-        "browser.shell.mostRecentDateSetAsDefault",
-        now
-      );
-    }
-
-    let willPrompt = shouldCheck && !isDefault && !willRecoverSession;
-
-    // Skip the "Set Default Browser" check during first-run or after the
-    // browser has been run a few times.
-    if (willPrompt) {
-      if (skipDefaultBrowserCheck) {
-        Services.prefs.setBoolPref(
-          "browser.shell.didSkipDefaultBrowserCheckOnFirstRun",
-          true
-        );
-        willPrompt = false;
-      } else {
-        promptCount++;
-      }
-      /* CLIQZ-SPECIAL: Avoid FF handling of default browser msg popup
-      if (usePromptLimit && promptCount > 3) {
-        willPrompt = false;
-||||||| 376897a8d06
-  _checkForDefaultBrowser() {
-    // Perform default browser checking.
-    if (!ShellService) {
-      return;
-    }
-
-    let shouldCheck =
-      !AppConstants.DEBUG && ShellService.shouldCheckDefaultBrowser;
-
-    const skipDefaultBrowserCheck =
-      Services.prefs.getBoolPref(
-        "browser.shell.skipDefaultBrowserCheckOnFirstRun"
-      ) &&
-      !Services.prefs.getBoolPref(
-        "browser.shell.didSkipDefaultBrowserCheckOnFirstRun"
-      );
-
-    const usePromptLimit = !AppConstants.RELEASE_OR_BETA;
-    let promptCount = usePromptLimit
-      ? Services.prefs.getIntPref("browser.shell.defaultBrowserCheckCount")
-      : 0;
-
-    let willRecoverSession =
-      SessionStartup.sessionType == SessionStartup.RECOVER_SESSION;
-
-    // startup check, check all assoc
-    let isDefault = false;
-    let isDefaultError = false;
-    try {
-      isDefault = ShellService.isDefaultBrowser(true, false);
-    } catch (ex) {
-      isDefaultError = true;
-    }
-
-    if (isDefault) {
-      let now = Math.floor(Date.now() / 1000).toString();
-      Services.prefs.setCharPref(
-        "browser.shell.mostRecentDateSetAsDefault",
-        now
-      );
-    }
-
-    let willPrompt = shouldCheck && !isDefault && !willRecoverSession;
-
-    // Skip the "Set Default Browser" check during first-run or after the
-    // browser has been run a few times.
-    if (willPrompt) {
-      if (skipDefaultBrowserCheck) {
-        Services.prefs.setBoolPref(
-          "browser.shell.didSkipDefaultBrowserCheckOnFirstRun",
-          true
-        );
-        willPrompt = false;
-      } else {
-        promptCount++;
-      }
-      if (usePromptLimit && promptCount > 3) {
-        willPrompt = false;
-=======
   _maybeShowDefaultBrowserPrompt() {
+__L_V__0({
+    lN: 3557,tT:'func',pr:'',eT:{},fN:'_maybeShowDefaultBrowserPrompt'
+  });'__L_V__0';
     DefaultBrowserCheck.willCheckDefaultBrowser(/* isStartupCheck */ true).then(
       willPrompt => {
         if (!willPrompt) {
+__L_V__0({
+    lN: 3560,tT:'if',pr:'!willPrompt',eT:{},fN:''
+  });'__L_V__0';
           return;
         }
         DefaultBrowserCheck.prompt(BrowserWindowTracker.getTopWindow());
->>>>>>> 64b6512df3acbe22689648f5989ade2f1f6ad8bc
       }
-<<<<<<< HEAD
-      */
-    }
-
-    // CLIQZ-SPECIAL: moderating default browser message popup timings as per DB-2076
-    let defaultBrowserCheckFlag = false;
-    let firstDefaultBrowserCheckTimestamp =
-      Services.prefs.getPrefType("browser.shell.firstDefaultBrowserCheckTimestamp") !== 0 ?
-        Services.prefs.getIntPref("browser.shell.firstDefaultBrowserCheckTimestamp") :
-        null;
-
-    if (!firstDefaultBrowserCheckTimestamp) {
-      firstDefaultBrowserCheckTimestamp = parseInt(Date.now() / 1000);
-      Services.prefs.setIntPref("browser.shell.firstDefaultBrowserCheckTimestamp", firstDefaultBrowserCheckTimestamp);
-    }
-
-    let checkLevel =
-      Services.prefs.getPrefType("browser.shell.defaultBrowserCheckLevel") !== 0 ?
-        Services.prefs.getIntPref("browser.shell.defaultBrowserCheckLevel"):
-        0;
-
-    function setLevel(val) {
-      Services.prefs.setIntPref("browser.shell.defaultBrowserCheckLevel", val);
-      popupCount++;
-      Services.prefs.setIntPref("browser.shell.defaultBrowserCheckCount", popupCount);
-      return true;
-    }
-
-    if (firstDefaultBrowserCheckTimestamp && willPrompt) {
-      let whatsNow = parseInt(Date.now() / 1000);
-      let timeDiff = whatsNow - firstDefaultBrowserCheckTimestamp;
-      let monthAge = 30 * 24 * 60 * 60;
-      let monthCount = Math.floor(timeDiff / monthAge);
-      let fortNightAge = 15 * 24 * 60 * 60;
-      let weekAge = 7 * 24 * 60 * 60;
-      if (timeDiff < weekAge) {
-        if (checkLevel == 0) {
-          defaultBrowserCheckFlag = setLevel(1);
-        }
-      } else if (timeDiff < fortNightAge) {
-        if (checkLevel <= 1) {
-          defaultBrowserCheckFlag = setLevel(2);
-        }
-      } else if (timeDiff < monthAge) {
-        if (checkLevel <= 2) {
-          defaultBrowserCheckFlag = setLevel(3);
-        }
-      } else {
-        let monthLevel = monthCount + 3;
-        if (checkLevel < monthLevel) {
-          defaultBrowserCheckFlag = setLevel(monthLevel);
-        }
-      }
-    }
-
-    /* CLIQZ-SPECIAL: Avoid FF handling of default browser msg popup
-    if (usePromptLimit && willPrompt) {
-      Services.prefs.setIntPref(
-        "browser.shell.defaultBrowserCheckCount",
-        promptCount
-      );
-    }
-    */
-
-    try {
-      // Report default browser status on startup to telemetry
-      // so we can track whether we are the default.
-      Services.telemetry
-        .getHistogramById("BROWSER_IS_USER_DEFAULT")
-        .add(isDefault);
-      Services.telemetry
-        .getHistogramById("BROWSER_IS_USER_DEFAULT_ERROR")
-        .add(isDefaultError);
-      Services.telemetry
-        .getHistogramById("BROWSER_SET_DEFAULT_ALWAYS_CHECK")
-        .add(shouldCheck);
-      Services.telemetry
-        .getHistogramById("BROWSER_SET_DEFAULT_DIALOG_PROMPT_RAWCOUNT")
-        .add(promptCount);
-    } catch (ex) {
-      /* Don't break the default prompt if telemetry is broken. */
-    }
-
-    if (willPrompt && defaultBrowserCheckFlag) {
-      DefaultBrowserCheck.prompt(BrowserWindowTracker.getTopWindow());
-    }
-||||||| 376897a8d06
-    }
-
-    if (usePromptLimit && willPrompt) {
-      Services.prefs.setIntPref(
-        "browser.shell.defaultBrowserCheckCount",
-        promptCount
-      );
-    }
-
-    try {
-      // Report default browser status on startup to telemetry
-      // so we can track whether we are the default.
-      Services.telemetry
-        .getHistogramById("BROWSER_IS_USER_DEFAULT")
-        .add(isDefault);
-      Services.telemetry
-        .getHistogramById("BROWSER_IS_USER_DEFAULT_ERROR")
-        .add(isDefaultError);
-      Services.telemetry
-        .getHistogramById("BROWSER_SET_DEFAULT_ALWAYS_CHECK")
-        .add(shouldCheck);
-      Services.telemetry
-        .getHistogramById("BROWSER_SET_DEFAULT_DIALOG_PROMPT_RAWCOUNT")
-        .add(promptCount);
-    } catch (ex) {
-      /* Don't break the default prompt if telemetry is broken. */
-    }
-
-    if (willPrompt) {
-      DefaultBrowserCheck.prompt(BrowserWindowTracker.getTopWindow());
-    }
-=======
     );
->>>>>>> 64b6512df3acbe22689648f5989ade2f1f6ad8bc
   },
 
   async _migrateMatchBucketsPrefForUI66() {
+__L_V__0({
+    lN: 3568,tT:'func',pr:'',eT:{},fN:'_migrateMatchBucketsPrefForUI66'
+  });'__L_V__0';
     // This does two related things.
     //
     // (1) Profiles created on or after Firefox 57's release date were eligible
@@ -3827,11 +4383,17 @@ BrowserGlue.prototype = {
     // Wait for Shield init to complete.
     await new Promise(resolve => {
       if (this._shieldInitComplete) {
+__L_V__0({
+    lN: 3590,tT:'if',pr:'this._shieldInitComplete',eT:{},fN:''
+  });'__L_V__0';
         resolve();
         return;
       }
       let topic = "shield-init-complete";
       Services.obs.addObserver(function obs() {
+__L_V__0({
+    lN: 3595,tT:'func',pr:'',eT:{},fN:'obs'
+  });'__L_V__0';
         Services.obs.removeObserver(obs, topic);
         resolve();
       }, topic);
@@ -3855,6 +4417,9 @@ BrowserGlue.prototype = {
 
     // Uninstall the study, resetting the pref to its state before the study.
     if (experiment && !experiment.expired) {
+__L_V__0({
+    lN: 3618,tT:'if',pr:'experiment && !experiment.expired',eT:{},fN:''
+  });'__L_V__0';
       await PreferenceExperiments.stop(experimentName, {
         resetValue: true,
         reason: "external:search-ui-migration",
@@ -3865,6 +4430,9 @@ BrowserGlue.prototype = {
     // either has a user value, or something unexpectedly set its value on the
     // default branch.  Either way, preserve that value.
     if (Services.prefs.getCharPref(prefName, "")) {
+__L_V__0({
+    lN: 3628,tT:'if',pr:'Services.prefs.getCharPref(prefName, )',eT:{},fN:''
+  });'__L_V__0';
       return;
     }
 
@@ -3873,8 +4441,14 @@ BrowserGlue.prototype = {
     // undefined, and UnifiedComplete.js hardcodes that value internally.  So if
     // the pref was "suggestion:4,general:5" (modulo whitespace), we're done.
     if (prefValue) {
+__L_V__0({
+    lN: 3636,tT:'if',pr:'prefValue',eT:{},fN:''
+  });'__L_V__0';
       let buckets = PlacesUtils.convertMatchBucketsStringToArray(prefValue);
       if (ObjectUtils.deepEqual(buckets, [["suggestion", 4], ["general", 5]])) {
+__L_V__0({
+    lN: 3638,tT:'if',pr:'ObjectUtils.deepEqual(buckets, [[suggestion, 4], [general, 5]])',eT:{},fN:''
+  });'__L_V__0';
         return;
       }
     }
@@ -3890,18 +4464,30 @@ BrowserGlue.prototype = {
    * Open preferences even if there are no open windows.
    */
   _openPreferences(...args) {
+__L_V__0({
+    lN: 3653,tT:'func',pr:'',eT:{'args':args},fN:'_openPreferences'
+  });'__L_V__0';
     let chromeWindow = BrowserWindowTracker.getTopWindow();
     if (chromeWindow) {
+__L_V__0({
+    lN: 3655,tT:'if',pr:'chromeWindow',eT:{},fN:''
+  });'__L_V__0';
       chromeWindow.openPreferences(...args);
       return;
     }
 
     if (Services.appShell.hiddenDOMWindow.openPreferences) {
+__L_V__0({
+    lN: 3660,tT:'if',pr:'Services.appShell.hiddenDOMWindow.openPreferences',eT:{},fN:''
+  });'__L_V__0';
       Services.appShell.hiddenDOMWindow.openPreferences(...args);
     }
   },
 
   _openURLInNewWindow(url) {
+__L_V__0({
+    lN: 3665,tT:'func',pr:'',eT:{'url':url},fN:'_openURLInNewWindow'
+  });'__L_V__0';
     let urlString = Cc["@mozilla.org/supports-string;1"].createInstance(
       Ci.nsISupportsString
     );
@@ -3931,6 +4517,9 @@ BrowserGlue.prototype = {
    * We open the received URIs in background tabs.
    */
   async _onDisplaySyncURIs(data) {
+__L_V__0({
+    lN: 3694,tT:'func',pr:'',eT:{'data':data},fN:'_onDisplaySyncURIs'
+  });'__L_V__0';
     try {
       // The payload is wrapped weirdly because of how Sync does notifications.
       const URIs = data.wrappedJSObject.object;
@@ -3941,6 +4530,9 @@ BrowserGlue.prototype = {
       const openTab = async URI => {
         let tab;
         if (!win) {
+__L_V__0({
+    lN: 3704,tT:'if',pr:'!win',eT:{},fN:''
+  });'__L_V__0';
           win = await this._openURLInNewWindow(URI.uri);
           let tabs = win.gBrowser.tabs;
           tab = tabs[tabs.length - 1];
@@ -3960,10 +4552,16 @@ BrowserGlue.prototype = {
         "chrome://browser/locale/accounts.properties"
       );
       if (URIs.length == 1) {
+__L_V__0({
+    lN: 3723,tT:'if',pr:'URIs.length == 1',eT:{},fN:''
+  });'__L_V__0';
         // Due to bug 1305895, tabs from iOS may not have device information, so
         // we have separate strings to handle those cases. (See Also
         // unnamedTabsArrivingNotificationNoDevice.body below)
         if (deviceName) {
+__L_V__0({
+    lN: 3727,tT:'if',pr:'deviceName',eT:{},fN:''
+  });'__L_V__0';
           title = bundle.formatStringFromName(
             "tabArrivingNotificationWithDevice.title",
             [deviceName]
@@ -3978,6 +4576,9 @@ BrowserGlue.prototype = {
         let wasTruncated = body.length < URIs[0].uri.length;
         body = BrowserUtils.trimURL(body);
         if (wasTruncated) {
+__L_V__0({
+    lN: 3741,tT:'if',pr:'wasTruncated',eT:{},fN:''
+  });'__L_V__0';
           body = bundle.formatStringFromName(
             "singleTabArrivingWithTruncatedURL.body",
             [body]
@@ -3993,7 +4594,13 @@ BrowserGlue.prototype = {
           URIs.every(URI => URI.sender.id == URIs[0].sender.id);
         let tabArrivingBody;
         if (allSameDevice) {
+__L_V__0({
+    lN: 3756,tT:'if',pr:'allSameDevice',eT:{},fN:''
+  });'__L_V__0';
           if (deviceName) {
+__L_V__0({
+    lN: 3757,tT:'if',pr:'deviceName',eT:{},fN:''
+  });'__L_V__0';
             tabArrivingBody = "unnamedTabsArrivingNotification2.body";
           } else {
             tabArrivingBody = "unnamedTabsArrivingNotificationNoDevice.body";
@@ -4010,6 +4617,9 @@ BrowserGlue.prototype = {
 
       const clickCallback = (obsSubject, obsTopic, obsData) => {
         if (obsTopic == "alertclickcallback") {
+__L_V__0({
+    lN: 3773,tT:'if',pr:'obsTopic == alertclickcallback',eT:{},fN:''
+  });'__L_V__0';
           win.gBrowser.selectedTab = firstTab;
         }
       };
@@ -4017,6 +4627,9 @@ BrowserGlue.prototype = {
       // Specify an icon because on Windows no icon is shown at the moment
       let imageURL;
       if (AppConstants.platform == "win") {
+__L_V__0({
+    lN: 3780,tT:'if',pr:'AppConstants.platform == win',eT:{},fN:''
+  });'__L_V__0';
         imageURL = "chrome://branding/content/icon64.png";
       }
       this.AlertsService.showAlertNotification(
@@ -4034,13 +4647,22 @@ BrowserGlue.prototype = {
 #endif
 
   async _onVerifyLoginNotification({ body, title, url }) {
+__L_V__0({
+    lN: 3797,tT:'func',pr:'',eT:{'body':body,'title':title,'url':url},fN:'_onVerifyLoginNotification'
+  });'__L_V__0';
     let tab;
     let imageURL;
     if (AppConstants.platform == "win") {
+__L_V__0({
+    lN: 3800,tT:'if',pr:'AppConstants.platform == win',eT:{},fN:''
+  });'__L_V__0';
       imageURL = "chrome://branding/content/icon64.png";
     }
     let win = BrowserWindowTracker.getTopWindow({ private: false });
     if (!win) {
+__L_V__0({
+    lN: 3804,tT:'if',pr:'!win',eT:{},fN:''
+  });'__L_V__0';
       win = await this._openURLInNewWindow(url);
       let tabs = win.gBrowser.tabs;
       tab = tabs[tabs.length - 1];
@@ -4050,6 +4672,9 @@ BrowserGlue.prototype = {
     tab.setAttribute("attention", true);
     let clickCallback = (subject, topic, data) => {
       if (topic != "alertclickcallback") {
+__L_V__0({
+    lN: 3813,tT:'if',pr:'topic != alertclickcallback',eT:{},fN:''
+  });'__L_V__0';
         return;
       }
       win.gBrowser.selectedTab = tab;
@@ -4070,6 +4695,9 @@ BrowserGlue.prototype = {
   },
 
   _onDeviceConnected(deviceName) {
+__L_V__0({
+    lN: 3833,tT:'func',pr:'',eT:{'deviceName':deviceName},fN:'_onDeviceConnected'
+  });'__L_V__0';
     let accountsBundle = Services.strings.createBundle(
       "chrome://browser/locale/accounts.properties"
     );
@@ -4081,6 +4709,9 @@ BrowserGlue.prototype = {
 
     let clickCallback = async (subject, topic, data) => {
       if (topic != "alertclickcallback") {
+__L_V__0({
+    lN: 3844,tT:'if',pr:'topic != alertclickcallback',eT:{},fN:''
+  });'__L_V__0';
         return;
       }
       let url = await FxAccounts.config.promiseManageDevicesURI(
@@ -4088,6 +4719,9 @@ BrowserGlue.prototype = {
       );
       let win = BrowserWindowTracker.getTopWindow({ private: false });
       if (!win) {
+__L_V__0({
+    lN: 3851,tT:'if',pr:'!win',eT:{},fN:''
+  });'__L_V__0';
         this._openURLInNewWindow(url);
       } else {
         win.gBrowser.addWebTab(url);
@@ -4109,6 +4743,9 @@ BrowserGlue.prototype = {
   },
 
   _onDeviceDisconnected() {
+__L_V__0({
+    lN: 3872,tT:'func',pr:'',eT:{},fN:'_onDeviceDisconnected'
+  });'__L_V__0';
     let bundle = Services.strings.createBundle(
       "chrome://browser/locale/accounts.properties"
     );
@@ -4117,6 +4754,9 @@ BrowserGlue.prototype = {
 
     let clickCallback = (subject, topic, data) => {
       if (topic != "alertclickcallback") {
+__L_V__0({
+    lN: 3880,tT:'if',pr:'topic != alertclickcallback',eT:{},fN:''
+  });'__L_V__0';
         return;
       }
       this._openPreferences("sync");
@@ -4132,26 +4772,44 @@ BrowserGlue.prototype = {
   },
 
   _handleFlashHang() {
+__L_V__0({
+    lN: 3895,tT:'func',pr:'',eT:{},fN:'_handleFlashHang'
+  });'__L_V__0';
     ++this._flashHangCount;
     if (this._flashHangCount < 2) {
+__L_V__0({
+    lN: 3897,tT:'if',pr:'this._flashHangCount < 2',eT:{},fN:''
+  });'__L_V__0';
       return;
     }
     // protected mode only applies to win32
     if (Services.appinfo.XPCOMABI != "x86-msvc") {
+__L_V__0({
+    lN: 3901,tT:'if',pr:'Services.appinfo.XPCOMABI != x86-msvc',eT:{},fN:''
+  });'__L_V__0';
       return;
     }
 
     if (
       Services.prefs.getBoolPref("dom.ipc.plugins.flash.disable-protected-mode")
     ) {
+__L_V__0({
+    lN: 3907,tT:'if',pr:' Services.prefs.getBoolPref(dom.ipc.plugins.flash.disable-protected-mode) ',eT:{},fN:''
+  });'__L_V__0';
       return;
     }
     if (
       !Services.prefs.getBoolPref("browser.flash-protected-mode-flip.enable")
     ) {
+__L_V__0({
+    lN: 3912,tT:'if',pr:' !Services.prefs.getBoolPref(browser.flash-protected-mode-flip.enable) ',eT:{},fN:''
+  });'__L_V__0';
       return;
     }
     if (Services.prefs.getBoolPref("browser.flash-protected-mode-flip.done")) {
+__L_V__0({
+    lN: 3915,tT:'if',pr:'Services.prefs.getBoolPref(browser.flash-protected-mode-flip.done)',eT:{},fN:''
+  });'__L_V__0';
       return;
     }
     Services.prefs.setBoolPref(
@@ -4162,6 +4820,9 @@ BrowserGlue.prototype = {
 
     let win = BrowserWindowTracker.getTopWindow();
     if (!win) {
+__L_V__0({
+    lN: 3925,tT:'if',pr:'!win',eT:{},fN:''
+  });'__L_V__0';
       return;
     }
     let productName = gBrandBundle.GetStringFromName("brandShortName");
@@ -4175,6 +4836,9 @@ BrowserGlue.prototype = {
           "flashHang.helpButton.accesskey"
         ),
         callback() {
+__L_V__0({
+    lN: 3938,tT:'func',pr:'',eT:{},fN:'callback'
+  });'__L_V__0';
           win.openTrustedLinkIn(
             "https://support.mozilla.org/kb/flash-protected-mode-autodisabled",
             "tab"
@@ -4193,11 +4857,17 @@ BrowserGlue.prototype = {
   },
 
   _updateFxaBadges() {
+__L_V__0({
+    lN: 3956,tT:'func',pr:'',eT:{},fN:'_updateFxaBadges'
+  });'__L_V__0';
     let state = UIState.get();
     if (
       state.status == UIState.STATUS_LOGIN_FAILED ||
       state.status == UIState.STATUS_NOT_VERIFIED
     ) {
+__L_V__0({
+    lN: 3961,tT:'if',pr:' state.status == UIState.STATUS_LOGIN_FAILED || state.status == UIState.STATUS_NOT_VERIFIED ',eT:{},fN:''
+  });'__L_V__0';
       AppMenuNotifications.showBadgeOnlyNotification(
         "fxa-needs-authentication"
       );
@@ -4218,6 +4888,9 @@ var ContentBlockingCategoriesPrefs = {
   switchingCategory: false,
 
   setPrefExpectations() {
+__L_V__0({
+    lN: 3981,tT:'func',pr:'',eT:{},fN:'setPrefExpectations'
+  });'__L_V__0';
     // The prefs inside CATEGORY_PREFS are initial values.
     // If the pref remains null, then it will expect the default value.
     // The "standard" category is defined as expecting all 5 default values.
@@ -4244,6 +4917,9 @@ var ContentBlockingCategoriesPrefs = {
       .getStringPref(this.PREF_STRICT_DEF)
       .split(",");
     for (let item of rulesArray) {
+__L_V__0({
+    lN: 4008,tT:'switch',pr:'',eT:{},fN:''
+  });'__L_V__0';
       switch (item) {
         case "tp":
           this.CATEGORY_PREFS[type][
@@ -4329,17 +5005,29 @@ var ContentBlockingCategoriesPrefs = {
    * Checks if CB prefs match perfectly with one of our pre-defined categories.
    */
   prefsMatch(category) {
+__L_V__0({
+    lN: 4092,tT:'func',pr:'',eT:{'category':category},fN:'prefsMatch'
+  });'__L_V__0';
     // The category pref must be either unset, or match.
     if (
       Services.prefs.prefHasUserValue(this.PREF_CB_CATEGORY) &&
       Services.prefs.getStringPref(this.PREF_CB_CATEGORY) != category
     ) {
+__L_V__0({
+    lN: 4097,tT:'if',pr:' Services.prefs.prefHasUserValue(this.PREF_CB_CATEGORY) && Services.prefs.getStringPref(this.PREF_CB_CATEGORY) != category ',eT:{},fN:''
+  });'__L_V__0';
       return false;
     }
     for (let pref in this.CATEGORY_PREFS[category]) {
       let value = this.CATEGORY_PREFS[category][pref];
       if (value == null) {
+__L_V__0({
+    lN: 4102,tT:'if',pr:'value == null',eT:{},fN:''
+  });'__L_V__0';
         if (Services.prefs.prefHasUserValue(pref)) {
+__L_V__0({
+    lN: 4103,tT:'if',pr:'Services.prefs.prefHasUserValue(pref)',eT:{},fN:''
+  });'__L_V__0';
           return false;
         }
       } else {
@@ -4352,6 +5040,9 @@ var ContentBlockingCategoriesPrefs = {
           (prefType == Services.prefs.PREF_STRING &&
             Services.prefs.getStringPref(pref) != value)
         ) {
+__L_V__0({
+    lN: 4115,tT:'if',pr:' (prefType == Services.prefs.PREF_BOOL && Services.prefs.getBoolPref(pref) != value) || (prefType == Services.prefs.PREF_INT && Services.prefs.getIntPref(pref) != value) || (prefType == Services.prefs.PREF_STRING && Services.prefs.getStringPref(pref) != value) ',eT:{},fN:''
+  });'__L_V__0';
           return false;
         }
       }
@@ -4360,15 +5051,27 @@ var ContentBlockingCategoriesPrefs = {
   },
 
   matchCBCategory() {
+__L_V__0({
+    lN: 4123,tT:'func',pr:'',eT:{},fN:'matchCBCategory'
+  });'__L_V__0';
     if (this.switchingCategory) {
+__L_V__0({
+    lN: 4124,tT:'if',pr:'this.switchingCategory',eT:{},fN:''
+  });'__L_V__0';
       return;
     }
     // If PREF_CB_CATEGORY is not set match users to a Content Blocking category. Check if prefs fit
     // perfectly into strict or standard, otherwise match with custom. If PREF_CB_CATEGORY has previously been set,
     // a change of one of these prefs necessarily puts us in "custom".
     if (this.prefsMatch("standard")) {
+__L_V__0({
+    lN: 4130,tT:'if',pr:'this.prefsMatch(standard)',eT:{},fN:''
+  });'__L_V__0';
       Services.prefs.setStringPref(this.PREF_CB_CATEGORY, "standard");
     } else if (this.prefsMatch("strict")) {
+__L_V__0({
+    lN: 4132,tT:'if',pr:'this.prefsMatch(strict)',eT:{},fN:''
+  });'__L_V__0';
       Services.prefs.setStringPref(this.PREF_CB_CATEGORY, "strict");
     } else {
       Services.prefs.setStringPref(this.PREF_CB_CATEGORY, "custom");
@@ -4379,15 +5082,24 @@ var ContentBlockingCategoriesPrefs = {
     // from changing.
     let policy = Services.policies.getActivePolicies();
     if (policy && (policy.EnableTrackingProtection || policy.Cookies)) {
+__L_V__0({
+    lN: 4142,tT:'if',pr:'policy && (policy.EnableTrackingProtection || policy.Cookies)',eT:{},fN:''
+  });'__L_V__0';
       Services.prefs.setStringPref(this.PREF_CB_CATEGORY, "custom");
     }
   },
 
   updateCBCategory() {
+__L_V__0({
+    lN: 4147,tT:'func',pr:'',eT:{},fN:'updateCBCategory'
+  });'__L_V__0';
     if (
       this.switchingCategory ||
       !Services.prefs.prefHasUserValue(this.PREF_CB_CATEGORY)
     ) {
+__L_V__0({
+    lN: 4151,tT:'if',pr:' this.switchingCategory || !Services.prefs.prefHasUserValue(this.PREF_CB_CATEGORY) ',eT:{},fN:''
+  });'__L_V__0';
       return;
     }
     // Turn on switchingCategory flag, to ensure that when the individual prefs that change as a result
@@ -4402,17 +5114,32 @@ var ContentBlockingCategoriesPrefs = {
    * Sets all user-exposed content blocking preferences to values that match the selected category.
    */
   setPrefsToCategory(category) {
+__L_V__0({
+    lN: 4165,tT:'func',pr:'',eT:{'category':category},fN:'setPrefsToCategory'
+  });'__L_V__0';
     // Leave prefs as they were if we are switching to "custom" category.
     if (category == "custom") {
+__L_V__0({
+    lN: 4167,tT:'if',pr:'category == custom',eT:{},fN:''
+  });'__L_V__0';
       return;
     }
 
     for (let pref in this.CATEGORY_PREFS[category]) {
       let value = this.CATEGORY_PREFS[category][pref];
       if (!Services.prefs.prefIsLocked(pref)) {
+__L_V__0({
+    lN: 4173,tT:'if',pr:'!Services.prefs.prefIsLocked(pref)',eT:{},fN:''
+  });'__L_V__0';
         if (value == null) {
+__L_V__0({
+    lN: 4174,tT:'if',pr:'value == null',eT:{},fN:''
+  });'__L_V__0';
           Services.prefs.clearUserPref(pref);
         } else {
+__L_V__0({
+    lN: 4177,tT:'switch',pr:'',eT:{},fN:''
+  });'__L_V__0';
           switch (Services.prefs.getPrefType(pref)) {
             case Services.prefs.PREF_BOOL:
               Services.prefs.setBoolPref(pref, value);
@@ -4461,6 +5188,12 @@ const ContentPermissionIntegration = {
    *         or undefined if the type cannot be handled.
    */
   createPermissionPrompt(type, request) {
+__L_V__0({
+    lN: 4224,tT:'func',pr:'',eT:{'type':type,'request':request},fN:'createPermissionPrompt'
+  });'__L_V__0';
+__L_V__0({
+    lN: 4225,tT:'switch',pr:'',eT:{},fN:''
+  });'__L_V__0';
     switch (type) {
       case "geolocation": {
         return new PermissionUI.GeolocationPermissionPrompt(request);
@@ -4485,7 +5218,10 @@ const ContentPermissionIntegration = {
   },
 };
 
-function ContentPermissionPrompt() {}
+function ContentPermissionPrompt() {
+__L_V__0({
+    lN: 4249,tT:'func',pr:'',eT:{},fN:'ContentPermissionPrompt'
+  });'__L_V__0';}
 
 ContentPermissionPrompt.prototype = {
   classID: Components.ID("{d8903bf6-68d5-4e97-bcd1-e4d3012f721a}"),
@@ -4508,7 +5244,13 @@ ContentPermissionPrompt.prototype = {
    *        The request that we're to show a prompt for.
    */
   prompt(request) {
+__L_V__0({
+    lN: 4271,tT:'func',pr:'',eT:{'request':request},fN:'prompt'
+  });'__L_V__0';
     if (request.element && request.element.fxrPermissionPrompt) {
+__L_V__0({
+    lN: 4272,tT:'if',pr:'request.element && request.element.fxrPermissionPrompt',eT:{},fN:''
+  });'__L_V__0';
       // For Firefox Reality on Desktop, switch to a different mechanism to
       // prompt the user since fewer permissions are available and since many
       // UI dependencies are not availabe.
@@ -4521,6 +5263,9 @@ ContentPermissionPrompt.prototype = {
       // Only allow exactly one permission request here.
       let types = request.types.QueryInterface(Ci.nsIArray);
       if (types.length != 1) {
+__L_V__0({
+    lN: 4284,tT:'if',pr:'types.length != 1',eT:{},fN:''
+  });'__L_V__0';
         throw Components.Exception(
           "Expected an nsIContentPermissionRequest with only 1 type.",
           Cr.NS_ERROR_UNEXPECTED
@@ -4537,6 +5282,9 @@ ContentPermissionPrompt.prototype = {
         request
       );
       if (!permissionPrompt) {
+__L_V__0({
+    lN: 4300,tT:'if',pr:'!permissionPrompt',eT:{},fN:''
+  });'__L_V__0';
         throw Components.Exception(
           `Failed to handle permission of type ${type}`,
           Cr.NS_ERROR_FAILURE
@@ -4556,8 +5304,14 @@ ContentPermissionPrompt.prototype = {
     let scheme = 0;
     try {
       if (request.principal.schemeIs("http")) {
+__L_V__0({
+    lN: 4319,tT:'if',pr:'request.principal.schemeIs(http)',eT:{},fN:''
+  });'__L_V__0';
         scheme = 1;
       } else if (request.principal.schemeIs("https")) {
+__L_V__0({
+    lN: 4321,tT:'if',pr:'request.principal.schemeIs(https)',eT:{},fN:''
+  });'__L_V__0';
         scheme = 2;
       }
     } catch (ex) {
@@ -4565,6 +5319,9 @@ ContentPermissionPrompt.prototype = {
       // the request has likely been cancelled before being shown to the
       // user. We shouldn't record this request.
       if (ex.result != Cr.NS_ERROR_FAILURE) {
+__L_V__0({
+    lN: 4328,tT:'if',pr:'ex.result != Cr.NS_ERROR_FAILURE',eT:{},fN:''
+  });'__L_V__0';
         Cu.reportError(ex);
       }
       return;
@@ -4580,19 +5337,34 @@ ContentPermissionPrompt.prototype = {
 
 var DefaultBrowserCheck = {
   get OPTIONPOPUP() {
+__L_V__0({
+    lN: 4343,tT:'func',pr:'',eT:{},fN:'OPTIONPOPUP'
+  });'__L_V__0';
     return "defaultBrowserNotificationPopup";
   },
 
   closePrompt(aNode) {
+__L_V__0({
+    lN: 4347,tT:'func',pr:'',eT:{'aNode':aNode},fN:'closePrompt'
+  });'__L_V__0';
     if (this._notification) {
+__L_V__0({
+    lN: 4348,tT:'if',pr:'this._notification',eT:{},fN:''
+  });'__L_V__0';
       this._notification.close();
     }
   },
 
   setAsDefault() {
+__L_V__0({
+    lN: 4353,tT:'func',pr:'',eT:{},fN:'setAsDefault'
+  });'__L_V__0';
     let claimAllTypes = true;
     let setAsDefaultError = false;
     if (AppConstants.platform == "win") {
+__L_V__0({
+    lN: 4356,tT:'if',pr:'AppConstants.platform == win',eT:{},fN:''
+  });'__L_V__0';
       try {
         // In Windows 8+, the UI for selecting default protocol is much
         // nicer than the UI for setting file type associations. So we
@@ -4621,6 +5393,9 @@ var DefaultBrowserCheck = {
   },
 
   _createPopup(win, notNowStrings, neverStrings) {
+__L_V__0({
+    lN: 4384,tT:'func',pr:'',eT:{'win':win,'notNowStrings':notNowStrings,'neverStrings':neverStrings},fN:'_createPopup'
+  });'__L_V__0';
     let doc = win.document;
     let popup = doc.createXULElement("menupopup");
     popup.id = this.OPTIONPOPUP;
@@ -4644,8 +5419,17 @@ var DefaultBrowserCheck = {
   },
 
   handleEvent(event) {
+__L_V__0({
+    lN: 4407,tT:'func',pr:'',eT:{'event':event},fN:'handleEvent'
+  });'__L_V__0';
     if (event.type == "command") {
+__L_V__0({
+    lN: 4408,tT:'if',pr:'event.type == command',eT:{},fN:''
+  });'__L_V__0';
       if (event.target.id == "defaultBrowserNever") {
+__L_V__0({
+    lN: 4409,tT:'if',pr:'event.target.id == defaultBrowserNever',eT:{},fN:''
+  });'__L_V__0';
         ShellService.shouldCheckDefaultBrowser = false;
       }
       this.closePrompt();
@@ -4653,6 +5437,9 @@ var DefaultBrowserCheck = {
   },
 
   prompt(win) {
+__L_V__0({
+    lN: 4416,tT:'func',pr:'',eT:{'win':win},fN:'prompt'
+  });'__L_V__0';
     let useNotificationBar = Services.prefs.getBoolPref(
       "browser.defaultbrowser.notificationbar"
     );
@@ -4670,6 +5457,9 @@ var DefaultBrowserCheck = {
     let notNowButton = shellBundle.getString(buttonPrefix + "NotNow.label");
 
     if (useNotificationBar) {
+__L_V__0({
+    lN: 4433,tT:'if',pr:'useNotificationBar',eT:{},fN:''
+  });'__L_V__0';
       let promptMessage = shellBundle.getFormattedString(
         "setDefaultBrowserMessage2",
         [brandShortName]
@@ -4761,8 +5551,14 @@ var DefaultBrowserCheck = {
         { value: 0 }
       );
       if (rv == 0) {
+__L_V__0({
+    lN: 4524,tT:'if',pr:'rv == 0',eT:{},fN:''
+  });'__L_V__0';
         this.setAsDefault();
       } else if (!shouldAsk.value) {
+__L_V__0({
+    lN: 4526,tT:'if',pr:'!shouldAsk.value',eT:{},fN:''
+  });'__L_V__0';
         ShellService.shouldCheckDefaultBrowser = false;
       }
 
@@ -4778,13 +5574,106 @@ var DefaultBrowserCheck = {
   },
 
   _onNotificationEvent(eventType) {
+__L_V__0({
+    lN: 4541,tT:'func',pr:'',eT:{'eventType':eventType},fN:'_onNotificationEvent'
+  });'__L_V__0';
     if (eventType == "removed") {
+__L_V__0({
+    lN: 4542,tT:'if',pr:'eventType == removed',eT:{},fN:''
+  });'__L_V__0';
       let doc = this._notification.ownerDocument;
       let popup = doc.getElementById(this.OPTIONPOPUP);
       popup.removeEventListener("command", this);
       popup.remove();
       delete this._notification;
     }
+  },
+
+  _cliqz_customHandleForDefaultBrowserCheck() {
+__L_V__0({
+    lN: 4551,tT:'func',pr:'',eT:{},fN:'_cliqz_customHandleForDefaultBrowserCheck'
+  });'__L_V__0';
+    let defaultBrowserCheckFlag = false;
+    let firstDefaultBrowserCheckTimestamp =
+      Services.prefs.getPrefType("browser.shell.firstDefaultBrowserCheckTimestamp") !== 0 ?
+        Services.prefs.getIntPref("browser.shell.firstDefaultBrowserCheckTimestamp") :
+        null;
+
+    if (!firstDefaultBrowserCheckTimestamp) {
+__L_V__0({
+    lN: 4558,tT:'if',pr:'!firstDefaultBrowserCheckTimestamp',eT:{},fN:''
+  });'__L_V__0';
+      firstDefaultBrowserCheckTimestamp = parseInt(Date.now() / 1000);
+      Services.prefs.setIntPref("browser.shell.firstDefaultBrowserCheckTimestamp", firstDefaultBrowserCheckTimestamp);
+    }
+
+    let checkLevel =
+      Services.prefs.getPrefType("browser.shell.defaultBrowserCheckLevel") !== 0 ?
+        Services.prefs.getIntPref("browser.shell.defaultBrowserCheckLevel"):
+        0;
+
+    function setLevel(val) {
+__L_V__0({
+    lN: 4568,tT:'func',pr:'',eT:{'val':val},fN:'setLevel'
+  });'__L_V__0';
+      Services.prefs.setIntPref("browser.shell.defaultBrowserCheckLevel", val);
+      popupCount++;
+      Services.prefs.setIntPref("browser.shell.defaultBrowserCheckCount", popupCount);
+      return true;
+    }
+
+    if (firstDefaultBrowserCheckTimestamp && willPrompt) {
+__L_V__0({
+    lN: 4575,tT:'if',pr:'firstDefaultBrowserCheckTimestamp && willPrompt',eT:{},fN:''
+  });'__L_V__0';
+      let whatsNow = parseInt(Date.now() / 1000);
+      let timeDiff = whatsNow - firstDefaultBrowserCheckTimestamp;
+      let monthAge = 30 * 24 * 60 * 60;
+      let monthCount = Math.floor(timeDiff / monthAge);
+      let fortNightAge = 15 * 24 * 60 * 60;
+      let weekAge = 7 * 24 * 60 * 60;
+      if (timeDiff < weekAge) {
+__L_V__0({
+    lN: 4582,tT:'if',pr:'timeDiff < weekAge',eT:{},fN:''
+  });'__L_V__0';
+        if (checkLevel == 0) {
+__L_V__0({
+    lN: 4583,tT:'if',pr:'checkLevel == 0',eT:{},fN:''
+  });'__L_V__0';
+          defaultBrowserCheckFlag = setLevel(1);
+        }
+      } else if (timeDiff < fortNightAge) {
+__L_V__0({
+    lN: 4586,tT:'if',pr:'timeDiff < fortNightAge',eT:{},fN:''
+  });'__L_V__0';
+        if (checkLevel <= 1) {
+__L_V__0({
+    lN: 4587,tT:'if',pr:'checkLevel <= 1',eT:{},fN:''
+  });'__L_V__0';
+          defaultBrowserCheckFlag = setLevel(2);
+        }
+      } else if (timeDiff < monthAge) {
+__L_V__0({
+    lN: 4590,tT:'if',pr:'timeDiff < monthAge',eT:{},fN:''
+  });'__L_V__0';
+        if (checkLevel <= 2) {
+__L_V__0({
+    lN: 4591,tT:'if',pr:'checkLevel <= 2',eT:{},fN:''
+  });'__L_V__0';
+          defaultBrowserCheckFlag = setLevel(3);
+        }
+      } else {
+        let monthLevel = monthCount + 3;
+        if (checkLevel < monthLevel) {
+__L_V__0({
+    lN: 4596,tT:'if',pr:'checkLevel < monthLevel',eT:{},fN:''
+  });'__L_V__0';
+          defaultBrowserCheckFlag = setLevel(monthLevel);
+        }
+      }
+    }
+
+    return defaultBrowserCheckFlag;
   },
 
   /**
@@ -4794,8 +5683,14 @@ var DefaultBrowserCheck = {
    * @returns {boolean} True if the default browser check prompt will be shown.
    */
   async willCheckDefaultBrowser(isStartupCheck) {
+__L_V__0({
+    lN: 4611,tT:'func',pr:'',eT:{'isStartupCheck':isStartupCheck},fN:'willCheckDefaultBrowser'
+  });'__L_V__0';
     // Perform default browser checking.
     if (!ShellService) {
+__L_V__0({
+    lN: 4613,tT:'if',pr:'!ShellService',eT:{},fN:''
+  });'__L_V__0';
       return false;
     }
 
@@ -4805,6 +5700,9 @@ var DefaultBrowserCheck = {
     // Even if we shouldn't check the default browser, we still continue when
     // isStartupCheck = true to set prefs and telemetry.
     if (!shouldCheck && !isStartupCheck) {
+__L_V__0({
+    lN: 4622,tT:'if',pr:'!shouldCheck && !isStartupCheck',eT:{},fN:''
+  });'__L_V__0';
       return false;
     }
 
@@ -4839,6 +5737,9 @@ var DefaultBrowserCheck = {
     }
 
     if (isDefault && isStartupCheck) {
+__L_V__0({
+    lN: 4656,tT:'if',pr:'isDefault && isStartupCheck',eT:{},fN:''
+  });'__L_V__0';
       let now = Math.floor(Date.now() / 1000).toString();
       Services.prefs.setCharPref(
         "browser.shell.mostRecentDateSetAsDefault",
@@ -4849,8 +5750,17 @@ var DefaultBrowserCheck = {
     let willPrompt = shouldCheck && !isDefault && !willRecoverSession;
 
     if (willPrompt) {
+__L_V__0({
+    lN: 4666,tT:'if',pr:'willPrompt',eT:{},fN:''
+  });'__L_V__0';
       if (skipDefaultBrowserCheck) {
+__L_V__0({
+    lN: 4667,tT:'if',pr:'skipDefaultBrowserCheck',eT:{},fN:''
+  });'__L_V__0';
         if (isStartupCheck) {
+__L_V__0({
+    lN: 4668,tT:'if',pr:'isStartupCheck',eT:{},fN:''
+  });'__L_V__0';
           Services.prefs.setBoolPref(
             "browser.shell.didSkipDefaultBrowserCheckOnFirstRun",
             true
@@ -4858,22 +5768,37 @@ var DefaultBrowserCheck = {
         }
         willPrompt = false;
       }
-
+      /* CLIQZ-SPECIAL: Avoid FF handling of default browser msg popup
       if (usePromptLimit) {
+__L_V__0({
+    lN: 4677,tT:'if',pr:'usePromptLimit',eT:{},fN:''
+  });'__L_V__0';
         promptCount++;
         if (isStartupCheck) {
+__L_V__0({
+    lN: 4679,tT:'if',pr:'isStartupCheck',eT:{},fN:''
+  });'__L_V__0';
           Services.prefs.setIntPref(
             "browser.shell.defaultBrowserCheckCount",
             promptCount
           );
         }
+        
         if (promptCount > 3) {
+__L_V__0({
+    lN: 4686,tT:'if',pr:'promptCount > 3',eT:{},fN:''
+  });'__L_V__0';
           willPrompt = false;
         }
+        
       }
+      */
     }
 
     if (isStartupCheck) {
+__L_V__0({
+    lN: 4694,tT:'if',pr:'isStartupCheck',eT:{},fN:''
+  });'__L_V__0';
       try {
         // Report default browser status on startup to telemetry
         // so we can track whether we are the default.
@@ -4894,7 +5819,8 @@ var DefaultBrowserCheck = {
       }
     }
 
-    return willPrompt;
+    // CLIQZ-SPECIAL: custom default browser logic
+    return willPrompt && this._cliqz_customHandleForDefaultBrowserCheck();
   },
 };
 
@@ -4907,6 +5833,9 @@ var JawsScreenReaderVersionCheck = {
   _prompted: false,
 
   init() {
+__L_V__0({
+    lN: 4728,tT:'func',pr:'',eT:{},fN:'init'
+  });'__L_V__0';
     Services.obs.addObserver(this, "a11y-init-or-shutdown", true);
   },
 
@@ -4916,16 +5845,28 @@ var JawsScreenReaderVersionCheck = {
   ]),
 
   observe(subject, topic, data) {
+__L_V__0({
+    lN: 4737,tT:'func',pr:'',eT:{'subject':subject,'topic':topic,'data':data},fN:'observe'
+  });'__L_V__0';
     if (topic == "a11y-init-or-shutdown" && data == "1") {
+__L_V__0({
+    lN: 4738,tT:'if',pr:'topic == a11y-init-or-shutdown && data == 1',eT:{},fN:''
+  });'__L_V__0';
       Services.tm.dispatchToMainThread(() => this._checkVersionAndPrompt());
     }
   },
 
   onWindowsRestored() {
+__L_V__0({
+    lN: 4743,tT:'func',pr:'',eT:{},fN:'onWindowsRestored'
+  });'__L_V__0';
     Services.tm.dispatchToMainThread(() => this._checkVersionAndPrompt());
   },
 
   _checkVersionAndPrompt() {
+__L_V__0({
+    lN: 4747,tT:'func',pr:'',eT:{},fN:'_checkVersionAndPrompt'
+  });'__L_V__0';
     // Make sure we only prompt for versions of JAWS we do not
     // support and never prompt if e10s is disabled or if we're on
     // nightly.
@@ -4934,11 +5875,17 @@ var JawsScreenReaderVersionCheck = {
       !Services.appinfo.browserTabsRemoteAutostart ||
       AppConstants.NIGHTLY_BUILD
     ) {
+__L_V__0({
+    lN: 4755,tT:'if',pr:' !Services.appinfo.shouldBlockIncompatJaws || !Services.appinfo.browserTabsRemoteAutostart || AppConstants.NIGHTLY_BUILD ',eT:{},fN:''
+  });'__L_V__0';
       return;
     }
 
     let win = BrowserWindowTracker.getTopWindow();
     if (!win || !win.gBrowser || !win.gBrowser.selectedBrowser) {
+__L_V__0({
+    lN: 4760,tT:'if',pr:'!win || !win.gBrowser || !win.gBrowser.selectedBrowser',eT:{},fN:''
+  });'__L_V__0';
       Services.console.logStringMessage(
         "Content access support for older versions of JAWS is disabled " +
           "due to compatibility issues with this version of Firefox."
@@ -4949,6 +5896,9 @@ var JawsScreenReaderVersionCheck = {
 
     // Only prompt once per session
     if (this._prompted) {
+__L_V__0({
+    lN: 4770,tT:'if',pr:'this._prompted',eT:{},fN:''
+  });'__L_V__0';
       return;
     }
     this._prompted = true;
@@ -4970,6 +5920,9 @@ var JawsScreenReaderVersionCheck = {
         "e10s.accessibilityNotice.acceptButton.accesskey"
       ),
       callback() {
+__L_V__0({
+    lN: 4791,tT:'func',pr:'',eT:{},fN:'callback'
+  });'__L_V__0';
         // If the user invoked the button option remove the notification,
         // otherwise keep the alert icon around in the address bar.
         notification.remove();
