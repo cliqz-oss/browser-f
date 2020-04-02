@@ -4547,6 +4547,7 @@ var DefaultBrowserCheck = {
 
   _cliqz_customHandleForDefaultBrowserCheck() {
     let defaultBrowserCheckFlag = false;
+    let popupCount = Services.prefs.getIntPref("browser.shell.defaultBrowserCheckCount");
     let firstDefaultBrowserCheckTimestamp =
       Services.prefs.getPrefType("browser.shell.firstDefaultBrowserCheckTimestamp") !== 0 ?
         Services.prefs.getIntPref("browser.shell.firstDefaultBrowserCheckTimestamp") :
