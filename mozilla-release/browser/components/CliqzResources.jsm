@@ -34,17 +34,6 @@ const getWebExtPrefix = function(extensionId = DEFAULT_EXTENSION_ID) {
 };
 
 const CliqzResources = {
-  matchUrlByString: function(key) {
-    switch (key) {
-      case 'chrome://cliqz/content/onboarding-v3/index.html':
-      case 'resource://cliqz/freshtab/home.html':
-      case 'about:welcome':
-        return 'about:home';
-
-      default:
-        return key;
-    }
-  },
   // CLIQZ-SPECIAL: we do not need BROWSER_NEW_TAB_URL check as we never change it
   // return gInitialPages.includes(url) || url == BROWSER_NEW_TAB_URL;
   isInitialPage: function(url) {
@@ -67,20 +56,4 @@ const CliqzResources = {
   },
   whatIstheURL: (u) => `${getWebExtPrefix()}/modules/${u}`,
   getExtensionURL: (path, extensionId = DEFAULT_EXTENSION_ID) => `${getWebExtPrefix(extensionId)}${path}`,
-  getUrlWithProperExtentionId: function(url = '') {
-    if (!url || typeof url != 'string') {
-      return url;
-    }
-
-    if (url.indexOf('moz-extension://') !== 0) {
-      return url;
-    }
-
-    let outerParts = url.split('moz-extension://');
-    let innerParts = outerParts[1].split('/');
-    innerParts[0] = getWebExtId();
-
-    outerParts[1] = innerParts.join('/');
-    return outerParts.join('moz-extension://');
-  },
 };
