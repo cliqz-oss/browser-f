@@ -148,8 +148,10 @@ node('gideon') {
                     withCredentials([
                         [$class: 'FileBinding', credentialsId: MAC_CERT_CREDENTIAL_ID, variable: 'MAC_CERT'],
                         [$class: 'StringBinding', credentialsId: MAC_CERT_PASS_CREDENTIAL_ID, variable: 'MAC_CERT_PASS'],
-                        [$class: 'StringBinding', credentialsId: MAC_NOTARY_USERNAME, variable: 'MAC_NOTARY_USER'],
-                        [$class: 'StringBinding', credentialsId: MAC_NOTARY_PASSWORD, variable: 'MAC_NOTARY_PASS']
+                        [$class: 'UsernamePasswordMultiBinding',
+                            credentialsId: MAC_NOTARY_CREDENTIAL_ID,
+                            passwordVariable: 'MAC_NOTARY_PASS',
+                            usernameVariable: 'MAC_NOTARY_USER']
                     ]) {
                         try {
                             // create temporary keychain and make it a default one
