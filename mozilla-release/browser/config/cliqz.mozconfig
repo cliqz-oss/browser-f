@@ -40,3 +40,5 @@ fi
 #   # In particular, some compilation flag needs to be disabled.
 #   # ac_add_options --enable-lto
 # fi
+
+ac_add_options --with-macos-sdk=/Users/cliqzci/MacOSX-SDKs/MacOSX10.14.sdk
