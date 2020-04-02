@@ -83,7 +83,7 @@ RUN wget -qO- https://deb.nodesource.com/gpgkey/nodesource.gpg.key | apt-key add
  && apt-get update \
  && apt-get install --yes nodejs
 
-# Install Rust toolchain version 1.39.0
+# Install Rust toolchain version 1.41.0
 ENV RUSTUP_HOME=/usr/local/rustup \
   CARGO_HOME=/usr/local/cargo \
   PATH=/usr/local/cargo/bin:$PATH
@@ -91,7 +91,7 @@ ENV RUSTUP_HOME=/usr/local/rustup \
 RUN wget "https://static.rust-lang.org/rustup/archive/1.21.1/x86_64-unknown-linux-gnu/rustup-init" \
  && echo "ad1f8b5199b3b9e231472ed7aa08d2e5d1d539198a15c5b1e53c746aad81d27b *rustup-init" | sha256sum -c - \
  && chmod +x rustup-init \
- && ./rustup-init -y --no-modify-path --default-toolchain 1.39.0 \
+ && ./rustup-init -y --no-modify-path --default-toolchain 1.41.0 \
  && rm rustup-init \
  && chmod -R a+w $RUSTUP_HOME $CARGO_HOME \
  && rustup --version \
@@ -99,14 +99,14 @@ RUN wget "https://static.rust-lang.org/rustup/archive/1.21.1/x86_64-unknown-linu
  && rustc --version
 
 # Install cbindgen
-RUN cargo install --version 0.13.0 cbindgen
+RUN cargo install --version 0.13.1 cbindgen
 
-# Install nasm 2.13 (see: https://www.nasm.us)
+# Install nasm 2.14 (see: https://www.nasm.us)
 RUN mkdir -p /home/$user/nasm \
  && cd /home/$user/nasm \
- && wget --output-document=nasm.tar.xz --quiet "https://www.nasm.us/pub/nasm/releasebuilds/2.13.03/nasm-2.13.03.tar.xz" \
+ && wget --output-document=nasm.tar.xz --quiet "https://www.nasm.us/pub/nasm/releasebuilds/2.14.02/nasm-2.14.02.tar.xz" \
  && tar xf nasm.tar.xz \
- && cd nasm-2.13.03 \
+ && cd nasm-2.14.02 \
  && sh configure \
  && sudo make install
 
