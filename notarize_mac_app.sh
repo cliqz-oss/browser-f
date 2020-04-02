@@ -18,8 +18,6 @@ function finish {
 }
 trap finish EXIT
 
-exit 2
-
 zip -r "$BUNDLE_PKG" $PKG_DIR/Cliqz.app
 # submit app for notarization
 if xcrun altool --notarize-app --primary-bundle-id "$BUNDLE_ID" --username "$ASC_USERNAME" --password "$ASC_PASSWORD" -f "$BUNDLE_PKG" > "$NOTARIZE_APP_LOG" 2>&1; then
