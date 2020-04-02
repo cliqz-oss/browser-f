@@ -1356,7 +1356,10 @@ pref("browser.newtabpage.activity-stream.discoverystream.personalization.modelKe
 pref("trailhead.firstrun.branches", "");
 
 // Separate about welcome
-pref("browser.aboutwelcome.enabled", false);
+pref("browser.aboutwelcome.enabled", false); // ALWAYS FALSE
+// CLIQZ-SPECIAL: always make sure this remains false,
+// we do not want separate welcome page
+
 // See Console.jsm LOG_LEVELS for all possible values
 pref("browser.aboutwelcome.log", "warn");
 
