@@ -483,6 +483,14 @@ var Policies = {
       }
     },
   },
+
+  DisableMyOffrz: {
+    onBeforeAddons(manager, param) {
+      if (param) {
+        setAndLockPref("extensions.cliqz.enterpirse.disabledModules", "offers");
+      }
+    },
+  },
 #if 0
 
   DisablePasswordReveal: {

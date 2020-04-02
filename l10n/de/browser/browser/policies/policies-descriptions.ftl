@@ -35,6 +35,7 @@ policy-DisableFirefoxStudies = { -brand-short-name } keine Studien durchführen 
 policy-DisableForgetButton = Zugriff auf "Vergessen"-Schaltfläche verhindern
 policy-DisableFormHistory = Formular- und Suchchronik nicht speichern
 policy-DisableMasterPasswordCreation = Master-Passwort kann nicht erstellt werden, falls true
+policy-DisableMyOffrz = MyOffrz deaktivieren
 policy-DisablePasswordReveal = Option zur Klartextanzeige von Passwörtern in gespeicherten Zugangsdaten deaktivieren
 policy-DisablePocket = Pocket als Speicherliste für Webseiten deaktivieren
 policy-DisablePrivateBrowsing = Privates Surfen deaktivieren
