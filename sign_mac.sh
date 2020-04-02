@@ -32,7 +32,6 @@ do
   codesign "${SIGN_ARGS[@]}" $PKG_DIR/Cliqz.app/Contents/MacOS/libmozglue.dylib
   codesign "${SIGN_ARGS[@]}" $PKG_DIR/Cliqz.app/Contents/MacOS/libmozavcodec.dylib
   codesign "${SIGN_ARGS[@]}" $PKG_DIR/Cliqz.app/Contents/MacOS/libnssckbi.dylib
-  codesign "${SIGN_ARGS[@]}" $PKG_DIR/Cliqz.app/Contents/MacOS/libgraphitewasm.dylib
   codesign "${SIGN_ARGS[@]}" $PKG_DIR/Cliqz.app/Contents/MacOS/libnss3.dylib
   codesign "${SIGN_ARGS[@]}" $PKG_DIR/Cliqz.app/Contents/MacOS/minidump-analyzer
   codesign "${SIGN_ARGS[@]}" $PKG_DIR/Cliqz.app/Contents/MacOS/crashreporter.app
