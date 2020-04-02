@@ -219,6 +219,10 @@
       "type": "boolean"
     },
 
+    "DisableMyOffrz": {
+      "type": "boolean"
+    },
+
     "DisablePasswordReveal": {
       "type": "boolean"
     },
