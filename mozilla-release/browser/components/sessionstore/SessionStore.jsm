@@ -4048,27 +4048,6 @@ var SessionStoreInternal = {
       recentCrashes: this._recentCrashes,
     };
 
-    // CLIQZ-SPECIAL:
-    // DB-2057
-    // We need to find every single tab's entries to determine whether those contain url
-    // which could be related to moz-extension.
-    // If we find any of those we mark them as isCliqzPage.
-    // If a user gets refreshed after all then those moz-extension urls are invalid anymore.
-    // isCliqzPage will help us to restore (to swap for valid ones) them in that case.
-    let totalTabs = [];
-    let totalEntries = [];
-    for (let winData of total) {
-      totalTabs.push.apply(totalTabs, winData.tabs);
-    }
-    for (let tabData of totalTabs) {
-      totalEntries.push.apply(totalEntries, tabData.entries);
-    }
-    for (let entryData of totalEntries) {
-      if (CliqzResources.isCliqzPage(entryData.url)) {
-        entryData.isCliqzPage = 1;
-      }
-    }
-
     let state = {
       version: ["sessionrestore", FORMAT_VERSION],
       windows: total,
@@ -5246,58 +5225,6 @@ var SessionStoreInternal = {
       var ID = "window" + Math.random();
     } while (ID in this._statesToRestore);
     WINDOW_RESTORE_IDS.set(window, ID);
-    // CLIQZ-SPECIAL:
-    // DB-2057
-    // At this step we need to figure out whether there are any moz-extension
-    // urls which can not be restored for a reason that extension got refreshed itself,
-    // meaning a new EXTENSION_ID was generated.
-    //
-    // After we find those urls we need to replace every extension-id within them for
-    // new generated extension-id.
-    // 1 Step. Let's collect all the tabs within all the windows.
-    let tabList = [];
-    for (let windowItem of state.windows) {
-      tabList.push.apply(tabList, windowItem.tabs);
-    }
-    // 2 Step. Every tab could have formdata object. Let's collect those.
-    let formDataList = [];
-    for (let tabItem of tabList) {
-      // Surprise: formdata object might not be there (just in case).
-      if (tabItem.formdata == null) {
-        continue;
-      }
-
-      formDataList.push(tabItem.formdata);
-    }
-    // 3 Step. Every formdata object has an "id"->"sessionData"->"windows"->"tabs".
-    // Let's collect those tabs.
-    // We can reuse tabList variable here since we do not need previously found tabs anymore;
-    tabList = [];
-    for (let formDataItem of formDataList) {
-      if (formDataItem.id == null ||
-          formDataItem.id.sessionData == null ||
-          formDataItem.id.sessionData.windows == null) {
-        continue;
-      }
-
-      for (let windowItem of formDataItem.id.sessionData.windows) {
-        tabList.push.apply(tabList, windowItem.tabs);
-      }
-    }
-    // 4 Step. Every newly found tab could have entries with urls we might need to replace.
-    let entryList = [];
-    for (let tabItem of tabList) {
-      entryList.push.apply(entryList, tabItem.entries);
-    }
-    // 5 Step. Loop through the entries found at previous step and modify url property of each entry
-    // that contains isCliqzPage = 1;
-    for (let entryItem of entryList) {
-      if (entryItem.isCliqzPage !== 1) {
-        continue;
-      }
-
-      entryItem.url = CliqzResources.getUrlWithProperExtentionId(entryItem.url);
-    }
 
     this._statesToRestore[ID] = state;
   },

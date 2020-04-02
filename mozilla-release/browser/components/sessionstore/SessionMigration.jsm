@@ -47,7 +47,21 @@ var SessionMigrationInternal = {
     };
     state.windows = aStateObj.windows.map(function(oldWin) {
       var win = { extData: {} };
-      win.tabs = oldWin.tabs.map(function(oldTab) {
+      // CLIQZ-SPECIAL: filter out all moz-extension URL before map,
+      // we do not want any extension URLs to restore
+      // win.tabs = oldWin.tabs.map(function(oldTab) {
+      win.tabs = oldWin.tabs
+      .filter(t => {
+        let isWebExtURL = false;
+        if (t.entries.length > 0) {
+          const lastEntry = t.entries[t.entries.length - 1];
+          if (lastEntry.url && lastEntry.url.startsWith("moz-extension")) {
+            isWebExtURL = true;
+          }
+        }
+        return !isWebExtURL;
+      })
+      .map(function(oldTab) {
         var tab = {};
         // Keep only titles, urls and triggeringPrincipals for history entries
         tab.entries = oldTab.entries.map(function(entry) {
@@ -55,7 +69,6 @@ var SessionMigrationInternal = {
             url: entry.url,
             triggeringPrincipal_base64: entry.triggeringPrincipal_base64,
             title: entry.title,
-            isCliqzPage: entry.isCliqzPage,
           };
         });
         tab.index = oldTab.index;
