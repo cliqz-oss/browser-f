@@ -266,7 +266,7 @@ AboutNewTabService.prototype = {
     // "resource://activity-stream/prerendered/activity-stream-debug.html"
     // "resource://activity-stream/prerendered/activity-stream-noscripts.html"
 
-    return "https://cliqz.com";
+    // return "https://cliqz.com";
 
     let freshTabUrl = this.newTabURL;
     let uuids = null;
@@ -296,7 +296,7 @@ AboutNewTabService.prototype = {
     // Also AboutNewTabService is invoked in both PROCESS_TYPE_DEFAULT (=0, main) and other processes.
     // The latter option does not return our freshtab value since it has been set within the parent
     // process; using preferences as a fallback allows to retrieve our Extension id;
-    return "moz-extensions://" + uuids["cliqz@cliqz.com"] + "/modules/freshtab/home.html";
+    return "moz-extension://" + uuids["cliqz@cliqz.com"] + "/modules/freshtab/home.html";
 #if 0
     return [
       "resource://activity-stream/prerendered/",
