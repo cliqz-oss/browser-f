@@ -2261,32 +2261,11 @@ var gBrowserInit = {
         return;
       }
 
-      let aboutNewTabURL = gAboutNewTabService.defaultURL;
-      if (aboutNewTabURL === "about:newtab") {
-        // CLIQZ-SPECIAL: DB-2411, we assign moz-extension url to newTabURL in AboutNewTabService;
-        // Sometimes it gets reset to default value "about:newtab" resetting
-        // the value having come from the extension.
-        // We need this hack for that kind of problem.
-        // TODO: find cases when newTabURL is reset.
-        // See AboutNewTabService#setter newTabURL;
-        aboutNewTabURL = CliqzResources.whatIstheURL('freshtab/home.html');
-      }
-
       // We don't check if uriToLoad is a XULElement because this case has
       // already been handled before first paint, and the argument cleared.
       if (Array.isArray(uriToLoad)) {
         // This function throws for certain malformed URIs, so use exception handling
         // so that we don't disrupt startup
-
-        // CLIQZ-SPECIAL: DB-2411, we should not load a freshtab url directly here.
-        // Instead we delegate it to AboutRedirector.cpp.
-        // That is any uri which is explicitly set as a freshtab moz-extension we
-        // assign a default home page value as a string (in most cases about:home);
-        // gAboutNewTabService.defaultURL has an explicit freshtab url.
-        // Same rule is applicable for other two cases below.
-        uriToLoad = uriToLoad.map((uri) => {
-          return uri === aboutNewTabURL ? HomePage.getAsString(true) : uri;
-        });
 
         try {
           gBrowser.loadTabs(uriToLoad, {
@@ -2303,8 +2282,6 @@ var gBrowserInit = {
           });
         } catch (e) {}
       } else if (window.arguments.length >= 3) {
-        // CLIQZ-SPECIAL: DB-2411
-        uriToLoad = uriToLoad === aboutNewTabURL ? HomePage.getAsString(true) : uriToLoad;
         // window.arguments[1]: unused (bug 871161)
         //                 [2]: referrerInfo (nsIReferrerInfo)
         //                 [3]: postData (nsIInputStream)
@@ -2338,8 +2315,6 @@ var gBrowserInit = {
         );
         window.focus();
       } else {
-        // CLIQZ-SPECIAL: DB-2411
-        uriToLoad = uriToLoad === aboutNewTabURL ? HomePage.getAsString(true) : uriToLoad;
         // Note: loadOneOrMoreURIs *must not* be called if window.arguments.length >= 3.
         // Such callers expect that window.arguments[0] is handled as a single URI.
         loadOneOrMoreURIs(
@@ -2478,19 +2453,6 @@ var gBrowserInit = {
       let defaultArgs = Cc["@mozilla.org/browser/clh;1"].getService(
         Ci.nsIBrowserHandler
       ).defaultArgs;
-
-      // CLIQZ-SPECIAL: DB-2345, this is how it works now.
-      // If show homepage at the browser start up is selected
-      // then defaultArgs will have a value of whatever is set to homepage.
-      // Otherwise defaultArgs equals "about:blank".
-      //
-      // In case of uri equals "about:blank" (a user opens the browser just by clicking on its'
-      // icon or in case of Windows OS click on "Open new tab" in the context menu, etc.)
-      // but at the same time defaultArgs does not (has other value than "about:blank") then
-      // it makes sense to load defaultArgs rather then showing empty page.
-      if (uri == "about:blank" && uri != defaultArgs) {
-        return defaultArgs;
-      }
 
       // If the given URI is different from the homepage, we want to load it.
       if (uri != defaultArgs) {
