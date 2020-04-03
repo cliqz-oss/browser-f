@@ -281,7 +281,7 @@ AboutNewTabService.prototype = {
       return freshTabUrl;
     }
 
-    // Why we need this.
+    // CLIQZ-SPECIAL: DB-2458, Why we need this.
     // mozilla-release/browser/components/extensions/parent/ext-chrome-settings-overrides.js
     // This file reads the manifest.json file from our Extension and then retrieves
     // chrome_settings_overrides.homapage to save that value in
