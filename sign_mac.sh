@@ -19,6 +19,8 @@ do
   xattr -cr $PKG_DIR/Cliqz.app/Contents/MacOS/crashreporter.app
   xattr -cr $PKG_DIR/Cliqz.app/Contents/MacOS/updater.app
 
+  security unlock-keychain -p cliqz cliqz
+
   codesign "${SIGN_ARGS[@]}" $PKG_DIR/Cliqz.app/Contents/MacOS/plugin-container.app
   codesign "${SIGN_ARGS[@]}" $PKG_DIR/Cliqz.app/Contents/MacOS/pingsender
   codesign "${SIGN_ARGS[@]}" $PKG_DIR/Cliqz.app/Contents/MacOS/libfreebl3.dylib
