@@ -488,6 +488,9 @@ var SessionStore = {
 Object.freeze(SessionStore);
 
 const cliqz_removeDuplicatedEntries = function(tabs, overwriteTabs) {
+  if (!Array.isArray(tabs)) {
+    return [];
+  }
   // CLIQZ-SPECIAL: DB-2447
   // overwriteTabs is always true if "Show Home Page" option is
   // not selected on Preferences page.
@@ -502,14 +505,14 @@ const cliqz_removeDuplicatedEntries = function(tabs, overwriteTabs) {
   // To detect that we need to find the last entry that not be
   // restored and then get an index of the tab it belongs to.
   const homePages = HomePage.get().split("|");
-  const shouldNotRestoreEntry = function(entry) {
+  const shouldRestoreEntry = function(entry) {
     if (homePages.includes(entry.url)) {
-      return true;
+      return false;
+    } else if (homePages.includes(HomePage.getOriginalDefault())) {
+      return !CliqzResources.isCliqzPage(entry.url);
     }
 
-    return homePages.includes(HomePage.getOriginalDefault()) ?
-      CliqzResources.isCliqzPage(entry.url) :
-      false;
+    return true;
   };
 
   let lastTabIndex = tabs.length - 1;
@@ -520,7 +523,7 @@ const cliqz_removeDuplicatedEntries = function(tabs, overwriteTabs) {
         let entries = tabs[i].entries || [];
         if (entries.length > 0) {
           let lastEntry = entries[entries.length - 1];
-          if (shouldNotRestoreEntry(lastEntry)) {
+          if (!shouldRestoreEntry(lastEntry)) {
             return i;
           }
         }
@@ -541,7 +544,7 @@ const cliqz_removeDuplicatedEntries = function(tabs, overwriteTabs) {
 
     if (item.entries.length > 0) {
       let lastEntry = item.entries[item.entries.length - 1];
-      if (!shouldNotRestoreEntry(lastEntry)) {
+      if (!shouldRestoreEntry(lastEntry)) {
         item.entries.pop();
       }
     }
