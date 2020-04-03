@@ -280,6 +280,8 @@ const FEATURES = [
 ];
 
 function reportPhishingURL(url, kind) {
+  /* CLIQZ-TEMP: this is legacy code, need to be replaced
+     by webext approach
   try {
     Components.utils.import('chrome://cliqzmodules/content/CLIQZ.jsm')
       .CLIQZ.System.import('core/kord/inject').then(function (mod) {
@@ -291,6 +293,7 @@ function reportPhishingURL(url, kind) {
   catch (e) {
     Cu.reportError(e);
   }
+  */
 }
 
 var SafeBrowsing = {
