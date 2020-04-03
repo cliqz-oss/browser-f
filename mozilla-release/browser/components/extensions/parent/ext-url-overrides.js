@@ -75,9 +75,9 @@ XPCOMUtils.defineLazyGetter(this, "newTabPopup", () => {
   });
 });
 
-function setNewTabURL(extensionId, url, isSystem) {
-  /*
-  CLIQZ: Do not allow any addon except system addon to change newtab and stop newtab doorhanger totally.
+function setNewTabURL(extensionId, url) {
+  /* CLIQZ-SPECIAL: Do not allow any addon except cliqz addon
+     to change newtab and stop newtab doorhanger totally.
   if (extensionId) {
     newTabPopup.addObserver(extensionId);
     let policy = ExtensionParent.WebExtensionPolicy.getByID(extensionId);
@@ -91,12 +91,9 @@ function setNewTabURL(extensionId, url, isSystem) {
     Services.prefs.clearUserPref(NEW_TAB_PRIVATE_ALLOWED);
     Services.prefs.clearUserPref(NEW_TAB_EXTENSION_CONTROLLED);
   }
-  if (url) {
-    aboutNewTabService.newTabURL = url;
-  }
   */
-
-  if (isSystem) {
+  if (url && extensionId === "cliqz@cliqz.com") {
+    Services.prefs.setBoolPref(NEW_TAB_EXTENSION_CONTROLLED, true);
     aboutNewTabService.newTabURL = url;
   }
 }
@@ -178,15 +175,9 @@ this.urlOverrides = class extends ExtensionAPI {
         () => aboutNewTabService.newTabURL
       );
 
-      try {
-        // CLIQZ-SPECIAL: if its system or built-in addon do not add notification observer
-        const isSystem = extension.addonData.signedState == 3 || extension.addonData.builtIn;
-        // Set the newTabURL to the current value of the setting.
-        if (item) {
-          setNewTabURL(item.id, item.value || item.initialValue, isSystem);
-        }
-      } catch(e) {
-        // is case there is no SignedState
+      // Set the newTabURL to the current value of the setting.
+      if (item) {
+        setNewTabURL(item.id, item.value || item.initialValue);
       }
 
       // We need to monitor permission change and update the preferences.
