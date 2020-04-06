@@ -373,6 +373,21 @@ var gIdentityHandler = {
   },
 
   /**
+   * CLIQZ-SPECIAL: Identify if scope is of cliqz extension
+   */
+  get _isSystemAddon() {
+    return (
+      this._pageExtensionPolicy &&
+      this._pageExtensionPolicy.extension &&
+      this._pageExtensionPolicy.extension.addonData &&
+      (
+        this._pageExtensionPolicy.extension.addonData.signedState  == 3 ||
+        this._pageExtensionPolicy.extension.addonData.builtIn
+      )
+    ) || false;
+  },
+
+  /**
    * Handles clicks on the "Clear Cookies and Site Data" button.
    */
   async clearSiteData(event) {
@@ -718,7 +733,7 @@ var gIdentityHandler = {
     let icon_labels_dir = "ltr";
 
     // CLIQZ-SPECIAL: Show search glass in identity box when cliqz pages are open
-    if (this._isSecureInternalUI) {
+    if (this._isSystemAddon) {
       this._identityBox.setAttribute('pageproxystate', 'invalid');
     } else if (this._isSecureInternalUI) {
       // This is a secure internal Firefox page.
@@ -876,10 +891,6 @@ var gIdentityHandler = {
    * Updates the permissions block in the identity block.
    */
   _refreshPermissionIcons() {
-    let isSystemAddon = false;
-    if (this._pageExtensionPolicy && this._pageExtensionPolicy.extension) {
-      isSystemAddon = this._pageExtensionPolicy.extension.addonData.signedState  == 3 || this._pageExtensionPolicy.extension.addonData.builtIn;
-    }
     let permissionAnchors = this._permissionAnchors;
 
     // hide all permission icons
@@ -909,7 +920,7 @@ var gIdentityHandler = {
     }
 
     // CLIQZ-SPECIAL: dont need permissions for internal cliqz extension pages
-    if (hasGrantedPermissions && !isSystemAddon) {
+    if (hasGrantedPermissions && !this._isSystemAddon) {
       this._identityBox.classList.add("grantedPermissions");
     }
 
@@ -1150,15 +1161,6 @@ var gIdentityHandler = {
     } catch (ex) {
       // NetUtil's methods will throw for malformed URIs and the like
     }
-    // CLIQZ-SPECIAL: this is done to make sure we do not show any identity signs on the utl bar just Search Icon
-    try {
-      const isSystemAddon = (this._pageExtensionPolicy.extension.addonData.signedState  == 3 || this._pageExtensionPolicy.extension.addonData.builtIn)
-      if (isSystemAddon) {
-        gURLBar.setAttribute("pageproxystate", "invalid");
-        // as a fallback if FF changees this design rule, atleast the internal pages will be shown as secure pages.
-        this._isSecureInternalUI = true;
-      }
-    } catch(e){}
   },
 
   /**
