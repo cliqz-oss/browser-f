@@ -81,6 +81,9 @@ var gBidiUI = false;
  */
 function isBlankPageURL(aURL) {
   return (
+    // CLIQZ-SPECIAL: covering corner case when
+    // uri is undefined from sessionstore.
+    !aURL ||
     aURL == "about:blank" ||
     aURL == "about:home" ||
     aURL == "about:welcome" ||
