@@ -4829,7 +4829,7 @@ var SessionStoreInternal = {
     });
 
     // Focus the tab's content area.
-    if (aTab.selected && !window.isBlankPageURL(uri) && !String(uri).startsWith("moz-extension")) {
+    if (aTab.selected && !window.isBlankPageURL(uri)) {
       browser.focus();
     }
   },
