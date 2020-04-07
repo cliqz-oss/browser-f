@@ -3033,7 +3033,7 @@ BrowserGlue.prototype = {
     });
   },
 
-  _cliqzCustomUpdateTimeTasks() {
+  _cliqz_CustomUpdateTimeTasks() {
     // CLIQZ-SPECIAL: Show whats new page on every update
     // set false for 1.28 as we do not show whats new page
     // set true if we need to show whats new page
