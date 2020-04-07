@@ -3033,6 +3033,27 @@ BrowserGlue.prototype = {
     });
   },
 
+  _cliqzCustomUpdateTimeTasks() {
+    // CLIQZ-SPECIAL: Show whats new page on every update
+    // set false for 1.28 as we do not show whats new page
+    // set true if we need to show whats new page
+    Services.prefs.setBoolPref("browser.migration.showWhatsNew", false);
+
+    // CLIQZ-SPECIAL: fallback to  default content process count in case
+    // the count is 4. This value was removed cliqz.cfg, it may
+    // have persisted in user profile, hence we need to override that.
+    const contentProcessCountPref = "dom.ipc.processCount";
+    const contentProcessMigrationPref = "dom.ipc.processCount.migrated";
+    if (
+      Services.prefs.prefHasUserValue(contentProcessCountPref) &&
+      Services.prefs.getIntPref(contentProcessCountPref, 0) === 4 &&
+      !Services.prefs.getBoolPref(contentProcessMigrationPref, false)
+    ) {
+      Services.prefs.clearUserPref(contentProcessCountPref);
+      Services.prefs.setBoolPref(contentProcessMigrationPref, true);
+    }
+  },
+
   // eslint-disable-next-line complexity
   _migrateUI: function BG__migrateUI() {
     // Use an increasing number to keep track of the current migration state.
@@ -3056,21 +3077,9 @@ BrowserGlue.prototype = {
       return;
     }
 
-    // CLIQZ-SPECIAL: Show whats new page on every update
-    // set false for 1.28 as we do not show whats new page
-    // set true if we need to show whats new page
-    Services.prefs.setBoolPref("browser.migration.showWhatsNew", false);
-
-    // CLIQZ-SPECIAL: fallback to  default content process count in case
-    // the count is 4. This value was removed cliqz.cfg, it may
-    // have persisted in user profile, hence we need to override that.
-    const contentProcessCountPref = "dom.ipc.processCount";
-    if (
-      Services.prefs.prefHasUserValue(contentProcessCountPref) &&
-      Services.prefs.getIntPref(contentProcessCountPref, 0) === 4
-    ) {
-      Services.prefs.clearUserPref(contentProcessCountPref)
-    }
+    // CLIQZ-SPECIAL: This will be called on evry browser update
+    // and perform some custom tasks which are required to be done on update.
+    this._cliqzCustomUpdateTimeTasks();
 
     let xulStore = Services.xulStore;
 
