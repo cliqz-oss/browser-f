@@ -3061,6 +3061,17 @@ BrowserGlue.prototype = {
     // set true if we need to show whats new page
     Services.prefs.setBoolPref("browser.migration.showWhatsNew", false);
 
+    // CLIQZ-SPECIAL: fallback to  default content process count in case
+    // the count is 4. This value was removed cliqz.cfg, it may
+    // have persisted in user profile, hence we need to override that.
+    const contentProcessCountPref = "dom.ipc.processCount";
+    if (
+      Services.prefs.prefHasUserValue(contentProcessCountPref) &&
+      Services.prefs.getIntPref(contentProcessCountPref, 0) === 4
+    ) {
+      Services.prefs.clearUserPref(contentProcessCountPref)
+    }
+
     let xulStore = Services.xulStore;
 
     if (currentUIVersion < 52) {
