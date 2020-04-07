@@ -3079,7 +3079,7 @@ BrowserGlue.prototype = {
 
     // CLIQZ-SPECIAL: This will be called on evry browser update
     // and perform some custom tasks which are required to be done on update.
-    this._cliqzCustomUpdateTimeTasks();
+    this._cliqz_CustomUpdateTimeTasks();
 
     let xulStore = Services.xulStore;
 
