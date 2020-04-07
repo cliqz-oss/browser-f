@@ -84,7 +84,9 @@ class BlockedSiteChild extends JSWindowActorChild {
     if (desc) {
       doc
         .getElementById("error_desc_link")
-        .setAttribute("href", desc + encodeURIComponent(aEvent.detail.url));
+        //.setAttribute("href", desc + encodeURIComponent(aEvent.detail.url));
+        // CLIQZ-SPECIAL: DB-2442
+        .setAttribute("href", desc);
     }
 
     // Set other links in error details.

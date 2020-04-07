@@ -417,8 +417,19 @@ var SafeBrowsing = {
     if (reportUrl == "about:blank") {
       reportUrl = null;
     }
-
+#if 0
     if (reportUrl) {
+#endif
+    // CLIQZ-SPECIAL: DB-2442
+    if (reportUrl &&
+      (
+        pref != "browser.safebrowsing.provider.google.reportPhishMistakeURL" &&
+        pref != "browser.safebrowsing.provider.google.reportMalwareMistakeURL" &&
+        pref != "browser.safebrowsing.provider.google4.reportPhishMistakeURL" &&
+        pref != "browser.safebrowsing.provider.google4.reportMalwareMistakeURL" &&
+        pref != "browser.safebrowsing.reportPhishURL"
+      )
+    ) {
       reportUrl += encodeURIComponent(info.uri);
     }
     return reportUrl;
