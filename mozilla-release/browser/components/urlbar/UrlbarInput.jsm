@@ -160,7 +160,10 @@ class UrlbarInput {
 
     this.inputField = this.querySelector("#urlbar-input");
     this.dropmarker = this.querySelector(".urlbar-history-dropmarker");
+    /* CLIQZ-SPECIAL: We do not need dropmarker in urlbar
     this.dropmarker.hidden = this.megabar;
+    */
+    this.dropmarker.hidden = true;
     this._inputContainer = this.querySelector("#urlbar-input-container");
     this._identityBox = this.querySelector("#identity-box");
     this._toolbar = this.textbox.closest("toolbar");
