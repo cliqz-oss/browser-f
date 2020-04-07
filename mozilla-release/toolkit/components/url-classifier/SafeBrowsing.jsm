@@ -418,9 +418,12 @@ var SafeBrowsing = {
       reportUrl = null;
     }
 
+#if 0
+    // CLIQZ-SPECIAL: DB-2442
     if (reportUrl) {
       reportUrl += encodeURIComponent(info.uri);
     }
+#endif
     return reportUrl;
   },
 
