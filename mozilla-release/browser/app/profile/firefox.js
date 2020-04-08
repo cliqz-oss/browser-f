@@ -2364,6 +2364,9 @@ pref("first-startup.timeout", 30000);
   pref("default-browser-agent.enabled", true);
 #endif
 
+// CLIQZ-SPECIAL: Enable Do not track as default
+pref("privacy.donottrackheader.enabled", true);
+
 pref("extensions.cliqz.labs.enabled", true);
 #if MOZ_UPDATE_CHANNEL == beta
   pref("extension.cliqz.dat.enabled", true);
