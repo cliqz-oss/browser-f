@@ -487,7 +487,7 @@ var Policies = {
   DisableMyOffrz: {
     onBeforeAddons(manager, param) {
       if (param) {
-        setAndLockPref("extensions.cliqz.enterpirse.disabledModules", "offers");
+        setAndLockPref("extensions.cliqz.enterprise.disabledModules", "offers");
       }
     },
   },
