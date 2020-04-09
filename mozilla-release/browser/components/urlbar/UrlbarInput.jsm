@@ -304,9 +304,9 @@ class UrlbarInput {
       valid =
         !this.window.isBlankPageURL(uri.spec) || uri.schemeIs("moz-extension");
 
-      // CLIQZ-SPECIAL: Invalidate page proxy state for inital pages opened in private tabs
-      // and Cliqz pages.
-      if (this.isPrivate && CliqzResources.isInitialPage(uri.spec)) {
+      // CLIQZ-SPECIAL: Invalidate page proxy state for inital pages ie. freshtab.
+      // set valid = false => pageproxystate = false
+      if (CliqzResources.isInitialPage(uri.spec)) {
         valid = false;
       }
 
