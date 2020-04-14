@@ -3058,7 +3058,7 @@ BrowserGlue.prototype = {
   _migrateUI: function BG__migrateUI() {
     // Use an increasing number to keep track of the current migration state.
     // Completely unrelated to the current Firefox release number.
-    const UI_VERSION = 92;
+    const UI_VERSION = 93;
     const BROWSER_DOCURL = AppConstants.BROWSER_CHROME_URL;
 
     PermissionsUtils.importFromPrefs("blockautoplay.", "autoplay-media");
