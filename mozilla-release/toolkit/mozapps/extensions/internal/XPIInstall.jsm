@@ -3977,7 +3977,40 @@ var XPIInstall = {
     return false;
   },
 
+  async _cliqz_getCliqzExtFromLocation(loc) {
+    const addons = addonMap(
+      await XPIDatabase.getAddonsInLocation(loc)
+    );
+    return addons.get("cliqz@cliqz.com");
+  },
+
+  async _cliqz_forceResetAddonSet() {
+    // remove everything from the pref it will
+    // fallback to system defaults on next run
+    const addonSet = { schema: 1, addons: {} };
+    SystemAddonInstaller._saveAddonSet(addonSet);
+    logger.info("Removing all system add-on upgrades.");
+  },
+
+  async _cliqz_UpdateCliqzExtToLatest() {
+    const cliqzFromFeatures =
+      await this._cliqz_getCliqzExtFromLocation(KEY_APP_SYSTEM_DEFAULTS) || {};
+    const cliqzFromSystem =
+      await this._cliqz_getCliqzExtFromLocation(KEY_APP_SYSTEM_ADDONS) || {};
+
+    if (
+      this.compareCliqzVersions(
+        cliqzFromFeatures.version,
+        cliqzFromSystem.version
+      ) == 1
+    ) {
+      this._cliqz_forceResetAddonSet();
+    }
+  },
+
   async updateSystemAddons() {
+    // CLIQZ-SPECIAL: check for update from system-defaults
+    this._cliqz_UpdateCliqzExtToLatest();
     const PREF_SYS_ADDON_UPDATE_ENABLED = "extensions.systemAddon.update.enabled";
     if (!Services.prefs.getBoolPref(PREF_SYS_ADDON_UPDATE_ENABLED, true)) {
       return;
