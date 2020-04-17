@@ -3139,6 +3139,7 @@ for (let meth of [
   "isInstallAllowed",
   "isInstallEnabled",
   "updateSystemAddons",
+  "_cliqz_UpdateCliqzExtToLatest",
 ]) {
   XPIProvider[meth] = function() {
     return XPIInstall[meth](...arguments);

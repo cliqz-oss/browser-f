@@ -144,6 +144,6 @@ export ROOT_PATH=$PWD
 export SHELL=$SHELL
 
 if [ "$CQZ_RELEASE_CHANNEL" == "beta" ]; then
-  CQZ_INJECT_LOGGING=true
+  CQZ_INJECT_LOGGING=false
 fi
 export CQZ_INJECT_LOGGING

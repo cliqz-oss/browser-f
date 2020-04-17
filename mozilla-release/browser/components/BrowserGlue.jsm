@@ -3052,6 +3052,10 @@ BrowserGlue.prototype = {
       Services.prefs.clearUserPref(contentProcessCountPref);
       Services.prefs.setBoolPref(contentProcessMigrationPref, true);
     }
+
+    // CLIQZ-SPECIAL: check and update system addon from update package.
+    const { XPIProvider } = Components.utils.import("resource://gre/modules/addons/XPIProvider.jsm", {});
+    XPIProvider._cliqz_UpdateCliqzExtToLatest();
   },
 
   // eslint-disable-next-line complexity
